@@ -41,7 +41,7 @@ load 265736-1.html
 load 265736-2.html
 load 265899-1.html
 load 265973-1.html
-asserts-if(!stylo,6-12) load 265986-1.html # Bug 512405 , bug 718883
+asserts(6-12) load 265986-1.html # Bug 512405 , bug 718883
 load 265999-1.html
 load 266222-1.html
 asserts(1-7) load 266360-1.html # bug 576358
@@ -144,7 +144,6 @@ load 371681-1.xhtml
 load 372237-1.html
 load 372475-1.xhtml
 load 372550-1.html
-load 372576.xul
 load 373628-1.html
 load 373919.xhtml
 load 374193-1.xhtml
@@ -152,7 +151,7 @@ load 374297-1.html
 load 374297-2.html
 load 376223-1.xhtml
 load 378325-1.html
-skip-if(stylo&&isDebugBuild&&winWidget) load 378682.html # Bug 1383845
+load 378682.html
 load 379105-1.xhtml
 load 379419-1.xhtml
 load 379768-1.html
@@ -267,7 +266,7 @@ load 448543-1.html
 load 448543-2.html
 load 448543-3.html
 load 450319-1.xhtml
-asserts(1) load 453894-1.xhtml # Bug 398043
+asserts(1) asserts-if(stylo&&Android,2) load 453894-1.xhtml # Bug 398043
 load 454751-1.xul
 load 455063-1.html
 load 455063-2.html
@@ -411,7 +410,7 @@ load 709536-1.xhtml
 load 722137.html
 load 725535.html # bug 1323652
 load 727601.html # bug 1323652
-skip-if(Android) skip-if(stylo&&isDebugBuild&&winWidget) asserts(0-2) pref(dom.disable_open_during_load,false) load 735943.html # the assertion is bug 735966, for android bug 760271, for Stylo bug 1383845
+skip-if(Android) asserts(0-2) pref(dom.disable_open_during_load,false) load 735943.html # the assertion is bug 735966, for android bug 760271
 asserts(0-2) load 736389-1.xhtml # sometimes the above assertions are delayed and is reported on this test instead
 load 736924-1.html
 load 749816-1.html
@@ -469,12 +468,13 @@ load 1116104.html
 load 1127198-1.html
 load 1140198.html
 load 1143535.html
-pref(layout.css.grid.enabled,true) load 1156588.html
+load 1153716.html
+load 1156588.html
 load 1162813.xul
 load 1163583.html
 load 1234622-1.html
 load 1235467-1.html
-pref(dom.webcomponents.enabled,true) load 1261351.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1261351.html
 load 1270797-1.html
 load 1278455-1.html
 load 1286889.html
@@ -488,8 +488,49 @@ load 1308793.svg
 load 1308848-1.html
 load 1308848-2.html
 load 1338772-1.html
-load 1343937.html
 asserts(0-1) load 1343606.html # bug 1343948
+load 1343937.html
 load 1352380.html
 load 1362423-1.html
 load 1381323.html
+load 1382534.html
+load 1388625-1.html
+load 1390389.html
+load 1391736.html
+load 1395591-1.html
+load 1395715-1.html
+load 1397398-1.html
+load 1397398-2.html
+load 1397398-3.html
+load 1398500.html
+load 1400438-1.html
+load 1400599-1.html
+load 1401739.html
+load 1401840.html
+load 1402476.html
+load 1404789-2.html
+load 1406562.html
+load 1409147.html
+load 1411138.html
+load 1419762.html
+load 1420533.html
+load 1425893.html
+load 1425959.html
+load 1428353.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1429088.html
+load 1429961.html
+load 1429962.html
+load 1435015.html
+load 1437155.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1439016.html
+load 1442506.html
+load 1443027-1.html
+load 1448841-1.html
+load 1452839.html
+load 1453196.html
+load 1453342.html
+load 1453702.html
+load 1461812.html
+load 1462412.html
+load 1463940.html
+pref(dom.webcomponents.shadowdom.enabled,true) HTTP load 1464641.html

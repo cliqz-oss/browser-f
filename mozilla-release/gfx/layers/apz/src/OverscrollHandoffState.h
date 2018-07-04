@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -35,7 +35,7 @@ protected:
   // Reference-counted classes cannot have public destructors.
   ~OverscrollHandoffChain();
 public:
-  // Threadsafe so that the controller and compositor threads can both maintain
+  // Threadsafe so that the controller and sampler threads can both maintain
   // nsRefPtrs to the same handoff chain.
   // Mutable so that we can pass around the class by
   // RefPtr<const OverscrollHandoffChain> and thus enforce that, once built,
@@ -89,7 +89,13 @@ public:
   // Determine whether any APZC along this handoff chain has been flung fast.
   bool HasFastFlungApzc() const;
 
-  RefPtr<AsyncPanZoomController> FindFirstScrollable(const InputData& aInput) const;
+  // Find the first APZC in this handoff chain that can be scrolled by |aInput|.
+  // Since overscroll-behavior can restrict handoff in some directions,
+  // |aOutAllowedScrollDirections| is populated with the scroll directions
+  // in which scrolling of the returned APZC is allowed.
+  RefPtr<AsyncPanZoomController> FindFirstScrollable(
+      const InputData& aInput,
+      ScrollDirections* aOutAllowedScrollDirections) const;
 
 private:
   std::vector<RefPtr<AsyncPanZoomController>> mChain;

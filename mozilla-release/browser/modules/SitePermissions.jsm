@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = [ "SitePermissions" ];
+var EXPORTED_SYMBOLS = [ "SitePermissions" ];
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 var gStringBundle =
   Services.strings.createBundle("chrome://browser/locale/sitePermissions.properties");
@@ -136,18 +136,25 @@ const TemporaryBlockedPermissions = {
  * Some methods have the side effect of dispatching a "PermissionStateChange"
  * event on changes to temporary permissions, as mentioned in the respective docs.
  */
-this.SitePermissions = {
+var SitePermissions = {
   // Permission states.
+  // PROMPT_HIDE state is only used to show the "Hide Prompt" state in the identity panel
+  // for the "plugin:flash" permission and not in pageinfo.
   UNKNOWN: Services.perms.UNKNOWN_ACTION,
   ALLOW: Services.perms.ALLOW_ACTION,
   BLOCK: Services.perms.DENY_ACTION,
-  ALLOW_COOKIES_FOR_SESSION: Components.interfaces.nsICookiePermission.ACCESS_SESSION,
+  PROMPT: Services.perms.PROMPT_ACTION,
+  ALLOW_COOKIES_FOR_SESSION: Ci.nsICookiePermission.ACCESS_SESSION,
+  PROMPT_HIDE: Ci.nsIObjectLoadingContent.PLUGIN_PERMISSION_PROMPT_ACTION_QUIET,
 
   // Permission scopes.
   SCOPE_REQUEST: "{SitePermissions.SCOPE_REQUEST}",
   SCOPE_TEMPORARY: "{SitePermissions.SCOPE_TEMPORARY}",
   SCOPE_SESSION: "{SitePermissions.SCOPE_SESSION}",
   SCOPE_PERSISTENT: "{SitePermissions.SCOPE_PERSISTENT}",
+  SCOPE_POLICY: "{SitePermissions.SCOPE_POLICY}",
+
+  _defaultPrefBranch: Services.prefs.getBranch("permissions.default."),
 
   /**
    * Gets all custom permissions for a given URI.
@@ -175,10 +182,20 @@ this.SitePermissions = {
         if (permission.type == "install") {
           continue;
         }
+
+        // Hide canvas permission when privacy.resistFingerprinting is false.
+        if ((permission.type == "canvas") &&
+            !Services.prefs.getBoolPref("privacy.resistFingerprinting")) {
+          continue;
+        }
+
         let scope = this.SCOPE_PERSISTENT;
         if (permission.expireType == Services.perms.EXPIRE_SESSION) {
           scope = this.SCOPE_SESSION;
+        } else if (permission.expireType == Services.perms.EXPIRE_POLICY) {
+          scope = this.SCOPE_POLICY;
         }
+
         result.push({
           id: permission.type,
           scope,
@@ -261,7 +278,14 @@ this.SitePermissions = {
    * @return {Array<String>} an array of all permission IDs.
    */
   listPermissions() {
-    return Object.keys(gPermissionObject);
+    let permissions = Object.keys(gPermissionObject);
+
+    // Hide canvas permission when privacy.resistFingerprinting is false.
+    if (!Services.prefs.getBoolPref("privacy.resistFingerprinting")) {
+      permissions = permissions.filter(permission => permission !== "canvas");
+    }
+
+    return permissions;
   },
 
   /**
@@ -278,10 +302,13 @@ this.SitePermissions = {
         gPermissionObject[permissionID].states)
       return gPermissionObject[permissionID].states;
 
+    /* Since the permissions we are dealing with have adopted the convention
+     * of treating UNKNOWN == PROMPT, we only include one of either UNKNOWN
+     * or PROMPT in this list, to avoid duplicating states. */
     if (this.getDefault(permissionID) == this.UNKNOWN)
       return [ SitePermissions.UNKNOWN, SitePermissions.ALLOW, SitePermissions.BLOCK ];
 
-    return [ SitePermissions.ALLOW, SitePermissions.BLOCK ];
+    return [ SitePermissions.PROMPT, SitePermissions.ALLOW, SitePermissions.BLOCK ];
   },
 
   /**
@@ -293,11 +320,14 @@ this.SitePermissions = {
    * @return {SitePermissions.state} the default state.
    */
   getDefault(permissionID) {
+    // If the permission has custom logic for getting its default value,
+    // try that first.
     if (permissionID in gPermissionObject &&
         gPermissionObject[permissionID].getDefault)
       return gPermissionObject[permissionID].getDefault();
 
-    return this.UNKNOWN;
+    // Otherwise try to get the default preference for that permission.
+    return this._defaultPrefBranch.getIntPref(permissionID, this.UNKNOWN);
   },
 
   /**
@@ -320,7 +350,8 @@ this.SitePermissions = {
    *             (e.g. SitePermissions.SCOPE_PERSISTENT)
    */
   get(uri, permissionID, browser) {
-    let result = { state: this.UNKNOWN, scope: this.SCOPE_PERSISTENT };
+    let defaultState = this.getDefault(permissionID);
+    let result = { state: defaultState, scope: this.SCOPE_PERSISTENT };
     if (this.isSupportedURI(uri)) {
       let permission = null;
       if (permissionID in gPermissionObject &&
@@ -334,11 +365,13 @@ this.SitePermissions = {
         result.state = permission.capability;
         if (permission.expireType == Services.perms.EXPIRE_SESSION) {
           result.scope = this.SCOPE_SESSION;
+        } else if (permission.expireType == Services.perms.EXPIRE_POLICY) {
+          result.scope = this.SCOPE_POLICY;
         }
       }
     }
 
-    if (!result.state) {
+    if (result.state == defaultState) {
       // If there's no persistent permission saved, check if we have something
       // set temporarily.
       let value = TemporaryBlockedPermissions.get(browser, permissionID);
@@ -371,9 +404,14 @@ this.SitePermissions = {
    *        This needs to be provided if the scope is SCOPE_TEMPORARY!
    */
   set(uri, permissionID, state, scope = this.SCOPE_PERSISTENT, browser = null) {
-    if (state == this.UNKNOWN) {
-      this.remove(uri, permissionID, browser);
-      return;
+    if (state == this.UNKNOWN || state == this.getDefault(permissionID)) {
+      // Because they are controlled by two prefs with many states that do not
+      // correspond to the classical ALLOW/DENY/PROMPT model, we want to always
+      // allow the user to add exceptions to their cookie rules without removing them.
+      if (permissionID != "cookie") {
+        this.remove(uri, permissionID, browser);
+        return;
+      }
     }
 
     if (state == this.ALLOW_COOKIES_FOR_SESSION && permissionID != "cookie") {
@@ -406,6 +444,8 @@ this.SitePermissions = {
       let perms_scope = Services.perms.EXPIRE_NEVER;
       if (scope == this.SCOPE_SESSION) {
         perms_scope = Services.perms.EXPIRE_SESSION;
+      } else if (scope == this.SCOPE_POLICY) {
+        perms_scope = Services.perms.EXPIRE_POLICY;
       }
 
       Services.perms.add(uri, permissionID, state, perms_scope);
@@ -488,6 +528,7 @@ this.SitePermissions = {
   getMultichoiceStateLabel(state) {
     switch (state) {
       case this.UNKNOWN:
+      case this.PROMPT:
         return gStringBundle.GetStringFromName("state.multichoice.alwaysAsk");
       case this.ALLOW:
         return gStringBundle.GetStringFromName("state.multichoice.allow");
@@ -505,22 +546,32 @@ this.SitePermissions = {
    *
    * @param {SitePermissions state} state
    *        The state to get the label for.
+   * @param {string} id
+   *        The permission to get the state label for.
    * @param {SitePermissions scope} scope (optional)
    *        The scope to get the label for.
    *
    * @return {String|null} the localized label or null if an
    *         unknown state was passed.
    */
-  getCurrentStateLabel(state, scope = null) {
+  getCurrentStateLabel(state, id, scope = null) {
+    // We try to avoid a collision between SitePermissions.PROMPT_HIDE
+    // and SitePermissions.ALLOW_COOKIES_FOR_SESSION which share the same const value.
+    if (id.startsWith("plugin") && state == SitePermissions.PROMPT_HIDE) {
+      return gStringBundle.GetStringFromName("state.current.hide");
+    }
+
     switch (state) {
+      case this.PROMPT:
+        return gStringBundle.GetStringFromName("state.current.prompt");
       case this.ALLOW:
-        if (scope && scope != this.SCOPE_PERSISTENT)
+        if (scope && scope != this.SCOPE_PERSISTENT && scope != this.SCOPE_POLICY)
           return gStringBundle.GetStringFromName("state.current.allowedTemporarily");
         return gStringBundle.GetStringFromName("state.current.allowed");
       case this.ALLOW_COOKIES_FOR_SESSION:
         return gStringBundle.GetStringFromName("state.current.allowedForSession");
       case this.BLOCK:
-        if (scope && scope != this.SCOPE_PERSISTENT)
+        if (scope && scope != this.SCOPE_PERSISTENT && scope != this.SCOPE_POLICY)
           return gStringBundle.GetStringFromName("state.current.blockedTemporarily");
         return gStringBundle.GetStringFromName("state.current.blocked");
       default:
@@ -550,22 +601,21 @@ var gPermissionObject = {
    *  - states
    *    Array of permission states to be exposed to the user.
    *    Defaults to ALLOW, BLOCK and the default state (see getDefault).
+   *    The PROMPT_HIDE state is deliberately excluded from "plugin:flash" since we
+   *    don't want to expose a "Hide Prompt" button to the user through pageinfo.
    */
 
   "image": {
-    getDefault() {
-      return Services.prefs.getIntPref("permissions.default.image") == 2 ?
-               SitePermissions.BLOCK : SitePermissions.ALLOW;
-    }
+    states: [ SitePermissions.ALLOW, SitePermissions.BLOCK ],
   },
 
   "cookie": {
     states: [ SitePermissions.ALLOW, SitePermissions.ALLOW_COOKIES_FOR_SESSION, SitePermissions.BLOCK ],
     getDefault() {
-      if (Services.prefs.getIntPref("network.cookie.cookieBehavior") == 2)
+      if (Services.prefs.getIntPref("network.cookie.cookieBehavior") == Ci.nsICookieService.BEHAVIOR_REJECT)
         return SitePermissions.BLOCK;
 
-      if (Services.prefs.getIntPref("network.cookie.lifetimePolicy") == 2)
+      if (Services.prefs.getIntPref("network.cookie.lifetimePolicy") == Ci.nsICookieService.ACCEPT_SESSION)
         return SitePermissions.ALLOW_COOKIES_FOR_SESSION;
 
       return SitePermissions.ALLOW;
@@ -594,21 +644,21 @@ var gPermissionObject = {
     getDefault() {
       return Services.prefs.getBoolPref("dom.disable_open_during_load") ?
                SitePermissions.BLOCK : SitePermissions.ALLOW;
-    }
+    },
+    states: [ SitePermissions.ALLOW, SitePermissions.BLOCK ],
   },
 
   "install": {
     getDefault() {
       return Services.prefs.getBoolPref("xpinstall.whitelist.required") ?
                SitePermissions.BLOCK : SitePermissions.ALLOW;
-    }
+    },
+    states: [ SitePermissions.ALLOW, SitePermissions.BLOCK ],
   },
 
   "geo": {
     exactHostMatch: true
   },
-
-  "indexedDB": {},
 
   "focus-tab-by-prompt": {
     exactHostMatch: true,
@@ -616,13 +666,35 @@ var gPermissionObject = {
   },
   "persistent-storage": {
     exactHostMatch: true
+  },
+
+  "shortcuts": {
+    states: [ SitePermissions.ALLOW, SitePermissions.BLOCK ],
+  },
+
+  "canvas": {
+  },
+
+  "plugin:flash": {
+    labelID: "flash-plugin",
+    states: [ SitePermissions.UNKNOWN, SitePermissions.ALLOW, SitePermissions.BLOCK ],
+  },
+
+  "midi": {
+    exactHostMatch: true
+  },
+
+  "midi-sysex": {
+    exactHostMatch: true
   }
 };
 
-// Delete this entry while being pre-off
-// or the persistent-storage permission would appear in Page info's Permission section
-if (!Services.prefs.getBoolPref("browser.storageManager.enabled")) {
-  delete gPermissionObject["persistent-storage"];
+if (!Services.prefs.getBoolPref("dom.webmidi.enabled")) {
+  // ESLint gets angry about array versus dot notation here, but some permission
+  // names use hyphens. Disabling rule for line to keep things consistent.
+  // eslint-disable-next-line dot-notation
+  delete gPermissionObject["midi"];
+  delete gPermissionObject["midi-sysex"];
 }
 
 XPCOMUtils.defineLazyPreferenceGetter(SitePermissions, "temporaryPermissionExpireTime",

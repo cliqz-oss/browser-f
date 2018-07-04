@@ -1,5 +1,6 @@
 /* exported ACCENT_COLOR, BACKGROUND, ENCODED_IMAGE_DATA, FRAME_COLOR, TAB_TEXT_COLOR,
-   TEXT_COLOR, imageBufferFromDataURI, hexToRGB */
+   TEXT_COLOR, TAB_BACKGROUND_TEXT_COLOR, imageBufferFromDataURI, hexToCSS, hexToRGB, testBorderColor,
+   waitForTransition */
 
 "use strict";
 
@@ -34,14 +35,44 @@ const ACCENT_COLOR = "#a14040";
 const TEXT_COLOR = "#fac96e";
 // For testing aliases of the colors above:
 const FRAME_COLOR = [71, 105, 91];
-const TAB_TEXT_COLOR = [207, 221, 192, .9];
+const TAB_BACKGROUND_TEXT_COLOR = [207, 221, 192, .9];
 
 function hexToRGB(hex) {
   hex = parseInt((hex.indexOf("#") > -1 ? hex.substring(1) : hex), 16);
   return [hex >> 16, (hex & 0x00FF00) >> 8, (hex & 0x0000FF)];
 }
 
+function rgbToCSS(rgb) {
+  return `rgb(${rgb.join(", ")})`;
+}
+
+function hexToCSS(hex) {
+  return rgbToCSS(hexToRGB(hex));
+}
+
 function imageBufferFromDataURI(encodedImageData) {
   let decodedImageData = atob(encodedImageData);
   return Uint8Array.from(decodedImageData, byte => byte.charCodeAt(0)).buffer;
+}
+
+function waitForTransition(element, propertyName) {
+  return BrowserTestUtils.waitForEvent(element, "transitionend", false, event => {
+    return event.target == element && event.propertyName == propertyName;
+  });
+}
+
+function testBorderColor(element, expected) {
+  let computedStyle = window.getComputedStyle(element);
+  Assert.equal(computedStyle.borderLeftColor,
+               hexToCSS(expected),
+               "Element left border color should be set.");
+  Assert.equal(computedStyle.borderRightColor,
+               hexToCSS(expected),
+               "Element right border color should be set.");
+  Assert.equal(computedStyle.borderTopColor,
+               hexToCSS(expected),
+               "Element top border color should be set.");
+  Assert.equal(computedStyle.borderBottomColor,
+               hexToCSS(expected),
+               "Element bottom border color should be set.");
 }

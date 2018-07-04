@@ -7,7 +7,7 @@ add_task(async function test() {
     return !document.getElementById("charsetMenu").hasAttribute("disabled");
   }
 
-  const PAGE = "data:text/html;charset=utf-8,<!DOCTYPE html><body>hello";
+  const PAGE = "data:text/html,<!DOCTYPE html><body>hello";
   let tab1 = await BrowserTestUtils.openNewForegroundTab({ gBrowser, url: PAGE });
   ok(charsetMenuEnabled(), "should have a charset menu here");
 
@@ -24,5 +24,5 @@ add_task(async function test() {
 
   ok(charsetMenuEnabled(), "should have a charset after the swap");
 
-  await BrowserTestUtils.removeTab(tab2);
+  BrowserTestUtils.removeTab(tab2);
 });

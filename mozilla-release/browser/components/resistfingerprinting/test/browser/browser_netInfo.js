@@ -4,7 +4,7 @@
  */
 
 const TEST_PATH = "http://example.net/browser/browser/" +
-                  "components/resistfingerprinting/test/browser/"
+                  "components/resistfingerprinting/test/browser/";
 
 
 async function testWindow() {
@@ -18,7 +18,7 @@ async function testWindow() {
     is(content.navigator.connection.type, "unknown", "The connection type is spoofed correctly");
   });
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 async function testWorker() {
@@ -40,12 +40,12 @@ async function testWorker() {
           ok(false, "Unknown message type");
           resolve();
         }
-      }
+      };
       worker.postMessage({type: "runTests"});
     });
   });
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 add_task(async function runTest() {

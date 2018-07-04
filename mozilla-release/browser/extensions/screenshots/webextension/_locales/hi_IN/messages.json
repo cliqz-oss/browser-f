@@ -29,6 +29,24 @@
   "downloadScreenshot": {
     "message": "डाउनलोड करें"
   },
+  "downloadOnlyNotice": {
+    "message": "आप अभी केवल-डाउनलोड मोड में हैं."
+  },
+  "downloadOnlyDetailsPrivate": {
+    "message": "एक निजी ब्राउज़िंग विंडो में."
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "तृतीय-पक्ष कुकीज़ अक्षम हैं."
+  },
+  "downloadOnlyDetailsNeverRemember": {
+    "message": "“कभी इतिहास याद न रखें” सक्षम है."
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "आप Firefox ESR का उपयोग कर रहे हैं."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "अपलोड अक्षम कर दिए गए हैं."
+  },
   "notificationLinkCopiedTitle": {
     "message": "लिंक की नक़ल की गयी"
   },
@@ -36,6 +54,28 @@
     "message": "आपके शॉट के लिंक क्लिपबोर्ड पर कॉपी किए गए हैं. पेस्ट करने के लिए $META_KEY$-V दबाएँ.",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyScreenshot": {
+    "message": "प्रतिलिपि बनाएँ"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "शॉट प्रतिलिपि बनाई गई"
+  },
+  "notificationImageCopiedDetails": {
+    "message": "आपके शॉट के लिंक क्लिपबोर्ड पर कॉपी किए गए हैं. पेस्ट करने के लिए $META_KEY$-V दबाएँ.",
+    "placeholders": {
+      "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "imageCroppedWarning": {
+    "message": "इस छवि को $PIXELS$px में छोटा किया गया है.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -79,25 +119,28 @@
   "genericErrorDetails": {
     "message": "हम सुनिश्चित नहीं हैं कि अभी क्या हुआ. पुन: प्रयास या एक भिन्न पृष्ठ का एक शॉट लेना चाहते हैं?"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Firefox छोड़े बिना स्क्रीनशॉट लें, सहेजें, और साझा करें."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "सहेजने का एक नया तरीका"
+  },
+  "tourHeaderClickAndDrag": {
     "message": "जो आप चाहते हैं उसे कैद करें"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "पृष्ठ के बस एक हिस्से को कैद करने के लिए क्लिक करें और खींचें. आप अपने चयन को हाइलाइट करने के लिए भी जा सकते हैं."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "विंडोज़ या संपूर्ण पृष्ठों को कैद करें"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "विंडो में दिखाई देने वाले क्षेत्र या एक पूरे पृष्ठ को कैद करने के लिए ऊपर में दाहिनी तरफ़ के बटन का चयन करें."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "जैसा आप इसे चाहते हैं"
   },
-  "tourBodyFour": {
+  "tourBodyDownloadUpload": {
     "message": "आसानी से साझा करने या उन्हें अपने कंप्यूटर पर डाउनलोड करने के लिए अपने क्रॉप किये गये शॉट को वेब पर सहेजें. आपके द्वारा लिए गये सभी शॉट्स को ढूंढने के लिए आप मेरे शॉट्स बटन पर भी क्लिक कर सकते हैं."
   },
   "tourSkip": {
@@ -112,8 +155,8 @@
   "tourDone": {
     "message": "पूर्ण"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Firefox स्क्रीनशॉट का उपयोग करके, आप Firefox क्लाउड सेवाओं $TERMSANDPRIVACYNOTICETERMSLINK$ और $TERMSANDPRIVACYNOTICEPRIVACYLINK$ के लिए सहमत हैं.",
+  "termsAndPrivacyNotice2": {
+    "message": "Firefox स्क्रीनशॉट्स का उपयोग करके, आप हमारी $TERMSANDPRIVACYNOTICETERMSLINK$ और $TERMSANDPRIVACYNOTICEPRIVACYLINK$ से सहमत हैं.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +171,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "गोपनीयता सूचना"
+  },
+  "libraryLabel": {
+    "message": "स्क्रीनशॉट"
   }
 }

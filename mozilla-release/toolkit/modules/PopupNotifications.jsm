@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["PopupNotifications"];
+var EXPORTED_SYMBOLS = ["PopupNotifications"];
 
-var Cc = Components.classes, Ci = Components.interfaces, Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 
 const NOTIFICATION_EVENT_DISMISSED = "dismissed";
 const NOTIFICATION_EVENT_REMOVED = "removed";
@@ -26,7 +24,7 @@ const PREF_SECURITY_DELAY = "security.notification_enable_delay";
 const TELEMETRY_STAT_OFFERED = 0;
 const TELEMETRY_STAT_ACTION_1 = 1;
 const TELEMETRY_STAT_ACTION_2 = 2;
-const TELEMETRY_STAT_ACTION_3 = 3;
+// const TELEMETRY_STAT_ACTION_3 = 3;
 const TELEMETRY_STAT_ACTION_LAST = 4;
 const TELEMETRY_STAT_DISMISSAL_CLICK_ELSEWHERE = 5;
 const TELEMETRY_STAT_DISMISSAL_LEAVE_PAGE = 6;
@@ -46,7 +44,7 @@ function getAnchorFromBrowser(aBrowser, aAnchorID) {
                aBrowser.getAttribute(ICON_ANCHOR_ATTRIBUTE) ||
                aBrowser[ICON_ANCHOR_ATTRIBUTE];
   if (anchor) {
-    if (anchor instanceof Ci.nsIDOMXULElement) {
+    if (ChromeUtils.getClassName(anchor) == "XULElement") {
       return anchor;
     }
     return aBrowser.ownerDocument.getElementById(anchor);
@@ -190,7 +188,7 @@ Notification.prototype = {
  * The PopupNotifications object manages popup notifications for a given browser
  * window.
  * @param tabbrowser
- *        window's <xul:tabbrowser/>. Used to observe tab switching events and
+ *        window's TabBrowser. Used to observe tab switching events and
  *        for determining the active browser element.
  * @param panel
  *        The <xul:panel/> element to use for notifications. The panel is
@@ -211,13 +209,13 @@ Notification.prototype = {
  *            and when the "anchorVisibilityChange" method is called.
  *        }
  */
-this.PopupNotifications = function PopupNotifications(tabbrowser, panel,
+function PopupNotifications(tabbrowser, panel,
                                                       iconBox, options = {}) {
-  if (!(tabbrowser instanceof Ci.nsIDOMXULElement))
+  if (!tabbrowser)
     throw "Invalid tabbrowser";
-  if (iconBox && !(iconBox instanceof Ci.nsIDOMXULElement))
+  if (iconBox && ChromeUtils.getClassName(iconBox) != "XULElement")
     throw "Invalid iconBox";
-  if (!(panel instanceof Ci.nsIDOMXULElement))
+  if (ChromeUtils.getClassName(panel) != "XULPopupElement")
     throw "Invalid panel";
 
   this._shouldSuppress = options.shouldSuppress || (() => false);
@@ -331,7 +329,10 @@ PopupNotifications.prototype = {
    *        at a time. If a notification already exists with the given ID, it
    *        will be replaced.
    * @param message
-   *        The text to be displayed in the notification.
+   *        A string containing the text to be displayed as the notification header.
+   *        The string may optionally contain "<>" as a  placeholder which is later
+   *        replaced by a host name or an addon name that is formatted to look bold,
+   *        in which case the options.name property needs to be specified.
    * @param anchorID
    *        The ID of the element that should be used as this notification
    *        popup's anchor. May be null, in which case the notification will be
@@ -450,6 +451,10 @@ PopupNotifications.prototype = {
    *                     from. If present, this will be displayed above the message.
    *                     If the nsIURI represents a file, the path will be displayed,
    *                     otherwise the hostPort will be displayed.
+   *        name:
+   *                     An optional string formatted to look bold and used in the
+   *                     notifiation description header text. Usually a host name or
+   *                     addon name.
    * @returns the Notification object corresponding to the added notification.
    */
   show: function PopupNotifications_show(browser, id, message, anchorID,
@@ -481,8 +486,7 @@ PopupNotifications.prototype = {
     notifications.push(notification);
 
     let isActiveBrowser = this._isActiveBrowser(browser);
-    let fm = Cc["@mozilla.org/focus-manager;1"].getService(Ci.nsIFocusManager);
-    let isActiveWindow = fm.activeWindow == this.window;
+    let isActiveWindow = Services.focus.activeWindow == this.window;
 
     if (isActiveBrowser) {
       if (isActiveWindow) {
@@ -748,6 +752,33 @@ PopupNotifications.prototype = {
     }
   },
 
+  /**
+   * Formats the notification description message before we display it
+   * and splits it into three parts if the message contains "<>" as
+   * placeholder.
+   *
+   * param notification
+   *       The Notification object which contains the message to format.
+   *
+   * @returns a Javascript object that has the following properties:
+   * start: A start label string containing the first part of the message.
+   *        It may contain the whole string if the description message
+   *        does not have "<>" as a placeholder. For example, local
+   *        file URIs with description messages that don't display hostnames.
+   * name:  A string that is formatted to look bold. It replaces the
+   *        placeholder with the options.name property from the notification
+   *        object which is usually an addon name or a host name.
+   * end:   The last part of the description message.
+   */
+  _formatDescriptionMessage(n) {
+    let text = {};
+    let array = n.message.split("<>");
+    text.start = array[0] || "";
+    text.name = n.options.name || "";
+    text.end = array[1] || "";
+    return text;
+  },
+
   _refreshPanel: function PopupNotifications_refreshPanel(notificationsToShow) {
     this._clearPanel();
 
@@ -768,9 +799,15 @@ PopupNotifications.prototype = {
       else
         popupnotification = doc.createElementNS(XUL_NS, "popupnotification");
 
-      popupnotification.setAttribute("label", n.message);
+      // Create the notification description element.
+      let desc = this._formatDescriptionMessage(n);
+      popupnotification.setAttribute("label", desc.start);
+      popupnotification.setAttribute("name", desc.name);
+      popupnotification.setAttribute("endlabel", desc.end);
+
       popupnotification.setAttribute("id", popupnotificationID);
       popupnotification.setAttribute("popupid", n.id);
+      popupnotification.setAttribute("oncommand", "PopupNotifications._onCommand(event);");
       if (Services.prefs.getBoolPref("privacy.permissionPrompts.showCloseButton")) {
         popupnotification.setAttribute("closebuttoncommand", "PopupNotifications._onButtonEvent(event, 'secondarybuttoncommand');");
       } else {
@@ -811,9 +848,13 @@ PopupNotifications.prototype = {
         let uri;
         try {
            if (n.options.displayURI instanceof Ci.nsIFileURL) {
-            uri = n.options.displayURI.path;
+            uri = n.options.displayURI.pathQueryRef;
           } else {
-            uri = n.options.displayURI.hostPort;
+            try {
+              uri = n.options.displayURI.hostPort;
+            } catch (e) {
+              uri = n.options.displayURI.spec;
+            }
           }
           popupnotification.setAttribute("origin", uri);
         } catch (e) {
@@ -891,7 +932,8 @@ PopupNotifications.prototype = {
   },
 
   _setNotificationUIState(notification, state = {}) {
-    if (state.disableMainAction) {
+    if (state.disableMainAction ||
+        notification.hasAttribute("invalidselection")) {
       notification.setAttribute("mainactiondisabled", "true");
     } else {
       notification.removeAttribute("mainactiondisabled");
@@ -901,21 +943,6 @@ PopupNotifications.prototype = {
       notification.removeAttribute("warninghidden");
     } else {
       notification.setAttribute("warninghidden", "true");
-    }
-  },
-
-  _onCheckboxCommand(event) {
-    let notificationEl = getNotificationFromElement(event.originalTarget);
-    let checked = notificationEl.checkbox.checked;
-    let notification = notificationEl.notification;
-
-    // Save checkbox state to be able to persist it when re-opening the doorhanger.
-    notification._checkboxChecked = checked;
-
-    if (checked) {
-      this._setNotificationUIState(notificationEl, notification.options.checkbox.checkedState);
-    } else {
-      this._setNotificationUIState(notificationEl, notification.options.checkbox.uncheckedState);
     }
   },
 
@@ -1058,7 +1085,7 @@ PopupNotifications.prototype = {
    *                       currently displayed notifications will be left alone.
    */
   _update: function PopupNotifications_update(notifications, anchors = new Set(), dismissShowing = false) {
-    if (anchors instanceof Ci.nsIDOMXULElement)
+    if (ChromeUtils.getClassName(anchors) == "XULElement")
       anchors = new Set([anchors]);
 
     if (!notifications)
@@ -1154,7 +1181,7 @@ PopupNotifications.prototype = {
       // only use the default icon.
       if (anchorElement.classList.contains("notification-anchor-icon")) {
         // remove previous icon classes
-        let className = anchorElement.className.replace(/([-\w]+-notification-icon\s?)/g, "")
+        let className = anchorElement.className.replace(/([-\w]+-notification-icon\s?)/g, "");
         if (notifications.length > 0) {
           // Find the first notification this anchor used for.
           let notification = notifications[0];
@@ -1215,7 +1242,7 @@ PopupNotifications.prototype = {
     let anchors = new Set();
     for (let notification of notifications) {
       if (notification.anchorElement)
-        anchors.add(notification.anchorElement)
+        anchors.add(notification.anchorElement);
     }
     if (defaultAnchor && !anchors.size)
       anchors.add(defaultAnchor);
@@ -1248,8 +1275,8 @@ PopupNotifications.prototype = {
       return;
 
     if (type == "keypress" &&
-        !(event.charCode == Ci.nsIDOMKeyEvent.DOM_VK_SPACE ||
-          event.keyCode == Ci.nsIDOMKeyEvent.DOM_VK_RETURN))
+        !(event.charCode == event.DOM_VK_SPACE ||
+          event.keyCode == event.DOM_VK_RETURN))
       return;
 
     if (this._currentNotifications.length == 0)
@@ -1393,7 +1420,7 @@ PopupNotifications.prototype = {
     Array.forEach(this.panel.childNodes, function(nEl) {
       let notificationObj = nEl.notification;
       // Never call a dismissal handler on a notification that's been removed.
-      if (notifications.indexOf(notificationObj) == -1)
+      if (!notifications.includes(notificationObj))
         return;
 
       // Record the time of the first notification dismissal if the main action
@@ -1415,6 +1442,39 @@ PopupNotifications.prototype = {
         this._fireCallback(notificationObj, NOTIFICATION_EVENT_DISMISSED);
       }
     }, this);
+  },
+
+  _onCheckboxCommand(event) {
+    let notificationEl = getNotificationFromElement(event.originalTarget);
+    let checked = notificationEl.checkbox.checked;
+    let notification = notificationEl.notification;
+
+    // Save checkbox state to be able to persist it when re-opening the doorhanger.
+    notification._checkboxChecked = checked;
+
+    if (checked) {
+      this._setNotificationUIState(notificationEl, notification.options.checkbox.checkedState);
+    } else {
+      this._setNotificationUIState(notificationEl, notification.options.checkbox.uncheckedState);
+    }
+    event.stopPropagation();
+  },
+
+  _onCommand(event) {
+    // Ignore events from buttons as they are submitting and so don't need checks
+    if (event.originalTarget.localName == "button") {
+      return;
+    }
+    let notificationEl = event.target;
+    // Find notification like getNotificationFromElement but some nodes are non-anon
+    while (notificationEl) {
+      if (notificationEl.localName == "popupnotification") {
+        break;
+      }
+      notificationEl =
+        notificationEl.ownerDocument.getBindingParent(notificationEl) || notificationEl.parentNode;
+    }
+    this._setNotificationUIState(notificationEl);
   },
 
   _onButtonEvent(event, type, notificationEl = null) {

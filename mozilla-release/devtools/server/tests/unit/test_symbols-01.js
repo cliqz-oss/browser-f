@@ -14,9 +14,9 @@ function run_test() {
   const debuggee = addTestGlobal("test-symbols");
   const client = new DebuggerClient(DebuggerServer.connectPipe());
 
-  client.connect().then(function () {
+  client.connect().then(function() {
     attachTestTabAndResume(client, "test-symbols",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              add_task(testSymbols.bind(null, client, debuggee));
                              run_next_test();
                            });
@@ -25,10 +25,10 @@ function run_test() {
   do_test_pending();
 }
 
-function* testSymbols(client, debuggee) {
+async function testSymbols(client, debuggee) {
   const evalCode = () => {
     /* eslint-disable */
-    Components.utils.evalInSandbox(
+    Cu.evalInSandbox(
       "(" + function () {
         var symbolWithName = Symbol("Chris");
         var symbolWithoutName = Symbol();
@@ -43,7 +43,7 @@ function* testSymbols(client, debuggee) {
     /* eslint-enable */
   };
 
-  const packet = yield executeOnNextTickAndWaitForPause(evalCode, client);
+  const packet = await executeOnNextTickAndWaitForPause(evalCode, client);
   const {
     symbolWithName,
     symbolWithoutName,

@@ -12,9 +12,11 @@ info: |
   It is a Syntax Error if StringValue of IdentifierName is the same String
   value as the StringValue of any ReservedWord except for yield.
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 // It's tempting to write `false = 0`, but that'd be a test to validate `false`
 // is not a valid simple assignment target, cf. tests in language/expressions/assignment.

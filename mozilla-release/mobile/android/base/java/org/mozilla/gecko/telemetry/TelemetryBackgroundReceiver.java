@@ -38,7 +38,7 @@ import java.util.Set;
 /**
  * Receives and processes telemetry broadcasts from background services, namely Sync.
  * Nomenclature:
- * - Bundled Sync Ping: a Sync Ping as documented at http://gecko.readthedocs.io/en/latest/toolkit/components/telemetry/telemetry/data/sync-ping.html
+ * - Bundled Sync Ping: a Sync Ping as documented at https://firefox-source-docs.mozilla.org/toolkit/components/telemetry/telemetry/data/sync-ping.html
  *   as of commit https://github.com/mozilla-services/docs/commit/7eb4b412d3ab5ec46b280eff312ace32e7cf27e6
  * - Telemetry data: incoming background telemetry, of two types: "sync" and "sync event"
  * - Local Sync Ping: a persistable representation of incoming telemetry data. Not intended for upload.
@@ -75,13 +75,19 @@ public class TelemetryBackgroundReceiver extends BroadcastReceiver {
 
     private static final TelemetryBackgroundReceiver instance = new TelemetryBackgroundReceiver();
 
+    private boolean initialized;
+
     public static TelemetryBackgroundReceiver getInstance() {
         return instance;
     }
 
     public void init(Context context) {
+        if (initialized) {
+            return;
+        }
         LocalBroadcastManager.getInstance(context).registerReceiver(
                 this, new IntentFilter(ACTION_BACKGROUND_TELEMETRY));
+        initialized = true;
     }
 
     @Override
@@ -145,14 +151,6 @@ public class TelemetryBackgroundReceiver extends BroadcastReceiver {
                         telemetryStore = syncTelemetryStore;
                         TelemetrySyncPingBuilder localPingBuilder = new TelemetrySyncPingBuilder();
 
-                        if (uid != null) {
-                            localPingBuilder.setUID(uid);
-                        }
-
-                        if (deviceID != null) {
-                            localPingBuilder.setDeviceID(deviceID);
-                        }
-
                         if (devices != null) {
                             localPingBuilder.setDevices(devices);
                         }
@@ -173,9 +171,7 @@ public class TelemetryBackgroundReceiver extends BroadcastReceiver {
                     case TelemetryContract.KEY_TYPE_EVENT:
                         telemetryStore = syncEventTelemetryStore;
                         localPing = new TelemetrySyncEventPingBuilder()
-                                .fromEventTelemetry(
-                                        (Bundle) intent.getParcelableExtra(
-                                                TelemetryContract.KEY_TELEMETRY))
+                                .fromEventTelemetry(telemetryBundle)
                                 .build();
                         break;
                     default:
@@ -227,6 +223,8 @@ public class TelemetryBackgroundReceiver extends BroadcastReceiver {
 
                     // Bundle up all that we have in our telemetry stores.
                     final TelemetryOutgoingPing syncPing = new TelemetrySyncPingBundleBuilder()
+                            .setUID(uid)
+                            .setDeviceID(deviceID)
                             .setSyncStore(syncTelemetryStore)
                             .setSyncEventStore(syncEventTelemetryStore)
                             .setReason(reasonToUpload)

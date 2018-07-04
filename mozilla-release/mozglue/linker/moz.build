@@ -19,11 +19,11 @@ FINAL_LIBRARY = 'mozglue'
 
 DEFINES['IMPL_MFBT'] = True
 
-DISABLE_STL_WRAPPING = True
+DisableStlWrapping()
 
 TEST_DIRS += ['tests']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
 
 DEFINES['XZ_USE_CRC64'] = 1

@@ -12,7 +12,6 @@
 #include "nsIExpatSink.h"
 #include "nsIDTD.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocumentFragment.h"
 #include "nsIContent.h"
 #include "nsGkAtoms.h"
 #include "mozilla/dom/NodeInfo.h"
@@ -69,7 +68,7 @@ public:
   // nsIXMLContentSink
 
   // nsIFragmentContentSink
-  NS_IMETHOD FinishFragmentParsing(nsIDOMDocumentFragment** aFragment) override;
+  NS_IMETHOD FinishFragmentParsing(DocumentFragment** aFragment) override;
   NS_IMETHOD SetTargetDocument(nsIDocument* aDocument) override;
   NS_IMETHOD WillBuildContent() override;
   NS_IMETHOD DidBuildContent() override;
@@ -80,7 +79,7 @@ protected:
   virtual ~nsXMLFragmentContentSink();
 
   virtual bool SetDocElement(int32_t aNameSpaceID,
-                               nsIAtom* aTagName,
+                               nsAtom* aTagName,
                                nsIContent* aContent) override;
   virtual nsresult CreateElement(const char16_t** aAtts, uint32_t aAttsCount,
                                  mozilla::dom::NodeInfo* aNodeInfo, uint32_t aLineNumber,
@@ -91,18 +90,28 @@ protected:
   virtual void MaybeStartLayout(bool aIgnorePendingSheets) override;
 
   // nsContentSink overrides
-  virtual nsresult ProcessStyleLink(nsIContent* aElement,
-                                    const nsAString& aHref,
-                                    bool aAlternate,
-                                    const nsAString& aTitle,
-                                    const nsAString& aType,
-                                    const nsAString& aMedia) override;
-  nsresult LoadXSLStyleSheet(nsIURI* aUrl);
-  void StartLayout();
+  virtual nsresult ProcessStyleLinkFromHeader(
+    const nsAString& aHref,
+    bool aAlternate,
+    const nsAString& aTitle,
+    const nsAString& aType,
+    const nsAString& aMedia,
+    const nsAString& aReferrerPolicy) override;
+
+  // nsXMLContentSink overrides
+  virtual nsresult MaybeProcessXSLTLink(
+    ProcessingInstruction* aProcessingInstruction,
+    const nsAString& aHref,
+    bool aAlternate,
+    const nsAString& aTitle,
+    const nsAString& aType,
+    const nsAString& aMedia,
+    const nsAString& aReferrerPolicy,
+    bool* aWasXSLT = nullptr) override;
 
   nsCOMPtr<nsIDocument> mTargetDocument;
   // the fragment
-  nsCOMPtr<nsIContent>  mRoot;
+  RefPtr<DocumentFragment> mRoot;
   bool                  mParseError;
 };
 
@@ -132,7 +141,7 @@ nsXMLFragmentContentSink::~nsXMLFragmentContentSink()
 {
 }
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(nsXMLFragmentContentSink)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsXMLFragmentContentSink)
   NS_INTERFACE_MAP_ENTRY(nsIFragmentContentSink)
 NS_INTERFACE_MAP_END_INHERITING(nsXMLContentSink)
 
@@ -190,7 +199,7 @@ nsXMLFragmentContentSink::GetTarget()
 
 bool
 nsXMLFragmentContentSink::SetDocElement(int32_t aNameSpaceID,
-                                        nsIAtom* aTagName,
+                                        nsAtom* aTagName,
                                         nsIContent *aContent)
 {
   // this is a fragment, not a document
@@ -306,15 +315,8 @@ nsXMLFragmentContentSink::ReportError(const char16_t* aErrorText,
   mState = eXMLContentSinkState_InProlog;
 
   // Clear the current content
-  nsCOMPtr<nsIDOMNode> node(do_QueryInterface(mRoot));
-  if (node) {
-    for (;;) {
-      nsCOMPtr<nsIDOMNode> child, dummy;
-      node->GetLastChild(getter_AddRefs(child));
-      if (!child)
-        break;
-      node->RemoveChild(child, getter_AddRefs(dummy));
-    }
+  while (mRoot->GetLastChild()) {
+    mRoot->GetLastChild()->Remove();
   }
 
   // Clear any buffered-up text we have.  It's enough to set the length to 0.
@@ -326,36 +328,39 @@ nsXMLFragmentContentSink::ReportError(const char16_t* aErrorText,
 }
 
 nsresult
-nsXMLFragmentContentSink::ProcessStyleLink(nsIContent* aElement,
-                                           const nsAString& aHref,
-                                           bool aAlternate,
-                                           const nsAString& aTitle,
-                                           const nsAString& aType,
-                                           const nsAString& aMedia)
+nsXMLFragmentContentSink::ProcessStyleLinkFromHeader(
+  const nsAString& aHref,
+  bool aAlternate,
+  const nsAString& aTitle,
+  const nsAString& aType,
+  const nsAString& aMedia,
+  const nsAString& aReferrerPolicy)
+
 {
-  // don't process until moved to document
+  NS_NOTREACHED("Shouldn't have headers for a fragment sink");
   return NS_OK;
 }
 
 nsresult
-nsXMLFragmentContentSink::LoadXSLStyleSheet(nsIURI* aUrl)
+nsXMLFragmentContentSink::MaybeProcessXSLTLink(
+  ProcessingInstruction* aProcessingInstruction,
+  const nsAString& aHref,
+  bool aAlternate,
+  const nsAString& aTitle,
+  const nsAString& aType,
+  const nsAString& aMedia,
+  const nsAString& aReferrerPolicy,
+  bool* aWasXSLT)
 {
-  NS_NOTREACHED("fragments shouldn't have XSL style sheets");
-  return NS_ERROR_UNEXPECTED;
-}
-
-void
-nsXMLFragmentContentSink::StartLayout()
-{
-  NS_NOTREACHED("fragments shouldn't layout");
+  MOZ_ASSERT(!aWasXSLT, "Our one caller doesn't care about whether we're XSLT");
+  return NS_OK;
 }
 
 ////////////////////////////////////////////////////////////////////////
 
 NS_IMETHODIMP
-nsXMLFragmentContentSink::FinishFragmentParsing(nsIDOMDocumentFragment** aFragment)
+nsXMLFragmentContentSink::FinishFragmentParsing(DocumentFragment** aFragment)
 {
-  *aFragment = nullptr;
   mTargetDocument = nullptr;
   mNodeInfoManager = nullptr;
   mScriptLoader = nullptr;
@@ -369,14 +374,12 @@ nsXMLFragmentContentSink::FinishFragmentParsing(nsIDOMDocumentFragment** aFragme
     //XXX PARSE_ERR from DOM3 Load and Save would be more appropriate
     mRoot = nullptr;
     mParseError = false;
+    *aFragment = nullptr;
     return NS_ERROR_DOM_SYNTAX_ERR;
-  } else if (mRoot) {
-    nsresult rv = CallQueryInterface(mRoot, aFragment);
-    mRoot = nullptr;
-    return rv;
-  } else {
-    return NS_OK;
   }
+
+  mRoot.forget(aFragment);
+  return NS_OK;
 }
 
 NS_IMETHODIMP

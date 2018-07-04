@@ -12,13 +12,13 @@ Bug 1265798 - Replace inIDOMUtils.cssPropertyIsShorthand
   <script type="application/javascript">
 "use strict";
 
-window.onload = function () {
+window.onload = function() {
   const { initCssProperties, getCssProperties } =
     require("devtools/shared/fronts/css-properties");
 
   function promiseAttachUrl(url) {
     return new Promise((resolve, reject) => {
-      attachURL(url, function (err, client, tab, doc) {
+      attachURL(url, function(err, client, tab, doc) {
         if (err) {
           return reject(err);
         }
@@ -31,11 +31,11 @@ window.onload = function () {
     return JSON.stringify(array.sort());
   }
 
-  const runCssPropertiesTests = Task.async(function* (url, useActor) {
+  const runCssPropertiesTests = async function(url, useActor) {
     info(`Opening two tabs ${useActor ? "with" : "without"} CssPropertiesActor support.`);
 
-    let attachmentA = yield promiseAttachUrl(url);
-    let attachmentB = yield promiseAttachUrl(url);
+    let attachmentA = await promiseAttachUrl(url);
+    let attachmentB = await promiseAttachUrl(url);
 
     const toolboxMockA = {
       target: {
@@ -55,8 +55,8 @@ window.onload = function () {
       win: window
     };
 
-    yield initCssProperties(toolboxMockA);
-    yield initCssProperties(toolboxMockB);
+    await initCssProperties(toolboxMockA);
+    await initCssProperties(toolboxMockB);
 
     const cssProperties = getCssProperties(toolboxMockA);
     const cssPropertiesA = getCssProperties(toolboxMockA);
@@ -84,7 +84,7 @@ window.onload = function () {
       "A CSS variable with spaces fails");
 
     is(toSortedString(cssProperties.getValues("margin")),
-       toSortedString(["auto", "calc", "inherit", "initial", "unset"]),
+       toSortedString(["auto", "inherit", "initial", "unset"]),
        "Can get values for the CSS margin.");
     is(cssProperties.getValues("foobar").length, 0,
       "Unknown values return an empty array.");
@@ -101,12 +101,12 @@ window.onload = function () {
       "Margin and 0px are valid CSS values");
     ok(!cssProperties.isValidOnClient("margin", "foo", window.document),
       "Margin and foo are not valid CSS values");
-  });
+  };
 
-  addAsyncTest(function* setup() {
+  addAsyncTest(async function setup() {
     let url = document.getElementById("cssProperties").href;
-    yield runCssPropertiesTests(url, true);
-    yield runCssPropertiesTests(url, false);
+    await runCssPropertiesTests(url, true);
+    await runCssPropertiesTests(url, false);
 
     runNextTest();
   });

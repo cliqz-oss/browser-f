@@ -6,6 +6,7 @@
 
 include protocol PBackground;
 include protocol PBrowser;
+include protocol PClientOpenWindowOp;
 include protocol PCompositorManager;
 include protocol PContentBridge;
 include protocol PContentPermissionRequest;
@@ -19,8 +20,10 @@ include protocol PHeapSnapshotTempFileHelper;
 include protocol PProcessHangMonitor;
 include protocol PImageBridge;
 include protocol PIPCBlobInputStream;
+include protocol PLoginReputation;
 include protocol PMedia;
 include protocol PNecko;
+include protocol PStreamFilter;
 include protocol PGMPContent;
 include protocol PGMPService;
 include protocol PPluginModule;
@@ -41,13 +44,11 @@ include protocol PURLClassifier;
 include protocol PURLClassifierLocal;
 include protocol PVRManager;
 include protocol PVideoDecoderManager;
-include protocol PFlyWebPublishedServer;
 include protocol PProfiler;
 include protocol PScriptCache;
 include DOMTypes;
 include JavaScriptTypes;
 include IPCBlob;
-include IPCStream;
 include PTabContext;
 include URIParams;
 include PluginTypes;
@@ -57,19 +58,20 @@ include PContentPermission;
 include ServiceWorkerConfiguration;
 include GraphicsMessages;
 include MemoryReportTypes;
+include ClientIPCTypes;
+include HangTypes;
 
 // Workaround to prevent error if PContentChild.cpp & PContentBridgeParent.cpp
 // are put into different UnifiedProtocolsXX.cpp files.
 // XXX Remove this once bug 1069073 is fixed
 include "mozilla/dom/PContentBridgeParent.h";
 
-using GeoPosition from "nsGeoPositionIPCSerialiser.h";
-using AlertNotificationType from "mozilla/AlertNotificationIPCSerializer.h";
+using refcounted class nsIDOMGeoPosition from "nsGeoPositionIPCSerialiser.h";
+using refcounted class nsIAlertNotification from "mozilla/AlertNotificationIPCSerializer.h";
 
 using struct ChromePackage from "mozilla/chrome/RegistryMessageUtils.h";
 using struct SubstitutionMapping from "mozilla/chrome/RegistryMessageUtils.h";
 using struct OverrideMapping from "mozilla/chrome/RegistryMessageUtils.h";
-using base::ChildPrivileges from "base/process_util.h";
 using base::ProcessId from "base/process.h";
 using struct IPC::Permission from "mozilla/net/NeckoMessageUtils.h";
 using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
@@ -88,14 +90,16 @@ using mozilla::DataStorageType from "ipc/DataStorageIPCUtils.h";
 using mozilla::OriginAttributes from "mozilla/ipc/BackgroundUtils.h";
 using struct mozilla::layers::TextureFactoryIdentifier from "mozilla/layers/CompositorTypes.h";
 using mozilla::layers::CompositorOptions from "mozilla/layers/CompositorOptions.h";
-using struct mozilla::dom::FlyWebPublishOptions from "mozilla/dom/FlyWebPublishOptionsIPCSerializer.h";
-using mozilla::Telemetry::Accumulation from "mozilla/TelemetryComms.h";
-using mozilla::Telemetry::KeyedAccumulation from "mozilla/TelemetryComms.h";
+using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
+using mozilla::Telemetry::HistogramAccumulation from "mozilla/TelemetryComms.h";
+using mozilla::Telemetry::KeyedHistogramAccumulation from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::ScalarAction from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::KeyedScalarAction from "mozilla/TelemetryComms.h";
+using mozilla::Telemetry::DynamicScalarDefinition from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::ChildEventData from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::DiscardedData from "mozilla/TelemetryComms.h";
 using mozilla::CrossProcessMutexHandle from "mozilla/ipc/CrossProcessMutex.h";
+using refcounted class nsIInputStream from "mozilla/ipc/IPCStreamUtils.h";
 
 union ChromeRegistryItem
 {
@@ -113,9 +117,9 @@ struct FontListEntry {
     nsString  familyName;
     nsString  faceName;
     nsCString filepath;
-    uint16_t  weight;
-    int16_t   stretch;
-    uint8_t   italic;
+    uint32_t  weightRange;
+    uint32_t  stretchRange;
+    uint32_t  styleRange;
     uint8_t   index;
 };
 
@@ -126,6 +130,19 @@ struct FontListEntry {
 struct FontFamilyListEntry {
     nsString familyName;
     uint8_t  entryType;
+};
+
+// Used on Linux to pass list of font patterns from chrome to content.
+struct FontPatternListEntry {
+    nsCString pattern;
+    bool      appFontFamily;
+};
+
+// Wrap the Font*ListEntry records in a union so the SetXPCOMProcessAttributes
+// message can pass an array of either type.
+union SystemFontListEntry {
+    FontFamilyListEntry;
+    FontPatternListEntry;
 };
 
 union PrefValue {
@@ -139,8 +156,15 @@ union MaybePrefValue {
   null_t;
 };
 
-struct PrefSetting {
+// This serialization form mirrors that used in mozilla::Pref in
+// Preferences.cpp. The two should be kept in sync, e.g. if something is added
+// to one it should also be added to the other.
+//
+// Note: there is no need to pass the isSticky attribute because that's an
+// immutable attribute obtained from file at startup.
+struct Pref {
   nsCString name;
+  bool isLocked;
   MaybePrefValue defaultValue;
   MaybePrefValue userValue;
 };
@@ -219,9 +243,10 @@ union FileCreationResult
 
 struct BlobURLRegistrationData
 {
-    nsCString url;
-    IPCBlob blob;
-    Principal principal;
+  nsCString url;
+  IPCBlob blob;
+  Principal principal;
+  bool revoked;
 };
 
 struct GMPAPITags
@@ -254,16 +279,14 @@ struct XPCOMInitData
     nsString[] dictionaries;
     ClipboardCapabilities clipboardCaps;
     DomainPolicyClone domainPolicy;
-    /* used on MacOSX only */
-    FontFamilyListEntry[] fontFamilies;
     OptionalURIParams userContentSheetURL;
-    PrefSetting[] prefs;
     GfxVarUpdate[] gfxNonDefaultVarUpdates;
     ContentDeviceData contentDeviceData;
     GfxInfoFeatureStatus[] gfxFeatureStatus;
     DataStorageEntry[] dataStorage;
     nsCString[] appLocales;
     nsCString[] requestedLocales;
+    DynamicScalarDefinition[] dynamicScalarDefs;
 };
 
 /**
@@ -274,6 +297,7 @@ struct XPCOMInitData
 nested(upto inside_cpow) sync protocol PContent
 {
     manages PBrowser;
+    manages PClientOpenWindowOp;
     manages PContentPermissionRequest;
     manages PCycleCollectWithLogs;
     manages PPSMContentDownloader;
@@ -296,10 +320,10 @@ nested(upto inside_cpow) sync protocol PContent
     manages PWebBrowserPersistDocument;
     manages PWebrtcGlobal;
     manages PPresentation;
-    manages PFlyWebPublishedServer;
     manages PURLClassifier;
     manages PURLClassifierLocal;
     manages PScriptCache;
+    manages PLoginReputation;
 
 both:
     // Depending on exactly how the new browser is being created, it might be
@@ -377,6 +401,7 @@ child:
                               bool anonymize,
                               bool minimizeMemoryUsage,
                               MaybeFileDesc DMDFile);
+    async RequestPerformanceMetrics();
 
     /**
      * Communication between the PuppetBidiKeyboard and the actual
@@ -408,9 +433,9 @@ child:
     async SetConnectivity(bool connectivity);
     async SetCaptivePortalState(int32_t aState);
 
-    async NotifyVisited(URIParams uri);
+    async NotifyVisited(URIParams[] uri);
 
-    async PreferenceUpdate(PrefSetting pref);
+    async PreferenceUpdate(Pref pref);
     async VarUpdate(GfxVarUpdate var);
 
     async DataStoragePut(nsString aFilename, DataStorageItem aItem);
@@ -419,11 +444,13 @@ child:
 
     async NotifyAlertsObserver(nsCString topic, nsString data);
 
-    async GeolocationUpdate(GeoPosition somewhere);
+    async GeolocationUpdate(nsIDOMGeoPosition aPosition);
 
     async GeolocationError(uint16_t errorCode);
 
     async UpdateDictionaryList(nsString[] dictionaries);
+
+    async UpdateFontList(SystemFontListEntry[] fontList);
 
     async UpdateAppLocales(nsCString[] appLocales);
     async UpdateRequestedLocales(nsCString[] requestedLocales);
@@ -435,6 +462,7 @@ child:
 
     async GarbageCollect();
     async CycleCollect();
+    async UnlinkGhosts();
 
     /**
      * Start accessibility engine in content process.
@@ -469,7 +497,11 @@ child:
      */
     async InitBlobURLs(BlobURLRegistrationData[] registrations);
 
-    async SetXPCOMProcessAttributes(XPCOMInitData xpcomInit, StructuredCloneData initialData, LookAndFeelInt[] lookAndFeelIntCache);
+    async SetXPCOMProcessAttributes(XPCOMInitData xpcomInit,
+                                    StructuredCloneData initialData,
+                                    LookAndFeelInt[] lookAndFeelIntCache,
+                                    /* used on MacOSX and Linux only: */
+                                    SystemFontListEntry[] systemFontList);
 
     // Notify child that last-pb-context-exited notification was observed
     async LastPrivateDocShellDestroyed();
@@ -576,8 +608,6 @@ child:
 
     async Deactivate(PBrowser aTab);
 
-    async ParentActivated(PBrowser aTab, bool aActivated);
-
     async PParentToChildStream();
 
     async ProvideAnonymousTemporaryFile(uint64_t aID, FileDescOrError aFD);
@@ -604,6 +634,80 @@ child:
     async DumpCodeCoverageCounters();
     async ResetCodeCoverageCounters();
 
+    /*
+     * IPC message to enable the input event queue on the main thread of the
+     * content process.
+     */
+    async SetInputEventQueueEnabled();
+
+    /*
+     * IPC message to flush the input event queue on the main thread of the
+     * content process.
+     *
+     * When the ContentParent stops sending the input event with input priority,
+     * there may be some pending events in the input event queue and normal
+     * event queue. Here is a possible scenario.
+     * R: Runnables.
+     * D: Enable the input priority event.
+     * E: Disable the input priority evnet.
+     *
+     *                     D       E
+     * Normal Queue: R1      R2      R3
+     * Input Queue:     II      I2      I3
+     *
+     * To avoid the newly added normal events (e.g. R2, which may be an input
+     * event) preempt the pending input events (e.g. I1), or the newly added
+     * input events (e.g. I3) preempt the pending normal events (e.g. R2), we
+     * have to flush all pending events before enabling and disabling the input
+     * priority event.
+     *
+     * To flush the normal event queue and the input event queue, we use three
+     * IPC messages as the followings.
+     * FI: Flush the input queue.
+     * SI: Suspend the input queue.
+     * RI: Resume the input queue.
+     *
+     * Normal Queue: R1    FI    RI R2   FI    RI R3
+     * Input Queue:     II    SI      I2    SI       I3
+     *
+     * When the flush input request is processed before the other two requests,
+     * we consume all input events until the suspend request. After handling the
+     * suspend request, we stop consuming the input events until the resume
+     * request to make sure we consume all pending normal events.
+     *
+     * If we process the suspend request before the other two requests, we
+     * ignore the flush request and consume all pending normal events until the
+     * resume request.
+     */
+    async FlushInputEventQueue();
+
+    /*
+     * IPC message to resume consuming the pending events in the input event
+     * queue.
+     */
+    async ResumeInputEventQueue();
+
+    /*
+     * IPC message to suspend consuming the pending events in the input event
+     * queue.
+     */
+    prio(input) async SuspendInputEventQueue();
+
+    /*
+     * IPC message to propagate dynamic scalar definitions, added after the
+     * content process is spawned, from the parent to the child.
+     * Dynamic scalar definitions added at the process startup are handled
+     * using the |TelemetryIPC::AddDynamicScalarDefinitions| functions.
+     */
+    async AddDynamicScalars(DynamicScalarDefinition[] definitions);
+
+    /*
+     * Message to construct a PClientOpenWindowOp actor.  This is used to
+     * open windows cross-process and receive notification when the operation
+     * has completed.
+     */
+    async PClientOpenWindowOp(ClientOpenWindowArgs aArgs);
+
 parent:
     async InitBackground(Endpoint<PBackgroundParent> aEndpoint);
 
@@ -616,6 +720,9 @@ parent:
         returns (Endpoint<PContentBridgeParent> endpoint);
 
     async CreateGMPService();
+
+    async InitStreamFilter(uint64_t channelId, nsString addonId)
+        returns (Endpoint<PStreamFilterChild> aEndpoint);
 
     /**
      * This call connects the content process to a plugin process. This call
@@ -640,56 +747,11 @@ parent:
 
     async InitCrashReporter(Shmem shmem, NativeThreadId tid);
 
-    /**
-     * Is this token compatible with the provided version?
-     *
-     * |version| The offered version to test
-     * Returns |True| if the offered version is compatible
-     */
-    sync NSSU2FTokenIsCompatibleVersion(nsString version)
-        returns (bool result);
-
-    /**
-     * Return whether the provided KeyHandle belongs to this Token
-     *
-     * |keyHandle| Key Handle to evaluate.
-     * |application| The FIDO Application data that is associated with this key.
-     * Returns |True| if the Key Handle is ours.
-     */
-    sync NSSU2FTokenIsRegistered(uint8_t[] keyHandle, uint8_t[] application)
-        returns (bool isValidKeyHandle);
-
-    /**
-     * Generates a public/private keypair for the provided application
-     * and challenge, returning the pubkey, challenge response, and
-     * key handle in the registration data.
-     *
-     * |application| The FIDO Application data to associate with the key.
-     * |challenge| The Challenge to satisfy in the response.
-     * |registration| An array containing the pubkey, challenge response,
-     *                     and key handle.
-     */
-    sync NSSU2FTokenRegister(uint8_t[] application, uint8_t[] challenge)
-        returns (uint8_t[] registration);
-
-    /**
-     * Creates a signature over the "param" arguments using the private key
-     * provided in the key handle argument.
-     *
-     * |application| The FIDO Application data to associate with the key.
-     * |challenge| The Challenge to satisfy in the response.
-     * |keyHandle| The Key Handle opaque object to use.
-     * |signature| The resulting signature.
-     */
-    sync NSSU2FTokenSign(uint8_t[] application, uint8_t[] challenge,
-                         uint8_t[] keyHandle)
-        returns (uint8_t[] signature);
-
     sync IsSecureURI(uint32_t aType, URIParams aURI, uint32_t aFlags,
                      OriginAttributes aOriginAttributes)
         returns (bool isSecureURI);
 
-    async AccumulateMixedContentHSTS(URIParams aURI, bool aActive, bool aHasHSTSPriming,
+    async AccumulateMixedContentHSTS(URIParams aURI, bool aActive,
                                      OriginAttributes aOriginAttributes);
 
     nested(inside_cpow) async PHal();
@@ -710,7 +772,7 @@ parent:
 
     async PPresentation();
 
-    async PFlyWebPublishedServer(nsString name, FlyWebPublishOptions params);
+    async CreateAudioIPCConnection() returns (FileDescriptor fd);
 
     sync PURLClassifier(Principal principal, bool useTrackingProtection)
         returns (bool success);
@@ -718,6 +780,8 @@ parent:
         returns (nsresult rv, nsCString[] results);
     // The async version of ClassifyLocal.
     async PURLClassifierLocal(URIParams uri, nsCString tables);
+
+    async PLoginReputation(URIParams formURI);
 
     // Services remoting
 
@@ -741,7 +805,7 @@ parent:
                                         CpowEntry[] aCpows, Principal aPrincipal)
       returns (StructuredCloneData[] retval);
 
-    async ShowAlert(AlertNotificationType alert);
+    async ShowAlert(nsIAlertNotification alert);
 
     async CloseAlert(nsString name, Principal principal);
 
@@ -771,12 +835,17 @@ parent:
     async ConsoleMessage(nsString message);
     async ScriptError(nsString message, nsString sourceName, nsString sourceLine,
                       uint32_t lineNumber, uint32_t colNumber, uint32_t flags,
-                      nsCString category);
+                      nsCString category, bool privateWindow);
+    async ScriptErrorWithStack(nsString message, nsString sourceName, nsString sourceLine,
+                               uint32_t lineNumber, uint32_t colNumber, uint32_t flags,
+                               nsCString category, bool privateWindow,
+                               ClonedMessageData stack);
 
     // Places the items within dataTransfer on the clipboard.
     async SetClipboard(IPCDataTransfer aDataTransfer,
                        bool aIsPrivateData,
                        Principal aRequestingPrincipal,
+                       uint32_t aContentPolicyType,
                        int32_t aWhichClipboard);
 
     // Given a list of supported types, returns the clipboard data for the
@@ -790,6 +859,12 @@ parent:
     // Returns true if data of one of the specified types is on the clipboard.
     sync ClipboardHasType(nsCString[] aTypes, int32_t aWhichClipboard)
         returns (bool hasType);
+
+    // 'Play', 'Beep' and 'PlayEventSound' are the only nsISound methods used in
+    // the content process.
+    async PlaySound(URIParams aURL) compress;
+    async Beep() compress;
+    async PlayEventSound(uint32_t aEventId) compress;
 
     sync GetSystemColors(uint32_t colorsCount)
         returns (uint32_t[] colors);
@@ -809,7 +884,7 @@ parent:
     async DeviceReset();
 
     sync KeywordToURI(nsCString keyword)
-        returns (nsString providerName, OptionalIPCStream postData, OptionalURIParams uri);
+        returns (nsString providerName, nsIInputStream postData, OptionalURIParams uri);
 
     sync NotifyKeywordSearchLoading(nsString providerName, nsString keyword);
 
@@ -817,8 +892,8 @@ parent:
 
     // Tell the compositor to allocate a layer tree id for nested remote mozbrowsers.
     sync AllocateLayerTreeId(ContentParentId cpId, TabId tabId)
-        returns (uint64_t id);
-    async DeallocateLayerTreeId(ContentParentId cpId, uint64_t id);
+        returns (LayersId id);
+    async DeallocateLayerTreeId(ContentParentId cpId, LayersId id);
 
     /**
      * Notifies the parent about a recording device is starting or shutdown.
@@ -944,7 +1019,7 @@ parent:
      *       provided.
      */
     async PContentPermissionRequest(PermissionRequest[] aRequests, Principal aPrincipal,
-                                    TabId tabId);
+                                    bool aIsHandlingUserInput, TabId tabId);
 
     async ShutdownProfile(nsCString aProfile);
 
@@ -961,10 +1036,12 @@ parent:
                        bool aCalledFromJS,
                        bool aPositionSpecified,
                        bool aSizeSpecified,
+                       OptionalURIParams aURIToLoad,
                        nsCString aFeatures,
                        nsCString aBaseURI,
                        float aFullZoom,
-                       Principal aTriggeringPrincipal)
+                       Principal aTriggeringPrincipal,
+                       uint32_t aReferrerPolicy)
         returns (CreatedWindowInfo window);
 
     async CreateWindowInDifferentProcess(
@@ -973,12 +1050,13 @@ parent:
       bool aCalledFromJS,
       bool aPositionSpecified,
       bool aSizeSpecified,
-      URIParams aURIToLoad,
+      OptionalURIParams aURIToLoad,
       nsCString aFeatures,
       nsCString aBaseURI,
       float aFullZoom,
       nsString aName,
-      Principal aTriggeringPrincipal);
+      Principal aTriggeringPrincipal,
+      uint32_t aReferrerPolicy);
 
     sync GetAndroidSystemInfo()
         returns (AndroidSystemInfo info);
@@ -1040,8 +1118,8 @@ parent:
     /**
      * Messages for communicating child Telemetry to the parent process
      */
-    async AccumulateChildHistograms(Accumulation[] accumulations);
-    async AccumulateChildKeyedHistograms(KeyedAccumulation[] accumulations);
+    async AccumulateChildHistograms(HistogramAccumulation[] accumulations);
+    async AccumulateChildKeyedHistograms(KeyedHistogramAccumulation[] accumulations);
     async UpdateChildScalars(ScalarAction[] updates);
     async UpdateChildKeyedScalars(KeyedScalarAction[] updates);
     async RecordChildEvents(ChildEventData[] events);
@@ -1055,6 +1133,10 @@ parent:
     async FinishMemoryReport(uint32_t aGeneration);
 
     async MaybeReloadPlugins();
+
+    async BHRThreadHang(HangDetails aHangDetails);
+
+    async AddPerformanceMetrics(PerformanceInfo[] aMetrics);
 both:
      async AsyncMessage(nsString aMessage, CpowEntry[] aCpows,
                         Principal aPrincipal, ClonedMessageData aData);

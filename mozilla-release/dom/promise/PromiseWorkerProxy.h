@@ -11,19 +11,15 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
 #include "mozilla/dom/StructuredCloneHolder.h"
-#include "mozilla/dom/workers/bindings/WorkerHolder.h"
+#include "mozilla/dom/WorkerRunnable.h"
 #include "nsProxyRelease.h"
-
-#include "WorkerRunnable.h"
 
 namespace mozilla {
 namespace dom {
 
 class Promise;
-
-namespace workers {
+class ThreadSafeWorkerRef;
 class WorkerPrivate;
-} // namespace workers
 
 // A proxy to (eventually) mirror a resolved/rejected Promise's result from the
 // main thread to a Promise on the worker thread.
@@ -134,14 +130,14 @@ public:
   };
 
   static already_AddRefed<PromiseWorkerProxy>
-  Create(workers::WorkerPrivate* aWorkerPrivate,
+  Create(WorkerPrivate* aWorkerPrivate,
          Promise* aWorkerPromise,
          const PromiseWorkerProxyStructuredCloneCallbacks* aCallbacks = nullptr);
 
   // Main thread callers must hold Lock() and check CleanUp() before calling this.
   // Worker thread callers, this will assert that the proxy has not been cleaned
   // up.
-  workers::WorkerPrivate* GetWorkerPrivate() const;
+  WorkerPrivate* GetWorkerPrivate() const;
 
   // This should only be used within WorkerRunnable::WorkerRun() running on the
   // worker thread! Do not call this after calling CleanUp().
@@ -183,13 +179,10 @@ protected:
                                 JS::Handle<JS::Value> aValue) override;
 
 private:
-  PromiseWorkerProxy(workers::WorkerPrivate* aWorkerPrivate,
-                     Promise* aWorkerPromise,
-                     const PromiseWorkerProxyStructuredCloneCallbacks* aCallbacks = nullptr);
+  explicit PromiseWorkerProxy(Promise* aWorkerPromise,
+                              const PromiseWorkerProxyStructuredCloneCallbacks* aCallbacks = nullptr);
 
   virtual ~PromiseWorkerProxy();
-
-  bool AddRefObject();
 
   // If not called from Create(), be sure to hold Lock().
   void CleanProperties();
@@ -203,7 +196,7 @@ private:
                    RunCallbackFunc aFunc);
 
   // Any thread with appropriate checks.
-  workers::WorkerPrivate* mWorkerPrivate;
+  RefPtr<ThreadSafeWorkerRef> mWorkerRef;
 
   // Worker thread only.
   RefPtr<Promise> mWorkerPromise;
@@ -217,8 +210,6 @@ private:
 
   // Ensure the worker and the main thread won't race to access |mCleanedUp|.
   Mutex mCleanUpLock;
-
-  UniquePtr<workers::WorkerHolder> mWorkerHolder;
 };
 } // namespace dom
 } // namespace mozilla

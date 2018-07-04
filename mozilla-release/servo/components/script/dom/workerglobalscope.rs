@@ -3,21 +3,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use devtools_traits::{DevtoolScriptControlMsg, WorkerId};
-use dom::bindings::codegen::Bindings::EventHandlerBinding::OnErrorEventHandlerNonNull;
 use dom::bindings::codegen::Bindings::FunctionBinding::Function;
 use dom::bindings::codegen::Bindings::RequestBinding::RequestInit;
 use dom::bindings::codegen::Bindings::WorkerGlobalScopeBinding::WorkerGlobalScopeMethods;
 use dom::bindings::codegen::UnionTypes::RequestOrUSVString;
 use dom::bindings::error::{Error, ErrorResult, Fallible, report_pending_exception};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{MutNullableJS, Root};
 use dom::bindings::reflector::DomObject;
+use dom::bindings::root::{DomRoot, MutNullableDom};
 use dom::bindings::settings_stack::AutoEntryScript;
 use dom::bindings::str::DOMString;
 use dom::bindings::trace::RootedTraceableBox;
 use dom::crypto::Crypto;
 use dom::dedicatedworkerglobalscope::DedicatedWorkerGlobalScope;
 use dom::globalscope::GlobalScope;
+use dom::performance::Performance;
 use dom::promise::Promise;
 use dom::serviceworkerglobalscope::ServiceWorkerGlobalScope;
 use dom::window::{base64_atob, base64_btoa};
@@ -26,15 +26,14 @@ use dom::workernavigator::WorkerNavigator;
 use dom_struct::dom_struct;
 use fetch;
 use ipc_channel::ipc::IpcSender;
-use js::jsapi::{HandleValue, JSAutoCompartment, JSContext, JSRuntime};
+use js::jsapi::{JSAutoCompartment, JSContext, JSRuntime};
 use js::jsval::UndefinedValue;
 use js::panic::maybe_resume_unwind;
-use js::rust::Runtime;
-use microtask::{MicrotaskQueue, Microtask};
+use js::rust::HandleValue;
+use msg::constellation_msg::PipelineId;
 use net_traits::{IpcSend, load_whole_resource};
-use net_traits::request::{CredentialsMode, Destination, RequestInit as NetRequestInit, Type as RequestType};
-use script_runtime::{CommonScriptMsg, ScriptChan, ScriptPort};
-use script_thread::RunnableWrapper;
+use net_traits::request::{CredentialsMode, Destination, RequestInit as NetRequestInit};
+use script_runtime::{CommonScriptMsg, ScriptChan, ScriptPort, get_reports, Runtime};
 use script_traits::{TimerEvent, TimerEventId};
 use script_traits::WorkerGlobalScopeInit;
 use servo_url::{MutableOrigin, ServoUrl};
@@ -43,8 +42,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
+use task::TaskCanceller;
 use task_source::file_reading::FileReadingTaskSource;
 use task_source::networking::NetworkingTaskSource;
+use task_source::performance_timeline::PerformanceTimelineTaskSource;
+use time::precise_time_ns;
 use timers::{IsInterval, TimerCallback};
 
 pub fn prepare_workerscope_init(global: &GlobalScope,
@@ -55,7 +57,7 @@ pub fn prepare_workerscope_init(global: &GlobalScope,
             to_devtools_sender: global.devtools_chan().cloned(),
             time_profiler_chan: global.time_profiler_chan().clone(),
             from_devtools_sender: devtools_sender,
-            constellation_chan: global.constellation_chan().clone(),
+            script_to_constellation_chan: global.script_to_constellation_chan().clone(),
             scheduler_chan: global.scheduler_chan().clone(),
             worker_id: global.get_next_worker_id(),
             pipeline_id: global.pipeline_id(),
@@ -72,55 +74,59 @@ pub struct WorkerGlobalScope {
 
     worker_id: WorkerId,
     worker_url: ServoUrl,
-    #[ignore_heap_size_of = "Arc"]
+    #[ignore_malloc_size_of = "Arc"]
     closing: Option<Arc<AtomicBool>>,
-    #[ignore_heap_size_of = "Defined in js"]
+    #[ignore_malloc_size_of = "Defined in js"]
     runtime: Runtime,
-    location: MutNullableJS<WorkerLocation>,
-    navigator: MutNullableJS<WorkerNavigator>,
+    location: MutNullableDom<WorkerLocation>,
+    navigator: MutNullableDom<WorkerNavigator>,
 
-    #[ignore_heap_size_of = "Defined in ipc-channel"]
+    #[ignore_malloc_size_of = "Defined in ipc-channel"]
     /// Optional `IpcSender` for sending the `DevtoolScriptControlMsg`
     /// to the server from within the worker
     from_devtools_sender: Option<IpcSender<DevtoolScriptControlMsg>>,
 
-    #[ignore_heap_size_of = "Defined in std"]
+    #[ignore_malloc_size_of = "Defined in std"]
     /// This `Receiver` will be ignored later if the corresponding
     /// `IpcSender` doesn't exist
     from_devtools_receiver: Receiver<DevtoolScriptControlMsg>,
 
-    microtask_queue: MicrotaskQueue,
+    navigation_start_precise: u64,
+    performance: MutNullableDom<Performance>,
 }
 
 impl WorkerGlobalScope {
-    pub fn new_inherited(init: WorkerGlobalScopeInit,
-                         worker_url: ServoUrl,
-                         runtime: Runtime,
-                         from_devtools_receiver: Receiver<DevtoolScriptControlMsg>,
-                         timer_event_chan: IpcSender<TimerEvent>,
-                         closing: Option<Arc<AtomicBool>>)
-                         -> WorkerGlobalScope {
-        WorkerGlobalScope {
-            globalscope:
-                GlobalScope::new_inherited(
-                    init.pipeline_id,
-                    init.to_devtools_sender,
-                    init.mem_profiler_chan,
-                    init.time_profiler_chan,
-                    init.constellation_chan,
-                    init.scheduler_chan,
-                    init.resource_threads,
-                    timer_event_chan,
-                    MutableOrigin::new(init.origin)),
+    pub fn new_inherited(
+        init: WorkerGlobalScopeInit,
+        worker_url: ServoUrl,
+        runtime: Runtime,
+        from_devtools_receiver: Receiver<DevtoolScriptControlMsg>,
+        timer_event_chan: IpcSender<TimerEvent>,
+        closing: Option<Arc<AtomicBool>>,
+    ) -> Self {
+        Self {
+            globalscope: GlobalScope::new_inherited(
+                init.pipeline_id,
+                init.to_devtools_sender,
+                init.mem_profiler_chan,
+                init.time_profiler_chan,
+                init.script_to_constellation_chan,
+                init.scheduler_chan,
+                init.resource_threads,
+                timer_event_chan,
+                MutableOrigin::new(init.origin),
+                Default::default(),
+            ),
             worker_id: init.worker_id,
-            worker_url: worker_url,
-            closing: closing,
-            runtime: runtime,
+            worker_url,
+            closing,
+            runtime,
             location: Default::default(),
             navigator: Default::default(),
             from_devtools_sender: init.from_devtools_sender,
-            from_devtools_receiver: from_devtools_receiver,
-            microtask_queue: MicrotaskQueue::default(),
+            from_devtools_receiver,
+            navigation_start_precise: precise_time_ns(),
+            performance: Default::default(),
         }
     }
 
@@ -156,33 +162,25 @@ impl WorkerGlobalScope {
         self.worker_id.clone()
     }
 
-    pub fn get_runnable_wrapper(&self) -> RunnableWrapper {
-        RunnableWrapper {
+    pub fn task_canceller(&self) -> TaskCanceller {
+        TaskCanceller {
             cancelled: self.closing.clone(),
         }
     }
 
-    pub fn enqueue_microtask(&self, job: Microtask) {
-        self.microtask_queue.enqueue(job);
-    }
-
-    pub fn perform_a_microtask_checkpoint(&self) {
-        self.microtask_queue.checkpoint(|id| {
-            let global = self.upcast::<GlobalScope>();
-            assert_eq!(global.pipeline_id(), id);
-            Some(Root::from_ref(global))
-        });
+    pub fn pipeline_id(&self) -> PipelineId {
+        self.globalscope.pipeline_id()
     }
 }
 
 impl WorkerGlobalScopeMethods for WorkerGlobalScope {
     // https://html.spec.whatwg.org/multipage/#dom-workerglobalscope-self
-    fn Self_(&self) -> Root<WorkerGlobalScope> {
-        Root::from_ref(self)
+    fn Self_(&self) -> DomRoot<WorkerGlobalScope> {
+        DomRoot::from_ref(self)
     }
 
     // https://html.spec.whatwg.org/multipage/#dom-workerglobalscope-location
-    fn Location(&self) -> Root<WorkerLocation> {
+    fn Location(&self) -> DomRoot<WorkerLocation> {
         self.location.or_init(|| {
             WorkerLocation::new(self, self.worker_url.clone())
         })
@@ -207,7 +205,6 @@ impl WorkerGlobalScopeMethods for WorkerGlobalScope {
             let global_scope = self.upcast::<GlobalScope>();
             let request = NetRequestInit {
                 url: url.clone(),
-                type_: RequestType::Script,
                 destination: Destination::Script,
                 credentials_mode: CredentialsMode::Include,
                 use_url_credentials: true,
@@ -243,12 +240,12 @@ impl WorkerGlobalScopeMethods for WorkerGlobalScope {
     }
 
     // https://html.spec.whatwg.org/multipage/#dom-worker-navigator
-    fn Navigator(&self) -> Root<WorkerNavigator> {
+    fn Navigator(&self) -> DomRoot<WorkerNavigator> {
         self.navigator.or_init(|| WorkerNavigator::new(self))
     }
 
     // https://html.spec.whatwg.org/multipage/#dfn-Crypto
-    fn Crypto(&self) -> Root<Crypto> {
+    fn Crypto(&self) -> DomRoot<Crypto> {
         self.upcast::<GlobalScope>().crypto()
     }
 
@@ -321,6 +318,16 @@ impl WorkerGlobalScopeMethods for WorkerGlobalScope {
     fn Fetch(&self, input: RequestOrUSVString, init: RootedTraceableBox<RequestInit>) -> Rc<Promise> {
         fetch::Fetch(self.upcast(), input, init)
     }
+
+    // https://w3c.github.io/hr-time/#the-performance-attribute
+    fn Performance(&self) -> DomRoot<Performance> {
+        self.performance.or_init(|| {
+            let global_scope = self.upcast::<GlobalScope>();
+            Performance::new(global_scope,
+                             0 /* navigation start is not used in workers */,
+                             self.navigation_start_precise)
+        })
+    }
 }
 
 
@@ -362,11 +369,15 @@ impl WorkerGlobalScope {
     }
 
     pub fn file_reading_task_source(&self) -> FileReadingTaskSource {
-        FileReadingTaskSource(self.script_chan())
+        FileReadingTaskSource(self.script_chan(), self.pipeline_id())
     }
 
     pub fn networking_task_source(&self) -> NetworkingTaskSource {
-        NetworkingTaskSource(self.script_chan())
+        NetworkingTaskSource(self.script_chan(), self.pipeline_id())
+    }
+
+    pub fn performance_timeline_task_source(&self) -> PerformanceTimelineTaskSource {
+        PerformanceTimelineTaskSource(self.script_chan(), self.pipeline_id())
     }
 
     pub fn new_script_pair(&self) -> (Box<ScriptChan + Send>, Box<ScriptPort + Send>) {
@@ -379,17 +390,19 @@ impl WorkerGlobalScope {
     }
 
     pub fn process_event(&self, msg: CommonScriptMsg) {
-        let dedicated = self.downcast::<DedicatedWorkerGlobalScope>();
-        let service_worker = self.downcast::<ServiceWorkerGlobalScope>();
-        if let Some(dedicated) = dedicated {
-            return dedicated.process_event(msg);
-        } else if let Some(service_worker) = service_worker {
-            return service_worker.process_event(msg);
-        } else {
-            panic!("need to implement a sender for SharedWorker")
+        match msg {
+            CommonScriptMsg::Task(_, task, _) => {
+                task.run_box()
+            },
+            CommonScriptMsg::CollectReports(reports_chan) => {
+                let cx = self.get_cx();
+                let path_seg = format!("url({})", self.get_url());
+                let reports = get_reports(cx, path_seg);
+                reports_chan.send(reports);
+            },
         }
 
-        //XXXjdm should we do a microtask checkpoint here?
+        // FIXME(jdm): Should we do a microtask checkpoint here?
     }
 
     pub fn handle_fire_timer(&self, timer_id: TimerEventId) {

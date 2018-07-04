@@ -8,78 +8,58 @@
 
 /* eslint-env mozilla/frame-script */
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "E10SUtils",
-  "resource:///modules/E10SUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ContentLinkHandler",
-  "resource:///modules/ContentLinkHandler.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ContentWebRTC",
-  "resource:///modules/ContentWebRTC.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SpellCheckHelper",
-  "resource://gre/modules/InlineSpellChecker.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "InlineSpellCheckerContent",
-  "resource://gre/modules/InlineSpellCheckerContent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerContent",
-  "resource://gre/modules/LoginManagerContent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginFormFactory",
-  "resource://gre/modules/LoginManagerContent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "InsecurePasswordUtils",
-  "resource://gre/modules/InsecurePasswordUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PluginContent",
-  "resource:///modules/PluginContent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FormSubmitObserver",
-  "resource:///modules/FormSubmitObserver.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PageMetadata",
-  "resource://gre/modules/PageMetadata.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUIUtils",
-  "resource:///modules/PlacesUIUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
-  "resource://gre/modules/sessionstore/Utils.jsm");
-XPCOMUtils.defineLazyGetter(this, "PageMenuChild", function() {
-  let tmp = {};
-  Cu.import("resource://gre/modules/PageMenu.jsm", tmp);
-  return new tmp.PageMenuChild();
+XPCOMUtils.defineLazyModuleGetters(this, {
+  BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
+  ContentLinkHandler: "resource:///modules/ContentLinkHandler.jsm",
+  ContentMetaHandler: "resource:///modules/ContentMetaHandler.jsm",
+  ContentWebRTC: "resource:///modules/ContentWebRTC.jsm",
+  InlineSpellCheckerContent: "resource://gre/modules/InlineSpellCheckerContent.jsm",
+  LoginManagerContent: "resource://gre/modules/LoginManagerContent.jsm",
+  LoginFormFactory: "resource://gre/modules/LoginManagerContent.jsm",
+  InsecurePasswordUtils: "resource://gre/modules/InsecurePasswordUtils.jsm",
+  PluginContent: "resource:///modules/PluginContent.jsm",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
+  FormSubmitObserver: "resource:///modules/FormSubmitObserver.jsm",
+  PageMetadata: "resource://gre/modules/PageMetadata.jsm",
+  PlacesUIUtils: "resource:///modules/PlacesUIUtils.jsm",
+  SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
+  Utils: "resource://gre/modules/sessionstore/Utils.jsm",
+  WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
+  Feeds: "resource:///modules/Feeds.jsm",
+  ContextMenu: "resource:///modules/ContextMenu.jsm",
 });
-XPCOMUtils.defineLazyModuleGetter(this, "WebNavigationFrames",
-  "resource://gre/modules/WebNavigationFrames.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Feeds",
-  "resource:///modules/Feeds.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "findCssSelector",
-  "resource://gre/modules/css-selector.js");
 
-Cu.importGlobalProperties(["URL"]);
+XPCOMUtils.defineLazyGetter(this, "gPipNSSBundle", function() {
+  return Services.strings.createBundle("chrome://pipnss/locale/pipnss.properties");
+});
+XPCOMUtils.defineLazyGetter(this, "gNSSErrorsBundle", function() {
+  return Services.strings.createBundle("chrome://pipnss/locale/nsserrors.properties");
+});
 
 // TabChildGlobal
 var global = this;
 
+var contextMenu = this.contextMenu = new ContextMenu(global);
+
 // Load the form validation popup handler
 var formSubmitObserver = new FormSubmitObserver(content, this);
 
-addMessageListener("ContextMenu:DoCustomCommand", function(message) {
-  E10SUtils.wrapHandlingUserInput(
-    content, message.data.handlingUserInput,
-    () => PageMenuChild.executeMenu(message.data.generatedItemId));
-});
-
 addMessageListener("RemoteLogins:fillForm", function(message) {
+  // intercept if ContextMenu.jsm had sent a plain object for remote targets
+  message.objects.inputElement = contextMenu.getTarget(message, "inputElement");
   LoginManagerContent.receiveMessage(message, content);
 });
 addEventListener("DOMFormHasPassword", function(event) {
   LoginManagerContent.onDOMFormHasPassword(event, content);
-  let formLike = LoginFormFactory.createFromForm(event.target);
+  let formLike = LoginFormFactory.createFromForm(event.originalTarget);
   InsecurePasswordUtils.reportInsecurePasswords(formLike);
 });
 addEventListener("DOMInputPasswordAdded", function(event) {
   LoginManagerContent.onDOMInputPasswordAdded(event, content);
-  let formLike = LoginFormFactory.createFromField(event.target);
+  let formLike = LoginFormFactory.createFromField(event.originalTarget);
   InsecurePasswordUtils.reportInsecurePasswords(formLike);
 });
 addEventListener("pageshow", function(event) {
@@ -92,191 +72,34 @@ addEventListener("blur", function(event) {
   LoginManagerContent.onUsernameInput(event);
 });
 
-var handleContentContextMenu = function(event) {
-  let defaultPrevented = event.defaultPrevented;
-  if (!Services.prefs.getBoolPref("dom.event.contextmenu.enabled")) {
-    let plugin = null;
-    try {
-      plugin = event.target.QueryInterface(Ci.nsIObjectLoadingContent);
-    } catch (e) {}
-    if (plugin && plugin.displayedType == Ci.nsIObjectLoadingContent.TYPE_PLUGIN) {
-      // Don't open a context menu for plugins.
-      return;
-    }
-
-    defaultPrevented = false;
-  }
-
-  if (defaultPrevented)
-    return;
-
-  let addonInfo = {};
-  let subject = {
-    event,
-    addonInfo,
-  };
-  subject.wrappedJSObject = subject;
-  Services.obs.notifyObservers(subject, "content-contextmenu");
-
-  let doc = event.target.ownerDocument;
-  let docLocation = doc.mozDocumentURIIfNotForErrorPages;
-  docLocation = docLocation && docLocation.spec;
-  let charSet = doc.characterSet;
-  let baseURI = doc.baseURI;
-  let referrer = doc.referrer;
-  let referrerPolicy = doc.referrerPolicy;
-  let frameOuterWindowID = WebNavigationFrames.getFrameId(doc.defaultView);
-  let loginFillInfo = LoginManagerContent.getFieldContext(event.target);
-
-  // The same-origin check will be done in nsContextMenu.openLinkInTab.
-  let parentAllowsMixedContent = !!docShell.mixedContentChannel;
-
-  // get referrer attribute from clicked link and parse it
-  let referrerAttrValue = Services.netUtils.parseAttributePolicyString(event.target.
-                          getAttribute("referrerpolicy"));
-  if (referrerAttrValue !== Ci.nsIHttpChannel.REFERRER_POLICY_UNSET) {
-    referrerPolicy = referrerAttrValue;
-  }
-
-  let disableSetDesktopBg = null;
-  // Media related cache info parent needs for saving
-  let contentType = null;
-  let contentDisposition = null;
-  if (event.target.nodeType == Ci.nsIDOMNode.ELEMENT_NODE &&
-      event.target instanceof Ci.nsIImageLoadingContent &&
-      event.target.currentURI) {
-    disableSetDesktopBg = disableSetDesktopBackground(event.target);
-
-    try {
-      let imageCache =
-        Cc["@mozilla.org/image/tools;1"].getService(Ci.imgITools)
-                                        .getImgCacheForDocument(doc);
-      let props =
-        imageCache.findEntryProperties(event.target.currentURI, doc);
-      try {
-        contentType = props.get("type", Ci.nsISupportsCString).data;
-      } catch (e) {}
-      try {
-        contentDisposition =
-          props.get("content-disposition", Ci.nsISupportsCString).data;
-      } catch (e) {}
-    } catch (e) {}
-  }
-
-  let selectionInfo = BrowserUtils.getSelectionDetails(content);
-
-  let loadContext = docShell.QueryInterface(Ci.nsILoadContext);
-  let userContextId = loadContext.originAttributes.userContextId;
-  let popupNodeSelectors = getNodeSelectors(event.target);
-
-  if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT) {
-    let editFlags = SpellCheckHelper.isEditable(event.target, content);
-    let spellInfo;
-    if (editFlags &
-        (SpellCheckHelper.EDITABLE | SpellCheckHelper.CONTENTEDITABLE)) {
-      spellInfo =
-        InlineSpellCheckerContent.initContextMenu(event, editFlags, this);
-    }
-
-    // Set the event target first as the copy image command needs it to
-    // determine what was context-clicked on. Then, update the state of the
-    // commands on the context menu.
-    docShell.contentViewer.QueryInterface(Ci.nsIContentViewerEdit)
-            .setCommandNode(event.target);
-    event.target.ownerGlobal.updateCommands("contentcontextmenu");
-
-    let customMenuItems = PageMenuChild.build(event.target);
-    let principal = doc.nodePrincipal;
-
-    sendRpcMessage("contextmenu",
-                   { editFlags, spellInfo, customMenuItems, addonInfo,
-                     principal, docLocation, charSet, baseURI, referrer,
-                     referrerPolicy, contentType, contentDisposition,
-                     frameOuterWindowID, selectionInfo, disableSetDesktopBg,
-                     loginFillInfo, parentAllowsMixedContent, userContextId,
-                     popupNodeSelectors,
-                   }, {
-                     event,
-                     popupNode: event.target,
-                   });
-  } else {
-    // Break out to the parent window and pass the add-on info along
-    let browser = docShell.chromeEventHandler;
-    let mainWin = browser.ownerGlobal;
-    mainWin.setContextMenuContentData({
-      isRemote: false,
-      event,
-      popupNode: event.target,
-      popupNodeSelectors,
-      browser,
-      addonInfo,
-      documentURIObject: doc.documentURIObject,
-      docLocation,
-      charSet,
-      referrer,
-      referrerPolicy,
-      contentType,
-      contentDisposition,
-      selectionInfo,
-      disableSetDesktopBackground: disableSetDesktopBg,
-      loginFillInfo,
-      parentAllowsMixedContent,
-      userContextId,
-    });
-  }
-}
-
-Cc["@mozilla.org/eventlistenerservice;1"]
-  .getService(Ci.nsIEventListenerService)
-  .addSystemEventListener(global, "contextmenu", handleContentContextMenu, false);
-
-// Values for telemtery bins: see TLS_ERROR_REPORT_UI in Histograms.json
-const TLS_ERROR_REPORT_TELEMETRY_UI_SHOWN = 0;
-const TLS_ERROR_REPORT_TELEMETRY_EXPANDED = 1;
-const TLS_ERROR_REPORT_TELEMETRY_SUCCESS  = 6;
-const TLS_ERROR_REPORT_TELEMETRY_FAILURE  = 7;
-
 const SEC_ERROR_BASE          = Ci.nsINSSErrorsService.NSS_SEC_ERROR_BASE;
 const MOZILLA_PKIX_ERROR_BASE = Ci.nsINSSErrorsService.MOZILLA_PKIX_ERROR_BASE;
 
 const SEC_ERROR_EXPIRED_CERTIFICATE                = SEC_ERROR_BASE + 11;
 const SEC_ERROR_UNKNOWN_ISSUER                     = SEC_ERROR_BASE + 13;
+const SEC_ERROR_UNTRUSTED_ISSUER                   = SEC_ERROR_BASE + 20;
+const SEC_ERROR_UNTRUSTED_CERT                     = SEC_ERROR_BASE + 21;
 const SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE         = SEC_ERROR_BASE + 30;
+const SEC_ERROR_CA_CERT_INVALID                    = SEC_ERROR_BASE + 36;
 const SEC_ERROR_OCSP_FUTURE_RESPONSE               = SEC_ERROR_BASE + 131;
 const SEC_ERROR_OCSP_OLD_RESPONSE                  = SEC_ERROR_BASE + 132;
+const SEC_ERROR_REUSED_ISSUER_AND_SERIAL           = SEC_ERROR_BASE + 138;
+const SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED  = SEC_ERROR_BASE + 176;
 const MOZILLA_PKIX_ERROR_NOT_YET_VALID_CERTIFICATE = MOZILLA_PKIX_ERROR_BASE + 5;
 const MOZILLA_PKIX_ERROR_NOT_YET_VALID_ISSUER_CERTIFICATE = MOZILLA_PKIX_ERROR_BASE + 6;
+const MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT          = MOZILLA_PKIX_ERROR_BASE + 14;
+const MOZILLA_PKIX_ERROR_MITM_DETECTED             = MOZILLA_PKIX_ERROR_BASE + 15;
 
-const PREF_BLOCKLIST_CLOCK_SKEW_SECONDS = "services.blocklist.clock_skew_seconds";
+
+const SSL_ERROR_BASE = Ci.nsINSSErrorsService.NSS_SSL_ERROR_BASE;
+const SSL_ERROR_SSL_DISABLED  = SSL_ERROR_BASE + 20;
+const SSL_ERROR_SSL2_DISABLED  = SSL_ERROR_BASE + 14;
+
+const PREF_SERVICES_SETTINGS_CLOCK_SKEW_SECONDS = "services.settings.clock_skew_seconds";
+const PREF_SERVICES_SETTINGS_LAST_FETCHED       = "services.settings.last_update_seconds";
 
 const PREF_SSL_IMPACT_ROOTS = ["security.tls.version.", "security.ssl3."];
 
-const PREF_SSL_IMPACT = PREF_SSL_IMPACT_ROOTS.reduce((prefs, root) => {
-  return prefs.concat(Services.prefs.getChildList(root));
-}, []);
-
-/**
- * Retrieve the array of CSS selectors corresponding to the provided node. The first item
- * of the array is the selector of the node in its owner document. Additional items are
- * used if the node is inside a frame, each representing the CSS selector for finding the
- * frame element in its parent document.
- *
- * This format is expected by DevTools in order to handle the Inspect Node context menu
- * item.
- *
- * @param  {Node}
- *         The node for which the CSS selectors should be computed
- * @return {Array} array of css selectors (strings).
- */
-function getNodeSelectors(node) {
-  let selectors = [];
-  while (node) {
-    selectors.push(findCssSelector(node));
-    node = node.ownerGlobal.frameElement;
-  }
-
-  return selectors;
-}
 
 function getSerializedSecurityInfo(docShell) {
   let serhelper = Cc["@mozilla.org/network/serialization-helper;1"]
@@ -304,7 +127,9 @@ function getSiteBlockedErrorDetails(docShell) {
 
       // Remove the query to avoid leaking sensitive data
       if (reportUri instanceof Ci.nsIURL) {
-        reportUri.query = "";
+        reportUri = reportUri.mutate()
+                             .setQuery("")
+                             .finalize();
       }
 
       blockedInfo = { list: classifiedChannel.matchedList,
@@ -346,15 +171,56 @@ var AboutBlockedSiteListener = {
       return;
     }
 
-    let provider = "";
-    if (docShell.failedChannel) {
-      let classifiedChannel = docShell.failedChannel.
-                              QueryInterface(Ci.nsIClassifiedChannel);
-      if (classifiedChannel) {
-        provider = classifiedChannel.matchedProvider;
-      }
+    let blockedInfo = getSiteBlockedErrorDetails(docShell);
+    let provider = blockedInfo.provider || "";
+
+    let doc = content.document;
+
+    /**
+    * Set error description link in error details.
+    * For example, the "reported as a deceptive site" link for
+    * blocked phishing pages.
+    */
+    let desc = Services.prefs.getCharPref(
+      "browser.safebrowsing.provider." + provider + ".reportURL", "");
+    if (desc) {
+      doc.getElementById("error_desc_link").setAttribute("href", desc + aEvent.detail.url);
     }
 
+    // Set other links in error details.
+    switch (aEvent.detail.err) {
+      case "malware":
+        doc.getElementById("report_detection").setAttribute("href",
+          (SafeBrowsing.getReportURL("MalwareMistake", blockedInfo) ||
+           "https://www.stopbadware.org/firefox"));
+        doc.getElementById("learn_more_link").setAttribute("href",
+          "https://www.stopbadware.org/firefox");
+        break;
+      case "unwanted":
+        doc.getElementById("learn_more_link").setAttribute("href",
+          "https://www.google.com/about/unwanted-software-policy.html");
+        break;
+      case "phishing":
+        doc.getElementById("report_detection").setAttribute("href",
+          (SafeBrowsing.getReportURL("PhishMistake", blockedInfo) ||
+           "https://safebrowsing.google.com/safebrowsing/report_error/?tpl=mozilla"));
+        doc.getElementById("learn_more_link").setAttribute("href",
+          "https://www.antiphishing.org//");
+        break;
+    }
+
+    // Set the firefox support url.
+    doc.getElementById("firefox_support").setAttribute("href",
+      Services.urlFormatter.formatURLPref("app.support.baseURL") + "phishing-malware");
+
+    // Show safe browsing details on load if the pref is set to true.
+    let showDetails = Services.prefs.getBoolPref("browser.xul.error_pages.show_safe_browsing_details_on_load");
+    if (showDetails) {
+      let details = content.document.getElementById("errorDescriptionContainer");
+      details.removeAttribute("hidden");
+    }
+
+    // Set safe browsing advisory link.
     let advisoryUrl = Services.prefs.getCharPref(
       "browser.safebrowsing.provider." + provider + ".advisoryURL", "");
     if (!advisoryUrl) {
@@ -375,7 +241,7 @@ var AboutBlockedSiteListener = {
     anchorEl.setAttribute("href", advisoryUrl);
     anchorEl.textContent = advisoryLinkText;
   },
-}
+};
 
 var AboutNetAndCertErrorListener = {
   init(chromeGlobal) {
@@ -387,42 +253,250 @@ var AboutNetAndCertErrorListener = {
     chromeGlobal.addEventListener("AboutNetErrorResetPreferences", this, false, true);
   },
 
-  get isAboutNetError() {
-    return content.document.documentURI.startsWith("about:neterror");
+  isAboutNetError(doc) {
+    return doc.documentURI.startsWith("about:neterror");
   },
 
-  get isAboutCertError() {
-    return content.document.documentURI.startsWith("about:certerror");
+  isAboutCertError(doc) {
+    return doc.documentURI.startsWith("about:certerror");
   },
 
   receiveMessage(msg) {
-    if (!this.isAboutCertError) {
-      return;
-    }
+    if (msg.name == "CertErrorDetails") {
+      let frameDocShell = WebNavigationFrames.findDocShell(msg.data.frameId, docShell);
+      // We need nsIWebNavigation to access docShell.document.
+      frameDocShell && frameDocShell.QueryInterface(Ci.nsIWebNavigation);
+      if (!frameDocShell || !this.isAboutCertError(frameDocShell.document)) {
+        return;
+      }
 
-    switch (msg.name) {
-      case "CertErrorDetails":
-        this.onCertErrorDetails(msg);
-        break;
-      case "Browser:CaptivePortalFreed":
-        this.onCaptivePortalFreed(msg);
-        break;
+      this.onCertErrorDetails(msg, frameDocShell);
+    } else if (msg.name == "Browser:CaptivePortalFreed") {
+      // TODO: This check is not correct for frames.
+      if (!this.isAboutCertError(content.document)) {
+        return;
+      }
+
+      this.onCaptivePortalFreed(msg);
     }
   },
 
-  onCertErrorDetails(msg) {
-    let div = content.document.getElementById("certificateErrorText");
+  _getCertValidityRange(docShell) {
+    let {securityInfo} = docShell.failedChannel;
+    securityInfo.QueryInterface(Ci.nsITransportSecurityInfo);
+    let certs = securityInfo.failedCertChain.getEnumerator();
+    let notBefore = 0;
+    let notAfter = Number.MAX_SAFE_INTEGER;
+    while (certs.hasMoreElements()) {
+      let cert = certs.getNext();
+      cert.QueryInterface(Ci.nsIX509Cert);
+      notBefore = Math.max(notBefore, cert.validity.notBefore);
+      notAfter = Math.min(notAfter, cert.validity.notAfter);
+    }
+    // nsIX509Cert reports in PR_Date terms, which uses microseconds. Convert:
+    notBefore /= 1000;
+    notAfter /= 1000;
+    return {notBefore, notAfter};
+  },
+
+  _setTechDetails(input, doc) {
+    // CSS class and error code are set from nsDocShell.
+    let searchParams = new URLSearchParams(doc.documentURI.split("?")[1]);
+    let cssClass = searchParams.get("s");
+    let error = searchParams.get("e");
+    let technicalInfo = doc.getElementById("badCertTechnicalInfo");
+    technicalInfo.textContent = "";
+
+    let uri = Services.io.newURI(input.data.url);
+    let hostString = uri.host;
+    if (uri.port != 443 && uri.port != -1) {
+      hostString = uri.hostPort;
+    }
+
+    let msg1 = gPipNSSBundle.formatStringFromName("certErrorIntro",
+                                                  [hostString], 1);
+    msg1 += "\n\n";
+
+    if (input.data.certIsUntrusted) {
+      switch (input.data.code) {
+        // We only want to measure MitM rates for now. Treat it as unkown issuer.
+        case MOZILLA_PKIX_ERROR_MITM_DETECTED:
+        case SEC_ERROR_UNKNOWN_ISSUER:
+          msg1 += gPipNSSBundle.GetStringFromName("certErrorTrust_UnknownIssuer") + "\n";
+          msg1 += gPipNSSBundle.GetStringFromName("certErrorTrust_UnknownIssuer2") + "\n";
+          msg1 += gPipNSSBundle.GetStringFromName("certErrorTrust_UnknownIssuer3") + "\n";
+          break;
+        case SEC_ERROR_CA_CERT_INVALID:
+          msg1 += gPipNSSBundle.GetStringFromName("certErrorTrust_CaInvalid") + "\n";
+          break;
+        case SEC_ERROR_UNTRUSTED_ISSUER:
+          msg1 += gPipNSSBundle.GetStringFromName("certErrorTrust_Issuer") + "\n";
+          break;
+        case SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED:
+          msg1 += gPipNSSBundle.GetStringFromName("certErrorTrust_SignatureAlgorithmDisabled") + "\n";
+          break;
+        case SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE:
+          msg1 += gPipNSSBundle.GetStringFromName("certErrorTrust_ExpiredIssuer") + "\n";
+          break;
+        case MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT:
+          msg1 += gPipNSSBundle.GetStringFromName("certErrorTrust_SelfSigned") + "\n";
+          break;
+        default:
+          msg1 += gPipNSSBundle.GetStringFromName("certErrorTrust_Untrusted") + "\n";
+      }
+    }
+
+    technicalInfo.appendChild(doc.createTextNode(msg1));
+
+    if (input.data.isDomainMismatch) {
+      let subjectAltNames = input.data.certSubjectAltNames.split(",");
+      let numSubjectAltNames = subjectAltNames.length;
+      let msgPrefix = "";
+      if (numSubjectAltNames != 0) {
+        if (numSubjectAltNames == 1) {
+          msgPrefix = gPipNSSBundle.GetStringFromName("certErrorMismatchSinglePrefix");
+
+          // Let's check if we want to make this a link.
+          let okHost = input.data.certSubjectAltNames;
+          let href = "";
+          let thisHost = doc.location.hostname;
+          let proto = doc.location.protocol + "//";
+          // If okHost is a wildcard domain ("*.example.com") let's
+          // use "www" instead.  "*.example.com" isn't going to
+          // get anyone anywhere useful. bug 432491
+          okHost = okHost.replace(/^\*\./, "www.");
+          /* case #1:
+           * example.com uses an invalid security certificate.
+           *
+           * The certificate is only valid for www.example.com
+           *
+           * Make sure to include the "." ahead of thisHost so that
+           * a MitM attack on paypal.com doesn't hyperlink to "notpaypal.com"
+           *
+           * We'd normally just use a RegExp here except that we lack a
+           * library function to escape them properly (bug 248062), and
+           * domain names are famous for having '.' characters in them,
+           * which would allow spurious and possibly hostile matches.
+           */
+          if (okHost.endsWith("." + thisHost)) {
+            href = proto + okHost;
+          }
+          /* case #2:
+           * browser.garage.maemo.org uses an invalid security certificate.
+           *
+           * The certificate is only valid for garage.maemo.org
+           */
+          if (thisHost.endsWith("." + okHost)) {
+            href = proto + okHost;
+          }
+
+          // If we set a link, meaning there's something helpful for
+          // the user here, expand the section by default
+          if (href && cssClass != "expertBadCert") {
+            doc.getElementById("badCertAdvancedPanel").style.display = "block";
+            if (error == "nssBadCert") {
+              // Toggling the advanced panel must ensure that the debugging
+              // information panel is hidden as well, since it's opened by the
+              // error code link in the advanced panel.
+              var div = doc.getElementById("certificateErrorDebugInformation");
+              div.style.display = "none";
+            }
+          }
+
+          // Set the link if we want it.
+          if (href) {
+            let referrerlink = doc.createElement("a");
+            referrerlink.append(input.data.certSubjectAltNames);
+            referrerlink.title = input.data.certSubjectAltNames;
+            referrerlink.id = "cert_domain_link";
+            referrerlink.href = href;
+            let fragment = BrowserUtils.getLocalizedFragment(doc, msgPrefix,
+                                                             referrerlink);
+            technicalInfo.appendChild(fragment);
+          } else {
+            let fragment = BrowserUtils.getLocalizedFragment(doc,
+                                                             msgPrefix,
+                                                             input.data.certSubjectAltNames);
+            technicalInfo.appendChild(fragment);
+          }
+          technicalInfo.append("\n");
+        } else {
+          let msg = gPipNSSBundle.GetStringFromName("certErrorMismatchMultiple") + "\n";
+          for (let i = 0; i < numSubjectAltNames; i++) {
+            msg += subjectAltNames[i];
+            if (i != (numSubjectAltNames - 1)) {
+              msg += ", ";
+            }
+          }
+          technicalInfo.append(msg + "\n");
+        }
+      } else {
+        let msg = gPipNSSBundle.formatStringFromName("certErrorMismatch",
+                                                     [hostString], 1);
+        technicalInfo.append(msg + "\n");
+      }
+    }
+
+    if (input.data.isNotValidAtThisTime) {
+      let nowTime = new Date().getTime() * 1000;
+      let dateOptions = { year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "numeric" };
+      let now = new Services.intl.DateTimeFormat(undefined, dateOptions).format(new Date());
+      let msg = "";
+      if (input.data.validity.notBefore) {
+        if (nowTime > input.data.validity.notAfter) {
+          msg += gPipNSSBundle.formatStringFromName("certErrorExpiredNow",
+                                                    [input.data.validity.notAfterLocalTime, now], 2) + "\n";
+        } else {
+          msg += gPipNSSBundle.formatStringFromName("certErrorNotYetValidNow",
+                                                    [input.data.validity.notBeforeLocalTime, now], 2) + "\n";
+        }
+      } else {
+        // If something goes wrong, we assume the cert expired.
+        msg += gPipNSSBundle.formatStringFromName("certErrorExpiredNow",
+                                                  ["", now], 2) + "\n";
+      }
+      technicalInfo.append(msg);
+    }
+    technicalInfo.append("\n");
+
+    // Add link to certificate and error message.
+    let linkPrefix = gPipNSSBundle.GetStringFromName("certErrorCodePrefix3");
+    let detailLink = doc.createElement("a");
+    detailLink.append(input.data.codeString);
+    detailLink.title = input.data.codeString;
+    detailLink.id = "errorCode";
+    let fragment = BrowserUtils.getLocalizedFragment(doc, linkPrefix, detailLink);
+    technicalInfo.appendChild(fragment);
+    var errorCode = doc.getElementById("errorCode");
+    if (errorCode) {
+      errorCode.href = "javascript:void(0)";
+      errorCode.addEventListener("click", () => {
+        let debugInfo = doc.getElementById("certificateErrorDebugInformation");
+        debugInfo.style.display = "block";
+        debugInfo.scrollIntoView({block: "start", behavior: "smooth"});
+      });
+    }
+  },
+
+  onCertErrorDetails(msg, docShell) {
+    let doc = docShell.document;
+
+    let div = doc.getElementById("certificateErrorText");
     div.textContent = msg.data.info;
-    let learnMoreLink = content.document.getElementById("learnMoreLink");
+    this._setTechDetails(msg, doc);
+    let learnMoreLink = doc.getElementById("learnMoreLink");
     let baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
 
     switch (msg.data.code) {
       case SEC_ERROR_UNKNOWN_ISSUER:
+      case MOZILLA_PKIX_ERROR_MITM_DETECTED:
+      case MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT:
         learnMoreLink.href = baseURL + "security-error";
         break;
 
       // In case the certificate expired we make sure the system clock
-      // matches the blocklist ping (Kinto) time and is not before the build date.
+      // matches the remote-settings service (blocklist via Kinto) ping time
+      // and is not before the build date.
       case SEC_ERROR_EXPIRED_CERTIFICATE:
       case SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE:
       case SEC_ERROR_OCSP_FUTURE_RESPONSE:
@@ -430,33 +504,32 @@ var AboutNetAndCertErrorListener = {
       case MOZILLA_PKIX_ERROR_NOT_YET_VALID_CERTIFICATE:
       case MOZILLA_PKIX_ERROR_NOT_YET_VALID_ISSUER_CERTIFICATE:
 
-        // We check against Kinto time first if available, because that allows us
+        // We check against the remote-settings server time first if available, because that allows us
         // to give the user an approximation of what the correct time is.
-        let difference = 0;
-        if (Services.prefs.getPrefType(PREF_BLOCKLIST_CLOCK_SKEW_SECONDS)) {
-          difference = Services.prefs.getIntPref(PREF_BLOCKLIST_CLOCK_SKEW_SECONDS);
-        }
+        let difference = Services.prefs.getIntPref(PREF_SERVICES_SETTINGS_CLOCK_SKEW_SECONDS, 0);
+        let lastFetched = Services.prefs.getIntPref(PREF_SERVICES_SETTINGS_LAST_FETCHED, 0) * 1000;
 
-        // If the difference is more than a day.
-        if (Math.abs(difference) > 60 * 60 * 24) {
-          let formatter = Services.intl.createDateTimeFormat(undefined, {
+        let now = Date.now();
+        let certRange = this._getCertValidityRange(docShell);
+
+        let approximateDate = now - difference * 1000;
+        // If the difference is more than a day, we last fetched the date in the last 5 days,
+        // and adjusting the date per the interval would make the cert valid, warn the user:
+        if (Math.abs(difference) > 60 * 60 * 24 && (now - lastFetched) <= 60 * 60 * 24 * 5 &&
+            certRange.notBefore < approximateDate && certRange.notAfter > approximateDate) {
+          let formatter = new Services.intl.DateTimeFormat(undefined, {
             dateStyle: "short"
           });
           let systemDate = formatter.format(new Date());
           // negative difference means local time is behind server time
-          let actualDate = formatter.format(new Date(Date.now() - difference * 1000));
+          approximateDate = formatter.format(new Date(approximateDate));
 
-          content.document.getElementById("wrongSystemTime_URL")
-            .textContent = content.document.location.hostname;
-          content.document.getElementById("wrongSystemTime_systemDate")
-            .textContent = systemDate;
-          content.document.getElementById("wrongSystemTime_actualDate")
-            .textContent = actualDate;
+          doc.getElementById("wrongSystemTime_URL").textContent = doc.location.hostname;
+          doc.getElementById("wrongSystemTime_systemDate").textContent = systemDate;
+          doc.getElementById("wrongSystemTime_actualDate").textContent = approximateDate;
 
-          content.document.getElementById("errorShortDesc")
-            .style.display = "none";
-          content.document.getElementById("wrongSystemTimePanel")
-            .style.display = "block";
+          doc.getElementById("errorShortDesc").style.display = "none";
+          doc.getElementById("wrongSystemTimePanel").style.display = "block";
 
         // If there is no clock skew with Kinto servers, check against the build date.
         // (The Kinto ping could have happened when the time was still right, or not at all)
@@ -470,20 +543,22 @@ var AboutNetAndCertErrorListener = {
           let buildDate = new Date(year, month, day);
           let systemDate = new Date();
 
-          if (buildDate > systemDate) {
-            let formatter = Services.intl.createDateTimeFormat(undefined, {
+          // We don't check the notBefore of the cert with the build date,
+          // as it is of course almost certain that it is now later than the build date,
+          // so we shouldn't exclude the possibility that the cert has become valid
+          // since the build date.
+          if (buildDate > systemDate && new Date(certRange.notAfter) > buildDate) {
+            let formatter = new Services.intl.DateTimeFormat(undefined, {
               dateStyle: "short"
             });
 
-            content.document.getElementById("wrongSystemTimeWithoutReference_URL")
-              .textContent = content.document.location.hostname;
-            content.document.getElementById("wrongSystemTimeWithoutReference_systemDate")
+            doc.getElementById("wrongSystemTimeWithoutReference_URL")
+              .textContent = doc.location.hostname;
+            doc.getElementById("wrongSystemTimeWithoutReference_systemDate")
               .textContent = formatter.format(systemDate);
 
-            content.document.getElementById("errorShortDesc")
-              .style.display = "none";
-            content.document.getElementById("wrongSystemTimeWithoutReferencePanel")
-              .style.display = "block";
+            doc.getElementById("errorShortDesc").style.display = "none";
+            doc.getElementById("wrongSystemTimeWithoutReferencePanel").style.display = "block";
           }
         }
         learnMoreLink.href = baseURL + "time-errors";
@@ -496,13 +571,20 @@ var AboutNetAndCertErrorListener = {
   },
 
   handleEvent(aEvent) {
-    if (!this.isAboutNetError && !this.isAboutCertError) {
+    let doc;
+    if (aEvent.originalTarget instanceof Ci.nsIDOMDocument) {
+      doc = aEvent.originalTarget;
+    } else {
+      doc = aEvent.originalTarget.ownerDocument;
+    }
+
+    if (!this.isAboutNetError(doc) && !this.isAboutCertError(doc)) {
       return;
     }
 
     switch (aEvent.type) {
     case "AboutNetErrorLoad":
-      this.onPageLoad(aEvent);
+      this.onPageLoad(aEvent.originalTarget, doc.defaultView);
       break;
     case "AboutNetErrorOpenCaptivePortal":
       this.openCaptivePortalPage(aEvent);
@@ -517,7 +599,10 @@ var AboutNetAndCertErrorListener = {
   },
 
   changedCertPrefs() {
-    for (let prefName of PREF_SSL_IMPACT) {
+    let prefSSLImpact = PREF_SSL_IMPACT_ROOTS.reduce((prefs, root) => {
+       return prefs.concat(Services.prefs.getChildList(root));
+    }, []);
+    for (let prefName of prefSSLImpact) {
       if (Services.prefs.prefHasUserValue(prefName)) {
         return true;
       }
@@ -526,19 +611,81 @@ var AboutNetAndCertErrorListener = {
     return false;
   },
 
-  onPageLoad(evt) {
-    if (this.isAboutCertError) {
-      let originalTarget = evt.originalTarget;
-      let ownerDoc = originalTarget.ownerDocument;
-      ClickEventHandler.onCertError(originalTarget, ownerDoc);
+   _getErrorMessageFromCode(securityInfo, doc) {
+     let uri = Services.io.newURI(doc.location);
+     let hostString = uri.host;
+     if (uri.port != 443 && uri.port != -1) {
+       hostString = uri.hostPort;
+     }
+
+     let id_str = "";
+     switch (securityInfo.errorCode) {
+       case SSL_ERROR_SSL_DISABLED:
+         id_str = "PSMERR_SSL_Disabled";
+         break;
+       case SSL_ERROR_SSL2_DISABLED:
+         id_str = "PSMERR_SSL2_Disabled";
+         break;
+       case SEC_ERROR_REUSED_ISSUER_AND_SERIAL:
+         id_str = "PSMERR_HostReusedIssuerSerial";
+         break;
+     }
+     let nss_error_id_str = securityInfo.errorCodeString;
+     let msg2 = "";
+     if (id_str) {
+       msg2 = gPipNSSBundle.GetStringFromName(id_str) + "\n";
+     } else if (nss_error_id_str) {
+       msg2 = gNSSErrorsBundle.GetStringFromName(nss_error_id_str) + "\n";
+     }
+
+     if (!msg2) {
+       // We couldn't get an error message. Use the error string.
+       // Note that this is different from before where we used PR_ErrorToString.
+       msg2 = nss_error_id_str;
+     }
+     let msg = gPipNSSBundle.formatStringFromName("SSLConnectionErrorPrefix2",
+                                                  [hostString, msg2], 2);
+
+     if (nss_error_id_str) {
+       msg += gPipNSSBundle.formatStringFromName("certErrorCodePrefix3",
+                                                 [nss_error_id_str], 1) + "\n";
+     }
+     return msg;
+   },
+
+  onPageLoad(originalTarget, win) {
+    // Values for telemtery bins: see TLS_ERROR_REPORT_UI in Histograms.json
+    const TLS_ERROR_REPORT_TELEMETRY_UI_SHOWN = 0;
+
+    let hideAddExceptionButton = false;
+
+    if (this.isAboutCertError(win.document)) {
+      ClickEventHandler.onCertError(originalTarget, win);
+      hideAddExceptionButton =
+        Services.prefs.getBoolPref("security.certerror.hideAddException", false);
+    }
+    if (this.isAboutNetError(win.document)) {
+      let docShell = win.document.docShell;
+      if (docShell) {
+        let {securityInfo} = docShell.failedChannel;
+        // We don't have a securityInfo when this is for example a DNS error.
+        if (securityInfo) {
+          securityInfo.QueryInterface(Ci.nsITransportSecurityInfo);
+          let msg = this._getErrorMessageFromCode(securityInfo,
+                                                  win.document);
+          let id = win.document.getElementById("errorShortDescText");
+          id.textContent = msg;
+        }
+      }
     }
 
     let automatic = Services.prefs.getBoolPref("security.ssl.errorReporting.automatic");
-    content.dispatchEvent(new content.CustomEvent("AboutNetErrorOptions", {
+    win.dispatchEvent(new win.CustomEvent("AboutNetErrorOptions", {
       detail: JSON.stringify({
         enabled: Services.prefs.getBoolPref("security.ssl.errorReporting.enabled"),
         changedCertPrefs: this.changedCertPrefs(),
-        automatic
+        automatic,
+        hideAddExceptionButton,
       })
     }));
 
@@ -560,26 +707,28 @@ var AboutNetAndCertErrorListener = {
       automatic: evt.detail
     });
 
-    // if we're enabling reports, send a report for this failure
+    // If we're enabling reports, send a report for this failure.
     if (evt.detail) {
-      let {host, port} = content.document.mozDocumentURIIfNotForErrorPages;
-      sendAsyncMessage("Browser:SendSSLErrorReport", {
-        uri: { host, port },
-        securityInfo: getSerializedSecurityInfo(docShell),
-      });
+      let win = evt.originalTarget.ownerGlobal;
+      let docShell = win.document.docShell;
 
+      let {securityInfo} = docShell.failedChannel;
+      securityInfo.QueryInterface(Ci.nsITransportSecurityInfo);
+      let {host, port} = win.document.mozDocumentURIIfNotForErrorPages;
+
+      let errorReporter = Cc["@mozilla.org/securityreporter;1"]
+                            .getService(Ci.nsISecurityReporter);
+      errorReporter.reportTLSError(securityInfo, host, port);
     }
   },
-}
+};
 
 AboutNetAndCertErrorListener.init(this);
 AboutBlockedSiteListener.init(this);
 
 var ClickEventHandler = {
   init: function init() {
-    Cc["@mozilla.org/eventlistenerservice;1"]
-      .getService(Ci.nsIEventListenerService)
-      .addSystemEventListener(global, "click", this, true);
+    Services.els.addSystemEventListener(global, "click", this, true);
   },
 
   handleEvent(event) {
@@ -594,15 +743,17 @@ var ClickEventHandler = {
     }
 
     // Handle click events from about pages
-    if (ownerDoc.documentURI.startsWith("about:certerror")) {
-      this.onCertError(originalTarget, ownerDoc);
-      return;
-    } else if (ownerDoc.documentURI.startsWith("about:blocked")) {
-      this.onAboutBlocked(originalTarget, ownerDoc);
-      return;
-    } else if (ownerDoc.documentURI.startsWith("about:neterror")) {
-      this.onAboutNetError(event, ownerDoc.documentURI);
-      return;
+    if (event.button == 0) {
+      if (AboutNetAndCertErrorListener.isAboutCertError(ownerDoc)) {
+        this.onCertError(originalTarget, ownerDoc.defaultView);
+        return;
+      } else if (ownerDoc.documentURI.startsWith("about:blocked")) {
+        this.onAboutBlocked(originalTarget, ownerDoc);
+        return;
+      } else if (AboutNetAndCertErrorListener.isAboutNetError(ownerDoc)) {
+        this.onAboutNetError(event, ownerDoc.documentURI);
+        return;
+      }
     }
 
     let [href, node, principal] = this._hrefAndLinkNodeForClickEvent(event);
@@ -647,15 +798,13 @@ var ClickEventHandler = {
           }
         }
       }
-      json.noReferrer = BrowserUtils.linkHasNoReferrer(node)
+      json.noReferrer = BrowserUtils.linkHasNoReferrer(node);
 
       // Check if the link needs to be opened with mixed content allowed.
       // Only when the owner doc has |mixedContentChannel| and the same origin
       // should we allow mixed content.
       json.allowMixedContent = false;
-      let docshell = ownerDoc.defaultView.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIWebNavigation)
-                             .QueryInterface(Ci.nsIDocShell);
+      let docshell = ownerDoc.docShell;
       if (docShell.mixedContentChannel) {
         const sm = Services.scriptSecurityManager;
         try {
@@ -677,14 +826,13 @@ var ClickEventHandler = {
     }
   },
 
-  onCertError(targetElement, ownerDoc) {
-    let docShell = ownerDoc.defaultView.QueryInterface(Ci.nsIInterfaceRequestor)
-                                       .getInterface(Ci.nsIWebNavigation)
-                                       .QueryInterface(Ci.nsIDocShell);
+  onCertError(targetElement, win) {
+    let docShell = win.document.docShell;
     sendAsyncMessage("Browser:CertExceptionError", {
-      location: ownerDoc.location.href,
+      frameId: WebNavigationFrames.getFrameId(win),
+      location: win.document.location.href,
       elementId: targetElement.getAttribute("id"),
-      isTopFrame: (ownerDoc.defaultView.parent === ownerDoc.defaultView),
+      isTopFrame: (win.parent === win),
       securityInfoAsString: getSerializedSecurityInfo(docShell),
     });
   },
@@ -695,6 +843,8 @@ var ClickEventHandler = {
       reason = "malware";
     } else if (/e=unwantedBlocked/.test(ownerDoc.documentURI)) {
       reason = "unwanted";
+    } else if (/e=harmfulBlocked/.test(ownerDoc.documentURI)) {
+      reason = "harmful";
     }
 
     let docShell = ownerDoc.defaultView.QueryInterface(Ci.nsIInterfaceRequestor)
@@ -782,6 +932,7 @@ var ClickEventHandler = {
 ClickEventHandler.init();
 
 ContentLinkHandler.init(this);
+ContentMetaHandler.init(this);
 
 // TODO: Load this lazily so the JSM is run only if a relevant event/message fires.
 var pluginContent = new PluginContent(global);
@@ -823,196 +974,21 @@ var PageMetadataMessenger = {
   receiveMessage(message) {
     switch (message.name) {
       case "PageMetadata:GetPageData": {
-        let target = message.objects.target;
+        let target = contextMenu.getTarget(message);
         let result = PageMetadata.getData(content.document, target);
         sendAsyncMessage("PageMetadata:PageDataResult", result);
         break;
       }
       case "PageMetadata:GetMicroformats": {
-        let target = message.objects.target;
+        let target = contextMenu.getTarget(message);
         let result = PageMetadata.getMicroformats(content.document, target);
         sendAsyncMessage("PageMetadata:MicroformatsResult", result);
         break;
       }
     }
   }
-}
+};
 PageMetadataMessenger.init();
-
-addEventListener("ActivateSocialFeature", function(aEvent) {
-  let document = content.document;
-  let dwu = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindowUtils);
-  if (!dwu.isHandlingUserInput) {
-    Cu.reportError("attempt to activate provider without user input from " + document.nodePrincipal.origin);
-    return;
-  }
-
-  let node = aEvent.target;
-  let ownerDocument = node.ownerDocument;
-  let data = node.getAttribute("data-service");
-  if (data) {
-    try {
-      data = JSON.parse(data);
-    } catch (e) {
-      Cu.reportError("Social Service manifest parse error: " + e);
-      return;
-    }
-  } else {
-    Cu.reportError("Social Service manifest not available");
-    return;
-  }
-
-  sendAsyncMessage("Social:Activation", {
-    url: ownerDocument.location.href,
-    origin: ownerDocument.nodePrincipal.origin,
-    manifest: data,
-    triggeringPrincipal: Utils.serializePrincipal(ownerDocument.nodePrincipal),
-  });
-}, true, true);
-
-addMessageListener("ContextMenu:SaveVideoFrameAsImage", (message) => {
-  let video = message.objects.target;
-  let canvas = content.document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-
-  let ctxDraw = canvas.getContext("2d");
-  ctxDraw.drawImage(video, 0, 0);
-  sendAsyncMessage("ContextMenu:SaveVideoFrameAsImage:Result", {
-    dataURL: canvas.toDataURL("image/jpeg", ""),
-  });
-});
-
-addMessageListener("ContextMenu:MediaCommand", (message) => {
-  E10SUtils.wrapHandlingUserInput(
-    content, message.data.handlingUserInput,
-    () => {
-      let media = message.objects.element;
-      switch (message.data.command) {
-        case "play":
-          media.play();
-          break;
-        case "pause":
-          media.pause();
-          break;
-        case "loop":
-          media.loop = !media.loop;
-          break;
-        case "mute":
-          media.muted = true;
-          break;
-        case "unmute":
-          media.muted = false;
-          break;
-        case "playbackRate":
-          media.playbackRate = message.data.data;
-          break;
-        case "hidecontrols":
-          media.removeAttribute("controls");
-          break;
-        case "showcontrols":
-          media.setAttribute("controls", "true");
-          break;
-        case "fullscreen":
-          if (content.document.fullscreenEnabled)
-            media.requestFullscreen();
-          break;
-      }
-    });
-});
-
-addMessageListener("ContextMenu:Canvas:ToBlobURL", (message) => {
-  message.objects.target.toBlob((blob) => {
-    let blobURL = URL.createObjectURL(blob);
-    sendAsyncMessage("ContextMenu:Canvas:ToBlobURL:Result", { blobURL });
-  });
-});
-
-addMessageListener("ContextMenu:ReloadFrame", (message) => {
-  message.objects.target.ownerDocument.location.reload();
-});
-
-addMessageListener("ContextMenu:ReloadImage", (message) => {
-  let image = message.objects.target;
-  if (image instanceof Ci.nsIImageLoadingContent)
-    image.forceReload();
-});
-
-addMessageListener("ContextMenu:BookmarkFrame", (message) => {
-  let frame = message.objects.target.ownerDocument;
-  sendAsyncMessage("ContextMenu:BookmarkFrame:Result",
-                   { title: frame.title,
-                     description: PlacesUIUtils.getDescriptionFromDocument(frame) });
-});
-
-addMessageListener("ContextMenu:SearchFieldBookmarkData", (message) => {
-  let node = message.objects.target;
-
-  let charset = node.ownerDocument.characterSet;
-
-  let formBaseURI = Services.io.newURI(node.form.baseURI, charset);
-
-  let formURI = Services.io.newURI(node.form.getAttribute("action"), charset,
-                                   formBaseURI);
-
-  let spec = formURI.spec;
-
-  let isURLEncoded =
-               (node.form.method.toUpperCase() == "POST"
-                && (node.form.enctype == "application/x-www-form-urlencoded" ||
-                    node.form.enctype == ""));
-
-  let title = node.ownerDocument.title;
-  let description = PlacesUIUtils.getDescriptionFromDocument(node.ownerDocument);
-
-  let formData = [];
-
-  function escapeNameValuePair(aName, aValue, aIsFormUrlEncoded) {
-    if (aIsFormUrlEncoded) {
-      return escape(aName + "=" + aValue);
-    }
-    return escape(aName) + "=" + escape(aValue);
-  }
-
-  for (let el of node.form.elements) {
-    if (!el.type) // happens with fieldsets
-      continue;
-
-    if (el == node) {
-      formData.push((isURLEncoded) ? escapeNameValuePair(el.name, "%s", true) :
-                                     // Don't escape "%s", just append
-                                     escapeNameValuePair(el.name, "", false) + "%s");
-      continue;
-    }
-
-    let type = el.type.toLowerCase();
-
-    if (((el instanceof content.HTMLInputElement && el.mozIsTextField(true)) ||
-        type == "hidden" || type == "textarea") ||
-        ((type == "checkbox" || type == "radio") && el.checked)) {
-      formData.push(escapeNameValuePair(el.name, el.value, isURLEncoded));
-    } else if (el instanceof content.HTMLSelectElement && el.selectedIndex >= 0) {
-      for (let j = 0; j < el.options.length; j++) {
-        if (el.options[j].selected)
-          formData.push(escapeNameValuePair(el.name, el.options[j].value,
-                                            isURLEncoded));
-      }
-    }
-  }
-
-  let postData;
-
-  if (isURLEncoded)
-    postData = formData.join("&");
-  else {
-    let separator = spec.includes("?") ? "&" : "?";
-    spec += separator + formData.join("&");
-  }
-
-  sendAsyncMessage("ContextMenu:SearchFieldBookmarkData:Result",
-                   { spec, title, description, postData, charset });
-});
 
 addMessageListener("Bookmarks:GetPageDetails", (message) => {
   let doc = content.document;
@@ -1036,6 +1012,7 @@ var LightWeightThemeWebInstallListener = {
       case "InstallBrowserTheme": {
         sendAsyncMessage("LightWeightThemeWebInstaller:Install", {
           baseURI: event.target.baseURI,
+          principal: event.target.nodePrincipal,
           themeData: event.target.getAttribute("data-browsertheme"),
         });
         break;
@@ -1043,6 +1020,7 @@ var LightWeightThemeWebInstallListener = {
       case "PreviewBrowserTheme": {
         sendAsyncMessage("LightWeightThemeWebInstaller:Preview", {
           baseURI: event.target.baseURI,
+          principal: event.target.nodePrincipal,
           themeData: event.target.getAttribute("data-browsertheme"),
         });
         this._previewWindow = event.target.ownerGlobal;
@@ -1057,7 +1035,7 @@ var LightWeightThemeWebInstallListener = {
       case "ResetBrowserThemePreview": {
         if (this._previewWindow) {
           sendAsyncMessage("LightWeightThemeWebInstaller:ResetPreview",
-                           {baseURI: event.target.baseURI});
+                           {principal: event.target.nodePrincipal});
           this._resetPreviewWindow();
         }
         break;
@@ -1072,54 +1050,6 @@ var LightWeightThemeWebInstallListener = {
 };
 
 LightWeightThemeWebInstallListener.init();
-
-function disableSetDesktopBackground(aTarget) {
-  // Disable the Set as Desktop Background menu item if we're still trying
-  // to load the image or the load failed.
-  if (!(aTarget instanceof Ci.nsIImageLoadingContent))
-    return true;
-
-  if (("complete" in aTarget) && !aTarget.complete)
-    return true;
-
-  if (aTarget.currentURI.schemeIs("javascript"))
-    return true;
-
-  let request = aTarget.QueryInterface(Ci.nsIImageLoadingContent)
-                       .getRequest(Ci.nsIImageLoadingContent.CURRENT_REQUEST);
-  if (!request)
-    return true;
-
-  return false;
-}
-
-addMessageListener("ContextMenu:SetAsDesktopBackground", (message) => {
-  let target = message.objects.target;
-
-  // Paranoia: check disableSetDesktopBackground again, in case the
-  // image changed since the context menu was initiated.
-  let disable = disableSetDesktopBackground(target);
-
-  if (!disable) {
-    try {
-      BrowserUtils.urlSecurityCheck(target.currentURI.spec, target.ownerDocument.nodePrincipal);
-      let canvas = content.document.createElement("canvas");
-      canvas.width = target.naturalWidth;
-      canvas.height = target.naturalHeight;
-      let ctx = canvas.getContext("2d");
-      ctx.drawImage(target, 0, 0);
-      let dataUrl = canvas.toDataURL();
-      sendAsyncMessage("ContextMenu:SetAsDesktopBackground:Result",
-                       { dataUrl });
-    } catch (e) {
-      Cu.reportError(e);
-      disable = true;
-    }
-  }
-
-  if (disable)
-    sendAsyncMessage("ContextMenu:SetAsDesktopBackground:Result", { disable });
-});
 
 var PageInfoListener = {
 
@@ -1143,31 +1073,15 @@ var PageInfoListener = {
       document = content.document;
     }
 
-    let imageElement = message.objects.imageElement;
-
     let pageInfoData = {metaViewRows: this.getMetaInfo(document),
                         docInfo: this.getDocumentInfo(document),
                         feeds: this.getFeedsInfo(document, strings),
-                        windowInfo: this.getWindowInfo(window),
-                        imageInfo: this.getImageInfo(imageElement)};
+                        windowInfo: this.getWindowInfo(window)};
 
     sendAsyncMessage("PageInfo:data", pageInfoData);
 
     // Separate step so page info dialog isn't blank while waiting for this to finish.
     this.getMediaInfo(document, window, strings);
-  },
-
-  getImageInfo(imageElement) {
-    let imageInfo = null;
-    if (imageElement) {
-      imageInfo = {
-        currentSrc: imageElement.currentSrc,
-        width: imageElement.width,
-        height: imageElement.height,
-        imageText: imageElement.title || imageElement.alt
-      };
-    }
-    return imageInfo;
   },
 
   getMetaInfo(document) {
@@ -1190,7 +1104,7 @@ var PageInfoListener = {
 
     let hostName = null;
     try {
-      hostName = window.location.host;
+      hostName = Services.io.newURI(window.location.href).displayHost;
     } catch (exception) { }
 
     windowInfo.hostName = hostName;
@@ -1201,7 +1115,15 @@ var PageInfoListener = {
     let docInfo = {};
     docInfo.title = document.title;
     docInfo.location = document.location.toString();
+    try {
+      docInfo.location = Services.io.newURI(document.location.toString()).displaySpec;
+    } catch (exception) { }
     docInfo.referrer = document.referrer;
+    try {
+      if (document.referrer) {
+        docInfo.referrer = Services.io.newURI(document.referrer).displaySpec;
+      }
+    } catch (exception) { }
     docInfo.compatMode = document.compatMode;
     docInfo.contentType = document.contentType;
     docInfo.characterSet = document.characterSet;
@@ -1210,7 +1132,6 @@ var PageInfoListener = {
 
     let documentURIObject = {};
     documentURIObject.spec = document.documentURIObject.spec;
-    documentURIObject.originCharset = document.documentURIObject.originCharset;
     docInfo.documentURIObject = documentURIObject;
 
     docInfo.isContentWindowPrivate = PrivateBrowsingUtils.isContentWindowPrivate(content);
@@ -1304,29 +1225,20 @@ var PageInfoListener = {
     };
 
     if (computedStyle) {
-      let addImgFunc = (label, val) => {
-        if (val.primitiveType == content.CSSPrimitiveValue.CSS_URI) {
-          addImage(val.getStringValue(), label, strings.notSet, elem, true);
-        } else if (val.primitiveType == content.CSSPrimitiveValue.CSS_STRING) {
-          // This is for -moz-image-rect.
-          // TODO: Reimplement once bug 714757 is fixed.
-          let strVal = val.getStringValue();
-          if (strVal.search(/^.*url\(\"?/) > -1) {
-            let url = strVal.replace(/^.*url\(\"?/, "").replace(/\"?\).*$/, "");
-            addImage(url, label, strings.notSet, elem, true);
-          }
-        } else if (val.cssValueType == content.CSSValue.CSS_VALUE_LIST) {
-          // Recursively resolve multiple nested CSS value lists.
-          for (let i = 0; i < val.length; i++) {
-            addImgFunc(label, val.item(i));
-          }
+      let addImgFunc = (label, urls) => {
+        for (let url of urls) {
+          addImage(url, label, strings.notSet, elem, true);
         }
       };
-
-      addImgFunc(strings.mediaBGImg, computedStyle.getPropertyCSSValue("background-image"));
-      addImgFunc(strings.mediaBorderImg, computedStyle.getPropertyCSSValue("border-image-source"));
-      addImgFunc(strings.mediaListImg, computedStyle.getPropertyCSSValue("list-style-image"));
-      addImgFunc(strings.mediaCursor, computedStyle.getPropertyCSSValue("cursor"));
+      // FIXME: This is missing properties. See the implementation of
+      // getCSSImageURLs for a list of properties.
+      //
+      // If you don't care about the message you can also pass "all" here and
+      // get all the ones the browser knows about.
+      addImgFunc(strings.mediaBGImg, computedStyle.getCSSImageURLs("background-image"));
+      addImgFunc(strings.mediaBorderImg, computedStyle.getCSSImageURLs("border-image-source"));
+      addImgFunc(strings.mediaListImg, computedStyle.getCSSImageURLs("list-style-image"));
+      addImgFunc(strings.mediaCursor, computedStyle.getCSSImageURLs("cursor"));
     }
 
     // One swi^H^H^Hif-else to rule them all.
@@ -1612,8 +1524,8 @@ let OfflineApps = {
       }
     }
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 };
 
 addEventListener("MozApplicationManifest", OfflineApps, false);

@@ -6,13 +6,11 @@
 
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-const { PerformanceStats } = Cu.import("resource://gre/modules/PerformanceStats.jsm", {});
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
-const { ObjectUtils } = Cu.import("resource://gre/modules/ObjectUtils.jsm", {});
-const { Memory } = Cu.import("resource://gre/modules/Memory.jsm", {});
-const { DownloadUtils } = Cu.import("resource://gre/modules/DownloadUtils.jsm", {});
+const { PerformanceStats } = ChromeUtils.import("resource://gre/modules/PerformanceStats.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+const { ObjectUtils } = ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm", {});
+const { Memory } = ChromeUtils.import("resource://gre/modules/Memory.jsm", {});
+const { DownloadUtils } = ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm", {});
 
 // about:performance observes notifications on this topic.
 // if a notification is sent, this causes the page to be updated immediately,
@@ -129,7 +127,7 @@ let tabFinder = {
 function wait(ms = 0) {
   try {
     let resolve;
-    let p = new Promise(resolve_ => { resolve = resolve_ });
+    let p = new Promise(resolve_ => { resolve = resolve_; });
     setTimeout(resolve, ms);
     return p;
   } catch (e) {
@@ -552,7 +550,7 @@ var View = {
       toAdd.push(cachedElements);
       cachedElements.eltTitle.textContent = delta.readableName;
       cachedElements.eltName.textContent = `Full name: ${delta.fullName}.`;
-      cachedElements.eltLoaded.textContent = `Measure start: ${Math.round(delta.age / 1000)} seconds ago.`
+      cachedElements.eltLoaded.textContent = `Measure start: ${Math.round(delta.age / 1000)} seconds ago.`;
 
       let processes = delta.diff.processes.map(proc => `${proc.processId} (${proc.isChildProcess ? "child" : "parent"})`);
       cachedElements.eltProcess.textContent = `Processes: ${processes.join(", ")}`;
@@ -584,7 +582,7 @@ var View = {
 
           let describeFrequency;
           if (frequency <= MAX_FREQUENCY_FOR_NO_IMPACT) {
-            describeFrequency = `has no impact on the performance of ${BRAND_NAME}.`
+            describeFrequency = `has no impact on the performance of ${BRAND_NAME}.`;
           } else {
             let describeImpact;
             if (frequency <= MAX_FREQUENCY_FOR_RARE) {
@@ -599,10 +597,10 @@ var View = {
             }
             // At this stage, `sum != 0`
             if (delta.alerts[1] / sum > MIN_PROPORTION_FOR_MAJOR_IMPACT) {
-              describeImpact = "When this happens, the slowdown is generally important."
+              describeImpact = "When this happens, the slowdown is generally important.";
               impact *= 2;
             } else {
-              describeImpact = "When this happens, the slowdown is generally noticeable."
+              describeImpact = "When this happens, the slowdown is generally noticeable.";
             }
 
             eltImpact.textContent = ` ${describeFrequency} ${describeImpact}`;
@@ -832,7 +830,7 @@ var Control = {
         window.clearInterval(this._autoRefreshInterval);
         this._autoRefreshInterval = null;
       }
-    }
+    };
 
     let eltRefresh = document.getElementById("check-autorefresh");
     eltRefresh.addEventListener("change", () => onRefreshChange(true));

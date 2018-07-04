@@ -50,8 +50,8 @@ public:
   void TransferFromImageBitmap(ImageBitmap& aImageBitmap);
 
   // nsICanvasRenderingContextInternal
-  virtual int32_t GetWidth() const override;
-  virtual int32_t GetHeight() const override;
+  virtual int32_t GetWidth() override { return mWidth; }
+  virtual int32_t GetHeight() override { return mHeight; }
 
   NS_IMETHOD SetDimensions(int32_t aWidth, int32_t aHeight) override;
 
@@ -66,13 +66,12 @@ public:
   virtual already_AddRefed<mozilla::gfx::SourceSurface>
   GetSurfaceSnapshot(gfxAlphaType* aOutAlphaType) override;
 
-  virtual void SetIsOpaque(bool aIsOpaque) override;
+  virtual void SetOpaqueValueFromOpaqueAttr(bool aOpaqueAttrValue) override;
   virtual bool GetIsOpaque() override;
   NS_IMETHOD Reset() override;
   virtual already_AddRefed<Layer> GetCanvasLayer(nsDisplayListBuilder* aBuilder,
                                                  Layer* aOldLayer,
-                                                 LayerManager* aManager,
-                                                 bool aMirror = false) override;
+                                                 LayerManager* aManager) override;
   virtual void MarkContextClean() override;
 
   NS_IMETHOD Redraw(const gfxRect& aDirty) override;

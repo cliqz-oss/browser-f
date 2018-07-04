@@ -37,6 +37,7 @@ from mozpack.chrome.manifest import (
     Manifest,
 )
 from mozpack.errors import errors
+from mozpack.mozjar import JAR_DEFLATED
 from mozpack.packager.unpack import UnpackFinder
 from createprecomplete import generate_precomplete
 
@@ -215,6 +216,13 @@ def _repack(app_finder, l10n_finder, copier, formatter, non_chrome=set()):
                 if not formatter.contains(p):
                     formatter.add(p, f)
 
+    # Resources in `localization` directories are packaged from the source and then
+    # if localized versions are present in the l10n dir, we package them as well
+    # keeping the source dir resources as a runtime fallback.
+    for p, f in l10n_finder.find('**/localization'):
+        if not formatter.contains(p):
+            formatter.add(p, f)
+
     # Transplant jar preloading information.
     for path, log in app_finder.jarlogs.iteritems():
         assert isinstance(copier[path], Jarrer)
@@ -251,16 +259,17 @@ def repack(source, l10n, extra_l10n={}, non_resources=[], non_chrome=set()):
             finders[base] = UnpackFinder(path)
         l10n_finder = ComposedFinder(finders)
     copier = FileCopier()
+    compress = min(app_finder.compressed, JAR_DEFLATED)
     if app_finder.kind == 'flat':
         formatter = FlatFormatter(copier)
     elif app_finder.kind == 'jar':
         formatter = JarFormatter(copier,
                                  optimize=app_finder.optimizedjars,
-                                 compress=app_finder.compressed)
+                                 compress=compress)
     elif app_finder.kind == 'omni':
         formatter = OmniJarFormatter(copier, app_finder.omnijar,
                                      optimize=app_finder.optimizedjars,
-                                     compress=app_finder.compressed,
+                                     compress=compress,
                                      non_resources=non_resources)
 
     with errors.accumulate():

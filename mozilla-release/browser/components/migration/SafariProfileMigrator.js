@@ -4,27 +4,19 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource:///modules/MigrationUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
-                                  "resource://gre/modules/Downloads.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PropertyListUtils",
-                                  "resource://gre/modules/PropertyListUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
-                                  "resource://gre/modules/FormHistory.jsm");
+ChromeUtils.defineModuleGetter(this, "PropertyListUtils",
+                               "resource://gre/modules/PropertyListUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "FormHistory",
+                               "resource://gre/modules/FormHistory.jsm");
 
 Cu.importGlobalProperties(["URL"]);
 
@@ -49,7 +41,7 @@ Bookmarks.prototype = {
         this.READING_LIST_COLLECTION : this.ROOT_COLLECTION;
       await this._migrateCollection(children, collection);
     })().then(() => aCallback(true),
-                        e => { Cu.reportError(e); aCallback(false) });
+                        e => { Cu.reportError(e); aCallback(false); });
   },
 
   // Bookmarks collections in Safari.  Constants for migrateCollection.
@@ -197,9 +189,9 @@ History.prototype = {
       // reference date of NSDate.
       let date = new Date("1 January 2001, GMT");
       date.setMilliseconds(asDouble * 1000);
-      return date * 1000;
+      return date;
     }
-    return 0;
+    return new Date();
   },
 
   migrate: function H_migrate(aCallback) {
@@ -210,44 +202,48 @@ History.prototype = {
         if (!aDict.has("WebHistoryDates"))
           throw new Error("Unexpected history-property list format");
 
-        // Safari's History file contains only top-level urls.  It does not
-        // distinguish between typed urls and linked urls.
-        let transType = PlacesUtils.history.TRANSITION_LINK;
-
-        let places = [];
+        let pageInfos = [];
         let entries = aDict.get("WebHistoryDates");
+        let failedOnce = false;
         for (let entry of entries) {
           if (entry.has("lastVisitedDate")) {
-            let visitDate = this._parseCocoaDate(entry.get("lastVisitedDate"));
+            let date = this._parseCocoaDate(entry.get("lastVisitedDate"));
             try {
-              places.push({ uri: NetUtil.newURI(entry.get("")),
-                            title: entry.get("title"),
-                            visits: [{ transitionType: transType,
-                                       visitDate }] });
+              pageInfos.push({
+                url: new URL(entry.get("")),
+                title: entry.get("title"),
+                visits: [{
+                  // Safari's History file contains only top-level urls.  It does not
+                  // distinguish between typed urls and linked urls.
+                  transition: PlacesUtils.history.TRANSITIONS.LINK,
+                  date,
+                }],
+              });
             } catch (ex) {
               // Safari's History file may contain malformed URIs which
               // will be ignored.
               Cu.reportError(ex);
+              failedOnce = true;
             }
           }
         }
-        if (places.length > 0) {
-          MigrationUtils.insertVisitsWrapper(places, {
-            ignoreErrors: true,
-            ignoreResults: true,
-            handleCompletion(updatedCount) {
-              aCallback(updatedCount > 0);
-            }
-          });
-        } else {
-          aCallback(false);
+        if (pageInfos.length == 0) {
+          // If we failed at least once, then we didn't succeed in importing,
+          // otherwise we didn't actually have anything to import, so we'll
+          // report it as a success.
+          aCallback(!failedOnce);
+          return;
         }
+
+        MigrationUtils.insertVisitsWrapper(pageInfos).then(
+          () => aCallback(true),
+          () => aCallback(false));
       } catch (ex) {
         Cu.reportError(ex);
         aCallback(false);
       }
     });
-  }
+  },
 };
 
 /**
@@ -288,24 +284,6 @@ MainPreferencesPropertyList.prototype = {
       });
     }
   },
-
-  // Workaround for nsIBrowserProfileMigrator.sourceHomePageURL until
-  // it's replaced with an async method.
-  _readSync: function MPPL__readSync() {
-    if ("_dict" in this)
-      return this._dict;
-
-    let inputStream = Cc["@mozilla.org/network/file-input-stream;1"].
-                      createInstance(Ci.nsIFileInputStream);
-    inputStream.init(this._file, -1, -1, 0);
-    let binaryStream = Cc["@mozilla.org/binaryinputstream;1"].
-                       createInstance(Ci.nsIBinaryInputStream);
-    binaryStream.setInputStream(inputStream);
-    let bytes = binaryStream.readByteArray(inputStream.available());
-    this._dict = PropertyListUtils._readFromArrayBufferSync(
-      new Uint8Array(bytes).buffer);
-    return this._dict;
-  }
 };
 
 function SearchStrings(aMainPreferencesPropertyListInstance) {
@@ -331,7 +309,7 @@ SearchStrings.prototype = {
           }
         }
       }, aCallback));
-  }
+  },
 };
 
 function SafariProfileMigrator() {
@@ -399,18 +377,7 @@ Object.defineProperty(SafariProfileMigrator.prototype, "mainPreferencesPropertyL
       return this._mainPreferencesPropertyList;
     }
     return this._mainPreferencesPropertyList;
-  }
-});
-
-Object.defineProperty(SafariProfileMigrator.prototype, "sourceHomePageURL", {
-  get: function get_sourceHomePageURL() {
-    if (this.mainPreferencesPropertyList) {
-      let dict = this.mainPreferencesPropertyList._readSync();
-      if (dict.has("HomePage"))
-        return dict.get("HomePage");
-    }
-    return "";
-  }
+  },
 });
 
 SafariProfileMigrator.prototype.classDescription = "Safari Profile Migrator";

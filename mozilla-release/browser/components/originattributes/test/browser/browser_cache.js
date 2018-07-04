@@ -8,9 +8,8 @@
  *   resource would be one. Otherwise, it would be two.
  */
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
 
-let {LoadContextInfo} = Cu.import("resource://gre/modules/LoadContextInfo.jsm", {});
 let protocolProxyService = Cc["@mozilla.org/network/protocol-proxy-service;1"]
                              .getService(Ci.nsIProtocolProxyService);
 
@@ -32,7 +31,7 @@ function clearAllImageCaches() {
   let tools = SpecialPowers.Cc["@mozilla.org/image/tools;1"]
                              .getService(SpecialPowers.Ci.imgITools);
   let imageCache = tools.getImgCacheForDocument(window.document);
-  imageCache.clearCache(true);  // true=chrome
+  imageCache.clearCache(true); // true=chrome
   imageCache.clearCache(false); // false=content
 }
 
@@ -52,7 +51,7 @@ function cacheDataForContext(loadContextInfo) {
         if (iid.equals(Ci.nsICacheStorageVisitor))
           return this;
 
-        throw Components.results.NS_ERROR_NO_INTERFACE;
+        throw Cr.NS_ERROR_NO_INTERFACE;
       }
     };
     // Visiting the disk cache also visits memory storage so we do not
@@ -73,11 +72,11 @@ function observeChannels(onChannel) {
   // We use a dummy proxy filter to catch all channels, even those that do not
   // generate an "http-on-modify-request" notification, such as link preconnects.
   let proxyFilter = {
-    applyFilter(aProxyService, aChannel, aProxy) {
+    applyFilter(aProxyService, aChannel, aProxy, aCallback) {
       // We have the channel; provide it to the callback.
       onChannel(aChannel);
       // Pass on aProxy unmodified.
-      return aProxy;
+      aCallback.onProxyFilterResult(aProxy);
     }
   };
   protocolProxyService.registerChannelFilter(proxyFilter, 0);
@@ -127,9 +126,7 @@ async function doInit(aMode) {
                                            ["network.predictor.enable-prefetch", false]]});
   clearAllImageCaches();
 
-  let networkCache = Cc["@mozilla.org/netwerk/cache-storage-service;1"]
-                        .getService(Ci.nsICacheStorageService);
-  networkCache.clear();
+  Services.cache2.clear();
 
   randomSuffix = Math.random();
   stopObservingChannels = startObservingChannels(aMode);
@@ -163,7 +160,8 @@ async function doTest(aBrowser) {
       let trackLoaded = false;
 
       let audioListener = () => {
-        audio.removeEventListener("canplaythrough", audioListener);
+        info(`Audio suspended: ${audioURL + URLSuffix}`);
+        audio.removeEventListener("suspend", audioListener);
 
         audioLoaded = true;
         if (audioLoaded && trackLoaded) {
@@ -172,6 +170,7 @@ async function doTest(aBrowser) {
       };
 
       let trackListener = () => {
+        info(`Audio track loaded: ${audioURL + URLSuffix}`);
         audioTrack.removeEventListener("load", trackListener);
 
         trackLoaded = true;
@@ -180,9 +179,11 @@ async function doTest(aBrowser) {
         }
       };
 
+      info(`Loading audio: ${audioURL + URLSuffix}`);
+
       // Add the event listeners before everything in case we lose events.
       audioTrack.addEventListener("load", trackListener);
-      audio.addEventListener("canplaythrough", audioListener);
+      audio.addEventListener("suspend", audioListener);
 
       // Assign attributes for the audio element.
       audioSource.setAttribute("src", audioURL + URLSuffix);
@@ -200,12 +201,15 @@ async function doTest(aBrowser) {
     // Append the video element into the body, and wait until it's finished.
     await new Promise(resolve => {
       let listener = () => {
-        video.removeEventListener("canplaythrough", listener);
+        info(`Video suspended: ${videoURL + URLSuffix}`);
+        video.removeEventListener("suspend", listener);
         resolve();
       };
 
+      info(`Loading video: ${videoURL + URLSuffix}`);
+
       // Add the event listener before everything in case we lose the event.
-      video.addEventListener("canplaythrough", listener);
+      video.addEventListener("suspend", listener);
 
       // Assign attributes for the video element.
       video.setAttribute("src", videoURL + URLSuffix);
@@ -222,17 +226,17 @@ async function doTest(aBrowser) {
 async function doCheck(aShouldIsolate, aInputA, aInputB) {
   let expectedEntryCount = 1;
   let data = [];
-  data = data.concat(await cacheDataForContext(LoadContextInfo.default));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.private));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, {})));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(false, { userContextId: 1 })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, { userContextId: 1 })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(false, { userContextId: 2 })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, { userContextId: 2 })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(false, { firstPartyDomain: "example.com" })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, { firstPartyDomain: "example.com" })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(false, { firstPartyDomain: "example.org" })));
-  data = data.concat(await cacheDataForContext(LoadContextInfo.custom(true, { firstPartyDomain: "example.org" })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.default));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.private));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, {})));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(false, { userContextId: 1 })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, { userContextId: 1 })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(false, { userContextId: 2 })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, { userContextId: 2 })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(false, { firstPartyDomain: "example.com" })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, { firstPartyDomain: "example.com" })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(false, { firstPartyDomain: "example.org" })));
+  data = data.concat(await cacheDataForContext(Services.loadContextInfo.custom(true, { firstPartyDomain: "example.org" })));
 
   if (aShouldIsolate) {
     expectedEntryCount = 2;

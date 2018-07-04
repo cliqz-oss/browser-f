@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,7 +12,6 @@
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/dom/EventTargetBinding.h"
 #include "nsPresContext.h"
-#include "nsCSSParser.h"
 #include "nsIDocument.h"
 
 #define ONCHANGE_STRING NS_LITERAL_STRING("change")
@@ -21,12 +20,14 @@ namespace mozilla {
 namespace dom {
 
 MediaQueryList::MediaQueryList(nsIDocument* aDocument,
-                               const nsAString& aMediaQueryList)
-  : mDocument(aDocument)
+                               const nsAString& aMediaQueryList,
+                               CallerType aCallerType)
+  : DOMEventTargetHelper(aDocument->GetInnerWindow())
+  , mDocument(aDocument)
+  , mMatches(false)
   , mMatchesValid(false)
 {
-  mMediaList =
-    MediaList::Create(aDocument->GetStyleBackendType(), aMediaQueryList);
+  mMediaList = MediaList::Create(aMediaQueryList, aCallerType);
 
   KeepAliveIfHasListenersFor(ONCHANGE_STRING);
 }
@@ -44,14 +45,14 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(MediaQueryList,
                                                 DOMEventTargetHelper)
   if (tmp->mDocument) {
-    tmp->remove();
+    static_cast<LinkedListElement<MediaQueryList>*>(tmp)->remove();
     NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocument)
   }
   tmp->Disconnect();
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(MediaQueryList)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(MediaQueryList)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(MediaQueryList, DOMEventTargetHelper)
@@ -89,20 +90,15 @@ MediaQueryList::AddListener(EventListener* aListener, ErrorResult& aRv)
 }
 
 void
-MediaQueryList::AddEventListener(const nsAString& aType,
-                                 EventListener* aCallback,
-                                 const AddEventListenerOptionsOrBoolean& aOptions,
-                                 const dom::Nullable<bool>& aWantsUntrusted,
-                                 ErrorResult& aRv)
+MediaQueryList::EventListenerAdded(nsAtom* aType)
 {
-  if (!mMatchesValid) {
-    MOZ_ASSERT(!HasListeners(),
-               "when listeners present, must keep mMatches current");
+  // HasListeners() might still be false if the added thing wasn't a
+  // listener we care about.
+  if (!mMatchesValid && HasListeners()) {
     RecomputeMatches();
   }
 
-  DOMEventTargetHelper::AddEventListener(aType, aCallback, aOptions,
-                                         aWantsUntrusted, aRv);
+  DOMEventTargetHelper::EventListenerAdded(aType);
 }
 
 void
@@ -135,6 +131,8 @@ MediaQueryList::Disconnect()
 void
 MediaQueryList::RecomputeMatches()
 {
+  mMatches = false;
+
   if (!mDocument) {
     return;
   }
@@ -149,13 +147,7 @@ MediaQueryList::RecomputeMatches()
     }
   }
 
-  nsIPresShell* shell = mDocument->GetShell();
-  if (!shell) {
-    // XXXbz What's the right behavior here?  Spec doesn't say.
-    return;
-  }
-
-  nsPresContext* presContext = shell->GetPresContext();
+  nsPresContext* presContext = mDocument->GetPresContext();
   if (!presContext) {
     // XXXbz What's the right behavior here?  Spec doesn't say.
     return;
@@ -204,8 +196,7 @@ MediaQueryList::MaybeNotify()
     MediaQueryListEvent::Constructor(this, ONCHANGE_STRING, init);
   event->SetTrusted(true);
 
-  bool dummy;
-  DispatchEvent(event, &dummy);
+  DispatchEvent(*event);
 }
 
 } // namespace dom

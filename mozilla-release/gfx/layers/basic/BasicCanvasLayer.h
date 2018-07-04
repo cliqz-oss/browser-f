@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,7 +9,6 @@
 
 #include "BasicImplData.h"              // for BasicImplData
 #include "BasicLayers.h"                // for BasicLayerManager
-#include "CopyableCanvasLayer.h"        // for CopyableCanvasLayer
 #include "Layers.h"                     // for CanvasLayer, etc
 #include "nsDebug.h"                    // for NS_ASSERTION
 #include "nsRegion.h"                   // for nsIntRegion
@@ -16,12 +16,12 @@
 namespace mozilla {
 namespace layers {
 
-class BasicCanvasLayer : public CopyableCanvasLayer,
+class BasicCanvasLayer : public CanvasLayer,
                          public BasicImplData
 {
 public:
   explicit BasicCanvasLayer(BasicLayerManager* aLayerManager) :
-    CopyableCanvasLayer(aLayerManager, static_cast<BasicImplData*>(this))
+    CanvasLayer(aLayerManager, static_cast<BasicImplData*>(this))
   { }
 
   virtual void SetVisibleRegion(const LayerIntRegion& aRegion) override
@@ -36,13 +36,12 @@ public:
                      Layer* aMaskLayer) override;
 
 protected:
-
-  already_AddRefed<gfx::SourceSurface> UpdateSurface();
-
   BasicLayerManager* BasicManager()
   {
     return static_cast<BasicLayerManager*>(mManager);
   }
+
+  CanvasRenderer* CreateCanvasRendererInternal() override;
 };
 
 } // namespace layers

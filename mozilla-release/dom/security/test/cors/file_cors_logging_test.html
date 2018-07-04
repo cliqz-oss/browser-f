@@ -11,7 +11,7 @@
 <div id="content" style="display: none">
 </div>
 <pre id="test">
-<script class="testbody" type="application/javascript;version=1.8">
+<script class="testbody" type="application/javascript">
 
 const runPreflightTests = 1;
 const runCookieTests = 1;
@@ -658,10 +658,10 @@ function* runTest() {
         return lName != "accept" &&
                lName != "accept-language" &&
                (lName != "content-type" ||
-                ["text/plain",
+                !["text/plain",
                  "multipart/form-data",
                  "application/x-www-form-urlencoded"]
-                   .indexOf(test.headers[name].toLowerCase()) == -1);
+                   .includes(test.headers[name].toLowerCase()));
       }
       req.url += "&headers=" + escape(test.headers.toSource());
       reqHeaders =

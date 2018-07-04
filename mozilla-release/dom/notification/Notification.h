@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- *//* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,7 +10,7 @@
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/dom/NotificationBinding.h"
-#include "mozilla/dom/workers/bindings/WorkerHolder.h"
+#include "mozilla/dom/WorkerHolder.h"
 
 #include "nsIObserver.h"
 #include "nsISupports.h"
@@ -31,13 +32,10 @@ namespace dom {
 class NotificationRef;
 class WorkerNotificationObserver;
 class Promise;
-
-namespace workers {
-  class WorkerPrivate;
-} // namespace workers
+class WorkerPrivate;
 
 class Notification;
-class NotificationWorkerHolder final : public workers::WorkerHolder
+class NotificationWorkerHolder final : public WorkerHolder
 {
   // Since the feature is strongly held by a Notification, it is ok to hold
   // a raw pointer here.
@@ -47,15 +45,16 @@ public:
   explicit NotificationWorkerHolder(Notification* aNotification);
 
   bool
-  Notify(workers::Status aStatus) override;
+  Notify(WorkerStatus aStatus) override;
 };
 
 // Records telemetry probes at application startup, when a notification is
 // shown, and when the notification permission is revoked for a site.
-class NotificationTelemetryService final : public nsISupports
+class NotificationTelemetryService final : public nsIObserver
 {
 public:
   NS_DECL_ISUPPORTS
+  NS_DECL_NSIOBSERVER
 
   NotificationTelemetryService();
 
@@ -150,7 +149,6 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(Notification, DOMEventTargetHelper)
   NS_DECL_NSIOBSERVER
 
-  static bool RequireInteractionEnabled(JSContext* aCx, JSObject* aObj);
   static bool PrefEnabled(JSContext* aCx, JSObject* aObj);
   // Returns if Notification.get() is allowed for the current global.
   static bool IsGetEnabled(JSContext* aCx, JSObject* aObj);
@@ -248,7 +246,7 @@ public:
                                        const GetNotificationOptions& aFilter,
                                        ErrorResult& aRv);
 
-  static already_AddRefed<Promise> WorkerGet(workers::WorkerPrivate* aWorkerPrivate,
+  static already_AddRefed<Promise> WorkerGet(WorkerPrivate* aWorkerPrivate,
                                              const GetNotificationOptions& aFilter,
                                              const nsAString& aScope,
                                              ErrorResult& aRv);
@@ -291,7 +289,7 @@ public:
 
   // Initialized on the worker thread, never unset, and always used in
   // a read-only capacity. Used on any thread.
-  workers::WorkerPrivate* mWorkerPrivate;
+  WorkerPrivate* mWorkerPrivate;
 
   // Main thread only.
   WorkerNotificationObserver* mObserver;
@@ -372,7 +370,7 @@ protected:
 
   void GetAlertName(nsAString& aRetval)
   {
-    workers::AssertIsOnMainThread();
+    AssertIsOnMainThread();
     if (mAlertName.IsEmpty()) {
       SetAlertName();
     }

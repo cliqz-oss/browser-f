@@ -7,8 +7,12 @@
 // This file exposes the Redux reducers of the box model, grid and grid highlighter
 // settings.
 
+exports.animations = require("devtools/client/inspector/animation/reducers/animations");
 exports.boxModel = require("devtools/client/inspector/boxmodel/reducers/box-model");
+exports.extensionsSidebar = require("devtools/client/inspector/extensions/reducers/sidebar");
+exports.flexbox = require("devtools/client/inspector/flexbox/reducers/flexbox");
 exports.fontOptions = require("devtools/client/inspector/fonts/reducers/font-options");
-exports.fonts = require("devtools/client/inspector/fonts/reducers/fonts");
+exports.fontData = require("devtools/client/inspector/fonts/reducers/fonts");
+exports.fontEditor = require("devtools/client/inspector/fonts/reducers/font-editor");
 exports.grids = require("devtools/client/inspector/grids/reducers/grids");
 exports.highlighterSettings = require("devtools/client/inspector/grids/reducers/highlighter-settings");

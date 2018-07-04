@@ -3,7 +3,7 @@
 
 'use strict';
 
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const {PushDB, PushService, PushServiceHttp2} = serviceExports;
 
@@ -40,7 +40,7 @@ function run_test() {
 
 add_task(async function test_pushUnsubscriptionSuccess() {
   let db = PushServiceHttp2.newPushDB();
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     return db.drop().then(_ => db.close());
   });
 

@@ -1,6 +1,6 @@
 "use strict";
 
-Cu.import("resource://formautofill/FormAutofillContent.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillContent.jsm");
 
 const TESTCASES = [
   {
@@ -67,7 +67,7 @@ FormAutofillContent._markAsAutofillField = function(field) {
 
 TESTCASES.forEach(testcase => {
   add_task(async function() {
-    do_print("Starting testcase: " + testcase.description);
+    info("Starting testcase: " + testcase.description);
 
     markedFieldId = [];
 

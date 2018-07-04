@@ -1,9 +1,14 @@
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource:///modules/SitePermissions.jsm");
-
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource:///modules/SitePermissions.jsm");
 
 const PREF_PERMISSION_FAKE = "media.navigator.permission.fake";
+const PREF_AUDIO_LOOPBACK = "media.audio_loopback_dev";
+const PREF_VIDEO_LOOPBACK = "media.video_loopback_dev";
+const PREF_FAKE_STREAMS = "media.navigator.streams.fake";
 const CONTENT_SCRIPT_HELPER = getRootDirectory(gTestPath) + "get_user_media_content_script.js";
+
+const STATE_CAPTURE_ENABLED = Ci.nsIMediaManagerService.STATE_CAPTURE_ENABLED;
+const STATE_CAPTURE_DISABLED = Ci.nsIMediaManagerService.STATE_CAPTURE_DISABLED;
 
 function waitForCondition(condition, nextTest, errorMsg, retryTimes) {
   retryTimes = typeof retryTimes !== "undefined" ? retryTimes : 30;
@@ -54,7 +59,7 @@ function promiseWindow(url) {
         }
 
         Services.obs.removeObserver(obs, "domwindowopened");
-        resolve(win);
+        executeSoon(() => resolve(win));
       }, {once: true});
     }, "domwindowopened");
   });
@@ -81,7 +86,7 @@ function promiseIndicatorWindow() {
 }
 
 async function assertWebRTCIndicatorStatus(expected) {
-  let ui = Cu.import("resource:///modules/webrtcUI.jsm", {}).webrtcUI;
+  let ui = ChromeUtils.import("resource:///modules/webrtcUI.jsm", {}).webrtcUI;
   let expectedState = expected ? "visible" : "hidden";
   let msg = "WebRTC indicator " + expectedState;
   if (!expected && ui.showGlobalIndicator) {
@@ -120,7 +125,7 @@ async function assertWebRTCIndicatorStatus(expected) {
           win.addEventListener("unload", function listener(e) {
             if (e.target == win.document) {
               win.removeEventListener("unload", listener);
-              resolve();
+              executeSoon(resolve);
             }
           });
         });
@@ -141,7 +146,7 @@ async function assertWebRTCIndicatorStatus(expected) {
             if (document.readyState != "complete")
               return;
             document.removeEventListener("readystatechange", onReadyStateChange);
-            resolve();
+            executeSoon(resolve);
           });
         });
       }
@@ -166,7 +171,7 @@ function promisePopupEvent(popup, eventSuffix) {
   let eventType = "popup" + eventSuffix;
   return new Promise(resolve => {
     popup.addEventListener(eventType, function(event) {
-      resolve();
+      executeSoon(resolve);
     }, {once: true});
 
   });
@@ -297,7 +302,7 @@ function promisePopupNotificationShown(aName, aAction) {
       ok(PopupNotifications.isPanelOpen, "notification panel open");
       ok(!!PopupNotifications.panel.firstChild, "notification panel populated");
 
-      resolve();
+      executeSoon(resolve);
     }, {once: true});
 
     if (aAction)
@@ -459,17 +464,32 @@ function checkDeviceSelectors(aAudio, aVideo, aScreen) {
 // aExpected is for the current tab,
 // aExpectedGlobal is for all tabs.
 async function checkSharingUI(aExpected, aWin = window, aExpectedGlobal = null) {
+  function isPaused(streamState) {
+    if (typeof streamState == "string") {
+      return streamState.includes("Paused");
+    }
+    return streamState == STATE_CAPTURE_DISABLED;
+  }
+
   let doc = aWin.document;
   // First check the icon above the control center (i) icon.
   let identityBox = doc.getElementById("identity-box");
   ok(identityBox.hasAttribute("sharing"), "sharing attribute is set");
   let sharing = identityBox.getAttribute("sharing");
   if (aExpected.screen)
-    is(sharing, "screen", "showing screen icon on the control center icon");
+    is(sharing, "screen", "showing screen icon in the identity block");
+  else if (aExpected.video == STATE_CAPTURE_ENABLED)
+    is(sharing, "camera", "showing camera icon in the identity block");
+  else if (aExpected.audio == STATE_CAPTURE_ENABLED)
+    is(sharing, "microphone", "showing mic icon in the identity block");
   else if (aExpected.video)
-    is(sharing, "camera", "showing camera icon on the control center icon");
+    is(sharing, "camera", "showing camera icon in the identity block");
   else if (aExpected.audio)
-    is(sharing, "microphone", "showing mic icon on the control center icon");
+    is(sharing, "microphone", "showing mic icon in the identity block");
+
+  let allStreamsPaused = Object.values(aExpected).every(isPaused);
+  is(identityBox.hasAttribute("paused"), allStreamsPaused,
+     "sharing icon(s) should be in paused state when paused");
 
   // Then check the sharing indicators inside the control center panel.
   identityBox.click();
@@ -489,7 +509,8 @@ async function checkSharingUI(aExpected, aWin = window, aExpectedGlobal = null) 
       ".identity-popup-permission-icon." + id + "-icon");
     if (expected) {
       is(icon.length, 1, "should show " + id + " icon in control center panel");
-      ok(icon[0].classList.contains("in-use"), "icon should have the in-use class");
+      is(icon[0].classList.contains("in-use"), expected && !isPaused(expected),
+         "icon should have the in-use class, unless paused");
     } else if (!icon.length) {
       ok(true, "should not show " + id + " icon in the control center panel");
     } else {
@@ -545,7 +566,17 @@ async function runTests(tests, options = {}) {
   ok(gIdentityHandler._identityPopup.hidden,
      "should start the test with the control center hidden");
 
-  await SpecialPowers.pushPrefEnv({"set": [[PREF_PERMISSION_FAKE, true]]});
+  // Set prefs so that permissions prompts are shown and loopback devices
+  // are not used. To test the chrome we want prompts to be shown, and
+  // these tests are flakey when using loopback devices (though it would
+  // be desirable to make them work with loopback in future).
+  let prefs = [
+    [PREF_PERMISSION_FAKE, true],
+    [PREF_AUDIO_LOOPBACK, ""],
+    [PREF_VIDEO_LOOPBACK, ""],
+    [PREF_FAKE_STREAMS, true]
+  ];
+  await SpecialPowers.pushPrefEnv({"set": prefs});
 
   for (let testCase of tests) {
     info(testCase.desc);
@@ -554,5 +585,5 @@ async function runTests(tests, options = {}) {
   }
 
   // Some tests destroy the original tab and leave a new one in its place.
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 }

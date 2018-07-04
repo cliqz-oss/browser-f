@@ -97,9 +97,9 @@ UpdateDriverSetupMacCommandLine(int& argc, char**& argv, bool restart)
 
   // The length of this wait is arbitrary, but should be long enough that having
   // it expire means something is seriously wrong.
-  rv = MonitorAutoLock(monitor).Wait(PR_SecondsToInterval(60));
-  if (NS_FAILED(rv)) {
-    LOG(("Update driver timed out waiting for SetupMacCommandLine: %d\n", rv));
+  CVStatus status = MonitorAutoLock(monitor).Wait(TimeDuration::FromSeconds(60));
+  if (status == CVStatus::Timeout) {
+    LOG(("Update driver timed out waiting for SetupMacCommandLine\n"));
   }
 }
 #endif
@@ -160,35 +160,6 @@ GetInstallDirPath(nsIFile *appDir, nsACString& installDirPath)
   }
   return NS_OK;
 }
-
-#if defined(XP_MACOSX)
-// This is a copy of OS X's XRE_GetBinaryPath from nsAppRunner.cpp with the
-// gBinaryPath check removed so that the updater can reload the stub executable
-// instead of xulrunner-bin. See bug 349737.
-static nsresult
-GetXULRunnerStubPath(const char* argv0, nsIFile* *aResult)
-{
-  // Works even if we're not bundled.
-  CFBundleRef appBundle = ::CFBundleGetMainBundle();
-  if (!appBundle)
-    return NS_ERROR_FAILURE;
-
-  CFURLRef bundleURL = ::CFBundleCopyExecutableURL(appBundle);
-  if (!bundleURL)
-    return NS_ERROR_FAILURE;
-
-  nsCOMPtr<nsILocalFileMac> lfm;
-  nsresult rv = NS_NewLocalFileWithCFURL(bundleURL, true, getter_AddRefs(lfm));
-
-  ::CFRelease(bundleURL);
-
-  if (NS_FAILED(rv))
-    return rv;
-
-  lfm.forget(aResult);
-  return NS_OK;
-}
-#endif /* XP_MACOSX */
 
 static bool
 GetFile(nsIFile* dir, const nsACString& name, nsCOMPtr<nsIFile>& result)
@@ -537,13 +508,7 @@ ApplyUpdate(nsIFile *greDir, nsIFile *updateDir, nsIFile *appDir, int appArgc,
     // Get the application file path used by the updater to restart the
     // application after the update has finished.
     nsCOMPtr<nsIFile> appFile;
-#if defined(XP_MACOSX)
-    // On OS X we need to pass the location of the xulrunner-stub executable
-    // rather than xulrunner-bin. See bug 349737.
-    GetXULRunnerStubPath(appArgv[0], getter_AddRefs(appFile));
-#else
-    XRE_GetBinaryPath(appArgv[0], getter_AddRefs(appFile));
-#endif
+    XRE_GetBinaryPath(getter_AddRefs(appFile));
     if (!appFile) {
       return;
     }

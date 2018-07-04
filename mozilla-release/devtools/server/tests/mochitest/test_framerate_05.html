@@ -14,17 +14,15 @@ Bug 1034648 - Tests whether a framerate recording can be cancelled.
 <script>
 "use strict";
 
-window.onload = function () {
-  let Cu = Components.utils;
-
-  const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
-  const {DebuggerClient} = require("devtools/shared/client/main");
+window.onload = function() {
+  const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+  const {DebuggerClient} = require("devtools/shared/client/debugger-client");
   const {DebuggerServer} = require("devtools/server/main");
   const Services = require("Services");
 
   // Always log packets when running tests.
   Services.prefs.setBoolPref("devtools.debugger.log", true);
-  SimpleTest.registerCleanupFunction(function () {
+  SimpleTest.registerCleanupFunction(function() {
     Services.prefs.clearUserPref("devtools.debugger.log");
   });
 
@@ -33,11 +31,11 @@ window.onload = function () {
   const {FramerateFront} = require("devtools/shared/fronts/framerate");
 
   DebuggerServer.init();
-  DebuggerServer.addBrowserActors();
+  DebuggerServer.registerAllActors();
 
   let client = new DebuggerClient(DebuggerServer.connectPipe());
   client.connect().then(function onConnect() {
-    client.listTabs(function onListTabs(response) {
+    client.listTabs().then(function onListTabs(response) {
       let form = response.tabs[response.selected];
       let front = FramerateFront(client, form);
 

@@ -4,8 +4,10 @@
 // corresponding Java methods and rerun the build. Manually updating this file
 // will cause your build to fail.
 
+#ifndef MOZ_PREPROCESSOR
 #include "FennecJNIWrappers.h"
 #include "mozilla/jni/Accessors.h"
+#endif
 
 namespace mozilla {
 namespace java {
@@ -21,6 +23,20 @@ constexpr char ANRReporter::ReleaseNativeStack_t::signature[];
 
 constexpr char ANRReporter::RequestNativeStack_t::name[];
 constexpr char ANRReporter::RequestNativeStack_t::signature[];
+
+const char BrowserLocaleManager::name[] =
+        "org/mozilla/gecko/BrowserLocaleManager";
+
+constexpr char BrowserLocaleManager::GetLocale_t::name[];
+constexpr char BrowserLocaleManager::GetLocale_t::signature[];
+
+auto BrowserLocaleManager::GetLocale() -> mozilla::jni::String::LocalRef
+{
+    return mozilla::jni::Method<GetLocale_t>::Call(BrowserLocaleManager::Context(), nullptr);
+}
+
+constexpr char BrowserLocaleManager::RefreshLocales_t::name[];
+constexpr char BrowserLocaleManager::RefreshLocales_t::signature[];
 
 const char DownloadsIntegration::name[] =
         "org/mozilla/gecko/DownloadsIntegration";
@@ -157,18 +173,6 @@ const char MemoryMonitor::name[] =
 
 constexpr char MemoryMonitor::DispatchMemoryPressure_t::name[];
 constexpr char MemoryMonitor::DispatchMemoryPressure_t::signature[];
-
-const char PresentationMediaPlayerManager::name[] =
-        "org/mozilla/gecko/PresentationMediaPlayerManager";
-
-constexpr char PresentationMediaPlayerManager::AddPresentationSurface_t::name[];
-constexpr char PresentationMediaPlayerManager::AddPresentationSurface_t::signature[];
-
-constexpr char PresentationMediaPlayerManager::InvalidateAndScheduleComposite_t::name[];
-constexpr char PresentationMediaPlayerManager::InvalidateAndScheduleComposite_t::signature[];
-
-constexpr char PresentationMediaPlayerManager::RemovePresentationSurface_t::name[];
-constexpr char PresentationMediaPlayerManager::RemovePresentationSurface_t::signature[];
 
 const char Telemetry::name[] =
         "org/mozilla/gecko/Telemetry";

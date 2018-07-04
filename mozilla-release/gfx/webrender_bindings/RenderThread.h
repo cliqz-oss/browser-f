@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 sts=2 ts=8 et tw=99 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -40,6 +40,17 @@ protected:
   wr::WrThreadPool* mThreadPool;
 };
 
+class WebRenderProgramCache {
+public:
+  WebRenderProgramCache();
+
+  ~WebRenderProgramCache();
+
+  wr::WrProgramCache* Raw() { return mProgramCache; }
+
+protected:
+  wr::WrProgramCache* mProgramCache;
+};
 
 /// Base class for an event that can be scheduled to run on the render thread.
 ///
@@ -107,13 +118,16 @@ public:
   void NewFrameReady(wr::WindowId aWindowId);
 
   /// Automatically forwarded to the render thread.
+  void WakeUp(wr::WindowId aWindowId);
+
+  /// Automatically forwarded to the render thread.
   void PipelineSizeChanged(wr::WindowId aWindowId, uint64_t aPipelineId, float aWidth, float aHeight);
 
   /// Automatically forwarded to the render thread.
   void RunEvent(wr::WindowId aWindowId, UniquePtr<RendererEvent> aCallBack);
 
   /// Can only be called from the render thread.
-  void UpdateAndRender(wr::WindowId aWindowId);
+  void UpdateAndRender(wr::WindowId aWindowId, bool aReadback = false);
 
   void Pause(wr::WindowId aWindowId);
   bool Resume(wr::WindowId aWindowId);
@@ -125,17 +139,31 @@ public:
   void UnregisterExternalImage(uint64_t aExternalImageId);
 
   /// Can only be called from the render thread.
+  void UnregisterExternalImageDuringShutdown(uint64_t aExternalImageId);
+
+  /// Can only be called from the render thread.
   RenderTextureHost* GetRenderTexture(WrExternalImageId aExternalImageId);
 
   /// Can be called from any thread.
-  uint32_t GetPendingFrameCount(wr::WindowId aWindowId);
+  bool IsDestroyed(wr::WindowId aWindowId);
+  /// Can be called from any thread.
+  void SetDestroyed(wr::WindowId aWindowId);
+  /// Can be called from any thread.
+  bool TooManyPendingFrames(wr::WindowId aWindowId);
   /// Can be called from any thread.
   void IncPendingFrameCount(wr::WindowId aWindowId);
   /// Can be called from any thread.
   void DecPendingFrameCount(wr::WindowId aWindowId);
+  /// Can be called from any thread.
+  void IncRenderingFrameCount(wr::WindowId aWindowId);
+  /// Can be called from any thread.
+  void FrameRenderingComplete(wr::WindowId aWindowId);
 
   /// Can be called from any thread.
   WebRenderThreadPool& ThreadPool() { return mThreadPool; }
+
+  /// Can only be called from the render thread.
+  WebRenderProgramCache* ProgramCache();
 
 private:
   explicit RenderThread(base::Thread* aThread);
@@ -148,11 +176,18 @@ private:
   base::Thread* const mThread;
 
   WebRenderThreadPool mThreadPool;
+  UniquePtr<WebRenderProgramCache> mProgramCache;
 
   std::map<wr::WindowId, UniquePtr<RendererOGL>> mRenderers;
 
-  Mutex mPendingFrameCountMapLock;
-  nsDataHashtable<nsUint64HashKey, uint32_t> mPendingFrameCounts;
+  struct WindowInfo {
+    bool mIsDestroyed = false;
+    int64_t mPendingCount = 0;
+    int64_t mRenderingCount = 0;
+  };
+
+  Mutex mFrameCountMapLock;
+  nsDataHashtable<nsUint64HashKey, WindowInfo> mWindowInfos;
 
   Mutex mRenderTextureMapLock;
   nsRefPtrHashtable<nsUint64HashKey, RenderTextureHost> mRenderTextures;

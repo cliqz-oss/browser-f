@@ -20,10 +20,10 @@
 <!ENTITY settingsLink.label           "Konten-Einstellungen bearbeiten">
 <!ENTITY newAcctLink.label            "Neues Konto erstellen">
 <!ENTITY newAcct.label                "Neues Konto erstellen:">
+<!ENTITY setupNewAcct.label           "Konto einrichten:">
 
 <!ENTITY advFeaturesSectionHdr.label  "Erweiterte Funktionen">
 <!ENTITY searchMsgsLink.label         "Nachrichten suchen">
 <!ENTITY filtersLink.label            "Filter erstellen">
 <!ENTITY junkSettings.label           "Junk-Filter-Einstellungen">
 <!ENTITY offlineLink.label            "Offline-Einstellungen bearbeiten">
-

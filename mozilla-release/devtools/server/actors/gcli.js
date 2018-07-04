@@ -6,14 +6,13 @@
 
 const { Actor, ActorClassWithSpec } = require("devtools/shared/protocol");
 const { gcliSpec } = require("devtools/shared/specs/gcli");
-const events = require("sdk/event/core");
 const { createSystem } = require("gcli/system");
 
 /**
  * Manage remote connections that want to talk to GCLI
  */
 const GcliActor = ActorClassWithSpec(gcliSpec, {
-  initialize: function (conn, tabActor) {
+  initialize: function(conn, tabActor) {
     Actor.prototype.initialize.call(this, conn);
 
     this._commandsChanged = this._commandsChanged.bind(this);
@@ -23,7 +22,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
     this._requisitionPromise = undefined;
   },
 
-  destroy: function () {
+  destroy: function() {
     Actor.prototype.destroy.call(this);
 
     // If _getRequisition has not been called, just bail quickly
@@ -50,7 +49,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
   /**
    * Load a module into the requisition
    */
-  _testOnlyAddItemsByModule: function (names) {
+  _testOnlyAddItemsByModule: function(names) {
     return this._getRequisition().then(requisition => {
       return requisition.system.addItemsByModule(names);
     });
@@ -59,7 +58,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
   /**
    * Unload a module from the requisition
    */
-  _testOnlyRemoveItemsByModule: function (names) {
+  _testOnlyRemoveItemsByModule: function(names) {
     return this._getRequisition().then(requisition => {
       return requisition.system.removeItemsByModule(names);
     });
@@ -71,7 +70,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
    * if specified in the command spec, will be included in the JSON. Normally we
    * transfer only the properties required for GCLI to function.
    */
-  specs: function (customProps) {
+  specs: function(customProps) {
     return this._getRequisition().then(requisition => {
       return requisition.system.commands.getCommandSpecs(customProps);
     });
@@ -84,7 +83,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
    * - type: The type of the data to allow selection of a converter
    * - error: True if the output was considered an error
    */
-  execute: function (typed) {
+  execute: function(typed) {
     return this._getRequisition().then(requisition => {
       return requisition.updateExec(typed).then(output => output.toJson());
     });
@@ -93,7 +92,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
   /**
    * Get the state of an input string. i.e. requisition.getStateData()
    */
-  state: function (typed, start, rank) {
+  state: function(typed, start, rank) {
     return this._getRequisition().then(requisition => {
       return requisition.update(typed).then(() => {
         return requisition.getStateData(start, rank);
@@ -108,7 +107,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
    * - message: The message to display to the user
    * - predictions: An array of suggested values for the given parameter
    */
-  parseType: function (typed, paramName) {
+  parseType: function(typed, paramName) {
     return this._getRequisition().then(requisition => {
       return requisition.update(typed).then(() => {
         let assignment = requisition.getAssignment(paramName);
@@ -127,7 +126,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
    * Get the incremented/decremented value of some type
    * @return a promise of a string containing the new argument text
    */
-  nudgeType: function (typed, by, paramName) {
+  nudgeType: function(typed, by, paramName) {
     return this.requisition.update(typed).then(() => {
       const assignment = this.requisition.getAssignment(paramName);
       return this.requisition.nudge(assignment, by).then(() => {
@@ -139,7 +138,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
   /**
    * Perform a lookup on a selection type to get the allowed values
    */
-  getSelectionLookup: function (commandName, paramName) {
+  getSelectionLookup: function(commandName, paramName) {
     return this._getRequisition().then(requisition => {
       const command = requisition.system.commands.get(commandName);
       if (command == null) {
@@ -170,7 +169,7 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
   /**
    * Lazy init for a Requisition
    */
-  _getRequisition: function () {
+  _getRequisition: function() {
     if (this._tabActor == null) {
       throw new Error("GcliActor used post-destroy");
     }
@@ -221,8 +220,8 @@ const GcliActor = ActorClassWithSpec(gcliSpec, {
   /**
    * Pass events from requisition.system.commands.onCommandsChange upwards
    */
-  _commandsChanged: function () {
-    events.emit(this, "commands-changed");
+  _commandsChanged: function() {
+    this.emit("commands-changed");
   },
 });
 

@@ -10,8 +10,10 @@
     spec="https://drafts.csswg.org/css-text-decor-3/#text-emphasis-property">
     use properties::longhands::{text_emphasis_color, text_emphasis_style};
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let mut color = None;
         let mut style = None;
 
@@ -36,7 +38,7 @@
                 text_emphasis_style: unwrap_or_initial!(text_emphasis_style, style),
             })
         } else {
-            Err(StyleParseError::UnspecifiedError.into())
+            Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
     }
 </%helpers:shorthand>
@@ -46,13 +48,16 @@
 <%helpers:shorthand name="-webkit-text-stroke"
                     sub_properties="-webkit-text-stroke-width
                                     -webkit-text-stroke-color"
+                    gecko_pref="layout.css.prefixes.webkit"
                     products="gecko"
                     derive_serialize="True"
                     spec="https://compat.spec.whatwg.org/#the-webkit-text-stroke">
     use properties::longhands::{_webkit_text_stroke_color, _webkit_text_stroke_width};
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let mut color = None;
         let mut width = None;
         loop {
@@ -78,7 +83,7 @@
                 _webkit_text_stroke_width: unwrap_or_initial!(_webkit_text_stroke_width, width),
             })
         } else {
-            Err(StyleParseError::UnspecifiedError.into())
+            Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
     }
 </%helpers:shorthand>

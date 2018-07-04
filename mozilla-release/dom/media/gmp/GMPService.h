@@ -10,6 +10,7 @@
 #include "mozIGeckoMediaPluginService.h"
 #include "nsIObserver.h"
 #include "nsTArray.h"
+#include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Monitor.h"
 #include "nsString.h"
@@ -25,6 +26,7 @@
 #include "GMPContentParent.h"
 #include "GMPCrashHelper.h"
 #include "ChromiumCDMParent.h"
+#include "MediaResult.h"
 
 template <class> struct already_AddRefed;
 
@@ -52,11 +54,11 @@ struct NodeId
 };
 
 typedef MozPromise<RefPtr<GMPContentParent::CloseBlocker>,
-                   nsresult,
+                   MediaResult,
                    /* IsExclusive = */ true>
   GetGMPContentParentPromise;
 typedef MozPromise<RefPtr<ChromiumCDMParent>,
-                   nsresult,
+                   MediaResult,
                    /* IsExclusive = */ true>
   GetCDMParentPromise;
 
@@ -87,11 +89,6 @@ public:
                                 const nsACString& aNodeId,
                                 UniquePtr<GetGMPVideoEncoderCallback>&& aCallback)
     override;
-  NS_IMETHOD GetGMPDecryptor(GMPCrashHelper* aHelper,
-                             nsTArray<nsCString>* aTags,
-                             const nsACString& aNodeId,
-                             UniquePtr<GetGMPDecryptorCallback>&& aCallback)
-    override;
 
   // Helper for backwards compatibility with WebRTC/tests.
   NS_IMETHOD
@@ -110,6 +107,8 @@ public:
 
   void ConnectCrashHelper(uint32_t aPluginId, GMPCrashHelper* aHelper);
   void DisconnectCrashHelper(GMPCrashHelper* aHelper);
+
+  bool XPCOMWillShutdownReceived() const { return mXPCOMWillShutdown; }
 
 protected:
   GeckoMediaPluginService();
@@ -139,6 +138,7 @@ protected:
   RefPtr<AbstractThread> mAbstractGMPThread;
   bool mGMPThreadShutdown;
   bool mShuttingDownOnGMPThread;
+  Atomic<bool> mXPCOMWillShutdown;
 
   nsClassHashtable<nsUint32HashKey, nsTArray<RefPtr<GMPCrashHelper>>> mPluginCrashHelpers;
 };

@@ -7,62 +7,73 @@
 
 use cssparser::Parser;
 use parser::{Parse, ParserContext};
-use std::{fmt, mem, usize};
-use style_traits::{ToCss, ParseError, StyleParseError};
+use std::{mem, usize};
+use std::fmt::{self, Write};
+use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 use values::{CSSFloat, CustomIdent};
-use values::computed::{ComputedValueAsSpecified, Context, ToComputedValue};
-use values::specified::Integer;
+use values::computed::{Context, ToComputedValue};
+use values::specified;
 use values::specified::grid::parse_line_names;
 
-#[derive(PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
 /// A `<grid-line>` type.
 ///
-/// https://drafts.csswg.org/css-grid/#typedef-grid-row-start-grid-line
-pub struct GridLine {
+/// <https://drafts.csswg.org/css-grid/#typedef-grid-row-start-grid-line>
+#[derive(Clone, Debug, Default, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue)]
+pub struct GridLine<Integer> {
     /// Flag to check whether it's a `span` keyword.
     pub is_span: bool,
     /// A custom identifier for named lines.
     ///
-    /// https://drafts.csswg.org/css-grid/#grid-placement-slot
+    /// <https://drafts.csswg.org/css-grid/#grid-placement-slot>
     pub ident: Option<CustomIdent>,
     /// Denotes the nth grid line from grid item's placement.
     pub line_num: Option<Integer>,
 }
 
-impl GridLine {
+impl<Integer> GridLine<Integer> {
+    /// The `auto` value.
+    pub fn auto() -> Self {
+        Self {
+            is_span: false,
+            line_num: None,
+            ident: None,
+        }
+    }
+
     /// Check whether this `<grid-line>` represents an `auto` value.
     pub fn is_auto(&self) -> bool {
         self.ident.is_none() && self.line_num.is_none() && !self.is_span
     }
 }
 
-impl Default for GridLine {
-    fn default() -> Self {
-        GridLine {
-            is_span: false,
-            ident: None,
-            line_num: None,
-        }
-    }
-}
-
-impl ToCss for GridLine {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+impl<Integer> ToCss for GridLine<Integer>
+where
+    Integer: ToCss,
+{
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         if self.is_auto() {
-            return dest.write_str("auto")
+            return dest.write_str("auto");
         }
 
         if self.is_span {
             dest.write_str("span")?;
         }
 
-        if let Some(i) = self.line_num {
-            write!(dest, " {}", i.value())?;
+        if let Some(ref i) = self.line_num {
+            if self.is_span {
+                dest.write_str(" ")?;
+            }
+            i.to_css(dest)?;
         }
 
         if let Some(ref s) = self.ident {
-            dest.write_str(" ")?;
+            if self.is_span || self.line_num.is_some() {
+                dest.write_str(" ")?;
+            }
             s.to_css(dest)?;
         }
 
@@ -70,11 +81,14 @@ impl ToCss for GridLine {
     }
 }
 
-impl Parse for GridLine {
-    fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
-        let mut grid_line = Default::default();
+impl Parse for GridLine<specified::Integer> {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        let mut grid_line = Self::auto();
         if input.try(|i| i.expect_ident_matching("auto")).is_ok() {
-            return Ok(grid_line)
+            return Ok(grid_line);
         }
 
         // <custom-ident> | [ <integer> && <custom-ident>? ] | [ span && [ <integer> || <custom-ident> ] ]
@@ -83,10 +97,12 @@ impl Parse for GridLine {
         // And, for some magical reason, "span" should be the first or last value and not in-between.
         let mut val_before_span = false;
 
-        for _ in 0..3 {     // Maximum possible entities for <grid-line>
+        for _ in 0..3 {
+            // Maximum possible entities for <grid-line>
+            let location = input.current_source_location();
             if input.try(|i| i.expect_ident_matching("span")).is_ok() {
                 if grid_line.is_span {
-                    return Err(StyleParseError::UnspecifiedError.into())
+                    return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
 
                 if grid_line.line_num.is_some() || grid_line.ident.is_some() {
@@ -94,33 +110,36 @@ impl Parse for GridLine {
                 }
 
                 grid_line.is_span = true;
-            } else if let Ok(i) = input.try(|i| Integer::parse(context, i)) {
+            } else if let Ok(i) = input.try(|i| specified::Integer::parse(context, i)) {
+                // FIXME(emilio): Probably shouldn't reject if it's calc()...
                 if i.value() == 0 || val_before_span || grid_line.line_num.is_some() {
-                    return Err(StyleParseError::UnspecifiedError.into())
+                    return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
 
                 grid_line.line_num = Some(i);
             } else if let Ok(name) = input.try(|i| i.expect_ident_cloned()) {
                 if val_before_span || grid_line.ident.is_some() {
-                    return Err(StyleParseError::UnspecifiedError.into());
+                    return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
-                grid_line.ident = Some(CustomIdent::from_ident(&name, &[])?);
+                grid_line.ident = Some(CustomIdent::from_ident(location, &name, &[])?);
             } else {
-                break
+                break;
             }
         }
 
         if grid_line.is_auto() {
-            return Err(StyleParseError::UnspecifiedError.into())
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
 
         if grid_line.is_span {
             if let Some(i) = grid_line.line_num {
-                if i.value() <= 0 {       // disallow negative integers for grid spans
-                    return Err(StyleParseError::UnspecifiedError.into())
+                if i.value() <= 0 {
+                    // disallow negative integers for grid spans
+                    return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
-            } else if grid_line.ident.is_none() {       // integer could be omitted
-                return Err(StyleParseError::UnspecifiedError.into())
+            } else if grid_line.ident.is_none() {
+                // integer could be omitted
+                return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
             }
         }
 
@@ -128,26 +147,28 @@ impl Parse for GridLine {
     }
 }
 
-impl ComputedValueAsSpecified for GridLine {}
-no_viewport_percentage!(GridLine);
-
-define_css_keyword_enum!{ TrackKeyword:
-    "auto" => Auto,
-    "max-content" => MaxContent,
-    "min-content" => MinContent
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq,
+         SpecifiedValueInfo, ToComputedValue, ToCss)]
+pub enum TrackKeyword {
+    Auto,
+    MaxContent,
+    MinContent,
 }
 
-#[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
 /// A track breadth for explicit grid track sizing. It's generic solely to
 /// avoid re-implementing it for the computed type.
 ///
-/// https://drafts.csswg.org/css-grid/#typedef-track-breadth
+/// <https://drafts.csswg.org/css-grid/#typedef-track-breadth>
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
 pub enum TrackBreadth<L> {
     /// The generic type is almost always a non-negative `<length-percentage>`
     Breadth(L),
     /// A flex fraction specified in `fr` units.
-    Flex(CSSFloat),
+    #[css(dimension)]
+    Fr(CSSFloat),
     /// One of the track-sizing keywords (`auto`, `min-content`, `max-content`)
     Keyword(TrackKeyword),
 }
@@ -155,7 +176,7 @@ pub enum TrackBreadth<L> {
 impl<L> TrackBreadth<L> {
     /// Check whether this is a `<fixed-breadth>` (i.e., it only has `<length-percentage>`)
     ///
-    /// https://drafts.csswg.org/css-grid/#typedef-fixed-breadth
+    /// <https://drafts.csswg.org/css-grid/#typedef-fixed-breadth>
     #[inline]
     pub fn is_fixed(&self) -> bool {
         match *self {
@@ -165,63 +186,31 @@ impl<L> TrackBreadth<L> {
     }
 }
 
-impl<L: ToCss> ToCss for TrackBreadth<L> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-        match *self {
-            TrackBreadth::Breadth(ref lop) => lop.to_css(dest),
-            TrackBreadth::Flex(ref value) => write!(dest, "{}fr", value),
-            TrackBreadth::Keyword(ref k) => k.to_css(dest),
-        }
-    }
-}
-
-impl<L: ToComputedValue> ToComputedValue for TrackBreadth<L> {
-    type ComputedValue = TrackBreadth<L::ComputedValue>;
-
-    #[inline]
-    fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
-        match *self {
-            TrackBreadth::Breadth(ref lop) => TrackBreadth::Breadth(lop.to_computed_value(context)),
-            TrackBreadth::Flex(fr) => TrackBreadth::Flex(fr),
-            TrackBreadth::Keyword(k) => TrackBreadth::Keyword(k),
-        }
-    }
-
-    #[inline]
-    fn from_computed_value(computed: &Self::ComputedValue) -> Self {
-        match *computed {
-            TrackBreadth::Breadth(ref lop) =>
-                TrackBreadth::Breadth(ToComputedValue::from_computed_value(lop)),
-            TrackBreadth::Flex(fr) => TrackBreadth::Flex(fr),
-            TrackBreadth::Keyword(k) => TrackBreadth::Keyword(k),
-        }
-    }
-}
-
 /// A `<track-size>` type for explicit grid track sizing. Like `<track-breadth>`, this is
 /// generic only to avoid code bloat. It only takes `<length-percentage>`
 ///
-/// https://drafts.csswg.org/css-grid/#typedef-track-size
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Debug, HasViewportPercentage, PartialEq)]
+/// <https://drafts.csswg.org/css-grid/#typedef-track-size>
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo)]
 pub enum TrackSize<L> {
     /// A flexible `<track-breadth>`
     Breadth(TrackBreadth<L>),
     /// A `minmax` function for a range over an inflexible `<track-breadth>`
     /// and a flexible `<track-breadth>`
     ///
-    /// https://drafts.csswg.org/css-grid/#valdef-grid-template-columns-minmax
+    /// <https://drafts.csswg.org/css-grid/#valdef-grid-template-columns-minmax>
+    #[css(function)]
     Minmax(TrackBreadth<L>, TrackBreadth<L>),
     /// A `fit-content` function.
     ///
-    /// https://drafts.csswg.org/css-grid/#valdef-grid-template-columns-fit-content
+    /// <https://drafts.csswg.org/css-grid/#valdef-grid-template-columns-fit-content>
+    #[css(function)]
     FitContent(L),
 }
 
 impl<L> TrackSize<L> {
     /// Check whether this is a `<fixed-size>`
     ///
-    /// https://drafts.csswg.org/css-grid/#typedef-fixed-size
+    /// <https://drafts.csswg.org/css-grid/#typedef-fixed-size>
     pub fn is_fixed(&self) -> bool {
         match *self {
             TrackSize::Breadth(ref breadth) => breadth.is_fixed(),
@@ -231,11 +220,11 @@ impl<L> TrackSize<L> {
             // need to make sure that they're fixed. So, we don't have to modify the parsing function.
             TrackSize::Minmax(ref breadth_1, ref breadth_2) => {
                 if breadth_1.is_fixed() {
-                    return true     // the second value is always a <track-breadth>
+                    return true; // the second value is always a <track-breadth>
                 }
 
                 match *breadth_1 {
-                    TrackBreadth::Flex(_) => false,     // should be <inflexible-breadth> at this point
+                    TrackBreadth::Fr(_) => false, // should be <inflexible-breadth> at this point
                     _ => breadth_2.is_fixed(),
                 }
             },
@@ -258,14 +247,17 @@ impl<L: PartialEq> TrackSize<L> {
 }
 
 impl<L: ToCss> ToCss for TrackSize<L> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         match *self {
             TrackSize::Breadth(ref breadth) => breadth.to_css(dest),
             TrackSize::Minmax(ref min, ref max) => {
                 // According to gecko minmax(auto, <flex>) is equivalent to <flex>,
                 // and both are serialized as <flex>.
                 if let TrackBreadth::Keyword(TrackKeyword::Auto) = *min {
-                    if let TrackBreadth::Flex(_) = *max {
+                    if let TrackBreadth::Fr(_) = *max {
                         return max.to_css(dest);
                     }
                 }
@@ -291,15 +283,21 @@ impl<L: ToComputedValue> ToComputedValue for TrackSize<L> {
     #[inline]
     fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
         match *self {
-            TrackSize::Breadth(ref b) => match *b {
+            TrackSize::Breadth(TrackBreadth::Fr(ref f)) => {
                 // <flex> outside `minmax()` expands to `mimmax(auto, <flex>)`
                 // https://drafts.csswg.org/css-grid/#valdef-grid-template-columns-flex
-                TrackBreadth::Flex(f) =>
-                    TrackSize::Minmax(TrackBreadth::Keyword(TrackKeyword::Auto), TrackBreadth::Flex(f)),
-                _ => TrackSize::Breadth(b.to_computed_value(context)),
+                // FIXME(nox): This sounds false, the spec just says that <flex>
+                // implies `minmax(auto, <flex>)`, not that it should be changed
+                // into `minmax` at computed value time.
+                TrackSize::Minmax(
+                    TrackBreadth::Keyword(TrackKeyword::Auto),
+                    TrackBreadth::Fr(f.to_computed_value(context)),
+                )
             },
-            TrackSize::Minmax(ref b_1, ref b_2) =>
-                TrackSize::Minmax(b_1.to_computed_value(context), b_2.to_computed_value(context)),
+            TrackSize::Breadth(ref b) => TrackSize::Breadth(b.to_computed_value(context)),
+            TrackSize::Minmax(ref b1, ref b2) => {
+                TrackSize::Minmax(b1.to_computed_value(context), b2.to_computed_value(context))
+            },
             TrackSize::FitContent(ref lop) => TrackSize::FitContent(lop.to_computed_value(context)),
         }
     }
@@ -307,22 +305,31 @@ impl<L: ToComputedValue> ToComputedValue for TrackSize<L> {
     #[inline]
     fn from_computed_value(computed: &Self::ComputedValue) -> Self {
         match *computed {
-            TrackSize::Breadth(ref b) =>
-                TrackSize::Breadth(ToComputedValue::from_computed_value(b)),
-            TrackSize::Minmax(ref b_1, ref b_2) =>
-                TrackSize::Minmax(ToComputedValue::from_computed_value(b_1),
-                                  ToComputedValue::from_computed_value(b_2)),
-            TrackSize::FitContent(ref lop) =>
-                TrackSize::FitContent(ToComputedValue::from_computed_value(lop)),
+            TrackSize::Breadth(ref b) => {
+                TrackSize::Breadth(ToComputedValue::from_computed_value(b))
+            },
+            TrackSize::Minmax(ref b1, ref b2) => TrackSize::Minmax(
+                ToComputedValue::from_computed_value(b1),
+                ToComputedValue::from_computed_value(b2),
+            ),
+            TrackSize::FitContent(ref lop) => {
+                TrackSize::FitContent(ToComputedValue::from_computed_value(lop))
+            },
         }
     }
 }
 
 /// Helper function for serializing identifiers with a prefix and suffix, used
 /// for serializing <line-names> (in grid).
-pub fn concat_serialize_idents<W>(prefix: &str, suffix: &str,
-                                  slice: &[CustomIdent], sep: &str, dest: &mut W) -> fmt::Result
-    where W: fmt::Write
+pub fn concat_serialize_idents<W>(
+    prefix: &str,
+    suffix: &str,
+    slice: &[CustomIdent],
+    sep: &str,
+    dest: &mut CssWriter<W>,
+) -> fmt::Result
+where
+    W: Write,
 {
     if let Some((ref first, rest)) = slice.split_first() {
         dest.write_str(prefix)?;
@@ -340,10 +347,9 @@ pub fn concat_serialize_idents<W>(prefix: &str, suffix: &str,
 
 /// The initial argument of the `repeat` function.
 ///
-/// https://drafts.csswg.org/css-grid/#typedef-track-repeat
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Copy, Debug, PartialEq, ToCss)]
-pub enum RepeatCount {
+/// <https://drafts.csswg.org/css-grid/#typedef-track-repeat>
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
+pub enum RepeatCount<Integer> {
     /// A positive integer. This is allowed only for `<track-repeat>` and `<fixed-repeat>`
     Number(Integer),
     /// An `<auto-fill>` keyword allowed only for `<auto-repeat>`
@@ -352,21 +358,20 @@ pub enum RepeatCount {
     AutoFit,
 }
 
-impl Parse for RepeatCount {
-    fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
+impl Parse for RepeatCount<specified::Integer> {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
         // Maximum number of repeat is 10000. The greater numbers should be clamped.
         const MAX_LINE: i32 = 10000;
-        if let Ok(mut i) = input.try(|i| Integer::parse(context, i)) {
-            if i.value() > 0 {
-                if i.value() > MAX_LINE {
-                    i = Integer::new(MAX_LINE);
-                }
-                Ok(RepeatCount::Number(i))
-            } else {
-                Err(StyleParseError::UnspecifiedError.into())
+        if let Ok(mut i) = input.try(|i| specified::Integer::parse_positive(context, i)) {
+            if i.value() > MAX_LINE {
+                i = specified::Integer::new(MAX_LINE);
             }
+            Ok(RepeatCount::Number(i))
         } else {
-            try_match_ident_ignore_ascii_case! { input.expect_ident()?,
+            try_match_ident_ignore_ascii_case! { input,
                 "auto-fill" => Ok(RepeatCount::AutoFill),
                 "auto-fit" => Ok(RepeatCount::AutoFit),
             }
@@ -374,18 +379,16 @@ impl Parse for RepeatCount {
     }
 }
 
-impl ComputedValueAsSpecified for RepeatCount {}
-no_viewport_percentage!(RepeatCount);
-
 /// The structure containing `<line-names>` and `<track-size>` values.
 ///
 /// It can also hold `repeat()` function parameters, which expands into the respective
 /// values in its computed form.
-#[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-pub struct TrackRepeat<L> {
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue)]
+#[css(function = "repeat")]
+pub struct TrackRepeat<L, I> {
     /// The number of times for the value to be repeated (could also be `auto-fit` or `auto-fill`)
-    pub count: RepeatCount,
+    pub count: RepeatCount<I>,
     /// `<line-names>` accompanying `<track_size>` values.
     ///
     /// If there's no `<line-names>`, then it's represented by an empty vector.
@@ -396,51 +399,39 @@ pub struct TrackRepeat<L> {
     pub track_sizes: Vec<TrackSize<L>>,
 }
 
-impl<L: ToCss> ToCss for TrackRepeat<L> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-        // If repeat count is an integer instead of a keyword, it should'n serialized
-        // with `repeat` function. It should serialized with `N` repeated form.
-        let repeat_count = match self.count {
-            RepeatCount::Number(integer) => integer.value(),
-            _ => {
-                dest.write_str("repeat(")?;
-                self.count.to_css(dest)?;
-                dest.write_str(", ")?;
-                1
-            },
-        };
+impl<L: ToCss, I: ToCss> ToCss for TrackRepeat<L, I> {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        dest.write_str("repeat(")?;
+        self.count.to_css(dest)?;
+        dest.write_str(", ")?;
 
-        for i in 0..repeat_count {
-            if i != 0 {
+        let mut line_names_iter = self.line_names.iter();
+        for (i, (ref size, ref names)) in self.track_sizes
+            .iter()
+            .zip(&mut line_names_iter)
+            .enumerate()
+        {
+            if i > 0 {
                 dest.write_str(" ")?;
             }
 
-            let mut line_names_iter = self.line_names.iter();
-            for (i, (ref size, ref names)) in self.track_sizes.iter()
-                                                  .zip(&mut line_names_iter).enumerate() {
-                if i > 0 {
-                    dest.write_str(" ")?;
-                }
-
-                concat_serialize_idents("[", "] ", names, " ", dest)?;
-                size.to_css(dest)?;
-            }
-
-            if let Some(line_names_last) = line_names_iter.next() {
-                concat_serialize_idents(" [", "]", line_names_last, " ", dest)?;
-            }
+            concat_serialize_idents("[", "] ", names, " ", dest)?;
+            size.to_css(dest)?;
         }
 
-        match self.count {
-            RepeatCount::AutoFill | RepeatCount::AutoFit => {
-                dest.write_str(")")?;
-            },
-            _ => {},
+        if let Some(line_names_last) = line_names_iter.next() {
+            concat_serialize_idents(" [", "]", line_names_last, " ", dest)?;
         }
+
+        dest.write_str(")")?;
+
         Ok(())
     }
 }
-impl<L: Clone> TrackRepeat<L> {
+impl<L: Clone> TrackRepeat<L, specified::Integer> {
     /// If the repeat count is numeric, then expand the values and merge accordingly.
     pub fn expand(&self) -> Self {
         if let RepeatCount::Number(num) = self.count {
@@ -468,8 +459,8 @@ impl<L: Clone> TrackRepeat<L> {
                 track_sizes: track_sizes,
                 line_names: line_names.into_boxed_slice(),
             }
-
-        } else {    // if it's auto-fit/auto-fill, then it's left to the layout.
+        } else {
+            // if it's auto-fit/auto-fill, then it's left to the layout.
             TrackRepeat {
                 count: self.count,
                 track_sizes: self.track_sizes.clone(),
@@ -478,37 +469,21 @@ impl<L: Clone> TrackRepeat<L> {
         }
     }
 }
-impl<L: ToComputedValue> ToComputedValue for TrackRepeat<L> {
-    type ComputedValue = TrackRepeat<L::ComputedValue>;
 
-    #[inline]
-    fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
-        TrackRepeat {
-            count: self.count,
-            track_sizes: self.track_sizes.iter()
-                                         .map(|val| val.to_computed_value(context))
-                                         .collect(),
-            line_names: self.line_names.clone(),
-        }
-    }
-
-    #[inline]
-    fn from_computed_value(computed: &Self::ComputedValue) -> Self {
-        TrackRepeat {
-            count: computed.count,
-            track_sizes: computed.track_sizes.iter()
-                                             .map(ToComputedValue::from_computed_value)
-                                             .collect(),
-            line_names: computed.line_names.clone(),
-        }
-    }
+/// Track list values. Can be <track-size> or <track-repeat>
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
+pub enum TrackListValue<LengthOrPercentage, Integer> {
+    /// A <track-size> value.
+    TrackSize(TrackSize<LengthOrPercentage>),
+    /// A <track-repeat> value.
+    TrackRepeat(TrackRepeat<LengthOrPercentage, Integer>),
 }
 
 /// The type of a `<track-list>` as determined during parsing.
 ///
-/// https://drafts.csswg.org/css-grid/#typedef-track-list
-#[derive(Clone, Copy, PartialEq, Debug)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+/// <https://drafts.csswg.org/css-grid/#typedef-track-list>
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue)]
 pub enum TrackListType {
     /// [`<auto-track-list>`](https://drafts.csswg.org/css-grid/#typedef-auto-track-list)
     ///
@@ -527,21 +502,19 @@ pub enum TrackListType {
     Explicit,
 }
 
-impl ComputedValueAsSpecified for TrackListType {}
-
 /// A grid `<track-list>` type.
 ///
-/// https://drafts.csswg.org/css-grid/#typedef-track-list
-#[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-pub struct TrackList<T> {
+/// <https://drafts.csswg.org/css-grid/#typedef-track-list>
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo)]
+pub struct TrackList<LengthOrPercentage, Integer> {
     /// The type of this `<track-list>` (auto, explicit or general).
     ///
     /// In order to avoid parsing the same value multiple times, this does a single traversal
     /// and arrives at the type of value it has parsed (or bails out gracefully with an error).
+    #[css(skip)]
     pub list_type: TrackListType,
-    /// A vector of `<track-size>` values.
-    pub values: Vec<TrackSize<T>>,
+    /// A vector of `<track-size> | <track-repeat>` values.
+    pub values: Vec<TrackListValue<LengthOrPercentage, Integer>>,
     /// `<line-names>` accompanying `<track-size> | <track-repeat>` values.
     ///
     /// If there's no `<line-names>`, then it's represented by an empty vector.
@@ -549,11 +522,14 @@ pub struct TrackList<T> {
     /// length is always one value more than that of the `<track-size>`.
     pub line_names: Box<[Box<[CustomIdent]>]>,
     /// `<auto-repeat>` value. There can only be one `<auto-repeat>` in a TrackList.
-    pub auto_repeat: Option<TrackRepeat<T>>,
+    pub auto_repeat: Option<TrackRepeat<LengthOrPercentage, Integer>>,
 }
 
-impl<T: ToCss> ToCss for TrackList<T> {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+impl<L: ToCss, I: ToCss> ToCss for TrackList<L, I> {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         let auto_idx = match self.list_type {
             TrackListType::Auto(i) => i as usize,
             _ => usize::MAX,
@@ -563,7 +539,7 @@ impl<T: ToCss> ToCss for TrackList<T> {
         let mut line_names_iter = self.line_names.iter().peekable();
 
         for idx in 0.. {
-            let names = line_names_iter.next().unwrap();    // This should exist!
+            let names = line_names_iter.next().unwrap(); // This should exist!
             concat_serialize_idents("[", "]", names, " ", dest)?;
 
             match self.auto_repeat {
@@ -586,8 +562,10 @@ impl<T: ToCss> ToCss for TrackList<T> {
                 },
             }
 
-            if values_iter.peek().is_some() || line_names_iter.peek().map_or(false, |v| !v.is_empty()) ||
-               (idx + 1 == auto_idx) {
+            if values_iter.peek().is_some() ||
+                line_names_iter.peek().map_or(false, |v| !v.is_empty()) ||
+                (idx + 1 == auto_idx)
+            {
                 dest.write_str(" ")?;
             }
         }
@@ -600,8 +578,8 @@ impl<T: ToCss> ToCss for TrackList<T> {
 ///
 /// `subgrid [ <line-names> | repeat(<positive-integer> | auto-fill, <line-names>+) ]+`
 /// Old spec: https://www.w3.org/TR/2015/WD-css-grid-1-20150917/#typedef-line-name-list
-#[derive(Clone, PartialEq, Debug, Default)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Debug, Default, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue)]
 pub struct LineNameList {
     /// The optional `<line-name-list>`
     pub names: Box<[Box<[CustomIdent]>]>,
@@ -610,7 +588,10 @@ pub struct LineNameList {
 }
 
 impl Parse for LineNameList {
-    fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
         input.expect_ident_matching("subgrid")?;
         let mut line_names = vec![];
         let mut fill_idx = None;
@@ -622,7 +603,7 @@ impl Parse for LineNameList {
                     let count = RepeatCount::parse(context, input)?;
                     input.expect_comma()?;
                     let mut names_list = vec![];
-                    names_list.push(parse_line_names(input)?);      // there should be at least one
+                    names_list.push(parse_line_names(input)?); // there should be at least one
                     while let Ok(names) = input.try(parse_line_names) {
                         names_list.push(names);
                     }
@@ -633,25 +614,29 @@ impl Parse for LineNameList {
 
             if let Ok((mut names_list, count)) = repeat_parse_result {
                 match count {
-                    RepeatCount::Number(num) =>
-                        line_names.extend(names_list.iter().cloned().cycle()
-                                  .take(num.value() as usize * names_list.len())),
+                    RepeatCount::Number(num) => line_names.extend(
+                        names_list
+                            .iter()
+                            .cloned()
+                            .cycle()
+                            .take(num.value() as usize * names_list.len()),
+                    ),
                     RepeatCount::AutoFill if fill_idx.is_none() => {
                         // `repeat(autof-fill, ..)` should have just one line name.
                         if names_list.len() != 1 {
-                            return Err(StyleParseError::UnspecifiedError.into());
+                            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                         }
                         let names = names_list.pop().unwrap();
 
                         line_names.push(names);
                         fill_idx = Some(line_names.len() as u32 - 1);
                     },
-                    _ => return Err(StyleParseError::UnspecifiedError.into()),
+                    _ => return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError)),
                 }
             } else if let Ok(names) = input.try(parse_line_names) {
                 line_names.push(names);
             } else {
-                break
+                break;
             }
         }
 
@@ -663,7 +648,10 @@ impl Parse for LineNameList {
 }
 
 impl ToCss for LineNameList {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("subgrid")?;
         let fill_idx = self.fill_idx.map(|v| v as usize).unwrap_or(usize::MAX);
         for (i, names) in self.names.iter().enumerate() {
@@ -691,24 +679,21 @@ impl ToCss for LineNameList {
     }
 }
 
-impl ComputedValueAsSpecified for LineNameList {}
-no_viewport_percentage!(LineNameList);
-
 /// Variants for `<grid-template-rows> | <grid-template-columns>`
 /// Subgrid deferred to Level 2 spec due to lack of implementation.
 /// But it's implemented in gecko, so we have to as well.
-#[derive(Clone, PartialEq, Debug, ToCss)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-pub enum GridTemplateComponent<L> {
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
+pub enum GridTemplateComponent<L, I> {
     /// `none` value.
     None,
     /// The grid `<track-list>`
-    TrackList(TrackList<L>),
+    TrackList(#[compute(field_bound)] TrackList<L, I>),
     /// A `subgrid <line-name-list>?`
     Subgrid(LineNameList),
 }
 
-impl<L> GridTemplateComponent<L> {
+impl<L, I> GridTemplateComponent<L, I> {
     /// Returns length of the <track-list>s <track-size>
     pub fn track_list_len(&self) -> usize {
         match *self {

@@ -36,8 +36,11 @@
 
 #ifdef MOZ_ENABLE_SKIA_PDF
 #include "mozilla/gfx/PrintTargetSkPDF.h"
+#include "mozilla/gfx/PrintTargetEMF.h"
 #include "nsIUUIDGenerator.h"
-#include "mozilla/widget/PDFViaEMFPrintHelper.h"
+#include "nsDirectoryServiceDefs.h"
+#include "nsPrintfCString.h"
+#include "nsThreadUtils.h"
 #endif
 
 static mozilla::LazyLogModule kWidgetPrintingLogMod("printing-widget");
@@ -68,7 +71,7 @@ public:
   bool         PrintersAreAllocated() { return mPrinters != nullptr; }
   LPWSTR       GetItemFromList(int32_t aInx) { return mPrinters?mPrinters->ElementAt(aInx):nullptr; }
   nsresult     EnumeratePrinterList();
-  void         GetDefaultPrinterName(nsString& aDefaultPrinterName);
+  void         GetDefaultPrinterName(nsAString& aDefaultPrinterName);
   uint32_t     GetNumPrinters() { return mPrinters?mPrinters->Length():0; }
 
 protected:
@@ -93,17 +96,11 @@ struct AutoFreeGlobalPrinters
 
 //----------------------------------------------------------------------------------
 nsDeviceContextSpecWin::nsDeviceContextSpecWin()
-{
-  mDriverName    = nullptr;
-  mDeviceName    = nullptr;
-  mDevMode       = nullptr;
+  : mDevMode(nullptr)
 #ifdef MOZ_ENABLE_SKIA_PDF
-  mPrintViaSkPDF          = false;
-  mDC                     = NULL;
-  mPDFPageCount           = 0;
-  mPDFCurrentPageNum      = 0;
-  mPrintViaPDFInProgress  = false;
+  , mPrintViaSkPDF(false)
 #endif
+{
 }
 
 
@@ -113,34 +110,17 @@ NS_IMPL_ISUPPORTS(nsDeviceContextSpecWin, nsIDeviceContextSpec)
 
 nsDeviceContextSpecWin::~nsDeviceContextSpecWin()
 {
-  SetDeviceName(nullptr);
-  SetDriverName(nullptr);
   SetDevMode(nullptr);
 
   nsCOMPtr<nsIPrintSettingsWin> psWin(do_QueryInterface(mPrintSettings));
   if (psWin) {
-    psWin->SetDeviceName(nullptr);
-    psWin->SetDriverName(nullptr);
+    psWin->SetDeviceName(EmptyString());
+    psWin->SetDriverName(EmptyString());
     psWin->SetDevMode(nullptr);
   }
 
-#ifdef MOZ_ENABLE_SKIA_PDF
-  if (mPrintViaSkPDF ) {
-    CleanupPrintViaPDF();
-  }
-#endif
   // Free them, we won't need them for a while
   GlobalPrinters::GetInstance()->FreeGlobalPrinters();
-}
-
-
-//------------------------------------------------------------------
-// helper
-static char16_t * GetDefaultPrinterNameFromGlobalPrinters()
-{
-  nsAutoString printerName;
-  GlobalPrinters::GetInstance()->GetDefaultPrinterName(printerName);
-  return ToNewUnicode(printerName);
 }
 
 //----------------------------------------------------------------------------------
@@ -171,15 +151,15 @@ NS_IMETHODIMP nsDeviceContextSpecWin::Init(nsIWidget* aWidget,
 
     nsCOMPtr<nsIPrintSettingsWin> psWin(do_QueryInterface(aPrintSettings));
     if (psWin) {
-      char16_t* deviceName;
-      char16_t* driverName;
-      psWin->GetDeviceName(&deviceName); // creates new memory (makes a copy)
-      psWin->GetDriverName(&driverName); // creates new memory (makes a copy)
+      nsAutoString deviceName;
+      nsAutoString driverName;
+      psWin->GetDeviceName(deviceName);
+      psWin->GetDriverName(driverName);
 
       LPDEVMODEW devMode;
       psWin->GetDevMode(&devMode);       // creates new memory (makes a copy)
 
-      if (deviceName && driverName && devMode) {
+      if (!deviceName.IsEmpty() && !driverName.IsEmpty() && devMode) {
         // Scaling is special, it is one of the few
         // devMode items that we control in layout
         if (devMode->dmFields & DM_SCALE) {
@@ -194,15 +174,9 @@ NS_IMETHODIMP nsDeviceContextSpecWin::Init(nsIWidget* aWidget,
         SetDriverName(driverName);
         SetDevMode(devMode);
 
-        // clean up
-        free(deviceName);
-        free(driverName);
-
         return NS_OK;
       } else {
         PR_PL(("***** nsDeviceContextSpecWin::Init - deviceName/driverName/devMode was NULL!\n"));
-        if (deviceName) free(deviceName);
-        if (driverName) free(driverName);
         if (devMode) ::HeapFree(::GetProcessHeap(), 0, devMode);
       }
     }
@@ -211,41 +185,24 @@ NS_IMETHODIMP nsDeviceContextSpecWin::Init(nsIWidget* aWidget,
   }
 
   // Get the Printer Name to be used and output format.
-  char16_t * printerName = nullptr;
+  nsAutoString printerName;
   if (mPrintSettings) {
-    mPrintSettings->GetPrinterName(&printerName);
+    mPrintSettings->GetPrinterName(printerName);
   }
 
   // If there is no name then use the default printer
-  if (!printerName || (printerName && !*printerName)) {
-    printerName = GetDefaultPrinterNameFromGlobalPrinters();
+  if (printerName.IsEmpty()) {
+    GlobalPrinters::GetInstance()->GetDefaultPrinterName(printerName);
   }
 
-  NS_ASSERTION(printerName, "We have to have a printer name");
-  if (!printerName || !*printerName) return rv;
+  if (printerName.IsEmpty()) {
+    return rv;
+  }
 
   return GetDataFromPrinter(printerName, mPrintSettings);
 }
 
 //----------------------------------------------------------
-// Helper Function - Free and reallocate the string
-static void CleanAndCopyString(wchar_t*& aStr, const wchar_t* aNewStr)
-{
-  if (aStr != nullptr) {
-    if (aNewStr != nullptr && wcslen(aStr) > wcslen(aNewStr)) { // reuse it if we can
-      wcscpy(aStr, aNewStr);
-      return;
-    } else {
-      free(aStr);
-      aStr = nullptr;
-    }
-  }
-
-  if (nullptr != aNewStr) {
-    aStr = (wchar_t*) malloc(sizeof(wchar_t) * (wcslen(aNewStr) + 1));
-    wcscpy(aStr, aNewStr);
-  }
-}
 
 already_AddRefed<PrintTarget> nsDeviceContextSpecWin::MakePrintTarget()
 {
@@ -265,8 +222,8 @@ already_AddRefed<PrintTarget> nsDeviceContextSpecWin::MakePrintTarget()
     IntSize size = IntSize::Truncate(width, height);
 
     if (mOutputFormat == nsIPrintSettings::kOutputFormatPDF) {
-      nsXPIDLString filename;
-      mPrintSettings->GetToFileName(getter_Copies(filename));
+      nsString filename;
+      mPrintSettings->GetToFileName(filename);
 
       nsAutoCString printFile(NS_ConvertUTF16toUTF8(filename).get());
       auto skStream = MakeUnique<SkFILEWStream>(printFile.get());
@@ -274,44 +231,21 @@ already_AddRefed<PrintTarget> nsDeviceContextSpecWin::MakePrintTarget()
     }
 
     if (mDevMode) {
-      // When printing to a printer via Skia PDF we open a temporary file that
-      // we draw the print output into as PDF output, then once we reach
-      // EndDcoument we'll convert that PDF file to EMF page by page to print
-      // each page. Here we create the temporary file and wrap it in a
-      // PrintTargetSkPDF that we return.
-      nsresult rv =
-        NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(mPDFTempFile));
-      NS_ENSURE_SUCCESS(rv, nullptr);
-
-      nsCOMPtr<nsIUUIDGenerator> uuidGenerator =
-        do_GetService("@mozilla.org/uuid-generator;1", &rv);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
+      NS_WARNING_ASSERTION(!mDriverName.IsEmpty(), "No driver!");
+      HDC dc = ::CreateDCW(mDriverName.get(), mDeviceName.get(), nullptr, mDevMode);
+      if (!dc) {
+        gfxCriticalError(gfxCriticalError::DefaultOptions(false))
+          << "Failed to create device context in GetSurfaceForPrinter";
         return nullptr;
       }
-      nsID uuid;
-      rv = uuidGenerator->GenerateUUIDInPlace(&uuid);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return nullptr;
-      }
-      char uuidChars[NSID_LENGTH];
-      uuid.ToProvidedString(uuidChars);
-
-      nsAutoCString printFile("tmp-printing");
-      printFile.Append(nsPrintfCString("%s.pdf", uuidChars));
-      rv = mPDFTempFile->AppendNative(printFile);
-      NS_ENSURE_SUCCESS(rv, nullptr);
-
-      nsAutoCString filePath;
-      mPDFTempFile->GetNativePath(filePath);
-      auto skStream = MakeUnique<SkFILEWStream>(filePath.get());
-      return PrintTargetSkPDF::CreateOrNull(Move(skStream), size);
+      return PrintTargetEMF::CreateOrNull(dc, size);
     }
   }
 #endif
 
   if (mOutputFormat == nsIPrintSettings::kOutputFormatPDF) {
-    nsXPIDLString filename;
-    mPrintSettings->GetToFileName(getter_Copies(filename));
+    nsString filename;
+    mPrintSettings->GetToFileName(filename);
 
     double width, height;
     mPrintSettings->GetEffectivePageSize(&width, &height);
@@ -339,8 +273,8 @@ already_AddRefed<PrintTarget> nsDeviceContextSpecWin::MakePrintTarget()
   }
 
   if (mDevMode) {
-    NS_WARNING_ASSERTION(mDriverName, "No driver!");
-    HDC dc = ::CreateDCW(mDriverName, mDeviceName, nullptr, mDevMode);
+    NS_WARNING_ASSERTION(!mDriverName.IsEmpty(), "No driver!");
+    HDC dc = ::CreateDCW(mDriverName.get(), mDeviceName.get(), nullptr, mDevMode);
     if (!dc) {
       gfxCriticalError(gfxCriticalError::DefaultOptions(false))
         << "Failed to create device context in GetSurfaceForPrinter";
@@ -387,155 +321,16 @@ nsDeviceContextSpecWin::GetPrintingScale()
   return float(resolution) / GetDPI();
 }
 
-#ifdef MOZ_ENABLE_SKIA_PDF
-void
-nsDeviceContextSpecWin::CleanupPrintViaPDF()
+//----------------------------------------------------------------------------------
+void nsDeviceContextSpecWin::SetDeviceName(const nsAString& aDeviceName)
 {
-  if (mPDFPrintHelper) {
-    mPDFPrintHelper->CloseDocument();
-    mPDFPrintHelper = nullptr;
-    mPDFPageCount = 0;
-  }
-
-  if (mPDFTempFile) {
-    mPDFTempFile->Remove(/* aRecursive */ false);
-    mPDFTempFile = nullptr;
-  }
-
-  if (mDC != NULL) {
-    if (mPrintViaPDFInProgress) {
-      ::EndDoc(mDC);
-      mPrintViaPDFInProgress = false;
-    }
-    ::DeleteDC(mDC);
-    mDC = NULL;
-  }
-}
-
-void
-nsDeviceContextSpecWin::FinishPrintViaPDF()
-{
-  MOZ_ASSERT(mDC != NULL);
-  MOZ_ASSERT(mPDFPrintHelper);
-  MOZ_ASSERT(mPDFTempFile);
-  MOZ_ASSERT(mPrintViaPDFInProgress);
-
-  bool isPrinted = false;
-  bool endPageSuccess = false;
-  if (::StartPage(mDC) > 0) {
-    isPrinted = mPDFPrintHelper->DrawPage(mDC, mPDFCurrentPageNum++,
-                                          ::GetDeviceCaps(mDC, HORZRES),
-                                          ::GetDeviceCaps(mDC, VERTRES));
-    if (::EndPage(mDC) > 0) {
-      endPageSuccess = true;
-    }
-  }
-
-  if (mPDFCurrentPageNum < mPDFPageCount && isPrinted && endPageSuccess) {
-    nsresult rv = NS_DispatchToCurrentThread(NewRunnableMethod(
-      "nsDeviceContextSpecWin::PrintPDFOnThread",
-      this,
-      &nsDeviceContextSpecWin::FinishPrintViaPDF));
-    if (NS_SUCCEEDED(rv)) {
-      return;
-    }
-  }
-
-  CleanupPrintViaPDF();
-}
-#endif
-
-nsresult
-nsDeviceContextSpecWin::BeginDocument(const nsAString& aTitle,
-                                      const nsAString& aPrintToFileName,
-                                      int32_t          aStartPage,
-                                      int32_t          aEndPage)
-{
-#ifdef MOZ_ENABLE_SKIA_PDF
-  if (mPrintViaSkPDF && (mOutputFormat != nsIPrintSettings::kOutputFormatPDF)) {
-    // Here we create mDC which we'll draw each page from our temporary PDF file
-    // to once we reach EndDocument. The only reason we create it here rather
-    // than in EndDocument is so that we don't need to store aTitle and
-    // aPrintToFileName as member data.
-    NS_WARNING_ASSERTION(mDriverName, "No driver!");
-    mDC = ::CreateDCW(mDriverName, mDeviceName, nullptr, mDevMode);
-    if (mDC == NULL) {
-      gfxCriticalError(gfxCriticalError::DefaultOptions(false))
-        << "Failed to create device context in GetSurfaceForPrinter";
-      return NS_ERROR_FAILURE;
-    }
-
-    const uint32_t DOC_TITLE_LENGTH = MAX_PATH - 1;
-    nsString title(aTitle);
-    nsString printToFileName(aPrintToFileName);
-    if (title.Length() > DOC_TITLE_LENGTH) {
-      title.SetLength(DOC_TITLE_LENGTH - 3);
-      title.AppendLiteral("...");
-    }
-
-    DOCINFOW di;
-    di.cbSize = sizeof(di);
-    di.lpszDocName = title.Length() > 0 ? title.get() : L"Mozilla Document";
-    di.lpszOutput = printToFileName.Length() > 0 ?
-                      printToFileName.get() : nullptr;
-    di.lpszDatatype = nullptr;
-    di.fwType = 0;
-
-    if (::StartDocW(mDC, &di) <= 0) {
-      // Defer calling CleanupPrintViaPDF() in destructor because PDF temp file
-      // is not ready yet.
-      return NS_ERROR_FAILURE;
-    }
-
-    mPrintViaPDFInProgress = true;
-  }
-#endif
-
-  return NS_OK;
-}
-
-nsresult
-nsDeviceContextSpecWin::EndDocument()
-{
-  nsresult rv = NS_OK;
-#ifdef MOZ_ENABLE_SKIA_PDF
-  if (mPrintViaSkPDF &&
-      mOutputFormat != nsIPrintSettings::kOutputFormatPDF &&
-      mPrintViaPDFInProgress) {
-
-    mPDFPrintHelper = MakeUnique<PDFViaEMFPrintHelper>();
-    rv = mPDFPrintHelper->OpenDocument(mPDFTempFile);
-    NS_ENSURE_SUCCESS(rv, rv);
-    mPDFPageCount = mPDFPrintHelper->GetPageCount();
-    if (mPDFPageCount <= 0) {
-      CleanupPrintViaPDF();
-      return NS_ERROR_FAILURE;
-    }
-    mPDFCurrentPageNum = 0;
-
-    rv = NS_DispatchToCurrentThread(NewRunnableMethod(
-      "nsDeviceContextSpecWin::PrintPDFOnThread",
-      this,
-      &nsDeviceContextSpecWin::FinishPrintViaPDF));
-    if (NS_FAILED(rv)) {
-      CleanupPrintViaPDF();
-      NS_WARNING("Failed to dispatch to the current thread!");
-    }
-  }
-#endif
-  return rv;
+  mDeviceName = aDeviceName;
 }
 
 //----------------------------------------------------------------------------------
-void nsDeviceContextSpecWin::SetDeviceName(char16ptr_t aDeviceName)
+void nsDeviceContextSpecWin::SetDriverName(const nsAString& aDriverName)
 {
-  CleanAndCopyString(mDeviceName, aDeviceName);
-}
-
-//----------------------------------------------------------------------------------
-void nsDeviceContextSpecWin::SetDriverName(char16ptr_t aDriverName)
-{
-  CleanAndCopyString(mDriverName, aDriverName);
+  mDriverName = aDriverName;
 }
 
 //----------------------------------------------------------------------------------
@@ -560,7 +355,8 @@ nsDeviceContextSpecWin::GetDevMode(LPDEVMODEW &aDevMode)
 //----------------------------------------------------------------------------------
 // Setup the object's data member with the selected printer's data
 nsresult
-nsDeviceContextSpecWin::GetDataFromPrinter(char16ptr_t aName, nsIPrintSettings* aPS)
+nsDeviceContextSpecWin::GetDataFromPrinter(const nsAString& aName,
+                                           nsIPrintSettings* aPS)
 {
   nsresult rv = NS_ERROR_FAILURE;
 
@@ -574,7 +370,8 @@ nsDeviceContextSpecWin::GetDataFromPrinter(char16ptr_t aName, nsIPrintSettings* 
   }
 
   nsHPRINTER hPrinter = nullptr;
-  wchar_t *name = (wchar_t*)aName; // Windows APIs use non-const name argument
+  const nsString& flat = PromiseFlatString(aName);
+  wchar_t* name = (wchar_t*)flat.get(); // Windows APIs use non-const name argument
 
   BOOL status = ::OpenPrinterW(name, &hPrinter, nullptr);
   if (status) {
@@ -589,7 +386,7 @@ nsDeviceContextSpecWin::GetDataFromPrinter(char16ptr_t aName, nsIPrintSettings* 
       PR_PL(("**** nsDeviceContextSpecWin::GetDataFromPrinter - Couldn't get "
              "size of DEVMODE using DocumentPropertiesW(pDeviceName = \"%s\"). "
              "GetLastEror() = %08x\n",
-             aName ? NS_ConvertUTF16toUTF8(aName).get() : "", GetLastError()));
+             NS_ConvertUTF16toUTF8(aName).get(), GetLastError()));
       return NS_ERROR_FAILURE;
     }
 
@@ -614,7 +411,7 @@ nsDeviceContextSpecWin::GetDataFromPrinter(char16ptr_t aName, nsIPrintSettings* 
       // because they may have been set from invalid prefs.
       if (ret == IDOK) {
         // We need to get information from the device as well.
-        nsAutoHDC printerDC(::CreateICW(kDriverName, aName, nullptr, pDevMode));
+        nsAutoHDC printerDC(::CreateICW(kDriverName, name, nullptr, pDevMode));
         if (NS_WARN_IF(!printerDC)) {
           ::HeapFree(::GetProcessHeap(), 0, pDevMode);
           return NS_ERROR_FAILURE;
@@ -635,7 +432,7 @@ nsDeviceContextSpecWin::GetDataFromPrinter(char16ptr_t aName, nsIPrintSettings* 
 
     SetDeviceName(aName);
 
-    SetDriverName(kDriverName);
+    SetDriverName(nsDependentString(kDriverName));
 
     rv = NS_OK;
   } else {
@@ -664,22 +461,19 @@ NS_IMPL_ISUPPORTS(nsPrinterEnumeratorWin, nsIPrinterEnumerator)
 //----------------------------------------------------------------------------------
 // Return the Default Printer name
 NS_IMETHODIMP
-nsPrinterEnumeratorWin::GetDefaultPrinterName(char16_t * *aDefaultPrinterName)
+nsPrinterEnumeratorWin::GetDefaultPrinterName(nsAString& aDefaultPrinterName)
 {
-  NS_ENSURE_ARG_POINTER(aDefaultPrinterName);
-
-  *aDefaultPrinterName = GetDefaultPrinterNameFromGlobalPrinters(); // helper
-
+  GlobalPrinters::GetInstance()->GetDefaultPrinterName(aDefaultPrinterName);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsPrinterEnumeratorWin::InitPrintSettingsFromPrinter(const char16_t *aPrinterName, nsIPrintSettings *aPrintSettings)
+nsPrinterEnumeratorWin::InitPrintSettingsFromPrinter(const nsAString& aPrinterName,
+                                                     nsIPrintSettings *aPrintSettings)
 {
-  NS_ENSURE_ARG_POINTER(aPrinterName);
   NS_ENSURE_ARG_POINTER(aPrintSettings);
 
-  if (!*aPrinterName) {
+  if (aPrinterName.IsEmpty()) {
     return NS_OK;
   }
 
@@ -724,7 +518,8 @@ nsPrinterEnumeratorWin::InitPrintSettingsFromPrinter(const char16_t *aPrinterNam
   aPrintSettings->SetPrinterName(aPrinterName);
 
   // We need to get information from the device as well.
-  char16ptr_t printerName = aPrinterName;
+  const nsString& flat = PromiseFlatString(aPrinterName);
+  char16ptr_t printerName = flat.get();
   HDC dc = ::CreateICW(kDriverName, printerName, nullptr, devmode);
   if (NS_WARN_IF(!dc)) {
     return NS_ERROR_FAILURE;
@@ -833,7 +628,7 @@ GlobalPrinters::EnumerateNativePrinters()
 //------------------------------------------------------------------
 // Uses the GetProfileString to get the default printer from the registry
 void
-GlobalPrinters::GetDefaultPrinterName(nsString& aDefaultPrinterName)
+GlobalPrinters::GetDefaultPrinterName(nsAString& aDefaultPrinterName)
 {
   aDefaultPrinterName.Truncate();
   WCHAR szDefaultPrinterName[1024];
@@ -853,7 +648,8 @@ GlobalPrinters::GetDefaultPrinterName(nsString& aDefaultPrinterName)
     aDefaultPrinterName = EmptyString();
   }
 
-  PR_PL(("DEFAULT PRINTER [%s]\n", aDefaultPrinterName.get()));
+  PR_PL(("DEFAULT PRINTER [%s]\n",
+         PromiseFlatString(aDefaultPrinterName).get()));
 }
 
 //----------------------------------------------------------------------------------

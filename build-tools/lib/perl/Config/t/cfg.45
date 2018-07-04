@@ -1,0 +1,14 @@
+param1 = value1
+param2 = value2
+
+<block1>
+ param2 = value3
+ param4 = $param1  # expect: "value1"
+ param5 = $param2  # expect: "value3"
+</block1>
+
+<block2>
+ param6 = $param1  # expect: "value1"
+ param7 = $param2  # expect: "value2"
+</block2>
+

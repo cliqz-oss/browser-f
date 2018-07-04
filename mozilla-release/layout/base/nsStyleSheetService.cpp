@@ -7,7 +7,6 @@
 /* implementation of interface for managing user and user-agent style sheets */
 
 #include "nsStyleSheetService.h"
-#include "mozilla/CSSStyleSheet.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/PreloadedStyleSheet.h"
 #include "mozilla/StyleSheet.h"
@@ -26,6 +25,7 @@
 #include "nsIConsoleService.h"
 #include "nsIObserverService.h"
 #include "nsLayoutStatics.h"
+#include "nsLayoutUtils.h"
 
 using namespace mozilla;
 
@@ -73,7 +73,7 @@ nsStyleSheetService::RegisterFromEnumerator(nsICategoryManager  *aManager,
     nsAutoCString name;
     icStr->GetData(name);
 
-    nsXPIDLCString spec;
+    nsCString spec;
     aManager->GetCategoryEntry(aCategory, name.get(), getter_Copies(spec));
 
     nsCOMPtr<nsIURI> uri;
@@ -96,18 +96,11 @@ SheetHasURI(StyleSheet* aSheet, nsIURI* aSheetURI)
 }
 
 int32_t
-nsStyleSheetService::FindSheetByURI(uint32_t aSheetType,
-                                    nsIURI* aSheetURI)
+nsStyleSheetService::FindSheetByURI(uint32_t aSheetType, nsIURI* aSheetURI)
 {
-  MOZ_ASSERT(mGeckoSheets[aSheetType].Length() ==
-               mServoSheets[aSheetType].Length());
-
-  SheetArray& sheets = mGeckoSheets[aSheetType];
+  SheetArray& sheets = mSheets[aSheetType];
   for (int32_t i = sheets.Length() - 1; i >= 0; i-- ) {
     if (SheetHasURI(sheets[i], aSheetURI)) {
-#ifdef MOZ_STYLO
-      MOZ_ASSERT(SheetHasURI(mServoSheets[aSheetType][i], aSheetURI));
-#endif
       return i;
     }
   }
@@ -175,23 +168,11 @@ nsStyleSheetService::LoadAndRegisterSheet(nsIURI *aSheetURI,
 
   rv = LoadAndRegisterSheetInternal(aSheetURI, aSheetType);
   if (NS_SUCCEEDED(rv)) {
-    // We're guaranteed that the new sheet is the last sheet in
-    // m{Gecko,Servo}Sheets[aSheetType]
-
-    MOZ_ASSERT(mGeckoSheets[aSheetType].Length() ==
-                 mServoSheets[aSheetType].Length());
-
-    RefPtr<StyleSheet> geckoSheet = mGeckoSheets[aSheetType].LastElement();
-    RefPtr<StyleSheet> servoSheet = mServoSheets[aSheetType].LastElement();
-
     // Hold on to a copy of the registered PresShells.
     nsTArray<nsCOMPtr<nsIPresShell>> toNotify(mPresShells);
     for (nsIPresShell* presShell : toNotify) {
-      if (presShell->StyleSet()) {
-        StyleSheet* sheet = presShell->StyleSet()->IsGecko() ? geckoSheet
-                                                             : servoSheet;
-        presShell->NotifyStyleSheetServiceSheetAdded(sheet, aSheetType);
-      }
+      StyleSheet* sheet = mSheets[aSheetType].LastElement();
+      presShell->NotifyStyleSheetServiceSheetAdded(sheet, aSheetType);
     }
 
     if (XRE_IsParentProcess()) {
@@ -216,10 +197,9 @@ nsStyleSheetService::LoadAndRegisterSheet(nsIURI *aSheetURI,
 static nsresult
 LoadSheet(nsIURI* aURI,
           css::SheetParsingMode aParsingMode,
-          StyleBackendType aType,
           RefPtr<StyleSheet>* aResult)
 {
-  RefPtr<css::Loader> loader = new css::Loader(aType, nullptr);
+  RefPtr<css::Loader> loader = new css::Loader;
   return loader->LoadSheetSync(aURI, aParsingMode, true, aResult);
 }
 
@@ -248,23 +228,12 @@ nsStyleSheetService::LoadAndRegisterSheetInternal(nsIURI *aSheetURI,
       return NS_ERROR_INVALID_ARG;
   }
 
-  nsresult rv;
 
-  RefPtr<StyleSheet> geckoSheet;
-  RefPtr<StyleSheet> servoSheet;
-
-  rv = LoadSheet(aSheetURI, parsingMode, StyleBackendType::Gecko, &geckoSheet);
+  RefPtr<StyleSheet> sheet;
+  nsresult rv = LoadSheet(aSheetURI, parsingMode, &sheet);
   NS_ENSURE_SUCCESS(rv, rv);
-  MOZ_ASSERT(geckoSheet);
-
-#ifdef MOZ_STYLO
-  rv = LoadSheet(aSheetURI, parsingMode, StyleBackendType::Servo, &servoSheet);
-  NS_ENSURE_SUCCESS(rv, rv);
-  MOZ_ASSERT(servoSheet);
-#endif
-
-  mGeckoSheets[aSheetType].AppendElement(geckoSheet);
-  mServoSheets[aSheetType].AppendElement(servoSheet);
+  MOZ_ASSERT(sheet);
+  mSheets[aSheetType].AppendElement(sheet);
 
   return NS_OK;
 }
@@ -279,6 +248,7 @@ nsStyleSheetService::SheetRegistered(nsIURI *sheetURI,
   NS_ENSURE_ARG_POINTER(sheetURI);
   NS_PRECONDITION(_retval, "Null out param");
 
+  // Check to see if we have the sheet.
   *_retval = (FindSheetByURI(aSheetType, sheetURI) >= 0);
 
   return NS_OK;
@@ -371,25 +341,20 @@ nsStyleSheetService::UnregisterSheet(nsIURI *aSheetURI, uint32_t aSheetType)
                 aSheetType == AUTHOR_SHEET);
   NS_ENSURE_ARG_POINTER(aSheetURI);
 
-  MOZ_ASSERT(mGeckoSheets[aSheetType].Length() ==
-               mServoSheets[aSheetType].Length());
-
+  RefPtr<StyleSheet> sheet;
   int32_t foundIndex = FindSheetByURI(aSheetType, aSheetURI);
-  NS_ENSURE_TRUE(foundIndex >= 0, NS_ERROR_INVALID_ARG);
-
-  RefPtr<StyleSheet> geckoSheet = mGeckoSheets[aSheetType][foundIndex];
-  RefPtr<StyleSheet> servoSheet = mServoSheets[aSheetType][foundIndex];
-
-  mGeckoSheets[aSheetType].RemoveElementAt(foundIndex);
-  mServoSheets[aSheetType].RemoveElementAt(foundIndex);
+  if (foundIndex >= 0) {
+    sheet = mSheets[aSheetType][foundIndex];
+    mSheets[aSheetType].RemoveElementAt(foundIndex);
+  }
 
   // Hold on to a copy of the registered PresShells.
   nsTArray<nsCOMPtr<nsIPresShell>> toNotify(mPresShells);
   for (nsIPresShell* presShell : toNotify) {
     if (presShell->StyleSet()) {
-      StyleSheet* sheet = presShell->StyleSet()->IsGecko() ? geckoSheet
-                                                           : servoSheet;
-      presShell->NotifyStyleSheetServiceSheetRemoved(sheet, aSheetType);
+      if (sheet) {
+        presShell->NotifyStyleSheetServiceSheetRemoved(sheet, aSheetType);
+      }
     }
   }
 
@@ -445,13 +410,11 @@ size_t
 nsStyleSheetService::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
 {
   size_t n = aMallocSizeOf(this);
-  for (auto* sheetArrays : { &mGeckoSheets, &mServoSheets }) {
-    for (auto& sheetArray : *sheetArrays) {
-      n += sheetArray.ShallowSizeOfExcludingThis(aMallocSizeOf);
-      for (StyleSheet* sheet : sheetArray) {
-        if (sheet) {
-          n += sheet->SizeOfIncludingThis(aMallocSizeOf);
-        }
+  for (auto& sheetArray : mSheets) {
+    n += sheetArray.ShallowSizeOfExcludingThis(aMallocSizeOf);
+    for (StyleSheet* sheet : sheetArray) {
+      if (sheet) {
+        n += sheet->SizeOfIncludingThis(aMallocSizeOf);
       }
     }
   }

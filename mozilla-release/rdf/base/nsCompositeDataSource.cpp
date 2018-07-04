@@ -36,7 +36,7 @@
 #include "nsTArray.h"
 #include "nsCOMArray.h"
 #include "nsArrayEnumerator.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "rdf.h"
 #include "nsCycleCollectionParticipant.h"
 
@@ -321,10 +321,10 @@ public:
     virtual ~CompositeArcsInOutEnumeratorImpl();
 
     virtual nsresult
-    GetEnumerator(nsIRDFDataSource* aDataSource, nsISimpleEnumerator** aResult);
+    GetEnumerator(nsIRDFDataSource* aDataSource, nsISimpleEnumerator** aResult) override;
 
     virtual nsresult
-    HasNegation(nsIRDFDataSource* aDataSource, nsIRDFNode* aNode, bool* aResult);
+    HasNegation(nsIRDFDataSource* aDataSource, nsIRDFNode* aNode, bool* aResult) override;
 
     CompositeArcsInOutEnumeratorImpl(CompositeDataSourceImpl* aCompositeDataSource,
                                      nsIRDFNode* aNode,
@@ -391,10 +391,10 @@ class CompositeAssertionEnumeratorImpl : public CompositeEnumeratorImpl
 {
 public:
     virtual nsresult
-    GetEnumerator(nsIRDFDataSource* aDataSource, nsISimpleEnumerator** aResult);
+    GetEnumerator(nsIRDFDataSource* aDataSource, nsISimpleEnumerator** aResult) override;
 
     virtual nsresult
-    HasNegation(nsIRDFDataSource* aDataSource, nsIRDFNode* aNode, bool* aResult);
+    HasNegation(nsIRDFDataSource* aDataSource, nsIRDFNode* aNode, bool* aResult) override;
 
     CompositeAssertionEnumeratorImpl(CompositeDataSourceImpl* aCompositeDataSource,
                                      nsIRDFResource* aSource,
@@ -530,9 +530,9 @@ NS_INTERFACE_MAP_END
 //
 
 NS_IMETHODIMP
-CompositeDataSourceImpl::GetURI(char* *uri)
+CompositeDataSourceImpl::GetURI(nsACString& aURI)
 {
-    *uri = nullptr;
+    aURI.SetIsVoid(true);
     return NS_OK;
 }
 
@@ -1068,7 +1068,7 @@ CompositeDataSourceImpl::ArcLabelsOut(nsIRDFResource* aSource,
 NS_IMETHODIMP
 CompositeDataSourceImpl::GetAllResources(nsISimpleEnumerator** aResult)
 {
-    NS_NOTYETIMPLEMENTED("CompositeDataSourceImpl::GetAllResources");
+    MOZ_ASSERT_UNREACHABLE("CompositeDataSourceImpl::GetAllResources");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 

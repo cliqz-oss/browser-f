@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -50,7 +50,7 @@ class MOZ_HEAP_CLASS TextOverflow final {
    * the content edges.  Add display items for text-overflow markers as needed
    * and remove or clip items that would overlap a marker.
    */
-  void ProcessLine(const nsDisplayListSet& aLists, nsLineBox* aLine);
+  void ProcessLine(const nsDisplayListSet& aLists, nsLineBox* aLine, uint32_t aLineNumber);
 
   /**
    * Get the resulting text-overflow markers (the list may be empty).
@@ -215,7 +215,8 @@ class MOZ_HEAP_CLASS TextOverflow final {
   void CreateMarkers(const nsLineBox* aLine,
                      bool aCreateIStart, bool aCreateIEnd,
                      const LogicalRect& aInsideMarkersArea,
-                     const LogicalRect& aContentArea);
+                     const LogicalRect& aContentArea,
+                     uint32_t aLineNumber);
 
   LogicalRect            mContentArea;
   nsDisplayListBuilder*  mBuilder;

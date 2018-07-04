@@ -1,7 +1,7 @@
 "use strict";
 
-const {SessionSaver} = Cu.import("resource:///modules/sessionstore/SessionSaver.jsm", {});
-const {TabStateFlusher} = Cu.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
+const {SessionSaver} = ChromeUtils.import("resource:///modules/sessionstore/SessionSaver.jsm", {});
+const {TabStateFlusher} = ChromeUtils.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
 
 /**
  * Test what happens if loading a URL that should clear the
@@ -11,7 +11,7 @@ add_task(async function clearURLBarAfterParentProcessURL() {
   let tab = await new Promise(resolve => {
     gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:preferences");
     let newTabBrowser = gBrowser.getBrowserForTab(gBrowser.selectedTab);
-    newTabBrowser.addEventListener("Initialized", function() {
+    newTabBrowser.addEventListener("Initialized", async function() {
       resolve(gBrowser.selectedTab);
     }, {capture: true, once: true});
   });
@@ -19,7 +19,7 @@ add_task(async function clearURLBarAfterParentProcessURL() {
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   is(gURLBar.value, "", "URL bar should be empty");
   is(tab.linkedBrowser.userTypedValue, null, "The browser should have no recorded userTypedValue");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 /**
@@ -30,7 +30,7 @@ add_task(async function clearURLBarAfterParentProcessURLInExistingTab() {
   let tab = await new Promise(resolve => {
     gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
     let newTabBrowser = gBrowser.getBrowserForTab(gBrowser.selectedTab);
-    newTabBrowser.addEventListener("Initialized", function() {
+    newTabBrowser.addEventListener("Initialized", async function() {
       resolve(gBrowser.selectedTab);
     }, {capture: true, once: true});
     newTabBrowser.loadURI("about:preferences");
@@ -39,7 +39,7 @@ add_task(async function clearURLBarAfterParentProcessURLInExistingTab() {
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   is(gURLBar.value, "", "URL bar should be empty");
   is(tab.linkedBrowser.userTypedValue, null, "The browser should have no recorded userTypedValue");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 /**
@@ -63,7 +63,7 @@ add_task(async function clearURLBarAfterManuallyLoadingAboutHome() {
 
   is(gURLBar.value, "", "URL bar should be empty");
   is(tab.linkedBrowser.userTypedValue, null, "userTypedValue should be null");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 /**
@@ -72,6 +72,8 @@ add_task(async function clearURLBarAfterManuallyLoadingAboutHome() {
  * default content principal are different).
  */
 add_task(async function dontTemporarilyShowAboutHome() {
+  requestLongerTimeout(2);
+
   await SpecialPowers.pushPrefEnv({set: [["browser.startup.page", 1]]});
   let windowOpenedPromise = BrowserTestUtils.waitForNewWindow();
   let win = OpenBrowserWindow();
@@ -79,6 +81,7 @@ add_task(async function dontTemporarilyShowAboutHome() {
   let promiseTabSwitch = BrowserTestUtils.switchTab(win.gBrowser, () => {});
   win.BrowserOpenTab();
   await promiseTabSwitch;
+  is(win.gBrowser.visibleTabs.length, 2, "2 tabs opened");
   await TabStateFlusher.flush(win.gBrowser.selectedBrowser);
   await BrowserTestUtils.closeWindow(win);
   ok(SessionStore.getClosedWindowCount(), "Should have a closed window");
@@ -94,6 +97,10 @@ add_task(async function dontTemporarilyShowAboutHome() {
     },
   };
   win.gBrowser.addProgressListener(wpl);
+
+  if (win.gBrowser.visibleTabs.length < 2) {
+    await BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
+  }
   let otherTab = win.gBrowser.selectedTab.previousSibling;
   let tabLoaded = BrowserTestUtils.browserLoaded(otherTab.linkedBrowser, false, "about:home");
   await BrowserTestUtils.switchTab(win.gBrowser, otherTab);

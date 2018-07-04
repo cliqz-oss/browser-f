@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,15 +15,11 @@
 #include "nsNodeInfoManager.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsContentUtils.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsFontMetrics.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLProgressElement.h"
-#include "nsContentList.h"
 #include "nsCSSPseudoElements.h"
-#include "nsStyleSet.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
 #include "nsThemeConstants.h"
 #include <algorithm>
 
@@ -30,15 +27,15 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 nsIFrame*
-NS_NewProgressFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewProgressFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsProgressFrame(aContext);
+  return new (aPresShell) nsProgressFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsProgressFrame)
 
-nsProgressFrame::nsProgressFrame(nsStyleContext* aContext)
-  : nsContainerFrame(aContext, kClassID)
+nsProgressFrame::nsProgressFrame(ComputedStyle* aStyle)
+  : nsContainerFrame(aStyle, kClassID)
   , mBarDiv(nullptr)
 {
 }
@@ -48,14 +45,14 @@ nsProgressFrame::~nsProgressFrame()
 }
 
 void
-nsProgressFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsProgressFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   NS_ASSERTION(!GetPrevContinuation(),
                "nsProgressFrame should not have continuations; if it does we "
                "need to call RegUnregAccessKey only for the first.");
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  nsContentUtils::DestroyAnonymousContent(&mBarDiv);
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  aPostDestroyData.AddAnonymousContent(mBarDiv.forget());
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 nsresult
@@ -92,10 +89,9 @@ NS_QUERYFRAME_TAIL_INHERITING(nsContainerFrame)
 
 void
 nsProgressFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                  const nsRect&           aDirtyRect,
                                   const nsDisplayListSet& aLists)
 {
-  BuildDisplayListForInline(aBuilder, aDirtyRect, aLists);
+  BuildDisplayListForInline(aBuilder, aLists);
 }
 
 void
@@ -107,6 +103,7 @@ nsProgressFrame::Reflow(nsPresContext*           aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsProgressFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   NS_ASSERTION(mBarDiv, "Progress bar div must exist!");
   NS_ASSERTION(PrincipalChildList().GetLength() == 1 &&
@@ -117,7 +114,7 @@ nsProgressFrame::Reflow(nsPresContext*           aPresContext,
                "need to call RegUnregAccessKey only for the first.");
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
 
   aDesiredSize.SetSize(aReflowInput.GetWritingMode(),
@@ -131,7 +128,7 @@ nsProgressFrame::Reflow(nsPresContext*           aPresContext,
 
   FinishAndStoreOverflow(&aDesiredSize);
 
-  aStatus.Reset();
+  aStatus.Reset(); // This type of frame can't be split.
 
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
@@ -152,7 +149,7 @@ nsProgressFrame::ReflowChildFrame(nsIFrame*          aChild,
   nscoord xoffset = aReflowInput.ComputedPhysicalBorderPadding().left;
   nscoord yoffset = aReflowInput.ComputedPhysicalBorderPadding().top;
 
-  double position = static_cast<HTMLProgressElement*>(mContent)->Position();
+  double position = static_cast<HTMLProgressElement*>(GetContent())->Position();
 
   // Force the bar's size to match the current progress.
   // When indeterminate, the progress' size will be 100%.
@@ -205,14 +202,14 @@ nsProgressFrame::ReflowChildFrame(nsIFrame*          aChild,
 
 nsresult
 nsProgressFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                  nsIAtom* aAttribute,
+                                  nsAtom* aAttribute,
                                   int32_t  aModType)
 {
   NS_ASSERTION(mBarDiv, "Progress bar div must exist!");
 
   if (aNameSpaceID == kNameSpaceID_None &&
       (aAttribute == nsGkAtoms::value || aAttribute == nsGkAtoms::max)) {
-    auto shell = PresContext()->PresShell();
+    auto shell = PresShell();
     for (auto childFrame : PrincipalChildList()) {
       shell->FrameNeedsReflow(childFrame, nsIPresShell::eResize,
                               NS_FRAME_IS_DIRTY);

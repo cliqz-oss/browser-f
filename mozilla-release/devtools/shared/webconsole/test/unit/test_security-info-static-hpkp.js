@@ -5,12 +5,12 @@
 
 // Test that NetworkHelper.parseSecurityInfo correctly detects static hpkp pins
 
-const { require } = Components.utils.import("resource://devtools/shared/Loader.jsm", {});
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 const Services = require("Services");
 
 Object.defineProperty(this, "NetworkHelper", {
-  get: function () {
+  get: function() {
     return require("devtools/shared/webconsole/network-helper");
   },
   configurable: true,
@@ -18,7 +18,6 @@ Object.defineProperty(this, "NetworkHelper", {
   enumerable: true
 });
 
-var Ci = Components.interfaces;
 const wpl = Ci.nsIWebProgressListener;
 
 const MockSecurityInfo = {

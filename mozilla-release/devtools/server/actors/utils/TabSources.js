@@ -8,13 +8,11 @@ const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const { assert, fetch } = DevToolsUtils;
 const EventEmitter = require("devtools/shared/event-emitter");
 const { OriginalLocation, GeneratedLocation } = require("devtools/server/actors/common");
-const { resolve } = require("promise");
 const { joinURI } = require("devtools/shared/path");
 
 loader.lazyRequireGetter(this, "SourceActor", "devtools/server/actors/source", true);
 loader.lazyRequireGetter(this, "isEvalSource", "devtools/server/actors/source", true);
 loader.lazyRequireGetter(this, "SourceMapConsumer", "source-map", true);
-loader.lazyRequireGetter(this, "SourceMapGenerator", "source-map", true);
 loader.lazyRequireGetter(this, "WasmRemap", "devtools/shared/wasm-source-map", true);
 
 /**
@@ -57,7 +55,7 @@ TabSources.prototype = {
   /**
    * Update preferences and clear out existing sources
    */
-  setOptions: function (options) {
+  setOptions: function(options) {
     let shouldReset = false;
 
     if ("useSourceMaps" in options) {
@@ -82,7 +80,7 @@ TabSources.prototype = {
    *        Specify { sourceMaps: true } if you also want to clear
    *        the source map cache (usually done on reload).
    */
-  reset: function (opts = {}) {
+  reset: function(opts = {}) {
     this._sourceActors = new Map();
     this._sourceMaps = new Map();
     this._sourceMappedSourceActors = Object.create(null);
@@ -108,7 +106,7 @@ TabSources.prototype = {
    *        The content type of the source, if immediately available.
    * @returns a SourceActor representing the source or null.
    */
-  source: function ({ source, originalUrl, generatedSource,
+  source: function({ source, originalUrl, generatedSource,
                        isInlineSource, contentType }) {
     assert(source || (originalUrl && generatedSource),
            "TabSources.prototype.source needs an originalUrl or a source");
@@ -191,7 +189,7 @@ TabSources.prototype = {
     return actor;
   },
 
-  _emitNewSource: function (actor) {
+  _emitNewSource: function(actor) {
     if (!actor.source) {
       // Always notify if we don't have a source because that means
       // it's something that has been sourcemapped, or it represents
@@ -214,7 +212,7 @@ TabSources.prototype = {
     }
   },
 
-  getSourceActor: function (source) {
+  _getSourceActor: function(source) {
     if (source.url in this._sourceMappedSourceActors) {
       return this._sourceMappedSourceActors[source.url];
     }
@@ -223,11 +221,25 @@ TabSources.prototype = {
       return this._sourceActors.get(source);
     }
 
-    throw new Error("getSource: could not find source actor for " +
-                    (source.url || "source"));
+    return null;
   },
 
-  getSourceActorByURL: function (url) {
+  hasSourceActor: function(source) {
+    return !!this._getSourceActor(source);
+  },
+
+  getSourceActor: function(source) {
+    const sourceActor = this._getSourceActor(source);
+
+    if (!sourceActor) {
+      throw new Error("getSource: could not find source actor for " +
+                      (source.url || "source"));
+    }
+
+    return sourceActor;
+  },
+
+  getSourceActorByURL: function(url) {
     if (url) {
       for (let [source, actor] of this._sourceActors) {
         if (source.url === url) {
@@ -251,7 +263,7 @@ TabSources.prototype = {
    *        The url to test.
    * @returns Boolean
    */
-  _isMinifiedURL: function (uri) {
+  _isMinifiedURL: function(uri) {
     if (!uri) {
       return false;
     }
@@ -276,7 +288,7 @@ TabSources.prototype = {
    *        The source instance to create an actor for.
    * @returns SourceActor
    */
-  createNonSourceMappedActor: function (source) {
+  createNonSourceMappedActor: function(source) {
     // Don't use getSourceURL because we don't want to consider the
     // displayURL property if it's an eval source. We only want to
     // consider real URLs, otherwise if there is a URL but it's
@@ -301,6 +313,10 @@ TabSources.prototype = {
     } else if (source.introductionType === "wasm") {
       // Wasm sources are not JavaScript. Give them their own content-type.
       spec.contentType = "text/wasm";
+    } else if (source.introductionType === "debugger eval") {
+      // All debugger eval code should have a text/javascript content-type.
+      // See Bug 1399064
+      spec.contentType = "text/javascript";
     } else if (url) {
       // There are a few special URLs that we know are JavaScript:
       // inline `javascript:` and code coming from the console
@@ -352,9 +368,9 @@ TabSources.prototype = {
    *        The source instance to create actors for.
    * @return Promise of an array of source actors
    */
-  _createSourceMappedActors: function (source) {
+  _createSourceMappedActors: function(source) {
     if (!this._useSourceMaps || !source.sourceMapURL) {
-      return resolve(null);
+      return Promise.resolve(null);
     }
 
     return this.fetchSourceMap(source)
@@ -378,7 +394,7 @@ TabSources.prototype = {
    *        The source instance to create actors for.
    * @param Promise of an array of source actors
    */
-  createSourceActors: function (source) {
+  createSourceActors: function(source) {
     return this._createSourceMappedActors(source).then(actors => {
       let actor = this.createNonSourceMappedActor(source);
       return (actors || [actor]).filter(isNotNull);
@@ -395,13 +411,13 @@ TabSources.prototype = {
    *        The source instance to get sourcemaps for.
    * @return Promise of a SourceMapConsumer
    */
-  fetchSourceMap: function (source) {
+  fetchSourceMap: function(source) {
     if (!this._useSourceMaps) {
-      return resolve(null);
+      return Promise.resolve(null);
     } else if (this._sourceMaps.has(source)) {
       return this._sourceMaps.get(source);
     } else if (!source || !source.sourceMapURL) {
-      return resolve(null);
+      return Promise.resolve(null);
     }
 
     let sourceMapURL = source.sourceMapURL;
@@ -427,15 +443,15 @@ TabSources.prototype = {
    * `source`. The resolved result may be null if the source does not
    * have a source map or source maps are disabled.
    */
-  getSourceMap: function (source) {
-    return resolve(this._sourceMaps.get(source));
+  getSourceMap: function(source) {
+    return Promise.resolve(this._sourceMaps.get(source));
   },
 
   /**
    * Set a SourceMapConsumer for the source map for |source|.
    */
-  setSourceMap: function (source, map) {
-    this._sourceMaps.set(source, resolve(map));
+  setSourceMap: function(source, map) {
+    this._sourceMaps.set(source, Promise.resolve(map));
   },
 
   /**
@@ -451,7 +467,7 @@ TabSources.prototype = {
    *        source map, and the source map's sources are relative, we resolve
    *        them from sourceURL.
    */
-  _fetchSourceMap: function (absSourceMapURL, sourceURL) {
+  _fetchSourceMap: function(absSourceMapURL, sourceURL) {
     assert(this._useSourceMaps,
            "Cannot fetch sourcemaps if they are disabled");
 
@@ -461,9 +477,8 @@ TabSources.prototype = {
 
     let fetching = fetch(absSourceMapURL, { loadFromCache: false })
       .then(({ content }) => {
-        let map = new SourceMapConsumer(content);
-        this._setSourceMapRoot(map, absSourceMapURL, sourceURL);
-        return map;
+        return new SourceMapConsumer(content,
+                                     this._getSourceMapRoot(absSourceMapURL, sourceURL));
       })
       .catch(error => {
         if (!DevToolsUtils.reportingDisabled) {
@@ -476,28 +491,16 @@ TabSources.prototype = {
   },
 
   /**
-   * Sets the source map's sourceRoot to be relative to the source map url.
+   * Compute the URL to pass to the SourceMapConsumer constructor as
+   * the "source map's URL".
    */
-  _setSourceMapRoot: function (sourceMap, absSourceMapURL, scriptURL) {
-    // No need to do this fiddling if we won't be fetching any sources over the
-    // wire.
-    if (sourceMap.hasContentsOfAllSources()) {
-      return;
+  _getSourceMapRoot: function(absSourceMapURL, scriptURL) {
+    // Pass in the source map URL; except if it is a data: URL, fall
+    // back to using the source's URL, if possible.
+    if (scriptURL && absSourceMapURL.startsWith("data:")) {
+      return scriptURL;
     }
-
-    const base = this._dirname(
-      absSourceMapURL.indexOf("data:") === 0
-        ? scriptURL
-        : absSourceMapURL);
-    sourceMap.sourceRoot = sourceMap.sourceRoot
-      ? joinURI(base, sourceMap.sourceRoot)
-      : base;
-  },
-
-  _dirname: function (path) {
-    let url = new URL(path);
-    let href = url.href;
-    return href.slice(0, href.lastIndexOf("/"));
+    return absSourceMapURL;
   },
 
   /**
@@ -515,7 +518,7 @@ TabSources.prototype = {
    *        - hard: Also remove the lower-level URL cache, which will
    *          make us completely forget about the source map.
    */
-  clearSourceMapCache: function (sourceMapURL, opts = { hard: false }) {
+  clearSourceMapCache: function(sourceMapURL, opts = { hard: false }) {
     let oldSm = this._sourceMapCache[sourceMapURL];
 
     if (opts.hard) {
@@ -546,7 +549,7 @@ TabSources.prototype = {
    * @param map SourceMapConsumer
    *        The source map instance
    */
-  setSourceMapHard: function (source, url, map) {
+  setSourceMapHard: function(source, url, map) {
     if (!url) {
       // This is a littly hacky, but we want to forcefully set a
       // sourcemap regardless of sourcemap settings. We want to
@@ -561,7 +564,7 @@ TabSources.prototype = {
 
     // Forcefully set the sourcemap cache. This will be used even if
     // sourcemaps are disabled.
-    this._sourceMapCache[url] = resolve(map);
+    this._sourceMapCache[url] = Promise.resolve(map);
     this.emit("updatedSource", this.getSourceActor(source));
   },
 
@@ -574,7 +577,7 @@ TabSources.prototype = {
    * @returns Object
    *          Returns an object of the form { source, line, column }
    */
-  getFrameLocation: function (frame) {
+  getFrameLocation: function(frame) {
     if (!frame || !frame.script) {
       return new GeneratedLocation();
     }
@@ -594,7 +597,7 @@ TabSources.prototype = {
    * sure to that it works properly, reusing source maps if already
    * fetched. Use this from any actor that needs sourcemapping.
    */
-  getOriginalLocation: function (generatedLocation) {
+  getOriginalLocation: function(generatedLocation) {
     let {
       generatedSourceActor,
       generatedLine,
@@ -642,7 +645,7 @@ TabSources.prototype = {
     });
   },
 
-  getAllGeneratedLocations: function (originalLocation) {
+  getAllGeneratedLocations: function(originalLocation) {
     let {
       originalSourceActor,
       originalLine,
@@ -683,7 +686,7 @@ TabSources.prototype = {
    * the tables this function uses; thus, it won't know that S's original
    * source URLs map to S until P is resolved.
    */
-  getGeneratedLocation: function (originalLocation) {
+  getGeneratedLocation: function(originalLocation) {
     let { originalSourceActor } = originalLocation;
 
     // Both original sources and normal sources could have sourcemaps,
@@ -728,7 +731,7 @@ TabSources.prototype = {
    *        The URL of the source which we are checking whether it is black
    *        boxed or not.
    */
-  isBlackBoxed: function (url) {
+  isBlackBoxed: function(url) {
     return this.blackBoxedSources.has(url);
   },
 
@@ -738,7 +741,7 @@ TabSources.prototype = {
    * @param url String
    *        The URL of the source which we are black boxing.
    */
-  blackBox: function (url) {
+  blackBox: function(url) {
     this.blackBoxedSources.add(url);
   },
 
@@ -748,7 +751,7 @@ TabSources.prototype = {
    * @param url String
    *        The URL of the source which we are no longer black boxing.
    */
-  unblackBox: function (url) {
+  unblackBox: function(url) {
     this.blackBoxedSources.delete(url);
   },
 
@@ -758,7 +761,7 @@ TabSources.prototype = {
    * @param url String
    *        The URL of the source that might be pretty printed.
    */
-  isPrettyPrinted: function (url) {
+  isPrettyPrinted: function(url) {
     return this.prettyPrintedSources.has(url);
   },
 
@@ -768,14 +771,14 @@ TabSources.prototype = {
    * @param url String
    *        The URL of the source to be pretty printed.
    */
-  prettyPrint: function (url, indent) {
+  prettyPrint: function(url, indent) {
     this.prettyPrintedSources.set(url, indent);
   },
 
   /**
    * Return the indent the given URL was pretty printed by.
    */
-  prettyPrintIndent: function (url) {
+  prettyPrintIndent: function(url) {
     return this.prettyPrintedSources.get(url);
   },
 
@@ -785,11 +788,11 @@ TabSources.prototype = {
    * @param url String
    *        The URL of the source that is no longer pretty printed.
    */
-  disablePrettyPrint: function (url) {
+  disablePrettyPrint: function(url) {
     this.prettyPrintedSources.delete(url);
   },
 
-  iter: function () {
+  iter: function() {
     let actors = Object.keys(this._sourceMappedSourceActors).map(k => {
       return this._sourceMappedSourceActors[k];
     });

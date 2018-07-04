@@ -2,8 +2,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-Cu.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "WebChannel",
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "WebChannel",
   "resource://gre/modules/WebChannel.jsm");
 
 const HTTP_PATH = "http://example.com";
@@ -211,7 +211,7 @@ var gTests = [
           is(id, "echo");
           is(message.command, "unsolicited");
 
-          resolve()
+          resolve();
         });
       });
 
@@ -396,7 +396,7 @@ var gTests = [
             ok(!sawString);
             sawString = true;
           } else {
-            reject(new Error(`Unknown message type: ${message.type}`))
+            reject(new Error(`Unknown message type: ${message.type}`));
           }
           if (sawObject && sawString) {
             resolve();

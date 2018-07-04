@@ -15,7 +15,7 @@
 namespace mozilla {
 
 template<class T>
-class OwningNonNull
+class MOZ_IS_SMARTPTR_TO_REFCOUNTED OwningNonNull
 {
 public:
   OwningNonNull() {}
@@ -156,6 +156,14 @@ protected:
   bool mInited = false;
 #endif
 };
+
+template<typename T>
+inline void
+ImplCycleCollectionUnlink(OwningNonNull<T>& aField)
+{
+  RefPtr<T> releaser(aField.forget());
+  // Now just let releaser go out of scope.
+}
 
 template <typename T>
 inline void

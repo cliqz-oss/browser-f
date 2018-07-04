@@ -25,17 +25,16 @@
 #include "nsError.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsNetCID.h"
-#include "jswrapper.h"
+#include "js/Wrapper.h"
 
 #include "mozilla/dom/nsCSPContext.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/ExtensionPolicyService.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/HashFunctions.h"
 
 using namespace mozilla;
-
-static bool gCodeBasePrincipalSupport = false;
 
 static bool URIIsImmutable(nsIURI* aURI)
 {
@@ -47,17 +46,10 @@ static bool URIIsImmutable(nsIURI* aURI)
     !isMutable;
 }
 
-static nsIAddonPolicyService*
-GetAddonPolicyService(nsresult* aRv)
+static inline ExtensionPolicyService&
+EPS()
 {
-  static nsCOMPtr<nsIAddonPolicyService> addonPolicyService;
-
-  *aRv = NS_OK;
-  if (!addonPolicyService) {
-    addonPolicyService = do_GetService("@mozilla.org/addons/policy-service;1", aRv);
-    ClearOnShutdown(&addonPolicyService);
-  }
-  return addonPolicyService;
+  return ExtensionPolicyService::GetSingleton();
 }
 
 NS_IMPL_CLASSINFO(ContentPrincipal, nullptr, nsIClassInfo::MAIN_THREAD_ONLY,
@@ -68,15 +60,6 @@ NS_IMPL_QUERY_INTERFACE_CI(ContentPrincipal,
 NS_IMPL_CI_INTERFACE_GETTER(ContentPrincipal,
                             nsIPrincipal,
                             nsISerializable)
-
-// Called at startup:
-/* static */ void
-ContentPrincipal::InitializeStatics()
-{
-  Preferences::AddBoolVarCache(&gCodeBasePrincipalSupport,
-                               "signed.applets.codebase_principal_support",
-                               false);
-}
 
 ContentPrincipal::ContentPrincipal()
   : BasePrincipal(eCodebasePrincipal)
@@ -425,34 +408,34 @@ ContentPrincipal::GetBaseDomain(nsACString& aBaseDomain)
   return NS_OK;
 }
 
+WebExtensionPolicy*
+ContentPrincipal::AddonPolicy()
+{
+  if (!mAddon.isSome()) {
+    NS_ENSURE_TRUE(mCodebase, nullptr);
+
+    bool isMozExt;
+    if (NS_SUCCEEDED(mCodebase->SchemeIs("moz-extension", &isMozExt)) && isMozExt) {
+      mAddon.emplace(EPS().GetByURL(mCodebase.get()));
+    } else {
+      mAddon.emplace(nullptr);
+    }
+  }
+
+  return mAddon.value();
+}
+
 NS_IMETHODIMP
 ContentPrincipal::GetAddonId(nsAString& aAddonId)
 {
-  if (mAddonIdCache.isSome()) {
-    aAddonId.Assign(mAddonIdCache.ref());
-    return NS_OK;
-  }
-
-  NS_ENSURE_TRUE(mCodebase, NS_ERROR_FAILURE);
-
-  nsresult rv;
-  bool isMozExt;
-  if (NS_SUCCEEDED(mCodebase->SchemeIs("moz-extension", &isMozExt)) && isMozExt) {
-    nsIAddonPolicyService* addonPolicyService = GetAddonPolicyService(&rv);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    nsAutoString addonId;
-    rv = addonPolicyService->ExtensionURIToAddonId(mCodebase, addonId);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    mAddonIdCache.emplace(addonId);
+  auto policy = AddonPolicy();
+  if (policy) {
+    policy->GetId(aAddonId);
   } else {
-    mAddonIdCache.emplace();
+    aAddonId.Truncate();
   }
-
-  aAddonId.Assign(mAddonIdCache.ref());
   return NS_OK;
-};
+}
 
 NS_IMETHODIMP
 ContentPrincipal::Read(nsIObjectInputStream* aStream)
@@ -465,6 +448,14 @@ ContentPrincipal::Read(nsIObjectInputStream* aStream)
   }
 
   codebase = do_QueryInterface(supports);
+  // Enforce re-parsing about: URIs so that if they change, we continue to use
+  // their new principals correctly.
+  bool isAbout = false;
+  if (NS_SUCCEEDED(codebase->SchemeIs("about", &isAbout)) && isAbout) {
+    nsAutoCString spec;
+    codebase->GetSpec(spec);
+    NS_ENSURE_SUCCESS(NS_NewURI(getter_AddRefs(codebase), spec), NS_ERROR_FAILURE);
+  }
 
   nsCOMPtr<nsIURI> domain;
   rv = NS_ReadOptionalObject(aStream, true, getter_AddRefs(supports));

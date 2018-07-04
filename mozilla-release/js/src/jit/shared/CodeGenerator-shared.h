@@ -33,18 +33,6 @@ template <class ArgSeq, class StoreOutputTo>
 class OutOfLineCallVM;
 
 class OutOfLineTruncateSlow;
-class OutOfLineWasmTruncateCheck;
-
-struct PatchableBackedgeInfo
-{
-    CodeOffsetJump backedge;
-    Label* loopHeader;
-    Label* interruptCheck;
-
-    PatchableBackedgeInfo(CodeOffsetJump backedge, Label* loopHeader, Label* interruptCheck)
-      : backedge(backedge), loopHeader(loopHeader), interruptCheck(interruptCheck)
-    {}
-};
 
 struct ReciprocalMulConstants {
     int64_t multiplier;
@@ -67,7 +55,7 @@ class CodeGeneratorShared : public LElementVisitor
     js::Vector<OutOfLineCode*, 0, SystemAllocPolicy> outOfLineCode_;
 
     MacroAssembler& ensureMasm(MacroAssembler* masm);
-    mozilla::Maybe<MacroAssembler> maybeMasm_;
+    mozilla::Maybe<IonHeapMacroAssembler> maybeMasm_;
 
   public:
     MacroAssembler& masm;
@@ -78,7 +66,7 @@ class CodeGeneratorShared : public LElementVisitor
     LBlock* current;
     SnapshotWriter snapshots_;
     RecoverWriter recovers_;
-    JitCode* deoptTable_;
+    mozilla::Maybe<TrampolinePtr> deoptTable_;
 #ifdef DEBUG
     uint32_t pushedArgs_;
 #endif
@@ -111,9 +99,6 @@ class CodeGeneratorShared : public LElementVisitor
     };
     js::Vector<CompileTimeICInfo, 0, SystemAllocPolicy> icInfo_;
 
-    // Patchable backedges generated for loops.
-    Vector<PatchableBackedgeInfo, 0, SystemAllocPolicy> patchableBackedges_;
-
 #ifdef JS_TRACE_LOGGING
     struct PatchableTLEvent {
         CodeOffset offset;
@@ -145,6 +130,10 @@ class CodeGeneratorShared : public LElementVisitor
 
     bool isProfilerInstrumentationEnabled() {
         return gen->isProfilerInstrumentationEnabled();
+    }
+
+    bool stringsCanBeInNursery() const {
+        return gen->stringsCanBeInNursery();
     }
 
     js::Vector<NativeToTrackedOptimizations, 0, SystemAllocPolicy> trackedOptimizations_;
@@ -345,15 +334,6 @@ class CodeGeneratorShared : public LElementVisitor
     void emitTruncateDouble(FloatRegister src, Register dest, MTruncateToInt32* mir);
     void emitTruncateFloat32(FloatRegister src, Register dest, MTruncateToInt32* mir);
 
-    void emitWasmCallBase(LWasmCallBase* ins);
-    void visitWasmCall(LWasmCall* ins) { emitWasmCallBase(ins); }
-    void visitWasmCallI64(LWasmCallI64* ins) { emitWasmCallBase(ins); }
-
-    void visitWasmLoadGlobalVar(LWasmLoadGlobalVar* ins);
-    void visitWasmStoreGlobalVar(LWasmStoreGlobalVar* ins);
-    void visitWasmLoadGlobalVarI64(LWasmLoadGlobalVarI64* ins);
-    void visitWasmStoreGlobalVarI64(LWasmStoreGlobalVarI64* ins);
-
     void emitPreBarrier(Register base, const LAllocation* index, int32_t offsetAdjustment);
     void emitPreBarrier(Address address);
 
@@ -362,8 +342,9 @@ class CodeGeneratorShared : public LElementVisitor
     // actually branch directly to.
     MBasicBlock* skipTrivialBlocks(MBasicBlock* block) {
         while (block->lir()->isTrivial()) {
-            MOZ_ASSERT(block->lir()->rbegin()->numSuccessors() == 1);
-            block = block->lir()->rbegin()->getSuccessor(0);
+            LGoto* ins = block->lir()->rbegin()->toGoto();
+            MOZ_ASSERT(ins->numSuccessors() == 1);
+            block = ins->getSuccessor(0);
         }
         return block;
     }
@@ -383,7 +364,7 @@ class CodeGeneratorShared : public LElementVisitor
         return true;
     }
 
-  public:
+  protected:
     // Save and restore all volatile registers to/from the stack, excluding the
     // specified register(s), before a function call made using callWithABI and
     // after storing the function call's return value to an output register.
@@ -438,6 +419,7 @@ class CodeGeneratorShared : public LElementVisitor
     inline void saveLiveVolatile(LInstruction* ins);
     inline void restoreLiveVolatile(LInstruction* ins);
 
+  public:
     template <typename T>
     void pushArg(const T& t) {
         masm.Push(t);
@@ -454,8 +436,8 @@ class CodeGeneratorShared : public LElementVisitor
         return masm.PushWithPatch(t);
     }
 
-    void storeResultTo(Register reg) {
-        masm.storeCallWordResult(reg);
+    void storePointerResultTo(Register reg) {
+        masm.storeCallPointerResult(reg);
     }
 
     void storeFloatResultTo(FloatRegister reg) {
@@ -467,6 +449,7 @@ class CodeGeneratorShared : public LElementVisitor
         masm.storeCallResultValue(t);
     }
 
+  protected:
     void callVM(const VMFunction& f, LInstruction* ins, const Register* dynStack = nullptr);
 
     template <class ArgSeq, class StoreOutputTo>
@@ -487,25 +470,15 @@ class CodeGeneratorShared : public LElementVisitor
 
     Label* getJumpLabelForBranch(MBasicBlock* block);
 
-    // Generate a jump to the start of the specified block, adding information
-    // if this is a loop backedge. Use this in place of jumping directly to
-    // mir->lir()->label(), or use getJumpLabelForBranch() if a label to use
-    // directly is needed.
+    // Generate a jump to the start of the specified block. Use this in place of
+    // jumping directly to mir->lir()->label(), or use getJumpLabelForBranch()
+    // if a label to use directly is needed.
     void jumpToBlock(MBasicBlock* mir);
-
-    // Get a label for the start of block which can be used for jumping, in
-    // place of jumpToBlock.
-    Label* labelForBackedgeWithImplicitCheck(MBasicBlock* mir);
 
 // This function is not used for MIPS. MIPS has branchToBlock.
 #if !defined(JS_CODEGEN_MIPS32) && !defined(JS_CODEGEN_MIPS64)
     void jumpToBlock(MBasicBlock* mir, Assembler::Condition cond);
 #endif
-
-    template <class T>
-    wasm::TrapDesc trap(T* mir, wasm::Trap trap) {
-        return wasm::TrapDesc(mir->bytecodeOffset(), trap, masm.framePushed());
-    }
 
   private:
     void generateInvalidateEpilogue();
@@ -518,10 +491,6 @@ class CodeGeneratorShared : public LElementVisitor
     void visitOutOfLineCallVM(OutOfLineCallVM<ArgSeq, StoreOutputTo>* ool);
 
     void visitOutOfLineTruncateSlow(OutOfLineTruncateSlow* ool);
-
-    virtual void visitOutOfLineWasmTruncateCheck(OutOfLineWasmTruncateCheck* ool) {
-        MOZ_CRASH("NYI");
-    }
 
     bool omitOverRecursedCheck() const;
 
@@ -637,7 +606,7 @@ template <typename T>
 class OutOfLineCodeBase : public OutOfLineCode
 {
   public:
-    virtual void generate(CodeGeneratorShared* codegen) {
+    virtual void generate(CodeGeneratorShared* codegen) override {
         accept(static_cast<T*>(codegen));
     }
 
@@ -725,7 +694,9 @@ class StoreRegisterTo
     { }
 
     inline void generate(CodeGeneratorShared* codegen) const {
-        codegen->storeResultTo(out_);
+        // It's okay to use storePointerResultTo here - the VMFunction wrapper
+        // ensures the upper bytes are zero for bool/int32 return values.
+        codegen->storePointerResultTo(out_);
     }
     inline LiveRegisterSet clobbered() const {
         LiveRegisterSet set;
@@ -799,7 +770,7 @@ class OutOfLineCallVM : public OutOfLineCodeBase<CodeGeneratorShared>
         out_(out)
     { }
 
-    void accept(CodeGeneratorShared* codegen) {
+    void accept(CodeGeneratorShared* codegen) override {
         codegen->visitOutOfLineCallVM(this);
     }
 
@@ -836,33 +807,44 @@ CodeGeneratorShared::visitOutOfLineCallVM(OutOfLineCallVM<ArgSeq, StoreOutputTo>
     masm.jump(ool->rejoin());
 }
 
-class OutOfLineWasmTruncateCheck : public OutOfLineCodeBase<CodeGeneratorShared>
+template <class CodeGen>
+class OutOfLineWasmTruncateCheckBase : public OutOfLineCodeBase<CodeGen>
 {
     MIRType fromType_;
     MIRType toType_;
     FloatRegister input_;
-    bool isUnsigned_;
+    Register output_;
+    Register64 output64_;
+    TruncFlags flags_;
     wasm::BytecodeOffset bytecodeOffset_;
 
   public:
-    OutOfLineWasmTruncateCheck(MWasmTruncateToInt32* mir, FloatRegister input)
-      : fromType_(mir->input()->type()), toType_(MIRType::Int32), input_(input),
-        isUnsigned_(mir->isUnsigned()), bytecodeOffset_(mir->bytecodeOffset())
+    OutOfLineWasmTruncateCheckBase(MWasmTruncateToInt32* mir, FloatRegister input,
+                                   Register output)
+      : fromType_(mir->input()->type()), toType_(MIRType::Int32), input_(input), output_(output),
+        output64_(Register64::Invalid()), flags_(mir->flags()),
+        bytecodeOffset_(mir->bytecodeOffset())
     { }
 
-    OutOfLineWasmTruncateCheck(MWasmTruncateToInt64* mir, FloatRegister input)
+    OutOfLineWasmTruncateCheckBase(MWasmTruncateToInt64* mir, FloatRegister input,
+                                   Register64 output)
       : fromType_(mir->input()->type()), toType_(MIRType::Int64), input_(input),
-        isUnsigned_(mir->isUnsigned()), bytecodeOffset_(mir->bytecodeOffset())
+        output_(Register::Invalid()), output64_(output), flags_(mir->flags()),
+        bytecodeOffset_(mir->bytecodeOffset())
     { }
 
-    void accept(CodeGeneratorShared* codegen) {
+    void accept(CodeGen* codegen) override {
         codegen->visitOutOfLineWasmTruncateCheck(this);
     }
 
     FloatRegister input() const { return input_; }
+    Register output() const { return output_; }
+    Register64 output64() const { return output64_; }
     MIRType toType() const { return toType_; }
     MIRType fromType() const { return fromType_; }
-    bool isUnsigned() const { return isUnsigned_; }
+    bool isUnsigned() const { return flags_ & TRUNC_UNSIGNED; }
+    bool isSaturating() const { return flags_ & TRUNC_SATURATING; }
+    TruncFlags flags() const { return flags_; }
     wasm::BytecodeOffset bytecodeOffset() const { return bytecodeOffset_; }
 };
 

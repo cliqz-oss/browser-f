@@ -4,15 +4,12 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+var EXPORTED_SYMBOLS = [ "TranslationDocument" ];
 
-this.EXPORTED_SYMBOLS = [ "TranslationDocument" ];
-
-const SHOW_ELEMENT = Ci.nsIDOMNodeFilter.SHOW_ELEMENT;
-const SHOW_TEXT = Ci.nsIDOMNodeFilter.SHOW_TEXT;
 const TEXT_NODE = Ci.nsIDOMNode.TEXT_NODE;
 
-Cu.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-common/async.js");
+Cu.importGlobalProperties(["DOMParser"]);
 
 /**
  * This class represents a document that is being translated,
@@ -23,7 +20,7 @@ Cu.import("resource://services-common/utils.js");
  *
  * @param document  The document to be translated
  */
-this.TranslationDocument = function(document) {
+var TranslationDocument = function(document) {
   this.itemsMap = new Map();
   this.roots = [];
   this._init(document);
@@ -212,14 +209,10 @@ this.TranslationDocument.prototype = {
       // Let the event loop breath on every 100 nodes
       // that are replaced.
       const YIELD_INTERVAL = 100;
-      let count = YIELD_INTERVAL;
-
+      let maybeYield = Async.jankYielder(YIELD_INTERVAL);
       for (let root of this.roots) {
         root.swapText(target);
-        if (count-- == 0) {
-          count = YIELD_INTERVAL;
-          await CommonUtils.laterTickResolvingPromise();
-        }
+        await maybeYield();
       }
     })();
   }
@@ -309,8 +302,7 @@ TranslationItem.prototype = {
       return;
     }
 
-    let domParser = Cc["@mozilla.org/xmlextras/domparser;1"]
-                      .createInstance(Ci.nsIDOMParser);
+    let domParser = new DOMParser();
 
     let doc = domParser.parseFromString(result, "text/html");
     parseResultNode(this, doc.body.firstChild);

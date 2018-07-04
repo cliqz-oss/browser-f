@@ -58,11 +58,14 @@ class IonICStub
 
 class IonGetPropertyIC;
 class IonSetPropertyIC;
+class IonGetPropSuperIC;
 class IonGetNameIC;
 class IonBindNameIC;
 class IonGetIteratorIC;
 class IonHasOwnIC;
 class IonInIC;
+class IonInstanceOfIC;
+class IonUnaryArithIC;
 
 class IonIC
 {
@@ -142,6 +145,10 @@ class IonIC
         MOZ_ASSERT(kind_ == CacheKind::SetProp || kind_ == CacheKind::SetElem);
         return (IonSetPropertyIC*)this;
     }
+    IonGetPropSuperIC* asGetPropSuperIC() {
+        MOZ_ASSERT(kind_ == CacheKind::GetPropSuper || kind_ == CacheKind::GetElemSuper);
+        return (IonGetPropSuperIC*)this;
+    }
     IonGetNameIC* asGetNameIC() {
         MOZ_ASSERT(kind_ == CacheKind::GetName);
         return (IonGetNameIC*)this;
@@ -162,8 +169,16 @@ class IonIC
         MOZ_ASSERT(kind_ == CacheKind::In);
         return (IonInIC*)this;
     }
+    IonInstanceOfIC* asInstanceOfIC() {
+        MOZ_ASSERT(kind_ == CacheKind::InstanceOf);
+        return (IonInstanceOfIC*)this;
+    }
+    IonUnaryArithIC* asUnaryArithIC() {
+        MOZ_ASSERT(kind_ == CacheKind::UnaryArith);
+        return (IonUnaryArithIC*)this;
+    }
 
-    void updateBaseAddress(JitCode* code, MacroAssembler& masm);
+    void updateBaseAddress(JitCode* code);
 
     // Returns the Register to use as scratch when entering IC stubs. This
     // should either be an output register or a temp.
@@ -212,6 +227,37 @@ class IonGetPropertyIC : public IonIC
 
     static MOZ_MUST_USE bool update(JSContext* cx, HandleScript outerScript, IonGetPropertyIC* ic,
                                     HandleValue val, HandleValue idVal, MutableHandleValue res);
+};
+
+class IonGetPropSuperIC : public IonIC
+{
+    LiveRegisterSet liveRegs_;
+
+    Register object_;
+    TypedOrValueRegister receiver_;
+    ConstantOrRegister id_;
+    TypedOrValueRegister output_;
+
+  public:
+    IonGetPropSuperIC(CacheKind kind, LiveRegisterSet liveRegs, Register object, TypedOrValueRegister receiver,
+                      const ConstantOrRegister& id, TypedOrValueRegister output)
+      : IonIC(kind),
+        liveRegs_(liveRegs),
+        object_(object),
+        receiver_(receiver),
+        id_(id),
+        output_(output)
+    { }
+
+    Register object() const { return object_; }
+    TypedOrValueRegister receiver() const { return receiver_; }
+    ConstantOrRegister id() const { return id_; }
+    TypedOrValueRegister output() const { return output_; }
+    LiveRegisterSet liveRegs() const { return liveRegs_; }
+
+    static MOZ_MUST_USE bool update(JSContext* cx, HandleScript outerScript, IonGetPropSuperIC* ic,
+                                    HandleObject obj, HandleValue receiver, HandleValue idVal,
+                                    MutableHandleValue res);
 };
 
 class IonSetPropertyIC : public IonIC
@@ -403,6 +449,59 @@ class IonInIC : public IonIC
 
     static MOZ_MUST_USE bool update(JSContext* cx, HandleScript outerScript, IonInIC* ic,
                                     HandleValue key, HandleObject obj, bool* res);
+};
+
+class IonInstanceOfIC : public IonIC
+{
+    LiveRegisterSet liveRegs_;
+
+    TypedOrValueRegister lhs_;
+    Register rhs_;
+    Register output_;
+
+    public:
+
+    IonInstanceOfIC(LiveRegisterSet liveRegs, TypedOrValueRegister lhs, Register rhs,
+                    Register output)
+      : IonIC(CacheKind::InstanceOf),
+        liveRegs_(liveRegs),
+        lhs_(lhs),
+        rhs_(rhs),
+        output_(output)
+    { }
+
+    LiveRegisterSet liveRegs() const { return liveRegs_; }
+    TypedOrValueRegister lhs() const { return lhs_; }
+    Register rhs() const { return rhs_; }
+    Register output() const { return output_; }
+
+    // This signature mimics that of TryAttachInstanceOfStub in baseline
+    static MOZ_MUST_USE bool update(JSContext* cx, HandleScript outerScript, IonInstanceOfIC* ic,
+                                    HandleValue lhs, HandleObject rhs, bool* attached);
+};
+
+class IonUnaryArithIC : public IonIC
+{
+    LiveRegisterSet liveRegs_;
+
+    TypedOrValueRegister input_;
+    ValueOperand output_;
+
+    public:
+
+    IonUnaryArithIC(LiveRegisterSet liveRegs, TypedOrValueRegister input,  ValueOperand output)
+      : IonIC(CacheKind::UnaryArith),
+        liveRegs_(liveRegs),
+        input_(input),
+        output_(output)
+    { }
+
+    LiveRegisterSet liveRegs() const { return liveRegs_; }
+    TypedOrValueRegister input() const { return input_; }
+    ValueOperand output() const { return output_; }
+
+    static MOZ_MUST_USE bool update(JSContext* cx, HandleScript outerScript, IonUnaryArithIC* stub,
+                                    HandleValue val, MutableHandleValue res);
 };
 
 } // namespace jit

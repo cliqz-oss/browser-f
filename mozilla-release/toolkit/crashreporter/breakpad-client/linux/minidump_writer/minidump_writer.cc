@@ -599,7 +599,7 @@ class MinidumpWriter {
 
   bool WriteMemoryListStream(MDRawDirectory* dirent) {
     TypedMDRVA<uint32_t> list(&minidump_writer_);
-    if (memory_blocks_.size()) {
+    if (!memory_blocks_.empty()) {
       if (!list.AllocateObjectAndArray(memory_blocks_.size(),
                                        sizeof(MDMemoryDescriptor)))
         return false;
@@ -736,7 +736,7 @@ class MinidumpWriter {
       dso_count++;
     }
 
-    MDRVA linkmap_rva = minidump_writer_.kInvalidMDRVA;
+    MDRVA linkmap_rva = MinidumpFileWriter::kInvalidMDRVA;
     if (dso_count > 0) {
       // If we have at least one DSO, create an array of MDRawLinkMap
       // entries in the minidump file.
@@ -1247,7 +1247,7 @@ class MinidumpWriter {
   const int fd_;  // File descriptor where the minidum should be written.
   const char* path_;  // Path to the file where the minidum should be written.
 
-  const struct ucontext* const ucontext_;  // also from the signal handler
+  const ucontext_t* const ucontext_;  // also from the signal handler
 #if !defined(__ARM_EABI__) && !defined(__mips__)
   const google_breakpad::fpstate_t* const float_state_;  // ditto
 #endif

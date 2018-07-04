@@ -6,8 +6,8 @@ use dom::bindings::codegen::Bindings::CSSStyleDeclarationBinding::{self, CSSStyl
 use dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use dom::bindings::error::{Error, ErrorResult, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{JS, Root};
 use dom::bindings::reflector::{DomObject, Reflector, reflect_dom_object};
+use dom::bindings::root::{Dom, DomRoot};
 use dom::bindings::str::DOMString;
 use dom::cssrule::CSSRule;
 use dom::element::Element;
@@ -16,13 +16,12 @@ use dom::window::Window;
 use dom_struct::dom_struct;
 use servo_arc::Arc;
 use servo_url::ServoUrl;
-use std::ascii::AsciiExt;
 use style::attr::AttrValue;
-use style::properties::{Importance, PropertyDeclarationBlock, PropertyId, LonghandId, ShorthandId};
+use style::properties::{DeclarationSource, Importance, PropertyDeclarationBlock, PropertyId, LonghandId, ShorthandId};
 use style::properties::{parse_one_declaration_into, parse_style_attribute, SourcePropertyDeclaration};
 use style::selector_parser::PseudoElement;
 use style::shared_lock::Locked;
-use style_traits::{PARSING_MODE_DEFAULT, ToCss};
+use style_traits::ParsingMode;
 
 // http://dev.w3.org/csswg/cssom/#the-cssstyledeclaration-interface
 #[dom_struct]
@@ -33,12 +32,12 @@ pub struct CSSStyleDeclaration {
     pseudo: Option<PseudoElement>,
 }
 
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 #[must_root]
 pub enum CSSStyleOwner {
-    Element(JS<Element>),
-    CSSRule(JS<CSSRule>,
-            #[ignore_heap_size_of = "Arc"]
+    Element(Dom<Element>),
+    CSSRule(Dom<CSSRule>,
+            #[ignore_malloc_size_of = "Arc"]
             Arc<Locked<PropertyDeclarationBlock>>),
 }
 
@@ -86,7 +85,8 @@ impl CSSStyleOwner {
                     // [1]: https://github.com/whatwg/html/issues/2306
                     if let Some(pdb) = attr {
                         let guard = shared_lock.read();
-                        let serialization = pdb.read_with(&guard).to_css_string();
+                        let mut serialization = String::new();
+                        pdb.read_with(&guard).to_css(&mut serialization).unwrap();
                         el.set_attribute(&local_name!("style"),
                                          AttrValue::Declaration(serialization,
                                                                 pdb));
@@ -137,10 +137,10 @@ impl CSSStyleOwner {
         }
     }
 
-    fn window(&self) -> Root<Window> {
+    fn window(&self) -> DomRoot<Window> {
         match *self {
             CSSStyleOwner::Element(ref el) => window_from_node(&**el),
-            CSSStyleOwner::CSSRule(ref rule, _) => Root::from_ref(rule.global().as_window()),
+            CSSStyleOwner::CSSRule(ref rule, _) => DomRoot::from_ref(rule.global().as_window()),
         }
     }
 
@@ -154,7 +154,7 @@ impl CSSStyleOwner {
     }
 }
 
-#[derive(PartialEq, HeapSizeOf)]
+#[derive(MallocSizeOf, PartialEq)]
 pub enum CSSModificationAccess {
     ReadWrite,
     Readonly,
@@ -164,9 +164,17 @@ macro_rules! css_properties(
     ( $([$getter:ident, $setter:ident, $id:expr],)* ) => (
         $(
             fn $getter(&self) -> DOMString {
+                debug_assert!(
+                    $id.enabled_for_all_content(),
+                    "Someone forgot a #[Pref] annotation"
+                );
                 self.get_property_value($id)
             }
             fn $setter(&self, value: DOMString) -> ErrorResult {
+                debug_assert!(
+                    $id.enabled_for_all_content(),
+                    "Someone forgot a #[Pref] annotation"
+                );
                 self.set_property($id, value, DOMString::new())
             }
         )*
@@ -192,12 +200,12 @@ impl CSSStyleDeclaration {
                owner: CSSStyleOwner,
                pseudo: Option<PseudoElement>,
                modification_access: CSSModificationAccess)
-               -> Root<CSSStyleDeclaration> {
-        reflect_dom_object(box CSSStyleDeclaration::new_inherited(owner,
-                                                                  pseudo,
-                                                                  modification_access),
-                           global,
-                           CSSStyleDeclarationBinding::Wrap)
+               -> DomRoot<CSSStyleDeclaration> {
+        reflect_dom_object(
+            Box::new(CSSStyleDeclaration::new_inherited(owner, pseudo, modification_access)),
+            global,
+            CSSStyleDeclarationBinding::Wrap
+        )
     }
 
     fn get_computed_style(&self, property: PropertyId) -> DOMString {
@@ -238,7 +246,11 @@ impl CSSStyleDeclaration {
             return Err(Error::NoModificationAllowed);
         }
 
-        self.owner.mutate_associated_block(|ref mut pdb, mut changed| {
+        if !id.enabled_for_all_content() {
+            return Ok(());
+        }
+
+        self.owner.mutate_associated_block(|pdb, changed| {
             if value.is_empty() {
                 // Step 3
                 *changed = pdb.remove_property(&id);
@@ -261,7 +273,7 @@ impl CSSStyleDeclaration {
             let mut declarations = SourcePropertyDeclaration::new();
             let result = parse_one_declaration_into(
                 &mut declarations, id, &value, &self.owner.base_url(),
-                window.css_error_reporter(), PARSING_MODE_DEFAULT, quirks_mode);
+                window.css_error_reporter(), ParsingMode::DEFAULT, quirks_mode);
 
             // Step 6
             match result {
@@ -274,7 +286,11 @@ impl CSSStyleDeclaration {
 
             // Step 7
             // Step 8
-            *changed = pdb.extend_reset(declarations.drain(), importance);
+            *changed = pdb.extend(
+                declarations.drain(),
+                importance,
+                DeclarationSource::CssOm,
+            );
 
             Ok(())
         })
@@ -360,7 +376,7 @@ impl CSSStyleDeclarationMethods for CSSStyleDeclaration {
             _ => return Ok(()),
         };
 
-        self.owner.mutate_associated_block(|ref mut pdb, mut changed| {
+        self.owner.mutate_associated_block(|pdb, changed| {
             // Step 5 & 6
             *changed = pdb.set_importance(&id, importance);
         });
@@ -388,7 +404,7 @@ impl CSSStyleDeclarationMethods for CSSStyleDeclaration {
         };
 
         let mut string = String::new();
-        self.owner.mutate_associated_block(|mut pdb, mut changed| {
+        self.owner.mutate_associated_block(|pdb, changed| {
             pdb.property_value_to_css(&id, &mut string).unwrap();
             *changed = pdb.remove_property(&id);
         });
@@ -410,21 +426,23 @@ impl CSSStyleDeclarationMethods for CSSStyleDeclaration {
     // https://dev.w3.org/csswg/cssom/#the-cssstyledeclaration-interface
     fn IndexedGetter(&self, index: u32) -> Option<DOMString> {
         self.owner.with_block(|pdb| {
-            pdb.declarations().get(index as usize).map(|entry| {
-                let (ref declaration, importance) = *entry;
-                let mut css = declaration.to_css_string();
-                if importance.important() {
-                    css += " !important";
-                }
-                DOMString::from(css)
-            })
+            let declaration = pdb.declarations().get(index as usize)?;
+            let important = pdb.declarations_importance().get(index as usize)?;
+            let mut css = String::new();
+            declaration.to_css(&mut css).unwrap();
+            if important {
+                css += " !important";
+            }
+            Some(DOMString::from(css))
         })
     }
 
     // https://drafts.csswg.org/cssom/#dom-cssstyledeclaration-csstext
     fn CssText(&self) -> DOMString {
         self.owner.with_block(|pdb| {
-            DOMString::from(pdb.to_css_string())
+            let mut serialization = String::new();
+            pdb.to_css(&mut serialization).unwrap();
+            DOMString::from(serialization)
         })
     }
 
@@ -438,7 +456,7 @@ impl CSSStyleDeclarationMethods for CSSStyleDeclaration {
         }
 
         let quirks_mode = window.Document().quirks_mode();
-        self.owner.mutate_associated_block(|mut pdb, mut _changed| {
+        self.owner.mutate_associated_block(|pdb, _changed| {
             // Step 3
             *pdb = parse_style_attribute(&value,
                                          &self.owner.base_url(),

@@ -30,22 +30,26 @@ EXPORTS += [
     'nsIAppStartupNotifier.h',
 ]
 
-EXPORTS.mozilla += ['Bootstrap.h']
+EXPORTS.mozilla += ['AutoSQLiteLifetime.h', 'Bootstrap.h']
 
 if CONFIG['MOZ_INSTRUMENT_EVENT_LOOP']:
     EXPORTS += ['EventTracer.h']
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
+    EXPORTS.mozilla += [
+        'WinDllServices.h',
+    ]
     SOURCES += [
         '../../other-licenses/nsis/Contrib/CityHash/cityhash/city.cpp',
     ]
     UNIFIED_SOURCES += [
         'nsNativeAppSupportWin.cpp',
+        'WinDllServices.cpp',
     ]
     DEFINES['PROXY_PRINTING'] = 1
     LOCAL_INCLUDES += [
         '../../other-licenses/nsis/Contrib/CityHash/cityhash',
-        '../components/printingui/win',
+        '../components/printingui',
     ]
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     UNIFIED_SOURCES += [
@@ -58,7 +62,7 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     ]
     DEFINES['PROXY_PRINTING'] = 1
     LOCAL_INCLUDES += [
-        '../components/printingui/mac',
+        '../components/printingui',
     ]
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'uikit':
     UNIFIED_SOURCES += [
@@ -91,6 +95,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
     ]
 
 UNIFIED_SOURCES += [
+    'AutoSQLiteLifetime.cpp',
     'Bootstrap.cpp',
     'CreateAppData.cpp',
     'nsAppStartupNotifier.cpp',
@@ -129,7 +134,7 @@ if CONFIG['MOZ_UPDATER']:
 if CONFIG['MOZ_PDF_PRINTING']:
     DEFINES['PROXY_PRINTING'] = 1
     LOCAL_INCLUDES += [
-        '../components/printingui/unixshared',
+        '../components/printingui',
     ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
@@ -139,8 +144,8 @@ FINAL_LIBRARY = 'xul'
 if CONFIG['MOZ_GL_DEFAULT_PROVIDER'] == 'GLX':
     DEFINES['USE_GLX_TEST'] = True
 
-for var in ('MOZ_APP_NAME', 'MOZ_APP_BASENAME', 'MOZ_APP_VERSION', 'OS_TARGET',
-            'MOZ_WIDGET_TOOLKIT'):
+for var in ('MOZ_APP_NAME', 'MOZ_APP_BASENAME', 'MOZ_APP_DISPLAYNAME',
+            'MOZ_APP_VERSION', 'OS_TARGET', 'MOZ_WIDGET_TOOLKIT'):
     DEFINES[var] = '"%s"' % CONFIG[var]
 
 if CONFIG['MOZ_UPDATER'] and CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':
@@ -218,7 +223,7 @@ FINAL_TARGET_PP_FILES += [
     'platform.ini'
 ]
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
 
 if CONFIG['MOZ_IPDL_TESTS']:

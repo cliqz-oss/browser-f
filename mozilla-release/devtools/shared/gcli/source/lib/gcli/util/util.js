@@ -298,7 +298,7 @@ exports.promiseEach = function(array, action, scope) {
 exports.errorHandler = function(ex) {
   if (ex instanceof Error) {
     // V8 weirdly includes the exception message in the stack
-    if (ex.stack.indexOf(ex.message) !== -1) {
+    if (ex.stack.includes(ex.message)) {
       console.error(ex.stack);
     }
     else {
@@ -498,10 +498,12 @@ exports.setContents = function(elem, contents) {
     return;
   }
 
-  if ('innerHTML' in elem) {
+  if ("unsafeSetInnerHTML" in elem) {
+    // FIXME: Stop relying on unsanitized HTML.
+    elem.unsafeSetInnerHTML(contents);
+  } else if ("innerHTML" in elem) {
     elem.innerHTML = contents;
-  }
-  else {
+  } else {
     try {
       var ns = elem.ownerDocument.documentElement.namespaceURI;
       if (!ns) {

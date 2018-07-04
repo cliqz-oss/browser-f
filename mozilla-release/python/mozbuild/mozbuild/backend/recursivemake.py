@@ -29,13 +29,10 @@ from mozbuild.frontend.context import (
 )
 from .common import CommonBackend
 from ..frontend.data import (
-    AndroidAssetsDirs,
-    AndroidResDirs,
-    AndroidExtraResDirs,
-    AndroidExtraPackages,
     BaseLibrary,
     BaseProgram,
     ChromeManifestEntry,
+    ComputedFlags,
     ConfigFileSubstitution,
     ContextDerived,
     ContextWrapped,
@@ -58,6 +55,8 @@ from ..frontend.data import (
     Library,
     Linkable,
     LocalInclude,
+    LocalizedFiles,
+    LocalizedPreprocessedFiles,
     ObjdirFiles,
     ObjdirPreprocessedFiles,
     PerSourceFlag,
@@ -65,6 +64,7 @@ from ..frontend.data import (
     RustLibrary,
     HostRustLibrary,
     RustProgram,
+    RustTests,
     SharedLibrary,
     SimpleProgram,
     Sources,
@@ -82,13 +82,6 @@ from ..makeutil import Makefile
 from mozbuild.shellutil import quote as shell_quote
 
 MOZBUILD_VARIABLES = [
-    b'ANDROID_APK_NAME',
-    b'ANDROID_APK_PACKAGE',
-    b'ANDROID_ASSETS_DIRS',
-    b'ANDROID_EXTRA_PACKAGES',
-    b'ANDROID_EXTRA_RES_DIRS',
-    b'ANDROID_GENERATED_RESFILES',
-    b'ANDROID_RES_DIRS',
     b'ASFLAGS',
     b'CMSRCS',
     b'CMMSRCS',
@@ -112,7 +105,6 @@ MOZBUILD_VARIABLES = [
     b'HOST_SIMPLE_PROGRAMS',
     b'JAR_MANIFEST',
     b'JAVA_JAR_TARGETS',
-    b'LD_VERSION_SCRIPT',
     b'LIBRARY_NAME',
     b'LIBS',
     b'MAKE_FRAMEWORK',
@@ -140,7 +132,6 @@ MOZBUILD_VARIABLES = [
 ]
 
 DEPRECATED_VARIABLES = [
-    b'ANDROID_RESFILES',
     b'EXPORT_LIBRARY',
     b'EXTRA_LIBS',
     b'HOST_LIBS',
@@ -198,7 +189,7 @@ class BackendMakeFile(object):
     actually change. We use FileAvoidWrite to accomplish this.
     """
 
-    def __init__(self, srcdir, objdir, environment, topsrcdir, topobjdir):
+    def __init__(self, srcdir, objdir, environment, topsrcdir, topobjdir, dry_run):
         self.topsrcdir = topsrcdir
         self.srcdir = srcdir
         self.objdir = objdir
@@ -208,7 +199,7 @@ class BackendMakeFile(object):
 
         self.xpt_name = None
 
-        self.fh = FileAvoidWrite(self.name, capture_diff=True)
+        self.fh = FileAvoidWrite(self.name, capture_diff=True, dry_run=dry_run)
         self.fh.write('# THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT EDIT.\n')
         self.fh.write('\n')
 
@@ -430,7 +421,7 @@ class RecursiveMakeBackend(CommonBackend):
         if obj.objdir not in self._backend_files:
             self._backend_files[obj.objdir] = \
                 BackendMakeFile(obj.srcdir, obj.objdir, obj.config,
-                    obj.topsrcdir, self.environment.topobjdir)
+                    obj.topsrcdir, self.environment.topobjdir, self.dry_run)
         return self._backend_files[obj.objdir]
 
     def consume_object(self, obj):
@@ -517,40 +508,99 @@ class RecursiveMakeBackend(CommonBackend):
             self._process_defines(obj, backend_file)
 
         elif isinstance(obj, GeneratedFile):
-            export_suffixes = (
-                '.c',
-                '.cpp',
-                '.h',
-                '.inc',
-                '.py',
-                '.rs',
-            )
-            tier = 'export' if any(f.endswith(export_suffixes) for f in obj.outputs) else 'misc'
+            if obj.required_for_compile:
+                tier = 'export'
+            elif obj.localized:
+                tier = 'libs'
+            else:
+                tier = 'misc'
             self._no_skip[tier].add(backend_file.relobjdir)
-            first_output = obj.outputs[0]
+
+            # Localized generated files can use {AB_CD} and {AB_rCD} in their
+            # output paths.
+            if obj.localized:
+                substs = {'AB_CD': '$(AB_CD)', 'AB_rCD': '$(AB_rCD)'}
+            else:
+                substs = {}
+            outputs = []
+
+            needs_AB_rCD = False
+            for o in obj.outputs:
+                needs_AB_rCD = needs_AB_rCD or ('AB_rCD' in o)
+                try:
+                    outputs.append(o.format(**substs))
+                except KeyError as e:
+                    raise ValueError('%s not in %s is not a valid substitution in %s'
+                                     % (e.args[0], ', '.join(sorted(substs.keys())), o))
+
+            first_output = outputs[0]
             dep_file = "%s.pp" % first_output
+
+            if obj.inputs:
+                if obj.localized:
+                    # Localized generated files can have locale-specific inputs, which are
+                    # indicated by paths starting with `en-US/` or containing `locales/en-US/`.
+                    def srcpath(p):
+                        if 'locales/en-US' in p:
+                            # We need an "absolute source path" relative to
+                            # topsrcdir, like "/source/path".
+                            if not p.startswith('/'):
+                                p = '/' + mozpath.relpath(p.full_path, obj.topsrcdir)
+                            e, f = p.split('locales/en-US/', 1)
+                            assert(f)
+                            return '$(call MERGE_RELATIVE_FILE,{},{}locales)'.format(
+                                f, e if not e.startswith('/') else e[len('/'):])
+                        elif p.startswith('en-US/'):
+                            e, f = p.split('en-US/', 1)
+                            assert(not e)
+                            return '$(call MERGE_FILE,%s)' % f
+                        return self._pretty_path(p, backend_file)
+                    inputs = [srcpath(f) for f in obj.inputs]
+                else:
+                    inputs = [self._pretty_path(f, backend_file) for f in obj.inputs]
+            else:
+                inputs = []
+
+            if needs_AB_rCD:
+                backend_file.write_once('include $(topsrcdir)/config/AB_rCD.mk\n')
 
             # If we're doing this during export that means we need it during
             # compile, but if we have an artifact build we don't run compile,
             # so we can skip it altogether or let the rule run as the result of
             # something depending on it.
-            if tier == 'misc' or not self.environment.is_artifact_build:
-                backend_file.write('%s:: %s\n' % (tier, first_output))
-            for output in obj.outputs:
+            if tier != 'export' or not self.environment.is_artifact_build:
+                if not needs_AB_rCD:
+                    # Android localized resources have special Makefile
+                    # handling.
+                    backend_file.write('%s:: %s\n' % (tier, first_output))
+            for output in outputs:
                 if output != first_output:
                     backend_file.write('%s: %s ;\n' % (output, first_output))
                 backend_file.write('GARBAGE += %s\n' % output)
             backend_file.write('EXTRA_MDDEPEND_FILES += %s\n' % dep_file)
+
+            force = ''
+            if obj.force:
+                force = ' FORCE'
+            elif obj.localized:
+                force = ' $(if $(IS_LANGUAGE_REPACK),FORCE)'
+
             if obj.script:
-                backend_file.write("""{output}: {script}{inputs}{backend}
+                backend_file.write("""{output}: {script}{inputs}{backend}{force}
 \t$(REPORT_BUILD)
-\t$(call py_action,file_generate,{script} {method} {output} $(MDDEPDIR)/{dep_file}{inputs}{flags})
+\t$(call py_action,file_generate,{locale}{script} {method} {output} $(MDDEPDIR)/{dep_file}{inputs}{flags})
 
 """.format(output=first_output,
            dep_file=dep_file,
-           inputs=' ' + ' '.join([self._pretty_path(f, backend_file) for f in obj.inputs]) if obj.inputs else '',
+           inputs=' ' + ' '.join(inputs) if inputs else '',
            flags=' ' + ' '.join(shell_quote(f) for f in obj.flags) if obj.flags else '',
            backend=' backend.mk' if obj.flags else '',
+           # Locale repacks repack multiple locales from a single configured objdir,
+           # so standard mtime dependencies won't work properly when the build is re-run
+           # with a different locale as input. IS_LANGUAGE_REPACK will reliably be set
+           # in this situation, so simply force the generation to run in that case.
+           force=force,
+           locale='--locale=$(AB_CD) ' if obj.localized else '',
            script=obj.script,
            method=obj.method))
 
@@ -570,8 +620,11 @@ class RecursiveMakeBackend(CommonBackend):
             build_target = self._build_target_for_obj(obj)
             self._compile_graph[build_target]
 
+        elif isinstance(obj, RustTests):
+            self._process_rust_tests(obj, backend_file)
+
         elif isinstance(obj, Program):
-            self._process_program(obj.program, backend_file)
+            self._process_program(obj, backend_file)
             self._process_linked_libraries(obj, backend_file)
             self._no_skip['syms'].add(backend_file.relobjdir)
 
@@ -593,6 +646,9 @@ class RecursiveMakeBackend(CommonBackend):
 
         elif isinstance(obj, PerSourceFlag):
             self._process_per_source_flag(obj, backend_file)
+
+        elif isinstance(obj, ComputedFlags):
+            self._process_computed_flags(obj, backend_file)
 
         elif isinstance(obj, InstallationTarget):
             self._process_installation_target(obj, backend_file)
@@ -637,31 +693,17 @@ class RecursiveMakeBackend(CommonBackend):
         elif isinstance(obj, ObjdirPreprocessedFiles):
             self._process_final_target_pp_files(obj, obj.files, backend_file, 'OBJDIR_PP_FILES')
 
+        elif isinstance(obj, LocalizedFiles):
+            self._process_localized_files(obj, obj.files, backend_file)
+
+        elif isinstance(obj, LocalizedPreprocessedFiles):
+            self._process_localized_pp_files(obj, obj.files, backend_file)
+
         elif isinstance(obj, FinalTargetFiles):
             self._process_final_target_files(obj, obj.files, backend_file)
 
         elif isinstance(obj, FinalTargetPreprocessedFiles):
             self._process_final_target_pp_files(obj, obj.files, backend_file, 'DIST_FILES')
-
-        elif isinstance(obj, AndroidResDirs):
-            # Order matters.
-            for p in obj.paths:
-                backend_file.write('ANDROID_RES_DIRS += %s\n' % p.full_path)
-
-        elif isinstance(obj, AndroidAssetsDirs):
-            # Order matters.
-            for p in obj.paths:
-                backend_file.write('ANDROID_ASSETS_DIRS += %s\n' % p.full_path)
-
-        elif isinstance(obj, AndroidExtraResDirs):
-            # Order does not matter.
-            for p in sorted(set(p.full_path for p in obj.paths)):
-                backend_file.write('ANDROID_EXTRA_RES_DIRS += %s\n' % p)
-
-        elif isinstance(obj, AndroidExtraPackages):
-            # Order does not matter.
-            for p in sorted(set(obj.packages)):
-                backend_file.write('ANDROID_EXTRA_PACKAGES += %s\n' % p)
 
         elif isinstance(obj, ChromeManifestEntry):
             self._process_chrome_manifest_entry(obj, backend_file)
@@ -1021,8 +1063,6 @@ class RecursiveMakeBackend(CommonBackend):
 
         modules = manager.modules
         xpt_modules = sorted(modules.keys())
-        xpt_files = set()
-        registered_xpt_files = set()
 
         mk = Makefile()
 
@@ -1040,36 +1080,12 @@ class RecursiveMakeBackend(CommonBackend):
             # listing the .idls here, we ensure the make file has a
             # reference to the new .idl. Since the new .idl presumably has
             # an mtime newer than the .xpt, it will trigger xpt generation.
-            xpt_path = '$(DEPTH)/%s/components/%s.xpt' % (install_target, module)
-            xpt_files.add(xpt_path)
             mk.add_statement('%s_deps = %s' % (module, ' '.join(deps)))
 
-            if install_target.startswith('dist/'):
-                path = mozpath.relpath(xpt_path, '$(DEPTH)/dist')
-                prefix, subpath = path.split('/', 1)
-                key = 'dist_%s' % prefix
-
-                self._install_manifests[key].add_optional_exists(subpath)
+            build_files.add_optional_exists('%s.xpt' % module)
 
         rules = StringIO()
         mk.dump(rules, removal_guard=False)
-
-        interfaces_manifests = []
-        dist_dir = mozpath.join(self.environment.topobjdir, 'dist')
-        for manifest, entries in manager.interface_manifests.items():
-            interfaces_manifests.append(mozpath.join('$(DEPTH)', manifest))
-            for xpt in sorted(entries):
-                registered_xpt_files.add(mozpath.join(
-                    '$(DEPTH)', mozpath.dirname(manifest), xpt))
-
-            if install_target.startswith('dist/'):
-                path = mozpath.join(self.environment.topobjdir, manifest)
-                path = mozpath.relpath(path, dist_dir)
-                prefix, subpath = path.split('/', 1)
-                key = 'dist_%s' % prefix
-                self._install_manifests[key].add_optional_exists(subpath)
-
-        chrome_manifests = [mozpath.join('$(DEPTH)', m) for m in sorted(manager.chrome_manifests)]
 
         # Create dependency for output header so we force regeneration if the
         # header was deleted. This ideally should not be necessary. However,
@@ -1085,16 +1101,14 @@ class RecursiveMakeBackend(CommonBackend):
         obj.topobjdir = self.environment.topobjdir
         obj.config = self.environment
         self._create_makefile(obj, extra=dict(
-            chrome_manifests = ' '.join(chrome_manifests),
-            interfaces_manifests = ' '.join(interfaces_manifests),
             xpidl_rules=rules.getvalue(),
             xpidl_modules=' '.join(xpt_modules),
-            xpt_files=' '.join(sorted(xpt_files - registered_xpt_files)),
-            registered_xpt_files=' '.join(sorted(registered_xpt_files)),
         ))
 
-    def _process_program(self, program, backend_file):
-        backend_file.write('PROGRAM = %s\n' % program)
+    def _process_program(self, obj, backend_file):
+        backend_file.write('PROGRAM = %s\n' % self._pretty_path(obj.output_path, backend_file))
+        if not obj.cxx_link and not self.environment.bin_suffix:
+            backend_file.write('PROG_IS_C_ONLY_%s := 1\n' % obj.program)
 
     def _process_host_program(self, program, backend_file):
         backend_file.write('HOST_PROGRAM = %s\n' % program)
@@ -1117,11 +1131,20 @@ class RecursiveMakeBackend(CommonBackend):
                                         'HOST_RUST_PROGRAMS',
                                         'HOST_RUST_CARGO_PROGRAMS')
 
+    def _process_rust_tests(self, obj, backend_file):
+        self._no_skip['check'].add(backend_file.relobjdir)
+        backend_file.write_once('CARGO_FILE := $(srcdir)/Cargo.toml\n')
+        backend_file.write_once('RUST_TESTS := %s\n' % ' '.join(obj.names))
+        backend_file.write_once('RUST_TEST_FEATURES := %s\n' % ' '.join(obj.features))
+
     def _process_simple_program(self, obj, backend_file):
         if obj.is_unit_test:
             backend_file.write('CPP_UNIT_TESTS += %s\n' % obj.program)
+            assert obj.cxx_link
         else:
             backend_file.write('SIMPLE_PROGRAMS += %s\n' % obj.program)
+            if not obj.cxx_link and not self.environment.bin_suffix:
+                backend_file.write('PROG_IS_C_ONLY_%s := 1\n' % obj.program)
 
     def _process_host_simple_program(self, program, backend_file):
         backend_file.write('HOST_SIMPLE_PROGRAMS += %s\n' % program)
@@ -1209,6 +1232,11 @@ class RecursiveMakeBackend(CommonBackend):
         for flag in per_source_flag.flags:
             backend_file.write('%s_FLAGS += %s\n' % (mozpath.basename(per_source_flag.file_name), flag))
 
+    def _process_computed_flags(self, computed_flags, backend_file):
+        for var, flags in computed_flags.get_flags():
+            backend_file.write('COMPUTED_%s += %s\n' % (var,
+                                                        ' '.join(make_quote(shell_quote(f)) for f in flags)))
+
     def _process_java_jar_data(self, jar, backend_file):
         target = jar.name
         backend_file.write('JAVA_JAR_TARGETS += %s\n' % target)
@@ -1247,7 +1275,7 @@ class RecursiveMakeBackend(CommonBackend):
 
     def _process_rust_library(self, libdef, backend_file):
         backend_file.write_once('%s := %s\n' % (libdef.LIB_FILE_VAR, libdef.import_name))
-        backend_file.write('CARGO_FILE := $(srcdir)/Cargo.toml\n')
+        backend_file.write_once('CARGO_FILE := $(srcdir)/Cargo.toml\n')
         # Need to normalize the path so Cargo sees the same paths from all
         # possible invocations of Cargo with this CARGO_TARGET_DIR.  Otherwise,
         # Cargo's dependency calculations don't work as we expect and we wind
@@ -1266,66 +1294,103 @@ class RecursiveMakeBackend(CommonBackend):
             self.environment.topobjdir), obj.KIND)
 
     def _process_linked_libraries(self, obj, backend_file):
-        def write_shared_and_system_libs(lib):
-            for l in lib.linked_libraries:
-                if isinstance(l, (StaticLibrary, RustLibrary)):
-                    write_shared_and_system_libs(l)
-                else:
-                    backend_file.write_once('SHARED_LIBS += %s/%s\n'
-                        % (pretty_relpath(l), l.import_name))
-            for l in lib.linked_system_libs:
-                backend_file.write_once('OS_LIBS += %s\n' % l)
-
-        def pretty_relpath(lib):
-            return '$(DEPTH)/%s' % mozpath.relpath(lib.objdir, topobjdir)
+        def pretty_relpath(lib, name):
+            return os.path.normpath(mozpath.join(mozpath.relpath(lib.objdir, obj.objdir),
+                                                 name))
 
         topobjdir = mozpath.normsep(obj.topobjdir)
         # This will create the node even if there aren't any linked libraries.
         build_target = self._build_target_for_obj(obj)
         self._compile_graph[build_target]
 
+        objs, no_pgo_objs, shared_libs, os_libs, static_libs = self._expand_libs(obj)
+
+        if obj.KIND == 'target':
+            obj_target = obj.name
+            if isinstance(obj, Program):
+                obj_target = self._pretty_path(obj.output_path, backend_file)
+
+            is_unit_test = isinstance(obj, BaseProgram) and obj.is_unit_test
+            profile_gen_objs = []
+
+            if (self.environment.substs.get('MOZ_PGO') and
+                self.environment.substs.get('GNU_CC')):
+                # We use a different OBJ_SUFFIX for the profile generate phase on
+                # linux. These get picked up via OBJS_VAR_SUFFIX in config.mk.
+                if not is_unit_test and not isinstance(obj, SimpleProgram):
+                    profile_gen_objs = [o if o in no_pgo_objs else '%s.%s' %
+                                        (mozpath.splitext(o)[0], 'i_o') for o in objs]
+
+            def write_obj_deps(target, objs_ref, pgo_objs_ref):
+                if pgo_objs_ref:
+                    backend_file.write('ifdef MOZ_PROFILE_GENERATE\n')
+                    backend_file.write('%s: %s\n' % (target, pgo_objs_ref))
+                    backend_file.write('else\n')
+                    backend_file.write('%s: %s\n' % (target, objs_ref))
+                    backend_file.write('endif\n')
+                else:
+                    backend_file.write('%s: %s\n' % (target, objs_ref))
+
+            objs_ref = ' \\\n    '.join(os.path.relpath(o, obj.objdir)
+                                        for o in objs)
+            pgo_objs_ref = ' \\\n    '.join(os.path.relpath(o, obj.objdir)
+                                            for o in profile_gen_objs)
+            # Don't bother with a list file if we're only linking objects built
+            # in this directory or building a real static library. This
+            # accommodates clang-plugin, where we would otherwise pass an
+            # incorrect list file format to the host compiler as well as when
+            # creating an archive with AR, which doesn't understand list files.
+            if (objs == obj.objs and not isinstance(obj, StaticLibrary) or
+              isinstance(obj, StaticLibrary) and obj.no_expand_lib):
+                backend_file.write_once('%s_OBJS := %s\n' % (obj.name,
+                                                             objs_ref))
+                if profile_gen_objs:
+                    backend_file.write_once('%s_PGO_OBJS := %s\n' % (obj.name,
+                                                                     pgo_objs_ref))
+                write_obj_deps(obj_target, objs_ref, pgo_objs_ref)
+            elif not isinstance(obj, StaticLibrary):
+                list_file_path = '%s.list' % obj.name.replace('.', '_')
+                list_file_ref = self._make_list_file(obj.objdir, objs,
+                                                     list_file_path)
+                backend_file.write_once('%s_OBJS := %s\n' %
+                                        (obj.name, list_file_ref))
+                backend_file.write_once('%s: %s\n' % (obj_target, list_file_path))
+                if profile_gen_objs:
+                    pgo_list_file_path = '%s_pgo.list' % obj.name.replace('.', '_')
+                    pgo_list_file_ref = self._make_list_file(obj.objdir,
+                                                             profile_gen_objs,
+                                                             pgo_list_file_path)
+                    backend_file.write_once('%s_PGO_OBJS := %s\n' %
+                                            (obj.name, pgo_list_file_ref))
+                    backend_file.write_once('%s: %s\n' % (obj_target,
+                                                          pgo_list_file_path))
+                write_obj_deps(obj_target, objs_ref, pgo_objs_ref)
+
+        for lib in shared_libs:
+            backend_file.write_once('SHARED_LIBS += %s\n' %
+                                    pretty_relpath(lib, lib.import_name))
+        for lib in static_libs:
+            backend_file.write_once('STATIC_LIBS += %s\n' %
+                                    pretty_relpath(lib, lib.import_name))
+        for lib in os_libs:
+            if obj.KIND == 'target':
+                backend_file.write_once('OS_LIBS += %s\n' % lib)
+            else:
+                backend_file.write_once('HOST_EXTRA_LIBS += %s\n' % lib)
+
         for lib in obj.linked_libraries:
             if not isinstance(lib, ExternalLibrary):
                 self._compile_graph[build_target].add(
                     self._build_target_for_obj(lib))
-            relpath = pretty_relpath(lib)
-            if isinstance(obj, Library):
-                if isinstance(lib, RustLibrary):
-                    # We don't need to do anything here; we will handle
-                    # linkage for any RustLibrary elsewhere.
-                    continue
-                elif isinstance(lib, StaticLibrary):
-                    backend_file.write_once('STATIC_LIBS += %s/%s\n'
-                                        % (relpath, lib.import_name))
-                    if isinstance(obj, SharedLibrary):
-                        write_shared_and_system_libs(lib)
-                elif isinstance(obj, SharedLibrary):
-                    backend_file.write_once('SHARED_LIBS += %s/%s\n'
-                                        % (relpath, lib.import_name))
-            elif isinstance(obj, (Program, SimpleProgram)):
-                if isinstance(lib, StaticLibrary):
-                    backend_file.write_once('STATIC_LIBS += %s/%s\n'
-                                        % (relpath, lib.import_name))
-                    write_shared_and_system_libs(lib)
-                else:
-                    backend_file.write_once('SHARED_LIBS += %s/%s\n'
-                                        % (relpath, lib.import_name))
-            elif isinstance(obj, (HostLibrary, HostProgram, HostSimpleProgram)):
-                assert isinstance(lib, (HostLibrary, HostRustLibrary))
-                backend_file.write_once('HOST_LIBS += %s/%s\n'
-                                   % (relpath, lib.import_name))
+            if isinstance(lib, (HostLibrary, HostRustLibrary)):
+                backend_file.write_once('HOST_LIBS += %s\n' %
+                                        pretty_relpath(lib, lib.import_name))
 
         # We have to link any Rust libraries after all intermediate static
         # libraries have been listed to ensure that the Rust libraries are
         # searched after the C/C++ objects that might reference Rust symbols.
         if isinstance(obj, SharedLibrary):
             self._process_rust_libraries(obj, backend_file, pretty_relpath)
-
-        for lib in obj.linked_system_libs:
-            if obj.KIND == 'target':
-                backend_file.write_once('OS_LIBS += %s\n' % lib)
-            else:
-                backend_file.write_once('HOST_EXTRA_LIBS += %s\n' % lib)
 
         # Process library-based defines
         self._process_defines(obj.lib_defines, backend_file)
@@ -1344,8 +1409,8 @@ class RecursiveMakeBackend(CommonBackend):
         # TODO: see bug 1310063 for checking dependencies are set up correctly.
 
         direct_linked = direct_linked[0]
-        backend_file.write('RUST_STATIC_LIB_FOR_SHARED_LIB := %s/%s\n' %
-                           (pretty_relpath(direct_linked), direct_linked.import_name))
+        backend_file.write('RUST_STATIC_LIB_FOR_SHARED_LIB := %s\n' %
+                           pretty_relpath(direct_linked, direct_linked.import_name))
 
     def _process_final_target_files(self, obj, files, backend_file):
         target = obj.install_target
@@ -1354,7 +1419,6 @@ class RecursiveMakeBackend(CommonBackend):
             'dist/xpi-stage',
             '_tests',
             'dist/include',
-            'dist/branding',
         ))
         if not path:
             raise Exception("Cannot install to " + target)
@@ -1366,14 +1430,6 @@ class RecursiveMakeBackend(CommonBackend):
         manifest = path.replace('/', '_')
         install_manifest = self._install_manifests[manifest]
         reltarget = mozpath.relpath(target, path)
-
-        # Also emit the necessary rules to create $(DIST)/branding during
-        # partial tree builds. The locale makefiles rely on this working.
-        if path == 'dist/branding':
-            backend_file.write('NONRECURSIVE_TARGETS += export\n')
-            backend_file.write('NONRECURSIVE_TARGETS_export += branding\n')
-            backend_file.write('NONRECURSIVE_TARGETS_export_branding_DIRECTORY = $(DEPTH)\n')
-            backend_file.write('NONRECURSIVE_TARGETS_export_branding_TARGETS += install-dist/branding\n')
 
         for path, files in files.walk():
             target_var = (mozpath.join(target, path)
@@ -1429,6 +1485,58 @@ class RecursiveMakeBackend(CommonBackend):
             backend_file.write('%s_TARGET := misc\n' % var)
             backend_file.write('PP_TARGETS += %s\n' % var)
 
+    def _write_localized_files_files(self, files, name, backend_file):
+        for f in files:
+            if not isinstance(f, ObjDirPath):
+                # The emitter asserts that all srcdir files start with `en-US/`
+                e, f = f.split('en-US/')
+                assert(not e)
+                if '*' in f:
+                    # We can't use MERGE_FILE for wildcards because it takes
+                    # only the first match internally. This is only used
+                    # in one place in the tree currently so we'll hardcode
+                    # that specific behavior for now.
+                    backend_file.write('%s += $(wildcard $(LOCALE_SRCDIR)/%s)\n' % (name, f))
+                else:
+                    backend_file.write('%s += $(call MERGE_FILE,%s)\n' % (name, f))
+            else:
+                # Objdir files are allowed from LOCALIZED_GENERATED_FILES
+                backend_file.write('%s += %s\n' % (name, self._pretty_path(f, backend_file)))
+
+    def _process_localized_files(self, obj, files, backend_file):
+        target = obj.install_target
+        path = mozpath.basedir(target, ('dist/bin', ))
+        if not path:
+            raise Exception('Cannot install localized files to ' + target)
+        for i, (path, files) in enumerate(files.walk()):
+            name = 'LOCALIZED_FILES_%d' % i
+            self._no_skip['libs'].add(backend_file.relobjdir)
+            self._write_localized_files_files(files, name + '_FILES', backend_file)
+            # Use FINAL_TARGET here because some l10n repack rules set
+            # XPI_NAME to generate langpacks.
+            backend_file.write('%s_DEST = $(FINAL_TARGET)/%s\n' % (name, path))
+            backend_file.write('%s_TARGET := libs\n' % name)
+            backend_file.write('INSTALL_TARGETS += %s\n' % name)
+
+    def _process_localized_pp_files(self, obj, files, backend_file):
+        target = obj.install_target
+        path = mozpath.basedir(target, ('dist/bin', ))
+        if not path:
+            raise Exception('Cannot install localized files to ' + target)
+        for i, (path, files) in enumerate(files.walk()):
+            name = 'LOCALIZED_PP_FILES_%d' % i
+            self._no_skip['libs'].add(backend_file.relobjdir)
+            self._write_localized_files_files(files, name, backend_file)
+            # Use FINAL_TARGET here because some l10n repack rules set
+            # XPI_NAME to generate langpacks.
+            backend_file.write('%s_PATH = $(FINAL_TARGET)/%s\n' % (name, path))
+            backend_file.write('%s_TARGET := libs\n' % name)
+            # Localized files will have different content in different
+            # localizations, and some preprocessed files may not have
+            # any preprocessor directives.
+            backend_file.write('%s_FLAGS := --silence-missing-directive-warnings\n' % name)
+            backend_file.write('PP_TARGETS += %s\n' % name)
+
     def _process_objdir_files(self, obj, files, backend_file):
         # We can't use an install manifest for the root of the objdir, since it
         # would delete all the other files that get put there by the build
@@ -1463,7 +1571,7 @@ class RecursiveMakeBackend(CommonBackend):
         rule.add_commands(['$(call py_action,buildlist,%s)' % ' '.join(args)])
         fragment.dump(backend_file.fh, removal_guard=False)
 
-        self._no_skip['misc'].add(obj.relativedir)
+        self._no_skip['misc'].add(obj.relsrcdir)
 
     def _write_manifests(self, dest, manifests):
         man_dir = mozpath.join(self.environment.topobjdir, '_build_manifests',
@@ -1533,18 +1641,32 @@ class RecursiveMakeBackend(CommonBackend):
 
         backend_file.write('RS_STATICLIB_CRATE_SRC := %s\n' % extern_crate_file)
 
-    def _handle_ipdl_sources(self, ipdl_dir, sorted_ipdl_sources,
-                             unified_ipdl_cppsrcs_mapping):
+    def _handle_ipdl_sources(self, ipdl_dir, sorted_ipdl_sources, sorted_nonstatic_ipdl_sources,
+                             sorted_static_ipdl_sources, unified_ipdl_cppsrcs_mapping):
         # Write out a master list of all IPDL source files.
         mk = Makefile()
 
-        mk.add_statement('ALL_IPDLSRCS := %s' % ' '.join(sorted_ipdl_sources))
+        sorted_nonstatic_ipdl_basenames = list()
+        for source in sorted_nonstatic_ipdl_sources:
+            basename = os.path.basename(source)
+            sorted_nonstatic_ipdl_basenames.append(basename)
+            rule = mk.create_rule([basename])
+            rule.add_dependencies([source])
+            rule.add_commands([
+                '$(RM) $@',
+                '$(call py_action,preprocessor,$(DEFINES) $(ACDEFINES) '
+                    '$< -o $@)'
+            ])
+
+        mk.add_statement('ALL_IPDLSRCS := %s %s' % (' '.join(sorted_nonstatic_ipdl_basenames),
+                         ' '.join(sorted_static_ipdl_sources)))
 
         self._add_unified_build_rules(mk, unified_ipdl_cppsrcs_mapping,
                                       unified_files_makefile_variable='CPPSRCS')
 
-        mk.add_statement('IPDLDIRS := %s' % ' '.join(sorted(set(mozpath.dirname(p)
-            for p in self._ipdl_sources))))
+        # Preprocessed ipdl files are generated in ipdl_dir.
+        mk.add_statement('IPDLDIRS := %s %s' % (ipdl_dir, ' '.join(sorted(set(mozpath.dirname(p)
+            for p in sorted_static_ipdl_sources)))))
 
         with self._write_file(mozpath.join(ipdl_dir, 'ipdlsrcs.mk')) as ipdls:
             mk.dump(ipdls, removal_guard=False)

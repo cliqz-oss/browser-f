@@ -64,10 +64,10 @@ add_task(async function test_sessions_get_recently_closed() {
   is(recentlyClosed[0].window.tabs.length, 3, "most recently closed window has the expected number of tabs");
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 
   tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 
   await openAndCloseWindow();
   extension.sendMessage("check-sessions");
@@ -98,9 +98,11 @@ add_task(async function test_sessions_get_recently_closed_navigated() {
   function background() {
     browser.sessions.getRecentlyClosed({maxResults: 1}).then(recentlyClosed => {
       let tab = recentlyClosed[0].window.tabs[0];
-      browser.test.assertEq("http://example.com/", tab.url,
+      browser.test.assertEq(
+        "http://example.com/", tab.url,
         "Tab in closed window has the expected url.");
-      browser.test.assertTrue(tab.title.includes("mochitest index"),
+      browser.test.assertTrue(
+        tab.title.includes("mochitest index"),
         "Tab in closed window has the expected title.");
       browser.test.notifyPass("getRecentlyClosed with navigation");
     });

@@ -9,8 +9,6 @@
 "use strict";
 
 function run_test() {
-  removeMetadata();
-
   // The test engines used in this test need to be recognized as 'default'
   // engines, or their MozParams used to set the purpose will be ignored.
   let url = "resource://test/data/";
@@ -26,8 +24,8 @@ add_task(async function test_purpose() {
   let engine = Services.search.getEngineByName("Test search engine");
 
   function check_submission(aExpected, aSearchTerm, aType, aPurpose) {
-    do_check_eq(engine.getSubmission(aSearchTerm, aType, aPurpose).uri.spec,
-                base + aExpected);
+    Assert.equal(engine.getSubmission(aSearchTerm, aType, aPurpose).uri.spec,
+                 base + aExpected);
   }
 
   let base = "http://www.google.com/search?q=foo&ie=utf-8&oe=utf-8&aq=t";

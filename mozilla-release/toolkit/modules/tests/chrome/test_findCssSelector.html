@@ -10,10 +10,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=
   <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
   <script type="application/javascript">
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
 /* globals findCssSelector */
-Cu.import("resource://gre/modules/css-selector.js", this);
+ChromeUtils.import("resource://gre/modules/css-selector.js", this);
 
 var _tests = [];
 function addTest(test) {
@@ -22,7 +21,7 @@ function addTest(test) {
 
 function runNextTest() {
   if (_tests.length == 0) {
-    SimpleTest.finish()
+    SimpleTest.finish();
     return;
   }
   _tests.shift()();
@@ -31,7 +30,7 @@ function runNextTest() {
 window.onload = function() {
   SimpleTest.waitForExplicitFinish();
   runNextTest();
-}
+};
 
 addTest(function findAllCssSelectors() {
   var nodes = document.querySelectorAll("*");
@@ -52,7 +51,7 @@ addTest(function findCssSelectorNotContainedInDocument() {
   unattached.id = "unattached";
   try {
     findCssSelector(unattached);
-    ok(false, "Unattached node did not throw")
+    ok(false, "Unattached node did not throw");
   } catch (e) {
     ok(e, "Unattached node throws an exception");
   }
@@ -61,7 +60,7 @@ addTest(function findCssSelectorNotContainedInDocument() {
   unattached.appendChild(unattachedChild);
   try {
     findCssSelector(unattachedChild);
-    ok(false, "Unattached child node did not throw")
+    ok(false, "Unattached child node did not throw");
   } catch (e) {
     ok(e, "Unattached child node throws an exception");
   }
@@ -69,7 +68,7 @@ addTest(function findCssSelectorNotContainedInDocument() {
   var unattachedBody = document.createElement("body");
   try {
     findCssSelector(unattachedBody);
-    ok(false, "Unattached body node did not throw")
+    ok(false, "Unattached body node did not throw");
   } catch (e) {
     ok(e, "Unattached body node throws an exception");
   }

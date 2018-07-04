@@ -34,7 +34,7 @@ allocatorFns = [
     'calloc',
     # Matches realloc, replace_realloc, moz_xrealloc, vpx_realloc, js_realloc, pod_realloc, pod_reallocCanGC.
     'realloc',
-    # Matches memalign, posix_memalign, replace_memalign, replace_posix_memalign, moz_xmemalign, moz_xposix_memalign, vpx_memalign, malloc_zone_memalign.
+    # Matches memalign, posix_memalign, replace_memalign, replace_posix_memalign, moz_xmemalign, vpx_memalign, malloc_zone_memalign.
     'memalign',
     'operator new(',
     'operator new[](',
@@ -166,7 +166,7 @@ variable is used to find breakpad symbols for stack fixing.
     p.add_argument('-o', '--output', type=argparse.FileType('w'),
                    help='output file; stdout if unspecified')
 
-    p.add_argument('-f', '--max-frames', type=range_1_24,
+    p.add_argument('-f', '--max-frames', type=range_1_24, default=8,
                    help='maximum number of frames to consider in each trace')
 
     p.add_argument('-s', '--sort-by', choices=sortByChoices.keys(),

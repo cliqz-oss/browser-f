@@ -23,8 +23,6 @@
  *           false otherwise.
  */
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
 /**
  * Returns the most appropriate string to represent the given nsICertTreeItem.
  * @param {nsICertTreeItem} certTreeItem
@@ -84,11 +82,6 @@ function onLoad() {
       title = bundle.getString("deleteEmailCertTitle");
       confirm = bundle.getString("deleteEmailCertConfirm");
       impact = bundle.getString("deleteEmailCertImpactDesc");
-      break;
-    case "orphan_tab":
-      title = bundle.getString("deleteOrphanCertTitle");
-      confirm = bundle.getString("deleteOrphanCertConfirm");
-      impact = "";
       break;
     default:
       return;

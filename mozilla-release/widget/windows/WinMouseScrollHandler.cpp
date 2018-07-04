@@ -15,11 +15,11 @@
 #include "WinUtils.h"
 #include "nsGkAtoms.h"
 #include "nsIDOMWindowUtils.h"
-#include "nsIDOMWheelEvent.h"
 
 #include "mozilla/MiscEvents.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/WheelEventBinding.h"
 
 #include <psapi.h>
 
@@ -446,6 +446,14 @@ MouseScrollHandler::ProcessNativeMouseWheelMessage(nsWindowBase* aWidget,
 
     MOZ_ASSERT(destWindow, "destWindow must not be NULL");
 
+    // Some odd touchpad utils sets focus to window under the mouse cursor.
+    // this emulates the odd behavior for debug.
+    if (mUserPrefs.ShouldEmulateToMakeWindowUnderCursorForeground() &&
+        (aMessage == WM_MOUSEWHEEL || aMessage == WM_MOUSEHWHEEL) &&
+        ::GetForegroundWindow() != destWindow->GetWindowHandle()) {
+      ::SetForegroundWindow(destWindow->GetWindowHandle());
+    }
+
     // If the found window is our plugin window, it means that the message
     // has been handled by the plugin but not consumed.  We should handle the
     // message on its parent window.  However, note that the DOM event may
@@ -685,14 +693,14 @@ MouseScrollHandler::HandleScrollMessageAsMouseWheelMessage(nsWindowBase* aWidget
       delta = -1.0;
       lineOrPageDelta = -1;
     case SB_PAGEDOWN:
-      wheelEvent.mDeltaMode = nsIDOMWheelEvent::DOM_DELTA_PAGE;
+      wheelEvent.mDeltaMode = dom::WheelEventBinding::DOM_DELTA_PAGE;
       break;
 
     case SB_LINEUP:
       delta = -1.0;
       lineOrPageDelta = -1;
     case SB_LINEDOWN:
-      wheelEvent.mDeltaMode = nsIDOMWheelEvent::DOM_DELTA_LINE;
+      wheelEvent.mDeltaMode = dom::WheelEventBinding::DOM_DELTA_LINE;
       break;
 
     default:
@@ -841,8 +849,8 @@ MouseScrollHandler::LastEventInfo::InitWheelEvent(
   // Use orienter for computing our delta value with native delta value.
   int32_t orienter = mIsVertical ? -1 : 1;
 
-  aWheelEvent.mDeltaMode = mIsPage ? nsIDOMWheelEvent::DOM_DELTA_PAGE :
-                                     nsIDOMWheelEvent::DOM_DELTA_LINE;
+  aWheelEvent.mDeltaMode = mIsPage ? dom::WheelEventBinding::DOM_DELTA_PAGE :
+                                     dom::WheelEventBinding::DOM_DELTA_LINE;
 
   double& delta = mIsVertical ? aWheelEvent.mDeltaY : aWheelEvent.mDeltaX;
   int32_t& lineOrPageDelta = mIsVertical ? aWheelEvent.mLineOrPageDeltaY :
@@ -859,7 +867,7 @@ MouseScrollHandler::LastEventInfo::InitWheelEvent(
   mAccumulatedDelta -=
     lineOrPageDelta * orienter * RoundDelta(nativeDeltaPerUnit);
 
-  if (aWheelEvent.mDeltaMode != nsIDOMWheelEvent::DOM_DELTA_LINE) {
+  if (aWheelEvent.mDeltaMode != dom::WheelEventBinding::DOM_DELTA_LINE) {
     // If the scroll delta mode isn't per line scroll, we shouldn't allow to
     // override the system scroll speed setting.
     aWheelEvent.mAllowToOverrideSystemScrollSpeed = false;
@@ -1121,6 +1129,9 @@ MouseScrollHandler::UserPrefs::Init()
   mForceEnableSystemSettingCache =
     Preferences::GetBool("mousewheel.system_settings_cache.force_enabled",
                          false);
+  mEmulateToMakeWindowUnderCursorForeground =
+    Preferences::GetBool("mousewheel.debug.make_window_under_cursor_foreground",
+                         false);
   mOverriddenVerticalScrollAmount =
     Preferences::GetInt("mousewheel.windows.vertical_amount_override", -1);
   mOverriddenHorizontalScrollAmount =
@@ -1134,12 +1145,14 @@ MouseScrollHandler::UserPrefs::Init()
        "mScrollMessageHandledAsWheelMessage=%s, "
        "mEnableSystemSettingCache=%s, "
        "mForceEnableSystemSettingCache=%s, "
+       "mEmulateToMakeWindowUnderCursorForeground=%s, "
        "mOverriddenVerticalScrollAmount=%d, "
        "mOverriddenHorizontalScrollAmount=%d, "
        "mMouseScrollTransactionTimeout=%d",
      GetBoolName(mScrollMessageHandledAsWheelMessage),
      GetBoolName(mEnableSystemSettingCache),
      GetBoolName(mForceEnableSystemSettingCache),
+     GetBoolName(mEmulateToMakeWindowUnderCursorForeground),
      mOverriddenVerticalScrollAmount, mOverriddenHorizontalScrollAmount,
      mMouseScrollTransactionTimeout));
 }

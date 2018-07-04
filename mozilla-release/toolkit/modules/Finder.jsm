@@ -3,20 +3,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-this.EXPORTED_SYMBOLS = ["Finder", "GetClipboardSearchString"];
+var EXPORTED_SYMBOLS = ["Finder", "GetClipboardSearchString"];
 
-const { interfaces: Ci, classes: Cc, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Geometry.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Geometry.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
   "resource://gre/modules/BrowserUtils.jsm");
 
-XPCOMUtils.defineLazyServiceGetter(this, "TextToSubURIService",
-                                         "@mozilla.org/intl/texttosuburi;1",
-                                         "nsITextToSubURI");
 XPCOMUtils.defineLazyServiceGetter(this, "Clipboard",
                                          "@mozilla.org/widget/clipboard;1",
                                          "nsIClipboard");
@@ -49,7 +44,7 @@ Finder.prototype = {
   get iterator() {
     if (this._iterator)
       return this._iterator;
-    this._iterator = Cu.import("resource://gre/modules/FinderIterator.jsm", null).FinderIterator;
+    this._iterator = ChromeUtils.import("resource://gre/modules/FinderIterator.jsm", null).FinderIterator;
     return this._iterator;
   },
 
@@ -74,7 +69,7 @@ Finder.prototype = {
   },
 
   addResultListener(aListener) {
-    if (this._listeners.indexOf(aListener) === -1)
+    if (!this._listeners.includes(aListener))
       this._listeners.push(aListener);
   },
 
@@ -88,7 +83,7 @@ Finder.prototype = {
 
     if (options.storeResult) {
       this._searchString = options.searchString;
-      this.clipboardSearchString = options.searchString
+      this.clipboardSearchString = options.searchString;
     }
 
     let foundLink = this._fastFind.foundLink;
@@ -99,7 +94,7 @@ Finder.prototype = {
       if (ownerDoc)
         docCharset = ownerDoc.characterSet;
 
-      linkURL = TextToSubURIService.unEscapeURIForUI(docCharset, foundLink.href);
+      linkURL = Services.textToSubURI.unEscapeURIForUI(docCharset, foundLink.href);
     }
 
     options.linkURL = linkURL;
@@ -166,7 +161,7 @@ Finder.prototype = {
     if (this._highlighter)
       return this._highlighter;
 
-    const {FinderHighlighter} = Cu.import("resource://gre/modules/FinderHighlighter.jsm", {});
+    const {FinderHighlighter} = ChromeUtils.import("resource://gre/modules/FinderHighlighter.jsm", {});
     return this._highlighter = new FinderHighlighter(this);
   },
 
@@ -312,18 +307,17 @@ Finder.prototype = {
     }
 
     let fastFind = this._fastFind;
-    const fm = Cc["@mozilla.org/focus-manager;1"].getService(Ci.nsIFocusManager);
     try {
       // Try to find the best possible match that should receive focus and
       // block scrolling on focus since find already scrolls. Further
       // scrolling is due to user action, so don't override this.
       if (fastFind.foundLink) {
-        fm.setFocus(fastFind.foundLink, fm.FLAG_NOSCROLL);
+        Services.focus.setFocus(fastFind.foundLink, Services.focus.FLAG_NOSCROLL);
       } else if (fastFind.foundEditable) {
-        fm.setFocus(fastFind.foundEditable, fm.FLAG_NOSCROLL);
+        Services.focus.setFocus(fastFind.foundEditable, Services.focus.FLAG_NOSCROLL);
         fastFind.collapseSelection();
       } else {
-        this._getWindow().focus()
+        this._getWindow().focus();
       }
     } catch (e) {}
   },
@@ -355,7 +349,7 @@ Finder.prototype = {
     let controller = this._getSelectionController(this._getWindow());
 
     switch (aEvent.keyCode) {
-      case Ci.nsIDOMKeyEvent.DOM_VK_RETURN:
+      case aEvent.DOM_VK_RETURN:
         if (this._fastFind.foundLink) {
           let view = this._fastFind.foundLink.ownerGlobal;
           this._fastFind.foundLink.dispatchEvent(new view.MouseEvent("click", {
@@ -369,23 +363,23 @@ Finder.prototype = {
           }));
         }
         break;
-      case Ci.nsIDOMKeyEvent.DOM_VK_TAB:
+      case aEvent.DOM_VK_TAB:
         let direction = Services.focus.MOVEFOCUS_FORWARD;
         if (aEvent.shiftKey) {
           direction = Services.focus.MOVEFOCUS_BACKWARD;
         }
         Services.focus.moveFocus(this._getWindow(), null, direction, 0);
         break;
-      case Ci.nsIDOMKeyEvent.DOM_VK_PAGE_UP:
+      case aEvent.DOM_VK_PAGE_UP:
         controller.scrollPage(false);
         break;
-      case Ci.nsIDOMKeyEvent.DOM_VK_PAGE_DOWN:
+      case aEvent.DOM_VK_PAGE_DOWN:
         controller.scrollPage(true);
         break;
-      case Ci.nsIDOMKeyEvent.DOM_VK_UP:
+      case aEvent.DOM_VK_UP:
         controller.scrollLine(false);
         break;
-      case Ci.nsIDOMKeyEvent.DOM_VK_DOWN:
+      case aEvent.DOM_VK_DOWN:
         controller.scrollLine(true);
         break;
     }
@@ -604,8 +598,8 @@ Finder.prototype = {
     this.iterator.reset();
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                         Ci.nsISupportsWeakReference])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener,
+                                          Ci.nsISupportsWeakReference])
 };
 
 function GetClipboardSearchString(aLoadContext) {
@@ -633,5 +627,3 @@ function GetClipboardSearchString(aLoadContext) {
   return searchString;
 }
 
-this.Finder = Finder;
-this.GetClipboardSearchString = GetClipboardSearchString;

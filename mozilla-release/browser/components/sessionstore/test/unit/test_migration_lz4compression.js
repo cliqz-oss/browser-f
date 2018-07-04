@@ -1,13 +1,13 @@
 "use strict";
 
-const {XPCOMUtils} = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
-const {SessionWorker} = Cu.import("resource:///modules/sessionstore/SessionWorker.jsm", {});
+const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
+const {SessionWorker} = ChromeUtils.import("resource:///modules/sessionstore/SessionWorker.jsm", {});
 
 var Paths;
 var SessionFile;
 
 // We need a XULAppInfo to initialize SessionFile
-Cu.import("resource://testing-common/AppInfo.jsm", this);
+ChromeUtils.import("resource://testing-common/AppInfo.jsm", this);
 updateAppInfo({
   name: "SessionRestoreTest",
   ID: "{230de50e-4cd1-11dc-8314-0800200c9a66}",
@@ -15,13 +15,9 @@ updateAppInfo({
   platformVersion: "",
 });
 
-function run_test() {
-  run_next_test();
-}
-
 function promise_check_exist(path, shouldExist) {
   return (async function() {
-    do_print("Ensuring that " + path + (shouldExist ? " exists" : " does not exist"));
+    info("Ensuring that " + path + (shouldExist ? " exists" : " does not exist"));
     if ((await OS.File.exists(path)) != shouldExist) {
       throw new Error("File " + path + " should " + (shouldExist ? "exist" : "not exist"));
     }
@@ -30,7 +26,7 @@ function promise_check_exist(path, shouldExist) {
 
 function promise_check_contents(path, expect) {
   return (async function() {
-    do_print("Checking whether " + path + " has the right contents");
+    info("Checking whether " + path + " has the right contents");
     let actual = await OS.File.read(path, { encoding: "utf-8", compression: "lz4" });
     Assert.deepEqual(JSON.parse(actual), expect, `File ${path} contains the expected data.`);
   })();
@@ -38,14 +34,14 @@ function promise_check_contents(path, expect) {
 
 function generateFileContents(id) {
   let url = `http://example.com/test_backup_once#${id}_${Math.random()}`;
-  return {windows: [{tabs: [{entries: [{url}], index: 1}]}]}
+  return {windows: [{tabs: [{entries: [{url}], index: 1}]}]};
 }
 
 // Check whether the migration from .js to .jslz4 is correct.
 add_task(async function test_migration() {
   // Make sure that we have a profile before initializing SessionFile.
   let profd = do_get_profile();
-  SessionFile = Cu.import("resource:///modules/sessionstore/SessionFile.jsm", {}).SessionFile;
+  SessionFile = ChromeUtils.import("resource:///modules/sessionstore/SessionFile.jsm", {}).SessionFile;
   Paths = SessionFile.Paths;
 
   let source = do_get_file("data/sessionstore_valid.js");

@@ -7,18 +7,26 @@
 #ifndef mozilla_dom_workerscope_h__
 #define mozilla_dom_workerscope_h__
 
-#include "Workers.h"
+#include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/DOMEventTargetHelper.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/Headers.h"
 #include "mozilla/dom/RequestBinding.h"
 #include "nsWeakReference.h"
 #include "mozilla/dom/ImageBitmapSource.h"
+
+#ifdef XP_WIN
+#undef PostMessage
+#endif
 
 namespace mozilla {
 namespace dom {
 
 class AnyCallback;
 struct ChannelPixelLayout;
+class ClientInfo;
+class Clients;
+class ClientState;
 class Console;
 class Crypto;
 class Function;
@@ -27,9 +35,9 @@ enum class ImageBitmapFormat : uint8_t;
 class Performance;
 class Promise;
 class RequestOrUSVString;
-class ServiceWorkerRegistration;
 class WorkerLocation;
 class WorkerNavigator;
+class WorkerPrivate;
 enum class CallerType : uint32_t;
 
 namespace cache {
@@ -37,13 +45,6 @@ namespace cache {
 class CacheStorage;
 
 } // namespace cache
-
-namespace workers {
-
-class ServiceWorkerClients;
-class WorkerPrivate;
-
-} // namespace workers
 
 class WorkerGlobalScope : public DOMEventTargetHelper,
                           public nsIGlobalObject,
@@ -63,7 +64,6 @@ class WorkerGlobalScope : public DOMEventTargetHelper,
   uint32_t mWindowInteractionsAllowed;
 
 protected:
-  typedef mozilla::dom::workers::WorkerPrivate WorkerPrivate;
   WorkerPrivate* mWorkerPrivate;
 
   explicit WorkerGlobalScope(WorkerPrivate* aWorkerPrivate);
@@ -92,7 +92,10 @@ public:
     return this;
   }
 
-  Console*
+  void
+  NoteTerminating();
+
+  already_AddRefed<Console>
   GetConsole(ErrorResult& aRv);
 
   Console*
@@ -131,11 +134,11 @@ public:
   ClearTimeout(int32_t aHandle);
   int32_t
   SetInterval(JSContext* aCx, Function& aHandler,
-              const Optional<int32_t>& aTimeout,
+              const int32_t aTimeout,
               const Sequence<JS::Value>& aArguments, ErrorResult& aRv);
   int32_t
   SetInterval(JSContext* aCx, const nsAString& aHandler,
-              const Optional<int32_t>& aTimeout,
+              const int32_t aTimeout,
               const Sequence<JS::Value>& /* unused */, ErrorResult& aRv);
   void
   ClearInterval(int32_t aHandle);
@@ -160,6 +163,11 @@ public:
   {
     return mPerformance;
   }
+
+  static bool IsInAutomation(JSContext* aCx, JSObject* /* unused */);
+  void GetJSTestingFunctions(JSContext* aCx,
+                             JS::MutableHandle<JSObject*> aFunctions,
+                             ErrorResult& aRv);
 
   already_AddRefed<Promise>
   Fetch(const RequestOrUSVString& aInput, const RequestInit& aInit,
@@ -221,6 +229,18 @@ public:
 
   AbstractThread*
   AbstractMainThreadFor(TaskCategory aCategory) override;
+
+  Maybe<ClientInfo>
+  GetClientInfo() const override;
+
+  Maybe<ClientState>
+  GetClientState() const;
+
+  Maybe<ServiceWorkerDescriptor>
+  GetController() const override;
+
+  RefPtr<mozilla::dom::ServiceWorkerRegistration>
+  GetOrCreateServiceWorkerRegistration(const ServiceWorkerRegistrationDescriptor& aDescriptor) override;
 };
 
 class DedicatedWorkerGlobalScope final : public WorkerGlobalScope
@@ -248,9 +268,10 @@ public:
               ErrorResult& aRv);
 
   void
-  Close(JSContext* aCx);
+  Close();
 
   IMPL_EVENT_HANDLER(message)
+  IMPL_EVENT_HANDLER(messageerror)
 };
 
 class SharedWorkerGlobalScope final : public WorkerGlobalScope
@@ -273,7 +294,7 @@ public:
   }
 
   void
-  Close(JSContext* aCx);
+  Close();
 
   IMPL_EVENT_HANDLER(connect)
 };
@@ -281,7 +302,7 @@ public:
 class ServiceWorkerGlobalScope final : public WorkerGlobalScope
 {
   const nsString mScope;
-  RefPtr<workers::ServiceWorkerClients> mClients;
+  RefPtr<Clients> mClients;
   RefPtr<ServiceWorkerRegistration> mRegistration;
 
   ~ServiceWorkerGlobalScope();
@@ -293,14 +314,12 @@ public:
   IMPL_EVENT_HANDLER(notificationclick)
   IMPL_EVENT_HANDLER(notificationclose)
 
-  ServiceWorkerGlobalScope(WorkerPrivate* aWorkerPrivate, const nsACString& aScope);
+  ServiceWorkerGlobalScope(WorkerPrivate* aWorkerPrivate,
+                           const ServiceWorkerRegistrationDescriptor& aRegistrationDescriptor);
 
   virtual bool
   WrapGlobalObject(JSContext* aCx,
                    JS::MutableHandle<JSObject*> aReflector) override;
-
-  static bool
-  OpenWindowEnabled(JSContext* aCx, JSObject* aObj);
 
   void
   GetScope(nsString& aScope) const
@@ -308,8 +327,8 @@ public:
     aScope = mScope;
   }
 
-  workers::ServiceWorkerClients*
-  Clients();
+  already_AddRefed<Clients>
+  GetClients();
 
   ServiceWorkerRegistration*
   Registration();
@@ -330,20 +349,16 @@ public:
   void
   SetOnfetch(mozilla::dom::EventHandlerNonNull* aCallback);
 
-  using DOMEventTargetHelper::AddEventListener;
-  virtual void
-  AddEventListener(const nsAString& aType,
-                   dom::EventListener* aListener,
-                   const dom::AddEventListenerOptionsOrBoolean& aOptions,
-                   const dom::Nullable<bool>& aWantsUntrusted,
-                   ErrorResult& aRv) override;
+  // We only need to override the string version of EventListenerAdded, because
+  // the atom version should never be called on workers.  Until bug 1450167 is
+  // fixed, at least.
+  using DOMEventTargetHelper::EventListenerAdded;
+  void EventListenerAdded(const nsAString& aType) override;
 };
 
 class WorkerDebuggerGlobalScope final : public DOMEventTargetHelper,
                                         public nsIGlobalObject
 {
-  typedef mozilla::dom::workers::WorkerPrivate WorkerPrivate;
-
   WorkerPrivate* mWorkerPrivate;
   RefPtr<Console> mConsole;
   nsCOMPtr<nsISerialEventTarget> mSerialEventTarget;
@@ -396,6 +411,7 @@ public:
   PostMessage(const nsAString& aMessage);
 
   IMPL_EVENT_HANDLER(message)
+  IMPL_EVENT_HANDLER(messageerror)
 
   void
   SetImmediate(Function& aHandler, ErrorResult& aRv);
@@ -411,7 +427,7 @@ public:
   SetConsoleEventHandler(JSContext* aCx, AnyCallback* aHandler,
                          ErrorResult& aRv);
 
-  Console*
+  already_AddRefed<Console>
   GetConsole(ErrorResult& aRv);
 
   Console*
@@ -445,7 +461,7 @@ private:
 inline nsISupports*
 ToSupports(mozilla::dom::WorkerGlobalScope* aScope)
 {
-  return static_cast<nsIDOMEventTarget*>(aScope);
+  return static_cast<mozilla::dom::EventTarget*>(aScope);
 }
 
 #endif /* mozilla_dom_workerscope_h__ */

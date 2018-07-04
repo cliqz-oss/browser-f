@@ -12,7 +12,8 @@
 <bindings id="notificationBindings"
           xmlns="http://www.mozilla.org/xbl"
           xmlns:xbl="http://www.mozilla.org/xbl"
-          xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+          xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+          xmlns:html = "http://www.w3.org/1999/xhtml">
 
   <binding id="notificationbox">
     <content>
@@ -45,8 +46,8 @@
       <property name="_allowAnimation">
         <getter>
           <![CDATA[
-            var prefs = Components.classes["@mozilla.org/preferences-service;1"]
-                                  .getService(Components.interfaces.nsIPrefBranch);
+            var prefs = Cc["@mozilla.org/preferences-service;1"]
+                          .getService(Ci.nsIPrefBranch);
             return prefs.getBoolPref("toolkit.cosmeticAnimations.enabled");
           ]]>
         </getter>
@@ -218,8 +219,8 @@
             this.removeChild(aChild);
 
             // make sure focus doesn't get lost (workaround for bug 570835)
-            let fm = Components.classes["@mozilla.org/focus-manager;1"]
-                               .getService(Components.interfaces.nsIFocusManager);
+            let fm = Cc["@mozilla.org/focus-manager;1"]
+                       .getService(Ci.nsIFocusManager);
             if (!fm.getFocusedElementForWindow(window, false, {}))
               fm.moveFocus(window, this, fm.MOVEFOCUS_FORWARD, 0);
           ]]>
@@ -364,8 +365,8 @@
 
               var bgcolor = "white";
               try {
-                var prefService = Components.classes["@mozilla.org/preferences-service;1"].
-                                    getService(Components.interfaces.nsIPrefBranch);
+                var prefService = Cc["@mozilla.org/preferences-service;1"].
+                                    getService(Ci.nsIPrefBranch);
                 bgcolor = prefService.getCharPref("browser.display.background_color");
 
                 var win = content.contentWindow;
@@ -397,22 +398,21 @@
 
   </binding>
 
-  <binding id="notification" role="xul:alert">
+  <binding id="notification">
     <content>
-      <xul:hbox class="notification-inner" flex="1" xbl:inherits="type">
-        <xul:hbox anonid="details" align="center" flex="1"
-                  oncommand="this.parentNode.parentNode._doButtonCommand(event);">
-          <xul:image anonid="messageImage" class="messageImage" xbl:inherits="src=image,type,value"/>
-          <xul:description anonid="messageText" class="messageText" flex="1" xbl:inherits="xbl:text=label"/>
-          <xul:spacer flex="1"/>
-          <children/>
-        </xul:hbox>
-        <xul:toolbarbutton ondblclick="event.stopPropagation();"
-                           class="messageCloseButton close-icon tabbable"
-                           xbl:inherits="hidden=hideclose"
-                           tooltiptext="&closeNotification.tooltip;"
-                           oncommand="document.getBindingParent(this).dismiss();"/>
+      <xul:hbox anonid="details" align="center" flex="1"
+                oncommand="this.parentNode._doButtonCommand(event);">
+        <xul:image anonid="messageImage" class="messageImage" xbl:inherits="src=image,type,value"/>
+        <xul:description anonid="messageText" class="messageText" flex="1" xbl:inherits="xbl:text=label"/>
+        <xul:spacer flex="1"/>
+        <children/>
       </xul:hbox>
+      <xul:toolbarbutton ondblclick="event.stopPropagation();"
+                         class="messageCloseButton close-icon tabbable"
+                         anonid="close-button"
+                         xbl:inherits="hidden=hideclose"
+                         tooltiptext="&closeNotification.tooltip;"
+                         oncommand="document.getBindingParent(this).dismiss();"/>
     </content>
     <resources>
       <stylesheet src="chrome://global/skin/notification.css"/>
@@ -488,7 +488,7 @@
             } else {
               var callback = button.callback;
               if (callback) {
-                var result = callback(this, button, aEvent.target);
+                var result = callback(this, button, aEvent.target, aEvent);
                 if (!result)
                   this.close();
                 aEvent.stopPropagation();
@@ -512,8 +512,12 @@
               <xul:label class="popup-notification-origin header"
                          xbl:inherits="value=origin,tooltiptext=origin"
                          crop="center"/>
-              <xul:description class="popup-notification-description"
-                               xbl:inherits="xbl:text=label,popupid"/>
+              <!-- These need to be on the same line to avoid creating
+                   whitespace between them (whitespace is added in the
+                   localization file, if necessary). -->
+              <xul:description class="popup-notification-description" xbl:inherits="popupid"><html:span
+                xbl:inherits="xbl:text=label,popupid"/><html:b xbl:inherits="xbl:text=name,popupid"/><html:span
+              xbl:inherits="xbl:text=endlabel,popupid"/></xul:description>
             </xul:vbox>
             <xul:toolbarbutton anonid="closebutton"
                                class="messageCloseButton close-icon popup-notification-closebutton tabbable"

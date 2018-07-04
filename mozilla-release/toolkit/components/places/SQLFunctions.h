@@ -59,6 +59,8 @@ namespace places {
 class MatchAutoCompleteFunction final : public mozIStorageFunction
 {
 public:
+  MatchAutoCompleteFunction();
+
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_MOZISTORAGEFUNCTION
 
@@ -72,6 +74,13 @@ public:
 
 private:
   ~MatchAutoCompleteFunction() {}
+
+  /**
+   * IntegerVariants for 0 and 1 are frequently used in awesomebar queries,
+   * so we cache them to avoid allocating memory repeatedly.
+   */
+  nsCOMPtr<nsIVariant> mCachedZero;
+  nsCOMPtr<nsIVariant> mCachedOne;
 
   /**
    * Argument Indexes
@@ -233,6 +242,29 @@ private:
 };
 
 /**
+ * SQL function to check if a GUID is valid.  This is just a wrapper around
+ * IsValidGUID in Helpers.h.
+ *
+ * @return true if valid, false otherwise.
+ */
+class IsValidGUIDFunction final : public mozIStorageFunction
+{
+public:
+  NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_MOZISTORAGEFUNCTION
+
+  /**
+   * Registers the function with the specified database connection.
+   *
+   * @param aDBConn
+   *        The database connection to register with.
+   */
+  static nsresult create(mozIStorageConnection *aDBConn);
+private:
+  ~IsValidGUIDFunction() {}
+};
+
+/**
  * SQL function to unreverse the rev_host of a page.
  *
  * @param rev_host
@@ -383,6 +415,35 @@ public:
 private:
   ~HashFunction() {}
 };
+
+////////////////////////////////////////////////////////////////////////////////
+//// Get Query Param Function
+
+/**
+ * Extracts and returns the value of a parameter from a query string.
+ *
+ * @param string
+ *        A string.
+ * @return
+ *        The value of the query parameter as a string, or NULL if not set.
+ */
+class GetQueryParamFunction final : public mozIStorageFunction
+{
+public:
+  NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_MOZISTORAGEFUNCTION
+
+  /**
+   * Registers the function with the specified database connection.
+   *
+   * @param aDBConn
+   *        The database connection to register with.
+   */
+  static nsresult create(mozIStorageConnection *aDBConn);
+private:
+  ~GetQueryParamFunction() {}
+};
+
 
 } // namespace places
 } // namespace mozilla

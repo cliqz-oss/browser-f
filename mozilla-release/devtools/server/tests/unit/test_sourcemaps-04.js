@@ -15,9 +15,9 @@ function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-source-map");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-source-map",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_absolute_source_map();
                            });
@@ -27,14 +27,14 @@ function run_test() {
 
 function test_absolute_source_map() {
   gThreadClient.addOneTimeListener("newSource", function _onNewSource(event, packet) {
-    do_check_eq(event, "newSource");
-    do_check_eq(packet.type, "newSource");
-    do_check_true(!!packet.source);
+    Assert.equal(event, "newSource");
+    Assert.equal(packet.type, "newSource");
+    Assert.ok(!!packet.source);
 
-    do_check_true(packet.source.url.indexOf("sourcemapped.coffee") !== -1,
-                  "The new source should be a coffee file.");
-    do_check_eq(packet.source.url.indexOf("sourcemapped.js"), -1,
-                "The new source should not be a js file.");
+    Assert.ok(packet.source.url.includes("sourcemapped.coffee"),
+              "The new source should be a coffee file.");
+    Assert.equal(packet.source.url.indexOf("sourcemapped.js"), -1,
+                 "The new source should not be a js file.");
 
     finishClient(gClient);
   });
@@ -42,6 +42,6 @@ function test_absolute_source_map() {
   let code = readFile("sourcemapped.js")
     + "\n//# sourceMappingURL=" + getFileUrl("source-map-data/sourcemapped.map");
 
-  Components.utils.evalInSandbox(code, gDebuggee, "1.8",
-                                 getFileUrl("sourcemapped.js"), 1);
+  Cu.evalInSandbox(code, gDebuggee, "1.8",
+                   getFileUrl("sourcemapped.js"), 1);
 }

@@ -15,14 +15,14 @@ const TEST_URI = `
   </div>
 `;
 
-add_task(function* () {
-  yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  let { inspector, gridInspector } = yield openLayoutView();
+add_task(async function() {
+  await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
+  let { inspector, gridInspector } = await openLayoutView();
   let { document: doc } = gridInspector;
   let { highlighters } = inspector;
 
-  yield selectNode("#grid", inspector);
-  let noGridList = doc.querySelector(".layout-no-grids");
+  await selectNode("#grid", inspector);
+  let noGridList = doc.querySelector(".grid-pane .devtools-sidepanel-no-result");
   let gridList = doc.getElementById("grid-list");
 
   info("Checking the initial state of the Grid Inspector.");

@@ -25,21 +25,15 @@
 #include "nsIWebNavigation.h"
 #include "nsIWindowWatcher.h"
 
-#include "nsIDOMXULElement.h"
-
 #include "nsWidgetInitData.h"
 #include "nsWidgetsCID.h"
 #include "nsIWidget.h"
 #include "nsIWidgetListener.h"
 
-#include "nsIDOMCharacterData.h"
-#include "nsIDOMNodeList.h"
+#include "nsINodeList.h"
 
 #include "nsITimer.h"
 #include "nsXULPopupManager.h"
-
-
-#include "nsIDOMXULDocument.h"
 
 #include "nsFocusManager.h"
 
@@ -47,9 +41,7 @@
 #include "nsIWebProgressListener.h"
 
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsIDOMNode.h"
-#include "nsIDOMElement.h"
 #include "nsIDocumentLoaderFactory.h"
 #include "nsIObserverService.h"
 
@@ -68,6 +60,7 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/EventDispatcher.h"
 #include "mozilla/MouseEvents.h"
 
 #include "nsPIWindowRoot.h"
@@ -90,6 +83,7 @@ static NS_DEFINE_CID(kWindowCID,           NS_WINDOW_CID);
 nsWebShellWindow::nsWebShellWindow(uint32_t aChromeFlags)
   : nsXULWindow(aChromeFlags)
   , mSPTimerLock("nsWebShellWindow.mSPTimerLock")
+  , mWidgetListenerDelegate(this)
 {
 }
 
@@ -125,22 +119,22 @@ nsresult nsWebShellWindow::Initialize(nsIXULWindow* aParent,
   int32_t initialX = 0, initialY = 0;
   nsCOMPtr<nsIBaseWindow> base(do_QueryInterface(aOpener));
   if (base) {
-    rv = base->GetPositionAndSize(&mOpenerScreenRect.x,
-                                  &mOpenerScreenRect.y,
-                                  &mOpenerScreenRect.width,
-                                  &mOpenerScreenRect.height);
+    int32_t x, y, width, height;
+    rv = base->GetPositionAndSize(&x, &y, &width, &height);
     if (NS_FAILED(rv)) {
       mOpenerScreenRect.SetEmpty();
     } else {
       double scale;
       if (NS_SUCCEEDED(base->GetUnscaledDevicePixelsPerCSSPixel(&scale))) {
-        mOpenerScreenRect.x = NSToIntRound(mOpenerScreenRect.x / scale);
-        mOpenerScreenRect.y = NSToIntRound(mOpenerScreenRect.y / scale);
-        mOpenerScreenRect.width = NSToIntRound(mOpenerScreenRect.width / scale);
-        mOpenerScreenRect.height = NSToIntRound(mOpenerScreenRect.height / scale);
+        mOpenerScreenRect.SetRect(NSToIntRound(x / scale),
+                                  NSToIntRound(y / scale),
+                                  NSToIntRound(width / scale),
+                                  NSToIntRound(height / scale));
+      } else {
+        mOpenerScreenRect.SetRect(x, y, width, height);
       }
-      initialX = mOpenerScreenRect.x;
-      initialY = mOpenerScreenRect.y;
+      initialX = mOpenerScreenRect.X();
+      initialY = mOpenerScreenRect.Y();
       ConstrainToOpenerScreen(&initialX, &initialY);
     }
   }
@@ -179,7 +173,7 @@ nsresult nsWebShellWindow::Initialize(nsIXULWindow* aParent,
     mParentWindow = do_GetWeakReference(aParent);
   }
 
-  mWindow->SetWidgetListener(this);
+  mWindow->SetWidgetListener(&mWidgetListenerDelegate);
   rv = mWindow->Create((nsIWidget *)parentWidget, // Parent nsIWidget
                        nullptr,                   // Native parent widget
                        deskRect,                  // Widget dimensions
@@ -206,10 +200,10 @@ nsresult nsWebShellWindow::Initialize(nsIXULWindow* aParent,
   docShellAsItem->SetTreeOwner(mChromeTreeOwner);
   docShellAsItem->SetItemType(nsIDocShellTreeItem::typeChrome);
 
-  r.x = r.y = 0;
+  r.MoveTo(0, 0);
   nsCOMPtr<nsIBaseWindow> docShellAsWin(do_QueryInterface(mDocShell));
   NS_ENSURE_SUCCESS(docShellAsWin->InitWindow(nullptr, mWindow,
-   r.x, r.y, r.width, r.height), NS_ERROR_FAILURE);
+   r.X(), r.Y(), r.Width(), r.Height()), NS_ERROR_FAILURE);
   NS_ENSURE_SUCCESS(docShellAsWin->Create(), NS_ERROR_FAILURE);
 
   // Attach a WebProgress listener.during initialization...
@@ -333,7 +327,8 @@ nsWebShellWindow::RequestWindowClose(nsIWidget* aWidget)
     nsEventStatus status = nsEventStatus_eIgnore;
     WidgetMouseEvent event(true, eClose, nullptr,
                            WidgetMouseEvent::eReal);
-    if (NS_SUCCEEDED(eventTarget->DispatchDOMEvent(&event, nullptr, presContext, &status)) &&
+    if (NS_SUCCEEDED(EventDispatcher::Dispatch(eventTarget, presContext,
+                                               &event, nullptr, &status)) &&
         status == nsEventStatus_eConsumeNoDefault)
       return false;
   }
@@ -364,8 +359,6 @@ nsWebShellWindow::SizeModeChanged(nsSizeMode sizeMode)
   nsCOMPtr<nsPIDOMWindowOuter> ourWindow =
     mDocShell ? mDocShell->GetWindow() : nullptr;
   if (ourWindow) {
-    MOZ_ASSERT(ourWindow->IsOuterWindow());
-
     // Ensure that the fullscreen state is synchronized between
     // the widget and the outer window object.
     if (sizeMode == nsSizeMode_Fullscreen) {
@@ -406,8 +399,17 @@ nsWebShellWindow::UIResolutionChanged()
   nsCOMPtr<nsPIDOMWindowOuter> ourWindow =
     mDocShell ? mDocShell->GetWindow() : nullptr;
   if (ourWindow) {
-    MOZ_ASSERT(ourWindow->IsOuterWindow());
     ourWindow->DispatchCustomEvent(NS_LITERAL_STRING("resolutionchange"));
+  }
+}
+
+void
+nsWebShellWindow::FullscreenWillChange(bool aInFullscreen)
+{
+  if (mDocShell) {
+    if (nsCOMPtr<nsPIDOMWindowOuter> ourWindow = mDocShell->GetWindow()) {
+      ourWindow->FullscreenWillChange(aInFullscreen);
+    }
   }
 }
 
@@ -427,7 +429,6 @@ nsWebShellWindow::OcclusionStateChanged(bool aIsFullyOccluded)
   nsCOMPtr<nsPIDOMWindowOuter> ourWindow =
     mDocShell ? mDocShell->GetWindow() : nullptr;
   if (ourWindow) {
-    MOZ_ASSERT(ourWindow->IsOuterWindow());
     // And always fire a user-defined occlusionstatechange event on the window
     ourWindow->DispatchCustomEvent(NS_LITERAL_STRING("occlusionstatechange"));
   }
@@ -499,7 +500,7 @@ nsWebShellWindow::WindowDeactivated()
 }
 
 #ifdef USE_NATIVE_MENUS
-static void LoadNativeMenus(nsIDOMDocument *aDOMDoc, nsIWidget *aParentWindow)
+static void LoadNativeMenus(nsIDocument *aDoc, nsIWidget *aParentWindow)
 {
   if (gfxPlatform::IsHeadless()) {
     return;
@@ -511,17 +512,17 @@ static void LoadNativeMenus(nsIDOMDocument *aDOMDoc, nsIWidget *aParentWindow)
 
   // Find the menubar tag (if there is more than one, we ignore all but
   // the first).
-  nsCOMPtr<nsIDOMNodeList> menubarElements;
-  aDOMDoc->GetElementsByTagNameNS(NS_LITERAL_STRING("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"),
-                                  NS_LITERAL_STRING("menubar"),
-                                  getter_AddRefs(menubarElements));
+  nsCOMPtr<nsINodeList> menubarElements =
+    aDoc->GetElementsByTagNameNS(NS_LITERAL_STRING("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"),
+                                 NS_LITERAL_STRING("menubar"));
 
-  nsCOMPtr<nsIDOMNode> menubarNode;
-  if (menubarElements)
-    menubarElements->Item(0, getter_AddRefs(menubarNode));
+  nsCOMPtr<nsINode> menubarNode;
+  if (menubarElements) {
+    menubarNode = menubarElements->Item(0);
+  }
 
   if (menubarNode) {
-    nsCOMPtr<nsIContent> menubarContent(do_QueryInterface(menubarNode));
+    nsCOMPtr<Element> menubarContent(do_QueryInterface(menubarNode));
     nms->CreateNativeMenuBar(aParentWindow, menubarContent);
   } else {
     nms->CreateNativeMenuBar(aParentWindow, nullptr);
@@ -572,7 +573,7 @@ nsWebShellWindow::SetPersistenceTimer(uint32_t aDirtyFlags)
 {
   MutexAutoLock lock(mSPTimerLock);
   if (!mSPTimer) {
-    mSPTimer = do_CreateInstance("@mozilla.org/timer;1");
+    mSPTimer = NS_NewTimer();
     if (!mSPTimer) {
       NS_WARNING("Couldn't create @mozilla.org/timer;1 instance?");
       return;
@@ -646,9 +647,9 @@ nsWebShellWindow::OnStateChange(nsIWebProgress *aProgress,
   nsCOMPtr<nsIContentViewer> cv;
   mDocShell->GetContentViewer(getter_AddRefs(cv));
   if (cv) {
-    nsCOMPtr<nsIDOMDocument> menubarDOMDoc(do_QueryInterface(cv->GetDocument()));
-    if (menubarDOMDoc)
-      LoadNativeMenus(menubarDOMDoc, mWindow);
+    nsCOMPtr<nsIDocument> menubarDoc = cv->GetDocument();
+    if (menubarDoc)
+      LoadNativeMenus(menubarDoc, mWindow);
   }
 #endif // USE_NATIVE_MENUS
 
@@ -716,8 +717,8 @@ bool nsWebShellWindow::ExecuteCloseHandler()
       WidgetMouseEvent event(true, eClose, nullptr,
                              WidgetMouseEvent::eReal);
 
-      nsresult rv =
-        eventTarget->DispatchDOMEvent(&event, nullptr, presContext, &status);
+      nsresult rv = EventDispatcher::Dispatch(eventTarget, presContext,
+                                              &event, nullptr, &status);
       if (NS_SUCCEEDED(rv) && status == nsEventStatus_eConsumeNoDefault)
         return true;
       // else fall through and return false
@@ -739,8 +740,8 @@ void nsWebShellWindow::ConstrainToOpenerScreen(int32_t* aX, int32_t* aY)
   nsCOMPtr<nsIScreenManager> screenmgr = do_GetService("@mozilla.org/gfx/screenmanager;1");
   if (screenmgr) {
     nsCOMPtr<nsIScreen> screen;
-    screenmgr->ScreenForRect(mOpenerScreenRect.x, mOpenerScreenRect.y,
-                             mOpenerScreenRect.width, mOpenerScreenRect.height,
+    screenmgr->ScreenForRect(mOpenerScreenRect.X(), mOpenerScreenRect.Y(),
+                             mOpenerScreenRect.Width(), mOpenerScreenRect.Height(),
                              getter_AddRefs(screen));
     if (screen) {
       screen->GetAvailRectDisplayPix(&left, &top, &width, &height);
@@ -773,4 +774,109 @@ NS_IMETHODIMP nsWebShellWindow::Destroy()
     }
   }
   return nsXULWindow::Destroy();
+}
+
+nsIXULWindow*
+nsWebShellWindow::WidgetListenerDelegate::GetXULWindow()
+{
+  return mWebShellWindow->GetXULWindow();
+}
+
+nsIPresShell*
+nsWebShellWindow::WidgetListenerDelegate::GetPresShell()
+{
+  return mWebShellWindow->GetPresShell();
+}
+
+bool
+nsWebShellWindow::WidgetListenerDelegate::WindowMoved(
+  nsIWidget* aWidget, int32_t aX, int32_t aY)
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  return holder->WindowMoved(aWidget, aX, aY);
+}
+
+bool
+nsWebShellWindow::WidgetListenerDelegate::WindowResized(
+  nsIWidget* aWidget, int32_t aWidth, int32_t aHeight)
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  return holder->WindowResized(aWidget, aWidth, aHeight);
+}
+
+bool
+nsWebShellWindow::WidgetListenerDelegate::RequestWindowClose(nsIWidget* aWidget)
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  return holder->RequestWindowClose(aWidget);
+}
+
+void
+nsWebShellWindow::WidgetListenerDelegate::SizeModeChanged(nsSizeMode aSizeMode)
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  holder->SizeModeChanged(aSizeMode);
+}
+
+void
+nsWebShellWindow::WidgetListenerDelegate::UIResolutionChanged()
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  holder->UIResolutionChanged();
+}
+
+void
+nsWebShellWindow::WidgetListenerDelegate::FullscreenWillChange(
+  bool aInFullscreen)
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  holder->FullscreenWillChange(aInFullscreen);
+}
+
+void
+nsWebShellWindow::WidgetListenerDelegate::FullscreenChanged(bool aInFullscreen)
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  holder->FullscreenChanged(aInFullscreen);
+}
+
+void
+nsWebShellWindow::WidgetListenerDelegate::OcclusionStateChanged(
+  bool aIsFullyOccluded)
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  holder->OcclusionStateChanged(aIsFullyOccluded);
+}
+
+void
+nsWebShellWindow::WidgetListenerDelegate::OSToolbarButtonPressed()
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  holder->OSToolbarButtonPressed();
+}
+
+bool
+nsWebShellWindow::WidgetListenerDelegate::ZLevelChanged(
+  bool aImmediate, nsWindowZ *aPlacement, nsIWidget* aRequestBelow,
+  nsIWidget** aActualBelow)
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  return holder->ZLevelChanged(aImmediate,
+                               aPlacement,
+                               aRequestBelow,
+                               aActualBelow);
+}
+
+void
+nsWebShellWindow::WidgetListenerDelegate::WindowActivated()
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  holder->WindowActivated();
+}
+
+void
+nsWebShellWindow::WidgetListenerDelegate::WindowDeactivated()
+{
+  RefPtr<nsWebShellWindow> holder = mWebShellWindow;
+  holder->WindowDeactivated();
 }

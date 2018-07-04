@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,6 +7,7 @@
 #ifndef mozilla_layers_AsyncPanZoomAnimation_h_
 #define mozilla_layers_AsyncPanZoomAnimation_h_
 
+#include "APZUtils.h"
 #include "base/message_loop.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/TimeStamp.h"
@@ -25,8 +26,7 @@ class AsyncPanZoomAnimation {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(AsyncPanZoomAnimation)
 
 public:
-  explicit AsyncPanZoomAnimation()
-  { }
+  explicit AsyncPanZoomAnimation() = default;
 
   virtual bool DoSample(FrameMetrics& aFrameMetrics,
                         const TimeDuration& aDelta) = 0;
@@ -65,10 +65,11 @@ public:
     return true;
   }
 
+  virtual void Cancel(CancelAnimationFlags aFlags) {}
+
 protected:
   // Protected destructor, to discourage deletion outside of Release():
-  virtual ~AsyncPanZoomAnimation()
-  { }
+  virtual ~AsyncPanZoomAnimation() = default;
 
   /**
    * Tasks scheduled for execution after the APZC's mMonitor is released.

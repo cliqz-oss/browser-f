@@ -31,19 +31,15 @@ var FullZoom = {
   get siteSpecific() {
     if (this._siteSpecificPref === undefined) {
       this._siteSpecificPref =
-        !gPrefService.getBoolPref("privacy.resistFingerprinting") &&
-        gPrefService.getBoolPref("browser.zoom.siteSpecific");
+        !Services.prefs.getBoolPref("privacy.resistFingerprinting") &&
+        Services.prefs.getBoolPref("browser.zoom.siteSpecific");
     }
     return this._siteSpecificPref;
   },
 
   // nsISupports
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIDOMEventListener,
-                                         Ci.nsIObserver,
-                                         Ci.nsIContentPrefObserver,
-                                         Ci.nsISupportsWeakReference,
-                                         Ci.nsISupports]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver, Ci.nsIContentPrefObserver, Ci.nsISupportsWeakReference]),
 
   // Initialization & Destruction
 
@@ -56,15 +52,15 @@ var FullZoom = {
     this._cps2.addObserverForName(this.name, this);
 
     this.updateBackgroundTabs =
-      gPrefService.getBoolPref("browser.zoom.updateBackgroundTabs");
+      Services.prefs.getBoolPref("browser.zoom.updateBackgroundTabs");
 
     // Listen for changes to the browser.zoom branch so we can enable/disable
     // updating background tabs and per-site saving and restoring of zoom levels.
-    gPrefService.addObserver("browser.zoom.", this, true);
+    Services.prefs.addObserver("browser.zoom.", this, true);
 
     // Also need to listen to privacy.resistFingerprinting in order to update
     // this._siteSpecificPref.
-    gPrefService.addObserver("privacy.resistFingerprinting", this, true);
+    Services.prefs.addObserver("privacy.resistFingerprinting", this, true);
 
     // If we received onLocationChange events for any of the current browsers
     // before we were initialized we want to replay those upon initialization.
@@ -79,7 +75,7 @@ var FullZoom = {
   },
 
   destroy: function FullZoom_destroy() {
-    gPrefService.removeObserver("browser.zoom.", this);
+    Services.prefs.removeObserver("browser.zoom.", this);
     this._cps2.removeObserverForName(this.name, this);
     gBrowser.removeEventListener("ZoomChangeUsingMouseWheel", this);
   },
@@ -87,7 +83,7 @@ var FullZoom = {
 
   // Event Handlers
 
-  // nsIDOMEventListener
+  // EventListener
 
   handleEvent: function FullZoom_handleEvent(event) {
     switch (event.type) {
@@ -113,7 +109,7 @@ var FullZoom = {
             break;
           case "browser.zoom.updateBackgroundTabs":
             this.updateBackgroundTabs =
-              gPrefService.getBoolPref("browser.zoom.updateBackgroundTabs");
+              Services.prefs.getBoolPref("browser.zoom.updateBackgroundTabs");
             break;
         }
         break;
@@ -209,10 +205,21 @@ var FullZoom = {
       return;
     }
 
-    // Avoid the cps roundtrip and apply the default/global pref.
     if (aURI.spec == "about:blank") {
-      this._applyPrefToZoom(undefined, browser,
-                            this._notifyOnLocationChange.bind(this, browser));
+      if (!browser.contentPrincipal || browser.contentPrincipal.isNullPrincipal) {
+        // For an about:blank with a null principal, zooming any amount does not
+        // make any sense - so simply do 100%.
+        this._applyPrefToZoom(1, browser,
+                              this._notifyOnLocationChange.bind(this, browser));
+      } else {
+        // If it's not a null principal, there may be content loaded into it,
+        // so use the global pref. This will avoid a cps2 roundtrip if we've
+        // already loaded the global pref once. Really, this should probably
+        // use the contentPrincipal's origin if it's an http(s) principal.
+        // (See bug 1457597)
+        this._applyPrefToZoom(undefined, browser,
+                              this._notifyOnLocationChange.bind(this, browser));
+      }
       return;
     }
 
@@ -262,21 +269,21 @@ var FullZoom = {
   /**
    * Reduces the zoom level of the page in the current browser.
    */
-  reduce: function FullZoom_reduce() {
+  async reduce() {
     ZoomManager.reduce();
     let browser = gBrowser.selectedBrowser;
     this._ignorePendingZoomAccesses(browser);
-    this._applyZoomToPref(browser);
+    await this._applyZoomToPref(browser);
   },
 
   /**
    * Enlarges the zoom level of the page in the current browser.
    */
-  enlarge: function FullZoom_enlarge() {
+  async enlarge() {
     ZoomManager.enlarge();
     let browser = gBrowser.selectedBrowser;
     this._ignorePendingZoomAccesses(browser);
-    this._applyZoomToPref(browser);
+    await this._applyZoomToPref(browser);
   },
 
   /**
@@ -371,14 +378,17 @@ var FullZoom = {
     if (!this.siteSpecific ||
         gInPrintPreviewMode ||
         browser.isSyntheticDocument)
-      return;
+      return null;
 
-    this._cps2.set(browser.currentURI.spec, this.name,
-                   ZoomManager.getZoomForBrowser(browser),
-                   this._loadContextFromBrowser(browser), {
-      handleCompletion: () => {
-        this._isNextContentPrefChangeInternal = true;
-      },
+    return new Promise(resolve => {
+      this._cps2.set(browser.currentURI.spec, this.name,
+                     ZoomManager.getZoomForBrowser(browser),
+                     this._loadContextFromBrowser(browser), {
+        handleCompletion: () => {
+          this._isNextContentPrefChangeInternal = true;
+          resolve();
+        },
+      });
     });
   },
 

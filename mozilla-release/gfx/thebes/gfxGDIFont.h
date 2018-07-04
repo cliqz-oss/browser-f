@@ -21,20 +21,21 @@ class gfxGDIFont : public gfxFont
 public:
     gfxGDIFont(GDIFontEntry *aFontEntry,
                const gfxFontStyle *aFontStyle,
-               bool aNeedsBold,
                AntialiasOption anAAOption = kAntialiasDefault);
 
     virtual ~gfxGDIFont();
 
     HFONT GetHFONT() { return mFont; }
 
-    cairo_font_face_t   *CairoFontFace() { return mFontFace; }
-    cairo_scaled_font_t *CairoScaledFont() { return mScaledFont; }
+    cairo_font_face_t* CairoFontFace() { return mFontFace; }
 
     /* overrides for the pure virtual methods in gfxFont */
     virtual uint32_t GetSpaceGlyph() override;
 
     virtual bool SetupCairoFont(DrawTarget* aDrawTarget) override;
+
+    virtual already_AddRefed<mozilla::gfx::ScaledFont>
+    GetScaledFont(DrawTarget *aTarget) override;
 
     /* override Measure to add padding for antialiasing */
     virtual RunMetrics Measure(const gfxTextRun *aTextRun,
@@ -85,10 +86,11 @@ protected:
 
     void Initialize(); // creates metrics and Cairo fonts
 
-    // Fill the given LOGFONT record according to our style, but don't adjust
-    // the lfItalic field if we're going to use a cairo transform for fake
-    // italics.
-    void FillLogFont(LOGFONTW& aLogFont, gfxFloat aSize, bool aUseGDIFakeItalic);
+    // Fill the given LOGFONT record according to our size.
+    // (Synthetic italic is *not* handled here, because GDI may not reliably
+    // use the face we expect if we tweak the lfItalic field, and because we
+    // have generic support for this in gfxFont::Draw instead.)
+    void FillLogFont(LOGFONTW& aLogFont, gfxFloat aSize);
 
     HFONT                 mFont;
     cairo_font_face_t    *mFontFace;
@@ -96,7 +98,7 @@ protected:
     Metrics              *mMetrics;
     uint32_t              mSpaceGlyph;
 
-    bool                  mNeedsBold;
+    bool                  mNeedsSyntheticBold;
 
     // cache of glyph IDs (used for non-sfnt fonts only)
     mozilla::UniquePtr<nsDataHashtable<nsUint32HashKey,uint32_t> > mGlyphIDs;

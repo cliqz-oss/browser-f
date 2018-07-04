@@ -10,6 +10,7 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/Variant.h"
 
 #include "jsapi.h"
 
@@ -22,7 +23,7 @@
 #include "vm/Monitor.h"
 
 // Some platform hooks must be implemented for single-step profiling.
-#if defined(JS_SIMULATOR_ARM) || defined(JS_SIMULATOR_MIPS64)
+#if defined(JS_SIMULATOR_ARM) || defined(JS_SIMULATOR_MIPS64) || defined(JS_SIMULATOR_MIPS32)
 # define SINGLESTEP_PROFILING
 #endif
 
@@ -114,42 +115,6 @@ enum class ScriptKind
     Module
 };
 
-class OffThreadState {
-    enum State {
-        IDLE,           /* ready to work; no token, no source */
-        COMPILING,      /* working; no token, have source */
-        DONE            /* compilation done: have token and source */
-    };
-
-  public:
-    OffThreadState()
-      : monitor(mutexid::ShellOffThreadState),
-        state(IDLE),
-        token(),
-        source(nullptr)
-    { }
-
-    bool startIfIdle(JSContext* cx, ScriptKind kind, ScopedJSFreePtr<char16_t>& newSource);
-
-    bool startIfIdle(JSContext* cx, ScriptKind kind, JS::TranscodeBuffer&& newXdr);
-
-    void abandon(JSContext* cx);
-
-    void markDone(void* newToken);
-
-    void* waitUntilDone(JSContext* cx, ScriptKind kind);
-
-    JS::TranscodeBuffer& xdrBuffer() { return xdr; }
-
-  private:
-    js::Monitor monitor;
-    ScriptKind scriptKind;
-    State state;
-    void* token;
-    char16_t* source;
-    JS::TranscodeBuffer xdr;
-};
-
 class NonshrinkingGCObjectVector : public GCVector<JSObject*, 0, SystemAllocPolicy>
 {
   public:
@@ -167,10 +132,13 @@ using MarkBitObservers = JS::WeakCache<NonshrinkingGCObjectVector>;
 using StackChars = Vector<char16_t, 0, SystemAllocPolicy>;
 #endif
 
+class OffThreadJob;
+
 // Per-context shell state.
 struct ShellContext
 {
     explicit ShellContext(JSContext* cx);
+    ~ShellContext();
 
     bool isWorker;
     double timeoutInterval;
@@ -206,10 +174,13 @@ struct ShellContext
 
     UniquePtr<PseudoStack> geckoProfilingStack;
 
-    OffThreadState offThreadState;
-
     JS::UniqueChars moduleLoadPath;
     UniquePtr<MarkBitObservers> markObservers;
+
+    // Off-thread parse state.
+    js::Monitor offThreadMonitor;
+    Vector<OffThreadJob*, 0, SystemAllocPolicy> offThreadJobs;
+
 };
 
 extern ShellContext*

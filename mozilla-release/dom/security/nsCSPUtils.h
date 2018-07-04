@@ -11,6 +11,7 @@
 #include "nsIContentPolicy.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIURI.h"
+#include "nsLiteralString.h"
 #include "nsString.h"
 #include "nsTArray.h"
 #include "nsUnicharUtils.h"
@@ -33,12 +34,13 @@ void CSP_LogLocalizedStr(const char* aName,
                          uint32_t aColumnNumber,
                          uint32_t aFlags,
                          const char* aCategory,
-                         uint64_t aInnerWindowID);
+                         uint64_t aInnerWindowID,
+                         bool aFromPrivateWindow);
 
 void CSP_GetLocalizedStr(const char* aName,
                          const char16_t** aParams,
                          uint32_t aLength,
-                         char16_t** outResult);
+                         nsAString& outResult);
 
 void CSP_LogStrMessage(const nsAString& aMsg);
 
@@ -49,7 +51,8 @@ void CSP_LogMessage(const nsAString& aMessage,
                     uint32_t aColumnNumber,
                     uint32_t aFlags,
                     const char* aCategory,
-                    uint64_t aInnerWindowID);
+                    uint64_t aInnerWindowID,
+                    bool aFromPrivateWindow);
 
 
 /* =============== Constant and Type Definitions ================== */
@@ -93,7 +96,8 @@ static const char* CSPStrDirectives[] = {
   "child-src",                 // CHILD_SRC_DIRECTIVE
   "block-all-mixed-content",   // BLOCK_ALL_MIXED_CONTENT
   "require-sri-for",           // REQUIRE_SRI_FOR
-  "sandbox"                    // SANDBOX_DIRECTIVE
+  "sandbox",                   // SANDBOX_DIRECTIVE
+  "worker-src"                 // WORKER_SRC_DIRECTIVE
 };
 
 inline const char* CSP_CSPDirectiveToString(CSPDirective aDir)
@@ -116,61 +120,81 @@ inline CSPDirective CSP_StringToCSPDirective(const nsAString& aDir)
   return nsIContentSecurityPolicy::NO_DIRECTIVE;
 }
 
-// Please add any new enum items not only to CSPKeyword, but also add
-// a string version for every enum >> using the same index << to
-// CSPStrKeywords underneath.
+#define FOR_EACH_CSP_KEYWORD(macro) \
+  macro(CSP_SELF,            "'self'") \
+  macro(CSP_UNSAFE_INLINE,   "'unsafe-inline'") \
+  macro(CSP_UNSAFE_EVAL,     "'unsafe-eval'") \
+  macro(CSP_NONE,            "'none'") \
+  macro(CSP_NONCE,           "'nonce-") \
+  macro(CSP_REQUIRE_SRI_FOR, "require-sri-for") \
+  macro(CSP_STRICT_DYNAMIC,  "'strict-dynamic'")
+
 enum CSPKeyword {
-  CSP_SELF = 0,
-  CSP_UNSAFE_INLINE,
-  CSP_UNSAFE_EVAL,
-  CSP_NONE,
-  CSP_NONCE,
-  CSP_REQUIRE_SRI_FOR,
-  CSP_STRICT_DYNAMIC,
+  #define KEYWORD_ENUM(id_, string_) id_,
+  FOR_EACH_CSP_KEYWORD(KEYWORD_ENUM)
+  #undef KEYWORD_ENUM
+
   // CSP_LAST_KEYWORD_VALUE always needs to be the last element in the enum
   // because we use it to calculate the size for the char* array.
   CSP_LAST_KEYWORD_VALUE,
+
   // Putting CSP_HASH after the delimitor, because CSP_HASH is not a valid
   // keyword (hash uses e.g. sha256, sha512) but we use CSP_HASH internally
   // to identify allowed hashes in ::allows.
   CSP_HASH
  };
 
-static const char* CSPStrKeywords[] = {
-  "'self'",          // CSP_SELF = 0
-  "'unsafe-inline'", // CSP_UNSAFE_INLINE
-  "'unsafe-eval'",   // CSP_UNSAFE_EVAL
-  "'none'",          // CSP_NONE
-  "'nonce-",         // CSP_NONCE
-  "require-sri-for", // CSP_REQUIRE_SRI_FOR
-  "'strict-dynamic'" // CSP_STRICT_DYNAMIC
-  // Remember: CSP_HASH is not supposed to be used
+// The keywords, in UTF-8 form.
+static const char* gCSPUTF8Keywords[] = {
+  #define KEYWORD_UTF8_LITERAL(id_, string_) string_,
+  FOR_EACH_CSP_KEYWORD(KEYWORD_UTF8_LITERAL)
+  #undef KEYWORD_UTF8_LITERAL
 };
 
-inline const char* CSP_EnumToKeyword(enum CSPKeyword aKey)
-{
-  // Make sure all elements in enum CSPKeyword got added to CSPStrKeywords.
-  static_assert((sizeof(CSPStrKeywords) / sizeof(CSPStrKeywords[0]) ==
-                static_cast<uint32_t>(CSP_LAST_KEYWORD_VALUE)),
-                "CSP_LAST_KEYWORD_VALUE does not match length of CSPStrKeywords");
+// The keywords, in UTF-16 form.
+static const char16_t* gCSPUTF16Keywords[] = {
+  #define KEYWORD_UTF16_LITERAL(id_, string_) u"" string_,
+  FOR_EACH_CSP_KEYWORD(KEYWORD_UTF16_LITERAL)
+  #undef KEYWORD_UTF16_LITERAL
+};
 
-  if (static_cast<uint32_t>(aKey) < static_cast<uint32_t>(CSP_LAST_KEYWORD_VALUE)) {
-      return CSPStrKeywords[static_cast<uint32_t>(aKey)];
+#undef FOR_EACH_CSP_KEYWORD
+
+inline const char* CSP_EnumToUTF8Keyword(enum CSPKeyword aKey)
+{
+  // Make sure all elements in enum CSPKeyword got added to gCSPUTF8Keywords.
+  static_assert((sizeof(gCSPUTF8Keywords) / sizeof(gCSPUTF8Keywords[0]) ==
+                CSP_LAST_KEYWORD_VALUE),
+                "CSP_LAST_KEYWORD_VALUE != length(gCSPUTF8Keywords)");
+
+  if (static_cast<uint32_t>(aKey) <
+      static_cast<uint32_t>(CSP_LAST_KEYWORD_VALUE)) {
+    return gCSPUTF8Keywords[static_cast<uint32_t>(aKey)];
   }
-  return "error: invalid keyword in CSP_EnumToKeyword";
+  return "error: invalid keyword in CSP_EnumToUTF8Keyword";
 }
 
-inline CSPKeyword CSP_KeywordToEnum(const nsAString& aKey)
+inline const char16_t* CSP_EnumToUTF16Keyword(enum CSPKeyword aKey)
+{
+  // Make sure all elements in enum CSPKeyword got added to gCSPUTF16Keywords.
+  static_assert((sizeof(gCSPUTF16Keywords) / sizeof(gCSPUTF16Keywords[0]) ==
+                CSP_LAST_KEYWORD_VALUE),
+                "CSP_LAST_KEYWORD_VALUE != length(gCSPUTF16Keywords)");
+
+  if (static_cast<uint32_t>(aKey) <
+      static_cast<uint32_t>(CSP_LAST_KEYWORD_VALUE)) {
+    return gCSPUTF16Keywords[static_cast<uint32_t>(aKey)];
+  }
+  return u"error: invalid keyword in CSP_EnumToUTF16Keyword";
+}
+
+inline CSPKeyword CSP_UTF16KeywordToEnum(const nsAString& aKey)
 {
   nsString lowerKey = PromiseFlatString(aKey);
   ToLowerCase(lowerKey);
 
-  static_assert(CSP_LAST_KEYWORD_VALUE ==
-                (sizeof(CSPStrKeywords) / sizeof(CSPStrKeywords[0])),
-                 "CSP_LAST_KEYWORD_VALUE does not match length of CSPStrKeywords");
-
   for (uint32_t i = 0; i < CSP_LAST_KEYWORD_VALUE; i++) {
-    if (lowerKey.EqualsASCII(CSPStrKeywords[i])) {
+    if (lowerKey.Equals(gCSPUTF16Keywords[i])) {
       return static_cast<CSPKeyword>(i);
     }
   }
@@ -187,6 +211,7 @@ nsresult CSP_AppendCSPFromHeader(nsIContentSecurityPolicy* aCsp,
 class nsCSPHostSrc;
 
 nsCSPHostSrc* CSP_CreateHostSrcFromSelfURI(nsIURI* aSelfURI);
+bool CSP_IsEmptyDirective(const nsAString& aValue, const nsAString& aDir);
 bool CSP_IsValidDirective(const nsAString& aDir);
 bool CSP_IsDirective(const nsAString& aValue, CSPDirective aDir);
 bool CSP_IsKeyword(const nsAString& aValue, enum CSPKeyword aKey);
@@ -229,9 +254,9 @@ class nsCSPSchemeSrc : public nsCSPBaseSrc {
     virtual ~nsCSPSchemeSrc();
 
     bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const;
-    bool visit(nsCSPSrcVisitor* aVisitor) const;
-    void toString(nsAString& outStr) const;
+                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const override;
+    bool visit(nsCSPSrcVisitor* aVisitor) const override;
+    void toString(nsAString& outStr) const override;
 
     inline void getScheme(nsAString& outStr) const
       { outStr.Assign(mScheme); };
@@ -248,9 +273,9 @@ class nsCSPHostSrc : public nsCSPBaseSrc {
     virtual ~nsCSPHostSrc();
 
     bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const;
-    bool visit(nsCSPSrcVisitor* aVisitor) const;
-    void toString(nsAString& outStr) const;
+                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const override;
+    bool visit(nsCSPSrcVisitor* aVisitor) const override;
+    void toString(nsAString& outStr) const override;
 
     void setScheme(const nsAString& aScheme);
     void setPort(const nsAString& aPort);
@@ -258,6 +283,9 @@ class nsCSPHostSrc : public nsCSPBaseSrc {
 
     inline void setGeneratedFromSelfKeyword() const
       { mGeneratedFromSelfKeyword = true; }
+
+    inline void setIsUniqueOrigin() const
+      { mIsUniqueOrigin = true; }
 
     inline void setWithinFrameAncestorsDir(bool aValue) const
       { mWithinFrameAncstorsDir = aValue; }
@@ -280,6 +308,7 @@ class nsCSPHostSrc : public nsCSPBaseSrc {
     nsString mPort;
     nsString mPath;
     mutable bool mGeneratedFromSelfKeyword;
+    mutable bool mIsUniqueOrigin;
     mutable bool mWithinFrameAncstorsDir;
 };
 
@@ -291,16 +320,16 @@ class nsCSPKeywordSrc : public nsCSPBaseSrc {
     virtual ~nsCSPKeywordSrc();
 
     bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-                bool aParserCreated) const;
+                bool aParserCreated) const override;
     bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const;
-    bool visit(nsCSPSrcVisitor* aVisitor) const;
-    void toString(nsAString& outStr) const;
+                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const override;
+    bool visit(nsCSPSrcVisitor* aVisitor) const override;
+    void toString(nsAString& outStr) const override;
 
     inline CSPKeyword getKeyword() const
       { return mKeyword; };
 
-    inline void invalidate() const
+    inline void invalidate() const override
     {
       // keywords that need to invalidated
       if (mKeyword == CSP_SELF || mKeyword == CSP_UNSAFE_INLINE) {
@@ -320,16 +349,16 @@ class nsCSPNonceSrc : public nsCSPBaseSrc {
     virtual ~nsCSPNonceSrc();
 
     bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const;
+                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const override;
     bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-                bool aParserCreated) const;
-    bool visit(nsCSPSrcVisitor* aVisitor) const;
-    void toString(nsAString& outStr) const;
+                bool aParserCreated) const override;
+    bool visit(nsCSPSrcVisitor* aVisitor) const override;
+    void toString(nsAString& outStr) const override;
 
     inline void getNonce(nsAString& outStr) const
       { outStr.Assign(mNonce); };
 
-    inline void invalidate() const
+    inline void invalidate() const override
     {
       // overwrite nsCSPBaseSRC::invalidate() and explicitily
       // do *not* invalidate, because 'strict-dynamic' should
@@ -348,9 +377,9 @@ class nsCSPHashSrc : public nsCSPBaseSrc {
     virtual ~nsCSPHashSrc();
 
     bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-                bool aParserCreated) const;
-    void toString(nsAString& outStr) const;
-    bool visit(nsCSPSrcVisitor* aVisitor) const;
+                bool aParserCreated) const override;
+    void toString(nsAString& outStr) const override;
+    bool visit(nsCSPSrcVisitor* aVisitor) const override;
 
     inline void getAlgorithm(nsAString& outStr) const
       { outStr.Assign(mAlgorithm); };
@@ -358,7 +387,7 @@ class nsCSPHashSrc : public nsCSPBaseSrc {
     inline void getHash(nsAString& outStr) const
       { outStr.Assign(mHash); };
 
-    inline void invalidate() const
+    inline void invalidate() const override
     {
       // overwrite nsCSPBaseSRC::invalidate() and explicitily
       // do *not* invalidate, because 'strict-dynamic' should
@@ -377,8 +406,8 @@ class nsCSPReportURI : public nsCSPBaseSrc {
     explicit nsCSPReportURI(nsIURI* aURI);
     virtual ~nsCSPReportURI();
 
-    bool visit(nsCSPSrcVisitor* aVisitor) const;
-    void toString(nsAString& outStr) const;
+    bool visit(nsCSPSrcVisitor* aVisitor) const override;
+    void toString(nsAString& outStr) const override;
 
   private:
     nsCOMPtr<nsIURI> mReportURI;
@@ -391,8 +420,8 @@ class nsCSPSandboxFlags : public nsCSPBaseSrc {
     explicit nsCSPSandboxFlags(const nsAString& aFlags);
     virtual ~nsCSPSandboxFlags();
 
-    bool visit(nsCSPSrcVisitor* aVisitor) const;
-    void toString(nsAString& outStr) const;
+    bool visit(nsCSPSrcVisitor* aVisitor) const override;
+    void toString(nsAString& outStr) const override;
 
   private:
     nsString mFlags;
@@ -445,7 +474,9 @@ class nsCSPDirective {
 
     bool visitSrcs(nsCSPSrcVisitor* aVisitor) const;
 
-  private:
+    virtual void getDirName(nsAString& outStr) const;
+
+  protected:
     CSPDirective            mDirective;
     nsTArray<nsCSPBaseSrc*> mSrcs;
 };
@@ -453,26 +484,52 @@ class nsCSPDirective {
 /* =============== nsCSPChildSrcDirective ============= */
 
 /*
- * In CSP 2, the child-src directive covers both workers and
- * subdocuments (i.e., frames and iframes). Workers were removed
- * from script-src, but frames can be controlled by either child-src
- * or frame-src directives, so child-src needs to know whether it should
- * also restrict frames. When both are present the frame-src directive
- * takes precedent.
+ * In CSP 3 child-src is deprecated. For backwards compatibility
+ * child-src needs to restrict:
+ *   (*) frames, in case frame-src is not expicitly specified
+ *   (*) workers, in case worker-src is not expicitly specified
  */
 class nsCSPChildSrcDirective : public nsCSPDirective {
   public:
     explicit nsCSPChildSrcDirective(CSPDirective aDirective);
     virtual ~nsCSPChildSrcDirective();
 
-    void setHandleFrameSrc();
+    void setRestrictFrames()
+      { mRestrictFrames = true; }
 
-    virtual bool restrictsContentType(nsContentPolicyType aContentType) const;
+    void setRestrictWorkers()
+      { mRestrictWorkers = true; }
 
-    virtual bool equals(CSPDirective aDirective) const;
+    virtual bool restrictsContentType(nsContentPolicyType aContentType) const override;
+
+    virtual bool equals(CSPDirective aDirective) const override;
 
   private:
-    bool mHandleFrameSrc;
+    bool mRestrictFrames;
+    bool mRestrictWorkers;
+};
+
+/* =============== nsCSPScriptSrcDirective ============= */
+
+/*
+ * In CSP 3 worker-src restricts workers, for backwards compatibily
+ * script-src has to restrict workers as the ultimate fallback if
+ * neither worker-src nor child-src is present in a CSP.
+ */
+class nsCSPScriptSrcDirective : public nsCSPDirective {
+  public:
+    explicit nsCSPScriptSrcDirective(CSPDirective aDirective);
+    virtual ~nsCSPScriptSrcDirective();
+
+    void setRestrictWorkers()
+      { mRestrictWorkers = true; }
+
+    virtual bool restrictsContentType(nsContentPolicyType aContentType) const override;
+
+    virtual bool equals(CSPDirective aDirective) const override;
+
+  private:
+    bool mRestrictWorkers;
 };
 
 /* =============== nsBlockAllMixedContentDirective === */
@@ -483,20 +540,22 @@ class nsBlockAllMixedContentDirective : public nsCSPDirective {
     ~nsBlockAllMixedContentDirective();
 
     bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const
+                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const override
       { return false; }
 
     bool permits(nsIURI* aUri) const
       { return false; }
 
     bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-                bool aParserCreated) const
+                bool aParserCreated) const override
       { return false; }
 
-    void toString(nsAString& outStr) const;
+    void toString(nsAString& outStr) const override;
 
-    void addSrcs(const nsTArray<nsCSPBaseSrc*>& aSrcs)
+    void addSrcs(const nsTArray<nsCSPBaseSrc*>& aSrcs) override
       {  MOZ_ASSERT(false, "block-all-mixed-content does not hold any srcs"); }
+
+    void getDirName(nsAString& outStr) const override;
 };
 
 /* =============== nsUpgradeInsecureDirective === */
@@ -536,20 +595,22 @@ class nsUpgradeInsecureDirective : public nsCSPDirective {
     ~nsUpgradeInsecureDirective();
 
     bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const
+                 bool aReportOnly, bool aUpgradeInsecure, bool aParserCreated) const override
       { return false; }
 
     bool permits(nsIURI* aUri) const
       { return false; }
 
     bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-                bool aParserCreated) const
+                bool aParserCreated) const override
       { return false; }
 
-    void toString(nsAString& outStr) const;
+    void toString(nsAString& outStr) const override;
 
-    void addSrcs(const nsTArray<nsCSPBaseSrc*>& aSrcs)
+    void addSrcs(const nsTArray<nsCSPBaseSrc*>& aSrcs) override
       {  MOZ_ASSERT(false, "upgrade-insecure-requests does not hold any srcs"); }
+
+    void getDirName(nsAString& outStr) const override;
 };
 
 /* ===== nsRequireSRIForDirective ========================= */
@@ -559,14 +620,15 @@ class nsRequireSRIForDirective : public nsCSPDirective {
     explicit nsRequireSRIForDirective(CSPDirective aDirective);
     ~nsRequireSRIForDirective();
 
-    void toString(nsAString& outStr) const;
+    void toString(nsAString& outStr) const override;
 
     void addType(nsContentPolicyType aType)
       { mTypes.AppendElement(aType); }
     bool hasType(nsContentPolicyType aType) const;
-    bool restrictsContentType(nsContentPolicyType aType) const;
+    bool restrictsContentType(nsContentPolicyType aType) const override;
     bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-                bool aParserCreated) const;
+                bool aParserCreated) const override;
+    void getDirName(nsAString& outStr) const override;
 
   private:
     nsTArray<nsContentPolicyType> mTypes;

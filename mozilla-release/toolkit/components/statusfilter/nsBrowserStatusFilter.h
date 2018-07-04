@@ -9,6 +9,7 @@
 #include "nsIWebProgressListener2.h"
 #include "nsIWebProgress.h"
 #include "nsWeakReference.h"
+#include "nsCycleCollectionParticipant.h"
 #include "nsITimer.h"
 #include "nsCOMPtr.h"
 #include "nsString.h"
@@ -26,7 +27,8 @@ class nsBrowserStatusFilter : public nsIWebProgress
 public:
     nsBrowserStatusFilter();
 
-    NS_DECL_ISUPPORTS
+    NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+    NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsBrowserStatusFilter, nsIWebProgress)
     NS_DECL_NSIWEBPROGRESS
     NS_DECL_NSIWEBPROGRESSLISTENER
     NS_DECL_NSIWEBPROGRESSLISTENER2
@@ -55,13 +57,9 @@ private:
     int64_t                          mMaxProgress;
 
     nsString                         mCurrentStatusMsg;
-    bool                             mStatusIsDirty;
     int32_t                          mCurrentPercentage;
-
-    // used to convert OnStart/OnStop notifications into progress notifications
-    int32_t                          mTotalRequests;
-    int32_t                          mFinishedRequests;
-    bool                             mUseRealProgressFlag;
+    bool                             mStatusIsDirty;
+    bool                             mIsLoadingDocument;
 
     // indicates whether a timeout is pending
     bool                             mDelayedStatus;

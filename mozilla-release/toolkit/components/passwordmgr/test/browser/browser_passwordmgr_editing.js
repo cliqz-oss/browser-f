@@ -1,4 +1,4 @@
-const { ContentTaskUtils } = Cu.import("resource://testing-common/ContentTaskUtils.jsm", {});
+const { ContentTaskUtils } = ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm", {});
 const PWMGR_DLG = "chrome://passwordmgr/content/passwordManager.xul";
 
 var doc;
@@ -87,15 +87,15 @@ add_task(async function test_setup() {
   // Open the password manager dialog.
   pwmgrdlg = window.openDialog(PWMGR_DLG, "Toolkit:PasswordManager", "");
 
-  Services.ww.registerNotification(function(aSubject, aTopic, aData) {
+  Services.ww.registerNotification(function notification(aSubject, aTopic, aData) {
     if (aTopic == "domwindowopened") {
-      let win = aSubject.QueryInterface(Ci.nsIDOMEventTarget);
+      let win = aSubject;
       SimpleTest.waitForFocus(function() {
         EventUtils.sendKey("RETURN", win);
       }, win);
     } else if (aSubject.location == pwmgrdlg.location && aTopic == "domwindowclosed") {
       // Unregister ourself.
-      Services.ww.unregisterNotification(arguments.callee);
+      Services.ww.unregisterNotification(notification);
     }
   });
 

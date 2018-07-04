@@ -52,13 +52,13 @@ function handleEnter(evt) {
 }
 
 function popupShownListener(evt) {
-  doKey("down");
-  doKey("return"); // select the first entry in the popup
-  doKey("return"); // try to submit the form with the filled value
+  synthesizeKey("KEY_ArrowDown");
+  synthesizeKey("KEY_Enter"); // select the first entry in the popup
+  synthesizeKey("KEY_Enter"); // try to submit the form with the filled value
 }
 
 function runTest() {
-  input.addEventListener("keypress", handleEnter, true);
+  SpecialPowers.addSystemEventListener(input, "keypress", handleEnter, true);
   form.addEventListener("submit", function submitCallback(evt) {
     is(input.value, expectedValue, "Check input value in the submit handler");
     evt.preventDefault();
@@ -74,7 +74,7 @@ function runTest() {
   input.focus();
   input.value = "value";
   input.focus();
-  doKey("down");
+  synthesizeKey("KEY_ArrowDown");
 }
 
 function startTest() {

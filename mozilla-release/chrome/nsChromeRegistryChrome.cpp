@@ -128,8 +128,8 @@ nsChromeRegistryChrome::Init()
   if (!prefs) {
     NS_WARNING("Could not get pref service!");
   } else {
-    nsXPIDLCString provider;
-    rv = prefs->GetCharPref(SELECTED_SKIN_PREF, getter_Copies(provider));
+    nsAutoCString provider;
+    rv = prefs->GetCharPref(SELECTED_SKIN_PREF, provider);
     if (NS_SUCCEEDED(rv))
       mSelectedSkin = provider;
 
@@ -219,7 +219,7 @@ nsChromeRegistryChrome::GetSelectedLocale(const nsACString& aPackage,
                                           nsACString& aLocale)
 {
   nsAutoCString reqLocale;
-  if (aPackage.Equals("global")) {
+  if (aPackage.EqualsLiteral("global")) {
     LocaleService::GetInstance()->GetAppLocaleAsLangTag(reqLocale);
   } else {
     AutoTArray<nsCString, 10> requestedLocales;
@@ -275,8 +275,8 @@ nsChromeRegistryChrome::Observe(nsISupports *aSubject, const char *aTopic,
     NS_ConvertUTF16toUTF8 pref(someData);
 
     if (pref.EqualsLiteral(SELECTED_SKIN_PREF)) {
-      nsXPIDLCString provider;
-      rv = prefs->GetCharPref(pref.get(), getter_Copies(provider));
+      nsAutoCString provider;
+      rv = prefs->GetCharPref(pref.get(), provider);
       if (NS_FAILED(rv)) {
         NS_ERROR("Couldn't get new skin pref!");
         return rv;
@@ -329,7 +329,6 @@ SerializeURI(nsIURI* aURI,
     return;
 
   aURI->GetSpec(aSerializedURI.spec);
-  aURI->GetOriginCharset(aSerializedURI.charset);
 }
 
 void
@@ -736,12 +735,6 @@ nsChromeRegistryChrome::ManifestLocale(ManifestProcessingContext& cx, int lineno
   if (NS_FAILED(rv)) {
     return;
   }
-
-  if (mainPackage.Equals(package)) {
-    // We should refresh the LocaleService, since the available
-    // locales changed.
-    LocaleService::GetInstance()->OnAvailableLocalesChanged();
-  }
 }
 
 void
@@ -859,8 +852,8 @@ nsChromeRegistryChrome::ManifestOverride(ManifestProcessingContext& cx, int line
     }
     if (chromeSkinOnly) {
       nsAutoCString chromePath, resolvedPath;
-      chromeuri->GetPath(chromePath);
-      resolveduri->GetPath(resolvedPath);
+      chromeuri->GetPathQueryRef(chromePath);
+      resolveduri->GetPathQueryRef(resolvedPath);
       chromeSkinOnly = StringBeginsWith(chromePath, NS_LITERAL_CSTRING("/skin/")) &&
                        StringBeginsWith(resolvedPath, NS_LITERAL_CSTRING("/skin/"));
     }
@@ -928,7 +921,15 @@ nsChromeRegistryChrome::ManifestResource(ManifestProcessingContext& cx, int line
     return;
   }
 
-  rv = rph->SetSubstitution(host, resolved);
+  // By default, Firefox resources are not content-accessible unless the
+  // manifests opts in.
+  bool contentAccessible = (flags & nsChromeRegistry::CONTENT_ACCESSIBLE);
+
+  uint32_t substitutionFlags = 0;
+  if (contentAccessible) {
+    substitutionFlags |= nsIResProtocolHandler::ALLOW_CONTENT_ACCESS;
+  }
+  rv = rph->SetSubstitutionWithFlags(host, resolved, substitutionFlags);
   if (NS_FAILED(rv)) {
     LogMessageWithContext(cx.GetManifestURI(), lineno, nsIScriptError::warningFlag,
                           "Warning: cannot set substitution for '%s'.",

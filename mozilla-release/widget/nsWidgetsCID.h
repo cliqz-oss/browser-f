@@ -75,6 +75,11 @@
 { 0x2451BAED, 0x8DC3, 0x46D9, \
   { 0x9E, 0x30, 0x96, 0xE1, 0xBA, 0xA0, 0x36, 0x66 } }
 
+// {de59fe1a-46c8-490f-b04d-34545acb06c9}
+#define NS_MACSHARINGSERVICE_CID \
+{ 0xde59fe1a, 0x46c8, 0x490f, \
+  { 0xb0, 0x4d, 0x34, 0x54, 0x5a, 0xcb, 0x06, 0xc9 } }
+
 // {b6e1a890-b2b8-4883-a65f-9476f6185313}
 #define NS_MACSYSTEMSTATUSBAR_CID \
 { 0xb6e1a890, 0xb2b8, 0x4883, \
@@ -155,6 +160,10 @@
 #define NS_MACWEBAPPUTILS_CID \
 { 0xe9096367, 0xddd9, 0x45e4, { 0xb7, 0x62, 0x49, 0xc0, 0xc1, 0x8b, 0x71, 0x19 } }
 
+// {a9339876-0027-430f-b953-84c9c11c2da3}
+#define NS_GTK_TASKBARPROGRESS_CID \
+{ 0xa9339876, 0x0027, 0x430f, { 0xb9, 0x53, 0x84, 0xc9, 0xc1, 0x1c, 0x2d, 0xa3 } }
+
 //-----------------------------------------------------------
 //Printing
 //-----------------------------------------------------------
@@ -165,10 +174,6 @@
 #define NS_PRINTSETTINGSSERVICE_CID \
 { 0x841387c8, 0x72e6, 0x484b, \
 { 0x92, 0x96, 0xbf, 0x6e, 0xea, 0x80, 0xd5, 0x8a } }
-
-// NOTE: This now has the same CID as NS_PRINTSETTINGSSERVICE_CID
-// will go away when Bug 144114 is fixed
-#define NS_PRINTOPTIONS_CID NS_PRINTSETTINGSSERVICE_CID
 
 #define NS_PRINTER_ENUMERATOR_CID \
 { 0xa6cf9129, 0x15b3, 0x11d2, \

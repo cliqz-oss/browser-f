@@ -51,10 +51,10 @@ TinderBoxPrintRe = {
         'known_fail_group': "Known problems",
     },
     "xpcshell_summary": {
-        'regex': re.compile(r'''INFO \| (Passed|Failed): (\d+)'''),
+        'regex': re.compile(r'''INFO \| (Passed|Failed|Todo): (\d+)'''),
         'pass_group': "Passed",
         'fail_group': "Failed",
-        'known_fail_group': None,
+        'known_fail_group': "Todo",
     },
     "jsreftest_summary": {
         'regex': re.compile(r'''REFTEST INFO \| (Successful|Unexpected|Known problems): (\d+) \('''),
@@ -100,11 +100,17 @@ TinderBoxPrintRe = {
         'fail_group': "Failed",
         'known_fail_group': None,
     },
+    "geckoview-junit_summary": {
+        'regex': re.compile(r'''(Passed|Failed): (\d+)'''),
+        'pass_group': "Passed",
+        'fail_group': "Failed",
+        'known_fail_group': None,
+    },
 
     "harness_error": {
         'full_regex': re.compile(r"(?:TEST-UNEXPECTED-FAIL|PROCESS-CRASH) \| .* \| (application crashed|missing output line for total leaks!|negative leaks caught!|\d+ bytes leaked)"),
         'minimum_regex': re.compile(r'''(TEST-UNEXPECTED|PROCESS-CRASH)'''),
-        'retry_regex': re.compile(r'''(FAIL-SHOULD-RETRY|No space left on device|DMError|Connection to the other side was lost in a non-clean fashion|program finished with exit code 80|INFRA-ERROR|twisted.spread.pb.PBConnectionLost|_dl_open: Assertion|Timeout exceeded for _runCmd call)''')
+        'retry_regex': re.compile(r'''(FAIL-SHOULD-RETRY|No space left on device|ADBError|ADBProcessError|ADBTimeoutError|DMError|Connection to the other side was lost in a non-clean fashion|program finished with exit code 80|INFRA-ERROR|twisted.spread.pb.PBConnectionLost|_dl_open: Assertion|Timeout exceeded for _runCmd call)''')
     },
 }
 
@@ -115,6 +121,7 @@ TestPassed = [
 HarnessErrorList = [
     {'substr': 'TEST-UNEXPECTED', 'level': ERROR, },
     {'substr': 'PROCESS-CRASH', 'level': ERROR, },
+    {'regex': re.compile('''ERROR: (Address|Leak)Sanitizer'''), 'level': ERROR, },
     {'regex': re.compile('''thread '([^']+)' panicked'''), 'level': ERROR, },
 ]
 

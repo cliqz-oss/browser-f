@@ -20,14 +20,6 @@
   --row-hover-background-color: rgba(76,158,217,0.2);
 }
 
-.theme-firebug {
-  --cell-border-color: rgba(0,0,0,0.15);
-  --cell-border-color-light: rgba(0,0,0,0.1);
-  --focus-cell-border-color: rgba(0,0,0,0.3);
-  --row-alt-background-color: rgba(76,158,217,0.1);
-  --row-hover-background-color: rgba(76,158,217,0.2);
-}
-
 /*
  * DE-XUL: Set a sidebar width because inline XUL components will cause the flex
  * to overflow if dynamically sized.
@@ -247,13 +239,11 @@
   margin: 3px 2px;
 }
 
-.realtime-disabled-message,
 .realtime-disabled-on-e10s-message {
   display: none;
 }
 
-#performance-view[e10s="disabled"] .realtime-disabled-on-e10s-message,
-#performance-view[e10s="unsupported"] .realtime-disabled-message {
+#performance-view[e10s="disabled"] .realtime-disabled-on-e10s-message {
   display: initial;
   opacity: 0.5;
 }

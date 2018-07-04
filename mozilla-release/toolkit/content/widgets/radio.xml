@@ -9,7 +9,7 @@
    xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
    xmlns:xbl="http://www.mozilla.org/xbl">
 
-  <binding id="radiogroup" role="xul:radiogroup"
+  <binding id="radiogroup"
            extends="chrome://global/content/bindings/general.xml#basecontrol">
     <resources>
       <stylesheet src="chrome://global/skin/radio.css"/>
@@ -248,9 +248,8 @@
             // collecting the child nodes could trigger constructors
             // which would blow away our list.
 
-            const nsIDOMNodeFilter = Components.interfaces.nsIDOMNodeFilter;
             var iterator = doc.createTreeWalker(this,
-                                                nsIDOMNodeFilter.SHOW_ELEMENT,
+                                                NodeFilter.SHOW_ELEMENT,
                                                 this._filterRadioGroup);
             while (iterator.nextNode())
               radioChildren.push(iterator.currentNode);
@@ -314,41 +313,6 @@
           this.appendChild(radio);
           this._radioChildren = null;
           return radio;
-        ]]>
-        </body>
-      </method>
-
-      <method name="insertItemAt">
-        <parameter name="index"/>
-        <parameter name="label"/>
-        <parameter name="value"/>
-        <body>
-        <![CDATA[
-          var XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-          var radio = document.createElementNS(XULNS, "radio");
-          radio.setAttribute("label", label);
-          radio.setAttribute("value", value);
-          var before = this.getItemAtIndex(index);
-          if (before)
-            before.parentNode.insertBefore(radio, before);
-          else
-            this.appendChild(radio);
-          this._radioChildren = null;
-          return radio;
-        ]]>
-        </body>
-      </method>
-
-      <method name="removeItemAt">
-        <parameter name="index"/>
-        <body>
-        <![CDATA[
-          var remove = this.getItemAtIndex(index);
-          if (remove) {
-            remove.remove();
-            this._radioChildren = null;
-          }
-          return remove;
         ]]>
         </body>
       </method>
@@ -428,8 +392,8 @@
     </handlers>
   </binding>
 
-  <binding id="radio" role="xul:radiobutton"
-    extends="chrome://global/content/bindings/general.xml#control-item">
+  <binding id="radio"
+    extends="chrome://global/content/bindings/general.xml#basetext">
     <resources>
       <stylesheet src="chrome://global/skin/radio.css"/>
     </resources>
@@ -467,6 +431,8 @@
           }
         ]]>
       </destructor>
+      <property name="value" onset="this.setAttribute('value', val); return val;"
+                             onget="return this.getAttribute('value');"/>
       <property name="selected" readonly="true">
         <getter>
           <![CDATA[

@@ -13,6 +13,7 @@
 // Core Includes
 #include "nsAutoPtr.h"
 #include "nsCOMPtr.h"
+#include "nsCycleCollectionParticipant.h"
 
 // Interfaces needed
 #include "nsCWebBrowser.h"
@@ -32,10 +33,8 @@
 #include "nsIWebBrowserSetup.h"
 #include "nsIWebBrowserPersist.h"
 #include "nsIWebBrowserFocus.h"
-#include "nsIWebBrowserStream.h"
 #include "nsIWindowWatcher.h"
 #include "nsIPrintSettings.h"
-#include "nsEmbedStream.h"
 #include "nsIWidgetListener.h"
 
 #include "mozilla/BasePrincipal.h"
@@ -51,7 +50,6 @@ public:
   int32_t cx;
   int32_t cy;
   bool visible;
-  nsCOMPtr<nsISHistory> sessionHistory;
   nsString name;
 };
 
@@ -83,16 +81,35 @@ class nsWebBrowser final : public nsIWebBrowser,
                            public nsIWebBrowserPersist,
                            public nsIWebBrowserFocus,
                            public nsIWebProgressListener,
-                           public nsIWebBrowserStream,
-                           public nsIWidgetListener,
                            public nsSupportsWeakReference
 {
   friend class nsDocShellTreeOwner;
 
 public:
+
+  // The implementation of non-refcounted nsIWidgetListener, which would hold a
+  // strong reference on stack before calling nsWebBrowser's
+  // MOZ_CAN_RUN_SCRIPT methods.
+  class WidgetListenerDelegate : public nsIWidgetListener
+  {
+  public:
+    explicit WidgetListenerDelegate(nsWebBrowser* aWebBrowser)
+      : mWebBrowser(aWebBrowser) {}
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual void WindowActivated() override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual void WindowDeactivated() override;
+    MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual bool PaintWindow(
+      nsIWidget* aWidget, mozilla::LayoutDeviceIntRegion aRegion) override;
+
+  private:
+    // The lifetime of WidgetListenerDelegate is bound to nsWebBrowser so we
+    // just use raw pointer here.
+    nsWebBrowser* mWebBrowser;
+  };
+
   nsWebBrowser();
 
-  NS_DECL_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsWebBrowser, nsIWebBrowser)
 
   NS_DECL_NSIBASEWINDOW
   NS_DECL_NSIDOCSHELLTREEITEM
@@ -105,7 +122,6 @@ public:
   NS_DECL_NSIWEBBROWSERPERSIST
   NS_DECL_NSICANCELABLE
   NS_DECL_NSIWEBBROWSERFOCUS
-  NS_DECL_NSIWEBBROWSERSTREAM
   NS_DECL_NSIWEBPROGRESSLISTENER
 
 protected:
@@ -119,11 +135,11 @@ protected:
   NS_IMETHOD UnBindListener(nsISupports* aListener, const nsIID& aIID);
   NS_IMETHOD EnableGlobalHistory(bool aEnable);
 
-  // nsIWidgetListener
-  virtual void WindowRaised(nsIWidget* aWidget);
-  virtual void WindowLowered(nsIWidget* aWidget);
-  virtual bool PaintWindow(nsIWidget* aWidget,
-                           mozilla::LayoutDeviceIntRegion aRegion) override;
+  // nsIWidgetListener methods for WidgetListenerDelegate.
+  MOZ_CAN_RUN_SCRIPT void WindowActivated();
+  MOZ_CAN_RUN_SCRIPT void WindowDeactivated();
+  MOZ_CAN_RUN_SCRIPT bool PaintWindow(
+    nsIWidget* aWidget, mozilla::LayoutDeviceIntRegion aRegion);
 
 protected:
   RefPtr<nsDocShellTreeOwner> mDocShellTreeOwner;
@@ -148,6 +164,8 @@ protected:
 
   nsCOMPtr<nsIPrintSettings> mPrintSettings;
 
+  WidgetListenerDelegate mWidgetListenerDelegate;
+
   // cached background color
   nscolor mBackgroundColor;
 
@@ -156,9 +174,6 @@ protected:
   uint32_t mPersistCurrentState;
   nsresult mPersistResult;
   uint32_t mPersistFlags;
-
-  // stream
-  RefPtr<nsEmbedStream> mStream;
 
   // Weak Reference interfaces...
   nsIWidget* mParentWidget;

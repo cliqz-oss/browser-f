@@ -11,7 +11,6 @@
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/UIEventBinding.h"
 #include "nsDeviceContext.h"
-#include "nsIDOMUIEvent.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 
@@ -20,8 +19,7 @@ class nsINode;
 namespace mozilla {
 namespace dom {
 
-class UIEvent : public Event,
-                public nsIDOMUIEvent
+class UIEvent : public Event
 {
 public:
   UIEvent(EventTarget* aOwner,
@@ -31,30 +29,31 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(UIEvent, Event)
 
-  // nsIDOMUIEvent Interface
-  NS_DECL_NSIDOMUIEVENT
-
-  // Forward to Event
-  NS_FORWARD_TO_EVENT_NO_SERIALIZATION_NO_DUPLICATION
-  NS_IMETHOD DuplicatePrivateData() override;
-  NS_IMETHOD_(void) Serialize(IPC::Message* aMsg, bool aSerializeInterfaceType) override;
-  NS_IMETHOD_(bool) Deserialize(const IPC::Message* aMsg, PickleIterator* aIter) override;
-
+  void DuplicatePrivateData() override;
+  void Serialize(IPC::Message* aMsg, bool aSerializeInterfaceType) override;
+  bool Deserialize(const IPC::Message* aMsg, PickleIterator* aIter) override;
 
   static already_AddRefed<UIEvent> Constructor(const GlobalObject& aGlobal,
                                                const nsAString& aType,
                                                const UIEventInit& aParam,
                                                ErrorResult& aRv);
 
-  virtual JSObject* WrapObjectInternal(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override
+  virtual JSObject*
+    WrapObjectInternal(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override
   {
     return UIEventBinding::Wrap(aCx, this, aGivenProto);
+  }
+
+  UIEvent* AsUIEvent() override
+  {
+    return this;
   }
 
   void InitUIEvent(const nsAString& typeArg,
                    bool canBubbleArg,
                    bool cancelableArg,
-                   nsGlobalWindow* viewArg,
+                   nsGlobalWindowInner* viewArg,
                    int32_t detailArg);
 
   nsPIDOMWindowOuter* GetView() const
@@ -80,7 +79,7 @@ public:
   int32_t PageX() const;
   int32_t PageY() const;
 
-  virtual uint32_t Which()
+  virtual uint32_t Which(CallerType aCallerType = CallerType::System)
   {
     MOZ_ASSERT(mEvent->mClass != eKeyboardEventClass,
                "Key events should override Which()");
@@ -117,25 +116,6 @@ protected:
 
 } // namespace dom
 } // namespace mozilla
-
-#define NS_FORWARD_TO_UIEVENT                               \
-  NS_FORWARD_NSIDOMUIEVENT(UIEvent::)                       \
-  NS_FORWARD_TO_EVENT_NO_SERIALIZATION_NO_DUPLICATION       \
-  NS_IMETHOD DuplicatePrivateData() override                \
-  {                                                         \
-    return UIEvent::DuplicatePrivateData();                 \
-  }                                                         \
-  NS_IMETHOD_(void) Serialize(IPC::Message* aMsg,           \
-                              bool aSerializeInterfaceType) \
-    override                                                \
-  {                                                         \
-    UIEvent::Serialize(aMsg, aSerializeInterfaceType);      \
-  }                                                         \
-  NS_IMETHOD_(bool) Deserialize(const IPC::Message* aMsg,   \
-                                PickleIterator* aIter) override \
-  {                                                         \
-    return UIEvent::Deserialize(aMsg, aIter);               \
-  }
 
 already_AddRefed<mozilla::dom::UIEvent>
 NS_NewDOMUIEvent(mozilla::dom::EventTarget* aOwner,

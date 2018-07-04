@@ -414,6 +414,34 @@ var code2 = wasmTextToBinary('(module (import $i "a" "b" (param i64) (result i64
 var e2 = new Instance(new Module(code2), {a:{b:e1.exp}}).exports;
 assertEq(e2.f(), 52);
 
+// i64 is disallowed when called from JS and will cause calls to fail before
+// arguments are coerced.
+
+var sideEffect = false;
+var i = wasmEvalText('(module (func (export "f") (param i64) (result i32) (i32.const 42)))').exports;
+assertErrorMessage(() => i.f({ valueOf() { sideEffect = true; return 42; } }), TypeError, 'cannot pass i64 to or from JS');
+assertEq(sideEffect, false);
+
+i = wasmEvalText('(module (func (export "f") (param i32) (param i64) (result i32) (i32.const 42)))').exports;
+assertErrorMessage(() => i.f({ valueOf() { sideEffect = true; return 42; } }, 0), TypeError, 'cannot pass i64 to or from JS');
+assertEq(sideEffect, false);
+
+i = wasmEvalText('(module (func (export "f") (param i32) (result i64) (i64.const 42)))').exports;
+assertErrorMessage(() => i.f({ valueOf() { sideEffect = true; return 42; } }), TypeError, 'cannot pass i64 to or from JS');
+assertEq(sideEffect, false);
+
+i = wasmEvalText('(module (import "i64" "func" (param i64)) (export "f" 0))', { i64: { func() {} } }).exports;
+assertErrorMessage(() => i.f({ valueOf() { sideEffect = true; return 42; } }), TypeError, 'cannot pass i64 to or from JS');
+assertEq(sideEffect, false);
+
+i = wasmEvalText('(module (import "i64" "func" (param i32) (param i64)) (export "f" 0))', { i64: { func() {} } }).exports;
+assertErrorMessage(() => i.f({ valueOf() { sideEffect = true; return 42; } }, 0), TypeError, 'cannot pass i64 to or from JS');
+assertEq(sideEffect, false);
+
+i = wasmEvalText('(module (import "i64" "func" (result i64)) (export "f" 0))', { i64: { func() {} } }).exports;
+assertErrorMessage(() => i.f({ valueOf() { sideEffect = true; return 42; } }), TypeError, 'cannot pass i64 to or from JS');
+assertEq(sideEffect, false);
+
 // Non-existent export errors
 
 wasmFailValidateText('(module (export "a" 0))', /exported function index out of bounds/);
@@ -608,3 +636,93 @@ var e = {call:() => 1000};
 for (var i = 0; i < 10; i++)
     e = new Instance(m, {a:{val:i, next:e.call}}).exports;
 assertEq(e.call(), 1090);
+
+(function testImportJitExit() {
+    let options = getJitCompilerOptions();
+    if (!options['baseline.enable'])
+        return;
+
+    let baselineTrigger = options['baseline.warmup.trigger'];
+
+    let valueToConvert = 0;
+    function ffi(n) { if (n == 1337) { return valueToConvert }; return 42; }
+
+    function sum(a, b, c) {
+        if (a === 1337)
+            return valueToConvert;
+        return (a|0) + (b|0) + (c|0) | 0;
+    }
+
+    // Baseline compile ffis.
+    for (let i = baselineTrigger + 1; i --> 0;) {
+        ffi(i);
+        sum((i%2)?i:undefined,
+            (i%3)?i:undefined,
+            (i%4)?i:undefined);
+    }
+
+    let imports = {
+        a: {
+            ffi,
+            sum
+        }
+    };
+
+    i = wasmEvalText(`(module
+        (import $ffi "a" "ffi" (param i32) (result i32))
+
+        (import $missingOneArg "a" "sum" (param i32) (param i32) (result i32))
+        (import $missingTwoArgs "a" "sum" (param i32) (result i32))
+        (import $missingThreeArgs "a" "sum" (result i32))
+
+        (func (export "foo") (param i32) (result i32)
+         get_local 0
+         call $ffi
+        )
+
+        (func (export "missThree") (result i32)
+         call $missingThreeArgs
+        )
+
+        (func (export "missTwo") (param i32) (result i32)
+         get_local 0
+         call $missingTwoArgs
+        )
+
+        (func (export "missOne") (param i32) (param i32) (result i32)
+         get_local 0
+         get_local 1
+         call $missingOneArg
+        )
+    )`, imports).exports;
+
+    // Enable the jit exit for each JS callee.
+    assertEq(i.foo(0), 42);
+
+    assertEq(i.missThree(), 0);
+    assertEq(i.missTwo(42), 42);
+    assertEq(i.missOne(13, 37), 50);
+
+    // Test the jit exit under normal conditions.
+    assertEq(i.foo(0), 42);
+    assertEq(i.foo(1337), 0);
+
+    // Test the arguments rectifier.
+    assertEq(i.missThree(), 0);
+    assertEq(i.missTwo(-1), -1);
+    assertEq(i.missOne(23, 10), 33);
+
+    // Test OOL coercion.
+    valueToConvert = 2**31;
+    assertEq(i.foo(1337), -(2**31));
+
+    // Test OOL error path.
+    valueToConvert = { valueOf() { throw new Error('make ffi great again'); } }
+    assertErrorMessage(() => i.foo(1337), Error, "make ffi great again");
+
+    valueToConvert = { toString() { throw new Error('a FFI to believe in'); } }
+    assertErrorMessage(() => i.foo(1337), Error, "a FFI to believe in");
+
+    // Test the error path in the arguments rectifier.
+    assertErrorMessage(() => i.missTwo(1337), Error, "a FFI to believe in");
+})();

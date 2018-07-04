@@ -93,7 +93,7 @@ function KeyShortcuts({ window, target }) {
  *        The shortcut string to parse, following this document:
  *        https://github.com/electron/electron/blob/master/docs/api/accelerator.md
  */
-KeyShortcuts.parseElectronKey = function (window, str) {
+KeyShortcuts.parseElectronKey = function(window, str) {
   let modifiers = str.split("+");
   let key = modifiers.pop();
 
@@ -135,8 +135,16 @@ KeyShortcuts.parseElectronKey = function (window, str) {
   }
 
   if (typeof key === "string" && key.length === 1) {
-    // Match any single character
-    shortcut.key = key.toLowerCase();
+    if (shortcut.alt) {
+      // When Alt is involved, some platforms (macOS) give different printable characters
+      // for the `key` value, like `®` for the key `R`.  In this case, prefer matching by
+      // `keyCode` instead.
+      shortcut.keyCode = KeyCodes[`DOM_VK_${key.toUpperCase()}`];
+      shortcut.keyCodeString = key;
+    } else {
+      // Match any single character
+      shortcut.key = key.toLowerCase();
+    }
   } else if (key in ElectronKeysMapping) {
     // Maps the others manually to DOM API DOM_VK_*
     key = ElectronKeysMapping[key];
@@ -152,7 +160,7 @@ KeyShortcuts.parseElectronKey = function (window, str) {
   return shortcut;
 };
 
-KeyShortcuts.stringify = function (shortcut) {
+KeyShortcuts.stringify = function(shortcut) {
   let list = [];
   if (shortcut.alt) {
     list.push("Alt");

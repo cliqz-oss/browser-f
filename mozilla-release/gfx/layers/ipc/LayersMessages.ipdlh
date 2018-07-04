@@ -51,10 +51,11 @@ using mozilla::layers::BorderCorners from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::BorderWidths from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::LayerHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::CompositableHandle from "mozilla/layers/LayersTypes.h";
-using mozilla::layers::ReadLockHandle from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::SimpleLayerAttributes from "mozilla/layers/LayerAttributes.h";
 using mozilla::CrossProcessSemaphoreHandle from "mozilla/ipc/CrossProcessSemaphore.h";
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
+using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
+using mozilla::layers::TransactionId from "mozilla/layers/LayersTypes.h";
 
 namespace mozilla {
 namespace layers {
@@ -71,7 +72,6 @@ struct OpCreatePaintedLayer    { LayerHandle layer; };
 struct OpCreateContainerLayer  { LayerHandle layer; };
 struct OpCreateImageLayer      { LayerHandle layer; };
 struct OpCreateColorLayer      { LayerHandle layer; };
-struct OpCreateTextLayer       { LayerHandle layer; };
 struct OpCreateBorderLayer       { LayerHandle layer; };
 struct OpCreateCanvasLayer     { LayerHandle layer; };
 struct OpCreateRefLayer        { LayerHandle layer; };
@@ -242,6 +242,15 @@ struct Animation {
   nsCSSPropertyID property;
   AnimationData data;
   float playbackRate;
+  // When performing an asynchronous update to the playbackRate, |playbackRate|
+  // above is the updated playbackRate while |previousPlaybackRate| is the
+  // existing playbackRate. This is used by AnimationInfo to update the
+  // startTime based on the 'readyTime' (timestamp at the end of painting)
+  // and is not used beyond that point.
+  //
+  // It is set to numeric_limits<float>::quiet_NaN() when no asynchronous update
+  // to the playbackRate is being performed.
+  float previousPlaybackRate;
   // This is used in the transformed progress calculation.
   TimingFunction easingFunction;
   uint8_t iterationComposite;
@@ -287,7 +296,6 @@ struct ContainerLayerAttributes {
   float inheritedYScale;
   float presShellResolution;
   bool scaleToResolution;
-  EventRegionsOverride eventRegionsOverride;
 };
 
 struct GlyphArray
@@ -296,15 +304,10 @@ struct GlyphArray
   Glyph[] glyphs;
 };
 
-// XXX - Bas - Hack warning! This is using a raw pointer to a ScaledFont*
-// and won't work with e10s.
-struct TextLayerAttributes      { IntRect bounds; GlyphArray[] glyphs; uintptr_t scaledFont; };
 struct ColorLayerAttributes     { LayerColor color; IntRect bounds; };
 struct CanvasLayerAttributes    { SamplingFilter samplingFilter; IntRect bounds; };
 struct RefLayerAttributes {
-  uint64_t id;
-  // TODO: Once bug 1132895 is fixed we shouldn't need to propagate the override
-  // explicitly here.
+  LayersId id;
   EventRegionsOverride eventRegionsOverride;
 };
 struct ImageLayerAttributes     { SamplingFilter samplingFilter; IntSize scaleToSize; ScaleMode scaleMode; };
@@ -321,7 +324,6 @@ union SpecificLayerAttributes {
   ContainerLayerAttributes;
   ColorLayerAttributes;
   CanvasLayerAttributes;
-  TextLayerAttributes;
   RefLayerAttributes;
   ImageLayerAttributes;
   BorderLayerAttributes;
@@ -378,11 +380,6 @@ union ReadLockDescriptor {
   null_t;
 };
 
-struct ReadLockInit {
-  ReadLockDescriptor sharedLock;
-  ReadLockHandle handle;
-};
-
 union MaybeTexture {
   PTexture;
   null_t;
@@ -392,8 +389,8 @@ struct TexturedTileDescriptor {
   PTexture texture;
   MaybeTexture textureOnWhite;
   IntRect updateRect;
-  ReadLockDescriptor sharedLock;
-  ReadLockDescriptor sharedLockOnWhite;
+  bool readLocked;
+  bool readLockedOnWhite;
   bool wasPlaceholder;
 };
 
@@ -438,11 +435,11 @@ struct OpRemoveTexture {
 
 struct TimedTexture {
   PTexture texture;
-  ReadLockHandle sharedLock;
   TimeStamp timeStamp;
   IntRect picture;
   uint32_t frameID;
   uint32_t producerID;
+  bool readLocked;
 };
 
 /**
@@ -462,8 +459,8 @@ struct OpUseTexture {
 struct OpUseComponentAlphaTextures {
   PTexture textureOnBlack;
   PTexture textureOnWhite;
-  ReadLockHandle sharedLockBlack;
-  ReadLockHandle sharedLockWhite;
+  bool readLockedBlack;
+  bool readLockedWhite;
 };
 
 union MaybeRegion {
@@ -500,7 +497,6 @@ union Edit {
   OpCreateContainerLayer;
   OpCreateImageLayer;
   OpCreateColorLayer;
-  OpCreateTextLayer;
   OpCreateBorderLayer;
   OpCreateCanvasLayer;
   OpCreateRefLayer;
@@ -555,6 +551,7 @@ struct PaintTiming {
   float serializeMs;
   float sendMs;
   float dlMs;
+  float dl2Ms;
   float flbMs;
   float rasterMs;
 };
@@ -567,7 +564,7 @@ struct TransactionInfo
   CompositableOperation[] paints;
   OpDestroy[] toDestroy;
   uint64_t fwdTransactionId;
-  uint64_t id;
+  TransactionId id;
   TargetConfig targetConfig;
   PluginWindowData[] plugins;
   bool isFirstPaint;
@@ -576,6 +573,7 @@ struct TransactionInfo
   uint32_t paintSequenceNumber;
   bool isRepeatTransaction;
   TimeStamp transactionStart;
+  TimeStamp fwdTime;
 };
 
 union MaybeTransform {

@@ -7,11 +7,13 @@
 #include "SVGPreserveAspectRatio.h"
 
 #include "mozilla/dom/SVGPreserveAspectRatioBinding.h"
+#include "nsContentUtils.h"
 #include "nsWhitespaceTokenizer.h"
 #include "SVGAnimatedPreserveAspectRatio.h"
 
 using namespace mozilla;
 using namespace dom;
+using namespace SVGPreserveAspectRatioBinding;
 
 NS_SVG_VAL_IMPL_CYCLE_COLLECTION_WRAPPERCACHED(DOMSVGPreserveAspectRatio, mSVGElement)
 
@@ -57,7 +59,8 @@ GetMeetOrSliceForString(const nsAString &aMeetOrSlice)
 SVGPreserveAspectRatio::FromString(const nsAString& aString,
                                    SVGPreserveAspectRatio* aValue)
 {
-  nsWhitespaceTokenizerTemplate<IsSVGWhitespace> tokenizer(aString);
+  nsWhitespaceTokenizerTemplate<nsContentUtils::IsHTMLWhitespace>
+    tokenizer(aString);
   if (tokenizer.whitespaceBeforeFirstToken() ||
       !tokenizer.hasMoreTokens()) {
     return NS_ERROR_DOM_SYNTAX_ERR;

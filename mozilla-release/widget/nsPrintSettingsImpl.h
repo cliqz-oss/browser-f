@@ -42,9 +42,6 @@ protected:
   } nsHeaderFooterEnum;
 
 
-  nsresult GetMarginStrs(char16_t * *aTitle, nsHeaderFooterEnum aType, int16_t aJust);
-  nsresult SetMarginStrs(const char16_t * aTitle, nsHeaderFooterEnum aType, int16_t aJust);
-
   // Members
   nsWeakPtr     mSession; // Should never be touched by Clone or Assign
  
@@ -91,7 +88,7 @@ protected:
   int32_t       mResolution;
   int32_t       mDuplex;
   int32_t       mNumCopies;
-  nsXPIDLString mPrinter;
+  nsString      mPrinter;
   bool          mPrintToFile;
   nsString      mToFileName;
   int16_t       mOutputFormat;

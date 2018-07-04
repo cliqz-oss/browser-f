@@ -43,7 +43,7 @@ public:
 	       CallerType aCallerType, ErrorResult &aRv);
 
   already_AddRefed<Promise>
-  EnumerateDevices(ErrorResult &aRv);
+  EnumerateDevices(CallerType aCallerType, ErrorResult &aRv);
 
   virtual void OnDeviceChange() override;
 
@@ -51,16 +51,8 @@ public:
 
   void SetOndevicechange(mozilla::dom::EventHandlerNonNull* aCallback);
 
-  NS_IMETHOD AddEventListener(const nsAString& aType,
-    nsIDOMEventListener* aListener,
-    bool aUseCapture, bool aWantsUntrusted,
-    uint8_t optional_argc) override;
-
-  virtual void AddEventListener(const nsAString& aType,
-                                dom::EventListener* aListener,
-                                const dom::AddEventListenerOptionsOrBoolean& aOptions,
-                                const dom::Nullable<bool>& aWantsUntrusted,
-                                ErrorResult& aRv) override;
+  void EventListenerAdded(nsAtom* aType) override;
+  using DOMEventTargetHelper::EventListenerAdded;
 
 private:
   class GumResolver;

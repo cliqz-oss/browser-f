@@ -13,7 +13,7 @@
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
 #include "nsISupports.h"
-#include "nsIXMLHttpRequest.h"
+#include "nsIInputStream.h"
 
 namespace mozilla {
 namespace dom {
@@ -47,23 +47,17 @@ public:
   {
   public:
     virtual bool
-    URLParamsIterator(const nsString& aName, const nsString& aValue) = 0;
+    URLParamsIterator(const nsAString& aName, const nsAString& aValue) = 0;
   };
+
+  static bool
+  Parse(const nsACString& aInput, ForEachIterator& aIterator);
+
+  static bool
+  Extract(const nsACString& aInput, const nsAString& aName, nsAString& aValue);
 
   void
   ParseInput(const nsACString& aInput);
-
-  bool
-  ForEach(ForEachIterator& aIterator) const
-  {
-    for (uint32_t i = 0; i < mParams.Length(); ++i) {
-      if (!aIterator.URLParamsIterator(mParams[i].mKey, mParams[i].mValue)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
 
   void Serialize(nsAString& aValue) const;
 
@@ -110,8 +104,8 @@ public:
   WriteStructuredClone(JSStructuredCloneWriter* aWriter) const;
 
 private:
-  void DecodeString(const nsACString& aInput, nsAString& aOutput);
-  void ConvertString(const nsACString& aInput, nsAString& aOutput);
+  static void DecodeString(const nsACString& aInput, nsAString& aOutput);
+  static void ConvertString(const nsACString& aInput, nsAString& aOutput);
 
   struct Param
   {
@@ -122,14 +116,12 @@ private:
   nsTArray<Param> mParams;
 };
 
-class URLSearchParams final : public nsIXHRSendable,
+class URLSearchParams final : public nsISupports,
                               public nsWrapperCache
 {
   ~URLSearchParams();
 
 public:
-  NS_DECL_NSIXHRSENDABLE
-
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(URLSearchParams)
 
@@ -177,21 +169,16 @@ public:
     Serialize(aRetval);
   }
 
-  typedef URLParams::ForEachIterator ForEachIterator;
-
-  bool
-  ForEach(ForEachIterator& aIterator) const
-  {
-    return mParams->ForEach(aIterator);
-
-    return true;
-  }
-
   bool
   ReadStructuredClone(JSStructuredCloneReader* aReader);
 
   bool
   WriteStructuredClone(JSStructuredCloneWriter* aWriter) const;
+
+  nsresult
+  GetSendInfo(nsIInputStream** aBody, uint64_t* aContentLength,
+              nsACString& aContentTypeWithCharset,
+              nsACString& aCharset) const;
 
 private:
   void AppendInternal(const nsAString& aName, const nsAString& aValue);

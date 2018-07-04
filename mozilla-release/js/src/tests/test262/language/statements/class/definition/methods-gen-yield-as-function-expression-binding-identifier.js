@@ -9,9 +9,11 @@
   features: [generators]
   es6id: 14.1
   negative:
-    phase: early
+    phase: parse
     type: SyntaxError
  ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 class A {
   *g() {

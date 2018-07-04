@@ -16,4 +16,46 @@ module.exports = {
   "settings": {
     "html/xml-extensions": [ ".xhtml" ]
   },
+
+  "overrides": [{
+    // eslint-plugin-html handles eol-last slightly different - it applies to
+    // each set of script tags, so we turn it off here.
+    "files": "**/*.*html",
+    "rules": {
+      "eol-last": "off",
+    }
+  }, {
+    // These xbl bindings are assumed to be in the browser-window environment,
+    // we would mark it in the files, but ESLint made this more difficult with
+    // our xml processor, so we list them here. Bug 1397874 & co are working
+    // towards removing these files completely.
+    "files": [
+      "browser/base/content/tabbrowser.xml",
+      "browser/base/content/urlbarBindings.xml",
+      "browser/components/search/content/search.xml",
+      "browser/components/translation/translation-infobar.xml",
+      "toolkit/components/prompts/content/tabprompts.xml"
+    ],
+    "env": {
+      "mozilla/browser-window": true
+    }
+  },{
+    // XXX Bug 1421969. These files/directories are still being fixed,
+    // so turn off mozilla/use-services for them for now.
+    "files": [
+      "extensions/pref/**",
+    ],
+    "rules": {
+      "mozilla/use-services": "off",
+    }
+  }, {
+    // XXX Bug 1436303. These directories are still being fixed, so turn off
+    // mozilla/no-cc-etc for now.
+    "files": [
+      "devtools/**"
+    ],
+    "rules": {
+      "mozilla/no-define-cc-etc": "off",
+    }
+  }]
 };

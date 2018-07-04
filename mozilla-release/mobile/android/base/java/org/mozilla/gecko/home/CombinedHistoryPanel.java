@@ -36,7 +36,6 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
 import org.mozilla.gecko.EventDispatcher;
-import org.mozilla.gecko.GeckoApp;
 import org.mozilla.gecko.GeckoProfile;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.RemoteClientsDialogFragment;
@@ -65,8 +64,8 @@ public class CombinedHistoryPanel extends HomeFragment implements RemoteClientsD
     private static final String LOGTAG = "GeckoCombinedHistoryPnl";
 
     private static final String[] STAGES_TO_SYNC_ON_REFRESH = new String[] { "clients", "tabs" };
-    private final int LOADER_ID_HISTORY = 0;
-    private final int LOADER_ID_REMOTE = 1;
+    private static final int LOADER_ID_HISTORY = 0;
+    private static final int LOADER_ID_REMOTE = 1;
 
     // String placeholders to mark formatting.
     private final static String FORMAT_S1 = "%1$s";
@@ -203,7 +202,7 @@ public class CombinedHistoryPanel extends HomeFragment implements RemoteClientsD
     }
 
     private void setUpRefreshLayout() {
-        mRefreshLayout.setColorSchemeResources(R.color.fennec_ui_orange, R.color.action_orange);
+        mRefreshLayout.setColorSchemeResources(R.color.fennec_ui_accent, R.color.action_accent);
         mRefreshLayout.setOnRefreshListener(new RemoteTabsRefreshListener());
         mRefreshLayout.setEnabled(false);
     }
@@ -635,7 +634,7 @@ public class CombinedHistoryPanel extends HomeFragment implements RemoteClientsD
         public void onRefresh() {
             if (FirefoxAccounts.firefoxAccountsExist(getActivity())) {
                 final Account account = FirefoxAccounts.getFirefoxAccount(getActivity());
-                FirefoxAccounts.requestImmediateSync(account, STAGES_TO_SYNC_ON_REFRESH, null);
+                FirefoxAccounts.requestImmediateSync(account, STAGES_TO_SYNC_ON_REFRESH, null, true);
             } else {
                 Log.wtf(LOGTAG, "No Firefox Account found; this should never happen. Ignoring.");
                 mRefreshLayout.setRefreshing(false);

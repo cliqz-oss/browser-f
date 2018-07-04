@@ -2,14 +2,9 @@
    http://creativecommons.org/publicdomain/zero/1.0/◦
 */
 
-"use strict"
+"use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cr = Components.results;
-
-Cu.import("resource://gre/modules/osfile.jsm")
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 var XULStore = null;
 var browserURI = "chrome://browser/content/browser.xul";
@@ -22,11 +17,11 @@ function run_test() {
 
 function checkValue(uri, id, attr, reference) {
   let value = XULStore.getValue(uri, id, attr);
-  do_check_eq(value, reference);
+  Assert.equal(value, reference);
 }
 
 function checkValueExists(uri, id, attr, exists) {
-  do_check_eq(XULStore.hasValue(uri, id, attr), exists);
+  Assert.equal(XULStore.hasValue(uri, id, attr), exists);
 }
 
 function getIDs(uri) {
@@ -59,7 +54,7 @@ function getAttributes(uri, id) {
 function checkArrays(a, b) {
   a.sort();
   b.sort();
-  do_check_eq(a.toString(), b.toString());
+  Assert.equal(a.toString(), b.toString());
 }
 
 function checkOldStore() {
@@ -111,8 +106,8 @@ add_task(async function testTruncation() {
   // Long values should be truncated
   XULStore.setValue(browserURI, "dos", "dos", dos);
   dos = XULStore.getValue(browserURI, "dos", "dos");
-  do_check_true(dos.length == 4096)
-  XULStore.removeValue(browserURI, "dos", "dos")
+  Assert.ok(dos.length == 4096);
+  XULStore.removeValue(browserURI, "dos", "dos");
 });
 
 add_task(async function testGetValue() {

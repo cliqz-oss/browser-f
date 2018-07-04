@@ -78,15 +78,14 @@ add_task(async function test_crash_in_previous_frameloader() {
     // The name of the game is to cause a crash in a remote browser,
     // and then immediately swap out the browser for a non-remote one.
     await ContentTask.spawn(browser, null, function() {
-      const Cu = Components.utils;
-      Cu.import("resource://gre/modules/ctypes.jsm");
-      Cu.import("resource://gre/modules/Timer.jsm");
+      ChromeUtils.import("resource://gre/modules/ctypes.jsm");
+      ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
       let dies = function() {
         privateNoteIntentionalCrash();
         let zero = new ctypes.intptr_t(8);
         let badptr = ctypes.cast(zero, ctypes.PointerType(ctypes.int32_t));
-        badptr.contents
+        badptr.contents;
       };
 
       // When the parent flips the remoteness of the browser, the

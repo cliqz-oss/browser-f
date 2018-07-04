@@ -8,7 +8,7 @@
  */
 
 "use strict";
-Cu.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
 
 const Telemetry = Services.telemetry;
 const Path = OS.Path;
@@ -16,7 +16,7 @@ const HistogramId = "FX_SESSION_RESTORE_ALL_FILES_CORRUPT";
 
 // Prepare the session file.
 var profd = do_get_profile();
-Cu.import("resource:///modules/sessionstore/SessionFile.jsm", this);
+ChromeUtils.import("resource:///modules/sessionstore/SessionFile.jsm", this);
 
 /**
  * A utility function for resetting the histogram and the contents
@@ -110,7 +110,3 @@ add_task(async function test_all_files_corrupt() {
   Assert.equal(s.counts[1], 1, "One probe for the 'true' bucket.");
   Assert.equal(s.counts[0], 0, "No probes in the 'false' bucket.");
 });
-
-function run_test() {
-  run_next_test();
-}

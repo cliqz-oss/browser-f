@@ -180,7 +180,8 @@ bool RtpHeaderParser::ParseRtcp(RTPHeader* header) const {
 }
 
 bool RtpHeaderParser::Parse(RTPHeader* header,
-                            RtpHeaderExtensionMap* ptrExtensionMap) const {
+                            RtpHeaderExtensionMap* ptrExtensionMap,
+                            bool secured) const {
   const ptrdiff_t length = _ptrRTPDataEnd - _ptrRTPDataBegin;
   if (length < kRtpMinParseLength) {
     return false;
@@ -224,7 +225,8 @@ bool RtpHeaderParser::Parse(RTPHeader* header,
   header->headerLength   = 12 + (CC * 4);
   // not a full validation, just safety against underflow.  Padding must
   // start after the header.  We can have 0 payload bytes left, note.
-  if (header->paddingLength + header->headerLength > (size_t) length) {
+  if (!secured &&
+      (header->paddingLength + header->headerLength > (size_t) length)) {
     return false;
   }
 
@@ -461,8 +463,26 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
           break;
         }
         case kRtpExtensionRepairedRtpStreamId: {
-          header->extension.repairedStreamId.Set(
+          header->extension.repairedRtpStreamId.Set(
               rtc::MakeArrayView(ptr, len + 1));
+          break;
+        }
+        case kRtpExtensionMId: {
+          header->extension.mId.Set(rtc::MakeArrayView(ptr, len + 1));
+          break;
+        }
+        case kRtpExtensionCsrcAudioLevel: {
+          auto& levels = header->extension.csrcAudioLevels;
+          levels.numAudioLevels = static_cast<uint8_t>(len + 1);
+          if (levels.numAudioLevels > kRtpCsrcSize)  {
+            LOG(LS_WARNING) << "Incorrect number of CSRC audio levels: " <<
+                levels.numAudioLevels;
+            levels.numAudioLevels = 0;
+            return;
+          }
+          for (uint8_t i = 0; i < levels.numAudioLevels; i++) {
+            levels.arrOfAudioLevels[i] = ptr[i] & 0x7f;
+          }
           break;
         }
         default:

@@ -8,24 +8,19 @@ xul|caption {
   background-color: transparent;
 }
 
-xul|button,
-html|button,
-xul|colorpicker[type="button"],
-xul|menulist {
-  margin: 2px 4px;
-}
-
 xul|menulist:not([editable="true"]) > xul|*.menulist-dropmarker {
   margin-top: 1px;
   margin-bottom: 1px;
 }
 
-xul|checkbox {
+xul|checkbox,
+xul|radio {
   padding-inline-start: 0;
 }
 
 @media (-moz-windows-default-theme: 0) {
-  xul|*.checkbox-check {
+  xul|*.checkbox-check,
+  xul|*.radio-check {
     background-image: none;
   }
 
@@ -34,17 +29,6 @@ xul|checkbox {
     stroke: none;
     background-color: -moz-dialog;
   }
-}
-
-xul|radio {
-  -moz-binding: url("chrome://global/content/bindings/radio.xml#radio");
-  padding-inline-start: 0;
-}
-
-@media (-moz-windows-default-theme: 0) {
-  xul|*.radio-check {
-    background-image: none;
-  }
 
   xul|*.radio-check[selected] {
     background-color: -moz-dialog;
@@ -52,19 +36,12 @@ xul|radio {
   }
 }
 
-xul|*.radio-icon,
-xul|*.checkbox-icon {
-  margin-inline-end: 0;
-}
-
 /* Never draw a border for the focusring, use outline instead */
-xul|*.menulist-label-box,
-xul|*.radio-label-box {
+xul|*.menulist-label-box {
   border-style: none;
 }
 
 xul|menulist:-moz-focusring > xul|*.menulist-label-box,
-xul|radio[focused="true"] > xul|*.radio-label-box,
 html|input[type="checkbox"]:-moz-focusring + html|label:before {
   outline: 1px dotted;
 }
@@ -76,4 +53,9 @@ html|input[type="checkbox"]:-moz-focusring + html|label:before {
   xul|listbox xul|listitem[selected="true"] {
      border: 2px dotted Highlight;
   }
+}
+
+html|button {
+  /* XUL button min-width */
+  min-width: 6.3em;
 }

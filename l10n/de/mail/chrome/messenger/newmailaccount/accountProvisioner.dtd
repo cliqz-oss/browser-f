@@ -21,7 +21,7 @@
 <!ENTITY partnership.description "In Zusammenarbeit mit verschiedenen Anbietern bietet &brandShortName; Ihnen die Möglichkeit ein neues E-Mail-Konto und somit eine neue E-Mail-Adresse zu erhalten. Geben Sie oben einfach Ihren Vor- und Nachnamen oder beliebige andere Begriffe ein, um zu beginnen.">
 <!ENTITY existing.header "Haben Sie bereits eine E-Mail-Adresse, die Sie verwenden wollen?">
 <!ENTITY tinyheader.title "Eine E-Mail-Adresse bekommen?">
-<!ENTITY tinyheader.existing "Überspringen und meine existierende E-Mail-Adresse verwenden">
+<!ENTITY tinyheader.existing "Überspringen und meine bestehende E-Mail-Adresse verwenden">
 <!ENTITY content.close "Ich werde mein E-Mail-Konto später konfigurieren.">
 <!ENTITY successful.title "Glückwunsch!">
 <!ENTITY successful.successMessage "Sie haben Ihr E-Mail-Konto erfolgreich erstellt.">

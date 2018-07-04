@@ -10,7 +10,7 @@ const promise = require("promise");
 const Rule = require("devtools/client/inspector/rules/models/rule");
 const {promiseWarn} = require("devtools/client/inspector/shared/utils");
 const {ELEMENT_STYLE} = require("devtools/shared/specs/styles");
-const {getCssProperties} = require("devtools/shared/fronts/css-properties");
+const {getCssProperties, isCssVariable} = require("devtools/shared/fronts/css-properties");
 
 /**
  * ElementStyle is responsible for the following:
@@ -40,6 +40,7 @@ function ElementStyle(element, ruleView, store, pageStyle,
   this.showUserAgentStyles = showUserAgentStyles;
   this.rules = [];
   this.cssProperties = getCssProperties(this.ruleView.inspector.toolbox);
+  this.variables = new Map();
 
   // We don't want to overwrite this.store.userProperties so we only create it
   // if it doesn't already exist.
@@ -56,7 +57,7 @@ ElementStyle.prototype = {
   // The element we're looking at.
   element: null,
 
-  destroy: function () {
+  destroy: function() {
     if (this.destroyed) {
       return;
     }
@@ -73,7 +74,7 @@ ElementStyle.prototype = {
    * Called by the Rule object when it has been changed through the
    * setProperty* methods.
    */
-  _changed: function () {
+  _changed: function() {
     if (this.onChanged) {
       this.onChanged();
     }
@@ -86,7 +87,7 @@ ElementStyle.prototype = {
    * Returns a promise that will be resolved when the elementStyle is
    * ready.
    */
-  populate: function () {
+  populate: function() {
     let populated = this.pageStyle.getApplied(this.element, {
       inherited: true,
       matchedSelectors: true,
@@ -137,9 +138,29 @@ ElementStyle.prototype = {
   },
 
   /**
+   * Get the font families in use by the element.
+   *
+   * Returns a promise that will be resolved to a list of CSS family
+   * names.  The list might have duplicates.
+   */
+  getUsedFontFamilies: function() {
+    return new Promise((resolve, reject) => {
+      this.ruleView.styleWindow.requestIdleCallback(async () => {
+        try {
+          let fonts = await this.pageStyle.getUsedFontFaces(
+            this.element, { includePreviews: false });
+          resolve(fonts.map(font => font.CSSFamilyName));
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  },
+
+  /**
    * Put pseudo elements in front of others.
    */
-  _sortRulesForPseudoElement: function () {
+  _sortRulesForPseudoElement: function() {
     this.rules = this.rules.sort((a, b) => {
       return (a.pseudoElement || "z") > (b.pseudoElement || "z");
     });
@@ -156,7 +177,7 @@ ElementStyle.prototype = {
    *        it will be deleted from this array.
    * @return {Boolean} true if we added the rule.
    */
-  _maybeAddRule: function (options, existingRules) {
+  _maybeAddRule: function(options, existingRules) {
     // If we've already included this domRule (for example, when a
     // common selector is inherited), ignore it.
     if (options.rule &&
@@ -198,8 +219,10 @@ ElementStyle.prototype = {
   /**
    * Calls markOverridden with all supported pseudo elements
    */
-  markOverriddenAll: function () {
+  markOverriddenAll: function() {
+    this.variables.clear();
     this.markOverridden();
+
     for (let pseudo of this.cssProperties.pseudoElements) {
       this.markOverridden(pseudo);
     }
@@ -213,7 +236,7 @@ ElementStyle.prototype = {
    *        Which pseudo element to flag as overridden.
    *        Empty string or undefined will default to no pseudo element.
    */
-  markOverridden: function (pseudo = "") {
+  markOverridden: function(pseudo = "") {
     // Gather all the text properties applied by these rules, ordered
     // from more- to less-specific. Text properties from keyframes rule are
     // excluded from being marked as overridden since a number of criteria such
@@ -288,6 +311,10 @@ ElementStyle.prototype = {
       computedProp.overridden = overridden;
       if (!computedProp.overridden && computedProp.textProp.enabled) {
         taken[computedProp.name] = computedProp;
+
+        if (isCssVariable(computedProp.name)) {
+          this.variables.set(computedProp.name, computedProp.value);
+        }
       }
     }
 
@@ -314,7 +341,7 @@ ElementStyle.prototype = {
    * @return {Boolean} true if the TextProperty's overridden state (or any of
    *         its computed properties overridden state) changed.
    */
-  _updatePropertyOverridden: function (prop) {
+  _updatePropertyOverridden: function(prop) {
     let overridden = true;
     let dirty = false;
     for (let computedProp of prop.computed) {
@@ -328,7 +355,20 @@ ElementStyle.prototype = {
     dirty = (!!prop.overridden !== overridden) || dirty;
     prop.overridden = overridden;
     return dirty;
-  }
+  },
+
+ /**
+  * Returns the current value of a CSS variable; or null if the
+  * variable is not defined.
+  *
+  * @param  {String} name
+  *         The name of the variable.
+  * @return {String} the variable's value or null if the variable is
+  *         not defined.
+  */
+  getVariable: function(name) {
+    return this.variables.get(name);
+  },
 };
 
 /**
@@ -353,7 +393,7 @@ UserProperties.prototype = {
    *        The property value if it has previously been set by the user, null
    *        otherwise.
    */
-  getProperty: function (style, name, value) {
+  getProperty: function(style, name, value) {
     let key = this.getKey(style);
     let entry = this.map.get(key, null);
 
@@ -368,20 +408,20 @@ UserProperties.prototype = {
    *
    * @param {CSSStyleDeclaration} style
    *        The CSSStyleDeclaration against which the property is to be mapped.
-   * @param {String} bame
+   * @param {String} name
    *        The name of the property to set.
    * @param {String} userValue
    *        The value of the property to set.
    */
-  setProperty: function (style, bame, userValue) {
-    let key = this.getKey(style, bame);
+  setProperty: function(style, name, userValue) {
+    let key = this.getKey(style, name);
     let entry = this.map.get(key, null);
 
     if (entry) {
-      entry[bame] = userValue;
+      entry[name] = userValue;
     } else {
       let props = {};
-      props[bame] = userValue;
+      props[name] = userValue;
       this.map.set(key, props);
     }
   },
@@ -394,17 +434,17 @@ UserProperties.prototype = {
    * @param {String} name
    *        The name of the property to check.
    */
-  contains: function (style, name) {
+  contains: function(style, name) {
     let key = this.getKey(style, name);
     let entry = this.map.get(key, null);
     return !!entry && name in entry;
   },
 
-  getKey: function (style, name) {
+  getKey: function(style, name) {
     return style.actorID + ":" + name;
   },
 
-  clear: function () {
+  clear: function() {
     this.map.clear();
   }
 };

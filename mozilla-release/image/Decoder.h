@@ -11,7 +11,6 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/RefPtr.h"
-#include "DecodePool.h"
 #include "DecoderFlags.h"
 #include "Downscaler.h"
 #include "ImageMetadata.h"
@@ -245,6 +244,11 @@ public:
     mIterator.emplace(Move(aIterator));
   }
 
+  SourceBuffer* GetSourceBuffer() const
+  {
+    return mIterator->Owner();
+  }
+
   /**
    * Should this decoder send partial invalidations?
    */
@@ -297,6 +301,12 @@ public:
   virtual bool IsValidICOResource() const
   {
     return false;
+  }
+
+  /// Type of decoder.
+  virtual DecoderType GetType() const
+  {
+    return DecoderType::UNKNOWN;
   }
 
   enum DecodeStyle {
@@ -397,6 +407,11 @@ public:
                          : RawAccessFrameRef();
   }
 
+  bool HasFrameToTake() const { return mHasFrameToTake; }
+  void ClearHasFrameToTake() {
+    MOZ_ASSERT(mHasFrameToTake);
+    mHasFrameToTake = false;
+  }
 
 protected:
   friend class AutoRecordDecoderTelemetry;
@@ -570,6 +585,10 @@ private:
   bool mInFrame : 1;
   bool mFinishedNewFrame : 1;  // True if PostFrameStop() has been called since
                                // the last call to TakeCompleteFrameCount().
+  // Has a new frame that AnimationSurfaceProvider can take. Unfortunately this
+  // has to be separate from mFinishedNewFrame because the png decoder yields a
+  // new frame before calling PostFrameStop().
+  bool mHasFrameToTake : 1;
   bool mReachedTerminalState : 1;
   bool mDecodeDone : 1;
   bool mError : 1;

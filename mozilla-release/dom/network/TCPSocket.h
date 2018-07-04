@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -30,7 +31,6 @@ namespace mozilla {
 class ErrorResult;
 namespace dom {
 
-class DOMError;
 struct ServerSocketOptions;
 class TCPServerSocket;
 class TCPSocketChild;
@@ -95,7 +95,7 @@ public:
   void GetHost(nsAString& aHost);
   uint32_t Port();
   bool Ssl();
-  uint64_t BufferedAmount();
+  uint64_t BufferedAmount() const { return mBufferedAmount; }
   void Suspend();
   void Resume(ErrorResult& aRv);
   void Close();
@@ -207,10 +207,6 @@ private:
   nsCOMPtr<nsIScriptableInputStream> mInputStreamScriptable;
   nsCOMPtr<nsIBinaryInputStream> mInputStreamBinary;
 
-  // Output stream machinery
-  nsCOMPtr<nsIMultiplexInputStream> mMultiplexStream;
-  nsCOMPtr<nsIAsyncStreamCopier> mMultiplexStreamCopier;
-
   // Is there an async copy operation in progress?
   bool mAsyncCopierActive;
   // True if the buffer is full and a "drain" event is expected by the client.
@@ -236,8 +232,8 @@ private:
   // The buffered data awaiting the TLS upgrade to finish.
   nsTArray<nsCOMPtr<nsIInputStream>> mPendingDataAfterStartTLS;
 
-  // The data to be sent while AsyncCopier is still active.
-  nsTArray<nsCOMPtr<nsIInputStream>> mPendingDataWhileCopierActive;
+  // The data to be sent.
+  nsTArray<nsCOMPtr<nsIInputStream>> mPendingData;
 
   bool mObserversActive;
 };

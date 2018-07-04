@@ -1,6 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -80,7 +80,8 @@ EnsureSurfaceStored(DrawEventRecorderPrivate *aRecorder, SourceSurface *aSurface
 class SourceSurfaceWrapAndRecord : public SourceSurface
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(SourceSurfaceWrapAndRecord)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(SourceSurfaceWrapAndRecord, override)
+
   SourceSurfaceWrapAndRecord(SourceSurface *aFinalSurface, DrawEventRecorderPrivate *aRecorder)
     : mFinalSurface(aFinalSurface), mRecorder(aRecorder)
   {
@@ -93,10 +94,10 @@ public:
     mRecorder->RecordEvent(RecordedSourceSurfaceDestruction(ReferencePtr(this)));
   }
 
-  virtual SurfaceType GetType() const { return SurfaceType::RECORDING; }
-  virtual IntSize GetSize() const { return mFinalSurface->GetSize(); }
-  virtual SurfaceFormat GetFormat() const { return mFinalSurface->GetFormat(); }
-  virtual already_AddRefed<DataSourceSurface> GetDataSurface() { return mFinalSurface->GetDataSurface(); }
+  virtual SurfaceType GetType() const override { return SurfaceType::RECORDING; }
+  virtual IntSize GetSize() const override { return mFinalSurface->GetSize(); }
+  virtual SurfaceFormat GetFormat() const override { return mFinalSurface->GetFormat(); }
+  virtual already_AddRefed<DataSourceSurface> GetDataSurface() override { return mFinalSurface->GetDataSurface(); }
 
   RefPtr<SourceSurface> mFinalSurface;
   RefPtr<DrawEventRecorderPrivate> mRecorder;
@@ -105,7 +106,8 @@ public:
 class GradientStopsWrapAndRecord : public GradientStops
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(GradientStopsWrapAndRecord)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(GradientStopsWrapAndRecord, override)
+
   GradientStopsWrapAndRecord(GradientStops *aFinalGradientStops, DrawEventRecorderPrivate *aRecorder)
     : mFinalGradientStops(aFinalGradientStops), mRecorder(aRecorder)
   {
@@ -118,7 +120,7 @@ public:
     mRecorder->RecordEvent(RecordedGradientStopsDestruction(ReferencePtr(this)));
   }
 
-  virtual BackendType GetBackendType() const { return BackendType::RECORDING; }
+  virtual BackendType GetBackendType() const override { return BackendType::RECORDING; }
 
   RefPtr<GradientStops> mFinalGradientStops;
   RefPtr<DrawEventRecorderPrivate> mRecorder;
@@ -385,8 +387,7 @@ void
 DrawTargetWrapAndRecord::FillGlyphs(ScaledFont *aFont,
                                 const GlyphBuffer &aBuffer,
                                 const Pattern &aPattern,
-                                const DrawOptions &aOptions,
-                                const GlyphRenderingOptions *aRenderingOptions)
+                                const DrawOptions &aOptions)
 {
   EnsurePatternDependenciesStored(aPattern);
 
@@ -427,7 +428,7 @@ DrawTargetWrapAndRecord::FillGlyphs(ScaledFont *aFont,
   }
 
   mRecorder->RecordEvent(RecordedFillGlyphs(this, aFont, aPattern, aOptions, aBuffer.mGlyphs, aBuffer.mNumGlyphs));
-  mFinalDT->FillGlyphs(aFont, aBuffer, *AdjustedPattern(aPattern), aOptions, aRenderingOptions);
+  mFinalDT->FillGlyphs(aFont, aBuffer, *AdjustedPattern(aPattern), aOptions);
 }
 
 void

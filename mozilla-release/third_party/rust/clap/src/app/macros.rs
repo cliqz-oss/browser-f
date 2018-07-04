@@ -85,7 +85,7 @@ macro_rules! arg_post_processing {
                 .filter(|&&(val, _)| val.is_none())
                 .filter(|&&(_, req)| !$matcher.contains(&req))
                 .map(|&(_, name)| name) {
-                    
+
                 $me.required.push(n);
             }
         } else { sdebugln!("No"); }
@@ -98,9 +98,8 @@ macro_rules! _handle_group_reqs{
     ($me:ident, $arg:ident) => ({
         use args::AnyArg;
         debugln!("_handle_group_reqs!;");
-        for grp in $me.groups.iter() {
+        for grp in &$me.groups {
             let found = if grp.args.contains(&$arg.name()) {
-                // vec_remove!($me.required, &$arg.name());
                 if let Some(ref reqs) = grp.requires {
                     debugln!("_handle_group_reqs!: Adding {:?} to the required list", reqs);
                     $me.required.extend(reqs);
@@ -121,7 +120,11 @@ macro_rules! _handle_group_reqs{
                 debugln!("_handle_group_reqs!:iter: Adding args from group to blacklist...{:?}", grp.args);
                 if !grp.multiple {
                     $me.blacklist.extend(&grp.args);
-                    vec_remove!($me.blacklist, &$arg.name());
+                    debugln!("_handle_group_reqs!: removing {:?} from blacklist", $arg.name());
+                    for i in (0 .. $me.blacklist.len()).rev() {
+                        let should_remove = $me.blacklist[i] == $arg.name();
+                        if should_remove { $me.blacklist.swap_remove(i); }
+                    }
                 }
             }
         }
@@ -143,7 +146,7 @@ macro_rules! parse_positional {
             $pos_counter == $_self.positionals.len()) {
             $_self.settings.set(AS::TrailingValues);
         }
-        let _ = try!($_self.add_val_to_arg($p, &$arg_os, $matcher));
+        let _ = $_self.add_val_to_arg($p, &$arg_os, $matcher)?;
 
         $matcher.inc_occurrence_of($p.b.name);
         let _ = $_self.groups_for_arg($p.b.name)

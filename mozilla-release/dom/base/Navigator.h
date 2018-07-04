@@ -12,8 +12,6 @@
 #include "mozilla/dom/Fetch.h"
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/ErrorResult.h"
-#include "nsIDOMNavigator.h"
-#include "nsIMozNavigatorNetwork.h"
 #include "nsWrapperCache.h"
 #include "nsHashKeys.h"
 #include "nsInterfaceHashtable.h"
@@ -26,6 +24,7 @@ class nsPluginArray;
 class nsMimeTypeArray;
 class nsPIDOMWindowInner;
 class nsIDOMNavigatorSystemMessages;
+class nsINetworkProperties;
 class nsIPrincipal;
 class nsIURI;
 
@@ -40,8 +39,6 @@ class WakeLock;
 class ArrayBufferOrArrayBufferViewOrBlobOrFormDataOrUSVStringOrURLSearchParams;
 class ServiceWorkerContainer;
 class DOMRequest;
-struct FlyWebPublishOptions;
-struct FlyWebFilter;
 class CredentialsContainer;
 } // namespace dom
 } // namespace mozilla
@@ -61,7 +58,6 @@ class BatteryManager;
 
 class Promise;
 
-class DesktopNotificationCenter;
 class MozIdleObserver;
 class Gamepad;
 class GamepadServiceTest;
@@ -69,33 +65,26 @@ class NavigatorUserMediaSuccessCallback;
 class NavigatorUserMediaErrorCallback;
 class MozGetUserMediaDevicesSuccessCallback;
 
+struct MIDIOptions;
+
 namespace network {
 class Connection;
 } // namespace network
 
-class PowerManager;
 class Presentation;
 class LegacyMozTCPSocket;
 class VRDisplay;
 class VRServiceTest;
 class StorageManager;
 
-namespace time {
-class TimeManager;
-} // namespace time
-
-class Navigator final : public nsIDOMNavigator
-                      , public nsIMozNavigatorNetwork
+class Navigator final : public nsISupports
                       , public nsWrapperCache
 {
 public:
   explicit Navigator(nsPIDOMWindowInner* aInnerWindow);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(Navigator,
-                                                         nsIDOMNavigator)
-  NS_DECL_NSIDOMNAVIGATOR
-  NS_DECL_NSIMOZNAVIGATORNETWORK
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(Navigator)
 
   static void Init();
 
@@ -119,8 +108,8 @@ public:
    */
   void OnNavigation();
 
-  // The XPCOM GetProduct is OK
-  // The XPCOM GetLanguage is OK
+  void GetProduct(nsAString& aProduct);
+  void GetLanguage(nsAString& aLanguage);
   void GetAppName(nsAString& aAppName, CallerType aCallerType) const;
   void GetAppVersion(nsAString& aAppName, CallerType aCallerType,
                      ErrorResult& aRv) const;
@@ -136,13 +125,10 @@ public:
   nsMimeTypeArray* GetMimeTypes(ErrorResult& aRv);
   nsPluginArray* GetPlugins(ErrorResult& aRv);
   Permissions* GetPermissions(ErrorResult& aRv);
-  // The XPCOM GetDoNotTrack is ok
+  void GetDoNotTrack(nsAString& aResult);
   Geolocation* GetGeolocation(ErrorResult& aRv);
   Promise* GetBattery(ErrorResult& aRv);
 
-  already_AddRefed<Promise> PublishServer(const nsAString& aName,
-                                          const FlyWebPublishOptions& aOptions,
-                                          ErrorResult& aRv);
   static void AppName(nsAString& aAppName, bool aUsePrefOverriddenValue);
 
   static nsresult GetPlatform(nsAString& aPlatform,
@@ -163,32 +149,24 @@ public:
   bool Vibrate(const nsTArray<uint32_t>& aDuration);
   void SetVibrationPermission(bool aPermitted, bool aPersistent);
   uint32_t MaxTouchPoints();
-  void GetAppCodeName(nsString& aAppCodeName, ErrorResult& aRv)
-  {
-    aRv = GetAppCodeName(aAppCodeName);
-  }
+  void GetAppCodeName(nsAString& aAppCodeName, ErrorResult& aRv);
   void GetOscpu(nsAString& aOscpu, CallerType aCallerType,
                 ErrorResult& aRv) const;
-  // The XPCOM GetVendor is OK
-  // The XPCOM GetVendorSub is OK
-  // The XPCOM GetProductSub is OK
+  void GetVendorSub(nsAString& aVendorSub);
+  void GetVendor(nsAString& aVendor);
+  void GetProductSub(nsAString& aProductSub);
   bool CookieEnabled();
   void GetBuildID(nsAString& aBuildID, CallerType aCallerType,
                   ErrorResult& aRv) const;
-  PowerManager* GetMozPower(ErrorResult& aRv);
   bool JavaEnabled(CallerType aCallerType, ErrorResult& aRv);
   uint64_t HardwareConcurrency();
-  bool CpuHasSSE2();
   bool TaintEnabled()
   {
     return false;
   }
   void AddIdleObserver(MozIdleObserver& aObserver, ErrorResult& aRv);
   void RemoveIdleObserver(MozIdleObserver& aObserver, ErrorResult& aRv);
-  already_AddRefed<WakeLock> RequestWakeLock(const nsAString &aTopic,
-                                             ErrorResult& aRv);
 
-  DesktopNotificationCenter* GetMozNotification(ErrorResult& aRv);
   already_AddRefed<LegacyMozTCPSocket> MozTCPSocket();
   network::Connection* GetConnection(ErrorResult& aRv);
   MediaDevices* GetMediaDevices(ErrorResult& aRv);
@@ -201,9 +179,8 @@ public:
   bool IsWebVRContentDetected() const;
   bool IsWebVRContentPresenting() const;
   void RequestVRPresentation(VRDisplay& aDisplay);
-#ifdef MOZ_TIME_MANAGER
-  time::TimeManager* GetMozTime(ErrorResult& aRv);
-#endif // MOZ_TIME_MANAGER
+  nsINetworkProperties* GetNetworkProperties();
+  already_AddRefed<Promise> RequestMIDIAccess(const MIDIOptions& aOptions, ErrorResult& aRv);
 
   Presentation* GetPresentation(ErrorResult& aRv);
 
@@ -227,22 +204,17 @@ public:
 
   mozilla::dom::CredentialsContainer* Credentials();
 
-  void GetLanguages(nsTArray<nsString>& aLanguages);
+  static bool Webdriver();
 
-  bool MozE10sEnabled();
+  void GetLanguages(nsTArray<nsString>& aLanguages);
 
   StorageManager* Storage();
 
   static void GetAcceptLanguages(nsTArray<nsString>& aLanguages);
 
   // WebIDL helper methods
-  static bool HasWakeLockSupport(JSContext* /* unused*/, JSObject* /*unused */);
-  static bool HasWifiManagerSupport(JSContext* /* unused */,
-                                  JSObject* aGlobal);
   static bool HasUserMediaSupport(JSContext* /* unused */,
                                   JSObject* /* unused */);
-
-  static bool IsE10sEnabled(JSContext* aCx, JSObject* aGlobal);
 
   nsPIDOMWindowInner* GetParentObject() const
   {
@@ -269,9 +241,6 @@ public:
 private:
   virtual ~Navigator();
 
-  bool CheckPermission(const char* type);
-  static bool CheckPermission(nsPIDOMWindowInner* aWindow, const char* aType);
-
   // This enum helps SendBeaconInternal to apply different behaviors to body
   // types.
   enum BeaconType {
@@ -289,14 +258,11 @@ private:
   RefPtr<nsPluginArray> mPlugins;
   RefPtr<Permissions> mPermissions;
   RefPtr<Geolocation> mGeolocation;
-  RefPtr<DesktopNotificationCenter> mNotification;
   RefPtr<battery::BatteryManager> mBatteryManager;
   RefPtr<Promise> mBatteryPromise;
-  RefPtr<PowerManager> mPowerManager;
   RefPtr<network::Connection> mConnection;
   RefPtr<CredentialsContainer> mCredentials;
   RefPtr<MediaDevices> mMediaDevices;
-  RefPtr<time::TimeManager> mTimeManager;
   RefPtr<ServiceWorkerContainer> mServiceWorkerContainer;
   nsCOMPtr<nsPIDOMWindowInner> mWindow;
   RefPtr<Presentation> mPresentation;

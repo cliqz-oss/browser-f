@@ -23,7 +23,7 @@ namespace dom {
 class MemoryBlobImpl final : public BaseBlobImpl
 {
 public:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(MemoryBlobImpl, BaseBlobImpl)
 
   MemoryBlobImpl(void* aMemoryBuffer, uint64_t aLength, const nsAString& aName,
                  const nsAString& aContentType, int64_t aLastModifiedDate)
@@ -41,7 +41,7 @@ public:
     MOZ_ASSERT(mDataOwner && mDataOwner->mData, "must have data");
   }
 
-  virtual void GetInternalStream(nsIInputStream** aStream,
+  virtual void CreateInputStream(nsIInputStream** aStream,
                                  ErrorResult& aRv) override;
 
   virtual already_AddRefed<BlobImpl>
@@ -51,6 +51,11 @@ public:
   virtual bool IsMemoryFile() const override
   {
     return true;
+  }
+
+  size_t GetAllocationSize() const override
+  {
+    return mLength;
   }
 
   class DataOwner final : public mozilla::LinkedListElement<DataOwner>

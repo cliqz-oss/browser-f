@@ -12,13 +12,15 @@
 #include "mozilla/FileUtils.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/StaticPtr.h"
-#include "mozilla/Sprintf.h"
+#include "mozilla/Printf.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/UniquePtrExtensions.h"
+#include "MainThreadUtils.h"
 #include "nsClassHashtable.h"
 #include "nsDebug.h"
 #include "NSPRLogModulesParser.h"
+#include "LogCommandLineHandler.h"
 
 #include "prenv.h"
 #ifdef XP_WIN
@@ -41,6 +43,21 @@ const uint32_t kInitialModuleCount = 256;
 const uint32_t kRotateFilesNumber = 4;
 
 namespace mozilla {
+
+LazyLogModule::operator LogModule*()
+{
+  // NB: The use of an atomic makes the reading and assignment of mLog
+  //     thread-safe. There is a small chance that mLog will be set more
+  //     than once, but that's okay as it will be set to the same LogModule
+  //     instance each time. Also note LogModule::Get is thread-safe.
+  LogModule* tmp = mLog;
+  if (MOZ_UNLIKELY(!tmp)) {
+    tmp = LogModule::Get(mLogName);
+    mLog = tmp;
+  }
+
+  return tmp;
+}
 
 namespace detail {
 
@@ -162,8 +179,10 @@ public:
     , mMainThread(PR_GetCurrentThread())
     , mSetFromEnv(false)
     , mAddTimestamp(false)
+    , mIsRaw(false)
     , mIsSync(false)
     , mRotate(0)
+    , mInitialized(false)
   {
   }
 
@@ -174,13 +193,36 @@ public:
   }
 
   /**
-   * Loads config from env vars if present.
+   * Loads config from command line args or env vars if present, in
+   * this specific order of priority.
+   *
+   * Notes:
+   *
+   * 1) This function is only intended to be called once per session.
+   * 2) None of the functions used in Init should rely on logging.
    */
-  void Init()
+  void Init(int argc, char* argv[])
   {
+    MOZ_DIAGNOSTIC_ASSERT(!mInitialized);
+    mInitialized = true;
+
+    LoggingHandleCommandLineArgs(argc, static_cast<char const* const*>(argv),
+                                 [](nsACString const& env) {
+      // We deliberately set/rewrite the environment variables
+      // so that when child processes are spawned w/o passing
+      // the arguments they still inherit the logging settings
+      // as well as sandboxing can be correctly set.
+      // Scripts can pass -MOZ_LOG=$MOZ_LOG,modules as an argument
+      // to merge existing settings, if required.
+
+      // PR_SetEnv takes ownership of the string.
+      PR_SetEnv(ToNewCString(env));
+    });
+
     bool shouldAppend = false;
     bool addTimestamp = false;
     bool isSync = false;
+    bool isRaw = false;
     int32_t rotate = 0;
     const char* modules = PR_GetEnv("MOZ_LOG");
     if (!modules || !modules[0]) {
@@ -198,8 +240,10 @@ public:
       }
     }
 
+    // Need to capture `this` since `sLogModuleManager` is not set until after
+    // initialization is complete.
     NSPRLogModulesParser(modules,
-        [&shouldAppend, &addTimestamp, &isSync, &rotate]
+        [this, &shouldAppend, &addTimestamp, &isSync, &isRaw, &rotate]
             (const char* aName, LogLevel aLevel, int32_t aValue) mutable {
           if (strcmp(aName, "append") == 0) {
             shouldAppend = true;
@@ -207,16 +251,19 @@ public:
             addTimestamp = true;
           } else if (strcmp(aName, "sync") == 0) {
             isSync = true;
+          } else if (strcmp(aName, "raw") == 0) {
+            isRaw = true;
           } else if (strcmp(aName, "rotate") == 0) {
             rotate = (aValue << 20) / kRotateFilesNumber;
           } else {
-            LogModule::Get(aName)->SetLevel(aLevel);
+            this->CreateOrGetModule(aName)->SetLevel(aLevel);
           }
     });
 
     // Rotate implies timestamp to make the files readable
     mAddTimestamp = addTimestamp || rotate > 0;
     mIsSync = isSync;
+    mIsRaw = isRaw;
     mRotate = rotate;
 
     if (rotate > 0 && shouldAppend) {
@@ -348,6 +395,8 @@ public:
   void Print(const char* aName, LogLevel aLevel, const char* aFmt, va_list aArgs)
     MOZ_FORMAT_PRINTF(4, 0)
   {
+    // We don't do nuwa-style forking anymore, so our pid can't change.
+    static long pid = static_cast<long>(base::GetCurrentProcId());
     const size_t kBuffSize = 1024;
     char buff[kBuffSize];
 
@@ -410,19 +459,23 @@ public:
     }
 
     if (!mAddTimestamp) {
-      fprintf_stderr(out,
-                     "[%s]: %s/%s %s%s",
-                     currentThreadName, ToLogStr(aLevel),
-                     aName, buffToWrite, newline);
+      if (!mIsRaw) {
+        fprintf_stderr(out,
+                      "[%ld:%s]: %s/%s %s%s",
+                      pid, currentThreadName, ToLogStr(aLevel),
+                      aName, buffToWrite, newline);
+      } else {
+        fprintf_stderr(out, "%s%s", buffToWrite, newline);
+      }
     } else {
       PRExplodedTime now;
       PR_ExplodeTime(PR_Now(), PR_GMTParameters, &now);
       fprintf_stderr(
           out,
-          "%04d-%02d-%02d %02d:%02d:%02d.%06d UTC - [%s]: %s/%s %s%s",
+          "%04d-%02d-%02d %02d:%02d:%02d.%06d UTC - [%ld:%s]: %s/%s %s%s",
           now.tm_year, now.tm_month + 1, now.tm_mday,
           now.tm_hour, now.tm_min, now.tm_sec, now.tm_usec,
-          currentThreadName, ToLogStr(aLevel),
+          pid, currentThreadName, ToLogStr(aLevel),
           aName, buffToWrite, newline);
     }
 
@@ -494,8 +547,10 @@ private:
   PRThread *mMainThread;
   bool mSetFromEnv;
   Atomic<bool, Relaxed> mAddTimestamp;
+  Atomic<bool, Relaxed> mIsRaw;
   Atomic<bool, Relaxed> mIsSync;
   int32_t mRotate;
+  bool mInitialized;
 };
 
 StaticAutoPtr<LogModuleManager> sLogModuleManager;
@@ -536,10 +591,12 @@ LogModule::SetIsSync(bool aIsSync)
 }
 
 void
-LogModule::Init()
+LogModule::Init(int argc, char* argv[])
 {
   // NB: This method is not threadsafe; it is expected to be called very early
   //     in startup prior to any other threads being run.
+  MOZ_DIAGNOSTIC_ASSERT(NS_IsMainThread());
+
   if (sLogModuleManager) {
     // Already initialized.
     return;
@@ -548,8 +605,12 @@ LogModule::Init()
   // NB: We intentionally do not register for ClearOnShutdown as that happens
   //     before all logging is complete. And, yes, that means we leak, but
   //     we're doing that intentionally.
-  sLogModuleManager = new LogModuleManager();
-  sLogModuleManager->Init();
+
+  // Don't assign the pointer until after Init is called. This should help us
+  // detect if any of the functions called by Init somehow rely on logging.
+  auto mgr = new LogModuleManager();
+  mgr->Init(argc, argv);
+  sLogModuleManager = mgr;
 }
 
 void

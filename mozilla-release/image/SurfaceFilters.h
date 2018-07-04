@@ -376,7 +376,7 @@ public:
     gfx::IntSize outputSize = mNext.InputSize();
 
     // Forbid frame rects with negative size.
-    if (aConfig.mFrameRect.width < 0 || aConfig.mFrameRect.height < 0) {
+    if (aConfig.mFrameRect.Width() < 0 || aConfig.mFrameRect.Height() < 0) {
       return NS_ERROR_INVALID_ARG;
     }
 
@@ -395,14 +395,14 @@ public:
     // width is larger than the clamped frame rect width. In that case, the
     // caller will end up writing data that won't end up in the final image at
     // all, and we'll need a buffer to give that data a place to go.
-    if (mFrameRect.width < mUnclampedFrameRect.width) {
-      mBuffer.reset(new (fallible) uint8_t[mUnclampedFrameRect.width *
+    if (mFrameRect.Width() < mUnclampedFrameRect.Width()) {
+      mBuffer.reset(new (fallible) uint8_t[mUnclampedFrameRect.Width() *
                                            sizeof(uint32_t)]);
       if (MOZ_UNLIKELY(!mBuffer)) {
         return NS_ERROR_OUT_OF_MEMORY;
       }
 
-      memset(mBuffer.get(), 0, mUnclampedFrameRect.width * sizeof(uint32_t));
+      memset(mBuffer.get(), 0, mUnclampedFrameRect.Width() * sizeof(uint32_t));
     }
 
     ConfigureFilter(mUnclampedFrameRect.Size(), sizeof(uint32_t));
@@ -423,12 +423,12 @@ protected:
       return nullptr;
     }
 
-    mRow = mUnclampedFrameRect.y;
+    mRow = mUnclampedFrameRect.Y();
 
     // Advance the next pipeline stage to the beginning of the frame rect,
     // outputting blank rows.
-    if (mFrameRect.y > 0) {
-      for (int32_t rowToOutput = 0; rowToOutput < mFrameRect.y ; ++rowToOutput) {
+    if (mFrameRect.Y() > 0) {
+      for (int32_t rowToOutput = 0; rowToOutput < mFrameRect.Y() ; ++rowToOutput) {
         mNext.WriteEmptyRow();
       }
     }
@@ -459,7 +459,7 @@ protected:
     const int32_t currentRow = mRow;
     mRow++;
 
-    if (currentRow < mFrameRect.y) {
+    if (currentRow < mFrameRect.Y()) {
       // This row is outside of the frame rect, so just drop it on the floor.
       rowPtr = mBuffer ? mBuffer.get() : mNext.CurrentRowPointer();
       return AdjustRowPointer(rowPtr);
@@ -474,13 +474,13 @@ protected:
       // is negative; if that's the case, we have to skip the portion of the
       // unclamped frame rect that's outside the row.
       uint32_t* source = reinterpret_cast<uint32_t*>(mBuffer.get()) -
-                         std::min(mUnclampedFrameRect.x, 0);
+                         std::min(mUnclampedFrameRect.X(), 0);
 
       // We write |mFrameRect.width| columns starting at |mFrameRect.x|; we've
       // already clamped these values to the size of the output, so we don't
       // have to worry about bounds checking here (though WriteBuffer() will do
       // it for us in any case).
-      WriteState state = mNext.WriteBuffer(source, mFrameRect.x, mFrameRect.width);
+      WriteState state = mNext.WriteBuffer(source, mFrameRect.X(), mFrameRect.Width());
 
       rowPtr = state == WriteState::NEED_MORE_DATA ? mBuffer.get()
                                                    : nullptr;
@@ -516,7 +516,7 @@ private:
       return nullptr;  // Nothing left to write.
     }
 
-    return aNextRowPointer + mFrameRect.x * sizeof(uint32_t);
+    return aNextRowPointer + mFrameRect.X() * sizeof(uint32_t);
   }
 
   Next mNext;                        /// The next SurfaceFilter in the chain.

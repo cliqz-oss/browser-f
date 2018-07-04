@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -118,7 +119,7 @@ CompositableHost::RemoveMaskEffect()
 }
 
 /* static */ already_AddRefed<CompositableHost>
-CompositableHost::Create(const TextureInfo& aTextureInfo)
+CompositableHost::Create(const TextureInfo& aTextureInfo, bool aUseWebRender)
 {
   RefPtr<CompositableHost> result;
   switch (aTextureInfo.mCompositableType) {
@@ -129,21 +130,21 @@ CompositableHost::Create(const TextureInfo& aTextureInfo)
     result = new TiledContentHost(aTextureInfo);
     break;
   case CompositableType::IMAGE:
-    if (gfxVars::UseWebRender()) {
+    if (aUseWebRender) {
       result = new WebRenderImageHost(aTextureInfo);
     } else {
       result = new ImageHost(aTextureInfo);
     }
     break;
   case CompositableType::CONTENT_SINGLE:
-    if (gfxVars::UseWebRender()) {
+    if (aUseWebRender) {
       result = new WebRenderImageHost(aTextureInfo);
     } else {
       result = new ContentHostSingleBuffered(aTextureInfo);
     }
     break;
   case CompositableType::CONTENT_DOUBLE:
-    MOZ_ASSERT(!gfxVars::UseWebRender());
+    MOZ_ASSERT(!aUseWebRender);
     result = new ContentHostDoubleBuffered(aTextureInfo);
     break;
   default:

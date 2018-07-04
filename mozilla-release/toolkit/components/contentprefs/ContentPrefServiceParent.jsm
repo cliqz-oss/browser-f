@@ -5,16 +5,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [ "ContentPrefServiceParent" ];
+var EXPORTED_SYMBOLS = [ "ContentPrefServiceParent" ];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "_methodsCallableFromChild",
-                                  "resource://gre/modules/ContentPrefUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "_methodsCallableFromChild",
+                               "resource://gre/modules/ContentPrefUtils.jsm");
 
 let loadContext = Cc["@mozilla.org/loadcontext;1"].
                     createInstance(Ci.nsILoadContext);
@@ -30,8 +26,7 @@ function contextArg(context) {
 var ContentPrefServiceParent = {
   // Called on all platforms.
   alwaysInit() {
-    let globalMM = Cc["@mozilla.org/parentprocessmessagemanager;1"]
-                     .getService(Ci.nsIMessageListenerManager);
+    let globalMM = Cc["@mozilla.org/parentprocessmessagemanager;1"].getService();
 
     globalMM.addMessageListener("child-process-shutdown", this);
   },
@@ -39,8 +34,7 @@ var ContentPrefServiceParent = {
   // Only called on Android. Listeners are added in nsBrowserGlue.js on other
   // platforms.
   init() {
-    let globalMM = Cc["@mozilla.org/parentprocessmessagemanager;1"]
-                     .getService(Ci.nsIMessageListenerManager);
+    let globalMM = Cc["@mozilla.org/parentprocessmessagemanager;1"].getService();
 
     // PLEASE KEEP THIS LIST IN SYNC WITH THE LISTENERS ADDED IN nsBrowserGlue
     globalMM.addMessageListener("ContentPrefs:FunctionCall", this);

@@ -5,14 +5,13 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
-    'txtsvc',
     'libeditor',
+    'spellchecker',
     'txmgr',
     'composer',
 ]
 
 XPIDL_SOURCES += [
-    'nsIContentFilter.idl',
     'nsIDocumentStateListener.idl',
     'nsIEditActionListener.idl',
     'nsIEditor.idl',
@@ -28,7 +27,6 @@ XPIDL_SOURCES += [
     'nsIPlaintextEditor.idl',
     'nsITableEditor.idl',
     'nsIURIRefObject.idl',
-    'nsPIEditorTransaction.idl',
 ]
 
 XPIDL_MODULE = 'editor'

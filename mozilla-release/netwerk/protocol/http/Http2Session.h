@@ -12,6 +12,7 @@
 #include "ASpdySession.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/WeakPtr.h"
 #include "nsAHttpConnection.h"
 #include "nsClassHashtable.h"
 #include "nsDataHashtable.h"
@@ -153,7 +154,7 @@ public:
 
   // below the emergency threshold of local window we ack every received
   // byte. Above that we coalesce bytes into the MinimumToAck size.
-  const static int32_t  kEmergencyWindowThreshold = 256 * 1024;
+  const static int32_t  kEmergencyWindowThreshold = 96 * 1024;
   const static uint32_t kMinimumToAck = 4 * 1024 * 1024;
 
   // The default rwin is 64KB - 1 unless updated by a settings frame
@@ -179,8 +180,10 @@ public:
     kUrgentStartGroupID = 0xD
     // Hey, you! YES YOU! If you add/remove any groups here, you almost
     // certainly need to change the lookup of the stream/ID hash in
-    // Http2Session::OnTransportStatus. Yeah, that's right. YOU!
+    // Http2Session::OnTransportStatus and |kPriorityGroupCount| below.
+    // Yeah, that's right. YOU!
   };
+  const static uint8_t kPriorityGroupCount = 6;
 
   static nsresult RecvHeaders(Http2Session *);
   static nsresult RecvPriority(Http2Session *);
@@ -247,14 +250,16 @@ public:
   bool UseH2Deps() { return mUseH2Deps; }
 
   // overload of nsAHttpTransaction
-  MOZ_MUST_USE nsresult ReadSegmentsAgain(nsAHttpSegmentReader *, uint32_t, uint32_t *, bool *) override final;
-  MOZ_MUST_USE nsresult WriteSegmentsAgain(nsAHttpSegmentWriter *, uint32_t , uint32_t *, bool *) override final;
-  MOZ_MUST_USE bool Do0RTT() override final { return true; }
-  MOZ_MUST_USE nsresult Finish0RTT(bool aRestart, bool aAlpnChanged) override final;
-  void SetFastOpenStatus(uint8_t aStatus) override final;
+  MOZ_MUST_USE nsresult ReadSegmentsAgain(nsAHttpSegmentReader *, uint32_t, uint32_t *, bool *) final;
+  MOZ_MUST_USE nsresult WriteSegmentsAgain(nsAHttpSegmentWriter *, uint32_t , uint32_t *, bool *) final;
+  MOZ_MUST_USE bool Do0RTT() final { return true; }
+  MOZ_MUST_USE nsresult Finish0RTT(bool aRestart, bool aAlpnChanged) final;
+  void SetFastOpenStatus(uint8_t aStatus) final;
 
   // For use by an HTTP2Stream
   void Received421(nsHttpConnectionInfo *ci);
+
+  void SendPriorityFrame(uint32_t streamID, uint32_t dependsOn, uint8_t weight);
 
 private:
 
@@ -305,6 +310,7 @@ private:
 
   MOZ_MUST_USE nsresult SetInputFrameDataStream(uint32_t);
   void        CreatePriorityNode(uint32_t, uint32_t, uint8_t, const char *);
+  char        *CreatePriorityFrame(uint32_t, uint32_t, uint8_t);
   bool        VerifyStream(Http2Stream *, uint32_t);
   void        SetNeedsCleanup();
 
@@ -523,6 +529,9 @@ private:
   bool mAttemptingEarlyData;
   // The ID(s) of the stream(s) that we are getting 0RTT data from.
   nsTArray<WeakPtr<Http2Stream>> m0RTTStreams;
+  // The ID(s) of the stream(s) that are not able to send 0RTT data. We need to
+  // remember them put them into mReadyForWrite queue when 0RTT finishes.
+  nsTArray<WeakPtr<Http2Stream>> mCannotDo0RTTStreams;
 
   bool RealJoinConnection(const nsACString &hostname, int32_t port, bool jk);
   bool TestOriginFrame(const nsACString &name, int32_t port);
@@ -530,6 +539,8 @@ private:
   nsDataHashtable<nsCStringHashKey, bool> mOriginFrame;
 
   nsDataHashtable<nsCStringHashKey, bool> mJoinConnectionCache;
+
+  uint64_t mCurrentForegroundTabOuterContentWindowId;
 
   class CachePushCheckCallback final : public nsICacheEntryOpenCallback
   {
@@ -540,13 +551,21 @@ private:
     NS_DECL_NSICACHEENTRYOPENCALLBACK
 
   private:
-    ~CachePushCheckCallback() { }
+    ~CachePushCheckCallback() = default;
 
     RefPtr<Http2Session> mSession;
     uint32_t mPromisedID;
     nsHttpRequestHead mRequestHead;
   };
 
+  // A h2 session will be created before all socket events are trigered,
+  // e.g. NS_NET_STATUS_TLS_HANDSHAKE_ENDED and for TFO many others.
+  // We should propagate this events to the first nsHttpTransaction.
+  RefPtr<nsHttpTransaction> mFirstHttpTransaction;
+  bool mTlsHandshakeFinished;
+
+  bool mCheckNetworkStallsWithTFO;
+  PRIntervalTime mLastRequestBytesSentTime;
 private:
 /// connect tunnels
   void DispatchOnTunnel(nsAHttpTransaction *, nsIInterfaceRequestor *);

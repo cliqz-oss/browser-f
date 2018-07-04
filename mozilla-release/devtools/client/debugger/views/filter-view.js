@@ -447,7 +447,7 @@ FilterView.prototype = {
 
     let content = this.DebuggerView.editor.getText();
     if (content.length < this.DebuggerView.LARGE_FILE_SIZE &&
-        SEARCH_AUTOFILL.indexOf(aOperator) != -1) {
+        SEARCH_AUTOFILL.includes(aOperator)) {
       let cursor = this.DebuggerView.editor.getCursor();
       let location = this.DebuggerView.Sources.selectedItem.attachment.source.url;
       let source = this.Parser.get(content, location);
@@ -551,7 +551,7 @@ function FilteredSourcesView(DebuggerView) {
   this._onSelect = this._onSelect.bind(this);
 }
 
-FilteredSourcesView.prototype = Heritage.extend(ResultsPanelContainer.prototype, {
+FilteredSourcesView.prototype = extend(ResultsPanelContainer.prototype, {
   /**
    * Initialization function, called when the debugger is started.
    */
@@ -714,7 +714,7 @@ function FilteredFunctionsView(SourceScripts, Parser, DebuggerView) {
   this._onSelect = this._onSelect.bind(this);
 }
 
-FilteredFunctionsView.prototype = Heritage.extend(ResultsPanelContainer.prototype, {
+FilteredFunctionsView.prototype = extend(ResultsPanelContainer.prototype, {
   /**
    * Initialization function, called when the debugger is started.
    */

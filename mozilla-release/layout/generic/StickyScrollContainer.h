@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,6 +13,7 @@
 #define StickyScrollContainer_h
 
 #include "nsPoint.h"
+#include "nsRectAbsolute.h"
 #include "nsTArray.h"
 #include "nsIScrollPositionListener.h"
 
@@ -67,7 +68,7 @@ public:
    * Compute where a frame should not scroll with the page, represented by the
    * difference of two rectangles.
    */
-  void GetScrollRanges(nsIFrame* aFrame, nsRect* aOuter, nsRect* aInner) const;
+  void GetScrollRanges(nsIFrame* aFrame, nsRectAbsolute* aOuter, nsRectAbsolute* aInner) const;
 
   /**
    * Compute and set the position of a frame and its following continuations.

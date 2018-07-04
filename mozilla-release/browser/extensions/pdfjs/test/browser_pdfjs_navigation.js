@@ -1,5 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 requestLongerTimeout(2);
 
@@ -157,7 +158,6 @@ add_task(async function test() {
       await ContentTask.spawn(newTabBrowser, null, async function() {
         // Check if PDF is opened with internal viewer
         Assert.ok(content.document.querySelector("div#viewer"), "document content has viewer UI");
-        Assert.ok("PDFJS" in content.wrappedJSObject, "window content has PDFJS object");
       });
 
       await ContentTask.spawn(newTabBrowser, null, contentSetUp);

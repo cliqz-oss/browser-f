@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -162,7 +161,9 @@ CompositableParentManager::ReceiveCompositableUpdate(const CompositableOperation
         t->mPictureRect = timedTexture.picture();
         t->mFrameID = timedTexture.frameID();
         t->mProducerID = timedTexture.producerID();
-        t->mTexture->SetReadLock(FindReadLock(timedTexture.sharedLock()));
+        if (timedTexture.readLocked()) {
+          t->mTexture->SetReadLocked();
+        }
       }
       if (textures.Length() > 0) {
         compositable->UseTextureHost(textures);
@@ -187,8 +188,12 @@ CompositableParentManager::ReceiveCompositableUpdate(const CompositableOperation
       const OpUseComponentAlphaTextures& op = aEdit.detail().get_OpUseComponentAlphaTextures();
       RefPtr<TextureHost> texOnBlack = TextureHost::AsTextureHost(op.textureOnBlackParent());
       RefPtr<TextureHost> texOnWhite = TextureHost::AsTextureHost(op.textureOnWhiteParent());
-      texOnBlack->SetReadLock(FindReadLock(op.sharedLockBlack()));
-      texOnWhite->SetReadLock(FindReadLock(op.sharedLockWhite()));
+      if (op.readLockedBlack()) {
+        texOnBlack->SetReadLocked();
+      }
+      if (op.readLockedWhite()) {
+        texOnWhite->SetReadLocked();
+      }
 
       MOZ_ASSERT(texOnBlack && texOnWhite);
       compositable->UseComponentAlphaTextures(texOnBlack, texOnWhite);
@@ -241,7 +246,8 @@ CompositableParentManager::DestroyActor(const OpDestroy& aOp)
 
 RefPtr<CompositableHost>
 CompositableParentManager::AddCompositable(const CompositableHandle& aHandle,
-				           const TextureInfo& aInfo)
+				           const TextureInfo& aInfo,
+                                           bool aUseWebRender)
 {
   if (mCompositables.find(aHandle.Value()) != mCompositables.end()) {
     NS_ERROR("Client should not allocate duplicate handles");
@@ -252,7 +258,7 @@ CompositableParentManager::AddCompositable(const CompositableHandle& aHandle,
     return nullptr;
   }
 
-  RefPtr<CompositableHost> host = CompositableHost::Create(aInfo);
+  RefPtr<CompositableHost> host = CompositableHost::Create(aInfo, aUseWebRender);
   if (!host) {
     return nullptr;
   }
@@ -283,29 +289,6 @@ CompositableParentManager::ReleaseCompositable(const CompositableHandle& aHandle
   mCompositables.erase(iter);
 
   host->Detach(nullptr, CompositableHost::FORCE_DETACH);
-}
-
-bool
-CompositableParentManager::AddReadLocks(ReadLockArray&& aReadLocks)
-{
-  for (ReadLockInit& r : aReadLocks) {
-    if (mReadLocks.find(r.handle().Value()) != mReadLocks.end()) {
-      NS_ERROR("Duplicate read lock handle!");
-      return false;
-    }
-    mReadLocks[r.handle().Value()] = TextureReadLock::Deserialize(r.sharedLock(), this);
-  }
-  return true;
-}
-
-TextureReadLock*
-CompositableParentManager::FindReadLock(const ReadLockHandle& aHandle)
-{
-  auto iter = mReadLocks.find(aHandle.Value());
-  if (iter == mReadLocks.end()) {
-    return nullptr;
-  }
-  return iter->second.get();
 }
 
 } // namespace layers

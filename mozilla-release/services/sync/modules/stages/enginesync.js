@@ -6,32 +6,31 @@
  * This file contains code for synchronizing engines.
  */
 
-this.EXPORTED_SYMBOLS = ["EngineSynchronizer"];
+var EXPORTED_SYMBOLS = ["EngineSynchronizer"];
 
-var {utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-common/async.js");
-XPCOMUtils.defineLazyModuleGetter(this, "Doctor",
-                                  "resource://services-sync/doctor.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.defineModuleGetter(this, "Doctor",
+                               "resource://services-sync/doctor.js");
 
 /**
  * Perform synchronization of engines.
  *
  * This was originally split out of service.js. The API needs lots of love.
  */
-this.EngineSynchronizer = function EngineSynchronizer(service) {
+function EngineSynchronizer(service) {
   this._log = Log.repository.getLogger("Sync.Synchronizer");
-  this._log.level = Log.Level[Svc.Prefs.get("log.logger.synchronizer")];
+  this._log.manageLevelFromPref("services.sync.log.logger.synchronizer");
 
   this.service = service;
 }
 
 EngineSynchronizer.prototype = {
-  async sync(engineNamesToSync) {
+  async sync(engineNamesToSync, why) {
+    let fastSync = why && why == "sleep";
     let startTime = Date.now();
 
     this.service.status.resetSync();
@@ -50,7 +49,7 @@ EngineSynchronizer.prototype = {
     }
 
     // If we don't have a node, get one. If that fails, retry in 10 minutes.
-    if (!this.service.clusterURL && !this.service._clusterManager.setCluster()) {
+    if (!this.service.clusterURL && !(await this.service.identity.setCluster())) {
       this.service.status.sync = NO_SYNC_NODE_FOUND;
       this._log.info("No cluster URL found. Cannot sync.");
       return;
@@ -75,17 +74,19 @@ EngineSynchronizer.prototype = {
       engine.lastModified = info.obj[engine.name] || 0;
     }
 
-    if (!(await this.service._remoteSetup(info))) {
+    if (!(await this.service._remoteSetup(info, !fastSync))) {
       throw new Error("Aborting sync, remote setup failed");
     }
 
-    // Make sure we have an up-to-date list of clients before sending commands
-    this._log.debug("Refreshing client list.");
-    if (!(await this._syncEngine(this.service.clientsEngine))) {
-      // Clients is an engine like any other; it can fail with a 401,
-      // and we can elect to abort the sync.
-      this._log.warn("Client engine sync failed. Aborting.");
-      return;
+    if (!fastSync) {
+      // Make sure we have an up-to-date list of clients before sending commands
+      this._log.debug("Refreshing client list.");
+      if (!(await this._syncEngine(this.service.clientsEngine))) {
+        // Clients is an engine like any other; it can fail with a 401,
+        // and we can elect to abort the sync.
+        this._log.warn("Client engine sync failed. Aborting.");
+        return;
+      }
     }
 
     // We only honor the "hint" of what engines to Sync if this isn't
@@ -107,7 +108,7 @@ EngineSynchronizer.prototype = {
         break;
     }
 
-    if (this.service.clientsEngine.localCommands) {
+    if (!fastSync && this.service.clientsEngine.localCommands) {
       try {
         if (!(await this.service.clientsEngine.processIncomingCommands())) {
           this.service.status.sync = ABORT_SYNC_COMMAND;
@@ -135,6 +136,8 @@ EngineSynchronizer.prototype = {
       this.service.errorHandler.checkServerError(ex);
       throw ex;
     }
+
+    await this.service.engineManager.switchAlternatives();
 
     // If the engines to sync has been specified, we sync in the order specified.
     let enginesToSync;
@@ -179,12 +182,20 @@ EngineSynchronizer.prototype = {
         }
       }
 
-      await Doctor.consult(enginesToValidate);
+      if (!fastSync) {
+        await Doctor.consult(enginesToValidate);
+      }
 
       // If there were no sync engine failures
       if (this.service.status.service != SYNC_FAILED_PARTIAL) {
-        Svc.Prefs.set("lastSync", new Date().toString());
         this.service.status.sync = SYNC_SUCCEEDED;
+      }
+
+      // Even if there were engine failures, bump lastSync even on partial since
+      // it's reflected in the UI (bug 1439777).
+      if (this.service.status.service == SYNC_FAILED_PARTIAL ||
+          this.service.status.service == STATUS_OK) {
+        Svc.Prefs.set("lastSync", new Date().toString());
       }
     } finally {
       Svc.Prefs.reset("firstSync");
@@ -315,7 +326,11 @@ EngineSynchronizer.prototype = {
         this._log.trace("The " + engineName + " engine was disabled remotely.");
 
         // Don't automatically mark it as declined!
-        engine.enabled = false;
+        try {
+          engine.enabled = false;
+        } catch (e) {
+          this._log.trace("Failed to disable engine " + engineName);
+        }
       }
     }
 

@@ -5,34 +5,29 @@
 'use strict';
 
 (function() {
-  var mojomId = 'device/usb/public/interfaces/chooser_service.mojom';
+  var mojomId = 'device/usb/public/mojom/chooser_service.mojom';
   if (mojo.internal.isMojomLoaded(mojomId)) {
     console.warn('The following mojom is loaded multiple times: ' + mojomId);
     return;
   }
   mojo.internal.markMojomLoaded(mojomId);
-
-  // TODO(yzshen): Define these aliases to minimize the differences between the
-  // old/new modes. Remove them when the old mode goes away.
   var bindings = mojo;
   var associatedBindings = mojo;
   var codec = mojo.internal;
   var validator = mojo.internal;
+
+  var exports = mojo.internal.exposeNamespace('device.mojom');
   var device$ =
       mojo.internal.exposeNamespace('device.mojom');
   if (mojo.config.autoLoadMojomDeps) {
     mojo.internal.loadMojomIfNecessary(
-        'device/usb/public/interfaces/device.mojom',
-        new URL('device.mojom.js',
-                document.currentScript.src).href);
+        'device/usb/public/mojom/device.mojom', 'device.mojom.js');
   }
   var device_manager$ =
       mojo.internal.exposeNamespace('device.mojom');
   if (mojo.config.autoLoadMojomDeps) {
     mojo.internal.loadMojomIfNecessary(
-        'device/usb/public/interfaces/device_manager.mojom',
-        new URL('device_manager.mojom.js',
-                document.currentScript.src).href);
+        'device/usb/public/mojom/device_manager.mojom', 'device_manager.mojom.js');
   }
 
 
@@ -67,7 +62,6 @@
         return err;
 
 
-    
     // validate UsbChooserService_GetPermission_Params.deviceFilters
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 0, 8, new codec.PointerTo(device_manager$.UsbDeviceFilter), false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -123,7 +117,6 @@
         return err;
 
 
-    
     // validate UsbChooserService_GetPermission_ResponseParams.result
     err = messageValidator.validateStructPointer(offset + codec.kStructHeaderSize + 0, device$.UsbDeviceInfo, true);
     if (err !== validator.validationError.NONE)
@@ -274,7 +267,6 @@
   };
   UsbChooserServiceStub.prototype.validator = validateUsbChooserServiceRequest;
   UsbChooserServiceProxy.prototype.validator = validateUsbChooserServiceResponse;
-  var exports = mojo.internal.exposeNamespace("device.mojom");
   exports.UsbChooserService = UsbChooserService;
   exports.UsbChooserServicePtr = UsbChooserServicePtr;
   exports.UsbChooserServiceAssociatedPtr = UsbChooserServiceAssociatedPtr;

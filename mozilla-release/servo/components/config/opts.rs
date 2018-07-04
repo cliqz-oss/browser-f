@@ -40,6 +40,7 @@ pub struct Opts {
     pub device_pixels_per_px: Option<f32>,
 
     /// `None` to disable the time profiler or `Some` to enable it with:
+    ///
     ///  - an interval in seconds to cause it to produce output on that interval.
     ///    (`i.e. -p 5`).
     ///  - a file path to write profiling info to a TSV file upon Servo's termination.
@@ -68,7 +69,7 @@ pub struct Opts {
     pub output_file: Option<String>,
 
     /// Replace unpaires surrogates in DOM strings with U+FFFD.
-    /// See https://github.com/servo/servo/issues/6564
+    /// See <https://github.com/servo/servo/issues/6564>
     pub replace_surrogates: bool,
 
     /// Log GC passes and their durations.
@@ -189,9 +190,6 @@ pub struct Opts {
     /// True to show webrender profiling stats on screen.
     pub webrender_stats: bool,
 
-    /// True to show webrender debug on screen.
-    pub webrender_debug: bool,
-
     /// True if webrender recording should be enabled.
     pub webrender_record: bool,
 
@@ -296,7 +294,7 @@ pub struct DebugOptions {
     pub convert_mouse_to_touch: bool,
 
     /// Replace unpaires surrogates in DOM strings with U+FFFD.
-    /// See https://github.com/servo/servo/issues/6564
+    /// See <https://github.com/servo/servo/issues/6564>
     pub replace_surrogates: bool,
 
     /// Log GC passes and their durations.
@@ -310,9 +308,6 @@ pub struct DebugOptions {
 
     /// Show webrender profiling stats on screen.
     pub webrender_stats: bool,
-
-    /// Show webrender debug on screen.
-    pub webrender_debug: bool,
 
     /// Enable webrender recording.
     pub webrender_record: bool,
@@ -365,7 +360,6 @@ impl DebugOptions {
                 "load-webfonts-synchronously" => self.load_webfonts_synchronously = true,
                 "disable-vsync" => self.disable_vsync = true,
                 "wr-stats" => self.webrender_stats = true,
-                "wr-debug" => self.webrender_debug = true,
                 "wr-record" => self.webrender_record = true,
                 "wr-no-batch" => self.webrender_disable_batch = true,
                 "msaa" => self.use_msaa = true,
@@ -448,27 +442,29 @@ pub fn multiprocess() -> bool {
 enum UserAgent {
     Desktop,
     Android,
+    #[allow(non_camel_case_types)]
+    iOS
 }
 
 fn default_user_agent_string(agent: UserAgent) -> &'static str {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     const DESKTOP_UA_STRING: &'static str =
-        "Mozilla/5.0 (X11; Linux x86_64; rv:37.0) Servo/1.0 Firefox/37.0";
+        "Mozilla/5.0 (X11; Linux x86_64; rv:55.0) Servo/1.0 Firefox/55.0";
     #[cfg(all(target_os = "linux", not(target_arch = "x86_64")))]
     const DESKTOP_UA_STRING: &'static str =
-        "Mozilla/5.0 (X11; Linux i686; rv:37.0) Servo/1.0 Firefox/37.0";
+        "Mozilla/5.0 (X11; Linux i686; rv:55.0) Servo/1.0 Firefox/55.0";
 
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
     const DESKTOP_UA_STRING: &'static str =
-        "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:37.0) Servo/1.0 Firefox/37.0";
+        "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:55.0) Servo/1.0 Firefox/55.0";
     #[cfg(all(target_os = "windows", not(target_arch = "x86_64")))]
     const DESKTOP_UA_STRING: &'static str =
-        "Mozilla/5.0 (Windows NT 6.1; rv:37.0) Servo/1.0 Firefox/37.0";
+        "Mozilla/5.0 (Windows NT 6.1; rv:55.0) Servo/1.0 Firefox/55.0";
 
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     // Neither Linux nor Windows, so maybe OS X, and if not then OS X is an okay fallback.
     const DESKTOP_UA_STRING: &'static str =
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.10; rv:37.0) Servo/1.0 Firefox/37.0";
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.10; rv:55.0) Servo/1.0 Firefox/55.0";
 
 
     match agent {
@@ -476,7 +472,10 @@ fn default_user_agent_string(agent: UserAgent) -> &'static str {
             DESKTOP_UA_STRING
         }
         UserAgent::Android => {
-            "Mozilla/5.0 (Android; Mobile; rv:37.0) Servo/1.0 Firefox/37.0"
+            "Mozilla/5.0 (Android; Mobile; rv:55.0) Servo/1.0 Firefox/55.0"
+        }
+        UserAgent::iOS => {
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 8_3 like Mac OS X; rv:55.0) Servo/1.0 Firefox/55.0"
         }
     }
 }
@@ -484,7 +483,10 @@ fn default_user_agent_string(agent: UserAgent) -> &'static str {
 #[cfg(target_os = "android")]
 const DEFAULT_USER_AGENT: UserAgent = UserAgent::Android;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(target_os = "ios")]
+const DEFAULT_USER_AGENT: UserAgent = UserAgent::iOS;
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const DEFAULT_USER_AGENT: UserAgent = UserAgent::Desktop;
 
 pub fn default_opts() -> Opts {
@@ -508,9 +510,9 @@ pub fn default_opts() -> Opts {
         bubble_inline_sizes_separately: false,
         show_debug_fragment_borders: false,
         show_debug_parallel_layout: false,
-        enable_text_antialiasing: false,
-        enable_subpixel_text_antialiasing: false,
-        enable_canvas_antialiasing: false,
+        enable_text_antialiasing: true,
+        enable_subpixel_text_antialiasing: true,
+        enable_canvas_antialiasing: true,
         trace_layout: false,
         debugger_port: None,
         devtools_port: None,
@@ -540,7 +542,6 @@ pub fn default_opts() -> Opts {
         config_dir: None,
         full_backtraces: false,
         is_printing_version: false,
-        webrender_debug: false,
         webrender_record: false,
         webrender_batch: true,
         precache_shaders: false,
@@ -560,7 +561,6 @@ pub fn from_cmdline_args(args: &[String]) -> ArgumentParsingResult {
     opts.optopt("o", "output", "Output file", "output.png");
     opts.optopt("s", "size", "Size of tiles", "512");
     opts.optopt("", "device-pixel-ratio", "Device pixels per px", "");
-    opts.optopt("t", "threads", "Number of paint threads", "1");
     opts.optflagopt("p", "profile", "Time profiler flag and either a TSV output filename \
         OR an interval for output to Stdout (blank for Stdout with interval of 5s)", "10 \
         OR time.tsv");
@@ -584,7 +584,7 @@ pub fn from_cmdline_args(args: &[String]) -> ArgumentParsingResult {
     opts.optopt("", "resolution", "Set window resolution.", "1024x740");
     opts.optopt("u",
                 "user-agent",
-                "Set custom user agent string (or android / desktop for platform default)",
+                "Set custom user agent string (or ios / android / desktop for platform default)",
                 "NCSA Mosaic/1.0 (X11;SunOS 4.1.4 sun4m)");
     opts.optflag("M", "multiprocess", "Run in multiprocess mode");
     opts.optflag("S", "sandbox", "Run in a sandbox if multiprocess");
@@ -601,7 +601,7 @@ pub fn from_cmdline_args(args: &[String]) -> ArgumentParsingResult {
     opts.optopt("", "content-process" , "Run as a content process and connect to the given pipe",
                 "servo-ipc-channel.abcdefg");
     opts.optmulti("", "pref",
-                  "A preference to set to enable", "dom.mozbrowser.enabled");
+                  "A preference to set to enable", "dom.bluetooth.enabled");
     opts.optflag("b", "no-native-titlebar", "Do not use native titlebar");
     opts.optflag("w", "webrender", "Use webrender backend");
     opts.optopt("G", "graphics", "Select graphics backend (gl or es2)", "gl");
@@ -766,6 +766,7 @@ pub fn from_cmdline_args(args: &[String]) -> ArgumentParsingResult {
     }
 
     let user_agent = match opt_match.opt_str("u") {
+        Some(ref ua) if ua == "ios" => default_user_agent_string(UserAgent::iOS).into(),
         Some(ref ua) if ua == "android" => default_user_agent_string(UserAgent::Android).into(),
         Some(ref ua) if ua == "desktop" => default_user_agent_string(UserAgent::Desktop).into(),
         Some(ua) => ua.into(),
@@ -841,7 +842,6 @@ pub fn from_cmdline_args(args: &[String]) -> ArgumentParsingResult {
         config_dir: opt_match.opt_str("config-dir").map(Into::into),
         full_backtraces: debug_options.full_backtraces,
         is_printing_version: is_printing_version,
-        webrender_debug: debug_options.webrender_debug,
         webrender_record: debug_options.webrender_record,
         webrender_batch: !debug_options.webrender_disable_batch,
         precache_shaders: debug_options.precache_shaders,
@@ -902,9 +902,12 @@ lazy_static! {
 }
 
 pub fn set_defaults(opts: Opts) {
+    // Set the static to the new default value.
+    MULTIPROCESS.store(opts.multiprocess, Ordering::SeqCst);
+
     unsafe {
         assert!(DEFAULT_OPTIONS.is_null());
-        assert!(DEFAULT_OPTIONS != INVALID_OPTIONS);
+        assert_ne!(DEFAULT_OPTIONS, INVALID_OPTIONS);
         let box_opts = Box::new(opts);
         DEFAULT_OPTIONS = Box::into_raw(box_opts);
     }

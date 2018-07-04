@@ -5,9 +5,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PerformanceStats"];
-
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["PerformanceStats"];
 
 /**
  * API for querying and examining performance data.
@@ -24,14 +22,14 @@ const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
  * you should favor PerformanceWatcher.
  */
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/ObjectUtils.jsm", this);
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm", this);
+ChromeUtils.defineModuleGetter(this, "PromiseUtils",
   "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
+ChromeUtils.defineModuleGetter(this, "setTimeout",
   "resource://gre/modules/Timer.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "clearTimeout",
+ChromeUtils.defineModuleGetter(this, "clearTimeout",
   "resource://gre/modules/Timer.jsm");
 
 // The nsIPerformanceStatsService provides lower-level
@@ -97,7 +95,7 @@ Probe.prototype = {
       try {
         this._impl.isActive = false;
       } catch (ex) {
-        if (ex && typeof ex == "object" && ex.result == Components.results.NS_ERROR_NOT_AVAILABLE) {
+        if (ex && typeof ex == "object" && ex.result == Cr.NS_ERROR_NOT_AVAILABLE) {
           // The service has already been shutdown. Ignore further shutdown requests.
           return;
         }
@@ -228,7 +226,7 @@ var Probes = {
         totalCPUTime: xpcom.totalUserTime + xpcom.totalSystemTime,
         durations,
         longestDuration: lastNonZero(durations)
-      }
+      };
     },
     isEqual(a, b) {
       // invariant: `a` and `b` are both non-null
@@ -402,7 +400,7 @@ function PerformanceMonitor(probes) {
   // `this` object, a notification of `FINALIZATION_TOPIC` will be triggered
   // with `id` as message.
   this._id = PerformanceMonitor.makeId();
-  this._finalizer = finalizer.make(FINALIZATION_TOPIC, this._id)
+  this._finalizer = finalizer.make(FINALIZATION_TOPIC, this._id);
   PerformanceMonitor._monitors.set(this._id, probes);
 }
 PerformanceMonitor.prototype = {
@@ -552,14 +550,14 @@ PerformanceMonitor.dispose = function(id) {
   for (let probe of probes) {
     probe.release();
   }
-}
+};
 
 // Generate a unique id for each PerformanceMonitor. Used during
 // finalization.
 PerformanceMonitor._counter = 0;
 PerformanceMonitor.makeId = function() {
   return "PerformanceMonitor-" + (this._counter++);
-}
+};
 
 // Once a `PerformanceMonitor` has been garbage-collected,
 // release the probes unless `dispose()` has already been called.
@@ -568,7 +566,7 @@ Services.obs.addObserver(function(subject, topic, value) {
 }, FINALIZATION_TOPIC);
 
 // Public API
-this.PerformanceStats = {
+var PerformanceStats = {
   /**
    * Create a monitor for observing a set of performance probes.
    */
@@ -950,7 +948,7 @@ var Process = {
         return;
       }
       if (data.data) {
-        collected.push(data.data)
+        collected.push(data.data);
       }
       if (--expecting > 0) {
         // We are still waiting for at least one response.

@@ -1,6 +1,6 @@
-/* vim: set ts=2 sw=2 et tw=80: */
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -57,12 +57,13 @@ VideoBridgeParent::DeallocPVideoBridgeParent()
 
 PTextureParent*
 VideoBridgeParent::AllocPTextureParent(const SurfaceDescriptor& aSharedData,
+                                       const ReadLockDescriptor& aReadLock,
                                        const LayersBackend& aLayersBackend,
                                        const TextureFlags& aFlags,
                                        const uint64_t& aSerial)
 {
   PTextureParent* parent =
-    TextureHost::CreateIPDLActor(this, aSharedData, aLayersBackend, aFlags, aSerial, Nothing());
+    TextureHost::CreateIPDLActor(this, aSharedData, aReadLock, aLayersBackend, aFlags, aSerial, Nothing());
   mTextureMap[aSerial] = parent;
   return parent;
 }

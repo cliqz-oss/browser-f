@@ -1,6 +1,6 @@
 "use strict";
 
-var Services = Components.utils.import("resource://gre/modules/Services.jsm", {}).Services;
+var Services = ChromeUtils.import("resource://gre/modules/Services.jsm", {}).Services;
 
 // Process Message Manager topics.
 const MSG_REQUEST = "session-restore-test?duration";
@@ -29,9 +29,9 @@ addEventListener("load", function() {
 
       // Next one is required by the test harness but not used
       dumpLog("__startTimestamp" +
-              Date.now() +  // eslint-disable-line mozilla/avoid-Date-timing
+              Date.now() + // eslint-disable-line mozilla/avoid-Date-timing
               "__endTimestamp\n\n");
-      goQuitApplication();
+      TalosPowersContent.goQuitApplication();
   });
 
   // In case the add-on has broadcasted the message before we were loaded,

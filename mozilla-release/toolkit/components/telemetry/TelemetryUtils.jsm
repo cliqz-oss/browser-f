@@ -4,13 +4,13 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "TelemetryUtils"
 ];
 
-const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.defineModuleGetter(this, "AppConstants",
+                               "resource://gre/modules/AppConstants.jsm");
 
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -19,18 +19,22 @@ const PREF_TELEMETRY_ENABLED = "toolkit.telemetry.enabled";
 const IS_CONTENT_PROCESS = (function() {
   // We cannot use Services.appinfo here because in telemetry xpcshell tests,
   // appinfo is initially unavailable, and becomes available only later on.
+  // eslint-disable-next-line mozilla/use-services
   let runtime = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime);
   return runtime.processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
 })();
 
-this.TelemetryUtils = {
+var TelemetryUtils = {
   Preferences: Object.freeze({
     // General Preferences
     ArchiveEnabled: "toolkit.telemetry.archive.enabled",
     CachedClientId: "toolkit.telemetry.cachedClientID",
     FirstRun: "toolkit.telemetry.reportingpolicy.firstRun",
+    FirstShutdownPingEnabled: "toolkit.telemetry.firstShutdownPing.enabled",
     HealthPingEnabled: "toolkit.telemetry.healthping.enabled",
+    HybridContentEnabled: "toolkit.telemetry.hybridContent.enabled",
     OverrideOfficialCheck: "toolkit.telemetry.send.overrideOfficialCheck",
+    OverridePreRelease: "toolkit.telemetry.testing.overridePreRelease",
     Server: "toolkit.telemetry.server",
     ShutdownPingSender: "toolkit.telemetry.shutdownPingSender.enabled",
     ShutdownPingSenderFirstSession: "toolkit.telemetry.shutdownPingSender.enabledFirstSession",
@@ -199,5 +203,27 @@ this.TelemetryUtils = {
     } catch (ex) {
       return Date.now();
     }
-  }
+  },
+
+  /**
+   * Set the Telemetry core recording flag for Unified Telemetry.
+   */
+  setTelemetryRecordingFlags() {
+    // Enable extended Telemetry on pre-release channels and disable it
+    // on Release/ESR.
+    let prereleaseChannels = ["nightly", "aurora", "beta"];
+    if (!AppConstants.MOZILLA_OFFICIAL) {
+      // Turn extended telemetry for local developer builds.
+      prereleaseChannels.push("default");
+    }
+    const isPrereleaseChannel =
+      prereleaseChannels.includes(AppConstants.MOZ_UPDATE_CHANNEL);
+    const isReleaseCandidateOnBeta =
+      AppConstants.MOZ_UPDATE_CHANNEL === "release" &&
+      Services.prefs.getCharPref("app.update.channel", null) === "beta";
+    Services.telemetry.canRecordBase = true;
+    Services.telemetry.canRecordExtended = isPrereleaseChannel ||
+      isReleaseCandidateOnBeta ||
+      Services.prefs.getBoolPref(this.Preferences.OverridePreRelease, false);
+  },
 };

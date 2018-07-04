@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,6 +9,7 @@
 
 #include "nsTArray.h"
 #include "mozilla/RefPtr.h"
+#include "nsRefPtrHashtable.h"
 
 #include "gfxVR.h"
 #include "VRDisplayHost.h"
@@ -23,7 +25,6 @@ class VRDisplayPuppet : public VRDisplayHost
 {
 public:
   void SetDisplayInfo(const VRDisplayInfo& aDisplayInfo);
-  virtual void NotifyVSync() override;
   void SetSensorState(const VRHMDSensorState& aSensorState);
   void ZeroSensor() override;
 
@@ -32,7 +33,7 @@ protected:
   virtual void StartPresentation() override;
   virtual void StopPresentation() override;
 #if defined(XP_WIN)
-  virtual bool SubmitFrame(mozilla::layers::TextureSourceD3D11* aSource,
+  virtual bool SubmitFrame(ID3D11Texture2D* aSource,
                            const IntSize& aSize,
                            const gfx::Rect& aLeftEyeRect,
                            const gfx::Rect& aRightEyeRect) override;
@@ -41,10 +42,15 @@ protected:
                            const IntSize& aSize,
                            const gfx::Rect& aLeftEyeRect,
                            const gfx::Rect& aRightEyeRect) override;
+#elif defined(MOZ_ANDROID_GOOGLE_VR)
+  virtual bool SubmitFrame(const mozilla::layers::EGLImageDescriptor* aDescriptor,
+                           const gfx::Rect& aLeftEyeRect,
+                           const gfx::Rect& aRightEyeRect) override;
 #endif
 
 public:
   explicit VRDisplayPuppet();
+  void Refresh();
 
 protected:
   virtual ~VRDisplayPuppet();
@@ -56,8 +62,6 @@ private:
 #if defined(XP_WIN)
   bool UpdateConstantBuffers();
 
-  RefPtr<ID3D11Device> mDevice;
-  RefPtr<ID3D11DeviceContext> mContext;
   ID3D11VertexShader* mQuadVS;
   ID3D11PixelShader* mQuadPS;
   RefPtr<ID3D11SamplerState> mLinearSamplerState;
@@ -94,7 +98,6 @@ private:
   uint64_t mButtonPressState;
   uint64_t mButtonTouchState;
   float mAxisMoveState[3];
-  float mAxisMove[3];
   dom::GamepadPoseState mPoseState;
 };
 
@@ -104,10 +107,17 @@ class VRSystemManagerPuppet : public VRSystemManager
 {
 public:
   static already_AddRefed<VRSystemManagerPuppet> Create();
+  uint32_t CreateTestDisplay();
+  void ClearTestDisplays();
+  void SetPuppetDisplayInfo(const uint32_t& aDeviceID,
+                            const VRDisplayInfo& aDisplayInfo);
+  void SetPuppetDisplaySensorState(const uint32_t& aDeviceID,
+                                   const VRHMDSensorState& aSensorState);
 
   virtual void Destroy() override;
   virtual void Shutdown() override;
-  virtual bool GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult) override;
+  virtual void Enumerate() override;
+  virtual void GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult) override;
   virtual bool GetIsPresenting() override;
   virtual void HandleInput() override;
   virtual void GetControllers(nsTArray<RefPtr<VRControllerHost>>&
@@ -118,8 +128,9 @@ public:
                              uint32_t aHapticIndex,
                              double aIntensity,
                              double aDuration,
-                             uint32_t aPromiseID) override;
+                             const VRManagerPromise& aPromise) override;
   virtual void StopVibrateHaptic(uint32_t aControllerIdx) override;
+  virtual void NotifyVSync() override;
 
 protected:
   VRSystemManagerPuppet();
@@ -136,9 +147,15 @@ private:
                           const dom::GamepadPoseState& aPose,
                           VRControllerHost* aController);
 
-  // there can only be one
-  RefPtr<impl::VRDisplayPuppet> mPuppetHMD;
+  // Enumerated puppet hardware devices, as seen by Web APIs:
+  nsTArray<RefPtr<impl::VRDisplayPuppet>> mPuppetHMDs;
   nsTArray<RefPtr<impl::VRControllerPuppet>> mPuppetController;
+
+  // Emulated hardware state, persistent through VRSystemManager::Shutdown():
+  static const uint32_t kMaxPuppetDisplays = 5;
+  uint32_t mPuppetDisplayCount;
+  VRDisplayInfo mPuppetDisplayInfo[kMaxPuppetDisplays];
+  VRHMDSensorState mPuppetDisplaySensorState[kMaxPuppetDisplays];
 };
 
 } // namespace gfx

@@ -2,9 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-%include ../windowsShared.inc
-%filter substitution
-
 /* Toolbar */
 #placesToolbar {
   padding: 3px;
@@ -38,8 +35,6 @@
 /* Menu */
 #placesMenu {
   margin-inline-start: 6px;
-  -moz-appearance: none;
-  border: none;
 }
 
 #placesMenu > menu {
@@ -141,7 +136,7 @@
   padding-inline-end: 9px;
 }
 
-@media not all and (-moz-windows-classic) {
+@media (-moz-windows-classic: 0) {
   #placesToolbox {
     -moz-appearance: none;
     background-color: transparent;
@@ -164,42 +159,16 @@
     margin-inline-start: -3px;
     position: relative;
   }
+
+  @media (-moz-os-version: windows-win7) {
+    #detailsDeck {
+      border-top-color: #A9B7C9;
+    }
+  }
 }
 
 @media (-moz-windows-glass) {
   #placesToolbox {
     border-top: none;
-  }
-
-  #placesToolbar {
-    background-image: linear-gradient(@toolbarHighlight@, transparent);
-  }
-}
-
-@media (-moz-windows-default-theme) and (-moz-os-version: windows-win7) {
-  #placesView,
-  #infoPane,
-  #placesList,
-  #placeContent {
-    background-color: #EEF3FA;
-  }
-
-%ifndef MOZ_PHOTON_THEME
-  #placesToolbar {
-    background-color: @customToolbarColor@;
-    color: black;
-  }
-%endif
-  #detailsDeck {
-    border-top-color: #A9B7C9;
-  }
-
-  #searchFilter {
-    -moz-appearance: none;
-    padding: 2px;
-    padding-inline-start: 4px;
-    background-clip: padding-box;
-    border: 1px solid rgba(0,0,0,.32);
-    border-radius: 2px;
   }
 }

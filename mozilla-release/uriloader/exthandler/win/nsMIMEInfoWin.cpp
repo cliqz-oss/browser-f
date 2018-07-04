@@ -227,15 +227,13 @@ nsMIMEInfoWin::LoadUriInternal(nsIURI * aURL)
     aURL->GetAsciiSpec(urlSpec);
  
     // Unescape non-ASCII characters in the URL
-    nsAutoCString urlCharset;
     nsAutoString utf16Spec;
-    rv = aURL->GetOriginCharset(urlCharset);
-    NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsITextToSubURI> textToSubURI = do_GetService(NS_ITEXTTOSUBURI_CONTRACTID, &rv);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    if (NS_FAILED(textToSubURI->UnEscapeNonAsciiURI(urlCharset, urlSpec, utf16Spec))) {
+    if (NS_FAILED(textToSubURI->UnEscapeNonAsciiURI(NS_LITERAL_CSTRING("UTF-8"),
+                                                    urlSpec, utf16Spec))) {
       CopyASCIItoUTF16(urlSpec, utf16Spec);
     }
 
@@ -243,8 +241,7 @@ nsMIMEInfoWin::LoadUriInternal(nsIURI * aURL)
     SHELLEXECUTEINFOW sinfo;
     memset(&sinfo, 0, sizeof(sinfo));
     sinfo.cbSize   = sizeof(sinfo);
-    sinfo.fMask    = SEE_MASK_FLAG_DDEWAIT |
-      SEE_MASK_FLAG_NO_UI;
+    sinfo.fMask    = SEE_MASK_FLAG_DDEWAIT;
     sinfo.hwnd     = nullptr;
     sinfo.lpVerb   = (LPWSTR)&cmdVerb;
     sinfo.nShow    = SW_SHOWNORMAL;
@@ -421,7 +418,7 @@ bool nsMIMEInfoWin::GetDllLaunchInfo(nsIFile * aDll,
     // Replace embedded environment variables.
     uint32_t bufLength = 
       ::ExpandEnvironmentStringsW(appFilesystemCommand.get(),
-                                  L"", 0);
+                                  nullptr, 0);
     if (bufLength == 0) // Error
       return false;
 
@@ -515,7 +512,7 @@ void nsMIMEInfoWin::ProcessPath(nsCOMPtr<nsIMutableArray>& appList,
   WCHAR exe[MAX_PATH+1];
   uint32_t len = GetModuleFileNameW(nullptr, exe, MAX_PATH);
   if (len < MAX_PATH && len != 0) {
-    uint32_t index = lower.Find(exe);
+    int32_t index = lower.Find(exe);
     if (index != -1)
       return;
   }
@@ -525,7 +522,7 @@ void nsMIMEInfoWin::ProcessPath(nsCOMPtr<nsIMutableArray>& appList,
     return;
 
   // Save in our main tracking arrays
-  appList->AppendElement(aApp, false);
+  appList->AppendElement(aApp);
   trackList.AppendElement(lower);
 }
 

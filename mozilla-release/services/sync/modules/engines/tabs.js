@@ -2,26 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["TabEngine", "TabSetRecord"];
+var EXPORTED_SYMBOLS = ["TabEngine", "TabSetRecord"];
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+const TABS_TTL = 1814400; // 21 days.
+const TAB_ENTRIES_LIMIT = 5; // How many URLs to include in tab history.
 
-const TABS_TTL = 1814400;          // 21 days.
-const TAB_ENTRIES_LIMIT = 5;      // How many URLs to include in tab history.
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/constants.js");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-sync/constants.js");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
+ChromeUtils.defineModuleGetter(this, "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm");
 
-this.TabSetRecord = function TabSetRecord(collection, id) {
+function TabSetRecord(collection, id) {
   CryptoWrapper.call(this, collection, id);
 }
 TabSetRecord.prototype = {
@@ -33,7 +32,7 @@ TabSetRecord.prototype = {
 Utils.deferGetSet(TabSetRecord, "cleartext", ["clientName", "tabs"]);
 
 
-this.TabEngine = function TabEngine(service) {
+function TabEngine(service) {
   SyncEngine.call(this, "Tabs", service);
 }
 TabEngine.prototype = {
@@ -170,7 +169,7 @@ TabStore.prototype = {
           continue;
         }
 
-        if (current.url.length >= (MAX_UPLOAD_BYTES - 1000)) {
+        if (current.url.length > URI_LENGTH_MAX) {
           this._log.trace("Skipping over-long URL.");
           continue;
         }
@@ -184,7 +183,7 @@ TabStore.prototype = {
 
         let urls = candidates.map((entry) => entry.url)
                              .filter(acceptable)
-                             .reverse();                       // Because Sync puts current at index 0, and history after.
+                             .reverse(); // Because Sync puts current at index 0, and history after.
 
         // Truncate if necessary.
         if (urls.length > TAB_ENTRIES_LIMIT) {
@@ -213,29 +212,21 @@ TabStore.prototype = {
     let tabs = this.getAllTabs(true).sort(function(a, b) {
       return b.lastUsed - a.lastUsed;
     });
+    const maxPayloadSize = this.engine.service.getMemcacheMaxRecordPayloadSize();
+    let records = Utils.tryFitItems(tabs, maxPayloadSize);
 
-    // Figure out how many tabs we can pack into a payload.
-    // We use byteLength here because the data is not encrypted in ascii yet.
-    let size = new TextEncoder("utf-8").encode(JSON.stringify(tabs)).byteLength;
-    let origLength = tabs.length;
-    // See bug 535326 comment 8 for an explanation of the estimation
-    const MAX_TAB_SIZE = this.engine.maxRecordPayloadBytes / 4 * 3 - 1500;
-    if (size > MAX_TAB_SIZE) {
-      // Estimate a little more than the direct fraction to maximize packing
-      let cutoff = Math.ceil(tabs.length * MAX_TAB_SIZE / size);
-      tabs = tabs.slice(0, cutoff + 1);
-
-      // Keep dropping off the last entry until the data fits
-      while (JSON.stringify(tabs).length > MAX_TAB_SIZE)
-        tabs.pop();
+    if (records.length != tabs.length) {
+      this._log.warn(`Can't fit all tabs in sync payload: have ${
+                     tabs.length}, but can only fit ${records.length}.`);
     }
 
-    this._log.trace("Created tabs " + tabs.length + " of " + origLength);
-    tabs.forEach(function(tab) {
-      this._log.trace("Wrapping tab: " + JSON.stringify(tab));
-    }, this);
+    if (this._log.level <= Log.Level.Trace) {
+      records.forEach(tab => {
+        this._log.trace("Wrapping tab: ", tab);
+      });
+    }
 
-    record.tabs = tabs;
+    record.tabs = records;
     return record;
   },
 
@@ -284,8 +275,6 @@ TabStore.prototype = {
 
 function TabTracker(name, engine) {
   Tracker.call(this, name, engine);
-  Svc.Obs.add("weave:engine:start-tracking", this);
-  Svc.Obs.add("weave:engine:stop-tracking", this);
 
   // Make sure "this" pointer is always set correctly for event listeners.
   this.onTab = Utils.bind2(this, this.onTab);
@@ -294,7 +283,7 @@ function TabTracker(name, engine) {
 TabTracker.prototype = {
   __proto__: Tracker.prototype,
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   clearChangedIDs() {
     this.modified = false;
@@ -329,25 +318,23 @@ TabTracker.prototype = {
     }
   },
 
-  startTracking() {
-    Svc.Obs.add("domwindowopened", this);
+  onStart() {
+    Svc.Obs.add("domwindowopened", this.asyncObserver);
     let wins = Services.wm.getEnumerator("navigator:browser");
     while (wins.hasMoreElements()) {
       this._registerListenersForWindow(wins.getNext());
     }
   },
 
-  stopTracking() {
-    Svc.Obs.remove("domwindowopened", this);
+  onStop() {
+    Svc.Obs.remove("domwindowopened", this.asyncObserver);
     let wins = Services.wm.getEnumerator("navigator:browser");
     while (wins.hasMoreElements()) {
       this._unregisterListenersForWindow(wins.getNext());
     }
   },
 
-  observe(subject, topic, data) {
-    Tracker.prototype.observe.call(this, subject, topic, data);
-
+  async observe(subject, topic, data) {
     switch (topic) {
       case "domwindowopened":
         let onLoad = () => {

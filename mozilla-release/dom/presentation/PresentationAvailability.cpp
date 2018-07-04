@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,6 +9,7 @@
 #include "mozilla/dom/PresentationAvailabilityBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/Unused.h"
+#include "nsContentUtils.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsIPresentationDeviceManager.h"
 #include "nsIPresentationService.h"
@@ -32,7 +33,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_ADDREF_INHERITED(PresentationAvailability, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(PresentationAvailability, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(PresentationAvailability)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PresentationAvailability)
   NS_INTERFACE_MAP_ENTRY(nsIPresentationAvailabilityListener)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
@@ -157,6 +158,10 @@ PresentationAvailability::EnqueuePromise(RefPtr<Promise>& aPromise)
 bool
 PresentationAvailability::Value() const
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return false;
+  }
+
   return mIsAvailable;
 }
 
@@ -191,12 +196,21 @@ PresentationAvailability::UpdateAvailabilityAndDispatchEvent(bool aIsAvailable)
     // Use the first availability change notification to resolve promise.
     do {
       nsTArray<RefPtr<Promise>> promises = Move(mPromises);
+
+      if (nsContentUtils::ShouldResistFingerprinting()) {
+        continue;
+      }
+
       for (auto& promise : promises) {
         promise->MaybeResolve(this);
       }
       // more promises may have been added to mPromises, at least in theory
     } while (!mPromises.IsEmpty());
 
+    return;
+  }
+
+  if (nsContentUtils::ShouldResistFingerprinting()) {
     return;
   }
 

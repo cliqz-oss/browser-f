@@ -5,6 +5,17 @@
 
 const PAGE = "http://mochi.test:8888/browser/browser/components/extensions/test/browser/context.html";
 
+async function openContextMenuInPageActionPanel(extension, win = window) {
+  SetPageProxyState("valid");
+  await promiseAnimationFrame(win);
+  const mainPanelshown = BrowserTestUtils.waitForEvent(BrowserPageActions.panelNode, "popupshown");
+  EventUtils.synthesizeMouseAtCenter(BrowserPageActions.mainButtonNode, {}, win);
+  await mainPanelshown;
+  let buttonID = "#" + BrowserPageActions.panelButtonNodeIDForActionID(makeWidgetId(extension.id));
+  let menuID = "pageActionContextMenu";
+  return openChromeContextMenu(menuID, buttonID, win);
+}
+
 add_task(async function test_permissions() {
   function background() {
     browser.test.sendMessage("apis", {
@@ -79,7 +90,7 @@ add_task(async function test_actionContextMenus() {
     is(popup, submenu.firstChild, "Correct submenu opened");
     is(popup.children.length, 2, "Correct number of submenu items");
 
-    let idPrefix = `${makeWidgetId(extension.id)}_`;
+    let idPrefix = `${makeWidgetId(extension.id)}-menuitem-_`;
 
     is(second.tagName, "menuitem", "Second menu item type is correct");
     is(second.label, "click 1", "Second menu item title is correct");
@@ -89,13 +100,60 @@ add_task(async function test_actionContextMenus() {
     is(last.id, `${idPrefix}5`, "Last menu item id is correct");
     is(separator.tagName, "menuseparator", "Separator after last menu item");
 
-    await closeActionContextMenu(popup.firstChild);
+    await closeActionContextMenu(popup.firstChild, kind);
     const {info, tab} = await extension.awaitMessage("click");
     is(info.pageUrl, "http://example.com/", "Click info pageUrl is correct");
     is(tab.id, tabId, "Click event tab ID is correct");
   }
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
+  await extension.unload();
+});
+
+add_task(async function test_hiddenPageActionContextMenu() {
+  const manifest = {
+    page_action: {},
+    permissions: ["menus"],
+  };
+
+  async function background() {
+    const contexts = ["page_action"];
+
+    const parentId = browser.menus.create({contexts, title: "parent"});
+    await browser.menus.create({parentId, title: "click A"});
+    await browser.menus.create({parentId, title: "click B"});
+
+    for (let i = 1; i < 9; i++) {
+      await browser.menus.create({contexts, id: `${i}`, title: `click ${i}`});
+    }
+
+    const [tab] = await browser.tabs.query({active: true});
+    await browser.pageAction.hide(tab.id);
+    browser.test.sendMessage("ready", tab.id);
+  }
+
+  const extension = ExtensionTestUtils.loadExtension({manifest, background});
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com/");
+
+  await extension.startup();
+  await extension.awaitMessage("ready");
+
+  const menu = await openContextMenuInPageActionPanel(extension);
+  const menuItems = Array.filter(menu.childNodes, node => {
+    return window.getComputedStyle(node).visibility == "visible";
+  });
+
+  is(menuItems.length, 3, "Correct number of children");
+  const [dontShowItem, separator, manageItem] = menuItems;
+
+  is(dontShowItem.label, "Don\u2019t Show in Address Bar", "Correct first child");
+  is(separator.tagName, "menuseparator", "Correct second child");
+  is(manageItem.label, "Manage Extension\u2026", "Correct third child");
+
+  await closeChromeContextMenu(menu.id);
+  await closeChromeContextMenu(BrowserPageActions.panelNode.id);
+
+  BrowserTestUtils.removeTab(tab);
   await extension.unload();
 });
 
@@ -168,7 +226,7 @@ add_task(async function test_tabContextMenu() {
   is(click.tab.id, tabId, "Click event tab ID is correct");
   is(click.info.frameId, undefined, "no frameId on chrome");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await first.unload();
   await second.unload();
 });
@@ -192,9 +250,9 @@ add_task(async function test_onclick_frameid() {
   await extension.startup();
   await extension.awaitMessage("ready");
 
-  async function click(selectorOrId) {
-    const func = (selectorOrId == "body") ? openContextMenu : openContextMenuInFrame;
-    const menu = await func(selectorOrId);
+  async function click(selector) {
+    const func = selector === "body" ? openContextMenu : openContextMenuInFrame;
+    const menu = await func(selector);
     const items = menu.getElementsByAttribute("label", "modify");
     await closeExtensionContextMenu(items[0]);
     return extension.awaitMessage("click");
@@ -202,11 +260,11 @@ add_task(async function test_onclick_frameid() {
 
   let info = await click("body");
   is(info.frameId, 0, "top level click");
-  info = await click("frame");
+  info = await click("#frame");
   isnot(info.frameId, undefined, "frame click, frameId is not undefined");
   isnot(info.frameId, 0, "frame click, frameId probably okay");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await extension.unload();
 });
 
@@ -252,7 +310,7 @@ add_task(async function test_multiple_contexts_init() {
   const info = await extension.awaitMessage("click");
   is(info.menuItemId, "child", "onClicked the correct item");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await extension.unload();
 });
 
@@ -307,7 +365,7 @@ add_task(async function test_tools_menu() {
   is(click.info.pageUrl, "http://example.com/", "Click info pageUrl is correct");
   is(click.tab.id, tabId, "Click event tab ID is correct");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await first.unload();
   await second.unload();
 });

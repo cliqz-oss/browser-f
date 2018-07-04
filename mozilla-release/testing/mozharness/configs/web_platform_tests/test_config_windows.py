@@ -4,7 +4,6 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 # ***** END LICENSE BLOCK *****
 
-import os
 import sys
 
 config = {
@@ -20,10 +19,7 @@ config = {
 
     "exes": {
         'python': sys.executable,
-        'virtualenv': [sys.executable, 'c:/mozilla-source/cedar/python/virtualenv/virtualenv.py'], #'c:/mozilla-build/buildbotve/virtualenv.py'],
         'hg': 'c:/mozilla-build/hg/hg',
-        'mozinstall': ['%s/build/venv/scripts/python' % os.getcwd(),
-                       '%s/build/venv/scripts/mozinstall-script.py' % os.getcwd()],
     },
 
     "default_actions": [
@@ -34,10 +30,4 @@ config = {
         'install',
         'run-tests',
     ],
-
-    "find_links": [
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-
-    "pip_index": False,
 }

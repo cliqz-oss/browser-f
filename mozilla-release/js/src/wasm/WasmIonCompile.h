@@ -21,17 +21,20 @@
 
 #include "mozilla/Attributes.h"
 
-#include "wasm/WasmTypes.h"
+#include "wasm/WasmGenerator.h"
 
 namespace js {
 namespace wasm {
 
-class CompileTask;
-class FuncCompileUnit;
+// Return whether IonCompileFunction() can generate code on the current device.
+bool
+IonCanCompile();
 
 // Generates very fast code at the expense of compilation time.
 MOZ_MUST_USE bool
-IonCompileFunction(CompileTask* task, FuncCompileUnit* unit, UniqueChars* error);
+IonCompileFunctions(const ModuleEnvironment& env, LifoAlloc& lifo,
+                    const FuncCompileInputVector& inputs, CompiledCode* code,
+                    UniqueChars* error);
 
 } // namespace wasm
 } // namespace js

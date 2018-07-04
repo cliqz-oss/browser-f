@@ -16,7 +16,7 @@
 #include "nsIPrintingPromptService.h"
 #include "nsIPrintSession.h"
 #include "nsPIDOMWindow.h"
-#include "nsPrintOptionsImpl.h"
+#include "nsPrintSettingsService.h"
 #include "nsServiceManagerUtils.h"
 #include "PrintDataUtils.h"
 #include "PrintProgressDialogChild.h"
@@ -63,10 +63,6 @@ nsPrintingProxy::GetInstance()
 nsresult
 nsPrintingProxy::Init()
 {
-  ContentChild::GetSingleton()->SetEventTargetForActor(this,
-    SystemGroup::EventTargetFor(mozilla::TaskCategory::Other));
-  MOZ_ASSERT(this->GetActorEventTarget());
-
   mozilla::Unused << ContentChild::GetSingleton()->SendPPrintingConstructor(this);
   return NS_OK;
 }
@@ -152,7 +148,7 @@ nsPrintingProxy::ShowProgress(mozIDOMWindowProxy*      parent,
   TabChild* pBrowser = static_cast<TabChild*>(tabchild.get());
 
   RefPtr<PrintProgressDialogChild> dialogChild =
-    new PrintProgressDialogChild(openDialogObserver);
+    new PrintProgressDialogChild(openDialogObserver, printSettings);
 
   SendPPrintProgressDialogConstructor(dialogChild);
 
@@ -186,16 +182,7 @@ nsPrintingProxy::ShowProgress(mozIDOMWindowProxy*      parent,
 
 NS_IMETHODIMP
 nsPrintingProxy::ShowPageSetup(mozIDOMWindowProxy *parent,
-                               nsIPrintSettings *printSettings,
-                               nsIObserver *aObs)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-nsPrintingProxy::ShowPrinterProperties(mozIDOMWindowProxy *parent,
-                                       const char16_t *printerName,
-                                       nsIPrintSettings *printSettings)
+                               nsIPrintSettings *printSettings)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }

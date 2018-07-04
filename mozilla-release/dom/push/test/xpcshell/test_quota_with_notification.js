@@ -7,7 +7,7 @@ const {PushDB, PushService, PushServiceWebSocket} = serviceExports;
 
 
 const userAgentID = 'aaabf1f8-2f68-44f1-a920-b88e9e7d7559';
-const nsIPushQuotaManager = Components.interfaces.nsIPushQuotaManager;
+const nsIPushQuotaManager = Ci.nsIPushQuotaManager;
 
 function run_test() {
   do_get_profile();
@@ -20,7 +20,7 @@ function run_test() {
 
 add_task(async function test_expiration_origin_threshold() {
   let db = PushServiceWebSocket.newPushDB();
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     PushService.notificationForOriginClosed("https://example.com");
     return db.drop().then(_ => db.close());
   });

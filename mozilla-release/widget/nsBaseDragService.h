@@ -10,10 +10,10 @@
 #include "nsIDragSession.h"
 #include "nsITransferable.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMDataTransfer.h"
 #include "nsCOMPtr.h"
 #include "nsRect.h"
 #include "nsPoint.h"
+#include "nsString.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
@@ -32,6 +32,11 @@ namespace mozilla {
 namespace gfx {
 class SourceSurface;
 } // namespace gfx
+
+namespace dom {
+class DataTransfer;
+class Selection;
+} // namespace dom
 } // namespace mozilla
 
 /**
@@ -159,11 +164,12 @@ protected:
 
   nsSize mTargetSize;
   nsCOMPtr<nsIDOMNode> mSourceNode;
+  nsCString mTriggeringPrincipalURISpec;
   nsCOMPtr<nsIDOMDocument> mSourceDocument;       // the document at the drag source. will be null
                                                   //  if it came from outside the app.
   nsContentPolicyType mContentPolicyType;         // the contentpolicy type passed to the channel
                                                   // when initiating the drag session
-  nsCOMPtr<nsIDOMDataTransfer> mDataTransfer;
+  RefPtr<mozilla::dom::DataTransfer> mDataTransfer;
 
   // used to determine the image to appear on the cursor while dragging
   nsCOMPtr<nsIDOMNode> mImage;
@@ -171,7 +177,7 @@ protected:
   mozilla::CSSIntPoint mImageOffset;
 
   // set if a selection is being dragged
-  nsCOMPtr<nsISelection> mSelection;
+  RefPtr<mozilla::dom::Selection> mSelection;
 
   // set if the image in mImage is a popup. If this case, the popup will be opened
   // and moved instead of using a drag image.
@@ -186,7 +192,7 @@ protected:
 
   uint32_t mSuppressLevel;
 
-  // The input source of the drag event. Possible values are from nsIDOMMouseEvent.
+  // The input source of the drag event. Possible values are from MouseEvent.
   uint16_t mInputSource;
 
   nsTArray<RefPtr<mozilla::dom::ContentParent>> mChildProcesses;

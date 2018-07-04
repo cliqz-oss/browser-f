@@ -13,7 +13,7 @@ var DetailsSubview = {
   /**
    * Sets up the view with event binding.
    */
-  initialize: function () {
+  initialize: function() {
     this._onRecordingStoppedOrSelected = this._onRecordingStoppedOrSelected.bind(this);
     this._onOverviewRangeChange = this._onOverviewRangeChange.bind(this);
     this._onDetailsViewSelected = this._onDetailsViewSelected.bind(this);
@@ -33,17 +33,17 @@ var DetailsSubview = {
       this._wasRendered = true;
     };
 
-    this.render = Task.async(function* (...args) {
-      let maybeRetval = yield originalRenderFn.apply(self, args);
+    this.render = async function(...args) {
+      let maybeRetval = await originalRenderFn.apply(self, args);
       afterRenderFn();
       return maybeRetval;
-    });
+    };
   },
 
   /**
    * Unbinds events.
    */
-  destroy: function () {
+  destroy: function() {
     clearNamedTimeout("range-change-debounce");
 
     PerformanceController.off(EVENTS.RECORDING_STATE_CHANGE,
@@ -111,7 +111,7 @@ var DetailsSubview = {
   /**
    * Called when recording stops or is selected.
    */
-  _onRecordingStoppedOrSelected: function (_, state, recording) {
+  _onRecordingStoppedOrSelected: function(state, recording) {
     if (typeof state !== "string") {
       recording = state;
     }
@@ -132,7 +132,7 @@ var DetailsSubview = {
   /**
    * Fired when a range is selected or cleared in the OverviewView.
    */
-  _onOverviewRangeChange: function (_, interval) {
+  _onOverviewRangeChange: function(interval) {
     if (!this.requiresUpdateOnRangeChange) {
       return;
     }
@@ -155,7 +155,7 @@ var DetailsSubview = {
   /**
    * Fired when a view is selected in the DetailsView.
    */
-  _onDetailsViewSelected: function () {
+  _onDetailsViewSelected: function() {
     if (DetailsView.isViewSelected(this) && this.shouldUpdateWhenShown) {
       this.render(OverviewView.getTimeInterval());
       this.shouldUpdateWhenShown = false;
@@ -165,9 +165,9 @@ var DetailsSubview = {
   /**
    * Fired when a preference in `devtools.performance.ui.` is changed.
    */
-  _onPrefChanged: function (_, prefName) {
+  _onPrefChanged: function(prefName, prefValue) {
     if (~this.observedPrefs.indexOf(prefName) && this._onObservedPrefChange) {
-      this._onObservedPrefChange(_, prefName);
+      this._onObservedPrefChange(prefName);
     }
 
     // All detail views require a recording to be complete, so do not
@@ -182,7 +182,7 @@ var DetailsSubview = {
     }
 
     if (this._onRerenderPrefChanged) {
-      this._onRerenderPrefChanged(_, prefName);
+      this._onRerenderPrefChanged(prefName);
     }
 
     if (DetailsView.isViewSelected(this) || this.canUpdateWhileHidden) {

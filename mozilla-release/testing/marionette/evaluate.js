@@ -4,22 +4,22 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-Cu.import("chrome://marionette/content/element.js");
+ChromeUtils.import("chrome://marionette/content/assert.js");
 const {
-  error,
+  element,
+  WebElement,
+} = ChromeUtils.import("chrome://marionette/content/element.js", {});
+const {
   JavaScriptError,
   ScriptTimeoutError,
-  WebDriverError,
-} = Cu.import("chrome://marionette/content/error.js", {});
+} = ChromeUtils.import("chrome://marionette/content/error.js", {});
 
-const logger = Log.repository.getLogger("Marionette");
+const log = Log.repository.getLogger("Marionette");
 
 this.EXPORTED_SYMBOLS = ["evaluate", "sandbox", "Sandboxes"];
 
@@ -29,8 +29,6 @@ const COMPLETE = "__webDriverComplete";
 const DEFAULT_TIMEOUT = 10000; // ms
 const FINISH = "finish";
 const MARIONETTE_SCRIPT_FINISHED = "marionetteScriptFinished";
-const ELEMENT_KEY = "element";
-const W3C_ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf";
 
 /** @namespace */
 this.evaluate = {};
@@ -38,37 +36,29 @@ this.evaluate = {};
 /**
  * Evaluate a script in given sandbox.
  *
- * If the option var>directInject</var> is not specified, the script
- * will be executed as a function with the <var>args</var> argument
- * applied.
+ * The the provided `script` will be wrapped in an anonymous function
+ * with the `args` argument applied.
  *
- * The arguments provided by the <var>args</var> argument are exposed
- * through the <code>arguments</code> object available in the script
- * context, and if the script is executed asynchronously with the
- * <var>async</var> option, an additional last argument that is synonymous
- * to the <code>marionetteScriptFinished</code> global is appended, and
- * can be accessed through <code>arguments[arguments.length - 1]</code>.
+ * The arguments provided by the `args<` argument are exposed
+ * through the `arguments` object available in the script context,
+ * and if the script is executed asynchronously with the `async`
+ * option, an additional last argument that is synonymous to the
+ * `marionetteScriptFinished` global is appended, and can be accessed
+ * through `arguments[arguments.length - 1]`.
  *
- * The <var>timeout</var> option specifies the duration for how long
- * the script should be allowed to run before it is interrupted and aborted.
+ * The `timeout` option specifies the duration for how long the
+ * script should be allowed to run before it is interrupted and aborted.
  * An interrupted script will cause a {@link ScriptTimeoutError} to occur.
  *
- * The <var>async</var> option indicates that the script will
- * not return until the <code>marionetteScriptFinished</code> global
- * callback is invoked, which is analogous to the last argument of the
- * <code>arguments</code> object.
+ * The `async` option indicates that the script will not return
+ * until the `marionetteScriptFinished` global callback is invoked,
+ * which is analogous to the last argument of the `arguments` object.
  *
- * The option <var>directInject</var> causes the script to be evaluated
- * without being wrapped in a function and the provided arguments will
- * be disregarded.  This will cause such things as root scope return
- * statements to throw errors because they are not used inside a function.
+ * The `file` option is used in error messages to provide information
+ * on the origin script file in the local end.
  *
- * The <var>file</var> option is used in error messages to provide
- * information on the origin script file in the local end.
- *
- * The <var>line</var> option is used in error messages, along with
- * <var>filename</var>, to provide the line number in the origin script
- * file on the local end.
+ * The `line` option is used in error messages, along with `filename`,
+ * to provide the line number in the origin script file on the local end.
  *
  * @param {nsISandbox} sb
  *     Sandbox the script will be evaluted in.
@@ -79,8 +69,6 @@ this.evaluate = {};
  * @param {boolean=} [async=false] async
  *     Indicates if the script should return immediately or wait for
  *     the callback to be invoked before returning.
- * @param {boolean=} [debug=false] debug
- *     Attaches an <code>onerror</code> event listener.
  * @param {string=} [file="dummy file"] file
  *     File location of the program in the client.
  * @param {number=} [line=0] line
@@ -104,8 +92,6 @@ this.evaluate = {};
 evaluate.sandbox = function(sb, script, args = [],
     {
       async = false,
-      debug = false,
-      directInject = false,
       file = "dummy file",
       line = 0,
       sandboxName = null,
@@ -116,44 +102,30 @@ evaluate.sandbox = function(sb, script, args = [],
   let promise = new Promise((resolve, reject) => {
     let src = "";
     sb[COMPLETE] = resolve;
-    timeoutHandler = () => reject(new ScriptTimeoutError("Timed out"));
+    timeoutHandler = () => reject(new ScriptTimeoutError(`Timed out after ${timeout} ms`));
     unloadHandler = sandbox.cloneInto(
         () => reject(new JavaScriptError("Document was unloaded")),
         sb);
 
-    // wrap in function
-    if (!directInject) {
-      if (async) {
-        sb[CALLBACK] = sb[COMPLETE];
-      }
-      sb[ARGUMENTS] = sandbox.cloneInto(args, sb);
+    if (async) {
+      sb[CALLBACK] = sb[COMPLETE];
+    }
+    sb[ARGUMENTS] = sandbox.cloneInto(args, sb);
 
-      // callback function made private
-      // so that introspection is possible
-      // on the arguments object
-      if (async) {
-        sb[CALLBACK] = sb[COMPLETE];
-        src += `${ARGUMENTS}.push(rv => ${CALLBACK}(rv));`;
-      }
-
-      src += `(function() { ${script} }).apply(null, ${ARGUMENTS})`;
-
-      // marionetteScriptFinished is not WebDriver conformant,
-      // hence it is only exposed to immutable sandboxes
-      if (sandboxName) {
-        sb[MARIONETTE_SCRIPT_FINISHED] = sb[CALLBACK];
-      }
+    // callback function made private
+    // so that introspection is possible
+    // on the arguments object
+    if (async) {
+      sb[CALLBACK] = sb[COMPLETE];
+      src += `${ARGUMENTS}.push(rv => ${CALLBACK}(rv));`;
     }
 
-    // onerror is not hooked on by default because of the inability to
-    // differentiate content errors from chrome errors.
-    //
-    // see bug 1128760 for more details
-    if (debug) {
-      sb.window.onerror = (msg, url, line) => {
-        let err = new JavaScriptError(`${msg} at ${url}:${line}`);
-        reject(err);
-      };
+    src += `(function() { ${script} }).apply(null, ${ARGUMENTS})`;
+
+    // marionetteScriptFinished is not WebDriver conformant,
+    // hence it is only exposed to immutable sandboxes
+    if (sandboxName) {
+      sb[MARIONETTE_SCRIPT_FINISHED] = sb[CALLBACK];
     }
 
     // timeout and unload handlers
@@ -162,15 +134,9 @@ evaluate.sandbox = function(sb, script, args = [],
 
     let res;
     try {
-      res = Cu.evalInSandbox(src, sb, "1.8", file, 0);
+      res = Cu.evalInSandbox(src, sb, "1.8", file, line);
     } catch (e) {
-      let err = new JavaScriptError(e, {
-        fnName: "execute_script",
-        file,
-        line,
-        script,
-      });
-      reject(err);
+      reject(new JavaScriptError(e));
     }
 
     if (!async) {
@@ -191,18 +157,25 @@ evaluate.sandbox = function(sb, script, args = [],
  *
  * @param {Object} obj
  *     Arbitrary object containing web elements.
- * @param {element.Store} seenEls
- *     Element store to use for lookup of web element references.
- * @param {Window} win
- *     Window.
- * @param {ShadowRoot} shadowRoot
- *     Shadow root.
+ * @param {element.Store=} seenEls
+ *     Known element store to look up web elements from.  If undefined,
+ *     the web element references are returned instead.
+ * @param {WindowProxy=} window
+ *     Current browsing context, if <var>seenEls</var> is provided.
  *
  * @return {Object}
  *     Same object as provided by <var>obj</var> with the web elements
  *     replaced by DOM elements.
+ *
+ * @throws {NoSuchElementError}
+ *     If <var>seenEls</var> is given and the web element reference
+ *     has not been seen before.
+ * @throws {StaleElementReferenceError}
+ *     If <var>seenEls</var> is given and the element has gone stale,
+ *     indicating it is no longer attached to the DOM, or its node
+ *     document is no longer the active document.
  */
-evaluate.fromJSON = function(obj, seenEls, win, shadowRoot = undefined) {
+evaluate.fromJSON = function(obj, seenEls = undefined, window = undefined) {
   switch (typeof obj) {
     case "boolean":
     case "number":
@@ -216,37 +189,58 @@ evaluate.fromJSON = function(obj, seenEls, win, shadowRoot = undefined) {
 
       // arrays
       } else if (Array.isArray(obj)) {
-        return obj.map(e => evaluate.fromJSON(e, seenEls, win, shadowRoot));
+        return obj.map(e => evaluate.fromJSON(e, seenEls, window));
 
       // web elements
-      } else if (Object.keys(obj).includes(element.Key) ||
-          Object.keys(obj).includes(element.LegacyKey)) {
-        /* eslint-disable */
-        let uuid = obj[element.Key] || obj[element.LegacyKey];
-        let el = seenEls.get(uuid, {frame: win, shadowRoot: shadowRoot});
-        /* eslint-enable */
-        if (!el) {
-          throw new WebDriverError(`Unknown element: ${uuid}`);
+      } else if (WebElement.isReference(obj)) {
+        let webEl = WebElement.fromJSON(obj);
+        if (seenEls) {
+          return seenEls.get(webEl, window);
         }
-        return el;
-
+        return webEl;
       }
 
       // arbitrary objects
       let rv = {};
       for (let prop in obj) {
-        rv[prop] = evaluate.fromJSON(obj[prop], seenEls, win, shadowRoot);
+        rv[prop] = evaluate.fromJSON(obj[prop], seenEls, window);
       }
       return rv;
   }
 };
 
 /**
- * Convert arbitrary objects to JSON-safe primitives that can be
+ * Marshal arbitrary objects to JSON-safe primitives that can be
  * transported over the Marionette protocol.
  *
- * Any DOM elements are converted to web elements by looking them up
- * and/or adding them to the element store provided.
+ * The marshaling rules are as follows:
+ *
+ * <ul>
+ *
+ * <li>
+ * Primitives are returned as is.
+ *
+ * <li>
+ * Collections, such as <code>Array</code>, <code>NodeList</code>,
+ * <code>HTMLCollection</code> et al. are expanded to arrays and
+ * then recursed.
+ *
+ * <li>
+ * Elements that are not known web elements are added to the
+ * <var>seenEls</var> element store.  Once known, the elements'
+ * associated web element representation is returned.
+ *
+ * <li>
+ * Objects with custom JSON representations, i.e. if they have a
+ * callable <code>toJSON</code> function, are returned verbatim.
+ * This means their internal integrity <em>are not</em> checked.
+ * Be careful.
+ *
+ * <li>
+ * Other arbitrary objects are first tested for cyclic references
+ * and then recursed into.
+ *
+ * </ul>
  *
  * @param {Object} obj
  *     Object to be marshaled.
@@ -256,6 +250,9 @@ evaluate.fromJSON = function(obj, seenEls, win, shadowRoot = undefined) {
  * @return {Object}
  *     Same object as provided by <var>obj</var> with the elements
  *     replaced by web elements.
+ *
+ * @throws {JavaScriptError}
+ *     If an object contains cyclic references.
  */
 evaluate.toJSON = function(obj, seenEls) {
   const t = Object.prototype.toString.call(obj);
@@ -264,7 +261,7 @@ evaluate.toJSON = function(obj, seenEls) {
   if (t == "[object Undefined]" || t == "[object Null]") {
     return null;
 
-  // literals
+  // primitives
   } else if (t == "[object Boolean]" ||
       t == "[object Number]" ||
       t == "[object String]") {
@@ -272,15 +269,20 @@ evaluate.toJSON = function(obj, seenEls) {
 
   // Array, NodeList, HTMLCollection, et al.
   } else if (element.isCollection(obj)) {
+    assert.acyclic(obj);
     return [...obj].map(el => evaluate.toJSON(el, seenEls));
 
-  // HTMLElement
-  } else if ("nodeType" in obj && obj.nodeType == obj.ELEMENT_NODE) {
-    let uuid = seenEls.add(obj);
-    return element.makeWebElement(uuid);
+  // WebElement
+  } else if (WebElement.isReference(obj)) {
+    return obj;
+
+  // Element (HTMLElement, SVGElement, XULElement, et al.)
+  } else if (element.isElement(obj)) {
+    let webEl = seenEls.add(obj);
+    return webEl.toJSON();
 
   // custom JSON representation
-  } else if (typeof obj["toJSON"] == "function") {
+  } else if (typeof obj.toJSON == "function") {
     let unsafeJSON = obj.toJSON();
     return evaluate.toJSON(unsafeJSON, seenEls);
   }
@@ -288,11 +290,13 @@ evaluate.toJSON = function(obj, seenEls) {
   // arbitrary objects + files
   let rv = {};
   for (let prop in obj) {
+    assert.acyclic(obj[prop]);
+
     try {
       rv[prop] = evaluate.toJSON(obj[prop], seenEls);
     } catch (e) {
       if (e.result == Cr.NS_ERROR_NOT_IMPLEMENTED) {
-        logger.debug(`Skipping ${prop}: ${e.message}`);
+        log.debug(`Skipping ${prop}: ${e.message}`);
       } else {
         throw e;
       }

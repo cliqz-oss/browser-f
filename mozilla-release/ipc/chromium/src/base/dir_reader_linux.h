@@ -40,7 +40,7 @@ class DirReaderLinux {
 
   ~DirReaderLinux() {
     if (fd_ >= 0) {
-      if (HANDLE_EINTR(close(fd_)))
+      if (IGNORE_EINTR(close(fd_)))
         DLOG(ERROR) << "Failed to close directory handle";
     }
   }
@@ -90,7 +90,10 @@ class DirReaderLinux {
 
  private:
   const int fd_;
-  unsigned char buf_[512];
+  union {
+    linux_dirent dirent_;
+    unsigned char buf_[512];
+  };
   size_t offset_, size_;
 
   DISALLOW_COPY_AND_ASSIGN(DirReaderLinux);

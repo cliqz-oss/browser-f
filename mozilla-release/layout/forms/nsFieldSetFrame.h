@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,17 +8,17 @@
 #define nsFieldSetFrame_h___
 
 #include "mozilla/Attributes.h"
-#include "DrawResult.h"
+#include "ImgDrawResult.h"
 #include "nsContainerFrame.h"
 
 class nsFieldSetFrame final : public nsContainerFrame
 {
-  typedef mozilla::image::DrawResult DrawResult;
+  typedef mozilla::image::ImgDrawResult ImgDrawResult;
 
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsFieldSetFrame)
 
-  explicit nsFieldSetFrame(nsStyleContext* aContext);
+  explicit nsFieldSetFrame(ComputedStyle* aStyle);
 
   nscoord
     GetIntrinsicISize(gfxContext* aRenderingContext,
@@ -44,10 +45,9 @@ public:
                                  nscoord* aBaseline) const override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
-  DrawResult PaintBorder(nsDisplayListBuilder* aBuilder,
+  ImgDrawResult PaintBorder(nsDisplayListBuilder* aBuilder,
                          gfxContext& aRenderingContext,
                          nsPoint aPt, const nsRect& aDirtyRect);
 

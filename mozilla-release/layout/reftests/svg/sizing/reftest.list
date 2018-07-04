@@ -259,14 +259,14 @@ fuzzy-if(d2d,1,400) == standalone--pct-pct--px-px.svg       pass-pct-pct.xhtml
 # We could certainly expand on these tests, but they provide reasonable base
 # coverage.
 
-HTTP(../..) == inline--display-block--01.xhtml inline--display-block--01-ref.xhtml
-fuzzy-if(OSX,1,10) HTTP(../..) == inline--display-inline--01.xhtml inline--display-inline--01-ref.xhtml
-HTTP(../..) == inline--display-inline-block--01.xhtml inline--display-inline-block--01-ref.xhtml
+== inline--display-block--01.xhtml inline--display-block--01-ref.xhtml
+fuzzy-if(OSX,1,10) == inline--display-inline--01.xhtml inline--display-inline--01-ref.xhtml
+== inline--display-inline-block--01.xhtml inline--display-inline-block--01-ref.xhtml
 == inline--float-left--01.xhtml            inline--float-left--01-ref.xhtml
 == inline--float-right--01.xhtml           inline--float-right--01-ref.xhtml
 == inline--position-absolute--01.xhtml     inline--position-absolute--01-ref.xhtml
 == inline--position-absolute--02.xhtml     pass.svg
-HTTP(../..) == inline--position-relative--01.xhtml    inline--position-relative--01-ref.xhtml
+== inline--position-relative--01.xhtml    inline--position-relative--01-ref.xhtml
 
 
 # Embedded by reference tests
@@ -307,6 +307,5 @@ random-if(Android) == object--auto-auto--px-px.html        object--auto-auto--px
 == dynamic--inline-css-width.xhtml              pass.svg
 skip == dynamic--inline-resize-window-height.xhtml  pass.svg # XXX breaks the reftest run as the window height somehow is not restored
 skip == dynamic--inline-resize-window-width.xhtml    pass.svg # Fails way too much
-fails-if(!styloVsGecko) random-if(Android) == dynamic--object-svg-unloaded.xhtml     pass.svg
+fails random-if(Android) == dynamic--object-svg-unloaded.xhtml     pass.svg
 # == dynamic--object--auto-auto--pct-px.html 
-

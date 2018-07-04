@@ -2,14 +2,13 @@
     http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
-const {Utils} = Cu.import("resource://gre/modules/sessionstore/Utils.jsm", {});
-const triggeringPrincipalBase64 = Utils.SERIALIZED_SYSTEMPRINCIPAL;
-const ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
+const {Utils} = ChromeUtils.import("resource://gre/modules/sessionstore/Utils.jsm", {});
+const triggeringPrincipal_base64 = Utils.SERIALIZED_SYSTEMPRINCIPAL;
 
 const testState = {
   windows: [{
     tabs: [
-      { entries: [{ url: "about:blank", triggeringPrincipalBase64 }] },
+      { entries: [{ url: "about:blank", triggeringPrincipal_base64 }] },
     ]
   }],
   scratchpads: [
@@ -37,13 +36,13 @@ function test() {
 
   Services.ww.registerNotification(windowObserver);
 
-  ss.setBrowserState(JSON.stringify(testState));
+  SessionStore.setBrowserState(JSON.stringify(testState));
 }
 
 function windowObserver(subject, topic, data) {
   if (topic == "domwindowopened") {
     let win = subject.QueryInterface(Ci.nsIDOMWindow);
-    win.addEventListener("load", function () {
+    win.addEventListener("load", function() {
       if (win.Scratchpad) {
         win.Scratchpad.addObserver({
           onReady() {
@@ -61,8 +60,8 @@ function windowObserver(subject, topic, data) {
 }
 
 function statesMatch(restored, states) {
-  return states.every(function (state) {
-    return restored.some(function (restoredState) {
+  return states.every(function(state) {
+    return restored.some(function(restoredState) {
       return state.filename == restoredState.filename &&
              state.text == restoredState.text &&
              state.executionContext == restoredState.executionContext;

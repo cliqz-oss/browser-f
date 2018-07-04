@@ -21,16 +21,17 @@
 
 # Generate input to certutil
 certscript() {
+  ca=n
   while [ $# -gt 0 ]; do
     case $1 in
       sign) echo 0 ;;
       kex) echo 2 ;;
-      ca) echo 5;echo 6 ;;
+      ca) echo 5;echo 6;ca=y ;;
     esac; shift
   done;
   echo 9
   echo n
-  echo ${ca:-n}
+  echo $ca
   echo
   echo n
 }
@@ -41,6 +42,7 @@ certscript() {
 make_cert() {
   name=$1
   type=$2
+  unset type_args trust sign
   case $type in
     dsa) type_args='-g 1024' ;;
     rsa) type_args='-g 1024' ;;
@@ -49,8 +51,11 @@ make_cert() {
     p256) type_args='-q nistp256';type=ec ;;
     p384) type_args='-q secp384r1';type=ec ;;
     p521) type_args='-q secp521r1';type=ec ;;
-    rsa_ca) type_args='-g 1024';trust='CT,CT,CT';ca=y;type=rsa ;;
+    rsa_ca) type_args='-g 1024';trust='CT,CT,CT';type=rsa ;;
     rsa_chain) type_args='-g 1024';sign='-c rsa_ca';type=rsa;;
+    rsapss_ca) type_args='-g 1024 --pss';trust='CT,CT,CT';type=rsa ;;
+    rsapss_chain) type_args='-g 1024';sign='-c rsa_pss_ca';type=rsa;;
+    rsa_ca_rsapss_chain) type_args='-g 1024 --pss-sign';sign='-c rsa_ca';type=rsa;;
     ecdh_rsa) type_args='-q nistp256';sign='-c rsa_ca';type=ec ;;
   esac
   shift 2
@@ -87,6 +92,9 @@ ssl_gtest_certs() {
   make_cert ecdh_ecdsa p256 kex
   make_cert rsa_ca rsa_ca ca
   make_cert rsa_chain rsa_chain sign
+  make_cert rsa_pss_ca rsapss_ca ca
+  make_cert rsa_pss_chain rsapss_chain sign
+  make_cert rsa_ca_rsa_pss_chain rsa_ca_rsapss_chain sign
   make_cert ecdh_rsa ecdh_rsa kex
   make_cert dsa dsa sign
 }

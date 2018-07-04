@@ -4,7 +4,7 @@
 es6id: 9.5.2
 description: >
     Throws a TypeError exception if trap is not callable.
-info: >
+info: |
     [[SetPrototypeOf]] (V)
 
     ...
@@ -23,13 +23,13 @@ features: [Reflect.setPrototypeOf]
 
 var target = {};
 var p = new Proxy(target, {
-    setPrototypeOf: {}
+  setPrototypeOf: {}
 });
 
 assert.throws(TypeError, function() {
-    Reflect.setPrototypeOf(p, {
-        value: 1
-    });
+  Reflect.setPrototypeOf(p, {
+    value: 1
+  });
 });
 
 reportCompare(0, 0);

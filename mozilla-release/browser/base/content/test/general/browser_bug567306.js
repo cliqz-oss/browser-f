@@ -2,31 +2,26 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-var {Ci: interfaces, Cc: classes} = Components;
-
-var Clipboard = Cc["@mozilla.org/widget/clipboard;1"].getService(Ci.nsIClipboard);
-var HasFindClipboard = Clipboard.supportsFindClipboard();
+var HasFindClipboard = Services.clipboard.supportsFindClipboard();
 
 add_task(async function() {
   let newwindow = await BrowserTestUtils.openNewBrowserWindow();
 
   let selectedBrowser = newwindow.gBrowser.selectedBrowser;
   await new Promise((resolve, reject) => {
-    selectedBrowser.addEventListener("pageshow", function pageshowListener() {
-      if (selectedBrowser.currentURI.spec == "about:blank")
-        return;
-
-      selectedBrowser.removeEventListener("pageshow", pageshowListener, true);
-      ok(true, "pageshow listener called: " + newwindow.content.location);
+    BrowserTestUtils.waitForContentEvent(selectedBrowser, "pageshow", true, (event) => {
+      return content.location.href != "about:blank";
+    }).then(function pageshowListener() {
+      ok(true, "pageshow listener called: " + newwindow.gBrowser.currentURI.spec);
       resolve();
-    }, true);
+    });
     selectedBrowser.loadURI("data:text/html,<h1 id='h1'>Select Me</h1>");
   });
 
   await SimpleTest.promiseFocus(newwindow);
 
   ok(!newwindow.gFindBarInitialized, "find bar is not yet initialized");
-  let findBar = newwindow.gFindBar;
+  let findBar = await newwindow.gFindBarPromise;
 
   await ContentTask.spawn(selectedBrowser, { }, async function() {
     let elt = content.document.getElementById("h1");
@@ -47,4 +42,3 @@ add_task(async function() {
   findBar.close();
   await promiseWindowClosed(newwindow);
 });
-

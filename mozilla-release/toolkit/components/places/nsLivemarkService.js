@@ -2,23 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
 // Modules and services.
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Deprecated",
-                                  "resource://gre/modules/Deprecated.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
 
-XPCOMUtils.defineLazyGetter(this, "asyncHistory", function() {
+XPCOMUtils.defineLazyGetter(this, "history", function() {
   // Lazily add an history observer when it's actually needed.
   PlacesUtils.history.addObserver(PlacesUtils.livemarks, true);
-  return PlacesUtils.asyncHistory;
+  return PlacesUtils.history;
 });
 
 // Constants
@@ -53,34 +49,6 @@ XPCOMUtils.defineLazyGetter(this, "CACHE_SQL", () => {
             AND n.name = :feedURI_anno`;
 });
 
-XPCOMUtils.defineLazyGetter(this, "gLivemarksCachePromised",
-  async function() {
-    let livemarksMap = new Map();
-    let conn = await PlacesUtils.promiseDBConnection();
-    let rows = await conn.executeCached(CACHE_SQL,
-      { folder_type: Ci.nsINavBookmarksService.TYPE_FOLDER,
-        feedURI_anno: PlacesUtils.LMANNO_FEEDURI,
-        siteURI_anno: PlacesUtils.LMANNO_SITEURI });
-    for (let row of rows) {
-      let siteURI = row.getResultByName("siteURI");
-      let livemark = new Livemark({
-        id: row.getResultByName("id"),
-        guid: row.getResultByName("guid"),
-        title: row.getResultByName("title"),
-        parentId: row.getResultByName("parentId"),
-        parentGuid: row.getResultByName("parentGuid"),
-        index: row.getResultByName("index"),
-        dateAdded: row.getResultByName("dateAdded"),
-        lastModified: row.getResultByName("lastModified"),
-        feedURI: NetUtil.newURI(row.getResultByName("feedURI")),
-        siteURI: siteURI ? NetUtil.newURI(siteURI) : null
-      });
-      livemarksMap.set(livemark.guid, livemark);
-    }
-    return livemarksMap;
-  }
-);
-
 /**
  * Convert a Date object to a PRTime (microseconds).
  *
@@ -111,11 +79,43 @@ function LivemarkService() {
 
   // Observe bookmarks but don't init the service just for that.
   PlacesUtils.bookmarks.addObserver(this, true);
+
+  this._livemarksMap = null;
+  this._promiseLivemarksMapReady = Promise.resolve();
 }
 
 LivemarkService.prototype = {
-  // This is just an helper for code readability.
-  _promiseLivemarksMap: () => gLivemarksCachePromised,
+  _withLivemarksMap(func) {
+    let promise = this._promiseLivemarksMapReady.then(async () => {
+      if (!this._livemarksMap) {
+        this._livemarksMap = new Map();
+        let conn = await PlacesUtils.promiseDBConnection();
+        let rows = await conn.executeCached(CACHE_SQL,
+          { folder_type: Ci.nsINavBookmarksService.TYPE_FOLDER,
+            feedURI_anno: PlacesUtils.LMANNO_FEEDURI,
+            siteURI_anno: PlacesUtils.LMANNO_SITEURI });
+        for (let row of rows) {
+          let siteURI = row.getResultByName("siteURI");
+          let livemark = new Livemark({
+            id: row.getResultByName("id"),
+            guid: row.getResultByName("guid"),
+            title: row.getResultByName("title"),
+            parentId: row.getResultByName("parentId"),
+            parentGuid: row.getResultByName("parentGuid"),
+            index: row.getResultByName("index"),
+            dateAdded: row.getResultByName("dateAdded"),
+            lastModified: row.getResultByName("lastModified"),
+            feedURI: NetUtil.newURI(row.getResultByName("feedURI")),
+            siteURI: siteURI ? NetUtil.newURI(siteURI) : null
+          });
+          this._livemarksMap.set(livemark.guid, livemark);
+        }
+      }
+      return func(this._livemarksMap);
+    });
+    this._promiseLivemarksMapReady = promise.catch(_ => {});
+    return promise;
+  },
 
   _reloading: false,
   _startReloadTimer(livemarksMap, forceUpdate, reloaded) {
@@ -139,6 +139,7 @@ LivemarkService.prototype = {
       }
       // All livemarks have been reloaded.
       this._reloading = false;
+      this._forceUpdate = false;
     }, RELOAD_DELAY_MS, Ci.nsITimer.TYPE_ONE_SHOT);
   },
 
@@ -146,18 +147,10 @@ LivemarkService.prototype = {
 
   observe(aSubject, aTopic, aData) {
     if (aTopic == PlacesUtils.TOPIC_SHUTDOWN) {
-      if (this._reloadTimer) {
-        this._reloading = false;
-        this._reloadTimer.cancel();
-        delete this._reloadTimer;
-      }
-
-      // Stop any ongoing network fetch.
-      this._promiseLivemarksMap().then(livemarksMap => {
-        for (let livemark of livemarksMap.values()) {
-          livemark.terminate();
-        }
-      });
+      this._invalidateCachedLivemarks({
+        // No need to restart the reload timer on shutdown.
+        keepReloading: false,
+      }).catch(Cu.reportError);
     }
   },
 
@@ -181,11 +174,9 @@ LivemarkService.prototype = {
       throw new Components.Exception("Invalid arguments", Cr.NS_ERROR_INVALID_ARG);
     }
 
-    return (async () => {
+    return this._withLivemarksMap(async livemarksMap => {
       if (!aLivemarkInfo.parentGuid)
         aLivemarkInfo.parentGuid = await PlacesUtils.promiseItemGuid(aLivemarkInfo.parentId);
-
-      let livemarksMap = await this._promiseLivemarksMap();
 
       // Disallow adding a livemark inside another livemark.
       if (livemarksMap.has(aLivemarkInfo.parentGuid)) {
@@ -234,7 +225,7 @@ LivemarkService.prototype = {
       livemarksMap.set(folder.guid, livemark);
 
       return livemark;
-    })();
+    });
   },
 
   removeLivemark(aLivemarkInfo) {
@@ -250,30 +241,29 @@ LivemarkService.prototype = {
       throw new Components.Exception("Invalid arguments", Cr.NS_ERROR_INVALID_ARG);
     }
 
-    return (async () => {
+    return this._withLivemarksMap(async livemarksMap => {
       if (!aLivemarkInfo.guid)
         aLivemarkInfo.guid = await PlacesUtils.promiseItemGuid(aLivemarkInfo.id);
 
-      let livemarksMap = await this._promiseLivemarksMap();
       if (!livemarksMap.has(aLivemarkInfo.guid))
         throw new Components.Exception("Invalid livemark", Cr.NS_ERROR_INVALID_ARG);
 
       await PlacesUtils.bookmarks.remove(aLivemarkInfo.guid,
                                          { source: aLivemarkInfo.source });
-    })();
+    });
   },
 
   reloadLivemarks(aForceUpdate) {
     // Check if there's a currently running reload, to save some useless work.
     let notWorthRestarting =
       this._forceUpdate || // We're already forceUpdating.
-      !aForceUpdate;       // The caller didn't request a forced update.
+      !aForceUpdate; // The caller didn't request a forced update.
     if (this._reloading && notWorthRestarting) {
       // Ignore this call.
       return;
     }
 
-    this._promiseLivemarksMap().then(livemarksMap => {
+    this._withLivemarksMap(livemarksMap => {
       this._forceUpdate = !!aForceUpdate;
       // Livemarks reloads happen on a timer for performance reasons.
       this._startReloadTimer(livemarksMap, this._forceUpdate, new Set());
@@ -293,16 +283,57 @@ LivemarkService.prototype = {
       throw new Components.Exception("Invalid arguments", Cr.NS_ERROR_INVALID_ARG);
     }
 
-    return (async () => {
+    return this._withLivemarksMap(async livemarksMap => {
       if (!aLivemarkInfo.guid)
         aLivemarkInfo.guid = await PlacesUtils.promiseItemGuid(aLivemarkInfo.id);
 
-      let livemarksMap = await this._promiseLivemarksMap();
       if (!livemarksMap.has(aLivemarkInfo.guid))
         throw new Components.Exception("Invalid livemark", Cr.NS_ERROR_INVALID_ARG);
 
       return livemarksMap.get(aLivemarkInfo.guid);
-    })();
+    });
+  },
+
+  _invalidateCachedLivemarks({ keepReloading = true } = {}) {
+    // Cancel pending reloads, since any livemarks we're currently reloading
+    // might no longer be valid.
+    let wasReloading = this._reloading;
+    this._reloading = false;
+
+    let wasForceUpdating = this._forceUpdate;
+    this._forceUpdate = false;
+
+    if (this._reloadTimer) {
+      this._reloadTimer.cancel();
+    }
+
+    // Clear out the livemarks cache.
+    let promise = this._promiseLivemarksMapReady.then(() => {
+      let livemarksMap = this._livemarksMap;
+      this._livemarksMap = null;
+      if (livemarksMap) {
+        // Stop any ongoing network fetch.
+        for (let livemark of livemarksMap.values()) {
+          livemark.terminate();
+        }
+      }
+    });
+    this._promiseLivemarksMapReady = promise.catch(_ => {});
+
+    // Restart the timer if we were reloading before invalidating.
+    if (keepReloading) {
+      if (wasReloading) {
+        this.reloadLivemarks(wasForceUpdating);
+      }
+    } else {
+      delete this._reloadTimer;
+    }
+
+    return promise;
+  },
+
+  invalidateCachedLivemarks() {
+    return this._invalidateCachedLivemarks();
   },
 
   // nsINavBookmarkObserver
@@ -317,7 +348,7 @@ LivemarkService.prototype = {
     if (itemType != Ci.nsINavBookmarksService.TYPE_FOLDER)
       return;
 
-    this._promiseLivemarksMap().then(livemarksMap => {
+    this._withLivemarksMap(livemarksMap => {
       if (livemarksMap.has(guid)) {
         let livemark = livemarksMap.get(guid);
         if (property == "title") {
@@ -333,7 +364,7 @@ LivemarkService.prototype = {
     if (itemType != Ci.nsINavBookmarksService.TYPE_FOLDER)
       return;
 
-    this._promiseLivemarksMap().then(livemarksMap => {
+    this._withLivemarksMap(livemarksMap => {
       if (livemarksMap.has(guid)) {
         let livemark = livemarksMap.get(guid);
         livemark.parentId = newParentId;
@@ -347,7 +378,7 @@ LivemarkService.prototype = {
     if (itemType != Ci.nsINavBookmarksService.TYPE_FOLDER)
       return;
 
-    this._promiseLivemarksMap().then(livemarksMap => {
+    this._withLivemarksMap(livemarksMap => {
       if (livemarksMap.has(guid)) {
         let livemark = livemarksMap.get(guid);
         livemark.terminate();
@@ -356,6 +387,9 @@ LivemarkService.prototype = {
     });
   },
 
+  skipDescendantsOnItemRemoval: false,
+  skipTags: true,
+
   // nsINavHistoryObserver
 
   onPageChanged() {},
@@ -363,7 +397,7 @@ LivemarkService.prototype = {
   onDeleteVisits() {},
 
   onClearHistory() {
-    this._promiseLivemarksMap().then(livemarksMap => {
+    this._withLivemarksMap(livemarksMap => {
       for (let livemark of livemarksMap.values()) {
         livemark.updateURIVisitedStatus(null, false);
       }
@@ -371,17 +405,19 @@ LivemarkService.prototype = {
   },
 
   onDeleteURI(aURI) {
-    this._promiseLivemarksMap().then(livemarksMap => {
+    this._withLivemarksMap(livemarksMap => {
       for (let livemark of livemarksMap.values()) {
         livemark.updateURIVisitedStatus(aURI, false);
       }
     });
   },
 
-  onVisit(aURI) {
-    this._promiseLivemarksMap().then(livemarksMap => {
-      for (let livemark of livemarksMap.values()) {
-        livemark.updateURIVisitedStatus(aURI, true);
+  onVisits(aVisits) {
+    this._withLivemarksMap(livemarksMap => {
+      for (let {uri} of aVisits) {
+        for (let livemark of livemarksMap.values()) {
+          livemark.updateURIVisitedStatus(uri, true);
+        }
       }
     });
   },
@@ -392,7 +428,7 @@ LivemarkService.prototype = {
 
   _xpcom_factory: XPCOMUtils.generateSingletonFactory(LivemarkService),
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.mozIAsyncLivemarks,
     Ci.nsINavBookmarkObserver,
     Ci.nsINavHistoryObserver,
@@ -458,7 +494,7 @@ Livemark.prototype = {
                .setItemAnnotation(this.id, PlacesUtils.LMANNO_FEEDURI,
                                   aFeedURI.spec,
                                   0, PlacesUtils.annotations.EXPIRE_NEVER,
-                                  aSource);
+                                  aSource, true);
     this.feedURI = aFeedURI;
   },
 
@@ -466,7 +502,7 @@ Livemark.prototype = {
     if (!aSiteURI) {
       PlacesUtils.annotations.removeItemAnnotation(this.id,
                                                    PlacesUtils.LMANNO_SITEURI,
-                                                   aSource)
+                                                   aSource);
       this.siteURI = null;
       return;
     }
@@ -485,7 +521,7 @@ Livemark.prototype = {
                .setItemAnnotation(this.id, PlacesUtils.LMANNO_SITEURI,
                                   aSiteURI.spec,
                                   0, PlacesUtils.annotations.EXPIRE_NEVER,
-                                  aSource);
+                                  aSource, true);
     this.siteURI = aSiteURI;
   },
 
@@ -563,9 +599,9 @@ Livemark.prototype = {
 
     // Update visited status for each entry.
     for (let child of this._children) {
-      asyncHistory.isURIVisited(child.uri, (aURI, aIsVisited) => {
-        this.updateURIVisitedStatus(aURI, aIsVisited);
-      });
+      history.hasVisits(child.uri).then(isVisited => {
+        this.updateURIVisitedStatus(child.uri, isVisited);
+      }).catch(Cu.reportError);
     }
 
     return this._children;
@@ -630,7 +666,7 @@ Livemark.prototype = {
         get tags() {
           return PlacesUtils.tagging.getTagsForURI(NetUtil.newURI(this.uri)).join(", ");
         },
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsINavHistoryResultNode])
+        QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryResultNode])
       };
       nodes.push(node);
     }
@@ -706,10 +742,10 @@ Livemark.prototype = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.mozILivemark
   ])
-}
+};
 
 // LivemarkLoadListener
 
@@ -810,7 +846,7 @@ LivemarkLoadListener.prototype = {
       this._processor.parseAsync(null, channel.URI);
       this._processor.onStartRequest(aRequest, aContext);
     } catch (ex) {
-      Components.utils.reportError("Livemark Service: feed processor received an invalid channel for " + channel.URI.spec);
+      Cu.reportError("Livemark Service: feed processor received an invalid channel for " + channel.URI.spec);
       this.abort(ex);
     }
   },
@@ -865,12 +901,12 @@ LivemarkLoadListener.prototype = {
   },
 
   // nsISupports
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIFeedResultListener,
     Ci.nsIStreamListener,
     Ci.nsIRequestObserver,
     Ci.nsIInterfaceRequestor
   ])
-}
+};
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([LivemarkService]);

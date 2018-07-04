@@ -7,7 +7,7 @@ description: It's a syntax error if a FunctionRestParameter is followed by a tra
 esid: sec-class-definitions-runtime-semantics-evaluation
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     ClassDeclaration : class BindingIdentifier ClassTail
@@ -51,6 +51,7 @@ info: |
         FormalParameterList[?Yield, ?Await] ,
         FormalParameterList[?Yield, ?Await] , FunctionRestParameter[?Yield, ?Await]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 
 class C {

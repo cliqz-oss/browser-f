@@ -10,19 +10,18 @@
 "use strict";
 
 const jsLexer = require("devtools/shared/css/lexer");
-const domutils = Components.classes["@mozilla.org/inspector/dom-utils;1"]
-                           .getService(Components.interfaces.inIDOMUtils);
+const InspectorUtils = require("InspectorUtils");
 
 // An object that acts like a CSSLexer but verifies that the DOM lexer
 // and the JS lexer do the same thing.
 function DoubleLexer(input) {
-  do_print("DoubleLexer input: " + input);
-  this.domLexer = domutils.getCSSLexer(input);
+  info("DoubleLexer input: " + input);
+  this.domLexer = InspectorUtils.getCSSLexer(input);
   this.jsLexer = jsLexer.getCSSLexer(input);
 }
 
 DoubleLexer.prototype = {
-  checkState: function () {
+  checkState: function() {
     equal(this.domLexer.lineNumber, this.jsLexer.lineNumber,
           "check line number");
     equal(this.domLexer.columnNumber, this.jsLexer.columnNumber,
@@ -37,7 +36,7 @@ DoubleLexer.prototype = {
     return this.domLexer.columnNumber;
   },
 
-  performEOFFixup: function (inputString, preserveBackslash) {
+  performEOFFixup: function(inputString, preserveBackslash) {
     let d = this.domLexer.performEOFFixup(inputString, preserveBackslash);
     let j = this.jsLexer.performEOFFixup(inputString, preserveBackslash);
 
@@ -45,7 +44,7 @@ DoubleLexer.prototype = {
     return d;
   },
 
-  mungeNumber: function (token) {
+  mungeNumber: function(token) {
     if (token && (token.tokenType === "number" ||
                   token.tokenType === "percentage") &&
         !token.isInteger) {
@@ -57,7 +56,7 @@ DoubleLexer.prototype = {
     }
   },
 
-  nextToken: function () {
+  nextToken: function() {
     // Check state both before and after.
     this.checkState();
 
@@ -182,7 +181,7 @@ function test_lexer_eofchar(cssText, argText, expectedAppend,
     // Nothing.
   }
 
-  do_print("EOF char test, input = " + cssText);
+  info("EOF char test, input = " + cssText);
 
   let result = lexer.performEOFFixup(argText, true);
   equal(result, expectedAppend);

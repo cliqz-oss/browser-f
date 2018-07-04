@@ -5,7 +5,8 @@ const TEST_ENGINE_BASENAME = "searchSuggestionEngine.xml";
 add_task(async function prepare() {
   let suggestionsEnabled = Services.prefs.getBoolPref(SUGGEST_URLBAR_PREF);
   Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, true);
-  let engine = await promiseNewSearchEngine(TEST_ENGINE_BASENAME);
+  let engine = await SearchTestUtils.promiseNewSearchEngine(
+    getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME);
   let oldCurrentEngine = Services.search.currentEngine;
   Services.search.currentEngine = engine;
   registerCleanupFunction(async function() {
@@ -14,7 +15,7 @@ add_task(async function prepare() {
 
     // Clicking suggestions causes visits to search results pages, so clear that
     // history now.
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
 
     // Make sure the popup is closed for the next test.
     gURLBar.blur();
@@ -37,7 +38,7 @@ add_task(async function clickSuggestion() {
                                                    false, uri.spec);
   item.click();
   await loadPromise;
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 async function testPressEnterOnSuggestion(expectedUrl = null, keyModifiers = {}) {
@@ -56,12 +57,12 @@ async function testPressEnterOnSuggestion(expectedUrl = null, keyModifiers = {})
   let promiseLoad = waitForDocLoadAndStopIt(expectedUrl);
 
   for (let i = 0; i < idx; ++i) {
-    EventUtils.synthesizeKey("VK_DOWN", {});
+    EventUtils.synthesizeKey("KEY_ArrowDown");
   }
-  EventUtils.synthesizeKey("VK_RETURN", keyModifiers);
+  EventUtils.synthesizeKey("KEY_Enter", keyModifiers);
 
   await promiseLoad;
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 add_task(async function plainEnterOnSuggestion() {
@@ -73,6 +74,21 @@ add_task(async function ctrlEnterOnSuggestion() {
                                    AppConstants.platform === "macosx" ?
                                      { metaKey: true } :
                                      { ctrlKey: true });
+});
+
+add_task(async function copySuggestionText() {
+  gURLBar.focus();
+  await promiseAutocompleteResultPopup("foo");
+  let [idx, suggestion] = await promiseFirstSuggestion();
+  for (let i = 0; i < idx; ++i) {
+    EventUtils.synthesizeKey("KEY_ArrowDown");
+  }
+  gURLBar.select();
+  await new Promise((resolve, reject) => waitForClipboard(suggestion, function() {
+    goDoCommand("cmd_copy");
+  }, resolve, reject));
+  EventUtils.synthesizeKey("KEY_Escape");
+  await promisePopupHidden(gURLBar.popup);
 });
 
 function getFirstSuggestion() {

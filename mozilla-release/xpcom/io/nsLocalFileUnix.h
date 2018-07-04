@@ -83,7 +83,7 @@ class nsLocalFile final
 #ifdef MOZ_WIDGET_COCOA
   : public nsILocalFileMac
 #else
-  : public nsILocalFile
+  : public nsIFile
 #endif
   , public nsIHashable
 {
@@ -91,6 +91,7 @@ public:
   NS_DEFINE_STATIC_CID_ACCESSOR(NS_LOCAL_FILE_CID)
 
   nsLocalFile();
+  explicit nsLocalFile(const nsACString& aFilePath);
 
   static nsresult nsLocalFileConstructor(nsISupports* aOuter,
                                          const nsIID& aIID,
@@ -98,15 +99,10 @@ public:
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIFILE
-  NS_DECL_NSILOCALFILE
 #ifdef MOZ_WIDGET_COCOA
   NS_DECL_NSILOCALFILEMAC
 #endif
   NS_DECL_NSIHASHABLE
-
-public:
-  static void GlobalInit();
-  static void GlobalShutdown();
 
 private:
   nsLocalFile(const nsLocalFile& aOther);

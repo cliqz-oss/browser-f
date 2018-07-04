@@ -7,9 +7,11 @@ info: 0xG is incorrect
 es5id: 7.8.3_A6.2_T1
 description: Checking if execution of "0xG" fails
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 //CHECK#1
 0xG

@@ -4,7 +4,7 @@
 /*---
 description: The head's declaration may not contain duplicate entries
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     It is a Syntax Error if the BoundNames of ForDeclaration contains any
@@ -12,5 +12,7 @@ info: |
 esid: sec-for-in-and-for-of-statements
 es6id: 13.7.5
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 for (const [x, x] in {}) {}

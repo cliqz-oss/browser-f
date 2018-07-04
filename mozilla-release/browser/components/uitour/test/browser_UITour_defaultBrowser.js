@@ -5,13 +5,12 @@ var gContentAPI;
 var gContentWindow;
 var setDefaultBrowserCalled = false;
 
-Cc["@mozilla.org/moz/jssubscript-loader;1"]
-  .getService(Ci.mozIJSSubScriptLoader)
+Services.scriptloader
   .loadSubScript("chrome://mochikit/content/tests/SimpleTest/MockObjects.js", this);
 
 function MockShellService() {}
 MockShellService.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIShellService]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIShellService]),
   isDefaultBrowser(aStartupCheck, aForAllTypes) { return false; },
   setDefaultBrowser(aClaimAllTypes, aForAllUsers) {
     setDefaultBrowserCalled = true;
@@ -53,8 +52,8 @@ add_UITour_task(function* test_setDefaultBrowser() {
 */
 
 add_UITour_task(async function test_isDefaultBrowser() {
-  let shell = Components.classes["@mozilla.org/browser/shell-service;1"]
-        .getService(Components.interfaces.nsIShellService);
+  let shell = Cc["@mozilla.org/browser/shell-service;1"]
+        .getService(Ci.nsIShellService);
   let isDefault = shell.isDefaultBrowser(false);
   let data = await getConfigurationPromise("appinfo");
   is(isDefault, data.defaultBrowser, "gContentAPI result should match shellService.isDefaultBrowser");

@@ -1,4 +1,5 @@
 const URL = "ftp://localhost/bug464884/";
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 const tests = [
   // standard ls unix format
@@ -64,9 +65,9 @@ const tests = [
 ]
 
 function checkData(request, data, ctx) {
-  do_check_eq(tests[0][1], data);
+  Assert.equal(tests[0][1], data);
   tests.shift();
-  do_execute_soon(next_test);
+  executeSoon(next_test);
 }
 
 function storeData(status, entry) {
@@ -79,11 +80,7 @@ function storeData(status, entry) {
                createInstance(Ci.nsIStringInputStream);
   stream.data = tests[0][0];
 
-  var url = {
-    password: "",
-    asciiSpec: URL,
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIURI])
-  };
+  var url = NetUtil.newURI(URL);
 
   var channel = {
     URI: url,
@@ -92,7 +89,7 @@ function storeData(status, entry) {
     isPending: function() {
       return this.pending;
     },
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIChannel])
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIChannel])
   };
 
   converter.onStartRequest(channel, null);
@@ -110,6 +107,6 @@ function next_test() {
 }
 
 function run_test() {
-  do_execute_soon(next_test);
+  executeSoon(next_test);
   do_test_pending();
 }

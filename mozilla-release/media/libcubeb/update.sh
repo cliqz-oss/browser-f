@@ -20,6 +20,10 @@ cp $1/src/cubeb_log.h src
 cp $1/src/cubeb_mixer.cpp src
 cp $1/src/cubeb_mixer.h src
 cp $1/src/cubeb_opensl.c src
+cp $1/src/cubeb-jni.cpp src
+cp $1/src/cubeb-jni.h src
+cp $1/src/android/cubeb-output-latency.h src/android
+cp $1/src/android/cubeb_media_library.h src/android
 cp $1/src/cubeb_osx_run_loop.h src
 cp $1/src/cubeb_panner.cpp src
 cp $1/src/cubeb_panner.h src
@@ -30,8 +34,10 @@ cp $1/src/cubeb_resampler_internal.h src
 cp $1/src/cubeb_ring_array.h src
 cp $1/src/cubeb_ringbuffer.h src
 cp $1/src/cubeb_sndio.c src
-cp $1/src/cubeb_utils.c src
+cp $1/src/cubeb_strings.c src
+cp $1/src/cubeb_strings.h src
 cp $1/src/cubeb_utils.h src
+cp $1/src/cubeb_utils.cpp src
 cp $1/src/cubeb_utils_unix.h src
 cp $1/src/cubeb_utils_win.h src
 cp $1/src/cubeb_wasapi.cpp src
@@ -41,7 +47,7 @@ cp $1/test/test_audio.cpp gtest
 cp $1/test/test_devices.cpp gtest
 cp $1/test/test_duplex.cpp gtest
 cp $1/test/test_latency.cpp gtest
-cp $1/test/test_mixer.cpp gtest
+cp $1/test/test_loopback.cpp gtest
 cp $1/test/test_overload_callback.cpp gtest
 cp $1/test/test_record.cpp gtest
 cp $1/test/test_resampler.cpp gtest
@@ -74,5 +80,6 @@ patch -p3 < disable-assert.patch
 echo "Applying prefer-pulse-rust.patch on top of $rev"
 patch -p3 < prefer-pulse-rust.patch
 
-echo "Applying bug1386957.patch on top of $rev"
-patch -p1 < bug1386957.patch
+echo "Applying disable-device-switching.patch on top of $rev"
+patch -p3 < disable-device-switching.patch
+

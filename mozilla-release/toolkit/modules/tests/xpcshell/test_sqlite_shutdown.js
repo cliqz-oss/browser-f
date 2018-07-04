@@ -3,15 +3,13 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
 do_get_profile();
 
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
   // OS.File doesn't like to be first imported during shutdown
-Cu.import("resource://gre/modules/Sqlite.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AsyncShutdown.jsm");
+ChromeUtils.import("resource://gre/modules/Sqlite.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
 function getConnection(dbName, extraOptions = {}) {
   let path = dbName + ".sqlite";
@@ -55,16 +53,12 @@ function sleep(ms) {
   });
 }
 
-function run_test() {
-  run_next_test();
-}
-
 
 //
 // -----------  Don't add a test after this one, as it shuts down Sqlite.jsm
 //
 add_task(async function test_shutdown_clients() {
-  do_print("Ensuring that Sqlite.jsm doesn't shutdown before its clients");
+  info("Ensuring that Sqlite.jsm doesn't shutdown before its clients");
 
   let assertions = [];
 
@@ -97,24 +91,24 @@ add_task(async function test_shutdown_clients() {
   assertions.push({name: "dbOpened", value: () => dbOpened});
   assertions.push({name: "dbClosed", value: () => dbClosed});
 
-  do_print("Now shutdown Sqlite.jsm synchronously");
+  info("Now shutdown Sqlite.jsm synchronously");
   Services.prefs.setBoolPref("toolkit.asyncshutdown.testing", true);
   AsyncShutdown.profileBeforeChange._trigger();
   Services.prefs.clearUserPref("toolkit.asyncshutdown.testing");
 
 
   for (let {name, value} of assertions) {
-    do_print("Checking: " + name);
-    do_check_true(value());
+    info("Checking: " + name);
+    Assert.ok(value());
   }
 
-  do_print("Ensure that we cannot open databases anymore");
+  info("Ensure that we cannot open databases anymore");
   let exn;
   try {
     await getDummyDatabase("opened after shutdown");
   } catch (ex) {
     exn = ex;
   }
-  do_check_true(!!exn);
-  do_check_true(exn.message.indexOf("Sqlite.jsm has been shutdown") != -1);
+  Assert.ok(!!exn);
+  Assert.ok(exn.message.includes("Sqlite.jsm has been shutdown"));
 });

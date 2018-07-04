@@ -9,7 +9,6 @@
 #include "xpcprivate.h"
 #include "XPCWrapper.h"
 #include "WrapperFactory.h"
-#include "nsDOMClassInfo.h"
 #include "nsWrapperCacheInlines.h"
 #include "mozilla/dom/BindingUtils.h"
 
@@ -180,10 +179,6 @@ DOMProxyHandler::defineProperty(JSContext* cx, JS::Handle<JSObject*> proxy, JS::
                                 Handle<PropertyDescriptor> desc,
                                 JS::ObjectOpResult &result, bool *defined) const
 {
-  if (desc.hasGetterObject() && desc.setter() == JS_StrictPropertyStub) {
-    return result.failGetterOnly();
-  }
-
   if (xpc::WrapperFactory::IsXrayWrapper(proxy)) {
     return result.succeed();
   }
@@ -235,19 +230,6 @@ DOMProxyHandler::delete_(JSContext* cx, JS::Handle<JSObject*> proxy,
   }
 
   return result.succeed();
-}
-
-bool
-BaseDOMProxyHandler::watch(JSContext* cx, JS::Handle<JSObject*> proxy, JS::Handle<jsid> id,
-                           JS::Handle<JSObject*> callable) const
-{
-  return js::WatchGuts(cx, proxy, id, callable);
-}
-
-bool
-BaseDOMProxyHandler::unwatch(JSContext* cx, JS::Handle<JSObject*> proxy, JS::Handle<jsid> id) const
-{
-  return js::UnwatchGuts(cx, proxy, id);
 }
 
 bool

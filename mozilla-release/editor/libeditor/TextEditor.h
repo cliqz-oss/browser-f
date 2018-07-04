@@ -16,12 +16,7 @@
 #include "nscore.h"
 
 class nsIContent;
-class nsIDOMDocument;
-class nsIDOMElement;
-class nsIDOMEvent;
-class nsIDOMNode;
 class nsIDocumentEncoder;
-class nsIEditRules;
 class nsIOutputStream;
 class nsISelectionController;
 class nsITransferable;
@@ -30,8 +25,10 @@ namespace mozilla {
 
 class AutoEditInitRulesTrigger;
 class HTMLEditRules;
-class TextEditRules;
+enum class EditAction : int32_t;
+
 namespace dom {
+class DragEvent;
 class Selection;
 } // namespace dom
 
@@ -47,19 +44,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TextEditor, EditorBase)
 
-  enum ETypingAction
-  {
-    eTypedText,  /* user typed text */
-    eTypedBR,    /* user typed shift-enter to get a br */
-    eTypedBreak  /* user typed enter */
-  };
-
   TextEditor();
-
-  virtual TextEditor* AsTextEditor() override { return this; }
-  virtual const TextEditor* AsTextEditor() const override { return this; }
-  virtual HTMLEditor* AsHTMLEditor() override;
-  virtual const HTMLEditor* AsHTMLEditor() const override;
 
   // nsIPlaintextEditor methods
   NS_DECL_NSIPLAINTEXTEDITOR
@@ -67,22 +52,7 @@ public:
   // nsIEditorMailSupport overrides
   NS_DECL_NSIEDITORMAILSUPPORT
 
-  // Overrides of EditorBase
-  virtual nsresult RemoveAttributeOrEquivalent(
-                     Element* aElement,
-                     nsIAtom* aAttribute,
-                     bool aSuppressTransaction) override;
-  virtual nsresult SetAttributeOrEquivalent(Element* aElement,
-                                            nsIAtom* aAttribute,
-                                            const nsAString& aValue,
-                                            bool aSuppressTransaction) override;
-  using EditorBase::RemoveAttributeOrEquivalent;
-  using EditorBase::SetAttributeOrEquivalent;
-
-  NS_IMETHOD Init(nsIDOMDocument* aDoc, nsIContent* aRoot,
-                  nsISelectionController* aSelCon, uint32_t aFlags,
-                  const nsAString& aValue) override;
-
+  // Overrides of nsIEditor
   NS_IMETHOD GetDocumentIsEmpty(bool* aDocumentIsEmpty) override;
 
   NS_IMETHOD DeleteSelection(EDirection aAction,
@@ -90,8 +60,10 @@ public:
 
   NS_IMETHOD SetDocumentCharacterSet(const nsACString& characterSet) override;
 
-  NS_IMETHOD Undo(uint32_t aCount) override;
-  NS_IMETHOD Redo(uint32_t aCount) override;
+  // If there are some good name to create non-virtual Undo()/Redo() methods,
+  // we should create them and those methods should just run them.
+  NS_IMETHOD Undo(uint32_t aCount) final;
+  NS_IMETHOD Redo(uint32_t aCount) final;
 
   NS_IMETHOD Cut() override;
   NS_IMETHOD CanCut(bool* aCanCut) override;
@@ -108,23 +80,36 @@ public:
                             uint32_t aFlags,
                             nsAString& aOutputString) override;
 
-  NS_IMETHOD OutputToStream(nsIOutputStream* aOutputStream,
-                            const nsAString& aFormatType,
-                            const nsACString& aCharsetOverride,
-                            uint32_t aFlags) override;
+  // Overrides of EditorBase
+  virtual nsresult RemoveAttributeOrEquivalent(
+                     Element* aElement,
+                     nsAtom* aAttribute,
+                     bool aSuppressTransaction) override;
+  virtual nsresult SetAttributeOrEquivalent(Element* aElement,
+                                            nsAtom* aAttribute,
+                                            const nsAString& aValue,
+                                            bool aSuppressTransaction) override;
+  using EditorBase::RemoveAttributeOrEquivalent;
+  using EditorBase::SetAttributeOrEquivalent;
+
+  virtual nsresult Init(nsIDocument& aDoc, Element* aRoot,
+                        nsISelectionController* aSelCon, uint32_t aFlags,
+                        const nsAString& aValue) override;
+
+  nsresult DocumentIsEmpty(bool* aIsEmpty);
 
   /**
    * All editor operations which alter the doc should be prefaced
    * with a call to StartOperation, naming the action and direction.
    */
-  NS_IMETHOD StartOperation(EditAction opID,
-                            nsIEditor::EDirection aDirection) override;
+  virtual nsresult StartOperation(EditAction opID,
+                                  nsIEditor::EDirection aDirection) override;
 
   /**
    * All editor operations which alter the doc should be followed
    * with a call to EndOperation.
    */
-  NS_IMETHOD EndOperation() override;
+  virtual nsresult EndOperation() override;
 
   /**
    * Make the given selection span the entire document.
@@ -134,30 +119,78 @@ public:
   virtual nsresult HandleKeyPressEvent(
                      WidgetKeyboardEvent* aKeyboardEvent) override;
 
-  virtual already_AddRefed<dom::EventTarget> GetDOMEventTarget() override;
-
-  virtual nsresult BeginIMEComposition(WidgetCompositionEvent* aEvent) override;
-  virtual nsresult UpdateIMEComposition(
-                     WidgetCompositionEvent* aCompositionChangeEvet) override;
+  virtual dom::EventTarget* GetDOMEventTarget() override;
 
   virtual already_AddRefed<nsIContent> GetInputEventTargetContent() override;
 
-  // Utility Routines, not part of public API
-  NS_IMETHOD TypedText(const nsAString& aString, ETypingAction aAction);
+  /**
+   * DeleteSelectionAsAction() removes selection content or content around
+   * caret with transactions.  This should be used for handling it as an
+   * edit action.
+   *
+   * @param aDirection          How much range should be removed.
+   * @param aStripWrappers      Whether the parent blocks should be removed
+   *                            when they become empty.
+   */
+  nsresult DeleteSelectionAsAction(EDirection aDirection,
+                                   EStripWrappers aStripWrappers);
+
+  /**
+   * DeleteSelectionWithTransaction() removes selected content or content
+   * around caret with transactions.
+   *
+   * @param aDirection          How much range should be removed.
+   * @param aStripWrappers      Whether the parent blocks should be removed
+   *                            when they become empty.
+   */
+  virtual nsresult
+  DeleteSelectionWithTransaction(EDirection aAction,
+                                 EStripWrappers aStripWrappers);
+
+  /**
+   * OnInputText() is called when user inputs text with keyboard or something.
+   *
+   * @param aStringToInsert     The string to insert.
+   */
+  nsresult OnInputText(const nsAString& aStringToInsert);
+
+  /**
+   * OnInputParagraphSeparator() is called when user tries to separate current
+   * paragraph with Enter key press or something.
+   */
+  nsresult OnInputParagraphSeparator();
+
+  /**
+   * InsertTextAsAction() inserts aStringToInsert at selection.
+   * Although this method is implementation of nsIPlaintextEditor.insertText(),
+   * this treats the input is an edit action.
+   *
+   * @param aStringToInsert     The string to insert.
+   */
+  nsresult InsertTextAsAction(const nsAString& aStringToInsert);
+
+  /**
+   * InsertParagraphSeparatorAsAction() inserts a line break if it's TextEditor
+   * or inserts new paragraph if it's HTMLEditor and it's possible.
+   * Although, this method is implementation of
+   * nsIPlaintextEditor.insertLineBreak(), this treats the input is an edit
+   * action.
+   */
+  nsresult InsertParagraphSeparatorAsAction();
 
   nsresult InsertTextAt(const nsAString& aStringToInsert,
-                        nsIDOMNode* aDestinationNode,
+                        nsINode* aDestinationNode,
                         int32_t aDestOffset,
                         bool aDoDeleteSelection);
 
   virtual nsresult InsertFromDataTransfer(dom::DataTransfer* aDataTransfer,
                                           int32_t aIndex,
-                                          nsIDOMDocument* aSourceDoc,
-                                          nsIDOMNode* aDestinationNode,
+                                          nsIDocument* aSourceDoc,
+                                          nsINode* aDestinationNode,
                                           int32_t aDestOffset,
                                           bool aDoDeleteSelection) override;
 
-  virtual nsresult InsertFromDrop(nsIDOMEvent* aDropEvent) override;
+  virtual nsresult InsertFromDrop(dom::DragEvent* aDropEvent) override;
 
   /**
    * Extends the selection for given deletion operation
@@ -172,12 +205,48 @@ public:
    * principals match, or we are in a editor context where this doesn't matter.
    * Otherwise, the data must be sanitized first.
    */
-  bool IsSafeToInsertData(nsIDOMDocument* aSourceDoc);
+  bool IsSafeToInsertData(nsIDocument* aSourceDoc);
 
   static void GetDefaultEditorPrefs(int32_t& aNewLineHandling,
                                     int32_t& aCaretStyle);
 
+  /**
+    * The maximum number of characters allowed.
+    *   default: -1 (unlimited).
+    */
   int32_t MaxTextLength() const { return mMaxTextLength; }
+  void SetMaxTextLength(int32_t aLength) { mMaxTextLength = aLength; }
+
+  /**
+   * Replace existed string with a string.
+   * This is fast path to replace all string when using single line control.
+   *
+   * @ param aString   the string to be set
+   */
+  nsresult SetText(const nsAString& aString);
+
+  /**
+   * OnCompositionStart() is called when editor receives eCompositionStart
+   * event which should be handled in this editor.
+   */
+  nsresult OnCompositionStart(WidgetCompositionEvent& aCompositionStartEvent);
+
+  /**
+   * OnCompositionChange() is called when editor receives an eCompositioChange
+   * event which should be handled in this editor.
+   *
+   * @param aCompositionChangeEvent     eCompositionChange event which should
+   *                                    be handled in this editor.
+   */
+  nsresult
+  OnCompositionChange(WidgetCompositionEvent& aCompositionChangeEvent);
+
+  /**
+   * OnCompositionEnd() is called when editor receives an eCompositionChange
+   * event and it's followed by eCompositionEnd event and after
+   * OnCompositionChange() is called.
+   */
+  void OnCompositionEnd(WidgetCompositionEvent& aCompositionEndEvent);
 
 protected:
   virtual ~TextEditor();
@@ -191,26 +260,53 @@ protected:
                                          uint32_t aFlags,
                                          const nsACString& aCharset);
 
-  NS_IMETHOD CreateBR(nsIDOMNode* aNode, int32_t aOffset,
-                      nsCOMPtr<nsIDOMNode>* outBRNode,
-                      EDirection aSelect = eNone);
-  already_AddRefed<Element> CreateBRImpl(nsCOMPtr<nsINode>* aInOutParent,
-                                         int32_t* aInOutOffset,
-                                         EDirection aSelect);
-  nsresult CreateBRImpl(nsCOMPtr<nsIDOMNode>* aInOutParent,
-                        int32_t* aInOutOffset,
-                        nsCOMPtr<nsIDOMNode>* outBRNode,
-                        EDirection aSelect);
+  /**
+   * InsertBrElementWithTransaction() creates a <br> element and inserts it
+   * before aPointToInsert.  Then, tries to collapse selection at or after the
+   * new <br> node if aSelect is not eNone.
+   *
+   * @param aSelection          The selection of this editor.
+   * @param aPointToInsert      The DOM point where should be <br> node inserted
+   *                            before.
+   * @param aSelect             If eNone, this won't change selection.
+   *                            If eNext, selection will be collapsed after
+   *                            the <br> element.
+   *                            If ePrevious, selection will be collapsed at
+   *                            the <br> element.
+   * @return                    The new <br> node.  If failed to create new
+   *                            <br> node, returns nullptr.
+   */
+  template<typename PT, typename CT>
+  already_AddRefed<Element>
+  InsertBrElementWithTransaction(
+    Selection& aSelection,
+    const EditorDOMPointBase<PT, CT>& aPointToInsert,
+    EDirection aSelect = eNone);
 
   /**
    * Factored methods for handling insertion of data from transferables
    * (drag&drop or clipboard).
    */
   NS_IMETHOD PrepareTransferable(nsITransferable** transferable);
-  nsresult InsertTextFromTransferable(nsITransferable* transferable,
-                                      nsIDOMNode* aDestinationNode,
-                                      int32_t aDestOffset,
-                                      bool aDoDeleteSelection);
+  nsresult InsertTextFromTransferable(nsITransferable* transferable);
+
+  /**
+   * DeleteSelectionAndCreateElement() creates a element whose name is aTag.
+   * And insert it into the DOM tree after removing the selected content.
+   *
+   * @param aTag                The element name to be created.
+   * @return                    Created new element.
+   */
+  already_AddRefed<Element> DeleteSelectionAndCreateElement(nsAtom& aTag);
+
+  /**
+   * This method first deletes the selection, if it's not collapsed.  Then if
+   * the selection lies in a CharacterData node, it splits it.  If the
+   * selection is at this point collapsed in a CharacterData node, it's
+   * adjusted to be collapsed right before or after the node instead (which is
+   * always possible, since the node was split).
+   */
+  nsresult DeleteSelectionAndPrepareToCreateNode();
 
   /**
    * Shared outputstring; returns whether selection is collapsed and resulting
@@ -232,8 +328,19 @@ protected:
   bool UpdateMetaCharset(nsIDocument& aDocument,
                          const nsACString& aCharacterSet);
 
+  /**
+   * EnsureComposition() should be called by composition event handlers.  This
+   * tries to get the composition for the event and set it to mComposition.
+   * However, this may fail because the composition may be committed before
+   * the event comes to the editor.
+   *
+   * @return            true if there is a composition.  Otherwise, for example,
+   *                    a composition event handler in web contents moved focus
+   *                    for committing the composition, returns false.
+   */
+  bool EnsureComposition(WidgetCompositionEvent& aCompositionEvent);
+
 protected:
-  nsCOMPtr<nsIEditRules> mRules;
   nsCOMPtr<nsIDocumentEncoder> mCachedDocumentEncoder;
   nsString mCachedDocumentEncoderType;
   int32_t mWrapColumn;
@@ -248,5 +355,17 @@ protected:
 };
 
 } // namespace mozilla
+
+mozilla::TextEditor*
+nsIEditor::AsTextEditor()
+{
+  return static_cast<mozilla::TextEditor*>(this);
+}
+
+const mozilla::TextEditor*
+nsIEditor::AsTextEditor() const
+{
+  return static_cast<const mozilla::TextEditor*>(this);
+}
 
 #endif // #ifndef mozilla_TextEditor_h

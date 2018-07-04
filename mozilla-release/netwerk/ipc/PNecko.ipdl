@@ -27,8 +27,6 @@ include protocol PParentToChildStream; //FIXME: bug #792908
 include protocol PStunAddrsRequest;
 include protocol PFileChannel;
 
-include protocol PRtspController;
-include protocol PRtspChannel;
 include IPCStream;
 include URIParams;
 include NeckoChannelParams;
@@ -38,6 +36,7 @@ include protocol PAltDataOutputStream;
 using class IPC::SerializedLoadContext from "SerializedLoadContext.h";
 using mozilla::dom::TabId from "mozilla/dom/ipc/IdType.h";
 using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
+using refcounted class nsIInputStream from "mozilla/ipc/IPCStreamUtils.h";
 
 namespace mozilla {
 namespace net {
@@ -59,8 +58,6 @@ nested(upto inside_cpow) sync protocol PNecko
   manages PDataChannel;
   manages PSimpleChannel;
   manages PFileChannel;
-  manages PRtspController;
-  manages PRtspChannel;
   manages PChannelDiverter;
   manages PTransportProvider;
   manages PAltDataOutputStream;
@@ -109,8 +106,6 @@ parent:
   async PSimpleChannel(uint32_t channelId);
   async PFileChannel(uint32_t channelId);
 
-  async PRtspController();
-  async PRtspChannel(RtspChannelConnectArgs args);
   async PChannelDiverter(ChannelDiverterArgs channel);
 
   /**
@@ -122,16 +117,18 @@ parent:
                         nsString password, nsString domain);
   async OnAuthCancelled(uint64_t callbackId, bool userCancel);
 
+  async RequestContextLoadBegin(uint64_t rcid);
+  async RequestContextAfterDOMContentLoaded(uint64_t rcid);
   async RemoveRequestContext(uint64_t rcid);
 
-  async PAltDataOutputStream(nsCString type, PHttpChannel channel);
+  async PAltDataOutputStream(nsCString type, int64_t predictedSize, PHttpChannel channel);
 
   async PStunAddrsRequest();
 
   /**
    * WebExtension-specific remote resource loading
    */
-  async GetExtensionStream(URIParams uri) returns (OptionalIPCStream stream);
+  async GetExtensionStream(URIParams uri) returns (nsIInputStream stream);
   async GetExtensionFD(URIParams uri) returns (FileDescriptor fd);
 
 child:

@@ -1,4 +1,4 @@
-use logging::LogLevel;
+use logging::Level;
 use marionette::LogOptions;
 use mozprofile::preferences::Pref;
 use mozprofile::profile::Profile;
@@ -200,11 +200,10 @@ impl<'a> BrowserCapabilities for FirefoxCapabilities<'a> {
                                         let level = try_opt!(log_value.as_string(),
                                                              ErrorStatus::InvalidArgument,
                                                              "log level is not a string");
-                                        if LogLevel::from_str(level).is_err() {
+                                        if Level::from_str(level).is_err() {
                                             return Err(WebDriverError::new(
                                                 ErrorStatus::InvalidArgument,
-                                                format!("{} is not a valid log level",
-                                                        level)))
+                                                format!("Not a valid log level: {}", level)))
                                         }
                                     }
                                     x => return Err(WebDriverError::new(
@@ -228,6 +227,20 @@ impl<'a> BrowserCapabilities for FirefoxCapabilities<'a> {
                             ErrorStatus::InvalidArgument,
                             format!("Invalid moz:firefoxOptions field {}", x)))
                     }
+                }
+            }
+            "moz:useNonSpecCompliantPointerOrigin" => {
+                if !value.is_boolean() {
+                    return Err(WebDriverError::new(
+                        ErrorStatus::InvalidArgument,
+                        "moz:useNonSpecCompliantPointerOrigin is not a boolean"));
+                }
+            }
+            "moz:webdriverClick" => {
+                if !value.is_boolean() {
+                    return Err(WebDriverError::new(
+                        ErrorStatus::InvalidArgument,
+                        "moz:webdriverClick is not a boolean"));
                 }
             }
             _ => return Err(WebDriverError::new(ErrorStatus::InvalidArgument,
@@ -328,25 +341,26 @@ impl FirefoxOptions {
 
     fn load_log(options: &Capabilities) -> WebDriverResult<LogOptions> {
         if let Some(json) = options.get("log") {
-            let log = try!(json.as_object()
-                               .ok_or(WebDriverError::new(ErrorStatus::InvalidArgument,
-                                                          "Log section is not an object")));
+            let log = json.as_object().ok_or(WebDriverError::new(
+                ErrorStatus::InvalidArgument,
+                "Log section is not an object",
+            ))?;
 
             let level = match log.get("level") {
                 Some(json) => {
-                    let s = try!(json.as_string()
-                                     .ok_or(WebDriverError::new(ErrorStatus::InvalidArgument,
-                                                                "Log level is not a string")));
-                    Some(try!(LogLevel::from_str(s)
-                                  .ok()
-                                  .ok_or(WebDriverError::new(ErrorStatus::InvalidArgument,
-                                                             "Log level is unknown"))))
+                    let s = json.as_string().ok_or(WebDriverError::new(
+                        ErrorStatus::InvalidArgument,
+                        "Log level is not a string",
+                    ))?;
+                    Some(Level::from_str(s).ok().ok_or(WebDriverError::new(
+                        ErrorStatus::InvalidArgument,
+                        "Log level is unknown",
+                    ))?)
                 }
                 None => None,
             };
 
-            Ok(LogOptions { level: level })
-
+            Ok(LogOptions { level })
         } else {
             Ok(Default::default())
         }
@@ -487,8 +501,10 @@ mod tests {
     fn test_prefs() {
         let encoded_profile = example_profile();
         let mut prefs: BTreeMap<String, Json> = BTreeMap::new();
-        prefs.insert("browser.display.background_color".into(),
-                     Json::String("#00ff00".into()));
+        prefs.insert(
+            "browser.display.background_color".into(),
+            Json::String("#00ff00".into()),
+        );
 
         let mut firefox_opts = Capabilities::new();
         firefox_opts.insert("profile".into(), encoded_profile);
@@ -505,11 +521,14 @@ mod tests {
         let prefs_set = profile.user_prefs().unwrap();
         println!("{:#?}", prefs_set.prefs);
 
-        assert_eq!(prefs_set.get("startup.homepage_welcome_url"),
-                   Some(&Pref::new("data:text/html,PASS")));
-        assert_eq!(prefs_set.get("browser.display.background_color"),
-                   Some(&Pref::new("#00ff00")));
-        assert_eq!(prefs_set.get("marionette.defaultPrefs.port"),
-                   Some(&Pref::new(2828)));
+        assert_eq!(
+            prefs_set.get("startup.homepage_welcome_url"),
+            Some(&Pref::new("data:text/html,PASS"))
+        );
+        assert_eq!(
+            prefs_set.get("browser.display.background_color"),
+            Some(&Pref::new("#00ff00"))
+        );
+        assert_eq!(prefs_set.get("marionette.port"), Some(&Pref::new(2828)));
     }
 }

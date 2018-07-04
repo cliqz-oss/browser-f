@@ -4,22 +4,19 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "Authentication",
 ];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/FxAccounts.jsm");
-Cu.import("resource://gre/modules/FxAccountsClient.jsm");
-Cu.import("resource://gre/modules/FxAccountsConfig.jsm");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-sync/main.js");
-Cu.import("resource://tps/logger.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services", "resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsClient.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsConfig.jsm");
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://tps/logger.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Services", "resource://gre/modules/Services.jsm");
 
 Cu.importGlobalProperties(["fetch"]);
 
@@ -31,8 +28,13 @@ var Authentication = {
   /**
    * Check if an user has been logged in
    */
-  get isLoggedIn() {
-    return !!this.getSignedInUser();
+  async isLoggedIn() {
+    return !!(await this.getSignedInUser());
+  },
+
+  async isReady() {
+    let user = await this.getSignedInUser();
+    return user && user.verified;
   },
 
   _getRestmailUsername(user) {
@@ -44,17 +46,20 @@ var Authentication = {
   },
 
   async shortWaitForVerification(ms) {
-    let userData = this.getSignedInUser();
+    let userData = await this.getSignedInUser();
+    let timeoutID;
+    let timeoutPromise = new Promise(resolve => {
+      timeoutID = setTimeout(() => {
+        Logger.logInfo(`Warning: no verification after ${ms}ms.`);
+        resolve();
+      }, ms);
+    });
     await Promise.race([
-      fxAccounts.whenVerified(userData),
-      new Promise(resolve => {
-        setTimeout(() => {
-          Logger.logInfo(`Warning: no verification after ${ms}ms.`);
-          resolve();
-        }, ms);
-      })
+      fxAccounts.whenVerified(userData)
+                .finally(() => clearTimeout(timeoutID)),
+      timeoutPromise,
     ]);
-    userData = this.getSignedInUser();
+    userData = await this.getSignedInUser();
     return userData && userData.verified;
   },
 
@@ -82,9 +87,6 @@ var Authentication = {
     const tries = 10;
     const normalWait = 2000;
     for (let i = 0; i < tries; ++i) {
-      if (await this.shortWaitForVerification(normalWait)) {
-        return true;
-      }
       let resp = await fetch(restmailURI);
       let messages = await resp.json();
       // Sort so that the most recent emails are first.
@@ -108,6 +110,9 @@ var Authentication = {
       if (i === 0) {
         // first time through after failing we'll do this.
         await fxAccounts.resendVerificationEmail();
+      }
+      if (await this.shortWaitForVerification(normalWait)) {
+        return true;
       }
     }
     // One last try.
@@ -141,17 +146,9 @@ var Authentication = {
    *
    * @returns Information about the currently signed in user
    */
-  getSignedInUser: function getSignedInUser() {
-    let cb = Async.makeSpinningCallback();
-
-    fxAccounts.getSignedInUser().then(user => {
-      cb(null, user);
-    }, error => {
-      cb(error);
-    })
-
+  async getSignedInUser() {
     try {
-      return cb.wait();
+      return (await fxAccounts.getSignedInUser());
     } catch (error) {
       Logger.logError("getSignedInUser() failed with: " + JSON.stringify(error));
       throw error;
@@ -168,38 +165,27 @@ var Authentication = {
    * @param account.password
    *        The user's password
    */
-  signIn: function signIn(account) {
-    let cb = Async.makeSpinningCallback();
+  async signIn(account) {
+    Logger.AssertTrue(account.username, "Username has been found");
+    Logger.AssertTrue(account.password, "Password has been found");
 
-    Logger.AssertTrue(account["username"], "Username has been found");
-    Logger.AssertTrue(account["password"], "Password has been found");
-
-    Logger.logInfo("Login user: " + account["username"]);
-
-    // Required here since we don't go through the real login page
-    Async.promiseSpinningly(FxAccountsConfig.ensureConfigured());
-
-    let client = new FxAccountsClient();
-    client.signIn(account["username"], account["password"], true).then(credentials => {
-      return fxAccounts.setSignedInUser(credentials);
-    }).then(() => {
-      return this._completeVerification(account["username"])
-    }).then(() => {
-      cb(null, true);
-    }, error => {
-      cb(error, false);
-    });
+    Logger.logInfo("Login user: " + account.username);
 
     try {
-      cb.wait();
+      // Required here since we don't go through the real login page
+      await FxAccountsConfig.ensureConfigured();
+
+      let client = new FxAccountsClient();
+      let credentials = await client.signIn(account.username, account.password, true);
+      await fxAccounts.setSignedInUser(credentials);
+      if (!credentials.verified) {
+        await this._completeVerification(account.username);
+      }
 
       if (Weave.Status.login !== Weave.LOGIN_SUCCEEDED) {
         Logger.logInfo("Logging into Weave.");
-        Async.promiseSpinningly(Weave.Service.login());
-        Logger.AssertEqual(Weave.Status.login, Weave.LOGIN_SUCCEEDED,
-                           "Weave logged in");
+        await Weave.Service.login();
       }
-
       return true;
     } catch (error) {
       throw new Error("signIn() failed with: " + error.message);
@@ -207,24 +193,12 @@ var Authentication = {
   },
 
   /**
-   * Sign out of Firefox Accounts. It also clears out the device ID, if we find one.
+   * Sign out of Firefox Accounts.
    */
-  signOut() {
-    if (Authentication.isLoggedIn) {
-      let user = Authentication.getSignedInUser();
-      if (!user) {
-        throw new Error("Failed to get signed in user!");
-      }
-      let fxc = new FxAccountsClient();
-      let { sessionToken, deviceId } = user;
-      if (deviceId) {
-        Logger.logInfo("Destroying device " + deviceId);
-        Async.promiseSpinningly(fxAccounts.deleteDeviceRegistration(sessionToken, deviceId));
-        Async.promiseSpinningly(fxAccounts.signOut(true));
-      } else {
-        Logger.logError("No device found.");
-        Async.promiseSpinningly(fxc.signOut(sessionToken, { service: "sync" }));
-      }
+  async signOut() {
+    if (await Authentication.isLoggedIn()) {
+      // Note: This will clean up the device ID.
+      await fxAccounts.signOut();
     }
   }
 };

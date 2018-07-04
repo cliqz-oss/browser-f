@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -41,6 +40,7 @@ class RenderFrameParent : public PRenderFrameParent
   typedef mozilla::layers::ContainerLayer ContainerLayer;
   typedef mozilla::layers::Layer Layer;
   typedef mozilla::layers::LayerManager LayerManager;
+  typedef mozilla::layers::LayersId LayersId;
   typedef mozilla::layers::TargetConfig TargetConfig;
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
   typedef mozilla::layers::TextureFactoryIdentifier TextureFactoryIdentifier;
@@ -66,7 +66,6 @@ public:
 
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         nsSubDocumentFrame* aFrame,
-                        const nsRect& aDirtyRect,
                         const nsDisplayListSet& aLists);
 
   already_AddRefed<Layer> BuildLayer(nsDisplayListBuilder* aBuilder,
@@ -81,7 +80,7 @@ public:
 
   void GetTextureFactoryIdentifier(TextureFactoryIdentifier* aTextureFactoryIdentifier);
 
-  inline uint64_t GetLayersId() const { return mLayersId; }
+  inline LayersId GetLayersId() const { return mLayersId; }
   inline bool IsLayersConnected() const { return mLayersConnected; }
   inline CompositorOptions GetCompositorOptions() const { return mCompositorOptions; }
 
@@ -103,7 +102,7 @@ private:
   // When our child frame is pushing transactions directly to the
   // compositor, this is the ID of its layer tree in the compositor's
   // context.
-  uint64_t mLayersId;
+  LayersId mLayersId;
   // A flag that indicates whether or not the compositor knows about the
   // layers id. In some cases this RenderFrameParent is not connected to the
   // compositor and so this flag is false.
@@ -163,19 +162,20 @@ public:
              const ContainerLayerParameters& aContainerParameters) override;
 
   virtual bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                                       mozilla::wr::IpcResourceUpdateQueue& aResources,
                                        const StackingContextHelper& aSc,
-                                       nsTArray<WebRenderParentCommand>& aParentCommands,
                                        mozilla::layers::WebRenderLayerManager* aManager,
                                        nsDisplayListBuilder* aDisplayListBuilder) override;
   virtual bool UpdateScrollData(mozilla::layers::WebRenderScrollData* aData,
                                 mozilla::layers::WebRenderLayerScrollData* aLayerData) override;
 
-  uint64_t GetRemoteLayersId() const;
+  mozilla::layers::LayersId GetRemoteLayersId() const;
 
   NS_DISPLAY_DECL_NAME("Remote", TYPE_REMOTE)
 
 private:
   RenderFrameParent* mRemoteFrame;
+  mozilla::LayoutDeviceIntPoint mOffset;
   mozilla::layers::EventRegionsOverride mEventRegionsOverride;
 };
 

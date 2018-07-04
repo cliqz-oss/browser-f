@@ -37,6 +37,7 @@
 #include "nsError.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/Text.h"
 #include "mozilla/Encoding.h"
 #include "mozilla/UniquePtr.h"
 
@@ -281,7 +282,7 @@ txStylesheetSink::OnStartRequest(nsIRequest *aRequest, nsISupports *aContext)
     channel->GetURI(getter_AddRefs(uri));
     bool sniff;
     if (NS_SUCCEEDED(uri->SchemeIs("file", &sniff)) && sniff &&
-        contentType.Equals(UNKNOWN_CONTENT_TYPE)) {
+        contentType.EqualsLiteral(UNKNOWN_CONTENT_TYPE)) {
         nsresult rv;
         nsCOMPtr<nsIStreamConverterService> serv =
             do_GetService("@mozilla.org/streamConverters;1", &rv);
@@ -371,7 +372,7 @@ public:
                       nsIDocument* aLoaderDocument);
 
     TX_DECL_ACOMPILEOBSERVER
-    NS_INLINE_DECL_REFCOUNTING(txCompileObserver)
+    NS_INLINE_DECL_REFCOUNTING(txCompileObserver, override)
 
     nsresult startLoad(nsIURI* aUri, txStylesheetCompiler* aCompiler,
                        nsIPrincipal* aSourcePrincipal,
@@ -455,6 +456,7 @@ txCompileObserver::startLoad(nsIURI* aUri, txStylesheetCompiler* aCompiler,
                     aReferrerPrincipal, // triggeringPrincipal
                     nsILoadInfo::SEC_REQUIRE_CORS_DATA_INHERITS,
                     nsIContentPolicy::TYPE_XSLT,
+                    nullptr, // aPerformanceStorage
                     loadGroup);
 
     NS_ENSURE_SUCCESS(rv, rv);
@@ -563,13 +565,13 @@ handleNode(nsINode* aNode, txStylesheetCompiler* aCompiler)
         rv = aCompiler->endElement();
         NS_ENSURE_SUCCESS(rv, rv);
     }
-    else if (aNode->IsNodeOfType(nsINode::eTEXT)) {
+    else if (dom::Text* text = aNode->GetAsText()) {
         nsAutoString chars;
-        static_cast<nsIContent*>(aNode)->AppendTextTo(chars);
+        text->AppendTextTo(chars);
         rv = aCompiler->characters(chars);
         NS_ENSURE_SUCCESS(rv, rv);
     }
-    else if (aNode->IsNodeOfType(nsINode::eDOCUMENT)) {
+    else if (aNode->IsDocument()) {
         for (nsIContent* child = aNode->GetFirstChild();
              child;
              child = child->GetNextSibling()) {
@@ -588,7 +590,7 @@ public:
     explicit txSyncCompileObserver(txMozillaXSLTProcessor* aProcessor);
 
     TX_DECL_ACOMPILEOBSERVER
-    NS_INLINE_DECL_REFCOUNTING(txSyncCompileObserver)
+    NS_INLINE_DECL_REFCOUNTING(txSyncCompileObserver, override)
 
 private:
     // Private destructor, to discourage deletion outside of Release():
@@ -630,8 +632,7 @@ txSyncCompileObserver::loadURI(const nsAString& aUri,
     // make sense.
     nsCOMPtr<nsINode> source;
     if (mProcessor) {
-      source =
-        do_QueryInterface(mProcessor->GetSourceContentModel());
+      source = mProcessor->GetSourceContentModel();
     }
     nsAutoSyncOperation sync(source ? source->OwnerDoc() : nullptr);
     nsCOMPtr<nsIDOMDocument> document;
@@ -672,12 +673,11 @@ TX_CompileStylesheet(nsINode* aNode, txMozillaXSLTProcessor* aProcessor,
     nsCOMPtr<nsIDocument> doc = aNode->OwnerDoc();
 
     nsCOMPtr<nsIURI> uri;
-    if (aNode->IsNodeOfType(nsINode::eCONTENT)) {
-      uri = static_cast<nsIContent*>(aNode)->GetBaseURI();
-    }
-    else {
-      NS_ASSERTION(aNode->IsNodeOfType(nsINode::eDOCUMENT), "not a doc");
-      uri = static_cast<nsIDocument*>(aNode)->GetBaseURI();
+    if (aNode->IsContent()) {
+      uri = aNode->AsContent()->GetBaseURI();
+    } else {
+      NS_ASSERTION(aNode->IsDocument(), "not a doc");
+      uri = aNode->AsDocument()->GetBaseURI();
     }
     NS_ENSURE_TRUE(uri, NS_ERROR_FAILURE);
 

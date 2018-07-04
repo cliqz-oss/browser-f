@@ -85,6 +85,20 @@
 <!ENTITY editRewrapCmd.key "R">
 <!ENTITY renameAttachmentCmd.label "Anhang umbenennen…">
 <!ENTITY renameAttachmentCmd.accesskey "n">
+<!ENTITY reorderAttachmentsCmd.label "Anhänge neu ordnen…">
+<!ENTITY reorderAttachmentsCmd.accesskey "d">
+<!ENTITY reorderAttachmentsCmd.key "x">
+<!ENTITY toggleAttachmentPaneCmd.label "Anhangbereich">
+<!-- LOCALIZATION NOTE (toggleAttachmentPaneCmd.accesskey):
+     For better mnemonics, toggleAttachmentPaneCmd.accesskey should be the same
+     as attachments.accesskey. -->
+<!ENTITY toggleAttachmentPaneCmd.accesskey "n">
+<!-- LOCALIZATION NOTE (toggleAttachmentPaneCmd.key):
+     With OS-specific access modifier, this defines the shortcut key for showing/
+     hiding/minimizing the attachment pane, e.g. Alt+M on Windows.
+     toggleAttachmentPaneCmd.key and attachments.accesskey must be the same
+     for the bucket view state machinery to work. -->
+<!ENTITY toggleAttachmentPaneCmd.key "m">
 <!ENTITY selectAllCmd.label "Alles auswählen">
 <!ENTITY selectAllCmd.key "A">
 <!ENTITY selectAllCmd.accesskey "u">
@@ -102,6 +116,42 @@
 <!ENTITY findPrevCmd.accesskey "V">
 <!ENTITY findPrevCmd.key "G">
 <!ENTITY findPrevCmd.key2 "VK_F3">
+
+<!-- Reorder Attachment Panel -->
+<!ENTITY reorderAttachmentsPanel.label "Anhänge neu ordnen">
+<!ENTITY moveAttachmentTopPanelBtn.label "An Anfang">
+<!ENTITY moveAttachmentTopPanelBtn.accesskey "A">
+<!ENTITY moveAttachmentUpPanelBtn.label "Nach oben">
+<!ENTITY moveAttachmentUpPanelBtn.accesskey "o">
+<!ENTITY moveAttachmentBundleUpPanelBtn.label "Zusammen anordnen">
+<!ENTITY moveAttachmentBundleUpPanelBtn.accesskey "Z">
+<!ENTITY moveAttachmentDownPanelBtn.label "Nach unten">
+<!ENTITY moveAttachmentDownPanelBtn.accesskey "u">
+<!ENTITY moveAttachmentBottomPanelBtn.label "Ans Ende">
+<!ENTITY moveAttachmentBottomPanelBtn.accesskey "E">
+<!-- LOCALIZATION NOTE (sortAttachmentsTogglePanelBtn.AZ.label):
+     Please ensure that this translation matches
+     sortAttachmentsTogglePanelBtn.ZA.label, except for the sort direction. -->
+<!ENTITY sortAttachmentsTogglePanelBtn.AZ.label "Auswahl sortieren: A - Z">
+<!-- LOCALIZATION NOTE (sortAttachmentsTogglePanelBtn.AZ.accesskey):
+     This accesskey should be the same like
+     sortAttachmentsTogglePanelBtn.ZA.accesskey, and it should be taken from
+     the "Sort Selection:" part of the label, not from the sort direction part. -->
+<!ENTITY sortAttachmentsTogglePanelBtn.AZ.accesskey "s">
+<!ENTITY sortAttachmentsTogglePanelBtn.ZA.label "Auswahl sortieren: Z - A">
+<!ENTITY sortAttachmentsTogglePanelBtn.ZA.accesskey "s">
+
+<!-- LOCALIZATION NOTE (sortAttachmentsPanelBtn.Sort.AZ.label):
+     Please ensure that this translation matches
+     sortAttachmentsPanelBtn.Sort.ZA.label, except for the sort direction. -->
+<!ENTITY sortAttachmentsPanelBtn.Sort.AZ.label "Sortieren: A - Z">
+<!ENTITY sortAttachmentsPanelBtn.Sort.ZA.label "Sortieren: Z - A">
+<!-- LOCALIZATION NOTE (sortAttachmentsPanelBtn.SortSelection.AZ.label):
+     Please ensure that this translation matches
+     sortAttachmentsPanelBtn.SortSelection.ZA.label, except for the sort direction. -->
+<!ENTITY sortAttachmentsPanelBtn.SortSelection.AZ.label "Auswahl sortieren: A - Z">
+<!ENTITY sortAttachmentsPanelBtn.SortSelection.ZA.label "Auswahl sortieren: Z - A">
+<!ENTITY sortAttachmentsPanelBtn.key "y">
 
 <!-- View Menu -->
 <!ENTITY viewMenu.label "Ansicht">
@@ -214,6 +264,7 @@
 <!ENTITY quoteButton.tooltip "Die ursprüngliche Nachricht zitieren">
 <!ENTITY addressButton.tooltip "Kontakte-Sidebar ein-/ausblenden">
 <!ENTITY attachButton.tooltip "Datei-Anhang zu dieser Nachricht anfügen">
+<!ENTITY attachButton.tooltip2 "Anhang hinzufügen">
 <!ENTITY spellingButton.tooltip "Rechtschreibung der Auswahl oder der gesamten Nachricht prüfen">
 <!ENTITY statusLanguageText.tooltip "Sprache für Rechtschreibprüfung">
 <!ENTITY saveButton.tooltip "Diese Nachricht speichern">
@@ -236,9 +287,14 @@
 <!ENTITY followupAddr.label "Followup an:">
 <!ENTITY subject.label "Betreff:">
 <!ENTITY subject.accesskey "r">
-<!-- LOCALIZATION NOTE attachments.accesskey This access key should correspond
-     to the strings in attachmentCount in composeMsgs.properties -->
+<!-- LOCALIZATION NOTE (attachments.accesskey) This access key character should
+     be taken from the strings in attachmentCount in composeMsgs.properties,
+     and it must be the same as toggleAttachmentPaneCmd.key, otherwise it won't
+     work, as the shortcut key functionality supersedes the access key. -->
 <!ENTITY attachments.accesskey "n">
+
+<!ENTITY attachmentBucketHeader.tooltip "Anhangbereich">
+<!ENTITY attachmentBucketCloseButton.tooltip "Anhangbereich ausblenden">
 
 <!-- Format Toolbar, imported from editorAppShell.xul -->
 <!ENTITY SmileButton.tooltip "Einen Smiley einfügen">
@@ -276,6 +332,7 @@
 <!ENTITY pasteQuote.label "Als Zitat einfügen">
 <!ENTITY pasteQuote.accesskey "Z">
 
+<!-- Attachment Item and List Context Menus -->
 <!ENTITY openAttachment.label "Öffnen">
 <!ENTITY openAttachment.accesskey "f">
 <!ENTITY delete.label "Löschen">
@@ -284,6 +341,10 @@
 <!ENTITY removeAttachment.accesskey "h">
 <!ENTITY renameAttachment.label "Umbenennen…">
 <!ENTITY renameAttachment.accesskey "U">
+<!ENTITY reorderAttachments.label "Anhänge neu ordnen…">
+<!ENTITY reorderAttachments.accesskey "o">
+<!ENTITY removeAllAttachments.label "Alle Anhänge entfernen">
+<!ENTITY removeAllAttachments.accesskey "e">
 <!ENTITY selectAll.label "Alles auswählen">
 <!ENTITY selectAll.accesskey "u">
 <!ENTITY attachFile.label "Datei(en) als Anhang anfügen">
@@ -299,6 +360,13 @@
 <!ENTITY attachPage.label "Webseite anhängen…">
 <!ENTITY attachPage.accesskey "W">
 
+<!-- Attachment Pane Header Bar Context Menu -->
+<!-- LOCALIZATION NOTE (initiallyShowAttachmentPane.label):
+     Should use the same wording as startExpandedCmd.label
+     in msgHdrViewOverlay.dtd. -->
+<!ENTITY initiallyShowAttachmentPane.label "Anhangbereich standardmäßig anzeigen">
+<!ENTITY initiallyShowAttachmentPane.accesskey "s">
+
 <!-- Spell checker context menu items -->
 <!ENTITY spellAddDictionaries.label "Wörterbücher hinzufügen…">
 <!ENTITY spellAddDictionaries.accesskey "W">
@@ -309,3 +377,7 @@
 <!-- Identity popup customize menuitem -->
 <!ENTITY customizeFromAddress.label "Benutzerdefinierte Absenderadresse…">
 <!ENTITY customizeFromAddress.accesskey "A">
+
+<!-- Status Bar -->
+<!ENTITY languageStatusButton.tooltip "Sprache für Rechtschreibprüfung ändern">
+<!ENTITY encodingStatusPanel.tooltip "Zeichenkodierung">

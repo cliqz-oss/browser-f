@@ -30,7 +30,7 @@ public:
 
   NS_DECL_ISUPPORTS
 
-  virtual already_AddRefed<PrintTarget> MakePrintTarget() final;
+  already_AddRefed<PrintTarget> MakePrintTarget() final;
 
   NS_IMETHOD Init(nsIWidget *aWidget, nsIPrintSettings* aPS,
                   bool aIsPrintPreview) override;
@@ -46,8 +46,6 @@ protected:
   nsCOMPtr<nsPrintSettingsGTK> mPrintSettings;
   bool mToPrinter : 1;      /* If true, print to printer */
   bool mIsPPreview : 1;     /* If true, is print preview */
-  char   mPath[PATH_MAX];     /* If toPrinter = false, dest file */
-  char   mPrinter[256];       /* Printer name */
   GtkPrintSettings* mGtkPrintSettings;
   GtkPageSetup*     mGtkPageSetup;
 

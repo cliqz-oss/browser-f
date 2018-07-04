@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,9 +7,9 @@
 #include "nsMenuBarFrame.h"
 #include "nsIServiceManager.h"
 #include "nsIContent.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsPresContext.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsCSSRendering.h"
 #include "nsNameSpaceManager.h"
 #include "nsIDocument.h"
@@ -27,8 +28,10 @@
 #include "nsUTF8Utils.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/dom/Event.h"
+#include "mozilla/dom/KeyboardEvent.h"
 
 using namespace mozilla;
+using mozilla::dom::KeyboardEvent;
 
 //
 // NS_NewMenuBarFrame
@@ -36,9 +39,9 @@ using namespace mozilla;
 // Wrapper for creating a new menu Bar container
 //
 nsIFrame*
-NS_NewMenuBarFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMenuBarFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMenuBarFrame(aContext);
+  return new (aPresShell) nsMenuBarFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMenuBarFrame)
@@ -50,8 +53,8 @@ NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
 //
 // nsMenuBarFrame cntr
 //
-nsMenuBarFrame::nsMenuBarFrame(nsStyleContext* aContext)
-  : nsBoxFrame(aContext, kClassID)
+nsMenuBarFrame::nsMenuBarFrame(ComputedStyle* aStyle)
+  : nsBoxFrame(aStyle, kClassID)
   , mStayActive(false)
   , mIsActive(false)
   , mActiveByKeyboard(false)
@@ -143,14 +146,13 @@ nsMenuBarFrame::ToggleMenuActiveState()
 }
 
 nsMenuFrame*
-nsMenuBarFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent)
+nsMenuBarFrame::FindMenuWithShortcut(KeyboardEvent* aKeyEvent, bool aPeek)
 {
-  uint32_t charCode;
-  aKeyEvent->GetCharCode(&charCode);
+  uint32_t charCode = aKeyEvent->CharCode();
 
   AutoTArray<uint32_t, 10> accessKeys;
   WidgetKeyboardEvent* nativeKeyEvent =
-    aKeyEvent->AsEvent()->WidgetEventPtr()->AsKeyboardEvent();
+    aKeyEvent->WidgetEventPtr()->AsKeyboardEvent();
   if (nativeKeyEvent) {
     nativeKeyEvent->GetAccessKeyCandidates(accessKeys);
   }
@@ -161,11 +163,8 @@ nsMenuBarFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent)
     return nullptr; // no character was pressed so just return
 
   // Enumerate over our list of frames.
-  auto insertion = PresContext()->PresShell()->FrameConstructor()->
-    GetInsertionPoint(GetContent(), nullptr);
-  nsContainerFrame* immediateParent = insertion.mParentFrame;
-  if (!immediateParent)
-    immediateParent = this;
+  nsContainerFrame* immediateParent =
+    nsXULPopupManager::ImmediateParentFrame(this);
 
   // Find a most preferred accesskey which should be returned.
   nsIFrame* foundMenu = nullptr;
@@ -179,7 +178,10 @@ nsMenuBarFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent)
     if (nsXULPopupManager::IsValidMenuItem(current, false)) {
       // Get the shortcut attribute.
       nsAutoString shortcutKey;
-      current->GetAttr(kNameSpaceID_None, nsGkAtoms::accesskey, shortcutKey);
+      if (current->IsElement()) {
+        current->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::accesskey,
+                                      shortcutKey);
+      }
       if (!shortcutKey.IsEmpty()) {
         ToLowerCase(shortcutKey);
         const char16_t* start = shortcutKey.BeginReading();
@@ -201,22 +203,24 @@ nsMenuBarFrame::FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent)
 
   // didn't find a matching menu item
 #ifdef XP_WIN
-  // behavior on Windows - this item is on the menu bar, beep and deactivate the menu bar
-  if (mIsActive) {
-    nsCOMPtr<nsISound> soundInterface = do_CreateInstance("@mozilla.org/sound;1");
-    if (soundInterface)
-      soundInterface->Beep();
-  }
+  if (!aPeek) {
+    // behavior on Windows - this item is on the menu bar, beep and deactivate the menu bar
+    if (mIsActive) {
+      nsCOMPtr<nsISound> soundInterface = do_CreateInstance("@mozilla.org/sound;1");
+      if (soundInterface)
+        soundInterface->Beep();
+    }
 
-  nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
-  if (pm) {
-    nsIFrame* popup = pm->GetTopPopup(ePopupTypeAny);
-    if (popup)
-      pm->HidePopup(popup->GetContent(), true, true, true, false);
-  }
+    nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
+    if (pm) {
+      nsIFrame* popup = pm->GetTopPopup(ePopupTypeMenu);
+      if (popup)
+        pm->HidePopup(popup->GetContent(), true, true, true, false);
+    }
 
-  SetCurrentMenuItem(nullptr);
-  SetActive(false);
+    SetCurrentMenuItem(nullptr);
+    SetActive(false);
+  }
 
 #endif  // #ifdef XP_WIN
 
@@ -395,7 +399,7 @@ nsMenuBarFrame::RemoveKeyboardNavigator()
 }
 
 void
-nsMenuBarFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsMenuBarFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
   if (pm)
@@ -404,5 +408,5 @@ nsMenuBarFrame::DestroyFrom(nsIFrame* aDestructRoot)
   mMenuBarListener->OnDestroyMenuBarFrame();
   mMenuBarListener = nullptr;
 
-  nsBoxFrame::DestroyFrom(aDestructRoot);
+  nsBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }

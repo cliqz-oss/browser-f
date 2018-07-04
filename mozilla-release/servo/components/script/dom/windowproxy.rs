@@ -2,12 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::conversions::{ToJSValConvertible, root_from_handleobject};
 use dom::bindings::error::{Error, throw_dom_exception};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{JS, Root, RootedReference};
 use dom::bindings::proxyhandler::{fill_property_descriptor, get_property_descriptor};
 use dom::bindings::reflector::{DomObject, Reflector};
+use dom::bindings::root::{Dom, DomRoot, RootedReference};
+use dom::bindings::str::DOMString;
 use dom::bindings::trace::JSTraceable;
 use dom::bindings::utils::{WindowProxyHandler, get_array_index_from_id, AsVoidPtr};
 use dom::dissimilaroriginwindow::DissimilarOriginWindow;
@@ -16,18 +18,25 @@ use dom::globalscope::GlobalScope;
 use dom::window::Window;
 use dom_struct::dom_struct;
 use js::JSCLASS_IS_GLOBAL;
-use js::glue::{CreateWrapperProxyHandler, ProxyTraps, NewWindowProxy};
+use js::glue::{CreateWrapperProxyHandler, ProxyTraps};
 use js::glue::{GetProxyPrivate, SetProxyExtra, GetProxyExtra};
-use js::jsapi::{Handle, HandleId, HandleObject, HandleValue};
 use js::jsapi::{JSAutoCompartment, JSContext, JSErrNum, JSFreeOp, JSObject};
 use js::jsapi::{JSPROP_READONLY, JSTracer, JS_DefinePropertyById};
 use js::jsapi::{JS_ForwardGetPropertyTo, JS_ForwardSetPropertyTo};
-use js::jsapi::{JS_GetOwnPropertyDescriptorById, JS_HasPropertyById, JS_HasOwnPropertyById};
-use js::jsapi::{JS_IsExceptionPending, JS_TransplantObject, SetWindowProxy};
-use js::jsapi::{MutableHandle, MutableHandleObject, MutableHandleValue};
+use js::jsapi::{JS_HasPropertyById, JS_HasOwnPropertyById};
+use js::jsapi::{JS_IsExceptionPending, JS_GetOwnPropertyDescriptorById};
 use js::jsapi::{ObjectOpResult, PropertyDescriptor};
+use js::jsapi::Handle as RawHandle;
+use js::jsapi::HandleId as RawHandleId;
+use js::jsapi::HandleObject as RawHandleObject;
+use js::jsapi::HandleValue as RawHandleValue;
+use js::jsapi::MutableHandle as RawMutableHandle;
+use js::jsapi::MutableHandleObject as RawMutableHandleObject;
+use js::jsapi::MutableHandleValue as RawMutableHandleValue;
 use js::jsval::{UndefinedValue, PrivateValue};
+use js::rust::{Handle, MutableHandle};
 use js::rust::get_object_class;
+use js::rust::wrappers::{NewWindowProxy, SetWindowProxy, JS_TransplantObject};
 use msg::constellation_msg::BrowsingContextId;
 use msg::constellation_msg::PipelineId;
 use msg::constellation_msg::TopLevelBrowsingContextId;
@@ -55,6 +64,8 @@ pub struct WindowProxy {
     /// In the case that this is a top-level window, this is our id.
     top_level_browsing_context_id: TopLevelBrowsingContextId,
 
+    /// The name of the browsing context
+    name: DomRefCell<DOMString>,
     /// The pipeline id of the currently active document.
     /// May be None, when the currently active document is in another script thread.
     /// We do not try to keep the pipeline id for documents in other threads,
@@ -66,10 +77,10 @@ pub struct WindowProxy {
     discarded: Cell<bool>,
 
     /// The containing iframe element, if this is a same-origin iframe
-    frame_element: Option<JS<Element>>,
+    frame_element: Option<Dom<Element>>,
 
     /// The parent browsing context's window proxy, if this is a nested browsing context
-    parent: Option<JS<WindowProxy>>,
+    parent: Option<Dom<WindowProxy>>,
 }
 
 impl WindowProxy {
@@ -80,14 +91,16 @@ impl WindowProxy {
                          parent: Option<&WindowProxy>)
                          -> WindowProxy
     {
+        let name = frame_element.map_or(DOMString::new(), |e| e.get_string_attribute(&local_name!("name")));
         WindowProxy {
             reflector: Reflector::new(),
             browsing_context_id: browsing_context_id,
             top_level_browsing_context_id: top_level_browsing_context_id,
+            name: DomRefCell::new(name),
             currently_active: Cell::new(currently_active),
             discarded: Cell::new(false),
-            frame_element: frame_element.map(JS::from_ref),
-            parent: parent.map(JS::from_ref),
+            frame_element: frame_element.map(Dom::from_ref),
+            parent: parent.map(Dom::from_ref),
         }
     }
 
@@ -97,7 +110,7 @@ impl WindowProxy {
                top_level_browsing_context_id: TopLevelBrowsingContextId,
                frame_element: Option<&Element>,
                parent: Option<&WindowProxy>)
-               -> Root<WindowProxy>
+               -> DomRoot<WindowProxy>
     {
         unsafe {
             let WindowProxyHandler(handler) = window.windowproxy_handler();
@@ -106,7 +119,7 @@ impl WindowProxy {
             let cx = window.get_cx();
             let window_jsobject = window.reflector().get_jsobject();
             assert!(!window_jsobject.get().is_null());
-            assert!(((*get_object_class(window_jsobject.get())).flags & JSCLASS_IS_GLOBAL) != 0);
+            assert_ne!(((*get_object_class(window_jsobject.get())).flags & JSCLASS_IS_GLOBAL), 0);
             let _ac = JSAutoCompartment::new(cx, window_jsobject.get());
 
             // Create a new window proxy.
@@ -115,11 +128,13 @@ impl WindowProxy {
 
             // Create a new browsing context.
             let current = Some(window.global().pipeline_id());
-            let mut window_proxy = box WindowProxy::new_inherited(browsing_context_id,
-                                                                  top_level_browsing_context_id,
-                                                                  current,
-                                                                  frame_element,
-                                                                  parent);
+            let mut window_proxy = Box::new(WindowProxy::new_inherited(
+                browsing_context_id,
+                top_level_browsing_context_id,
+                current,
+                frame_element,
+                parent
+            ));
 
             // The window proxy owns the browsing context.
             // When we finalize the window proxy, it drops the browsing context it owns.
@@ -131,7 +146,7 @@ impl WindowProxy {
             // Set the reflector.
             debug!("Initializing reflector of {:p} to {:p}.", window_proxy, js_proxy.get());
             window_proxy.reflector.set_jsobject(js_proxy.get());
-            Root::from_ref(&*Box::into_raw(window_proxy))
+            DomRoot::from_ref(&*Box::into_raw(window_proxy))
         }
     }
 
@@ -140,7 +155,7 @@ impl WindowProxy {
                                  browsing_context_id: BrowsingContextId,
                                  top_level_browsing_context_id: TopLevelBrowsingContextId,
                                  parent: Option<&WindowProxy>)
-                                 -> Root<WindowProxy>
+                                 -> DomRoot<WindowProxy>
     {
         unsafe {
             let handler = CreateWrapperProxyHandler(&XORIGIN_PROXY_HANDLER);
@@ -149,17 +164,19 @@ impl WindowProxy {
             let cx = global_to_clone_from.get_cx();
 
             // Create a new browsing context.
-            let mut window_proxy = box WindowProxy::new_inherited(browsing_context_id,
-                                                                  top_level_browsing_context_id,
-                                                                  None,
-                                                                  None,
-                                                                  parent);
+            let mut window_proxy = Box::new(WindowProxy::new_inherited(
+                browsing_context_id,
+                top_level_browsing_context_id,
+                None,
+                None,
+                parent
+            ));
 
             // Create a new dissimilar-origin window.
             let window = DissimilarOriginWindow::new(global_to_clone_from, &*window_proxy);
             let window_jsobject = window.reflector().get_jsobject();
             assert!(!window_jsobject.get().is_null());
-            assert!(((*get_object_class(window_jsobject.get())).flags & JSCLASS_IS_GLOBAL) != 0);
+            assert_ne!(((*get_object_class(window_jsobject.get())).flags & JSCLASS_IS_GLOBAL), 0);
             let _ac = JSAutoCompartment::new(cx, window_jsobject.get());
 
             // Create a new window proxy.
@@ -176,7 +193,7 @@ impl WindowProxy {
             // Set the reflector.
             debug!("Initializing reflector of {:p} to {:p}.", window_proxy, js_proxy.get());
             window_proxy.reflector.set_jsobject(js_proxy.get());
-            Root::from_ref(&*Box::into_raw(window_proxy))
+            DomRoot::from_ref(&*Box::into_raw(window_proxy))
         }
     }
 
@@ -226,7 +243,7 @@ impl WindowProxy {
             let window_jsobject = window.reflector().get_jsobject();
             let old_js_proxy = self.reflector.get_jsobject();
             assert!(!window_jsobject.get().is_null());
-            assert!(((*get_object_class(window_jsobject.get())).flags & JSCLASS_IS_GLOBAL) != 0);
+            assert_ne!(((*get_object_class(window_jsobject.get())).flags & JSCLASS_IS_GLOBAL), 0);
             let _ac = JSAutoCompartment::new(cx, window_jsobject.get());
 
             // The old window proxy no longer owns this browsing context.
@@ -272,16 +289,26 @@ impl WindowProxy {
     pub fn currently_active(&self) -> Option<PipelineId> {
         self.currently_active.get()
     }
+
+    pub fn get_name(&self) -> DOMString {
+        self.name.borrow().clone()
+    }
+
+    pub fn set_name(&self, name: DOMString) {
+        *self.name.borrow_mut() = name;
+    }
 }
 
+// This is only called from extern functions,
+// there's no use using the lifetimed handles here.
 #[allow(unsafe_code)]
 unsafe fn GetSubframeWindow(cx: *mut JSContext,
-                            proxy: HandleObject,
-                            id: HandleId)
-                            -> Option<Root<Window>> {
-    let index = get_array_index_from_id(cx, id);
+                            proxy: RawHandleObject,
+                            id: RawHandleId)
+                            -> Option<DomRoot<Window>> {
+    let index = get_array_index_from_id(cx, Handle::from_raw(id));
     if let Some(index) = index {
-        rooted!(in(cx) let target = GetProxyPrivate(*proxy.ptr).to_object());
+        rooted!(in(cx) let target = GetProxyPrivate(*proxy).to_object());
         let win = root_from_handleobject::<Window>(target.handle()).unwrap();
         let mut found = false;
         return win.IndexedGetter(index, &mut found);
@@ -292,21 +319,21 @@ unsafe fn GetSubframeWindow(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn getOwnPropertyDescriptor(cx: *mut JSContext,
-                                              proxy: HandleObject,
-                                              id: HandleId,
-                                              mut desc: MutableHandle<PropertyDescriptor>)
+                                              proxy: RawHandleObject,
+                                              id: RawHandleId,
+                                              mut desc: RawMutableHandle<PropertyDescriptor>)
                                               -> bool {
     let window = GetSubframeWindow(cx, proxy, id);
     if let Some(window) = window {
         rooted!(in(cx) let mut val = UndefinedValue());
         window.to_jsval(cx, val.handle_mut());
         desc.value = val.get();
-        fill_property_descriptor(desc, proxy.get(), JSPROP_READONLY);
+        fill_property_descriptor(MutableHandle::from_raw(desc), proxy.get(), JSPROP_READONLY);
         return true;
     }
 
     rooted!(in(cx) let target = GetProxyPrivate(proxy.get()).to_object());
-    if !JS_GetOwnPropertyDescriptorById(cx, target.handle(), id, desc) {
+    if !JS_GetOwnPropertyDescriptorById(cx, target.handle().into(), id, desc) {
         return false;
     }
 
@@ -321,12 +348,12 @@ unsafe extern "C" fn getOwnPropertyDescriptor(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn defineProperty(cx: *mut JSContext,
-                                    proxy: HandleObject,
-                                    id: HandleId,
-                                    desc: Handle<PropertyDescriptor>,
+                                    proxy: RawHandleObject,
+                                    id: RawHandleId,
+                                    desc: RawHandle<PropertyDescriptor>,
                                     res: *mut ObjectOpResult)
                                     -> bool {
-    if get_array_index_from_id(cx, id).is_some() {
+    if get_array_index_from_id(cx, Handle::from_raw(id)).is_some() {
         // Spec says to Reject whether this is a supported index or not,
         // since we have no indexed setter or indexed creator.  That means
         // throwing in strict mode (FIXME: Bug 828137), doing nothing in
@@ -336,13 +363,13 @@ unsafe extern "C" fn defineProperty(cx: *mut JSContext,
     }
 
     rooted!(in(cx) let target = GetProxyPrivate(*proxy.ptr).to_object());
-    JS_DefinePropertyById(cx, target.handle(), id, desc, res)
+    JS_DefinePropertyById(cx, target.handle().into(), id, desc, res)
 }
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn has(cx: *mut JSContext,
-                         proxy: HandleObject,
-                         id: HandleId,
+                         proxy: RawHandleObject,
+                         id: RawHandleId,
                          bp: *mut bool)
                          -> bool {
     let window = GetSubframeWindow(cx, proxy, id);
@@ -353,7 +380,7 @@ unsafe extern "C" fn has(cx: *mut JSContext,
 
     rooted!(in(cx) let target = GetProxyPrivate(*proxy.ptr).to_object());
     let mut found = false;
-    if !JS_HasPropertyById(cx, target.handle(), id, &mut found) {
+    if !JS_HasPropertyById(cx, target.handle().into(), id, &mut found) {
         return false;
     }
 
@@ -363,30 +390,30 @@ unsafe extern "C" fn has(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn get(cx: *mut JSContext,
-                         proxy: HandleObject,
-                         receiver: HandleValue,
-                         id: HandleId,
-                         vp: MutableHandleValue)
+                         proxy: RawHandleObject,
+                         receiver: RawHandleValue,
+                         id: RawHandleId,
+                         vp: RawMutableHandleValue)
                          -> bool {
     let window = GetSubframeWindow(cx, proxy, id);
     if let Some(window) = window {
-        window.to_jsval(cx, vp);
+        window.to_jsval(cx, MutableHandle::from_raw(vp));
         return true;
     }
 
     rooted!(in(cx) let target = GetProxyPrivate(*proxy.ptr).to_object());
-    JS_ForwardGetPropertyTo(cx, target.handle(), id, receiver, vp)
+    JS_ForwardGetPropertyTo(cx, target.handle().into(), id, receiver, vp)
 }
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn set(cx: *mut JSContext,
-                         proxy: HandleObject,
-                         id: HandleId,
-                         v: HandleValue,
-                         receiver: HandleValue,
+                         proxy: RawHandleObject,
+                         id: RawHandleId,
+                         v: RawHandleValue,
+                         receiver: RawHandleValue,
                          res: *mut ObjectOpResult)
                          -> bool {
-    if get_array_index_from_id(cx, id).is_some() {
+    if get_array_index_from_id(cx, Handle::from_raw(id)).is_some() {
         // Reject (which means throw if and only if strict) the set.
         (*res).code_ = JSErrNum::JSMSG_READ_ONLY as ::libc::uintptr_t;
         return true;
@@ -394,7 +421,7 @@ unsafe extern "C" fn set(cx: *mut JSContext,
 
     rooted!(in(cx) let target = GetProxyPrivate(*proxy.ptr).to_object());
     JS_ForwardSetPropertyTo(cx,
-                            target.handle(),
+                            target.handle().into(),
                             id,
                             v,
                             receiver,
@@ -403,9 +430,9 @@ unsafe extern "C" fn set(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn get_prototype_if_ordinary(_: *mut JSContext,
-                                               _: HandleObject,
+                                               _: RawHandleObject,
                                                is_ordinary: *mut bool,
-                                               _: MutableHandleObject)
+                                               _: RawMutableHandleObject)
                                                -> bool {
     // Window's [[GetPrototypeOf]] trap isn't the ordinary definition:
     //
@@ -477,14 +504,14 @@ unsafe fn throw_security_error(cx: *mut JSContext) -> bool {
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn has_xorigin(cx: *mut JSContext,
-                                 proxy: HandleObject,
-                                 id: HandleId,
+                                 proxy: RawHandleObject,
+                                 id: RawHandleId,
                                  bp: *mut bool)
                                  -> bool
 {
     rooted!(in(cx) let target = GetProxyPrivate(*proxy.ptr).to_object());
     let mut found = false;
-    JS_HasOwnPropertyById(cx, target.handle(), id, &mut found);
+    JS_HasOwnPropertyById(cx, target.handle().into(), id, &mut found);
     if found {
         *bp = true;
         true
@@ -495,10 +522,10 @@ unsafe extern "C" fn has_xorigin(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn get_xorigin(cx: *mut JSContext,
-                                 proxy: HandleObject,
-                                 receiver: HandleValue,
-                                 id: HandleId,
-                                 vp: MutableHandleValue)
+                                 proxy: RawHandleObject,
+                                 receiver: RawHandleValue,
+                                 id: RawHandleId,
+                                 vp: RawMutableHandleValue)
                                  -> bool
 {
     let mut found = false;
@@ -508,10 +535,10 @@ unsafe extern "C" fn get_xorigin(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn set_xorigin(cx: *mut JSContext,
-                                 _: HandleObject,
-                                 _: HandleId,
-                                 _: HandleValue,
-                                 _: HandleValue,
+                                 _: RawHandleObject,
+                                 _: RawHandleId,
+                                 _: RawHandleValue,
+                                 _: RawHandleValue,
                                  _: *mut ObjectOpResult)
                                  -> bool
 {
@@ -520,8 +547,8 @@ unsafe extern "C" fn set_xorigin(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn delete_xorigin(cx: *mut JSContext,
-                                    _: HandleObject,
-                                    _: HandleId,
+                                    _: RawHandleObject,
+                                    _: RawHandleId,
                                     _: *mut ObjectOpResult)
                                     -> bool
 {
@@ -530,9 +557,9 @@ unsafe extern "C" fn delete_xorigin(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn getOwnPropertyDescriptor_xorigin(cx: *mut JSContext,
-                                                      proxy: HandleObject,
-                                                      id: HandleId,
-                                                      desc: MutableHandle<PropertyDescriptor>)
+                                                      proxy: RawHandleObject,
+                                                      id: RawHandleId,
+                                                      desc: RawMutableHandle<PropertyDescriptor>)
                                                       -> bool
 {
     let mut found = false;
@@ -542,9 +569,9 @@ unsafe extern "C" fn getOwnPropertyDescriptor_xorigin(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn defineProperty_xorigin(cx: *mut JSContext,
-                                            _: HandleObject,
-                                            _: HandleId,
-                                            _: Handle<PropertyDescriptor>,
+                                            _: RawHandleObject,
+                                            _: RawHandleId,
+                                            _: RawHandle<PropertyDescriptor>,
                                             _: *mut ObjectOpResult)
                                             -> bool
 {
@@ -553,7 +580,7 @@ unsafe extern "C" fn defineProperty_xorigin(cx: *mut JSContext,
 
 #[allow(unsafe_code)]
 unsafe extern "C" fn preventExtensions_xorigin(cx: *mut JSContext,
-                                               _: HandleObject,
+                                               _: RawHandleObject,
                                                _: *mut ObjectOpResult)
                                                -> bool
 {

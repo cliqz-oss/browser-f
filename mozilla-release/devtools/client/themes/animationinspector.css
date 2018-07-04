@@ -33,16 +33,7 @@
   --close-button-image: url(chrome://devtools/skin/images/close.svg);
 }
 
-.theme-firebug {
-  --even-animation-timeline-background-color: rgba(128,128,128,0.03);
-  --command-pick-image: url(chrome://devtools/skin/images/firebug/command-pick.svg);
-  --pause-image: url(chrome://devtools/skin/images/firebug/pause.svg);
-  --rewind-image: url(chrome://devtools/skin/images/firebug/rewind.svg);
-  --play-image: url(chrome://devtools/skin/images/firebug/play.svg);
-  --close-button-image: url(chrome://devtools/skin/images/firebug/close.svg);
-}
-
-.theme-light, .theme-firebug {
+.theme-light {
   /* The color for animation type 'opacity' */
   --opacity-border-color: var(--theme-highlight-pink);
   --opacity-background-color: #b82ee580;
@@ -109,7 +100,6 @@ body {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  color: var(--theme-content-color3);
 }
 
 /* The top toolbar, containing the toggle-all button. And the timeline toolbar,
@@ -141,11 +131,6 @@ body {
 
 /* The main animations container */
 
-#sidebar-panel-animationinspector {
-  height: 100%;
-  width: 100%;
-}
-
 #players {
   height: calc(100% - var(--toolbar-height));
 }
@@ -157,8 +142,6 @@ body {
 /* The error message, shown when an invalid/unanimated element is selected */
 
 #error-message {
-  padding-top: 10%;
-  text-align: center;
   flex: 1;
   overflow: auto;
 
@@ -266,6 +249,11 @@ body {
   height: var(--detail-animation-height);
 }
 
+.time-body.track-container {
+  height: 0;
+  pointer-events: none;
+}
+
 .animation-timeline .scrubber-wrapper {
   position: absolute;
   z-index: 5;
@@ -339,13 +327,13 @@ body {
 
 .animation-timeline .time-body {
   top: var(--toolbar-height);
+  z-index: 3;
 }
 
 .progress-tick-container .progress-tick,
 .animation-timeline .time-body .time-tick {
   -moz-user-select: none;
   position: absolute;
-  height: 100%;
 }
 
 .progress-tick-container .progress-tick::before,
@@ -379,7 +367,7 @@ body {
 }
 
 .animation-timeline .animation.selected {
-  background-color: var(--theme-selection-background-semitransparent);
+  background-color: var(--theme-selection-background-hover);
 }
 
 .animation-timeline .animation:last-child {
@@ -538,12 +526,12 @@ body {
 }
 
 .animation-target .node-highlighter:hover {
-  filter: url(images/filters.svg#checked-icon-state);
+  filter: var(--theme-icon-checked-filter);
 }
 
 .animation-target .node-highlighter:active,
 .animation-target .node-highlighter.selected {
-  filter: url(images/filters.svg#checked-icon-state) brightness(0.9);
+  filter: var(--theme-icon-checked-filter) brightness(0.9);
 }
 
 /* Inline keyframes info in the timeline */
@@ -693,6 +681,27 @@ body {
 .keyframes svg path.color {
   stroke: none;
   height: 100%;
+}
+
+.keyframes svg .hint {
+  stroke-opacity: 0;
+  stroke-linecap: round;
+  stroke-width: 5;
+}
+
+.keyframes svg path.hint {
+  fill: none;
+}
+
+/* Note: We only use the hover class in a mochitest due to flakiness
+   when simulating mouseover (Bug 1448555). */
+.keyframes svg path.hint:hover,
+.keyframes svg path.hint.hover {
+  stroke-opacity: 1;
+}
+
+.keyframes svg rect.hint {
+  fill-opacity: .1;
 }
 
 .animation-detail {

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,9 +12,11 @@
 #include "gfxUtils.h"
 #include "nsSVGDisplayableFrame.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
+#include "mozilla/dom/IDTracker.h"
+#include "mozilla/dom/SVGLengthBinding.h"
+#include "mozilla/dom/SVGUnitTypesBinding.h"
 #include "mozilla/dom/SVGFilterElement.h"
-#include "nsReferencedElement.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "nsSVGFilterFrame.h"
 #include "nsSVGUtils.h"
 #include "SVGContentUtils.h"
@@ -22,6 +25,7 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
+using namespace mozilla::dom::SVGUnitTypesBinding;
 using namespace mozilla::gfx;
 
 nsSVGFilterInstance::nsSVGFilterInstance(const nsStyleFilter& aFilter,
@@ -90,7 +94,7 @@ nsSVGFilterInstance::ComputeBounds()
     nsSVGUtils::GetRelativeRect(filterUnits, XYWH, mTargetBBox, mMetrics);
 
   // Transform the user space bounds to filter space, so we
-  // can align them with the pixel boundries of the offscreen surface.
+  // can align them with the pixel boundaries of the offscreen surface.
   // The offscreen surface has the same scale as filter space.
   gfxRect filterSpaceBounds = UserSpaceToFilterSpace(userSpaceBounds);
   filterSpaceBounds.RoundOut();
@@ -126,7 +130,7 @@ nsSVGFilterInstance::GetFilterFrame(nsIFrame* aTargetFrame)
   // aTargetFrame can be null if this filter belongs to a
   // CanvasRenderingContext2D.
   nsCOMPtr<nsIURI> url = aTargetFrame
-    ? nsSVGEffects::GetFilterURI(aTargetFrame, mFilter)
+    ? SVGObserverUtils::GetFilterURI(aTargetFrame, mFilter)
     : mFilter.GetURL()->ResolveLocalRef(mTargetContent);
 
   if (!url) {
@@ -135,7 +139,7 @@ nsSVGFilterInstance::GetFilterFrame(nsIFrame* aTargetFrame)
   }
 
   // Look up the filter element by URL.
-  nsReferencedElement filterElement;
+  IDTracker filterElement;
   bool watch = false;
   filterElement.Reset(mTargetContent, url, watch);
   Element* element = filterElement.get();
@@ -160,7 +164,7 @@ nsSVGFilterInstance::GetPrimitiveNumber(uint8_t aCtxType, float aValue) const
 {
   nsSVGLength2 val;
   val.Init(aCtxType, 0xff, aValue,
-           nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER);
+           SVGLengthBinding::SVG_LENGTHTYPE_NUMBER);
 
   float value;
   if (mPrimitiveUnits == SVG_UNIT_TYPE_OBJECTBOUNDINGBOX) {
@@ -187,14 +191,14 @@ nsSVGFilterInstance::ConvertLocation(const Point3D& aPoint) const
 {
   nsSVGLength2 val[4];
   val[0].Init(SVGContentUtils::X, 0xff, aPoint.x,
-              nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER);
+              SVGLengthBinding::SVG_LENGTHTYPE_NUMBER);
   val[1].Init(SVGContentUtils::Y, 0xff, aPoint.y,
-              nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER);
+              SVGLengthBinding::SVG_LENGTHTYPE_NUMBER);
   // Dummy width/height values
   val[2].Init(SVGContentUtils::X, 0xff, 0,
-              nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER);
+              SVGLengthBinding::SVG_LENGTHTYPE_NUMBER);
   val[3].Init(SVGContentUtils::Y, 0xff, 0,
-              nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER);
+              SVGLengthBinding::SVG_LENGTHTYPE_NUMBER);
 
   gfxRect feArea = nsSVGUtils::GetRelativeRect(mPrimitiveUnits,
     val, mTargetBBox, mMetrics);

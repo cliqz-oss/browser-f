@@ -148,7 +148,7 @@ def process_gyp_result(gyp_result, gyp_dir_attrs, path, config, output,
         spec = targets[target]
 
         # Derive which gyp configuration to use based on MOZ_DEBUG.
-        c = 'Debug' if config.substs['MOZ_DEBUG'] else 'Release'
+        c = 'Debug' if config.substs.get('MOZ_DEBUG') else 'Release'
         if c not in spec['configurations']:
             raise RuntimeError('Missing %s gyp configuration for target %s '
                                'in %s' % (c, target_name, build_file))
@@ -326,7 +326,8 @@ def process_gyp_result(gyp_result, gyp_dir_attrs, path, config, output,
           if config.substs['OS_TARGET'] == 'WINNT':
               context['DEFINES']['UNICODE'] = True
               context['DEFINES']['_UNICODE'] = True
-        context['DISABLE_STL_WRAPPING'] = True
+        context['COMPILE_FLAGS']['STL'] = []
+        context['COMPILE_FLAGS']['OS_INCLUDES'] = []
 
         for key, value in gyp_dir_attrs.sandbox_vars.items():
             if context.get(key) and isinstance(context[key], list):
@@ -334,6 +335,8 @@ def process_gyp_result(gyp_result, gyp_dir_attrs, path, config, output,
                 # populated here we use the value from sandbox_vars as our
                 # basis rather than overriding outright.
                 context[key] = value + context[key]
+            elif context.get(key) and isinstance(context[key], dict):
+                context[key].update(value)
             else:
                 context[key] = value
 

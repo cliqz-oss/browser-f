@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -89,7 +90,9 @@ public:
   virtual GradientStops *LookupGradientStops(ReferencePtr aRefPtr) = 0;
   virtual ScaledFont *LookupScaledFont(ReferencePtr aRefPtr) = 0;
   virtual UnscaledFont* LookupUnscaledFont(ReferencePtr aRefPtr) = 0;
+  virtual UnscaledFont* LookupUnscaledFontByIndex(size_t aIndex) { return nullptr; }
   virtual NativeFontResource *LookupNativeFontResource(uint64_t aKey) = 0;
+  virtual already_AddRefed<SourceSurface> LookupExternalSurface(uint64_t aKey) { return nullptr; }
   virtual void AddDrawTarget(ReferencePtr aRefPtr, DrawTarget *aDT) = 0;
   virtual void RemoveDrawTarget(ReferencePtr aRefPtr) = 0;
   virtual void AddPath(ReferencePtr aRefPtr, Path *aPath) = 0;
@@ -207,6 +210,12 @@ struct MemStream {
   ~MemStream() { free(mData); }
 };
 
+class EventStream {
+public:
+  virtual void write(const char* aData, size_t aSize) = 0;
+  virtual void read(char* aOut, size_t aSize) = 0;
+};
+
 class RecordedEvent {
 public:
   enum EventType {
@@ -235,6 +244,7 @@ public:
     GRADIENTSTOPSDESTRUCTION,
     SNAPSHOT,
     SCALEDFONTCREATION,
+    SCALEDFONTCREATIONBYINDEX,
     SCALEDFONTDESTRUCTION,
     MASKSURFACE,
     FILTERNODECREATION,
@@ -243,12 +253,16 @@ public:
     FILTERNODESETATTRIBUTE,
     FILTERNODESETINPUT,
     CREATESIMILARDRAWTARGET,
+    CREATECLIPPEDDRAWTARGET,
     FONTDATA,
     FONTDESC,
     PUSHLAYER,
+    PUSHLAYERWITHBLEND,
     POPLAYER,
     UNSCALEDFONTCREATION,
     UNSCALEDFONTDESTRUCTION,
+    INTOLUMINANCE,
+    EXTERNALSURFACECREATION,
   };
   static const uint32_t kTotalEventTypes = RecordedEvent::FILTERNODESETINPUT + 1;
 
@@ -266,8 +280,9 @@ public:
    */
   virtual bool PlayEvent(Translator *aTranslator) const { return true; }
 
-  virtual void RecordToStream(std::ostream &aStream) const {}
-  virtual void RecordToStream(MemStream &aStream) const  = 0;
+  virtual void RecordToStream(std::ostream& aStream) const = 0;
+  virtual void RecordToStream(EventStream& aStream) const = 0;
+  virtual void RecordToStream(MemStream& aStream) const = 0;
 
   virtual void OutputSimpleEventInfo(std::stringstream &aStringStream) const { }
 
@@ -292,12 +307,22 @@ public:
   template<class S>
   static RecordedEvent *LoadEvent(S &aStream, EventType aType);
   static RecordedEvent *LoadEventFromStream(std::istream &aStream, EventType aType);
+  static RecordedEvent *LoadEventFromStream(EventStream& aStream, EventType aType);
 
-  EventType GetType() { return (EventType)mType; }
+  // An alternative to LoadEvent that avoids a heap allocation for the event.
+  // This accepts a callable `f' that will take a RecordedEvent* as a single parameter
+  template<class S, class F>
+  static bool DoWithEvent(S &aStream, EventType aType, F f);
+
+  EventType GetType() const { return (EventType)mType; }
 protected:
   friend class DrawEventRecorderPrivate;
   friend class DrawEventRecorderFile;
   friend class DrawEventRecorderMemory;
+  static void RecordUnscaledFont(UnscaledFont *aUnscaledFont, std::ostream *aOutput);
+  static void RecordUnscaledFont(UnscaledFont *aUnscaledFont, MemStream &aOutput);
+  template<class S>
+  static void RecordUnscaledFontImpl(UnscaledFont *aUnscaledFont, S &aOutput);
 
   MOZ_IMPLICIT RecordedEvent(int32_t aType) : mType(aType)
   {}
@@ -310,4 +335,3 @@ protected:
 } // namespace mozilla
 
 #endif
-

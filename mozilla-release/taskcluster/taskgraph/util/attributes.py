@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import, print_function, unicode_literals
+
 import re
 
 
@@ -10,16 +12,31 @@ INTEGRATION_PROJECTS = {
     'autoland',
 }
 
-TRUNK_PROJECTS = INTEGRATION_PROJECTS | {'mozilla-central', }
+TRUNK_PROJECTS = INTEGRATION_PROJECTS | {'mozilla-central', 'comm-central'}
 
 RELEASE_PROJECTS = {
     'mozilla-central',
-    'mozilla-aurora',
     'mozilla-beta',
     'mozilla-release',
+    'mozilla-esr60',
+    'comm-central',
+    'comm-beta',
 }
 
-_OPTIONAL_ATTRIBUTES = ('nightly', 'signed')
+RELEASE_PROMOTION_PROJECTS = {
+    'jamun',
+    'maple',
+    'try',
+} | RELEASE_PROJECTS
+
+_OPTIONAL_ATTRIBUTES = (
+    'artifact_prefix',
+    'l10n_chunk',
+    'nightly',
+    'signed',
+    'shipping_phase',
+    'shipping_product',
+)
 
 
 def attrmatch(attributes, **kwargs):

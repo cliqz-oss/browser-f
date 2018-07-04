@@ -9,6 +9,7 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/MediaManager.h"
 #include "MediaTrackConstraints.h"
+#include "nsContentUtils.h"
 #include "nsIEventTarget.h"
 #include "nsINamed.h"
 #include "nsIScriptGlobalObject.h"
@@ -82,8 +83,6 @@ public:
   NS_IMETHOD
   OnSuccess(nsIVariant* aDevices) override
   {
-    // Cribbed from MediaPermissionGonk.cpp
-
     // Create array for nsIMediaDevice
     nsTArray<nsCOMPtr<nsIMediaDevice>> devices;
     // Contain the fumes
@@ -181,35 +180,31 @@ NS_IMPL_ISUPPORTS(MediaDevices::GumRejecter, nsIDOMGetUserMediaErrorCallback)
 
 already_AddRefed<Promise>
 MediaDevices::GetUserMedia(const MediaStreamConstraints& aConstraints,
-			   CallerType aCallerType,
+                           CallerType aCallerType,
                            ErrorResult &aRv)
 {
-  nsPIDOMWindowInner* window = GetOwner();
-  nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(window);
-  RefPtr<Promise> p = Promise::Create(go, aRv);
+  RefPtr<Promise> p = Promise::Create(GetParentObject(), aRv);
   NS_ENSURE_TRUE(!aRv.Failed(), nullptr);
 
   RefPtr<GumResolver> resolver = new GumResolver(p);
   RefPtr<GumRejecter> rejecter = new GumRejecter(p);
 
-  aRv = MediaManager::Get()->GetUserMedia(window, aConstraints,
+  aRv = MediaManager::Get()->GetUserMedia(GetOwner(), aConstraints,
                                           resolver, rejecter,
-					  aCallerType);
+                                          aCallerType);
   return p.forget();
 }
 
 already_AddRefed<Promise>
-MediaDevices::EnumerateDevices(ErrorResult &aRv)
+MediaDevices::EnumerateDevices(CallerType aCallerType, ErrorResult &aRv)
 {
-  nsPIDOMWindowInner* window = GetOwner();
-  nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(window);
-  RefPtr<Promise> p = Promise::Create(go, aRv);
+  RefPtr<Promise> p = Promise::Create(GetParentObject(), aRv);
   NS_ENSURE_TRUE(!aRv.Failed(), nullptr);
 
-  RefPtr<EnumDevResolver> resolver = new EnumDevResolver(p, window->WindowID());
+  RefPtr<EnumDevResolver> resolver = new EnumDevResolver(p, GetOwner()->WindowID());
   RefPtr<GumRejecter> rejecter = new GumRejecter(p);
 
-  aRv = MediaManager::Get()->EnumerateDevices(window, resolver, rejecter);
+  aRv = MediaManager::Get()->EnumerateDevices(GetOwner(), resolver, rejecter, aCallerType);
   return p.forget();
 }
 
@@ -234,9 +229,15 @@ MediaDevices::OnDeviceChange()
     return;
   }
 
+  // Do not fire event to content script when
+  // privacy.resistFingerprinting is true.
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return;
+  }
+
   if (!mFuzzTimer)
   {
-    mFuzzTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
+    mFuzzTimer = NS_NewTimer();
   }
 
   if (!mFuzzTimer) {
@@ -270,33 +271,11 @@ MediaDevices::SetOndevicechange(mozilla::dom::EventHandlerNonNull* aCallback)
   MediaManager::Get()->AddDeviceChangeCallback(this);
 }
 
-nsresult
-MediaDevices::AddEventListener(const nsAString& aType,
-  nsIDOMEventListener* aListener,
-  bool aUseCapture, bool aWantsUntrusted,
-  uint8_t optional_argc)
-{
-  MediaManager::Get()->AddDeviceChangeCallback(this);
-
-  return mozilla::DOMEventTargetHelper::AddEventListener(aType, aListener,
-    aUseCapture,
-    aWantsUntrusted,
-    optional_argc);
-}
-
 void
-MediaDevices::AddEventListener(const nsAString& aType,
-  dom::EventListener* aListener,
-  const dom::AddEventListenerOptionsOrBoolean& aOptions,
-  const dom::Nullable<bool>& aWantsUntrusted,
-  ErrorResult& aRv)
+MediaDevices::EventListenerAdded(nsAtom* aType)
 {
   MediaManager::Get()->AddDeviceChangeCallback(this);
-
-  return mozilla::DOMEventTargetHelper::AddEventListener(aType, aListener,
-    aOptions,
-    aWantsUntrusted,
-    aRv);
+  DOMEventTargetHelper::EventListenerAdded(aType);
 }
 
 JSObject*

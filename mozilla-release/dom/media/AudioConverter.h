@@ -131,13 +131,8 @@ public:
     MOZ_DIAGNOSTIC_ASSERT(mIn.Format() == mOut.Format() && mIn.Format() == Format);
     AudioDataBuffer<Format, Value> buffer = Move(aBuffer);
     if (CanWorkInPlace()) {
-      size_t frames = SamplesInToFrames(buffer.Length());
-      frames = ProcessInternal(buffer.Data(), buffer.Data(), frames);
-      if (frames && mIn.Rate() != mOut.Rate()) {
-        frames = ResampleAudio(buffer.Data(), buffer.Data(), frames);
-      }
       AlignedBuffer<Value> temp = buffer.Forget();
-      temp.SetLength(FramesOutToSamples(frames));
+      Process(temp, temp.Data(), SamplesInToFrames(temp.Length()));
       return AudioDataBuffer<Format, Value>(Move(temp));;
     }
     return Process(buffer);
@@ -196,6 +191,38 @@ public:
     return frames;
   }
 
+  template <typename Value>
+  size_t Process(AlignedBuffer<Value>& aOutBuffer, const Value* aInBuffer, size_t aFrames)
+  {
+    MOZ_DIAGNOSTIC_ASSERT(mIn.Format() == mOut.Format());
+    MOZ_ASSERT((aFrames && aInBuffer) || !aFrames);
+    // Up/down mixing first
+    if (!aOutBuffer.SetLength(FramesOutToSamples(aFrames))) {
+      MOZ_ALWAYS_TRUE(aOutBuffer.SetLength(0));
+      return 0;
+    }
+    size_t frames = ProcessInternal(aOutBuffer.Data(), aInBuffer, aFrames);
+    MOZ_ASSERT(frames == aFrames);
+    // Check if resampling is needed
+    if (mIn.Rate() == mOut.Rate()) {
+      return frames;
+    }
+    // Prepare output in cases of drain or up-sampling
+    if ((!frames || mOut.Rate() > mIn.Rate()) &&
+        !aOutBuffer.SetLength(FramesOutToSamples(ResampleRecipientFrames(frames)))) {
+      MOZ_ALWAYS_TRUE(aOutBuffer.SetLength(0));
+      return 0;
+    }
+    if (!frames) {
+      frames = DrainResampler(aOutBuffer.Data());
+    } else {
+      frames = ResampleAudio(aOutBuffer.Data(), aInBuffer, frames);
+    }
+    // Update with the actual buffer length
+    MOZ_ALWAYS_TRUE(aOutBuffer.SetLength(FramesOutToSamples(frames)));
+    return frames;
+  }
+
   bool CanWorkInPlace() const;
   bool CanReorderAudio() const
   {
@@ -208,7 +235,9 @@ public:
 private:
   const AudioConfig mIn;
   const AudioConfig mOut;
-  uint8_t mChannelOrderMap[MAX_AUDIO_CHANNELS];
+  // mChannelOrderMap will be empty if we do not know how to proceed with this
+  // channel layout.
+  AutoTArray<uint8_t, AudioConfig::ChannelLayout::MAX_CHANNELS> mChannelOrderMap;
   /**
    * ProcessInternal
    * Parameters:

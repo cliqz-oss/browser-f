@@ -108,7 +108,7 @@ class TestRunner(object):
             raise
 
     def wait(self):
-        self.executor.protocol.wait()
+        self.executor.wait()
         self.send_message("wait_finished")
 
     def send_message(self, command, *args):
@@ -120,6 +120,13 @@ def start_runner(runner_command_queue, runner_result_queue,
                  executor_browser_cls, executor_browser_kwargs,
                  stop_flag):
     """Launch a TestRunner in a new process"""
+    def log(level, msg):
+        runner_result_queue.put(("log", (level, {"message": msg})))
+
+    def handle_error(e):
+        log("critical", traceback.format_exc())
+        stop_flag.set()
+
     try:
         browser = executor_browser_cls(**executor_browser_kwargs)
         executor = executor_cls(browser, **executor_kwargs)
@@ -128,10 +135,10 @@ def start_runner(runner_command_queue, runner_result_queue,
                 runner.run()
             except KeyboardInterrupt:
                 stop_flag.set()
-    except Exception:
-        runner_result_queue.put(("log", ("critical", {"message": traceback.format_exc()})))
-        print >> sys.stderr, traceback.format_exc()
-        stop_flag.set()
+            except Exception as e:
+                handle_error(e)
+    except Exception as e:
+        handle_error(e)
     finally:
         runner_command_queue = None
         runner_result_queue = None
@@ -157,6 +164,7 @@ class BrowserManager(object):
         self.started = False
 
         self.init_timer = None
+        self.command_queue = command_queue
 
     def update_settings(self, test):
         browser_settings = self.browser.settings(test)
@@ -187,7 +195,7 @@ class BrowserManager(object):
             self.logger.debug("Starting browser with settings %r" % self.browser_settings)
             self.browser.start(**self.browser_settings)
             self.browser_pid = self.browser.pid()
-        except:
+        except Exception:
             self.logger.warning("Failure during init %s" % traceback.format_exc())
             if self.init_timer is not None:
                 self.init_timer.cancel()
@@ -221,7 +229,9 @@ class BrowserManager(object):
     def cleanup(self):
         if self.init_timer is not None:
             self.init_timer.cancel()
-        self.browser.cleanup()
+
+    def check_for_crashes(self):
+        self.browser.check_for_crashes()
 
     def log_crash(self, test_id):
         self.browser.log_crash(process=self.browser_pid, test=test_id)
@@ -245,7 +255,7 @@ RunnerManagerState = _RunnerManagerState()
 
 class TestRunnerManager(threading.Thread):
     def __init__(self, suite_name, test_queue, test_source_cls, browser_cls, browser_kwargs,
-                 executor_cls, executor_kwargs, stop_flag, pause_after_test=False,
+                 executor_cls, executor_kwargs, stop_flag, rerun=1, pause_after_test=False,
                  pause_on_unexpected=False, restart_on_unexpected=True, debug_info=None):
         """Thread that owns a single TestRunner process and any processes required
         by the TestRunner (e.g. the Firefox binary).
@@ -276,6 +286,8 @@ class TestRunnerManager(threading.Thread):
         self.parent_stop_flag = stop_flag
         self.child_stop_flag = multiprocessing.Event()
 
+        self.rerun = rerun
+        self.run_count = 0
         self.pause_after_test = pause_after_test
         self.pause_on_unexpected = pause_on_unexpected
         self.restart_on_unexpected = restart_on_unexpected
@@ -292,6 +304,7 @@ class TestRunnerManager(threading.Thread):
         # This is started in the actual new thread
         self.logger = None
 
+        self.test_count = 0
         self.unexpected_count = 0
 
         # This may not really be what we want
@@ -383,6 +396,7 @@ class TestRunnerManager(threading.Thread):
         }
         try:
             command, data = self.command_queue.get(True, 1)
+            self.logger.debug("Got command: %r" % command)
         except IOError:
             self.logger.error("Got IOError from poll")
             return RunnerManagerState.restarting(0)
@@ -499,8 +513,8 @@ class TestRunnerManager(threading.Thread):
                     self.logger.info("No more tests")
                     return None, None, None
             test = test_group.popleft()
+        self.run_count = 0
         return test, test_group, group_metadata
-
 
     def run_test(self):
         assert isinstance(self.state, RunnerManagerState.running)
@@ -513,6 +527,9 @@ class TestRunnerManager(threading.Thread):
                                                  self.state.group_metadata)
 
         self.logger.test_start(self.state.test.id)
+        if self.rerun > 1:
+            self.logger.info("Run %d/%d" % (self.run_count, self.rerun))
+        self.run_count += 1
         self.send_message("run_test", self.state.test)
 
     def test_ended(self, test, results):
@@ -543,11 +560,22 @@ class TestRunnerManager(threading.Thread):
                                     expected=expected,
                                     stack=result.stack)
 
-        # TODO: consider changing result if there is a crash dump file
-
-        # Write the result of the test harness
+        # We have a couple of status codes that are used internally, but not exposed to the
+        # user. These are used to indicate that some possibly-broken state was reached
+        # and we should restart the runner before the next test.
+        # INTERNAL-ERROR indicates a Python exception was caught in the harness
+        # EXTERNAL-TIMEOUT indicates we had to forcibly kill the browser from the harness
+        # because the test didn't return a result after reaching the test-internal timeout
+        status_subns = {"INTERNAL-ERROR": "ERROR",
+                        "EXTERNAL-TIMEOUT": "TIMEOUT"}
         expected = test.expected()
-        status = file_result.status if file_result.status != "EXTERNAL-TIMEOUT" else "TIMEOUT"
+        status = status_subns.get(file_result.status, file_result.status)
+
+        if file_result.status in ("TIMEOUT", "EXTERNAL-TIMEOUT", "INTERNAL-ERROR"):
+            if self.browser.check_for_crashes():
+                status = "CRASH"
+
+        self.test_count += 1
         is_unexpected = expected != status
         if is_unexpected:
             self.unexpected_count += 1
@@ -562,16 +590,17 @@ class TestRunnerManager(threading.Thread):
                              extra=file_result.extra)
 
         restart_before_next = (test.restart_after or
-                               file_result.status in ("CRASH", "EXTERNAL-TIMEOUT") or
-                               ((subtest_unexpected or is_unexpected)
-                                and self.restart_on_unexpected))
+                               file_result.status in ("CRASH", "EXTERNAL-TIMEOUT", "INTERNAL-ERROR") or
+                               ((subtest_unexpected or is_unexpected) and
+                                self.restart_on_unexpected))
 
-        if (self.pause_after_test or
+        if (not file_result.status == "CRASH" and
+            self.pause_after_test or
             (self.pause_on_unexpected and (subtest_unexpected or is_unexpected))):
             self.logger.info("Pausing until the browser exits")
             self.send_message("wait")
         else:
-            return self.after_test_end(restart_before_next)
+            return self.after_test_end(test, restart_before_next)
 
     def wait_finished(self):
         assert isinstance(self.state, RunnerManagerState.running)
@@ -579,16 +608,21 @@ class TestRunnerManager(threading.Thread):
         # processing
         self.logger.debug("Wait finished")
 
-        return self.after_test_end(True)
+        return self.after_test_end(self.state.test, True)
 
-    def after_test_end(self, restart):
+    def after_test_end(self, test, restart):
         assert isinstance(self.state, RunnerManagerState.running)
-        test, test_group, group_metadata = self.get_next_test()
-        if test is None:
-            return RunnerManagerState.stop()
-        if test_group != self.state.test_group:
-            # We are starting a new group of tests, so force a restart
-            restart = True
+        if self.run_count == self.rerun:
+            test, test_group, group_metadata = self.get_next_test()
+            if test is None:
+                return RunnerManagerState.stop()
+            if test_group != self.state.test_group:
+                # We are starting a new group of tests, so force a restart
+                restart = True
+        else:
+            test = test
+            test_group = self.state.test_group
+            group_metadata = self.state.group_metadata
         if restart:
             return RunnerManagerState.restarting(test, test_group, group_metadata)
         else:
@@ -657,7 +691,18 @@ class TestRunnerManager(threading.Thread):
             self.browser.cleanup()
         while True:
             try:
-                self.logger.warning(" ".join(map(repr, self.command_queue.get_nowait())))
+                cmd, data = self.command_queue.get_nowait()
+            except Empty:
+                break
+            else:
+                if cmd == "log":
+                    self.log(*data)
+                else:
+                    self.logger.warning("%r: %r" % (cmd, data))
+        while True:
+            try:
+                cmd, data = self.remote_queue.get_nowait()
+                self.logger.warning("%r: %r" % (cmd, data))
             except Empty:
                 break
 
@@ -677,6 +722,7 @@ class ManagerGroup(object):
     def __init__(self, suite_name, size, test_source_cls, test_source_kwargs,
                  browser_cls, browser_kwargs,
                  executor_cls, executor_kwargs,
+                 rerun=1,
                  pause_after_test=False,
                  pause_on_unexpected=False,
                  restart_on_unexpected=True,
@@ -694,6 +740,7 @@ class ManagerGroup(object):
         self.pause_on_unexpected = pause_on_unexpected
         self.restart_on_unexpected = restart_on_unexpected
         self.debug_info = debug_info
+        self.rerun = rerun
 
         self.pool = set()
         # Event that is polled by threads so that they can gracefully exit in the face
@@ -726,6 +773,7 @@ class ManagerGroup(object):
                                         self.executor_cls,
                                         self.executor_kwargs,
                                         self.stop_flag,
+                                        self.rerun,
                                         self.pause_after_test,
                                         self.pause_on_unexpected,
                                         self.restart_on_unexpected,
@@ -748,6 +796,9 @@ class ManagerGroup(object):
         as possible"""
         self.stop_flag.set()
         self.logger.debug("Stop flag set in ManagerGroup")
+
+    def test_count(self):
+        return sum(item.test_count for item in self.pool)
 
     def unexpected_count(self):
         return sum(item.unexpected_count for item in self.pool)

@@ -2,8 +2,8 @@ package org.mozilla.gecko;
 
 import org.mozilla.gecko.PrefsHelper.PrefHandlerBase;
 import org.mozilla.gecko.gfx.DynamicToolbarAnimator.PinReason;
-import org.mozilla.gecko.gfx.LayerView;
 import org.mozilla.gecko.util.ThreadUtils;
+import org.mozilla.geckoview.GeckoView;
 
 import android.os.Build;
 import android.os.Bundle;
@@ -25,7 +25,7 @@ public class DynamicToolbar {
     private final boolean forceDisabled;
 
     private final PrefsHelper.PrefHandler prefObserver;
-    private LayerView layerView;
+    private GeckoView layerView;
     private OnEnabledChangedListener enabledChangedListener;
     private boolean temporarilyVisible;
 
@@ -77,7 +77,7 @@ public class DynamicToolbar {
         PrefsHelper.removeObserver(prefObserver);
     }
 
-    public void setLayerView(LayerView layerView) {
+    public void setLayerView(GeckoView layerView) {
         ThreadUtils.assertOnUiThread();
 
         this.layerView = layerView;

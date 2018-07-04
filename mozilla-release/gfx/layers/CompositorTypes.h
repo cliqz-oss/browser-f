@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef MOZILLA_LAYERS_COMPOSITORTYPES_H
 #define MOZILLA_LAYERS_COMPOSITORTYPES_H
@@ -72,9 +73,13 @@ enum class TextureFlags : uint32_t {
   RGB_FROM_YCBCR     = 1 << 13,
   // The texture is used for snapshot.
   SNAPSHOT           = 1 << 14,
+  // Enable a non blocking read lock.
+  NON_BLOCKING_READ_LOCK = 1 << 15,
+  // Enable a blocking read lock.
+  BLOCKING_READ_LOCK = 1 << 16,
 
   // OR union of all valid bits
-  ALL_BITS           = (1 << 15) - 1,
+  ALL_BITS           = (1 << 17) - 1,
   // the default flags
   DEFAULT = NO_FLAGS
 };
@@ -174,7 +179,6 @@ struct TextureFactoryIdentifier
   bool mSupportsTextureBlitting;
   bool mSupportsPartialUploads;
   bool mSupportsComponentAlpha;
-  bool mSupportsBackdropCopyForComponentAlpha;
   bool mUsingAdvancedLayers;
   SyncHandle mSyncHandle;
 
@@ -193,7 +197,6 @@ struct TextureFactoryIdentifier
     , mSupportsTextureBlitting(aSupportsTextureBlitting)
     , mSupportsPartialUploads(aSupportsPartialUploads)
     , mSupportsComponentAlpha(aSupportsComponentAlpha)
-    , mSupportsBackdropCopyForComponentAlpha(true)
     , mUsingAdvancedLayers(false)
     , mSyncHandle(aSyncHandle)
   {}
@@ -250,14 +253,16 @@ enum class OpenMode : uint8_t {
   OPEN_NONE        = 0,
   OPEN_READ        = 0x1,
   OPEN_WRITE       = 0x2,
-  OPEN_READ_WRITE  = OPEN_READ|OPEN_WRITE,
-  OPEN_READ_ONLY   = OPEN_READ,
-  OPEN_WRITE_ONLY  = OPEN_WRITE,
-
   // This is only used in conjunction with OMTP to indicate that the DrawTarget
   // that is being borrowed will be painted asynchronously, and so will outlive
   // the write lock.
-  OPEN_ASYNC_WRITE = 0x04
+  OPEN_ASYNC = 0x04,
+
+  OPEN_READ_WRITE  = OPEN_READ|OPEN_WRITE,
+  OPEN_READ_WRITE_ASYNC  = OPEN_READ|OPEN_WRITE|OPEN_ASYNC,
+  OPEN_READ_ASYNC   = OPEN_READ|OPEN_ASYNC,
+  OPEN_READ_ONLY   = OPEN_READ,
+  OPEN_WRITE_ONLY  = OPEN_WRITE,
 };
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(OpenMode)
 

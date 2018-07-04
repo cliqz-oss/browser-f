@@ -11,6 +11,7 @@
 #include "nsCOMArray.h"
 #include "nsCOMPtr.h"
 #include "nsIFile.h"
+#include "nsIObserver.h"
 #include "nsISupports.h"
 
 #include "jsapi.h"
@@ -20,10 +21,12 @@ namespace mozilla {
 class Addon;
 
 class AddonManagerStartup final : public amIAddonManagerStartup
+                                , public nsIObserver
 {
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_AMIADDONMANAGERSTARTUP
+  NS_DECL_NSIOBSERVER
 
   AddonManagerStartup();
 
@@ -35,27 +38,10 @@ public:
     return inst.forget();
   }
 
-  const nsCOMArray<nsIFile>& ExtensionPaths()
-  {
-    return mExtensionPaths;
-  }
-
-  const nsCOMArray<nsIFile>& ThemePaths()
-  {
-    return mExtensionPaths;
-  }
-
 private:
-  Result<Ok, nsresult> AddInstallLocation(Addon& addon);
-
   nsIFile* ProfileDir();
 
   nsCOMPtr<nsIFile> mProfileDir;
-
-  nsCOMArray<nsIFile> mExtensionPaths;
-  nsCOMArray<nsIFile> mThemePaths;
-
-  bool mInitialized;
 
 protected:
   virtual ~AddonManagerStartup() = default;

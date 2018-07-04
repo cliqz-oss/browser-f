@@ -146,7 +146,8 @@ public:
 
   // Accessible
   virtual void Shutdown() override;
-  virtual nsIntRect Bounds() const override;
+  virtual nsRect BoundsInAppUnits() const override;
+  virtual nsIntRect BoundsInCSSPixels() const override;
   virtual GroupPos GroupPosition() override;
   virtual uint64_t NativeState() override;
   virtual uint64_t NativeInteractiveState() const override;
@@ -199,12 +200,12 @@ protected:
   /**
    * Return true if the tree item accessible is expandable (contains subrows).
    */
-  bool IsExpandable();
+  bool IsExpandable() const;
 
   /**
    * Return name for cell at the given column.
    */
-  void GetCellName(nsITreeColumn* aColumn, nsAString& aName);
+  void GetCellName(nsITreeColumn* aColumn, nsAString& aName) const;
 
   nsCOMPtr<nsITreeBoxObject> mTree;
   nsITreeView* mTreeView;

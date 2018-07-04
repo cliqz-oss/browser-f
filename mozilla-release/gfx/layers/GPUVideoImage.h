@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -16,11 +17,16 @@ namespace mozilla {
 namespace dom {
 class VideoDecoderManagerChild;
 }
+namespace gl {
+class GLBlitHelper;
+}
 namespace layers {
 
 // Image class that refers to a decoded video frame within
 // the GPU process.
-class GPUVideoImage final : public Image {
+class GPUVideoImage final : public Image
+{
+  friend class gl::GLBlitHelper;
 public:
   GPUVideoImage(dom::VideoDecoderManagerChild* aManager,
                 const SurfaceDescriptorGPUVideo& aSD,
@@ -41,20 +47,30 @@ public:
                                     ImageBridgeChild::GetSingleton().get());
   }
 
-  ~GPUVideoImage() override {}
+  virtual ~GPUVideoImage() {}
 
-  gfx::IntSize GetSize() override { return mSize; }
+  gfx::IntSize GetSize() const override { return mSize; }
 
-  virtual already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override
+private:
+  GPUVideoTextureData* GetData() const
   {
     if (!mTextureClient) {
       return nullptr;
     }
-    GPUVideoTextureData* data = mTextureClient->GetInternalData()->AsGPUVideoTextureData();
+    return mTextureClient->GetInternalData()->AsGPUVideoTextureData();
+  }
+
+public:
+  already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override
+  {
+    GPUVideoTextureData* data = GetData();
+    if (!data) {
+      return nullptr;
+    }
     return data->GetAsSourceSurface();
   }
 
-  virtual TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override
+  TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override
   {
     MOZ_ASSERT(aForwarder == ImageBridgeChild::GetSingleton(), "Must only use GPUVideo on ImageBridge");
     return mTextureClient;

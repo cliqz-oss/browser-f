@@ -32,6 +32,9 @@ using namespace mozilla::gfx;
 namespace mozilla {
 namespace dom {
 
+using namespace SVGPreserveAspectRatioBinding;
+using namespace SVGSVGElementBinding;
+
 nsSVGEnumMapping SVGSVGElement::sZoomAndPanMap[] = {
   {&nsGkAtoms::disable, SVG_ZOOMANDPAN_DISABLE},
   {&nsGkAtoms::magnify, SVG_ZOOMANDPAN_MAGNIFY},
@@ -69,7 +72,7 @@ DOMSVGTranslatePoint::Copy()
 nsISupports*
 DOMSVGTranslatePoint::GetParentObject()
 {
-  return static_cast<nsIDOMSVGElement*>(mElement);
+  return static_cast<nsIDOMNode*>(mElement);
 }
 
 void
@@ -120,13 +123,9 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(SVGSVGElement,
   }
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
-NS_IMPL_ADDREF_INHERITED(SVGSVGElement,SVGSVGElementBase)
-NS_IMPL_RELEASE_INHERITED(SVGSVGElement,SVGSVGElementBase)
-
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(SVGSVGElement)
-  NS_INTERFACE_TABLE_INHERITED(SVGSVGElement, nsIDOMNode, nsIDOMElement,
-                               nsIDOMSVGElement)
-NS_INTERFACE_TABLE_TAIL_INHERITING(SVGSVGElementBase)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(SVGSVGElement,
+                                             SVGSVGElementBase,
+                                             nsIDOMNode)
 
 SVGView::SVGView()
 {
@@ -188,29 +187,7 @@ SVGSVGElement::Height()
 {
   return mLengthAttributes[ATTR_HEIGHT].ToDOMAnimatedLength(this);
 }
-float
-SVGSVGElement::PixelUnitToMillimeterX()
-{
-  return MM_PER_INCH_FLOAT / 96;
-}
 
-float
-SVGSVGElement::PixelUnitToMillimeterY()
-{
-  return PixelUnitToMillimeterX();
-}
-
-float
-SVGSVGElement::ScreenPixelToMillimeterX()
-{
-  return MM_PER_INCH_FLOAT / 96;
-}
-
-float
-SVGSVGElement::ScreenPixelToMillimeterY()
-{
-  return ScreenPixelToMillimeterX();
-}
 bool
 SVGSVGElement::UseCurrentView()
 {
@@ -524,7 +501,7 @@ SVGSVGElement::BindToTree(nsIDocument* aDocument,
     // Setup the style sheet during binding, not element construction,
     // because we could move the root SVG element from the document
     // that created it to another document.
-    auto cache = nsLayoutStylesheetCache::For(doc->GetStyleBackendType());
+    auto cache = nsLayoutStylesheetCache::Singleton();
     doc->EnsureOnDemandBuiltInUASheet(cache->SVGSheet());
   }
 
@@ -558,7 +535,7 @@ SVGSVGElement::GetAnimatedTransformList(uint32_t aFlags)
   return SVGGraphicsElement::GetAnimatedTransformList(aFlags);
 }
 
-nsresult
+void
 SVGSVGElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   if (aVisitor.mEvent->mMessage == eSVGLoad) {
@@ -570,11 +547,11 @@ SVGSVGElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
       AnimationNeedsResample();
     }
   }
-  return SVGSVGElementBase::GetEventTargetParent(aVisitor);
+  SVGSVGElementBase::GetEventTargetParent(aVisitor);
 }
 
 bool
-SVGSVGElement::IsEventAttributeNameInternal(nsIAtom* aName)
+SVGSVGElement::IsEventAttributeNameInternal(nsAtom* aName)
 {
   /* The events in EventNameType_SVGSVG are for events that are only
      applicable to outermost 'svg' elements. We don't check if we're an outer
@@ -750,8 +727,9 @@ bool
 SVGSVGElement::ClearPreserveAspectRatioProperty()
 {
   void* valPtr = UnsetProperty(nsGkAtoms::overridePreserveAspectRatio);
+  bool didHaveProperty = !!valPtr;
   delete static_cast<SVGPreserveAspectRatio*>(valPtr);
-  return valPtr;
+  return didHaveProperty;
 }
 
 

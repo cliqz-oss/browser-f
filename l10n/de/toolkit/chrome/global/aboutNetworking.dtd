@@ -3,7 +3,7 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY aboutNetworking.title                 "Netzwerkverbindungen">
-<!ENTITY aboutNetworking.warning               "Diese Funktion ist sehr experimentell. Verwenden Sie sie nicht ohne erwachsene Aufsicht.">
+<!ENTITY aboutNetworking.warning               "Diese Funktion ist sehr experimentell. Verwende sie nicht ohne erwachsene Aufsicht.">
 <!ENTITY aboutNetworking.showNextTime          "Diese Warnung beim nächsten Mal anzeigen">
 <!ENTITY aboutNetworking.ok                    "OK">
 <!ENTITY aboutNetworking.HTTP                  "HTTP">
@@ -23,6 +23,7 @@
 <!ENTITY aboutNetworking.sent                  "Gesendet">
 <!ENTITY aboutNetworking.received              "Empfangen">
 <!ENTITY aboutNetworking.family                "Klasse">
+<!ENTITY aboutNetworking.trr                   "TRR (Trusted Recursive Resolver)">
 <!ENTITY aboutNetworking.addresses             "Adressen">
 <!ENTITY aboutNetworking.expires               "Läuft ab (Sekunden)">
 <!ENTITY aboutNetworking.messagesSent          "Nachrichten gesendet">

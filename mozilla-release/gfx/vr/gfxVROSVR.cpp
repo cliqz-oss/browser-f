@@ -1,15 +1,16 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <math.h>
 
-#include "prlink.h"
 #include "prenv.h"
 #include "gfxPrefs.h"
 #include "nsString.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/SharedLibrary.h"
 
 #include "mozilla/gfx/Quaternion.h"
 
@@ -116,22 +117,28 @@ LoadOSVRRuntime()
   static PRLibrary* osvrClientKitLib = nullptr;
   //this looks up the path in the about:config setting, from greprefs.js or modules\libpref\init\all.js
   //we need all the libs to be valid
+#ifdef XP_WIN
+  constexpr static auto* pfnGetPathStringPref = mozilla::Preferences::GetString;
+  nsAutoString osvrUtilPath, osvrCommonPath, osvrClientPath, osvrClientKitPath;
+#else
+  constexpr static auto* pfnGetPathStringPref = mozilla::Preferences::GetCString;
   nsAutoCString osvrUtilPath, osvrCommonPath, osvrClientPath, osvrClientKitPath;
-  if (NS_FAILED(mozilla::Preferences::GetCString("gfx.vr.osvr.utilLibPath",
-                                                 osvrUtilPath)) ||
-      NS_FAILED(mozilla::Preferences::GetCString("gfx.vr.osvr.commonLibPath",
-                                                 osvrCommonPath)) ||
-      NS_FAILED(mozilla::Preferences::GetCString("gfx.vr.osvr.clientLibPath",
-                                                 osvrClientPath)) ||
-      NS_FAILED(mozilla::Preferences::GetCString("gfx.vr.osvr.clientKitLibPath",
-                                                 osvrClientKitPath))) {
+#endif
+  if (NS_FAILED(pfnGetPathStringPref("gfx.vr.osvr.utilLibPath",
+                                     osvrUtilPath, PrefValueKind::User)) ||
+      NS_FAILED(pfnGetPathStringPref("gfx.vr.osvr.commonLibPath",
+                                     osvrCommonPath, PrefValueKind::User)) ||
+      NS_FAILED(pfnGetPathStringPref("gfx.vr.osvr.clientLibPath",
+                                     osvrClientPath, PrefValueKind::User)) ||
+      NS_FAILED(pfnGetPathStringPref("gfx.vr.osvr.clientKitLibPath",
+                                     osvrClientKitPath, PrefValueKind::User))) {
     return false;
   }
 
-  osvrUtilLib = PR_LoadLibrary(osvrUtilPath.BeginReading());
-  osvrCommonLib = PR_LoadLibrary(osvrCommonPath.BeginReading());
-  osvrClientLib = PR_LoadLibrary(osvrClientPath.BeginReading());
-  osvrClientKitLib = PR_LoadLibrary(osvrClientKitPath.BeginReading());
+  osvrUtilLib = LoadLibraryWithFlags(osvrUtilPath.get());
+  osvrCommonLib = LoadLibraryWithFlags(osvrCommonPath.get());
+  osvrClientLib = LoadLibraryWithFlags(osvrClientPath.get());
+  osvrClientKitLib = LoadLibraryWithFlags(osvrClientKitPath.get());
 
   if (!osvrUtilLib) {
     printf_stderr("[OSVR] Failed to load OSVR Util library!\n");
@@ -212,14 +219,15 @@ VRDisplayOSVR::VRDisplayOSVR(OSVR_ClientContext* context,
 
   MOZ_COUNT_CTOR_INHERITED(VRDisplayOSVR, VRDisplayHost);
 
-  mDisplayInfo.mIsConnected = true;
-  mDisplayInfo.mDisplayName.AssignLiteral("OSVR HMD");
-  mDisplayInfo.mCapabilityFlags = VRDisplayCapabilityFlags::Cap_None;
-  mDisplayInfo.mCapabilityFlags =
+  VRDisplayState& state = mDisplayInfo.mDisplayState;
+  state.mIsConnected = true;
+  strncpy(state.mDisplayName, "OSVR HMD", kVRDisplayNameMaxLen);
+  state.mCapabilityFlags = VRDisplayCapabilityFlags::Cap_None;
+  state.mCapabilityFlags =
     VRDisplayCapabilityFlags::Cap_Orientation | VRDisplayCapabilityFlags::Cap_Position;
 
-  mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_External;
-  mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_Present;
+  state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_External;
+  state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_Present;
 
   // XXX OSVR display topology allows for more than one viewer
   // will assume only one viewer for now (most likely stay that way)
@@ -232,7 +240,7 @@ VRDisplayOSVR::VRDisplayOSVR(OSVR_ClientContext* context,
     // XXX for now there is only one surface per eye
     osvr_ClientGetViewerEyeSurfaceProjectionClippingPlanes(
       *m_display, 0, eye, 0, &left, &right, &bottom, &top);
-    mDisplayInfo.mEyeFOV[eye] =
+    state.mEyeFOV[eye] =
       SetFromTanRadians(-left, right, -bottom, top);
   }
 
@@ -247,8 +255,8 @@ VRDisplayOSVR::VRDisplayOSVR(OSVR_ClientContext* context,
     OSVR_ViewportDimension l, b, w, h;
     osvr_ClientGetRelativeViewportForViewerEyeSurface(*m_display, 0, eye, 0, &l,
                                                       &b, &w, &h);
-    mDisplayInfo.mEyeResolution.width = w;
-    mDisplayInfo.mEyeResolution.height = h;
+    state.mEyeResolution.width = w;
+    state.mEyeResolution.height = h;
     OSVR_Pose3 eyePose;
     // Viewer eye pose may not be immediately available, update client context until we get it
     OSVR_ReturnCode ret =
@@ -257,9 +265,18 @@ VRDisplayOSVR::VRDisplayOSVR(OSVR_ClientContext* context,
       osvr_ClientUpdate(*m_ctx);
       ret = osvr_ClientGetViewerEyePose(*m_display, 0, eye, &eyePose);
     }
-    mDisplayInfo.mEyeTranslation[eye].x = eyePose.translation.data[0];
-    mDisplayInfo.mEyeTranslation[eye].y = eyePose.translation.data[1];
-    mDisplayInfo.mEyeTranslation[eye].z = eyePose.translation.data[2];
+    state.mEyeTranslation[eye].x = eyePose.translation.data[0];
+    state.mEyeTranslation[eye].y = eyePose.translation.data[1];
+    state.mEyeTranslation[eye].z = eyePose.translation.data[2];
+
+    Matrix4x4 pose;
+    pose.SetRotationFromQuaternion(gfx::Quaternion(osvrQuatGetX(&eyePose.rotation),
+                                                   osvrQuatGetY(&eyePose.rotation),
+                                                   osvrQuatGetZ(&eyePose.rotation),
+                                                   osvrQuatGetW(&eyePose.rotation)));
+    pose.PreTranslate(eyePose.translation.data[0], eyePose.translation.data[1], eyePose.translation.data[2]);
+    pose.Invert();
+    mHeadToEye[eye] = pose;
   }
 }
 
@@ -287,7 +304,7 @@ VRDisplayOSVR::GetSensorState()
   //this usually goes into app's mainloop
   osvr_ClientUpdate(*m_ctx);
 
-  VRHMDSensorState result;
+  VRHMDSensorState result{};
   OSVR_TimeValue timestamp;
 
   OSVR_OrientationState orientation;
@@ -304,6 +321,9 @@ VRDisplayOSVR::GetSensorState()
     result.orientation[1] = orientation.data[2];
     result.orientation[2] = orientation.data[3];
     result.orientation[3] = orientation.data[0];
+  } else {
+    // default to an identity quaternion
+    result.orientation[3] = 1.0f;
   }
 
   OSVR_PositionState position;
@@ -315,13 +335,15 @@ VRDisplayOSVR::GetSensorState()
     result.position[2] = position.data[2];
   }
 
+  result.CalcViewMatrices(mHeadToEye);
+
   return result;
 }
 
 #if defined(XP_WIN)
 
 bool
-VRDisplayOSVR::SubmitFrame(TextureSourceD3D11* aSource,
+VRDisplayOSVR::SubmitFrame(ID3D11Texture2D* aSource,
   const IntSize& aSize,
   const gfx::Rect& aLeftEyeRect,
   const gfx::Rect& aRightEyeRect)
@@ -339,6 +361,19 @@ VRDisplayOSVR::SubmitFrame(MacIOSurface* aMacIOSurface,
                            const gfx::Rect& aRightEyeRect)
 {
   // XXX Add code to submit frame
+  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
+  return false;
+}
+
+#elif defined(MOZ_ANDROID_GOOGLE_VR)
+
+bool
+VRDisplayOSVR::SubmitFrame(const mozilla::layers::EGLImageDescriptor*,
+                           const gfx::Rect& aLeftEyeRect,
+                           const gfx::Rect& aRightEyeRect)
+{
+  // XXX Add code to submit frame
+  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
   return false;
 }
 
@@ -524,23 +559,49 @@ VRSystemManagerOSVR::Shutdown()
   osvr_ClientShutdown(m_ctx);
 }
 
-bool
-VRSystemManagerOSVR::GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult)
+void
+VRSystemManagerOSVR::NotifyVSync()
+{
+  VRSystemManager::NotifyVSync();
+
+  // TODO - Check for device disconnection or other OSVR events
+}
+
+void
+VRSystemManagerOSVR::Enumerate()
 {
   // make sure context, interface and display are initialized
   CheckOSVRStatus();
 
   if (!Init()) {
-    return false;
+    return;
   }
 
   mHMDInfo = new VRDisplayOSVR(&m_ctx, &m_iface, &m_display);
+}
 
+bool
+VRSystemManagerOSVR::ShouldInhibitEnumeration()
+{
+  if (VRSystemManager::ShouldInhibitEnumeration()) {
+    return true;
+  }
   if (mHMDInfo) {
-    aHMDResult.AppendElement(mHMDInfo);
+    // When we find an a VR device, don't
+    // allow any further enumeration as it
+    // may get picked up redundantly by other
+    // API's.
     return true;
   }
   return false;
+}
+
+void
+VRSystemManagerOSVR::GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult)
+{
+  if (mHMDInfo) {
+    aHMDResult.AppendElement(mHMDInfo);
+  }
 }
 
 bool
@@ -564,7 +625,7 @@ VRSystemManagerOSVR::VibrateHaptic(uint32_t aControllerIdx,
                                    uint32_t aHapticIndex,
                                    double aIntensity,
                                    double aDuration,
-                                   uint32_t aPromiseID)
+                                   const VRManagerPromise& aPromise)
 {
 }
 

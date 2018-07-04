@@ -16,11 +16,8 @@ async function waitForSearchBarFocus() {
 
 // Ctrl+K should open the menu panel and focus the search bar if the search bar is in the panel.
 add_task(async function() {
-  await SpecialPowers.pushPrefEnv({set: [["browser.photon.structure.enabled", true]]});
-  let searchbar = document.getElementById("searchbar");
-  gCustomizeMode.addToPanel(searchbar);
-  let placement = CustomizableUI.getPlacementOfWidget("search-container");
-  is(placement.area, CustomizableUI.AREA_FIXED_OVERFLOW_PANEL, "Should be in panel");
+  CustomizableUI.addWidgetToArea("search-container",
+                                 CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
 
   let shownPanelPromise = promiseOverflowShown(window);
   sendWebSearchKeyCommand();
@@ -29,17 +26,15 @@ add_task(async function() {
   await waitForSearchBarFocus();
 
   let hiddenPanelPromise = promiseOverflowHidden(window);
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
   await hiddenPanelPromise;
   CustomizableUI.reset();
 });
 
 // Ctrl+K should give focus to the searchbar when the searchbar is in the menupanel and the panel is already opened.
 add_task(async function() {
-  let searchbar = document.getElementById("searchbar");
-  gCustomizeMode.addToPanel(searchbar);
-  let placement = CustomizableUI.getPlacementOfWidget("search-container");
-  is(placement.area, CustomizableUI.AREA_FIXED_OVERFLOW_PANEL, "Should be in panel");
+  CustomizableUI.addWidgetToArea("search-container",
+                                 CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
 
   await document.getElementById("nav-bar").overflowable.show();
 
@@ -48,20 +43,25 @@ add_task(async function() {
   await waitForSearchBarFocus();
 
   let hiddenPanelPromise = promiseOverflowHidden(window);
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
   await hiddenPanelPromise;
   CustomizableUI.reset();
 });
 
 // Ctrl+K should open the overflow panel and focus the search bar if the search bar is overflowed.
-add_task(async function() {
+add_task(async function check_shortcut_when_in_overflow() {
   this.originalWindowWidth = window.outerWidth;
   let navbar = document.getElementById(CustomizableUI.AREA_NAVBAR);
   ok(!navbar.hasAttribute("overflowing"), "Should start with a non-overflowing toolbar.");
   ok(CustomizableUI.inDefaultState, "Should start in default state.");
 
-  window.resizeTo(360, window.outerHeight);
-  await waitForCondition(() => navbar.getAttribute("overflowing") == "true");
+  Services.prefs.setBoolPref("browser.search.widget.inNavBar", true);
+
+  window.resizeTo(kForceOverflowWidthPx, window.outerHeight);
+  await waitForCondition(() => {
+    return navbar.getAttribute("overflowing") == "true" &&
+      !navbar.querySelector("#search-container");
+  });
   ok(!navbar.querySelector("#search-container"), "Search container should be overflowing");
 
   let shownPanelPromise = promiseOverflowShown(window);
@@ -74,8 +74,11 @@ add_task(async function() {
   await waitForSearchBarFocus();
 
   let hiddenPanelPromise = promiseOverflowHidden(window);
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
   await hiddenPanelPromise;
+
+  Services.prefs.setBoolPref("browser.search.widget.inNavBar", false);
+
   navbar = document.getElementById(CustomizableUI.AREA_NAVBAR);
   window.resizeTo(this.originalWindowWidth, window.outerHeight);
   await waitForCondition(() => !navbar.hasAttribute("overflowing"));
@@ -84,20 +87,21 @@ add_task(async function() {
 
 // Ctrl+K should focus the search bar if it is in the navbar and not overflowing.
 add_task(async function() {
+  Services.prefs.setBoolPref("browser.search.widget.inNavBar", true);
   let placement = CustomizableUI.getPlacementOfWidget("search-container");
   is(placement.area, CustomizableUI.AREA_NAVBAR, "Should be in nav-bar");
 
   sendWebSearchKeyCommand();
 
   await waitForSearchBarFocus();
+
+  Services.prefs.setBoolPref("browser.search.widget.inNavBar", false);
 });
 
 
 function sendWebSearchKeyCommand() {
-  if (Services.appinfo.OS === "Darwin")
-    EventUtils.synthesizeKey("k", { accelKey: true });
-  else
-    EventUtils.synthesizeKey("k", { ctrlKey: true });
+  document.documentElement.focus();
+  EventUtils.synthesizeKey("k", { accelKey: true });
 }
 
 function logActiveElement() {

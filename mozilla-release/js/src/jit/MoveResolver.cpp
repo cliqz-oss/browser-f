@@ -7,6 +7,7 @@
 #include "jit/MoveResolver.h"
 
 #include "mozilla/Attributes.h"
+#include "mozilla/ScopeExit.h"
 
 #include "jit/MacroAssembler.h"
 #include "jit/RegisterSets.h"
@@ -35,9 +36,14 @@ MoveOperand::MoveOperand(MacroAssembler& masm, const ABIArg& arg)
         break;
       case ABIArg::Stack:
         kind_ = MEMORY;
-        code_ = masm.getStackPointer().code();
+        if (IsHiddenSP(masm.getStackPointer()))
+            MOZ_CRASH("Hidden SP cannot be represented as register code on this platform");
+        else
+            code_ = AsRegister(masm.getStackPointer()).code();
         disp_ = arg.offsetFromArgBase();
         break;
+      case ABIArg::Uninitialized:
+        MOZ_CRASH("Uninitialized ABIArg kind");
     }
 }
 
@@ -173,11 +179,17 @@ SplitIntoUpperHalf(const MoveOperand& move)
 }
 #endif
 
+// Resolves the pending_ list to a list in orderedMoves_.
 bool
 MoveResolver::resolve()
 {
     resetState();
     orderedMoves_.clear();
+
+    // Upon return from this function, the pending_ list must be cleared.
+    auto clearPending = mozilla::MakeScopeExit([this]() {
+        pending_.clear();
+    });
 
 #ifdef JS_CODEGEN_ARM
     // Some of ARM's double registers alias two of its single registers,

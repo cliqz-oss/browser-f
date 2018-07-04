@@ -25,15 +25,18 @@ class AbstractThread;
 class MediaResult;
 class HLSTrackDemuxer;
 
-class HLSDemuxer final : public MediaDataDemuxer
+DDLoggedTypeDeclNameAndBase(HLSDemuxer, MediaDataDemuxer);
+DDLoggedTypeNameAndBase(HLSTrackDemuxer, MediaTrackDemuxer);
+
+class HLSDemuxer final
+  : public MediaDataDemuxer
+  , public DecoderDoctorLifeLogger<HLSDemuxer>
 {
   class HLSDemuxerCallbacksSupport;
 public:
   explicit HLSDemuxer(int aPlayerId);
 
   RefPtr<InitPromise> Init() override;
-
-  bool HasTrackType(TrackInfo::TrackType aType) const override;
 
   uint32_t GetNumberTracks(TrackInfo::TrackType aType) const override;
 
@@ -70,7 +73,9 @@ private:
   java::GeckoHLSDemuxerWrapper::GlobalRef mHLSDemuxerWrapper;
 };
 
-class HLSTrackDemuxer : public MediaTrackDemuxer
+class HLSTrackDemuxer
+  : public MediaTrackDemuxer
+  , public DecoderDoctorLifeLogger<HLSTrackDemuxer>
 {
 public:
   HLSTrackDemuxer(HLSDemuxer* aParent,

@@ -7,10 +7,9 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, manager: Cm, results: Cr,
-        utils: Cu } = Components;
+const Cm = Components.manager;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const CATEGORY_UPDATE_TIMER = "update-timer";
 
@@ -19,7 +18,7 @@ const PREF_APP_UPDATE_TIMERFIRSTINTERVAL = "app.update.timerFirstInterval";
 const PREF_APP_UPDATE_LOG_ALL = "app.update.log.all";
 const PREF_BRANCH_LAST_UPDATE_TIME = "app.update.lastUpdateTime.";
 
-const MAIN_TIMER_INTERVAL = 1000;  // milliseconds
+const MAIN_TIMER_INTERVAL = 1000; // milliseconds
 const CONSUMER_TIMER_INTERVAL = 1; // seconds
 
 const TESTS = [ {
@@ -142,7 +141,7 @@ const gTest0TimerCallback = {
     // time to fire so check other timers are successful.
     do_throw("gTest0TimerCallback notify method should not have been called");
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest0Factory = {
@@ -160,7 +159,7 @@ const gTest1TimerCallback = {
     // time to fire so check other timers are successful.
     do_throw("gTest1TimerCallback notify method should not have been called");
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimer])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimer])
 };
 
 const gTest1Factory = {
@@ -178,7 +177,7 @@ const gTest2TimerCallback = {
     // time to fire so check other timers are successful.
     do_throw("gTest2TimerCallback notify method should not have been called");
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest2Factory = {
@@ -191,7 +190,7 @@ const gTest2Factory = {
 };
 
 const gTest3TimerCallback = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest3Factory = {
@@ -209,7 +208,7 @@ const gTest4TimerCallback = {
     TESTS[4].notified = true;
     finished_test0thru7();
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest4Factory = {
@@ -227,7 +226,7 @@ const gTest5TimerCallback = {
     TESTS[5].notified = true;
     finished_test0thru7();
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest5Factory = {
@@ -245,7 +244,7 @@ const gTest6TimerCallback = {
     TESTS[6].notified = true;
     finished_test0thru7();
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest6Factory = {
@@ -263,7 +262,7 @@ const gTest7TimerCallback = {
     TESTS[7].notified = true;
     finished_test0thru7();
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest7Factory = {
@@ -279,11 +278,11 @@ const gTest8TimerCallback = {
   notify: function T8CB_notify(aTimer) {
     TESTS[8].notified = true;
     TESTS[8].notifyTime = Date.now();
-    do_execute_soon(function() {
+    executeSoon(function() {
       check_test8thru10(gTest8TimerCallback);
     });
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest8Factory = {
@@ -299,11 +298,11 @@ const gTest9TimerCallback = {
   notify: function T9CB_notify(aTimer) {
     TESTS[9].notified = true;
     TESTS[9].notifyTime = Date.now();
-    do_execute_soon(function() {
+    executeSoon(function() {
       check_test8thru10(gTest9TimerCallback);
     });
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest10TimerCallback = {
@@ -312,7 +311,7 @@ const gTest10TimerCallback = {
     // be called.
     do_throw("gTest10TimerCallback notify method should not have been called");
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 const gTest9Factory = {
@@ -344,7 +343,7 @@ function run_test() {
          QueryInterface(Ci.nsIObserver);
   gUTM.observe(null, "utm-test-init", "");
 
-  do_execute_soon(run_test0thru7);
+  executeSoon(run_test0thru7);
 }
 
 function end_test() {
@@ -429,7 +428,7 @@ function run_test0thru7() {
 
 function finished_test0thru7() {
   if (TESTS[4].notified && TESTS[5].notified && TESTS[6].notified && TESTS[7].notified) {
-    do_execute_soon(gNextFunc);
+    executeSoon(gNextFunc);
   }
 }
 
@@ -486,7 +485,7 @@ function check_test0thru7() {
             "no " + CATEGORY_UPDATE_TIMER + " categories should still be " +
             "registered");
 
-  do_execute_soon(run_test8thru10);
+  executeSoon(run_test8thru10);
 }
 
 function run_test8thru10() {

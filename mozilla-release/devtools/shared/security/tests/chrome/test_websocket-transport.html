@@ -4,17 +4,17 @@
   <meta charset="utf-8">
   <title>Test the WebSocket debugger transport</title>
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script src="chrome://mochikit/content/tests/SimpleTest/SpawnTask.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
 </head>
 <body>
 <script>
 "use strict";
 
-window.onload = function () {
-  const {require} = Components.utils.import("resource://devtools/shared/Loader.jsm", {});
+window.onload = function() {
+  const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
   const Services = require("Services");
-  const {DebuggerClient} = require("devtools/shared/client/main");
+  const {DebuggerClient} = require("devtools/shared/client/debugger-client");
   const {DebuggerServer} = require("devtools/server/main");
 
   Services.prefs.setBoolPref("devtools.debugger.remote-enabled", true);
@@ -25,11 +25,9 @@ window.onload = function () {
     Services.prefs.clearUserPref("devtools.debugger.prompt-connection");
   });
 
-  add_task(function* () {
-    if (!DebuggerServer.initialized) {
-      DebuggerServer.init();
-      DebuggerServer.addBrowserActors();
-    }
+  add_task(async function() {
+    DebuggerServer.init();
+    DebuggerServer.registerAllActors();
 
     is(DebuggerServer.listeningSockets, 0, "0 listening sockets");
 
@@ -37,10 +35,10 @@ window.onload = function () {
     ok(listener, "Socket listener created");
     listener.portOrPath = -1;
     listener.webSocket = true;
-    yield listener.open();
+    await listener.open();
     is(DebuggerServer.listeningSockets, 1, "1 listening socket");
 
-    let transport = yield DebuggerClient.socketConnect({
+    let transport = await DebuggerClient.socketConnect({
       host: "127.0.0.1",
       port: listener.port,
       webSocket: true
@@ -53,12 +51,12 @@ window.onload = function () {
     };
     client.addListener("closed", onUnexpectedClose);
 
-    yield client.connect();
-    yield client.listTabs();
+    await client.connect();
+    await client.listTabs();
 
     // Send a message the server that will echo back
     let message = "message";
-    let reply = yield client.request({
+    let reply = await client.request({
       to: "root",
       type: "echo",
       message

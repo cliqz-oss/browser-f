@@ -12,23 +12,40 @@
 
 using namespace mozilla::intl;
 
+OSPreferences::OSPreferences()
+{
+}
+
+OSPreferences::~OSPreferences()
+{
+}
+
 bool
 OSPreferences::ReadSystemLocales(nsTArray<nsCString>& aLocaleList)
 {
   MOZ_ASSERT(aLocaleList.IsEmpty());
 
-  WCHAR locale[LOCALE_NAME_MAX_LENGTH];
-  if (NS_WARN_IF(!LCIDToLocaleName(LOCALE_SYSTEM_DEFAULT, locale,
-                                   LOCALE_NAME_MAX_LENGTH, 0))) {
-    return false;
+  ULONG numLanguages = 0;
+  DWORD cchLanguagesBuffer = 0;
+  BOOL ok = GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &numLanguages,
+                                        nullptr, &cchLanguagesBuffer);
+  if (ok) {
+    AutoTArray<WCHAR, 64> locBuffer;
+    locBuffer.SetCapacity(cchLanguagesBuffer);
+    ok = GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &numLanguages,
+                                     locBuffer.Elements(), &cchLanguagesBuffer);
+    if (ok) {
+      NS_LossyConvertUTF16toASCII loc(locBuffer.Elements());
+
+      // We will only take the first locale from the returned list, because
+      // we do not support real fallback chains for RequestedLocales yet.
+      if (CanonicalizeLanguageTag(loc)) {
+        aLocaleList.AppendElement(loc);
+        return true;
+      }
+    }
   }
 
-  NS_LossyConvertUTF16toASCII loc(locale);
-
-  if (CanonicalizeLanguageTag(loc)) {
-    aLocaleList.AppendElement(loc);
-    return true;
-  }
   return false;
 }
 
@@ -50,25 +67,6 @@ OSPreferences::ReadRegionalPrefsLocales(nsTArray<nsCString>& aLocaleList)
     return true;
   }
   return false;
-}
-
-/**
- * Windows distinguishes between System Locale (the locale OS is in), and
- * User Locale (the locale used for regional settings etc.).
- *
- * For DateTimePattern, we want to retrieve the User Locale.
- */
-static void
-ReadUserLocale(nsCString& aRetVal)
-{
-  WCHAR locale[LOCALE_NAME_MAX_LENGTH];
-  if (NS_WARN_IF(!LCIDToLocaleName(LOCALE_USER_DEFAULT, locale,
-                                   LOCALE_NAME_MAX_LENGTH, 0))) {
-    aRetVal.Assign("en-US");
-    return;
-  }
-
-  LossyCopyUTF16toASCII(locale, aRetVal);
 }
 
 static LCTYPE
@@ -113,29 +111,6 @@ ToTimeLCType(OSPreferences::DateTimeFormatStyle aFormatStyle)
   }
 }
 
-LPWSTR
-GetWindowsLocaleFor(const nsACString& aLocale, LPWSTR aBuffer)
-{
-  nsAutoCString reqLocale;
-  nsAutoCString userLocale;
-  ReadUserLocale(userLocale);
-
-  if (aLocale.IsEmpty()) {
-    LocaleService::GetInstance()->GetAppLocaleAsBCP47(reqLocale);
-  } else {
-    reqLocale.Assign(aLocale);
-  }
-
-  bool match = LocaleService::LanguagesMatch(reqLocale, userLocale);
-  if (match || reqLocale.Length() >= LOCALE_NAME_MAX_LENGTH) {
-    UTF8ToUnicodeBuffer(userLocale, (char16_t*)aBuffer);
-  } else {
-    UTF8ToUnicodeBuffer(reqLocale, (char16_t*)aBuffer);
-  }
-
-  return aBuffer;
-}
-
 /**
  * Windows API includes regional preferences from the user only
  * if we pass empty locale string or if the locale string matches
@@ -158,9 +133,8 @@ OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
                                    DateTimeFormatStyle aTimeStyle,
                                    const nsACString& aLocale, nsAString& aRetVal)
 {
-  WCHAR buffer[LOCALE_NAME_MAX_LENGTH];
-
-  LPWSTR localeName = GetWindowsLocaleFor(aLocale, buffer);
+  nsAutoString localeName;
+  CopyASCIItoUTF16(aLocale, localeName);
 
   bool isDate = aDateStyle != DateTimeFormatStyle::None &&
                 aDateStyle != DateTimeFormatStyle::Invalid;
@@ -175,7 +149,7 @@ OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
   nsAutoString tmpStr;
   nsAString* str;
   if (isDate && isTime) {
-    if (!GetDateTimeConnectorPattern(NS_ConvertUTF16toUTF8(localeName), aRetVal)) {
+    if (!GetDateTimeConnectorPattern(aLocale, aRetVal)) {
       NS_WARNING("failed to get date/time connector");
       aRetVal.AssignLiteral(u"{1} {0}");
     }
@@ -189,7 +163,7 @@ OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
 
   if (isDate) {
     LCTYPE lcType = ToDateLCType(aDateStyle);
-    size_t len = GetLocaleInfoEx(localeName, lcType, nullptr, 0);
+    size_t len = GetLocaleInfoEx(reinterpret_cast<const wchar_t*>(localeName.BeginReading()), lcType, nullptr, 0);
     if (len == 0) {
       return false;
     }
@@ -197,7 +171,7 @@ OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
     // We're doing it to ensure the terminator will fit when Windows writes the data
     // to its output buffer. See bug 1358159 for details.
     str->SetLength(len);
-    GetLocaleInfoEx(localeName, lcType, (WCHAR*)str->BeginWriting(), len);
+    GetLocaleInfoEx(reinterpret_cast<const wchar_t*>(localeName.BeginReading()), lcType, (WCHAR*)str->BeginWriting(), len);
     str->SetLength(len - 1); // -1 because len counts the null terminator
 
     // Windows uses "ddd" and "dddd" for abbreviated and full day names respectively,
@@ -209,9 +183,12 @@ OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
     start = str->BeginReading(pos);
     str->EndReading(end);
     if (FindInReadable(NS_LITERAL_STRING("dddd"), pos, end)) {
-      str->Replace(pos - start, 4, NS_LITERAL_STRING("EEEE"));
-    } else if (FindInReadable(NS_LITERAL_STRING("ddd"), pos, end)) {
-      str->Replace(pos - start, 3, NS_LITERAL_STRING("EEE"));
+      str->ReplaceLiteral(pos - start, 4, u"EEEE");
+    } else {
+      pos = start;
+      if (FindInReadable(NS_LITERAL_STRING("ddd"), pos, end)) {
+        str->ReplaceLiteral(pos - start, 3, u"EEE");
+      }
     }
 
     // Also, Windows uses lowercase "g" or "gg" for era, but ICU wants uppercase "G"
@@ -240,7 +217,7 @@ OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
 
   if (isTime) {
     LCTYPE lcType = ToTimeLCType(aTimeStyle);
-    size_t len = GetLocaleInfoEx(localeName, lcType, nullptr, 0);
+    size_t len = GetLocaleInfoEx(reinterpret_cast<const wchar_t*>(localeName.BeginReading()), lcType, nullptr, 0);
     if (len == 0) {
       return false;
     }
@@ -248,7 +225,7 @@ OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
     // We're doing it to ensure the terminator will fit when Windows writes the data
     // to its output buffer. See bug 1358159 for details.
     str->SetLength(len);
-    GetLocaleInfoEx(localeName, lcType, (WCHAR*)str->BeginWriting(), len);
+    GetLocaleInfoEx(reinterpret_cast<const wchar_t*>(localeName.BeginReading()), lcType, (WCHAR*)str->BeginWriting(), len);
     str->SetLength(len - 1);
 
     // Windows uses "t" or "tt" for a "time marker" (am/pm indicator),

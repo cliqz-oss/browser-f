@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -58,14 +59,13 @@ nsMathMLSelectedFrame::SetInitialChildList(ChildListID     aListID,
 //  Only paint the selected child...
 void
 nsMathMLSelectedFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                        const nsRect&           aDirtyRect,
                                         const nsDisplayListSet& aLists)
 {
   // Report an error if something wrong was found in this frame.
   // We can't call nsDisplayMathMLError from here,
   // so ask nsMathMLContainerFrame to do the work for us.
   if (NS_MATHML_HAS_ERROR(mPresentationData.flags)) {
-    nsMathMLContainerFrame::BuildDisplayList(aBuilder, aDirtyRect, aLists);
+    nsMathMLContainerFrame::BuildDisplayList(aBuilder, aLists);
     return;
   }
 
@@ -76,7 +76,7 @@ nsMathMLSelectedFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     // Put the child's background directly onto the content list
     nsDisplayListSet set(aLists, aLists.Content());
     // The children should be in content order
-    BuildDisplayListForChild(aBuilder, childFrame, aDirtyRect, set);
+    BuildDisplayListForChild(aBuilder, childFrame, set);
   }
 
 #if defined(DEBUG) && defined(SHOW_BOUNDING_BOX)
@@ -126,8 +126,9 @@ nsMathMLSelectedFrame::Reflow(nsPresContext*          aPresContext,
                               nsReflowStatus&          aStatus)
 {
   MarkInReflow();
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
   mPresentationData.flags &= ~NS_MATHML_ERROR;
-  aStatus.Reset();
   aDesiredSize.ClearSize();
   aDesiredSize.SetBlockStartAscent(0);
   mBoundingMetrics = nsBoundingMetrics();

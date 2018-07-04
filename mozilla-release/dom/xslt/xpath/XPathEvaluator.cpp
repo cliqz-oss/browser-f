@@ -6,7 +6,7 @@
 #include "mozilla/dom/XPathEvaluator.h"
 #include "mozilla/Move.h"
 #include "nsCOMPtr.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "mozilla/dom/XPathExpression.h"
 #include "XPathResult.h"
 #include "nsContentCID.h"
@@ -23,11 +23,6 @@
 #include "mozilla/dom/XPathEvaluatorBinding.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/XPathNSResolverBinding.h"
-
-extern nsresult
-TX_ResolveFunctionCallXPCOM(const nsCString &aContractID, int32_t aNamespaceID,
-                            nsIAtom *aName, nsISupports *aState,
-                            FunctionCall **aFunction);
 
 namespace mozilla {
 namespace dom {
@@ -58,11 +53,11 @@ public:
         return mLastError;
     }
 
-    nsresult resolveNamespacePrefix(nsIAtom* aPrefix, int32_t& aID);
-    nsresult resolveFunctionCall(nsIAtom* aName, int32_t aID,
-                                 FunctionCall** aFunction);
-    bool caseInsensitiveNameTests();
-    void SetErrorOffset(uint32_t aOffset);
+    nsresult resolveNamespacePrefix(nsAtom* aPrefix, int32_t& aID) override;
+    nsresult resolveFunctionCall(nsAtom* aName, int32_t aID,
+                                 FunctionCall** aFunction) override;
+    bool caseInsensitiveNameTests() override;
+    void SetErrorOffset(uint32_t aOffset) override;
 
 private:
     XPathNSResolver* mResolver;
@@ -71,8 +66,6 @@ private:
     bool mIsCaseSensitive;
 };
 
-NS_IMPL_ISUPPORTS(XPathEvaluator, nsIDOMXPathEvaluator)
-
 XPathEvaluator::XPathEvaluator(nsIDocument* aDocument)
     : mDocument(do_GetWeakReference(aDocument))
 {
@@ -80,40 +73,6 @@ XPathEvaluator::XPathEvaluator(nsIDocument* aDocument)
 
 XPathEvaluator::~XPathEvaluator()
 {
-}
-
-NS_IMETHODIMP
-XPathEvaluator::Evaluate(const nsAString & aExpression,
-                         nsIDOMNode *aContextNode,
-                         nsIDOMNode *aResolver,
-                         uint16_t aType,
-                         nsISupports *aInResult,
-                         nsISupports **aResult)
-{
-    nsCOMPtr<nsINode> resolver = do_QueryInterface(aResolver);
-    ErrorResult rv;
-    nsAutoPtr<XPathExpression> expression(CreateExpression(aExpression,
-                                                           resolver, rv));
-    if (rv.Failed()) {
-        return rv.StealNSResult();
-    }
-
-    nsCOMPtr<nsINode> node = do_QueryInterface(aContextNode);
-    if (!node) {
-        return NS_ERROR_FAILURE;
-    }
-
-    nsCOMPtr<nsIXPathResult> inResult = do_QueryInterface(aInResult);
-    RefPtr<XPathResult> result =
-        expression->Evaluate(*node, aType,
-                             static_cast<XPathResult*>(inResult.get()), rv);
-    if (rv.Failed()) {
-        return rv.StealNSResult();
-    }
-
-    *aResult = ToSupports(result.forget().take());
-
-    return NS_OK;
 }
 
 XPathExpression*
@@ -169,13 +128,11 @@ XPathEvaluator::WrapObject(JSContext* aCx,
     return dom::XPathEvaluatorBinding::Wrap(aCx, this, aGivenProto, aReflector);
 }
 
-/* static */
-already_AddRefed<XPathEvaluator>
+/* static */ XPathEvaluator*
 XPathEvaluator::Constructor(const GlobalObject& aGlobal,
                             ErrorResult& rv)
 {
-    RefPtr<XPathEvaluator> newObj = new XPathEvaluator(nullptr);
-    return newObj.forget();
+    return new XPathEvaluator(nullptr);
 }
 
 already_AddRefed<XPathResult>
@@ -199,7 +156,7 @@ XPathEvaluator::Evaluate(JSContext* aCx, const nsAString& aExpression,
  */
 
 nsresult XPathEvaluatorParseContext::resolveNamespacePrefix
-    (nsIAtom* aPrefix, int32_t& aID)
+    (nsAtom* aPrefix, int32_t& aID)
 {
     aID = kNameSpaceID_Unknown;
 
@@ -212,7 +169,7 @@ nsresult XPathEvaluatorParseContext::resolveNamespacePrefix
         aPrefix->ToString(prefix);
     }
 
-    nsVoidableString ns;
+    nsAutoString ns;
     if (mResolver) {
         ErrorResult rv;
         mResolver->LookupNamespaceURI(prefix, ns, rv);
@@ -242,7 +199,7 @@ nsresult XPathEvaluatorParseContext::resolveNamespacePrefix
 }
 
 nsresult
-XPathEvaluatorParseContext::resolveFunctionCall(nsIAtom* aName,
+XPathEvaluatorParseContext::resolveFunctionCall(nsAtom* aName,
                                                 int32_t aID,
                                                 FunctionCall** aFn)
 {

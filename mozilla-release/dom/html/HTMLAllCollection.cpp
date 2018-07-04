@@ -86,14 +86,14 @@ IsAllNamedElement(nsIContent* aContent)
 }
 
 static bool
-DocAllResultMatch(Element* aElement, int32_t aNamespaceID, nsIAtom* aAtom,
+DocAllResultMatch(Element* aElement, int32_t aNamespaceID, nsAtom* aAtom,
                   void* aData)
 {
   if (aElement->GetID() == aAtom) {
     return true;
   }
 
-  nsGenericHTMLElement* elm = nsGenericHTMLElement::FromContent(aElement);
+  nsGenericHTMLElement* elm = nsGenericHTMLElement::FromNode(aElement);
   if (!elm) {
     return false;
   }
@@ -112,7 +112,7 @@ HTMLAllCollection::GetDocumentAllList(const nsAString& aID)
 {
   return mNamedMap.LookupForAdd(aID).OrInsert(
     [this, &aID] () {
-      nsCOMPtr<nsIAtom> id = NS_Atomize(aID);
+      RefPtr<nsAtom> id = NS_Atomize(aID);
       return new nsContentList(mDocument, DocAllResultMatch, nullptr,
                                nullptr, true, id);
     });
@@ -161,11 +161,11 @@ HTMLAllCollection::GetSupportedNames(nsTArray<nsString>& aNames)
 {
   // XXXbz this is very similar to nsContentList::GetSupportedNames,
   // but has to check IsAllNamedElement for the name case.
-  AutoTArray<nsIAtom*, 8> atoms;
+  AutoTArray<nsAtom*, 8> atoms;
   for (uint32_t i = 0; i < Length(); ++i) {
     nsIContent *content = Item(i);
     if (content->HasID()) {
-      nsIAtom* id = content->GetID();
+      nsAtom* id = content->GetID();
       MOZ_ASSERT(id != nsGkAtoms::_empty,
                  "Empty ids don't get atomized");
       if (!atoms.Contains(id)) {
@@ -173,14 +173,14 @@ HTMLAllCollection::GetSupportedNames(nsTArray<nsString>& aNames)
       }
     }
 
-    nsGenericHTMLElement* el = nsGenericHTMLElement::FromContent(content);
+    nsGenericHTMLElement* el = nsGenericHTMLElement::FromNode(content);
     if (el) {
       // Note: nsINode::HasName means the name is exposed on the document,
       // which is false for options, so we don't check it here.
       const nsAttrValue* val = el->GetParsedAttr(nsGkAtoms::name);
       if (val && val->Type() == nsAttrValue::eAtom &&
           IsAllNamedElement(content)) {
-        nsIAtom* name = val->GetAtomValue();
+        nsAtom* name = val->GetAtomValue();
         MOZ_ASSERT(name != nsGkAtoms::_empty,
                    "Empty names don't get atomized");
         if (!atoms.Contains(name)) {

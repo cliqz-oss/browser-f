@@ -10,6 +10,7 @@
 #include "AudioStreamTrack.h"
 #include "Layers.h"
 #include "MediaStreamGraph.h"
+#include "MediaStreamGraphImpl.h"
 #include "MediaStreamListener.h"
 #include "VideoStreamTrack.h"
 #include "mozilla/dom/AudioNode.h"
@@ -20,6 +21,7 @@
 #include "mozilla/dom/LocalMediaStreamBinding.h"
 #include "mozilla/dom/MediaStreamBinding.h"
 #include "mozilla/dom/MediaStreamTrackEvent.h"
+#include "mozilla/dom/Promise.h"
 #include "mozilla/dom/VideoTrack.h"
 #include "mozilla/dom/VideoTrackList.h"
 #include "mozilla/media/MediaUtils.h"
@@ -27,6 +29,7 @@
 #include "nsIScriptError.h"
 #include "nsIUUIDGenerator.h"
 #include "nsPIDOMWindow.h"
+#include "nsProxyRelease.h"
 #include "nsRFPService.h"
 #include "nsServiceManagerUtils.h"
 
@@ -338,9 +341,8 @@ public:
   explicit PlaybackTrackListener(DOMMediaStream* aStream) :
     mStream(aStream) {}
 
-  NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(PlaybackTrackListener,
-                                           MediaStreamTrackConsumer)
+  NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(PlaybackTrackListener)
+  NS_DECL_CYCLE_COLLECTION_NATIVE_CLASS(PlaybackTrackListener)
 
   void NotifyEnded(MediaStreamTrack* aTrack) override
   {
@@ -364,15 +366,9 @@ protected:
   RefPtr<DOMMediaStream> mStream;
 };
 
-NS_IMPL_ADDREF_INHERITED(DOMMediaStream::PlaybackTrackListener,
-                         MediaStreamTrackConsumer)
-NS_IMPL_RELEASE_INHERITED(DOMMediaStream::PlaybackTrackListener,
-                          MediaStreamTrackConsumer)
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(DOMMediaStream::PlaybackTrackListener)
-NS_INTERFACE_MAP_END_INHERITING(MediaStreamTrackConsumer)
-NS_IMPL_CYCLE_COLLECTION_INHERITED(DOMMediaStream::PlaybackTrackListener,
-                                   MediaStreamTrackConsumer,
-                                   mStream)
+NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(DOMMediaStream::PlaybackTrackListener, AddRef)
+NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(DOMMediaStream::PlaybackTrackListener, Release)
+NS_IMPL_CYCLE_COLLECTION(DOMMediaStream::PlaybackTrackListener, mStream)
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(DOMMediaStream)
 
@@ -404,7 +400,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_ADDREF_INHERITED(DOMMediaStream, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(DOMMediaStream, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(DOMMediaStream)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(DOMMediaStream)
   NS_INTERFACE_MAP_ENTRY(DOMMediaStream)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
@@ -421,7 +417,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(DOMAudioNodeMediaStream, DOMMediaStream,
 NS_IMPL_ADDREF_INHERITED(DOMAudioNodeMediaStream, DOMMediaStream)
 NS_IMPL_RELEASE_INHERITED(DOMAudioNodeMediaStream, DOMMediaStream)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(DOMAudioNodeMediaStream)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(DOMAudioNodeMediaStream)
 NS_INTERFACE_MAP_END_INHERITING(DOMMediaStream)
 
 DOMMediaStream::DOMMediaStream(nsPIDOMWindowInner* aWindow,
@@ -459,10 +455,16 @@ DOMMediaStream::Destroy()
 {
   LOG(LogLevel::Debug, ("DOMMediaStream %p Being destroyed.", this));
   if (mOwnedListener) {
+    if (mOwnedStream) {
+      mOwnedStream->RemoveListener(mOwnedListener);
+    }
     mOwnedListener->Forget();
     mOwnedListener = nullptr;
   }
   if (mPlaybackListener) {
+    if (mPlaybackStream) {
+      mPlaybackStream->RemoveListener(mPlaybackListener);
+    }
     mPlaybackListener->Forget();
     mPlaybackListener = nullptr;
   }
@@ -563,8 +565,8 @@ DOMMediaStream::Constructor(const GlobalObject& aGlobal,
   if (!newStream->GetPlaybackStream()) {
     MOZ_ASSERT(aTracks.IsEmpty());
     MediaStreamGraph* graph =
-      MediaStreamGraph::GetInstance(MediaStreamGraph::SYSTEM_THREAD_DRIVER,
-                                    AudioChannel::Normal, ownerWindow);
+      MediaStreamGraph::GetInstance(MediaStreamGraph::SYSTEM_THREAD_DRIVER, ownerWindow,
+                                    MediaStreamGraph::REQUEST_DEFAULT_SAMPLE_RATE);
     newStream->InitPlaybackStreamCommon(graph);
   }
 
@@ -577,8 +579,75 @@ DOMMediaStream::CurrentTime()
   if (!mPlaybackStream) {
     return 0.0;
   }
+  // The value of a MediaStream's CurrentTime will always advance forward; it will never
+  // reset (even if one rewinds a video.) Therefore we can use a single Random Seed
+  // initialized at the same time as the object.
   return nsRFPService::ReduceTimePrecisionAsSecs(mPlaybackStream->
-    StreamTimeToSeconds(mPlaybackStream->GetCurrentTime() - mLogicalStreamStartTime));
+    StreamTimeToSeconds(mPlaybackStream->GetCurrentTime() - mLogicalStreamStartTime),
+    GetRandomTimelineSeed());
+}
+
+already_AddRefed<Promise>
+DOMMediaStream::CountUnderlyingStreams(const GlobalObject& aGlobal, ErrorResult& aRv)
+{
+  nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(aGlobal.GetAsSupports());
+  if (!window) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIGlobalObject> go = do_QueryInterface(aGlobal.GetAsSupports());
+  if (!go) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return nullptr;
+  }
+
+  RefPtr<Promise> p = Promise::Create(go, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
+
+  MediaStreamGraph* graph = MediaStreamGraph::GetInstanceIfExists(window,
+                                                MediaStreamGraph::REQUEST_DEFAULT_SAMPLE_RATE);
+  if (!graph) {
+    p->MaybeResolve(0);
+    return p.forget();
+  }
+
+  auto* graphImpl = static_cast<MediaStreamGraphImpl*>(graph);
+
+  class Counter : public ControlMessage
+  {
+  public:
+    Counter(MediaStreamGraphImpl* aGraph,
+            const RefPtr<Promise>& aPromise)
+      : ControlMessage(nullptr)
+      , mGraph(aGraph)
+      , mPromise(MakeAndAddRef<nsMainThreadPtrHolder<Promise>>("DOMMediaStream::Counter::mPromise", aPromise))
+    {
+      MOZ_ASSERT(NS_IsMainThread());
+    }
+
+    void Run() override
+    {
+      nsMainThreadPtrHandle<Promise>& promise = mPromise;
+      uint32_t streams = mGraph->mStreams.Length() +
+                         mGraph->mSuspendedStreams.Length();
+      mGraph->DispatchToMainThreadAfterStreamStateUpdate(
+        NewRunnableFrom([promise, streams]() mutable {
+          promise->MaybeResolve(streams);
+          return NS_OK;
+        }));
+    }
+
+  private:
+    // mGraph owns this Counter instance and decides its lifetime.
+    MediaStreamGraphImpl* mGraph;
+    nsMainThreadPtrHandle<Promise> mPromise;
+  };
+  graphImpl->AppendMessage(MakeUnique<Counter>(graphImpl, p));
+
+  return p.forget();
 }
 
 void
@@ -727,7 +796,7 @@ NS_IMPL_ADDREF_INHERITED(ClonedStreamSourceGetter,
                          MediaStreamTrackSourceGetter)
 NS_IMPL_RELEASE_INHERITED(ClonedStreamSourceGetter,
                           MediaStreamTrackSourceGetter)
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(ClonedStreamSourceGetter)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ClonedStreamSourceGetter)
 NS_INTERFACE_MAP_END_INHERITING(MediaStreamTrackSourceGetter)
 NS_IMPL_CYCLE_COLLECTION_INHERITED(ClonedStreamSourceGetter,
                                    MediaStreamTrackSourceGetter,
@@ -843,27 +912,20 @@ DOMMediaStream::OwnsTrack(const MediaStreamTrack& aTrack) const
 }
 
 bool
-DOMMediaStream::AddDirectListener(DirectMediaStreamListener* aListener)
-{
-  if (GetInputStream() && GetInputStream()->AsSourceStream()) {
-    GetInputStream()->AsSourceStream()->AddDirectListener(aListener);
-    return true; // application should ignore NotifyQueuedTrackData
-  }
-  return false;
-}
-
-void
-DOMMediaStream::RemoveDirectListener(DirectMediaStreamListener* aListener)
-{
-  if (GetInputStream() && GetInputStream()->AsSourceStream()) {
-    GetInputStream()->AsSourceStream()->RemoveDirectListener(aListener);
-  }
-}
-
-bool
 DOMMediaStream::IsFinished() const
 {
   return !mPlaybackStream || mPlaybackStream->IsFinished();
+}
+
+TrackRate
+DOMMediaStream::GraphRate()
+{
+  if (mPlaybackStream) { return mPlaybackStream->GraphRate(); }
+  if (mOwnedStream) { return mOwnedStream->GraphRate(); }
+  if (mInputStream) { return mInputStream->GraphRate(); }
+
+  MOZ_ASSERT(false, "Not hooked up to a graph");
+  return 0;
 }
 
 void
@@ -924,7 +986,7 @@ DOMMediaStream::InitOwnedStreamCommon(MediaStreamGraph* aGraph)
   MOZ_ASSERT(!mPlaybackStream, "Owned stream must be initialized before playback stream");
 
   mOwnedStream = aGraph->CreateTrackUnionStream();
-  mOwnedStream->SetAutofinish(true);
+  mOwnedStream->QueueSetAutofinish(true);
   mOwnedStream->RegisterUser();
   if (mInputStream) {
     mOwnedPort = mOwnedStream->AllocateInputPort(mInputStream);
@@ -939,7 +1001,7 @@ void
 DOMMediaStream::InitPlaybackStreamCommon(MediaStreamGraph* aGraph)
 {
   mPlaybackStream = aGraph->CreateTrackUnionStream();
-  mPlaybackStream->SetAutofinish(true);
+  mPlaybackStream->QueueSetAutofinish(true);
   mPlaybackStream->RegisterUser();
   if (mOwnedStream) {
     mPlaybackPort = mPlaybackStream->AllocateInputPort(mOwnedStream);
@@ -1154,6 +1216,7 @@ DOMMediaStream::CloneDOMTrack(MediaStreamTrack& aTrack,
   NotifyTrackAdded(newTrack);
 
   newTrack->SetEnabled(aTrack.Enabled());
+  newTrack->SetMuted(aTrack.Muted());
   newTrack->SetReadyState(aTrack.ReadyState());
 
   if (aTrack.Ended()) {
@@ -1414,9 +1477,6 @@ nsresult
 DOMMediaStream::DispatchTrackEvent(const nsAString& aName,
                                    const RefPtr<MediaStreamTrack>& aTrack)
 {
-  MOZ_ASSERT(aName == NS_LITERAL_STRING("addtrack"),
-             "Only 'addtrack' is supported at this time");
-
   MediaStreamTrackEventInit init;
   init.mTrack = aTrack;
 

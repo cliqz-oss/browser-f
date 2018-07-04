@@ -7,19 +7,19 @@ const OutputParser = require("devtools/client/shared/output-parser");
 const {initCssProperties, getCssProperties} = require("devtools/shared/fronts/css-properties");
 const CSS_SHAPES_ENABLED_PREF = "devtools.inspector.shapesHighlighter.enabled";
 
-add_task(function* () {
-  yield addTab("about:blank");
-  yield performTest();
+add_task(async function() {
+  await addTab("about:blank");
+  await performTest();
   gBrowser.removeCurrentTab();
 });
 
-function* performTest() {
-  let [host, , doc] = yield createHost("bottom", "data:text/html," +
+async function performTest() {
+  let [host, , doc] = await createHost("bottom", "data:text/html," +
     "<h1>browser_outputParser.js</h1><div></div>");
 
   // Mock the toolbox that initCssProperties expect so we get the fallback css properties.
   let toolbox = {target: {client: {}, hasActor: () => false}};
-  yield initCssProperties(toolbox);
+  await initCssProperties(toolbox);
   let cssProperties = getCssProperties(toolbox);
 
   let parser = new OutputParser(doc, cssProperties);
@@ -29,6 +29,8 @@ function* performTest() {
   testParseFilter(doc, parser);
   testParseAngle(doc, parser);
   testParseShape(doc, parser);
+  testParseVariable(doc, parser);
+  testParseFontFamily(doc, parser);
 
   host.destroy();
 }
@@ -80,7 +82,8 @@ function testParseCssProperty(doc, parser) {
        ")"]),
 
     // In "arial black", "black" is a font, not a color.
-    makeColorTest("font-family", "arial black", ["arial black"]),
+    // (The font-family parser creates a span)
+    makeColorTest("font-family", "arial black", ["<span>arial black</span>"]),
 
     makeColorTest("box-shadow", "0 0 1em red",
                   ["0 0 1em ", {name: "red"}]),
@@ -411,5 +414,138 @@ function testParseShape(doc, parser) {
     let spans = frag.querySelectorAll(".ruleview-shape-point");
     is(spans.length, spanCount, desc + " span count");
     is(frag.textContent, definition, desc + " text content");
+  }
+}
+
+function testParseVariable(doc, parser) {
+  let TESTS = [
+    {
+      text: "var(--seen)",
+      variables: {"--seen": "chartreuse" },
+      expected: "<span>var(<span data-variable=\"--seen = chartreuse\">--seen</span>)" +
+        "</span>"
+    },
+    {
+      text: "var(--not-seen)",
+      variables: {},
+      expected: "<span>var(<span class=\"unmatched-class\" " +
+        "data-variable=\"--not-seen is not set\">--not-seen</span>)</span>"
+    },
+    {
+      text: "var(--seen, seagreen)",
+      variables: {"--seen": "chartreuse" },
+      expected: "<span>var(<span data-variable=\"--seen = chartreuse\">--seen</span>," +
+        "<span class=\"unmatched-class\"> <span data-color=\"seagreen\"><span>seagreen" +
+        "</span></span></span>)</span>"
+    },
+    {
+      text: "var(--not-seen, var(--seen))",
+      variables: {"--seen": "chartreuse" },
+      expected: "<span>var(<span class=\"unmatched-class\" " +
+        "data-variable=\"--not-seen is not set\">--not-seen</span>,<span> <span>var" +
+        "(<span data-variable=\"--seen = chartreuse\">--seen</span>)</span></span>)" +
+        "</span>"
+    },
+  ];
+
+  for (let test of TESTS) {
+    let getValue = function(varName) {
+      return test.variables[varName];
+    };
+
+    let frag = parser.parseCssProperty("color", test.text, {
+      isVariableInUse: getValue,
+      unmatchedVariableClass: "unmatched-class"
+    });
+
+    let target = doc.querySelector("div");
+    target.appendChild(frag);
+
+    is(target.innerHTML, test.expected, test.text);
+    target.innerHTML = "";
+  }
+}
+
+function testParseFontFamily(doc, parser) {
+  info("Test font-family parsing");
+  const tests = [
+    {
+      desc: "No fonts",
+      definition: "",
+      families: []
+    },
+    {
+      desc: "List of fonts",
+      definition: "Arial,Helvetica,sans-serif",
+      families: ["Arial", "Helvetica", "sans-serif"]
+    },
+    {
+      desc: "Fonts with spaces",
+      definition: "Open Sans",
+      families: ["Open Sans"]
+    },
+    {
+      desc: "Quoted fonts",
+      definition: "\"Arial\",'Open Sans'",
+      families: ["Arial", "Open Sans"]
+    },
+    {
+      desc: "Fonts with extra whitespace",
+      definition: " Open  Sans  ",
+      families: ["Open Sans"]
+    }
+  ];
+
+  const textContentTests = [
+    {
+      desc: "No whitespace between fonts",
+      definition: "Arial,Helvetica,sans-serif",
+      output: "Arial,Helvetica,sans-serif",
+    },
+    {
+      desc: "Whitespace between fonts",
+      definition: "Arial ,  Helvetica,   sans-serif",
+      output: "Arial , Helvetica, sans-serif",
+    },
+    {
+      desc: "Whitespace before first font trimmed",
+      definition: "  Arial,Helvetica,sans-serif",
+      output: "Arial,Helvetica,sans-serif",
+    },
+    {
+      desc: "Whitespace after last font trimmed",
+      definition: "Arial,Helvetica,sans-serif  ",
+      output: "Arial,Helvetica,sans-serif",
+    },
+    {
+      desc: "Whitespace between quoted fonts",
+      definition: "'Arial' ,  \"Helvetica\" ",
+      output: "'Arial' , \"Helvetica\"",
+    },
+    {
+      desc: "Whitespace within font preserved",
+      definition: "'  Ari al '",
+      output: "'  Ari al '",
+    }
+  ];
+
+  for (let {desc, definition, families} of tests) {
+    info(desc);
+    let frag = parser.parseCssProperty("font-family", definition, {
+      fontFamilyClass: "ruleview-font-family"
+    });
+    let spans = frag.querySelectorAll(".ruleview-font-family");
+
+    is(spans.length, families.length, desc + " span count");
+    for (let i = 0; i < spans.length; i++) {
+      is(spans[i].textContent, families[i], desc + " span contents");
+    }
+  }
+
+  info("Test font-family text content");
+  for (let {desc, definition, output} of textContentTests) {
+    info(desc);
+    let frag = parser.parseCssProperty("font-family", definition, {});
+    is(frag.textContent, output, desc + " text content matches");
   }
 }

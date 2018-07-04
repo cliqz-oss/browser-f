@@ -17,7 +17,7 @@ add_task(async function openLoginExceptionsSubDialog() {
     gBrowser.removeCurrentTab();
   });
 
-  await openPreferencesViaOpenPreferencesAPI("security", null, {leaveOpen: true});
+  await openPreferencesViaOpenPreferencesAPI("privacy", {leaveOpen: true});
 
   let dialogOpened = promiseLoadSubDialog(PERMISSIONS_URL);
 
@@ -49,7 +49,7 @@ add_task(async function addALoginException() {
   let btnBlock = doc.getElementById("btnBlock");
   btnBlock.click();
 
-  await waitForCondition(() => tree.view.rowCount == 1);
+  await TestUtils.waitForCondition(() => tree.view.rowCount == 1);
 
   Assert.equal(tree.view.getCellText(0, tree.treeBoxObject.columns.getColumnAt(0)),
                "http://www.example.com");
@@ -64,12 +64,12 @@ add_task(async function deleteALoginException() {
   tree.view.selection.select(0);
 
   if (AppConstants.platform == "macosx") {
-    EventUtils.synthesizeKey("VK_BACK_SPACE", {});
+    EventUtils.synthesizeKey("KEY_Backspace");
   } else {
-    EventUtils.synthesizeKey("VK_DELETE", {});
+    EventUtils.synthesizeKey("KEY_Delete");
   }
 
-  await waitForCondition(() => tree.view.rowCount == 0);
+  await TestUtils.waitForCondition(() => tree.view.rowCount == 0);
 
   is_element_visible(content.gSubDialog._dialogs[0]._box,
     "Subdialog is visible after deleting an element");

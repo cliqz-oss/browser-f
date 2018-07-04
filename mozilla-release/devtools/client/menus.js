@@ -28,12 +28,14 @@
  *   toggle it.
  */
 
+const { Cu } = require("chrome");
+
 loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
 loader.lazyRequireGetter(this, "CommandUtils", "devtools/client/shared/developer-toolbar", true);
 loader.lazyRequireGetter(this, "TargetFactory", "devtools/client/framework/target", true);
+loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsive.html/manager", true);
 
 loader.lazyImporter(this, "BrowserToolboxProcess", "resource://devtools/client/framework/ToolboxProcess.jsm");
-loader.lazyImporter(this, "ResponsiveUIManager", "resource://devtools/client/responsivedesign/responsivedesign.jsm");
 loader.lazyImporter(this, "ScratchpadManager", "resource://devtools/client/scratchpad/scratchpad-manager.jsm");
 
 exports.menuitems = [
@@ -41,7 +43,7 @@ exports.menuitems = [
     l10nKey: "devToolboxMenuItem",
     oncommand(event) {
       let window = event.target.ownerDocument.defaultView;
-      gDevToolsBrowser.toggleToolboxCommand(window.gBrowser);
+      gDevToolsBrowser.toggleToolboxCommand(window.gBrowser, Cu.now());
     },
     keyId: "toggleToolbox",
     checkbox: true
@@ -92,7 +94,7 @@ exports.menuitems = [
   { id: "menu_browserConsole",
     l10nKey: "browserConsoleCmd",
     oncommand() {
-      let HUDService = require("devtools/client/webconsole/hudservice");
+      let {HUDService} = require("devtools/client/webconsole/hudservice");
       HUDService.openBrowserConsoleOrFocus();
     },
     keyId: "browserConsole",
@@ -101,7 +103,9 @@ exports.menuitems = [
     l10nKey: "responsiveDesignMode",
     oncommand(event) {
       let window = event.target.ownerDocument.defaultView;
-      ResponsiveUIManager.toggle(window, window.gBrowser.selectedTab);
+      ResponsiveUIManager.toggle(window, window.gBrowser.selectedTab, {
+        trigger: "menu"
+      });
     },
     keyId: "responsiveDesignMode",
     checkbox: true
@@ -147,7 +151,7 @@ exports.menuitems = [
     l10nKey: "getMoreDevtoolsCmd",
     oncommand(event) {
       let window = event.target.ownerDocument.defaultView;
-      window.openUILinkIn("https://addons.mozilla.org/firefox/collections/mozilla/webdeveloper/", "tab");
+      window.openTrustedLinkIn("https://addons.mozilla.org/firefox/collections/mozilla/webdeveloper/", "tab");
     }
   },
 */

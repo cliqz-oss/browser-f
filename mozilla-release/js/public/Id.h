@@ -156,7 +156,7 @@ JSID_IS_EMPTY(const jsid id)
     return (size_t)JSID_BITS(id) == JSID_TYPE_SYMBOL;
 }
 
-extern JS_PUBLIC_DATA(const jsid) JSID_VOID;
+constexpr const jsid JSID_VOID = { size_t(JSID_TYPE_VOID) };
 extern JS_PUBLIC_DATA(const jsid) JSID_EMPTY;
 
 extern JS_PUBLIC_DATA(const JS::HandleId) JSID_VOIDHANDLE;
@@ -171,7 +171,21 @@ struct GCPolicy<jsid>
     static void trace(JSTracer* trc, jsid* idp, const char* name) {
         js::UnsafeTraceManuallyBarrieredEdge(trc, idp, name);
     }
+    static bool isValid(jsid id) {
+        return !JSID_IS_GCTHING(id) || js::gc::IsCellPointerValid(JSID_TO_GCTHING(id).asCell());
+    }
 };
+
+#ifdef DEBUG
+MOZ_ALWAYS_INLINE bool
+IdIsNotGray(jsid id)
+{
+    if (!JSID_IS_GCTHING(id))
+        return true;
+
+    return CellIsNotGray(JSID_TO_GCTHING(id).asCell());
+}
+#endif
 
 } // namespace JS
 

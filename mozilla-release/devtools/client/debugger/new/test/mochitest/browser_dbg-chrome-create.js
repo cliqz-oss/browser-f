@@ -7,7 +7,15 @@
  * Tests that a chrome debugger can be created in a new process.
  */
 
-const { BrowserToolboxProcess } = Cu.import(
+// There are shutdown issues for which multiple rejections are left uncaught.
+// See bug 1018184 for resolving these issues.
+const { PromiseTestUtils } = scopedCuImport("resource://testing-common/PromiseTestUtils.jsm");
+PromiseTestUtils.whitelistRejectionsGlobally(/File closed/);
+PromiseTestUtils.whitelistRejectionsGlobally(/NS_ERROR_FAILURE/);
+
+requestLongerTimeout(5);
+
+const { BrowserToolboxProcess } = ChromeUtils.import(
   "resource://devtools/client/framework/ToolboxProcess.jsm",
   {}
 );
@@ -16,7 +24,7 @@ let gProcess = undefined;
 function initChromeDebugger() {
   info("Initializing a chrome debugger process.");
   return new Promise(resolve => {
-    BrowserToolboxProcess.init(onClose, (event, _process) => {
+    BrowserToolboxProcess.init(onClose, _process => {
       info("Browser toolbox process started successfully.");
       resolve(_process);
     });
@@ -38,16 +46,15 @@ function onClose() {
 }
 
 registerCleanupFunction(function() {
-  Services.prefs.clearUserPref("devtools.debugger.remote-enabled");
   gProcess = null;
 });
 
-add_task(function*() {
+add_task(async function() {
   // Windows XP and 8.1 test slaves are terribly slow at this test.
-  requestLongerTimeout(5);
-  Services.prefs.setBoolPref("devtools.debugger.remote-enabled", true);
+  await pushPref("devtools.chrome.enabled", true);
+  await pushPref("devtools.debugger.remote-enabled", true);
 
-  gProcess = yield initChromeDebugger();
+  gProcess = await initChromeDebugger();
 
   ok(
     gProcess._dbgProcess,
@@ -81,5 +88,5 @@ add_task(function*() {
 
   info("profile path: " + gProcess._dbgProfilePath);
 
-  yield gProcess.close();
+  await gProcess.close();
 });

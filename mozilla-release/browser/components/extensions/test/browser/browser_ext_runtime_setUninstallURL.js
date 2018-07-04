@@ -1,10 +1,10 @@
 "use strict";
 
-let {AddonManager} = Components.utils.import("resource://gre/modules/AddonManager.jsm", {});
-let {Extension} = Components.utils.import("resource://gre/modules/Extension.jsm", {});
+let {AddonManager} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
+let {ExtensionTestCommon} = ChromeUtils.import("resource://testing-common/ExtensionTestCommon.jsm", {});
 
 async function makeAndInstallXPI(id, backgroundScript, loadedURL) {
-  let xpi = Extension.generateXPI({
+  let xpi = ExtensionTestCommon.generateXPI({
     manifest: {applications: {gecko: {id}}},
     background: backgroundScript,
   });
@@ -23,7 +23,7 @@ async function makeAndInstallXPI(id, backgroundScript, loadedURL) {
   // A WebExtension is started asynchronously, we have our test extension
   // open a new tab to signal that the background script has executed.
   let loadTab = await loadPromise;
-  await BrowserTestUtils.removeTab(loadTab);
+  BrowserTestUtils.removeTab(loadTab);
 
   return addon;
 }
@@ -90,5 +90,5 @@ add_task(async function test_setuninstallurl() {
 
   let uninstalledTab = await uninstallPromise;
   isnot(uninstalledTab, null, "opened tab with uninstall url");
-  await BrowserTestUtils.removeTab(uninstalledTab);
+  BrowserTestUtils.removeTab(uninstalledTab);
 });

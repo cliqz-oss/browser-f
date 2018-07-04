@@ -9,6 +9,8 @@
 #ifndef js_Class_h
 #define js_Class_h
 
+#include "mozilla/Attributes.h"
+
 #include "jstypes.h"
 
 #include "js/CallArgs.h"
@@ -39,8 +41,6 @@ extern JS_FRIEND_DATA(const js::Class* const) FunctionClassPtr;
 } // namespace js
 
 namespace JS {
-
-class AutoIdVector;
 
 /**
  * The answer to a successful query as to whether an object is an Array per
@@ -379,13 +379,11 @@ typedef bool
 /**
  * Set a property named by id in obj, treating the assignment as strict
  * mode code if strict is true. Note the jsid id type -- id may be a string
- * (Unicode property identifier) or an int (element index). The *vp out
- * parameter, on success, is the new property value after the
- * set.
+ * (Unicode property identifier) or an int (element index).
  */
 typedef bool
 (* JSSetterOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
-               JS::MutableHandleValue vp, JS::ObjectOpResult& result);
+               JS::HandleValue v, JS::ObjectOpResult& result);
 
 /**
  * Delete a property named by id in obj.
@@ -474,14 +472,6 @@ typedef void
 (* JSFinalizeOp)(JSFreeOp* fop, JSObject* obj);
 
 /**
- * Finalizes external strings created by JS_NewExternalString. The finalizer
- * can be called off the main thread.
- */
-struct JSStringFinalizer {
-    void (*finalize)(const JSStringFinalizer* fin, char16_t* chars);
-};
-
-/**
  * Check whether v is an instance of obj.  Return false on error or exception,
  * true on success with true in *bp if v is an instance of obj, false in
  * *bp otherwise.
@@ -510,8 +500,8 @@ typedef void
 typedef JSObject*
 (* JSWeakmapKeyDelegateOp)(JSObject* obj);
 
-typedef void
-(* JSObjectMovedOp)(JSObject* obj, const JSObject* old);
+typedef size_t
+(* JSObjectMovedOp)(JSObject* obj, JSObject* old);
 
 /* js::Class operation signatures. */
 
@@ -538,12 +528,6 @@ typedef bool
 typedef bool
 (* DeletePropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
                      JS::ObjectOpResult& result);
-
-typedef bool
-(* WatchOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id, JS::HandleObject callable);
-
-typedef bool
-(* UnwatchOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id);
 
 class JS_FRIEND_API(ElementAdder)
 {
@@ -607,8 +591,6 @@ typedef void
     \
     JSAddPropertyOp    getAddProperty() const { return cOps ? cOps->addProperty : nullptr; } \
     JSDeletePropertyOp getDelProperty() const { return cOps ? cOps->delProperty : nullptr; } \
-    JSGetterOp         getGetProperty() const { return cOps ? cOps->getProperty : nullptr; } \
-    JSSetterOp         getSetProperty() const { return cOps ? cOps->setProperty : nullptr; } \
     JSEnumerateOp      getEnumerate()   const { return cOps ? cOps->enumerate   : nullptr; } \
     JSNewEnumerateOp   getNewEnumerate()const { return cOps ? cOps->newEnumerate: nullptr; } \
     JSResolveOp        getResolve()     const { return cOps ? cOps->resolve     : nullptr; } \
@@ -631,18 +613,11 @@ typedef void
         cOps->trace(trc, obj); \
     }
 
-// XXX: MOZ_NONHEAP_CLASS allows objects to be created statically or on the
-// stack. We actually want to ban stack objects too, but that's currently not
-// possible. So we define JS_STATIC_CLASS to make the intention clearer.
-#define JS_STATIC_CLASS MOZ_NONHEAP_CLASS
-
-struct JS_STATIC_CLASS ClassOps
+struct MOZ_STATIC_CLASS ClassOps
 {
     /* Function pointer members (may be null). */
     JSAddPropertyOp     addProperty;
     JSDeletePropertyOp  delProperty;
-    JSGetterOp          getProperty;
-    JSSetterOp          setProperty;
     JSEnumerateOp       enumerate;
     JSNewEnumerateOp    newEnumerate;
     JSResolveOp         resolve;
@@ -663,7 +638,7 @@ typedef bool (*FinishClassInitOp)(JSContext* cx, JS::HandleObject ctor,
 
 const size_t JSCLASS_CACHED_PROTO_WIDTH = 6;
 
-struct JS_STATIC_CLASS ClassSpec
+struct MOZ_STATIC_CLASS ClassSpec
 {
     ClassObjectCreationOp createConstructor;
     ClassObjectCreationOp createPrototype;
@@ -699,7 +674,7 @@ struct JS_STATIC_CLASS ClassSpec
     }
 };
 
-struct JS_STATIC_CLASS ClassExtension
+struct MOZ_STATIC_CLASS ClassExtension
 {
     /**
      * If an object is used as a key in a weakmap, it may be desirable for the
@@ -715,7 +690,8 @@ struct JS_STATIC_CLASS ClassExtension
     JSWeakmapKeyDelegateOp weakmapKeyDelegateOp;
 
     /**
-     * Optional hook called when an object is moved by a compacting GC.
+     * Optional hook called when an object is moved by generational or
+     * compacting GC.
      *
      * There may exist weak pointers to an object that are not traced through
      * when the normal trace APIs are used, for example objects in the wrapper
@@ -724,6 +700,12 @@ struct JS_STATIC_CLASS ClassExtension
      * Note that this hook can be called before JS_NewObject() returns if a GC
      * is triggered during construction of the object. This can happen for
      * global objects for example.
+     *
+     * The function should return the difference between nursery bytes used and
+     * tenured bytes used, which may be nonzero e.g. if some nursery-allocated
+     * data beyond the actual GC thing is moved into malloced memory.
+     *
+     * This is used to compute the nursery promotion rate.
      */
     JSObjectMovedOp objectMovedOp;
 };
@@ -731,7 +713,7 @@ struct JS_STATIC_CLASS ClassExtension
 #define JS_NULL_CLASS_SPEC  nullptr
 #define JS_NULL_CLASS_EXT   nullptr
 
-struct JS_STATIC_CLASS ObjectOps
+struct MOZ_STATIC_CLASS ObjectOps
 {
     LookupPropertyOp lookupProperty;
     DefinePropertyOp defineProperty;
@@ -740,8 +722,6 @@ struct JS_STATIC_CLASS ObjectOps
     SetPropertyOp    setProperty;
     GetOwnPropertyOp getOwnPropertyDescriptor;
     DeletePropertyOp deleteProperty;
-    WatchOp          watch;
-    UnwatchOp        unwatch;
     GetElementsOp    getElements;
     JSFunToStringOp  funToString;
 };
@@ -754,13 +734,11 @@ struct JS_STATIC_CLASS ObjectOps
 
 typedef void (*JSClassInternal)();
 
-struct JS_STATIC_CLASS JSClassOps
+struct MOZ_STATIC_CLASS JSClassOps
 {
     /* Function pointer members (may be null). */
     JSAddPropertyOp     addProperty;
     JSDeletePropertyOp  delProperty;
-    JSGetterOp          getProperty;
-    JSSetterOp          setProperty;
     JSEnumerateOp       enumerate;
     JSNewEnumerateOp    newEnumerate;
     JSResolveOp         resolve;
@@ -886,7 +864,7 @@ static const uint32_t JSCLASS_CACHED_PROTO_MASK = JS_BITMASK(js::JSCLASS_CACHED_
 
 namespace js {
 
-struct JS_STATIC_CLASS Class
+struct MOZ_STATIC_CLASS Class
 {
     JS_CLASS_MEMBERS(js::ClassOps, FreeOp);
     const ClassSpec* spec;
@@ -897,8 +875,8 @@ struct JS_STATIC_CLASS Class
      * Objects of this class aren't native objects. They don't have Shapes that
      * describe their properties and layout. Classes using this flag must
      * provide their own property behavior, either by being proxy classes (do
-     * this) or by overriding all the ObjectOps except getElements, watch and
-     * unwatch (don't do this).
+     * this) or by overriding all the ObjectOps except getElements
+     * (don't do this).
      */
     static const uint32_t NON_NATIVE = JSCLASS_INTERNAL_FLAG2;
 
@@ -975,8 +953,6 @@ struct JS_STATIC_CLASS Class
                                             const { return oOps ? oOps->getOwnPropertyDescriptor
                                                                                      : nullptr; }
     DeletePropertyOp getOpsDeleteProperty() const { return oOps ? oOps->deleteProperty : nullptr; }
-    WatchOp          getOpsWatch()          const { return oOps ? oOps->watch          : nullptr; }
-    UnwatchOp        getOpsUnwatch()        const { return oOps ? oOps->unwatch        : nullptr; }
     GetElementsOp    getOpsGetElements()    const { return oOps ? oOps->getElements    : nullptr; }
     JSFunToStringOp  getOpsFunToString()    const { return oOps ? oOps->funToString    : nullptr; }
 };
@@ -984,10 +960,6 @@ struct JS_STATIC_CLASS Class
 static_assert(offsetof(JSClassOps, addProperty) == offsetof(ClassOps, addProperty),
               "ClassOps and JSClassOps must be consistent");
 static_assert(offsetof(JSClassOps, delProperty) == offsetof(ClassOps, delProperty),
-              "ClassOps and JSClassOps must be consistent");
-static_assert(offsetof(JSClassOps, getProperty) == offsetof(ClassOps, getProperty),
-              "ClassOps and JSClassOps must be consistent");
-static_assert(offsetof(JSClassOps, setProperty) == offsetof(ClassOps, setProperty),
               "ClassOps and JSClassOps must be consistent");
 static_assert(offsetof(JSClassOps, enumerate) == offsetof(ClassOps, enumerate),
               "ClassOps and JSClassOps must be consistent");

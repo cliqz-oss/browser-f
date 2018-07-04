@@ -179,7 +179,7 @@ AsyncExecuteStatements::executeAndProcessStatement(sqlite3_stmt *aStatement,
     hasResults = executeStatement(aStatement);
 
     // If we had an error, bail.
-    if (mState == ERROR)
+    if (mState == ERROR || mState == CANCELED)
       return false;
 
     // If we have been canceled, there is no point in going on...
@@ -249,12 +249,19 @@ AsyncExecuteStatements::executeStatement(sqlite3_stmt *aStatement)
 
     // Some errors are not fatal, and we can handle them and continue.
     if (rc == SQLITE_BUSY) {
-      // Don't hold the lock while we call outside our module.
-      SQLiteMutexAutoUnlock unlockedScope(mDBMutex);
-
-      // Yield, and try again
-      (void)::PR_Sleep(PR_INTERVAL_NO_WAIT);
+      {
+        // Don't hold the lock while we call outside our module.
+        SQLiteMutexAutoUnlock unlockedScope(mDBMutex);
+        // Yield, and try again
+        (void)::PR_Sleep(PR_INTERVAL_NO_WAIT);
+      }
+      ::sqlite3_reset(aStatement);
       continue;
+    }
+
+    if (rc == SQLITE_INTERRUPT) {
+      mState = CANCELED;
+      return false;
     }
 
     // Set an error state.

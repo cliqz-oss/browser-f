@@ -34,27 +34,24 @@ nsSVGElement::StringInfo SVGAElement::sStringInfo[3] =
   { &nsGkAtoms::target, kNameSpaceID_None, true }
 };
 
+// static
+const DOMTokenListSupportedToken SVGAElement::sSupportedRelValues[] = {
+  "noreferrer",
+  "noopener",
+  nullptr
+};
 
 //----------------------------------------------------------------------
 // nsISupports methods
 
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(SVGAElement)
-  NS_INTERFACE_TABLE_INHERITED(SVGAElement,
-                               nsIDOMNode,
-                               nsIDOMElement,
-                               nsIDOMSVGElement,
-                               Link)
-NS_INTERFACE_TABLE_TAIL_INHERITING(SVGAElementBase)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SVGAElement)
+  NS_INTERFACE_MAP_ENTRY(nsIDOMNode)
+  NS_INTERFACE_MAP_ENTRY(Link)
+NS_INTERFACE_MAP_END_INHERITING(SVGAElementBase)
 
-NS_IMPL_CYCLE_COLLECTION_CLASS(SVGAElement)
-
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(SVGAElement,
-                                                  SVGAElementBase)
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
-
-NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(SVGAElement,
-                                                SVGAElementBase)
-NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+NS_IMPL_CYCLE_COLLECTION_INHERITED(SVGAElement,
+                                   SVGAElementBase,
+                                   mRelList)
 
 NS_IMPL_ADDREF_INHERITED(SVGAElement, SVGAElementBase)
 NS_IMPL_RELEASE_INHERITED(SVGAElement, SVGAElementBase)
@@ -93,13 +90,12 @@ SVGAElement::ElementHasHref() const
 //----------------------------------------------------------------------
 // nsINode methods
 
-nsresult
+void
 SVGAElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
-  nsresult rv = Element::GetEventTargetParent(aVisitor);
-  NS_ENSURE_SUCCESS(rv, rv);
+  Element::GetEventTargetParent(aVisitor);
 
-  return GetEventTargetParentForLinks(aVisitor);
+  GetEventTargetParentForLinks(aVisitor);
 }
 
 nsresult
@@ -120,15 +116,95 @@ SVGAElement::Target()
 }
 
 void
-SVGAElement::GetDownload(nsAString & aDownload)
+SVGAElement::GetDownload(nsAString& aDownload)
 {
-  GetAttr(kNameSpaceID_None, nsGkAtoms::download, aDownload);
+  GetAttr(nsGkAtoms::download, aDownload);
 }
 
 void
-SVGAElement::SetDownload(const nsAString & aDownload, ErrorResult& rv)
+SVGAElement::SetDownload(const nsAString& aDownload, ErrorResult& rv)
 {
-  rv = SetAttr(kNameSpaceID_None, nsGkAtoms::download, aDownload, true);
+  SetAttr(nsGkAtoms::download, aDownload, rv);
+}
+
+void
+SVGAElement::GetPing(nsAString& aPing)
+{
+  GetAttr(nsGkAtoms::ping, aPing);
+}
+
+void
+SVGAElement::SetPing(const nsAString& aPing, ErrorResult& rv)
+{
+  SetAttr(nsGkAtoms::ping, aPing, rv);
+}
+
+void
+SVGAElement::GetRel(nsAString& aRel)
+{
+  GetAttr(nsGkAtoms::rel, aRel);
+}
+
+void
+SVGAElement::SetRel(const nsAString& aRel, ErrorResult& rv)
+{
+  SetAttr(nsGkAtoms::rel, aRel, rv);
+}
+
+void
+SVGAElement::GetReferrerPolicy(nsAString& aPolicy)
+{
+  GetEnumAttr(nsGkAtoms::referrerpolicy, EmptyCString().get(), aPolicy);
+}
+
+void
+SVGAElement::SetReferrerPolicy(const nsAString& aPolicy,
+                               mozilla::ErrorResult& rv)
+{
+  SetAttr(nsGkAtoms::referrerpolicy, aPolicy, rv);
+}
+
+nsDOMTokenList*
+SVGAElement:: RelList()
+{
+  if (!mRelList) {
+    mRelList = new nsDOMTokenList(this, nsGkAtoms::rel, sSupportedRelValues);
+  }
+  return mRelList;
+}
+
+void
+SVGAElement::GetHreflang(nsAString& aHreflang)
+{
+  GetAttr(nsGkAtoms::hreflang, aHreflang);
+}
+
+void
+SVGAElement::SetHreflang(const nsAString& aHreflang, mozilla::ErrorResult& rv)
+{
+  SetAttr(nsGkAtoms::hreflang, aHreflang, rv);
+}
+
+void SVGAElement::GetType(nsAString& aType)
+{
+  GetAttr(nsGkAtoms::type, aType);
+}
+
+void SVGAElement::SetType(const nsAString& aType, mozilla::ErrorResult& rv)
+{
+  SetAttr(nsGkAtoms::type, aType, rv);
+}
+
+void SVGAElement::GetText(nsAString& aText, mozilla::ErrorResult& rv)
+{
+  if (NS_WARN_IF(!nsContentUtils::GetNodeTextContent(this, true, aText, fallible))) {
+    rv.Throw(NS_ERROR_OUT_OF_MEMORY);
+  }
+}
+
+void SVGAElement::SetText(const nsAString& aText, mozilla::ErrorResult& rv)
+{
+  rv = nsContentUtils::SetNodeTextContent(this, aText, false);
 }
 
 //----------------------------------------------------------------------
@@ -173,7 +249,7 @@ SVGAElement::GetHrefURI() const
 
 
 NS_IMETHODIMP_(bool)
-SVGAElement::IsAttributeMapped(const nsIAtom* name) const
+SVGAElement::IsAttributeMapped(const nsAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
     sFEFloodMap,
@@ -218,13 +294,10 @@ SVGAElement::IsSVGFocusable(bool* aIsFocusable, int32_t* aTabIndex)
   // cannot focus links if there is no link handler
   nsIDocument* doc = GetComposedDoc();
   if (doc) {
-    nsIPresShell* presShell = doc->GetShell();
-    if (presShell) {
-      nsPresContext* presContext = presShell->GetPresContext();
-      if (presContext && !presContext->GetLinkHandler()) {
-        *aIsFocusable = false;
-        return false;
-      }
+    nsPresContext* presContext = doc->GetPresContext();
+    if (presContext && !presContext->GetLinkHandler()) {
+      *aIsFocusable = false;
+      return false;
     }
   }
 
@@ -277,13 +350,13 @@ SVGAElement::IsLink(nsIURI** aURI) const
   // For any other values, we're either not a *clickable* XLink, or the end
   // result is poorly specified. Either way, we return false.
 
-  static nsIContent::AttrValuesArray sTypeVals[] =
+  static Element::AttrValuesArray sTypeVals[] =
     { &nsGkAtoms::_empty, &nsGkAtoms::simple, nullptr };
 
-  static nsIContent::AttrValuesArray sShowVals[] =
+  static Element::AttrValuesArray sShowVals[] =
     { &nsGkAtoms::_empty, &nsGkAtoms::_new, &nsGkAtoms::replace, nullptr };
 
-  static nsIContent::AttrValuesArray sActuateVals[] =
+  static Element::AttrValuesArray sActuateVals[] =
     { &nsGkAtoms::_empty, &nsGkAtoms::onRequest, nullptr };
 
   // Optimization: check for href first for early return
@@ -292,13 +365,13 @@ SVGAElement::IsLink(nsIURI** aURI) const
   if ((useBareHref || mStringAttributes[XLINK_HREF].IsExplicitlySet()) &&
       FindAttrValueIn(kNameSpaceID_XLink, nsGkAtoms::type,
                       sTypeVals, eCaseMatters) !=
-                      nsIContent::ATTR_VALUE_NO_MATCH &&
+                      Element::ATTR_VALUE_NO_MATCH &&
       FindAttrValueIn(kNameSpaceID_XLink, nsGkAtoms::show,
                       sShowVals, eCaseMatters) !=
-                      nsIContent::ATTR_VALUE_NO_MATCH &&
+                      Element::ATTR_VALUE_NO_MATCH &&
       FindAttrValueIn(kNameSpaceID_XLink, nsGkAtoms::actuate,
                       sActuateVals, eCaseMatters) !=
-                      nsIContent::ATTR_VALUE_NO_MATCH) {
+                      Element::ATTR_VALUE_NO_MATCH) {
     nsCOMPtr<nsIURI> baseURI = GetBaseURI();
     // Get absolute URI
     nsAutoString str;
@@ -319,7 +392,7 @@ SVGAElement::GetLinkTarget(nsAString& aTarget)
   mStringAttributes[TARGET].GetAnimValue(aTarget, this);
   if (aTarget.IsEmpty()) {
 
-    static nsIContent::AttrValuesArray sShowVals[] =
+    static Element::AttrValuesArray sShowVals[] =
       { &nsGkAtoms::_new, &nsGkAtoms::replace, nullptr };
 
     switch (FindAttrValueIn(kNameSpaceID_XLink, nsGkAtoms::show,
@@ -344,45 +417,23 @@ SVGAElement::IntrinsicState() const
 }
 
 nsresult
-SVGAElement::SetAttr(int32_t aNameSpaceID, nsIAtom* aName,
-                     nsIAtom* aPrefix, const nsAString& aValue,
-                     bool aNotify)
+SVGAElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
+                          const nsAttrValue* aValue,
+                          const nsAttrValue* aOldValue,
+                          nsIPrincipal* aMaybeScriptedPrincipal,
+                          bool aNotify)
 {
-  nsresult rv = SVGAElementBase::SetAttr(aNameSpaceID, aName, aPrefix,
-                                         aValue, aNotify);
-
-  // The ordering of the parent class's SetAttr call and Link::ResetLinkState
-  // is important here!  The attribute is not set until SetAttr returns, and
-  // we will need the updated attribute value because notifying the document
-  // that content states have changed will call IntrinsicState, which will try
-  // to get updated information about the visitedness from Link.
   if (aName == nsGkAtoms::href &&
       (aNameSpaceID == kNameSpaceID_XLink ||
        aNameSpaceID == kNameSpaceID_None)) {
-    Link::ResetLinkState(!!aNotify, true);
+    // We can't assume that null aValue means we no longer have an href, because
+    // we could be unsetting xlink:href but still have a null-namespace href, or
+    // vice versa.  But we can fast-path the case when we _do_ have a new value.
+    Link::ResetLinkState(aNotify, aValue || Link::ElementHasHref());
   }
 
-  return rv;
-}
-
-nsresult
-SVGAElement::UnsetAttr(int32_t aNameSpaceID, nsIAtom* aAttr,
-                       bool aNotify)
-{
-  nsresult rv = nsSVGElement::UnsetAttr(aNameSpaceID, aAttr, aNotify);
-
-  // The ordering of the parent class's UnsetAttr call and Link::ResetLinkState
-  // is important here!  The attribute is not unset until UnsetAttr returns, and
-  // we will need the updated attribute value because notifying the document
-  // that content states have changed will call IntrinsicState, which will try
-  // to get updated information about the visitedness from Link.
-  if (aAttr == nsGkAtoms::href &&
-      (aNameSpaceID == kNameSpaceID_XLink ||
-       aNameSpaceID == kNameSpaceID_None)) {
-    Link::ResetLinkState(!!aNotify, Link::ElementHasHref());
-  }
-
-  return rv;
+  return SVGAElementBase::AfterSetAttr(aNameSpaceID, aName, aValue, aOldValue,
+                                       aMaybeScriptedPrincipal, aNotify);
 }
 
 //----------------------------------------------------------------------

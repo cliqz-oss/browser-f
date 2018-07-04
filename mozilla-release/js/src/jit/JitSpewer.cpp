@@ -16,20 +16,15 @@
 #else
 #include <unistd.h>
 #endif
-
-#include "jsprf.h"
-
 #include "jit/Ion.h"
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
-
 #include "threading/LockGuard.h"
-
 #include "vm/HelperThreads.h"
 #include "vm/MutexIDs.h"
 
-#include "jscompartmentinlines.h"
+#include "vm/JSCompartment-inl.h"
 
 #ifndef JIT_SPEW_DIR
 # if defined(_WIN32)
@@ -558,7 +553,14 @@ jit::CheckLogging()
         EnableChannel(JitSpew_BaselineDebugModeOSR);
     }
 
-    JitSpewPrinter().init(stderr);
+    FILE* spewfh = stderr;
+    const char* filename = getenv("ION_SPEW_FILENAME");
+    if (filename && *filename) {
+        spewfh = fopen(filename, "w");
+        MOZ_RELEASE_ASSERT(spewfh);
+        setbuf(spewfh, nullptr); // Make unbuffered
+    }
+    JitSpewPrinter().init(spewfh);
 }
 
 JitSpewIndent::JitSpewIndent(JitSpewChannel channel)

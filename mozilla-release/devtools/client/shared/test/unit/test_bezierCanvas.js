@@ -7,8 +7,7 @@
 
 // Tests the BezierCanvas API in the CubicBezierWidget module
 
-var Cu = Components.utils;
-var {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+var {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 var {CubicBezier, BezierCanvas} = require("devtools/client/shared/widgets/CubicBezierWidget");
 
 function run_test() {
@@ -18,36 +17,36 @@ function run_test() {
 }
 
 function offsetsGetterReturnsData() {
-  do_print("offsets getter returns an array of 2 offset objects");
+  info("offsets getter returns an array of 2 offset objects");
 
   let b = new BezierCanvas(getCanvasMock(), getCubicBezier(), [.25, 0]);
   let offsets = b.offsets;
 
-  do_check_eq(offsets.length, 2);
+  Assert.equal(offsets.length, 2);
 
-  do_check_true("top" in offsets[0]);
-  do_check_true("left" in offsets[0]);
-  do_check_true("top" in offsets[1]);
-  do_check_true("left" in offsets[1]);
+  Assert.ok("top" in offsets[0]);
+  Assert.ok("left" in offsets[0]);
+  Assert.ok("top" in offsets[1]);
+  Assert.ok("left" in offsets[1]);
 
-  do_check_eq(offsets[0].top, "300px");
-  do_check_eq(offsets[0].left, "0px");
-  do_check_eq(offsets[1].top, "100px");
-  do_check_eq(offsets[1].left, "200px");
+  Assert.equal(offsets[0].top, "300px");
+  Assert.equal(offsets[0].left, "0px");
+  Assert.equal(offsets[1].top, "100px");
+  Assert.equal(offsets[1].left, "200px");
 
-  do_print("offsets getter returns data according to current padding");
+  info("offsets getter returns data according to current padding");
 
   b = new BezierCanvas(getCanvasMock(), getCubicBezier(), [0, 0]);
   offsets = b.offsets;
 
-  do_check_eq(offsets[0].top, "400px");
-  do_check_eq(offsets[0].left, "0px");
-  do_check_eq(offsets[1].top, "0px");
-  do_check_eq(offsets[1].left, "200px");
+  Assert.equal(offsets[0].top, "400px");
+  Assert.equal(offsets[0].left, "0px");
+  Assert.equal(offsets[1].top, "0px");
+  Assert.equal(offsets[1].left, "200px");
 }
 
 function convertsOffsetsToCoordinates() {
-  do_print("Converts offsets to coordinates");
+  info("Converts offsets to coordinates");
 
   let b = new BezierCanvas(getCanvasMock(), getCubicBezier(), [.25, 0]);
 
@@ -55,27 +54,27 @@ function convertsOffsetsToCoordinates() {
     left: "0px",
     top: "0px"
   }});
-  do_check_eq(coordinates.length, 2);
-  do_check_eq(coordinates[0], 0);
-  do_check_eq(coordinates[1], 1.5);
+  Assert.equal(coordinates.length, 2);
+  Assert.equal(coordinates[0], 0);
+  Assert.equal(coordinates[1], 1.5);
 
   coordinates = b.offsetsToCoordinates({style: {
     left: "0px",
     top: "300px"
   }});
-  do_check_eq(coordinates[0], 0);
-  do_check_eq(coordinates[1], 0);
+  Assert.equal(coordinates[0], 0);
+  Assert.equal(coordinates[1], 0);
 
   coordinates = b.offsetsToCoordinates({style: {
     left: "200px",
     top: "100px"
   }});
-  do_check_eq(coordinates[0], 1);
-  do_check_eq(coordinates[1], 1);
+  Assert.equal(coordinates[0], 1);
+  Assert.equal(coordinates[1], 1);
 }
 
 function plotsCanvas() {
-  do_print("Plots the curve to the canvas");
+  info("Plots the curve to the canvas");
 
   let hasDrawnCurve = false;
   let b = new BezierCanvas(getCanvasMock(), getCubicBezier(), [.25, 0]);
@@ -84,7 +83,7 @@ function plotsCanvas() {
   };
   b.plot();
 
-  do_check_true(hasDrawnCurve);
+  Assert.ok(hasDrawnCurve);
 }
 
 function getCubicBezier() {
@@ -93,7 +92,7 @@ function getCubicBezier() {
 
 function getCanvasMock(w = 200, h = 400) {
   return {
-    getContext: function () {
+    getContext: function() {
       return {
         scale: () => {},
         translate: () => {},

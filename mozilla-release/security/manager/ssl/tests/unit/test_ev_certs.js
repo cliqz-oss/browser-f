@@ -29,7 +29,7 @@ do_get_profile(); // must be called before getting nsIX509CertDB
 const certdb = Cc["@mozilla.org/security/x509certdb;1"]
                  .getService(Ci.nsIX509CertDB);
 
-do_register_cleanup(() => {
+registerCleanupFunction(() => {
   Services.prefs.clearUserPref("network.dns.localDomains");
   Services.prefs.clearUserPref("security.OCSP.enabled");
 });
@@ -213,11 +213,11 @@ add_task(async function expectDVFallbackTests() {
 // causes the verifications to succeed again).
 add_task(async function evRootTrustTests() {
   clearOCSPCache();
-  do_print("untrusting evroot");
+  info("untrusting evroot");
   certdb.setCertTrust(evroot, Ci.nsIX509Cert.CA_CERT,
                       Ci.nsIX509CertDB.UNTRUSTED);
   await ensureVerificationFails("test-oid-path", SEC_ERROR_UNKNOWN_ISSUER);
-  do_print("re-trusting evroot");
+  info("re-trusting evroot");
   certdb.setCertTrust(evroot, Ci.nsIX509Cert.CA_CERT,
                       Ci.nsIX509CertDB.TRUSTED_SSL);
   await ensureVerifiesAsEV("test-oid-path");
@@ -279,10 +279,8 @@ add_task(async function oneCRLTests() {
   await ensureVerifiesAsEV("test-oid-path");
 
   clearOCSPCache();
-  // test that setting "security.onecrl.via.amo" results in the correct
-  // OCSP behavior when services.blocklist.onecrl.checked is in the distant past
-  // and blacklist-background-update-timer is recent
-  Services.prefs.setBoolPref("security.onecrl.via.amo", false);
+  // test the OCSP behavior when services.blocklist.onecrl.checked is in the
+  // distant past and blacklist-background-update-timer is recent
   // enable OneCRL OCSP skipping - allow staleness of up to 30 hours
   Services.prefs.setIntPref("security.onecrl.maximum_staleness_in_seconds",
                             108000);
@@ -297,9 +295,7 @@ add_task(async function oneCRLTests() {
   await ensureVerifiesAsEV("test-oid-path");
 
   clearOCSPCache();
-  // test that setting "security.onecrl.via.amo" results in the correct
-  // OCSP behavior when services.blocklist.onecrl.checked is recent
-  Services.prefs.setBoolPref("security.onecrl.via.amo", false);
+  // test the OCSP behavior when services.blocklist.onecrl.checked is recent
   // enable OneCRL OCSP skipping - allow staleness of up to 30 hours
   Services.prefs.setIntPref("security.onecrl.maximum_staleness_in_seconds",
                             108000);
@@ -310,7 +306,6 @@ add_task(async function oneCRLTests() {
   await ensureOneCRLSkipsOCSPForIntermediates("no-ocsp-int-path");
   await ensureOneCRLSkipsOCSPForIntermediates("test-oid-path");
 
-  Services.prefs.clearUserPref("security.onecrl.via.amo");
   Services.prefs.clearUserPref("security.onecrl.maximum_staleness_in_seconds");
   Services.prefs.clearUserPref("services.blocklist.onecrl.checked");
   Services.prefs.clearUserPref(

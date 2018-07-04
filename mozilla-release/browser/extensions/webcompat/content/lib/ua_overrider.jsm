@@ -2,26 +2,41 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Console.jsm");
-
-const DefaultUA = Cc["@mozilla.org/network/protocol;1?name=http"].getService(Ci.nsIHttpProtocolHandler).userAgent;
-const NS_HTTP_ON_USERAGENT_REQUEST_TOPIC = "http-on-useragent-request";
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services", "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "Services", "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "UserAgentOverrides", "resource://gre/modules/UserAgentOverrides.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "eTLDService", "@mozilla.org/network/effective-tld-service;1", "nsIEffectiveTLDService");
 
 class UAOverrider {
   constructor(overrides) {
     this._overrides = {};
+    this._shouldOverride = true;
 
     this.initOverrides(overrides);
   }
 
   initOverrides(overrides) {
+    // on xpcshell tests, there is no impleentation for nsIXULAppInfo, so this
+    // might fail there. To have all of our test cases running at all times,
+    // assume they are on Desktop for now.
+    let currentApplication = "firefox";
+    try {
+      currentApplication = Services.appinfo.name.toLowerCase();
+    } catch (_) {}
+
     for (let override of overrides) {
+      // Firefox for Desktop is the default application for all overrides.
+      if (!override.applications) {
+        override.applications = ["firefox"];
+      }
+
+      // If the current application is not targeted by the override in question,
+      // we can skip adding the override to our checks entirely.
+      if (!override.applications.includes(currentApplication)) {
+        continue;
+      }
+
       if (!this._overrides[override.baseDomain]) {
         this._overrides[override.baseDomain] = [];
       }
@@ -34,26 +49,33 @@ class UAOverrider {
     }
   }
 
+  /**
+   * Used for disabling overrides when the pref has been flipped to false.
+   *
+   * Since we no longer use our own event handlers, we check this bool in our
+   * override callback and simply return early if we are not supposed to do
+   * anything.
+   */
+  setShouldOverride(newState) {
+    this._shouldOverride = newState;
+  }
+
   init() {
-    Services.obs.addObserver(this, NS_HTTP_ON_USERAGENT_REQUEST_TOPIC);
+    UserAgentOverrides.addComplexOverride(this.overrideCallback.bind(this));
   }
 
-  uninit() {
-    Services.obs.removeObserver(this, NS_HTTP_ON_USERAGENT_REQUEST_TOPIC);
-  }
-
-  observe(subject, topic) {
-    if (topic !== NS_HTTP_ON_USERAGENT_REQUEST_TOPIC) {
-      return;
+  overrideCallback(channel, defaultUA) {
+    if (!this._shouldOverride) {
+      return false;
     }
 
-    let channel = subject.QueryInterface(Components.interfaces.nsIHttpChannel);
-    let uaOverride = this.lookupUAOverride(channel.URI);
-
+    let uaOverride = this.lookupUAOverride(channel.URI, defaultUA);
     if (uaOverride) {
       console.log("The user agent has been overridden for compatibility reasons.");
-      channel.setRequestHeader("User-Agent", uaOverride, false);
+      return uaOverride;
     }
+
+    return false;
   }
 
   /**
@@ -88,12 +110,12 @@ class UAOverrider {
    * If there are more than one possible overrides, that is if two or more
    * uriMatchers would return true, the first one gets applied.
    */
-  lookupUAOverride(uri) {
+  lookupUAOverride(uri, defaultUA) {
     let baseDomain = this.getBaseDomainFromURI(uri);
     if (baseDomain && this._overrides[baseDomain]) {
       for (let uaOverride of this._overrides[baseDomain]) {
         if (uaOverride.uriMatcher(uri.specIgnoringRef)) {
-          return uaOverride.uaTransformer(DefaultUA);
+          return uaOverride.uaTransformer(defaultUA);
         }
       }
     }
@@ -102,4 +124,4 @@ class UAOverrider {
   }
 }
 
-this.EXPORTED_SYMBOLS = ["UAOverrider"]; /* exported UAOverrider */
+var EXPORTED_SYMBOLS = ["UAOverrider"]; /* exported UAOverrider */

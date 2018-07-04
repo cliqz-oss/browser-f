@@ -14,12 +14,14 @@
 #include "mozilla/Preferences.h"
 
 #include "mozilla/dom/BindingUtils.h"
-#include "mozilla/dom/DOMError.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMExceptionBinding.h"
 #include "mozilla/dom/MediaStreamError.h"
 #include "mozilla/dom/PromiseBinding.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
+#include "mozilla/dom/WorkerRef.h"
 
 #include "jsfriendapi.h"
 #include "js/StructuredClone.h"
@@ -33,13 +35,8 @@
 #include "PromiseDebugging.h"
 #include "PromiseNativeHandler.h"
 #include "PromiseWorkerProxy.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
 #include "WrapperFactory.h"
 #include "xpcpublic.h"
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
 
 namespace mozilla {
 namespace dom {
@@ -48,8 +45,6 @@ namespace {
 // Generator used by Promise::GetID.
 Atomic<uintptr_t> gIDGenerator(0);
 } // namespace
-
-using namespace workers;
 
 // Promise
 
@@ -140,37 +135,40 @@ Promise::Reject(nsIGlobalObject* aGlobal, JSContext* aCx,
 
 // static
 already_AddRefed<Promise>
-Promise::All(const GlobalObject& aGlobal,
+Promise::All(JSContext* aCx,
              const nsTArray<RefPtr<Promise>>& aPromiseList, ErrorResult& aRv)
 {
-  nsCOMPtr<nsIGlobalObject> global;
-  global = do_QueryInterface(aGlobal.GetAsSupports());
+  JS::Rooted<JSObject*> globalObj(aCx, JS::CurrentGlobalOrNull(aCx));
+  if (!globalObj) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIGlobalObject> global = xpc::NativeGlobal(globalObj);
   if (!global) {
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return nullptr;
   }
 
-  JSContext* cx = aGlobal.Context();
-
-  JS::AutoObjectVector promises(cx);
+  JS::AutoObjectVector promises(aCx);
   if (!promises.reserve(aPromiseList.Length())) {
-    aRv.NoteJSContextException(cx);
+    aRv.NoteJSContextException(aCx);
     return nullptr;
   }
 
   for (auto& promise : aPromiseList) {
-    JS::Rooted<JSObject*> promiseObj(cx, promise->PromiseObj());
+    JS::Rooted<JSObject*> promiseObj(aCx, promise->PromiseObj());
     // Just in case, make sure these are all in the context compartment.
-    if (!JS_WrapObject(cx, &promiseObj)) {
-      aRv.NoteJSContextException(cx);
+    if (!JS_WrapObject(aCx, &promiseObj)) {
+      aRv.NoteJSContextException(aCx);
       return nullptr;
     }
     promises.infallibleAppend(promiseObj);
   }
 
-  JS::Rooted<JSObject*> result(cx, JS::GetWaitForAllPromise(cx, promises));
+  JS::Rooted<JSObject*> result(aCx, JS::GetWaitForAllPromise(aCx, promises));
   if (!result) {
-    aRv.NoteJSContextException(cx);
+    aRv.NoteJSContextException(aCx);
     return nullptr;
   }
 
@@ -500,116 +498,19 @@ Promise::ReportRejectedPromise(JSContext* aCx, JS::HandleObject aPromise)
   RefPtr<xpc::ErrorReport> xpcReport = new xpc::ErrorReport();
   bool isMainThread = MOZ_LIKELY(NS_IsMainThread());
   bool isChrome = isMainThread ? nsContentUtils::IsSystemPrincipal(nsContentUtils::ObjectPrincipal(aPromise))
-                               : GetCurrentThreadWorkerPrivate()->IsChromeWorker();
-  nsGlobalWindow* win = isMainThread ? xpc::WindowGlobalOrNull(aPromise) : nullptr;
+                               : IsCurrentThreadRunningChromeWorker();
+  nsGlobalWindowInner* win = isMainThread
+    ? xpc::WindowGlobalOrNull(aPromise)
+    : nullptr;
   xpcReport->Init(report.report(), report.toStringResult().c_str(), isChrome,
                   win ? win->AsInner()->WindowID() : 0);
 
   // Now post an event to do the real reporting async
-  NS_DispatchToMainThread(new AsyncErrorReporter(xpcReport));
-}
-
-bool
-Promise::PerformMicroTaskCheckpoint()
-{
-  MOZ_ASSERT(NS_IsMainThread(), "Wrong thread!");
-
-  CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
-
-  // On the main thread, we always use the main promise micro task queue.
-  std::queue<nsCOMPtr<nsIRunnable>>& microtaskQueue =
-    context->GetPromiseMicroTaskQueue();
-
-  if (microtaskQueue.empty()) {
-    return false;
-  }
-
-  AutoSlowOperation aso;
-
-  do {
-    nsCOMPtr<nsIRunnable> runnable = microtaskQueue.front().forget();
-    MOZ_ASSERT(runnable);
-
-    // This function can re-enter, so we remove the element before calling.
-    microtaskQueue.pop();
-    nsresult rv = runnable->Run();
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return false;
-    }
-    aso.CheckForInterrupt();
-    context->AfterProcessMicrotask();
-  } while (!microtaskQueue.empty());
-
-  return true;
-}
-
-void
-Promise::PerformWorkerMicroTaskCheckpoint()
-{
-  MOZ_ASSERT(!NS_IsMainThread(), "Wrong thread!");
-
-  CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
-  if (!context) {
-    return;
-  }
-
-  for (;;) {
-    // For a normal microtask checkpoint, we try to use the debugger microtask
-    // queue first. If the debugger queue is empty, we use the normal microtask
-    // queue instead.
-    std::queue<nsCOMPtr<nsIRunnable>>* microtaskQueue =
-      &context->GetDebuggerPromiseMicroTaskQueue();
-
-    if (microtaskQueue->empty()) {
-      microtaskQueue = &context->GetPromiseMicroTaskQueue();
-      if (microtaskQueue->empty()) {
-        break;
-      }
-    }
-
-    nsCOMPtr<nsIRunnable> runnable = microtaskQueue->front().forget();
-    MOZ_ASSERT(runnable);
-
-    // This function can re-enter, so we remove the element before calling.
-    microtaskQueue->pop();
-    nsresult rv = runnable->Run();
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return;
-    }
-    context->AfterProcessMicrotask();
-  }
-}
-
-void
-Promise::PerformWorkerDebuggerMicroTaskCheckpoint()
-{
-  MOZ_ASSERT(!NS_IsMainThread(), "Wrong thread!");
-
-  CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
-  if (!context) {
-    return;
-  }
-
-  for (;;) {
-    // For a debugger microtask checkpoint, we always use the debugger microtask
-    // queue.
-    std::queue<nsCOMPtr<nsIRunnable>>* microtaskQueue =
-      &context->GetDebuggerPromiseMicroTaskQueue();
-
-    if (microtaskQueue->empty()) {
-      break;
-    }
-
-    nsCOMPtr<nsIRunnable> runnable = microtaskQueue->front().forget();
-    MOZ_ASSERT(runnable);
-
-    // This function can re-enter, so we remove the element before calling.
-    microtaskQueue->pop();
-    nsresult rv = runnable->Run();
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return;
-    }
-    context->AfterProcessMicrotask();
+  RefPtr<nsIRunnable> event = new AsyncErrorReporter(xpcReport);
+  if (win) {
+    win->Dispatch(mozilla::TaskCategory::Other, event.forget());
+  } else {
+    NS_DispatchToMainThread(event);
   }
 }
 
@@ -642,7 +543,7 @@ public:
   }
 
   virtual bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
     MOZ_ASSERT(aWorkerPrivate);
     aWorkerPrivate->AssertIsOnWorkerThread();
@@ -675,29 +576,6 @@ private:
   PromiseWorkerProxy::RunCallbackFunc mFunc;
 };
 
-class PromiseWorkerHolder final : public WorkerHolder
-{
-  // RawPointer because this proxy keeps alive the holder.
-  PromiseWorkerProxy* mProxy;
-
-public:
-  explicit PromiseWorkerHolder(PromiseWorkerProxy* aProxy)
-    : mProxy(aProxy)
-  {
-    MOZ_ASSERT(aProxy);
-  }
-
-  bool
-  Notify(Status aStatus) override
-  {
-    if (aStatus >= Canceling) {
-      mProxy->CleanUp();
-    }
-
-    return true;
-  }
-};
-
 /* static */
 already_AddRefed<PromiseWorkerProxy>
 PromiseWorkerProxy::Create(WorkerPrivate* aWorkerPrivate,
@@ -710,27 +588,36 @@ PromiseWorkerProxy::Create(WorkerPrivate* aWorkerPrivate,
   MOZ_ASSERT_IF(aCb, !!aCb->Write && !!aCb->Read);
 
   RefPtr<PromiseWorkerProxy> proxy =
-    new PromiseWorkerProxy(aWorkerPrivate, aWorkerPromise, aCb);
+    new PromiseWorkerProxy(aWorkerPromise, aCb);
 
   // We do this to make sure the worker thread won't shut down before the
   // promise is resolved/rejected on the worker thread.
-  if (!proxy->AddRefObject()) {
+  RefPtr<StrongWorkerRef> workerRef =
+    StrongWorkerRef::Create(aWorkerPrivate, "PromiseWorkerProxy", [proxy]() {
+      proxy->CleanUp();
+    });
+
+  if (NS_WARN_IF(!workerRef)) {
     // Probably the worker is terminating. We cannot complete the operation
     // and we have to release all the resources.
     proxy->CleanProperties();
     return nullptr;
   }
 
+  proxy->mWorkerRef = new ThreadSafeWorkerRef(workerRef);
+
+  // Maintain a reference so that we have a valid object to clean up when
+  // removing the feature.
+  proxy.get()->AddRef();
+
   return proxy.forget();
 }
 
 NS_IMPL_ISUPPORTS0(PromiseWorkerProxy)
 
-PromiseWorkerProxy::PromiseWorkerProxy(WorkerPrivate* aWorkerPrivate,
-                                       Promise* aWorkerPromise,
+PromiseWorkerProxy::PromiseWorkerProxy(Promise* aWorkerPromise,
                                        const PromiseWorkerProxyStructuredCloneCallbacks* aCallbacks)
-  : mWorkerPrivate(aWorkerPrivate)
-  , mWorkerPromise(aWorkerPromise)
+  : mWorkerPromise(aWorkerPromise)
   , mCleanedUp(false)
   , mCallbacks(aCallbacks)
   , mCleanUpLock("cleanUpLock")
@@ -740,46 +627,23 @@ PromiseWorkerProxy::PromiseWorkerProxy(WorkerPrivate* aWorkerPrivate,
 PromiseWorkerProxy::~PromiseWorkerProxy()
 {
   MOZ_ASSERT(mCleanedUp);
-  MOZ_ASSERT(!mWorkerHolder);
   MOZ_ASSERT(!mWorkerPromise);
-  MOZ_ASSERT(!mWorkerPrivate);
+  MOZ_ASSERT(!mWorkerRef);
 }
 
 void
 PromiseWorkerProxy::CleanProperties()
 {
-#ifdef DEBUG
-  WorkerPrivate* worker = GetCurrentThreadWorkerPrivate();
-  MOZ_ASSERT(worker);
-  worker->AssertIsOnWorkerThread();
-#endif
+  MOZ_ASSERT(IsCurrentThreadRunningWorker());
+
   // Ok to do this unprotected from Create().
   // CleanUp() holds the lock before calling this.
   mCleanedUp = true;
   mWorkerPromise = nullptr;
-  mWorkerPrivate = nullptr;
+  mWorkerRef = nullptr;
 
   // Clear the StructuredCloneHolderBase class.
   Clear();
-}
-
-bool
-PromiseWorkerProxy::AddRefObject()
-{
-  MOZ_ASSERT(mWorkerPrivate);
-  mWorkerPrivate->AssertIsOnWorkerThread();
-
-  MOZ_ASSERT(!mWorkerHolder);
-  mWorkerHolder.reset(new PromiseWorkerHolder(this));
-  if (NS_WARN_IF(!mWorkerHolder->HoldWorker(mWorkerPrivate, Canceling))) {
-    mWorkerHolder = nullptr;
-    return false;
-  }
-
-  // Maintain a reference so that we have a valid object to clean up when
-  // removing the feature.
-  AddRef();
-  return true;
 }
 
 WorkerPrivate*
@@ -793,19 +657,15 @@ PromiseWorkerProxy::GetWorkerPrivate() const
   // Safe to check this without a lock since we assert lock ownership on the
   // main thread above.
   MOZ_ASSERT(!mCleanedUp);
-  MOZ_ASSERT(mWorkerHolder);
+  MOZ_ASSERT(mWorkerRef);
 
-  return mWorkerPrivate;
+  return mWorkerRef->Private();
 }
 
 Promise*
 PromiseWorkerProxy::WorkerPromise() const
 {
-#ifdef DEBUG
-  WorkerPrivate* worker = GetCurrentThreadWorkerPrivate();
-  MOZ_ASSERT(worker);
-  worker->AssertIsOnWorkerThread();
-#endif
+  MOZ_ASSERT(IsCurrentThreadRunningWorker());
   MOZ_ASSERT(mWorkerPromise);
   return mWorkerPromise;
 }
@@ -856,21 +716,17 @@ PromiseWorkerProxy::CleanUp()
   {
     MutexAutoLock lock(Lock());
 
-    // |mWorkerPrivate| is not safe to use anymore if we have already
-    // cleaned up and RemoveWorkerHolder(), so we need to check |mCleanedUp|
-    // first.
     if (CleanedUp()) {
       return;
     }
 
-    MOZ_ASSERT(mWorkerPrivate);
-    mWorkerPrivate->AssertIsOnWorkerThread();
+    MOZ_ASSERT(mWorkerRef);
+    mWorkerRef->Private()->AssertIsOnWorkerThread();
 
     // Release the Promise and remove the PromiseWorkerProxy from the holders of
     // the worker thread since the Promise has been resolved/rejected or the
     // worker thread has been cancelled.
-    MOZ_ASSERT(mWorkerHolder);
-    mWorkerHolder = nullptr;
+    mWorkerRef = nullptr;
 
     CleanProperties();
   }
@@ -904,7 +760,7 @@ PromiseWorkerProxy::CustomWriteHandler(JSContext* aCx,
 
 // Specializations of MaybeRejectBrokenly we actually support.
 template<>
-void Promise::MaybeRejectBrokenly(const RefPtr<DOMError>& aArg) {
+void Promise::MaybeRejectBrokenly(const RefPtr<DOMException>& aArg) {
   MaybeSomething(aArg, &Promise::MaybeReject);
 }
 template<>

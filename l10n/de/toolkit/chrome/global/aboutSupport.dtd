@@ -25,6 +25,13 @@ This is likely the same like id.heading in crashes.dtd. -->
 <!ENTITY aboutSupport.extensionVersion "Version">
 <!ENTITY aboutSupport.extensionId "ID">
 
+<!ENTITY aboutSupport.securitySoftwareTitle "Sicherheitssoftware">
+<!ENTITY aboutSupport.securitySoftwareType "Typ">
+<!ENTITY aboutSupport.securitySoftwareName "Name">
+<!ENTITY aboutSupport.securitySoftwareAntivirus "Antivirus">
+<!ENTITY aboutSupport.securitySoftwareAntiSpyware "Antispyware">
+<!ENTITY aboutSupport.securitySoftwareFirewall "Firewall">
+
 <!ENTITY aboutSupport.featuresTitle "&brandShortName;-Funktionen">
 <!ENTITY aboutSupport.featureName "Name">
 <!ENTITY aboutSupport.featureVersion "Version">
@@ -72,6 +79,8 @@ Windows/Mac use the term "Folder" instead of "Directory" -->
 
 <!ENTITY aboutSupport.appBasicsProcessCount "Web-Inhaltsprozesse">
 
+<!ENTITY aboutSupport.enterprisePolicies "Unternehmensrichtlinien">
+
 <!ENTITY aboutSupport.appBasicsKeyGoogle "Google-Schlüssel">
 <!ENTITY aboutSupport.appBasicsKeyMozilla "Mozilla-Location-Service-Schlüssel">
 
@@ -111,6 +120,7 @@ variant of aboutSupport.showDir.label. -->
 <!ENTITY aboutSupport.a11yActivated "Aktiviert">
 <!ENTITY aboutSupport.a11yForceDisabled "Barrierefreiheit verhindern">
 <!ENTITY aboutSupport.a11yHandlerUsed "Accessible Handler verwendet">
+<!ENTITY aboutSupport.a11yInstantiator "Dienst für Barrierefreiheit aufgerufen durch">
 
 <!ENTITY aboutSupport.libraryVersionsTitle "Bibliotheken-Versionen">
 
@@ -154,3 +164,13 @@ variant of aboutSupport.showDir.label. -->
 <!ENTITY aboutSupport.mediaDeviceChannels "Kanäle">
 <!ENTITY aboutSupport.mediaDeviceRate "Rate">
 <!ENTITY aboutSupport.mediaDeviceLatency "Latenz">
+
+<!ENTITY aboutSupport.intlTitle "Internationalisierung &amp; Lokalisierung">
+<!ENTITY aboutSupport.intlAppTitle "Anwendungseinstellungen">
+<!ENTITY aboutSupport.intlLocalesRequested "Angeforderte Sprachen">
+<!ENTITY aboutSupport.intlLocalesAvailable "Verfügbare Sprachen">
+<!ENTITY aboutSupport.intlLocalesSupported "Anwendungssprachen">
+<!ENTITY aboutSupport.intlLocalesDefault "Standardsprache">
+<!ENTITY aboutSupport.intlOSTitle "Betriebssystem">
+<!ENTITY aboutSupport.intlOSPrefsSystemLocales "Sprachen des Betriebssystems">
+<!ENTITY aboutSupport.intlRegionalPrefs "Region-Einstellungen">

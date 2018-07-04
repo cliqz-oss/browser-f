@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -326,13 +326,16 @@ CalculateDistanceToEllipticArc(const Point& P, const Point& normal,
 
   Float S = sqrt(B * B - A * C);
 
-  Float n1 = (- B + S) / A;
-  Float n2 = (- B - S) / A;
+  Float n1 = - B + S;
+  Float n2 = - B - S;
 
-  MOZ_ASSERT(n1 >= 0);
-  MOZ_ASSERT(n2 >= 0);
+#ifdef DEBUG
+  Float epsilon = (Float) 0.001;
+  MOZ_ASSERT(n1 >= -epsilon);
+  MOZ_ASSERT(n2 >= -epsilon);
+#endif
 
-  return n1 < n2 ? n1 : n2;
+  return std::max((n1 < n2 ? n1 : n2) / A, (Float) 0.0);
 }
 
 } // namespace gfx

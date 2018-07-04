@@ -3,6 +3,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// This header has two implementations, the real one in nsExceptionHandler.cpp
+// and a dummy in nsDummyExceptionHandler.cpp. The latter is used in builds
+// configured with --disable-crashreporter. If you add or remove a function
+// from this header you must update both implementations otherwise you'll break
+// builds that disable the crash reporter.
+
 #ifndef nsExceptionHandler_h__
 #define nsExceptionHandler_h__
 
@@ -12,7 +18,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "nsError.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
+#include "prio.h"
 
 #if defined(XP_WIN32)
 #ifdef WIN32_LEAN_AND_MEAN
@@ -34,6 +41,19 @@ template<class KeyClass, class DataType> class nsDataHashtable;
 class nsCStringHashKey;
 
 namespace CrashReporter {
+
+/**
+ * Returns true if the crash reporter is using the dummy implementation.
+ */
+static inline bool
+IsDummy() {
+#ifdef MOZ_CRASHREPORTER
+  return false;
+#else
+  return true;
+#endif
+}
+
 nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force=false);
 nsresult UnsetExceptionHandler();
 
@@ -78,18 +98,13 @@ nsresult AppendAppNotesToCrashReport(const nsACString& data);
 
 void AnnotateOOMAllocationSize(size_t size);
 void AnnotateTexturesSize(size_t size);
-void AnnotatePendingIPC(size_t aNumOfPendingIPC,
-                        uint32_t aTopPendingIPCCount,
-                        const char* aTopPendingIPCName,
-                        uint32_t aTopPendingIPCType);
 nsresult SetGarbageCollecting(bool collecting);
 void SetEventloopNestingLevel(uint32_t level);
+void SetMinidumpAnalysisAllThreads();
 
 nsresult SetRestartArgs(int argc, char** argv);
 nsresult SetupExtraData(nsIFile* aAppDataDirectory,
                         const nsACString& aBuildID);
-bool GetLastRunCrashID(nsAString& id);
-
 // Registers an additional memory region to be included in the minidump
 nsresult RegisterAppMemory(void* ptr, size_t length);
 nsresult UnregisterAppMemory(void* ptr);
@@ -162,14 +177,29 @@ bool TakeMinidumpForChild(uint32_t childPid,
 
 #if defined(XP_WIN)
 typedef HANDLE ProcessHandle;
+typedef DWORD ProcessId;
 typedef DWORD ThreadId;
+typedef HANDLE FileHandle;
 #elif defined(XP_MACOSX)
 typedef task_t ProcessHandle;
+typedef pid_t ProcessId;
 typedef mach_port_t ThreadId;
+typedef int FileHandle;
 #else
 typedef int ProcessHandle;
+typedef pid_t ProcessId;
 typedef int ThreadId;
+typedef int FileHandle;
 #endif
+
+#if !defined(XP_WIN)
+int
+GetAnnotationTimeCrashFd();
+#endif
+void
+RegisterChildCrashAnnotationFileDescriptor(ProcessId aProcess, PRFileDesc* aFd);
+void
+DeregisterChildCrashAnnotationFileDescriptor(ProcessId aProcess);
 
 // Return the current thread's ID.
 //
@@ -217,6 +247,10 @@ bool CreateAdditionalChildMinidump(ProcessHandle childPid,
                                    nsIFile* parentMinidump,
                                    const nsACString& name);
 
+// Parent-side API, returns the tmp dir for child processes to use, accounting
+// for sandbox considerations.
+void GetChildProcessTmpDir(nsIFile** aOutTmpDir);
+
 #  if defined(XP_WIN32) || defined(XP_MACOSX)
 // Parent-side API for children
 const char* GetChildNotificationPipe();
@@ -246,10 +280,15 @@ void UnregisterInjectorCallback(DWORD processID);
 #endif
 
 // Child-side API
+#if defined(XP_WIN32)
+bool
+SetRemoteExceptionHandler(const nsACString& crashPipe,
+                          uintptr_t aCrashTimeAnnotationFile);
+#else
 bool SetRemoteExceptionHandler(const nsACString& crashPipe);
-void InitChildProcessTmpDir();
+#endif
 
-#  elif defined(XP_LINUX)
+#  else
 // Parent-side API for children
 
 // Set the outparams for crash reporter server's fd (|childCrashFd|)
@@ -273,6 +312,7 @@ bool UnsetRemoteExceptionHandler();
 // Android creates child process as services so we must explicitly set
 // the handle for the pipe since it can't get remapped to a default value.
 void SetNotificationPipeForChild(int childCrashFd);
+void SetCrashAnnotationPipeForChild(int childCrashAnnotationFd);
 
 // Android builds use a custom library loader, so /proc/<pid>/maps
 // will just show anonymous mappings for all the non-system

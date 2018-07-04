@@ -6,23 +6,19 @@
 
 #include "mozilla/dom/SVGViewElement.h"
 #include "mozilla/dom/SVGViewElementBinding.h"
-#include "DOMSVGStringList.h"
 
 NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(View)
 
 namespace mozilla {
 namespace dom {
 
+using namespace SVGViewElementBinding;
+
 JSObject*
 SVGViewElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
   return SVGViewElementBinding::Wrap(aCx, this, aGivenProto);
 }
-
-nsSVGElement::StringListInfo SVGViewElement::sStringListInfo[1] =
-{
-  { &nsGkAtoms::viewTarget }
-};
 
 nsSVGEnumMapping SVGViewElement::sZoomAndPanMap[] = {
   {&nsGkAtoms::disable, SVG_ZOOMANDPAN_DISABLE},
@@ -78,15 +74,6 @@ SVGViewElement::PreserveAspectRatio()
 }
 
 //----------------------------------------------------------------------
-
-already_AddRefed<DOMSVGStringList>
-SVGViewElement::ViewTarget()
-{
-  return DOMSVGStringList::GetDOMWrapper(
-           &mStringListAttributes[VIEW_TARGET], this, false, VIEW_TARGET);
-}
-
-//----------------------------------------------------------------------
 // nsSVGElement methods
 
 nsSVGElement::EnumAttributesInfo
@@ -106,13 +93,6 @@ SVGAnimatedPreserveAspectRatio *
 SVGViewElement::GetPreserveAspectRatio()
 {
   return &mPreserveAspectRatio;
-}
-
-nsSVGElement::StringListAttributesInfo
-SVGViewElement::GetStringListInfo()
-{
-  return StringListAttributesInfo(mStringListAttributes, sStringListInfo,
-                                  ArrayLength(sStringListInfo));
 }
 
 } // namespace dom

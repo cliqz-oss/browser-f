@@ -8,7 +8,7 @@
 // except according to those terms.
 
 #![cfg_attr(feature = "cargo-clippy", allow(doc_markdown, inline_always, new_ret_no_self))]
-#![doc(html_root_url = "https://docs.rs/encoding_rs/0.6.11")]
+#![doc(html_root_url = "https://docs.rs/encoding_rs/0.7.2")]
 
 //! encoding_rs is a Gecko-oriented Free Software / Open Source implementation
 //! of the [Encoding Standard](https://encoding.spec.whatwg.org/) in Rust.
@@ -16,6 +16,10 @@
 //! addition to converting to and from UTF-8, that the performance and
 //! streamability goals are browser-oriented, and that FFI-friendliness is a
 //! goal.
+//!
+//! Additionally, the `mem` module provides functions that are useful for
+//! applications that need to be able to deal with legacy in-memory
+//! representations of Unicode.
 //!
 //! # Availability
 //!
@@ -491,26 +495,39 @@
 //! </tbody>
 //! </table>
 
-#![cfg_attr(feature = "simd-accel", feature(cfg_target_feature, platform_intrinsics))]
+#![cfg_attr(feature = "simd-accel", feature(cfg_target_feature, platform_intrinsics, core_intrinsics))]
 
 #[macro_use]
 extern crate cfg_if;
 
-#[cfg(feature = "simd-accel")]
+#[cfg(all(feature = "simd-accel", any(target_feature = "sse2", all(target_endian = "little", target_arch = "aarch64"))))]
 extern crate simd;
+
+#[cfg(feature = "serde")]
+extern crate serde;
+
+#[cfg(all(test,feature = "serde"))]
+extern crate serde_json;
+#[cfg(all(test,feature = "serde"))]
+extern crate bincode;
+#[cfg(all(test,feature = "serde"))]
+#[macro_use]
+extern crate serde_derive;
 
 #[macro_use]
 mod macros;
 
-#[cfg(feature = "simd-accel")]
+#[cfg(all(feature = "simd-accel", any(target_feature = "sse2", all(target_endian = "little", target_arch = "aarch64"))))]
 mod simd_funcs;
+
+#[cfg(any(all(feature = "simd-accel", target_feature = "sse2"), all(target_endian = "little", target_arch = "aarch64"), all(target_endian = "little", target_arch = "arm")))]
+mod utf_8_core;
 
 #[cfg(test)]
 mod testing;
 
 mod single_byte;
 mod utf_8;
-mod utf_8_core;
 mod gb18030;
 mod big5;
 mod euc_jp;
@@ -526,6 +543,8 @@ mod handles;
 mod data;
 mod variant;
 
+pub mod mem;
+
 use variant::*;
 use utf_8::utf8_valid_up_to;
 use ascii::ascii_valid_up_to;
@@ -535,6 +554,11 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::hash::Hash;
 use std::hash::Hasher;
+
+#[cfg(feature = "serde")]
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
+#[cfg(feature = "serde")]
+use serde::de::Visitor;
 
 /// This has to be the max length of an NCR instead of max
 /// minus one, because we can't rely on getting the minus
@@ -1548,47 +1572,7 @@ pub static X_USER_DEFINED_INIT: Encoding = Encoding {
 /// `static`.
 pub static X_USER_DEFINED: &'static Encoding = &X_USER_DEFINED_INIT;
 
-static ENCODINGS_SORTED_BY_NAME: [&'static Encoding; 39] = [&GBK_INIT,
-                                                            &BIG5_INIT,
-                                                            &IBM866_INIT,
-                                                            &EUC_JP_INIT,
-                                                            &KOI8_R_INIT,
-                                                            &EUC_KR_INIT,
-                                                            &KOI8_U_INIT,
-                                                            &GB18030_INIT,
-                                                            &UTF_16BE_INIT,
-                                                            &UTF_16LE_INIT,
-                                                            &SHIFT_JIS_INIT,
-                                                            &MACINTOSH_INIT,
-                                                            &ISO_8859_2_INIT,
-                                                            &ISO_8859_3_INIT,
-                                                            &ISO_8859_4_INIT,
-                                                            &ISO_8859_5_INIT,
-                                                            &ISO_8859_6_INIT,
-                                                            &ISO_8859_7_INIT,
-                                                            &ISO_8859_8_INIT,
-                                                            &ISO_8859_10_INIT,
-                                                            &ISO_8859_13_INIT,
-                                                            &ISO_8859_14_INIT,
-                                                            &WINDOWS_874_INIT,
-                                                            &ISO_8859_15_INIT,
-                                                            &ISO_8859_16_INIT,
-                                                            &ISO_2022_JP_INIT,
-                                                            &REPLACEMENT_INIT,
-                                                            &WINDOWS_1250_INIT,
-                                                            &WINDOWS_1251_INIT,
-                                                            &WINDOWS_1252_INIT,
-                                                            &WINDOWS_1253_INIT,
-                                                            &WINDOWS_1254_INIT,
-                                                            &WINDOWS_1255_INIT,
-                                                            &WINDOWS_1256_INIT,
-                                                            &WINDOWS_1257_INIT,
-                                                            &WINDOWS_1258_INIT,
-                                                            &ISO_8859_8_I_INIT,
-                                                            &X_MAC_CYRILLIC_INIT,
-                                                            &X_USER_DEFINED_INIT];
-
-static LABELS_SORTED: [&'static str; 218] = ["l1",
+static LABELS_SORTED: [&'static str; 219] = ["l1",
                                              "l2",
                                              "l3",
                                              "l4",
@@ -1768,6 +1752,7 @@ static LABELS_SORTED: [&'static str; 218] = ["l1",
                                              "csiso2022jp",
                                              "iso-2022-kr",
                                              "csiso2022kr",
+                                             "replacement",
                                              "windows-1250",
                                              "windows-1251",
                                              "windows-1252",
@@ -1807,7 +1792,7 @@ static LABELS_SORTED: [&'static str; 218] = ["l1",
                                              "csisolatincyrillic",
                                              "cseucpkdfmtjapanese"];
 
-static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 218] = [&WINDOWS_1252_INIT,
+static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 219] = [&WINDOWS_1252_INIT,
                                                             &ISO_8859_2_INIT,
                                                             &ISO_8859_3_INIT,
                                                             &ISO_8859_4_INIT,
@@ -1987,6 +1972,7 @@ static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 218] = [&WINDOWS_1252_INIT,
                                                             &ISO_2022_JP_INIT,
                                                             &REPLACEMENT_INIT,
                                                             &REPLACEMENT_INIT,
+                                                            &REPLACEMENT_INIT,
                                                             &WINDOWS_1250_INIT,
                                                             &WINDOWS_1251_INIT,
                                                             &WINDOWS_1252_INIT,
@@ -2037,8 +2023,7 @@ static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 218] = [&WINDOWS_1252_INIT,
 /// _Labels_ are ASCII-case-insensitive strings that are used to identify an
 /// encoding in formats and protocols. The _name_ of the encoding is the
 /// preferred label in the case appropriate for returning from the
-/// [`characterSet`][2] property of the `Document` DOM interface, except for
-/// the replacement encoding whose name is not one of its labels.
+/// [`characterSet`][2] property of the `Document` DOM interface.
 ///
 /// The _output encoding_ is the encoding used for form submission and URL
 /// parsing on Web pages in the encoding. This is UTF-8 for the replacement,
@@ -2051,20 +2036,20 @@ static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 218] = [&WINDOWS_1252_INIT,
 /// # Streaming vs. Non-Streaming
 ///
 /// When you have the entire input in a single buffer, you can use the
-/// methods [`decode()`][1], [`decode_with_bom_removal()`][2],
-/// [`decode_without_bom_handling()`][3],
-/// [`decode_without_bom_handling_and_without_replacement()`][4] and
-/// [`encode()`][5]. (These methods are available to Rust callers only and are
+/// methods [`decode()`][3], [`decode_with_bom_removal()`][3],
+/// [`decode_without_bom_handling()`][5],
+/// [`decode_without_bom_handling_and_without_replacement()`][6] and
+/// [`encode()`][7]. (These methods are available to Rust callers only and are
 /// not available in the C API.) Unlike the rest of the API available to Rust,
 /// these methods perform heap allocations. You should the `Decoder` and
 /// `Encoder` objects when your input is split into multiple buffers or when
 /// you want to control the allocation of the output buffers.
 ///
-/// [1]: #method.decode
-/// [2]: #method.decode_with_bom_removal
-/// [3]: #method.decode_without_bom_handling
-/// [4]: #method.decode_without_bom_handling_and_without_replacement
-/// [5]: #method.encode
+/// [3]: #method.decode
+/// [4]: #method.decode_with_bom_removal
+/// [5]: #method.decode_without_bom_handling
+/// [6]: #method.decode_without_bom_handling_and_without_replacement
+/// [7]: #method.encode
 ///
 /// # Instances
 ///
@@ -2243,6 +2228,7 @@ impl Encoding {
     /// unsafe fallback for labels that `for_label()` maps to `Some(REPLACEMENT)`.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn for_label_no_replacement(label: &[u8]) -> Option<&'static Encoding> {
         match Encoding::for_label(label) {
             None => None,
@@ -2267,6 +2253,7 @@ impl Encoding {
     /// or UTF-16BE BOM or `None` otherwise.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn for_bom(buffer: &[u8]) -> Option<(&'static Encoding, usize)> {
         if buffer.starts_with(b"\xEF\xBB\xBF") {
             Some((UTF_8, 3))
@@ -2279,51 +2266,13 @@ impl Encoding {
         }
     }
 
-    /// If the argument matches exactly (case-sensitively; no whitespace
-    /// removal performed) the name of an encoding, returns
-    /// `&'static Encoding` representing that encoding. Otherwise panics.
-    ///
-    /// The motivating use case for this method is interoperability with
-    /// legacy Gecko code that represents encodings as name string instead of
-    /// type-safe `Encoding` objects. Using this method for other purposes is
-    /// most likely the wrong thing to do.
-    ///
-    /// Available via the C wrapper.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the argument is not the name of an encoding.
-    #[cfg_attr(feature = "cargo-clippy", allow(match_wild_err_arm))]
-    pub fn for_name(name: &[u8]) -> &'static Encoding {
-        // The length of `"UTF-8"` is unique, so it's easy to check the most
-        // common case first.
-        if name.len() == 5 {
-            assert_eq!(name, b"UTF-8", "Bogus encoding name");
-            return UTF_8;
-        }
-        match ENCODINGS_SORTED_BY_NAME.binary_search_by(
-            |probe| {
-                let bytes = probe.name().as_bytes();
-                let c = bytes.len().cmp(&name.len());
-                if c != Ordering::Equal {
-                    return c;
-                }
-                let probe_iter = bytes.iter().rev();
-                let candidate_iter = name.iter().rev();
-                probe_iter.cmp(candidate_iter)
-            }
-        ) {
-            Ok(i) => ENCODINGS_SORTED_BY_NAME[i],
-            Err(_) => panic!("Bogus encoding name"),
-        }
-    }
-
     /// Returns the name of this encoding.
     ///
     /// This name is appropriate to return as-is from the DOM
     /// `document.characterSet` property.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn name(&'static self) -> &'static str {
         self.name
     }
@@ -2332,6 +2281,7 @@ impl Encoding {
     /// `char`. (Only true if the output encoding is UTF-8.)
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn can_encode_everything(&'static self) -> bool {
         self.output_encoding() == UTF_8
     }
@@ -2340,12 +2290,14 @@ impl Encoding {
     /// U+0000...U+007F and vice versa.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn is_ascii_compatible(&'static self) -> bool {
         !(self == REPLACEMENT || self == UTF_16BE || self == UTF_16LE || self == ISO_2022_JP)
     }
 
     /// Checks whether the bytes 0x00...0x7F map mostly to the characters
     /// U+0000...U+007F and vice versa.
+    #[inline]
     fn is_potentially_borrowable(&'static self) -> bool {
         !(self == REPLACEMENT || self == UTF_16BE || self == UTF_16LE)
     }
@@ -2354,6 +2306,7 @@ impl Encoding {
     /// UTF-16BE, UTF-16LE and replacement and the encoding itself otherwise.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn output_encoding(&'static self) -> &'static Encoding {
         if self == REPLACEMENT || self == UTF_16BE || self == UTF_16LE {
             UTF_8
@@ -2396,6 +2349,7 @@ impl Encoding {
     /// `usize`.
     ///
     /// Available to Rust only.
+    #[inline]
     pub fn decode<'a>(&'static self, bytes: &'a [u8]) -> (Cow<'a, str>, &'static Encoding, bool) {
         let (encoding, without_bom) = match Encoding::for_bom(bytes) {
             Some((encoding, bom_length)) => (encoding, &bytes[bom_length..]),
@@ -2438,6 +2392,7 @@ impl Encoding {
     /// `usize`.
     ///
     /// Available to Rust only.
+    #[inline]
     pub fn decode_with_bom_removal<'a>(&'static self, bytes: &'a [u8]) -> (Cow<'a, str>, bool) {
         let without_bom = if self == UTF_8 && bytes.starts_with(b"\xEF\xBB\xBF") {
             &bytes[3..]
@@ -2515,7 +2470,7 @@ impl Encoding {
                     .unwrap()
             );
             unsafe {
-                let mut vec = string.as_mut_vec();
+                let vec = string.as_mut_vec();
                 vec.set_len(valid_up_to);
                 std::ptr::copy_nonoverlapping(bytes.as_ptr(), vec.as_mut_ptr(), valid_up_to);
             }
@@ -2616,7 +2571,7 @@ impl Encoding {
                         .unwrap()
             );
             unsafe {
-                let mut vec = string.as_mut_vec();
+                let vec = string.as_mut_vec();
                 vec.set_len(valid_up_to);
                 std::ptr::copy_nonoverlapping(bytes.as_ptr(), vec.as_mut_ptr(), valid_up_to);
             }
@@ -2749,6 +2704,7 @@ impl Encoding {
     /// for UTF-8, UTF-16LE or UTF-16BE instead of this encoding.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn new_decoder(&'static self) -> Decoder {
         Decoder::new(self, self.new_variant_decoder(), BomHandling::Sniff)
     }
@@ -2762,6 +2718,7 @@ impl Encoding {
     /// encoding.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn new_decoder_with_bom_removal(&'static self) -> Decoder {
         Decoder::new(self, self.new_variant_decoder(), BomHandling::Remove)
     }
@@ -2777,6 +2734,7 @@ impl Encoding {
     /// instead of this method to cause the BOM to be removed.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn new_decoder_without_bom_handling(&'static self) -> Decoder {
         Decoder::new(self, self.new_variant_decoder(), BomHandling::Off)
     }
@@ -2784,6 +2742,7 @@ impl Encoding {
     /// Instantiates a new encoder for the output encoding of this encoding.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn new_encoder(&'static self) -> Encoder {
         let enc = self.output_encoding();
         enc.variant.new_encoder(enc)
@@ -2827,6 +2786,7 @@ impl Encoding {
 }
 
 impl PartialEq for Encoding {
+    #[inline]
     fn eq(&self, other: &Encoding) -> bool {
         (self as *const Encoding) == (other as *const Encoding)
     }
@@ -2835,14 +2795,57 @@ impl PartialEq for Encoding {
 impl Eq for Encoding {}
 
 impl Hash for Encoding {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         (self as *const Encoding).hash(state);
     }
 }
 
 impl std::fmt::Debug for Encoding {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Encoding {{ {} }}", self.name)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for Encoding {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        serializer.serialize_str(self.name)
+    }
+}
+
+#[cfg(feature = "serde")]
+struct EncodingVisitor;
+
+#[cfg(feature = "serde")]
+impl<'de> Visitor<'de> for EncodingVisitor {
+    type Value = &'static Encoding;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a valid encoding label")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<&'static Encoding, E>
+        where E: serde::de::Error
+    {
+        if let Some(enc) = Encoding::for_label(value.as_bytes()) {
+            Ok(enc)
+        } else {
+            Err(E::custom(format!("invalid encoding label: {}", value)))
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for &'static Encoding {
+    fn deserialize<D>(deserializer: D) -> Result<&'static Encoding, D::Error>
+        where D: Deserializer<'de>
+    {
+        deserializer.deserialize_str(EncodingVisitor)
     }
 }
 
@@ -3074,6 +3077,7 @@ impl Decoder {
     /// of the decoder.
     ///
     /// Available via the C wrapper.
+    #[inline]
     pub fn encoding(&self) -> &'static Encoding {
         self.encoding
     }
@@ -3789,12 +3793,14 @@ impl Encoder {
     }
 
     /// The `Encoding` this `Encoder` is for.
+    #[inline]
     pub fn encoding(&self) -> &'static Encoding {
         self.encoding
     }
 
     /// Returns `true` if this is an ISO-2022-JP encoder that's not in the
     /// ASCII state and `false` otherwise.
+    #[inline]
     pub fn has_pending_state(&self) -> bool {
         self.variant.has_pending_state()
     }
@@ -4132,6 +4138,16 @@ fn in_range16(i: u16, start: u16, end: u16) -> bool {
 }
 
 #[inline(always)]
+fn in_range32(i: u32, start: u32, end: u32) -> bool {
+    i.wrapping_sub(start) < (end - start)
+}
+
+#[inline(always)]
+fn in_inclusive_range8(i: u8, start: u8, end: u8) -> bool {
+    i.wrapping_sub(start) <= (end - start)
+}
+
+#[inline(always)]
 fn in_inclusive_range16(i: u16, start: u16, end: u16) -> bool {
     i.wrapping_sub(start) <= (end - start)
 }
@@ -4201,6 +4217,14 @@ fn checked_min(one: Option<usize>, other: Option<usize>) -> Option<usize> {
 }
 
 // ############## TESTS ###############
+
+#[cfg(all(test, feature = "serde"))]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct Demo {
+    num: u32,
+    name: String,
+    enc: &'static Encoding,
+}
 
 #[cfg(test)]
 mod test_labels_names;
@@ -4437,30 +4461,6 @@ mod tests {
         assert_eq!(Encoding::for_label(b"utf-8 _"), None);
         assert_eq!(Encoding::for_label(b"bogus"), None);
         assert_eq!(Encoding::for_label(b"bogusbogusbogusbogus"), None);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_bogus_name_utf_8_case() {
-        Encoding::for_name(b"utf-8");
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_bogus_name() {
-        Encoding::for_name(b"ISO-8859-1");
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_bogus_name_gbk() {
-        Encoding::for_name(b"gbk");
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_bogus_name_spaces() {
-        Encoding::for_name(b" UTF-8 ");
     }
 
     #[test]
@@ -5031,4 +5031,24 @@ mod tests {
             assert_eq!(output[0], 0x41);
         }
     }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_serde() {
+        let demo = Demo {
+            num: 42,
+            name: "foo".into(),
+            enc: UTF_8,
+        };
+
+        let serialized = serde_json::to_string(&demo).unwrap();
+
+        let deserialized: Demo = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, demo);
+
+        let bincoded = bincode::serialize(&demo, bincode::Infinite).unwrap();
+        let debincoded: Demo = bincode::deserialize(&bincoded[..]).unwrap();
+        assert_eq!(debincoded, demo);
+    }
+
 }

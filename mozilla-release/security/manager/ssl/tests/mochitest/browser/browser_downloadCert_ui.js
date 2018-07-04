@@ -6,7 +6,7 @@
 // downloaded, and allows the trust of the cert to be specified.
 
 const { MockRegistrar } =
-  Cu.import("resource://testing-common/MockRegistrar.jsm", {});
+  ChromeUtils.import("resource://testing-common/MockRegistrar.jsm", {});
 
 /**
  * @typedef {TestCase}
@@ -50,7 +50,7 @@ function openCertDownloadDialog(cert) {
                               "", cert, returnVals);
   return new Promise((resolve, reject) => {
     win.addEventListener("load", function() {
-      resolve([win, returnVals]);
+      executeSoon(() => resolve([win, returnVals]));
     }, {once: true});
   });
 }
@@ -75,7 +75,7 @@ const gCertificateDialogs = {
                  "Actual and expected cert should match");
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsICertificateDialogs])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsICertificateDialogs])
 };
 
 add_task(async function setup() {
@@ -122,7 +122,6 @@ add_task(async function testAcceptDialogReturnValues() {
   let [win, retVals] = await openCertDownloadDialog(TEST_CASES[0].cert);
   win.document.getElementById("trustSSL").checked = true;
   win.document.getElementById("trustEmail").checked = false;
-  win.document.getElementById("trustObjSign").checked = true;
   info("Accepting dialog");
   win.document.getElementById("download_cert").acceptDialog();
   await BrowserTestUtils.windowClosed(win);
@@ -133,8 +132,6 @@ add_task(async function testAcceptDialogReturnValues() {
             "Return value should signal SSL trust checkbox was checked");
   Assert.ok(!retVals.get("trustForEmail"),
             "Return value should signal E-mail trust checkbox was unchecked");
-  Assert.ok(retVals.get("trustForObjSign"),
-            "Return value should signal Obj Sign trust checkbox was checked");
 });
 
 // Test that the right values are returned when the dialog is canceled.

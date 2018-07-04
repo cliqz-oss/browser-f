@@ -1,6 +1,6 @@
-/* vim: set ts=2 sw=2 et tw=80: */
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -9,6 +9,7 @@
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CrossProcessCompositorBridgeParent.h"
 #include "mozilla/layers/CompositorThread.h"
+#include "mozilla/layers/SharedSurfacesParent.h"
 #include "nsAutoPtr.h"
 #include "VsyncSource.h"
 
@@ -42,18 +43,6 @@ CompositorManagerParent::CreateSameProcess()
   // on the main thread and complete before we return the manager handles.
   RefPtr<CompositorManagerParent> parent = new CompositorManagerParent();
   parent->SetOtherProcessId(base::GetCurrentProcId());
-
-  // CompositorManagerParent::Bind would normally add a reference for IPDL but
-  // we don't use that in the same process case.
-  parent.get()->AddRef();
-  sInstance = parent;
-
-#ifdef COMPOSITOR_MANAGER_PARENT_EXPLICIT_SHUTDOWN
-  if (!sActiveActors) {
-    sActiveActors = new nsTArray<CompositorManagerParent*>();
-  }
-  sActiveActors->AppendElement(parent);
-#endif
   return parent.forget();
 }
 
@@ -133,12 +122,22 @@ CompositorManagerParent::Bind(Endpoint<PCompositorManagerParent>&& aEndpoint)
     return;
   }
 
+  BindComplete();
+}
+
+void
+CompositorManagerParent::BindComplete()
+{
   // Add the IPDL reference to ourself, so we can't get freed until IPDL is
   // done with us.
   AddRef();
 
-#ifdef COMPOSITOR_MANAGER_PARENT_EXPLICIT_SHUTDOWN
   StaticMutexAutoLock lock(sMutex);
+  if (OtherPid() == base::GetCurrentProcId()) {
+    sInstance = this;
+  }
+
+#ifdef COMPOSITOR_MANAGER_PARENT_EXPLICIT_SHUTDOWN
   if (!sActiveActors) {
     sActiveActors = new nsTArray<CompositorManagerParent*>();
   }
@@ -149,6 +148,8 @@ CompositorManagerParent::Bind(Endpoint<PCompositorManagerParent>&& aEndpoint)
 void
 CompositorManagerParent::ActorDestroy(ActorDestroyReason aReason)
 {
+  SharedSurfacesParent::DestroyProcess(OtherPid());
+
   StaticMutexAutoLock lock(sMutex);
   if (sInstance == this) {
     sInstance = nullptr;
@@ -270,6 +271,21 @@ CompositorManagerParent::DeallocPCompositorBridgeParent(PCompositorBridgeParent*
 {
   static_cast<CompositorBridgeParentBase*>(aActor)->Release();
   return true;
+}
+
+mozilla::ipc::IPCResult
+CompositorManagerParent::RecvAddSharedSurface(const wr::ExternalImageId& aId,
+                                              const SurfaceDescriptorShared& aDesc)
+{
+  SharedSurfacesParent::Add(aId, aDesc, OtherPid());
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+CompositorManagerParent::RecvRemoveSharedSurface(const wr::ExternalImageId& aId)
+{
+  SharedSurfacesParent::Remove(aId);
+  return IPC_OK();
 }
 
 } // namespace layers

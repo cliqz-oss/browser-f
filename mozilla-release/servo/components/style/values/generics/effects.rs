@@ -4,26 +4,27 @@
 
 //! Generic types for CSS values related to effects.
 
-use std::fmt;
-use style_traits::values::{SequenceWriter, ToCss};
 #[cfg(feature = "gecko")]
 use values::specified::url::SpecifiedUrl;
 
 /// A generic value for a single `box-shadow`.
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Debug, HasViewportPercentage, PartialEq, ToAnimatedValue)]
-pub struct BoxShadow<Color, SizeLength, ShapeLength> {
+#[derive(Animate, Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToAnimatedValue, ToAnimatedZero, ToCss)]
+pub struct BoxShadow<Color, SizeLength, BlurShapeLength, ShapeLength> {
     /// The base shadow.
-    pub base: SimpleShadow<Color, SizeLength, ShapeLength>,
+    pub base: SimpleShadow<Color, SizeLength, BlurShapeLength>,
     /// The spread radius.
     pub spread: ShapeLength,
     /// Whether this is an inset box shadow.
+    #[animation(constant)]
+    #[css(represents_keyword)]
     pub inset: bool,
 }
 
 /// A generic value for a single `filter`.
-#[cfg_attr(feature = "servo", derive(Deserialize, HeapSizeOf, Serialize))]
-#[derive(Clone, Debug, HasViewportPercentage, PartialEq, ToAnimatedValue, ToComputedValue, ToCss)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, ComputeSquaredDistance, Debug, MallocSizeOf, PartialEq,
+         SpecifiedValueInfo, ToAnimatedValue, ToComputedValue, ToCss)]
 pub enum Filter<Angle, Factor, Length, DropShadow> {
     /// `blur(<length>)`
     #[css(function)]
@@ -56,6 +57,7 @@ pub enum Filter<Angle, Factor, Length, DropShadow> {
     #[css(function)]
     DropShadow(DropShadow),
     /// `<url>`
+    #[animation(error)]
     #[cfg(feature = "gecko")]
     Url(SpecifiedUrl),
 }
@@ -64,8 +66,8 @@ pub enum Filter<Angle, Factor, Length, DropShadow> {
 ///
 /// Contrary to the canonical order from the spec, the color is serialised
 /// first, like in Gecko and Webkit.
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Debug, HasViewportPercentage, PartialEq, ToAnimatedValue, ToCss)]
+#[derive(Animate, Clone, ComputeSquaredDistance, Debug, MallocSizeOf, PartialEq,
+         SpecifiedValueInfo, ToAnimatedValue, ToAnimatedZero, ToCss)]
 pub struct SimpleShadow<Color, SizeLength, ShapeLength> {
     /// Color.
     pub color: Color,
@@ -75,26 +77,4 @@ pub struct SimpleShadow<Color, SizeLength, ShapeLength> {
     pub vertical: SizeLength,
     /// Blur radius.
     pub blur: ShapeLength,
-}
-
-impl<Color, SizeLength, ShapeLength> ToCss for BoxShadow<Color, SizeLength, ShapeLength>
-where
-    Color: ToCss,
-    SizeLength: ToCss,
-    ShapeLength: ToCss,
-{
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-    where
-        W: fmt::Write,
-    {
-        {
-            let mut writer = SequenceWriter::new(&mut *dest, " ");
-            writer.item(&self.base)?;
-            writer.item(&self.spread)?;
-        }
-        if self.inset {
-            dest.write_str(" inset")?;
-        }
-        Ok(())
-    }
 }

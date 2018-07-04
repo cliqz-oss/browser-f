@@ -4,16 +4,16 @@
 "use strict";
 
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
-/* import-globals-from ../../../framework/test/shared-head.js */
-/* import-globals-from ../../../framework/test/shared-redux-head.js */
+/* import-globals-from ../../../shared/test/shared-head.js */
+/* import-globals-from ../../../shared/test/shared-redux-head.js */
 /* import-globals-from ../../../commandline/test/helpers.js */
 /* import-globals-from ../../../inspector/test/shared-head.js */
 
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this);
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-redux-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-redux-head.js",
   this);
 
 // Import the GCLI test helper
@@ -34,10 +34,11 @@ Services.scriptloader.loadSubScript(
 const E10S_MULTI_ENABLED = Services.prefs.getIntPref("dom.ipc.processCount") > 1;
 const TEST_URI_ROOT = "http://example.com/browser/devtools/client/responsive.html/test/browser/";
 const OPEN_DEVICE_MODAL_VALUE = "OPEN_DEVICE_MODAL";
+const RELOAD_CONDITION_PREF_PREFIX = "devtools.responsive.reloadConditions.";
 
 const { _loadPreferredDevices } = require("devtools/client/responsive.html/actions/devices");
 const asyncStorage = require("devtools/shared/async-storage");
-const { addDevice, removeDevice } = require("devtools/client/shared/devices");
+const { addDevice, removeDevice, removeLocalDevices } = require("devtools/client/shared/devices");
 
 SimpleTest.requestCompleteLog();
 SimpleTest.waitForExplicitFinish();
@@ -47,44 +48,43 @@ SimpleTest.waitForExplicitFinish();
 // should be enough.
 requestLongerTimeout(2);
 
-flags.testing = true;
-Services.prefs.clearUserPref("devtools.responsive.html.displayedDeviceList");
-Services.prefs.setCharPref("devtools.devices.url",
-  TEST_URI_ROOT + "devices.json");
-Services.prefs.setBoolPref("devtools.responsive.html.enabled", true);
+Services.prefs.setCharPref("devtools.devices.url", TEST_URI_ROOT + "devices.json");
+// The appearance of this notification causes intermittent behavior in some tests that
+// send mouse events, since it causes the content to shift when it appears.
+Services.prefs.setBoolPref("devtools.responsive.reloadNotification.enabled", false);
 
-registerCleanupFunction(() => {
-  flags.testing = false;
+registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("devtools.devices.url");
-  Services.prefs.clearUserPref("devtools.responsive.html.enabled");
+  Services.prefs.clearUserPref("devtools.responsive.reloadNotification.enabled");
   Services.prefs.clearUserPref("devtools.responsive.html.displayedDeviceList");
-  asyncStorage.removeItem("devtools.devices.url_cache");
-  asyncStorage.removeItem("devtools.devices.local");
+  Services.prefs.clearUserPref("devtools.responsive.reloadConditions.touchSimulation");
+  Services.prefs.clearUserPref("devtools.responsive.reloadConditions.userAgent");
+  await asyncStorage.removeItem("devtools.devices.url_cache");
+  await removeLocalDevices();
 });
 
-// This depends on the "devtools.responsive.html.enabled" pref
-const { ResponsiveUIManager } = require("resource://devtools/client/responsivedesign/responsivedesign.jsm");
+loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsive.html/manager", true);
 
 /**
  * Open responsive design mode for the given tab.
  */
-var openRDM = Task.async(function* (tab) {
+var openRDM = async function(tab) {
   info("Opening responsive design mode");
   let manager = ResponsiveUIManager;
-  let ui = yield manager.openIfNeeded(tab.ownerGlobal, tab);
+  let ui = await manager.openIfNeeded(tab.ownerGlobal, tab, { trigger: "test" });
   info("Responsive design mode opened");
   return { ui, manager };
-});
+};
 
 /**
  * Close responsive design mode for the given tab.
  */
-var closeRDM = Task.async(function* (tab, options) {
+var closeRDM = async function(tab, options) {
   info("Closing responsive design mode");
   let manager = ResponsiveUIManager;
-  yield manager.closeIfNeeded(tab.ownerGlobal, tab, options);
+  await manager.closeIfNeeded(tab.ownerGlobal, tab, options);
   info("Responsive design mode closed");
-});
+};
 
 /**
  * Adds a new test task that adds a tab with the given URL, opens responsive
@@ -93,23 +93,23 @@ var closeRDM = Task.async(function* (tab, options) {
  *
  * Example usage:
  *
- *   addRDMTask(TEST_URL, function*({ ui, manager }) {
+ *   addRDMTask(TEST_URL, async function ({ ui, manager }) {
  *     // Your tests go here...
  *   });
  */
-function addRDMTask(url, generator) {
-  add_task(function* () {
-    const tab = yield addTab(url);
-    const results = yield openRDM(tab);
+function addRDMTask(url, task) {
+  add_task(async function() {
+    const tab = await addTab(url);
+    const results = await openRDM(tab);
 
     try {
-      yield* generator(results);
+      await task(results);
     } catch (err) {
       ok(false, "Got an error: " + DevToolsUtils.safeErrorString(err));
     }
 
-    yield closeRDM(tab);
-    yield removeTab(tab);
+    await closeRDM(tab);
+    await removeTab(tab);
   });
 }
 
@@ -118,23 +118,24 @@ function spawnViewportTask(ui, args, task) {
 }
 
 function waitForFrameLoad(ui, targetURL) {
-  return spawnViewportTask(ui, { targetURL }, function* (args) {
+  return spawnViewportTask(ui, { targetURL }, async function(args) {
     if ((content.document.readyState == "complete" ||
          content.document.readyState == "interactive") &&
         content.location.href == args.targetURL) {
       return;
     }
-    yield ContentTaskUtils.waitForEvent(this, "DOMContentLoaded");
+    await ContentTaskUtils.waitForEvent(this, "DOMContentLoaded");
   });
 }
 
 function waitForViewportResizeTo(ui, width, height) {
-  return new Promise(Task.async(function* (resolve) {
+  return new Promise(async function(resolve) {
     let isSizeMatching = (data) => data.width == width && data.height == height;
 
     // If the viewport has already the expected size, we resolve the promise immediately.
-    let size = yield getContentSize(ui);
+    let size = await getContentSize(ui);
     if (isSizeMatching(size)) {
+      info(`Content already resized to ${width} x ${height}`);
       resolve();
       return;
     }
@@ -145,7 +146,7 @@ function waitForViewportResizeTo(ui, width, height) {
     // hang forever. See bug 1302879.
     let browser = ui.getViewportBrowser();
 
-    let onResize = (_, data) => {
+    let onResize = data => {
       if (!isSizeMatching(data)) {
         return;
       }
@@ -155,28 +156,34 @@ function waitForViewportResizeTo(ui, width, height) {
       resolve();
     };
 
-    let onBrowserLoadEnd = Task.async(function* () {
-      let data = yield getContentSize(ui);
+    let onBrowserLoadEnd = async function() {
+      let data = await getContentSize(ui);
       onResize(undefined, data);
-    });
+    };
 
     info(`Waiting for content-resize to ${width} x ${height}`);
     ui.on("content-resize", onResize);
     browser.addEventListener("mozbrowserloadend",
       onBrowserLoadEnd, { once: true });
-  }));
+  });
 }
 
-var setViewportSize = Task.async(function* (ui, manager, width, height) {
+var setViewportSize = async function(ui, manager, width, height) {
   let size = ui.getViewportSize();
   info(`Current size: ${size.width} x ${size.height}, ` +
        `set to: ${width} x ${height}`);
   if (size.width != width || size.height != height) {
     let resized = waitForViewportResizeTo(ui, width, height);
     ui.setViewportSize({ width, height });
-    yield resized;
+    await resized;
   }
-});
+};
+
+function getViewportDevicePixelRatio(ui) {
+  return ContentTask.spawn(ui.getViewportBrowser(), {}, async function() {
+    return content.devicePixelRatio;
+  });
+}
 
 function getElRect(selector, win) {
   let el = win.document.querySelector(selector);
@@ -188,8 +195,7 @@ function getElRect(selector, win) {
  * the rect of the dragged element as it was before drag.
  */
 function dragElementBy(selector, x, y, win) {
-  let React = win.require("devtools/client/shared/vendor/react");
-  let { Simulate } = React.addons.TestUtils;
+  let { Simulate } = win.require("devtools/client/shared/vendor/react-dom-test-utils");
   let rect = getElRect(selector, win);
   let startPoint = {
     clientX: Math.floor(rect.left + rect.width / 2),
@@ -209,12 +215,12 @@ function dragElementBy(selector, x, y, win) {
   return rect;
 }
 
-function* testViewportResize(ui, selector, moveBy,
+async function testViewportResize(ui, selector, moveBy,
                              expectedViewportSize, expectedHandleMove) {
   let win = ui.toolWindow;
   let resized = waitForViewportResizeTo(ui, ...expectedViewportSize);
   let startRect = dragElementBy(selector, ...moveBy, win);
-  yield resized;
+  await resized;
 
   let endRect = getElRect(selector, win);
   is(endRect.left - startRect.left, expectedHandleMove[0],
@@ -225,8 +231,7 @@ function* testViewportResize(ui, selector, moveBy,
 
 function openDeviceModal({ toolWindow }) {
   let { document } = toolWindow;
-  let React = toolWindow.require("devtools/client/shared/vendor/react");
-  let { Simulate } = React.addons.TestUtils;
+  let { Simulate } = toolWindow.require("devtools/client/shared/vendor/react-dom-test-utils");
   let select = document.querySelector(".viewport-device-selector");
   let modal = document.querySelector("#device-modal-wrapper");
 
@@ -243,8 +248,8 @@ function openDeviceModal({ toolWindow }) {
 
 function changeSelectValue({ toolWindow }, selector, value) {
   let { document } = toolWindow;
-  let React = toolWindow.require("devtools/client/shared/vendor/react");
-  let { Simulate } = React.addons.TestUtils;
+  let { Simulate } =
+    toolWindow.require("devtools/client/shared/vendor/react-dom-test-utils");
 
   info(`Selecting ${value} in ${selector}.`);
 
@@ -263,8 +268,8 @@ const selectDevice = (ui, value) => Promise.all([
   changeSelectValue(ui, ".viewport-device-selector", value)
 ]);
 
-const selectDPR = (ui, value) =>
-  changeSelectValue(ui, "#global-dpr-selector > select", value);
+const selectDevicePixelRatio = (ui, value) =>
+  changeSelectValue(ui, "#global-device-pixel-ratio-selector", value);
 
 const selectNetworkThrottling = (ui, value) => Promise.all([
   once(ui, "network-throttling-changed"),
@@ -272,11 +277,10 @@ const selectNetworkThrottling = (ui, value) => Promise.all([
 ]);
 
 function getSessionHistory(browser) {
-  return ContentTask.spawn(browser, {}, function* () {
+  return ContentTask.spawn(browser, {}, async function() {
     /* eslint-disable no-undef */
-    let { utils: Cu } = Components;
     const { SessionHistory } =
-      Cu.import("resource://gre/modules/sessionstore/SessionHistory.jsm", {});
+      ChromeUtils.import("resource://gre/modules/sessionstore/SessionHistory.jsm", {});
     return SessionHistory.collect(docShell);
     /* eslint-enable no-undef */
   });
@@ -304,17 +308,12 @@ function waitForPageShow(browser) {
 }
 
 function waitForViewportLoad(ui) {
-  return new Promise(resolve => {
-    let browser = ui.getViewportBrowser();
-    browser.addEventListener("mozbrowserloadend", () => {
-      resolve();
-    }, { once: true });
-  });
+  return BrowserTestUtils.waitForContentEvent(ui.getViewportBrowser(), "load", true);
 }
 
 function load(browser, url) {
   let loaded = BrowserTestUtils.browserLoaded(browser, false, url);
-  browser.loadURI(url, null, null);
+  browser.loadURI(url);
   return loaded;
 }
 
@@ -340,21 +339,17 @@ function addDeviceForTest(device) {
   });
 }
 
-function waitForClientClose(ui) {
-  return new Promise(resolve => {
-    info("Waiting for RDM debugger client to close");
-    ui.client.addOneTimeListener("closed", () => {
-      info("RDM's debugger client is now closed");
-      resolve();
-    });
-  });
+async function waitForClientClose(ui) {
+  info("Waiting for RDM debugger client to close");
+  await ui.client.addOneTimeListener("closed");
+  info("RDM's debugger client is now closed");
 }
 
-function* testTouchEventsOverride(ui, expected) {
+async function testTouchEventsOverride(ui, expected) {
   let { document } = ui.toolWindow;
   let touchButton = document.querySelector("#global-touch-simulation-button");
 
-  let flag = yield ui.emulationFront.getTouchEventsOverride();
+  let flag = await ui.emulationFront.getTouchEventsOverride();
   is(flag === Ci.nsIDocShell.TOUCHEVENTS_OVERRIDE_ENABLED, expected,
     `Touch events override should be ${expected ? "enabled" : "disabled"}`);
   is(touchButton.classList.contains("checked"), expected,
@@ -369,17 +364,71 @@ function testViewportDeviceSelectLabel(ui, expected) {
      `Device Select value should be: ${expected}`);
 }
 
-function* enableTouchSimulation(ui) {
+async function toggleTouchSimulation(ui) {
   let { document } = ui.toolWindow;
   let touchButton = document.querySelector("#global-touch-simulation-button");
+  let changed = once(ui, "touch-simulation-changed");
   let loaded = waitForViewportLoad(ui);
   touchButton.click();
-  yield loaded;
+  await Promise.all([ changed, loaded ]);
 }
 
-function* testUserAgent(ui, expected) {
-  let ua = yield ContentTask.spawn(ui.getViewportBrowser(), {}, function* () {
+function testUserAgent(ui, expected) {
+  testUserAgentFromBrowser(ui.getViewportBrowser(), expected);
+}
+
+async function testUserAgentFromBrowser(browser, expected) {
+  let ua = await ContentTask.spawn(browser, {}, async function() {
     return content.navigator.userAgent;
   });
   is(ua, expected, `UA should be set to ${expected}`);
+}
+
+/**
+ * Assuming the device modal is open and the device adder form is shown, this helper
+ * function adds `device` via the form, saves it, and waits for it to appear in the store.
+ */
+function addDeviceInModal(ui, device) {
+  let { Simulate } =
+    ui.toolWindow.require("devtools/client/shared/vendor/react-dom-test-utils");
+  let { store, document } = ui.toolWindow;
+
+  let nameInput = document.querySelector("#device-adder-name input");
+  let [ widthInput, heightInput ] = document.querySelectorAll("#device-adder-size input");
+  let pixelRatioInput = document.querySelector("#device-adder-pixel-ratio input");
+  let userAgentInput = document.querySelector("#device-adder-user-agent input");
+  let touchInput = document.querySelector("#device-adder-touch input");
+
+  nameInput.value = device.name;
+  Simulate.change(nameInput);
+  widthInput.value = device.width;
+  Simulate.change(widthInput);
+  Simulate.blur(widthInput);
+  heightInput.value = device.height;
+  Simulate.change(heightInput);
+  Simulate.blur(heightInput);
+  pixelRatioInput.value = device.pixelRatio;
+  Simulate.change(pixelRatioInput);
+  userAgentInput.value = device.userAgent;
+  Simulate.change(userAgentInput);
+  touchInput.checked = device.touch;
+  Simulate.change(touchInput);
+
+  let existingCustomDevices = store.getState().devices.custom.length;
+  let adderSave = document.querySelector("#device-adder-save");
+  let saved = waitUntilState(store, state =>
+    state.devices.custom.length == existingCustomDevices + 1
+  );
+  Simulate.click(adderSave);
+  return saved;
+}
+
+function reloadOnUAChange(enabled) {
+  let pref = RELOAD_CONDITION_PREF_PREFIX + "userAgent";
+  Services.prefs.setBoolPref(pref, enabled);
+}
+
+function reloadOnTouchChange(enabled) {
+  let pref = RELOAD_CONDITION_PREF_PREFIX + "touchSimulation";
+  Services.prefs.setBoolPref(pref, enabled);
 }

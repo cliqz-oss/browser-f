@@ -11,7 +11,7 @@
 #include "nsCoord.h"
 #include "nsCOMPtr.h"
 #include "nsFont.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsLanguageAtomService.h"
 
 namespace mozilla {
@@ -21,14 +21,19 @@ struct LangGroupFontPrefs {
   LangGroupFontPrefs()
     : mLangGroup(nullptr)
     , mMinimumFontSize(0)
-    , mDefaultVariableFont(mozilla::eFamily_serif, 0)
+    , mDefaultVariableFont()
     , mDefaultFixedFont(mozilla::eFamily_monospace, 0)
     , mDefaultSerifFont(mozilla::eFamily_serif, 0)
     , mDefaultSansSerifFont(mozilla::eFamily_sans_serif, 0)
     , mDefaultMonospaceFont(mozilla::eFamily_monospace, 0)
     , mDefaultCursiveFont(mozilla::eFamily_cursive, 0)
     , mDefaultFantasyFont(mozilla::eFamily_fantasy, 0)
-  {}
+  {
+    mDefaultVariableFont.fontlist.SetDefaultFontType(mozilla::eFamily_serif);
+    // We create mDefaultVariableFont.fontlist with defaultType as the
+    // fallback font, and not as part of the font list proper. This way,
+    // it can be overwritten should there be a language change.
+  }
 
   void Reset()
   {
@@ -56,9 +61,9 @@ struct LangGroupFontPrefs {
   }
 
   // Initialize this with the data for a given language
-  void Initialize(nsIAtom* aLangGroupAtom);
+  void Initialize(nsAtom* aLangGroupAtom);
 
-  nsCOMPtr<nsIAtom> mLangGroup;
+  RefPtr<nsAtom> mLangGroup;
   nscoord mMinimumFontSize;
   nsFont mDefaultVariableFont;
   nsFont mDefaultFixedFont;
@@ -111,13 +116,13 @@ public:
    * to re-call GetLanguageGroup when it is safe to cache, to avoid
    * recomputing the language group again later.
    */
-  nsIAtom* GetLangGroup(nsIAtom* aLanguage, bool* aNeedsToCache = nullptr) const;
+  nsAtom* GetLangGroup(nsAtom* aLanguage, bool* aNeedsToCache = nullptr) const;
 
   /**
    * Same as GetLangGroup, but will not cache the result
    *
    */
-  already_AddRefed<nsIAtom> GetUncachedLangGroup(nsIAtom* aLanguage) const;
+  already_AddRefed<nsAtom> GetUncachedLangGroup(nsAtom* aLanguage) const;
 
   /**
    * Fetch the user's font preferences for the given aLanguage's
@@ -135,7 +140,7 @@ public:
    *
    * See comment on GetLangGroup for the usage of aNeedsToCache.
    */
-  const LangGroupFontPrefs* GetFontPrefsForLangHelper(nsIAtom* aLanguage,
+  const LangGroupFontPrefs* GetFontPrefsForLangHelper(nsAtom* aLanguage,
                                                       const LangGroupFontPrefs* aPrefs,
                                                       bool* aNeedsToCache = nullptr) const;
   /**
@@ -158,19 +163,19 @@ public:
    * given language.
    */
   const nsFont* GetDefaultFontHelper(uint8_t aFontID,
-                                     nsIAtom* aLanguage,
+                                     nsAtom* aLanguage,
                                      const LangGroupFontPrefs* aPrefs) const;
 
   /*
    * These versions operate on the font pref cache on StaticPresData.
    */
 
-  const nsFont* GetDefaultFont(uint8_t aFontID, nsIAtom* aLanguage) const
+  const nsFont* GetDefaultFont(uint8_t aFontID, nsAtom* aLanguage) const
   {
     MOZ_ASSERT(aLanguage);
     return GetDefaultFontHelper(aFontID, aLanguage, GetFontPrefsForLang(aLanguage));
   }
-  const LangGroupFontPrefs* GetFontPrefsForLang(nsIAtom* aLanguage, bool* aNeedsToCache = nullptr) const
+  const LangGroupFontPrefs* GetFontPrefsForLang(nsAtom* aLanguage, bool* aNeedsToCache = nullptr) const
   {
     MOZ_ASSERT(aLanguage);
     return GetFontPrefsForLangHelper(aLanguage, &mStaticLangGroupFontPrefs, aNeedsToCache);

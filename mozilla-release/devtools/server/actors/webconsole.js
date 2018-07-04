@@ -11,8 +11,10 @@
 const Services = require("Services");
 const { Cc, Ci, Cu } = require("chrome");
 const { DebuggerServer, ActorPool } = require("devtools/server/main");
-const { ThreadActor } = require("devtools/server/actors/script");
-const { ObjectActor, LongStringActor, createValueGrip, stringIsLong } = require("devtools/server/actors/object");
+const { ThreadActor } = require("devtools/server/actors/thread");
+const { ObjectActor } = require("devtools/server/actors/object");
+const { LongStringActor } = require("devtools/server/actors/object/long-string");
+const { createValueGrip, stringIsLong } = require("devtools/server/actors/object/utils");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const ErrorDocs = require("devtools/server/actors/errordocs");
 
@@ -20,25 +22,30 @@ loader.lazyRequireGetter(this, "NetworkMonitor", "devtools/shared/webconsole/net
 loader.lazyRequireGetter(this, "NetworkMonitorChild", "devtools/shared/webconsole/network-monitor", true);
 loader.lazyRequireGetter(this, "ConsoleProgressListener", "devtools/shared/webconsole/network-monitor", true);
 loader.lazyRequireGetter(this, "StackTraceCollector", "devtools/shared/webconsole/network-monitor", true);
-loader.lazyRequireGetter(this, "events", "sdk/event/core");
-loader.lazyRequireGetter(this, "ServerLoggingListener", "devtools/shared/webconsole/server-logger", true);
 loader.lazyRequireGetter(this, "JSPropertyProvider", "devtools/shared/webconsole/js-property-provider", true);
 loader.lazyRequireGetter(this, "Parser", "resource://devtools/shared/Parser.jsm", true);
 loader.lazyRequireGetter(this, "NetUtil", "resource://gre/modules/NetUtil.jsm", true);
-loader.lazyRequireGetter(this, "addWebConsoleCommands", "devtools/server/actors/utils/webconsole-utils", true);
-loader.lazyRequireGetter(this, "CONSOLE_WORKER_IDS", "devtools/server/actors/utils/webconsole-utils", true);
-loader.lazyRequireGetter(this, "WebConsoleUtils", "devtools/server/actors/utils/webconsole-utils", true);
+loader.lazyRequireGetter(this, "addWebConsoleCommands", "devtools/server/actors/webconsole/utils", true);
+loader.lazyRequireGetter(this, "CONSOLE_WORKER_IDS", "devtools/server/actors/webconsole/utils", true);
+loader.lazyRequireGetter(this, "WebConsoleUtils", "devtools/server/actors/webconsole/utils", true);
 loader.lazyRequireGetter(this, "EnvironmentActor", "devtools/server/actors/environment", true);
+loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 
 // Overwrite implemented listeners for workers so that we don't attempt
 // to load an unsupported module.
 if (isWorker) {
-  loader.lazyRequireGetter(this, "ConsoleAPIListener", "devtools/server/actors/utils/webconsole-worker-listeners", true);
-  loader.lazyRequireGetter(this, "ConsoleServiceListener", "devtools/server/actors/utils/webconsole-worker-listeners", true);
+  loader.lazyRequireGetter(this, "ConsoleAPIListener", "devtools/server/actors/webconsole/worker-listeners", true);
+  loader.lazyRequireGetter(this, "ConsoleServiceListener", "devtools/server/actors/webconsole/worker-listeners", true);
 } else {
-  loader.lazyRequireGetter(this, "ConsoleAPIListener", "devtools/server/actors/utils/webconsole-listeners", true);
-  loader.lazyRequireGetter(this, "ConsoleServiceListener", "devtools/server/actors/utils/webconsole-listeners", true);
-  loader.lazyRequireGetter(this, "ConsoleReflowListener", "devtools/server/actors/utils/webconsole-listeners", true);
+  loader.lazyRequireGetter(this, "ConsoleAPIListener", "devtools/server/actors/webconsole/listeners", true);
+  loader.lazyRequireGetter(this, "ConsoleServiceListener", "devtools/server/actors/webconsole/listeners", true);
+  loader.lazyRequireGetter(this, "ConsoleReflowListener", "devtools/server/actors/webconsole/listeners", true);
+  loader.lazyRequireGetter(this, "ContentProcessListener", "devtools/server/actors/webconsole/listeners", true);
+  loader.lazyRequireGetter(this, "DocumentEventsListener", "devtools/server/actors/webconsole/listeners", true);
+}
+
+function isObject(value) {
+  return Object(value) === value;
 }
 
 /**
@@ -63,6 +70,7 @@ function WebConsoleActor(connection, parentActor) {
   this.dbg = this.parentActor.makeDebugger();
 
   this._netEvents = new Map();
+  this._networkEventActorsByURL = new Map();
   this._gripDepth = 0;
   this._listeners = new Set();
   this._lastConsoleInputEvaluation = undefined;
@@ -70,7 +78,7 @@ function WebConsoleActor(connection, parentActor) {
   this.objectGrip = this.objectGrip.bind(this);
   this._onWillNavigate = this._onWillNavigate.bind(this);
   this._onChangedToplevelDocument = this._onChangedToplevelDocument.bind(this);
-  events.on(this.parentActor, "changed-toplevel-document",
+  EventEmitter.on(this.parentActor, "changed-toplevel-document",
             this._onChangedToplevelDocument);
   this._onObserverNotification = this._onObserverNotification.bind(this);
   if (this.parentActor.isRootActor) {
@@ -79,10 +87,10 @@ function WebConsoleActor(connection, parentActor) {
   }
 
   this.traits = {
-    customNetworkRequest: !this._parentIsContentActor,
     evaluateJSAsync: true,
     transferredResponseSize: true,
     selectedObjectActor: true, // 44+
+    fetchCacheDescriptor: true,
   };
 }
 
@@ -119,12 +127,22 @@ WebConsoleActor.prototype =
 
   /**
    * Holds a map between nsIChannel objects and NetworkEventActors for requests
-   * created with sendHTTPRequest.
+   * created with sendHTTPRequest or found via the network listener.
    *
    * @private
    * @type Map
    */
   _netEvents: null,
+
+  /**
+   * Holds a map from URL to NetworkEventActors for requests noticed by the network
+   * listener.  Requests are added when they start, so the actor might not yet have all
+   * data for the request until it has completed.
+   *
+   * @private
+   * @type Map
+   */
+  _networkEventActorsByURL: null,
 
   /**
    * Holds a set of all currently registered listeners.
@@ -145,16 +163,6 @@ WebConsoleActor.prototype =
    * @type object
    */
   traits: null,
-
-  /**
-   * Boolean getter that tells if the parent actor is a ContentActor.
-   *
-   * @private
-   * @type boolean
-   */
-  get _parentIsContentActor() {
-    return this.parentActor.constructor.name == "ContentActor";
-  },
 
   /**
    * The window or sandbox we work with.
@@ -178,7 +186,7 @@ WebConsoleActor.prototype =
    * @return nsIDOMWindow
    *         The window to use, or null if no window could be found.
    */
-  _getWindowForBrowserConsole: function () {
+  _getWindowForBrowserConsole: function() {
     // Check if our last used chrome window is still live.
     let window = this._lastChromeWindow && this._lastChromeWindow.get();
     // If not, look for a new one.
@@ -210,7 +218,7 @@ WebConsoleActor.prototype =
    * @param nsIDOMWindow window
    *        The window to store on the actor (can be null).
    */
-  _handleNewWindow: function (window) {
+  _handleNewWindow: function(window) {
     if (window) {
       if (this._hadChromeWindow) {
         Services.console.logStringMessage("Webconsole context has changed");
@@ -248,7 +256,7 @@ WebConsoleActor.prototype =
     this._evalWindow = window;
 
     if (!this._progressListenerActive) {
-      events.on(this.parentActor, "will-navigate", this._onWillNavigate);
+      EventEmitter.on(this.parentActor, "will-navigate", this._onWillNavigate);
       this._progressListenerActive = true;
     }
   },
@@ -307,11 +315,11 @@ WebConsoleActor.prototype =
     return this.parentActor.threadActor.globalDebugObject;
   },
 
-  grip: function () {
+  grip: function() {
     return { actor: this.actorID };
   },
 
-  hasNativeConsoleAPI: function (window) {
+  hasNativeConsoleAPI: function(window) {
     if (isWorker) {
       // Can't use XPCNativeWrapper as a way to check for console API in workers
       return true;
@@ -364,12 +372,12 @@ WebConsoleActor.prototype =
       this.consoleReflowListener.destroy();
       this.consoleReflowListener = null;
     }
-    if (this.serverLoggingListener) {
-      this.serverLoggingListener.destroy();
-      this.serverLoggingListener = null;
+    if (this.contentProcessListener) {
+      this.contentProcessListener.destroy();
+      this.contentProcessListener = null;
     }
 
-    events.off(this.parentActor, "changed-toplevel-document",
+    EventEmitter.off(this.parentActor, "changed-toplevel-document",
                this._onChangedToplevelDocument);
 
     this.conn.removeActorPool(this._actorPool);
@@ -400,7 +408,7 @@ WebConsoleActor.prototype =
    * @return The EnvironmentActor for |environment| or |undefined| for host
    *         functions or functions scoped to a non-debuggee global.
    */
-  createEnvironmentActor: function (environment) {
+  createEnvironmentActor: function(environment) {
     if (!environment) {
       return undefined;
     }
@@ -422,7 +430,7 @@ WebConsoleActor.prototype =
    * @param mixed value
    * @return object
    */
-  createValueGrip: function (value) {
+  createValueGrip: function(value) {
     return createValueGrip(value, this._actorPool, this.objectGrip);
   },
 
@@ -437,8 +445,8 @@ WebConsoleActor.prototype =
    * @return object
    *         Debuggee value for |value|.
    */
-  makeDebuggeeValue: function (value, useObjectGlobal) {
-    if (useObjectGlobal && typeof value == "object") {
+  makeDebuggeeValue: function(value, useObjectGlobal) {
+    if (useObjectGlobal && isObject(value)) {
       try {
         let global = Cu.getGlobalForObject(value);
         let dbgGlobal = this.dbg.makeGlobalObjectReference(global);
@@ -462,7 +470,7 @@ WebConsoleActor.prototype =
    * @param object
    *        The object grip.
    */
-  objectGrip: function (object, pool) {
+  objectGrip: function(object, pool) {
     let actor = new ObjectActor(object, {
       getGripDepth: () => this._gripDepth,
       incrementGripDepth: () => this._gripDepth++,
@@ -487,7 +495,7 @@ WebConsoleActor.prototype =
    * @return object
    *         A LongStringActor object that wraps the given string.
    */
-  longStringGrip: function (string, pool) {
+  longStringGrip: function(string, pool) {
     let actor = new LongStringActor(string);
     pool.addActor(actor);
     return actor.grip();
@@ -503,7 +511,7 @@ WebConsoleActor.prototype =
    *         A string is returned if |string| is not a long string.
    *         A LongStringActor grip is returned if |string| is a long string.
    */
-  _createStringGrip: function (string) {
+  _createStringGrip: function(string) {
     if (string && stringIsLong(string)) {
       return this.longStringGrip(string, this._actorPool);
     }
@@ -516,7 +524,7 @@ WebConsoleActor.prototype =
    * @param string actorID
    * @return object
    */
-  getActorByID: function (actorID) {
+  getActorByID: function(actorID) {
     return this._actorPool.get(actorID);
   },
 
@@ -526,7 +534,7 @@ WebConsoleActor.prototype =
    * @param object actor
    *        The actor instance you want to release.
    */
-  releaseActor: function (actor) {
+  releaseActor: function(actor) {
     this._actorPool.removeActor(actor);
   },
 
@@ -536,7 +544,7 @@ WebConsoleActor.prototype =
    *
    * @return object
    */
-  getLastConsoleInputEvaluation: function () {
+  getLastConsoleInputEvaluation: function() {
     return this._lastConsoleInputEvaluation;
   },
 
@@ -561,12 +569,21 @@ WebConsoleActor.prototype =
    * @return object
    *         The response object which holds the startedListeners array.
    */
-  onStartListeners: function (request) {
+  onStartListeners: function(request) {
     let startedListeners = [];
     let window = !this.parentActor.isRootActor ? this.window : null;
     let messageManager = null;
 
-    if (this._parentIsContentActor) {
+    // Check if the actor is running in a child process (but only if
+    // Services.appinfo exists, to prevent onStartListeners to fail
+    // when the target is a Worker).
+    let processBoundary = Services.appinfo && (
+      Services.appinfo.processType != Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT
+    );
+
+    // Retrieve a message manager from the parent actor if this actor is
+    // not currently running in the main process.
+    if (processBoundary) {
       messageManager = this.parentActor.messageManager;
     }
 
@@ -608,8 +625,6 @@ WebConsoleActor.prototype =
             this.stackTraceCollector = new StackTraceCollector({ window });
             this.stackTraceCollector.init();
 
-            let processBoundary = Services.appinfo.processType !=
-                                  Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT;
             if (messageManager && processBoundary) {
               // Start a network monitor in the parent process to listen to
               // most requests than happen in parent
@@ -653,14 +668,23 @@ WebConsoleActor.prototype =
           }
           startedListeners.push(listener);
           break;
-        case "ServerLogging":
+        case "ContentProcessMessages":
           // Workers don't support this message type
           if (isWorker) {
             break;
           }
-          if (!this.serverLoggingListener) {
-            this.serverLoggingListener =
-              new ServerLoggingListener(this.window, this);
+          if (!this.contentProcessListener) {
+            this.contentProcessListener = new ContentProcessListener(this);
+          }
+          startedListeners.push(listener);
+          break;
+        case "DocumentEvents":
+          // Workers don't support this message type
+          if (isWorker) {
+            break;
+          }
+          if (!this.documentEventsListener) {
+            this.documentEventsListener = new DocumentEventsListener(this);
           }
           startedListeners.push(listener);
           break;
@@ -686,14 +710,14 @@ WebConsoleActor.prototype =
    *         The response packet to send to the client: holds the
    *         stoppedListeners array.
    */
-  onStopListeners: function (request) {
+  onStopListeners: function(request) {
     let stoppedListeners = [];
 
     // If no specific listeners are requested to be detached, we stop all
     // listeners.
     let toDetach = request.listeners ||
       ["PageError", "ConsoleAPI", "NetworkActivity",
-       "FileActivity", "ServerLogging"];
+       "FileActivity", "ContentProcessMessages"];
 
     while (toDetach.length > 0) {
       let listener = toDetach.shift();
@@ -742,10 +766,17 @@ WebConsoleActor.prototype =
           }
           stoppedListeners.push(listener);
           break;
-        case "ServerLogging":
-          if (this.serverLoggingListener) {
-            this.serverLoggingListener.destroy();
-            this.serverLoggingListener = null;
+        case "ContentProcessMessages":
+          if (this.contentProcessListener) {
+            this.contentProcessListener.destroy();
+            this.contentProcessListener = null;
+          }
+          stoppedListeners.push(listener);
+          break;
+        case "DocumentEvents":
+          if (this.documentEventsListener) {
+            this.documentEventsListener.destroy();
+            this.documentEventsListener = null;
           }
           stoppedListeners.push(listener);
           break;
@@ -768,7 +799,7 @@ WebConsoleActor.prototype =
    *         The response packet to send to the client: it holds the cached
    *         messages array.
    */
-  onGetCachedMessages: function (request) {
+  onGetCachedMessages: function(request) {
     let types = request.messageTypes;
     if (!types) {
       return {
@@ -788,8 +819,8 @@ WebConsoleActor.prototype =
           }
 
           // See `window` definition. It isn't always a DOM Window.
-          let requestStartTime = this.window && this.window.performance ?
-            this.window.performance.timing.requestStart : 0;
+          let winStartTime = this.window && this.window.performance ?
+            this.window.performance.timing.navigationStart : 0;
 
           let cache = this.consoleAPIListener
                       .getCachedMessages(!this.parentActor.isRootActor);
@@ -797,7 +828,7 @@ WebConsoleActor.prototype =
             // Filter out messages that came from a ServiceWorker but happened
             // before the page was requested.
             if (cachedMessage.innerID === "ServiceWorker" &&
-                requestStartTime > cachedMessage.timeStamp) {
+                winStartTime > cachedMessage.timeStamp) {
               return;
             }
 
@@ -850,7 +881,7 @@ WebConsoleActor.prototype =
    *         The response packet to send to with the unique id in the
    *         `resultID` field.
    */
-  onEvaluateJSAsync: function (request) {
+  onEvaluateJSAsync: function(request) {
     // We want to be able to run console commands without waiting
     // for the first to return (see Bug 1088861).
 
@@ -879,7 +910,7 @@ WebConsoleActor.prototype =
    * @return object
    *         The evaluation response packet.
    */
-  onEvaluateJS: function (request) {
+  onEvaluateJS: function(request) {
     let input = request.text;
     let timestamp = Date.now();
 
@@ -1010,7 +1041,7 @@ WebConsoleActor.prototype =
    * @return object
    *         The response message - matched properties.
    */
-  onAutocomplete: function (request) {
+  onAutocomplete: function(request) {
     let frameActorId = request.frameActor;
     let dbgObject = null;
     let environment = null;
@@ -1070,7 +1101,7 @@ WebConsoleActor.prototype =
   /**
    * The "clearMessagesCache" request handler.
    */
-  onClearMessagesCache: function () {
+  onClearMessagesCache: function() {
     // TODO: Bug 717611 - Web Console clear button does not clear cached errors
     let windowId = !this.parentActor.isRootActor ?
                    WebConsoleUtils.getInnerWindowId(this.window) : null;
@@ -1097,7 +1128,7 @@ WebConsoleActor.prototype =
    * @return object
    *         The response message - a { key: value } object map.
    */
-  onGetPreferences: function (request) {
+  onGetPreferences: function(request) {
     let prefs = Object.create(null);
     for (let key of request.preferences) {
       prefs[key] = this._prefs[key];
@@ -1111,7 +1142,7 @@ WebConsoleActor.prototype =
    * @param object request
    *        The request message - which preferences need to be updated.
    */
-  onSetPreferences: function (request) {
+  onSetPreferences: function(request) {
     for (let key in request.preferences) {
       this._prefs[key] = request.preferences[key];
 
@@ -1149,7 +1180,7 @@ WebConsoleActor.prototype =
    *         The sandbox holds methods and properties that can be used as
    *         bindings during JS evaluation.
    */
-  _getWebConsoleCommands: function (debuggerGlobal) {
+  _getWebConsoleCommands: function(debuggerGlobal) {
     let helpers = {
       window: this.evalWindow,
       chromeWindow: this.chromeWindow.bind(this),
@@ -1257,7 +1288,7 @@ WebConsoleActor.prototype =
    *         function.
    */
   /* eslint-disable complexity */
-  evalWithDebugger: function (string, options = {}) {
+  evalWithDebugger: function(string, options = {}) {
     let trimmedString = string.trim();
     // The help function needs to be easy to guess, so we make the () optional.
     if (trimmedString == "help" || trimmedString == "?") {
@@ -1297,17 +1328,25 @@ WebConsoleActor.prototype =
       let objActor = this.getActorByID(options.bindObjectActor ||
                                        options.selectedObjectActor);
       if (objActor) {
-        let jsObj = objActor.obj.unsafeDereference();
-        // If we use the makeDebuggeeValue method of jsObj's own global, then
-        // we'll get a D.O that sees jsObj as viewed from its own compartment -
-        // that is, without wrappers. The evalWithBindings call will then wrap
-        // jsObj appropriately for the evaluation compartment.
-        let global = Cu.getGlobalForObject(jsObj);
-        let _dbgWindow = dbg.makeGlobalObjectReference(global);
-        bindSelf = dbgWindow.makeDebuggeeValue(jsObj);
+        let jsVal = objActor.rawValue();
 
-        if (options.bindObjectActor) {
-          dbgWindow = _dbgWindow;
+        if (isObject(jsVal)) {
+          // If we use the makeDebuggeeValue method of jsVal's own global, then
+          // we'll get a D.O that sees jsVal as viewed from its own compartment -
+          // that is, without wrappers. The evalWithBindings call will then wrap
+          // jsVal appropriately for the evaluation compartment.
+          bindSelf = dbgWindow.makeDebuggeeValue(jsVal);
+          if (options.bindObjectActor) {
+            let global = Cu.getGlobalForObject(jsVal);
+            try {
+              let _dbgWindow = dbg.makeGlobalObjectReference(global);
+              dbgWindow = _dbgWindow;
+            } catch (err) {
+              // The above will throw if `global` is invisible to debugger.
+            }
+          }
+        } else {
+          bindSelf = jsVal;
         }
       }
     }
@@ -1476,7 +1515,7 @@ WebConsoleActor.prototype =
    * @param nsIConsoleMessage message
    *        The message we need to send to the client.
    */
-  onConsoleServiceMessage: function (message) {
+  onConsoleServiceMessage: function(message) {
     let packet;
     if (message instanceof Ci.nsIScriptError) {
       packet = {
@@ -1503,7 +1542,7 @@ WebConsoleActor.prototype =
    * @return object
    *         The object you can send to the remote client.
    */
-  preparePageErrorForRemote: function (pageError) {
+  preparePageErrorForRemote: function(pageError) {
     let stack = null;
     // Convert stack objects to the JSON attributes expected by client code
     // Bug 1348885: If the global from which this error came from has been
@@ -1572,7 +1611,7 @@ WebConsoleActor.prototype =
    * @param object message
    *        The console API call we need to send to the remote client.
    */
-  onConsoleAPICall: function (message) {
+  onConsoleAPICall: function(message) {
     let packet = {
       from: this.actorID,
       type: "consoleAPICall",
@@ -1594,9 +1633,11 @@ WebConsoleActor.prototype =
    *         A new NetworkEventActor is returned. This is used for tracking the
    *         network request and response.
    */
-  onNetworkEvent: function (event) {
+  onNetworkEvent: function(event) {
     let actor = this.getNetworkEventActor(event.channelId);
     actor.init(event);
+
+    this._networkEventActorsByURL.set(actor._request.url, actor);
 
     let packet = {
       from: this.actorID,
@@ -1618,7 +1659,7 @@ WebConsoleActor.prototype =
    * @return object
    *         The NetworkEventActor for the given channel.
    */
-  getNetworkEventActor: function (channelId) {
+  getNetworkEventActor: function(channelId) {
     let actor = this._netEvents.get(channelId);
     if (actor) {
       // delete from map as we should only need to do this check once
@@ -1629,6 +1670,18 @@ WebConsoleActor.prototype =
     actor = new NetworkEventActor(this);
     this._actorPool.addActor(actor);
     return actor;
+  },
+
+  /**
+   * Get the NetworkEventActor for a given URL that may have been noticed by the network
+   * listener.  Requests are added when they start, so the actor might not yet have all
+   * data for the request until it has completed.
+   *
+   * @param string url
+   *        The URL of the request to search for.
+   */
+  getNetworkEventActorForURL(url) {
+    return this._networkEventActorsByURL.get(url);
   },
 
   /**
@@ -1693,7 +1746,7 @@ WebConsoleActor.prototype =
    * @param string fileURI
    *        The requested file URI.
    */
-  onFileActivity: function (fileURI) {
+  onFileActivity: function(fileURI) {
     let packet = {
       from: this.actorID,
       type: "fileActivity",
@@ -1709,7 +1762,7 @@ WebConsoleActor.prototype =
    * @see ConsoleReflowListener
    * @param Object reflowInfo
    */
-  onReflowActivity: function (reflowInfo) {
+  onReflowActivity: function(reflowInfo) {
     let packet = {
       from: this.actorID,
       type: "reflowActivity",
@@ -1719,39 +1772,6 @@ WebConsoleActor.prototype =
       sourceURL: reflowInfo.sourceURL,
       sourceLine: reflowInfo.sourceLine,
       functionName: reflowInfo.functionName
-    };
-
-    this.conn.send(packet);
-  },
-
-  /**
-   * Handler for server logging. This method forwards log events to the
-   * remote Web Console client.
-   *
-   * @see ServerLoggingListener
-   * @param object message
-   *        The console API call on the server we need to send to the remote client.
-   */
-  onServerLogCall: function (message) {
-    // Clone all data into the content scope (that's where
-    // passed arguments comes from).
-    let msg = Cu.cloneInto(message, this.window);
-
-    // All arguments within the message need to be converted into
-    // debuggees to properly send it to the client side.
-    // Use the default target: this.window as the global object
-    // since that's the correct scope for data in the message.
-    // The 'false' argument passed into prepareConsoleMessageForRemote()
-    // ensures that makeDebuggeeValue uses content debuggee.
-    // See also:
-    // * makeDebuggeeValue()
-    // * prepareConsoleMessageForRemote()
-    msg = this.prepareConsoleMessageForRemote(msg, false);
-
-    let packet = {
-      from: this.actorID,
-      type: "serverLogCall",
-      message: msg,
     };
 
     this.conn.send(packet);
@@ -1771,7 +1791,7 @@ WebConsoleActor.prototype =
    * @return object
    *         The object that can be sent to the remote client.
    */
-  prepareConsoleMessageForRemote: function (message, useObjectGlobal = true) {
+  prepareConsoleMessageForRemote: function(message, useObjectGlobal = true) {
     let result = WebConsoleUtils.cloneObject(message);
 
     result.workerType = WebConsoleUtils.getWorkerType(result) || "none";
@@ -1780,7 +1800,6 @@ WebConsoleActor.prototype =
     delete result.ID;
     delete result.innerID;
     delete result.consoleID;
-    delete result.originAttributes;
 
     result.arguments = Array.map(message.arguments || [], (obj) => {
       let dbgObj = this.makeDebuggeeValue(obj, useObjectGlobal);
@@ -1802,7 +1821,7 @@ WebConsoleActor.prototype =
    * @return Window
    *         The XUL window that owns the content window.
    */
-  chromeWindow: function () {
+  chromeWindow: function() {
     let window = null;
     try {
       window = this.window.QueryInterface(Ci.nsIInterfaceRequestor)
@@ -1826,7 +1845,7 @@ WebConsoleActor.prototype =
    * @param string topic
    *        Notification topic.
    */
-  _onObserverNotification: function (subject, topic) {
+  _onObserverNotification: function(subject, topic) {
     switch (topic) {
       case "last-pb-context-exited":
         this.conn.send({
@@ -1841,10 +1860,10 @@ WebConsoleActor.prototype =
    * The "will-navigate" progress listener. This is used to clear the current
    * eval scope.
    */
-  _onWillNavigate: function ({ window, isTopLevel }) {
+  _onWillNavigate: function({ window, isTopLevel }) {
     if (isTopLevel) {
       this._evalWindow = null;
-      events.off(this.parentActor, "will-navigate", this._onWillNavigate);
+      EventEmitter.off(this.parentActor, "will-navigate", this._onWillNavigate);
       this._progressListenerActive = false;
     }
   },
@@ -1853,7 +1872,7 @@ WebConsoleActor.prototype =
    * This listener is called when we switch to another frame,
    * mostly to unregister previous listeners and start listening on the new document.
    */
-  _onChangedToplevelDocument: function () {
+  _onChangedToplevelDocument: function() {
     // Convert the Set to an Array
     let listeners = [...this._listeners];
 
@@ -1914,6 +1933,7 @@ function NetworkEventActor(webConsoleActor) {
   };
 
   this._timings = {};
+  this._stackTrace = {};
 
   // Keep track of LongStringActors owned by this NetworkEventActor.
   this._longStringActors = new Set();
@@ -1931,7 +1951,7 @@ NetworkEventActor.prototype =
   /**
    * Returns a grip for this actor for returning in a protocol message.
    */
-  grip: function () {
+  grip: function() {
     return {
       actor: this.actorID,
       startedDateTime: this._startedDateTime,
@@ -1949,7 +1969,7 @@ NetworkEventActor.prototype =
   /**
    * Releases this actor from the pool.
    */
-  release: function () {
+  release: function() {
     for (let grip of this._longStringActors) {
       let actor = this.parent.getActorByID(grip.actor);
       if (actor) {
@@ -1958,6 +1978,9 @@ NetworkEventActor.prototype =
     }
     this._longStringActors = new Set();
 
+    if (this._request.url) {
+      this.parent._networkEventActorsByURL.delete(this._request.url);
+    }
     if (this.channel) {
       this.parent._netEvents.delete(this.channel);
     }
@@ -1967,7 +1990,7 @@ NetworkEventActor.prototype =
   /**
    * Handle a protocol request to release a grip.
    */
-  onRelease: function () {
+  onRelease: function() {
     this.release();
     return {};
   },
@@ -1979,12 +2002,20 @@ NetworkEventActor.prototype =
    * @param object networkEvent
    *        The network event associated with this actor.
    */
-  init: function (networkEvent) {
+  init: function(networkEvent) {
     this._startedDateTime = networkEvent.startedDateTime;
     this._isXHR = networkEvent.isXHR;
     this._cause = networkEvent.cause;
     this._fromCache = networkEvent.fromCache;
     this._fromServiceWorker = networkEvent.fromServiceWorker;
+
+    // Stack trace info isn't sent automatically. The client
+    // needs to request it explicitly using getStackTrace
+    // packet.
+    this._stackTrace = networkEvent.cause.stacktrace;
+    delete networkEvent.cause.stacktrace;
+    networkEvent.cause.stacktraceAvailable =
+      !!(this._stackTrace && this._stackTrace.length);
 
     for (let prop of ["method", "url", "httpVersion", "headersSize"]) {
       this._request[prop] = networkEvent[prop];
@@ -1992,6 +2023,7 @@ NetworkEventActor.prototype =
 
     this._discardRequestBody = networkEvent.discardRequestBody;
     this._discardResponseBody = networkEvent.discardResponseBody;
+    this._truncated = false;
     this._private = networkEvent.private;
   },
 
@@ -2001,7 +2033,7 @@ NetworkEventActor.prototype =
    * @return object
    *         The response packet - network request headers.
    */
-  onGetRequestHeaders: function () {
+  onGetRequestHeaders: function() {
     return {
       from: this.actorID,
       headers: this._request.headers,
@@ -2016,7 +2048,7 @@ NetworkEventActor.prototype =
    * @return object
    *         The response packet - network request cookies.
    */
-  onGetRequestCookies: function () {
+  onGetRequestCookies: function() {
     return {
       from: this.actorID,
       cookies: this._request.cookies,
@@ -2029,7 +2061,7 @@ NetworkEventActor.prototype =
    * @return object
    *         The response packet - network POST data.
    */
-  onGetRequestPostData: function () {
+  onGetRequestPostData: function() {
     return {
       from: this.actorID,
       postData: this._request.postData,
@@ -2043,7 +2075,7 @@ NetworkEventActor.prototype =
    * @return object
    *         The response packet - connection security information.
    */
-  onGetSecurityInfo: function () {
+  onGetSecurityInfo: function() {
     return {
       from: this.actorID,
       securityInfo: this._securityInfo,
@@ -2056,7 +2088,7 @@ NetworkEventActor.prototype =
    * @return object
    *         The response packet - network response headers.
    */
-  onGetResponseHeaders: function () {
+  onGetResponseHeaders: function() {
     return {
       from: this.actorID,
       headers: this._response.headers,
@@ -2066,12 +2098,25 @@ NetworkEventActor.prototype =
   },
 
   /**
+   * The "getResponseCache" packet type handler.
+   *
+   * @return object
+   *         The cache packet - network cache information.
+   */
+  onGetResponseCache: function() {
+    return {
+      from: this.actorID,
+      cache: this._response.responseCache,
+    };
+  },
+
+  /**
    * The "getResponseCookies" packet type handler.
    *
    * @return object
    *         The response packet - network response cookies.
    */
-  onGetResponseCookies: function () {
+  onGetResponseCookies: function() {
     return {
       from: this.actorID,
       cookies: this._response.cookies,
@@ -2084,7 +2129,7 @@ NetworkEventActor.prototype =
    * @return object
    *         The response packet - network response content.
    */
-  onGetResponseContent: function () {
+  onGetResponseContent: function() {
     return {
       from: this.actorID,
       content: this._response.content,
@@ -2098,11 +2143,25 @@ NetworkEventActor.prototype =
    * @return object
    *         The response packet - network event timings.
    */
-  onGetEventTimings: function () {
+  onGetEventTimings: function() {
     return {
       from: this.actorID,
       timings: this._timings,
-      totalTime: this._totalTime
+      totalTime: this._totalTime,
+      offsets: this._offsets
+    };
+  },
+
+  /**
+   * The "getStackTrace" packet type handler.
+   *
+   * @return object
+   *         The response packet - stack trace.
+   */
+  onGetStackTrace: function() {
+    return {
+      from: this.actorID,
+      stacktrace: this._stackTrace,
     };
   },
 
@@ -2118,7 +2177,7 @@ NetworkEventActor.prototype =
    * @param string rawHeaders
    *        The raw headers source.
    */
-  addRequestHeaders: function (headers, rawHeaders) {
+  addRequestHeaders: function(headers, rawHeaders) {
     this._request.headers = headers;
     this._prepareHeaders(headers);
 
@@ -2145,7 +2204,7 @@ NetworkEventActor.prototype =
    * @param array cookies
    *        The request cookies array.
    */
-  addRequestCookies: function (cookies) {
+  addRequestCookies: function(cookies) {
     this._request.cookies = cookies;
     this._prepareHeaders(cookies);
 
@@ -2165,7 +2224,7 @@ NetworkEventActor.prototype =
    * @param object postData
    *        The request POST data.
    */
-  addRequestPostData: function (postData) {
+  addRequestPostData: function(postData) {
     this._request.postData = postData;
     postData.text = this.parent._createStringGrip(postData.text);
     if (typeof postData.text == "object") {
@@ -2191,7 +2250,7 @@ NetworkEventActor.prototype =
    * @param string rawHeaders
    *        The raw headers source.
    */
-  addResponseStart: function (info, rawHeaders) {
+  addResponseStart: function(info, rawHeaders) {
     rawHeaders = this.parent._createStringGrip(rawHeaders);
     if (typeof rawHeaders == "object") {
       this._longStringActors.add(rawHeaders);
@@ -2220,7 +2279,7 @@ NetworkEventActor.prototype =
    * @param object info
    *        The object containing security information.
    */
-  addSecurityInfo: function (info) {
+  addSecurityInfo: function(info) {
     this._securityInfo = info;
 
     let packet = {
@@ -2239,7 +2298,7 @@ NetworkEventActor.prototype =
    * @param array headers
    *        The response headers array.
    */
-  addResponseHeaders: function (headers) {
+  addResponseHeaders: function(headers) {
     this._response.headers = headers;
     this._prepareHeaders(headers);
 
@@ -2260,7 +2319,7 @@ NetworkEventActor.prototype =
    * @param array cookies
    *        The response cookies array.
    */
-  addResponseCookies: function (cookies) {
+  addResponseCookies: function(cookies) {
     this._response.cookies = cookies;
     this._prepareHeaders(cookies);
 
@@ -2279,10 +2338,14 @@ NetworkEventActor.prototype =
    *
    * @param object content
    *        The response content.
-   * @param boolean discardedResponseBody
-   *        Tells if the response content was recorded or not.
+   * @param object
+   *        - boolean discardedResponseBody
+   *          Tells if the response content was recorded or not.
+   *        - boolean truncated
+   *          Tells if the some of the response content is missing.
    */
-  addResponseContent: function (content, discardedResponseBody) {
+  addResponseContent: function(content, {discardResponseBody, truncated}) {
+    this._truncated = truncated;
     this._response.content = content;
     content.text = this.parent._createStringGrip(content.text);
     if (typeof content.text == "object") {
@@ -2297,9 +2360,19 @@ NetworkEventActor.prototype =
       contentSize: content.size,
       encoding: content.encoding,
       transferredSize: content.transferredSize,
-      discardResponseBody: discardedResponseBody,
+      discardResponseBody,
     };
 
+    this.conn.send(packet);
+  },
+
+  addResponseCache: function(content) {
+    this._response.responseCache = content.responseCache;
+    let packet = {
+      from: this.actorID,
+      type: "networkEventUpdate",
+      updateType: "responseCache",
+    };
     this.conn.send(packet);
   },
 
@@ -2311,9 +2384,10 @@ NetworkEventActor.prototype =
    * @param object timings
    *        Timing details about the network event.
    */
-  addEventTimings: function (total, timings) {
+  addEventTimings: function(total, timings, offsets) {
     this._totalTime = total;
     this._timings = timings;
+    this._offsets = offsets;
 
     let packet = {
       from: this.actorID,
@@ -2332,7 +2406,7 @@ NetworkEventActor.prototype =
    * @private
    * @param array aHeaders
    */
-  _prepareHeaders: function (headers) {
+  _prepareHeaders: function(headers) {
     for (let header of headers) {
       header.value = this.parent._createStringGrip(header.value);
       if (typeof header.value == "object") {
@@ -2350,7 +2424,9 @@ NetworkEventActor.prototype.requestTypes =
   "getRequestPostData": NetworkEventActor.prototype.onGetRequestPostData,
   "getResponseHeaders": NetworkEventActor.prototype.onGetResponseHeaders,
   "getResponseCookies": NetworkEventActor.prototype.onGetResponseCookies,
+  "getResponseCache": NetworkEventActor.prototype.onGetResponseCache,
   "getResponseContent": NetworkEventActor.prototype.onGetResponseContent,
   "getEventTimings": NetworkEventActor.prototype.onGetEventTimings,
   "getSecurityInfo": NetworkEventActor.prototype.onGetSecurityInfo,
+  "getStackTrace": NetworkEventActor.prototype.onGetStackTrace,
 };

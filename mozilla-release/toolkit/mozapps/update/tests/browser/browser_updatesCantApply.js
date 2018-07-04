@@ -15,7 +15,7 @@ add_task(async function testBasicPrompt() {
       async cleanup() {
         await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
         is(gBrowser.selectedBrowser.currentURI.spec,
-           URL_MANUAL_UPDATE, "Landed on manual update page.")
+           URL_MANUAL_UPDATE, "Landed on manual update page.");
         gBrowser.removeTab(gBrowser.selectedTab);
         getWriteTestFile();
       }
@@ -24,7 +24,7 @@ add_task(async function testBasicPrompt() {
 });
 
 function getWriteTestFile() {
-  let file = getAppBaseDir();
+  let file = getUpdatesRootDir();
   file.append(FILE_UPDATE_TEST);
   file.QueryInterface(Ci.nsILocalFileWin);
   if (file.exists()) {

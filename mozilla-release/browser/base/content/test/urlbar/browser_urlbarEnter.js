@@ -11,7 +11,7 @@ add_task(async function() {
   let tab = gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, START_VALUE);
 
   gURLBar.focus();
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   // Check url bar and selected tab.
@@ -19,7 +19,7 @@ add_task(async function() {
   is(gBrowser.selectedTab, tab, "New URL was loaded in the current tab");
 
   // Cleanup.
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function() {
@@ -30,7 +30,7 @@ add_task(async function() {
 
   let tabOpenPromise = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
   gURLBar.focus();
-  EventUtils.synthesizeKey("VK_RETURN", {altKey: true});
+  EventUtils.synthesizeKey("KEY_Enter", {altKey: true});
 
   // wait for the new tab to appear.
   await tabOpenPromise;
@@ -40,6 +40,6 @@ add_task(async function() {
   isnot(gBrowser.selectedTab, tab, "New URL was loaded in a new tab");
 
   // Cleanup.
-  await BrowserTestUtils.removeTab(tab);
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

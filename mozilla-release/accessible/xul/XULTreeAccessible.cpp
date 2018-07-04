@@ -24,10 +24,8 @@
 #include "nsIAutoCompleteInput.h"
 #include "nsIAutoCompletePopup.h"
 #include "nsIBoxObject.h"
-#include "nsIDOMXULElement.h"
 #include "nsIDOMXULMenuListElement.h"
 #include "nsIDOMXULMultSelectCntrlEl.h"
-#include "nsIDOMXULTreeElement.h"
 #include "nsITreeSelection.h"
 #include "nsIMutableArray.h"
 #include "nsTreeBodyFrame.h"
@@ -74,7 +72,7 @@ XULTreeAccessible::~XULTreeAccessible()
 NS_IMPL_CYCLE_COLLECTION_INHERITED(XULTreeAccessible, Accessible,
                                    mTree, mAccessibleCache)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(XULTreeAccessible)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(XULTreeAccessible)
 NS_INTERFACE_MAP_END_INHERITING(Accessible)
 
 NS_IMPL_ADDREF_INHERITED(XULTreeAccessible, Accessible)
@@ -193,8 +191,8 @@ XULTreeAccessible::ChildAtPoint(int32_t aX, int32_t aY,
 
   CSSIntRect rootRect = rootFrame->GetScreenRect();
 
-  int32_t clientX = presContext->DevPixelsToIntCSSPixels(aX) - rootRect.x;
-  int32_t clientY = presContext->DevPixelsToIntCSSPixels(aY) - rootRect.y;
+  int32_t clientX = presContext->DevPixelsToIntCSSPixels(aX) - rootRect.X();
+  int32_t clientY = presContext->DevPixelsToIntCSSPixels(aY) - rootRect.Y();
 
   int32_t row = -1;
   nsCOMPtr<nsITreeColumn> column;
@@ -710,12 +708,9 @@ XULTreeItemAccessibleBase::~XULTreeItemAccessibleBase()
 NS_IMPL_CYCLE_COLLECTION_INHERITED(XULTreeItemAccessibleBase, Accessible,
                                    mTree)
 
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(XULTreeItemAccessibleBase)
-  NS_INTERFACE_TABLE_INHERITED(XULTreeItemAccessibleBase,
-                               XULTreeItemAccessibleBase)
-NS_INTERFACE_TABLE_TAIL_INHERITING(Accessible)
-NS_IMPL_ADDREF_INHERITED(XULTreeItemAccessibleBase, Accessible)
-NS_IMPL_RELEASE_INHERITED(XULTreeItemAccessibleBase, Accessible)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(XULTreeItemAccessibleBase,
+                                             Accessible,
+                                             XULTreeItemAccessibleBase)
 
 ////////////////////////////////////////////////////////////////////////////////
 // XULTreeItemAccessibleBase: Accessible
@@ -727,22 +722,24 @@ XULTreeItemAccessibleBase::FocusedChild()
 }
 
 nsIntRect
-XULTreeItemAccessibleBase::Bounds() const
+XULTreeItemAccessibleBase::BoundsInCSSPixels() const
 {
   // Get x coordinate and width from treechildren element, get y coordinate and
   // height from tree cell.
 
   nsCOMPtr<nsIBoxObject> boxObj = nsCoreUtils::GetTreeBodyBoxObject(mTree);
-  if (!boxObj)
+  if (!boxObj) {
     return nsIntRect();
+  }
 
   nsCOMPtr<nsITreeColumn> column = nsCoreUtils::GetFirstSensibleColumn(mTree);
 
   int32_t x = 0, y = 0, width = 0, height = 0;
   nsresult rv = mTree->GetCoordsForCellItem(mRow, column, EmptyString(),
                                             &x, &y, &width, &height);
-  if (NS_FAILED(rv))
+  if (NS_FAILED(rv)) {
     return nsIntRect();
+  }
 
   boxObj->GetWidth(&width);
 
@@ -753,11 +750,18 @@ XULTreeItemAccessibleBase::Bounds() const
   x = tcX;
   y += tcY;
 
+  return nsIntRect(x, y, width, height);
+}
+
+nsRect
+XULTreeItemAccessibleBase::BoundsInAppUnits() const
+{
+  nsIntRect bounds = BoundsInCSSPixels();
   nsPresContext* presContext = mDoc->PresContext();
-  return nsIntRect(presContext->CSSPixelsToDevPixels(x),
-                   presContext->CSSPixelsToDevPixels(y),
-                   presContext->CSSPixelsToDevPixels(width),
-                   presContext->CSSPixelsToDevPixels(height));
+  return nsRect(presContext->CSSPixelsToAppUnits(bounds.X()),
+                presContext->CSSPixelsToAppUnits(bounds.Y()),
+                presContext->CSSPixelsToAppUnits(bounds.Width()),
+                presContext->CSSPixelsToAppUnits(bounds.Height()));
 }
 
 void
@@ -1019,7 +1023,7 @@ XULTreeItemAccessibleBase::GetSiblingAtOffset(int32_t aOffset,
 // XULTreeItemAccessibleBase: protected implementation
 
 bool
-XULTreeItemAccessibleBase::IsExpandable()
+XULTreeItemAccessibleBase::IsExpandable() const
 {
 
   bool isContainer = false;
@@ -1044,7 +1048,7 @@ XULTreeItemAccessibleBase::IsExpandable()
 }
 
 void
-XULTreeItemAccessibleBase::GetCellName(nsITreeColumn* aColumn, nsAString& aName)
+XULTreeItemAccessibleBase::GetCellName(nsITreeColumn* aColumn, nsAString& aName) const
 {
 
   mTreeView->GetCellText(mRow, aColumn, aName);
@@ -1086,7 +1090,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(XULTreeItemAccessible,
                                    XULTreeItemAccessibleBase,
                                    mColumn)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(XULTreeItemAccessible)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(XULTreeItemAccessible)
 NS_INTERFACE_MAP_END_INHERITING(XULTreeItemAccessibleBase)
 NS_IMPL_ADDREF_INHERITED(XULTreeItemAccessible, XULTreeItemAccessibleBase)
 NS_IMPL_RELEASE_INHERITED(XULTreeItemAccessible, XULTreeItemAccessibleBase)

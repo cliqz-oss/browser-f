@@ -8,11 +8,6 @@ const EXPORTED_SYMBOLS = ["WebRequestCommon"];
 
 /* exported WebRequestCommon */
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
-
 var WebRequestCommon = {
   typeForPolicyType(type) {
     switch (type) {
@@ -46,7 +41,7 @@ var WebRequestCommon = {
       return true;
     }
 
-    return filterTypes.indexOf(this.typeForPolicyType(policyType)) != -1;
+    return filterTypes.includes(this.typeForPolicyType(policyType));
   },
 
   urlMatches(uri, urlFilter) {

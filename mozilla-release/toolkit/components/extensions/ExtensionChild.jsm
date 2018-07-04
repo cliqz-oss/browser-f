@@ -1,12 +1,13 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 "use strict";
 
 /* exported ExtensionChild */
 
-this.EXPORTED_SYMBOLS = ["ExtensionChild"];
+var EXPORTED_SYMBOLS = ["ExtensionChild"];
 
 /*
  * This file handles addon logic that is independent of the chrome process.
@@ -16,25 +17,28 @@ this.EXPORTED_SYMBOLS = ["ExtensionChild"];
  * Don't put contentscript logic here, use ExtensionContent.jsm instead.
  */
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+XPCOMUtils.defineLazyServiceGetter(this, "finalizationService",
+                                   "@mozilla.org/toolkit/finalizationwitness;1",
+                                   "nsIFinalizationWitnessService");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionContent",
-                                  "resource://gre/modules/ExtensionContent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "MessageChannel",
-                                  "resource://gre/modules/MessageChannel.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NativeApp",
-                                  "resource://gre/modules/NativeMessaging.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
-                                  "resource://gre/modules/PromiseUtils.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ExtensionContent: "resource://gre/modules/ExtensionContent.jsm",
+  ExtensionPageChild: "resource://gre/modules/ExtensionPageChild.jsm",
+  MessageChannel: "resource://gre/modules/MessageChannel.jsm",
+  NativeApp: "resource://gre/modules/NativeMessaging.jsm",
+  PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
+});
 
-Cu.import("resource://gre/modules/ExtensionCommon.jsm");
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+XPCOMUtils.defineLazyGetter(
+  this, "processScript",
+  () => Cc["@mozilla.org/webextensions/extension-process-script;1"]
+          .getService().wrappedJSObject);
+
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 const {
   DefaultMap,
@@ -43,6 +47,7 @@ const {
   defineLazyGetter,
   getMessageManager,
   getUniqueId,
+  getWinUtils,
   withHandlingUserInput,
 } = ExtensionUtils;
 
@@ -77,6 +82,46 @@ function injectAPI(source, dest) {
 }
 
 /**
+ * A finalization witness helper that wraps a sendMessage response and
+ * guarantees to either get the promise resolved, or rejected when the
+ * wrapped promise goes out of scope.
+ *
+ * Holding a reference to a returned StrongPromise doesn't prevent the
+ * wrapped promise from being garbage collected.
+ */
+const StrongPromise = {
+  locations: new Map(),
+
+  wrap(promise, channelId, location) {
+    return new Promise((resolve, reject) => {
+      this.locations.set(channelId, location);
+
+      const witness = finalizationService.make("extensions-sendMessage-witness", channelId);
+      promise.then(value => {
+        this.locations.delete(channelId);
+        witness.forget();
+        resolve(value);
+      }, error => {
+        this.locations.delete(channelId);
+        witness.forget();
+        reject(error);
+      });
+    });
+  },
+  observe(subject, topic, channelId) {
+    channelId = Number(channelId);
+    let location = this.locations.get(channelId);
+    this.locations.delete(channelId);
+
+    const message = `Promised response from onMessage listener went out of scope`;
+    const error = ChromeUtils.createError(message, location);
+    error.mozWebExtLocation = location;
+    MessageChannel.abortChannel(channelId, error);
+  },
+};
+Services.obs.addObserver(StrongPromise, "extensions-sendMessage-witness");
+
+/**
  * Abstraction for a Port object in the extension API.
  *
  * @param {BaseContext} context The context that owns this port.
@@ -84,7 +129,7 @@ function injectAPI(source, dest) {
  * @param {Array<nsIMessageListenerManager>} receiverMMs Message managers to
  *     listen on.
  * @param {string} name Arbitrary port name as defined by the addon.
- * @param {string} id An ID that uniquely identifies this port's channel.
+ * @param {number} id An ID that uniquely identifies this port's channel.
  * @param {object} sender The `port.sender` property.
  * @param {object} recipient The recipient of messages sent from this port.
  */
@@ -134,19 +179,27 @@ class Port {
         this.postMessage(json);
       },
 
-      onDisconnect: new EventManager(this.context, "Port.onDisconnect", fire => {
-        return this.registerOnDisconnect(holder => {
-          let error = holder.deserialize(this.context.cloneScope);
-          portError = error && this.context.normalizeError(error);
-          fire.asyncWithoutClone(portObj);
-        });
+      onDisconnect: new EventManager({
+        context: this.context,
+        name: "Port.onDisconnect",
+        register: fire => {
+          return this.registerOnDisconnect(holder => {
+            let error = holder && holder.deserialize(this.context.cloneScope);
+            portError = error && this.context.normalizeError(error);
+            fire.asyncWithoutClone(portObj);
+          });
+        },
       }).api(),
 
-      onMessage: new EventManager(this.context, "Port.onMessage", fire => {
-        return this.registerOnMessage(holder => {
-          let msg = holder.deserialize(this.context.cloneScope);
-          fire.asyncWithoutClone(msg, portObj);
-        });
+      onMessage: new EventManager({
+        context: this.context,
+        name: "Port.onMessage",
+        register: fire => {
+          return this.registerOnMessage(holder => {
+            let msg = holder.deserialize(this.context.cloneScope);
+            fire.asyncWithoutClone(msg, portObj);
+          });
+        },
       }).api(),
 
       get error() {
@@ -317,6 +370,13 @@ class Messenger {
     this.sender = sender;
     this.filter = filter;
     this.optionalFilter = optionalFilter;
+
+    // Include the context envType in the sender info.
+    this.sender.envType = context.envType;
+
+    // Exclude messages coming from content scripts for the devtools extension contexts
+    // (See Bug 1383310).
+    this.excludeContentScriptSender = (this.context.envType === "devtools_child");
   }
 
   _sendMessage(messageManager, message, data, recipient) {
@@ -337,9 +397,10 @@ class Messenger {
         if (error.result == MessageChannel.RESULT_NO_HANDLER) {
           return Promise.reject({message: "Could not establish connection. Receiving end does not exist."});
         } else if (error.result != MessageChannel.RESULT_NO_RESPONSE) {
-          return Promise.reject({message: error.message});
+          return Promise.reject(error);
         }
       });
+    holder = null;
 
     return this.context.wrapPromise(promise, responseCallback);
   }
@@ -350,51 +411,67 @@ class Messenger {
   }
 
   _onMessage(name, filter) {
-    return new EventManager(this.context, name, fire => {
-      let listener = {
-        messageFilterPermissive: this.optionalFilter,
-        messageFilterStrict: this.filter,
+    return new EventManager({
+      context: this.context,
+      name,
+      register: fire => {
+        const caller = this.context.getCaller();
 
-        filterMessage: (sender, recipient) => {
-          // Ignore the message if it was sent by this Messenger.
-          return (sender.contextId !== this.context.contextId &&
-                  filter(sender, recipient));
-        },
+        let listener = {
+          messageFilterPermissive: this.optionalFilter,
+          messageFilterStrict: this.filter,
 
-        receiveMessage: ({target, data: holder, sender, recipient}) => {
-          if (!this.context.active) {
-            return;
-          }
+          filterMessage: (sender, recipient) => {
+            // Exclude messages coming from content scripts for the devtools extension contexts
+            // (See Bug 1383310).
+            if (this.excludeContentScriptSender && sender.envType === "content_child") {
+              return false;
+            }
 
-          let sendResponse;
-          let response = undefined;
-          let promise = new Promise(resolve => {
-            sendResponse = value => {
-              resolve(value);
-              response = promise;
-            };
-          });
+            // Ignore the message if it was sent by this Messenger.
+            return (sender.contextId !== this.context.contextId &&
+                    filter(sender, recipient));
+          },
 
-          let message = holder.deserialize(this.context.cloneScope);
-          sender = Cu.cloneInto(sender, this.context.cloneScope);
-          sendResponse = Cu.exportFunction(sendResponse, this.context.cloneScope);
+          receiveMessage: ({target, data: holder, sender, recipient, channelId}) => {
+            if (!this.context.active) {
+              return;
+            }
 
-          // Note: We intentionally do not use runSafe here so that any
-          // errors are propagated to the message sender.
-          let result = fire.raw(message, sender, sendResponse);
-          if (result instanceof this.context.cloneScope.Promise) {
-            return result;
-          } else if (result === true) {
-            return promise;
-          }
-          return response;
-        },
-      };
+            let sendResponse;
+            let response = undefined;
+            let promise = new Promise(resolve => {
+              sendResponse = value => {
+                resolve(value);
+                response = promise;
+              };
+            });
 
-      MessageChannel.addListener(this.messageManagers, "Extension:Message", listener);
-      return () => {
-        MessageChannel.removeListener(this.messageManagers, "Extension:Message", listener);
-      };
+            let message = holder.deserialize(this.context.cloneScope);
+            holder = null;
+
+            sender = Cu.cloneInto(sender, this.context.cloneScope);
+            sendResponse = Cu.exportFunction(sendResponse, this.context.cloneScope);
+
+            // Note: We intentionally do not use runSafe here so that any
+            // errors are propagated to the message sender.
+            let result = fire.raw(message, sender, sendResponse);
+            message = null;
+
+            if (result instanceof this.context.cloneScope.Promise) {
+              return StrongPromise.wrap(result, channelId, caller);
+            } else if (result === true) {
+              return StrongPromise.wrap(promise, channelId, caller);
+            }
+            return response;
+          },
+        };
+
+        MessageChannel.addListener(this.messageManagers, "Extension:Message", listener);
+        return () => {
+          MessageChannel.removeListener(this.messageManagers, "Extension:Message", listener);
+        };
+      },
     }).api();
   }
 
@@ -441,35 +518,45 @@ class Messenger {
   }
 
   _onConnect(name, filter) {
-    return new EventManager(this.context, name, fire => {
-      let listener = {
-        messageFilterPermissive: this.optionalFilter,
-        messageFilterStrict: this.filter,
+    return new EventManager({
+      context: this.context,
+      name,
+      register: fire => {
+        let listener = {
+          messageFilterPermissive: this.optionalFilter,
+          messageFilterStrict: this.filter,
 
-        filterMessage: (sender, recipient) => {
-          // Ignore the port if it was created by this Messenger.
-          return (sender.contextId !== this.context.contextId &&
-                  filter(sender, recipient));
-        },
+          filterMessage: (sender, recipient) => {
+            // Exclude messages coming from content scripts for the devtools extension contexts
+            // (See Bug 1383310).
+            if (this.excludeContentScriptSender && sender.envType === "content_child") {
+              return false;
+            }
 
-        receiveMessage: ({target, data: message, sender}) => {
-          let {name, portId} = message;
-          let mm = getMessageManager(target);
-          let recipient = Object.assign({}, sender);
-          if (recipient.tab) {
-            recipient.tabId = recipient.tab.id;
-            delete recipient.tab;
-          }
-          let port = new Port(this.context, mm, this.messageManagers, name, portId, sender, recipient);
-          fire.asyncWithoutClone(port.api());
-          return true;
-        },
-      };
+            // Ignore the port if it was created by this Messenger.
+            return (sender.contextId !== this.context.contextId &&
+                    filter(sender, recipient));
+          },
 
-      MessageChannel.addListener(this.messageManagers, "Extension:Connect", listener);
-      return () => {
-        MessageChannel.removeListener(this.messageManagers, "Extension:Connect", listener);
-      };
+          receiveMessage: ({target, data: message, sender}) => {
+            let {name, portId} = message;
+            let mm = getMessageManager(target);
+            let recipient = Object.assign({}, sender);
+            if (recipient.tab) {
+              recipient.tabId = recipient.tab.id;
+              delete recipient.tab;
+            }
+            let port = new Port(this.context, mm, this.messageManagers, name, portId, sender, recipient);
+            fire.asyncWithoutClone(port.api());
+            return true;
+          },
+        };
+
+        MessageChannel.addListener(this.messageManagers, "Extension:Connect", listener);
+        return () => {
+          MessageChannel.removeListener(this.messageManagers, "Extension:Connect", listener);
+        };
+      },
     }).api();
   }
 
@@ -497,22 +584,32 @@ class BrowserExtensionContent extends EventEmitter {
     this.uuid = data.uuid;
     this.instanceId = data.instanceId;
 
+    this.childModules = data.childModules;
+    this.dependencies = data.dependencies;
+    this.schemaURLs = data.schemaURLs;
+
     this.MESSAGE_EMIT_EVENT = `Extension:EmitEvent:${this.instanceId}`;
     Services.cpmm.addMessageListener(this.MESSAGE_EMIT_EVENT, this);
 
     defineLazyGetter(this, "scripts", () => {
-      return data.content_scripts.map(scriptData => new ExtensionContent.Script(this, scriptData));
+      return data.contentScripts.map(scriptData => new ExtensionContent.Script(this, scriptData));
     });
 
     this.webAccessibleResources = data.webAccessibleResources.map(res => new MatchGlob(res));
-    this.whiteListedHosts = new MatchPatternSet(data.whiteListedHosts, {ignorePath: true});
     this.permissions = data.permissions;
     this.optionalPermissions = data.optionalPermissions;
     this.principal = data.principal;
 
+    let restrictSchemes = !this.hasPermission("mozillaAddons");
+
+    this.whiteListedHosts = new MatchPatternSet(data.whiteListedHosts, {restrictSchemes, ignorePath: true});
+
+    this.apiManager = this.getAPIManager();
+
     this.localeData = new LocaleData(data.localeData);
 
     this.manifest = data.manifest;
+    this.baseURL = data.baseURL;
     this.baseURI = Services.io.newURI(data.baseURL);
 
     // Only used in addon processes.
@@ -533,7 +630,7 @@ class BrowserExtensionContent extends EventEmitter {
         let patterns = this.whiteListedHosts.patterns.map(host => host.pattern);
 
         this.whiteListedHosts = new MatchPatternSet([...patterns, ...permissions.origins],
-                                                    {ignorePath: true});
+                                                    {restrictSchemes, ignorePath: true});
       }
 
       if (this.policy) {
@@ -568,6 +665,30 @@ class BrowserExtensionContent extends EventEmitter {
     ExtensionManager.extensions.set(this.id, this);
   }
 
+  getAPIManager() {
+    let apiManagers = [ExtensionPageChild.apiManager];
+
+    for (let id of this.dependencies) {
+      let extension = processScript.getExtensionChild(id);
+      if (extension) {
+        apiManagers.push(extension.experimentAPIManager);
+      }
+    }
+
+    if (this.childModules) {
+      this.experimentAPIManager =
+        new ExtensionCommon.LazyAPIManager("addon", this.childModules, this.schemaURLs);
+
+      apiManagers.push(this.experimentAPIManager);
+    }
+
+    if (apiManagers.length == 1) {
+      return apiManagers[0];
+    }
+
+    return new ExtensionCommon.MultiAPIManager("addon", apiManagers.reverse());
+  }
+
   shutdown() {
     ExtensionManager.extensions.delete(this.id);
     ExtensionContent.shutdownExtension(this);
@@ -575,6 +696,7 @@ class BrowserExtensionContent extends EventEmitter {
     if (isContentProcess) {
       MessageChannel.abortResponses({extensionId: this.id});
     }
+    this.emit("shutdown");
   }
 
   getContext(window) {
@@ -643,8 +765,7 @@ class ProxyAPIImplementation extends SchemaAPIInterface {
   callAsyncFunction(args, callback, requireUserInput) {
     if (requireUserInput) {
       let context = this.childApiManager.context;
-      let winUtils = context.contentWindow.getInterface(Ci.nsIDOMWindowUtils);
-      if (!winUtils.isHandlingUserInput) {
+      if (!getWinUtils(context.contentWindow).isHandlingUserInput) {
         let err = new context.cloneScope.Error(`${this.path} may only be called from a user input handler`);
         return context.wrapPromise(Promise.reject(err), callback);
       }
@@ -713,6 +834,7 @@ class ChildAPIManager {
     // delegated to the ParentAPIManager.
     this.localApis = localAPICan.root;
     this.apiCan = localAPICan;
+    this.schema = this.apiCan.apiManager.schema;
 
     this.id = `${context.extension.id}.${context.contextId}`;
 
@@ -756,6 +878,10 @@ class ChildAPIManager {
     }
   }
 
+  inject(obj) {
+    this.schema.inject(obj, this);
+  }
+
   receiveMessage({name, messageName, data}) {
     if (data.childId != this.id) {
       return;
@@ -768,9 +894,16 @@ class ChildAPIManager {
 
         if (listener) {
           let args = data.args.deserialize(this.context.cloneScope);
-          let fire = () => this.context.runSafeWithoutClone(listener, ...args);
-          return (data.handlingUserInput) ?
-                 withHandlingUserInput(this.context.contentWindow, fire) : fire();
+          let fire = () => this.context.applySafeWithoutClone(listener, args);
+          return Promise.resolve(
+            data.handlingUserInput ? withHandlingUserInput(this.context.contentWindow, fire)
+                                   : fire())
+            .then(result => {
+              if (result !== undefined) {
+                return new StructuredCloneHolder(result, this.context.cloneScope);
+              }
+              return result;
+            });
         }
         if (!map.removedIds.has(data.listenerId)) {
           Services.console.logStringMessage(
@@ -815,9 +948,6 @@ class ChildAPIManager {
    * @param {function(*)} [callback] The callback to be called when the function
    *     completes.
    * @param {object} [options] Extra options.
-   * @param {boolean} [options.noClone = false] If true, do not clone
-   *     the arguments into an extension sandbox before calling the API
-   *     method.
    * @returns {Promise|undefined} Must be void if `callback` is set, and a
    *     promise otherwise. The promise is resolved when the function completes.
    */
@@ -831,7 +961,6 @@ class ChildAPIManager {
       callId,
       path,
       args,
-      noClone: options.noClone || false,
     });
 
     return this.context.wrapPromise(deferred.promise, callback);

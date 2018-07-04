@@ -29,7 +29,8 @@
 
 #endif // XP_WIN
 
-using mozilla::ipc::FileDescriptor;
+namespace mozilla {
+namespace ipc {
 
 FileDescriptor::FileDescriptor()
   : mHandle(INVALID_HANDLE)
@@ -186,7 +187,7 @@ FileDescriptor::Close(PlatformHandleType aHandle)
       NS_WARNING("Failed to close file handle for current process!");
     }
 #else // XP_WIN
-    HANDLE_EINTR(close(aHandle));
+    IGNORE_EINTR(close(aHandle));
 #endif
   }
 }
@@ -224,3 +225,34 @@ FileDescriptor::PlatformHandleDeleter::operator()(FileDescriptor::PlatformHandle
 {
   FileDescriptor::Close(aHelper);
 }
+
+void
+IPDLParamTraits<FileDescriptor>::Write(IPC::Message* aMsg,
+                                       IProtocol* aActor,
+                                       const FileDescriptor& aParam)
+{
+  FileDescriptor::PickleType pfd =
+    aParam.ShareTo(FileDescriptor::IPDLPrivate(), aActor->OtherPid());
+  WriteIPDLParam(aMsg, aActor, pfd);
+}
+
+bool
+IPDLParamTraits<FileDescriptor>::Read(const IPC::Message* aMsg,
+                                      PickleIterator* aIter,
+                                      IProtocol* aActor,
+                                      FileDescriptor* aResult)
+{
+  FileDescriptor::PickleType pfd;
+  if (!ReadIPDLParam(aMsg, aIter, aActor, &pfd)) {
+    return false;
+  }
+
+  *aResult = FileDescriptor(FileDescriptor::IPDLPrivate(), pfd);
+  if (!aResult->IsValid()) {
+    printf_stderr("IPDL protocol Error: Received an invalid file descriptor\n");
+  }
+  return true;
+}
+
+} // namespace ipc
+} // namespace mozilla

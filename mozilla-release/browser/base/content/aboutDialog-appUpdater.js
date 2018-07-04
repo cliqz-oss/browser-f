@@ -7,11 +7,11 @@
 
 /* import-globals-from aboutDialog.js */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
-                                  "resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+                               "resource://gre/modules/UpdateUtils.jsm");
 
 const PREF_APP_UPDATE_CANCELATIONS_OSX = "app.update.cancelations.osx";
 const PREF_APP_UPDATE_ELEVATE_NEVER    = "app.update.elevate.never";
@@ -20,7 +20,7 @@ var gAppUpdater;
 
 function onUnload(aEvent) {
   if (gAppUpdater.isChecking)
-    gAppUpdater.checker.stopChecking(Components.interfaces.nsIUpdateChecker.CURRENT_CHECK);
+    gAppUpdater.checker.stopChecking(Ci.nsIUpdateChecker.CURRENT_CHECK);
   // Safe to call even when there isn't a download in progress.
   gAppUpdater.removeDownloadListener();
   gAppUpdater = null;
@@ -56,7 +56,7 @@ function appUpdater(options = {}) {
 
   let manualURL = Services.urlFormatter.formatURLPref("app.update.url.manual");
   let manualLink = document.getElementById("manualLink");
-  manualLink.value = manualURL;
+  manualLink.textContent = manualURL;
   manualLink.href = manualURL;
   document.getElementById("failedLink").href = manualURL;
 
@@ -137,8 +137,10 @@ appUpdater.prototype =
 
   // true when updating is disabled by an administrator.
   get updateDisabledAndLocked() {
-    return !this.updateEnabled &&
-           Services.prefs.prefIsLocked("app.update.enabled");
+    return (!this.updateEnabled &&
+           Services.prefs.prefIsLocked("app.update.enabled")) ||
+           (Services.policies &&
+           !Services.policies.isAllowed("appUpdate"));
   },
 
   // true when updating is enabled.
@@ -231,8 +233,8 @@ appUpdater.prototype =
     gAppUpdater.selectPanel("restarting");
 
     // Notify all windows that an application quit has been requested.
-    let cancelQuit = Components.classes["@mozilla.org/supports-PRBool;1"].
-                     createInstance(Components.interfaces.nsISupportsPRBool);
+    let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].
+                     createInstance(Ci.nsISupportsPRBool);
     Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
 
     // Something aborted the quit process.
@@ -241,17 +243,14 @@ appUpdater.prototype =
       return;
     }
 
-    let appStartup = Components.classes["@mozilla.org/toolkit/app-startup;1"].
-                     getService(Components.interfaces.nsIAppStartup);
-
     // If already in safe mode restart in safe mode (bug 327119)
     if (Services.appinfo.inSafeMode) {
-      appStartup.restartInSafeMode(Components.interfaces.nsIAppStartup.eAttemptQuit);
+      Services.startup.restartInSafeMode(Ci.nsIAppStartup.eAttemptQuit);
       return;
     }
 
-    appStartup.quit(Components.interfaces.nsIAppStartup.eAttemptQuit |
-                    Components.interfaces.nsIAppStartup.eRestart);
+    Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit |
+                          Ci.nsIAppStartup.eRestart);
   },
 
   /**
@@ -306,12 +305,7 @@ appUpdater.prototype =
     /**
      * See nsISupports.idl
      */
-    QueryInterface(aIID) {
-      if (!aIID.equals(Components.interfaces.nsIUpdateCheckListener) &&
-          !aIID.equals(Components.interfaces.nsISupports))
-        throw Components.results.NS_ERROR_NO_INTERFACE;
-      return this;
-    }
+    QueryInterface: ChromeUtils.generateQI(["nsIUpdateCheckListener"]),
   },
 
   /**
@@ -320,7 +314,7 @@ appUpdater.prototype =
   startDownload() {
     if (!this.update)
       this.update = this.um.activeUpdate;
-    this.update.QueryInterface(Components.interfaces.nsIWritablePropertyBag);
+    this.update.QueryInterface(Ci.nsIWritablePropertyBag);
     this.update.setProperty("foregroundDownload", "true");
 
     this.aus.pauseDownload();
@@ -338,7 +332,7 @@ appUpdater.prototype =
    */
   setupDownloadingUI() {
     this.downloadStatus = document.getElementById("downloadStatus");
-    this.downloadStatus.value =
+    this.downloadStatus.textContent =
       DownloadUtils.getTransferTotal(0, this.update.selectedPatch.size);
     this.selectPanel("downloading");
     this.aus.addDownloadListener(this);
@@ -361,7 +355,7 @@ appUpdater.prototype =
    */
   onStopRequest(aRequest, aContext, aStatusCode) {
     switch (aStatusCode) {
-    case Components.results.NS_ERROR_UNEXPECTED:
+    case Cr.NS_ERROR_UNEXPECTED:
       if (this.update.selectedPatch.state == "download-failed" &&
           (this.update.isCompleteUpdate || this.update.patchCount != 2)) {
         // Verification error of complete patch, informational text is held in
@@ -373,15 +367,15 @@ appUpdater.prototype =
       // Verification failed for a partial patch, complete patch is now
       // downloading so return early and do NOT remove the download listener!
       break;
-    case Components.results.NS_BINDING_ABORTED:
+    case Cr.NS_BINDING_ABORTED:
       // Do not remove UI listener since the user may resume downloading again.
       break;
-    case Components.results.NS_OK:
+    case Cr.NS_OK:
       this.removeDownloadListener();
       if (this.backgroundUpdateEnabled) {
         this.selectPanel("applying");
         let self = this;
-        Services.obs.addObserver(function(aSubject, aTopic, aData) {
+        Services.obs.addObserver(function observer(aSubject, aTopic, aData) {
           // Update the UI when the background updater is finished
           let status = aData;
           if (status == "applied" || status == "applied-service" ||
@@ -402,7 +396,7 @@ appUpdater.prototype =
             self.setupDownloadingUI();
             return;
           }
-          Services.obs.removeObserver(arguments.callee, "update-staged");
+          Services.obs.removeObserver(observer, "update-staged");
         }, "update-staged");
       } else {
         this.selectPanel("apply");
@@ -425,18 +419,12 @@ appUpdater.prototype =
    * See nsIProgressEventSink.idl
    */
   onProgress(aRequest, aContext, aProgress, aProgressMax) {
-    this.downloadStatus.value =
+    this.downloadStatus.textContent =
       DownloadUtils.getTransferTotal(aProgress, aProgressMax);
   },
 
   /**
    * See nsISupports.idl
    */
-  QueryInterface(aIID) {
-    if (!aIID.equals(Components.interfaces.nsIProgressEventSink) &&
-        !aIID.equals(Components.interfaces.nsIRequestObserver) &&
-        !aIID.equals(Components.interfaces.nsISupports))
-      throw Components.results.NS_ERROR_NO_INTERFACE;
-    return this;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIProgressEventSink", "nsIRequestObserver"]),
 };

@@ -273,6 +273,7 @@ void VP8EncoderImpl::SetupTemporalLayers(int num_streams,
                                          const VideoCodec& codec) {
   RTC_DCHECK(codec.VP8().tl_factory != nullptr);
   const TemporalLayersFactory* tl_factory = codec.VP8().tl_factory;
+  RTC_DCHECK(temporal_layers_.empty());
   if (num_streams == 1) {
     temporal_layers_.push_back(
         tl_factory->Create(0, num_temporal_layers, rand()));
@@ -299,7 +300,7 @@ int VP8EncoderImpl::InitEncode(const VideoCodec* inst,
   if (inst->maxBitrate > 0 && inst->startBitrate > inst->maxBitrate) {
     return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
   }
-  if (inst->width <= 1 || inst->height <= 1) {
+  if (inst->width < 1 || inst->height < 1) {
     return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
   }
   if (number_of_cores < 1) {
@@ -497,7 +498,13 @@ int VP8EncoderImpl::InitEncode(const VideoCodec* inst,
 
   configurations_[0].rc_target_bitrate = stream_bitrates[stream_idx];
   temporal_layers_[stream_idx]->OnRatesUpdated(
-      stream_bitrates[stream_idx], inst->maxBitrate, inst->maxFramerate);
+    // VP8 fails to init a setup with temporal layers if
+    // ts_target_bitrates[] are 0, so we need to supply enough bits to
+    // ensure it configures.  After that, normal bitrate updates should
+    // work as designed, with the largest simulcast stream getting starved
+    // if they're aren't enough bits.
+    stream_bitrates[stream_idx] > 0 ? stream_bitrates[stream_idx] : inst->simulcastStream[stream_idx].minBitrate,
+    inst->maxBitrate, inst->maxFramerate);
   temporal_layers_[stream_idx]->UpdateConfiguration(&configurations_[0]);
   --stream_idx;
   for (size_t i = 1; i < encoders_.size(); ++i, --stream_idx) {
@@ -519,7 +526,9 @@ int VP8EncoderImpl::InitEncode(const VideoCodec* inst,
     SetStreamState(stream_bitrates[stream_idx] > 0, stream_idx);
     configurations_[i].rc_target_bitrate = stream_bitrates[stream_idx];
     temporal_layers_[stream_idx]->OnRatesUpdated(
-        stream_bitrates[stream_idx], inst->maxBitrate, inst->maxFramerate);
+      // here too - VP8 won't init if it thinks temporal layers have no bits
+      stream_bitrates[stream_idx] > 0 ? stream_bitrates[stream_idx] : inst->simulcastStream[stream_idx].minBitrate,
+      inst->maxBitrate, inst->maxFramerate);
     temporal_layers_[stream_idx]->UpdateConfiguration(&configurations_[i]);
   }
 
@@ -607,7 +616,7 @@ int VP8EncoderImpl::InitAndSetControlSettings() {
   // when encoding lower resolution streams. Would it work with the
   // multi-res encoding feature?
   denoiserState denoiser_state = kDenoiserOnYOnly;
-#if defined(WEBRTC_ARCH_ARM) || defined(WEBRTC_ARCH_ARM64) || defined(ANDROID)
+#if defined(WEBRTC_ARCH_ARM) || defined(WEBRTC_ARCH_ARM64) || defined(ANDROID) || defined(WEBRTC_ARCH_MIPS)
   denoiser_state = kDenoiserOnYOnly;
 #else
   denoiser_state = kDenoiserOnAdaptive;
@@ -1033,7 +1042,7 @@ int VP8DecoderImpl::InitDecode(const VideoCodec* inst, int number_of_cores) {
 
   vpx_codec_flags_t flags = 0;
 #if !defined(WEBRTC_ARCH_ARM) && !defined(WEBRTC_ARCH_ARM64) && \
-  !defined(ANDROID)
+  !defined(ANDROID) && !defined(WEBRTC_ARCH_MIPS)
   flags = VPX_CODEC_USE_POSTPROC;
 #endif
 
@@ -1074,7 +1083,7 @@ int VP8DecoderImpl::Decode(const EncodedImage& input_image,
   }
 
 #if !defined(WEBRTC_ARCH_ARM) && !defined(WEBRTC_ARCH_ARM64) && \
-  !defined(ANDROID)
+  !defined(ANDROID) && !defined(WEBRTC_ARCH_MIPS)
   vp8_postproc_cfg_t ppcfg;
   // MFQE enabled to reduce key frame popping.
   ppcfg.post_proc_flag = VP8_MFQE | VP8_DEBLOCK;

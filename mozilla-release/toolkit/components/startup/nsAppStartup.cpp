@@ -27,6 +27,8 @@
 #include "nsAutoPtr.h"
 #include "nsString.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/ResultExtensions.h"
+#include "mozilla/Unused.h"
 #include "GeckoProfiler.h"
 
 #include "prprf.h"
@@ -127,7 +129,8 @@ public:
  * @param stamp The timestamp to be converted
  * @returns The converted timestamp
  */
-uint64_t ComputeAbsoluteTimestamp(PRTime prnow, TimeStamp now, TimeStamp stamp)
+static uint64_t
+ComputeAbsoluteTimestamp(TimeStamp stamp)
 {
   static PRTime sAbsoluteNow = PR_Now();
   static TimeStamp sMonotonicNow = TimeStamp::Now();
@@ -149,7 +152,8 @@ nsAppStartup::nsAppStartup() :
   mInterrupted(false),
   mIsSafeModeNecessary(false),
   mStartupCrashTrackingEnded(false),
-  mRestartNotSameProfile(false)
+  mRestartNotSameProfile(false),
+  mCliqzPrivateMode(false)
 { }
 
 
@@ -377,7 +381,6 @@ nsAppStartup::Quit(uint32_t aMode)
           windowEnumerator->GetNext(getter_AddRefs(window));
           nsCOMPtr<nsPIDOMWindowOuter> domWindow(do_QueryInterface(window));
           if (domWindow) {
-            MOZ_ASSERT(domWindow->IsOuterWindow());
             if (!domWindow->CanClose())
               return NS_OK;
           }
@@ -386,7 +389,7 @@ nsAppStartup::Quit(uint32_t aMode)
       }
     }
 
-    profiler_add_marker("Shutdown start");
+    PROFILER_ADD_MARKER("Shutdown start");
     mozilla::RecordShutdownStartTimeStamp();
     mShuttingDown = true;
     if (!mRestart) {
@@ -395,6 +398,10 @@ nsAppStartup::Quit(uint32_t aMode)
 
     if (!mRestartNotSameProfile) {
       mRestartNotSameProfile = (aMode & eRestartNotSameProfile) != 0;
+    }
+
+    if (!mCliqzPrivateMode) {
+      mCliqzPrivateMode = (aMode & eCliqzPrivateMode) != 0;
     }
 
     if (mRestart || mRestartNotSameProfile) {
@@ -458,6 +465,15 @@ nsAppStartup::Quit(uint32_t aMode)
   }
 
   if (ferocity == eForceQuit) {
+    if (mCliqzPrivateMode) {
+      // Toggle between modes
+      const char *val = PR_GetEnv("MOZ_CLIQZ_PRIVATE_MODE");
+      if (val && *val) {
+        PR_SetEnv("MOZ_CLIQZ_PRIVATE_MODE=");
+      } else {
+        PR_SetEnv("MOZ_CLIQZ_PRIVATE_MODE=1");
+      }
+    }
     // do it!
 
     // No chance of the shutdown being cancelled from here on; tell people
@@ -515,7 +531,6 @@ nsAppStartup::CloseAllWindows()
     nsCOMPtr<nsPIDOMWindowOuter> window = do_QueryInterface(isupports);
     NS_ASSERTION(window, "not an nsPIDOMWindow");
     if (window) {
-      MOZ_ASSERT(window->IsOuterWindow());
       window->ForceClose();
     }
   }
@@ -756,8 +771,6 @@ nsAppStartup::GetStartupInfo(JSContext* aCx, JS::MutableHandle<JS::Value> aRetva
   aRetval.setObject(*obj);
 
   TimeStamp procTime = StartupTimeline::Get(StartupTimeline::PROCESS_CREATION);
-  TimeStamp now = TimeStamp::Now();
-  PRTime absNow = PR_Now();
 
   if (procTime.IsNull()) {
     bool error = false;
@@ -789,7 +802,7 @@ nsAppStartup::GetStartupInfo(JSContext* aCx, JS::MutableHandle<JS::Value> aRetva
 
     if (!stamp.IsNull()) {
       if (stamp >= procTime) {
-        PRTime prStamp = ComputeAbsoluteTimestamp(absNow, now, stamp)
+        PRTime prStamp = ComputeAbsoluteTimestamp(stamp)
           / PR_USEC_PER_MSEC;
         JS::Rooted<JSObject*> date(aCx, JS::NewDateObject(aCx, JS::TimeClip(prStamp)));
         JS_DefineProperty(aCx, obj, StartupTimeline::Describe(ev), date, JSPROP_ENUMERATE);
@@ -925,6 +938,16 @@ nsAppStartup::TrackStartupCrashBegin(bool *aIsSafeModeNecessary)
   return rv;
 }
 
+static nsresult
+RemoveIncompleteStartupFile()
+{
+  nsCOMPtr<nsIFile> file;
+  MOZ_TRY(NS_GetSpecialDirectory(NS_APP_USER_PROFILE_LOCAL_50_DIR, getter_AddRefs(file)));
+
+  MOZ_TRY_VAR(file, mozilla::startup::GetIncompleteStartupFile(file));
+  return file->Remove(false);
+}
+
 NS_IMETHODIMP
 nsAppStartup::TrackStartupCrashEnd()
 {
@@ -940,17 +963,19 @@ nsAppStartup::TrackStartupCrashEnd()
 
   StartupTimeline::Record(StartupTimeline::STARTUP_CRASH_DETECTION_END);
 
+  // Remove the incomplete startup canary file, so the next startup doesn't
+  // detect a recent startup crash.
+  Unused << NS_WARN_IF(NS_FAILED(RemoveIncompleteStartupFile()));
+
   // Use the timestamp of XRE_main as an approximation for the lock file timestamp.
   // See MAX_STARTUP_BUFFER for the buffer time period.
   TimeStamp mainTime = StartupTimeline::Get(StartupTimeline::MAIN);
-  TimeStamp now = TimeStamp::Now();
-  PRTime prNow = PR_Now();
   nsresult rv;
 
   if (mainTime.IsNull()) {
     NS_WARNING("Could not get StartupTimeline::MAIN time.");
   } else {
-    uint64_t lockFileTime = ComputeAbsoluteTimestamp(prNow, now, mainTime);
+    uint64_t lockFileTime = ComputeAbsoluteTimestamp(mainTime);
 
     rv = Preferences::SetInt(kPrefLastSuccess,
       (int32_t)(lockFileTime / PR_USEC_PER_SEC));
@@ -964,7 +989,8 @@ nsAppStartup::TrackStartupCrashEnd()
     // in regular mode before returning to safe mode.
     int32_t maxResumedCrashes = 0;
     int32_t prefType;
-    rv = Preferences::GetDefaultRootBranch()->GetPrefType(kPrefMaxResumedCrashes, &prefType);
+    rv = Preferences::GetRootBranch(
+      PrefValueKind::Default)->GetPrefType(kPrefMaxResumedCrashes, &prefType);
     NS_ENSURE_SUCCESS(rv, rv);
     if (prefType == nsIPrefBranch::PREF_INT) {
       rv = Preferences::GetInt(kPrefMaxResumedCrashes, &maxResumedCrashes);

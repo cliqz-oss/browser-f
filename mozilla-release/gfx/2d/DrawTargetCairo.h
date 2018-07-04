@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -20,7 +21,8 @@ class SourceSurfaceCairo;
 class GradientStopsCairo : public GradientStops
 {
   public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(GradientStopsCairo)
+    MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(GradientStopsCairo, override)
+
     GradientStopsCairo(GradientStop* aStops, uint32_t aNumStops,
                        ExtendMode aExtendMode)
      : mExtendMode(aExtendMode)
@@ -42,7 +44,7 @@ class GradientStopsCairo : public GradientStops
       return mExtendMode;
     }
 
-    virtual BackendType GetBackendType() const { return BackendType::CAIRO; }
+    virtual BackendType GetBackendType() const override { return BackendType::CAIRO; }
 
   private:
     std::vector<GradientStop> mStops;
@@ -63,7 +65,7 @@ public:
   virtual DrawTargetType GetType() const override;
   virtual BackendType GetBackendType() const override { return BackendType::CAIRO; }
   virtual already_AddRefed<SourceSurface> Snapshot() override;
-  virtual IntSize GetSize() override;
+  virtual IntSize GetSize() const override;
 
   virtual bool IsCurrentGroupOpaque() override;
 
@@ -124,8 +126,7 @@ public:
   virtual void FillGlyphs(ScaledFont *aFont,
                           const GlyphBuffer &aBuffer,
                           const Pattern &aPattern,
-                          const DrawOptions &aOptions,
-                          const GlyphRenderingOptions *aRenderingOptions = nullptr) override;
+                          const DrawOptions &aOptions) override;
   virtual void Mask(const Pattern &aSource,
                     const Pattern &aMask,
                     const DrawOptions &aOptions = DrawOptions()) override;

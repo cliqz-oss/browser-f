@@ -60,8 +60,7 @@ public:
     MOZ_ASSERT(false, "Can't directly delete a cycle collectable GC thing");
   }
 
-  NS_IMETHOD TraverseNative(void* aPtr, nsCycleCollectionTraversalCallback& aCb)
-    override;
+  NS_IMETHOD TraverseNative(void* aPtr, nsCycleCollectionTraversalCallback& aCb) override;
 
   NS_DECL_CYCLE_COLLECTION_CLASS_NAME_METHOD(JSGCThingParticipant)
 };
@@ -93,8 +92,7 @@ public:
     MOZ_ASSERT(false, "Can't directly delete a cycle collectable GC thing");
   }
 
-  NS_IMETHOD TraverseNative(void* aPtr, nsCycleCollectionTraversalCallback& aCb)
-    override;
+  NS_IMETHOD TraverseNative(void* aPtr, nsCycleCollectionTraversalCallback& aCb) override;
 
   NS_DECL_CYCLE_COLLECTION_CLASS_NAME_METHOD(JSZoneParticipant)
 };
@@ -247,6 +245,34 @@ public:
   void OnLargeAllocationFailure();
 
   JSRuntime* Runtime() { return mJSRuntime; }
+  const JSRuntime* Runtime() const { return mJSRuntime; }
+
+  bool HasPendingIdleGCTask() const
+  {
+    // Idle GC task associates with JSRuntime.
+    MOZ_ASSERT_IF(mHasPendingIdleGCTask, Runtime());
+    return mHasPendingIdleGCTask;
+  }
+  void SetPendingIdleGCTask()
+  {
+    // Idle GC task associates with JSRuntime.
+    MOZ_ASSERT(Runtime());
+    mHasPendingIdleGCTask = true;
+  }
+  void ClearPendingIdleGCTask() { mHasPendingIdleGCTask = false; }
+
+  void RunIdleTimeGCTask()
+  {
+    if (HasPendingIdleGCTask()) {
+      JS::RunIdleTimeGCTask(Runtime());
+      ClearPendingIdleGCTask();
+    }
+  }
+
+  bool IsIdleGCTaskNeeded()
+  {
+    return !HasPendingIdleGCTask() && Runtime() && JS::IsIdleGCTaskNeeded(Runtime());
+  }
 
 public:
   void AddJSHolder(void* aHolder, nsScriptObjectTracer* aTracer);
@@ -300,6 +326,11 @@ public:
   void AddContext(CycleCollectedJSContext* aContext);
   void RemoveContext(CycleCollectedJSContext* aContext);
 
+#ifdef NIGHTLY_BUILD
+  bool GetRecentDevError(JSContext* aContext, JS::MutableHandle<JS::Value> aError);
+  void ClearRecentDevError();
+#endif // defined(NIGHTLY_BUILD)
+
 private:
   LinkedList<CycleCollectedJSContext> mContexts;
 
@@ -308,6 +339,7 @@ private:
   JSZoneParticipant mJSZoneCycleCollectorGlobal;
 
   JSRuntime* mJSRuntime;
+  bool mHasPendingIdleGCTask;
 
   JS::GCSliceCallback mPrevGCSliceCallback;
   JS::GCNurseryCollectionCallback mPrevGCNurseryCollectionCallback;
@@ -339,6 +371,41 @@ private:
     void invoke(JS::HandleObject scope, Closure& closure) override;
   };
   EnvironmentPreparer mEnvironmentPreparer;
+
+#ifdef DEBUG
+  bool mShutdownCalled;
+#endif
+
+#ifdef NIGHTLY_BUILD
+  // Implementation of the error interceptor.
+  // Built on nightly only to avoid any possible performance impact on release
+
+  struct ErrorInterceptor final : public JSErrorInterceptor {
+    virtual void interceptError(JSContext* cx, const JS::Value& val) override;
+    void Shutdown(JSRuntime* rt);
+
+    // Copy of the details of the exception.
+    // We store this rather than the exception itself to avoid dealing with complicated
+    // garbage-collection scenarios, e.g. a JSContext being killed while we still hold
+    // onto an exception thrown from it.
+    struct ErrorDetails {
+      nsString mFilename;
+      nsString mMessage;
+      nsString mStack;
+      JSExnType mType;
+      uint32_t mLine;
+      uint32_t mColumn;
+    };
+
+    // If we have encountered at least one developer error,
+    // the first error we have encountered. Otherwise, or
+    // if we have reset since the latest error, `None`.
+    Maybe<ErrorDetails> mThrownError;
+  };
+  ErrorInterceptor mErrorInterceptor;
+
+#endif // defined(NIGHTLY_BUILD)
+
 };
 
 void TraceScriptHolder(nsISupports* aHolder, JSTracer* aTracer);

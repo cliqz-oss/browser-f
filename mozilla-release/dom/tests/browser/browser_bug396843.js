@@ -20,6 +20,7 @@ function testInDocument(doc, documentID) {
     HTML_TAG("b", "Span")
     HTML_TAG("base", "Shared")
     HTML_TAG("basefont", "Span")
+    HTML_TAG("bdi", "")
     HTML_TAG("bdo", "Span")
     HTML_TAG("bgsound", "Span")
     HTML_TAG("big", "Span")
@@ -226,15 +227,15 @@ function testInDocument(doc, documentID) {
     function runTestProps() {
         isnot(doc.nodePrincipal, null,
                 "Must have document principal in " + documentID);
-        is(doc.nodePrincipal instanceof Components.interfaces.nsIPrincipal,
+        is(doc.nodePrincipal instanceof Ci.nsIPrincipal,
             true, "document principal must be a principal in " + documentID);
         isnot(doc.baseURIObject, null,
                 "Must have document base URI in" + documentID);
-        is(doc.baseURIObject instanceof Components.interfaces.nsIURI,
+        is(doc.baseURIObject instanceof Ci.nsIURI,
             true, "document base URI must be a URI in " + documentID);
         isnot(doc.documentURIObject, null,
                 "Must have document URI " + documentID);
-        is(doc.documentURIObject instanceof Components.interfaces.nsIURI,
+        is(doc.documentURIObject instanceof Ci.nsIURI,
             true, "document URI must be a URI in " + documentID);
         is(doc.documentURIObject.spec, doc.documentURI,
                "document URI must be the right URI in " + documentID);

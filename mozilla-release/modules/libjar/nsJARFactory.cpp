@@ -20,18 +20,22 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsJAR)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsZipReaderCache)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsJARProtocolHandler,
                                          nsJARProtocolHandler::GetSingleton)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsJARURI)
+
+typedef nsJARURI::Mutator nsJARURIMutator;
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsJARURIMutator)
 
 NS_DEFINE_NAMED_CID(NS_ZIPREADER_CID);
 NS_DEFINE_NAMED_CID(NS_ZIPREADERCACHE_CID);
 NS_DEFINE_NAMED_CID(NS_JARPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_JARURI_CID);
+NS_DEFINE_NAMED_CID(NS_JARURIMUTATOR_CID);
 
 static const mozilla::Module::CIDEntry kJARCIDs[] = {
     { &kNS_ZIPREADER_CID, false, nullptr, nsJARConstructor },
     { &kNS_ZIPREADERCACHE_CID, false, nullptr, nsZipReaderCacheConstructor },
     { &kNS_JARPROTOCOLHANDLER_CID, false, nullptr, nsJARProtocolHandlerConstructor },
-    { &kNS_JARURI_CID, false, nullptr, nsJARURIConstructor },
+    { &kNS_JARURI_CID, false, nullptr, nsJARURIMutatorConstructor }, // do_CreateInstance returns mutator
+    { &kNS_JARURIMUTATOR_CID, false, nullptr, nsJARURIMutatorConstructor },
     { nullptr }
 };
 
@@ -42,15 +46,6 @@ static const mozilla::Module::ContractIDEntry kJARContracts[] = {
     { nullptr }
 };
 
-// Jar module shutdown hook
-static void nsJarShutdown()
-{
-    // Make sure to not null out gJarHandler here, because we may have
-    // still-live nsJARChannels that will want to release it.
-    nsJARProtocolHandler *handler = gJarHandler;
-    NS_IF_RELEASE(handler);
-}
-
 static const mozilla::Module kJARModule = {
     mozilla::Module::kVersion,
     kJARCIDs,
@@ -58,7 +53,7 @@ static const mozilla::Module kJARModule = {
     nullptr,
     nullptr,
     nullptr,
-    nsJarShutdown
+    nullptr
 };
 
 NSMODULE_DEFN(nsJarModule) = &kJARModule;

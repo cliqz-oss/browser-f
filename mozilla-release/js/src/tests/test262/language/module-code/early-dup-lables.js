@@ -8,9 +8,11 @@ description: >
     argument « » is true.
 flags: [module]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 label: {
   label: 0;

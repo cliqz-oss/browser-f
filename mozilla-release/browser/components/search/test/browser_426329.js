@@ -1,11 +1,10 @@
-XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
+ChromeUtils.defineModuleGetter(this, "FormHistory",
   "resource://gre/modules/FormHistory.jsm");
 
 function expectedURL(aSearchTerms) {
   const ENGINE_HTML_BASE = "http://mochi.test:8888/browser/browser/components/search/test/test.html";
-  var textToSubURI = Cc["@mozilla.org/intl/texttosuburi;1"].
-                     getService(Ci.nsITextToSubURI);
-  var searchArg = textToSubURI.ConvertAndEscape("utf-8", aSearchTerms);
+  var searchArg = Services.textToSubURI.ConvertAndEscape("utf-8", aSearchTerms);
   return ENGINE_HTML_BASE + "?test=" + searchArg;
 }
 
@@ -32,16 +31,10 @@ function checkMenuEntries(expectedValues) {
 }
 
 function getMenuEntries() {
-  var entries = [];
-  var autocompleteMenu = searchBar.textbox.popup;
   // Could perhaps pull values directly from the controller, but it seems
-  // more reliable to test the values that are actually in the tree?
-  var column = autocompleteMenu.tree.columns[0];
-  var numRows = autocompleteMenu.tree.view.rowCount;
-  for (var i = 0; i < numRows; i++) {
-    entries.push(autocompleteMenu.tree.view.getValueAt(i, column));
-  }
-  return entries;
+  // more reliable to test the values that are actually in the richlistbox?
+  return Array.map(searchBar.textbox.popup.richlistbox.children,
+                   item => item.getAttribute("ac-value"));
 }
 
 function countEntries(name, value) {
@@ -130,13 +123,19 @@ async function prepareTest() {
   await focusPromise;
 }
 
+add_task(async function testSetup() {
+  await SpecialPowers.pushPrefEnv({ set: [
+    ["browser.search.widget.inNavBar", true],
+  ]});
+});
+
 add_task(async function testSetupEngine() {
   await promiseSetEngine();
 });
 
 add_task(async function testReturn() {
   await prepareTest();
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   is(gBrowser.tabs.length, preTabNo, "Return key did not open new tab");
@@ -146,7 +145,7 @@ add_task(async function testReturn() {
 add_task(async function testAltReturn() {
   await prepareTest();
   await BrowserTestUtils.openNewForegroundTab(gBrowser, () => {
-    EventUtils.synthesizeKey("VK_RETURN", { altKey: true });
+    EventUtils.synthesizeKey("KEY_Enter", {altKey: true});
   });
 
   is(gBrowser.tabs.length, preTabNo + 1, "Alt+Return key added new tab");
@@ -238,11 +237,14 @@ add_task(async function testClearHistory() {
   EventUtils.synthesizeMouseAtCenter(textbox, { type: "contextmenu", button: 2 });
   await popupShownPromise;
   // Close the context menu.
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
 
-  let controller = searchBar.textbox.controllers.getControllerForCommand("cmd_clearhistory")
+  let controller = searchBar.textbox.controllers.getControllerForCommand("cmd_clearhistory");
   ok(controller.isCommandEnabled("cmd_clearhistory"), "Clear history command enabled");
+
+  let historyCleared = promiseObserver("satchel-storage-changed");
   controller.doCommand("cmd_clearhistory");
+  await historyCleared;
   let count = await countEntries();
   ok(count == 0, "History cleared");
 });
@@ -255,3 +257,13 @@ add_task(async function asyncCleanup() {
   gBrowser.selectedBrowser.loadURI("about:blank");
   await promiseRemoveEngine();
 });
+
+function promiseObserver(topic) {
+  return new Promise(resolve => {
+    let obs = (aSubject, aTopic, aData) => {
+      Services.obs.removeObserver(obs, aTopic);
+      resolve(aSubject);
+    };
+    Services.obs.addObserver(obs, topic);
+  });
+}

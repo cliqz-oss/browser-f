@@ -6,8 +6,8 @@
 
 #include "mozilla/mscom/AgileReference.h"
 
-#include "DynamicallyLinkedFunctionPtr.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/DynamicallyLinkedFunctionPtr.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Move.h"
 
@@ -135,7 +135,7 @@ AgileReference::ObtainGit()
 {
   // Internally to COM, the Global Interface Table is a singleton, therefore we
   // don't worry about holding onto this reference indefinitely.
-  static IGlobalInterfaceTable * const sGit = []() -> IGlobalInterfaceTable * const {
+  static IGlobalInterfaceTable* sGit = []() -> IGlobalInterfaceTable* {
     IGlobalInterfaceTable* result = nullptr;
     DebugOnly<HRESULT> hr =
       ::CoCreateInstance(CLSID_StdGlobalInterfaceTable, nullptr,

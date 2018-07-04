@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -41,7 +41,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_ADDREF_INHERITED(PresentationConnection, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(PresentationConnection, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(PresentationConnection)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PresentationConnection)
   NS_INTERFACE_MAP_ENTRY(nsIPresentationSessionListener)
   NS_INTERFACE_MAP_ENTRY(nsIRequest)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
@@ -157,30 +157,52 @@ PresentationConnection::WrapObject(JSContext* aCx,
 void
 PresentationConnection::GetId(nsAString& aId) const
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    aId = EmptyString();
+    return;
+  }
+
   aId = mId;
 }
 
 void
 PresentationConnection::GetUrl(nsAString& aUrl) const
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    aUrl = EmptyString();
+    return;
+  }
+
   aUrl = mUrl;
 }
 
 PresentationConnectionState
 PresentationConnection::State() const
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return PresentationConnectionState::Terminated;
+  }
+
   return mState;
 }
 
 PresentationConnectionBinaryType
 PresentationConnection::BinaryType() const
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return PresentationConnectionBinaryType::Blob;
+  }
+
   return mBinaryType;
 }
 
 void
 PresentationConnection::SetBinaryType(PresentationConnectionBinaryType aType)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return;
+  }
+
   mBinaryType = aType;
 }
 
@@ -188,6 +210,10 @@ void
 PresentationConnection::Send(const nsAString& aData,
                              ErrorResult& aRv)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return;
+  }
+
   // Sending is not allowed if the session is not connected.
   if (NS_WARN_IF(mState != PresentationConnectionState::Connected)) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
@@ -217,6 +243,10 @@ void
 PresentationConnection::Send(Blob& aData,
                              ErrorResult& aRv)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return;
+  }
+
   if (NS_WARN_IF(mState != PresentationConnectionState::Connected)) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
@@ -241,6 +271,10 @@ void
 PresentationConnection::Send(const ArrayBuffer& aData,
                              ErrorResult& aRv)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return;
+  }
+
   if (NS_WARN_IF(mState != PresentationConnectionState::Connected)) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
@@ -273,6 +307,10 @@ void
 PresentationConnection::Send(const ArrayBufferView& aData,
                              ErrorResult& aRv)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return;
+  }
+
   if (NS_WARN_IF(mState != PresentationConnectionState::Connected)) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
@@ -304,6 +342,10 @@ PresentationConnection::Send(const ArrayBufferView& aData,
 void
 PresentationConnection::Close(ErrorResult& aRv)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return;
+  }
+
   // It only works when the state is CONNECTED or CONNECTING.
   if (NS_WARN_IF(mState != PresentationConnectionState::Connected &&
                  mState != PresentationConnectionState::Connecting)) {
@@ -326,6 +368,10 @@ PresentationConnection::Close(ErrorResult& aRv)
 void
 PresentationConnection::Terminate(ErrorResult& aRv)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return;
+  }
+
   // It only works when the state is CONNECTED.
   if (NS_WARN_IF(mState != PresentationConnectionState::Connected)) {
     return;
@@ -412,6 +458,10 @@ PresentationConnection::ProcessStateChanged(nsresult aReason)
     case PresentationConnectionState::Connecting:
       return NS_OK;
     case PresentationConnectionState::Connected: {
+      if (nsContentUtils::ShouldResistFingerprinting()) {
+        return NS_OK;
+      }
+
       RefPtr<AsyncEventDispatcher> asyncDispatcher =
         new AsyncEventDispatcher(this, NS_LITERAL_STRING("connect"), false);
       return asyncDispatcher->PostDOMEvent();
@@ -441,10 +491,12 @@ PresentationConnection::ProcessStateChanged(nsresult aReason)
       return RemoveFromLoadGroup();
     }
     case PresentationConnectionState::Terminated: {
-      // Ensure onterminate event is fired.
-      RefPtr<AsyncEventDispatcher> asyncDispatcher =
-        new AsyncEventDispatcher(this, NS_LITERAL_STRING("terminate"), false);
-      Unused << NS_WARN_IF(NS_FAILED(asyncDispatcher->PostDOMEvent()));
+      if (!nsContentUtils::ShouldResistFingerprinting()) {
+        // Ensure onterminate event is fired.
+        RefPtr<AsyncEventDispatcher> asyncDispatcher =
+          new AsyncEventDispatcher(this, NS_LITERAL_STRING("terminate"), false);
+        Unused << NS_WARN_IF(NS_FAILED(asyncDispatcher->PostDOMEvent()));
+      }
 
       nsCOMPtr<nsIPresentationService> service =
         do_GetService(PRESENTATION_SERVICE_CONTRACTID);
@@ -495,6 +547,10 @@ PresentationConnection::NotifyMessage(const nsAString& aSessionId,
 nsresult
 PresentationConnection::DoReceiveMessage(const nsACString& aData, bool aIsBinary)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return NS_OK;
+  }
+
   // Transform the data.
   AutoJSAPI jsapi;
   if (!jsapi.Init(GetOwner())) {
@@ -521,8 +577,7 @@ PresentationConnection::DoReceiveMessage(const nsACString& aData, bool aIsBinary
       }
       jsData.setObject(*arrayBuf);
     } else {
-      NS_RUNTIMEABORT("Unknown binary type!");
-      return NS_ERROR_UNEXPECTED;
+      MOZ_CRASH("Unknown binary type!");
     }
   } else {
     NS_ConvertUTF8toUTF16 utf16Data(aData);
@@ -540,6 +595,10 @@ PresentationConnection::DispatchConnectionCloseEvent(
   const nsAString& aMessage,
   bool aDispatchNow)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return NS_OK;
+  }
+
   if (mState != PresentationConnectionState::Closed) {
     MOZ_ASSERT(false, "The connection state should be closed.");
     return NS_ERROR_FAILURE;
@@ -556,12 +615,13 @@ PresentationConnection::DispatchConnectionCloseEvent(
   closedEvent->SetTrusted(true);
 
   if (aDispatchNow) {
-    bool ignore;
-    return DOMEventTargetHelper::DispatchEvent(closedEvent, &ignore);
+    ErrorResult rv;
+    DispatchEvent(*closedEvent, rv);
+    return rv.StealNSResult();
   }
 
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-    new AsyncEventDispatcher(this, static_cast<Event*>(closedEvent));
+    new AsyncEventDispatcher(this, closedEvent);
   return asyncDispatcher->PostDOMEvent();
 }
 
@@ -590,7 +650,7 @@ PresentationConnection::DispatchMessageEvent(JS::Handle<JS::Value> aData)
   messageEvent->SetTrusted(true);
 
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-    new AsyncEventDispatcher(this, static_cast<Event*>(messageEvent));
+    new AsyncEventDispatcher(this, messageEvent);
   return asyncDispatcher->PostDOMEvent();
 }
 

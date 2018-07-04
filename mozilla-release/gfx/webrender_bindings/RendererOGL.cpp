@@ -1,16 +1,18 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "RendererOGL.h"
 #include "GLContext.h"
-#include "GLContextProvider.h"
 #include "mozilla/gfx/Logging.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorThread.h"
-#include "mozilla/webrender/RenderBufferTextureHost.h"
-#include "mozilla/webrender/RenderTextureHostOGL.h"
+#include "mozilla/layers/LayersTypes.h"
+#include "mozilla/webrender/RenderCompositor.h"
+#include "mozilla/webrender/RenderTextureHost.h"
 #include "mozilla/widget/CompositorWidget.h"
 
 namespace mozilla {
@@ -20,28 +22,12 @@ wr::WrExternalImage LockExternalImage(void* aObj, wr::WrExternalImageId aId, uin
 {
   RendererOGL* renderer = reinterpret_cast<RendererOGL*>(aObj);
   RenderTextureHost* texture = renderer->GetRenderTexture(aId);
-
-  if (texture->AsBufferTextureHost()) {
-    RenderBufferTextureHost* bufferTexture = texture->AsBufferTextureHost();
-    MOZ_ASSERT(bufferTexture);
-    bufferTexture->Lock();
-    RenderBufferTextureHost::RenderBufferData data =
-        bufferTexture->GetBufferDataForRender(aChannelIndex);
-
-    return RawDataToWrExternalImage(data.mData, data.mBufferSize);
-  } else {
-    // texture handle case
-    RenderTextureHostOGL* textureOGL = texture->AsTextureHostOGL();
-    MOZ_ASSERT(textureOGL);
-
-    textureOGL->SetGLContext(renderer->mGL);
-    textureOGL->Lock();
-    gfx::IntSize size = textureOGL->GetSize(aChannelIndex);
-
-    return NativeTextureToWrExternalImage(textureOGL->GetGLHandle(aChannelIndex),
-                                          0, 0,
-                                          size.width, size.height);
+  MOZ_ASSERT(texture);
+  if (!texture) {
+    gfxCriticalNote << "Failed to lock ExternalImage for extId:" << AsUint64(aId);
+    return InvalidToWrExternalImage();
   }
+  return texture->Lock(aChannelIndex, renderer->gl());
 }
 
 void UnlockExternalImage(void* aObj, wr::WrExternalImageId aId, uint8_t aChannelIndex)
@@ -49,25 +35,26 @@ void UnlockExternalImage(void* aObj, wr::WrExternalImageId aId, uint8_t aChannel
   RendererOGL* renderer = reinterpret_cast<RendererOGL*>(aObj);
   RenderTextureHost* texture = renderer->GetRenderTexture(aId);
   MOZ_ASSERT(texture);
+  if (!texture) {
+    return;
+  }
   texture->Unlock();
 }
 
 RendererOGL::RendererOGL(RefPtr<RenderThread>&& aThread,
-                         RefPtr<gl::GLContext>&& aGL,
-                         RefPtr<widget::CompositorWidget>&& aWidget,
+                         UniquePtr<RenderCompositor> aCompositor,
                          wr::WindowId aWindowId,
                          wr::Renderer* aRenderer,
                          layers::CompositorBridgeParentBase* aBridge)
   : mThread(aThread)
-  , mGL(aGL)
-  , mWidget(aWidget)
+  , mCompositor(Move(aCompositor))
   , mRenderer(aRenderer)
   , mBridge(aBridge)
   , mWindowId(aWindowId)
+  , mDebugFlags({ 0 })
 {
   MOZ_ASSERT(mThread);
-  MOZ_ASSERT(mGL);
-  MOZ_ASSERT(mWidget);
+  MOZ_ASSERT(mCompositor);
   MOZ_ASSERT(mRenderer);
   MOZ_ASSERT(mBridge);
   MOZ_COUNT_CTOR(RendererOGL);
@@ -76,7 +63,7 @@ RendererOGL::RendererOGL(RefPtr<RenderThread>&& aThread,
 RendererOGL::~RendererOGL()
 {
   MOZ_COUNT_DTOR(RendererOGL);
-  if (!mGL->MakeCurrent()) {
+  if (!mCompositor->gl()->MakeCurrent()) {
     gfxCriticalNote << "Failed to make render context current during destroying.";
     // Leak resources!
     return;
@@ -97,40 +84,62 @@ RendererOGL::GetExternalImageHandler()
 void
 RendererOGL::Update()
 {
-  wr_renderer_update(mRenderer);
+  uint32_t flags = gfx::gfxVars::WebRenderDebugFlags();
+  if (mDebugFlags.mBits != flags) {
+    mDebugFlags.mBits = flags;
+    wr_renderer_set_debug_flags(mRenderer, mDebugFlags);
+  }
+
+  if (gl()->MakeCurrent()) {
+    wr_renderer_update(mRenderer);
+  }
 }
 
 bool
-RendererOGL::Render()
+RendererOGL::UpdateAndRender(bool aReadback)
 {
-  if (!mGL->MakeCurrent()) {
-    gfxCriticalNote << "Failed to make render context current, can't draw.";
-    // XXX This could cause oom in webrender since pending_texture_updates is not handled.
-    // It needs to be addressed.
-    return false;
+  uint32_t flags = gfx::gfxVars::WebRenderDebugFlags();
+  // Disable debug flags during readback
+  if (aReadback) {
+    flags = 0;
+  }
+
+  if (mDebugFlags.mBits != flags) {
+    mDebugFlags.mBits = flags;
+    wr_renderer_set_debug_flags(mRenderer, mDebugFlags);
   }
 
   mozilla::widget::WidgetRenderingContext widgetContext;
 
 #if defined(XP_MACOSX)
-  widgetContext.mGL = mGL;
+  widgetContext.mGL = mCompositor->gl();
 // TODO: we don't have a notion of compositor here.
 //#elif defined(MOZ_WIDGET_ANDROID)
 //  widgetContext.mCompositor = mCompositor;
 #endif
 
-  if (!mWidget->PreRender(&widgetContext)) {
+  if (!mCompositor->GetWidget()->PreRender(&widgetContext)) {
     // XXX This could cause oom in webrender since pending_texture_updates is not handled.
     // It needs to be addressed.
     return false;
   }
   // XXX set clear color if MOZ_WIDGET_ANDROID is defined.
 
-  auto size = mWidget->GetClientSize();
-  wr_renderer_render(mRenderer, size.width, size.height);
+  if (!mCompositor->BeginFrame()) {
+    return false;
+  }
 
-  mGL->SwapBuffers();
-  mWidget->PostRender(&widgetContext);
+  wr_renderer_update(mRenderer);
+
+  auto size = mCompositor->GetBufferSize();
+
+  if (!wr_renderer_render(mRenderer, size.width, size.height)) {
+    NotifyWebRenderError(WebRenderError::RENDER);
+  }
+
+  mCompositor->EndFrame();
+
+  mCompositor->GetWidget()->PostRender(&widgetContext);
 
 #if defined(ENABLE_FRAME_LATENCY_LOG)
   if (mFrameStartTime) {
@@ -150,33 +159,25 @@ RendererOGL::Render()
 void
 RendererOGL::Pause()
 {
-#ifdef MOZ_WIDGET_ANDROID
-  if (!mGL || mGL->IsDestroyed()) {
-    return;
-  }
-  // ReleaseSurface internally calls MakeCurrent.
-  mGL->ReleaseSurface();
-#endif
+  mCompositor->Pause();
 }
 
 bool
 RendererOGL::Resume()
 {
-#ifdef MOZ_WIDGET_ANDROID
-  if (!mGL || mGL->IsDestroyed()) {
-    return false;
-  }
-  // RenewSurface internally calls MakeCurrent.
-  return mGL->RenewSurface(mWidget);
-#else
-  return true;
-#endif
+  return mCompositor->Resume();
 }
 
-void
-RendererOGL::SetProfilerEnabled(bool aEnabled)
+layers::SyncObjectHost*
+RendererOGL::GetSyncObject() const
 {
-  wr_renderer_set_profiler_enabled(mRenderer, aEnabled);
+  return mCompositor->GetSyncObject();
+}
+
+gl::GLContext*
+RendererOGL::gl() const
+{
+  return mCompositor->gl();
 }
 
 void
@@ -190,16 +191,33 @@ RendererOGL::SetFrameStartTime(const TimeStamp& aTime)
   mFrameStartTime = aTime;
 }
 
-wr::WrRenderedEpochs*
-RendererOGL::FlushRenderedEpochs()
+wr::WrPipelineInfo
+RendererOGL::FlushPipelineInfo()
 {
-  return wr_renderer_flush_rendered_epochs(mRenderer);
+  return wr_renderer_flush_pipeline_info(mRenderer);
 }
 
 RenderTextureHost*
 RendererOGL::GetRenderTexture(wr::WrExternalImageId aExternalImageId)
 {
   return mThread->GetRenderTexture(aExternalImageId);
+}
+
+static void
+DoNotifyWebRenderError(layers::CompositorBridgeParentBase* aBridge, WebRenderError aError)
+{
+  aBridge->NotifyWebRenderError(aError);
+}
+
+void
+RendererOGL::NotifyWebRenderError(WebRenderError aError)
+{
+  layers::CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(
+    "DoNotifyWebRenderErrorRunnable",
+    &DoNotifyWebRenderError,
+    mBridge,
+    aError
+  ));
 }
 
 } // namespace wr

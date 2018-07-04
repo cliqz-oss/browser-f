@@ -8,6 +8,7 @@
 // name (and different paths).
 
 const {StorageFront} = require("devtools/shared/fronts/storage");
+/* import-globals-from storage-helpers.js */
 Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/server/tests/browser/storage-helpers.js", this);
 
 const TESTDATA = {
@@ -42,23 +43,23 @@ const TESTDATA = {
   ]
 };
 
-add_task(function* () {
-  yield openTabAndSetupStorage(MAIN_DOMAIN + "storage-cookies-same-name.html");
+add_task(async function() {
+  await openTabAndSetupStorage(MAIN_DOMAIN + "storage-cookies-same-name.html");
 
   initDebuggerServer();
   let client = new DebuggerClient(DebuggerServer.connectPipe());
-  let form = yield connectDebuggerClient(client);
+  let form = await connectDebuggerClient(client);
   let front = StorageFront(client, form);
-  let data = yield front.listStores();
+  let data = await front.listStores();
 
   ok(data.cookies, "Cookies storage actor is present");
 
-  yield testCookies(data.cookies);
-  yield clearStorage();
+  await testCookies(data.cookies);
+  await clearStorage();
 
   // Forcing GC/CC to get rid of docshells and windows created by this test.
   forceCollections();
-  yield client.close();
+  await client.close();
   forceCollections();
   DebuggerServer.destroy();
   forceCollections();
@@ -70,7 +71,7 @@ function testCookies(cookiesActor) {
   return testCookiesObjects(0, cookiesActor.hosts, cookiesActor);
 }
 
-var testCookiesObjects = Task.async(function* (index, hosts, cookiesActor) {
+var testCookiesObjects = async function(index, hosts, cookiesActor) {
   let host = Object.keys(hosts)[index];
   let matchItems = data => {
     is(data.total, TESTDATA[host].length,
@@ -97,9 +98,9 @@ var testCookiesObjects = Task.async(function* (index, hosts, cookiesActor) {
   };
 
   ok(!!TESTDATA[host], "Host is present in the list : " + host);
-  matchItems(yield cookiesActor.getStoreObjects(host));
+  matchItems(await cookiesActor.getStoreObjects(host));
   if (index == Object.keys(hosts).length - 1) {
     return;
   }
-  yield testCookiesObjects(++index, hosts, cookiesActor);
-});
+  await testCookiesObjects(++index, hosts, cookiesActor);
+};

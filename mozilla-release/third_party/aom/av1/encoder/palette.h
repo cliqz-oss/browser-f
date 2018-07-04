@@ -18,31 +18,55 @@
 extern "C" {
 #endif
 
+#define AV1_K_MEANS_RENAME(func, dim) func##_dim##dim
+
+void AV1_K_MEANS_RENAME(av1_calc_indices, 1)(const float *data,
+                                             const float *centroids,
+                                             uint8_t *indices, int n, int k);
+void AV1_K_MEANS_RENAME(av1_calc_indices, 2)(const float *data,
+                                             const float *centroids,
+                                             uint8_t *indices, int n, int k);
+void AV1_K_MEANS_RENAME(av1_k_means, 1)(const float *data, float *centroids,
+                                        uint8_t *indices, int n, int k,
+                                        int max_itr);
+void AV1_K_MEANS_RENAME(av1_k_means, 2)(const float *data, float *centroids,
+                                        uint8_t *indices, int n, int k,
+                                        int max_itr);
+
 // Given 'n' 'data' points and 'k' 'centroids' each of dimension 'dim',
 // calculate the centroid 'indices' for the data points.
-void av1_calc_indices(const float *data, const float *centroids,
-                      uint8_t *indices, int n, int k, int dim);
+static INLINE void av1_calc_indices(const float *data, const float *centroids,
+                                    uint8_t *indices, int n, int k, int dim) {
+  if (dim == 1) {
+    AV1_K_MEANS_RENAME(av1_calc_indices, 1)(data, centroids, indices, n, k);
+  } else if (dim == 2) {
+    AV1_K_MEANS_RENAME(av1_calc_indices, 2)(data, centroids, indices, n, k);
+  } else {
+    assert(0 && "Untemplated k means dimension");
+  }
+}
 
 // Given 'n' 'data' points and an initial guess of 'k' 'centroids' each of
 // dimension 'dim', runs up to 'max_itr' iterations of k-means algorithm to get
 // updated 'centroids' and the centroid 'indices' for elements in 'data'.
 // Note: the output centroids are rounded off to nearest integers.
-void av1_k_means(const float *data, float *centroids, uint8_t *indices, int n,
-                 int k, int dim, int max_itr);
+static INLINE void av1_k_means(const float *data, float *centroids,
+                               uint8_t *indices, int n, int k, int dim,
+                               int max_itr) {
+  if (dim == 1) {
+    AV1_K_MEANS_RENAME(av1_k_means, 1)(data, centroids, indices, n, k, max_itr);
+  } else if (dim == 2) {
+    AV1_K_MEANS_RENAME(av1_k_means, 2)(data, centroids, indices, n, k, max_itr);
+  } else {
+    assert(0 && "Untemplated k means dimension");
+  }
+}
 
 // Given a list of centroids, returns the unique number of centroids 'k', and
 // puts these unique centroids in first 'k' indices of 'centroids' array.
 // Ideally, the centroids should be rounded to integers before calling this
 // method.
 int av1_remove_duplicates(float *centroids, int num_centroids);
-
-// Returns the number of colors in 'src'.
-int av1_count_colors(const uint8_t *src, int stride, int rows, int cols);
-#if CONFIG_HIGHBITDEPTH
-// Same as av1_count_colors(), but for high-bitdepth mode.
-int av1_count_colors_highbd(const uint8_t *src8, int stride, int rows, int cols,
-                            int bit_depth);
-#endif  // CONFIG_HIGHBITDEPTH
 
 #if CONFIG_PALETTE_DELTA_ENCODING
 // Given a color cache and a set of base colors, find if each cache color is

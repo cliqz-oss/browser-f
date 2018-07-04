@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -32,8 +33,8 @@ class nsMathMLContainerFrame : public nsContainerFrame,
 {
   friend class nsMathMLmfencedFrame;
 public:
-  nsMathMLContainerFrame(nsStyleContext* aContext, ClassID aID)
-    : nsContainerFrame(aContext, aID)
+  nsMathMLContainerFrame(ComputedStyle* aStyle, ClassID aID)
+    : nsContainerFrame(aStyle, aID)
     , mIntrinsicWidth(NS_INTRINSIC_WIDTH_UNKNOWN)
     , mBlockStartAscent(0)
   {}
@@ -106,16 +107,14 @@ public:
          nsReflowStatus&          aStatus) override;
 
   virtual void DidReflow(nsPresContext*           aPresContext,
-            const ReflowInput*  aReflowInput,
-            nsDidReflowStatus         aStatus) override
+            const ReflowInput*  aReflowInput) override
 
   {
     mPresentationData.flags &= ~NS_MATHML_STRETCH_DONE;
-    return nsContainerFrame::DidReflow(aPresContext, aReflowInput, aStatus);
+    return nsContainerFrame::DidReflow(aPresContext, aReflowInput);
   }
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   virtual bool ComputeCustomOverflow(nsOverflowAreas& aOverflowAreas) override;
@@ -141,7 +140,7 @@ public:
   //        too (e.g., this happens with <munder>, <mover>, <munderover>).
   virtual nsresult
   AttributeChanged(int32_t         aNameSpaceID,
-                   nsIAtom*        aAttribute,
+                   nsAtom*        aAttribute,
                    int32_t         aModType) override;
 
   // helper function to apply mirroring to a horizontal coordinate, if needed.
@@ -249,7 +248,7 @@ public:
    * @param aChildTag The tag which is forbidden in this context
    */
   nsresult
-  ReportInvalidChildError(nsIAtom* aChildTag);
+  ReportInvalidChildError(nsAtom* aChildTag);
 
   /*
    * Helper to call ReportToConsole when an error occurs.
@@ -406,7 +405,7 @@ public:
   NS_DECL_FRAMEARENA_HELPERS(nsMathMLmathBlockFrame)
 
   friend nsContainerFrame* NS_NewMathMLmathBlockFrame(nsIPresShell* aPresShell,
-          nsStyleContext* aContext);
+          ComputedStyle* aStyle);
 
   // beware, mFrames is not set by nsBlockFrame
   // cannot use mFrames{.FirstChild()|.etc} since the block code doesn't set mFrames
@@ -469,8 +468,8 @@ public:
   }
 
 protected:
-  explicit nsMathMLmathBlockFrame(nsStyleContext* aContext)
-    : nsBlockFrame(aContext, kClassID)
+  explicit nsMathMLmathBlockFrame(ComputedStyle* aStyle)
+    : nsBlockFrame(aStyle, kClassID)
   {
     // We should always have a float manager.  Not that things can really try
     // to float out of us anyway, but we need one for line layout.
@@ -489,7 +488,7 @@ public:
   NS_DECL_FRAMEARENA_HELPERS(nsMathMLmathInlineFrame)
 
   friend nsContainerFrame* NS_NewMathMLmathInlineFrame(nsIPresShell* aPresShell,
-                                                       nsStyleContext* aContext);
+                                                       ComputedStyle* aStyle);
 
   virtual void
   SetInitialChildList(ChildListID     aListID,
@@ -547,8 +546,8 @@ public:
   }
 
 protected:
-  explicit nsMathMLmathInlineFrame(nsStyleContext* aContext)
-    : nsInlineFrame(aContext, kClassID)
+  explicit nsMathMLmathInlineFrame(ComputedStyle* aStyle)
+    : nsInlineFrame(aStyle, kClassID)
   {}
 
   virtual ~nsMathMLmathInlineFrame() {}

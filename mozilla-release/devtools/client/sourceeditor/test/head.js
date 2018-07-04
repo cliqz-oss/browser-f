@@ -1,7 +1,7 @@
 /* vim: set ts=2 et sw=2 tw=80: */
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
-/* import-globals-from ../../framework/test/shared-head.js */
+/* import-globals-from ../../shared/test/shared-head.js */
 /* exported promiseWaitForFocus, setup, ch, teardown, loadHelperScript,
             limit, ch, read, codemirrorSetStatus */
 
@@ -9,17 +9,12 @@
 
 // shared-head.js handles imports, constants, and utility functions
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js",
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
   this);
 
 const { NetUtil } = require("resource://gre/modules/NetUtil.jsm");
 const Editor = require("devtools/client/sourceeditor/editor");
 const {getClientCssProperties} = require("devtools/shared/fronts/css-properties");
-
-flags.testing = true;
-SimpleTest.registerCleanupFunction(() => {
-  flags.testing = false;
-});
 
 function promiseWaitForFocus() {
   return new Promise(resolve =>
@@ -27,7 +22,7 @@ function promiseWaitForFocus() {
 }
 
 function setup(cb, additionalOpts = {}) {
-  cb = cb || function () {};
+  cb = cb || function() {};
   return new Promise(resolve => {
     const opt = "chrome,titlebar,toolbar,centerscreen,resizable,dialog=no";
 
@@ -45,8 +40,8 @@ function setup(cb, additionalOpts = {}) {
       opts[o] = additionalOpts[o];
     }
 
-    win.addEventListener("load", function () {
-      waitForFocus(function () {
+    win.addEventListener("load", function() {
+      waitForFocus(function() {
         let box = win.document.querySelector("box");
         let editor = new Editor(opts);
 

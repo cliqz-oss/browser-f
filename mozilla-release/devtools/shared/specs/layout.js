@@ -5,7 +5,12 @@
 "use strict";
 
 const { Arg, generateActorSpec, RetVal } = require("devtools/shared/protocol");
-require("devtools/shared/specs/node");
+
+const flexboxSpec = generateActorSpec({
+  typeName: "flexbox",
+
+  methods: {},
+});
 
 const gridSpec = generateActorSpec({
   typeName: "grid",
@@ -17,17 +22,35 @@ const layoutSpec = generateActorSpec({
   typeName: "layout",
 
   methods: {
-    getAllGrids: {
+    getCurrentFlexbox: {
       request: {
-        rootNode: Arg(0, "domnode"),
-        traverseFrames: Arg(1, "nullable:boolean")
+        node: Arg(0, "domnode"),
+      },
+      response: {
+        flexbox: RetVal("nullable:flexbox")
+      }
+    },
+
+    getCurrentGrid: {
+      request: {
+        node: Arg(0, "domnode"),
+      },
+      response: {
+        grid: RetVal("nullable:grid")
+      }
+    },
+
+    getGrids: {
+      request: {
+        rootNode: Arg(0, "domnode")
       },
       response: {
         grids: RetVal("array:grid")
       }
-    }
+    },
   },
 });
 
+exports.flexboxSpec = flexboxSpec;
 exports.gridSpec = gridSpec;
 exports.layoutSpec = layoutSpec;

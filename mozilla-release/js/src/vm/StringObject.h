@@ -7,12 +7,14 @@
 #ifndef vm_StringObject_h
 #define vm_StringObject_h
 
-#include "jsobj.h"
-#include "jsstr.h"
+#include "builtin/String.h"
 
+#include "vm/JSObject.h"
 #include "vm/Shape.h"
 
 namespace js {
+
+class GlobalObject;
 
 class StringObject : public NativeObject
 {
@@ -66,7 +68,7 @@ class StringObject : public NativeObject
 
     /* For access to init, as String.prototype is special. */
     friend JSObject*
-    js::InitStringClass(JSContext* cx, HandleObject global);
+    js::InitStringClass(JSContext* cx, Handle<GlobalObject*> global);
 };
 
 } // namespace js

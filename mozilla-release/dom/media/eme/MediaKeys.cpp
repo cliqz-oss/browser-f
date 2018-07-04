@@ -11,10 +11,10 @@
 #include "mozilla/dom/MediaKeyMessageEvent.h"
 #include "mozilla/dom/MediaKeyError.h"
 #include "mozilla/dom/MediaKeySession.h"
+#include "mozilla/dom/MediaKeyStatusMap.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/UnionTypes.h"
 #include "mozilla/Telemetry.h"
-#include "GMPCDMProxy.h"
 #ifdef MOZ_WIDGET_ANDROID
 #include "mozilla/MediaDrmCDMProxy.h"
 #endif
@@ -22,9 +22,6 @@
 #include "nsContentUtils.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsContentTypeParser.h"
-#ifdef MOZ_FMP4
-#include "MP4Decoder.h"
-#endif
 #ifdef XP_WIN
 #include "mozilla/WindowsVersion.h"
 #endif
@@ -344,23 +341,13 @@ MediaKeys::CreateCDMProxy(nsIEventTarget* aMainThread)
   } else
 #endif
   {
-    if (MediaPrefs::EMEChromiumAPIEnabled()) {
-      proxy = new ChromiumCDMProxy(
-        this,
-        mKeySystem,
-        new MediaKeysGMPCrashHelper(this),
-        mConfig.mDistinctiveIdentifier == MediaKeysRequirement::Required,
-        mConfig.mPersistentState == MediaKeysRequirement::Required,
-        aMainThread);
-    } else {
-      proxy = new GMPCDMProxy(
-        this,
-        mKeySystem,
-        new MediaKeysGMPCrashHelper(this),
-        mConfig.mDistinctiveIdentifier == MediaKeysRequirement::Required,
-        mConfig.mPersistentState == MediaKeysRequirement::Required,
-        aMainThread);
-    }
+    proxy = new ChromiumCDMProxy(
+      this,
+      mKeySystem,
+      new MediaKeysGMPCrashHelper(this),
+      mConfig.mDistinctiveIdentifier == MediaKeysRequirement::Required,
+      mConfig.mPersistentState == MediaKeysRequirement::Required,
+      aMainThread);
   }
   return proxy.forget();
 }
@@ -465,8 +452,6 @@ MediaKeys::OnCDMCreated(PromiseId aId, const uint32_t aPluginId)
   MediaKeySystemAccess::NotifyObservers(mParent,
                                         mKeySystem,
                                         MediaKeySystemStatus::Cdm_created);
-
-  Telemetry::Accumulate(Telemetry::VIDEO_CDM_CREATED, ToCDMTypeTelemetryEnum(mKeySystem));
 }
 
 static bool
@@ -513,6 +498,7 @@ MediaKeys::CreateSession(JSContext* aCx,
   if (aRv.Failed()) {
     return nullptr;
   }
+  DDLINKCHILD("session", session.get());
 
   // Add session to the set of sessions awaiting their sessionId being ready.
   mPendingSessions.Put(session->Token(), session);
@@ -610,6 +596,52 @@ MediaKeys::GetSessionsInfo(nsString& sessionsInfo)
     }
     sessionsInfo.AppendLiteral(")");
   }
+}
+
+already_AddRefed<Promise>
+MediaKeys::GetStatusForPolicy(const MediaKeysPolicy& aPolicy,
+                              ErrorResult& aRv)
+{
+  RefPtr<DetailedPromise> promise(MakePromise(aRv,
+    NS_LITERAL_CSTRING("MediaKeys::GetStatusForPolicy()")));
+  if (aRv.Failed()) {
+    return nullptr;
+  }
+
+  // Currently, only widevine CDM supports for this API.
+  if (!IsWidevineKeySystem(mKeySystem)) {
+    EME_LOG("MediaKeys[%p]::GetStatusForPolicy() HDCP policy check on unsupported keysystem ", this);
+    NS_WARNING("Tried to query without a CDM");
+    promise->MaybeReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
+                         NS_LITERAL_CSTRING("HDCP policy check on unsupported keysystem"));
+    return promise.forget();
+  }
+
+  if (!mProxy) {
+   NS_WARNING("Tried to use a MediaKeys without a CDM");
+   promise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR,
+                        NS_LITERAL_CSTRING("Null CDM in MediaKeys.GetStatusForPolicy()"));
+   return promise.forget();
+  }
+
+  EME_LOG("GetStatusForPolicy minHdcpVersion = %s.", NS_ConvertUTF16toUTF8(aPolicy.mMinHdcpVersion).get());
+  mProxy->GetStatusForPolicy(StorePromise(promise), aPolicy.mMinHdcpVersion);
+  return promise.forget();
+}
+
+void
+MediaKeys::ResolvePromiseWithKeyStatus(PromiseId aId, MediaKeyStatus aMediaKeyStatus)
+{
+  RefPtr<DetailedPromise> promise(RetrievePromise(aId));
+  if (!promise) {
+    return;
+  }
+  RefPtr<MediaKeys> keys(this);
+  EME_LOG("MediaKeys[%p]::ResolvePromiseWithKeyStatus() resolve promise id=%d, keystatus=%" PRIu8,
+          this,
+          aId,
+          static_cast<uint8_t>(aMediaKeyStatus));
+  promise->MaybeResolve(aMediaKeyStatus);
 }
 
 } // namespace dom

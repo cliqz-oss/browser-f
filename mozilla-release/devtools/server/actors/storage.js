@@ -5,20 +5,32 @@
 "use strict";
 
 const {Cc, Ci, Cu, CC} = require("chrome");
-const events = require("sdk/event/core");
 const protocol = require("devtools/shared/protocol");
 const {LongStringActor} = require("devtools/server/actors/string");
 const {DebuggerServer} = require("devtools/server/main");
 const Services = require("Services");
-const promise = require("promise");
+const defer = require("devtools/shared/defer");
 const {isWindowIncluded} = require("devtools/shared/layout/utils");
 const specs = require("devtools/shared/specs/storage");
-const { Task } = require("devtools/shared/task");
+
+const CHROME_ENABLED_PREF = "devtools.chrome.enabled";
+const REMOTE_ENABLED_PREF = "devtools.debugger.remote-enabled";
 
 const DEFAULT_VALUE = "value";
 
 loader.lazyRequireGetter(this, "naturalSortCaseInsensitive",
   "devtools/client/shared/natural-sort", true);
+
+// "Lax", "Strict" and "Unset" are special values of the sameSite property
+// that should not be translated.
+const COOKIE_SAMESITE = {
+  LAX: "Lax",
+  STRICT: "Strict",
+  UNSET: "Unset"
+};
+
+const SAFE_HOSTS_PREFIXES_REGEX =
+  /^(about\+|https?\+|file\+|moz-extension\+)/;
 
 // GUID to be used as a separator in compound keys. This must match the same
 // constant in devtools/client/storage/ui.js,
@@ -77,7 +89,7 @@ var storageTypePool = new Map();
  *        The wait time in milliseconds.
  */
 function sleep(time) {
-  let deferred = promise.defer();
+  let deferred = defer();
 
   setTimeout(() => {
     deferred.resolve(null);
@@ -114,7 +126,7 @@ var StorageActors = {};
  * @param {array} observationTopics
  *        An array of topics which this actor listens to via Notification Observers.
  */
-StorageActors.defaults = function (typeName, observationTopics) {
+StorageActors.defaults = function(typeName, observationTopics) {
   return {
     typeName: typeName,
 
@@ -123,8 +135,9 @@ StorageActors.defaults = function (typeName, observationTopics) {
     },
 
     /**
-     * Returns a list of currently knwon hosts for the target window. This list
-     * contains unique hosts from the window + all inner windows.
+     * Returns a list of currently known hosts for the target window. This list
+     * contains unique hosts from the window + all inner windows. If
+     * this._internalHosts is defined then these will also be added to the list.
      */
     get hosts() {
       let hosts = new Set();
@@ -132,6 +145,11 @@ StorageActors.defaults = function (typeName, observationTopics) {
         let host = this.getHostName(location);
 
         if (host) {
+          hosts.add(host);
+        }
+      }
+      if (this._internalHosts) {
+        for (let host of this._internalHosts) {
           hosts.add(host);
         }
       }
@@ -157,21 +175,22 @@ StorageActors.defaults = function (typeName, observationTopics) {
       }
 
       switch (location.protocol) {
+        case "about:":
+          return `${location.protocol}${location.pathname}`;
+        case "chrome:":
+          // chrome: URLs do not support storage of any type.
+          return null;
         case "data:":
           // data: URLs do not support storage of any type.
           return null;
-        case "about:":
-          // Fallthrough.
-        case "chrome:":
-          // Fallthrough.
         case "file:":
-          return location.protocol + location.pathname;
-        case "resource:":
-          return location.origin + location.pathname;
-        case "moz-extension:":
-          return location.origin;
+          return `${location.protocol}//${location.pathname}`;
         case "javascript:":
           return location.href;
+        case "moz-extension:":
+          return location.origin;
+        case "resource:":
+          return `${location.origin}${location.pathname}`;
         default:
           // http: or unknown protocol.
           return `${location.protocol}//${location.host}`;
@@ -191,8 +210,8 @@ StorageActors.defaults = function (typeName, observationTopics) {
       }
       this.onWindowReady = this.onWindowReady.bind(this);
       this.onWindowDestroyed = this.onWindowDestroyed.bind(this);
-      events.on(this.storageActor, "window-ready", this.onWindowReady);
-      events.on(this.storageActor, "window-destroyed", this.onWindowDestroyed);
+      this.storageActor.on("window-ready", this.onWindowReady);
+      this.storageActor.on("window-destroyed", this.onWindowDestroyed);
     },
 
     destroy() {
@@ -201,8 +220,8 @@ StorageActors.defaults = function (typeName, observationTopics) {
           Services.obs.removeObserver(this, observationTopic);
         });
       }
-      events.off(this.storageActor, "window-ready", this.onWindowReady);
-      events.off(this.storageActor, "window-destroyed", this.onWindowDestroyed);
+      this.storageActor.off("window-ready", this.onWindowReady);
+      this.storageActor.off("window-destroyed", this.onWindowDestroyed);
 
       this.hostVsStores.clear();
 
@@ -233,15 +252,15 @@ StorageActors.defaults = function (typeName, observationTopics) {
      * @param {window} window
      *        The window which was added.
      */
-    onWindowReady: Task.async(function* (window) {
+    async onWindowReady(window) {
       let host = this.getHostName(window.location);
       if (host && !this.hostVsStores.has(host)) {
-        yield this.populateStoresForHost(host, window);
+        await this.populateStoresForHost(host, window);
         let data = {};
         data[host] = this.getNamesForHost(host);
         this.storageActor.update("added", typeName, data);
       }
-    }),
+    },
 
     /**
      * When a window is removed from the page. This generally means that an
@@ -317,7 +336,7 @@ StorageActors.defaults = function (typeName, observationTopics) {
      *          - total - The total number of entries possible.
      *          - data - The requested values.
      */
-    getStoreObjects: Task.async(function* (host, names, options = {}) {
+    async getStoreObjects(host, names, options = {}) {
       let offset = options.offset || 0;
       let size = options.size || MAX_STORE_OBJECT_COUNT;
       if (size > MAX_STORE_OBJECT_COUNT) {
@@ -336,14 +355,12 @@ StorageActors.defaults = function (typeName, observationTopics) {
         // We only acquire principal when the type of the storage is indexedDB
         // because the principal only matters the indexedDB.
         let win = this.storageActor.getWindowFromHost(host);
-        if (win) {
-          principal = win.document.nodePrincipal;
-        }
+        principal = this.getPrincipal(win);
       }
 
       if (names) {
         for (let name of names) {
-          let values = yield this.getValuesForHost(host, name, options,
+          let values = await this.getValuesForHost(host, name, options,
             this.hostVsStores, principal);
 
           let {result, objectStores} = values;
@@ -378,7 +395,7 @@ StorageActors.defaults = function (typeName, observationTopics) {
           toReturn.data = sliced.map(a => this.toStoreObject(a));
         }
       } else {
-        let obj = yield this.getValuesForHost(host, undefined, undefined,
+        let obj = await this.getValuesForHost(host, undefined, undefined,
                                               this.hostVsStores, principal);
         if (obj.dbs) {
           obj = obj.dbs;
@@ -401,7 +418,17 @@ StorageActors.defaults = function (typeName, observationTopics) {
       }
 
       return toReturn;
-    })
+    },
+
+    getPrincipal(win) {
+      if (win) {
+        return win.document.nodePrincipal;
+      }
+      // We are running in the browser toolbox and viewing system DBs so we
+      // need to use system principal.
+      return Cc["@mozilla.org/systemprincipal;1"]
+                .createInstance(Ci.nsIPrincipal);
+    }
   };
 };
 
@@ -422,7 +449,7 @@ StorageActors.defaults = function (typeName, observationTopics) {
  *        All the methods which you want to be different from the ones in
  *        StorageActors.defaults method plus the required ones described there.
  */
-StorageActors.createActor = function (options = {}, overrides = {}) {
+StorageActors.createActor = function(options = {}, overrides = {}) {
   let actorObject = StorageActors.defaults(
     options.typeName,
     options.observationTopics || null
@@ -453,8 +480,8 @@ StorageActors.createActor({
 
     this.onWindowReady = this.onWindowReady.bind(this);
     this.onWindowDestroyed = this.onWindowDestroyed.bind(this);
-    events.on(this.storageActor, "window-ready", this.onWindowReady);
-    events.on(this.storageActor, "window-destroyed", this.onWindowDestroyed);
+    this.storageActor.on("window-ready", this.onWindowReady);
+    this.storageActor.on("window-destroyed", this.onWindowDestroyed);
   },
 
   destroy() {
@@ -467,8 +494,8 @@ StorageActors.createActor({
       this.removeCookieObservers();
     }
 
-    events.off(this.storageActor, "window-ready", this.onWindowReady);
-    events.off(this.storageActor, "window-destroyed", this.onWindowDestroyed);
+    this.storageActor.off("window-ready", this.onWindowReady);
+    this.storageActor.off("window-destroyed", this.onWindowDestroyed);
 
     this._pendingResponse = null;
 
@@ -540,8 +567,20 @@ StorageActors.createActor({
       value: new LongStringActor(this.conn, cookie.value || ""),
       isDomain: cookie.isDomain,
       isSecure: cookie.isSecure,
-      isHttpOnly: cookie.isHttpOnly
+      isHttpOnly: cookie.isHttpOnly,
+      sameSite: this.getSameSiteStringFromCookie(cookie)
     };
+  },
+
+  getSameSiteStringFromCookie(cookie) {
+    switch (cookie.sameSite) {
+      case cookie.SAMESITE_LAX:
+        return COOKIE_SAMESITE.LAX;
+      case cookie.SAMESITE_STRICT:
+        return COOKIE_SAMESITE.STRICT;
+    }
+    // cookie.SAMESITE_UNSET
+    return COOKIE_SAMESITE.UNSET;
   },
 
   populateStoresForHost(host) {
@@ -641,7 +680,7 @@ StorageActors.createActor({
     return null;
   },
 
-  getFields: Task.async(function* () {
+  async getFields() {
     return [
       { name: "uniqueKey", editable: false, private: true },
       { name: "name", editable: true, hidden: false },
@@ -653,9 +692,10 @@ StorageActors.createActor({
       { name: "value", editable: true, hidden: false },
       { name: "isDomain", editable: false, hidden: true },
       { name: "isSecure", editable: true, hidden: true },
-      { name: "isHttpOnly", editable: true, hidden: false }
+      { name: "isHttpOnly", editable: true, hidden: false },
+      { name: "sameSite", editable: false, hidden: false }
     ];
-  }),
+  },
 
   /**
    * Pass the editItem command from the content to the chrome process.
@@ -663,32 +703,38 @@ StorageActors.createActor({
    * @param {Object} data
    *        See editCookie() for format details.
    */
-  editItem: Task.async(function* (data) {
+  async editItem(data) {
     let doc = this.storageActor.document;
     data.originAttributes = doc.nodePrincipal
                                .originAttributes;
     this.editCookie(data);
-  }),
+  },
 
-  addItem: Task.async(function* (guid) {
+  async addItem(guid) {
     let doc = this.storageActor.document;
     let time = new Date().getTime();
     let expiry = new Date(time + 3600 * 24 * 1000).toGMTString();
 
     doc.cookie = `${guid}=${DEFAULT_VALUE};expires=${expiry}`;
-  }),
+  },
 
-  removeItem: Task.async(function* (host, name) {
+  async removeItem(host, name) {
     let doc = this.storageActor.document;
     this.removeCookie(host, name, doc.nodePrincipal
                                      .originAttributes);
-  }),
+  },
 
-  removeAll: Task.async(function* (host, domain) {
+  async removeAll(host, domain) {
     let doc = this.storageActor.document;
     this.removeAllCookies(host, domain, doc.nodePrincipal
                                            .originAttributes);
-  }),
+  },
+
+  async removeAllSessionCookies(host, domain) {
+    let doc = this.storageActor.document;
+    this.removeAllSessionCookies(host, domain, doc.nodePrincipal
+        .originAttributes);
+  },
 
   maybeSetupChildProcess() {
     cookieHelpers.onCookieChanged = this.onCookieChanged.bind(this);
@@ -706,6 +752,8 @@ StorageActors.createActor({
         cookieHelpers.removeCookie.bind(cookieHelpers);
       this.removeAllCookies =
         cookieHelpers.removeAllCookies.bind(cookieHelpers);
+      this.removeAllSessionCookies =
+        cookieHelpers.removeAllSessionCookies.bind(cookieHelpers);
       return;
     }
 
@@ -729,6 +777,8 @@ StorageActors.createActor({
       callParentProcess.bind(null, "removeCookie");
     this.removeAllCookies =
       callParentProcess.bind(null, "removeAllCookies");
+    this.removeAllSessionCookies =
+      callParentProcess.bind(null, "removeAllSessionCookies");
 
     addMessageListener("debug:storage-cookie-request-child",
                        cookieHelpers.handleParentRequest);
@@ -919,7 +969,8 @@ var cookieHelpers = {
       if (hostMatches(cookie.host, host) &&
           (!opts.name || cookie.name === opts.name) &&
           (!opts.domain || cookie.host === opts.domain) &&
-          (!opts.path || cookie.path === opts.path)) {
+          (!opts.path || cookie.path === opts.path) &&
+          (!opts.session || (!cookie.expires && !cookie.maxAge))) {
         Services.cookies.remove(
           cookie.host,
           cookie.name,
@@ -939,6 +990,10 @@ var cookieHelpers = {
 
   removeAllCookies(host, domain, originAttributes) {
     this._removeCookies(host, { domain, originAttributes });
+  },
+
+  removeAllSessionCookies(host, domain, originAttributes) {
+    this._removeCookies(host, { domain, originAttributes, session: true });
   },
 
   addCookieObservers() {
@@ -1023,6 +1078,12 @@ var cookieHelpers = {
         let originAttributes = msg.data.args[2];
         return cookieHelpers.removeAllCookies(host, domain, originAttributes);
       }
+      case "removeAllSessionCookies": {
+        let host = msg.data.args[0];
+        let domain = msg.data.args[1];
+        let originAttributes = msg.data.args[2];
+        return cookieHelpers.removeAllSessionCookies(host, domain, originAttributes);
+      }
       default:
         console.error("ERR_DIRECTOR_PARENT_UNKNOWN_METHOD", msg.json.method);
         throw new Error("ERR_DIRECTOR_PARENT_UNKNOWN_METHOD");
@@ -1034,7 +1095,7 @@ var cookieHelpers = {
  * E10S parent/child setup helpers
  */
 
-exports.setupParentProcessForCookies = function ({ mm, prefix }) {
+exports.setupParentProcessForCookies = function({ mm, prefix }) {
   cookieHelpers.onCookieChanged =
     callChildProcess.bind(null, "onCookieChanged");
 
@@ -1107,10 +1168,20 @@ function getObjectForLocalOrSessionStorage(type) {
       if (!storage) {
         return [];
       }
-      return Object.keys(storage).map(key => ({
-        name: key,
-        value: storage.getItem(key)
-      }));
+
+      // local and session storage cannot be iterated over using Object.keys()
+      // because it skips keys that are duplicated on the prototype
+      // e.g. "key", "getKeys" so we need to gather the real keys using the
+      // storage.key() function.
+      const storageArray = [];
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        storageArray.push({
+          name: key,
+          value: storage.getItem(key)
+        });
+      }
+      return storageArray;
     },
 
     populateStoresForHost(host, window) {
@@ -1131,20 +1202,20 @@ function getObjectForLocalOrSessionStorage(type) {
       }
     },
 
-    getFields: Task.async(function* () {
+    async getFields() {
       return [
         { name: "name", editable: true },
         { name: "value", editable: true }
       ];
-    }),
+    },
 
-    addItem: Task.async(function* (guid, host) {
+    async addItem(guid, host) {
       let storage = this.hostVsStores.get(host);
       if (!storage) {
         return;
       }
       storage.setItem(guid, DEFAULT_VALUE);
-    }),
+    },
 
     /**
      * Edit localStorage or sessionStorage fields.
@@ -1152,7 +1223,7 @@ function getObjectForLocalOrSessionStorage(type) {
      * @param {Object} data
      *        See editCookie() for format details.
      */
-    editItem: Task.async(function* ({host, field, oldValue, items}) {
+    async editItem({host, field, oldValue, items}) {
       let storage = this.hostVsStores.get(host);
       if (!storage) {
         return;
@@ -1163,23 +1234,23 @@ function getObjectForLocalOrSessionStorage(type) {
       }
 
       storage.setItem(items.name, items.value);
-    }),
+    },
 
-    removeItem: Task.async(function* (host, name) {
+    async removeItem(host, name) {
       let storage = this.hostVsStores.get(host);
       if (!storage) {
         return;
       }
       storage.removeItem(name);
-    }),
+    },
 
-    removeAll: Task.async(function* (host) {
+    async removeAll(host) {
       let storage = this.hostVsStores.get(host);
       if (!storage) {
         return;
       }
       storage.clear();
-    }),
+    },
 
     observe(subject, topic, data) {
       if ((topic != "dom-storage2-changed" &&
@@ -1250,7 +1321,7 @@ StorageActors.createActor({
 StorageActors.createActor({
   typeName: "Cache"
 }, {
-  getCachesForHost: Task.async(function* (host) {
+  async getCachesForHost(host) {
     let uri = Services.io.newURI(host);
     let attrs = this.storageActor
                     .document
@@ -1273,13 +1344,13 @@ StorageActors.createActor({
 
     let cache = new CacheStorage("content", principal);
     return cache;
-  }),
+  },
 
-  preListStores: Task.async(function* () {
+  async preListStores() {
     for (let host of this.hosts) {
-      yield this.populateStoresForHost(host);
+      await this.populateStoresForHost(host);
     }
-  }),
+  },
 
   form(form, detail) {
     if (detail === "actorid") {
@@ -1304,7 +1375,7 @@ StorageActors.createActor({
     });
   },
 
-  getValuesForHost: Task.async(function* (host, name) {
+  async getValuesForHost(host, name) {
     if (!name) {
       return [];
     }
@@ -1312,44 +1383,44 @@ StorageActors.createActor({
     name = JSON.parse(name)[0];
 
     let cache = this.hostVsStores.get(host).get(name);
-    let requests = yield cache.keys();
+    let requests = await cache.keys();
     let results = [];
     for (let request of requests) {
-      let response = yield cache.match(request);
+      let response = await cache.match(request);
       // Unwrap the response to get access to all its properties if the
       // response happen to be 'opaque', when it is a Cross Origin Request.
       response = response.cloneUnfiltered();
-      results.push(yield this.processEntry(request, response));
+      results.push(await this.processEntry(request, response));
     }
     return results;
-  }),
+  },
 
-  processEntry: Task.async(function* (request, response) {
+  async processEntry(request, response) {
     return {
       url: String(request.url),
       status: String(response.statusText),
     };
-  }),
+  },
 
-  getFields: Task.async(function* () {
+  async getFields() {
     return [
       { name: "url", editable: false },
       { name: "status", editable: false }
     ];
-  }),
+  },
 
-  populateStoresForHost: Task.async(function* (host) {
+  async populateStoresForHost(host) {
     let storeMap = new Map();
-    let caches = yield this.getCachesForHost(host);
+    let caches = await this.getCachesForHost(host);
     try {
-      for (let name of (yield caches.keys())) {
-        storeMap.set(name, (yield caches.open(name)));
+      for (let name of (await caches.keys())) {
+        storeMap.set(name, (await caches.open(name)));
       }
     } catch (ex) {
       console.warn(`Failed to enumerate CacheStorage for host ${host}: ${ex}`);
     }
     this.hostVsStores.set(host, storeMap);
-  }),
+  },
 
   /**
    * This method is overriden and left blank as for Cache Storage, this
@@ -1372,7 +1443,7 @@ StorageActors.createActor({
     return item;
   },
 
-  removeItem: Task.async(function* (host, name) {
+  async removeItem(host, name) {
     const cacheMap = this.hostVsStores.get(host);
     if (!cacheMap) {
       return;
@@ -1384,21 +1455,21 @@ StorageActors.createActor({
       // Delete the whole Cache object
       const [ cacheName ] = parsedName;
       cacheMap.delete(cacheName);
-      const cacheStorage = yield this.getCachesForHost(host);
-      yield cacheStorage.delete(cacheName);
+      const cacheStorage = await this.getCachesForHost(host);
+      await cacheStorage.delete(cacheName);
       this.onItemUpdated("deleted", host, [ cacheName ]);
     } else if (parsedName.length == 2) {
       // Delete one cached request
       const [ cacheName, url ] = parsedName;
       const cache = cacheMap.get(cacheName);
       if (cache) {
-        yield cache.delete(url);
+        await cache.delete(url);
         this.onItemUpdated("deleted", host, [ cacheName, url ]);
       }
     }
-  }),
+  },
 
-  removeAll: Task.async(function* (host, name) {
+  async removeAll(host, name) {
     const cacheMap = this.hostVsStores.get(host);
     if (!cacheMap) {
       return;
@@ -1411,12 +1482,12 @@ StorageActors.createActor({
       const [ cacheName ] = parsedName;
       const cache = cacheMap.get(cacheName);
       if (cache) {
-        let keys = yield cache.keys();
-        yield promise.all(keys.map(key => cache.delete(key)));
+        let keys = await cache.keys();
+        await Promise.all(keys.map(key => cache.delete(key)));
         this.onItemUpdated("cleared", host, [ cacheName ]);
       }
     }
-  }),
+  },
 
   /**
    * CacheStorage API doesn't support any notifications, we must fake them
@@ -1560,16 +1631,16 @@ StorageActors.createActor({
     this.onWindowReady = this.onWindowReady.bind(this);
     this.onWindowDestroyed = this.onWindowDestroyed.bind(this);
 
-    events.on(this.storageActor, "window-ready", this.onWindowReady);
-    events.on(this.storageActor, "window-destroyed", this.onWindowDestroyed);
+    this.storageActor.on("window-ready", this.onWindowReady);
+    this.storageActor.on("window-destroyed", this.onWindowDestroyed);
   },
 
   destroy() {
     this.hostVsStores.clear();
     this.objectsSize = null;
 
-    events.off(this.storageActor, "window-ready", this.onWindowReady);
-    events.off(this.storageActor, "window-destroyed", this.onWindowDestroyed);
+    this.storageActor.off("window-ready", this.onWindowReady);
+    this.storageActor.off("window-destroyed", this.onWindowDestroyed);
 
     protocol.Actor.prototype.destroy.call(this);
 
@@ -1577,9 +1648,24 @@ StorageActors.createActor({
   },
 
   /**
+   * Returns a list of currently known hosts for the target window. This list
+   * contains unique hosts from the window, all inner windows and all permanent
+   * indexedDB hosts defined inside the browser.
+   */
+  async getHosts() {
+    // Add internal hosts to this._internalHosts, which will be picked up by
+    // the this.hosts getter. Because this.hosts is a property on the default
+    // storage actor and inherited by all storage actors we have to do it this
+    // way.
+    this._internalHosts = await this.getInternalHosts();
+
+    return this.hosts;
+  },
+
+  /**
    * Remove an indexedDB database from given host with a given name.
    */
-  removeDatabase: Task.async(function* (host, name) {
+  async removeDatabase(host, name) {
     let win = this.storageActor.getWindowFromHost(host);
     if (!win) {
       return { error: `Window for host ${host} not found` };
@@ -1587,9 +1673,9 @@ StorageActors.createActor({
 
     let principal = win.document.nodePrincipal;
     return this.removeDB(host, principal, name);
-  }),
+  },
 
-  removeAll: Task.async(function* (host, name) {
+  async removeAll(host, name) {
     let [db, store] = JSON.parse(name);
 
     let win = this.storageActor.getWindowFromHost(host);
@@ -1599,9 +1685,9 @@ StorageActors.createActor({
 
     let principal = win.document.nodePrincipal;
     this.clearDBStore(host, principal, db, store);
-  }),
+  },
 
-  removeItem: Task.async(function* (host, name) {
+  async removeItem(host, name) {
     let [db, store, id] = JSON.parse(name);
 
     let win = this.storageActor.getWindowFromHost(host);
@@ -1611,7 +1697,7 @@ StorageActors.createActor({
 
     let principal = win.document.nodePrincipal;
     this.removeDBRecord(host, principal, db, store, id);
-  }),
+  },
 
   /**
    * This method is overriden and left blank as for indexedDB, this operation
@@ -1691,33 +1777,32 @@ StorageActors.createActor({
    * method, as that method is called in initialize method of the actor, which
    * cannot be asynchronous.
    */
-  preListStores: Task.async(function* () {
+  async preListStores() {
     this.hostVsStores = new Map();
 
-    for (let host of this.hosts) {
-      yield this.populateStoresForHost(host);
+    for (let host of await this.getHosts()) {
+      await this.populateStoresForHost(host);
     }
-  }),
+  },
 
-  populateStoresForHost: Task.async(function* (host) {
+  async populateStoresForHost(host) {
     let storeMap = new Map();
 
     let win = this.storageActor.getWindowFromHost(host);
-    if (win) {
-      let principal = win.document.nodePrincipal;
-      let {names} = yield this.getDBNamesForHost(host, principal);
+    let principal = this.getPrincipal(win);
 
-      for (let {name, storage} of names) {
-        let metadata = yield this.getDBMetaData(host, principal, name, storage);
+    let {names} = await this.getDBNamesForHost(host, principal);
 
-        metadata = indexedDBHelpers.patchMetadataMapsAndProtos(metadata);
+    for (let {name, storage} of names) {
+      let metadata = await this.getDBMetaData(host, principal, name, storage);
 
-        storeMap.set(`${name} (${storage})`, metadata);
-      }
+      metadata = indexedDBHelpers.patchMetadataMapsAndProtos(metadata);
+
+      storeMap.set(`${name} (${storage})`, metadata);
     }
 
     this.hostVsStores.set(host, storeMap);
-  }),
+  },
 
   /**
    * Returns the over-the-wire implementation of the indexed db entity.
@@ -1812,6 +1897,7 @@ StorageActors.createActor({
       this.removeDB = indexedDBHelpers.removeDB;
       this.removeDBRecord = indexedDBHelpers.removeDBRecord;
       this.splitNameAndStorage = indexedDBHelpers.splitNameAndStorage;
+      this.getInternalHosts = indexedDBHelpers.getInternalHosts;
       return;
     }
 
@@ -1825,6 +1911,7 @@ StorageActors.createActor({
 
     this.getDBMetaData = callParentProcessAsync.bind(null, "getDBMetaData");
     this.splitNameAndStorage = callParentProcessAsync.bind(null, "splitNameAndStorage");
+    this.getInternalHosts = callParentProcessAsync.bind(null, "getInternalHosts");
     this.getDBNamesForHost = callParentProcessAsync.bind(null, "getDBNamesForHost");
     this.getValuesForHost = callParentProcessAsync.bind(null, "getValuesForHost");
     this.removeDB = callParentProcessAsync.bind(null, "removeDB");
@@ -1851,7 +1938,7 @@ StorageActors.createActor({
 
     let unresolvedPromises = new Map();
     function callParentProcessAsync(methodName, ...args) {
-      let deferred = promise.defer();
+      let deferred = defer();
 
       unresolvedPromises.set(methodName, deferred);
 
@@ -1864,7 +1951,7 @@ StorageActors.createActor({
     }
   },
 
-  getFields: Task.async(function* (subType) {
+  async getFields(subType) {
     switch (subType) {
       // Detail of database
       case "database":
@@ -1893,25 +1980,19 @@ StorageActors.createActor({
           { name: "objectStores", editable: false },
         ];
     }
-  })
+  }
 });
 
 var indexedDBHelpers = {
   backToChild(...args) {
-    let mm = Cc["@mozilla.org/globalmessagemanager;1"]
-               .getService(Ci.nsIMessageListenerManager);
-
-    mm.broadcastAsyncMessage("debug:storage-indexedDB-request-child", {
+    Services.mm.broadcastAsyncMessage("debug:storage-indexedDB-request-child", {
       method: "backToChild",
       args: args
     });
   },
 
   onItemUpdated(action, host, path) {
-    let mm = Cc["@mozilla.org/globalmessagemanager;1"]
-               .getService(Ci.nsIMessageListenerManager);
-
-    mm.broadcastAsyncMessage("debug:storage-indexedDB-request-child", {
+    Services.mm.broadcastAsyncMessage("debug:storage-indexedDB-request-child", {
       method: "onItemUpdated",
       args: [ action, host, path ]
     });
@@ -1922,9 +2003,9 @@ var indexedDBHelpers = {
    * `name` for the given `host` with its `principal`. The stored metadata
    * information is of `DatabaseMetadata` type.
    */
-  getDBMetaData: Task.async(function* (host, principal, name, storage) {
+  async getDBMetaData(host, principal, name, storage) {
     let request = this.openWithPrincipal(principal, name, storage);
-    let success = promise.defer();
+    let success = defer();
 
     request.onsuccess = event => {
       let db = event.target.result;
@@ -1939,9 +2020,9 @@ var indexedDBHelpers = {
       success.resolve(this.backToChild("getDBMetaData", null));
     };
     return success.promise;
-  }),
+  },
 
-  splitNameAndStorage: function (name) {
+  splitNameAndStorage: function(name) {
     let lastOpenBracketIndex = name.lastIndexOf("(");
     let lastCloseBracketIndex = name.lastIndexOf(")");
     let delta = lastCloseBracketIndex - lastOpenBracketIndex - 1;
@@ -1954,15 +2035,41 @@ var indexedDBHelpers = {
   },
 
   /**
+   * Get all "internal" hosts. Internal hosts are database namespaces used by
+   * the browser.
+   */
+  async getInternalHosts() {
+    // Return an empty array if the browser toolbox is not enabled.
+    if (!Services.prefs.getBoolPref(CHROME_ENABLED_PREF) ||
+        !Services.prefs.getBoolPref(REMOTE_ENABLED_PREF)) {
+      return this.backToChild("getInternalHosts", []);
+    }
+
+    let profileDir = OS.Constants.Path.profileDir;
+    let storagePath = OS.Path.join(profileDir, "storage", "permanent");
+    let iterator = new OS.File.DirectoryIterator(storagePath);
+    let hosts = [];
+
+    await iterator.forEach(entry => {
+      if (entry.isDir && !SAFE_HOSTS_PREFIXES_REGEX.test(entry.name)) {
+        hosts.push(entry.name);
+      }
+    });
+    iterator.close();
+
+    return this.backToChild("getInternalHosts", hosts);
+  },
+
+  /**
    * Opens an indexed db connection for the given `principal` and
    * database `name`.
    */
-  openWithPrincipal: function (principal, name, storage) {
+  openWithPrincipal: function(principal, name, storage) {
     return indexedDBForStorage.openForPrincipal(principal, name,
                                                 { storage: storage });
   },
 
-  removeDB: Task.async(function* (host, principal, dbName) {
+  async removeDB(host, principal, dbName) {
     let result = new Promise(resolve => {
       let {name, storage} = this.splitNameAndStorage(dbName);
       let request =
@@ -1992,15 +2099,15 @@ var indexedDBHelpers = {
       setTimeout(() => resolve({ blocked: true }), 3000);
     });
 
-    return this.backToChild("removeDB", yield result);
-  }),
+    return this.backToChild("removeDB", await result);
+  },
 
-  removeDBRecord: Task.async(function* (host, principal, dbName, storeName, id) {
+  async removeDBRecord(host, principal, dbName, storeName, id) {
     let db;
     let {name, storage} = this.splitNameAndStorage(dbName);
 
     try {
-      db = yield new Promise((resolve, reject) => {
+      db = await new Promise((resolve, reject) => {
         let request = this.openWithPrincipal(principal, name, storage);
         request.onsuccess = ev => resolve(ev.target.result);
         request.onerror = ev => reject(ev.target.error);
@@ -2009,7 +2116,7 @@ var indexedDBHelpers = {
       let transaction = db.transaction(storeName, "readwrite");
       let store = transaction.objectStore(storeName);
 
-      yield new Promise((resolve, reject) => {
+      await new Promise((resolve, reject) => {
         let request = store.delete(id);
         request.onsuccess = () => resolve();
         request.onerror = ev => reject(ev.target.error);
@@ -2026,14 +2133,14 @@ var indexedDBHelpers = {
     }
 
     return this.backToChild("removeDBRecord", null);
-  }),
+  },
 
-  clearDBStore: Task.async(function* (host, principal, dbName, storeName) {
+  async clearDBStore(host, principal, dbName, storeName) {
     let db;
     let {name, storage} = this.splitNameAndStorage(dbName);
 
     try {
-      db = yield new Promise((resolve, reject) => {
+      db = await new Promise((resolve, reject) => {
         let request = this.openWithPrincipal(principal, name, storage);
         request.onsuccess = ev => resolve(ev.target.result);
         request.onerror = ev => reject(ev.target.error);
@@ -2042,7 +2149,7 @@ var indexedDBHelpers = {
       let transaction = db.transaction(storeName, "readwrite");
       let store = transaction.objectStore(storeName);
 
-      yield new Promise((resolve, reject) => {
+      await new Promise((resolve, reject) => {
         let request = store.clear();
         request.onsuccess = () => resolve();
         request.onerror = ev => reject(ev.target.error);
@@ -2059,12 +2166,12 @@ var indexedDBHelpers = {
     }
 
     return this.backToChild("clearDBStore", null);
-  }),
+  },
 
   /**
    * Fetches all the databases and their metadata for the given `host`.
    */
-  getDBNamesForHost: Task.async(function* (host, principal) {
+  async getDBNamesForHost(host, principal) {
     let sanitizedHost = this.getSanitizedHost(host) + principal.originSuffix;
     let profileDir = OS.Constants.Path.profileDir;
     let files = [];
@@ -2083,7 +2190,7 @@ var indexedDBHelpers = {
     // - default:   { storage: "default" } or not specified.
     // - permanent: { storage: "persistent" }.
     // - temporary: { storage: "temporary" }.
-    let sqliteFiles = yield this.findSqlitePathsForHost(storagePath, sanitizedHost);
+    let sqliteFiles = await this.findSqlitePathsForHost(storagePath, sanitizedHost);
 
     for (let file of sqliteFiles) {
       let splitPath = OS.Path.split(file).components;
@@ -2099,7 +2206,7 @@ var indexedDBHelpers = {
 
     if (files.length > 0) {
       for (let {file, storage} of files) {
-        let name = yield this.getNameFromDatabaseFile(file);
+        let name = await this.getNameFromDatabaseFile(file);
         if (name) {
           names.push({
             name,
@@ -2110,18 +2217,18 @@ var indexedDBHelpers = {
     }
 
     return this.backToChild("getDBNamesForHost", {names});
-  }),
+  },
 
   /**
    * Find all SQLite files that hold IndexedDB data for a host, such as:
    *   storage/temporary/http+++www.example.com/idb/1556056096MeysDaabta.sqlite
    */
-  findSqlitePathsForHost: Task.async(function* (storagePath, sanitizedHost) {
+  async findSqlitePathsForHost(storagePath, sanitizedHost) {
     let sqlitePaths = [];
-    let idbPaths = yield this.findIDBPathsForHost(storagePath, sanitizedHost);
+    let idbPaths = await this.findIDBPathsForHost(storagePath, sanitizedHost);
     for (let idbPath of idbPaths) {
       let iterator = new OS.File.DirectoryIterator(idbPath);
-      yield iterator.forEach(entry => {
+      await iterator.forEach(entry => {
         if (!entry.isDir && entry.path.endsWith(".sqlite")) {
           sqlitePaths.push(entry.path);
         }
@@ -2129,40 +2236,40 @@ var indexedDBHelpers = {
       iterator.close();
     }
     return sqlitePaths;
-  }),
+  },
 
   /**
    * Find all paths that hold IndexedDB data for a host, such as:
    *   storage/temporary/http+++www.example.com/idb
    */
-  findIDBPathsForHost: Task.async(function* (storagePath, sanitizedHost) {
+  async findIDBPathsForHost(storagePath, sanitizedHost) {
     let idbPaths = [];
-    let typePaths = yield this.findStorageTypePaths(storagePath);
+    let typePaths = await this.findStorageTypePaths(storagePath);
     for (let typePath of typePaths) {
       let idbPath = OS.Path.join(typePath, sanitizedHost, "idb");
-      if (yield OS.File.exists(idbPath)) {
+      if (await OS.File.exists(idbPath)) {
         idbPaths.push(idbPath);
       }
     }
     return idbPaths;
-  }),
+  },
 
   /**
    * Find all the storage types, such as "default", "permanent", or "temporary".
    * These names have changed over time, so it seems simpler to look through all types
    * that currently exist in the profile.
    */
-  findStorageTypePaths: Task.async(function* (storagePath) {
+  async findStorageTypePaths(storagePath) {
     let iterator = new OS.File.DirectoryIterator(storagePath);
     let typePaths = [];
-    yield iterator.forEach(entry => {
+    await iterator.forEach(entry => {
       if (entry.isDir) {
         typePaths.push(entry.path);
       }
     });
     iterator.close();
     return typePaths;
-  }),
+  },
 
   /**
    * Removes any illegal characters from the host name to make it a valid file
@@ -2179,7 +2286,7 @@ var indexedDBHelpers = {
    * Retrieves the proper indexed db database name from the provided .sqlite
    * file location.
    */
-  getNameFromDatabaseFile: Task.async(function* (path) {
+  async getNameFromDatabaseFile(path) {
     let connection = null;
     let retryCount = 0;
 
@@ -2188,10 +2295,10 @@ var indexedDBHelpers = {
     // will throw. Thus we retry for some time to see if lock is removed.
     while (!connection && retryCount++ < 25) {
       try {
-        connection = yield Sqlite.openConnection({ path: path });
+        connection = await Sqlite.openConnection({ path: path });
       } catch (ex) {
         // Continuously retrying is overkill. Waiting for 100ms before next try
-        yield sleep(100);
+        await sleep(100);
       }
     }
 
@@ -2199,19 +2306,19 @@ var indexedDBHelpers = {
       return null;
     }
 
-    let rows = yield connection.execute("SELECT name FROM database");
+    let rows = await connection.execute("SELECT name FROM database");
     if (rows.length != 1) {
       return null;
     }
 
     let name = rows[0].getResultByName("name");
 
-    yield connection.close();
+    await connection.close();
 
     return name;
-  }),
+  },
 
-  getValuesForHost: Task.async(function* (host, name = "null", options,
+  async getValuesForHost(host, name = "null", options,
                                           hostVsStores, principal) {
     name = JSON.parse(name);
     if (!name || !name.length) {
@@ -2247,7 +2354,7 @@ var indexedDBHelpers = {
     }
     // Get either all entries from the object store, or a particular id
     let storage = hostVsStores.get(host).get(db2).storage;
-    let result = yield this.getObjectStoreData(host, principal, db2, storage, {
+    let result = await this.getObjectStoreData(host, principal, db2, storage, {
       objectStore: objectStore,
       id: id,
       index: options.index,
@@ -2255,7 +2362,7 @@ var indexedDBHelpers = {
       size: options.size
     });
     return this.backToChild("getValuesForHost", {result: result});
-  }),
+  },
 
   /**
    * Returns all or requested entries from a particular objectStore from the db
@@ -2286,7 +2393,7 @@ var indexedDBHelpers = {
   getObjectStoreData(host, principal, dbName, storage, requestOptions) {
     let {name} = this.splitNameAndStorage(dbName);
     let request = this.openWithPrincipal(principal, name, storage);
-    let success = promise.defer();
+    let success = defer();
     let {objectStore, id, index, offset, size} = requestOptions;
     let data = [];
     let db;
@@ -2392,6 +2499,9 @@ var indexedDBHelpers = {
         let [host, principal, name, storage] = args;
         return indexedDBHelpers.getDBMetaData(host, principal, name, storage);
       }
+      case "getInternalHosts": {
+        return indexedDBHelpers.getInternalHosts();
+      }
       case "splitNameAndStorage": {
         let [name] = args;
         return indexedDBHelpers.splitNameAndStorage(name);
@@ -2428,7 +2538,7 @@ var indexedDBHelpers = {
  * E10S parent/child setup helpers
  */
 
-exports.setupParentProcessForIndexedDB = function ({ mm, prefix }) {
+exports.setupParentProcessForIndexedDB = function({ mm, prefix }) {
   // listen for director-script requests from the child process
   setMessageManager(mm);
 
@@ -2613,12 +2723,12 @@ let StorageActor = protocol.ActorClassWithSpec(specs.storageSpec, {
     if (topic == "content-document-global-created" &&
         this.isIncludedInTopLevelWindow(subject)) {
       this.childWindowPool.add(subject);
-      events.emit(this, "window-ready", subject);
+      this.emit("window-ready", subject);
     } else if (topic == "inner-window-destroyed") {
       let window = this.getWindowFromInnerWindowID(subject);
       if (window) {
         this.childWindowPool.delete(window);
-        events.emit(this, "window-destroyed", window);
+        this.emit("window-destroyed", window);
       }
     }
     return null;
@@ -2644,12 +2754,12 @@ let StorageActor = protocol.ActorClassWithSpec(specs.storageSpec, {
     let window = target.defaultView;
 
     if (type == "pagehide" && this.childWindowPool.delete(window)) {
-      events.emit(this, "window-destroyed", window);
+      this.emit("window-destroyed", window);
     } else if (type == "pageshow" && persisted && window.location.href &&
                window.location.href != "about:blank" &&
                this.isIncludedInTopLevelWindow(window)) {
       this.childWindowPool.add(window);
-      events.emit(this, "window-ready", window);
+      this.emit("window-ready", window);
     }
   },
 
@@ -2662,18 +2772,18 @@ let StorageActor = protocol.ActorClassWithSpec(specs.storageSpec, {
    *      host: <hostname>
    *    }]
    */
-  listStores: Task.async(function* () {
+  async listStores() {
     let toReturn = {};
 
     for (let [name, value] of this.childActorPool) {
       if (value.preListStores) {
-        yield value.preListStores();
+        await value.preListStores();
       }
       toReturn[name] = value;
     }
 
     return toReturn;
-  }),
+  },
 
   /**
    * This method is called by the registered storage types so as to tell the
@@ -2698,7 +2808,7 @@ let StorageActor = protocol.ActorClassWithSpec(specs.storageSpec, {
    */
   update(action, storeType, data) {
     if (action == "cleared") {
-      events.emit(this, "stores-cleared", { [storeType]: data });
+      this.emit("stores-cleared", { [storeType]: data });
       return null;
     }
 
@@ -2754,7 +2864,7 @@ let StorageActor = protocol.ActorClassWithSpec(specs.storageSpec, {
 
     this.batchTimer = setTimeout(() => {
       clearTimeout(this.batchTimer);
-      events.emit(this, "stores-update", this.boundUpdate);
+      this.emit("stores-update", this.boundUpdate);
       this.boundUpdate = {};
     }, BATCH_DELAY);
 

@@ -16,7 +16,7 @@ var gThreadClient;
 var gCallback;
 
 function run_test() {
-  run_test_with_server(DebuggerServer, function () {
+  run_test_with_server(DebuggerServer, function() {
     run_test_with_server(WorkerDebuggerServer, do_test_finished);
   });
   do_test_pending();
@@ -27,62 +27,62 @@ function run_test_with_server(server, callback) {
   initTestDebuggerServer(server);
   gDebuggee = addTestGlobal("test-stack", server);
   gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient,
                            "test-stack",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_skip_breakpoint();
                            });
   });
 }
 
-var test_no_skip_breakpoint = Task.async(function* (source, location) {
-  let [response, bpClient] = yield source.setBreakpoint(
+var test_no_skip_breakpoint = async function(source, location) {
+  let [response, bpClient] = await source.setBreakpoint(
     Object.assign({}, location, { noSliding: true })
   );
 
-  do_check_true(!response.actualLocation);
-  do_check_eq(bpClient.location.line, gDebuggee.line0 + 3);
-  yield bpClient.remove();
-});
+  Assert.ok(!response.actualLocation);
+  Assert.equal(bpClient.location.line, gDebuggee.line0 + 3);
+  await bpClient.remove();
+};
 
-var test_skip_breakpoint = function () {
-  gThreadClient.addOneTimeListener("paused", Task.async(function* (event, packet) {
+var test_skip_breakpoint = function() {
+  gThreadClient.addOneTimeListener("paused", async function(event, packet) {
     let location = { line: gDebuggee.line0 + 3 };
     let source = gThreadClient.source(packet.frame.where.source);
 
     // First, make sure that we can disable sliding with the
     // `noSliding` option.
-    yield test_no_skip_breakpoint(source, location);
+    await test_no_skip_breakpoint(source, location);
 
     // Now make sure that the breakpoint properly slides forward one line.
-    const [response, bpClient] = yield source.setBreakpoint(location);
-    do_check_true(!!response.actualLocation);
-    do_check_eq(response.actualLocation.source.actor, source.actor);
-    do_check_eq(response.actualLocation.line, location.line + 1);
+    const [response, bpClient] = await source.setBreakpoint(location);
+    Assert.ok(!!response.actualLocation);
+    Assert.equal(response.actualLocation.source.actor, source.actor);
+    Assert.equal(response.actualLocation.line, location.line + 1);
 
-    gThreadClient.addOneTimeListener("paused", function (event, packet) {
+    gThreadClient.addOneTimeListener("paused", function(event, packet) {
       // Check the return value.
-      do_check_eq(packet.type, "paused");
-      do_check_eq(packet.frame.where.source.actor, source.actor);
-      do_check_eq(packet.frame.where.line, location.line + 1);
-      do_check_eq(packet.why.type, "breakpoint");
-      do_check_eq(packet.why.actors[0], bpClient.actor);
+      Assert.equal(packet.type, "paused");
+      Assert.equal(packet.frame.where.source.actor, source.actor);
+      Assert.equal(packet.frame.where.line, location.line + 1);
+      Assert.equal(packet.why.type, "breakpoint");
+      Assert.equal(packet.why.actors[0], bpClient.actor);
       // Check that the breakpoint worked.
-      do_check_eq(gDebuggee.a, 1);
-      do_check_eq(gDebuggee.b, undefined);
+      Assert.equal(gDebuggee.a, 1);
+      Assert.equal(gDebuggee.b, undefined);
 
       // Remove the breakpoint.
-      bpClient.remove(function (response) {
-        gThreadClient.resume(function () {
+      bpClient.remove(function(response) {
+        gThreadClient.resume(function() {
           gClient.close().then(gCallback);
         });
       });
     });
 
     gThreadClient.resume();
-  }));
+  });
 
   // Use `evalInSandbox` to make the debugger treat it as normal
   // globally-scoped code, where breakpoint sliding rules apply.

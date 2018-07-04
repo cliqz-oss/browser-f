@@ -64,11 +64,16 @@ enum class TraceKind
     RegExpShared = 0x4F
 };
 const static uintptr_t OutOfLineTraceKindMask = 0x07;
-static_assert(uintptr_t(JS::TraceKind::BaseShape) & OutOfLineTraceKindMask, "mask bits are set");
-static_assert(uintptr_t(JS::TraceKind::JitCode) & OutOfLineTraceKindMask, "mask bits are set");
-static_assert(uintptr_t(JS::TraceKind::LazyScript) & OutOfLineTraceKindMask, "mask bits are set");
-static_assert(uintptr_t(JS::TraceKind::Scope) & OutOfLineTraceKindMask, "mask bits are set");
-static_assert(uintptr_t(JS::TraceKind::RegExpShared) & OutOfLineTraceKindMask, "mask bits are set");
+
+#define ASSERT_TRACE_KIND(tk) \
+    static_assert((uintptr_t(tk) & OutOfLineTraceKindMask) == OutOfLineTraceKindMask, \
+        "mask bits are set")
+ASSERT_TRACE_KIND(JS::TraceKind::BaseShape);
+ASSERT_TRACE_KIND(JS::TraceKind::JitCode);
+ASSERT_TRACE_KIND(JS::TraceKind::LazyScript);
+ASSERT_TRACE_KIND(JS::TraceKind::Scope);
+ASSERT_TRACE_KIND(JS::TraceKind::RegExpShared);
+#undef ASSERT_TRACE_KIND
 
 // When this header is imported inside SpiderMonkey, the class definitions are
 // available and we can query those definitions to find the correct kind
@@ -133,7 +138,7 @@ JS_FOR_EACH_TRACEKIND(JS_EXPAND_DEF)
 #undef JS_EXPAND_DEF
 
 // Specify the RootKind for all types. Value and jsid map to special cases;
-// pointer types we can derive directly from the TraceKind; everything else
+// Cell pointer types we can derive directly from the TraceKind; everything else
 // should go in the Traceable list and use GCPolicy<T>::trace for tracing.
 template <typename T>
 struct MapTypeToRootKind {
@@ -143,6 +148,10 @@ template <typename T>
 struct MapTypeToRootKind<T*> {
     static const JS::RootKind kind =
         JS::MapTraceKindToRootKind<JS::MapTypeToTraceKind<T>::kind>::kind;
+};
+template <> struct MapTypeToRootKind<JS::Realm*> {
+    // Not a pointer to a GC cell. Use GCPolicy.
+    static const JS::RootKind kind = JS::RootKind::Traceable;
 };
 template <typename T>
 struct MapTypeToRootKind<mozilla::UniquePtr<T>> {

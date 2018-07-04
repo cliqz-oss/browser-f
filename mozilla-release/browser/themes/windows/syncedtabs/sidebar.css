@@ -6,10 +6,6 @@
 
 /* These styles are intended to mimic XUL trees and the XUL search box. */
 
-html {
-  background-color: #EEF3FA;
-}
-
 .item {
   padding-inline-end: 0;
 }
@@ -25,28 +21,22 @@ html {
 .search-box {
   -moz-appearance: textfield;
   cursor: text;
-  margin: 2px 4px;
+  margin: 4px;
   padding: 2px 2px 3px;
   padding-inline-start: 4px;
   color: -moz-FieldText;
 }
 
-.textbox-search-icon {
-  width: 16px;
-  height: 16px;
+.search-box > .textbox-input-box {
   background-image: url(chrome://global/skin/icons/search-textbox.svg);
   background-repeat: no-repeat;
-  background-position: center;
-  display: inline-block;
-  vertical-align: middle;
+  background-size: 12px 12px;
+  background-position: left center;
+  padding-inline-start: 14px;
 }
 
-.textbox-search-icon:-moz-locale-dir(rtl) {
-  transform: scaleX(-1);
-}
-
-.textbox-search-icon[searchbutton]:not([disabled]) {
-  cursor: pointer;
+.search-box > .textbox-input-box:-moz-locale-dir(rtl) {
+  background-position: right center;
 }
 
 .textbox-search-clear {
@@ -58,10 +48,6 @@ html {
 
 .textbox-search-clear:not([disabled]) {
   cursor: default;
-}
-
-.textbox-search-icon:not([disabled]) {
-  cursor: text;
 }
 
 .textbox-search-clear:not([disabled]):hover {
@@ -94,9 +80,9 @@ html {
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-  padding-top: 5px;
   min-width: 9px; /* The image's width is 9 pixels */
   height: 9px;
+  margin: auto;
 }
 
 .item.client .item-twisty-container {

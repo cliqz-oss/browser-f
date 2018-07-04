@@ -3,9 +3,9 @@
 */
 "use strict";
 
-Cu.import("resource://services-sync/main.js");
-Cu.import("resource://services-sync/SyncedTabs.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/SyncedTabs.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 
 const faviconService = Cc["@mozilla.org/browser/favicon-service;1"]
                        .getService(Ci.nsIFaviconService);
@@ -29,7 +29,7 @@ MockTabsEngine.prototype = {
   getOpenURLs() {
     return new Set();
   },
-}
+};
 
 let tabsEngine;
 
@@ -52,7 +52,11 @@ let MockClientsEngine = {
     }
     return tabsEngine.clients[id].clientName;
   },
-}
+
+  getClientType(id) {
+    return "desktop";
+  }
+};
 
 function configureClients(clients, clientSettings = {}) {
   // each client record is expected to have an id.
@@ -69,7 +73,7 @@ function configureClients(clients, clientSettings = {}) {
 add_task(async function setup() {
   await Weave.Service.promiseInitialized;
   // Configure Sync with our mock tabs engine and force it to become initialized.
-  Weave.Service.engineManager.unregister("tabs");
+  await Weave.Service.engineManager.unregister("tabs");
   await Weave.Service.engineManager.register(MockTabsEngine);
   Weave.Service.clientsEngine = MockClientsEngine;
   tabsEngine = Weave.Service.engineManager.get("tabs");
@@ -188,8 +192,8 @@ add_task(async function test_clientWithTabsIconsDisabled() {
   clients.sort((a, b) => { return a.name.localeCompare(b.name); });
   equal(clients[0].tabs.length, 1);
   equal(clients[0].tabs[0].url, "http://foo.com/");
-  // expect the default favicon (empty string) due to the pref being false.
-  equal(clients[0].tabs[0].icon, "");
+  // Expect the default favicon due to the pref being false.
+  equal(clients[0].tabs[0].icon, "page-icon:http://foo.com/");
   Services.prefs.clearUserPref("services.sync.syncedTabs.showRemoteIcons");
 });
 

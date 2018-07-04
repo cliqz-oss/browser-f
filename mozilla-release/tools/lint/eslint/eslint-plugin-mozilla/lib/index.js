@@ -23,7 +23,7 @@ module.exports = {
     "browser-window": require("../lib/environments/browser-window.js"),
     "chrome-worker": require("../lib/environments/chrome-worker.js"),
     "frame-script": require("../lib/environments/frame-script.js"),
-    "places-overlay": require("../lib/environments/places-overlay.js"),
+    "jsm": require("../lib/environments/jsm.js"),
     "simpletest": require("../lib/environments/simpletest.js")
   },
   processors: {
@@ -32,8 +32,6 @@ module.exports = {
   rules: {
     "avoid-Date-timing": require("../lib/rules/avoid-Date-timing"),
     "avoid-removeChild": require("../lib/rules/avoid-removeChild"),
-    "avoid-nsISupportsString-preferences":
-      require("../lib/rules/avoid-nsISupportsString-preferences"),
     "balanced-listeners": require("../lib/rules/balanced-listeners"),
     "import-browser-window-globals":
       require("../lib/rules/import-browser-window-globals"),
@@ -41,10 +39,12 @@ module.exports = {
       require("../lib/rules/import-content-task-globals"),
     "import-globals": require("../lib/rules/import-globals"),
     "import-headjs-globals": require("../lib/rules/import-headjs-globals"),
+    "mark-exported-symbols-as-used": require("../lib/rules/mark-exported-symbols-as-used"),
     "mark-test-function-used": require("../lib/rules/mark-test-function-used"),
     "no-aArgs": require("../lib/rules/no-aArgs"),
     "no-arbitrary-setTimeout": require("../lib/rules/no-arbitrary-setTimeout"),
-    "no-cpows-in-tests": require("../lib/rules/no-cpows-in-tests"),
+    "no-compare-against-boolean-literals": require("../lib/rules/no-compare-against-boolean-literals"),
+    "no-define-cc-etc": require("../lib/rules/no-define-cc-etc"),
     "no-single-arg-cu-import": require("../lib/rules/no-single-arg-cu-import"),
     "no-import-into-var-and-global":
       require("../lib/rules/no-import-into-var-and-global.js"),
@@ -52,36 +52,18 @@ module.exports = {
     "no-useless-parameters": require("../lib/rules/no-useless-parameters"),
     "no-useless-removeEventListener":
       require("../lib/rules/no-useless-removeEventListener"),
+    "no-useless-run-test":
+      require("../lib/rules/no-useless-run-test"),
     "reject-importGlobalProperties":
       require("../lib/rules/reject-importGlobalProperties"),
     "reject-some-requires": require("../lib/rules/reject-some-requires"),
+    "use-cc-etc": require("../lib/rules/use-cc-etc"),
+    "use-chromeutils-import": require("../lib/rules/use-chromeutils-import"),
     "use-default-preference-values":
       require("../lib/rules/use-default-preference-values"),
     "use-ownerGlobal": require("../lib/rules/use-ownerGlobal"),
+    "use-includes-instead-of-indexOf": require("../lib/rules/use-includes-instead-of-indexOf"),
+    "use-services": require("../lib/rules/use-services"),
     "var-only-at-top-level": require("../lib/rules/var-only-at-top-level")
-  },
-  rulesConfig: {
-    "avoid-Date-timing": "off",
-    "avoid-removeChild": "off",
-    "avoid-nsISupportsString-preferences": "off",
-    "balanced-listeners": "off",
-    "import-browser-window-globals": "off",
-    "import-content-task-globals": "off",
-    "import-globals": "off",
-    "import-headjs-globals": "off",
-    "mark-test-function-used": "off",
-    "no-aArgs": "off",
-    "no-arbitrary-setTimeout": "off",
-    "no-cpows-in-tests": "off",
-    "no-single-arg-cu-import": "off",
-    "no-import-into-var-and-global": "off",
-    "no-task": "off",
-    "no-useless-parameters": "off",
-    "no-useless-removeEventListener": "off",
-    "reject-importGlobalProperties": "off",
-    "reject-some-requires": "off",
-    "use-default-preference-values": "off",
-    "use-ownerGlobal": "off",
-    "var-only-at-top-level": "off"
   }
 };

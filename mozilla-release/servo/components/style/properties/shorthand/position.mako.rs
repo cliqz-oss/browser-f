@@ -11,8 +11,10 @@
                     spec="https://drafts.csswg.org/css-flexbox/#flex-flow-property">
     use properties::longhands::{flex_direction, flex_wrap};
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let mut direction = None;
         let mut wrap = None;
         loop {
@@ -32,7 +34,7 @@
         }
 
         if direction.is_none() && wrap.is_none() {
-            return Err(StyleParseError::UnspecifiedError.into())
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
         Ok(expanded! {
             flex_direction: unwrap_or_initial!(flex_direction, direction),
@@ -46,26 +48,32 @@
                     extra_prefixes="webkit"
                     derive_serialize="True"
                     spec="https://drafts.csswg.org/css-flexbox/#flex-property">
-    use values::specified::Number;
+    use parser::Parse;
+    use values::specified::NonNegativeNumber;
+    use properties::longhands::flex_basis::SpecifiedValue as FlexBasis;
 
-    fn parse_flexibility<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                                 -> Result<(Number, Option<Number>),ParseError<'i>> {
-        let grow = Number::parse_non_negative(context, input)?;
-        let shrink = input.try(|i| Number::parse_non_negative(context, i)).ok();
+    fn parse_flexibility<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<(NonNegativeNumber, Option<NonNegativeNumber>),ParseError<'i>> {
+        let grow = NonNegativeNumber::parse(context, input)?;
+        let shrink = input.try(|i| NonNegativeNumber::parse(context, i)).ok();
         Ok((grow, shrink))
     }
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let mut grow = None;
         let mut shrink = None;
         let mut basis = None;
 
         if input.try(|input| input.expect_ident_matching("none")).is_ok() {
             return Ok(expanded! {
-                flex_grow: Number::new(0.0),
-                flex_shrink: Number::new(0.0),
-                flex_basis: longhands::flex_basis::SpecifiedValue::auto(),
+                flex_grow: NonNegativeNumber::new(0.0),
+                flex_shrink: NonNegativeNumber::new(0.0),
+                flex_basis: FlexBasis::auto(),
             })
         }
         loop {
@@ -77,7 +85,7 @@
                 }
             }
             if basis.is_none() {
-                if let Ok(value) = input.try(|input| longhands::flex_basis::parse_specified(context, input)) {
+                if let Ok(value) = input.try(|input| FlexBasis::parse(context, input)) {
                     basis = Some(value);
                     continue
                 }
@@ -86,44 +94,44 @@
         }
 
         if grow.is_none() && basis.is_none() {
-            return Err(StyleParseError::UnspecifiedError.into())
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
         Ok(expanded! {
-            flex_grow: grow.unwrap_or(Number::new(1.0)),
-            flex_shrink: shrink.unwrap_or(Number::new(1.0)),
+            flex_grow: grow.unwrap_or(NonNegativeNumber::new(1.0)),
+            flex_shrink: shrink.unwrap_or(NonNegativeNumber::new(1.0)),
             // Per spec, this should be SpecifiedValue::zero(), but all
             // browsers currently agree on using `0%`. This is a spec
             // change which hasn't been adopted by browsers:
             // https://github.com/w3c/csswg-drafts/commit/2c446befdf0f686217905bdd7c92409f6bd3921b
-            flex_basis: basis.unwrap_or(longhands::flex_basis::SpecifiedValue::zero_percent()),
+            flex_basis: basis.unwrap_or(FlexBasis::zero_percent()),
         })
     }
 </%helpers:shorthand>
 
-<%helpers:shorthand name="grid-gap" sub_properties="grid-row-gap grid-column-gap"
-                    spec="https://drafts.csswg.org/css-grid/#propdef-grid-gap"
+<%helpers:shorthand name="gap" alias="grid-gap" sub_properties="row-gap column-gap"
+                    spec="https://drafts.csswg.org/css-align-3/#gap-shorthand"
                     products="gecko">
-  use properties::longhands::{grid_row_gap, grid_column_gap};
+  use properties::longhands::{row_gap, column_gap};
 
   pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
                              -> Result<Longhands, ParseError<'i>> {
-      let row_gap = grid_row_gap::parse(context, input)?;
-      let column_gap = input.try(|input| grid_column_gap::parse(context, input)).unwrap_or(row_gap.clone());
+      let r_gap = row_gap::parse(context, input)?;
+      let c_gap = input.try(|input| column_gap::parse(context, input)).unwrap_or(r_gap.clone());
 
       Ok(expanded! {
-        grid_row_gap: row_gap,
-        grid_column_gap: column_gap,
+        row_gap: r_gap,
+        column_gap: c_gap,
       })
   }
 
   impl<'a> ToCss for LonghandsToSerialize<'a>  {
-      fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-          if self.grid_row_gap == self.grid_column_gap {
-            self.grid_row_gap.to_css(dest)
+      fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
+          if self.row_gap == self.column_gap {
+            self.row_gap.to_css(dest)
           } else {
-            self.grid_row_gap.to_css(dest)?;
+            self.row_gap.to_css(dest)?;
             dest.write_str(" ")?;
-            self.grid_column_gap.to_css(dest)
+            self.column_gap.to_css(dest)
           }
       }
   }
@@ -140,13 +148,15 @@
     // NOTE: Since both the shorthands have the same code, we should (re-)use code from one to implement
     // the other. This might not be a big deal for now, but we should consider looking into this in the future
     // to limit the amount of code generated.
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let start = input.try(|i| GridLine::parse(context, i))?;
         let end = if input.try(|i| i.expect_delim('/')).is_ok() {
             GridLine::parse(context, input)?
         } else {
-            let mut line = GridLine::default();
+            let mut line = GridLine::auto();
             if start.line_num.is_none() && !start.is_span {
                 line.ident = start.ident.clone();       // ident from start value should be taken
             }
@@ -161,7 +171,7 @@
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a> {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             self.grid_${kind}_start.to_css(dest)?;
             dest.write_str(" / ")?;
             self.grid_${kind}_end.to_css(dest)
@@ -178,10 +188,12 @@
     use parser::Parse;
 
     // The code is the same as `grid-{row,column}` except that this can have four values at most.
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         fn line_with_ident_from(other: &GridLine) -> GridLine {
-            let mut this = GridLine::default();
+            let mut this = GridLine::auto();
             if other.line_num.is_none() && !other.is_span {
                 this.ident = other.ident.clone();
             }
@@ -222,7 +234,7 @@
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a> {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             self.grid_row_start.to_css(dest)?;
             let values = [&self.grid_column_start, &self.grid_row_end, &self.grid_column_end];
             for value in &values {
@@ -238,20 +250,21 @@
 <%helpers:shorthand name="grid-template"
                     sub_properties="grid-template-rows grid-template-columns grid-template-areas"
                     spec="https://drafts.csswg.org/css-grid/#propdef-grid-template"
-                    disable_when_testing="True"
                     products="gecko">
     use parser::Parse;
-    use properties::longhands::grid_template_areas::TemplateAreas;
+    use servo_arc::Arc;
     use values::{Either, None_};
-    use values::generics::grid::{LineNameList, TrackSize, TrackList, TrackListType, concat_serialize_idents};
+    use values::generics::grid::{LineNameList, TrackSize, TrackList, TrackListType};
+    use values::generics::grid::{TrackListValue, concat_serialize_idents};
     use values::specified::{GridTemplateComponent, GenericGridTemplateComponent};
     use values::specified::grid::parse_line_names;
+    use values::specified::position::{TemplateAreas, TemplateAreasArc};
 
     /// Parsing for `<grid-template>` shorthand (also used by `grid` shorthand).
-    pub fn parse_grid_template<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                                       -> Result<(GridTemplateComponent,
-                                                  GridTemplateComponent,
-                                                  Either<TemplateAreas, None_>), ParseError<'i>> {
+    pub fn parse_grid_template<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<(GridTemplateComponent, GridTemplateComponent, Either<TemplateAreasArc, None_>), ParseError<'i>> {
         // Other shorthand sub properties also parse `none` and `subgrid` keywords and this
         // shorthand should know after these keywords there is nothing to parse. Otherwise it
         // gets confused and rejects the sub properties that contains `none` or `subgrid`.
@@ -287,7 +300,7 @@
                 line_names.push(names.into_boxed_slice());
                 strings.push(string);
                 let size = input.try(|i| TrackSize::parse(context, i)).unwrap_or_default();
-                values.push(size);
+                values.push(TrackListValue::TrackSize(size));
                 names = input.try(parse_line_names).unwrap_or(vec![].into_boxed_slice()).into_vec();
                 if let Ok(v) = input.try(parse_line_names) {
                     names.extend(v.into_vec());
@@ -308,7 +321,7 @@
             }
 
             let template_areas = TemplateAreas::from_vec(strings)
-                .map_err(|()| StyleParseError::UnspecifiedError)?;
+                .map_err(|()| input.new_custom_error(StyleParseErrorKind::UnspecifiedError))?;
             let template_rows = TrackList {
                 list_type: TrackListType::Normal,
                 values: values,
@@ -320,7 +333,7 @@
                 let value = GridTemplateComponent::parse_without_none(context, input)?;
                 if let GenericGridTemplateComponent::TrackList(ref list) = value {
                     if list.list_type != TrackListType::Explicit {
-                        return Err(StyleParseError::UnspecifiedError.into())
+                        return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
                     }
                 }
 
@@ -330,7 +343,7 @@
             };
 
             Ok((GenericGridTemplateComponent::TrackList(template_rows),
-                template_cols, Either::First(template_areas)))
+                template_cols, Either::First(TemplateAreasArc(Arc::new(template_areas)))))
         } else {
             let mut template_rows = GridTemplateComponent::parse(context, input)?;
             if let GenericGridTemplateComponent::TrackList(ref mut list) = template_rows {
@@ -339,7 +352,7 @@
                 if list.line_names[0].is_empty() {
                     list.line_names[0] = first_line_names;      // won't panic
                 } else {
-                    return Err(StyleParseError::UnspecifiedError.into());
+                    return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
                 }
             }
 
@@ -349,8 +362,10 @@
     }
 
     #[inline]
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let (rows, columns, areas) = parse_grid_template(context, input)?;
         Ok(expanded! {
             grid_template_rows: rows,
@@ -360,10 +375,14 @@
     }
 
     /// Serialization for `<grid-template>` shorthand (also used by `grid` shorthand).
-    pub fn serialize_grid_template<W>(template_rows: &GridTemplateComponent,
-                                      template_columns: &GridTemplateComponent,
-                                      template_areas: &Either<TemplateAreas, None_>,
-                                      dest: &mut W) -> fmt::Result where W: fmt::Write {
+    pub fn serialize_grid_template<W>(
+        template_rows: &GridTemplateComponent,
+        template_columns: &GridTemplateComponent,
+        template_areas: &Either<TemplateAreasArc, None_>,
+        dest: &mut CssWriter<W>,
+    ) -> fmt::Result
+    where
+        W: Write {
         match *template_areas {
             Either::Second(_none) => {
                 template_rows.to_css(dest)?;
@@ -372,7 +391,7 @@
             },
             Either::First(ref areas) => {
                 // The length of template-area and template-rows values should be equal.
-                if areas.strings.len() != template_rows.track_list_len() {
+                if areas.0.strings.len() != template_rows.track_list_len() {
                     return Ok(());
                 }
 
@@ -380,7 +399,11 @@
                     GenericGridTemplateComponent::TrackList(ref list) => {
                         // We should fail if there is a `repeat` function. `grid` and
                         // `grid-template` shorthands doesn't accept that. Only longhand accepts.
-                        if list.auto_repeat.is_some() {
+                        if list.auto_repeat.is_some() ||
+                           list.values.iter().any(|v| match *v {
+                               TrackListValue::TrackRepeat(_) => true,
+                               _ => false,
+                           }) {
                             return Ok(());
                         }
                         list
@@ -395,8 +418,14 @@
                 match *template_columns {
                     // We should fail if there is a `repeat` function. `grid` and
                     // `grid-template` shorthands doesn't accept that. Only longhand accepts that.
-                    GenericGridTemplateComponent::TrackList(ref list) if list.auto_repeat.is_some() => {
-                        return Ok(());
+                    GenericGridTemplateComponent::TrackList(ref list) => {
+                        if list.auto_repeat.is_some() ||
+                           list.values.iter().any(|v| match *v {
+                               TrackListValue::TrackRepeat(_) => true,
+                               _ => false,
+                           }) {
+                            return Ok(());
+                        }
                     },
                     // Also the shorthands don't accept subgrids unlike longhand.
                     // We should fail without an error here.
@@ -407,9 +436,9 @@
                 }
 
                 let mut names_iter = track_list.line_names.iter();
-                for (((i, string), names), size) in areas.strings.iter().enumerate()
-                                                                 .zip(&mut names_iter)
-                                                                 .zip(track_list.values.iter()) {
+                for (((i, string), names), value) in areas.0.strings.iter().enumerate()
+                                                                  .zip(&mut names_iter)
+                                                                  .zip(track_list.values.iter()) {
                     if i > 0 {
                         dest.write_str(" ")?;
                     }
@@ -420,7 +449,7 @@
 
                     string.to_css(dest)?;
                     dest.write_str(" ")?;
-                    size.to_css(dest)?;
+                    value.to_css(dest)?;
                 }
 
                 if let Some(names) = names_iter.next() {
@@ -439,29 +468,33 @@
 
     impl<'a> ToCss for LonghandsToSerialize<'a> {
         #[inline]
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-            serialize_grid_template(self.grid_template_rows, self.grid_template_columns,
-                                    self.grid_template_areas, dest)
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
+            serialize_grid_template(
+                self.grid_template_rows,
+                self.grid_template_columns,
+                self.grid_template_areas,
+                dest
+            )
         }
     }
 </%helpers:shorthand>
 
 <%helpers:shorthand name="grid"
                     sub_properties="grid-template-rows grid-template-columns grid-template-areas
-                                    grid-auto-rows grid-auto-columns grid-row-gap grid-column-gap
-                                    grid-auto-flow"
+                                    grid-auto-rows grid-auto-columns grid-auto-flow"
                     spec="https://drafts.csswg.org/css-grid/#propdef-grid"
-                    disable_when_testing="True"
                     products="gecko">
     use parser::Parse;
     use properties::longhands::{grid_auto_columns, grid_auto_rows, grid_auto_flow};
-    use properties::longhands::grid_auto_flow::computed_value::{AutoFlow, T as SpecifiedAutoFlow};
     use values::{Either, None_};
     use values::generics::grid::{GridTemplateComponent, TrackListType};
-    use values::specified::{GenericGridTemplateComponent, LengthOrPercentage, TrackSize};
+    use values::specified::{GenericGridTemplateComponent, TrackSize};
+    use values::specified::position::{AutoFlow, GridAutoFlow};
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let mut temp_rows = GridTemplateComponent::None;
         let mut temp_cols = GridTemplateComponent::None;
         let mut temp_areas = Either::Second(None_);
@@ -469,8 +502,10 @@
         let mut auto_cols = TrackSize::default();
         let mut flow = grid_auto_flow::get_initial_value();
 
-        fn parse_auto_flow<'i, 't>(input: &mut Parser<'i, 't>, is_row: bool)
-                                   -> Result<SpecifiedAutoFlow, ParseError<'i>> {
+        fn parse_auto_flow<'i, 't>(
+            input: &mut Parser<'i, 't>,
+            is_row: bool,
+        ) -> Result<GridAutoFlow, ParseError<'i>> {
             let mut auto_flow = None;
             let mut dense = false;
             for _ in 0..2 {
@@ -488,11 +523,11 @@
             }
 
             auto_flow.map(|flow| {
-                SpecifiedAutoFlow {
+                GridAutoFlow {
                     autoflow: flow,
                     dense: dense,
                 }
-            }).ok_or(StyleParseError::UnspecifiedError.into())
+            }).ok_or(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
 
         if let Ok((rows, cols, areas)) = input.try(|i| super::grid_template::parse_grid_template(context, i)) {
@@ -518,9 +553,6 @@
             grid_auto_rows: auto_rows,
             grid_auto_columns: auto_cols,
             grid_auto_flow: flow,
-            // This shorthand also resets grid gap
-            grid_row_gap: LengthOrPercentage::zero(),
-            grid_column_gap: LengthOrPercentage::zero(),
         })
     }
 
@@ -535,15 +567,7 @@
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a> {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-            // `grid` shorthand resets these properties. If they are not zero, that means they
-            // are changed by longhands and in that case we should fail serializing `grid`.
-            if *self.grid_row_gap != LengthOrPercentage::zero() ||
-               *self.grid_column_gap != LengthOrPercentage::zero() {
-                return Ok(());
-            }
-
-
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             if *self.grid_template_areas != Either::Second(None_) ||
                (*self.grid_template_rows != GridTemplateComponent::None &&
                    *self.grid_template_columns != GridTemplateComponent::None) ||
@@ -611,32 +635,48 @@
 
 <%helpers:shorthand name="place-content" sub_properties="align-content justify-content"
                     spec="https://drafts.csswg.org/css-align/#propdef-place-content"
-                    products="gecko" disable_when_testing="True">
-    use properties::longhands::align_content;
-    use properties::longhands::justify_content;
+                    products="gecko">
+    use values::specified::align::{AlignContent, JustifyContent, ContentDistribution, AxisDirection};
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
-        let align = align_content::parse(context, input)?;
-        if align.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
-        }
-        let justify = input.try(|input| justify_content::parse(context, input))
-                           .unwrap_or(justify_content::SpecifiedValue::from(align));
-        if justify.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
-        }
+    pub fn parse_value<'i, 't>(
+        _: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
+        let align_content =
+            ContentDistribution::parse(input, AxisDirection::Block)?;
+
+        let justify_content = input.try(|input| {
+            ContentDistribution::parse(input, AxisDirection::Inline)
+        });
+
+        let justify_content = match justify_content {
+            Ok(v) => v,
+            Err(..) => {
+                // https://drafts.csswg.org/css-align-3/#place-content:
+                //
+                //   The second value is assigned to justify-content; if
+                //   omitted, it is copied from the first value, unless that
+                //   value is a <baseline-position> in which case it is
+                //   defaulted to start.
+                //
+                if !align_content.is_baseline_position() {
+                    align_content
+                } else {
+                    ContentDistribution::start()
+                }
+            }
+        };
 
         Ok(expanded! {
-            align_content: align,
-            justify_content: justify,
+            align_content: AlignContent(align_content),
+            justify_content: JustifyContent(justify_content),
         })
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a> {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             self.align_content.to_css(dest)?;
-            if self.align_content != self.justify_content {
+            if self.align_content.0 != self.justify_content.0 {
                 dest.write_str(" ")?;
                 self.justify_content.to_css(dest)?;
             }
@@ -647,43 +687,45 @@
 
 <%helpers:shorthand name="place-self" sub_properties="align-self justify-self"
                     spec="https://drafts.csswg.org/css-align/#place-self-property"
-                    products="gecko" disable_when_testing="True">
-    use values::specified::align::AlignJustifySelf;
-    use parser::Parse;
+                    products="gecko">
+    use values::specified::align::{AlignSelf, JustifySelf, SelfAlignment, AxisDirection};
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
-        let align = AlignJustifySelf::parse(context, input)?;
-        if align.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
-        }
-        let justify = input.try(|input| AlignJustifySelf::parse(context, input)).unwrap_or(align.clone());
-        if justify.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
-        }
+    pub fn parse_value<'i, 't>(
+        _: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
+        let align = SelfAlignment::parse(input, AxisDirection::Block)?;
+        let justify = input.try(|input| SelfAlignment::parse(input, AxisDirection::Inline));
+
+        let justify = match justify {
+            Ok(v) => v,
+            Err(..) => {
+                debug_assert!(align.is_valid_on_both_axes());
+                align
+            }
+        };
 
         Ok(expanded! {
-            align_self: align,
-            justify_self: justify,
+            align_self: AlignSelf(align),
+            justify_self: JustifySelf(justify),
         })
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a> {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-            if self.align_self == self.justify_self {
-                self.align_self.to_css(dest)
-            } else {
-                self.align_self.to_css(dest)?;
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
+            self.align_self.to_css(dest)?;
+            if self.align_self.0 != self.justify_self.0 {
                 dest.write_str(" ")?;
-                self.justify_self.to_css(dest)
+                self.justify_self.to_css(dest)?;
             }
+            Ok(())
         }
     }
 </%helpers:shorthand>
 
 <%helpers:shorthand name="place-items" sub_properties="align-items justify-items"
                     spec="https://drafts.csswg.org/css-align/#place-items-property"
-                    products="gecko" disable_when_testing="True">
+                    products="gecko">
     use values::specified::align::{AlignItems, JustifyItems};
     use parser::Parse;
 
@@ -693,17 +735,14 @@
         }
     }
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let align = AlignItems::parse(context, input)?;
-        if align.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
-        }
-        let justify = input.try(|input| JustifyItems::parse(context, input))
-                           .unwrap_or(JustifyItems::from(align));
-        if justify.has_extra_flags() {
-            return Err(StyleParseError::UnspecifiedError.into());
-        }
+        let justify =
+            input.try(|input| JustifyItems::parse(context, input))
+                 .unwrap_or_else(|_| JustifyItems::from(align));
 
         Ok(expanded! {
             align_items: align,
@@ -712,14 +751,14 @@
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a> {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-            if self.align_items.0 == self.justify_items.0 {
-                self.align_items.to_css(dest)
-            } else {
-                self.align_items.to_css(dest)?;
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
+            self.align_items.to_css(dest)?;
+            if self.align_items.0 != self.justify_items.0 {
                 dest.write_str(" ")?;
-                self.justify_items.to_css(dest)
+                self.justify_items.to_css(dest)?;
             }
+
+            Ok(())
         }
     }
 </%helpers:shorthand>

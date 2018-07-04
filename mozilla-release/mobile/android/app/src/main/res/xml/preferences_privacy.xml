@@ -19,11 +19,6 @@
             android:persistent="false"
             url="https://www.mozilla.org/firefox/dnt/" />
 
-    <CheckBoxPreference android:key="privacy.trackingprotection.pbmode.enabled"
-                        android:title="@string/pref_tracking_protection_title"
-                        android:summary="@string/pref_tracking_protection_summary"
-                        android:persistent="false" />
-
     <ListPreference android:key="privacy.trackingprotection.state"
                     android:title="@string/pref_tracking_protection_title"
                     android:entries="@array/pref_tracking_protection_entries"
@@ -100,11 +95,6 @@
                             android:title="@string/datareporting_fhr_title"
                             android:summary="@string/datareporting_fhr_summary2"
                             android:defaultValue="true" />
-
-        <org.mozilla.gecko.preferences.AlignRightLinkPreference android:key="android.not_a_preference.healthreport.link"
-                                                                android:title="@string/datareporting_abouthr_title"
-                                                                android:persistent="false"
-                                                                url="about:healthreport" />
 
     </PreferenceCategory>
 

@@ -7,14 +7,13 @@
  * Test if custom request headers are not ignored (bug 1270096 and friends)
  */
 
-add_task(function* () {
-  let { monitor } = yield initNetMonitor(SIMPLE_SJS);
+add_task(async function() {
+  let { monitor } = await initNetMonitor(SIMPLE_SJS);
   info("Starting test... ");
 
-  let { store, windowRequire } = monitor.panelWin;
+  let { store, windowRequire, connector } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
-  let { sendHTTPRequest } =
-    windowRequire("devtools/client/netmonitor/src/connector/index");
+  let { requestData, sendHTTPRequest } = connector;
   let {
     getSortedRequests,
   } = windowRequire("devtools/client/netmonitor/src/selectors/index");
@@ -31,16 +30,27 @@ add_task(function* () {
     { name: "Accept-Language", value: "cs-CZ" }
   ];
 
-  let wait = waitForNetworkEvents(monitor, 0, 1);
+  let wait = waitForNetworkEvents(monitor, 1);
   sendHTTPRequest({
     url: requestUrl,
     method: "POST",
     headers: requestHeaders,
     body: "Hello"
   });
-  yield wait;
+  await wait;
 
   let item = getSortedRequests(store.getState()).get(0);
+
+  ok(item.requestHeadersAvailable, "headers are available for lazily fetching");
+
+  if (item.requestHeadersAvailable && !item.requestHeaders) {
+    requestData(item.id, "requestHeaders");
+  }
+
+  // Wait until requestHeaders packet gets updated.
+  await waitForRequestData(store, ["requestHeaders"]);
+
+  item = getSortedRequests(store.getState()).get(0);
   is(item.method, "POST", "The request has the right method");
   is(item.url, requestUrl, "The request has the right URL");
 

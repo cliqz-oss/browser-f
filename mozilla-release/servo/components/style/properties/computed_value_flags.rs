@@ -11,13 +11,13 @@ bitflags! {
     /// anonymous boxes, see StyleBuilder::for_inheritance and its callsites.
     /// If we ever want to add some flags that shouldn't inherit for them,
     /// we might want to add a function to handle this.
-    pub flags ComputedValueFlags: u8 {
+    pub struct ComputedValueFlags: u16 {
         /// Whether the style or any of the ancestors has a text-decoration-line
         /// property that should get propagated to descendants.
         ///
         /// text-decoration-line is a reset property, but gets propagated in the
         /// frame/box tree.
-        const HAS_TEXT_DECORATION_LINES = 1 << 0,
+        const HAS_TEXT_DECORATION_LINES = 1 << 0;
 
         /// Whether line break inside should be suppressed.
         ///
@@ -27,15 +27,79 @@ bitflags! {
         ///
         /// This bit is propagated to all children of line participants.
         /// It is currently used by ruby to make its content unbreakable.
-        const SHOULD_SUPPRESS_LINEBREAK = 1 << 1,
+        const SHOULD_SUPPRESS_LINEBREAK = 1 << 1;
 
         /// A flag used to mark text that that has text-combine-upright.
         ///
         /// This is used from Gecko's layout engine.
-        const IS_TEXT_COMBINED = 1 << 2,
+        const IS_TEXT_COMBINED = 1 << 2;
 
         /// A flag used to mark styles under a relevant link that is also
         /// visited.
-        const IS_RELEVANT_LINK_VISITED = 1 << 3,
+        const IS_RELEVANT_LINK_VISITED = 1 << 3;
+
+        /// A flag used to mark styles which are a pseudo-element or under one.
+        const IS_IN_PSEUDO_ELEMENT_SUBTREE = 1 << 4;
+
+        /// A flag used to mark styles which are in a display: none subtree, or
+        /// under one.
+        const IS_IN_DISPLAY_NONE_SUBTREE = 1 << 5;
+
+        /// Whether this style inherits the `display` property.
+        ///
+        /// This is important because it may affect our optimizations to avoid
+        /// computing the style of pseudo-elements, given whether the
+        /// pseudo-element is generated depends on the `display` value.
+        const INHERITS_DISPLAY = 1 << 6;
+
+        /// Whether this style inherits the `content` property.
+        ///
+        /// Important because of the same reason.
+        const INHERITS_CONTENT = 1 << 7;
+
+        /// Whether the child explicitly inherits any reset property.
+        const INHERITS_RESET_STYLE = 1 << 8;
+
+        /// A flag to mark a style which is a visited style.
+        const IS_STYLE_IF_VISITED = 1 << 9;
+
+        /// Whether the style or any of the ancestors has a multicol style.
+        ///
+        /// Only used in Servo.
+        const CAN_BE_FRAGMENTED = 1 << 10;
+    }
+}
+
+impl ComputedValueFlags {
+    /// Flags that are unconditionally propagated to descendants.
+    #[inline]
+    fn inherited_flags() -> Self {
+        ComputedValueFlags::IS_STYLE_IF_VISITED |
+        ComputedValueFlags::IS_RELEVANT_LINK_VISITED |
+        ComputedValueFlags::CAN_BE_FRAGMENTED |
+        ComputedValueFlags::IS_IN_DISPLAY_NONE_SUBTREE |
+        ComputedValueFlags::IS_IN_PSEUDO_ELEMENT_SUBTREE |
+        ComputedValueFlags::HAS_TEXT_DECORATION_LINES
+    }
+
+    /// Flags that may be propagated to descendants.
+    #[inline]
+    fn maybe_inherited_flags() -> Self {
+        Self::inherited_flags() | ComputedValueFlags::SHOULD_SUPPRESS_LINEBREAK
+    }
+
+    /// Returns the flags that are always propagated to descendants.
+    ///
+    /// See StyleAdjuster::set_bits and StyleBuilder.
+    #[inline]
+    pub fn inherited(self) -> Self {
+        self & Self::inherited_flags()
+    }
+
+    /// Flags that are conditionally propagated to descendants, just to handle
+    /// properly style invalidation.
+    #[inline]
+    pub fn maybe_inherited(self) -> Self {
+        self & Self::maybe_inherited_flags()
     }
 }

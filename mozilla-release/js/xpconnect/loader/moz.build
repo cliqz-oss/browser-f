@@ -11,6 +11,7 @@ UNIFIED_SOURCES += [
     'mozJSSubScriptLoader.cpp',
     'ScriptCacheActors.cpp',
     'ScriptPreloader.cpp',
+    'URLPreloader.cpp',
 ]
 
 # mozJSComponentLoader.cpp cannot be built in unified mode because it uses
@@ -25,6 +26,7 @@ IPDL_SOURCES += [
 
 EXPORTS.mozilla += [
     'ScriptPreloader.h',
+    'URLPreloader.h',
 ]
 
 EXPORTS.mozilla.dom += [
@@ -37,7 +39,6 @@ EXPORTS.mozilla.loader += [
 ]
 
 EXTRA_JS_MODULES += [
-    'ISO8601DateUtils.jsm',
     'XPCOMUtils.jsm',
 ]
 
@@ -51,5 +52,5 @@ LOCAL_INCLUDES += [
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-shadow']

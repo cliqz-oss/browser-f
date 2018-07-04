@@ -9,15 +9,16 @@
 
 #include "mozilla/Atomics.h"
 #include "mozilla/Maybe.h"
-#include "mozilla/StateMirroring.h"
-#include "mozilla/TaskQueue.h"
 #include "mozilla/Mutex.h"
+#include "mozilla/StateMirroring.h"
+#include "mozilla/StaticPrefs.h"
+#include "mozilla/TaskQueue.h"
 
 #include "FrameStatistics.h"
 #include "MediaEventSource.h"
 #include "MediaDataDemuxer.h"
 #include "MediaMetadataManager.h"
-#include "MediaPrefs.h"
+#include "MediaPromiseDefs.h"
 #include "nsAutoPtr.h"
 #include "PDMFactory.h"
 #include "SeekTarget.h"
@@ -73,6 +74,8 @@ struct MetadataHolder
   UniquePtr<MetadataTags> mTags;
 };
 
+typedef void* MediaDecoderOwnerID;
+
 struct MOZ_STACK_CLASS MediaFormatReaderInit
 {
   MediaResource* mResource = nullptr;
@@ -80,14 +83,18 @@ struct MOZ_STACK_CLASS MediaFormatReaderInit
   FrameStatistics* mFrameStats = nullptr;
   already_AddRefed<layers::KnowsCompositor> mKnowsCompositor;
   already_AddRefed<GMPCrashHelper> mCrashHelper;
+  // Used in bug 1393399 for temporary telemetry.
+  MediaDecoderOwnerID mMediaDecoderOwnerID = nullptr;
 };
 
+DDLoggedTypeDeclName(MediaFormatReader);
+
 class MediaFormatReader final
+  : public DecoderDoctorLifeLogger<MediaFormatReader>
 {
   static const bool IsExclusive = true;
   typedef TrackInfo::TrackType TrackType;
   typedef MozPromise<bool, MediaResult, IsExclusive> NotifyDataArrivedPromise;
-
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaFormatReader)
 
 public:
@@ -190,7 +197,7 @@ public:
   // cases like MSE.
   bool UseBufferingHeuristics() const { return mTrackDemuxersMayBlock; }
 
-  void SetCDMProxy(CDMProxy* aProxy);
+  RefPtr<SetCDMPromise> SetCDMProxy(CDMProxy* aProxy);
 
   // Returns a string describing the state of the decoder data.
   // Used for debugging purposes.
@@ -332,6 +339,7 @@ private:
   size_t SizeOfQueue(TrackType aTrack);
 
   RefPtr<PDMFactory> mPlatform;
+  RefPtr<PDMFactory> mEncryptedPlatform;
 
   enum class DrainState
   {
@@ -379,6 +387,14 @@ private:
       , mLastStreamSourceID(UINT32_MAX)
       , mIsNullDecode(false)
     {
+      DecoderDoctorLogger::LogConstruction("MediaFormatReader::DecoderData",
+                                           this);
+    }
+
+    ~DecoderData()
+    {
+      DecoderDoctorLogger::LogDestruction("MediaFormatReader::DecoderData",
+                                          this);
     }
 
     MediaFormatReader* mOwner;
@@ -393,7 +409,7 @@ private:
     Mutex mMutex;
     // The platform decoder.
     RefPtr<MediaDataDecoder> mDecoder;
-    const char* mDescription;
+    nsCString mDescription;
     void ShutdownDecoder();
 
     // Only accessed from reader's task queue.
@@ -417,10 +433,17 @@ private:
       MOZ_ASSERT(mOwner->OnTaskQueue());
       return !mWaitingPromise.IsEmpty();
     }
-    bool IsWaiting() const
+
+    bool IsWaitingForData() const
     {
       MOZ_ASSERT(mOwner->OnTaskQueue());
-      return mWaitingForData || mWaitingForKey;
+      return mWaitingForData;
+    }
+
+    bool IsWaitingForKey() const
+    {
+      MOZ_ASSERT(mOwner->OnTaskQueue());
+      return mWaitingForKey && mDecodeRequest.Exists();
     }
 
     // MediaDataDecoder handler's variables.
@@ -464,8 +487,8 @@ private:
       if (mError.ref() == NS_ERROR_DOM_MEDIA_DECODE_ERR) {
         // Allow decode errors to be non-fatal, but give up
         // if we have too many, or if warnings should be treated as errors.
-        return mNumOfConsecutiveError > mMaxConsecutiveError
-               || MediaPrefs::MediaWarningsAsErrors();
+        return mNumOfConsecutiveError > mMaxConsecutiveError ||
+               StaticPrefs::MediaPlaybackWarningsAsErrors();
       } else if (mError.ref() == NS_ERROR_DOM_MEDIA_NEED_NEW_DECODER) {
         // If the caller asked for a new decoder we shouldn't treat
         // it as fatal.
@@ -517,7 +540,7 @@ private:
         return false;
       }
       mWaitingForKey = false;
-      if (IsWaiting() || !HasWaitingPromise()) {
+      if (IsWaitingForData() || !HasWaitingPromise()) {
         return false;
       }
       mWaitingPromise.Resolve(mType, __func__);
@@ -554,6 +577,22 @@ private:
       return mTimeThreshold && !mTimeThreshold.ref().mHasSeeked;
     }
 
+    // Return the current TrackInfo in the stream. If the stream content never
+    // changed since AsyncReadMetadata was called then the TrackInfo used is
+    // mOriginalInfo, other it will be mInfo. The later case is only ever true
+    // with MSE or the WebMDemuxer.
+    const TrackInfo* GetCurrentInfo() const
+    {
+      if (mInfo) {
+        return *mInfo;
+      }
+      return mOriginalInfo.get();
+    }
+    bool IsEncrypted() const
+    {
+      return GetCurrentInfo()->mCrypto.mValid;
+    }
+
     // Used by the MDSM for logging purposes.
     Atomic<size_t> mSizeOfQueue;
     // Used by the MDSM to determine if video decoding is hardware accelerated.
@@ -571,6 +610,29 @@ private:
     // Use NullDecoderModule or not.
     bool mIsNullDecode;
 
+    class
+    {
+    public:
+      float Mean() const { return mMean; }
+
+      void Update(const media::TimeUnit& aValue)
+      {
+        if (aValue == media::TimeUnit::Zero()) {
+          return;
+        }
+        mMean += (1.0f / aValue.ToSeconds() - mMean) / ++mCount;
+      }
+
+      void Reset()
+      {
+        mMean = 0;
+        mCount = 0;
+      }
+
+    private:
+      float mMean = 0;
+      uint64_t mCount = 0;
+    } mMeanRate;
   };
 
   template <typename Type>
@@ -583,6 +645,17 @@ private:
       : DecoderData(aOwner, aType, aNumOfMaxError)
       , mHasPromise(false)
     {
+      DecoderDoctorLogger::LogConstructionAndBase(
+        "MediaFormatReader::DecoderDataWithPromise",
+        this,
+        "MediaFormatReader::DecoderData",
+        static_cast<const MediaFormatReader::DecoderData*>(this));
+    }
+
+    ~DecoderDataWithPromise()
+    {
+      DecoderDoctorLogger::LogDestruction(
+        "MediaFormatReader::DecoderDataWithPromise", this);
     }
 
     bool HasPromise() const override
@@ -762,6 +835,15 @@ private:
   MediaEventProducer<MediaResult> mOnDecodeWarning;
 
   RefPtr<FrameStatistics> mFrameStats;
+
+  // Used in bug 1393399 for telemetry.
+  const MediaDecoderOwnerID mMediaDecoderOwnerID;
+
+  bool ResolveSetCDMPromiseIfDone(TrackType aTrack);
+  void PrepareToSetCDMForTrack(TrackType aTrack);
+  MozPromiseHolder<SetCDMPromise> mSetCDMPromise;
+  TrackSet mSetCDMForTracks{};
+  bool IsDecoderWaitingForCDM(TrackType aTrack);
 };
 
 } // namespace mozilla

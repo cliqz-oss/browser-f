@@ -4,7 +4,7 @@ var gTestTab;
 var gContentAPI;
 var gContentWindow;
 
-const { UrlClassifierTestUtils } = Cu.import("resource://testing-common/UrlClassifierTestUtils.jsm", {});
+const { UrlClassifierTestUtils } = ChromeUtils.import("resource://testing-common/UrlClassifierTestUtils.jsm", {});
 
 const TP_ENABLED_PREF = "privacy.trackingprotection.enabled";
 
@@ -63,7 +63,7 @@ async function checkToggleTarget(targetID) {
 
   let testTargetAvailability = async function(expectedAvailable) {
     let data = await getConfigurationPromise("availableTargets");
-    let available = (data.targets.indexOf(targetID) != -1);
+    let available = (data.targets.includes(targetID));
     is(available, expectedAvailable, "Target has expected availability.");
   };
   await testTargetAvailability(false);
@@ -72,7 +72,7 @@ async function checkToggleTarget(targetID) {
 
   await showInfoPromise(targetID, "This is " + targetID,
                         "My arrow should be on the side");
-  is(popup.popupBoxObject.alignmentPosition, "end_before",
+  is(popup.alignmentPosition, "end_before",
      "Check " + targetID + " position");
 
   let hideMenuPromise =

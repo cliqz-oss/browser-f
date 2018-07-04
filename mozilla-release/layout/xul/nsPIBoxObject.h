@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,14 +15,18 @@
   { 0xba, 0x87, 0x5d, 0x4a, 0xe4, 0x95, 0x44, 0x45 } }
 
 
-class nsIContent;
+namespace mozilla {
+namespace dom {
+class Element;
+} // namespace dom
+} // namespace mozilla
 
 class nsPIBoxObject : public nsIBoxObject
 {
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_PIBOXOBJECT_IID)
 
-  virtual nsresult Init(nsIContent* aContent) = 0;
+  virtual nsresult Init(mozilla::dom::Element* aElement) = 0;
 
   // Drop the weak ref to the content node as needed
   virtual void Clear() = 0;

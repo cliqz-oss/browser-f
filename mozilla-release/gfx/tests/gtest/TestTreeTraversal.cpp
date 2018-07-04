@@ -1,3 +1,9 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 #include <vector>
 #include "mozilla/RefPtr.h"
 #include "gtest/gtest.h"
@@ -286,6 +292,7 @@ TEST(TreeTraversal, DepthFirstSearchValueExists)
   size_t expectedNeedleTraversalRank = 7;
   RefPtr<SearchTestNodeForward> needleNode;
   std::vector<RefPtr<SearchTestNodeForward>> nodeList;
+  nodeList.reserve(10);
   for (size_t i = 0; i < 10; i++)
   {
     if (i == expectedNeedleTraversalRank) {
@@ -335,6 +342,7 @@ TEST(TreeTraversal, DepthFirstSearchValueExistsReverse)
   size_t expectedNeedleTraversalRank = 7;
   RefPtr<SearchTestNodeReverse> needleNode;
   std::vector<RefPtr<SearchTestNodeReverse>> nodeList;
+  nodeList.reserve(10);
   for (size_t i = 0; i < 10; i++)
   {
     if (i == expectedNeedleTraversalRank) {
@@ -406,6 +414,7 @@ TEST(TreeTraversal, DepthFirstSearchValueDoesNotExist)
 {
   int visitCount = 0;
   std::vector<RefPtr<SearchTestNodeForward>> nodeList;
+  nodeList.reserve(10);
   for (int i = 0; i < 10; i++)
   {
       nodeList.push_back(new SearchTestNodeForward(SearchNodeType::Hay, i));
@@ -446,6 +455,7 @@ TEST(TreeTraversal, DepthFirstSearchValueDoesNotExistReverse)
 {
   int visitCount = 0;
   std::vector<RefPtr<SearchTestNodeReverse>> nodeList;
+  nodeList.reserve(10);
   for (int i = 0; i < 10; i++)
   {
       nodeList.push_back(new SearchTestNodeReverse(SearchNodeType::Hay, i));
@@ -619,6 +629,7 @@ TEST(TreeTraversal, DepthFirstSearchPostOrderValueDoesNotExist)
 {
   int visitCount = 0;
   std::vector<RefPtr<SearchTestNodeForward>> nodeList;
+  nodeList.reserve(10);
   for (int i = 0; i < 10; i++)
   {
       nodeList.push_back(new SearchTestNodeForward(SearchNodeType::Hay, i));
@@ -658,6 +669,7 @@ TEST(TreeTraversal, DepthFirstSearchPostOrderValueDoesNotExistReverse)
 {
   int visitCount = 0;
   std::vector<RefPtr<SearchTestNodeReverse>> nodeList;
+  nodeList.reserve(10);
   for (int i = 0; i < 10; i++)
   {
       nodeList.push_back(new SearchTestNodeReverse(SearchNodeType::Hay, i));
@@ -734,6 +746,7 @@ TEST(TreeTraversal, BreadthFirstSearchValueExists)
   size_t expectedNeedleTraversalRank = 7;
   RefPtr<SearchTestNodeForward> needleNode;
   std::vector<RefPtr<SearchTestNodeForward>> nodeList;
+  nodeList.reserve(10);
   for (size_t i = 0; i < 10; i++)
   {
     if (i == expectedNeedleTraversalRank) {
@@ -783,6 +796,7 @@ TEST(TreeTraversal, BreadthFirstSearchValueExistsReverse)
   size_t expectedNeedleTraversalRank = 7;
   RefPtr<SearchTestNodeReverse> needleNode;
   std::vector<RefPtr<SearchTestNodeReverse>> nodeList;
+  nodeList.reserve(10);
   for (size_t i = 0; i < 10; i++)
   {
     if (i == expectedNeedleTraversalRank) {
@@ -830,6 +844,7 @@ TEST(TreeTraversal, BreadthFirstSearchValueDoesNotExist)
 {
   int visitCount = 0;
   std::vector<RefPtr<SearchTestNodeForward>> nodeList;
+  nodeList.reserve(10);
   for (int i = 0; i < 10; i++)
   {
     nodeList.push_back(new SearchTestNodeForward(SearchNodeType::Hay, i));
@@ -870,6 +885,7 @@ TEST(TreeTraversal, BreadthFirstSearchValueDoesNotExistReverse)
 {
   int visitCount = 0;
   std::vector<RefPtr<SearchTestNodeReverse>> nodeList;
+  nodeList.reserve(10);
   for (int i = 0; i < 10; i++)
   {
     nodeList.push_back(new SearchTestNodeReverse(SearchNodeType::Hay, i));
@@ -920,6 +936,7 @@ TEST(TreeTraversal, ForEachNodeAllEligible)
 {
   std::vector<RefPtr<ForEachTestNodeForward>> nodeList;
   int visitCount = 0;
+  nodeList.reserve(10);
   for (int i = 0; i < 10; i++)
   {
     nodeList.push_back(new ForEachTestNodeForward(ForEachNodeType::Continue,i));
@@ -958,6 +975,7 @@ TEST(TreeTraversal, ForEachNodeAllEligibleReverse)
 {
   std::vector<RefPtr<ForEachTestNodeReverse>> nodeList;
   int visitCount = 0;
+  nodeList.reserve(10);
   for (int i = 0; i < 10; i++)
   {
     nodeList.push_back(new ForEachTestNodeReverse(ForEachNodeType::Continue,i));
@@ -1119,6 +1137,7 @@ TEST(TreeTraversal, ForEachNodeLeavesIneligible)
 {
 
   std::vector<RefPtr<ForEachTestNodeForward>> nodeList;
+  nodeList.reserve(10);
   int visitCount = 0;
   for (int i = 0; i < 10; i++)
   {
@@ -1161,6 +1180,7 @@ TEST(TreeTraversal, ForEachNodeLeavesIneligibleReverse)
 {
 
   std::vector<RefPtr<ForEachTestNodeReverse>> nodeList;
+  nodeList.reserve(10);
   int visitCount = 0;
   for (int i = 0; i < 10; i++)
   {
@@ -1202,6 +1222,7 @@ TEST(TreeTraversal, ForEachNodeLeavesIneligibleReverse)
 TEST(TreeTraversal, ForEachNodeLambdaReturnsVoid)
 {
   std::vector<RefPtr<ForEachTestNodeReverse>> nodeList;
+  nodeList.reserve(10);
   int visitCount = 0;
   for (int i = 0; i < 10; i++)
   {
@@ -1364,7 +1385,7 @@ static RefPtr<Node> DepthFirstSearchPostOrderForwardRecursive(RefPtr<Node> aNode
 template <typename Node>
 static RefPtr<Node> BreadthFirstSearchForwardQueue(RefPtr<Node> aNode)
 {
-  queue<RefPtr<Node>> nodes;
+  std::queue<RefPtr<Node>> nodes;
   nodes.push(aNode);
   while(!nodes.empty()) {
     RefPtr<Node> node = nodes.front();
@@ -1443,7 +1464,7 @@ static RefPtr<Node> DepthFirstSearchPostOrderReverseRecursive(RefPtr<Node> aNode
 template <typename Node>
 static RefPtr<Node> BreadthFirstSearchReverseQueue(RefPtr<Node> aNode)
 {
-  queue<RefPtr<Node>> nodes;
+  std::queue<RefPtr<Node>> nodes;
   nodes.push(aNode);
   while(!nodes.empty()) {
     RefPtr<Node> node = nodes.front();

@@ -9,9 +9,11 @@
       as a label.
   es6id: 12.1.1
   negative:
-    phase: early
+    phase: parse
     type: SyntaxError
   flags: [onlyStrict]
  ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 yield: 1;

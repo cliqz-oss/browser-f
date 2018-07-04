@@ -25,12 +25,20 @@ fn main() {
     let python = env::var("PYTHON").unwrap_or("python2.7".into());
     let mut cmd = Command::new(&python);
     cmd.args(&["./devtools/automation/autospider.py",
+               // Only build SpiderMonkey, don't run all the tests.
                "--build-only",
+               // Disable Mozilla's jemalloc; Rust has its own jemalloc that we
+               // can swap in instead and everything using a single malloc is
+               // good.
+               "--no-jemalloc",
+               // Don't try to clobber the output directory. Without
+               // this option, the build will fail because the directory
+               // already exists but wasn't created by autospider.
+               "--dep",
                "--objdir", &out_dir,
                variant])
         .env("SOURCE", &js_src)
         .env("PWD", &js_src)
-        .env("AUTOMATION", "1")
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
     println!("Running command: {:?}", cmd);

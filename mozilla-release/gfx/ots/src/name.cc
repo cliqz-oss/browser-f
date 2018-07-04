@@ -149,6 +149,7 @@ bool OpenTypeNAME::Parse(const uint8_t* data, size_t length) {
     }
 
     this->names.push_back(rec);
+    this->name_ids.insert(rec.name_id);
   }
 
   if (format == 1) {
@@ -167,6 +168,14 @@ bool OpenTypeNAME::Parse(const uint8_t* data, size_t length) {
           tag_offset + tag_length;
       if (tag_end > length) {
         return Error("bad end of tag %d > %ld for langTagRecord %d", tag_end, length, i);
+      }
+      // Lang tag is BCP 47 tag per the spec, the recommonded BCP 47 max tag
+      // length is 35:
+      // https://tools.ietf.org/html/bcp47#section-4.4.1
+      // We are being too generous and allowing for 100 (multiplied by 2 since
+      // this is UTF-16 string).
+      if (tag_length > 100 * 2) {
+        return Error("Too long language tag for LangTagRecord %d: %d", i, tag_length);
       }
       std::string tag(string_base + tag_offset, tag_length);
       this->lang_tags.push_back(tag);
@@ -303,6 +312,52 @@ bool OpenTypeNAME::Serialize(OTSStream* out) {
   }
 
   return true;
+}
+
+bool OpenTypeNAME::IsValidNameId(uint16_t nameID, bool addIfMissing) {
+  if (addIfMissing && !this->name_ids.count(nameID)) {
+    bool added_unicode = false;
+    bool added_macintosh = false;
+    bool added_windows = false;
+    const size_t names_size = this->names.size();  // original size
+    for (size_t i = 0; i < names_size; ++i) switch (names[i].platform_id) {
+     case 0:
+      if (!added_unicode) {
+        // If there is an existing NameRecord with platform_id == 0 (Unicode),
+        // then add a NameRecord for the the specified nameID with arguments
+        // 0 (Unicode), 0 (v1.0), 0 (unspecified language).
+        this->names.emplace_back(0, 0, 0, nameID);
+        this->names.back().text = "NoName";
+        added_unicode = true;
+      }
+      break;
+     case 1:
+      if (!added_macintosh) {
+        // If there is an existing NameRecord with platform_id == 1 (Macintosh),
+        // then add a NameRecord for the specified nameID with arguments
+        // 1 (Macintosh), 0 (Roman), 0 (English).
+        this->names.emplace_back(1, 0, 0, nameID);
+        this->names.back().text = "NoName";
+        added_macintosh = true;
+      }
+      break;
+     case 3:
+      if (!added_windows) {
+        // If there is an existing NameRecord with platform_id == 3 (Windows),
+        // then add a NameRecord for the specified nameID with arguments
+        // 3 (Windows), 1 (UCS), 1033 (US English).
+        this->names.emplace_back(3, 1, 1033, nameID);
+        this->names.back().text = "NoName";
+        added_windows = true;
+      }
+      break;
+    }
+    if (added_unicode || added_macintosh || added_windows) {
+      std::sort(this->names.begin(), this->names.end());
+      this->name_ids.insert(nameID);
+    }
+  }
+  return this->name_ids.count(nameID);
 }
 
 }  // namespace

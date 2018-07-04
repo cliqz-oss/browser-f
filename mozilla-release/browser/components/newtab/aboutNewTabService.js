@@ -6,32 +6,53 @@
 
 "use strict";
 
-const {utils: Cu, interfaces: Ci} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
-                                  "resource://gre/modules/Preferences.jsm");
+ChromeUtils.defineModuleGetter(this, "AboutNewTab",
+                               "resource:///modules/AboutNewTab.jsm");
 
-//const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
+// Dummy references to the files that this service no longer allows loading.
+// Bug 1409054 to remove "chrome://browser/content/abouthome/aboutHome.xhtml"
+
 const LOCAL_NEWTAB_URL = "resource://cliqz/freshtab/home.html";
+const TOPIC_APP_QUIT = "quit-application-granted";
+const TOPIC_LOCALES_CHANGE = "intl:app-locales-changed";
 
-const ACTIVITY_STREAM_URL = "resource://activity-stream/data/content/activity-stream.html";
+// Automated tests ensure packaged locales are in this list. Copied output of:
+// https://github.com/mozilla/activity-stream/blob/master/bin/render-activity-stream-html.js
+const ACTIVITY_STREAM_LOCALES = "en-US ach an ar ast az be bg bn-BD bn-IN br bs ca cak crh cs cy da de dsb el en-CA en-GB eo es-AR es-CL es-ES es-MX et eu fa ff fi fr fy-NL ga-IE gd gl gn gu-IN he hi-IN hr hsb hu hy-AM ia id it ja ka kab kk km kn ko lij lo lt ltg lv mk ml mr ms my nb-NO ne-NP nl nn-NO pa-IN pl pt-BR pt-PT rm ro ru si sk sl sq sr sv-SE ta te th tl tr uk ur uz vi zh-CN zh-TW".split(" ");
 
 const ABOUT_URL = "about:newtab";
 
-// Pref that tells if activity stream is enabled
-const PREF_ACTIVITY_STREAM_ENABLED = "browser.newtabpage.activity-stream.enabled";
+const IS_MAIN_PROCESS = Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_DEFAULT;
+
+const IS_RELEASE_OR_BETA = AppConstants.RELEASE_OR_BETA;
+
+const PREF_ACTIVITY_STREAM_PRERENDER_ENABLED = "browser.newtabpage.activity-stream.prerender";
+const PREF_ACTIVITY_STREAM_DEBUG = "browser.newtabpage.activity-stream.debug";
+
 
 function AboutNewTabService() {
-  Preferences.observe(PREF_ACTIVITY_STREAM_ENABLED, this._handleToggleEvent.bind(this));
-  this.toggleActivityStream(Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_ENABLED));
+  Services.obs.addObserver(this, TOPIC_APP_QUIT);
+  Services.obs.addObserver(this, TOPIC_LOCALES_CHANGE);
+  Services.prefs.addObserver(PREF_ACTIVITY_STREAM_PRERENDER_ENABLED, this);
+  if (!IS_RELEASE_OR_BETA) {
+    Services.prefs.addObserver(PREF_ACTIVITY_STREAM_DEBUG, this);
+  }
+
+  // More initialization happens here
+  this.toggleActivityStream(true);
+  this.initialized = true;
+
+  if (IS_MAIN_PROCESS) {
+    AboutNewTab.init();
+  }
 }
 
 /*
  * A service that allows for the overriding, at runtime, of the newtab page's url.
- * Additionally, the service manages pref state between a activity stream, or the regular
- * about:newtab page.
  *
  * There is tight coupling with browser/about/AboutRedirector.cpp.
  *
@@ -47,9 +68,8 @@ function AboutNewTabService() {
  * 2. Redirector Access:
  *
  * When the URL loaded is about:newtab, the default behavior, or when entered in the
- * URL bar, the redirector is hit. The service is then called to return either of
- * two URLs, a chrome or the activity stream one, based on the
- * browser.newtabpage.activity-stream.enabled pref.
+ * URL bar, the redirector is hit. The service is then called to return the
+ * appropriate activity stream url based on prefs and locales.
  *
  * NOTE: "about:newtab" will always result in a default newtab page, and never an overridden URL.
  *
@@ -66,26 +86,52 @@ AboutNewTabService.prototype = {
 
   _newTabURL: ABOUT_URL,
   _activityStreamEnabled: false,
+  _activityStreamPrerender: false,
+  _activityStreamPath: "",
+  _activityStreamDebug: false,
   _overridden: false,
+  willNotifyUser: false,
 
   classID: Components.ID("{dfcd2adc-7867-4d3a-ba70-17501f208142}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutNewTabService]),
+  QueryInterface: ChromeUtils.generateQI([
+    Ci.nsIAboutNewTabService,
+    Ci.nsIObserver
+  ]),
   _xpcom_categories: [{
     service: true
   }],
 
-  _handleToggleEvent(stateEnabled) {
-    if (this.toggleActivityStream(stateEnabled)) {
-      Services.obs.notifyObservers(null, "newtab-url-changed", ABOUT_URL);
+  observe(subject, topic, data) {
+    switch (topic) {
+      case "nsPref:changed":
+        if (data === PREF_ACTIVITY_STREAM_PRERENDER_ENABLED) {
+          this._activityStreamPrerender = Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_PRERENDER_ENABLED);
+          this.notifyChange();
+        } else if (!IS_RELEASE_OR_BETA && data === PREF_ACTIVITY_STREAM_DEBUG) {
+          this._activityStreamDebug = Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_DEBUG, false);
+          this.updatePrerenderedPath();
+          this.notifyChange();
+        }
+        break;
+      case TOPIC_APP_QUIT:
+        this.uninit();
+        if (IS_MAIN_PROCESS) {
+          AboutNewTab.uninit();
+        }
+        break;
+      case TOPIC_LOCALES_CHANGE:
+        this.updatePrerenderedPath();
+        this.notifyChange();
+        break;
     }
   },
 
+  notifyChange() {
+    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
+  },
+
   /**
-   * React to changes to the activity stream pref.
-   *
-   * If browser.newtabpage.activity-stream.enabled is true, this will change the default URL to the
-   * activity stream page URL. If browser.newtabpage.activity-stream.enabled is false, the default URL
-   * will be a local chrome URL.
+   * React to changes to the activity stream being enabled or not.
    *
    * This will only act if there is a change of state and if not overridden.
    *
@@ -105,23 +151,44 @@ AboutNewTabService.prototype = {
     } else {
       this._activityStreamEnabled = false;
     }
+    this._activityStreamPrerender = Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_PRERENDER_ENABLED);
+    if (!IS_RELEASE_OR_BETA) {
+      this._activityStreamDebug = Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_DEBUG, false);
+    }
+    this.updatePrerenderedPath();
     this._newtabURL = ABOUT_URL;
     return true;
+  },
+
+  /**
+   * Figure out what path under prerendered to use based on current state.
+   */
+  updatePrerenderedPath() {
+    // Debug files are specially packaged in a non-localized directory
+    this._activityStreamPath = `${this._activityStreamDebug ? "static" :
+      this.activityStreamLocale}/`;
   },
 
   /*
    * Returns the default URL.
    *
-   * This URL only depends on the browser.newtabpage.activity-stream.enabled pref. Overriding
+   * This URL depends on various activity stream prefs and locales. Overriding
    * the newtab page has no effect on the result of this function.
-   *
-   * @returns {String} the default newtab URL, activity-stream or regular depending on browser.newtabpage.activity-stream.enabled
    */
   get defaultURL() {
-    if (this.activityStreamEnabled) {
-      return this.activityStreamURL;
-    }
-    return LOCAL_NEWTAB_URL;
+    // Generate the desired activity stream resource depending on state, e.g.,
+    // resource://activity-stream/prerendered/ar/activity-stream.html
+    // resource://activity-stream/prerendered/en-US/activity-stream-prerendered.html
+    // resource://activity-stream/prerendered/static/activity-stream-debug.html
+    return LOCAL_NEWTAB_URL;  // Cliqz. Default URL is NewTab page. Always.
+    return [
+      "resource://activity-stream/prerendered/",
+      this._activityStreamPath,
+      "activity-stream",
+      this._activityStreamPrerender ? "-prerendered" : "",
+      this._activityStreamDebug ? "-debug" : "",
+      ".html"
+    ].join("");
   },
 
   get newTabURL() {
@@ -141,7 +208,7 @@ AboutNewTabService.prototype = {
     this.toggleActivityStream(false);
     this._newTabURL = aNewTabURL;
     this._overridden = true;
-    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
+    this.notifyChange();
   },
 
   get overridden() {
@@ -152,15 +219,42 @@ AboutNewTabService.prototype = {
     return this._activityStreamEnabled;
   },
 
-  get activityStreamURL() {
-    return ACTIVITY_STREAM_URL;
+  get activityStreamPrerender() {
+    return this._activityStreamPrerender;
+  },
+
+  get activityStreamDebug() {
+    return this._activityStreamDebug;
+  },
+
+  get activityStreamLocale() {
+    // Pick the best available locale to match the app locales
+    return Services.locale.negotiateLanguages(
+      Services.locale.getAppLocalesAsLangTags(),
+      ACTIVITY_STREAM_LOCALES,
+      // defaultLocale's strings aren't necessarily packaged, but en-US' are
+      "en-US"
+    )[0];
   },
 
   resetNewTabURL() {
     this._overridden = false;
     this._newTabURL = ABOUT_URL;
-    this.toggleActivityStream(Services.prefs.getBoolPref(PREF_ACTIVITY_STREAM_ENABLED), true);
-    Services.obs.notifyObservers(null, "newtab-url-changed", this._newTabURL);
+    this.toggleActivityStream(true, true);
+    this.notifyChange();
+  },
+
+  uninit() {
+    if (!this.initialized) {
+      return;
+    }
+    Services.obs.removeObserver(this, TOPIC_APP_QUIT);
+    Services.obs.removeObserver(this, TOPIC_LOCALES_CHANGE);
+    Services.prefs.removeObserver(PREF_ACTIVITY_STREAM_PRERENDER_ENABLED, this);
+    if (!IS_RELEASE_OR_BETA) {
+      Services.prefs.removeObserver(PREF_ACTIVITY_STREAM_DEBUG, this);
+    }
+    this.initialized = false;
   }
 };
 

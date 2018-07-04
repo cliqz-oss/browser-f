@@ -16,6 +16,7 @@
 #include "prenv.h"
 #include "mozilla/HangMonitor.h"
 #include "mozilla/Unused.h"
+#include "mozilla/WidgetUtils.h"
 #include "GeckoProfiler.h"
 #include "nsIPowerManagerService.h"
 #ifdef MOZ_ENABLE_DBUS
@@ -46,14 +47,16 @@ static gint
 PollWrapper(GPollFD *ufds, guint nfsd, gint timeout_)
 {
     mozilla::HangMonitor::Suspend();
-    profiler_thread_sleep();
-    gint result = (*sPollFunc)(ufds, nfsd, timeout_);
-    profiler_thread_wake();
+    gint result;
+    {
+        AUTO_PROFILER_THREAD_SLEEP;
+        result = (*sPollFunc)(ufds, nfsd, timeout_);
+    }
     mozilla::HangMonitor::NotifyActivity();
     return result;
 }
 
-#if MOZ_WIDGET_GTK == 3
+#ifdef MOZ_WIDGET_GTK
 // For bug 726483.
 static decltype(GtkContainerClass::check_resize) sReal_gtk_window_check_resize;
 
@@ -114,7 +117,7 @@ WrapGdkFrameClockDispose(GObject* object)
 #endif
 
 /*static*/ gboolean
-nsAppShell::EventProcessorCallback(GIOChannel *source, 
+nsAppShell::EventProcessorCallback(GIOChannel *source,
                                    GIOCondition condition,
                                    gpointer data)
 {
@@ -174,7 +177,19 @@ nsAppShell::Init()
         }
     }
 
-#if MOZ_WIDGET_GTK == 3
+    if (gtk_check_version(3, 16, 3) == nullptr) {
+        // Before 3.16.3, GDK cannot override classname by --class command line
+        // option when program uses gdk_set_program_class().
+        //
+        // See https://bugzilla.gnome.org/show_bug.cgi?id=747634
+        nsAutoString brandName;
+        mozilla::widget::WidgetUtils::GetBrandShortName(brandName);
+        if (!brandName.IsEmpty()) {
+            gdk_set_program_class(NS_ConvertUTF16toUTF8(brandName).get());
+        }
+    }
+
+#ifdef MOZ_WIDGET_GTK
     if (!sReal_gtk_window_check_resize &&
         gtk_check_version(3,8,0) != nullptr) { // GTK 3.0 to GTK 3.6.
         // GtkWindow is a static class and so will leak anyway but this ref

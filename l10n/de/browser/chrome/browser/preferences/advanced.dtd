@@ -31,16 +31,24 @@ disabled data sharing options in developer builds or builds with no Telemetry su
 available. -->
 <!ENTITY healthReportingDisabled.label   "Datenübermittlung ist für diese Build-Konfiguration deaktiviert">
 
-<!ENTITY enableHealthReport1.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Cliqz zu senden">
-<!ENTITY enableHealthReport1.accesskey   "t">
+<!ENTITY enableHealthReport2.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Cliqz zu senden">
+<!ENTITY enableHealthReport2.accesskey   "t">
 <!ENTITY healthReportLearnMore.label     "Weitere Informationen">
 
 <!ENTITY dataCollection.label            "Datenerhebung durch &brandShortName; und deren Verwendung">
-<!ENTITY dataCollectionDesc.label        "Wir lassen Ihnen die Wahl, ob Sie uns Daten senden, und sammeln nur die Daten, welche erforderlich sind, um &brandShortName; für jeden anbieten und verbessern zu können. Wir fragen immer um Ihre Erlaubnis, bevor wir persönliche Daten senden.">
+<!ENTITY dataCollectionDesc.label        "Wir lassen dir die Wahl, ob du uns Daten sendest, und sammeln nur die Daten, welche erforderlich sind, um &brandShortName; für jeden anbieten und verbessern zu können. Wir fragen immer um deine Erlaubnis, bevor wir persönliche Daten senden.">
 <!ENTITY dataCollectionPrivacyNotice.label    "Datenschutzhinweis">
 
 <!ENTITY alwaysSubmitCrashReports1.label  "&brandShortName; erlauben, Absturzberichte an Cliqz zu senden">
 <!ENTITY alwaysSubmitCrashReports1.accesskey "r">
+
+<!ENTITY collectBrowserErrors.label          "Browser-Fehler einschließlich Fehlermeldung automatisch von &brandShortName; an Mozilla senden lassen">
+<!ENTITY collectBrowserErrors.accesskey      "B">
+<!ENTITY collectBrowserErrorsLearnMore.label "Weitere Informationen">
+
+<!ENTITY sendBackloggedCrashReports.label  "Nicht gesendete Absturzberichte automatisch von &brandShortName; senden lassen">
+<!ENTITY sendBackloggedCrashReports.accesskey "g">
+
 <!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
 
 <!ENTITY networkTab.label                "Netzwerk">
@@ -53,14 +61,17 @@ available. -->
 
 <!ENTITY httpCache.label                 "Zwischengespeicherte Webinhalte">
 
-<!ENTITY offlineStorage2.label           "Offline-Webinhalte und -Benutzerdaten">
-
 <!--  Site Data section manages sites using Storage API and is under Network -->
 <!ENTITY siteData.label                  "Websitedaten">
 <!ENTITY clearSiteData.label             "Alle Daten löschen">
 <!ENTITY clearSiteData.accesskey         "D">
 <!ENTITY siteDataSettings.label          "Einstellungen…">
 <!ENTITY siteDataSettings.accesskey      "g">
+<!ENTITY siteData1.label                 "Cookies und Websitedaten">
+<!ENTITY clearSiteData1.label            "Daten entfernen…">
+<!ENTITY clearSiteData1.accesskey        "e">
+<!ENTITY siteDataSettings1.label         "Daten verwalten…">
+<!ENTITY siteDataSettings1.accesskey     "v">
 <!ENTITY siteDataLearnMoreLink.label     "Weitere Informationen">
 
 <!-- LOCALIZATION NOTE:
@@ -74,8 +85,6 @@ available. -->
 <!ENTITY limitCacheSizeAfter.label       "MB Speicherplatz limitieren">
 <!ENTITY clearCacheNow.label             "Jetzt leeren">
 <!ENTITY clearCacheNow.accesskey         "J">
-<!ENTITY clearOfflineAppCacheNow.label   "Jetzt leeren">
-<!ENTITY clearOfflineAppCacheNow.accesskey "l">
 <!ENTITY overrideSmartCacheSize.label    "Automatisches Cache-Management ausschalten">
 <!ENTITY overrideSmartCacheSize.accesskey "M">
 
@@ -113,17 +122,6 @@ available. -->
 <!ENTITY enableSearchUpdate2.label       "Suchmaschinen automatisch aktualisieren">
 <!ENTITY enableSearchUpdate2.accesskey   "S">
 
-<!ENTITY offlineStorageNotify.label               "Mitteilen, wenn eine Website Daten für die Verwendung im Offline-Modus speichern möchte">
-<!ENTITY offlineStorageNotify.accesskey           "w">
-<!ENTITY offlineStorageNotifyExceptions.label     "Ausnahmen…">
-<!ENTITY offlineStorageNotifyExceptions.accesskey "A">
-
-<!ENTITY offlineAppsList2.label          "Folgende Websites dürfen Daten für die Verwendung im Offline-Modus speichern:">
-<!ENTITY offlineAppsList.height          "7em">
-<!ENTITY offlineAppsListRemove.label     "Entfernen…">
-<!ENTITY offlineAppsListRemove.accesskey "E">
-<!ENTITY offlineAppRemove.confirm        "Offline-Daten entfernen">
-
 <!ENTITY certificateTab.label            "Zertifikate">
 <!ENTITY certPersonal2.description       "Wenn eine Website nach dem persönlichen Sicherheitszertifikat verlangt">
 <!ENTITY selectCerts.auto                "Automatisch eins wählen">
@@ -153,6 +151,6 @@ available. -->
 <!ENTITY limitContentProcessOption.disabledDescription
                                          "Das Ändern der Anzahl der Inhaltsprozesse ist nur in &brandShortName; mit mehreren Prozessen möglich.">
 <!ENTITY limitContentProcessOption.disabledDescriptionLink
-                                         "Wie Sie herausfinden, ob Firefox mit mehreren Prozessen ausgeführt wird">
+                                         "Wie du herausfindest, ob Cliqz mit mehreren Prozessen ausgeführt wird">
 <!ENTITY allowHWAccel.label              "Hardwarebeschleunigung verwenden, wenn verfügbar">
 <!ENTITY allowHWAccel.accesskey          "v">

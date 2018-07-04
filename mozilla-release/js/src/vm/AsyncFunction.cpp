@@ -8,12 +8,11 @@
 
 #include "mozilla/Maybe.h"
 
-#include "jscompartment.h"
-
 #include "builtin/Promise.h"
 #include "vm/GeneratorObject.h"
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
+#include "vm/JSCompartment.h"
 #include "vm/SelfHosting.h"
 
 using namespace js;
@@ -135,13 +134,12 @@ js::WrapAsyncFunctionWithProto(JSContext* cx, HandleFunction unwrapped, HandleOb
     RootedFunction wrapped(cx, NewFunctionWithProto(cx, WrappedAsyncFunction, length,
                                                     JSFunction::NATIVE_FUN, nullptr,
                                                     funName, proto,
-                                                    AllocKind::FUNCTION_EXTENDED,
-                                                    TenuredObject));
+                                                    AllocKind::FUNCTION_EXTENDED));
     if (!wrapped)
         return nullptr;
 
-    if (unwrapped->hasCompileTimeName())
-        wrapped->setCompileTimeName(unwrapped->compileTimeName());
+    if (unwrapped->hasInferredName())
+        wrapped->setInferredName(unwrapped->inferredName());
 
     // Link them to each other to make GetWrappedAsyncFunction and
     // GetUnwrappedAsyncFunction work.
@@ -184,8 +182,8 @@ AsyncFunctionResume(JSContext* cx, Handle<PromiseObject*> resultPromise, HandleV
 
     // Execution context switching is handled in generator.
     HandlePropertyName funName = kind == ResumeKind::Normal
-                                 ? cx->names().StarGeneratorNext
-                                 : cx->names().StarGeneratorThrow;
+                                 ? cx->names().GeneratorNext
+                                 : cx->names().GeneratorThrow;
     FixedInvokeArgs<1> args(cx);
     args[0].set(valueOrReason);
     RootedValue value(cx);

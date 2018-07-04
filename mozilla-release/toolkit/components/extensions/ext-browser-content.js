@@ -3,27 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
+  clearTimeout: "resource://gre/modules/Timer.jsm",
+  E10SUtils: "resource://gre/modules/E10SUtils.jsm",
+  ExtensionCommon: "resource://gre/modules/ExtensionCommon.jsm",
+  setTimeout: "resource://gre/modules/Timer.jsm",
+});
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "clearTimeout",
-                                  "resource://gre/modules/Timer.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "E10SUtils",
-                                  "resource:///modules/E10SUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionCommon",
-                                  "resource://gre/modules/ExtensionCommon.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "require",
-                                  "resource://devtools/shared/Loader.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
-                                  "resource://gre/modules/Timer.jsm");
-
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 const {
   getWinUtils,
 } = ExtensionUtils;
@@ -123,6 +114,10 @@ const BrowserListener = {
         this.unblockParser();
         this.blockingPromise = null;
       }
+    } else if (name === "Extension:GrabFocus") {
+      content.window.requestAnimationFrame(() => {
+        Services.focus.focusedWindow = content.window;
+      });
     }
   },
 
@@ -257,8 +252,24 @@ const BrowserListener = {
 
       // Compensate for any offsets (margin, padding, ...) between the scroll
       // area of the body and the outer height of the document.
+      // This calculation is hard to get right for all cases, so take the lower
+      // number of the combination of all padding and margins of the document
+      // and body elements, or the difference between their heights.
       let getHeight = elem => elem.getBoundingClientRect(elem).height;
       let bodyPadding = getHeight(doc.documentElement) - getHeight(body);
+
+      if (body !== doc.documentElement) {
+        let bs = content.getComputedStyle(body);
+        let ds = content.getComputedStyle(doc.documentElement);
+
+        let p = (parseFloat(bs.marginTop) +
+                 parseFloat(bs.marginBottom) +
+                 parseFloat(ds.marginTop) +
+                 parseFloat(ds.marginBottom) +
+                 parseFloat(ds.paddingTop) +
+                 parseFloat(ds.paddingBottom));
+        bodyPadding = Math.min(p, bodyPadding);
+      }
 
       let height = Math.ceil(body.scrollHeight + bodyPadding);
 
@@ -270,7 +281,8 @@ const BrowserListener = {
         background = null;
       }
 
-      if (background !== this.oldBackground) {
+      if (background === null ||
+          background !== this.oldBackground) {
         sendAsyncMessage("Extension:BrowserBackgroundChanged", {background});
       }
       this.oldBackground = background;
@@ -297,6 +309,7 @@ const BrowserListener = {
 
 addMessageListener("Extension:InitBrowser", BrowserListener);
 addMessageListener("Extension:UnblockParser", BrowserListener);
+addMessageListener("Extension:GrabFocus", BrowserListener);
 
 var WebBrowserChrome = {
   onBeforeLinkTraversal(originalTarget, linkURI, linkNode, isAppTab) {
@@ -316,13 +329,6 @@ var WebBrowserChrome = {
   },
 
   reloadInFreshProcess(docShell, URI, referrer, triggeringPrincipal, loadFlags) {
-    return false;
-  },
-
-  startPrerenderingDocument(href, referrer, triggeringPrincipal) {
-  },
-
-  shouldSwitchToPrerenderedDocument(href, referrer, success, failure) {
     return false;
   },
 };

@@ -48,9 +48,6 @@ function runTests()
 {
   (async function() {
     var popup = $("popup");
-    popup.enableKeyboardNavigator(false);
-    is(popup.getAttribute("ignorekeys"), "true", "keys disabled");
-    popup.enableKeyboardNavigator(true);
     is(popup.hasAttribute("ignorekeys"), false, "keys enabled");
 
     let popupShownPromise = waitForEvent(popup, "popupshown");
@@ -58,7 +55,7 @@ function runTests()
     await popupShownPromise;
 
     let popupHiddenPromise = waitForEvent(popup, "popuphidden");
-    synthesizeKey("VK_DOWN", { });
+    synthesizeKey("KEY_ArrowDown");
     await popupHiddenPromise;
 
     is(gKeyPressCount, 0, "keypresses with ignorekeys='false'");
@@ -74,7 +71,7 @@ function runTests()
     popup.openPopup(null, "after_start");
     await popupShownPromise;
 
-    synthesizeKey("VK_DOWN", { });
+    synthesizeKey("KEY_ArrowDown");
 
     await new Promise(resolve => setTimeout(() => resolve(), 1000));
     popupHiddenPromise = waitForEvent(popup, "popuphidden");
@@ -94,7 +91,7 @@ function runTests()
     await popupShownPromise;
 
     // When ignorekeys="shortcuts", T should be handled but accel+T should propagate. 
-    synthesizeKey("t", { });
+    sendString("t");
     is(gKeyPressCount, 1, "keypresses after t pressed with ignorekeys='shortcuts'");
 
     synthesizeKey("t", { accelKey: true });

@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef MOZILLA_GFX_TEXTUREHOST_H
 #define MOZILLA_GFX_TEXTUREHOST_H
@@ -25,7 +26,7 @@
 #include "mozilla/UniquePtr.h"          // for UniquePtr
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "nsCOMPtr.h"                   // for already_AddRefed
-#include "nsDebug.h"                    // for NS_RUNTIMEABORT
+#include "nsDebug.h"                    // for NS_WARNING
 #include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "nsRegion.h"                   // for nsIntRegion
 #include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
@@ -41,7 +42,7 @@ class Shmem;
 
 namespace wr {
 class DisplayListBuilder;
-class WebRenderAPI;
+class TransactionBuilder;
 }
 
 namespace layers {
@@ -400,6 +401,7 @@ public:
    */
   static already_AddRefed<TextureHost> Create(
     const SurfaceDescriptor& aDesc,
+    const ReadLockDescriptor& aReadLock,
     ISurfaceAllocator* aDeallocator,
     LayersBackend aBackend,
     TextureFlags aFlags,
@@ -437,6 +439,11 @@ public:
   virtual gfx::SurfaceFormat GetReadFormat() const { return GetFormat(); }
 
   virtual YUVColorSpace GetYUVColorSpace() const { return YUVColorSpace::UNKNOWN; }
+
+  /**
+   * Return the bit depth of the image. Used with YUV textures.
+   */
+  virtual uint32_t GetBitDepth() const { return 8; }
 
   /**
    * Called during the transaction. The TextureSource may or may not be composited.
@@ -542,6 +549,7 @@ public:
    */
   static PTextureParent* CreateIPDLActor(HostIPCAllocator* aAllocator,
                                          const SurfaceDescriptor& aSharedData,
+                                         const ReadLockDescriptor& aDescriptor,
                                          LayersBackend aLayersBackend,
                                          TextureFlags aFlags,
                                          uint64_t aSerial,
@@ -606,7 +614,7 @@ public:
 
   void DeserializeReadLock(const ReadLockDescriptor& aDesc,
                            ISurfaceAllocator* aAllocator);
-  void SetReadLock(TextureReadLock* aReadLock);
+  void SetReadLocked();
 
   TextureReadLock* GetReadLock() { return mReadLock; }
 
@@ -621,35 +629,32 @@ public:
     MOZ_RELEASE_ASSERT(false, "No CreateRenderTexture() implementation for this TextureHost type.");
   }
 
-  // Create all necessary image keys for this textureHost rendering.
-  // @param aImageKeys - [out] The set of ImageKeys used for this textureHost
-  // composing.
-  // @param aImageKeyAllocator - [in] The function which is used for creating
-  // the new ImageKey.
-  virtual void GetWRImageKeys(nsTArray<wr::ImageKey>& aImageKeys,
-                              const std::function<wr::ImageKey()>& aImageKeyAllocator)
-  {
-    MOZ_ASSERT(aImageKeys.IsEmpty());
-    MOZ_ASSERT_UNREACHABLE("No GetWRImageKeys() implementation for this TextureHost type.");
-  }
+  /// Returns the number of actual textures that will be used to render this.
+  /// For example in a lot of YUV cases it will be 3
+  virtual uint32_t NumSubTextures() const { return 1; }
 
-  // Add all necessary textureHost informations to WebrenderAPI. Then, WR could
-  // use these informations to compose this textureHost.
-  virtual void AddWRImage(wr::WebRenderAPI* aAPI,
-                          Range<const wr::ImageKey>& aImageKeys,
-                          const wr::ExternalImageId& aExtID)
+  enum ResourceUpdateOp {
+    ADD_IMAGE,
+    UPDATE_IMAGE,
+  };
+
+  // Add all necessary TextureHost informations to the resource update queue.
+  virtual void PushResourceUpdates(wr::TransactionBuilder& aResources,
+                                   ResourceUpdateOp aOp,
+                                   const Range<wr::ImageKey>& aImageKeys,
+                                   const wr::ExternalImageId& aExtID)
   {
-    MOZ_ASSERT_UNREACHABLE("No AddWRImage() implementation for this TextureHost type.");
+    MOZ_ASSERT_UNREACHABLE("Unimplemented");
   }
 
   // Put all necessary WR commands into DisplayListBuilder for this textureHost rendering.
-  virtual void PushExternalImage(wr::DisplayListBuilder& aBuilder,
-                                 const wr::LayoutRect& aBounds,
-                                 const wr::LayoutRect& aClip,
-                                 wr::ImageRendering aFilter,
-                                 Range<const wr::ImageKey>& aKeys)
+  virtual void PushDisplayItems(wr::DisplayListBuilder& aBuilder,
+                                const wr::LayoutRect& aBounds,
+                                const wr::LayoutRect& aClip,
+                                wr::ImageRendering aFilter,
+                                const Range<wr::ImageKey>& aKeys)
   {
-    MOZ_ASSERT_UNREACHABLE("No PushExternalImage() implementation for this TextureHost type.");
+    MOZ_ASSERT_UNREACHABLE("No PushDisplayItems() implementation for this TextureHost type.");
   }
 
   /**
@@ -678,6 +683,7 @@ protected:
   TextureFlags mFlags;
   int mCompositableCount;
   uint64_t mFwdTransactionId;
+  bool mReadLocked;
 
   friend class Compositor;
   friend class TextureParent;
@@ -735,6 +741,8 @@ public:
 
   virtual YUVColorSpace GetYUVColorSpace() const override;
 
+  virtual uint32_t GetBitDepth() const override;
+
   virtual gfx::IntSize GetSize() const override { return mSize; }
 
   virtual already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override;
@@ -747,18 +755,18 @@ public:
 
   virtual void CreateRenderTexture(const wr::ExternalImageId& aExternalImageId) override;
 
-  virtual void GetWRImageKeys(nsTArray<wr::ImageKey>& aImageKeys,
-                              const std::function<wr::ImageKey()>& aImageKeyAllocator) override;
+  virtual uint32_t NumSubTextures() const override;
 
-  virtual void AddWRImage(wr::WebRenderAPI* aAPI,
-                          Range<const wr::ImageKey>& aImageKeys,
-                          const wr::ExternalImageId& aExtID) override;
+  virtual void PushResourceUpdates(wr::TransactionBuilder& aResources,
+                                   ResourceUpdateOp aOp,
+                                   const Range<wr::ImageKey>& aImageKeys,
+                                   const wr::ExternalImageId& aExtID) override;
 
-  virtual void PushExternalImage(wr::DisplayListBuilder& aBuilder,
-                                 const wr::LayoutRect& aBounds,
-                                 const wr::LayoutRect& aClip,
-                                 wr::ImageRendering aFilter,
-                                 Range<const wr::ImageKey>& aImageKeys) override;
+  virtual void PushDisplayItems(wr::DisplayListBuilder& aBuilder,
+                                const wr::LayoutRect& aBounds,
+                                const wr::LayoutRect& aClip,
+                                wr::ImageRendering aFilter,
+                                const Range<wr::ImageKey>& aImageKeys) override;
 
 protected:
   bool Upload(nsIntRegion *aRegion = nullptr);

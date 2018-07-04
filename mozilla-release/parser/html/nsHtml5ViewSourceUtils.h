@@ -9,9 +9,10 @@
 
 class nsHtml5ViewSourceUtils
 {
-  public:
-    static nsHtml5HtmlAttributes* NewBodyAttributes();
-    static nsHtml5HtmlAttributes* NewLinkAttributes();
+public:
+  static nsHtml5HtmlAttributes* NewBodyAttributes();
+  static nsHtml5HtmlAttributes* NewLinkAttributes();
+  static nsHtml5HtmlAttributes* NewMetaViewportAttributes();
 };
 
 #endif // nsHtml5ViewSourceUtils_h

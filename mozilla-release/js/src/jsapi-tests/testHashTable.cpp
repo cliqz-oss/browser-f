@@ -381,7 +381,7 @@ BEGIN_TEST(testHashMapLookupWithDefaultOOM)
 {
     uint32_t timeToFail;
     for (timeToFail = 1; timeToFail < 1000; timeToFail++) {
-        js::oom::SimulateOOMAfter(timeToFail, js::oom::THREAD_TYPE_COOPERATING, false);
+        js::oom::SimulateOOMAfter(timeToFail, js::THREAD_TYPE_MAIN, false);
         LookupWithDefaultUntilResize();
     }
 
@@ -394,12 +394,13 @@ END_TEST(testHashMapLookupWithDefaultOOM)
 
 BEGIN_TEST(testHashTableMovableEnum)
 {
+    IntSet set;
     CHECK(set.init());
 
     // Exercise returning a hash table Enum object from a function.
 
     CHECK(set.put(1));
-    for (auto e = enumerateSet(); !e.empty(); e.popFront())
+    for (auto e = enumerateSet(set); !e.empty(); e.popFront())
         e.removeFront();
     CHECK(set.count() == 0);
 
@@ -425,9 +426,7 @@ BEGIN_TEST(testHashTableMovableEnum)
     return true;
 }
 
-IntSet set;
-
-IntSet::Enum enumerateSet()
+IntSet::Enum enumerateSet(IntSet& set)
 {
     return IntSet::Enum(set);
 }

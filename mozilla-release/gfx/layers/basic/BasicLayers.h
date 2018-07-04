@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -25,7 +26,6 @@ class nsIWidget;
 namespace mozilla {
 namespace layers {
 
-class DisplayItemLayer;
 class ImageFactory;
 class ImageLayer;
 class PaintLayerContext;
@@ -105,8 +105,6 @@ public:
   virtual void EndTransaction(DrawPaintedLayerCallback aCallback,
                               void* aCallbackData,
                               EndTransactionFlags aFlags = END_DEFAULT) override;
-  virtual bool ShouldAvoidComponentAlphaLayers() override { return IsWidgetLayerManager(); }
-
   void AbortTransaction();
 
   virtual void SetRoot(Layer* aLayer) override;
@@ -116,10 +114,8 @@ public:
   virtual already_AddRefed<ImageLayer> CreateImageLayer() override;
   virtual already_AddRefed<CanvasLayer> CreateCanvasLayer() override;
   virtual already_AddRefed<ColorLayer> CreateColorLayer() override;
-  virtual already_AddRefed<TextLayer> CreateTextLayer() override;
   virtual already_AddRefed<BorderLayer> CreateBorderLayer() override;
   virtual already_AddRefed<ReadbackLayer> CreateReadbackLayer() override;
-  virtual already_AddRefed<DisplayItemLayer> CreateDisplayItemLayer() override;
   virtual ImageFactory *GetImageFactory();
 
   virtual LayersBackend GetBackendType() override { return LayersBackend::LAYERS_BASIC; }

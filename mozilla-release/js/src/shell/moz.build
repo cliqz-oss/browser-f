@@ -18,11 +18,15 @@ UNIFIED_SOURCES += [
 ]
 
 DEFINES['EXPORT_JS_API'] = True
+DEFINES['ENABLE_WASM_GLOBAL'] = True
+
+if CONFIG['NIGHTLY_BUILD']:
+    DEFINES['ENABLE_WASM_GC'] = True
 
 # Also set in ../moz.build
 DEFINES['ENABLE_SHARED_ARRAY_BUFFER'] = True
 
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     # unnecessary PGO for js shell.  But gcc cannot turn off pgo because it is
     # necessary to link PGO lib on gcc when a object/static lib are compiled
     # for PGO.
@@ -36,25 +40,20 @@ LOCAL_INCLUDES += [
 OS_LIBS += CONFIG['EDITLINE_LIBS']
 OS_LIBS += CONFIG['MOZ_ZLIB_LIBS']
 
-if CONFIG['ENABLE_INTL_API'] and CONFIG['MOZ_ICU_DATA_ARCHIVE']:
-    # The ICU libraries linked into libmozjs will not include the ICU data,
-    # so link it directly.
-    USE_LIBS += ['icudata']
-
 # Prepare module loader JS code for embedding
-GENERATED_FILES += ['shellmoduleloader.out.h']
-shellmoduleloader = GENERATED_FILES['shellmoduleloader.out.h']
+GENERATED_FILES += [('shellmoduleloader.out.h', 'shellmoduleloader.js')]
+shellmoduleloader = GENERATED_FILES[('shellmoduleloader.out.h', 'shellmoduleloader.js')]
 shellmoduleloader.script = '../builtin/embedjs.py:generate_shellmoduleloader'
 shellmoduleloader.inputs = [
     '../js.msg',
     'ModuleLoader.js',
 ]
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-shadow', '-Werror=format']
 
 # This is intended as a temporary workaround to enable VS2015.
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     CXXFLAGS += ['-wd4312']
 
 # Place a GDB Python auto-load file next to the shell executable, both in
@@ -64,4 +63,4 @@ FINAL_TARGET_PP_FILES += ['js-gdb.py.in']
 OBJDIR_FILES.js.src.shell += ['!/dist/bin/js-gdb.py']
 
 # People expect the js shell to wind up in the top-level JS dir.
-OBJDIR_FILES.js.src += ['!js%s' % CONFIG['BIN_SUFFIX']]
+OBJDIR_FILES.js.src += ['!/dist/bin/js%s' % CONFIG['BIN_SUFFIX']]

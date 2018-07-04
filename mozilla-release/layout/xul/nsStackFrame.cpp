@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,7 +12,7 @@
 //
 
 #include "nsStackFrame.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsIContent.h"
 #include "nsCOMPtr.h"
 #include "nsHTMLParts.h"
@@ -21,16 +22,18 @@
 #include "nsStackLayout.h"
 #include "nsDisplayList.h"
 
+using namespace mozilla;
+
 nsIFrame*
-NS_NewStackFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewStackFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsStackFrame(aContext);
+  return new (aPresShell) nsStackFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsStackFrame)
 
-nsStackFrame::nsStackFrame(nsStyleContext* aContext):
-  nsBoxFrame(aContext, kClassID)
+nsStackFrame::nsStackFrame(ComputedStyle* aStyle):
+  nsBoxFrame(aStyle, kClassID)
 {
   nsCOMPtr<nsBoxLayout> layout;
   NS_NewStackLayout(layout);
@@ -45,7 +48,6 @@ nsStackFrame::nsStackFrame(nsStyleContext* aContext):
 // a bit more.
 void
 nsStackFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
-                                          const nsRect&           aDirtyRect,
                                           const nsDisplayListSet& aLists)
 {
   // BuildDisplayListForChild puts stacking contexts into the PositionedDescendants
@@ -56,8 +58,7 @@ nsStackFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
   nsIFrame* kid = mFrames.FirstChild();
   while (kid) {
     // Force each child into its own true stacking context.
-    BuildDisplayListForChild(aBuilder, kid, aDirtyRect, kidLists,
-                             DISPLAY_CHILD_FORCE_STACKING_CONTEXT);
+    BuildDisplayListForChild(aBuilder, kid, kidLists, DISPLAY_CHILD_FORCE_STACKING_CONTEXT);
     kid = kid->GetNextSibling();
   }
 }

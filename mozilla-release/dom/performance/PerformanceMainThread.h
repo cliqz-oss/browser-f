@@ -8,11 +8,13 @@
 #define mozilla_dom_PerformanceMainThread_h
 
 #include "Performance.h"
+#include "PerformanceStorage.h"
 
 namespace mozilla {
 namespace dom {
 
 class PerformanceMainThread final : public Performance
+                                  , public PerformanceStorage
 {
 public:
   PerformanceMainThread(nsPIDOMWindowInner* aWindow,
@@ -23,12 +25,19 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(PerformanceMainThread,
                                                          Performance)
 
+  PerformanceStorage* AsPerformanceStorage() override
+  {
+    return this;
+  }
+
   virtual PerformanceTiming* Timing() override;
 
   virtual PerformanceNavigation* Navigation() override;
 
   virtual void AddEntry(nsIHttpChannel* channel,
                         nsITimedChannel* timedChannel) override;
+
+  void CreateDocumentEntry(nsITimedChannel* aChannel) override;
 
   TimeStamp CreationTimeStamp() const override;
 
@@ -42,10 +51,24 @@ public:
     return mDOMTiming;
   }
 
+  virtual uint64_t GetRandomTimelineSeed() override
+  {
+    return GetDOMTiming()->GetRandomTimelineSeed();
+  }
+
   virtual nsITimedChannel* GetChannel() const override
   {
     return mChannel;
   }
+
+  // The GetEntries* methods need to be overriden in order to add the
+  // the document entry of type navigation.
+  virtual void GetEntries(nsTArray<RefPtr<PerformanceEntry>>& aRetval) override;
+  virtual void GetEntriesByType(const nsAString& aEntryType,
+                                nsTArray<RefPtr<PerformanceEntry>>& aRetval) override;
+  virtual void GetEntriesByName(const nsAString& aName,
+                                const Optional<nsAString>& aEntryType,
+                                nsTArray<RefPtr<PerformanceEntry>>& aRetval) override;
 
 protected:
   ~PerformanceMainThread();
@@ -58,7 +81,9 @@ protected:
   GetPerformanceTimingFromString(const nsAString& aTimingName) override;
 
   void DispatchBufferFullEvent() override;
+  void EnsureDocEntry();
 
+  RefPtr<PerformanceEntry> mDocEntry;
   RefPtr<nsDOMNavigationTiming> mDOMTiming;
   nsCOMPtr<nsITimedChannel> mChannel;
   RefPtr<PerformanceTiming> mTiming;

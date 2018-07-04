@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=78: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -33,7 +33,6 @@
 #include "nsTextFragment.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/LookAndFeel.h"
-#include "mozilla/dom/Selection.h"
 #include "nsIBidiKeyboard.h"
 #include "nsContentUtils.h"
 
@@ -241,7 +240,7 @@ void nsCaret::SetSelection(nsISelection *aDOMSel)
   MOZ_ASSERT(aDOMSel);
   mDomSelectionWeak = do_GetWeakReference(aDOMSel);   // weak reference to pres shell
   ResetBlinking();
-  SchedulePaint();
+  SchedulePaint(aDOMSel);
 }
 
 void nsCaret::SetVisible(bool inMakeVisible)
@@ -250,30 +249,6 @@ void nsCaret::SetVisible(bool inMakeVisible)
   mIgnoreUserModify = mVisible;
   ResetBlinking();
   SchedulePaint();
-}
-
-bool nsCaret::IsVisible()
-{
-  if (!mVisible || mHideCount) {
-    return false;
-  }
-
-  if (!mShowDuringSelection) {
-    Selection* selection = GetSelectionInternal();
-    if (!selection) {
-      return false;
-    }
-    bool isCollapsed;
-    if (NS_FAILED(selection->GetIsCollapsed(&isCollapsed)) || !isCollapsed) {
-      return false;
-    }
-  }
-
-  if (IsMenuPopupHidingCaret()) {
-    return false;
-  }
-
-  return true;
 }
 
 void nsCaret::AddForceHide()
@@ -464,9 +439,14 @@ nsCaret::GetSelectionInternal()
   return domSelection ? domSelection->AsSelection() : nullptr;
 }
 
-void nsCaret::SchedulePaint()
+void nsCaret::SchedulePaint(nsISelection* aSelection)
 {
-  Selection* selection = GetSelectionInternal();
+  Selection* selection;
+  if (aSelection) {
+    selection = aSelection->AsSelection();
+  } else {
+    selection = GetSelectionInternal();
+  }
   nsINode* focusNode;
   if (mOverrideContent) {
     focusNode = mOverrideContent;
@@ -494,13 +474,20 @@ void nsCaret::SetVisibilityDuringSelection(bool aVisibility)
 }
 
 void
-nsCaret::SetCaretPosition(nsIDOMNode* aNode, int32_t aOffset)
+nsCaret::SetCaretPosition(nsINode* aNode, int32_t aOffset)
 {
-  mOverrideContent = do_QueryInterface(aNode);
+  mOverrideContent = aNode;
   mOverrideOffset = aOffset;
 
   ResetBlinking();
   SchedulePaint();
+}
+
+void
+nsCaret::SetCaretPosition(nsIDOMNode* aNode, int32_t aOffset)
+{
+  nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
+  SetCaretPosition(node, aOffset);
 }
 
 void
@@ -537,7 +524,7 @@ nsCaret::GetPaintGeometry(nsRect* aRect)
   CheckSelectionLanguageChange();
 
   int32_t frameOffset;
-  nsIFrame *frame = GetFrameAndOffset(GetSelectionInternal(),
+  nsIFrame* frame = GetFrameAndOffset(GetSelectionInternal(),
       mOverrideContent, mOverrideOffset, &frameOffset);
   if (!frame) {
     return nullptr;
@@ -547,8 +534,7 @@ nsCaret::GetPaintGeometry(nsRect* aRect)
   const nsStyleUserInterface* userinterface = frame->StyleUserInterface();
   if ((!mIgnoreUserModify &&
        userinterface->mUserModify == StyleUserModify::ReadOnly) ||
-      userinterface->mUserInput == StyleUserInput::None ||
-      userinterface->mUserInput == StyleUserInput::Disabled) {
+      frame->IsContentDisabled()) {
     return nullptr;
   }
 
@@ -609,7 +595,11 @@ NS_IMETHODIMP
 nsCaret::NotifySelectionChanged(nsIDOMDocument *, nsISelection *aDomSel,
                                 int16_t aReason)
 {
-  if ((aReason & nsISelectionListener::MOUSEUP_REASON) || !IsVisible())//this wont do
+  // Note that aDomSel, per the comment below may not be the same as our
+  // selection, but that's OK since if that is the case, it wouldn't have
+  // mattered what IsVisible() returns here, so we just opt for checking
+  // the selection later down below.
+  if ((aReason & nsISelectionListener::MOUSEUP_REASON) || !IsVisible(aDomSel))//this wont do
     return NS_OK;
 
   nsCOMPtr<nsISelection> domSel(do_QueryReferent(mDomSelectionWeak));
@@ -626,7 +616,7 @@ nsCaret::NotifySelectionChanged(nsIDOMDocument *, nsISelection *aDomSel,
     return NS_OK;
 
   ResetBlinking();
-  SchedulePaint();
+  SchedulePaint(aDomSel);
 
   return NS_OK;
 }
@@ -652,10 +642,17 @@ void nsCaret::ResetBlinking()
   if (mBlinkTimer) {
     mBlinkTimer->Cancel();
   } else {
-    nsresult  err;
-    mBlinkTimer = do_CreateInstance("@mozilla.org/timer;1", &err);
-    if (NS_FAILED(err))
+    nsIEventTarget* target = nullptr;
+    if (nsCOMPtr<nsIPresShell> presShell = do_QueryReferent(mPresShell)) {
+      if (nsCOMPtr<nsIDocument> doc = presShell->GetDocument()) {
+        target = doc->EventTargetFor(TaskCategory::Other);
+      }
+    }
+
+    mBlinkTimer = NS_NewTimer(target);
+    if (!mBlinkTimer) {
       return;
+    }
   }
 
   if (blinkRate > 0) {

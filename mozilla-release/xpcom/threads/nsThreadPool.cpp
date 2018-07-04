@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsCOMArray.h"
 #include "nsIClassInfoImpl.h"
 #include "nsThreadPool.h"
 #include "nsThreadManager.h"
@@ -12,6 +13,7 @@
 #include "nsAutoPtr.h"
 #include "prinrval.h"
 #include "mozilla/Logging.h"
+#include "mozilla/SystemGroup.h"
 #include "nsThreadSyncDispatch.h"
 
 using namespace mozilla;
@@ -43,7 +45,6 @@ NS_IMPL_CI_INTERFACE_GETTER(nsThreadPool, nsIThreadPool, nsIEventTarget)
 nsThreadPool::nsThreadPool()
   : mMutex("[nsThreadPool.mMutex]")
   , mEventsAvailable(mMutex, "[nsThreadPool.mEventsAvailable]")
-  , mEvents(mEventsAvailable, nsEventQueue::eNormalQueue)
   , mThreadLimit(DEFAULT_THREAD_LIMIT)
   , mIdleThreadLimit(DEFAULT_IDLE_THREAD_LIMIT)
   , mIdleThreadTimeout(DEFAULT_IDLE_THREAD_TIMEOUT)
@@ -94,7 +95,8 @@ nsThreadPool::PutEvent(already_AddRefed<nsIRunnable> aEvent, uint32_t aFlags)
       spawnThread = true;
     }
 
-    mEvents.PutEvent(Move(aEvent), lock);
+    mEvents.PutEvent(Move(aEvent), EventPriority::Normal, lock);
+    mEventsAvailable.Notify();
     stackSize = mStackSize;
   }
 
@@ -146,8 +148,8 @@ nsThreadPool::ShutdownThread(nsIThread* aThread)
   // shutdown requires this thread have an event loop (and it may not, see bug
   // 10204784).  The simplest way to cover all cases is to asynchronously
   // shutdown aThread from the main thread.
-  NS_DispatchToMainThread(NewRunnableMethod("nsIThread::AsyncShutdown", aThread,
-                                            &nsIThread::AsyncShutdown));
+  SystemGroup::Dispatch(TaskCategory::Other, NewRunnableMethod(
+        "nsIThread::AsyncShutdown", aThread, &nsIThread::AsyncShutdown));
 }
 
 NS_IMETHODIMP
@@ -161,7 +163,7 @@ nsThreadPool::Run()
   bool shutdownThreadOnExit = false;
   bool exitThread = false;
   bool wasIdle = false;
-  PRIntervalTime idleSince;
+  TimeStamp idleSince;
 
   nsCOMPtr<nsIThreadPoolListener> listener;
   {
@@ -178,9 +180,10 @@ nsThreadPool::Run()
     {
       MutexAutoLock lock(mMutex);
 
-      if (!mEvents.GetPendingEvent(getter_AddRefs(event), lock)) {
-        PRIntervalTime now     = PR_IntervalNow();
-        PRIntervalTime timeout = PR_MillisecondsToInterval(mIdleThreadTimeout);
+      event = mEvents.GetEvent(nullptr, lock);
+      if (!event) {
+        TimeStamp now = TimeStamp::Now();
+        TimeDuration timeout = TimeDuration::FromMilliseconds(mIdleThreadTimeout);
 
         // If we are shutting down, then don't keep any idle threads
         if (mShutdown) {
@@ -210,9 +213,10 @@ nsThreadPool::Run()
           }
           shutdownThreadOnExit = mThreads.RemoveObject(current);
         } else {
-          PRIntervalTime delta = timeout - (now - idleSince);
-          LOG(("THRD-P(%p) %s waiting [%d]\n", this, mName.BeginReading(), delta));
-          mEvents.Wait(delta);
+          TimeDuration delta = timeout - (now - idleSince);
+          LOG(("THRD-P(%p) %s waiting [%f]\n", this, mName.BeginReading(),
+               delta.ToMilliseconds()));
+          mEventsAvailable.Wait(delta);
           LOG(("THRD-P(%p) done waiting\n", this));
         }
       } else if (wasIdle) {
@@ -262,12 +266,12 @@ nsThreadPool::Dispatch(already_AddRefed<nsIRunnable> aEvent, uint32_t aFlags)
     }
 
     RefPtr<nsThreadSyncDispatch> wrapper =
-      new nsThreadSyncDispatch(thread, Move(aEvent));
+      new nsThreadSyncDispatch(thread.forget(), Move(aEvent));
     PutEvent(wrapper);
 
     SpinEventLoopUntil([&, wrapper]() -> bool {
         return !wrapper->IsPending();
-      }, thread);
+      });
   } else {
     NS_ASSERTION(aFlags == NS_DISPATCH_NORMAL ||
                  aFlags == NS_DISPATCH_AT_END, "unexpected dispatch flags");
@@ -323,7 +327,7 @@ nsThreadPool::Shutdown()
   {
     MutexAutoLock lock(mMutex);
     mShutdown = true;
-    mEvents.NotifyAll();
+    mEventsAvailable.NotifyAll();
 
     threads.AppendObjects(mThreads);
     mThreads.Clear();
@@ -362,7 +366,7 @@ nsThreadPool::SetThreadLimit(uint32_t aValue)
   }
 
   if (static_cast<uint32_t>(mThreads.Count()) > mThreadLimit) {
-    mEvents.NotifyAll();  // wake up threads so they observe this change
+    mEventsAvailable.NotifyAll();  // wake up threads so they observe this change
   }
   return NS_OK;
 }
@@ -386,7 +390,7 @@ nsThreadPool::SetIdleThreadLimit(uint32_t aValue)
 
   // Do we need to kill some idle threads?
   if (mIdleCount > mIdleThreadLimit) {
-    mEvents.NotifyAll();  // wake up threads so they observe this change
+    mEventsAvailable.NotifyAll();  // wake up threads so they observe this change
   }
   return NS_OK;
 }
@@ -407,7 +411,7 @@ nsThreadPool::SetIdleThreadTimeout(uint32_t aValue)
 
   // Do we need to notify any idle threads that their sleep time has shortened?
   if (mIdleThreadTimeout < oldTimeout && mIdleCount > 0) {
-    mEvents.NotifyAll();  // wake up threads so they observe this change
+    mEventsAvailable.NotifyAll();  // wake up threads so they observe this change
   }
   return NS_OK;
 }

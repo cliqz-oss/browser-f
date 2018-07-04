@@ -1,19 +1,15 @@
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
 do_get_profile();
 
-Cu.import("resource://gre/modules/Promise.jsm");
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Sqlite.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-// To spin the event loop in test.
-Cu.import("resource://services-common/async.js");
+ChromeUtils.import("resource://gre/modules/Promise.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Sqlite.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 
 function sleep(ms) {
   return new Promise(resolve => {
@@ -47,17 +43,18 @@ function getConnection(dbName, extraOptions = {}) {
 }
 
 async function getDummyDatabase(name, extraOptions = {}) {
-  const TABLES = {
-    dirs: "id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT",
-    files: "id INTEGER PRIMARY KEY AUTOINCREMENT, dir_id INTEGER, path TEXT",
-  };
-
   let c = await getConnection(name, extraOptions);
   c._initialStatementCount = 0;
 
-  for (let [k, v] of Object.entries(TABLES)) {
-    await c.execute("CREATE TABLE " + k + "(" + v + ")");
-    c._initialStatementCount++;
+  if (!extraOptions.readOnly) {
+    const TABLES = new Map([
+      ["dirs", "id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT"],
+      ["files", "id INTEGER PRIMARY KEY AUTOINCREMENT, dir_id INTEGER, path TEXT"],
+    ]);
+    for (let [k, v] of TABLES) {
+      await c.execute("CREATE TABLE " + k + "(" + v + ")");
+      c._initialStatementCount++;
+    }
   }
 
   return c;
@@ -81,13 +78,40 @@ async function getDummyTempDatabase(name, extraOptions = {}) {
 }
 
 add_task(async function test_setup() {
-  Cu.import("resource://testing-common/services/common/logging.js");
+  ChromeUtils.import("resource://testing-common/services/common/logging.js");
   initTestLogging("Trace");
 });
 
 add_task(async function test_open_normal() {
   let c = await Sqlite.openConnection({path: "test_open_normal.sqlite"});
+  Assert.equal(c.defaultTransactionType, "DEFERRED");
   await c.close();
+});
+
+add_task(async function test_open_with_defaultTransactionType() {
+  let c = await getConnection("execute_transaction_types", {
+    defaultTransactionType: "IMMEDIATE",
+  });
+  Assert.equal(c.defaultTransactionType, "IMMEDIATE");
+  await c.close();
+});
+
+add_task(async function test_open_normal_error() {
+  let currentDir = await OS.File.getCurrentDirectory();
+
+  let src = OS.Path.join(currentDir, "corrupt.sqlite");
+  Assert.ok((await OS.File.exists(src)), "Database file found");
+
+  // Ensure that our database doesn't already exist.
+  let path = OS.Path.join(OS.Constants.Path.profileDir, "corrupt.sqlite");
+  Assert.ok(!(await OS.File.exists(path)), "Database file should not exist yet");
+
+  await OS.File.copy(src, path);
+
+  let openPromise = Sqlite.openConnection({path});
+  await Assert.rejects(openPromise, reason => {
+    return reason.status == Cr.NS_ERROR_FILE_CORRUPTED;
+  }, "Check error status");
 });
 
 add_task(async function test_open_unshared() {
@@ -100,7 +124,7 @@ add_task(async function test_open_unshared() {
 add_task(async function test_get_dummy_database() {
   let db = await getDummyDatabase("get_dummy_database");
 
-  do_check_eq(typeof(db), "object");
+  Assert.equal(typeof(db), "object");
   await db.close();
 });
 
@@ -108,28 +132,47 @@ add_task(async function test_schema_version() {
   let db = await getDummyDatabase("schema_version");
 
   let version = await db.getSchemaVersion();
-  do_check_eq(version, 0);
+  Assert.strictEqual(version, 0);
 
   db.setSchemaVersion(14);
   version = await db.getSchemaVersion();
-  do_check_eq(version, 14);
+  Assert.strictEqual(version, 14);
 
   for (let v of [0.5, "foobar", NaN]) {
     let success;
     try {
       await db.setSchemaVersion(v);
-      do_print("Schema version " + v + " should have been rejected");
+      info("Schema version " + v + " should have been rejected");
       success = false;
     } catch (ex) {
       if (!ex.message.startsWith("Schema version must be an integer."))
         throw ex;
       success = true;
     }
-    do_check_true(success);
+    Assert.ok(success);
 
     version = await db.getSchemaVersion();
-    do_check_eq(version, 14);
+    Assert.strictEqual(version, 14);
   }
+
+  await db.execute("ATTACH :memory AS attached");
+
+  let attachedVersion = await db.getSchemaVersion("attached");
+  Assert.equal(attachedVersion, 0,
+    "Should return 0 for initial attached schema version");
+
+  await db.setSchemaVersion(3, "attached");
+  attachedVersion = await db.getSchemaVersion("attached");
+  Assert.equal(attachedVersion, 3, "Should set attached schema version");
+
+  version = await db.getSchemaVersion();
+  Assert.equal(version, 14,
+    "Setting attached schema version should not change main schema version");
+
+  await db.setSchemaVersion(15);
+  attachedVersion = await db.getSchemaVersion("attached");
+  Assert.equal(attachedVersion, 3,
+    "Setting main schema version should not change attached schema version");
 
   await db.close();
 });
@@ -138,8 +181,8 @@ add_task(async function test_simple_insert() {
   let c = await getDummyDatabase("simple_insert");
 
   let result = await c.execute("INSERT INTO dirs VALUES (NULL, 'foo')");
-  do_check_true(Array.isArray(result));
-  do_check_eq(result.length, 0);
+  Assert.ok(Array.isArray(result));
+  Assert.equal(result.length, 0);
   await c.close();
 });
 
@@ -147,7 +190,7 @@ add_task(async function test_simple_bound_array() {
   let c = await getDummyDatabase("simple_bound_array");
 
   let result = await c.execute("INSERT INTO dirs VALUES (?, ?)", [1, "foo"]);
-  do_check_eq(result.length, 0);
+  Assert.equal(result.length, 0);
   await c.close();
 });
 
@@ -155,11 +198,11 @@ add_task(async function test_simple_bound_object() {
   let c = await getDummyDatabase("simple_bound_object");
   let result = await c.execute("INSERT INTO dirs VALUES (:id, :path)",
                                {id: 1, path: "foo"});
-  do_check_eq(result.length, 0);
+  Assert.equal(result.length, 0);
   result = await c.execute("SELECT id, path FROM dirs");
-  do_check_eq(result.length, 1);
-  do_check_eq(result[0].getResultByName("id"), 1);
-  do_check_eq(result[0].getResultByName("path"), "foo");
+  Assert.equal(result.length, 1);
+  Assert.equal(result[0].getResultByName("id"), 1);
+  Assert.equal(result[0].getResultByName("path"), "foo");
   await c.close();
 });
 
@@ -171,17 +214,17 @@ add_task(async function test_simple_insert_then_select() {
   await c.execute("INSERT INTO dirs (path) VALUES (?)", ["bar"]);
 
   let result = await c.execute("SELECT * FROM dirs");
-  do_check_eq(result.length, 2);
+  Assert.equal(result.length, 2);
 
   let i = 0;
   for (let row of result) {
     i++;
 
-    do_check_eq(row.numEntries, 2);
-    do_check_eq(row.getResultByIndex(0), i);
+    Assert.equal(row.numEntries, 2);
+    Assert.equal(row.getResultByIndex(0), i);
 
     let expected = {1: "foo", 2: "bar"}[i];
-    do_check_eq(row.getResultByName("path"), expected);
+    Assert.equal(row.getResultByName("path"), expected);
   }
 
   await c.close();
@@ -196,7 +239,7 @@ add_task(async function test_repeat_execution() {
 
   let result = await c.execute("SELECT * FROM dirs");
 
-  do_check_eq(result.length, 2);
+  Assert.equal(result.length, 2);
 
   await c.close();
 });
@@ -204,9 +247,9 @@ add_task(async function test_repeat_execution() {
 add_task(async function test_table_exists() {
   let c = await getDummyDatabase("table_exists");
 
-  do_check_false(await c.tableExists("does_not_exist"));
-  do_check_true(await c.tableExists("dirs"));
-  do_check_true(await c.tableExists("files"));
+  Assert.equal(false, await c.tableExists("does_not_exist"));
+  Assert.ok(await c.tableExists("dirs"));
+  Assert.ok(await c.tableExists("files"));
 
   await c.close();
 });
@@ -214,10 +257,10 @@ add_task(async function test_table_exists() {
 add_task(async function test_index_exists() {
   let c = await getDummyDatabase("index_exists");
 
-  do_check_false(await c.indexExists("does_not_exist"));
+  Assert.equal(false, await c.indexExists("does_not_exist"));
 
   await c.execute("CREATE INDEX my_index ON dirs (path)");
-  do_check_true(await c.indexExists("my_index"));
+  Assert.ok(await c.indexExists("my_index"));
 
   await c.close();
 });
@@ -225,9 +268,9 @@ add_task(async function test_index_exists() {
 add_task(async function test_temp_table_exists() {
   let c = await getDummyTempDatabase("temp_table_exists");
 
-  do_check_false(await c.tableExists("temp_does_not_exist"));
-  do_check_true(await c.tableExists("dirs"));
-  do_check_true(await c.tableExists("files"));
+  Assert.equal(false, await c.tableExists("temp_does_not_exist"));
+  Assert.ok(await c.tableExists("dirs"));
+  Assert.ok(await c.tableExists("files"));
 
   await c.close();
 });
@@ -235,10 +278,10 @@ add_task(async function test_temp_table_exists() {
 add_task(async function test_temp_index_exists() {
   let c = await getDummyTempDatabase("temp_index_exists");
 
-  do_check_false(await c.indexExists("temp_does_not_exist"));
+  Assert.equal(false, await c.indexExists("temp_does_not_exist"));
 
   await c.execute("CREATE INDEX my_index ON dirs (path)");
-  do_check_true(await c.indexExists("my_index"));
+  Assert.ok(await c.indexExists("my_index"));
 
   await c.close();
 });
@@ -257,7 +300,7 @@ add_task(async function test_execute_invalid_statement() {
 
   await new Promise(resolve => {
 
-    do_check_eq(c._connectionData._anonymousStatements.size, 0);
+    Assert.equal(c._connectionData._anonymousStatements.size, 0);
 
     c.execute("SELECT invalid FROM unknown").then(do_throw, function onError(error) {
       resolve();
@@ -266,7 +309,7 @@ add_task(async function test_execute_invalid_statement() {
   });
 
   // Ensure we don't leak the statement instance.
-  do_check_eq(c._connectionData._anonymousStatements.size, 0);
+  Assert.equal(c._connectionData._anonymousStatements.size, 0);
 
   await c.close();
 });
@@ -295,8 +338,8 @@ add_task(async function test_on_row_exception_ignored() {
     throw new Error("Some silly error.");
   });
 
-  do_check_eq(hasResult, true);
-  do_check_eq(i, 10);
+  Assert.equal(hasResult, true);
+  Assert.equal(i, 10);
 
   await c.close();
 });
@@ -311,16 +354,16 @@ add_task(async function test_on_row_stop_iteration() {
   }
 
   let i = 0;
-  let hasResult = await c.execute("SELECT * FROM dirs", null, function onRow(row) {
+  let hasResult = await c.execute("SELECT * FROM dirs", null, function onRow(row, cancel) {
     i++;
 
     if (i == 5) {
-      throw StopIteration;
+      cancel();
     }
   });
 
-  do_check_eq(hasResult, true);
-  do_check_eq(i, 5);
+  Assert.equal(hasResult, true);
+  Assert.equal(i, 5);
 
   await c.close();
 });
@@ -334,8 +377,8 @@ add_task(async function test_on_row_stop_iteration() {
     i++;
   });
 
-  do_check_eq(hasResult, false);
-  do_check_eq(i, 0);
+  Assert.equal(hasResult, false);
+  Assert.equal(i, 0);
 
   await c.close();
 });
@@ -353,19 +396,19 @@ add_task(async function test_invalid_transaction_type() {
 add_task(async function test_execute_transaction_success() {
   let c = await getDummyDatabase("execute_transaction_success");
 
-  do_check_false(c.transactionInProgress);
+  Assert.ok(!c.transactionInProgress);
 
   await c.executeTransaction(async function transaction(conn) {
-    do_check_eq(c, conn);
-    do_check_true(conn.transactionInProgress);
+    Assert.equal(c, conn);
+    Assert.ok(conn.transactionInProgress);
 
     await conn.execute("INSERT INTO dirs (path) VALUES ('foo')");
   });
 
-  do_check_false(c.transactionInProgress);
+  Assert.ok(!c.transactionInProgress);
   let rows = await c.execute("SELECT * FROM dirs");
-  do_check_true(Array.isArray(rows));
-  do_check_eq(rows.length, 1);
+  Assert.ok(Array.isArray(rows));
+  Assert.equal(rows.length, 1);
 
   await c.close();
 });
@@ -389,7 +432,7 @@ add_task(async function test_execute_transaction_rollback() {
   await deferred.promise;
 
   let rows = await c.execute("SELECT * FROM dirs");
-  do_check_eq(rows.length, 0);
+  Assert.equal(rows.length, 0);
 
   await c.close();
 });
@@ -410,7 +453,7 @@ add_task(async function test_close_during_transaction() {
 
   let c2 = await getConnection("close_during_transaction");
   let rows = await c2.execute("SELECT * FROM dirs");
-  do_check_eq(rows.length, 1);
+  Assert.equal(rows.length, 1);
 
   await c2.close();
 });
@@ -436,7 +479,7 @@ add_task(async function test_multiple_transactions() {
   }
 
   let rows = await c.execute("SELECT * FROM dirs");
-  do_check_eq(rows.length, 20);
+  Assert.equal(rows.length, 20);
 
   await c.close();
 });
@@ -497,11 +540,11 @@ add_task(async function test_no_shrink_on_init() {
 
   // We should not shrink until a statement has been executed.
   await sleep(220);
-  do_check_eq(count, 0);
+  Assert.equal(count, 0);
 
   await c.execute("SELECT 1");
   await sleep(220);
-  do_check_eq(count, 1);
+  Assert.equal(count, 1);
 
   await c.close();
 });
@@ -529,20 +572,20 @@ add_task(async function test_idle_shrink_fires() {
   c._connectionData._startIdleShrinkTimer();
 
   await sleep(220);
-  do_check_eq(count, 1);
-  do_check_eq(shrinkPromises.length, 1);
+  Assert.equal(count, 1);
+  Assert.equal(shrinkPromises.length, 1);
   await shrinkPromises[0];
   shrinkPromises.shift();
 
   // We shouldn't shrink again unless a statement was executed.
   await sleep(300);
-  do_check_eq(count, 1);
+  Assert.equal(count, 1);
 
   await c.execute("SELECT 1");
   await sleep(300);
 
-  do_check_eq(count, 2);
-  do_check_eq(shrinkPromises.length, 1);
+  Assert.equal(count, 2);
+  Assert.equal(shrinkPromises.length, 1);
   await shrinkPromises[0];
 
   await c.close();
@@ -580,17 +623,17 @@ add_task(async function test_idle_shrink_reset_on_operation() {
     i++;
   }
 
-  do_check_true(i > 0);
+  Assert.ok(i > 0);
 
   // We should not have performed an idle while doing operations.
-  do_check_eq(count, 0);
+  Assert.equal(count, 0);
 
   // Wait for idle timer.
   await sleep(INTERVAL);
 
   // Ensure we fired.
-  do_check_eq(count, 1);
-  do_check_eq(shrinkPromises.length, 1);
+  Assert.equal(count, 1);
+  Assert.equal(shrinkPromises.length, 1);
   await shrinkPromises[0];
 
   await c.close();
@@ -598,18 +641,15 @@ add_task(async function test_idle_shrink_reset_on_operation() {
 
 add_task(async function test_in_progress_counts() {
   let c = await getDummyDatabase("in_progress_counts");
-  do_check_eq(c._connectionData._statementCounter, c._initialStatementCount);
-  do_check_eq(c._connectionData._pendingStatements.size, 0);
+  Assert.equal(c._connectionData._statementCounter, c._initialStatementCount);
+  Assert.equal(c._connectionData._pendingStatements.size, 0);
   await c.executeCached("INSERT INTO dirs (path) VALUES ('foo')");
-  do_check_eq(c._connectionData._statementCounter, c._initialStatementCount + 1);
-  do_check_eq(c._connectionData._pendingStatements.size, 0);
+  Assert.equal(c._connectionData._statementCounter, c._initialStatementCount + 1);
+  Assert.equal(c._connectionData._pendingStatements.size, 0);
 
   let expectOne;
   let expectTwo;
 
-  // Please forgive me.
-  let inner = Async.makeSpinningCallback();
-  let outer = Async.makeSpinningCallback();
 
   // We want to make sure that two queries executing simultaneously
   // result in `_pendingStatements.size` reaching 2, then dropping back to 0.
@@ -617,6 +657,7 @@ add_task(async function test_in_progress_counts() {
   // To do so, we kick off a second statement within the row handler
   // of the first, then wait for both to finish.
 
+  let inner = PromiseUtils.defer();
   await c.executeCached("SELECT * from dirs", null, function onRow() {
     // In the onRow handler, we're still an outstanding query.
     // Expect a single in-progress entry.
@@ -624,27 +665,16 @@ add_task(async function test_in_progress_counts() {
 
     // Start another query, checking that after its statement has been created
     // there are two statements in progress.
-    let p = c.executeCached("SELECT 10, path from dirs");
+    c.executeCached("SELECT 10, path from dirs").then(inner.resolve);
     expectTwo = c._connectionData._pendingStatements.size;
-
-    // Now wait for it to be done before we return from the row handler …
-    p.then(function onInner() {
-      inner();
-    });
-  }).then(function onOuter() {
-    // … and wait for the inner to be done before we finish …
-    inner.wait();
-    outer();
   });
 
-  // … and wait for both queries to have finished before we go on and
-  // test postconditions.
-  outer.wait();
+  await inner.promise;
 
-  do_check_eq(expectOne, 1);
-  do_check_eq(expectTwo, 2);
-  do_check_eq(c._connectionData._statementCounter, c._initialStatementCount + 3);
-  do_check_eq(c._connectionData._pendingStatements.size, 0);
+  Assert.equal(expectOne, 1);
+  Assert.equal(expectTwo, 2);
+  Assert.equal(c._connectionData._statementCounter, c._initialStatementCount + 3);
+  Assert.equal(c._connectionData._pendingStatements.size, 0);
 
   await c.close();
 });
@@ -667,10 +697,10 @@ add_task(async function test_discard_while_active() {
   });
 
   // We discarded everything, because the SELECT had already started to run.
-  do_check_eq(3, discarded);
+  Assert.equal(3, discarded);
 
   // And again is safe.
-  do_check_eq(0, c.discardCachedStatements());
+  Assert.equal(0, c.discardCachedStatements());
 
   await c.close();
 });
@@ -679,16 +709,16 @@ add_task(async function test_discard_cached() {
   let c = await getDummyDatabase("discard_cached");
 
   await c.executeCached("SELECT * from dirs");
-  do_check_eq(1, c._connectionData._cachedStatements.size);
+  Assert.equal(1, c._connectionData._cachedStatements.size);
 
   await c.executeCached("SELECT * from files");
-  do_check_eq(2, c._connectionData._cachedStatements.size);
+  Assert.equal(2, c._connectionData._cachedStatements.size);
 
   await c.executeCached("SELECT * from dirs");
-  do_check_eq(2, c._connectionData._cachedStatements.size);
+  Assert.equal(2, c._connectionData._cachedStatements.size);
 
   c.discardCachedStatements();
-  do_check_eq(0, c._connectionData._cachedStatements.size);
+  Assert.equal(0, c._connectionData._cachedStatements.size);
 
   await c.close();
 });
@@ -704,10 +734,10 @@ add_task(async function test_programmatic_binding() {
 
   let sql = "INSERT INTO dirs VALUES (:id, :path)";
   let result = await c.execute(sql, bindings);
-  do_check_eq(result.length, 0);
+  Assert.equal(result.length, 0);
 
   let rows = await c.executeCached("SELECT * from dirs");
-  do_check_eq(rows.length, 3);
+  Assert.equal(rows.length, 3);
   await c.close();
 });
 
@@ -723,15 +753,15 @@ add_task(async function test_programmatic_binding_transaction() {
   let sql = "INSERT INTO dirs VALUES (:id, :path)";
   await c.executeTransaction(async function transaction() {
     let result = await c.execute(sql, bindings);
-    do_check_eq(result.length, 0);
+    Assert.equal(result.length, 0);
 
     let rows = await c.executeCached("SELECT * from dirs");
-    do_check_eq(rows.length, 3);
+    Assert.equal(rows.length, 3);
   });
 
   // Transaction committed.
   let rows = await c.executeCached("SELECT * from dirs");
-  do_check_eq(rows.length, 3);
+  Assert.equal(rows.length, 3);
   await c.close();
 });
 
@@ -764,13 +794,13 @@ add_task(async function test_programmatic_binding_transaction_partial_rollback()
   }
 
   // We did not get to the end of our in-transaction block.
-  do_check_false(secondSucceeded);
+  Assert.ok(!secondSucceeded);
 
   // Everything that happened in *our* transaction, not mozStorage's, got
   // rolled back, but the first row still exists.
   let rows = await c.executeCached("SELECT * from dirs");
-  do_check_eq(rows.length, 1);
-  do_check_eq(rows[0].getResultByName("path"), "works");
+  Assert.equal(rows.length, 1);
+  Assert.equal(rows[0].getResultByName("path"), "works");
   await c.close();
 });
 
@@ -794,12 +824,12 @@ add_task(async function test_programmatic_binding_implicit_transaction() {
     print("Caught expected exception: " + ex);
   }
 
-  do_check_false(secondSucceeded);
+  Assert.ok(!secondSucceeded);
 
   // The entire batch failed.
   let rows = await c.executeCached("SELECT * from dirs");
-  do_check_eq(rows.length, 1);
-  do_check_eq(rows[0].getResultByName("path"), "works");
+  Assert.equal(rows.length, 1);
+  Assert.equal(rows[0].getResultByName("path"), "works");
   await c.close();
 });
 
@@ -874,7 +904,7 @@ add_task(async function test_direct() {
 
   deferred = Promise.defer();
   db.asyncClose(function() {
-    deferred.resolve()
+    deferred.resolve();
   });
   await deferred.promise;
 });
@@ -894,10 +924,15 @@ add_task(async function test_cloneStorageConnection() {
   });
 
   let clone = await Sqlite.cloneStorageConnection({ connection: c, readOnly: true });
+  Assert.equal(clone.defaultTransactionType, "DEFERRED");
   // Just check that it works.
   await clone.execute("SELECT 1");
 
+  info("Set default transaction type on storage connection");
+  c.defaultTransactionType = Ci.mozIStorageConnection.TRANSACTION_IMMEDIATE;
+
   let clone2 = await Sqlite.cloneStorageConnection({ connection: c, readOnly: false });
+  Assert.equal(clone2.defaultTransactionType, "IMMEDIATE");
   // Just check that it works.
   await clone2.execute("CREATE TABLE test (id INTEGER PRIMARY KEY)");
 
@@ -963,6 +998,7 @@ add_task(async function test_wrapStorageConnection() {
   });
 
   let wrapper = await Sqlite.wrapStorageConnection({ connection: c });
+  Assert.equal(wrapper.defaultTransactionType, "DEFERRED");
   // Just check that it works.
   await wrapper.execute("SELECT 1");
   await wrapper.executeCached("SELECT 1");
@@ -970,6 +1006,17 @@ add_task(async function test_wrapStorageConnection() {
   // Closing the wrapper should just finalize statements but not close the
   // database.
   await wrapper.close();
+
+  info("Set default transaction type on storage connection");
+  c.defaultTransactionType = Ci.mozIStorageConnection.TRANSACTION_EXCLUSIVE;
+
+  let wrapper2 = await Sqlite.wrapStorageConnection({ connection: c });
+  Assert.equal(wrapper2.defaultTransactionType, "EXCLUSIVE");
+  // Just check that it works.
+  await wrapper2.execute("SELECT 1");
+
+  await wrapper2.close();
+
   await c.asyncClose();
 });
 
@@ -984,7 +1031,7 @@ add_task(async function test_closed_by_witness() {
   // forget the connection so it does not trigger a finalization again
   c._witness.forget();
   await c._connectionData._deferredClose.promise;
-  do_check_false(c._connectionData._open);
+  Assert.ok(!c._connectionData._open);
   failTestsOnAutoClose(true);
 });
 
@@ -999,7 +1046,7 @@ add_task(async function test_warning_message_on_finalization() {
       let messageText = msg.message;
       // Make sure the message starts with a warning containing the
       // connection identifier
-      if (messageText.indexOf("Warning: Sqlite connection '" + identifier + "'") !== -1) {
+      if (messageText.includes("Warning: Sqlite connection '" + identifier + "'")) {
         deferred.resolve();
       }
     }
@@ -1023,8 +1070,8 @@ add_task(async function test_error_message_on_unknown_finalization() {
   let listener = {
     observe(msg) {
       let messageText = msg.message;
-      if (messageText.indexOf("Error: Attempt to finalize unknown " +
-                              "Sqlite connection: foo") !== -1) {
+      if (messageText.includes("Error: Attempt to finalize unknown " +
+                              "Sqlite connection: foo")) {
         deferred.resolve();
       }
     }
@@ -1051,7 +1098,7 @@ add_task(async function test_forget_witness_on_close() {
 
   await c.close();
   // After close, witness should have forgotten the connection
-  do_check_true(forgetCalled);
+  Assert.ok(forgetCalled);
 });
 
 add_task(async function test_close_database_on_gc() {
@@ -1077,9 +1124,9 @@ add_task(async function test_close_database_on_gc() {
   let last = await getDummyDatabase("gc_last");
   await last.close();
 
-  Components.utils.forceGC();
-  Components.utils.forceCC();
-  Components.utils.forceShrinkingGC();
+  Cu.forceGC();
+  Cu.forceCC();
+  Cu.forceShrinkingGC();
 
   await finalPromise;
   failTestsOnAutoClose(true);
@@ -1139,4 +1186,17 @@ add_task(async function test_datatypes() {
     }
   }
   await c.close();
+});
+
+add_task(async function test_interrupt() {
+  // Testing the interrupt functionality is left to mozStorage unit tests, here
+  // we'll just test error conditions.
+  let c = await getDummyDatabase("interrupt");
+  Assert.throws(() => c.interrupt(),
+                /NS_ERROR_ILLEGAL_VALUE/,
+                "Sqlite.interrupt() should throw on a writable connection");
+  await c.close();
+  Assert.throws(() => c.interrupt(),
+                /Connection is not open/,
+                "Sqlite.interrupt() should throw on a closed connection");
 });

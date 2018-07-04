@@ -16,14 +16,30 @@ interface Selection {
   readonly attribute Node?         focusNode;
   readonly attribute unsigned long focusOffset;
   readonly attribute boolean       isCollapsed;
+  /**
+   * Returns the number of ranges in the selection.
+   */
   readonly attribute unsigned long rangeCount;
-  //readonly attribute DOMString     type;
+  readonly attribute DOMString     type;
+  /**
+   * Returns the range at the specified index.  Throws if the index is
+   * out of range.
+   */
   [Throws]
   Range     getRangeAt(unsigned long index);
+  /**
+   * Adds a range to the current selection.
+   */
   [Throws, BinaryName="addRangeJS"]
   void      addRange(Range range);
+  /**
+   * Removes a range from the current selection.
+   */
   [Throws]
   void      removeRange(Range range);
+  /**
+   * Removes all ranges from the current selection.
+   */
   [Throws]
   void      removeAllRanges();
   [Throws, BinaryName="RemoveAllRanges"]
@@ -82,7 +98,7 @@ partial interface Selection {
   void  removeSelectionListener(nsISelectionListener listenerToRemove);
 
   [ChromeOnly,BinaryName="rawType"]
-  readonly attribute short type;
+  readonly attribute short selectionType;
 
   [ChromeOnly,Throws,Pref="dom.testing.selection.GetRangesForInterval"]
   sequence<Range> GetRangesForInterval(Node beginNode, long beginOffset, Node endNode, long endOffset,

@@ -14,33 +14,29 @@
 #define LOG_ENABLED() LOG5_ENABLED()
 
 #include "nsHttpConnectionInfo.h"
+
 #include "mozilla/net/DNS.h"
-#include "prnetdb.h"
-#include "nsICryptoHash.h"
 #include "nsComponentManagerUtils.h"
+#include "nsICryptoHash.h"
 #include "nsIProtocolProxyService.h"
+#include "nsNetCID.h"
+#include "prnetdb.h"
 
 static nsresult
 SHA256(const char* aPlainText, nsAutoCString& aResult)
 {
-  static nsICryptoHash* hasher = nullptr;
-  nsresult rv;
-  if (!hasher) {
-    rv = CallCreateInstance("@mozilla.org/security/hash;1", &hasher);
+    nsresult rv;
+    nsCOMPtr<nsICryptoHash> hasher =
+      do_CreateInstance(NS_CRYPTO_HASH_CONTRACTID, &rv);
     if (NS_FAILED(rv)) {
       LOG(("nsHttpDigestAuth: no crypto hash!\n"));
       return rv;
     }
-  }
-
-  rv = hasher->Init(nsICryptoHash::SHA256);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = hasher->Update((unsigned char*) aPlainText, strlen(aPlainText));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = hasher->Finish(false, aResult);
-  return rv;
+    rv = hasher->Init(nsICryptoHash::SHA256);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = hasher->Update((unsigned char*) aPlainText, strlen(aPlainText));
+    NS_ENSURE_SUCCESS(rv, rv);
+    return hasher->Finish(false, aResult);
 }
 
 namespace mozilla {
@@ -92,6 +88,7 @@ nsHttpConnectionInfo::Init(const nsACString &host, int32_t port,
     mUsingConnect = false;
     mNPNToken = npnToken;
     mOriginAttributes = originAttributes;
+    mTlsFlags = 0x0;
 
     mUsingHttpsProxy = (proxyInfo && proxyInfo->IsHTTPS());
     mUsingHttpProxy = mUsingHttpsProxy || (proxyInfo && proxyInfo->IsHTTP());
@@ -147,7 +144,8 @@ void nsHttpConnectionInfo::BuildHashKey()
     // byte 5 is X/. X is for disallow_spdy flag
     // byte 6 is C/. C is for be Conservative
 
-    mHashKey.AssignLiteral(".......");
+    mHashKey.AssignLiteral(".......[tlsflags0x00000000]");
+
     mHashKey.Append(keyHost);
     if (!mNetworkInterfaceId.IsEmpty()) {
         mHashKey.Append('(');
@@ -259,6 +257,7 @@ nsHttpConnectionInfo::Clone() const
     clone->SetInsecureScheme(GetInsecureScheme());
     clone->SetNoSpdy(GetNoSpdy());
     clone->SetBeConservative(GetBeConservative());
+    clone->SetTlsFlags(GetTlsFlags());
     MOZ_ASSERT(clone->Equals(this));
 
     return clone;
@@ -282,6 +281,7 @@ nsHttpConnectionInfo::CloneAsDirectRoute(nsHttpConnectionInfo **outCI)
     clone->SetInsecureScheme(GetInsecureScheme());
     clone->SetNoSpdy(GetNoSpdy());
     clone->SetBeConservative(GetBeConservative());
+    clone->SetTlsFlags(GetTlsFlags());
     if (!mNetworkInterfaceId.IsEmpty()) {
         clone->SetNetworkInterfaceId(mNetworkInterfaceId);
     }
@@ -308,6 +308,13 @@ nsHttpConnectionInfo::CreateWildCard(nsHttpConnectionInfo **outParam)
     clone->SetPrivate(GetPrivate());
     clone.forget(outParam);
     return NS_OK;
+}
+
+void
+nsHttpConnectionInfo::SetTlsFlags(uint32_t aTlsFlags) {
+    mTlsFlags = aTlsFlags;
+
+    mHashKey.Replace(18, 8, nsPrintfCString("%08x", mTlsFlags));
 }
 
 bool

@@ -126,6 +126,7 @@ const SUPPORTED_HTTP_CODES = [
     "415",
     "416",
     "417",
+    "418",
     "426",
     "428",
     "429",
@@ -141,8 +142,10 @@ const SUPPORTED_HTTP_CODES = [
 ];
 
 const MDN_URL = "https://developer.mozilla.org/docs/";
-const GA_PARAMS =
-  "?utm_source=mozilla&utm_medium=devtools-netmonitor&utm_campaign=default";
+const MDN_STATUS_CODES_LIST_URL = `${MDN_URL}Web/HTTP/Status`;
+const getGAParams = (panelId = "netmonitor") => {
+  return `?utm_source=mozilla&utm_medium=devtools-${panelId}&utm_campaign=default`;
+};
 
 /**
  * Get the MDN URL for the specified header.
@@ -156,7 +159,7 @@ function getHeadersURL(header) {
   let idx = SUPPORTED_HEADERS.findIndex(item =>
     item.toLowerCase() === lowerCaseHeader);
   return idx > -1 ?
-    `${MDN_URL}Web/HTTP/Headers/${SUPPORTED_HEADERS[idx] + GA_PARAMS}` : null;
+    `${MDN_URL}Web/HTTP/Headers/${SUPPORTED_HEADERS[idx] + getGAParams()}` : null;
 }
 
 /**
@@ -166,10 +169,12 @@ function getHeadersURL(header) {
  *
  * @return {string} The MDN URL for the HTTP status code, or null if not available.
  */
-function getHTTPStatusCodeURL(statusCode) {
-  let idx = SUPPORTED_HTTP_CODES.indexOf(statusCode);
-  return idx > -1 ?
-    `${MDN_URL}Web/HTTP/Status/${SUPPORTED_HTTP_CODES[idx] + GA_PARAMS}` : null;
+function getHTTPStatusCodeURL(statusCode, panelId) {
+  return (
+    SUPPORTED_HTTP_CODES.includes(statusCode)
+      ? `${MDN_URL}Web/HTTP/Status/${statusCode}`
+      : MDN_STATUS_CODES_LIST_URL
+    ) + getGAParams(panelId);
 }
 
 /**
@@ -178,7 +183,7 @@ function getHTTPStatusCodeURL(statusCode) {
  * @return {string} the MDN URL of the Timings tag for Network Monitor.
  */
 function getNetMonitorTimingsURL() {
-  return `${MDN_URL}Tools/Network_Monitor${GA_PARAMS}#Timings`;
+  return `${MDN_URL}Tools/Network_Monitor${getGAParams()}#Timings`;
 }
 
 /**
@@ -187,7 +192,16 @@ function getNetMonitorTimingsURL() {
  * @return {string} The MDN URL for the documentation of Performance Analysis.
  */
 function getPerformanceAnalysisURL() {
-  return `${MDN_URL}Tools/Network_Monitor${GA_PARAMS}#Performance_analysis`;
+  return `${MDN_URL}Tools/Network_Monitor${getGAParams()}#Performance_analysis`;
+}
+
+/**
+ * Get the MDN URL for Filter box
+ *
+ * @return {string} The MDN URL for the documentation of Filter box.
+ */
+function getFilterBoxURL() {
+  return `${MDN_URL}Tools/Network_Monitor${getGAParams()}#Filtering_by_properties`;
 }
 
 module.exports = {
@@ -195,4 +209,5 @@ module.exports = {
   getHTTPStatusCodeURL,
   getNetMonitorTimingsURL,
   getPerformanceAnalysisURL,
+  getFilterBoxURL,
 };

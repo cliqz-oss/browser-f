@@ -21,17 +21,13 @@ HTMLParagraphElement::~HTMLParagraphElement()
 {
 }
 
-NS_IMPL_ISUPPORTS_INHERITED(HTMLParagraphElement, nsGenericHTMLElement,
-                            nsIDOMHTMLParagraphElement)
-
 NS_IMPL_ELEMENT_CLONE(HTMLParagraphElement)
-
-NS_IMPL_STRING_ATTR(HTMLParagraphElement, Align, align)
 
 bool
 HTMLParagraphElement::ParseAttribute(int32_t aNamespaceID,
-                                     nsIAtom* aAttribute,
+                                     nsAtom* aAttribute,
                                      const nsAString& aValue,
+                                     nsIPrincipal* aMaybeScriptedPrincipal,
                                      nsAttrValue& aResult)
 {
   if (aAttribute == nsGkAtoms::align && aNamespaceID == kNameSpaceID_None) {
@@ -39,7 +35,7 @@ HTMLParagraphElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 void
@@ -51,7 +47,7 @@ HTMLParagraphElement::MapAttributesIntoRule(const nsMappedAttributes* aAttribute
 }
 
 NS_IMETHODIMP_(bool)
-HTMLParagraphElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+HTMLParagraphElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry* const map[] = {
     sDivAlignAttributeMap,

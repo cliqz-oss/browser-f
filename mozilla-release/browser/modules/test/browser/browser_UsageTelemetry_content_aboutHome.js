@@ -27,9 +27,6 @@ add_task(async function setup() {
   let engineOneOff = Services.search.getEngineByName("MozSearch2");
   Services.search.moveEngine(engineOneOff, 0);
 
-  // Enable Extended Telemetry.
-  await SpecialPowers.pushPrefEnv({"set": [["toolkit.telemetry.enabled", true]]});
-
   // Enable event recording for the events tested here.
   Services.telemetry.setEventRecordingEnabled("navigation", true);
 
@@ -38,35 +35,35 @@ add_task(async function setup() {
     Services.search.currentEngine = originalEngine;
     Services.search.removeEngine(engineDefault);
     Services.search.removeEngine(engineOneOff);
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
     Services.telemetry.setEventRecordingEnabled("navigation", false);
   });
 });
 
-add_task(async function test_abouthome_simpleQuery() {
+add_task(async function test_abouthome_activitystream_simpleQuery() {
   // Let's reset the counts.
   Services.telemetry.clearScalars();
   Services.telemetry.clearEvents();
-  let search_hist = getSearchCountsHistogram();
+  let search_hist = getAndClearKeyedHistogram("SEARCH_COUNTS");
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
 
-  info("Setup waiting for AboutHomeLoadSnippetsCompleted.");
-  let promiseAboutHomeLoaded = new Promise(resolve => {
-    tab.linkedBrowser.addEventListener("AboutHomeLoadSnippetsCompleted", function loadListener(event) {
-      tab.linkedBrowser.removeEventListener("AboutHomeLoadSnippetsCompleted", loadListener, true);
-      resolve();
-    }, true, true);
-  });
+  info("Setup waiting for search input to initialise.");
+  let promiseAboutHomeSearchLoaded = BrowserTestUtils.waitForContentEvent(tab.linkedBrowser, "ContentSearchClient", true, null, true).then(() => false);
 
   info("Load about:home.");
   tab.linkedBrowser.loadURI("about:home");
-  info("Wait for AboutHomeLoadSnippetsCompleted.");
-  await promiseAboutHomeLoaded;
+  info("Wait for ActivityStream search input.");
+  await promiseAboutHomeSearchLoaded;
+
+  info("Wait for ContentSearchUI search provider to initialize.");
+  await ContentTask.spawn(tab.linkedBrowser, null, async function() {
+    await ContentTaskUtils.waitForCondition(() => content.wrappedJSObject.gContentSearchController.defaultEngine);
+  });
 
   info("Trigger a simple serch, just test + enter.");
   let p = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
-  await typeInSearchField(tab.linkedBrowser, "test query", "searchText");
+  await typeInSearchField(tab.linkedBrowser, "test query", "newtab-search-text");
   await BrowserTestUtils.synthesizeKey("VK_RETURN", {}, tab.linkedBrowser);
   await p;
 
@@ -74,7 +71,7 @@ add_task(async function test_abouthome_simpleQuery() {
   const scalars = getParentProcessScalars(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, true, false);
   checkKeyedScalar(scalars, SCALAR_ABOUT_HOME, "search_enter", 1);
   Assert.equal(Object.keys(scalars[SCALAR_ABOUT_HOME]).length, 1,
-               "This search must only increment one entry in the scalar.");
+    "This search must only increment one entry in the scalar.");
 
   // Make sure SEARCH_COUNTS contains identical values.
   checkKeyedHistogram(search_hist, "other-MozSearch.abouthome", 1);
@@ -84,5 +81,5 @@ add_task(async function test_abouthome_simpleQuery() {
   events = (events.parent || []).filter(e => e[1] == "navigation" && e[2] == "search");
   checkEvents(events, [["navigation", "search", "about_home", "enter", {engine: "other-MozSearch"}]]);
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

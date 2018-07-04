@@ -4,37 +4,36 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "TelemetryEnvironment",
 ];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 const myScope = this;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/ObjectUtils.jsm");
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const Utils = TelemetryUtils;
 
-const { AddonManager, AddonManagerPrivate } = Cu.import("resource://gre/modules/AddonManager.jsm", {});
+const { AddonManager } = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "AttributionCode",
-                                  "resource:///modules/AttributionCode.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ctypes",
-                                  "resource://gre/modules/ctypes.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
-                                  "resource://gre/modules/LightweightThemeManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
-                                  "resource://gre/modules/ProfileAge.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
-                                  "resource://gre/modules/UpdateUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "WindowsRegistry",
-                                  "resource://gre/modules/WindowsRegistry.jsm");
+ChromeUtils.defineModuleGetter(this, "AttributionCode",
+                               "resource:///modules/AttributionCode.jsm");
+ChromeUtils.defineModuleGetter(this, "ctypes",
+                               "resource://gre/modules/ctypes.jsm");
+ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
+                               "resource://gre/modules/LightweightThemeManager.jsm");
+ChromeUtils.defineModuleGetter(this, "ProfileAge",
+                               "resource://gre/modules/ProfileAge.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+                               "resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "WindowsRegistry",
+                               "resource://gre/modules/WindowsRegistry.jsm");
 
 // The maximum length of a string (e.g. description) in the addons section.
 const MAX_ADDON_STRING_LENGTH = 100;
@@ -48,6 +47,7 @@ const MAX_EXPERIMENT_TYPE_LENGTH = 20;
 /**
  * This is a policy object used to override behavior for testing.
  */
+// eslint-disable-next-line no-unused-vars
 var Policy = {
   now: () => new Date(),
 };
@@ -65,7 +65,7 @@ function getGlobal() {
   return gGlobalEnvironment;
 }
 
-this.TelemetryEnvironment = {
+var TelemetryEnvironment = {
   get currentEnvironment() {
     return getGlobal().currentEnvironment;
   },
@@ -148,6 +148,7 @@ this.TelemetryEnvironment = {
   RECORD_PREF_STATE: 1, // Don't record the preference value
   RECORD_PREF_VALUE: 2, // We only record user-set prefs.
   RECORD_DEFAULTPREF_VALUE: 3, // We only record default pref if set
+  RECORD_DEFAULTPREF_STATE: 4, // We only record if the pref exists
 
   // Testing method
   testWatchPreferences(prefMap) {
@@ -180,11 +181,13 @@ this.TelemetryEnvironment = {
 const RECORD_PREF_STATE = TelemetryEnvironment.RECORD_PREF_STATE;
 const RECORD_PREF_VALUE = TelemetryEnvironment.RECORD_PREF_VALUE;
 const RECORD_DEFAULTPREF_VALUE = TelemetryEnvironment.RECORD_DEFAULTPREF_VALUE;
+const RECORD_DEFAULTPREF_STATE = TelemetryEnvironment.RECORD_DEFAULTPREF_STATE;
 const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["app.feedback.baseURL", {what: RECORD_PREF_VALUE}],
   ["app.support.baseURL", {what: RECORD_PREF_VALUE}],
   ["accessibility.browsewithcaret", {what: RECORD_PREF_VALUE}],
   ["accessibility.force_disabled", {what:  RECORD_PREF_VALUE}],
+  ["app.shield.optoutstudies.enabled", {what: RECORD_PREF_VALUE}],
   ["app.update.auto", {what: RECORD_PREF_VALUE}],
   ["app.update.enabled", {what: RECORD_PREF_VALUE}],
   ["app.update.interval", {what: RECORD_PREF_VALUE}],
@@ -197,41 +200,41 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["browser.cache.offline.enable", {what: RECORD_PREF_VALUE}],
   ["browser.formfill.enable", {what: RECORD_PREF_VALUE}],
   ["browser.newtabpage.enabled", {what: RECORD_PREF_VALUE}],
-  ["browser.newtabpage.enhanced", {what: RECORD_PREF_VALUE}],
   ["browser.shell.checkDefaultBrowser", {what: RECORD_PREF_VALUE}],
   ["browser.search.ignoredJAREngines", {what: RECORD_DEFAULTPREF_VALUE}],
+  ["browser.search.region", {what: RECORD_PREF_VALUE}],
   ["browser.search.suggest.enabled", {what: RECORD_PREF_VALUE}],
+  ["browser.search.widget.inNavBar", {what: RECORD_DEFAULTPREF_VALUE}],
   ["browser.startup.homepage", {what: RECORD_PREF_STATE}],
   ["browser.startup.restoreTabs", {what: RECORD_PREF_VALUE}],
   ["browser.startup.addFreshTab", {what: RECORD_PREF_VALUE}],
-  ["toolkit.cosmeticAnimations.enabled", {what: RECORD_PREF_VALUE}],
+  ["browser.uidensity", {what: RECORD_PREF_VALUE}],
   ["browser.urlbar.suggest.searches", {what: RECORD_PREF_VALUE}],
   ["browser.urlbar.userMadeSearchSuggestionsChoice", {what: RECORD_PREF_VALUE}],
   ["devtools.chrome.enabled", {what: RECORD_PREF_VALUE}],
   ["devtools.debugger.enabled", {what: RECORD_PREF_VALUE}],
   ["devtools.debugger.remote-enabled", {what: RECORD_PREF_VALUE}],
   ["dom.ipc.plugins.enabled", {what: RECORD_PREF_VALUE}],
+  ["dom.ipc.plugins.sandbox-level.flash", {what: RECORD_PREF_VALUE}],
   ["dom.ipc.processCount", {what: RECORD_PREF_VALUE}],
   ["dom.max_script_run_time", {what: RECORD_PREF_VALUE}],
-  ["experiments.manifest.uri", {what: RECORD_PREF_VALUE}],
-  ["extensions.allow-non-mpc-extensions", {what: RECORD_PREF_VALUE}],
   ["extensions.autoDisableScopes", {what: RECORD_PREF_VALUE}],
   ["extensions.enabledScopes", {what: RECORD_PREF_VALUE}],
   ["extensions.blocklist.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.blocklist.url", {what: RECORD_PREF_VALUE}],
   ["extensions.formautofill.addresses.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.formautofill.creditCards.enabled", {what: RECORD_PREF_VALUE}],
+  ["extensions.legacy.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.strictCompatibility", {what: RECORD_PREF_VALUE}],
   ["extensions.update.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.update.url", {what: RECORD_PREF_VALUE}],
   ["extensions.update.background.url", {what: RECORD_PREF_VALUE}],
   ["extensions.screenshots.disabled", {what: RECORD_PREF_VALUE}],
-  ["extensions.screenshots.system-disabled", {what: RECORD_PREF_VALUE}],
   ["extensions.https_everywhere.globalEnabled", {what: RECORD_PREF_VALUE}],
+  ["general.config.filename", {what: RECORD_DEFAULTPREF_STATE}],
   ["general.smoothScroll", {what: RECORD_PREF_VALUE}],
   ["gfx.direct2d.disabled", {what: RECORD_PREF_VALUE}],
   ["gfx.direct2d.force-enabled", {what: RECORD_PREF_VALUE}],
-  ["gfx.direct2d.use1_1", {what: RECORD_PREF_VALUE}],
   ["layers.acceleration.disabled", {what: RECORD_PREF_VALUE}],
   ["layers.acceleration.force-enabled", {what: RECORD_PREF_VALUE}],
   ["layers.async-pan-zoom.enabled", {what: RECORD_PREF_VALUE}],
@@ -244,7 +247,8 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["layers.prefer-d3d9", {what: RECORD_PREF_VALUE}],
   ["layers.prefer-opengl", {what: RECORD_PREF_VALUE}],
   ["layout.css.devPixelsPerPx", {what: RECORD_PREF_VALUE}],
-  ["layout.css.servo.enabled", {what: RECORD_PREF_VALUE}],
+  ["marionette.enabled", {what: RECORD_PREF_VALUE}],
+  ["network.cookie.cookieBehavior", {what: RECORD_PREF_VALUE}],
   ["network.proxy.autoconfig_url", {what: RECORD_PREF_STATE}],
   ["network.proxy.http", {what: RECORD_PREF_STATE}],
   ["network.proxy.ssl", {what: RECORD_PREF_STATE}],
@@ -256,6 +260,7 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["privacy.donottrackheader.enabled", {what: RECORD_PREF_VALUE}],
   ["security.mixed_content.block_active_content", {what: RECORD_PREF_VALUE}],
   ["security.mixed_content.block_display_content", {what: RECORD_PREF_VALUE}],
+  ["toolkit.cosmeticAnimations.enabled", {what: RECORD_PREF_VALUE}],
   ["xpinstall.signatures.required", {what: RECORD_PREF_VALUE}],
 ]);
 
@@ -266,23 +271,21 @@ const PREF_DISTRIBUTION_ID = "distribution.id";
 const PREF_DISTRIBUTION_VERSION = "distribution.version";
 const PREF_DISTRIBUTOR = "app.distributor";
 const PREF_DISTRIBUTOR_CHANNEL = "app.distributor.channel";
-const PREF_HOTFIX_LASTVERSION = "extensions.hotfix.lastVersion";
 const PREF_APP_PARTNER_BRANCH = "app.partner.";
 const PREF_PARTNER_ID = "mozilla.partner.id";
 const PREF_UPDATE_ENABLED = "app.update.enabled";
 const PREF_UPDATE_AUTODOWNLOAD = "app.update.auto";
 const PREF_SEARCH_COHORT = "browser.search.cohort";
-const PREF_E10S_COHORT = "e10s.rollout.cohort";
 
 const COMPOSITOR_CREATED_TOPIC = "compositor:created";
 const COMPOSITOR_PROCESS_ABORTED_TOPIC = "compositor:process-aborted";
 const DISTRIBUTION_CUSTOMIZATION_COMPLETE_TOPIC = "distribution-customization-complete";
-const EXPERIMENTS_CHANGED_TOPIC = "experiments-changed";
 const GFX_FEATURES_READY_TOPIC = "gfx-features-ready";
 const SEARCH_ENGINE_MODIFIED_TOPIC = "browser-search-engine-modified";
 const SEARCH_SERVICE_TOPIC = "browser-search-service";
 const SESSIONSTORE_WINDOWS_RESTORED_TOPIC = "sessionstore-windows-restored";
 const PREF_CHANGED_TOPIC = "nsPref:changed";
+const BLOCKLIST_LOADED_TOPIC = "blocklist-loaded";
 
 /**
  * Enforces the parameter to a boolean value.
@@ -294,7 +297,7 @@ function enforceBoolean(aValue) {
   if (typeof(aValue) !== "number" && typeof(aValue) !== "boolean") {
     return null;
   }
-  return (new Boolean(aValue)).valueOf();
+  return Boolean(aValue);
 }
 
 /**
@@ -489,6 +492,10 @@ function EnvironmentAddonBuilder(environment) {
   // or a change load.
   this._pendingTask = null;
 
+  // Have we added an observer to listen for blocklist changes that still needs to be
+  // removed:
+  this._blocklistObserverAdded = false;
+
   // Set to true once initial load is complete and we're watching for changes.
   this._loaded = false;
 }
@@ -510,9 +517,9 @@ EnvironmentAddonBuilder.prototype = {
     this._pendingTask = (async () => {
       try {
         // Gather initial addons details
-        await this._updateAddons();
+        await this._updateAddons(true);
 
-        if (!AddonManagerPrivate.isDBLoaded()) {
+        if (!this._environment._addonsAreFull) {
           // The addon database has not been loaded, so listen for the event
           // triggered by the AddonManager when it is loaded so we can
           // immediately gather full data at that time.
@@ -545,7 +552,6 @@ EnvironmentAddonBuilder.prototype = {
   watchForChanges() {
     this._loaded = true;
     AddonManager.addAddonListener(this);
-    Services.obs.addObserver(this, EXPERIMENTS_CHANGED_TOPIC);
   },
 
   // AddonListener
@@ -570,7 +576,19 @@ EnvironmentAddonBuilder.prototype = {
   // nsIObserver
   observe(aSubject, aTopic, aData) {
     this._environment._log.trace("observe - Topic " + aTopic);
-    this._checkForChanges("experiment-changed");
+    if (aTopic == BLOCKLIST_LOADED_TOPIC) {
+      Services.obs.removeObserver(this, BLOCKLIST_LOADED_TOPIC);
+      this._blocklistObserverAdded = false;
+      let plugins = this._getActivePlugins();
+      let gmpPluginsPromise = this._getActiveGMPlugins();
+      gmpPluginsPromise.then(gmpPlugins => {
+        let {addons} = this._environment._currentEnvironment;
+        addons.activePlugins = plugins;
+        addons.activeGMPlugins = gmpPlugins;
+      }, err => {
+        this._environment._log.error("blocklist observe: Error collecting plugins", err);
+      });
+    }
   },
 
   _checkForChanges(changeReason) {
@@ -595,7 +613,9 @@ EnvironmentAddonBuilder.prototype = {
   _shutdownBlocker() {
     if (this._loaded) {
       AddonManager.removeAddonListener(this);
-      Services.obs.removeObserver(this, EXPERIMENTS_CHANGED_TOPIC);
+      if (this._blocklistObserverAdded) {
+        Services.obs.removeObserver(this, BLOCKLIST_LOADED_TOPIC);
+      }
     }
 
     // At startup, _pendingTask is set to a Promise that does not resolve
@@ -612,11 +632,15 @@ EnvironmentAddonBuilder.prototype = {
    * This should only be called from _pendingTask; otherwise we risk
    * running this during addon manager shutdown.
    *
+   * @param {boolean} [atStartup]
+   *        True if this is the first check we're performing at startup. In that
+   *        situation, we defer some more expensive initialization.
+   *
    * @returns Promise<Object> This returns a Promise resolved with a status object with the following members:
    *   changed - Whether the environment changed.
    *   oldEnvironment - Only set if a change occured, contains the environment data before the change.
    */
-  async _updateAddons() {
+  async _updateAddons(atStartup) {
     this._environment._log.trace("_updateAddons");
     let personaId = null;
     let theme = LightweightThemeManager.currentTheme;
@@ -627,9 +651,8 @@ EnvironmentAddonBuilder.prototype = {
     let addons = {
       activeAddons: await this._getActiveAddons(),
       theme: await this._getActiveTheme(),
-      activePlugins: this._getActivePlugins(),
-      activeGMPlugins: await this._getActiveGMPlugins(),
-      activeExperiment: this._getActiveExperiment(),
+      activePlugins: this._getActivePlugins(atStartup),
+      activeGMPlugins: await this._getActiveGMPlugins(atStartup),
       persona: personaId,
     };
 
@@ -653,9 +676,9 @@ EnvironmentAddonBuilder.prototype = {
    */
   async _getActiveAddons() {
     // Request addons, asynchronously.
-    let allAddons = await AddonManager.getActiveAddons(["extension", "service"]);
+    let {addons: allAddons, fullData} = await AddonManager.getActiveAddons(["extension", "service"]);
 
-    let isDBLoaded = AddonManagerPrivate.isDBLoaded();
+    this._environment._addonsAreFull = fullData;
     let activeAddons = {};
     for (let addon of allAddons) {
       // Weird addon data in the wild can lead to exceptions while collecting
@@ -671,12 +694,12 @@ EnvironmentAddonBuilder.prototype = {
           updateDay: Utils.millisecondsToDays(updateDate.getTime()),
           isSystem: addon.isSystem,
           isWebExtension: addon.isWebExtension,
-          multiprocessCompatible: Boolean(addon.multiprocessCompatible),
+          multiprocessCompatible: true,
         };
 
         // getActiveAddons() gives limited data during startup and full
         // data after the addons database is loaded.
-        if (isDBLoaded) {
+        if (fullData) {
           let installDate = new Date(Math.max(0, addon.installDate));
           Object.assign(activeAddons[addon.id], {
             blocklisted: (addon.blocklistState !== Ci.nsIBlocklistService.STATE_NOT_BLOCKED),
@@ -685,7 +708,7 @@ EnvironmentAddonBuilder.prototype = {
             userDisabled: enforceBoolean(addon.userDisabled),
             appDisabled: addon.appDisabled,
             foreignInstall: enforceBoolean(addon.foreignInstall),
-            hasBinaryComponents: addon.hasBinaryComponents,
+            hasBinaryComponents: false,
             installDay: Utils.millisecondsToDays(installDate.getTime()),
             signedState: addon.signedState,
           });
@@ -705,7 +728,7 @@ EnvironmentAddonBuilder.prototype = {
    */
   async _getActiveTheme() {
     // Request themes, asynchronously.
-    let themes = await AddonManager.getActiveAddons(["theme"]);
+    let {addons: themes} = await AddonManager.getActiveAddons(["theme"]);
 
     let activeTheme = {};
     // We only store information about the active theme.
@@ -725,7 +748,7 @@ EnvironmentAddonBuilder.prototype = {
         version: limitStringToLength(theme.version, MAX_ADDON_STRING_LENGTH),
         scope: theme.scope,
         foreignInstall: enforceBoolean(theme.foreignInstall),
-        hasBinaryComponents: theme.hasBinaryComponents,
+        hasBinaryComponents: false,
         installDay: Utils.millisecondsToDays(installDate.getTime()),
         updateDay: Utils.millisecondsToDays(updateDate.getTime()),
       };
@@ -736,9 +759,28 @@ EnvironmentAddonBuilder.prototype = {
 
   /**
    * Get the plugins data in object form.
+   *
+   * @param {boolean} [atStartup]
+   *        True if this is the first check we're performing at startup. In that
+   *        situation, we defer some more expensive initialization.
+   *
    * @return Object containing the plugins data.
    */
-  _getActivePlugins() {
+  _getActivePlugins(atStartup) {
+    // If we haven't yet loaded the blocklist, pass back dummy data for now,
+    // and add an observer to update this data as soon as we get it.
+    if (atStartup || !Services.blocklist.isLoaded) {
+      if (!this._blocklistObserverAdded) {
+        Services.obs.addObserver(this, BLOCKLIST_LOADED_TOPIC);
+        this._blocklistObserverAdded = true;
+      }
+      return [{
+        name: "dummy", version: "0.1", description: "Blocklist unavailable",
+        blocklisted: false, disabled: true, clicktoplay: false,
+        mimeTypes: ["text/there.is.only.blocklist"],
+        updateDay: Utils.millisecondsToDays(Date.now()),
+      }];
+    }
     let pluginTags =
       Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost).getPluginTags({});
 
@@ -774,12 +816,28 @@ EnvironmentAddonBuilder.prototype = {
 
   /**
    * Get the GMPlugins data in object form.
+   *
+   * @param {boolean} [atStartup]
+   *        True if this is the first check we're performing at startup. In that
+   *        situation, we defer some more expensive initialization.
+   *
    * @return Object containing the GMPlugins data.
    *
    * This should only be called from _pendingTask; otherwise we risk
    * running this during addon manager shutdown.
    */
-  async _getActiveGMPlugins() {
+  async _getActiveGMPlugins(atStartup) {
+    // If we haven't yet loaded the blocklist, pass back dummy data for now,
+    // and add an observer to update this data as soon as we get it.
+    if (atStartup || !Services.blocklist.isLoaded) {
+      if (!this._blocklistObserverAdded) {
+        Services.obs.addObserver(this, BLOCKLIST_LOADED_TOPIC);
+        this._blocklistObserverAdded = true;
+      }
+      return {
+        "dummy-gmp": {version: "0.1", userDisabled: false, applyBackgroundUpdates: 1}
+      };
+    }
     // Request plugins, asynchronously.
     let allPlugins = await AddonManager.getAddonsByTypes(["plugin"]);
 
@@ -803,28 +861,6 @@ EnvironmentAddonBuilder.prototype = {
     }
 
     return activeGMPlugins;
-  },
-
-  /**
-   * Get the active experiment data in object form.
-   * @return Object containing the active experiment data.
-   */
-  _getActiveExperiment() {
-    let experimentInfo = {};
-    try {
-      let scope = {};
-      Cu.import("resource:///modules/experiments/Experiments.jsm", scope);
-      let experiments = scope.Experiments.instance();
-      let activeExperiment = experiments.getActiveExperimentID();
-      if (activeExperiment) {
-        experimentInfo.id = activeExperiment;
-        experimentInfo.branch = experiments.getActiveExperimentBranch();
-      }
-    } catch (e) {
-      // If this is not Firefox, the import will fail.
-    }
-
-    return experimentInfo;
   },
 };
 
@@ -868,7 +904,7 @@ function EnvironmentCache() {
   this._currentEnvironment.profile = {};
   p.push(this._updateProfile());
   if (AppConstants.MOZ_BUILD_APP == "browser") {
-    p.push(this._updateAttribution());
+    p.push(this._loadAttributionAsync());
   }
 
   for (const [id, {branch, options}] of gActiveExperimentStartupBuffer.entries()) {
@@ -892,6 +928,10 @@ function EnvironmentCache() {
         this._log.error("EnvironmentCache - error while initializing", err);
         return setup();
       });
+
+  // Addons may contain partial or full data depending on whether the Addons DB
+  // has had a chance to load. Do we have full data yet?
+  this._addonsAreFull = false;
 }
 EnvironmentCache.prototype = {
   /**
@@ -1029,40 +1069,58 @@ EnvironmentCache.prototype = {
   _getPrefData() {
     let prefData = {};
     for (let [pref, policy] of this._watchedPrefs.entries()) {
-      let prefType = Services.prefs.getPrefType(pref);
+      let prefValue = this._getPrefValue(pref, policy.what);
 
-      if (policy.what == TelemetryEnvironment.RECORD_DEFAULTPREF_VALUE) {
-        // For default prefs, make sure they exist
-        if (prefType == Ci.nsIPrefBranch.PREF_INVALID) {
-          continue;
-        }
-      } else if (!Services.prefs.prefHasUserValue(pref)) {
-        // For user prefs, make sure they are set
+      if (prefValue === undefined) {
         continue;
       }
 
-      // Check the policy for the preference and decide if we need to store its value
-      // or whether it changed from the default value.
-      let prefValue;
-      if (policy.what == TelemetryEnvironment.RECORD_PREF_STATE) {
-        prefValue = "<user-set>";
-      } else if (prefType == Ci.nsIPrefBranch.PREF_STRING) {
-        prefValue = Services.prefs.getStringPref(pref);
-      } else if (prefType == Ci.nsIPrefBranch.PREF_BOOL) {
-        prefValue = Services.prefs.getBoolPref(pref);
-      } else if (prefType == Ci.nsIPrefBranch.PREF_INT) {
-        prefValue = Services.prefs.getIntPref(pref);
-      } else if (prefType == Ci.nsIPrefBranch.PREF_INVALID) {
-        prefValue = null;
-      } else {
-        throw new Error(`Unexpected preference type ("${prefType}") for "${pref}".`);
-      }
       prefData[pref] = prefValue;
     }
     return prefData;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupportsWeakReference]),
+  /**
+   * Get the value of a preference given the preference name and the policy.
+   * @param pref Name of the preference.
+   * @param what Policy of the preference.
+   *
+   * @returns The value we need to store for this preference. It can be undefined
+   *          or null if the preference is invalid or has a value set by the user.
+   */
+  _getPrefValue(pref, what) {
+    // Check the policy for the preference and decide if we need to store its value
+    // or whether it changed from the default value.
+    let prefType = Services.prefs.getPrefType(pref);
+
+    if (what == TelemetryEnvironment.RECORD_DEFAULTPREF_VALUE ||
+      what == TelemetryEnvironment.RECORD_DEFAULTPREF_STATE) {
+      // For default prefs, make sure they exist
+      if (prefType == Ci.nsIPrefBranch.PREF_INVALID) {
+        return undefined;
+      }
+    } else if (!Services.prefs.prefHasUserValue(pref)) {
+      // For user prefs, make sure they are set
+      return undefined;
+    }
+
+    if (what == TelemetryEnvironment.RECORD_DEFAULTPREF_STATE) {
+      return "<set>";
+    } else if (what == TelemetryEnvironment.RECORD_PREF_STATE) {
+      return "<user-set>";
+    } else if (prefType == Ci.nsIPrefBranch.PREF_STRING) {
+      return Services.prefs.getStringPref(pref);
+    } else if (prefType == Ci.nsIPrefBranch.PREF_BOOL) {
+      return Services.prefs.getBoolPref(pref);
+    } else if (prefType == Ci.nsIPrefBranch.PREF_INT) {
+      return Services.prefs.getIntPref(pref);
+    } else if (prefType == Ci.nsIPrefBranch.PREF_INVALID) {
+      return null;
+    }
+    throw new Error(`Unexpected preference type ("${prefType}") for "${pref}".`);
+  },
+
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISupportsWeakReference]),
 
   /**
    * Start watching the preferences.
@@ -1077,10 +1135,10 @@ EnvironmentCache.prototype = {
     }
   },
 
-  _onPrefChanged() {
+  _onPrefChanged(aData) {
     this._log.trace("_onPrefChanged");
     let oldEnvironment = Cu.cloneInto(this._currentEnvironment, myScope);
-    this._updateSettings();
+    this._currentEnvironment.settings.userPrefs[aData] = this._getPrefValue(aData, this._watchedPrefs.get(aData).what);
     this._onEnvironmentChange("pref-changed", oldEnvironment);
   },
 
@@ -1167,7 +1225,7 @@ EnvironmentCache.prototype = {
         break;
       case PREF_CHANGED_TOPIC:
         if (this._watchedPrefs.has(aData)) {
-          this._onPrefChanged();
+          this._onPrefChanged(aData);
         }
         break;
     }
@@ -1290,9 +1348,10 @@ EnvironmentCache.prototype = {
       buildId: Services.appinfo.appBuildID || null,
       version: Services.appinfo.version || null,
       vendor: Services.appinfo.vendor || null,
+      displayVersion: AppConstants.MOZ_APP_VERSION_DISPLAY || null,
       platformVersion: Services.appinfo.platformVersion || null,
       xpcomAbi: Services.appinfo.XPCOMABI,
-      hotfixVersion: Services.prefs.getStringPref(PREF_HOTFIX_LASTVERSION, null),
+      updaterAvailable: AppConstants.MOZ_UPDATER,
     };
 
     // Add |architecturesInBinary| only for Mac Universal builds.
@@ -1319,7 +1378,7 @@ EnvironmentCache.prototype = {
     let shellService;
     try {
       let scope = {};
-      Cu.import("resource:///modules/ShellService.jsm", scope);
+      ChromeUtils.import("resource:///modules/ShellService.jsm", scope);
       shellService = scope.ShellService;
     } catch (ex) {
       this._log.error("_isDefaultBrowser - Could not obtain shell service JSM");
@@ -1367,7 +1426,6 @@ EnvironmentCache.prototype = {
       blocklistEnabled: Services.prefs.getBoolPref(PREF_BLOCKLIST_ENABLED, true),
       e10sEnabled: Services.appinfo.browserTabsRemoteAutostart,
       e10sMultiProcesses: Services.appinfo.maxWebProcessCount,
-      e10sCohort: Services.prefs.getStringPref(PREF_E10S_COHORT, "unknown"),
       telemetryEnabled: Utils.isTelemetryEnabled,
       locale: getBrowserLocale(),
       update: {
@@ -1382,6 +1440,7 @@ EnvironmentCache.prototype = {
     this._currentEnvironment.settings.addonCompatibilityCheckEnabled =
       AddonManager.checkCompatibility;
 
+    this._updateAttribution();
     this._updateDefaultBrowser();
     this._updateSearchEngine();
   },
@@ -1419,18 +1478,42 @@ EnvironmentCache.prototype = {
   },
 
   /**
-   * Update the cached attribution data object.
+   * Load the attribution data object and updates the environment.
    * @returns Promise<> resolved when the I/O is complete.
    */
-  async _updateAttribution() {
-    let data = await AttributionCode.getAttrDataAsync();
-    if (Object.keys(data).length > 0) {
-      this._currentEnvironment.settings.attribution = {};
-      for (let key in data) {
-        this._currentEnvironment.settings.attribution[key] =
-          limitStringToLength(data[key], MAX_ATTRIBUTION_STRING_LENGTH);
-      }
+  async _loadAttributionAsync() {
+    try {
+      await AttributionCode.getAttrDataAsync();
+    } catch (e) {
+      // The AttributionCode.jsm module might not be always available
+      // (e.g. tests). Gracefully handle this.
+      return;
     }
+    this._updateAttribution();
+  },
+
+  /**
+   * Update the environment with the cached attribution data.
+   */
+  _updateAttribution() {
+    let data = null;
+    try {
+      data = AttributionCode.getCachedAttributionData();
+    } catch (e) {
+      // The AttributionCode.jsm module might not be always available
+      // (e.g. tests). Gracefully handle this.
+    }
+
+    if (!data || !Object.keys(data).length) {
+      return;
+    }
+
+    let attributionData = {};
+    for (let key in data) {
+      attributionData[key] =
+        limitStringToLength(data[key], MAX_ATTRIBUTION_STRING_LENGTH);
+    }
+    this._currentEnvironment.settings.attribution = attributionData;
   },
 
   /**
@@ -1564,6 +1647,31 @@ EnvironmentCache.prototype = {
   },
 
   /**
+   * Get registered security product information.
+   * @return Object containing the security product data
+   */
+  _getSecurityAppData() {
+    const maxStringLength = 256;
+
+    const keys = [ ["registeredAntiVirus", "antivirus"],
+                   ["registeredAntiSpyware", "antispyware"],
+                   ["registeredFirewall", "firewall"] ];
+
+    let result = {};
+
+    for (let [inKey, outKey] of keys) {
+      let prop = getSysinfoProperty(inKey, null);
+      if (prop) {
+        prop = limitStringToLength(prop, maxStringLength).split(";");
+      }
+
+      result[outKey] = prop;
+    }
+
+    return result;
+  },
+
+  /**
    * Get the GFX information.
    * @return Object containing the GFX data.
    */
@@ -1641,12 +1749,18 @@ EnvironmentCache.prototype = {
       os: this._getOSData(),
       hdd: this._getHDDData(),
       gfx: this._getGFXData(),
+      appleModelId: getSysinfoProperty("appleModelId", null),
     };
 
     if (AppConstants.platform === "win") {
       data.isWow64 = getSysinfoProperty("isWow64", null);
     } else if (AppConstants.platform == "android") {
       data.device = this._getDeviceData();
+    }
+
+    // Windows 8+
+    if (AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
+      data.sec = this._getSecurityAppData();
     }
 
     return data;

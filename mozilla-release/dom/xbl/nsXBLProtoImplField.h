@@ -7,7 +7,7 @@
 #ifndef nsXBLProtoImplField_h__
 #define nsXBLProtoImplField_h__
 
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsString.h"
 #include "jsapi.h"
 #include "nsString.h"
@@ -33,7 +33,7 @@ public:
   void SetNext(nsXBLProtoImplField* aNext) { mNext = aNext; }
 
   nsresult InstallField(JS::Handle<JSObject*> aBoundNode,
-                        nsIURI* aBindingDocURI,
+                        const nsXBLPrototypeBinding& aProtoBinding,
                         bool* aDidInstall) const;
 
   nsresult InstallAccessors(JSContext* aCx,
@@ -45,7 +45,7 @@ public:
   const char16_t* GetName() const { return mName; }
 
   unsigned AccessorAttributes() const {
-    return JSPROP_SHARED | JSPROP_GETTER | JSPROP_SETTER |
+    return JSPROP_GETTER | JSPROP_SETTER |
            (mJSAttributes & (JSPROP_ENUMERATE | JSPROP_PERMANENT));
   }
 

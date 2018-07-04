@@ -1,20 +1,13 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/PlacesSyncUtils.jsm");
-Cu.import("resource://gre/modules/BookmarkJSONUtils.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/engines/bookmarks.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
-
-add_task(async function setup() {
-  initTestLogging("Trace");
-  await Service.engineManager.register(BookmarksEngine);
-});
+ChromeUtils.import("resource://gre/modules/BookmarkJSONUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/engines/bookmarks.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 // A stored reference to the collection won't be valid after disabling.
 function getBookmarkWBO(server, guid) {
@@ -25,9 +18,14 @@ function getBookmarkWBO(server, guid) {
   return coll.wbo(guid);
 }
 
+add_task(async function setup() {
+  await Service.engineManager.register(BookmarksEngine);
+  await generateNewKeys(Service.collectionKeys);
+});
+
 add_task(async function test_decline_undecline() {
   let engine = Service.engineManager.get("bookmarks");
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
 
   try {
@@ -56,8 +54,3 @@ add_task(async function test_decline_undecline() {
   }
 });
 
-function run_test() {
-  initTestLogging("Trace");
-  generateNewKeys(Service.collectionKeys);
-  run_next_test();
-}

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,14 +8,20 @@
 #define MobileViewportManager_h_
 
 #include "mozilla/Maybe.h"
+#include "nsCOMPtr.h"
 #include "nsIDOMEventListener.h"
 #include "nsIObserver.h"
 #include "Units.h"
 
-class nsIDOMEventTarget;
 class nsIDocument;
 class nsIPresShell;
 class nsViewportInfo;
+
+namespace mozilla {
+namespace dom {
+class EventTarget;
+} // namespace dom
+} // namespace mozilla
 
 class MobileViewportManager final : public nsIDOMEventListener
                                   , public nsIObserver
@@ -89,7 +96,7 @@ private:
 
   nsCOMPtr<nsIDocument> mDocument;
   nsIPresShell* MOZ_NON_OWNING_REF mPresShell; // raw ref since the presShell owns this
-  nsCOMPtr<nsIDOMEventTarget> mEventTarget;
+  nsCOMPtr<mozilla::dom::EventTarget> mEventTarget;
   bool mIsFirstPaint;
   bool mPainted;
   mozilla::LayoutDeviceIntSize mDisplaySize;

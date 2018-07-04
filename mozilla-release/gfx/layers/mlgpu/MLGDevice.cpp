@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "MLGDevice.h"
 #include "mozilla/layers/TextureHost.h"
@@ -10,8 +11,10 @@
 #include "gfxConfig.h"
 #include "gfxPrefs.h"
 #include "gfxUtils.h"
+#include "LayersLogging.h"
 #include "ShaderDefinitionsMLGPU.h"
 #include "SharedBufferMLGPU.h"
+#include "UtilityMLGPU.h"
 
 namespace mozilla {
 namespace layers {
@@ -236,21 +239,6 @@ void
 MLGDevice::SetPSTexture(uint32_t aSlot, TextureSource* aSource)
 {
   SetPSTextures(aSlot, 1, &aSource);
-}
-
-static inline SamplerMode
-FilterToSamplerMode(gfx::SamplingFilter aFilter)
-{
-  switch (aFilter) {
-  case gfx::SamplingFilter::POINT:
-    return SamplerMode::Point;
-  case gfx::SamplingFilter::LINEAR:
-  case gfx::SamplingFilter::GOOD:
-    return SamplerMode::LinearClamp;
-  default:
-    MOZ_ASSERT_UNREACHABLE("Unknown sampler mode");
-    return SamplerMode::LinearClamp;
-  }
 }
 
 void

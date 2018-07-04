@@ -16,7 +16,7 @@ using namespace JS;
 static const JSClassOps global_classOps = {
     nullptr, nullptr, nullptr, nullptr,
     nullptr, nullptr, nullptr, nullptr,
-    nullptr, nullptr, nullptr, nullptr,
+    nullptr, nullptr,
     JS_GlobalObjectTraceHook
 };
 
@@ -25,6 +25,13 @@ static const JSClass global_class = {
     "global", JSCLASS_GLOBAL_FLAGS,
     &global_classOps
 };
+
+static volatile int dontOptimizeMeAway = 0;
+
+void
+usePointer(const void* ptr) {
+    dontOptimizeMeAway++;
+}
 
 template<typename T>
 static inline T*
@@ -79,8 +86,6 @@ main(int argc, const char** argv)
 
     /* Create the global object. */
     JS::CompartmentOptions options;
-    options.behaviors().setVersion(JSVERSION_LATEST);
-
     RootedObject global(cx, checkPtr(JS_NewGlobalObject(cx, &global_class,
                         nullptr, JS::FireOnNewGlobalHook, options)));
     JSAutoCompartment ac(cx, global);

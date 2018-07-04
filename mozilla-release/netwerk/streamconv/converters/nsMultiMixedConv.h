@@ -58,7 +58,7 @@ public:
   NS_DECL_NSIMULTIPARTCHANNEL
 
 protected:
-  ~nsPartChannel();
+  ~nsPartChannel() = default;
 
 protected:
   nsCOMPtr<nsIChannel>    mMultipartChannel;
@@ -135,7 +135,7 @@ public:
 protected:
     typedef mozilla::IncrementalTokenizer::Token Token;
 
-    virtual ~nsMultiMixedConv();
+    virtual ~nsMultiMixedConv() = default;
 
     nsresult SendStart();
     void AccumulateData(Token const & aToken);
@@ -151,6 +151,8 @@ protected:
     nsCOMPtr<nsISupports> mContext;
     nsCString           mContentType;
     nsCString           mContentDisposition;
+    nsCString           mContentSecurityPolicy;
+    nsCString           mRootContentSecurityPolicy;
     uint64_t            mContentLength;
     uint64_t            mTotalSent;
 
@@ -198,6 +200,7 @@ protected:
       HEADER_SET_COOKIE,
       HEADER_CONTENT_RANGE,
       HEADER_RANGE,
+      HEADER_CONTENT_SECURITY_POLICY,
       HEADER_UNKNOWN
     } mResponseHeader;
     // Cumulated value of a response header.

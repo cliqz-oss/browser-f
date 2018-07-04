@@ -10,7 +10,9 @@
 
 #include "GfxInfo.h"
 #include "nsUnicharUtils.h"
+#include "nsExceptionHandler.h"
 #include "nsCocoaFeatures.h"
+#include "nsICrashReporter.h"
 #include "mozilla/Preferences.h"
 #include <algorithm>
 
@@ -18,11 +20,7 @@
 #import <IOKit/IOKitLib.h>
 #import <Cocoa/Cocoa.h>
 
-#if defined(MOZ_CRASHREPORTER)
-#include "nsExceptionHandler.h"
-#include "nsICrashReporter.h"
 #define NS_CRASHREPORTER_CONTRACTID "@mozilla.org/toolkit/crash-reporter;1"
-#endif
 
 using namespace mozilla;
 using namespace mozilla::widget;
@@ -31,7 +29,7 @@ using namespace mozilla::widget;
 NS_IMPL_ISUPPORTS_INHERITED(GfxInfo, GfxInfoBase, nsIGfxInfoDebug)
 #endif
 
-GfxInfo::GfxInfo()
+GfxInfo::GfxInfo() : mOSXVersion{0}
 {
 }
 
@@ -54,6 +52,8 @@ OSXVersionToOperatingSystem(uint32_t aOSXVersion)
         return OperatingSystem::OSX10_11;
       case 12:
         return OperatingSystem::OSX10_12;
+      case 13:
+        return OperatingSystem::OSX10_13;
     }
   }
 
@@ -273,7 +273,6 @@ GfxInfo::GetIsGPU2Active(bool* aIsGPU2Active)
 void
 GfxInfo::AddCrashReportAnnotations()
 {
-#if defined(MOZ_CRASHREPORTER)
   nsString deviceID, vendorID, driverVersion;
   nsAutoCString narrowDeviceID, narrowVendorID, narrowDriverVersion;
 
@@ -294,12 +293,11 @@ GfxInfo::AddCrashReportAnnotations()
    * can go away after we store the above in the socorro db */
   nsAutoCString note;
   /* AppendPrintf only supports 32 character strings, mrghh. */
-  note.Append("AdapterVendorID: ");
+  note.AppendLiteral("AdapterVendorID: ");
   note.Append(narrowVendorID);
-  note.Append(", AdapterDeviceID: ");
+  note.AppendLiteral(", AdapterDeviceID: ");
   note.Append(narrowDeviceID);
   CrashReporter::AppendAppNotesToCrashReport(note);
-#endif
 }
 
 // We don't support checking driver versions on Mac.
@@ -340,6 +338,10 @@ GfxInfo::GetFeatureStatusImpl(int32_t aFeature,
   if (aOS)
     *aOS = os;
 
+  if (mShutdownOccurred) {
+    return NS_OK;
+  }
+
   // Don't evaluate special cases when we're evaluating the downloaded blocklist.
   if (!aDriverInfo.Length()) {
     if (aFeature == nsIGfxInfo::FEATURE_WEBGL_MSAA) {
@@ -364,6 +366,10 @@ GfxInfo::GetFeatureStatusImpl(int32_t aFeature,
           *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
           break;
       }
+      return NS_OK;
+    } else if (aFeature == nsIGfxInfo::FEATURE_WEBRENDER) {
+      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_OS_VERSION;
+      aFailureId = "FEATURE_UNQUALIFIED_WEBRENDER_MAC";
       return NS_OK;
     }
   }

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -494,32 +495,6 @@ public:
 /*
  * From RGB24.
  */
-
-TEST(ImageBitmapColorUtils, RGB24ToRGB24_)
-{
-  const RGB24Data srcData;
-  const RGB24Data dstData;
-
-  SimpleImage<uint8_t> result_(srcData.mWidth, srcData.mHeight, dstData.mChannelCount);
-
-  int rv = RGB24ToRGB24(srcData.mData, srcData.mStride,
-                        result_.mData, result_.mStride,
-                        result_.mWidth, result_.mHeight);
-
-  ASSERT_TRUE(rv == 0);
-
-  for (int i = 0; i < srcData.mHeight; ++i) {
-    for (int j = 0; j < srcData.mWidth; ++j) {
-      EXPECT_EQ(result_.mData[i * result_.mStride + j * result_.mChannelCount + 0],
-                dstData.mData[i * dstData.mStride + j * dstData.mChannelCount + 0]);
-      EXPECT_EQ(result_.mData[i * result_.mStride + j * result_.mChannelCount + 1],
-                dstData.mData[i * dstData.mStride + j * dstData.mChannelCount + 1]);
-      EXPECT_EQ(result_.mData[i * result_.mStride + j * result_.mChannelCount + 2],
-                dstData.mData[i * dstData.mStride + j * dstData.mChannelCount + 2]);
-    }
-  }
-}
-
 TEST(ImageBitmapColorUtils, RGB24ToBGR24_)
 {
   const RGB24Data srcData;
@@ -881,29 +856,6 @@ TEST(ImageBitmapColorUtils, BGR24ToRGB24_)
   SimpleImage<uint8_t> result_(srcData.mWidth, srcData.mHeight, dstData.mChannelCount);
 
   int rv = BGR24ToRGB24(srcData.mData, srcData.mStride,
-                        result_.mData, result_.mStride,
-                        result_.mWidth, result_.mHeight);
-  ASSERT_TRUE(rv == 0);
-
-  for (int i = 0; i < srcData.mHeight; ++i) {
-    for (int j = 0; j < srcData.mWidth; ++j) {
-      EXPECT_EQ(result_.mData[i * result_.mStride + j * result_.mChannelCount + 0],
-                dstData.mData[i * dstData.mStride + j * dstData.mChannelCount + 0]);
-      EXPECT_EQ(result_.mData[i * result_.mStride + j * result_.mChannelCount + 1],
-                dstData.mData[i * dstData.mStride + j * dstData.mChannelCount + 1]);
-      EXPECT_EQ(result_.mData[i * result_.mStride + j * result_.mChannelCount + 2],
-                dstData.mData[i * dstData.mStride + j * dstData.mChannelCount + 2]);
-    }
-  }
-}
-
-TEST(ImageBitmapColorUtils, BGR24ToBGR24_)
-{
-  const BGR24Data srcData;
-  const BGR24Data dstData;
-  SimpleImage<uint8_t> result_(srcData.mWidth, srcData.mHeight, dstData.mChannelCount);
-
-  int rv = BGR24ToBGR24(srcData.mData, srcData.mStride,
                         result_.mData, result_.mStride,
                         result_.mWidth, result_.mHeight);
   ASSERT_TRUE(rv == 0);

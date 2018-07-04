@@ -1,3 +1,4 @@
+// |reftest| skip -- regexp-dotall is not supported
 // Copyright (C) 2017 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -5,7 +6,7 @@
 esid: sec-get-regexp.prototype.dotall
 description: >
     `dotAll` accessor invoked on a non-object value
-info: >
+info: |
     get RegExp.prototype.dotAll
 
     1. Let R be the this value.

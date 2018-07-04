@@ -7,9 +7,11 @@ description: >
     It is a Syntax Error if HasDirectSuper of MethodDefinition is true.
 es6id: 12.2.5.1
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 ({
   method(param = super) {}

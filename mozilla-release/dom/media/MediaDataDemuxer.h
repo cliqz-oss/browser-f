@@ -7,6 +7,7 @@
 #if !defined(MediaDataDemuxer_h)
 #define MediaDataDemuxer_h
 
+#include "DecoderDoctorLogger.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/UniquePtr.h"
 
@@ -23,11 +24,14 @@ namespace mozilla {
 class MediaTrackDemuxer;
 class TrackMetadataHolder;
 
+DDLoggedTypeDeclName(MediaDataDemuxer);
+DDLoggedTypeName(MediaTrackDemuxer);
+
 // Allows reading the media data: to retrieve the metadata and demux samples.
 // MediaDataDemuxer isn't designed to be thread safe.
 // When used by the MediaFormatDecoder, care is taken to ensure that the demuxer
 // will never be called from more than one thread at once.
-class MediaDataDemuxer
+class MediaDataDemuxer : public DecoderDoctorLifeLogger<MediaDataDemuxer>
 {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaDataDemuxer)
@@ -43,9 +47,6 @@ public:
   // rejected should no more data be coming, while the demuxer would wait
   // otherwise.
   virtual RefPtr<InitPromise> Init() = 0;
-
-  // Returns true if a aType track type is available.
-  virtual bool HasTrackType(TrackInfo::TrackType aType) const = 0;
 
   // Returns the number of tracks of aType type available. A value of
   // 0 indicates that no such type is available.
@@ -83,7 +84,7 @@ public:
   // since the demuxer was initialized.
   // The demuxer can use this mechanism to inform all track demuxers to update
   // its buffered range.
-  // This will be called should the demuxer be used with MediaSourceResource.
+  // This will be called should the demuxer be used with MediaSource.
   virtual void NotifyDataRemoved() { }
 
   // Indicate to MediaFormatReader if it should compute the start time
@@ -97,7 +98,7 @@ protected:
   }
 };
 
-class MediaTrackDemuxer
+class MediaTrackDemuxer : public DecoderDoctorLifeLogger<MediaTrackDemuxer>
 {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaTrackDemuxer)

@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import base64
 import hashlib
 import imghdr
@@ -9,7 +11,7 @@ import struct
 import urllib
 
 from marionette_driver import By
-from marionette_driver.errors import JavascriptException, NoSuchWindowException
+from marionette_driver.errors import NoSuchElementException, NoSuchWindowException
 from marionette_harness import (
     MarionetteTestCase,
     skip,
@@ -205,24 +207,6 @@ class TestScreenCaptureChrome(WindowManagerMixin, ScreenCaptureTestCase):
                          self.get_image_dimensions(screenshot_full))
 
     @skip_if_mobile("Fennec doesn't support other chrome windows")
-    def test_capture_viewport(self):
-        # Load a HTML test page into the chrome window to get scrollbars
-        test_page = self.marionette.absolute_url("test.html")
-        dialog = self.open_dialog(url=test_page, width=50, height=50)
-        self.marionette.switch_to_window(dialog)
-
-        # Size of screenshot has to match viewport size
-        screenshot = self.marionette.screenshot(full=False)
-        self.assert_png(screenshot)
-        self.assertEqual(self.scale(self.viewport_dimensions),
-                         self.get_image_dimensions(screenshot))
-        self.assertNotEqual(self.scale(self.window_dimensions),
-                            self.get_image_dimensions(screenshot))
-
-        self.marionette.close_chrome_window()
-        self.marionette.switch_to_window(self.start_window)
-
-    @skip_if_mobile("Fennec doesn't support other chrome windows")
     def test_capture_window_already_closed(self):
         dialog = self.open_dialog()
         self.marionette.switch_to_window(dialog)
@@ -275,12 +259,12 @@ class TestScreenCaptureChrome(WindowManagerMixin, ScreenCaptureTestCase):
             self.marionette.navigate(box)
             content_element = self.marionette.find_element(By.ID, "green")
 
-        self.assertRaisesRegexp(JavascriptException, "Element reference not seen before",
+        self.assertRaisesRegexp(NoSuchElementException, "Web element reference not seen before",
                                 self.marionette.screenshot, highlights=[content_element])
 
         chrome_document_element = self.document_element
         with self.marionette.using_context('content'):
-            self.assertRaisesRegexp(JavascriptException, "Element reference not seen before",
+            self.assertRaisesRegexp(NoSuchElementException, "Web element reference not seen before",
                                     self.marionette.screenshot,
                                     highlights=[chrome_document_element])
 

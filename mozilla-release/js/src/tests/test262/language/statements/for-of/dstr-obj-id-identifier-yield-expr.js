@@ -9,7 +9,7 @@ es6id: 13.7.5.11
 features: [generators, destructuring-binding]
 flags: [generated, noStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     IterationStatement :
@@ -29,6 +29,7 @@ info: |
           lhs using AssignmentPattern as the goal symbol.
     [...]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 (function*() {
 
 for ({ yield } of [{}]) ;

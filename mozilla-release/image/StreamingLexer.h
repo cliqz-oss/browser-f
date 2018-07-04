@@ -21,6 +21,7 @@
 #include "mozilla/Move.h"
 #include "mozilla/Variant.h"
 #include "mozilla/Vector.h"
+#include "SourceBuffer.h"
 
 namespace mozilla {
 namespace image {
@@ -429,7 +430,10 @@ public:
     do {
       state = other.Advance(pos);
       if (state != SourceBufferIterator::READY) {
-        MOZ_ASSERT_UNREACHABLE("Cannot advance to existing position");
+        // The only way we should fail to advance over data we already seen is
+        // if we hit an error while inserting data into the buffer. This will
+        // cause an early exit.
+        MOZ_ASSERT(NS_FAILED(other.CompletionStatus()));
         return Nothing();
       }
       MOZ_ASSERT(pos >= other.Length());

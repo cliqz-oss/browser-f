@@ -5,12 +5,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "jsfriendapi.h"
-#include "jsscript.h"
-#include "jsstr.h"
+#include "builtin/String.h"
 
 #include "jsapi-tests/tests.h"
+#include "vm/JSScript.h"
 
-#include "jsscriptinlines.h"
+#include "vm/JSScript-inl.h"
 
 static bool
 GetBuildId(JS::BuildIdCharVector* buildId)
@@ -141,8 +141,8 @@ BEGIN_TEST(testXDR_sourceMap)
         CHECK(script);
 
         size_t len = strlen(*sm);
-        JS::UniqueTwoByteChars expected_wrapper(js::InflateString(cx, *sm, &len));
-        char16_t *expected = expected_wrapper.get();
+        JS::UniqueTwoByteChars expected_wrapper(js::InflateString(cx, *sm, len));
+        char16_t* expected = expected_wrapper.get();
         CHECK(expected);
 
         // The script source takes responsibility of free'ing |expected|.

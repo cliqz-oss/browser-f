@@ -7,6 +7,10 @@
 
 "use strict";
 
+// Send readyState change notification event to the window. It's useful for tests.
+JSONView.readyState = "loading";
+window.dispatchEvent(new CustomEvent("AppReadyStateChange"));
+
 /**
  * RequireJS configuration for JSON Viewer.
  *
@@ -21,14 +25,26 @@
  * of the code base, so it's consistent and modules can be easily reused.
  */
 require.config({
-  baseUrl: "resource://devtools/client/jsonview/",
+  baseUrl: "resource://devtools-client-jsonview/",
   paths: {
-    "devtools/client/shared": "resource://devtools/client/shared",
+    "devtools/client/shared": "resource://devtools-client-shared",
     "devtools/shared": "resource://devtools/shared",
     "devtools/client/shared/vendor/react":
-      JSONView.debug
-      ? "resource://devtools/client/shared/vendor/react-dev"
-      : "resource://devtools/client/shared/vendor/react"
+      JSONView.debugJsModules
+      ? "resource://devtools-client-shared/vendor/react-dev"
+      : "resource://devtools-client-shared/vendor/react",
+    "devtools/client/shared/vendor/react-dom":
+      JSONView.debugJsModules
+      ? "resource://devtools-client-shared/vendor/react-dom-dev"
+      : "resource://devtools-client-shared/vendor/react-dom",
+    "devtools/client/shared/vendor/react-prop-types":
+      JSONView.debugJsModules
+      ? "resource://devtools-client-shared/vendor/react-prop-types-dev"
+      : "resource://devtools-client-shared/vendor/react-prop-types",
+    "devtools/client/shared/vendor/react-dom-test-utils":
+      JSONView.debugJsModules
+      ? "resource://devtools-client-shared/vendor/react-dom-test-utils-dev"
+      : "resource://devtools-client-shared/vendor/react-dom-test-utils",
   }
 });
 

@@ -25,9 +25,7 @@ add_task(async function() {
       data: [],
       onBeginUpdateBatch() {},
       onEndUpdateBatch() {},
-      onVisit(aURI, aVisitID, aTime, aSessionID, aReferringID,
-                        aTransitionType) {
-      },
+      onVisits() {},
       onTitleChanged(aURI, aPageTitle, aGUID) {
         this.data.push({ uri: aURI, title: aPageTitle, guid: aGUID });
 
@@ -44,7 +42,7 @@ add_task(async function() {
       onClearHistory() {},
       onPageChanged() {},
       onDeleteVisits() {},
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsINavHistoryObserver])
+      QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver])
     };
     PlacesUtils.history.addObserver(historyObserver);
   });
@@ -68,6 +66,6 @@ add_task(async function() {
   });
 
   gBrowser.removeCurrentTab();
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 

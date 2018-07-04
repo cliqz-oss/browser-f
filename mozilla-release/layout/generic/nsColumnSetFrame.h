@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -22,7 +23,7 @@ class nsColumnSetFrame final : public nsContainerFrame
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsColumnSetFrame)
 
-  explicit nsColumnSetFrame(nsStyleContext* aContext);
+  explicit nsColumnSetFrame(ComputedStyle* aStyle);
 
   virtual void Reflow(nsPresContext* aPresContext,
                       ReflowOutput& aDesiredSize,
@@ -67,7 +68,6 @@ public:
    }
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   /**
@@ -86,7 +86,7 @@ public:
   }
 #endif
 
-  nsRect CalculateBounds(const nsPoint& aOffset);
+  nsRect CalculateColumnRuleBounds(const nsPoint& aOffset);
   void CreateBorderRenderers(nsTArray<nsCSSBorderRenderer>& aBorderRenderers,
                              gfxContext* aCtx,
                              const nsRect& aDirtyRect,
@@ -228,8 +228,8 @@ protected:
                         nsCollapsingMargin* aCarriedOutBEndMargin,
                         ColumnBalanceData& aColData);
 
-  void ForEachColumn(const std::function<void(const nsRect& lineRect)>& aSetLineRect,
-                     const nsPoint& aPt);
+  void ForEachColumnRule(const std::function<void(const nsRect& lineRect)>& aSetLineRect,
+                         const nsPoint& aPt);
 };
 
 #endif // nsColumnSetFrame_h___

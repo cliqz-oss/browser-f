@@ -4,12 +4,8 @@
 
 // Test ThirdPartyUtil methods. See mozIThirdPartyUtil.
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var prefs = Cc["@mozilla.org/preferences-service;1"].
               getService(Ci.nsIPrefBranch);
@@ -19,7 +15,7 @@ var prefs = Cc["@mozilla.org/preferences-service;1"].
 // the ContentPolicyType assertion in the constructor.
 prefs.setBoolPref("network.loadinfo.skip_type_assertion", true);
 
-var NS_ERROR_INVALID_ARG = Components.results.NS_ERROR_INVALID_ARG;
+var NS_ERROR_INVALID_ARG = Cr.NS_ERROR_INVALID_ARG;
 
 function do_check_throws(f, result, stack)
 {
@@ -34,7 +30,7 @@ function do_check_throws(f, result, stack)
   try {
     f();
   } catch (exc) {
-    do_check_eq(exc.result, result);
+    Assert.equal(exc.result, result);
     return;
   }
   do_throw("expected " + result + " exception, none thrown", stack);
@@ -62,12 +58,12 @@ function run_test() {
   let filechannel2 = NetUtil.newChannel({uri: fileuri2, loadUsingSystemPrincipal: true});
 
   // Test isThirdPartyURI.
-  do_check_false(util.isThirdPartyURI(uri1, uri1));
-  do_check_true(util.isThirdPartyURI(uri1, uri2));
-  do_check_true(util.isThirdPartyURI(uri2, uri1));
-  do_check_false(util.isThirdPartyURI(fileuri1, fileuri1));
-  do_check_false(util.isThirdPartyURI(fileuri1, fileuri2));
-  do_check_true(util.isThirdPartyURI(uri1, fileuri1));
+  Assert.ok(!util.isThirdPartyURI(uri1, uri1));
+  Assert.ok(util.isThirdPartyURI(uri1, uri2));
+  Assert.ok(util.isThirdPartyURI(uri2, uri1));
+  Assert.ok(!util.isThirdPartyURI(fileuri1, fileuri1));
+  Assert.ok(!util.isThirdPartyURI(fileuri1, fileuri2));
+  Assert.ok(util.isThirdPartyURI(uri1, fileuri1));
   do_check_throws(function() { util.isThirdPartyURI(uri1, null); },
     NS_ERROR_INVALID_ARG);
   do_check_throws(function() { util.isThirdPartyURI(null, uri1); },
@@ -83,14 +79,14 @@ function run_test() {
   // that these are not third-party.
   do_check_throws(function() { util.isThirdPartyChannel(null); },
     NS_ERROR_INVALID_ARG);
-  do_check_false(util.isThirdPartyChannel(channel1));
-  do_check_false(util.isThirdPartyChannel(channel1, uri1));
-  do_check_true(util.isThirdPartyChannel(channel1, uri2));
+  Assert.ok(!util.isThirdPartyChannel(channel1));
+  Assert.ok(!util.isThirdPartyChannel(channel1, uri1));
+  Assert.ok(util.isThirdPartyChannel(channel1, uri2));
 
   let httpchannel1 = channel1.QueryInterface(Ci.nsIHttpChannelInternal);
   httpchannel1.forceAllowThirdPartyCookie = true;
-  do_check_false(util.isThirdPartyChannel(channel1));
-  do_check_false(util.isThirdPartyChannel(channel1, uri1));
-  do_check_true(util.isThirdPartyChannel(channel1, uri2));
+  Assert.ok(!util.isThirdPartyChannel(channel1));
+  Assert.ok(!util.isThirdPartyChannel(channel1, uri1));
+  Assert.ok(util.isThirdPartyChannel(channel1, uri2));
 }
 

@@ -9,9 +9,11 @@ description: >
     Three semicolons. For header is (false semicolon false two
     semicolons false)
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 //CHECK#1
 for(false;false;;false) {

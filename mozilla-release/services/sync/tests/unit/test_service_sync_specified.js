@@ -1,15 +1,14 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/engines/clients.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/engines/clients.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
-let syncedEngines = []
+let syncedEngines = [];
 
 function SteamEngine() {
   SyncEngine.call(this, "Steam", Service);
@@ -70,13 +69,8 @@ async function setUp() {
 }
 
 add_task(async function setup() {
-  initTestLogging();
-  Service.engineManager.clear();
-
-  initTestLogging("Trace");
+  await Service.engineManager.clear();
   validate_all_future_pings();
-  Log.repository.getLogger("Sync.Service").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.ErrorHandler").level = Log.Level.Trace;
 
   await Service.engineManager.register(SteamEngine);
   await Service.engineManager.register(StirlingEngine);
@@ -90,7 +84,7 @@ add_task(async function test_noEngines() {
 
   try {
     _("Sync with no engines specified.");
-    await Service.sync([]);
+    await Service.sync({engines: []});
     deepEqual(syncedEngines, [], "no engines were synced");
 
   } finally {
@@ -108,8 +102,8 @@ add_task(async function test_oneEngine() {
   try {
 
     _("Sync with 1 engine specified.");
-    await Service.sync(["steam"]);
-    deepEqual(syncedEngines, ["steam"])
+    await Service.sync({engines: ["steam"]});
+    deepEqual(syncedEngines, ["steam"]);
 
   } finally {
     await Service.startOver();
@@ -125,8 +119,8 @@ add_task(async function test_bothEnginesSpecified() {
 
   try {
     _("Sync with both engines specified.");
-    await Service.sync(["steam", "stirling"]);
-    deepEqual(syncedEngines, ["steam", "stirling"])
+    await Service.sync({engines: ["steam", "stirling"]});
+    deepEqual(syncedEngines, ["steam", "stirling"]);
 
   } finally {
     await Service.startOver();
@@ -142,8 +136,8 @@ add_task(async function test_bothEnginesSpecified() {
 
   try {
     _("Sync with both engines specified.");
-    await Service.sync(["stirling", "steam"]);
-    deepEqual(syncedEngines, ["stirling", "steam"])
+    await Service.sync({engines: ["stirling", "steam"]});
+    deepEqual(syncedEngines, ["stirling", "steam"]);
 
   } finally {
     await Service.startOver();
@@ -159,7 +153,7 @@ add_task(async function test_bothEnginesDefault() {
 
   try {
     await Service.sync();
-    deepEqual(syncedEngines, ["steam", "stirling"])
+    deepEqual(syncedEngines, ["steam", "stirling"]);
 
   } finally {
     await Service.startOver();

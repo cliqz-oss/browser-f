@@ -24,7 +24,7 @@ class nsZipArchive;
 class FT2FontEntry : public gfxFontEntry
 {
 public:
-    FT2FontEntry(const nsAString& aFaceName) :
+    explicit FT2FontEntry(const nsAString& aFaceName) :
         gfxFontEntry(aFaceName),
         mFTFace(nullptr),
         mFontFace(nullptr),
@@ -34,6 +34,8 @@ public:
 
     ~FT2FontEntry();
 
+    gfxFontEntry* Clone() const override;
+
     const nsString& GetName() const {
         return Name();
     }
@@ -41,9 +43,9 @@ public:
     // create a font entry for a downloaded font
     static FT2FontEntry* 
     CreateFontEntry(const nsAString& aFontName,
-                    uint16_t aWeight,
-                    int16_t aStretch,
-                    uint8_t aStyle,
+                    WeightRange aWeight,
+                    StretchRange aStretch,
+                    SlantStyleRange aStyle,
                     const uint8_t* aFontData,
                     uint32_t aLength);
 
@@ -56,19 +58,22 @@ public:
     // Create a font entry for a given freetype face; if it is an installed font,
     // also record the filename and index.
     // aFontData (if non-nullptr) is NS_Malloc'ed data that aFace depends on,
-    // to be freed after the face is destroyed
+    // to be freed after the face is destroyed.
+    // aLength is the length of aFontData.
     static FT2FontEntry* 
     CreateFontEntry(FT_Face aFace,
                     const char *aFilename, uint8_t aIndex,
                     const nsAString& aName,
-                    const uint8_t* aFontData = nullptr);
+                    const uint8_t* aFontData = nullptr,
+                    uint32_t aLength = 0);
 
-    virtual gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle,
-                                        bool aNeedsBold) override;
+    gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle) override;
 
     // Create (if necessary) and return the cairo_font_face for this font.
     // This may fail and return null, so caller must be prepared to handle this.
-    cairo_font_face_t *CairoFontFace();
+    // If a style is passed, any variationSettings in the style will be applied
+    // to the resulting font face.
+    cairo_font_face_t *CairoFontFace(const gfxFontStyle *aStyle = nullptr);
 
     // Create a cairo_scaled_font for this face, with the given style.
     // This may fail and return null, so caller must be prepared to handle this.
@@ -80,6 +85,10 @@ public:
 
     virtual nsresult CopyFontTable(uint32_t aTableTag,
                                    nsTArray<uint8_t>& aBuffer) override;
+
+    bool HasVariations() override;
+    void GetVariationAxes(nsTArray<gfxFontVariationAxis>& aVariationAxes) override;
+    void GetVariationInstances(nsTArray<gfxFontVariationInstance>& aInstances) override;
 
     // Check for various kinds of brokenness, and set flags on the entry
     // accordingly so that we avoid using bad font tables
@@ -96,13 +105,16 @@ public:
     nsCString mFilename;
     uint8_t   mFTFontIndex;
 
-    mozilla::WeakPtr<mozilla::gfx::UnscaledFont> mUnscaledFont;
+    mozilla::ThreadSafeWeakPtr<mozilla::gfx::UnscaledFontFreeType> mUnscaledFont;
+
+    bool mHasVariations = false;
+    bool mHasVariationsInitialized = false;
 };
 
 class FT2FontFamily : public gfxFontFamily
 {
 public:
-    FT2FontFamily(const nsAString& aName) :
+    explicit FT2FontFamily(const nsAString& aName) :
         gfxFontFamily(aName) { }
 
     // Append this family's faces to the IPC fontlist
@@ -116,14 +128,14 @@ public:
     virtual ~gfxFT2FontList();
 
     virtual gfxFontEntry* LookupLocalFont(const nsAString& aFontName,
-                                          uint16_t aWeight,
-                                          int16_t aStretch,
-                                          uint8_t aStyle) override;
+                                          WeightRange aWeightForEntry,
+                                          StretchRange aStretchForEntry,
+                                          SlantStyleRange aStyleForEntry) override;
 
     virtual gfxFontEntry* MakePlatformFont(const nsAString& aFontName,
-                                           uint16_t aWeight,
-                                           int16_t aStretch,
-                                           uint8_t aStyle,
+                                           WeightRange aWeightForEntry,
+                                           StretchRange aStretchForEntry,
+                                           SlantStyleRange aStyleForEntry,
                                            const uint8_t* aFontData,
                                            uint32_t aLength) override;
 
@@ -134,6 +146,8 @@ public:
     }
 
     virtual void GetFontFamilyList(nsTArray<RefPtr<gfxFontFamily> >& aFamilyArray) override;
+
+    gfxFontFamily* CreateFontFamily(const nsAString& aName) const override;
 
     void WillShutdown();
 

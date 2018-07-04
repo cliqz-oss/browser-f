@@ -19,7 +19,7 @@ public:
   already_AddRefed<MediaDataDecoder>
   CreateAudioDecoder(const CreateDecoderParams& aParams) override;
 
-  AndroidDecoderModule(CDMProxy* aProxy = nullptr);
+  explicit AndroidDecoderModule(CDMProxy* aProxy = nullptr);
 
   bool SupportsMimeType(const nsACString& aMimeType,
                         DecoderDoctorDiagnostics* aDiagnostics) const override;
@@ -30,6 +30,9 @@ private:
 };
 
 extern LazyLogModule sAndroidDecoderModuleLog;
+
+const char*
+TranslateMimeType(const nsACString& aMimeType);
 
 } // namespace mozilla
 

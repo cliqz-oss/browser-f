@@ -2,15 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["Preferences"];
+var EXPORTED_SYMBOLS = ["Preferences"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // The minimum and maximum integers that can be set as preferences.
 // The range of valid values is narrower than the range of valid JS values
@@ -19,19 +14,18 @@ Cu.import("resource://gre/modules/Services.jsm");
 const MAX_INT = 0x7FFFFFFF; // Math.pow(2, 31) - 1
 const MIN_INT = -0x80000000;
 
-this.Preferences =
-  function Preferences(args) {
-    this._cachedPrefBranch = null;
-    if (isObject(args)) {
-      if (args.branch)
-        this._branchStr = args.branch;
-      if (args.defaultBranch)
-        this._defaultBranch = args.defaultBranch;
-      if (args.privacyContext)
-        this._privacyContext = args.privacyContext;
-    } else if (args)
-      this._branchStr = args;
-  };
+function Preferences(args) {
+  this._cachedPrefBranch = null;
+  if (isObject(args)) {
+    if (args.branch)
+      this._branchStr = args.branch;
+    if (args.defaultBranch)
+      this._defaultBranch = args.defaultBranch;
+    if (args.privacyContext)
+      this._privacyContext = args.privacyContext;
+  } else if (args)
+    this._branchStr = args;
+}
 
 /**
  * Get the value of a pref, if any; otherwise return the default value.
@@ -47,7 +41,7 @@ this.Preferences =
  *
  * @returns the value of the pref, if any; otherwise the default value
  */
-Preferences.get = function(prefName, defaultValue, valueType = Ci.nsISupportsString) {
+Preferences.get = function(prefName, defaultValue, valueType = null) {
   if (Array.isArray(prefName))
     return prefName.map(v => this.get(v, defaultValue));
 
@@ -57,7 +51,13 @@ Preferences.get = function(prefName, defaultValue, valueType = Ci.nsISupportsStr
 Preferences._get = function(prefName, defaultValue, valueType) {
   switch (this._prefBranch.getPrefType(prefName)) {
     case Ci.nsIPrefBranch.PREF_STRING:
-      return this._prefBranch.getComplexValue(prefName, valueType).data;
+      if (valueType) {
+        let ifaces = ["nsIFile", "nsIPrefLocalizedString"];
+        if (ifaces.includes(valueType.name)) {
+          return this._prefBranch.getComplexValue(prefName, valueType).data;
+        }
+      }
+      return this._prefBranch.getStringPref(prefName);
 
     case Ci.nsIPrefBranch.PREF_INT:
       return this._prefBranch.getIntPref(prefName);
@@ -195,7 +195,7 @@ Preferences.isSet = function(prefName) {
  * which is equivalent.
  * @deprecated
  */
-Preferences.modified = function(prefName) { return this.isSet(prefName) },
+Preferences.modified = function(prefName) { return this.isSet(prefName); },
 
 Preferences.reset = function(prefName) {
   if (Array.isArray(prefName)) {
@@ -391,7 +391,7 @@ function PrefObserver(prefName, callback, thisObject) {
 }
 
 PrefObserver.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]),
 
   observe(subject, topic, data) {
     // The pref service only observes whole branches, but we only observe

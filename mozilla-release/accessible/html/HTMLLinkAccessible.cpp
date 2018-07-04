@@ -27,8 +27,6 @@ HTMLLinkAccessible::
 {
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(HTMLLinkAccessible, HyperTextAccessible)
-
 ////////////////////////////////////////////////////////////////////////////////
 // nsIAccessible
 
@@ -68,7 +66,7 @@ HTMLLinkAccessible::NativeInteractiveState() const
   // This is how we indicate it is a named anchor. In other words, this anchor
   // can be selected as a location :) There is no other better state to use to
   // indicate this.
-  if (mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::name))
+  if (mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::name))
     state |= states::SELECTABLE;
 
   return state;
@@ -123,7 +121,7 @@ HTMLLinkAccessible::DoAction(uint8_t aIndex)
 // HyperLinkAccessible
 
 bool
-HTMLLinkAccessible::IsLink()
+HTMLLinkAccessible::IsLink() const
 {
   // Expose HyperLinkAccessible unconditionally.
   return true;

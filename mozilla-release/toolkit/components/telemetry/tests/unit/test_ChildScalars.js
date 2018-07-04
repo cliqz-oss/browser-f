@@ -2,11 +2,11 @@
    http://creativecommons.org/publicdomain/zero/1.0/
 */
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySession.jsm", this);
-Cu.import("resource://gre/modules/PromiseUtils.jsm", this);
-Cu.import("resource://testing-common/ContentTaskUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", this);
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm", this);
 
 const MESSAGE_CHILD_TEST_DONE = "ChildTest:Done";
 
@@ -140,7 +140,6 @@ add_task(async function() {
   // Setup.
   do_get_profile(true);
   loadAddonManager(APP_ID, APP_NAME, APP_VERSION, PLATFORM_VERSION);
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
   finishAddonManagerStartup();
   await TelemetryController.testSetup();
   if (runningInParent) {

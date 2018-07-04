@@ -19,21 +19,25 @@ loader.lazyGetter(this, "CanvasDebuggerPanel", () => require("devtools/client/ca
 loader.lazyGetter(this, "WebAudioEditorPanel", () => require("devtools/client/webaudioeditor/panel").WebAudioEditorPanel);
 loader.lazyGetter(this, "MemoryPanel", () => require("devtools/client/memory/panel").MemoryPanel);
 loader.lazyGetter(this, "PerformancePanel", () => require("devtools/client/performance/panel").PerformancePanel);
+loader.lazyGetter(this, "NewPerformancePanel", () => require("devtools/client/performance-new/panel").PerformancePanel);
 loader.lazyGetter(this, "NetMonitorPanel", () => require("devtools/client/netmonitor/panel").NetMonitorPanel);
 loader.lazyGetter(this, "StoragePanel", () => require("devtools/client/storage/panel").StoragePanel);
 loader.lazyGetter(this, "ScratchpadPanel", () => require("devtools/client/scratchpad/scratchpad-panel").ScratchpadPanel);
 loader.lazyGetter(this, "DomPanel", () => require("devtools/client/dom/dom-panel").DomPanel);
+loader.lazyGetter(this, "AccessibilityPanel", () => require("devtools/client/accessibility/accessibility-panel").AccessibilityPanel);
+loader.lazyGetter(this, "ApplicationPanel", () => require("devtools/client/application/panel").ApplicationPanel);
 
 // Other dependencies
+loader.lazyRequireGetter(this, "AccessibilityStartup", "devtools/client/accessibility/accessibility-startup", true);
 loader.lazyRequireGetter(this, "CommandUtils", "devtools/client/shared/developer-toolbar", true);
 loader.lazyRequireGetter(this, "CommandState", "devtools/shared/gcli/command-state", true);
-loader.lazyImporter(this, "ResponsiveUIManager", "resource://devtools/client/responsivedesign/responsivedesign.jsm");
+loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsive.html/manager", true);
 loader.lazyImporter(this, "ScratchpadManager", "resource://devtools/client/scratchpad/scratchpad-manager.jsm");
 
 const {MultiLocalizationHelper} = require("devtools/shared/l10n");
 const L10N = new MultiLocalizationHelper(
   "devtools/client/locales/startup.properties",
-  "devtools/client/locales/key-shortcuts.properties"
+  "devtools/startup/locales/key-shortcuts.properties"
 );
 
 var Tools = {};
@@ -45,7 +49,6 @@ Tools.options = {
   ordinal: 0,
   url: "chrome://devtools/content/framework/toolbox-options.xhtml",
   icon: "chrome://devtools/skin/images/tool-options.svg",
-  invertIconForDarkTheme: true,
   bgTheme: "theme-body",
   label: l10n("options.label"),
   iconOnly: true,
@@ -53,11 +56,11 @@ Tools.options = {
   tooltip: l10n("optionsButton.tooltip"),
   inMenu: false,
 
-  isTargetSupported: function () {
+  isTargetSupported: function() {
     return true;
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new OptionsPanel(iframeWindow, toolbox);
   }
 };
@@ -67,7 +70,6 @@ Tools.inspector = {
   accesskey: l10n("inspector.accesskey"),
   ordinal: 1,
   icon: "chrome://devtools/skin/images/tool-inspector.svg",
-  invertIconForDarkTheme: true,
   url: "chrome://devtools/content/inspector/inspector.xhtml",
   label: l10n("inspector.label"),
   panelLabel: l10n("inspector.panelLabel"),
@@ -78,20 +80,20 @@ Tools.inspector = {
   },
   inMenu: true,
   commands: [
-    "devtools/client/responsivedesign/resize-commands",
+    "devtools/client/responsive.html/commands",
     "devtools/client/inspector/inspector-commands"
   ],
 
   preventClosingOnKey: true,
-  onkey: function (panel, toolbox) {
+  onkey: function(panel, toolbox) {
     toolbox.highlighterUtils.togglePicker();
   },
 
-  isTargetSupported: function (target) {
+  isTargetSupported: function(target) {
     return target.hasActor("inspector");
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new InspectorPanel(iframeWindow, toolbox);
   }
 };
@@ -99,10 +101,16 @@ Tools.webConsole = {
   id: "webconsole",
   accesskey: l10n("webConsoleCmd.accesskey"),
   ordinal: 2,
-  oldWebConsoleURL: "chrome://devtools/content/webconsole/webconsole.xul",
-  newWebConsoleURL: "chrome://devtools/content/webconsole/webconsole.xhtml",
+  url: "chrome://devtools/content/webconsole/webconsole.html",
+  get browserConsoleUsesHTML() {
+    return Services.prefs.getBoolPref("devtools.browserconsole.html");
+  },
+  get browserConsoleURL() {
+    return this.browserConsoleUsesHTML ?
+      "chrome://devtools/content/webconsole/webconsole.html" :
+      "chrome://devtools/content/webconsole/browserconsole.xul";
+  },
   icon: "chrome://devtools/skin/images/tool-webconsole.svg",
-  invertIconForDarkTheme: true,
   label: l10n("ToolboxTabWebconsole.label"),
   menuLabel: l10n("MenuWebconsole.label"),
   panelLabel: l10n("ToolboxWebConsole.panelLabel"),
@@ -115,7 +123,7 @@ Tools.webConsole = {
   commands: "devtools/client/webconsole/console-commands",
 
   preventClosingOnKey: true,
-  onkey: function (panel, toolbox) {
+  onkey: function(panel, toolbox) {
     if (toolbox.splitConsole) {
       return toolbox.focusConsoleInput();
     }
@@ -124,34 +132,19 @@ Tools.webConsole = {
     return undefined;
   },
 
-  isTargetSupported: function () {
+  isTargetSupported: function() {
     return true;
   },
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new WebConsolePanel(iframeWindow, toolbox);
   }
 };
-function switchWebconsole() {
-  if (Services.prefs.getBoolPref("devtools.webconsole.new-frontend-enabled")) {
-    Tools.webConsole.url = Tools.webConsole.newWebConsoleURL;
-  } else {
-    Tools.webConsole.url = Tools.webConsole.oldWebConsoleURL;
-  }
-}
-switchWebconsole();
-
-Services.prefs.addObserver(
-  "devtools.webconsole.new-frontend-enabled",
-  { observe: switchWebconsole }
-);
 
 Tools.jsdebugger = {
   id: "jsdebugger",
   accesskey: l10n("debuggerMenu.accesskey"),
   ordinal: 3,
   icon: "chrome://devtools/skin/images/tool-debugger.svg",
-  invertIconForDarkTheme: true,
-  highlightedicon: "chrome://devtools/skin/images/tool-debugger-paused.svg",
   url: "chrome://devtools/content/debugger/debugger.xul",
   label: l10n("ToolboxDebugger.label"),
   panelLabel: l10n("ToolboxDebugger.panelLabel"),
@@ -163,11 +156,11 @@ Tools.jsdebugger = {
   inMenu: true,
   commands: "devtools/client/debugger/debugger-commands",
 
-  isTargetSupported: function () {
+  isTargetSupported: function() {
     return true;
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new DebuggerPanel(iframeWindow, toolbox);
   }
 };
@@ -175,12 +168,12 @@ Tools.jsdebugger = {
 function switchDebugger() {
   if (Services.prefs.getBoolPref("devtools.debugger.new-debugger-frontend")) {
     Tools.jsdebugger.url = "chrome://devtools/content/debugger/new/index.html";
-    Tools.jsdebugger.build = function (iframeWindow, toolbox) {
+    Tools.jsdebugger.build = function(iframeWindow, toolbox) {
       return new NewDebuggerPanel(iframeWindow, toolbox);
     };
   } else {
     Tools.jsdebugger.url = "chrome://devtools/content/debugger/debugger.xul";
-    Tools.jsdebugger.build = function (iframeWindow, toolbox) {
+    Tools.jsdebugger.build = function(iframeWindow, toolbox) {
       return new DebuggerPanel(iframeWindow, toolbox);
     };
   }
@@ -198,7 +191,6 @@ Tools.styleEditor = {
   visibilityswitch: "devtools.styleeditor.enabled",
   accesskey: l10n("open.accesskey"),
   icon: "chrome://devtools/skin/images/tool-styleeditor.svg",
-  invertIconForDarkTheme: true,
   url: "chrome://devtools/content/styleeditor/styleeditor.xul",
   label: l10n("ToolboxStyleEditor.label"),
   panelLabel: l10n("ToolboxStyleEditor.panelLabel"),
@@ -209,11 +201,11 @@ Tools.styleEditor = {
   inMenu: true,
   commands: "devtools/client/styleeditor/styleeditor-commands",
 
-  isTargetSupported: function (target) {
-    return target.hasActor("styleEditor") || target.hasActor("styleSheets");
+  isTargetSupported: function(target) {
+    return target.hasActor("styleSheets");
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new StyleEditorPanel(iframeWindow, toolbox);
   }
 };
@@ -223,17 +215,16 @@ Tools.shaderEditor = {
   ordinal: 5,
   visibilityswitch: "devtools.shadereditor.enabled",
   icon: "chrome://devtools/skin/images/tool-shadereditor.svg",
-  invertIconForDarkTheme: true,
   url: "chrome://devtools/content/shadereditor/shadereditor.xul",
   label: l10n("ToolboxShaderEditor.label"),
   panelLabel: l10n("ToolboxShaderEditor.panelLabel"),
   tooltip: l10n("ToolboxShaderEditor.tooltip"),
 
-  isTargetSupported: function (target) {
+  isTargetSupported: function(target) {
     return target.hasActor("webgl") && !target.chrome;
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new ShaderEditorPanel(iframeWindow, toolbox);
   }
 };
@@ -243,7 +234,6 @@ Tools.canvasDebugger = {
   ordinal: 6,
   visibilityswitch: "devtools.canvasdebugger.enabled",
   icon: "chrome://devtools/skin/images/tool-canvas.svg",
-  invertIconForDarkTheme: true,
   url: "chrome://devtools/content/canvasdebugger/canvasdebugger.xul",
   label: l10n("ToolboxCanvasDebugger.label"),
   panelLabel: l10n("ToolboxCanvasDebugger.panelLabel"),
@@ -251,58 +241,74 @@ Tools.canvasDebugger = {
 
   // Hide the Canvas Debugger in the Add-on Debugger and Browser Toolbox
   // (bug 1047520).
-  isTargetSupported: function (target) {
+  isTargetSupported: function(target) {
     return target.hasActor("canvas") && !target.chrome;
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new CanvasDebuggerPanel(iframeWindow, toolbox);
   }
 };
 
 Tools.performance = {
-  id: "performance",
-  ordinal: 7,
-  icon: "chrome://devtools/skin/images/tool-profiler.svg",
-  invertIconForDarkTheme: true,
-  highlightedicon: "chrome://devtools/skin/images/tool-profiler-active.svg",
-  url: "chrome://devtools/content/performance/performance.xul",
-  visibilityswitch: "devtools.performance.enabled",
-  label: l10n("performance.label"),
-  panelLabel: l10n("performance.panelLabel"),
-  get tooltip() {
-    return l10n("performance.tooltip", "Shift+" +
-    functionkey(l10n("performance.commandkey")));
-  },
-  accesskey: l10n("performance.accesskey"),
-  inMenu: true,
-
-  isTargetSupported: function (target) {
-    return target.hasActor("profiler");
-  },
-
-  build: function (frame, target) {
-    return new PerformancePanel(frame, target);
-  }
+ id: "performance",
+ ordinal: 7,
+ icon: "chrome://devtools/skin/images/tool-profiler.svg",
+ visibilityswitch: "devtools.performance.enabled",
+ label: l10n("performance.label"),
+ panelLabel: l10n("performance.panelLabel"),
+ get tooltip() {
+   return l10n("performance.tooltip", "Shift+" +
+   functionkey(l10n("performance.commandkey")));
+ },
+ accesskey: l10n("performance.accesskey"),
+ inMenu: true,
 };
+
+function switchPerformancePanel() {
+  if (Services.prefs.getBoolPref("devtools.performance.new-panel-enabled", false)) {
+    Tools.performance.url = "chrome://devtools/content/performance-new/perf.xhtml";
+    Tools.performance.build = function(frame, target) {
+      return new NewPerformancePanel(frame, target);
+    };
+    Tools.performance.isTargetSupported = function(target) {
+     // Root actors are lazily initialized, so we can't check if the target has
+     // the perf actor yet. Also this function is not async, so we can't initialize
+     // the actor yet.
+      return true;
+    };
+  } else {
+    Tools.performance.url = "chrome://devtools/content/performance/performance.xul";
+    Tools.performance.build = function(frame, target) {
+      return new PerformancePanel(frame, target);
+    };
+    Tools.performance.isTargetSupported = function(target) {
+      return target.hasActor("performance");
+    };
+  }
+}
+switchPerformancePanel();
+
+Services.prefs.addObserver(
+ "devtools.performance.new-panel-enabled",
+ { observe: switchPerformancePanel }
+);
 
 Tools.memory = {
   id: "memory",
   ordinal: 8,
   icon: "chrome://devtools/skin/images/tool-memory.svg",
-  invertIconForDarkTheme: true,
-  highlightedicon: "chrome://devtools/skin/images/tool-memory-active.svg",
   url: "chrome://devtools/content/memory/memory.xhtml",
   visibilityswitch: "devtools.memory.enabled",
   label: l10n("memory.label"),
   panelLabel: l10n("memory.panelLabel"),
   tooltip: l10n("memory.tooltip"),
 
-  isTargetSupported: function (target) {
+  isTargetSupported: function(target) {
     return target.getTrait("heapSnapshots") && !target.isAddon;
   },
 
-  build: function (frame, target) {
+  build: function(frame, target) {
     return new MemoryPanel(frame, target);
   }
 };
@@ -313,7 +319,6 @@ Tools.netMonitor = {
   ordinal: 9,
   visibilityswitch: "devtools.netmonitor.enabled",
   icon: "chrome://devtools/skin/images/tool-network.svg",
-  invertIconForDarkTheme: true,
   url: "chrome://devtools/content/netmonitor/index.html",
   label: l10n("netmonitor.label"),
   panelLabel: l10n("netmonitor.panelLabel"),
@@ -324,11 +329,11 @@ Tools.netMonitor = {
   },
   inMenu: true,
 
-  isTargetSupported: function (target) {
+  isTargetSupported: function(target) {
     return target.getTrait("networkMonitor");
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new NetMonitorPanel(iframeWindow, toolbox);
   }
 };
@@ -339,7 +344,6 @@ Tools.storage = {
   accesskey: l10n("storage.accesskey"),
   visibilityswitch: "devtools.storage.enabled",
   icon: "chrome://devtools/skin/images/tool-storage.svg",
-  invertIconForDarkTheme: true,
   url: "chrome://devtools/content/storage/storage.xul",
   label: l10n("storage.label"),
   menuLabel: l10n("storage.menuLabel"),
@@ -350,12 +354,12 @@ Tools.storage = {
   },
   inMenu: true,
 
-  isTargetSupported: function (target) {
+  isTargetSupported: function(target) {
     return target.isLocalTab ||
            (target.hasActor("storage") && target.getTrait("storageInspector"));
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new StoragePanel(iframeWindow, toolbox);
   }
 };
@@ -365,17 +369,16 @@ Tools.webAudioEditor = {
   ordinal: 11,
   visibilityswitch: "devtools.webaudioeditor.enabled",
   icon: "chrome://devtools/skin/images/tool-webaudio.svg",
-  invertIconForDarkTheme: true,
   url: "chrome://devtools/content/webaudioeditor/webaudioeditor.xul",
   label: l10n("ToolboxWebAudioEditor1.label"),
   panelLabel: l10n("ToolboxWebAudioEditor1.panelLabel"),
   tooltip: l10n("ToolboxWebAudioEditor1.tooltip"),
 
-  isTargetSupported: function (target) {
+  isTargetSupported: function(target) {
     return !target.chrome && target.hasActor("webaudio");
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new WebAudioEditorPanel(iframeWindow, toolbox);
   }
 };
@@ -385,7 +388,6 @@ Tools.scratchpad = {
   ordinal: 12,
   visibilityswitch: "devtools.scratchpad.enabled",
   icon: "chrome://devtools/skin/images/tool-scratchpad.svg",
-  invertIconForDarkTheme: true,
   url: "chrome://devtools/content/scratchpad/scratchpad.xul",
   label: l10n("scratchpad.label"),
   panelLabel: l10n("scratchpad.panelLabel"),
@@ -393,11 +395,11 @@ Tools.scratchpad = {
   inMenu: false,
   commands: "devtools/client/scratchpad/scratchpad-commands",
 
-  isTargetSupported: function (target) {
+  isTargetSupported: function(target) {
     return target.hasActor("console");
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new ScratchpadPanel(iframeWindow, toolbox);
   }
 };
@@ -408,7 +410,6 @@ Tools.dom = {
   ordinal: 13,
   visibilityswitch: "devtools.dom.enabled",
   icon: "chrome://devtools/skin/images/tool-dom.svg",
-  invertIconForDarkTheme: true,
   url: "chrome://devtools/content/dom/dom.html",
   label: l10n("dom.label"),
   panelLabel: l10n("dom.panelLabel"),
@@ -419,12 +420,62 @@ Tools.dom = {
   },
   inMenu: true,
 
-  isTargetSupported: function (target) {
+  isTargetSupported: function(target) {
     return target.getTrait("webConsoleCommands");
   },
 
-  build: function (iframeWindow, toolbox) {
+  build: function(iframeWindow, toolbox) {
     return new DomPanel(iframeWindow, toolbox);
+  }
+};
+
+Tools.accessibility = {
+  id: "accessibility",
+  accesskey: l10n("accessibility.accesskey"),
+  ordinal: 14,
+  modifiers: osString == "Darwin" ? "accel,alt" : "accel,shift",
+  visibilityswitch: "devtools.accessibility.enabled",
+  icon: "chrome://devtools/skin/images/tool-accessibility.svg",
+  url: "chrome://devtools/content/accessibility/accessibility.html",
+  label: l10n("accessibility.label"),
+  panelLabel: l10n("accessibility.panelLabel"),
+  get tooltip() {
+    return l10n("accessibility.tooltip2");
+  },
+  inMenu: true,
+
+  isTargetSupported(target) {
+    return target.hasActor("accessibility");
+  },
+
+  build(iframeWindow, toolbox) {
+    const startup = toolbox.getToolStartup("accessibility");
+    return new AccessibilityPanel(iframeWindow, toolbox, startup);
+  },
+
+  buildToolStartup(toolbox) {
+    return new AccessibilityStartup(toolbox);
+  }
+};
+
+Tools.application = {
+  id: "application",
+  ordinal: 15,
+  visibilityswitch: "devtools.application.enabled",
+  icon: "chrome://devtools/skin/images/tool-application.svg",
+  url: "chrome://devtools/content/application/index.html",
+  label: "Application",
+  panelLabel: "Application",
+  tooltip: "Application",
+  inMenu: false,
+  hiddenInOptions: true,
+
+  isTargetSupported: function(target) {
+    return target.isLocalTab;
+  },
+
+  build: function(iframeWindow, toolbox) {
+    return new ApplicationPanel(iframeWindow, toolbox);
   }
 };
 
@@ -443,6 +494,8 @@ var defaultTools = [
   Tools.scratchpad,
   Tools.memory,
   Tools.dom,
+  Tools.accessibility,
+  Tools.application,
 ];
 
 exports.defaultTools = defaultTools;
@@ -463,40 +516,15 @@ Tools.lightTheme = {
   classList: ["theme-light"],
 };
 
-Tools.firebugTheme = {
-  id: "firebug",
-  label: l10n("options.firebugTheme.label2"),
-  ordinal: 3,
-  stylesheets: ["chrome://devtools/skin/firebug-theme.css"],
-  classList: ["theme-light", "theme-firebug"],
-};
-
 exports.defaultThemes = [
   Tools.darkTheme,
   Tools.lightTheme,
-  Tools.firebugTheme,
 ];
 
 // White-list buttons that can be toggled to prevent adding prefs for
 // addons that have manually inserted toolbarbuttons into DOM.
 // (By default, supported target is only local tab)
 exports.ToolboxButtons = [
-  { id: "command-button-splitconsole",
-    description: l10n("toolbox.buttons.splitconsole", "Esc"),
-    isTargetSupported: target => !target.isAddon,
-    onClick(event, toolbox) {
-      toolbox.toggleSplitConsole();
-    },
-    isChecked(toolbox) {
-      return toolbox.splitConsole;
-    },
-    setup(toolbox, onChange) {
-      toolbox.on("split-console", onChange);
-    },
-    teardown(toolbox, onChange) {
-      toolbox.off("split-console", onChange);
-    }
-  },
   { id: "command-button-paintflashing",
     description: l10n("toolbox.buttons.paintflashing"),
     isTargetSupported: target => target.isLocalTab,

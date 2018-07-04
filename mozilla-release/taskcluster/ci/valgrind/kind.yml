@@ -5,13 +5,13 @@
 loader: taskgraph.loader.transform:loader
 
 kind-dependencies:
-   - toolchain
+    - toolchain
 
 transforms:
-   - taskgraph.transforms.build_attrs:transforms
-   - taskgraph.transforms.toolchain:transforms
-   - taskgraph.transforms.job:transforms
-   - taskgraph.transforms.task:transforms
+    - taskgraph.transforms.build_attrs:transforms
+    - taskgraph.transforms.use_toolchains:transforms
+    - taskgraph.transforms.job:transforms
+    - taskgraph.transforms.task:transforms
 
 jobs:
     linux64-valgrind/opt:
@@ -21,22 +21,20 @@ jobs:
             job-name: linux64-valgrind-opt
         treeherder:
             platform: linux64/opt
-            symbol: tc(V)
+            symbol: V
             kind: build
             tier: 1
         worker-type: aws-provisioner-v1/gecko-{level}-b-linux
         worker:
-            docker-image: {in-tree: desktop-build}
+            docker-image: {in-tree: valgrind-build}
             max-run-time: 72000
-            env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
         run:
             using: mozharness
             actions: [get-secrets build valgrind-test]
             custom-build-variant-cfg: valgrind
             config:
+                - builds/releng_base_firefox.py
                 - builds/releng_base_linux_64_builds.py
-                - balrog/production.py
             script: "mozharness/scripts/fx_desktop_build.py"
             secrets: true
             tooltool-downloads: public
@@ -44,4 +42,5 @@ jobs:
         toolchains:
             - linux64-clang
             - linux64-gcc
+            - linux64-rust
             - linux64-sccache

@@ -9,6 +9,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/SharedThreadPool.h"
+#include "mozilla/Unused.h"
 #include "nsComponentManagerUtils.h"
 #include "nsThreadUtils.h"
 #include <math.h>
@@ -18,11 +19,12 @@ namespace mozilla {
 NS_IMPL_ADDREF(MediaTimer)
 NS_IMPL_RELEASE_WITH_DESTROY(MediaTimer, DispatchDestroy())
 
-MediaTimer::MediaTimer()
+MediaTimer::MediaTimer(bool aFuzzy)
   : mMonitor("MediaTimer Monitor")
-  , mTimer(do_CreateInstance("@mozilla.org/timer;1"))
+  , mTimer(NS_NewTimer())
   , mCreationTimeStamp(TimeStamp::Now())
   , mUpdateScheduled(false)
+  , mFuzzy(aFuzzy)
 {
   TIMER_LOG("MediaTimer::MediaTimer");
 
@@ -46,6 +48,7 @@ MediaTimer::DispatchDestroy()
                        "MediaTimer::Destroy", this, &MediaTimer::Destroy),
                      NS_DISPATCH_NORMAL);
   MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
   (void) rv;
 }
 
@@ -55,12 +58,10 @@ MediaTimer::Destroy()
   MOZ_ASSERT(OnMediaTimerThread());
   TIMER_LOG("MediaTimer::Destroy");
 
-  // Reject any outstanding entries. There's no need to acquire the monitor
-  // here, because we're on the timer thread and all other references to us
-  // must be gone.
-  while (!mEntries.empty()) {
-    mEntries.top().mPromise->Reject(false, __func__);
-    mEntries.pop();
+  // Reject any outstanding entries.
+  {
+    MonitorAutoLock lock(mMonitor);
+    Reject();
   }
 
   // Cancel the timer if necessary.
@@ -78,6 +79,12 @@ MediaTimer::OnMediaTimerThread()
 }
 
 RefPtr<MediaTimerPromise>
+MediaTimer::WaitFor(const TimeDuration& aDuration, const char* aCallSite)
+{
+  return WaitUntil(TimeStamp::Now() + aDuration, aCallSite);
+}
+
+RefPtr<MediaTimerPromise>
 MediaTimer::WaitUntil(const TimeStamp& aTimeStamp, const char* aCallSite)
 {
   MonitorAutoLock mon(mMonitor);
@@ -87,6 +94,14 @@ MediaTimer::WaitUntil(const TimeStamp& aTimeStamp, const char* aCallSite)
   mEntries.push(e);
   ScheduleUpdate();
   return p;
+}
+
+void
+MediaTimer::Cancel()
+{
+  MonitorAutoLock mon(mMonitor);
+  TIMER_LOG("MediaTimer::Cancel");
+  Reject();
 }
 
 void
@@ -102,6 +117,7 @@ MediaTimer::ScheduleUpdate()
     NewRunnableMethod("MediaTimer::Update", this, &MediaTimer::Update),
     NS_DISPATCH_NORMAL);
   MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
   (void) rv;
 }
 
@@ -110,6 +126,19 @@ MediaTimer::Update()
 {
   MonitorAutoLock mon(mMonitor);
   UpdateLocked();
+}
+
+bool
+MediaTimer::IsExpired(const TimeStamp& aTarget, const TimeStamp& aNow)
+{
+  MOZ_ASSERT(OnMediaTimerThread());
+  mMonitor.AssertCurrentThreadOwns();
+  // Treat this timer as expired in fuzzy mode even if it is fired
+  // slightly (< 1ms) before the schedule target. So we don't need to schedule a
+  // timer with very small timeout again when the client doesn't need a high-res
+  // timer.
+  TimeStamp t = mFuzzy ? aTarget - TimeDuration::FromMilliseconds(1) : aTarget;
+  return t <= aNow;
 }
 
 void
@@ -123,7 +152,7 @@ MediaTimer::UpdateLocked()
 
   // Resolve all the promises whose time is up.
   TimeStamp now = TimeStamp::Now();
-  while (!mEntries.empty() && mEntries.top().mTimeStamp <= now) {
+  while (!mEntries.empty() && IsExpired(mEntries.top().mTimeStamp, now)) {
     mEntries.top().mPromise->Resolve(true, __func__);
     DebugOnly<TimeStamp> poppedTimeStamp = mEntries.top().mTimeStamp;
     mEntries.pop();
@@ -140,6 +169,16 @@ MediaTimer::UpdateLocked()
   if (!TimerIsArmed() || mEntries.top().mTimeStamp < mCurrentTimerTarget) {
     CancelTimerIfArmed();
     ArmTimer(mEntries.top().mTimeStamp, now);
+  }
+}
+
+void
+MediaTimer::Reject()
+{
+  mMonitor.AssertCurrentThreadOwns();
+  while (!mEntries.empty()) {
+    mEntries.top().mPromise->Reject(false, __func__);
+    mEntries.pop();
   }
 }
 
@@ -180,6 +219,7 @@ MediaTimer::ArmTimer(const TimeStamp& aTarget, const TimeStamp& aNow)
                                                   nsITimer::TYPE_ONE_SHOT,
                                                   "MediaTimer::TimerCallback");
   MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
   (void) rv;
 }
 

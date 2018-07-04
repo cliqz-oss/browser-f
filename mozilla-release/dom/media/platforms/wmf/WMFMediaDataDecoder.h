@@ -60,7 +60,7 @@ public:
 
   virtual TrackInfo::TrackType GetType() = 0;
 
-  virtual const char* GetDescriptionName() const = 0;
+  virtual nsCString GetDescriptionName() const = 0;
 
   virtual void SetSeekThreshold(const media::TimeUnit& aTime)
   {
@@ -79,12 +79,16 @@ protected:
   Maybe<media::TimeUnit> mSeekTargetThreshold;
 };
 
+DDLoggedTypeDeclNameAndBase(WMFMediaDataDecoder, MediaDataDecoder);
+
 // Decodes audio and video using Windows Media Foundation. Samples are decoded
 // using the MFTDecoder created by the MFTManager. This class implements
 // the higher-level logic that drives mapping the MFT to the async
 // MediaDataDecoder interface. The specifics of decoding the exact stream
 // type are handled by MFTManager and the MFTDecoder it creates.
-class WMFMediaDataDecoder : public MediaDataDecoder
+class WMFMediaDataDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<WMFMediaDataDecoder>
 {
 public:
   WMFMediaDataDecoder(MFTManager* aOutputSource, TaskQueue* aTaskQueue);
@@ -102,9 +106,10 @@ public:
 
   bool IsHardwareAccelerated(nsACString& aFailureReason) const override;
 
-  const char* GetDescriptionName() const override
+  nsCString GetDescriptionName() const override
   {
-    return mMFTManager ? mMFTManager->GetDescriptionName() : "";
+    return mMFTManager
+           ? mMFTManager->GetDescriptionName() : NS_LITERAL_CSTRING("");
   }
 
   ConversionRequired NeedsConversion() const override

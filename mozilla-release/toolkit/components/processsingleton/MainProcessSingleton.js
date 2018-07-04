@@ -4,25 +4,17 @@
 
 "use strict";
 
-const { utils: Cu, interfaces: Ci, classes: Cc, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
 
 function MainProcessSingleton() {}
 MainProcessSingleton.prototype = {
   classID: Components.ID("{0636a680-45cb-11e4-916c-0800200c9a66}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
-
-  logConsoleMessage(message) {
-    let logMsg = message.data;
-    logMsg.wrappedJSObject = logMsg;
-    Services.obs.notifyObservers(logMsg, "console-api-log-event");
-  },
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
   // Called when a webpage calls window.external.AddSearchProvider
   addSearchEngine({ target: browser, data: { pageURL, engineURL } }) {
@@ -38,11 +30,16 @@ MainProcessSingleton.prototype = {
       // Make sure the URLs are HTTP, HTTPS, or FTP.
       let isWeb = ["https", "http", "ftp"];
 
-      if (isWeb.indexOf(engineURL.scheme) < 0)
-        throw "Unsupported search engine URL: " + engineURL;
+      if (!isWeb.includes(engineURL.scheme))
+        throw "Unsupported search engine URL: " + engineURL.spec;
 
-      if (iconURL && isWeb.indexOf(iconURL.scheme) < 0)
-        throw "Unsupported search icon URL: " + iconURL;
+      if (iconURL && !isWeb.includes(iconURL.scheme))
+        throw "Unsupported search icon URL: " + iconURL.spec;
+
+      if (Services.policies &&
+          !Services.policies.isAllowed("installSearchEngine")) {
+        throw "Search Engine installation blocked by the Enterprise Policy Manager.";
+      }
     } catch (ex) {
       Cu.reportError("Invalid argument passed to window.external.AddSearchProvider: " + ex);
 
@@ -61,7 +58,7 @@ MainProcessSingleton.prototype = {
         return;
 
       Services.search.addEngine(engineURL.spec, null, iconURL ? iconURL.spec : null, true);
-    })
+    });
   },
 
   observe(subject, topic, data) {
@@ -73,14 +70,12 @@ MainProcessSingleton.prototype = {
       // before other frame scripts.
       Services.mm.loadFrameScript("chrome://global/content/browser-content.js", true);
       Services.ppmm.loadProcessScript("chrome://global/content/process-content.js", true);
-      Services.ppmm.addMessageListener("Console:Log", this.logConsoleMessage);
       Services.mm.addMessageListener("Search:AddEngine", this.addSearchEngine);
       Services.ppmm.loadProcessScript("resource:///modules/ContentObservers.js", true);
       break;
     }
 
     case "xpcom-shutdown":
-      Services.ppmm.removeMessageListener("Console:Log", this.logConsoleMessage);
       Services.mm.removeMessageListener("Search:AddEngine", this.addSearchEngine);
       break;
     }

@@ -19,8 +19,8 @@
 namespace {
 
 class AqSegmentTest
-    : public ::libaom_test::EncoderTest,
-      public ::libaom_test::CodecTestWith2Params<libaom_test::TestMode, int> {
+    : public ::libaom_test::CodecTestWith2Params<libaom_test::TestMode, int>,
+      public ::libaom_test::EncoderTest {
  protected:
   AqSegmentTest() : EncoderTest(GET_PARAM(0)) {}
   virtual ~AqSegmentTest() {}
@@ -90,7 +90,7 @@ TEST_P(AqSegmentTestLarge, TestNoMisMatchAQ2) { DoTest(2); }
 
 TEST_P(AqSegmentTestLarge, TestNoMisMatchAQ3) { DoTest(3); }
 
-#if CONFIG_DELTA_Q & !CONFIG_EXT_DELTA_Q
+#if !CONFIG_EXT_DELTA_Q
 // Validate that this AQ mode (AQ=4, delta q)
 // encodes and decodes without a mismatch.
 TEST_P(AqSegmentTest, TestNoMisMatchAQ4) {

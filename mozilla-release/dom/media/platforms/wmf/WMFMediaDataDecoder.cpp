@@ -115,6 +115,10 @@ WMFMediaDataDecoder::ProcessError(HRESULT aError, const char* aReason)
     SendTelemetry(aError);
     mRecordedError = true;
   }
+
+  //TODO: For the error DXGI_ERROR_DEVICE_RESET, we could return
+  // NS_ERROR_DOM_MEDIA_NEED_NEW_DECODER to get the latest device. Maybe retry
+  // up to 3 times.
   return DecodePromise::CreateAndReject(
     MediaResult(NS_ERROR_DOM_MEDIA_DECODE_ERR,
                 RESULT_DETAIL("%s:%x", aReason, aError)),
@@ -127,7 +131,10 @@ WMFMediaDataDecoder::ProcessDecode(MediaRawData* aSample)
   DecodedData results;
   HRESULT hr = mMFTManager->Input(aSample);
   if (hr == MF_E_NOTACCEPTING) {
-    ProcessOutput(results);
+    hr = ProcessOutput(results);
+    if (FAILED(hr) && hr != MF_E_TRANSFORM_NEED_MORE_INPUT) {
+      return ProcessError(hr, "MFTManager::Output(1)");
+    }
     hr = mMFTManager->Input(aSample);
   }
 
@@ -143,7 +150,7 @@ WMFMediaDataDecoder::ProcessDecode(MediaRawData* aSample)
   if (SUCCEEDED(hr) || hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
     return DecodePromise::CreateAndResolve(Move(results), __func__);
   }
-  return ProcessError(hr, "MFTManager::Output");
+  return ProcessError(hr, "MFTManager::Output(2)");
 }
 
 HRESULT
@@ -234,7 +241,9 @@ WMFMediaDataDecoder::SetSeekThreshold(const media::TimeUnit& aTime)
     media::TimeUnit threshold = aTime;
     self->mMFTManager->SetSeekThreshold(threshold);
   });
-  mTaskQueue->Dispatch(runnable.forget());
+  nsresult rv = mTaskQueue->Dispatch(runnable.forget());
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
 }
 
 } // namespace mozilla

@@ -2,7 +2,7 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-Cu.import("resource://gre/modules/Downloads.jsm");
+ChromeUtils.import("resource://gre/modules/Downloads.jsm");
 
 const server = createHttpServer();
 server.registerDirectory("/data/", do_get_file("data"));
@@ -14,7 +14,7 @@ const TXT_LEN = 46;
 const HTML_FILE = "file_download.html";
 const HTML_URL = BASE + "/" + HTML_FILE;
 const HTML_LEN = 117;
-const BIG_LEN = 1000;  // something bigger both TXT_LEN and HTML_LEN
+const BIG_LEN = 1000; // something bigger both TXT_LEN and HTML_LEN
 
 function backgroundScript() {
   let complete = new Map();
@@ -76,7 +76,7 @@ add_task(async function test_search() {
   const nsIFile = Ci.nsIFile;
   let downloadDir = FileUtils.getDir("TmpD", ["downloads"]);
   downloadDir.createUnique(nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
-  do_print(`downloadDir ${downloadDir.path}`);
+  info(`downloadDir ${downloadDir.path}`);
 
   function downloadPath(filename) {
     let path = downloadDir.clone();
@@ -86,16 +86,18 @@ add_task(async function test_search() {
 
   Services.prefs.setIntPref("browser.download.folderList", 2);
   Services.prefs.setComplexValue("browser.download.dir", nsIFile, downloadDir);
+  Services.prefs.setBoolPref("privacy.reduceTimerPrecision", false);
 
-  do_register_cleanup(async () => {
+  registerCleanupFunction(async () => {
     Services.prefs.clearUserPref("browser.download.folderList");
     Services.prefs.clearUserPref("browser.download.dir");
+    Services.prefs.clearUserPref("privacy.reduceTimerPrecision");
     await cleanupDir(downloadDir);
     await clearDownloads();
   });
 
   await clearDownloads().then(downloads => {
-    do_print(`removed ${downloads.length} pre-existing downloads from history`);
+    info(`removed ${downloads.length} pre-existing downloads from history`);
   });
 
   let extension = ExtensionTestUtils.loadExtension({
@@ -110,7 +112,7 @@ add_task(async function test_search() {
     let result = await extension.awaitMessage("download.done");
 
     if (result.status == "success") {
-      do_print(`wait for onChanged event to indicate ${result.id} is complete`);
+      info(`wait for onChanged event to indicate ${result.id} is complete`);
       extension.sendMessage("waitForComplete.request", result.id);
 
       await extension.awaitMessage("waitForComplete.done");
@@ -223,7 +225,7 @@ add_task(async function test_search() {
         const id = downloadIds[key];
         const thisExpected = expected.includes(key);
         equal(receivedIds.includes(id), thisExpected,
-           `search() for ${description} ${thisExpected ? "includes" : "does not include"} ${key}`);
+              `search() for ${description} ${thisExpected ? "includes" : "does not include"} ${key}`);
       });
     }
   }
@@ -238,7 +240,7 @@ add_task(async function test_search() {
   await checkSearch({url: TXT_URL}, ["txt1", "txt2"], "url");
 
   // Check that regexp on url works.
-  const HTML_REGEX = "[downlad]{8}\.html+$";
+  const HTML_REGEX = "[download]{8}\.html+$";
   await checkSearch({urlRegex: HTML_REGEX}, ["html1", "html2"], "url regexp");
 
   // Check that compatible url+regexp works
@@ -271,7 +273,7 @@ add_task(async function test_search() {
   await checkSearch({query: ["-txt"]}, ["html1", "html2"], "term -txt");
 
   // Check that positive and negative search terms together work.
-  await checkSearch({query: ["html", "-renamed"]}, ["html1"], "postive and negative terms");
+  await checkSearch({query: ["html", "-renamed"]}, ["html1"], "positive and negative terms");
 
   async function checkSearchWithDate(query, expected, description) {
     const fields = Object.keys(query);

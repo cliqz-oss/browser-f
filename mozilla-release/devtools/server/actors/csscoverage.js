@@ -4,22 +4,16 @@
 
 "use strict";
 
-const { Cc, Ci } = require("chrome");
+const { Ci } = require("chrome");
 
+const InspectorUtils = require("InspectorUtils");
 const Services = require("Services");
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 
-const events = require("sdk/event/core");
 const protocol = require("devtools/shared/protocol");
 const { cssUsageSpec } = require("devtools/shared/specs/csscoverage");
 
-loader.lazyGetter(this, "DOMUtils", () => {
-  return Cc["@mozilla.org/inspector/dom-utils;1"].getService(Ci.inIDOMUtils);
-});
-loader.lazyRequireGetter(this, "stylesheets", "devtools/server/actors/stylesheets");
 loader.lazyRequireGetter(this, "prettifyCSS", "devtools/shared/inspector/css-logic", true);
-
-const CSSRule = Ci.nsIDOMCSSRule;
 
 const MAX_UNUSED_RULES = 10000;
 
@@ -28,7 +22,7 @@ const MAX_UNUSED_RULES = 10000;
  */
 const l10n = exports.l10n = {
   _URI: "chrome://devtools-shared/locale/csscoverage.properties",
-  lookup: function (msg) {
+  lookup: function(msg) {
     if (this._stringBundle == null) {
       this._stringBundle = Services.strings.createBundle(this._URI);
     }
@@ -68,7 +62,7 @@ const l10n = exports.l10n = {
  *     });
  */
 var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
-  initialize: function (conn, tabActor) {
+  initialize: function(conn, tabActor) {
     protocol.Actor.prototype.initialize.call(this, conn);
 
     this._tabActor = tabActor;
@@ -80,7 +74,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
     this._notifyOn = Ci.nsIWebProgress.NOTIFY_STATE_ALL;
   },
 
-  destroy: function () {
+  destroy: function() {
     this._tabActor = undefined;
 
     delete this._onTabLoad;
@@ -96,7 +90,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
    * why we don't want to do that (e.g. the page contains state that will be
    * lost across a reload)
    */
-  start: function (noreload) {
+  start: function(noreload) {
     if (this._running) {
       throw new Error(l10n.lookup("csscoverageRunningError"));
     }
@@ -135,13 +129,13 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
       this._tabActor.window.location.reload();
     }
 
-    events.emit(this, "state-change", { isRunning: true });
+    this.emit("state-change", { isRunning: true });
   },
 
   /**
    * Cease recording usage data
    */
-  stop: function () {
+  stop: function() {
     if (!this._running) {
       throw new Error(l10n.lookup("csscoverageNotRunningError"));
     }
@@ -150,13 +144,13 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
     this._progress = undefined;
 
     this._running = false;
-    events.emit(this, "state-change", { isRunning: false });
+    this.emit("state-change", { isRunning: false });
   },
 
   /**
    * Start/stop recording usage data depending on what we're currently doing.
    */
-  toggle: function () {
+  toggle: function() {
     return this._running ? this.stop() : this.start();
   },
 
@@ -164,7 +158,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
    * Running start() quickly followed by stop() does a bunch of unnecessary
    * work, so this cuts all that out
    */
-  oneshot: function () {
+  oneshot: function() {
     if (this._running) {
       throw new Error(l10n.lookup("csscoverageRunningError"));
     }
@@ -180,7 +174,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
   /**
    * Called by the ProgressListener to simulate a "load" event
    */
-  _onTabLoad: function (document) {
+  _onTabLoad: function(document) {
     this._populateKnownRules(document);
     this._updateUsage(document, true);
 
@@ -190,7 +184,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
   /**
    * Setup a MutationObserver on the current document
    */
-  _observeMutations: function (document) {
+  _observeMutations: function(document) {
     let MutationObserver = document.defaultView.MutationObserver;
     let observer = new MutationObserver(mutations => {
       // It's possible that one of the mutations in this list adds a 'use' of
@@ -210,7 +204,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
    * Event handler for whenever we think the page has changed in a way that
    * means the CSS usage might have changed.
    */
-  _onChange: function (document) {
+  _onChange: function(document) {
     // Ignore changes pre 'load'
     if (!this._visitedPages.has(getURL(document))) {
       return;
@@ -222,7 +216,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
    * Called whenever we think the list of stylesheets might have changed so
    * we can update the list of rules that we should be checking
    */
-  _populateKnownRules: function (document) {
+  _populateKnownRules: function(document) {
     let url = getURL(document);
     this._visitedPages.add(url);
     // Go through all the rules in the current sheets adding them to knownRules
@@ -250,7 +244,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
   /**
    * Update knownRules with usage information from the current page
    */
-  _updateUsage: function (document, isLoad) {
+  _updateUsage: function(document, isLoad) {
     let qsaCount = 0;
 
     // Update this._data with matches to say 'used at load time' by sheet X
@@ -307,7 +301,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
    *     ...
    *   ]
    */
-  createEditorReport: function (url) {
+  createEditorReport: function(url) {
     if (this._knownRules == null) {
       return { reports: [] };
     }
@@ -341,7 +335,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
    * @param {StyleSheetActor} stylesheetActor
    *        the stylesheet actor for which the coverage report should be generated.
    */
-  createEditorReportForSheet: function (stylesheetActor) {
+  createEditorReportForSheet: function(stylesheetActor) {
     let url = sheetToUrl(stylesheetActor.rawSheet);
     return this.createEditorReport(url);
   },
@@ -381,7 +375,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
    *     ]
    *   }
    */
-  createPageReport: function () {
+  createPageReport: function() {
     if (this._running) {
       throw new Error(l10n.lookup("csscoverageRunningError"));
     }
@@ -395,7 +389,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
     }
 
     // Helper function to create a JSONable data structure representing a rule
-    const ruleToRuleReport = function (rule, ruleData) {
+    const ruleToRuleReport = function(rule, ruleData) {
       return {
         url: rule.url,
         shortUrl: rule.url.split("/").slice(-1)[0],
@@ -468,7 +462,7 @@ var CSSUsageActor = protocol.ActorClassWithSpec(cssUsageSpec, {
   /**
    * For testing only. What pages did we visit.
    */
-  _testOnlyVisitedPages: function () {
+  _testOnlyVisitedPages: function() {
     return [...this._visitedPages];
   },
 });
@@ -542,8 +536,8 @@ function getImportedSheets(stylesheet) {
  * @see deconstructRuleId(ruleId)
  */
 function ruleToId(rule) {
-  let line = DOMUtils.getRelativeRuleLine(rule);
-  let column = DOMUtils.getRuleColumn(rule);
+  let line = InspectorUtils.getRelativeRuleLine(rule);
+  let column = InspectorUtils.getRuleColumn(rule);
   return sheetToUrl(rule.parentStyleSheet) + "|" + line + "|" + column;
 }
 
@@ -551,7 +545,7 @@ function ruleToId(rule) {
  * Convert a ruleId to an object with { url, line, column } properties
  * @see ruleToId(rule)
  */
-const deconstructRuleId = exports.deconstructRuleId = function (ruleId) {
+const deconstructRuleId = exports.deconstructRuleId = function(ruleId) {
   let split = ruleId.split("|");
   if (split.length > 3) {
     let replace = split.slice(0, split.length - 3 + 1).join("|");
@@ -571,7 +565,7 @@ const deconstructRuleId = exports.deconstructRuleId = function (ruleId) {
  * change the CSS usage properties of a page.
  * @param document
  */
-const getURL = exports.getURL = function (document) {
+const getURL = exports.getURL = function(document) {
   let url = new document.defaultView.URL(document.documentURI);
   return url == "about:blank" ? "" : "" + url.origin + url.pathname;
 };
@@ -695,7 +689,7 @@ function getTestSelector(selector) {
 exports.SEL_ALL = [
   SEL_EXTERNAL, SEL_FORM, SEL_ELEMENT, SEL_STRUCTURAL, SEL_SEMI,
   SEL_COMBINING, SEL_MEDIA
-].reduce(function (prev, curr) {
+].reduce(function(prev, curr) {
   return prev.concat(curr);
 }, []);
 
@@ -703,7 +697,7 @@ exports.SEL_ALL = [
  * Find a URL for a given stylesheet
  * @param {StyleSheet} stylesheet raw stylesheet
  */
-const sheetToUrl = function (stylesheet) {
+const sheetToUrl = function(stylesheet) {
   // For <link> elements
   if (stylesheet.href) {
     return stylesheet.href;

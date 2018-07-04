@@ -1,9 +1,6 @@
 "use strict";
 
-var { interfaces: Ci, classes: Cc, utils: Cu, results: Cr } = Components;
-
-var {WebRequest} = Cu.import("resource://gre/modules/WebRequest.jsm", {});
-var {MatchPattern} = Cu.import("resource://gre/modules/MatchPattern.jsm", {});
+var {WebRequest} = ChromeUtils.import("resource://gre/modules/WebRequest.jsm", {});
 
 const BASE = "http://example.com/browser/toolkit/modules/tests/browser";
 const URL = BASE + "/file_WebRequest_page2.html";
@@ -65,7 +62,7 @@ add_task(async function setup() {
 });
 
 add_task(async function filter_urls() {
-  let filter = {urls: new MatchPattern("*://*/*_style_*")};
+  let filter = {urls: new MatchPatternSet(["*://*/*_style_*"])};
 
   WebRequest.onBeforeRequest.addListener(onBeforeRequest, filter, ["blocking"]);
   WebRequest.onBeforeSendHeaders.addListener(onBeforeSendHeaders, filter, ["blocking"]);
@@ -109,9 +106,5 @@ add_task(async function filter_types() {
 });
 
 function waitForLoad(browser = gBrowser.selectedBrowser) {
-  return new Promise(resolve => {
-    browser.addEventListener("load", function() {
-      resolve();
-    }, {capture: true, once: true});
-  });
+  return BrowserTestUtils.browserLoaded(browser);
 }

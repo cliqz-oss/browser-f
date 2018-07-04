@@ -9,48 +9,56 @@
 
 const { Curl, CurlUtils } = require("devtools/client/shared/curl");
 
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(CURL_UTILS_URL);
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(CURL_UTILS_URL);
   info("Starting test... ");
 
-  let { store, windowRequire } = monitor.panelWin;
+  let { store, windowRequire, connector } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
   let {
     getSortedRequests,
   } = windowRequire("devtools/client/netmonitor/src/selectors/index");
-  let { getLongString } = windowRequire("devtools/client/netmonitor/src/connector/index");
+  let {
+    getLongString,
+    requestData,
+  } = connector;
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, 1, 3);
-  yield ContentTask.spawn(tab.linkedBrowser, SIMPLE_SJS, function* (url) {
+  let wait = waitForNetworkEvents(monitor, 5);
+  await ContentTask.spawn(tab.linkedBrowser, SIMPLE_SJS, async function(url) {
     content.wrappedJSObject.performRequests(url);
   });
-  yield wait;
+  await wait;
 
   let requests = {
     get: getSortedRequests(store.getState()).get(0),
     post: getSortedRequests(store.getState()).get(1),
-    multipart: getSortedRequests(store.getState()).get(2),
-    multipartForm: getSortedRequests(store.getState()).get(3),
+    patch: getSortedRequests(store.getState()).get(2),
+    multipart: getSortedRequests(store.getState()).get(3),
+    multipartForm: getSortedRequests(store.getState()).get(4),
   };
 
-  let data = yield createCurlData(requests.get, getLongString);
+  let data = await createCurlData(requests.get, getLongString, requestData);
   testFindHeader(data);
 
-  data = yield createCurlData(requests.post, getLongString);
+  data = await createCurlData(requests.post, getLongString, requestData);
   testIsUrlEncodedRequest(data);
   testWritePostDataTextParams(data);
   testWriteEmptyPostDataTextParams(data);
   testDataArgumentOnGeneratedCommand(data);
 
-  data = yield createCurlData(requests.multipart, getLongString);
+  data = await createCurlData(requests.patch, getLongString, requestData);
+  testWritePostDataTextParams(data);
+  testDataArgumentOnGeneratedCommand(data);
+
+  data = await createCurlData(requests.multipart, getLongString, requestData);
   testIsMultipartRequest(data);
   testGetMultipartBoundary(data);
   testMultiPartHeaders(data);
   testRemoveBinaryDataFromMultipartText(data);
 
-  data = yield createCurlData(requests.multipartForm, getLongString);
+  data = await createCurlData(requests.multipartForm, getLongString, requestData);
   testMultiPartHeaders(data);
 
   testGetHeadersFromMultipartText({
@@ -63,7 +71,7 @@ add_task(function* () {
     testEscapeStringWin();
   }
 
-  yield teardown(monitor);
+  await teardown(monitor);
 });
 
 function testIsUrlEncodedRequest(data) {
@@ -231,8 +239,8 @@ function testEscapeStringWin() {
     "Newlines should be escaped.");
 }
 
-function* createCurlData(selected, getLongString) {
-  let { url, method, httpVersion } = selected;
+async function createCurlData(selected, getLongString, requestData) {
+  let { id, url, method, httpVersion } = selected;
 
   // Create a sanitized object for the Curl command generator.
   let data = {
@@ -243,16 +251,18 @@ function* createCurlData(selected, getLongString) {
     postDataText: null
   };
 
+  let requestHeaders = await requestData(id, "requestHeaders");
   // Fetch header values.
-  for (let { name, value } of selected.requestHeaders.headers) {
-    let text = yield getLongString(value);
+  for (let { name, value } of requestHeaders.headers) {
+    let text = await getLongString(value);
     data.headers.push({ name: name, value: text });
   }
 
+  let requestPostData = await requestData(id, "requestPostData");
   // Fetch the request payload.
-  if (selected.requestPostData) {
-    let postData = selected.requestPostData.postData.text;
-    data.postDataText = yield getLongString(postData);
+  if (requestPostData) {
+    let postData = requestPostData.postData.text;
+    data.postDataText = await getLongString(postData);
   }
 
   return data;

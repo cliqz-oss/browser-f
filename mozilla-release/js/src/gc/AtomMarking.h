@@ -9,19 +9,20 @@
 
 #include "NamespaceImports.h"
 #include "ds/Bitmap.h"
-#include "gc/Heap.h"
 #include "threading/ProtectedData.h"
-#include "vm/Symbol.h"
+#include "vm/SymbolType.h"
 
 namespace js {
 namespace gc {
+
+class Arena;
 
 // This class manages state used for marking atoms during GCs.
 // See AtomMarking.cpp for details.
 class AtomMarkingRuntime
 {
     // Unused arena atom bitmap indexes. Protected by the GC lock.
-    js::ExclusiveAccessLockOrGCTaskData<Vector<size_t, 0, SystemAllocPolicy>> freeArenaIndexes;
+    js::GCLockData<Vector<size_t, 0, SystemAllocPolicy>> freeArenaIndexes;
 
     void markChildren(JSContext* cx, JSAtom*) {}
 
@@ -40,10 +41,10 @@ class AtomMarkingRuntime
     {}
 
     // Mark an arena as holding things in the atoms zone.
-    void registerArena(Arena* arena);
+    void registerArena(Arena* arena, const AutoLockGC& lock);
 
     // Mark an arena as no longer holding things in the atoms zone.
-    void unregisterArena(Arena* arena);
+    void unregisterArena(Arena* arena, const AutoLockGC& lock);
 
     // Fill |bitmap| with an atom marking bitmap based on the things that are
     // currently marked in the chunks used by atoms zone arenas. This returns
@@ -52,11 +53,11 @@ class AtomMarkingRuntime
 
     // Update the atom marking bitmap in |zone| according to another
     // overapproximation of the reachable atoms in |bitmap|.
-    void updateZoneBitmap(Zone* zone, const DenseBitmap& bitmap);
+    void refineZoneBitmapForCollectedZone(Zone* zone, const DenseBitmap& bitmap);
 
     // Set any bits in the chunk mark bitmaps for atoms which are marked in any
-    // zone in the runtime.
-    void updateChunkMarkBits(JSRuntime* runtime);
+    // uncollected zone in the runtime.
+    void markAtomsUsedByUncollectedZones(JSRuntime* runtime);
 
     // Mark an atom or id as being newly reachable by the context's zone.
     template <typename T> void markAtom(JSContext* cx, T* thing);

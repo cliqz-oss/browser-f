@@ -21,12 +21,12 @@ add_task(async function setup() {
 add_task(async function test_revive_bg_tabs_on_demand() {
   let newTab1 = BrowserTestUtils.addTab(gBrowser, PAGE_1);
   let browser1 = newTab1.linkedBrowser;
+  await BrowserTestUtils.browserLoaded(browser1);
+
   gBrowser.selectedTab = newTab1;
 
   let newTab2 = BrowserTestUtils.addTab(gBrowser, PAGE_2);
   let browser2 = newTab2.linkedBrowser;
-
-  await BrowserTestUtils.browserLoaded(browser1);
   await BrowserTestUtils.browserLoaded(browser2);
 
   await TabStateFlusher.flush(browser2);
@@ -51,6 +51,6 @@ add_task(async function test_revive_bg_tabs_on_demand() {
 
   ok(browser2.isRemoteBrowser, "Restored browser should be remote");
 
-  await BrowserTestUtils.removeTab(newTab1);
-  await BrowserTestUtils.removeTab(newTab2);
+  BrowserTestUtils.removeTab(newTab1);
+  BrowserTestUtils.removeTab(newTab2);
 });

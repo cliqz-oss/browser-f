@@ -32,14 +32,27 @@
 #include <mmsystem.h>
 #include <process.h>
 
+#ifdef __MINGW32__
+#include <immintrin.h> // for _mm_pause
+#endif
+
 #include "nsWindowsDllInterceptor.h"
 #include "mozilla/StackWalk_windows.h"
 #include "mozilla/WindowsVersion.h"
 
-/* static */ Thread::tid_t
+/* static */ int
 Thread::GetCurrentId()
 {
-  return GetCurrentThreadId();
+  DWORD threadId = GetCurrentThreadId();
+  MOZ_ASSERT(threadId <= INT32_MAX, "native thread ID is > INT32_MAX");
+  return int(threadId);
+}
+
+void*
+GetStackTop(void* aGuess)
+{
+  PNT_TIB pTib = reinterpret_cast<PNT_TIB>(NtCurrentTeb());
+  return reinterpret_cast<void*>(pTib->StackBase);
 }
 
 static void
@@ -91,10 +104,10 @@ private:
   HANDLE mProfiledThread;
 };
 
-uintptr_t
+HANDLE
 GetThreadHandle(PlatformData* aData)
 {
-  return (uintptr_t) aData->ProfiledThread();
+  return aData->ProfiledThread();
 }
 
 static const HANDLE kNoThread = INVALID_HANDLE_VALUE;
@@ -114,10 +127,10 @@ Sampler::Disable(PSLockRef aLock)
 template<typename Func>
 void
 Sampler::SuspendAndSampleAndResumeThread(PSLockRef aLock,
-                                         const ThreadInfo& aThreadInfo,
+                                         const RegisteredThread& aRegisteredThread,
                                          const Func& aProcessRegs)
 {
-  HANDLE profiled_thread = aThreadInfo.GetPlatformData()->ProfiledThread();
+  HANDLE profiled_thread = aRegisteredThread.GetPlatformData()->ProfiledThread();
   if (profiled_thread == nullptr) {
     return;
   }

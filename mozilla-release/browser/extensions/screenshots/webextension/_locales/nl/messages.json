@@ -29,6 +29,27 @@
   "downloadScreenshot": {
     "message": "Downloaden"
   },
+  "downloadOnlyNotice": {
+    "message": "U bevindt zich momenteel in Alleen-downloadenmodus."
+  },
+  "downloadOnlyDetails": {
+    "message": "Firefox Screenshots wisselt in de volgende situaties automatisch naar Alleen-downloadenmodus:"
+  },
+  "downloadOnlyDetailsPrivate": {
+    "message": "In een privénavigatievenster."
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "Cookies van derden zijn uitgeschakeld."
+  },
+  "downloadOnlyDetailsNeverRemember": {
+    "message": "‘Nooit geschiedenis onthouden’ is ingeschakeld."
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "U gebruikt Firefox ESR."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "Uploads zijn uitgeschakeld."
+  },
   "notificationLinkCopiedTitle": {
     "message": "Koppeling gekopieerd"
   },
@@ -36,6 +57,28 @@
     "message": "De koppeling naar uw afbeelding is naar het klembord gekopieerd. Druk op $META_KEY$-V om te plakken.",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyScreenshot": {
+    "message": "Kopiëren"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "Afbeelding gekopieerd"
+  },
+  "notificationImageCopiedDetails": {
+    "message": "Uw afbeelding is naar het klembord gekopieerd. Druk op $META_KEY$-V om te plakken.",
+    "placeholders": {
+      "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "imageCroppedWarning": {
+    "message": "Deze afbeelding is bijgesneden naar $PIXELS$px.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -79,26 +122,32 @@
   "genericErrorDetails": {
     "message": "We weten niet precies wat er zonet is gebeurd. Wilt u het nogmaals proberen, of een schermafbeelding van een andere pagina maken?"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Maak, bewaar en deel schermafbeeldingen zonder Firefox te verlaten."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "Een nieuwe manier om op te slaan"
+  },
+  "tourBodyPageAction": {
+    "message": "Vouw het menu Pagina-acties in de adresbalk uit zodra u een schermafbeelding wilt maken."
+  },
+  "tourHeaderClickAndDrag": {
     "message": "Leg alleen vast wat u wilt"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "Klik en sleep om alleen een gedeelte van een pagina vast te leggen. U kunt ook de muisaanwijzer boven een gebied houden om uw selectie te accentueren."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "Leg vensters of hele pagina’s vast"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "Selecteer de knoppen rechtsboven om het zichtbare gebied in het venster vast te leggen, of om een hele pagina vast te leggen."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "Zoals u wilt"
   },
-  "tourBodyFour": {
-    "message": "Sla uw bijgesneden afbeeldingen op op het web voor makkelijker delen, of download ze naar uw computer. U kunt ook op de knop Mijn afbeeldingen klikken om al uw gemaakte afbeeldingen te vinden."
+  "tourBodyDownloadUpload": {
+    "message": "Bewaar uw bijgesneden afbeeldingen op het web voor makkelijker delen, of download ze naar uw computer. U kunt ook op de knop Mijn afbeeldingen klikken om al uw gemaakte afbeeldingen te vinden."
   },
   "tourSkip": {
     "message": "Overslaan"
@@ -112,8 +161,8 @@
   "tourDone": {
     "message": "Gereed"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Door Firefox Screenshots te gebruiken, gaat u akkoord met de $TERMSANDPRIVACYNOTICETERMSLINK$ en $TERMSANDPRIVACYNOTICEPRIVACYLINK$ van Firefox-cloudservices.",
+  "termsAndPrivacyNotice2": {
+    "message": "Door Firefox Screenshots te gebruiken, gaat u akkoord met onze $TERMSANDPRIVACYNOTICETERMSLINK$ en $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +177,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "Privacyverklaring"
+  },
+  "libraryLabel": {
+    "message": "Schermafbeeldingen"
   }
 }

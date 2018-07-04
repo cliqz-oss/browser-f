@@ -14,7 +14,7 @@ namespace jit {
 
 class CodeGeneratorNone : public CodeGeneratorShared
 {
-  public:
+  protected:
     CodeGeneratorNone(MIRGenerator* gen, LIRGraph* graph, MacroAssembler* masm)
       : CodeGeneratorShared(gen, graph, masm)
     {
@@ -48,10 +48,8 @@ class CodeGeneratorNone : public CodeGeneratorShared
     }
     void emitTableSwitchDispatch(MTableSwitch*, Register, Register) { MOZ_CRASH(); }
     ValueOperand ToValue(LInstruction*, size_t) { MOZ_CRASH(); }
-    ValueOperand ToOutValue(LInstruction*) { MOZ_CRASH(); }
     ValueOperand ToTempValue(LInstruction*, size_t) { MOZ_CRASH(); }
     void generateInvalidateEpilogue() { MOZ_CRASH(); }
-    void setReturnDoubleRegs(LiveRegisterSet* regs) { MOZ_CRASH(); }
 };
 
 typedef CodeGeneratorNone CodeGeneratorSpecific;

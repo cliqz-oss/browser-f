@@ -65,10 +65,10 @@ struct Register {
     const char* name() const {
         return Registers::GetName(code());
     }
-    bool operator ==(Register other) const {
+    constexpr bool operator==(Register other) const {
         return reg_ == other.reg_;
     }
-    bool operator !=(Register other) const {
+    constexpr bool operator!=(Register other) const {
         return reg_ != other.reg_;
     }
     bool volatile_() const {
@@ -81,12 +81,9 @@ struct Register {
         return 1;
     }
 
-    // N.B. FloatRegister is an explicit outparam here because msvc-2010
-    // miscompiled it on win64 when the value was simply returned.  This
-    // now has an explicit outparam for compatability.
-    void aliased(uint32_t aliasIdx, Register* ret) const {
+    Register aliased(uint32_t aliasIdx) const {
         MOZ_ASSERT(aliasIdx == 0);
-        *ret = *this;
+        return *this;
     }
 
     SetType alignedOrDominatedAliasedSet() const {
@@ -117,6 +114,82 @@ struct Register {
     }
 };
 
+// Architectures where the stack pointer is not a plain register with a standard
+// register encoding must define JS_HAS_HIDDEN_SP and HiddenSPEncoding.
+
+#ifdef JS_HAS_HIDDEN_SP
+struct RegisterOrSP
+{
+    // The register code -- but possibly one that cannot be represented as a bit
+    // position in a 32-bit vector.
+    uint32_t code;
+
+    explicit RegisterOrSP(uint32_t code) : code(code) {}
+    explicit RegisterOrSP(Register r) : code(r.code()) {}
+};
+
+static inline bool
+IsHiddenSP(RegisterOrSP r)
+{
+    return r.code == HiddenSPEncoding;
+}
+
+static inline Register
+AsRegister(RegisterOrSP r)
+{
+    MOZ_ASSERT(!IsHiddenSP(r));
+    return Register::FromCode(r.code);
+}
+
+inline bool
+operator == (Register r, RegisterOrSP e) {
+    return r.code() == e.code;
+}
+
+inline bool
+operator != (Register r, RegisterOrSP e) {
+    return !(r == e);
+}
+
+inline bool
+operator == (RegisterOrSP e, Register r) {
+    return r == e;
+}
+
+inline bool
+operator != (RegisterOrSP e, Register r) {
+    return r != e;
+}
+
+inline bool
+operator == (RegisterOrSP lhs, RegisterOrSP rhs) {
+    return lhs.code == rhs.code;
+}
+
+inline bool
+operator != (RegisterOrSP lhs, RegisterOrSP rhs) {
+    return !(lhs == rhs);
+}
+#else
+// On platforms where there's nothing special about SP, make RegisterOrSP be
+// just Register, and return false for IsHiddenSP(r) for any r so that we use
+// "normal" code for handling the SP.  This reduces ifdeffery throughout the
+// jit.
+typedef Register RegisterOrSP;
+
+static inline bool
+IsHiddenSP(RegisterOrSP r)
+{
+    return false;
+}
+
+static inline Register
+AsRegister(RegisterOrSP r)
+{
+    return r;
+}
+#endif
+
 template <> inline Register::SetType
 Register::LiveAsIndexableSet<RegTypeName::GPR>(SetType set)
 {
@@ -135,7 +208,8 @@ Register::AllocatableAsIndexableSet<RegTypeName::GPR>(SetType set)
     return set;
 }
 
-#if defined(JS_NUNBOX32)
+#if JS_BITS_PER_WORD == 32
+// Note, some platform code depends on INT64LOW_OFFSET being zero.
 static const uint32_t INT64LOW_OFFSET = 0 * sizeof(int32_t);
 static const uint32_t INT64HIGH_OFFSET = 1 * sizeof(int32_t);
 #endif
@@ -268,12 +342,17 @@ struct AutoGenericRegisterScope : public RegisterType
 
 #ifdef DEBUG
     MacroAssembler& masm_;
+    bool released_;
     explicit AutoGenericRegisterScope(MacroAssembler& masm, RegisterType reg);
     ~AutoGenericRegisterScope();
+    void release();
+    void reacquire();
 #else
     constexpr explicit AutoGenericRegisterScope(MacroAssembler& masm, RegisterType reg)
       : RegisterType(reg)
     { }
+    void release() {}
+    void reacquire() {}
 #endif
 };
 

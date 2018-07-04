@@ -1,9 +1,11 @@
-function updateDocumentSourceMaps(source) {
-  const nsIDOMNode = Components.interfaces.nsIDOMNode;
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
-  const nsISAXXMLReader = Components.interfaces.nsISAXXMLReader;
-  const saxReader = Components.classes["@mozilla.org/saxparser/xmlreader;1"]
-                              .createInstance(nsISAXXMLReader);
+function updateDocumentSourceMaps(src) {
+  const nsIDOMNode = Ci.nsIDOMNode;
+
+  const nsISAXXMLReader = Ci.nsISAXXMLReader;
+  const saxReader = Cc["@mozilla.org/saxparser/xmlreader;1"]
+                      .createInstance(nsISAXXMLReader);
   try {
     saxReader.setFeature("http://xml.org/sax/features/namespace-prefixes", true);
     saxReader.setFeature("http://xml.org/sax/features/namespace", true);
@@ -51,87 +53,62 @@ function updateDocumentSourceMaps(source) {
       do_parse_check(aNodeName, "Missing element node name (endElement)");
     },
 
-    inCDataSection: false,
-
     characters: function characters(aData) {
     },
 
     processingInstruction: function processingInstruction(aTarget, aData) {
       do_parse_check(aTarget, "Missing processing instruction target");
-    },
-
-    ignorableWhitespace: function ignorableWhitespace(aWhitespace) {
-    },
-
-    startPrefixMapping: function startPrefixMapping(aPrefix, aURI) {
-    },
-
-    endPrefixMapping: function endPrefixMapping(aPrefix) {
-    }
-  };
-
-  var lexicalHandler = {
-    comment: function comment(aContents) {
-    },
-
-    startDTD: function startDTD(aName, aPublicId, aSystemId) {
-      do_parse_check(aName, "Missing DTD name");
-    },
-
-    endDTD: function endDTD() {
-    },
-
-    startCDATA: function startCDATA() {
-    },
-
-    endCDATA: function endCDATA() {
-    },
-
-    startEntity: function startEntity(aName) {
-      do_parse_check(aName, "Missing entity name (startEntity)");
-    },
-
-    endEntity: function endEntity(aName) {
-      do_parse_check(aName, "Missing entity name (endEntity)");
-    }
-  };
-
-  var dtdHandler = {
-    notationDecl: function notationDecl(aName, aPublicId, aSystemId) {
-      do_parse_check(aName, "Missing notation name");
-    },
-
-    unparsedEntityDecl:
-    function unparsedEntityDecl(aName, aPublicId, aSystemId, aNotationName) {
-      do_parse_check(aName, "Missing entity name (unparsedEntityDecl)");
     }
   };
 
   var errorHandler = {
-    error: function error(aLocator, aError) {
+    error: function error(aError) {
       do_parse_check(!aError, "XML error");
     },
 
-    fatalError: function fatalError(aLocator, aError) {
+    fatalError: function fatalError(aError) {
       do_parse_check(!aError, "XML fatal error");
     },
 
-    ignorableWarning: function ignorableWarning(aLocator, aError) {
+    ignorableWarning: function ignorableWarning(aError) {
       do_parse_check(!aError, "XML ignorable warning");
     }
   };
 
   saxReader.contentHandler = contentHandler;
-  saxReader.lexicalHandler = lexicalHandler;
-  saxReader.dtdHandler     = dtdHandler;
   saxReader.errorHandler   = errorHandler;
 
-  saxReader.parseFromString(source, "application/xml");
+  let type = "application/xml";
+  let uri = NetUtil.newURI("http://example.org/");
+
+  let sStream = Cc["@mozilla.org/io/string-input-stream;1"]
+               .createInstance(Ci.nsIStringInputStream);
+  sStream.setData(src, src.length);
+  var bStream = Cc["@mozilla.org/network/buffered-input-stream;1"]
+                .createInstance(Ci.nsIBufferedInputStream);
+  bStream.init(sStream, 4096);
+
+  let channel = Cc["@mozilla.org/network/input-stream-channel;1"].
+    createInstance(Ci.nsIInputStreamChannel);
+  channel.setURI(uri);
+  channel.contentStream = bStream;
+  channel.QueryInterface(Ci.nsIChannel);
+  channel.contentType = type;
+
+  saxReader.parseAsync(null, uri);
+  saxReader.onStartRequest(channel, uri);
+
+  let pos = 0;
+  let count = bStream.available();
+  while (count > 0) {
+    saxReader.onDataAvailable(channel, null, bStream, pos, count);
+    pos += count;
+    count = bStream.available();
+  }
+  saxReader.onStopRequest(channel, null, Cr.NS_OK);
 
   // Just in case it leaks.
   saxReader.contentHandler = null;
-  saxReader.lexicalHandler = null;
-  saxReader.dtdHandler     = null;
   saxReader.errorHandler   = null;
 
   return parseErrorLog;
@@ -141,7 +118,7 @@ function do_check_true_with_dump(aCondition, aParseLog) {
   if (!aCondition) {
     dump(aParseLog.join("\n"));
   }
-  do_check_true(aCondition);
+  Assert.ok(aCondition);
 }
 
 function run_test() {
@@ -149,6 +126,7 @@ function run_test() {
   src = "<!DOCTYPE foo>\n<!-- all your foo are belong to bar -->";
   src += "<foo id='foo'>\n<?foo wooly bully?>\nfoo";
   src += "<![CDATA[foo fighters]]></foo>\n";
+
   var parseErrorLog = updateDocumentSourceMaps(src);
 
   if (parseErrorLog.length > 0) {

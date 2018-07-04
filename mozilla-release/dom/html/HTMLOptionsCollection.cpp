@@ -20,14 +20,12 @@
 #include "nsGkAtoms.h"
 #include "nsIComboboxControlFrame.h"
 #include "nsIDocument.h"
-#include "nsIDOMHTMLOptGroupElement.h"
 #include "nsIFormControlFrame.h"
 #include "nsIForm.h"
 #include "nsIFormProcessor.h"
 #include "nsIListControlFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsMappedAttributes.h"
-#include "nsRuleData.h"
 #include "nsServiceManagerUtils.h"
 #include "nsStyleConsts.h"
 #include "jsfriendapi.h"
@@ -97,16 +95,12 @@ NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(HTMLOptionsCollection, mElements)
 NS_INTERFACE_TABLE_HEAD(HTMLOptionsCollection)
   NS_WRAPPERCACHE_INTERFACE_TABLE_ENTRY
   NS_INTERFACE_TABLE(HTMLOptionsCollection,
-                     nsIHTMLCollection,
-                     nsIDOMHTMLOptionsCollection,
-                     nsIDOMHTMLCollection)
+                     nsIHTMLCollection)
   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(HTMLOptionsCollection)
 NS_INTERFACE_MAP_END
 
-
 NS_IMPL_CYCLE_COLLECTING_ADDREF(HTMLOptionsCollection)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(HTMLOptionsCollection)
-
 
 JSObject*
 HTMLOptionsCollection::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
@@ -114,22 +108,21 @@ HTMLOptionsCollection::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenPr
   return HTMLOptionsCollectionBinding::Wrap(aCx, this, aGivenProto);
 }
 
-NS_IMETHODIMP
-HTMLOptionsCollection::GetLength(uint32_t* aLength)
+uint32_t
+HTMLOptionsCollection::Length()
 {
-  *aLength = mElements.Length();
-
-  return NS_OK;
+  return mElements.Length();
 }
 
-NS_IMETHODIMP
-HTMLOptionsCollection::SetLength(uint32_t aLength)
+void
+HTMLOptionsCollection::SetLength(uint32_t aLength, ErrorResult& aError)
 {
   if (!mSelect) {
-    return NS_ERROR_UNEXPECTED;
+    aError.Throw(NS_ERROR_UNEXPECTED);
+    return;
   }
 
-  return mSelect->SetLength(aLength);
+  mSelect->SetLength(aLength, aError);
 }
 
 void
@@ -154,11 +147,8 @@ HTMLOptionsCollection::IndexedSetter(uint32_t aIndex,
   if (aIndex > mElements.Length()) {
     // Fill our array with blank options up to (but not including, since we're
     // about to change it) aIndex, for compat with other browsers.
-    nsresult rv = SetLength(aIndex);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      aError.Throw(rv);
-      return;
-    }
+    SetLength(aIndex, aError);
+    ENSURE_SUCCESS_VOID(aError);
   }
 
   NS_ASSERTION(aIndex <= mElements.Length(), "SetLength lied");
@@ -192,17 +182,7 @@ HTMLOptionsCollection::GetSelectedIndex(ErrorResult& aError)
     return 0;
   }
 
-  int32_t selectedIndex;
-  aError = mSelect->GetSelectedIndex(&selectedIndex);
-  return selectedIndex;
-}
-
-NS_IMETHODIMP
-HTMLOptionsCollection::GetSelectedIndex(int32_t* aSelectedIndex)
-{
-  ErrorResult rv;
-  *aSelectedIndex = GetSelectedIndex(rv);
-  return rv.StealNSResult();
+  return mSelect->SelectedIndex();
 }
 
 void
@@ -214,28 +194,7 @@ HTMLOptionsCollection::SetSelectedIndex(int32_t aSelectedIndex,
     return;
   }
 
-  aError = mSelect->SetSelectedIndex(aSelectedIndex);
-}
-
-NS_IMETHODIMP
-HTMLOptionsCollection::SetSelectedIndex(int32_t aSelectedIndex)
-{
-  ErrorResult rv;
-  SetSelectedIndex(aSelectedIndex, rv);
-  return rv.StealNSResult();
-}
-
-NS_IMETHODIMP
-HTMLOptionsCollection::Item(uint32_t aIndex, nsIDOMNode** aReturn)
-{
-  nsISupports* item = GetElementAt(aIndex);
-  if (!item) {
-    *aReturn = nullptr;
-
-    return NS_OK;
-  }
-
-  return CallQueryInterface(item, aReturn);
+  mSelect->SetSelectedIndex(aSelectedIndex, aError);
 }
 
 Element*
@@ -270,19 +229,16 @@ HTMLOptionsCollection::GetParentObject()
   return mSelect;
 }
 
-NS_IMETHODIMP
-HTMLOptionsCollection::NamedItem(const nsAString& aName,
-                                 nsIDOMNode** aReturn)
+DocGroup*
+HTMLOptionsCollection::GetDocGroup() const
 {
-  NS_IF_ADDREF(*aReturn = GetNamedItem(aName));
-
-  return NS_OK;
+  return mSelect ? mSelect->GetDocGroup() : nullptr;
 }
 
 void
 HTMLOptionsCollection::GetSupportedNames(nsTArray<nsString>& aNames)
 {
-  AutoTArray<nsIAtom*, 8> atoms;
+  AutoTArray<nsAtom*, 8> atoms;
   for (uint32_t i = 0; i < mElements.Length(); ++i) {
     HTMLOptionElement* content = mElements.ElementAt(i);
     if (content) {
@@ -290,13 +246,13 @@ HTMLOptionsCollection::GetSupportedNames(nsTArray<nsString>& aNames)
       // which is false for options, so we don't check it here.
       const nsAttrValue* val = content->GetParsedAttr(nsGkAtoms::name);
       if (val && val->Type() == nsAttrValue::eAtom) {
-        nsIAtom* name = val->GetAtomValue();
+        nsAtom* name = val->GetAtomValue();
         if (!atoms.Contains(name)) {
           atoms.AppendElement(name);
         }
       }
       if (content->HasID()) {
-        nsIAtom* id = content->GetID();
+        nsAtom* id = content->GetID();
         if (!atoms.Contains(id)) {
           atoms.AppendElement(id);
         }
@@ -309,29 +265,6 @@ HTMLOptionsCollection::GetSupportedNames(nsTArray<nsString>& aNames)
   for (uint32_t i = 0; i < atomsLen; ++i) {
     atoms[i]->ToString(names[i]);
   }
-}
-
-NS_IMETHODIMP
-HTMLOptionsCollection::GetSelect(nsIDOMHTMLSelectElement** aReturn)
-{
-  NS_IF_ADDREF(*aReturn = mSelect);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-HTMLOptionsCollection::Add(nsIDOMHTMLOptionElement* aOption,
-                           nsIVariant* aBefore)
-{
-  if (!aOption) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
-  if (!mSelect) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-
-  nsCOMPtr<nsIDOMHTMLElement> elem = do_QueryInterface(aOption);
-  return mSelect->Add(elem, aBefore);
 }
 
 void
@@ -355,20 +288,11 @@ HTMLOptionsCollection::Remove(int32_t aIndex, ErrorResult& aError)
     return;
   }
 
-  uint32_t len = 0;
-  mSelect->GetLength(&len);
+  uint32_t len = mSelect->Length();
   if (aIndex < 0 || (uint32_t)aIndex >= len)
     aIndex = 0;
 
-  aError = mSelect->Remove(aIndex);
-}
-
-NS_IMETHODIMP
-HTMLOptionsCollection::Remove(int32_t aIndex)
-{
-  ErrorResult rv;
-  Remove(aIndex, rv);
-  return rv.StealNSResult();
+  mSelect->Remove(aIndex);
 }
 
 } // namespace dom

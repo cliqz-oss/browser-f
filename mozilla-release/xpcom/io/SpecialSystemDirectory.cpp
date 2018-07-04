@@ -84,6 +84,9 @@ GetWindowsFolder(int aFolder, nsIFile** aFile)
 
   // Append the trailing slash
   int len = wcslen(path);
+  if (len == 0) {
+    return NS_ERROR_FILE_UNRECOGNIZED_PATH;
+  }
   if (len > 1 && path[len - 1] != L'\\') {
     path[len]   = L'\\';
     path[++len] = L'\0';
@@ -123,9 +126,8 @@ GetLibrarySaveToPath(int aFallbackFolderId, REFKNOWNFOLDERID aFolderId,
 {
   RefPtr<IShellLibrary> shellLib;
   RefPtr<IShellItem> savePath;
-  HRESULT hr =
-    SHLoadLibraryFromKnownFolder(aFolderId, STGM_READ,
-                                 IID_IShellLibrary, getter_AddRefs(shellLib));
+  SHLoadLibraryFromKnownFolder(aFolderId, STGM_READ,
+                               IID_IShellLibrary, getter_AddRefs(shellLib));
 
   if (shellLib &&
       SUCCEEDED(shellLib->GetDefaultSaveFolder(DSFT_DETECT, IID_IShellItem,
@@ -639,9 +641,6 @@ GetSpecialSystemDirectory(SystemDirectories aSystemSystemDirectory,
     case Win_Favorites: {
       return GetWindowsFolder(CSIDL_FAVORITES, aFile);
     }
-    case Win_Startup: {
-      return GetWindowsFolder(CSIDL_STARTUP, aFile);
-    }
     case Win_Recent: {
       return GetWindowsFolder(CSIDL_RECENT, aFile);
     }
@@ -650,9 +649,6 @@ GetSpecialSystemDirectory(SystemDirectories aSystemSystemDirectory,
     }
     case Win_Bitbucket: {
       return GetWindowsFolder(CSIDL_BITBUCKET, aFile);
-    }
-    case Win_Startmenu: {
-      return GetWindowsFolder(CSIDL_STARTMENU, aFile);
     }
     case Win_Desktopdirectory: {
       return GetWindowsFolder(CSIDL_DESKTOPDIRECTORY, aFile);
@@ -672,14 +668,8 @@ GetSpecialSystemDirectory(SystemDirectories aSystemSystemDirectory,
     case Win_Templates: {
       return GetWindowsFolder(CSIDL_TEMPLATES, aFile);
     }
-    case Win_Common_Startmenu: {
-      return GetWindowsFolder(CSIDL_COMMON_STARTMENU, aFile);
-    }
     case Win_Common_Programs: {
       return GetWindowsFolder(CSIDL_COMMON_PROGRAMS, aFile);
-    }
-    case Win_Common_Startup: {
-      return GetWindowsFolder(CSIDL_COMMON_STARTUP, aFile);
     }
     case Win_Common_Desktopdirectory: {
       return GetWindowsFolder(CSIDL_COMMON_DESKTOPDIRECTORY, aFile);

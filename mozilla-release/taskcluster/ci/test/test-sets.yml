@@ -32,12 +32,16 @@ common-tests:
     - mochitest-clipboard
     - mochitest-devtools-chrome
     - mochitest-gpu
-    - mochitest-jetpack
     - mochitest-media
     - mochitest-webgl
     - reftest
     - reftest-no-accel
     - telemetry-tests-client
+    - test-coverage
+    - test-coverage-wpt
+    - test-verify
+    - test-verify-gpu
+    - test-verify-wpt
     - xpcshell
 
 web-platform-tests:
@@ -45,14 +49,19 @@ web-platform-tests:
     - web-platform-tests-reftests
     - web-platform-tests-wdspec
 
+web-platform-tests-headless:
+    - web-platform-tests-headless
+    - web-platform-tests-reftests-headless
+    - web-platform-tests-wdspec-headless
+
 opt-only-tests:
     - mochitest-valgrind
 
 talos:
     - talos-chrome
+    - talos-damp
     - talos-dromaeojs
     - talos-g1
-    - talos-g2
     - talos-g3
     - talos-g4
     - talos-g5
@@ -61,47 +70,102 @@ talos:
     - talos-tp5o
     - talos-perf-reftest
     - talos-perf-reftest-singletons
+    - talos-tp6
+    - talos-tp6-stylo-threads
+    - talos-tps
+    - talos-speedometer
+    - talos-motionmark
+    - talos-h1
+    - talos-h2
 
 awsy:
     - awsy
 
+awsy-stylo-sequential:
+    - awsy-stylo-sequential
+
 ##
 # Limited test sets for specific platforms
 
-stylo-tests:
-    - cppunit
-    - crashtest
-    - reftest
-    - reftest-stylo
-    - mochitest-style
-    - mochitest-chrome-style
-    - web-platform-tests
-    - web-platform-tests-reftests
+linux-qr-talos:
+    - talos-chrome
+    - talos-dromaeojs
+    - talos-g1
+    # - talos-g2 # doesn't work with QR yet
+    - talos-g3
+    - talos-g4
+    - talos-g5
+    - talos-other
+    - talos-svgr
+    - talos-tp5o
+    - talos-perf-reftest
+    - talos-perf-reftest-singletons
+    - talos-tp6
+    - talos-tp6-stylo-threads
+    - talos-speedometer
+    - talos-motionmark
 
-stylo-sequential-tests:
-    - crashtest
-    - reftest-stylo
-    - mochitest-style
-
-qr-tests:
+linux-qr-tests:
     - cppunit
     - crashtest
     - gtest
     - jittest
     - jsreftest
+    - mochitest
     - mochitest-a11y
     - mochitest-gpu
     - mochitest-media
     - mochitest-webgl
     - reftest
-    - reftest-no-accel
     - xpcshell
+
+linux-talos-profiling:
+    - talos-chrome-profiling
+    - talos-damp-profiling
+    - talos-dromaeojs-profiling
+    - talos-g1-profiling
+    - talos-g3-profiling
+    - talos-g4-profiling
+    - talos-g5-profiling
+    - talos-other-profiling
+    - talos-perf-reftest-profiling
+    - talos-perf-reftest-singletons-profiling
+    - talos-speedometer-profiling
+    - talos-motionmark-profiling
+    - talos-svgr-profiling
+    - talos-tp5o-profiling
+    - talos-tp6-profiling
+    # - talos-tps-profiling # Bug 1453007 - times out
+
+linux-talos-flex:
+    - talos-flex
+
+windows-qr-tests:
+    - crashtest
+    - mochitest-gpu
+    - mochitest-media
+    - mochitest-webgl
+    - reftest
+
+windows-qr-talos:
+    - talos-chrome
+    - talos-dromaeojs
+    - talos-g1
+    - talos-g4
+    - talos-perf-reftest
+    - talos-perf-reftest-singletons
+    - talos-tp5o
+    - talos-speedometer
+    - talos-motionmark
 
 jsdcov-code-coverage-tests:
     - mochitest
     - mochitest-browser-chrome
     - mochitest-devtools-chrome
     - xpcshell
+
+windows-reftest-gpu:
+    - reftest-gpu
 
 windows-tests:
     - cppunit
@@ -120,21 +184,24 @@ windows-tests:
     - mochitest-clipboard
     - mochitest-devtools-chrome
     - mochitest-gpu
-    - mochitest-jetpack
     - mochitest-media
     - mochitest-webgl
     - reftest
-    - reftest-gpu
     - reftest-no-accel
+    - test-coverage
+    - test-coverage-wpt
+    - test-verify
+    - test-verify-gpu
+    - test-verify-wpt
     - web-platform-tests
     - web-platform-tests-reftests
     - xpcshell
 
 windows-talos:
     - talos-chrome
+    - talos-damp
     - talos-dromaeojs
     - talos-g1
-    - talos-g2
     - talos-g4
     - talos-g5
     - talos-other
@@ -143,8 +210,29 @@ windows-talos:
     - talos-svgr
     - talos-tp5o
     - talos-xperf
-    - talos-quantum-pageload
-    - talos-quantum-pageload-stylo
+    - talos-speedometer
+    - talos-tp6
+    - talos-tps
+    - talos-motionmark
+    - talos-h1
+
+windows-talos-profiling:
+    - talos-chrome-profiling
+    - talos-damp-profiling
+    - talos-dromaeojs-profiling
+    - talos-g1-profiling
+    - talos-g3-profiling
+    - talos-g4-profiling
+    - talos-g5-profiling
+    - talos-motionmark-profiling
+    - talos-other-profiling
+    - talos-perf-reftest-profiling
+    - talos-perf-reftest-singletons-profiling
+    - talos-speedometer-profiling
+    - talos-svgr-profiling
+    - talos-tp5o-profiling
+    - talos-tp6-profiling
+    - talos-tps-profiling
 
 macosx64-tests:
     - cppunit
@@ -163,19 +251,21 @@ macosx64-tests:
     - mochitest-clipboard
     - mochitest-devtools-chrome
     - mochitest-gpu
-    - mochitest-jetpack
     - mochitest-media
     - mochitest-webgl
     - reftest
+    - test-verify
+    - test-verify-gpu
+    - test-verify-wpt
     - web-platform-tests
     - web-platform-tests-reftests
     - xpcshell
 
-macosx64-tests-talos:
+macosx64-talos:
     - talos-chrome
+    - talos-damp
     - talos-dromaeojs
     - talos-g1
-    - talos-g2
     - talos-g4
     - talos-g5
     - talos-other
@@ -183,6 +273,30 @@ macosx64-tests-talos:
     - talos-tp5o
     - talos-perf-reftest
     - talos-perf-reftest-singletons
+    - talos-tp6
+    - talos-tp6-stylo-threads
+    # - talos-tps # Bug 1453007 times out
+    - talos-speedometer
+    - talos-motionmark
+    # - talos-h1 # too long to unpack profile- Bug 1442893
+
+macosx64-talos-profiling:
+    - talos-chrome-profiling
+    - talos-damp-profiling
+    - talos-dromaeojs-profiling
+    - talos-g1-profiling
+    - talos-g3-profiling
+    - talos-g4-profiling
+    - talos-g5-profiling
+    - talos-other-profiling
+    - talos-perf-reftest-profiling
+    - talos-perf-reftest-singletons-profiling
+    - talos-speedometer-profiling
+    - talos-motionmark-profiling
+    - talos-svgr-profiling
+    - talos-tp5o-profiling
+    - talos-tp6-profiling
+    # - talos-tps-profiling # Bug 1453007 times out
 
 linux32-tests:
     - cppunit
@@ -199,13 +313,13 @@ linux32-tests:
     - mochitest-chrome
     - mochitest-clipboard
     - mochitest-gpu
-    - mochitest-jetpack
     - mochitest-media
     - mochitest-webgl
     - reftest
     - reftest-no-accel
     - web-platform-tests
     - web-platform-tests-reftests
+    - web-platform-tests-wdspec
     - xpcshell
 
 linux32-opt-tests:
@@ -213,11 +327,16 @@ linux32-opt-tests:
     - mochitest-devtools-chrome
 
 desktop-screenshot-capture:
-    - mochitest-browser-screenshots
+    - browser-screenshots
+
+desktop-instrumentation:
+    - browser-instrumentation
 
 android-common-tests:
     - cppunit
     - crashtest
+    - geckoview-junit
+    # - jittest # not ready yet: bug 1098508
     - jsreftest
     - mochitest
     - mochitest-chrome
@@ -225,6 +344,7 @@ android-common-tests:
     - mochitest-gpu
     - mochitest-media
     - reftest
+    - test-verify
     - xpcshell
 
 android-debug-tests:
@@ -232,28 +352,20 @@ android-debug-tests:
     - marionette
 
 android-opt-tests:
+    # Robocop tests often fail on Debug builds
     - robocop
 
 android-gradle-tests:
-    - mochitest-chrome
-    - robocop
+    # geckoview_example is only built in gradle builds
     - geckoview
 
 android-x86-tests:
     - mochitest-chrome
     - xpcshell
+    - geckoview
 
-windows8-tests:
-    - crashtest
-    - mochitest
-    - mochitest-browser-chrome
+devtools-tests:
     - mochitest-devtools-chrome
-    - mochitest-media
-    - jsreftest
-    - reftest
-    - reftest-no-accel
-    - mochitest-gpu
-    - mochitest-webgl
-    - mochitest-clipboard
-    - mochitest-chrome
-    - xpcshell
+
+mochitest-headless:
+    - mochitest-plain-headless

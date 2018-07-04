@@ -10,8 +10,6 @@ const {
   generateActorSpec,
   types
 } = require("devtools/shared/protocol");
-require("devtools/shared/specs/node");
-require("devtools/shared/specs/stylesheets");
 
 // Predeclare the domstylerule actor type
 types.addActorType("domstylerule");
@@ -60,6 +58,24 @@ types.addDictType("fontpreview", {
   size: "json"
 });
 
+types.addDictType("fontvariationaxis", {
+  tag: "string",
+  name: "string",
+  minValue: "number",
+  maxValue: "number",
+  defaultValue: "number"
+});
+
+types.addDictType("fontvariationinstancevalue", {
+  axis: "string",
+  value: "number"
+});
+
+types.addDictType("fontvariationinstance", {
+  name: "string",
+  values: "array:fontvariationinstancevalue"
+});
+
 types.addDictType("fontface", {
   name: "string",
   CSSFamilyName: "string",
@@ -69,7 +85,9 @@ types.addDictType("fontface", {
   format: "string",
   preview: "nullable:fontpreview",
   localName: "string",
-  metadata: "string"
+  metadata: "string",
+  variationAxes: "array:fontvariationaxis",
+  variationInstances: "array:fontvariationinstance"
 });
 
 const pageStyleSpec = generateActorSpec({
@@ -97,6 +115,7 @@ const pageStyleSpec = generateActorSpec({
     getAllUsedFontFaces: {
       request: {
         includePreviews: Option(0, "boolean"),
+        includeVariations: Option(1, "boolean"),
         previewText: Option(0, "string"),
         previewFontSize: Option(0, "string"),
         previewFillStyle: Option(0, "string")
@@ -109,6 +128,7 @@ const pageStyleSpec = generateActorSpec({
       request: {
         node: Arg(0, "domnode"),
         includePreviews: Option(1, "boolean"),
+        includeVariations: Option(1, "boolean"),
         previewText: Option(1, "string"),
         previewFontSize: Option(1, "string"),
         previewFillStyle: Option(1, "string")

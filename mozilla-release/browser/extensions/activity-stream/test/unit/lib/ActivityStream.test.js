@@ -1,5 +1,5 @@
-const injector = require("inject!lib/ActivityStream.jsm");
-const {CONTENT_MESSAGE_TYPE} = require("common/Actions.jsm");
+import {CONTENT_MESSAGE_TYPE} from "common/Actions.jsm";
+import injector from "inject!lib/ActivityStream.jsm";
 
 const REASON_ADDON_UNINSTALL = 6;
 
@@ -13,16 +13,21 @@ describe("ActivityStream", () => {
   beforeEach(() => {
     sandbox = sinon.sandbox.create();
     ({ActivityStream, PREFS_CONFIG} = injector({
-      "lib/LocalizationFeed.jsm": {LocalizationFeed: Fake},
+      "lib/AboutPreferences.jsm": {AboutPreferences: Fake},
       "lib/ManualMigration.jsm": {ManualMigration: Fake},
       "lib/NewTabInit.jsm": {NewTabInit: Fake},
       "lib/PlacesFeed.jsm": {PlacesFeed: Fake},
       "lib/PrefsFeed.jsm": {PrefsFeed: Fake},
+      "lib/SectionsManager.jsm": {SectionsFeed: Fake},
       "lib/SnippetsFeed.jsm": {SnippetsFeed: Fake},
       "lib/SystemTickFeed.jsm": {SystemTickFeed: Fake},
       "lib/TelemetryFeed.jsm": {TelemetryFeed: Fake},
+      "lib/FaviconFeed.jsm": {FaviconFeed: Fake},
       "lib/TopSitesFeed.jsm": {TopSitesFeed: Fake},
-      "lib/TopStoriesFeed.jsm": {TopStoriesFeed: Fake}
+      "lib/TopStoriesFeed.jsm": {TopStoriesFeed: Fake},
+      "lib/HighlightsFeed.jsm": {HighlightsFeed: Fake},
+      "lib/ThemeFeed.jsm": {ThemeFeed: Fake},
+      "lib/ASRouterFeed.jsm": {ASRouterFeed: Fake}
     }));
     as = new ActivityStream();
     sandbox.stub(as.store, "init");
@@ -52,25 +57,27 @@ describe("ActivityStream", () => {
     it("should call .store.init", () => {
       assert.calledOnce(as.store.init);
     });
-    it("should emit an INIT event with the right version", () => {
+    it("should pass to Store an INIT event with the right version", () => {
       as = new ActivityStream({version: "1.2.3"});
       sandbox.stub(as.store, "init");
-      sandbox.stub(as.store, "dispatch");
       sandbox.stub(as._defaultPrefs, "init");
 
       as.init();
 
-      assert.calledOnce(as.store.dispatch);
-      const action = as.store.dispatch.firstCall.args[0];
+      const [, action] = as.store.init.firstCall.args;
       assert.propertyVal(action.data, "version", "1.2.3");
     });
-    it("should emit an INIT event to content", () => {
-      sandbox.stub(as.store, "dispatch");
-
+    it("should pass to Store an INIT event for content", () => {
       as.init();
 
-      const action = as.store.dispatch.firstCall.args[0];
+      const [, action] = as.store.init.firstCall.args;
       assert.equal(action.meta.to, CONTENT_MESSAGE_TYPE);
+    });
+    it("should pass to Store an UNINIT event", () => {
+      as.init();
+
+      const [, , action] = as.store.init.firstCall.args;
+      assert.equal(action.type, "UNINIT");
     });
   });
   describe("#uninit", () => {
@@ -96,10 +103,6 @@ describe("ActivityStream", () => {
     });
   });
   describe("feeds", () => {
-    it("should create a Localization feed", () => {
-      const feed = as.feeds.get("feeds.localization")();
-      assert.instanceOf(feed, Fake);
-    });
     it("should create a NewTabInit feed", () => {
       const feed = as.feeds.get("feeds.newtabinit")();
       assert.instanceOf(feed, Fake);
@@ -133,8 +136,16 @@ describe("ActivityStream", () => {
       }
       assert.isAbove(feedCount, 0);
     });
+    it("should create a AboutPreferences feed", () => {
+      const feed = as.feeds.get("feeds.aboutpreferences")();
+      assert.instanceOf(feed, Fake);
+    });
     it("should create a ManualMigration feed", () => {
       const feed = as.feeds.get("feeds.migration")();
+      assert.instanceOf(feed, Fake);
+    });
+    it("should create a SectionsFeed", () => {
+      const feed = as.feeds.get("feeds.sections")();
       assert.instanceOf(feed, Fake);
     });
     it("should create a Snippets feed", () => {
@@ -143,6 +154,18 @@ describe("ActivityStream", () => {
     });
     it("should create a SystemTick feed", () => {
       const feed = as.feeds.get("feeds.systemtick")();
+      assert.instanceOf(feed, Fake);
+    });
+    it("should create a Favicon feed", () => {
+      const feed = as.feeds.get("feeds.favicon")();
+      assert.instanceOf(feed, Fake);
+    });
+    it("should create a Theme feed", () => {
+      const feed = as.feeds.get("feeds.theme")();
+      assert.instanceOf(feed, Fake);
+    });
+    it("should create a ASRouter feed", () => {
+      const feed = as.feeds.get("feeds.asrouterfeed")();
       assert.instanceOf(feed, Fake);
     });
   });
@@ -163,7 +186,7 @@ describe("ActivityStream", () => {
     it("should be false with expected geo and unexpected locale", () => {
       sandbox.stub(global.Services.prefs, "prefHasUserValue").returns(true);
       sandbox.stub(global.Services.prefs, "getStringPref").returns("US");
-      sandbox.stub(global.Services.locale, "getRequestedLocale").returns("no-LOCALE");
+      sandbox.stub(global.Services.locale, "getAppLocaleAsLangTag").returns("no-LOCALE");
 
       as._updateDynamicPrefs();
 
@@ -172,7 +195,7 @@ describe("ActivityStream", () => {
     it("should be true with expected geo and locale", () => {
       sandbox.stub(global.Services.prefs, "prefHasUserValue").returns(true);
       sandbox.stub(global.Services.prefs, "getStringPref").returns("US");
-      sandbox.stub(global.Services.locale, "getRequestedLocale").returns("en-US");
+      sandbox.stub(global.Services.locale, "getAppLocaleAsLangTag").returns("en-US");
 
       as._updateDynamicPrefs();
 
@@ -185,7 +208,7 @@ describe("ActivityStream", () => {
         .returns("US")
         .onSecondCall()
         .returns("NOGEO");
-      sandbox.stub(global.Services.locale, "getRequestedLocale").returns("en-US");
+      sandbox.stub(global.Services.locale, "getAppLocaleAsLangTag").returns("en-US");
 
       as._updateDynamicPrefs();
       as._updateDynamicPrefs();
@@ -216,12 +239,25 @@ describe("ActivityStream", () => {
     });
     it("should set true with expected geo and locale", () => {
       sandbox.stub(global.Services.prefs, "getStringPref").returns("US");
-      sandbox.stub(global.Services.locale, "getRequestedLocale").returns("en-US");
+      sandbox.stub(global.Services.locale, "getAppLocaleAsLangTag").returns("en-US");
 
       as._updateDynamicPrefs();
       clock.tick(1);
 
       assert.isTrue(PREFS_CONFIG.get("feeds.section.topstories").value);
+    });
+  });
+  describe("telemetry reporting on init failure", () => {
+    it("should send a ping on init error", () => {
+      as = new ActivityStream();
+      const telemetry = {handleUndesiredEvent: sandbox.spy()};
+      sandbox.stub(as.store, "init").throws();
+      sandbox.stub(as.store.feeds, "get").returns(telemetry);
+      try {
+        as.init();
+      } catch (e) {
+      }
+      assert.calledOnce(telemetry.handleUndesiredEvent);
     });
   });
 });

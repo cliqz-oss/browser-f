@@ -1,13 +1,13 @@
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
 var Cm = Components.manager;
 
 const kBlocklistServiceUUID = "{66354bc9-7ed1-4692-ae1d-8da97d6b205e}";
 const kBlocklistServiceContractID = "@mozilla.org/extensions/blocklist;1";
 const kBlocklistServiceFactory = Cm.getClassObject(Cc[kBlocklistServiceContractID], Ci.nsIFactory);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+
+SimpleTest.requestFlakyTimeout("Need to simulate blocklist calls actually taking non-0 time to return");
 
 /*
  * A lightweight blocklist proxy for the testing purposes.
@@ -15,9 +15,9 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 var BlocklistProxy = {
   _uuid: null,
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsIBlocklistService,
-                                         Ci.nsITimerCallback]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsIBlocklistService,
+                                          Ci.nsITimerCallback]),
 
   init() {
     if (!this._uuid) {
@@ -47,30 +47,21 @@ var BlocklistProxy = {
   observe(aSubject, aTopic, aData) {
   },
 
-  isAddonBlocklisted(aAddon, aAppVersion, aToolkitVersion) {
-    return false;
-  },
-
-  getAddonBlocklistState(aAddon, aAppVersion, aToolkitVersion) {
+  async getAddonBlocklistState(aAddon, aAppVersion, aToolkitVersion) {
+    await new Promise(r => setTimeout(r, 150));
     return 0; // STATE_NOT_BLOCKED
   },
 
-  getPluginBlocklistState(aPluginTag, aAppVersion, aToolkitVersion) {
+  async getPluginBlocklistState(aPluginTag, aAppVersion, aToolkitVersion) {
+    await new Promise(r => setTimeout(r, 150));
     return 0; // STATE_NOT_BLOCKED
   },
 
-  getAddonBlocklistURL(aAddon, aAppVersion, aToolkitVersion) {
+  async getPluginBlockURL(aPluginTag) {
+    await new Promise(r => setTimeout(r, 150));
     return "";
   },
-
-  getPluginBlocklistURL(aPluginTag) {
-    return "";
-  },
-
-  getPluginInfoURL(aPluginTag) {
-    return "";
-  },
-}
+};
 
 BlocklistProxy.init();
 addEventListener("unload", () => {

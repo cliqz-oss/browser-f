@@ -5,7 +5,8 @@
 
 "use strict";
 
-Cu.import("resource://formautofill/FormAutofillHandler.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillHandler.jsm");
+let {MasterPassword} = ChromeUtils.import("resource://formautofill/MasterPassword.jsm", {});
 
 const TESTCASES = [
   {
@@ -13,7 +14,7 @@ const TESTCASES = [
     document: `<form><input id="given-name"><input id="family-name">
                <input id="street-addr"><input id="city"><select id="country"></select>
                <input id='email'><input id="tel"></form>`,
-    addressFieldDetails: [],
+    focusedInputId: "given-name",
     profileData: {},
     expectedResult: {
       "street-addr": "",
@@ -35,15 +36,7 @@ const TESTCASES = [
                </select>
                <input id="email" autocomplete="email">
                <input id="tel" autocomplete="tel"></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "given-name", "element": {}},
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "family-name", "element": {}},
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "street-address", "element": {}},
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "address-level2", "element": {}},
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "email", "element": {}},
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "tel", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "street-address": "2 Harrison St line2",
@@ -73,15 +66,7 @@ const TESTCASES = [
                </select>
                <input id='email' autocomplete="shipping email">
                <input id="tel" autocomplete="shipping tel"></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "given-name", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "family-name", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "street-address", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level2", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "country", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "email", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "tel", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "street-address": "2 Harrison St",
@@ -107,15 +92,7 @@ const TESTCASES = [
                <input id="country" autocomplete="shipping country">
                <input id='email' autocomplete="shipping email">
                <input id="tel" autocomplete="shipping tel"></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "given-name", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "family-name", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "street-address", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level2", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "country", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "email", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "tel", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "street-address": "2 Harrison St",
@@ -141,16 +118,7 @@ const TESTCASES = [
                <input id="country" autocomplete="billing country">
                <input id='email' autocomplete="shipping email">
                <input id="tel" autocomplete="shipping tel"></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "given-name", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "family-name", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "street-address", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level2", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "country", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "email", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "tel", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "organization", "element": null},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "street-address": "",
@@ -170,6 +138,7 @@ const TESTCASES = [
   {
     description: "Form with autocomplete select elements and matching option values",
     document: `<form>
+               <input id="given-name" autocomplete="shipping given-name">
                <select id="country" autocomplete="shipping country">
                  <option value=""></option>
                  <option value="US">United States</option>
@@ -180,10 +149,7 @@ const TESTCASES = [
                  <option value="WA">Washington</option>
                </select>
                </form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "country", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -197,6 +163,7 @@ const TESTCASES = [
   {
     description: "Form with autocomplete select elements and matching option texts",
     document: `<form>
+               <input id="given-name" autocomplete="shipping given-name">
                <select id="country" autocomplete="shipping country">
                  <option value=""></option>
                  <option value="US">United States</option>
@@ -207,10 +174,7 @@ const TESTCASES = [
                  <option value="WA">Washington</option>
                </select>
                </form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "country", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "United States",
@@ -221,12 +185,93 @@ const TESTCASES = [
       "state": "CA",
     },
   },
+  {
+    description: "Fill address fields in a form with addr and CC fields.",
+    document: `<form>
+               <input id="given-name" autocomplete="given-name">
+               <input id="family-name" autocomplete="family-name">
+               <input id="street-addr" autocomplete="street-address">
+               <input id="city" autocomplete="address-level2">
+               <select id="country" autocomplete="country">
+                 <option/>
+                 <option value="US">United States</option>
+               </select>
+               <input id="email" autocomplete="email">
+               <input id="tel" autocomplete="tel">
+               <input id="cc-number" autocomplete="cc-number">
+               <input id="cc-name" autocomplete="cc-name">
+               <input id="cc-exp-month" autocomplete="cc-exp-month">
+               <input id="cc-exp-year" autocomplete="cc-exp-year">
+               </form>`,
+    focusedInputId: "given-name",
+    profileData: {
+      "guid": "123",
+      "street-address": "2 Harrison St line2",
+      "-moz-street-address-one-line": "2 Harrison St line2",
+      "address-level2": "San Francisco",
+      "country": "US",
+      "email": "foo@mozilla.com",
+      "tel": "1234567",
+    },
+    expectedResult: {
+      "street-addr": "2 Harrison St line2",
+      "city": "San Francisco",
+      "country": "US",
+      "email": "foo@mozilla.com",
+      "tel": "1234567",
+      "cc-number": "",
+      "cc-name": "",
+      "cc-exp-month": "",
+      "cc-exp-year": "",
+    },
+  },
+  {
+    description: "Fill credit card fields in a form with addr and CC fields.",
+    document: `<form>
+               <input id="given-name" autocomplete="given-name">
+               <input id="family-name" autocomplete="family-name">
+               <input id="street-addr" autocomplete="street-address">
+               <input id="city" autocomplete="address-level2">
+               <select id="country" autocomplete="country">
+                 <option/>
+                 <option value="US">United States</option>
+               </select>
+               <input id="email" autocomplete="email">
+               <input id="tel" autocomplete="tel">
+               <input id="cc-number" autocomplete="cc-number">
+               <input id="cc-name" autocomplete="cc-name">
+               <input id="cc-exp-month" autocomplete="cc-exp-month">
+               <input id="cc-exp-year" autocomplete="cc-exp-year">
+               </form>`,
+    focusedInputId: "cc-number",
+    profileData: {
+      "guid": "123",
+      "cc-number": "1234000056780000",
+      "cc-name": "test name",
+      "cc-exp-month": "06",
+      "cc-exp-year": "25",
+    },
+    expectedResult: {
+      "street-addr": "",
+      "city": "",
+      "country": "",
+      "email": "",
+      "tel": "",
+      "cc-number": "1234000056780000",
+      "cc-name": "test name",
+      "cc-exp-month": "06",
+      "cc-exp-year": "25",
+    },
+  },
+
+
 ];
 
 const TESTCASES_INPUT_UNCHANGED = [
   {
     description: "Form with autocomplete select elements; with default and no matching options",
     document: `<form>
+               <input id="given-name" autocomplete="shipping given-name">
                <select id="country" autocomplete="shipping country">
                  <option value="US">United States</option>
                </select>
@@ -236,10 +281,7 @@ const TESTCASES_INPUT_UNCHANGED = [
                  <option value="WA">Washington</option>
                </select>
                </form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "country", "element": {}},
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -256,13 +298,14 @@ const TESTCASES_FILL_SELECT = [
   // US States
   {
     description: "Form with US states select elements",
-    document: `<form><select id="state" autocomplete="shipping address-level1">
+    document: `<form>
+               <input id="given-name" autocomplete="shipping given-name">
+               <input id="family-name" autocomplete="shipping family-name">
+               <select id="state" autocomplete="shipping address-level1">
                  <option value=""></option>
                  <option value="CA">California</option>
                </select></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -274,13 +317,14 @@ const TESTCASES_FILL_SELECT = [
   },
   {
     description: "Form with US states select elements; with lower case state key",
-    document: `<form><select id="state" autocomplete="shipping address-level1">
+    document: `<form>
+               <input id="given-name" autocomplete="shipping given-name">
+               <input id="family-name" autocomplete="shipping family-name">
+               <select id="state" autocomplete="shipping address-level1">
                  <option value=""></option>
                  <option value="ca">ca</option>
                </select></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -292,13 +336,14 @@ const TESTCASES_FILL_SELECT = [
   },
   {
     description: "Form with US states select elements; with state name and extra spaces",
-    document: `<form><select id="state" autocomplete="shipping address-level1">
+    document: `<form>
+               <input id="given-name" autocomplete="shipping given-name">
+               <input id="family-name" autocomplete="shipping family-name">
+               <select id="state" autocomplete="shipping address-level1">
                  <option value=""></option>
                  <option value="CA">CA</option>
                </select></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -310,13 +355,14 @@ const TESTCASES_FILL_SELECT = [
   },
   {
     description: "Form with US states select elements; with partial state key match",
-    document: `<form><select id="state" autocomplete="shipping address-level1">
+    document: `<form>
+               <input id="given-name" autocomplete="shipping given-name">
+               <input id="family-name" autocomplete="shipping family-name">
+               <select id="state" autocomplete="shipping address-level1">
                  <option value=""></option>
                  <option value="US-WA">WA-Washington</option>
                </select></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -330,13 +376,14 @@ const TESTCASES_FILL_SELECT = [
   // Country
   {
     description: "Form with country select elements",
-    document: `<form><select id="country" autocomplete="country">
+    document: `<form>
+               <input id="given-name" autocomplete="given-name">
+               <input id="family-name" autocomplete="family-name">
+               <select id="country" autocomplete="country">
                  <option value=""></option>
                  <option value="US">United States</option>
                </select></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -347,13 +394,14 @@ const TESTCASES_FILL_SELECT = [
   },
   {
     description: "Form with country select elements; with lower case key",
-    document: `<form><select id="country" autocomplete="country">
+    document: `<form>
+               <input id="given-name" autocomplete="given-name">
+               <input id="family-name" autocomplete="family-name">
+               <select id="country" autocomplete="country">
                  <option value=""></option>
                  <option value="us">us</option>
                </select></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -364,13 +412,14 @@ const TESTCASES_FILL_SELECT = [
   },
   {
     description: "Form with country select elements; with alternative name 1",
-    document: `<form><select id="country" autocomplete="country">
+    document: `<form>
+               <input id="given-name" autocomplete="given-name">
+               <input id="family-name" autocomplete="family-name">
+               <select id="country" autocomplete="country">
                  <option value=""></option>
                  <option value="XX">United States</option>
                </select></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -381,13 +430,14 @@ const TESTCASES_FILL_SELECT = [
   },
   {
     description: "Form with country select elements; with alternative name 2",
-    document: `<form><select id="country" autocomplete="country">
+    document: `<form>
+               <input id="given-name" autocomplete="given-name">
+               <input id="family-name" autocomplete="family-name">
+               <select id="country" autocomplete="country">
                  <option value=""></option>
                  <option value="XX">America</option>
                </select></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -398,13 +448,14 @@ const TESTCASES_FILL_SELECT = [
   },
   {
     description: "Form with country select elements; with partial matching value",
-    document: `<form><select id="country" autocomplete="country">
+    document: `<form>
+               <input id="given-name" autocomplete="given-name">
+               <input id="family-name" autocomplete="family-name">
+               <select id="country" autocomplete="country">
                  <option value=""></option>
                  <option value="XX">Ship to America</option>
                </select></form>`,
-    addressFieldDetails: [
-      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
-    ],
+    focusedInputId: "given-name",
     profileData: {
       "guid": "123",
       "country": "US",
@@ -420,7 +471,12 @@ function do_test(testcases, testFn) {
     (function() {
       let testcase = tc;
       add_task(async function() {
-        do_print("Starting testcase: " + testcase.description);
+        info("Starting testcase: " + testcase.description);
+        let ccNumber = testcase.profileData["cc-number"];
+        if (ccNumber) {
+          testcase.profileData["cc-number-encrypted"] = await MasterPassword.encrypt(ccNumber);
+          delete testcase.profileData["cc-number"];
+        }
 
         let doc = MockDocument.createTestDocument("http://localhost:8080/test/",
                                                   testcase.document);
@@ -428,11 +484,31 @@ function do_test(testcases, testFn) {
         let formLike = FormLikeFactory.createFromForm(form);
         let handler = new FormAutofillHandler(formLike);
         let promises = [];
+        // Replace the interal decrypt method with MasterPassword API
+        let decryptHelper = async (cipherText, reauth) => {
+          let string;
+          try {
+            string = await MasterPassword.decrypt(cipherText, reauth);
+          } catch (e) {
+            if (e.result != Cr.NS_ERROR_ABORT) {
+              throw e;
+            }
+            info("User canceled master password entry");
+          }
+          return string;
+        };
 
-        handler.fieldDetails = handler.address.fieldDetails = testcase.addressFieldDetails;
-        handler.address.fieldDetails.forEach((field, index) => {
-          let element = doc.querySelectorAll("input, select")[index];
-          field.elementWeakRef = Cu.getWeakReference(element);
+        handler.collectFormFields();
+
+        let focusedInput = doc.getElementById(testcase.focusedInputId);
+        handler.focusedInput = focusedInput;
+
+        for (let section of handler.sections) {
+          section._decrypt = decryptHelper;
+        }
+
+        handler.activeSection.fieldDetails.forEach(field => {
+          let element = field.elementWeakRef.get();
           if (!testcase.profileData[field.fieldName]) {
             // Avoid waiting for `change` event of a input with a blank value to
             // be filled.
@@ -441,9 +517,9 @@ function do_test(testcases, testFn) {
           promises.push(...testFn(testcase, element));
         });
 
-        let [adaptedProfile] = handler.getAdaptedProfiles([testcase.profileData]);
-        handler.autofillFormFields(adaptedProfile);
-        Assert.equal(handler.address.filledRecordGUID, testcase.profileData.guid,
+        let [adaptedProfile] = handler.activeSection.getAdaptedProfiles([testcase.profileData]);
+        await handler.autofillFormFields(adaptedProfile, focusedInput);
+        Assert.equal(handler.activeSection.filledRecordGUID, testcase.profileData.guid,
                      "Check if filledRecordGUID is set correctly");
         await Promise.all(promises);
       });

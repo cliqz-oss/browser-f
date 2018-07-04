@@ -117,7 +117,7 @@ nsHashPropertyBagBase::GetEnumerator(nsISimpleEnumerator** aResult)
     const nsAString& key = iter.Key();
     nsIVariant* data = iter.UserData();
     nsSimpleProperty* sprop = new nsSimpleProperty(key, data);
-    propertyArray->AppendElement(sprop, false);
+    propertyArray->AppendElement(sprop);
   }
 
   return NS_NewArrayEnumerator(aResult, propertyArray);
@@ -270,7 +270,7 @@ public:
   {}
 
   NS_IMETHODIMP
-  Run()
+  Run() override
   {
     MOZ_ASSERT(NS_IsMainThread());
     HashtableType table(mozilla::Move(mPropertyHash));

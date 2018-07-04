@@ -33,7 +33,7 @@ class EventListenerChange final : public nsIEventListenerChange
 public:
   explicit EventListenerChange(dom::EventTarget* aTarget);
 
-  void AddChangedListenerName(nsIAtom* aEventName);
+  void AddChangedListenerName(nsAtom* aEventName);
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIEVENTLISTENERCHANGE
@@ -41,40 +41,31 @@ public:
 protected:
   virtual ~EventListenerChange();
   nsCOMPtr<dom::EventTarget> mTarget;
-  nsCOMPtr<nsIMutableArray> mChangedListenerNames;
-
+  nsTArray<RefPtr<nsAtom>> mChangedListenerNames;
 };
 
 class EventListenerInfo final : public nsIEventListenerInfo
 {
 public:
   EventListenerInfo(const nsAString& aType,
-                    already_AddRefed<nsIDOMEventListener> aListener,
+                    JS::Handle<JSObject*> aScriptedListener,
                     bool aCapturing,
                     bool aAllowsUntrusted,
-                    bool aInSystemEventGroup)
-    : mType(aType)
-    , mListener(aListener)
-    , mCapturing(aCapturing)
-    , mAllowsUntrusted(aAllowsUntrusted)
-    , mInSystemEventGroup(aInSystemEventGroup)
-  {
-  }
+                    bool aInSystemEventGroup);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_CLASS(EventListenerInfo)
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(EventListenerInfo)
   NS_DECL_NSIEVENTLISTENERINFO
 
 protected:
-  virtual ~EventListenerInfo() {}
+ virtual ~EventListenerInfo();
 
   bool GetJSVal(JSContext* aCx,
                 Maybe<JSAutoCompartment>& aAc,
                 JS::MutableHandle<JS::Value> aJSVal);
 
   nsString mType;
-  // nsReftPtr because that is what nsListenerStruct uses too.
-  RefPtr<nsIDOMEventListener> mListener;
+  JS::Heap<JSObject*> mScriptedListener;  // May be null.
   bool mCapturing;
   bool mAllowsUntrusted;
   bool mInSystemEventGroup;
@@ -89,7 +80,7 @@ public:
   NS_DECL_NSIEVENTLISTENERSERVICE
 
   static void NotifyAboutMainThreadListenerChange(dom::EventTarget* aTarget,
-                                                  nsIAtom* aName)
+                                                  nsAtom* aName)
   {
     if (sInstance) {
       sInstance->NotifyAboutMainThreadListenerChangeInternal(aTarget, aName);
@@ -99,7 +90,7 @@ public:
   void NotifyPendingChanges();
 private:
   void NotifyAboutMainThreadListenerChangeInternal(dom::EventTarget* aTarget,
-                                                   nsIAtom* aName);
+                                                   nsAtom* aName);
   nsTObserverArray<nsCOMPtr<nsIListenerChangeListener>> mChangeListeners;
   nsCOMPtr<nsIMutableArray> mPendingListenerChanges;
   nsDataHashtable<nsISupportsHashKey, RefPtr<EventListenerChange>> mPendingListenerChangesSet;

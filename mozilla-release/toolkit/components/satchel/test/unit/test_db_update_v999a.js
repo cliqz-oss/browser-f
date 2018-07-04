@@ -11,24 +11,13 @@
  * Part B tests this when the columns do *not* match, so the DB is reset.
  */
 
-var iter = tests();
-
-function run_test() {
-  do_test_pending();
-  iter.next();
-}
-
-function next_test() {
-  iter.next();
-}
-
-function* tests() {
+add_task(async function() {
   let testnum = 0;
 
   try {
     // ===== test init =====
     let testfile = do_get_file("formhistory_v999a.sqlite");
-    let profileDir = dirSvc.get("ProfD", Ci.nsIFile);
+    let profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile);
 
     // Cleanup from any previous tests or failures.
     let destFile = profileDir.clone();
@@ -38,35 +27,30 @@ function* tests() {
     }
 
     testfile.copyTo(profileDir, "formhistory.sqlite");
-    do_check_eq(999, getDBVersion(testfile));
-
-    let checkZero = function(num) { do_check_eq(num, 0); next_test(); };
-    let checkOne = function(num) { do_check_eq(num, 1); next_test(); };
+    Assert.equal(999, getDBVersion(testfile));
 
     // ===== 1 =====
     testnum++;
     // Check for expected contents.
-    yield countEntries(null, null, function(num) { do_check_true(num > 0); next_test(); });
-    yield countEntries("name-A", "value-A", checkOne);
-    yield countEntries("name-B", "value-B", checkOne);
-    yield countEntries("name-C", "value-C1", checkOne);
-    yield countEntries("name-C", "value-C2", checkOne);
-    yield countEntries("name-E", "value-E", checkOne);
+    Assert.ok(await promiseCountEntries(null, null) > 0);
+    Assert.equal(1, await promiseCountEntries("name-A", "value-A"));
+    Assert.equal(1, await promiseCountEntries("name-B", "value-B"));
+    Assert.equal(1, await promiseCountEntries("name-C", "value-C1"));
+    Assert.equal(1, await promiseCountEntries("name-C", "value-C2"));
+    Assert.equal(1, await promiseCountEntries("name-E", "value-E"));
 
     // check for downgraded schema.
-    do_check_eq(CURRENT_SCHEMA, FormHistory.schemaVersion);
+    Assert.equal(CURRENT_SCHEMA, getDBVersion(destFile));
 
     // ===== 2 =====
     testnum++;
     // Exercise adding and removing a name/value pair
-    yield countEntries("name-D", "value-D", checkZero);
-    yield updateEntry("add", "name-D", "value-D", next_test);
-    yield countEntries("name-D", "value-D", checkOne);
-    yield updateEntry("remove", "name-D", "value-D", next_test);
-    yield countEntries("name-D", "value-D", checkZero);
+    Assert.equal(0, await promiseCountEntries("name-D", "value-D"));
+    await promiseUpdateEntry("add", "name-D", "value-D");
+    Assert.equal(1, await promiseCountEntries("name-D", "value-D"));
+    await promiseUpdateEntry("remove", "name-D", "value-D");
+    Assert.equal(0, await promiseCountEntries("name-D", "value-D"));
   } catch (e) {
     throw new Error(`FAILED in test #${testnum} -- ${e}`);
   }
-
-  do_test_finished();
-}
+});

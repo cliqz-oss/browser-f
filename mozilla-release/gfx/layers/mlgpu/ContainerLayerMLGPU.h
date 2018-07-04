@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef mozilla_gfx_layers_mlgpu_ContainerLayerMLGPU_h
 #define mozilla_gfx_layers_mlgpu_ContainerLayerMLGPU_h
@@ -13,6 +14,7 @@ namespace mozilla {
 namespace layers {
 
 class MLGDevice;
+class RenderViewMLGPU;
 
 class ContainerLayerMLGPU final : public ContainerLayer
                                 , public LayerMLGPU
@@ -30,8 +32,10 @@ public:
   void ComputeEffectiveTransforms(const gfx::Matrix4x4& aTransformToSurface) override {
     DefaultComputeEffectiveTransforms(aTransformToSurface);
   }
-  void SetInvalidCompositeRect(const gfx::IntRect &aRect) override;
+  void SetInvalidCompositeRect(const gfx::IntRect* aRect) override;
   void ClearCachedResources() override;
+
+  const LayerIntRegion& GetShadowVisibleRegion() override;
 
   RefPtr<MLGRenderTarget> UpdateRenderTarget(
     MLGDevice* aDevice,
@@ -53,6 +57,17 @@ public:
     mInvalidRect.SetEmpty();
   }
   bool IsContentOpaque() override;
+  bool NeedsSurfaceCopy() const {
+    return mSurfaceCopyNeeded;
+  }
+
+  RenderViewMLGPU* GetRenderView() const {
+    return mView;
+  }
+  void SetRenderView(RenderViewMLGPU* aView) {
+    MOZ_ASSERT(!mView);
+    mView = aView;
+  }
 
 protected:
   bool OnPrepareToRender(FrameBuilder* aBuilder) override;
@@ -71,6 +86,11 @@ private:
   // is in layer coordinates.
   gfx::IntRect mInvalidRect;
   bool mInvalidateEntireSurface;
+  bool mSurfaceCopyNeeded;
+
+  // This is only valid for intermediate surfaces while an instance of
+  // FrameBuilder is live.
+  RenderViewMLGPU* mView;
 };
 
 } // namespace layers

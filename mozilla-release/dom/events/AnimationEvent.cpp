@@ -26,13 +26,6 @@ AnimationEvent::AnimationEvent(EventTarget* aOwner,
   }
 }
 
-NS_INTERFACE_MAP_BEGIN(AnimationEvent)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMAnimationEvent)
-NS_INTERFACE_MAP_END_INHERITING(Event)
-
-NS_IMPL_ADDREF_INHERITED(AnimationEvent, Event)
-NS_IMPL_RELEASE_INHERITED(AnimationEvent, Event)
-
 //static
 already_AddRefed<AnimationEvent>
 AnimationEvent::Constructor(const GlobalObject& aGlobal,
@@ -56,19 +49,12 @@ AnimationEvent::Constructor(const GlobalObject& aGlobal,
   return e.forget();
 }
 
-NS_IMETHODIMP
+void
 AnimationEvent::GetAnimationName(nsAString& aAnimationName)
 {
   aAnimationName = mEvent->AsAnimationEvent()->mAnimationName;
-  return NS_OK;
 }
 
-NS_IMETHODIMP
-AnimationEvent::GetElapsedTime(float* aElapsedTime)
-{
-  *aElapsedTime = ElapsedTime();
-  return NS_OK;
-}
 
 float
 AnimationEvent::ElapsedTime()
@@ -76,11 +62,10 @@ AnimationEvent::ElapsedTime()
   return mEvent->AsAnimationEvent()->mElapsedTime;
 }
 
-NS_IMETHODIMP
+void
 AnimationEvent::GetPseudoElement(nsAString& aPseudoElement)
 {
   aPseudoElement = mEvent->AsAnimationEvent()->mPseudoElement;
-  return NS_OK;
 }
 
 } // namespace dom

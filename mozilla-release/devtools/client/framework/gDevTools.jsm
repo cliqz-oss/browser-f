@@ -15,10 +15,6 @@
 
 this.EXPORTED_SYMBOLS = [ "gDevTools", "gDevToolsBrowser" ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-const { loader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
-
 /**
  * Do not directly map to the commonjs modules so that callsites of
  * gDevTools.jsm do not have to do anything to access to the very last version
@@ -27,7 +23,7 @@ const { loader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
  */
 Object.defineProperty(this, "require", {
   get() {
-    let { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+    let { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
     return require;
   }
 });
@@ -49,10 +45,6 @@ Object.defineProperty(this, "browser", {
  * same lifetime as the browser.
  */
 let gDevToolsMethods = [
-  // Used by the reload addon.
-  // Force reloading dependencies if the loader happens to have reloaded.
-  "reload",
-
   // Used by: - b2g desktop.js
   //          - nsContextMenu
   //          - /devtools code
@@ -99,18 +91,12 @@ this.gDevTools = {
   get _tools() {
     return devtools._tools;
   },
-  *[Symbol.iterator ]() {
-    for (let toolbox of this._toolboxes) {
-      yield toolbox;
-    }
-  }
 };
 gDevToolsMethods.forEach(name => {
   this.gDevTools[name] = (...args) => {
     return devtools[name].apply(devtools, args);
   };
 });
-
 
 /**
  * gDevToolsBrowser exposes functions to connect the gDevTools instance with a
@@ -139,7 +125,7 @@ let gDevToolsBrowserMethods = [
   // Used by browser.js
   "registerBrowserWindow",
 
-  // Used by reload addon
+  // Used by devtools-browser.js for the Toggle Toolbox status
   "hasToolboxOpened",
 
   // Used by browser.js

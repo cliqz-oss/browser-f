@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,11 +11,10 @@
 
 #include "gfxContext.h"
 #include "nsContentCreatorFunctions.h"
-#include "nsContentList.h"
 #include "nsContentUtils.h"
 #include "nsCSSPseudoElements.h"
 #include "nsCSSRendering.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsNameSpaceManager.h"
@@ -24,8 +24,7 @@
 #include "nsPresContext.h"
 #include "nsNodeInfoManager.h"
 #include "mozilla/dom/Element.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
+#include "mozilla/ServoStyleSet.h"
 #include "nsThemeConstants.h"
 
 #ifdef ACCESSIBILITY
@@ -41,23 +40,18 @@ using namespace mozilla::image;
 NS_IMPL_ISUPPORTS(nsRangeFrame::DummyTouchListener, nsIDOMEventListener)
 
 nsIFrame*
-NS_NewRangeFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewRangeFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsRangeFrame(aContext);
+  return new (aPresShell) nsRangeFrame(aStyle);
 }
 
-nsRangeFrame::nsRangeFrame(nsStyleContext* aContext)
-  : nsContainerFrame(aContext, kClassID)
+nsRangeFrame::nsRangeFrame(ComputedStyle* aStyle)
+  : nsContainerFrame(aStyle, kClassID)
 {
 }
 
 nsRangeFrame::~nsRangeFrame()
 {
-#ifdef DEBUG
-  if (mOuterFocusStyle) {
-    mOuterFocusStyle->FrameRelease();
-  }
-#endif
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsRangeFrame)
@@ -84,18 +78,18 @@ nsRangeFrame::Init(nsIContent*       aContent,
   }
   aContent->AddEventListener(NS_LITERAL_STRING("touchstart"), mDummyTouchListener, false);
 
-  StyleSetHandle styleSet = PresContext()->StyleSet();
+  ServoStyleSet* styleSet = PresContext()->StyleSet();
 
   mOuterFocusStyle =
     styleSet->ProbePseudoElementStyle(aContent->AsElement(),
                                       CSSPseudoElementType::mozFocusOuter,
-                                      StyleContext());
+                                      Style());
 
   return nsContainerFrame::Init(aContent, aParent, aPrevInFlow);
 }
 
 void
-nsRangeFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsRangeFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   NS_ASSERTION(!GetPrevContinuation() && !GetNextContinuation(),
                "nsRangeFrame should not have continuations; if it does we "
@@ -103,11 +97,11 @@ nsRangeFrame::DestroyFrom(nsIFrame* aDestructRoot)
 
   mContent->RemoveEventListener(NS_LITERAL_STRING("touchstart"), mDummyTouchListener, false);
 
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  nsContentUtils::DestroyAnonymousContent(&mTrackDiv);
-  nsContentUtils::DestroyAnonymousContent(&mProgressDiv);
-  nsContentUtils::DestroyAnonymousContent(&mThumbDiv);
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  aPostDestroyData.AddAnonymousContent(mTrackDiv.forget());
+  aPostDestroyData.AddAnonymousContent(mProgressDiv.forget());
+  aPostDestroyData.AddAnonymousContent(mThumbDiv.forget());
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 nsresult
@@ -186,8 +180,9 @@ public:
   nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override;
   void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
                                  const nsDisplayItemGeometry* aGeometry,
-                                 nsRegion *aInvalidRegion) override;
-  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) override;
+                                 nsRegion *aInvalidRegion) const override;
+  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder,
+                           bool* aSnap) const override;
   virtual void Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) override;
   NS_DISPLAY_DECL_NAME("RangeFocusRing", TYPE_RANGE_FOCUS_RING)
 };
@@ -199,10 +194,9 @@ nsDisplayRangeFocusRing::AllocateGeometry(nsDisplayListBuilder* aBuilder)
 }
 
 void
-nsDisplayRangeFocusRing::ComputeInvalidationRegion(
-  nsDisplayListBuilder* aBuilder,
-  const nsDisplayItemGeometry* aGeometry,
-  nsRegion* aInvalidRegion)
+nsDisplayRangeFocusRing::ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
+                                                   const nsDisplayItemGeometry* aGeometry,
+                                                   nsRegion* aInvalidRegion) const
 {
   auto geometry =
     static_cast<const nsDisplayItemGenericImageGeometry*>(aGeometry);
@@ -217,17 +211,18 @@ nsDisplayRangeFocusRing::ComputeInvalidationRegion(
 }
 
 nsRect
-nsDisplayRangeFocusRing::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap)
+nsDisplayRangeFocusRing::GetBounds(nsDisplayListBuilder* aBuilder,
+                                   bool* aSnap) const
 {
   *aSnap = false;
   nsRect rect(ToReferenceFrame(), Frame()->GetSize());
 
   // We want to paint as if specifying a border for ::-moz-focus-outer
   // specifies an outline for our frame, so inflate by the border widths:
-  nsStyleContext* styleContext =
+  ComputedStyle* computedStyle =
     static_cast<nsRangeFrame*>(mFrame)->mOuterFocusStyle;
-  MOZ_ASSERT(styleContext, "We only exist if mOuterFocusStyle is non-null");
-  rect.Inflate(styleContext->StyleBorder()->GetComputedBorder());
+  MOZ_ASSERT(computedStyle, "We only exist if mOuterFocusStyle is non-null");
+  rect.Inflate(computedStyle->StyleBorder()->GetComputedBorder());
 
   return rect;
 }
@@ -237,25 +232,24 @@ nsDisplayRangeFocusRing::Paint(nsDisplayListBuilder* aBuilder,
                                gfxContext* aCtx)
 {
   bool unused;
-  nsStyleContext* styleContext =
+  ComputedStyle* computedStyle =
     static_cast<nsRangeFrame*>(mFrame)->mOuterFocusStyle;
-  MOZ_ASSERT(styleContext, "We only exist if mOuterFocusStyle is non-null");
+  MOZ_ASSERT(computedStyle, "We only exist if mOuterFocusStyle is non-null");
 
   PaintBorderFlags flags = aBuilder->ShouldSyncDecodeImages()
                          ? PaintBorderFlags::SYNC_DECODE_IMAGES
                          : PaintBorderFlags();
 
-  DrawResult result =
+  ImgDrawResult result =
     nsCSSRendering::PaintBorder(mFrame->PresContext(), *aCtx, mFrame,
                                 mVisibleRect, GetBounds(aBuilder, &unused),
-                                styleContext, flags);
+                                computedStyle, flags);
 
   nsDisplayItemGenericImageGeometry::UpdateDrawResult(this, result);
 }
 
 void
 nsRangeFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                               const nsRect&           aDirtyRect,
                                const nsDisplayListSet& aLists)
 {
   const nsStyleDisplay* disp = StyleDisplay();
@@ -271,10 +265,10 @@ nsRangeFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     nsIFrame* thumb = mThumbDiv->GetPrimaryFrame();
     if (thumb) {
       nsDisplayListSet set(aLists, aLists.Content());
-      BuildDisplayListForChild(aBuilder, thumb, aDirtyRect, set, DISPLAY_CHILD_INLINE);
+      BuildDisplayListForChild(aBuilder, thumb, set, DISPLAY_CHILD_INLINE);
     }
   } else {
-    BuildDisplayListForInline(aBuilder, aDirtyRect, aLists);
+    BuildDisplayListForInline(aBuilder, aLists);
   }
 
   // Draw a focus outline if appropriate:
@@ -304,8 +298,8 @@ nsRangeFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     return; // the native theme displays its own visual indication of focus
   }
 
-  aLists.Content()->AppendNewToTop(
-    new (aBuilder) nsDisplayRangeFocusRing(aBuilder, this));
+  aLists.Content()->AppendToTop(
+    MakeDisplayItem<nsDisplayRangeFocusRing>(aBuilder, this));
 }
 
 void
@@ -317,6 +311,7 @@ nsRangeFrame::Reflow(nsPresContext*           aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsRangeFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   NS_ASSERTION(mTrackDiv, "::-moz-range-track div must exist!");
   NS_ASSERTION(mProgressDiv, "::-moz-range-progress div must exist!");
@@ -326,7 +321,7 @@ nsRangeFrame::Reflow(nsPresContext*           aPresContext,
                "need to call RegUnregAccessKey only for the first.");
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
 
   WritingMode wm = aReflowInput.GetWritingMode();
@@ -363,7 +358,7 @@ nsRangeFrame::Reflow(nsPresContext*           aPresContext,
 
   FinishAndStoreOverflow(&aDesiredSize);
 
-  aStatus.Reset();
+  MOZ_ASSERT(aStatus.IsEmpty(), "This type of frame can't be split.");
 
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
@@ -487,7 +482,7 @@ double
 nsRangeFrame::GetValueAsFractionOfRange()
 {
   MOZ_ASSERT(mContent->IsHTMLElement(nsGkAtoms::input), "bad cast");
-  dom::HTMLInputElement* input = static_cast<dom::HTMLInputElement*>(mContent);
+  dom::HTMLInputElement* input = static_cast<dom::HTMLInputElement*>(GetContent());
 
   MOZ_ASSERT(input->ControlType() == NS_FORM_INPUT_RANGE);
 
@@ -516,7 +511,7 @@ nsRangeFrame::GetValueAtEventPoint(WidgetGUIEvent* aEvent)
              "Unexpected event type - aEvent->mRefPoint may be meaningless");
 
   MOZ_ASSERT(mContent->IsHTMLElement(nsGkAtoms::input), "bad cast");
-  dom::HTMLInputElement* input = static_cast<dom::HTMLInputElement*>(mContent);
+  dom::HTMLInputElement* input = static_cast<dom::HTMLInputElement*>(GetContent());
 
   MOZ_ASSERT(input->ControlType() == NS_FORM_INPUT_RANGE);
 
@@ -542,7 +537,7 @@ nsRangeFrame::GetValueAtEventPoint(WidgetGUIEvent* aEvent)
 
   if (point == nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE)) {
     // We don't want to change the current value for this error state.
-    return static_cast<dom::HTMLInputElement*>(mContent)->GetValueAsDecimal();
+    return static_cast<dom::HTMLInputElement*>(GetContent())->GetValueAsDecimal();
   }
 
   nsRect rangeContentRect = GetContentRectRelativeToSelf();
@@ -629,7 +624,7 @@ nsRangeFrame::UpdateForValueChange()
 #ifdef ACCESSIBILITY
   nsAccessibilityService* accService = nsIPresShell::AccService();
   if (accService) {
-    accService->RangeValueChanged(PresContext()->PresShell(), mContent);
+    accService->RangeValueChanged(PresShell(), mContent);
   }
 #endif
 
@@ -728,7 +723,7 @@ nsRangeFrame::DoUpdateRangeProgressFrame(nsIFrame* aRangeProgressFrame,
 
 nsresult
 nsRangeFrame::AttributeChanged(int32_t  aNameSpaceID,
-                               nsIAtom* aAttribute,
+                               nsAtom* aAttribute,
                                int32_t  aModType)
 {
   NS_ASSERTION(mTrackDiv, "The track div must exist!");
@@ -751,7 +746,7 @@ nsRangeFrame::AttributeChanged(int32_t  aNameSpaceID,
       // UpdateForValueChange() anyway.
       MOZ_ASSERT(mContent->IsHTMLElement(nsGkAtoms::input), "bad cast");
       bool typeIsRange =
-        static_cast<dom::HTMLInputElement*>(mContent)->ControlType() ==
+        static_cast<dom::HTMLInputElement*>(GetContent())->ControlType() ==
                            NS_FORM_INPUT_RANGE;
       // If script changed the <input>'s type before setting these attributes
       // then we don't need to do anything since we are going to be reframed.
@@ -759,8 +754,8 @@ nsRangeFrame::AttributeChanged(int32_t  aNameSpaceID,
         UpdateForValueChange();
       }
     } else if (aAttribute == nsGkAtoms::orient) {
-      PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eResize,
-                                                   NS_FRAME_IS_DIRTY);
+      PresShell()->FrameNeedsReflow(this, nsIPresShell::eResize,
+                                    NS_FRAME_IS_DIRTY);
     }
   }
 
@@ -838,7 +833,7 @@ bool
 nsRangeFrame::IsHorizontal() const
 {
   dom::HTMLInputElement* element =
-    static_cast<dom::HTMLInputElement*>(mContent);
+    static_cast<dom::HTMLInputElement*>(GetContent());
   return element->AttrValueIs(kNameSpaceID_None, nsGkAtoms::orient,
                               nsGkAtoms::horizontal, eCaseMatters) ||
          (!element->AttrValueIs(kNameSpaceID_None, nsGkAtoms::orient,
@@ -851,19 +846,19 @@ nsRangeFrame::IsHorizontal() const
 double
 nsRangeFrame::GetMin() const
 {
-  return static_cast<dom::HTMLInputElement*>(mContent)->GetMinimum().toDouble();
+  return static_cast<dom::HTMLInputElement*>(GetContent())->GetMinimum().toDouble();
 }
 
 double
 nsRangeFrame::GetMax() const
 {
-  return static_cast<dom::HTMLInputElement*>(mContent)->GetMaximum().toDouble();
+  return static_cast<dom::HTMLInputElement*>(GetContent())->GetMaximum().toDouble();
 }
 
 double
 nsRangeFrame::GetValue() const
 {
-  return static_cast<dom::HTMLInputElement*>(mContent)->GetValueAsDecimal().toDouble();
+  return static_cast<dom::HTMLInputElement*>(GetContent())->GetValueAsDecimal().toDouble();
 }
 
 #define STYLES_DISABLING_NATIVE_THEMING \
@@ -911,10 +906,10 @@ nsRangeFrame::GetPseudoElement(CSSPseudoElementType aType)
   return nsContainerFrame::GetPseudoElement(aType);
 }
 
-nsStyleContext*
-nsRangeFrame::GetAdditionalStyleContext(int32_t aIndex) const
+ComputedStyle*
+nsRangeFrame::GetAdditionalComputedStyle(int32_t aIndex) const
 {
-  // We only implement this so that SetAdditionalStyleContext will be
+  // We only implement this so that SetAdditionalComputedStyle will be
   // called if style changes that would change the -moz-focus-outer
   // pseudo-element have occurred.
   if (aIndex != 0) {
@@ -924,24 +919,12 @@ nsRangeFrame::GetAdditionalStyleContext(int32_t aIndex) const
 }
 
 void
-nsRangeFrame::SetAdditionalStyleContext(int32_t aIndex,
-                                        nsStyleContext* aStyleContext)
+nsRangeFrame::SetAdditionalComputedStyle(int32_t aIndex,
+                                        ComputedStyle* aComputedStyle)
 {
   MOZ_ASSERT(aIndex == 0,
-             "GetAdditionalStyleContext is handling other indexes?");
-
-#ifdef DEBUG
-  if (mOuterFocusStyle) {
-    mOuterFocusStyle->FrameRelease();
-  }
-#endif
+             "GetAdditionalComputedStyle is handling other indexes?");
 
   // The -moz-focus-outer pseudo-element's style has changed.
-  mOuterFocusStyle = aStyleContext;
-
-#ifdef DEBUG
-  if (mOuterFocusStyle) {
-    mOuterFocusStyle->FrameAddRef();
-  }
-#endif
+  mOuterFocusStyle = aComputedStyle;
 }

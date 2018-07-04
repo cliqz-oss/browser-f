@@ -11,6 +11,7 @@
 #include "mozilla/ErrorResult.h"
 #include "mozilla/OwningNonNull.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/Preferences.h"
 
 #include "mozilla/dom/AnalyserNode.h"
 #include "mozilla/dom/AnalyserNodeBinding.h"
@@ -41,6 +42,7 @@
 #include "AudioChannelService.h"
 #include "AudioDestinationNode.h"
 #include "AudioListener.h"
+#include "AudioNodeStream.h"
 #include "AudioStream.h"
 #include "BiquadFilterNode.h"
 #include "ChannelMergerNode.h"
@@ -113,13 +115,13 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_ADDREF_INHERITED(AudioContext, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(AudioContext, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(AudioContext)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(AudioContext)
   NS_INTERFACE_MAP_ENTRY(nsIMemoryReporter)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 static float GetSampleRateForAudioContext(bool aIsOffline, float aSampleRate)
 {
-  if (aIsOffline) {
+  if (aIsOffline || aSampleRate != 0.0) {
     return aSampleRate;
   } else {
     return static_cast<float>(CubebUtils::PreferredSampleRate());
@@ -128,7 +130,6 @@ static float GetSampleRateForAudioContext(bool aIsOffline, float aSampleRate)
 
 AudioContext::AudioContext(nsPIDOMWindowInner* aWindow,
                            bool aIsOffline,
-                           AudioChannel aChannel,
                            uint32_t aNumberOfChannels,
                            uint32_t aLength,
                            float aSampleRate)
@@ -148,7 +149,7 @@ AudioContext::AudioContext(nsPIDOMWindowInner* aWindow,
 
   // Note: AudioDestinationNode needs an AudioContext that must already be
   // bound to the window.
-  mDestination = new AudioDestinationNode(this, aIsOffline, aChannel,
+  mDestination = new AudioDestinationNode(this, aIsOffline,
                                           aNumberOfChannels, aLength, aSampleRate);
 
   // The context can't be muted until it has a destination.
@@ -197,6 +198,7 @@ AudioContext::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 
 /* static */ already_AddRefed<AudioContext>
 AudioContext::Constructor(const GlobalObject& aGlobal,
+                          const AudioContextOptions& aOptions,
                           ErrorResult& aRv)
 {
   nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(aGlobal.GetAsSupports());
@@ -205,9 +207,22 @@ AudioContext::Constructor(const GlobalObject& aGlobal,
     return nullptr;
   }
 
+  float sampleRate = MediaStreamGraph::REQUEST_DEFAULT_SAMPLE_RATE;
+  if (Preferences::GetBool("media.webaudio.audiocontextoptions-samplerate.enabled")) {
+    if (aOptions.mSampleRate > 0 &&
+        (aOptions.mSampleRate - WebAudioUtils::MinSampleRate < 0.0 ||
+        WebAudioUtils::MaxSampleRate - aOptions.mSampleRate < 0.0)) {
+      aRv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+      return nullptr;
+    }
+    sampleRate = aOptions.mSampleRate;
+  }
+
+  uint32_t maxChannelCount = std::min<uint32_t>(WebAudioUtils::MaxChannelCount,
+      CubebUtils::MaxNumberOfChannels());
   RefPtr<AudioContext> object =
-    new AudioContext(window, false,
-                     AudioChannelService::GetDefaultAudioChannel());
+    new AudioContext(window, false, maxChannelCount,
+                     0, sampleRate);
   aRv = object->Init();
   if (NS_WARN_IF(aRv.Failed())) {
      return nullptr;
@@ -216,6 +231,18 @@ AudioContext::Constructor(const GlobalObject& aGlobal,
   RegisterWeakMemoryReporter(object);
 
   return object.forget();
+}
+
+/* static */ already_AddRefed<AudioContext>
+AudioContext::Constructor(const GlobalObject& aGlobal,
+                          const OfflineAudioContextOptions& aOptions,
+                          ErrorResult& aRv)
+{
+  return Constructor(aGlobal,
+                     aOptions.mNumberOfChannels,
+                     aOptions.mLength,
+                     aOptions.mSampleRate,
+                     aRv);
 }
 
 /* static */ already_AddRefed<AudioContext>
@@ -243,7 +270,6 @@ AudioContext::Constructor(const GlobalObject& aGlobal,
 
   RefPtr<AudioContext> object = new AudioContext(window,
                                                    true,
-                                                   AudioChannel::Normal,
                                                    aNumberOfChannels,
                                                    aLength,
                                                    aSampleRate);
@@ -550,7 +576,7 @@ AudioContext::DecodeAudioData(const ArrayBuffer& aBuffer,
     successCallback = &aSuccessCallback.Value();
   }
   UniquePtr<WebAudioDecodeJob> job(
-    new WebAudioDecodeJob(contentType, this,
+    new WebAudioDecodeJob(this,
                           promise, successCallback, failureCallback));
   AsyncDecodeWebAudio(contentType.get(), data, length, *job);
   // Transfer the ownership to mDecodeJobs
@@ -612,7 +638,8 @@ AudioContext::UpdatePannerSource()
 uint32_t
 AudioContext::MaxChannelCount() const
 {
-  return mIsOffline ? mNumberOfChannels : CubebUtils::MaxNumberOfChannels();
+  return std::min<uint32_t>(WebAudioUtils::MaxChannelCount,
+      mIsOffline ? mNumberOfChannels : CubebUtils::MaxNumberOfChannels());
 }
 
 uint32_t
@@ -637,11 +664,26 @@ AudioContext::DestinationStream() const
 }
 
 double
-AudioContext::CurrentTime() const
+AudioContext::CurrentTime()
 {
   MediaStream* stream = Destination()->Stream();
+
+  double rawTime = stream->StreamTimeToSeconds(stream->GetCurrentTime());
+
+  // CurrentTime increments in intervals of 128/sampleRate. If the Timer
+  // Precision Reduction is smaller than this interval, the jittered time
+  // can always be reversed to the raw step of the interval. In that case
+  // we can simply return the un-reduced time; and avoid breaking tests.
+  // We have to convert each variable into a common magnitude, we choose ms.
+  if ((128/mSampleRate) * 1000.0 > nsRFPService::TimerResolution() / 1000.0) {
+    return rawTime;
+  }
+
+  // The value of a MediaStream's CurrentTime will always advance forward; it will never
+  // reset (even if one rewinds a video.) Therefore we can use a single Random Seed
+  // initialized at the same time as the object.
   return nsRFPService::ReduceTimePrecisionAsSecs(
-    stream->StreamTimeToSeconds(stream->GetCurrentTime()));
+    rawTime, GetRandomTimelineSeed());
 }
 
 void AudioContext::DisconnectFromOwner()
@@ -652,6 +694,23 @@ void AudioContext::DisconnectFromOwner()
 }
 
 void
+AudioContext::BindToOwner(nsIGlobalObject* aNew)
+{
+  auto scopeExit = MakeScopeExit([&] {
+    DOMEventTargetHelper::BindToOwner(aNew);
+  });
+
+  if (GetOwner()) {
+    GetOwner()->RemoveAudioContext(this);
+  }
+
+  nsCOMPtr<nsPIDOMWindowInner> newWindow = do_QueryInterface(aNew);
+  if (newWindow) {
+    newWindow->AddAudioContext(this);
+  }
+}
+
+void
 AudioContext::Shutdown()
 {
   mIsShutDown = true;
@@ -659,8 +718,7 @@ AudioContext::Shutdown()
   // We don't want to touch promises if the global is going away soon.
   if (!mIsDisconnecting) {
     if (!mIsOffline) {
-      IgnoredErrorResult dummy;
-      RefPtr<Promise> ignored = Close(dummy);
+      RefPtr<Promise> ignored = Close(IgnoreErrors());
     }
 
     for (auto p : mPromiseGripArray) {

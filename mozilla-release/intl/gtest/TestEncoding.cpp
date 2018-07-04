@@ -25,14 +25,6 @@ ENCODING_TEST(ForLabel)
   ASSERT_EQ(Encoding::ForLabel(label), EUC_JP_ENCODING);
 }
 
-ENCODING_TEST(ForName)
-{
-  nsAutoCString encoding("UTF-8");
-  ASSERT_EQ(Encoding::ForName(encoding), UTF_8_ENCODING);
-  encoding.AssignLiteral("EUC-JP");
-  ASSERT_EQ(Encoding::ForName(encoding), EUC_JP_ENCODING);
-}
-
 ENCODING_TEST(ForBOM)
 {
   nsAutoCString data("\xEF\xBB\xBF\x61");

@@ -10,7 +10,7 @@ Test the searchbox component
   <meta charset="utf-8">
   <title>SearchBox component test</title>
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script src="chrome://mochikit/content/tests/SimpleTest/SpawnTask.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
   <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
 </head>
@@ -22,7 +22,7 @@ Test the searchbox component
 window.onload = function () {
   let React = browserRequire("devtools/client/shared/vendor/react");
   let SearchBox = React.createFactory(
-    browserRequire("devtools/client/shared/components/search-box")
+    browserRequire("devtools/client/shared/components/SearchBox")
   );
   ok(SearchBox, "Got the SearchBox factory");
 

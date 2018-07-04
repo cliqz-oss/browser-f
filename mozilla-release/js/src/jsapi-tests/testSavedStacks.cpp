@@ -4,13 +4,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "jscompartment.h"
 #include "jsfriendapi.h"
-#include "jsstr.h"
+#include "builtin/String.h"
 
 #include "builtin/TestingFunctions.h"
 #include "jsapi-tests/tests.h"
 #include "vm/ArrayObject.h"
+#include "vm/JSCompartment.h"
 #include "vm/SavedStacks.h"
 
 BEGIN_TEST(testSavedStacks_withNoStack)
@@ -85,20 +85,6 @@ BEGIN_TEST(testSavedStacks_RangeBasedForLoops)
 
     CHECK(obj->is<js::SavedFrame>());
     JS::Rooted<js::SavedFrame*> savedFrame(cx, &obj->as<js::SavedFrame>());
-
-    js::SavedFrame* f = savedFrame.get();
-    for (auto& frame : *savedFrame.get()) {
-        CHECK(&frame == f);
-        f = f->getParent();
-    }
-    CHECK(f == nullptr);
-
-    const js::SavedFrame* cf = savedFrame.get();
-    for (const auto& frame : *savedFrame.get()) {
-        CHECK(&frame == cf);
-        cf = cf->getParent();
-    }
-    CHECK(cf == nullptr);
 
     JS::Rooted<js::SavedFrame*> rf(cx, savedFrame);
     for (JS::Handle<js::SavedFrame*> frame : js::SavedFrame::RootedRange(cx, rf)) {

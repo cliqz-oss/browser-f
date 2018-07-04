@@ -8,7 +8,8 @@
  * The "waterfall ticks" view, a header for the markers displayed in the waterfall.
  */
 
-const { DOM: dom, PropTypes } = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const { L10N } = require("../modules/global");
 const { TickUtils } = require("../modules/waterfall-ticks");
 
@@ -32,6 +33,7 @@ function WaterfallHeader(props) {
     let label = L10N.getFormatStr("timeline.tick", time);
 
     let node = dom.div({
+      key: x,
       className: "plain waterfall-header-tick",
       style: { transform: `translateX(${left}px)` }
     }, label);

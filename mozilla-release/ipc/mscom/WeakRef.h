@@ -96,16 +96,32 @@ public:
 
 protected:
   explicit WeakReferenceSupport(Flags aFlags);
-  virtual ~WeakReferenceSupport();
+  virtual ~WeakReferenceSupport() = default;
 
-  virtual HRESULT ThreadSafeQueryInterface(REFIID aIid,
-                                           IUnknown** aOutInterface) = 0;
+  virtual HRESULT WeakRefQueryInterface(REFIID aIid,
+                                        IUnknown** aOutInterface) = 0;
+
+  class MOZ_RAII StabilizeRefCount final
+  {
+  public:
+    explicit StabilizeRefCount(WeakReferenceSupport& aObject);
+    ~StabilizeRefCount();
+
+    StabilizeRefCount(const StabilizeRefCount&) = delete;
+    StabilizeRefCount(StabilizeRefCount&&) = delete;
+    StabilizeRefCount& operator=(const StabilizeRefCount&) = delete;
+    StabilizeRefCount& operator=(StabilizeRefCount&&) = delete;
+
+  private:
+    WeakReferenceSupport& mObject;
+  };
+
+  friend class StabilizeRefCount;
 
 private:
   RefPtr<detail::SharedRef> mSharedRef;
   ULONG                     mRefCnt;
   Flags                     mFlags;
-  CRITICAL_SECTION          mCSForQI;
 };
 
 class WeakRef final : public IWeakReference

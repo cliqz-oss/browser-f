@@ -1,7 +1,7 @@
-commit 5c8f4db9d72385965ff8b4fa94536649279f1470
-Author: Rick Waldron <waldron.rick@gmail.com>
-Date:   Wed May 17 15:46:04 2017 -0400
+commit ea6c18c5e21189acd2fd26961ea6dc6d2a1947ac
+Author: André Bargull <andre.bargull@gmail.com>
+Date:   Thu Mar 22 17:20:29 2018 -0700
 
-    Merge pull request #1040 from leobalter/remove-unnecessary-tests
+    Don't compute NaN values in functions (#1503)
     
-    Remove unnecessary tests
+    `function nan() { return /* expression to compute NaN */ }` may not return the same implementation-distinguishable NaN value before and after JIT compilation.

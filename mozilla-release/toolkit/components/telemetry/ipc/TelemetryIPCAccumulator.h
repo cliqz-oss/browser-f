@@ -8,12 +8,11 @@
 
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/Maybe.h"
+#include "nsStringFwd.h"
 #include "TelemetryComms.h"
 
 class nsIRunnable;
 class nsITimer;
-class nsAString;
-class nsCString;
 
 namespace mozilla {
 
@@ -27,11 +26,11 @@ void AccumulateChildKeyedHistogram(mozilla::Telemetry::HistogramID aId, const ns
                                    uint32_t aSample);
 
 // Scalar accumulation functions.
-void RecordChildScalarAction(mozilla::Telemetry::ScalarID aId,
+void RecordChildScalarAction(uint32_t aId, bool aDynamic,
                              mozilla::Telemetry::ScalarActionType aAction,
                              const mozilla::Telemetry::ScalarVariant& aValue);
 
-void RecordChildKeyedScalarAction(mozilla::Telemetry::ScalarID aId, const nsAString& aKey,
+void RecordChildKeyedScalarAction(uint32_t aId, bool aDynamic, const nsAString& aKey,
                                   mozilla::Telemetry::ScalarActionType aAction,
                                   const mozilla::Telemetry::ScalarVariant& aValue);
 

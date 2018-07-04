@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,15 +12,14 @@
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 #include "nsIPresShell.h"
-#include "nsStyleContext.h"
 #include "nsNameSpaceManager.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsGkAtoms.h"
 #include "nsDisplayList.h"
 #include "mozilla/Likely.h"
 #include "nsIScriptError.h"
 #include "nsContentUtils.h"
 #include "nsMathMLElement.h"
+#include "mozilla/dom/MutationEventBinding.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -616,7 +616,6 @@ nsMathMLContainerFrame::PropagatePresentationDataFromChildAt(nsIFrame*       aPa
 
 void
 nsMathMLContainerFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                         const nsRect&           aDirtyRect,
                                          const nsDisplayListSet& aLists)
 {
   // report an error if something wrong was found in this frame
@@ -624,15 +623,14 @@ nsMathMLContainerFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     if (!IsVisibleForPainting(aBuilder))
       return;
 
-    aLists.Content()->AppendNewToTop(
-      new (aBuilder) nsDisplayMathMLError(aBuilder, this));
+    aLists.Content()->AppendToTop(
+      MakeDisplayItem<nsDisplayMathMLError>(aBuilder, this));
     return;
   }
 
   DisplayBorderBackgroundOutline(aBuilder, aLists);
 
-  BuildDisplayListForNonBlockChildren(aBuilder, aDirtyRect, aLists,
-                                      DISPLAY_CHILD_INLINE);
+  BuildDisplayListForNonBlockChildren(aBuilder, aLists, DISPLAY_CHILD_INLINE);
 
 #if defined(DEBUG) && defined(SHOW_BOUNDING_BOX)
   // for visual debug
@@ -706,7 +704,7 @@ nsMathMLContainerFrame::ReLayoutChildren(nsIFrame* aParentFrame)
   if (!parent)
     return NS_OK;
 
-  frame->PresContext()->PresShell()->
+  frame->PresShell()->
     FrameNeedsReflow(frame, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
 
   return NS_OK;
@@ -741,7 +739,7 @@ nsMathMLContainerFrame::AppendFrames(ChildListID     aListID,
 {
   MOZ_ASSERT(aListID == kPrincipalList);
   mFrames.AppendFrames(this, aFrameList);
-  ChildListChanged(nsIDOMMutationEvent::ADDITION);
+  ChildListChanged(dom::MutationEventBinding::ADDITION);
 }
 
 void
@@ -751,7 +749,7 @@ nsMathMLContainerFrame::InsertFrames(ChildListID     aListID,
 {
   MOZ_ASSERT(aListID == kPrincipalList);
   mFrames.InsertFrames(this, aPrevFrame, aFrameList);
-  ChildListChanged(nsIDOMMutationEvent::ADDITION);
+  ChildListChanged(dom::MutationEventBinding::ADDITION);
 }
 
 void
@@ -760,18 +758,18 @@ nsMathMLContainerFrame::RemoveFrame(ChildListID     aListID,
 {
   MOZ_ASSERT(aListID == kPrincipalList);
   mFrames.DestroyFrame(aOldFrame);
-  ChildListChanged(nsIDOMMutationEvent::REMOVAL);
+  ChildListChanged(dom::MutationEventBinding::REMOVAL);
 }
 
 nsresult
 nsMathMLContainerFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                         nsIAtom*        aAttribute,
+                                         nsAtom*        aAttribute,
                                          int32_t         aModType)
 {
   // XXX Since they are numerous MathML attributes that affect layout, and
   // we can't check all of them here, play safe by requesting a reflow.
   // XXXldb This should only do work for attributes that cause changes!
-  PresContext()->PresShell()->
+  PresShell()->
     FrameNeedsReflow(this, nsIPresShell::eStyleChange, NS_FRAME_IS_DIRTY);
 
   return NS_OK;
@@ -870,6 +868,8 @@ nsMathMLContainerFrame::Reflow(nsPresContext*           aPresContext,
                                nsReflowStatus&          aStatus)
 {
   MarkInReflow();
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
   mPresentationData.flags &= ~NS_MATHML_ERROR;
   aDesiredSize.Width() = aDesiredSize.Height() = 0;
   aDesiredSize.SetBlockStartAscent(0);
@@ -947,7 +947,6 @@ nsMathMLContainerFrame::Reflow(nsPresContext*           aPresContext,
   // Place children now by re-adjusting the origins to align the baselines
   FinalizeReflow(drawTarget, aDesiredSize);
 
-  aStatus.Reset();
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
 
@@ -1340,7 +1339,7 @@ GetInterFrameSpacingFor(int32_t         aScriptLevel,
       prevFrameType, childFrameType, &fromFrameType, &carrySpace);
     if (aChildFrame == childFrame) {
       // get thinspace
-      nsStyleContext* parentContext = aParentFrame->StyleContext();
+      ComputedStyle* parentContext = aParentFrame->Style();
       nscoord thinSpace = GetThinSpace(parentContext->StyleFont());
       // we are done
       return space * thinSpace;
@@ -1368,7 +1367,7 @@ AddInterFrameSpacingToSize(ReflowOutput&    aDesiredSize,
                                   parent, aFrame);
     // add our own italic correction
     nscoord leftCorrection = 0, italicCorrection = 0;
-    aFrame->GetItalicCorrection(aDesiredSize.mBoundingMetrics,
+    nsMathMLContainerFrame::GetItalicCorrection(aDesiredSize.mBoundingMetrics,
                                 leftCorrection, italicCorrection);
     gap += leftCorrection;
     if (gap) {
@@ -1416,8 +1415,7 @@ nsMathMLContainerFrame::DidReflowChildren(nsIFrame* aFirst, nsIFrame* aStop)
       if (grandchild)
         DidReflowChildren(grandchild, nullptr);
 
-      frame->DidReflow(frame->PresContext(), nullptr,
-                       nsDidReflowStatus::FINISHED);
+      frame->DidReflow(frame->PresContext(), nullptr);
     }
   }
 }
@@ -1537,7 +1535,7 @@ nsMathMLContainerFrame::ReportChildCountError()
 }
 
 nsresult
-nsMathMLContainerFrame::ReportInvalidChildError(nsIAtom* aChildTag)
+nsMathMLContainerFrame::ReportInvalidChildError(nsAtom* aChildTag)
 {
   const char16_t* argv[] =
     { aChildTag->GetUTF16String(),
@@ -1548,9 +1546,11 @@ nsMathMLContainerFrame::ReportInvalidChildError(nsIAtom* aChildTag)
 //==========================
 
 nsContainerFrame*
-NS_NewMathMLmathBlockFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmathBlockFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmathBlockFrame(aContext);
+  auto newFrame = new (aPresShell) nsMathMLmathBlockFrame(aStyle);
+  newFrame->AddStateBits(NS_BLOCK_FORMATTING_CONTEXT_STATE_BITS);
+  return newFrame;
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmathBlockFrame)
@@ -1560,9 +1560,9 @@ NS_QUERYFRAME_HEAD(nsMathMLmathBlockFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsBlockFrame)
 
 nsContainerFrame*
-NS_NewMathMLmathInlineFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmathInlineFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmathInlineFrame(aContext);
+  return new (aPresShell) nsMathMLmathInlineFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmathInlineFrame)

@@ -74,14 +74,20 @@ public:
   int32_t ClientY() const { return mClientPoint.y; }
   int32_t PageX() const { return mPagePoint.x; }
   int32_t PageY() const { return mPagePoint.y; }
-  int32_t RadiusX() const { return mRadius.x; }
-  int32_t RadiusY() const { return mRadius.y; }
-  float RotationAngle() const { return mRotationAngle; }
-  float Force() const { return mForce; }
+  int32_t RadiusX(CallerType aCallerType) const;
+  int32_t RadiusY(CallerType aCallerType) const;
+  float RotationAngle(CallerType aCallerType) const;
+  float Force(CallerType aCallerType) const;
 
   nsCOMPtr<EventTarget> mTarget;
   LayoutDeviceIntPoint mRefPoint;
   bool mChanged;
+
+  // Is this touch instance being suppressed to dispatch touch event to content.
+  // We can't remove touch instance from WidgetTouchEvent::mTouches because we
+  // still need it when dispatching pointer events.
+  bool mIsTouchEventSuppressed;
+
   uint32_t mMessage;
   int32_t mIdentifier;
   CSSIntPoint mPagePoint;

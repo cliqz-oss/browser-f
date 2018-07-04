@@ -5,7 +5,12 @@
 geckoview.jar:
 % content geckoview %content/
 
+  content/ErrorPageEventHandler.js
   content/geckoview.xul
   content/geckoview.js
   content/GeckoViewContent.js
+  content/GeckoViewContentSettings.js
+  content/GeckoViewNavigationContent.js
+  content/GeckoViewPromptContent.js
   content/GeckoViewScrollContent.js
+  content/GeckoViewSelectionActionContent.js

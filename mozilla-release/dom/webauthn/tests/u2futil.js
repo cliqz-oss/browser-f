@@ -3,7 +3,19 @@ var _countCompletions = 0;
 var _expectedCompletions = 0;
 
 const flag_TUP = 0x01;
+const flag_UV = 0x04;
 const flag_AT = 0x40;
+
+
+const cose_kty = 1;
+const cose_kty_ec2 = 2;
+const cose_alg = 3;
+const cose_alg_ECDSA_w_SHA256 = -7;
+const cose_alg_ECDSA_w_SHA512 = -36;
+const cose_crv = -1;
+const cose_crv_P256 = 1;
+const cose_crv_x = -2;
+const cose_crv_y = -3;
 
 function handleEventMessage(event) {
   if ("test" in event.data) {
@@ -82,15 +94,19 @@ function string2buffer(str) {
 
 function buffer2string(buf) {
   let str = "";
-  buf.map(x => str += String.fromCharCode(x));
+  if (!(buf.constructor === Uint8Array)) {
+    buf = new Uint8Array(buf);
+  }
+  buf.map(function(x){ return str += String.fromCharCode(x) });
   return str;
 }
 
 function bytesToBase64(u8a){
   let CHUNK_SZ = 0x8000;
   let c = [];
-  for (let i = 0; i < u8a.length; i += CHUNK_SZ) {
-    c.push(String.fromCharCode.apply(null, u8a.subarray(i, i + CHUNK_SZ)));
+  let array = new Uint8Array(u8a);
+  for (let i = 0; i < array.length; i += CHUNK_SZ) {
+    c.push(String.fromCharCode.apply(null, array.subarray(i, i + CHUNK_SZ)));
   }
   return window.btoa(c.join(""));
 }
@@ -130,29 +146,38 @@ function hexDecode(str) {
   return new Uint8Array(str.match(/../g).map(x => parseInt(x, 16)));
 }
 
+function hasOnlyKeys(obj, ...keys) {
+  let okeys = new Set(Object.keys(obj));
+  return keys.length == okeys.size &&
+         keys.every(k => okeys.has(k));
+}
+
 function webAuthnDecodeCBORAttestation(aCborAttBuf) {
   let attObj = CBOR.decode(aCborAttBuf);
   console.log(":: Attestation CBOR Object ::");
-  if (!("authData" in attObj && "fmt" in attObj && "attStmt" in attObj)) {
-    throw "Invalid CBOR Attestation Object";
+  if (!hasOnlyKeys(attObj, "authData", "fmt", "attStmt")) {
+    return Promise.reject("Invalid CBOR Attestation Object");
   }
-  if (!("sig" in attObj.attStmt && "x5c" in attObj.attStmt)) {
-    throw "Invalid CBOR Attestation Statement";
+  if (attObj.fmt == "fido-u2f" && !hasOnlyKeys(attObj.attStmt, "sig", "x5c")) {
+    return Promise.reject("Invalid CBOR Attestation Statement");
+  }
+  if (attObj.fmt == "none" && Object.keys(attObj.attStmt).length > 0) {
+    return Promise.reject("Invalid CBOR Attestation Statement");
   }
 
-  return webAuthnDecodeAttestation(attObj.authData)
-  .then(function (aAttestationObj) {
-    aAttestationObj.attestationObject = attObj;
-    return Promise.resolve(aAttestationObj);
+  return webAuthnDecodeAuthDataArray(new Uint8Array(attObj.authData))
+  .then(function (aAuthDataObj) {
+    attObj.authDataObj = aAuthDataObj;
+    return Promise.resolve(attObj);
   });
 }
 
-function webAuthnDecodeAttestation(aAuthData) {
+function webAuthnDecodeAuthDataArray(aAuthData) {
   let rpIdHash = aAuthData.slice(0, 32);
   let flags = aAuthData.slice(32, 33);
   let counter = aAuthData.slice(33, 37);
 
-  console.log(":: Attestation Object Data ::");
+  console.log(":: Authenticator Data ::");
   console.log("RP ID Hash: " + hexEncode(rpIdHash));
   console.log("Counter: " + hexEncode(counter) + " Flags: " + flags);
 
@@ -166,7 +191,7 @@ function webAuthnDecodeAttestation(aAuthData) {
   }
 
   if (aAuthData.length < 38) {
-    throw "Attestation Data flag was set, but not enough data passed in!";
+    return Promise.reject("Authenticator Data flag was set, but not enough data passed in!");
   }
 
   let attData = {};
@@ -174,23 +199,32 @@ function webAuthnDecodeAttestation(aAuthData) {
   attData.credIdLen = (aAuthData[53] << 8) + aAuthData[54];
   attData.credId = aAuthData.slice(55, 55 + attData.credIdLen);
 
-  console.log(":: Attestation Data ::");
+  console.log(":: Authenticator Data ::");
   console.log("AAGUID: " + hexEncode(attData.aaguid));
 
-  cborPubKey = aAuthData.slice(55 + attData.credIdLen);
+  let cborPubKey = aAuthData.slice(55 + attData.credIdLen);
   var pubkeyObj = CBOR.decode(cborPubKey.buffer);
-  if (!("alg" in pubkeyObj && "x" in pubkeyObj && "y" in pubkeyObj)) {
+  if (!(cose_kty in pubkeyObj && cose_alg in pubkeyObj && cose_crv in pubkeyObj
+        && cose_crv_x in pubkeyObj && cose_crv_y in pubkeyObj)) {
     throw "Invalid CBOR Public Key Object";
   }
-  if (pubkeyObj.alg != "ES256") {
+  if (pubkeyObj[cose_kty] != cose_kty_ec2) {
+    throw "Unexpected key type";
+  }
+  if (pubkeyObj[cose_alg] != cose_alg_ECDSA_w_SHA256) {
     throw "Unexpected public key algorithm";
   }
+  if (pubkeyObj[cose_crv] != cose_crv_P256) {
+    throw "Unexpected curve";
+  }
 
-  let pubKeyBytes = assemblePublicKeyBytesData(pubkeyObj.x, pubkeyObj.y);
+  let pubKeyBytes = assemblePublicKeyBytesData(pubkeyObj[cose_crv_x], pubkeyObj[cose_crv_y]);
   console.log(":: CBOR Public Key Object Data ::");
-  console.log("Algorithm: " + pubkeyObj.alg);
-  console.log("X: " + pubkeyObj.x);
-  console.log("Y: " + pubkeyObj.y);
+  console.log("kty: " + pubkeyObj[cose_kty] + " (EC2)");
+  console.log("alg: " + pubkeyObj[cose_alg] + " (ES256)");
+  console.log("crv: " + pubkeyObj[cose_crv] + " (P256)");
+  console.log("X: " + pubkeyObj[cose_crv_x]);
+  console.log("Y: " + pubkeyObj[cose_crv_y]);
   console.log("Uncompressed (hex): " + hexEncode(pubKeyBytes));
 
   return importPublicKey(pubKeyBytes)
@@ -249,20 +283,20 @@ function assemblePublicKeyBytesData(xCoord, yCoord) {
 
 function assembleSignedData(appParam, flags, counter, challengeParam) {
   let signedData = new Uint8Array(32 + 1 + 4 + 32);
-  appParam.map((x, i) => signedData[0 + i] = x);
-  signedData[32] = flags;
-  counter.map((x, i) => signedData[33 + i] = x);
-  challengeParam.map((x, i) => signedData[37 + i] = x);
+  new Uint8Array(appParam).map((x, i) => signedData[0 + i] = x);
+  signedData[32] = new Uint8Array(flags)[0];
+  new Uint8Array(counter).map((x, i) => signedData[33 + i] = x);
+  new Uint8Array(challengeParam).map((x, i) => signedData[37 + i] = x);
   return signedData;
 }
 
 function assembleRegistrationSignedData(appParam, challengeParam, keyHandle, pubKey) {
   let signedData = new Uint8Array(1 + 32 + 32 + keyHandle.length + 65);
   signedData[0] = 0x00;
-  appParam.map((x, i) => signedData[1 + i] = x);
-  challengeParam.map((x, i) => signedData[33 + i] = x);
-  keyHandle.map((x, i) => signedData[65 + i] = x);
-  pubKey.map((x, i) => signedData[65 + keyHandle.length + i] = x);
+  new Uint8Array(appParam).map((x, i) => signedData[1 + i] = x);
+  new Uint8Array(challengeParam).map((x, i) => signedData[33 + i] = x);
+  new Uint8Array(keyHandle).map((x, i) => signedData[65 + i] = x);
+  new Uint8Array(pubKey).map((x, i) => signedData[65 + keyHandle.length + i] = x);
   return signedData;
 }
 
@@ -279,7 +313,21 @@ function sanitizeSigArray(arr) {
 }
 
 function verifySignature(key, data, derSig) {
-  let sigAsn1 = org.pkijs.fromBER(derSig.buffer);
+  if (derSig.byteLength < 68) {
+    return Promise.reject("Invalid signature (length=" + derSig.byteLength +
+                          "): " + hexEncode(new Uint8Array(derSig)));
+  }
+
+  // Copy signature data into the current context.
+  let derSigCopy = new ArrayBuffer(derSig.byteLength);
+  new Uint8Array(derSigCopy).set(new Uint8Array(derSig));
+
+  let sigAsn1 = org.pkijs.fromBER(derSigCopy);
+
+  // pkijs.asn1 seems to erroneously set an error code when calling some
+  // internal function. The test suite doesn't like dangling globals.
+  delete window.error;
+
   let sigR = new Uint8Array(sigAsn1.result.value_block.value[0].value_block.value_hex);
   let sigS = new Uint8Array(sigAsn1.result.value_block.value[1].value_block.value_hex);
 

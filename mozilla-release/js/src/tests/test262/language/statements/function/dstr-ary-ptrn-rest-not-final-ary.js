@@ -9,7 +9,7 @@ es6id: 14.1.19
 features: [destructuring-binding]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     FunctionDeclaration :
@@ -49,6 +49,7 @@ info: |
         [ BindingElementList[?Yield] ]
         [ BindingElementList[?Yield] , Elisionopt BindingRestElement[?Yield]opt ]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 var callCount = 0;
 function f([...[x], y]) {

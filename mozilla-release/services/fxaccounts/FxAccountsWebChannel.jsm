@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+"use strict";
 
 /**
  * Firefox Accounts Web Channel.
@@ -9,25 +10,25 @@
  * about account state changes.
  */
 
-this.EXPORTED_SYMBOLS = ["EnsureFxAccountsWebChannel"];
+var EXPORTED_SYMBOLS = ["EnsureFxAccountsWebChannel"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "WebChannel",
-                                  "resource://gre/modules/WebChannel.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
-                                  "resource://gre/modules/FxAccounts.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FxAccountsStorageManagerCanStoreField",
-                                  "resource://gre/modules/FxAccountsStorage.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Weave",
-                                  "resource://services-sync/main.js");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "WebChannel",
+                               "resource://gre/modules/WebChannel.jsm");
+ChromeUtils.defineModuleGetter(this, "fxAccounts",
+                               "resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.defineModuleGetter(this, "FxAccountsStorageManagerCanStoreField",
+                               "resource://gre/modules/FxAccountsStorage.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Weave",
+                               "resource://services-sync/main.js");
+ChromeUtils.defineModuleGetter(this, "CryptoUtils",
+                               "resource://services-crypto/utils.js");
 
 const COMMAND_PROFILE_CHANGE       = "profile:change";
 const COMMAND_CAN_LINK_ACCOUNT     = "fxaccounts:can_link_account";
@@ -37,8 +38,6 @@ const COMMAND_DELETE               = "fxaccounts:delete";
 const COMMAND_SYNC_PREFERENCES     = "fxaccounts:sync_preferences";
 const COMMAND_CHANGE_PASSWORD      = "fxaccounts:change_password";
 const COMMAND_FXA_STATUS           = "fxaccounts:fxa_status";
-
-const PREF_LAST_FXA_USER           = "identity.fxaccounts.lastSignedInUserHash";
 
 // These engines were added years after Sync had been introduced, they need
 // special handling since they are system add-ons and are un-available on
@@ -82,12 +81,12 @@ this.FxAccountsWebChannel = function(options) {
   if (!options) {
     throw new Error("Missing configuration options");
   }
-  if (!options["content_uri"]) {
+  if (!options.content_uri) {
     throw new Error("Missing 'content_uri' option");
   }
   this._contentUri = options.content_uri;
 
-  if (!options["channel_id"]) {
+  if (!options.channel_id) {
     throw new Error("Missing 'channel_id' option");
   }
   this._webChannelId = options.channel_id;
@@ -428,7 +427,7 @@ this.FxAccountsWebChannelHelpers.prototype = {
     // versions to supported field names doesn't buy us much.
     // So we just remove field names we know aren't handled.
     let newCredentials = {
-      deviceId: null
+      device: null // Force a brand new device registration.
     };
     for (let name of Object.keys(credentials)) {
       if (name == "email" || name == "uid" || FxAccountsStorageManagerCanStoreField(name)) {
@@ -458,24 +457,7 @@ this.FxAccountsWebChannelHelpers.prototype = {
    * @param acctName the account name of the user's account.
    */
   setPreviousAccountNameHashPref(acctName) {
-    Services.prefs.setStringPref(PREF_LAST_FXA_USER, this.sha256(acctName));
-  },
-
-  /**
-   * Given a string, returns the SHA265 hash in base64
-   */
-  sha256(str) {
-    let converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"]
-                      .createInstance(Ci.nsIScriptableUnicodeConverter);
-    converter.charset = "UTF-8";
-    // Data is an array of bytes.
-    let data = converter.convertToByteArray(str, {});
-    let hasher = Cc["@mozilla.org/security/hash;1"]
-                   .createInstance(Ci.nsICryptoHash);
-    hasher.init(hasher.SHA256);
-    hasher.update(data, data.length);
-
-    return hasher.finish(true);
+    Services.prefs.setStringPref(PREF_LAST_FXA_USER, CryptoUtils.sha256Base64(acctName));
   },
 
   /**
@@ -503,7 +485,7 @@ this.FxAccountsWebChannelHelpers.prototype = {
    */
   _needRelinkWarning(acctName) {
     let prevAcctHash = this.getPreviousAccountNameHashPref();
-    return prevAcctHash && prevAcctHash != this.sha256(acctName);
+    return prevAcctHash && prevAcctHash != CryptoUtils.sha256Base64(acctName);
   },
 
   /**
@@ -526,8 +508,7 @@ this.FxAccountsWebChannelHelpers.prototype = {
                       ps.BUTTON_POS_1_DEFAULT;
 
     // If running in context of the browser chrome, window does not exist.
-    var targetWindow = typeof window === "undefined" ? null : window;
-    let pressed = Services.prompt.confirmEx(targetWindow, title, body, buttonFlags,
+    let pressed = Services.prompt.confirmEx(null, title, body, buttonFlags,
                                        continueLabel, null, null, null,
                                        {});
     return pressed === 0; // 0 is the "continue" button
@@ -540,8 +521,8 @@ var singleton;
 // (eg, it uses the observer service to tell interested parties of interesting
 // things) and allowing multiple channels would cause such notifications to be
 // sent multiple times.
-this.EnsureFxAccountsWebChannel = function() {
-  let contentUri = Services.urlFormatter.formatURLPref("identity.fxaccounts.remote.webchannel.uri");
+var EnsureFxAccountsWebChannel = () => {
+  let contentUri = Services.urlFormatter.formatURLPref("identity.fxaccounts.remote.root");
   if (singleton && singleton._contentUri !== contentUri) {
     singleton.tearDown();
     singleton = null;
@@ -562,4 +543,4 @@ this.EnsureFxAccountsWebChannel = function() {
       log.error("Failed to create FxA WebChannel", ex);
     }
   }
-}
+};

@@ -4,30 +4,20 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["BrowserUITelemetry"];
+var EXPORTED_SYMBOLS = ["BrowserUITelemetry"];
 
-const {interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
-  "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry",
-  "resource://gre/modules/UITelemetry.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
-  "resource:///modules/RecentWindow.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-  "resource:///modules/CustomizableUI.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UITour",
-  "resource:///modules/UITour.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
+  CustomizableUI: "resource:///modules/CustomizableUI.jsm",
+});
 XPCOMUtils.defineLazyGetter(this, "Timer", function() {
   let timer = {};
-  Cu.import("resource://gre/modules/Timer.jsm", timer);
+  ChromeUtils.import("resource://gre/modules/Timer.jsm", timer);
   return timer;
 });
-
-XPCOMUtils.defineLazyPreferenceGetter(this, "gPhotonStructure", "browser.photon.structure.enabled");
 
 const MS_SECOND = 1000;
 const MS_MINUTE = MS_SECOND * 60;
@@ -52,13 +42,14 @@ const LEGACY_PANEL_PLACEMENTS = [
 XPCOMUtils.defineLazyGetter(this, "DEFAULT_AREA_PLACEMENTS", function() {
   let result = {
     "nav-bar": [
-      "urlbar-container",
-      "search-container",
-      "bookmarks-menu-button",
-      "pocket-button",
-      "downloads-button",
+      "back-button",
+      "forward-button",
+      "stop-reload-button",
       "home-button",
-      "social-share-button",
+      "urlbar-container",
+      "downloads-button",
+      "library-button",
+      "sidebar-button",
     ],
     // It's true that toolbar-menubar is not visible
     // on OS X, but the XUL node is definitely present
@@ -74,30 +65,9 @@ XPCOMUtils.defineLazyGetter(this, "DEFAULT_AREA_PLACEMENTS", function() {
     "PersonalToolbar": [
       "personal-bookmarks",
     ],
+    "widget-overflow-fixed-list": [
+    ],
   };
-
-  if (AppConstants.MOZ_PHOTON_THEME) {
-    result["nav-bar"].push("sidebar-button");
-  }
-
-  if (gPhotonStructure) {
-    result["widget-overflow-fixed-list"] = [];
-  } else {
-    result["PanelUI-contents"] = LEGACY_PANEL_PLACEMENTS;
-    let showCharacterEncoding = Services.prefs.getComplexValue(
-      "browser.menu.showCharacterEncoding",
-      Ci.nsIPrefLocalizedString
-    ).data;
-    if (showCharacterEncoding == "true") {
-      result["PanelUI-contents"].push("characterencoding-button");
-    }
-
-    if (AppConstants.MOZ_DEV_EDITION || AppConstants.NIGHTLY_BUILD) {
-      if (Services.prefs.getBoolPref("extensions.webcompat-reporter.enabled")) {
-        result["PanelUI-contents"].push("webcompat-reporter-button");
-      }
-    }
-  }
 
   return result;
 });
@@ -108,20 +78,15 @@ XPCOMUtils.defineLazyGetter(this, "DEFAULT_AREAS", function() {
 
 XPCOMUtils.defineLazyGetter(this, "PALETTE_ITEMS", function() {
   let result = [
+    "bookmarks-menu-button",
+    "search-container",
     "open-file-button",
     "developer-button",
     "feed-button",
     "email-link-button",
-    "containers-panelmenu",
+    ...LEGACY_PANEL_PLACEMENTS,
+    "characterencoding-button",
   ];
-
-  let panelPlacements = DEFAULT_AREA_PLACEMENTS["PanelUI-contents"];
-  if (!panelPlacements) {
-    result.push(...LEGACY_PANEL_PLACEMENTS);
-  }
-  if (!panelPlacements || !panelPlacements.includes("characterencoding-button")) {
-    result.push("characterencoding-button");
-  }
 
   if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
     result.push("panic-button");
@@ -159,8 +124,7 @@ XPCOMUtils.defineLazyGetter(this, "ALL_BUILTIN_ITEMS", function() {
     "BMB_bookmarksToolbarPopup",
     "search-go-button",
     "soundplaying-icon",
-    "restore-tabs-button",
-  ]
+  ];
   return DEFAULT_ITEMS.concat(PALETTE_ITEMS)
                       .concat(SPECIAL_CASES);
 });
@@ -193,20 +157,8 @@ const BUCKET_PREFIX = "bucket_";
 // as primary name and the time step string.
 const BUCKET_SEPARATOR = "|";
 
-this.BrowserUITelemetry = {
+var BrowserUITelemetry = {
   init() {
-    UITelemetry.addSimpleMeasureFunction("toolbars",
-                                         this.getToolbarMeasures.bind(this));
-    UITelemetry.addSimpleMeasureFunction("contextmenu",
-                                         this.getContextMenuInfo.bind(this));
-    // Ensure that UITour.jsm remains lazy-loaded, yet always registers its
-    // simple measure function with UITelemetry.
-    UITelemetry.addSimpleMeasureFunction("UITour",
-                                         () => UITour.getTelemetry());
-
-    UITelemetry.addSimpleMeasureFunction("syncstate",
-                                         this.getSyncState.bind(this));
-
     Services.obs.addObserver(this, "autocomplete-did-enter-text");
     CustomizableUI.addListener(this);
 
@@ -310,7 +262,7 @@ this.BrowserUITelemetry = {
     // probably been closed, since the vast majority of saved-session
     // pings are gathered during shutdown.
     Services.search.init(rv => {
-      let win = RecentWindow.getMostRecentBrowserWindow({
+      let win = BrowserWindowTracker.getTopWindow({
         private: false,
         allowPopups: false,
       });
@@ -435,7 +387,7 @@ this.BrowserUITelemetry = {
 
   _menubarMouseUp(aEvent) {
     let target = aEvent.originalTarget;
-    let tag = target.localName
+    let tag = target.localName;
     let result = (tag == "menu" || tag == "menuitem") ? tag : "other";
     this._countMouseUpEvent("click-menubar", result, aEvent.button);
   },
@@ -539,19 +491,19 @@ this.BrowserUITelemetry = {
       let items = CustomizableUI.getWidgetIdsInArea(areaID);
       for (let item of items) {
         // Is this a default item?
-        if (DEFAULT_ITEMS.indexOf(item) != -1) {
+        if (DEFAULT_ITEMS.includes(item)) {
           // Ok, it's a default item - but is it in its default
           // toolbar? We use Array.isArray instead of checking for
           // toolbarID in DEFAULT_AREA_PLACEMENTS because an add-on might
           // be clever and give itself the id of "toString" or something.
           if (Array.isArray(DEFAULT_AREA_PLACEMENTS[areaID]) &&
-              DEFAULT_AREA_PLACEMENTS[areaID].indexOf(item) != -1) {
+              DEFAULT_AREA_PLACEMENTS[areaID].includes(item)) {
             // The item is in its default toolbar
             defaultKept.push(item);
           } else {
             defaultMoved.push(item);
           }
-        } else if (PALETTE_ITEMS.indexOf(item) != -1) {
+        } else if (PALETTE_ITEMS.includes(item)) {
           // It's a palette item that's been moved into a toolbar
           nondefaultAdded.push(item);
         }
@@ -565,7 +517,7 @@ this.BrowserUITelemetry = {
       CustomizableUI.getUnusedWidgets(aWindow.gNavToolbox.palette);
     let defaultRemoved = [];
     for (let item of paletteItems) {
-      if (DEFAULT_ITEMS.indexOf(item.id) != -1) {
+      if (DEFAULT_ITEMS.includes(item.id)) {
         defaultRemoved.push(item.id);
       }
     }
@@ -579,7 +531,7 @@ this.BrowserUITelemetry = {
     let addonToolbars = 0;
     let toolbars = document.querySelectorAll("toolbar[customizable=true]");
     for (let toolbar of toolbars) {
-      if (DEFAULT_AREAS.indexOf(toolbar.id) == -1) {
+      if (!DEFAULT_AREAS.includes(toolbar.id)) {
         addonToolbars++;
       }
     }
@@ -716,7 +668,7 @@ this.BrowserUITelemetry = {
     "spell-undo-add-to-dictionary", "openlinkincurrent", "openlinkintab",
     "openlink",
     // "openlinkprivate" intentionally omitted for privacy reasons. See bug 1176391.
-    "bookmarklink", "sharelink", "savelink",
+    "bookmarklink", "savelink",
     "marklinkMenu", "copyemail", "copylink", "media-play", "media-pause",
     "media-mute", "media-unmute", "media-playbackrate",
     "media-playbackrate-050x", "media-playbackrate-100x",
@@ -724,12 +676,12 @@ this.BrowserUITelemetry = {
     "media-showcontrols", "media-hidecontrols",
     "video-fullscreen", "leave-dom-fullscreen",
     "reloadimage", "viewimage", "viewvideo", "copyimage-contents", "copyimage",
-    "copyvideourl", "copyaudiourl", "saveimage", "shareimage", "sendimage",
+    "copyvideourl", "copyaudiourl", "saveimage", "sendimage",
     "setDesktopBackground", "viewimageinfo", "viewimagedesc", "savevideo",
-    "sharevideo", "saveaudio", "video-saveimage", "sendvideo", "sendaudio",
-    "ctp-play", "ctp-hide", "sharepage", "savepage", "pocket", "markpageMenu",
+    "saveaudio", "video-saveimage", "sendvideo", "sendaudio",
+    "ctp-play", "ctp-hide", "savepage", "pocket", "markpageMenu",
     "viewbgimage", "undo", "cut", "copy", "paste", "delete", "selectall",
-    "keywordfield", "searchselect", "shareselect", "frame", "showonlythisframe",
+    "keywordfield", "searchselect", "frame", "showonlythisframe",
     "openframeintab", "openframe", "reloadframe", "bookmarkframe", "saveframe",
     "printframe", "viewframesource", "viewframeinfo",
     "viewpartialsource-selection", "viewpartialsource-mathml",
@@ -737,7 +689,7 @@ this.BrowserUITelemetry = {
     "spell-add-dictionaries-main", "spell-dictionaries",
     "spell-dictionaries-menu", "spell-add-dictionaries",
     "bidi-text-direction-toggle", "bidi-page-direction-toggle", "inspect",
-    "media-eme-learn-more"
+    "inspect-a11y", "media-eme-learn-more"
   ]),
 
   _contextMenuInteractions: {},
@@ -886,7 +838,7 @@ this.BrowserUITelemetry = {
     function reduce(aUnitLength, aSymbol) {
       if (aTimeMS >= aUnitLength) {
         let units = Math.floor(aTimeMS / aUnitLength);
-        aTimeMS = aTimeMS - (units * aUnitLength)
+        aTimeMS = aTimeMS - (units * aUnitLength);
         timeStr += units + aSymbol;
       }
     }

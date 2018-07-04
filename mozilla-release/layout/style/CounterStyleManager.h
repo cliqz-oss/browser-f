@@ -6,7 +6,7 @@
 #ifndef mozilla_CounterStyleManager_h_
 #define mozilla_CounterStyleManager_h_
 
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsStringFwd.h"
 #include "nsDataHashtable.h"
 #include "nsHashKeys.h"
@@ -44,7 +44,7 @@ private:
   void operator=(const CounterStyle& other) = delete;
 
 public:
-  int32_t GetStyle() const { return mStyle; }
+  constexpr int32_t GetStyle() const { return mStyle; }
   bool IsNone() const { return mStyle == NS_STYLE_LIST_STYLE_NONE; }
   bool IsCustomStyle() const { return mStyle == NS_STYLE_LIST_STYLE_CUSTOM; }
   // A style is dependent if it depends on the counter style manager.
@@ -52,7 +52,7 @@ public:
   // styles are dependent for fallback.
   bool IsDependentStyle() const;
 
-  virtual void GetStyleName(nsAString& aResult) = 0;
+  virtual nsAtom* GetStyleName() const = 0;
   virtual void GetPrefix(nsAString& aResult) = 0;
   virtual void GetSuffix(nsAString& aResult) = 0;
   void GetCounterText(CounterValue aOrdinal,
@@ -98,7 +98,7 @@ public:
   virtual AnonymousCounterStyle* AsAnonymous() { return nullptr; }
 
 protected:
-  int32_t mStyle;
+  const int32_t mStyle;
 };
 
 class AnonymousCounterStyle final : public CounterStyle
@@ -108,7 +108,7 @@ public:
   AnonymousCounterStyle(uint8_t aSystem, nsTArray<nsString> aSymbols);
   explicit AnonymousCounterStyle(const nsCSSValue::Array* aValue);
 
-  virtual void GetStyleName(nsAString& aResult) override;
+  virtual nsAtom* GetStyleName() const override;
   virtual void GetPrefix(nsAString& aResult) override;
   virtual void GetSuffix(nsAString& aResult) override;
   virtual bool IsBullet() override;
@@ -195,10 +195,10 @@ public:
     Reset();
     return *this;
   }
-  CounterStylePtr& operator=(already_AddRefed<nsIAtom> aAtom)
+  CounterStylePtr& operator=(already_AddRefed<nsAtom> aAtom)
   {
     Reset();
-    if (nsIAtom* raw = aAtom.take()) {
+    if (nsAtom* raw = aAtom.take()) {
       AssertPointerAligned(raw);
       mRaw = reinterpret_cast<uintptr_t>(raw) | eUnresolvedAtom;
     }
@@ -238,6 +238,18 @@ public:
   bool IsResolved() const { return !IsUnresolved(); }
   inline void Resolve(CounterStyleManager* aManager);
 
+  nsAtom* AsAtom() const
+  {
+    MOZ_ASSERT(IsUnresolved());
+    return reinterpret_cast<nsAtom*>(mRaw & ~eMask);
+  }
+  AnonymousCounterStyle* AsAnonymous() const
+  {
+    MOZ_ASSERT(IsAnonymous());
+    return static_cast<AnonymousCounterStyle*>(
+      reinterpret_cast<CounterStyle*>(mRaw & ~eMask));
+  }
+
 private:
   CounterStyle* Get() const
   {
@@ -249,7 +261,7 @@ private:
   {
     // This can be checked at compile time via
     // > static_assert(alignof(CounterStyle) >= 4);
-    // > static_assert(alignof(nsIAtom) >= 4);
+    // > static_assert(alignof(nsAtom) >= 4);
     // but MSVC2015 doesn't support using alignof on an abstract class.
     // Once we move to MSVC2017, we can replace this runtime check with
     // the compile time check above.
@@ -266,17 +278,6 @@ private:
   Type GetType() const { return static_cast<Type>(mRaw & eMask); }
   bool IsUnresolved() const { return GetType() == eUnresolvedAtom; }
   bool IsAnonymous() const { return GetType() == eAnonymousCounterStyle; }
-  nsIAtom* AsAtom()
-  {
-    MOZ_ASSERT(IsUnresolved());
-    return reinterpret_cast<nsIAtom*>(mRaw & ~eMask);
-  }
-  AnonymousCounterStyle* AsAnonymous()
-  {
-    MOZ_ASSERT(IsAnonymous());
-    return static_cast<AnonymousCounterStyle*>(
-      reinterpret_cast<CounterStyle*>(mRaw & ~eMask));
-  }
 
   void Reset()
   {
@@ -299,7 +300,7 @@ private:
   // mRaw contains the pointer, and its last two bits are used for type
   // of the pointer.
   // If the type is eUnresolvedAtom, the pointer owns a reference to an
-  // nsIAtom, and it needs to be resolved to a counter style before use.
+  // nsAtom, and it needs to be resolved to a counter style before use.
   // If the type is eAnonymousCounterStyle, it owns a reference to an
   // anonymous counter style.
   // Otherwise it is a weak pointer referring a named counter style
@@ -314,8 +315,6 @@ private:
 public:
   explicit CounterStyleManager(nsPresContext* aPresContext);
 
-  static void InitializeBuiltinCounterStyles();
-
   void Disconnect();
 
   bool IsInitial() const
@@ -326,12 +325,12 @@ public:
 
   // Returns the counter style object for the given name from the style
   // table if it is already built, and nullptr otherwise.
-  CounterStyle* GetCounterStyle(nsIAtom* aName) const {
+  CounterStyle* GetCounterStyle(nsAtom* aName) const {
     return mStyles.Get(aName);
   }
   // Same as GetCounterStyle but try to build the counter style object
   // rather than returning nullptr if that hasn't been built.
-  CounterStyle* BuildCounterStyle(nsIAtom* aName);
+  CounterStyle* BuildCounterStyle(nsAtom* aName);
 
   static CounterStyle* GetBuiltinStyle(int32_t aStyle);
   static CounterStyle* GetNoneStyle()
@@ -346,6 +345,8 @@ public:
   {
     return GetBuiltinStyle(NS_STYLE_LIST_STYLE_DISC);
   }
+
+  static nsAtom* GetStyleNameFromType(int32_t aStyle);
 
   // This method will scan all existing counter styles generated by this
   // manager, and remove or mark data dirty accordingly. It returns true
@@ -365,7 +366,7 @@ private:
   void DestroyCounterStyle(CounterStyle* aCounterStyle);
 
   nsPresContext* mPresContext;
-  nsDataHashtable<nsRefPtrHashKey<nsIAtom>, CounterStyle*> mStyles;
+  nsDataHashtable<nsRefPtrHashKey<nsAtom>, CounterStyle*> mStyles;
   nsTArray<CounterStyle*> mRetiredStyles;
 };
 

@@ -24,6 +24,10 @@ namespace mozilla {
 inline void
 NoteIntentionalCrash(const char* aProcessType)
 {
+// In opt builds we don't actually have the leak checking enabled, and the
+// sandbox doesn't allow writing to this path, so we just disable this
+// function's behaviour.
+#ifdef MOZ_DEBUG
   char* f = getenv("XPCOM_MEM_BLOAT_LOG");
   if (!f) {
     return;
@@ -49,8 +53,11 @@ NoteIntentionalCrash(const char* aProcessType)
   fprintf(stderr, "Writing to log: %s\n", bloatName.str().c_str());
 
   FILE* processfd = fopen(bloatName.str().c_str(), "a");
-  fprintf(processfd, "==> process %d will purposefully crash\n", getpid());
-  fclose(processfd);
+  if (processfd) {
+    fprintf(processfd, "==> process %d will purposefully crash\n", getpid());
+    fclose(processfd);
+  }
+#endif
 }
 
 } // namespace mozilla

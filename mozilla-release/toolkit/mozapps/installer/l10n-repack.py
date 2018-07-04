@@ -17,7 +17,6 @@ NON_CHROME = set([
     '**/crashreporter*.ini',
     'searchplugins',
     'dictionaries',
-    'hyphenation',
     'defaults/profile',
     'defaults/pref*/*-l10n.js',
     'update.locale',
@@ -25,6 +24,7 @@ NON_CHROME = set([
     'extensions/langpack-*@*',
     'distribution/extensions/langpack-*@*',
     'chrome/**/searchplugins/*.xml',
+    '**/multilocale.txt'
 ])
 
 

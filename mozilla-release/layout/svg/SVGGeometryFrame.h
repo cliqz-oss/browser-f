@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -24,17 +25,16 @@ class DrawTarget;
 
 class gfxContext;
 class nsDisplaySVGGeometry;
-class nsIAtom;
+class nsAtom;
 class nsIFrame;
 class nsIPresShell;
-class nsStyleContext;
 class nsSVGMarkerFrame;
 class nsSVGMarkerProperty;
 
 struct nsRect;
 
 nsIFrame*
-NS_NewSVGGeometryFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+NS_NewSVGGeometryFrame(nsIPresShell* aPresShell, mozilla::ComputedStyle* aStyle);
 
 namespace mozilla {
 
@@ -44,19 +44,19 @@ class SVGGeometryFrame : public nsFrame
   typedef mozilla::gfx::DrawTarget DrawTarget;
 
   friend nsIFrame*
-  ::NS_NewSVGGeometryFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  ::NS_NewSVGGeometryFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
   friend class ::nsDisplaySVGGeometry;
 
 protected:
-  SVGGeometryFrame(nsStyleContext* aContext, nsIFrame::ClassID aID)
-    : nsFrame(aContext, aID)
+  SVGGeometryFrame(ComputedStyle* aStyle, nsIFrame::ClassID aID)
+    : nsFrame(aStyle, aID)
   {
      AddStateBits(NS_FRAME_SVG_LAYOUT | NS_FRAME_MAY_BE_TRANSFORMED);
   }
 
-  explicit SVGGeometryFrame(nsStyleContext* aContext)
-    : SVGGeometryFrame(aContext, kClassID)
+  explicit SVGGeometryFrame(ComputedStyle* aStyle)
+    : SVGGeometryFrame(aStyle, kClassID)
   {}
 
 public:
@@ -74,10 +74,10 @@ public:
   }
 
   virtual nsresult  AttributeChanged(int32_t         aNameSpaceID,
-                                     nsIAtom*        aAttribute,
+                                     nsAtom*        aAttribute,
                                      int32_t         aModType) override;
 
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   virtual bool IsSVGTransformed(Matrix *aOwnTransforms = nullptr,
                                 Matrix *aFromParentTransforms = nullptr) const override;
@@ -90,7 +90,6 @@ public:
 #endif
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   // SVGGeometryFrame methods

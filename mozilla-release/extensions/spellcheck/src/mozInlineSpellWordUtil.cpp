@@ -4,24 +4,23 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozInlineSpellWordUtil.h"
+
+#include "mozilla/BinarySearch.h"
+#include "mozilla/TextEditor.h"
+#include "mozilla/dom/Element.h"
+
 #include "nsDebug.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsComponentManagerUtils.h"
-#include "nsIDOMCSSStyleDeclaration.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMRange.h"
 #include "nsIEditor.h"
-#include "nsIDOMNode.h"
 #include "nsUnicodeProperties.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIContent.h"
 #include "nsTextFragment.h"
-#include "mozilla/dom/Element.h"
 #include "nsRange.h"
 #include "nsContentUtils.h"
 #include "nsIFrame.h"
 #include <algorithm>
-#include "mozilla/BinarySearch.h"
 
 using namespace mozilla;
 
@@ -50,33 +49,23 @@ inline bool IsConditionalPunctuation(char16_t ch)
 // mozInlineSpellWordUtil::Init
 
 nsresult
-mozInlineSpellWordUtil::Init(const nsWeakPtr& aWeakEditor)
+mozInlineSpellWordUtil::Init(TextEditor* aTextEditor)
 {
-  nsresult rv;
+  if (NS_WARN_IF(!aTextEditor)) {
+    return NS_ERROR_FAILURE;
+  }
 
-  // getting the editor can fail commonly because the editor was detached, so
-  // don't assert
-  nsCOMPtr<nsIEditor> editor = do_QueryReferent(aWeakEditor, &rv);
-  if (NS_FAILED(rv))
-    return rv;
-
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  rv = editor->GetDocument(getter_AddRefs(domDoc));
-  NS_ENSURE_SUCCESS(rv, rv);
-  NS_ENSURE_TRUE(domDoc, NS_ERROR_NULL_POINTER);
-
-  mDOMDocument = domDoc;
-  mDocument = do_QueryInterface(domDoc);
+  mDocument = aTextEditor->GetDocument();
+  if (NS_WARN_IF(!mDocument)) {
+    return NS_ERROR_FAILURE;
+  }
 
   // Find the root node for the editor. For contenteditable we'll need something
   // cleverer here.
-  nsCOMPtr<nsIDOMElement> rootElt;
-  rv = editor->GetRootElement(getter_AddRefs(rootElt));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsINode> rootNode = do_QueryInterface(rootElt);
-  mRootNode = rootNode;
-  NS_ASSERTION(mRootNode, "GetRootElement returned null *and* claimed to suceed!");
+  mRootNode = aTextEditor->GetRoot();
+  if (NS_WARN_IF(!mRootNode)) {
+    return NS_ERROR_FAILURE;
+  }
   return NS_OK;
 }
 
@@ -86,7 +75,7 @@ IsSpellCheckingTextNode(nsINode* aNode)
   nsIContent *parent = aNode->GetParent();
   if (parent && parent->IsAnyOfHTMLElements(nsGkAtoms::script, nsGkAtoms::style))
       return false;
-  return aNode->IsNodeOfType(nsINode::eTEXT);
+  return aNode->IsText();
 }
 
 typedef void (* OnLeaveNodeFunPtr)(nsINode* aNode, void* aClosure);
@@ -139,7 +128,7 @@ FindNextTextNode(nsINode* aNode, int32_t aOffset, nsINode* aRoot)
 
   nsINode* checkNode;
   // Need to start at the aOffset'th child
-  nsIContent* child = aNode->GetChildAt(aOffset);
+  nsIContent* child = aNode->GetChildAt_Deprecated(aOffset);
 
   if (child) {
     checkNode = child;
@@ -237,17 +226,24 @@ mozInlineSpellWordUtil::MakeRangeForWord(const RealWord& aWord, nsRange** aRange
   NodeOffset end = MapSoftTextOffsetToDOMPosition(aWord.EndOffset(), HINT_END);
   return MakeRange(begin, end, aRange);
 }
+void
+mozInlineSpellWordUtil::MakeNodeOffsetRangeForWord(const RealWord& aWord,
+                                         NodeOffsetRange* aNodeOffsetRange)
+{
+  NodeOffset begin = MapSoftTextOffsetToDOMPosition(aWord.mSoftTextOffset, HINT_BEGIN);
+  NodeOffset end = MapSoftTextOffsetToDOMPosition(aWord.EndOffset(), HINT_END);
+  *aNodeOffsetRange = NodeOffsetRange(begin, end);
+}
 
 // mozInlineSpellWordUtil::GetRangeForWord
 
 nsresult
-mozInlineSpellWordUtil::GetRangeForWord(nsIDOMNode* aWordNode,
+mozInlineSpellWordUtil::GetRangeForWord(nsINode* aWordNode,
                                         int32_t aWordOffset,
                                         nsRange** aRange)
 {
   // Set our soft end and start
-  nsCOMPtr<nsINode> wordNode = do_QueryInterface(aWordNode);
-  NodeOffset pt = NodeOffset(wordNode, aWordOffset);
+  NodeOffset pt(aWordNode, aWordOffset);
 
   if (!mSoftTextValid || pt != mSoftBegin || pt != mSoftEnd) {
     InvalidateWords();
@@ -295,7 +291,8 @@ NormalizeWord(const nsAString& aInput, int32_t aPos, int32_t aLen, nsAString& aO
 //    range unless the word was misspelled. This may or may not be possible.
 
 nsresult
-mozInlineSpellWordUtil::GetNextWord(nsAString& aText, nsRange** aRange,
+mozInlineSpellWordUtil::GetNextWord(nsAString& aText,
+                                    NodeOffsetRange* aNodeOffsetRange,
                                     bool* aSkipChecking)
 {
 #ifdef DEBUG_SPELLCHECK
@@ -305,14 +302,13 @@ mozInlineSpellWordUtil::GetNextWord(nsAString& aText, nsRange** aRange,
   if (mNextWordIndex < 0 ||
       mNextWordIndex >= int32_t(mRealWords.Length())) {
     mNextWordIndex = -1;
-    *aRange = nullptr;
+    *aNodeOffsetRange = NodeOffsetRange();
     *aSkipChecking = true;
     return NS_OK;
   }
 
   const RealWord& word = mRealWords[mNextWordIndex];
-  nsresult rv = MakeRangeForWord(word, aRange);
-  NS_ENSURE_SUCCESS(rv, rv);
+  MakeNodeOffsetRangeForWord(word, aNodeOffsetRange);
   ++mNextWordIndex;
   *aSkipChecking = !word.mCheckableWord;
   ::NormalizeWord(mSoftText, word.mSoftTextOffset, word.mLength, aText);
@@ -334,8 +330,9 @@ mozInlineSpellWordUtil::MakeRange(NodeOffset aBegin, NodeOffset aEnd,
                                   nsRange** aRange)
 {
   NS_ENSURE_ARG_POINTER(aBegin.mNode);
-  if (!mDOMDocument)
+  if (!mDocument) {
     return NS_ERROR_NOT_INITIALIZED;
+  }
 
   RefPtr<nsRange> range = new nsRange(aBegin.mNode);
   nsresult rv = range->SetStartAndEnd(aBegin.mNode, aBegin.mOffset,
@@ -844,7 +841,7 @@ mozInlineSpellWordUtil::BuildSoftText()
                                          mozilla::fallible);
         if (!ok) {
             // probably out of memory, remove from mSoftTextDOMMapping
-            mSoftTextDOMMapping.RemoveElementAt(mSoftTextDOMMapping.Length() - 1);
+            mSoftTextDOMMapping.RemoveLastElement();
             exit = true;
         }
       }
@@ -971,7 +968,7 @@ FindLastNongreaterOffset(const nsTArray<T>& aContainer, int32_t aSoftTextOffset,
 
 } // namespace
 
-mozInlineSpellWordUtil::NodeOffset
+NodeOffset
 mozInlineSpellWordUtil::MapSoftTextOffsetToDOMPosition(int32_t aSoftTextOffset,
                                                        DOMMapHint aHint)
 {

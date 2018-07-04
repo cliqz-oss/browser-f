@@ -10,11 +10,13 @@
 #include "prio.h"
 #include "ssl.h"
 
+// This is an internal header, used to get TLS_1_3_DRAFT_VERSION.
+#include "ssl3prot.h"
+
 #include <functional>
 #include <iostream>
 
 #include "test_io.h"
-#include "tls_filter.h"
 
 #define GTEST_HAS_RTTI 0
 #include "gtest/gtest.h"
@@ -37,7 +39,10 @@ enum SessionResumptionMode {
   RESUME_BOTH = RESUME_SESSIONID | RESUME_TICKET
 };
 
+class PacketFilter;
 class TlsAgent;
+class TlsCipherSpec;
+struct TlsRecord;
 
 const extern std::vector<SSLNamedGroup> kAllDHEGroups;
 const extern std::vector<SSLNamedGroup> kECDHEGroups;
@@ -55,6 +60,8 @@ typedef std::function<int32_t(TlsAgent* agent, const SECItem* srvNameArr,
                               PRUint32 srvNameArrSize)>
     SniCallbackFunction;
 
+static const uint8_t kD13 = TLS_1_3_DRAFT_VERSION;
+
 class TlsAgent : public PollTarget {
  public:
   enum Role { CLIENT, SERVER };
@@ -66,7 +73,6 @@ class TlsAgent : public PollTarget {
   static const std::string kServerRsaSign;
   static const std::string kServerRsaPss;
   static const std::string kServerRsaDecrypt;
-  static const std::string kServerRsaChain;  // A cert that requires a chain.
   static const std::string kServerEcdsa256;
   static const std::string kServerEcdsa384;
   static const std::string kServerEcdsa521;
@@ -81,20 +87,15 @@ class TlsAgent : public PollTarget {
     adapter_->SetPeer(peer->adapter_);
   }
 
-  void SetTlsRecordFilter(std::shared_ptr<TlsRecordFilter> filter) {
-    filter->SetAgent(this);
+  void SetFilter(std::shared_ptr<PacketFilter> filter) {
     adapter_->SetPacketFilter(filter);
   }
-
-  void SetPacketFilter(std::shared_ptr<PacketFilter> filter) {
-    adapter_->SetPacketFilter(filter);
-  }
-
-  void DeletePacketFilter() { adapter_->SetPacketFilter(nullptr); }
+  void ClearFilter() { adapter_->SetPacketFilter(nullptr); }
 
   void StartConnect(PRFileDesc* model = nullptr);
   void CheckKEA(SSLKEAType kea_type, SSLNamedGroup group,
                 size_t kea_size = 0) const;
+  void CheckOriginalKEA(SSLNamedGroup kea_group) const;
   void CheckAuthType(SSLAuthType auth_type,
                      SSLSignatureScheme sig_scheme) const;
 
@@ -121,12 +122,10 @@ class TlsAgent : public PollTarget {
   void SetupClientAuth();
   void RequestClientAuth(bool requireAuth);
 
+  void SetOption(int32_t option, int value);
   void ConfigureSessionCache(SessionResumptionMode mode);
-  void SetSessionTicketsEnabled(bool en);
-  void SetSessionCacheEnabled(bool en);
   void Set0RttEnabled(bool en);
   void SetFallbackSCSVEnabled(bool en);
-  void SetShortHeadersEnabled();
   void SetVersionRange(uint16_t minver, uint16_t maxver);
   void GetVersionRange(uint16_t* minver, uint16_t* maxver);
   void CheckPreliminaryInfo();
@@ -136,7 +135,6 @@ class TlsAgent : public PollTarget {
   void ExpectReadWriteError();
   void EnableFalseStart();
   void ExpectResumption();
-  void ExpectShortHeaders();
   void SkipVersionChecks();
   void SetSignatureSchemes(const SSLSignatureScheme* schemes, size_t count);
   void EnableAlpn(const uint8_t* val, size_t len);
@@ -149,26 +147,47 @@ class TlsAgent : public PollTarget {
   // Send data on the socket, encrypting it.
   void SendData(size_t bytes, size_t blocksize = 1024);
   void SendBuffer(const DataBuffer& buf);
+  bool SendEncryptedRecord(const std::shared_ptr<TlsCipherSpec>& spec,
+                           uint64_t seq, uint8_t ct, const DataBuffer& buf);
   // Send data directly to the underlying socket, skipping the TLS layer.
   void SendDirect(const DataBuffer& buf);
+  void SendRecordDirect(const TlsRecord& record);
   void ReadBytes(size_t max = 16384U);
   void ResetSentBytes();  // Hack to test drops.
   void EnableExtendedMasterSecret();
   void CheckExtendedMasterSecret(bool expected);
   void CheckEarlyDataAccepted(bool expected);
-  void DisableRollbackDetection();
-  void EnableCompression();
   void SetDowngradeCheckVersion(uint16_t version);
   void CheckSecretsDestroyed();
   void ConfigNamedGroups(const std::vector<SSLNamedGroup>& groups);
   void DisableECDHEServerKeyReuse();
   bool GetPeerChainLength(size_t* count);
   void CheckCipherSuite(uint16_t cipher_suite);
+  void SetResumptionTokenCallback();
+  bool MaybeSetResumptionToken();
+  void SetResumptionToken(const std::vector<uint8_t>& resumption_token) {
+    resumption_token_ = resumption_token;
+  }
+  const std::vector<uint8_t>& GetResumptionToken() const {
+    return resumption_token_;
+  }
+  void GetTokenInfo(ScopedSSLResumptionTokenInfo& token) {
+    SECStatus rv = SSL_GetResumptionTokenInfo(
+        resumption_token_.data(), resumption_token_.size(), token.get(),
+        sizeof(SSLResumptionTokenInfo));
+    ASSERT_EQ(SECSuccess, rv);
+  }
+  void SetResumptionCallbackCalled() { resumption_callback_called_ = true; }
+  bool resumption_callback_called() const {
+    return resumption_callback_called_;
+  }
 
   const std::string& name() const { return name_; }
 
   Role role() const { return role_; }
   std::string role_str() const { return role_ == SERVER ? "server" : "client"; }
+
+  SSLProtocolVariant variant() const { return variant_; }
 
   State state() const { return state_; }
 
@@ -194,10 +213,10 @@ class TlsAgent : public PollTarget {
     return info_.protocolVersion;
   }
 
-  bool cipher_suite(uint16_t* cipher_suite) const {
+  bool cipher_suite(uint16_t* suite) const {
     if (state_ != STATE_CONNECTED) return false;
 
-    *cipher_suite = info_.cipherSuite;
+    *suite = info_.cipherSuite;
     return true;
   }
 
@@ -212,17 +231,17 @@ class TlsAgent : public PollTarget {
                                 info_.sessionID + info_.sessionIDLength);
   }
 
-  bool auth_type(SSLAuthType* auth_type) const {
+  bool auth_type(SSLAuthType* a) const {
     if (state_ != STATE_CONNECTED) return false;
 
-    *auth_type = info_.authType;
+    *a = info_.authType;
     return true;
   }
 
-  bool kea_type(SSLKEAType* kea_type) const {
+  bool kea_type(SSLKEAType* k) const {
     if (state_ != STATE_CONNECTED) return false;
 
-    *kea_type = info_.keaType;
+    *k = info_.keaType;
     return true;
   }
 
@@ -249,10 +268,13 @@ class TlsAgent : public PollTarget {
   void ExpectReceiveAlert(uint8_t alert, uint8_t level = 0);
   void ExpectSendAlert(uint8_t alert, uint8_t level = 0);
 
+  std::string alpn_value_to_use_ = "";
+
  private:
   const static char* states[];
 
   void SetState(State state);
+  void ValidateCipherSpecs();
 
   // Dummy auth certificate hook.
   static SECStatus AuthCertificateHook(void* arg, PRFileDesc* fd,
@@ -378,6 +400,7 @@ class TlsAgent : public PollTarget {
   uint8_t expected_sent_alert_;
   uint8_t expected_sent_alert_level_;
   bool handshake_callback_called_;
+  bool resumption_callback_called_;
   SSLChannelInfo info_;
   SSLCipherSuiteInfo csinfo_;
   SSLVersionRange vrange_;
@@ -388,8 +411,8 @@ class TlsAgent : public PollTarget {
   HandshakeCallbackFunction handshake_callback_;
   AuthCertificateCallbackFunction auth_certificate_callback_;
   SniCallbackFunction sni_callback_;
-  bool expect_short_headers_;
   bool skip_version_checks_;
+  std::vector<uint8_t> resumption_token_;
 };
 
 inline std::ostream& operator<<(std::ostream& stream,
@@ -426,6 +449,7 @@ class TlsAgentTestBase : public ::testing::Test {
                                     size_t hs_len, DataBuffer* out,
                                     uint64_t seq_num, uint32_t fragment_offset,
                                     uint32_t fragment_length) const;
+  DataBuffer MakeCannedTls13ServerHello();
   static void MakeTrivialHandshakeRecord(uint8_t hs_type, size_t hs_len,
                                          DataBuffer* out);
   static inline TlsAgent::Role ToRole(const std::string& str) {
@@ -440,7 +464,7 @@ class TlsAgentTestBase : public ::testing::Test {
   void ProcessMessage(const DataBuffer& buffer, TlsAgent::State expected_state,
                       int32_t error_code = 0);
 
-  std::unique_ptr<TlsAgent> agent_;
+  std::shared_ptr<TlsAgent> agent_;
   TlsAgent::Role role_;
   SSLProtocolVariant variant_;
   uint16_t version_;

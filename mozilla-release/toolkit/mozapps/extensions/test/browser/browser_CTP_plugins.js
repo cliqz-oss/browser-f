@@ -40,9 +40,9 @@ add_task(async function() {
 
   let pluginTag = getTestPluginTag();
   pluginTag.enabledState = Ci.nsIPluginTag.STATE_CLICKTOPLAY;
-  let managerWindow = await new Promise(resolve => open_manager("addons://list/plugin", resolve));
+  let managerWindow = await open_manager("addons://list/plugin");
 
-  let plugins = await new Promise(resolve => AddonManager.getAddonsByTypes(["plugin"], resolve));
+  let plugins = await AddonManager.getAddonsByTypes(["plugin"]);
 
   let testPluginId;
   for (let plugin of plugins) {
@@ -53,7 +53,7 @@ add_task(async function() {
   }
   ok(testPluginId, "part2: Test Plug-in should exist");
 
-  let testPlugin = await new Promise(resolve => AddonManager.getAddonByID(testPluginId, resolve));
+  let testPlugin = await AddonManager.getAddonByID(testPluginId);
   isnot(testPlugin, null, "part2.1: Test Plug-in should exist");
 
   let pluginEl = get_addon_element(managerWindow, testPluginId);
@@ -73,7 +73,7 @@ add_task(async function() {
   let condition = () => PopupNotifications.getNotification("click-to-play-plugins", pluginBrowser);
   await BrowserTestUtils.waitForCondition(condition, "part4: should have a click-to-play notification");
 
-  await BrowserTestUtils.removeTab(pluginTab);
+  BrowserTestUtils.removeTab(pluginTab);
 
   let alwaysActivateItem = managerWindow.document.getAnonymousElementByAttribute(pluginEl, "anonid", "always-activate-menuitem");
   menu.selectedItem = alwaysActivateItem;
@@ -90,7 +90,7 @@ add_task(async function() {
     ok(objLoadingContent.activated, "part6: plugin should be activated");
   });
 
-  await BrowserTestUtils.removeTab(pluginTab);
+  BrowserTestUtils.removeTab(pluginTab);
 
   let neverActivateItem = managerWindow.document.getAnonymousElementByAttribute(pluginEl, "anonid", "never-activate-menuitem");
   menu.selectedItem = neverActivateItem;
@@ -106,7 +106,7 @@ add_task(async function() {
     ok(!objLoadingContent.activated, "part7: plugin should not be activated");
   });
 
-  await BrowserTestUtils.removeTab(pluginTab);
+  BrowserTestUtils.removeTab(pluginTab);
 
   let details = managerWindow.document.getAnonymousElementByAttribute(pluginEl, "anonid", "details-btn");
   is_element_visible(details, "part7: details link should be visible");
@@ -133,7 +133,7 @@ add_task(async function() {
     ok(objLoadingContent.activated, "part10: plugin should be activated");
   });
 
-  await BrowserTestUtils.removeTab(pluginTab);
+  BrowserTestUtils.removeTab(pluginTab);
 
   menu.selectedItem = askToActivateItem;
   askToActivateItem.doCommand();
@@ -144,15 +144,14 @@ add_task(async function() {
   condition = () => PopupNotifications.getNotification("click-to-play-plugins", pluginBrowser);
   await BrowserTestUtils.waitForCondition(condition, "part11: should have a click-to-play notification");
 
-  await BrowserTestUtils.removeTab(pluginTab);
+  BrowserTestUtils.removeTab(pluginTab);
 
   // causes appDisabled to be set
   managerWindow = await new Promise(resolve => {
     setAndUpdateBlocklist(gHttpTestRoot + "blockPluginHard.xml",
-      () => {
-        close_manager(managerWindow, function() {
-          open_manager("addons://list/plugin", resolve);
-        });
+      async () => {
+        await close_manager(managerWindow);
+        open_manager("addons://list/plugin", resolve);
       }
     );
   });

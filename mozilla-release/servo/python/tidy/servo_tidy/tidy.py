@@ -17,18 +17,33 @@ import re
 import StringIO
 import subprocess
 import sys
+
 import colorama
 import toml
+import voluptuous
 import yaml
-
 from licenseck import MPL, APACHE, COPYRIGHT, licenses_toml, licenses_dep_toml
+topdir = os.path.abspath(os.path.dirname(sys.argv[0]))
+wpt = os.path.join(topdir, "tests", "wpt")
+
+
+def wpt_path(*args):
+    return os.path.join(wpt, *args)
 
 CONFIG_FILE_PATH = os.path.join(".", "servo-tidy.toml")
+WPT_MANIFEST_PATH = wpt_path("include.ini")
+
+# Import wptmanifest only when we do have wpt in tree, i.e. we're not
+# inside a Firefox checkout.
+if os.path.isfile(WPT_MANIFEST_PATH):
+    sys.path.append(wpt_path("web-platform-tests", "tools", "wptrunner", "wptrunner"))
+    from wptmanifest import parser, node
 
 # Default configs
 config = {
     "skip-check-length": False,
     "skip-check-licenses": False,
+    "check-alphabetical-order": True,
     "check-ordered-json-keys": [],
     "lint-scripts": [],
     "blocked-packages": {},
@@ -53,7 +68,7 @@ FILE_PATTERNS_TO_CHECK = ["*.rs", "*.rc", "*.cpp", "*.c",
                           "*.yml"]
 
 # File patterns that are ignored for all tidy and lint checks.
-FILE_PATTERNS_TO_IGNORE = ["*.#*", "*.pyc", "fake-ld.sh"]
+FILE_PATTERNS_TO_IGNORE = ["*.#*", "*.pyc", "fake-ld.sh", "*.ogv", "*.webm"]
 
 SPEC_BASE_PATH = "components/script/dom/"
 
@@ -66,7 +81,6 @@ WEBIDL_STANDARDS = [
     "//dev.w3.org/fxtf",
     "//dvcs.w3.org/hg",
     "//dom.spec.whatwg.org",
-    "//domparsing.spec.whatwg.org",
     "//drafts.csswg.org",
     "//drafts.css-houdini.org",
     "//drafts.fxtf.org",
@@ -79,6 +93,7 @@ WEBIDL_STANDARDS = [
     "//heycam.github.io/webidl",
     "//webbluetoothcg.github.io/web-bluetooth/",
     "//svgwg.org/svg2-draft",
+    "//wicg.github.io",
     # Not a URL
     "// This interface is entirely internal to Servo, and should not be" +
     " accessible to\n// web pages."
@@ -316,7 +331,7 @@ def check_flake8(file_name, contents):
 
 def check_lock(file_name, contents):
     def find_reverse_dependencies(name, content):
-        for package in itertools.chain([content["root"]], content["package"]):
+        for package in itertools.chain([content.get("root", {})], content["package"]):
             for dependency in package.get("dependencies", []):
                 if dependency.startswith("{} ".format(name)):
                     yield package["name"], dependency
@@ -339,10 +354,17 @@ def check_lock(file_name, contents):
         packages_by_name.setdefault(package["name"], []).append((package["version"], source))
 
     for (name, packages) in packages_by_name.iteritems():
-        if name in exceptions or len(packages) <= 1:
+        has_duplicates = len(packages) > 1
+        duplicates_allowed = name in exceptions
+
+        if has_duplicates == duplicates_allowed:
             continue
 
-        message = "duplicate versions for package `{}`".format(name)
+        if duplicates_allowed:
+            message = 'duplicates for `{}` are allowed, but only single version found'.format(name)
+        else:
+            message = "duplicate versions for package `{}`".format(name)
+
         packages.sort()
         packages_dependencies = list(find_reverse_dependencies(name, content))
         for version, source in packages:
@@ -431,6 +453,38 @@ def check_shell(file_name, lines):
                     yield(idx + 1, "variable substitutions should use the full \"${VAR}\" form")
 
 
+def rec_parse(current_path, root_node):
+    dirs = []
+    for item in root_node.children:
+        if isinstance(item, node.DataNode):
+            next_depth = os.path.join(current_path, item.data)
+            dirs.append(next_depth)
+            dirs += rec_parse(next_depth, item)
+    return dirs
+
+
+def check_manifest_dirs(config_file, print_text=True):
+    if not os.path.exists(config_file):
+        yield(config_file, 0, "%s manifest file is required but was not found" % config_file)
+        return
+
+    # Load configs from include.ini
+    with open(config_file) as content:
+        conf_file = content.read()
+        lines = conf_file.splitlines(True)
+
+    if print_text:
+        print '\rChecking the wpt manifest file...'
+
+    p = parser.parse(lines)
+    paths = rec_parse(wpt_path("web-platform-tests"), p)
+    for idx, path in enumerate(paths):
+        if path.endswith("_mozilla"):
+            continue
+        if not os.path.isdir(path):
+            yield(config_file, idx + 1, "Path in manifest was not found: {}".format(path))
+
+
 def check_rust(file_name, lines):
     if not file_name.endswith(".rs") or \
        file_name.endswith(".mako.rs") or \
@@ -456,6 +510,7 @@ def check_rust(file_name, lines):
     indent = 0
     prev_indent = 0
 
+    check_alphabetical_order = config["check-alphabetical-order"]
     decl_message = "{} is not in alphabetical order"
     decl_expected = "\n\t\033[93mexpected: {}\033[0m"
     decl_found = "\n\t\033[91mfound: {}\033[0m"
@@ -465,15 +520,6 @@ def check_rust(file_name, lines):
         line = original_line.strip()
         prev_indent = indent
         indent = len(original_line) - len(line)
-
-        # Hack for components/selectors/build.rs
-        if multi_line_string:
-            if line.startswith('"#'):
-                multi_line_string = False
-            else:
-                continue
-        if line.endswith('r#"'):
-            multi_line_string = True
 
         is_attribute = re.search(r"#\[.*\]", line)
         is_comment = re.search(r"^//|^/\*|^\*", line)
@@ -493,6 +539,14 @@ def check_rust(file_name, lines):
             line = merged_lines + line
             merged_lines = ''
 
+        if multi_line_string:
+            line, count = re.subn(
+                r'^(\\.|[^"\\])*?"', '', line, count=1)
+            if count == 1:
+                multi_line_string = False
+            else:
+                continue
+
         # Ignore attributes, comments, and imports
         # Keep track of whitespace to enable checking for a merged import block
         if import_block:
@@ -503,9 +557,17 @@ def check_rust(file_name, lines):
                     import_block = False
 
         # get rid of strings and chars because cases like regex expression, keep attributes
-        if not is_attribute:
+        if not is_attribute and not is_comment:
             line = re.sub(r'"(\\.|[^\\"])*?"', '""', line)
-            line = re.sub(r"'(\\.|[^\\'])*?'", "''", line)
+            line = re.sub(
+                r"'(\\.|[^\\']|(\\x[0-9a-fA-F]{2})|(\\u{[0-9a-fA-F]{1,6}}))'",
+                "''", line)
+            # If, after parsing all single-line strings, we still have
+            # an odd number of double quotes, this line starts a
+            # multiline string
+            if line.count('"') % 2 == 1:
+                line = re.sub(r'"(\\.|[^\\"])*?$', '""', line)
+                multi_line_string = True
 
         # get rid of comments
         line = re.sub('//.*?$|/\*.*?$|^\*.*?$', '//', line)
@@ -566,11 +628,11 @@ def check_rust(file_name, lines):
             # No benefit over using &str
             (r": &String", "use &str instead of &String", no_filter),
             # There should be any use of banned types:
-            # Cell<JSVal>, Cell<JS<T>>, DOMRefCell<JS<T>>, DOMRefCell<HEAP<T>>
-            (r"(\s|:)+Cell<JSVal>", "Banned type Cell<JSVal> detected. Use MutJS<JSVal> instead", no_filter),
-            (r"(\s|:)+Cell<JS<.+>>", "Banned type Cell<JS<T>> detected. Use MutJS<JS<T>> instead", no_filter),
-            (r"DOMRefCell<JS<.+>>", "Banned type DOMRefCell<JS<T>> detected. Use MutJS<JS<T>> instead", no_filter),
-            (r"DOMRefCell<Heap<.+>>", "Banned type DOMRefCell<Heap<T>> detected. Use MutJS<JS<T>> instead", no_filter),
+            # Cell<JSVal>, Cell<Dom<T>>, DomRefCell<Dom<T>>, DomRefCell<HEAP<T>>
+            (r"(\s|:)+Cell<JSVal>", "Banned type Cell<JSVal> detected. Use MutDom<JSVal> instead", no_filter),
+            (r"(\s|:)+Cell<Dom<.+>>", "Banned type Cell<Dom<T>> detected. Use MutDom<T> instead", no_filter),
+            (r"DomRefCell<Dom<.+>>", "Banned type DomRefCell<Dom<T>> detected. Use MutDom<T> instead", no_filter),
+            (r"DomRefCell<Heap<.+>>", "Banned type DomRefCell<Heap<T>> detected. Use MutDom<T> instead", no_filter),
             # No benefit to using &Root<T>
             (r": &Root<", "use &T instead of &Root<T>", no_filter),
             (r"^&&", "operators should go at the end of the first line", no_filter),
@@ -613,11 +675,15 @@ def check_rust(file_name, lines):
             crate_name = line[13:-1]
             if indent not in prev_crate:
                 prev_crate[indent] = ""
-            if prev_crate[indent] > crate_name:
+            if prev_crate[indent] > crate_name and check_alphabetical_order:
                 yield(idx + 1, decl_message.format("extern crate declaration")
                       + decl_expected.format(prev_crate[indent])
                       + decl_found.format(crate_name))
             prev_crate[indent] = crate_name
+
+        if line == "}":
+            for i in [i for i in prev_crate.keys() if i > indent]:
+                del prev_crate[i]
 
         # check alphabetical order of feature attributes in lib.rs files
         if is_lib_rs_file:
@@ -626,12 +692,12 @@ def check_rust(file_name, lines):
             if match:
                 features = map(lambda w: w.strip(), match.group(1).split(','))
                 sorted_features = sorted(features)
-                if sorted_features != features:
+                if sorted_features != features and check_alphabetical_order:
                     yield(idx + 1, decl_message.format("feature attribute")
                           + decl_expected.format(tuple(sorted_features))
                           + decl_found.format(tuple(features)))
 
-                if prev_feature_name > sorted_features[0]:
+                if prev_feature_name > sorted_features[0] and check_alphabetical_order:
                     yield(idx + 1, decl_message.format("feature attribute")
                           + decl_expected.format(prev_feature_name + " after " + sorted_features[0])
                           + decl_found.format(prev_feature_name + " before " + sorted_features[0]))
@@ -656,7 +722,7 @@ def check_rust(file_name, lines):
             if prev_use:
                 current_use_cut = current_use.replace("{self,", ".").replace("{", ".")
                 prev_use_cut = prev_use.replace("{self,", ".").replace("{", ".")
-                if indent == current_indent and current_use_cut < prev_use_cut:
+                if indent == current_indent and current_use_cut < prev_use_cut and check_alphabetical_order:
                     yield(idx + 1, decl_message.format("use statement")
                           + decl_expected.format(prev_use)
                           + decl_found.format(current_use))
@@ -682,7 +748,7 @@ def check_rust(file_name, lines):
                     prev_mod[indent] = ""
                 if match == -1 and not line.endswith(";"):
                     yield (idx + 1, "mod declaration spans multiple lines")
-                if prev_mod[indent] and mod < prev_mod[indent]:
+                if prev_mod[indent] and mod < prev_mod[indent] and check_alphabetical_order:
                     yield(idx + 1, decl_message.format("mod declaration")
                           + decl_expected.format(prev_mod[indent])
                           + decl_found.format(mod))
@@ -690,6 +756,19 @@ def check_rust(file_name, lines):
         else:
             # we now erase previous entries
             prev_mod = {}
+
+        # derivable traits should be alphabetically ordered
+        if is_attribute:
+            # match the derivable traits filtering out macro expansions
+            match = re.search(r"#\[derive\(([a-zA-Z, ]*)", line)
+            if match:
+                derives = map(lambda w: w.strip(), match.group(1).split(','))
+                # sort, compare and report
+                sorted_derives = sorted(derives)
+                if sorted_derives != derives and check_alphabetical_order:
+                    yield(idx + 1, decl_message.format("derivable traits list")
+                              + decl_expected.format(", ".join(sorted_derives))
+                              + decl_found.format(", ".join(derives)))
 
 
 # Avoid flagging <Item=Foo> constructs
@@ -744,15 +823,24 @@ def duplicate_key_yaml_constructor(loader, node, deep=False):
 
 
 def lint_buildbot_steps_yaml(mapping):
-    # Check for well-formedness of contents
-    # A well-formed buildbot_steps.yml should be a map to list of strings
-    for k in mapping.keys():
-        if not isinstance(mapping[k], list):
-            raise ValueError("Key '{}' maps to type '{}', but list expected".format(k, type(mapping[k]).__name__))
+    from voluptuous import Any, Extra, Required, Schema
 
-        # check if value is a list of strings
-        for item in itertools.ifilter(lambda i: not isinstance(i, str), mapping[k]):
-            raise ValueError("List mapped to '{}' contains non-string element".format(k))
+    # Note: dictionary keys are optional by default in voluptuous
+    env = Schema({Extra: str})
+    commands = Schema([str])
+    schema = Schema({
+        'env': env,
+        Extra: Any(
+            commands,
+            {
+                'env': env,
+                Required('commands'): commands,
+            },
+        ),
+    })
+
+    # Signals errors via exception throwing
+    schema(mapping)
 
 
 class SafeYamlLoader(yaml.SafeLoader):
@@ -780,8 +868,8 @@ def check_yaml(file_name, contents):
         yield (line, e)
     except KeyError as e:
         yield (None, "Duplicated Key ({})".format(e.message))
-    except ValueError as e:
-        yield (None, e.message)
+    except voluptuous.MultipleInvalid as e:
+        yield (None, str(e))
 
 
 def check_for_possible_duplicate_json_keys(key_value_pairs):
@@ -832,7 +920,7 @@ def check_spec(file_name, lines):
     macro_patt = re.compile("^\s*\S+!(.*)$")
 
     # Pattern representing a line with comment containing a spec link
-    link_patt = re.compile("^\s*///? https://.+$")
+    link_patt = re.compile("^\s*///? (<https://.+>|https://.+)$")
 
     # Pattern representing a line with comment or attribute
     comment_patt = re.compile("^\s*(///?.+|#\[.+\])$")
@@ -1080,6 +1168,11 @@ def run_lint_scripts(only_changed_files=False, progress=True, stylo=False):
 def scan(only_changed_files=False, progress=True, stylo=False):
     # check config file for errors
     config_errors = check_config_file(CONFIG_FILE_PATH)
+    # check ini directories exist
+    if os.path.isfile(WPT_MANIFEST_PATH):
+        manifest_errors = check_manifest_dirs(WPT_MANIFEST_PATH)
+    else:
+        manifest_errors = ()
     # check directories contain expected files
     directory_errors = check_directory_files(config['check_ext'])
     # standard checks
@@ -1093,7 +1186,7 @@ def scan(only_changed_files=False, progress=True, stylo=False):
     # other lint checks
     lint_errors = run_lint_scripts(only_changed_files, progress, stylo=stylo)
     # chain all the iterators
-    errors = itertools.chain(config_errors, directory_errors, lint_errors,
+    errors = itertools.chain(config_errors, manifest_errors, directory_errors, lint_errors,
                              file_errors, dep_license_errors)
 
     error = None

@@ -16,16 +16,16 @@ use webrender_api;
 /// Whether a consumer is in a position to request images or not. This can occur
 /// when animations are being processed by the layout thread while the script
 /// thread is executing in parallel.
-#[derive(Copy, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Copy, Deserialize, PartialEq, Serialize)]
 pub enum CanRequestImages {
     No,
     Yes,
 }
 
 /// Indicating either entire image or just metadata availability
-#[derive(Clone, Deserialize, Serialize, HeapSizeOf)]
+#[derive(Clone, Deserialize, MallocSizeOf, Serialize)]
 pub enum ImageOrMetadataAvailable {
-    ImageAvailable(Arc<Image>, ServoUrl),
+    ImageAvailable(#[ignore_malloc_size_of = "Arc"] Arc<Image>, ServoUrl),
     MetadataAvailable(ImageMetadata),
 }
 
@@ -60,20 +60,20 @@ impl ImageResponder {
 }
 
 /// The returned image.
-#[derive(Clone, Debug, Deserialize, Serialize, HeapSizeOf)]
+#[derive(Clone, Debug, Deserialize, MallocSizeOf, Serialize)]
 pub enum ImageResponse {
     /// The requested image was loaded.
-    Loaded(Arc<Image>, ServoUrl),
+    Loaded(#[ignore_malloc_size_of = "Arc"] Arc<Image>, ServoUrl),
     /// The request image metadata was loaded.
     MetadataLoaded(ImageMetadata),
     /// The requested image failed to load, so a placeholder was loaded instead.
-    PlaceholderLoaded(Arc<Image>, ServoUrl),
+    PlaceholderLoaded(#[ignore_malloc_size_of = "Arc"] Arc<Image>, ServoUrl),
     /// Neither the requested image nor the placeholder could be loaded.
     None,
 }
 
 /// The current state of an image in the cache.
-#[derive(PartialEq, Copy, Clone, Deserialize, Serialize)]
+#[derive(Clone, Copy, Deserialize, PartialEq, Serialize)]
 pub enum ImageState {
     Pending(PendingImageId),
     LoadError,
@@ -81,7 +81,7 @@ pub enum ImageState {
 }
 
 /// The unique id for an image that has previously been requested.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, HeapSizeOf, Hash, Debug)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize)]
 pub struct PendingImageId(pub u64);
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -90,7 +90,7 @@ pub struct PendingImageResponse {
     pub id: PendingImageId,
 }
 
-#[derive(Copy, Clone, PartialEq, Hash, Eq, Deserialize, Serialize)]
+#[derive(Clone, Copy, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum UsePlaceholder {
     No,
     Yes,

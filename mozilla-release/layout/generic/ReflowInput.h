@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -204,9 +205,9 @@ public:
     bool mHeightDependsOnAncestorCell : 1;     // Does frame height depend on
                                                // an ancestor table-cell?
     bool mIsColumnBalancing : 1;     // nsColumnSetFrame is balancing columns
-    bool mIsFlexContainerMeasuringHeight : 1;   // nsFlexContainerFrame is
-                                                // reflowing this child to
-                                                // measure its intrinsic height.
+    bool mIsFlexContainerMeasuringBSize : 1;   // nsFlexContainerFrame is
+                                               // reflowing this child to
+                                               // measure its intrinsic BSize.
     bool mDummyParentReflowInput : 1;   // a "fake" reflow state made
                                         // in order to be the parent
                                         // of a real one
@@ -246,7 +247,7 @@ public:
   static void* DisplayInitOffsetsEnter(
                                      nsIFrame* aFrame,
                                      SizeComputationInput* aState,
-                                     const mozilla::LogicalSize& aPercentBasis,
+                                     nscoord aPercentBasis,
                                      WritingMode aCBWritingMode,
                                      const nsMargin* aBorder,
                                      const nsMargin* aPadding);
@@ -262,19 +263,12 @@ private:
    *
    * @param aWM Writing mode of the containing block
    * @param aPercentBasis
-   *    Logical size in the writing mode of the containing block to use
-   *    for resolving percentage margin values in the inline and block
-   *    axes.
-   *    The inline size is usually the containing block inline-size
-   *    (width if writing mode is horizontal, and height if vertical).
-   *    The block size is usually the containing block inline-size, per
-   *    CSS21 sec 8.3 (read in conjunction with CSS Writing Modes sec
-   *    7.2), but may be the containing block block-size, e.g. in CSS3
-   *    Flexbox and Grid.
+   *    Inline size of the containing block (in its own writing mode), to use
+   *    for resolving percentage margin values in the inline and block axes.
    * @return true if the margin is dependent on the containing block size.
    */
   bool ComputeMargin(mozilla::WritingMode aWM,
-                     const mozilla::LogicalSize& aPercentBasis);
+                     nscoord aPercentBasis);
 
   /**
    * Computes padding values from the specified padding style information, and
@@ -282,24 +276,17 @@ private:
    *
    * @param aWM Writing mode of the containing block
    * @param aPercentBasis
-   *    Logical size in the writing mode of the containing block to use
-   *    for resolving percentage padding values in the inline and block
-   *    axes.
-   *    The inline size is usually the containing block inline-size
-   *    (width if writing mode is horizontal, and height if vertical).
-   *    The block size is usually the containing block inline-size, per
-   *    CSS21 sec 8.3 (read in conjunction with CSS Writing Modes sec
-   *    7.2), but may be the containing block block-size, e.g. in CSS3
-   *    Flexbox and Grid.
+   *    Inline size of the containing block (in its own writing mode), to use
+   *    for resolving percentage padding values in the inline and block axes.
    * @return true if the padding is dependent on the containing block size.
    */
   bool ComputePadding(mozilla::WritingMode aWM,
-                      const mozilla::LogicalSize& aPercentBasis,
+                      nscoord aPercentBasis,
                       mozilla::LayoutFrameType aFrameType);
 
 protected:
   void InitOffsets(mozilla::WritingMode aWM,
-                   const mozilla::LogicalSize& aPercentBasis,
+                   nscoord aPercentBasis,
                    mozilla::LayoutFrameType aFrameType,
                    ReflowInputFlags aFlags,
                    const nsMargin* aBorder = nullptr,
@@ -783,7 +770,8 @@ public:
    *                           calculation.
    */
   static nscoord CalcLineHeight(nsIContent* aContent,
-                                nsStyleContext* aStyleContext,
+                                ComputedStyle* aComputedStyle,
+                                nsPresContext* aPresContext,
                                 nscoord aBlockBSize,
                                 float aFontSizeInflation);
 
@@ -996,15 +984,15 @@ protected:
   // (for a position:fixed/absolute element) would have been placed if it were
   // positioned statically. The hypothetical box position will have a writing
   // mode with the same block direction as the absolute containing block
-  // (cbrs->frame), though it may differ in inline direction.
+  // (aReflowInput->frame), though it may differ in inline direction.
   void CalculateHypotheticalPosition(nsPresContext* aPresContext,
                                      nsPlaceholderFrame* aPlaceholderFrame,
-                                     const ReflowInput* cbrs,
+                                     const ReflowInput* aReflowInput,
                                      nsHypotheticalPosition& aHypotheticalPos,
                                      mozilla::LayoutFrameType aFrameType) const;
 
   void InitAbsoluteConstraints(nsPresContext* aPresContext,
-                               const ReflowInput* cbrs,
+                               const ReflowInput* aReflowInput,
                                const mozilla::LogicalSize& aContainingBlockSize,
                                mozilla::LayoutFrameType aFrameType);
 

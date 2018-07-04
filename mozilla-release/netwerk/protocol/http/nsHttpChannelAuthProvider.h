@@ -37,7 +37,6 @@ public:
     NS_DECL_NSIHTTPAUTHENTICATORCALLBACK
 
     nsHttpChannelAuthProvider();
-    static void InitializePrefs();
 private:
     virtual ~nsHttpChannelAuthProvider();
 
@@ -122,7 +121,7 @@ private:
     // for all sub-resources, blocked for cross-origin sub-resources, or
     // always allowed for sub-resources.
     // For more details look at the bug 647010.
-    bool BlockPrompt();
+    bool BlockPrompt(bool proxyAuth);
 
     // Store credentials to the cache when appropriate aFlags are set.
     MOZ_MUST_USE nsresult UpdateCache(nsIHttpAuthenticator *aAuth,
@@ -182,11 +181,6 @@ private:
 
     RefPtr<nsHttpHandler>           mHttpHandler;  // keep gHttpHandler alive
 
-    // A variable holding the preference settings to whether to open HTTP
-    // authentication credentials dialogs for sub-resources and cross-origin
-    // sub-resources.
-    static uint32_t                   sAuthAllowPref;
-    static bool                       sImgCrossOriginAuthAllowPref;
     nsCOMPtr<nsICancelable>           mGenerateCredentialsCancelable;
 };
 

@@ -18,16 +18,23 @@ var gExceptionPaths = [
   "resource://app/defaults/preferences/",
   "resource://gre/modules/commonjs/",
   "resource://gre/defaults/pref/",
-  "resource://shield-recipe-client/node_modules/jexl/lib/",
 
-  // https://github.com/mozilla/normandy/issues/577
-  "resource://shield-recipe-client/test/",
+  // These resources are referenced using relative paths from html files.
+  "resource://payments/",
+  "resource://normandy-content/shield-content-frame.js",
+  "resource://normandy-content/shield-content-process.js",
 
   // https://github.com/mozilla/activity-stream/issues/3053
   "resource://activity-stream/data/content/tippytop/images/",
+  // https://github.com/mozilla/activity-stream/issues/3758
+  "resource://activity-stream/prerendered/",
 
   // browser/extensions/pdfjs/content/build/pdf.js#1999
   "resource://pdf.js/web/images/",
+
+  // Exclude all the metadata paths under the country metadata folder because these
+  // paths will be concatenated in FormAutofillUtils.jsm based on different country/region.
+  "resource://formautofill/addressmetadata/",
 ];
 
 // These are not part of the omni.ja file, so we find them only when running
@@ -43,33 +50,24 @@ var whitelist = [
   // security/manager/pki/resources/content/device_manager.js
   {file: "chrome://pippki/content/load_device.xul"},
 
-  // Used by setting this url as a pref in about:config
-  {file: "chrome://browser/content/newtab/alternativeDefaultSites.json"},
-
-  // Add-on compat
-  {file: "chrome://browser/skin/devtools/common.css"},
-  {file: "chrome://global/content/XPCNativeWrapper.js"},
-  {file: "chrome://global/locale/brand.dtd"},
-
   // The l10n build system can't package string files only for some platforms.
   // See bug 1339424 for why this is hard to fix.
   {file: "chrome://global/locale/fallbackMenubar.properties",
    platforms: ["linux", "win"]},
-  {file: "chrome://global/locale/printPageSetup.dtd", platforms: ["macosx"]},
+  {file: "chrome://global/locale/printPageSetup.dtd", platforms: ["linux", "macosx"]},
   {file: "chrome://global/locale/printPreviewProgress.dtd",
    platforms: ["macosx"]},
   {file: "chrome://global/locale/printProgress.dtd", platforms: ["macosx"]},
-  {file: "chrome://global/locale/printdialog.dtd",
-   platforms: ["macosx", "win"]},
-  {file: "chrome://global/locale/printjoboptions.dtd",
-   platforms: ["macosx", "win"]},
+
+  // toolkit/content/aboutRights-unbranded.xhtml doesn't use aboutRights.css
+  {file: "chrome://global/skin/aboutRights.css", skipUnofficial: true},
 
   // devtools/client/inspector/bin/dev-server.js
   {file: "chrome://devtools/content/inspector/markup/markup.xhtml",
    isFromDevTools: true},
 
-  // Kept for add-on compatibility, should be removed in bug 851471.
-  {file: "chrome://mozapps/skin/downloads/downloadIcon.png"},
+  // SpiderMonkey parser API, currently unused in browser/ and toolkit/
+  {file: "resource://gre/modules/reflect.jsm"},
 
   // extensions/pref/autoconfig/src/nsReadConfig.cpp
   {file: "resource://gre/defaults/autoconfig/prefcalls.js"},
@@ -80,13 +78,6 @@ var whitelist = [
   // browser/extensions/pdfjs/content/web/viewer.js
   {file: "resource://pdf.js/build/pdf.worker.js"},
 
-  // Add-on API introduced in bug 1118285
-  {file: "resource://app/modules/NewTabURL.jsm"},
-
-  // browser/components/newtab bug 1355166
-  {file: "resource://app/modules/NewTabSearchProvider.jsm"},
-  {file: "resource://app/modules/NewTabWebChannel.jsm"},
-
   // layout/mathml/nsMathMLChar.cpp
   {file: "resource://gre/res/fonts/mathfontSTIXGeneral.properties"},
   {file: "resource://gre/res/fonts/mathfontUnicode.properties"},
@@ -94,6 +85,9 @@ var whitelist = [
   // toolkit/components/places/ColorAnalyzer_worker.js
   {file: "resource://gre/modules/ClusterLib.js"},
   {file: "resource://gre/modules/ColorConversion.js"},
+
+  // Needed by HiddenFrame.jsm, but can't be packaged test-only
+  {file: "chrome://global/content/win.xul"},
 
   // The l10n build system can't package string files only for some platforms.
   {file: "resource://gre/chrome/en-US/locale/en-US/global-platform/mac/accessible.properties",
@@ -118,29 +112,14 @@ var whitelist = [
   // browser/extensions/pdfjs/content/web/viewer.js#7450
   {file: "resource://pdf.js/web/debugger.js"},
 
-  // These are used in content processes. They are actually referenced.
-  {file: "resource://shield-recipe-client-content/shield-content-frame.js"},
-  {file: "resource://shield-recipe-client-content/shield-content-process.js"},
-
   // Starting from here, files in the whitelist are bugs that need fixing.
-  // Bug 1339420
-  {file: "chrome://branding/content/icon128.png"},
   // Bug 1339424 (wontfix?)
   {file: "chrome://browser/locale/taskbar.properties",
    platforms: ["linux", "macosx"]},
-  // Bug 1316187
-  {file: "chrome://global/content/customizeToolbar.xul"},
-  // Bug 1343837
-  {file: "chrome://global/content/findUtils.js"},
-  // Bug 1343843
-  {file: "chrome://global/content/url-classifier/unittests.xul"},
+  // Bug 1356031 (only used by devtools)
+  {file: "chrome://global/skin/icons/error-16.png"},
   // Bug 1348362
-  {file: "chrome://global/skin/icons/warning-64.png", platforms: ["linux", "win"]},
-  // Bug 1348525
-  {file: "chrome://global/skin/splitter/grip-bottom.gif", platforms: ["linux"]},
-  {file: "chrome://global/skin/splitter/grip-left.gif", platforms: ["linux"]},
-  {file: "chrome://global/skin/splitter/grip-right.gif", platforms: ["linux"]},
-  {file: "chrome://global/skin/splitter/grip-top.gif", platforms: ["linux"]},
+  {file: "chrome://global/skin/icons/warning-64.png", platforms: ["linux"]},
   // Bug 1348526
   {file: "chrome://global/skin/tree/sort-asc-classic.png", platforms: ["linux"]},
   {file: "chrome://global/skin/tree/sort-asc.png", platforms: ["linux"]},
@@ -153,8 +132,6 @@ var whitelist = [
   // Bug 1348533
   {file: "chrome://mozapps/skin/downloads/buttons.png", platforms: ["macosx"]},
   {file: "chrome://mozapps/skin/downloads/downloadButtons.png", platforms: ["linux", "win"]},
-  // Bug 1348556
-  {file: "chrome://mozapps/skin/plugins/pluginBlocked.png"},
   // Bug 1348558
   {file: "chrome://mozapps/skin/update/downloadButtons.png",
    platforms: ["linux"]},
@@ -162,54 +139,29 @@ var whitelist = [
   {file: "chrome://pippki/content/resetpassword.xul"},
   // Bug 1351078
   {file: "resource://gre/modules/Battery.jsm"},
-  // Bug 1351070
-  {file: "resource://gre/modules/ContentPrefInstance.jsm"},
-  // Bug 1351079
-  {file: "resource://gre/modules/ISO8601DateUtils.jsm"},
   // Bug 1337345
   {file: "resource://gre/modules/Manifest.jsm"},
   // Bug 1351097
   {file: "resource://gre/modules/accessibility/AccessFu.jsm"},
-  // Bug 1351637
-  {file: "resource://gre/modules/sdk/bootstrap.js"},
-
+  // Bug 1356043
+  {file: "resource://gre/modules/PerfMeasurement.jsm"},
+  // Bug 1356045
+  {file: "chrome://global/content/test-ipc.xul"},
+  // Bug 1356036
+  {file: "resource://gre/modules/PerformanceWatcher-content.js"},
+  {file: "resource://gre/modules/PerformanceWatcher.jsm"},
+  // Bug 1378173 (warning: still used by devtools)
+  {file: "resource://gre/modules/Promise.jsm"},
 ];
-
-// Temporary whitelisted while WebPayments in construction
-// See Bug 1381141
-if (AppConstants.NIGHTLY_BUILD && AppConstants.MOZ_BUILD_APP == "browser") {
-  whitelist.push(
-    {file: "chrome://payments/content/paymentRequest.xhtml"}
-  );
-}
-
-if (!AppConstants.MOZ_PHOTON_THEME) {
-  whitelist.push(
-    // Bug 1343824
-    {file: "chrome://browser/skin/customizableui/customize-illustration-rtl@2x.png",
-     platforms: ["linux", "win"]},
-    {file: "chrome://browser/skin/customizableui/customize-illustration@2x.png",
-     platforms: ["linux", "win"]},
-    {file: "chrome://browser/skin/customizableui/info-icon-customizeTip@2x.png",
-     platforms: ["linux", "win"]},
-    {file: "chrome://browser/skin/customizableui/panelarrow-customizeTip@2x.png",
-     platforms: ["linux", "win"]});
-}
 
 whitelist = new Set(whitelist.filter(item =>
   ("isFromDevTools" in item) == isDevtools &&
-  (!item.skipNightly || !AppConstants.NIGHTLY_BUILD) &&
+  (!item.skipUnofficial || !AppConstants.MOZILLA_OFFICIAL) &&
   (!item.platforms || item.platforms.includes(AppConstants.platform))
 ).map(item => item.file));
 
 const ignorableWhitelist = new Set([
-  // chrome://xslt-qa/ isn't referenced, but isn't included in packaged builds,
-  // so it's fine to just ignore it and ignore if the exceptions are unused.
-  "chrome://xslt-qa/content/buster/result-view.xul",
-  "chrome://xslt-qa/content/xslt-qa-overlay.xul",
-  // The communicator.css file is kept for add-on backward compat, but it is
-  // referenced by something in xslt-qa, so the exception won't be used when
-  // running the test on a local non-packaged build.
+  // The communicator.css file is kept for add-on backward compat.
   "chrome://communicator/skin/communicator.css",
 
   // These 2 files are unreferenced only when building without the crash
@@ -234,6 +186,8 @@ for (let entry of ignorableWhitelist) {
 }
 
 if (!isDevtools) {
+  // services/sync/modules/main.js
+  whitelist.add("resource://services-sync/service.js");
   // services/sync/modules/service.js
   for (let module of ["addons.js", "bookmarks.js", "forms.js", "history.js",
                       "passwords.js", "prefs.js", "tabs.js",
@@ -241,15 +195,11 @@ if (!isDevtools) {
     whitelist.add("resource://services-sync/engines/" + module);
   }
 
-  // intl/unicharutil/nsEntityConverter.h
-  for (let name of ["html40Latin1", "html40Symbols", "html40Special", "mathml20"]) {
-    whitelist.add("resource://gre/res/entityTables/" + name + ".properties");
-  }
 }
 
 const gInterestingCategories = new Set([
-  "agent-style-sheets", "addon-provider-module", "webextension-scripts",
-  "webextension-schemas", "webextension-scripts-addon",
+  "agent-style-sheets", "addon-provider-module", "webextension-modules",
+  "webextension-scripts", "webextension-schemas", "webextension-scripts-addon",
   "webextension-scripts-content", "webextension-scripts-devtools"
 ]);
 
@@ -257,8 +207,16 @@ var gChromeReg = Cc["@mozilla.org/chrome/chrome-registry;1"]
                  .getService(Ci.nsIChromeRegistry);
 var gChromeMap = new Map();
 var gOverrideMap = new Map();
-var gReferencesFromCode = new Set();
 var gComponentsSet = new Set();
+
+// In this map when the value is a Set of URLs, the file is referenced if any
+// of the files in the Set is referenced.
+// When the value is null, the file is referenced unconditionally.
+// When the value is a string, "whitelist-direct" means that we have not found
+// any reference in the code, but have a matching whitelist entry for this file.
+// "whitelist" means that the file is indirectly whitelisted, ie. a whitelisted
+// file causes this file to be referenced.
+var gReferencesFromCode = new Map();
 
 var resHandler = Services.io.getProtocolHandler("resource")
                          .QueryInterface(Ci.nsIResProtocolHandler);
@@ -294,7 +252,7 @@ function parseManifest(manifestUri) {
                            Services.io.newURI(argv[0]).specIgnoringRef);
         }
       } else if (type == "category" && gInterestingCategories.has(argv[0])) {
-        gReferencesFromCode.add(argv[2]);
+        gReferencesFromCode.set(argv[2], null);
       } else if (type == "resource") {
         trackResourcePrefix(argv[0]);
       } else if (type == "component") {
@@ -302,6 +260,42 @@ function parseManifest(manifestUri) {
       }
     }
   });
+}
+
+function addCodeReference(url, fromURI) {
+  let from = convertToCodeURI(fromURI.spec);
+
+  // Ignore self references.
+  if (url == from)
+    return;
+
+  let ref;
+  if (gReferencesFromCode.has(url)) {
+    ref = gReferencesFromCode.get(url);
+    if (ref === null)
+      return;
+  } else {
+    // Mark any file referenced by a 'features' bootstrap.js file as
+    // unconditionally referenced. The features folder is only in
+    // resource://app/ for non-packaged builds.
+    if (/resource:\/\/app\/features\/[^/]+\/bootstrap\.js/.test(from)) {
+      gReferencesFromCode.set(url, null);
+      return;
+    }
+    ref = new Set();
+    gReferencesFromCode.set(url, ref);
+  }
+  ref.add(from);
+}
+
+function listCodeReferences(refs) {
+  let refList = [];
+  if (refs) {
+    for (let ref of refs) {
+      refList.push(ref);
+    }
+  }
+  return refList.join(",");
 }
 
 function parseCSSFile(fileUri) {
@@ -313,7 +307,7 @@ function parseCSSFile(fileUri) {
         let importMatch = line.match(/@import ['"]?([^'"]*)['"]?/);
         if (importMatch && importMatch[1]) {
           let url = Services.io.newURI(importMatch[1], null, fileUri).spec;
-          gReferencesFromCode.add(convertToCodeURI(url));
+          addCodeReference(convertToCodeURI(url), fileUri);
         }
         continue;
       }
@@ -328,7 +322,7 @@ function parseCSSFile(fileUri) {
 
         try {
           url = Services.io.newURI(url, null, fileUri).specIgnoringRef;
-          gReferencesFromCode.add(convertToCodeURI(url));
+          addCodeReference(convertToCodeURI(url), fileUri);
         } catch (e) {
           ok(false, "unexpected error while resolving this URI: " + url);
         }
@@ -342,7 +336,7 @@ function parseCodeFile(fileUri) {
     let baseUri;
     for (let line of data.split("\n")) {
       let urls =
-        line.match(/["'`]chrome:\/\/[a-zA-Z0-9 -]+\/(content|skin|locale)\/[^"'` ]*["'`]/g);
+        line.match(/["'`]chrome:\/\/[a-zA-Z0-9-]+\/(content|skin|locale)\/[^"'` ]*["'`]/g);
       if (!urls) {
         urls = line.match(/["']resource:\/\/[^"']+["']/g);
         if (urls && isDevtools &&
@@ -357,7 +351,7 @@ function parseCodeFile(fileUri) {
         let match = line.match("(?:src|href)=[\"']([^$&\"']+)");
         if (match && match[1]) {
           let url = Services.io.newURI(match[1], null, fileUri).spec;
-          gReferencesFromCode.add(convertToCodeURI(url));
+          addCodeReference(convertToCodeURI(url), fileUri);
         }
 
         if (isDevtools) {
@@ -377,8 +371,8 @@ function parseCodeFile(fileUri) {
                 path = path.replace(rule[0], rule[1]);
                 if (!/\.(properties|js|jsm|json|css)$/.test(path))
                   path += ".js";
-                gReferencesFromCode.add(path);
-                break
+                addCodeReference(path, fileUri);
+                break;
               }
             }
           }
@@ -391,7 +385,7 @@ function parseCodeFile(fileUri) {
             if (!/\.(properties|js|jsm|json|css)$/.test(url))
               url += ".js";
             if (url.startsWith("resource://")) {
-              gReferencesFromCode.add(url);
+              addCodeReference(url, fileUri);
             } else {
               // if we end up with a chrome:// url here, it's likely because
               // a baseURI to a resource:// path has been defined in another
@@ -423,7 +417,7 @@ function parseCodeFile(fileUri) {
             !/\.(properties|js|jsm|json|css)$/.test(url))
           url += ".js";
 
-        gReferencesFromCode.add(url);
+        addCodeReference(url, fileUri);
       }
     }
   });
@@ -461,8 +455,8 @@ function chromeFileExists(aURI) {
     available = sstream.available();
     sstream.close();
   } catch (e) {
-    if (e.result != Components.results.NS_ERROR_FILE_NOT_FOUND &&
-        e.result != Components.results.NS_ERROR_NOT_AVAILABLE) {
+    if (e.result != Cr.NS_ERROR_FILE_NOT_FOUND &&
+        e.result != Cr.NS_ERROR_NOT_AVAILABLE) {
       todo(false, "Failed to check if " + aURI + "exists: " + e);
     }
   }
@@ -498,9 +492,9 @@ function findChromeUrlsFromArray(array, prefix) {
     }
 
     // Only keep strings that look like real chrome or resource urls.
-    if (/chrome:\/\/[a-zA-Z09 -]+\/(content|skin|locale)\//.test(string) ||
-        /resource:\/\/gre.*\.[a-z]+/.test(string))
-      gReferencesFromCode.add(string);
+    if (/chrome:\/\/[a-zA-Z09-]+\/(content|skin|locale)\//.test(string) ||
+        /resource:\/\/[a-zA-Z09-]*\/.*\.[a-z]+/.test(string))
+      gReferencesFromCode.set(string, null);
   }
 }
 
@@ -516,22 +510,22 @@ add_task(async function checkAllTheFiles() {
   findChromeUrlsFromArray(uint16, "chrome://");
   findChromeUrlsFromArray(uint16, "resource://");
 
-  const kCodeExtensions = [".xul", ".xml", ".xsl", ".js", ".jsm", ".html", ".xhtml"];
+  const kCodeExtensions = [".xul", ".xml", ".xsl", ".js", ".jsm", ".json", ".html", ".xhtml"];
 
   let appDir = Services.dirsvc.get("GreD", Ci.nsIFile);
   // This asynchronously produces a list of URLs (sadly, mostly sync on our
   // test infrastructure because it runs against jarfiles there, and
   // our zipreader APIs are all sync)
-  let uris = await generateURIsFromDirTree(appDir, [".css", ".manifest", ".json", ".jpg", ".png", ".gif", ".svg",  ".dtd", ".properties"].concat(kCodeExtensions));
+  let uris = await generateURIsFromDirTree(appDir, [".css", ".manifest", ".jpg", ".png", ".gif", ".svg",  ".dtd", ".properties"].concat(kCodeExtensions));
 
   // Parse and remove all manifests from the list.
   // NOTE that this must be done before filtering out devtools paths
   // so that all chrome paths can be recorded.
-  let manifestPromises = [];
+  let manifestURIs = [];
   uris = uris.filter(uri => {
-    let path = uri.path;
+    let path = uri.pathQueryRef;
     if (path.endsWith(".manifest")) {
-      manifestPromises.push(parseManifest(uri));
+      manifestURIs.push(uri);
       return false;
     }
 
@@ -539,58 +533,120 @@ add_task(async function checkAllTheFiles() {
   });
 
   // Wait for all manifest to be parsed
-  await Promise.all(manifestPromises);
+  await throttledMapPromises(manifestURIs, parseManifest);
 
   // We build a list of promises that get resolved when their respective
   // files have loaded and produced no errors.
   let allPromises = [];
 
   for (let uri of uris) {
-    let path = uri.path;
+    let path = uri.pathQueryRef;
     if (path.endsWith(".css"))
-      allPromises.push(parseCSSFile(uri));
+      allPromises.push([parseCSSFile, uri]);
     else if (kCodeExtensions.some(ext => path.endsWith(ext)))
-      allPromises.push(parseCodeFile(uri));
+      allPromises.push([parseCodeFile, uri]);
   }
 
   // Wait for all the files to have actually loaded:
-  await Promise.all(allPromises);
+  await throttledMapPromises(allPromises, ([task, uri]) => task(uri));
 
   // Keep only chrome:// files, and filter out either the devtools paths or
   // the non-devtools paths:
   let devtoolsPrefixes = ["chrome://webide/",
                           "chrome://devtools",
                           "resource://devtools/",
+                          "resource://devtools-client-jsonview/",
+                          "resource://devtools-client-shared/",
                           "resource://app/modules/devtools",
                           "resource://gre/modules/devtools"];
+  let hasDevtoolsPrefix =
+    uri => devtoolsPrefixes.some(prefix => uri.startsWith(prefix));
   let chromeFiles = [];
   for (let uri of uris) {
     uri = convertToCodeURI(uri.spec);
     if ((uri.startsWith("chrome://") || uri.startsWith("resource://")) &&
-        isDevtools == devtoolsPrefixes.some(prefix => uri.startsWith(prefix)))
+        isDevtools == hasDevtoolsPrefix(uri))
       chromeFiles.push(uri);
   }
 
-  let isUnreferenced =
-    file => !gReferencesFromCode.has(file) &&
-            !gExceptionPaths.some(e => file.startsWith(e)) &&
-            (!gOverrideMap.has(file) || isUnreferenced(gOverrideMap.get(file)));
+  if (isDevtools) {
+    // chrome://devtools/skin/devtools-browser.css is included from browser.xul
+    gReferencesFromCode.set("chrome://browser/content/browser.xul", null);
+    // devtools' css is currently included from browser.css, see bug 1204810.
+    gReferencesFromCode.set("chrome://browser/skin/browser.css", null);
+  }
 
-  let notWhitelisted = file => {
-    if (!whitelist.has(file))
-      return true;
-    whitelist.delete(file);
-    return false;
+  let isUnreferenced = file => {
+    if (gExceptionPaths.some(e => file.startsWith(e)))
+      return false;
+    if (gReferencesFromCode.has(file)) {
+      let refs = gReferencesFromCode.get(file);
+      if (refs === null)
+        return false;
+      for (let ref of refs) {
+        if (ref.endsWith("!/bootstrap.js"))
+          return false;
+
+        if (isDevtools) {
+          if (ref.startsWith("resource://app/components/") ||
+              (file.startsWith("chrome://") && ref.startsWith("resource://")))
+            return false;
+        }
+
+        if (gReferencesFromCode.has(ref)) {
+          let refType = gReferencesFromCode.get(ref);
+          if (refType === null || // unconditionally referenced
+              refType == "whitelist" || refType == "whitelist-direct")
+            return false;
+        }
+      }
+    }
+    return !gOverrideMap.has(file) || isUnreferenced(gOverrideMap.get(file));
   };
 
-  let unreferencedFiles = chromeFiles.filter(f => {
-    let rv = isUnreferenced(f);
-    if (rv && f.startsWith("resource://app/"))
-      rv = isUnreferenced(f.replace("resource://app/", "resource:///"));
-    if (rv && /^resource:\/\/(?:app|gre)\/components\/[^/]+\.js$/.test(f))
-      rv = !gComponentsSet.has(f.replace(/.*\//, ""));
-    return rv;
-  }).filter(notWhitelisted).sort();
+  let unreferencedFiles = chromeFiles;
+
+  let removeReferenced = useWhitelist => {
+    let foundReference = false;
+    unreferencedFiles = unreferencedFiles.filter(f => {
+      let rv = isUnreferenced(f);
+      if (rv && f.startsWith("resource://app/"))
+        rv = isUnreferenced(f.replace("resource://app/", "resource:///"));
+      if (rv && /^resource:\/\/(?:app|gre)\/components\/[^/]+\.js$/.test(f))
+        rv = !gComponentsSet.has(f.replace(/.*\//, ""));
+      if (!rv) {
+        foundReference = true;
+        if (useWhitelist) {
+          info("indirectly whitelisted file: " + f + " used from " +
+               listCodeReferences(gReferencesFromCode.get(f)));
+        }
+        gReferencesFromCode.set(f, useWhitelist ? "whitelist" : null);
+      }
+      return rv;
+    });
+    return foundReference;
+  };
+  // First filter out the files that are referenced.
+  while (removeReferenced(false)) {
+    // As long as removeReferenced returns true, some files have been marked
+    // as referenced, so we need to run it again.
+  }
+  // Marked as referenced the files that have been explicitly whitelisted.
+  unreferencedFiles = unreferencedFiles.filter(file => {
+    if (whitelist.has(file)) {
+      whitelist.delete(file);
+      gReferencesFromCode.set(file, "whitelist-direct");
+      return false;
+    }
+    return true;
+  });
+  // Run the process again, this time when more files are marked as referenced,
+  // it's a consequence of the whitelist.
+  while (removeReferenced(true)) {
+    // As long as removeReferenced returns true, we need to run it again.
+  }
+
+  unreferencedFiles.sort();
 
   if (isDevtools) {
     // Bug 1351878 - handle devtools resource files
@@ -609,12 +665,12 @@ add_task(async function checkAllTheFiles() {
     // running the test on a local non-packaged build.
 
     if (/resource:\/\/app\/features\/[^/]+\/bootstrap\.js/.test(file)) {
-      info("not reporting feature boostrap file: " + file)
+      info("not reporting feature boostrap file: " + file);
       return false;
     }
     // Bug 1351892 - can stop shipping these?
     if (/resource:\/\/app\/features\/[^/]+\/chrome\/skin\//.test(file)) {
-      info("not reporting feature skin file that may be for another platform: " + file)
+      info("not reporting feature skin file that may be for another platform: " + file);
       return false;
     }
     return true;
@@ -622,7 +678,16 @@ add_task(async function checkAllTheFiles() {
 
   is(unreferencedFiles.length, 0, "there should be no unreferenced files");
   for (let file of unreferencedFiles) {
-    ok(false, "unreferenced file: " + file);
+    let refs = gReferencesFromCode.get(file);
+    if (refs === undefined) {
+      ok(false, "unreferenced file: " + file);
+    } else {
+      let refList = listCodeReferences(refs);
+      let msg = "file only referenced from unreferenced files: " + file;
+      if (refList)
+        msg += " referenced from " + refList;
+      ok(false, msg);
+    }
   }
 
   for (let file of whitelist) {
@@ -632,7 +697,7 @@ add_task(async function checkAllTheFiles() {
       ok(false, "unused whitelist entry: " + file);
   }
 
-  for (let file of gReferencesFromCode) {
+  for (let [file, refs] of gReferencesFromCode) {
     if (isDevtools != devtoolsPrefixes.some(prefix => file.startsWith(prefix)))
       continue;
 
@@ -642,11 +707,16 @@ add_task(async function checkAllTheFiles() {
       let pathParts =
         file.match("chrome://([^/]+)/content/([^/.]+)\.xul") ||
         file.match("chrome://([^/]+)/skin/([^/.]+)\.css");
-      if (!pathParts || pathParts[1] != pathParts[2]) {
-        // TODO: bug 1349010 - add a whitelist and make this reliable enough
-        // that we could make the test fail when this catches something new.
-        info("missing file with code reference: " + file);
-      }
+      if (pathParts && pathParts[1] == pathParts[2])
+        continue;
+
+      // TODO: bug 1349010 - add a whitelist and make this reliable enough
+      // that we could make the test fail when this catches something new.
+      let refList = listCodeReferences(refs);
+      let msg = "missing file: " + file;
+      if (refList)
+        msg += " referenced from " + refList;
+      info(msg);
     }
   }
 });

@@ -1,0 +1,3 @@
+include LICENSE HISTORY.md README.rst
+recursive-include tests *
+recursive-include docs *

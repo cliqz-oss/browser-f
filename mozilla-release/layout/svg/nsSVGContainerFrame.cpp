@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,11 +8,10 @@
 #include "nsSVGContainerFrame.h"
 
 // Keep others in (case-insensitive) order:
-#include "DrawResult.h"
+#include "ImgDrawResult.h"
 #include "mozilla/RestyleManager.h"
-#include "mozilla/RestyleManagerInlines.h"
 #include "nsCSSFrameConstructor.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "nsSVGElement.h"
 #include "nsSVGUtils.h"
 #include "nsSVGAnimatedTransformList.h"
@@ -31,10 +31,10 @@ NS_QUERYFRAME_TAIL_INHERITING(nsSVGContainerFrame)
 
 nsIFrame*
 NS_NewSVGContainerFrame(nsIPresShell* aPresShell,
-                        nsStyleContext* aContext)
+                        ComputedStyle* aStyle)
 {
   nsIFrame* frame =
-    new (aPresShell) nsSVGContainerFrame(aContext, nsSVGContainerFrame::kClassID);
+    new (aPresShell) nsSVGContainerFrame(aStyle, nsSVGContainerFrame::kClassID);
   // If we were called directly, then the frame is for a <defs> or
   // an unknown element type. In both cases we prevent the content
   // from displaying directly.
@@ -143,16 +143,15 @@ nsSVGDisplayContainerFrame::Init(nsIContent*       aContent,
 
 void
 nsSVGDisplayContainerFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                             const nsRect&           aDirtyRect,
                                              const nsDisplayListSet& aLists)
 {
   // mContent could be a XUL element so check for an SVG element before casting
   if (mContent->IsSVGElement() &&
-      !static_cast<const nsSVGElement*>(mContent)->HasValidDimensions()) {
+      !static_cast<const nsSVGElement*>(GetContent())->HasValidDimensions()) {
     return;
   }
   DisplayOutline(aBuilder, aLists);
-  return BuildDisplayListForNonBlockChildren(aBuilder, aDirtyRect, aLists);
+  return BuildDisplayListForNonBlockChildren(aBuilder, aLists);
 }
 
 void
@@ -201,7 +200,7 @@ void
 nsSVGDisplayContainerFrame::RemoveFrame(ChildListID aListID,
                                         nsIFrame* aOldFrame)
 {
-  nsSVGEffects::InvalidateRenderingObservers(aOldFrame);
+  SVGObserverUtils::InvalidateRenderingObservers(aOldFrame);
 
   // nsSVGContainerFrame::RemoveFrame doesn't call down into
   // nsContainerFrame::RemoveFrame, so it doesn't call FrameNeedsReflow. We
@@ -233,7 +232,7 @@ nsSVGDisplayContainerFrame::IsSVGTransformed(gfx::Matrix *aOwnTransform,
 
   // mContent could be a XUL element so check for an SVG element before casting
   if (mContent->IsSVGElement()) {
-    nsSVGElement *content = static_cast<nsSVGElement*>(mContent);
+    nsSVGElement *content = static_cast<nsSVGElement*>(GetContent());
     nsSVGAnimatedTransformList* transformList =
       content->GetAnimatedTransformList();
     if ((transformList && transformList->HasTransform()) ||
@@ -260,7 +259,7 @@ nsSVGDisplayContainerFrame::PaintSVG(gfxContext& aContext,
 {
   NS_ASSERTION(!NS_SVGDisplayListPaintingEnabled() ||
                (mState & NS_FRAME_IS_NONDISPLAY) ||
-               PresContext()->IsGlyph(),
+               PresContext()->Document()->IsSVGGlyphsDocument(),
                "If display lists are enabled, only painting of non-display "
                "SVG should take this code path");
 
@@ -335,7 +334,7 @@ nsSVGDisplayContainerFrame::ReflowSVG()
     (GetParent()->GetStateBits() & NS_FRAME_FIRST_REFLOW) == 0;
 
   if (outerSVGHasHadFirstReflow) {
-    mState &= ~NS_FRAME_FIRST_REFLOW; // tell our children
+    RemoveStateBits(NS_FRAME_FIRST_REFLOW); // tell our children
   }
 
   nsOverflowAreas overflowRects;
@@ -385,15 +384,15 @@ nsSVGDisplayContainerFrame::ReflowSVG()
     // Make sure we have our filter property (if any) before calling
     // FinishAndStoreOverflow (subsequent filter changes are handled off
     // nsChangeHint_UpdateEffects):
-    nsSVGEffects::UpdateEffects(this);
+    SVGObserverUtils::UpdateEffects(this);
   }
 
   FinishAndStoreOverflow(overflowRects, mRect.Size());
 
   // Remove state bits after FinishAndStoreOverflow so that it doesn't
   // invalidate on first reflow:
-  mState &= ~(NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_DIRTY |
-              NS_FRAME_HAS_DIRTY_CHILDREN);
+  RemoveStateBits(NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_DIRTY |
+                  NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
 void
@@ -401,6 +400,11 @@ nsSVGDisplayContainerFrame::NotifySVGChanged(uint32_t aFlags)
 {
   MOZ_ASSERT(aFlags & (TRANSFORM_CHANGED | COORD_CONTEXT_CHANGED),
              "Invalidation logic may need adjusting");
+
+  if (aFlags & TRANSFORM_CHANGED) {
+    // make sure our cached transform matrix gets (lazily) updated
+    mCanvasTM = nullptr;
+  }
 
   nsSVGUtils::NotifyChildrenOfSVGChange(this, aFlags);
 }
@@ -433,4 +437,21 @@ nsSVGDisplayContainerFrame::GetBBoxContribution(
   }
 
   return bboxUnion;
+}
+
+gfxMatrix
+nsSVGDisplayContainerFrame::GetCanvasTM()
+{
+  if (!mCanvasTM) {
+    NS_ASSERTION(GetParent(), "null parent");
+
+    nsSVGContainerFrame *parent = static_cast<nsSVGContainerFrame*>(GetParent());
+    nsSVGElement *content = static_cast<nsSVGElement*>(GetContent());
+
+    gfxMatrix tm = content->PrependLocalTransformsTo(parent->GetCanvasTM());
+
+    mCanvasTM = new gfxMatrix(tm);
+  }
+
+  return *mCanvasTM;
 }

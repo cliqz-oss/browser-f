@@ -11,7 +11,7 @@
 #include "nsIContentInlines.h"
 #include "nsTArray.h"
 
-class nsIAtom;
+class nsAtom;
 class nsIDOMDocument;
 
 class txXPathTreeWalker
@@ -20,7 +20,7 @@ public:
     txXPathTreeWalker(const txXPathTreeWalker& aOther);
     explicit txXPathTreeWalker(const txXPathNode& aNode);
 
-    bool getAttr(nsIAtom* aLocalName, int32_t aNSID, nsAString& aValue) const;
+    bool getAttr(nsAtom* aLocalName, int32_t aNSID, nsAString& aValue) const;
     int32_t getNamespaceID() const;
     uint16_t getNodeType() const;
     void appendNodeValue(nsAString& aResult) const;
@@ -33,7 +33,7 @@ public:
     bool moveToElementById(const nsAString& aID);
     bool moveToFirstAttribute();
     bool moveToNextAttribute();
-    bool moveToNamedAttribute(nsIAtom* aLocalName, int32_t aNSID);
+    bool moveToNamedAttribute(nsAtom* aLocalName, int32_t aNSID);
     bool moveToFirstChild();
     bool moveToLastChild();
     bool moveToNextSibling();
@@ -52,10 +52,10 @@ private:
 class txXPathNodeUtils
 {
 public:
-    static bool getAttr(const txXPathNode& aNode, nsIAtom* aLocalName,
+    static bool getAttr(const txXPathNode& aNode, nsAtom* aLocalName,
                           int32_t aNSID, nsAString& aValue);
-    static already_AddRefed<nsIAtom> getLocalName(const txXPathNode& aNode);
-    static nsIAtom* getPrefix(const txXPathNode& aNode);
+    static already_AddRefed<nsAtom> getLocalName(const txXPathNode& aNode);
+    static nsAtom* getPrefix(const txXPathNode& aNode);
     static void getLocalName(const txXPathNode& aNode, nsAString& aLocalName);
     static void getNodeName(const txXPathNode& aNode,
                             nsAString& aName);
@@ -73,7 +73,7 @@ public:
     static int comparePosition(const txXPathNode& aNode,
                                const txXPathNode& aOtherNode);
     static bool localNameEquals(const txXPathNode& aNode,
-                                  nsIAtom* aLocalName);
+                                  nsAtom* aLocalName);
     static bool isRoot(const txXPathNode& aNode);
     static bool isElement(const txXPathNode& aNode);
     static bool isAttribute(const txXPathNode& aNode);
@@ -95,12 +95,6 @@ class txXPathNativeNode
 public:
     static txXPathNode* createXPathNode(nsINode* aNode,
                                         bool aKeepRootAlive = false);
-    static txXPathNode* createXPathNode(nsIDOMNode* aNode,
-                                        bool aKeepRootAlive = false)
-    {
-        nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
-        return createXPathNode(node, aKeepRootAlive);
-    }
     static txXPathNode* createXPathNode(nsIContent* aContent,
                                         bool aKeepRootAlive = false);
     static txXPathNode* createXPathNode(nsIDOMDocument* aDocument);
@@ -129,7 +123,7 @@ txXPathTreeWalker::getCurrentPosition() const
 }
 
 inline bool
-txXPathTreeWalker::getAttr(nsIAtom* aLocalName, int32_t aNSID,
+txXPathTreeWalker::getAttr(nsAtom* aLocalName, int32_t aNSID,
                            nsAString& aValue) const
 {
     return txXPathNodeUtils::getAttr(mPosition, aLocalName, aNSID, aValue);
@@ -198,14 +192,14 @@ txXPathNodeUtils::release(txXPathNode* aNode)
 /* static */
 inline bool
 txXPathNodeUtils::localNameEquals(const txXPathNode& aNode,
-                                  nsIAtom* aLocalName)
+                                  nsAtom* aLocalName)
 {
     if (aNode.isContent() &&
         aNode.Content()->IsElement()) {
         return aNode.Content()->NodeInfo()->Equals(aLocalName);
     }
 
-    nsCOMPtr<nsIAtom> localName = txXPathNodeUtils::getLocalName(aNode);
+    RefPtr<nsAtom> localName = txXPathNodeUtils::getLocalName(aNode);
 
     return localName == aLocalName;
 }
@@ -237,16 +231,14 @@ txXPathNodeUtils::isAttribute(const txXPathNode& aNode)
 inline bool
 txXPathNodeUtils::isProcessingInstruction(const txXPathNode& aNode)
 {
-    return aNode.isContent() &&
-           aNode.Content()->IsNodeOfType(nsINode::ePROCESSING_INSTRUCTION);
+    return aNode.isContent() && aNode.Content()->IsProcessingInstruction();
 }
 
 /* static */
 inline bool
 txXPathNodeUtils::isComment(const txXPathNode& aNode)
 {
-    return aNode.isContent() &&
-           aNode.Content()->IsNodeOfType(nsINode::eCOMMENT);
+    return aNode.isContent() && aNode.Content()->IsComment();
 }
 
 /* static */
@@ -254,7 +246,7 @@ inline bool
 txXPathNodeUtils::isText(const txXPathNode& aNode)
 {
     return aNode.isContent() &&
-           aNode.Content()->IsNodeOfType(nsINode::eTEXT);
+           aNode.Content()->IsText();
 }
 
 #endif /* txXPathTreeWalker_h__ */

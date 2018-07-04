@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,7 +8,6 @@
 #include "nsCOMPtr.h"
 #include "nsXULElement.h"
 #include "nsIScriptableRegion.h"
-#include "nsIXULTemplateBuilder.h"
 #include "nsTreeContentView.h"
 #include "nsITreeSelection.h"
 #include "ChildIterator.h"
@@ -30,7 +30,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(TreeBoxObject, BoxObject,
 NS_IMPL_ADDREF_INHERITED(TreeBoxObject, BoxObject)
 NS_IMPL_RELEASE_INHERITED(TreeBoxObject, BoxObject)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TreeBoxObject)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TreeBoxObject)
   NS_INTERFACE_MAP_ENTRY(nsITreeBoxObject)
 NS_INTERFACE_MAP_END_INHERITING(BoxObject)
 
@@ -143,17 +143,11 @@ TreeBoxObject::GetView(nsITreeView * *aView)
       return mTreeBody->GetView(aView);
   }
   if (!mView) {
-    RefPtr<nsXULElement> xulele = nsXULElement::FromContentOrNull(mContent);
+    RefPtr<nsXULElement> xulele = nsXULElement::FromNodeOrNull(mContent);
     if (xulele) {
-      // See if there is a XUL tree builder associated with the element
-      nsCOMPtr<nsIXULTemplateBuilder> builder = xulele->GetBuilder();
-      mView = do_QueryInterface(builder);
-
-      if (!mView) {
-        // No tree builder, create a tree content view.
-        nsresult rv = NS_NewTreeContentView(getter_AddRefs(mView));
-        NS_ENSURE_SUCCESS(rv, rv);
-      }
+      // No tree builder, create a tree content view.
+      nsresult rv = NS_NewTreeContentView(getter_AddRefs(mView));
+      NS_ENSURE_SUCCESS(rv, rv);
 
       // Initialise the frame and view
       mTreeBody->SetView(mView);
@@ -164,42 +158,35 @@ TreeBoxObject::GetView(nsITreeView * *aView)
 }
 
 already_AddRefed<nsITreeView>
-TreeBoxObject::GetView() {
+TreeBoxObject::GetView(CallerType /* unused */)
+{
   nsCOMPtr<nsITreeView> view;
   GetView(getter_AddRefs(view));
   return view.forget();
 }
 
-static bool
-CanTrustView(nsISupports* aValue)
+NS_IMETHODIMP
+TreeBoxObject::SetView(nsITreeView* aView)
 {
-  // Untrusted content is only allowed to specify known-good views
-  if (nsContentUtils::IsCallerChrome())
-    return true;
-  nsCOMPtr<nsINativeTreeView> nativeTreeView = do_QueryInterface(aValue);
-  if (!nativeTreeView || NS_FAILED(nativeTreeView->EnsureNative())) {
-    // XXX ERRMSG need a good error here for developers
-    return false;
-  }
-  return true;
+  ErrorResult rv;
+  SetView(aView, CallerType::System, rv);
+  return rv.StealNSResult();
 }
 
-NS_IMETHODIMP TreeBoxObject::SetView(nsITreeView * aView)
+void
+TreeBoxObject::SetView(nsITreeView* aView, CallerType aCallerType,
+                       ErrorResult& aRv)
 {
-  if (!CanTrustView(aView))
-    return NS_ERROR_DOM_SECURITY_ERR;
+  if (aCallerType != CallerType::System) {
+    // Don't trust views coming from random places.
+    aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
+    return;
+  }
 
   mView = aView;
   nsTreeBodyFrame* body = GetTreeBodyFrame();
   if (body)
     body->SetView(aView);
-
-  return NS_OK;
-}
-
-void TreeBoxObject::SetView(nsITreeView* aView, ErrorResult& aRv)
-{
-  aRv = SetView(aView);
 }
 
 bool TreeBoxObject::Focused()
@@ -224,7 +211,7 @@ NS_IMETHODIMP TreeBoxObject::SetFocused(bool aFocused)
   return NS_OK;
 }
 
-NS_IMETHODIMP TreeBoxObject::GetTreeBody(nsIDOMElement** aElement)
+NS_IMETHODIMP TreeBoxObject::GetTreeBody(Element** aElement)
 {
   *aElement = nullptr;
   nsTreeBodyFrame* body = GetTreeBodyFrame();
@@ -236,10 +223,9 @@ NS_IMETHODIMP TreeBoxObject::GetTreeBody(nsIDOMElement** aElement)
 already_AddRefed<Element>
 TreeBoxObject::GetTreeBody()
 {
-  nsCOMPtr<nsIDOMElement> el;
+  RefPtr<Element> el;
   GetTreeBody(getter_AddRefs(el));
-  nsCOMPtr<Element> ret(do_QueryInterface(el));
-  return ret.forget();
+  return el.forget();
 }
 
 already_AddRefed<nsTreeColumns>

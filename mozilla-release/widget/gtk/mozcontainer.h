@@ -13,10 +13,13 @@
 /*
  * MozContainer
  *
- * This class serves two purposes in the nsIWidget implementation.
+ * This class serves three purposes in the nsIWidget implementation.
  *
  *   - It provides objects to receive signals from GTK for events on native
  *     windows.
+ *
+ *   - It provides GdkWindow to draw content on Wayland or when Gtk+ renders
+ *     client side decorations to mShell.
  *
  *   - It provides a container parent for GtkWidgets.  The only GtkWidgets
  *     that need this in Mozilla are the GtkSockets for windowed plugins (Xt
@@ -40,7 +43,7 @@
  * gtk_widget_set_parent_window should be called on the child GtkWidget before
  * it is realized.
  */
- 
+
 #define MOZ_CONTAINER_TYPE            (moz_container_get_type())
 #define MOZ_CONTAINER(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), MOZ_CONTAINER_TYPE, MozContainer))
 #define MOZ_CONTAINER_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass), MOZ_CONTAINER_TYPE, MozContainerClass))
@@ -51,10 +54,25 @@
 typedef struct _MozContainer      MozContainer;
 typedef struct _MozContainerClass MozContainerClass;
 
+/* Workaround for bug at wayland-util.h,
+ * present in wayland-devel < 1.12
+ */
+#ifdef MOZ_WAYLAND
+struct wl_subcompositor;
+struct wl_surface;
+struct wl_subsurface;
+#endif
+
 struct _MozContainer
 {
     GtkContainer   container;
     GList         *children;
+
+#ifdef MOZ_WAYLAND
+    struct wl_subcompositor *subcompositor;
+    struct wl_surface       *surface;
+    struct wl_subsurface    *subsurface;
+#endif
 };
 
 struct _MozContainerClass
@@ -74,5 +92,9 @@ void       moz_container_move          (MozContainer *container,
                                         gint          y,
                                         gint          width,
                                         gint          height);
+
+#ifdef MOZ_WAYLAND
+struct wl_surface* moz_container_get_wl_surface(MozContainer *container);
+#endif
 
 #endif /* __MOZ_CONTAINER_H__ */

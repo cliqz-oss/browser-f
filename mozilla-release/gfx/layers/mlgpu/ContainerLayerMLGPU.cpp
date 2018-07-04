@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "ContainerLayerMLGPU.h"
 #include "gfxPrefs.h"
@@ -21,7 +22,8 @@ using namespace gfx;
 ContainerLayerMLGPU::ContainerLayerMLGPU(LayerManagerMLGPU* aManager)
  : ContainerLayer(aManager, nullptr),
    LayerMLGPU(aManager),
-   mInvalidateEntireSurface(false)
+   mInvalidateEntireSurface(false),
+   mSurfaceCopyNeeded(false)
 {
 }
 
@@ -35,6 +37,8 @@ ContainerLayerMLGPU::~ContainerLayerMLGPU()
 bool
 ContainerLayerMLGPU::OnPrepareToRender(FrameBuilder* aBuilder)
 {
+  mView = nullptr;
+
   if (!UseIntermediateSurface()) {
     // Set this so we invalidate the entire cached render target (if any)
     // if our container uses an intermediate surface again later.
@@ -66,6 +70,19 @@ ContainerLayerMLGPU::OnPrepareToRender(FrameBuilder* aBuilder)
   if (mRenderTarget && mRenderTarget->GetSize() != mTargetSize) {
     mRenderTarget = nullptr;
   }
+
+  // Note that if a surface copy is needed, we always redraw the
+  // whole surface (on-demand). This is a rare case - the old
+  // Compositor already does this - and it saves us having to
+  // do much more complicated invalidation.
+  bool surfaceCopyNeeded = false;
+  DefaultComputeSupportsComponentAlphaChildren(&surfaceCopyNeeded);
+  if (surfaceCopyNeeded != mSurfaceCopyNeeded ||
+      surfaceCopyNeeded)
+  {
+    mInvalidateEntireSurface = true;
+  }
+  mSurfaceCopyNeeded = surfaceCopyNeeded;
 
   gfx::IntRect viewport(gfx::IntPoint(0, 0), mTargetSize);
   if (!mRenderTarget ||
@@ -190,7 +207,7 @@ ContainerLayerMLGPU::UpdateRenderTarget(MLGDevice* aDevice, MLGRenderTargetFlags
 }
 
 void
-ContainerLayerMLGPU::SetInvalidCompositeRect(const gfx::IntRect& aRect)
+ContainerLayerMLGPU::SetInvalidCompositeRect(const gfx::IntRect* aRect)
 {
   // For simplicity we only track the bounds of the invalid area, since regions
   // are expensive.
@@ -199,8 +216,12 @@ ContainerLayerMLGPU::SetInvalidCompositeRect(const gfx::IntRect& aRect)
   // only clear the area that we actually paint. If this overflows we use the
   // last render target size, since if that changes we'll invalidate everything
   // anyway.
-  if (Maybe<gfx::IntRect> result = mInvalidRect.SafeUnion(aRect)) {
-    mInvalidRect = result.value();
+  if (aRect) {
+    if (Maybe<gfx::IntRect> result = mInvalidRect.SafeUnion(*aRect)) {
+      mInvalidRect = result.value();
+    } else {
+      mInvalidateEntireSurface = true;
+    }
   } else {
     mInvalidateEntireSurface = true;
   }
@@ -221,6 +242,26 @@ ContainerLayerMLGPU::IsContentOpaque()
     return false;
   }
   return LayerMLGPU::IsContentOpaque();
+}
+
+const LayerIntRegion&
+ContainerLayerMLGPU::GetShadowVisibleRegion()
+{
+  if (!UseIntermediateSurface()) {
+    RecomputeShadowVisibleRegionFromChildren();
+  }
+
+  return mShadowVisibleRegion;
+}
+
+const LayerIntRegion&
+RefLayerMLGPU::GetShadowVisibleRegion()
+{
+  if (!UseIntermediateSurface()) {
+    RecomputeShadowVisibleRegionFromChildren();
+  }
+
+  return mShadowVisibleRegion;
 }
 
 } // namespace layers

@@ -10,22 +10,17 @@
  * after startup, in *every* browser process live outside of this file.
  */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/MessageChannel.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ExtensionChild: "resource://gre/modules/ExtensionChild.jsm",
+  ExtensionContent: "resource://gre/modules/ExtensionContent.jsm",
+  ExtensionPageChild: "resource://gre/modules/ExtensionPageChild.jsm",
+});
 
-XPCOMUtils.defineLazyModuleGetter(this, "MessageChannel",
-                                  "resource://gre/modules/MessageChannel.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionChild",
-                                  "resource://gre/modules/ExtensionChild.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionContent",
-                                  "resource://gre/modules/ExtensionContent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionPageChild",
-                                  "resource://gre/modules/ExtensionPageChild.jsm");
-
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "console", () => ExtensionUtils.getConsole());
 
@@ -36,18 +31,29 @@ const {
 
 // We need to avoid touching Services.appinfo here in order to prevent
 // the wrong version from being cached during xpcshell test startup.
+// eslint-disable-next-line mozilla/use-services
 const appinfo = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime);
 const isContentProcess = appinfo.processType == appinfo.PROCESS_TYPE_CONTENT;
 
-function parseScriptOptions(options) {
+function tryMatchPatternSet(patterns, options) {
+  try {
+    return new MatchPatternSet(patterns, options);
+  } catch (e) {
+    Cu.reportError(e);
+    return new MatchPatternSet([]);
+  }
+}
+
+function parseScriptOptions(options, restrictSchemes = true) {
   return {
     allFrames: options.all_frames,
     matchAboutBlank: options.match_about_blank,
     frameID: options.frame_id,
     runAt: options.run_at,
+    hasActiveTabPermission: options.hasActiveTabPermission,
 
-    matches: new MatchPatternSet(options.matches),
-    excludeMatches: new MatchPatternSet(options.exclude_matches || []),
+    matches: tryMatchPatternSet(options.matches, {restrictSchemes}),
+    excludeMatches: tryMatchPatternSet(options.exclude_matches || [], {restrictSchemes}),
     includeGlobs: options.include_globs && options.include_globs.map(glob => new MatchGlob(glob)),
     excludeGlobs: options.exclude_globs && options.exclude_globs.map(glob => new MatchGlob(glob)),
 
@@ -57,7 +63,15 @@ function parseScriptOptions(options) {
 }
 
 var extensions = new DefaultWeakMap(policy => {
-  let extension = new ExtensionChild.BrowserExtensionContent(policy.initData);
+  let data = policy.initData;
+  if (data.serialize) {
+    // We have an actual Extension rather than serialized extension
+    // data, so serialize it now to make sure we have consistent inputs
+    // between parent and child processes.
+    data = data.serialize();
+  }
+
+  let extension = new ExtensionChild.BrowserExtensionContent(data);
   extension.policy = policy;
   return extension;
 });
@@ -107,7 +121,7 @@ class ExtensionGlobal {
     return this.frameData;
   }
 
-  receiveMessage({target, messageName, recipient, data, name}) {
+  async receiveMessage({target, messageName, recipient, data, name}) {
     switch (name) {
       case "Extension:SetFrameData":
         if (this.frameData) {
@@ -129,17 +143,20 @@ class ExtensionGlobal {
       case "Extension:Execute":
         let policy = WebExtensionPolicy.getByID(recipient.extensionId);
 
-        let matcher = new WebExtensionContentScript(policy, parseScriptOptions(data.options));
+        let matcher = new WebExtensionContentScript(policy, parseScriptOptions(data.options, !policy.hasPermission("mozillaAddons")));
 
         Object.assign(matcher, {
           wantReturnValue: data.options.wantReturnValue,
           removeCSS: data.options.remove_css,
           cssOrigin: data.options.css_origin,
-          cssCode: data.options.cssCode,
           jsCode: data.options.jsCode,
         });
 
         let script = contentScripts.get(matcher);
+
+        // Add the cssCode to the script, so that it can be converted into a cached URL.
+        await script.addCSSCode(data.options.cssCode);
+        delete data.options.cssCode;
 
         return ExtensionContent.handleExtensionExecute(this.global, target, data.options, script);
       case "WebNavigation:GetFrame":
@@ -187,11 +204,22 @@ DocumentManager = {
 
   injectExtensionScripts(extension) {
     for (let window of this.enumerateWindows()) {
+      let runAt = {document_start: [], document_end: [], document_idle: []};
+
       for (let script of extension.contentScripts) {
         if (script.matchesWindow(window)) {
-          contentScripts.get(script).injectInto(window);
+          runAt[script.runAt].push(script);
         }
       }
+
+      let inject = matcher => contentScripts.get(matcher).injectInto(window);
+      let injectAll = matchers => Promise.all(matchers.map(inject));
+
+      // Intentionally using `.then` instead of `await`, we only need to
+      // chain injecting other scripts into *this* window, not all windows.
+      injectAll(runAt.document_start)
+        .then(() => injectAll(runAt.document_end))
+        .then(() => injectAll(runAt.document_idle));
     }
   },
 
@@ -208,7 +236,6 @@ DocumentManager = {
    */
   checkParentFrames(window, addonId) {
     while (window.parent !== window) {
-      let {frameElement} = window;
       window = window.parent;
 
       let principal = window.document.nodePrincipal;
@@ -217,14 +244,6 @@ DocumentManager = {
         // The add-on manager is a special case, since it contains extension
         // options pages in same-type <browser> frames.
         if (window.location.href === "about:addons") {
-          return true;
-        }
-
-        // NOTE: Special handling for devtools panels using a chrome iframe here
-        // for the devtools panel, it is needed because a content iframe breaks
-        // switching between docked and undocked mode (see bug 1075490).
-        if (frameElement &&
-            frameElement.mozMatchesSelector("browser[webextension-view-type='devtools_panel']")) {
           return true;
         }
       }
@@ -269,12 +288,17 @@ DocumentManager = {
 };
 
 ExtensionManager = {
+  // WeakMap<WebExtensionPolicy, Map<string, WebExtensionContentScript>>
+  registeredContentScripts: new DefaultWeakMap((extension) => new Map()),
+
   init() {
     MessageChannel.setupMessageManagers([Services.cpmm]);
 
     Services.cpmm.addMessageListener("Extension:Startup", this);
     Services.cpmm.addMessageListener("Extension:Shutdown", this);
     Services.cpmm.addMessageListener("Extension:FlushJarCache", this);
+    Services.cpmm.addMessageListener("Extension:RegisterContentScript", this);
+    Services.cpmm.addMessageListener("Extension:UnregisterContentScripts", this);
 
     let procData = Services.cpmm.initialProcessData || {};
 
@@ -293,34 +317,62 @@ ExtensionManager = {
     }
   },
 
-  initExtensionPolicy(data, extension) {
-    let policy = WebExtensionPolicy.getByID(data.id);
+  initExtensionPolicy(extension) {
+    let policy = WebExtensionPolicy.getByID(extension.id);
     if (!policy) {
-      let localizeCallback = (
-        extension ? extension.localize.bind(extension)
-                  : str => extensions.get(policy).localize(str));
+      let localizeCallback, allowedOrigins, webAccessibleResources;
+      let restrictSchemes = !extension.permissions.has("mozillaAddons");
+
+      if (extension.localize) {
+        // We have a real Extension object.
+        localizeCallback = extension.localize.bind(extension);
+        allowedOrigins = extension.whiteListedHosts;
+        webAccessibleResources = extension.webAccessibleResources;
+      } else {
+        // We have serialized extension data;
+        localizeCallback = str => extensions.get(policy).localize(str);
+        allowedOrigins = new MatchPatternSet(extension.whiteListedHosts, {restrictSchemes});
+        webAccessibleResources = extension.webAccessibleResources.map(host => new MatchGlob(host));
+      }
 
       policy = new WebExtensionPolicy({
-        id: data.id,
-        mozExtensionHostname: data.uuid,
-        baseURL: data.resourceURL,
+        id: extension.id,
+        mozExtensionHostname: extension.uuid,
+        name: extension.name,
+        baseURL: extension.resourceURL,
 
-        permissions: Array.from(data.permissions),
-        allowedOrigins: new MatchPatternSet(data.whiteListedHosts),
-        webAccessibleResources: data.webAccessibleResources.map(host => new MatchGlob(host)),
+        permissions: Array.from(extension.permissions),
+        allowedOrigins,
+        webAccessibleResources,
 
-        contentSecurityPolicy: data.manifest.content_security_policy,
+        contentSecurityPolicy: extension.manifest.content_security_policy,
 
         localizeCallback,
 
-        backgroundScripts: (data.manifest.background &&
-                            data.manifest.background.scripts),
+        backgroundScripts: (extension.manifest.background &&
+                            extension.manifest.background.scripts),
 
-        contentScripts: (data.manifest.content_scripts || []).map(parseScriptOptions),
+        contentScripts: extension.contentScripts.map(script => parseScriptOptions(script, restrictSchemes)),
       });
 
+      policy.debugName = `${JSON.stringify(policy.name)} (ID: ${policy.id}, ${policy.getURL()})`;
+
+      // Register any existent dynamically registered content script for the extension
+      // when a content process is started for the first time (which also cover
+      // a content process that crashed and it has been recreated).
+      const registeredContentScripts = this.registeredContentScripts.get(policy);
+
+      if (extension.registeredContentScripts) {
+        for (let [scriptId, options] of extension.registeredContentScripts) {
+          const parsedOptions = parseScriptOptions(options, restrictSchemes);
+          const script = new WebExtensionContentScript(policy, parsedOptions);
+          policy.registerContentScript(script);
+          registeredContentScripts.set(scriptId, script);
+        }
+      }
+
       policy.active = true;
-      policy.initData = data;
+      policy.initData = extension;
     }
     return policy;
   },
@@ -363,7 +415,67 @@ ExtensionManager = {
       }
 
       case "Schema:Add": {
-        this.schemaJSON.set(data.url, data.schema);
+        // If we're given a Map, the ordering of the initial items
+        // matters, so swap with our current data to make sure its
+        // entries appear first.
+        if (typeof data.get === "function") {
+          [this.schemaJSON, data] = [data, this.schemaJSON];
+
+          Services.cpmm.initialProcessData["Extension:Schemas"] =
+            this.schemaJSON;
+        }
+
+        for (let [url, schema] of data) {
+          this.schemaJSON.set(url, schema);
+        }
+        break;
+      }
+
+      case "Extension:RegisterContentScript": {
+        let policy = WebExtensionPolicy.getByID(data.id);
+
+        if (policy) {
+          const registeredContentScripts = this.registeredContentScripts.get(policy);
+
+          if (registeredContentScripts.has(data.scriptId)) {
+            Cu.reportError(new Error(
+              `Registering content script ${data.scriptId} on ${data.id} more than once`));
+          } else {
+            try {
+              const parsedOptions = parseScriptOptions(data.options, !policy.hasPermission("mozillaAddons"));
+              const script = new WebExtensionContentScript(policy, parsedOptions);
+              policy.registerContentScript(script);
+              registeredContentScripts.set(data.scriptId, script);
+            } catch (e) {
+              Cu.reportError(e);
+            }
+          }
+        }
+
+        Services.cpmm.sendAsyncMessage("Extension:RegisterContentScriptComplete");
+        break;
+      }
+
+      case "Extension:UnregisterContentScripts": {
+        let policy = WebExtensionPolicy.getByID(data.id);
+
+        if (policy) {
+          const registeredContentScripts = this.registeredContentScripts.get(policy);
+
+          for (const scriptId of data.scriptIds) {
+            const script = registeredContentScripts.get(scriptId);
+            if (script) {
+              try {
+                policy.unregisterContentScript(script);
+                registeredContentScripts.delete(scriptId);
+              } catch (e) {
+                Cu.reportError(e);
+              }
+            }
+          }
+        }
+
+        Services.cpmm.sendAsyncMessage("Extension:UnregisterContentScriptsComplete");
         break;
       }
     }
@@ -381,7 +493,7 @@ ExtensionProcessScript.singleton = null;
 
 ExtensionProcessScript.prototype = {
   classID: Components.ID("{21f9819e-4cdf-49f9-85a0-850af91a5058}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.mozIExtensionProcessScript]),
+  QueryInterface: ChromeUtils.generateQI([Ci.mozIExtensionProcessScript]),
 
   get wrappedJSObject() { return this; },
 
@@ -390,13 +502,20 @@ ExtensionProcessScript.prototype = {
     return extGlobal && extGlobal.getFrameData(force);
   },
 
-  initExtension(data, extension) {
-    return ExtensionManager.initExtensionPolicy(data, extension);
+  initExtension(extension) {
+    return ExtensionManager.initExtensionPolicy(extension);
   },
 
   initExtensionDocument(policy, doc) {
     if (DocumentManager.globals.has(getMessageManager(doc.defaultView))) {
       DocumentManager.loadInto(policy, doc.defaultView);
+    }
+  },
+
+  getExtensionChild(id) {
+    let policy = WebExtensionPolicy.getByID(id);
+    if (policy) {
+      return extensions.get(policy);
     }
   },
 

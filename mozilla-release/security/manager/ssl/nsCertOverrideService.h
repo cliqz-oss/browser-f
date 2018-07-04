@@ -7,6 +7,8 @@
 #ifndef nsCertOverrideService_h
 #define nsCertOverrideService_h
 
+#include "mozilla/HashFunctions.h"
+#include "mozilla/Move.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/TypedEnumBits.h"
 #include "nsICertOverrideService.h"
@@ -29,6 +31,7 @@ public:
 
   nsCertOverride()
     : mPort(-1)
+    , mIsTemporary(false)
     , mOverrideBits(OverrideBits::None)
   {
   }
@@ -79,10 +82,10 @@ class nsCertOverrideEntry final : public PLDHashEntryHdr
     {
     }
 
-    nsCertOverrideEntry(const nsCertOverrideEntry& toCopy)
+    nsCertOverrideEntry(nsCertOverrideEntry&& toMove)
+      : mSettings(mozilla::Move(toMove.mSettings))
+      , mHostWithPort(mozilla::Move(toMove.mHostWithPort))
     {
-      mSettings = toCopy.mSettings;
-      mHostWithPort = toCopy.mHostWithPort;
     }
 
     ~nsCertOverrideEntry()
@@ -111,7 +114,7 @@ class nsCertOverrideEntry final : public PLDHashEntryHdr
 
     static PLDHashNumber HashKey(KeyTypePointer aKey)
     {
-      return PLDHashTable::HashStringKey(aKey);
+      return mozilla::HashString(aKey);
     }
 
     enum { ALLOW_MEMMOVE = false };

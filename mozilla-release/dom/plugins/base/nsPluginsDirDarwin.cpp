@@ -26,9 +26,7 @@
 #include "mozilla/UniquePtr.h"
 
 #include "nsCocoaFeatures.h"
-#if defined(MOZ_CRASHREPORTER)
 #include "nsExceptionHandler.h"
-#endif
 
 #include <string.h>
 #include <stdio.h>
@@ -65,19 +63,6 @@ static CFBundleRef getPluginBundle(const char* path)
   return bundle;
 }
 
-static nsresult toCFURLRef(nsIFile* file, CFURLRef& outURL)
-{
-  nsCOMPtr<nsILocalFileMac> lfm = do_QueryInterface(file);
-  if (!lfm)
-    return NS_ERROR_FAILURE;
-  CFURLRef url;
-  nsresult rv = lfm->GetCFURL(&url);
-  if (NS_SUCCEEDED(rv))
-    outURL = url;
-
-  return rv;
-}
-
 bool nsPluginsDir::IsPluginFile(nsIFile* file)
 {
   nsCString fileName;
@@ -101,13 +86,10 @@ static char* CFStringRefToUTF8Buffer(CFStringRef cfString)
     return PL_strdup(buffer);
   }
 
-  int bufferLength =
+  int64_t bufferLength =
     ::CFStringGetMaximumSizeForEncoding(::CFStringGetLength(cfString),
                                         kCFStringEncodingUTF8) + 1;
   char* newBuffer = static_cast<char*>(moz_xmalloc(bufferLength));
-  if (!newBuffer) {
-    return nullptr;
-  }
 
   if (!::CFStringGetCString(cfString, newBuffer, bufferLength,
                             kCFStringEncodingUTF8)) {
@@ -365,49 +347,6 @@ static char* GetNextPluginStringFromHandle(Handle h, short *index)
   return ret;
 }
 
-static bool IsCompatibleArch(nsIFile *file)
-{
-  CFURLRef pluginURL = nullptr;
-  if (NS_FAILED(toCFURLRef(file, pluginURL)))
-    return false;
-
-  bool isPluginFile = false;
-
-  CFBundleRef pluginBundle = ::CFBundleCreate(kCFAllocatorDefault, pluginURL);
-  if (pluginBundle) {
-    UInt32 packageType, packageCreator;
-    ::CFBundleGetPackageInfo(pluginBundle, &packageType, &packageCreator);
-    if (packageType == 'BRPL' || packageType == 'IEPL' || packageType == 'NSPL') {
-      // Get path to plugin as a C string.
-      char executablePath[PATH_MAX];
-      executablePath[0] = '\0';
-      if (!::CFURLGetFileSystemRepresentation(pluginURL, true, (UInt8*)&executablePath, PATH_MAX)) {
-        executablePath[0] = '\0';
-      }
-
-      uint32_t pluginLibArchitectures;
-      nsresult rv = mozilla::ipc::GeckoChildProcessHost::GetArchitecturesForBinary(executablePath, &pluginLibArchitectures);
-      if (NS_FAILED(rv)) {
-        return false;
-      }
-
-      uint32_t supportedArchitectures =
-#ifdef __LP64__
-          mozilla::ipc::GeckoChildProcessHost::GetSupportedArchitecturesForProcessType(GeckoProcessType_Plugin);
-#else
-          base::GetCurrentProcessArchitecture();
-#endif
-
-      // Consider the plugin architecture valid if there is any overlap in the masks.
-      isPluginFile = !!(supportedArchitectures & pluginLibArchitectures);
-    }
-    ::CFRelease(pluginBundle);
-  }
-
-  ::CFRelease(pluginURL);
-  return isPluginFile;
-}
-
 /**
  * Obtains all of the information currently available for this plugin.
  */
@@ -416,10 +355,6 @@ nsresult nsPluginFile::GetPluginInfo(nsPluginInfo& info, PRLibrary **outLibrary)
   *outLibrary = nullptr;
 
   nsresult rv = NS_OK;
-
-  if (!IsCompatibleArch(mPlugin)) {
-      return NS_ERROR_FAILURE;
-  }
 
   // clear out the info, except for the first field.
   memset(&info, 0, sizeof(info));
@@ -487,14 +422,13 @@ nsresult nsPluginFile::GetPluginInfo(nsPluginInfo& info, PRLibrary **outLibrary)
       NS_WARNING(msg.get());
       return NS_ERROR_FAILURE;
     }
-#if defined(MOZ_CRASHREPORTER)
+
     // The block above assumes that "fbplugin" is the filename of the plugin
     // to be blocked, or that the filename starts with "fbplugin_".  But we
     // don't yet know for sure if this is always true.  So for the time being
     // record extra information in our crash logs.
     CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("Bug_1086977"),
                                        fileName);
-#endif
   }
 
   // It's possible that our plugin has 2 entry points that'll give us mime type
@@ -504,14 +438,14 @@ nsresult nsPluginFile::GetPluginInfo(nsPluginInfo& info, PRLibrary **outLibrary)
 
   // Sadly we have to load the library for this to work.
   rv = LoadPlugin(outLibrary);
-#if defined(MOZ_CRASHREPORTER)
+
   if (nsCocoaFeatures::OnYosemiteOrLater()) {
     // If we didn't crash in LoadPlugin(), change the previous annotation so we
     // don't sow confusion.
     CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("Bug_1086977"),
                                        NS_LITERAL_CSTRING("Didn't crash, please ignore"));
   }
-#endif
+
   if (NS_FAILED(rv))
     return rv;
 

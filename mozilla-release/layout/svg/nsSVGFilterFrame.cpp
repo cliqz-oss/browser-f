@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,7 +11,7 @@
 #include "AutoReferenceChainGuard.h"
 #include "gfxUtils.h"
 #include "nsGkAtoms.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "nsSVGElement.h"
 #include "mozilla/dom/SVGFilterElement.h"
 #include "nsSVGFilterInstance.h"
@@ -22,9 +23,9 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 nsIFrame*
-NS_NewSVGFilterFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGFilterFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsSVGFilterFrame(aContext);
+  return new (aPresShell) nsSVGFilterFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGFilterFrame)
@@ -33,7 +34,7 @@ uint16_t
 nsSVGFilterFrame::GetEnumValue(uint32_t aIndex, nsIContent *aDefault)
 {
   nsSVGEnum& thisEnum =
-    static_cast<SVGFilterElement *>(mContent)->mEnumAttributes[aIndex];
+    static_cast<SVGFilterElement *>(GetContent())->mEnumAttributes[aIndex];
 
   if (thisEnum.IsExplicitlySet())
     return thisEnum.GetAnimValue();
@@ -60,7 +61,7 @@ const nsSVGLength2 *
 nsSVGFilterFrame::GetLengthValue(uint32_t aIndex, nsIContent *aDefault)
 {
   const nsSVGLength2 *thisLength =
-    &static_cast<SVGFilterElement *>(mContent)->mLengthAttributes[aIndex];
+    &static_cast<SVGFilterElement *>(GetContent())->mLengthAttributes[aIndex];
 
   if (thisLength->IsExplicitlySet())
     return thisLength;
@@ -90,7 +91,7 @@ nsSVGFilterFrame::GetFilterContent(nsIContent *aDefault)
     RefPtr<nsSVGFE> primitive;
     CallQueryInterface(child, (nsSVGFE**)getter_AddRefs(primitive));
     if (primitive) {
-      return static_cast<SVGFilterElement *>(mContent);
+      return static_cast<SVGFilterElement *>(GetContent());
     }
   }
 
@@ -117,11 +118,11 @@ nsSVGFilterFrame::GetReferencedFilter()
     return nullptr;
 
   nsSVGPaintingProperty *property =
-    GetProperty(nsSVGEffects::HrefAsPaintingProperty());
+    GetProperty(SVGObserverUtils::HrefAsPaintingProperty());
 
   if (!property) {
     // Fetch our Filter element's href or xlink:href attribute
-    SVGFilterElement *filter = static_cast<SVGFilterElement *>(mContent);
+    SVGFilterElement *filter = static_cast<SVGFilterElement *>(GetContent());
     nsAutoString href;
     if (filter->mStringAttributes[SVGFilterElement::HREF].IsExplicitlySet()) {
       filter->mStringAttributes[SVGFilterElement::HREF]
@@ -143,8 +144,8 @@ nsSVGFilterFrame::GetReferencedFilter()
                                               mContent->GetUncomposedDoc(), base);
 
     property =
-      nsSVGEffects::GetPaintingProperty(targetURI, this,
-                                        nsSVGEffects::HrefAsPaintingProperty());
+      SVGObserverUtils::GetPaintingProperty(targetURI, this,
+                          SVGObserverUtils::HrefAsPaintingProperty());
     if (!property)
       return nullptr;
   }
@@ -162,7 +163,7 @@ nsSVGFilterFrame::GetReferencedFilter()
 
 nsresult
 nsSVGFilterFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                   nsIAtom* aAttribute,
+                                   nsAtom* aAttribute,
                                    int32_t  aModType)
 {
   if (aNameSpaceID == kNameSpaceID_None &&
@@ -172,15 +173,15 @@ nsSVGFilterFrame::AttributeChanged(int32_t  aNameSpaceID,
        aAttribute == nsGkAtoms::height ||
        aAttribute == nsGkAtoms::filterUnits ||
        aAttribute == nsGkAtoms::primitiveUnits)) {
-    nsSVGEffects::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
   } else if ((aNameSpaceID == kNameSpaceID_XLink ||
               aNameSpaceID == kNameSpaceID_None) &&
              aAttribute == nsGkAtoms::href) {
     // Blow away our reference, if any
-    DeleteProperty(nsSVGEffects::HrefAsPaintingProperty());
+    DeleteProperty(SVGObserverUtils::HrefAsPaintingProperty());
     mNoHRefURI = false;
     // And update whoever references us
-    nsSVGEffects::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
   }
   return nsSVGContainerFrame::AttributeChanged(aNameSpaceID,
                                                aAttribute, aModType);

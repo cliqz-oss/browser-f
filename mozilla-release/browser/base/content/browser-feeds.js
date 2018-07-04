@@ -3,8 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
-                                  "resource://gre/modules/DeferredTask.jsm");
+ChromeUtils.defineModuleGetter(this, "DeferredTask",
+                               "resource://gre/modules/DeferredTask.jsm");
 
 const TYPE_MAYBE_FEED = "application/vnd.mozilla.maybe.feed";
 const TYPE_MAYBE_AUDIO_FEED = "application/vnd.mozilla.maybe.audio.feed";
@@ -208,18 +208,16 @@ var FeedHandler = {
       href = event.target.getAttribute("feed");
     urlSecurityCheck(href, gBrowser.contentPrincipal,
                      Ci.nsIScriptSecurityManager.DISALLOW_INHERIT_PRINCIPAL);
-    let feedURI = makeURI(href, document.characterSet);
-    // Use the feed scheme so X-Moz-Is-Feed will be set
-    // The value doesn't matter
-    if (/^https?$/.test(feedURI.scheme))
-      href = "feed:" + href;
     this.loadFeed(href, event);
   },
 
   loadFeed(href, event) {
     let feeds = gBrowser.selectedBrowser.feeds;
     try {
-      openUILink(href, event, { ignoreAlt: true });
+      openUILink(href, event, {
+        ignoreAlt: true,
+        triggeringPrincipal: gBrowser.contentPrincipal,
+      });
     } finally {
       // We might default to a livebookmarks modal dialog,
       // so reset that if the user happens to click it again
@@ -278,6 +276,13 @@ var FeedHandler = {
   addFeed(link, browserForLink) {
     if (!browserForLink.feeds)
       browserForLink.feeds = [];
+
+    urlSecurityCheck(link.href, gBrowser.contentPrincipal,
+                     Ci.nsIScriptSecurityManager.DISALLOW_INHERIT_PRINCIPAL);
+
+    let feedURI = makeURI(link.href, document.characterSet);
+    if (!/^https?$/.test(feedURI.scheme))
+      return;
 
     browserForLink.feeds.push({ href: link.href, title: link.title });
 
@@ -348,7 +353,7 @@ var FeedHandler = {
           }
 
           if (fp.file.leafName != appName) {
-            Services.prefs.setComplexValue(prefName, Ci.nsILocalFile, selectedApp);
+            Services.prefs.setComplexValue(prefName, Ci.nsIFile, selectedApp);
             aBrowser.messageManager.sendAsyncMessage("FeedWriter:SetApplicationLauncherMenuItem",
                                                     { name: this._getFileDisplayName(selectedApp),
                                                       type: "SelectedAppMenuItem" });
@@ -361,7 +366,7 @@ var FeedHandler = {
 
   executeClientApp(aSpec, aTitle, aSubtitle, aFeedHandler) {
     // aFeedHandler is either "default", indicating the system default reader, or a pref-name containing
-    // an nsILocalFile pointing to the feed handler's executable.
+    // an nsIFile pointing to the feed handler's executable.
 
     let clientApp = null;
     if (aFeedHandler == "default") {
@@ -369,7 +374,7 @@ var FeedHandler = {
                     .getService(Ci.nsIShellService)
                     .defaultFeedReader;
     } else {
-      clientApp = Services.prefs.getComplexValue(aFeedHandler, Ci.nsILocalFile);
+      clientApp = Services.prefs.getComplexValue(aFeedHandler, Ci.nsIFile);
     }
 
     // For the benefit of applications that might know how to deal with more
@@ -379,9 +384,11 @@ var FeedHandler = {
     // http://foo.com/index.rdf -> feed://foo.com/index.rdf
     // other urls: prepend feed: scheme, e.g.
     // https://foo.com/index.rdf -> feed:https://foo.com/index.rdf
-    let feedURI = NetUtil.newURI(aSpec);
+    let feedURI = Services.io.newURI(aSpec);
     if (feedURI.schemeIs("http")) {
-      feedURI.scheme = "feed";
+      feedURI = feedURI.mutate()
+                       .setScheme("feed")
+                       .finalize();
       aSpec = feedURI.spec;
     } else {
       aSpec = "feed:" + aSpec;
@@ -405,8 +412,8 @@ var FeedHandler = {
 
   // nsISupports
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
 
   init() {
@@ -438,7 +445,7 @@ var FeedHandler = {
   // nsIObserver
   observe(subject, topic, data) {
     if (topic == "nsPref:changed") {
-      LOG(`Pref changed ${data}`)
+      LOG(`Pref changed ${data}`);
       if (this._prefChangeCallback) {
         this._prefChangeCallback.disarm();
       }
@@ -497,7 +504,7 @@ var FeedHandler = {
     let selectedClientApp;
     const feedTypePref = getPrefAppForType(feedType);
     try {
-      selectedClientApp = Services.prefs.getComplexValue(feedTypePref, Ci.nsILocalFile);
+      selectedClientApp = Services.prefs.getComplexValue(feedTypePref, Ci.nsIFile);
     } catch (ex) {
       // Just do nothing, then we won't bother populating
     }
@@ -591,6 +598,9 @@ var FeedHandler = {
           LOG(`Invalid reader ${settings.reader}`);
           return;
         }
+
+        Services.telemetry.scalarAdd("browser.feeds.feed_subscribed", 1);
+
         const actionPref = getPrefActionForType(settings.feedType);
         this._setPref(actionPref, settings.action);
         const readerPref = getPrefReaderForType(settings.feedType);

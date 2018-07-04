@@ -117,12 +117,12 @@ function test() {
   // and we will assume it is default.
   Services.prefs.clearUserPref("browser.startup.page");
 
-  if (gPrefService.prefHasUserValue(PREF_MSTONE)) {
-    gOriginalMStone = gPrefService.getCharPref(PREF_MSTONE);
+  if (Services.prefs.prefHasUserValue(PREF_MSTONE)) {
+    gOriginalMStone = Services.prefs.getCharPref(PREF_MSTONE);
   }
 
-  if (gPrefService.prefHasUserValue(PREF_OVERRIDE_URL)) {
-    gOriginalOverrideURL = gPrefService.getCharPref(PREF_OVERRIDE_URL);
+  if (Services.prefs.prefHasUserValue(PREF_OVERRIDE_URL)) {
+    gOriginalOverrideURL = Services.prefs.getCharPref(PREF_OVERRIDE_URL);
   }
 
   testDefaultArgs();
@@ -174,17 +174,17 @@ function finish_test() {
   // Reset browser.startup.homepage_override.mstone to the original value or
   // clear it if it didn't exist.
   if (gOriginalMStone) {
-    gPrefService.setCharPref(PREF_MSTONE, gOriginalMStone);
-  } else if (gPrefService.prefHasUserValue(PREF_MSTONE)) {
-    gPrefService.clearUserPref(PREF_MSTONE);
+    Services.prefs.setCharPref(PREF_MSTONE, gOriginalMStone);
+  } else if (Services.prefs.prefHasUserValue(PREF_MSTONE)) {
+    Services.prefs.clearUserPref(PREF_MSTONE);
   }
 
   // Reset startup.homepage_override_url to the original value or clear it if
   // it didn't exist.
   if (gOriginalOverrideURL) {
-    gPrefService.setCharPref(PREF_OVERRIDE_URL, gOriginalOverrideURL);
-  } else if (gPrefService.prefHasUserValue(PREF_OVERRIDE_URL)) {
-    gPrefService.clearUserPref(PREF_OVERRIDE_URL);
+    Services.prefs.setCharPref(PREF_OVERRIDE_URL, gOriginalOverrideURL);
+  } else if (Services.prefs.prefHasUserValue(PREF_OVERRIDE_URL)) {
+    Services.prefs.clearUserPref(PREF_OVERRIDE_URL);
   }
 
   writeUpdatesToXMLFile(XML_EMPTY);
@@ -200,9 +200,9 @@ function testDefaultArgs() {
   // if it isn't already set.
   Cc["@mozilla.org/browser/clh;1"].getService(Ci.nsIBrowserHandler).defaultArgs;
 
-  let originalMstone = gPrefService.getCharPref(PREF_MSTONE);
+  let originalMstone = Services.prefs.getCharPref(PREF_MSTONE);
 
-  gPrefService.setCharPref(PREF_OVERRIDE_URL, DEFAULT_PREF_URL);
+  Services.prefs.setCharPref(PREF_OVERRIDE_URL, DEFAULT_PREF_URL);
 
   writeUpdatesToXMLFile(XML_EMPTY);
   reloadUpdateManagerData();
@@ -240,25 +240,25 @@ function testDefaultArgs() {
     }
 
     if (testCase.noMstoneChange === undefined) {
-      gPrefService.setCharPref(PREF_MSTONE, "PreviousMilestone");
+      Services.prefs.setCharPref(PREF_MSTONE, "PreviousMilestone");
     }
 
     if (testCase.noPostUpdatePref == undefined) {
-      gPrefService.setBoolPref(PREF_POSTUPDATE, true);
+      Services.prefs.setBoolPref(PREF_POSTUPDATE, true);
     }
 
     let defaultArgs = Cc["@mozilla.org/browser/clh;1"].
                       getService(Ci.nsIBrowserHandler).defaultArgs;
     is(defaultArgs, overrideArgs, "correct value returned by defaultArgs");
 
-    if (testCase.noMstoneChange === undefined || testCase.noMstoneChange != true) {
-      let newMstone = gPrefService.getCharPref(PREF_MSTONE);
+    if (testCase.noMstoneChange === undefined || !testCase.noMstoneChange) {
+      let newMstone = Services.prefs.getCharPref(PREF_MSTONE);
       is(originalMstone, newMstone, "preference " + PREF_MSTONE +
          " should have been updated");
     }
 
-    if (gPrefService.prefHasUserValue(PREF_POSTUPDATE)) {
-      gPrefService.clearUserPref(PREF_POSTUPDATE);
+    if (Services.prefs.prefHasUserValue(PREF_POSTUPDATE)) {
+      Services.prefs.clearUserPref(PREF_POSTUPDATE);
     }
   }
 
@@ -324,13 +324,13 @@ function testShowNotification() {
     }
 
     reloadUpdateManagerData();
-    gPrefService.setBoolPref(PREF_POSTUPDATE, true);
+    Services.prefs.setBoolPref(PREF_POSTUPDATE, true);
 
     gBG.observe(null, "browser-glue-test", "post-update-notification");
 
     let updateBox = notifyBox.getNotificationWithValue("post-update-notification");
-    if (testCase.actions && testCase.actions.indexOf("showNotification") != -1 &&
-        testCase.actions.indexOf("silent") == -1) {
+    if (testCase.actions && testCase.actions.includes("showNotification") &&
+        !testCase.actions.includes("silent")) {
       ok(updateBox, "Update notification box should have been displayed");
       if (updateBox) {
         if (testCase.notificationText) {
@@ -367,7 +367,7 @@ function testShowNotification() {
       ok(!updateBox, "Update notification box should not have been displayed");
     }
 
-    let prefHasUserValue = gPrefService.prefHasUserValue(PREF_POSTUPDATE);
+    let prefHasUserValue = Services.prefs.prefHasUserValue(PREF_POSTUPDATE);
     is(prefHasUserValue, false, "preference " + PREF_POSTUPDATE +
        " shouldn't have a user value");
   }
@@ -400,14 +400,12 @@ function writeUpdatesToXMLFile(aText) {
   const MODE_CREATE   = 0x08;
   const MODE_TRUNCATE = 0x20;
 
-  let file = Cc["@mozilla.org/file/directory_service;1"].
-             getService(Ci.nsIProperties).
-             get("UpdRootD", Ci.nsIFile);
+  let file = Services.dirsvc.get("UpdRootD", Ci.nsIFile);
   file.append("updates.xml");
   let fos = Cc["@mozilla.org/network/file-output-stream;1"].
             createInstance(Ci.nsIFileOutputStream);
   if (!file.exists()) {
-    file.create(Ci.nsILocalFile.NORMAL_FILE_TYPE, PERMS_FILE);
+    file.create(Ci.nsIFile.NORMAL_FILE_TYPE, PERMS_FILE);
   }
   fos.init(file, MODE_WRONLY | MODE_CREATE | MODE_TRUNCATE, PERMS_FILE, 0);
   fos.write(aText, aText.length);

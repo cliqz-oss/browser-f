@@ -11,6 +11,7 @@
 #include "SharedSSLState.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/Unused.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsCRT.h"
 #include "nsILineInputStream.h"
@@ -106,7 +107,7 @@ nsCertOverrideService::Init()
   // point another hash algorithm was used and is still supported for backwards
   // compatibility. This is not the case. It has always been SHA256.
   mOidTagForStoringNewHashes = SEC_OID_SHA256;
-  mDottedOidForStoringNewHashes.Assign("OID.2.16.840.1.101.3.4.2.1");
+  mDottedOidForStoringNewHashes.AssignLiteral("OID.2.16.840.1.101.3.4.2.1");
 
   nsCOMPtr<nsIObserverService> observerService =
       mozilla::services::GetObserverService();
@@ -281,7 +282,8 @@ nsCertOverrideService::Write(const MutexAutoLock& aProofOfLock)
 
   // get a buffered output stream 4096 bytes big, to optimize writes
   nsCOMPtr<nsIOutputStream> bufferedOutputStream;
-  rv = NS_NewBufferedOutputStream(getter_AddRefs(bufferedOutputStream), fileOutputStream, 4096);
+  rv = NS_NewBufferedOutputStream(getter_AddRefs(bufferedOutputStream),
+                                  fileOutputStream.forget(), 4096);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -377,11 +379,13 @@ nsCertOverrideService::RememberValidityOverride(const nsACString& aHostName,
       return NS_ERROR_FAILURE;
     }
 
-    SECStatus srv = PK11_ImportCert(slot.get(), nsscert.get(), CK_INVALID_HANDLE,
-                                    nickname.get(), false);
-    if (srv != SECSuccess) {
-      return NS_ERROR_FAILURE;
-    }
+    // This can fail (for example, if we're in read-only mode). Luckily, we
+    // don't even need it to succeed - we always match on the stored hash of the
+    // certificate rather than the full certificate. It makes the display a bit
+    // less informative (since we won't have a certificate to display), but it's
+    // better than failing the entire operation.
+    Unused << PK11_ImportCert(slot.get(), nsscert.get(), CK_INVALID_HANDLE,
+                              nickname.get(), false);
   }
 
   nsAutoCString fpStr;

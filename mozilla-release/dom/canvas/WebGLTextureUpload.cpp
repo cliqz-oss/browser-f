@@ -186,7 +186,8 @@ FromView(WebGLContext* webgl, const char* funcName, TexImageTarget target,
 
 static UniquePtr<webgl::TexUnpackBytes>
 FromPboOffset(WebGLContext* webgl, const char* funcName, TexImageTarget target,
-              uint32_t width, uint32_t height, uint32_t depth, WebGLsizeiptr pboOffset)
+              uint32_t width, uint32_t height, uint32_t depth, WebGLsizeiptr pboOffset,
+              const Maybe<GLsizei>& expectedImageSize)
 {
     if (pboOffset < 0) {
         webgl->ErrorInvalidValue("%s: offset cannot be negative.", funcName);
@@ -204,7 +205,17 @@ FromPboOffset(WebGLContext* webgl, const char* funcName, TexImageTarget target,
         return nullptr;
     }
     availBufferBytes -= pboOffset;
-
+    if (expectedImageSize.isSome()) {
+        if (expectedImageSize.ref() < 0) {
+            webgl->ErrorInvalidValue("%s: ImageSize can't be less than 0.", funcName);
+            return nullptr;
+        }
+        if (size_t(expectedImageSize.ref()) != availBufferBytes) {
+            webgl->ErrorInvalidOperation("%s: ImageSize doesn't match the required upload byte size.", funcName);
+            return nullptr;
+        }
+        availBufferBytes = size_t(expectedImageSize.ref());
+    }
     const bool isClientData = false;
     const auto ptr = (const uint8_t*)pboOffset;
     return MakeUnique<webgl::TexUnpackBytes>(webgl, target, width, height, depth,
@@ -213,10 +224,14 @@ FromPboOffset(WebGLContext* webgl, const char* funcName, TexImageTarget target,
 
 static UniquePtr<webgl::TexUnpackBlob>
 FromImageBitmap(WebGLContext* webgl, const char* funcName, TexImageTarget target,
-              uint32_t width, uint32_t height, uint32_t depth,
-              const dom::ImageBitmap& imageBitmap)
+                uint32_t width, uint32_t height, uint32_t depth,
+                const dom::ImageBitmap& imageBitmap)
 {
     UniquePtr<dom::ImageBitmapCloneData> cloneData = Move(imageBitmap.ToCloneData());
+    if (!cloneData) {
+      return nullptr;
+    }
+
     const RefPtr<gfx::DataSourceSurface> surf = cloneData->mSurface;
 
     if (!width) {
@@ -399,7 +414,7 @@ WebGLContext::From(const char* funcName, TexImageTarget target, GLsizei rawWidth
 
     if (src.mPboOffset) {
         return FromPboOffset(this, funcName, target, width, height, depth,
-                             *(src.mPboOffset));
+                             *(src.mPboOffset), Nothing());
     }
 
     if (mBoundPixelUnpackBuffer) {
@@ -454,7 +469,7 @@ WebGLTexture::TexImage(const char* funcName, TexImageTarget target, GLint level,
                        GLsizei depth, GLint border, const webgl::PackingInfo& pi,
                        const TexImageSource& src)
 {
-    dom::RootedTypedArray<dom::Uint8ClampedArray> scopedArr(dom::RootingCx());
+    dom::RootedSpiderMonkeyInterface<dom::Uint8ClampedArray> scopedArr(dom::RootingCx());
     const auto blob = ValidateTexOrSubImage(mContext, funcName, target, width, height,
                                             depth, border, pi, src, &scopedArr);
     if (!blob)
@@ -470,7 +485,7 @@ WebGLTexture::TexSubImage(const char* funcName, TexImageTarget target, GLint lev
                           const webgl::PackingInfo& pi, const TexImageSource& src)
 {
     const GLint border = 0;
-    dom::RootedTypedArray<dom::Uint8ClampedArray> scopedArr(dom::RootingCx());
+    dom::RootedSpiderMonkeyInterface<dom::Uint8ClampedArray> scopedArr(dom::RootingCx());
     const auto blob = ValidateTexOrSubImage(mContext, funcName, target, width, height,
                                             depth, border, pi, src, &scopedArr);
     if (!blob)
@@ -541,11 +556,11 @@ WebGLTexture::ValidateTexImageSpecification(const char* funcName, TexImageTarget
      * INVALID_VALUE, or possibly GL_OOM.
      *
      * However, we have needed to set our maximums lower in the past to prevent resource
-     * corruption. Therefore we have mImplMaxTextureSize, which is neither necessarily
+     * corruption. Therefore we have mGLMaxTextureSize, which is neither necessarily
      * lower nor higher than MAX_TEXTURE_SIZE.
      *
-     * Note that mImplMaxTextureSize must be >= than the advertized MAX_TEXTURE_SIZE.
-     * For simplicity, we advertize MAX_TEXTURE_SIZE as mImplMaxTextureSize.
+     * Note that mGLMaxTextureSize must be >= than the advertized MAX_TEXTURE_SIZE.
+     * For simplicity, we advertize MAX_TEXTURE_SIZE as mGLMaxTextureSize.
      */
 
     uint32_t maxWidthHeight = 0;
@@ -555,30 +570,30 @@ WebGLTexture::ValidateTexImageSpecification(const char* funcName, TexImageTarget
     MOZ_ASSERT(level <= 31);
     switch (target.get()) {
     case LOCAL_GL_TEXTURE_2D:
-        maxWidthHeight = mContext->mImplMaxTextureSize >> level;
+        maxWidthHeight = mContext->mGLMaxTextureSize >> level;
         maxDepth = 1;
-        maxLevel = CeilingLog2(mContext->mImplMaxTextureSize);
+        maxLevel = CeilingLog2(mContext->mGLMaxTextureSize);
         break;
 
     case LOCAL_GL_TEXTURE_3D:
-        maxWidthHeight = mContext->mImplMax3DTextureSize >> level;
+        maxWidthHeight = mContext->mGLMax3DTextureSize >> level;
         maxDepth = maxWidthHeight;
-        maxLevel = CeilingLog2(mContext->mImplMax3DTextureSize);
+        maxLevel = CeilingLog2(mContext->mGLMax3DTextureSize);
         break;
 
     case LOCAL_GL_TEXTURE_2D_ARRAY:
-        maxWidthHeight = mContext->mImplMaxTextureSize >> level;
+        maxWidthHeight = mContext->mGLMaxTextureSize >> level;
         // "The maximum number of layers for two-dimensional array textures (depth)
         //  must be at least MAX_ARRAY_TEXTURE_LAYERS for all levels."
-        maxDepth = mContext->mImplMaxArrayTextureLayers;
-        maxLevel = CeilingLog2(mContext->mImplMaxTextureSize);
+        maxDepth = mContext->mGLMaxArrayTextureLayers;
+        maxLevel = CeilingLog2(mContext->mGLMaxTextureSize);
         break;
 
     default: // cube maps
         MOZ_ASSERT(IsCubeMap());
-        maxWidthHeight = mContext->mImplMaxCubeMapTextureSize >> level;
+        maxWidthHeight = mContext->mGLMaxCubeMapTextureSize >> level;
         maxDepth = 1;
-        maxLevel = CeilingLog2(mContext->mImplMaxCubeMapTextureSize);
+        maxLevel = CeilingLog2(mContext->mGLMaxCubeMapTextureSize);
         break;
     }
 
@@ -926,21 +941,6 @@ DoCompressedTexSubImage(gl::GLContext* gl, TexImageTarget target, GLint level,
 }
 
 static inline GLenum
-DoCopyTexImage2D(gl::GLContext* gl, TexImageTarget target, GLint level,
-                 GLenum internalFormat, GLint x, GLint y, GLsizei width, GLsizei height)
-{
-    const GLint border = 0;
-
-    gl::GLContext::LocalErrorScope errorScope(*gl);
-
-    MOZ_ASSERT(!IsTarget3D(target));
-    gl->fCopyTexImage2D(target.get(), level, internalFormat, x, y, width, height,
-                        border);
-
-    return errorScope.GetError();
-}
-
-static inline GLenum
 DoCopyTexSubImage(gl::GLContext* gl, TexImageTarget target, GLint level, GLint xOffset,
                   GLint yOffset, GLint zOffset, GLint x, GLint y, GLsizei width,
                   GLsizei height)
@@ -1107,16 +1107,13 @@ WebGLTexture::TexStorage(const char* funcName, TexTarget target, GLsizei levels,
 
     const TexImageTarget testTarget = IsCubeMap() ? LOCAL_GL_TEXTURE_CUBE_MAP_POSITIVE_X
                                                   : target.get();
-    const GLint testLevel = 0;
-
-    WebGLTexture::ImageInfo* testImageInfo;
-    if (!ValidateTexImageSpecification(funcName, testTarget, testLevel, width, height,
-                                       depth, &testImageInfo))
+    WebGLTexture::ImageInfo* baseImageInfo;
+    if (!ValidateTexImageSpecification(funcName, testTarget, 0, width, height, depth,
+                                       &baseImageInfo))
     {
         return;
     }
-    MOZ_ASSERT(testImageInfo);
-    mozilla::Unused << testImageInfo;
+    MOZ_ALWAYS_TRUE(baseImageInfo);
 
     auto dstUsage = mContext->mFormatUsage->GetSizedTexUsage(sizedFormat);
     if (!dstUsage) {
@@ -1130,9 +1127,8 @@ WebGLTexture::TexStorage(const char* funcName, TexTarget target, GLsizei levels,
         return;
 
     if (dstFormat->compression) {
-        if (!ValidateCompressedTexImageRestrictions(funcName, mContext, testTarget,
-                                                    testLevel, dstFormat, width, height,
-                                                    depth))
+        if (!ValidateCompressedTexImageRestrictions(funcName, mContext, testTarget, 0,
+                                                    dstFormat, width, height, depth))
         {
             return;
         }
@@ -1140,15 +1136,24 @@ WebGLTexture::TexStorage(const char* funcName, TexTarget target, GLsizei levels,
 
     ////////////////////////////////////
 
-    const auto lastLevel = levels - 1;
-    MOZ_ASSERT(lastLevel <= 31, "Right-shift is only defined for bits-1.");
+    const bool levelsOk = [&]() {
+        // Right-shift is only defined for bits-1, which is too large anyways.
+        const auto lastLevel = uint32_t(levels - 1);
+        if (lastLevel > 31)
+            return false;
 
-    const uint32_t lastLevelWidth = uint32_t(width) >> lastLevel;
-    const uint32_t lastLevelHeight = uint32_t(height) >> lastLevel;
-    const uint32_t lastLevelDepth = uint32_t(depth) >> lastLevel;
+        const auto lastLevelWidth = uint32_t(width) >> lastLevel;
+        const auto lastLevelHeight = uint32_t(height) >> lastLevel;
 
-    // If these are all zero, then some earlier level was the final 1x1x1 level.
-    if (!lastLevelWidth && !lastLevelHeight && !lastLevelDepth) {
+        // If these are all zero, then some earlier level was the final 1x1(x1) level.
+        bool ok = lastLevelWidth || lastLevelHeight;
+        if (target == LOCAL_GL_TEXTURE_3D) {
+            const auto lastLevelDepth = uint32_t(depth) >> lastLevel;
+            ok |= bool(lastLevelDepth);
+        }
+        return ok;
+    }();
+    if (!levelsOk) {
         mContext->ErrorInvalidOperation("%s: Too many levels requested for the given"
                                         " dimensions. (levels: %u, width: %u, height: %u,"
                                         " depth: %u)",
@@ -1158,8 +1163,6 @@ WebGLTexture::TexStorage(const char* funcName, TexTarget target, GLsizei levels,
 
     ////////////////////////////////////
     // Do the thing!
-
-    mContext->gl->MakeCurrent();
 
     GLenum error = DoTexStorage(mContext->gl, target.get(), levels, sizedFormat, width,
                                 height, depth);
@@ -1273,9 +1276,6 @@ WebGLTexture::TexImage(const char* funcName, TexImageTarget target, GLint level,
     ////////////////////////////////////
     // Do the thing!
 
-    MOZ_ALWAYS_TRUE( mContext->gl->MakeCurrent() );
-    MOZ_ASSERT(mContext->gl->IsCurrent());
-
     // It's tempting to do allocation first, and TexSubImage second, but this is generally
     // slower.
 
@@ -1367,8 +1367,6 @@ WebGLTexture::TexSubImage(const char* funcName, TexImageTarget target, GLint lev
     ////////////////////////////////////
     // Do the thing!
 
-    mContext->gl->MakeCurrent();
-
     bool uploadWillInitialize;
     if (!EnsureImageDataInitializedForUpload(this, funcName, target, level, xOffset,
                                              yOffset, zOffset, blob->mWidth,
@@ -1415,7 +1413,8 @@ WebGLTexture::TexSubImage(const char* funcName, TexImageTarget target, GLint lev
 UniquePtr<webgl::TexUnpackBytes>
 WebGLContext::FromCompressed(const char* funcName, TexImageTarget target,
                              GLsizei rawWidth, GLsizei rawHeight, GLsizei rawDepth,
-                             GLint border, const TexImageSource& src)
+                             GLint border, const TexImageSource& src,
+                             const Maybe<GLsizei>& expectedImageSize)
 {
     uint32_t width, height, depth;
     if (!ValidateExtents(this, funcName, rawWidth, rawHeight, rawDepth, border, &width,
@@ -1426,7 +1425,7 @@ WebGLContext::FromCompressed(const char* funcName, TexImageTarget target,
 
     if (src.mPboOffset) {
         return FromPboOffset(this, funcName, target, width, height, depth,
-                             *(src.mPboOffset));
+                             *(src.mPboOffset), expectedImageSize);
     }
 
     if (mBoundPixelUnpackBuffer) {
@@ -1442,10 +1441,10 @@ void
 WebGLTexture::CompressedTexImage(const char* funcName, TexImageTarget target, GLint level,
                                  GLenum internalFormat, GLsizei rawWidth,
                                  GLsizei rawHeight, GLsizei rawDepth, GLint border,
-                                 const TexImageSource& src)
+                                 const TexImageSource& src, const Maybe<GLsizei>& expectedImageSize)
 {
     const auto blob = mContext->FromCompressed(funcName, target, rawWidth, rawHeight,
-                                               rawDepth, border, src);
+                                               rawDepth, border, src, expectedImageSize);
     if (!blob)
         return;
 
@@ -1499,7 +1498,8 @@ WebGLTexture::CompressedTexImage(const char* funcName, TexImageTarget target, GL
     ////////////////////////////////////
     // Do the thing!
 
-    mContext->gl->MakeCurrent();
+    const ScopedLazyBind bindPBO(mContext->gl, LOCAL_GL_PIXEL_UNPACK_BUFFER,
+                                 mContext->mBoundPixelUnpackBuffer);
 
     // Warning: Possibly shared memory.  See bug 1225033.
     GLenum error = DoCompressedTexImage(mContext->gl, target, level, internalFormat,
@@ -1553,11 +1553,11 @@ WebGLTexture::CompressedTexSubImage(const char* funcName, TexImageTarget target,
                                     GLint level, GLint xOffset, GLint yOffset,
                                     GLint zOffset, GLsizei rawWidth, GLsizei rawHeight,
                                     GLsizei rawDepth, GLenum sizedUnpackFormat,
-                                    const TexImageSource& src)
+                                    const TexImageSource& src, const Maybe<GLsizei>& expectedImageSize)
 {
     const GLint border = 0;
     const auto blob = mContext->FromCompressed(funcName, target, rawWidth, rawHeight,
-                                               rawDepth, border, src);
+                                               rawDepth, border, src, expectedImageSize);
     if (!blob)
         return;
 
@@ -1640,8 +1640,6 @@ WebGLTexture::CompressedTexSubImage(const char* funcName, TexImageTarget target,
     ////////////////////////////////////
     // Do the thing!
 
-    mContext->gl->MakeCurrent();
-
     bool uploadWillInitialize;
     if (!EnsureImageDataInitializedForUpload(this, funcName, target, level, xOffset,
                                              yOffset, zOffset, blob->mWidth,
@@ -1650,6 +1648,9 @@ WebGLTexture::CompressedTexSubImage(const char* funcName, TexImageTarget target,
     {
         return;
     }
+
+    const ScopedLazyBind bindPBO(mContext->gl, LOCAL_GL_PIXEL_UNPACK_BUFFER,
+                                 mContext->mBoundPixelUnpackBuffer);
 
     // Warning: Possibly shared memory.  See bug 1225033.
     GLenum error = DoCompressedTexSubImage(mContext->gl, target, level, xOffset, yOffset,
@@ -1833,8 +1834,11 @@ ScopedCopyTexImageSource::ScopedCopyTexImageSource(WebGLContext* webgl,
 
     // Draw-blit rgbaTex into rgbaFB.
     const gfx::IntSize srcSize(srcWidth, srcHeight);
-    gl->BlitHelper()->DrawBlitTextureToFramebuffer(scopedTex.Texture(), rgbaFB,
-                                                   srcSize, srcSize);
+    {
+        const gl::ScopedBindFramebuffer bindFB(gl, rgbaFB);
+        gl->BlitHelper()->DrawBlitTextureToFramebuffer(scopedTex.Texture(), srcSize,
+                                                       srcSize);
+    }
 
     // Restore Tex2D binding and destroy the temp tex.
     scopedBindTex.Unwrap();
@@ -2126,8 +2130,8 @@ WebGLTexture::CopyTexImage2D(TexImageTarget target, GLint level, GLenum internal
     const webgl::FormatUsageInfo* srcUsage;
     uint32_t srcTotalWidth;
     uint32_t srcTotalHeight;
-    if (!mContext->ValidateCurFBForRead(funcName, &srcUsage, &srcTotalWidth,
-                                        &srcTotalHeight))
+    if (!mContext->BindCurFBForColorRead(funcName, &srcUsage, &srcTotalWidth,
+                                         &srcTotalHeight))
     {
         return;
     }
@@ -2159,9 +2163,6 @@ WebGLTexture::CopyTexImage2D(TexImageTarget target, GLint level, GLenum internal
 
     ////////////////////////////////////
     // Do the thing!
-
-    mContext->gl->MakeCurrent();
-    mContext->OnBeforeReadCall();
 
     const bool isSubImage = false;
     if (!DoCopyTexOrSubImage(mContext, funcName, isSubImage, this, target, level, x, y,
@@ -2221,8 +2222,8 @@ WebGLTexture::CopyTexSubImage(const char* funcName, TexImageTarget target, GLint
     const webgl::FormatUsageInfo* srcUsage;
     uint32_t srcTotalWidth;
     uint32_t srcTotalHeight;
-    if (!mContext->ValidateCurFBForRead(funcName, &srcUsage, &srcTotalWidth,
-                                        &srcTotalHeight))
+    if (!mContext->BindCurFBForColorRead(funcName, &srcUsage, &srcTotalWidth,
+                                         &srcTotalHeight))
     {
         return;
     }
@@ -2239,9 +2240,6 @@ WebGLTexture::CopyTexSubImage(const char* funcName, TexImageTarget target, GLint
 
     ////////////////////////////////////
     // Do the thing!
-
-    mContext->gl->MakeCurrent();
-    mContext->OnBeforeReadCall();
 
     bool uploadWillInitialize;
     if (!EnsureImageDataInitializedForUpload(this, funcName, target, level, xOffset,

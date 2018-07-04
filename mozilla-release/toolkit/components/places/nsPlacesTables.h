@@ -159,11 +159,19 @@
 
 // This table is used, along with moz_places_afterdelete_trigger, to update
 // hosts after places removals. During a DELETE FROM moz_places, hosts are
-// accumulated into this table, then a DELETE FROM moz_updatehosts_temp will
-// take care of updating the moz_hosts table for every modified host.
-// See CREATE_PLACES_AFTERDELETE_TRIGGER in nsPlacestriggers.h for details.
-#define CREATE_UPDATEHOSTS_TEMP NS_LITERAL_CSTRING( \
-  "CREATE TEMP TABLE moz_updatehosts_temp (" \
+// accumulated into this table, then a DELETE FROM moz_updatehostsdelete_temp
+// will take care of updating the moz_hosts table for every modified host. See
+// CREATE_PLACES_AFTERDELETE_TRIGGER in nsPlacestriggers.h for details.
+#define CREATE_UPDATEHOSTSDELETE_TEMP NS_LITERAL_CSTRING( \
+  "CREATE TEMP TABLE moz_updatehostsdelete_temp (" \
+    "  host TEXT PRIMARY KEY " \
+  ") WITHOUT ROWID " \
+)
+
+// This table is used in a similar way to moz_updatehostsdelete_temp, but for
+// inserts, and triggered via moz_places_afterinsert_trigger.
+#define CREATE_UPDATEHOSTSINSERT_TEMP NS_LITERAL_CSTRING( \
+  "CREATE TEMP TABLE moz_updatehostsinsert_temp (" \
     "  host TEXT PRIMARY KEY " \
   ") WITHOUT ROWID " \
 )
@@ -212,5 +220,16 @@
     "FOREIGN KEY (icon_id) REFERENCES moz_icons ON DELETE CASCADE " \
   ") WITHOUT ROWID " \
 )
+
+// This table holds key-value metadata for Places and its consumers. Sync stores
+// the sync IDs for the bookmarks and history collections in this table, and the
+// last sync time for history.
+#define CREATE_MOZ_META NS_LITERAL_CSTRING( \
+  "CREATE TABLE moz_meta (" \
+    "key TEXT PRIMARY KEY, " \
+    "value NOT NULL" \
+  ") WITHOUT ROWID " \
+)
+
 
 #endif // __nsPlacesTables_h__

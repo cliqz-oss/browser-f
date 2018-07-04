@@ -8,38 +8,25 @@
 
 #include "MediaSegment.h"
 #include "nsAutoPtr.h"
+#include "TrackID.h"
 
 namespace mozilla {
-
-/**
- * Unique ID for track within a StreamTracks. Tracks from different
- * StreamTrackss may have the same ID; this matters when appending StreamTrackss,
- * since tracks with the same ID are matched. Only IDs greater than 0 are allowed.
- */
-typedef int32_t TrackID;
-const TrackID TRACK_NONE = 0;
-const TrackID TRACK_INVALID = -1;
-const TrackID TRACK_ANY = -2;
-
-inline bool IsTrackIDExplicit(const TrackID& aId) {
-  return aId > TRACK_NONE;
-}
 
 inline TrackTicks RateConvertTicksRoundDown(TrackRate aOutRate,
                                             TrackRate aInRate,
                                             TrackTicks aTicks)
 {
-  NS_ASSERTION(0 < aOutRate && aOutRate <= TRACK_RATE_MAX, "Bad out rate");
-  NS_ASSERTION(0 < aInRate && aInRate <= TRACK_RATE_MAX, "Bad in rate");
-  NS_ASSERTION(0 <= aTicks && aTicks <= TRACK_TICKS_MAX, "Bad ticks");
+  MOZ_ASSERT(0 < aOutRate && aOutRate <= TRACK_RATE_MAX, "Bad out rate");
+  MOZ_ASSERT(0 < aInRate && aInRate <= TRACK_RATE_MAX, "Bad in rate");
+  MOZ_ASSERT(0 <= aTicks && aTicks <= TRACK_TICKS_MAX, "Bad ticks");
   return (aTicks * aOutRate) / aInRate;
 }
 inline TrackTicks RateConvertTicksRoundUp(TrackRate aOutRate,
                                           TrackRate aInRate, TrackTicks aTicks)
 {
-  NS_ASSERTION(0 < aOutRate && aOutRate <= TRACK_RATE_MAX, "Bad out rate");
-  NS_ASSERTION(0 < aInRate && aInRate <= TRACK_RATE_MAX, "Bad in rate");
-  NS_ASSERTION(0 <= aTicks && aTicks <= TRACK_TICKS_MAX, "Bad ticks");
+  MOZ_ASSERT(0 < aOutRate && aOutRate <= TRACK_RATE_MAX, "Bad out rate");
+  MOZ_ASSERT(0 < aInRate && aInRate <= TRACK_RATE_MAX, "Bad in rate");
+  MOZ_ASSERT(0 <= aTicks && aTicks <= TRACK_TICKS_MAX, "Bad ticks");
   return (aTicks * aOutRate + aInRate - 1) / aInRate;
 }
 
@@ -254,7 +241,7 @@ public:
   void DumpTrackInfo() const;
 #endif
 
-  Track* FindTrack(TrackID aID);
+  Track* FindTrack(TrackID aID) const;
 
   class MOZ_STACK_CLASS TrackIter final
   {
@@ -269,13 +256,13 @@ public:
      */
     TrackIter(const StreamTracks& aBuffer, MediaSegment::Type aType) :
       mBuffer(&aBuffer.mTracks), mIndex(0), mType(aType), mMatchType(true) { FindMatch(); }
-    bool IsEnded() { return mIndex >= mBuffer->Length(); }
+    bool IsEnded() const { return mIndex >= mBuffer->Length(); }
     void Next()
     {
       ++mIndex;
       FindMatch();
     }
-    Track* get() { return mBuffer->ElementAt(mIndex); }
+    Track* get() const { return mBuffer->ElementAt(mIndex); }
     Track& operator*() { return *mBuffer->ElementAt(mIndex); }
     Track* operator->() { return mBuffer->ElementAt(mIndex); }
   private:
@@ -310,7 +297,7 @@ public:
   /**
    * Returns the latest time passed to ForgetUpTo.
    */
-  StreamTime GetForgottenDuration()
+  StreamTime GetForgottenDuration() const
   {
     return mForgottenTime;
   }

@@ -1,15 +1,17 @@
 module.exports = {
   "env": {
-    "node": true,
-    "es6": true,
     "mocha": true
   },
   "globals": {
     "assert": true,
-    "sinon": true,
-    "chai": true
+    "chai": true,
+    "sinon": true
   },
   "rules": {
-    "react/jsx-no-bind": 0
+    "func-name-matching": 0,
+    "import/no-commonjs": 2,
+    "lines-between-class-members": 0,
+    "react/jsx-no-bind": 0,
+    "require-await": 0
   }
 };

@@ -12,14 +12,12 @@
 
 #include "mozilla/Attributes.h"
 #include "nsGenericHTMLElement.h"
-#include "nsIDOMHTMLLabelElement.h"
 
 namespace mozilla {
 class EventChainPostVisitor;
 namespace dom {
 
-class HTMLLabelElement final : public nsGenericHTMLElement,
-                               public nsIDOMHTMLLabelElement
+class HTMLLabelElement final : public nsGenericHTMLElement
 {
 public:
   explicit HTMLLabelElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
@@ -28,10 +26,10 @@ public:
   {
   }
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLLabelElement, label)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLLabelElement, label)
 
   // nsISupports
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLLabelElement, nsGenericHTMLElement)
 
   // Element
   virtual bool IsInteractiveHTMLContent(bool aIgnoreTabindex) const override
@@ -39,17 +37,14 @@ public:
     return true;
   }
 
-  // nsIDOMHTMLLabelElement
-  NS_DECL_NSIDOMHTMLLABELELEMENT
-
   HTMLFormElement* GetForm() const;
   void GetHtmlFor(nsString& aHtmlFor)
   {
     GetHTMLAttr(nsGkAtoms::_for, aHtmlFor);
   }
-  void SetHtmlFor(const nsAString& aHtmlFor, ErrorResult& aError)
+  void SetHtmlFor(const nsAString& aHtmlFor)
   {
-    SetHTMLAttr(nsGkAtoms::_for, aHtmlFor, aError);
+    SetHTMLAttr(nsGkAtoms::_for, aHtmlFor);
   }
   nsGenericHTMLElement* GetControl() const
   {

@@ -69,10 +69,16 @@
 
 using namespace mozilla;
 
-/* static */ Thread::tid_t
+/* static */ int
 Thread::GetCurrentId()
 {
   return gettid();
+}
+
+void*
+GetStackTop(void* aGuess)
+{
+  return aGuess;
 }
 
 static void
@@ -97,11 +103,16 @@ PopulateRegsFromContext(Registers& aRegs, ucontext_t* aContext)
   aRegs.mSP = reinterpret_cast<Address>(mcontext.arm_sp);
   aRegs.mFP = reinterpret_cast<Address>(mcontext.arm_fp);
   aRegs.mLR = reinterpret_cast<Address>(mcontext.arm_lr);
-#elif defined(GP_ARCH_aarch64)
+#elif defined(GP_ARCH_arm64)
   aRegs.mPC = reinterpret_cast<Address>(mcontext.pc);
   aRegs.mSP = reinterpret_cast<Address>(mcontext.sp);
   aRegs.mFP = reinterpret_cast<Address>(mcontext.regs[29]);
   aRegs.mLR = reinterpret_cast<Address>(mcontext.regs[30]);
+#elif defined(GP_ARCH_mips64)
+  aRegs.mPC = reinterpret_cast<Address>(mcontext.pc);
+  aRegs.mSP = reinterpret_cast<Address>(mcontext.gregs[29]);
+  aRegs.mFP = reinterpret_cast<Address>(mcontext.gregs[30]);
+
 #else
 # error "bad platform"
 #endif
@@ -257,17 +268,12 @@ Sampler::Sampler(PSLockRef aLock)
 {
 #if defined(USE_EHABI_STACKWALK)
   mozilla::EHABIStackWalkInit();
-#elif defined(USE_LUL_STACKWALK)
-  bool createdLUL = false;
-  lul::LUL* lul = CorePS::Lul(aLock);
-  if (!lul) {
-    CorePS::SetLul(aLock, MakeUnique<lul::LUL>(logging_sink_for_LUL));
-    // Read all the unwind info currently available.
-    lul = CorePS::Lul(aLock);
-    read_procmaps(lul);
-    createdLUL = true;
-  }
 #endif
+
+  // NOTE: We don't initialize LUL here, instead initializing it in
+  // SamplerThread's constructor. This is because with the
+  // profiler_suspend_and_sample_thread entry point, we want to be able to
+  // sample without waiting for LUL to be initialized.
 
   // Request profiling signals.
   struct sigaction sa;
@@ -277,21 +283,6 @@ Sampler::Sampler(PSLockRef aLock)
   if (sigaction(SIGPROF, &sa, &mOldSigprofHandler) != 0) {
     MOZ_CRASH("Error installing SIGPROF handler in the profiler");
   }
-
-#if defined(USE_LUL_STACKWALK)
-  if (createdLUL) {
-    // Switch into unwind mode. After this point, we can't add or remove any
-    // unwind info to/from this LUL instance. The only thing we can do with
-    // it is Unwind() calls.
-    lul->EnableUnwinding();
-
-    // Has a test been requested?
-    if (PR_GetEnv("MOZ_PROFILER_LUL_TEST")) {
-      int nTests = 0, nTestsPassed = 0;
-      RunLulUnitTests(&nTests, &nTestsPassed, lul);
-    }
-  }
-#endif
 }
 
 void
@@ -305,7 +296,7 @@ Sampler::Disable(PSLockRef aLock)
 template<typename Func>
 void
 Sampler::SuspendAndSampleAndResumeThread(PSLockRef aLock,
-                                         const ThreadInfo& aThreadInfo,
+                                         const RegisteredThread& aRegisteredThread,
                                          const Func& aProcessRegs)
 {
   // Only one sampler thread can be sampling at once.  So we expect to have
@@ -315,7 +306,7 @@ Sampler::SuspendAndSampleAndResumeThread(PSLockRef aLock,
   if (mSamplerTid == -1) {
     mSamplerTid = gettid();
   }
-  int sampleeTid = aThreadInfo.ThreadId();
+  int sampleeTid = aRegisteredThread.Info()->ThreadId();
   MOZ_RELEASE_ASSERT(sampleeTid != mSamplerTid);
 
   //----------------------------------------------------------------//
@@ -380,7 +371,7 @@ Sampler::SuspendAndSampleAndResumeThread(PSLockRef aLock,
     }
     MOZ_ASSERT(r == 0);
     break;
-   }
+  }
 
   // The profiler's critical section ends here.  After this point, none of the
   // critical section limitations documented above apply.
@@ -413,6 +404,27 @@ SamplerThread::SamplerThread(PSLockRef aLock, uint32_t aActivityGeneration,
   , mIntervalMicroseconds(
       std::max(1, int(floor(aIntervalMilliseconds * 1000 + 0.5))))
 {
+#if defined(USE_LUL_STACKWALK)
+  lul::LUL* lul = CorePS::Lul(aLock);
+  if (!lul) {
+    CorePS::SetLul(aLock, MakeUnique<lul::LUL>(logging_sink_for_LUL));
+    // Read all the unwind info currently available.
+    lul = CorePS::Lul(aLock);
+    read_procmaps(lul);
+
+    // Switch into unwind mode. After this point, we can't add or remove any
+    // unwind info to/from this LUL instance. The only thing we can do with
+    // it is Unwind() calls.
+    lul->EnableUnwinding();
+
+    // Has a test been requested?
+    if (PR_GetEnv("MOZ_PROFILER_LUL_TEST")) {
+      int nTests = 0, nTestsPassed = 0;
+      RunLulUnitTests(&nTests, &nTestsPassed, lul);
+    }
+  }
+#endif
+
   // Start the sampling thread. It repeatedly sends a SIGPROF signal. Sending
   // the signal ourselves instead of relying on itimer provides much better
   // accuracy.

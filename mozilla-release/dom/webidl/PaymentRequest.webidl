@@ -18,10 +18,15 @@ dictionary PaymentCurrencyAmount {
            DOMString currencySystem = "urn:iso:std:iso:4217";
 };
 
+enum PaymentItemType {
+  "tax"
+};
+
 dictionary PaymentItem {
   required DOMString             label;
   required PaymentCurrencyAmount amount;
            boolean               pending = false;
+           PaymentItemType       type;
 };
 
 dictionary PaymentShippingOption {
@@ -49,6 +54,11 @@ dictionary PaymentDetailsInit : PaymentDetailsBase {
   required PaymentItem total;
 };
 
+dictionary PaymentDetailsUpdate : PaymentDetailsBase {
+  DOMString   error;
+  PaymentItem total;
+};
+
 enum PaymentShippingType {
   "shipping",
   "delivery",
@@ -69,7 +79,7 @@ dictionary PaymentOptions {
  Func="mozilla::dom::PaymentRequest::PrefEnabled"]
 interface PaymentRequest : EventTarget {
   [NewObject]
-  Promise<PaymentResponse> show();
+  Promise<PaymentResponse> show(optional Promise<PaymentDetailsUpdate> detailsPromise);
   [NewObject]
   Promise<void>            abort();
   [NewObject]

@@ -99,7 +99,7 @@ IDBFileHandle::Create(IDBMutableFile* aMutableFile,
   MOZ_ASSERT(NS_IsMainThread(), "This won't work on non-main threads!");
 
   nsCOMPtr<nsIRunnable> runnable = do_QueryObject(fileHandle);
-  nsContentUtils::RunInMetastableState(runnable.forget());
+  nsContentUtils::AddPendingIDBTransaction(runnable.forget());
 
   fileHandle->mCreating = true;
 
@@ -212,7 +212,7 @@ IDBFileHandle::FireCompleteOrAbortEvents(bool aAborted)
   mFiredCompleteOrAbort = true;
 #endif
 
-  nsCOMPtr<nsIDOMEvent> event;
+  RefPtr<Event> event;
   if (aAborted) {
     event = CreateGenericEvent(this, nsDependentString(kAbortEventType),
                                eDoesBubble, eNotCancelable);
@@ -224,8 +224,9 @@ IDBFileHandle::FireCompleteOrAbortEvents(bool aAborted)
     return;
   }
 
-  bool dummy;
-  if (NS_FAILED(DispatchEvent(event, &dummy))) {
+  IgnoredErrorResult rv;
+  DispatchEvent(*event, rv);
+  if (rv.Failed()) {
     NS_WARNING("DispatchEvent failed!");
   }
 }
@@ -745,7 +746,7 @@ IDBFileHandle::SendAbort()
 NS_IMPL_ADDREF_INHERITED(IDBFileHandle, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(IDBFileHandle, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(IDBFileHandle)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(IDBFileHandle)
   NS_INTERFACE_MAP_ENTRY(nsIRunnable)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
@@ -780,14 +781,13 @@ IDBFileHandle::Run()
   return NS_OK;
 }
 
-nsresult
+void
 IDBFileHandle::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   AssertIsOnOwningThread();
 
   aVisitor.mCanHandle = true;
-  aVisitor.mParentTarget = mMutableFile;
-  return NS_OK;
+  aVisitor.SetParentTarget(mMutableFile, false);
 }
 
 // virtual

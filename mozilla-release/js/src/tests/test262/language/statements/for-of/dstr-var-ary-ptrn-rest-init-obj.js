@@ -9,7 +9,7 @@ es6id: 13.7.5.11
 features: [destructuring-binding]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     IterationStatement :
@@ -43,6 +43,7 @@ info: |
         [ BindingElementList[?Yield] ]
         [ BindingElementList[?Yield] , Elisionopt BindingRestElement[?Yield]opt ]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 var iterCount = 0;
 

@@ -45,7 +45,7 @@ add_task(async function() {
 
   await extension.unload();
 
-  await BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab1);
 });
 
 add_task(async function() {
@@ -233,6 +233,58 @@ add_task(async function() {
   result = await extension.awaitMessage("browser.contextMenus.onClicked");
   checkClickInfo(result);
 
+  extensionMenuRoot = await openExtensionContextMenu("#readonly-text");
+
+  // Check some menu items.
+  items = extensionMenuRoot.getElementsByAttribute("label", "editable");
+  is(items.length, 0, "contextMenu item for text input element was not found (context=editable fails for readonly items)");
+
+  // Hide the popup "manually" because there's nothing to click.
+  await closeContextMenu();
+
+  // Test "editable" context on type=tel and type=number items, and OnClick data property.
+  extensionMenuRoot = await openExtensionContextMenu("#call-me-maybe");
+
+  // Check some menu items.
+  items = extensionMenuRoot.getElementsByAttribute("label", "editable");
+  is(items.length, 1, "contextMenu item for text input element was found (context=editable)");
+  editable = items[0];
+
+  // Click on ext-editable item and check the click results.
+  await closeExtensionContextMenu(editable);
+
+  expectedClickInfo = {
+    menuItemId: "ext-editable",
+    pageUrl: PAGE,
+    editable: true,
+  };
+
+  result = await extension.awaitMessage("onclick");
+  checkClickInfo(result);
+  result = await extension.awaitMessage("browser.contextMenus.onClicked");
+  checkClickInfo(result);
+
+  extensionMenuRoot = await openExtensionContextMenu("#number-input");
+
+  // Check some menu items.
+  items = extensionMenuRoot.getElementsByAttribute("label", "editable");
+  is(items.length, 1, "contextMenu item for text input element was found (context=editable)");
+  editable = items[0];
+
+  // Click on ext-editable item and check the click results.
+  await closeExtensionContextMenu(editable);
+
+  expectedClickInfo = {
+    menuItemId: "ext-editable",
+    pageUrl: PAGE,
+    editable: true,
+  };
+
+  result = await extension.awaitMessage("onclick");
+  checkClickInfo(result);
+  result = await extension.awaitMessage("browser.contextMenus.onClicked");
+  checkClickInfo(result);
+
   extensionMenuRoot = await openExtensionContextMenu("#password");
   items = extensionMenuRoot.getElementsByAttribute("label", "password");
   is(items.length, 1, "contextMenu item for password input element was found (context=password)");
@@ -244,6 +296,17 @@ add_task(async function() {
     editable: true,
   };
 
+  result = await extension.awaitMessage("onclick");
+  checkClickInfo(result);
+  result = await extension.awaitMessage("browser.contextMenus.onClicked");
+  checkClickInfo(result);
+
+  extensionMenuRoot = await openExtensionContextMenu("#noneditablepassword");
+  items = extensionMenuRoot.getElementsByAttribute("label", "password");
+  is(items.length, 1, "contextMenu item for password input element was found (context=password)");
+  password = items[0];
+  await closeExtensionContextMenu(password);
+  expectedClickInfo.editable = false;
   result = await extension.awaitMessage("onclick");
   checkClickInfo(result);
   result = await extension.awaitMessage("browser.contextMenus.onClicked");
@@ -282,7 +345,7 @@ add_task(async function() {
   extensionMenuRoot = await openExtensionContextMenu();
 
   // Check some menu items
-  items = extensionMenuRoot.getElementsByAttribute("label", "selection is: 'just some text 123456789012345678901234567890...'");
+  items = extensionMenuRoot.getElementsByAttribute("label", "selection is: 'just some text 12345678901234567890123456789012\u2026'");
   is(items.length, 1, "contextMenu item for selection was found (context=selection)");
   let selectionItem = items[0];
 
@@ -318,7 +381,7 @@ add_task(async function() {
   extensionMenuRoot = await openExtensionContextMenu("#longtext");
 
   // Check some menu items
-  items = extensionMenuRoot.getElementsByAttribute("label", "selection is: 'Sed ut perspiciatis unde omnis iste natus err...'");
+  items = extensionMenuRoot.getElementsByAttribute("label", "selection is: 'Sed ut perspiciatis unde omnis iste natus error\u2026'");
   is(items.length, 1, `contextMenu item for longtext selection was found (context=selection)`);
   await closeExtensionContextMenu(items[0]);
 
@@ -374,7 +437,7 @@ add_task(async function() {
   await closeContextMenu();
 
   await extension.unload();
-  await BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab1);
 });
 
 add_task(async function testRemoveAllWithTwoExtensions() {
@@ -448,5 +511,83 @@ add_task(async function testRemoveAllWithTwoExtensions() {
 
   await first.unload();
   await second.unload();
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function test_bookmark_contextmenu() {
+  const bookmarksToolbar = document.getElementById("PersonalToolbar");
+  setToolbarVisibility(bookmarksToolbar, true);
+
+  const extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["contextMenus", "bookmarks"],
+    },
+    async background() {
+      const url = "https://example.com/";
+      const title = "Example";
+      let newBookmark = await browser.bookmarks.create({
+        url,
+        title,
+        parentId: "toolbar_____",
+      });
+      await browser.contextMenus.create({
+        title: "Get bookmark",
+        contexts: ["bookmark"],
+      });
+      browser.test.sendMessage("bookmark-created");
+      browser.contextMenus.onClicked.addListener(async (info) => {
+        browser.test.assertEq(newBookmark.id, info.bookmarkId, "Bookmark ID matches");
+
+        let [bookmark] = await browser.bookmarks.get(info.bookmarkId);
+        browser.test.assertEq(title, bookmark.title, "Bookmark title matches");
+        browser.test.assertEq(url, bookmark.url, "Bookmark url matches");
+        browser.test.assertFalse(info.hasOwnProperty("pageUrl"), "Context menu does not expose pageUrl");
+        await browser.bookmarks.remove(info.bookmarkId);
+        browser.test.sendMessage("test-finish");
+      });
+    },
+  });
+  await extension.startup();
+  await extension.awaitMessage("bookmark-created");
+  let menu = await openChromeContextMenu(
+    "placesContext",
+    "#PersonalToolbar .bookmark-item:last-child");
+
+  let menuItem = menu.getElementsByAttribute("label", "Get bookmark")[0];
+  closeChromeContextMenu("placesContext", menuItem);
+
+  await extension.awaitMessage("test-finish");
+  await extension.unload();
+  setToolbarVisibility(bookmarksToolbar, false);
+});
+
+add_task(async function test_bookmark_context_requires_permission() {
+  const bookmarksToolbar = document.getElementById("PersonalToolbar");
+  setToolbarVisibility(bookmarksToolbar, true);
+
+  const extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["contextMenus"],
+    },
+    async background() {
+      await browser.contextMenus.create({
+        title: "Get bookmark",
+        contexts: ["bookmark"],
+      });
+      browser.test.sendMessage("bookmark-created");
+    },
+  });
+  await extension.startup();
+  await extension.awaitMessage("bookmark-created");
+  let menu = await openChromeContextMenu(
+    "placesContext",
+    "#PersonalToolbar .bookmark-item:last-child");
+
+  Assert.equal(menu.getElementsByAttribute("label", "Get bookmark").length, 0,
+               "bookmark context menu not created with `bookmarks` permission.");
+
+  closeChromeContextMenu("placesContext");
+
+  await extension.unload();
+  setToolbarVisibility(bookmarksToolbar, false);
 });

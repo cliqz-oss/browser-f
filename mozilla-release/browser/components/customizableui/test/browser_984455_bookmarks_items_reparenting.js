@@ -10,7 +10,6 @@ var gOverflowList = document.getElementById(gNavBar.getAttribute("overflowtarget
 const kBookmarksButton = "bookmarks-menu-button";
 const kBookmarksItems = "personal-bookmarks";
 const kOriginalWindowWidth = window.outerWidth;
-const kSmallWidth = 400;
 
 /**
  * Helper function that opens the bookmarks menu, and returns a Promise that
@@ -19,13 +18,13 @@ const kSmallWidth = 400;
 function bookmarksMenuPanelShown() {
   return new Promise(resolve => {
     let bookmarksMenuPopup = document.getElementById("BMB_bookmarksPopup");
-    let onTransitionEnd = (e) => {
+    let onPopupShown = (e) => {
       if (e.target == bookmarksMenuPopup) {
-        bookmarksMenuPopup.removeEventListener("transitionend", onTransitionEnd);
+        bookmarksMenuPopup.removeEventListener("popupshown", onPopupShown);
         resolve();
       }
-    }
-    bookmarksMenuPopup.addEventListener("transitionend", onTransitionEnd);
+    };
+    bookmarksMenuPopup.addEventListener("popupshown", onPopupShown);
   });
 }
 
@@ -73,12 +72,9 @@ function checkSpecialContextMenus() {
     // Open the bookmarks menu button context menus and ensure that
     // they have the proper views attached.
     let shownPromise = bookmarksMenuPanelShown();
-    if (!AppConstants.MOZ_PHOTON_THEME) {
-      bookmarksMenuButton = document.getAnonymousElementByAttribute(bookmarksMenuButton,
-                                                                    "anonid", "dropmarker");
-    }
+
     EventUtils.synthesizeMouseAtCenter(bookmarksMenuButton, {});
-    info("Waiting for bookmarks menu popup to show after clicking dropmarker.")
+    info("Waiting for bookmarks menu popup to show after clicking dropmarker.");
     await shownPromise;
 
     for (let menuID in kSpecialItemIDs) {
@@ -107,7 +103,7 @@ function checkSpecialContextMenus() {
  */
 function closePopup(aPopup) {
   let hiddenPromise = popupHidden(aPopup);
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
   return hiddenPromise;
 }
 
@@ -144,7 +140,7 @@ function checkBookmarksItemsChevronContextMenu() {
  */
 function overflowEverything() {
   info("Waiting for overflow");
-  window.resizeTo(kSmallWidth, window.outerHeight);
+  window.resizeTo(kForceOverflowWidthPx, window.outerHeight);
   return waitForCondition(() => gNavBar.hasAttribute("overflowing"));
 }
 
@@ -192,9 +188,10 @@ function checkNotOverflowing(aID) {
  * context menus for the Unsorted and Bookmarks Toolbar menu items.
  */
 add_task(async function testOverflowingBookmarksButtonContextMenu() {
-  await SpecialPowers.pushPrefEnv({set: [["browser.photon.structure.enabled", false]]});
-  ok(!gNavBar.hasAttribute("overflowing"), "Should start with a non-overflowing toolbar.");
   ok(CustomizableUI.inDefaultState, "Should start in default state.");
+  CustomizableUI.removeWidgetFromArea("library-button", CustomizableUI.AREA_NAVBAR);
+  CustomizableUI.addWidgetToArea(kBookmarksButton, CustomizableUI.AREA_NAVBAR);
+  ok(!gNavBar.hasAttribute("overflowing"), "Should start with a non-overflowing toolbar.");
 
   // Open the Unsorted and Bookmarks Toolbar context menus and ensure
   // that they have views attached.
@@ -218,17 +215,17 @@ add_task(async function testOverflowingBookmarksItemsContextMenu() {
   await PanelUI.ensureReady();
 
   let bookmarksToolbarItems = document.getElementById(kBookmarksItems);
-  gCustomizeMode.addToToolbar(bookmarksToolbarItems);
+  await gCustomizeMode.addToToolbar(bookmarksToolbarItems);
   await checkPlacesContextMenu(bookmarksToolbarItems);
 
   await overflowEverything();
-  checkOverflowing(kBookmarksItems)
+  checkOverflowing(kBookmarksItems);
 
-  gCustomizeMode.addToPanel(bookmarksToolbarItems);
+  await gCustomizeMode.addToPanel(bookmarksToolbarItems);
 
   await stopOverflowing();
 
-  gCustomizeMode.addToToolbar(bookmarksToolbarItems);
+  await gCustomizeMode.addToToolbar(bookmarksToolbarItems);
   await checkPlacesContextMenu(bookmarksToolbarItems);
 });
 
@@ -240,7 +237,7 @@ add_task(async function testOverflowingBookmarksItemsChevronContextMenu() {
   // If it's not already there, let's move the bookmarks toolbar items to
   // the nav-bar.
   let bookmarksToolbarItems = document.getElementById(kBookmarksItems);
-  gCustomizeMode.addToToolbar(bookmarksToolbarItems);
+  await gCustomizeMode.addToToolbar(bookmarksToolbarItems);
 
   // We make the PlacesToolbarItems element be super tiny in order to force
   // the bookmarks toolbar items into overflowing and making the chevron

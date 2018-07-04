@@ -4,11 +4,9 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 
-Cu.import("resource://gre/modules/Messaging.jsm");
-
-this.EXPORTED_SYMBOLS = ["Notifications"];
+var EXPORTED_SYMBOLS = ["Notifications"];
 
 var _notificationsMap = {};
 var _handlersMap = {};
@@ -122,8 +120,8 @@ Notification.prototype = {
         let button = this._buttons[buttonName];
         let obj = {
           buttonId: button.buttonId,
-          title : button.title,
-          icon : button.icon
+          title: button.title,
+          icon: button.icon
         };
         msg.actions.push(obj);
       }
@@ -147,7 +145,7 @@ Notification.prototype = {
     };
     EventDispatcher.instance.dispatch("Notification:Hide", msg);
   }
-}
+};
 
 var Notifications = {
   get idService() {
@@ -238,13 +236,8 @@ var Notifications = {
     }
   },
 
-  QueryInterface: function (aIID) {
-    if (!aIID.equals(Ci.nsISupports) &&
-        !aIID.equals(Ci.nsIObserver) &&
-        !aIID.equals(Ci.nsISupportsWeakReference))
-      throw Components.results.NS_ERROR_NO_INTERFACE;
-    return this;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIObserver",
+                                          "nsISupportsWeakReference"]),
 };
 
 EventDispatcher.instance.registerListener(Notifications, "Notification:Event");

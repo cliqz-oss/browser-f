@@ -9,9 +9,11 @@ description: >
     SingleStringCharacter :: SourceCharacter but not single-quote ' or
     LineTerminator
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 //CHECK#1
 '''

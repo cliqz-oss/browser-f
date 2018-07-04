@@ -8,8 +8,10 @@ description: >
     SyntaxError expected: reserved words used as Identifier
     Names in UTF8: catch
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 var \u{63}atch = 123;

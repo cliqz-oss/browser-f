@@ -17,7 +17,6 @@
 #undef CreateEvent
 
 class nsIContent;
-class nsIDOMEvent;
 class nsPresContext;
 
 template<class E> class nsCOMArray;
@@ -53,7 +52,7 @@ class EventChainVisitor
 public:
   EventChainVisitor(nsPresContext* aPresContext,
                     WidgetEvent* aEvent,
-                    nsIDOMEvent* aDOMEvent,
+                    dom::Event* aDOMEvent,
                     nsEventStatus aEventStatus = nsEventStatus_eIgnore)
     : mPresContext(aPresContext)
     , mEvent(aEvent)
@@ -77,7 +76,7 @@ public:
    * The DOM Event assiciated with the mEvent. Possibly nullptr if a DOM Event
    * is not (yet) created.
    */
-  nsIDOMEvent*          mDOMEvent;
+  dom::Event*           mDOMEvent;
 
   /**
    * The status of the event.
@@ -113,9 +112,10 @@ class EventChainPreVisitor : public EventChainVisitor
 public:
   EventChainPreVisitor(nsPresContext* aPresContext,
                        WidgetEvent* aEvent,
-                       nsIDOMEvent* aDOMEvent,
+                       dom::Event* aDOMEvent,
                        nsEventStatus aEventStatus,
-                       bool aIsInAnon)
+                       bool aIsInAnon,
+                       dom::EventTarget* aTargetInKnownToBeHandledScope)
     : EventChainVisitor(aPresContext, aEvent, aDOMEvent, aEventStatus)
     , mCanHandle(true)
     , mAutomaticChromeDispatch(true)
@@ -125,8 +125,14 @@ public:
     , mWantsWillHandleEvent(false)
     , mMayHaveListenerManager(true)
     , mWantsPreHandleEvent(false)
+    , mRootOfClosedTree(false)
+    , mParentIsSlotInClosedTree(false)
+    , mParentIsChromeHandler(false)
+    , mRelatedTargetRetargetedInCurrentScope(false)
     , mParentTarget(nullptr)
     , mEventTargetAtParent(nullptr)
+    , mRetargetedRelatedTarget(nullptr)
+    , mTargetInKnownToBeHandledScope(aTargetInKnownToBeHandledScope)
   {
   }
 
@@ -140,7 +146,34 @@ public:
     mWantsWillHandleEvent = false;
     mMayHaveListenerManager = true;
     mWantsPreHandleEvent = false;
+    mRootOfClosedTree = false;
+    mParentIsSlotInClosedTree = false;
+    mParentIsChromeHandler = false;
+    // Note, we don't clear mRelatedTargetRetargetedInCurrentScope explicitly,
+    // since it is used during event path creation to indicate whether
+    // relatedTarget may need to be retargeted.
     mParentTarget = nullptr;
+    mEventTargetAtParent = nullptr;
+    mRetargetedRelatedTarget = nullptr;
+  }
+
+  dom::EventTarget* GetParentTarget()
+  {
+    return mParentTarget;
+  }
+
+  void SetParentTarget(dom::EventTarget* aParentTarget, bool aIsChromeHandler)
+  {
+    mParentTarget = aParentTarget;
+    if (mParentTarget) {
+      mParentIsChromeHandler = aIsChromeHandler;
+    }
+  }
+
+  void IgnoreCurrentTarget()
+  {
+    mCanHandle = false;
+    SetParentTarget(nullptr, false);
     mEventTargetAtParent = nullptr;
   }
 
@@ -178,7 +211,7 @@ public:
   bool                  mOriginalTargetIsInAnon;
 
   /**
-   * Whether or not nsIDOMEventTarget::WillHandleEvent will be
+   * Whether or not EventTarget::WillHandleEvent will be
    * called. Default is false;
    */
   bool                  mWantsWillHandleEvent;
@@ -190,16 +223,41 @@ public:
   bool                  mMayHaveListenerManager;
 
   /**
-   * Whether or not nsIDOMEventTarget::PreHandleEvent will be called. Default is
+   * Whether or not EventTarget::PreHandleEvent will be called. Default is
    * false;
    */
   bool mWantsPreHandleEvent;
 
   /**
+   * True if the current target is either closed ShadowRoot or root of
+   * chrome only access tree (for example native anonymous content).
+   */
+  bool mRootOfClosedTree;
+
+  /**
+   * True if mParentTarget is HTMLSlotElement in a closed shadow tree and the
+   * current target is assigned to that slot.
+   */
+  bool mParentIsSlotInClosedTree;
+
+  /**
+   * True if mParentTarget is a chrome handler in the event path.
+   */
+  bool mParentIsChromeHandler;
+
+  /**
+   * True if event's related target has been already retargeted in the
+   * current 'scope'. This should be set to false initially and whenever
+   * event path creation crosses shadow boundary.
+   */
+  bool mRelatedTargetRetargetedInCurrentScope;
+private:
+  /**
    * Parent item in the event target chain.
    */
   dom::EventTarget* mParentTarget;
 
+public:
   /**
    * If the event needs to be retargeted, this is the event target,
    * which should be used when the event is handled at mParentTarget.
@@ -207,11 +265,17 @@ public:
   dom::EventTarget* mEventTargetAtParent;
 
   /**
-   * An array of destination insertion points that need to be inserted
-   * into the event path of nodes that are distributed by the
-   * web components distribution algorithm.
+   * If the related target of the event needs to be retargeted, set this
+   * to a new EventTarget.
    */
-  nsTArray<nsIContent*> mDestInsertionPoints;
+  dom::EventTarget* mRetargetedRelatedTarget;
+
+  /**
+   * Set to the value of mEvent->mTarget of the previous scope in case of
+   * Shadow DOM or such, and if there is no anonymous content this just points
+   * to the initial target.
+   */
+  dom::EventTarget* mTargetInKnownToBeHandledScope;
 };
 
 class EventChainPostVisitor : public mozilla::EventChainVisitor
@@ -262,7 +326,7 @@ public:
   static nsresult Dispatch(nsISupports* aTarget,
                            nsPresContext* aPresContext,
                            WidgetEvent* aEvent,
-                           nsIDOMEvent* aDOMEvent = nullptr,
+                           dom::Event* aDOMEvent = nullptr,
                            nsEventStatus* aEventStatus = nullptr,
                            EventDispatchingCallback* aCallback = nullptr,
                            nsTArray<dom::EventTarget*>* aTargets = nullptr);
@@ -273,11 +337,11 @@ public:
    * (aEvent can then be nullptr) and (if aDOMEvent is not |trusted| already),
    * the |trusted| flag is set based on the UniversalXPConnect capability.
    * Otherwise this works like EventDispatcher::Dispatch.
-   * @note Use this method when dispatching nsIDOMEvent.
+   * @note Use this method when dispatching a dom::Event.
    */
   static nsresult DispatchDOMEvent(nsISupports* aTarget,
                                    WidgetEvent* aEvent,
-                                   nsIDOMEvent* aDOMEvent,
+                                   dom::Event* aDOMEvent,
                                    nsPresContext* aPresContext,
                                    nsEventStatus* aEventStatus);
 
@@ -290,6 +354,9 @@ public:
                                                   const nsAString& aEventType,
                                                   dom::CallerType aCallerType =
                                                     dom::CallerType::System);
+
+  static void GetComposedPathFor(WidgetEvent* aEvent,
+                                 nsTArray<RefPtr<dom::EventTarget>>& aPath);
 
   /**
    * Called at shutting down.

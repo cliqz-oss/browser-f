@@ -53,7 +53,7 @@ UNIFIED_SOURCES += [
 ]
 
 # Dummy functions are required for windows NoOpt/PGO builds.
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     UNIFIED_SOURCES += [
         'avfft_dummy_funcs.c'
     ]
@@ -67,7 +67,7 @@ if CONFIG['OS_ARCH'] != 'WINNT':
     SOURCES['libavcodec/avfft.c'].flags += ['-include', 'avfft_perms.h']
 
 # We allow warnings for third-party code that can be updated from upstream.
-ALLOW_COMPILER_WARNINGS = True
+AllowCompilerWarnings()
 
 if CONFIG['MOZ_DEBUG']:
     # Enable all assertions in debug builds.

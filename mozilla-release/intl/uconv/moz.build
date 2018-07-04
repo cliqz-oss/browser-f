@@ -15,7 +15,8 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'uconv'
 
 EXPORTS += [
-	'nsUConvCID.h',
+    'nsConverterInputStream.h',
+    'nsUConvCID.h',
 ]
 
 UNIFIED_SOURCES += [
@@ -29,5 +30,5 @@ UNIFIED_SOURCES += [
 
 FINAL_LIBRARY = 'xul'
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

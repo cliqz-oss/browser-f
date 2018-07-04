@@ -40,7 +40,7 @@ function startNewTabTestCase(aTestNumber) {
       aContextMenu.hidePopup();
     }, {once: true});
 
-    menupopup.showPopup();
+    menupopup.openPopup();
   });
 }
 
@@ -50,7 +50,7 @@ function test() {
   SpecialPowers.pushPrefEnv(
     {set: [["privacy.userContext.enabled", true]]},
     function() {
-      requestLongerTimeout(10);  // slowwww shutdown on e10s
+      requestLongerTimeout(10); // slowwww shutdown on e10s
       startReferrerTest(startNewTabTestCase);
     });
 }

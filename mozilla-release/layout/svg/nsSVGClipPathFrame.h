@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,15 +18,15 @@ class nsSVGDisplayableFrame;
 class nsSVGClipPathFrame final : public nsSVGContainerFrame
 {
   friend nsIFrame*
-  NS_NewSVGClipPathFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGClipPathFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
   typedef mozilla::gfx::Matrix Matrix;
   typedef mozilla::gfx::SourceSurface SourceSurface;
   typedef mozilla::image::imgDrawingParams imgDrawingParams;
 
 protected:
-  explicit nsSVGClipPathFrame(nsStyleContext* aContext)
-    : nsSVGContainerFrame(aContext, kClassID)
+  explicit nsSVGClipPathFrame(ComputedStyle* aStyle)
+    : nsSVGContainerFrame(aStyle, kClassID)
     , mIsBeingProcessed(false)
   {
     AddStateBits(NS_FRAME_IS_NONDISPLAY);
@@ -36,7 +37,6 @@ public:
 
   // nsIFrame methods:
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override {}
 
   // nsSVGClipPathFrame methods:
@@ -117,7 +117,7 @@ public:
 
   // nsIFrame interface:
   virtual nsresult AttributeChanged(int32_t         aNameSpaceID,
-                                    nsIAtom*        aAttribute,
+                                    nsAtom*        aAttribute,
                                     int32_t         aModType) override;
 
   virtual void Init(nsIContent*       aContent,
@@ -132,7 +132,8 @@ public:
 #endif
 
   SVGBBox GetBBoxForClipPathFrame(const SVGBBox& aBBox,
-                                  const gfxMatrix& aMatrix);
+                                  const gfxMatrix& aMatrix,
+                                  uint32_t aFlags);
 
   /**
    * If the clipPath element transforms its children due to

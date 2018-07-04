@@ -21,7 +21,7 @@
       "use strict";
 
       let { MockFilePicker } =
-        Components.utils.import("chrome://specialpowers/content/MockFilePicker.jsm", {});
+        ChromeUtils.import("chrome://specialpowers/content/MockFilePicker.jsm", {});
 
       function parentReady(message) {
         MockFilePicker.init(content);
@@ -52,7 +52,8 @@
         test.next(msg.data.value);
       }
 
-      mm.addMessageListener("testBug1086684:childDone", testDone);
+      mm.addMessageListener("testBug1086684:childDone",
+                            SpecialPowers.wrapCallback(testDone));
 
       let blob = new Blob([]);
       let file = new File([blob], "helloworld.txt", { type: "text/plain" });

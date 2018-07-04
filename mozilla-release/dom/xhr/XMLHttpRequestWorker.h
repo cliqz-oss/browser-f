@@ -7,10 +7,10 @@
 #ifndef mozilla_dom_XMLHttpRequestWorker_h
 #define mozilla_dom_XMLHttpRequestWorker_h
 
-#include "WorkerHolder.h"
 #include "XMLHttpRequest.h"
 #include "XMLHttpRequestString.h"
 #include "mozilla/dom/TypedArray.h"
+#include "mozilla/dom/WorkerHolder.h"
 
 namespace mozilla {
 namespace dom {
@@ -18,13 +18,10 @@ namespace dom {
 class Proxy;
 class SendRunnable;
 class DOMString;
-
-namespace workers {
 class WorkerPrivate;
-}
 
 class XMLHttpRequestWorker final : public XMLHttpRequest,
-                                   public workers::WorkerHolder
+                                   public WorkerHolder
 {
 public:
   struct StateData
@@ -51,7 +48,7 @@ public:
 
 private:
   RefPtr<XMLHttpRequestUpload> mUpload;
-  workers::WorkerPrivate* mWorkerPrivate;
+  WorkerPrivate* mWorkerPrivate;
   RefPtr<Proxy> mProxy;
   XMLHttpRequestResponseType mResponseType;
   StateData mStateData;
@@ -81,7 +78,7 @@ public:
   Unpin();
 
   bool
-  Notify(workers::Status aStatus) override;
+  Notify(WorkerStatus aStatus) override;
 
   virtual uint16_t
   ReadyState() const override
@@ -167,36 +164,14 @@ public:
   GetUpload(ErrorResult& aRv) override;
 
   virtual void
-  Send(JSContext* aCx, ErrorResult& aRv) override;
+  Send(JSContext* aCx,
+       const Nullable<DocumentOrBlobOrArrayBufferViewOrArrayBufferOrFormDataOrURLSearchParamsOrUSVString>& aData,
+       ErrorResult& aRv) override;
 
   virtual void
-  Send(JSContext* aCx, const nsAString& aBody, ErrorResult& aRv) override;
-
-  virtual void
-  Send(JSContext* aCx, nsIInputStream* aStream, ErrorResult& aRv) override
+  SendInputStream(nsIInputStream* aInputStream, ErrorResult& aRv) override
   {
-    MOZ_CRASH("This method cannot be called on workers.");
-  }
-
-  virtual void
-  Send(JSContext* aCx, Blob& aBody, ErrorResult& aRv) override;
-
-  virtual void
-  Send(JSContext* aCx, FormData& aBody, ErrorResult& aRv) override;
-
-  virtual void
-  Send(JSContext* aCx, const ArrayBuffer& aBody, ErrorResult& aRv) override;
-
-  virtual void
-  Send(JSContext* aCx, const ArrayBufferView& aBody, ErrorResult& aRv) override;
-
-  virtual void
-  Send(JSContext* aCx, URLSearchParams& aBody, ErrorResult& aRv) override;
-
-  virtual void
-  Send(JSContext* aCx, nsIDocument& aDoc, ErrorResult& aRv) override
-  {
-    MOZ_CRASH("This method cannot be called on workers.");
+    MOZ_CRASH("nsIInputStream is not a valid argument for XHR in workers.");
   }
 
   virtual void
@@ -307,7 +282,7 @@ public:
   }
 
 private:
-  explicit XMLHttpRequestWorker(workers::WorkerPrivate* aWorkerPrivate);
+  explicit XMLHttpRequestWorker(WorkerPrivate* aWorkerPrivate);
   ~XMLHttpRequestWorker();
 
   enum ReleaseType { Default, XHRIsGoingAway, WorkerIsGoingAway };

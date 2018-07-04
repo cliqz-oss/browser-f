@@ -136,15 +136,17 @@ PrintingParent::ShowPrintDialog(PBrowserParent* aParent,
   rv = settings->SetPrintSilent(printSilently);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsXPIDLString printerName;
-  settings->GetPrinterName(getter_Copies(printerName));
+  nsString printerName;
+  settings->GetPrinterName(printerName);
 #ifdef MOZ_X11
   // Requesting the default printer name on Linux has been removed in the child,
   // because it was causing a sandbox violation (see Bug 1329216).
   // If no printer name is set at this point, use the print settings service
-  // to get the default printer name.
-  if (printerName.IsEmpty()) {
-    mPrintSettingsSvc->GetDefaultPrinterName(getter_Copies(printerName));
+  // to get the default printer name, unless we're printing to file.
+  bool printToFile = false;
+  MOZ_ALWAYS_SUCCEEDS(settings->GetPrintToFile(&printToFile));
+  if (!printToFile && printerName.IsEmpty()) {
+    mPrintSettingsSvc->GetDefaultPrinterName(printerName);
     settings->SetPrinterName(printerName);
   }
   mPrintSettingsSvc->InitPrintSettingsFromPrinter(printerName, settings);
@@ -185,9 +187,9 @@ PrintingParent::RecvShowPrintDialog(PPrintSettingsDialogParent* aDialog,
   // with an async message which frees the child process from
   // its nested event loop.
   if (NS_FAILED(rv)) {
-    mozilla::Unused << aDialog->Send__delete__(aDialog, rv);
+    mozilla::Unused << PPrintingParent::PPrintSettingsDialogParent::Send__delete__(aDialog, rv);
   } else {
-    mozilla::Unused << aDialog->Send__delete__(aDialog, resultData);
+    mozilla::Unused << PPrintingParent::PPrintSettingsDialogParent::Send__delete__(aDialog, resultData);
   }
   return IPC_OK();
 }

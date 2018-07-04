@@ -10,7 +10,7 @@
  * httpd.js.
  */
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "HTTP_400",
   "HTTP_401",
   "HTTP_402",
@@ -38,12 +38,8 @@ this.EXPORTED_SYMBOLS = [
   "HttpServer",
 ];
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
 const CC = Components.Constructor;
 
 const PR_UINT32_MAX = Math.pow(2, 32) - 1;
@@ -54,7 +50,7 @@ var DEBUG = false; // non-const *only* so tweakable in server tests
 /** True if debugging output should be timestamped. */
 var DEBUG_TIMESTAMP = false; // non-const so tweakable in server tests
 
-var gGlobalObject = this;
+var gGlobalObject = Cu.getGlobalForObject(this);
 
 /**
  * Asserts that the given condition holds.  If it doesn't, the given message is
@@ -73,12 +69,12 @@ function NS_ASSERT(cond, msg)
     var stack = new Error().stack.split(/\n/);
     dumpn(stack.map(function(val) { return "###!!!   " + val; }).join("\n"));
 
-    throw Cr.NS_ERROR_ABORT;
+    throw Components.Exception("", Cr.NS_ERROR_ABORT);
   }
 }
 
 /** Constructs an HTTP error object. */
-this.HttpError = function HttpError(code, description)
+function HttpError(code, description)
 {
   this.code = code;
   this.description = description;
@@ -94,30 +90,30 @@ HttpError.prototype =
 /**
  * Errors thrown to trigger specific HTTP server responses.
  */
-this.HTTP_400 = new HttpError(400, "Bad Request");
-this.HTTP_401 = new HttpError(401, "Unauthorized");
-this.HTTP_402 = new HttpError(402, "Payment Required");
-this.HTTP_403 = new HttpError(403, "Forbidden");
-this.HTTP_404 = new HttpError(404, "Not Found");
-this.HTTP_405 = new HttpError(405, "Method Not Allowed");
-this.HTTP_406 = new HttpError(406, "Not Acceptable");
-this.HTTP_407 = new HttpError(407, "Proxy Authentication Required");
-this.HTTP_408 = new HttpError(408, "Request Timeout");
-this.HTTP_409 = new HttpError(409, "Conflict");
-this.HTTP_410 = new HttpError(410, "Gone");
-this.HTTP_411 = new HttpError(411, "Length Required");
-this.HTTP_412 = new HttpError(412, "Precondition Failed");
-this.HTTP_413 = new HttpError(413, "Request Entity Too Large");
-this.HTTP_414 = new HttpError(414, "Request-URI Too Long");
-this.HTTP_415 = new HttpError(415, "Unsupported Media Type");
-this.HTTP_417 = new HttpError(417, "Expectation Failed");
+var HTTP_400 = new HttpError(400, "Bad Request");
+var HTTP_401 = new HttpError(401, "Unauthorized");
+var HTTP_402 = new HttpError(402, "Payment Required");
+var HTTP_403 = new HttpError(403, "Forbidden");
+var HTTP_404 = new HttpError(404, "Not Found");
+var HTTP_405 = new HttpError(405, "Method Not Allowed");
+var HTTP_406 = new HttpError(406, "Not Acceptable");
+var HTTP_407 = new HttpError(407, "Proxy Authentication Required");
+var HTTP_408 = new HttpError(408, "Request Timeout");
+var HTTP_409 = new HttpError(409, "Conflict");
+var HTTP_410 = new HttpError(410, "Gone");
+var HTTP_411 = new HttpError(411, "Length Required");
+var HTTP_412 = new HttpError(412, "Precondition Failed");
+var HTTP_413 = new HttpError(413, "Request Entity Too Large");
+var HTTP_414 = new HttpError(414, "Request-URI Too Long");
+var HTTP_415 = new HttpError(415, "Unsupported Media Type");
+var HTTP_417 = new HttpError(417, "Expectation Failed");
 
-this.HTTP_500 = new HttpError(500, "Internal Server Error");
-this.HTTP_501 = new HttpError(501, "Not Implemented");
-this.HTTP_502 = new HttpError(502, "Bad Gateway");
-this.HTTP_503 = new HttpError(503, "Service Unavailable");
-this.HTTP_504 = new HttpError(504, "Gateway Timeout");
-this.HTTP_505 = new HttpError(505, "HTTP Version Not Supported");
+var HTTP_500 = new HttpError(500, "Internal Server Error");
+var HTTP_501 = new HttpError(501, "Not Implemented");
+var HTTP_502 = new HttpError(502, "Bad Gateway");
+var HTTP_503 = new HttpError(503, "Service Unavailable");
+var HTTP_504 = new HttpError(504, "Gateway Timeout");
+var HTTP_505 = new HttpError(505, "HTTP Version Not Supported");
 
 /** Creates a hash with fields corresponding to the values in arr. */
 function array2obj(arr)
@@ -513,7 +509,7 @@ nsHttpServer.prototype =
   _start: function(port, host)
   {
     if (this._socket)
-      throw Cr.NS_ERROR_ALREADY_INITIALIZED;
+      throw Components.Exception("", Cr.NS_ERROR_ALREADY_INITIALIZED);
 
     this._port = port;
     this._doQuit = this._socketClosed = false;
@@ -583,7 +579,7 @@ nsHttpServer.prototype =
     catch (e)
     {
       dump("\n!!! could not start server on port " + port + ": " + e + "\n\n");
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
     }
   },
 
@@ -592,10 +588,16 @@ nsHttpServer.prototype =
   //
   stop: function(callback)
   {
-    if (!callback)
-      throw Cr.NS_ERROR_NULL_POINTER;
     if (!this._socket)
-      throw Cr.NS_ERROR_UNEXPECTED;
+      throw Components.Exception("", Cr.NS_ERROR_UNEXPECTED);
+
+    // If no argument was provided to stop, return a promise.
+    let returnValue = undefined;
+    if (!callback) {
+      returnValue = new Promise(resolve => {
+        callback = resolve;
+      });
+    }
 
     this._stopCallback = typeof callback === "function"
                        ? callback
@@ -612,6 +614,8 @@ nsHttpServer.prototype =
     this._doQuit = false;
 
     // socket-close notification and pending request completion happen async
+
+    return returnValue;
   },
 
   //
@@ -620,7 +624,7 @@ nsHttpServer.prototype =
   registerFile: function(path, file)
   {
     if (file && (!file.exists() || file.isDirectory()))
-      throw Cr.NS_ERROR_INVALID_ARG;
+      throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
 
     this._handler.registerFile(path, file);
   },
@@ -635,7 +639,7 @@ nsHttpServer.prototype =
         path.charAt(path.length - 1) != "/" ||
         (directory &&
          (!directory.exists() || !directory.isDirectory())))
-      throw Cr.NS_ERROR_INVALID_ARG;
+      throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
 
     // XXX determine behavior of nonexistent /foo/bar when a /foo/bar/ mapping
     //     exists!
@@ -761,7 +765,7 @@ nsHttpServer.prototype =
         iid.equals(Ci.nsISupports))
       return this;
 
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   },
 
 
@@ -843,7 +847,7 @@ nsHttpServer.prototype =
     // Bug 508125: Add a GC here else we'll use gigabytes of memory running
     // mochitests. We can't rely on xpcshell doing an automated GC, as that
     // would interfere with testing GC stuff...
-    Components.utils.forceGC();
+    Cu.forceGC();
   },
 
   /**
@@ -857,7 +861,7 @@ nsHttpServer.prototype =
   }
 };
 
-this.HttpServer = nsHttpServer;
+var HttpServer = nsHttpServer;
 
 //
 // RFC 2396 section 3.2.2:
@@ -936,7 +940,7 @@ ServerIdentity.prototype =
   get primaryScheme()
   {
     if (this._primaryPort === -1)
-      throw Cr.NS_ERROR_NOT_INITIALIZED;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_INITIALIZED);
     return this._primaryScheme;
   },
 
@@ -946,7 +950,7 @@ ServerIdentity.prototype =
   get primaryHost()
   {
     if (this._primaryPort === -1)
-      throw Cr.NS_ERROR_NOT_INITIALIZED;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_INITIALIZED);
     return this._primaryHost;
   },
 
@@ -956,7 +960,7 @@ ServerIdentity.prototype =
   get primaryPort()
   {
     if (this._primaryPort === -1)
-      throw Cr.NS_ERROR_NOT_INITIALIZED;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_INITIALIZED);
     return this._primaryPort;
   },
 
@@ -1052,7 +1056,7 @@ ServerIdentity.prototype =
     if (iid.equals(Ci.nsIHttpServerIdentity) || iid.equals(Ci.nsISupports))
       return this;
 
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   },
 
 
@@ -1122,17 +1126,17 @@ ServerIdentity.prototype =
     {
       dumpn("*** server only supports http/https schemes: '" + scheme + "'");
       dumpStack();
-      throw Cr.NS_ERROR_ILLEGAL_VALUE;
+      throw Components.Exception("", Cr.NS_ERROR_ILLEGAL_VALUE);
     }
     if (!HOST_REGEX.test(host))
     {
       dumpn("*** unexpected host: '" + host + "'");
-      throw Cr.NS_ERROR_ILLEGAL_VALUE;
+      throw Components.Exception("", Cr.NS_ERROR_ILLEGAL_VALUE);
     }
     if (port < 0 || port > 65535)
     {
       dumpn("*** unexpected port: '" + port + "'");
-      throw Cr.NS_ERROR_ILLEGAL_VALUE;
+      throw Components.Exception("", Cr.NS_ERROR_ILLEGAL_VALUE);
     }
   }
 };
@@ -1417,7 +1421,7 @@ RequestReader.prototype =
         aIID.equals(Ci.nsISupports))
       return this;
 
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   },
 
 
@@ -1758,7 +1762,7 @@ RequestReader.prototype =
         var uri = Cc["@mozilla.org/network/io-service;1"]
                     .getService(Ci.nsIIOService)
                     .newURI(fullPath);
-        fullPath = uri.path;
+        fullPath = uri.pathQueryRef;
         scheme = uri.scheme;
         host = metadata._host = uri.asciiHost;
         port = uri.port;
@@ -2293,7 +2297,7 @@ function ServerHandler(server)
   this._server = server;
 
   /**
-   * A FileMap object containing the set of path->nsILocalFile mappings for
+   * A FileMap object containing the set of path->nsIFile mappings for
    * all directory mappings set in the server (e.g., "/" for /var/www/html/,
    * "/foo/bar/" for /local/path/, and "/foo/bar/baz/" for /local/path2).
    *
@@ -2500,7 +2504,7 @@ ServerHandler.prototype =
   {
     // XXX true path validation!
     if (path.charAt(0) != "/")
-      throw Cr.NS_ERROR_INVALID_ARG;
+      throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
 
     this._handlerToField(handler, this._overridePaths, path);
   },
@@ -2512,7 +2516,7 @@ ServerHandler.prototype =
   {
     // XXX true path validation!
     if (path.charAt(0) != "/" || path.charAt(path.length - 1) != "/")
-      throw Cr.NS_ERROR_INVALID_ARG;
+      throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
 
     this._handlerToField(handler, this._overridePrefixes, path);
   },
@@ -2531,7 +2535,7 @@ ServerHandler.prototype =
     // the path-to-directory mapping code requires that the first character not
     // be "/", or it will go into an infinite loop
     if (key.charAt(0) == "/")
-      throw Cr.NS_ERROR_INVALID_ARG;
+      throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
 
     key = toInternalPath(key, false);
 
@@ -2726,7 +2730,7 @@ ServerHandler.prototype =
    *
    * @param metadata : Request
    *   the Request for which a response is being generated
-   * @param file : nsILocalFile
+   * @param file : nsIFile
    *   the file which is to be sent in the response
    * @param response : Response
    *   the response to which the file should be written
@@ -3066,7 +3070,7 @@ ServerHandler.prototype =
   },
 
   /**
-   * Returns the nsILocalFile which corresponds to the path, as determined using
+   * Returns the nsIFile which corresponds to the path, as determined using
    * all registered path->directory mappings and any paths which are explicitly
    * overridden.
    *
@@ -3076,7 +3080,7 @@ ServerHandler.prototype =
    *   when the correct action is the corresponding HTTP error (i.e., because no
    *   mapping was found for a directory in path, the referenced file doesn't
    *   exist, etc.)
-   * @returns nsILocalFile
+   * @returns nsIFile
    *   the file to be sent as the response to a request for the path
    */
   _getFileForPath: function(path)
@@ -3195,7 +3199,7 @@ ServerHandler.prototype =
   _handleError: function(errorCode, metadata, response)
   {
     if (!metadata)
-      throw Cr.NS_ERROR_NULL_POINTER;
+      throw Components.Exception("", Cr.NS_ERROR_NULL_POINTER);
 
     var errorX00 = errorCode - (errorCode % 100);
 
@@ -3453,12 +3457,12 @@ FileMap.prototype =
   // PUBLIC API
 
   /**
-   * Maps key to a clone of the nsILocalFile value if value is non-null;
+   * Maps key to a clone of the nsIFile value if value is non-null;
    * otherwise, removes any extant mapping for key.
    *
    * @param key : string
    *   string to which a clone of value is mapped
-   * @param value : nsILocalFile
+   * @param value : nsIFile
    *   the file to map to key, or null to remove a mapping
    */
   put: function(key, value)
@@ -3470,12 +3474,12 @@ FileMap.prototype =
   },
 
   /**
-   * Returns a clone of the nsILocalFile mapped to key, or null if no such
+   * Returns a clone of the nsIFile mapped to key, or null if no such
    * mapping exists.
    *
    * @param key : string
    *   key to which the returned file maps
-   * @returns nsILocalFile
+   * @returns nsIFile
    *   a clone of the mapped file, or null if no mapping exists
    */
   get: function(key)
@@ -3626,7 +3630,7 @@ Response.prototype =
   get bodyOutputStream()
   {
     if (this._finished)
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
 
     if (!this._bodyOutputStream)
     {
@@ -3647,7 +3651,7 @@ Response.prototype =
   write: function(data)
   {
     if (this._finished)
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
 
     var dataAsString = String(data);
     this.bodyOutputStream.write(dataAsString, dataAsString.length);
@@ -3659,11 +3663,11 @@ Response.prototype =
   setStatusLine: function(httpVersion, code, description)
   {
     if (!this._headers || this._finished || this._powerSeized)
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
     this._ensureAlive();
 
     if (!(code >= 0 && code < 1000))
-      throw Cr.NS_ERROR_INVALID_ARG;
+      throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
 
     try
     {
@@ -3678,7 +3682,7 @@ Response.prototype =
     }
     catch (e)
     {
-      throw Cr.NS_ERROR_INVALID_ARG;
+      throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
     }
 
     // Reason-Phrase = *<TEXT, excluding CR, LF>
@@ -3690,7 +3694,7 @@ Response.prototype =
       description = "";
     for (var i = 0; i < description.length; i++)
       if (isCTL(description.charCodeAt(i)) && description.charAt(i) != "\t")
-        throw Cr.NS_ERROR_INVALID_ARG;
+        throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
 
     // set the values only after validation to preserve atomicity
     this._httpDescription = description;
@@ -3704,7 +3708,7 @@ Response.prototype =
   setHeader: function(name, value, merge)
   {
     if (!this._headers || this._finished || this._powerSeized)
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
     this._ensureAlive();
 
     this._headers.setHeader(name, value, merge);
@@ -3713,7 +3717,7 @@ Response.prototype =
   setHeaderNoCheck: function(name, value)
   {
     if (!this._headers || this._finished || this._powerSeized)
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
     this._ensureAlive();
 
     this._headers.setHeaderNoCheck(name, value);
@@ -3725,9 +3729,9 @@ Response.prototype =
   processAsync: function()
   {
     if (this._finished)
-      throw Cr.NS_ERROR_UNEXPECTED;
+      throw Components.Exception("", Cr.NS_ERROR_UNEXPECTED);
     if (this._powerSeized)
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
     if (this._processAsync)
       return;
     this._ensureAlive();
@@ -3758,9 +3762,9 @@ Response.prototype =
   seizePower: function()
   {
     if (this._processAsync)
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
     if (this._finished)
-      throw Cr.NS_ERROR_UNEXPECTED;
+      throw Components.Exception("", Cr.NS_ERROR_UNEXPECTED);
     if (this._powerSeized)
       return;
     this._ensureAlive();
@@ -3794,7 +3798,7 @@ Response.prototype =
   finish: function()
   {
     if (!this._processAsync && !this._powerSeized)
-      throw Cr.NS_ERROR_UNEXPECTED;
+      throw Components.Exception("", Cr.NS_ERROR_UNEXPECTED);
     if (this._finished)
       return;
 
@@ -3816,7 +3820,7 @@ Response.prototype =
     if (iid.equals(Ci.nsIHttpResponse) || iid.equals(Ci.nsISupports))
       return this;
 
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   },
 
 
@@ -4113,7 +4117,7 @@ Response.prototype =
           if (aIID.equals(Ci.nsIRequestObserver) || aIID.equals(Ci.nsISupports))
             return this;
 
-          throw Cr.NS_ERROR_NO_INTERFACE;
+          throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
         }
       };
 
@@ -4176,7 +4180,7 @@ Response.prototype =
           if (aIID.equals(Ci.nsIRequestObserver) || aIID.equals(Ci.nsISupports))
             return this;
 
-          throw Cr.NS_ERROR_NO_INTERFACE;
+          throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
         }
       };
 
@@ -4202,7 +4206,7 @@ Response.SEGMENT_SIZE = 8192;
 /** Serves double duty in WriteThroughCopier implementation. */
 function notImplemented()
 {
-  throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+  throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
 }
 
 /** Returns true iff the given exception represents stream closure. */
@@ -4237,7 +4241,7 @@ function wouldBlock(e)
 function WriteThroughCopier(source, sink, observer, context)
 {
   if (!source || !sink || !observer)
-    throw Cr.NS_ERROR_NULL_POINTER;
+    throw Components.Exception("", Cr.NS_ERROR_NULL_POINTER);
 
   /** Stream from which data is being read. */
   this._source = source;
@@ -4305,7 +4309,7 @@ WriteThroughCopier.prototype =
       return this;
     }
 
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   },
 
 
@@ -4367,7 +4371,7 @@ WriteThroughCopier.prototype =
       // Handle the zero-data edge case in the same place as all other edge
       // cases are handled.
       if (bytesWanted === 0)
-        throw Cr.NS_BASE_STREAM_CLOSED;
+        throw Components.Exception("", Cr.NS_BASE_STREAM_CLOSED);
     }
     catch (e)
     {
@@ -4791,7 +4795,7 @@ const headerUtils =
     if (fieldName == "")
     {
       dumpn("*** Empty fieldName");
-      throw Cr.NS_ERROR_INVALID_ARG;
+      throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
     }
 
     for (var i = 0, sz = fieldName.length; i < sz; i++)
@@ -4799,7 +4803,7 @@ const headerUtils =
       if (!IS_TOKEN_ARRAY[fieldName.charCodeAt(i)])
       {
         dumpn(fieldName + " is not a valid header field name!");
-        throw Cr.NS_ERROR_INVALID_ARG;
+        throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
       }
     }
 
@@ -4848,7 +4852,7 @@ const headerUtils =
       if (isCTL(val.charCodeAt(i)))
       {
         dump("*** Char " + i + " has charcode " + val.charCodeAt(i));
-        throw Cr.NS_ERROR_INVALID_ARG;
+        throw Components.Exception("", Cr.NS_ERROR_INVALID_ARG);
       }
 
     // XXX disallows quoted-pair where CHAR is a CTL -- will not invalidly
@@ -5061,7 +5065,7 @@ nsHttpHeaders.prototype =
     if (name in this._headers)
       return this._headers[name];
     else
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
   },
 
   /**
@@ -5122,7 +5126,7 @@ nsSimpleEnumerator.prototype =
   getNext: function()
   {
     if (!this.hasMoreElements())
-      throw Cr.NS_ERROR_NOT_AVAILABLE;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
 
     return this._items[this._nextIndex++];
   },
@@ -5132,7 +5136,7 @@ nsSimpleEnumerator.prototype =
         Ci.nsISupports.equals(aIID))
       return this;
 
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   }
 };
 
@@ -5308,7 +5312,7 @@ Request.prototype =
     if (iid.equals(Ci.nsIHttpRequest) || iid.equals(Ci.nsISupports))
       return this;
 
-    throw Cr.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   },
 
 
@@ -5325,7 +5329,7 @@ Request.prototype =
 
 // XPCOM trappings
 
-this.NSGetFactory = XPCOMUtils.generateNSGetFactory([nsHttpServer]);
+var NSGetFactory = XPCOMUtils.generateNSGetFactory([nsHttpServer]);
 
 /**
  * Creates a new HTTP server listening for loopback traffic on the given port,
@@ -5359,7 +5363,7 @@ function server(port, basePath)
   if (basePath)
   {
     var lp = Cc["@mozilla.org/file/local;1"]
-               .createInstance(Ci.nsILocalFile);
+               .createInstance(Ci.nsIFile);
     lp.initWithPath(basePath);
   }
 

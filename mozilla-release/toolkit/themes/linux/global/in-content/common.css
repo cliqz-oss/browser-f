@@ -12,13 +12,6 @@ xul|tab[visuallyselected] {
   border-bottom-right-radius: 0;
 }
 
-xul|button,
-html|button,
-xul|colorpicker[type="button"],
-xul|menulist {
-  margin: 2px 4px;
-}
-
 xul|button:-moz-focusring {
   outline: 1px dotted;
   outline-offset: -2px;
@@ -51,7 +44,8 @@ xul|menulist:not([editable="true"]) > xul|*.menulist-dropmarker {
   margin-bottom: 6px;
 }
 
-xul|*.checkbox-check {
+xul|*.checkbox-check,
+xul|*.radio-check {
   background-image: none;
 }
 
@@ -59,15 +53,6 @@ xul|*.checkbox-check[checked] {
   fill: -moz-dialogText;
   stroke: none;
   background-color: -moz-dialog;
-}
-
-xul|radio {
-  -moz-binding: url("chrome://global/content/bindings/radio.xml#radio");
-  -moz-box-align: center;
-}
-
-xul|*.radio-check {
-  background-image: none;
 }
 
 xul|*.radio-check[selected] {
@@ -92,13 +77,8 @@ xul|*.numberbox-input-box {
 }
 
 xul|menulist:-moz-focusring > xul|*.menulist-label-box,
-xul|radio[focused="true"] > xul|*.radio-label-box,
 html|input[type="checkbox"]:-moz-focusring + html|label:before {
   outline: 1px dotted;
-}
-
-xul|spinbuttons {
-  -moz-appearance: none;
 }
 
 xul|treechildren::-moz-tree-row(multicol, odd) {
@@ -106,8 +86,8 @@ xul|treechildren::-moz-tree-row(multicol, odd) {
 }
 
 /* These rules are duplicated from common.inc.css
- * because above -moz-tree-row(multicol, odd) rule 
- * overrides also hover/selected states. 
+ * because above -moz-tree-row(multicol, odd) rule
+ * overrides also hover/selected states.
  */
 xul|treechildren::-moz-tree-row(hover) {
   background-color: var(--in-content-item-hover);
@@ -117,3 +97,7 @@ xul|treechildren::-moz-tree-row(selected) {
   background-color: var(--in-content-item-selected);
 }
 
+html|button {
+  /* XUL button min-width */
+  min-width: 6.3em;
+}

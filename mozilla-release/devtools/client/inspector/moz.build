@@ -3,9 +3,13 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
+    'animation',
+    'animation-old',
     'boxmodel',
     'components',
     'computed',
+    'extensions',
+    'flexbox',
     'fonts',
     'grids',
     'layout',

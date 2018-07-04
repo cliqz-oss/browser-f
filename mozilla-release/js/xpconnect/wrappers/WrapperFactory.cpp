@@ -6,7 +6,6 @@
 
 #include "WaiveXrayWrapper.h"
 #include "FilteringWrapper.h"
-#include "AddonWrapper.h"
 #include "XrayWrapper.h"
 #include "AccessCheck.h"
 #include "XPCWrapper.h"
@@ -164,14 +163,13 @@ WrapperFactory::PrepareForWrapping(JSContext* cx, HandleObject scope,
     // Outerize any raw inner objects at the entry point here, so that we don't
     // have to worry about them for the rest of the wrapping code.
     if (js::IsWindow(obj)) {
-        JSAutoCompartment ac(cx, obj);
         obj = js::ToWindowProxyIfWindow(obj);
         MOZ_ASSERT(obj);
         // ToWindowProxyIfWindow can return a CCW if |obj| was a
         // navigated-away-from Window. Strip any CCWs.
         obj = js::UncheckedUnwrap(obj);
         if (JS_IsDeadWrapper(obj)) {
-            JS_ReportErrorASCII(cx, "Can't wrap dead object");
+            retObj.set(JS_NewDeadWrapper(cx, obj));
             return;
         }
         MOZ_ASSERT(js::IsWindowProxy(obj));
@@ -430,31 +428,6 @@ SelectWrapper(bool securityWrapper, XrayType xrayType, bool waiveXrays, JSObject
     return &FilteringWrapper<CrossCompartmentSecurityWrapper, Opaque>::singleton;
 }
 
-static const Wrapper*
-SelectAddonWrapper(JSContext* cx, HandleObject obj, const Wrapper* wrapper)
-{
-    JSAddonId* originAddon = JS::AddonIdOfObject(obj);
-    JSAddonId* targetAddon = JS::AddonIdOfObject(JS::CurrentGlobalOrNull(cx));
-
-    MOZ_ASSERT(AccessCheck::isChrome(JS::CurrentGlobalOrNull(cx)));
-    MOZ_ASSERT(targetAddon);
-
-    if (targetAddon == originAddon)
-        return wrapper;
-
-    // Add-on interposition only supports certain wrapper types, so we check if
-    // we would have used one of the supported ones.
-    if (wrapper == &CrossCompartmentWrapper::singleton)
-        return &AddonWrapper<CrossCompartmentWrapper>::singleton;
-    else if (wrapper == &PermissiveXrayXPCWN::singleton)
-        return &AddonWrapper<PermissiveXrayXPCWN>::singleton;
-    else if (wrapper == &PermissiveXrayDOM::singleton)
-        return &AddonWrapper<PermissiveXrayDOM>::singleton;
-
-    // |wrapper| is not supported for interposition, so we don't do it.
-    return wrapper;
-}
-
 JSObject*
 WrapperFactory::Rewrap(JSContext* cx, HandleObject existing, HandleObject obj)
 {
@@ -515,8 +488,8 @@ WrapperFactory::Rewrap(JSContext* cx, HandleObject existing, HandleObject obj)
             wrapper = &FilteringWrapper<CrossCompartmentSecurityWrapper, OpaqueWithCall>::singleton;
         }
 
-        // For Vanilla JSObjects exposed from chrome to content, we use a wrapper
-        // that supports __exposedProps__. We'd like to get rid of these eventually,
+        // For vanilla JSObjects exposed from chrome to content, we use a wrapper
+        // that fails silently in a few cases. We'd like to get rid of this eventually,
         // but in their current form they don't cause much trouble.
         else if (IdentifyStandardInstance(obj) == JSProto_Object) {
             wrapper = &ChromeObjectWrapper::singleton;
@@ -559,16 +532,13 @@ WrapperFactory::Rewrap(JSContext* cx, HandleObject existing, HandleObject obj)
                           HasWaiveXrayFlag(obj);
 
         wrapper = SelectWrapper(securityWrapper, xrayType, waiveXrays, obj);
-
-        // If we want to apply add-on interposition in the target compartment,
-        // then we try to "upgrade" the wrapper to an interposing one.
-        if (targetCompartmentPrivate->scope->HasInterposition())
-            wrapper = SelectAddonWrapper(cx, obj, wrapper);
     }
 
-    if (!targetSubsumesOrigin) {
+    if (!targetSubsumesOrigin &&
+        !originCompartmentPrivate->forcePermissiveCOWs) {
         // Do a belt-and-suspenders check against exposing eval()/Function() to
-        // non-subsuming content.
+        // non-subsuming content.  But don't worry about doing it in the
+        // SpecialPowers case.
         if (JSFunction* fun = JS_GetObjectFunction(obj)) {
             if (JS_IsBuiltinEvalFunction(fun) || JS_IsBuiltinFunctionConstructor(fun)) {
                 NS_WARNING("Trying to expose eval or Function to non-subsuming content!");
@@ -678,6 +648,28 @@ TransplantObject(JSContext* cx, JS::HandleObject origobj, JS::HandleObject targe
 
     if (!FixWaiverAfterTransplant(cx, oldWaiver, newIdentity))
         return nullptr;
+    return newIdentity;
+}
+
+JSObject*
+TransplantObjectRetainingXrayExpandos(JSContext* cx, JS::HandleObject origobj,
+                                      JS::HandleObject target)
+{
+    // Save the chain of objects that carry origobj's Xray expando properties
+    // (from all compartments). TransplantObject will blow this away; we'll
+    // restore it manually afterwards.
+    RootedObject expandoChain(cx, GetXrayTraits(origobj)->detachExpandoChain(origobj));
+
+    RootedObject newIdentity(cx, TransplantObject(cx, origobj, target));
+
+    // Copy Xray expando properties to the new wrapper.
+    if (!GetXrayTraits(newIdentity)->cloneExpandoChain(cx, newIdentity, expandoChain)) {
+        // Failure here means some expandos were not copied over. The object graph
+        // and the Xray machinery are left in a consistent state, but mysteriously
+        // losing these expandos is too weird to allow.
+        MOZ_CRASH();
+    }
+
     return newIdentity;
 }
 

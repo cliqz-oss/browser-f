@@ -9,16 +9,20 @@ TEST_DIRS += ['tests']
 for var in ('target', 'MOZ_CONFIGURE_OPTIONS', 'CC', 'CC_VERSION', 'CXX'):
     DEFINES[var] = CONFIG[var]
 
-DEFINES['CFLAGS'] = CONFIG['OS_CFLAGS']
+DEFINES['CFLAGS'] = ' '.join(CONFIG['OS_CFLAGS'])
+
+cxx_flags = []
+for var in ('OS_CPPFLAGS', 'OS_CXXFLAGS', 'DEBUG', 'OPTIMIZE', 'FRAMEPTR'):
+    cxx_flags += COMPILE_FLAGS.get(var, [])
+
+DEFINES['CXXFLAGS'] = ' '.join(cxx_flags)
 
 if CONFIG['OS_TARGET'] == 'Android':
     DEFINES['ANDROID_PACKAGE_NAME'] = CONFIG['ANDROID_PACKAGE_NAME']
+    DEFINES['MOZ_USE_LIBCXX'] = True
 
 if CONFIG['MOZ_INSTALL_TRACKING']:
     DEFINES['MOZ_INSTALL_TRACKING'] = 1
-
-if CONFIG['MOZ_ANDROID_CXX_STL'] == 'libc++':
-    DEFINES['MOZ_USE_LIBCXX'] = True
 
 if CONFIG['MOZ_BUILD_APP'] == 'mobile/android':
     DEFINES['MOZ_FENNEC'] = True
@@ -32,9 +36,6 @@ with Files('**'):
 
 with Files('aboutTelemetry.*'):
     BUG_COMPONENT = ('Toolkit', 'Telemetry')
-
-with Files('customizeToolbar.*'):
-    BUG_COMPONENT = ('Toolkit', 'Toolbars and Toolbar Customization')
 
 with Files('aboutwebrtc/*'):
     BUG_COMPONENT = ('Core', 'WebRTC')
@@ -61,7 +62,7 @@ with Files('tests/browser/*451286*'):
     BUG_COMPONENT = ('Toolkit', 'Find Toolbar')
 
 with Files('tests/browser/*594509*'):
-    BUG_COMPONENT = ('Toolkit Graveyard', 'XULRunner')
+    BUG_COMPONENT = ('Toolkit', 'General')
 
 with Files('tests/browser/*982298*'):
     BUG_COMPONENT = ('Core', 'Layout')
@@ -143,8 +144,6 @@ with Files('tests/chrome/rtlchrome/**'):
 with Files('tests/chrome/*451540*'):
     BUG_COMPONENT = ('Toolkit', 'Find Toolbar')
 
-with Files('tests/chrome/*554279*'):
-    BUG_COMPONENT = ('Toolkit', 'Toolbars and Toolbar Customization')
 with Files('tests/chrome/*585946*'):
     BUG_COMPONENT = ('Toolkit', 'Toolbars and Toolbar Customization')
 
@@ -182,8 +181,6 @@ with Files('tests/unit/**'):
 
 
 with Files('tests/widgets/*audiocontrols*'):
-    BUG_COMPONENT = ('Toolkit', 'Video/Audio Controls')
-with Files('tests/widgets/*1319301*'):
     BUG_COMPONENT = ('Toolkit', 'Video/Audio Controls')
 with Files('tests/widgets/*898940*'):
     BUG_COMPONENT = ('Toolkit', 'Video/Audio Controls')
@@ -242,13 +239,10 @@ with Files('browser-*.js'):
     BUG_COMPONENT = ('Toolkit', 'General')
 
 with Files('buildconfig.html'):
-    BUG_COMPONENT = ('Toolkit', 'Build Config')
+    BUG_COMPONENT = ('Firefox Build System', 'General')
 
 with Files('contentAreaUtils.js'):
     BUG_COMPONENT = ('Toolkit', 'General')
-
-with Files('customizeToolbar.*'):
-    BUG_COMPONENT = ('Toolkit', 'Toolbars and Toolbar Customization')
 
 with Files('*picker*'):
     BUG_COMPONENT = ('Toolkit', 'XUL Widgets')
@@ -259,14 +253,8 @@ with Files('direction*'):
 with Files('edit*'):
     BUG_COMPONENT = ('Toolkit', 'XUL Widgets')
 
-with Files('*find*'):
-    BUG_COMPONENT = ('Toolkit', 'Find Toolbar')
-
 with Files('globalOverlay.*'):
     BUG_COMPONENT = ('Toolkit', 'General')
-
-with Files('menulist.css'):
-    BUG_COMPONENT = ('Toolkit', 'XUL Widgets')
 
 with Files('minimal-xul.css'):
     BUG_COMPONENT = ('Toolkit', 'XUL Widgets')

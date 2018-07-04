@@ -9,6 +9,8 @@
 #include "mozilla/EditorUtils.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/SelectionState.h"
+#include "mozilla/dom/DataTransfer.h"
+#include "mozilla/dom/DragEvent.h"
 #include "mozilla/dom/Selection.h"
 #include "nsAString.h"
 #include "nsCOMPtr.h"
@@ -18,12 +20,6 @@
 #include "nsError.h"
 #include "nsIClipboard.h"
 #include "nsIContent.h"
-#include "nsIDOMDataTransfer.h"
-#include "nsIDOMDocument.h"
-#include "nsIDOMDragEvent.h"
-#include "nsIDOMEvent.h"
-#include "nsIDOMNode.h"
-#include "nsIDOMUIEvent.h"
 #include "nsIDocument.h"
 #include "nsIDragService.h"
 #include "nsIDragSession.h"
@@ -71,7 +67,7 @@ TextEditor::PrepareTransferable(nsITransferable** transferable)
 
 nsresult
 TextEditor::InsertTextAt(const nsAString& aStringToInsert,
-                         nsIDOMNode* aDestinationNode,
+                         nsINode* aDestinationNode,
                          int32_t aDestOffset,
                          bool aDoDeleteSelection)
 {
@@ -79,29 +75,35 @@ TextEditor::InsertTextAt(const nsAString& aStringToInsert,
     RefPtr<Selection> selection = GetSelection();
     NS_ENSURE_STATE(selection);
 
-    nsCOMPtr<nsIDOMNode> targetNode = aDestinationNode;
+    nsCOMPtr<nsINode> targetNode = aDestinationNode;
     int32_t targetOffset = aDestOffset;
 
     if (aDoDeleteSelection) {
       // Use an auto tracker so that our drop point is correctly
       // positioned after the delete.
       AutoTrackDOMPoint tracker(mRangeUpdater, &targetNode, &targetOffset);
-      nsresult rv = DeleteSelection(eNone, eStrip);
-      NS_ENSURE_SUCCESS(rv, rv);
+      nsresult rv = DeleteSelectionAsAction(eNone, eStrip);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
     }
 
-    nsresult rv = selection->Collapse(targetNode, targetOffset);
-    NS_ENSURE_SUCCESS(rv, rv);
+    ErrorResult error;
+    selection->Collapse(RawRangeBoundary(targetNode, targetOffset), error);
+    if (NS_WARN_IF(error.Failed())) {
+      return error.StealNSResult();
+    }
   }
 
-  return InsertText(aStringToInsert);
+  nsresult rv = InsertTextAsAction(aStringToInsert);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+  return NS_OK;
 }
 
 nsresult
-TextEditor::InsertTextFromTransferable(nsITransferable* aTransferable,
-                                       nsIDOMNode* aDestinationNode,
-                                       int32_t aDestOffset,
-                                       bool aDoDeleteSelection)
+TextEditor::InsertTextFromTransferable(nsITransferable* aTransferable)
 {
   nsresult rv = NS_OK;
   nsAutoCString bestFlavor;
@@ -123,8 +125,8 @@ TextEditor::InsertTextFromTransferable(nsITransferable* aTransferable,
       // Sanitize possible carriage returns in the string to be inserted
       nsContentUtils::PlatformToDOMLineBreaks(stuffToPaste);
 
-      AutoEditBatch beginBatching(this);
-      rv = InsertTextAt(stuffToPaste, aDestinationNode, aDestOffset, aDoDeleteSelection);
+      AutoPlaceholderBatch beginBatching(this);
+      rv = InsertTextAt(stuffToPaste, nullptr, 0, true);
     }
   }
 
@@ -140,20 +142,20 @@ TextEditor::InsertTextFromTransferable(nsITransferable* aTransferable,
 nsresult
 TextEditor::InsertFromDataTransfer(DataTransfer* aDataTransfer,
                                    int32_t aIndex,
-                                   nsIDOMDocument* aSourceDoc,
-                                   nsIDOMNode* aDestinationNode,
+                                   nsIDocument* aSourceDoc,
+                                   nsINode* aDestinationNode,
                                    int32_t aDestOffset,
                                    bool aDoDeleteSelection)
 {
   nsCOMPtr<nsIVariant> data;
-  DataTransfer::Cast(aDataTransfer)->GetDataAtNoSecurityCheck(NS_LITERAL_STRING("text/plain"), aIndex,
-                                                              getter_AddRefs(data));
+  aDataTransfer->GetDataAtNoSecurityCheck(NS_LITERAL_STRING("text/plain"), aIndex,
+                                          getter_AddRefs(data));
   if (data) {
     nsAutoString insertText;
     data->GetAsAString(insertText);
     nsContentUtils::PlatformToDOMLineBreaks(insertText);
 
-    AutoEditBatch beginBatching(this);
+    AutoPlaceholderBatch beginBatching(this);
     return InsertTextAt(insertText, aDestinationNode, aDestOffset, aDoDeleteSelection);
   }
 
@@ -161,68 +163,56 @@ TextEditor::InsertFromDataTransfer(DataTransfer* aDataTransfer,
 }
 
 nsresult
-TextEditor::InsertFromDrop(nsIDOMEvent* aDropEvent)
+TextEditor::InsertFromDrop(DragEvent* aDropEvent)
 {
-  ForceCompositionEnd();
+  CommitComposition();
 
-  nsCOMPtr<nsIDOMDragEvent> dragEvent(do_QueryInterface(aDropEvent));
-  NS_ENSURE_TRUE(dragEvent, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(aDropEvent, NS_ERROR_FAILURE);
 
-  nsCOMPtr<nsIDOMDataTransfer> domDataTransfer;
-  dragEvent->GetDataTransfer(getter_AddRefs(domDataTransfer));
-  nsCOMPtr<DataTransfer> dataTransfer = do_QueryInterface(domDataTransfer);
+  RefPtr<DataTransfer> dataTransfer = aDropEvent->GetDataTransfer();
   NS_ENSURE_TRUE(dataTransfer, NS_ERROR_FAILURE);
 
   nsCOMPtr<nsIDragSession> dragSession = nsContentUtils::GetDragSession();
   NS_ASSERTION(dragSession, "No drag session");
 
-  nsCOMPtr<nsIDOMNode> sourceNode;
-  dataTransfer->GetMozSourceNode(getter_AddRefs(sourceNode));
+  nsCOMPtr<nsINode> sourceNode = dataTransfer->GetMozSourceNode();
 
-  nsCOMPtr<nsIDOMDocument> srcdomdoc;
+  nsCOMPtr<nsIDocument> srcdoc;
   if (sourceNode) {
-    sourceNode->GetOwnerDocument(getter_AddRefs(srcdomdoc));
-    NS_ENSURE_TRUE(sourceNode, NS_ERROR_FAILURE);
+    srcdoc = sourceNode->OwnerDoc();
   }
 
   if (nsContentUtils::CheckForSubFrameDrop(dragSession,
         aDropEvent->WidgetEventPtr()->AsDragEvent())) {
     // Don't allow drags from subframe documents with different origins than
     // the drop destination.
-    if (srcdomdoc && !IsSafeToInsertData(srcdomdoc)) {
+    if (srcdoc && !IsSafeToInsertData(srcdoc)) {
       return NS_OK;
     }
   }
 
   // Current doc is destination
-  nsCOMPtr<nsIDOMDocument> destdomdoc = GetDOMDocument();
-  NS_ENSURE_TRUE(destdomdoc, NS_ERROR_NOT_INITIALIZED);
+  nsIDocument* destdoc = GetDocument();
+  if (NS_WARN_IF(!destdoc)) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
 
-  uint32_t numItems = 0;
-  nsresult rv = dataTransfer->GetMozItemCount(&numItems);
-  NS_ENSURE_SUCCESS(rv, rv);
+  uint32_t numItems = dataTransfer->MozItemCount();
   if (numItems < 1) {
     return NS_ERROR_FAILURE;  // Nothing to drop?
   }
 
   // Combine any deletion and drop insertion into one transaction
-  AutoEditBatch beginBatching(this);
+  AutoPlaceholderBatch beginBatching(this);
 
   bool deleteSelection = false;
 
   // We have to figure out whether to delete and relocate caret only once
   // Parent and offset are under the mouse cursor
-  nsCOMPtr<nsIDOMUIEvent> uiEvent = do_QueryInterface(aDropEvent);
-  NS_ENSURE_TRUE(uiEvent, NS_ERROR_FAILURE);
-
-  nsCOMPtr<nsIDOMNode> newSelectionParent;
-  rv = uiEvent->GetRangeParent(getter_AddRefs(newSelectionParent));
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsCOMPtr<nsINode> newSelectionParent = aDropEvent->GetRangeParent();
   NS_ENSURE_TRUE(newSelectionParent, NS_ERROR_FAILURE);
 
-  int32_t newSelectionOffset;
-  rv = uiEvent->GetRangeOffset(&newSelectionOffset);
-  NS_ENSURE_SUCCESS(rv, rv);
+  int32_t newSelectionOffset = aDropEvent->RangeOffset();
 
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_FAILURE);
@@ -236,18 +226,22 @@ TextEditor::InsertFromDrop(nsIDOMEvent* aDropEvent)
     // We never have to delete if selection is already collapsed
     bool cursorIsInSelection = false;
 
-    int32_t rangeCount;
-    rv = selection->GetRangeCount(&rangeCount);
-    NS_ENSURE_SUCCESS(rv, rv);
+    uint32_t rangeCount = selection->RangeCount();
 
-    for (int32_t j = 0; j < rangeCount; j++) {
+    for (uint32_t j = 0; j < rangeCount; j++) {
       RefPtr<nsRange> range = selection->GetRangeAt(j);
       if (!range) {
         // don't bail yet, iterate through them all
         continue;
       }
 
-      rv = range->IsPointInRange(newSelectionParent, newSelectionOffset, &cursorIsInSelection);
+      IgnoredErrorResult rv;
+      cursorIsInSelection =
+        range->IsPointInRange(*newSelectionParent, newSelectionOffset, rv);
+      if (rv.Failed()) {
+        // Probably don't want to consider this as "in selection!"
+        cursorIsInSelection = false;
+      }
       if (cursorIsInSelection) {
         break;
       }
@@ -255,7 +249,7 @@ TextEditor::InsertFromDrop(nsIDOMEvent* aDropEvent)
 
     if (cursorIsInSelection) {
       // Dragging within same doc can't drop on itself -- leave!
-      if (srcdomdoc == destdomdoc) {
+      if (srcdoc == destdoc) {
         return NS_OK;
       }
 
@@ -265,10 +259,9 @@ TextEditor::InsertFromDrop(nsIDOMEvent* aDropEvent)
       //deleteSelection = true;
     } else {
       // We are NOT over the selection
-      if (srcdomdoc == destdomdoc) {
+      if (srcdoc == destdoc) {
         // Within the same doc: delete if user doesn't want to copy
-        uint32_t dropEffect;
-        dataTransfer->GetDropEffectInt(&dropEffect);
+        uint32_t dropEffect = dataTransfer->DropEffectInt();
         deleteSelection = !(dropEffect & nsIDragService::DRAGDROP_ACTION_COPY);
       } else {
         // Different source doc: Don't delete
@@ -291,15 +284,14 @@ TextEditor::InsertFromDrop(nsIDOMEvent* aDropEvent)
   }
 
   for (uint32_t i = 0; i < numItems; ++i) {
-    InsertFromDataTransfer(dataTransfer, i, srcdomdoc, newSelectionParent,
+    InsertFromDataTransfer(dataTransfer, i, srcdoc,
+                           newSelectionParent,
                            newSelectionOffset, deleteSelection);
   }
 
-  if (NS_SUCCEEDED(rv)) {
-    ScrollSelectionIntoView(false);
-  }
+  ScrollSelectionIntoView(false);
 
-  return rv;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -323,13 +315,7 @@ TextEditor::Paste(int32_t aSelectionType)
     // Get the Data from the clipboard
     if (NS_SUCCEEDED(clipboard->GetData(trans, aSelectionType)) &&
         IsModifiable()) {
-      // handle transferable hooks
-      nsCOMPtr<nsIDOMDocument> domdoc = GetDOMDocument();
-      if (!EditorHookUtils::DoInsertionHook(domdoc, nullptr, trans)) {
-        return NS_OK;
-      }
-
-      rv = InsertTextFromTransferable(trans, nullptr, 0, true);
+      rv = InsertTextFromTransferable(trans);
     }
   }
 
@@ -349,13 +335,7 @@ TextEditor::PasteTransferable(nsITransferable* aTransferable)
     return NS_OK;
   }
 
-  // handle transferable hooks
-  nsCOMPtr<nsIDOMDocument> domdoc = GetDOMDocument();
-  if (!EditorHookUtils::DoInsertionHook(domdoc, nullptr, aTransferable)) {
-    return NS_OK;
-  }
-
-  return InsertTextFromTransferable(aTransferable, nullptr, 0, true);
+  return InsertTextFromTransferable(aTransferable);
 }
 
 NS_IMETHODIMP
@@ -428,7 +408,7 @@ TextEditor::CanPasteTransferable(nsITransferable* aTransferable,
 }
 
 bool
-TextEditor::IsSafeToInsertData(nsIDOMDocument* aSourceDoc)
+TextEditor::IsSafeToInsertData(nsIDocument* aSourceDoc)
 {
   // Try to determine whether we should use a sanitizing fragment sink
   bool isSafe = false;
@@ -446,10 +426,7 @@ TextEditor::IsSafeToInsertData(nsIDOMDocument* aSourceDoc)
     isSafe = appType == nsIDocShell::APP_TYPE_EDITOR;
   }
   if (!isSafe && aSourceDoc) {
-    nsCOMPtr<nsIDocument> srcdoc = do_QueryInterface(aSourceDoc);
-    NS_ASSERTION(srcdoc, "Where is our source doc?");
-
-    nsIPrincipal* srcPrincipal = srcdoc->NodePrincipal();
+    nsIPrincipal* srcPrincipal = aSourceDoc->NodePrincipal();
     nsIPrincipal* destPrincipal = destdoc->NodePrincipal();
     NS_ASSERTION(srcPrincipal && destPrincipal, "How come we don't have a principal?");
     srcPrincipal->Subsumes(destPrincipal, &isSafe);

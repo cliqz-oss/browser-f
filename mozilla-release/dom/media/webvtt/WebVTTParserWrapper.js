@@ -2,10 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/vtt.jsm");
-
-var Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/vtt.jsm");
 
 var WEBVTTPARSERWRAPPER_CID = "{acf6e493-0092-4b26-b172-241e375c57ab}";
 var WEBVTTPARSERWRAPPER_CONTRACTID = "@mozilla.org/webvttParserWrapper;1";
@@ -61,7 +59,7 @@ WebVTTParserWrapper.prototype =
 
   classDescription: "Wrapper for the JS WebVTT implementation (vtt.js)",
   classID: Components.ID(WEBVTTPARSERWRAPPER_CID),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebVTTParserWrapper]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWebVTTParserWrapper]),
   classInfo: XPCOMUtils.generateCI({
     classID:    WEBVTTPARSERWRAPPER_CID,
     contractID: WEBVTTPARSERWRAPPER_CONTRACTID,

@@ -13,7 +13,6 @@
 #include "mozilla/dom/RegisterWorkerDebuggerBindings.h"
 #include "mozilla/OSFileConstants.h"
 
-USING_WORKERS_NAMESPACE
 using namespace mozilla::dom;
 
 bool
@@ -25,8 +24,13 @@ WorkerPrivate::RegisterBindings(JSContext* aCx, JS::Handle<JSObject*> aGlobal)
   }
 
   if (IsChromeWorker()) {
-    if (!DefineChromeWorkerFunctions(aCx, aGlobal) ||
-        !DefineOSFileConstants(aCx, aGlobal)) {
+    if (!DefineChromeWorkerFunctions(aCx, aGlobal)) {
+      return false;
+    }
+
+    RefPtr<OSFileConstantsService> service =
+      OSFileConstantsService::GetOrCreate();
+    if (!service->DefineOSFileConstants(aCx, aGlobal)) {
       return false;
     }
   }

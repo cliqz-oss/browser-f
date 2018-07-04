@@ -1,3 +1,4 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 const PAGE = "https://example.com/browser/toolkit/content/tests/browser/file_multipleAudio.html";
 
 var SuspendedType = {
@@ -50,7 +51,7 @@ function check_autoplay_audio_onplay() {
       ok(true, "Doesn't receive play event when media was blocked.");
       autoPlay.onplay = null;
       resolve();
-    }, 1000)
+    }, 1000);
   });
 }
 
@@ -116,5 +117,5 @@ add_task(async function block_multiple_media() {
                                    check_all_audio_suspended);
 
   info("- remove tab -");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

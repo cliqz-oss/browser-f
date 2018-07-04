@@ -1,0 +1,42 @@
+# %ARG DOCKER_IMAGE_PARENT
+FROM $DOCKER_IMAGE_PARENT
+MAINTAINER Mike Hommey <mhommey@mozilla.com>
+
+VOLUME /builds/worker/checkouts
+VOLUME /builds/worker/workspace
+VOLUME /builds/worker/tooltool-cache
+
+ENV XZ_OPT=-T0
+
+# %ARG DOCKER_IMAGE_PACKAGES
+RUN /usr/local/sbin/setup_packages.sh $DOCKER_IMAGE_PACKAGES
+
+RUN apt-get update && \
+    apt-get install \
+      autoconf \
+      automake \
+      bison \
+      build-essential \
+      curl \
+      cmake \
+      flex \
+      gawk \
+      gcc-multilib \
+      gnupg \
+      libbz2-dev \
+      libssl-dev \
+      libtool \
+      ninja-build \
+      p7zip-full \
+      procps \
+      python-pip \
+      python-setuptools \
+      python-virtualenv \
+      subversion \
+      tar \
+      unzip \
+      uuid \
+      uuid-dev \
+      wget \
+      zip \
+      zlib1g-dev

@@ -43,14 +43,14 @@ var PointerlockFsWarning = {
 
   showPointerLock(aOrigin) {
     if (!document.fullscreen) {
-      let timeout = gPrefService.getIntPref("pointer-lock-api.warning.timeout");
+      let timeout = Services.prefs.getIntPref("pointer-lock-api.warning.timeout");
       this.show(aOrigin, "pointerlock-warning", timeout, 0);
     }
   },
 
   showFullScreen(aOrigin) {
-    let timeout = gPrefService.getIntPref("full-screen-api.warning.timeout");
-    let delay = gPrefService.getIntPref("full-screen-api.warning.delay");
+    let timeout = Services.prefs.getIntPref("full-screen-api.warning.timeout");
+    let delay = Services.prefs.getIntPref("full-screen-api.warning.delay");
     this.show(aOrigin, "fullscreen-warning", timeout, delay);
   },
 
@@ -91,7 +91,7 @@ var PointerlockFsWarning = {
       let hostElem = this._element.querySelector(".pointerlockfswarning-domain");
       // Document's principal's URI has a host. Display a warning including it.
       let utils = {};
-      Cu.import("resource://gre/modules/DownloadUtils.jsm", utils);
+      ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm", utils);
       hostElem.textContent = utils.DownloadUtils.getURIHost(uri.spec)[0];
     }
 
@@ -256,6 +256,8 @@ var FullScreen = {
   init() {
     // called when we go into full screen, even if initiated by a web page script
     window.addEventListener("fullscreen", this, true);
+    window.addEventListener("willenterfullscreen", this, true);
+    window.addEventListener("willexitfullscreen", this, true);
     window.addEventListener("MozDOMFullscreen:Entered", this,
                             /* useCapture */ true,
                             /* wantsUntrusted */ false);
@@ -275,6 +277,14 @@ var FullScreen = {
       window.messageManager.removeMessageListener(type, this);
     }
     this.cleanup();
+  },
+
+  willToggle(aWillEnterFullscreen) {
+    if (aWillEnterFullscreen) {
+      document.documentElement.setAttribute("inFullscreen", true);
+    } else {
+      document.documentElement.removeAttribute("inFullscreen");
+    }
   },
 
   toggle() {
@@ -328,12 +338,11 @@ var FullScreen = {
       // This is needed if they use the context menu to quit fullscreen
       this._isPopupOpen = false;
       this.cleanup();
-      // In TabsInTitlebar._update(), we cancel the appearance update on
-      // resize event for exiting fullscreen, since that happens before we
-      // change the UI here in the "fullscreen" event. Hence we need to
-      // call it here to ensure the appearance is properly updated. See
-      // TabsInTitlebar._update() and bug 1173768.
-      TabsInTitlebar.updateAppearance(true);
+      // TabsInTitlebar skips appearance updates on resize events for exiting
+      // fullscreen, since that happens before we change the UI here in the
+      // "fullscreen" event. Hence we need to call it here to ensure the
+      // appearance is properly updated. See bug 1173768.
+      TabsInTitlebar.update();
     }
 
     if (enterFS && !document.fullscreenElement) {
@@ -348,20 +357,25 @@ var FullScreen = {
 
   handleEvent(event) {
     switch (event.type) {
+      case "willenterfullscreen":
+        this.willToggle(true);
+        break;
+      case "willexitfullscreen":
+        this.willToggle(false);
+        break;
       case "fullscreen":
         this.toggle();
         break;
       case "MozDOMFullscreen:Entered": {
         // The event target is the element which requested the DOM
         // fullscreen. If we were entering DOM fullscreen for a remote
-        // browser, the target would be `gBrowser` and the original
-        // target would be the browser which was the parameter of
+        // browser, the target would be the browser which was the parameter of
         // `remoteFrameFullscreenChanged` call. If the fullscreen
         // request was initiated from an in-process browser, we need
         // to get its corresponding browser here.
         let browser;
-        if (event.target == gBrowser) {
-          browser = event.originalTarget;
+        if (event.target.ownerGlobal == window) {
+          browser = event.target;
         } else {
           let topWin = event.target.ownerGlobal.top;
           browser = gBrowser.getBrowserForContentWindow(topWin);
@@ -513,7 +527,7 @@ var FullScreen = {
   _isPopupOpen: false,
   _isChromeCollapsed: false,
   _safeToCollapse() {
-    if (!gPrefService.getBoolPref("browser.fullscreen.autohide"))
+    if (!Services.prefs.getBoolPref("browser.fullscreen.autohide"))
       return false;
 
     // a popup menu is open in chrome: don't collapse chrome
@@ -557,10 +571,10 @@ var FullScreen = {
 
   // Autohide helpers for the context menu item
   getAutohide(aItem) {
-    aItem.setAttribute("checked", gPrefService.getBoolPref("browser.fullscreen.autohide"));
+    aItem.setAttribute("checked", Services.prefs.getBoolPref("browser.fullscreen.autohide"));
   },
   setAutohide() {
-    gPrefService.setBoolPref("browser.fullscreen.autohide", !gPrefService.getBoolPref("browser.fullscreen.autohide"));
+    Services.prefs.setBoolPref("browser.fullscreen.autohide", !Services.prefs.getBoolPref("browser.fullscreen.autohide"));
     // Try again to hide toolbar when we change the pref.
     FullScreen.hideNavToolbox(true);
   },
@@ -576,7 +590,7 @@ var FullScreen = {
 
     // Track whether mouse is near the toolbox
     if (trackMouse && !this.useLionFullScreen) {
-      let rect = gBrowser.mPanelContainer.getBoundingClientRect();
+      let rect = gBrowser.tabpanels.getBoundingClientRect();
       this._mouseTargetRect = {
         top: rect.top + 50,
         bottom: rect.bottom,
@@ -596,7 +610,7 @@ var FullScreen = {
 
     this._fullScrToggler.hidden = false;
 
-    if (aAnimate && gPrefService.getBoolPref("toolkit.cosmeticAnimations.enabled")) {
+    if (aAnimate && Services.prefs.getBoolPref("toolkit.cosmeticAnimations.enabled")) {
       gNavToolbox.setAttribute("fullscreenShouldAnimate", true);
       // Hide the fullscreen toggler until the transition ends.
       let listener = () => {

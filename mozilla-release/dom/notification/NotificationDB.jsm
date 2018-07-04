@@ -4,24 +4,16 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [];
+var EXPORTED_SYMBOLS = [];
 
 const DEBUG = false;
 function debug(s) { dump("-*- NotificationDB component: " + s + "\n"); }
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyServiceGetter(this, "ppmm",
-                                   "@mozilla.org/parentprocessmessagemanager;1",
-                                   "nsIMessageListenerManager");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "notificationStorage",
                                    "@mozilla.org/notificationStorage;1",
@@ -60,13 +52,13 @@ var NotificationDB = {
 
   registerListeners: function() {
     for (let message of kMessages) {
-      ppmm.addMessageListener(message, this);
+      Services.ppmm.addMessageListener(message, this);
     }
   },
 
   unregisterListeners: function() {
     for (let message of kMessages) {
-      ppmm.removeMessageListener(message, this);
+      Services.ppmm.removeMessageListener(message, this);
     }
   },
 

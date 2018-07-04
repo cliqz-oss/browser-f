@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,6 +18,11 @@ class nsIScrollbarMediator;
 class nsITimer;
 
 namespace mozilla {
+
+namespace dom {
+class EventTarget;
+} // namespace dom
+
 namespace layout {
 
 /**
@@ -101,7 +107,7 @@ protected:
 
   void HandleEventForScrollbar(const nsAString& aType,
                                nsIContent* aTarget,
-                               nsIContent* aScrollbar,
+                               dom::Element* aScrollbar,
                                bool* aStoredHoverState);
 
   void SetIsActive(bool aNewActive);
@@ -117,19 +123,19 @@ protected:
   void StartListeningForScrollAreaEvents();
   void StopListeningForScrollbarEvents();
   void StopListeningForScrollAreaEvents();
-  void AddScrollbarEventListeners(nsIDOMEventTarget* aScrollbar);
-  void RemoveScrollbarEventListeners(nsIDOMEventTarget* aScrollbar);
+  void AddScrollbarEventListeners(dom::EventTarget* aScrollbar);
+  void RemoveScrollbarEventListeners(dom::EventTarget* aScrollbar);
 
   void RegisterWithRefreshDriver();
   void UnregisterFromRefreshDriver();
 
   bool UpdateOpacity(TimeStamp aTime); // returns false if 'this' was destroyed
-  void HoveredScrollbar(nsIContent* aScrollbar);
+  void HoveredScrollbar(dom::Element* aScrollbar);
 
   nsRefreshDriver* GetRefreshDriver();
-  nsIContent* GetScrollbarContent(bool aVertical);
-  nsIContent* GetHorizontalScrollbar() { return GetScrollbarContent(false); }
-  nsIContent* GetVerticalScrollbar() { return GetScrollbarContent(true); }
+  dom::Element* GetScrollbarContent(bool aVertical);
+  dom::Element* GetHorizontalScrollbar() { return GetScrollbarContent(false); }
+  dom::Element* GetVerticalScrollbar() { return GetScrollbarContent(true); }
 
   const TimeDuration FadeDuration() {
     return TimeDuration::FromMilliseconds(mScrollbarFadeDuration);
@@ -138,8 +144,8 @@ protected:
   nsIScrollbarMediator* mScrollableFrame;
   TimeStamp mFadeBeginTime;
   nsCOMPtr<nsITimer> mFadeBeginTimer;
-  nsCOMPtr<nsIDOMEventTarget> mHorizontalScrollbar; // null while inactive
-  nsCOMPtr<nsIDOMEventTarget> mVerticalScrollbar;   // null while inactive
+  nsCOMPtr<dom::EventTarget> mHorizontalScrollbar; // null while inactive
+  nsCOMPtr<dom::EventTarget> mVerticalScrollbar;   // null while inactive
   int mNestedActivityCounter;
   bool mIsActive;
   bool mIsFading;

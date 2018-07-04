@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,15 +7,12 @@
 #ifndef nsTreeStyleCache_h__
 #define nsTreeStyleCache_h__
 
+#include "mozilla/AtomArray.h"
 #include "mozilla/Attributes.h"
 #include "nsAutoPtr.h"
-#include "nsIAtom.h"
 #include "nsCOMArray.h"
-#include "nsICSSPseudoComparator.h"
 #include "nsRefPtrHashtable.h"
-#include "nsStyleContext.h"
-
-typedef nsCOMArray<nsIAtom> AtomArray;
+#include "mozilla/ComputedStyle.h"
 
 class nsTreeStyleCache
 {
@@ -36,12 +34,12 @@ public:
     mNextState = 0;
   }
 
-  nsStyleContext* GetStyleContext(nsICSSPseudoComparator* aComparator,
-                                  nsPresContext* aPresContext,
-                                  nsIContent* aContent,
-                                  nsStyleContext* aContext,
-                                  nsICSSAnonBoxPseudo* aPseudoElement,
-                                  const AtomArray & aInputWord);
+  mozilla::ComputedStyle* GetComputedStyle(
+      nsPresContext* aPresContext,
+      nsIContent* aContent,
+      mozilla::ComputedStyle* aStyle,
+      nsICSSAnonBoxPseudo* aPseudoElement,
+      const mozilla::AtomArray& aInputWord);
 
 protected:
   typedef uint32_t DFAState;
@@ -49,13 +47,13 @@ protected:
   class Transition final
   {
   public:
-    Transition(DFAState aState, nsIAtom* aSymbol);
+    Transition(DFAState aState, nsAtom* aSymbol);
     bool operator==(const Transition& aOther) const;
     uint32_t Hash() const;
 
   private:
     DFAState mState;
-    nsCOMPtr<nsIAtom> mInputSymbol;
+    RefPtr<nsAtom> mInputSymbol;
   };
 
   typedef nsDataHashtable<nsGenericHashKey<Transition>, DFAState> TransitionTable;
@@ -73,13 +71,13 @@ protected:
   // under the key (S,i).
   //
   // Once the entire word has been consumed, the final state is used
-  // to reference the cache table to locate the style context.
+  // to reference the cache table to locate the ComputedStyle.
   nsAutoPtr<TransitionTable> mTransitionTable;
 
-  // The cache of all active style contexts.  This is a hash from
-  // a final state in the DFA, Sf, to the resultant style context.
-  typedef nsRefPtrHashtable<nsUint32HashKey, nsStyleContext> StyleContextCache;
-  nsAutoPtr<StyleContextCache> mCache;
+  // The cache of all active ComputedStyles.  This is a hash from
+  // a final state in the DFA, Sf, to the resultant ComputedStyle.
+  typedef nsRefPtrHashtable<nsUint32HashKey, mozilla::ComputedStyle> ComputedStyleCache;
+  nsAutoPtr<ComputedStyleCache> mCache;
 
   // An integer counter that is used when we need to make new states in the
   // DFA.

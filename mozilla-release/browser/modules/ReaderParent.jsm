@@ -5,16 +5,13 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = [ "ReaderParent" ];
 
-this.EXPORTED_SYMBOLS = [ "ReaderParent" ];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode", "resource://gre/modules/ReaderMode.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UITour", "resource:///modules/UITour.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "ReaderMode", "resource://gre/modules/ReaderMode.jsm");
 
 const gStringBundle = Services.strings.createBundle("chrome://global/locale/aboutReader.properties");
 
@@ -22,34 +19,23 @@ var ReaderParent = {
   // Listeners are added in nsBrowserGlue.js
   receiveMessage(message) {
     switch (message.name) {
-      case "Reader:ArticleGet":
-        this._getArticle(message.data.url, message.target).then((article) => {
-          // Make sure the target browser is still alive before trying to send data back.
-          if (message.target.messageManager) {
-            message.target.messageManager.sendAsyncMessage("Reader:ArticleData", { article });
-          }
-        }, e => {
-          if (e && e.newURL) {
-            // Make sure the target browser is still alive before trying to send data back.
-            if (message.target.messageManager) {
-              message.target.messageManager.sendAsyncMessage("Reader:ArticleData", { newURL: e.newURL });
-            }
-          }
-        });
-        break;
-
       case "Reader:FaviconRequest": {
         if (message.target.messageManager) {
-          let faviconUrl = PlacesUtils.promiseFaviconLinkUrl(message.data.url);
-          faviconUrl.then(function onResolution(favicon) {
-            message.target.messageManager.sendAsyncMessage("Reader:FaviconReturn", {
-              url: message.data.url,
-              faviconUrl: favicon.path.replace(/^favicon:/, "")
-            })
-          },
-          function onRejection(reason) {
-            Cu.reportError("Error requesting favicon URL for about:reader content: " + reason);
-          }).catch(Cu.reportError);
+          try {
+            let preferredWidth = message.data.preferredWidth || 0;
+            let uri = Services.io.newURI(message.data.url);
+            PlacesUtils.favicons.getFaviconURLForPage(uri, iconUri => {
+              if (iconUri) {
+                iconUri = PlacesUtils.favicons.getFaviconLinkForIcon(iconUri);
+                message.target.messageManager.sendAsyncMessage("Reader:FaviconReturn", {
+                  url: message.data.url,
+                  faviconUrl: iconUri.pathQueryRef.replace(/^favicon:/, "")
+                });
+              }
+            }, preferredWidth);
+          } catch (ex) {
+            Cu.reportError("Error requesting favicon URL for about:reader content: " + ex);
+          }
         }
         break;
       }
@@ -74,24 +60,32 @@ var ReaderParent = {
     let button = win.document.getElementById("reader-mode-button");
     let command = win.document.getElementById("View:ReaderView");
     let key = win.document.getElementById("key_toggleReaderMode");
+    // aria-reader is not a real ARIA attribute. However, this will cause
+    // Gecko accessibility to expose the "reader" object attribute. We do this
+    // so that the reader state is easy for accessibility clients to access
+    // programmatically.
     if (browser.currentURI.spec.startsWith("about:reader")) {
       button.setAttribute("readeractive", true);
       button.hidden = false;
       let closeText = gStringBundle.GetStringFromName("readerView.close");
-      button.setAttribute("tooltiptext", closeText);
       command.setAttribute("label", closeText);
       command.setAttribute("hidden", false);
       command.setAttribute("accesskey", gStringBundle.GetStringFromName("readerView.close.accesskey"));
       key.setAttribute("disabled", false);
+      browser.setAttribute("aria-reader", "active");
     } else {
       button.removeAttribute("readeractive");
       button.hidden = !browser.isArticle;
       let enterText = gStringBundle.GetStringFromName("readerView.enter");
-      button.setAttribute("tooltiptext", enterText);
       command.setAttribute("label", enterText);
       command.setAttribute("hidden", !browser.isArticle);
       command.setAttribute("accesskey", gStringBundle.GetStringFromName("readerView.enter.accesskey"));
       key.setAttribute("disabled", !browser.isArticle);
+      if (browser.isArticle) {
+        browser.setAttribute("aria-reader", "available");
+      } else {
+        browser.removeAttribute("aria-reader");
+      }
     }
   },
 

@@ -1,5 +1,3 @@
-let { classes: Cc, interfaces: Ci } = Components;
-
 var gObs;
 
 function info(s) {
@@ -43,8 +41,8 @@ obs.prototype = {
     }
 
     // Ignore notifications we don't care about (like favicons)
-    if (channel.URI.spec.indexOf(
-          "http://example.org/tests/extensions/cookie/test/") == -1) {
+    if (!channel.URI.spec.includes(
+          "http://example.org/tests/extensions/cookie/test/")) {
       info("ignoring this one");
       return;
     }
@@ -78,7 +76,7 @@ function getCookieCount(cs) {
 
 addMessageListener("init", ({ domain }) => {
   let cs = Cc["@mozilla.org/cookiemanager;1"]
-             .getService(Ci.nsICookieManager2);
+             .getService(Ci.nsICookieManager);
 
   info("we are going to remove these cookies");
 
@@ -106,7 +104,7 @@ addMessageListener("shutdown", () => {
   gObs.remove();
 
   let cs = Cc["@mozilla.org/cookiemanager;1"]
-             .getService(Ci.nsICookieManager2);
+             .getService(Ci.nsICookieManager);
   cs.removeAll();
   sendAsyncMessage("shutdown:return");
 });

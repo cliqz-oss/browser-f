@@ -28,7 +28,7 @@
 
 #define nsHtml5StackNode_cpp__
 
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsHtml5AtomTable.h"
 #include "nsHtml5String.h"
 #include "nsNameSpaceManager.h"
@@ -42,6 +42,7 @@
 #include "nsHtml5Macros.h"
 #include "nsIContentHandle.h"
 #include "nsHtml5Portability.h"
+#include "nsHtml5ContentCreatorFunction.h"
 
 #include "nsHtml5AttributeName.h"
 #include "nsHtml5ElementName.h"
@@ -54,31 +55,31 @@
 
 #include "nsHtml5StackNode.h"
 
-int32_t 
+int32_t
 nsHtml5StackNode::getGroup()
 {
   return flags & nsHtml5ElementName::GROUP_MASK;
 }
 
-bool 
+bool
 nsHtml5StackNode::isScoping()
 {
   return (flags & nsHtml5ElementName::SCOPING);
 }
 
-bool 
+bool
 nsHtml5StackNode::isSpecial()
 {
   return (flags & nsHtml5ElementName::SPECIAL);
 }
 
-bool 
+bool
 nsHtml5StackNode::isFosterParenting()
 {
   return (flags & nsHtml5ElementName::FOSTER_PARENTING);
 }
 
-bool 
+bool
 nsHtml5StackNode::isHtmlIntegrationPoint()
 {
   return (flags & nsHtml5ElementName::HTML_INTEGRATION_POINT);
@@ -91,13 +92,21 @@ nsHtml5StackNode::nsHtml5StackNode(int32_t idxInTreeBuilder)
   MOZ_COUNT_CTOR(nsHtml5StackNode);
 }
 
+mozilla::dom::HTMLContentCreatorFunction
+nsHtml5StackNode::getHtmlCreator()
+{
+  return htmlCreator;
+}
+
 void
-nsHtml5StackNode::setValues(int32_t flags,
-                            int32_t ns,
-                            nsIAtom* name,
-                            nsIContentHandle* node,
-                            nsIAtom* popName,
-                            nsHtml5HtmlAttributes* attributes)
+nsHtml5StackNode::setValues(
+  int32_t flags,
+  int32_t ns,
+  nsAtom* name,
+  nsIContentHandle* node,
+  nsAtom* popName,
+  nsHtml5HtmlAttributes* attributes,
+  mozilla::dom::HTMLContentCreatorFunction htmlCreator)
 {
   MOZ_ASSERT(isUnused());
   this->flags = flags;
@@ -107,6 +116,7 @@ nsHtml5StackNode::setValues(int32_t flags,
   this->node = node;
   this->attributes = attributes;
   this->refcount = 1;
+  this->htmlCreator = htmlCreator;
 }
 
 void
@@ -123,6 +133,7 @@ nsHtml5StackNode::setValues(nsHtml5ElementName* elementName,
   this->refcount = 1;
   MOZ_ASSERT(elementName->isInterned(),
              "Don't use this constructor for custom elements.");
+  this->htmlCreator = nullptr;
 }
 
 void
@@ -140,12 +151,13 @@ nsHtml5StackNode::setValues(nsHtml5ElementName* elementName,
   this->refcount = 1;
   MOZ_ASSERT(elementName->isInterned(),
              "Don't use this constructor for custom elements.");
+  this->htmlCreator = elementName->getHtmlCreator();
 }
 
 void
 nsHtml5StackNode::setValues(nsHtml5ElementName* elementName,
                             nsIContentHandle* node,
-                            nsIAtom* popName)
+                            nsAtom* popName)
 {
   MOZ_ASSERT(isUnused());
   this->flags = elementName->getFlags();
@@ -155,11 +167,12 @@ nsHtml5StackNode::setValues(nsHtml5ElementName* elementName,
   this->node = node;
   this->attributes = nullptr;
   this->refcount = 1;
+  this->htmlCreator = nullptr;
 }
 
 void
 nsHtml5StackNode::setValues(nsHtml5ElementName* elementName,
-                            nsIAtom* popName,
+                            nsAtom* popName,
                             nsIContentHandle* node)
 {
   MOZ_ASSERT(isUnused());
@@ -170,12 +183,13 @@ nsHtml5StackNode::setValues(nsHtml5ElementName* elementName,
   this->node = node;
   this->attributes = nullptr;
   this->refcount = 1;
+  this->htmlCreator = nullptr;
 }
 
 void
 nsHtml5StackNode::setValues(nsHtml5ElementName* elementName,
                             nsIContentHandle* node,
-                            nsIAtom* popName,
+                            nsAtom* popName,
                             bool markAsIntegrationPoint)
 {
   MOZ_ASSERT(isUnused());
@@ -187,9 +201,10 @@ nsHtml5StackNode::setValues(nsHtml5ElementName* elementName,
   this->node = node;
   this->attributes = nullptr;
   this->refcount = 1;
+  this->htmlCreator = nullptr;
 }
 
-int32_t 
+int32_t
 nsHtml5StackNode::prepareSvgFlags(int32_t flags)
 {
   flags &=
@@ -202,7 +217,7 @@ nsHtml5StackNode::prepareSvgFlags(int32_t flags)
   return flags;
 }
 
-int32_t 
+int32_t
 nsHtml5StackNode::prepareMathFlags(int32_t flags, bool markAsIntegrationPoint)
 {
   flags &=
@@ -217,19 +232,18 @@ nsHtml5StackNode::prepareMathFlags(int32_t flags, bool markAsIntegrationPoint)
   return flags;
 }
 
-
 nsHtml5StackNode::~nsHtml5StackNode()
 {
   MOZ_COUNT_DTOR(nsHtml5StackNode);
 }
 
-void 
+void
 nsHtml5StackNode::dropAttributes()
 {
   attributes = nullptr;
 }
 
-void 
+void
 nsHtml5StackNode::retain()
 {
   refcount++;
@@ -266,5 +280,3 @@ void
 nsHtml5StackNode::releaseStatics()
 {
 }
-
-

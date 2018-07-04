@@ -7,7 +7,6 @@
 /* Class that wraps JS objects to appear as XPCOM objects. */
 
 #include "xpcprivate.h"
-#include "jsprf.h"
 #include "mozilla/DeferredFinalize.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
@@ -586,7 +585,7 @@ nsXPCWrappedJS::FindInherited(REFNSIID aIID)
 }
 
 NS_IMETHODIMP
-nsXPCWrappedJS::GetInterfaceInfo(nsIInterfaceInfo** infoResult)
+nsXPCWrappedJS::GetInterfaceInfo(const nsXPTInterfaceInfo** infoResult)
 {
     MOZ_ASSERT(GetClass(), "wrapper without class");
     MOZ_ASSERT(GetClass()->GetInterfaceInfo(), "wrapper class without interface");
@@ -594,16 +593,13 @@ nsXPCWrappedJS::GetInterfaceInfo(nsIInterfaceInfo** infoResult)
     // Since failing to get this info will crash some platforms(!), we keep
     // mClass valid at shutdown time.
 
-    nsCOMPtr<nsIInterfaceInfo> info = GetClass()->GetInterfaceInfo();
-    if (!info)
-        return NS_ERROR_UNEXPECTED;
-    info.forget(infoResult);
-    return NS_OK;
+    *infoResult = GetClass()->GetInterfaceInfo();
+    return *infoResult ? NS_OK : NS_ERROR_UNEXPECTED;
 }
 
 NS_IMETHODIMP
 nsXPCWrappedJS::CallMethod(uint16_t methodIndex,
-                           const XPTMethodDescriptor* info,
+                           const nsXPTMethodInfo* info,
                            nsXPTCMiniVariant* params)
 {
     // Do a release-mode assert against accessing nsXPCWrappedJS off-main-thread.
@@ -620,8 +616,8 @@ nsXPCWrappedJS::GetInterfaceIID(nsIID** iid)
 {
     NS_PRECONDITION(iid, "bad param");
 
-    *iid = (nsIID*) nsMemory::Clone(&(GetIID()), sizeof(nsIID));
-    return *iid ? NS_OK : NS_ERROR_UNEXPECTED;
+    *iid = GetIID().Clone();
+    return NS_OK;
 }
 
 void
@@ -638,9 +634,11 @@ nsXPCWrappedJS::SystemIsBeingShutDown()
     // NOTE: that mClass is retained so that GetInterfaceInfo can continue to
     // work (and avoid crashing some platforms).
 
-    // Use of unsafeGet() is to avoid triggering post barriers in shutdown, as
-    // this will access the chunk containing mJSObj, which may have been freed
-    // at this point.
+    // Clear the contents of the pointer using unsafeGet() to avoid
+    // triggering post barriers in shutdown, as this will access the chunk
+    // containing mJSObj, which may have been freed at this point. This is safe
+    // if we are not currently running an incremental GC.
+    MOZ_ASSERT(!IsIncrementalGCInProgress(xpc_GetSafeJSContext()));
     *mJSObj.unsafeGet() = nullptr;
 
     // Notify other wrappers in the chain.

@@ -38,6 +38,7 @@ class ManifestEntry(object):
         'xpcnativewrappers',
         'tablet',
         'process',
+        'contentaccessible',
     ]
 
     def __init__(self, base, *flags):
@@ -196,12 +197,6 @@ class ManifestOverload(ManifestEntry):
     def __str__(self):
         return self.serialize(self.overloaded, self.overload)
 
-    @property
-    def localized(self):
-        u = urlparse(self.overload)
-        return u.scheme == 'chrome' and \
-               u.path.split('/')[0:2] == ['', 'locale']
-
 
 class ManifestOverlay(ManifestOverload):
     '''
@@ -215,7 +210,7 @@ class ManifestOverlay(ManifestOverload):
 class ManifestStyle(ManifestOverload):
     '''
     Class for 'style' entries.
-        style chrome://global/content/customizeToolbar.xul \
+        style chrome://global/content/viewSource.xul \
             chrome://browser/skin/
     '''
     type = 'style'
@@ -350,7 +345,11 @@ def parse_manifest(root, path, fileobj=None):
     if root:
         path = os.path.normpath(os.path.abspath(os.path.join(root, path)))
     if not fileobj:
-        fileobj = open(path)
+        try:
+            fileobj = open(path)
+        except Exception as e:
+            print "File " + path + " can not be open."
+            return
     linenum = 0
     for line in fileobj:
         linenum += 1

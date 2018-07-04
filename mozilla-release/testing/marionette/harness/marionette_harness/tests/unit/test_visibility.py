@@ -2,25 +2,47 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
+import urllib
+
 from marionette_driver.by import By
 
 from marionette_harness import MarionetteTestCase
 
 
+def inline(doc):
+    return "data:text/html;charset=utf-8,{}".format(urllib.quote(doc))
+
+
+def element_direction_doc(direction):
+    return inline("""
+        <style>
+          .element{{
+            position: absolute;
+            {}: -50px;
+            background_color: red;
+            width: 100px;
+            height: 100px;
+          }}
+        </style>
+        <div class='element'></div>""".format(direction))
+
+
 class TestVisibility(MarionetteTestCase):
 
     def testShouldAllowTheUserToTellIfAnElementIsDisplayedOrNot(self):
-        test_html = self.marionette.absolute_url("javascriptPage.html")
+        test_html = self.marionette.absolute_url("visibility.html")
         self.marionette.navigate(test_html)
 
         self.assertTrue(self.marionette.find_element(By.ID, "displayed").is_displayed())
         self.assertFalse(self.marionette.find_element(By.ID, "none").is_displayed())
         self.assertFalse(self.marionette.find_element(By.ID,
-            "suppressedParagraph").is_displayed())
+                                                      "suppressedParagraph").is_displayed())
         self.assertFalse(self.marionette.find_element(By.ID, "hidden").is_displayed())
 
     def testVisibilityShouldTakeIntoAccountParentVisibility(self):
-        test_html = self.marionette.absolute_url("javascriptPage.html")
+        test_html = self.marionette.absolute_url("visibility.html")
         self.marionette.navigate(test_html)
 
         childDiv = self.marionette.find_element(By.ID, "hiddenchild")
@@ -30,13 +52,13 @@ class TestVisibility(MarionetteTestCase):
         self.assertFalse(hiddenLink.is_displayed())
 
     def testShouldCountElementsAsVisibleIfStylePropertyHasBeenSet(self):
-        test_html = self.marionette.absolute_url("javascriptPage.html")
+        test_html = self.marionette.absolute_url("visibility.html")
         self.marionette.navigate(test_html)
         shown = self.marionette.find_element(By.ID, "visibleSubElement")
         self.assertTrue(shown.is_displayed())
 
     def testShouldModifyTheVisibilityOfAnElementDynamically(self):
-        test_html = self.marionette.absolute_url("javascriptPage.html")
+        test_html = self.marionette.absolute_url("visibility.html")
         self.marionette.navigate(test_html)
         element = self.marionette.find_element(By.ID, "hideMe")
         self.assertTrue(element.is_displayed())
@@ -44,7 +66,7 @@ class TestVisibility(MarionetteTestCase):
         self.assertFalse(element.is_displayed())
 
     def testHiddenInputElementsAreNeverVisible(self):
-        test_html = self.marionette.absolute_url("javascriptPage.html")
+        test_html = self.marionette.absolute_url("visibility.html")
         self.marionette.navigate(test_html)
 
         shown = self.marionette.find_element(By.NAME, "hidden")
@@ -101,21 +123,17 @@ class TestVisibility(MarionetteTestCase):
         self.assertFalse(child.is_displayed())
 
     def testShouldClickOnELementPartiallyOffLeft(self):
-        test_html = self.marionette.absolute_url("element_left.html")
-        self.marionette.navigate(test_html)
+        test_html = self.marionette.navigate(element_direction_doc("left"))
         self.marionette.find_element(By.CSS_SELECTOR, '.element').click()
 
     def testShouldClickOnELementPartiallyOffRight(self):
-        test_html = self.marionette.absolute_url("element_right.html")
-        self.marionette.navigate(test_html)
+        test_html = self.marionette.navigate(element_direction_doc("right"))
         self.marionette.find_element(By.CSS_SELECTOR, '.element').click()
 
     def testShouldClickOnELementPartiallyOffTop(self):
-        test_html = self.marionette.absolute_url("element_top.html")
-        self.marionette.navigate(test_html)
+        test_html = self.marionette.navigate(element_direction_doc("top"))
         self.marionette.find_element(By.CSS_SELECTOR, '.element').click()
 
     def testShouldClickOnELementPartiallyOffBottom(self):
-        test_html = self.marionette.absolute_url("element_bottom.html")
-        self.marionette.navigate(test_html)
+        test_html = self.marionette.navigate(element_direction_doc("bottom"))
         self.marionette.find_element(By.CSS_SELECTOR, '.element').click()

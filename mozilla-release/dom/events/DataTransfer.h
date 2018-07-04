@@ -11,11 +11,11 @@
 #include "nsTArray.h"
 #include "nsIVariant.h"
 #include "nsIPrincipal.h"
-#include "nsIDOMDataTransfer.h"
-#include "nsIDOMElement.h"
 #include "nsIDragService.h"
 #include "nsCycleCollectionParticipant.h"
 
+#include "mozilla/ArrayUtils.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/dom/BindingDeclarations.h"
@@ -43,23 +43,25 @@ template<typename T> class Optional;
 { 0x6c5f90d1, 0xa886, 0x42c8, \
   { 0x85, 0x06, 0x10, 0xbe, 0x5c, 0x0d, 0xc6, 0x77 } }
 
-class DataTransfer final : public nsIDOMDataTransfer,
+class DataTransfer final : public nsISupports,
                            public nsWrapperCache
 {
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_DATATRANSFER_IID)
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_NSIDOMDATATRANSFER
 
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(DataTransfer)
 
   friend class mozilla::EventStateManager;
 
-  static DataTransfer* Cast(nsIDOMDataTransfer* aArg)
-  {
-    return static_cast<DataTransfer*>(aArg);
-  }
+  /// An enum which represents which "Drag Data Store Mode" the DataTransfer is
+  /// in according to the spec.
+  enum class Mode : uint8_t {
+    ReadWrite,
+    ReadOnly,
+    Protected,
+  };
 
 protected:
 
@@ -68,6 +70,7 @@ protected:
 
   // this constructor is used only by the Clone method to copy the fields as
   // needed to a new data transfer.
+  // NOTE: Do not call this method directly.
   DataTransfer(nsISupports* aParent,
                EventMessage aEventMessage,
                const uint32_t aEffectAllowed,
@@ -119,12 +122,57 @@ public:
   Constructor(const GlobalObject& aGlobal, const nsAString& aEventType,
               bool aIsExternal, ErrorResult& aRv);
 
-  void GetDropEffect(nsString& aDropEffect)
+  /**
+   * The actual effect that will be used, and should always be one of the
+   * possible values of effectAllowed.
+   *
+   * For dragstart, drag and dragleave events, the dropEffect is initialized
+   * to none. Any value assigned to the dropEffect will be set, but the value
+   * isn't used for anything.
+   *
+   * For the dragenter and dragover events, the dropEffect will be initialized
+   * based on what action the user is requesting. How this is determined is
+   * platform specific, but typically the user can press modifier keys to
+   * adjust which action is desired. Within an event handler for the dragenter
+   * and dragover events, the dropEffect should be modified if the action the
+   * user is requesting is not the one that is desired.
+   *
+   * For the drop and dragend events, the dropEffect will be initialized to
+   * the action that was desired, which will be the value that the dropEffect
+   * had after the last dragenter or dragover event.
+   *
+   * Possible values:
+   *  copy - a copy of the source item is made at the new location
+   *  move - an item is moved to a new location
+   *  link - a link is established to the source at the new location
+   *  none - the item may not be dropped
+   *
+   * Assigning any other value has no effect and retains the old value.
+   */
+  void GetDropEffect(nsAString& aDropEffect)
   {
     aDropEffect.AssignASCII(sEffects[mDropEffect]);
   }
+  void SetDropEffect(const nsAString& aDropEffect);
 
-  void GetEffectAllowed(nsString& aEffectAllowed)
+  /*
+   * Specifies the effects that are allowed for this drag. You may set this in
+   * the dragstart event to set the desired effects for the source, and within
+   * the dragenter and dragover events to set the desired effects for the
+   * target. The value is not used for other events.
+   *
+   * Possible values:
+   *  copy - a copy of the source item is made at the new location
+   *  move - an item is moved to a new location
+   *  link - a link is established to the source at the new location
+   *  copyLink, copyMove, linkMove, all - combinations of the above
+   *  none - the item may not be dropped
+   *  uninitialized - the default value when the effect has not been set,
+   *                  equivalent to all.
+   *
+   * Assigning any other value has no effect and retains the old value.
+   */
+  void GetEffectAllowed(nsAString& aEffectAllowed)
   {
     if (mEffectAllowed == nsIDragService::DRAGDROP_ACTION_UNINITIALIZED) {
       aEffectAllowed.AssignLiteral("uninitialized");
@@ -132,7 +180,26 @@ public:
       aEffectAllowed.AssignASCII(sEffects[mEffectAllowed]);
     }
   }
+  void SetEffectAllowed(const nsAString& aEffectAllowed);
 
+  /**
+   * Set the image to be used for dragging if a custom one is desired. Most of
+   * the time, this would not be set, as a default image is created from the
+   * node that was dragged.
+   *
+   * If the node is an HTML img element, an HTML canvas element or a XUL image
+   * element, the image data is used. Otherwise, image should be a visible
+   * node and the drag image will be created from this. If image is null, any
+   * custom drag image is cleared and the default is used instead.
+   *
+   * The coordinates specify the offset into the image where the mouse cursor
+   * should be. To center the image for instance, use values that are half the
+   * width and height.
+   *
+   * @param image a node to use
+   * @param x the horizontal offset
+   * @param y the vertical offset
+   */
   void SetDragImage(Element& aElement, int32_t aX, int32_t aY);
   void UpdateDragImage(Element& aElement, int32_t aX, int32_t aY);
 
@@ -150,9 +217,13 @@ public:
                  nsIPrincipal& aSubjectPrincipal,
                  mozilla::ErrorResult& aRv);
 
+  /**
+   * Holds a list of all the local files available on this data transfer.
+   * A dataTransfer containing no files will return an empty list, and an
+   * invalid index access on the resulting file list will return null.
+   */
   already_AddRefed<FileList>
-  GetFiles(nsIPrincipal& aSubjectPrincipal,
-           mozilla::ErrorResult& aRv);
+  GetFiles(nsIPrincipal& aSubjectPrincipal);
 
   already_AddRefed<Promise>
   GetFilesAndDirectories(nsIPrincipal& aSubjectPrincipal,
@@ -168,7 +239,7 @@ public:
 
   uint32_t MozItemCount() const;
 
-  void GetMozCursor(nsString& aCursor)
+  void GetMozCursor(nsAString& aCursor)
   {
     if (mCursorState) {
       aCursor.AssignLiteral("default");
@@ -176,6 +247,7 @@ public:
       aCursor.AssignLiteral("auto");
     }
   }
+  void SetMozCursor(const nsAString& aCursor);
 
   already_AddRefed<DOMStringList> MozTypesAt(uint32_t aIndex,
                                              CallerType aCallerType,
@@ -202,6 +274,31 @@ public:
 
   already_AddRefed<nsINode> GetMozSourceNode();
 
+  /*
+   * Integer version of dropEffect, set to one of the constants in nsIDragService.
+   */
+  uint32_t DropEffectInt() const
+  {
+    return mDropEffect;
+  }
+  void SetDropEffectInt(uint32_t aDropEffectInt)
+  {
+    MOZ_RELEASE_ASSERT(aDropEffectInt < ArrayLength(sEffects),
+                       "Bogus drop effect value");
+    mDropEffect = aDropEffectInt;
+  }
+
+  /*
+   * Integer version of effectAllowed, set to one or a combination of the
+   * constants in nsIDragService.
+   */
+  uint32_t EffectAllowedInt() const
+  {
+    return mEffectAllowed;
+  }
+
+  void GetMozTriggeringPrincipalURISpec(nsAString& aPrincipalURISpec);
+
   mozilla::dom::Element* GetDragTarget() const
   {
     return mDragTarget;
@@ -214,13 +311,23 @@ public:
     return mItems;
   }
 
-  // a readonly dataTransfer cannot have new data added or existing data
-  // removed. Only the dropEffect and effectAllowed may be modified.
-  bool IsReadOnly() const {
-    return mReadOnly;
+  // Returns the current "Drag Data Store Mode" of the DataTransfer. This
+  // determines what modifications may be performed on the DataTransfer, and
+  // what data may be read from it.
+  Mode GetMode() const {
+    return mMode;
   }
-  void SetReadOnly() {
-    mReadOnly = true;
+  void SetMode(Mode aMode);
+
+  // Helper method. Is true if the DataTransfer's mode is ReadOnly or Protected,
+  // which means that the DataTransfer cannot be modified.
+  bool IsReadOnly() const {
+    return mMode != Mode::ReadWrite;
+  }
+  // Helper method. Is true if the DataTransfer's mode is Protected, which means
+  // that DataTransfer type information may be read, but data may not be.
+  bool IsProtected() const {
+    return mMode == Mode::Protected;
   }
 
   int32_t ClipboardType() const {
@@ -251,6 +358,12 @@ public:
                           nsISupports** aSupports,
                           uint32_t* aLength) const;
 
+  // Disconnects the DataTransfer from the Drag Data Store. If the
+  // dom.dataTransfer.disconnect pref is enabled, this will clear the
+  // DataTransfer and set it to the `Protected` state, otherwise this method is
+  // a no-op.
+  void Disconnect();
+
   // clears all of the data
   void ClearAll();
 
@@ -260,7 +373,8 @@ public:
   nsresult SetDataWithPrincipal(const nsAString& aFormat,
                                 nsIVariant* aData,
                                 uint32_t aIndex,
-                                nsIPrincipal* aPrincipal);
+                                nsIPrincipal* aPrincipal,
+                                bool aHidden=false);
 
   // Variation of SetDataWithPrincipal with handles extracting
   // kCustomTypesMime data into separate types.
@@ -278,6 +392,12 @@ public:
     return mDragImage;
   }
 
+  // This method makes a copy of the DataTransfer object, with a few properties
+  // changed, and the mode updated to reflect the correct mode for the given
+  // event. This method is used during the drag operation to generate the
+  // DataTransfer objects for each event after `dragstart`. Event objects will
+  // lazily clone the DataTransfer stored in the DragSession (which is a clone
+  // of the DataTransfer used in the `dragstart` event) when requested.
   nsresult Clone(nsISupports* aParent, EventMessage aEventMessage,
                  bool aUserCancelled, bool aIsCrossDomainSubFrameDrop,
                  DataTransfer** aResult);
@@ -294,6 +414,11 @@ public:
   // changed.  This can happen due to items we care about for purposes of
   // GetTypes being added or removed or changing item kinds.
   void TypesListMayHaveChanged();
+
+  // Testing method used to emulate internal DataTransfer management.
+  // NOTE: Please don't use this. See the comments in the webidl for more.
+  already_AddRefed<DataTransfer> MozCloneForEvent(const nsAString& aEvent,
+                                                  ErrorResult& aRv);
 
 protected:
 
@@ -343,9 +468,8 @@ protected:
   // Indicates the behavior of the cursor during drag operations
   bool mCursorState;
 
-  // readonly data transfers may not be modified except the drop effect and
-  // effect allowed.
-  bool mReadOnly;
+  // The current "Drag Data Store Mode" which the DataTransfer is in.
+  Mode mMode;
 
   // true for drags started without a data transfer, for example, those from
   // another application.

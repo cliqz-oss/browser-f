@@ -44,11 +44,11 @@ add_task(async function test_import_tags() {
   }
 
   // Re-imports the bookmarks from the HTML file.
-  await BookmarkHTMLUtils.importFromFile(HTMLFile, true);
+  await BookmarkHTMLUtils.importFromFile(HTMLFile, { replace: true });
 
   // Tests to ensure that the tags are still present for each bookmark URI.
   for (let { uri, tags } of bookmarkData) {
-    do_print("Test tags for " + uri.spec + ": " + tags + "\n");
+    info("Test tags for " + uri.spec + ": " + tags + "\n");
     let foundTags = PlacesUtils.tagging.getTagsForURI(uri);
     Assert.equal(foundTags.length, tags.length);
     Assert.ok(tags.every(tag => foundTags.includes(tag)));

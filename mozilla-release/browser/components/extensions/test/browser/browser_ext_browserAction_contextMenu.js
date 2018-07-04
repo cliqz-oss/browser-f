@@ -40,8 +40,8 @@ let contextMenuItems = {
   "context-viewinfo": "disabled",
   "inspect-separator": "hidden",
   "context-inspect": "hidden",
+  "context-inspect-a11y": "hidden",
   "context-bookmarkpage": "hidden",
-  "context-sharepage": "hidden",
 };
 
 add_task(async function browseraction_popup_contextmenu() {

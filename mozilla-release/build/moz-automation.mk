@@ -3,6 +3,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+ifndef ENABLE_TESTS
+# We can't package tests if they aren't enabled.
+MOZ_AUTOMATION_PACKAGE_TESTS = 0
+endif
+
 ifneq (,$(filter automation/%,$(MAKECMDGOALS)))
 ifeq (4.0,$(firstword $(sort 4.0 $(MAKE_VERSION))))
 MAKEFLAGS += --output-sync=target
@@ -23,10 +28,10 @@ endif
 # corresponding the make target
 tier_MOZ_AUTOMATION_BUILD_SYMBOLS = buildsymbols
 tier_MOZ_AUTOMATION_L10N_CHECK = l10n-check
-tier_MOZ_AUTOMATION_INSTALLER = installer
 tier_MOZ_AUTOMATION_PACKAGE = package
 tier_MOZ_AUTOMATION_PACKAGE_TESTS = package-tests
 tier_MOZ_AUTOMATION_UPDATE_PACKAGING = update-packaging
+tier_MOZ_AUTOMATION_PACKAGE_GENERATED_SOURCES = package-generated-sources
 tier_MOZ_AUTOMATION_UPLOAD_SYMBOLS = uploadsymbols
 tier_MOZ_AUTOMATION_UPLOAD = upload
 
@@ -39,8 +44,8 @@ moz_automation_symbols = \
   MOZ_AUTOMATION_BUILD_SYMBOLS \
   MOZ_AUTOMATION_UPLOAD_SYMBOLS \
   MOZ_AUTOMATION_PACKAGE \
-  MOZ_AUTOMATION_INSTALLER \
   MOZ_AUTOMATION_UPDATE_PACKAGING \
+  MOZ_AUTOMATION_PACKAGE_GENERATED_SOURCES \
   MOZ_AUTOMATION_L10N_CHECK \
   MOZ_AUTOMATION_UPLOAD \
   $(NULL)
@@ -50,20 +55,14 @@ MOZ_AUTOMATION_TIERS := $(foreach sym,$(moz_automation_symbols),$(if $(filter 1,
 automation/uploadsymbols: automation/buildsymbols
 
 automation/update-packaging: automation/package
-automation/update-packaging: automation/installer
 
 automation/l10n-check: automation/package
-automation/l10n-check: automation/installer
 
-automation/upload: automation/installer
 automation/upload: automation/package
 automation/upload: automation/package-tests
 automation/upload: automation/buildsymbols
 automation/upload: automation/update-packaging
-
-# The installer and packager all run stage-package, and may conflict
-# with each other.
-automation/installer: automation/package
+automation/upload: automation/package-generated-sources
 
 automation/build: $(addprefix automation/,$(MOZ_AUTOMATION_TIERS))
 	@echo Automation steps completed.
@@ -77,7 +76,7 @@ AUTOMATION_EXTRA_CMDLINE-l10n-check = -j1
 # However, the target automation/buildsymbols will still be executed in this
 # case because it is a prerequisite of automation/upload.
 define automation_commands
-@+$(MAKE) $1 $(AUTOMATION_EXTRA_CMDLINE-$1)
+@+$(PYTHON) $(topsrcdir)/config/run-and-prefix.py $1 $(MAKE) $1 $(AUTOMATION_EXTRA_CMDLINE-$1)
 $(call BUILDSTATUS,TIER_FINISH $1)
 endef
 

@@ -27,7 +27,6 @@ MOZ_ANDROID_MIN_SDK_VERSION=16
 # listed in the Android manifest.  They are specified in here to avoid hard-coding them in source code files.
 MOZ_ANDROID_APPLICATION_CLASS=org.mozilla.gecko.GeckoApplication
 MOZ_ANDROID_BROWSER_INTENT_CLASS=org.mozilla.gecko.BrowserApp
-MOZ_ANDROID_SEARCH_INTENT_CLASS=org.mozilla.search.SearchActivity
 
 MOZ_NO_SMART_CARDS=1
 
@@ -40,9 +39,6 @@ MOZ_RAW=1
 MOZ_USE_NATIVE_POPUP_WINDOWS=1
 
 MOZ_APP_ID={aa3c5121-dab2-40e2-81ca-7ea25febc110}
-
-# Use the low-memory GC tuning.
-export JS_GC_SMALL_CHUNK_SIZE=1
 
 # Enable checking that add-ons are signed by the trusted root
 MOZ_ADDON_SIGNING=1

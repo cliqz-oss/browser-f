@@ -174,7 +174,8 @@ class AsyncFetchAndSetIconForPage final : public Runnable
                               PageData& aPage,
                               bool aFaviconLoadPrivate,
                               nsIFaviconDataCallback* aCallback,
-                              nsIPrincipal* aLoadingPrincipal);
+                              nsIPrincipal* aLoadingPrincipal,
+                              uint64_t aRequestContextID);
 
 private:
   nsresult FetchFromNetwork();
@@ -187,6 +188,7 @@ private:
   nsMainThreadPtrHandle<nsIPrincipal> mLoadingPrincipal;
   bool mCanceled;
   nsCOMPtr<nsIRequest> mRequest;
+  uint64_t mRequestContextID;
 };
 
 /**
@@ -325,8 +327,6 @@ private:
   nsMainThreadPtrHandle<nsIFaviconDataCallback> mCallback;
   IconData mIcon;
   PageData mPage;
-
-  void SendGlobalNotifications(nsIURI* aIconURI);
 };
 
 /**

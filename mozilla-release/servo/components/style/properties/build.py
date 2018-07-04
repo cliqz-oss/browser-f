@@ -21,17 +21,16 @@ RE_PYTHON_ADDR = re.compile(r'<.+? object at 0x[0-9a-fA-F]+>')
 
 
 def main():
-    usage = "Usage: %s [ servo | gecko ] [ style-crate | html ] [ testing | regular ]" % sys.argv[0]
-    if len(sys.argv) < 4:
+    usage = "Usage: %s [ servo | gecko ] [ style-crate | geckolib <template> | html ]" % sys.argv[0]
+    if len(sys.argv) < 3:
         abort(usage)
     product = sys.argv[1]
     output = sys.argv[2]
-    testing = sys.argv[3] == "testing"
 
     if product not in ["servo", "gecko"] or output not in ["style-crate", "geckolib", "html"]:
         abort(usage)
 
-    properties = data.PropertiesData(product=product, testing=testing)
+    properties = data.PropertiesData(product=product)
     template = os.path.join(BASE, "properties.mako.rs")
     rust = render(template, product=product, data=properties, __file__=template)
     if output == "style-crate":
@@ -40,6 +39,12 @@ def main():
             template = os.path.join(BASE, "gecko.mako.rs")
             rust = render(template, data=properties)
             write(os.environ["OUT_DIR"], "gecko_properties.rs", rust)
+    elif output == "geckolib":
+        if len(sys.argv) < 4:
+            abort(usage)
+        template = sys.argv[3]
+        header = render(template, data=properties)
+        sys.stdout.write(header)
     elif output == "html":
         write_html(properties)
 
@@ -82,7 +87,7 @@ def write(directory, filename, content):
 def write_html(properties):
     properties = dict(
         (p.name, {
-            "flag": p.experimental,
+            "flag": p.servo_pref,
             "shorthand": hasattr(p, "sub_properties")
         })
         for p in properties.longhands + properties.shorthands

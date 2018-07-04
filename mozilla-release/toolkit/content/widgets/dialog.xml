@@ -3,13 +3,17 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<!DOCTYPE bindings [
+  <!ENTITY % globalKeysDTD SYSTEM "chrome://global/locale/globalKeys.dtd">
+  %globalKeysDTD;
+]>
 
 <bindings id="dialogBindings"
           xmlns="http://www.mozilla.org/xbl"
           xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
           xmlns:xbl="http://www.mozilla.org/xbl">
 
-  <binding id="dialog" extends="chrome://global/content/bindings/general.xml#root-element">
+  <binding id="dialog">
     <resources>
       <stylesheet src="chrome://global/skin/dialog.css"/>
     </resources>
@@ -40,6 +44,16 @@
         <xul:button dlgtype="disclosure" class="dialog-button" hidden="true"/>
 #endif
       </xul:hbox>
+
+    <xul:keyset>
+      <xul:key phase="capturing" oncommand="document.documentElement.openHelp(event)"
+#ifdef XP_MACOSX
+           key="&openHelpMac.commandkey;" modifiers="accel"/>
+#else
+           keycode="&openHelp.commandkey;"/>
+#endif
+    </xul:keyset>
+
     </content>
 
     <implementation>
@@ -58,7 +72,7 @@
         <![CDATA[
           if (this.hasAttribute("defaultButton"))
             return this.getAttribute("defaultButton");
-          return "accept";  // default to the accept button
+          return "accept"; // default to the accept button
         ]]>
         </getter>
         <setter>
@@ -176,8 +190,12 @@
                        focusedElt.getAttribute("noinitialfocus") == "true") {
                   document.commandDispatcher.advanceFocusIntoSubtree(focusedElt);
                   focusedElt = document.commandDispatcher.focusedElement;
-                  if (focusedElt == initialFocusedElt)
+                  if (focusedElt == initialFocusedElt) {
+                    if (focusedElt.getAttribute("noinitialfocus") == "true") {
+                      focusedElt.blur();
+                    }
                     break;
+                  }
                 }
 
                 if (initialFocusedElt.localName == "tab") {
@@ -205,15 +223,29 @@
         </body>
       </method>
 
+      <method name="openHelp">
+        <parameter name="event"/>
+        <body>
+        <![CDATA[
+          var helpButton = document.documentElement.getButton("help");
+          if (helpButton.disabled || helpButton.hidden)
+            return;
+          this._fireButtonEvent("help");
+          event.stopPropagation();
+          event.preventDefault();
+        ]]>
+        </body>
+      </method>
+
       <property name="mStrBundle">
         <getter>
         <![CDATA[
           if (!this._mStrBundle) {
             // need to create string bundle manually instead of using <xul:stringbundle/>
             // see bug 63370 for details
-            this._mStrBundle = Components.classes["@mozilla.org/intl/stringbundle;1"]
-                                         .getService(Components.interfaces.nsIStringBundleService)
-                                         .createBundle("chrome://global/locale/dialog.properties");
+            this._mStrBundle = Cc["@mozilla.org/intl/stringbundle;1"]
+                                 .getService(Ci.nsIStringBundleService)
+                                 .createBundle("chrome://global/locale/dialog.properties");
           }
           return this._mStrBundle;
         ]]></getter>
@@ -310,7 +342,7 @@
             if (/Win/.test(navigator.platform)) {
               var spacer = document.getAnonymousElementByAttribute(this, "anonid", "spacer");
               spacer.removeAttribute("hidden");
-              spacer.setAttribute("flex", shown["extra2"] ? "1" : "0");
+              spacer.setAttribute("flex", shown.extra2 ? "1" : "0");
             }
           }
         ]]>
@@ -388,6 +420,7 @@
           if (handler != "") {
             var fn = new Function("event", handler);
             var returned = fn(event);
+            // eslint-disable-next-line mozilla/no-compare-against-boolean-literals
             if (returned == false)
               noCancel = false;
           }
@@ -426,21 +459,11 @@
       <handler event="focus" phase="capturing">
         var btn = this.getButton(this.defaultButton);
         if (btn)
-          btn.setAttribute("default", event.originalTarget == btn || !(event.originalTarget instanceof Components.interfaces.nsIDOMXULButtonElement));
+          btn.setAttribute("default", event.originalTarget == btn || !(event.originalTarget instanceof Ci.nsIDOMXULButtonElement));
       </handler>
 #endif
     </handlers>
 
-  </binding>
-
-  <binding id="dialogheader">
-    <resources>
-      <stylesheet src="chrome://global/skin/dialog.css"/>
-    </resources>
-    <content>
-      <xul:label class="dialogheader-title" xbl:inherits="value=title,crop" crop="right" flex="1"/>
-      <xul:label class="dialogheader-description" xbl:inherits="value=description"/>
-    </content>
   </binding>
 
 </bindings>

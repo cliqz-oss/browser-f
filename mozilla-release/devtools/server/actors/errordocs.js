@@ -39,7 +39,7 @@ const ErrorDocs = {
   JSMSG_NO_PROPERTIES: "No_properties",
   JSMSG_ALREADY_HAS_PRAGMA: "Already_has_pragma",
   JSMSG_BAD_RETURN_OR_YIELD: "Bad_return_or_yield",
-  JSMSG_SEMI_BEFORE_STMNT: "Missing_semicolon_before_statement",
+  JSMSG_UNEXPECTED_TOKEN_NO_EXPECT: "Missing_semicolon_before_statement",
   JSMSG_OVER_RECURSED: "Too_much_recursion",
   JSMSG_BRACKET_AFTER_LIST: "Missing_bracket_after_list",
   JSMSG_PAREN_AFTER_ARGS: "Missing_parenthesis_after_argument_list",
@@ -73,7 +73,6 @@ const ErrorDocs = {
   JSMSG_GETTER_ONLY: "Getter_only",
   JSMSG_INVALID_DATE: "Invalid_date",
   JSMSG_DEPRECATED_STRING_METHOD: "Deprecated_String_generics",
-  JSMSG_DEPRECATED_TOLOCALEFORMAT: "Deprecated_toLocaleFormat",
   JSMSG_RESERVED_ID: "Reserved_identifier",
   JSMSG_BAD_CONST_ASSIGN: "Invalid_const_assignment",
   JSMSG_BAD_CONST_DECL: "Missing_initializer_in_const",
@@ -82,6 +81,10 @@ const ErrorDocs = {
   JSMSG_DEPRECATED_DELETE_OPERAND: "Delete_in_strict_mode",
   JSMSG_MISSING_FORMAL: "Missing_formal_parameter",
   JSMSG_CANT_TRUNCATE_ARRAY: "Non_configurable_array_element",
+  JSMSG_INCOMPATIBLE_PROTO: "Called_on_incompatible_type",
+  JSMSG_INCOMPATIBLE_METHOD: "Called_on_incompatible_type",
+  JSMSG_BAD_INSTANCEOF_RHS: "invalid_right_hand_side_instanceof_operand",
+  JSMSG_EMPTY_ARRAY_REDUCE: "Reduce_of_empty_array_with_no_initial_value",
 };
 
 const MIXED_CONTENT_LEARN_MORE = "https://developer.mozilla.org/docs/Web/Security/Mixed_content";
@@ -91,6 +94,7 @@ const PUBLIC_KEY_PINS_LEARN_MORE = "https://developer.mozilla.org/docs/Web/HTTP/
 const STRICT_TRANSPORT_SECURITY_LEARN_MORE = "https://developer.mozilla.org/docs/Web/HTTP/Headers/Strict-Transport-Security";
 const WEAK_SIGNATURE_ALGORITHM_LEARN_MORE = "https://developer.mozilla.org/docs/Web/Security/Weak_Signature_Algorithm";
 const MIME_TYPE_MISMATCH_LEARN_MORE = "https://developer.mozilla.org/docs/Web/HTTP/Headers/X-Content-Type-Options";
+const SOURCE_MAP_LEARN_MORE = "https://developer.mozilla.org/en-US/docs/Tools/Debugger/Source_map_errors";
 const ErrorCategories = {
   "Insecure Password Field": INSECURE_PASSWORDS_LEARN_MORE,
   "Mixed Content Message": MIXED_CONTENT_LEARN_MORE,
@@ -100,6 +104,7 @@ const ErrorCategories = {
   "SHA-1 Signature": WEAK_SIGNATURE_ALGORITHM_LEARN_MORE,
   "Tracking Protection": TRACKING_PROTECTION_LEARN_MORE,
   "MIMEMISMATCH": MIME_TYPE_MISMATCH_LEARN_MORE,
+  "source map": SOURCE_MAP_LEARN_MORE,
 };
 
 exports.GetURL = (error) => {

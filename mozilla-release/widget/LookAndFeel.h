@@ -156,6 +156,20 @@ public:
     //inactive light hightlight
     eColorID__moz_mac_secondaryhighlight,
 
+    // Font smoothing background colors needed by the Mac OS X theme, based
+    // on -moz-appearance names
+    eColorID__moz_mac_vibrancy_light,
+    eColorID__moz_mac_vibrancy_dark,
+    eColorID__moz_mac_vibrant_titlebar_light,
+    eColorID__moz_mac_vibrant_titlebar_dark,
+    eColorID__moz_mac_menupopup,
+    eColorID__moz_mac_menuitem,
+    eColorID__moz_mac_active_menuitem,
+    eColorID__moz_mac_source_list,
+    eColorID__moz_mac_source_list_selection,
+    eColorID__moz_mac_active_source_list_selection,
+    eColorID__moz_mac_tooltip,
+
     // vista rebars
 
     // accent color for title bar
@@ -376,22 +390,6 @@ public:
      */
     eIntID_SwipeAnimationEnabled,
 
-    /*
-     * A Boolean value to determine whether we have a color picker available
-     * for <input type="color"> to hook into.
-     *
-     * This lets us selectively enable the style for <input type="color">
-     * based on whether it's functional or not.
-     */
-    eIntID_ColorPickerAvailable,
-
-    /*
-     * A boolean value indicating whether or not the device has a hardware
-     * home button. Used on gaia to determine whether a home button
-     * is shown.
-     */
-     eIntID_PhysicalHomeButton,
-
      /*
       * Controls whether overlay scrollbars display when the user moves
       * the mouse in a scrollable frame.
@@ -409,7 +407,31 @@ public:
       * on open.
       */
      eIntID_ContextMenuOffsetVertical,
-     eIntID_ContextMenuOffsetHorizontal
+     eIntID_ContextMenuOffsetHorizontal,
+
+     /*
+      * A boolean value indicating whether client-side decorations are
+      * supported by the user's GTK version.
+      */
+     eIntID_GTKCSDAvailable,
+
+     /*
+      * A boolean value indicating whether client-side decorations should
+      * contain a minimize button.
+      */
+     eIntID_GTKCSDMinimizeButton,
+
+     /*
+      * A boolean value indicating whether client-side decorations should
+      * contain a maximize button.
+      */
+     eIntID_GTKCSDMaximizeButton,
+
+     /*
+      * A boolean value indicating whether client-side decorations should
+      * contain a close button.
+      */
+     eIntID_GTKCSDCloseButton
   };
 
   /**

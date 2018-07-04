@@ -13,7 +13,7 @@
 #include "mozilla/dom/EventTarget.h"
 #include "nsCOMPtr.h"
 #include "nsRect.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 
 class nsIContent;
 
@@ -212,9 +212,6 @@ public:
     return result;
   }
 
-  /// The possible related target
-  nsCOMPtr<dom::EventTarget> mRelatedTarget;
-
   bool mFromRaise;
   bool mIsRefocus;
 
@@ -222,7 +219,6 @@ public:
   {
     AssignUIEventData(aEvent, aCopyTargets);
 
-    mRelatedTarget = aCopyTargets ? aEvent.mRelatedTarget : nullptr;
     mFromRaise = aEvent.mFromRaise;
     mIsRefocus = aEvent.mIsRefocus;
   }
@@ -245,6 +241,11 @@ public:
     , mElapsedTime(0.0)
   {
   }
+
+  InternalTransitionEvent(const InternalTransitionEvent& aOther) = delete;
+  InternalTransitionEvent& operator=(const InternalTransitionEvent& aOther) = delete;
+  InternalTransitionEvent(InternalTransitionEvent&& aOther) = default;
+  InternalTransitionEvent& operator=(InternalTransitionEvent&& aOther) = default;
 
   virtual WidgetEvent* Duplicate() const override
   {
@@ -289,6 +290,11 @@ public:
     , mElapsedTime(0.0)
   {
   }
+
+  InternalAnimationEvent(const InternalAnimationEvent& aOther) = delete;
+  InternalAnimationEvent& operator=(const InternalAnimationEvent& aOther) = delete;
+  InternalAnimationEvent(InternalAnimationEvent&& aOther) = default;
+  InternalAnimationEvent& operator=(InternalAnimationEvent&& aOther) = default;
 
   virtual WidgetEvent* Duplicate() const override
   {

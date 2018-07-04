@@ -15,7 +15,11 @@ namespace mozilla {
 class CDMProxy;
 struct GMPVideoDecoderParams;
 
-class ChromiumCDMVideoDecoder : public MediaDataDecoder
+DDLoggedTypeDeclNameAndBase(ChromiumCDMVideoDecoder, MediaDataDecoder);
+
+class ChromiumCDMVideoDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<ChromiumCDMVideoDecoder>
 {
 public:
   ChromiumCDMVideoDecoder(const GMPVideoDecoderParams& aParams,
@@ -26,7 +30,7 @@ public:
   RefPtr<FlushPromise> Flush() override;
   RefPtr<DecodePromise> Drain() override;
   RefPtr<ShutdownPromise> Shutdown() override;
-  const char* GetDescriptionName() const override;
+  nsCString GetDescriptionName() const override;
   ConversionRequired NeedsConversion() const override;
 
 private:

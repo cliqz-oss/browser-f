@@ -15,7 +15,7 @@
 #include "nsBoundingMetrics.h"          // for nsBoundingMetrics
 #include "nsDebug.h"                    // for NS_ERROR
 #include "nsDeviceContext.h"            // for nsDeviceContext
-#include "nsIAtom.h"                    // for nsIAtom
+#include "nsAtom.h"                    // for nsAtom
 #include "nsMathUtils.h"                // for NS_round
 #include "nsString.h"                   // for nsString
 #include "nsStyleConsts.h"              // for StyleHyphens::None
@@ -84,26 +84,26 @@ private:
 class StubPropertyProvider final : public gfxTextRun::PropertyProvider {
 public:
     void GetHyphenationBreaks(gfxTextRun::Range aRange,
-                              gfxTextRun::HyphenType* aBreakBefore) const {
+                              gfxTextRun::HyphenType* aBreakBefore) const override {
         NS_ERROR("This shouldn't be called because we never call BreakAndMeasureText");
     }
-    mozilla::StyleHyphens GetHyphensOption() const {
+    mozilla::StyleHyphens GetHyphensOption() const override {
         NS_ERROR("This shouldn't be called because we never call BreakAndMeasureText");
         return mozilla::StyleHyphens::None;
     }
-    gfxFloat GetHyphenWidth() const {
+    gfxFloat GetHyphenWidth() const override {
         NS_ERROR("This shouldn't be called because we never enable hyphens");
         return 0;
     }
-    already_AddRefed<mozilla::gfx::DrawTarget> GetDrawTarget() const {
+    already_AddRefed<mozilla::gfx::DrawTarget> GetDrawTarget() const override {
         NS_ERROR("This shouldn't be called because we never enable hyphens");
         return nullptr;
     }
-    uint32_t GetAppUnitsPerDevUnit() const {
+    uint32_t GetAppUnitsPerDevUnit() const override {
         NS_ERROR("This shouldn't be called because we never enable hyphens");
         return 60;
     }
-    void GetSpacing(gfxTextRun::Range aRange, Spacing* aSpacing) const {
+    void GetSpacing(gfxTextRun::Range aRange, Spacing* aSpacing) const override {
         NS_ERROR("This shouldn't be called because we never enable spacing");
     }
 };
@@ -134,11 +134,11 @@ nsFontMetrics::nsFontMetrics(const nsFont& aFont, const Params& aParams,
                        aFont.synthesis & NS_FONT_SYNTHESIS_STYLE,
                        aFont.languageOverride);
 
-    aFont.AddFontFeaturesToStyle(&style);
+    aFont.AddFontFeaturesToStyle(&style, mOrientation == gfxFont::eVertical);
     aFont.AddFontVariationsToStyle(&style);
 
     gfxFloat devToCssSize = gfxFloat(mP2A) /
-        gfxFloat(mDeviceContext->AppUnitsPerCSSPixel());
+        gfxFloat(nsDeviceContext::AppUnitsPerCSSPixel());
     mFontGroup = gfxPlatform::GetPlatform()->
         CreateFontGroup(aFont.fontlist, &style, aParams.textPerf,
                         aParams.userFontSet, devToCssSize);
@@ -307,7 +307,7 @@ int32_t
 nsFontMetrics::GetMaxStringLength()
 {
     const gfxFont::Metrics& m = GetMetrics();
-    const double x = 32767.0 / m.maxAdvance;
+    const double x = 32767.0 / std::max(1.0, m.maxAdvance);
     int32_t len = (int32_t)floor(x);
     return std::max(1, len);
 }
@@ -364,7 +364,7 @@ nsFontMetrics::DrawString(const char *aString, uint32_t aLength,
     if (!textRun.get()) {
         return;
     }
-    gfxPoint pt(aX, aY);
+    gfx::Point pt(aX, aY);
     Range range(0, aLength);
     if (mTextRunRTL) {
         if (mVertical) {
@@ -392,7 +392,7 @@ nsFontMetrics::DrawString(const char16_t* aString, uint32_t aLength,
     if (!textRun.get()) {
         return;
     }
-    gfxPoint pt(aX, aY);
+    gfx::Point pt(aX, aY);
     Range range(0, aLength);
     if (mTextRunRTL) {
         if (mVertical) {
@@ -445,4 +445,3 @@ nsFontMetrics::GetInkBoundsForVisualOverflow(const char16_t *aString, uint32_t a
   return GetTextBoundingMetrics(this, aString, aLength, aDrawTarget,
                                 gfxFont::LOOSE_INK_EXTENTS);
 }
-

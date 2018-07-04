@@ -15,9 +15,9 @@ function run_test() {
   }.toString());
 
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-grips",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_named_function();
                            });
@@ -26,17 +26,17 @@ function run_test() {
 }
 
 function test_named_function() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
     let args = packet.frame.arguments;
 
-    do_check_eq(args[0].class, "Function");
-    do_check_eq(args[0].name, "stopMe");
-    do_check_eq(args[0].displayName, "stopMe");
+    Assert.equal(args[0].class, "Function");
+    Assert.equal(args[0].name, "stopMe");
+    Assert.equal(args[0].displayName, "stopMe");
 
     let objClient = gThreadClient.pauseGrip(args[0]);
-    objClient.getParameterNames(function (response) {
-      do_check_eq(response.parameterNames.length, 1);
-      do_check_eq(response.parameterNames[0], "arg1");
+    objClient.getParameterNames(function(response) {
+      Assert.equal(response.parameterNames.length, 1);
+      Assert.equal(response.parameterNames[0], "arg1");
 
       gThreadClient.resume(test_inferred_name_function);
     });
@@ -46,20 +46,20 @@ function test_named_function() {
 }
 
 function test_inferred_name_function() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
     let args = packet.frame.arguments;
 
-    do_check_eq(args[0].class, "Function");
+    Assert.equal(args[0].class, "Function");
     // No name for an anonymous function, but it should have an inferred name.
-    do_check_eq(args[0].name, undefined);
-    do_check_eq(args[0].displayName, "m");
+    Assert.equal(args[0].name, undefined);
+    Assert.equal(args[0].displayName, "m");
 
     let objClient = gThreadClient.pauseGrip(args[0]);
-    objClient.getParameterNames(function (response) {
-      do_check_eq(response.parameterNames.length, 3);
-      do_check_eq(response.parameterNames[0], "foo");
-      do_check_eq(response.parameterNames[1], "bar");
-      do_check_eq(response.parameterNames[2], "baz");
+    objClient.getParameterNames(function(response) {
+      Assert.equal(response.parameterNames.length, 3);
+      Assert.equal(response.parameterNames[0], "foo");
+      Assert.equal(response.parameterNames[1], "bar");
+      Assert.equal(response.parameterNames[2], "baz");
 
       gThreadClient.resume(test_anonymous_function);
     });
@@ -69,22 +69,22 @@ function test_inferred_name_function() {
 }
 
 function test_anonymous_function() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
     let args = packet.frame.arguments;
 
-    do_check_eq(args[0].class, "Function");
+    Assert.equal(args[0].class, "Function");
     // No name for an anonymous function, and no inferred name, either.
-    do_check_eq(args[0].name, undefined);
-    do_check_eq(args[0].displayName, undefined);
+    Assert.equal(args[0].name, undefined);
+    Assert.equal(args[0].displayName, undefined);
 
     let objClient = gThreadClient.pauseGrip(args[0]);
-    objClient.getParameterNames(function (response) {
-      do_check_eq(response.parameterNames.length, 3);
-      do_check_eq(response.parameterNames[0], "foo");
-      do_check_eq(response.parameterNames[1], "bar");
-      do_check_eq(response.parameterNames[2], "baz");
+    objClient.getParameterNames(function(response) {
+      Assert.equal(response.parameterNames.length, 3);
+      Assert.equal(response.parameterNames[0], "foo");
+      Assert.equal(response.parameterNames[1], "bar");
+      Assert.equal(response.parameterNames[2], "baz");
 
-      gThreadClient.resume(function () {
+      gThreadClient.resume(function() {
         finishClient(gClient);
       });
     });

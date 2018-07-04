@@ -37,7 +37,7 @@ const gCertificateDialogs = {
     ok(false, "viewCert() should not have been called");
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsICertificateDialogs])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsICertificateDialogs])
 };
 
 var gMockPrompter = {
@@ -53,7 +53,7 @@ var gMockPrompter = {
       return false;
     }
     equal(text,
-          "Please enter the master password for the Software Security Device.",
+          "Please enter your master password.",
           "password prompt text should be as expected");
     equal(checkMsg, null, "checkMsg should be null");
     ok(this.passwordToTry, "passwordToTry should be non-null");
@@ -61,7 +61,7 @@ var gMockPrompter = {
     return true;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPrompt]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPrompt]),
 
   // Again with the arrow function issue.
   getInterface(iid) {
@@ -100,7 +100,7 @@ function run_test() {
   let certificateDialogsCID =
     MockRegistrar.register("@mozilla.org/nsCertificateDialogs;1",
                            gCertificateDialogs);
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     MockRegistrar.unregister(certificateDialogsCID);
   });
 

@@ -6,15 +6,16 @@
 
 #include "TrackBuffersManager.h"
 #include "ContainerParser.h"
-#include "MediaPrefs.h"
 #include "MediaSourceDemuxer.h"
 #include "MediaSourceUtils.h"
+#include "mozilla/ErrorResult.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/StateMirroring.h"
-#include "SourceBufferResource.h"
+#include "mozilla/StaticPrefs.h"
+#include "nsMimeTypes.h"
 #include "SourceBuffer.h"
-#include "WebMDemuxer.h"
+#include "SourceBufferResource.h"
 #include "SourceBufferTask.h"
+#include "WebMDemuxer.h"
 
 #ifdef MOZ_FMP4
 #include "MP4Demuxer.h"
@@ -24,15 +25,33 @@
 
 extern mozilla::LogModule* GetMediaSourceLog();
 
-#define MSE_DEBUG(arg, ...) MOZ_LOG(GetMediaSourceLog(), mozilla::LogLevel::Debug, ("TrackBuffersManager(%p:%s)::%s: " arg, this, mType.OriginalString().Data(), __func__, ##__VA_ARGS__))
-#define MSE_DEBUGV(arg, ...) MOZ_LOG(GetMediaSourceLog(), mozilla::LogLevel::Verbose, ("TrackBuffersManager(%p:%s)::%s: " arg, this, mType.OriginalString().Data(), __func__, ##__VA_ARGS__))
+#define MSE_DEBUG(arg, ...)                                                    \
+  DDMOZ_LOG(GetMediaSourceLog(),                                               \
+            mozilla::LogLevel::Debug,                                          \
+            "(%s)::%s: " arg,                                                  \
+            mType.OriginalString().Data(),                                     \
+            __func__,                                                          \
+            ##__VA_ARGS__)
+#define MSE_DEBUGV(arg, ...)                                                   \
+  DDMOZ_LOG(GetMediaSourceLog(),                                               \
+            mozilla::LogLevel::Verbose,                                        \
+            "(%s)::%s: " arg,                                                  \
+            mType.OriginalString().Data(),                                     \
+            __func__,                                                          \
+            ##__VA_ARGS__)
 
 mozilla::LogModule* GetMediaSourceSamplesLog()
 {
   static mozilla::LazyLogModule sLogModule("MediaSourceSamples");
   return sLogModule;
 }
-#define SAMPLE_DEBUG(arg, ...) MOZ_LOG(GetMediaSourceSamplesLog(), mozilla::LogLevel::Debug, ("TrackBuffersManager(%p:%s)::%s: " arg, this, mType.OriginalString().Data(), __func__, ##__VA_ARGS__))
+#define SAMPLE_DEBUG(arg, ...)                                                 \
+  DDMOZ_LOG(GetMediaSourceSamplesLog(),                                        \
+            mozilla::LogLevel::Debug,                                          \
+            "(%s)::%s: " arg,                                                  \
+            mType.OriginalString().Data(),                                     \
+            __func__,                                                          \
+            ##__VA_ARGS__)
 
 namespace mozilla {
 
@@ -41,16 +60,17 @@ using media::TimeUnit;
 using media::TimeInterval;
 using media::TimeIntervals;
 typedef SourceBufferTask::AppendBufferResult AppendBufferResult;
+typedef SourceBufferAttributes::AppendState AppendState;
 
 static const char*
-AppendStateToStr(SourceBufferAttributes::AppendState aState)
+AppendStateToStr(AppendState aState)
 {
   switch (aState) {
-    case SourceBufferAttributes::AppendState::WAITING_FOR_SEGMENT:
+    case AppendState::WAITING_FOR_SEGMENT:
       return "WAITING_FOR_SEGMENT";
-    case SourceBufferAttributes::AppendState::PARSING_INIT_SEGMENT:
+    case AppendState::PARSING_INIT_SEGMENT:
       return "PARSING_INIT_SEGMENT";
-    case SourceBufferAttributes::AppendState::PARSING_MEDIA_SEGMENT:
+    case AppendState::PARSING_MEDIA_SEGMENT:
       return "PARSING_MEDIA_SEGMENT";
     default:
       return "IMPOSSIBLE";
@@ -91,25 +111,30 @@ TrackBuffersManager::TrackBuffersManager(MediaSourceDecoder* aParentDecoder,
   : mInputBuffer(new MediaByteBuffer)
   , mBufferFull(false)
   , mFirstInitializationSegmentReceived(false)
+  , mChangeTypeReceived(false)
   , mNewMediaSegmentStarted(false)
   , mActiveTrack(false)
   , mType(aType)
   , mParser(ContainerParser::CreateForMIMEType(aType))
   , mProcessedInput(0)
-  , mTaskQueue(aParentDecoder->GetDemuxer()->GetTaskQueue())
-  , mParentDecoder(
-      new nsMainThreadPtrHolder<MediaSourceDecoder>(
-        "TrackBuffersManager::mParentDecoder", aParentDecoder, false /* strict */))
+  , mParentDecoder(new nsMainThreadPtrHolder<MediaSourceDecoder>(
+      "TrackBuffersManager::mParentDecoder",
+      aParentDecoder,
+      false /* strict */))
   , mAbstractMainThread(aParentDecoder->AbstractMainThread())
   , mEnded(false)
-  , mVideoEvictionThreshold(Preferences::GetUint("media.mediasource.eviction_threshold.video",
-                                                 100 * 1024 * 1024))
-  , mAudioEvictionThreshold(Preferences::GetUint("media.mediasource.eviction_threshold.audio",
-                                                 20 * 1024 * 1024))
+  , mVideoEvictionThreshold(
+      Preferences::GetUint("media.mediasource.eviction_threshold.video",
+                           100 * 1024 * 1024))
+  , mAudioEvictionThreshold(
+      Preferences::GetUint("media.mediasource.eviction_threshold.audio",
+                           20 * 1024 * 1024))
   , mEvictionState(EvictionState::NO_EVICTION_NEEDED)
-  , mMonitor("TrackBuffersManager")
+  , mMutex("TrackBuffersManager")
+  , mTaskQueue(aParentDecoder->GetDemuxer()->GetTaskQueue())
 {
   MOZ_ASSERT(NS_IsMainThread(), "Must be instanciated on the main thread");
+  DDLINKCHILD("parser", mParser.get());
 }
 
 TrackBuffersManager::~TrackBuffersManager()
@@ -127,8 +152,12 @@ TrackBuffersManager::AppendData(already_AddRefed<MediaByteBuffer> aData,
 
   mEnded = false;
 
-  return InvokeAsync(GetTaskQueue(), this, __func__,
-    &TrackBuffersManager::DoAppendData, data.forget(), aAttributes);
+  return InvokeAsync(static_cast<AbstractThread*>(GetTaskQueueSafe().get()),
+                     this,
+                     __func__,
+                     &TrackBuffersManager::DoAppendData,
+                     data.forget(),
+                     aAttributes);
 }
 
 RefPtr<TrackBuffersManager::AppendPromise>
@@ -145,15 +174,29 @@ TrackBuffersManager::DoAppendData(already_AddRefed<MediaByteBuffer> aData,
 void
 TrackBuffersManager::QueueTask(SourceBufferTask* aTask)
 {
-  if (!OnTaskQueue()) {
-    GetTaskQueue()->Dispatch(NewRunnableMethod<RefPtr<SourceBufferTask>>(
-      "TrackBuffersManager::QueueTask",
-      this,
-      &TrackBuffersManager::QueueTask,
-      aTask));
+  // The source buffer is a wrapped native, it would be unlinked twice and so
+  // the TrackBuffersManager::Detach() would also be called twice. Since the
+  // detach task has been done before, we could ignore this task.
+  RefPtr<AutoTaskQueue> taskQueue = GetTaskQueueSafe();
+  if (!taskQueue) {
+    MOZ_ASSERT(aTask->GetType() == SourceBufferTask::Type::Detach,
+               "only detach task could happen here!");
+    MSE_DEBUG("Could not queue the task '%s' without task queue",
+              aTask->GetTypeName());
     return;
   }
-  MOZ_ASSERT(OnTaskQueue());
+
+  if (!taskQueue->IsCurrentThreadIn()) {
+    nsresult rv =
+        taskQueue->Dispatch(NewRunnableMethod<RefPtr<SourceBufferTask>>(
+        "TrackBuffersManager::QueueTask",
+        this,
+        &TrackBuffersManager::QueueTask,
+        aTask));
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+    Unused << rv;
+    return;
+  }
   mQueue.Push(aTask);
   ProcessTasks();
 }
@@ -161,6 +204,27 @@ TrackBuffersManager::QueueTask(SourceBufferTask* aTask)
 void
 TrackBuffersManager::ProcessTasks()
 {
+  // ProcessTask is always called OnTaskQueue, however it is possible that it is
+  // called once again after a first Detach task has run, in which case
+  // mTaskQueue would be null.
+  // This can happen under two conditions:
+  // 1- Two Detach tasks were queued in a row due to a double cycle collection.
+  // 2- An call to ProcessTasks() had queued another run of ProcessTasks while
+  //    a Detach task is pending.
+  // We handle these two cases by aborting early.
+  // A second Detach task was queued, prior the first one running, ignore it.
+  if (!mTaskQueue) {
+    RefPtr<SourceBufferTask> task = mQueue.Pop();
+    if (!task) {
+      return;
+    }
+    MOZ_RELEASE_ASSERT(task->GetType() == SourceBufferTask::Type::Detach,
+                       "only detach task could happen here!");
+    MSE_DEBUG("Could not process the task '%s' after detached",
+              task->GetTypeName());
+    return;
+  }
+
   MOZ_ASSERT(OnTaskQueue());
   typedef SourceBufferTask::Type Type;
 
@@ -174,6 +238,8 @@ TrackBuffersManager::ProcessTasks()
     // nothing to do.
     return;
   }
+
+  MSE_DEBUG("Process task '%s'", task->GetTypeName());
   switch (task->GetType()) {
     case Type::AppendBuffer:
       mCurrentTask = task;
@@ -208,14 +274,25 @@ TrackBuffersManager::ProcessTasks()
       break;
     case Type::Detach:
       mCurrentInputBuffer = nullptr;
-      mTaskQueue = nullptr;
       MOZ_DIAGNOSTIC_ASSERT(mQueue.Length() == 0,
                             "Detach task must be the last");
+      mVideoTracks.Reset();
+      mAudioTracks.Reset();
+      ShutdownDemuxers();
+      ResetTaskQueue();
       return;
+    case Type::ChangeType:
+      MOZ_RELEASE_ASSERT(!mCurrentTask);
+      mType = task->As<ChangeTypeTask>()->mType;
+      mChangeTypeReceived = true;
+      mInitData = nullptr;
+      CompleteResetParserState();
+      CreateDemuxerforMIMEType();
+      break;
     default:
       NS_WARNING("Invalid Task");
   }
-  GetTaskQueue()->Dispatch(
+  TaskQueueFromTaskQueue()->Dispatch(
     NewRunnableMethod("TrackBuffersManager::ProcessTasks",
                       this,
                       &TrackBuffersManager::ProcessTasks));
@@ -266,7 +343,9 @@ TrackBuffersManager::RangeRemoval(TimeUnit aStart, TimeUnit aEnd)
 
   mEnded = false;
 
-  return InvokeAsync(GetTaskQueue(), this, __func__,
+  return InvokeAsync(static_cast<AbstractThread*>(GetTaskQueueSafe().get()),
+                     this,
+                     __func__,
                      &TrackBuffersManager::CodedFrameRemovalWithPromise,
                      TimeInterval(aStart, aEnd));
 }
@@ -315,6 +394,15 @@ TrackBuffersManager::EvictData(const TimeUnit& aPlaybackTime, int64_t aSize)
   return result;
 }
 
+void
+TrackBuffersManager::ChangeType(const MediaContainerType& aType)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  QueueTask(new ChangeTypeTask(aType));
+}
+
+
 TimeIntervals
 TrackBuffersManager::Buffered() const
 {
@@ -322,7 +410,7 @@ TrackBuffersManager::Buffered() const
 
   // http://w3c.github.io/media-source/index.html#widl-SourceBuffer-buffered
 
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock mut(mMutex);
   nsTArray<const TimeIntervals*> tracks;
   if (HasVideo()) {
     tracks.AppendElement(&mVideoBufferedRanges);
@@ -405,10 +493,13 @@ TrackBuffersManager::CompleteResetParserState()
   }
 
   // We could be left with a demuxer in an unusable state. It needs to be
-  // recreated. We store in the InputBuffer an init segment which will be parsed
-  // during the next Segment Parser Loop and a new demuxer will be created and
-  // initialized.
-  if (mFirstInitializationSegmentReceived) {
+  // recreated. Unless we have a pending changeType operation, we store in the
+  // InputBuffer an init segment which will be parsed during the next Segment
+  // Parser Loop and a new demuxer will be created and initialized.
+  // If we are in the middle of a changeType operation, then we do not have an
+  // init segment yet. The next appendBuffer operation will need to provide such
+  // init segment.
+  if (mFirstInitializationSegmentReceived && !mChangeTypeReceived) {
     MOZ_ASSERT(mInitData && mInitData->Length(), "we must have an init segment");
     // The aim here is really to destroy our current demuxer.
     CreateDemuxerforMIMEType();
@@ -416,8 +507,10 @@ TrackBuffersManager::CompleteResetParserState()
     // to mInputBuffer as it will get modified in the Segment Parser Loop.
     mInputBuffer = new MediaByteBuffer;
     mInputBuffer->AppendElements(*mInitData);
+    RecreateParser(true);
+  } else {
+    RecreateParser(false);
   }
-  RecreateParser(true);
 }
 
 int64_t
@@ -606,7 +699,7 @@ TrackBuffersManager::CodedFrameRemoval(TimeInterval aInterval)
 void
 TrackBuffersManager::UpdateBufferedRanges()
 {
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock mut(mMutex);
 
   mVideoBufferedRanges = mVideoTracks.mSanitizedBufferedRanges;
   mAudioBufferedRanges = mAudioTracks.mSanitizedBufferedRanges;
@@ -651,7 +744,7 @@ TrackBuffersManager::SegmentParserLoop()
       MediaResult haveInitSegment = mParser->IsInitSegmentPresent(mInputBuffer);
       if (NS_SUCCEEDED(haveInitSegment)) {
         SetAppendState(AppendState::PARSING_INIT_SEGMENT);
-        if (mFirstInitializationSegmentReceived) {
+        if (mFirstInitializationSegmentReceived && !mChangeTypeReceived) {
           // This is a new initialization segment. Obsolete the old one.
           RecreateParser(false);
         }
@@ -702,8 +795,12 @@ TrackBuffersManager::SegmentParserLoop()
       return;
     }
     if (mSourceBufferAttributes->GetAppendState() == AppendState::PARSING_MEDIA_SEGMENT) {
-      // 1. If the first initialization segment received flag is false, then run the append error algorithm with the decode error parameter set to true and abort this algorithm.
-      if (!mFirstInitializationSegmentReceived) {
+      // 1. If the first initialization segment received flag is false, then run
+      //    the append error algorithm with the decode error parameter set to
+      //    true and abort this algorithm.
+      //    Or we are in the process of changeType, in which case we must first
+      //    get an init segment before getting a media segment.
+      if (!mFirstInitializationSegmentReceived || mChangeTypeReceived) {
         RejectAppend(NS_ERROR_FAILURE, __func__);
         return;
       }
@@ -746,8 +843,9 @@ TrackBuffersManager::SegmentParserLoop()
       // 3. If the input buffer contains one or more complete coded frames, then run the coded frame processing algorithm.
       RefPtr<TrackBuffersManager> self = this;
       CodedFrameProcessing()
-        ->Then(GetTaskQueue(), __func__,
-               [self] (bool aNeedMoreData) {
+        ->Then(TaskQueueFromTaskQueue(),
+               __func__,
+               [self](bool aNeedMoreData) {
                  self->mProcessingRequest.Complete();
                  if (aNeedMoreData) {
                    self->NeedMoreData();
@@ -755,7 +853,7 @@ TrackBuffersManager::SegmentParserLoop()
                    self->ScheduleSegmentParserLoop();
                  }
                },
-               [self] (const MediaResult& aRejectValue) {
+               [self](const MediaResult& aRejectValue) {
                  self->mProcessingRequest.Complete();
                  self->RejectAppend(aRejectValue, __func__);
                })
@@ -796,7 +894,8 @@ TrackBuffersManager::RejectAppend(const MediaResult& aRejectValue, const char* a
 void
 TrackBuffersManager::ScheduleSegmentParserLoop()
 {
-  GetTaskQueue()->Dispatch(
+  MOZ_ASSERT(OnTaskQueue());
+  TaskQueueFromTaskQueue()->Dispatch(
     NewRunnableMethod("TrackBuffersManager::SegmentParserLoop",
                       this,
                       &TrackBuffersManager::SegmentParserLoop));
@@ -825,16 +924,18 @@ TrackBuffersManager::CreateDemuxerforMIMEType()
 {
   ShutdownDemuxers();
 
-  if (mType.Type() == MEDIAMIMETYPE("video/webm") ||
-      mType.Type() == MEDIAMIMETYPE("audio/webm")) {
+  if (mType.Type() == MEDIAMIMETYPE(VIDEO_WEBM) ||
+      mType.Type() == MEDIAMIMETYPE(AUDIO_WEBM)) {
     mInputDemuxer = new WebMDemuxer(mCurrentInputBuffer, true /* IsMediaSource*/ );
+    DDLINKCHILD("demuxer", mInputDemuxer.get());
     return;
   }
 
 #ifdef MOZ_FMP4
-  if (mType.Type() == MEDIAMIMETYPE("video/mp4")
-      || mType.Type() == MEDIAMIMETYPE("audio/mp4")) {
+  if (mType.Type() == MEDIAMIMETYPE(VIDEO_MP4) ||
+      mType.Type() == MEDIAMIMETYPE(AUDIO_MP4)) {
     mInputDemuxer = new MP4Demuxer(mCurrentInputBuffer);
+    DDLINKCHILD("demuxer", mInputDemuxer.get());
     return;
   }
 #endif
@@ -845,6 +946,7 @@ TrackBuffersManager::CreateDemuxerforMIMEType()
 void
 TrackBuffersManager::ResetDemuxingState()
 {
+  MOZ_ASSERT(OnTaskQueue());
   MOZ_ASSERT(mParser && mParser->HasInitData());
   RecreateParser(true);
   mCurrentInputBuffer = new SourceBufferResource();
@@ -858,7 +960,8 @@ TrackBuffersManager::ResetDemuxingState()
     return;
   }
   mInputDemuxer->Init()
-    ->Then(GetTaskQueue(), __func__,
+    ->Then(TaskQueueFromTaskQueue(),
+           __func__,
            this,
            &TrackBuffersManager::OnDemuxerResetDone,
            &TrackBuffersManager::OnDemuxerInitFailed)
@@ -871,7 +974,7 @@ TrackBuffersManager::OnDemuxerResetDone(const MediaResult& aResult)
   MOZ_ASSERT(OnTaskQueue());
   mDemuxerInitRequest.Complete();
 
-  if (NS_FAILED(aResult) && MediaPrefs::MediaWarningsAsErrors()) {
+  if (NS_FAILED(aResult) && StaticPrefs::MediaPlaybackWarningsAsErrors()) {
     RejectAppend(aResult, __func__);
     return;
   }
@@ -897,6 +1000,7 @@ TrackBuffersManager::OnDemuxerResetDone(const MediaResult& aResult)
     mVideoTracks.mDemuxer =
       mInputDemuxer->GetTrackDemuxer(TrackInfo::kVideoTrack, 0);
     MOZ_ASSERT(mVideoTracks.mDemuxer);
+    DDLINKCHILD("video demuxer", mVideoTracks.mDemuxer.get());
   }
 
   uint32_t numAudios = mInputDemuxer->GetNumberTracks(TrackInfo::kAudioTrack);
@@ -905,6 +1009,7 @@ TrackBuffersManager::OnDemuxerResetDone(const MediaResult& aResult)
     mAudioTracks.mDemuxer =
       mInputDemuxer->GetTrackDemuxer(TrackInfo::kAudioTrack, 0);
     MOZ_ASSERT(mAudioTracks.mDemuxer);
+    DDLINKCHILD("audio demuxer", mAudioTracks.mDemuxer.get());
   }
 
   if (mPendingInputBuffer) {
@@ -929,6 +1034,7 @@ TrackBuffersManager::AppendDataToCurrentInputBuffer(MediaByteBuffer* aData)
 void
 TrackBuffersManager::InitializationSegmentReceived()
 {
+  MOZ_ASSERT(OnTaskQueue());
   MOZ_ASSERT(mParser->HasCompleteInitData());
 
   int64_t endInit = mParser->InitSegmentRange().mEnd;
@@ -960,7 +1066,8 @@ TrackBuffersManager::InitializationSegmentReceived()
     return;
   }
   mInputDemuxer->Init()
-    ->Then(GetTaskQueue(), __func__,
+    ->Then(TaskQueueFromTaskQueue(),
+           __func__,
            this,
            &TrackBuffersManager::OnDemuxerInitDone,
            &TrackBuffersManager::OnDemuxerInitFailed)
@@ -975,7 +1082,7 @@ TrackBuffersManager::OnDemuxerInitDone(const MediaResult& aResult)
 
   mDemuxerInitRequest.Complete();
 
-  if (NS_FAILED(aResult) && MediaPrefs::MediaWarningsAsErrors()) {
+  if (NS_FAILED(aResult) && StaticPrefs::MediaPlaybackWarningsAsErrors()) {
     RejectAppend(aResult, __func__);
     return;
   }
@@ -988,6 +1095,7 @@ TrackBuffersManager::OnDemuxerInitDone(const MediaResult& aResult)
     mVideoTracks.mDemuxer =
       mInputDemuxer->GetTrackDemuxer(TrackInfo::kVideoTrack, 0);
     MOZ_ASSERT(mVideoTracks.mDemuxer);
+    DDLINKCHILD("video demuxer", mVideoTracks.mDemuxer.get());
     info.mVideo = *mVideoTracks.mDemuxer->GetInfo()->GetAsVideoInfo();
     info.mVideo.mTrackId = 2;
   }
@@ -998,6 +1106,7 @@ TrackBuffersManager::OnDemuxerInitDone(const MediaResult& aResult)
     mAudioTracks.mDemuxer =
       mInputDemuxer->GetTrackDemuxer(TrackInfo::kAudioTrack, 0);
     MOZ_ASSERT(mAudioTracks.mDemuxer);
+    DDLINKCHILD("audio demuxer", mAudioTracks.mDemuxer.get());
     info.mAudio = *mAudioTracks.mDemuxer->GetInfo()->GetAsAudioInfo();
     info.mAudio.mTrackId = 1;
   }
@@ -1026,13 +1135,17 @@ TrackBuffersManager::OnDemuxerInitDone(const MediaResult& aResult)
   if (mFirstInitializationSegmentReceived) {
     if (numVideos != mVideoTracks.mNumTracks ||
         numAudios != mAudioTracks.mNumTracks ||
-        (numVideos && info.mVideo.mMimeType != mVideoTracks.mInfo->mMimeType) ||
-        (numAudios && info.mAudio.mMimeType != mAudioTracks.mInfo->mMimeType)) {
+        (!mChangeTypeReceived &&
+         ((numVideos &&
+           info.mVideo.mMimeType != mVideoTracks.mInfo->mMimeType) ||
+          (numAudios &&
+           info.mAudio.mMimeType != mAudioTracks.mInfo->mMimeType)))) {
       RejectAppend(NS_ERROR_FAILURE, __func__);
       return;
     }
-    // 1. If more than one track for a single type are present (ie 2 audio tracks),
-    // then the Track IDs match the ones in the first initialization segment.
+    // 1. If more than one track for a single type are present (ie 2 audio
+    // tracks), then the Track IDs match the ones in the first initialization
+    // segment.
     // TODO
     // 2. Add the appropriate track descriptions from this initialization
     // segment to each of the track buffers.
@@ -1132,6 +1245,9 @@ TrackBuffersManager::OnDemuxerInitDone(const MediaResult& aResult)
     mVideoTracks.mLastInfo = new TrackInfoSharedPtr(info.mVideo, streamID);
   }
 
+  // We have now completed the changeType operation.
+  mChangeTypeReceived = false;
+
   UniquePtr<EncryptionInfo> crypto = mInputDemuxer->GetCrypto();
   if (crypto && crypto->IsEncrypted()) {
     // Try and dispatch 'encrypted'. Won't go if ready state still HAVE_NOTHING.
@@ -1148,7 +1264,7 @@ TrackBuffersManager::OnDemuxerInitDone(const MediaResult& aResult)
   }
 
   {
-    MonitorAutoLock mon(mMonitor);
+    MutexAutoLock mut(mMutex);
     mInfo = info;
   }
 
@@ -1236,9 +1352,9 @@ TrackBuffersManager::OnDemuxFailed(TrackType aTrack,
                                    const MediaResult& aError)
 {
   MOZ_ASSERT(OnTaskQueue());
-  MSE_DEBUG("Failed to demux %s, failure:%" PRIu32,
+  MSE_DEBUG("Failed to demux %s, failure:%s",
             aTrack == TrackType::kVideoTrack ? "video" : "audio",
-            static_cast<uint32_t>(aError.Code()));
+            aError.ErrorName().get());
   switch (aError.Code()) {
     case NS_ERROR_DOM_MEDIA_END_OF_STREAM:
     case NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA:
@@ -1263,7 +1379,9 @@ TrackBuffersManager::DoDemuxVideo()
     return;
   }
   mVideoTracks.mDemuxer->GetSamples(-1)
-    ->Then(GetTaskQueue(), __func__, this,
+    ->Then(TaskQueueFromTaskQueue(),
+           __func__,
+           this,
            &TrackBuffersManager::OnVideoDemuxCompleted,
            &TrackBuffersManager::OnVideoDemuxFailed)
     ->Track(mVideoTracks.mDemuxRequest);
@@ -1305,7 +1423,9 @@ TrackBuffersManager::DoDemuxAudio()
     return;
   }
   mAudioTracks.mDemuxer->GetSamples(-1)
-    ->Then(GetTaskQueue(), __func__, this,
+    ->Then(TaskQueueFromTaskQueue(),
+           __func__,
+           this,
            &TrackBuffersManager::OnAudioDemuxCompleted,
            &TrackBuffersManager::OnAudioDemuxFailed)
     ->Track(mAudioTracks.mDemuxRequest);
@@ -1488,12 +1608,15 @@ TrackBuffersManager::ProcessFrames(TrackBuffer& aSamples, TrackData& aTrackData)
   // Some videos do not exactly start at 0, but instead a small negative value.
   // To avoid evicting the starting frame of those videos, we allow a leeway
   // of +- mLongestFrameDuration on the append window start.
-  // We only apply the leeway with the default append window start of 0
-  // otherwise do as per spec.
+  // We only apply the leeway with the default append window start of 0 and
+  // append window end of infinity.
+  // Otherwise do as per spec.
   TimeInterval targetWindow =
-    mAppendWindow.mStart != TimeUnit::FromSeconds(0)
+    (mAppendWindow.mStart != TimeUnit::FromSeconds(0) ||
+     mAppendWindow.mEnd != TimeUnit::FromInfinity())
     ? mAppendWindow
-    : TimeInterval(mAppendWindow.mStart, mAppendWindow.mEnd,
+    : TimeInterval(mAppendWindow.mStart,
+                   mAppendWindow.mEnd,
                    trackBuffer.mLastFrameDuration.isSome()
                    ? trackBuffer.mLongestFrameDuration
                    : aSamples[0]->mDuration);
@@ -1775,8 +1898,8 @@ TrackBuffersManager::InsertFrames(TrackBuffer& aSamples,
 
   if (intersection.Length()) {
     if (aSamples[0]->mKeyframe &&
-        (mType.Type() == MEDIAMIMETYPE("video/webm")
-         || mType.Type() == MEDIAMIMETYPE("audio/webm"))) {
+        (mType.Type() == MEDIAMIMETYPE("video/webm") ||
+         mType.Type() == MEDIAMIMETYPE("audio/webm"))) {
       // We are starting a new GOP, we do not have to worry about breaking an
       // existing current coded frame group. Reset the next insertion index
       // so the search for when to start our frames removal can be exhaustive.
@@ -1839,7 +1962,7 @@ TrackBuffersManager::UpdateHighestTimestamp(TrackData& aTrackData,
                                             const media::TimeUnit& aHighestTime)
 {
   if (aHighestTime > aTrackData.mHighestStartTimestamp) {
-    MonitorAutoLock mon(mMonitor);
+    MutexAutoLock mut(mMutex);
     aTrackData.mHighestStartTimestamp = aHighestTime;
   }
 }
@@ -1933,7 +2056,7 @@ TrackBuffersManager::RemoveFrames(const TimeIntervals& aIntervals,
           aTrackData.mEvictionIndex.mLastIndex >= samplesRemoved &&
           aTrackData.mEvictionIndex.mEvictable >= sizeRemoved,
           "Invalid eviction index");
-        MonitorAutoLock mon(mMonitor);
+        MutexAutoLock mut(mMutex);
         aTrackData.mEvictionIndex.mLastIndex -= samplesRemoved;
         aTrackData.mEvictionIndex.mEvictable -= sizeRemoved;
       } else {
@@ -1972,7 +2095,7 @@ TrackBuffersManager::RemoveFrames(const TimeIntervals& aIntervals,
         highestStartTime = sample->mTime;
       }
     }
-    MonitorAutoLock mon(mMonitor);
+    MutexAutoLock mut(mMutex);
     aTrackData.mHighestStartTimestamp = highestStartTime;
   }
 
@@ -1987,7 +2110,11 @@ TrackBuffersManager::RecreateParser(bool aReuseInitData)
   // as it has parsed the entire InputBuffer provided.
   // Once the old TrackBuffer/MediaSource implementation is removed
   // we can optimize this part. TODO
+  if (mParser) {
+    DDUNLINKCHILD(mParser.get());
+  }
   mParser = ContainerParser::CreateForMIMEType(mType);
+  DDLINKCHILD("parser", mParser.get());
   if (aReuseInitData && mInitData) {
     int64_t start, end;
     mParser->ParseStartAndEndTimestamps(mInitData, start, end);
@@ -2024,7 +2151,7 @@ TrackBuffersManager::GetTracksList() const
 }
 
 void
-TrackBuffersManager::SetAppendState(SourceBufferAttributes::AppendState aAppendState)
+TrackBuffersManager::SetAppendState(AppendState aAppendState)
 {
   MSE_DEBUG("AppendState changed from %s to %s",
             AppendStateToStr(mSourceBufferAttributes->GetAppendState()), AppendStateToStr(aAppendState));
@@ -2034,7 +2161,7 @@ TrackBuffersManager::SetAppendState(SourceBufferAttributes::AppendState aAppendS
 MediaInfo
 TrackBuffersManager::GetMetadata() const
 {
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock mut(mMutex);
   return mInfo;
 }
 
@@ -2055,7 +2182,7 @@ TrackBuffersManager::HighestStartTime(TrackInfo::TrackType aTrack) const
 TimeIntervals
 TrackBuffersManager::SafeBuffered(TrackInfo::TrackType aTrack) const
 {
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock mut(mMutex);
   return aTrack == TrackInfo::kVideoTrack
     ? mVideoBufferedRanges
     : mAudioBufferedRanges;
@@ -2064,7 +2191,7 @@ TrackBuffersManager::SafeBuffered(TrackInfo::TrackType aTrack) const
 TimeUnit
 TrackBuffersManager::HighestStartTime() const
 {
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock mut(mMutex);
   TimeUnit highestStartTime;
   for (auto& track : GetTracksList()) {
     highestStartTime =
@@ -2076,7 +2203,7 @@ TrackBuffersManager::HighestStartTime() const
 TimeUnit
 TrackBuffersManager::HighestEndTime() const
 {
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock mut(mMutex);
 
   nsTArray<const TimeIntervals*> tracks;
   if (HasVideo()) {
@@ -2092,7 +2219,7 @@ TimeUnit
 TrackBuffersManager::HighestEndTime(
   nsTArray<const TimeIntervals*>& aTracks) const
 {
-  mMonitor.AssertCurrentThreadOwns();
+  mMutex.AssertCurrentThreadOwns();
 
   TimeUnit highestEndTime;
 
@@ -2105,7 +2232,7 @@ TrackBuffersManager::HighestEndTime(
 void
 TrackBuffersManager::ResetEvictionIndex(TrackData& aTrackData)
 {
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock mut(mMutex);
   aTrackData.mEvictionIndex.Reset();
 }
 
@@ -2125,7 +2252,7 @@ TrackBuffersManager::UpdateEvictionIndex(TrackData& aTrackData,
     evictable += data[i]->ComputedSizeOfIncludingThis();
   }
   aTrackData.mEvictionIndex.mLastIndex = currentIndex;
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock mut(mMutex);
   aTrackData.mEvictionIndex.mEvictable += evictable;
 }
 
@@ -2235,18 +2362,8 @@ TrackBuffersManager::SkipToNextRandomAccessPoint(TrackInfo::TrackType aTrack,
   // SkipToNextRandomAccessPoint can only be called if aTimeThreadshold is known
   // to be buffered.
 
-  // So first determine the current position in the track buffer if necessary.
-  if (trackData.mNextGetSampleIndex.isNothing()) {
-    if (trackData.mNextSampleTimecode == TimeUnit()) {
-      // First demux, get first sample.
-      trackData.mNextGetSampleIndex = Some(0u);
-    } else {
-      int32_t pos = FindCurrentPosition(aTrack, aFuzz);
-      if (pos < 0) {
-        return 0;
-      }
-      trackData.mNextGetSampleIndex = Some(uint32_t(pos));
-    }
+  if (NS_FAILED(SetNextGetSampleIndexIfNeeded(aTrack, aFuzz))) {
+    return 0;
   }
 
   TimeUnit nextSampleTimecode = trackData.mNextSampleTimecode;
@@ -2503,7 +2620,7 @@ TrackBuffersManager::FindCurrentPosition(TrackInfo::TrackType aTrack,
 uint32_t
 TrackBuffersManager::Evictable(TrackInfo::TrackType aTrack) const
 {
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock mut(mMutex);
   return GetTracksData(aTrack).mEvictionIndex.mEvictable;
 }
 
@@ -2512,8 +2629,13 @@ TrackBuffersManager::GetNextRandomAccessPoint(TrackInfo::TrackType aTrack,
                                               const TimeUnit& aFuzz)
 {
   MOZ_ASSERT(OnTaskQueue());
+
+  // So first determine the current position in the track buffer if necessary.
+  if (NS_FAILED(SetNextGetSampleIndexIfNeeded(aTrack, aFuzz))) {
+    return TimeUnit::FromInfinity();
+  }
+
   auto& trackData = GetTracksData(aTrack);
-  MOZ_ASSERT(trackData.mNextGetSampleIndex.isSome());
   const TrackBuffersManager::TrackBuffer& track = GetTrackBuffer(aTrack);
 
   uint32_t i = trackData.mNextGetSampleIndex.ref();
@@ -2533,6 +2655,45 @@ TrackBuffersManager::GetNextRandomAccessPoint(TrackInfo::TrackType aTrack,
     nextSampleTime = sample->GetEndTime();
   }
   return TimeUnit::FromInfinity();
+}
+
+nsresult
+TrackBuffersManager::SetNextGetSampleIndexIfNeeded(TrackInfo::TrackType aTrack,
+                                                   const TimeUnit& aFuzz)
+{
+  auto& trackData = GetTracksData(aTrack);
+  const TrackBuffer& track = GetTrackBuffer(aTrack);
+
+  if (trackData.mNextGetSampleIndex.isSome()) {
+    // We already know the next GetSample index.
+    return NS_OK;
+  }
+
+  if (!track.Length()) {
+    // There's nothing to find yet.
+    return NS_ERROR_DOM_MEDIA_END_OF_STREAM;
+  }
+
+  if (trackData.mNextSampleTimecode == TimeUnit()) {
+    // First demux, get first sample.
+    trackData.mNextGetSampleIndex = Some(0u);
+    return NS_OK;
+  }
+
+  if (trackData.mNextSampleTimecode >
+      track.LastElement()->mTimecode + track.LastElement()->mDuration) {
+    // The next element is past our last sample. We're done.
+    trackData.mNextGetSampleIndex = Some(uint32_t(track.Length()));
+    return NS_ERROR_DOM_MEDIA_END_OF_STREAM;
+  }
+
+  int32_t pos = FindCurrentPosition(aTrack, aFuzz);
+  if (pos < 0) {
+    // Not found, must wait for more data.
+    return NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA;
+  }
+  trackData.mNextGetSampleIndex = Some(uint32_t(pos));
+  return NS_OK;
 }
 
 void

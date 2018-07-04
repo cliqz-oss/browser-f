@@ -152,7 +152,7 @@ xpcAccessible::GetChildren(nsIArray** aChildren)
   uint32_t childCount = IntlGeneric().ChildCount();
   for (uint32_t childIdx = 0; childIdx < childCount; childIdx++) {
     AccessibleOrProxy child = IntlGeneric().ChildAt(childIdx);
-    children->AppendElement(static_cast<nsIAccessible*>(ToXPC(child)), false);
+    children->AppendElement(static_cast<nsIAccessible*>(ToXPC(child)));
   }
 
   children.forget(aChildren);
@@ -452,11 +452,35 @@ xpcAccessible::GetBounds(int32_t* aX, int32_t* aY,
     rect = IntlGeneric().AsProxy()->Bounds();
   }
 
-  *aX = rect.x;
-  *aY = rect.y;
-  *aWidth = rect.width;
-  *aHeight = rect.height;
+  rect.GetRect(aX, aY, aWidth, aHeight);
+  return NS_OK;
+}
 
+NS_IMETHODIMP
+xpcAccessible::GetBoundsInCSSPixels(int32_t* aX, int32_t* aY,
+                                  int32_t* aWidth, int32_t* aHeight)
+{
+  NS_ENSURE_ARG_POINTER(aX);
+  *aX = 0;
+  NS_ENSURE_ARG_POINTER(aY);
+  *aY = 0;
+  NS_ENSURE_ARG_POINTER(aWidth);
+  *aWidth = 0;
+  NS_ENSURE_ARG_POINTER(aHeight);
+  *aHeight = 0;
+
+  if (IntlGeneric().IsNull()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsIntRect rect;
+  if (Accessible* acc = IntlGeneric().AsAccessible()) {
+    rect = acc->BoundsInCSSPixels();
+  } else {
+    rect = IntlGeneric().AsProxy()->BoundsInCSSPixels();
+  }
+
+  rect.GetRect(aX, aY, aWidth, aHeight);
   return NS_OK;
 }
 
@@ -555,7 +579,7 @@ xpcAccessible::GetRelations(nsIArray** aRelations)
       uint32_t targets = 0;
       relation->GetTargetsCount(&targets);
       if (targets)
-        relations->AppendElement(relation, false);
+        relations->AppendElement(relation);
     }
   }
 

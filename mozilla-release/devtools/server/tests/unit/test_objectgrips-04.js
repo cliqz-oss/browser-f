@@ -10,7 +10,7 @@ var gThreadClient;
 var gCallback;
 
 function run_test() {
-  run_test_with_server(DebuggerServer, function () {
+  run_test_with_server(DebuggerServer, function() {
     run_test_with_server(WorkerDebuggerServer, do_test_finished);
   });
   do_test_pending();
@@ -25,9 +25,9 @@ function run_test_with_server(server, callback) {
   }.toString());
 
   gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-grips",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_object_grip();
                            });
@@ -35,36 +35,36 @@ function run_test_with_server(server, callback) {
 }
 
 function test_object_grip() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
     let args = packet.frame.arguments;
 
-    do_check_eq(args[0].class, "Object");
+    Assert.equal(args[0].class, "Object");
 
     let objClient = gThreadClient.pauseGrip(args[0]);
-    objClient.getPrototypeAndProperties(function (response) {
-      do_check_eq(response.ownProperties.x.configurable, true);
-      do_check_eq(response.ownProperties.x.enumerable, true);
-      do_check_eq(response.ownProperties.x.writable, true);
-      do_check_eq(response.ownProperties.x.value, 10);
+    objClient.getPrototypeAndProperties(function(response) {
+      Assert.equal(response.ownProperties.x.configurable, true);
+      Assert.equal(response.ownProperties.x.enumerable, true);
+      Assert.equal(response.ownProperties.x.writable, true);
+      Assert.equal(response.ownProperties.x.value, 10);
 
-      do_check_eq(response.ownProperties.y.configurable, true);
-      do_check_eq(response.ownProperties.y.enumerable, true);
-      do_check_eq(response.ownProperties.y.writable, true);
-      do_check_eq(response.ownProperties.y.value, "kaiju");
+      Assert.equal(response.ownProperties.y.configurable, true);
+      Assert.equal(response.ownProperties.y.enumerable, true);
+      Assert.equal(response.ownProperties.y.writable, true);
+      Assert.equal(response.ownProperties.y.value, "kaiju");
 
-      do_check_eq(response.ownProperties.a.configurable, true);
-      do_check_eq(response.ownProperties.a.enumerable, true);
-      do_check_eq(response.ownProperties.a.get.type, "object");
-      do_check_eq(response.ownProperties.a.get.class, "Function");
-      do_check_eq(response.ownProperties.a.set.type, "undefined");
+      Assert.equal(response.ownProperties.a.configurable, true);
+      Assert.equal(response.ownProperties.a.enumerable, true);
+      Assert.equal(response.ownProperties.a.get.type, "object");
+      Assert.equal(response.ownProperties.a.get.class, "Function");
+      Assert.equal(response.ownProperties.a.set.type, "undefined");
 
-      do_check_true(response.prototype != undefined);
+      Assert.ok(response.prototype != undefined);
 
       let protoClient = gThreadClient.pauseGrip(response.prototype);
-      protoClient.getOwnPropertyNames(function (response) {
-        do_check_true(response.ownPropertyNames.toString != undefined);
+      protoClient.getOwnPropertyNames(function(response) {
+        Assert.ok(response.ownPropertyNames.toString != undefined);
 
-        gThreadClient.resume(function () {
+        gThreadClient.resume(function() {
           gClient.close().then(gCallback);
         });
       });

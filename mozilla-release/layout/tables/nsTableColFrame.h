@@ -32,7 +32,7 @@ public:
     * @return           the frame that was created
     */
   friend nsTableColFrame* NS_NewTableColFrame(nsIPresShell* aPresShell,
-                                              nsStyleContext*  aContext);
+                                              ComputedStyle*  aContext);
 
   // nsIFrame overrides
   virtual void Init(nsIContent*       aContent,
@@ -45,8 +45,8 @@ public:
     }
   }
 
-  /** @see nsIFrame::DidSetStyleContext */
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  /** @see nsIFrame::DidSetComputedStyle */
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   virtual void Reflow(nsPresContext*           aPresContext,
                       ReflowOutput&     aDesiredSize,
@@ -54,7 +54,6 @@ public:
                       nsReflowStatus&          aStatus) override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
 #ifdef DEBUG_FRAME_DUMP
@@ -278,13 +277,13 @@ public:
     return nsSplittableFrame::IsFrameOfType(aFlags & ~(nsIFrame::eTablePart));
   }
 
-  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0) override;
-  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0) override;
+  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
+  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
   virtual void InvalidateFrameForRemoval() override { InvalidateFrameSubtree(); }
 
 protected:
 
-  explicit nsTableColFrame(nsStyleContext* aContext);
+  explicit nsTableColFrame(ComputedStyle* aStyle);
   ~nsTableColFrame();
 
   nscoord mMinCoord;
@@ -328,14 +327,14 @@ inline nscoord
 nsTableColFrame::GetContinuousBCBorderWidth(mozilla::WritingMode aWM,
                                             mozilla::LogicalMargin& aBorder)
 {
-  int32_t aPixelsToTwips = nsPresContext::AppUnitsPerCSSPixel();
-  aBorder.BStart(aWM) = BC_BORDER_END_HALF_COORD(aPixelsToTwips,
+  int32_t d2a = PresContext()->AppUnitsPerDevPixel();
+  aBorder.BStart(aWM) = BC_BORDER_END_HALF_COORD(d2a,
                                                  mBStartContBorderWidth);
-  aBorder.IEnd(aWM) = BC_BORDER_START_HALF_COORD(aPixelsToTwips,
+  aBorder.IEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a,
                                                  mIEndContBorderWidth);
-  aBorder.BEnd(aWM) = BC_BORDER_START_HALF_COORD(aPixelsToTwips,
+  aBorder.BEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a,
                                                  mBEndContBorderWidth);
-  return BC_BORDER_END_HALF_COORD(aPixelsToTwips, mIEndContBorderWidth);
+  return BC_BORDER_END_HALF_COORD(d2a, mIEndContBorderWidth);
 }
 
 #endif

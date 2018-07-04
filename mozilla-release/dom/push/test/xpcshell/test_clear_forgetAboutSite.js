@@ -1,7 +1,7 @@
 'use strict';
 
 const {PushService, PushServiceWebSocket} = serviceExports;
-const {ForgetAboutSite} = Cu.import(
+const {ForgetAboutSite} = ChromeUtils.import(
   'resource://gre/modules/ForgetAboutSite.jsm', {});
 
 var db;
@@ -22,7 +22,7 @@ function run_test() {
 
 add_task(async function setup() {
   db = PushServiceWebSocket.newPushDB();
-  do_register_cleanup(_ => db.drop().then(_ => db.close()));
+  registerCleanupFunction(_ => db.drop().then(_ => db.close()));
 
   // Active and expired subscriptions for a subdomain. The active subscription
   // should be expired, then removed; the expired subscription should be

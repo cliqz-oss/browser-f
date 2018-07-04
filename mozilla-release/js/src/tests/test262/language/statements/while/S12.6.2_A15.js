@@ -7,9 +7,11 @@ info: Block within a "while" Expression is not allowed
 es5id: 12.6.2_A15
 description: Expression is "{0}"
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 //////////////////////////////////////////////////////////////////////////////
 //CHECK#

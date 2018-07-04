@@ -7,7 +7,6 @@
 // The test extension uses an insecure update url.
 Services.prefs.setBoolPref("extensions.checkUpdateSecurity", false);
 
-Components.utils.import("resource://testing-common/httpd.js");
 const profileDir = gProfD.clone();
 profileDir.append("extensions");
 
@@ -24,11 +23,8 @@ const TEST_IGNORE_PREF = "delaytest.ignore";
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
 
 // Create and configure the HTTP server.
-let testserver = createHttpServer();
-gPort = testserver.identity.primaryPort;
-mapFile("/data/test_delay_updates_complete.rdf", testserver);
-mapFile("/data/test_delay_updates_ignore.rdf", testserver);
-mapFile("/data/test_delay_updates_defer.rdf", testserver);
+var testserver = AddonTestUtils.createHttpServer({hosts: ["example.com"]});
+testserver.registerDirectory("/data/", do_get_file("data"));
 testserver.registerDirectory("/addons/", do_get_file("addons"));
 
 function createIgnoreAddon() {
@@ -37,7 +33,7 @@ function createIgnoreAddon() {
     version: "1.0",
     bootstrap: true,
     unpack: true,
-    updateURL: `http://localhost:${gPort}/data/test_delay_updates_ignore.rdf`,
+    updateURL: `http://example.com/data/test_delay_updates_ignore_legacy.json`,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "1",
@@ -58,7 +54,7 @@ function createCompleteAddon() {
     version: "1.0",
     bootstrap: true,
     unpack: true,
-    updateURL: `http://localhost:${gPort}/data/test_delay_updates_complete.rdf`,
+    updateURL: `http://example.com/data/test_delay_updates_complete_legacy.json`,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "1",
@@ -79,7 +75,7 @@ function createDeferAddon() {
     version: "1.0",
     bootstrap: true,
     unpack: true,
-    updateURL: `http://localhost:${gPort}/data/test_delay_updates_defer.rdf`,
+    updateURL: `http://example.com/data/test_delay_updates_defer_legacy.json`,
     targetApplications: [{
       id: "xpcshell@tests.mozilla.org",
       minVersion: "1",
@@ -102,43 +98,43 @@ add_task(async function() {
   startupManager();
 
   let addon = await promiseAddonByID(IGNORE_ID);
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test Delay Update Ignore");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Test Delay Update Ignore");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
 
   let update = await promiseFindAddonUpdates(addon);
   let install = update.updateAvailable;
 
   await promiseCompleteAllInstalls([install]);
 
-  do_check_eq(install.state, AddonManager.STATE_POSTPONED);
+  Assert.equal(install.state, AddonManager.STATE_POSTPONED);
 
   // addon upgrade has been delayed
   let addon_postponed = await promiseAddonByID(IGNORE_ID);
-  do_check_neq(addon_postponed, null);
-  do_check_eq(addon_postponed.version, "1.0");
-  do_check_eq(addon_postponed.name, "Test Delay Update Ignore");
-  do_check_true(addon_postponed.isCompatible);
-  do_check_false(addon_postponed.appDisabled);
-  do_check_true(addon_postponed.isActive);
-  do_check_eq(addon_postponed.type, "extension");
-  do_check_true(Services.prefs.getBoolPref(TEST_IGNORE_PREF));
+  Assert.notEqual(addon_postponed, null);
+  Assert.equal(addon_postponed.version, "1.0");
+  Assert.equal(addon_postponed.name, "Test Delay Update Ignore");
+  Assert.ok(addon_postponed.isCompatible);
+  Assert.ok(!addon_postponed.appDisabled);
+  Assert.ok(addon_postponed.isActive);
+  Assert.equal(addon_postponed.type, "extension");
+  Assert.ok(Services.prefs.getBoolPref(TEST_IGNORE_PREF));
 
   // restarting allows upgrade to proceed
   await promiseRestartManager();
 
   let addon_upgraded = await promiseAddonByID(IGNORE_ID);
-  do_check_neq(addon_upgraded, null);
-  do_check_eq(addon_upgraded.version, "2.0");
-  do_check_eq(addon_upgraded.name, "Test Delay Update Ignore");
-  do_check_true(addon_upgraded.isCompatible);
-  do_check_false(addon_upgraded.appDisabled);
-  do_check_true(addon_upgraded.isActive);
-  do_check_eq(addon_upgraded.type, "extension");
+  Assert.notEqual(addon_upgraded, null);
+  Assert.equal(addon_upgraded.version, "2.0");
+  Assert.equal(addon_upgraded.name, "Test Delay Update Ignore");
+  Assert.ok(addon_upgraded.isCompatible);
+  Assert.ok(!addon_upgraded.appDisabled);
+  Assert.ok(addon_upgraded.isActive);
+  Assert.equal(addon_upgraded.type, "extension");
 
   await shutdownManager();
 });
@@ -151,13 +147,13 @@ add_task(async function() {
   startupManager();
 
   let addon = await promiseAddonByID(COMPLETE_ID);
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test Delay Update Complete");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Test Delay Update Complete");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
 
   let update = await promiseFindAddonUpdates(addon);
   let install = update.updateAvailable;
@@ -166,35 +162,35 @@ add_task(async function() {
 
   // upgrade is initially postponed
   let addon_postponed = await promiseAddonByID(COMPLETE_ID);
-  do_check_neq(addon_postponed, null);
-  do_check_eq(addon_postponed.version, "1.0");
-  do_check_eq(addon_postponed.name, "Test Delay Update Complete");
-  do_check_true(addon_postponed.isCompatible);
-  do_check_false(addon_postponed.appDisabled);
-  do_check_true(addon_postponed.isActive);
-  do_check_eq(addon_postponed.type, "extension");
+  Assert.notEqual(addon_postponed, null);
+  Assert.equal(addon_postponed.version, "1.0");
+  Assert.equal(addon_postponed.name, "Test Delay Update Complete");
+  Assert.ok(addon_postponed.isCompatible);
+  Assert.ok(!addon_postponed.appDisabled);
+  Assert.ok(addon_postponed.isActive);
+  Assert.equal(addon_postponed.type, "extension");
 
   // addon upgrade has been allowed
   let [addon_allowed] = await promiseAddonEvent("onInstalled");
-  do_check_neq(addon_allowed, null);
-  do_check_eq(addon_allowed.version, "2.0");
-  do_check_eq(addon_allowed.name, "Test Delay Update Complete");
-  do_check_true(addon_allowed.isCompatible);
-  do_check_false(addon_allowed.appDisabled);
-  do_check_true(addon_allowed.isActive);
-  do_check_eq(addon_allowed.type, "extension");
+  Assert.notEqual(addon_allowed, null);
+  Assert.equal(addon_allowed.version, "2.0");
+  Assert.equal(addon_allowed.name, "Test Delay Update Complete");
+  Assert.ok(addon_allowed.isCompatible);
+  Assert.ok(!addon_allowed.appDisabled);
+  Assert.ok(addon_allowed.isActive);
+  Assert.equal(addon_allowed.type, "extension");
 
   // restarting changes nothing
   await promiseRestartManager();
 
   let addon_upgraded = await promiseAddonByID(COMPLETE_ID);
-  do_check_neq(addon_upgraded, null);
-  do_check_eq(addon_upgraded.version, "2.0");
-  do_check_eq(addon_upgraded.name, "Test Delay Update Complete");
-  do_check_true(addon_upgraded.isCompatible);
-  do_check_false(addon_upgraded.appDisabled);
-  do_check_true(addon_upgraded.isActive);
-  do_check_eq(addon_upgraded.type, "extension");
+  Assert.notEqual(addon_upgraded, null);
+  Assert.equal(addon_upgraded.version, "2.0");
+  Assert.equal(addon_upgraded.name, "Test Delay Update Complete");
+  Assert.ok(addon_upgraded.isCompatible);
+  Assert.ok(!addon_upgraded.appDisabled);
+  Assert.ok(addon_upgraded.isActive);
+  Assert.equal(addon_upgraded.type, "extension");
 
   await shutdownManager();
 });
@@ -207,13 +203,13 @@ add_task(async function() {
   startupManager();
 
   let addon = await promiseAddonByID(DEFER_ID);
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test Delay Update Defer");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Test Delay Update Defer");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
 
   let update = await promiseFindAddonUpdates(addon);
   let install = update.updateAvailable;
@@ -222,38 +218,38 @@ add_task(async function() {
 
   // upgrade is initially postponed
   let addon_postponed = await promiseAddonByID(DEFER_ID);
-  do_check_neq(addon_postponed, null);
-  do_check_eq(addon_postponed.version, "1.0");
-  do_check_eq(addon_postponed.name, "Test Delay Update Defer");
-  do_check_true(addon_postponed.isCompatible);
-  do_check_false(addon_postponed.appDisabled);
-  do_check_true(addon_postponed.isActive);
-  do_check_eq(addon_postponed.type, "extension");
+  Assert.notEqual(addon_postponed, null);
+  Assert.equal(addon_postponed.version, "1.0");
+  Assert.equal(addon_postponed.name, "Test Delay Update Defer");
+  Assert.ok(addon_postponed.isCompatible);
+  Assert.ok(!addon_postponed.appDisabled);
+  Assert.ok(addon_postponed.isActive);
+  Assert.equal(addon_postponed.type, "extension");
 
   // add-on will not allow upgrade until fake event fires
   AddonManagerPrivate.callAddonListeners("onFakeEvent");
 
   // addon upgrade has been allowed
   let [addon_allowed] = await promiseAddonEvent("onInstalled");
-  do_check_neq(addon_allowed, null);
-  do_check_eq(addon_allowed.version, "2.0");
-  do_check_eq(addon_allowed.name, "Test Delay Update Defer");
-  do_check_true(addon_allowed.isCompatible);
-  do_check_false(addon_allowed.appDisabled);
-  do_check_true(addon_allowed.isActive);
-  do_check_eq(addon_allowed.type, "extension");
+  Assert.notEqual(addon_allowed, null);
+  Assert.equal(addon_allowed.version, "2.0");
+  Assert.equal(addon_allowed.name, "Test Delay Update Defer");
+  Assert.ok(addon_allowed.isCompatible);
+  Assert.ok(!addon_allowed.appDisabled);
+  Assert.ok(addon_allowed.isActive);
+  Assert.equal(addon_allowed.type, "extension");
 
   // restarting changes nothing
   await promiseRestartManager();
 
   let addon_upgraded = await promiseAddonByID(DEFER_ID);
-  do_check_neq(addon_upgraded, null);
-  do_check_eq(addon_upgraded.version, "2.0");
-  do_check_eq(addon_upgraded.name, "Test Delay Update Defer");
-  do_check_true(addon_upgraded.isCompatible);
-  do_check_false(addon_upgraded.appDisabled);
-  do_check_true(addon_upgraded.isActive);
-  do_check_eq(addon_upgraded.type, "extension");
+  Assert.notEqual(addon_upgraded, null);
+  Assert.equal(addon_upgraded.version, "2.0");
+  Assert.equal(addon_upgraded.name, "Test Delay Update Defer");
+  Assert.ok(addon_upgraded.isCompatible);
+  Assert.ok(!addon_upgraded.appDisabled);
+  Assert.ok(addon_upgraded.isActive);
+  Assert.equal(addon_upgraded.type, "extension");
 
   await shutdownManager();
 });

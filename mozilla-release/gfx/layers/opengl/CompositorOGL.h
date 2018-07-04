@@ -1,12 +1,12 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef MOZILLA_GFX_COMPOSITOROGL_H
 #define MOZILLA_GFX_COMPOSITOROGL_H
 
-#include "ContextStateTracker.h"
 #include "gfx2DGlue.h"
 #include "GLContextTypes.h"             // for GLContext, etc
 #include "GLDefs.h"                     // for GLuint, LOCAL_GL_TEXTURE_2D, etc
@@ -157,6 +157,19 @@ public:
 
   virtual void SetRenderTarget(CompositingRenderTarget *aSurface) override;
   virtual CompositingRenderTarget* GetCurrentRenderTarget() const override;
+  virtual CompositingRenderTarget* GetWindowRenderTarget() const override;
+
+  virtual bool
+  ReadbackRenderTarget(CompositingRenderTarget* aSource,
+                       AsyncReadbackBuffer* aDest) override;
+
+  virtual already_AddRefed<AsyncReadbackBuffer>
+  CreateAsyncReadbackBuffer(const gfx::IntSize& aSize) override;
+
+  virtual bool
+  BlitRenderTarget(CompositingRenderTarget* aSource,
+                   const gfx::IntSize& aSourceSize,
+                   const gfx::IntSize& aDestSize) override;
 
   virtual void DrawQuad(const gfx::Rect& aRect,
                         const gfx::IntRect& aClipRect,
@@ -278,9 +291,8 @@ private:
 
   /** Currently bound render target */
   RefPtr<CompositingRenderTargetOGL> mCurrentRenderTarget;
-#ifdef DEBUG
+
   CompositingRenderTargetOGL* mWindowRenderTarget;
-#endif
 
   /**
    * VBO that has some basics in it for a textured quad, including vertex
@@ -429,8 +441,6 @@ private:
   GLint FlipY(GLint y) const { return mViewportSize.height - y; }
 
   RefPtr<CompositorTexturePoolOGL> mTexturePool;
-
-  ContextStateTrackerOGL mContextStateTracker;
 
   bool mDestroyed;
 

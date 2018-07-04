@@ -5,13 +5,13 @@
 loader: taskgraph.loader.transform:loader
 
 kind-dependencies:
-   - toolchain
+    - toolchain
 
 transforms:
-   - taskgraph.transforms.build_attrs:transforms
-   - taskgraph.transforms.toolchain:transforms
-   - taskgraph.transforms.job:transforms
-   - taskgraph.transforms.task:transforms
+    - taskgraph.transforms.build_attrs:transforms
+    - taskgraph.transforms.use_toolchains:transforms
+    - taskgraph.transforms.job:transforms
+    - taskgraph.transforms.task:transforms
 
 job-defaults:
     treeherder:
@@ -20,7 +20,7 @@ job-defaults:
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         max-run-time: 36000
-        docker-image: {in-tree: desktop-build}
+        docker-image: {in-tree: debian7-amd64-build}
 
 jobs:
     linux64-shell-haz/debug:
@@ -30,14 +30,11 @@ jobs:
             job-name: shell-haz-debug
         treeherder:
             platform: linux64/debug
-            symbol: SM-tc(H)
-        worker:
-            env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/hazard.manifest"
+            symbol: SM(H)
         run:
             using: hazard
             command: >
-                cd /home/worker/checkouts/gecko/taskcluster/scripts/builder
+                cd /builds/worker/checkouts/gecko/taskcluster/scripts/builder
                 && ./build-haz-linux.sh --project shell $HOME/workspace
         when:
             files-changed:
@@ -45,8 +42,9 @@ jobs:
                 - js/src/**
         toolchains:
             - linux64-clang
-            - linux64-gcc
-            - linux64-sccache
+            - linux64-gcc-6
+            - linux64-sixgill
+            - linux64-rust
 
     linux64-haz/debug:
         description: "Browser Hazard Analysis Linux"
@@ -55,17 +53,15 @@ jobs:
             job-name: browser-haz-debug
         treeherder:
             platform: linux64/debug
-            symbol: tc(H)
-        worker:
-            env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/hazard.manifest"
+            symbol: H
         run:
             using: hazard
             mozconfig: "browser/config/mozconfigs/linux64/hazards"
             command: >
-                cd /home/worker/checkouts/gecko/taskcluster/scripts/builder
+                cd /builds/worker/checkouts/gecko/taskcluster/scripts/builder
                 && ./build-haz-linux.sh --project browser $HOME/workspace
         toolchains:
             - linux64-clang
-            - linux64-gcc
-            - linux64-sccache
+            - linux64-gcc-6
+            - linux64-sixgill
+            - linux64-rust

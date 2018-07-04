@@ -4,7 +4,7 @@ set -x -e
 
 echo "running as" $(id)
 
-. /home/worker/scripts/xvfb.sh
+. /builds/worker/scripts/xvfb.sh
 
 ####
 # Taskcluster friendly wrapper for performing fx desktop builds via mozharness.
@@ -14,12 +14,13 @@ echo "running as" $(id)
 
 : MOZHARNESS_SCRIPT             ${MOZHARNESS_SCRIPT}
 : MOZHARNESS_CONFIG             ${MOZHARNESS_CONFIG}
+: MOZHARNESS_CONFIG_PATHS       ${MOZHARNESS_CONFIG_PATHS}
 : MOZHARNESS_ACTIONS            ${MOZHARNESS_ACTIONS}
 : MOZHARNESS_OPTIONS            ${MOZHARNESS_OPTIONS}
 
-: TOOLTOOL_CACHE                ${TOOLTOOL_CACHE:=/home/worker/tooltool-cache}
+: TOOLTOOL_CACHE                ${TOOLTOOL_CACHE:=/builds/worker/tooltool-cache}
 
-: WORKSPACE                     ${WORKSPACE:=/home/worker/workspace}
+: WORKSPACE                     ${WORKSPACE:=/builds/worker/workspace}
 
 set -v
 
@@ -60,6 +61,11 @@ fi
 # entirely effective.
 export TOOLTOOL_CACHE
 
+config_path_cmds=""
+for path in ${MOZHARNESS_CONFIG_PATHS}; do
+    config_path_cmds="${config_path_cmds} --extra-config-path ${WORKSPACE}/build/src/${path}"
+done
+
 # support multiple, space delimited, config files
 config_cmds=""
 for cfg in $MOZHARNESS_CONFIG; do
@@ -84,9 +90,11 @@ if [ -n "$MOZHARNESS_OPTIONS" ]; then
     done
 fi
 
-cd /home/worker
+cd /builds/worker
 
-python2.7 $WORKSPACE/build/src/testing/${MOZHARNESS_SCRIPT} ${config_cmds} \
+python2.7 $WORKSPACE/build/src/testing/${MOZHARNESS_SCRIPT} \
+  ${config_path_cmds} \
+  ${config_cmds} \
   $actions \
   $options \
   --log-level=debug \

@@ -8,7 +8,7 @@ esid: sec-async-arrow-function-definitions
 features: [default-parameters]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     14.7 Async Arrow Function Definitions
@@ -49,6 +49,7 @@ info: |
       ...BindingPattern[?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 
 (async (...x = []) => {

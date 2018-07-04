@@ -42,8 +42,7 @@ sdnTextAccessible::get_domText(BSTR __RPC_FAR* aText)
 
   nsAutoString nodeValue;
 
-  nsCOMPtr<nsIDOMNode> DOMNode(do_QueryInterface(mAccessible->GetContent()));
-  DOMNode->GetNodeValue(nodeValue);
+  mAccessible->GetContent()->GetNodeValue(nodeValue);
   if (nodeValue.IsEmpty())
     return S_FALSE;
 
@@ -75,10 +74,10 @@ sdnTextAccessible::get_clippedSubstringBounds(unsigned int aStartIndex,
   nsIntRect clippedRect;
   clippedRect.IntersectRect(unclippedRect, docRect);
 
-  *aX = clippedRect.x;
-  *aY = clippedRect.y;
-  *aWidth = clippedRect.width;
-  *aHeight = clippedRect.height;
+  *aX = clippedRect.X();
+  *aY = clippedRect.Y();
+  *aWidth = clippedRect.Width();
+  *aHeight = clippedRect.Height();
   return S_OK;
 }
 
@@ -112,17 +111,17 @@ sdnTextAccessible::get_unclippedSubstringBounds(unsigned int aStartIndex,
   for (; iter != stopLoopFrame; iter = iter->GetNextContinuation()) {
     nsRect rect = iter->GetScreenRectInAppUnits();
     nscoord start = (iter == startFrame) ? startPoint.x : 0;
-    nscoord end = (iter == endFrame) ? endPoint.x : rect.width;
-    rect.x += start;
-    rect.width = end - start;
+    nscoord end = (iter == endFrame) ? endPoint.x : rect.Width();
+    rect.MoveByX(start);
+    rect.SetWidth(end - start);
     sum.UnionRect(sum, rect);
   }
 
   nsPresContext* presContext = mAccessible->Document()->PresContext();
-  *aX = presContext->AppUnitsToDevPixels(sum.x);
-  *aY = presContext->AppUnitsToDevPixels(sum.y);
-  *aWidth = presContext->AppUnitsToDevPixels(sum.width);
-  *aHeight = presContext->AppUnitsToDevPixels(sum.height);
+  *aX = presContext->AppUnitsToDevPixels(sum.X());
+  *aY = presContext->AppUnitsToDevPixels(sum.Y());
+  *aWidth = presContext->AppUnitsToDevPixels(sum.Width());
+  *aHeight = presContext->AppUnitsToDevPixels(sum.Height());
 
   return S_OK;
 }

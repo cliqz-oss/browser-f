@@ -40,8 +40,8 @@ function expectNoProcess() {
 
 function getPID(aBrowser) {
   return ContentTask.spawn(aBrowser, null, () => {
-    const appinfo = Components.classes["@mozilla.org/xre/app-info;1"]
-            .getService(Components.interfaces.nsIXULRuntime);
+    const appinfo = Cc["@mozilla.org/xre/app-info;1"]
+            .getService(Ci.nsIXULRuntime);
     return appinfo.processID;
   });
 }
@@ -54,7 +54,7 @@ function getInLAProc(aBrowser) {
 
 async function largeAllocSuccessTests() {
   // I'm terrible and put this set of tests into a single file, so I need a longer timeout
-  requestLongerTimeout(2);
+  requestLongerTimeout(4);
 
   // Check if we are on win32
   let isWin32 = /Windows/.test(navigator.userAgent) && !/x64/.test(navigator.userAgent);

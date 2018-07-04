@@ -3,25 +3,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/GeckoViewContentModule.jsm");
-
-var dump = Cu.import("resource://gre/modules/AndroidLog.jsm", {})
-           .AndroidLog.d.bind(null, "ViewScrollContent");
-
-function debug(aMsg) {
-  // dump(aMsg);
-}
+ChromeUtils.import("resource://gre/modules/GeckoViewContentModule.jsm");
 
 class GeckoViewScrollContent extends GeckoViewContentModule {
-  register() {
-    debug("register");
+  onEnable() {
+    debug `onEnable`;
     addEventListener("scroll", this, false);
   }
 
-  unregister() {
-    debug("unregister");
+  onDisable() {
+    debug `onDisable`;
     removeEventListener("scroll", this);
   }
 
@@ -30,15 +21,19 @@ class GeckoViewScrollContent extends GeckoViewContentModule {
       return;
     }
 
-    debug("handleEvent " + aEvent.type);
+    debug `handleEvent: ${aEvent.type}`;
 
     switch (aEvent.type) {
       case "scroll":
-        sendAsyncMessage("GeckoView:ScrollChanged",
-                         { scrollX: Math.round(content.scrollX),
-                           scrollY: Math.round(content.scrollY) });
+        this.eventDispatcher.sendRequest({
+          type: "GeckoView:ScrollChanged",
+          scrollX: Math.round(content.scrollX),
+          scrollY: Math.round(content.scrollY)
+        });
         break;
     }
   }
 }
-var scrollListener = new GeckoViewScrollContent("GeckoViewScroll", this);
+
+let {debug, warn} = GeckoViewScrollContent.initLogging("GeckoViewScroll");
+let module = GeckoViewScrollContent.create(this);

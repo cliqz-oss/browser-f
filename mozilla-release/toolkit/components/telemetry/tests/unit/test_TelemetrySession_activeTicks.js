@@ -2,19 +2,14 @@
    http://creativecommons.org/publicdomain/zero/1.0/
 */
 
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySession.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", this);
 
 
 add_task(async function test_setup() {
-  // Addon manager needs a profile directory
   do_get_profile();
-  loadAddonManager("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
-  finishAddonManagerStartup();
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
-
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
 });
 
 add_task(async function test_record_activeTicks() {
@@ -30,7 +25,7 @@ add_task(async function test_record_activeTicks() {
       Assert.equal(payload.processes.parent.scalars["browser.engagement.active_ticks"], expected,
                    "TelemetrySession must record the expected number of active ticks (in scalars).");
     }
-  }
+  };
 
   for (let i = 0; i < 3; i++) {
     Services.obs.notifyObservers(null, "user-interaction-active");

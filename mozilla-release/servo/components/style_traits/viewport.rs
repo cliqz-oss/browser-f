@@ -4,126 +4,84 @@
 
 //! Helper types for the `@viewport` rule.
 
-use {CSSPixel, PinchZoomFactor, ParseError};
-use cssparser::{Parser, ToCss, ParseError as CssParseError, BasicParseError};
+use {CSSPixel, CssWriter, ParseError, PinchZoomFactor, ToCss};
+use cssparser::Parser;
 use euclid::TypedSize2D;
-use std::ascii::AsciiExt;
-use std::fmt;
+use std::fmt::{self, Write};
 
-define_css_keyword_enum!(UserZoom:
-                         "zoom" => Zoom,
-                         "fixed" => Fixed);
-
-define_css_keyword_enum!(Orientation:
-                         "auto" => Auto,
-                         "portrait" => Portrait,
-                         "landscape" => Landscape);
-
-/// A trait used to query whether this value has viewport units.
-pub trait HasViewportPercentage {
-    /// Returns true if this value has viewport units.
-    fn has_viewport_percentage(&self) -> bool;
-}
-
-/// A macro used to implement HasViewportPercentage trait
-/// for a given type that may never contain viewport units.
-#[macro_export]
-macro_rules! no_viewport_percentage {
-    ($($name: ident),+) => {
-        $(impl $crate::HasViewportPercentage for $name {
-            #[inline]
-            fn has_viewport_percentage(&self) -> bool {
-                false
-            }
-        })+
-    };
-}
-
-no_viewport_percentage!(bool, f32);
-
-impl<T> HasViewportPercentage for Box<T>
-where
-    T: ?Sized + HasViewportPercentage
-{
-    #[inline]
-    fn has_viewport_percentage(&self) -> bool {
-        (**self).has_viewport_percentage()
+define_css_keyword_enum! {
+    pub enum UserZoom {
+        Zoom = "zoom",
+        Fixed = "fixed",
     }
 }
 
-impl<T: HasViewportPercentage> HasViewportPercentage for Option<T> {
-    #[inline]
-    fn has_viewport_percentage(&self) -> bool {
-        self.as_ref().map_or(false, T::has_viewport_percentage)
-    }
-}
-
-impl<T: HasViewportPercentage, U> HasViewportPercentage for TypedSize2D<T, U> {
-    #[inline]
-    fn has_viewport_percentage(&self) -> bool {
-        self.width.has_viewport_percentage() || self.height.has_viewport_percentage()
-    }
-}
-
-impl<T: HasViewportPercentage> HasViewportPercentage for Vec<T> {
-    #[inline]
-    fn has_viewport_percentage(&self) -> bool {
-        self.iter().any(T::has_viewport_percentage)
-    }
-}
-
-impl<T: HasViewportPercentage> HasViewportPercentage for [T] {
-    #[inline]
-    fn has_viewport_percentage(&self) -> bool {
-        self.iter().any(T::has_viewport_percentage)
+define_css_keyword_enum! {
+    pub enum Orientation {
+        Auto = "auto",
+        Portrait = "portrait",
+        Landscape = "landscape",
     }
 }
 
 /// A set of viewport descriptors:
 ///
-/// https://drafts.csswg.org/css-device-adapt/#viewport-desc
+/// <https://drafts.csswg.org/css-device-adapt/#viewport-desc>
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize, HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize, MallocSizeOf))]
 pub struct ViewportConstraints {
     /// Width and height:
     ///  * https://drafts.csswg.org/css-device-adapt/#width-desc
     ///  * https://drafts.csswg.org/css-device-adapt/#height-desc
     pub size: TypedSize2D<f32, CSSPixel>,
-    /// https://drafts.csswg.org/css-device-adapt/#zoom-desc
+    /// <https://drafts.csswg.org/css-device-adapt/#zoom-desc>
     pub initial_zoom: PinchZoomFactor,
-    /// https://drafts.csswg.org/css-device-adapt/#min-max-width-desc
+    /// <https://drafts.csswg.org/css-device-adapt/#min-max-width-desc>
     pub min_zoom: Option<PinchZoomFactor>,
-    /// https://drafts.csswg.org/css-device-adapt/#min-max-width-desc
+    /// <https://drafts.csswg.org/css-device-adapt/#min-max-width-desc>
     pub max_zoom: Option<PinchZoomFactor>,
-    /// https://drafts.csswg.org/css-device-adapt/#user-zoom-desc
+    /// <https://drafts.csswg.org/css-device-adapt/#user-zoom-desc>
     pub user_zoom: UserZoom,
-    /// https://drafts.csswg.org/css-device-adapt/#orientation-desc
+    /// <https://drafts.csswg.org/css-device-adapt/#orientation-desc>
     pub orientation: Orientation
 }
 
 impl ToCss for ViewportConstraints {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-        where W: fmt::Write
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
     {
-        write!(dest, "@viewport {{")?;
-        write!(dest, " width: {}px;", self.size.width)?;
-        write!(dest, " height: {}px;", self.size.height)?;
-        write!(dest, " zoom: {};", self.initial_zoom.get())?;
+        dest.write_str("@viewport { width: ")?;
+        self.size.width.to_css(dest)?;
+
+        dest.write_str("px; height: ")?;
+        self.size.height.to_css(dest)?;
+
+        dest.write_str("px; zoom: ")?;
+        self.initial_zoom.get().to_css(dest)?;
+
         if let Some(min_zoom) = self.min_zoom {
-            write!(dest, " min-zoom: {};", min_zoom.get())?;
+            dest.write_str("; min-zoom: ")?;
+            min_zoom.get().to_css(dest)?;
         }
+
         if let Some(max_zoom) = self.max_zoom {
-            write!(dest, " max-zoom: {};", max_zoom.get())?;
+            dest.write_str("; max-zoom: ")?;
+            max_zoom.get().to_css(dest)?;
         }
-        write!(dest, " user-zoom: ")?; self.user_zoom.to_css(dest)?;
-        write!(dest, "; orientation: ")?; self.orientation.to_css(dest)?;
-        write!(dest, "; }}")
+
+        dest.write_str("; user-zoom: ")?;
+        self.user_zoom.to_css(dest)?;
+
+        dest.write_str("; orientation: ")?;
+        self.orientation.to_css(dest)?;
+        dest.write_str("; }")
     }
 }
 
-/// https://drafts.csswg.org/css-device-adapt/#descdef-viewport-zoom
-#[derive(Copy, Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+/// <https://drafts.csswg.org/css-device-adapt/#descdef-viewport-zoom>
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 pub enum Zoom {
     /// A number value.
     Number(f32),
@@ -134,13 +92,16 @@ pub enum Zoom {
 }
 
 impl ToCss for Zoom {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
         where W: fmt::Write,
     {
         match *self {
-            Zoom::Number(number) => write!(dest, "{}", number),
-            Zoom::Percentage(percentage) => write!(dest, "{}%", percentage * 100.),
-            Zoom::Auto => write!(dest, "auto")
+            Zoom::Number(number) => number.to_css(dest),
+            Zoom::Auto => dest.write_str("auto"),
+            Zoom::Percentage(percentage) => {
+                (percentage * 100.).to_css(dest)?;
+                dest.write_char('%')
+            }
         }
     }
 }
@@ -148,27 +109,28 @@ impl ToCss for Zoom {
 impl Zoom {
     /// Parse a zoom value per:
     ///
-    /// https://drafts.csswg.org/css-device-adapt/#descdef-viewport-zoom
+    /// <https://drafts.csswg.org/css-device-adapt/#descdef-viewport-zoom>
     pub fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Zoom, ParseError<'i>> {
-        use PARSING_MODE_DEFAULT;
+        use ParsingMode;
         use cssparser::Token;
-        use values::specified::AllowedLengthType::NonNegative;
+        use values::specified::AllowedNumericType::NonNegative;
 
+        let location = input.current_source_location();
         match *input.next()? {
             // TODO: This parse() method should take ParserContext as an
             // argument, and pass ParsingMode owned by the ParserContext to
-            // is_ok() instead of using PARSING_MODE_DEFAULT directly.
+            // is_ok() instead of using ParsingMode::DEFAULT directly.
             // In order to do so, we might want to move these stuff into style::stylesheets::viewport_rule.
-            Token::Percentage { unit_value, .. } if NonNegative.is_ok(PARSING_MODE_DEFAULT, unit_value) => {
+            Token::Percentage { unit_value, .. } if NonNegative.is_ok(ParsingMode::DEFAULT, unit_value) => {
                 Ok(Zoom::Percentage(unit_value))
             }
-            Token::Number { value, .. } if NonNegative.is_ok(PARSING_MODE_DEFAULT, value) => {
+            Token::Number { value, .. } if NonNegative.is_ok(ParsingMode::DEFAULT, value) => {
                 Ok(Zoom::Number(value))
             }
             Token::Ident(ref value) if value.eq_ignore_ascii_case("auto") => {
                 Ok(Zoom::Auto)
             }
-            ref t => Err(CssParseError::Basic(BasicParseError::UnexpectedToken(t.clone())))
+            ref t => Err(location.new_unexpected_token_error(t.clone()))
         }
     }
 

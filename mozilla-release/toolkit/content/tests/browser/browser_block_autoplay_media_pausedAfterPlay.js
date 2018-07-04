@@ -25,7 +25,7 @@ function check_audio_pause_state(expectPause) {
   }
 
   is(audio.paused, expectPause,
-    "The pause state of audio is corret.")
+    "The pause state of audio is corret.");
 }
 
 add_task(async function setup_test_preference() {
@@ -78,6 +78,6 @@ add_task(async function block_autoplay_media() {
                           check_audio_suspended);
 
   info("- remove tabs -");
-  await BrowserTestUtils.removeTab(tab1);
-  await BrowserTestUtils.removeTab(tab2);
+  BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab2);
 });

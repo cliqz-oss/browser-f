@@ -7,12 +7,10 @@
 
 // Globals
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
-                                  "resource://gre/modules/DeferredTask.jsm");
+ChromeUtils.defineModuleGetter(this, "DeferredTask",
+                               "resource://gre/modules/DeferredTask.jsm");
 
 /**
  * Due to the nature of this module, most of the tests are time-dependent.  All
@@ -29,10 +27,6 @@ function promiseTimeout(aTimeoutMs) {
   return new Promise(resolve => {
     do_timeout(aTimeoutMs, resolve);
   });
-}
-
-function run_test() {
-  run_next_test();
 }
 
 // Tests
@@ -53,12 +47,12 @@ add_test(function test_arm_delay_respected() {
 
   new DeferredTask(function() {
     executed1 = true;
-    do_check_false(executed2);
+    Assert.ok(!executed2);
   }, 1 * T).arm();
 
   new DeferredTask(function() {
     executed2 = true;
-    do_check_true(executed1);
+    Assert.ok(executed1);
     run_next_test();
   }, 2 * T).arm();
 });
@@ -78,7 +72,7 @@ add_test(function test_arm_delay_notrestarted() {
 
   // The "arm" call should not have introduced further delays.
   do_timeout(5 * T, function() {
-    do_check_true(executed);
+    Assert.ok(executed);
     run_next_test();
   });
 });
@@ -90,7 +84,7 @@ add_test(function test_arm_coalesced() {
   let executed = false;
 
   let deferredTask = new DeferredTask(function() {
-    do_check_false(executed);
+    Assert.ok(!executed);
     executed = true;
     run_next_test();
   }, 50);
@@ -107,7 +101,7 @@ add_test(function test_arm_coalesced_nodelay() {
   let executed = false;
 
   let deferredTask = new DeferredTask(function() {
-    do_check_false(executed);
+    Assert.ok(!executed);
     executed = true;
     run_next_test();
   }, 0);
@@ -157,55 +151,40 @@ add_test(function test_arm_async() {
   // of 2*T until the task finishes, then another 2*T for the normal task delay
   // specified on construction.
   do_timeout(4 * T, function() {
-    do_check_true(deferredTask.isRunning);
-    do_check_false(finishedExecution);
+    Assert.ok(deferredTask.isRunning);
+    Assert.ok(!finishedExecution);
     deferredTask.arm();
   });
 
   // This will fail in case the task was started without waiting 2*T after it
   // has finished.
   do_timeout(7 * T, function() {
-    do_check_false(deferredTask.isRunning);
-    do_check_true(finishedExecution);
+    Assert.ok(!deferredTask.isRunning);
+    Assert.ok(finishedExecution);
   });
 
   // This is in the middle of the second execution.
   do_timeout(10 * T, function() {
-    do_check_true(deferredTask.isRunning);
-    do_check_false(finishedExecutionAgain);
+    Assert.ok(deferredTask.isRunning);
+    Assert.ok(!finishedExecutionAgain);
   });
 
   // Wait enough time to verify that the task was executed as expected.
   do_timeout(13 * T, function() {
-    do_check_false(deferredTask.isRunning);
-    do_check_true(finishedExecutionAgain);
+    Assert.ok(!deferredTask.isRunning);
+    Assert.ok(finishedExecutionAgain);
     run_next_test();
   });
 });
 
 /**
- * Checks that "arm" accepts a Task.jsm generator function.
+ * Checks that "arm" accepts a Task.jsm async function.
  */
-add_test(function test_arm_async_generator() {
+add_test(function test_arm_async_function() {
   let deferredTask = new DeferredTask(async function() {
     await Promise.resolve();
     run_next_test();
   }, 50);
-
-  deferredTask.arm();
-});
-
-/**
- * Checks that "arm" accepts a Task.jsm legacy generator function.
- */
-add_test(function test_arm_async_legacy_generator() {
-  // ESLint cannot parse legacy generator functions, so we need an eval block.
-  /* eslint-disable no-eval */
-  let deferredTask = new DeferredTask(eval(`(function() {
-    yield Promise.resolve();
-    run_next_test();
-  })`), 50);
-  /* eslint-enable no-eval */
 
   deferredTask.arm();
 });
@@ -242,11 +221,11 @@ add_test(function test_disarm_delay_restarted() {
   });
 
   do_timeout(5 * T, function() {
-    do_check_false(executed);
+    Assert.ok(!executed);
   });
 
   do_timeout(7 * T, function() {
-    do_check_true(executed);
+    Assert.ok(executed);
     run_next_test();
   });
 });
@@ -266,16 +245,16 @@ add_test(function test_disarm_async() {
   deferredTask.arm();
 
   do_timeout(2 * T, function() {
-    do_check_true(deferredTask.isRunning);
-    do_check_true(deferredTask.isArmed);
-    do_check_false(finishedExecution);
+    Assert.ok(deferredTask.isRunning);
+    Assert.ok(deferredTask.isArmed);
+    Assert.ok(!finishedExecution);
     deferredTask.disarm();
   });
 
   do_timeout(4 * T, function() {
-    do_check_false(deferredTask.isRunning);
-    do_check_false(deferredTask.isArmed);
-    do_check_true(finishedExecution);
+    Assert.ok(!deferredTask.isRunning);
+    Assert.ok(!deferredTask.isArmed);
+    Assert.ok(finishedExecution);
     run_next_test();
   });
 });
@@ -288,23 +267,23 @@ add_test(function test_disarm_immediate_async() {
   let executed = false;
 
   let deferredTask = new DeferredTask(async function() {
-    do_check_false(executed);
+    Assert.ok(!executed);
     executed = true;
     await promiseTimeout(2 * T);
   }, 1 * T);
   deferredTask.arm();
 
   do_timeout(2 * T, function() {
-    do_check_true(deferredTask.isRunning);
-    do_check_false(deferredTask.isArmed);
+    Assert.ok(deferredTask.isRunning);
+    Assert.ok(!deferredTask.isArmed);
     deferredTask.arm();
     deferredTask.disarm();
   });
 
   do_timeout(4 * T, function() {
-    do_check_true(executed);
-    do_check_false(deferredTask.isRunning);
-    do_check_false(deferredTask.isArmed);
+    Assert.ok(executed);
+    Assert.ok(!deferredTask.isRunning);
+    Assert.ok(!deferredTask.isArmed);
     run_next_test();
   });
 });
@@ -314,19 +293,19 @@ add_test(function test_disarm_immediate_async() {
  */
 add_test(function test_isArmed_isRunning() {
   let deferredTask = new DeferredTask(function() {
-    do_check_true(deferredTask.isRunning);
-    do_check_false(deferredTask.isArmed);
+    Assert.ok(deferredTask.isRunning);
+    Assert.ok(!deferredTask.isArmed);
     deferredTask.arm();
-    do_check_true(deferredTask.isArmed);
+    Assert.ok(deferredTask.isArmed);
     deferredTask.disarm();
-    do_check_false(deferredTask.isArmed);
+    Assert.ok(!deferredTask.isArmed);
     run_next_test();
   }, 50);
 
-  do_check_false(deferredTask.isArmed);
+  Assert.ok(!deferredTask.isArmed);
   deferredTask.arm();
-  do_check_true(deferredTask.isArmed);
-  do_check_false(deferredTask.isRunning);
+  Assert.ok(deferredTask.isArmed);
+  Assert.ok(!deferredTask.isRunning);
 });
 
 /**
@@ -337,7 +316,7 @@ add_test(function test_finalize() {
   let timePassed = false;
 
   let deferredTask = new DeferredTask(function() {
-    do_check_false(timePassed);
+    Assert.ok(!timePassed);
     executed = true;
   }, 2 * T);
   deferredTask.arm();
@@ -346,7 +325,7 @@ add_test(function test_finalize() {
 
   // This should trigger the immediate execution of the task.
   deferredTask.finalize().then(function() {
-    do_check_true(executed);
+    Assert.ok(executed);
     run_next_test();
   });
 });
@@ -364,15 +343,15 @@ add_test(function test_finalize_executes_entirely() {
     // The first time, we arm the timer again and set up the finalization.
     if (!executed) {
       deferredTask.arm();
-      do_check_true(deferredTask.isArmed);
-      do_check_true(deferredTask.isRunning);
+      Assert.ok(deferredTask.isArmed);
+      Assert.ok(deferredTask.isRunning);
 
       deferredTask.finalize().then(function() {
         // When we reach this point, the task must be finished.
-        do_check_true(executedAgain);
-        do_check_false(timePassed);
-        do_check_false(deferredTask.isArmed);
-        do_check_false(deferredTask.isRunning);
+        Assert.ok(executedAgain);
+        Assert.ok(!timePassed);
+        Assert.ok(!deferredTask.isArmed);
+        Assert.ok(!deferredTask.isRunning);
         run_next_test();
       });
 
@@ -388,7 +367,7 @@ add_test(function test_finalize_executes_entirely() {
 
     // Just before finishing, indicate if we completed the second execution.
     if (executed) {
-      do_check_true(deferredTask.isRunning);
+      Assert.ok(deferredTask.isRunning);
       executedAgain = true;
     } else {
       executed = true;

@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/TextUtils.h"
 
 #include "nspr.h"
 
@@ -13,6 +14,7 @@
 #include "nsAutoPtr.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
+#include "nsIClassOfService.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsILoadContext.h"
 #include "nsIPrivateBrowsingChannel.h"
@@ -29,7 +31,6 @@
 #include "nsEscape.h"
 #include "nsUnicharUtils.h"
 #include "nsIStringEnumerator.h"
-#include "nsCRT.h"
 #include "nsContentCID.h"
 #include "nsStreamUtils.h"
 
@@ -37,6 +38,7 @@
 
 #include "nsIURL.h"
 #include "nsIFileURL.h"
+#include "nsIURIMutator.h"
 #include "nsIWebProgressListener.h"
 #include "nsIAuthPrompt.h"
 #include "nsIPrompt.h"
@@ -53,7 +55,6 @@
 #include "nsIStringBundle.h"
 #include "nsIProtocolHandler.h"
 
-#include "nsIWebBrowserPersistable.h"
 #include "nsWebBrowserPersist.h"
 #include "WebBrowserPersistLocalDocument.h"
 
@@ -412,7 +413,7 @@ NS_IMETHODIMP nsWebBrowserPersist::SetProgressListener(
 }
 
 NS_IMETHODIMP nsWebBrowserPersist::SaveURI(
-    nsIURI *aURI, nsISupports *aCacheKey,
+    nsIURI *aURI, uint32_t aCacheKey,
     nsIURI *aReferrer, uint32_t aReferrerPolicy,
     nsIInputStream *aPostData, const char *aExtraHeaders,
     nsISupports *aFile, nsILoadContext* aPrivacyContext)
@@ -423,7 +424,7 @@ NS_IMETHODIMP nsWebBrowserPersist::SaveURI(
 }
 
 NS_IMETHODIMP nsWebBrowserPersist::SavePrivacyAwareURI(
-    nsIURI *aURI, nsISupports *aCacheKey,
+    nsIURI *aURI, uint32_t aCacheKey,
     nsIURI *aReferrer, uint32_t aReferrerPolicy,
     nsIInputStream *aPostData, const char *aExtraHeaders,
     nsISupports *aFile, bool aIsPrivate)
@@ -623,14 +624,14 @@ nsWebBrowserPersist::SerializeNextFile()
             if (NS_WARN_IF(NS_FAILED(rv))) {
                 break;
             }
-            rv = AppendPathToURI(fileAsURI, data->mFilename);
+            rv = AppendPathToURI(fileAsURI, data->mFilename, fileAsURI);
             if (NS_WARN_IF(NS_FAILED(rv))) {
                 break;
             }
 
             // The Referrer Policy doesn't matter here since the referrer is
             // nullptr.
-            rv = SaveURIInternal(uri, nullptr, nullptr,
+            rv = SaveURIInternal(uri, 0, nullptr,
                                  mozilla::net::RP_Unset, nullptr, nullptr,
                                  fileAsURI, true, mIsPrivate);
             // If SaveURIInternal fails, then it will have called EndDownload,
@@ -640,8 +641,9 @@ nsWebBrowserPersist::SerializeNextFile()
             }
 
             if (rv == NS_OK) {
-                // Store the actual object because once it's persisted this
-                // will be fixed up with the right file extension.
+                // URIData.mFile will be updated to point to the correct
+                // URI object when it is fixed up with the right file extension
+                // in OnStartRequest
                 data->mFile = fileAsURI;
                 data->mSaved = true;
             } else {
@@ -854,11 +856,32 @@ NS_IMETHODIMP nsWebBrowserPersist::OnStartRequest(
 
         if (data->mCalcFileExt && !(mPersistFlags & PERSIST_FLAGS_DONT_CHANGE_FILENAMES))
         {
+            nsCOMPtr<nsIURI> uriWithExt;
             // this is the first point at which the server can tell us the mimetype
-            CalculateAndAppendFileExt(data->mFile, channel, data->mOriginalLocation);
+            nsresult rv = CalculateAndAppendFileExt(data->mFile, channel, data->mOriginalLocation, uriWithExt);
+            if (NS_SUCCEEDED(rv)) {
+                data->mFile = uriWithExt;
+            }
 
             // now make filename conformant and unique
-            CalculateUniqueFilename(data->mFile);
+            nsCOMPtr<nsIURI> uniqueFilenameURI;
+            rv = CalculateUniqueFilename(data->mFile, uniqueFilenameURI);
+            if (NS_SUCCEEDED(rv)) {
+                data->mFile = uniqueFilenameURI;
+            }
+
+            // The URIData entry is pointing to the old unfixed URI, so we need
+            // to update it.
+            nsCOMPtr<nsIURI> chanURI;
+            rv = channel->GetOriginalURI(getter_AddRefs(chanURI));
+            if (NS_SUCCEEDED(rv)) {
+                nsAutoCString spec;
+                chanURI->GetSpec(spec);
+                URIData *uridata;
+                if (mURIMap.Get(spec, &uridata)) {
+                    uridata->mFile = data->mFile;
+                }
+            }
         }
 
         // compare uris and bail before we add to output map if they are equal
@@ -1228,13 +1251,14 @@ nsresult nsWebBrowserPersist::SendErrorStatusChange(
     rv = s->CreateBundle(kWebBrowserPersistStringBundle, getter_AddRefs(bundle));
     NS_ENSURE_TRUE(NS_SUCCEEDED(rv) && bundle, NS_ERROR_FAILURE);
 
-    nsXPIDLString msgText;
+    nsAutoString msgText;
     const char16_t *strings[1];
     strings[0] = path.get();
-    rv = bundle->FormatStringFromName(msgId, strings, 1, getter_Copies(msgText));
+    rv = bundle->FormatStringFromName(msgId, strings, 1, msgText);
     NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
 
-    mProgressListener->OnStatusChange(nullptr, aRequest, aResult, msgText);
+    mProgressListener->OnStatusChange(nullptr, aRequest, aResult,
+                                      msgText.get());
 
     return NS_OK;
 }
@@ -1280,12 +1304,12 @@ nsWebBrowserPersist::GetLocalFileFromURI(nsIURI *aURI, nsIFile **aLocalFile)
 }
 
 /* static */ nsresult
-nsWebBrowserPersist::AppendPathToURI(nsIURI *aURI, const nsAString & aPath)
+nsWebBrowserPersist::AppendPathToURI(nsIURI *aURI, const nsAString & aPath, nsCOMPtr<nsIURI>& aOutURI)
 {
     NS_ENSURE_ARG_POINTER(aURI);
 
     nsAutoCString newPath;
-    nsresult rv = aURI->GetPath(newPath);
+    nsresult rv = aURI->GetPathQueryRef(newPath);
     NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
 
     // Append a forward slash if necessary
@@ -1297,13 +1321,14 @@ nsWebBrowserPersist::AppendPathToURI(nsIURI *aURI, const nsAString & aPath)
 
     // Store the path back on the URI
     AppendUTF16toUTF8(aPath, newPath);
-    aURI->SetPath(newPath);
 
-    return NS_OK;
+    return NS_MutateURI(aURI)
+             .SetPathQueryRef(newPath)
+             .Finalize(aOutURI);
 }
 
 nsresult nsWebBrowserPersist::SaveURIInternal(
-    nsIURI *aURI, nsISupports *aCacheKey, nsIURI *aReferrer,
+    nsIURI *aURI, uint32_t aCacheKey, nsIURI *aReferrer,
     uint32_t aReferrerPolicy, nsIInputStream *aPostData,
     const char *aExtraHeaders, nsIURI *aFile,
     bool aCalcFileExt, bool aIsPrivate)
@@ -1325,36 +1350,6 @@ nsresult nsWebBrowserPersist::SaveURIInternal(
         loadFlags |= nsIRequest::LOAD_FROM_CACHE;
     }
 
-    // Extract the cache key
-    nsCOMPtr<nsISupports> cacheKey;
-    if (aCacheKey)
-    {
-        // Test if the cache key is actually a web page descriptor (docshell)
-        // or session history entry.
-        nsCOMPtr<nsISHEntry> shEntry = do_QueryInterface(aCacheKey);
-        if (!shEntry)
-        {
-            nsCOMPtr<nsIWebPageDescriptor> webPageDescriptor =
-                do_QueryInterface(aCacheKey);
-            if (webPageDescriptor)
-            {
-                nsCOMPtr<nsISupports> currentDescriptor;
-                webPageDescriptor->GetCurrentDescriptor(getter_AddRefs(currentDescriptor));
-                shEntry = do_QueryInterface(currentDescriptor);
-            }
-        }
-
-        if (shEntry)
-        {
-            shEntry->GetCacheKey(getter_AddRefs(cacheKey));
-        }
-        else
-        {
-            // Assume a plain cache key
-            cacheKey = aCacheKey;
-        }
-    }
-
     // Open a channel to the URI
     nsCOMPtr<nsIChannel> inputChannel;
     rv = NS_NewChannel(getter_AddRefs(inputChannel),
@@ -1362,6 +1357,7 @@ nsresult nsWebBrowserPersist::SaveURIInternal(
                        nsContentUtils::GetSystemPrincipal(),
                        nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
                        nsIContentPolicy::TYPE_OTHER,
+                       nullptr,  // aPerformanceStorage
                        nullptr,  // aLoadGroup
                        static_cast<nsIInterfaceRequestor*>(this),
                        loadFlags);
@@ -1426,9 +1422,8 @@ nsresult nsWebBrowserPersist::SaveURIInternal(
 
         // Cache key
         nsCOMPtr<nsICacheInfoChannel> cacheChannel(do_QueryInterface(httpChannel));
-        if (cacheChannel && cacheKey)
-        {
-            cacheChannel->SetCacheKey(cacheKey);
+        if (cacheChannel && aCacheKey != 0) {
+            cacheChannel->SetCacheKey(aCacheKey);
         }
 
         // Headers
@@ -1489,11 +1484,18 @@ nsresult nsWebBrowserPersist::SaveChannelInternal(
                         getter_AddRefs(fileInputStream));
         NS_ENSURE_SUCCESS(rv, rv);
         rv = NS_NewBufferedInputStream(getter_AddRefs(bufferedInputStream),
-                                       fileInputStream, BUFFERED_OUTPUT_SIZE);
+                                       fileInputStream.forget(),
+                                       BUFFERED_OUTPUT_SIZE);
         NS_ENSURE_SUCCESS(rv, rv);
         nsAutoCString contentType;
         aChannel->GetContentType(contentType);
         return StartUpload(bufferedInputStream, aFile, contentType);
+    }
+
+    // Mark save channel as throttleable.
+    nsCOMPtr<nsIClassOfService> cos(do_QueryInterface(aChannel));
+    if (cos) {
+      cos->AddClassFlags(nsIClassOfService::Throttleable);
     }
 
     // Read from the input channel
@@ -1949,7 +1951,7 @@ void nsWebBrowserPersist::CleanupLocalFiles()
 }
 
 nsresult
-nsWebBrowserPersist::CalculateUniqueFilename(nsIURI *aURI)
+nsWebBrowserPersist::CalculateUniqueFilename(nsIURI *aURI, nsCOMPtr<nsIURI>& aOutURI)
 {
     nsCOMPtr<nsIURL> url(do_QueryInterface(aURI));
     NS_ENSURE_TRUE(url, NS_ERROR_FAILURE);
@@ -2094,17 +2096,19 @@ nsWebBrowserPersist::CalculateUniqueFilename(nsIURI *aURI)
             localFile->SetLeafName(filenameAsUnichar);
 
             // Resync the URI with the file after the extension has been appended
-            nsresult rv;
-            nsCOMPtr<nsIFileURL> fileURL = do_QueryInterface(aURI, &rv);
-            NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
-            fileURL->SetFile(localFile);  // this should recalculate uri
+            return NS_MutateURI(aURI)
+                     .Apply(NS_MutatorMethod(&nsIFileURLMutator::SetFile,
+                                             localFile))
+                     .Finalize(aOutURI);
         }
-        else
-        {
-            url->SetFileName(filename);
-        }
+        return NS_MutateURI(url)
+                 .Apply(NS_MutatorMethod(&nsIURLMutator::SetFileName,
+                                         filename, nullptr))
+                 .Finalize(aOutURI);
     }
 
+    // TODO (:valentin) This method should always clone aURI
+    aOutURI = aURI;
     return NS_OK;
 }
 
@@ -2138,7 +2142,7 @@ nsWebBrowserPersist::MakeFilenameFromURI(nsIURI *aURI, nsString &aFilename)
             for (;*p && *p != ';' && *p != '?' && *p != '#' && *p != '.'
                  ;p++)
             {
-                if (nsCRT::IsAsciiAlpha(*p) || nsCRT::IsAsciiDigit(*p)
+                if (IsAsciiAlpha(*p) || IsAsciiDigit(*p)
                     || *p == '.' || *p == '-' ||  *p == '_' || (*p == ' '))
                 {
                     fileName.Append(char16_t(*p));
@@ -2173,9 +2177,12 @@ nsWebBrowserPersist::MakeFilenameFromURI(nsIURI *aURI, nsString &aFilename)
 
 
 nsresult
-nsWebBrowserPersist::CalculateAndAppendFileExt(nsIURI *aURI, nsIChannel *aChannel, nsIURI *aOriginalURIWithExtension)
+nsWebBrowserPersist::CalculateAndAppendFileExt(nsIURI *aURI,
+                                               nsIChannel *aChannel,
+                                               nsIURI *aOriginalURIWithExtension,
+                                               nsCOMPtr<nsIURI>& aOutURI)
 {
-    nsresult rv;
+    nsresult rv = NS_OK;
 
     if (!mMIMEService)
     {
@@ -2264,19 +2271,22 @@ nsWebBrowserPersist::CalculateAndAppendFileExt(nsIURI *aURI, nsIChannel *aChanne
                     localFile->SetLeafName(NS_ConvertUTF8toUTF16(newFileName));
 
                     // Resync the URI with the file after the extension has been appended
-                    nsCOMPtr<nsIFileURL> fileURL = do_QueryInterface(aURI, &rv);
-                    NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
-                    fileURL->SetFile(localFile);  // this should recalculate uri
+                    return NS_MutateURI(url)
+                             .Apply(NS_MutatorMethod(&nsIFileURLMutator::SetFile,
+                                                     localFile))
+                             .Finalize(aOutURI);
                 }
-                else
-                {
-                    url->SetFileName(newFileName);
-                }
+                return NS_MutateURI(url)
+                         .Apply(NS_MutatorMethod(&nsIURLMutator::SetFileName,
+                                                 newFileName, nullptr))
+                         .Finalize(aOutURI);
             }
 
         }
     }
 
+    // TODO (:valentin) This method should always clone aURI
+    aOutURI = aURI;
     return NS_OK;
 }
 
@@ -2313,8 +2323,9 @@ nsWebBrowserPersist::MakeOutputStreamFromFile(
     rv = fileOutputStream->Init(aFile, ioFlags, -1, 0);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    *aOutputStream = NS_BufferOutputStream(fileOutputStream,
-                                           BUFFERED_OUTPUT_SIZE).take();
+    rv = NS_NewBufferedOutputStream(aOutputStream, fileOutputStream.forget(),
+                                    BUFFERED_OUTPUT_SIZE);
+    NS_ENSURE_SUCCESS(rv, rv);
 
     if (mPersistFlags & PERSIST_FLAGS_CLEANUP_ON_FAILURE)
     {
@@ -2534,12 +2545,14 @@ nsWebBrowserPersist::URIData::GetLocalURI(nsIURI *targetBaseURI, nsCString& aSpe
     } else {
         rv = mDataPath->Clone(getter_AddRefs(fileAsURI));
         NS_ENSURE_SUCCESS(rv, rv);
-        rv = AppendPathToURI(fileAsURI, mFilename);
+        rv = AppendPathToURI(fileAsURI, mFilename, fileAsURI);
         NS_ENSURE_SUCCESS(rv, rv);
     }
 
     // remove username/password if present
-    fileAsURI->SetUserPass(EmptyCString());
+    Unused << NS_MutateURI(fileAsURI)
+                .SetUserPass(EmptyCString())
+                .Finalize(fileAsURI);
 
     // reset node attribute
     // Use relative or absolute links
@@ -2625,7 +2638,7 @@ nsWebBrowserPersist::SaveSubframeContent(
     nsresult rv = aFrameContent->GetContentType(contentType);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsXPIDLString ext;
+    nsString ext;
     GetExtensionForContentType(NS_ConvertASCIItoUTF16(contentType).get(),
                                getter_Copies(ext));
 
@@ -2657,7 +2670,7 @@ nsWebBrowserPersist::SaveSubframeContent(
     nsCOMPtr<nsIURI> frameURI;
     rv = mCurrentDataPath->Clone(getter_AddRefs(frameURI));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = AppendPathToURI(frameURI, filenameWithExt);
+    rv = AppendPathToURI(frameURI, filenameWithExt, frameURI);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Work out the path for the subframe data
@@ -2668,14 +2681,18 @@ nsWebBrowserPersist::SaveSubframeContent(
 
     // Append _data
     newFrameDataPath.AppendLiteral("_data");
-    rv = AppendPathToURI(frameDataURI, newFrameDataPath);
+    rv = AppendPathToURI(frameDataURI, newFrameDataPath, frameDataURI);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Make frame document & data path conformant and unique
-    rv = CalculateUniqueFilename(frameURI);
+    nsCOMPtr<nsIURI> out;
+    rv = CalculateUniqueFilename(frameURI, out);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = CalculateUniqueFilename(frameDataURI);
+    frameURI = out;
+
+    rv = CalculateUniqueFilename(frameDataURI, out);
     NS_ENSURE_SUCCESS(rv, rv);
+    frameDataURI = out;
 
     mCurrentThingsToPersist++;
 

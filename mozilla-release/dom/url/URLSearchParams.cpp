@@ -98,7 +98,7 @@ URLParams::Delete(const nsAString& aName)
   }
 }
 
-void
+/* static */ void
 URLParams::ConvertString(const nsACString& aInput, nsAString& aOutput)
 {
   if (NS_FAILED(UTF_8_ENCODING->DecodeWithoutBOMHandling(aInput, aOutput))) {
@@ -106,7 +106,7 @@ URLParams::ConvertString(const nsACString& aInput, nsAString& aOutput)
   }
 }
 
-void
+/* static */ void
 URLParams::DecodeString(const nsACString& aInput, nsAString& aOutput)
 {
   nsACString::const_iterator start, end;
@@ -163,12 +163,9 @@ URLParams::DecodeString(const nsACString& aInput, nsAString& aOutput)
   ConvertString(unescaped, aOutput);
 }
 
-void
-URLParams::ParseInput(const nsACString& aInput)
+/* static */ bool
+URLParams::Parse(const nsACString& aInput, ForEachIterator& aIterator)
 {
-  // Remove all the existing data before parsing a new input.
-  DeleteAll();
-
   nsACString::const_iterator start, end;
   aInput.BeginReading(start);
   aInput.EndReading(end);
@@ -212,8 +209,83 @@ URLParams::ParseInput(const nsACString& aInput)
     nsAutoString decodedValue;
     DecodeString(value, decodedValue);
 
-    Append(decodedName, decodedValue);
+    if (!aIterator.URLParamsIterator(decodedName, decodedValue)) {
+      return false;
+    }
   }
+  return true;
+}
+
+class MOZ_STACK_CLASS ExtractURLParam final
+  : public URLParams::ForEachIterator
+{
+public:
+  explicit ExtractURLParam(const nsAString& aName, nsAString& aValue)
+    : mName(aName), mValue(aValue)
+  {}
+
+  bool URLParamsIterator(const nsAString& aName,
+                         const nsAString& aValue) override
+  {
+    if (mName == aName) {
+      mValue = aValue;
+      return false;
+    }
+    return true;
+  }
+
+private:
+  const nsAString& mName;
+  nsAString& mValue;
+};
+
+
+/**
+ * Extracts the first form-urlencoded parameter named `aName` from `aInput`.
+ * @param aRange The input to parse.
+ * @param aName The name of the parameter to extract.
+ * @param aValue The value of the extracted parameter, void if not found.
+ * @return Whether the parameter was found in the form-urlencoded.
+ */
+/* static */ bool
+URLParams::Extract(const nsACString& aInput,
+                   const nsAString& aName,
+                   nsAString& aValue)
+{
+  aValue.SetIsVoid(true);
+  ExtractURLParam iterator(aName, aValue);
+  return !URLParams::Parse(aInput, iterator);
+}
+
+class MOZ_STACK_CLASS PopulateIterator final
+  : public URLParams::ForEachIterator
+{
+public:
+  explicit PopulateIterator(URLParams* aParams)
+    : mParams(aParams)
+  {
+    MOZ_ASSERT(aParams);
+  }
+
+  bool URLParamsIterator(const nsAString& aName,
+                         const nsAString& aValue) override
+  {
+    mParams->Append(aName, aValue);
+    return true;
+  }
+
+private:
+  URLParams* mParams;
+};
+
+void
+URLParams::ParseInput(const nsACString& aInput)
+{
+  // Remove all the existing data before parsing a new input.
+  DeleteAll();
+
+  PopulateIterator iter(this);
+  URLParams::Parse(aInput, iter);
 }
 
 namespace {
@@ -268,7 +340,6 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(URLSearchParams)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(URLSearchParams)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY(nsIXHRSendable)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
@@ -435,7 +506,9 @@ ReadString(JSStructuredCloneReader* aReader, nsString& aString)
     return false;
   }
   MOZ_ASSERT(zero == 0);
-  aString.SetLength(nameLength);
+  if (NS_WARN_IF(!aString.SetLength(nameLength, fallible))) {
+    return false;
+  }
   size_t charSize = sizeof(nsString::char_type);
   read = JS_ReadBytes(aReader, (void*) aString.BeginWriting(),
                       nameLength * charSize);
@@ -539,10 +612,13 @@ URLSearchParams::ReadStructuredClone(JSStructuredCloneReader* aReader)
  return mParams->ReadStructuredClone(aReader);
 }
 
-NS_IMETHODIMP
+// contentTypeWithCharset can be set to the contentType or
+// contentType+charset based on what the spec says.
+// See: https://fetch.spec.whatwg.org/#concept-bodyinit-extract
+nsresult
 URLSearchParams::GetSendInfo(nsIInputStream** aBody, uint64_t* aContentLength,
                              nsACString& aContentTypeWithCharset,
-                             nsACString& aCharset)
+                             nsACString& aCharset) const
 {
   aContentTypeWithCharset.AssignLiteral("application/x-www-form-urlencoded;charset=UTF-8");
   aCharset.AssignLiteral("UTF-8");
@@ -551,7 +627,7 @@ URLSearchParams::GetSendInfo(nsIInputStream** aBody, uint64_t* aContentLength,
   Serialize(serialized);
   NS_ConvertUTF16toUTF8 converted(serialized);
   *aContentLength = converted.Length();
-  return NS_NewCStringInputStream(aBody, converted);
+  return NS_NewCStringInputStream(aBody, Move(converted));
 }
 
 } // namespace dom

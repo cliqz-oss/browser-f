@@ -42,12 +42,12 @@
  *      usedTags:         All used tags from within the extension sorted by recency
  */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, manager: Cm} = Components;
-this.EXPORTED_SYMBOLS = ["pktApi"];
+var EXPORTED_SYMBOLS = ["pktApi"];
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 var pktApi = (function() {
 
@@ -56,7 +56,7 @@ var pktApi = (function() {
      */
 
     // Base url for all api calls
-    var pocketAPIhost = Services.prefs.getCharPref("extensions.pocket.api");    // api.getpocket.com
+    var pocketAPIhost = Services.prefs.getCharPref("extensions.pocket.api"); // api.getpocket.com
     var pocketSiteHost = Services.prefs.getCharPref("extensions.pocket.site"); // getpocket.com
     var baseAPIUrl = "https://" + pocketAPIhost + "/v3";
 
@@ -88,7 +88,7 @@ var pktApi = (function() {
                 }
             }
         return out;
-    }
+    };
 
     var parseJSON = function(jsonString) {
         try {
@@ -155,9 +155,7 @@ var pktApi = (function() {
      *  The return format: { cookieName:cookieValue, cookieName:cookieValue, ... }
     */
     function getCookiesFromPocket() {
-
-        var cookieManager = Cc["@mozilla.org/cookiemanager;1"].getService(Ci.nsICookieManager2);
-        var pocketCookies = cookieManager.getCookiesFromHost(pocketSiteHost, {});
+        var pocketCookies = Services.cookies.getCookiesFromHost(pocketSiteHost, {});
         var cookies = {};
         while (pocketCookies.hasMoreElements()) {
             var cookie = pocketCookies.getNext().QueryInterface(Ci.nsICookie2);
@@ -174,12 +172,12 @@ var pktApi = (function() {
         var pocketCookies = getCookiesFromPocket();
 
         // If no cookie was found just return undefined
-        if (typeof pocketCookies["ftv1"] === "undefined") {
+        if (typeof pocketCookies.ftv1 === "undefined") {
             return undefined;
         }
 
         // Check if a new user logged in in the meantime and clearUserData if so
-        var sessionId = pocketCookies["fsv1"];
+        var sessionId = pocketCookies.fsv1;
         var lastSessionId = getSetting("fsv1");
         if (sessionId !== lastSessionId) {
             clearUserData();
@@ -187,7 +185,7 @@ var pktApi = (function() {
         }
 
         // Return access token
-        return pocketCookies["ftv1"];
+        return pocketCookies.ftv1;
     }
 
     /**
@@ -199,7 +197,7 @@ var pktApi = (function() {
         if (typeof premiumStatus === "undefined") {
             // Premium status is not in settings try get it from cookie
             var pocketCookies = getCookiesFromPocket();
-            premiumStatus = pocketCookies["ps"];
+            premiumStatus = pocketCookies.ps;
         }
         return premiumStatus;
     }
@@ -253,7 +251,7 @@ var pktApi = (function() {
         data.locale_lang = Services.locale.getAppLocaleAsLangTag();
         data.consumer_key = oAuthConsumerKey;
 
-        var request = Components.classes["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Components.interfaces.nsIXMLHttpRequest);
+        var request = new XMLHttpRequest();
         request.open("POST", url, true);
         request.onreadystatechange = function(e) {
             if (request.readyState == 4) {
@@ -380,6 +378,22 @@ var pktApi = (function() {
     function deleteItem(itemId, options) {
         var action = {
             action: "delete",
+            item_id: itemId
+        };
+        return sendAction(action, options);
+    }
+
+    /**
+     * Archive an item identified by item id from the users list
+     * @param  {string} itemId  The id from the item we want to archive
+     * @param  {Object | undefined} options Can provide an actionInfo object with
+     *                                      further data to send to the API. Can
+     *                                      have success and error callbacks
+     * @return {Boolean} Returns Boolean whether the api call started sucessfully
+     */
+    function archiveItem(itemId, options) {
+        var action = {
+            action: "archive",
             item_id: itemId
         };
         return sendAction(action, options);
@@ -514,10 +528,10 @@ var pktApi = (function() {
         var tagsFromSettings = function() {
             var tagsJSON = getSetting("tags");
             if (typeof tagsJSON !== "undefined") {
-                return JSON.parse(tagsJSON)
+                return JSON.parse(tagsJSON);
             }
             return [];
-        }
+        };
 
         var sortedUsedTagsFromSettings = function() {
             // Get and Sort used tags
@@ -548,7 +562,7 @@ var pktApi = (function() {
             }
 
             return usedTags;
-        }
+        };
 
         if (callback) {
             var tags = tagsFromSettings();
@@ -601,10 +615,24 @@ var pktApi = (function() {
     }
 
     /**
+     * Helper function to get a user's pocket stories
+     * @return {Boolean} Returns Boolean whether the api call started sucessfully
+     */
+    function retrieve(data = {}, options = {}) {
+        const requestData = Object.assign({}, data, {access_token: getAccessToken()});
+        return apiRequest({
+            path: "/firefox/get",
+            data: requestData,
+            success: options.success,
+            error: options.error
+        });
+    }
+
+    /**
      * Helper function to get current signup AB group the user is in
      */
     function getSignupPanelTabTestVariant() {
-        return getMultipleTestOption("panelSignUp", {control: 1, v1: 8, v2: 1 })
+        return getMultipleTestOption("panelSignUp", {control: 1, v1: 8, v2: 1 });
     }
 
     function getMultipleTestOption(testName, testOptions) {
@@ -639,6 +667,7 @@ var pktApi = (function() {
         clearUserData,
         addLink,
         deleteItem,
+        archiveItem,
         addTagsToItem,
         addTagsToURL,
         getTags,
@@ -646,5 +675,6 @@ var pktApi = (function() {
         getSuggestedTagsForItem,
         getSuggestedTagsForURL,
         getSignupPanelTabTestVariant,
+        retrieve,
     };
 }());

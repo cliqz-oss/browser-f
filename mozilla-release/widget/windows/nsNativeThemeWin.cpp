@@ -16,9 +16,9 @@
 #include "nsIPresShell.h"
 #include "nsPresContext.h"
 #include "nsIContent.h"
+#include "nsIContentInlines.h"
 #include "nsIFrame.h"
 #include "nsNameSpaceManager.h"
-#include "nsIDOMHTMLInputElement.h"
 #include "nsLookAndFeel.h"
 #include "nsMenuFrame.h"
 #include "nsGkAtoms.h"
@@ -49,7 +49,8 @@ nsNativeThemeWin::nsNativeThemeWin() :
   mProgressDeterminateTimeStamp(TimeStamp::Now()),
   mProgressIndeterminateTimeStamp(TimeStamp::Now()),
   mBorderCacheValid(),
-  mMinimumWidgetSizeCacheValid()
+  mMinimumWidgetSizeCacheValid(),
+  mGutterSizeCacheValid(false)
 {
   // If there is a relevant change in forms.css for windows platform,
   // static widget style variables (e.g. sButtonBorderSize) should be 
@@ -219,6 +220,19 @@ GetGutterSize(HANDLE theme, HDC hdc)
     ret.cx = width;
     ret.cy = height;
     return ret;
+}
+
+SIZE
+nsNativeThemeWin::GetCachedGutterSize(HANDLE theme)
+{
+  if (mGutterSizeCacheValid) {
+    return mGutterSizeCache;
+  }
+
+  mGutterSizeCache = GetGutterSize(theme, nullptr);
+  mGutterSizeCacheValid = true;
+
+  return mGutterSizeCache;
 }
 
 /* DrawThemeBGRTLAware - render a theme part based on rtl state.
@@ -668,6 +682,7 @@ nsresult nsNativeThemeWin::GetCachedMinimumWidgetSize(nsIFrame * aFrame, HANDLE 
   aResult->height = sz.cy;
 
   switch (aWidgetType) {
+    case NS_THEME_INNER_SPIN_BUTTON:
     case NS_THEME_SPINNER_UPBUTTON:
     case NS_THEME_SPINNER_DOWNBUTTON:
       aResult->width++;
@@ -752,6 +767,7 @@ mozilla::Maybe<nsUXThemeClass> nsNativeThemeWin::GetThemeClass(uint8_t aWidgetTy
     case NS_THEME_SCALETHUMB_HORIZONTAL:
     case NS_THEME_SCALETHUMB_VERTICAL:
       return Some(eUXTrackbar);
+    case NS_THEME_INNER_SPIN_BUTTON:
     case NS_THEME_SPINNER_UPBUTTON:
     case NS_THEME_SPINNER_DOWNBUTTON:
       return Some(eUXSpin);
@@ -1129,6 +1145,7 @@ nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame, uint8_t aWidgetType,
       }
       return NS_OK;
     }
+    case NS_THEME_INNER_SPIN_BUTTON:
     case NS_THEME_SPINNER_UPBUTTON:
     case NS_THEME_SPINNER_DOWNBUTTON: {
       aPart = (aWidgetType == NS_THEME_SPINNER_UPBUTTON) ?
@@ -1478,7 +1495,8 @@ nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame, uint8_t aWidgetType,
 static bool
 AssumeThemePartAndStateAreTransparent(int32_t aPart, int32_t aState)
 {
-  if (aPart == MENU_POPUPITEM && aState == MBI_NORMAL) {
+  if (!(IsWin8Point1OrLater() && nsUXThemeData::IsHighContrastOn()) &&
+      aPart == MENU_POPUPITEM && aState == MBI_NORMAL) {
     return true;
   }
   return false;
@@ -1566,8 +1584,8 @@ nsNativeThemeWin::DrawWidgetBackground(gfxContext* aContext,
   gfxFloat p2a = gfxFloat(aFrame->PresContext()->AppUnitsPerDevPixel());
   RECT widgetRect;
   RECT clipRect;
-  gfxRect tr(aRect.x, aRect.y, aRect.width, aRect.height),
-          dr(aDirtyRect.x, aDirtyRect.y, aDirtyRect.width, aDirtyRect.height);
+  gfxRect tr(aRect.X(), aRect.Y(), aRect.Width(), aRect.Height()),
+          dr(aDirtyRect.X(), aDirtyRect.Y(), aDirtyRect.Width(), aDirtyRect.Height());
 
   tr.Scale(1.0 / (p2a * themeScale));
   dr.Scale(1.0 / (p2a * themeScale));
@@ -2273,7 +2291,7 @@ nsNativeThemeWin::GetMinimumWidgetSize(nsPresContext* aPresContext, nsIFrame* aF
     case NS_THEME_RADIOMENUITEM:
       if(!IsTopLevelMenu(aFrame))
       {
-        SIZE gutterSize(GetGutterSize(theme, nullptr));
+        SIZE gutterSize(GetCachedGutterSize(theme));
         aResult->width = gutterSize.cx;
         aResult->height = gutterSize.cy;
         ScaleForFrameDPI(aResult, aFrame);
@@ -2285,7 +2303,7 @@ nsNativeThemeWin::GetMinimumWidgetSize(nsPresContext* aPresContext, nsIFrame* aF
     case NS_THEME_MENUCHECKBOX:
     case NS_THEME_MENURADIO:
       {
-        SIZE boxSize(GetGutterSize(theme, nullptr));
+        SIZE boxSize(GetCachedGutterSize(theme));
         aResult->width = boxSize.cx+2;
         aResult->height = boxSize.cy;
         *aIsOverridable = false;
@@ -2437,7 +2455,7 @@ nsNativeThemeWin::GetMinimumWidgetSize(nsPresContext* aPresContext, nsIFrame* aF
 
 NS_IMETHODIMP
 nsNativeThemeWin::WidgetStateChanged(nsIFrame* aFrame, uint8_t aWidgetType, 
-                                     nsIAtom* aAttribute, bool* aShouldRepaint,
+                                     nsAtom* aAttribute, bool* aShouldRepaint,
                                      const nsAttrValue* aOldValue)
 {
   // Some widget types just never change state.
@@ -2515,6 +2533,7 @@ nsNativeThemeWin::ThemeChanged()
   nsUXThemeData::Invalidate();
   memset(mBorderCacheValid, 0, sizeof(mBorderCacheValid));
   memset(mMinimumWidgetSizeCacheValid, 0, sizeof(mMinimumWidgetSizeCacheValid));
+  mGutterSizeCacheValid = false;
   return NS_OK;
 }
 
@@ -2702,6 +2721,7 @@ nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
     case NS_THEME_SCALETHUMB_HORIZONTAL:
     case NS_THEME_SCALETHUMB_VERTICAL:
     case NS_THEME_MENULIST_BUTTON:
+    case NS_THEME_INNER_SPIN_BUTTON:
     case NS_THEME_SPINNER_UPBUTTON:
     case NS_THEME_SPINNER_DOWNBUTTON:
     case NS_THEME_LISTBOX:
@@ -2857,6 +2877,7 @@ nsNativeThemeWin::ClassicGetMinimumWidgetSize(nsIFrame* aFrame,
       (*aResult).width = ::GetSystemMetrics(SM_CXMENUCHECK);
       (*aResult).height = ::GetSystemMetrics(SM_CYMENUCHECK);
       break;
+    case NS_THEME_INNER_SPIN_BUTTON:
     case NS_THEME_SPINNER_UPBUTTON:
     case NS_THEME_SPINNER_DOWNBUTTON:
       (*aResult).width = ::GetSystemMetrics(SM_CXVSCROLL);
@@ -3258,6 +3279,7 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(nsIFrame* aFrame, uint8_t
 
       return NS_OK;
     }
+    case NS_THEME_INNER_SPIN_BUTTON:
     case NS_THEME_SPINNER_UPBUTTON:
     case NS_THEME_SPINNER_DOWNBUTTON: {
       EventStates contentState = GetContentState(aFrame, aWidgetType);
@@ -3267,6 +3289,7 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(nsIFrame* aFrame, uint8_t
         case NS_THEME_SPINNER_UPBUTTON:
           aState = DFCS_SCROLLUP;
           break;
+        case NS_THEME_INNER_SPIN_BUTTON:
         case NS_THEME_SPINNER_DOWNBUTTON:
           aState = DFCS_SCROLLDOWN;
           break;
@@ -3528,8 +3551,8 @@ nsresult nsNativeThemeWin::ClassicDrawWidgetBackground(gfxContext* aContext,
 
   gfxFloat p2a = gfxFloat(aFrame->PresContext()->AppUnitsPerDevPixel());
   RECT widgetRect;
-  gfxRect tr(aRect.x, aRect.y, aRect.width, aRect.height),
-          dr(aDirtyRect.x, aDirtyRect.y, aDirtyRect.width, aDirtyRect.height);
+  gfxRect tr(aRect.X(), aRect.Y(), aRect.Width(), aRect.Height()),
+          dr(aDirtyRect.X(), aDirtyRect.Y(), aDirtyRect.Width(), aDirtyRect.Height());
 
   tr.Scale(1.0 / p2a);
   dr.Scale(1.0 / p2a);
@@ -3567,6 +3590,7 @@ RENDER_AGAIN:
     case NS_THEME_SCROLLBARBUTTON_DOWN:
     case NS_THEME_SCROLLBARBUTTON_LEFT:
     case NS_THEME_SCROLLBARBUTTON_RIGHT:
+    case NS_THEME_INNER_SPIN_BUTTON:
     case NS_THEME_SPINNER_UPBUTTON:
     case NS_THEME_SPINNER_DOWNBUTTON:
     case NS_THEME_MENULIST_BUTTON:
@@ -3971,6 +3995,7 @@ nsNativeThemeWin::GetWidgetNativeDrawingFlags(uint8_t aWidgetType)
     case NS_THEME_SCALE_VERTICAL:
     case NS_THEME_SCALETHUMB_HORIZONTAL:
     case NS_THEME_SCALETHUMB_VERTICAL:
+    case NS_THEME_INNER_SPIN_BUTTON:
     case NS_THEME_SPINNER_UPBUTTON:
     case NS_THEME_SPINNER_DOWNBUTTON:
     case NS_THEME_LISTBOX:

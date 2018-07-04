@@ -63,7 +63,7 @@ pub fn for_each_variation<F>(family_name: &str, mut callback: F)
         let family_name_c = CString::new(family_name).unwrap();
         let family_name = family_name_c.as_ptr();
         let ok = FcPatternAddString(pattern, FC_FAMILY.as_ptr() as *mut c_char, family_name as *mut FcChar8);
-        assert!(ok != 0);
+        assert_ne!(ok, 0);
 
         let object_set = FcObjectSetCreate();
         assert!(!object_set.is_null());
@@ -132,7 +132,6 @@ pub fn system_default_family(generic_name: &str) -> Option<String> {
     }
 }
 
-#[cfg(target_os = "linux")]
 pub fn last_resort_font_families() -> Vec<String> {
     vec!(
         "Fira Sans".to_owned(),
@@ -141,16 +140,4 @@ pub fn last_resort_font_families() -> Vec<String> {
     )
 }
 
-#[cfg(target_os = "windows")]
-pub fn last_resort_font_families() -> Vec<String> {
-    vec!(
-        "Arial".to_owned()
-    )
-}
-
-#[cfg(target_os = "linux")]
 pub static SANS_SERIF_FONT_FAMILY: &'static str = "DejaVu Sans";
-
-#[cfg(target_os = "windows")]
-pub static SANS_SERIF_FONT_FAMILY: &'static str = "Arial";
-

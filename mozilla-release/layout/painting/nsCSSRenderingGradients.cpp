@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,6 +10,7 @@
 
 #include "gfx2DGlue.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/ComputedStyle.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/Helpers.h"
@@ -19,12 +20,10 @@
 #include "nsPresContext.h"
 #include "nsPoint.h"
 #include "nsRect.h"
-#include "nsStyleContext.h"
 #include "nsCSSColorUtils.h"
 #include "gfxContext.h"
 #include "nsStyleStructInlines.h"
 #include "nsCSSProps.h"
-#include "mozilla/Telemetry.h"
 #include "gfxUtils.h"
 #include "gfxGradientCache.h"
 
@@ -424,8 +423,10 @@ ResolvePremultipliedAlpha(nsTArray<ColorStop>& aStops)
     const ColorStop rightStop = aStops[x];
 
     // if the left and right stop have the same alpha value, we don't need
-    // to do anything
-    if (leftStop.mColor.a == rightStop.mColor.a) {
+    // to do anything. Hardstops should be instant, and also should never
+    // require dealing with interpolation.
+    if (leftStop.mColor.a == rightStop.mColor.a ||
+        leftStop.mPosition == rightStop.mPosition) {
       continue;
     }
 
@@ -661,7 +662,6 @@ nsCSSGradientRenderer::Paint(gfxContext& aContext,
                              float aOpacity)
 {
   AUTO_PROFILER_LABEL("nsCSSGradientRenderer::Paint", GRAPHICS);
-  Telemetry::AutoTimer<Telemetry::GRADIENT_DURATION, Telemetry::Microsecond> gradientTimer;
 
   if (aDest.IsEmpty() || aFillArea.IsEmpty()) {
     return;
@@ -875,8 +875,8 @@ nsCSSGradientRenderer::Paint(gfxContext& aContext,
   // Use a pattern transform to take account of source and dest rects
   matrix.PreTranslate(gfxPoint(mPresContext->CSSPixelsToDevPixels(aSrc.x),
                                mPresContext->CSSPixelsToDevPixels(aSrc.y)));
-  matrix.PreScale(gfxFloat(mPresContext->CSSPixelsToAppUnits(aSrc.width))/aDest.width,
-                  gfxFloat(mPresContext->CSSPixelsToAppUnits(aSrc.height))/aDest.height);
+  matrix.PreScale(gfxFloat(nsPresContext::CSSPixelsToAppUnits(aSrc.width))/aDest.width,
+                  gfxFloat(nsPresContext::CSSPixelsToAppUnits(aSrc.height))/aDest.height);
   gradientPattern->SetMatrix(matrix);
 
   if (stopDelta == 0.0) {
@@ -932,7 +932,7 @@ nsCSSGradientRenderer::Paint(gfxContext& aContext,
   gfxRect dirtyAreaToFill = nsLayoutUtils::RectToGfxRect(dirty, appUnitsPerDevPixel);
   dirtyAreaToFill.RoundOut();
 
-  gfxMatrix ctm = aContext.CurrentMatrix();
+  Matrix ctm = aContext.CurrentMatrix();
   bool isCTMPreservingAxisAlignedRectangles = ctm.PreservesAxisAlignedRectangles();
 
   // xStart/yStart are the top-left corner of the top-left tile.
@@ -940,6 +940,17 @@ nsCSSGradientRenderer::Paint(gfxContext& aContext,
   nscoord yStart = FindTileStart(dirty.y, aDest.y, aRepeatSize.height);
   nscoord xEnd = forceRepeatToCoverTiles ? xStart + aDest.width : dirty.XMost();
   nscoord yEnd = forceRepeatToCoverTiles ? yStart + aDest.height : dirty.YMost();
+
+  if (TryPaintTilesWithExtendMode(aContext,
+                                  gradientPattern,
+                                  xStart,
+                                  yStart,
+                                  dirtyAreaToFill,
+                                  aDest,
+                                  aRepeatSize,
+                                  forceRepeatToCoverTiles)) {
+    return;
+  }
 
   // x and y are the top-left corner of the tile to draw
   for (nscoord y = yStart; y < yEnd; y += aRepeatSize.height) {
@@ -975,7 +986,7 @@ nsCSSGradientRenderer::Paint(gfxContext& aContext,
         gfxMatrix transform = gfxUtils::TransformRectToRect(fillRect,
             snappedFillRectTopLeft, snappedFillRectTopRight,
             snappedFillRectBottomRight);
-        aContext.SetMatrix(transform);
+        aContext.SetMatrixDouble(transform);
       }
       aContext.NewPath();
       aContext.Rectangle(fillRect);
@@ -989,14 +1000,106 @@ nsCSSGradientRenderer::Paint(gfxContext& aContext,
         edgeColor.a *= aOpacity;
         aContext.SetColor(edgeColor);
       } else {
-        aContext.SetMatrix(
-          aContext.CurrentMatrix().Copy().PreTranslate(tileRect.TopLeft()));
+        aContext.SetMatrixDouble(
+          aContext.CurrentMatrixDouble().Copy().PreTranslate(tileRect.TopLeft()));
         aContext.SetPattern(gradientPattern);
       }
       aContext.Fill();
       aContext.SetMatrix(ctm);
     }
   }
+}
+
+bool
+nsCSSGradientRenderer::TryPaintTilesWithExtendMode(gfxContext& aContext,
+                                                   gfxPattern* aGradientPattern,
+                                                   nscoord aXStart,
+                                                   nscoord aYStart,
+                                                   const gfxRect& aDirtyAreaToFill,
+                                                   const nsRect& aDest,
+                                                   const nsSize& aRepeatSize,
+                                                   bool aForceRepeatToCoverTiles)
+{
+  // If we have forced a non-repeating gradient to repeat to cover tiles,
+  // then it will be faster to just paint it once using that optimization
+  if (aForceRepeatToCoverTiles) {
+    return false;
+  }
+
+  nscoord appUnitsPerDevPixel = mPresContext->AppUnitsPerDevPixel();
+
+  // We can only use this fast path if we don't have to worry about pixel
+  // snapping, and there is no spacing between tiles. We could handle spacing
+  // by increasing the size of tileSurface and leaving it transparent, but I'm
+  // not sure it's worth it
+  bool canUseExtendModeForTiling =
+    (aXStart % appUnitsPerDevPixel == 0) &&
+    (aYStart % appUnitsPerDevPixel == 0) &&
+    (aDest.width % appUnitsPerDevPixel == 0) &&
+    (aDest.height % appUnitsPerDevPixel == 0) &&
+    (aRepeatSize.width == aDest.width) &&
+    (aRepeatSize.height == aDest.height);
+
+  if (!canUseExtendModeForTiling) {
+    return false;
+  }
+
+  IntSize tileSize {
+    NSAppUnitsToIntPixels(aDest.width, appUnitsPerDevPixel),
+    NSAppUnitsToIntPixels(aDest.height, appUnitsPerDevPixel),
+  };
+
+  // Check whether this is a reasonable surface size and doesn't overflow
+  // before doing calculations with the tile size
+  if (!Factory::ReasonableSurfaceSize(tileSize)) {
+    return false;
+  }
+
+  // We only want to do this when there are enough tiles to justify the
+  // overhead of painting to an offscreen surface. The heuristic here
+  // is when we will be painting at least 16 tiles or more, this is kind
+  // of arbitrary
+  bool shouldUseExtendModeForTiling =
+    aDirtyAreaToFill.Area() > (tileSize.width * tileSize.height) * 16.0;
+
+  if (!shouldUseExtendModeForTiling) {
+    return false;
+  }
+
+  // Draw the gradient pattern into a surface for our single tile
+  RefPtr<gfx::SourceSurface> tileSurface;
+  {
+    RefPtr<gfx::DrawTarget> tileTarget = aContext.
+      GetDrawTarget()->
+      CreateSimilarDrawTarget(tileSize, gfx::SurfaceFormat::B8G8R8A8);
+    if (!tileTarget || !tileTarget->IsValid()) {
+      return false;
+    }
+
+    RefPtr<gfxContext> tileContext = gfxContext::CreateOrNull(tileTarget);
+
+    tileContext->SetPattern(aGradientPattern);
+    tileContext->Paint();
+
+    tileContext = nullptr;
+    tileSurface = tileTarget->Snapshot();
+    tileTarget = nullptr;
+  }
+
+  // Draw the gradient using tileSurface as a repeating pattern masked by
+  // the dirtyRect
+  Matrix tileTransform = Matrix::Translation(
+    NSAppUnitsToFloatPixels(aXStart, appUnitsPerDevPixel),
+    NSAppUnitsToFloatPixels(aYStart, appUnitsPerDevPixel));
+
+  aContext.NewPath();
+  aContext.Rectangle(aDirtyAreaToFill);
+  aContext.Fill(SurfacePattern(
+    tileSurface,
+    ExtendMode::REPEAT,
+    tileTransform));
+
+  return true;
 }
 
 void
@@ -1026,11 +1129,11 @@ nsCSSGradientRenderer::BuildWebRenderParameters(float aOpacity,
 void
 nsCSSGradientRenderer::BuildWebRenderDisplayItems(wr::DisplayListBuilder& aBuilder,
                                                   const layers::StackingContextHelper& aSc,
-                                                  layers::WebRenderDisplayItemLayer* aLayer,
                                                   const nsRect& aDest,
                                                   const nsRect& aFillArea,
                                                   const nsSize& aRepeatSize,
                                                   const CSSIntRect& aSrc,
+                                                  bool aIsBackfaceVisible,
                                                   float aOpacity)
 {
   if (aDest.IsEmpty() || aFillArea.IsEmpty()) {
@@ -1063,17 +1166,11 @@ nsCSSGradientRenderer::BuildWebRenderDisplayItems(wr::DisplayListBuilder& aBuild
   // Calculate the tile spacing, which is the repeat size minus the tile size
   LayoutDeviceSize tileSpacing = tileRepeat - firstTileBounds.Size();
 
-  // Make the rects relative to the parent stacking context
-  wr::LayoutRect wrClipBounds = aSc.ToRelativeLayoutRect(clipBounds);
-  LayerSize layerFirstTileSize = ViewAs<LayerPixel>(firstTileBounds.Size(),
-      PixelCastJustification::WebRenderHasUnitResolution);
-  wr::LayoutRect wrGradientBounds = aSc.ToRelativeLayoutRect(gradientBounds);
-
   // srcTransform is used for scaling the gradient to match aSrc
-  LayoutDeviceRect srcTransform = LayoutDeviceRect(mPresContext->CSSPixelsToAppUnits(aSrc.x),
-                                                   mPresContext->CSSPixelsToAppUnits(aSrc.y),
-                                                   aDest.width / ((float)mPresContext->CSSPixelsToAppUnits(aSrc.width)),
-                                                   aDest.height / ((float)mPresContext->CSSPixelsToAppUnits(aSrc.height)));
+  LayoutDeviceRect srcTransform = LayoutDeviceRect(nsPresContext::CSSPixelsToAppUnits(aSrc.x),
+                                                   nsPresContext::CSSPixelsToAppUnits(aSrc.y),
+                                                   aDest.width / ((float)nsPresContext::CSSPixelsToAppUnits(aSrc.width)),
+                                                   aDest.height / ((float)nsPresContext::CSSPixelsToAppUnits(aSrc.height)));
 
   lineStart.x = (lineStart.x - srcTransform.x) * srcTransform.width;
   lineStart.y = (lineStart.y - srcTransform.y) * srcTransform.height;
@@ -1083,26 +1180,28 @@ nsCSSGradientRenderer::BuildWebRenderDisplayItems(wr::DisplayListBuilder& aBuild
     lineEnd.y = (lineEnd.y - srcTransform.y) * srcTransform.height;
 
     aBuilder.PushLinearGradient(
-      wrGradientBounds,
-      wrClipBounds,
+      mozilla::wr::ToLayoutRect(gradientBounds),
+      mozilla::wr::ToLayoutRect(clipBounds),
+      aIsBackfaceVisible,
       mozilla::wr::ToLayoutPoint(lineStart),
       mozilla::wr::ToLayoutPoint(lineEnd),
       stops,
       extendMode,
-      mozilla::wr::ToLayoutSize(layerFirstTileSize),
+      mozilla::wr::ToLayoutSize(firstTileBounds.Size()),
       mozilla::wr::ToLayoutSize(tileSpacing));
   } else {
     gradientRadius.width *= srcTransform.width;
     gradientRadius.height *= srcTransform.height;
 
     aBuilder.PushRadialGradient(
-      wrGradientBounds,
-      wrClipBounds,
+      mozilla::wr::ToLayoutRect(gradientBounds),
+      mozilla::wr::ToLayoutRect(clipBounds),
+      aIsBackfaceVisible,
       mozilla::wr::ToLayoutPoint(lineStart),
       mozilla::wr::ToLayoutSize(gradientRadius),
       stops,
       extendMode,
-      mozilla::wr::ToLayoutSize(layerFirstTileSize),
+      mozilla::wr::ToLayoutSize(firstTileBounds.Size()),
       mozilla::wr::ToLayoutSize(tileSpacing));
   }
 }

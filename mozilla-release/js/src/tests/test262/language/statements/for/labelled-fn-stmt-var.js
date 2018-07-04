@@ -4,14 +4,16 @@
 /*---
 description: It is a Syntax Error if IsLabelledFunction(Statement) is true.
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 esid: sec-semantics-static-semantics-early-errors
 es6id: 13.7.1.1
-info: >
+info: |
     Although Annex B describes an extension which permits labelled function
     declarations outside of strict mode, this early error is applied regardless
     of the language mode.
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 for (var x; false; ) label1: label2: function f() {}

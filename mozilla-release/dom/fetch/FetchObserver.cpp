@@ -20,32 +20,14 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(FetchObserver,
                                                 DOMEventTargetHelper)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(FetchObserver)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(FetchObserver)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(FetchObserver, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(FetchObserver, DOMEventTargetHelper)
 
-/* static */ bool
-FetchObserver::IsEnabled(JSContext* aCx, JSObject* aGlobal)
-{
-  if (NS_IsMainThread()) {
-    return Preferences::GetBool("dom.fetchObserver.enabled", false);
-  }
-
-  using namespace workers;
-
-  // Otherwise, check the pref via the WorkerPrivate
-  WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
-  if (!workerPrivate) {
-    return false;
-  }
-
-  return workerPrivate->FetchObserverEnabled();
-}
-
 FetchObserver::FetchObserver(nsIGlobalObject* aGlobal,
-                             FetchSignal* aSignal)
+                             AbortSignal* aSignal)
   : DOMEventTargetHelper(aGlobal)
   , mState(FetchState::Requesting)
 {
@@ -67,7 +49,7 @@ FetchObserver::State() const
 }
 
 void
-FetchObserver::Aborted()
+FetchObserver::Abort()
 {
   SetState(FetchState::Aborted);
 }
@@ -108,8 +90,7 @@ FetchObserver::SetState(FetchState aState)
     Event::Constructor(this, NS_LITERAL_STRING("statechange"), init);
   event->SetTrusted(true);
 
-  bool dummy;
-  DispatchEvent(event, &dummy);
+  DispatchEvent(*event);
 }
 
 } // dom namespace

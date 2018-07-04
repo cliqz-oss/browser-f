@@ -3,20 +3,17 @@
 module.exports = {
   rules: {
     "mozilla/balanced-listeners": "error",
-    "mozilla/no-cpows-in-tests": "error",
     "mozilla/var-only-at-top-level": "error",
 
     "array-bracket-spacing": ["error", "never"],
     "block-scoped-var": "error",
     "comma-dangle": ["error", "always-multiline"],
     complexity: ["error", {
-      max: 20,
+      max: 23,
     }],
     curly: ["error", "all"],
     "dot-location": ["error", "property"],
-    "dot-notation": "error",
-    "generator-star-spacing": ["error", "after"],
-    indent: ["error", 2, {
+    "indent-legacy": ["error", 2, {
       SwitchCase: 1,
       CallExpression: {
         arguments: "first",
@@ -34,20 +31,18 @@ module.exports = {
     "max-len": ["error", 100],
     "max-nested-callbacks": ["error", 4],
     "new-parens": "error",
-    "no-caller": "error",
     "no-console": "error",
     "no-fallthrough": "error",
     "no-multi-str": "error",
     "no-multiple-empty-lines": ["error", {
       max: 2,
     }],
-    "no-new-wrappers": "error",
     "no-proto": "error",
     "no-throw-literal": "error",
     "no-unused-expressions": "error",
     "no-unused-vars": ["error", {
       args: "none",
-      varsIgnorePattern: "^(Cc|Ci|Cr|Cu|EXPORTED_SYMBOLS)$",
+      vars: "all",
     }],
     "no-use-before-define": ["error", {
       functions: false,

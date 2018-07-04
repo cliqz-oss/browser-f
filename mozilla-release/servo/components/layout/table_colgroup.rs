@@ -8,18 +8,21 @@
 
 use app_units::Au;
 use context::LayoutContext;
-use display_list_builder::DisplayListBuildState;
+use display_list::{DisplayListBuildState, StackingContextCollectionState};
 use euclid::Point2D;
 use flow::{BaseFlow, Flow, FlowClass, ForceNonfloatedFlag, OpaqueFlow};
-use fragment::{Fragment, FragmentBorderBoxIterator, Overflow, SpecificFragmentInfo};
+use fragment::{Fragment, FragmentBorderBoxIterator, Overflow};
 use layout_debug;
-use std::cmp::max;
 use std::fmt;
 use style::logical_geometry::LogicalSize;
 use style::properties::ComputedValues;
 use style::values::computed::LengthOrPercentageOrAuto;
 
+#[allow(unsafe_code)]
+unsafe impl ::flow::HasBaseFlow for TableColGroupFlow {}
+
 /// A table formatting context.
+#[repr(C)]
 pub struct TableColGroupFlow {
     /// Data common to all flows.
     pub base: BaseFlow,
@@ -59,6 +62,10 @@ impl Flow for TableColGroupFlow {
         self
     }
 
+    fn as_table_colgroup(&self) -> &TableColGroupFlow {
+        self
+    }
+
     fn bubble_inline_sizes(&mut self) {
         let _scope = layout_debug_scope!("table_colgroup::bubble_inline_sizes {:x}",
                                             self.base.debug_id());
@@ -66,11 +73,7 @@ impl Flow for TableColGroupFlow {
         for fragment in &self.cols {
             // Retrieve the specified value from the appropriate CSS property.
             let inline_size = fragment.style().content_inline_size();
-            let span = match fragment.specific {
-                SpecificFragmentInfo::TableColumn(col_fragment) => max(col_fragment.span, 1),
-                _ => panic!("non-table-column fragment inside table column?!"),
-            };
-            for _ in 0..span {
+            for _ in 0..fragment.column_span() {
                 self.inline_sizes.push(inline_size)
             }
         }
@@ -92,7 +95,10 @@ impl Flow for TableColGroupFlow {
     // Table columns are invisible.
     fn build_display_list(&mut self, _: &mut DisplayListBuildState) { }
 
-    fn collect_stacking_contexts(&mut self, _: &mut DisplayListBuildState) {}
+    fn collect_stacking_contexts(&mut self, state: &mut StackingContextCollectionState) {
+        self.base.stacking_context_id = state.current_stacking_context_id;
+        self.base.clipping_and_scrolling = Some(state.current_clipping_and_scrolling);
+    }
 
     fn repair_style(&mut self, _: &::ServoArc<ComputedValues>) {}
 

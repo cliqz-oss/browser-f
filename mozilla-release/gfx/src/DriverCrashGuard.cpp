@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,9 +9,7 @@
 #include "gfxConfig.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsDirectoryServiceUtils.h"
-#ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
-#endif
 #include "nsServiceManagerUtils.h"
 #include "nsString.h"
 #include "nsXULAppAPI.h"
@@ -39,7 +38,7 @@ BuildCrashGuardPrefName(CrashGuardType aType, nsCString& aOutPrefName)
   MOZ_ASSERT(aType < CrashGuardType::NUM_TYPES);
   MOZ_ASSERT(sCrashGuardNames[size_t(aType)]);
 
-  aOutPrefName.Assign("gfx.crash-guard.status.");
+  aOutPrefName.AssignLiteral("gfx.crash-guard.status.");
   aOutPrefName.Append(sCrashGuardNames[size_t(aType)]);
 }
 
@@ -166,11 +165,9 @@ DriverCrashGuard::~DriverCrashGuard()
     dom::ContentChild::GetSingleton()->SendEndDriverCrashGuard(uint32_t(mType));
   }
 
-#ifdef MOZ_CRASHREPORTER
   // Remove the crash report annotation.
   CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("GraphicsStartupTest"),
                                      NS_LITERAL_CSTRING(""));
-#endif
 }
 
 bool
@@ -191,7 +188,7 @@ DriverCrashGuard::GetGuardFile()
 
   nsCString filename;
   filename.Assign(sCrashGuardNames[size_t(mType)]);
-  filename.Append(".guard");
+  filename.AppendLiteral(".guard");
 
   nsCOMPtr<nsIFile> file;
   NS_GetSpecialDirectory(NS_APP_USER_PROFILE_LOCAL_50_DIR, getter_AddRefs(file));
@@ -209,7 +206,6 @@ DriverCrashGuard::ActivateGuard()
 {
   mGuardActivated = true;
 
-#ifdef MOZ_CRASHREPORTER
   // Anotate crash reports only if we're a real guard. Otherwise, we could
   // attribute a random parent process crash to a graphics problem in a child
   // process.
@@ -217,7 +213,6 @@ DriverCrashGuard::ActivateGuard()
     CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("GraphicsStartupTest"),
                                        NS_LITERAL_CSTRING("1"));
   }
-#endif
 
   // If we're in the content process, the rest of the guarding is handled
   // in the parent.

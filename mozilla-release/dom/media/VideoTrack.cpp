@@ -13,12 +13,13 @@
 namespace mozilla {
 namespace dom {
 
-VideoTrack::VideoTrack(const nsAString& aId,
+VideoTrack::VideoTrack(nsIGlobalObject* aOwnerGlobal,
+                       const nsAString& aId,
                        const nsAString& aKind,
                        const nsAString& aLabel,
                        const nsAString& aLanguage,
                        VideoStreamTrack* aStreamTarck)
-  : MediaTrack(aId, aKind, aLabel, aLanguage)
+  : MediaTrack(aOwnerGlobal, aId, aKind, aLabel, aLanguage)
   , mSelected(false)
   , mVideoStreamTrack(aStreamTarck)
 {
@@ -32,7 +33,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(VideoTrack, MediaTrack, mVideoStreamTrack)
 
 NS_IMPL_ADDREF_INHERITED(VideoTrack, MediaTrack)
 NS_IMPL_RELEASE_INHERITED(VideoTrack, MediaTrack)
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(VideoTrack)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(VideoTrack)
 NS_INTERFACE_MAP_END_INHERITING(MediaTrack)
 
 JSObject*

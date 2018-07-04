@@ -2,6 +2,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 /* eslint-env mozilla/frame-script */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 "use strict";
 
@@ -10,9 +11,9 @@
  * and that jank from several iframes are actually charged
  * to the top window.
  */
-Cu.import("resource://gre/modules/PerformanceStats.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://testing-common/ContentTask.jsm", this);
+ChromeUtils.import("resource://gre/modules/PerformanceStats.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://testing-common/ContentTask.jsm", this);
 
 
 const URL = "http://example.com/browser/toolkit/components/perfmonitoring/tests/browser/browser_compartments.html?test=" + Math.random();
@@ -26,9 +27,8 @@ function frameScript() {
   try {
     "use strict";
 
-    const { utils: Cu, classes: Cc, interfaces: Ci } = Components;
-    Cu.import("resource://gre/modules/PerformanceStats.jsm");
-    Cu.import("resource://gre/modules/Services.jsm");
+    ChromeUtils.import("resource://gre/modules/PerformanceStats.jsm");
+    ChromeUtils.import("resource://gre/modules/Services.jsm");
 
     // Make sure that the stopwatch is now active.
     let monitor = PerformanceStats.getMonitor(["jank", "cpow", "ticks", "compartments"]);
@@ -117,7 +117,7 @@ function monotinicity_tester(source, testName) {
     ]) {
       SilentAssert.equal(typeof next[probe][k], "number", `Sanity check (${testName}): ${k} is a number.`);
       SilentAssert.leq(prev[probe][k], next[probe][k], `Sanity check (${testName}): ${k} is monotonic.`);
-      SilentAssert.leq(0, next[probe][k], `Sanity check (${testName}): ${k} is >= 0.`)
+      SilentAssert.leq(0, next[probe][k], `Sanity check (${testName}): ${k} is >= 0.`);
     }
     SilentAssert.equal(prev.jank.durations.length, next.jank.durations.length,
                        `Sanity check (${testName}): Jank durations should be equal`);
@@ -129,7 +129,7 @@ function monotinicity_tester(source, testName) {
     }
     for (let i = 0; i < next.jank.durations.length - 1; ++i) {
       SilentAssert.leq(next.jank.durations[i + 1], next.jank.durations[i],
-        `Sanity check (${testName}): durations[${i}] >= durations[${i + 1}].`)
+        `Sanity check (${testName}): durations[${i}] >= durations[${i + 1}].`);
     }
   };
   let iteration = 0;
@@ -204,7 +204,7 @@ add_task(async function test() {
   info("Extracting initial state");
   let stats0 = await monitor.promiseSnapshot();
   Assert.notEqual(stats0.componentsData.length, 0, "There is more than one component");
-  Assert.ok(!stats0.componentsData.find(stat => stat.name.indexOf(URL) != -1),
+  Assert.ok(!stats0.componentsData.find(stat => stat.name.includes(URL)),
     "The url doesn't appear yet");
 
   let newTab = BrowserTestUtils.addTab(gBrowser);

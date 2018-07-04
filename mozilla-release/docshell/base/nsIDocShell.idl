@@ -12,10 +12,17 @@
 #include "js/TypeDecls.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/NotNull.h"
+#include "mozilla/UniquePtr.h"
+#include "nsCOMPtr.h"
+#include "nsIURI.h"
 class nsPresContext;
 class nsIPresShell;
 namespace mozilla {
 class Encoding;
+class HTMLEditor;
+namespace dom {
+class ClientSource;
+} // namespace dom
 }
 %}
 
@@ -27,11 +34,11 @@ class Encoding;
 [ptr] native nsIPresShell(nsIPresShell);
 [ref] native MaybeURI(mozilla::Maybe<nsCOMPtr<nsIURI>>);
 [ref] native Encoding(const mozilla::Encoding*);
+      native UniqueClientSource(mozilla::UniquePtr<mozilla::dom::ClientSource>);
 
 interface nsIURI;
 interface nsIChannel;
 interface nsIContentViewer;
-interface nsIDOMEventTarget;
 interface nsIDocShellLoadInfo;
 interface nsIEditor;
 interface nsIEditingSession;
@@ -52,7 +59,10 @@ interface nsITabParent;
 interface nsITabChild;
 interface nsICommandManager;
 interface nsICommandParams;
+interface nsILoadURIDelegate;
 native TabChildRef(already_AddRefed<nsITabChild>);
+
+webidl EventTarget;
 
 [scriptable, builtinclass, uuid(049234fe-da10-478b-bc5d-bc6f9a1ba63d)]
 interface nsIDocShell : nsIDocShellTreeItem
@@ -121,9 +131,16 @@ interface nsIDocShell : nsIDocShellTreeItem
   // Whether the load should be treated as srcdoc load, rather than a URI one.
   const long INTERNAL_LOAD_FLAGS_IS_SRCDOC               = 0x40;
 
+  // Whether this is the load of a frame's original src attribute
+  const long INTERNAL_LOAD_FLAGS_ORIGINAL_FRAME_SRC      = 0x80;
+
   const long INTERNAL_LOAD_FLAGS_NO_OPENER               = 0x100;
 
-  // NB: 0x80 is available.
+  // Whether a top-level data URI navigation is allowed for that load
+  const long INTERNAL_LOAD_FLAGS_FORCE_ALLOW_DATA_URI    = 0x200;
+
+  // Whether the load was triggered by user interaction.
+  const long INTERNAL_LOAD_FLAGS_IS_USER_TRIGGERED       = 0x1000;
 
   /**
    * Loads the given URI.  This method is identical to loadURI(...) except
@@ -171,6 +188,8 @@ interface nsIDocShell : nsIDocShellTreeItem
    * @param aFileName            - Non-null when the link should be downloaded as
                                    the given filename.
    * @param aPostDataStream      - Post data stream (if POSTing)
+   * @param aPostDataStreamLength - Post data stream length. Use -1 if the length
+                                    of the stream is unknown.
    * @param aHeadersStream       - Stream containing "extra" request headers...
    * @param aLoadFlags           - Flags to modify load behaviour. Flags are defined
    *                               in nsIWebNavigation.
@@ -196,6 +215,7 @@ interface nsIDocShell : nsIDocShellTreeItem
                               in string aTypeHint,
                               in AString aFileName,
                               in nsIInputStream aPostDataStream,
+                              in long long aPostDataStreamLength,
                               in nsIInputStream aHeadersStream,
                               in unsigned long aLoadFlags,
                               in nsISHEntry aSHEntry,
@@ -203,7 +223,6 @@ interface nsIDocShell : nsIDocShellTreeItem
                               in AString aSrcdoc,
                               in nsIDocShell aSourceDocShell,
                               in nsIURI aBaseURI,
-                              in boolean aCheckForPrerender,
                               out nsIDocShell aDocShell,
                               out nsIRequest aRequest);
 
@@ -271,12 +290,17 @@ interface nsIDocShell : nsIDocShellTreeItem
    * This attribute allows chrome to tie in to handle DOM events that may
    * be of interest to chrome.
    */
-  attribute nsIDOMEventTarget chromeEventHandler;
+  attribute EventTarget chromeEventHandler;
 
   /**
-    * This allows chrome to set a custom User agent on a specific docshell
-    */
+   * This allows chrome to set a custom User agent on a specific docshell
+   */
   attribute DOMString customUserAgent;
+
+  /**
+   * Whether CSS error reporting is enabled.
+   */
+  attribute boolean cssErrorReportingEnabled;
 
   /**
    * Whether to allow plugin execution
@@ -463,6 +487,13 @@ interface nsIDocShell : nsIDocShellTreeItem
   attribute nsISecureBrowserUI securityUI;
 
   /**
+   * Object used to delegate URI loading to an upper context.
+   * Currently only set for GeckoView to allow handling of load requests
+   * at the application level.
+   */
+  attribute nsILoadURIDelegate loadURIDelegate;
+
+  /**
    * Cancel the XPCOM timers for each meta-refresh URI in this docshell,
    * and this docshell's children, recursively. The meta-refresh timers can be
    * restarted using resumeRefreshURIs().  If the timers are already suspended,
@@ -549,22 +580,16 @@ interface nsIDocShell : nsIDocShellTreeItem
   readonly attribute nsIChannel currentDocumentChannel;
 
   /**
-   * Set the offset of this child in its container.
+   * The original offset of this child in its container. This property is -1 for
+   * dynamically added docShells.
    */
-  [noscript] void setChildOffset(in unsigned long offset);
+  [noscript] attribute long childOffset;
 
   /**
    * Find out whether the docshell is currently in the middle of a page
    * transition. This is set just before the pagehide/unload events fire.
    */
   readonly attribute boolean isInUnload;
-
-  /**
-   * Find out if the currently loaded document came from a suspicious channel
-   * (such as a JAR channel where the server-returned content type isn't a
-   * known JAR type).
-   */
-  readonly attribute boolean channelIsUnsafe;
 
   /**
    * This attribute determines whether Mixed Active Content is loaded on the
@@ -633,6 +658,12 @@ interface nsIDocShell : nsIDocShellTreeItem
   attribute boolean isOffScreenBrowser;
 
   /**
+   * Allows nsDocumentViewer to tell the top-level same-type docshell that
+   * one of the documents under it is printing.
+   */
+  void setIsPrinting(in boolean aIsPrinting);
+
+  /**
    * If the current content viewer isn't initialized for print preview,
    * it is replaced with one which is and to which an about:blank document
    * is loaded.
@@ -652,17 +683,6 @@ interface nsIDocShell : nsIDocShellTreeItem
    * like image frame discarding. Docshells are active unless told otherwise.
    */
   attribute boolean isActive;
-
-  /**
-   * Puts the docshell in prerendering mode. noscript because we want only
-   * native code to be able to put a docshell in prerendering.
-   */
-  [noscript] void SetIsPrerendered();
-
-  /**
-   * Whether this docshell is in prerender mode.
-   */
-  [infallible] readonly attribute boolean isPrerendered;
 
   /**
    * The ID of the docshell in the session history.
@@ -1002,7 +1022,7 @@ interface nsIDocShell : nsIDocShellTreeItem
   /**
    * Set when an iframe/frame is added dynamically.
    */
-  attribute boolean createdDynamically;
+  [infallible] attribute boolean createdDynamically;
 
   /**
    * Returns false for mLSHE, true for mOSHE
@@ -1153,4 +1173,51 @@ interface nsIDocShell : nsIDocShellTreeItem
   * Fire a dummy location change event asynchronously.
   */
   [noscript] void dispatchLocationChangeEvent();
+
+  /**
+   * Take ownership of the ClientSource representing an initial about:blank
+   * document that was never needed.  As an optimization we avoid creating
+   * this document if no code calls GetDocument(), but we still need a
+   * ClientSource object to represent the about:blank window.  This may return
+   * nullptr; for example if the docshell has created a real window and document
+   * already.
+   */
+  [noscript, nostdcall, notxpcom]
+  UniqueClientSource TakeInitialClientSource();
+
+  void setColorMatrix([array, size_is(aMatrixLen)] in float aMatrix,
+                      [optional] in unsigned long aMatrixLen);
+
+  void getColorMatrix([optional] out unsigned long aMatrixLen,
+                      [array, size_is(aMatrixLen), retval] out float aMatrix);
+
+  /**
+   * Initialize session history for this docshell. The docshell must be the root
+   * docshell.
+   */
+  void initSessionHistory();
+
+%{C++
+  /**
+   * These methods call nsDocShell::GetHTMLEditorInternal() and
+   * nsDocShell::SetHTMLEditorInternal() with static_cast.
+   */
+  mozilla::HTMLEditor* GetHTMLEditor();
+  nsresult SetHTMLEditor(mozilla::HTMLEditor* aHTMLEditor);
+%}
+
+  /**
+   * Allowed CSS display modes. This needs to be kept in
+   * sync with similar values in nsStyleConsts.h
+   */
+  const unsigned long DISPLAY_MODE_BROWSER = 0;
+  const unsigned long DISPLAY_MODE_MINIMAL_UI = 1;
+  const unsigned long DISPLAY_MODE_STANDALONE = 2;
+  const unsigned long DISPLAY_MODE_FULLSCREEN = 3;
+
+  /**
+   * Display mode for this docshell. Defaults to DISPLAY_MODE_BROWSER.
+   * Media queries only look at the value in the top-most docshell.
+   */
+  attribute unsigned long displayMode;
 };

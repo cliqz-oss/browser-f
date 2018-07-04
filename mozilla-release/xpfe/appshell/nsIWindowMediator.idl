@@ -73,6 +73,12 @@ interface nsIWindowMediator: nsISupports
   mozIDOMWindowProxy getMostRecentWindow(in wstring aWindowType);
 
   /**
+   * Same as getMostRecentWindow, but ignores private browsing
+   * windows.
+   */
+  mozIDOMWindowProxy getMostRecentNonPBWindow(in wstring aWindowType);
+
+  /**
    * Return the outer window with the given ID, if any.  Can return null.
    */
   mozIDOMWindowProxy getOuterWindowWithId(in unsigned long long aOuterWindowID);
@@ -102,14 +108,6 @@ interface nsIWindowMediator: nsISupports
     * @param aWindow the window which has gained focus
     */
   [noscript] void updateWindowTimeStamp(in nsIXULWindow aWindow);
-
-  /** Call this method when a window's title changes. Listeners (see
-    * addListener) will be notified through their onWindowTitleChange method.
-    * @param aWindow the window whose title has changed
-    * @param inTitle the window's new title
-    */
-  [noscript] void updateWindowTitle(in nsIXULWindow aWindow,
-                                    in wstring inTitle );
 
   /* z-ordering: */
 
@@ -191,16 +189,4 @@ interface nsIWindowMediator: nsISupports
     * @param aListener the listener to unregister
     */
   void removeListener(in nsIWindowMediatorListener aListener);
-};
-
-// XXXcatalinb: This should be merged to nsIWindowMediator. Using this
-// to avoid UUID change in aurora.
-[scriptable, uuid(b9ed4063-39a2-4302-8e5c-7287eef021fe)]
-interface nsIWindowMediator_44 : nsIWindowMediator
-{
-  /**
-   * Same as getMostRecentWindow, but ignores private browsing
-   * windows.
-   */
-  mozIDOMWindowProxy getMostRecentNonPBWindow(in wstring aWindowType);
 };

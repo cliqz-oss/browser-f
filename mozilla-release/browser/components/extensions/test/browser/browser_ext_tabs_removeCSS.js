@@ -91,7 +91,7 @@ add_task(async function testExecuteScript() {
       browser.test.notifyPass("removeCSS");
     } catch (e) {
       browser.test.fail(`Error: ${e} :: ${e.stack}`);
-      browser.test.notifyFailure("removeCSS");
+      browser.test.notifyFail("removeCSS");
     }
   }
 
@@ -113,5 +113,5 @@ add_task(async function testExecuteScript() {
 
   await extension.unload();
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

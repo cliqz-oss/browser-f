@@ -7,9 +7,9 @@
 /* import-globals-from aboutDialog-appUpdater.js */
 
 // Services = object with smart getters for common XPCOM services
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/AddonManager.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
 function init(aEvent) {
   if (aEvent.target != document)
@@ -17,19 +17,32 @@ function init(aEvent) {
 
   var distroId = Services.prefs.getCharPref("distribution.about", "");
   if (distroId) {
-    var distroVersion = Services.prefs.getCharPref("distribution.version");
+    var distroString = distroId;
+
+    var distroVersion = Services.prefs.getCharPref("distribution.version", "");
+    if (distroVersion) {
+      distroString += " - " + distroVersion;
+    }
 
     var distroIdField = document.getElementById("distributionId");
-    distroIdField.value = distroId + " - " + distroVersion;
+    distroIdField.value = distroString;
     distroIdField.style.display = "block";
 
     // DB-1148: Add platform and extension version to About dialog.
-    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com").then(cliqzAddon => {
       let componentsVersion = Services.appinfo.platformVersion;
       if (cliqzAddon) {
         componentsVersion += `+${cliqzAddon.version}`;
       }
       distroIdField.value += ` (${componentsVersion})`;
+
+      // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
+      let bundle = Services.strings.createBundle("chrome://browser/locale/browser.properties");
+      let archResource = Services.appinfo.is64Bit
+                         ? "aboutDialog.architecture.sixtyFourBit"
+                         : "aboutDialog.architecture.thirtyTwoBit";
+      let arch = bundle.GetStringFromName(archResource);
+      distroIdField.value += ` (${arch})`;
     });
 
 #if 0
@@ -57,14 +70,6 @@ function init(aEvent) {
     document.getElementById("experimental").hidden = false;
     document.getElementById("communityDesc").hidden = true;
   }
-
-  // Append "(32-bit)" or "(64-bit)" build architecture to the version number:
-  let bundle = Services.strings.createBundle("chrome://browser/locale/browser.properties");
-  let archResource = Services.appinfo.is64Bit
-                     ? "aboutDialog.architecture.sixtyFourBit"
-                     : "aboutDialog.architecture.thirtyTwoBit";
-  let arch = bundle.GetStringFromName(archResource);
-  versionField.textContent += ` (${arch})`;
 #endif
 
   // Show a release notes link if we have a URL.
@@ -88,6 +93,9 @@ function init(aEvent) {
         currentChannelText.hidden = true;
   }
 
+  if (AppConstants.MOZ_UPDATE_CHANNEL == "esr") {
+    document.getElementById("release").hidden = false;
+  }
   if (AppConstants.platform == "macosx") {
     // it may not be sized at this point, and we need its width to calculate its position
     window.sizeToContent();

@@ -7,6 +7,7 @@
 #define mozilla_extensions_WebExtensionPolicy_h
 
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/WebExtensionPolicyBinding.h"
 #include "mozilla/extensions/MatchPattern.h"
 
@@ -25,6 +26,7 @@ namespace extensions {
 using dom::WebExtensionInit;
 using dom::WebExtensionLocalizeCallback;
 
+class DocInfo;
 class WebExtensionContentScript;
 
 class WebExtensionPolicy final : public nsISupports
@@ -41,7 +43,7 @@ public:
   static already_AddRefed<WebExtensionPolicy>
   Constructor(dom::GlobalObject& aGlobal, const WebExtensionInit& aInit, ErrorResult& aRv);
 
-  nsIAtom* Id() const { return mId; }
+  nsAtom* Id() const { return mId; }
   void GetId(nsAString& aId) const { aId = nsDependentAtomString(mId); };
 
   const nsCString& MozExtensionHostname() const { return mHostname; }
@@ -59,9 +61,16 @@ public:
 
   Result<nsString, nsresult> GetURL(const nsAString& aPath) const;
 
-  bool CanAccessURI(nsIURI* aURI, bool aExplicit = false) const
+  void RegisterContentScript(WebExtensionContentScript& script,
+                             ErrorResult& aRv);
+
+  void UnregisterContentScript(const WebExtensionContentScript& script,
+                               ErrorResult& aRv);
+
+  bool CanAccessURI(const URLInfo& aURI, bool aExplicit = false) const
   {
-    return mHostPermissions && mHostPermissions->Matches(aURI, aExplicit);
+    return (!IsRestrictedURI(aURI) &&
+            mHostPermissions && mHostPermissions->Matches(aURI, aExplicit));
   }
 
   bool IsPathWebAccessible(const nsAString& aPath) const
@@ -69,7 +78,7 @@ public:
     return mWebAccessiblePaths.Matches(aPath);
   }
 
-  bool HasPermission(const nsIAtom* aPermission) const
+  bool HasPermission(const nsAtom* aPermission) const
   {
     return mPermissions->Contains(aPermission);
   }
@@ -78,9 +87,21 @@ public:
     return mPermissions->Contains(aPermission);
   }
 
+  static bool IsRestrictedDoc(const DocInfo& aDoc);
+  static bool IsRestrictedURI(const URLInfo& aURI);
+
   nsCString BackgroundPageHTML() const;
 
   void Localize(const nsAString& aInput, nsString& aResult) const;
+
+  const nsString& Name() const
+  {
+    return mName;
+  }
+  void GetName(nsAString& aName) const
+  {
+    aName = mName;
+  }
 
   const nsString& ContentSecurityPolicy() const
   {
@@ -90,7 +111,6 @@ public:
   {
     aCSP = mContentSecurityPolicy;
   }
-
 
   already_AddRefed<MatchPatternSet> AllowedOrigins()
   {
@@ -130,6 +150,12 @@ public:
   static already_AddRefed<WebExtensionPolicy>
   GetByURI(dom::GlobalObject& aGlobal, nsIURI* aURI);
 
+  static bool
+  IsRestrictedURI(dom::GlobalObject& aGlobal, const URLInfo& aURI)
+  {
+    return IsRestrictedURI(aURI);
+  }
+
 
   static bool UseRemoteWebExtensions(dom::GlobalObject& aGlobal);
   static bool IsExtensionProcess(dom::GlobalObject& aGlobal);
@@ -150,10 +176,11 @@ private:
 
   nsCOMPtr<nsISupports> mParent;
 
-  nsCOMPtr<nsIAtom> mId;
+  RefPtr<nsAtom> mId;
   nsCString mHostname;
   nsCOMPtr<nsIURI> mBaseURI;
 
+  nsString mName;
   nsString mContentSecurityPolicy;
 
   bool mActive = false;
@@ -164,7 +191,7 @@ private:
   RefPtr<MatchPatternSet> mHostPermissions;
   MatchGlobSet mWebAccessiblePaths;
 
-  Nullable<nsTArray<nsString>> mBackgroundScripts;
+  dom::Nullable<nsTArray<nsString>> mBackgroundScripts;
 
   nsTArray<RefPtr<WebExtensionContentScript>> mContentScripts;
 };

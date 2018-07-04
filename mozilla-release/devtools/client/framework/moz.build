@@ -5,16 +5,12 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
-TEST_HARNESS_FILES.xpcshell.devtools.client.framework.test += [
-    'test/shared-redux-head.js',
-]
 
 DIRS += [
     'components',
 ]
 
 DevToolsModules(
-    'about-devtools-toolbox.js',
     'attach-thread.js',
     'browser-menus.js',
     'devtools-browser.js',
@@ -31,6 +27,7 @@ DevToolsModules(
     'toolbox-host-manager.js',
     'toolbox-hosts.js',
     'toolbox-options.js',
+    'toolbox-tabs-order-manager.js',
     'toolbox.js',
     'ToolboxProcess.jsm',
 )

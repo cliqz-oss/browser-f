@@ -11,10 +11,12 @@ info: |
     [lookahead ∉ { {, function, async [no LineTerminator here] function, class, let [ }]
     Expression[+In, ?Yield, ?Await] ;
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [noStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 while (false) let
 [a] = 0;

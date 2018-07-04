@@ -10,15 +10,8 @@
    xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
    xmlns:xbl="http://www.mozilla.org/xbl">
 
-  <binding id="menulist-base" extends="chrome://global/content/bindings/general.xml#basecontrol">
-    <resources>
-      <stylesheet src="chrome://global/content/menulist.css"/>
-      <stylesheet src="chrome://global/skin/menulist.css"/>
-    </resources>
-  </binding>
-
-  <binding id="menulist" display="xul:menu" role="xul:menulist"
-           extends="chrome://global/content/bindings/menulist.xml#menulist-base">
+  <binding id="menulist" display="xul:menu"
+           extends="chrome://global/content/bindings/general.xml#basecontrol">
     <content sizetopopup="pref">
       <xul:hbox class="menulist-label-box" flex="1">
         <xul:image class="menulist-icon" xbl:inherits="src=image,src"/>
@@ -340,46 +333,6 @@
         </body>
       </method>
 
-      <method name="insertItemAt">
-        <parameter name="index"/>
-        <parameter name="label"/>
-        <parameter name="value"/>
-        <parameter name="description"/>
-        <body>
-        <![CDATA[
-          const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-          var popup = this.menupopup ||
-                      this.appendChild(document.createElementNS(XULNS, "menupopup"));
-          var item = document.createElementNS(XULNS, "menuitem");
-          item.setAttribute("label", label);
-          item.setAttribute("value", value);
-          if (description)
-            item.setAttribute("description", description);
-
-          if (index >= 0 && index < popup.childNodes.length)
-            popup.insertBefore(item, popup.childNodes[index]);
-          else
-            popup.appendChild(item);
-          return item;
-        ]]>
-        </body>
-      </method>
-
-      <method name="removeItemAt">
-        <parameter name="index"/>
-        <body>
-        <![CDATA[
-          var popup = this.menupopup;
-          if (popup && 0 <= index && index < popup.childNodes.length) {
-            var remove = popup.childNodes[index];
-            popup.removeChild(remove);
-            return remove;
-          }
-          return null;
-        ]]>
-        </body>
-      </method>
-
       <method name="removeAllItems">
         <body>
         <![CDATA[
@@ -531,7 +484,7 @@
 
       <property name="editor" readonly="true">
         <getter><![CDATA[
-          const nsIDOMNSEditableElement = Components.interfaces.nsIDOMNSEditableElement;
+          const nsIDOMNSEditableElement = Ci.nsIDOMNSEditableElement;
           return this.inputField.QueryInterface(nsIDOMNSEditableElement).editor;
         ]]></getter>
       </property>
@@ -592,19 +545,6 @@
         ]]>
       </handler>
     </handlers>
-  </binding>
-
-  <binding id="menulist-description" display="xul:menu"
-           extends="chrome://global/content/bindings/menulist.xml#menulist">
-    <content sizetopopup="pref">
-      <xul:hbox class="menulist-label-box" flex="1">
-        <xul:image class="menulist-icon" xbl:inherits="src=image,src"/>
-        <xul:label class="menulist-label" xbl:inherits="value=label,crop,accesskey" crop="right" flex="1"/>
-        <xul:label class="menulist-label menulist-description" xbl:inherits="value=description" crop="right" flex="10000"/>
-      </xul:hbox>
-      <xul:dropmarker class="menulist-dropmarker" type="menu" xbl:inherits="disabled,open"/>
-      <children includes="menupopup"/>
-    </content>
   </binding>
 
   <binding id="menulist-popuponly" display="xul:menu"

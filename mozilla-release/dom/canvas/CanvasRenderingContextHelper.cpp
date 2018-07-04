@@ -9,6 +9,7 @@
 #include "mozilla/dom/CanvasRenderingContext2D.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/UniquePtr.h"
+#include "MozFramebuffer.h"
 #include "nsContentUtils.h"
 #include "nsDOMJSUtils.h"
 #include "nsIScriptContext.h"
@@ -25,6 +26,7 @@ CanvasRenderingContextHelper::ToBlob(JSContext* aCx,
                                      BlobCallback& aCallback,
                                      const nsAString& aType,
                                      JS::Handle<JS::Value> aParams,
+                                     bool aUsePlaceholder,
                                      ErrorResult& aRv)
 {
   // Encoder callback when encoding is complete.
@@ -36,23 +38,13 @@ CanvasRenderingContextHelper::ToBlob(JSContext* aCx,
       , mBlobCallback(aCallback) {}
 
     // This is called on main thread.
-    nsresult ReceiveBlob(already_AddRefed<Blob> aBlob)
+    nsresult ReceiveBlob(already_AddRefed<Blob> aBlob) override
     {
       RefPtr<Blob> blob = aBlob;
 
-      ErrorResult rv;
-      uint64_t size = blob->GetSize(rv);
-      if (rv.Failed()) {
-        rv.SuppressException();
-      } else {
-        AutoJSAPI jsapi;
-        if (jsapi.Init(mGlobal)) {
-          JS_updateMallocCounter(jsapi.cx(), size);
-        }
-      }
-
       RefPtr<Blob> newBlob = Blob::Create(mGlobal, blob->Impl());
 
+      ErrorResult rv;
       mBlobCallback->Call(newBlob, rv);
 
       mGlobal = nullptr;
@@ -68,7 +60,7 @@ CanvasRenderingContextHelper::ToBlob(JSContext* aCx,
   RefPtr<EncodeCompleteCallback> callback =
     new EncodeCallback(aGlobal, &aCallback);
 
-  ToBlob(aCx, aGlobal, callback, aType, aParams, aRv);
+  ToBlob(aCx, aGlobal, callback, aType, aParams, aUsePlaceholder, aRv);
 }
 
 void
@@ -77,6 +69,7 @@ CanvasRenderingContextHelper::ToBlob(JSContext* aCx,
                                      EncodeCompleteCallback* aCallback,
                                      const nsAString& aType,
                                      JS::Handle<JS::Value> aParams,
+                                     bool aUsePlaceholder,
                                      ErrorResult& aRv)
 {
   nsAutoString type;
@@ -117,6 +110,7 @@ CanvasRenderingContextHelper::ToBlob(JSContext* aCx,
                                        Move(imageBuffer),
                                        format,
                                        GetWidthHeight(),
+                                       aUsePlaceholder,
                                        callback);
 }
 
@@ -237,7 +231,7 @@ CanvasRenderingContextHelper::UpdateContext(JSContext* aCx,
 
   nsCOMPtr<nsICanvasRenderingContextInternal> currentContext = mCurrentContext;
 
-  currentContext->SetIsOpaque(GetOpaqueAttr());
+  currentContext->SetOpaqueValueFromOpaqueAttr(GetOpaqueAttr());
 
   nsresult rv = currentContext->SetContextOptions(aCx, aNewContextOptions,
                                          aRvForDictionaryInit);

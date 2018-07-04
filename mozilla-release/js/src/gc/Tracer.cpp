@@ -8,25 +8,23 @@
 
 #include "mozilla/DebugOnly.h"
 
-#include "jsapi.h"
-#include "jsfun.h"
-#include "jsgc.h"
-#include "jsprf.h"
-#include "jsscript.h"
 #include "jsutil.h"
 #include "NamespaceImports.h"
 
 #include "gc/GCInternals.h"
 #include "gc/Marking.h"
+#include "gc/PublicIterators.h"
 #include "gc/Zone.h"
-
+#include "util/Text.h"
+#include "vm/JSFunction.h"
+#include "vm/JSScript.h"
 #include "vm/Shape.h"
-#include "vm/Symbol.h"
+#include "vm/SymbolType.h"
 
-#include "jscompartmentinlines.h"
-#include "jsgcinlines.h"
-
+#include "gc/GC-inl.h"
+#include "vm/JSCompartment-inl.h"
 #include "vm/ObjectGroup-inl.h"
+#include "vm/TypeInference-inl.h"
 
 using namespace js;
 using namespace js::gc;
@@ -66,24 +64,33 @@ template <>
 Value
 DoCallback<Value>(JS::CallbackTracer* trc, Value* vp, const char* name)
 {
-    *vp = DispatchTyped(DoCallbackFunctor<Value>(), *vp, trc, name);
-    return *vp;
+    // Only update *vp if the value changed, to avoid TSan false positives for
+    // template objects when using DumpHeapTracer or UbiNode tracers while Ion
+    // compiling off-thread.
+    Value v = DispatchTyped(DoCallbackFunctor<Value>(), *vp, trc, name);
+    if (*vp != v)
+        *vp = v;
+    return v;
 }
 
 template <>
 jsid
 DoCallback<jsid>(JS::CallbackTracer* trc, jsid* idp, const char* name)
 {
-    *idp = DispatchTyped(DoCallbackFunctor<jsid>(), *idp, trc, name);
-    return *idp;
+    jsid id = DispatchTyped(DoCallbackFunctor<jsid>(), *idp, trc, name);
+    if (*idp != id)
+        *idp = id;
+    return id;
 }
 
 template <>
 TaggedProto
 DoCallback<TaggedProto>(JS::CallbackTracer* trc, TaggedProto* protop, const char* name)
 {
-    *protop = DispatchTyped(DoCallbackFunctor<TaggedProto>(), *protop, trc, name);
-    return *protop;
+    TaggedProto proto = DispatchTyped(DoCallbackFunctor<TaggedProto>(), *protop, trc, name);
+    if (*protop != proto)
+        *protop = proto;
+    return proto;
 }
 
 void
@@ -187,7 +194,7 @@ gc::TraceCycleCollectorChildren(JS::CallbackTracer* trc, Shape* shape)
         MOZ_ASSERT(shape->base());
         shape->base()->assertConsistency();
 
-        TraceEdge(trc, &shape->propidRef(), "propid");
+        // Don't trace the propid because the CC doesn't care about jsid.
 
         if (shape->hasGetterObject()) {
             JSObject* tmp = shape->getterObject();
@@ -243,7 +250,8 @@ ObjectGroupCycleCollectorTracer::onChild(const JS::GCCellPtr& thing)
         // If this group is required to be in an ObjectGroup chain, trace it
         // via the provided worklist rather than continuing to recurse.
         ObjectGroup& group = thing.as<ObjectGroup>();
-        if (group.maybeUnboxedLayout()) {
+        AutoSweepObjectGroup sweep(&group);
+        if (group.maybeUnboxedLayout(sweep)) {
             for (size_t i = 0; i < seen.length(); i++) {
                 if (seen[i] == &group)
                     return;
@@ -266,7 +274,8 @@ gc::TraceCycleCollectorChildren(JS::CallbackTracer* trc, ObjectGroup* group)
     MOZ_ASSERT(trc->isCallbackTracer());
 
     // Early return if this group is not required to be in an ObjectGroup chain.
-    if (!group->maybeUnboxedLayout())
+    AutoSweepObjectGroup sweep(group);
+    if (!group->maybeUnboxedLayout(sweep))
         return group->traceChildren(trc);
 
     ObjectGroupCycleCollectorTracer groupTracer(trc->asCallbackTracer());
@@ -485,3 +494,10 @@ JS_GetTraceThingInfo(char* buf, size_t bufsize, JSTracer* trc, void* thing,
 JS::CallbackTracer::CallbackTracer(JSContext* cx, WeakMapTraceKind weakTraceKind)
   : CallbackTracer(cx->runtime(), weakTraceKind)
 {}
+
+uint32_t
+JSTracer::gcNumberForMarking() const
+{
+    MOZ_ASSERT(isMarkingTracer());
+    return runtime()->gc.gcNumber();
+}

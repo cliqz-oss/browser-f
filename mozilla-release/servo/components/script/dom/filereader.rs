@@ -3,17 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use base64;
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::BlobBinding::BlobMethods;
-use dom::bindings::codegen::Bindings::EventHandlerBinding::EventHandlerNonNull;
 use dom::bindings::codegen::Bindings::FileReaderBinding::{self, FileReaderConstants, FileReaderMethods};
 use dom::bindings::codegen::UnionTypes::StringOrObject;
 use dom::bindings::error::{Error, ErrorResult, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{MutNullableJS, Root};
 use dom::bindings::refcounted::Trusted;
 use dom::bindings::reflector::{DomObject, reflect_dom_object};
+use dom::bindings::root::{DomRoot, MutNullableDom};
 use dom::bindings::str::DOMString;
+use dom::bindings::trace::RootedTraceableBox;
 use dom::blob::Blob;
 use dom::domexception::{DOMErrorName, DOMException};
 use dom::event::{Event, EventBubbles, EventCancelable};
@@ -21,25 +21,24 @@ use dom::eventtarget::EventTarget;
 use dom::globalscope::GlobalScope;
 use dom::progressevent::ProgressEvent;
 use dom_struct::dom_struct;
-use encoding::all::UTF_8;
-use encoding::label::encoding_from_whatwg_label;
-use encoding::types::{DecoderTrap, EncodingRef};
+use encoding_rs::{Encoding, UTF_8};
 use hyper::mime::{Attr, Mime};
 use js::jsapi::Heap;
 use js::jsapi::JSAutoCompartment;
 use js::jsapi::JSContext;
+use js::jsapi::JSObject;
 use js::jsval::{self, JSVal};
 use js::typedarray::{ArrayBuffer, CreateWith};
-use script_thread::RunnableWrapper;
 use servo_atoms::Atom;
 use std::cell::Cell;
 use std::ptr;
 use std::sync::Arc;
 use std::thread;
+use task::TaskCanceller;
 use task_source::TaskSource;
-use task_source::file_reading::{FileReadingTaskSource, FileReadingRunnable, FileReadingTask};
+use task_source::file_reading::{FileReadingTask, FileReadingTaskSource};
 
-#[derive(PartialEq, Clone, Copy, JSTraceable, HeapSizeOf)]
+#[derive(Clone, Copy, JSTraceable, MallocSizeOf, PartialEq)]
 pub enum FileReaderFunction {
     ReadAsText,
     ReadAsDataUrl,
@@ -48,7 +47,7 @@ pub enum FileReaderFunction {
 
 pub type TrustedFileReader = Trusted<FileReader>;
 
-#[derive(Clone, HeapSizeOf)]
+#[derive(Clone, MallocSizeOf)]
 pub struct ReadMetaData {
     pub blobtype: String,
     pub label: Option<String>,
@@ -66,18 +65,18 @@ impl ReadMetaData {
     }
 }
 
-#[derive(PartialEq, Clone, Copy, JSTraceable, HeapSizeOf)]
+#[derive(Clone, Copy, JSTraceable, MallocSizeOf, PartialEq)]
 pub struct GenerationId(u32);
 
 #[repr(u16)]
-#[derive(Copy, Clone, Debug, PartialEq, JSTraceable, HeapSizeOf)]
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf, PartialEq)]
 pub enum FileReaderReadyState {
     Empty = FileReaderConstants::EMPTY,
     Loading = FileReaderConstants::LOADING,
     Done = FileReaderConstants::DONE,
 }
 
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 pub enum FileReaderResult {
     ArrayBuffer(Heap<JSVal>),
     String(DOMString),
@@ -87,8 +86,8 @@ pub enum FileReaderResult {
 pub struct FileReader {
     eventtarget: EventTarget,
     ready_state: Cell<FileReaderReadyState>,
-    error: MutNullableJS<DOMException>,
-    result: DOMRefCell<Option<FileReaderResult>>,
+    error: MutNullableDom<DOMException>,
+    result: DomRefCell<Option<FileReaderResult>>,
     generation_id: Cell<GenerationId>,
 }
 
@@ -97,18 +96,18 @@ impl FileReader {
         FileReader {
             eventtarget: EventTarget::new_inherited(),
             ready_state: Cell::new(FileReaderReadyState::Empty),
-            error: MutNullableJS::new(None),
-            result: DOMRefCell::new(None),
+            error: MutNullableDom::new(None),
+            result: DomRefCell::new(None),
             generation_id: Cell::new(GenerationId(0)),
         }
     }
 
-    pub fn new(global: &GlobalScope) -> Root<FileReader> {
-        reflect_dom_object(box FileReader::new_inherited(),
+    pub fn new(global: &GlobalScope) -> DomRoot<FileReader> {
+        reflect_dom_object(Box::new(FileReader::new_inherited()),
                            global, FileReaderBinding::Wrap)
     }
 
-    pub fn Constructor(global: &GlobalScope) -> Fallible<Root<FileReader>> {
+    pub fn Constructor(global: &GlobalScope) -> Fallible<DomRoot<FileReader>> {
         Ok(FileReader::new(global))
     }
 
@@ -216,15 +215,15 @@ impl FileReader {
     }
 
     // https://w3c.github.io/FileAPI/#dfn-readAsText
-    fn perform_readastext(result: &DOMRefCell<Option<FileReaderResult>>, data: ReadMetaData, blob_bytes: &[u8]) {
+    fn perform_readastext(result: &DomRefCell<Option<FileReaderResult>>, data: ReadMetaData, blob_bytes: &[u8]) {
         let blob_label = &data.label;
         let blob_type = &data.blobtype;
 
         //https://w3c.github.io/FileAPI/#encoding-determination
         // Steps 1 & 2 & 3
         let mut encoding = blob_label.as_ref()
-            .map(|string| &**string)
-            .and_then(encoding_from_whatwg_label);
+            .map(|string| string.as_bytes())
+            .and_then(Encoding::for_label);
 
         // Step 4 & 5
         encoding = encoding.or_else(|| {
@@ -232,21 +231,21 @@ impl FileReader {
             resultmime.and_then(|Mime(_, _, ref parameters)| {
                 parameters.iter()
                     .find(|&&(ref k, _)| &Attr::Charset == k)
-                    .and_then(|&(_, ref v)| encoding_from_whatwg_label(&v.to_string()))
+                    .and_then(|&(_, ref v)| Encoding::for_label(v.as_str().as_bytes()))
             })
         });
 
         // Step 6
-        let enc = encoding.unwrap_or(UTF_8 as EncodingRef);
+        let enc = encoding.unwrap_or(UTF_8);
 
         let convert = blob_bytes;
         // Step 7
-        let output = enc.decode(convert, DecoderTrap::Replace).unwrap();
+        let (output, _, _) = enc.decode(convert);
         *result.borrow_mut() = Some(FileReaderResult::String(DOMString::from(output)));
     }
 
     //https://w3c.github.io/FileAPI/#dfn-readAsDataURL
-    fn perform_readasdataurl(result: &DOMRefCell<Option<FileReaderResult>>, data: ReadMetaData, bytes: &[u8]) {
+    fn perform_readasdataurl(result: &DomRefCell<Option<FileReaderResult>>, data: ReadMetaData, bytes: &[u8]) {
         let base64 = base64::encode(bytes);
 
         let output = if data.blobtype.is_empty() {
@@ -260,10 +259,10 @@ impl FileReader {
 
     // https://w3c.github.io/FileAPI/#dfn-readAsArrayBuffer
     #[allow(unsafe_code)]
-    fn perform_readasarraybuffer(result: &DOMRefCell<Option<FileReaderResult>>,
+    fn perform_readasarraybuffer(result: &DomRefCell<Option<FileReaderResult>>,
         cx: *mut JSContext, _: ReadMetaData, bytes: &[u8]) {
         unsafe {
-            rooted!(in(cx) let mut array_buffer = ptr::null_mut());
+            rooted!(in(cx) let mut array_buffer = ptr::null_mut::<JSObject>());
             assert!(ArrayBuffer::create(cx, CreateWith::Slice(bytes), array_buffer.handle_mut()).is_ok());
 
             *result.borrow_mut() = Some(FileReaderResult::ArrayBuffer(Heap::default()));
@@ -328,7 +327,7 @@ impl FileReaderMethods for FileReader {
     }
 
     // https://w3c.github.io/FileAPI/#dfn-error
-    fn GetError(&self) -> Option<Root<DOMException>> {
+    fn GetError(&self) -> Option<DomRoot<DOMException>> {
         self.error.get()
     }
 
@@ -339,7 +338,9 @@ impl FileReaderMethods for FileReader {
             FileReaderResult::String(ref string) =>
                 StringOrObject::String(string.clone()),
             FileReaderResult::ArrayBuffer(ref arr_buffer) => {
-                StringOrObject::Object(Heap::new((*arr_buffer.ptr.get()).to_object()))
+                let result = RootedTraceableBox::new(Heap::default());
+                result.set((*arr_buffer.ptr.get()).to_object());
+                StringOrObject::Object(result)
             }
         })
     }
@@ -384,11 +385,18 @@ impl FileReader {
         let gen_id = self.generation_id.get();
 
         let global = self.global();
-        let wrapper = global.get_runnable_wrapper();
+        let canceller = global.task_canceller();
         let task_source = global.file_reading_task_source();
 
         thread::Builder::new().name("file reader async operation".to_owned()).spawn(move || {
-            perform_annotated_read_operation(gen_id, load_data, blob_contents, fr, task_source, wrapper)
+            perform_annotated_read_operation(
+                gen_id,
+                load_data,
+                blob_contents,
+                fr,
+                task_source,
+                canceller,
+            )
         }).expect("Thread spawning failed");
 
         Ok(())
@@ -400,19 +408,21 @@ impl FileReader {
 }
 
 // https://w3c.github.io/FileAPI/#thread-read-operation
-fn perform_annotated_read_operation(gen_id: GenerationId,
-                                    data: ReadMetaData,
-                                    blob_contents: Arc<Vec<u8>>,
-                                    filereader: TrustedFileReader,
-                                    task_source: FileReadingTaskSource,
-                                    wrapper: RunnableWrapper) {
+fn perform_annotated_read_operation(
+    gen_id: GenerationId,
+    data: ReadMetaData,
+    blob_contents: Arc<Vec<u8>>,
+    filereader: TrustedFileReader,
+    task_source: FileReadingTaskSource,
+    canceller: TaskCanceller,
+) {
     // Step 4
-    let task = FileReadingRunnable::new(FileReadingTask::ProcessRead(filereader.clone(), gen_id));
-    task_source.queue_with_wrapper(task, &wrapper).unwrap();
+    let task = FileReadingTask::ProcessRead(filereader.clone(), gen_id);
+    task_source.queue_with_canceller(task, &canceller).unwrap();
 
-    let task = FileReadingRunnable::new(FileReadingTask::ProcessReadData(filereader.clone(), gen_id));
-    task_source.queue_with_wrapper(task, &wrapper).unwrap();
+    let task = FileReadingTask::ProcessReadData(filereader.clone(), gen_id);
+    task_source.queue_with_canceller(task, &canceller).unwrap();
 
-    let task = FileReadingRunnable::new(FileReadingTask::ProcessReadEOF(filereader, gen_id, data, blob_contents));
-    task_source.queue_with_wrapper(task, &wrapper).unwrap();
+    let task = FileReadingTask::ProcessReadEOF(filereader, gen_id, data, blob_contents);
+    task_source.queue_with_canceller(task, &canceller).unwrap();
 }

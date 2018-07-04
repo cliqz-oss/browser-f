@@ -21,7 +21,7 @@ const REQUESTS = [
 ];
 
 function testAutocompleteContents(expected, document) {
-  expected.forEach(function (item, i) {
+  expected.forEach(function(item, i) {
     is(
       document
         .querySelector(
@@ -34,7 +34,7 @@ function testAutocompleteContents(expected, document) {
   });
 }
 
-add_task(async function () {
+add_task(async function() {
   let { monitor } = await initNetMonitor(FILTERING_URL);
   let { document, store, windowRequire } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
@@ -46,7 +46,7 @@ add_task(async function () {
   // Let the requests load completely before the autocomplete tests begin
   // as autocomplete values also rely on the network requests.
   let waitNetwork = waitForNetworkEvents(monitor, REQUESTS.length);
-  loadCommonFrameScript();
+  loadFrameScriptUtils();
   await performRequestsInContent(REQUESTS);
   await waitNetwork;
 
@@ -58,7 +58,7 @@ add_task(async function () {
 
   document.querySelector(".devtools-filterinput").focus();
   // Typing a char should invoke a autocomplete
-  EventUtils.synthesizeKey("s", {});
+  EventUtils.sendString("s");
   ok(document.querySelector(".devtools-autocomplete-popup"),
     "Autocomplete Popup Created");
   testAutocompleteContents([
@@ -70,15 +70,15 @@ add_task(async function () {
     "status-code:",
   ], document);
 
-  EventUtils.synthesizeKey("c", {});
+  EventUtils.sendString("c");
   testAutocompleteContents(["scheme:"], document);
-  EventUtils.synthesizeKey("VK_TAB", {});
+  EventUtils.synthesizeKey("KEY_Tab");
   // Tab selection should hide autocomplete
   ok(document.querySelector(".devtools-autocomplete-popup"),
     "Autocomplete Popup alive with content values");
   testAutocompleteContents(["scheme:http"], document);
 
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   is(document.querySelector(".devtools-filterinput").value,
     "scheme:http", "Value correctly set after Enter");
   ok(!document.querySelector(".devtools-autocomplete-popup"),
@@ -86,33 +86,37 @@ add_task(async function () {
 
   // Space separated tokens
   // The last token where autocomplete is availabe shall generate the popup
-  EventUtils.synthesizeKey(" p", {});
+  EventUtils.sendString(" p");
   testAutocompleteContents(["protocol:"], document);
 
   // The new value of the text box should be previousTokens + latest value selected
   // First return selects "protocol:"
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   // Second return selects "protocol:HTTP/1.1"
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   is(document.querySelector(".devtools-filterinput").value,
     "scheme:http protocol:HTTP/1.1",
     "Tokenized click generates correct value in input box");
 
   // Explicitly type in `flag:` renders autocomplete with values
-  EventUtils.synthesizeKey(" status-code:", {});
+  EventUtils.sendString(" status-code:");
   testAutocompleteContents(["status-code:200", "status-code:304"], document);
 
   // Typing the exact value closes autocomplete
-  EventUtils.synthesizeKey("304", {});
+  EventUtils.sendString("304");
   ok(!document.querySelector(".devtools-autocomplete-popup"),
     "Typing the exact value closes autocomplete");
 
   // Check if mime-type has been correctly parsed out and values also get autocomplete
-  EventUtils.synthesizeKey(" mime-type:au", {});
-  testAutocompleteContents(["mime-type:audio/ogg"], document);
+  EventUtils.sendString(" mime-type:text");
+  testAutocompleteContents([
+    "mime-type:text/css",
+    "mime-type:text/html",
+    "mime-type:text/plain"
+  ], document);
 
   // The negative filter flags
-  EventUtils.synthesizeKey(" -", {});
+  EventUtils.sendString(" -");
   testAutocompleteContents([
     "-cause:",
     "-domain:",
@@ -135,7 +139,7 @@ add_task(async function () {
   ], document);
 
   // Autocomplete for negative filtering
-  EventUtils.synthesizeKey("is:", {});
+  EventUtils.sendString("is:");
   testAutocompleteContents(["-is:cached", "-is:from-cache", "-is:running"], document);
 
   await teardown(monitor);

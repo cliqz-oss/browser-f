@@ -14,9 +14,11 @@ info: |
 features: [generators, default-parameters]
 flags: [onlyStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 function *g() {
   0, function(x = yield) {

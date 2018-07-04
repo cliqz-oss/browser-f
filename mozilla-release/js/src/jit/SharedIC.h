@@ -7,16 +7,15 @@
 #ifndef jit_SharedIC_h
 #define jit_SharedIC_h
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-#include "jsgc.h"
-
+#include "gc/GC.h"
 #include "jit/BaselineICList.h"
 #include "jit/BaselineJIT.h"
 #include "jit/ICState.h"
 #include "jit/MacroAssembler.h"
 #include "jit/SharedICList.h"
 #include "jit/SharedICRegisters.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "vm/ReceiverGuard.h"
 #include "vm/TypedArrayObject.h"
 
@@ -846,6 +845,9 @@ class ICCacheIR_Regular : public ICStub
         stubInfo_(stubInfo)
     {}
 
+    static ICCacheIR_Regular* Clone(JSContext* cx, ICStubSpace* space, ICStub* firstMonitorStub,
+                                    ICCacheIR_Regular& other);
+
     void notePreliminaryObject() {
         extra_ = 1;
     }
@@ -1075,7 +1077,7 @@ class ICStubCompiler
     // performing a tail call. This is required for the return address
     // to pc mapping to work.
     void enterStubFrame(MacroAssembler& masm, Register scratch);
-    void assumeStubFrame(MacroAssembler& masm);
+    void assumeStubFrame();
     void leaveStubFrame(MacroAssembler& masm, bool calledIntoIon = false);
 
     // Some stubs need to emit Gecko Profiler updates.  This emits the guarding
@@ -1201,7 +1203,8 @@ class SharedStubInfo
 class ICMonitoredFallbackStub : public ICFallbackStub
 {
   protected:
-    // Pointer to the fallback monitor stub.
+    // Pointer to the fallback monitor stub. Created lazily by
+    // getFallbackMonitorStub if needed.
     ICTypeMonitor_Fallback* fallbackMonitorStub_;
 
     ICMonitoredFallbackStub(Kind kind, JitCode* stubCode)
@@ -1209,11 +1212,17 @@ class ICMonitoredFallbackStub : public ICFallbackStub
         fallbackMonitorStub_(nullptr) {}
 
   public:
-    MOZ_MUST_USE bool initMonitoringChain(JSContext* cx, ICStubSpace* space);
+    MOZ_MUST_USE bool initMonitoringChain(JSContext* cx, JSScript* script);
     MOZ_MUST_USE bool addMonitorStubForValue(JSContext* cx, BaselineFrame* frame,
                                              StackTypeSet* types, HandleValue val);
 
-    inline ICTypeMonitor_Fallback* fallbackMonitorStub() const {
+    ICTypeMonitor_Fallback* maybeFallbackMonitorStub() const {
+        return fallbackMonitorStub_;
+    }
+    ICTypeMonitor_Fallback* getFallbackMonitorStub(JSContext* cx, JSScript* script) {
+        if (!fallbackMonitorStub_ && !initMonitoringChain(cx, script))
+            return nullptr;
+        MOZ_ASSERT(fallbackMonitorStub_);
         return fallbackMonitorStub_;
     }
 
@@ -1232,7 +1241,7 @@ class ICMultiStubCompiler : public ICStubCompiler
 
     // Stub keys for multi-stub kinds are composed of both the kind
     // and the op they are compiled for.
-    virtual int32_t getKey() const {
+    virtual int32_t getKey() const override {
         return static_cast<int32_t>(engine_) |
               (static_cast<int32_t>(kind) << 1) |
               (static_cast<int32_t>(op) << 17);
@@ -1299,7 +1308,7 @@ class TypeCheckPrimitiveSetStub : public ICStub
         TypeCheckPrimitiveSetStub* existingStub_;
         uint16_t flags_;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(flags_) << 17);
@@ -1482,7 +1491,7 @@ class ICTypeMonitor_Fallback : public ICStub
         uint32_t argumentIndex_;
 
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, ICMonitoredFallbackStub* mainFallbackStub)
@@ -1497,7 +1506,7 @@ class ICTypeMonitor_Fallback : public ICStub
             argumentIndex_(argumentIndex)
         { }
 
-        ICTypeMonitor_Fallback* getStub(ICStubSpace* space) {
+        ICTypeMonitor_Fallback* getStub(ICStubSpace* space) override {
             return newStub<ICTypeMonitor_Fallback>(space, getStubCode(), mainFallbackStub_,
                                                        argumentIndex_);
         }
@@ -1515,7 +1524,7 @@ class ICTypeMonitor_PrimitiveSet : public TypeCheckPrimitiveSetStub
   public:
     class Compiler : public TypeCheckPrimitiveSetStub::Compiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, ICTypeMonitor_PrimitiveSet* existingStub,
@@ -1532,7 +1541,7 @@ class ICTypeMonitor_PrimitiveSet : public TypeCheckPrimitiveSetStub
             return stub->toMonitorStub();
         }
 
-        ICTypeMonitor_PrimitiveSet* getStub(ICStubSpace* space) {
+        ICTypeMonitor_PrimitiveSet* getStub(ICStubSpace* space) override {
             MOZ_ASSERT(!existingStub_);
             return newStub<ICTypeMonitor_PrimitiveSet>(space, getStubCode(), flags_);
         }
@@ -1559,7 +1568,7 @@ class ICTypeMonitor_SingleObject : public ICStub
     class Compiler : public ICStubCompiler {
       protected:
         HandleObject obj_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, HandleObject obj)
@@ -1567,7 +1576,7 @@ class ICTypeMonitor_SingleObject : public ICStub
             obj_(obj)
         { }
 
-        ICTypeMonitor_SingleObject* getStub(ICStubSpace* space) {
+        ICTypeMonitor_SingleObject* getStub(ICStubSpace* space) override {
             return newStub<ICTypeMonitor_SingleObject>(space, getStubCode(), obj_);
         }
     };
@@ -1593,7 +1602,7 @@ class ICTypeMonitor_ObjectGroup : public ICStub
     class Compiler : public ICStubCompiler {
       protected:
         HandleObjectGroup group_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, HandleObjectGroup group)
@@ -1601,7 +1610,7 @@ class ICTypeMonitor_ObjectGroup : public ICStub
             group_(group)
         { }
 
-        ICTypeMonitor_ObjectGroup* getStub(ICStubSpace* space) {
+        ICTypeMonitor_ObjectGroup* getStub(ICStubSpace* space) override {
             return newStub<ICTypeMonitor_ObjectGroup>(space, getStubCode(), group_);
         }
     };
@@ -1618,14 +1627,14 @@ class ICTypeMonitor_AnyValue : public ICStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, TypeMonitor_AnyValue, Engine::Baseline)
         { }
 
-        ICTypeMonitor_AnyValue* getStub(ICStubSpace* space) {
+        ICTypeMonitor_AnyValue* getStub(ICStubSpace* space) override {
             return newStub<ICTypeMonitor_AnyValue>(space, getStubCode());
         }
     };
@@ -1668,13 +1677,13 @@ class ICBinaryArith_Fallback : public ICFallbackStub
     // Compiler for this stub kind.
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx, Engine engine)
           : ICStubCompiler(cx, ICStub::BinaryArith_Fallback, engine) {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICBinaryArith_Fallback>(space, getStubCode());
         }
     };
@@ -1701,10 +1710,10 @@ class ICBinaryArith_Int32 : public ICStub
         JSOp op_;
         bool allowDouble_;
 
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
         // Stub keys shift-stubs need to encode the kind, the JSOp and if we allow doubles.
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(op_) << 17) |
@@ -1716,7 +1725,7 @@ class ICBinaryArith_Int32 : public ICStub
           : ICStubCompiler(cx, ICStub::BinaryArith_Int32, engine),
             op_(op), allowDouble_(allowDouble) {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICBinaryArith_Int32>(space, getStubCode(), allowDouble_);
         }
     };
@@ -1733,14 +1742,14 @@ class ICBinaryArith_StringConcat : public ICStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx, Engine engine)
           : ICStubCompiler(cx, ICStub::BinaryArith_StringConcat, engine)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICBinaryArith_StringConcat>(space, getStubCode());
         }
     };
@@ -1764,9 +1773,9 @@ class ICBinaryArith_StringObjectConcat : public ICStub
     class Compiler : public ICStubCompiler {
       protected:
         bool lhsIsString_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(lhsIsString_) << 17);
@@ -1778,7 +1787,7 @@ class ICBinaryArith_StringObjectConcat : public ICStub
             lhsIsString_(lhsIsString)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICBinaryArith_StringObjectConcat>(space, getStubCode(),
                                                                  lhsIsString_);
         }
@@ -1796,14 +1805,14 @@ class ICBinaryArith_Double : public ICStub
   public:
     class Compiler : public ICMultiStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, JSOp op, Engine engine)
           : ICMultiStubCompiler(cx, ICStub::BinaryArith_Double, op, engine)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICBinaryArith_Double>(space, getStubCode());
         }
     };
@@ -1838,9 +1847,9 @@ class ICBinaryArith_BooleanWithInt32 : public ICStub
         JSOp op_;
         bool lhsIsBool_;
         bool rhsIsBool_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(op_) << 17) |
@@ -1858,7 +1867,7 @@ class ICBinaryArith_BooleanWithInt32 : public ICStub
             MOZ_ASSERT(lhsIsBool_ || rhsIsBool_);
         }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICBinaryArith_BooleanWithInt32>(space, getStubCode(),
                                                                lhsIsBool_, rhsIsBool_);
         }
@@ -1883,9 +1892,9 @@ class ICBinaryArith_DoubleWithInt32 : public ICStub
     class Compiler : public ICMultiStubCompiler {
       protected:
         bool lhsIsDouble_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(op) << 17) |
@@ -1898,97 +1907,9 @@ class ICBinaryArith_DoubleWithInt32 : public ICStub
             lhsIsDouble_(lhsIsDouble)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICBinaryArith_DoubleWithInt32>(space, getStubCode(),
                                                               lhsIsDouble_);
-        }
-    };
-};
-
-// UnaryArith
-//     JSOP_BITNOT
-//     JSOP_NEG
-
-class ICUnaryArith_Fallback : public ICFallbackStub
-{
-    friend class ICStubSpace;
-
-    explicit ICUnaryArith_Fallback(JitCode* stubCode)
-      : ICFallbackStub(UnaryArith_Fallback, stubCode)
-    {
-        extra_ = 0;
-    }
-
-  public:
-    static const uint32_t MAX_OPTIMIZED_STUBS = 8;
-
-    bool sawDoubleResult() {
-        return extra_;
-    }
-    void setSawDoubleResult() {
-        extra_ = 1;
-    }
-
-    // Compiler for this stub kind.
-    class Compiler : public ICStubCompiler {
-      protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-      public:
-        explicit Compiler(JSContext* cx, Engine engine)
-          : ICStubCompiler(cx, ICStub::UnaryArith_Fallback, engine)
-        {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICUnaryArith_Fallback>(space, getStubCode());
-        }
-    };
-};
-
-class ICUnaryArith_Int32 : public ICStub
-{
-    friend class ICStubSpace;
-
-    explicit ICUnaryArith_Int32(JitCode* stubCode)
-      : ICStub(UnaryArith_Int32, stubCode)
-    {}
-
-  public:
-    class Compiler : public ICMultiStubCompiler {
-      protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-      public:
-        Compiler(JSContext* cx, JSOp op, Engine engine)
-          : ICMultiStubCompiler(cx, ICStub::UnaryArith_Int32, op, engine)
-        {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICUnaryArith_Int32>(space, getStubCode());
-        }
-    };
-};
-
-class ICUnaryArith_Double : public ICStub
-{
-    friend class ICStubSpace;
-
-    explicit ICUnaryArith_Double(JitCode* stubCode)
-      : ICStub(UnaryArith_Double, stubCode)
-    {}
-
-  public:
-    class Compiler : public ICMultiStubCompiler {
-      protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-      public:
-        Compiler(JSContext* cx, JSOp op, Engine engine)
-          : ICMultiStubCompiler(cx, ICStub::UnaryArith_Double, op, engine)
-        {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICUnaryArith_Double>(space, getStubCode());
         }
     };
 };
@@ -2024,13 +1945,13 @@ class ICCompare_Fallback : public ICFallbackStub
     // Compiler for this stub kind.
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx, Engine engine)
           : ICStubCompiler(cx, ICStub::Compare_Fallback, engine) {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_Fallback>(space, getStubCode());
         }
     };
@@ -2047,13 +1968,13 @@ class ICCompare_Int32 : public ICStub
     // Compiler for this stub kind.
     class Compiler : public ICMultiStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, JSOp op, Engine engine)
           : ICMultiStubCompiler(cx, ICStub::Compare_Int32, op, engine) {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_Int32>(space, getStubCode());
         }
     };
@@ -2070,14 +1991,14 @@ class ICCompare_Double : public ICStub
   public:
     class Compiler : public ICMultiStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, JSOp op, Engine engine)
           : ICMultiStubCompiler(cx, ICStub::Compare_Double, op, engine)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_Double>(space, getStubCode());
         }
     };
@@ -2100,7 +2021,7 @@ class ICCompare_NumberWithUndefined : public ICStub
 
     class Compiler : public ICMultiStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
         bool lhsIsUndefined;
 
@@ -2110,14 +2031,14 @@ class ICCompare_NumberWithUndefined : public ICStub
             lhsIsUndefined(lhsIsUndefined)
         {}
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(op) << 17) |
                   (static_cast<int32_t>(lhsIsUndefined) << 25);
         }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_NumberWithUndefined>(space, getStubCode(),
                                                               lhsIsUndefined);
         }
@@ -2135,14 +2056,14 @@ class ICCompare_String : public ICStub
   public:
     class Compiler : public ICMultiStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, JSOp op, Engine engine)
           : ICMultiStubCompiler(cx, ICStub::Compare_String, op, engine)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_String>(space, getStubCode());
         }
     };
@@ -2159,14 +2080,14 @@ class ICCompare_Symbol : public ICStub
   public:
     class Compiler : public ICMultiStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, JSOp op, Engine engine)
           : ICMultiStubCompiler(cx, ICStub::Compare_Symbol, op, engine)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_Symbol>(space, getStubCode());
         }
     };
@@ -2183,14 +2104,14 @@ class ICCompare_Boolean : public ICStub
   public:
     class Compiler : public ICMultiStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, JSOp op, Engine engine)
           : ICMultiStubCompiler(cx, ICStub::Compare_Boolean, op, engine)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_Boolean>(space, getStubCode());
         }
     };
@@ -2207,14 +2128,14 @@ class ICCompare_Object : public ICStub
   public:
     class Compiler : public ICMultiStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, JSOp op, Engine engine)
           : ICMultiStubCompiler(cx, ICStub::Compare_Object, op, engine)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_Object>(space, getStubCode());
         }
     };
@@ -2231,7 +2152,7 @@ class ICCompare_ObjectWithUndefined : public ICStub
   public:
     class Compiler : public ICMultiStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
         bool lhsIsUndefined;
         bool compareWithNull;
@@ -2243,7 +2164,7 @@ class ICCompare_ObjectWithUndefined : public ICStub
             compareWithNull(compareWithNull)
         {}
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(op) << 17) |
@@ -2251,7 +2172,7 @@ class ICCompare_ObjectWithUndefined : public ICStub
                   (static_cast<int32_t>(compareWithNull) << 26);
         }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_ObjectWithUndefined>(space, getStubCode());
         }
     };
@@ -2277,9 +2198,9 @@ class ICCompare_Int32WithBoolean : public ICStub
       protected:
         JSOp op_;
         bool lhsIsInt32_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(op_) << 17) |
@@ -2293,7 +2214,7 @@ class ICCompare_Int32WithBoolean : public ICStub
             lhsIsInt32_(lhsIsInt32)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCompare_Int32WithBoolean>(space, getStubCode(), lhsIsInt32_);
         }
     };
@@ -2306,45 +2227,11 @@ enum TypedThingLayout {
     Layout_InlineTypedObject
 };
 
-static inline TypedThingLayout
-GetTypedThingLayout(const Class* clasp)
-{
-    if (IsTypedArrayClass(clasp))
-        return Layout_TypedArray;
-    if (IsOutlineTypedObjectClass(clasp))
-        return Layout_OutlineTypedObject;
-    if (IsInlineTypedObjectClass(clasp))
-        return Layout_InlineTypedObject;
-    MOZ_CRASH("Bad object class");
-}
-
-bool
-IsPreliminaryObject(JSObject* obj);
-
 void
 StripPreliminaryObjectStubs(JSContext* cx, ICFallbackStub* stub);
 
-MOZ_MUST_USE bool
-CheckHasNoSuchOwnProperty(JSContext* cx, JSObject* obj, jsid id);
-
-MOZ_MUST_USE bool
-CheckHasNoSuchProperty(JSContext* cx, JSObject* obj, jsid id,
-                       JSObject** lastProto = nullptr, size_t* protoChainDepthOut = nullptr);
-
-void
-CheckForTypedObjectWithDetachedStorage(JSContext* cx, MacroAssembler& masm, Label* failure);
-
 void
 LoadTypedThingData(MacroAssembler& masm, TypedThingLayout layout, Register obj, Register result);
-
-bool
-IsPrimitiveArrayTypedObject(JSObject* obj);
-
-Scalar::Type
-TypedThingElementType(JSObject* obj);
-
-bool
-TypedThingRequiresFloatingPoint(JSObject* obj);
 
 void
 LoadTypedThingLength(MacroAssembler& masm, TypedThingLayout layout, Register obj, Register result);
@@ -2379,10 +2266,10 @@ class ICGetProp_Fallback : public ICMonitoredFallbackStub
       protected:
         CodeOffset bailoutReturnOffset_;
         bool hasReceiver_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-        void postGenerateStubCode(MacroAssembler& masm, Handle<JitCode*> code);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
+        void postGenerateStubCode(MacroAssembler& masm, Handle<JitCode*> code) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(hasReceiver_) << 17);
@@ -2394,11 +2281,8 @@ class ICGetProp_Fallback : public ICMonitoredFallbackStub
             hasReceiver_(hasReceiver)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
-            ICGetProp_Fallback* stub = newStub<ICGetProp_Fallback>(space, getStubCode());
-            if (!stub || !stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
+        ICStub* getStub(ICStubSpace* space) override {
+            return newStub<ICGetProp_Fallback>(space, getStubCode());
         }
     };
 };
@@ -2452,7 +2336,7 @@ class ICNewArray_Fallback : public ICFallbackStub
   public:
     class Compiler : public ICStubCompiler {
         RootedObjectGroup templateGroup;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, ObjectGroup* templateGroup, Engine engine)
@@ -2460,7 +2344,7 @@ class ICNewArray_Fallback : public ICFallbackStub
             templateGroup(cx, templateGroup)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICNewArray_Fallback>(space, getStubCode(), templateGroup);
         }
     };
@@ -2498,14 +2382,14 @@ class ICNewObject_Fallback : public ICFallbackStub
 
   public:
     class Compiler : public ICStubCompiler {
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx, Engine engine)
           : ICStubCompiler(cx, ICStub::NewObject_Fallback, engine)
         {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICNewObject_Fallback>(space, getStubCode());
         }
     };

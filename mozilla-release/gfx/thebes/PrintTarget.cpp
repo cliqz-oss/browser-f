@@ -15,6 +15,13 @@
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/HelpersCairo.h"
 #include "mozilla/gfx/Logging.h"
+#include "nsReadableUtils.h"
+#include "nsString.h"
+#include "nsUTF8Utils.h"
+
+// IPP spec disallow the job-name which is over 255 characters.
+// RFC: https://tools.ietf.org/html/rfc2911#section-4.1.2
+#define IPP_JOB_NAME_LIMIT_LENGTH 255
 
 namespace mozilla {
 namespace gfx {
@@ -25,7 +32,6 @@ PrintTarget::PrintTarget(cairo_surface_t* aCairoSurface, const IntSize& aSize)
   , mIsFinished(false)
 #ifdef DEBUG
   , mHasActivePage(false)
-  , mRecorder(nullptr)
 #endif
 
 {
@@ -92,7 +98,7 @@ PrintTarget::MakeDrawTarget(const IntSize& aSize,
 }
 
 already_AddRefed<DrawTarget>
-PrintTarget::GetReferenceDrawTarget(DrawEventRecorder* aRecorder)
+PrintTarget::GetReferenceDrawTarget()
 {
   if (!mRefDT) {
     const IntSize size(1, 1);
@@ -136,28 +142,34 @@ PrintTarget::GetReferenceDrawTarget(DrawEventRecorder* aRecorder)
     mRefDT = dt.forget();
   }
 
-  if (aRecorder) {
-    if (!mRecordingRefDT) {
-      RefPtr<DrawTarget> dt = CreateWrapAndRecordDrawTarget(aRecorder, mRefDT);
-      if (!dt || !dt->IsValid()) {
-        return nullptr;
-      }
-      mRecordingRefDT = dt.forget();
-#ifdef DEBUG
-      mRecorder = aRecorder;
-#endif
-    }
-#ifdef DEBUG
-    else {
-      MOZ_ASSERT(aRecorder == mRecorder,
-                 "Caching mRecordingRefDT assumes the aRecorder is an invariant");
-    }
-#endif
-
-    return do_AddRef(mRecordingRefDT);
-  }
-
   return do_AddRef(mRefDT);
+}
+
+/* static */
+void
+PrintTarget::AdjustPrintJobNameForIPP(const nsAString& aJobName,
+                                      nsCString& aAdjustedJobName)
+{
+  CopyUTF16toUTF8(aJobName, aAdjustedJobName);
+
+  if (aAdjustedJobName.Length() > IPP_JOB_NAME_LIMIT_LENGTH) {
+    uint32_t length =
+      RewindToPriorUTF8Codepoint(aAdjustedJobName.get(),
+                                 (IPP_JOB_NAME_LIMIT_LENGTH - 3U));
+    aAdjustedJobName.SetLength(length);
+    aAdjustedJobName.AppendLiteral("...");
+  }
+}
+
+/* static */
+void
+PrintTarget::AdjustPrintJobNameForIPP(const nsAString& aJobName,
+                                      nsString& aAdjustedJobName)
+{
+  nsAutoCString jobName;
+  AdjustPrintJobNameForIPP(aJobName, jobName);
+
+  CopyUTF8toUTF16(jobName, aAdjustedJobName);
 }
 
 /* static */ already_AddRefed<DrawTarget>
@@ -193,6 +205,19 @@ PrintTarget::Finish()
 
   // null surfaces are allowed here
   cairo_surface_finish(mCairoSurface);
+}
+
+void
+PrintTarget::RegisterPageDoneCallback(PageDoneCallback&& aCallback)
+{
+  MOZ_ASSERT(aCallback && !IsSyncPagePrinting());
+  mPageDoneCallback = Move(aCallback);
+}
+
+void
+PrintTarget::UnregisterPageDoneCallback()
+{
+  mPageDoneCallback = nullptr;
 }
 
 } // namespace gfx

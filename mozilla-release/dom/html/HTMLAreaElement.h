@@ -11,8 +11,6 @@
 #include "mozilla/dom/Link.h"
 #include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
-#include "nsDOMTokenList.h"
-#include "nsIDOMHTMLAreaElement.h"
 #include "nsIURL.h"
 
 class nsIDocument;
@@ -23,7 +21,6 @@ class EventChainPreVisitor;
 namespace dom {
 
 class HTMLAreaElement final : public nsGenericHTMLElement,
-                              public nsIDOMHTMLAreaElement,
                               public Link
 {
 public:
@@ -36,16 +33,13 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(HTMLAreaElement,
                                            nsGenericHTMLElement)
 
-  // DOM memory reporter participant
-  NS_DECL_SIZEOF_EXCLUDING_THIS
+  NS_DECL_ADDSIZEOFEXCLUDINGTHIS
+
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLAreaElement, area)
 
   virtual int32_t TabIndexDefault() override;
 
-  // nsIDOMHTMLAreaElement
-  NS_DECL_NSIDOMHTMLAREAELEMENT
-
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(EventChainPostVisitor& aVisitor) override;
   virtual bool IsLink(nsIURI** aURI) const override;
   virtual void GetLinkTarget(nsAString& aTarget) override;
@@ -63,44 +57,64 @@ public:
   virtual EventStates IntrinsicState() const override;
 
   // WebIDL
-
-  // The XPCOM GetAlt is OK for us
+  void GetAlt(DOMString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::alt, aValue);
+  }
   void SetAlt(const nsAString& aAlt, ErrorResult& aError)
   {
     SetHTMLAttr(nsGkAtoms::alt, aAlt, aError);
   }
 
-  // The XPCOM GetCoords is OK for us
+  void GetCoords(DOMString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::coords, aValue);
+  }
   void SetCoords(const nsAString& aCoords, ErrorResult& aError)
   {
     SetHTMLAttr(nsGkAtoms::coords, aCoords, aError);
   }
 
-  // The XPCOM GetShape is OK for us
+  // argument type nsAString for HTMLImageMapAccessible
+  void GetShape(nsAString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::shape, aValue);
+  }
   void SetShape(const nsAString& aShape, ErrorResult& aError)
   {
     SetHTMLAttr(nsGkAtoms::shape, aShape, aError);
   }
 
-  // The XPCOM GetHref is OK for us
+  // argument type nsAString for nsContextMenuInfo
+  void GetHref(nsAString& aValue)
+  {
+    GetURIAttr(nsGkAtoms::href, nullptr, aValue);
+  }
   void SetHref(const nsAString& aHref, ErrorResult& aError)
   {
-    aError = SetHref(aHref);
+    SetHTMLAttr(nsGkAtoms::href, aHref, aError);
   }
 
-  // The XPCOM GetTarget is OK for us
+  void GetTarget(DOMString& aValue);
   void SetTarget(const nsAString& aTarget, ErrorResult& aError)
   {
     SetHTMLAttr(nsGkAtoms::target, aTarget, aError);
   }
 
-  // The XPCOM GetDownload is OK for us
+  void GetDownload(DOMString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::download, aValue);
+  }
   void SetDownload(const nsAString& aDownload, ErrorResult& aError)
   {
     SetHTMLAttr(nsGkAtoms::download, aDownload, aError);
   }
 
-  // The XPCOM GetPing is OK for us
+  void GetPing(DOMString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::ping, aValue);
+  }
+
   void SetPing(const nsAString& aPing, ErrorResult& aError)
   {
     SetHTMLAttr(nsGkAtoms::ping, aPing, aError);
@@ -167,12 +181,13 @@ public:
     SetHTMLBoolAttr(nsGkAtoms::nohref, aValue, aError);
   }
 
+  void ToString(nsAString& aSource);
   void Stringify(nsAString& aResult)
   {
     GetHref(aResult);
   }
 
-  virtual void NodeInfoChanged(nsIDocument* aOldDoc) final override
+  void NodeInfoChanged(nsIDocument* aOldDoc) final
   {
     ClearHasPendingLinkUpdate();
     nsGenericHTMLElement::NodeInfoChanged(aOldDoc);
@@ -183,9 +198,10 @@ protected:
 
   virtual JSObject* WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
-  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
 
   RefPtr<nsDOMTokenList > mRelList;

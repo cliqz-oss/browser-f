@@ -16,17 +16,17 @@ function run_test() {
   initTestDebuggerServer();
   addTestGlobal("test-stack");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.request = (function (origRequest) {
-    return function (request, onResponse) {
+  gClient.request = (function(origRequest) {
+    return function(request, onResponse) {
       if (request.type === "sources") {
         ++gNumTimesSourcesSent;
       }
       return origRequest.call(this, request, onResponse);
     };
   }(gClient.request));
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-stack",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_listing_zero_sources();
                            });
@@ -35,14 +35,14 @@ function run_test() {
 }
 
 function test_listing_zero_sources() {
-  gThreadClient.getSources(function (packet) {
-    do_check_true(!packet.error);
-    do_check_true(!!packet.sources);
-    do_check_eq(packet.sources.length, 0);
+  gThreadClient.getSources(function(packet) {
+    Assert.ok(!packet.error);
+    Assert.ok(!!packet.sources);
+    Assert.equal(packet.sources.length, 0);
 
-    do_check_true(gNumTimesSourcesSent <= 1,
-                  "Should only send one sources request at most, even though we"
-                  + " might have had to send one to determine feature support.");
+    Assert.ok(gNumTimesSourcesSent <= 1,
+              "Should only send one sources request at most, even though we"
+              + " might have had to send one to determine feature support.");
 
     finishClient(gClient);
   });

@@ -13,8 +13,8 @@ add_task(async function test() {
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, kTestURI);
 
-  let fm = Components.classes["@mozilla.org/focus-manager;1"].
-        getService(Components.interfaces.nsIFocusManager);
+  let fm = Cc["@mozilla.org/focus-manager;1"].
+        getService(Ci.nsIFocusManager);
 
   for (var button = 0; button < 3; button++) {
     // Set focus to a chrome element before synthesizing a mouse down event.
@@ -25,19 +25,32 @@ add_task(async function test() {
 
     // Synthesize mouse down event on browser object over the button, such that
     // the event propagates through both processes.
-    EventUtils.synthesizeMouse(tab.linkedBrowser, 20, 20, { "button": button }, null);
+    EventUtils.synthesizeMouse(tab.linkedBrowser, 20, 20, { "button": button });
 
     isnot(fm.focusedElement, document.getElementById("urlbar").inputField,
        "Failed to move focus away from search bar: button=" + button);
 
-    await ContentTask.spawn(tab.linkedBrowser, button, function (button) {
-      let fm = Components.classes["@mozilla.org/focus-manager;1"].
-            getService(Components.interfaces.nsIFocusManager);
+    await ContentTask.spawn(tab.linkedBrowser, button, async function (button) {
+      let fm = Cc["@mozilla.org/focus-manager;1"].
+          getService(Ci.nsIFocusManager);
 
-      Assert.equal(content.document.activeElement.id, "willBeFocused",
-                   "The input element isn't active element: button=" + button);
-      Assert.equal(fm.focusedElement, content.document.activeElement,
-                   "The active element isn't focused element in App level: button=" + button);
+      let attempts = 10;
+      await new Promise(resolve => {
+        function check() {
+          if (attempts > 0 && content.document.activeElement.id != "willBeFocused") {
+            attempts--;
+            content.window.setTimeout(check, 100);
+            return;
+          }
+
+          Assert.equal(content.document.activeElement.id, "willBeFocused",
+                       "The input element isn't active element: button=" + button);
+          Assert.equal(fm.focusedElement, content.document.activeElement,
+                       "The active element isn't focused element in App level: button=" + button);
+          resolve();
+        }
+        check();
+      });
     });
   }
 

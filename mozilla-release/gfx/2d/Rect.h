@@ -1,5 +1,6 @@
-/* -*- Mode: c++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -117,26 +118,26 @@ struct IntRectTyped :
     static IntRectTyped<units> RoundIn(const RectTyped<units, float>& aRect) {
       auto tmp(aRect);
       tmp.RoundIn();
-      return IntRectTyped(int32_t(tmp.x), int32_t(tmp.y),
-                          int32_t(tmp.width), int32_t(tmp.height));
+      return IntRectTyped(int32_t(tmp.X()), int32_t(tmp.Y()),
+                          int32_t(tmp.Width()), int32_t(tmp.Height()));
     }
 
     static IntRectTyped<units> RoundOut(const RectTyped<units, float>& aRect) {
       auto tmp(aRect);
       tmp.RoundOut();
-      return IntRectTyped(int32_t(tmp.x), int32_t(tmp.y),
-                          int32_t(tmp.width), int32_t(tmp.height));
+      return IntRectTyped(int32_t(tmp.X()), int32_t(tmp.Y()),
+                          int32_t(tmp.Width()), int32_t(tmp.Height()));
     }
 
     static IntRectTyped<units> Round(const RectTyped<units, float>& aRect) {
       auto tmp(aRect);
       tmp.Round();
-      return IntRectTyped(int32_t(tmp.x), int32_t(tmp.y),
-                          int32_t(tmp.width), int32_t(tmp.height));
+      return IntRectTyped(int32_t(tmp.X()), int32_t(tmp.Y()),
+                          int32_t(tmp.Width()), int32_t(tmp.Height()));
     }
 
     static IntRectTyped<units> Truncate(const RectTyped<units, float>& aRect) {
-      return IntRectTyped::Truncate(aRect.x, aRect.y, aRect.width, aRect.height);
+      return IntRectTyped::Truncate(aRect.X(), aRect.Y(), aRect.Width(), aRect.Height());
     }
 
     // Rounding isn't meaningful on an integer rectangle.
@@ -148,18 +149,18 @@ struct IntRectTyped :
     // to and from unknown types should be removed.
 
     static IntRectTyped<units> FromUnknownRect(const IntRectTyped<UnknownUnits>& rect) {
-        return IntRectTyped<units>(rect.x, rect.y, rect.width, rect.height);
+      return IntRectTyped<units>(rect.X(), rect.Y(), rect.Width(), rect.Height());
     }
 
     IntRectTyped<UnknownUnits> ToUnknownRect() const {
-        return IntRectTyped<UnknownUnits>(this->x, this->y, this->width, this->height);
+      return IntRectTyped<UnknownUnits>(this->X(), this->Y(), this->Width(), this->Height());
     }
 
     bool Overflows() const {
-      CheckedInt<int32_t> xMost = this->x;
-      xMost += this->width;
-      CheckedInt<int32_t> yMost = this->y;
-      yMost += this->height;
+      CheckedInt<int32_t> xMost = this->X();
+      xMost += this->Width();
+      CheckedInt<int32_t> yMost = this->Y();
+      yMost += this->Height();
       return !xMost.isValid() || !yMost.isValid();
     }
 
@@ -218,8 +219,8 @@ struct IntRectTyped :
       xMost = mozilla::RoundUpToMultiple(xMost, aTileSize.width);
       yMost = mozilla::RoundUpToMultiple(yMost, aTileSize.height);
 
-      this->width = xMost - this->x;
-      this->height = yMost - this->y;
+      this->SetWidth(xMost - this->x);
+      this->SetHeight(yMost - this->y);
     }
 
 };
@@ -240,8 +241,8 @@ struct RectTyped :
     RectTyped(F _x, F _y, F _width, F _height) :
         Super(_x, _y, _width, _height) {}
     explicit RectTyped(const IntRectTyped<units>& rect) :
-        Super(F(rect.x), F(rect.y),
-              F(rect.width), F(rect.height)) {}
+        Super(F(rect.X()), F(rect.Y()),
+              F(rect.Width()), F(rect.Height())) {}
 
     void NudgeToIntegers()
     {
@@ -255,8 +256,8 @@ struct RectTyped :
     {
       *aOut = IntRectTyped<units>(int32_t(this->X()), int32_t(this->Y()),
                                   int32_t(this->Width()), int32_t(this->Height()));
-      return RectTyped<units, F>(F(aOut->x), F(aOut->y),
-                                 F(aOut->width), F(aOut->height))
+      return RectTyped<units, F>(F(aOut->X()), F(aOut->Y()),
+                                 F(aOut->Width()), F(aOut->Height()))
              .IsEqualEdges(*this);
     }
 
@@ -264,11 +265,11 @@ struct RectTyped :
     // unknown types should be removed.
 
     static RectTyped<units, F> FromUnknownRect(const RectTyped<UnknownUnits, F>& rect) {
-        return RectTyped<units, F>(rect.x, rect.y, rect.width, rect.height);
+      return RectTyped<units, F>(rect.X(), rect.Y(), rect.Width(), rect.Height());
     }
 
     RectTyped<UnknownUnits, F> ToUnknownRect() const {
-        return RectTyped<UnknownUnits, F>(this->x, this->y, this->width, this->height);
+      return RectTyped<UnknownUnits, F>(this->X(), this->Y(), this->Width(), this->Height());
     }
 
     // This is here only to keep IPDL-generated code happy. DO NOT USE.
@@ -285,10 +286,10 @@ IntRectTyped<units> RoundedToInt(const RectTyped<units>& aRect)
 {
   RectTyped<units> copy(aRect);
   copy.Round();
-  return IntRectTyped<units>(int32_t(copy.x),
-                             int32_t(copy.y),
-                             int32_t(copy.width),
-                             int32_t(copy.height));
+  return IntRectTyped<units>(int32_t(copy.X()),
+                             int32_t(copy.Y()),
+                             int32_t(copy.Width()),
+                             int32_t(copy.Height()));
 }
 
 template<class units>
@@ -311,13 +312,13 @@ IntRectTyped<units> TruncatedToInt(const RectTyped<units>& aRect) {
 template<class units>
 RectTyped<units> IntRectToRect(const IntRectTyped<units>& aRect)
 {
-  return RectTyped<units>(aRect.x, aRect.y, aRect.width, aRect.height);
+  return RectTyped<units>(aRect.X(), aRect.Y(), aRect.Width(), aRect.Height());
 }
 
-// Convenience function for intersecting two rectangles wrapped in Maybes.
-template <typename T>
-Maybe<T>
-IntersectMaybeRects(const Maybe<T>& a, const Maybe<T>& b)
+// Convenience functions for intersecting and unioning two rectangles wrapped in Maybes.
+template <typename Rect>
+Maybe<Rect>
+IntersectMaybeRects(const Maybe<Rect>& a, const Maybe<Rect>& b)
 {
   if (!a) {
     return b;
@@ -325,6 +326,18 @@ IntersectMaybeRects(const Maybe<T>& a, const Maybe<T>& b)
     return a;
   } else {
     return Some(a->Intersect(*b));
+  }
+}
+template <typename Rect>
+Maybe<Rect>
+UnionMaybeRects(const Maybe<Rect>& a, const Maybe<Rect>& b)
+{
+  if (!a) {
+    return b;
+  } else if (!b) {
+    return a;
+  } else {
+    return Some(a->Union(*b));
   }
 }
 

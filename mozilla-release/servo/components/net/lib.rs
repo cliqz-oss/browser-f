@@ -3,8 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #![deny(unsafe_code)]
-#![feature(box_syntax)]
-#![feature(iterator_step_by)]
 
 extern crate base64;
 extern crate brotli;
@@ -19,6 +17,8 @@ extern crate ipc_channel;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use] extern crate log;
+extern crate malloc_size_of;
+#[macro_use] extern crate malloc_size_of_derive;
 #[macro_use] #[no_link] extern crate matches;
 #[macro_use]
 extern crate mime;
@@ -26,10 +26,12 @@ extern crate mime_guess;
 extern crate msg;
 extern crate net_traits;
 extern crate openssl;
-extern crate parse_hosts;
+#[macro_use]
 extern crate profile_traits;
 #[macro_use] extern crate serde;
 extern crate serde_json;
+extern crate servo_allocator;
+extern crate servo_arc;
 extern crate servo_config;
 extern crate servo_url;
 extern crate time;
@@ -50,6 +52,7 @@ mod data_loader;
 pub mod filemanager_thread;
 mod hosts;
 pub mod hsts;
+pub mod http_cache;
 pub mod http_loader;
 pub mod image_cache;
 pub mod mime_classifier;

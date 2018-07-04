@@ -11,7 +11,6 @@
 #include "nsIAnonymousContentCreator.h"
 
 class nsContainerFrame;
-class nsStyleContext;
 
 namespace mozilla {
 
@@ -26,7 +25,7 @@ public:
   NS_DECL_FRAMEARENA_HELPERS(DetailsFrame)
   NS_DECL_QUERYFRAME
 
-  explicit DetailsFrame(nsStyleContext* aContext);
+  explicit DetailsFrame(ComputedStyle* aStyle);
 
   virtual ~DetailsFrame();
 
@@ -46,7 +45,7 @@ public:
   void SetInitialChildList(ChildListID aListID,
                            nsFrameList& aChildList) override;
 
-  void DestroyFrom(nsIFrame* aDestructRoot) override;
+  void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   // nsIAnonymousContentCreator
   nsresult CreateAnonymousContent(nsTArray<ContentInfo>& aElements) override;

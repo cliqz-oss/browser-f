@@ -1,25 +1,23 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-"use strict;"
+"use strict;";
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
+ChromeUtils.defineModuleGetter(this, "FileUtils",
   "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Log",
+ChromeUtils.defineModuleGetter(this, "Log",
   "resource://gre/modules/Log.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
+ChromeUtils.defineModuleGetter(this, "OS",
   "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CommonUtils",
+ChromeUtils.defineModuleGetter(this, "CommonUtils",
   "resource://services-common/utils.js");
 
-Cu.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "LogManager",
 ];
 
@@ -127,7 +125,7 @@ FlushableStorageAppender.prototype = {
     }
     log.trace("finished copy to", fullOutputFileName);
   },
-}
+};
 
 // The public LogManager object.
 function LogManager(prefRoot, logNames, logFilePrefix) {
@@ -174,13 +172,13 @@ LogManager.prototype = {
           }
         }
         appender.level = level;
-      }
+      };
       this._prefs.observe(prefName, observer, this);
       this._prefObservers.push([prefName, observer]);
       // and call the observer now with the current pref value.
       observer(this._prefs.get(prefName));
       return observer;
-    }
+    };
 
     this._observeConsolePref = setupAppender(consoleAppender, "log.appender.console", Log.Level.Fatal, true);
     this._observeDumpPref = setupAppender(dumpAppender, "log.appender.dump", Log.Level.Error, true);
@@ -266,19 +264,18 @@ LogManager.prototype = {
       // logs are grouped in about:sync-log.
       let filename = reasonPrefix + "-" + this.logFilePrefix + "-" + Date.now() + ".txt";
       await this._fileAppender.flushToFile(this._logFileSubDirectoryEntries, filename, this._log);
-
       // It's not completely clear to markh why we only do log cleanups
       // for errors, but for now the Sync semantics have been copied...
       // (one theory is that only cleaning up on error makes it less
       // likely old error logs would be removed, but that's not true if
       // there are occasional errors - let's address this later!)
       if (reason == this.ERROR_LOG_WRITTEN && !this._cleaningUpFileLogs) {
-        this._log.trace("Scheduling cleanup.");
-        // Note we don't return/await or otherwise wait on this promise - it
-        // continues in the background
-        this.cleanupLogs().catch(err => {
+        this._log.trace("Running cleanup.");
+        try {
+          await this.cleanupLogs();
+        } catch (err) {
           this._log.error("Failed to cleanup logs", err);
-        });
+        }
       }
       return reason;
     } catch (ex) {
@@ -290,14 +287,31 @@ LogManager.prototype = {
   /**
    * Finds all logs older than maxErrorAge and deletes them using async I/O.
    */
-  async cleanupLogs() {
+  cleanupLogs() {
+    let maxAge = this._prefs.get("log.appender.file.maxErrorAge", DEFAULT_MAX_ERROR_AGE);
+    let threshold = Date.now() - 1000 * maxAge;
+    this._log.debug("Log cleanup threshold time: " + threshold);
+
+    let shouldDelete = fileInfo => {
+      return fileInfo.lastModificationDate.getTime() < threshold;
+    };
+    return this._deleteLogFiles(shouldDelete);
+  },
+
+  /**
+   * Finds all logs and removes them.
+   */
+  removeAllLogs() {
+    return this._deleteLogFiles(() => true);
+  },
+
+  // Delete some log files. A callback is invoked for each found log file to
+  // determine if that file should be removed.
+  async _deleteLogFiles(cbShouldDelete) {
     this._cleaningUpFileLogs = true;
     let logDir = FileUtils.getDir("ProfD", this._logFileSubDirectoryEntries);
     let iterator = new OS.File.DirectoryIterator(logDir.path);
-    let maxAge = this._prefs.get("log.appender.file.maxErrorAge", DEFAULT_MAX_ERROR_AGE);
-    let threshold = Date.now() - 1000 * maxAge;
 
-    this._log.debug("Log cleanup threshold time: " + threshold);
     await iterator.forEach(async (entry) => {
       // Note that we don't check this.logFilePrefix is in the name - we cleanup
       // all files in this directory regardless of that prefix so old logfiles
@@ -309,7 +323,7 @@ LogManager.prototype = {
       try {
         // need to call .stat() as the enumerator doesn't give that to us on *nix.
         let info = await OS.File.stat(entry.path);
-        if (info.lastModificationDate.getTime() >= threshold) {
+        if (!cbShouldDelete(info)) {
           return;
         }
         this._log.trace(" > Cleanup removing " + entry.name +
@@ -321,10 +335,16 @@ LogManager.prototype = {
                         + entry.name, ex);
       }
     });
-    iterator.close();
+    // Wait for this to close if we need to (but it might fail if OS.File has
+    // shut down)
+    try {
+      await iterator.close();
+    } catch (e) {
+      this._log.warn("Failed to close directory iterator", e);
+    }
     this._cleaningUpFileLogs = false;
     this._log.debug("Done deleting files.");
     // This notification is used only for tests.
     Services.obs.notifyObservers(null, "services-tests:common:log-manager:cleanup-logs");
   },
-}
+};

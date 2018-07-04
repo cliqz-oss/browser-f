@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use devtools_traits::{AutoMargins, CONSOLE_API, CachedConsoleMessage, CachedConsoleMessageTypes};
+use devtools_traits::{AutoMargins, CachedConsoleMessage, CachedConsoleMessageTypes};
 use devtools_traits::{ComputedNodeLayout, ConsoleAPI, PageError};
-use devtools_traits::{EvaluateJSReply, Modification, NodeInfo, PAGE_ERROR, TimelineMarker};
+use devtools_traits::{EvaluateJSReply, Modification, NodeInfo, TimelineMarker};
 use devtools_traits::TimelineMarkerType;
 use dom::bindings::codegen::Bindings::CSSStyleDeclarationBinding::CSSStyleDeclarationMethods;
 use dom::bindings::codegen::Bindings::DOMRectBinding::DOMRectMethods;
@@ -13,8 +13,8 @@ use dom::bindings::codegen::Bindings::ElementBinding::ElementMethods;
 use dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use dom::bindings::conversions::{ConversionResult, FromJSValConvertible, jsstring_to_str};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
 use dom::bindings::reflector::DomObject;
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::document::AnimationFrameCallback;
 use dom::element::Element;
@@ -22,8 +22,9 @@ use dom::globalscope::GlobalScope;
 use dom::node::{Node, window_from_node};
 use dom::window::Window;
 use ipc_channel::ipc::IpcSender;
-use js::jsapi::{JSAutoCompartment, ObjectClassName};
+use js::jsapi::JSAutoCompartment;
 use js::jsval::UndefinedValue;
+use js::rust::wrappers::ObjectClassName;
 use msg::constellation_msg::PipelineId;
 use script_thread::Documents;
 use std::ffi::CStr;
@@ -90,7 +91,7 @@ pub fn handle_get_document_element(documents: &Documents,
 fn find_node_by_unique_id(documents: &Documents,
                           pipeline: PipelineId,
                           node_id: &str)
-                          -> Option<Root<Node>> {
+                          -> Option<DomRoot<Node>> {
     documents.find_document(pipeline).and_then(|document|
         document.upcast::<Node>().traverse_preorder().find(|candidate| candidate.unique_id() == node_id)
     )
@@ -154,12 +155,13 @@ pub fn handle_get_layout(documents: &Documents,
 }
 
 fn determine_auto_margins(window: &Window, node: &Node) -> AutoMargins {
-    let margin = window.margin_style_query(node.to_trusted_node_address());
+    let style = window.style_query(node.to_trusted_node_address()).unwrap();
+    let margin = style.get_margin();
     AutoMargins {
-        top: margin.top == margin_top::computed_value::T::Auto,
-        right: margin.right == margin_right::computed_value::T::Auto,
-        bottom: margin.bottom == margin_bottom::computed_value::T::Auto,
-        left: margin.left == margin_left::computed_value::T::Auto,
+        top: margin.margin_top == margin_top::computed_value::T::Auto,
+        right: margin.margin_right == margin_right::computed_value::T::Auto,
+        bottom: margin.margin_bottom == margin_bottom::computed_value::T::Auto,
+        left: margin.margin_left == margin_left::computed_value::T::Auto,
     }
 }
 
@@ -168,7 +170,7 @@ pub fn handle_get_cached_messages(_pipeline_id: PipelineId,
                                   reply: IpcSender<Vec<CachedConsoleMessage>>) {
     // TODO: check the messageTypes against a global Cache for console messages and page exceptions
     let mut messages = Vec::new();
-    if message_types.contains(PAGE_ERROR) {
+    if message_types.contains(CachedConsoleMessageTypes::PAGE_ERROR) {
         // TODO: make script error reporter pass all reported errors
         //      to devtools and cache them for returning here.
         let msg = PageError {
@@ -188,7 +190,7 @@ pub fn handle_get_cached_messages(_pipeline_id: PipelineId,
         };
         messages.push(CachedConsoleMessage::PageError(msg));
     }
-    if message_types.contains(CONSOLE_API) {
+    if message_types.contains(CachedConsoleMessageTypes::CONSOLE_API) {
         // TODO: do for real
         let msg = ConsoleAPI {
             type_: "ConsoleAPI".to_owned(),

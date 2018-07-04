@@ -17,9 +17,6 @@ SOURCES += [
     'SandboxBrokerRealpath.cpp',
 ]
 
-if CONFIG['MOZ_ALSA']:
-    DEFINES['MOZ_ALSA'] = True
-
 LOCAL_INCLUDES += [
     '/security/sandbox/linux', # SandboxLogging.h, SandboxInfo.h
 ]

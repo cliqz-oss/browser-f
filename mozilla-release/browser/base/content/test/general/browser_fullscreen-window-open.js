@@ -1,10 +1,9 @@
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-
-var Cc = Components.classes;
-var Ci = Components.interfaces;
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const PREF_DISABLE_OPEN_NEW_WINDOW = "browser.link.open_newwindow.disabled_in_fullscreen";
+const PREF_BLOCK_TOPLEVEL_DATA = "security.data_uri.block_toplevel_data_uri_navigations";
 const isOSX = (Services.appinfo.OS === "Darwin");
 
 const TEST_FILE = "file_fullscreen-window-open.html";
@@ -18,6 +17,7 @@ async function test() {
   waitForExplicitFinish();
 
   Services.prefs.setBoolPref(PREF_DISABLE_OPEN_NEW_WINDOW, true);
+  Services.prefs.setBoolPref(PREF_BLOCK_TOPLEVEL_DATA, false);
 
   newWin = await BrowserTestUtils.openNewBrowserWindow();
   newBrowser = newWin.gBrowser;
@@ -36,6 +36,7 @@ registerCleanupFunction(async function() {
   await BrowserTestUtils.closeWindow(newWin);
 
   Services.prefs.clearUserPref(PREF_DISABLE_OPEN_NEW_WINDOW);
+  Services.prefs.clearUserPref(PREF_BLOCK_TOPLEVEL_DATA);
 });
 
 var gTests = [
@@ -209,7 +210,7 @@ function waitForTabOpen(aOptions) {
       newBrowser.removeTab(tab);
       finalize();
     });
-  }
+  };
   newBrowser.tabContainer.addEventListener("TabOpen", onTabOpen, true);
 
   let finalize = function() {
@@ -341,7 +342,5 @@ WindowListener.prototype = {
     domwindow.addEventListener("load", onLoad, true);
   },
   onCloseWindow(aXULWindow) {},
-  onWindowTitleChange(aXULWindow, aNewTitle) {},
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWindowMediatorListener,
-                                         Ci.nsISupports]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWindowMediatorListener]),
 };

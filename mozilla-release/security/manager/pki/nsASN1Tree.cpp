@@ -268,12 +268,6 @@ nsNSSASN1Tree::GetImageSrc(int32_t, nsITreeColumn*, nsAString&)
 }
 
 NS_IMETHODIMP
-nsNSSASN1Tree::GetProgressMode(int32_t, nsITreeColumn*, int32_t*)
-{
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsNSSASN1Tree::GetCellValue(int32_t, nsITreeColumn*, nsAString&)
 {
   return NS_OK;
@@ -404,7 +398,7 @@ nsNSSASN1Tree::PerformActionOnCell(const char16_t*, int32_t, nsITreeColumn*)
 }
 
 NS_IMETHODIMP
-nsNSSASN1Tree::CanDrop(int32_t, int32_t, nsIDOMDataTransfer*, bool* _retval)
+nsNSSASN1Tree::CanDrop(int32_t, int32_t, mozilla::dom::DataTransfer*, bool* _retval)
 {
   NS_ENSURE_ARG_POINTER(_retval);
   *_retval = false;
@@ -412,7 +406,7 @@ nsNSSASN1Tree::CanDrop(int32_t, int32_t, nsIDOMDataTransfer*, bool* _retval)
 }
 
 NS_IMETHODIMP
-nsNSSASN1Tree::Drop(int32_t, int32_t, nsIDOMDataTransfer*)
+nsNSSASN1Tree::Drop(int32_t, int32_t, mozilla::dom::DataTransfer*)
 {
   return NS_OK;
 }

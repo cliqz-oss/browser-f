@@ -14,12 +14,6 @@ interface nsIDocShell;
 interface nsIURI;
 
 %{C++
-#define NS_SHISTORY_INTERNAL_CID \
-{ 0x3dfb2f54, 0x378d, 0x4d3c, \
-  { 0xa9, 0xf9, 0x95, 0xdd, 0x26, 0x73, 0x24, 0x8c } }
-
-#define NS_SHISTORY_INTERNAL_CONTRACTID "@mozilla.org/browser/shistory-internal;1"
-
 #include "nsTArrayForwardDeclare.h"
 %}
 
@@ -119,6 +113,20 @@ interface nsISHistoryInternal: nsISupports
     */
    [noscript, notxpcom] void RemoveDynEntries(in long aIndex,
                                               in nsISHContainer aContainer);
+
+   /**
+    * Similar to RemoveDynEntries, but instead of specifying an index, use the
+    * given BFCacheEntry to find the index and remove dynamic entries from the
+    * index.
+    *
+    * The method takes no effect if the bfcache entry is not or no longer hold
+    * by the SHistory instance.
+    *
+    * @param aEntry
+    *        The bfcache entry to look up for index to remove dynamic entries
+    *        from.
+    */
+   [noscript, notxpcom] void RemoveDynEntriesForBFCacheEntry(in nsIBFCacheEntry aEntry);
 
    /**
     * Removes entries from the history if their docshellID is in

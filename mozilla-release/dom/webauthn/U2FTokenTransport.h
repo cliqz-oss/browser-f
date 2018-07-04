@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -18,63 +18,24 @@
 namespace mozilla {
 namespace dom {
 
-class U2FRegisterResult {
-public:
-  explicit U2FRegisterResult(nsTArray<uint8_t>&& aRegistration)
-    : mRegistration(aRegistration)
-  { }
-
-  void ConsumeRegistration(nsTArray<uint8_t>& aBuffer) {
-    aBuffer = Move(mRegistration);
-  }
-
-private:
-  nsTArray<uint8_t> mRegistration;
-};
-
-class U2FSignResult {
-public:
-  explicit U2FSignResult(nsTArray<uint8_t>&& aKeyHandle,
-                         nsTArray<uint8_t>&& aSignature)
-    : mKeyHandle(aKeyHandle)
-    , mSignature(aSignature)
-  { }
-
-  void ConsumeKeyHandle(nsTArray<uint8_t>& aBuffer) {
-    aBuffer = Move(mKeyHandle);
-  }
-
-  void ConsumeSignature(nsTArray<uint8_t>& aBuffer) {
-    aBuffer = Move(mSignature);
-  }
-
-private:
-  nsTArray<uint8_t> mKeyHandle;
-  nsTArray<uint8_t> mSignature;
-};
-
-typedef MozPromise<U2FRegisterResult, nsresult, true> U2FRegisterPromise;
-typedef MozPromise<U2FSignResult, nsresult, true> U2FSignPromise;
+typedef MozPromise<WebAuthnMakeCredentialResult, nsresult, true> U2FRegisterPromise;
+typedef MozPromise<WebAuthnGetAssertionResult, nsresult, true> U2FSignPromise;
 
 class U2FTokenTransport
 {
 public:
-  NS_INLINE_DECL_REFCOUNTING(U2FTokenTransport);
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(U2FTokenTransport);
   U2FTokenTransport() {}
 
   virtual RefPtr<U2FRegisterPromise>
-  Register(const nsTArray<WebAuthnScopedCredentialDescriptor>& aDescriptors,
-           const nsTArray<uint8_t>& aApplication,
-           const nsTArray<uint8_t>& aChallenge,
-           uint32_t aTimeoutMS) = 0;
+  Register(const WebAuthnMakeCredentialInfo& aInfo) = 0;
 
   virtual RefPtr<U2FSignPromise>
-  Sign(const nsTArray<WebAuthnScopedCredentialDescriptor>& aDescriptors,
-       const nsTArray<uint8_t>& aApplication,
-       const nsTArray<uint8_t>& aChallenge,
-       uint32_t aTimeoutMS) = 0;
+  Sign(const WebAuthnGetAssertionInfo& aInfo) = 0;
 
   virtual void Cancel() = 0;
+
+  virtual void Drop() { }
 
 protected:
   virtual ~U2FTokenTransport() = default;

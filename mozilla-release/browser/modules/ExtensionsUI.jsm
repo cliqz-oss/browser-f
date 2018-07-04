@@ -3,25 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
+var EXPORTED_SYMBOLS = ["ExtensionsUI"];
 
-this.EXPORTED_SYMBOLS = ["ExtensionsUI"];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/EventEmitter.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/EventEmitter.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManagerPrivate",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AppMenuNotifications",
-                                  "resource://gre/modules/AppMenuNotifications.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
-                                  "resource://gre/modules/PluralForm.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
-                                  "resource:///modules/RecentWindow.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  AddonManager: "resource://gre/modules/AddonManager.jsm",
+  AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
+  AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.jsm",
+  ExtensionData: "resource://gre/modules/Extension.jsm",
+  Services: "resource://gre/modules/Services.jsm"
+});
 
 XPCOMUtils.defineLazyPreferenceGetter(this, "WEBEXT_PERMISSION_PROMPTS",
                                       "extensions.webextPermissionPrompts", false);
@@ -33,11 +26,20 @@ const BRAND_PROPERTIES = "chrome://branding/locale/brand.properties";
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
-this.ExtensionsUI = {
+function getTabBrowser(browser) {
+  while (browser.ownerDocument.docShell.itemType !== Ci.nsIDocShell.typeChrome) {
+    browser = browser.ownerDocument.docShell.chromeEventHandler;
+  }
+  return {browser, window: browser.ownerGlobal};
+}
+
+var ExtensionsUI = {
   sideloaded: new Set(),
   updates: new Set(),
   sideloadListener: null,
   histogram: null,
+
+  pendingNotifications: new WeakMap(),
 
   async init() {
     this.histogram = Services.telemetry.getHistogramById("EXTENSION_INSTALL_PROMPT_RESULT");
@@ -46,10 +48,12 @@ this.ExtensionsUI = {
     Services.obs.addObserver(this, "webextension-update-permissions");
     Services.obs.addObserver(this, "webextension-install-notify");
     Services.obs.addObserver(this, "webextension-optional-permission-prompt");
+    Services.obs.addObserver(this, "webextension-defaultsearch-prompt");
 
     await Services.wm.getMostRecentWindow("navigator:browser").delayedStartupPromise;
 
     this._checkForSideloaded();
+    this._checkNewDistroAddons();
   },
 
   async _checkForSideloaded() {
@@ -88,15 +92,62 @@ this.ExtensionsUI = {
         this.sideloaded.add(addon);
       }
         this._updateNotifications();
-    } else {
-      // This and all the accompanying about:newaddon code can eventually
-      // be removed.  See bug 1331521.
-      let win = RecentWindow.getMostRecentBrowserWindow();
-      for (let addon of sideloaded) {
-        win.openUILinkIn(`about:newaddon?id=${addon.id}`, "tab");
+    }
+  },
+
+  async _checkNewDistroAddons() {
+    let newDistroAddons = AddonManagerPrivate.getNewDistroAddons();
+    if (!newDistroAddons) {
+      return;
+    }
+
+    for (let id of newDistroAddons) {
+      let addon = await AddonManager.getAddonByID(id);
+
+      let win = Services.wm.getMostRecentWindow("navigator:browser");
+      if (!win) {
+        return;
+      }
+
+      let {gBrowser} = win;
+      let browser = gBrowser.selectedBrowser;
+
+      // The common case here is that we enter this code right after startup
+      // in a brand new profile so we haven't yet loaded a page.  That state is
+      // surprisingly difficult to detect but wait until we've actually loaded
+      // a page.
+      if (browser.currentURI.spec == "about:blank" ||
+          browser.webProgress.isLoadingDocument) {
+        await new Promise(resolve => {
+          let listener = {
+            onLocationChange(browser_, webProgress, ...ignored) {
+              if (webProgress.isTopLevel && browser_ == browser) {
+                gBrowser.removeTabsProgressListener(listener);
+                resolve();
+              }
+            },
+          };
+          gBrowser.addTabsProgressListener(listener);
+        });
+      }
+
+      // If we're at about:newtab and the url bar gets focus, that will
+      // prevent a doorhanger from displaying.
+      // Our elegant solution is to ... take focus away from the url bar.
+      win.gURLBar.blur();
+
+      let strings = this._buildStrings({
+        addon,
+        permissions: addon.userPermissions,
+      });
+      let accepted = await this.showPermissionsPrompt(browser, strings,
+                                                      addon.iconURL);
+      if (accepted) {
+        addon.userDisabled = false;
       }
     }
   },
+
 
   _updateNotifications() {
     if (this.sideloaded.size + this.updates.size == 0) {
@@ -110,9 +161,7 @@ this.ExtensionsUI = {
   showAddonsManager(browser, strings, icon, histkey) {
     let global = browser.selectedBrowser.ownerGlobal;
     return global.BrowserOpenAddonsMgr("addons://list/extension").then(aomWin => {
-      let aomBrowser = aomWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDocShell)
-                             .chromeEventHandler;
+      let aomBrowser = aomWin.document.docShell.chromeEventHandler;
       return this.showPermissionsPrompt(aomBrowser, strings, icon, histkey);
     });
   },
@@ -152,10 +201,12 @@ this.ExtensionsUI = {
     if (topic == "webextension-permission-prompt") {
       let {target, info} = subject.wrappedJSObject;
 
+      let {browser, window} = getTabBrowser(target);
+
       // Dismiss the progress notification.  Note that this is bad if
       // there are multiple simultaneous installs happening, see
       // bug 1329884 for a longer explanation.
-      let progressNotification = target.ownerGlobal.PopupNotifications.getNotification("addon-progress", target);
+      let progressNotification = window.PopupNotifications.getNotification("addon-progress", browser);
       if (progressNotification) {
         progressNotification.remove();
       }
@@ -189,7 +240,7 @@ this.ExtensionsUI = {
         histkey = "installWeb";
       }
 
-      this.showPermissionsPrompt(target, strings, icon, histkey)
+      this.showPermissionsPrompt(browser, strings, icon, histkey)
           .then(answer => {
             if (answer) {
               info.resolve();
@@ -237,189 +288,88 @@ this.ExtensionsUI = {
         resolve(true);
         return;
       }
-
       resolve(this.showPermissionsPrompt(browser, strings, icon));
-    }
-  },
+    } else if (topic == "webextension-defaultsearch-prompt") {
+      let {browser, name, icon, resolve, currentEngine, newEngine} = subject.wrappedJSObject;
 
-  // Escape &, <, and > characters in a string so that it may be
-  // injected as part of raw markup.
-  _sanitizeName(name) {
-    return name.replace(/&/g, "&amp;")
-               .replace(/</g, "&lt;")
-               .replace(/>/g, "&gt;");
+      let bundle = Services.strings.createBundle(BROWSER_PROPERTIES);
+
+      let strings = {};
+      strings.acceptText = bundle.GetStringFromName("webext.defaultSearchYes.label");
+      strings.acceptKey = bundle.GetStringFromName("webext.defaultSearchYes.accessKey");
+      strings.cancelText = bundle.GetStringFromName("webext.defaultSearchNo.label");
+      strings.cancelKey = bundle.GetStringFromName("webext.defaultSearchNo.accessKey");
+      strings.addonName = name;
+      strings.text = bundle.formatStringFromName("webext.defaultSearch.description",
+                                                 ["<>", currentEngine, newEngine], 3);
+      resolve(this.showDefaultSearchPrompt(browser, strings, icon));
+    }
   },
 
   // Create a set of formatted strings for a permission prompt
   _buildStrings(info) {
-    let result = {};
-
     let bundle = Services.strings.createBundle(BROWSER_PROPERTIES);
+    let brandBundle = Services.strings.createBundle(BRAND_PROPERTIES);
+    let appName = brandBundle.GetStringFromName("brandShortName");
+    let info2 = Object.assign({appName}, info);
 
-    let perms = info.permissions || {origins: [], permissions: []};
-
-    // First classify our host permissions
-    let allUrls = false, wildcards = [], sites = [];
-    for (let permission of perms.origins) {
-      if (permission == "<all_urls>") {
-        allUrls = true;
-        break;
-      }
-      let match = /^[htps*]+:\/\/([^/]+)\//.exec(permission);
-      if (!match) {
-        Cu.reportError(`Unparseable host permission ${permission}`);
-        continue;
-      }
-      if (match[1] == "*") {
-        allUrls = true;
-      } else if (match[1].startsWith("*.")) {
-        wildcards.push(match[1].slice(2));
-      } else {
-        sites.push(match[1]);
-      }
-    }
-
-    // Format the host permissions.  If we have a wildcard for all urls,
-    // a single string will suffice.  Otherwise, show domain wildcards
-    // first, then individual host permissions.
-    result.msgs = [];
-    if (allUrls) {
-      result.msgs.push(bundle.GetStringFromName("webextPerms.hostDescription.allUrls"));
-    } else {
-      // Formats a list of host permissions.  If we have 4 or fewer, display
-      // them all, otherwise display the first 3 followed by an item that
-      // says "...plus N others"
-      function format(list, itemKey, moreKey) {
-        function formatItems(items) {
-          result.msgs.push(...items.map(item => bundle.formatStringFromName(itemKey, [item], 1)));
-        }
-        if (list.length < 5) {
-          formatItems(list);
-        } else {
-          formatItems(list.slice(0, 3));
-
-          let remaining = list.length - 3;
-          result.msgs.push(PluralForm.get(remaining, bundle.GetStringFromName(moreKey))
-                                     .replace("#1", remaining));
-        }
-      }
-
-      format(wildcards, "webextPerms.hostDescription.wildcard",
-             "webextPerms.hostDescription.tooManyWildcards");
-      format(sites, "webextPerms.hostDescription.oneSite",
-             "webextPerms.hostDescription.tooManySites");
-    }
-
-    let permissionKey = perm => `webextPerms.description.${perm}`;
-
-    // Next, show the native messaging permission if it is present.
-    const NATIVE_MSG_PERM = "nativeMessaging";
-    if (perms.permissions.includes(NATIVE_MSG_PERM)) {
-      let brandBundle = Services.strings.createBundle(BRAND_PROPERTIES);
-      let appName = brandBundle.GetStringFromName("brandShortName");
-      result.msgs.push(bundle.formatStringFromName(permissionKey(NATIVE_MSG_PERM), [appName], 1));
-    }
-
-    // Hardcoded "proxy" permission string for beta uplift.
-    if (perms.permissions.includes("proxy")) {
-      result.msgs.push("Control browser proxy settings");
-    }
-
-    // Finally, show remaining permissions, in any order.
-    for (let permission of perms.permissions) {
-      // Handled above
-      if (permission == "nativeMessaging") {
-        continue;
-      }
-      try {
-        result.msgs.push(bundle.GetStringFromName(permissionKey(permission)));
-      } catch (err) {
-        // We deliberately do not include all permissions in the prompt.
-        // So if we don't find one then just skip it.
-      }
-    }
-
-    // Now figure out all the rest of the notification text.
-    let name = this._sanitizeName(info.addon.name);
-    let addonName = `<span class="addon-webext-name">${name}</span>`;
-
-    result.header = bundle.formatStringFromName("webextPerms.header", [addonName], 1);
-    result.text = info.unsigned ?
-                  bundle.GetStringFromName("webextPerms.unsignedWarning") : "";
-    result.listIntro = bundle.GetStringFromName("webextPerms.listIntro");
-
-    result.acceptText = bundle.GetStringFromName("webextPerms.add.label");
-    result.acceptKey = bundle.GetStringFromName("webextPerms.add.accessKey");
-    result.cancelText = bundle.GetStringFromName("webextPerms.cancel.label");
-    result.cancelKey = bundle.GetStringFromName("webextPerms.cancel.accessKey");
-
-    if (info.type == "sideload") {
-      result.header = bundle.formatStringFromName("webextPerms.sideloadHeader", [addonName], 1);
-      let key = result.msgs.length == 0 ?
-                "webextPerms.sideloadTextNoPerms" : "webextPerms.sideloadText2";
-      result.text = bundle.GetStringFromName(key);
-      result.acceptText = bundle.GetStringFromName("webextPerms.sideloadEnable.label");
-      result.acceptKey = bundle.GetStringFromName("webextPerms.sideloadEnable.accessKey");
-      result.cancelText = bundle.GetStringFromName("webextPerms.sideloadCancel.label");
-      result.cancelKey = bundle.GetStringFromName("webextPerms.sideloadCancel.accessKey");
-    } else if (info.type == "update") {
-      result.header = "";
-      result.text = bundle.formatStringFromName("webextPerms.updateText", [addonName], 1);
-      result.acceptText = bundle.GetStringFromName("webextPerms.updateAccept.label");
-      result.acceptKey = bundle.GetStringFromName("webextPerms.updateAccept.accessKey");
-    } else if (info.type == "optional") {
-      result.header = bundle.formatStringFromName("webextPerms.optionalPermsHeader", [addonName], 1);
-      result.text = "";
-      result.listIntro = bundle.GetStringFromName("webextPerms.optionalPermsListIntro");
-      result.acceptText = bundle.GetStringFromName("webextPerms.optionalPermsAllow.label");
-      result.acceptKey = bundle.GetStringFromName("webextPerms.optionalPermsAllow.accessKey");
-      result.cancelText = bundle.GetStringFromName("webextPerms.optionalPermsDeny.label");
-      result.cancelKey = bundle.GetStringFromName("webextPerms.optionalPermsDeny.accessKey");
-    }
-
-    return result;
+    let strings = ExtensionData.formatPermissionStrings(info2, bundle);
+    strings.addonName = info.addon.name;
+    return strings;
   },
 
-  showPermissionsPrompt(browser, strings, icon, histkey) {
-    function eventCallback(topic) {
-      let doc = this.browser.ownerDocument;
-      if (topic == "showing") {
-        // eslint-disable-next-line no-unsanitized/property
-        doc.getElementById("addon-webext-perm-header").innerHTML = strings.header;
-        let textEl = doc.getElementById("addon-webext-perm-text");
-        // eslint-disable-next-line no-unsanitized/property
-        textEl.innerHTML = strings.text;
-        textEl.hidden = !strings.text;
+  async showPermissionsPrompt(target, strings, icon, histkey) {
+    let {browser, window} = getTabBrowser(target);
 
-        let listIntroEl = doc.getElementById("addon-webext-perm-intro");
-        listIntroEl.value = strings.listIntro;
-        listIntroEl.hidden = (strings.msgs.length == 0);
-
-        let list = doc.getElementById("addon-webext-perm-list");
-        while (list.firstChild) {
-          list.firstChild.remove();
-        }
-
-        for (let msg of strings.msgs) {
-          let item = doc.createElementNS(HTML_NS, "li");
-          item.textContent = msg;
-          list.appendChild(item);
-        }
-      } else if (topic == "swapping") {
-        return true;
-      }
-      return false;
+    // Wait for any pending prompts in this window to complete before
+    // showing the next one.
+    let pending;
+    while ((pending = this.pendingNotifications.get(window))) {
+      await pending;
     }
 
-    let popupOptions = {
-      hideClose: true,
-      popupIconURL: icon || DEFAULT_EXTENSION_ICON,
-      persistent: true,
-      eventCallback,
-    };
+    let promise = new Promise(resolve => {
+      function eventCallback(topic) {
+        let doc = this.browser.ownerDocument;
+        if (topic == "showing") {
+          let textEl = doc.getElementById("addon-webext-perm-text");
+          textEl.textContent = strings.text;
+          textEl.hidden = !strings.text;
 
-    let win = browser.ownerGlobal;
-    return new Promise(resolve => {
+          let listIntroEl = doc.getElementById("addon-webext-perm-intro");
+          listIntroEl.textContent = strings.listIntro;
+          listIntroEl.hidden = (strings.msgs.length == 0);
+
+          let list = doc.getElementById("addon-webext-perm-list");
+          while (list.firstChild) {
+            list.firstChild.remove();
+          }
+
+          for (let msg of strings.msgs) {
+            let item = doc.createElementNS(HTML_NS, "li");
+            item.textContent = msg;
+            list.appendChild(item);
+          }
+        } else if (topic == "swapping") {
+          return true;
+        }
+        if (topic == "removed") {
+          Services.tm.dispatchToMainThread(() => {
+            resolve(false);
+          });
+        }
+        return false;
+      }
+
+      let popupOptions = {
+        hideClose: true,
+        popupIconURL: icon || DEFAULT_EXTENSION_ICON,
+        persistent: true,
+        eventCallback,
+        name: strings.addonName,
+        removeOnDismissal: true,
+      };
+
       let action = {
         label: strings.acceptText,
         accessKey: strings.acceptKey,
@@ -443,31 +393,66 @@ this.ExtensionsUI = {
         },
       ];
 
-      win.PopupNotifications.show(browser, "addon-webext-permissions", "",
-      // eslint-disable-next-line no-unsanitized/property
-                                  "addons-notification-icon",
-                                  action, secondaryActions, popupOptions);
+      window.PopupNotifications.show(browser, "addon-webext-permissions", strings.header,
+                                     "addons-notification-icon", action,
+                                     secondaryActions, popupOptions);
+    });
+
+    this.pendingNotifications.set(window, promise);
+    promise.finally(() => this.pendingNotifications.delete(window));
+    return promise;
+  },
+
+  showDefaultSearchPrompt(target, strings, icon) {
+    return new Promise(resolve => {
+      let popupOptions = {
+        hideClose: true,
+        popupIconURL: icon || DEFAULT_EXTENSION_ICON,
+        persistent: false,
+        removeOnDismissal: true,
+        eventCallback(topic) {
+          if (topic == "removed") {
+            resolve(false);
+          }
+        },
+        name: strings.addonName,
+      };
+
+      let action = {
+        label: strings.acceptText,
+        accessKey: strings.acceptKey,
+        disableHighlight: true,
+        callback: () => {
+          resolve(true);
+        },
+      };
+      let secondaryActions = [
+        {
+          label: strings.cancelText,
+          accessKey: strings.cancelKey,
+          callback: () => {
+            resolve(false);
+          },
+        },
+      ];
+
+      let {browser, window} = getTabBrowser(target);
+      window.PopupNotifications.show(browser, "addon-webext-defaultsearch", strings.text,
+                                     "addons-notification-icon", action,
+                                     secondaryActions, popupOptions);
     });
   },
 
   showInstallNotification(target, addon) {
-    let win = target.ownerGlobal;
-    let popups = win.PopupNotifications;
+    let {browser, window} = getTabBrowser(target);
+    let popups = window.PopupNotifications;
 
-    let name = this._sanitizeName(addon.name);
-    let addonName = `<span class="addon-webext-name">${name}</span>`;
-    let addonIcon = '<image class="addon-addon-icon"/>';
-    let toolbarIcon = '<image class="addon-toolbar-icon"/>';
-
-    let brandBundle = win.document.getElementById("bundle_brand");
+    let brandBundle = window.document.getElementById("bundle_brand");
     let appName = brandBundle.getString("brandShortName");
+    let bundle = window.gNavigatorBundle;
 
-    let bundle = win.gNavigatorBundle;
-    let msg1 = bundle.getFormattedString("addonPostInstall.message1",
-                                         [addonName, appName]);
-    let msg2 = bundle.getFormattedString("addonPostInstall.messageDetail",
-                                         [addonIcon, toolbarIcon]);
-
+    let message = bundle.getFormattedString("addonPostInstall.message1",
+                                            ["<>", appName]);
     return new Promise(resolve => {
       let action = {
         label: bundle.getString("addonPostInstall.okay.label"),
@@ -483,21 +468,14 @@ this.ExtensionsUI = {
         timeout: Date.now() + 30000,
         popupIconURL: icon,
         eventCallback(topic) {
-          if (topic == "showing") {
-            let doc = this.browser.ownerDocument;
-        // eslint-disable-next-line no-unsanitized/property
-            doc.getElementById("addon-installed-notification-header")
-               .innerHTML = msg1;
-            // eslint-disable-next-line no-unsanitized/property
-            doc.getElementById("addon-installed-notification-message")
-               .innerHTML = msg2;
-          } else if (topic == "dismissed") {
+          if (topic == "dismissed") {
             resolve();
           }
-        }
+        },
+        name: addon.name,
       };
 
-      popups.show(target, "addon-installed", "", "addons-notification-icon",
+      popups.show(browser, "addon-installed", message, "addons-notification-icon",
                   action, null, options);
     });
   },

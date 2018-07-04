@@ -13,12 +13,12 @@ function run_test() {
   initTestDebuggerServer();
   const debuggee = addTestGlobal("test-promise-state");
   const client = new DebuggerClient(DebuggerServer.connectPipe());
-  client.connect().then(function () {
+  client.connect().then(function() {
     attachTestTabAndResume(
       client, "test-promise-state",
-      function (response, tabClient, threadClient) {
-        Task.spawn(function* () {
-          const packet = yield executeOnNextTickAndWaitForPause(
+      function(response, tabClient, threadClient) {
+        (async function() {
+          const packet = await executeOnNextTickAndWaitForPause(
             () => evalCode(debuggee), client);
 
           const grip = packet.frame.environment.bindings.variables.p;
@@ -27,7 +27,7 @@ function run_test() {
           equal(grip.value.promiseState.state, "pending");
 
           finishClient(client);
-        });
+        })();
       });
   });
   do_test_pending();
@@ -35,7 +35,7 @@ function run_test() {
 
 function evalCode(debuggee) {
   /* eslint-disable */
-  Components.utils.evalInSandbox(
+  Cu.evalInSandbox(
     "doTest();\n" +
     function doTest() {
       var p = new Promise(function () {});

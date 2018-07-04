@@ -7,10 +7,8 @@ function LOG(str) {
   dump("*** " + str + "\n");
 }
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cr = Components.results;
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const FP_CONTRACTID = "@mozilla.org/feed-processor;1";
 const FP_CLASSID = Components.ID("{26acb1f0-28fc-43bc-867a-a46aabc85dd4}");
@@ -36,14 +34,13 @@ const PERSON_CONTRACTID = "@mozilla.org/feed-person;1";
 const PERSON_CLASSID = Components.ID("{95c963b7-20b2-11db-92f6-001422106990}");
 const PERSON_CLASSNAME = "Feed Person";
 
-const IO_CONTRACTID = "@mozilla.org/network/io-service;1"
-const BAG_CONTRACTID = "@mozilla.org/hash-property-bag;1"
+const IO_CONTRACTID = "@mozilla.org/network/io-service;1";
+const BAG_CONTRACTID = "@mozilla.org/hash-property-bag;1";
 const ARRAY_CONTRACTID = "@mozilla.org/array;1";
 const SAX_CONTRACTID = "@mozilla.org/saxparser/xmlreader;1";
 const PARSERUTILS_CONTRACTID = "@mozilla.org/parserutils;1";
 
 const gMimeService = Cc["@mozilla.org/mime;1"].getService(Ci.nsIMIMEService);
-var gIoService = null;
 
 const XMLNS = "http://www.w3.org/XML/1998/namespace";
 const RSS090NS = "http://my.netscape.com/rdf/simple/0.9/";
@@ -51,10 +48,8 @@ const RSS090NS = "http://my.netscape.com/rdf/simple/0.9/";
 /** *** Some general utils *****/
 function strToURI(link, base) {
   base = base || null;
-  if (!gIoService)
-    gIoService = Cc[IO_CONTRACTID].getService(Ci.nsIIOService);
   try {
-    return gIoService.newURI(link, null, base);
+    return Services.io.newURI(link, null, base);
   } catch (e) {
     return null;
   }
@@ -107,7 +102,7 @@ function findAtomLinks(rel, links) {
     if (bagHasKey(linkElement, "href")) {
       var relAttribute = null;
       if (bagHasKey(linkElement, "rel"))
-        relAttribute = linkElement.getPropertyAsAString("rel")
+        relAttribute = linkElement.getPropertyAsAString("rel");
       if ((!relAttribute && rel == "alternate") || relAttribute == rel) {
         rvLinks.push(linkElement);
         continue;
@@ -156,7 +151,7 @@ function makePropGetter(key) {
     } catch (e) {
     }
     return null;
-  }
+  };
 }
 
 const RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
@@ -178,7 +173,7 @@ var gNamespaces = {
   "http://www.w3.org/XML/1998/namespace": "xml",
   "http://search.yahoo.com/mrss/": "media",
   "http://search.yahoo.com/mrss": "media"
-}
+};
 
 // We allow a very small set of namespaces in XHTML content,
 // for attributes only
@@ -187,7 +182,7 @@ var gAllowedXHTMLNamespaces = {
   // if someone ns qualifies XHTML, we have to prefix it to avoid an
   // attribute collision.
   "http://www.w3.org/1999/xhtml": "xhtml"
-}
+};
 
 function FeedResult() {}
 FeedResult.prototype = {
@@ -204,8 +199,8 @@ FeedResult.prototype = {
 
   // XPCOM stuff
   classID: FR_CLASSID,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIFeedResult])
-}
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIFeedResult])
+};
 
 function Feed() {
   this.subtitle = null;
@@ -376,8 +371,8 @@ Feed.prototype = {
 
   // XPCOM stuff
   classID: FEED_CLASSID,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIFeed, Ci.nsIFeedContainer])
-}
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIFeed, Ci.nsIFeedContainer])
+};
 
 function Entry() {
   this.summary = null;
@@ -586,10 +581,10 @@ Entry.prototype = {
 
   // XPCOM stuff
   classID: ENTRY_CLASSID,
-  QueryInterface: XPCOMUtils.generateQI(
+  QueryInterface: ChromeUtils.generateQI(
     [Ci.nsIFeedEntry, Ci.nsIFeedContainer]
   )
-}
+};
 
 Entry.prototype._atomLinksToURI = Feed.prototype._atomLinksToURI;
 Entry.prototype._resolveURI = Feed.prototype._resolveURI;
@@ -626,7 +621,7 @@ TextConstruct.prototype = {
     }
     var isXML;
     if (this.type == "xhtml")
-      isXML = true
+      isXML = true;
     else if (this.type == "html")
       isXML = false;
     else
@@ -639,8 +634,8 @@ TextConstruct.prototype = {
 
   // XPCOM stuff
   classID: TEXTCONSTRUCT_CLASSID,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIFeedTextConstruct])
-}
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIFeedTextConstruct])
+};
 
 // Generator represents the software that produced the feed
 function Generator() {
@@ -677,10 +672,10 @@ Generator.prototype = {
 
   // XPCOM stuff
   classID: GENERATOR_CLASSID,
-  QueryInterface: XPCOMUtils.generateQI(
+  QueryInterface: ChromeUtils.generateQI(
     [Ci.nsIFeedGenerator, Ci.nsIFeedElementBase]
   )
-}
+};
 
 function Person() {
   this.name = null;
@@ -695,10 +690,10 @@ function Person() {
 Person.prototype = {
   // XPCOM stuff
   classID: PERSON_CLASSID,
-  QueryInterface: XPCOMUtils.generateQI(
+  QueryInterface: ChromeUtils.generateQI(
     [Ci.nsIFeedPerson, Ci.nsIFeedElementBase]
   )
-}
+};
 
 /**
  * Map a list of fields into properties on a container.
@@ -935,13 +930,9 @@ XHTMLHandler.prototype = {
   characters: function XH_characters(data) {
     this._buf += xmlEscape(data);
   },
-  startPrefixMapping: function XH_startPrefixMapping(prefix, uri) {
-  },
-  endPrefixMapping: function FP_endPrefixMapping(prefix) {
-  },
   processingInstruction: function XH_processingInstruction() {
   },
-}
+};
 
 /**
  * The ExtensionHandler deals with elements we haven't explicitly
@@ -992,10 +983,6 @@ ExtensionHandler.prototype = {
   characters: function EH_characters(data) {
     if (!this._hasChildElements)
       this._buf += data;
-  },
-  startPrefixMapping: function EH_startPrefixMapping() {
-  },
-  endPrefixMapping: function EH_endPrefixMapping() {
   },
   processingInstruction: function EH_processingInstruction() {
   },
@@ -1209,7 +1196,7 @@ function FeedProcessor() {
       "atom03:entry": new ElementInfo("atom03_entries", Cc[ENTRY_CONTRACTID],
                                       null, true)
     }
-  }
+  };
 }
 
 // See startElement for a long description of how feeds are processed.
@@ -1259,19 +1246,6 @@ FeedProcessor.prototype = {
   },
 
   // Parsing functions
-  parseFromStream: function FP_parseFromStream(stream, uri) {
-    this._init(uri);
-    this._reader.parseFromStream(stream, null, stream.available(),
-                                 "application/xml");
-    this._reader = null;
-  },
-
-  parseFromString: function FP_parseFromString(inputString, uri) {
-    this._init(uri);
-    this._reader.parseFromString(inputString, "application/xml");
-    this._reader = null;
-  },
-
   parseAsync: function FP_parseAsync(requestObserver, uri) {
     this._init(uri);
     this._reader.parseAsync(requestObserver);
@@ -1395,7 +1369,7 @@ FeedProcessor.prototype = {
     if ((this._result.version == "atom" || this._result.version == "atom03") &&
         this._textConstructs[key] != null) {
       var type = attributes.getValueFromName("", "type");
-      if (type != null && type.indexOf("xhtml") >= 0) {
+      if (type != null && type.includes("xhtml")) {
         this._xhtmlHandler =
           new XHTMLHandler(this, (this._result.version == "atom"));
         this._reader.contentHandler = this._xhtmlHandler;
@@ -1465,14 +1439,6 @@ FeedProcessor.prototype = {
   // opening element.
   characters: function FP_characters(data) {
     this._buf += data;
-  },
-  // TODO: It would be nice to check new prefixes here, and if they
-  // don't conflict with the ones we've defined, throw them in a
-  // dictionary to check.
-  startPrefixMapping: function FP_startPrefixMapping(prefix, uri) {
-  },
-
-  endPrefixMapping: function FP_endPrefixMapping(prefix) {
   },
 
   processingInstruction: function FP_processingInstruction(target, data) {
@@ -1583,7 +1549,7 @@ FeedProcessor.prototype = {
 
     // If it's an array, re-set the last element
     if (isArray)
-      container.replaceElementAt(element, container.length - 1, false);
+      container.replaceElementAt(element, container.length - 1);
   },
 
   _prefixForNS: function FP_prefixForNS(uri) {
@@ -1613,7 +1579,7 @@ FeedProcessor.prototype = {
     var versions = { "0.91": "rss091",
                      "0.92": "rss092",
                      "0.93": "rss093",
-                     "0.94": "rss094" }
+                     "0.94": "rss094" };
     if (versions[versionAttr])
       return versions[versionAttr];
     if (versionAttr.substr(0, 2) != "2.")
@@ -1702,17 +1668,17 @@ FeedProcessor.prototype = {
       if (this._result.version == "atom" && typeAttribute != null) {
         type = typeAttribute;
       } else if (this._result.version == "atom03" && typeAttribute != null) {
-        if (typeAttribute.toLowerCase().indexOf("xhtml") >= 0) {
+        if (typeAttribute.toLowerCase().includes("xhtml")) {
           type = "xhtml";
-        } else if (typeAttribute.toLowerCase().indexOf("html") >= 0) {
+        } else if (typeAttribute.toLowerCase().includes("html")) {
           type = "html";
-        } else if (typeAttribute.toLowerCase().indexOf("text") >= 0) {
+        } else if (typeAttribute.toLowerCase().includes("text")) {
           type = "text";
         }
       }
 
       // If it's rss feed-level description, it's not supposed to have html
-      if (this._result.version.indexOf("rss") >= 0 &&
+      if (this._result.version.includes("rss") &&
           this._handlerStack[this._depth].containerClass != ENTRY_CONTRACTID) {
         type = "text";
       }
@@ -1757,11 +1723,11 @@ FeedProcessor.prototype = {
 
   // XPCOM stuff
   classID: FP_CLASSID,
-  QueryInterface: XPCOMUtils.generateQI(
+  QueryInterface: ChromeUtils.generateQI(
     [Ci.nsIFeedProcessor, Ci.nsISAXContentHandler, Ci.nsISAXErrorHandler,
      Ci.nsIStreamListener, Ci.nsIRequestObserver]
   )
-}
+};
 
 var components = [FeedProcessor, FeedResult, Feed, Entry,
                   TextConstruct, Generator, Person];

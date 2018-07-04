@@ -14,6 +14,7 @@
 #include "nsString.h"
 #include "nsINestedURI.h"
 #include "nsIIPCSerializableURI.h"
+#include "nsIURIMutator.h"
 
 #define NS_THIS_JARURI_IMPL_CID                      \
 { /* 9a55f629-730b-4d08-b75b-fa7d9570a691 */         \
@@ -31,6 +32,13 @@
     {0xa4, 0x6d, 0x98, 0x29, 0xd3, 0xcc, 0xa4, 0x62} \
 }
 
+#define NS_JARURIMUTATOR_CID                         \
+{ /* 19d9161b-a2a9-4518-b2c9-fcb8296d6dcd */         \
+    0x19d9161b,                                      \
+    0xa2a9,                                          \
+    0x4518,                                          \
+    {0xb2, 0xc9, 0xfc, 0xb8, 0x29, 0x6d, 0x6d, 0xcd} \
+}
 
 class nsJARURI final : public nsIJARURI,
                        public nsISerializable,
@@ -51,18 +59,18 @@ public:
     NS_DECLARE_STATIC_IID_ACCESSOR(NS_THIS_JARURI_IMPL_CID)
 
     // nsJARURI
-    nsJARURI();
-
-    nsresult Init(const char *charsetHint);
     nsresult FormatSpec(const nsACString &entryPath, nsACString &result,
                         bool aIncludeScheme = true);
     nsresult CreateEntryURL(const nsACString& entryFilename,
                             const char* charset,
                             nsIURL** url);
-    nsresult SetSpecWithBase(const nsACString& aSpec, nsIURI* aBaseURL);
 
 protected:
+    nsJARURI();
     virtual ~nsJARURI();
+    nsresult SetJAREntry(const nsACString &entryPath);
+    nsresult Init(const char *charsetHint);
+    nsresult SetSpecWithBase(const nsACString& aSpec, nsIURI* aBaseURL);
 
     // enum used in a few places to specify how .ref attribute should be handled
     enum RefHandlingEnum {
@@ -89,6 +97,85 @@ protected:
     // like extensions, refs, etc.
     nsCOMPtr<nsIURL> mJAREntry;
     nsCString        mCharsetHint;
+
+private:
+    nsresult SetSpecInternal(const nsACString &input);
+    nsresult SetScheme(const nsACString &input);
+    nsresult SetUserPass(const nsACString &input);
+    nsresult SetUsername(const nsACString &input);
+    nsresult SetPassword(const nsACString &input);
+    nsresult SetHostPort(const nsACString &aValue);
+    nsresult SetHost(const nsACString &input);
+    nsresult SetPort(int32_t port);
+    nsresult SetPathQueryRef(const nsACString &input);
+    nsresult SetRef(const nsACString &input);
+    nsresult SetFilePath(const nsACString &input);
+    nsresult SetQuery(const nsACString &input);
+    nsresult SetQueryWithEncoding(const nsACString &input, const Encoding* encoding);
+    bool Deserialize(const mozilla::ipc::URIParams&);
+    nsresult ReadPrivate(nsIObjectInputStream *aStream);
+
+    nsresult SetFileNameInternal(const nsACString& fileName);
+    nsresult SetFileBaseNameInternal(const nsACString& fileBaseName);
+    nsresult SetFileExtensionInternal(const nsACString& fileExtension);
+
+public:
+    class Mutator final
+        : public nsIURIMutator
+        , public BaseURIMutator<nsJARURI>
+        , public nsIURLMutator
+        , public nsISerializable
+        , public nsIJARURIMutator
+    {
+        NS_DECL_ISUPPORTS
+        NS_FORWARD_SAFE_NSIURISETTERS_RET(mURI)
+        NS_DEFINE_NSIMUTATOR_COMMON
+        NS_DECL_NSIURLMUTATOR
+
+        NS_IMETHOD
+        Write(nsIObjectOutputStream *aOutputStream) override
+        {
+            return NS_ERROR_NOT_IMPLEMENTED;
+        }
+
+        MOZ_MUST_USE NS_IMETHOD
+        Read(nsIObjectInputStream* aStream) override
+        {
+            return InitFromInputStream(aStream);
+        }
+
+        NS_IMETHOD
+        SetSpecBaseCharset(const nsACString& aSpec,
+                           nsIURI* aBaseURI,
+                           const char* aCharset) override
+        {
+            RefPtr<nsJARURI> uri;
+            if (mURI) {
+                mURI.swap(uri);
+            } else {
+                uri = new nsJARURI();
+            }
+
+            nsresult rv = uri->Init(aCharset);
+            NS_ENSURE_SUCCESS(rv, rv);
+
+            rv = uri->SetSpecWithBase(aSpec, aBaseURI);
+            if (NS_FAILED(rv)) {
+                return rv;
+            }
+
+            mURI.swap(uri);
+            return NS_OK;
+        }
+
+        explicit Mutator() { }
+    private:
+        virtual ~Mutator() { }
+
+        friend class nsJARURI;
+    };
+
+    friend BaseURIMutator<nsJARURI>;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsJARURI, NS_THIS_JARURI_IMPL_CID)

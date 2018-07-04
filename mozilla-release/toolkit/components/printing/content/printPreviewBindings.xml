@@ -15,8 +15,7 @@
    xmlns="http://www.mozilla.org/xbl"
    xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 
-  <binding id="printpreviewtoolbar"
-           extends="chrome://global/content/bindings/toolbar.xml#toolbar">
+  <binding id="printpreviewtoolbar">
     <resources>
       <stylesheet src="chrome://global/skin/printPreview.css"/>
     </resources>
@@ -36,7 +35,7 @@
       <xul:toolbarbutton anonid="navigatePrevious" class="navigate-button tabbable"
         oncommand="parentNode.navigate(-1, 0, 0);" tooltiptext="&previousarrow.tooltip;"/>
       <xul:hbox align="center" pack="center">
-        <xul:textbox id="pageNumber" size="3" value="1" min="1" type="number"
+        <xul:textbox id="pageNumber" value="1" min="1" type="number"
           hidespinbuttons="true" onchange="navigate(0, this.valueNumber, 0);"/>
         <xul:label value="&of.label;"/>
         <xul:label value="1"/>
@@ -100,7 +99,7 @@
       <xul:data value="&customPrompt.title;"/>
     </content>
 
-    <implementation implements="nsIMessageListener">
+    <implementation>
       <field name="mPrintButton">
         document.getAnonymousNodes(this)[0]
       </field>
@@ -167,7 +166,7 @@
         <parameter name="aPPBrowser"/>
         <body>
         <![CDATA[
-          let {Services} = Components.utils.import("resource://gre/modules/Services.jsm", {});
+          let {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
           if (!Services.prefs.getBoolPref("print.use_simplify_page")) {
             this.mSimplifyPageCheckbox.hidden = true;
             this.mSimplifyPageToolbarSeparator.hidden = true;
@@ -181,7 +180,7 @@
           let ltr = document.documentElement.matches(":root:-moz-locale-dir(ltr)");
           // Windows 7 doesn't support ⏮ and ⏭ by default, and fallback doesn't
           // always work (bug 1343330).
-          let {AppConstants} = Components.utils.import("resource://gre/modules/AppConstants.jsm", {});
+          let {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
           let useCompatCharacters = AppConstants.isPlatformAndVersionAtMost("win", "6.1");
           let leftEnd = useCompatCharacters ? "⏪" : "⏮";
           let rightEnd = useCompatCharacters ? "⏩" : "⏭";
@@ -244,7 +243,7 @@
         <parameter name="aHomeOrEnd"/>
         <body>
         <![CDATA[
-          const nsIWebBrowserPrint = Components.interfaces.nsIWebBrowserPrint;
+          const nsIWebBrowserPrint = Ci.nsIWebBrowserPrint;
           let navType, pageNum;
 
           // we use only one of aHomeOrEnd, aDirection, or aPageNum
@@ -264,7 +263,7 @@
             // or decrement our currently viewed page.
             this.mPageTextBox.valueNumber += aDirection;
             navType = nsIWebBrowserPrint.PRINTPREVIEW_GOTO_PAGENUM;
-            pageNum = this.mPageTextBox.value;  // TODO: back to valueNumber?
+            pageNum = this.mPageTextBox.value; // TODO: back to valueNumber?
           } else {
             // We're going to a specific page (aPageNum)
             navType = nsIWebBrowserPrint.PRINTPREVIEW_GOTO_PAGENUM;
@@ -292,12 +291,12 @@
         <body>
         <![CDATA[
           var value = Math.round(aValue);
-          var promptService = Components.classes["@mozilla.org/embedcomp/prompt-service;1"].getService(Components.interfaces.nsIPromptService);
           var promptStr = this.mScaleLabel.value;
           var renameTitle = this.mCustomTitle;
           var result = {value};
-          var confirmed = promptService.prompt(window, renameTitle, promptStr, result, null, {value});
-          if (!confirmed || (!result.value) || (result.value == "") || result.value == value) {
+          let {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+          var confirmed = Services.prompt.prompt(window, renameTitle, promptStr, result, null, {value});
+          if (!confirmed || (!result.value) || (result.value == "")) {
             return -1;
           }
           return result.value;
@@ -311,7 +310,7 @@
         <![CDATA[
           var scaleValues = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.25, 1.5, 1.75, 2];
 
-          aValue = new Number(aValue);
+          aValue = Number(aValue);
 
           for (var i = 0; i < scaleValues.length; i++) {
             if (aValue == scaleValues[i]) {
@@ -367,7 +366,7 @@
         <parameter name="aOrientation"/>
         <body>
         <![CDATA[
-          const kIPrintSettings = Components.interfaces.nsIPrintSettings;
+          const kIPrintSettings = Ci.nsIPrintSettings;
           var orientValue = (aOrientation == "portrait") ? kIPrintSettings.kPortraitOrientation :
                                                            kIPrintSettings.kLandscapeOrientation;
           var settings = PrintUtils.getPrintSettings();
@@ -416,7 +415,7 @@
         <![CDATA[
           var settings = PrintUtils.getPrintSettings();
 
-          var isPortrait = settings.orientation == Components.interfaces.nsIPrintSettings.kPortraitOrientation;
+          var isPortrait = settings.orientation == Ci.nsIPrintSettings.kPortraitOrientation;
 
           this.mPortaitButton.checked = isPortrait;
           this.mLandscapeButton.checked = !isPortrait;
@@ -436,13 +435,12 @@
         <parameter name="settings"/>
         <parameter name="flags"/>
         <body><![CDATA[
-          var PSSVC = Components.classes["@mozilla.org/gfx/printsettings-service;1"]
-                                .getService(Components.interfaces.nsIPrintSettingsService);
+          var PSSVC = Cc["@mozilla.org/gfx/printsettings-service;1"]
+                        .getService(Ci.nsIPrintSettingsService);
           PSSVC.savePrintSettingsToPrefs(settings, true, flags);
         ]]></body>
       </method>
 
-      <!-- nsIMessageListener -->
       <method name="receiveMessage">
         <parameter name="message"/>
         <body>

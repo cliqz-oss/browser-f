@@ -52,10 +52,11 @@ public:
   const static int32_t kWorstPriority = kNormalPriority + nsISupportsPriority::PRIORITY_LOWEST;
   const static int32_t kBestPriority = kNormalPriority + nsISupportsPriority::PRIORITY_HIGHEST;
 
-  Http2Stream(nsAHttpTransaction *, Http2Session *, int32_t);
+  Http2Stream(nsAHttpTransaction *, Http2Session *, int32_t, uint64_t);
 
   uint32_t StreamID() { return mStreamID; }
   Http2PushedStream *PushSource() { return mPushSource; }
+  void ClearPushSource();
 
   stateType HTTPState() { return mState; }
   void SetHTTPState(stateType val) { mState = val; }
@@ -124,6 +125,8 @@ public:
                                                nsACString &, int32_t &);
   MOZ_MUST_USE nsresult ConvertPushHeaders(Http2Decompressor *, nsACString &,
                                            nsACString &);
+  MOZ_MUST_USE nsresult ConvertResponseTrailers(Http2Decompressor *,
+                                                nsACString &);
 
   bool AllowFlowControlledWrite();
   void UpdateServerReceiveWindow(int32_t delta);
@@ -153,22 +156,27 @@ public:
   // once it is matched to a pull stream.
   virtual bool HasSink() { return true; }
 
+  // This is a no-op on pull streams. Pushed streams override this.
+  virtual void SetPushComplete() { };
+
   virtual ~Http2Stream();
 
   Http2Session *Session() { return mSession; }
 
   static MOZ_MUST_USE nsresult MakeOriginURL(const nsACString &origin,
-                                             RefPtr<nsStandardURL> &url);
+                                             nsCOMPtr<nsIURI> &url);
 
   static MOZ_MUST_USE nsresult MakeOriginURL(const nsACString &scheme,
                                              const nsACString &origin,
-                                             RefPtr<nsStandardURL> &url);
+                                             nsCOMPtr<nsIURI> &url);
 
   // Mirrors nsAHttpTransaction
   bool Do0RTT();
   nsresult Finish0RTT(bool aRestart, bool aAlpnIgnored);
 
   nsresult GetOriginAttributes(mozilla::OriginAttributes *oa);
+
+  void TopLevelOuterContentWindowIdChanged(uint64_t windowId);
 
 protected:
   static void CreatePushHashKey(const nsCString &scheme,
@@ -346,6 +354,10 @@ private:
   SimpleBuffer mSimpleBuffer;
 
   bool mAttempting0RTT;
+
+  uint64_t mCurrentForegroundTabOuterContentWindowId;
+
+  uint64_t mTransactionTabId;
 
 /// connect tunnels
 public:

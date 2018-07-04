@@ -1,8 +1,12 @@
 .. _uitelemetry:
 
-=======================
-UITelemetry data format
-=======================
+==================================
+UITelemetry data format (obsolete)
+==================================
+
+.. note::
+
+    ``UITelemetry`` is deprecated. As of Firefox 61, ``UITelemetry`` is no longer reported.
 
 UI Telemetry sends its data as a JSON blob. This document describes the different parts
 of the JSON blob.
@@ -128,7 +132,6 @@ divide the following different context menu situations:
 - ``canvas`` if the user opened the context menu on a canvas (that isn't a link);
 - ``media`` if the user opened the context menu on an HTML video or audio element;
 - ``input`` if the user opened the context menu on a text input element;
-- ``social`` if the user opened the context menu inside a social frame;
 - ``other`` for all other openings of the content menu;
 
 Each of these objects (if they exist) then gets a "withcustom" and/or a "withoutcustom" property

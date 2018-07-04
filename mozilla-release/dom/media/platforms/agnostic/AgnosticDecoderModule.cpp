@@ -11,6 +11,7 @@
 #include "VorbisDecoder.h"
 #include "WAVDecoder.h"
 #include "mozilla/Logging.h"
+#include "mozilla/StaticPrefs.h"
 
 #ifdef MOZ_AV1
 #include "AOMDecoder.h"
@@ -24,14 +25,16 @@ AgnosticDecoderModule::SupportsMimeType(
   DecoderDoctorDiagnostics* aDiagnostics) const
 {
   bool supports =
-    VPXDecoder::IsVPX(aMimeType)
+    VPXDecoder::IsVPX(aMimeType) ||
+    OpusDataDecoder::IsOpus(aMimeType) ||
+    VorbisDataDecoder::IsVorbis(aMimeType) ||
+    WaveDataDecoder::IsWave(aMimeType) ||
+    TheoraDecoder::IsTheora(aMimeType);
 #ifdef MOZ_AV1
-    || AOMDecoder::IsAV1(aMimeType)
+  if (StaticPrefs::MediaAv1Enabled()) {
+    supports |= AOMDecoder::IsAV1(aMimeType);
+  }
 #endif
-    || OpusDataDecoder::IsOpus(aMimeType)
-    || VorbisDataDecoder::IsVorbis(aMimeType)
-    || WaveDataDecoder::IsWave(aMimeType)
-    || TheoraDecoder::IsTheora(aMimeType);
   MOZ_LOG(sPDMLog, LogLevel::Debug, ("Agnostic decoder %s requested type",
         supports ? "supports" : "rejects"));
   return supports;
@@ -46,7 +49,8 @@ AgnosticDecoderModule::CreateVideoDecoder(const CreateDecoderParams& aParams)
     m = new VPXDecoder(aParams);
   }
 #ifdef MOZ_AV1
-  else if (AOMDecoder::IsAV1(aParams.mConfig.mMimeType)) {
+  else if (AOMDecoder::IsAV1(aParams.mConfig.mMimeType) &&
+           StaticPrefs::MediaAv1Enabled()) {
     m = new AOMDecoder(aParams);
   }
 #endif

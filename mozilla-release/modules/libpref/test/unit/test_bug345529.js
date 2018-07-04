@@ -4,8 +4,6 @@
 // Regression test for bug 345529 - crash removing an observer during an
 // nsPref:changed notification.
 function run_test() {
-  const Cc = Components.classes;
-  const Ci = Components.interfaces;
   const PREF_NAME = "testPref";
 
   var prefs = Cc["@mozilla.org/preferences-service;1"]
@@ -15,7 +13,7 @@ function run_test() {
       if (aIID.equals(Ci.nsIObserver) ||
           aIID.equals(Ci.nsISupports))
          return this;
-      throw Components.results.NS_NOINTERFACE;
+      throw Cr.NS_NOINTERFACE;
     },
 
     observe: function observe(aSubject, aTopic, aState) {
@@ -30,5 +28,5 @@ function run_test() {
   // "test0" before this test.
   prefs.setCharPref(PREF_NAME, "test1")
 
-  do_check_true(true);
+  Assert.ok(true);
 }

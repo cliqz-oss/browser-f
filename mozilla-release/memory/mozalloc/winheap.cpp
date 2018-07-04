@@ -8,13 +8,7 @@
 #include "mozilla/Types.h"
 #include <windows.h>
 
-// Building with USE_STATIC_LIBS = True sets -MT instead of -MD. -MT sets _MT,
-// while -MD sets _MT and _DLL.
-#if defined(_MT) && !defined(_DLL)
-#define MOZ_STATIC_RUNTIME
-#endif
-
-#if defined(MOZ_MEMORY) && !defined(MOZ_STATIC_RUNTIME)
+#if defined(MOZ_MEMORY)
 // mozalloc.cpp is part of the same library as mozmemory, thus MOZ_MEMORY_IMPL
 // is needed.
 #define MOZ_MEMORY_IMPL
@@ -28,6 +22,15 @@
   MOZ_MEMORY_API return_type name ## _impl(__VA_ARGS__);
 #define MALLOC_FUNCS MALLOC_FUNCS_MALLOC
 #include "malloc_decls.h"
+#else
+
+#include <malloc.h>
+#define malloc_impl malloc
+#define calloc_impl calloc
+#define realloc_impl realloc
+#define free_impl free
+
+#endif
 
 // Warning: C4273: 'HeapAlloc': inconsistent dll linkage
 // The Windows headers define HeapAlloc as dllimport, but we define it as
@@ -70,5 +73,3 @@ BOOL WINAPI HeapFree(_In_ HANDLE hHeap, _In_ DWORD dwFlags,
     free_impl(lpMem);
     return true;
 }
-
-#endif

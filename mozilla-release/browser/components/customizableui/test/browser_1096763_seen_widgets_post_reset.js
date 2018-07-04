@@ -10,11 +10,10 @@ add_task(async function() {
   });
 
   const kPrefCustomizationState = "browser.uiCustomization.state";
-  let bsPass = Cu.import("resource:///modules/CustomizableUI.jsm", {});
+  let bsPass = ChromeUtils.import("resource:///modules/CustomizableUI.jsm", {});
   ok(bsPass.gSeenWidgets.has(BUTTONID), "Widget should be seen after createWidget is called.");
   CustomizableUI.reset();
   ok(bsPass.gSeenWidgets.has(BUTTONID), "Widget should still be seen after reset.");
-  ok(!Services.prefs.prefHasUserValue(kPrefCustomizationState), "Pref shouldn't be set right now, because that'd break undo.");
   CustomizableUI.addWidgetToArea(BUTTONID, CustomizableUI.AREA_NAVBAR);
   gCustomizeMode.removeFromArea(document.getElementById(BUTTONID));
   let hasUserValue = Services.prefs.prefHasUserValue(kPrefCustomizationState);

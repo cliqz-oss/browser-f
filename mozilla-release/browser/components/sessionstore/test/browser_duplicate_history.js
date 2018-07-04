@@ -1,8 +1,8 @@
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
+ChromeUtils.defineModuleGetter(this, "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TabStateCache",
+ChromeUtils.defineModuleGetter(this, "TabStateCache",
   "resource:///modules/sessionstore/TabStateCache.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TabStateFlusher",
+ChromeUtils.defineModuleGetter(this, "TabStateFlusher",
   "resource:///modules/sessionstore/TabStateFlusher.jsm");
 
 add_task(async function() {
@@ -17,6 +17,7 @@ add_task(async function() {
 
     isnot(before.history.entries, after.history.entries,
           "The entry objects should not be shared");
-    await BrowserTestUtils.removeTab(newTab);
+
+    BrowserTestUtils.removeTab(newTab);
   });
 });

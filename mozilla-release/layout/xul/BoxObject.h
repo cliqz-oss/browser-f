@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -38,7 +39,7 @@ public:
   BoxObject();
 
   // nsPIBoxObject
-  virtual nsresult Init(nsIContent* aContent) override;
+  virtual nsresult Init(Element* aElement) override;
   virtual void Clear() override;
   virtual void ClearCachedValues() override;
 
@@ -49,11 +50,10 @@ public:
 
   // Given a parent frame and a child frame, find the frame whose
   // next sibling is the given child frame and return its element
-  static nsresult GetPreviousSibling(nsIFrame* aParentFrame, nsIFrame* aFrame,
-                                     nsIDOMElement** aResult);
+  static Element* GetPreviousSibling(nsIFrame* aParentFrame, nsIFrame* aFrame);
 
   // WebIDL (wraps old impls)
-  nsIContent* GetParentObject() const;
+  Element* GetParentObject() const;
   virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   Element* GetElement() const;
@@ -71,18 +71,18 @@ public:
   void SetProperty(const nsAString& propertyName, const nsAString& propertyValue);
   void RemoveProperty(const nsAString& propertyName);
 
-  already_AddRefed<Element> GetParentBox();
-  already_AddRefed<Element> GetFirstChild();
-  already_AddRefed<Element> GetLastChild();
-  already_AddRefed<Element> GetNextSibling();
-  already_AddRefed<Element> GetPreviousSibling();
+  Element* GetParentBox();
+  Element* GetFirstChild();
+  Element* GetLastChild();
+  Element* GetNextSibling();
+  Element* GetPreviousSibling();
 
 protected:
   virtual ~BoxObject();
 
   nsAutoPtr<nsInterfaceHashtable<nsStringHashKey,nsISupports> > mPropertyTable; //[OWNER]
 
-  nsIContent* mContent; // [WEAK]
+  Element* mContent; // [WEAK]
 };
 
 } // namespace dom

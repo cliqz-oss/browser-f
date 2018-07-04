@@ -19,15 +19,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["OS"];
-
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+var EXPORTED_SYMBOLS = ["OS"];
 
 var SharedAll = {};
-Cu.import("resource://gre/modules/osfile/osfile_shared_allthreads.jsm", SharedAll);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile/osfile_shared_allthreads.jsm", SharedAll);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
 
 
 // Boilerplate, to simplify the transition to require()
@@ -37,9 +34,9 @@ var isTypedArray = SharedAll.isTypedArray;
 // The constructor for file errors.
 var SysAll = {};
 if (SharedAll.Constants.Win) {
-  Cu.import("resource://gre/modules/osfile/osfile_win_allthreads.jsm", SysAll);
+  ChromeUtils.import("resource://gre/modules/osfile/osfile_win_allthreads.jsm", SysAll);
 } else if (SharedAll.Constants.libc) {
-  Cu.import("resource://gre/modules/osfile/osfile_unix_allthreads.jsm", SysAll);
+  ChromeUtils.import("resource://gre/modules/osfile/osfile_unix_allthreads.jsm", SysAll);
 } else {
   throw new Error("I am neither under Windows nor under a Posix system");
 }
@@ -47,20 +44,20 @@ var OSError = SysAll.Error;
 var Type = SysAll.Type;
 
 var Path = {};
-Cu.import("resource://gre/modules/osfile/ospath.jsm", Path);
+ChromeUtils.import("resource://gre/modules/osfile/ospath.jsm", Path);
 
 // The library of promises.
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
-                                  "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Task",
-                                  "resource://gre/modules/Task.jsm");
+ChromeUtils.defineModuleGetter(this, "PromiseUtils",
+                               "resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Task",
+                               "resource://gre/modules/Task.jsm");
 
 // The implementation of communications
-Cu.import("resource://gre/modules/PromiseWorker.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
-Cu.import("resource://gre/modules/AsyncShutdown.jsm", this);
-var Native = Cu.import("resource://gre/modules/osfile/osfile_native.jsm", {});
+ChromeUtils.import("resource://gre/modules/PromiseWorker.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm", this);
+var Native = ChromeUtils.import("resource://gre/modules/osfile/osfile_native.jsm", {});
 
 
 // It's possible for osfile.jsm to get imported before the profile is
@@ -68,7 +65,7 @@ var Native = Cu.import("resource://gre/modules/osfile/osfile_native.jsm", {});
 // Here, we make them lazy loaders.
 
 function lazyPathGetter(constProp, dirKey) {
-  return function () {
+  return function() {
     let path;
     try {
       path = Services.dirsvc.get(dirKey, Ci.nsIFile).path;
@@ -88,6 +85,7 @@ for (let [constProp, dirKey] of [
   ["profileDir", "ProfD"],
   ["userApplicationDataDir", "UAppData"],
   ["winAppDataDir", "AppData"],
+  ["winLocalAppDataDir", "LocalAppData"],
   ["winStartMenuProgsDir", "Progs"],
   ]) {
 
@@ -261,7 +259,7 @@ var Scheduler = this.Scheduler = {
   /**
    * Restart the OS.File worker killer timer.
    */
-  restartTimer: function(arg) {
+  restartTimer(arg) {
     this.hasRecentActivity = true;
   },
 
@@ -275,7 +273,7 @@ var Scheduler = this.Scheduler = {
    *   would not cause leaks. Otherwise, assume that the worker will be shutdown
    *   through some other mean.
    */
-  kill: function({shutdown, reset}) {
+  kill({shutdown, reset}) {
     // Grab the kill queue to make sure that we
     // cannot be interrupted by another call to `kill`.
     let killQueue = this._killQueue;
@@ -382,7 +380,7 @@ var Scheduler = this.Scheduler = {
    * @return {Promise} A promise with the same behavior as
    * the promise returned by |code|.
    */
-  push: function(code) {
+  push(code) {
     let promise = this.queue.then(code);
     // By definition, |this.queue| can never reject.
     this.queue = promise.catch(() => undefined);
@@ -421,9 +419,9 @@ var Scheduler = this.Scheduler = {
     Scheduler.Debugging.messagesQueued++;
     return this.push(async () => {
       if (this.shutdown) {
-	LOG("OS.File is not available anymore. The following request has been rejected.",
-	  method, args);
-	throw new Error("OS.File has been shut down. Rejecting request to " + method);
+        LOG("OS.File is not available anymore. The following request has been rejected.",
+          method, args);
+        throw new Error("OS.File has been shut down. Rejecting request to " + method);
       }
 
       // Update debugging information. As |args| may be quite
@@ -436,7 +434,7 @@ var Scheduler = this.Scheduler = {
 
       // The last object inside the args may be an options object.
       let options = null;
-      if (args && args.length >= 1 && typeof args[args.length-1] === "object") {
+      if (args && args.length >= 1 && typeof args[args.length - 1] === "object") {
         options = args[args.length - 1];
       }
 
@@ -482,7 +480,7 @@ var Scheduler = this.Scheduler = {
    *
    * This is only useful on first launch.
    */
-  _updateTelemetry: function() {
+  _updateTelemetry() {
     let worker = this.worker;
     let workerTimeStamps = worker.workerTimeStamps;
     if (!workerTimeStamps) {
@@ -512,7 +510,7 @@ const PREF_OSFILE_LOG_REDIRECT = "toolkit.osfile.log.redirect";
 function readDebugPref(prefName, oldPref = false) {
   // If neither pref nor oldPref were set, default it to false.
   return Services.prefs.getBoolPref(prefName, oldPref);
-};
+}
 
 /**
  * Listen to PREF_OSFILE_LOG changes and update gShouldLog flag
@@ -552,9 +550,6 @@ Services.prefs.addObserver(PREF_OSFILE_NATIVE,
 if (SharedAll.Config.DEBUG && Scheduler.launched) {
   Scheduler.post("SET_DEBUG", [true]);
 }
-
-// Observer topics used for monitoring shutdown
-const WEB_WORKERS_SHUTDOWN_TOPIC = "web-workers-shutdown";
 
 // Preference used to configure test shutdown observer.
 const PREF_OSFILE_TEST_SHUTDOWN_OBSERVER =
@@ -682,7 +677,7 @@ File.prototype = {
       [this._fdmsg,
        Type.void_t.in_ptr.toMsg(buffer),
        options],
-       buffer/*Ensure that |buffer| is not gc-ed*/);
+       buffer/* Ensure that |buffer| is not gc-ed*/);
   },
 
   /**
@@ -776,7 +771,7 @@ File.prototype = {
 };
 
 
-if (SharedAll.Constants.Sys.Name != "Android" && SharedAll.Constants.Sys.Name != "Gonk") {
+if (SharedAll.Constants.Sys.Name != "Android") {
    /**
    * Set the last access and modification date of the file.
    * The time stamp resolution is 1 second at best, but might be worse
@@ -1004,21 +999,6 @@ if (!SharedAll.Constants.Win) {
 }
 
 /**
- * Gets the number of bytes available on disk to the current user.
- *
- * @param {string} Platform-specific path to a directory on the disk to
- * query for free available bytes.
- *
- * @return {number} The number of bytes available for the current user.
- * @throws {OS.File.Error} In case of any error.
- */
-File.getAvailableFreeSpace = function getAvailableFreeSpace(sourcePath) {
-  return Scheduler.post("getAvailableFreeSpace",
-    [Type.path.toMsg(sourcePath)], sourcePath
-  ).then(Type.uint64_t.fromMsg);
-};
-
-/**
  * Remove an empty directory.
  *
  * @param {string} path The name of the directory to remove.
@@ -1184,22 +1164,31 @@ File.exists = function exists(path) {
  * @resolves {number} The number of bytes actually written.
  */
 File.writeAtomic = function writeAtomic(path, buffer, options = {}) {
+  const useNativeImplementation = nativeWheneverAvailable &&
+                                  !options.compression &&
+                                  !(isTypedArray(buffer) && "byteOffset" in buffer && buffer.byteOffset > 0);
   // Copy |options| to avoid modifying the original object but preserve the
   // reference to |outExecutionDuration|, |outSerializationDuration| option if it is passed.
   options = clone(options, ["outExecutionDuration", "outSerializationDuration"]);
-  // As options.tmpPath is a path, we need to encode it as |Type.path| message
-  if ("tmpPath" in options) {
+  // As options.tmpPath is a path, we need to encode it as |Type.path| message, but only
+  // if we are not using the native implementation.
+  if ("tmpPath" in options && !useNativeImplementation) {
     options.tmpPath = Type.path.toMsg(options.tmpPath);
-  };
+  }
   if (isTypedArray(buffer) && (!("bytes" in options))) {
     options.bytes = buffer.byteLength;
-  };
+  }
   let refObj = {};
+  let promise;
   TelemetryStopwatch.start("OSFILE_WRITEATOMIC_JANK_MS", refObj);
-  let promise = Scheduler.post("writeAtomic",
+  if (useNativeImplementation) {
+    promise = Scheduler.push(() => Native.writeAtomic(path, buffer, options));
+  } else {
+  promise = Scheduler.post("writeAtomic",
     [Type.path.toMsg(path),
      Type.void_t.in_ptr.toMsg(buffer),
      options], [options, buffer, path]);
+  }
   TelemetryStopwatch.finish("OSFILE_WRITEATOMIC_JANK_MS", refObj);
   return promise;
 };
@@ -1223,14 +1212,14 @@ File.Info = function Info(value) {
       Object.defineProperty(this, k, {value: value[k]});
     }
   }
-  Object.defineProperty(this, "_deprecatedCreationDate", {value: value["creationDate"]});
+  Object.defineProperty(this, "_deprecatedCreationDate", {value: value.creationDate});
 };
 File.Info.prototype = SysAll.AbstractInfo.prototype;
 
 // Deprecated
 Object.defineProperty(File.Info.prototype, "creationDate", {
   get: function creationDate() {
-    let {Deprecated} = Cu.import("resource://gre/modules/Deprecated.jsm", {});
+    let {Deprecated} = ChromeUtils.import("resource://gre/modules/Deprecated.jsm", {});
     Deprecated.warning("Field 'creationDate' is deprecated.", "https://developer.mozilla.org/en-US/docs/JavaScript_OS.File/OS.File.Info#Cross-platform_Attributes");
     return this._deprecatedCreationDate;
   }
@@ -1260,64 +1249,45 @@ var DirectoryIterator = function DirectoryIterator(path, options) {
    * @type {Promise}
    * @resolves {*} A message accepted by the methods of DirectoryIterator
    * in the worker thread
-   * @rejects {StopIteration} If all entries have already been visited
-   * or the iterator has been closed.
    */
-  this.__itmsg = Scheduler.post(
+  this._itmsg = Scheduler.post(
     "new_DirectoryIterator", [Type.path.toMsg(path), options],
     path
   );
   this._isClosed = false;
 };
 DirectoryIterator.prototype = {
-  iterator: function () {
-    return this;
-  },
-  __iterator__: function () {
+  [Symbol.asyncIterator]() {
     return this;
   },
 
-  // Once close() is called, _itmsg should reject with a
-  // StopIteration. However, we don't want to create the promise until
-  // it's needed because it might never be used. In that case, we
-  // would get a warning on the console.
-  get _itmsg() {
-    if (!this.__itmsg) {
-      this.__itmsg = Promise.reject(StopIteration);
-    }
-    return this.__itmsg;
-  },
+  _itmsg: null,
 
   /**
    * Determine whether the directory exists.
    *
    * @resolves {boolean}
    */
-  exists: function exists() {
-    return this._itmsg.then(
-      function onSuccess(iterator) {
-        return Scheduler.post("DirectoryIterator_prototype_exists", [iterator]);
-      }
-    );
+  async exists() {
+    if (this._isClosed) {
+      return Promise.resolve(false);
+    }
+    let iterator = await this._itmsg;
+    return Scheduler.post("DirectoryIterator_prototype_exists", [iterator]);
   },
   /**
    * Get the next entry in the directory.
    *
    * @return {Promise}
-   * @resolves {OS.File.Entry}
-   * @rejects {StopIteration} If all entries have already been visited.
+   * @resolves By definition of the async iterator protocol, either
+   * `{value: {File.Entry}, done: false}` if there is an unvisited entry
+   * in the directory, or `{value: undefined, done: true}`, otherwise.
    */
-  next: function next() {
-    let self = this;
-    let promise = this._itmsg;
-
-    // Get the iterator, call _next
-    promise = promise.then(
-      function withIterator(iterator) {
-        return self._next(iterator);
-      });
-
-    return promise;
+  async next() {
+    if (this._isClosed) {
+      return {value: undefined, done: true};
+    }
+    return this._next(await this._itmsg);
   },
   /**
    * Get several entries at once.
@@ -1327,20 +1297,13 @@ DirectoryIterator.prototype = {
    * @return {Promise}
    * @resolves {Array} An array containing the |length| next entries.
    */
-  nextBatch: function nextBatch(size) {
+  async nextBatch(size) {
     if (this._isClosed) {
-      return Promise.resolve([]);
+      return [];
     }
-    let promise = this._itmsg;
-    promise = promise.then(
-      function withIterator(iterator) {
-        return Scheduler.post("DirectoryIterator_prototype_nextBatch", [iterator, size]);
-      });
-    promise = promise.then(
-      function withEntries(array) {
-        return array.map(DirectoryIterator.Entry.fromMsg);
-      });
-    return promise;
+    let iterator = await this._itmsg;
+    let array = await Scheduler.post("DirectoryIterator_prototype_nextBatch", [iterator, size]);
+    return array.map(DirectoryIterator.Entry.fromMsg);
   },
   /**
    * Apply a function to all elements of the directory sequentially.
@@ -1357,82 +1320,51 @@ DirectoryIterator.prototype = {
    * @return {Promise} A promise resolved once the loop has reached
    * its end.
    */
-  forEach: function forEach(cb, options) {
+  async forEach(cb, options) {
     if (this._isClosed) {
-      return Promise.resolve();
+      return undefined;
     }
-
-    let self = this;
     let position = 0;
-    let iterator;
-
-    // Grab iterator
-    let promise = this._itmsg.then(
-      function(aIterator) {
-        iterator = aIterator;
+    let iterator = await this._itmsg;
+    while (true) {
+      if (this._isClosed) {
+        return undefined;
       }
-    );
-
-    // Then iterate
-    let loop = function loop() {
-      if (self._isClosed) {
-        return Promise.resolve();
+      let {value, done} = await this._next(iterator);
+      if (done) {
+        return undefined;
       }
-      return self._next(iterator).then(
-        function onSuccess(value) {
-          return Promise.resolve(cb(value, position++, self)).then(loop);
-        },
-        function onFailure(reason) {
-          if (reason == StopIteration) {
-            return;
-          }
-          throw reason;
-        }
-      );
-    };
-
-    return promise.then(loop);
+      await cb(value, position++, this);
+    }
   },
   /**
    * Auxiliary method: fetch the next item
    *
-   * @rejects {StopIteration} If all entries have already been visited
-   * or the iterator has been closed.
+   * @resolves `{value: undefined, done: true}` If all entries have already
+   * been visited or the iterator has been closed.
    */
-  _next: function _next(iterator) {
+  async _next(iterator) {
     if (this._isClosed) {
-      return this._itmsg;
+      return {value: undefined, done: true};
     }
-    let self = this;
-    let promise = Scheduler.post("DirectoryIterator_prototype_next", [iterator]);
-    promise = promise.then(
-      DirectoryIterator.Entry.fromMsg,
-      function onReject(reason) {
-        if (reason == StopIteration) {
-          self.close();
-          throw StopIteration;
-        }
-        throw reason;
-      });
-    return promise;
+    let {value, done} = await Scheduler.post("DirectoryIterator_prototype_next", [iterator]);
+    if (done) {
+      this.close();
+      return {value: undefined, done: true};
+    }
+    return {value: DirectoryIterator.Entry.fromMsg(value), done: false};
   },
   /**
    * Close the iterator
    */
-  close: function close() {
+  async close() {
     if (this._isClosed) {
-      return Promise.resolve();
+      return undefined;
     }
     this._isClosed = true;
-    let self = this;
-    return this._itmsg.then(
-      function withIterator(iterator) {
-        // Set __itmsg to null so that the _itmsg getter returns a
-        // rejected StopIteration promise if it's ever used.
-        self.__itmsg = null;
-        return Scheduler.post("DirectoryIterator_prototype_close", [iterator]);
-      }
-    );
+    let iterator = this._itmsg;
+    this._itmsg = null;
+    return Scheduler.post("DirectoryIterator_prototype_close", [iterator]);
   }
 };
 
@@ -1463,7 +1395,7 @@ File.POS_END = SysAll.POS_END;
 File.Error = OSError;
 File.DirectoryIterator = DirectoryIterator;
 
-this.OS = {};
+var OS = {};
 this.OS.File = File;
 this.OS.Constants = SharedAll.Constants;
 this.OS.Shared = {
@@ -1481,16 +1413,17 @@ this.OS.Path = Path;
 
 // Returns a resolved promise when all the queued operation have been completed.
 Object.defineProperty(OS.File, "queue", {
-  get: function() {
+  get() {
     return Scheduler.queue;
   }
 });
 
 // `true` if this is a content process, `false` otherwise.
-// It would be nicer to go through `Services.appInfo`, but some tests need to be
+// It would be nicer to go through `Services.appinfo`, but some tests need to be
 // able to replace that field with a custom implementation before it is first
 // called.
-const isContent = Components.classes["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
+// eslint-disable-next-line mozilla/use-services
+const isContent = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
 
 /**
  * Shutdown barriers, to let clients register to be informed during shutdown.
@@ -1500,7 +1433,7 @@ var Barriers = {
   /**
    * Return the shutdown state of OS.File
    */
-  getDetails: function() {
+  getDetails() {
     let result = {
       launched: Scheduler.launched,
       shutdown: Scheduler.shutdown,
@@ -1551,6 +1484,6 @@ function setupShutdown(phaseName) {
 // profile-before-change only exists in the parent, and OS.File should
 // not be used in the child process anyways.
 if (!isContent) {
-  setupShutdown("profileBeforeChange")
+  setupShutdown("profileBeforeChange");
 }
 File.shutdown = Barriers.shutdown.client;

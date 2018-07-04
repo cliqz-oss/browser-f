@@ -1,5 +1,5 @@
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 /*
  * Test that when doing HTTP requests, the nsIHttpChannel is detected in
@@ -56,7 +56,7 @@ function observer(subject, topic, data) {
 
   // did we expect a new channel?
   let expected = expectedParentChannels.shift();
-  do_check_true(!!expected);
+  Assert.ok(!!expected);
 
   // Start waiting for the messages about request/response from child
   for (let event of expected) {

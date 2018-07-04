@@ -137,6 +137,19 @@ var tests = [
     copyVal: "<example.com/\xe9>\xe9",
     copyExpected: "http://example.com/\xe9"
   },
+  { // Note: it seems BrowserTestUtils.loadURI fails for unicode domains
+    loadURL: "http://sub2.xn--lt-uia.mochi.test:8888/foo",
+    expectedURL: toUnicode("sub2.ält.mochi.test:8888/foo"),
+    copyExpected: toUnicode("http://sub2.ält.mochi.test:8888/foo")
+  },
+  {
+    copyVal: toUnicode("s<ub2.ält.mochi.test:8888/f>oo"),
+    copyExpected: toUnicode("ub2.ält.mochi.test:8888/f")
+  },
+  {
+    copyVal: toUnicode("<sub2.ält.mochi.test:8888/f>oo"),
+    copyExpected: toUnicode("http://sub2.ält.mochi.test:8888/f")
+  },
 
   {
     loadURL: "http://example.com/?%C3%B7%C3%B7",
@@ -150,6 +163,31 @@ var tests = [
   {
     copyVal: "<example.com/?\xf7>\xf7",
     copyExpected: "http://example.com/?\xf7"
+  },
+  {
+    loadURL: "http://example.com/a%20test",
+    expectedURL: "example.com/a test",
+    copyExpected: "http://example.com/a%20test"
+  },
+  {
+    loadURL: "http://example.com/a%E3%80%80test",
+    expectedURL: toUnicode("example.com/a　test"),
+    copyExpected: "http://example.com/a%E3%80%80test"
+  },
+  {
+    loadURL: "http://example.com/a%20%C2%A0test",
+    expectedURL: "example.com/a%20%C2%A0test",
+    copyExpected: "http://example.com/a%20%C2%A0test"
+  },
+  {
+    loadURL: "http://example.com/%20%20%20",
+    expectedURL: "example.com/%20%20%20",
+    copyExpected: "http://example.com/%20%20%20"
+  },
+  {
+    loadURL: "http://example.com/%E3%80%80%E3%80%80",
+    expectedURL: "example.com/%E3%80%80%E3%80%80",
+    copyExpected: "http://example.com/%E3%80%80%E3%80%80"
   },
 
   // data: and javsacript: URIs shouldn't be encoded
@@ -211,6 +249,7 @@ function runTest(testCase, cb) {
   }
 
   if (testCase.loadURL) {
+    info(`Loading : ${testCase.loadURL}\n`);
     loadURL(testCase.loadURL, doCheck);
   } else {
     if (testCase.setURL)
@@ -221,45 +260,46 @@ function runTest(testCase, cb) {
 
 function testCopy(copyVal, targetValue, cb) {
   info("Expecting copy of: " + targetValue);
-  waitForClipboard(targetValue, function() {
-    gURLBar.focus();
-    if (copyVal) {
-      let offsets = [];
-      while (true) {
-        let startBracket = copyVal.indexOf("<");
-        let endBracket = copyVal.indexOf(">");
-        if (startBracket == -1 && endBracket == -1) {
-          break;
-        }
-        if (startBracket > endBracket || startBracket == -1) {
-          offsets = [];
-          break;
-        }
-        offsets.push([startBracket, endBracket - 1]);
-        copyVal = copyVal.replace("<", "").replace(">", "");
-      }
-      if (offsets.length == 0 ||
-          copyVal != gURLBar.textValue) {
-        ok(false, "invalid copyVal: " + copyVal);
-      }
-      gURLBar.selectionStart = offsets[0][0];
-      gURLBar.selectionEnd = offsets[0][1];
-      if (offsets.length > 1) {
-        let sel = gURLBar.editor.selection;
-        let r0 = sel.getRangeAt(0);
-        let node0 = r0.startContainer;
-        sel.removeAllRanges();
-        offsets.map(function(startEnd) {
-          let range = r0.cloneRange();
-          range.setStart(node0, startEnd[0]);
-          range.setEnd(node0, startEnd[1]);
-          sel.addRange(range);
-        });
-      }
-    } else {
-      gURLBar.select();
-    }
 
+  gURLBar.focus();
+  if (copyVal) {
+    let offsets = [];
+    while (true) {
+      let startBracket = copyVal.indexOf("<");
+      let endBracket = copyVal.indexOf(">");
+      if (startBracket == -1 && endBracket == -1) {
+        break;
+      }
+      if (startBracket > endBracket || startBracket == -1) {
+        offsets = [];
+        break;
+      }
+      offsets.push([startBracket, endBracket - 1]);
+      copyVal = copyVal.replace("<", "").replace(">", "");
+    }
+    if (offsets.length == 0 ||
+        copyVal != gURLBar.textValue) {
+      ok(false, "invalid copyVal: " + copyVal);
+    }
+    gURLBar.selectionStart = offsets[0][0];
+    gURLBar.selectionEnd = offsets[0][1];
+    if (offsets.length > 1) {
+      let sel = gURLBar.editor.selection;
+      let r0 = sel.getRangeAt(0);
+      let node0 = r0.startContainer;
+      sel.removeAllRanges();
+      offsets.map(function(startEnd) {
+        let range = r0.cloneRange();
+        range.setStart(node0, startEnd[0]);
+        range.setEnd(node0, startEnd[1]);
+        sel.addRange(range);
+      });
+    }
+  } else {
+    gURLBar.select();
+  }
+
+  waitForClipboard(targetValue, function() {
     goDoCommand("cmd_copy");
   }, cb, cb);
 }

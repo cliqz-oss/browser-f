@@ -121,18 +121,17 @@ TCPFastOpenSend(PRFileDesc *fd, const void *buf, PRInt32 amount,
                                               PR_INTERVAL_NO_WAIT);
       if (rv <= 0) {
         return rv;
-      } else {
-        secret->mFirstPacketBufLen -= rv;
-        if (secret->mFirstPacketBufLen) {
-          memmove(secret->mFirstPacketBuf,
-                  secret->mFirstPacketBuf + rv,
-                  secret->mFirstPacketBufLen);
-
-          PR_SetError(PR_WOULD_BLOCK_ERROR, 0);
-          return PR_FAILURE;
-        } // if we drained the buffer we can fall through this checks and call
-          // send for the new data
       }
+      secret->mFirstPacketBufLen -= rv;
+      if (secret->mFirstPacketBufLen) {
+        memmove(secret->mFirstPacketBuf,
+                secret->mFirstPacketBuf + rv,
+                secret->mFirstPacketBufLen);
+
+        PR_SetError(PR_WOULD_BLOCK_ERROR, 0);
+        return PR_FAILURE;
+      } // if we drained the buffer we can fall through this checks and call
+        // send for the new data
     }
     SOCKET_LOG(("TCPFastOpenSend sending new data.\n"));
     return (fd->lower->methods->send)(fd->lower, buf, amount, flags, timeout);
@@ -204,13 +203,12 @@ TCPFastOpenRecv(PRFileDesc *fd, void *buf, PRInt32 amount,
                                               PR_INTERVAL_NO_WAIT);
       if (rv <= 0) {
         return rv;
-      } else {
-        secret->mFirstPacketBufLen -= rv;
-        if (secret->mFirstPacketBufLen) {
-          memmove(secret->mFirstPacketBuf,
-                  secret->mFirstPacketBuf + rv,
-                  secret->mFirstPacketBufLen);
-        }
+      }
+      secret->mFirstPacketBufLen -= rv;
+      if (secret->mFirstPacketBufLen) {
+        memmove(secret->mFirstPacketBuf,
+                secret->mFirstPacketBuf + rv,
+                secret->mFirstPacketBufLen);
       }
     }
     rv = (fd->lower->methods->recv)(fd->lower, buf, amount, flags, timeout);
@@ -395,6 +393,7 @@ TCPFastOpenFinish(PRFileDesc *fd, PRErrorCode &err,
         // We will disable Fast Open.
         SOCKET_LOG(("TCPFastOpenFinish - sendto not implemented.\n"));
         fastOpenNotSupported = true;
+        tfoStatus = TFO_DISABLED;
     }
   } else {
     // We have some data ready in the buffer we will send it with the syn
@@ -420,8 +419,7 @@ TCPFastOpenFinish(PRFileDesc *fd, PRErrorCode &err,
       result = PR_GetError();
       SOCKET_LOG(("TCPFastOpenFinish - sendto error=%d.\n", result));
 
-      if (result == PR_NOT_IMPLEMENTED_ERROR || // When a windows version does not support Fast Open it will return this error.
-          result == PR_NOT_TCP_SOCKET_ERROR) { // SendTo will return PR_NOT_TCP_SOCKET_ERROR if TCP Fast Open is turned off on Linux.
+      if (result == PR_NOT_TCP_SOCKET_ERROR) { // SendTo will return PR_NOT_TCP_SOCKET_ERROR if TCP Fast Open is turned off on Linux.
         // We can call connect again.
         fastOpenNotSupported = true;
         rv = (tfoFd->lower->methods->connect)(tfoFd->lower, &secret->mAddr,
@@ -432,6 +430,7 @@ TCPFastOpenFinish(PRFileDesc *fd, PRErrorCode &err,
         } else {
           result = PR_GetError();
         }
+        tfoStatus = TFO_DISABLED;
       } else {
         tfoStatus = TFO_TRIED;
       }
@@ -522,12 +521,11 @@ TCPFastOpenFlushBuffer(PRFileDesc *fd)
       if (err == PR_WOULD_BLOCK_ERROR) {
         // We still need to send this data.
         return true;
-      } else {
-        // There is an error, let nsSocketTransport pick it up properly.
-        secret->mCondition = err;
-        secret->mState = TCPFastOpenSecret::SOCKET_ERROR_STATE;
-        return false;
       }
+      // There is an error, let nsSocketTransport pick it up properly.
+      secret->mCondition = err;
+      secret->mState = TCPFastOpenSecret::SOCKET_ERROR_STATE;
+      return false;
     }
 
     secret->mFirstPacketBufLen -= rv;

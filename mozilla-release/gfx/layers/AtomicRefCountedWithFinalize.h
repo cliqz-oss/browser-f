@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -101,8 +102,12 @@ public:
 private:
     void AddRef() {
       MOZ_ASSERT(mRefCount >= 0, "AddRef() during/after Finalize()/dtor.");
-      mRefCount++;
-      NS_LOG_ADDREF(this, mRefCount, mName, sizeof(*this));
+#ifdef NS_BUILD_REFCNT_LOGGING
+      int currCount = ++mRefCount;
+      NS_LOG_ADDREF(this, currCount, mName, sizeof(*this));
+#else
+      ++mRefCount;
+#endif
     }
 
     void Release() {
@@ -118,7 +123,9 @@ private:
         ++mRefCount;
         return;
       }
+#ifdef NS_BUILD_REFCNT_LOGGING
       NS_LOG_RELEASE(this, currCount, mName);
+#endif
 
       if (0 == currCount) {
         mRefCount = detail::DEAD;
@@ -173,6 +180,11 @@ public:
     bool IsDead() const
     {
       return mRefCount < 0;
+    }
+
+    bool HasOneRef() const
+    {
+      return mRefCount == 1;
     }
 
 private:

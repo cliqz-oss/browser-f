@@ -17,11 +17,8 @@ namespace dom {
 struct MessageEventInit;
 class MessagePort;
 class OwningWindowProxyOrMessagePortOrServiceWorker;
-class WindowProxyOrMessagePortOrServiceWorker;
-
-namespace workers {
 class ServiceWorker;
-}
+class WindowProxyOrMessagePortOrServiceWorker;
 
 /**
  * Implements the MessageEvent event, used for cross-document messaging and
@@ -39,9 +36,6 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(MessageEvent, Event)
-
-  // Forward to base class
-  NS_FORWARD_TO_EVENT
 
   virtual JSObject* WrapObjectInternal(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
@@ -79,7 +73,7 @@ private:
   nsString mLastEventId;
   RefPtr<nsPIDOMWindowOuter> mWindowSource;
   RefPtr<MessagePort> mPortSource;
-  RefPtr<workers::ServiceWorker> mServiceWorkerSource;
+  RefPtr<ServiceWorker> mServiceWorkerSource;
 
   nsTArray<RefPtr<MessagePort>> mPorts;
 };

@@ -18,7 +18,7 @@
    xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
    xmlns:xbl="http://www.mozilla.org/xbl">
 
-  <binding id="textbox" extends="xul:box" role="xul:textbox">
+  <binding id="textbox" extends="xul:box">
     <resources>
       <stylesheet src="chrome://global/content/textbox.css"/>
       <stylesheet src="chrome://global/skin/textbox.css"/>
@@ -32,7 +32,7 @@
       </xul:hbox>
     </content>
 
-    <implementation implements="nsIDOMXULTextBoxElement, nsIDOMXULLabeledControlElement">
+    <implementation implements="nsIDOMXULLabeledControlElement">
       <!-- nsIDOMXULLabeledControlElement -->
       <field name="crop">""</field>
       <field name="image">""</field>
@@ -91,7 +91,7 @@
       <property name="editor" readonly="true">
         <getter><![CDATA[
           if (!this.mEditor) {
-            const nsIDOMNSEditableElement = Components.interfaces.nsIDOMNSEditableElement;
+            const nsIDOMNSEditableElement = Ci.nsIDOMNSEditableElement;
             this.mEditor = this.inputField.QueryInterface(nsIDOMNSEditableElement).editor;
           }
           return this.mEditor;
@@ -127,7 +127,12 @@
         <parameter name="aSelectionStart"/>
         <parameter name="aSelectionEnd"/>
         <body>
-          this.inputField.setSelectionRange( aSelectionStart, aSelectionEnd );
+          // According to https://html.spec.whatwg.org/#do-not-apply,
+          // setSelectionRange() is only available on a limited set of input types.
+          if (this.inputField.type == "text" ||
+              this.inputField.tagName == "html:textarea") {
+            this.inputField.setSelectionRange( aSelectionStart, aSelectionEnd );
+          }
         </body>
       </method>
 
@@ -135,7 +140,7 @@
         <body><![CDATA[
           var str = this.getAttribute("newlines");
           if (str && this.editor) {
-            const nsIPlaintextEditor = Components.interfaces.nsIPlaintextEditor;
+            const nsIPlaintextEditor = Ci.nsIPlaintextEditor;
             for (var x in nsIPlaintextEditor) {
               if (/^eNewlines/.test(x)) {
                 if (str == RegExp.rightContext.toLowerCase()) {
@@ -188,26 +193,29 @@
           if (this.hasAttribute("focused"))
             return;
 
-          switch (event.originalTarget) {
-            case this:
-              // Forward focus to actual HTML input
-              this.inputField.focus();
-              break;
-            case this.inputField:
-              if (this.mIgnoreFocus) {
-                this.mIgnoreFocus = false;
-              } else if (this.clickSelectsAll) {
-                try {
-                  if (!this.editor || !this.editor.composing)
-                    this.editor.selectAll();
-                } catch (e) {}
-              }
-              break;
-            default:
-              // Allow other children (e.g. URL bar buttons) to get focus
-              return;
+          let { originalTarget } = event;
+          if (originalTarget == this) {
+            // Forward focus to actual HTML input
+            this.inputField.focus();
+            this.setAttribute("focused", "true");
+            return;
           }
-          this.setAttribute("focused", "true");
+
+          // We check for the parent nodes to support input[type=number] where originalTarget may be an
+          // anonymous child input.
+          if (originalTarget == this.inputField ||
+              originalTarget.localName == "input" && originalTarget.parentNode.parentNode == this.inputField) {
+            if (this.mIgnoreFocus) {
+              this.mIgnoreFocus = false;
+            } else if (this.clickSelectsAll) {
+              try {
+                if (!this.editor || !this.editor.composing)
+                  this.editor.selectAll();
+              } catch (e) {}
+            }
+            this.setAttribute("focused", "true");
+          }
+          // Otherwise, allow other children (e.g. URL bar buttons) to get focus
         ]]>
       </handler>
 
@@ -217,7 +225,7 @@
 
           // don't trigger clickSelectsAll when switching application windows
           if (window == window.top &&
-              window.constructor == ChromeWindow &&
+              window.isChromeWindow &&
               document.activeElement == this.inputField)
             this.mIgnoreFocus = true;
         ]]>
@@ -229,7 +237,7 @@
 
           if (!this.mIgnoreClick) {
             this.mIgnoreFocus = true;
-            this.inputField.setSelectionRange(0, 0);
+            this.setSelectionRange(0, 0);
             if (event.originalTarget == this ||
                 event.originalTarget == this.inputField.parentNode)
               this.inputField.focus();
@@ -254,62 +262,6 @@
         box._doPopupItemEnabling(menu);
       </handler>
 #endif
-    </handlers>
-  </binding>
-
-  <binding id="timed-textbox" extends="chrome://global/content/bindings/textbox.xml#textbox">
-    <implementation>
-      <constructor><![CDATA[
-        try {
-          var consoleService = Components.classes["@mozilla.org/consoleservice;1"]
-                                         .getService(Components.interfaces.nsIConsoleService);
-          var scriptError = Components.classes["@mozilla.org/scripterror;1"]
-                                      .createInstance(Components.interfaces.nsIScriptError);
-          scriptError.init("Timed textboxes are deprecated. Consider using type=\"search\" instead.",
-                           this.ownerDocument.location.href, null, null,
-                           null, scriptError.warningFlag, "XUL Widgets");
-          consoleService.logMessage(scriptError);
-        } catch (e) {}
-      ]]></constructor>
-      <field name="_timer">null</field>
-      <property name="timeout"
-                onset="this.setAttribute('timeout', val); return val;"
-                onget="return parseInt(this.getAttribute('timeout')) || 0;"/>
-      <property name="value"
-                onget="return this.inputField.value;">
-        <setter><![CDATA[
-          this.inputField.value = val;
-          if (this._timer)
-            clearTimeout(this._timer);
-          return val;
-        ]]></setter>
-      </property>
-      <method name="_fireCommand">
-        <parameter name="me"/>
-        <body>
-          <![CDATA[
-            me._timer = null;
-            me.doCommand();
-          ]]>
-        </body>
-      </method>
-    </implementation>
-    <handlers>
-      <handler event="input">
-        <![CDATA[
-          if (this._timer)
-            clearTimeout(this._timer);
-          this._timer = this.timeout && setTimeout(this._fireCommand, this.timeout, this);
-        ]]>
-      </handler>
-      <handler event="keypress" keycode="VK_RETURN">
-        <![CDATA[
-          if (this._timer)
-            clearTimeout(this._timer);
-          this._fireCommand(this);
-          event.preventDefault();
-        ]]>
-      </handler>
     </handlers>
   </binding>
 
@@ -574,16 +526,15 @@
           if (!this._spellCheckInitialized) {
             this._spellCheckInitialized = true;
 
-            const CI = Components.interfaces;
-            if (!(document instanceof CI.nsIDOMXULDocument))
+            if (ChromeUtils.getClassName(document) != "XULDocument")
               return null;
 
             var textbox = document.getBindingParent(this);
-            if (!textbox || !(textbox instanceof CI.nsIDOMXULTextBoxElement))
+            if (!textbox || textbox.localName != "textbox")
               return null;
 
             try {
-              Components.utils.import("resource://gre/modules/InlineSpellChecker.jsm", this);
+              ChromeUtils.import("resource://gre/modules/InlineSpellChecker.jsm", this);
               this.InlineSpellCheckerUI = new this.InlineSpellChecker(textbox.editor);
             } catch (ex) { }
           }

@@ -2,14 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Snackbars", "resource://gre/modules/Snackbars.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Snackbars", "resource://gre/modules/Snackbars.jsm");
 
 var WebcompatReporter = {
   menuItem: null,
@@ -87,7 +85,7 @@ var WebcompatReporter = {
         canvas.width = dpr * w;
         canvas.height = dpr * h;
         ctx.scale(dpr, dpr);
-        ctx.drawWindow(win, x, y, w, h, '#ffffff');
+        ctx.drawWindow(win, x, y, w, h, "#ffffff");
         let screenshot = canvas.toDataURL();
         resolve({tab: tab, data: screenshot});
       } catch (e) {
@@ -120,7 +118,7 @@ var WebcompatReporter = {
   reportIssue: (tabData) => {
     return new Promise((resolve) => {
       const WEBCOMPAT_ORIGIN = "https://webcompat.com";
-      let url = tabData.tab.browser.currentURI.spec
+      let url = tabData.tab.browser.currentURI.spec;
       let webcompatURL = `${WEBCOMPAT_ORIGIN}/issues/new?url=${url}&src=mobile-reporter`;
 
       if (tabData.data && typeof tabData.data === "string") {

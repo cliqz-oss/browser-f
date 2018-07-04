@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=99: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -25,7 +25,7 @@ class UiCompositorControllerChild final : protected PUiCompositorControllerChild
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(UiCompositorControllerChild)
 
-  static RefPtr<UiCompositorControllerChild> CreateForSameProcess(const int64_t& aRootLayerTreeId);
+  static RefPtr<UiCompositorControllerChild> CreateForSameProcess(const LayersId& aRootLayerTreeId);
   static RefPtr<UiCompositorControllerChild> CreateForGPUProcess(const uint64_t& aProcessToken,
                                                                  Endpoint<PUiCompositorControllerChild>&& aEndpoint);
 
@@ -51,7 +51,7 @@ protected:
   void ActorDestroy(ActorDestroyReason aWhy) override;
   void DeallocPUiCompositorControllerChild() override;
   void ProcessingError(Result aCode, const char* aReason) override;
-  virtual void HandleFatalError(const char* aName, const char* aMsg) const override;
+  virtual void HandleFatalError(const char* aMsg) const override;
   mozilla::ipc::IPCResult RecvToolbarAnimatorMessageFromCompositor(const int32_t& aMessage) override;
   mozilla::ipc::IPCResult RecvRootFrameMetrics(const ScreenPoint& aScrollOffset, const CSSToScreenScale& aZoom) override;
   mozilla::ipc::IPCResult RecvScreenPixels(ipc::Shmem&& aMem, const ScreenIntSize& aSize) override;

@@ -12,8 +12,10 @@ info: |
     It is a Syntax Error if StringValue of IdentifierName is the same String
     value as the StringValue of any ReservedWord except for yield and await.
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 var super = 1;

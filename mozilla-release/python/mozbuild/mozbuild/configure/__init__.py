@@ -4,6 +4,7 @@
 
 from __future__ import absolute_import, print_function, unicode_literals
 
+import __builtin__
 import inspect
 import logging
 import os
@@ -252,7 +253,7 @@ class ConfigureSandbox(dict):
     # The default set of builtins. We expose unicode as str to make sandboxed
     # files more python3-ready.
     BUILTINS = ReadOnlyDict({
-        b: __builtins__[b]
+        b: getattr(__builtin__, b)
         for b in ('None', 'False', 'True', 'int', 'bool', 'any', 'all', 'len',
                   'list', 'tuple', 'set', 'dict', 'isinstance', 'getattr',
                   'hasattr', 'enumerate', 'range', 'zip')
@@ -361,6 +362,7 @@ class ConfigureSandbox(dict):
 
     def include_file(self, path):
         '''Include one file in the sandbox. Users of this class probably want
+        to use `run` instead.
 
         Note: this will execute all template invocations, as well as @depends
         functions that depend on '--help', but nothing else.
@@ -907,6 +909,9 @@ class ConfigureSandbox(dict):
         The `reason` argument indicates what caused the option to be implied.
         It is necessary when it cannot be inferred from the `value`.
         '''
+
+        when = self._normalize_when(when, 'imply_option')
+
         # Don't do anything when --help was on the command line
         if self._help:
             return
@@ -928,8 +933,6 @@ class ConfigureSandbox(dict):
                 "Cannot infer what implies '%s'. Please add a `reason` to "
                 "the `imply_option` call."
                 % option)
-
-        when = self._normalize_when(when, 'imply_option')
 
         prefix, name, values = Option.split_option(option)
         if values != ():

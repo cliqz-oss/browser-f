@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,6 +11,8 @@
 #include "nsHTMLButtonControlFrame.h"
 #include "nsCOMPtr.h"
 #include "nsIAnonymousContentCreator.h"
+
+class nsTextNode;
 
 // Class which implements the input[type=button, reset, submit] and
 // browse button for input[type=file].
@@ -23,9 +26,9 @@ class nsGfxButtonControlFrame final
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsGfxButtonControlFrame)
 
-  explicit nsGfxButtonControlFrame(nsStyleContext* aContext);
+  explicit nsGfxButtonControlFrame(ComputedStyle* aStyle);
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   virtual nsresult HandleEvent(nsPresContext* aPresContext,
                                mozilla::WidgetGUIEvent* aEvent,
@@ -43,19 +46,19 @@ public:
                                         uint32_t aFilter) override;
 
   virtual nsresult AttributeChanged(int32_t         aNameSpaceID,
-                                    nsIAtom*        aAttribute,
+                                    nsAtom*        aAttribute,
                                     int32_t         aModType) override;
 
   virtual nsContainerFrame* GetContentInsertionFrame() override;
 
 protected:
-  nsresult GetDefaultLabel(nsXPIDLString& aLabel) const;
+  nsresult GetDefaultLabel(nsAString& aLabel) const;
 
-  nsresult GetLabel(nsXPIDLString& aLabel);
+  nsresult GetLabel(nsString& aLabel);
 
   virtual bool IsInput() override { return true; }
 private:
-  nsCOMPtr<nsIContent> mTextContent;
+  RefPtr<nsTextNode> mTextContent;
 };
 
 

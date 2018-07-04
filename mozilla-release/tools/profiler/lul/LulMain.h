@@ -148,10 +148,19 @@ struct UnwindRegs {
   TaggedUWord r13;
   TaggedUWord r14;
   TaggedUWord r15;
+#elif defined(GP_ARCH_arm64)
+  TaggedUWord x29;
+  TaggedUWord x30;
+  TaggedUWord sp;
+  TaggedUWord pc;
 #elif defined(GP_ARCH_amd64) || defined(GP_ARCH_x86)
   TaggedUWord xbp;
   TaggedUWord xsp;
   TaggedUWord xip;
+#elif defined(GP_ARCH_mips64)
+  TaggedUWord sp;
+  TaggedUWord fp;
+  TaggedUWord pc;
 #else
 # error "Unknown plat"
 #endif

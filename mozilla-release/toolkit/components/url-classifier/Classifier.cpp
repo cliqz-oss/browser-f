@@ -15,6 +15,7 @@
 #include "nsNetCID.h"
 #include "nsPrintfCString.h"
 #include "nsThreadUtils.h"
+#include "mozilla/EndianUtils.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Logging.h"
@@ -257,9 +258,6 @@ Classifier::Open(nsIFile& aCacheDirectory)
   rv = CreateStoreDirectory();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  mCryptoHash = do_CreateInstance(NS_CRYPTO_HASH_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   // Build the list of know urlclassifier lists
   // XXX: Disk IO potentially on the main thread during startup
   RegenActiveTables();
@@ -270,6 +268,8 @@ Classifier::Open(nsIFile& aCacheDirectory)
 void
 Classifier::Close()
 {
+  // Close will be called by PreShutdown, so it is important to note that
+  // things put here should not affect an ongoing update thread.
   DropStores();
 }
 
@@ -360,8 +360,13 @@ Classifier::DeleteTables(nsIFile* aDirectory, const nsTArray<nsCString>& aTables
     rv = file->GetNativeLeafName(leafName);
     NS_ENSURE_SUCCESS_VOID(rv);
 
-    leafName.Truncate(leafName.RFind("."));
-    if (aTables.Contains(leafName)) {
+    // Remove file extension if there's one.
+    int32_t dotPosition = leafName.RFind(".");
+    if (dotPosition >= 0) {
+      leafName.Truncate(dotPosition);
+    }
+
+    if (!leafName.IsEmpty() && aTables.Contains(leafName)) {
       if (NS_FAILED(file->Remove(false))) {
         NS_WARNING(nsPrintfCString("Fail to remove file %s from the disk",
                                    leafName.get()).get());
@@ -470,7 +475,7 @@ Classifier::Check(const nsACString& aSpec,
   // Now check each lookup fragment against the entries in the DB.
   for (uint32_t i = 0; i < fragments.Length(); i++) {
     Completion lookupHash;
-    lookupHash.FromPlaintext(fragments[i], mCryptoHash);
+    lookupHash.FromPlaintext(fragments[i]);
 
     if (LOG_ENABLED()) {
       nsAutoCString checking;
@@ -927,10 +932,12 @@ Classifier::RegenActiveTables()
 
     LookupCache *lookupCache = GetLookupCache(table);
     if (!lookupCache) {
+      LOG(("Inactive table (no cache): %s", table.get()));
       continue;
     }
 
     if (!lookupCache->IsPrimed()) {
+      LOG(("Inactive table (cache not primed): %s", table.get()));
       continue;
     }
 
@@ -992,7 +999,7 @@ Classifier::ScanStoreDir(nsIFile* aDirectory, nsTArray<nsCString>& aTables)
     // Both v2 and v4 contain .pset file
     nsCString suffix(NS_LITERAL_CSTRING(".pset"));
 
-    int32_t dot = leafName.RFind(suffix, 0);
+    int32_t dot = leafName.RFind(suffix);
     if (dot != -1) {
       leafName.Cut(dot, suffix.Length());
       aTables.AppendElement(leafName);
@@ -1431,10 +1438,8 @@ Classifier::UpdateCache(TableUpdate* aUpdate)
 LookupCache *
 Classifier::GetLookupCache(const nsACString& aTable, bool aForUpdate)
 {
-  if (aForUpdate) {
-    MOZ_ASSERT(NS_GetCurrentThread() == mUpdateThread,
-               "GetLookupCache(aForUpdate==true) can only be called on update thread.");
-  }
+  // GetLookupCache(aForUpdate==true) can only be called on update thread.
+  MOZ_ASSERT_IF(aForUpdate, NS_GetCurrentThread() == mUpdateThread);
 
   nsTArray<LookupCache*>& lookupCaches = aForUpdate ? mNewLookupCaches
                                                     : mLookupCaches;
@@ -1445,6 +1450,11 @@ Classifier::GetLookupCache(const nsACString& aTable, bool aForUpdate)
     if (c->TableName().Equals(aTable)) {
       return c;
     }
+  }
+
+  // We don't want to create lookupcache when shutdown is already happening.
+  if (nsUrlClassifierDBService::ShutdownHasStarted()) {
+    return nullptr;
   }
 
   // TODO : Bug 1302600, It would be better if we have a more general non-main
@@ -1582,7 +1592,7 @@ Classifier::LoadMetadata(nsIFile* aDirectory, nsACString& aResult)
     rv = file->GetNativeLeafName(tableName);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    int32_t dot = tableName.RFind(METADATA_SUFFIX, 0);
+    int32_t dot = tableName.RFind(METADATA_SUFFIX);
     if (dot == -1) {
       continue;
     }

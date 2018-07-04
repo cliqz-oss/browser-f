@@ -5,14 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const Cu = Components.utils;
-
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
-const { console } = require("resource://gre/modules/Console.jsm");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 
-XPCOMUtils.defineLazyModuleGetter(this,
+ChromeUtils.defineModuleGetter(this,
   "Reflect", "resource://gre/modules/reflect.jsm");
 
 this.EXPORTED_SYMBOLS = ["Parser", "ParserHelpers", "SyntaxTreeVisitor"];
@@ -1134,7 +1131,6 @@ var SyntaxTreeVisitor = {
    *   type: "TryStatement";
    *   block: BlockStatement;
    *   handler: CatchClause | null;
-   *   guardedHandlers: [ CatchClause ];
    *   finalizer: BlockStatement | null;
    * }
    */
@@ -1155,9 +1151,6 @@ var SyntaxTreeVisitor = {
     this[node.block.type](node.block, node, callbacks);
     if (node.handler) {
       this[node.handler.type](node.handler, node, callbacks);
-    }
-    for (let guardedHandler of node.guardedHandlers) {
-      this[guardedHandler.type](guardedHandler, node, callbacks);
     }
     if (node.finalizer) {
       this[node.finalizer.type](node.finalizer, node, callbacks);

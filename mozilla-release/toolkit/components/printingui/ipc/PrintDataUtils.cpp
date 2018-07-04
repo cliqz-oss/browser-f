@@ -8,7 +8,7 @@
 #include "nsIPrintSettings.h"
 #include "nsIServiceManager.h"
 #include "nsIWebBrowserPrint.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 
 namespace mozilla {
 namespace embedding {
@@ -38,12 +38,6 @@ MockWebBrowserPrint::GetGlobalPrintSettings(nsIPrintSettings **aGlobalPrintSetti
 
 NS_IMETHODIMP
 MockWebBrowserPrint::GetCurrentPrintSettings(nsIPrintSettings **aCurrentPrintSettings)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-MockWebBrowserPrint::GetCurrentChildDOMWindow(mozIDOMWindowProxy **aCurrentPrintSettings)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }

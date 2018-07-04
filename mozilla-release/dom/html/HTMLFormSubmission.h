@@ -8,8 +8,8 @@
 #define mozilla_dom_HTMLFormSubmission_h
 
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/Element.h"
 #include "nsCOMPtr.h"
-#include "nsIContent.h"
 #include "mozilla/Encoding.h"
 #include "nsString.h"
 
@@ -82,18 +82,22 @@ public:
    * Given a URI and the current submission, create the final URI and data
    * stream that will be submitted.  Subclasses *must* implement this.
    *
-   * @param aURI the URI being submitted to [INOUT]
+   * @param aURI the URI being submitted to [IN]
    * @param aPostDataStream a data stream for POST data [OUT]
+   * @param aPostDataStreamLength a data stream for POST data length [OUT]
+   * @param aOutURI the resulting URI. May be the same as aURI [OUT]
    */
   virtual nsresult
-  GetEncodedSubmission(nsIURI* aURI, nsIInputStream** aPostDataStream) = 0;
+  GetEncodedSubmission(nsIURI* aURI, nsIInputStream** aPostDataStream,
+                       int64_t* aPostDataStreamLength,
+                       nsCOMPtr<nsIURI>& aOutURI) = 0;
 
   /**
    * Get the charset that will be used for submission.
    */
   void GetCharset(nsACString& aCharset) { mEncoding->Name(aCharset); }
 
-  nsIContent* GetOriginatingElement() const
+  Element* GetOriginatingElement() const
   {
     return mOriginatingElement.get();
   }
@@ -106,7 +110,7 @@ protected:
    * @param aOriginatingElement the originating element (can be null)
    */
   HTMLFormSubmission(mozilla::NotNull<const mozilla::Encoding*> aEncoding,
-                     nsIContent* aOriginatingElement)
+                     Element* aOriginatingElement)
     : mEncoding(aEncoding)
     , mOriginatingElement(aOriginatingElement)
   {
@@ -117,14 +121,14 @@ protected:
   mozilla::NotNull<const mozilla::Encoding*> mEncoding;
 
   // Originating element.
-  nsCOMPtr<nsIContent> mOriginatingElement;
+  RefPtr<Element> mOriginatingElement;
 };
 
 class EncodingFormSubmission : public HTMLFormSubmission
 {
 public:
   EncodingFormSubmission(mozilla::NotNull<const mozilla::Encoding*> aEncoding,
-                         nsIContent* aOriginatingElement);
+                         Element* aOriginatingElement);
 
   virtual ~EncodingFormSubmission();
 
@@ -152,7 +156,7 @@ public:
    * @param aEncoding the character encoding of the form
    */
   FSMultipartFormData(mozilla::NotNull<const mozilla::Encoding*> aEncoding,
-                      nsIContent* aOriginatingElement);
+                      Element* aOriginatingElement);
   ~FSMultipartFormData();
 
   virtual nsresult
@@ -165,7 +169,8 @@ public:
   AddNameDirectoryPair(const nsAString& aName, Directory* aDirectory) override;
 
   virtual nsresult
-  GetEncodedSubmission(nsIURI* aURI, nsIInputStream** aPostDataStream) override;
+  GetEncodedSubmission(nsIURI* aURI, nsIInputStream** aPostDataStream,
+                       int64_t* aPostDataStreamLength, nsCOMPtr<nsIURI>& aOutURI) override;
 
   void GetContentType(nsACString& aContentType)
   {
@@ -193,7 +198,13 @@ private:
    * chunks--string streams and file streams interleaved to make one big POST
    * stream.
    */
-  nsCOMPtr<nsIMultiplexInputStream> mPostDataStream;
+  nsCOMPtr<nsIMultiplexInputStream> mPostData;
+
+  /**
+   * The same stream, but as an nsIInputStream.
+   * Raw pointers because it is just QI of mInputStream.
+   */
+  nsIInputStream* mPostDataStream;
 
   /**
    * The current string chunk.  When a file is hit, the string chunk gets

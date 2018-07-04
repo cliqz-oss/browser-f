@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/ForgetAboutSite.jsm");
+let {ForgetAboutSite} = ChromeUtils.import("resource://gre/modules/ForgetAboutSite.jsm", {});
 
 function promiseClearHistory() {
   return new Promise(resolve => {
@@ -43,7 +43,7 @@ add_task(async function() {
                            formdata: { id: { "url": "http://www.example.net/" } }
                          }] }, title: REMEMBER },
     { state: { entries: [{ url: "http://www.example.org/form" }],
-               extData: { "setTabValue": "http://example.net:80" } }, title: REMEMBER }
+               extData: { "setCustomTabValue": "http://example.net:80" } }, title: REMEMBER }
   ] }] };
   let remember_count = 5;
 
@@ -54,9 +54,10 @@ add_task(async function() {
   // open a window and add the above closed tab list
   let newWin = openDialog(location, "", "chrome,all,dialog=no");
   await promiseWindowLoaded(newWin);
-  gPrefService.setIntPref("browser.sessionstore.max_tabs_undo",
-                          test_state.windows[0]._closedTabs.length);
+  Services.prefs.setIntPref("browser.sessionstore.max_tabs_undo",
+                            test_state.windows[0]._closedTabs.length);
   ss.setWindowState(newWin, JSON.stringify(test_state), true);
+  await promiseWindowRestored(newWin);
 
   let closedTabs = JSON.parse(ss.getClosedTabData(newWin));
   is(closedTabs.length, test_state.windows[0]._closedTabs.length,
@@ -77,6 +78,6 @@ add_task(async function() {
   is(countByTitle(closedTabs, REMEMBER), remember_count,
      "... and tabs to be remembered weren't.");
   // clean up
-  gPrefService.clearUserPref("browser.sessionstore.max_tabs_undo");
+  Services.prefs.clearUserPref("browser.sessionstore.max_tabs_undo");
   await BrowserTestUtils.closeWindow(newWin);
 });

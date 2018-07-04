@@ -15,10 +15,10 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
 #include "mozilla/WeakPtr.h"
+#include "mozilla/EventStateManager.h"
 #include "nsComponentManagerUtils.h"
 #include "nsContentPermissionHelper.h"
 #include "nsContentUtils.h"
-#include "nsDOMClassInfoID.h"
 #include "nsGlobalWindow.h"
 #include "nsIDocument.h"
 #include "nsINamed.h"
@@ -77,7 +77,9 @@ class nsGeolocationRequest final
                        GeoPositionErrorCallback aErrorCallback,
                        UniquePtr<PositionOptions>&& aOptions,
                        uint8_t aProtocolType,
+                       nsIEventTarget* aMainThreadTarget,
                        bool aWatchPositionRequest = false,
+                       bool aIsHandlingUserInput = false,
                        int32_t aWatchId = 0);
 
   MOZ_DECLARE_WEAKREFERENCE_TYPENAME(nsGeolocationRequest)
@@ -126,6 +128,7 @@ class nsGeolocationRequest final
   GeoPositionCallback mCallback;
   GeoPositionErrorCallback mErrorCallback;
   UniquePtr<PositionOptions> mOptions;
+  bool mIsHandlingUserInput;
 
   RefPtr<Geolocation> mLocator;
 
@@ -133,6 +136,7 @@ class nsGeolocationRequest final
   bool mShutdown;
   nsCOMPtr<nsIContentPermissionRequester> mRequester;
   uint8_t mProtocolType;
+  nsCOMPtr<nsIEventTarget> mMainThreadTarget;
 };
 
 static UniquePtr<PositionOptions>
@@ -304,16 +308,20 @@ nsGeolocationRequest::nsGeolocationRequest(Geolocation* aLocator,
                                            GeoPositionErrorCallback aErrorCallback,
                                            UniquePtr<PositionOptions>&& aOptions,
                                            uint8_t aProtocolType,
+                                           nsIEventTarget* aMainThreadTarget,
                                            bool aWatchPositionRequest,
+                                           bool aIsHandlingUserInput,
                                            int32_t aWatchId)
   : mIsWatchPositionRequest(aWatchPositionRequest),
     mCallback(Move(aCallback)),
     mErrorCallback(Move(aErrorCallback)),
     mOptions(Move(aOptions)),
+    mIsHandlingUserInput(aIsHandlingUserInput),
     mLocator(aLocator),
     mWatchId(aWatchId),
     mShutdown(false),
-    mProtocolType(aProtocolType)
+    mProtocolType(aProtocolType),
+    mMainThreadTarget(aMainThreadTarget)
 {
   if (nsCOMPtr<nsPIDOMWindowInner> win =
       do_QueryReferent(mLocator->GetOwner())) {
@@ -388,10 +396,17 @@ nsGeolocationRequest::GetWindow(mozIDOMWindow** aRequestingWindow)
 }
 
 NS_IMETHODIMP
-nsGeolocationRequest::GetElement(nsIDOMElement * *aRequestingElement)
+nsGeolocationRequest::GetElement(Element** aRequestingElement)
 {
   NS_ENSURE_ARG_POINTER(aRequestingElement);
   *aRequestingElement = nullptr;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsGeolocationRequest::GetIsHandlingUserInput(bool* aIsHandlingUserInput)
+{
+  *aIsHandlingUserInput = mIsHandlingUserInput;
   return NS_OK;
 }
 
@@ -522,9 +537,9 @@ nsGeolocationRequest::SetTimeoutTimer()
   StopTimeoutTimer();
 
   if (mOptions && mOptions->mTimeout != 0 && mOptions->mTimeout != 0x7fffffff) {
-    mTimeoutTimer = do_CreateInstance("@mozilla.org/timer;1");
     RefPtr<TimerCallbackHolder> holder = new TimerCallbackHolder(this);
-    mTimeoutTimer->InitWithCallback(holder, mOptions->mTimeout, nsITimer::TYPE_ONE_SHOT);
+    NS_NewTimerWithCallback(getter_AddRefs(mTimeoutTimer),
+                            holder, mOptions->mTimeout, nsITimer::TYPE_ONE_SHOT);
   }
 }
 
@@ -556,13 +571,13 @@ nsGeolocationRequest::SendLocation(nsIDOMGeoPosition* aPosition)
     }
   }
 
-  RefPtr<Position> wrapped;
+  RefPtr<mozilla::dom::Position> wrapped;
 
   if (aPosition) {
     nsCOMPtr<nsIDOMGeoPositionCoords> coords;
     aPosition->GetCoords(getter_AddRefs(coords));
     if (coords) {
-      wrapped = new Position(ToSupports(mLocator), aPosition);
+      wrapped = new mozilla::dom::Position(ToSupports(mLocator), aPosition);
     }
   }
 
@@ -609,7 +624,7 @@ NS_IMETHODIMP
 nsGeolocationRequest::Update(nsIDOMGeoPosition* aPosition)
 {
   nsCOMPtr<nsIRunnable> ev = new RequestSendLocationEvent(aPosition, this);
-  NS_DispatchToMainThread(ev);
+  mMainThreadTarget->Dispatch(ev.forget());
   return NS_OK;
 }
 
@@ -867,7 +882,7 @@ void
 nsGeolocationService::SetDisconnectTimer()
 {
   if (!mDisconnectTimer) {
-    mDisconnectTimer = do_CreateInstance("@mozilla.org/timer;1");
+    mDisconnectTimer = NS_NewTimer();
   } else {
     mDisconnectTimer->Cancel();
   }
@@ -1195,7 +1210,7 @@ Geolocation::ShouldBlockInsecureRequests() const
     return false;
   }
 
-  if (!nsGlobalWindow::Cast(win)->IsSecureContextIfOpenerIgnored()) {
+  if (!nsGlobalWindowInner::Cast(win)->IsSecureContext()) {
     nsContentUtils::ReportToConsole(nsIScriptError::errorFlag,
                                     NS_LITERAL_CSTRING("DOM"), doc,
                                     nsContentUtils::eDOM_PROPERTIES,
@@ -1235,6 +1250,15 @@ Geolocation::GetCurrentPosition(PositionCallback& aCallback,
   }
 }
 
+static nsIEventTarget* MainThreadTarget(Geolocation* geo)
+{
+  nsCOMPtr<nsPIDOMWindowInner> window = do_QueryReferent(geo->GetOwner());
+  if (!window) {
+    return GetMainThreadEventTarget();
+  }
+  return nsGlobalWindowInner::Cast(window)->EventTargetFor(mozilla::TaskCategory::Other);
+}
+
 nsresult
 Geolocation::GetCurrentPosition(GeoPositionCallback callback,
                                 GeoPositionErrorCallback errorCallback,
@@ -1251,15 +1275,16 @@ Geolocation::GetCurrentPosition(GeoPositionCallback callback,
   Telemetry::Accumulate(Telemetry::GEOLOCATION_GETCURRENTPOSITION_SECURE_ORIGIN,
                         static_cast<uint8_t>(mProtocolType));
 
+  nsIEventTarget* target = MainThreadTarget(this);
   RefPtr<nsGeolocationRequest> request =
     new nsGeolocationRequest(this, Move(callback), Move(errorCallback),
-                             Move(options), static_cast<uint8_t>(mProtocolType),
-                             false);
+                             Move(options), static_cast<uint8_t>(mProtocolType), target,
+                             false, EventStateManager::IsHandlingUserInput());
 
   if (!sGeoEnabled || ShouldBlockInsecureRequests() ||
       nsContentUtils::ResistFingerprinting(aCallerType)) {
     nsCOMPtr<nsIRunnable> ev = new RequestAllowEvent(false, request);
-    NS_DispatchToMainThread(ev);
+    target->Dispatch(ev.forget());
     return NS_OK;
   }
 
@@ -1280,7 +1305,7 @@ Geolocation::GetCurrentPosition(GeoPositionCallback callback,
   }
 
   nsCOMPtr<nsIRunnable> ev = new RequestAllowEvent(true, request);
-  NS_DispatchToMainThread(ev);
+  target->Dispatch(ev.forget());
 
   return NS_OK;
 }
@@ -1338,15 +1363,17 @@ Geolocation::WatchPosition(GeoPositionCallback aCallback,
   // The watch ID:
   *aRv = mLastWatchId++;
 
+  nsIEventTarget* target = MainThreadTarget(this);
   RefPtr<nsGeolocationRequest> request =
     new nsGeolocationRequest(this, Move(aCallback), Move(aErrorCallback),
                              Move(aOptions),
-                             static_cast<uint8_t>(mProtocolType), true, *aRv);
+                             static_cast<uint8_t>(mProtocolType), target, true,
+                             EventStateManager::IsHandlingUserInput(), *aRv);
 
   if (!sGeoEnabled || ShouldBlockInsecureRequests() ||
       nsContentUtils::ResistFingerprinting(aCallerType)) {
     nsCOMPtr<nsIRunnable> ev = new RequestAllowEvent(false, request);
-    NS_DispatchToMainThread(ev);
+    target->Dispatch(ev.forget());
     return NS_OK;
   }
 
@@ -1440,15 +1467,16 @@ Geolocation::NotifyAllowedRequest(nsGeolocationRequest* aRequest)
 bool
 Geolocation::RegisterRequestWithPrompt(nsGeolocationRequest* request)
 {
+  nsIEventTarget* target = MainThreadTarget(this);
   if (Preferences::GetBool("geo.prompt.testing", false)) {
     bool allow = Preferences::GetBool("geo.prompt.testing.allow", false);
     nsCOMPtr<nsIRunnable> ev = new RequestAllowEvent(allow, request);
-    NS_DispatchToMainThread(ev);
+    target->Dispatch(ev.forget());
     return true;
   }
 
   nsCOMPtr<nsIRunnable> ev  = new RequestPromptEvent(request, mOwner);
-  NS_DispatchToMainThread(ev);
+  target->Dispatch(ev.forget());
   return true;
 }
 

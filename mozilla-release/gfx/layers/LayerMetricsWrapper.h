@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -354,7 +355,7 @@ public:
     return nullptr;
   }
 
-  Maybe<uint64_t> GetReferentId() const
+  Maybe<LayersId> GetReferentId() const
   {
     MOZ_ASSERT(IsValid());
 
@@ -403,17 +404,17 @@ public:
   {
     MOZ_ASSERT(IsValid());
 
-    if (mLayer->AsContainerLayer()) {
-      return mLayer->AsContainerLayer()->GetEventRegionsOverride();
+    if (mLayer->AsRefLayer()) {
+      return mLayer->AsRefLayer()->GetEventRegionsOverride();
     }
     return EventRegionsOverride::NoOverride;
   }
 
-  const ScrollThumbData& GetScrollThumbData() const
+  const ScrollbarData& GetScrollbarData() const
   {
     MOZ_ASSERT(IsValid());
 
-    return mLayer->GetScrollThumbData();
+    return mLayer->GetScrollbarData();
   }
 
   uint64_t GetScrollbarAnimationId() const
@@ -425,24 +426,18 @@ public:
     return 0;
   }
 
-  FrameMetrics::ViewID GetScrollbarTargetContainerId() const
-  {
-    MOZ_ASSERT(IsValid());
-
-    return mLayer->GetScrollbarTargetContainerId();
-  }
-
-  bool IsScrollbarContainer() const
-  {
-    MOZ_ASSERT(IsValid());
-    return mLayer->IsScrollbarContainer();
-  }
-
   FrameMetrics::ViewID GetFixedPositionScrollContainerId() const
   {
     MOZ_ASSERT(IsValid());
 
     return mLayer->GetFixedPositionScrollContainerId();
+  }
+
+  bool IsBackfaceHidden() const
+  {
+    MOZ_ASSERT(IsValid());
+
+    return mLayer->IsBackfaceHidden();
   }
 
   // Expose an opaque pointer to the layer. Mostly used for printf

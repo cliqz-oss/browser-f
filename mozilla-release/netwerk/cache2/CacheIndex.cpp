@@ -178,7 +178,7 @@ private:
   bool                 mDoNotSearchInUpdates;
 };
 
-class FileOpenHelper : public CacheFileIOListener
+class FileOpenHelper final : public CacheFileIOListener
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -194,7 +194,7 @@ public:
   }
 
 private:
-  virtual ~FileOpenHelper() {}
+  virtual ~FileOpenHelper() = default;
 
   NS_IMETHOD OnFileOpened(CacheFileHandle *aHandle, nsresult aResult) override;
   NS_IMETHOD OnDataWritten(CacheFileHandle *aHandle, const char *aBuf,
@@ -255,7 +255,7 @@ NS_IMPL_RELEASE(CacheIndex)
 NS_INTERFACE_MAP_BEGIN(CacheIndex)
   NS_INTERFACE_MAP_ENTRY(mozilla::net::CacheFileIOListener)
   NS_INTERFACE_MAP_ENTRY(nsIRunnable)
-NS_INTERFACE_MAP_END_THREADSAFE
+NS_INTERFACE_MAP_END
 
 
 CacheIndex::CacheIndex()
@@ -2314,9 +2314,8 @@ CacheIndex::ParseRecords()
          "synchronously [rv=0x%08" PRIx32 "]", static_cast<uint32_t>(rv)));
     FinishRead(false);
     return;
-  } else {
-    mRWPending = true;
   }
+  mRWPending = true;
 }
 
 void
@@ -2434,9 +2433,8 @@ CacheIndex::ParseJournal()
          "synchronously [rv=0x%08" PRIx32 "]", static_cast<uint32_t>(rv)));
     FinishRead(false);
     return;
-  } else {
-    mRWPending = true;
   }
+  mRWPending = true;
 }
 
 void
@@ -2651,26 +2649,16 @@ CacheIndex::ScheduleUpdateTimer(uint32_t aDelay)
 
   MOZ_ASSERT(!mUpdateTimer);
 
-  nsresult rv;
-
-  nsCOMPtr<nsITimer> timer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   nsCOMPtr<nsIEventTarget> ioTarget = CacheFileIOManager::IOTarget();
   MOZ_ASSERT(ioTarget);
 
-  rv = timer->SetTarget(ioTarget);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = timer->InitWithNamedFuncCallback(CacheIndex::DelayedUpdate,
-                                        nullptr,
-                                        aDelay,
-                                        nsITimer::TYPE_ONE_SHOT,
-                                        "net::CacheIndex::ScheduleUpdateTimer");
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  mUpdateTimer.swap(timer);
-  return NS_OK;
+  return NS_NewTimerWithFuncCallback(getter_AddRefs(mUpdateTimer),
+                                     CacheIndex::DelayedUpdate,
+                                     nullptr,
+                                     aDelay,
+                                     nsITimer::TYPE_ONE_SHOT,
+                                     "net::CacheIndex::ScheduleUpdateTimer",
+                                     ioTarget);
 }
 
 nsresult
@@ -2744,7 +2732,7 @@ CacheIndex::InitEntryFromDiskData(CacheIndexEntry *aEntry,
       return kIndexTimeNotAvailable;
     }
     nsresult rv;
-    uint64_t n64 = nsCString(aUint16String).ToInteger64(&rv);
+    uint64_t n64 = nsDependentCString(aUint16String).ToInteger64(&rv);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
     return n64 <= kIndexTimeOutOfBound ? n64 : kIndexTimeOutOfBound;
   };
@@ -2806,11 +2794,16 @@ CacheIndex::BuildIndex()
       return;
     }
 
+    bool fileExists = false;
     nsCOMPtr<nsIFile> file;
     {
       // Do not do IO under the lock.
       StaticMutexAutoUnlock unlock(sLock);
       rv = mDirEnumerator->GetNextFile(getter_AddRefs(file));
+
+      if (file) {
+        file->Exists(&fileExists);
+      }
     }
     if (mState == SHUTDOWN) {
       return;
@@ -2826,6 +2819,12 @@ CacheIndex::BuildIndex()
       LOG(("CacheIndex::BuildIndex() - GetNativeLeafName() failed! Skipping "
            "file."));
       mDontMarkIndexClean = true;
+      continue;
+    }
+
+    if (!fileExists) {
+      LOG(("CacheIndex::BuildIndex() - File returned by the iterator was "
+           "removed in the meantime [name=%s]", leaf.get()));
       continue;
     }
 
@@ -2902,6 +2901,7 @@ CacheIndex::BuildIndex()
         LOG(("CacheIndex::BuildIndex() - CacheFile::InitEntryFromDiskData() "
              "failed, removing file. [name=%s]", leaf.get()));
         file->Remove(false);
+        entry->MarkRemoved();
       } else {
         LOG(("CacheIndex::BuildIndex() - Added entry to index. [name=%s]",
              leaf.get()));
@@ -3023,11 +3023,16 @@ CacheIndex::UpdateIndex()
       return;
     }
 
+    bool fileExists = false;
     nsCOMPtr<nsIFile> file;
     {
       // Do not do IO under the lock.
       StaticMutexAutoUnlock unlock(sLock);
       rv = mDirEnumerator->GetNextFile(getter_AddRefs(file));
+
+      if (file) {
+        file->Exists(&fileExists);
+      }
     }
     if (mState == SHUTDOWN) {
       return;
@@ -3043,6 +3048,12 @@ CacheIndex::UpdateIndex()
       LOG(("CacheIndex::UpdateIndex() - GetNativeLeafName() failed! Skipping "
            "file."));
       mDontMarkIndexClean = true;
+      continue;
+    }
+
+    if (!fileExists) {
+      LOG(("CacheIndex::UpdateIndex() - File returned by the iterator was "
+           "removed in the meantime [name=%s]", leaf.get()));
       continue;
     }
 
@@ -3538,9 +3549,8 @@ CacheIndex::OnFileOpenedInternal(FileOpenHelper *aOpener,
             FinishRead(false);
             CacheFileIOManager::DoomFile(aHandle, nullptr);
             break;
-          } else {
-            mIndexHandle = aHandle;
           }
+          mIndexHandle = aHandle;
         } else {
           FinishRead(false);
           break;

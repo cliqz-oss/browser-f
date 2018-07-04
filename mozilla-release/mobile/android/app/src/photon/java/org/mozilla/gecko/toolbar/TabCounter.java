@@ -11,17 +11,20 @@ import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.support.annotation.NonNull;
 import android.util.AttributeSet;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 
 import org.mozilla.gecko.R;
-import org.mozilla.gecko.widget.themed.ThemedFrameLayout;
+import org.mozilla.gecko.widget.themed.ThemedImageView;
 import org.mozilla.gecko.widget.themed.ThemedRelativeLayout;
 import org.mozilla.gecko.widget.themed.ThemedTextView;
 
+import java.text.NumberFormat;
+
 public class TabCounter extends ThemedRelativeLayout {
 
-    private final ThemedFrameLayout box;
-    private final ThemedFrameLayout bar;
+    private final ThemedImageView box;
+    private final ThemedImageView bar;
     private final ThemedTextView text;
 
     private final AnimatorSet animationSet;
@@ -29,6 +32,9 @@ public class TabCounter extends ThemedRelativeLayout {
 
     public static final int MAX_VISIBLE_TABS = 99;
     public static final String SO_MANY_TABS_OPEN = "∞";
+
+    private static final float ONE_DIGIT_SIZE_RATIO = 0.6f;
+    private static final float TWO_DIGITS_SIZE_RATIO = 0.5f;
 
     public TabCounter(Context context) {
         this(context, null);
@@ -44,11 +50,15 @@ public class TabCounter extends ThemedRelativeLayout {
         final LayoutInflater inflater = LayoutInflater.from(context);
         inflater.inflate(R.layout.tabs_counter, this);
 
-        box = (ThemedFrameLayout) findViewById(R.id.counter_box);
-        bar = (ThemedFrameLayout) findViewById(R.id.counter_bar);
+        box = (ThemedImageView) findViewById(R.id.counter_box);
+        bar = (ThemedImageView) findViewById(R.id.counter_bar);
         text = (ThemedTextView) findViewById(R.id.counter_text);
 
         animationSet = createAnimatorSet();
+    }
+
+    public CharSequence getText() {
+        return text.getText();
     }
 
     private AnimatorSet createAnimatorSet() {
@@ -152,7 +162,7 @@ public class TabCounter extends ThemedRelativeLayout {
     }
 
     void setCountWithAnimation(final int count) {
-        // Don't animate from initial state
+        // Don't animate from initial state.
         if (this.count == 0) {
             setCount(count);
             return;
@@ -162,16 +172,22 @@ public class TabCounter extends ThemedRelativeLayout {
             return;
         }
 
-        // don't animate if there are still over MAX_VISIBLE_TABS tabs open
+        // Don't animate if there are still over MAX_VISIBLE_TABS tabs open.
         if (this.count > MAX_VISIBLE_TABS && count > MAX_VISIBLE_TABS) {
             this.count = count;
             return;
         }
 
+        adjustTextSize(count);
+
         text.setText(formatForDisplay(count));
         this.count = count;
 
-        // Trigger animation
+        // Cancel previous animations if necessary.
+        if (animationSet.isRunning()) {
+            animationSet.cancel();
+        }
+        // Trigger animations.
         animationSet.start();
     }
 
@@ -179,10 +195,25 @@ public class TabCounter extends ThemedRelativeLayout {
         if (count > MAX_VISIBLE_TABS) {
             return SO_MANY_TABS_OPEN;
         }
-        return String.valueOf(count);
+        return NumberFormat.getInstance().format(count);
+    }
+
+    private void adjustTextSize(int newCount) {
+        final float oldRatio = (this.count < MAX_VISIBLE_TABS && this.count >= 10) ? TWO_DIGITS_SIZE_RATIO : ONE_DIGIT_SIZE_RATIO;
+        final float newRatio = (newCount < MAX_VISIBLE_TABS && newCount >= 10) ? TWO_DIGITS_SIZE_RATIO : ONE_DIGIT_SIZE_RATIO;
+
+        if (this.count == 0 || newRatio != oldRatio) {
+            final int sizeInPixel = (int) (box.getWidth() * newRatio);
+            if (sizeInPixel > 0) {
+                // Only apply the size when we calculate a valid value.
+                text.setTextSize(TypedValue.COMPLEX_UNIT_PX, sizeInPixel);
+            }
+        }
     }
 
     void setCount(int count) {
+        adjustTextSize(count);
+
         text.setText(formatForDisplay(count));
         this.count = count;
     }

@@ -23,7 +23,7 @@
 #define kIndentStr NS_LITERAL_STRING("  ")
 #define kEndTag NS_LITERAL_STRING("</")
 
-class nsIAtom;
+class nsAtom;
 class nsINode;
 
 namespace mozilla {
@@ -50,15 +50,16 @@ class nsXMLContentSerializer : public nsIContentSerializer {
                                 int32_t aStartOffset, int32_t aEndOffset,
                                 nsAString& aStr) override;
 
-  NS_IMETHOD AppendProcessingInstruction(nsIContent* aPI,
+  NS_IMETHOD AppendProcessingInstruction(mozilla::dom::ProcessingInstruction* aPI,
                                          int32_t aStartOffset,
                                          int32_t aEndOffset,
                                          nsAString& aStr) override;
 
-  NS_IMETHOD AppendComment(nsIContent* aComment, int32_t aStartOffset,
+  NS_IMETHOD AppendComment(mozilla::dom::Comment* aComment,
+                           int32_t aStartOffset,
                            int32_t aEndOffset, nsAString& aStr) override;
 
-  NS_IMETHOD AppendDoctype(nsIContent *aDoctype,
+  NS_IMETHOD AppendDoctype(mozilla::dom::DocumentType* aDoctype,
                            nsAString& aStr) override;
 
   NS_IMETHOD AppendElementStart(mozilla::dom::Element* aElement,
@@ -209,16 +210,16 @@ class nsXMLContentSerializer : public nsIContentSerializer {
    */
   void GenerateNewPrefix(nsAString& aPrefix);
 
-  uint32_t ScanNamespaceDeclarations(nsIContent* aContent,
-                                     nsIContent *aOriginalElement,
+  uint32_t ScanNamespaceDeclarations(mozilla::dom::Element* aContent,
+                                     mozilla::dom::Element* aOriginalElement,
                                      const nsAString& aTagNamespaceURI);
 
   MOZ_MUST_USE
-  virtual bool SerializeAttributes(nsIContent* aContent,
-                                   nsIContent *aOriginalElement,
+  virtual bool SerializeAttributes(mozilla::dom::Element* aContent,
+                                   mozilla::dom::Element* aOriginalElement,
                                    nsAString& aTagPrefix,
                                    const nsAString& aTagNamespaceURI,
-                                   nsIAtom* aTagName,
+                                   nsAtom* aTagName,
                                    nsAString& aStr,
                                    uint32_t aSkipAttr,
                                    bool aAddNSAttr);
@@ -231,7 +232,7 @@ class nsXMLContentSerializer : public nsIContentSerializer {
                      bool aDoEscapeEntities);
 
   bool IsJavaScript(nsIContent * aContent,
-                      nsIAtom* aAttrNameAtom,
+                      nsAtom* aAttrNameAtom,
                       int32_t aAttrNamespaceID,
                       const nsAString& aValueString);
 
@@ -243,10 +244,10 @@ class nsXMLContentSerializer : public nsIContentSerializer {
    * by setting aForceFormat to true.
    * @return boolean  true if the element can be output
    */
-  virtual bool CheckElementStart(nsIContent * aContent,
-                                   bool & aForceFormat,
-                                   nsAString& aStr,
-                                   nsresult& aResult);
+  virtual bool CheckElementStart(mozilla::dom::Element* aElement,
+                                 bool & aForceFormat,
+                                 nsAString& aStr,
+                                 nsresult& aResult);
 
   /**
    * This method is responsible for appending the '>' at the end of the start
@@ -293,22 +294,22 @@ class nsXMLContentSerializer : public nsIContentSerializer {
   /**
    * Returns true if a line break should be inserted before an element open tag
    */
-  virtual bool LineBreakBeforeOpen(int32_t aNamespaceID, nsIAtom* aName);
+  virtual bool LineBreakBeforeOpen(int32_t aNamespaceID, nsAtom* aName);
 
   /**
    * Returns true if a line break should be inserted after an element open tag
    */
-  virtual bool LineBreakAfterOpen(int32_t aNamespaceID, nsIAtom* aName);
+  virtual bool LineBreakAfterOpen(int32_t aNamespaceID, nsAtom* aName);
 
   /**
    * Returns true if a line break should be inserted after an element close tag
    */
-  virtual bool LineBreakBeforeClose(int32_t aNamespaceID, nsIAtom* aName);
+  virtual bool LineBreakBeforeClose(int32_t aNamespaceID, nsAtom* aName);
 
   /**
    * Returns true if a line break should be inserted after an element close tag
    */
-  virtual bool LineBreakAfterClose(int32_t aNamespaceID, nsIAtom* aName);
+  virtual bool LineBreakAfterClose(int32_t aNamespaceID, nsAtom* aName);
 
   /**
    * add intendation. Call only in the case of formating and if the current
@@ -318,8 +319,8 @@ class nsXMLContentSerializer : public nsIContentSerializer {
   bool AppendIndentation(nsAString& aStr);
 
   MOZ_MUST_USE
-  bool IncrIndentation(nsIAtom* aName);
-  void DecrIndentation(nsIAtom* aName);
+  bool IncrIndentation(nsAtom* aName);
+  void DecrIndentation(nsAtom* aName);
 
   // Functions to check for newlines that needs to be added between nodes in
   // the root of a document. See mAddNewlineForRootNode

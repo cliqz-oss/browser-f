@@ -1,15 +1,18 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef mozilla_gfx_layers_d3d11_MLGDeviceD3D11_h 
 #define mozilla_gfx_layers_d3d11_MLGDeviceD3D11_h 
 
+#include <d3d11_1.h>
+
 #include "mozilla/layers/MLGDevice.h"
+#include "mozilla/layers/SyncObject.h"
 #include "mozilla/EnumeratedArray.h"
 #include "nsTHashtable.h"
-#include <d3d11_1.h>
 #include "nsPrintfCString.h"
 
 namespace mozilla {
@@ -305,8 +308,7 @@ private:
   RefPtr<ID3D11RasterizerState> mRasterizerStateNoScissor;
   RefPtr<ID3D11RasterizerState> mRasterizerStateScissor;
 
-  RefPtr<IDXGIResource> mSyncTexture;
-  HANDLE mSyncHandle;
+  RefPtr<SyncObjectHost> mSyncObject;
 
   RefPtr<MLGBuffer> mUnitQuadVB;
   RefPtr<MLGBuffer> mUnitTriangleVB;

@@ -13,6 +13,7 @@
 #endif
 #include "mozilla/media/MediaParent.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/dom/ClientManagerActors.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/DOMTypes.h"
 #include "mozilla/dom/FileSystemBase.h"
@@ -22,14 +23,20 @@
 #include "mozilla/dom/PGamepadEventChannelParent.h"
 #include "mozilla/dom/PGamepadTestChannelParent.h"
 #include "mozilla/dom/MessagePortParent.h"
+#include "mozilla/dom/ServiceWorkerManagerParent.h"
 #include "mozilla/dom/ServiceWorkerRegistrar.h"
+#include "mozilla/dom/StorageActivityService.h"
 #include "mozilla/dom/asmjscache/AsmJSCache.h"
 #include "mozilla/dom/cache/ActorUtils.h"
 #include "mozilla/dom/indexedDB/ActorsParent.h"
 #include "mozilla/dom/ipc/IPCBlobInputStreamParent.h"
 #include "mozilla/dom/ipc/PendingIPCBlobParent.h"
+#include "mozilla/dom/ipc/TemporaryIPCBlobParent.h"
 #include "mozilla/dom/quota/ActorsParent.h"
 #include "mozilla/dom/StorageIPC.h"
+#include "mozilla/dom/MIDIManagerParent.h"
+#include "mozilla/dom/MIDIPortParent.h"
+#include "mozilla/dom/MIDIPlatformService.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/ipc/IPCStreamAlloc.h"
@@ -49,7 +56,6 @@
 #include "nsThreadUtils.h"
 #include "nsTraceRefcnt.h"
 #include "nsXULAppAPI.h"
-#include "ServiceWorkerManagerParent.h"
 
 #ifdef DISABLE_ASSERTS_FOR_FUZZING
 #define ASSERT_UNLESS_FUZZING(...) do { } while (0)
@@ -68,14 +74,14 @@ using mozilla::dom::MessagePortParent;
 using mozilla::dom::PMessagePortParent;
 using mozilla::dom::UDPSocketParent;
 using mozilla::dom::WebAuthnTransactionParent;
+using mozilla::AssertIsOnMainThread;
+using mozilla::dom::PMIDIPortParent;
+using mozilla::dom::PMIDIManagerParent;
+using mozilla::dom::MIDIPortParent;
+using mozilla::dom::MIDIManagerParent;
+using mozilla::dom::MIDIPlatformService;
 
 namespace {
-
-void
-AssertIsOnMainThread()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-}
 
 class TestParent final : public mozilla::ipc::PBackgroundTestParent
 {
@@ -105,7 +111,6 @@ namespace ipc {
 using mozilla::dom::ContentParent;
 using mozilla::dom::BroadcastChannelParent;
 using mozilla::dom::ServiceWorkerRegistrationData;
-using mozilla::dom::workers::ServiceWorkerManagerParent;
 
 BackgroundParentImpl::BackgroundParentImpl()
 {
@@ -285,6 +290,9 @@ BackgroundParentImpl::RecvBroadcastLocalStorageChange(
                                             const PrincipalInfo& aPrincipalInfo,
                                             const bool& aIsPrivate)
 {
+  // Let's inform the StorageActivityService about this change.
+  dom::StorageActivityService::SendActivity(aPrincipalInfo);
+
   nsTArray<PBackgroundParent*> liveActorArray;
   if (NS_WARN_IF(!BackgroundParent::GetLiveActorArray(this, liveActorArray))) {
     return IPC_FAIL_NO_REASON(this);
@@ -314,6 +322,27 @@ BackgroundParentImpl::DeallocPPendingIPCBlobParent(PPendingIPCBlobParent* aActor
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(aActor);
 
+  delete aActor;
+  return true;
+}
+
+PTemporaryIPCBlobParent*
+BackgroundParentImpl::AllocPTemporaryIPCBlobParent()
+{
+  return new mozilla::dom::TemporaryIPCBlobParent();
+}
+
+mozilla::ipc::IPCResult
+BackgroundParentImpl::RecvPTemporaryIPCBlobConstructor(PTemporaryIPCBlobParent* aActor)
+{
+  mozilla::dom::TemporaryIPCBlobParent* actor =
+    static_cast<mozilla::dom::TemporaryIPCBlobParent*>(aActor);
+  return actor->CreateAndShareFile();
+}
+
+bool
+BackgroundParentImpl::DeallocPTemporaryIPCBlobParent(PTemporaryIPCBlobParent* aActor)
+{
   delete aActor;
   return true;
 }
@@ -636,8 +665,8 @@ BackgroundParentImpl::AllocPServiceWorkerManagerParent()
   AssertIsInMainProcess();
   AssertIsOnBackgroundThread();
 
-  RefPtr<dom::workers::ServiceWorkerManagerParent> agent =
-    new dom::workers::ServiceWorkerManagerParent();
+  RefPtr<dom::ServiceWorkerManagerParent> agent =
+    new dom::ServiceWorkerManagerParent();
   return agent.forget().take();
 }
 
@@ -649,8 +678,8 @@ BackgroundParentImpl::DeallocPServiceWorkerManagerParent(
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(aActor);
 
-  RefPtr<dom::workers::ServiceWorkerManagerParent> parent =
-    dont_AddRef(static_cast<dom::workers::ServiceWorkerManagerParent*>(aActor));
+  RefPtr<dom::ServiceWorkerManagerParent> parent =
+    dont_AddRef(static_cast<dom::ServiceWorkerManagerParent*>(aActor));
   MOZ_ASSERT(parent);
   return true;
 }
@@ -943,6 +972,79 @@ BackgroundParentImpl::DeallocPHttpBackgroundChannelParent(
     dont_AddRef(static_cast<net::HttpBackgroundChannelParent*>(aActor));
 
   return true;
+}
+
+PMIDIPortParent*
+BackgroundParentImpl::AllocPMIDIPortParent(const MIDIPortInfo& aPortInfo, const bool& aSysexEnabled)
+{
+  AssertIsInMainProcess();
+  AssertIsOnBackgroundThread();
+
+  RefPtr<MIDIPortParent> result = new MIDIPortParent(aPortInfo, aSysexEnabled);
+  return result.forget().take();
+}
+
+bool
+BackgroundParentImpl::DeallocPMIDIPortParent(PMIDIPortParent* aActor)
+{
+  MOZ_ASSERT(aActor);
+  AssertIsInMainProcess();
+  AssertIsOnBackgroundThread();
+
+  RefPtr<MIDIPortParent> parent =
+    dont_AddRef(static_cast<MIDIPortParent*>(aActor));
+  parent->Teardown();
+  return true;
+}
+
+PMIDIManagerParent*
+BackgroundParentImpl::AllocPMIDIManagerParent()
+{
+  AssertIsInMainProcess();
+  AssertIsOnBackgroundThread();
+
+  RefPtr<MIDIManagerParent> result = new MIDIManagerParent();
+  MIDIPlatformService::Get()->AddManager(result);
+  return result.forget().take();
+}
+
+bool
+BackgroundParentImpl::DeallocPMIDIManagerParent(PMIDIManagerParent* aActor)
+{
+  MOZ_ASSERT(aActor);
+  AssertIsInMainProcess();
+  AssertIsOnBackgroundThread();
+
+  RefPtr<MIDIManagerParent> parent =
+    dont_AddRef(static_cast<MIDIManagerParent*>(aActor));
+  parent->Teardown();
+  return true;
+}
+
+mozilla::dom::PClientManagerParent*
+BackgroundParentImpl::AllocPClientManagerParent()
+{
+  return mozilla::dom::AllocClientManagerParent();
+}
+
+bool
+BackgroundParentImpl::DeallocPClientManagerParent(mozilla::dom::PClientManagerParent* aActor)
+{
+  return mozilla::dom::DeallocClientManagerParent(aActor);
+}
+
+mozilla::ipc::IPCResult
+BackgroundParentImpl::RecvPClientManagerConstructor(mozilla::dom::PClientManagerParent* aActor)
+{
+  mozilla::dom::InitClientManagerParent(aActor);
+  return IPC_OK();
+}
+
+IPCResult
+BackgroundParentImpl::RecvStorageActivity(const PrincipalInfo& aPrincipalInfo)
+{
+  dom::StorageActivityService::SendActivity(aPrincipalInfo);
+  return IPC_OK();
 }
 
 } // namespace ipc

@@ -2,16 +2,6 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY  security.label                 "Security">
-<!ENTITY  phishingProtection.label       "Phishing Protection">
-
-<!ENTITY  warnOnAddonInstall2.label       "Warn you when websites try to install add-ons">
-<!ENTITY  warnOnAddonInstall2.accesskey   "W">
-
-<!-- LOCALIZATION NOTE (enableSafeBrowsing.label, blockDownloads.label, blockUncommonUnwanted.label):
-  It is important that wording follows the guidelines outlined on this page:
-  https://developers.google.com/safe-browsing/developers_guide_v2#AcceptableUsage
--->
 <!ENTITY  enableSafeBrowsing.label        "Block dangerous and deceptive content">
 <!ENTITY  enableSafeBrowsing.accesskey    "B">
 
@@ -28,6 +18,7 @@
 <!ENTITY  formsAndPasswords.label       "Forms &amp; Passwords">
 
 <!ENTITY  rememberLogins2.label         "Remember logins and passwords for websites">
+<!ENTITY  rememberLogins2.hint          "To enable this feature please make sure Cliqz will remember your <label class='text-link' id='jumpToHistory'>History</label>.">
 <!ENTITY  rememberLogins2.accesskey     "R">
 <!ENTITY  passwordExceptions.label      "Exceptions…">
 <!ENTITY  passwordExceptions.accesskey  "x">
@@ -46,10 +37,10 @@
 <!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere is a third-party service provided by that automatically enables HTTPS encryption wherever possible. ">
 <!ENTITY  httpsEverywhereMore.label      "Learn more">
 
-<!ENTITY  passwordManager.title          "Password Manager">
-<!ENTITY  passwordManager.desc1          "Cliqz integrates with LastPass, a third-party password manager software.">
-<!ENTITY  passwordManager.desc2          "Note that Cliqz has no control over what data third-party software might access.">
+<!ENTITY  passwordManager.title          "Password Managers">
+<!ENTITY  passwordManager.desc1          "Cliqz integrates with selected and verified third-party password manager applications.">
+<!ENTITY  passwordManager.desc2          "Note that Cliqz did not create these applications and has no control over what data they might access.">
 
 <!ENTITY  ghostery.title                 "Extended Privacy Control">
-<!ENTITY  ghostery.desc1                 "Ghostery detects hidden services that collect personal data and lets you to decide which">
+<!ENTITY  ghostery.desc1                 "Ghostery detects hidden services that collect personal data and lets you decide which">
 <!ENTITY  ghostery.desc2                 "ones to block.">

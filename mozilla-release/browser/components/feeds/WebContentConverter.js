@@ -3,17 +3,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-
 function LOG(str) {
-  dump("*** " + str + "\n");
+  // dump("*** " + str + "\n");
 }
 
 const WCCR_CONTRACTID = "@mozilla.org/embeddor.implemented/web-content-handler-registrar;1";
@@ -52,13 +48,8 @@ WebContentConverter.prototype = {
     wccr.loadPreferredHandler(request);
   },
 
-  QueryInterface(iid) {
-    if (iid.equals(Ci.nsIStreamConverter) ||
-        iid.equals(Ci.nsIStreamListener) ||
-        iid.equals(Ci.nsISupports))
-      return this;
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIStreamConverter",
+                                          "nsIStreamListener"]),
 };
 
 let WebContentConverterFactory = {
@@ -68,12 +59,7 @@ let WebContentConverterFactory = {
     return new WebContentConverter().QueryInterface(iid);
   },
 
-  QueryInterface(iid) {
-    if (iid.equals(Ci.nsIFactory) ||
-        iid.equals(Ci.nsISupports))
-      return this;
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
 };
 
 function ServiceInfo(contentType, uri, name) {
@@ -125,12 +111,7 @@ ServiceInfo.prototype = {
     return this._uri.replace(/%s/gi, encodeURIComponent(uri));
   },
 
-  QueryInterface(iid) {
-    if (iid.equals(Ci.nsIWebContentHandlerInfo) ||
-        iid.equals(Ci.nsISupports))
-      return this;
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIWebContentHandlerInfo"]),
 };
 
 const Utils = {
@@ -164,7 +145,7 @@ const Utils = {
     }
 
     // If the uri doesn't contain '%s', it won't be a good handler
-    if (uri.spec.indexOf("%s") < 0)
+    if (!uri.spec.includes("%s"))
       throw NS_ERROR_DOM_SYNTAX_ERR;
 
     return uri;
@@ -869,7 +850,7 @@ WebContentConverterRegistrar.prototype = {
   /**
    * See nsISupports
    */
-  QueryInterface: XPCOMUtils.generateQI(
+  QueryInterface: ChromeUtils.generateQI(
      [Ci.nsIWebContentConverterService,
       Ci.nsIWebContentHandlerRegistrar,
       Ci.nsIObserver,
@@ -1048,7 +1029,7 @@ WebContentConverterRegistrarContent.prototype = {
   /**
    * See nsISupports
    */
-  QueryInterface: XPCOMUtils.generateQI(
+  QueryInterface: ChromeUtils.generateQI(
                      [Ci.nsIWebContentHandlerRegistrar,
                       Ci.nsIWebContentConverterService,
                       Ci.nsIFactory])

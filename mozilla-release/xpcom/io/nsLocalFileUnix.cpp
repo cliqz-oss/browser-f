@@ -10,6 +10,7 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/DebugOnly.h"
 #include "mozilla/Sprintf.h"
 
 #include <sys/types.h>
@@ -42,7 +43,6 @@
 #include "nsReadableUtils.h"
 #include "nsLocalFile.h"
 #include "nsIComponentManager.h"
-#include "nsXPIDLString.h"
 #include "prproces.h"
 #include "nsIDirectoryEnumerator.h"
 #include "nsISimpleEnumerator.h"
@@ -66,10 +66,6 @@ static nsresult MacErrorMapper(OSErr inErr);
 #include "GeneratedJNIWrappers.h"
 #include "nsIMIMEService.h"
 #include <linux/magic.h>
-#endif
-
-#ifdef MOZ_ENABLE_CONTENTACTION
-#include <contentaction/contentaction.h>
 #endif
 
 #include "nsNativeCharsetUtils.h"
@@ -231,6 +227,11 @@ nsLocalFile::nsLocalFile()
 {
 }
 
+nsLocalFile::nsLocalFile(const nsACString& aFilePath)
+{
+  InitWithNativePath(aFilePath);
+}
+
 nsLocalFile::nsLocalFile(const nsLocalFile& aOther)
   : mPath(aOther.mPath)
 {
@@ -239,12 +240,10 @@ nsLocalFile::nsLocalFile(const nsLocalFile& aOther)
 #ifdef MOZ_WIDGET_COCOA
 NS_IMPL_ISUPPORTS(nsLocalFile,
                   nsILocalFileMac,
-                  nsILocalFile,
                   nsIFile,
                   nsIHashable)
 #else
 NS_IMPL_ISUPPORTS(nsLocalFile,
-                  nsILocalFile,
                   nsIFile,
                   nsIHashable)
 #endif
@@ -598,11 +597,26 @@ nsLocalFile::SetNativeLeafName(const nsACString& aLeafName)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsLocalFile::GetNativePath(nsACString& aResult)
+nsCString
+nsLocalFile::NativePath()
 {
-  aResult = mPath;
+  return mPath;
+}
+
+nsresult
+nsIFile::GetNativePath(nsACString& aResult)
+{
+  aResult = NativePath();
   return NS_OK;
+}
+
+nsCString
+nsIFile::HumanReadablePath()
+{
+  nsCString path;
+  DebugOnly<nsresult> rv = GetNativePath(path);
+  MOZ_ASSERT(NS_SUCCEEDED(rv));
+  return path;
 }
 
 nsresult
@@ -1995,17 +2009,6 @@ nsLocalFile::Launch()
   }
 
   return giovfs->ShowURIForInput(mPath);
-#elif defined(MOZ_ENABLE_CONTENTACTION)
-  QUrl uri = QUrl::fromLocalFile(QString::fromUtf8(mPath.get()));
-  ContentAction::Action action =
-    ContentAction::Action::defaultActionForFile(uri);
-
-  if (action.isValid()) {
-    action.trigger();
-    return NS_OK;
-  }
-
-  return NS_ERROR_FAILURE;
 #elif defined(MOZ_WIDGET_ANDROID)
   // Try to get a mimetype, if this fails just use the file uri alone
   nsresult rv;
@@ -2201,20 +2204,6 @@ NS_NewLocalFile(const nsAString& aPath, bool aFollowLinks, nsIFile** aResult)
     return rv;
   }
   return NS_NewNativeLocalFile(buf, aFollowLinks, aResult);
-}
-
-//-----------------------------------------------------------------------------
-// global init/shutdown
-//-----------------------------------------------------------------------------
-
-void
-nsLocalFile::GlobalInit()
-{
-}
-
-void
-nsLocalFile::GlobalShutdown()
-{
 }
 
 // nsILocalFileMac

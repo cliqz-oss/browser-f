@@ -3,19 +3,18 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-const { loader, require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { loader, require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
-const { EventTarget } = require("sdk/event/target");
-const { Task } = require("devtools/shared/task");
-const { Class } = require("sdk/core/heritage");
 const EventEmitter = require("devtools/shared/event-emitter");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const Services = require("Services");
 const { gDevTools } = require("devtools/client/framework/devtools");
 const { LocalizationHelper } = require("devtools/shared/l10n");
 const { ViewHelpers } = require("devtools/client/shared/widgets/view-helpers");
+
+// Use privileged promise in panel documents to prevent having them to freeze
+// during toolbox destruction. See bug 1402779.
+const Promise = require("Promise");
 
 const STRINGS_URI = "devtools/client/locales/webaudioeditor.properties";
 const L10N = new LocalizationHelper(STRINGS_URI);
@@ -85,8 +84,12 @@ EventEmitter.decorate(this);
 /**
  * DOM query helper.
  */
-function $(selector, target = document) { return target.querySelector(selector); }
-function $$(selector, target = document) { return target.querySelectorAll(selector); }
+function $(selector, target = document) {
+  return target.querySelector(selector);
+}
+function $$(selector, target = document) {
+  return target.querySelectorAll(selector);
+}
 
 /**
  * Takes an iterable collection, and a hash. Return the first

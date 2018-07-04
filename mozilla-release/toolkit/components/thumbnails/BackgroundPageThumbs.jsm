@@ -13,15 +13,12 @@ const FRAME_SCRIPT_URL = "chrome://global/content/backgroundPageThumbsContent.js
 const TELEMETRY_HISTOGRAM_ID_PREFIX = "FX_THUMBNAILS_BG_";
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 const ABOUT_NEWTAB_SEGREGATION_PREF = "privacy.usercontext.about_newtab_segregation.enabled";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/PageThumbs.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/PageThumbs.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // possible FX_THUMBNAILS_BG_CAPTURE_DONE_REASON_2 telemetry values
 const TEL_CAPTURE_DONE_OK = 0;
@@ -29,15 +26,19 @@ const TEL_CAPTURE_DONE_TIMEOUT = 1;
 // 2 and 3 were used when we had special handling for private-browsing.
 const TEL_CAPTURE_DONE_CRASHED = 4;
 const TEL_CAPTURE_DONE_BAD_URI = 5;
+const TEL_CAPTURE_DONE_LOAD_FAILED = 6;
+const TEL_CAPTURE_DONE_IMAGE_ZERO_DIMENSION = 7;
 
 // These are looked up on the global as properties below.
 XPCOMUtils.defineConstant(this, "TEL_CAPTURE_DONE_OK", TEL_CAPTURE_DONE_OK);
 XPCOMUtils.defineConstant(this, "TEL_CAPTURE_DONE_TIMEOUT", TEL_CAPTURE_DONE_TIMEOUT);
 XPCOMUtils.defineConstant(this, "TEL_CAPTURE_DONE_CRASHED", TEL_CAPTURE_DONE_CRASHED);
 XPCOMUtils.defineConstant(this, "TEL_CAPTURE_DONE_BAD_URI", TEL_CAPTURE_DONE_BAD_URI);
+XPCOMUtils.defineConstant(this, "TEL_CAPTURE_DONE_LOAD_FAILED", TEL_CAPTURE_DONE_LOAD_FAILED);
+XPCOMUtils.defineConstant(this, "TEL_CAPTURE_DONE_IMAGE_ZERO_DIMENSION", TEL_CAPTURE_DONE_IMAGE_ZERO_DIMENSION);
 
-XPCOMUtils.defineLazyModuleGetter(this, "ContextualIdentityService",
-                                  "resource://gre/modules/ContextualIdentityService.jsm");
+ChromeUtils.defineModuleGetter(this, "ContextualIdentityService",
+                               "resource://gre/modules/ContextualIdentityService.jsm");
 const global = this;
 
 const BackgroundPageThumbs = {
@@ -57,6 +58,11 @@ const BackgroundPageThumbs = {
    * @opt timeout    The capture will time out after this many milliseconds have
    *                 elapsed after the capture has progressed to the head of
    *                 the queue and started.  Defaults to 30000 (30 seconds).
+   * @opt isImage    If true, backgroundPageThumbsContent will attempt to render
+   *                 the url directly to canvas. Note that images will mostly get
+   *                 detected and rendered as such anyway, but this will ensure it.
+   * @opt targetWidth The target width when capturing an image.
+   * @opt backgroundColor The background colour when capturing an image.
    */
   capture(url, options = {}) {
     if (!PageThumbs._prefEnabled()) {
@@ -91,9 +97,18 @@ const BackgroundPageThumbs = {
    * @param url      The URL to capture.
    * @param options  An optional object that configures the capture.  See
    *                 capture() for description.
+   *   unloadingPromise This option is resolved when the calling context is
+   *                    unloading, so things can be cleaned up to avoid leak.
    * @return {Promise} A Promise that resolves when this task completes
    */
   async captureIfMissing(url, options = {}) {
+    // Short circuit this function if pref is enabled, or else we leak observers.
+    // See Bug 1400562
+    if (!PageThumbs._prefEnabled()) {
+      if (options.onDone)
+        options.onDone(url);
+      return url;
+    }
     // The fileExistsForURL call is an optimization, potentially but unlikely
     // incorrect, and no big deal when it is.  After the capture is done, we
     // atomically test whether the file exists before writing it.
@@ -105,28 +120,34 @@ const BackgroundPageThumbs = {
       return url;
     }
     let thumbPromise = new Promise((resolve, reject) => {
-      let observer = {
-        observe(subject, topic, data) { // jshint ignore:line
-          if (data === url) {
-            switch (topic) {
-              case "page-thumbnail:create":
-                resolve();
-                break;
-              case "page-thumbnail:error":
-                reject(new Error("page-thumbnail:error"));
-                break;
-            }
-            Services.obs.removeObserver(observer, "page-thumbnail:create");
-            Services.obs.removeObserver(observer, "page-thumbnail:error");
+      let observe = (subject, topic, data) => {
+        if (data === url) {
+          switch (topic) {
+            case "page-thumbnail:create":
+              resolve();
+              break;
+            case "page-thumbnail:error":
+              reject(new Error("page-thumbnail:error"));
+              break;
           }
-        },
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                               Ci.nsISupportsWeakReference])
+          cleanup();
+        }
       };
-      // Use weak references to avoid leaking in tests where the promise we
-      // return is GC'ed before it has resolved.
-      Services.obs.addObserver(observer, "page-thumbnail:create", true);
-      Services.obs.addObserver(observer, "page-thumbnail:error", true);
+      Services.obs.addObserver(observe, "page-thumbnail:create");
+      Services.obs.addObserver(observe, "page-thumbnail:error");
+
+      // Make sure to clean up to avoid leaks by removing observers when
+      // observed or when our caller is unloading
+      function cleanup() {
+        if (observe) {
+          Services.obs.removeObserver(observe, "page-thumbnail:create");
+          Services.obs.removeObserver(observe, "page-thumbnail:error");
+          observe = null;
+        }
+      }
+      if (options.unloadingPromise) {
+        options.unloadingPromise.then(cleanup);
+      }
     });
     try {
       this.capture(url, options);
@@ -171,7 +192,7 @@ const BackgroundPageThumbs = {
     wlBrowser.QueryInterface(Ci.nsIInterfaceRequestor);
     let webProgress = wlBrowser.getInterface(Ci.nsIWebProgress);
     this._listener = {
-      QueryInterface: XPCOMUtils.generateQI([
+      QueryInterface: ChromeUtils.generateQI([
         Ci.nsIWebProgressListener, Ci.nsIWebProgressListener2,
         Ci.nsISupportsWeakReference]),
     };
@@ -193,6 +214,19 @@ const BackgroundPageThumbs = {
     this._windowlessContainer = wlBrowser;
 
     return false;
+  },
+
+  _init() {
+    Services.prefs.addObserver(ABOUT_NEWTAB_SEGREGATION_PREF, this);
+    Services.obs.addObserver(this, "profile-before-change");
+  },
+
+  observe(subject, topic, data) {
+    if (topic == "profile-before-change") {
+      this._destroy();
+    } else if (topic == "nsPref:changed" && data == ABOUT_NEWTAB_SEGREGATION_PREF) {
+      BackgroundPageThumbs.renewThumbnailBrowser();
+    }
   },
 
   /**
@@ -279,6 +313,7 @@ const BackgroundPageThumbs = {
     });
 
     browser.messageManager.loadFrameScript(FRAME_SCRIPT_URL, false);
+    browser.docShellIsActive = false;
     this._thumbBrowser = browser;
   },
 
@@ -336,13 +371,7 @@ const BackgroundPageThumbs = {
   _destroyBrowserTimeout: DESTROY_BROWSER_TIMEOUT,
 };
 
-Services.prefs.addObserver(ABOUT_NEWTAB_SEGREGATION_PREF,
-  function(aSubject, aTopic, aData) {
-    if (aTopic == "nsPref:changed" && aData == ABOUT_NEWTAB_SEGREGATION_PREF) {
-      BackgroundPageThumbs.renewThumbnailBrowser();
-    }
-  });
-
+BackgroundPageThumbs._init();
 Object.defineProperty(this, "BackgroundPageThumbs", {
   value: BackgroundPageThumbs,
   enumerable: true,
@@ -364,7 +393,7 @@ function Capture(url, captureCallback, options) {
   this.id = Capture.nextID++;
   this.creationDate = new Date();
   this.doneCallbacks = [];
-  this.doneReason;
+  this.doneReason = -1;
   if (options.onDone)
     this.doneCallbacks.push(options.onDone);
 }
@@ -394,8 +423,13 @@ Capture.prototype = {
 
     // didCapture registration
     this._msgMan = messageManager;
-    this._msgMan.sendAsyncMessage("BackgroundPageThumbs:capture",
-                                  { id: this.id, url: this.url });
+    this._msgMan.sendAsyncMessage("BackgroundPageThumbs:capture", {
+      id: this.id,
+      url: this.url,
+      isImage: this.options.isImage,
+      targetWidth: this.options.targetWidth,
+      backgroundColor: this.options.backgroundColor
+    });
     this._msgMan.addMessageListener("BackgroundPageThumbs:didCapture", this);
   },
 
@@ -468,7 +502,7 @@ Capture.prototype = {
       captureCallback(this);
       for (let callback of doneCallbacks) {
         try {
-          callback.call(options, this.url);
+          callback.call(options, this.url, this.doneReason);
         } catch (err) {
           Cu.reportError(err);
         }

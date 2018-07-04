@@ -11,9 +11,8 @@
 #include "jit/BaselineIC.h"
 #include "jit/CacheIRCompiler.h"
 
-#include "jsscriptinlines.h"
-
 #include "vm/EnvironmentObject-inl.h"
+#include "vm/JSScript-inl.h"
 #include "vm/ObjectGroup-inl.h"
 #include "vm/ReceiverGuard-inl.h"
 
@@ -65,9 +64,12 @@ AddReceiver(const ReceiverGuard& receiver,
             BaselineInspector::ReceiverVector& receivers,
             BaselineInspector::ObjectGroupVector& convertUnboxedGroups)
 {
-    if (receiver.group && receiver.group->maybeUnboxedLayout()) {
-        if (receiver.group->unboxedLayout().nativeGroup())
-            return VectorAppendNoDuplicate(convertUnboxedGroups, receiver.group);
+    if (receiver.group) {
+        AutoSweepObjectGroup sweep(receiver.group);
+        if (auto* layout = receiver.group->maybeUnboxedLayout(sweep)) {
+            if (layout->nativeGroup())
+                return VectorAppendNoDuplicate(convertUnboxedGroups, receiver.group);
+        }
     }
     return VectorAppendNoDuplicate(receivers, receiver);
 }
@@ -335,11 +337,9 @@ BaselineInspector::expectedResultType(jsbytecode* pc)
             return MIRType::Double;
         return MIRType::Int32;
       case ICStub::BinaryArith_BooleanWithInt32:
-      case ICStub::UnaryArith_Int32:
       case ICStub::BinaryArith_DoubleWithInt32:
         return MIRType::Int32;
       case ICStub::BinaryArith_Double:
-      case ICStub::UnaryArith_Double:
         return MIRType::Double;
       case ICStub::BinaryArith_StringConcat:
       case ICStub::BinaryArith_StringObjectConcat:
@@ -540,10 +540,8 @@ BaselineInspector::hasSeenDoubleResult(jsbytecode* pc)
 
     if (stub->isUnaryArith_Fallback())
         return stub->toUnaryArith_Fallback()->sawDoubleResult();
-    else
-        return stub->toBinaryArith_Fallback()->sawDoubleResult();
 
-    return false;
+    return stub->toBinaryArith_Fallback()->sawDoubleResult();
 }
 
 JSObject*
@@ -629,7 +627,7 @@ BaselineInspector::getTemplateObjectForNative(jsbytecode* pc, Native native)
 
 bool
 BaselineInspector::isOptimizableConstStringSplit(jsbytecode* pc, JSString** strOut,
-                                                 JSString** sepOut, JSObject** objOut)
+                                                 JSString** sepOut, ArrayObject** objOut)
 {
     if (!hasBaselineScript())
         return false;
@@ -774,6 +772,9 @@ AddCacheIRGlobalGetter(ICCacheIR_Monitored* stub, bool innerized,
     //   <holderId = LoadObject <holder>>
     //   <GuardShape holderId>
     //   CallNativeGetterResult globalId
+
+    if (innerized)
+        return false;
 
     CacheIRReader reader(stub->stubInfo());
 
@@ -1224,6 +1225,101 @@ BaselineInspector::commonSetPropFunction(jsbytecode* pc, JSObject** holder, Shap
     return true;
 }
 
+static bool
+GetCacheIRReceiverForProtoReadSlot(ICCacheIR_Monitored* stub, ReceiverGuard* receiver,
+                                   JSObject** holderResult)
+{
+    // We match:
+    //
+    //   GuardIsObject 0
+    //   <ReceiverGuard>
+    //   1: LoadObject holder
+    //   GuardShape 1
+    //   LoadFixedSlotResult 1 or LoadDynamicSlotResult 1
+
+    *receiver = ReceiverGuard();
+    CacheIRReader reader(stub->stubInfo());
+
+    ObjOperandId objId = ObjOperandId(0);
+    if (!reader.matchOp(CacheOp::GuardIsObject, objId))
+        return false;
+
+    if (!MatchCacheIRReceiverGuard(reader, stub, stub->stubInfo(), objId, receiver))
+        return false;
+
+    if (!reader.matchOp(CacheOp::LoadObject))
+        return false;
+    ObjOperandId holderId = reader.objOperandId();
+    JSObject* holder = stub->stubInfo()->getStubField<JSObject*>(stub, reader.stubOffset()).get();
+
+    if (!reader.matchOp(CacheOp::GuardShape, holderId))
+        return false;
+    Shape* holderShape = stub->stubInfo()->getStubField<Shape*>(stub, reader.stubOffset());
+
+    if (!reader.matchOpEither(CacheOp::LoadFixedSlotResult, CacheOp::LoadDynamicSlotResult))
+        return false;
+    if (reader.objOperandId() != holderId)
+        return false;
+
+    if (holder->maybeShape() != holderShape)
+        return false;
+    if (*holderResult && *holderResult != holder)
+        return false;
+
+    *holderResult = holder;
+    return true;
+}
+
+bool
+BaselineInspector::maybeInfoForProtoReadSlot(jsbytecode* pc, ReceiverVector& receivers,
+                                             ObjectGroupVector& convertUnboxedGroups,
+                                             JSObject** holder)
+{
+    // This is like maybeInfoForPropertyOp, but for when the property exists on
+    // the prototype.
+
+    MOZ_ASSERT(receivers.empty());
+    MOZ_ASSERT(convertUnboxedGroups.empty());
+    MOZ_ASSERT(!*holder);
+
+    if (!hasBaselineScript())
+        return true;
+
+    MOZ_ASSERT(isValidPC(pc));
+    const ICEntry& entry = icEntryFromPC(pc);
+
+    ICStub* stub = entry.firstStub();
+    while (stub->next()) {
+        ReceiverGuard receiver;
+        if (stub->isCacheIR_Monitored()) {
+            if (!GetCacheIRReceiverForProtoReadSlot(stub->toCacheIR_Monitored(), &receiver,
+                                                    holder))
+            {
+                receivers.clear();
+                return true;
+            }
+        } else {
+            receivers.clear();
+            return true;
+        }
+
+        if (!AddReceiver(receiver, receivers, convertUnboxedGroups))
+            return false;
+
+        stub = stub->next();
+    }
+
+    if (stub->toGetProp_Fallback()->hadUnoptimizableAccess())
+        receivers.clear();
+
+    // Don't inline if there are more than 5 receivers.
+    if (receivers.length() > 5)
+        receivers.clear();
+
+    MOZ_ASSERT_IF(!receivers.empty(), *holder);
+    return true;
+}
+
 static MIRType
 GetCacheIRExpectedInputType(ICCacheIR_Monitored* stub)
 {
@@ -1290,27 +1386,49 @@ BaselineInspector::instanceOfData(jsbytecode* pc, Shape** shape, uint32_t* slot,
                                   JSObject** prototypeObject)
 {
     MOZ_ASSERT(*pc == JSOP_INSTANCEOF);
-
     if (!hasBaselineScript())
         return false;
 
     const ICEntry& entry = icEntryFromPC(pc);
+    ICStub* firstStub = entry.firstStub();
 
-    ICStub* stub = entry.firstStub();
-    if (!stub->isInstanceOf_Function() ||
-        !stub->next()->isInstanceOf_Fallback() ||
-        stub->next()->toInstanceOf_Fallback()->hadUnoptimizableAccess())
-    {
+    // Ensure singleton instanceof stub
+    if (!firstStub->next() ||
+        !firstStub->isCacheIR_Regular() ||
+        !firstStub->next()->isInstanceOf_Fallback() ||
+         firstStub->next()->toInstanceOf_Fallback()->hadUnoptimizableAccess())
+         {
+             return false;
+         }
+
+    ICCacheIR_Regular* stub = entry.firstStub()->toCacheIR_Regular();
+    CacheIRReader reader(stub->stubInfo());
+
+    ObjOperandId rhsId = ObjOperandId(1);
+    ObjOperandId resId = ObjOperandId(2);
+
+    if (!reader.matchOp(CacheOp::GuardIsObject, rhsId))
         return false;
-    }
 
-    ICInstanceOf_Function* optStub = stub->toInstanceOf_Function();
-    *shape = optStub->shape();
-    *prototypeObject = optStub->prototypeObject();
-    *slot = optStub->slot();
+    if (!reader.matchOp(CacheOp::GuardShape, rhsId))
+        return false;
+
+    *shape = stub->stubInfo()->getStubField<Shape*>(stub, reader.stubOffset());
+
+    if (!reader.matchOp(CacheOp::LoadObject, resId))
+        return false;
+
+    *prototypeObject = stub->stubInfo()->getStubField<JSObject*>(stub, reader.stubOffset()).get();
 
     if (IsInsideNursery(*prototypeObject))
         return false;
+
+    if (!reader.matchOp(CacheOp::GuardFunctionPrototype, rhsId))
+        return false;
+
+    reader.skip(); // Skip over the protoID;
+
+    *slot = stub->stubInfo()->getStubRawWord(stub, reader.stubOffset());
 
     return true;
 }

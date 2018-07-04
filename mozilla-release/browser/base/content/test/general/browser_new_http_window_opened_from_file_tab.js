@@ -12,7 +12,7 @@ add_task(async function() {
   const uriString = Services.io.newFileURI(dir).spec;
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, uriString);
   registerCleanupFunction(async function() {
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   });
   let browser = tab.linkedBrowser;
 
@@ -24,7 +24,7 @@ add_task(async function() {
 
   // Open new http window from JavaScript in file:// page and check that we get
   // a new window with the correct page and features.
-  let promiseNewWindow = BrowserTestUtils.waitForNewWindow(true, TEST_HTTP);
+  let promiseNewWindow = BrowserTestUtils.waitForNewWindow({url: TEST_HTTP});
   await ContentTask.spawn(browser, TEST_HTTP, uri => {
     content.open(uri, "_blank");
   });
@@ -34,13 +34,13 @@ add_task(async function() {
   });
   ok(win, "Check that an http window loaded when using window.open.");
   ok(win.menubar.visible,
-     "Check that the menu bar on the new window is visible.")
+     "Check that the menu bar on the new window is visible.");
   ok(win.toolbar.visible,
-     "Check that the tool bar on the new window is visible.")
+     "Check that the tool bar on the new window is visible.");
 
   // Open new http window from a link in file:// page and check that we get a
   // new window with the correct page and features.
-  promiseNewWindow = BrowserTestUtils.waitForNewWindow(true, TEST_HTTP);
+  promiseNewWindow = BrowserTestUtils.waitForNewWindow({url: TEST_HTTP});
   await BrowserTestUtils.synthesizeMouseAtCenter("#linkToExample", {}, browser);
   let win2 = await promiseNewWindow;
   registerCleanupFunction(async function() {
@@ -48,7 +48,7 @@ add_task(async function() {
   });
   ok(win2, "Check that an http window loaded when using link.");
   ok(win2.menubar.visible,
-     "Check that the menu bar on the new window is visible.")
+     "Check that the menu bar on the new window is visible.");
   ok(win2.toolbar.visible,
-     "Check that the tool bar on the new window is visible.")
+     "Check that the tool bar on the new window is visible.");
 });

@@ -11,15 +11,14 @@
 
 #include "mozilla/TypeTraits.h"
 
-#include "jsobj.h"
-
 #include "gc/Allocator.h"
 #include "vm/Interpreter.h"
+#include "vm/JSObject.h"
 #include "vm/TypedArrayObject.h"
 
-#include "jsatominlines.h"
-#include "jscntxtinlines.h"
-#include "jsgcinlines.h"
+#include "gc/Marking-inl.h"
+#include "vm/JSAtom-inl.h"
+#include "vm/JSContext-inl.h"
 
 namespace js {
 
@@ -38,7 +37,7 @@ AutoKeepShapeTables::~AutoKeepShapeTables()
 }
 
 inline
-StackBaseShape::StackBaseShape(JSContext* cx, const Class* clasp, uint32_t objectFlags)
+StackBaseShape::StackBaseShape(const Class* clasp, uint32_t objectFlags)
   : flags(objectFlags),
     clasp(clasp)
 {}
@@ -69,17 +68,19 @@ Shape::maybeCreateTableForLookup(JSContext* cx)
 template<MaybeAdding Adding>
 /* static */ inline bool
 Shape::search(JSContext* cx, Shape* start, jsid id, const AutoKeepShapeTables& keep,
-              Shape** pshape, ShapeTable::Entry** pentry)
+              Shape** pshape, ShapeTable** ptable, ShapeTable::Entry** pentry)
 {
     if (start->inDictionary()) {
         ShapeTable* table = start->ensureTableForDictionary(cx, keep);
         if (!table)
             return false;
+        *ptable = table;
         *pentry = &table->search<Adding>(id, keep);
         *pshape = (*pentry)->shape();
         return true;
     }
 
+    *ptable = nullptr;
     *pentry = nullptr;
     *pshape = Shape::search<Adding>(cx, start, id);
     return true;
@@ -155,7 +156,7 @@ GetterSetterWriteBarrierPost(AccessorShape* shape)
             oomUnsafe.crash("GetterSetterWriteBarrierPost");
     }
 
-    auto& storeBuffer = shape->runtimeFromActiveCooperatingThread()->gc.storeBuffer();
+    auto& storeBuffer = shape->runtimeFromMainThread()->gc.storeBuffer();
     if (nurseryShapes.length() == 1) {
         storeBuffer.putGeneric(NurseryShapesRef(shape->zone()));
     } else if (nurseryShapes.length() == MaxShapeVectorLength) {
@@ -180,7 +181,7 @@ Shape::initDictionaryShape(const StackShape& child, uint32_t nfixed, GCPtrShape*
         new (this) AccessorShape(child, nfixed);
     else
         new (this) Shape(child, nfixed);
-    this->flags |= IN_DICTIONARY;
+    this->immutableFlags |= IN_DICTIONARY;
 
     this->listp = nullptr;
     if (dictp)
@@ -391,27 +392,45 @@ Shape::searchNoHashify(Shape* start, jsid id)
 }
 
 /* static */ MOZ_ALWAYS_INLINE Shape*
-NativeObject::addProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
-                          GetterOp getter, SetterOp setter, uint32_t slot, unsigned attrs,
-                          unsigned flags, bool allowDictionary)
+NativeObject::addDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
+                              uint32_t slot, unsigned attrs)
 {
     MOZ_ASSERT(!JSID_IS_VOID(id));
-    MOZ_ASSERT(getter != JS_PropertyStub);
-    MOZ_ASSERT(setter != JS_StrictPropertyStub);
     MOZ_ASSERT(obj->uninlinedNonProxyIsExtensible());
     MOZ_ASSERT(!obj->containsPure(id));
 
     AutoKeepShapeTables keep(cx);
+    ShapeTable* table = nullptr;
     ShapeTable::Entry* entry = nullptr;
     if (obj->inDictionaryMode()) {
-        ShapeTable* table = obj->lastProperty()->ensureTableForDictionary(cx, keep);
+        table = obj->lastProperty()->ensureTableForDictionary(cx, keep);
         if (!table)
             return nullptr;
         entry = &table->search<MaybeAdding::Adding>(id, keep);
     }
 
-    return addPropertyInternal(cx, obj, id, getter, setter, slot, attrs, flags, entry,
-                               allowDictionary, keep);
+    return addDataPropertyInternal(cx, obj, id, slot, attrs, table, entry, keep);
+}
+
+/* static */ MOZ_ALWAYS_INLINE Shape*
+NativeObject::addAccessorProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
+                                  GetterOp getter, SetterOp setter, unsigned attrs)
+{
+    MOZ_ASSERT(!JSID_IS_VOID(id));
+    MOZ_ASSERT(obj->uninlinedNonProxyIsExtensible());
+    MOZ_ASSERT(!obj->containsPure(id));
+
+    AutoKeepShapeTables keep(cx);
+    ShapeTable* table = nullptr;
+    ShapeTable::Entry* entry = nullptr;
+    if (obj->inDictionaryMode()) {
+        table = obj->lastProperty()->ensureTableForDictionary(cx, keep);
+        if (!table)
+            return nullptr;
+        entry = &table->search<MaybeAdding::Adding>(id, keep);
+    }
+
+    return addAccessorPropertyInternal(cx, obj, id, getter, setter, attrs, table, entry, keep);
 }
 
 } /* namespace js */

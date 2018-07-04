@@ -3,22 +3,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
 Cu.importGlobalProperties(["fetch"]);
 
-const { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
+const { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
 const protocolHandler = Cc["@mozilla.org/network/protocol;1?name=http"]
                           .getService(Ci.nsIHttpProtocolHandler);
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
 const TLS_ERROR_REPORT_TELEMETRY_SUCCESS = 6;
 const TLS_ERROR_REPORT_TELEMETRY_FAILURE = 7;
 const HISTOGRAM_ID = "TLS_ERROR_REPORT_UI";
 
 
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
-                                  "resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+                               "resource://gre/modules/UpdateUtils.jsm");
 
 function getDERString(cert) {
   var length = {};
@@ -36,7 +34,7 @@ SecurityReporter.prototype = {
   classDescription: "Security reporter component",
   classID:          Components.ID("{8a997c9a-bea1-11e5-a1fa-be6aBc8e7f8b}"),
   contractID:       "@mozilla.org/securityreporter;1",
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISecurityReporter]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISecurityReporter]),
   reportTLSError(transportSecurityInfo, hostname, port) {
     // don't send if there's no transportSecurityInfo (since the report cannot
     // contain anything of interest)
@@ -83,7 +81,7 @@ SecurityReporter.prototype = {
       build: Services.appinfo.appBuildID,
       product: Services.appinfo.name,
       channel: UpdateUtils.UpdateChannel
-    }
+    };
 
     fetch(endpoint, {
       method: "POST",

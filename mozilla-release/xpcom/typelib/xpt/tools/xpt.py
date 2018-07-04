@@ -34,9 +34,9 @@
 A module for working with XPCOM Type Libraries.
 
 The XPCOM Type Library File Format is described at:
-http://www.mozilla.org/scriptable/typelib_file.html . It is used
-to provide type information for calling methods on XPCOM objects
-from scripting languages such as JavaScript.
+  https://www-archive.mozilla.org/scriptable/typelib_file.html
+It is used to provide type information for calling methods on XPCOM
+objects from scripting languages such as JavaScript.
 
 This module provides a set of classes representing the parts of
 a typelib in a high-level manner, as well as methods for reading
@@ -100,6 +100,155 @@ def enum(*names):
         def __setattr__(self, name, value):  # this makes it read-only
             raise NotImplementedError
     return Foo()
+
+
+# List with constant time index() and contains() methods.
+class IndexedList(object):
+    def __init__(self, iterable):
+        self._list = []
+        self._index_map = {}
+        for i in iterable:
+            self.append(i)
+
+    def sort(self):
+        self._list.sort()
+        self._index_map = {val: i for i, val in enumerate(self._list)}
+
+    def append(self, val):
+        self._index_map[val] = len(self._list)
+        self._list.append(val)
+
+    def index(self, what):
+        return self._index_map[what]
+
+    def __contains__(self, what):
+        return what in self._index_map
+
+    def __iter__(self):
+        return iter(self._list)
+
+    def __getitem__(self, index):
+        return self._list[index]
+
+    def __len__(self):
+        return len(self._list)
+
+
+class CodeGenData(object):
+    """
+    This stores the top-level data needed to generate XPT information in C++.
+    |methods| and |constants| are the top-level declarations in the module.
+    These contain names, and so are not likely to benefit from deduplication.
+    |params| are the lists of parameters for |methods|, stored concatenated.
+    These are deduplicated if there are only a few. |types| and |strings| are
+    side data stores for the other things, and are deduplicated.
+
+    """
+
+    def __init__(self):
+        self.interfaces = []
+
+        self.types = []
+        self.type_indexes = {}
+
+        self.params = []
+        self.params_indexes = {}
+
+        self.methods = []
+
+        self.constants = []
+
+        self.strings = []
+        self.string_indexes = {}
+        self.curr_string_index = 0
+
+    @staticmethod
+    def write_array_body(fd, iterator):
+        fd.write("{\n")
+        for s in iterator:
+            fd.write("  %s,\n" % s)
+        fd.write("};\n\n")
+
+    def finish(self, fd):
+        fd.write("const uint16_t XPTHeader::kNumInterfaces = %s;\n\n" % len(self.interfaces))
+
+        fd.write("const XPTInterfaceDescriptor XPTHeader::kInterfaces[] = ")
+        CodeGenData.write_array_body(fd, self.interfaces)
+
+        fd.write("const XPTTypeDescriptor XPTHeader::kTypes[] = ")
+        CodeGenData.write_array_body(fd, self.types)
+
+        fd.write("const XPTParamDescriptor XPTHeader::kParams[] = ")
+        CodeGenData.write_array_body(fd, self.params)
+
+        fd.write("const XPTMethodDescriptor XPTHeader::kMethods[] = ")
+        CodeGenData.write_array_body(fd, self.methods)
+
+        fd.write("const XPTConstDescriptor XPTHeader::kConsts[] = ")
+        CodeGenData.write_array_body(fd, self.constants)
+
+        fd.write("const char XPTHeader::kStrings[] = {\n")
+        if self.strings:
+            for s in self.strings:
+                # Store each string as individual characters to work around
+                # MSVC's limit of 65k characters for a single string literal
+                # (error C1091).
+                s_index = self.string_indexes[s]
+                fd.write("    '%s', '\\0', // %s %d\n" % ("', '".join(list(s)), s, s_index))
+        else:
+            fd.write('""')
+        fd.write('};\n\n')
+
+    def add_interface(self, new_interface):
+        assert new_interface
+        self.interfaces.append(new_interface)
+
+    def add_type(self, new_type):
+        assert isinstance(new_type, basestring)
+        if new_type in self.type_indexes:
+            return self.type_indexes[new_type]
+        index = len(self.types)
+        self.types.append(new_type)
+        self.type_indexes[new_type] = index
+        return index
+
+    def add_params(self, new_params):
+        # Always represent empty parameter lists as being at 0, for no
+        # particular reason beside it being nicer.
+        if len(new_params) == 0:
+            return 0
+
+        index = len(self.params)
+        # The limit of 4 here is fairly arbitrary. The idea is to not
+        # spend time adding large things to the cache that have little
+        # chance of getting used again.
+        if len(new_params) <= 4:
+            params_key = "".join(new_params)
+            if params_key in self.params_indexes:
+                return self.params_indexes[params_key]
+            else:
+                self.params_indexes[params_key] = index
+        self.params += new_params
+        return index
+
+    def add_methods(self, new_methods):
+        index = len(self.methods)
+        self.methods += new_methods
+        return index
+
+    def add_constants(self, new_constants):
+        index = len(self.constants)
+        self.constants += new_constants
+        return index
+
+    def add_string(self, new_string):
+        if new_string in self.string_indexes:
+            return self.string_indexes[new_string]
+        index = self.curr_string_index
+        self.strings.append(new_string)
+        self.string_indexes[new_string] = index
+        self.curr_string_index += len(new_string) + 1
+        return index
 
 
 # Descriptor types as described in the spec
@@ -231,6 +380,13 @@ class Type(object):
         """
         file.write(Type._prefixdescriptor.pack(self.encodeflags() | self.tag))
 
+    def typeDescriptorPrefixString(self):
+        """
+        Return a string for the C++ code to represent the XPTTypeDescriptorPrefix.
+
+        """
+        return "{0x%x}" % (self.encodeflags() | self.tag)
+
 
 class SimpleType(Type):
     """
@@ -278,6 +434,9 @@ class SimpleType(Type):
             else:
                 s += " *"
         return s
+
+    def code_gen(self, typelib, cd):
+        return "{%s, 0, 0}" % self.typeDescriptorPrefixString()
 
 
 class InterfaceType(Type):
@@ -333,6 +492,12 @@ class InterfaceType(Type):
         Type.write(self, typelib, file)
         # write out the interface index (1-based)
         file.write(InterfaceType._descriptor.pack(typelib.interfaces.index(self.iface) + 1))
+
+    def code_gen(self, typelib, cd):
+        index = typelib.interfaces.index(self.iface) + 1
+        hi = int(index / 256)
+        lo = index - (hi * 256)
+        return "{%s, %d, %d}" % (self.typeDescriptorPrefixString(), hi, lo)
 
     def __str__(self):
         if self.iface:
@@ -392,6 +557,10 @@ class InterfaceIsType(Type):
         """
         Type.write(self, typelib, file)
         file.write(InterfaceIsType._descriptor.pack(self.param_index))
+
+    def code_gen(self, typelib, cd):
+        return "{%s, %d, 0}" % (self.typeDescriptorPrefixString(),
+                                self.param_index)
 
     def __str__(self):
         return "InterfaceIs *"
@@ -453,6 +622,12 @@ class ArrayType(Type):
                                               self.length_is_arg_num))
         self.element_type.write(typelib, file)
 
+    def code_gen(self, typelib, cd):
+        element_type_index = cd.add_type(self.element_type.code_gen(typelib, cd))
+        return "{%s, %d, %d}" % (self.typeDescriptorPrefixString(),
+                                 self.size_is_arg_num,
+                                 element_type_index)
+
     def __str__(self):
         return "%s []" % str(self.element_type)
 
@@ -508,6 +683,10 @@ class StringWithSizeType(Type):
         Type.write(self, typelib, file)
         file.write(StringWithSizeType._descriptor.pack(self.size_is_arg_num,
                                                        self.length_is_arg_num))
+
+    def code_gen(self, typelib, cd):
+        return "{%s, %d, 0}" % (self.typeDescriptorPrefixString(),
+                                self.size_is_arg_num)
 
     def __str__(self):
         return "string_s"
@@ -565,8 +744,34 @@ class WideStringWithSizeType(Type):
         file.write(WideStringWithSizeType._descriptor.pack(self.size_is_arg_num,
                                                            self.length_is_arg_num))
 
+    def code_gen(self, typelib, cd):
+        return "{%s, %d, 0}" % (self.typeDescriptorPrefixString(),
+                                self.size_is_arg_num)
+
     def __str__(self):
         return "wstring_s"
+
+
+class CachedStringWriter(object):
+    """
+    A cache that sits in front of a file to avoid adding the same
+    string multiple times.
+    """
+    def __init__(self, file, data_pool_offset):
+        self.file = file
+        self.data_pool_offset = data_pool_offset
+        self.names = {}
+
+    def write(self, s):
+        if s:
+            if s in self.names:
+                return self.names[s]
+            offset = self.file.tell() - self.data_pool_offset + 1
+            self.names[s] = offset
+            self.file.write(s + "\x00")
+            return offset
+        else:
+            return 0
 
 
 class Param(object):
@@ -670,6 +875,9 @@ class Param(object):
         """
         file.write(Param._descriptorstart.pack(self.encodeflags()))
         self.type.write(typelib, file)
+
+    def code_gen(self, typelib, cd):
+        return "{0x%x, %s}" % (self.encodeflags(), self.type.code_gen(typelib, cd))
 
     def prefix(self):
         """
@@ -842,34 +1050,47 @@ class Method(object):
             p.write(typelib, file)
         self.result.write(typelib, file)
 
-    def write_name(self, file, data_pool_offset):
+    def write_name(self, string_writer):
         """
-        Write this method's name to |file|.
-        Assumes that |file| is currently seeked to an unused portion
-        of the data pool.
+        Write this method's name to |string_writer|'s file.
+        Assumes that this file is currently seeked to an unused
+        portion of the data pool.
 
         """
-        if self.name:
-            self._name_offset = file.tell() - data_pool_offset + 1
-            file.write(self.name + "\x00")
+        self._name_offset = string_writer.write(self.name)
+
+    def code_gen(self, typelib, cd):
+        # Don't store any extra info for methods that can't be called from JS.
+        if self.notxpcom or self.hidden:
+            string_index = 0
+            param_index = 0
+            num_params = 0
         else:
-            self._name_offset = 0
+            string_index = cd.add_string(self.name)
+            param_index = cd.add_params([p.code_gen(typelib, cd) for p in self.params])
+            num_params = len(self.params)
 
+        return "{%d, %d, 0x%x, %d}" % (string_index,
+                                       param_index,
+                                       self.encodeflags(),
+                                       num_params)
 
 class Constant(object):
     """
     A constant value of a specific type defined on an interface.
-    (ConstantDesciptor from the typelib specification.)
+    (ConstantDescriptor from the typelib specification.)
 
     """
     _descriptorstart = struct.Struct(">I")
     # Actual value is restricted to this set of types
-    # XXX: the spec lies, the source allows a bunch more
-    # https://hg.mozilla.org/mozilla-central/annotate/9c85f9aaec8c/xpcom/typelib/xpt/src/xpt_struct.c#l689
     typemap = {Type.Tags.int16: '>h',
                Type.Tags.uint16: '>H',
                Type.Tags.int32: '>i',
                Type.Tags.uint32: '>I'}
+    memberTypeMap = {Type.Tags.int16: 'int16_t',
+                     Type.Tags.uint16: 'uint16_t',
+                     Type.Tags.int32: 'int32_t',
+                     Type.Tags.uint32: 'uint32_t'}
 
     def __init__(self, name, type, value):
         self.name = name
@@ -919,18 +1140,23 @@ class Constant(object):
         tt = Constant.typemap[self.type.tag]
         file.write(struct.pack(tt, self.value))
 
-    def write_name(self, file, data_pool_offset):
+    def write_name(self, string_writer):
         """
-        Write this constants's name to |file|.
-        Assumes that |file| is currently seeked to an unused portion
-        of the data pool.
+        Write this constants's name to |string_writer|'s file.
+        Assumes that this file is currently seeked to an unused
+        portion of the data pool.
 
         """
-        if self.name:
-            self._name_offset = file.tell() - data_pool_offset + 1
-            file.write(self.name + "\x00")
-        else:
-            self._name_offset = 0
+        self._name_offset = string_writer.write(self.name)
+
+    def code_gen(self, typelib, cd):
+        string_index = cd.add_string(self.name)
+
+        # The static cast is needed for disambiguation.
+        return "{%d, %s, XPTConstValue(static_cast<%s>(%d))}" % (string_index,
+                                                                 self.type.code_gen(typelib, cd),
+                                                                 Constant.memberTypeMap[self.type.tag],
+                                                                 self.value)
 
     def __repr__(self):
         return "Constant(%s, %s, %d)" % (self.name, str(self.type), self.value)
@@ -1073,6 +1299,23 @@ class Interface(object):
                                             self._namespace_offset,
                                             self._descriptor_offset))
 
+    def encodeflags(self):
+        """
+        Encode the flags of this Interface object, return a byte
+        suitable for writing to a typelib file.
+
+        """
+        flags = 0
+        if self.scriptable:
+            flags |= 0x80
+        if self.function:
+            flags |= 0x40
+        if self.builtinclass:
+            flags |= 0x20
+        if self.main_process_scriptable_only:
+            flags |= 0x10
+        return flags
+
     def write(self, typelib, file, data_pool_offset):
         """
         Write an InterfaceDescriptor to |file|, which is assumed
@@ -1093,39 +1336,51 @@ class Interface(object):
         file.write(struct.pack(">H", len(self.constants)))
         for c in self.constants:
             c.write(typelib, file)
-        flags = 0
-        if self.scriptable:
-            flags |= 0x80
-        if self.function:
-            flags |= 0x40
-        if self.builtinclass:
-            flags |= 0x20
-        if self.main_process_scriptable_only:
-            flags |= 0x10
-        file.write(struct.pack(">B", flags))
+        file.write(struct.pack(">B", self.encodeflags()))
 
-    def write_names(self, file, data_pool_offset):
+    def write_names(self, string_writer):
         """
-        Write this interface's name and namespace to |file|,
-        as well as the names of all of its methods and constants.
-        Assumes that |file| is currently seeked to an unused portion
+        Write this interface's name and namespace to |string_writer|'s
+        file, as well as the names of all of its methods and constants.
+        Assumes that this file is currently seeked to an unused portion
         of the data pool.
 
         """
-        if self.name:
-            self._name_offset = file.tell() - data_pool_offset + 1
-            file.write(self.name + "\x00")
-        else:
-            self._name_offset = 0
-        if self.namespace:
-            self._namespace_offset = file.tell() - data_pool_offset + 1
-            file.write(self.namespace + "\x00")
-        else:
-            self._namespace_offset = 0
+        self._name_offset = string_writer.write(self.name)
+        self._namespace_offset = string_writer.write(self.namespace)
         for m in self.methods:
-            m.write_name(file, data_pool_offset)
+            m.write_name(string_writer)
         for c in self.constants:
-            c.write_name(file, data_pool_offset)
+            c.write_name(string_writer)
+
+    def code_gen_interface(self, typelib, cd):
+        iid = Typelib.code_gen_iid(self.iid)
+        string_index = cd.add_string(self.name)
+
+        parent_idx = 0
+        if self.resolved:
+            methods_index = cd.add_methods([m.code_gen(typelib, cd) for m in self.methods])
+            constants_index = cd.add_constants([c.code_gen(typelib, cd) for c in self.constants])
+            if self.parent:
+                parent_idx = typelib.interfaces.index(self.parent) + 1
+        else:
+            # Unresolved interfaces only have their name and IID set to non-zero values.
+            methods_index = 0
+            constants_index = 0
+            assert len(self.methods) == 0
+            assert len(self.constants) == 0
+            assert self.encodeflags() == 0
+
+        return "{%s, %s, %d, %d, %d, %d, %d, 0x%x} /* %s */" % (
+            iid,
+            string_index,
+            methods_index,
+            constants_index,
+            parent_idx,
+            len(self.methods),
+            len(self.constants),
+            self.encodeflags(),
+            self.name)
 
 
 class Typelib(object):
@@ -1146,7 +1401,7 @@ class Typelib(object):
 
         """
         self.version = version
-        self.interfaces = list(interfaces)
+        self.interfaces = IndexedList(interfaces)
         self.annotations = list(annotations)
         self.filename = None
 
@@ -1244,6 +1499,16 @@ class Typelib(object):
             iface.read_descriptor(xpt, data, data_pool_offset)
         return xpt
 
+    @staticmethod
+    def code_gen_iid(iid):
+        chunks = iid.split('-')
+        return "{0x%s, 0x%s, 0x%s, {0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x}}" % (
+            chunks[0], chunks[1], chunks[2],
+            int(chunks[3][0:2], 16), int(chunks[3][2:4], 16),
+            int(chunks[4][0:2], 16), int(chunks[4][2:4], 16),
+            int(chunks[4][4:6], 16), int(chunks[4][6:8], 16),
+            int(chunks[4][8:10], 16), int(chunks[4][10:12], 16))
+
     def __repr__(self):
         return "<Typelib with %d interfaces>" % len(self.interfaces)
 
@@ -1279,9 +1544,12 @@ class Typelib(object):
         fd.write("\x00" * Interface._direntry.size * len(self.interfaces))
         # save this offset, it's the data pool offset.
         data_pool_offset = fd.tell()
+
+        string_writer = CachedStringWriter(fd, data_pool_offset)
+
         # write out all the interface descriptors to the data pool
         for i in self.interfaces:
-            i.write_names(fd, data_pool_offset)
+            i.write_names(string_writer)
             i.write(self, fd, data_pool_offset)
         # now, seek back and write the header
         file_len = fd.tell()
@@ -1314,6 +1582,39 @@ class Typelib(object):
                 self.writefd(f)
         else:
             self.writefd(output_file)
+
+    def code_gen_writefd(self, fd):
+        cd = CodeGenData()
+
+        for i in self.interfaces:
+            cd.add_interface(i.code_gen_interface(self, cd))
+
+        fd.write("""/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* THIS IS AN AUTOGENERATED FILE. DO NOT EDIT. */
+
+#include "xpt_struct.h"
+
+""")
+        cd.finish(fd)
+
+    def code_gen_write(self, output_file):
+        """
+        Write the contents of this typelib to |output_file|,
+        which can be either a filename or a file-like object.
+
+        """
+        self._sanityCheck()
+
+        if isinstance(output_file, basestring):
+            with open(output_file, "wb") as f:
+                self.code_gen_writefd(f)
+        else:
+            self.code_gen_writefd(output_file)
 
     def dump(self, out):
         """
@@ -1532,9 +1833,11 @@ def xpt_link(inputs):
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
-        print >>sys.stderr, "xpt <dump|link> <files>"
+        print >>sys.stderr, "xpt <dump|link|linkgen> <files>"
         sys.exit(1)
     if sys.argv[1] == 'dump':
         xpt_dump(sys.argv[2])
     elif sys.argv[1] == 'link':
         xpt_link(sys.argv[3:]).write(sys.argv[2])
+    elif sys.argv[1] == 'linkgen':
+        xpt_link(sys.argv[3:]).code_gen_write(sys.argv[2])

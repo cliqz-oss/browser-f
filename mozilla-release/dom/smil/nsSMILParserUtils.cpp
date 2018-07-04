@@ -37,7 +37,7 @@ SkipWhitespace(RangedPtr<const char16_t>& aIter,
                const RangedPtr<const char16_t>& aEnd)
 {
   while (aIter != aEnd) {
-    if (!IsSVGWhitespace(*aIter)) {
+    if (!nsContentUtils::IsHTMLWhitespace(*aIter)) {
       return true;
     }
     ++aIter;
@@ -269,55 +269,6 @@ ParseOptionalOffset(RangedPtr<const char16_t>& aIter,
          ParseOffsetValue(aIter, aEnd, aResult);
 }
 
-bool
-ParseAccessKey(const nsAString& aSpec, nsSMILTimeValueSpecParams& aResult)
-{
-  MOZ_ASSERT(StringBeginsWith(aSpec, ACCESSKEY_PREFIX_CC) ||
-             StringBeginsWith(aSpec, ACCESSKEY_PREFIX_LC),
-             "Calling ParseAccessKey on non-accesskey-type spec");
-
-  nsSMILTimeValueSpecParams result;
-  result.mType = nsSMILTimeValueSpecParams::ACCESSKEY;
-
-  MOZ_ASSERT(ACCESSKEY_PREFIX_LC.Length() == ACCESSKEY_PREFIX_CC.Length(),
-             "Case variations for accesskey prefix differ in length");
-
-  RangedPtr<const char16_t> iter(SVGContentUtils::GetStartRangedPtr(aSpec));
-  RangedPtr<const char16_t> end(SVGContentUtils::GetEndRangedPtr(aSpec));
-
-  iter += ACCESSKEY_PREFIX_LC.Length();
-
-  // Expecting at least <accesskey> + ')'
-  if (end - iter < 2)
-    return false;
-
-  uint32_t c = *iter++;
-
-  // Process 32-bit codepoints
-  if (NS_IS_HIGH_SURROGATE(c)) {
-    if (end - iter < 2) // Expecting at least low-surrogate + ')'
-      return false;
-    uint32_t lo = *iter++;
-    if (!NS_IS_LOW_SURROGATE(lo))
-      return false;
-    c = SURROGATE_TO_UCS4(c, lo);
-  // XML 1.1 says that 0xFFFE and 0xFFFF are not valid characters
-  } else if (NS_IS_LOW_SURROGATE(c) || c == 0xFFFE || c == 0xFFFF) {
-    return false;
-  }
-
-  result.mRepeatIterationOrAccessKey = c;
-
-  if (*iter++ != ')')
-    return false;
-
-  if (!ParseOptionalOffset(iter, end, &result.mOffset) || iter != end) {
-    return false;
-  }
-  aResult = result;
-  return true;
-}
-
 void
 MoveToNextToken(RangedPtr<const char16_t>& aIter,
                 const RangedPtr<const char16_t>& aEnd,
@@ -328,7 +279,7 @@ MoveToNextToken(RangedPtr<const char16_t>& aIter,
 
   bool isCurrentCharEscaped = false;
 
-  while (aIter != aEnd && !IsSVGWhitespace(*aIter)) {
+  while (aIter != aEnd && !nsContentUtils::IsHTMLWhitespace(*aIter)) {
     if (isCurrentCharEscaped) {
       isCurrentCharEscaped = false;
     } else {
@@ -345,7 +296,7 @@ MoveToNextToken(RangedPtr<const char16_t>& aIter,
   }
 }
 
-already_AddRefed<nsIAtom>
+already_AddRefed<nsAtom>
 ConvertUnescapedTokenToAtom(const nsAString& aToken)
 {
   // Whether the token is an id-ref or event-symbol it should be a valid NCName
@@ -354,7 +305,7 @@ ConvertUnescapedTokenToAtom(const nsAString& aToken)
   return NS_Atomize(aToken);
 }
 
-already_AddRefed<nsIAtom>
+already_AddRefed<nsAtom>
 ConvertTokenToAtom(const nsAString& aToken,
                    bool aUnescapeToken)
 {
@@ -416,7 +367,7 @@ ParseElementBaseTimeValueSpec(const nsAString& aSpec,
   bool requiresUnescaping;
   MoveToNextToken(tokenEnd, end, true, requiresUnescaping);
 
-  RefPtr<nsIAtom> atom =
+  RefPtr<nsAtom> atom =
     ConvertTokenToAtom(Substring(start.get(), tokenEnd.get()),
                        requiresUnescaping);
   if (atom == nullptr) {
@@ -453,7 +404,7 @@ ParseElementBaseTimeValueSpec(const nsAString& aSpec,
         return false;
       }
       result.mType = nsSMILTimeValueSpecParams::REPEAT;
-      result.mRepeatIterationOrAccessKey = repeatValue;
+      result.mRepeatIteration = repeatValue;
     // element-name.event-symbol
     } else {
       atom = ConvertTokenToAtom(token2, requiresUnescaping);
@@ -492,7 +443,7 @@ nsSMILParserUtils::TrimWhitespace(const nsAString& aString)
   aString.EndReading(end);
 
   // Skip whitespace characters at the beginning
-  while (start != end && IsSVGWhitespace(*start)) {
+  while (start != end && nsContentUtils::IsHTMLWhitespace(*start)) {
     ++start;
   }
 
@@ -500,7 +451,7 @@ nsSMILParserUtils::TrimWhitespace(const nsAString& aString)
   while (end != start) {
     --end;
 
-    if (!IsSVGWhitespace(*end)) {
+    if (!nsContentUtils::IsHTMLWhitespace(*end)) {
       // Step back to the last non-whitespace character.
       ++end;
 
@@ -515,10 +466,11 @@ bool
 nsSMILParserUtils::ParseKeySplines(const nsAString& aSpec,
                                    FallibleTArray<nsSMILKeySpline>& aKeySplines)
 {
-  nsCharSeparatedTokenizerTemplate<IsSVGWhitespace> controlPointTokenizer(aSpec, ';');
+  nsCharSeparatedTokenizerTemplate<nsContentUtils::IsHTMLWhitespace>
+    controlPointTokenizer(aSpec, ';');
   while (controlPointTokenizer.hasMoreTokens()) {
 
-    nsCharSeparatedTokenizerTemplate<IsSVGWhitespace>
+    nsCharSeparatedTokenizerTemplate<nsContentUtils::IsHTMLWhitespace>
       tokenizer(controlPointTokenizer.nextToken(), ',',
                 nsCharSeparatedTokenizer::SEPARATOR_OPTIONAL);
 
@@ -549,7 +501,8 @@ nsSMILParserUtils::ParseSemicolonDelimitedProgressList(const nsAString& aSpec,
                                                        bool aNonDecreasing,
                                                        FallibleTArray<double>& aArray)
 {
-  nsCharSeparatedTokenizerTemplate<IsSVGWhitespace> tokenizer(aSpec, ';');
+  nsCharSeparatedTokenizerTemplate<nsContentUtils::IsHTMLWhitespace>
+    tokenizer(aSpec, ';');
 
   double previousValue = -1.0;
 
@@ -628,7 +581,8 @@ bool
 nsSMILParserUtils::ParseValuesGeneric(const nsAString& aSpec,
                                       GenericValueParser& aParser)
 {
-  nsCharSeparatedTokenizerTemplate<IsSVGWhitespace> tokenizer(aSpec, ';');
+  nsCharSeparatedTokenizerTemplate<nsContentUtils::IsHTMLWhitespace>
+    tokenizer(aSpec, ';');
   if (!tokenizer.hasMoreTokens()) { // Empty list
     return false;
   }
@@ -687,7 +641,7 @@ nsSMILParserUtils::ParseTimeValueSpecParams(const nsAString& aSpec,
   // accesskey type
   if (StringBeginsWith(spec, ACCESSKEY_PREFIX_LC) ||
       StringBeginsWith(spec, ACCESSKEY_PREFIX_CC)) {
-    return ParseAccessKey(spec, aResult);
+    return false; // accesskey is not supported
   }
 
   // event, syncbase, or repeat
@@ -714,7 +668,7 @@ nsSMILParserUtils::CheckForNegativeNumber(const nsAString& aStr)
   RangedPtr<const char16_t> end(SVGContentUtils::GetEndRangedPtr(aStr));
 
   // Skip initial whitespace
-  while (iter != end && IsSVGWhitespace(*iter)) {
+  while (iter != end && nsContentUtils::IsHTMLWhitespace(*iter)) {
     ++iter;
   }
 

@@ -28,7 +28,7 @@ struct ParamTraits<mozilla::dom::Sequence<T>>
 
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
   {
-    return ReadParam(aMsg, aIter, dynamic_cast<FallibleTArray<T>*>(aResult));
+    return ReadParam(aMsg, aIter, static_cast<FallibleTArray<T>*>(aResult));
   }
 };
 
@@ -80,6 +80,10 @@ struct ParamTraits<mozilla::dom::RTCStatsReportInternal>
     WriteParam(aMsg, aParam.mIceRollbacks);
     WriteParam(aMsg, aParam.mTransportStats);
     WriteParam(aMsg, aParam.mRtpContributingSourceStats);
+    WriteParam(aMsg, aParam.mOfferer);
+    WriteParam(aMsg, aParam.mTrickledIceCandidateStats);
+    WriteParam(aMsg, aParam.mRawLocalCandidates);
+    WriteParam(aMsg, aParam.mRawRemoteCandidates);
   }
 
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
@@ -100,7 +104,11 @@ struct ParamTraits<mozilla::dom::RTCStatsReportInternal>
         !ReadParam(aMsg, aIter, &(aResult->mIceRestarts)) ||
         !ReadParam(aMsg, aIter, &(aResult->mIceRollbacks)) ||
         !ReadParam(aMsg, aIter, &(aResult->mTransportStats)) ||
-        !ReadParam(aMsg, aIter, &(aResult->mRtpContributingSourceStats))) {
+        !ReadParam(aMsg, aIter, &(aResult->mRtpContributingSourceStats)) ||
+        !ReadParam(aMsg, aIter, &(aResult->mOfferer)) ||
+        !ReadParam(aMsg, aIter, &(aResult->mTrickledIceCandidateStats)) ||
+        !ReadParam(aMsg, aIter, &(aResult->mRawLocalCandidates)) ||
+        !ReadParam(aMsg, aIter, &(aResult->mRawRemoteCandidates))) {
       return false;
     }
 
@@ -175,6 +183,7 @@ struct ParamTraits<mozilla::dom::RTCIceCandidatePairStats>
     WriteParam(aMsg, aParam.mReadable);
     WriteParam(aMsg, aParam.mRemoteCandidateId);
     WriteParam(aMsg, aParam.mSelected);
+    WriteParam(aMsg, aParam.mComponentId);
     WriteParam(aMsg, aParam.mState);
     WriteParam(aMsg, aParam.mBytesSent);
     WriteParam(aMsg, aParam.mBytesReceived);
@@ -193,6 +202,7 @@ struct ParamTraits<mozilla::dom::RTCIceCandidatePairStats>
         !ReadParam(aMsg, aIter, &(aResult->mReadable)) ||
         !ReadParam(aMsg, aIter, &(aResult->mRemoteCandidateId)) ||
         !ReadParam(aMsg, aIter, &(aResult->mSelected)) ||
+        !ReadParam(aMsg, aIter, &(aResult->mComponentId)) ||
         !ReadParam(aMsg, aIter, &(aResult->mState)) ||
         !ReadParam(aMsg, aIter, &(aResult->mBytesSent)) ||
         !ReadParam(aMsg, aIter, &(aResult->mBytesReceived)) ||

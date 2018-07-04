@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/CheckedInt.h"
 #include "mozilla/Likely.h"
 
 // INT32_MAX is (2^31)-1. Therefore, the highest power-of-two that fits
@@ -19,7 +20,7 @@ nsHtml5Tokenizer::EnsureBufferSpace(int32_t aLength)
     // Can't happen when loading from network.
     return false;
   }
-  CheckedInt<int32_t> worstCase(strBufLen);
+  mozilla::CheckedInt<int32_t> worstCase(strBufLen);
   worstCase += aLength;
   worstCase += charRefBufLen;
   // Add 2 to account for emissions of LT_GT, LT_SOLIDUS and RSQB_RSQB.
@@ -44,12 +45,15 @@ nsHtml5Tokenizer::EnsureBufferSpace(int32_t aLength)
       // reallocation once there are a few characters in the buffer.
       worstCase += 1;
     }
-    strBuf = jArray<char16_t,int32_t>::newFallibleJArray(mozilla::RoundUpPow2(worstCase.value()));
+    strBuf = jArray<char16_t, int32_t>::newFallibleJArray(
+      mozilla::RoundUpPow2(worstCase.value()));
     if (!strBuf) {
       return false;
     }
   } else if (worstCase.value() > strBuf.length) {
-    jArray<char16_t,int32_t> newBuf = jArray<char16_t,int32_t>::newFallibleJArray(mozilla::RoundUpPow2(worstCase.value()));
+    jArray<char16_t, int32_t> newBuf =
+      jArray<char16_t, int32_t>::newFallibleJArray(
+        mozilla::RoundUpPow2(worstCase.value()));
     if (!newBuf) {
       return false;
     }
@@ -348,7 +352,8 @@ void
 nsHtml5Tokenizer::errUnescapedAmpersandInterpretedAsCharacterReference()
 {
   if (MOZ_UNLIKELY(mViewSource)) {
-    mViewSource->AddErrorToCurrentAmpersand("errUnescapedAmpersandInterpretedAsCharacterReference");
+    mViewSource->AddErrorToCurrentAmpersand(
+      "errUnescapedAmpersandInterpretedAsCharacterReference");
   }
 }
 
@@ -564,7 +569,8 @@ void
 nsHtml5Tokenizer::errNoSpaceBetweenDoctypeSystemKeywordAndQuote()
 {
   if (MOZ_LIKELY(mViewSource)) {
-    mViewSource->AddErrorToCurrentNode("errNoSpaceBetweenDoctypeSystemKeywordAndQuote");
+    mViewSource->AddErrorToCurrentNode(
+      "errNoSpaceBetweenDoctypeSystemKeywordAndQuote");
   }
 }
 
@@ -580,6 +586,7 @@ void
 nsHtml5Tokenizer::errNoSpaceBetweenDoctypePublicKeywordAndQuote()
 {
   if (MOZ_LIKELY(mViewSource)) {
-    mViewSource->AddErrorToCurrentNode("errNoSpaceBetweenDoctypePublicKeywordAndQuote");
+    mViewSource->AddErrorToCurrentNode(
+      "errNoSpaceBetweenDoctypePublicKeywordAndQuote");
   }
 }

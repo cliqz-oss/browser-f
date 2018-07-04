@@ -5,17 +5,16 @@
 
 "use strict";
 
-function test()
-{
+function test() {
   waitForExplicitFinish();
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.selectedBrowser.addEventListener("load", function () {
+  BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(function() {
     openScratchpad(runTests);
-  }, {capture: true, once: true});
+  });
 
-  content.location = "data:text/html;charset=utf8,"
-    + "test Scratchpad pretty print error goto line.";
+  gBrowser.loadURI("data:text/html;charset=utf8,"
+                   + "test Scratchpad pretty print error goto line.");
 }
 
 function testJumpToPrettyPrintError(sp, error, remark) {
@@ -48,8 +47,7 @@ function testJumpToPrettyPrintError(sp, error, remark) {
   is(inputColumn, cursor.ch + 1, "jumpToLine goto error location (column)");
 }
 
-function runTests(sw, sp)
-{
+function runTests(sw, sp) {
   sp.setText([
     "// line 1",
     "// line 2",

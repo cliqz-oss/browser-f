@@ -32,9 +32,9 @@
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/TypedArray.h"
+#include "mozilla/dom/DOMPrefs.h"
 
 #include "nsCOMPtr.h"
-#include "nsContentUtils.h" // Required for nsContentUtils::PushEnabled
 #include "mozilla/RefPtr.h"
 
 class nsIGlobalObject;
@@ -43,14 +43,11 @@ class nsIPrincipal;
 namespace mozilla {
 namespace dom {
 
-namespace workers {
-class WorkerPrivate;
-}
-
 class OwningArrayBufferViewOrArrayBufferOrString;
 class Promise;
 class PushManagerImpl;
 struct PushSubscriptionOptionsInit;
+class WorkerPrivate;
 
 class PushManager final : public nsISupports
                         , public nsWrapperCache

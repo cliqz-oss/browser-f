@@ -1,4 +1,5 @@
-Cu.import("resource://gre/modules/CrashSubmit.jsm", this);
+/* global gBrowser */
+ChromeUtils.import("resource://gre/modules/CrashSubmit.jsm", this);
 
 const SERVER_URL = "http://example.com/browser/toolkit/crashreporter/test/browser/crashreport.sjs";
 
@@ -12,8 +13,8 @@ add_task(async function() {
   // report server, and fortunately one is already set up by toolkit/
   // crashreporter/test/Makefile.in.  Assign its URL to MOZ_CRASHREPORTER_URL,
   // which CrashSubmit.jsm uses as a server override.
-  let env = Components.classes["@mozilla.org/process/environment;1"]
-                      .getService(Components.interfaces.nsIEnvironment);
+  let env = Cc["@mozilla.org/process/environment;1"]
+              .getService(Ci.nsIEnvironment);
   let noReport = env.get("MOZ_CRASHREPORTER_NO_REPORT");
   let serverUrl = env.get("MOZ_CRASHREPORTER_URL");
   env.set("MOZ_CRASHREPORTER_NO_REPORT", "");
@@ -119,6 +120,39 @@ add_task(async function() {
     urlOptIn: true
   };
 
+  // Deferred promise object used by the test to wait for the crash handler
+  let crashDeferred = PromiseUtils.defer();
+
+  // Clear out any minidumps we create from plugin crashes, this is needed
+  // because we do not submit the crash otherwise the submission process would
+  // have deleted the crash dump files for us.
+  let crashObserver = (subject, topic, data) => {
+    if (topic != "plugin-crashed") {
+      return;
+    }
+
+    let propBag = subject.QueryInterface(Ci.nsIPropertyBag2);
+    let minidumpID = propBag.getPropertyAsAString("pluginDumpID");
+
+    Services.crashmanager.ensureCrashIsPresent(minidumpID).then(() => {
+      let minidumpDir = Services.dirsvc.get("UAppData", Ci.nsIFile);
+      minidumpDir.append("Crash Reports");
+      minidumpDir.append("pending");
+
+      let pluginDumpFile = minidumpDir.clone();
+      pluginDumpFile.append(minidumpID + ".dmp");
+
+      let extraFile = minidumpDir.clone();
+      extraFile.append(minidumpID + ".extra");
+
+      pluginDumpFile.remove(false);
+      extraFile.remove(false);
+      crashDeferred.resolve();
+    });
+  };
+
+  Services.obs.addObserver(crashObserver, "plugin-crashed");
+
   setTestPluginEnabledState(Ci.nsIPluginTag.STATE_ENABLED);
 
   let pluginCrashed = promisePluginCrashed();
@@ -141,6 +175,9 @@ add_task(async function() {
     Assert.equal(!!pleaseSubmit && content.getComputedStyle(pleaseSubmit).display == "block",
       aConfig.shouldSubmissionUIBeVisible, "Plugin crash UI should not be visible");
   });
+
+  await crashDeferred.promise;
+  Services.obs.removeObserver(crashObserver, "plugin-crashed");
 });
 
 function promisePluginCrashed() {
@@ -151,13 +188,15 @@ function promisePluginCrashed() {
         resolve();
       });
     });
-  })
+  });
 }
 
 function onSubmitStatus(aSubject, aData) {
-  // Wait for success or failed, doesn't matter which.
-  if (aData != "success" && aData != "failed")
+  if (aData === "submitting") {
     return false;
+  }
+
+  is(aData, "success", "The crash report should be submitted successfully");
 
   let propBag = aSubject.QueryInterface(Ci.nsIPropertyBag);
   if (aData == "success") {
@@ -165,7 +204,7 @@ function onSubmitStatus(aSubject, aData) {
     ok(!!remoteID, "serverCrashID should be set");
 
     // Remove the submitted report file.
-    let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
+    let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
     file.initWithPath(Services.crashmanager._submittedDumpsDir);
     file.append(remoteID + ".txt");
     ok(file.exists(), "Submitted report file should exist");
@@ -176,20 +215,22 @@ function onSubmitStatus(aSubject, aData) {
   ok(extra instanceof Ci.nsIPropertyBag, "Extra data should be property bag");
 
   let val = getPropertyBagValue(extra, "PluginUserComment");
-  if (config.comment)
+  if (config.comment) {
     is(val, config.comment,
        "Comment in extra data should match comment in textbox");
-  else
+  } else {
     ok(val === undefined,
        "Comment should be absent from extra data when textbox is empty");
+  }
 
   val = getPropertyBagValue(extra, "PluginContentURL");
-  if (config.urlOptIn)
+  if (config.urlOptIn) {
     is(val, gBrowser.currentURI.spec,
        "URL in extra data should match browser URL when opt-in checked");
-  else
+  } else {
     ok(val === undefined,
        "URL should be absent from extra data when opt-in not checked");
+  }
 
   return true;
 }

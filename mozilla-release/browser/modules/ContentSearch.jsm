@@ -3,20 +3,20 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "ContentSearch",
 ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
+ChromeUtils.defineModuleGetter(this, "FormHistory",
   "resource://gre/modules/FormHistory.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SearchSuggestionController",
+ChromeUtils.defineModuleGetter(this, "SearchSuggestionController",
   "resource://gre/modules/SearchSuggestionController.jsm");
 
 const INBOUND_MESSAGE = "ContentSearch";
@@ -86,7 +86,7 @@ const MAX_SUGGESTIONS = 6;
  *     data: null
  */
 
-this.ContentSearch = {
+var ContentSearch = {
 
   // Inbound events are queued and processed in FIFO order instead of handling
   // them immediately, which would result in non-FIFO responses due to the
@@ -118,7 +118,7 @@ this.ContentSearch = {
     }
     this._searchSuggestionUIStrings = {};
     let searchBundle = Services.strings.createBundle("chrome://browser/locale/search.properties");
-    let stringNames = ["searchHeader", "searchForSomethingWith",
+    let stringNames = ["searchHeader", "searchForSomethingWith2",
                        "searchWithHeader", "searchSettings"];
 
     for (let name of stringNames) {
@@ -239,15 +239,15 @@ this.ContentSearch = {
       // Since we're going to load the search in the same browser, blur the search
       // UI to prevent further interaction before we start loading.
       this._reply(msg, "Blur");
-      browser.loadURIWithFlags(submission.uri.spec,
-                               Ci.nsIWebNavigation.LOAD_FLAGS_NONE, null, null,
-                               submission.postData);
+      browser.loadURI(submission.uri.spec, {
+        postData: submission.postData
+      });
     } else {
       let params = {
         postData: submission.postData,
         inBackground: Services.prefs.getBoolPref("browser.tabs.loadInBackground"),
       };
-      win.openUILinkIn(submission.uri.spec, where, params);
+      win.openTrustedLinkIn(submission.uri.spec, where, params);
     }
     win.BrowserSearch.recordSearchInTelemetry(engine, data.healthReportKey,
                                               { selection: data.selection });
@@ -338,7 +338,8 @@ this.ContentSearch = {
       state.engines.push({
         name: engine.name,
         iconBuffer,
-        hidden: hiddenList.indexOf(engine.name) !== -1,
+        hidden: hiddenList.includes(engine.name),
+        identifier: engine.identifier
       });
     }
     return state;
@@ -489,9 +490,7 @@ this.ContentSearch = {
   },
 
   _broadcast(type, data) {
-    Cc["@mozilla.org/globalmessagemanager;1"].
-      getService(Ci.nsIMessageListenerManager).
-      broadcastAsyncMessage(...this._msgArgs(type, data));
+    Services.mm.broadcastAsyncMessage(...this._msgArgs(type, data));
   },
 
   _msgArgs(type, data) {
@@ -519,8 +518,7 @@ this.ContentSearch = {
       return Promise.resolve(null);
     }
     return new Promise(resolve => {
-      let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].
-                createInstance(Ci.nsIXMLHttpRequest);
+      let xhr = new XMLHttpRequest();
       xhr.open("GET", uri, true);
       xhr.responseType = "arraybuffer";
       xhr.onload = () => {

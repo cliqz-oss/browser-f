@@ -36,17 +36,21 @@ void SetHistogramRecordingEnabled(mozilla::Telemetry::HistogramID aID, bool aEna
 nsresult SetHistogramRecordingEnabled(const nsACString &id, bool aEnabled);
 
 void Accumulate(mozilla::Telemetry::HistogramID aHistogram, uint32_t aSample);
+void Accumulate(mozilla::Telemetry::HistogramID aHistogram, const nsTArray<uint32_t>& aSamples);
 void Accumulate(mozilla::Telemetry::HistogramID aID, const nsCString& aKey,
                                             uint32_t aSample);
+void Accumulate(mozilla::Telemetry::HistogramID aID, const nsCString& aKey,
+                                          const nsTArray<uint32_t>& aSamples);
 void Accumulate(const char* name, uint32_t sample);
 void Accumulate(const char* name, const nsCString& key, uint32_t sample);
 
 void AccumulateCategorical(mozilla::Telemetry::HistogramID aId, const nsCString& aLabel);
+void AccumulateCategorical(mozilla::Telemetry::HistogramID aId, const nsTArray<nsCString>& aLabels);
 
 void AccumulateChild(mozilla::Telemetry::ProcessID aProcessType,
-                     const nsTArray<mozilla::Telemetry::Accumulation>& aAccumulations);
+                     const nsTArray<mozilla::Telemetry::HistogramAccumulation>& aAccumulations);
 void AccumulateChildKeyed(mozilla::Telemetry::ProcessID aProcessType,
-                          const nsTArray<mozilla::Telemetry::KeyedAccumulation>& aAccumulations);
+                          const nsTArray<mozilla::Telemetry::KeyedHistogramAccumulation>& aAccumulations);
 
 nsresult
 GetHistogramById(const nsACString &name, JSContext *cx,
@@ -60,20 +64,12 @@ const char*
 GetHistogramName(mozilla::Telemetry::HistogramID id);
 
 nsresult
-CreateHistogramSnapshots(JSContext *cx, JS::MutableHandle<JS::Value> ret,
-                         bool subsession, bool clearSubsession);
+CreateHistogramSnapshots(JSContext* aCx, JS::MutableHandleValue aResult, unsigned int aDataset,
+                         bool aSubsession, bool aClearSubsession);
 
 nsresult
-RegisteredHistograms(uint32_t aDataset, uint32_t *aCount,
-                     char*** aHistograms);
-
-nsresult
-RegisteredKeyedHistograms(uint32_t aDataset, uint32_t *aCount,
-                          char*** aHistograms);
-
-nsresult
-GetKeyedHistogramSnapshots(JSContext *cx, JS::MutableHandle<JS::Value> ret,
-                           bool subsession, bool clearSubsession);
+GetKeyedHistogramSnapshots(JSContext *aCx, JS::MutableHandleValue aResult, unsigned int aDataset,
+                           bool aSubsession, bool aClearSubsession);
 
 size_t
 GetMapShallowSizesOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf);

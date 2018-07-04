@@ -40,9 +40,9 @@ interface Element : Node {
   DOMString? getAttribute(DOMString name);
   [Pure]
   DOMString? getAttributeNS(DOMString? namespace, DOMString localName);
-  [CEReactions, Throws]
+  [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
   void setAttribute(DOMString name, DOMString value);
-  [CEReactions, Throws]
+  [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
   void setAttributeNS(DOMString? namespace, DOMString name, DOMString value);
   [CEReactions, Throws]
   void removeAttribute(DOMString name);
@@ -69,6 +69,8 @@ interface Element : Node {
   HTMLCollection getElementsByTagNameNS(DOMString? namespace, DOMString localName);
   [Pure]
   HTMLCollection getElementsByClassName(DOMString classNames);
+  [ChromeOnly, Pure]
+  sequence<Element> getElementsWithGrid();
 
   [CEReactions, Throws, Pure]
   Element? insertAdjacentElement(DOMString where, Element element); // historical
@@ -101,7 +103,7 @@ interface Element : Node {
   boolean mozMatchesSelector(DOMString selector);
 
   // Pointer events methods.
-  [Throws, Pref="dom.w3c_pointer_events.enabled", UnsafeInPrerendering]
+  [Throws, Pref="dom.w3c_pointer_events.enabled"]
   void setPointerCapture(long pointerId);
 
   [Throws, Pref="dom.w3c_pointer_events.enabled"]
@@ -117,7 +119,7 @@ interface Element : Node {
    * called. If retargetToElement is true, then all events are targetted at
    * this element. If false, events can also fire at descendants of this
    * element.
-   * 
+   *
    */
   void setCapture(optional boolean retargetToElement = false);
 
@@ -152,8 +154,17 @@ interface Element : Node {
    */
   boolean scrollByNoFlush(long dx, long dy);
 
-  // Support reporting of Grid properties
+  // Support reporting of Flexbox properties
+  /**
+   * If this element has a display:flex or display:inline-flex style,
+   * this property returns an object with computed values for flex
+   * properties, as well as a property that exposes the flex lines
+   * in this container.
+   */
+  [ChromeOnly, Pure]
+  Flex? getAsFlexContainer();
 
+  // Support reporting of Grid properties
   /**
    * If this element has a display:grid or display:inline-grid style,
    * this property returns an object with computed values for grid
@@ -171,9 +182,10 @@ interface Element : Node {
 };
 
 // http://dev.w3.org/csswg/cssom-view/
-enum ScrollLogicalPosition { "start", "end" };
+enum ScrollLogicalPosition { "start", "center", "end", "nearest" };
 dictionary ScrollIntoViewOptions : ScrollOptions {
   ScrollLogicalPosition block = "start";
+  ScrollLogicalPosition inline = "nearest";
 };
 
 // http://dev.w3.org/csswg/cssom-view/#extensions-to-the-element-interface
@@ -182,14 +194,13 @@ partial interface Element {
   DOMRect getBoundingClientRect();
 
   // scrolling
-  void scrollIntoView(boolean top);
-  void scrollIntoView(optional ScrollIntoViewOptions options);
+  void scrollIntoView(optional (boolean or ScrollIntoViewOptions) arg);
   // None of the CSSOM attributes are [Pure], because they flush
            attribute long scrollTop;   // scroll on setting
            attribute long scrollLeft;  // scroll on setting
   readonly attribute long scrollWidth;
   readonly attribute long scrollHeight;
-  
+
   void scroll(unrestricted double x, unrestricted double y);
   void scroll(optional ScrollToOptions options);
   void scrollTo(unrestricted double x, unrestricted double y);
@@ -219,12 +230,22 @@ partial interface Element {
 
 // http://domparsing.spec.whatwg.org/#extensions-to-the-element-interface
 partial interface Element {
-  [CEReactions, Pure,SetterThrows,TreatNullAs=EmptyString]
+  [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, Pure, SetterThrows, GetterCanOOM, TreatNullAs=EmptyString]
   attribute DOMString innerHTML;
   [CEReactions, Pure,SetterThrows,TreatNullAs=EmptyString]
   attribute DOMString outerHTML;
   [CEReactions, Throws]
   void insertAdjacentHTML(DOMString position, DOMString text);
+
+  /**
+   * Like the innerHTML setter, but does not sanitize its values, even in
+   * chrome-privileged documents.
+   *
+   * If you're thinking about using this, don't. You have many, much better
+   * options.
+   */
+  [ChromeOnly, Throws]
+  void unsafeSetInnerHTML(DOMString html);
 };
 
 // http://www.w3.org/TR/selectors-api/#interface-definitions
@@ -235,14 +256,26 @@ partial interface Element {
   NodeList  querySelectorAll(DOMString selectors);
 };
 
-// http://w3c.github.io/webcomponents/spec/shadow/#extensions-to-element-interface
+// https://dom.spec.whatwg.org/#dictdef-shadowrootinit
+dictionary ShadowRootInit {
+  required ShadowRootMode mode;
+};
+
+// https://dom.spec.whatwg.org/#element
 partial interface Element {
-  [Throws,Func="nsDocument::IsWebComponentsEnabled"]
-  ShadowRoot createShadowRoot();
-  [Func="nsDocument::IsWebComponentsEnabled"]
-  NodeList getDestinationInsertionPoints();
-  [Func="nsDocument::IsWebComponentsEnabled"]
+  // Shadow DOM v1
+  [Throws, Func="nsDocument::IsShadowDOMEnabled"]
+  ShadowRoot attachShadow(ShadowRootInit shadowRootInitDict);
+  [BinaryName="shadowRootByMode", Func="nsDocument::IsShadowDOMEnabled"]
   readonly attribute ShadowRoot? shadowRoot;
+
+  [ChromeOnly, Func="nsDocument::IsShadowDOMEnabled", BinaryName="shadowRoot"]
+  readonly attribute ShadowRoot? openOrClosedShadowRoot;
+
+  [BinaryName="assignedSlotByMode", Func="nsDocument::IsShadowDOMEnabled"]
+  readonly attribute HTMLSlotElement? assignedSlot;
+  [CEReactions, Unscopable, SetterThrows, Func="nsDocument::IsShadowDOMEnabled"]
+           attribute DOMString slot;
 };
 
 Element implements ChildNode;
@@ -253,14 +286,14 @@ Element implements GeometryUtils;
 
 // https://fullscreen.spec.whatwg.org/#api
 partial interface Element {
-  [Throws, UnsafeInPrerendering, Func="nsDocument::IsUnprefixedFullscreenEnabled", NeedsCallerType]
+  [Throws, Func="nsDocument::IsUnprefixedFullscreenEnabled", NeedsCallerType]
   void requestFullscreen();
-  [Throws, UnsafeInPrerendering, BinaryName="requestFullscreen", NeedsCallerType]
+  [Throws, BinaryName="requestFullscreen", NeedsCallerType]
   void mozRequestFullScreen();
 };
 
 // https://w3c.github.io/pointerlock/#extensions-to-the-element-interface
 partial interface Element {
-  [UnsafeInPrerendering, NeedsCallerType]
+  [NeedsCallerType]
   void requestPointerLock();
 };

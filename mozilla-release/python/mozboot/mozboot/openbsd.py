@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from mozboot.base import BaseBootstrapper
 
 
@@ -10,10 +12,10 @@ class OpenBSDBootstrapper(BaseBootstrapper):
         BaseBootstrapper.__init__(self, **kwargs)
 
         self.packages = [
-            'mercurial',
             'autoconf-2.13',
             'gmake',
             'gtar',
+            'node',
             'rust',
             'wget',
             'unzip',

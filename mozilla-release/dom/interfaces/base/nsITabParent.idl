@@ -7,8 +7,6 @@
 
 interface nsIPrincipal;
 
-typedef unsigned long long nsViewID;
-
 [builtinclass, scriptable, uuid(8e49f7b0-1f98-4939-bf91-e9c39cd56434)]
 interface nsITabParent : nsISupports
 {
@@ -17,22 +15,33 @@ interface nsITabParent : nsISupports
   readonly attribute boolean useAsyncPanZoom;
 
   /**
-    * Manages the docshell active state of the remote browser.
-    */
+   * Manages the docshell active state of the remote browser. Setting the
+   * docShell to be active will also cause it to render layers and upload
+   * them to the compositor. Setting the docShell as not active will clear
+   * those layers.
+   */
   attribute boolean docShellIsActive;
 
   /**
-   * Whether this tabParent is in prerender mode.
+   * When set to true, this tells the child to paint and upload layers to
+   * the compositor. When set to false, previous layers are cleared from
+   * the compositor, but only if preserveLayers is also set to false.
    */
-  [infallible] readonly attribute boolean isPrerendered;
+  attribute boolean renderLayers;
 
   /**
-    * As an optimisation, setting the docshell's active state to
-    * inactive also triggers a layer invalidation to free up some
-    * potentially unhelpful memory usage. Calling preserveLayers
-    * will cause the layers to be preserved even for inactive
-    * docshells.
-    */
+   * True if layers are being rendered and the compositor has reported
+   * receiving them.
+   */
+  readonly attribute boolean hasLayers;
+
+  /**
+   * As an optimisation, setting the docshell's active state to
+   * inactive also triggers a layer invalidation to free up some
+   * potentially unhelpful memory usage. Calling preserveLayers
+   * will cause the layers to be preserved even for inactive
+   * docshells.
+   */
   void preserveLayers(in boolean aPreserveLayers);
 
   /**
@@ -83,9 +92,13 @@ interface nsITabParent : nsISupports
    * (aAnchorX, aAnchorY) are the coordinates of the autoscroll anchor,
    * in CSS coordinates relative to the screen. aScrollId and 
    * aPresShellId identify the scroll frame that content chose to scroll.
+   * Returns whether we were successfully able to notify APZ.
+   * If this function returns true, APZ (which may live in another process)
+   * may still reject the autoscroll, but it's then APZ's reponsibility
+   * to notify content via an "autoscroll-rejected-by-apz" message.
    */
-  void startApzAutoscroll(in float aAnchorX, in float aAnchorY,
-                          in nsViewID aScrollId, in uint32_t aPresShellId);
+  boolean startApzAutoscroll(in float aAnchorX, in float aAnchorY,
+                             in nsViewID aScrollId, in uint32_t aPresShellId);
 
   /**
    * Notify APZ to stop autoscrolling.

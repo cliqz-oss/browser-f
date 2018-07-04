@@ -14,6 +14,8 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
+#include "mozilla/EnumSet.h"
+#include "mozilla/EnumTypeTraits.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/net/WebSocketFrame.h"
 #include "mozilla/TimeStamp.h"
@@ -23,11 +25,11 @@
 #include "mozilla/TypeTraits.h"
 #include "mozilla/IntegerTypeTraits.h"
 
+#include <limits>
 #include <stdint.h>
+#include <type_traits>
 
-#ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
-#endif
 #include "nsID.h"
 #include "nsIWidget.h"
 #include "nsMemory.h"
@@ -66,15 +68,23 @@ struct null_t {
 
 struct SerializedStructuredCloneBuffer final
 {
+  SerializedStructuredCloneBuffer()
+   : data(JS::StructuredCloneScope::Unassigned)
+  {
+  }
+
+  SerializedStructuredCloneBuffer(const SerializedStructuredCloneBuffer& aOther)
+   : SerializedStructuredCloneBuffer()
+  {
+    *this = aOther;
+  }
+
   SerializedStructuredCloneBuffer&
   operator=(const SerializedStructuredCloneBuffer& aOther)
   {
     data.Clear();
-    auto iter = aOther.data.Iter();
-    while (!iter.Done()) {
-      data.WriteBytes(iter.Data(), iter.RemainingInSegment());
-      iter.Advance(aOther.data, iter.RemainingInSegment());
-    }
+    data.initScope(aOther.data.scope());
+    data.Append(aOther.data);
     return *this;
   }
 
@@ -127,16 +137,12 @@ struct EnumSerializer {
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult) {
     uintParamType value;
     if (!ReadParam(aMsg, aIter, &value)) {
-#ifdef MOZ_CRASHREPORTER
       CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("IPCReadErrorReason"),
                                          NS_LITERAL_CSTRING("Bad iter"));
-#endif
       return false;
     } else if (!EnumValidator::IsLegalValue(paramType(value))) {
-#ifdef MOZ_CRASHREPORTER
       CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("IPCReadErrorReason"),
                                          NS_LITERAL_CSTRING("Illegal value"));
-#endif
       return false;
     }
     *aResult = paramType(value);
@@ -255,13 +261,6 @@ struct BitFlagsEnumSerializer
                    BitFlagsEnumValidator<E, AllBits>>
 {};
 
-template <>
-struct ParamTraits<base::ChildPrivileges>
-  : public ContiguousEnumSerializer<base::ChildPrivileges,
-                                    base::PRIVILEGES_DEFAULT,
-                                    base::PRIVILEGES_LAST>
-{ };
-
 /**
  * A helper class for serializing plain-old data (POD) structures.
  * The memory representation of the structure is written to and read from
@@ -269,6 +268,11 @@ struct ParamTraits<base::ChildPrivileges>
  * structure's members.
  *
  * Derive ParamTraits<T> from PlainOldDataSerializer<T> if T is POD.
+ *
+ * Note: For POD structures with enumeration fields, this will not do
+ *   validation of the enum values the way serializing the fields
+ *   individually would. Prefer serializing the fields individually
+ *   in such cases.
  */
 template <typename T>
 struct PlainOldDataSerializer
@@ -286,6 +290,23 @@ struct PlainOldDataSerializer
   }
 };
 
+/**
+ * A helper class for serializing empty structs. Since the struct is empty there
+ * is nothing to write, and a priori we know the result of the read.
+ */
+template <typename T>
+struct EmptyStructSerializer
+{
+  typedef T paramType;
+
+  static void Write(Message* aMsg, const paramType& aParam) {}
+
+  static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult) {
+    *aResult = {};
+    return true;
+  }
+};
+
 template<>
 struct ParamTraits<int8_t>
 {
@@ -299,6 +320,12 @@ struct ParamTraits<int8_t>
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
   {
     return aMsg->ReadBytesInto(aIter, aResult, sizeof(*aResult));
+  }
+
+  static void Log(const paramType& aParam, std::wstring* aLog)
+  {
+    // Use 0xff to avoid sign extension.
+    aLog->append(StringPrintf(L"0x%02x", aParam & 0xff));
   }
 };
 
@@ -315,6 +342,11 @@ struct ParamTraits<uint8_t>
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
   {
     return aMsg->ReadBytesInto(aIter, aResult, sizeof(*aResult));
+  }
+
+  static void Log(const paramType& aParam, std::wstring* aLog)
+  {
+    aLog->append(StringPrintf(L"0x%02x", aParam));
   }
 };
 
@@ -368,6 +400,9 @@ struct ParamTraits<nsACString>
     if (!ReadParam(aMsg, aIter, &length)) {
       return false;
     }
+    if (!aMsg->HasBytesAvailable(aIter, length)) {
+      return false;
+    }
     aResult->SetLength(length);
 
     return aMsg->ReadBytesInto(aIter, aResult->BeginWriting(), length);
@@ -416,9 +451,15 @@ struct ParamTraits<nsAString>
     if (!ReadParam(aMsg, aIter, &length)) {
       return false;
     }
+
+    mozilla::CheckedInt<uint32_t> byteLength = mozilla::CheckedInt<uint32_t>(length) * sizeof(char16_t);
+    if (!byteLength.isValid() || !aMsg->HasBytesAvailable(aIter, byteLength.value())) {
+      return false;
+    }
+
     aResult->SetLength(length);
 
-    return aMsg->ReadBytesInto(aIter, aResult->BeginWriting(), length * sizeof(char16_t));
+    return aMsg->ReadBytesInto(aIter, aResult->BeginWriting(), byteLength.value());
   }
 
   static void Log(const paramType& aParam, std::wstring* aLog)
@@ -551,6 +592,14 @@ struct ParamTraits<nsTArray<E>>
       E* elements = aResult->AppendElements(length);
       return aMsg->ReadBytesInto(aIter, elements, pickledLength);
     } else {
+
+      // Each ReadParam<E> may read more than 1 byte each; this is an attempt
+      // to minimally validate that the length isn't much larger than what's
+      // actually available in aMsg.
+      if (!aMsg->HasBytesAvailable(aIter, length)) {
+        return false;
+      }
+
       aResult->SetCapacity(length);
 
       for (uint32_t index = 0; index < length; index++) {
@@ -801,11 +850,9 @@ struct ParamTraits<JSStructuredCloneData>
   {
     MOZ_ASSERT(!(aParam.Size() % sizeof(uint64_t)));
     WriteParam(aMsg, aParam.Size());
-    auto iter = aParam.Iter();
-    while (!iter.Done()) {
-      aMsg->WriteBytes(iter.Data(), iter.RemainingInSegment(), sizeof(uint64_t));
-      iter.Advance(aParam, iter.RemainingInSegment());
-    }
+    aParam.ForEachDataChunk([&](const char* aData, size_t aSize) {
+        return aMsg->WriteBytes(aData, aSize, sizeof(uint64_t));
+    });
   }
 
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
@@ -835,7 +882,7 @@ struct ParamTraits<JSStructuredCloneData>
       return false;
     }
 
-    *aResult = JSStructuredCloneData(Move(out));
+    *aResult = JSStructuredCloneData(Move(out), JS::StructuredCloneScope::DifferentProcess);
 
     return true;
   }
@@ -903,6 +950,49 @@ struct ParamTraits<mozilla::Maybe<T>>
   }
 };
 
+template<typename T>
+struct ParamTraits<mozilla::EnumSet<T>>
+{
+  typedef mozilla::EnumSet<T> paramType;
+  typedef typename mozilla::EnumSet<T>::serializedType serializedType;
+
+  static void Write(Message* msg, const paramType& param)
+  {
+    MOZ_RELEASE_ASSERT(IsLegalValue(param.serialize()));
+    WriteParam(msg, param.serialize());
+  }
+
+  static bool Read(const Message* msg, PickleIterator* iter, paramType* result)
+  {
+    serializedType tmp;
+
+    if (ReadParam(msg, iter, &tmp)) {
+      if (IsLegalValue(tmp)) {
+        result->deserialize(tmp);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  static constexpr serializedType AllEnumBits()
+  {
+    return ~serializedType(0) >>
+           (std::numeric_limits<serializedType>::digits - (mozilla::MaxEnumValue<T>::value + 1));
+  }
+
+  static constexpr bool IsLegalValue(const serializedType value)
+  {
+    static_assert(mozilla::MaxEnumValue<T>::value < std::numeric_limits<serializedType>::digits,
+                  "Enum max value is not in the range!");
+    static_assert(std::is_unsigned<decltype(mozilla::MaxEnumValue<T>::value)>::value,
+                  "Type of MaxEnumValue<T>::value specialization should be unsigned!");
+
+    return (value & AllEnumBits()) == value;
+  }
+};
+
 template<class... Ts>
 struct ParamTraits<mozilla::Variant<Ts...>>
 {
@@ -922,7 +1012,7 @@ struct ParamTraits<mozilla::Variant<Ts...>>
   static void Write(Message* msg, const paramType& param)
   {
     WriteParam(msg, param.tag);
-    param.match(VariantWriter(msg));
+    param.match(VariantWriter{msg});
   }
 
   // Because VariantReader is a nested struct, we need the dummy template
@@ -945,12 +1035,12 @@ struct ParamTraits<mozilla::Variant<Ts...>>
         // actually interested in the N - 1 tag.
         typename mozilla::detail::Nth<N - 1, Ts...>::Type val;
         if (ReadParam(msg, iter, &val)) {
-          *result = paramType::AsVariant(val);
+          *result = mozilla::AsVariant(val);
           return true;
         }
         return false;
       } else {
-        return Next::Read(msg, iter, tag);
+        return Next::Read(msg, iter, tag, result);
       }
     }
 

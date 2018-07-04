@@ -4,36 +4,34 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["GeckoViewNavigation"];
+var EXPORTED_SYMBOLS = ["GeckoViewNavigation"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/GeckoViewModule.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/GeckoViewModule.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "EventDispatcher",
-  "resource://gre/modules/Messaging.jsm");
-
-var dump = Cu.import("resource://gre/modules/AndroidLog.jsm", {})
-           .AndroidLog.d.bind(null, "ViewNavigation");
-
-function debug(aMsg) {
-  // dump(aMsg);
-}
+XPCOMUtils.defineLazyModuleGetters(this, {
+  LoadURIDelegate: "resource://gre/modules/LoadURIDelegate.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+});
 
 // Handles navigation requests between Gecko and a GeckoView.
-// Implements GeckoView.loadUri via openURI.
 // Handles GeckoView:GoBack and :GoForward requests dispatched by
 // GeckoView.goBack and .goForward.
 // Dispatches GeckoView:LocationChange to the GeckoView on location change when
 // active.
-// Can be activated and deactivated by GeckoViewNavigation:Active and :Inactive
-// events.
+// Implements nsIBrowserDOMWindow.
 class GeckoViewNavigation extends GeckoViewModule {
-  init() {
+  onInitBrowser() {
     this.window.QueryInterface(Ci.nsIDOMChromeWindow).browserDOMWindow = this;
 
-    this.eventDispatcher.registerListener(this, [
+    // There may be a GeckoViewNavigation module in another window waiting for
+    // us to create a browser so it can call presetOpenerWindow(), so allow them
+    // to do that now.
+    Services.obs.notifyObservers(this.window, "geckoview-window-created");
+  }
+
+  onInit() {
+    this.registerListener([
       "GeckoView:GoBack",
       "GeckoView:GoForward",
       "GeckoView:LoadUri",
@@ -44,7 +42,7 @@ class GeckoViewNavigation extends GeckoViewModule {
 
   // Bundle event handler.
   onEvent(aEvent, aData, aCallback) {
-    debug("onEvent: aEvent=" + aEvent + ", aData=" + JSON.stringify(aData));
+    debug `onEvent: event=${aEvent}, data=${aData}`;
 
     switch (aEvent) {
       case "GeckoView:GoBack":
@@ -54,7 +52,31 @@ class GeckoViewNavigation extends GeckoViewModule {
         this.browser.goForward();
         break;
       case "GeckoView:LoadUri":
-        this.browser.loadURI(aData.uri, null, null, null);
+        const { uri, referrer, flags } = aData;
+
+        let navFlags = 0;
+
+        // These need to match the values in GeckoSession.LOAD_TYPE_*
+        if (flags & (1 << 0)) {
+          navFlags |= Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE;
+        }
+
+        if (flags & (1 << 1)) {
+          navFlags |= Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_PROXY;
+        }
+
+        if (flags & (1 << 2)) {
+          navFlags |= Ci.nsIWebNavigation.LOAD_FLAGS_EXTERNAL;
+        }
+
+        if (flags & (1 << 3)) {
+          navFlags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_POPUPS;
+        }
+
+        this.browser.loadURI(uri, {
+          flags: navFlags,
+          referrerURI: referrer,
+        });
         break;
       case "GeckoView:Reload":
         this.browser.reload();
@@ -67,24 +89,168 @@ class GeckoViewNavigation extends GeckoViewModule {
 
   // Message manager event handler.
   receiveMessage(aMsg) {
-    debug("receiveMessage " + aMsg.name);
+    debug `receiveMessage: ${aMsg.name}`;
   }
 
-  // nsIBrowserDOMWindow::openURI implementation.
-  openURI(aUri, aOpener, aWhere, aFlags) {
-    debug("openURI: aUri.spec=" + aUri.spec);
-    // nsIWebNavigation::loadURI(URI, loadFlags, referrer, postData, headers).
-    this.browser.loadURI(aUri.spec, null, null, null);
+  waitAndSetupWindow(aSessionId, { opener, nextTabParentId }) {
+    if (!aSessionId) {
+      return Promise.resolve(null);
+    }
+
+    return new Promise(resolve => {
+      const handler = {
+        observe(aSubject, aTopic, aData) {
+          if (aTopic === "geckoview-window-created" && aSubject.name === aSessionId) {
+            if (nextTabParentId) {
+              aSubject.browser.setAttribute("nextTabParentId", nextTabParentId.toString());
+            }
+
+            if (opener) {
+              aSubject.browser.presetOpenerWindow(opener);
+            }
+            Services.obs.removeObserver(handler, "geckoview-window-created");
+            resolve(aSubject);
+          }
+        }
+      };
+
+      // This event is emitted from createBrowser() in geckoview.js
+      Services.obs.addObserver(handler, "geckoview-window-created");
+    });
   }
 
-  // nsIBrowserDOMWindow::canClose implementation.
+  handleNewSession(aUri, aOpener, aWhere, aFlags, aNextTabParentId) {
+    debug `handleNewSession: uri=${aUri && aUri.spec}
+                             where=${aWhere} flags=${aFlags}`;
+
+    if (!this.enabled) {
+      return null;
+    }
+
+    const message = {
+      type: "GeckoView:OnNewSession",
+      uri: aUri ? aUri.displaySpec : ""
+    };
+
+    let browser = undefined;
+    this.eventDispatcher.sendRequestForResult(message).then(sessionId => {
+      return this.waitAndSetupWindow(sessionId, {
+        opener: (aFlags & Ci.nsIBrowserDOMWindow.OPEN_NO_OPENER) ? null : aOpener,
+        nextTabParentId: aNextTabParentId
+      });
+    }).then(window => {
+      browser = (window && window.browser);
+    }, () => {
+      browser = null;
+    });
+
+    // Wait indefinitely for app to respond with a browser or null
+    Services.tm.spinEventLoopUntil(() => browser !== undefined);
+    return browser;
+  }
+
+  // nsIBrowserDOMWindow.
+  createContentWindow(aUri, aOpener, aWhere, aFlags, aTriggeringPrincipal) {
+    debug `createContentWindow: uri=${aUri && aUri.spec}
+                                where=${aWhere} flags=${aFlags}`;
+
+    if (LoadURIDelegate.load(this.eventDispatcher, aUri, aWhere, aFlags,
+                             aTriggeringPrincipal)) {
+      // The app has handled the load, abort open-window handling.
+      Components.returnCode = Cr.NS_ERROR_ABORT;
+      return null;
+    }
+
+    const browser = this.handleNewSession(aUri, aOpener, aWhere, aFlags, null);
+    if (!browser) {
+      Components.returnCode = Cr.NS_ERROR_ABORT;
+      return null;
+    }
+
+    return browser.contentWindow;
+  }
+
+  // nsIBrowserDOMWindow.
+  createContentWindowInFrame(aUri, aParams, aWhere, aFlags, aNextTabParentId,
+                             aName) {
+    debug `createContentWindowInFrame: uri=${aUri && aUri.spec}
+                                       params=${aParams} where=${aWhere}
+                                       flags=${aFlags}
+                                       nextTabParentId=${aNextTabParentId}
+                                       name=${aName}`;
+
+    if (LoadURIDelegate.load(this.eventDispatcher, aUri, aWhere, aFlags, null)) {
+      // The app has handled the load, abort open-window handling.
+      Components.returnCode = Cr.NS_ERROR_ABORT;
+      return null;
+    }
+
+    const browser = this.handleNewSession(aUri, null, aWhere, aFlags, aNextTabParentId);
+    if (!browser) {
+      Components.returnCode = Cr.NS_ERROR_ABORT;
+      return null;
+    }
+
+    return browser;
+  }
+
+  handleOpenUri(aUri, aOpener, aWhere, aFlags, aTriggeringPrincipal,
+                aNextTabParentId) {
+    debug `handleOpenUri: uri=${aUri && aUri.spec}
+                          where=${aWhere} flags=${aFlags}`;
+
+    if (LoadURIDelegate.load(this.eventDispatcher, aUri, aWhere, aFlags,
+                             aTriggeringPrincipal)) {
+      return null;
+    }
+
+    let browser = this.browser;
+
+    if (aWhere === Ci.nsIBrowserDOMWindow.OPEN_NEWWINDOW ||
+        aWhere === Ci.nsIBrowserDOMWindow.OPEN_NEWTAB ||
+        aWhere === Ci.nsIBrowserDOMWindow.OPEN_SWITCHTAB) {
+      browser = this.handleNewSession(aUri, aOpener, aWhere, aFlags,
+                                      aTriggeringPrincipal);
+    }
+
+    if (!browser) {
+      // Should we throw?
+      return null;
+    }
+    browser.loadURI(aUri.spec, null, null, null, null, aTriggeringPrincipal);
+    return browser;
+  }
+
+  // nsIBrowserDOMWindow.
+  openURI(aUri, aOpener, aWhere, aFlags, aTriggeringPrincipal) {
+    const browser = this.handleOpenUri(aUri, aOpener, aWhere, aFlags,
+                                       aTriggeringPrincipal, null);
+    return browser && browser.contentWindow;
+  }
+
+  // nsIBrowserDOMWindow.
+  openURIInFrame(aUri, aParams, aWhere, aFlags, aNextTabParentId, aName) {
+    const browser = this.handleOpenUri(aUri, null, aWhere, aFlags, null,
+                                       aNextTabParentId);
+    return browser;
+  }
+
+  // nsIBrowserDOMWindow.
+  isTabContentWindow(aWindow) {
+    return this.browser.contentWindow === aWindow;
+  }
+
+  // nsIBrowserDOMWindow.
   canClose() {
-    debug("canClose");
-    return false;
+    debug `canClose`;
+    return true;
   }
 
-  register() {
-    debug("register");
+  onEnable() {
+    debug `onEnable`;
+
+    this.registerContent(
+      "chrome://geckoview/content/GeckoViewNavigationContent.js");
 
     let flags = Ci.nsIWebProgress.NOTIFY_LOCATION;
     this.progressFilter =
@@ -94,8 +260,8 @@ class GeckoViewNavigation extends GeckoViewModule {
     this.browser.addProgressListener(this.progressFilter, flags);
   }
 
-  unregister() {
-    debug("unregister");
+  onDisable() {
+    debug `onDisable`;
 
     if (!this.progressFilter) {
       return;
@@ -106,22 +272,21 @@ class GeckoViewNavigation extends GeckoViewModule {
 
   // WebProgress event handler.
   onLocationChange(aWebProgress, aRequest, aLocationURI, aFlags) {
-    debug("onLocationChange");
+    debug `onLocationChange`;
 
     let fixedURI = aLocationURI;
 
     try {
-      fixedURI = URIFixup.createExposableURI(aLocationURI);
+      fixedURI = Services.uriFixup.createExposableURI(aLocationURI);
     } catch (ex) { }
 
     let message = {
       type: "GeckoView:LocationChange",
-      uri: fixedURI.spec,
+      uri: fixedURI.displaySpec,
       canGoBack: this.browser.canGoBack,
       canGoForward: this.browser.canGoForward,
+      isTopLevel: aWebProgress.isTopLevel,
     };
-
-    debug("dispatch " + JSON.stringify(message));
 
     this.eventDispatcher.sendRequest(message);
   }

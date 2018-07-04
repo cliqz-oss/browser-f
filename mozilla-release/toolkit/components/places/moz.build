@@ -32,6 +32,7 @@ if CONFIG['MOZ_PLACES']:
     EXPORTS.mozilla.places = [
         'Database.h',
         'History.h',
+        'Shutdown.h',
     ]
 
     UNIFIED_SOURCES += [
@@ -73,6 +74,7 @@ if CONFIG['MOZ_PLACES']:
         'PlacesSyncUtils.jsm',
         'PlacesTransactions.jsm',
         'PlacesUtils.jsm',
+        'SyncedBookmarksMirror.jsm',
     ]
 
     EXTRA_COMPONENTS += [
@@ -93,7 +95,7 @@ include('/ipc/chromium/chromium-config.mozbuild')
 with Files('**'):
     BUG_COMPONENT = ('Toolkit', 'Places')
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
 
 JAR_MANIFESTS += ['jar.mn']

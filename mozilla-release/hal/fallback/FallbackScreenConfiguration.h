@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#ifndef mozilla_fallback_FallbackScreenConfiguration_h
+#define mozilla_fallback_FallbackScreenConfiguration_h
+
 #include "Hal.h"
 #include "mozilla/dom/ScreenOrientation.h"
 #include "nsIScreenManager.h"
@@ -21,22 +24,24 @@ GetCurrentScreenConfiguration(hal::ScreenConfiguration* aScreenConfiguration)
     return;
   }
 
-  nsIntRect rect;
-  int32_t colorDepth, pixelDepth;
+  int32_t colorDepth, pixelDepth, x, y, w, h;
   dom::ScreenOrientationInternal orientation;
   nsCOMPtr<nsIScreen> screen;
 
   screenMgr->GetPrimaryScreen(getter_AddRefs(screen));
-  screen->GetRect(&rect.x, &rect.y, &rect.width, &rect.height);
+  screen->GetRect(&x, &y, &w, &h);
   screen->GetColorDepth(&colorDepth);
   screen->GetPixelDepth(&pixelDepth);
-  orientation = rect.width >= rect.height
+  orientation = w >= h
                 ? dom::eScreenOrientation_LandscapePrimary
                 : dom::eScreenOrientation_PortraitPrimary;
 
-  *aScreenConfiguration =
-      hal::ScreenConfiguration(rect, orientation, 0, colorDepth, pixelDepth);
+  *aScreenConfiguration = hal::ScreenConfiguration(nsIntRect(x, y, w, h),
+						   orientation, 0,
+						   colorDepth, pixelDepth);
 }
 
 }
 }
+
+#endif // mozilla_fallback_FallbackScreenConfiguration_h

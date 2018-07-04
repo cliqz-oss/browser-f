@@ -18,8 +18,7 @@
 
 #include "wasm/WasmCompartment.h"
 
-#include "jscompartment.h"
-
+#include "vm/JSCompartment.h"
 #include "wasm/WasmInstance.h"
 
 #include "vm/Debugger-inl.h"
@@ -27,17 +26,13 @@
 using namespace js;
 using namespace wasm;
 
-// With tiering, instances can have one or two code segments, and code that
-// searches the instance list will change.  Search for Tier::TBD below.
-
-Compartment::Compartment(Zone* zone)
-  : mutatingInstances_(false)
+Compartment::Compartment(JSRuntime* rt)
+  : runtime_(rt)
 {}
 
 Compartment::~Compartment()
 {
     MOZ_ASSERT(instances_.empty());
-    MOZ_ASSERT(!mutatingInstances_);
 }
 
 struct InstanceComparator
@@ -52,39 +47,53 @@ struct InstanceComparator
         // Instances can share code, so the segments can be equal (though they
         // can't partially overlap).  If the codeBases are equal, we sort by
         // Instance address.  Thus a Code may map to many instances.
-        if (instance->codeBase(Tier::TBD) == target.codeBase(Tier::TBD))
+
+        // Compare by the first tier, always.
+
+        Tier instanceTier = instance->code().stableTier();
+        Tier targetTier = target.code().stableTier();
+
+        if (instance->codeBase(instanceTier) == target.codeBase(targetTier))
             return instance < &target ? -1 : 1;
 
-        return target.codeBase(Tier::TBD) < instance->codeBase(Tier::TBD) ? -1 : 1;
+        return target.codeBase(targetTier) < instance->codeBase(instanceTier) ? -1 : 1;
     }
 };
 
 bool
 Compartment::registerInstance(JSContext* cx, HandleWasmInstanceObject instanceObj)
 {
+    MOZ_ASSERT(runtime_ == cx->runtime());
+
     Instance& instance = instanceObj->instance();
     MOZ_ASSERT(this == &instance.compartment()->wasm);
 
     instance.ensureProfilingLabels(cx->runtime()->geckoProfiler().enabled());
 
-    if (instance.debugEnabled() &&
-        instance.compartment()->debuggerObservesAllExecution())
-    {
+    if (instance.debugEnabled() && instance.compartment()->debuggerObservesAllExecution())
         instance.ensureEnterFrameTrapsState(cx, true);
-    }
-
-    size_t index;
-    if (BinarySearchIf(instances_, 0, instances_.length(), InstanceComparator(instance), &index))
-        MOZ_CRASH("duplicate registration");
 
     {
-        AutoMutateInstances guard(*this);
-        if (!instances_.insert(instances_.begin() + index, &instance)) {
-            ReportOutOfMemory(cx);
+        if (!instances_.reserve(instances_.length() + 1))
             return false;
-        }
+
+        auto runtimeInstances = cx->runtime()->wasmInstances.lock();
+        if (!runtimeInstances->reserve(runtimeInstances->length() + 1))
+            return false;
+
+        // To avoid implementing rollback, do not fail after mutations start.
+
+        InstanceComparator cmp(instance);
+        size_t index;
+
+        MOZ_ALWAYS_FALSE(BinarySearchIf(instances_, 0, instances_.length(), cmp, &index));
+        MOZ_ALWAYS_TRUE(instances_.insert(instances_.begin() + index, &instance));
+
+        MOZ_ALWAYS_FALSE(BinarySearchIf(runtimeInstances.get(), 0, runtimeInstances->length(), cmp, &index));
+        MOZ_ALWAYS_TRUE(runtimeInstances->insert(runtimeInstances->begin() + index, &instance));
     }
 
+    // Notify the debugger after wasmInstances is unlocked.
     Debugger::onNewWasmInstance(cx, instanceObj);
     return true;
 }
@@ -92,44 +101,15 @@ Compartment::registerInstance(JSContext* cx, HandleWasmInstanceObject instanceOb
 void
 Compartment::unregisterInstance(Instance& instance)
 {
+    InstanceComparator cmp(instance);
     size_t index;
-    if (!BinarySearchIf(instances_, 0, instances_.length(), InstanceComparator(instance), &index))
-        return;
 
-    AutoMutateInstances guard(*this);
-    instances_.erase(instances_.begin() + index);
-}
+    if (BinarySearchIf(instances_, 0, instances_.length(), cmp, &index))
+        instances_.erase(instances_.begin() + index);
 
-struct PCComparator
-{
-    const void* pc;
-    explicit PCComparator(const void* pc) : pc(pc) {}
-
-    int operator()(const Instance* instance) const {
-        if (instance->codeSegment(Tier::TBD).containsCodePC(pc))
-            return 0;
-        return pc < instance->codeBase(Tier::TBD) ? -1 : 1;
-    }
-};
-
-const Code*
-Compartment::lookupCode(const void* pc, const CodeSegment** segmentp) const
-{
-    // lookupCode() can be called asynchronously from the interrupt signal
-    // handler. In that case, the signal handler is just asking whether the pc
-    // is in wasm code. If instances_ is being mutated then we can't be
-    // executing wasm code so returning nullptr is fine.
-    if (mutatingInstances_)
-        return nullptr;
-
-    size_t index;
-    if (!BinarySearchIf(instances_, 0, instances_.length(), PCComparator(pc), &index))
-        return nullptr;
-
-    const Code& code = instances_[index]->code();
-    if (segmentp)
-        *segmentp = &code.segment(Tier::TBD);
-    return &code;
+    auto runtimeInstances = runtime_->wasmInstances.lock();
+    if (BinarySearchIf(runtimeInstances.get(), 0, runtimeInstances->length(), cmp, &index))
+        runtimeInstances->erase(runtimeInstances->begin() + index);
 }
 
 void
@@ -143,4 +123,20 @@ void
 Compartment::addSizeOfExcludingThis(MallocSizeOf mallocSizeOf, size_t* compartmentTables)
 {
     *compartmentTables += instances_.sizeOfExcludingThis(mallocSizeOf);
+}
+
+void
+wasm::InterruptRunningCode(JSContext* cx)
+{
+    auto runtimeInstances = cx->runtime()->wasmInstances.lock();
+    for (Instance* instance : runtimeInstances.get())
+        instance->tlsData()->setInterrupt();
+}
+
+void
+wasm::ResetInterruptState(JSContext* cx)
+{
+    auto runtimeInstances = cx->runtime()->wasmInstances.lock();
+    for (Instance* instance : runtimeInstances.get())
+        instance->tlsData()->resetInterrupt(cx);
 }

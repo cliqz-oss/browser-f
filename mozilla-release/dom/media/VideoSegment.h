@@ -40,8 +40,11 @@ public:
   Image* GetImage() const { return mImage; }
   void SetForceBlack(bool aForceBlack) { mForceBlack = aForceBlack; }
   bool GetForceBlack() const { return mForceBlack; }
-  void SetPrincipalHandle(const PrincipalHandle& aPrincipalHandle) { mPrincipalHandle = aPrincipalHandle; }
-  PrincipalHandle GetPrincipalHandle() const { return mPrincipalHandle; }
+  void SetPrincipalHandle(PrincipalHandle aPrincipalHandle)
+  {
+    mPrincipalHandle = Forward<PrincipalHandle>(aPrincipalHandle);
+  }
+  const PrincipalHandle& GetPrincipalHandle() const { return mPrincipalHandle; }
   const gfx::IntSize& GetIntrinsicSize() const { return mIntrinsicSize; }
   void SetNull();
   void TakeFrom(VideoFrame* aFrame);
@@ -62,8 +65,6 @@ protected:
 };
 
 struct VideoChunk {
-  VideoChunk();
-  ~VideoChunk();
   void SliceTo(StreamTime aStart, StreamTime aEnd)
   {
     NS_ASSERTION(aStart >= 0 && aStart < aEnd && aEnd <= mDuration,
@@ -91,7 +92,7 @@ struct VideoChunk {
     return 0;
   }
 
-  PrincipalHandle GetPrincipalHandle() const { return mFrame.GetPrincipalHandle(); }
+  const PrincipalHandle& GetPrincipalHandle() const { return mFrame.GetPrincipalHandle(); }
 
   StreamTime mDuration;
   VideoFrame mFrame;
@@ -104,6 +105,11 @@ public:
   typedef mozilla::gfx::IntSize IntSize;
 
   VideoSegment();
+  VideoSegment(VideoSegment&& aSegment);
+
+  VideoSegment(const VideoSegment&)=delete;
+  VideoSegment& operator= (const VideoSegment&)=delete;
+
   ~VideoSegment();
 
   void AppendFrame(already_AddRefed<Image>&& aImage,

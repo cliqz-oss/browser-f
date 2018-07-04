@@ -10,8 +10,12 @@
  * liability, trademark and document use rules apply.
  */
 
-[Constructor,
- Pref="dom.webaudio.enabled"]
+dictionary AudioContextOptions {
+             float        sampleRate = 0;
+};
+
+[Pref="dom.webaudio.enabled",
+ Constructor(optional AudioContextOptions contextOptions)]
 interface AudioContext : BaseAudioContext {
 
     // Bug 1324545: readonly        attribute double outputLatency;
@@ -22,10 +26,10 @@ interface AudioContext : BaseAudioContext {
     [Throws]
     Promise<void> close();
 
-    [NewObject, Throws, UnsafeInPrerendering]
+    [NewObject, Throws]
     MediaElementAudioSourceNode createMediaElementSource(HTMLMediaElement mediaElement);
 
-    [NewObject, Throws, UnsafeInPrerendering]
+    [NewObject, Throws]
     MediaStreamAudioSourceNode createMediaStreamSource(MediaStream mediaStream);
 
     // Bug 1324548: MediaStreamTrackAudioSourceNode createMediaStreamTrackSource (AudioMediaStreamTrack mediaStreamTrack);

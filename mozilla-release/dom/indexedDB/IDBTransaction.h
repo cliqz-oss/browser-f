@@ -25,7 +25,7 @@ class EventChainPreVisitor;
 
 namespace dom {
 
-class DOMError;
+class DOMException;
 class DOMStringList;
 class IDBDatabase;
 class IDBObjectStore;
@@ -76,7 +76,7 @@ public:
 
 private:
   RefPtr<IDBDatabase> mDatabase;
-  RefPtr<DOMError> mError;
+  RefPtr<DOMException> mError;
   nsTArray<nsString> mObjectStoreNames;
   nsTArray<RefPtr<IDBObjectStore>> mObjectStores;
   nsTArray<RefPtr<IDBObjectStore>> mDeletedObjectStores;
@@ -282,7 +282,7 @@ public:
   IDBTransactionMode
   GetMode(ErrorResult& aRv) const;
 
-  DOMError*
+  DOMException*
   GetError() const;
 
   already_AddRefed<IDBObjectStore>
@@ -317,9 +317,8 @@ public:
   virtual JSObject*
   WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
-  // nsIDOMEventTarget
-  virtual nsresult
-  GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+  // EventTarget
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
 private:
   IDBTransaction(IDBDatabase* aDatabase,
@@ -328,7 +327,7 @@ private:
   ~IDBTransaction();
 
   void
-  AbortInternal(nsresult aAbortCode, already_AddRefed<DOMError> aError);
+  AbortInternal(nsresult aAbortCode, already_AddRefed<DOMException> aError);
 
   void
   SendCommit();

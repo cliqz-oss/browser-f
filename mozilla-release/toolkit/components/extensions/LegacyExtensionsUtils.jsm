@@ -1,10 +1,11 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["LegacyExtensionsUtils"];
+var EXPORTED_SYMBOLS = ["LegacyExtensionsUtils"];
 
 /* exported LegacyExtensionsUtils, LegacyExtensionContext */
 
@@ -13,18 +14,16 @@ this.EXPORTED_SYMBOLS = ["LegacyExtensionsUtils"];
  * and exchange messages with the embedded WebExtension.
  */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Extension",
+                               "resource://gre/modules/Extension.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionChild",
+                               "resource://gre/modules/ExtensionChild.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "Extension",
-                                  "resource://gre/modules/Extension.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionChild",
-                                  "resource://gre/modules/ExtensionChild.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-
-Cu.import("resource://gre/modules/ExtensionCommon.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 
 var {
   BaseContext,
@@ -128,11 +127,13 @@ class EmbeddedExtension {
    *
    * @param {number} reason
    *   The add-on startup bootstrap reason received from the XPIProvider.
+   * @param {object} [addonData]
+   *   Additional data to pass to the Extension constructor.
    *
    * @returns {Promise<LegacyContextAPI>} A promise which resolve to the API exposed to the
    *   legacy context.
    */
-  startup(reason) {
+  startup(reason, addonData = {}) {
     if (this.started) {
       return Promise.reject(new Error("This embedded extension has already been started"));
     }
@@ -141,8 +142,13 @@ class EmbeddedExtension {
     this.startupPromise = new Promise((resolve, reject) => {
       let embeddedExtensionURI = Services.io.newURI("webextension/", null, this.resourceURI);
 
+      let {builtIn, signedState, temporarilyInstalled} = addonData;
+
       // This is the instance of the WebExtension embedded in the hybrid add-on.
       this.extension = new Extension({
+        builtIn,
+        signedState,
+        temporarilyInstalled,
         id: this.addonId,
         resourceURI: embeddedExtensionURI,
         version: this.version,
@@ -246,7 +252,7 @@ EmbeddedExtensionManager = {
   },
 };
 
-this.LegacyExtensionsUtils = {
+var LegacyExtensionsUtils = {
   getEmbeddedExtensionFor: (addon) => {
     return EmbeddedExtensionManager.getEmbeddedExtensionFor(addon);
   },

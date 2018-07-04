@@ -18,14 +18,17 @@ class FrameParser;
 }
 class FlacTrackDemuxer;
 
+DDLoggedTypeDeclNameAndBase(FlacDemuxer, MediaDataDemuxer);
+DDLoggedTypeNameAndBase(FlacTrackDemuxer, MediaTrackDemuxer);
 
-class FlacDemuxer : public MediaDataDemuxer
+class FlacDemuxer
+  : public MediaDataDemuxer
+  , public DecoderDoctorLifeLogger<FlacDemuxer>
 {
 public:
   // MediaDataDemuxer interface.
   explicit FlacDemuxer(MediaResource* aSource);
   RefPtr<InitPromise> Init() override;
-  bool HasTrackType(TrackInfo::TrackType aType) const override;
   uint32_t GetNumberTracks(TrackInfo::TrackType aType) const override;
   already_AddRefed<MediaTrackDemuxer> GetTrackDemuxer(
     TrackInfo::TrackType aType, uint32_t aTrackNumber) override;
@@ -41,7 +44,9 @@ private:
   RefPtr<FlacTrackDemuxer> mTrackDemuxer;
 };
 
-class FlacTrackDemuxer : public MediaTrackDemuxer
+class FlacTrackDemuxer
+  : public MediaTrackDemuxer
+  , public DecoderDoctorLifeLogger<FlacTrackDemuxer>
 {
 public:
   explicit FlacTrackDemuxer(MediaResource* aSource);

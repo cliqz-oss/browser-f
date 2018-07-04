@@ -37,7 +37,7 @@ add_task(async function() {
     popupPromise = BrowserTestUtils.waitForEvent(backCtxtMenu, "popupshown");
     BrowserTestUtils.synthesizeMouseAtCenter("body", { type: "contextmenu", button: 2 }, aBrowser);
     await popupPromise;
-    loadPromise = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, VIEW_SRC_URI);
+    loadPromise = BrowserTestUtils.waitForContentEvent(tab.linkedBrowser, "pageshow");
     let backItem = backCtxtMenu.getElementsByAttribute("id", "context-back")[0];
     backItem.click();
     backCtxtMenu.hidePopup();
@@ -45,6 +45,6 @@ add_task(async function() {
     is(gBrowser.selectedBrowser.currentURI.spec, VIEW_SRC_URI,
       "clicking .back() to view-source of html succeeded");
 
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   });
 });

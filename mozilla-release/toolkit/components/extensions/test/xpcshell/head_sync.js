@@ -6,8 +6,8 @@
 
 /* exported withSyncContext */
 
-Components.utils.import("resource://gre/modules/Services.jsm", this);
-Components.utils.import("resource://gre/modules/ExtensionCommon.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm", this);
 
 var {
   BaseContext,
@@ -20,7 +20,7 @@ class Context extends BaseContext {
       value: principal,
       configurable: true,
     });
-    this.sandbox = Components.utils.Sandbox(principal, {wantXrays: false});
+    this.sandbox = Cu.Sandbox(principal, {wantXrays: false});
     this.extension = {id: "test@web.extension"};
   }
 

@@ -4,13 +4,7 @@
 const URL = "http://mochi.test:8888/";
 const URL_COPY = URL + "#copy";
 
-XPCOMUtils.defineLazyGetter(this, "Sanitizer", function() {
-  let tmp = {};
-  Cc["@mozilla.org/moz/jssubscript-loader;1"]
-    .getService(Ci.mozIJSSubScriptLoader)
-    .loadSubScript("chrome://browser/content/sanitize.js", tmp);
-  return tmp.Sanitizer;
-});
+const {Sanitizer} = ChromeUtils.import("resource:///modules/Sanitizer.jsm", {});
 
 /**
  * These tests ensure that the thumbnail storage is working as intended.
@@ -27,15 +21,15 @@ function* runTests() {
 
     // Make sure Storage.copy() updates an existing file.
     await PageThumbsStorage.copy(URL, URL_COPY);
-    let copy = new FileUtils.File(PageThumbsStorage.getFilePathForURL(URL_COPY));
+    let copy = new FileUtils.File(PageThumbsStorageService.getFilePathForURL(URL_COPY));
     let mtime = copy.lastModifiedTime -= 60;
 
     await PageThumbsStorage.copy(URL, URL_COPY);
-    isnot(new FileUtils.File(PageThumbsStorage.getFilePathForURL(URL_COPY)).lastModifiedTime, mtime,
+    isnot(new FileUtils.File(PageThumbsStorageService.getFilePathForURL(URL_COPY)).lastModifiedTime, mtime,
           "thumbnail file was updated");
 
-    let file = new FileUtils.File(PageThumbsStorage.getFilePathForURL(URL));
-    let fileCopy = new FileUtils.File(PageThumbsStorage.getFilePathForURL(URL_COPY));
+    let file = new FileUtils.File(PageThumbsStorageService.getFilePathForURL(URL));
+    let fileCopy = new FileUtils.File(PageThumbsStorageService.getFilePathForURL(URL_COPY));
 
     // Clear the browser history. Retry until the files are gone because Windows
     // locks them sometimes.
@@ -74,30 +68,13 @@ async function promiseClearFile(aFile, aURL) {
 }
 
 function promiseClearHistory(aUseRange) {
-  let s = new Sanitizer();
-  s.prefDomain = "privacy.cpd.";
-
-  let prefs = gPrefService.getBranch(s.prefDomain);
-  prefs.setBoolPref("history", true);
-  prefs.setBoolPref("downloads", false);
-  prefs.setBoolPref("cache", false);
-  prefs.setBoolPref("cookies", false);
-  prefs.setBoolPref("formdata", false);
-  prefs.setBoolPref("offlineApps", false);
-  prefs.setBoolPref("passwords", false);
-  prefs.setBoolPref("sessions", false);
-  prefs.setBoolPref("siteSettings", false);
-
+  let options = {};
   if (aUseRange) {
     let usec = Date.now() * 1000;
-    s.range = [usec - 10 * 60 * 1000 * 1000, usec];
-    s.ignoreTimespan = false;
+    options.range = [usec - 10 * 60 * 1000 * 1000, usec];
+    options.ignoreTimespan = false;
   }
-
-  return s.sanitize().then(() => {
-    s.range = null;
-    s.ignoreTimespan = true;
-  });
+  return Sanitizer.sanitize(["history"], options);
 }
 
 function promiseCreateThumbnail() {

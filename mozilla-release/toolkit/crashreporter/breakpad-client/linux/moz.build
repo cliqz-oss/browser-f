@@ -31,12 +31,8 @@ if CONFIG['OS_TARGET'] == 'Android':
     ]
 
 # We allow warnings for third-party code that can be updated from upstream.
-ALLOW_COMPILER_WARNINGS = True
+AllowCompilerWarnings()
 
 FINAL_LIBRARY = 'xul'
-
-if CONFIG['OS_TARGET'] == 'Android' and CONFIG['CPU_ARCH'] == 'x86':
-    # The NDK's user.h defines this struct with a different name.
-    DEFINES['user_fpxregs_struct'] = 'user_fxsr_struct'
 
 include('/toolkit/crashreporter/crashreporter.mozbuild')

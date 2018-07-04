@@ -4,8 +4,7 @@
 
 requestLongerTimeout(2);
 
-let Cu = Components.utils;
-let {HttpServer} = Cu.import("resource://testing-common/httpd.js", {});
+let {HttpServer} = ChromeUtils.import("resource://testing-common/httpd.js", {});
 
 const NUM_ISOLATION_LOADS = 2;
 const NUM_CACHED_LOADS = 1;
@@ -61,9 +60,7 @@ function doBefore() {
   imageCache.clearCache(true);
   imageCache.clearCache(false);
   info("XXX clearning network cache");
-  let networkCache = Cc["@mozilla.org/netwerk/cache-storage-service;1"]
-                        .getService(Ci.nsICacheStorageService);
-  networkCache.clear();
+  Services.cache2.clear();
 }
 
 // the test function does nothing on purpose.

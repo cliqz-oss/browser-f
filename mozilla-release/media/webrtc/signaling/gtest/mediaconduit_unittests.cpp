@@ -13,6 +13,7 @@ using namespace std;
 #include <MediaConduitInterface.h>
 #include <VideoConduit.h>
 #include "mozilla/UniquePtr.h"
+#include "mozilla/Unused.h"
 #include "nss.h"
 #include "runnable_utils.h"
 #include "signaling/src/common/EncodingConstraints.h"
@@ -224,7 +225,7 @@ void AudioSendAndReceive::GenerateAndReadSamples()
    //Create input file with the music
    WriteWaveHeader(PLAYOUT_SAMPLE_FREQUENCY, 1, inFile);
    GenerateMusic(inbuf, SAMPLES);
-   fwrite(inbuf,1,SAMPLES*sizeof(inbuf[0])*CHANNELS,inFile);
+   mozilla::Unused << fwrite(inbuf,1,SAMPLES*sizeof(inbuf[0])*CHANNELS,inFile);
    FinishWaveHeader(inFile);
    fclose(inFile);
 
@@ -243,7 +244,8 @@ void AudioSendAndReceive::GenerateAndReadSamples()
 
     mSession->SendAudioFrame(audioInput.get(),
                              PLAYOUT_SAMPLE_LENGTH,
-                             PLAYOUT_SAMPLE_FREQUENCY,10);
+                             PLAYOUT_SAMPLE_FREQUENCY,
+                             1, 10);
 
     PR_Sleep(PR_MillisecondsToInterval(10));
     mOtherSession->GetAudioFrame(audioOutput.get(), PLAYOUT_SAMPLE_FREQUENCY,
@@ -538,6 +540,8 @@ class TransportConduitTest : public ::testing::Test
 
     err = videoSession->ConfigureSendMediaCodec(nullptr);
     EXPECT_TRUE(err != mozilla::kMediaConduitNoError);
+
+    videoSession->DeleteStreams();
   }
 
  private:

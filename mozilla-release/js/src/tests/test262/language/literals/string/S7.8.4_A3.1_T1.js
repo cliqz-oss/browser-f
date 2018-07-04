@@ -7,9 +7,11 @@ info: "StringLiteral :: \"\\\" or '\\' is not correct"
 es5id: 7.8.4_A3.1_T1
 description: Checking if execution of "\" fails
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 //CHECK#1
 "\"

@@ -1,3 +1,5 @@
+import os
+
 BRANCH = "try"
 MOZILLA_DIR = BRANCH
 EN_US_BINARY_URL = "http://archive.mozilla.org/pub/" \
@@ -6,7 +8,7 @@ EN_US_BINARY_URL = "http://archive.mozilla.org/pub/" \
 config = {
     "branch": "try",
     "log_name": "single_locale",
-    "objdir": "obj-l10n",
+    "objdir": "obj-firefox",
     "is_automation": True,
     "buildbot_json_path": "buildprops.json",
     "force_clobber": True,
@@ -14,17 +16,13 @@ config = {
     "locales_file": "%s/mobile/locales/l10n-changesets.json" % MOZILLA_DIR,
     "locales_dir": "mobile/android/locales",
     "ignore_locales": ["en-US"],
-    "nightly_build": False,
     'balrog_credentials_file': 'oauth.txt',
     "tools_repo": "https://hg.mozilla.org/build/tools",
     "tooltool_config": {
         "manifest": "mobile/android/config/tooltool-manifests/android/releng.manifest",
         "output_dir": "%(abs_work_dir)s/" + MOZILLA_DIR,
     },
-    "exes": {
-        'tooltool.py': '/builds/tooltool.py',
-    },
-    "update_gecko_source_to_enUS": False,
+    "nightly_build": True,
     "repos": [{
         "vcs": "hg",
         "repo": "https://hg.mozilla.org/build/tools",
@@ -47,20 +45,13 @@ config = {
     "repack_env": {
         # so ugly, bug 951238
         "LD_LIBRARY_PATH": "/lib:/tools/gcc-4.7.2-0moz1/lib:/tools/gcc-4.7.2-0moz1/lib64",
-        "MOZ_OBJDIR": "obj-l10n",
-        "EN_US_BINARY_URL": EN_US_BINARY_URL,
-        "LOCALE_MERGEDIR": "%(abs_merge_dir)s/",
+        "MOZ_OBJDIR": "obj-firefox",
+        "EN_US_BINARY_URL": os.environ.get("EN_US_BINARY_URL", EN_US_BINARY_URL),
         "MOZ_UPDATE_CHANNEL": "try", # XXX Invalid
     },
     "upload_branch": "%s-android-api-16" % BRANCH,
-    "ssh_key_dir": "~/.ssh",
-    "merge_locales": True,
-    "mozilla_dir": MOZILLA_DIR,
-    "mozconfig": "%s/mobile/android/config/mozconfigs/android-api-16/l10n-nightly" % MOZILLA_DIR,
     "signature_verification_script": "tools/release/signing/verify-android-signature.sh",
-    "stage_product": "mobile",
     "platform": "android", # XXX Validate
-    "build_type": "api-16-opt", # XXX Validate
 
     # Balrog
     "build_target": "Android_arm-eabi-gcc3",
@@ -91,7 +82,6 @@ config = {
         ("/home/cltbld/.ssh", "/home/mock_mozilla/.ssh"),
         ('/home/cltbld/.hgrc', '/builds/.hgrc'),
         ('/builds/relengapi.tok', '/builds/relengapi.tok'),
-        ('/tools/tooltool.py', '/builds/tooltool.py'),
         ('/usr/local/lib/hgext', '/usr/local/lib/hgext'),
     ],
 }

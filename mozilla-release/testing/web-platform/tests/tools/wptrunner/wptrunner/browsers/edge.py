@@ -3,12 +3,14 @@ from ..webdriver_server import EdgeDriverServer
 from ..executors import executor_kwargs as base_executor_kwargs
 from ..executors.executorselenium import (SeleniumTestharnessExecutor,
                                           SeleniumRefTestExecutor)
+from ..executors.executoredge import EdgeDriverWdspecExecutor
 
 __wptrunner__ = {"product": "edge",
                  "check_args": "check_args",
                  "browser": "EdgeBrowser",
                  "executor": {"testharness": "SeleniumTestharnessExecutor",
-                              "reftest": "SeleniumRefTestExecutor"},
+                              "reftest": "SeleniumRefTestExecutor",
+                              "wdspec": "EdgeDriverWdspecExecutor"},
                  "browser_kwargs": "browser_kwargs",
                  "executor_kwargs": "executor_kwargs",
                  "env_extras": "env_extras",
@@ -36,9 +38,7 @@ def env_extras(**kwargs):
     return []
 
 def env_options():
-    return {"host": "web-platform.test",
-            "bind_hostname": "true",
-            "supports_debugger": False}
+    return {"supports_debugger": False}
 
 class EdgeBrowser(Browser):
     used_ports = set()
@@ -55,8 +55,8 @@ class EdgeBrowser(Browser):
         print self.server.url
         self.server.start()
 
-    def stop(self):
-        self.server.stop()
+    def stop(self, force=False):
+        self.server.stop(force=force)
 
     def pid(self):
         return self.server.pid

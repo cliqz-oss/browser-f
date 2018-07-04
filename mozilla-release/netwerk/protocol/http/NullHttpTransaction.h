@@ -43,10 +43,10 @@ public:
   void Unclaim();
 
   // Overload of nsAHttpTransaction methods
-  bool IsNullTransaction() override final { return true; }
-  NullHttpTransaction *QueryNullTransaction() override final { return this; }
-  bool ResponseTimeoutEnabled() const override final {return true; }
-  PRIntervalTime ResponseTimeout() override final
+  bool IsNullTransaction() final { return true; }
+  NullHttpTransaction *QueryNullTransaction() final { return this; }
+  bool ResponseTimeoutEnabled() const final {return true; }
+  PRIntervalTime ResponseTimeout() final
   {
     return PR_SecondsToInterval(15);
   }
@@ -58,6 +58,17 @@ public:
   uint64_t TopLevelOuterContentWindowId() override { return 0; }
 
   TimingStruct Timings() { return mTimings; }
+
+  mozilla::TimeStamp GetTcpConnectEnd() { return mTimings.tcpConnectEnd; }
+  mozilla::TimeStamp GetSecureConnectionStart()
+  {
+    return mTimings.secureConnectionStart;
+  }
+
+  void SetFastOpenStatus(uint8_t aStatus) override
+  {
+    mFastOpenStatus = aStatus;
+  }
 
 protected:
   virtual ~NullHttpTransaction();
@@ -79,6 +90,7 @@ private:
   bool mIsDone;
   bool mClaimed;
   TimingStruct mTimings;
+  uint8_t mFastOpenStatus;
 
 protected:
   RefPtr<nsAHttpConnection> mConnection;

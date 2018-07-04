@@ -1,25 +1,17 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ExtensionUtils"];
+var EXPORTED_SYMBOLS = ["ExtensionUtils"];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "ConsoleAPI",
-                                  "resource://gre/modules/Console.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "MessageChannel",
-                                  "resource://gre/modules/MessageChannel.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "ConsoleAPI",
+                               "resource://gre/modules/Console.jsm");
 
 function getConsole() {
   return new ConsoleAPI({
@@ -30,18 +22,28 @@ function getConsole() {
 
 XPCOMUtils.defineLazyGetter(this, "console", getConsole);
 
+// xpcshell doesn't handle idle callbacks well.
+XPCOMUtils.defineLazyGetter(this, "idleTimeout",
+                            () => Services.appinfo.name === "XPCShell" ? 500 : undefined);
+
+// It would be nicer to go through `Services.appinfo`, but some tests need to be
+// able to replace that field with a custom implementation before it is first
+// called.
+// eslint-disable-next-line mozilla/use-services
 const appinfo = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime);
 
 let nextId = 0;
-XPCOMUtils.defineLazyGetter(this, "uniqueProcessID", () => appinfo.uniqueProcessID);
+const uniqueProcessID = appinfo.uniqueProcessID;
+// Store the process ID in a 16 bit field left shifted to end of a
+// double's mantissa.
+// Note: We can't use bitwise ops here, since they truncate to a 32 bit
+// integer and we need all 53 mantissa bits.
+const processIDMask = (uniqueProcessID & 0xffff) * (2 ** 37);
 
 function getUniqueId() {
-  return `${nextId++}-${uniqueProcessID}`;
-}
-
-async function promiseFileContents(file) {
-  let res = await OS.File.read(file.path);
-  return res.buffer;
+  // Note: We can't use bitwise ops here, since they truncate to a 32 bit
+  // integer and we need all 53 mantissa bits.
+  return processIDMask + nextId++;
 }
 
 
@@ -65,55 +67,11 @@ function runSafeSyncWithoutClone(f, ...args) {
   }
 }
 
-// Run a function and report exceptions.
-function runSafeWithoutClone(f, ...args) {
-  if (typeof(f) != "function") {
-    dump(`Extension error: expected function\n${filterStack(Error())}`);
-    return;
-  }
-
-  Promise.resolve().then(() => {
-    runSafeSyncWithoutClone(f, ...args);
-  });
-}
-
-// Run a function, cloning arguments into context.cloneScope, and
-// report exceptions. |f| is expected to be in context.cloneScope.
-function runSafeSync(context, f, ...args) {
-  if (context.unloaded) {
-    Cu.reportError("runSafeSync called after context unloaded");
-    return;
-  }
-
-  try {
-    args = Cu.cloneInto(args, context.cloneScope);
-  } catch (e) {
-    Cu.reportError(e);
-    dump(`runSafe failure: cloning into ${context.cloneScope}: ${e}\n\n${filterStack(Error())}`);
-  }
-  return runSafeSyncWithoutClone(f, ...args);
-}
-
-// Run a function, cloning arguments into context.cloneScope, and
-// report exceptions. |f| is expected to be in context.cloneScope.
-function runSafe(context, f, ...args) {
-  try {
-    args = Cu.cloneInto(args, context.cloneScope);
-  } catch (e) {
-    Cu.reportError(e);
-    dump(`runSafe failure: cloning into ${context.cloneScope}: ${e}\n\n${filterStack(Error())}`);
-  }
-  if (context.unloaded) {
-    dump(`runSafe failure: context is already unloaded ${filterStack(new Error())}\n`);
-    return undefined;
-  }
-  return runSafeWithoutClone(f, ...args);
-}
-
 // Return true if the given value is an instance of the given
 // native type.
 function instanceOf(value, type) {
-  return {}.toString.call(value) == `[object ${type}]`;
+  return (value && typeof value === "object" &&
+          ChromeUtils.getClassName(value) === type);
 }
 
 /**
@@ -121,30 +79,38 @@ function instanceOf(value, type) {
  * constructor if one is not present.
  */
 class DefaultWeakMap extends WeakMap {
-  constructor(defaultConstructor, init) {
+  constructor(defaultConstructor = undefined, init = undefined) {
     super(init);
-    this.defaultConstructor = defaultConstructor;
+    if (defaultConstructor) {
+      this.defaultConstructor = defaultConstructor;
+    }
   }
 
   get(key) {
-    if (!this.has(key)) {
-      this.set(key, this.defaultConstructor(key));
+    let value = super.get(key);
+    if (value === undefined && !this.has(key)) {
+      value = this.defaultConstructor(key);
+      this.set(key, value);
     }
-    return super.get(key);
+    return value;
   }
 }
 
 class DefaultMap extends Map {
-  constructor(defaultConstructor, init) {
+  constructor(defaultConstructor = undefined, init = undefined) {
     super(init);
-    this.defaultConstructor = defaultConstructor;
+    if (defaultConstructor) {
+      this.defaultConstructor = defaultConstructor;
+    }
   }
 
   get(key) {
-    if (!this.has(key)) {
-      this.set(key, this.defaultConstructor(key));
+    let value = super.get(key);
+    if (value === undefined && !this.has(key)) {
+      value = this.defaultConstructor(key);
+      this.set(key, value);
     }
-    return super.get(key);
+    return value;
   }
 }
 
@@ -189,11 +155,13 @@ class EventEmitter {
    *        The listener to call when events are emitted.
    */
   on(event, listener) {
-    if (!this[LISTENERS].has(event)) {
-      this[LISTENERS].set(event, new Set());
+    let listeners = this[LISTENERS].get(event);
+    if (!listeners) {
+      listeners = new Set();
+      this[LISTENERS].set(event, listeners);
     }
 
-    this[LISTENERS].get(event).add(listener);
+    listeners.add(listener);
   }
 
   /**
@@ -205,9 +173,8 @@ class EventEmitter {
    *        The listener function to remove.
    */
   off(event, listener) {
-    if (this[LISTENERS].has(event)) {
-      let set = this[LISTENERS].get(event);
-
+    let set = this[LISTENERS].get(event);
+    if (set) {
       set.delete(listener);
       set.delete(this[ONCE_MAP].get(listener));
       if (!set.size) {
@@ -238,25 +205,38 @@ class EventEmitter {
 
 
   /**
-   * Triggers all listeners for the given event, and returns a promise
-   * which resolves when all listeners have been called, and any
-   * promises they have returned have likewise resolved.
+   * Triggers all listeners for the given event. If any listeners return
+   * a value, returns a promise which resolves when all returned
+   * promises have resolved. Otherwise, returns undefined.
    *
    * @param {string} event
    *       The name of the event to emit.
    * @param {any} args
    *        Arbitrary arguments to pass to the listener functions, after
    *        the event name.
-   * @returns {Promise}
+   * @returns {Promise?}
    */
   emit(event, ...args) {
-    let listeners = this[LISTENERS].get(event) || new Set();
+    let listeners = this[LISTENERS].get(event);
 
-    let promises = Array.from(listeners, listener => {
-      return runSafeSyncWithoutClone(listener, event, ...args);
-    });
+    if (listeners) {
+      let promises = [];
 
-    return Promise.all(promises);
+      for (let listener of listeners) {
+        try {
+          let result = listener(event, ...args);
+          if (result !== undefined) {
+            promises.push(result);
+          }
+        } catch (e) {
+          Cu.reportError(e);
+        }
+      }
+
+      if (promises.length) {
+        return Promise.all(promises);
+      }
+    }
   }
 }
 
@@ -293,7 +273,7 @@ class LimitedSet extends Set {
   }
 
   add(item) {
-    if (!this.has(item) && this.size >= this.limit + this.slop) {
+    if (this.size >= this.limit + this.slop && !this.has(item)) {
       this.truncate(this.limit - 1);
     }
     super.add(item);
@@ -323,6 +303,22 @@ function promiseDocumentReady(doc) {
 }
 
 /**
+  * Returns a Promise which resolves when the given window's document's DOM has
+  * fully loaded, the <head> stylesheets have fully loaded, and we have hit an
+  * idle time.
+  *
+  * @param {Window} window The window whose document we will await
+                           the readiness of.
+  * @returns {Promise<IdleDeadline>}
+  */
+function promiseDocumentIdle(window) {
+  return window.document.documentReadyForIdle.then(() => {
+    return new Promise(resolve =>
+      window.requestIdleCallback(resolve, {timeout: idleTimeout}));
+  });
+}
+
+/**
  * Returns a Promise which resolves when the given document is fully
  * loaded.
  *
@@ -335,9 +331,7 @@ function promiseDocumentLoaded(doc) {
   }
 
   return new Promise(resolve => {
-    doc.defaultView.addEventListener("load", function(event) {
-      resolve(doc);
-    }, {once: true});
+    doc.defaultView.addEventListener("load", () => resolve(doc), {once: true});
   });
 }
 
@@ -395,10 +389,10 @@ function promiseObserved(topic, test = () => true) {
 }
 
 function getMessageManager(target) {
-  if (target instanceof Ci.nsIFrameLoaderOwner) {
-    return target.QueryInterface(Ci.nsIFrameLoaderOwner).frameLoader.messageManager;
+  if (target.frameLoader) {
+    return target.frameLoader.messageManager;
   }
-  return target.QueryInterface(Ci.nsIMessageSender);
+  return target;
 }
 
 function flushJarCache(jarPath) {
@@ -476,16 +470,15 @@ function defineLazyGetter(object, prop, getter) {
 class MessageManagerProxy {
   constructor(target) {
     this.listeners = new DefaultMap(() => new Map());
+    this.closed = false;
 
     if (target instanceof Ci.nsIMessageSender) {
-      Object.defineProperty(this, "messageManager", {
-        value: target,
-        configurable: true,
-        writable: true,
-      });
+      this.messageManager = target;
     } else {
       this.addListeners(target);
     }
+
+    Services.obs.addObserver(this, "message-manager-close");
   }
 
   /**
@@ -500,8 +493,17 @@ class MessageManagerProxy {
     if (this.eventTarget) {
       this.removeListeners(this.eventTarget);
       this.eventTarget = null;
-    } else {
-      this.messageManager = null;
+    }
+    this.messageManager = null;
+
+    Services.obs.removeObserver(this, "message-manager-close");
+  }
+
+  observe(subject, topic, data) {
+    if (topic === "message-manager-close") {
+      if (subject === this.messageManager) {
+        this.closed = true;
+      }
     }
   }
 
@@ -511,7 +513,7 @@ class MessageManagerProxy {
    *
    * @param {nsIMessageSender|MessageManagerProxy|Element} target
    *        The message manager, MessageManagerProxy, or <browser>
-   *        element agaisnt which to match.
+   *        element against which to match.
    * @param {nsIMessageSender} messageManager
    *        The message manager against which to match `target`.
    *
@@ -530,9 +532,6 @@ class MessageManagerProxy {
    *        may change during the life of the proxy object, so should
    *        not be stored elsewhere.
    */
-  get messageManager() {
-    return this.eventTarget && this.eventTarget.messageManager;
-  }
 
   /**
    * Sends a message on the proxied message manager.
@@ -551,7 +550,7 @@ class MessageManagerProxy {
   }
 
   get isDisconnected() {
-    return !this.messageManager;
+    return this.closed || !this.messageManager;
   }
 
   /**
@@ -611,11 +610,12 @@ class MessageManagerProxy {
   addListeners(target) {
     target.addEventListener("SwapDocShells", this);
 
-    for (let {message, listener, listenWhenClosed} of this.iterListeners()) {
-      target.addMessageListener(message, listener, listenWhenClosed);
-    }
-
     this.eventTarget = target;
+    this.messageManager = target.messageManager;
+
+    for (let {message, listener, listenWhenClosed} of this.iterListeners()) {
+      this.messageManager.addMessageListener(message, listener, listenWhenClosed);
+    }
   }
 
   /**
@@ -629,7 +629,7 @@ class MessageManagerProxy {
     target.removeEventListener("SwapDocShells", this);
 
     for (let {message, listener} of this.iterListeners()) {
-      target.removeMessageListener(message, listener);
+      this.messageManager.removeMessageListener(message, listener);
     }
   }
 
@@ -641,7 +641,38 @@ class MessageManagerProxy {
   }
 }
 
-this.ExtensionUtils = {
+function checkLoadURL(url, principal, options) {
+  let ssm = Services.scriptSecurityManager;
+
+  let flags = ssm.STANDARD;
+  if (!options.allowScript) {
+    flags |= ssm.DISALLOW_SCRIPT;
+  }
+  if (!options.allowInheritsPrincipal) {
+    flags |= ssm.DISALLOW_INHERIT_PRINCIPAL;
+  }
+  if (options.dontReportErrors) {
+    flags |= ssm.DONT_REPORT_ERRORS;
+  }
+
+  try {
+    ssm.checkLoadURIWithPrincipal(principal,
+                                  Services.io.newURI(url),
+                                  flags);
+  } catch (e) {
+    return false;
+  }
+  return true;
+}
+
+function makeWidgetId(id) {
+  id = id.toLowerCase();
+  // FIXME: This allows for collisions.
+  return id.replace(/[^a-z0-9_-]/g, "_");
+}
+
+var ExtensionUtils = {
+  checkLoadURL,
   defineLazyGetter,
   flushJarCache,
   getConsole,
@@ -651,16 +682,14 @@ this.ExtensionUtils = {
   filterStack,
   getWinUtils,
   instanceOf,
+  makeWidgetId,
   normalizeTime,
+  promiseDocumentIdle,
   promiseDocumentLoaded,
   promiseDocumentReady,
   promiseEvent,
-  promiseFileContents,
   promiseObserved,
-  runSafe,
-  runSafeSync,
   runSafeSyncWithoutClone,
-  runSafeWithoutClone,
   withHandlingUserInput,
   DefaultMap,
   DefaultWeakMap,

@@ -4,18 +4,18 @@
 
 /* import-globals-from head_global.js */
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://testing-common/services/common/logging.js");
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/services/common/logging.js");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 function do_check_empty(obj) {
   do_check_attribute_count(obj, 0);
 }
 
 function do_check_attribute_count(obj, c) {
-  do_check_eq(c, Object.keys(obj).length);
+  Assert.equal(c, Object.keys(obj).length);
 }
 
 function do_check_throws(aFunc, aResult, aStack) {
@@ -29,7 +29,7 @@ function do_check_throws(aFunc, aResult, aStack) {
   try {
     aFunc();
   } catch (e) {
-    do_check_eq(e.result, aResult, aStack);
+    Assert.equal(e.result, aResult, aStack);
     return;
   }
   do_throw("Expected result " + aResult + ", none thrown.", aStack);
@@ -49,7 +49,7 @@ function do_check_throws_message(aFunc, aResult) {
   try {
     aFunc();
   } catch (e) {
-    do_check_eq(e.message, aResult);
+    Assert.equal(e.message, aResult);
     return;
   }
   do_throw("Expected an error, none thrown.");
@@ -105,6 +105,10 @@ function httpd_handler(statusCode, status, body) {
   };
 }
 
+function promiseStopServer(server) {
+  return new Promise(resolve => server.stop(resolve));
+}
+
 /*
  * Read bytes string from an nsIInputStream.  If 'count' is omitted,
  * all available input is read.
@@ -134,7 +138,7 @@ function ensureThrows(func) {
  * Fake a PAC to prompt a channel replacement.
  */
 var PACSystemSettings = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISystemProxySettings]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISystemProxySettings]),
 
   // Replace this URI for each test to avoid caching. We want to ensure that
   // each test gets a completely fresh setup.
@@ -159,7 +163,7 @@ function uninstallFakePAC() {
 
 
 function getUptakeTelemetrySnapshot(key) {
-  Cu.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
   const TELEMETRY_HISTOGRAM_ID = "UPTAKE_REMOTE_CONTENT_RESULT_1";
   return Services.telemetry
            .getKeyedHistogramById(TELEMETRY_HISTOGRAM_ID)

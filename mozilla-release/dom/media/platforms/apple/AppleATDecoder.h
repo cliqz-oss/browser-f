@@ -17,7 +17,12 @@ namespace mozilla {
 
 class TaskQueue;
 
-class AppleATDecoder : public MediaDataDecoder {
+DDLoggedTypeDeclNameAndBase(AppleATDecoder, MediaDataDecoder);
+
+class AppleATDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<AppleATDecoder>
+{
 public:
   AppleATDecoder(const AudioInfo& aConfig,
                  TaskQueue* aTaskQueue);
@@ -29,9 +34,9 @@ public:
   RefPtr<FlushPromise> Flush() override;
   RefPtr<ShutdownPromise> Shutdown() override;
 
-  const char* GetDescriptionName() const override
+  nsCString GetDescriptionName() const override
   {
-    return "apple CoreMedia decoder";
+    return NS_LITERAL_CSTRING("apple coremedia decoder");
   }
 
   // Callbacks also need access to the config.

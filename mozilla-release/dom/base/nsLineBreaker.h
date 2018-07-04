@@ -7,11 +7,11 @@
 #ifndef NSLINEBREAKER_H_
 #define NSLINEBREAKER_H_
 
+#include "mozilla/intl/LineBreaker.h"
 #include "nsString.h"
 #include "nsTArray.h"
-#include "nsILineBreaker.h"
 
-class nsIAtom;
+class nsAtom;
 class nsHyphenator;
 
 /**
@@ -53,7 +53,7 @@ public:
  * into AppendText calls.
  *
  * The current strategy is that we break the overall text into
- * whitespace-delimited "words". Then those words are passed to the nsILineBreaker
+ * whitespace-delimited "words". Then those words are passed to the LineBreaker
  * service for deeper analysis if they contain a "complex" character as described
  * below.
  *
@@ -66,7 +66,7 @@ public:
   nsLineBreaker();
   ~nsLineBreaker();
 
-  static inline bool IsSpace(char16_t u) { return NS_IsSpace(u); }
+  static inline bool IsSpace(char16_t u) { return mozilla::intl::NS_IsSpace(u); }
 
   static inline bool IsComplexASCIIChar(char16_t u)
   {
@@ -79,7 +79,7 @@ public:
   static inline bool IsComplexChar(char16_t u)
   {
     return IsComplexASCIIChar(u) ||
-           NS_NeedsPlatformNativeHandling(u) ||
+           mozilla::intl::NS_NeedsPlatformNativeHandling(u) ||
            (0x1100 <= u && u <= 0x11ff) || // Hangul Jamo
            (0x2000 <= u && u <= 0x21ff) || // Punctuations and Symbols
            (0x2e80 <= u && u <= 0xd7ff) || // several CJK blocks
@@ -89,8 +89,9 @@ public:
 
   // Break opportunities exist at the end of each run of breakable whitespace
   // (see IsSpace above). Break opportunities can also exist between pairs of
-  // non-whitespace characters, as determined by nsILineBreaker. We pass a whitespace-
-  // delimited word to nsILineBreaker if it contains at least one character
+  // non-whitespace characters, as determined by mozilla::intl::LineBreaker.
+  // We pass a whitespace-
+  // delimited word to LineBreaker if it contains at least one character
   // matching IsComplexChar.
   // We provide flags to control on a per-chunk basis where breaks are allowed.
   // At any character boundary, exactly one text chunk governs whether a
@@ -148,14 +149,14 @@ public:
    * @param aSink can be null if the breaks are not actually needed (we may
    * still be setting up state for later breaks)
    */
-  nsresult AppendText(nsIAtom* aHyphenationLanguage, const char16_t* aText, uint32_t aLength,
+  nsresult AppendText(nsAtom* aHyphenationLanguage, const char16_t* aText, uint32_t aLength,
                       uint32_t aFlags, nsILineBreakSink* aSink);
   /**
    * Feed 8-bit text into the linebreaker for analysis. aLength must be nonzero.
    * @param aSink can be null if the breaks are not actually needed (we may
    * still be setting up state for later breaks)
    */
-  nsresult AppendText(nsIAtom* aHyphenationLanguage, const uint8_t* aText, uint32_t aLength,
+  nsresult AppendText(nsAtom* aHyphenationLanguage, const uint8_t* aText, uint32_t aLength,
                       uint32_t aFlags, nsILineBreakSink* aSink);
   /**
    * Reset all state. This means the current run has ended; any outstanding
@@ -172,7 +173,7 @@ public:
 
   /*
    * Set word-break mode for linebreaker.  This is set by word-break property.
-   * @param aMode is nsILineBreaker::kWordBreak_* value.
+   * @param aMode is LineBreaker::kWordBreak_* value.
    */
   void SetWordBreak(uint8_t aMode) { mWordBreak = aMode; }
 
@@ -199,7 +200,7 @@ private:
   // appropriate sink(s). Then we clear the current word state.
   nsresult FlushCurrentWord();
 
-  void UpdateCurrentWordLanguage(nsIAtom *aHyphenationLanguage);
+  void UpdateCurrentWordLanguage(nsAtom *aHyphenationLanguage);
 
   void FindHyphenationPoints(nsHyphenator *aHyphenator,
                              const char16_t *aTextStart,
@@ -209,7 +210,7 @@ private:
   AutoTArray<char16_t,100> mCurrentWord;
   // All the items that contribute to mCurrentWord
   AutoTArray<TextItem,2>    mTextItems;
-  nsIAtom*                    mCurrentWordLanguage;
+  nsAtom*                    mCurrentWordLanguage;
   bool                        mCurrentWordContainsMixedLang;
   bool                        mCurrentWordContainsComplexChar;
 

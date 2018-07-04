@@ -7,14 +7,12 @@
 #ifndef jit_Linker_h
 #define jit_Linker_h
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-#include "jsgc.h"
-
 #include "jit/ExecutableAllocator.h"
 #include "jit/IonCode.h"
 #include "jit/JitCompartment.h"
 #include "jit/MacroAssembler.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 
 namespace js {
 namespace jit {
@@ -30,14 +28,18 @@ class Linker
     }
 
   public:
+    // Construct a linker with a rooted macro assembler.
     explicit Linker(MacroAssembler& masm)
       : masm(masm)
     {
         masm.finish();
     }
 
-    template <AllowGC allowGC>
-    JitCode* newCode(JSContext* cx, CodeKind kind, bool hasPatchableBackedges = false);
+    // Create a new JitCode object and populate it with the contents of the
+    // macro assember buffer.
+    //
+    // This method cannot GC. Errors are reported to the context.
+    JitCode* newCode(JSContext* cx, CodeKind kind);
 };
 
 } // namespace jit

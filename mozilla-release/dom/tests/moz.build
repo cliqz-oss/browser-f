@@ -31,9 +31,6 @@ with Files("browser/browser_cancel_keydown_keypress_event.js"):
 with Files("browser/*local*"):
     BUG_COMPONENT = ("Core", "DOM")
 
-with Files("browser/*prerender*"):
-    BUG_COMPONENT = ("Core", "Document Navigation")
-
 with Files("browser/browser_test_focus_after_modal_state.js"):
     BUG_COMPONENT = ("Core", "Event Handling")
 
@@ -83,9 +80,6 @@ with Files("mochitest/geolocation/**"):
     BUG_COMPONENT = ("Core", "Geolocation")
 
 with Files("mochitest/localstorage/**"):
-    BUG_COMPONENT = ("Core", "DOM")
-
-with Files("mochitest/notification/**"):
     BUG_COMPONENT = ("Core", "DOM")
 
 with Files("mochitest/orientation/**"):
@@ -169,7 +163,6 @@ MOCHITEST_MANIFESTS += [
     'mochitest/general/mochitest.ini',
     'mochitest/geolocation/mochitest.ini',
     'mochitest/localstorage/mochitest.ini',
-    'mochitest/notification/mochitest.ini',
     'mochitest/orientation/mochitest.ini',
     'mochitest/pointerlock/mochitest.ini',
     'mochitest/script/mochitest.ini',
@@ -187,11 +180,12 @@ MOCHITEST_CHROME_MANIFESTS += [
     'mochitest/localstorage/chrome.ini',
     'mochitest/sessionstorage/chrome.ini',
     'mochitest/webcomponents/chrome.ini',
+    'mochitest/webcomponents/chrome_disabled.ini',
     'mochitest/whatwg/chrome.ini',
 ]
 
 XPCSHELL_TESTS_MANIFESTS += ['unit/xpcshell.ini']
-BROWSER_CHROME_MANIFESTS += ['browser/browser.ini']
+BROWSER_CHROME_MANIFESTS += ['browser/browser.ini', 'mochitest/ajax/offline/browser.ini']
 
 TEST_HARNESS_FILES.testing.mochitest.tests.dom.tests.mochitest.ajax.lib += [
     'mochitest/ajax/lib/AJAX_setup.js',

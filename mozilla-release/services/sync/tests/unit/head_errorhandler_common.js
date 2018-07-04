@@ -10,9 +10,9 @@
 // is used (from service.js).
 /* global Service */
 
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/keys.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/keys.js");
 
 // Common code for test_errorhandler_{1,2}.js -- pulled out to make it less
 // monolithic and take less time to execute.
@@ -26,13 +26,17 @@ const EHTestsCommon = {
   },
 
   async sync_httpd_setup() {
+    let clientsEngine = Service.clientsEngine;
+    let clientsSyncID = await clientsEngine.resetLocalSyncID();
+    let catapultEngine = Service.engineManager.get("catapult");
+    let catapultSyncID = await catapultEngine.resetLocalSyncID();
     let global = new ServerWBO("global", {
       syncID: Service.syncID,
       storageVersion: STORAGE_VERSION,
-      engines: {clients: {version: Service.clientsEngine.version,
-                          syncID: Service.clientsEngine.syncID},
-                catapult: {version: Service.engineManager.get("catapult").version,
-                           syncID: Service.engineManager.get("catapult").syncID}}
+      engines: {clients: {version: clientsEngine.version,
+                          syncID: clientsSyncID},
+                catapult: {version: catapultEngine.version,
+                           syncID: catapultSyncID}}
     });
     let clientsColl = new ServerCollection({}, true);
 
@@ -94,25 +98,26 @@ const EHTestsCommon = {
   }()),
 
 
-  generateCredentialsChangedFailure() {
+  async generateCredentialsChangedFailure() {
     // Make sync fail due to changed credentials. We simply re-encrypt
     // the keys with a different Sync Key, without changing the local one.
     let newSyncKeyBundle = new BulkKeyBundle("crypto");
-    newSyncKeyBundle.generateRandom();
+    await newSyncKeyBundle.generateRandom();
     let keys = Service.collectionKeys.asWBO();
-    keys.encrypt(newSyncKeyBundle);
+    await keys.encrypt(newSyncKeyBundle);
     return keys.upload(Service.resource(Service.cryptoKeysURL));
   },
 
   async setUp(server) {
+    syncTestLogging();
     await configureIdentity({ username: "johndoe" }, server);
-    return EHTestsCommon.generateAndUploadKeys()
+    return EHTestsCommon.generateAndUploadKeys();
   },
 
   async generateAndUploadKeys() {
-    generateNewKeys(Service.collectionKeys);
+    await generateNewKeys(Service.collectionKeys);
     let serverKeys = Service.collectionKeys.asWBO("crypto", "keys");
-    serverKeys.encrypt(Service.identity.syncKeyBundle);
+    await serverKeys.encrypt(Service.identity.syncKeyBundle);
     let response = await serverKeys.upload(Service.resource(Service.cryptoKeysURL));
     return response.success;
   }

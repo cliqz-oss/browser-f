@@ -11,7 +11,7 @@ function test() {
     SpecialPowers.setIntPref(MAX_TOTAL_VIEWERS, 10);
 
     DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
+    DebuggerServer.registerAllActors();
 
     let client = new DebuggerClient(DebuggerServer.connectPipe());
     yield connect(client);
@@ -45,7 +45,7 @@ function test() {
     is(workerClient2.isClosed, false, "worker in tab 2 should not be closed");
 
     executeSoon(() => {
-      tab.linkedBrowser.contentWindow.history.back();
+      tab.linkedBrowser.goBack();
     });
     yield waitForWorkerClose(workerClient2);
     is(workerClient2.isClosed, true, "worker in tab 2 should be closed");

@@ -4,15 +4,13 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["LightweightThemes"];
+var EXPORTED_SYMBOLS = ["LightweightThemes"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/LightweightThemeManager.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-Cu.import("resource://gre/modules/LightweightThemeManager.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-
-this.LightweightThemes = {
+var LightweightThemes = {
   init(libDir) {
     // convert -size 3000x200 canvas:#333 black_theme.png
     let blackImage = libDir.clone();
@@ -27,12 +25,14 @@ this.LightweightThemes = {
 
   configurations: {
     noLWT: {
+      selectors: ["#navigator-toolbox"],
       async applyConfig() {
         LightweightThemeManager.currentTheme = null;
       },
     },
 
     darkLWT: {
+      selectors: ["#navigator-toolbox"],
       applyConfig() {
         LightweightThemeManager.setLocalTheme({
           id:          "black",
@@ -52,6 +52,7 @@ this.LightweightThemes = {
     },
 
     lightLWT: {
+      selectors: ["#navigator-toolbox"],
       applyConfig() {
         LightweightThemeManager.setLocalTheme({
           id:          "white",
@@ -66,6 +67,20 @@ this.LightweightThemes = {
             resolve("lightLWT");
           }, 500);
         });
+      },
+    },
+
+    compactLight: {
+      selectors: ["#navigator-toolbox"],
+      applyConfig() {
+        LightweightThemeManager.currentTheme = LightweightThemeManager.getUsedTheme("firefox-compact-light@mozilla.org");
+      },
+    },
+
+    compactDark: {
+      selectors: ["#navigator-toolbox"],
+      applyConfig() {
+        LightweightThemeManager.currentTheme = LightweightThemeManager.getUsedTheme("firefox-compact-dark@mozilla.org");
       },
     },
   },

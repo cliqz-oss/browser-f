@@ -11,6 +11,9 @@
 #include "nsHttpConnectionMgr.h"
 #include "ASpdySession.h"
 
+#include "mozilla/Mutex.h"
+#include "mozilla/StaticPtr.h"
+#include "mozilla/TimeStamp.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
 #include "nsWeakReference.h"
@@ -65,9 +68,8 @@ public:
     NS_DECL_NSIOBSERVER
     NS_DECL_NSISPECULATIVECONNECT
 
-    nsHttpHandler();
+    static already_AddRefed<nsHttpHandler> GetInstance();
 
-    MOZ_MUST_USE nsresult Init();
     MOZ_MUST_USE nsresult AddStandardRequestHeaders(nsHttpRequestHead *,
                                                     bool isSecure);
     MOZ_MUST_USE nsresult AddConnectionHeader(nsHttpRequestHead *,
@@ -95,10 +97,11 @@ public:
     PRIntervalTime ResponseTimeoutEnabled()  { return mResponseTimeoutEnabled; }
     uint32_t       NetworkChangedTimeout()   { return mNetworkChangedTimeout; }
     uint16_t       MaxRequestAttempts()      { return mMaxRequestAttempts; }
-    const char    *DefaultSocketType()       { return mDefaultSocketType.get(); /* ok to return null */ }
+    const char    *DefaultSocketType()       { return mDefaultSocketType.IsVoid() ? nullptr : mDefaultSocketType.get(); }
     uint32_t       PhishyUserPassLength()    { return mPhishyUserPassLength; }
     uint8_t        GetQoSBits()              { return mQoSBits; }
     uint16_t       GetIdleSynTimeout()       { return mIdleSynTimeout; }
+    uint16_t       GetFallbackSynTimeout()   { return mFallbackSynTimeout; }
     bool           FastFallbackToIPv4()      { return mFastFallbackToIPv4; }
     uint32_t       MaxSocketCount();
     bool           EnforceAssocReq()         { return mEnforceAssocReq; }
@@ -124,6 +127,7 @@ public:
     bool           AllowAltSvcOE() { return mEnableAltSvcOE; }
     bool           AllowOriginExtension() { return mEnableOriginExtension; }
     uint32_t       ConnectTimeout()  { return mConnectTimeout; }
+    uint32_t       TLSHandshakeTimeout()  { return mTLSHandshakeTimeout; }
     uint32_t       ParallelSpeculativeConnectLimit() { return mParallelSpeculativeConnectLimit; }
     bool           CriticalRequestPrioritization() { return mCriticalRequestPrioritization; }
     bool           UseH2Deps() { return mUseH2Deps; }
@@ -136,6 +140,14 @@ public:
 
     bool           PromptTempRedirect()      { return mPromptTempRedirect; }
     bool           IsUrgentStartEnabled() { return mUrgentStartEnabled; }
+    bool           IsTailBlockingEnabled() { return mTailBlockingEnabled; }
+    uint32_t       TailBlockingDelayQuantum(bool aAfterDOMContentLoaded) {
+      return aAfterDOMContentLoaded ? mTailDelayQuantumAfterDCL : mTailDelayQuantum;
+    }
+    uint32_t       TailBlockingDelayMax() { return mTailDelayMax; }
+    uint32_t       TailBlockingTotalMax() { return mTailTotalMax; }
+
+    uint32_t       ThrottlingReadLimit() { return mThrottleVersion == 1 ? 0 : mThrottleReadLimit; }
 
     // TCP Keepalive configuration values.
 
@@ -167,15 +179,12 @@ public:
     bool UseFastOpen()
     {
         return mUseFastOpen && mFastOpenSupported &&
-               mFastOpenConsecutiveFailureCounter < mFastOpenConsecutiveFailureLimit;
+               (mFastOpenStallsCounter < mFastOpenStallsLimit) &&
+               (mFastOpenConsecutiveFailureCounter < mFastOpenConsecutiveFailureLimit);
     }
     // If one of tcp connections return PR_NOT_TCP_SOCKET_ERROR while trying
     // fast open, it means that Fast Open is turned off so we will not try again
     // until a restart. This is only on Linux.
-    // For windows 10 we can only check whether a version of windows support
-    // Fast Open at run time, so if we get error PR_NOT_IMPLEMENTED_ERROR it
-    // means that Fast Open is not supported and we will set mFastOpenSupported
-    // to false.
     void SetFastOpenNotSupported() { mFastOpenSupported = false; }
 
     void IncrementFastOpenConsecutiveFailureCounter();
@@ -183,6 +192,14 @@ public:
     void ResetFastOpenConsecutiveFailureCounter()
     {
         mFastOpenConsecutiveFailureCounter = 0;
+    }
+
+    void IncrementFastOpenStallsCounter();
+    uint32_t CheckIfConnectionIsStalledOnlyIfIdleForThisAmountOfSeconds() {
+        return mFastOpenStallsIdleTime;
+    }
+    uint32_t FastOpenStallsTimeout() {
+      return mFastOpenStallsTimeout;
     }
 
     // returns the HTTP framing check level preference, as controlled with
@@ -312,10 +329,22 @@ public:
         NotifyObservers(chan, NS_HTTP_ON_MODIFY_REQUEST_TOPIC);
     }
 
+    // Called by the channel before writing a request
+    void OnStopRequest(nsIHttpChannel *chan)
+    {
+        NotifyObservers(chan, NS_HTTP_ON_STOP_REQUEST_TOPIC);
+    }
+
     // Called by the channel and cached in the loadGroup
     void OnUserAgentRequest(nsIHttpChannel *chan)
     {
       NotifyObservers(chan, NS_HTTP_ON_USERAGENT_REQUEST_TOPIC);
+    }
+
+    // Called by the channel before setting up the transaction
+    void OnBeforeConnect(nsIHttpChannel *chan)
+    {
+        NotifyObservers(chan, NS_HTTP_ON_BEFORE_CONNECT_TOPIC);
     }
 
     // Called by the channel once headers are available
@@ -365,11 +394,6 @@ public:
 
     void ShutdownConnectionManager();
 
-    bool KeepEmptyResponseHeadersAsEmtpyString() const
-    {
-        return mKeepEmptyResponseHeadersAsEmtpyString;
-    }
-
     uint32_t DefaultHpackBuffer() const
     {
         return mDefaultHpackBuffer;
@@ -390,8 +414,20 @@ public:
         return mActiveTabPriority;
     }
 
+    // Called when an optimization feature affecting active vs background tab load
+    // took place.  Called only on the parent process and only updates
+    // mLastActiveTabLoadOptimizationHit timestamp to now.
+    void NotifyActiveTabLoadOptimization();
+    TimeStamp const GetLastActiveTabLoadOptimizationHit();
+    void SetLastActiveTabLoadOptimizationHit(TimeStamp const &when);
+    bool IsBeforeLastActiveTabLoadOptimization(TimeStamp const &when);
+
 private:
+    nsHttpHandler();
+
     virtual ~nsHttpHandler();
+
+    MOZ_MUST_USE nsresult Init();
 
     //
     // Useragent/prefs helper methods
@@ -449,6 +485,7 @@ private:
     uint16_t mMaxRequestAttempts;
     uint16_t mMaxRequestDelay;
     uint16_t mIdleSynTimeout;
+    uint16_t mFallbackSynTimeout; // seconds
 
     bool     mH2MandatorySuiteEnabled;
     uint16_t mMaxUrgentExcessiveConns;
@@ -457,12 +494,20 @@ private:
     uint8_t  mMaxPersistentConnectionsPerProxy;
 
     bool mThrottleEnabled;
+    uint32_t mThrottleVersion;
     uint32_t mThrottleSuspendFor;
     uint32_t mThrottleResumeFor;
-    uint32_t mThrottleResumeIn;
-    uint32_t mThrottleTimeWindow;
+    uint32_t mThrottleReadLimit;
+    uint32_t mThrottleReadInterval;
+    uint32_t mThrottleHoldTime;
+    uint32_t mThrottleMaxTime;
 
     bool mUrgentStartEnabled;
+    bool mTailBlockingEnabled;
+    uint32_t mTailDelayQuantum;
+    uint32_t mTailDelayQuantumAfterDCL;
+    uint32_t mTailDelayMax;
+    uint32_t mTailTotalMax;
 
     uint8_t  mRedirectionLimit;
 
@@ -481,7 +526,7 @@ private:
     nsCString mHttpAcceptEncodings;
     nsCString mHttpsAcceptEncodings;
 
-    nsXPIDLCString mDefaultSocketType;
+    nsCString mDefaultSocketType;
 
     // cache support
     uint32_t                  mLastUniqueID;
@@ -494,17 +539,17 @@ private:
     nsCString      mOscpu;
     nsCString      mMisc;
     nsCString      mProduct;
-    nsXPIDLCString mProductSub;
-    nsXPIDLCString mAppName;
-    nsXPIDLCString mAppVersion;
+    nsCString      mProductSub;
+    nsCString      mAppName;
+    nsCString      mAppVersion;
     nsCString      mCompatFirefox;
     bool           mCompatFirefoxEnabled;
-    nsXPIDLCString mCompatDevice;
+    nsCString      mCompatDevice;
     nsCString      mDeviceModelId;
 
     nsCString      mUserAgent;
     nsCString      mSpoofedUserAgent;
-    nsXPIDLCString mUserAgentOverride;
+    nsCString      mUserAgentOverride;
     bool           mUserAgentIsDirty; // true if mUserAgent should be rebuilt
     bool           mAcceptLanguagesIsDirty;
 
@@ -559,9 +604,17 @@ private:
     // established. In milliseconds.
     uint32_t       mConnectTimeout;
 
+    // The maximum amount of time to wait for a tls handshake to be
+    // established. In milliseconds.
+    uint32_t       mTLSHandshakeTimeout;
+
     // The maximum number of current global half open sockets allowable
     // when starting a new speculative connection.
     uint32_t       mParallelSpeculativeConnectLimit;
+
+    // We may disable speculative connect if the browser has user certificates
+    // installed as that might randomly popup the certificate choosing window.
+    bool           mSpeculativeConnectEnabled;
 
     // For Rate Pacing of HTTP/1 requests through a netwerk/base/EventTokenBucket
     // Active requests <= *MinParallelism are not subject to the rate pacing
@@ -594,13 +647,6 @@ private:
 
     nsCOMPtr<nsIRequestContextService> mRequestContextService;
 
-    // If it is set to false, headers with empty value will not appear in the
-    // header array - behavior as it used to be. If it is true: empty headers
-    // coming from the network will exits in header array as empty string.
-    // Call SetHeader with an empty value will still delete the header.
-    // (Bug 6699259)
-    bool mKeepEmptyResponseHeadersAsEmtpyString;
-
     // The default size (in bytes) of the HPACK decompressor table.
     uint32_t mDefaultHpackBuffer;
 
@@ -614,6 +660,10 @@ private:
     Atomic<bool, Relaxed> mFastOpenSupported;
     uint32_t mFastOpenConsecutiveFailureLimit;
     uint32_t mFastOpenConsecutiveFailureCounter;
+    uint32_t mFastOpenStallsLimit;
+    uint32_t mFastOpenStallsCounter;
+    uint32_t mFastOpenStallsIdleTime;
+    uint32_t mFastOpenStallsTimeout;
 
     // If true, the transactions from active tab will be dispatched first.
     bool mActiveTabPriority;
@@ -667,11 +717,23 @@ private:
     uint32_t mProcessId;
     uint32_t mNextChannelId;
 
+    // The last time any of the active tab page load optimization took place.
+    // This is accessed on multiple threads, hence a lock is needed.
+    // On the parent process this is updated to now every time a scheduling
+    // or rate optimization related to the active/background tab is hit.
+    // We carry this value through each http channel's onstoprequest notification
+    // to the parent process.  On the content process then we just update this
+    // value from ipc onstoprequest arguments.  This is a sufficent way of passing
+    // it down to the content process, since the value will be used only after
+    // onstoprequest notification coming from an http channel.
+    Mutex mLastActiveTabLoadOptimizationLock;
+    TimeStamp mLastActiveTabLoadOptimizationHit;
+
 public:
     MOZ_MUST_USE nsresult NewChannelId(uint64_t& channelId);
 };
 
-extern nsHttpHandler *gHttpHandler;
+extern StaticRefPtr<nsHttpHandler> gHttpHandler;
 
 //-----------------------------------------------------------------------------
 // nsHttpsHandler - thin wrapper to distinguish the HTTP handler from the
@@ -682,7 +744,7 @@ class nsHttpsHandler : public nsIHttpProtocolHandler
                      , public nsSupportsWeakReference
                      , public nsISpeculativeConnect
 {
-    virtual ~nsHttpsHandler() { }
+    virtual ~nsHttpsHandler() = default;
 public:
     // we basically just want to override GetScheme and GetDefaultPort...
     // all other methods should be forwarded to the nsHttpHandler instance.
@@ -693,7 +755,7 @@ public:
     NS_FORWARD_NSIHTTPPROTOCOLHANDLER    (gHttpHandler->)
     NS_FORWARD_NSISPECULATIVECONNECT     (gHttpHandler->)
 
-    nsHttpsHandler() { }
+    nsHttpsHandler() = default;
 
     MOZ_MUST_USE nsresult Init();
 };

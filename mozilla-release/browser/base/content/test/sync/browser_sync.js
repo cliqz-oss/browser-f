@@ -3,6 +3,11 @@
 
 "use strict";
 
+add_task(function setup() {
+  // gSync.init() is called in a requestIdleCallback. Force its initialization.
+  gSync.init();
+});
+
 add_task(async function test_ui_state_notification_calls_updateAllUI() {
   let called = false;
   let updateAllUI = gSync.updateAllUI;
@@ -15,6 +20,7 @@ add_task(async function test_ui_state_notification_calls_updateAllUI() {
 });
 
 add_task(async function test_ui_state_signedin() {
+  const relativeDateAnchor = new Date();
   let state = {
     status: UIState.STATUS_SIGNED_IN,
     email: "foo@bar.com",
@@ -22,6 +28,13 @@ add_task(async function test_ui_state_signedin() {
     avatarURL: "https://foo.bar",
     lastSync: new Date(),
     syncing: false
+  };
+
+  const origRelativeTimeFormat = gSync.relativeTimeFormat;
+  gSync.relativeTimeFormat = {
+    formatBestUnit(date) {
+      return origRelativeTimeFormat.formatBestUnit(date, {now: relativeDateAnchor});
+    }
   };
 
   gSync.updateAllUI(state);
@@ -38,6 +51,7 @@ add_task(async function test_ui_state_signedin() {
   });
   checkRemoteTabsPanel("PanelUI-remotetabs-main", false);
   checkMenuBarItem("sync-syncnowitem");
+  gSync.relativeTimeFormat = origRelativeTimeFormat;
 });
 
 add_task(async function test_ui_state_syncing() {
@@ -52,8 +66,7 @@ add_task(async function test_ui_state_syncing() {
 
   gSync.updateAllUI(state);
 
-  let prefix = gPhotonStructure ? "appMenu" : "PanelUI";
-  checkSyncNowButton(`${prefix}-fxa-icon`, true);
+  checkSyncNowButton("appMenu-fxa-icon", true);
   checkSyncNowButton("PanelUI-remotetabs-syncnow", true);
 
   // Be good citizens and remove the "syncing" state.
@@ -104,8 +117,8 @@ add_task(async function test_ui_state_unverified() {
     syncing: false,
     syncNowTooltip: tooltipText
   });
-  checkRemoteTabsPanel("PanelUI-remotetabs-setupsync", false);
-  checkMenuBarItem("sync-setup");
+  checkRemoteTabsPanel("PanelUI-remotetabs-unverified", false);
+  checkMenuBarItem("sync-unverifieditem");
 });
 
 add_task(async function test_ui_state_loginFailed() {
@@ -130,34 +143,18 @@ add_task(async function test_ui_state_loginFailed() {
   checkMenuBarItem("sync-reauthitem");
 });
 
-add_task(async function test_FormatLastSyncDateNow() {
-  let now = new Date();
-  let nowString = gSync.formatLastSyncDate(now);
-  is(nowString, "Last sync: " + now.toLocaleDateString(undefined, {weekday: "long", hour: "numeric", minute: "numeric"}),
-     "The date is correctly formatted");
-});
-
-add_task(async function test_FormatLastSyncDateMonthAgo() {
-  let monthAgo = new Date();
-  monthAgo.setMonth(monthAgo.getMonth() - 1);
-  let monthAgoString = gSync.formatLastSyncDate(monthAgo);
-  is(monthAgoString, "Last sync: " + monthAgo.toLocaleDateString(undefined, {month: "long", day: "numeric"}),
-     "The date is correctly formatted");
-});
-
 function checkPanelUIStatusBar({label, tooltip, fxastatus, avatarURL, syncing, syncNowTooltip}) {
-  let prefix = gPhotonStructure ? "appMenu" : "PanelUI"
-  let labelNode = document.getElementById(`${prefix}-fxa-label`);
-  let tooltipNode = document.getElementById(`${prefix}-fxa-status`);
-  let statusNode = document.getElementById(`${prefix}-fxa-container`);
-  let avatar = document.getElementById(`${prefix}-fxa-avatar`);
+  let labelNode = document.getElementById("appMenu-fxa-label");
+  let tooltipNode = document.getElementById("appMenu-fxa-status");
+  let statusNode = document.getElementById("appMenu-fxa-container");
+  let avatar = document.getElementById("appMenu-fxa-avatar");
 
   is(labelNode.getAttribute("label"), label, "fxa label has the right value");
   is(tooltipNode.getAttribute("tooltiptext"), tooltip, "fxa tooltip has the right value");
   if (fxastatus) {
     is(statusNode.getAttribute("fxastatus"), fxastatus, "fxa fxastatus has the right value");
   } else {
-    ok(!statusNode.hasAttribute("fxastatus"), "fxastatus is unset")
+    ok(!statusNode.hasAttribute("fxastatus"), "fxastatus is unset");
   }
   if (avatarURL) {
     is(avatar.style.listStyleImage, `url("${avatarURL}")`, "fxa avatar URL is set");
@@ -166,14 +163,15 @@ function checkPanelUIStatusBar({label, tooltip, fxastatus, avatarURL, syncing, s
   }
 
   if (syncing != undefined && syncNowTooltip != undefined) {
-    checkSyncNowButton(`${prefix}-fxa-icon`, syncing, syncNowTooltip);
+    checkSyncNowButton("appMenu-fxa-icon", syncing, syncNowTooltip);
   }
 }
 
 function checkRemoteTabsPanel(expectedShownItemId, syncing, syncNowTooltip) {
   checkItemsVisiblities(["PanelUI-remotetabs-main",
                          "PanelUI-remotetabs-setupsync",
-                         "PanelUI-remotetabs-reauthsync"],
+                         "PanelUI-remotetabs-reauthsync",
+                         "PanelUI-remotetabs-unverified"],
                         expectedShownItemId);
 
   if (syncing != undefined && syncNowTooltip != undefined) {
@@ -182,7 +180,7 @@ function checkRemoteTabsPanel(expectedShownItemId, syncing, syncNowTooltip) {
 }
 
 function checkMenuBarItem(expectedShownItemId) {
-  checkItemsVisiblities(["sync-setup", "sync-syncnowitem", "sync-reauthitem"],
+  checkItemsVisiblities(["sync-setup", "sync-syncnowitem", "sync-reauthitem", "sync-unverifieditem"],
                         expectedShownItemId);
 }
 
@@ -200,7 +198,7 @@ function checkSyncNowButton(buttonId, syncing, tooltip = null) {
 
   is(remoteTabsButton.hasAttribute("disabled"), syncing, "disabled has the right value");
   if (syncing) {
-    is(remoteTabsButton.getAttribute("label"), gSync.syncStrings.GetStringFromName("syncing2.label"), "label is set to the right value");
+    is(remoteTabsButton.getAttribute("label"), gSync.syncStrings.GetStringFromName("syncingtabs.label"), "label is set to the right value");
   } else {
     is(remoteTabsButton.getAttribute("label"), gSync.syncStrings.GetStringFromName("syncnow.label"), "label is set to the right value");
   }
@@ -222,7 +220,7 @@ function promiseObserver(topic) {
     let obs = (aSubject, aTopic, aData) => {
       Services.obs.removeObserver(obs, aTopic);
       resolve(aSubject);
-    }
+    };
     Services.obs.addObserver(obs, topic);
   });
 }

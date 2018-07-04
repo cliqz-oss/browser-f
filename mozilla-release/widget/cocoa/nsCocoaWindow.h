@@ -38,8 +38,6 @@ typedef struct _nsCocoaWindowList {
   // Data Storage
   NSMutableDictionary* mState;
   BOOL mDrawsIntoWindowFrame;
-  NSColor* mActiveTitlebarColor;
-  NSColor* mInactiveTitlebarColor;
 
   // Invalidation disabling
   BOOL mDisabledNeedsDisplay;
@@ -58,8 +56,6 @@ typedef struct _nsCocoaWindowList {
 - (NSMutableDictionary*)exportState;
 - (void)setDrawsContentsIntoWindowFrame:(BOOL)aState;
 - (BOOL)drawsContentsIntoWindowFrame;
-- (void)setTitlebarColor:(NSColor*)aColor forActiveWindow:(BOOL)aActive;
-- (NSColor*)titlebarColorForActiveWindow:(BOOL)aActive;
 
 
 - (void)mouseEntered:(NSEvent*)aEvent;
@@ -175,15 +171,11 @@ typedef struct _nsCocoaWindowList {
 // NSWindow subclass for handling windows with toolbars.
 @interface ToolbarWindow : BaseWindow
 {
-  TitlebarAndBackgroundColor *mColor; // strong
   CGFloat mUnifiedToolbarHeight;
-  NSColor *mBackgroundColor; // strong
-  NSView *mTitlebarView; // strong
+  CGFloat mSheetAttachmentPosition;
   NSRect mWindowButtonsRect;
   NSRect mFullScreenButtonRect;
 }
-// Pass nil here to get the default appearance.
-- (void)setTitlebarColor:(NSColor*)aColor forActiveWindow:(BOOL)aActive;
 - (void)setUnifiedToolbarHeight:(CGFloat)aHeight;
 - (CGFloat)unifiedToolbarHeight;
 - (CGFloat)titlebarHeight;
@@ -192,12 +184,11 @@ typedef struct _nsCocoaWindowList {
 - (void)setTitlebarNeedsDisplayInRect:(NSRect)aRect;
 - (void)setDrawsContentsIntoWindowFrame:(BOOL)aState;
 - (void)setSheetAttachmentPosition:(CGFloat)aY;
+- (CGFloat)sheetAttachmentPosition;
 - (void)placeWindowButtons:(NSRect)aRect;
 - (void)placeFullScreenButton:(NSRect)aRect;
 - (NSPoint)windowButtonsPositionWithDefaultPosition:(NSPoint)aDefaultPosition;
 - (NSPoint)fullScreenButtonPositionWithDefaultPosition:(NSPoint)aDefaultPosition;
-- (void)setTemporaryBackgroundColor;
-- (void)restoreBackgroundColor;
 @end
 
 class nsCocoaWindow final : public nsBaseWidget, public nsPIWidgetCocoa
@@ -250,16 +241,17 @@ public:
     virtual void            SuppressAnimation(bool aSuppress) override;
     virtual void            HideWindowChrome(bool aShouldHide) override;
 
+    void WillEnterFullScreen(bool aFullScreen);
     void EnteredFullScreen(bool aFullScreen, bool aNativeMode = true);
     virtual bool PrepareForFullscreenTransition(nsISupports** aData) override;
     virtual void PerformFullscreenTransition(FullscreenTransitionStage aStage,
                                              uint16_t aDuration,
                                              nsISupports* aData,
                                              nsIRunnable* aCallback) override;
-    virtual nsresult MakeFullScreen(
-      bool aFullScreen, nsIScreen* aTargetScreen = nullptr) override final;
-    virtual nsresult MakeFullScreenWithNativeTransition(
-      bool aFullScreen, nsIScreen* aTargetScreen = nullptr) override final;
+    nsresult MakeFullScreen(
+      bool aFullScreen, nsIScreen* aTargetScreen = nullptr) final;
+    nsresult MakeFullScreenWithNativeTransition(
+      bool aFullScreen, nsIScreen* aTargetScreen = nullptr) final;
     NSAnimation* FullscreenTransitionAnimation() const { return mFullscreenTransitionAnimation; }
     void ReleaseFullscreenTransitionAnimation()
     {
@@ -313,7 +305,6 @@ public:
     virtual void SetDrawsTitle(bool aDrawTitle) override;
     virtual void SetUseBrightTitlebarForeground(bool aBrightForeground) override;
     virtual nsresult SetNonClientMargins(LayoutDeviceIntMargin& aMargins) override;
-    virtual void SetWindowTitlebarColor(nscolor aColor, bool aActive) override;
     virtual void SetDrawsInTitlebar(bool aState) override;
     virtual void UpdateThemeGeometries(const nsTArray<ThemeGeometry>& aThemeGeometries) override;
     virtual nsresult SynthesizeNativeMouseEvent(LayoutDeviceIntPoint aPoint,

@@ -263,6 +263,11 @@ public:
     return name;
   }
 
+  /**
+   * Returns whether all files have correct CRC checksum.
+   */
+  bool VerifyCRCs() const;
+
 private:
   /* File name of the archive */
   char *name;
@@ -321,7 +326,7 @@ public:
       return nullptr;
     }
 
-    SignedEntity(uint32_t magic): signature(magic) { }
+    explicit SignedEntity(uint32_t magic): signature(magic) { }
   private:
     le_uint32 signature;
   };

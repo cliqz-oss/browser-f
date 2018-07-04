@@ -2,7 +2,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-// This is a test for asyncExecuteLegacyQueries API.
+// This is a test for asyncExecuteLegacyQuery API.
 
 add_task(async function test_history_query() {
   let uri = "http://test.visit.mozilla.com/";
@@ -15,12 +15,12 @@ add_task(async function test_history_query() {
 
   return new Promise(resolve => {
     PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase)
-                       .asyncExecuteLegacyQueries([query], 1, options, {
+                       .asyncExecuteLegacyQuery(query, options, {
       handleResult(aResultSet) {
         for (let row; (row = aResultSet.getNextRow());) {
           try {
-            do_check_eq(row.getResultByIndex(1), uri);
-            do_check_eq(row.getResultByIndex(2), title);
+            Assert.equal(row.getResultByIndex(1), uri);
+            Assert.equal(row.getResultByIndex(2), title);
           } catch (e) {
             do_throw("Error while fetching page data.");
           }
@@ -52,12 +52,12 @@ add_task(async function test_bookmarks_query() {
 
   return new Promise(resolve => {
     PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase)
-                       .asyncExecuteLegacyQueries([query], 1, options, {
+                       .asyncExecuteLegacyQuery(query, options, {
       handleResult(aResultSet) {
         for (let row; (row = aResultSet.getNextRow());) {
           try {
-            do_check_eq(row.getResultByIndex(1), url);
-            do_check_eq(row.getResultByIndex(2), title);
+            Assert.equal(row.getResultByIndex(1), url);
+            Assert.equal(row.getResultByIndex(2), title);
           } catch (e) {
             do_throw("Error while fetching page data.");
           }
@@ -75,7 +75,7 @@ add_task(async function test_bookmarks_query() {
 
 function cleanupTest() {
   return Promise.all([
-    PlacesTestUtils.clearHistory(),
+    PlacesUtils.history.clear(),
     PlacesUtils.bookmarks.eraseEverything()
   ]);
 }

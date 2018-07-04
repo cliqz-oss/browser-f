@@ -1,19 +1,17 @@
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["UrlClassifierTestUtils"];
-
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+var EXPORTED_SYMBOLS = ["UrlClassifierTestUtils"];
 
 const TRACKING_TABLE_NAME = "mochitest-track-simple";
 const TRACKING_TABLE_PREF = "urlclassifier.trackingTable";
 const WHITELIST_TABLE_NAME = "mochitest-trackwhite-simple";
 const WHITELIST_TABLE_PREF = "urlclassifier.trackingWhitelistTable";
 
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
 
-this.UrlClassifierTestUtils = {
+var UrlClassifierTestUtils = {
 
   addTestTrackers() {
     // Add some URLs to the tracking databases
@@ -48,10 +46,10 @@ this.UrlClassifierTestUtils = {
       }
     ];
 
-    let tableIndex = 0
+    let tableIndex = 0;
     let doOneUpdate = () => {
       if (tableIndex == tables.length) {
-        return;
+        return Promise.resolve();
       }
       return this.useTestDatabase(tables[tableIndex])
         .then(() => {
@@ -64,7 +62,7 @@ this.UrlClassifierTestUtils = {
           })
           .then(doOneUpdate);
         });
-    }
+    };
 
     return doOneUpdate();
   },
@@ -97,7 +95,7 @@ this.UrlClassifierTestUtils = {
         updateUrlRequested: url => { },
         streamFinished: status => { },
         updateError: errorCode => {
-          reject('Got updateError when updating ' + table.name);
+          reject("Got updateError when updating " + table.name);
         },
         updateSuccess: requestedTimeout => {
           resolve();
@@ -111,7 +109,7 @@ this.UrlClassifierTestUtils = {
         dbService.finishStream();
         dbService.finishUpdate();
       } catch (e) {
-        reject('Failed to update with dbService: ' + table.name);
+        reject("Failed to update with dbService: " + table.name);
       }
     });
   },

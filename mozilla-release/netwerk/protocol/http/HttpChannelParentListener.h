@@ -52,10 +52,10 @@ public:
 
   void SetupInterception(const nsHttpResponseHead& aResponseHead);
   void SetupInterceptionAfterRedirect(bool aShouldIntercept);
-  void ClearInterceptedChannel();
+  void ClearInterceptedChannel(nsIStreamListener* aListener);
 
 private:
-  virtual ~HttpChannelParentListener();
+  virtual ~HttpChannelParentListener() = default;
 
   // Private partner function to SuspendForDiversion.
   MOZ_MUST_USE nsresult ResumeForDiversion();
@@ -73,11 +73,19 @@ private:
   bool mShouldIntercept;
   // Set if this channel should suspend on interception.
   bool mShouldSuspendIntercept;
+  // Set if the channel interception has been canceled.  Can be set before
+  // interception first occurs.  In this case cancelation is deferred until
+  // the interception takes place.
+  bool mInterceptCanceled;
 
   nsAutoPtr<nsHttpResponseHead> mSynthesizedResponseHead;
 
   // Handle to the channel wrapper if this channel has been intercepted.
   nsCOMPtr<nsIInterceptedChannel> mInterceptedChannel;
+
+  // This will be populated with a real network controller if parent-side
+  // interception is enabled.
+  nsCOMPtr<nsINetworkInterceptController> mInterceptController;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(HttpChannelParentListener,

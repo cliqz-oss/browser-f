@@ -13,6 +13,7 @@
 #include "nsCOMPtr.h"
 #include "nsIInputStream.h"
 #include "nsTArray.h"
+#include "nsWeakReference.h"
 
 #define BLOBURI_SCHEME "blob"
 #define FONTTABLEURI_SCHEME "moz-fonttable"
@@ -34,6 +35,7 @@ class MediaSource;
 
 class nsHostObjectProtocolHandler : public nsIProtocolHandler
                                   , public nsIProtocolHandlerWithDynamicFlags
+                                  , public nsSupportsWeakReference
 {
 public:
   nsHostObjectProtocolHandler();
@@ -77,7 +79,6 @@ public:
   static void RemoveDataEntry(const nsACString& aUri,
                               bool aBroadcastToOTherProcesses = true);
 
-  // This is for IPC only.
   static void RemoveDataEntries();
 
   static bool HasDataEntry(const nsACString& aUri);
@@ -131,7 +132,7 @@ inline bool IsFontTableURI(nsIURI* aUri)
 }
 
 extern nsresult
-NS_GetBlobForBlobURI(nsIURI* aURI, mozilla::dom::BlobImpl** aBlob);
+NS_GetBlobForBlobURI(nsIURI* aURI, mozilla::dom::BlobImpl** aBlob, bool aAlsoIfRevoked = false);
 
 extern nsresult
 NS_GetBlobForBlobURISpec(const nsACString& aSpec, mozilla::dom::BlobImpl** aBlob);

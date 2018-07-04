@@ -4,13 +4,11 @@
 
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
 // Creates a new PageListener for this process. This will listen for page loads
 // and for those that match URLs provided by the parent process will set up
 // a dedicated message port and notify the parent process.
-Cu.import("resource://gre/modules/RemotePageManager.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/RemotePageManager.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const gInContentProcess = Services.appinfo.processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
 
@@ -51,11 +49,13 @@ if (gInContentProcess) {
                      .getService(Ci.nsIMemoryReporterManager);
       let rss = memMgr.resident;
       let uss = memMgr.residentUnique;
+      let ghosts = memMgr.ghostWindows;
       Services.cpmm.sendAsyncMessage("Memory:Summary", {
         pid,
         summary: {
           uss,
           rss,
+          ghosts,
         }
       });
     },

@@ -9,11 +9,11 @@
 #ifndef mozilla_dom_MediaList_h
 #define mozilla_dom_MediaList_h
 
+#include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/ServoBindingTypes.h"
 #include "mozilla/ServoUtils.h"
-#include "mozilla/StyleBackendType.h"
 
-#include "nsIDOMMediaList.h"
 #include "nsWrapperCache.h"
 
 class nsIDocument;
@@ -33,56 +33,59 @@ namespace dom {
 //     directly. We may want to determine in the future whether the
 //     above is correct.
 
-class MediaList : public nsIDOMMediaList
-                , public nsWrapperCache
+class MediaList final : public nsISupports
+                      , public nsWrapperCache
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(MediaList)
 
-  /**
-   * Creates a MediaList backed by the given StyleBackendType.
-   */
-  static already_AddRefed<MediaList> Create(StyleBackendType,
-                                            const nsAString& aMedia);
+  // Needed for CSSOM, but please don't use it outside of that :)
+  explicit MediaList(already_AddRefed<RawServoMediaList> aRawList)
+    : mRawList(aRawList)
+  { }
 
-  virtual already_AddRefed<MediaList> Clone() = 0;
+  static already_AddRefed<MediaList> Create(const nsAString& aMedia,
+                                            CallerType aCallerType =
+                                              CallerType::NonSystem);
+
+  already_AddRefed<MediaList> Clone();
 
   JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) final;
   nsISupports* GetParentObject() const { return nullptr; }
 
-  virtual void GetText(nsAString& aMediaText) = 0;
-  virtual void SetText(const nsAString& aMediaText) = 0;
-  virtual bool Matches(nsPresContext* aPresContext) const = 0;
-
-#ifdef DEBUG
-  virtual bool IsServo() const = 0;
-#endif
+  void GetText(nsAString& aMediaText);
+  void SetText(const nsAString& aMediaText);
+  bool Matches(nsPresContext* aPresContext) const;
 
   void SetStyleSheet(StyleSheet* aSheet);
 
-  NS_DECL_NSIDOMMEDIALIST
-
   // WebIDL
-  // XPCOM GetMediaText and SetMediaText are fine.
-  virtual uint32_t Length() = 0;
-  virtual void IndexedGetter(uint32_t aIndex, bool& aFound,
-                             nsAString& aReturn) = 0;
-  // XPCOM Item is fine.
-  void DeleteMedium(const nsAString& aMedium, ErrorResult& aRv)
+  void Stringify(nsAString& aString)
   {
-    aRv = DeleteMedium(aMedium);
+    GetMediaText(aString);
   }
-  void AppendMedium(const nsAString& aMedium, ErrorResult& aRv)
-  {
-    aRv = AppendMedium(aMedium);
-  }
+  void GetMediaText(nsAString& aMediaText);
+  void SetMediaText(const nsAString& aMediaText);
+  uint32_t Length();
+  void IndexedGetter(uint32_t aIndex, bool& aFound, nsAString& aReturn);
+  void Item(uint32_t aIndex, nsAString& aResult);
+  void DeleteMedium(const nsAString& aMedium, ErrorResult& aRv);
+  void AppendMedium(const nsAString& aMedium, ErrorResult& aRv);
 
 protected:
-  virtual nsresult Delete(const nsAString& aOldMedium) = 0;
-  virtual nsresult Append(const nsAString& aNewMedium) = 0;
+  MediaList(const nsAString& aMedia, CallerType);
+  MediaList();
 
-  virtual ~MediaList() {}
+  void SetTextInternal(const nsAString& aMediaText, CallerType);
+
+  nsresult Delete(const nsAString& aOldMedium);
+  nsresult Append(const nsAString& aNewMedium);
+
+  ~MediaList()
+  {
+    MOZ_ASSERT(!mStyleSheet, "Backpointer should have been cleared");
+  }
 
   // not refcounted; sheet will let us know when it goes away
   // mStyleSheet is the sheet that needs to be dirtied when this
@@ -92,6 +95,7 @@ protected:
 private:
   template<typename Func>
   inline nsresult DoMediaChange(Func aCallback);
+  RefPtr<RawServoMediaList> mRawList;
 };
 
 } // namespace dom

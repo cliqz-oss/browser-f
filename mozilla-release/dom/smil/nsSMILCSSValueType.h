@@ -11,12 +11,12 @@
 
 #include "nsISMILType.h"
 #include "nsCSSPropertyID.h"
+#include "nsStringFwd.h"
 #include "mozilla/Attributes.h"
-
-class nsAString;
 
 namespace mozilla {
 struct AnimationValue;
+class DeclarationBlock;
 namespace dom {
 class Element;
 } // namespace dom
@@ -104,16 +104,11 @@ public:
                                              const AnimationValue& aValue);
 
   /**
-   * Creates a string representation of the given nsSMILValue.
+   * Sets the relevant property values in the declaration block.
    *
-   * Note: aValue is expected to be of this type (that is, it's expected to
-   * have been initialized by nsSMILCSSValueType::sSingleton).  If aValue is a
-   * freshly-initialized value the resulting string will be empty.
-   *
-   * @param       aValue   The nsSMILValue to be converted into a string.
-   * @param [out] aString  The string to be populated with the given value.
+   * Returns whether the declaration changed.
    */
-  static void ValueToString(const nsSMILValue& aValue, nsAString& aString);
+  static bool SetPropertyValues(const nsSMILValue&, mozilla::DeclarationBlock&);
 
   /**
    * Return the CSS property animated by the specified value.
@@ -124,6 +119,22 @@ public:
    *                   |aValue| is not nsSMILCSSValueType.
    */
   static nsCSSPropertyID PropertyFromValue(const nsSMILValue& aValue);
+
+  /**
+   * If |aValue| is an empty value, converts it to a suitable zero value by
+   * matching the type of value stored in |aValueToMatch|.
+   *
+   * There is no indication if this method fails. If a suitable zero value could
+   * not be created, |aValue| is simply unmodified.
+   *
+   * @param aValue        The nsSMILValue (of type nsSMILCSSValueType) to
+   *                      possibly update.
+   * @param aValueToMatch A nsSMILValue (of type nsSMILCSSValueType) for which
+   *                      a corresponding zero value will be created if |aValue|
+   *                      is empty.
+   */
+  static void FinalizeValue(nsSMILValue& aValue,
+                            const nsSMILValue& aValueToMatch);
 
 private:
   // Private constructor: prevent instances beyond my singleton.

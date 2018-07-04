@@ -4,21 +4,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-const nsIPrefLocalizedString = Components.interfaces.nsIPrefLocalizedString;
-const nsISupportsString = Components.interfaces.nsISupportsString;
-const nsIPrefBranch = Components.interfaces.nsIPrefBranch;
-const nsIClipboardHelper = Components.interfaces.nsIClipboardHelper;
+const nsIPrefLocalizedString = Ci.nsIPrefLocalizedString;
+const nsISupportsString = Ci.nsISupportsString;
+const nsIPrefBranch = Ci.nsIPrefBranch;
+const nsIClipboardHelper = Ci.nsIClipboardHelper;
 
-const nsSupportsString_CONTRACTID = "@mozilla.org/supports-string;1";
-const nsPrompt_CONTRACTID = "@mozilla.org/embedcomp/prompt-service;1";
-const nsPrefService_CONTRACTID = "@mozilla.org/preferences-service;1";
 const nsClipboardHelper_CONTRACTID = "@mozilla.org/widget/clipboardhelper;1";
-const nsAtomService_CONTRACTID = "@mozilla.org/atom-service;1";
 
 const gPrefBranch = Services.prefs;
-const gClipboardHelper = Components.classes[nsClipboardHelper_CONTRACTID].getService(nsIClipboardHelper);
+const gClipboardHelper = Cc[nsClipboardHelper_CONTRACTID].getService(nsIClipboardHelper);
 
 var gLockProps = ["default", "user", "locked"];
 // we get these from a string bundle
@@ -465,7 +461,7 @@ const configController = {
   },
   onEvent: function onEvent(event) {
   }
-}
+};
 
 function updateContextMenu() {
   var lockCol = PREF_IS_LOCKED;

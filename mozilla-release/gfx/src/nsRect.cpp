@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -43,16 +44,16 @@ FILE* operator<<(FILE* out, const nsRect& rect)
 
   // Output the coordinates in fractional pixels so they're easier to read
   tmp.Append('{');
-  tmp.AppendFloat(NSAppUnitsToFloatPixels(rect.x,
+  tmp.AppendFloat(NSAppUnitsToFloatPixels(rect.X(),
                        nsDeviceContext::AppUnitsPerCSSPixel()));
   tmp.AppendLiteral(", ");
-  tmp.AppendFloat(NSAppUnitsToFloatPixels(rect.y,
+  tmp.AppendFloat(NSAppUnitsToFloatPixels(rect.Y(),
                        nsDeviceContext::AppUnitsPerCSSPixel()));
   tmp.AppendLiteral(", ");
-  tmp.AppendFloat(NSAppUnitsToFloatPixels(rect.width,
+  tmp.AppendFloat(NSAppUnitsToFloatPixels(rect.Width(),
                        nsDeviceContext::AppUnitsPerCSSPixel()));
   tmp.AppendLiteral(", ");
-  tmp.AppendFloat(NSAppUnitsToFloatPixels(rect.height,
+  tmp.AppendFloat(NSAppUnitsToFloatPixels(rect.Height(),
                        nsDeviceContext::AppUnitsPerCSSPixel()));
   tmp.Append('}');
   fputs(NS_LossyConvertUTF16toASCII(tmp).get(), out);

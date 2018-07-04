@@ -33,7 +33,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(SVGSwitchElement, SVGSwitchElementBase,
 NS_IMPL_ADDREF_INHERITED(SVGSwitchElement,SVGSwitchElementBase)
 NS_IMPL_RELEASE_INHERITED(SVGSwitchElement,SVGSwitchElementBase)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(SVGSwitchElement)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SVGSwitchElement)
 NS_INTERFACE_MAP_END_INHERITING(SVGSwitchElementBase)
 
 //----------------------------------------------------------------------
@@ -82,11 +82,24 @@ NS_IMPL_ELEMENT_CLONE_WITH_INIT(SVGSwitchElement)
 // nsINode methods
 
 nsresult
-SVGSwitchElement::InsertChildAt(nsIContent* aKid,
-                                uint32_t aIndex,
-                                bool aNotify)
+SVGSwitchElement::InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
+                                    bool aNotify)
 {
-  nsresult rv = SVGSwitchElementBase::InsertChildAt(aKid, aIndex, aNotify);
+  nsresult rv =
+    SVGSwitchElementBase::InsertChildBefore(aKid, aBeforeThis, aNotify);
+  if (NS_SUCCEEDED(rv)) {
+    MaybeInvalidate();
+  }
+  return rv;
+}
+
+nsresult
+SVGSwitchElement::InsertChildAt_Deprecated(nsIContent* aKid,
+                                           uint32_t aIndex,
+                                           bool aNotify)
+{
+  nsresult rv = SVGSwitchElementBase::InsertChildAt_Deprecated(aKid, aIndex,
+                                                               aNotify);
   if (NS_SUCCEEDED(rv)) {
     MaybeInvalidate();
   }
@@ -94,9 +107,16 @@ SVGSwitchElement::InsertChildAt(nsIContent* aKid,
 }
 
 void
-SVGSwitchElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
+SVGSwitchElement::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
 {
-  SVGSwitchElementBase::RemoveChildAt(aIndex, aNotify);
+  SVGSwitchElementBase::RemoveChildAt_Deprecated(aIndex, aNotify);
+  MaybeInvalidate();
+}
+
+void
+SVGSwitchElement::RemoveChildNode(nsIContent* aKid, bool aNotify)
+{
+  SVGSwitchElementBase::RemoveChildNode(aKid, aNotify);
   MaybeInvalidate();
 }
 
@@ -104,7 +124,7 @@ SVGSwitchElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
 // nsIContent methods
 
 NS_IMETHODIMP_(bool)
-SVGSwitchElement::IsAttributeMapped(const nsIAtom* name) const
+SVGSwitchElement::IsAttributeMapped(const nsAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
     sFEFloodMap,

@@ -14,9 +14,7 @@
 #include "nsFocusManager.h"
 #include "nsIControllers.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMElement.h"
 #include "nsIDOMWindow.h"
-#include "nsIDOMXULElement.h"
 #include "nsIDocument.h"
 #include "nsPresContext.h"
 #include "nsIPresShell.h"
@@ -35,6 +33,7 @@
 #include "mozilla/dom/Element.h"
 
 using namespace mozilla;
+using mozilla::dom::Element;
 
 static LazyLogModule gCommandLog("nsXULCommandDispatcher");
 
@@ -99,7 +98,7 @@ nsXULCommandDispatcher::GetWindowRoot()
   return nullptr;
 }
 
-nsIContent*
+Element*
 nsXULCommandDispatcher::GetRootFocusedContentAndWindow(nsPIDOMWindowOuter** aWindow)
 {
   *aWindow = nullptr;
@@ -110,7 +109,10 @@ nsXULCommandDispatcher::GetRootFocusedContentAndWindow(nsPIDOMWindowOuter** aWin
 
   if (nsCOMPtr<nsPIDOMWindowOuter> win = mDocument->GetWindow()) {
     if (nsCOMPtr<nsPIDOMWindowOuter> rootWindow = win->GetPrivateRoot()) {
-      return nsFocusManager::GetFocusedDescendant(rootWindow, true, aWindow);
+      return nsFocusManager::GetFocusedDescendant(
+                               rootWindow,
+                               nsFocusManager::eIncludeAllDescendants,
+                               aWindow);
     }
   }
 
@@ -118,27 +120,25 @@ nsXULCommandDispatcher::GetRootFocusedContentAndWindow(nsPIDOMWindowOuter** aWin
 }
 
 NS_IMETHODIMP
-nsXULCommandDispatcher::GetFocusedElement(nsIDOMElement** aElement)
+nsXULCommandDispatcher::GetFocusedElement(Element** aElement)
 {
   *aElement = nullptr;
 
   nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
-  nsIContent* focusedContent =
+  RefPtr<Element> focusedContent =
     GetRootFocusedContentAndWindow(getter_AddRefs(focusedWindow));
   if (focusedContent) {
-    CallQueryInterface(focusedContent, aElement);
-
     // Make sure the caller can access the focused element.
-    nsCOMPtr<nsINode> node = do_QueryInterface(*aElement);
-    if (!node || !nsContentUtils::SubjectPrincipalOrSystemIfNativeCaller()->Subsumes(node->NodePrincipal())) {
+    if (!nsContentUtils::SubjectPrincipalOrSystemIfNativeCaller()->
+          Subsumes(focusedContent->NodePrincipal())) {
       // XXX This might want to return null, but we use that return value
       // to mean "there is no focused element," so to be clear, throw an
       // exception.
-      NS_RELEASE(*aElement);
       return NS_ERROR_DOM_SECURITY_ERR;
     }
   }
 
+  focusedContent.forget(aElement);
   return NS_OK;
 }
 
@@ -166,13 +166,14 @@ nsXULCommandDispatcher::GetFocusedWindow(mozIDOMWindowProxy** aWindow)
 }
 
 NS_IMETHODIMP
-nsXULCommandDispatcher::SetFocusedElement(nsIDOMElement* aElement)
+nsXULCommandDispatcher::SetFocusedElement(Element* aElement)
 {
   nsIFocusManager* fm = nsFocusManager::GetFocusManager();
   NS_ENSURE_TRUE(fm, NS_ERROR_FAILURE);
 
-  if (aElement)
+  if (aElement) {
     return fm->SetFocus(aElement, 0);
+  }
 
   // if aElement is null, clear the focus in the currently focused child window
   nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
@@ -195,10 +196,10 @@ nsXULCommandDispatcher::SetFocusedWindow(mozIDOMWindowProxy* aWindow)
   // end up focusing whatever is currently focused inside the frame. Since
   // setting the command dispatcher's focused window doesn't raise the window,
   // setting it to a top-level window doesn't need to do anything.
-  nsCOMPtr<nsIDOMElement> frameElement =
-    do_QueryInterface(window->GetFrameElementInternal());
-  if (frameElement)
+  RefPtr<Element> frameElement = window->GetFrameElementInternal();
+  if (frameElement) {
     return fm->SetFocus(frameElement, 0);
+  }
 
   return NS_OK;
 }
@@ -215,7 +216,7 @@ nsXULCommandDispatcher::RewindFocus()
   nsCOMPtr<nsPIDOMWindowOuter> win;
   GetRootFocusedContentAndWindow(getter_AddRefs(win));
 
-  nsCOMPtr<nsIDOMElement> result;
+  RefPtr<Element> result;
   nsIFocusManager* fm = nsFocusManager::GetFocusManager();
   if (fm)
     return fm->MoveFocus(win, nullptr, nsIFocusManager::MOVEFOCUS_BACKWARD,
@@ -224,12 +225,12 @@ nsXULCommandDispatcher::RewindFocus()
 }
 
 NS_IMETHODIMP
-nsXULCommandDispatcher::AdvanceFocusIntoSubtree(nsIDOMElement* aElt)
+nsXULCommandDispatcher::AdvanceFocusIntoSubtree(Element* aElt)
 {
   nsCOMPtr<nsPIDOMWindowOuter> win;
   GetRootFocusedContentAndWindow(getter_AddRefs(win));
 
-  nsCOMPtr<nsIDOMElement> result;
+  RefPtr<Element> result;
   nsIFocusManager* fm = nsFocusManager::GetFocusManager();
   if (fm)
     return fm->MoveFocus(win, aElt, nsIFocusManager::MOVEFOCUS_FORWARD,
@@ -238,7 +239,7 @@ nsXULCommandDispatcher::AdvanceFocusIntoSubtree(nsIDOMElement* aElt)
 }
 
 NS_IMETHODIMP
-nsXULCommandDispatcher::AddCommandUpdater(nsIDOMElement* aElement,
+nsXULCommandDispatcher::AddCommandUpdater(Element* aElement,
                                           const nsAString& aEvents,
                                           const nsAString& aTargets)
 {
@@ -308,7 +309,7 @@ nsXULCommandDispatcher::AddCommandUpdater(nsIDOMElement* aElement,
 }
 
 NS_IMETHODIMP
-nsXULCommandDispatcher::RemoveCommandUpdater(nsIDOMElement* aElement)
+nsXULCommandDispatcher::RemoveCommandUpdater(Element* aElement)
 {
   NS_PRECONDITION(aElement != nullptr, "null ptr");
   if (! aElement)
@@ -357,12 +358,10 @@ nsXULCommandDispatcher::UpdateCommands(const nsAString& aEventName)
   }
 
   nsAutoString id;
-  nsCOMPtr<nsIDOMElement> element;
+  RefPtr<Element> element;
   GetFocusedElement(getter_AddRefs(element));
   if (element) {
-    nsresult rv = element->GetAttribute(NS_LITERAL_STRING("id"), id);
-    NS_ASSERTION(NS_SUCCEEDED(rv), "unable to get element's id");
-    if (NS_FAILED(rv)) return rv;
+    element->GetAttribute(NS_LITERAL_STRING("id"), id);
   }
 
   nsCOMArray<nsIContent> updaters;
@@ -438,7 +437,7 @@ nsXULCommandDispatcher::GetControllers(nsIControllers** aResult)
   nsCOMPtr<nsPIWindowRoot> root = GetWindowRoot();
   NS_ENSURE_TRUE(root, NS_ERROR_FAILURE);
 
-  return root->GetControllers(aResult);
+  return root->GetControllers(false /* for any window */, aResult);
 }
 
 NS_IMETHODIMP
@@ -447,20 +446,8 @@ nsXULCommandDispatcher::GetControllerForCommand(const char *aCommand, nsIControl
   nsCOMPtr<nsPIWindowRoot> root = GetWindowRoot();
   NS_ENSURE_TRUE(root, NS_ERROR_FAILURE);
 
-  return root->GetControllerForCommand(aCommand, _retval);
-}
-
-NS_IMETHODIMP
-nsXULCommandDispatcher::GetSuppressFocusScroll(bool* aSuppressFocusScroll)
-{
-  *aSuppressFocusScroll = false;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsXULCommandDispatcher::SetSuppressFocusScroll(bool aSuppressFocusScroll)
-{
-  return NS_OK;
+  return root->GetControllerForCommand(aCommand, false /* for any window */,
+                                       _retval);
 }
 
 NS_IMETHODIMP

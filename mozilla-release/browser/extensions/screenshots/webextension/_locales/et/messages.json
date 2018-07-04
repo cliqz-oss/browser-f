@@ -29,6 +29,27 @@
   "downloadScreenshot": {
     "message": "Laadi alla"
   },
+  "downloadOnlyNotice": {
+    "message": "Oled hetkel režiimis, kus saab vaid alla laadida."
+  },
+  "downloadOnlyDetails": {
+    "message": "Firefox Screenshots lülitub sellesse režiimi automaatselt, kui:"
+  },
+  "downloadOnlyDetailsPrivate": {
+    "message": "oled privaatse veebilehitsemise aknas"
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "kolmanda osapoole küpsised on keelatud"
+  },
+  "downloadOnlyDetailsNeverRemember": {
+    "message": "“ei säilita ajalugu” on lubatud"
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "Sa kasutad Firefox ESRi."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "Üleslaadimised on keelatud."
+  },
   "notificationLinkCopiedTitle": {
     "message": "Link kopeeriti"
   },
@@ -36,6 +57,28 @@
     "message": "Link sinu pildile kopeeriti lõikepuhvrisse. Asetamiseks vajuta $META_KEY$-V.",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyScreenshot": {
+    "message": "Kopeeri"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "Pilt kopeeriti"
+  },
+  "notificationImageCopiedDetails": {
+    "message": "Sinu pilt kopeeriti vahemällu. Asetamiseks vajuta $META_KEY$-V.",
+    "placeholders": {
+      "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "imageCroppedWarning": {
+    "message": "See pilt on vähendatud $PIXELS$-le pikslile.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -79,25 +122,31 @@
   "genericErrorDetails": {
     "message": "Me pole kindlad, mis just juhtus. Proovid ehk uuesti või teed ekraanipildi mõnest teisest lehest?"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Tee, salvesta ja jaga ekraanipilte Firefoxist lahkumata."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "Uus viis salvestamiseks"
+  },
+  "tourBodyPageAction": {
+    "message": "Laienda lehe tegevuste menüüd aadressiribal, kui soovid ekraanipildi teha."
+  },
+  "tourHeaderClickAndDrag": {
     "message": "Salvesta just seda, mida soovid"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "Klõpsa ja lohista lehe osa valimiseks. Samuti võid valiku esile toomiseks kursorit selle kohal hoida."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "Salvesta aknaid või terveid lehti"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "Kasuta nuppe ülal paremal aknas nähtava ala või terve lehe salvestamiseks."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "Nii, kuidas sulle meeldib"
   },
-  "tourBodyFour": {
+  "tourBodyDownloadUpload": {
     "message": "Salvesta kärbitud pilte lihtsamaks jagamiseks veebi või laadi need alla enda arvutisse. Võid ka klõpsata Minu pildid nupul kõigi tehtud piltide vaatamiseks."
   },
   "tourSkip": {
@@ -112,8 +161,8 @@
   "tourDone": {
     "message": "Valmis"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Firefox Screenshots kasutamisel nõustud Firefox Cloud Services $TERMSANDPRIVACYNOTICETERMSLINK$ ja $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
+  "termsAndPrivacyNotice2": {
+    "message": "Firefox Screenshots'i kasutades nõustud meie $TERMSANDPRIVACYNOTICETERMSLINK$ ja $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +177,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "privaatsuspoliitikaga"
+  },
+  "libraryLabel": {
+    "message": "Ekraanipildid"
   }
 }

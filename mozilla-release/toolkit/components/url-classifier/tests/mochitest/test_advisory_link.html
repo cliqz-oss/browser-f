@@ -16,10 +16,10 @@
 <pre id="test">
 
 <script class="testbody" type="text/javascript">
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://testing-common/BrowserTestUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/TestUtils.jsm");
+ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+/* import-globals-from classifierHelper.js */
 
 var mainWindow = window.QueryInterface(Ci.nsIInterfaceRequestor)
                     .getInterface(Ci.nsIWebNavigation)
@@ -47,15 +47,6 @@ var testDatas = [
 
 let pushPrefs = (...p) => SpecialPowers.pushPrefEnv({set: p});
 
-function whenDelayedStartupFinished(aWindow, aCallback) {
-  Services.obs.addObserver(function observer(aSubject, aTopic) {
-    if (aWindow == aSubject) {
-      Services.obs.removeObserver(observer, aTopic);
-      setTimeout(aCallback, 0);
-    }
-  }, "browser-delayed-startup-finished");
-}
-
 function addUrlToDB(list, url) {
   let testData = [{ db: list, url}];
 
@@ -82,15 +73,16 @@ function setupTestData(data) {
 }
 
 function testOnWindow(aTestData) {
-  return new Promise(resolve  => {
+  return new Promise(resolve => {
     let win = mainWindow.OpenBrowserWindow();
 
     (async function() {
-      await new Promise(resolve => whenDelayedStartupFinished(win, resolve));
+      await TestUtils.topicObserved("browser-delayed-startup-finished",
+                                    subject => subject == win);
 
       let browser = win.gBrowser.selectedBrowser;
       await BrowserTestUtils.loadURI(browser, aTestData.url);
-      await BrowserTestUtils.waitForContentEvent(browser, "DOMContentLoaded")
+      await BrowserTestUtils.waitForContentEvent(browser, "DOMContentLoaded");
 
       let doc = win.gBrowser.contentDocument;
       let advisoryEl = doc.getElementById("advisory_provider");
@@ -117,7 +109,7 @@ function testOnWindow(aTestData) {
 }
 
 SpecialPowers.pushPrefEnv(
-  {"set" : [["browser.safebrowsing.phishing.enabled", true]]},
+  {"set": [["browser.safebrowsing.phishing.enabled", true]]},
   test);
 
 function test() {

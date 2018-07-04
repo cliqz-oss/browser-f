@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -25,6 +26,8 @@ struct ScrollbarStyles
   // Always one of NS_STYLE_SCROLL_BEHAVIOR_AUTO or
   // NS_STYLE_SCROLL_BEHAVIOR_SMOOTH
   uint8_t mScrollBehavior;
+  mozilla::StyleOverscrollBehavior mOverscrollBehaviorX;
+  mozilla::StyleOverscrollBehavior mOverscrollBehaviorY;
   // Always one of NS_STYLE_SCROLL_SNAP_NONE, NS_STYLE_SCROLL_SNAP_MANDATORY,
   // or NS_STYLE_SCROLL_SNAP_PROXIMITY.
   uint8_t mScrollSnapTypeX;
@@ -37,6 +40,8 @@ struct ScrollbarStyles
   ScrollbarStyles(uint8_t aH, uint8_t aV)
     : mHorizontal(aH), mVertical(aV),
       mScrollBehavior(NS_STYLE_SCROLL_BEHAVIOR_AUTO),
+      mOverscrollBehaviorX(StyleOverscrollBehavior::Auto),
+      mOverscrollBehaviorY(StyleOverscrollBehavior::Auto),
       mScrollSnapTypeX(NS_STYLE_SCROLL_SNAP_TYPE_NONE),
       mScrollSnapTypeY(NS_STYLE_SCROLL_SNAP_TYPE_NONE),
       mScrollSnapPointsX(nsStyleCoord(eStyleUnit_None)),
@@ -55,6 +60,8 @@ struct ScrollbarStyles
   bool operator==(const ScrollbarStyles& aStyles) const {
     return aStyles.mHorizontal == mHorizontal && aStyles.mVertical == mVertical &&
            aStyles.mScrollBehavior == mScrollBehavior &&
+           aStyles.mOverscrollBehaviorX == mOverscrollBehaviorX &&
+           aStyles.mOverscrollBehaviorY == mOverscrollBehaviorY &&
            aStyles.mScrollSnapTypeX == mScrollSnapTypeX &&
            aStyles.mScrollSnapTypeY == mScrollSnapTypeY &&
            aStyles.mScrollSnapPointsX == mScrollSnapPointsX &&

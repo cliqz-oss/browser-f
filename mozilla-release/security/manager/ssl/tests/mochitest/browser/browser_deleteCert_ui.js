@@ -66,7 +66,7 @@ function openDeleteCertConfirmDialog(tabID) {
                               tabID, gCertArray, retVals);
   return new Promise((resolve, reject) => {
     win.addEventListener("load", function() {
-      resolve([win, retVals]);
+      executeSoon(() => resolve([win, retVals]));
     }, {once: true});
   });
 }
@@ -178,16 +178,6 @@ add_task(async function testDeleteCACerts() {
     "If you delete or distrust a certificate authority (CA) certificate, " +
     "this application will no longer trust any certificates issued by that CA.";
   await testHelper("ca_tab", expectedTitle, expectedConfirmMsg,
-                    expectedImpact);
-});
-
-// Test deleting certs from the "Other" tab.
-add_task(async function testDeleteOtherCerts() {
-  const expectedTitle = "Delete Certificates";
-  const expectedConfirmMsg =
-    "Are you sure you want to delete these certificates?";
-  const expectedImpact = "";
-  await testHelper("orphan_tab", expectedTitle, expectedConfirmMsg,
                     expectedImpact);
 });
 

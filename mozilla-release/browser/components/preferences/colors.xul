@@ -6,76 +6,71 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-#ifdef XP_MACOSX
 <?xml-stylesheet href="chrome://browser/skin/preferences/preferences.css"?>
-#endif
 
-<!DOCTYPE prefwindow SYSTEM "chrome://browser/locale/preferences/colors.dtd" >
+<dialog id="ColorsDialog" type="child" class="prefwindow"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        data-l10n-id="colors-window"
+        data-l10n-attrs="title, style"
+        buttons="accept,cancel,help"
+        persist="lastSelected screenX screenY"
+        role="dialog"
+        helpTopic="prefs-fonts-and-colors"
+        ondialoghelp="openPrefsHelp()">
 
-<prefwindow id="ColorsDialog" type="child"
-            xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-            title="&colorsDialog.title;"
-            dlgbuttons="accept,cancel,help"
-            ondialoghelp="openPrefsHelp()"
-#ifdef XP_MACOSX
-            style="width: &window.macWidth; !important;">
-#else
-            style="width: &window.width; !important;">
-#endif
+  <link rel="localization" href="browser/preferences/colors.ftl"/>
+  <script type="application/javascript" src="chrome://global/content/l10n.js"></script>
 
   <script type="application/javascript" src="chrome://browser/content/utilityOverlay.js"/>
-  <prefpane id="ColorsDialogPane"
-            helpTopic="prefs-fonts-and-colors">
+  <script type="application/javascript" src="chrome://global/content/preferencesBindings.js"/>
 
-    <preferences>
-      <preference id="browser.display.document_color_use"   name="browser.display.document_color_use"   type="int"/>
-      <preference id="browser.anchor_color"                 name="browser.anchor_color"                 type="string"/>
-      <preference id="browser.visited_color"                name="browser.visited_color"                type="string"/>
-      <preference id="browser.underline_anchors"            name="browser.underline_anchors"            type="bool"/>
-      <preference id="browser.display.foreground_color"     name="browser.display.foreground_color"     type="string"/>
-      <preference id="browser.display.background_color"     name="browser.display.background_color"     type="string"/>
-      <preference id="browser.display.use_system_colors"    name="browser.display.use_system_colors"    type="bool"/>
-    </preferences>
+  <keyset>
+    <key data-l10n-id="colors-close-key" modifiers="accel" oncommand="Preferences.close(event)"/>
+  </keyset>
+
+  <vbox id="ColorsDialogPane" class="prefpane">
+
+    <script type="application/javascript" src="chrome://browser/content/preferences/colors.js"/>
 
     <hbox>
       <groupbox flex="1">
-        <caption><label>&color;</label></caption>
+        <caption><label data-l10n-id="colors-text-and-background"/></caption>
         <hbox align="center">
-          <label accesskey="&textColor.accesskey;" control="foregroundtextmenu">&textColor.label;</label>
+          <label data-l10n-id="colors-text-header" control="foregroundtextmenu"/>
           <spacer flex="1"/>
           <colorpicker type="button" id="foregroundtextmenu" palettename="standard"
                        preference="browser.display.foreground_color"/>
         </hbox>
         <hbox align="center" style="margin-top: 5px">
-          <label accesskey="&backgroundColor.accesskey;" control="backgroundmenu">&backgroundColor.label;</label>
+          <label data-l10n-id="colors-background" control="backgroundmenu" />
           <spacer flex="1"/>
           <colorpicker type="button" id="backgroundmenu" palettename="standard"
                        preference="browser.display.background_color"/>
         </hbox>
         <separator class="thin"/>
         <hbox align="center">
-          <checkbox id="browserUseSystemColors" label="&useSystemColors.label;" accesskey="&useSystemColors.accesskey;"
+          <checkbox id="browserUseSystemColors" data-l10n-id="colors-use-system"
                     preference="browser.display.use_system_colors"/>
         </hbox>
       </groupbox>
 
       <groupbox flex="1">
-        <caption><label>&links;</label></caption>
+        <caption><label data-l10n-id="colors-links-header"/></caption>
         <hbox align="center">
-          <label accesskey="&linkColor.accesskey;" control="unvisitedlinkmenu">&linkColor.label;</label>
+          <label data-l10n-id="colors-unvisited-links" control="unvisitedlinkmenu" />
           <spacer flex="1"/>
           <colorpicker type="button" id="unvisitedlinkmenu" palettename="standard"
                        preference="browser.anchor_color"/>
         </hbox>
         <hbox align="center" style="margin-top: 5px">
-          <label accesskey="&visitedLinkColor.accesskey;" control="visitedlinkmenu">&visitedLinkColor.label;</label>
+          <label data-l10n-id="colors-visited-links" control="visitedlinkmenu" />
           <spacer flex="1"/>
           <colorpicker type="button" id="visitedlinkmenu" palettename="standard"
                        preference="browser.visited_color"/>
         </hbox>
         <separator class="thin"/>
         <hbox align="center">
-          <checkbox id="browserUnderlineAnchors" label="&underlineLinks.label;" accesskey="&underlineLinks.accesskey;"
+          <checkbox id="browserUnderlineAnchors" data-l10n-id="colors-underline-links"
                     preference="browser.underline_anchors"/>
         </hbox>
       </groupbox>
@@ -85,20 +80,19 @@
 #else
     <vbox>
 #endif
-      <label accesskey="&overrideDefaultPageColors.accesskey;"
-             control="useDocumentColors">&overrideDefaultPageColors.label;</label>
+      <label data-l10n-id="colors-page-override" control="useDocumentColors" />
       <hbox>
         <menulist id="useDocumentColors" preference="browser.display.document_color_use" flex="1">
           <menupopup>
-            <menuitem label="&overrideDefaultPageColors.always.label;"
+            <menuitem data-l10n-id="colors-page-override-option-always"
                       value="2" id="documentColorAlways"/>
-            <menuitem label="&overrideDefaultPageColors.auto.label;"
+            <menuitem data-l10n-id="colors-page-override-option-auto"
                       value="0" id="documentColorAutomatic"/>
-            <menuitem label="&overrideDefaultPageColors.never.label;"
+            <menuitem data-l10n-id="colors-page-override-option-never"
                       value="1" id="documentColorNever"/>
           </menupopup>
         </menulist>
       </hbox>
     </vbox>
-  </prefpane>
-</prefwindow>
+  </vbox>
+</dialog>

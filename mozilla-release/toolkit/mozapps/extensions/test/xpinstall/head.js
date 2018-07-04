@@ -15,7 +15,7 @@ const CHROME_NAME = "mochikit";
 
 function getChromeRoot(path) {
   if (path === undefined) {
-    return "chrome://" + CHROME_NAME + "/content/browser/" + RELATIVE_DIR
+    return "chrome://" + CHROME_NAME + "/content/browser/" + RELATIVE_DIR;
   }
   return getRootDirectory(path);
 }
@@ -119,8 +119,10 @@ var Harness = {
 
       Services.wm.addListener(this);
 
+      window.addEventListener("popupshown", this);
+
       var self = this;
-      registerCleanupFunction(function() {
+      registerCleanupFunction(async function() {
         Services.prefs.clearUserPref(PREF_LOGGING_ENABLED);
         Services.prefs.clearUserPref(PREF_INSTALL_REQUIRESECUREORIGIN);
         Services.obs.removeObserver(self, "addon-install-started");
@@ -135,12 +137,13 @@ var Harness = {
 
         Services.wm.removeListener(self);
 
-        AddonManager.getAllInstalls(function(aInstalls) {
-          is(aInstalls.length, 0, "Should be no active installs at the end of the test");
-          aInstalls.forEach(function(aInstall) {
-            info("Install for " + aInstall.sourceURI + " is in state " + aInstall.state);
-            aInstall.cancel();
-          });
+        window.removeEventListener("popupshown", self);
+
+        let aInstalls = await AddonManager.getAllInstalls();
+        is(aInstalls.length, 0, "Should be no active installs at the end of the test");
+        aInstalls.forEach(function(aInstall) {
+          info("Install for " + aInstall.sourceURI + " is in state " + aInstall.state);
+          aInstall.cancel();
         });
       });
     }
@@ -239,6 +242,40 @@ var Harness = {
     }
   },
 
+  popupReady(panel) {
+    if (this.installBlockedCallback)
+      ok(false, "Should have been blocked by the whitelist");
+    this.pendingCount++;
+
+    // If there is a confirm callback then its return status determines whether
+    // to install the items or not. If not the test is over.
+    let result = true;
+    if (this.installConfirmCallback) {
+      result = this.installConfirmCallback(panel);
+      if (result === this.leaveOpen)
+        return;
+    }
+
+    if (!result) {
+      panel.secondaryButton.click();
+    } else {
+      panel.button.click();
+    }
+  },
+
+  handleEvent(event) {
+    if (event.type === "popupshown") {
+      if (event.target.firstChild) {
+        let popupId = event.target.getAttribute("popupid");
+        if (popupId === "addon-webext-permissions") {
+          this.popupReady(event.target.firstChild);
+        } else if (popupId === "addon-installed" || popupId === "addon-install-failed") {
+          event.target.firstChild.button.click();
+        }
+      }
+    }
+  },
+
   // Install blocked handling
 
   installDisabled(installInfo) {
@@ -284,12 +321,9 @@ var Harness = {
 
   // nsIWindowMediatorListener
 
-  onWindowTitleChange(window, title) {
-  },
-
   onOpenWindow(window) {
-    var domwindow = window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                          .getInterface(Components.interfaces.nsIDOMWindow);
+    var domwindow = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                          .getInterface(Ci.nsIDOMWindow);
     var self = this;
     waitForFocus(function() {
       self.windowReady(domwindow);
@@ -315,7 +349,7 @@ var Harness = {
         this.waitingForEvent = false;
         if (this.pendingCount == 0)
           this.endTest();
-      }
+      };
       mm.addMessageListener("Test:GotNewInstallEvent", listener);
     }
   },
@@ -358,9 +392,9 @@ var Harness = {
   },
 
   onInstallEnded(install, addon) {
+    this.installCount++;
     if (this.installEndedCallback)
       this.installEndedCallback(install, addon);
-    this.installCount++;
     this.checkTestEnded();
   },
 
@@ -444,7 +478,5 @@ var Harness = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsIWindowMediatorListener,
-                                         Ci.nsISupports])
-}
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver, Ci.nsIWindowMediatorListener])
+};

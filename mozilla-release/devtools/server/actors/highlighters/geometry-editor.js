@@ -5,9 +5,10 @@
 "use strict";
 
 const { AutoRefreshHighlighter } = require("./auto-refresh");
-const { CanvasFrameAnonymousContentHelper, getCSSStyleRules, getComputedStyle,
+const { CanvasFrameAnonymousContentHelper, getComputedStyle,
         createSVGNode, createNode } = require("./utils/markup");
 const { setIgnoreLayoutChanges, getAdjustedQuads } = require("devtools/shared/layout/utils");
+const { getCSSStyleRules } = require("devtools/shared/inspector/css-logic");
 
 const GEOMETRY_LABEL_SIZE = 6;
 
@@ -25,55 +26,55 @@ var GeoProp = {
   SIDES: ["top", "right", "bottom", "left"],
   SIZES: ["width", "height"],
 
-  allProps: function () {
+  allProps: function() {
     return [...this.SIDES, ...this.SIZES];
   },
 
-  isSide: function (name) {
-    return this.SIDES.indexOf(name) !== -1;
+  isSide: function(name) {
+    return this.SIDES.includes(name);
   },
 
-  isSize: function (name) {
-    return this.SIZES.indexOf(name) !== -1;
+  isSize: function(name) {
+    return this.SIZES.includes(name);
   },
 
-  containsSide: function (names) {
-    return names.some(name => this.SIDES.indexOf(name) !== -1);
+  containsSide: function(names) {
+    return names.some(name => this.SIDES.includes(name));
   },
 
-  containsSize: function (names) {
-    return names.some(name => this.SIZES.indexOf(name) !== -1);
+  containsSize: function(names) {
+    return names.some(name => this.SIZES.includes(name));
   },
 
-  isHorizontal: function (name) {
+  isHorizontal: function(name) {
     return name === "left" || name === "right" || name === "width";
   },
 
-  isInverted: function (name) {
+  isInverted: function(name) {
     return name === "right" || name === "bottom";
   },
 
-  mainAxisStart: function (name) {
+  mainAxisStart: function(name) {
     return this.isHorizontal(name) ? "left" : "top";
   },
 
-  crossAxisStart: function (name) {
+  crossAxisStart: function(name) {
     return this.isHorizontal(name) ? "top" : "left";
   },
 
-  mainAxisSize: function (name) {
+  mainAxisSize: function(name) {
     return this.isHorizontal(name) ? "width" : "height";
   },
 
-  crossAxisSize: function (name) {
+  crossAxisSize: function(name) {
     return this.isHorizontal(name) ? "height" : "width";
   },
 
-  axis: function (name) {
+  axis: function(name) {
     return this.isHorizontal(name) ? "x" : "y";
   },
 
-  crossAxis: function (name) {
+  crossAxis: function(name) {
     return this.isHorizontal(name) ? "y" : "x";
   }
 };
@@ -130,8 +131,8 @@ function getDefinedGeometryProperties(node) {
 
   // Get the list of css rules applying to the current node.
   let cssRules = getCSSStyleRules(node);
-  for (let i = 0; i < cssRules.Count(); i++) {
-    let rule = cssRules.GetElementAt(i);
+  for (let i = 0; i < cssRules.length; i++) {
+    let rule = cssRules[i];
     for (let name of GeoProp.allProps()) {
       let value = rule.style.getPropertyValue(name);
       if (value && value !== "auto") {
@@ -166,7 +167,7 @@ function getDefinedGeometryProperties(node) {
   let { position } = getComputedStyle(node);
   for (let [name] of props) {
     // Top/left/bottom/right on static positioned elements have no effect.
-    if (position === "static" && GeoProp.SIDES.indexOf(name) !== -1) {
+    if (position === "static" && GeoProp.SIDES.includes(name)) {
       props.delete(name);
     }
 

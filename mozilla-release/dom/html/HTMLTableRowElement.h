@@ -25,7 +25,7 @@ public:
     SetHasWeirdParserInsertionMode();
   }
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLTableRowElement, tr)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLTableRowElement, tr)
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -79,11 +79,12 @@ public:
   }
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;

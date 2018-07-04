@@ -16,6 +16,7 @@
 #include "nsPromiseFlatString.h"
 #include "nsThreadUtils.h"
 #include "prlog.h"
+
 #include <jni.h>
 
 #undef LOG
@@ -92,7 +93,7 @@ public:
   class CallbacksSupport final : public JavaCallbacksSupport
   {
   public:
-    CallbacksSupport(RemoteVideoDecoder* aDecoder) : mDecoder(aDecoder) { }
+    explicit CallbacksSupport(RemoteVideoDecoder* aDecoder) : mDecoder(aDecoder) { }
 
     void HandleInput(int64_t aTimestamp, bool aProcessed) override
     {
@@ -146,7 +147,7 @@ public:
           TimeUnit::FromMicroseconds(presentationTimeUs));
 
         v->SetListener(Move(releaseSample));
-        mDecoder->UpdateOutputStatus(v);
+        mDecoder->UpdateOutputStatus(Move(v));
       }
 
       if (isEOS) {
@@ -167,11 +168,9 @@ public:
 
   RemoteVideoDecoder(const VideoInfo& aConfig,
                      MediaFormat::Param aFormat,
-                     layers::ImageContainer* aImageContainer,
                      const nsString& aDrmStubId, TaskQueue* aTaskQueue)
     : RemoteDataDecoder(MediaData::Type::VIDEO_DATA, aConfig.mMimeType,
                         aFormat, aDrmStubId, aTaskQueue)
-    , mImageContainer(aImageContainer)
     , mConfig(aConfig)
   {
   }
@@ -209,13 +208,13 @@ public:
     }
     mIsCodecSupportAdaptivePlayback =
       mJavaDecoder->IsAdaptivePlaybackSupported();
-
     return InitPromise::CreateAndResolve(TrackInfo::kVideoTrack, __func__);
   }
 
   RefPtr<MediaDataDecoder::FlushPromise> Flush() override
   {
     mInputInfos.Clear();
+    mSeekTarget.reset();
     return RemoteDataDecoder::Flush();
   }
 
@@ -237,13 +236,31 @@ public:
     return mIsCodecSupportAdaptivePlayback;
   }
 
+  void SetSeekThreshold(const TimeUnit& aTime) override
+  {
+    mSeekTarget = Some(aTime);
+  }
+
+  bool IsUsefulData(const RefPtr<MediaData>& aSample) override
+  {
+    AssertOnTaskQueue();
+    if (!mSeekTarget) {
+      return true;
+    }
+    if (aSample->GetEndTime() > mSeekTarget.value()) {
+      mSeekTarget.reset();
+      return true;
+    }
+    return false;
+  }
+
 private:
-  layers::ImageContainer* mImageContainer;
   const VideoInfo mConfig;
   GeckoSurface::GlobalRef mSurface;
   AndroidSurfaceTextureHandle mSurfaceHandle;
   SimpleMap<InputInfo> mInputInfos;
   bool mIsCodecSupportAdaptivePlayback = false;
+  Maybe<TimeUnit> mSeekTarget;
 };
 
 class RemoteAudioDecoder : public RemoteDataDecoder
@@ -299,7 +316,7 @@ private:
   class CallbacksSupport final : public JavaCallbacksSupport
   {
   public:
-    CallbacksSupport(RemoteAudioDecoder* aDecoder) : mDecoder(aDecoder) { }
+    explicit CallbacksSupport(RemoteAudioDecoder* aDecoder) : mDecoder(aDecoder) { }
 
     void HandleInput(int64_t aTimestamp, bool aProcessed) override
     {
@@ -351,7 +368,7 @@ private:
           FramesToTimeUnit(numFrames, mOutputSampleRate), numFrames,
           Move(audio), mOutputChannels, mOutputSampleRate);
 
-        mDecoder->UpdateOutputStatus(data);
+        mDecoder->UpdateOutputStatus(Move(data));
       }
 
       if ((flags & MediaCodec::BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -423,7 +440,7 @@ RemoteDataDecoder::CreateVideoDecoder(const CreateDecoderParams& aParams,
     nullptr);
 
   RefPtr<MediaDataDecoder> decoder = new RemoteVideoDecoder(
-    config, format, aParams.mImageContainer, aDrmStubId, aParams.mTaskQueue);
+    config, format, aDrmStubId, aParams.mTaskQueue);
   if (aProxy) {
     decoder = new EMEMediaDataDecoderProxy(aParams, decoder.forget(), aProxy);
   }
@@ -522,6 +539,69 @@ RemoteDataDecoder::ProcessShutdown()
   return ShutdownPromise::CreateAndResolve(true, __func__);
 }
 
+static CryptoInfo::LocalRef
+GetCryptoInfoFromSample(const MediaRawData* aSample)
+{
+  auto& cryptoObj = aSample->mCrypto;
+
+  if (!cryptoObj.mValid) {
+    return nullptr;
+  }
+
+  CryptoInfo::LocalRef cryptoInfo;
+  nsresult rv = CryptoInfo::New(&cryptoInfo);
+  NS_ENSURE_SUCCESS(rv, nullptr);
+
+  uint32_t numSubSamples = std::min<uint32_t>(
+    cryptoObj.mPlainSizes.Length(), cryptoObj.mEncryptedSizes.Length());
+
+  uint32_t totalSubSamplesSize = 0;
+  for (auto& size : cryptoObj.mEncryptedSizes) {
+    totalSubSamplesSize += size;
+  }
+
+  // mPlainSizes is uint16_t, need to transform to uint32_t first.
+  nsTArray<uint32_t> plainSizes;
+  for (auto& size : cryptoObj.mPlainSizes) {
+    totalSubSamplesSize += size;
+    plainSizes.AppendElement(size);
+  }
+
+  uint32_t codecSpecificDataSize = aSample->Size() - totalSubSamplesSize;
+  // Size of codec specific data("CSD") for Android MediaCodec usage should be
+  // included in the 1st plain size.
+  plainSizes[0] += codecSpecificDataSize;
+
+  static const int kExpectedIVLength = 16;
+  auto tempIV(cryptoObj.mIV);
+  auto tempIVLength = tempIV.Length();
+  MOZ_ASSERT(tempIVLength <= kExpectedIVLength);
+  for (size_t i = tempIVLength; i < kExpectedIVLength; i++) {
+    // Padding with 0
+    tempIV.AppendElement(0);
+  }
+
+  auto numBytesOfPlainData = mozilla::jni::IntArray::New(
+    reinterpret_cast<int32_t*>(&plainSizes[0]), plainSizes.Length());
+
+  auto numBytesOfEncryptedData = mozilla::jni::IntArray::New(
+    reinterpret_cast<const int32_t*>(&cryptoObj.mEncryptedSizes[0]),
+    cryptoObj.mEncryptedSizes.Length());
+  auto iv = mozilla::jni::ByteArray::New(reinterpret_cast<int8_t*>(&tempIV[0]),
+                                         tempIV.Length());
+  auto keyId = mozilla::jni::ByteArray::New(
+    reinterpret_cast<const int8_t*>(&cryptoObj.mKeyId[0]),
+    cryptoObj.mKeyId.Length());
+  cryptoInfo->Set(numSubSamples,
+                  numBytesOfPlainData,
+                  numBytesOfEncryptedData,
+                  keyId,
+                  iv,
+                  MediaCodec::CRYPTO_MODE_AES_CTR);
+
+  return cryptoInfo;
+}
+
 RefPtr<MediaDataDecoder::DecodePromise>
 RemoteDataDecoder::Decode(MediaRawData* aSample)
 {
@@ -529,7 +609,7 @@ RemoteDataDecoder::Decode(MediaRawData* aSample)
 
   RefPtr<RemoteDataDecoder> self = this;
   RefPtr<MediaRawData> sample = aSample;
-  return InvokeAsync(mTaskQueue, __func__, [self, sample, this]() {
+  return InvokeAsync(mTaskQueue, __func__, [self, sample]() {
     jni::ByteBuffer::LocalRef bytes = jni::ByteBuffer::New(
       const_cast<uint8_t*>(sample->Data()), sample->Size());
 
@@ -541,9 +621,9 @@ RemoteDataDecoder::Decode(MediaRawData* aSample)
     }
     bufferInfo->Set(0, sample->Size(), sample->mTime.ToMicroseconds(), 0);
 
-    mDrainStatus = DrainStatus::DRAINABLE;
-    return mJavaDecoder->Input(bytes, bufferInfo, GetCryptoInfoFromSample(sample))
-           ? mDecodePromise.Ensure(__func__)
+    self->mDrainStatus = DrainStatus::DRAINABLE;
+    return self->mJavaDecoder->Input(bytes, bufferInfo, GetCryptoInfoFromSample(sample))
+           ? self->mDecodePromise.Ensure(__func__)
            : DecodePromise::CreateAndReject(
                MediaResult(NS_ERROR_OUT_OF_MEMORY, __func__), __func__);
 
@@ -554,12 +634,15 @@ void
 RemoteDataDecoder::UpdateInputStatus(int64_t aTimestamp, bool aProcessed)
 {
   if (!mTaskQueue->IsCurrentThreadIn()) {
-    mTaskQueue->Dispatch(
-      NewRunnableMethod<int64_t, bool>("RemoteDataDecoder::UpdateInputStatus",
-                                       this,
-                                       &RemoteDataDecoder::UpdateInputStatus,
-                                       aTimestamp,
-                                       aProcessed));
+    nsresult rv =
+      mTaskQueue->Dispatch(
+        NewRunnableMethod<int64_t, bool>("RemoteDataDecoder::UpdateInputStatus",
+                                         this,
+                                         &RemoteDataDecoder::UpdateInputStatus,
+                                         aTimestamp,
+                                         aProcessed));
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+    Unused << rv;
     return;
   }
   AssertOnTaskQueue();
@@ -580,21 +663,26 @@ RemoteDataDecoder::UpdateInputStatus(int64_t aTimestamp, bool aProcessed)
 }
 
 void
-RemoteDataDecoder::UpdateOutputStatus(MediaData* aSample)
+RemoteDataDecoder::UpdateOutputStatus(RefPtr<MediaData>&& aSample)
 {
   if (!mTaskQueue->IsCurrentThreadIn()) {
-    mTaskQueue->Dispatch(
-      NewRunnableMethod<MediaData*>("RemoteDataDecoder::UpdateOutputStatus",
-                                    this,
-                                    &RemoteDataDecoder::UpdateOutputStatus,
-                                    aSample));
+    nsresult rv =
+      mTaskQueue->Dispatch(
+        NewRunnableMethod<const RefPtr<MediaData>>("RemoteDataDecoder::UpdateOutputStatus",
+                                                   this,
+                                                   &RemoteDataDecoder::UpdateOutputStatus,
+                                                   Move(aSample)));
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+    Unused << rv;
     return;
   }
   AssertOnTaskQueue();
   if (mShutdown) {
     return;
   }
-  mDecodedData.AppendElement(aSample);
+  if (IsUsefulData(aSample)) {
+    mDecodedData.AppendElement(Move(aSample));
+  }
   ReturnDecodedData();
 }
 
@@ -619,9 +707,12 @@ void
 RemoteDataDecoder::DrainComplete()
 {
   if (!mTaskQueue->IsCurrentThreadIn()) {
-    mTaskQueue->Dispatch(
-      NewRunnableMethod("RemoteDataDecoder::DrainComplete",
-                        this, &RemoteDataDecoder::DrainComplete));
+    nsresult rv =
+      mTaskQueue->Dispatch(
+        NewRunnableMethod("RemoteDataDecoder::DrainComplete",
+                          this, &RemoteDataDecoder::DrainComplete));
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+    Unused << rv;
     return;
   }
   AssertOnTaskQueue();
@@ -638,9 +729,13 @@ void
 RemoteDataDecoder::Error(const MediaResult& aError)
 {
   if (!mTaskQueue->IsCurrentThreadIn()) {
-    mTaskQueue->Dispatch(
-      NewRunnableMethod<MediaResult>("RemoteDataDecoder::Error",
-                                     this, &RemoteDataDecoder::Error, aError));
+    nsresult rv =
+      mTaskQueue->Dispatch(
+        NewRunnableMethod<MediaResult>("RemoteDataDecoder::Error",
+                                       this, &RemoteDataDecoder::Error,
+                                       aError));
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+    Unused << rv;
     return;
   }
   AssertOnTaskQueue();

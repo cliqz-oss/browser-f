@@ -7,8 +7,8 @@
  * Tests if different response content types are handled correctly.
  */
 
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(CONTENT_TYPE_WITHOUT_CACHE_URL);
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(CONTENT_TYPE_WITHOUT_CACHE_URL);
   info("Starting test... ");
 
   let { document, store, windowRequire } = monitor.panelWin;
@@ -21,11 +21,15 @@ add_task(function* () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, CONTENT_TYPE_WITHOUT_CACHE_REQUESTS);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests();
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, CONTENT_TYPE_WITHOUT_CACHE_REQUESTS);
+
+  for (let requestItem of document.querySelectorAll(".request-list-item")) {
+    let requestsListStatus = requestItem.querySelector(".status-code");
+    requestItem.scrollIntoView();
+    EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
+    await waitUntil(() => requestsListStatus.title);
+  }
 
   verifyRequestItemTarget(
     document,
@@ -129,36 +133,36 @@ add_task(function* () {
       statusText: "OK",
       type: "plain",
       fullMimeType: "text/plain",
-      transferred: L10N.getFormatStrWithNumbers("networkMenu.sizeB", 73),
+      transferred: L10N.getFormatStrWithNumbers("networkMenu.sizeB", 324),
       size: L10N.getFormatStrWithNumbers("networkMenu.sizeKB", 10.73),
       time: true
     }
   );
 
-  yield selectIndexAndWaitForSourceEditor(0);
-  yield testResponseTab("xml");
+  await selectIndexAndWaitForSourceEditor(monitor, 0);
+  await testResponseTab("xml");
 
-  yield selectIndexAndWaitForSourceEditor(1);
-  yield testResponseTab("css");
+  await selectIndexAndWaitForSourceEditor(monitor, 1);
+  await testResponseTab("css");
 
-  yield selectIndexAndWaitForSourceEditor(2);
-  yield testResponseTab("js");
+  await selectIndexAndWaitForSourceEditor(monitor, 2);
+  await testResponseTab("js");
 
-  yield selectIndexAndWaitForJSONView(3);
-  yield testResponseTab("json");
+  await selectIndexAndWaitForJSONView(3);
+  await testResponseTab("json");
 
-  yield selectIndexAndWaitForSourceEditor(4);
-  yield testResponseTab("html");
+  await selectIndexAndWaitForSourceEditor(monitor, 4);
+  await testResponseTab("html");
 
-  yield selectIndexAndWaitForImageView(5);
-  yield testResponseTab("png");
+  await selectIndexAndWaitForImageView(5);
+  await testResponseTab("png");
 
-  yield selectIndexAndWaitForSourceEditor(6);
-  yield testResponseTab("gzip");
+  await selectIndexAndWaitForSourceEditor(monitor, 6);
+  await testResponseTab("gzip");
 
-  yield teardown(monitor);
+  await teardown(monitor);
 
-  function* testResponseTab(type) {
+  function testResponseTab(type) {
     let tabpanel = document.querySelector("#response-panel");
 
     function checkVisibility(box) {
@@ -170,7 +174,7 @@ add_task(function* () {
         box != "json",
         "The response json view doesn't display");
       is(tabpanel.querySelector(".CodeMirror-code") === null,
-        box != "textarea",
+        (box !== "textarea" && box !== "json"),
         "The response editor doesn't display");
       is(tabpanel.querySelector(".response-image-box") === null,
         box != "image",
@@ -208,8 +212,8 @@ add_task(function* () {
       case "json": {
         checkVisibility("json");
 
-        is(tabpanel.querySelectorAll(".tree-section").length, 1,
-          "There should be 1 tree sections displayed in this tabpanel.");
+        is(tabpanel.querySelectorAll(".tree-section").length, 2,
+          "There should be 2 tree sections displayed in this tabpanel.");
         is(tabpanel.querySelectorAll(".empty-notice").length, 0,
           "The empty notice should not be displayed in this tabpanel.");
 
@@ -263,32 +267,26 @@ add_task(function* () {
     }
   }
 
-  function* selectIndexAndWaitForSourceEditor(index) {
-    let editor = document.querySelector("#response-panel .CodeMirror-code");
-    if (!editor) {
-      let waitDOM = waitForDOM(document, "#response-panel .CodeMirror-code");
-      EventUtils.sendMouseEvent({ type: "mousedown" },
-        document.querySelectorAll(".request-list-item")[index]);
-      document.querySelector("#response-tab").click();
-      yield waitDOM;
-    } else {
-      EventUtils.sendMouseEvent({ type: "mousedown" },
-        document.querySelectorAll(".request-list-item")[index]);
-    }
-  }
-
-  function* selectIndexAndWaitForJSONView(index) {
+  async function selectIndexAndWaitForJSONView(index) {
+    let onResponseContent = monitor.panelWin.api.once(EVENTS.RECEIVED_RESPONSE_CONTENT);
     let tabpanel = document.querySelector("#response-panel");
     let waitDOM = waitForDOM(tabpanel, ".treeTable");
     store.dispatch(Actions.selectRequestByIndex(index));
-    yield waitDOM;
+    await waitDOM;
+    await onResponseContent;
+
+    // Waiting for RECEIVED_RESPONSE_CONTENT isn't enough.
+    // DOM may not be fully updated yet and checkVisibility(json) may still fail.
+    await waitForTick();
   }
 
-  function* selectIndexAndWaitForImageView(index) {
+  async function selectIndexAndWaitForImageView(index) {
+    let onResponseContent = monitor.panelWin.api.once(EVENTS.RECEIVED_RESPONSE_CONTENT);
     let tabpanel = document.querySelector("#response-panel");
     let waitDOM = waitForDOM(tabpanel, ".response-image");
     store.dispatch(Actions.selectRequestByIndex(index));
-    let [imageNode] = yield waitDOM;
-    yield once(imageNode, "load");
+    let [imageNode] = await waitDOM;
+    await once(imageNode, "load");
+    await onResponseContent;
   }
 });

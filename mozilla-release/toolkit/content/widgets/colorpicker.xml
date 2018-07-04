@@ -107,7 +107,7 @@
       -->
     </content>
 
-    <implementation implements="nsIDOMEventListener">
+    <implementation>
       <property name="color">
         <getter><![CDATA[
           return this.mSelectedCell ? this.mSelectedCell.getAttribute("color") : null;
@@ -214,7 +214,7 @@
           // used to capture keydown at the document level
           this.mPickerKeyDown = function(aEvent) {
             document._focusedPicker.pickerKeyDown(aEvent);
-          }
+          };
 
         ]]></body>
       </method>
@@ -231,12 +231,13 @@
             if (aTarget.hasAttribute("on" + aEventName)) {
               var fn = new Function("event", aTarget.getAttribute("on" + aEventName));
               var rv = fn.call(aTarget, event);
+              // eslint-disable-next-line mozilla/no-compare-against-boolean-literals
               if (rv == false)
                 cancel = true;
             }
             return !cancel;
           } catch (e) {
-            Components.utils.reportError(e);
+            Cu.reportError(e);
           }
           return false;
         ]]>
@@ -422,7 +423,7 @@
     </handlers>
   </binding>
 
-  <binding id="colorpicker-button" display="xul:menu" role="xul:colorpicker"
+  <binding id="colorpicker-button" display="xul:menu"
            extends="chrome://global/content/bindings/general.xml#basecontrol">
     <resources>
       <stylesheet src="chrome://global/skin/colorpicker.css"/>
@@ -467,10 +468,10 @@
             encodeURIComponent(this.color) +
             "' xmlns='http://www.w3.org/2000/svg' />");
 
-          var popup = document.getAnonymousElementByAttribute(this, "anonid", "colorpopup")
+          var popup = document.getAnonymousElementByAttribute(this, "anonid", "colorpopup");
           popup._colorPicker = this;
 
-          this.mPicker = document.getAnonymousElementByAttribute(this, "anonid", "colorpicker")
+          this.mPicker = document.getAnonymousElementByAttribute(this, "anonid", "colorpicker");
         ]]></body>
       </method>
 
@@ -486,6 +487,7 @@
             if (aTarget.hasAttribute("on" + aEventName)) {
               var fn = new Function("event", aTarget.getAttribute("on" + aEventName));
               var rv = fn.call(aTarget, event);
+              // eslint-disable-next-line mozilla/no-compare-against-boolean-literals
               if (rv == false)
                 cancel = true;
             }
@@ -532,7 +534,7 @@
       <method name="pickerChange">
         <body><![CDATA[
           this.color = this.mPicker.color;
-          setTimeout(function(aPopup) { aPopup.hidePopup() }, 1, this.mPicker.parentNode);
+          setTimeout(function(aPopup) { aPopup.hidePopup(); }, 1, this.mPicker.parentNode);
 
           this._fireEvent(this, "change");
         ]]></body>
@@ -553,9 +555,6 @@
           this.hidePopup();
       ]]></handler>
     </handlers>
-  </binding>
-
-  <binding id="colorpickertile" role="xul:colorpickertile">
   </binding>
 
 </bindings>

@@ -20,11 +20,13 @@ ${helpers.single_keyword("vector-effect", "none non-scaling-stroke",
 // Section 13 - Gradients and Patterns
 
 ${helpers.predefined_type(
-    "stop-color", "RGBAColor",
+    "stop-color",
+    "RGBAColor",
     "RGBA::new(0, 0, 0, 255)",
     products="gecko",
-    animation_value_type="IntermediateRGBA",
-    spec="https://www.w3.org/TR/SVGTiny12/painting.html#StopColorProperty")}
+    animation_value_type="AnimatedRGBA",
+    spec="https://www.w3.org/TR/SVGTiny12/painting.html#StopColorProperty",
+)}
 
 ${helpers.predefined_type("stop-opacity", "Opacity", "1.0",
                           products="gecko",
@@ -34,22 +36,26 @@ ${helpers.predefined_type("stop-opacity", "Opacity", "1.0",
 // Section 15 - Filter Effects
 
 ${helpers.predefined_type(
-    "flood-color", "RGBAColor",
+    "flood-color",
+    "RGBAColor",
     "RGBA::new(0, 0, 0, 255)",
     products="gecko",
-    animation_value_type="IntermediateRGBA",
-    spec="https://www.w3.org/TR/SVG/filters.html#FloodColorProperty")}
+    animation_value_type="AnimatedRGBA",
+    spec="https://www.w3.org/TR/SVG/filters.html#FloodColorProperty",
+)}
 
 ${helpers.predefined_type("flood-opacity", "Opacity",
                           "1.0", products="gecko", animation_value_type="ComputedValue",
                           spec="https://www.w3.org/TR/SVG/filters.html#FloodOpacityProperty")}
 
 ${helpers.predefined_type(
-    "lighting-color", "RGBAColor",
+    "lighting-color",
+    "RGBAColor",
     "RGBA::new(255, 255, 255, 255)",
     products="gecko",
-    animation_value_type="IntermediateRGBA",
-    spec="https://www.w3.org/TR/SVG/filters.html#LightingColorProperty")}
+    animation_value_type="AnimatedRGBA",
+    spec="https://www.w3.org/TR/SVG/filters.html#LightingColorProperty",
+)}
 
 // CSS Masking Module Level 1
 // https://drafts.fxtf.org/css-masking
@@ -57,11 +63,16 @@ ${helpers.single_keyword("mask-type", "luminance alpha",
                          products="gecko", animation_value_type="discrete",
                          spec="https://drafts.fxtf.org/css-masking/#propdef-mask-type")}
 
-${helpers.predefined_type("clip-path", "basic_shape::ClippingShape",
-                          "generics::basic_shape::ShapeSource::None",
-                          products="gecko", boxed="True",
-                          animation_value_type="none", flags="CREATES_STACKING_CONTEXT",
-                          spec="https://drafts.fxtf.org/css-masking/#propdef-clip-path")}
+${helpers.predefined_type(
+    "clip-path",
+    "basic_shape::ClippingShape",
+    "generics::basic_shape::ShapeSource::None",
+    products="gecko",
+    boxed=True,
+    animation_value_type="ComputedValue",
+    flags="CREATES_STACKING_CONTEXT",
+    spec="https://drafts.fxtf.org/css-masking/#propdef-clip-path",
+)}
 
 ${helpers.single_keyword("mask-mode",
                          "match-source alpha luminance",
@@ -70,23 +81,17 @@ ${helpers.single_keyword("mask-mode",
                          animation_value_type="discrete",
                          spec="https://drafts.fxtf.org/css-masking/#propdef-mask-mode")}
 
-<%helpers:vector_longhand name="mask-repeat" products="gecko" animation_value_type="discrete" extra_prefixes="webkit"
-                          spec="https://drafts.fxtf.org/css-masking/#propdef-mask-repeat">
-    pub use properties::longhands::background_repeat::single_value::parse;
-    pub use properties::longhands::background_repeat::single_value::SpecifiedValue;
-    pub use properties::longhands::background_repeat::single_value::computed_value;
-    pub use properties::longhands::background_repeat::single_value::RepeatKeyword;
-
-    #[inline]
-    pub fn get_initial_value() -> computed_value::T {
-        computed_value::T(RepeatKeyword::Repeat, RepeatKeyword::Repeat)
-    }
-
-    #[inline]
-    pub fn get_initial_specified_value() -> SpecifiedValue {
-        SpecifiedValue::Other(RepeatKeyword::Repeat, None)
-    }
-</%helpers:vector_longhand>
+${helpers.predefined_type(
+    "mask-repeat",
+    "BackgroundRepeat",
+    "computed::BackgroundRepeat::repeat()",
+    initial_specified_value="specified::BackgroundRepeat::repeat()",
+    products="gecko",
+    extra_prefixes="webkit",
+    animation_value_type="discrete",
+    spec="https://drafts.fxtf.org/css-masking/#propdef-mask-repeat",
+    vector=True,
+)}
 
 % for (axis, direction) in [("x", "Horizontal"), ("y", "Vertical")]:
     ${helpers.predefined_type(
@@ -134,8 +139,10 @@ ${helpers.single_keyword("mask-origin",
         background_size::get_initial_value()
     }
 
-    pub fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                         -> Result<SpecifiedValue,ParseError<'i>> {
+    pub fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<SpecifiedValue, ParseError<'i>> {
         background_size::parse(context, input)
     }
 </%helpers:longhand>
@@ -156,5 +163,4 @@ ${helpers.predefined_type("mask-image", "ImageLayer",
     products="gecko",
     extra_prefixes="webkit",
     animation_value_type="discrete",
-    flags="CREATES_STACKING_CONTEXT",
-    has_uncacheable_values="True" if product == "gecko" else "False")}
+    flags="CREATES_STACKING_CONTEXT")}

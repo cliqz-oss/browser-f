@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -37,6 +38,7 @@ MutableBlobStreamListener::~MutableBlobStreamListener()
 
 NS_IMPL_ISUPPORTS(MutableBlobStreamListener,
                   nsIStreamListener,
+                  nsIThreadRetargetableStreamListener,
                   nsIRequestObserver)
 
 NS_IMETHODIMP
@@ -78,7 +80,7 @@ MutableBlobStreamListener::OnDataAvailable(nsIRequest* aRequest,
                                            uint64_t aSourceOffset,
                                            uint32_t aCount)
 {
-  MOZ_ASSERT(NS_IsMainThread());
+  // This method could be called on any thread.
   MOZ_ASSERT(mStorage);
 
   uint32_t countRead;
@@ -93,7 +95,7 @@ MutableBlobStreamListener::WriteSegmentFun(nsIInputStream* aWriterStream,
                                            uint32_t aCount,
                                            uint32_t* aWriteCount)
 {
-  MOZ_ASSERT(NS_IsMainThread());
+  // This method could be called on any thread.
 
   MutableBlobStreamListener* self = static_cast<MutableBlobStreamListener*>(aClosure);
   MOZ_ASSERT(self->mStorage);
@@ -104,6 +106,12 @@ MutableBlobStreamListener::WriteSegmentFun(nsIInputStream* aWriterStream,
   }
 
   *aWriteCount = aCount;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+MutableBlobStreamListener::CheckListenerChain()
+{
   return NS_OK;
 }
 

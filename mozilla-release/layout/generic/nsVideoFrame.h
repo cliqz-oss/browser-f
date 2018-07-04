@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,6 +12,7 @@
 #include "mozilla/Attributes.h"
 #include "nsContainerFrame.h"
 #include "nsIAnonymousContentCreator.h"
+#include "nsStringFwd.h"
 #include "nsTArrayForwardDeclare.h"
 #include "FrameLayerBuilder.h"
 
@@ -22,7 +23,6 @@ class LayerManager;
 } // namespace layers
 } // namespace mozilla
 
-class nsAString;
 class nsPresContext;
 class nsDisplayItem;
 
@@ -38,17 +38,16 @@ public:
   typedef mozilla::layers::LayerManager LayerManager;
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
 
-  explicit nsVideoFrame(nsStyleContext* aContext);
+  explicit nsVideoFrame(ComputedStyle* aStyle);
 
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsVideoFrame)
 
   void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                        const nsRect&           aDirtyRect,
                         const nsDisplayListSet& aLists) override;
 
   nsresult AttributeChanged(int32_t aNameSpaceID,
-                            nsIAtom* aAttribute,
+                            nsAtom* aAttribute,
                             int32_t aModType) override;
 
   void OnVisibilityChange(Visibility aNewVisibility,
@@ -68,7 +67,7 @@ public:
               ComputeSizeFlags aFlags) override;
   nscoord GetMinISize(gfxContext *aRenderingContext) override;
   nscoord GetPrefISize(gfxContext *aRenderingContext) override;
-  void DestroyFrom(nsIFrame* aDestructRoot) override;
+  void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   void Reflow(nsPresContext*     aPresContext,
               ReflowOutput&      aDesiredSize,
@@ -89,7 +88,7 @@ public:
   void AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
                                 uint32_t aFilters) override;
 
-  nsIContent* GetPosterImage() { return mPosterImage; }
+  mozilla::dom::Element* GetPosterImage() { return mPosterImage; }
 
   // Returns true if we should display the poster. Note that once we show
   // a video frame, the poster will never be displayed again.
@@ -130,10 +129,10 @@ protected:
   virtual ~nsVideoFrame();
 
   // Anonymous child which is bound via XBL to the video controls.
-  nsCOMPtr<nsIContent> mVideoControls;
+  RefPtr<mozilla::dom::Element> mVideoControls;
 
   // Anonymous child which is the image element of the poster frame.
-  nsCOMPtr<nsIContent> mPosterImage;
+  RefPtr<mozilla::dom::Element> mPosterImage;
 
   // Anonymous child which is the text track caption display div.
   nsCOMPtr<nsIContent> mCaptionDiv;

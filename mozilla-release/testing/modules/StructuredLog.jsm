@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "StructuredLogger",
   "StructuredFormatter"
 ];
@@ -23,11 +23,11 @@ this.EXPORTED_SYMBOLS = [
  *        These will each be called with the complete object to log as an
  *        argument.
  */
-this.StructuredLogger = function(name, dumpFun = dump, mutators = []) {
+var StructuredLogger = function(name, dumpFun = dump, mutators = []) {
   this.name = name;
   this._dumpFun = dumpFun;
   this._mutatorFuns = mutators;
-}
+};
 
 /**
  * Log functions producing messages in the format specified by mozlog
@@ -88,16 +88,20 @@ StructuredLogger.prototype = {
   },
 
   assertionCount(test, count, minExpected = 0, maxExpected = 0) {
-      var data = {test,
-                  min_expected: minExpected,
-                  max_expected: maxExpected,
-                  count};
+    var data = {test: this._testId(test),
+                min_expected: minExpected,
+                max_expected: maxExpected,
+                count};
 
     this._logData("assertion_count", data);
   },
 
-  suiteStart(tests, runinfo = null, versioninfo = null, deviceinfo = null, extra = null) {
+  suiteStart(tests, name = null, runinfo = null, versioninfo = null, deviceinfo = null, extra = null) {
     var data = {tests: tests.map(x => this._testId(x))};
+    if (name !== null) {
+      data.name = name;
+    }
+
     if (runinfo !== null) {
       data.runinfo = runinfo;
     }
@@ -210,7 +214,7 @@ StructuredLogger.prototype = {
  * StructuredFormatter: Formatter class turning structured messages
  * into human-readable messages.
  */
-this.StructuredFormatter = function() {
+var StructuredFormatter = function() {
     this.testStartTimes = {};
 };
 

@@ -12,6 +12,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/OriginAttributes.h"
 
+class nsAtom;
 class nsIContentSecurityPolicy;
 class nsIObjectOutputStream;
 class nsIObjectInputStream;
@@ -20,6 +21,9 @@ class nsIURI;
 class ExpandedPrincipal;
 
 namespace mozilla {
+namespace extensions {
+  class WebExtensionPolicy;
+}
 
 /*
  * Base class from which all nsIPrincipal implementations inherit. Use this for
@@ -40,6 +44,19 @@ public:
 
   explicit BasePrincipal(PrincipalKind aKind);
 
+  template<typename T>
+  bool Is() const
+  {
+    return mKind == T::Kind();
+  }
+
+  template<typename T>
+  T* As()
+  {
+    MOZ_ASSERT(Is<T>());
+    return static_cast<T*>(this);
+  }
+
   enum DocumentDomainConsideration { DontConsiderDocumentDomain, ConsiderDocumentDomain};
   bool Subsumes(nsIPrincipal* aOther, DocumentDomainConsideration aConsideration);
 
@@ -51,6 +68,7 @@ public:
   NS_IMETHOD SubsumesConsideringDomain(nsIPrincipal* other, bool* _retval) final;
   NS_IMETHOD SubsumesConsideringDomainIgnoringFPD(nsIPrincipal* other, bool* _retval) final;
   NS_IMETHOD CheckMayLoad(nsIURI* uri, bool report, bool allowIfInheritsPrincipal) final;
+  NS_IMETHOD GetAddonPolicy(nsISupports** aResult) final;
   NS_IMETHOD GetCsp(nsIContentSecurityPolicy** aCsp) override;
   NS_IMETHOD SetCsp(nsIContentSecurityPolicy* aCsp) override;
   NS_IMETHOD EnsureCSP(nsIDOMDocument* aDocument, nsIContentSecurityPolicy** aCSP) override;
@@ -68,7 +86,7 @@ public:
   NS_IMETHOD GetUserContextId(uint32_t* aUserContextId) final;
   NS_IMETHOD GetPrivateBrowsingId(uint32_t* aPrivateBrowsingId) final;
 
-  virtual bool AddonHasPermission(const nsAString& aPerm);
+  virtual bool AddonHasPermission(const nsAtom* aPerm);
 
   virtual bool IsCodebasePrincipal() const { return false; };
 
@@ -86,6 +104,7 @@ public:
 
   const OriginAttributes& OriginAttributesRef() final { return mOriginAttributes; }
   uint32_t AppId() const { return mOriginAttributes.mAppId; }
+  extensions::WebExtensionPolicy* AddonPolicy();
   uint32_t UserContextId() const { return mOriginAttributes.mUserContextId; }
   uint32_t PrivateBrowsingId() const { return mOriginAttributes.mPrivateBrowsingId; }
   bool IsInIsolatedMozBrowserElement() const { return mOriginAttributes.mInIsolatedMozBrowser; }
@@ -105,6 +124,39 @@ public:
   inline bool FastSubsumes(nsIPrincipal* aOther);
   inline bool FastSubsumesConsideringDomain(nsIPrincipal* aOther);
   inline bool FastSubsumesConsideringDomainIgnoringFPD(nsIPrincipal* aOther);
+
+  // Returns the principal to inherit when a caller with this principal loads
+  // the given URI.
+  //
+  // For most principal types, this returns the principal itself. For expanded
+  // principals, it returns the first sub-principal which subsumes the given URI
+  // (or, if no URI is given, the last whitelist principal).
+  nsIPrincipal* PrincipalToInherit(nsIURI* aRequestedURI = nullptr);
+
+  /**
+   * Returns true if this principal's CSP should override a document's CSP for
+   * loads that it triggers. Currently true for system principal, for expanded
+   * principals which subsume the document principal, and add-on codebase
+   * principals regardless of whether they subsume the document principal.
+   */
+  bool OverridesCSP(nsIPrincipal* aDocumentPrincipal)
+  {
+    // SystemPrincipal can override the page's CSP by definition.
+    if (mKind == eSystemPrincipal) {
+      return true;
+    }
+
+    // Expanded principals override CSP if and only if they subsume the document
+    // principal.
+    if (mKind == eExpandedPrincipal) {
+      return FastSubsumes(aDocumentPrincipal);
+    }
+    // Extension principals always override the CSP non-extension principals.
+    // This is primarily for the sake of their stylesheets, which are usually
+    // loaded from channels and cannot have expanded principals.
+    return (AddonPolicy() &&
+            !BasePrincipal::Cast(aDocumentPrincipal)->AddonPolicy());
+  }
 
 protected:
   virtual ~BasePrincipal();
@@ -139,8 +191,8 @@ private:
   CreateCodebasePrincipal(nsIURI* aURI, const OriginAttributes& aAttrs,
                           const nsACString& aOriginNoSuffix);
 
-  nsCOMPtr<nsIAtom> mOriginNoSuffix;
-  nsCOMPtr<nsIAtom> mOriginSuffix;
+  RefPtr<nsAtom> mOriginNoSuffix;
+  RefPtr<nsAtom> mOriginSuffix;
 
   OriginAttributes mOriginAttributes;
   PrincipalKind mKind;

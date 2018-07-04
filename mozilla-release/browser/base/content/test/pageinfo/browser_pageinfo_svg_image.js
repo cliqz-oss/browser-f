@@ -1,9 +1,12 @@
+const URI = "https://example.com/browser/browser/base/content/test/pageinfo/svg_image.html";
+
 function test() {
   waitForExplicitFinish();
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
 
-  gBrowser.selectedBrowser.addEventListener("load", function() {
+  BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser, false,
+                                 URI).then(() => {
     var pageInfo = BrowserPageInfo(gBrowser.selectedBrowser.currentURI.spec,
                                    "mediaTab");
 
@@ -30,8 +33,7 @@ function test() {
         });
       });
     }, {capture: true, once: true});
-  }, {capture: true, once: true});
+  });
 
-  content.location =
-    "https://example.com/browser/browser/base/content/test/pageinfo/svg_image.html";
+  gBrowser.selectedBrowser.loadURI(URI);
 }

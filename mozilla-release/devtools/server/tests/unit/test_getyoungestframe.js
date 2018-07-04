@@ -1,6 +1,6 @@
 /* eslint-disable strict */
 function run_test() {
-  Components.utils.import("resource://gre/modules/jsdebugger.jsm");
+  ChromeUtils.import("resource://gre/modules/jsdebugger.jsm");
   addDebuggerToGlobal(this);
   let xpcInspector = Cc["@mozilla.org/jsinspector;1"].getService(Ci.nsIJSInspector);
   let g = testGlobal("test1");
@@ -9,14 +9,14 @@ function run_test() {
   dbg.uncaughtExceptionHook = testExceptionHook;
 
   dbg.addDebuggee(g);
-  dbg.onDebuggerStatement = function (frame) {
-    do_check_true(frame === dbg.getNewestFrame());
+  dbg.onDebuggerStatement = function(frame) {
+    Assert.ok(frame === dbg.getNewestFrame());
     // Execute from the nested event loop, dbg.getNewestFrame() won't
     // be working anymore.
 
-    do_execute_soon(function () {
+    executeSoon(function() {
       try {
-        do_check_true(frame === dbg.getNewestFrame());
+        Assert.ok(frame === dbg.getNewestFrame());
       } finally {
         xpcInspector.exitNestedEventLoop("test");
       }

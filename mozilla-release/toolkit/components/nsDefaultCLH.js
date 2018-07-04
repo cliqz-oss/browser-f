@@ -2,18 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-const nsISupports              = Components.interfaces.nsISupports;
+const nsISupports              = Ci.nsISupports;
 
-const nsICommandLine           = Components.interfaces.nsICommandLine;
-const nsICommandLineHandler    = Components.interfaces.nsICommandLineHandler;
-const nsIPrefBranch            = Components.interfaces.nsIPrefBranch;
-const nsISupportsString        = Components.interfaces.nsISupportsString;
-const nsIWindowWatcher         = Components.interfaces.nsIWindowWatcher;
-const nsIProperties            = Components.interfaces.nsIProperties;
-const nsIFile                  = Components.interfaces.nsIFile;
-const nsISimpleEnumerator      = Components.interfaces.nsISimpleEnumerator;
+const nsICommandLine           = Ci.nsICommandLine;
+const nsICommandLineHandler    = Ci.nsICommandLineHandler;
+const nsIPrefBranch            = Ci.nsIPrefBranch;
+const nsISupportsString        = Ci.nsISupportsString;
+const nsIWindowWatcher         = Ci.nsIWindowWatcher;
+const nsIProperties            = Ci.nsIProperties;
+const nsIFile                  = Ci.nsIFile;
+const nsISimpleEnumerator      = Ci.nsISimpleEnumerator;
 
 /**
  * This file provides a generic default command-line handler.
@@ -27,8 +28,8 @@ const nsISimpleEnumerator      = Components.interfaces.nsISimpleEnumerator;
  */
 
 function getDirectoryService() {
-  return Components.classes["@mozilla.org/file/directory_service;1"]
-                   .getService(nsIProperties);
+  return Cc["@mozilla.org/file/directory_service;1"]
+           .getService(nsIProperties);
 }
 
 function nsDefaultCLH() { }
@@ -37,7 +38,7 @@ nsDefaultCLH.prototype = {
 
   /* nsISupports */
 
-  QueryInterface: XPCOMUtils.generateQI([nsICommandLineHandler]),
+  QueryInterface: ChromeUtils.generateQI([nsICommandLineHandler]),
 
   /* nsICommandLineHandler */
 
@@ -52,7 +53,7 @@ nsDefaultCLH.prototype = {
       }
 
       dump(out + "\n");
-      Components.utils.reportError(out);
+      Cu.reportError(out);
     }
 
     var printDirList;
@@ -69,7 +70,7 @@ nsDefaultCLH.prototype = {
       }
 
       dump(out + "\n");
-      Components.utils.reportError(out);
+      Cu.reportError(out);
     }
 
     if (cmdLine.handleFlag("silent", false)) {
@@ -79,17 +80,14 @@ nsDefaultCLH.prototype = {
     if (cmdLine.preventDefault)
       return;
 
-    var prefs = Components.classes["@mozilla.org/preferences-service;1"]
-                          .getService(nsIPrefBranch);
+    var prefs = Cc["@mozilla.org/preferences-service;1"]
+                  .getService(nsIPrefBranch);
 
     try {
       var singletonWindowType =
                               prefs.getCharPref("toolkit.singletonWindowType");
-      var windowMediator =
-                Components.classes["@mozilla.org/appshell/window-mediator;1"]
-                          .getService(Components.interfaces.nsIWindowMediator);
 
-      var win = windowMediator.getMostRecentWindow(singletonWindowType);
+      var win = Services.wm.getMostRecentWindow(singletonWindowType);
       if (win) {
         win.focus();
         cmdLine.preventDefault = true;
@@ -103,7 +101,7 @@ nsDefaultCLH.prototype = {
 
       var flags = prefs.getCharPref("toolkit.defaultChromeFeatures", "chrome,dialog=no,all");
 
-      var wwatch = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
+      var wwatch = Cc["@mozilla.org/embedcomp/window-watcher;1"]
                             .getService(nsIWindowWatcher);
       wwatch.openWindow(null, chromeURI, "_blank",
                         flags, cmdLine);

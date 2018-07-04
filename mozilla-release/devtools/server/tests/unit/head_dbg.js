@@ -4,16 +4,12 @@
 /* eslint-disable no-shadow */
 
 "use strict";
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
 var CC = Components.Constructor;
 
 // Populate AppInfo before anything (like the shared loader) accesses
 // System.appinfo, which is a lazy getter.
 const _appInfo = {};
-Cu.import("resource://testing-common/AppInfo.jsm", _appInfo);
+ChromeUtils.import("resource://testing-common/AppInfo.jsm", _appInfo);
 _appInfo.updateAppInfo({
   ID: "devtools@tests.mozilla.org",
   name: "devtools-tests",
@@ -22,11 +18,9 @@ _appInfo.updateAppInfo({
   crashReporter: true,
 });
 
-const { require, loader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
-const { worker } = Cu.import("resource://devtools/shared/worker/loader.js", {});
-const promise = require("promise");
-const { Task } = require("devtools/shared/task");
-const { console } = require("resource://gre/modules/Console.jsm");
+const { require, loader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const { worker } = ChromeUtils.import("resource://devtools/shared/worker/loader.js", {});
+const defer = require("devtools/shared/defer");
 const { NetUtil } = require("resource://gre/modules/NetUtil.jsm");
 
 const Services = require("Services");
@@ -39,17 +33,16 @@ Services.prefs.setBoolPref("devtools.debugger.remote-enabled", true);
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const { DebuggerServer } = require("devtools/server/main");
 const { DebuggerServer: WorkerDebuggerServer } = worker.require("devtools/server/main");
-const { DebuggerClient, ObjectClient } = require("devtools/shared/client/main");
+const { DebuggerClient } = require("devtools/shared/client/debugger-client");
+const ObjectClient = require("devtools/shared/client/object-client");
 const { MemoryFront } = require("devtools/shared/fronts/memory");
 
-const { addDebuggerToGlobal } = Cu.import("resource://gre/modules/jsdebugger.jsm", {});
+const { addDebuggerToGlobal } = ChromeUtils.import("resource://gre/modules/jsdebugger.jsm", {});
 
 const systemPrincipal = Cc["@mozilla.org/systemprincipal;1"]
                         .createInstance(Ci.nsIPrincipal);
 
-var { loadSubScript, loadSubScriptWithOptions } =
-  Cc["@mozilla.org/moz/jssubscript-loader;1"]
-  .getService(Ci.mozIJSSubScriptLoader);
+var { loadSubScript, loadSubScriptWithOptions } = Services.scriptloader;
 
 /**
  * Initializes any test that needs to work with add-ons.
@@ -89,25 +82,25 @@ function makeMemoryActorTest(testGeneratorFunction) {
         type: { global: true }
       });
 
-      getTestTab(client, TEST_GLOBAL_NAME, function (tabForm, rootForm) {
+      getTestTab(client, TEST_GLOBAL_NAME, function(tabForm, rootForm) {
         if (!tabForm || !rootForm) {
           ok(false, "Could not attach to test tab: " + TEST_GLOBAL_NAME);
           return;
         }
 
-        Task.spawn(function* () {
+        (async function() {
           try {
             const memoryFront = new MemoryFront(client, tabForm, rootForm);
-            yield memoryFront.attach();
-            yield* testGeneratorFunction(client, memoryFront);
-            yield memoryFront.detach();
+            await memoryFront.attach();
+            await testGeneratorFunction(client, memoryFront);
+            await memoryFront.detach();
           } catch (err) {
             DevToolsUtils.reportException("makeMemoryActorTest", err);
             ok(false, "Got an error: " + err);
           }
 
           finishClient(client);
-        });
+        })();
       });
     });
   };
@@ -127,26 +120,26 @@ function makeFullRuntimeMemoryActorTest(testGeneratorFunction) {
         type: { global: true }
       });
 
-      getChromeActors(client).then(function (form) {
+      getChromeActors(client).then(function(form) {
         if (!form) {
           ok(false, "Could not attach to chrome actors");
           return;
         }
 
-        Task.spawn(function* () {
+        (async function() {
           try {
-            const rootForm = yield listTabs(client);
+            const rootForm = await listTabs(client);
             const memoryFront = new MemoryFront(client, form, rootForm);
-            yield memoryFront.attach();
-            yield* testGeneratorFunction(client, memoryFront);
-            yield memoryFront.detach();
+            await memoryFront.attach();
+            await testGeneratorFunction(client, memoryFront);
+            await memoryFront.detach();
           } catch (err) {
             DevToolsUtils.reportException("makeMemoryActorTest", err);
             ok(false, "Got an error: " + err);
           }
 
           finishClient(client);
-        });
+        })();
       });
     });
   };
@@ -191,7 +184,7 @@ function attachTab(client, tab) {
 
 function waitForNewSource(threadClient, url) {
   dump("Waiting for new source with url '" + url + "'.\n");
-  return waitForEvent(threadClient, "newSource", function (packet) {
+  return waitForEvent(threadClient, "newSource", function(packet) {
     return packet.source.url === url;
   });
 }
@@ -275,7 +268,7 @@ function scriptErrorFlagsToKind(flags) {
 // into the ether.
 var errorCount = 0;
 var listener = {
-  observe: function (message) {
+  observe: function(message) {
     try {
       let string;
       errorCount++;
@@ -321,19 +314,7 @@ var listener = {
   }
 };
 
-var consoleService = Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService);
-consoleService.registerListener(listener);
-
-function check_except(func) {
-  try {
-    func();
-  } catch (e) {
-    do_check_true(true);
-    return;
-  }
-  dumpn("Should have thrown an exception: " + func.toString());
-  do_check_true(false);
-}
+Services.console.registerListener(listener);
 
 function testGlobal(name) {
   let sandbox = Cu.Sandbox(Cc["@mozilla.org/systemprincipal;1"]
@@ -351,7 +332,7 @@ function addTestGlobal(name, server = DebuggerServer) {
 // List the DebuggerClient |client|'s tabs, look for one whose title is
 // |title|, and apply |callback| to the packet's entry for that tab.
 function getTestTab(client, title, callback) {
-  client.listTabs(function (response) {
+  client.listTabs().then(function(response) {
     for (let tab of response.tabs) {
       if (tab.title === title) {
         callback(tab, response);
@@ -365,7 +346,7 @@ function getTestTab(client, title, callback) {
 // Attach to |client|'s tab whose title is |title|; pass |callback| the
 // response packet and a TabClient instance referring to that tab.
 function attachTestTab(client, title, callback) {
-  getTestTab(client, title, function (tab) {
+  getTestTab(client, title, function(tab) {
     client.attachTab(tab.actor, callback);
   });
 }
@@ -375,7 +356,7 @@ function attachTestTab(client, title, callback) {
 // TabClient referring to the tab, and a ThreadClient referring to the
 // thread.
 function attachTestThread(client, title, callback) {
-  attachTestTab(client, title, function (tabResponse, tabClient) {
+  attachTestTab(client, title, function(tabResponse, tabClient) {
     function onAttach(response, threadClient) {
       callback(response, tabClient, threadClient, tabResponse);
     }
@@ -392,8 +373,8 @@ function attachTestThread(client, title, callback) {
 // thread.
 function attachTestTabAndResume(client, title, callback = () => {}) {
   return new Promise((resolve) => {
-    attachTestThread(client, title, function (response, tabClient, threadClient) {
-      threadClient.resume(function (response) {
+    attachTestThread(client, title, function(response, tabClient, threadClient) {
+      threadClient.resume(function(response) {
         callback(response, tabClient, threadClient);
         resolve([response, tabClient, threadClient]);
       });
@@ -407,7 +388,7 @@ function attachTestTabAndResume(client, title, callback = () => {}) {
 function initTestDebuggerServer(server = DebuggerServer) {
   server.registerModule("xpcshell-test/testactors");
   // Allow incoming connections.
-  server.init(function () {
+  server.init(function() {
     return true;
   });
 }
@@ -418,7 +399,7 @@ function initTestDebuggerServer(server = DebuggerServer) {
 function startTestDebuggerServer(title, server = DebuggerServer) {
   initTestDebuggerServer(server);
   addTestGlobal(title);
-  DebuggerServer.addTabActors();
+  DebuggerServer.registerActors({ tab: true });
 
   let transport = DebuggerServer.connectPipe();
   let client = new DebuggerClient(transport);
@@ -427,7 +408,7 @@ function startTestDebuggerServer(title, server = DebuggerServer) {
 }
 
 function finishClient(client) {
-  client.close(function () {
+  client.close(function() {
     DebuggerServer.destroy();
     do_test_finished();
   });
@@ -436,10 +417,8 @@ function finishClient(client) {
 // Create a server, connect to it and fetch tab actors for the parent process;
 // pass |callback| the debugger client and tab actor form with all actor IDs.
 function get_chrome_actors(callback) {
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
-  }
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
   DebuggerServer.allowChromeProcess = true;
 
   let client = new DebuggerClient(DebuggerServer.connectPipe());
@@ -531,7 +510,7 @@ function TracingTransport(childTransport) {
 
 TracingTransport.prototype = {
   // Remove actor names
-  normalize: function (packet) {
+  normalize: function(packet) {
     return JSON.parse(JSON.stringify(packet, (key, value) => {
       if (key === "to" || key === "from" || key === "actor") {
         return "<actorid>";
@@ -539,45 +518,45 @@ TracingTransport.prototype = {
       return value;
     }));
   },
-  send: function (packet) {
+  send: function(packet) {
     this.packets.push({
       type: "sent",
       packet: this.normalize(packet)
     });
     return this.child.send(packet);
   },
-  close: function () {
+  close: function() {
     return this.child.close();
   },
-  ready: function () {
+  ready: function() {
     return this.child.ready();
   },
-  onPacket: function (packet) {
+  onPacket: function(packet) {
     this.packets.push({
       type: "received",
       packet: this.normalize(packet)
     });
     this.hooks.onPacket(packet);
   },
-  onClosed: function () {
+  onClosed: function() {
     this.hooks.onClosed();
   },
 
-  expectSend: function (expected) {
+  expectSend: function(expected) {
     let packet = this.packets[this.checkIndex++];
-    do_check_eq(packet.type, "sent");
+    Assert.equal(packet.type, "sent");
     deepEqual(packet.packet, this.normalize(expected));
   },
 
-  expectReceive: function (expected) {
+  expectReceive: function(expected) {
     let packet = this.packets[this.checkIndex++];
-    do_check_eq(packet.type, "received");
+    Assert.equal(packet.type, "received");
     deepEqual(packet.packet, this.normalize(expected));
   },
 
   // Write your tests, call dumpLog at the end, inspect the output,
   // then sprinkle the calls through the right places in your test.
-  dumpLog: function () {
+  dumpLog: function() {
     for (let entry of this.packets) {
       if (entry.type === "sent") {
         dumpn("trace.expectSend(" + entry.packet + ");");
@@ -589,48 +568,9 @@ TracingTransport.prototype = {
 };
 
 function StubTransport() { }
-StubTransport.prototype.ready = function () {};
-StubTransport.prototype.send = function () {};
-StubTransport.prototype.close = function () {};
-
-function executeSoon(func) {
-  Services.tm.dispatchToMainThread({
-    run: DevToolsUtils.makeInfallible(func)
-  });
-}
-
-// The do_check_* family of functions expect their last argument to be an
-// optional stack object. Unfortunately, most tests actually pass a in a string
-// containing an error message instead, which causes error reporting to break if
-// strict warnings as errors is turned on. To avoid this, we wrap these
-// functions here below to ensure the correct number of arguments is passed.
-//
-// TODO: Remove this once bug 906232 is resolved
-//
-var do_check_true_old = do_check_true;
-var do_check_true = function (condition) {
-  do_check_true_old(condition);
-};
-
-var do_check_false_old = do_check_false;
-var do_check_false = function (condition) {
-  do_check_false_old(condition);
-};
-
-var do_check_eq_old = do_check_eq;
-var do_check_eq = function (left, right) {
-  do_check_eq_old(left, right);
-};
-
-var do_check_neq_old = do_check_neq;
-var do_check_neq = function (left, right) {
-  do_check_neq_old(left, right);
-};
-
-var do_check_matches_old = do_check_matches;
-var do_check_matches = function (pattern, value) {
-  do_check_matches_old(pattern, value);
-};
+StubTransport.prototype.ready = function() {};
+StubTransport.prototype.send = function() {};
+StubTransport.prototype.close = function() {};
 
 // Create async version of the object where calling each method
 // is equivalent of calling it with asyncall. Mainly useful for
@@ -650,7 +590,7 @@ const Test = task => () => {
   run_next_test();
 };
 
-const assert = do_check_true;
+const assert = Assert.ok.bind(Assert);
 
 /**
  * Create a promise that is resolved on the next occurence of the given event.
@@ -661,7 +601,11 @@ const assert = do_check_true;
  * @returns Promise
  */
 function waitForEvent(client, type, predicate) {
-  return new Promise(function (resolve) {
+  if (!predicate) {
+    return client.addOneTimeListener(type);
+  }
+
+  return new Promise(function(resolve) {
     function listener(type, packet) {
       if (!predicate(packet)) {
         return;
@@ -669,14 +613,7 @@ function waitForEvent(client, type, predicate) {
       client.removeListener(listener);
       resolve(packet);
     }
-
-    if (predicate) {
-      client.addListener(type, listener);
-    } else {
-      client.addOneTimeListener(type, function (type, packet) {
-        resolve(packet);
-      });
-    }
+    client.addListener(type, listener);
   });
 }
 
@@ -703,7 +640,7 @@ function executeOnNextTickAndWaitForPause(action, client) {
 }
 
 function evalCallback(debuggeeGlobal, func) {
-  Components.utils.evalInSandbox(
+  Cu.evalInSandbox(
     "(" + func + ")()",
     debuggeeGlobal,
     "1.8",
@@ -766,6 +703,20 @@ function stepOver(client, threadClient) {
 }
 
 /**
+ * Resume JS execution for a step out and wait for the pause after the step
+ * has been taken.
+ *
+ * @param DebuggerClient client
+ * @param ThreadClient threadClient
+ * @returns Promise
+ */
+function stepOut(client, threadClient) {
+  dumpn("Stepping out.");
+  return threadClient.stepOut()
+    .then(() => waitForPause(client));
+}
+
+/**
  * Get the list of `count` frames currently on stack, starting at the index
  * `first` for the specified thread.
  *
@@ -821,9 +772,9 @@ function getSourceContent(sourceClient) {
  * @returns Promise<SourceClient>
  */
 function getSource(threadClient, url) {
-  let deferred = promise.defer();
+  let deferred = defer();
   threadClient.getSources((res) => {
-    let source = res.sources.filter(function (s) {
+    let source = res.sources.filter(function(s) {
       return s.url === url;
     });
     if (source.length) {
@@ -842,7 +793,7 @@ function getSource(threadClient, url) {
  * @returns Promise<response>
  */
 function reload(tabClient) {
-  let deferred = promise.defer();
+  let deferred = defer();
   tabClient._reload({}, deferred.resolve);
   return deferred.promise;
 }

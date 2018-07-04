@@ -4,7 +4,7 @@
 
 //! The `servo` test application.
 //!
-//! Creates a `Browser` instance with a simple implementation of
+//! Creates a `Servo` instance with a simple implementation of
 //! the compositor's `WindowMethods` to create a working web browser.
 //!
 //! This browser's implementation of `WindowMethods` is built on top
@@ -15,35 +15,46 @@
 //!
 //! [glutin]: https://github.com/tomaka/glutin
 
-#![feature(start, core_intrinsics)]
+#![cfg_attr(feature = "unstable", feature(core_intrinsics))]
 
 #[cfg(target_os = "android")]
 extern crate android_injected_glue;
 extern crate backtrace;
+#[macro_use] extern crate bitflags;
+extern crate euclid;
+#[cfg(target_os = "windows")] extern crate gdi32;
+extern crate gleam;
+extern crate glutin;
 // The window backed by glutin
-extern crate glutin_app as app;
-#[macro_use]
-extern crate log;
-// The Servo engine
+#[macro_use] extern crate log;
+#[cfg(any(target_os = "linux", target_os = "macos"))] extern crate osmesa_sys;
 extern crate servo;
-#[cfg(not(target_os = "android"))]
+#[cfg(all(feature = "unstable", not(target_os = "android")))]
 #[macro_use]
 extern crate sig;
+extern crate tinyfiledialogs;
+extern crate winit;
+#[cfg(target_os = "windows")] extern crate winapi;
+#[cfg(target_os = "windows")] extern crate user32;
+
+mod glutin_app;
 
 use backtrace::Backtrace;
-use servo::Browser;
+use servo::Servo;
 use servo::compositing::windowing::WindowEvent;
 #[cfg(target_os = "android")]
 use servo::config;
 use servo::config::opts::{self, ArgumentParsingResult, parse_url_or_filename};
 use servo::config::servo_version;
+use servo::ipc_channel::ipc;
 use servo::servo_config::prefs::PREFS;
 use servo::servo_url::ServoUrl;
 use std::env;
 use std::panic;
 use std::process;
-use std::rc::Rc;
 use std::thread;
+
+mod browser;
 
 pub mod platform {
     #[cfg(target_os = "macos")]
@@ -56,7 +67,7 @@ pub mod platform {
     pub fn deinit() {}
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(all(feature = "unstable", not(target_os = "android")))]
 fn install_crash_handler() {
     use backtrace::Backtrace;
     use sig::ffi::Sig;
@@ -82,7 +93,7 @@ fn install_crash_handler() {
     signal!(Sig::BUS, handler); // handle invalid memory access
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(not(feature = "unstable"), target_os = "android"))]
 fn install_crash_handler() {}
 
 fn main() {
@@ -143,7 +154,9 @@ fn main() {
         process::exit(0);
     }
 
-    let window = app::create_window(None);
+    let window = glutin_app::create_window();
+
+    let mut browser = browser::Browser::new(window.clone());
 
     // If the url is not provided, we fallback to the homepage in PREFS,
     // or a blank page in case the homepage is not set either.
@@ -155,60 +168,50 @@ fn main() {
 
     let target_url = cmdline_url.or(pref_url).or(blank_url).unwrap();
 
-    // Our wrapper around `Browser` that also implements some
-    // callbacks required by the glutin window implementation.
-    let mut browser = BrowserWrapper {
-        browser: Browser::new(window.clone(), target_url)
-    };
+    let mut servo = Servo::new(window.clone());
 
-    browser.browser.setup_logging();
+    let (sender, receiver) = ipc::channel().unwrap();
+    servo.handle_events(vec![WindowEvent::NewBrowser(target_url, sender)]);
+    let browser_id = receiver.recv().unwrap();
+    browser.set_browser_id(browser_id);
+    servo.handle_events(vec![WindowEvent::SelectBrowser(browser_id)]);
 
-    register_glutin_resize_handler(&window, &mut browser);
+    servo.setup_logging();
 
-    // Feed events from the window to the browser until the browser
-    // says to stop.
-    loop {
-        let should_continue = browser.browser.handle_events(window.wait_events());
-        if !should_continue {
-            break;
+    window.run(|| {
+        let win_events = window.get_events();
+
+        // FIXME: this could be handled by Servo. We don't need
+        // a repaint_synchronously function exposed.
+        let need_resize = win_events.iter().any(|e| match *e {
+            WindowEvent::Resize => true,
+            _ => false,
+        });
+
+        browser.handle_window_events(win_events);
+
+        let mut servo_events = servo.get_events();
+        loop {
+            browser.handle_servo_events(servo_events);
+            servo.handle_events(browser.get_events());
+            if browser.shutdown_requested() {
+                return true;
+            }
+            servo_events = servo.get_events();
+            if servo_events.is_empty() {
+                break;
+            }
         }
-    }
 
-    unregister_glutin_resize_handler(&window);
+        if need_resize {
+            servo.repaint_synchronously();
+        }
+        false
+    });
+
+    servo.deinit();
 
     platform::deinit()
-}
-
-fn register_glutin_resize_handler(window: &Rc<app::window::Window>, browser: &mut BrowserWrapper) {
-    unsafe {
-        window.set_nested_event_loop_listener(browser);
-    }
-}
-
-fn unregister_glutin_resize_handler(window: &Rc<app::window::Window>) {
-    unsafe {
-        window.remove_nested_event_loop_listener();
-    }
-}
-
-struct BrowserWrapper {
-    browser: Browser<app::window::Window>,
-}
-
-impl app::NestedEventLoopListener for BrowserWrapper {
-    fn handle_event_from_nested_event_loop(&mut self, event: WindowEvent) -> bool {
-        let is_resize = match event {
-            WindowEvent::Resize(..) => true,
-            _ => false,
-        };
-        if !self.browser.handle_events(vec![event]) {
-            return false;
-        }
-        if is_resize {
-            self.browser.repaint_synchronously()
-        }
-        true
-    }
 }
 
 #[cfg(target_os = "android")]
@@ -233,7 +236,7 @@ fn args() -> Vec<String> {
     use std::fs::File;
     use std::io::{BufRead, BufReader};
 
-    let mut params_file = config::basedir::default_config_dir().unwrap();
+    let mut params_file = config::basedir::default_config_dir();
     params_file.push("android_params");
     match File::open(params_file.to_str().unwrap()) {
         Ok(f) => {
@@ -271,4 +274,49 @@ fn args() -> Vec<String> {
 #[allow(non_snake_case)]
 pub extern "C" fn android_main(app: *mut ()) {
     android_injected_glue::android_main2(app as *mut _, move |_, _| main());
+}
+
+// These functions aren't actually called. They are here as a link
+// hack because Skia references them.
+
+#[allow(non_snake_case)]
+#[no_mangle]
+pub extern "C" fn glBindVertexArrayOES(_array: usize)
+{
+    unimplemented!()
+}
+
+#[allow(non_snake_case)]
+#[no_mangle]
+pub extern "C" fn glDeleteVertexArraysOES(_n: isize, _arrays: *const ())
+{
+    unimplemented!()
+}
+
+#[allow(non_snake_case)]
+#[no_mangle]
+pub extern "C" fn glGenVertexArraysOES(_n: isize, _arrays: *const ())
+{
+    unimplemented!()
+}
+
+#[allow(non_snake_case)]
+#[no_mangle]
+pub extern "C" fn glRenderbufferStorageMultisampleIMG(_: isize, _: isize, _: isize, _: isize, _: isize)
+{
+    unimplemented!()
+}
+
+#[allow(non_snake_case)]
+#[no_mangle]
+pub extern "C" fn glFramebufferTexture2DMultisampleIMG(_: isize, _: isize, _: isize, _: isize, _: isize, _: isize)
+{
+    unimplemented!()
+}
+
+#[allow(non_snake_case)]
+#[no_mangle]
+pub extern "C" fn glDiscardFramebufferEXT(_: isize, _: isize, _: *const ())
+{
+    unimplemented!()
 }

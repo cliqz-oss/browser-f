@@ -1,10 +1,11 @@
+// |reftest| skip -- regexp-named-groups is not supported
 // Copyright 2017 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
 description: Named backreferences in Unicode RegExps
 esid: sec-atomescape
-info: >
+info: |
   The production AtomEscape :: [+N] k GroupName evaluates as follows:
 
     1. Search the enclosing RegExp for an instance of a GroupSpecifier for an

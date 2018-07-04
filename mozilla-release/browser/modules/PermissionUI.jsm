@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "PermissionUI",
 ];
 
@@ -59,28 +59,21 @@ this.EXPORTED_SYMBOLS = [
  * imported, subclassed, and have prompt() called directly, without
  * the caller having called into createPermissionPrompt.
  */
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SitePermissions",
+ChromeUtils.defineModuleGetter(this, "SitePermissions",
   "resource:///modules/SitePermissions.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
-
-XPCOMUtils.defineLazyGetter(this, "gBrandBundle", function() {
-  return Services.strings
-                 .createBundle("chrome://branding/locale/brand.properties");
-});
 
 XPCOMUtils.defineLazyGetter(this, "gBrowserBundle", function() {
   return Services.strings
                  .createBundle("chrome://browser/locale/browser.properties");
 });
 
-this.PermissionUI = {};
+var PermissionUI = {};
 
 /**
  * PermissionPromptPrototype should be subclassed by callers that
@@ -91,7 +84,7 @@ this.PermissionUI = {};
  * nsIContentPermissionRequest, you'll want to subclass
  * PermissionPromptForRequestPrototype instead.
  */
-this.PermissionPromptPrototype = {
+var PermissionPromptPrototype = {
   /**
    * Returns the associated <xul:browser> for the request. This should
    * work for the e10s and non-e10s case.
@@ -174,9 +167,9 @@ this.PermissionPromptPrototype = {
   },
 
   /**
-   * The message to show the user in the PopupNotification. This
-   * is usually a string describing the permission that is being
-   * requested.
+   * The message to show to the user in the PopupNotification. A string
+   * with "<>" as a placeholder that is usually replaced by an addon name
+   * or a host name, formatted in bold, to describe the permission that is being requested.
    *
    * Subclasses must override this.
    *
@@ -193,7 +186,7 @@ this.PermissionPromptPrototype = {
    * permissionKey.
    */
   cancel() {
-    throw new Error("Not implemented.")
+    throw new Error("Not implemented.");
   },
 
   /**
@@ -333,7 +326,7 @@ this.PermissionPromptPrototype = {
         },
       };
       if (promptAction.dismiss) {
-        action.dismiss = promptAction.dismiss
+        action.dismiss = promptAction.dismiss;
       }
 
       popupNotificationActions.push(action);
@@ -377,7 +370,7 @@ PermissionUI.PermissionPromptPrototype = PermissionPromptPrototype;
  * nsIContentPermissionRequest, this should be subclassed
  * rather than PermissionPromptPrototype.
  */
-this.PermissionPromptForRequestPrototype = {
+var PermissionPromptForRequestPrototype = {
   __proto__: PermissionPromptPrototype,
 
   get browser() {
@@ -433,7 +426,8 @@ GeolocationPermissionPrompt.prototype = {
     let pref = "browser.geolocation.warning.infoURL";
     let options = {
       learnMoreURL: Services.urlFormatter.formatURLPref(pref),
-      displayURI: false
+      displayURI: false,
+      name: this.principal.URI.hostPort,
     };
 
     if (this.principal.URI.schemeIs("file")) {
@@ -461,18 +455,12 @@ GeolocationPermissionPrompt.prototype = {
   },
 
   get message() {
-    let message;
     if (this.principal.URI.schemeIs("file")) {
-      message = gBrowserBundle.GetStringFromName("geolocation.shareWithFile3");
-    } else {
-      let hostPort = "<>";
-      try {
-        hostPort = this.principal.URI.hostPort;
-      } catch (ex) { }
-      message = gBrowserBundle.formatStringFromName("geolocation.shareWithSite3",
-                                                    [hostPort], 1);
+      return gBrowserBundle.GetStringFromName("geolocation.shareWithFile3");
     }
-    return message;
+
+    return gBrowserBundle.formatStringFromName("geolocation.shareWithSite3",
+                                                  ["<>"], 1);
   },
 
   get promptActions() {
@@ -546,7 +534,8 @@ DesktopNotificationPermissionPrompt.prototype = {
 
     return {
       learnMoreURL,
-      displayURI: false
+      displayURI: false,
+      name: this.principal.URI.hostPort,
     };
   },
 
@@ -559,12 +548,8 @@ DesktopNotificationPermissionPrompt.prototype = {
   },
 
   get message() {
-    let hostPort = "<>";
-    try {
-      hostPort = this.principal.URI.hostPort;
-    } catch (ex) { }
     return gBrowserBundle.formatStringFromName("webNotifications.receiveFromSite2",
-                                               [hostPort], 1);
+                                                    ["<>"], 1);
   },
 
   get promptActions() {
@@ -630,7 +615,9 @@ PersistentStoragePermissionPrompt.prototype = {
       Services.urlFormatter.formatURLPref("app.support.baseURL") + "storage-permissions";
     return {
       checkbox,
-      learnMoreURL
+      learnMoreURL,
+      displayURI: false,
+      name: this.principal.URI.hostPort,
     };
   },
 
@@ -643,12 +630,8 @@ PersistentStoragePermissionPrompt.prototype = {
   },
 
   get message() {
-    let hostPort = "<>";
-    try {
-      hostPort = this.principal.URI.hostPort;
-    } catch (ex) {}
-    return gBrowserBundle.formatStringFromName(
-      "persistentStorage.allowWithSite", [hostPort], 1);
+    return gBrowserBundle.formatStringFromName("persistentStorage.allowWithSite",
+                                                    ["<>"], 1);
   },
 
   get promptActions() {
@@ -670,3 +653,97 @@ PersistentStoragePermissionPrompt.prototype = {
 };
 
 PermissionUI.PersistentStoragePermissionPrompt = PersistentStoragePermissionPrompt;
+
+/**
+ * Creates a PermissionPrompt for a nsIContentPermissionRequest for
+ * the WebMIDI API.
+ *
+ * @param request (nsIContentPermissionRequest)
+ *        The request for a permission from content.
+ */
+function MIDIPermissionPrompt(request) {
+  this.request = request;
+  let types = request.types.QueryInterface(Ci.nsIArray);
+  let perm = types.queryElementAt(0, Ci.nsIContentPermissionType);
+  this.isSysexPerm = (perm.options.length > 0 &&
+                      perm.options.queryElementAt(0, Ci.nsISupportsString) == "sysex");
+  this.permName = "midi";
+  if (this.isSysexPerm) {
+    this.permName = "midi-sysex";
+  }
+}
+
+MIDIPermissionPrompt.prototype = {
+  __proto__: PermissionPromptForRequestPrototype,
+
+  get permissionKey() {
+    return this.permName;
+  },
+
+  get popupOptions() {
+    // TODO (bug 1433235) We need a security/permissions explanation URL for this
+    let options = {
+      displayURI: false,
+      name: this.principal.URI.hostPort,
+    };
+
+    if (this.principal.URI.schemeIs("file")) {
+      options.checkbox = { show: false };
+    } else {
+      // Don't offer "always remember" action in PB mode
+      options.checkbox = {
+        show: !PrivateBrowsingUtils.isWindowPrivate(this.browser.ownerGlobal)
+      };
+    }
+
+    if (options.checkbox.show) {
+      options.checkbox.label = gBrowserBundle.GetStringFromName("midi.remember");
+    }
+
+    return options;
+  },
+
+  get notificationID() {
+    return "midi";
+  },
+
+  get anchorID() {
+    return "midi-notification-icon";
+  },
+
+  get message() {
+    let message;
+    if (this.principal.URI.schemeIs("file")) {
+      if (this.isSysexPerm) {
+        message = gBrowserBundle.formatStringFromName("midi.shareSysexWithFile.message");
+      } else {
+        message = gBrowserBundle.formatStringFromName("midi.shareWithFile.message");
+      }
+    } else if (this.isSysexPerm) {
+      message = gBrowserBundle.formatStringFromName("midi.shareSysexWithSite.message",
+                                                    ["<>"], 1);
+    } else {
+      message = gBrowserBundle.formatStringFromName("midi.shareWithSite.message",
+                                                    ["<>"], 1);
+    }
+    return message;
+  },
+
+  get promptActions() {
+    return [{
+        label: gBrowserBundle.GetStringFromName("midi.Allow.label"),
+        accessKey: gBrowserBundle.GetStringFromName("midi.Allow.accesskey"),
+        action: Ci.nsIPermissionManager.ALLOW_ACTION
+      },
+      {
+        label: gBrowserBundle.GetStringFromName("midi.DontAllow.label"),
+        accessKey: gBrowserBundle.GetStringFromName("midi.DontAllow.accesskey"),
+        action: Ci.nsIPermissionManager.DENY_ACTION
+    }];
+  },
+
+  onBeforeShow() {
+  },
+};
+
+PermissionUI.MIDIPermissionPrompt = MIDIPermissionPrompt;

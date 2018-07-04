@@ -174,6 +174,9 @@ PRTime RoundToMilliseconds(PRTime aTime);
  */
 PRTime RoundedPRNow();
 
+nsresult HashURL(const nsAString& aSpec, const nsACString& aMode,
+                 uint64_t *_hash);
+
 /**
  * Used to finalize a statementCache on a specified thread.
  */
@@ -240,7 +243,7 @@ public:
   {
   }
 
-  NS_IMETHOD HandleCompletion(uint16_t aReason);
+  NS_IMETHOD HandleCompletion(uint16_t aReason) override;
 
 private:
   const char* mTopic;
@@ -259,7 +262,7 @@ public:
   {
   }
 
-  NS_IMETHOD HandleCompletion(uint16_t aReason);
+  NS_IMETHOD HandleCompletion(uint16_t aReason) override;
 
 private:
   const Telemetry::HistogramID mHistogramId;

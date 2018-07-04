@@ -60,12 +60,6 @@
      * @param aValue - value of new item element */
     appendItem(aLabel, aValue)
 
-    /** Create item element and insert it to given position
-     * @param aIndex - insertion position
-     * @param aLabel - label of new item element
-     * @param aValue - value of new item element */
-    insertItemAt(aIndex, aLabel, aValue)
-
     /** Scroll up/down one page
      * @param aDirection - specifies scrolling direction, should be either -1 or 1
      * @return the number of elements the selection scrolled
@@ -75,7 +69,7 @@
     /** Fire "select" event */
     _fireOnSelect()
    -->
-   <binding id="listbox-base" role="xul:listbox"
+   <binding id="listbox-base"
             extends="chrome://global/content/bindings/general.xml#basecontrol">
 
     <implementation implements="nsIDOMXULMultiSelectControlElement">
@@ -137,18 +131,6 @@
         ]]>
         </setter>
       </property>
-
-      <method name="removeItemAt">
-        <parameter name="index"/>
-        <body>
-        <![CDATA[
-          var remove = this.getItemAtIndex(index);
-          if (remove)
-            this.removeChild(remove);
-          return remove;
-        ]]>
-        </body>
-      </method>
 
     <!-- nsIDOMXULMultiSelectControlElement -->
       <property name="selType"
@@ -475,7 +457,7 @@
           while (aStartItem) {
             aStartItem = aStartItem.nextSibling;
             if (aStartItem && aStartItem instanceof
-                Components.interfaces.nsIDOMXULSelectControlItemElement &&
+                Ci.nsIDOMXULSelectControlItemElement &&
                 (!this._userSelecting || this._canUserSelect(aStartItem))) {
               --aDelta;
               if (aDelta == 0)
@@ -494,7 +476,7 @@
           while (aStartItem) {
             aStartItem = aStartItem.previousSibling;
             if (aStartItem && aStartItem instanceof
-                Components.interfaces.nsIDOMXULSelectControlItemElement &&
+                Ci.nsIDOMXULSelectControlItemElement &&
                 (!this._userSelecting || this._canUserSelect(aStartItem))) {
               --aDelta;
               if (aDelta == 0)
@@ -729,26 +711,6 @@
         </body>
       </method>
 
-      <method name="insertItemAt">
-        <parameter name="aIndex"/>
-        <parameter name="aLabel"/>
-        <parameter name="aValue"/>
-        <body>
-          const XULNS =
-            "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-
-          var item = this.ownerDocument.createElementNS(XULNS, "listitem");
-          item.setAttribute("label", aLabel);
-          item.setAttribute("value", aValue);
-          var before = this.getItemAtIndex(aIndex);
-          if (before)
-            this.insertBefore(item, before);
-          else
-            this.appendChild(item);
-          return item;
-        </body>
-      </method>
-
       <property name="itemCount" readonly="true"
                 onget="return this.listBoxObject.getRowCount()"/>
 
@@ -948,7 +910,7 @@
     </handlers>
   </binding>
 
-  <binding id="listitem" role="xul:listitem"
+  <binding id="listitem"
            extends="chrome://global/content/bindings/general.xml#basetext">
     <resources>
       <stylesheet src="chrome://global/skin/listbox.css"/>
@@ -999,7 +961,7 @@
         <getter><![CDATA[
           var parent = this.parentNode;
           while (parent) {
-            if (parent instanceof Components.interfaces.nsIDOMXULSelectControlElement)
+            if (parent instanceof Ci.nsIDOMXULSelectControlElement)
               return parent;
             parent = parent.parentNode;
           }
@@ -1113,16 +1075,7 @@
     </handlers>
   </binding>
 
-  <binding id="listitem-checkbox-iconic"
-           extends="chrome://global/content/bindings/listbox.xml#listitem-checkbox">
-    <content>
-      <children>
-        <xul:listcell type="checkbox" class="listcell-iconic" xbl:inherits="label,image,crop,checked,disabled,flexlabel"/>
-      </children>
-    </content>
-  </binding>
-
-  <binding id="listcell" role="xul:listcell"
+  <binding id="listcell"
            extends="chrome://global/content/bindings/general.xml#basecontrol">
 
     <resources>
@@ -1156,18 +1109,7 @@
     </content>
   </binding>
 
-  <binding id="listcell-checkbox-iconic"
-           extends="chrome://global/content/bindings/listbox.xml#listcell-checkbox">
-    <content>
-      <children>
-        <xul:image class="listcell-check" xbl:inherits="checked,disabled"/>
-        <xul:image class="listcell-icon" xbl:inherits="src=image"/>
-        <xul:label class="listcell-label" xbl:inherits="value=label,flex=flexlabel,crop,disabled" flex="1" crop="right"/>
-      </children>
-    </content>
-  </binding>
-
-  <binding id="listhead" role="xul:listhead">
+  <binding id="listhead">
 
     <resources>
       <stylesheet src="chrome://global/skin/listbox.css"/>
@@ -1180,7 +1122,7 @@
     </content>
   </binding>
 
-  <binding id="listheader" display="xul:button" role="xul:listheader">
+  <binding id="listheader" display="xul:button">
 
     <resources>
       <stylesheet src="chrome://global/skin/listbox.css"/>

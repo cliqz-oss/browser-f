@@ -3,8 +3,8 @@
 // caching resources with size out of bounds
 //
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 do_get_profile();
 
@@ -25,7 +25,7 @@ function setupChannel(suffix, value) {
         uri: "http://localhost:" + httpserver.identity.primaryPort + suffix,
         loadUsingSystemPrincipal: true
     });
-    var httpChan = chan.QueryInterface(Components.interfaces.nsIHttpChannel);
+    var httpChan = chan.QueryInterface(Ci.nsIHttpChannel);
     httpChan.setRequestHeader("x-request", value, false);
     
     return httpChan;
@@ -70,7 +70,7 @@ function runNextTest() {
         httpserver.stop(do_test_finished);
         return;
     }
-    do_execute_soon(function() { aTest.start(); } );
+    executeSoon(function() { aTest.start(); } );
 }
 
 // Just make sure devices are created
@@ -112,16 +112,16 @@ function TestCacheEntrySize(setSizeFunc, firstRequest, secondRequest, secondExpe
     },
 
     this.initialLoad = function(request, data, ctx) {
-        do_check_eq(firstRequest, data);
+        Assert.equal(firstRequest, data);
         var channel = setupChannel("/bug650995", secondRequest);
-        do_execute_soon(function() {
+        executeSoon(function() {
             channel.asyncOpen2(new ChannelListener(ctx.testAndTriggerNext, ctx));
             });
     },
 
     this.testAndTriggerNext = function(request, data, ctx) {
-        do_check_eq(secondExpectedReply, data);
-        do_execute_soon(nextTest);
+        Assert.equal(secondExpectedReply, data);
+        executeSoon(nextTest);
     }
 }
 

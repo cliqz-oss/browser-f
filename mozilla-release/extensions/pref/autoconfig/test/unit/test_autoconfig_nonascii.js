@@ -1,8 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-var {classes: Cc, interfaces: Ci, results: Cr} = Components;
-
 /* eslint no-unsafe-finally: "off"*/
 /* Turning off this rule to allow control flow operations in finally block
  * http://eslint.org/docs/rules/no-unsafe-finally  */
@@ -49,7 +47,7 @@ function run_test() {
     function testAutoConfig(test) {
       // Make sure pref values are unset.
       for (let prefName in test.prefs) {
-        do_check_eq(Ci.nsIPrefBranch.PREF_INVALID, prefs.getPrefType(prefName));
+        Assert.equal(Ci.nsIPrefBranch.PREF_INVALID, prefs.getPrefType(prefName));
       }
 
       let autoConfigCfg = testDir.clone();
@@ -59,14 +57,14 @@ function run_test() {
       obsvc.notifyObservers(ps, "prefservice:before-read-userprefs");
 
       for (let prefName in test.prefs) {
-        do_check_eq(test.prefs[prefName],
-                    prefs.getStringPref(prefName));
+        Assert.equal(test.prefs[prefName],
+                     prefs.getStringPref(prefName));
       }
 
       ps.resetPrefs();
       // Make sure pref values are reset.
       for (let prefName in test.prefs) {
-        do_check_eq(Ci.nsIPrefBranch.PREF_INVALID, prefs.getPrefType(prefName));
+        Assert.equal(Ci.nsIPrefBranch.PREF_INVALID, prefs.getPrefType(prefName));
       }
     }
 

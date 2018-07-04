@@ -7,18 +7,15 @@ var testGenerator = testSteps();
 
 function* testSteps()
 {
-  let ioService =
-    Cc["@mozilla.org/network/io-service;1"].getService(Ci.nsIIOService);
-
   function getSpec(filename) {
     let file = do_get_file(filename);
-    let uri = ioService.newFileURI(file);
+    let uri = Services.io.newFileURI(file);
     return uri.spec;
   }
 
   // Test for IDBKeyRange and indexedDB availability in JS modules.
   /* import-globals-from GlobalObjectsModule.jsm */
-  Cu.import(getSpec("GlobalObjectsModule.jsm"));
+  ChromeUtils.import(getSpec("GlobalObjectsModule.jsm"));
   let test = new GlobalObjectsModule();
   test.ok = ok;
   test.finishTest = continueToNextStep;
@@ -58,4 +55,4 @@ this.runTest = function() {
 
   do_test_pending();
   testGenerator.next();
-}
+};

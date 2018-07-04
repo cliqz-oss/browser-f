@@ -10,6 +10,7 @@
 #include "nsCOMPtr.h"
 #include "nsCOMArray.h"
 #include "mozilla/WeakPtr.h"
+#include "mozilla/RelativeTimeline.h"
 #include "mozilla/TimeStamp.h"
 
 class nsDocShell;
@@ -19,6 +20,7 @@ typedef unsigned long long DOMTimeMilliSec;
 typedef double DOMHighResTimeStamp;
 
 class nsDOMNavigationTiming final
+  : public mozilla::RelativeTimeline
 {
 public:
   enum Type {
@@ -49,42 +51,95 @@ public:
 
   mozilla::TimeStamp GetNavigationStartTimeStamp() const
   {
-    return mNavigationStartTimeStamp;
+    return mNavigationStart;
   }
 
-  DOMTimeMilliSec GetUnloadEventStart();
-  DOMTimeMilliSec GetUnloadEventEnd();
+  DOMTimeMilliSec GetUnloadEventStart()
+  {
+    return TimeStampToDOM(GetUnloadEventStartTimeStamp());
+  }
+
+  DOMTimeMilliSec GetUnloadEventEnd()
+  {
+    return TimeStampToDOM(GetUnloadEventEndTimeStamp());
+  }
+
   DOMTimeMilliSec GetDomLoading() const
   {
-    return mDOMLoading;
+    return TimeStampToDOM(mDOMLoading);
   }
   DOMTimeMilliSec GetDomInteractive() const
   {
-    return mDOMInteractive;
+    return TimeStampToDOM(mDOMInteractive);
   }
   DOMTimeMilliSec GetDomContentLoadedEventStart() const
   {
-    return mDOMContentLoadedEventStart;
+    return TimeStampToDOM(mDOMContentLoadedEventStart);
   }
   DOMTimeMilliSec GetDomContentLoadedEventEnd() const
   {
-    return mDOMContentLoadedEventEnd;
+    return TimeStampToDOM(mDOMContentLoadedEventEnd);
   }
   DOMTimeMilliSec GetDomComplete() const
   {
-    return mDOMComplete;
+    return TimeStampToDOM(mDOMComplete);
   }
   DOMTimeMilliSec GetLoadEventStart() const
   {
-    return mLoadEventStart;
+    return TimeStampToDOM(mLoadEventStart);
   }
   DOMTimeMilliSec GetLoadEventEnd() const
   {
-    return mLoadEventEnd;
+    return TimeStampToDOM(mLoadEventEnd);
   }
   DOMTimeMilliSec GetTimeToNonBlankPaint() const
   {
-    return TimeStampToDOM(mNonBlankPaintTimeStamp);
+    return TimeStampToDOM(mNonBlankPaint);
+  }
+  DOMTimeMilliSec GetTimeToDOMContentFlushed() const
+  {
+    return TimeStampToDOM(mDOMContentFlushed);
+  }
+
+  DOMHighResTimeStamp GetUnloadEventStartHighRes()
+  {
+    mozilla::TimeStamp stamp = GetUnloadEventStartTimeStamp();
+    if (stamp.IsNull()) {
+      return 0;
+    }
+    return TimeStampToDOMHighRes(stamp);
+  }
+  DOMHighResTimeStamp GetUnloadEventEndHighRes()
+  {
+    mozilla::TimeStamp stamp = GetUnloadEventEndTimeStamp();
+    if (stamp.IsNull()) {
+      return 0;
+    }
+    return TimeStampToDOMHighRes(stamp);
+  }
+  DOMHighResTimeStamp GetDomInteractiveHighRes() const
+  {
+    return TimeStampToDOMHighRes(mDOMInteractive);
+  }
+  DOMHighResTimeStamp GetDomContentLoadedEventStartHighRes() const
+  {
+    return TimeStampToDOMHighRes(mDOMContentLoadedEventStart);
+  }
+  DOMHighResTimeStamp GetDomContentLoadedEventEndHighRes() const
+  {
+    return TimeStampToDOMHighRes(mDOMContentLoadedEventEnd);
+  }
+  DOMHighResTimeStamp GetDomCompleteHighRes() const
+  {
+    return TimeStampToDOMHighRes(mDOMComplete);
+  }
+  DOMHighResTimeStamp GetLoadEventStartHighRes() const
+  {
+    return TimeStampToDOMHighRes(mLoadEventStart);
+  }
+  DOMHighResTimeStamp GetLoadEventEndHighRes() const
+  {
+    return TimeStampToDOMHighRes(mLoadEventEnd);
   }
 
   enum class DocShellState : uint8_t {
@@ -110,13 +165,17 @@ public:
   void NotifyDOMContentLoadedEnd(nsIURI* aURI);
 
   void NotifyNonBlankPaintForRootContentDocument();
+  void NotifyDOMContentFlushedForRootContentDocument();
   void NotifyDocShellStateChanged(DocShellState aDocShellState);
 
   DOMTimeMilliSec TimeStampToDOM(mozilla::TimeStamp aStamp) const;
 
   inline DOMHighResTimeStamp TimeStampToDOMHighRes(mozilla::TimeStamp aStamp) const
   {
-    mozilla::TimeDuration duration = aStamp - mNavigationStartTimeStamp;
+    if (aStamp.IsNull()) {
+      return 0;
+    }
+    mozilla::TimeDuration duration = aStamp - mNavigationStart;
     return duration.ToMilliseconds();
   }
 
@@ -126,7 +185,10 @@ private:
 
   void Clear();
 
-  bool IsTopLevelContentDocument() const;
+  mozilla::TimeStamp GetUnloadEventStartTimeStamp() const;
+  mozilla::TimeStamp GetUnloadEventEndTimeStamp() const;
+
+  bool IsTopLevelContentDocumentInContentProcess() const;
 
   mozilla::WeakPtr<nsDocShell> mDocShell;
 
@@ -135,32 +197,22 @@ private:
 
   Type mNavigationType;
   DOMHighResTimeStamp mNavigationStartHighRes;
-  mozilla::TimeStamp mNavigationStartTimeStamp;
-  mozilla::TimeStamp mNonBlankPaintTimeStamp;
-  DOMTimeMilliSec DurationFromStart();
+  mozilla::TimeStamp mNavigationStart;
+  mozilla::TimeStamp mNonBlankPaint;
+  mozilla::TimeStamp mDOMContentFlushed;
 
-  DOMTimeMilliSec mBeforeUnloadStart;
-  DOMTimeMilliSec mUnloadStart;
-  DOMTimeMilliSec mUnloadEnd;
-  DOMTimeMilliSec mLoadEventStart;
-  DOMTimeMilliSec mLoadEventEnd;
+  mozilla::TimeStamp mBeforeUnloadStart;
+  mozilla::TimeStamp mUnloadStart;
+  mozilla::TimeStamp mUnloadEnd;
+  mozilla::TimeStamp mLoadEventStart;
+  mozilla::TimeStamp mLoadEventEnd;
 
-  DOMTimeMilliSec mDOMLoading;
-  DOMTimeMilliSec mDOMInteractive;
-  DOMTimeMilliSec mDOMContentLoadedEventStart;
-  DOMTimeMilliSec mDOMContentLoadedEventEnd;
-  DOMTimeMilliSec mDOMComplete;
+  mozilla::TimeStamp mDOMLoading;
+  mozilla::TimeStamp mDOMInteractive;
+  mozilla::TimeStamp mDOMContentLoadedEventStart;
+  mozilla::TimeStamp mDOMContentLoadedEventEnd;
+  mozilla::TimeStamp mDOMComplete;
 
-  // Booleans to keep track of what things we've already been notified
-  // about.  We don't update those once we've been notified about them
-  // once.
-  bool mLoadEventStartSet : 1;
-  bool mLoadEventEndSet : 1;
-  bool mDOMLoadingSet : 1;
-  bool mDOMInteractiveSet : 1;
-  bool mDOMContentLoadedEventStartSet : 1;
-  bool mDOMContentLoadedEventEndSet : 1;
-  bool mDOMCompleteSet : 1;
   bool mDocShellHasBeenActiveSinceNavigationStart : 1;
 };
 

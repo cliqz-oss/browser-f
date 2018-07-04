@@ -1,0 +1,33 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+rich-select {
+  display: inline-block;
+}
+
+rich-select:not([open]) > .rich-select-popup-box {
+  display: none;
+}
+
+rich-select[open] {
+  position: relative;
+}
+
+rich-select[open] > .rich-select-popup-box {
+  box-shadow: 0 0 5px black;
+  position: absolute;
+  z-index: 1;
+}
+
+.rich-select-popup-box > .rich-option[selected] {
+  background-color: #ffa;
+}
+
+.rich-option {
+  display: grid;
+  border-bottom: 1px solid #ddd;
+  background: #fff; /* TODO: system colors */
+  padding: 5px 20px;
+  font-size: .8em;
+}

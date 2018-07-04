@@ -9,8 +9,8 @@
 
 const HTML_LONG_URL = CONTENT_TYPE_SJS + "?fmt=html-long";
 
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(CUSTOM_GET_URL);
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(CUSTOM_GET_URL);
   info("Starting test... ");
 
   // This test could potentially be slow because over 100 KB of stuff
@@ -27,10 +27,16 @@ add_task(function* () {
   store.dispatch(Actions.batchEnable(false));
 
   let wait = waitForNetworkEvents(monitor, 1);
-  yield ContentTask.spawn(tab.linkedBrowser, HTML_LONG_URL, function* (url) {
+  await ContentTask.spawn(tab.linkedBrowser, HTML_LONG_URL, async function(url) {
     content.wrappedJSObject.performRequests(1, url);
   });
-  yield wait;
+  await wait;
+
+  let requestItem = document.querySelector(".request-list-item");
+  requestItem.scrollIntoView();
+  let requestsListStatus = requestItem.querySelector(".status-code");
+  EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
+  await waitUntil(() => requestsListStatus.title);
 
   verifyRequestItemTarget(
     document,
@@ -44,17 +50,16 @@ add_task(function* () {
     });
 
   wait = waitForDOM(document, "#response-panel .CodeMirror-code");
-  EventUtils.sendMouseEvent({ type: "click" },
-    document.querySelector(".network-details-panel-toggle"));
+  store.dispatch(Actions.toggleNetworkDetails());
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector("#response-tab"));
-  yield wait;
+  await wait;
 
   let text = document.querySelector(".CodeMirror-line").textContent;
 
   ok(text.match(/^<p>/), "The text shown in the source editor is incorrect.");
 
-  yield teardown(monitor);
+  await teardown(monitor);
 
   // This test uses a lot of memory, so force a GC to help fragmentation.
   info("Forcing GC after netmonitor test.");

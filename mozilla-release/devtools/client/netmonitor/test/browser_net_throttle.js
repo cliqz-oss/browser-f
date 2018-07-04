@@ -5,20 +5,18 @@
 
 "use strict";
 
-add_task(function* () {
-  yield throttleTest(true);
-  yield throttleTest(false);
+add_task(async function() {
+  await throttleTest(true);
+  await throttleTest(false);
 });
 
-function* throttleTest(actuallyThrottle) {
+async function throttleTest(actuallyThrottle) {
   requestLongerTimeout(2);
 
-  let { monitor } = yield initNetMonitor(SIMPLE_URL);
-  let { store, windowRequire } = monitor.panelWin;
+  let { monitor } = await initNetMonitor(SIMPLE_URL);
+  let { store, windowRequire, connector } = monitor.panelWin;
   let { ACTIVITY_TYPE } = windowRequire("devtools/client/netmonitor/src/constants");
-  let { EVENTS } = windowRequire("devtools/client/netmonitor/src/constants");
-  let { setPreferences, triggerActivity } =
-    windowRequire("devtools/client/netmonitor/src/connector/index");
+  let { setPreferences, triggerActivity } = connector;
   let {
     getSortedRequests,
   } = windowRequire("devtools/client/netmonitor/src/selectors/index");
@@ -41,15 +39,17 @@ function* throttleTest(actuallyThrottle) {
   };
 
   info("sending throttle request");
-  yield new Promise((resolve) => {
+  await new Promise((resolve) => {
     setPreferences(request, response => {
       resolve(response);
     });
   });
 
-  let eventPromise = monitor.panelWin.once(EVENTS.RECEIVED_EVENT_TIMINGS);
-  yield triggerActivity(ACTIVITY_TYPE.RELOAD.WITH_CACHE_DISABLED);
-  yield eventPromise;
+  let wait = waitForNetworkEvents(monitor, 1);
+  await triggerActivity(ACTIVITY_TYPE.RELOAD.WITH_CACHE_DISABLED);
+  await wait;
+
+  await waitForRequestData(store, ["eventTimings"]);
 
   let requestItem = getSortedRequests(store.getState()).get(0);
   const reportedOneSecond = requestItem.eventTimings.timings.receive > 1000;
@@ -59,5 +59,5 @@ function* throttleTest(actuallyThrottle) {
     ok(!reportedOneSecond, "download reported as taking less than one second");
   }
 
-  yield teardown(monitor);
+  await teardown(monitor);
 }

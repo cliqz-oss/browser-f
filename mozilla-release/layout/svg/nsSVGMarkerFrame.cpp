@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,7 +9,7 @@
 
 // Keep others in (case-insensitive) order:
 #include "gfxContext.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "mozilla/dom/SVGMarkerElement.h"
 #include "SVGGeometryElement.h"
 #include "SVGGeometryFrame.h"
@@ -18,9 +19,9 @@ using namespace mozilla::gfx;
 using namespace mozilla::image;
 
 nsContainerFrame*
-NS_NewSVGMarkerFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGMarkerFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsSVGMarkerFrame(aContext);
+  return new (aPresShell) nsSVGMarkerFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGMarkerFrame)
@@ -30,7 +31,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsSVGMarkerFrame)
 
 nsresult
 nsSVGMarkerFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                   nsIAtom* aAttribute,
+                                   nsAtom* aAttribute,
                                    int32_t  aModType)
 {
   if (aNameSpaceID == kNameSpaceID_None &&
@@ -42,7 +43,7 @@ nsSVGMarkerFrame::AttributeChanged(int32_t  aNameSpaceID,
        aAttribute == nsGkAtoms::orient ||
        aAttribute == nsGkAtoms::preserveAspectRatio ||
        aAttribute == nsGkAtoms::viewBox)) {
-    nsSVGEffects::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
   }
 
   return nsSVGContainerFrame::AttributeChanged(aNameSpaceID,
@@ -74,7 +75,7 @@ nsSVGMarkerFrame::GetCanvasTM()
     return gfxMatrix();
   }
 
-  SVGMarkerElement *content = static_cast<SVGMarkerElement*>(mContent);
+  SVGMarkerElement *content = static_cast<SVGMarkerElement*>(GetContent());
 
   mInUse2 = true;
   gfxMatrix markedTM = mMarkedFrame->GetCanvasTM();
@@ -110,7 +111,7 @@ nsSVGMarkerFrame::PaintMark(gfxContext& aContext,
 
   AutoMarkerReferencer markerRef(this, aMarkedFrame);
 
-  SVGMarkerElement *marker = static_cast<SVGMarkerElement*>(mContent);
+  SVGMarkerElement *marker = static_cast<SVGMarkerElement*>(GetContent());
   if (!marker->HasValidDimensions()) {
     return;
   }
@@ -165,7 +166,7 @@ nsSVGMarkerFrame::GetMarkBBoxContribution(const Matrix& aToBBoxUserspace,
 
   AutoMarkerReferencer markerRef(this, aMarkedFrame);
 
-  SVGMarkerElement *content = static_cast<SVGMarkerElement*>(mContent);
+  SVGMarkerElement *content = static_cast<SVGMarkerElement*>(GetContent());
   if (!content->HasValidDimensions()) {
     return bbox;
   }
@@ -194,9 +195,9 @@ nsSVGMarkerFrame::GetMarkBBoxContribution(const Matrix& aToBBoxUserspace,
 }
 
 void
-nsSVGMarkerFrame::SetParentCoordCtxProvider(SVGSVGElement *aContext)
+nsSVGMarkerFrame::SetParentCoordCtxProvider(SVGViewportElement *aContext)
 {
-  SVGMarkerElement *marker = static_cast<SVGMarkerElement*>(mContent);
+  SVGMarkerElement *marker = static_cast<SVGMarkerElement*>(GetContent());
   marker->SetParentCoordCtxProvider(aContext);
 }
 
@@ -219,7 +220,7 @@ nsSVGMarkerFrame::AutoMarkerReferencer::AutoMarkerReferencer(
   mFrame->mInUse = true;
   mFrame->mMarkedFrame = aMarkedFrame;
 
-  SVGSVGElement *ctx =
+  SVGViewportElement *ctx =
     static_cast<nsSVGElement*>(aMarkedFrame->GetContent())->GetCtx();
   mFrame->SetParentCoordCtxProvider(ctx);
 }
@@ -237,9 +238,9 @@ nsSVGMarkerFrame::AutoMarkerReferencer::~AutoMarkerReferencer()
 
 nsContainerFrame*
 NS_NewSVGMarkerAnonChildFrame(nsIPresShell* aPresShell,
-                              nsStyleContext* aContext)
+                              ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsSVGMarkerAnonChildFrame(aContext);
+  return new (aPresShell) nsSVGMarkerAnonChildFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGMarkerAnonChildFrame)

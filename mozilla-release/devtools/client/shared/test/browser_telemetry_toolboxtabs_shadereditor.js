@@ -11,20 +11,26 @@ const TEST_URI = "data:text/html;charset=utf-8," +
 const TOOL_DELAY = 200;
 const TOOL_PREF = "devtools.shadereditor.enabled";
 
-add_task(function* () {
+add_task(async function() {
   info("Active the sharer editor");
   let originalPref = Services.prefs.getBoolPref(TOOL_PREF);
   Services.prefs.setBoolPref(TOOL_PREF, true);
 
-  yield addTab(TEST_URI);
-  let Telemetry = loadTelemetryAndRecordLogs();
+  await addTab(TEST_URI);
+  startTelemetry();
 
-  yield openAndCloseToolbox(2, TOOL_DELAY, "shadereditor");
-  checkTelemetryResults(Telemetry);
+  await openAndCloseToolbox(2, TOOL_DELAY, "shadereditor");
+  checkResults();
 
-  stopRecordingTelemetryLogs(Telemetry);
   gBrowser.removeCurrentTab();
 
   info("De-activate the sharer editor");
   Services.prefs.setBoolPref(TOOL_PREF, originalPref);
 });
+
+function checkResults() {
+  // For help generating these tests use generateTelemetryTests("DEVTOOLS_SHADEREDITOR_")
+  // here.
+  checkTelemetry("DEVTOOLS_SHADEREDITOR_OPENED_COUNT", "", [2, 0, 0], "array");
+  checkTelemetry("DEVTOOLS_SHADEREDITOR_TIME_ACTIVE_SECONDS", "", null, "hasentries");
+}

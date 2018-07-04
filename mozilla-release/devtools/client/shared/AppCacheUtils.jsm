@@ -25,17 +25,13 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-var { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
-var { NetUtil } = Cu.import("resource://gre/modules/NetUtil.jsm", {});
-var { LoadContextInfo } = Cu.import("resource://gre/modules/LoadContextInfo.jsm", {});
-var { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+var { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
+var { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", {});
+var { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 
 var { gDevTools } = require("devtools/client/framework/devtools");
 var Services = require("Services");
-var promise = require("promise");
-var defer = require("devtools/shared/defer");
+var { globals } = require("devtools/shared/builtin-modules");
 
 this.EXPORTED_SYMBOLS = ["AppCacheUtils"];
 
@@ -58,196 +54,194 @@ AppCacheUtils.prototype = {
   },
 
   validateManifest: function ACU_validateManifest() {
-    let deferred = defer();
-    this.errors = [];
-    // Check for missing manifest.
-    this._getManifestURI().then(manifestURI => {
-      this.manifestURI = manifestURI;
+    return new Promise((resolve, reject) => {
+      this.errors = [];
+      // Check for missing manifest.
+      this._getManifestURI().then(manifestURI => {
+        this.manifestURI = manifestURI;
 
-      if (!this.manifestURI) {
-        this._addError(0, "noManifest");
-        deferred.resolve(this.errors);
-      }
+        if (!this.manifestURI) {
+          this._addError(0, "noManifest");
+          resolve(this.errors);
+        }
 
-      this._getURIInfo(this.manifestURI).then(uriInfo => {
-        this._parseManifest(uriInfo).then(() => {
-          // Sort errors by line number.
-          this.errors.sort(function (a, b) {
-            return a.line - b.line;
+        this._getURIInfo(this.manifestURI).then(uriInfo => {
+          this._parseManifest(uriInfo).then(() => {
+            // Sort errors by line number.
+            this.errors.sort(function(a, b) {
+              return a.line - b.line;
+            });
+            resolve(this.errors);
           });
-          deferred.resolve(this.errors);
         });
       });
     });
-
-    return deferred.promise;
   },
 
   _parseManifest: function ACU__parseManifest(uriInfo) {
-    let deferred = defer();
-    let manifestName = uriInfo.name;
-    let manifestLastModified = new Date(uriInfo.responseHeaders["last-modified"]);
+    return new Promise((resolve, reject) => {
+      let manifestName = uriInfo.name;
+      let manifestLastModified = new Date(uriInfo.responseHeaders["last-modified"]);
 
-    if (uriInfo.charset.toLowerCase() != "utf-8") {
-      this._addError(0, "notUTF8", uriInfo.charset);
-    }
-
-    if (uriInfo.mimeType != "text/cache-manifest") {
-      this._addError(0, "badMimeType", uriInfo.mimeType);
-    }
-
-    let parser = new ManifestParser(uriInfo.text, this.manifestURI);
-    let parsed = parser.parse();
-
-    if (parsed.errors.length > 0) {
-      this.errors.push.apply(this.errors, parsed.errors);
-    }
-
-    // Check for duplicate entries.
-    let dupes = {};
-    for (let parsedUri of parsed.uris) {
-      dupes[parsedUri.uri] = dupes[parsedUri.uri] || [];
-      dupes[parsedUri.uri].push({
-        line: parsedUri.line,
-        section: parsedUri.section,
-        original: parsedUri.original
-      });
-    }
-    for (let [uri, value] of Object.entries(dupes)) {
-      if (value.length > 1) {
-        this._addError(0, "duplicateURI", uri, JSON.stringify(value));
+      if (uriInfo.charset.toLowerCase() != "utf-8") {
+        this._addError(0, "notUTF8", uriInfo.charset);
       }
-    }
 
-    // Loop through network entries making sure that fallback and cache don't
-    // contain uris starting with the network uri.
-    for (let neturi of parsed.uris) {
-      if (neturi.section == "NETWORK") {
+      if (uriInfo.mimeType != "text/cache-manifest") {
+        this._addError(0, "badMimeType", uriInfo.mimeType);
+      }
+
+      let parser = new ManifestParser(uriInfo.text, this.manifestURI);
+      let parsed = parser.parse();
+
+      if (parsed.errors.length > 0) {
+        this.errors.push.apply(this.errors, parsed.errors);
+      }
+
+      // Check for duplicate entries.
+      let dupes = {};
+      for (let parsedUri of parsed.uris) {
+        dupes[parsedUri.uri] = dupes[parsedUri.uri] || [];
+        dupes[parsedUri.uri].push({
+          line: parsedUri.line,
+          section: parsedUri.section,
+          original: parsedUri.original
+        });
+      }
+      for (let [uri, value] of Object.entries(dupes)) {
+        if (value.length > 1) {
+          this._addError(0, "duplicateURI", uri, JSON.stringify(value));
+        }
+      }
+
+      // Loop through network entries making sure that fallback and cache don't
+      // contain uris starting with the network uri.
+      for (let neturi of parsed.uris) {
+        if (neturi.section == "NETWORK") {
+          for (let parsedUri of parsed.uris) {
+            if (parsedUri.section !== "NETWORK" &&
+                parsedUri.uri.startsWith(neturi.uri)) {
+              this._addError(neturi.line, "networkBlocksURI", neturi.line,
+                             neturi.original, parsedUri.line, parsedUri.original,
+                             parsedUri.section);
+            }
+          }
+        }
+      }
+
+      // Loop through fallback entries making sure that fallback and cache don't
+      // contain uris starting with the network uri.
+      for (let fb of parsed.fallbacks) {
         for (let parsedUri of parsed.uris) {
-          if (parsedUri.section !== "NETWORK" &&
-              parsedUri.uri.startsWith(neturi.uri)) {
-            this._addError(neturi.line, "networkBlocksURI", neturi.line,
-                           neturi.original, parsedUri.line, parsedUri.original,
+          if (parsedUri.uri.startsWith(fb.namespace)) {
+            this._addError(fb.line, "fallbackBlocksURI", fb.line,
+                           fb.original, parsedUri.line, parsedUri.original,
                            parsedUri.section);
           }
         }
       }
-    }
 
-    // Loop through fallback entries making sure that fallback and cache don't
-    // contain uris starting with the network uri.
-    for (let fb of parsed.fallbacks) {
-      for (let parsedUri of parsed.uris) {
-        if (parsedUri.uri.startsWith(fb.namespace)) {
-          this._addError(fb.line, "fallbackBlocksURI", fb.line,
-                         fb.original, parsedUri.line, parsedUri.original,
-                         parsedUri.section);
-        }
-      }
-    }
+      // Check that all resources exist and that their cach-control headers are
+      // not set to no-store.
+      let current = -1;
+      for (let i = 0, len = parsed.uris.length; i < len; i++) {
+        let parsedUri = parsed.uris[i];
+        this._getURIInfo(parsedUri.uri).then(uriInfo => {
+          current++;
 
-    // Check that all resources exist and that their cach-control headers are
-    // not set to no-store.
-    let current = -1;
-    for (let i = 0, len = parsed.uris.length; i < len; i++) {
-      let parsedUri = parsed.uris[i];
-      this._getURIInfo(parsedUri.uri).then(uriInfo => {
-        current++;
+          if (uriInfo.success) {
+            // Check that the resource was not modified after the manifest was last
+            // modified. If it was then the manifest file should be refreshed.
+            let resourceLastModified =
+              new Date(uriInfo.responseHeaders["last-modified"]);
 
-        if (uriInfo.success) {
-          // Check that the resource was not modified after the manifest was last
-          // modified. If it was then the manifest file should be refreshed.
-          let resourceLastModified =
-            new Date(uriInfo.responseHeaders["last-modified"]);
+            if (manifestLastModified < resourceLastModified) {
+              this._addError(parsedUri.line, "fileChangedButNotManifest",
+                             uriInfo.name, manifestName, parsedUri.line);
+            }
 
-          if (manifestLastModified < resourceLastModified) {
-            this._addError(parsedUri.line, "fileChangedButNotManifest",
-                           uriInfo.name, manifestName, parsedUri.line);
-          }
-
-          // If cache-control: no-store the file will not be added to the
-          // appCache.
-          if (uriInfo.nocache) {
-            this._addError(parsedUri.line, "cacheControlNoStore",
+            // If cache-control: no-store the file will not be added to the
+            // appCache.
+            if (uriInfo.nocache) {
+              this._addError(parsedUri.line, "cacheControlNoStore",
+                             parsedUri.original, parsedUri.line);
+            }
+          } else if (parsedUri.original !== "*") {
+            this._addError(parsedUri.line, "notAvailable",
                            parsedUri.original, parsedUri.line);
           }
-        } else if (parsedUri.original !== "*") {
-          this._addError(parsedUri.line, "notAvailable",
-                         parsedUri.original, parsedUri.line);
-        }
 
-        if (current == len - 1) {
-          deferred.resolve();
-        }
-      });
-    }
-
-    return deferred.promise;
+          if (current == len - 1) {
+            resolve();
+          }
+        });
+      }
+    });
   },
 
   _getURIInfo: function ACU__getURIInfo(uri) {
-    let inputStream = Cc["@mozilla.org/scriptableinputstream;1"]
-                        .createInstance(Ci.nsIScriptableInputStream);
-    let deferred = defer();
-    let buffer = "";
-    var channel = NetUtil.newChannel({
-      uri: uri,
-      loadUsingSystemPrincipal: true,
-      securityFlags: Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL
-    });
+    return new Promise((resolve, reject) => {
+      let inputStream = Cc["@mozilla.org/scriptableinputstream;1"]
+                          .createInstance(Ci.nsIScriptableInputStream);
+      let buffer = "";
+      let channel = NetUtil.newChannel({
+        uri: uri,
+        loadUsingSystemPrincipal: true,
+        securityFlags: Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL
+      });
 
-    // Avoid the cache:
-    channel.loadFlags |= Ci.nsIRequest.LOAD_BYPASS_CACHE;
-    channel.loadFlags |= Ci.nsIRequest.INHIBIT_CACHING;
+      // Avoid the cache:
+      channel.loadFlags |= Ci.nsIRequest.LOAD_BYPASS_CACHE;
+      channel.loadFlags |= Ci.nsIRequest.INHIBIT_CACHING;
 
-    channel.asyncOpen2({
-      onStartRequest: function (request, context) {
-        // This empty method is needed in order for onDataAvailable to be
-        // called.
-      },
+      channel.asyncOpen2({
+        onStartRequest: function(request, context) {
+          // This empty method is needed in order for onDataAvailable to be
+          // called.
+        },
 
-      onDataAvailable: function (request, context, stream, offset, count) {
-        request.QueryInterface(Ci.nsIHttpChannel);
-        inputStream.init(stream);
-        buffer = buffer.concat(inputStream.read(count));
-      },
-
-      onStopRequest: function onStartRequest(request, context, statusCode) {
-        if (statusCode === 0) {
+        onDataAvailable: function(request, context, stream, offset, count) {
           request.QueryInterface(Ci.nsIHttpChannel);
+          inputStream.init(stream);
+          buffer = buffer.concat(inputStream.read(count));
+        },
 
-          let result = {
-            name: request.name,
-            success: request.requestSucceeded,
-            status: request.responseStatus + " - " + request.responseStatusText,
-            charset: request.contentCharset || "utf-8",
-            mimeType: request.contentType,
-            contentLength: request.contentLength,
-            nocache: request.isNoCacheResponse() || request.isNoStoreResponse(),
-            prePath: request.URI.prePath + "/",
-            text: buffer
-          };
+        onStopRequest: function onStartRequest(request, context, statusCode) {
+          if (statusCode === 0) {
+            request.QueryInterface(Ci.nsIHttpChannel);
 
-          result.requestHeaders = {};
-          request.visitRequestHeaders(function (header, value) {
-            result.requestHeaders[header.toLowerCase()] = value;
-          });
+            let result = {
+              name: request.name,
+              success: request.requestSucceeded,
+              status: request.responseStatus + " - " + request.responseStatusText,
+              charset: request.contentCharset || "utf-8",
+              mimeType: request.contentType,
+              contentLength: request.contentLength,
+              nocache: request.isNoCacheResponse() || request.isNoStoreResponse(),
+              prePath: request.URI.prePath + "/",
+              text: buffer
+            };
 
-          result.responseHeaders = {};
-          request.visitResponseHeaders(function (header, value) {
-            result.responseHeaders[header.toLowerCase()] = value;
-          });
+            result.requestHeaders = {};
+            request.visitRequestHeaders(function(header, value) {
+              result.requestHeaders[header.toLowerCase()] = value;
+            });
 
-          deferred.resolve(result);
-        } else {
-          deferred.resolve({
-            name: request.name,
-            success: false
-          });
+            result.responseHeaders = {};
+            request.visitResponseHeaders(function(header, value) {
+              result.responseHeaders[header.toLowerCase()] = value;
+            });
+
+            resolve(result);
+          } else {
+            resolve({
+              name: request.name,
+              success: false
+            });
+          }
         }
-      }
+      });
     });
-    return deferred.promise;
   },
 
   listEntries: function ACU_show(searchTerm) {
@@ -257,14 +251,14 @@ AppCacheUtils.prototype = {
 
     let entries = [];
 
-    let appCacheStorage = Services.cache2.appCacheStorage(LoadContextInfo.default, null);
+    let appCacheStorage = Services.cache2.appCacheStorage(Services.loadContextInfo.default, null);
     appCacheStorage.asyncVisitStorage({
-      onCacheStorageInfo: function () {},
+      onCacheStorageInfo: function() {},
 
-      onCacheEntryInfo: function (aURI, aIdEnhance, aDataSize, aFetchCount, aLastModifiedTime, aExpirationTime) {
+      onCacheEntryInfo: function(aURI, aIdEnhance, aDataSize, aFetchCount, aLastModifiedTime, aExpirationTime) {
         let lowerKey = aURI.asciiSpec.toLowerCase();
 
-        if (searchTerm && lowerKey.indexOf(searchTerm.toLowerCase()) == -1) {
+        if (searchTerm && !lowerKey.includes(searchTerm.toLowerCase())) {
           return;
         }
 
@@ -294,11 +288,9 @@ AppCacheUtils.prototype = {
   },
 
   viewEntry: function ACU_viewEntry(key) {
-    let wm = Cc["@mozilla.org/appshell/window-mediator;1"]
-               .getService(Ci.nsIWindowMediator);
-    let win = wm.getMostRecentWindow(gDevTools.chromeWindowType);
+    let win = Services.wm.getMostRecentWindow(gDevTools.chromeWindowType);
     let url = "about:cache-entry?storage=appcache&context=&eid=&uri=" + key;
-    win.openUILinkIn(url, "tab");
+    win.openTrustedLinkIn(url, "tab");
   },
 
   clearAll: function ACU_clearAll() {
@@ -306,50 +298,50 @@ AppCacheUtils.prototype = {
       throw new Error(l10n.GetStringFromName("cacheDisabled"));
     }
 
-    let appCacheStorage = Services.cache2.appCacheStorage(LoadContextInfo.default, null);
+    let appCacheStorage = Services.cache2.appCacheStorage(Services.loadContextInfo.default, null);
     appCacheStorage.asyncEvictStorage({
-      onCacheEntryDoomed: function (result) {}
+      onCacheEntryDoomed: function(result) {}
     });
   },
 
   _getManifestURI: function ACU__getManifestURI() {
-    let deferred = defer();
+    return new Promise((resolve, reject) => {
+      let getURI = () => {
+        let htmlNode = this.doc.querySelector("html[manifest]");
+        if (htmlNode) {
+          let pageUri = this.doc.location ? this.doc.location.href : this.uri;
+          let manifestURI = htmlNode.getAttribute("manifest");
 
-    let getURI = () => {
-      let htmlNode = this.doc.querySelector("html[manifest]");
-      if (htmlNode) {
-        let pageUri = this.doc.location ? this.doc.location.href : this.uri;
-        let origin = pageUri.substr(0, pageUri.lastIndexOf("/") + 1);
-        let manifestURI = htmlNode.getAttribute("manifest");
+          let originRegExp = new RegExp(/([a-z]*:\/\/[^/]*\/)/);
+          if (originRegExp.test(manifestURI)) {
+            return manifestURI;
+          } else if (manifestURI.startsWith("/")) {
+            return pageUri.match(originRegExp)[0] + manifestURI.substring(1);
+          }
 
-        if (manifestURI.startsWith("/")) {
-          manifestURI = manifestURI.substr(1);
+          return pageUri.substring(0, pageUri.lastIndexOf("/") + 1) + manifestURI;
         }
+      };
 
-        return origin + manifestURI;
+      if (this.doc) {
+        let uri = getURI();
+        return resolve(uri);
       }
-    };
-
-    if (this.doc) {
-      let uri = getURI();
-      return promise.resolve(uri);
-    } else {
       this._getURIInfo(this.uri).then(uriInfo => {
         if (uriInfo.success) {
           let html = uriInfo.text;
           let parser = _DOMParser;
           this.doc = parser.parseFromString(html, "text/html");
           let uri = getURI();
-          deferred.resolve(uri);
+          resolve(uri);
         } else {
           this.errors.push({
-            line: 0,
-            msg: l10n.GetStringFromName("invalidURI")
+              line: 0,
+              msg: l10n.GetStringFromName("invalidURI")
           });
         }
       });
-    }
-    return deferred.promise;
+    });
   },
 
   _addError: function ACU__addError(line, l10nString, ...params) {
@@ -444,7 +436,7 @@ ManifestParser.prototype = {
   parseLine: function OCIMP_parseLine() {
     let text = this.text;
 
-    if (text.indexOf("*") != -1) {
+    if (text.includes("*")) {
       if (this.currSection != "NETWORK" || text.length != 1) {
         this._addError(this.currentLine, "asteriskInWrongSection2",
                        this.currSection, this.currentLine);
@@ -453,7 +445,7 @@ ManifestParser.prototype = {
     }
 
     if (/\s/.test(text)) {
-      this._addError(this.currentLine, "escapeSpaces", this.currentLine);
+      this._addError(this.currentLine, "escapeSpaces1", this.currentLine);
       text = text.replace(/\s/g, "%20");
     }
 
@@ -501,12 +493,12 @@ ManifestParser.prototype = {
 
     let [ namespace, fallback ] = split;
 
-    if (namespace.indexOf("*") != -1) {
+    if (namespace.includes("*")) {
       this._addError(this.currentLine, "fallbackAsterisk2", this.currentLine);
     }
 
     if (/\s/.test(namespace)) {
-      this._addError(this.currentLine, "escapeSpaces", this.currentLine);
+      this._addError(this.currentLine, "escapeSpaces1", this.currentLine);
       namespace = namespace.replace(/\s/g, "%20");
     }
 
@@ -620,12 +612,6 @@ ManifestParser.prototype = {
 XPCOMUtils.defineLazyGetter(this, "l10n", () => Services.strings
   .createBundle("chrome://devtools/locale/appcacheutils.properties"));
 
-XPCOMUtils.defineLazyGetter(this, "appcacheservice", function () {
-  return Cc["@mozilla.org/network/application-cache-service;1"]
-           .getService(Ci.nsIApplicationCacheService);
-
-});
-
-XPCOMUtils.defineLazyGetter(this, "_DOMParser", function () {
-  return Cc["@mozilla.org/xmlextras/domparser;1"].createInstance(Ci.nsIDOMParser);
+XPCOMUtils.defineLazyGetter(this, "_DOMParser", function() {
+  return globals.DOMParser();
 });

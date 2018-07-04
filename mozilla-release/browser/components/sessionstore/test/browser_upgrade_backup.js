@@ -1,9 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/Preferences.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/Preferences.jsm", this);
 
 const Paths = SessionFile.Paths;
 const PREF_UPGRADE = "browser.sessionstore.upgradeBackup.latestBuildID";
@@ -14,7 +14,7 @@ const PREF_MAX_UPGRADE_BACKUPS = "browser.sessionstore.upgradeBackup.maxUpgradeB
  * build where the last backup was created and creating arbitrary JSON data
  * for a new backup.
  */
-var prepareTest = async function() {
+function prepareTest() {
   let result = {};
 
   result.buildID = Services.appinfo.platformBuildID;
@@ -22,12 +22,12 @@ var prepareTest = async function() {
   result.contents = JSON.stringify({"browser_upgrade_backup.js": Math.random()});
 
   return result;
-};
+}
 
 /**
  * Retrieves all upgrade backups and returns them in an array.
  */
-var getUpgradeBackups = async function() {
+async function getUpgradeBackups() {
   let iterator;
   let backups = [];
 
@@ -50,17 +50,17 @@ var getUpgradeBackups = async function() {
 
   // return results
   return backups;
-};
+}
 
 add_task(async function init() {
   // Wait until initialization is complete
   await SessionStore.promiseInitialized;
-  await SessionFile.wipe();
 });
 
 add_task(async function test_upgrade_backup() {
-  let test = await prepareTest();
+  let test = prepareTest();
   info("Let's check if we create an upgrade backup");
+  await SessionFile.wipe();
   await OS.File.writeAtomic(Paths.clean, test.contents, {encoding: "utf-8", compression: "lz4"});
   await SessionFile.read(); // First call to read() initializes the SessionWorker
   await SessionFile.write(""); // First call to write() triggers the backup
@@ -82,9 +82,11 @@ add_task(async function test_upgrade_backup() {
 });
 
 add_task(async function test_upgrade_backup_removal() {
-  let test = await prepareTest();
+  let test = prepareTest();
   let maxUpgradeBackups = Preferences.get(PREF_MAX_UPGRADE_BACKUPS, 3);
   info("Let's see if we remove backups if there are too many");
+  await SessionFile.wipe();
+  await OS.File.makeDir(Paths.backups);
   await OS.File.writeAtomic(Paths.clean, test.contents, {encoding: "utf-8", compression: "lz4"});
 
   // if the nextUpgradeBackup already exists (from another test), remove it
@@ -118,7 +120,7 @@ add_task(async function test_upgrade_backup_removal() {
   // find all backups that were created during the last call to `SessionFile.write("");`
   // ie, filter out all the backups that have already been present before the call
   newBackups = newBackups.filter(function(backup) {
-    return backups.indexOf(backup) < 0;
+    return !backups.includes(backup);
   });
 
   // check that exactly one new backup was created

@@ -40,7 +40,7 @@ public:
 
   static_assert(
     MediaCacheStream::BLOCK_SIZE <
-      static_cast<decltype(MediaCacheStream::BLOCK_SIZE)>(INT32_MAX),
+      static_cast<std::remove_const<decltype(MediaCacheStream::BLOCK_SIZE)>::type>(INT32_MAX),
     "MediaCacheStream::BLOCK_SIZE should fit in 31 bits");
   static const int32_t BLOCK_SIZE = MediaCacheStream::BLOCK_SIZE;
 
@@ -49,8 +49,11 @@ protected:
 
 public:
   // Initialize this cache.
-  // If called again, re-initialize cache with minimal chance of failure.
   virtual nsresult Init() = 0;
+
+  // Erase data and discard pending changes to reset the cache to its pristine
+  // state as it was after Init().
+  virtual void Flush() = 0;
 
   // Maximum number of blocks expected in this block cache. (But allow overflow
   // to accomodate incoming traffic before MediaCache can handle it.)

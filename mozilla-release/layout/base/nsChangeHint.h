@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,8 +12,6 @@
 #include "mozilla/Types.h"
 #include "nsDebug.h"
 #include "nsTArray.h"
-
-struct nsCSSSelector;
 
 // Defines for various style related constants
 
@@ -54,8 +53,8 @@ enum nsChangeHint : uint32_t {
    * filter/mask/clip/etc CSS properties changes, causing the element's frame
    * to start/stop referencing (or reference different) SVG resource elements.
    * (_Not_ used to handle changes to referenced resource elements.) Using this
-   * hint results in nsSVGEffects::UpdateEffects being called on the element's
-   * frame.
+   * hint results in SVGObserverUtils::UpdateEffects being called on the
+   * element's frame.
    */
   nsChangeHint_UpdateEffects = 1 << 7,
 
@@ -135,7 +134,7 @@ enum nsChangeHint : uint32_t {
    * has changed whether the frame is a container for fixed-pos or abs-pos
    * elements, but reframing is otherwise not needed.
    *
-   * Note that nsStyleContext::CalcStyleDifference adjusts results
+   * Note that ComputedStyle::CalcStyleDifference adjusts results
    * returned by style struct CalcDifference methods to return this hint
    * only if there was a change to whether the element's overall style
    * indicates that it establishes a containing block.
@@ -165,7 +164,7 @@ enum nsChangeHint : uint32_t {
   /**
    * A hint reflecting that style data changed with no change handling
    * behavior.  We need to return this, rather than nsChangeHint(0),
-   * so that certain optimizations that manipulate the style context tree are
+   * so that certain optimizations that manipulate the style tree are
    * correct.
    *
    * nsChangeHint_NeutralChange must be returned by CalcDifference on a given
@@ -238,6 +237,20 @@ enum nsChangeHint : uint32_t {
    */
   nsChangeHint_UpdateWidgetProperties = 1 << 29,
 
+  /**
+   *  Indicates that there has been a colspan or rowspan attribute change
+   *  on the cells of a table.
+   */
+  nsChangeHint_UpdateTableCellSpans = 1 << 30,
+
+  /**
+   * Indicates that the visiblity property changed.
+   * This change hint is used for skip restyling for animations on
+   * visibility:hidden elements in the case where the elements have no visible
+   * descendants.
+   */
+  nsChangeHint_VisibilityChange = 1u << 31,
+
   // IMPORTANT NOTE: When adding a new hint, you will need to add it to
   // one of:
   //
@@ -253,7 +266,7 @@ enum nsChangeHint : uint32_t {
   /**
    * Dummy hint value for all hints. It exists for compile time check.
    */
-  nsChangeHint_AllHints = (1 << 30) - 1,
+  nsChangeHint_AllHints = uint32_t((1ull << 32) - 1),
 };
 
 // Redefine these operators to return nothing. This will catch any use
@@ -335,7 +348,8 @@ inline nsChangeHint operator^=(nsChangeHint& aLeft, nsChangeHint aRight)
   nsChangeHint_SyncFrameView |                             \
   nsChangeHint_UpdateCursor |                              \
   nsChangeHint_UpdateSubtreeOverflow |                     \
-  nsChangeHint_UpdateTextPath                              \
+  nsChangeHint_UpdateTextPath |                            \
+  nsChangeHint_VisibilityChange                            \
 )
 
 // The change hints that are never handled for descendants.
@@ -353,6 +367,7 @@ inline nsChangeHint operator^=(nsChangeHint& aLeft, nsChangeHint aRight)
   nsChangeHint_UpdateOverflow |                            \
   nsChangeHint_UpdateParentOverflow |                      \
   nsChangeHint_UpdatePostTransformOverflow |               \
+  nsChangeHint_UpdateTableCellSpans |                          \
   nsChangeHint_UpdateTransformLayer |                      \
   nsChangeHint_UpdateUsesOpacity |                         \
   nsChangeHint_AddOrRemoveTransform |                      \
@@ -441,12 +456,15 @@ static_assert(!(nsChangeHint_Hints_AlwaysHandledForDescendants &
 #define NS_STYLE_HINT_REFLOW \
   nsChangeHint(NS_STYLE_HINT_VISUAL | nsChangeHint_AllReflowHints)
 
-#define nsChangeHint_Hints_CanIgnoreIfNotVisible   \
-  nsChangeHint(NS_STYLE_HINT_VISUAL |              \
-               nsChangeHint_NeutralChange |        \
-               nsChangeHint_UpdateOpacityLayer |   \
-               nsChangeHint_UpdateTransformLayer | \
-               nsChangeHint_UpdateUsesOpacity)
+#define nsChangeHint_Hints_CanIgnoreIfNotVisible           \
+  nsChangeHint(NS_STYLE_HINT_VISUAL |                      \
+               nsChangeHint_NeutralChange |                \
+               nsChangeHint_UpdateOpacityLayer |           \
+               nsChangeHint_AddOrRemoveTransform |         \
+               nsChangeHint_UpdatePostTransformOverflow  | \
+               nsChangeHint_UpdateTransformLayer |         \
+               nsChangeHint_UpdateUsesOpacity |            \
+               nsChangeHint_VisibilityChange)
 
 // NB: Once we drop support for the old style system, this logic should be
 // inlined in the Servo style system to eliminate the FFI call.
@@ -522,19 +540,19 @@ NS_RemoveSubsumedHints(nsChangeHint aOurChange, nsChangeHint aHintsHandled)
  * Without eRestyle_Force or eRestyle_ForceDescendants, the restyling process
  * can stop processing at a frame when it detects no style changes and it is
  * known that the styles of the subtree beneath it will not change, leaving
- * the old style context on the frame.  eRestyle_Force can be used to skip this
- * optimization on a frame, and to force its new style context to be used.
+ * the old ComputedStyle on the frame.  eRestyle_Force can be used to skip this
+ * optimization on a frame, and to force its new ComputedStyle to be used.
  *
  * Similarly, eRestyle_ForceDescendants will cause the frame and all of its
- * descendants to be traversed and for the new style contexts that are created
+ * descendants to be traversed and for the new ComputedStyles that are created
  * to be set on the frames.
  *
  * NOTE: When adding new restyle hints, please also add them to
  * RestyleManager::RestyleHintToString.
  */
 enum nsRestyleHint : uint32_t {
-  // Rerun selector matching on the element.  If a new style context
-  // results, update the style contexts of descendants.  (Irrelevant if
+  // Rerun selector matching on the element.  If a new ComputedStyle
+  // results, update the ComputedStyles of descendants.  (Irrelevant if
   // eRestyle_Subtree is also set, since that implies a superset of the
   // work.)
   eRestyle_Self = 1 << 0,
@@ -554,24 +572,24 @@ enum nsRestyleHint : uint32_t {
   eRestyle_LaterSiblings = 1 << 3,
 
   // Replace the style data coming from CSS transitions without updating
-  // any other style data.  If a new style context results, update style
+  // any other style data.  If a new ComputedStyle results, update style
   // contexts on the descendants.  (Irrelevant if eRestyle_Self or
   // eRestyle_Subtree is also set, since those imply a superset of the
   // work.)
   eRestyle_CSSTransitions = 1 << 4,
 
   // Replace the style data coming from CSS animations without updating
-  // any other style data.  If a new style context results, update style
+  // any other style data.  If a new ComputedStyle results, update style
   // contexts on the descendants.  (Irrelevant if eRestyle_Self or
   // eRestyle_Subtree is also set, since those imply a superset of the
   // work.)
   eRestyle_CSSAnimations = 1 << 5,
 
   // Replace the style data coming from inline style without updating
-  // any other style data.  If a new style context results, update style
+  // any other style data.  If a new ComputedStyle results, update style
   // contexts on the descendants.  (Irrelevant if eRestyle_Self or
   // eRestyle_Subtree is also set, since those imply a superset of the
-  // work.)  Supported only for element style contexts and not for
+  // work.)  Supported only for element ComputedStyles and not for
   // pseudo-elements or anonymous boxes, on which it converts to
   // eRestyle_Self.
   // If the change is for the advance of a declarative animation, use
@@ -643,20 +661,5 @@ inline nsRestyleHint operator^=(nsRestyleHint& aLeft, nsRestyleHint aRight)
 {
   return aLeft = aLeft ^ aRight;
 }
-
-namespace mozilla {
-
-/**
- * Additional data used in conjunction with an nsRestyleHint to control the
- * restyle process.
- */
-struct RestyleHintData
-{
-  // When eRestyle_SomeDescendants is used, this array contains the selectors
-  // that identify which descendants will be restyled.
-  nsTArray<nsCSSSelector*> mSelectorsForDescendants;
-};
-
-} // namespace mozilla
 
 #endif /* nsChangeHint_h___ */

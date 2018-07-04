@@ -12,10 +12,6 @@
 #include "nsSVGEnum.h"
 #include "nsSVGLength2.h"
 
-static const unsigned short SVG_LENGTHADJUST_UNKNOWN          = 0;
-static const unsigned short SVG_LENGTHADJUST_SPACING          = 1;
-static const unsigned short SVG_LENGTHADJUST_SPACINGANDGLYPHS = 2;
-
 class SVGTextFrame;
 
 namespace mozilla {
@@ -29,21 +25,27 @@ typedef SVGGraphicsElement SVGTextContentElementBase;
 
 class SVGTextContentElement : public SVGTextContentElementBase
 {
+  friend class ::SVGTextFrame;
 public:
   using FragmentOrElement::TextLength;
 
   // WebIDL
   already_AddRefed<SVGAnimatedLength> TextLength();
   already_AddRefed<SVGAnimatedEnumeration> LengthAdjust();
-  int32_t GetNumberOfChars();
-  float GetComputedTextLength();
+  MOZ_CAN_RUN_SCRIPT int32_t GetNumberOfChars();
+  MOZ_CAN_RUN_SCRIPT float GetComputedTextLength();
+  MOZ_CAN_RUN_SCRIPT
   void SelectSubString(uint32_t charnum, uint32_t nchars, ErrorResult& rv);
+  MOZ_CAN_RUN_SCRIPT
   float GetSubStringLength(uint32_t charnum, uint32_t nchars, ErrorResult& rv);
+  MOZ_CAN_RUN_SCRIPT
   already_AddRefed<nsISVGPoint> GetStartPositionOfChar(uint32_t charnum, ErrorResult& rv);
+  MOZ_CAN_RUN_SCRIPT
   already_AddRefed<nsISVGPoint> GetEndPositionOfChar(uint32_t charnum, ErrorResult& rv);
+  MOZ_CAN_RUN_SCRIPT
   already_AddRefed<SVGIRect> GetExtentOfChar(uint32_t charnum, ErrorResult& rv);
-  float GetRotationOfChar(uint32_t charnum, ErrorResult& rv);
-  int32_t GetCharNumAtPosition(nsISVGPoint& point);
+  MOZ_CAN_RUN_SCRIPT float GetRotationOfChar(uint32_t charnum, ErrorResult& rv);
+  MOZ_CAN_RUN_SCRIPT int32_t GetCharNumAtPosition(nsISVGPoint& point);
 
 protected:
 
@@ -51,9 +53,9 @@ protected:
     : SVGTextContentElementBase(aNodeInfo)
   {}
 
-  SVGTextFrame* GetSVGTextFrame();
-  SVGTextFrame* GetSVGTextFrameForNonLayoutDependentQuery();
-  mozilla::Maybe<int32_t> GetNonLayoutDependentNumberOfChars();
+  MOZ_CAN_RUN_SCRIPT SVGTextFrame* GetSVGTextFrame();
+  MOZ_CAN_RUN_SCRIPT SVGTextFrame* GetSVGTextFrameForNonLayoutDependentQuery();
+  MOZ_CAN_RUN_SCRIPT mozilla::Maybe<int32_t> GetNonLayoutDependentNumberOfChars();
 
   enum { LENGTHADJUST };
   virtual nsSVGEnum* EnumAttributes() = 0;

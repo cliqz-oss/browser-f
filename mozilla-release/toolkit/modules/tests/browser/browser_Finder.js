@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces;
-
 add_task(async function() {
   const url = "data:text/html;base64," +
               btoa("<body><iframe srcdoc=\"content\"/></iframe>" +
@@ -24,7 +22,7 @@ add_task(async function() {
   function waitForFind(which = "onFindResult") {
     return new Promise(resolve => {
       listener[which] = resolve;
-    })
+    });
   }
 
   let promiseFind = waitForFind("onHighlightFinished");

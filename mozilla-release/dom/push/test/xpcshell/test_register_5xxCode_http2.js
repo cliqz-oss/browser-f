@@ -3,8 +3,8 @@
 
 'use strict';
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
 
 const {PushDB, PushService, PushServiceHttp2} = serviceExports;
 
@@ -36,7 +36,7 @@ function subscribe5xxCodeHandler(metadata, response) {
 }
 
 function listenSuccessHandler(metadata, response) {
-  do_check_true(true, "New listener point");
+  Assert.ok(true, "New listener point");
   ok(retries == 2, "Should try 2 times.");
   do_test_finished();
   response.setHeader("Retry-After", '10');
@@ -64,7 +64,7 @@ function run_test() {
 add_task(async function test1() {
 
   let db = PushServiceHttp2.newPushDB();
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     return db.drop().then(_ => db.close());
   });
 

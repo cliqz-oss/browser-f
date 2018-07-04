@@ -1,7 +1,6 @@
 /* eslint-env mozilla/frame-script */
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const gfxFrameScript = {
   domUtils: null,
@@ -55,7 +54,7 @@ const gfxFrameScript = {
   },
 
   // Needed to support web progress listener
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIWebProgressListener,
     Ci.nsISupportsWeakReference,
     Ci.nsIObserver,

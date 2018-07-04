@@ -7,12 +7,13 @@
 #ifndef AudioContext_h_
 #define AudioContext_h_
 
-#include "mozilla/dom/AudioChannelBinding.h"
+#include "mozilla/dom/OfflineAudioContextBinding.h"
 #include "MediaBufferDecoder.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/TypedArray.h"
+#include "mozilla/RelativeTimeline.h"
 #include "mozilla/UniquePtr.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
@@ -115,13 +116,14 @@ private:
 };
 
 enum class AudioContextOperation { Suspend, Resume, Close };
+struct AudioContextOptions;
 
 class AudioContext final : public DOMEventTargetHelper,
-                           public nsIMemoryReporter
+                           public nsIMemoryReporter,
+                           public RelativeTimeline
 {
   AudioContext(nsPIDOMWindowInner* aParentWindow,
                bool aIsOffline,
-               AudioChannel aChannel,
                uint32_t aNumberOfChannels = 0,
                uint32_t aLength = 0,
                float aSampleRate = 0.0f);
@@ -143,6 +145,7 @@ public:
   }
 
   virtual void DisconnectFromOwner() override;
+  virtual void BindToOwner(nsIGlobalObject* aNew) override;
 
   void Shutdown(); // idempotent
 
@@ -152,7 +155,15 @@ public:
 
   // Constructor for regular AudioContext
   static already_AddRefed<AudioContext>
-  Constructor(const GlobalObject& aGlobal, ErrorResult& aRv);
+  Constructor(const GlobalObject& aGlobal,
+              const AudioContextOptions& aOptions,
+              ErrorResult& aRv);
+
+  // Constructor for offline AudioContext with options object
+  static already_AddRefed<AudioContext>
+  Constructor(const GlobalObject& aGlobal,
+              const OfflineAudioContextOptions& aOptions,
+              ErrorResult& aRv);
 
   // Constructor for offline AudioContext
   static already_AddRefed<AudioContext>
@@ -176,7 +187,7 @@ public:
 
   bool ShouldSuspendNewStream() const { return mSuspendCalled; }
 
-  double CurrentTime() const;
+  double CurrentTime();
 
   AudioListener* Listener();
 

@@ -4,12 +4,59 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "PDFiumEngineShim.h"
+#include "private/pprio.h"
 
+typedef void (STDCALL *FPDF_InitLibrary_Pfn)();
+typedef void (STDCALL *FPDF_DestroyLibrary_Pfn)();
+
+typedef FPDF_DOCUMENT (STDCALL *FPDF_LoadDocument_Pfn)(FPDF_STRING file_path,
+                                                      FPDF_BYTESTRING password);
+typedef FPDF_DOCUMENT (STDCALL *FPDF_LoadCustomDocument_Pfn)(FPDF_FILEACCESS* pFileAccess,
+                                                             FPDF_BYTESTRING password);
+typedef void(STDCALL *FPDF_CloseDocument_Pfn)(FPDF_DOCUMENT aDocument);
+
+typedef int (STDCALL *FPDF_GetPageCount_Pfn)(FPDF_DOCUMENT aDocument);
+
+typedef FPDF_PAGE (STDCALL *FPDF_LoadPage_Pfn)(FPDF_DOCUMENT aDocument,
+                                               int aPageIndex);
+typedef void (STDCALL *FPDF_ClosePage_Pfn)(FPDF_PAGE aPage);
+typedef void (STDCALL *FPDF_RenderPage_Pfn)(HDC aDC,
+                                            FPDF_PAGE aPage,
+                                            int aStartX,
+                                            int aStartY,
+                                            int aSizeX,
+                                            int aSizeY,
+                                            int aRotate,
+                                            int aFlags);
 
 namespace mozilla {
 namespace widget {
 
 static PDFiumEngineShim* sPDFiumEngineShim;
+
+struct PDFFunctionPointerTable
+{
+  PDFFunctionPointerTable()
+    : mFPDF_InitLibrary(nullptr)
+    , mFPDF_DestroyLibrary(nullptr)
+    , mFPDF_CloseDocument(nullptr)
+    , mFPDF_GetPageCount(nullptr)
+    , mFPDF_LoadPage(nullptr)
+    , mFPDF_ClosePage(nullptr)
+    , mFPDF_RenderPage(nullptr)
+  {
+  }
+
+  FPDF_InitLibrary_Pfn        mFPDF_InitLibrary;
+  FPDF_DestroyLibrary_Pfn     mFPDF_DestroyLibrary;
+  FPDF_LoadDocument_Pfn       mFPDF_LoadDocument;
+  FPDF_LoadCustomDocument_Pfn mFPDF_LoadCustomDocument;
+  FPDF_CloseDocument_Pfn      mFPDF_CloseDocument;
+  FPDF_GetPageCount_Pfn       mFPDF_GetPageCount;
+  FPDF_LoadPage_Pfn           mFPDF_LoadPage;
+  FPDF_ClosePage_Pfn          mFPDF_ClosePage;
+  FPDF_RenderPage_Pfn         mFPDF_RenderPage;
+};
 
 /* static */
 already_AddRefed<PDFiumEngineShim>
@@ -18,7 +65,7 @@ PDFiumEngineShim::GetInstanceOrNull()
   RefPtr<PDFiumEngineShim> inst = sPDFiumEngineShim;
   if (!inst) {
     inst = new PDFiumEngineShim();
-    if (!inst->Init()) {
+    if (!inst->Init(NS_LITERAL_STRING("pdfium.dll"))) {
       inst = nullptr;
     }
     sPDFiumEngineShim = inst.get();
@@ -27,96 +74,94 @@ PDFiumEngineShim::GetInstanceOrNull()
   return inst.forget();
 }
 
+/* static */
+already_AddRefed<PDFiumEngineShim>
+PDFiumEngineShim::GetInstanceOrNull(const nsString& aLibrary)
+{
+  RefPtr<PDFiumEngineShim> shim = new PDFiumEngineShim();
+  if (!shim->Init(aLibrary)) {
+    return nullptr;
+  }
+
+  return shim.forget();
+}
+
 PDFiumEngineShim::PDFiumEngineShim()
-  : mFPDF_InitLibrary(nullptr)
-  , mFPDF_DestroyLibrary(nullptr)
-  , mFPDF_CloseDocument(nullptr)
-  , mFPDF_GetPageCount(nullptr)
-  , mFPDF_LoadPage(nullptr)
-  , mFPDF_ClosePage(nullptr)
-  , mFPDF_RenderPage(nullptr)
-#ifdef USE_EXTERNAL_PDFIUM
-  , mPRLibrary(nullptr)
-#endif
+  : mTable(MakeUnique<PDFFunctionPointerTable>())
   , mInitialized(false)
+  , mPRLibrary(nullptr)
 {
 }
 
 PDFiumEngineShim::~PDFiumEngineShim()
 {
   if (mInitialized) {
-    mFPDF_DestroyLibrary();
+    mTable->mFPDF_DestroyLibrary();
   }
 
   sPDFiumEngineShim = nullptr;
 
-#ifdef USE_EXTERNAL_PDFIUM
   if (mPRLibrary) {
     PR_UnloadLibrary(mPRLibrary);
   }
-#endif
 }
 
 bool
-PDFiumEngineShim::Init()
+PDFiumEngineShim::Init(const nsString& aLibrary)
 {
   if (mInitialized) {
     return true;
   }
 
-#ifdef USE_EXTERNAL_PDFIUM
-  nsAutoString PDFiumPath;
-  mozilla::Preferences::GetString("print.load_external_pdfium", PDFiumPath);
-  NS_ENSURE_FALSE(PDFiumPath.IsEmpty(), false);
-
-  nsAutoCString filePath = NS_ConvertUTF16toUTF8(PDFiumPath);
-  mPRLibrary = PR_LoadLibrary(filePath.get());
+  PRLibSpec libSpec;
+  libSpec.type = PR_LibSpec_PathnameU;
+  libSpec.value.pathname_u = aLibrary.get();
+  mPRLibrary = PR_LoadLibraryWithFlags(libSpec, 0);
   NS_ENSURE_TRUE(mPRLibrary, false);
 
-  mFPDF_InitLibrary = (FPDF_InitLibrary_Pfn)PR_FindFunctionSymbol(
-    mPRLibrary, "FPDF_InitLibrary");
-  NS_ENSURE_TRUE(mFPDF_InitLibrary, false);
+  mTable->mFPDF_InitLibrary =
+    (FPDF_InitLibrary_Pfn)PR_FindFunctionSymbol(mPRLibrary,
+                                                "FPDF_InitLibrary");
+  NS_ENSURE_TRUE(mTable->mFPDF_InitLibrary, false);
 
-  mFPDF_DestroyLibrary = (FPDF_DestroyLibrary_Pfn)PR_FindFunctionSymbol(
-    mPRLibrary, "FPDF_DestroyLibrary");
-  NS_ENSURE_TRUE(mFPDF_DestroyLibrary, false);
+  mTable->mFPDF_DestroyLibrary =
+    (FPDF_DestroyLibrary_Pfn)PR_FindFunctionSymbol(mPRLibrary,
+                                                  "FPDF_DestroyLibrary");
+  NS_ENSURE_TRUE(mTable->mFPDF_DestroyLibrary, false);
 
-  mFPDF_LoadDocument = (FPDF_LoadDocument_Pfn)PR_FindFunctionSymbol(
-    mPRLibrary, "FPDF_LoadDocument");
-  NS_ENSURE_TRUE(mFPDF_LoadDocument, false);
+  mTable->mFPDF_LoadDocument =
+    (FPDF_LoadDocument_Pfn)PR_FindFunctionSymbol(mPRLibrary,
+                                                 "FPDF_LoadDocument");
+  NS_ENSURE_TRUE(mTable->mFPDF_LoadDocument, false);
 
-  mFPDF_CloseDocument = (FPDF_CloseDocument_Pfn)PR_FindFunctionSymbol(
-    mPRLibrary, "FPDF_CloseDocument");
-  NS_ENSURE_TRUE(mFPDF_CloseDocument, false);
+  mTable->mFPDF_LoadCustomDocument =
+    (FPDF_LoadCustomDocument_Pfn)PR_FindFunctionSymbol(mPRLibrary,
+                                                       "FPDF_LoadCustomDocument");
+  NS_ENSURE_TRUE(mTable->mFPDF_LoadCustomDocument, false);
 
-  mFPDF_GetPageCount = (FPDF_GetPageCount_Pfn)PR_FindFunctionSymbol(
-    mPRLibrary, "FPDF_GetPageCount");
-  NS_ENSURE_TRUE(mFPDF_GetPageCount, false);
+  mTable->mFPDF_CloseDocument =
+    (FPDF_CloseDocument_Pfn)PR_FindFunctionSymbol(mPRLibrary,
+                                                  "FPDF_CloseDocument");
+  NS_ENSURE_TRUE(mTable->mFPDF_CloseDocument, false);
 
-  mFPDF_LoadPage = (FPDF_LoadPage_Pfn)PR_FindFunctionSymbol(
-    mPRLibrary, "FPDF_LoadPage");
-  NS_ENSURE_TRUE(mFPDF_LoadPage, false);
+  mTable->mFPDF_GetPageCount =
+    (FPDF_GetPageCount_Pfn)PR_FindFunctionSymbol(mPRLibrary,
+                                                 "FPDF_GetPageCount");
+  NS_ENSURE_TRUE(mTable->mFPDF_GetPageCount, false);
 
-  mFPDF_ClosePage = (FPDF_ClosePage_Pfn)PR_FindFunctionSymbol(
-    mPRLibrary, "FPDF_ClosePage");
-  NS_ENSURE_TRUE(mFPDF_ClosePage, false);
+  mTable->mFPDF_LoadPage =
+    (FPDF_LoadPage_Pfn)PR_FindFunctionSymbol(mPRLibrary, "FPDF_LoadPage");
+  NS_ENSURE_TRUE(mTable->mFPDF_LoadPage, false);
 
-  mFPDF_RenderPage = (FPDF_RenderPage_Pfn)PR_FindFunctionSymbol(
-    mPRLibrary, "FPDF_RenderPage");
-  NS_ENSURE_TRUE(mFPDF_RenderPage, false);
+  mTable->mFPDF_ClosePage =
+    (FPDF_ClosePage_Pfn)PR_FindFunctionSymbol(mPRLibrary, "FPDF_ClosePage");
+  NS_ENSURE_TRUE(mTable->mFPDF_ClosePage, false);
 
-#else
-  mFPDF_InitLibrary = (FPDF_InitLibrary_Pfn) FPDF_InitLibrary;
-  mFPDF_DestroyLibrary = (FPDF_DestroyLibrary_Pfn) FPDF_DestroyLibrary;
-  mFPDF_LoadDocument = (FPDF_LoadDocument_Pfn) FPDF_LoadDocument;
-  mFPDF_CloseDocument = (FPDF_CloseDocument_Pfn) FPDF_CloseDocument;
-  mFPDF_GetPageCount = (FPDF_GetPageCount_Pfn) FPDF_GetPageCount;
-  mFPDF_LoadPage = (FPDF_LoadPage_Pfn) FPDF_LoadPage;
-  mFPDF_ClosePage = (FPDF_ClosePage_Pfn) FPDF_ClosePage;
-  mFPDF_RenderPage = (FPDF_RenderPage_Pfn) FPDF_RenderPage;
-#endif
+  mTable->mFPDF_RenderPage =
+    (FPDF_RenderPage_Pfn)PR_FindFunctionSymbol(mPRLibrary, "FPDF_RenderPage");
+  NS_ENSURE_TRUE(mTable->mFPDF_RenderPage, false);
 
-  mFPDF_InitLibrary();
+  mTable->mFPDF_InitLibrary();
   mInitialized = true;
   return true;
 }
@@ -126,35 +171,69 @@ PDFiumEngineShim::LoadDocument(FPDF_STRING file_path,
                                FPDF_BYTESTRING aPassword)
 {
   MOZ_ASSERT(mInitialized);
-  return mFPDF_LoadDocument(file_path, aPassword);
+  return mTable->mFPDF_LoadDocument(file_path, aPassword);
+}
+
+FPDF_DOCUMENT
+PDFiumEngineShim::LoadDocument(PRFileDesc* aPrfile,
+                               FPDF_BYTESTRING aPassword)
+{
+  MOZ_ASSERT(mInitialized && aPrfile);
+
+  PROffset32 fileLength = PR_Seek64(aPrfile, 0, PR_SEEK_END);
+  if (fileLength == -1) {
+    NS_WARNING("Failed to access the given FD.");
+    return nullptr;
+  }
+
+  FPDF_FILEACCESS fileAccess;
+  fileAccess.m_FileLen = static_cast<unsigned long>(fileLength);
+  fileAccess.m_Param = reinterpret_cast<void*>(aPrfile);
+  fileAccess.m_GetBlock =
+    [](void* param, unsigned long pos, unsigned char* buf, unsigned long size)
+    {
+      PRFileDesc* prfile = reinterpret_cast<PRFileDesc*>(param);
+
+      if (PR_Seek64(prfile, pos, PR_SEEK_SET) != pos) {
+        return 0;
+      }
+
+      if (PR_Read(prfile, buf, size) <= 0) {
+        return 0;
+      }
+
+      return 1;
+    };
+
+  return mTable->mFPDF_LoadCustomDocument(&fileAccess, aPassword);
 }
 
 void
 PDFiumEngineShim::CloseDocument(FPDF_DOCUMENT aDocument)
 {
   MOZ_ASSERT(mInitialized);
-  mFPDF_CloseDocument(aDocument);
+  mTable->mFPDF_CloseDocument(aDocument);
 }
 
 int
 PDFiumEngineShim::GetPageCount(FPDF_DOCUMENT aDocument)
 {
   MOZ_ASSERT(mInitialized);
-  return mFPDF_GetPageCount(aDocument);
+  return mTable->mFPDF_GetPageCount(aDocument);
 }
 
 FPDF_PAGE
 PDFiumEngineShim::LoadPage(FPDF_DOCUMENT aDocument, int aPageIndex)
 {
   MOZ_ASSERT(mInitialized);
-  return mFPDF_LoadPage(aDocument, aPageIndex);
+  return mTable->mFPDF_LoadPage(aDocument, aPageIndex);
 }
 
 void
 PDFiumEngineShim::ClosePage(FPDF_PAGE aPage)
 {
   MOZ_ASSERT(mInitialized);
-  mFPDF_ClosePage(aPage);
+  mTable->mFPDF_ClosePage(aPage);
 }
 
 void
@@ -164,8 +243,8 @@ PDFiumEngineShim::RenderPage(HDC aDC, FPDF_PAGE aPage,
                              int aRotate, int aFlags)
 {
   MOZ_ASSERT(mInitialized);
-  mFPDF_RenderPage(aDC, aPage, aStartX, aStartY,
-                   aSizeX, aSizeY, aRotate, aFlags);
+  mTable->mFPDF_RenderPage(aDC, aPage, aStartX, aStartY,
+                           aSizeX, aSizeY, aRotate, aFlags);
 }
 
 } // namespace widget

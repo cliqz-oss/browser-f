@@ -103,9 +103,8 @@ public:
   void SetCurrentScaleTranslate(float s, float x, float y);
 
   // nsIContent interface
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
-  virtual bool IsEventAttributeNameInternal(nsIAtom* aName) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+  virtual bool IsEventAttributeNameInternal(nsAtom* aName) override;
 
   // nsINode methods:
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
@@ -116,10 +115,6 @@ public:
   already_AddRefed<SVGAnimatedLength> Y();
   already_AddRefed<SVGAnimatedLength> Width();
   already_AddRefed<SVGAnimatedLength> Height();
-  float PixelUnitToMillimeterX();
-  float PixelUnitToMillimeterY();
-  float ScreenPixelToMillimeterX();
-  float ScreenPixelToMillimeterY();
   bool UseCurrentView();
   float CurrentScale();
   void SetCurrentScale(float aCurrentScale);
@@ -181,15 +176,6 @@ public:
   // <svg> node needing to be recalculated.  (Only applicable in
   // SVG-as-an-image documents.)
   virtual void FlushImageTransformInvalidation();
-
-  svgFloatSize GetViewportSize() const {
-    return svgFloatSize(mViewportWidth, mViewportHeight);
-  }
-
-  void SetViewportSize(const svgFloatSize& aSize) {
-    mViewportWidth  = aSize.width;
-    mViewportHeight = aSize.height;
-  }
 
 private:
   // SVGViewportElement methods:

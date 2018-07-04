@@ -1,10 +1,9 @@
 /* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const server = new HttpServer();
 server.registerDirectory("/", do_get_cwd());
@@ -13,7 +12,11 @@ const ROOT = `http://localhost:${server.identity.primaryPort}`;
 const BASE = `${ROOT}/`;
 const HEADLESS_URL = `${BASE}/headless.html`;
 const HEADLESS_BUTTON_URL = `${BASE}/headless_button.html`;
-do_register_cleanup(() => { server.stop(() => {})});
+registerCleanupFunction(() => { server.stop(() => {})});
+
+// Refrences to the progress listeners to keep them from being gc'ed
+// before they are called.
+const progressListeners = new Map();
 
 function loadContentWindow(webNavigation, uri) {
   return new Promise((resolve, reject) => {
@@ -37,13 +40,15 @@ function loadContentWindow(webNavigation, uri) {
         let contentWindow = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                             .getInterface(Ci.nsIDOMWindow);
         webProgress.removeProgressListener(progressListener);
+        progressListeners.delete(progressListener);
         contentWindow.addEventListener("load", (event) => {
           resolve(contentWindow);
         }, { once: true });
       },
-      QueryInterface: XPCOMUtils.generateQI(["nsIWebProgressListener",
-                                            "nsISupportsWeakReference"])
+      QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener",
+                                             "nsISupportsWeakReference"])
     };
+    progressListeners.set(progressListener, progressListener);
     webProgress.addProgressListener(progressListener,
                                     Ci.nsIWebProgress.NOTIFY_LOCATION);
   });
@@ -92,10 +97,10 @@ add_task(async function test_snapshot() {
   webNavigation.close();
 });
 
-add_task(function* test_snapshot_widget_layers() {
+add_task(async function test_snapshot_widget_layers() {
   let windowlessBrowser = Services.appShell.createWindowlessBrowser(false);
   let webNavigation = windowlessBrowser.QueryInterface(Ci.nsIWebNavigation);
-  let contentWindow = yield loadContentWindow(webNavigation, HEADLESS_URL);
+  let contentWindow = await loadContentWindow(webNavigation, HEADLESS_URL);
   const contentWidth = 1;
   const contentHeight = 2;
   // Verify dimensions.
@@ -130,14 +135,17 @@ add_task(async function test_keydown() {
   let webNavigation = windowlessBrowser.QueryInterface(Ci.nsIWebNavigation);
   let contentWindow = await loadContentWindow(webNavigation, HEADLESS_URL);
 
-  let utils = contentWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDOMWindowUtils);
   let keydown = new Promise((resolve) => {
     contentWindow.addEventListener("keydown", () => {
       resolve();
     }, { once: true });
   })
-  utils.sendKeyEvent("keydown", 65, 65, 0);
+
+  let tip = Cc["@mozilla.org/text-input-processor;1"]
+            .createInstance(Ci.nsITextInputProcessor);
+  let begun = tip.beginInputTransactionForTests(contentWindow);
+  ok(begun, "nsITextInputProcessor.beginInputTransactionForTests() should succeed");
+  tip.keydown(new contentWindow.KeyboardEvent("", {key: "a", code: "KeyA", keyCode: contentWindow.KeyboardEvent.DOM_VK_A}));
 
   await keydown;
   ok(true, "Send keydown didn't crash");
@@ -164,7 +172,7 @@ add_task(async function test_mouse_drag() {
   utils.sendMouseEvent("mousemove", left, top, 0, 1, 0, false, 0, 0);
   // Wait for a turn of the event loop since the synthetic mouse event
   // that creates the drag service is processed during the refresh driver.
-  await new Promise((r) => {do_execute_soon(r)});
+  await new Promise((r) => {executeSoon(r)});
   utils.sendMouseEvent("mouseup", left, top, 0, 1, 0, false, 0, 0);
 
   ok(true, "Send mouse event didn't crash");

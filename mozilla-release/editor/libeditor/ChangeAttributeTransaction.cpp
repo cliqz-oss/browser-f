@@ -14,8 +14,29 @@ namespace mozilla {
 
 using namespace dom;
 
+// static
+already_AddRefed<ChangeAttributeTransaction>
+ChangeAttributeTransaction::Create(Element& aElement,
+                                   nsAtom& aAttribute,
+                                   const nsAString& aValue)
+{
+  RefPtr<ChangeAttributeTransaction> transaction =
+    new ChangeAttributeTransaction(aElement, aAttribute, &aValue);
+  return transaction.forget();
+}
+
+// static
+already_AddRefed<ChangeAttributeTransaction>
+ChangeAttributeTransaction::CreateToRemove(Element& aElement,
+                                           nsAtom& aAttribute)
+{
+  RefPtr<ChangeAttributeTransaction> transaction =
+    new ChangeAttributeTransaction(aElement, aAttribute, nullptr);
+  return transaction.forget();
+}
+
 ChangeAttributeTransaction::ChangeAttributeTransaction(Element& aElement,
-                                                       nsIAtom& aAttribute,
+                                                       nsAtom& aAttribute,
                                                        const nsAString* aValue)
   : EditTransactionBase()
   , mElement(&aElement)
@@ -23,7 +44,6 @@ ChangeAttributeTransaction::ChangeAttributeTransaction(Element& aElement,
   , mValue(aValue ? *aValue : EmptyString())
   , mRemoveAttribute(!aValue)
   , mAttributeWasSet(false)
-  , mUndoValue()
 {
 }
 
@@ -79,20 +99,6 @@ ChangeAttributeTransaction::RedoTransaction()
   }
 
   return mElement->SetAttr(kNameSpaceID_None, mAttribute, mValue, true);
-}
-
-NS_IMETHODIMP
-ChangeAttributeTransaction::GetTxnDescription(nsAString& aString)
-{
-  aString.AssignLiteral("ChangeAttributeTransaction: [mRemoveAttribute == ");
-
-  if (mRemoveAttribute) {
-    aString.AppendLiteral("true] ");
-  } else {
-    aString.AppendLiteral("false] ");
-  }
-  aString += nsDependentAtomString(mAttribute);
-  return NS_OK;
 }
 
 } // namespace mozilla

@@ -1,6 +1,6 @@
 "use strict";
 
-Cu.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 
 // ExtensionContent.jsm needs to know when it's running from xpcshell,
 // to use the right timeout for content scripts executed at document_idle.
@@ -11,10 +11,11 @@ server.registerDirectory("/data/", do_get_file("data"));
 
 const BASE_URL = `http://localhost:${server.identity.primaryPort}/data`;
 
-do_register_cleanup(() => {
+var originalReqLocales = Services.locale.getRequestedLocales();
+
+registerCleanupFunction(() => {
   Preferences.reset("intl.accept_languages");
-  Preferences.reset("intl.locale.matchOS");
-  Preferences.reset("general.useragent.locale");
+  Services.locale.setRequestedLocales(originalReqLocales);
 });
 
 
@@ -214,13 +215,18 @@ add_task(async function test_i18n_negotiation() {
     } + `(${runTests})`,
   };
 
-  Components.manager.addBootstrappedManifestLocation(do_get_file("data/locales/"));
+  // At the moment extension language negotiation is tied to Firefox language
+  // negotiation result. That means that to test an extension in `fr`, we need
+  // to mock `fr` being available in Firefox and then request it.
+  //
+  // In the future, we should provide some way for tests to decouple their
+  // language selection from that of Firefox.
+  Services.locale.setAvailableLocales(["en-US", "fr", "jp"]);
 
   let contentPage = await ExtensionTestUtils.loadContentPage(`${BASE_URL}/file_sample.html`);
 
-  Preferences.set("intl.locale.matchOS", false);
   for (let [lang, msg] of [["en-US", "English."], ["jp", "\u65e5\u672c\u8a9e"]]) {
-    Preferences.set("general.useragent.locale", lang);
+    Services.locale.setRequestedLocales([lang]);
 
     let extension = ExtensionTestUtils.loadExtension(extensionData);
     await extension.startup();
@@ -232,7 +238,7 @@ add_task(async function test_i18n_negotiation() {
 
     await extension.unload();
   }
-  Preferences.reset("general.useragent.locale");
+  Services.locale.setRequestedLocales(originalReqLocales);
 
   await contentPage.close();
 });
@@ -377,7 +383,7 @@ add_task(async function test_get_ui_language() {
 
   // We don't currently have a good way to mock this.
   if (false) {
-    Preferences.set("general.useragent.locale", "he");
+    Services.locale.setRequestedLocales(["he"]);
 
     extension.sendMessage(["expect-results", "he"]);
 

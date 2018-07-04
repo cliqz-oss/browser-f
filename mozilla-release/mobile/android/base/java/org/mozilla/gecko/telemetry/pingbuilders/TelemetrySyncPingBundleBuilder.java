@@ -8,11 +8,13 @@ package org.mozilla.gecko.telemetry.pingbuilders;
 
 import android.os.Build;
 import android.support.annotation.NonNull;
+import android.util.Log;
 
 import org.json.simple.JSONArray;
 import org.mozilla.gecko.AppConstants;
 import org.mozilla.gecko.Locales;
 import org.mozilla.gecko.sync.ExtendedJSONObject;
+import org.mozilla.gecko.sync.NonArrayJSONException;
 import org.mozilla.gecko.telemetry.TelemetryOutgoingPing;
 import org.mozilla.gecko.telemetry.TelemetryPing;
 import org.mozilla.gecko.telemetry.stores.TelemetryPingStore;
@@ -26,11 +28,12 @@ import java.util.TimeZone;
 
 /**
  * Responsible for building a Sync Ping, based on the telemetry docs:
- * http://gecko.readthedocs.io/en/latest/toolkit/components/telemetry/telemetry/data/sync-ping.html
+ * https://firefox-source-docs.mozilla.org/toolkit/components/telemetry/telemetry/data/sync-ping.html
+ *
+ * Fields common to all pings are documented here:
+ * https://firefox-source-docs.mozilla.org/toolkit/components/telemetry/telemetry/data/common-ping.html
  *
  * This builder takes two stores ('sync' and 'event') and produces a single "sync ping".
- *
- * Note that until Bug 1363924, event telemetry will be ignored.
  *
  * Sample result will look something like:
  * {
@@ -39,8 +42,10 @@ import java.util.TimeZone;
  * }
  */
 public class TelemetrySyncPingBundleBuilder extends TelemetryPingBuilder {
+    public static final String LOG_TAG = "SyncPingBundleBuilder";
+
     private static final String PING_TYPE = "sync";
-    private static final int PING_BUNDLE_VERSION = 5; // Bug 1374758
+    private static final int PING_BUNDLE_VERSION = 4; // Bug 1410145
     private static final int PING_SYNC_DATA_FORMAT_VERSION = 1; // Bug 1374758
 
     public static final String UPLOAD_REASON_FIRST = "first";
@@ -63,6 +68,16 @@ public class TelemetrySyncPingBundleBuilder extends TelemetryPingBuilder {
 
     public TelemetrySyncPingBundleBuilder setReason(@NonNull String reason) {
         pingData.put("why", reason);
+        return this;
+    }
+
+    public TelemetrySyncPingBundleBuilder setUID(@NonNull String uid) {
+        pingData.put("uid", uid);
+        return this;
+    }
+
+    public TelemetrySyncPingBundleBuilder setDeviceID(@NonNull String deviceID) {
+        pingData.put("deviceID", deviceID);
         return this;
     }
 
@@ -95,8 +110,8 @@ public class TelemetrySyncPingBundleBuilder extends TelemetryPingBuilder {
         os.put("locale", Locales.getLanguageTag(Locale.getDefault()));
 
         payload.put("application", application);
-        payload.put("os", os);
 
+        pingData.put("os", os);
         pingData.put("version", PING_SYNC_DATA_FORMAT_VERSION);
 
         payload.put("payload", pingData);
@@ -115,12 +130,27 @@ public class TelemetrySyncPingBundleBuilder extends TelemetryPingBuilder {
             syncs.add(ping.getPayload());
         }
 
-        pingData.put("syncs", syncs);
+        if (syncs.size() > 0) {
+            pingData.put("syncs", syncs);
+        }
         return this;
     }
-
-    // Event telemetry will be implemented in Bug 1363924.
+    @SuppressWarnings("unchecked")
     public TelemetrySyncPingBundleBuilder setSyncEventStore(TelemetryPingStore store) {
+        final JSONArray events = new JSONArray();
+        List<TelemetryPing> pings = store.getAllPings();
+
+        for (TelemetryPing ping : pings) {
+            try {
+                events.add(ping.getPayload().getArray("event"));
+            } catch (NonArrayJSONException ex) {
+                Log.e(LOG_TAG, "Invalid state: Non JSONArray for event payload.");
+            }
+        }
+
+        if (events.size() > 0) {
+            pingData.put("events", events);
+        }
         return this;
     }
 }

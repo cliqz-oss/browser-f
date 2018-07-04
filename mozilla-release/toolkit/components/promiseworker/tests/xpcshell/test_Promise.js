@@ -4,10 +4,8 @@
 
 "use strict";
 
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/PromiseWorker.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm", this);
+ChromeUtils.import("resource://gre/modules/PromiseWorker.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm", this);
 
 // Worker must be loaded from a chrome:// uri, not a file://
 // uri, so we first need to load it.
@@ -16,7 +14,7 @@ var WORKER_SOURCE_URI = "chrome://promiseworker/content/worker.js";
 do_load_manifest("data/chrome.manifest");
 var worker = new BasePromiseWorker(WORKER_SOURCE_URI);
 worker.log = function(...args) {
-  do_print("Controller: " + args.join(" "));
+  info("Controller: " + args.join(" "));
 };
 
 // Test that simple messages work
@@ -59,7 +57,7 @@ add_task(async function test_rejected_promise_args() {
   } catch (ex) {
     if (ex != error)
       throw ex;
-    do_print("I threw the right error");
+    info("I threw the right error");
   }
 });
 
@@ -115,4 +113,29 @@ add_task(async function test_throw_error() {
   } catch (ex) {
     Assert.equal(ex.message, "Error: error message");
   }
+});
+
+add_task(async function test_terminate() {
+  let previousWorker = worker._worker;
+
+  // Send two messages that we'll expect to be rejected.
+  let message = ["test_simple_args", Math.random()];
+  let promise1 = worker.post("bounce", message);
+  let promise2 = worker.post("throwError", ["error message"]);
+  // Skip a beat so we can be sure that the two messages are in the queue.
+  await Promise.resolve();
+
+  worker.terminate();
+
+  await Assert.rejects(promise1, /worker terminated/, "Pending promise should be rejected");
+  await Assert.rejects(promise2, /worker terminated/, "Pending promise should be rejected");
+
+  // Unfortunately, there's no real way to check whether a terminate worked from
+  // the JS API. We'll just have to assume it worked.
+
+  // Post and test a simple message to ensure that the worker has been re-instantiated.
+  message = ["test_simple_args", Math.random()];
+  let result = await worker.post("bounce", message);
+  Assert.equal(JSON.stringify(result), JSON.stringify(message));
+  Assert.notEqual(worker._worker, previousWorker, "ChromeWorker instances should differ");
 });

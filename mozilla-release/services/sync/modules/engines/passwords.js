@@ -2,17 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["PasswordEngine", "LoginRec", "PasswordValidator"];
+var EXPORTED_SYMBOLS = ["PasswordEngine", "LoginRec", "PasswordValidator"];
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/collection_validator.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-common/async.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/collection_validator.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-common/async.js");
 
 const SYNCABLE_LOGIN_FIELDS = [
   // `nsILoginInfo` fields.
@@ -45,12 +43,20 @@ function isSyncableChange(oldLogin, newLogin) {
   return false;
 }
 
-this.LoginRec = function LoginRec(collection, id) {
+function LoginRec(collection, id) {
   CryptoWrapper.call(this, collection, id);
 }
 LoginRec.prototype = {
   __proto__: CryptoWrapper.prototype,
   _logName: "Sync.Record.Login",
+
+  cleartextToString() {
+    let o = Object.assign({}, this.cleartext);
+    if (o.password) {
+      o.password = "X".repeat(o.password.length);
+    }
+    return JSON.stringify(o);
+  }
 };
 
 Utils.deferGetSet(LoginRec, "cleartext", [
@@ -60,7 +66,7 @@ Utils.deferGetSet(LoginRec, "cleartext", [
     ]);
 
 
-this.PasswordEngine = function PasswordEngine(service) {
+function PasswordEngine(service) {
   SyncEngine.call(this, "Passwords", service);
 }
 PasswordEngine.prototype = {
@@ -68,8 +74,6 @@ PasswordEngine.prototype = {
   _storeObj: PasswordStore,
   _trackerObj: PasswordTracker,
   _recordObj: LoginRec,
-
-  applyIncomingBatchSize: PASSWORDS_STORE_BATCH_SIZE,
 
   syncPriority: 2,
 
@@ -82,7 +86,7 @@ PasswordEngine.prototype = {
         let ids = [];
         for (let host of Utils.getSyncCredentialsHosts()) {
           for (let info of Services.logins.findLogins({}, host, "", "")) {
-            ids.push(info.QueryInterface(Components.interfaces.nsILoginMetaInfo).guid);
+            ids.push(info.QueryInterface(Ci.nsILoginMetaInfo).guid);
           }
         }
         if (ids.length) {
@@ -137,7 +141,11 @@ PasswordEngine.prototype = {
       changes[id] = info.timePasswordChanged / 1000;
     }
     return changes;
-  }
+  },
+
+  getValidator() {
+    return new PasswordValidator();
+  },
 };
 
 function PasswordStore(name, engine) {
@@ -274,13 +282,13 @@ PasswordStore.prototype = {
       return;
     }
 
-    this._log.debug("Adding login for " + record.hostname);
+    this._log.trace("Adding login for " + record.hostname);
     this._log.trace("httpRealm: " + JSON.stringify(login.httpRealm) + "; " +
                     "formSubmitURL: " + JSON.stringify(login.formSubmitURL));
     try {
       Services.logins.addLogin(login);
     } catch (ex) {
-      this._log.debug(`Adding record ${record.id} resulted in exception`, ex);
+      this._log.error(`Adding record ${record.id} resulted in exception`, ex);
     }
   },
 
@@ -299,11 +307,11 @@ PasswordStore.prototype = {
   async update(record) {
     let loginItem = await this._getLoginFromGUID(record.id);
     if (!loginItem) {
-      this._log.debug("Skipping update for unknown item: " + record.hostname);
+      this._log.trace("Skipping update for unknown item: " + record.hostname);
       return;
     }
 
-    this._log.debug("Updating " + record.hostname);
+    this._log.trace("Updating " + record.hostname);
     let newinfo = this._nsLoginInfoFromRecord(record);
     if (!newinfo) {
       return;
@@ -323,23 +331,19 @@ PasswordStore.prototype = {
 
 function PasswordTracker(name, engine) {
   Tracker.call(this, name, engine);
-  Svc.Obs.add("weave:engine:start-tracking", this);
-  Svc.Obs.add("weave:engine:stop-tracking", this);
 }
 PasswordTracker.prototype = {
   __proto__: Tracker.prototype,
 
-  startTracking() {
-    Svc.Obs.add("passwordmgr-storage-changed", this);
+  onStart() {
+    Svc.Obs.add("passwordmgr-storage-changed", this.asyncObserver);
   },
 
-  stopTracking() {
-    Svc.Obs.remove("passwordmgr-storage-changed", this);
+  onStop() {
+    Svc.Obs.remove("passwordmgr-storage-changed", this.asyncObserver);
   },
 
-  observe(subject, topic, data) {
-    Tracker.prototype.observe.call(this, subject, topic, data);
-
+  async observe(subject, topic, data) {
     if (this.ignoreAll) {
       return;
     }
@@ -355,7 +359,8 @@ PasswordTracker.prototype = {
           this._log.trace(`${data}: Ignoring change for ${newLogin.guid}`);
           break;
         }
-        if (this._trackLogin(newLogin)) {
+        const tracked = await this._trackLogin(newLogin);
+        if (tracked) {
           this._log.trace(`${data}: Tracking change for ${newLogin.guid}`);
         }
         break;
@@ -364,7 +369,8 @@ PasswordTracker.prototype = {
       case "addLogin":
       case "removeLogin":
         subject.QueryInterface(Ci.nsILoginMetaInfo).QueryInterface(Ci.nsILoginInfo);
-        if (this._trackLogin(subject)) {
+        const tracked = await this._trackLogin(subject);
+        if (tracked) {
           this._log.trace(data + ": " + subject.guid);
         }
         break;
@@ -376,12 +382,13 @@ PasswordTracker.prototype = {
     }
   },
 
-  _trackLogin(login) {
+  async _trackLogin(login) {
     if (Utils.getSyncCredentialsHosts().has(login.hostname)) {
       // Skip over Weave password/passphrase changes.
       return false;
     }
-    if (!this.addChangedID(login.guid)) {
+    const added = await this.addChangedID(login.guid);
+    if (!added) {
       return false;
     }
     this.score += SCORE_INCREMENT_XLARGE;
@@ -404,7 +411,7 @@ class PasswordValidator extends CollectionValidator {
 
   getClientItems() {
     let logins = Services.logins.getAllLogins({});
-    let syncHosts = Utils.getSyncCredentialsHosts()
+    let syncHosts = Utils.getSyncCredentialsHosts();
     let result = logins.map(l => l.QueryInterface(Ci.nsILoginMetaInfo))
                        .filter(l => !syncHosts.has(l.hostname));
     return Promise.resolve(result);
@@ -422,7 +429,7 @@ class PasswordValidator extends CollectionValidator {
       username: item.username,
       usernameField: item.usernameField,
       original: item,
-    }
+    };
   }
 
   async normalizeServerItem(item) {

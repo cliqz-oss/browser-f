@@ -17,6 +17,7 @@ EXPORTS += [
     'SVGContentUtils.h',
     'SVGPreserveAspectRatio.h',
     'SVGStringList.h',
+    'SVGTagList.h',
 ]
 
 EXPORTS.mozilla.dom += [
@@ -29,6 +30,7 @@ EXPORTS.mozilla.dom += [
     'SVGAnimatedInteger.h',
     'SVGAnimatedLength.h',
     'SVGAnimatedNumber.h',
+    'SVGAnimatedPathSegList.h',
     'SVGAnimatedRect.h',
     'SVGAnimatedString.h',
     'SVGAnimatedTransformList.h',
@@ -42,6 +44,7 @@ EXPORTS.mozilla.dom += [
     'SVGDefsElement.h',
     'SVGDescElement.h',
     'SVGDocument.h',
+    'SVGElementFactory.h',
     'SVGEllipseElement.h',
     'SVGFEBlendElement.h',
     'SVGFEColorMatrixElement.h',
@@ -270,5 +273,5 @@ LOCAL_INCLUDES += [
     '/layout/xul',
 ]
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

@@ -6,17 +6,29 @@
 
 #include "ProfileBuffer.h"
 
+#include "mozilla/MathAlgorithms.h"
+
 #include "ProfilerMarker.h"
+#include "jsfriendapi.h"
+#include "nsScriptSecurityManager.h"
+#include "nsJSPrincipals.h"
 
 using namespace mozilla;
 
-ProfileBuffer::ProfileBuffer(int aEntrySize)
-  : mEntries(mozilla::MakeUnique<ProfileBufferEntry[]>(aEntrySize))
-  , mWritePos(0)
-  , mReadPos(0)
-  , mEntrySize(aEntrySize)
-  , mGeneration(0)
+ProfileBuffer::ProfileBuffer(uint32_t aEntrySize)
+  : mEntryIndexMask(0)
+  , mRangeStart(0)
+  , mRangeEnd(0)
+  , mEntrySize(0)
 {
+  // Round aEntrySize up to the nearest power of two, so that we can index
+  // mEntries with a simple mask and don't need to do a slow modulo operation.
+  const uint32_t UINT32_MAX_POWER_OF_TWO = 1 << 31;
+  MOZ_RELEASE_ASSERT(aEntrySize <= UINT32_MAX_POWER_OF_TWO,
+                     "aEntrySize is larger than what we support");
+  mEntrySize = RoundUpPow2(aEntrySize);
+  mEntryIndexMask = mEntrySize - 1;
+  mEntries = MakeUnique<ProfileBufferEntry[]>(mEntrySize);
 }
 
 ProfileBuffer::~ProfileBuffer()
@@ -30,50 +42,28 @@ ProfileBuffer::~ProfileBuffer()
 void
 ProfileBuffer::AddEntry(const ProfileBufferEntry& aEntry)
 {
-  mEntries[mWritePos++] = aEntry;
-  if (mWritePos == mEntrySize) {
-    // Wrapping around may result in things referenced in the buffer (e.g.,
-    // JIT code addresses and markers) being incorrectly collected.
-    MOZ_ASSERT(mGeneration != UINT32_MAX);
-    mGeneration++;
-    mWritePos = 0;
-  }
+  GetEntry(mRangeEnd++) = aEntry;
 
-  if (mWritePos == mReadPos) {
-    // Keep one slot open.
-    mEntries[mReadPos] = ProfileBufferEntry();
-    mReadPos = (mReadPos + 1) % mEntrySize;
+  // The distance between mRangeStart and mRangeEnd must never exceed
+  // mEntrySize, so advance mRangeStart if necessary.
+  if (mRangeEnd - mRangeStart > mEntrySize) {
+    mRangeStart++;
   }
 }
 
-void
-ProfileBuffer::AddThreadIdEntry(int aThreadId, LastSample* aLS)
+uint64_t
+ProfileBuffer::AddThreadIdEntry(int aThreadId)
 {
-  if (aLS) {
-    // This is the start of a sample, so make a note of its location in |aLS|.
-    aLS->mGeneration = mGeneration;
-    aLS->mPos = mWritePos;
-  }
+  uint64_t pos = mRangeEnd;
   AddEntry(ProfileBufferEntry::ThreadId(aThreadId));
+  return pos;
 }
 
 void
 ProfileBuffer::AddStoredMarker(ProfilerMarker *aStoredMarker)
 {
-  aStoredMarker->SetGeneration(mGeneration);
+  aStoredMarker->SetPositionInBuffer(mRangeEnd);
   mStoredMarkers.insert(aStoredMarker);
-}
-
-void
-ProfileBuffer::CollectNativeLeafAddr(void* aAddr)
-{
-  AddEntry(ProfileBufferEntry::NativeLeafAddr(aAddr));
-}
-
-void
-ProfileBuffer::CollectJitReturnAddr(void* aAddr)
-{
-  AddEntry(ProfileBufferEntry::JitReturnAddr(aAddr));
 }
 
 void
@@ -114,18 +104,10 @@ ProfileBuffer::DeleteExpiredStoredMarkers()
 {
   // Delete markers of samples that have been overwritten due to circular
   // buffer wraparound.
-  uint32_t generation = mGeneration;
   while (mStoredMarkers.peek() &&
-         mStoredMarkers.peek()->HasExpired(generation)) {
+         mStoredMarkers.peek()->HasExpired(mRangeStart)) {
     delete mStoredMarkers.popHead();
   }
-}
-
-void
-ProfileBuffer::Reset()
-{
-  mGeneration += 2;
-  mReadPos = mWritePos = 0;
 }
 
 size_t
@@ -142,3 +124,84 @@ ProfileBuffer::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
   return n;
 }
 
+/* ProfileBufferCollector */
+
+static bool
+IsChromeJSScript(JSScript* aScript)
+{
+  // WARNING: this function runs within the profiler's "critical section".
+  auto compartment = js::GetScriptCompartment(aScript);
+  return js::IsSystemCompartment(compartment);
+}
+
+void
+ProfileBufferCollector::CollectNativeLeafAddr(void* aAddr)
+{
+  mBuf.AddEntry(ProfileBufferEntry::NativeLeafAddr(aAddr));
+}
+
+void
+ProfileBufferCollector::CollectJitReturnAddr(void* aAddr)
+{
+  mBuf.AddEntry(ProfileBufferEntry::JitReturnAddr(aAddr));
+}
+
+void
+ProfileBufferCollector::CollectWasmFrame(const char* aLabel)
+{
+  mBuf.CollectCodeLocation("", aLabel, -1, Nothing());
+}
+
+void
+ProfileBufferCollector::CollectPseudoEntry(const js::ProfileEntry& aEntry)
+{
+  // WARNING: this function runs within the profiler's "critical section".
+
+  MOZ_ASSERT(aEntry.kind() == js::ProfileEntry::Kind::CPP_NORMAL ||
+             aEntry.kind() == js::ProfileEntry::Kind::JS_NORMAL);
+
+  const char* label = aEntry.label();
+  const char* dynamicString = aEntry.dynamicString();
+  bool isChromeJSEntry = false;
+  int lineno = -1;
+
+  if (aEntry.isJs()) {
+    // There are two kinds of JS frames that get pushed onto the PseudoStack.
+    //
+    // - label = "", dynamic string = <something>
+    // - label = "js::RunScript", dynamic string = nullptr
+    //
+    // The line number is only interesting in the first case.
+
+    if (label[0] == '\0') {
+      MOZ_ASSERT(dynamicString);
+
+      // We call aEntry.script() repeatedly -- rather than storing the result in
+      // a local variable in order -- to avoid rooting hazards.
+      if (aEntry.script()) {
+        isChromeJSEntry = IsChromeJSScript(aEntry.script());
+        if (aEntry.pc()) {
+          lineno = JS_PCToLineNumber(aEntry.script(), aEntry.pc());
+        }
+      }
+
+    } else {
+      MOZ_ASSERT(strcmp(label, "js::RunScript") == 0 && !dynamicString);
+    }
+  } else {
+    MOZ_ASSERT(aEntry.isCpp());
+    lineno = aEntry.line();
+  }
+
+  if (dynamicString) {
+    // Adjust the dynamic string as necessary.
+    if (ProfilerFeature::HasPrivacy(mFeatures) && !isChromeJSEntry) {
+      dynamicString = "(private)";
+    } else if (strlen(dynamicString) >= ProfileBuffer::kMaxFrameKeyLength) {
+      dynamicString = "(too long)";
+    }
+  }
+
+  mBuf.CollectCodeLocation(label, dynamicString, lineno,
+                           Some(aEntry.category()));
+}

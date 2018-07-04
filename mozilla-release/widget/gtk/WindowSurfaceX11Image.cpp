@@ -58,6 +58,10 @@ WindowSurfaceX11Image::Lock(const LayoutDeviceIntRegion& aRegion)
 
   gfxImageFormat format = mImageSurface->Format();
   // Cairo prefers compositing to BGRX instead of BGRA where possible.
+  // Cairo/pixman lacks some fast paths for compositing BGRX onto BGRA, so
+  // just report it as BGRX directly in that case.
+  // Otherwise, for Skia, report it as BGRA to the compositor. The alpha
+  // channel will be discarded when we put the image.
   if (format == gfx::SurfaceFormat::X8R8G8B8_UINT32) {
     gfx::BackendType backend = gfxVars::ContentBackend();
     if (!gfx::Factory::DoesBackendSupportDataDrawtarget(backend)) {
@@ -93,7 +97,7 @@ WindowSurfaceX11Image::Commit(const LayoutDeviceIntRegion& aInvalidRegion)
   }
 
   gfx::IntRect bounds = aInvalidRegion.GetBounds().ToUnknownRect();
-  gfx::Rect rect(0, 0, bounds.XMost(), bounds.YMost());
+  gfx::Rect rect(bounds);
   if (rect.IsEmpty()) {
     return;
   }

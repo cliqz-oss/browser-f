@@ -6,22 +6,17 @@
   "no-unused-vars": ["error", {
     vars: "local",
     args: "none",
-    varsIgnorePattern: "^(Cc|Ci|Cr|Cu|EXPORTED_SYMBOLS)$",
   }],
 */
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 const CURRENT_SCHEMA = 4;
 const PR_HOURS = 60 * 60 * 1000000;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/FormHistory.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/FormHistory.jsm");
 
 do_get_profile();
-
-var dirSvc = Cc["@mozilla.org/file/directory_service;1"]
-             .getService(Ci.nsIProperties);
 
 // Send the profile-after-change notification to the form history component to ensure
 // that it has been initialized.
@@ -30,14 +25,21 @@ var formHistoryStartup = Cc["@mozilla.org/satchel/form-history-startup;1"]
 formHistoryStartup.observe(null, "profile-after-change", null);
 
 function getDBVersion(dbfile) {
-  let ss = Cc["@mozilla.org/storage/service;1"]
-             .getService(Ci.mozIStorageService);
-  let dbConnection = ss.openDatabase(dbfile);
+  let dbConnection = Services.storage.openDatabase(dbfile);
   let version = dbConnection.schemaVersion;
   dbConnection.close();
 
   return version;
 }
+
+function getFormHistoryDBVersion() {
+  let profileDir = do_get_profile();
+  // Cleanup from any previous tests or failures.
+  let dbFile = profileDir.clone();
+  dbFile.append("formhistory.sqlite");
+  return getDBVersion(dbFile);
+}
+
 
 const isGUID = /[A-Za-z0-9\+\/]{16}/;
 
@@ -107,6 +109,24 @@ function addEntry(name, value, then) {
   }, then);
 }
 
+function promiseCountEntries(name, value, checkFn = () => {}) {
+  return new Promise(resolve => {
+    countEntries(name, value, function(result) { checkFn(result); resolve(result); });
+  });
+}
+
+function promiseUpdateEntry(op, name, value) {
+  return new Promise(res => {
+    updateEntry(op, name, value, res);
+  });
+}
+
+function promiseAddEntry(name, value) {
+  return new Promise(res => {
+    addEntry(name, value, res);
+  });
+}
+
 // Wrapper around FormHistory.update which handles errors. Calls then() when done.
 function updateFormHistory(changes, then) {
   FormHistory.update(changes, {
@@ -118,6 +138,23 @@ function updateFormHistory(changes, then) {
         then();
       }
     },
+  });
+}
+
+function promiseUpdate(change) {
+  return new Promise((resolve, reject) => {
+    FormHistory.update(change, {
+      handleError(error) {
+        this._error = error;
+      },
+      handleCompletion(reason) {
+        if (reason) {
+          reject(this._error);
+        } else {
+          resolve();
+        }
+      },
+    });
   });
 }
 

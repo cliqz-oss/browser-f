@@ -5,7 +5,7 @@
 description: Early SyntaxError resulting from module parsing
 esid: sec-parsemodule
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     [...]
@@ -17,5 +17,7 @@ info: |
        errors.
 flags: [module]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 ?

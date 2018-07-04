@@ -4,6 +4,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+with Files("**"):
+    BUG_COMPONENT = ("Cloud Services", "Screenshots")
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org'] += [
   'bootstrap.js',
   'install.rdf'
@@ -15,6 +18,7 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"] += [
   'webextension/assertIsBlankDocument.js',
   'webextension/assertIsTrusted.js',
   'webextension/blank.html',
+  'webextension/blobConverters.js',
   'webextension/catcher.js',
   'webextension/clipboard.js',
   'webextension/domainFromUrl.js',
@@ -33,6 +37,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/ar/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ast"] += [
+  'webextension/_locales/ast/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["az"] += [
   'webextension/_locales/az/messages.json'
 ]
@@ -47,6 +55,14 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["bn_BD"] += [
   'webextension/_locales/bn_BD/messages.json'
+]
+
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["br"] += [
+  'webextension/_locales/br/messages.json'
+]
+
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["bs"] += [
+  'webextension/_locales/bs/messages.json'
 ]
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ca"] += [
@@ -113,8 +129,16 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/et/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["eu"] += [
+  'webextension/_locales/eu/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["fa"] += [
   'webextension/_locales/fa/messages.json'
+]
+
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ff"] += [
+  'webextension/_locales/ff/messages.json'
 ]
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["fi"] += [
@@ -131,6 +155,18 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ga_IE"] += [
   'webextension/_locales/ga_IE/messages.json'
+]
+
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["gd"] += [
+  'webextension/_locales/gd/messages.json'
+]
+
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["gl"] += [
+  'webextension/_locales/gl/messages.json'
+]
+
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["gn"] += [
+  'webextension/_locales/gn/messages.json'
 ]
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["gu_IN"] += [
@@ -161,6 +197,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/hy_AM/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ia"] += [
+  'webextension/_locales/ia/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["id"] += [
   'webextension/_locales/id/messages.json'
 ]
@@ -189,6 +229,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/km/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["kn"] += [
+  'webextension/_locales/kn/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ko"] += [
   'webextension/_locales/ko/messages.json'
 ]
@@ -209,6 +253,14 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
   'webextension/_locales/mk/messages.json'
 ]
 
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ml"] += [
+  'webextension/_locales/ml/messages.json'
+]
+
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["mn"] += [
+  'webextension/_locales/mn/messages.json'
+]
+
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["mr"] += [
   'webextension/_locales/mr/messages.json'
 ]
@@ -223,6 +275,10 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["nb_NO"] += [
   'webextension/_locales/nb_NO/messages.json'
+]
+
+FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["ne_NP"] += [
+  'webextension/_locales/ne_NP/messages.json'
 ]
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["_locales"]["nl"] += [
@@ -343,7 +399,8 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["build"] 
   'webextension/build/onboardingCss.js',
   'webextension/build/onboardingHtml.js',
   'webextension/build/raven.js',
-  'webextension/build/shot.js'
+  'webextension/build/shot.js',
+  'webextension/build/thumbnailGenerator.js'
 ]
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["icons"] += [
@@ -352,20 +409,22 @@ FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["icons"] 
   'webextension/icons/cancel.svg',
   'webextension/icons/cloud.svg',
   'webextension/icons/copy.png',
+  'webextension/icons/copy.svg',
   'webextension/icons/done.svg',
   'webextension/icons/download.svg',
-  'webextension/icons/icon-16-v2.svg',
-  'webextension/icons/icon-32-v2.svg',
+  'webextension/icons/help-16.svg',
   'webextension/icons/icon-highlight-32-v2.svg',
-  'webextension/icons/icon-starred-32-v2.svg',
+  'webextension/icons/icon-v2.svg',
   'webextension/icons/icon-welcome-face-without-eyes.svg',
   'webextension/icons/menu-fullpage.svg',
+  'webextension/icons/menu-myshot-white.svg',
   'webextension/icons/menu-myshot.svg',
   'webextension/icons/menu-visible.svg',
   'webextension/icons/onboarding-1.png',
   'webextension/icons/onboarding-2.png',
   'webextension/icons/onboarding-3.png',
-  'webextension/icons/onboarding-4.png'
+  'webextension/icons/onboarding-4.png',
+  'webextension/icons/onboarding-5.png'
 ]
 
 FINAL_TARGET_FILES.features['screenshots@mozilla.org']["webextension"]["onboarding"] += [

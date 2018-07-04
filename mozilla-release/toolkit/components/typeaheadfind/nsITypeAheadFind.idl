@@ -6,7 +6,7 @@
 
 /********************************* #includes *********************************/
 
-#include "domstubs.idl"                 // nsIDOMElement, nsIDOMWindow
+#include "domstubs.idl"                 // nsIDOMRange
 #include "nsISupports.idl"              // nsISupports
 
 
@@ -14,6 +14,8 @@
 
 interface mozIDOMWindow;
 interface nsIDocShell;
+
+webidl Element;
 
 
 /****************************** nsTypeAheadFind ******************************/
@@ -57,8 +59,11 @@ interface nsITypeAheadFind : nsISupports
    * necessarily happen automatically. */
   void collapseSelection();
 
-  /* Check if a range is visible */
+  /* Check if a range is visible using heuristics */
   boolean isRangeVisible(in nsIDOMRange aRange, in boolean aMustBeInViewPort);
+
+  /* Check if a range is actually rendered (out of viewport always false) */
+  boolean isRangeRendered(in nsIDOMRange aRange);
 
   /******************************* Attributes ******************************/
 
@@ -66,9 +71,9 @@ interface nsITypeAheadFind : nsISupports
                                         // Most recent search string
   attribute boolean caseSensitive;      // Searches are case sensitive
   attribute boolean entireWord;         // Search for whole words only
-  readonly attribute nsIDOMElement foundLink;
+  readonly attribute Element foundLink;
                                         // Most recent elem found, if a link
-  readonly attribute nsIDOMElement foundEditable;
+  readonly attribute Element foundEditable;
                                         // Most recent elem found, if editable
   readonly attribute mozIDOMWindow currentWindow;
                                         // Window of most recent match

@@ -3,14 +3,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const EXSLT_REGEXP_CID = Components.ID("{18a03189-067b-4978-b4f1-bafe35292ed6}");
-const EXSLT_REGEXP_CONTRACTID = "@mozilla.org/exslt/regexp;1";
-
-const NODESET_CONTRACTID = "@mozilla.org/transformiix-nodeset;1";
-
-const Ci = Components.interfaces;
 
 function txEXSLTRegExFunctions()
 {
@@ -21,36 +16,23 @@ var SingletonInstance = null;
 txEXSLTRegExFunctions.prototype = {
     classID: EXSLT_REGEXP_CID,
 
-    QueryInterface: XPCOMUtils.generateQI([Ci.txIEXSLTRegExFunctions]),
-
-    classInfo: XPCOMUtils.generateCI({classID: EXSLT_REGEXP_CID,
-                                      contractID: EXSLT_REGEXP_CONTRACTID,
-                                      interfaces: [Ci.txIEXSLTRegExFunctions]}),
+    QueryInterface: ChromeUtils.generateQI([Ci.txIEXSLTRegExFunctions]),
 
     // txIEXSLTRegExFunctions
-    match: function(context, str, regex, flags) {
-        var nodeset = Components.classes[NODESET_CONTRACTID]
-                                .createInstance(Ci.txINodeSet);
-
+    match: function(str, regex, flags, doc) {
+        var docFrag = doc.createDocumentFragment();
         var re = new RegExp(regex, flags);
         var matches = str.match(re);
-        if (matches != null && matches.length > 0) {
-            var contextNode = context.contextNode;
-            var doc = contextNode.nodeType == Ci.nsIDOMNode.DOCUMENT_NODE ?
-                      contextNode : contextNode.ownerDocument;
-            var docFrag = doc.createDocumentFragment();
-
+        if (matches != null) {
             for (var i = 0; i < matches.length; ++i) {
                 var match = matches[i];
                 var elem = doc.createElementNS(null, "match");
                 var text = doc.createTextNode(match ? match : '');
                 elem.appendChild(text);
                 docFrag.appendChild(elem);
-                nodeset.add(elem);
             }
         }
-
-        return nodeset;
+        return docFrag;
     },
 
     replace: function(str, regex, flags, replace) {

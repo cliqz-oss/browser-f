@@ -26,13 +26,7 @@ SimpleTest.waitForExplicitFinish();
  * nsIChannel component written in Javascript.
  */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-var SimpleURI = Cc["@mozilla.org/network/simple-uri;1"];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 var ios = Cc["@mozilla.org/network/io-service;1"]
             .getService(Ci.nsIIOService);
 var contentSecManager = Cc["@mozilla.org/contentsecuritymanager;1"]
@@ -99,7 +93,7 @@ CustomChannel.prototype = {
   resume: function() {
     throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIChannel, Ci.nsIRequest])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIChannel, Ci.nsIRequest])
 };
 
 
@@ -120,9 +114,10 @@ CustomProtocol.prototype = {
     return false;
   },
   newURI: function newURI(spec, charset, baseURI) {
-    var uri = SimpleURI.createInstance(Ci.nsIURI)
-    uri.spec = spec;
-    return uri.QueryInterface(Ci.nsIURI);
+    return Cc["@mozilla.org/network/simple-uri-mutator;1"]
+             .createInstance(Ci.nsIURIMutator)
+             .setSpec(spec)
+             .finalize();
   },
   newChannel2: function newChannel2(URI, loadInfo) {
     return new CustomChannel(URI, loadInfo);
@@ -130,9 +125,7 @@ CustomProtocol.prototype = {
   newChannel: function newChannel(URI) {
     return newChannel2(URI);
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports,
-                                         Ci.nsISupportsWeakReference,
-                                         Ci.nsIProtocolHandler])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISupportsWeakReference, Ci.nsIProtocolHandler])
 };
 
 var gFactory = {

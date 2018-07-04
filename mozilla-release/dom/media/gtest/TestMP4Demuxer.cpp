@@ -10,11 +10,11 @@
 #include "mozilla/SharedThreadPool.h"
 #include "mozilla/TaskQueue.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/Unused.h"
 #include "MockMediaResource.h"
 #include "VideoUtils.h"
 
 using namespace mozilla;
-using namespace mp4_demuxer;
 using media::TimeUnit;
 
 class AutoTaskQueue;
@@ -43,7 +43,7 @@ public:
     , mTaskQueue(new TaskQueue(GetMediaThreadPool(MediaThreadType::PLAYBACK)))
     , mIndex(0)
   {
-    EXPECT_EQ(NS_OK, resource->Open(nullptr));
+    EXPECT_EQ(NS_OK, resource->Open());
   }
 
   template<typename Function>
@@ -149,7 +149,7 @@ private:
   {
     RefPtr<Runnable> r =
       NS_NewRunnableFunction("MP4DemuxerBinding::DispatchTask", aFun);
-    mTaskQueue->Dispatch(r.forget());
+    Unused << mTaskQueue->Dispatch(r.forget());
   }
 
   virtual ~MP4DemuxerBinding()
@@ -184,7 +184,7 @@ ToCryptoString(const CryptoSample& aCrypto)
     for (size_t i = 0; i < aCrypto.mKeyId.Length(); i++) {
       res.AppendPrintf("%02x", aCrypto.mKeyId[i]);
     }
-    res.Append(" ");
+    res.AppendLiteral(" ");
     for (size_t i = 0; i < aCrypto.mIV.Length(); i++) {
       res.AppendPrintf("%02x", aCrypto.mIV[i]);
     }
@@ -194,7 +194,7 @@ ToCryptoString(const CryptoSample& aCrypto)
                        aCrypto.mEncryptedSizes[i]);
     }
   } else {
-    res.Append("no crypto");
+    res.AppendLiteral("no crypto");
   }
   return res;
 }

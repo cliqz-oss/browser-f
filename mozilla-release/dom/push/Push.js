@@ -4,17 +4,12 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cr = Components.results;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/DOMRequestHelper.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/DOMRequestHelper.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "console", () => {
-  let {ConsoleAPI} = Cu.import("resource://gre/modules/Console.jsm", {});
+  let {ConsoleAPI} = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
   return new ConsoleAPI({
     maxLogLevelPref: "dom.push.loglevel",
     prefix: "Push",
@@ -42,9 +37,9 @@ Push.prototype = {
 
   classID : PUSH_CID,
 
-  QueryInterface : XPCOMUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer,
-                                          Ci.nsISupportsWeakReference,
-                                          Ci.nsIObserver]),
+  QueryInterface : ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer,
+                                           Ci.nsISupportsWeakReference,
+                                           Ci.nsIObserver]),
 
   init: function(win) {
     console.debug("init()");
@@ -187,7 +182,7 @@ Push.prototype = {
       type: "desktop-notification",
       access: null,
       options: [],
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentPermissionType]),
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIContentPermissionType]),
     };
     let typeArray = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
     typeArray.appendElement(type);
@@ -196,7 +191,7 @@ Push.prototype = {
     let request = {
       types: typeArray,
       principal: this._principal,
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentPermissionRequest]),
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIContentPermissionRequest]),
       allow: allowCallback,
       cancel: cancelCallback,
       window: this._window,
@@ -217,7 +212,7 @@ function PushSubscriptionCallback(pushManager, resolve, reject) {
 }
 
 PushSubscriptionCallback.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPushSubscriptionCallback]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPushSubscriptionCallback]),
 
   onPushSubscription: function(ok, subscription) {
     let {pushManager} = this;

@@ -7,37 +7,36 @@
 //! [images]: https://drafts.csswg.org/css-images/#image-values
 
 use Atom;
-use cssparser::serialize_identifier;
-use custom_properties::SpecifiedValue;
-use std::fmt;
-use style_traits::{HasViewportPercentage, ToCss};
-use values::computed::ComputedValueAsSpecified;
-use values::specified::url::SpecifiedUrl;
+use custom_properties;
+use servo_arc::Arc;
+use std::fmt::{self, Write};
+use style_traits::{CssWriter, ToCss};
+use values::serialize_atom_identifier;
 
 /// An [image].
 ///
 /// [image]: https://drafts.csswg.org/css-images/#image-values
-#[derive(Clone, PartialEq, ToComputedValue)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-pub enum Image<Gradient, MozImageRect> {
+#[derive(Clone, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue)]
+pub enum Image<Gradient, MozImageRect, ImageUrl> {
     /// A `<url()>` image.
-    Url(SpecifiedUrl),
-    /// A `<gradient>` image.
-    Gradient(Gradient),
-    /// A `-moz-image-rect` image
-    Rect(MozImageRect),
+    Url(ImageUrl),
+    /// A `<gradient>` image.  Gradients are rather large, and not nearly as
+    /// common as urls, so we box them here to keep the size of this enum sane.
+    Gradient(Box<Gradient>),
+    /// A `-moz-image-rect` image.  Also fairly large and rare.
+    Rect(Box<MozImageRect>),
     /// A `-moz-element(# <element-id>)`
+    #[css(function = "-moz-element")]
     Element(Atom),
     /// A paint worklet image.
-    /// https://drafts.css-houdini.org/css-paint-api/
+    /// <https://drafts.css-houdini.org/css-paint-api/>
     #[cfg(feature = "servo")]
     PaintWorklet(PaintWorklet),
 }
 
 /// A CSS gradient.
-/// https://drafts.csswg.org/css-images/#gradients
-#[derive(Clone, Debug, HasViewportPercentage, PartialEq)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+/// <https://drafts.csswg.org/css-images/#gradients>
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue)]
 pub struct Gradient<LineDirection, Length, LengthOrPercentage, Position, Color, Angle> {
     /// Gradients can be linear or radial.
     pub kind: GradientKind<LineDirection, Length, LengthOrPercentage, Position, Angle>,
@@ -49,8 +48,7 @@ pub struct Gradient<LineDirection, Length, LengthOrPercentage, Position, Color, 
     pub compat_mode: CompatMode,
 }
 
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue)]
 /// Whether we used the modern notation or the compatibility `-webkit`, `-moz` prefixes.
 pub enum CompatMode {
     /// Modern syntax.
@@ -62,18 +60,20 @@ pub enum CompatMode {
 }
 
 /// A gradient kind.
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue)]
 pub enum GradientKind<LineDirection, Length, LengthOrPercentage, Position, Angle> {
     /// A linear gradient.
     Linear(LineDirection),
     /// A radial gradient.
-    Radial(EndingShape<Length, LengthOrPercentage>, Position, Option<Angle>),
+    Radial(
+        EndingShape<Length, LengthOrPercentage>,
+        Position,
+        Option<Angle>,
+    ),
 }
 
 /// A radial gradient's ending shape.
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue, ToCss)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
 pub enum EndingShape<Length, LengthOrPercentage> {
     /// A circular gradient.
     Circle(Circle<Length>),
@@ -82,8 +82,7 @@ pub enum EndingShape<Length, LengthOrPercentage> {
 }
 
 /// A circle shape.
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue)]
 pub enum Circle<Length> {
     /// A circle radius.
     Radius(Length),
@@ -92,8 +91,7 @@ pub enum Circle<Length> {
 }
 
 /// An ellipse shape.
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue, ToCss)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
 pub enum Ellipse<LengthOrPercentage> {
     /// An ellipse pair of radii.
     Radii(LengthOrPercentage, LengthOrPercentage),
@@ -101,22 +99,22 @@ pub enum Ellipse<LengthOrPercentage> {
     Extent(ShapeExtent),
 }
 
-/// https://drafts.csswg.org/css-images/#typedef-extent-keyword
-define_css_keyword_enum!(ShapeExtent:
-    "closest-side" => ClosestSide,
-    "farthest-side" => FarthestSide,
-    "closest-corner" => ClosestCorner,
-    "farthest-corner" => FarthestCorner,
-    "contain" => Contain,
-    "cover" => Cover
-);
-no_viewport_percentage!(ShapeExtent);
-impl ComputedValueAsSpecified for ShapeExtent {}
+/// <https://drafts.csswg.org/css-images/#typedef-extent-keyword>
+#[allow(missing_docs)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, Parse, PartialEq, ToComputedValue, ToCss)]
+pub enum ShapeExtent {
+    ClosestSide,
+    FarthestSide,
+    ClosestCorner,
+    FarthestCorner,
+    Contain,
+    Cover,
+}
 
 /// A gradient item.
-/// https://drafts.csswg.org/css-images-4/#color-stop-syntax
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue, ToCss)]
+/// <https://drafts.csswg.org/css-images-4/#color-stop-syntax>
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
 pub enum GradientItem<Color, LengthOrPercentage> {
     /// A color stop.
     ColorStop(ColorStop<Color, LengthOrPercentage>),
@@ -125,9 +123,8 @@ pub enum GradientItem<Color, LengthOrPercentage> {
 }
 
 /// A color stop.
-/// https://drafts.csswg.org/css-images/#typedef-color-stop-list
-#[derive(Clone, Copy, HasViewportPercentage, PartialEq, ToComputedValue, ToCss)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+/// <https://drafts.csswg.org/css-images/#typedef-color-stop-list>
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToCss)]
 pub struct ColorStop<Color, LengthOrPercentage> {
     /// The color of this stop.
     pub color: Color,
@@ -136,23 +133,27 @@ pub struct ColorStop<Color, LengthOrPercentage> {
 }
 
 /// Specified values for a paint worklet.
-/// https://drafts.css-houdini.org/css-paint-api/
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+/// <https://drafts.css-houdini.org/css-paint-api/>
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
+#[derive(Clone, Debug, PartialEq, ToComputedValue)]
 pub struct PaintWorklet {
     /// The name the worklet was registered with.
     pub name: Atom,
     /// The arguments for the worklet.
     /// TODO: store a parsed representation of the arguments.
-    pub arguments: Vec<SpecifiedValue>,
+    #[cfg_attr(feature = "servo", ignore_malloc_size_of = "Arc")]
+    pub arguments: Vec<Arc<custom_properties::SpecifiedValue>>,
 }
 
-impl ComputedValueAsSpecified for PaintWorklet {}
+impl ::style_traits::SpecifiedValueInfo for PaintWorklet { }
 
 impl ToCss for PaintWorklet {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         dest.write_str("paint(")?;
-        serialize_identifier(&*self.name.to_string(), dest)?;
+        serialize_atom_identifier(&self.name, dest)?;
         for argument in &self.arguments {
             dest.write_str(", ")?;
             argument.to_css(dest)?;
@@ -165,40 +166,38 @@ impl ToCss for PaintWorklet {
 ///
 /// `-moz-image-rect(<uri>, top, right, bottom, left);`
 #[allow(missing_docs)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
 #[css(comma, function)]
-#[derive(Clone, Debug, PartialEq, ToComputedValue, ToCss)]
-pub struct MozImageRect<NumberOrPercentage> {
-    pub url: SpecifiedUrl,
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
+pub struct MozImageRect<NumberOrPercentage, MozImageRectUrl> {
+    pub url: MozImageRectUrl,
     pub top: NumberOrPercentage,
     pub right: NumberOrPercentage,
     pub bottom: NumberOrPercentage,
     pub left: NumberOrPercentage,
 }
 
-impl<G, R> fmt::Debug for Image<G, R>
-    where G: fmt::Debug, R: fmt::Debug,
+impl<G, R, U> fmt::Debug for Image<G, R, U>
+where
+    G: ToCss,
+    R: ToCss,
+    U: ToCss,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Image::Url(ref url) => url.to_css(f),
-            Image::Gradient(ref grad) => grad.fmt(f),
-            Image::Rect(ref rect) => rect.fmt(f),
-            #[cfg(feature = "servo")]
-            Image::PaintWorklet(ref paint_worklet) => paint_worklet.fmt(f),
-            Image::Element(ref selector) => {
-                f.write_str("-moz-element(#")?;
-                serialize_identifier(&selector.to_string(), f)?;
-                f.write_str(")")
-            },
-        }
+        self.to_css(&mut CssWriter::new(f))
     }
 }
 
-impl<G, R> ToCss for Image<G, R>
-    where G: ToCss, R: ToCss,
+impl<G, R, U> ToCss for Image<G, R, U>
+where
+    G: ToCss,
+    R: ToCss,
+    U: ToCss,
 {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         match *self {
             Image::Url(ref url) => url.to_css(dest),
             Image::Gradient(ref gradient) => gradient.to_css(dest),
@@ -207,28 +206,26 @@ impl<G, R> ToCss for Image<G, R>
             Image::PaintWorklet(ref paint_worklet) => paint_worklet.to_css(dest),
             Image::Element(ref selector) => {
                 dest.write_str("-moz-element(#")?;
-                serialize_identifier(&selector.to_string(), dest)?;
+                serialize_atom_identifier(selector, dest)?;
                 dest.write_str(")")
             },
         }
     }
 }
 
-impl<G, R> HasViewportPercentage for Image<G, R>
-    where G: HasViewportPercentage
-{
-    fn has_viewport_percentage(&self) -> bool {
-        match *self {
-            Image::Gradient(ref gradient) => gradient.has_viewport_percentage(),
-            _ => false,
-        }
-    }
-}
-
 impl<D, L, LoP, P, C, A> ToCss for Gradient<D, L, LoP, P, C, A>
-    where D: LineDirection, L: ToCss, LoP: ToCss, P: ToCss, C: ToCss, A: ToCss
+where
+    D: LineDirection,
+    L: ToCss,
+    LoP: ToCss,
+    P: ToCss,
+    C: ToCss,
+    A: ToCss,
 {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         match self.compat_mode {
             CompatMode::WebKit => dest.write_str("-webkit-")?,
             CompatMode::Moz => dest.write_str("-moz-")?,
@@ -241,7 +238,9 @@ impl<D, L, LoP, P, C, A> ToCss for Gradient<D, L, LoP, P, C, A>
         dest.write_str(self.kind.label())?;
         dest.write_str("-gradient(")?;
         let mut skip_comma = match self.kind {
-            GradientKind::Linear(ref direction) if direction.points_downwards() => true,
+            GradientKind::Linear(ref direction) if direction.points_downwards(self.compat_mode) => {
+                true
+            },
             GradientKind::Linear(ref direction) => {
                 direction.to_css(dest, self.compat_mode)?;
                 false
@@ -249,9 +248,7 @@ impl<D, L, LoP, P, C, A> ToCss for Gradient<D, L, LoP, P, C, A>
             GradientKind::Radial(ref shape, ref position, ref angle) => {
                 let omit_shape = match *shape {
                     EndingShape::Ellipse(Ellipse::Extent(ShapeExtent::Cover)) |
-                    EndingShape::Ellipse(Ellipse::Extent(ShapeExtent::FarthestCorner)) => {
-                        true
-                    },
+                    EndingShape::Ellipse(Ellipse::Extent(ShapeExtent::FarthestCorner)) => true,
                     _ => false,
                 };
                 if self.compat_mode == CompatMode::Modern {
@@ -298,45 +295,31 @@ impl<D, L, LoP, P, A> GradientKind<D, L, LoP, P, A> {
 /// The direction of a linear gradient.
 pub trait LineDirection {
     /// Whether this direction points towards, and thus can be omitted.
-    fn points_downwards(&self) -> bool;
+    fn points_downwards(&self, compat_mode: CompatMode) -> bool;
 
     /// Serialises this direction according to the compatibility mode.
-    fn to_css<W>(&self, dest: &mut W, compat_mode: CompatMode) -> fmt::Result
-        where W: fmt::Write;
+    fn to_css<W>(&self, dest: &mut CssWriter<W>, compat_mode: CompatMode) -> fmt::Result
+    where
+        W: Write;
 }
 
 impl<L> ToCss for Circle<L>
 where
     L: ToCss,
 {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
     where
-        W: fmt::Write,
+        W: Write,
     {
         match *self {
-            Circle::Extent(ShapeExtent::FarthestCorner) |
-            Circle::Extent(ShapeExtent::Cover) => {
+            Circle::Extent(ShapeExtent::FarthestCorner) | Circle::Extent(ShapeExtent::Cover) => {
                 dest.write_str("circle")
             },
             Circle::Extent(keyword) => {
                 dest.write_str("circle ")?;
                 keyword.to_css(dest)
             },
-            Circle::Radius(ref length) => {
-                length.to_css(dest)
-            },
+            Circle::Radius(ref length) => length.to_css(dest),
         }
-    }
-}
-
-impl<C, L> fmt::Debug for ColorStop<C, L>
-    where C: fmt::Debug, L: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.color)?;
-        if let Some(ref pos) = self.position {
-            write!(f, " {:?}", pos)?;
-        }
-        Ok(())
     }
 }

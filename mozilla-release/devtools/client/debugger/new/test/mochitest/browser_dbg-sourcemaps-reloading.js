@@ -1,40 +1,53 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
+requestLongerTimeout(2);
 
-add_task(function*() {
+async function waitForBreakpointCount(dbg, count) {
+  return waitForState(
+    dbg,
+    state => dbg.selectors.getBreakpoints(state).size === count
+  );
+}
+
+add_task(async function() {
   // NOTE: the CORS call makes the test run times inconsistent
-  requestLongerTimeout(2);
-
-  const dbg = yield initDebugger("doc-sourcemaps.html");
+  const dbg = await initDebugger("doc-sourcemaps.html");
   const { selectors: { getBreakpoint, getBreakpoints }, getState } = dbg;
 
-  yield waitForSources(dbg, "entry.js", "output.js", "times2.js", "opts.js");
+  await waitForSources(dbg, "entry.js", "output.js", "times2.js", "opts.js");
   ok(true, "Original sources exist");
   const entrySrc = findSource(dbg, "entry.js");
 
-  yield selectSource(dbg, entrySrc);
+  await selectSource(dbg, entrySrc);
   ok(
-    dbg.win.cm.getValue().includes("window.keepMeAlive"),
+    getCM(dbg).getValue().includes("window.keepMeAlive"),
     "Original source text loaded correctly"
   );
 
   // Test that breakpoint sliding is not attempted. The breakpoint
   // should not move anywhere.
-  yield addBreakpoint(dbg, entrySrc, 13);
+  await addBreakpoint(dbg, entrySrc, 13);
   is(getBreakpoints(getState()).size, 1, "One breakpoint exists");
+
   ok(
     getBreakpoint(getState(), { sourceId: entrySrc.id, line: 13 }),
     "Breakpoint has correct line"
   );
 
-  yield addBreakpoint(dbg, entrySrc, 15);
-  yield disableBreakpoint(dbg, entrySrc, 15);
+  await addBreakpoint(dbg, entrySrc, 5);
+
+  await addBreakpoint(dbg, entrySrc, 15);
+  await disableBreakpoint(dbg, entrySrc, 15);
 
   // Test reloading the debugger
-  yield reload(dbg, "opts.js");
-  yield waitForDispatch(dbg, "LOAD_SOURCE_TEXT");
+  await reload(dbg, "opts.js");
+  await waitForDispatch(dbg, "LOAD_SOURCE_TEXT");
 
-  is(getBreakpoints(getState()).size, 2, "One breakpoint exists");
+  await waitForPaused(dbg);
+  assertPausedLocation(dbg);
+
+  await waitForBreakpointCount(dbg, 3);
+  is(getBreakpoints(getState()).size, 3, "Three breakpoints exist");
 
   ok(
     getBreakpoint(getState(), { sourceId: entrySrc.id, line: 13 }),

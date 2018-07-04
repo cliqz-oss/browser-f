@@ -16,11 +16,8 @@
 namespace mozilla {
 namespace dom {
 
-namespace workers {
-class WorkerHolder;
-}
-
 class IPCBlobInputStream;
+class ThreadSafeWorkerRef;
 
 class IPCBlobInputStreamChild final
   : public mozilla::ipc::PIPCBlobInputStreamChild
@@ -53,7 +50,7 @@ public:
   ActorState
   State();
 
-  already_AddRefed<nsIInputStream>
+  already_AddRefed<IPCBlobInputStream>
   CreateStream();
 
   void
@@ -110,7 +107,7 @@ private:
 
   nsCOMPtr<nsISerialEventTarget> mOwningEventTarget;
 
-  UniquePtr<workers::WorkerHolder> mWorkerHolder;
+  RefPtr<ThreadSafeWorkerRef> mWorkerRef;
 };
 
 } // namespace dom

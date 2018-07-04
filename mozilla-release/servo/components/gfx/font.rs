@@ -4,13 +4,14 @@
 
 use app_units::Au;
 use euclid::{Point2D, Rect, Size2D};
+use font_context::{FontContext, FontSource};
 use font_template::FontTemplateDescriptor;
 use ordered_float::NotNaN;
 use platform::font::{FontHandle, FontTable};
 use platform::font_context::FontContextHandle;
 use platform::font_template::FontTemplateData;
+use servo_atoms::Atom;
 use smallvec::SmallVec;
-use std::ascii::AsciiExt;
 use std::borrow::ToOwned;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -19,6 +20,8 @@ use std::str;
 use std::sync::Arc;
 use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
 use style::computed_values::{font_stretch, font_variant_caps, font_weight};
+use style::properties::style_structs::Font as FontStyleStruct;
+use style::values::computed::font::SingleFontFamily;
 use text::Shaper;
 use text::glyph::{ByteIndex, GlyphData, GlyphId, GlyphStore};
 use text::shaping::ShaperMethods;
@@ -60,6 +63,9 @@ pub trait FontHandleMethods: Sized {
     fn can_do_fast_shaping(&self) -> bool;
     fn metrics(&self) -> FontMetrics;
     fn table_for_tag(&self, FontTableTag) -> Option<FontTable>;
+
+    /// A unique identifier for the font, allowing comparison.
+    fn identifier(&self) -> Atom;
 }
 
 // Used to abstract over the shaper's choice of fixed int representation.
@@ -101,60 +107,81 @@ pub struct FontMetrics {
     pub line_gap:         Au,
 }
 
-#[derive(Debug)]
-pub struct Font {
-    pub handle: FontHandle,
-    pub metrics: FontMetrics,
+/// `FontDescriptor` describes the parameters of a `Font`. It represents rendering a given font
+/// template at a particular size, with a particular font-variant-caps applied, etc. This contrasts
+/// with `FontTemplateDescriptor` in that the latter represents only the parameters inherent in the
+/// font data (weight, stretch, etc.).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FontDescriptor {
+    pub template_descriptor: FontTemplateDescriptor,
     pub variant: font_variant_caps::T,
-    pub descriptor: FontTemplateDescriptor,
-    pub requested_pt_size: Au,
-    pub actual_pt_size: Au,
-    shaper: Option<Shaper>,
-    shape_cache: RefCell<HashMap<ShapeCacheEntry, Arc<GlyphStore>>>,
-    glyph_advance_cache: RefCell<HashMap<u32, FractionalPixel>>,
-    pub font_key: webrender_api::FontKey,
+    pub pt_size: Au,
 }
 
-impl Font {
-    pub fn new(handle: FontHandle,
-               variant: font_variant_caps::T,
-               descriptor: FontTemplateDescriptor,
-               requested_pt_size: Au,
-               actual_pt_size: Au,
-               font_key: webrender_api::FontKey) -> Font {
-        let metrics = handle.metrics();
-        Font {
-            handle: handle,
-            shaper: None,
-            variant: variant,
-            descriptor: descriptor,
-            requested_pt_size: requested_pt_size,
-            actual_pt_size: actual_pt_size,
-            metrics: metrics,
-            shape_cache: RefCell::new(HashMap::new()),
-            glyph_advance_cache: RefCell::new(HashMap::new()),
-            font_key: font_key,
+impl<'a> From<&'a FontStyleStruct> for FontDescriptor {
+    fn from(style: &'a FontStyleStruct) -> Self {
+        FontDescriptor {
+            template_descriptor: FontTemplateDescriptor::from(style),
+            variant: style.font_variant_caps,
+            pt_size: style.font_size.size(),
         }
     }
 }
 
+#[derive(Debug)]
+pub struct Font {
+    pub handle: FontHandle,
+    pub metrics: FontMetrics,
+    pub descriptor: FontDescriptor,
+    pub actual_pt_size: Au,
+    shaper: Option<Shaper>,
+    shape_cache: RefCell<HashMap<ShapeCacheEntry, Arc<GlyphStore>>>,
+    glyph_advance_cache: RefCell<HashMap<u32, FractionalPixel>>,
+    pub font_key: webrender_api::FontInstanceKey,
+}
+
+impl Font {
+    pub fn new(handle: FontHandle,
+               descriptor: FontDescriptor,
+               actual_pt_size: Au,
+               font_key: webrender_api::FontInstanceKey) -> Font {
+        let metrics = handle.metrics();
+
+        Font {
+            handle: handle,
+            shaper: None,
+            descriptor,
+            actual_pt_size,
+            metrics,
+            shape_cache: RefCell::new(HashMap::new()),
+            glyph_advance_cache: RefCell::new(HashMap::new()),
+            font_key,
+        }
+    }
+
+    /// A unique identifier for the font, allowing comparison.
+    pub fn identifier(&self) -> Atom {
+        self.handle.identifier()
+    }
+}
+
 bitflags! {
-    pub flags ShapingFlags: u8 {
+    pub struct ShapingFlags: u8 {
         #[doc = "Set if the text is entirely whitespace."]
-        const IS_WHITESPACE_SHAPING_FLAG = 0x01,
+        const IS_WHITESPACE_SHAPING_FLAG = 0x01;
         #[doc = "Set if we are to ignore ligatures."]
-        const IGNORE_LIGATURES_SHAPING_FLAG = 0x02,
+        const IGNORE_LIGATURES_SHAPING_FLAG = 0x02;
         #[doc = "Set if we are to disable kerning."]
-        const DISABLE_KERNING_SHAPING_FLAG = 0x04,
+        const DISABLE_KERNING_SHAPING_FLAG = 0x04;
         #[doc = "Text direction is right-to-left."]
-        const RTL_FLAG = 0x08,
+        const RTL_FLAG = 0x08;
         #[doc = "Set if word-break is set to keep-all."]
-        const KEEP_ALL_FLAG = 0x10,
+        const KEEP_ALL_FLAG = 0x10;
     }
 }
 
 /// Various options that control text shaping.
-#[derive(Clone, Eq, PartialEq, Hash, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ShapingOptions {
     /// Spacing to add between each letter. Corresponds to the CSS 2.1 `letter-spacing` property.
     /// NB: You will probably want to set the `IGNORE_LIGATURES_SHAPING_FLAG` if this is non-null.
@@ -168,7 +195,7 @@ pub struct ShapingOptions {
 }
 
 /// An entry in the shape cache.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ShapeCacheEntry {
     text: String,
     options: ShapingOptions,
@@ -186,8 +213,8 @@ impl Font {
         let result = self.shape_cache.borrow_mut().entry(lookup_key).or_insert_with(|| {
             let start_time = time::precise_time_ns();
             let mut glyphs = GlyphStore::new(text.len(),
-                                             options.flags.contains(IS_WHITESPACE_SHAPING_FLAG),
-                                             options.flags.contains(RTL_FLAG));
+                                             options.flags.contains(ShapingFlags::IS_WHITESPACE_SHAPING_FLAG),
+                                             options.flags.contains(ShapingFlags::RTL_FLAG));
 
             if self.can_do_fast_shaping(text, options) {
                 debug!("shape_text: Using ASCII fast path.");
@@ -211,7 +238,7 @@ impl Font {
 
     fn can_do_fast_shaping(&self, text: &str, options: &ShapingOptions) -> bool {
         options.script == Script::Latin &&
-            !options.flags.contains(RTL_FLAG) &&
+            !options.flags.contains(ShapingFlags::RTL_FLAG) &&
             self.handle.can_do_fast_shaping() &&
             text.is_ascii()
     }
@@ -261,11 +288,15 @@ impl Font {
 
     #[inline]
     pub fn glyph_index(&self, codepoint: char) -> Option<GlyphId> {
-        let codepoint = match self.variant {
-            font_variant_caps::T::small_caps => codepoint.to_uppercase().next().unwrap(), //FIXME: #5938
-            font_variant_caps::T::normal => codepoint,
+        let codepoint = match self.descriptor.variant {
+            font_variant_caps::T::SmallCaps => codepoint.to_uppercase().next().unwrap(), //FIXME: #5938
+            font_variant_caps::T::Normal => codepoint,
         };
         self.handle.glyph_index(codepoint)
+    }
+
+    pub fn has_glyph_for(&self, codepoint: char) -> bool {
+        self.glyph_index(codepoint).is_some()
     }
 
     pub fn glyph_h_kerning(&self, first_glyph: GlyphId, second_glyph: GlyphId)
@@ -283,16 +314,101 @@ impl Font {
     }
 }
 
+pub type FontRef = Rc<RefCell<Font>>;
+
+/// A `FontGroup` is a prioritised list of fonts for a given set of font styles. It is used by
+/// `TextRun` to decide which font to render a character with. If none of the fonts listed in the
+/// styles are suitable, a fallback font may be used.
 #[derive(Debug)]
 pub struct FontGroup {
-    pub fonts: SmallVec<[Rc<RefCell<Font>>; 8]>,
+    descriptor: FontDescriptor,
+    families: SmallVec<[FontGroupFamily; 8]>,
 }
 
 impl FontGroup {
-    pub fn new(fonts: SmallVec<[Rc<RefCell<Font>>; 8]>) -> FontGroup {
-        FontGroup {
-            fonts: fonts,
+    pub fn new(style: &FontStyleStruct) -> FontGroup {
+        let descriptor = FontDescriptor::from(style);
+
+        let families =
+            style.font_family.0.iter()
+                .map(|family| FontGroupFamily::new(descriptor.clone(), family.clone()))
+                .collect();
+
+        FontGroup { descriptor, families }
+    }
+
+    /// Finds the first font, or else the first fallback font, which contains a glyph for
+    /// `codepoint`. If no such font is found, returns the first available font or fallback font
+    /// (which will cause a "glyph not found" character to be rendered). If no font at all can be
+    /// found, returns None.
+    pub fn find_by_codepoint<S: FontSource>(
+        &mut self,
+        mut font_context: &mut FontContext<S>,
+        codepoint: char
+    ) -> Option<FontRef> {
+        self.find(&mut font_context, |font| font.borrow().has_glyph_for(codepoint))
+            .or_else(|| self.first(&mut font_context))
+    }
+
+    pub fn first<S: FontSource>(
+        &mut self,
+        mut font_context: &mut FontContext<S>
+    ) -> Option<FontRef> {
+        self.find(&mut font_context, |_| true)
+    }
+
+    /// Find a font which returns true for `predicate`. This method mutates because we may need to
+    /// load new font data in the process of finding a suitable font.
+    fn find<S, P>(
+        &mut self,
+        mut font_context: &mut FontContext<S>,
+        mut predicate: P
+    ) -> Option<FontRef>
+    where
+        S: FontSource,
+        P: FnMut(&FontRef) -> bool
+    {
+        self.families.iter_mut()
+            .filter_map(|family| family.font(&mut font_context))
+            .find(|f| predicate(f))
+            .or_else(|| {
+                font_context.fallback_font(&self.descriptor)
+                    .into_iter().find(predicate)
+            })
+    }
+}
+
+/// A `FontGroupFamily` is a single font family in a `FontGroup`. It corresponds to one of the
+/// families listed in the `font-family` CSS property. The corresponding font data is lazy-loaded,
+/// only if actually needed.
+#[derive(Debug)]
+struct FontGroupFamily {
+    descriptor: FontDescriptor,
+    family: SingleFontFamily,
+    loaded: bool,
+    font: Option<FontRef>,
+}
+
+impl FontGroupFamily {
+    fn new(descriptor: FontDescriptor, family: SingleFontFamily) -> FontGroupFamily {
+        FontGroupFamily {
+            descriptor,
+            family,
+            loaded: false,
+            font: None,
         }
+    }
+
+    /// Returns the font within this family which matches the style. We'll fetch the data from the
+    /// `FontContext` the first time this method is called, and return a cached reference on
+    /// subsequent calls.
+    fn font<S: FontSource>(&mut self, font_context: &mut FontContext<S>) -> Option<FontRef> {
+        if !self.loaded {
+            self.font = font_context.font(&self.descriptor, &self.family);
+            self.loaded = true;
+        }
+
+        self.font.clone()
     }
 }
 

@@ -9,16 +9,17 @@
 #include "MFTDecoder.h"
 #include "MP4Decoder.h"
 #include "MediaInfo.h"
-#include "MediaPrefs.h"
 #include "VPXDecoder.h"
 #include "WMF.h"
 #include "WMFAudioMFTManager.h"
 #include "WMFMediaDataDecoder.h"
 #include "WMFVideoMFTManager.h"
+#include "gfxPrefs.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticMutex.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/WindowsVersion.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "nsAutoPtr.h"
@@ -29,6 +30,10 @@
 #include "nsWindowsHelpers.h"
 #include "prsystem.h"
 #include "nsIXULRuntime.h"
+#include "mozilla/mscom/EnsureMTA.h"
+
+extern const GUID CLSID_WebmMfVpxDec;
+extern const GUID CLSID_AMDWebmMfVp9Dec;
 
 namespace mozilla {
 
@@ -50,7 +55,7 @@ WMFDecoderModule::Init()
     // If we're in the content process and the UseGPUDecoder pref is set, it
     // means that we've given up on the GPU process (it's been crashing) so we
     // should disable DXVA
-    sDXVAEnabled = !MediaPrefs::PDMUseGPUDecoder();
+    sDXVAEnabled = !StaticPrefs::MediaGpuProcessDecoder();
   } else if (XRE_IsGPUProcess()) {
     // Always allow DXVA in the GPU process.
     sDXVAEnabled = true;
@@ -69,15 +74,9 @@ WMFDecoderModule::GetNumDecoderThreads()
   int32_t numCores = PR_GetNumberOfProcessors();
 
   // If we have more than 4 cores, let the decoder decide how many threads.
-  // On an 8 core machine, WMF chooses 4 decoder threads
-  const int WMF_DECODER_DEFAULT = -1;
-  int32_t prefThreadCount = WMF_DECODER_DEFAULT;
-  if (XRE_GetProcessType() != GeckoProcessType_GPU) {
-    prefThreadCount = MediaPrefs::PDMWMFThreadCount();
-  }
-  if (prefThreadCount != WMF_DECODER_DEFAULT) {
-    return std::max(prefThreadCount, 1);
-  } else if (numCores > 4) {
+  // On an 8 core machine, WMF chooses 4 decoder threads.
+  static const int WMF_DECODER_DEFAULT = -1;
+  if (numCores > 4) {
     return WMF_DECODER_DEFAULT;
   }
   return std::max(numCores - 1, 1);
@@ -103,9 +102,14 @@ WMFDecoderModule::CreateVideoDecoder(const CreateDecoderParams& aParams)
     new WMFVideoMFTManager(aParams.VideoConfig(),
                            aParams.mKnowsCompositor,
                            aParams.mImageContainer,
+                           aParams.mRate.mValue,
                            sDXVAEnabled));
 
-  if (!manager->Init()) {
+  MediaResult result = manager->Init();
+  if (NS_FAILED(result)) {
+    if (aParams.mError) {
+      *aParams.mError = result;
+    }
     return nullptr;
   }
 
@@ -133,16 +137,22 @@ WMFDecoderModule::CreateAudioDecoder(const CreateDecoderParams& aParams)
 static bool
 CanCreateMFTDecoder(const GUID& aGuid)
 {
-  if (FAILED(wmf::MFStartup())) {
-    return false;
-  }
-  bool hasdecoder = false;
-  {
+  // The IMFTransform interface used by MFTDecoder is documented to require to
+  // run on an MTA thread.
+  // https://msdn.microsoft.com/en-us/library/windows/desktop/ee892371(v=vs.85).aspx#components
+  // Note: our normal SharedThreadPool task queues are initialized to MTA, but
+  // the main thread (which calls in here from our CanPlayType implementation)
+  // is not.
+  bool canCreateDecoder = false;
+  mozilla::mscom::EnsureMTA([&]() -> void {
+    if (FAILED(wmf::MFStartup())) {
+      return;
+    }
     RefPtr<MFTDecoder> decoder(new MFTDecoder());
-    hasdecoder = SUCCEEDED(decoder->Create(aGuid));
-  }
-  wmf::MFShutdown();
-  return hasdecoder;
+    canCreateDecoder = SUCCEEDED(decoder->Create(aGuid));
+    wmf::MFShutdown();
+  });
+  return canCreateDecoder;
 }
 
 template<const GUID& aGuid>
@@ -156,38 +166,6 @@ CanCreateWMFDecoder()
     result.emplace(CanCreateMFTDecoder(aGuid));
   }
   return result.value();
-}
-
-static bool
-IsWin7H264Decoder4KCapable()
-{
-  WCHAR systemPath[MAX_PATH + 1];
-  if (!ConstructSystem32Path(L"msmpeg2vdec.dll", systemPath, MAX_PATH + 1)) {
-    // Cannot build path -> Assume it's the old DLL or it's missing.
-    return false;
-  }
-
-  DWORD zero;
-  DWORD infoSize = GetFileVersionInfoSizeW(systemPath, &zero);
-  if (infoSize == 0) {
-    // Can't get file info -> Assume it's the old DLL or it's missing.
-    return false;
-  }
-  auto infoData = MakeUnique<unsigned char[]>(infoSize);
-  VS_FIXEDFILEINFO *vInfo;
-  UINT vInfoLen;
-  if (GetFileVersionInfoW(systemPath, 0, infoSize, infoData.get()) &&
-    VerQueryValueW(infoData.get(), L"\\", (LPVOID*)&vInfo, &vInfoLen))
-  {
-    uint64_t version =
-      uint64_t(vInfo->dwFileVersionMS) << 32 | uint64_t(vInfo->dwFileVersionLS);
-    // 12.0.9200.16426 & later allow for >1920x1088 resolutions.
-    const uint64_t minimum =
-      (uint64_t(12) << 48) | (uint64_t(9200) << 16) | uint64_t(16426);
-    return version >= minimum;
-  }
-  // Can't get file version -> Assume it's the old DLL.
-  return false;
 }
 
 /* static */ bool
@@ -218,42 +196,34 @@ bool
 WMFDecoderModule::Supports(const TrackInfo& aTrackInfo,
                            DecoderDoctorDiagnostics* aDiagnostics) const
 {
+  const auto videoInfo = aTrackInfo.GetAsVideoInfo();
+  if (videoInfo && !SupportsBitDepth(videoInfo->mBitDepth, aDiagnostics)) {
+    return false;
+  }
+
   if ((aTrackInfo.mMimeType.EqualsLiteral("audio/mp4a-latm") ||
        aTrackInfo.mMimeType.EqualsLiteral("audio/mp4")) &&
        WMFDecoderModule::HasAAC()) {
     return true;
   }
-  if (MP4Decoder::IsH264(aTrackInfo.mMimeType)
-      && WMFDecoderModule::HasH264()) {
-    if (!MediaPrefs::PDMWMFAllowUnsupportedResolutions()) {
-      const VideoInfo* videoInfo = aTrackInfo.GetAsVideoInfo();
-      MOZ_ASSERT(videoInfo);
-      // Check Windows format constraints, based on:
-      // https://msdn.microsoft.com/en-us/library/windows/desktop/dd797815(v=vs.85).aspx
-      if (IsWin8OrLater() || IsWin7H264Decoder4KCapable()) {
-        // Windows >7, and Win7 with recent-enough decoder, support at most
-        // 4096x2304.
-        if (videoInfo->mImage.width > 4096
-            || videoInfo->mImage.height > 2304) {
-          return false;
-        }
-      } else {
-        // Windows <=7 (with original decoder) supports at most 1920x1088.
-        if (videoInfo->mImage.width > 1920
-            || videoInfo->mImage.height > 1088) {
-          return false;
-        }
-      }
-    }
+  if (MP4Decoder::IsH264(aTrackInfo.mMimeType) && WMFDecoderModule::HasH264()) {
     return true;
   }
   if (aTrackInfo.mMimeType.EqualsLiteral("audio/mpeg") &&
       CanCreateWMFDecoder<CLSID_CMP3DecMediaObject>()) {
     return true;
   }
-  if (MediaPrefs::PDMWMFVP9DecoderEnabled()) {
-    if (VPXDecoder::IsVP9(aTrackInfo.mMimeType)
-        && CanCreateWMFDecoder<CLSID_WebmMfVpxDec>()) {
+  if (StaticPrefs::MediaWmfVp9Enabled()) {
+    static const uint32_t VP8_USABLE_BUILD = 16287;
+    if (VPXDecoder::IsVP8(aTrackInfo.mMimeType) &&
+        IsWindowsBuildOrLater(VP8_USABLE_BUILD) &&
+        CanCreateWMFDecoder<CLSID_WebmMfVpxDec>()) {
+      return true;
+    }
+    if (VPXDecoder::IsVP9(aTrackInfo.mMimeType) &&
+        ((gfxPrefs::PDMWMFAMDVP9DecoderEnabled() &&
+          CanCreateWMFDecoder<CLSID_AMDWebmMfVp9Dec>()) ||
+         CanCreateWMFDecoder<CLSID_WebmMfVpxDec>())) {
       return true;
     }
   }

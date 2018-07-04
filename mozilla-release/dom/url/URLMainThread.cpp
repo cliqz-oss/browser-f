@@ -8,9 +8,11 @@
 
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/Blob.h"
+#include "mozilla/Unused.h"
 #include "nsContentUtils.h"
 #include "nsHostObjectProtocolHandler.h"
 #include "nsIURL.h"
+#include "nsIURIMutator.h"
 #include "nsNetUtil.h"
 
 namespace mozilla {
@@ -88,7 +90,8 @@ URLMainThread::Constructor(nsISupports* aParent, const nsAString& aURL,
     return nullptr;
   }
 
-  RefPtr<URLMainThread> url = new URLMainThread(aParent, uri.forget());
+  RefPtr<URLMainThread> url = new URLMainThread(aParent);
+  url->SetURI(uri.forget());
   return url.forget();
 }
 
@@ -159,10 +162,8 @@ URLMainThread::RevokeObjectURL(const GlobalObject& aGlobal,
   }
 }
 
-URLMainThread::URLMainThread(nsISupports* aParent,
-                             already_AddRefed<nsIURI> aURI)
+URLMainThread::URLMainThread(nsISupports* aParent)
   : URL(aParent)
-  , mURI(aURI)
 {
   MOZ_ASSERT(NS_IsMainThread());
 }
@@ -179,18 +180,6 @@ URLMainThread::IsValidURL(const GlobalObject& aGlobal, const nsAString& aURL,
   MOZ_ASSERT(NS_IsMainThread());
   NS_LossyConvertUTF16toASCII asciiurl(aURL);
   return nsHostObjectProtocolHandler::HasDataEntry(asciiurl);
-}
-
-void
-URLMainThread::GetHref(nsAString& aHref, ErrorResult& aRv) const
-{
-  aHref.Truncate();
-
-  nsAutoCString href;
-  nsresult rv = mURI->GetSpec(href);
-  if (NS_SUCCEEDED(rv)) {
-    CopyUTF8toUTF16(href, aHref);
-  }
 }
 
 void
@@ -212,26 +201,14 @@ URLMainThread::SetHref(const nsAString& aHref, ErrorResult& aRv)
     return;
   }
 
-  mURI = uri;
+  SetURI(uri.forget());
   UpdateURLSearchParams();
 }
 
 void
 URLMainThread::GetOrigin(nsAString& aOrigin, ErrorResult& aRv) const
 {
-  nsContentUtils::GetUTFOrigin(mURI, aOrigin);
-}
-
-void
-URLMainThread::GetProtocol(nsAString& aProtocol, ErrorResult& aRv) const
-{
-  nsAutoCString protocol;
-  if (NS_SUCCEEDED(mURI->GetScheme(protocol))) {
-    aProtocol.Truncate();
-  }
-
-  CopyASCIItoUTF16(protocol, aProtocol);
-  aProtocol.Append(char16_t(':'));
+  nsContentUtils::GetUTFOrigin(GetURI(), aOrigin);
 }
 
 void
@@ -248,12 +225,9 @@ URLMainThread::SetProtocol(const nsAString& aProtocol, ErrorResult& aRv)
   // implementation. In order to do this properly, we have to serialize the
   // existing URL and reparse it in a new object.
   nsCOMPtr<nsIURI> clone;
-  nsresult rv = mURI->Clone(getter_AddRefs(clone));
-  if (NS_WARN_IF(NS_FAILED(rv)) || !clone) {
-    return;
-  }
-
-  rv = clone->SetScheme(NS_ConvertUTF16toUTF8(Substring(start, iter)));
+  nsresult rv = NS_MutateURI(GetURI())
+                  .SetScheme(NS_ConvertUTF16toUTF8(Substring(start, iter)))
+                  .Finalize(clone);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
@@ -270,188 +244,7 @@ URLMainThread::SetProtocol(const nsAString& aProtocol, ErrorResult& aRv)
     return;
   }
 
-  mURI = uri;
-}
-
-#define URL_GETTER( value, func ) \
-  value.Truncate();               \
-  nsAutoCString tmp;              \
-  nsresult rv = mURI->func(tmp);  \
-  if (NS_SUCCEEDED(rv)) {         \
-    CopyUTF8toUTF16(tmp, value);  \
-  }
-
-void
-URLMainThread::GetUsername(nsAString& aUsername, ErrorResult& aRv) const
-{
-  URL_GETTER(aUsername, GetUsername);
-}
-
-void
-URLMainThread::SetUsername(const nsAString& aUsername, ErrorResult& aRv)
-{
-  mURI->SetUsername(NS_ConvertUTF16toUTF8(aUsername));
-}
-
-void
-URLMainThread::GetPassword(nsAString& aPassword, ErrorResult& aRv) const
-{
-  URL_GETTER(aPassword, GetPassword);
-}
-
-void
-URLMainThread::SetPassword(const nsAString& aPassword, ErrorResult& aRv)
-{
-  mURI->SetPassword(NS_ConvertUTF16toUTF8(aPassword));
-}
-
-void
-URLMainThread::GetHost(nsAString& aHost, ErrorResult& aRv) const
-{
-  URL_GETTER(aHost, GetHostPort);
-}
-
-void
-URLMainThread::SetHost(const nsAString& aHost, ErrorResult& aRv)
-{
-  mURI->SetHostPort(NS_ConvertUTF16toUTF8(aHost));
-}
-
-void
-URLMainThread::UpdateURLSearchParams()
-{
-  if (!mSearchParams) {
-    return;
-  }
-
-  nsAutoCString search;
-  nsresult rv = mURI->GetQuery(search);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    search.Truncate();
-  }
-
-  mSearchParams->ParseInput(search);
-}
-
-void
-URLMainThread::GetHostname(nsAString& aHostname, ErrorResult& aRv) const
-{
-  aHostname.Truncate();
-  nsContentUtils::GetHostOrIPv6WithBrackets(mURI, aHostname);
-}
-
-void
-URLMainThread::SetHostname(const nsAString& aHostname, ErrorResult& aRv)
-{
-  // nsStandardURL returns NS_ERROR_UNEXPECTED for an empty hostname
-  // The return code is silently ignored
-  mURI->SetHost(NS_ConvertUTF16toUTF8(aHostname));
-}
-
-void
-URLMainThread::GetPort(nsAString& aPort, ErrorResult& aRv) const
-{
-  aPort.Truncate();
-
-  int32_t port;
-  nsresult rv = mURI->GetPort(&port);
-  if (NS_SUCCEEDED(rv) && port != -1) {
-    nsAutoString portStr;
-    portStr.AppendInt(port, 10);
-    aPort.Assign(portStr);
-  }
-}
-
-void
-URLMainThread::SetPort(const nsAString& aPort, ErrorResult& aRv)
-{
-  nsresult rv;
-  nsAutoString portStr(aPort);
-  int32_t port = -1;
-
-  // nsIURI uses -1 as default value.
-  if (!portStr.IsEmpty()) {
-    port = portStr.ToInteger(&rv);
-    if (NS_FAILED(rv)) {
-      return;
-    }
-  }
-
-  mURI->SetPort(port);
-}
-
-void
-URLMainThread::GetPathname(nsAString& aPathname, ErrorResult& aRv) const
-{
-  aPathname.Truncate();
-
-  // Do not throw!  Not having a valid URI or URL should result in an empty
-  // string.
-
-  nsAutoCString file;
-  nsresult rv = mURI->GetFilePath(file);
-  if (NS_SUCCEEDED(rv)) {
-    CopyUTF8toUTF16(file, aPathname);
-  }
-}
-
-void
-URLMainThread::SetPathname(const nsAString& aPathname, ErrorResult& aRv)
-{
-  // Do not throw!
-
-  mURI->SetFilePath(NS_ConvertUTF16toUTF8(aPathname));
-}
-
-void
-URLMainThread::GetSearch(nsAString& aSearch, ErrorResult& aRv) const
-{
-  aSearch.Truncate();
-
-  // Do not throw!  Not having a valid URI or URL should result in an empty
-  // string.
-
-  nsAutoCString search;
-  nsresult rv;
-
-  rv = mURI->GetQuery(search);
-  if (NS_SUCCEEDED(rv) && !search.IsEmpty()) {
-    CopyUTF8toUTF16(NS_LITERAL_CSTRING("?") + search, aSearch);
-  }
-}
-
-void
-URLMainThread::GetHash(nsAString& aHash, ErrorResult& aRv) const
-{
-  aHash.Truncate();
-
-  nsAutoCString ref;
-  nsresult rv = mURI->GetRef(ref);
-  if (NS_SUCCEEDED(rv) && !ref.IsEmpty()) {
-    aHash.Assign(char16_t('#'));
-    AppendUTF8toUTF16(ref, aHash);
-  }
-}
-
-void
-URLMainThread::SetHash(const nsAString& aHash, ErrorResult& aRv)
-{
-  mURI->SetRef(NS_ConvertUTF16toUTF8(aHash));
-}
-
-void
-URLMainThread::SetSearchInternal(const nsAString& aSearch, ErrorResult& aRv)
-{
-  // Ignore failures to be compatible with NS4.
-
-  mURI->SetQuery(NS_ConvertUTF16toUTF8(aSearch));
-}
-
-nsIURI*
-URLMainThread::GetURI() const
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  return mURI;
+  SetURI(uri.forget());
 }
 
 } // namespace dom

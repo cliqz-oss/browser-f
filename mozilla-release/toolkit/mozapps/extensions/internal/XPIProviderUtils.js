@@ -10,39 +10,25 @@
           isUsableAddon, recordAddonTelemetry,
           flushChromeCaches, descriptorToPath */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
-var Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AddonManager.jsm");
-/* globals AddonManagerPrivate*/
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/TelemetryController.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AddonRepository",
-                                  "resource://gre/modules/addons/AddonRepository.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
-                                  "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredSave",
-                                  "resource://gre/modules/DeferredSave.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, 'setTimeout',
-                                 'resource://gre/modules/Timer.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryController",
-    "resource://gre/modules/TelemetryController.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  AddonManager: "resource://gre/modules/AddonManager.jsm",
+  AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
+  AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
+  DeferredTask: "resource://gre/modules/DeferredTask.jsm",
+  FileUtils: "resource://gre/modules/FileUtils.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+  setTimeout: "resource://gre/modules/Timer.jsm",
+  TelemetryController: "resource://gre/modules/TelemetryController.jsm",
+});
 
 XPCOMUtils.defineLazyServiceGetter(this, "Blocklist",
                                    "@mozilla.org/extensions/blocklist;1",
                                    Ci.nsIBlocklistService);
 
-XPCOMUtils.defineLazyPreferenceGetter(this, "ALLOW_NON_MPC",
-                                      "extensions.allow-non-mpc-extensions");
-
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 const LOGGER_ID = "addons.xpi-utils";
 
 const nsIFile = Components.Constructor("@mozilla.org/file/local;1", "nsIFile",
@@ -60,9 +46,6 @@ const LAST_SQLITE_DB_SCHEMA           = 14;
 const PREF_DB_SCHEMA                  = "extensions.databaseSchema";
 const PREF_PENDING_OPERATIONS         = "extensions.pendingOperations";
 const PREF_EM_AUTO_DISABLED_SCOPES    = "extensions.autoDisableScopes";
-const PREF_E10S_BLOCKED_BY_ADDONS     = "extensions.e10sBlockedByAddons";
-const PREF_E10S_MULTI_BLOCKED_BY_ADDONS = "extensions.e10sMultiBlockedByAddons";
-const PREF_E10S_HAS_NONEXEMPT_ADDON   = "extensions.e10s.rollout.hasAddon";
 
 const KEY_APP_SYSTEM_ADDONS           = "app-system-addons";
 const KEY_APP_SYSTEM_DEFAULTS         = "app-system-defaults";
@@ -77,12 +60,12 @@ const PROP_JSON_FIELDS = ["id", "syncGUID", "location", "version", "type",
                           "appDisabled", "pendingUninstall", "installDate",
                           "updateDate", "applyBackgroundUpdates", "bootstrap", "path",
                           "skinnable", "size", "sourceURI", "releaseNotesURI",
-                          "softDisabled", "foreignInstall", "hasBinaryComponents",
+                          "softDisabled", "foreignInstall",
                           "strictCompatibility", "locales", "targetApplications",
                           "targetPlatforms", "multiprocessCompatible", "signedState",
                           "seen", "dependencies", "hasEmbeddedWebExtension", "mpcOptedOut",
                           "userPermissions", "icons", "iconURL", "icon64URL",
-                          "blocklistState", "blocklistURL"];
+                          "blocklistState", "blocklistURL", "startupData"];
 
 // Time to wait before async save of XPI JSON database, in milliseconds
 const ASYNC_SAVE_DELAY_MS = 20;
@@ -95,14 +78,10 @@ function getRepositoryAddon(aAddon, aCallback) {
     aCallback(aAddon);
     return;
   }
-  function completeAddon(aRepositoryAddon) {
-    aAddon._repositoryAddon = aRepositoryAddon;
-    aAddon.compatibilityOverrides = aRepositoryAddon ?
-                                      aRepositoryAddon.compatibilityOverrides :
-                                      null;
+  AddonRepository.getCachedAddonByID(aAddon.id, repoAddon => {
+    aAddon._repositoryAddon = repoAddon;
     aCallback(aAddon);
-  }
-  AddonRepository.getCachedAddonByID(aAddon.id, completeAddon);
+  });
 }
 
 /**
@@ -115,7 +94,7 @@ function makeSafe(aCallback) {
     } catch (ex) {
       logger.warn("XPI Database callback failed", ex);
     }
-  }
+  };
 }
 
 /**
@@ -293,16 +272,44 @@ this.XPIDatabase = {
   // Active add-on directories loaded from extensions.ini and prefs at startup.
   activeBundles: null,
 
+  _saveTask: null,
+
   // Saved error object if we fail to read an existing database
   _loadError: null,
+
+  // Saved error object if we fail to save the database
+  _saveError: null,
 
   // Error reported by our most recent attempt to read or write the database, if any
   get lastError() {
     if (this._loadError)
       return this._loadError;
-    if (this._deferredSave)
-      return this._deferredSave.lastError;
+    if (this._saveError)
+      return this._saveError;
     return null;
+  },
+
+  async _saveNow() {
+    try {
+      let json = JSON.stringify(this);
+      let path = this.jsonFile.path;
+      await OS.File.writeAtomic(path, json, {tmpPath: `${path}.tmp`});
+
+      if (!this._schemaVersionSet) {
+        // Update the XPIDB schema version preference the first time we
+        // successfully save the database.
+        logger.debug("XPI Database saved, setting schema version preference to " + DB_SCHEMA);
+        Services.prefs.setIntPref(PREF_DB_SCHEMA, DB_SCHEMA);
+        this._schemaVersionSet = true;
+
+        // Reading the DB worked once, so we don't need the load error
+        this._loadError = null;
+      }
+    } catch (error) {
+      logger.warn("Failed to save XPI database", error);
+      this._saveError = error;
+      throw error;
+    }
   },
 
   /**
@@ -320,49 +327,21 @@ this.XPIDatabase = {
       AddonManagerPrivate.recordSimpleMeasure("XPIDB_late_stack", Log.stackTrace(err));
     }
 
-    if (!this._deferredSave) {
-      this._deferredSave = new DeferredSave(this.jsonFile.path,
-                                            () => JSON.stringify(this),
-                                            ASYNC_SAVE_DELAY_MS);
+    if (!this._saveTask) {
+      this._saveTask = new DeferredTask(() => this._saveNow(),
+                                        ASYNC_SAVE_DELAY_MS);
     }
 
-    this.updateAddonsBlockingE10s();
-    this.updateAddonsBlockingE10sMulti();
-    let promise = this._deferredSave.saveChanges();
-    if (!this._schemaVersionSet) {
-      this._schemaVersionSet = true;
-      promise = promise.then(
-        count => {
-          // Update the XPIDB schema version preference the first time we successfully
-          // save the database.
-          logger.debug("XPI Database saved, setting schema version preference to " + DB_SCHEMA);
-          Services.prefs.setIntPref(PREF_DB_SCHEMA, DB_SCHEMA);
-          // Reading the DB worked once, so we don't need the load error
-          this._loadError = null;
-        },
-        error => {
-          // Need to try setting the schema version again later
-          this._schemaVersionSet = false;
-          // this._deferredSave.lastError has the most recent error so we don't
-          // need this any more
-          this._loadError = null;
-
-          throw error;
-        });
-    }
-
-    promise.catch(error => {
-      logger.warn("Failed to save XPI database", error);
-    });
+    this._saveTask.arm();
   },
 
-  flush() {
+  async finalize() {
     // handle the "in memory only" and "saveChanges never called" cases
-    if (!this._deferredSave) {
-      return Promise.resolve(0);
+    if (!this._saveTask) {
+      return;
     }
 
-    return this._deferredSave.flush();
+    await this._saveTask.finalize();
   },
 
   /**
@@ -408,13 +387,13 @@ this.XPIDatabase = {
     try {
       let readTimer = AddonManagerPrivate.simpleTimer("XPIDB_syncRead_MS");
       logger.debug("Opening XPI database " + this.jsonFile.path);
-      fstream = Components.classes["@mozilla.org/network/file-input-stream;1"].
-              createInstance(Components.interfaces.nsIFileInputStream);
+      fstream = Cc["@mozilla.org/network/file-input-stream;1"].
+              createInstance(Ci.nsIFileInputStream);
       fstream.init(this.jsonFile, -1, 0, 0);
       let cstream = null;
       try {
-        cstream = Components.classes["@mozilla.org/intl/converter-input-stream;1"].
-                createInstance(Components.interfaces.nsIConverterInputStream);
+        cstream = Cc["@mozilla.org/intl/converter-input-stream;1"].
+                createInstance(Ci.nsIConverterInputStream);
         cstream.init(fstream, "UTF-8", 0, 0);
 
         let str = {};
@@ -673,39 +652,26 @@ this.XPIDatabase = {
 
       this.initialized = false;
 
-      if (this._deferredSave) {
-        AddonManagerPrivate.recordSimpleMeasure(
-            "XPIDB_saves_total", this._deferredSave.totalSaves);
-        AddonManagerPrivate.recordSimpleMeasure(
-            "XPIDB_saves_overlapped", this._deferredSave.overlappedSaves);
-        AddonManagerPrivate.recordSimpleMeasure(
-            "XPIDB_saves_late", this._deferredSave.dirty ? 1 : 0);
-      }
-
       // If we're shutting down while still loading, finish loading
       // before everything else!
       if (this._dbPromise) {
         await this._dbPromise;
       }
 
-      // Await and pending DB writes and finish cleaning up.
-      try {
-        await this.flush();
-      } catch (error) {
-        logger.error("Flush of XPI database failed", error);
-        AddonManagerPrivate.recordSimpleMeasure("XPIDB_shutdownFlush_failed", 1);
+      // Await any pending DB writes and finish cleaning up.
+      await this.finalize();
+
+      if (this._saveError) {
         // If our last attempt to read or write the DB failed, force a new
         // extensions.ini to be written to disk on the next startup
         Services.prefs.setBoolPref(PREF_PENDING_OPERATIONS, true);
-
-        throw error;
       }
 
       // Clear out the cached addons data loaded from JSON
       delete this.addonDB;
       delete this._dbPromise;
       // same for the deferred save
-      delete this._deferredSave;
+      delete this._saveTask;
       // re-enable the schema version setter
       delete this._schemaVersionSet;
     }
@@ -1087,44 +1053,6 @@ this.XPIDatabase = {
     this.saveChanges();
   },
 
-  updateAddonsBlockingE10s() {
-    if (!this.addonDB) {
-      // jank-tastic! Must synchronously load DB if the theme switches from
-      // an XPI theme to a lightweight theme before the DB has loaded,
-      // because we're called from sync XPIProvider.addonChanged
-      logger.warn("Synchronous load of XPI database due to updateAddonsBlockingE10s()");
-      AddonManagerPrivate.recordSimpleMeasure("XPIDB_lateOpen_byType", XPIProvider.runPhase);
-      this.syncLoadDB(true);
-    }
-
-    let blockE10s = false;
-
-    Preferences.set(PREF_E10S_HAS_NONEXEMPT_ADDON, false);
-    for (let [, addon] of this.addonDB) {
-      let active = (addon.visible && !addon.disabled && !addon.pendingUninstall);
-
-      if (active && XPIProvider.isBlockingE10s(addon)) {
-        blockE10s = true;
-        break;
-      }
-    }
-    Preferences.set(PREF_E10S_BLOCKED_BY_ADDONS, blockE10s);
-  },
-
-  updateAddonsBlockingE10sMulti() {
-    let blockMulti = false;
-
-    for (let [, addon] of this.addonDB) {
-      let active = (addon.visible && !addon.disabled && !addon.pendingUninstall);
-
-      if (active && XPIProvider.isBlockingE10sMulti(addon)) {
-        blockMulti = true;
-        break;
-      }
-    }
-    Preferences.set(PREF_E10S_MULTI_BLOCKED_BY_ADDONS, blockMulti);
-  },
-
   /**
    * Synchronously calculates and updates all the active flags in the database.
    */
@@ -1312,7 +1240,7 @@ this.XPIDatabaseReconcile = {
     if (isDetectedInstall && aNewAddon.foreignInstall) {
       // If the add-on is a foreign install and is in a scope where add-ons
       // that were dropped in should default to disabled then disable it
-      let disablingScopes = Preferences.get(PREF_EM_AUTO_DISABLED_SCOPES, 0);
+      let disablingScopes = Services.prefs.getIntPref(PREF_EM_AUTO_DISABLED_SCOPES, 0);
       if (aInstallLocation.scope & disablingScopes) {
         logger.warn("Disabling foreign installed add-on " + aNewAddon.id + " in "
             + aInstallLocation.name);
@@ -1447,21 +1375,30 @@ this.XPIDatabaseReconcile = {
                       aOldPlatformVersion, aReloadMetadata) {
     logger.debug("Updating compatibility for add-on " + aOldAddon.id + " in " + aInstallLocation.name);
 
+    let checkSigning = aOldAddon.signedState === undefined && ADDON_SIGNING &&
+                       SIGNED_TYPES.has(aOldAddon.type);
+
+    let manifest = null;
+    if (checkSigning || aReloadMetadata) {
+      try {
+        let file = new nsIFile(aAddonState.path);
+        manifest = syncLoadManifestFromFile(file, aInstallLocation);
+      } catch (err) {
+        // If we can no longer read the manifest, it is no longer compatible.
+        aOldAddon.appDisabled = true;
+        return aOldAddon;
+      }
+    }
+
     // If updating from a version of the app that didn't support signedState
-    // then fetch that property now
-    if (aOldAddon.signedState === undefined && ADDON_SIGNING &&
-        SIGNED_TYPES.has(aOldAddon.type)) {
-      let file = new nsIFile(aAddonState.path);
-      let manifest = syncLoadManifestFromFile(file, aInstallLocation);
+    // then update that property now
+    if (checkSigning) {
       aOldAddon.signedState = manifest.signedState;
     }
 
     // May be updating from a version of the app that didn't support all the
     // properties of the currently-installed add-ons.
     if (aReloadMetadata) {
-      let file = new nsIFile(aAddonState.path);
-      let manifest = syncLoadManifestFromFile(file, aInstallLocation);
-
       // Avoid re-reading these properties from manifest,
       // use existing addon instead.
       // TODO - consider re-scanning for targetApplications.
@@ -1570,7 +1507,6 @@ this.XPIDatabaseReconcile = {
               }
             }
 
-            let wasDisabled = oldAddon.appDisabled;
             let oldPath = oldAddon.path || descriptorToPath(oldAddon.descriptor);
 
             // The add-on has changed if the modification time has changed, if
@@ -1596,18 +1532,6 @@ this.XPIDatabaseReconcile = {
             } else {
               // No change
               newAddon = oldAddon;
-            }
-
-            // If an extension has just become appDisabled and it appears to
-            // be due to the ALLOW_NON_MPC pref, show a notification.  If the
-            // extension is also disabled for some other reason(s), don't
-            // bother with the notification since flipping the pref will leave
-            // the extension disabled.
-            if (!wasDisabled && newAddon.appDisabled &&
-                !ALLOW_NON_MPC && !newAddon.multiprocessCompatible &&
-                (newAddon.blocklistState != Ci.nsIBlocklistService.STATE_BLOCKED) &&
-                newAddon.isPlatformCompatible && newAddon.isCompatible) {
-              AddonManagerPrivate.nonMpcDisabled = true;
             }
 
             if (newAddon)
@@ -1677,7 +1601,7 @@ this.XPIDatabaseReconcile = {
         XPIProvider.allAppGlobal = false;
 
       let isActive = !currentAddon.disabled && !currentAddon.pendingUninstall;
-      let wasActive = previousAddon ? previousAddon.active : currentAddon.active
+      let wasActive = previousAddon ? previousAddon.active : currentAddon.active;
 
       if (!previousAddon) {
         // If we had a manifest for this add-on it was a staged install and
@@ -1819,4 +1743,4 @@ this.XPIDatabaseReconcile = {
 
     return true;
   },
-}
+};

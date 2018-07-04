@@ -7,8 +7,7 @@
                 onpopupshowing="if (event.target.parentNode.parentNode == this &amp;&amp;
                                     !('@mozilla.org/widget/nativemenuservice;1' in Cc))
                                   this.setAttribute('openedwithkey',
-                                                    event.target.parentNode.openedWithKey);"
-                style="border:0px;padding:0px;margin:0px;-moz-appearance:none">
+                                                    event.target.parentNode.openedWithKey);">
             <menu id="file-menu" label="&fileMenu.label;"
                   accesskey="&fileMenu.accesskey;">
               <menupopup id="menu_FilePopup"
@@ -41,12 +40,6 @@
                           accesskey="&newPrivateWindow.accesskey;"
                           command="Tools:PrivateBrowsing"
                           key="key_privatebrowsing"/>
-#ifdef E10S_TESTING_ONLY
-                <menuitem id="menu_newNonRemoteWindow"
-                          label="&newNonRemoteWindow.label;"
-                          hidden="true"
-                          command="Tools:NonRemoteWindow"/>
-#endif
 #ifdef MAC_NON_BROWSER_WINDOW
                 <menuitem id="menu_openLocation"
                           label="&openLocationCmd.label;"
@@ -110,17 +103,13 @@
 #ifdef XP_WIN
                           label="&quitApplicationCmdWin2.label;"
                           accesskey="&quitApplicationCmdWin2.accesskey;"
-#else
-#ifdef XP_MACOSX
+#elifdef XP_MACOSX
                           label="&quitApplicationCmdMac2.label;"
 #else
                           label="&quitApplicationCmd.label;"
                           accesskey="&quitApplicationCmd.accesskey;"
 #endif
-#ifdef XP_UNIX
                           key="key_quitApplication"
-#endif
-#endif
                           command="cmd_quitApplication"/>
               </menupopup>
             </menu>
@@ -226,6 +215,7 @@
                               label="&historyButton.label;"/>
 #ifdef MOZ_SERVICES_SYNC
                     <menuitem id="menu_tabsSidebar"
+                              class="sync-ui-item"
                               observes="viewTabsSidebar"
                               label="&syncedTabs.sidebar.label;"/>
 #endif
@@ -278,7 +268,14 @@
                     <menuseparator/>
                   </menupopup>
                 </menu>
-#include browser-charsetmenu.inc
+                <menu id="charsetMenu"
+                    label="&charsetMenu2.label;"
+                    accesskey="&charsetMenu2.accesskey;"
+                    oncommand="BrowserSetForcedCharacterSet(event.target.getAttribute('charset'));"
+                    onpopupshowing="CharsetMenu.build(event.target); UpdateCurrentCharset(this);">
+                  <menupopup>
+                  </menupopup>
+                </menu>
                 <menuseparator/>
 #ifdef XP_MACOSX
                 <menuitem id="enterFullScreenItem"
@@ -396,6 +393,7 @@
 #endif
                context="placesContext"
                openInTabs="children"
+               onmouseup="BookmarksEventHandler.onMouseUp(event);"
                oncommand="BookmarksEventHandler.onCommand(event);"
                onclick="BookmarksEventHandler.onClick(event, this.parentNode._placesView);"
                onpopupshowing="BookmarkingUI.onMainMenuPopupShowing(event);
@@ -435,10 +433,6 @@
                 class="show-only-for-keyboard"
                 command="Browser:BookmarkAllTabs"
                 key="bookmarkAllTabsKb"/>
-      <menuseparator/>
-      <menuitem label="&recentBookmarks.label;"
-                id="menu_recentBookmarks"
-                disabled="true"/>
       <menuseparator id="bookmarksToolbarSeparator"/>
       <menu id="bookmarksToolbarFolderMenu"
             class="menu-iconic bookmark-item"
@@ -484,8 +478,7 @@
 
             <menu id="tools-menu"
                   label="&toolsMenu.label;"
-                  accesskey="&toolsMenu.accesskey;"
-                  onpopupshowing="mirrorShow(this)">
+                  accesskey="&toolsMenu.accesskey;">
               <menupopup id="menu_ToolsPopup">
               <menuitem id="menu_openDownloads"
                         label="&downloads.label;"
@@ -498,18 +491,27 @@
                         key="key_openAddons"
                         command="Tools:Addons"/>
 #ifdef MOZ_SERVICES_SYNC
-              <!-- only one of sync-setup, sync-syncnowitem or sync-reauthitem will be showing at once -->
+              <!-- only one of sync-setup, sync-unverifieditem, sync-syncnowitem or sync-reauthitem will be showing at once -->
               <menuitem id="sync-setup"
+                        class="sync-ui-item"
                         label="&syncSignIn.label;"
                         accesskey="&syncSignIn.accesskey;"
                         observes="sync-setup-state"
                         oncommand="gSync.openPrefs('menubar')"/>
+              <menuitem id="sync-unverifieditem"
+                        class="sync-ui-item"
+                        label="&syncSignIn.label;"
+                        accesskey="&syncSignIn.accesskey;"
+                        observes="sync-unverified-state"
+                        oncommand="gSync.openPrefs('menubar')"/>
               <menuitem id="sync-syncnowitem"
+                        class="sync-ui-item"
                         label="&syncSyncNowItem.label;"
                         accesskey="&syncSyncNowItem.accesskey;"
                         observes="sync-syncnow-state"
                         oncommand="gSync.doSync(event);"/>
               <menuitem id="sync-reauthitem"
+                        class="sync-ui-item"
                         label="&syncReAuthItem.label;"
                         accesskey="&syncReAuthItem.accesskey;"
                         observes="sync-reauth-state"
@@ -532,13 +534,6 @@
                         key="key_viewInfo"
 #endif
                         command="View:PageInfo"/>
-              <menu id="menu_mirrorTabCmd"
-                    hidden="true"
-                    accesskey="&mirrorTabCmd.accesskey;"
-                    label="&mirrorTabCmd.label;">
-                <menupopup id="menu_mirrorTab-popup"
-                           onpopupshowing="populateMirrorTabMenu(this)"/>
-              </menu>
 #ifndef XP_UNIX
               <menuseparator id="prefSep"/>
               <menuitem id="menu_preferences"
@@ -546,11 +541,106 @@
                         accesskey="&preferencesCmd2.accesskey;"
                         oncommand="openPreferences(undefined, {origin: 'menubar'});"/>
 #endif
+#ifdef MOZ_DEBUG
+              <menuitem label="&ldbCmd.label;"
+                        accesskey="&ldbCmd.accesskey;"
+                        oncommand="toOpenWindowByType('mozapp:layoutdebug',
+                                          'chrome://layoutdebug/content/');"/>
+#endif
+#ifdef XP_MACOSX
+<!-- nsMenuBarX hides these and uses them to build the Application menu. -->
+              <menuitem id="menu_preferences" label="&preferencesCmdMac.label;" key="key_preferencesCmdMac" oncommand="openPreferences(undefined, {origin: 'commandLineLegacy'});"/>
+              <menuitem id="menu_mac_services" label="&servicesMenuMac.label;"/>
+              <menuitem id="menu_mac_hide_app" label="&hideThisAppCmdMac2.label;" key="key_hideThisAppCmdMac"/>
+              <menuitem id="menu_mac_hide_others" label="&hideOtherAppsCmdMac.label;" key="key_hideOtherAppsCmdMac"/>
+              <menuitem id="menu_mac_show_all" label="&showAllAppsCmdMac.label;"/>
+#endif
               </menupopup>
             </menu>
-
 #ifdef XP_MACOSX
-          <menu id="windowMenu" />
+            <menu id="windowMenu"
+                  label="&windowMenu.label;"
+                  onpopupshowing="macWindowMenuDidShow();"
+                  onpopuphidden="macWindowMenuDidHide();"
+                  >
+                <menupopup id="windowPopup">
+                    <menuitem command="minimizeWindow" key="key_minimizeWindow"/>
+                    <menuitem command="zoomWindow"/>
+                    <!-- decomment when "BringAllToFront" is implemented
+                        <menuseparator/>
+                        <menuitem label="&bringAllToFront.label;" disabled="true"/> -->
+                    <menuseparator id="sep-window-list"/>
+                </menupopup>
+            </menu>
 #endif
-          <menu id="helpMenu" />
+            <menu id="helpMenu"
+#ifdef XP_WIN
+                  label="&helpMenuWin.label;"
+                  accesskey="&helpMenuWin.accesskey;"
+#else
+                  label="&helpMenu.label;"
+                  accesskey="&helpMenu.accesskey;"
+#endif
+                  >
+              <menupopup id="menu_HelpPopup" onpopupshowing="buildHelpMenu();">
+                <menuitem id="menu_openHelp"
+                          oncommand="openHelpLink('firefox-help')"
+                          onclick="checkForMiddleClick(this, event);"
+                          label="&productHelp2.label;"
+                          accesskey="&productHelp2.accesskey;"
+#ifdef XP_MACOSX
+                          key="key_openHelpMac"/>
+#else
+                          />
+#endif
+#if 0
+                <menuitem id="menu_openTour"
+                          oncommand="openTourPage();"
+                          label="&helpShowTour2.label;"
+                          accesskey="&helpShowTour2.accesskey;"/>
+#endif
+                <menuitem id="menu_keyboardShortcuts"
+                          oncommand="openHelpLink('keyboard-shortcuts')"
+                          onclick="checkForMiddleClick(this, event);"
+                          label="&helpKeyboardShortcuts.label;"
+                          accesskey="&helpKeyboardShortcuts.accesskey;"/>
+                <menuitem id="troubleShooting"
+                          accesskey="&helpTroubleshootingInfo.accesskey;"
+                          label="&helpTroubleshootingInfo.label;"
+                          oncommand="openTroubleshootingPage()"
+                          onclick="checkForMiddleClick(this, event);"/>
+#if 0
+                <menuitem id="feedbackPage"
+                          accesskey="&helpFeedbackPage.accesskey;"
+                          label="&helpFeedbackPage.label;"
+                          oncommand="openFeedbackPage()"
+                          onclick="checkForMiddleClick(this, event);"/>
+#endif
+                <menuitem id="helpSafeMode"
+                          accesskey="&helpSafeMode.accesskey;"
+                          label="&helpSafeMode.label;"
+                          stopaccesskey="&helpSafeMode.stop.accesskey;"
+                          stoplabel="&helpSafeMode.stop.label;"
+                          oncommand="safeModeRestart();"/>
+                <menuitem id="menu_HelpPopup_reportPhishingtoolmenu"
+                          label="&reportDeceptiveSiteMenu.title;"
+                          accesskey="&reportDeceptiveSiteMenu.accesskey;"
+                          observes="reportPhishingBroadcaster"
+                          oncommand="openUILink(gSafeBrowsing.getReportURL('Phish'), event);"
+                          onclick="checkForMiddleClick(this, event);"
+                          hidden="true"/>
+                <menuitem id="menu_HelpPopup_reportPhishingErrortoolmenu"
+                          label="&safeb.palm.notdeceptive.label;"
+                          accesskey="&safeb.palm.notdeceptive.accesskey;"
+                          observes="reportPhishingErrorBroadcaster"
+                          oncommand="ReportFalseDeceptiveSite();"
+                          onclick="checkForMiddleClick(this, event);"
+                          hidden="true"/>
+                <menuseparator id="aboutSeparator"/>
+                <menuitem id="aboutName"
+                          accesskey="&aboutProduct2.accesskey;"
+                          label="&aboutProduct2.label;"
+                          oncommand="openAboutDialog();"/>
+              </menupopup>
+          </menu>
         </menubar>

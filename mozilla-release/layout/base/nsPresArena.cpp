@@ -1,6 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=2 sw=2 et tw=78:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
@@ -11,13 +11,12 @@
 
 #include "mozilla/Poison.h"
 #include "nsDebug.h"
-#include "nsArenaMemoryStats.h"
 #include "nsPrintfCString.h"
-#include "GeckoStyleContext.h"
 #include "FrameLayerBuilder.h"
 #include "mozilla/ArrayUtils.h"
-#include "nsStyleContext.h"
-#include "nsStyleContextInlines.h"
+#include "mozilla/ComputedStyle.h"
+#include "mozilla/ComputedStyleInlines.h"
+#include "nsWindowSizes.h"
 
 #include <inttypes.h>
 
@@ -48,11 +47,11 @@ nsPresArena::ClearArenaRefPtrWithoutDeregistering(void* aPtr,
                                                   ArenaObjectID aObjectID)
 {
   switch (aObjectID) {
-    // We use ArenaRefPtr<nsStyleContext>, which can be ServoStyleContext
-    // or GeckoStyleContext. GeckoStyleContext is actually arena managed,
-    // but ServoStyleContext isn't.
-    case eArenaObjectID_GeckoStyleContext:
-      static_cast<ArenaRefPtr<nsStyleContext>*>(aPtr)->ClearWithoutDeregistering();
+    // We use ArenaRefPtr<ComputedStyle>, which can be ComputedStyle
+    // or GeckoComputedStyle. GeckoComputedStyle is actually arena managed,
+    // but ComputedStyle isn't.
+    case eArenaObjectID_GeckoComputedStyle:
+      static_cast<ArenaRefPtr<ComputedStyle>*>(aPtr)->ClearWithoutDeregistering();
       return;
     default:
       MOZ_ASSERT(false, "unexpected ArenaObjectID value");
@@ -164,13 +163,12 @@ nsPresArena::Free(uint32_t aCode, void* aPtr)
 }
 
 void
-nsPresArena::AddSizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf,
-                                    nsArenaMemoryStats* aArenaStats)
+nsPresArena::AddSizeOfExcludingThis(nsWindowSizes& aSizes) const
 {
   // We do a complicated dance here because we want to measure the
   // space taken up by the different kinds of objects in the arena,
   // but we don't have pointers to those objects.  And even if we did,
-  // we wouldn't be able to use aMallocSizeOf on them, since they were
+  // we wouldn't be able to use mMallocSizeOf on them, since they were
   // allocated out of malloc'd chunks of memory.  So we compute the
   // size of the arena as known by malloc and we add up the sizes of
   // all the objects that we care about.  Subtracting these two
@@ -178,11 +176,13 @@ nsPresArena::AddSizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf,
   // slop in the arena itself as well as the size of objects that
   // we've not measured explicitly.
 
-  size_t mallocSize = mPool.SizeOfExcludingThis(aMallocSizeOf);
+  size_t mallocSize = mPool.SizeOfExcludingThis(aSizes.mState.mMallocSizeOf);
 
   size_t totalSizeInFreeLists = 0;
-  for (FreeList* entry = mFreeLists; entry != ArrayEnd(mFreeLists); ++entry) {
-    mallocSize += entry->SizeOfExcludingThis(aMallocSizeOf);
+  for (const FreeList* entry = mFreeLists;
+       entry != ArrayEnd(mFreeLists);
+       ++entry) {
+    mallocSize += entry->SizeOfExcludingThis(aSizes.mState.mMallocSizeOf);
 
     // Note that we're not measuring the size of the entries on the free
     // list here.  The free list knows how many objects we've allocated
@@ -190,39 +190,25 @@ nsPresArena::AddSizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf,
     // |mEntries| at this point) and we're using that to determine the
     // total size of objects allocated with a given ID.
     size_t totalSize = entry->mEntrySize * entry->mEntriesEverAllocated;
-    size_t* p;
 
     switch (entry - mFreeLists) {
-#define FRAME_ID(classname, ...)                          \
-      case nsQueryFrame::classname##_id:                  \
-        p = &aArenaStats->FRAME_ID_STAT_FIELD(classname); \
+#define FRAME_ID(classname, ...) \
+      case nsQueryFrame::classname##_id: \
+        aSizes.mArenaSizes.NS_ARENA_SIZES_FIELD(classname) += totalSize; \
         break;
 #define ABSTRACT_FRAME_ID(...)
 #include "nsFrameIdList.h"
 #undef FRAME_ID
 #undef ABSTRACT_FRAME_ID
       case eArenaObjectID_nsLineBox:
-        p = &aArenaStats->mLineBoxes;
-        break;
-      case eArenaObjectID_nsRuleNode:
-        p = &aArenaStats->mRuleNodes;
-        break;
-      case eArenaObjectID_GeckoStyleContext:
-        p = &aArenaStats->mStyleContexts;
-        break;
-#define STYLE_STRUCT(name_, checkdata_cb_)      \
-        case eArenaObjectID_nsStyle##name_:
-#include "nsStyleStructList.h"
-#undef STYLE_STRUCT
-        p = &aArenaStats->mStyleStructs;
+        aSizes.mArenaSizes.mLineBoxes += totalSize;
         break;
       default:
         continue;
     }
 
-    *p += totalSize;
     totalSizeInFreeLists += totalSize;
   }
 
-  aArenaStats->mOther += mallocSize - totalSizeInFreeLists;
+  aSizes.mLayoutPresShellSize += mallocSize - totalSizeInFreeLists;
 }

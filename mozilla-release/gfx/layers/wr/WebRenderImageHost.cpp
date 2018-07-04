@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -7,6 +8,7 @@
 
 #include "LayersLogging.h"
 #include "mozilla/layers/Compositor.h"  // for Compositor
+#include "mozilla/layers/CompositorVsyncScheduler.h"  // for CompositorVsyncScheduler
 #include "mozilla/layers/Effects.h"     // for TexturedEffect, Effect, etc
 #include "mozilla/layers/LayerManagerComposite.h"     // for TexturedEffect, Effect, etc
 #include "mozilla/layers/WebRenderBridgeParent.h"
@@ -29,6 +31,7 @@ WebRenderImageHost::WebRenderImageHost(const TextureInfo& aTextureInfo)
   , ImageComposite()
   , mWrBridge(nullptr)
   , mWrBridgeBindings(0)
+  , mUseAsyncImagePipeline(false)
 {}
 
 WebRenderImageHost::~WebRenderImageHost()
@@ -68,8 +71,9 @@ WebRenderImageHost::UseTextureHost(const nsTArray<TimedTexture>& aTextures)
   mImages.SwapElements(newImages);
   newImages.Clear();
 
-  if (mWrBridge && GetAsyncRef()) {
-    mWrBridge->ScheduleComposition();
+  if (mWrBridge && mWrBridge->CompositorScheduler() && GetAsyncRef()) {
+    // Will check if we will generate frame.
+    mWrBridge->CompositorScheduler()->ScheduleComposition();
   }
 
   // Video producers generally send replacement images with the same frameID but
@@ -175,7 +179,12 @@ WebRenderImageHost::GetAsTextureHostForComposite()
   }
   SetCurrentTextureHost(img->mTextureHost);
 
-  // XXX Add UpdateBias()
+  mBias = UpdateBias(
+    mWrBridge->AsyncImageManager()->GetCompositionTime(),
+    mImages[imageIndex].mTimeStamp,
+    uint32_t(imageIndex + 1) < mImages.Length() ?
+      mImages[imageIndex + 1].mTimeStamp : TimeStamp(),
+    mBias);
 
   return mCurrentTextureHost;
 }
@@ -188,6 +197,7 @@ WebRenderImageHost::SetCurrentTextureHost(TextureHost* aTexture)
   }
 
   if (mWrBridge &&
+      !mUseAsyncImagePipeline &&
       !!mCurrentTextureHost &&
       mCurrentTextureHost != aTexture &&
       mCurrentTextureHost->AsWebRenderTextureHost()) {
@@ -207,7 +217,6 @@ void WebRenderImageHost::Attach(Layer* aLayer,
                        TextureSourceProvider* aProvider,
                        AttachFlags aFlags)
 {
-  MOZ_ASSERT_UNREACHABLE("unexpected to be called");
 }
 
 void
@@ -292,7 +301,7 @@ WebRenderImageHost::GetImageSize() const
 {
   const TimedImage* img = ChooseImage();
   if (img) {
-    return IntSize(img->mPictureRect.width, img->mPictureRect.height);
+    return IntSize(img->mPictureRect.Width(), img->mPictureRect.Height());
   }
   return IntSize();
 }

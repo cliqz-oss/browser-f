@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -24,7 +25,6 @@ public:
 
   // nsIFrame replacements
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override {
     DO_GLOBAL_REFLOW_COUNT_DSP("nsLeafFrame");
     DisplayBorderBackgroundOutline(aBuilder, aLists);
@@ -51,23 +51,12 @@ public:
                   ComputeSizeFlags            aFlags) override;
 
   /**
-   * Reflow our frame.  This will use the computed width plus borderpadding for
-   * the desired width, and use the return value of GetIntrinsicBSize plus
-   * borderpadding for the desired height.  Ascent will be set to the height,
-   * and descent will be set to 0.
+   * Each of our subclasses should provide its own Reflow impl:
    */
   virtual void Reflow(nsPresContext*      aPresContext,
-                      ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus&      aStatus) override;
-
-  /**
-   * This method does most of the work that Reflow() above need done.
-   */
-  virtual void DoReflow(nsPresContext*      aPresContext,
-                        ReflowOutput& aDesiredSize,
-                        const ReflowInput& aReflowInput,
-                        nsReflowStatus&      aStatus);
+                      ReflowOutput&       aDesiredSize,
+                      const ReflowInput&  aReflowInput,
+                      nsReflowStatus&     aStatus) override = 0;
 
   virtual bool IsFrameOfType(uint32_t aFlags) const override
   {
@@ -77,8 +66,8 @@ public:
   }
 
 protected:
-  nsLeafFrame(nsStyleContext* aContext, ClassID aID)
-    : nsFrame(aContext, aID)
+  nsLeafFrame(ComputedStyle* aStyle, ClassID aID)
+    : nsFrame(aStyle, aID)
   {}
 
   virtual ~nsLeafFrame();

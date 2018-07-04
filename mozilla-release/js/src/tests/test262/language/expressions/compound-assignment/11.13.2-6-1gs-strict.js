@@ -9,9 +9,11 @@ description: >
     Strict Mode - SyntaxError is throw if the identifier eval appears
     as the LeftHandSideExpression of a Compound Assignment operator(*=)
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [onlyStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 eval *= 20;

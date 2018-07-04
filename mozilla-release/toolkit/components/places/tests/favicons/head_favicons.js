@@ -3,12 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cr = Components.results;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Import common head.
 {
@@ -50,8 +45,8 @@ function waitForFaviconChanged(aExpectedPageURI, aExpectedFaviconURI,
       }
       PlacesUtils.history.removeObserver(this);
 
-      do_check_true(aURI.equals(aExpectedPageURI));
-      do_check_eq(aValue, aExpectedFaviconURI.spec);
+      Assert.ok(aURI.equals(aExpectedPageURI));
+      Assert.equal(aValue, aExpectedFaviconURI.spec);
       do_check_guid_for_uri(aURI, aGUID);
       aCallback();
     }
@@ -75,8 +70,8 @@ function checkFaviconDataForPage(aPageURI, aExpectedMimeType, aExpectedData,
                                  aCallback) {
   PlacesUtils.favicons.getFaviconDataForPage(aPageURI,
     function(aURI, aDataLen, aData, aMimeType) {
-      do_check_eq(aExpectedMimeType, aMimeType);
-      do_check_true(compareArrays(aExpectedData, aData));
+      Assert.equal(aExpectedMimeType, aMimeType);
+      Assert.ok(compareArrays(aExpectedData, aData));
       do_check_guid_for_uri(aPageURI);
       aCallback();
     });
@@ -93,7 +88,7 @@ function checkFaviconDataForPage(aPageURI, aExpectedMimeType, aExpectedData,
 function checkFaviconMissingForPage(aPageURI, aCallback) {
   PlacesUtils.favicons.getFaviconURLForPage(aPageURI,
     function(aURI, aDataLen, aData, aMimeType) {
-      do_check_true(aURI === null);
+      Assert.ok(aURI === null);
       aCallback();
     });
 }

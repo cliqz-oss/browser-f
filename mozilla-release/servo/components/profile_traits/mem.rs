@@ -8,6 +8,7 @@
 
 use ipc_channel::ipc::{self, IpcSender};
 use ipc_channel::router::ROUTER;
+use serde;
 use std::marker::Send;
 use std::sync::mpsc::Sender;
 
@@ -20,6 +21,14 @@ pub trait OpaqueSender<T> {
 impl<T> OpaqueSender<T> for Sender<T> {
     fn send(&self, message: T) {
         if let Err(e) = Sender::send(self, message) {
+            warn!("Error communicating with the target thread from the profiler: {}", e);
+        }
+    }
+}
+
+impl<T> OpaqueSender<T> for IpcSender<T> where T: serde::Serialize {
+    fn send(&self, message: T) {
+        if let Err(e) = IpcSender::send(self, message) {
             warn!("Error communicating with the target thread from the profiler: {}", e);
         }
     }
@@ -52,11 +61,11 @@ impl ProfilerChan {
     {
         // Register the memory reporter.
         let (reporter_sender, reporter_receiver) = ipc::channel().unwrap();
-        ROUTER.add_route(reporter_receiver.to_opaque(), box move |message| {
+        ROUTER.add_route(reporter_receiver.to_opaque(), Box::new(move |message| {
             // Just injects an appropriate event into the paint thread's queue.
             let request: ReporterRequest = message.to().unwrap();
             channel_for_reporter.send(msg(request.reports_channel));
-        });
+        }));
         self.send(ProfilerMsg::RegisterReporter(reporter_name.clone(),
                                                 Reporter(reporter_sender)));
 
@@ -79,7 +88,7 @@ impl ProfilerChan {
 #[derive(Deserialize, Serialize)]
 pub enum ReportKind {
     /// A size measurement for an explicit allocation on the jemalloc heap. This should be used
-    /// for any measurements done via the `HeapSizeOf` trait.
+    /// for any measurements done via the `MallocSizeOf` trait.
     ExplicitJemallocHeapSize,
 
     /// A size measurement for an explicit allocation on the system heap. Only likely to be used

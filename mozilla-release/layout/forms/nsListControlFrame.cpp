@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,13 +8,10 @@
 #include "nsCOMPtr.h"
 #include "nsUnicharUtils.h"
 #include "nsListControlFrame.h"
-#include "nsFormControlFrame.h" // for COMPARE macro
+#include "nsCheckboxRadioFrame.h" // for COMPARE macro
 #include "nsGkAtoms.h"
-#include "nsIDOMHTMLSelectElement.h"
-#include "nsIDOMHTMLOptionElement.h"
 #include "nsComboboxControlFrame.h"
 #include "nsIPresShell.h"
-#include "nsIDOMMouseEvent.h"
 #include "nsIXULRuntime.h"
 #include "nsFontMetrics.h"
 #include "nsIScrollableFrame.h"
@@ -23,9 +21,12 @@
 #include "nsDisplayList.h"
 #include "nsContentUtils.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/HTMLOptGroupElement.h"
 #include "mozilla/dom/HTMLOptionsCollection.h"
 #include "mozilla/dom/HTMLSelectElement.h"
+#include "mozilla/dom/MouseEvent.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/LookAndFeel.h"
@@ -78,10 +79,10 @@ private:
 
 //---------------------------------------------------------
 nsContainerFrame*
-NS_NewListControlFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewListControlFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
   nsListControlFrame* it =
-    new (aPresShell) nsListControlFrame(aContext);
+    new (aPresShell) nsListControlFrame(aStyle);
 
   it->AddStateBits(NS_FRAME_INDEPENDENT_SELECTION);
 
@@ -91,8 +92,8 @@ NS_NewListControlFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
 NS_IMPL_FRAMEARENA_HELPERS(nsListControlFrame)
 
 //---------------------------------------------------------
-nsListControlFrame::nsListControlFrame(nsStyleContext* aContext)
-  : nsHTMLScrollFrame(aContext, kClassID, false)
+nsListControlFrame::nsListControlFrame(ComputedStyle* aStyle)
+  : nsHTMLScrollFrame(aStyle, kClassID, false)
   , mView(nullptr)
   , mMightNeedSecondPass(false)
   , mHasPendingInterruptAtStartOfReflow(false)
@@ -120,6 +121,12 @@ nsListControlFrame::~nsListControlFrame()
 }
 
 static bool ShouldFireDropDownEvent() {
+  // We don't need to fire the event to SelectContentHelper when content-select
+  // is enabled.
+  if (nsLayoutUtils::IsContentSelectEnabled()) {
+    return false;
+  }
+
   return (XRE_IsContentProcess() &&
           Preferences::GetBool("browser.tabs.remote.desktopbehavior", false)) ||
          Preferences::GetBool("dom.select_popup_in_parent.enabled", false);
@@ -127,7 +134,7 @@ static bool ShouldFireDropDownEvent() {
 
 // for Bug 47302 (remove this comment later)
 void
-nsListControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsListControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   // get the receiver interface from the browser button's content node
   ENSURE_TRUE(mContent);
@@ -155,13 +162,12 @@ nsListControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
                                true));
   }
 
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  nsHTMLScrollFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  nsHTMLScrollFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 void
 nsListControlFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                     const nsRect&           aDirtyRect,
                                      const nsDisplayListSet& aLists)
 {
   // We allow visibility:hidden <select>s to contain visible options.
@@ -180,13 +186,13 @@ nsListControlFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     // XXX Because we have an opaque widget and we get called to paint with
     // this frame as the root of a stacking context we need make sure to draw
     // some opaque color over the whole widget. (Bug 511323)
-    aLists.BorderBackground()->AppendNewToBottom(
-      new (aBuilder) nsDisplaySolidColor(aBuilder,
+    aLists.BorderBackground()->AppendToBottom(
+      MakeDisplayItem<nsDisplaySolidColor>(aBuilder,
         this, nsRect(aBuilder->ToReferenceFrame(this), GetSize()),
         mLastDropdownBackstopColor));
   }
 
-  nsHTMLScrollFrame::BuildDisplayList(aBuilder, aDirtyRect, aLists);
+  nsHTMLScrollFrame::BuildDisplayList(aBuilder, aLists);
 }
 
 /**
@@ -232,12 +238,9 @@ void nsListControlFrame::PaintFocus(DrawTarget* aDrawTarget, nsPoint aPt)
   fRect += aPt;
 
   bool lastItemIsSelected = false;
-  if (focusedContent) {
-    nsCOMPtr<nsIDOMHTMLOptionElement> domOpt =
-      do_QueryInterface(focusedContent);
-    if (domOpt) {
-      domOpt->GetSelected(&lastItemIsSelected);
-    }
+  HTMLOptionElement* domOpt = HTMLOptionElement::FromNodeOrNull(focusedContent);
+  if (domOpt) {
+    lastItemIsSelected = domOpt->Selected();
   }
 
   // set up back stop colors and then ask L&F service for the real colors
@@ -281,7 +284,7 @@ GetMaxOptionBSize(nsIFrame* aContainer, WritingMode aWM)
   nscoord result = 0;
   for (nsIFrame* option : aContainer->PrincipalChildList()) {
     nscoord optionBSize;
-    if (HTMLOptGroupElement::FromContent(option->GetContent())) {
+    if (HTMLOptGroupElement::FromNode(option->GetContent())) {
       // An optgroup; drill through any scroll frame and recurse.  |frame| might
       // be null here though if |option| is an anonymous leaf frame of some sort.
       auto frame = option->GetContentInsertionFrame();
@@ -364,6 +367,7 @@ nsListControlFrame::Reflow(nsPresContext*           aPresContext,
                            const ReflowInput& aReflowInput,
                            nsReflowStatus&          aStatus)
 {
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   NS_PRECONDITION(aReflowInput.ComputedISize() != NS_UNCONSTRAINEDSIZE,
                   "Must have a computed inline size");
 
@@ -383,7 +387,7 @@ nsListControlFrame::Reflow(nsPresContext*           aPresContext,
   }
 
   if (GetStateBits() & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
 
   if (IsInDropDownMode()) {
@@ -479,8 +483,7 @@ nsListControlFrame::Reflow(nsPresContext*           aPresContext,
   // of the reflow protocol, but things seem to work fine without it...
   // Is that just an implementation detail of nsHTMLScrollFrame that
   // we're depending on?
-  nsHTMLScrollFrame::DidReflow(aPresContext, &state,
-                               nsDidReflowStatus::FINISHED);
+  nsHTMLScrollFrame::DidReflow(aPresContext, &state);
 
   // Now compute the block size we want to have
   nscoord computedBSize = CalcIntrinsicBSize(BSizeOfARow(), length);
@@ -490,6 +493,7 @@ nsListControlFrame::Reflow(nsPresContext*           aPresContext,
   // XXXbz to make the ascent really correct, we should add our
   // mComputedPadding.top to it (and subtract it from descent).  Need that
   // because nsGfxScrollFrame just adds in the border....
+  aStatus.Reset();
   nsHTMLScrollFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
 }
 
@@ -561,8 +565,7 @@ nsListControlFrame::ReflowAsDropdown(nsPresContext*           aPresContext,
   // of the reflow protocol, but things seem to work fine without it...
   // Is that just an implementation detail of nsHTMLScrollFrame that
   // we're depending on?
-  nsHTMLScrollFrame::DidReflow(aPresContext, &state,
-                               nsDidReflowStatus::FINISHED);
+  nsHTMLScrollFrame::DidReflow(aPresContext, &state);
 
   // Now compute the block size we want to have.
   // Note: no need to apply min/max constraints, since we have no such
@@ -614,6 +617,7 @@ nsListControlFrame::ReflowAsDropdown(nsPresContext*           aPresContext,
 
   mLastDropdownComputedBSize = state.ComputedBSize();
 
+  aStatus.Reset();
   nsHTMLScrollFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
 }
 
@@ -750,7 +754,7 @@ CountOptionsAndOptgroups(nsIFrame* aFrame)
         ++count;
       } else {
         RefPtr<HTMLOptGroupElement> optgroup =
-          HTMLOptGroupElement::FromContent(content);
+          HTMLOptGroupElement::FromNode(content);
         if (optgroup) {
           nsAutoString label;
           optgroup->GetLabel(label);
@@ -840,18 +844,17 @@ nsListControlFrame::PerformSelection(int32_t aClickedIndex,
 
 //---------------------------------------------------------
 bool
-nsListControlFrame::HandleListSelection(nsIDOMEvent* aEvent,
+nsListControlFrame::HandleListSelection(dom::Event* aEvent,
                                         int32_t aClickedIndex)
 {
-  nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aEvent);
-  bool isShift;
+  MouseEvent* mouseEvent = aEvent->AsMouseEvent();
   bool isControl;
 #ifdef XP_MACOSX
-  mouseEvent->GetMetaKey(&isControl);
+  isControl = mouseEvent->MetaKey();
 #else
-  mouseEvent->GetCtrlKey(&isControl);
+  isControl = mouseEvent->CtrlKey();
 #endif
-  mouseEvent->GetShiftKey(&isShift);
+  bool isShift = mouseEvent->ShiftKey();
   return PerformSelection(aClickedIndex, isShift, isControl); // might destroy us
 }
 
@@ -923,16 +926,11 @@ nsListControlFrame::HandleEvent(nsPresContext* aPresContext,
   if (nsEventStatus_eConsumeNoDefault == *aEventStatus)
     return NS_OK;
 
-  // do we have style that affects how we are selected?
-  // do we have user-input style?
-  const nsStyleUserInterface* uiStyle = StyleUserInterface();
-  if (uiStyle->mUserInput == StyleUserInput::None ||
-      uiStyle->mUserInput == StyleUserInput::Disabled) {
+  // disabled state affects how we're selected, but we don't want to go through
+  // nsHTMLScrollFrame if we're disabled.
+  if (IsContentDisabled()) {
     return nsFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
   }
-  EventStates eventStates = mContent->AsElement()->State();
-  if (eventStates.HasState(NS_EVENT_STATE_DISABLED))
-    return NS_OK;
 
   return nsHTMLScrollFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
 }
@@ -973,7 +971,9 @@ nsListControlFrame::Init(nsIContent*       aContent,
 {
   nsHTMLScrollFrame::Init(aContent, aParent, aPrevInFlow);
 
-  if (IsInDropDownMode()) {
+  if (!nsLayoutUtils::IsContentSelectEnabled() &&
+      IsInDropDownMode()) {
+    // TODO(kuoe0) Remove the following code when content-select is enabled.
     AddStateBits(NS_FRAME_IN_POPUP);
     CreateView();
   }
@@ -1005,7 +1005,7 @@ dom::HTMLOptionsCollection*
 nsListControlFrame::GetOptions() const
 {
   dom::HTMLSelectElement* select =
-    dom::HTMLSelectElement::FromContentOrNull(mContent);
+    dom::HTMLSelectElement::FromNodeOrNull(mContent);
   NS_ENSURE_TRUE(select, nullptr);
 
   return select->Options();
@@ -1015,7 +1015,7 @@ dom::HTMLOptionElement*
 nsListControlFrame::GetOption(uint32_t aIndex) const
 {
   dom::HTMLSelectElement* select =
-    dom::HTMLSelectElement::FromContentOrNull(mContent);
+    dom::HTMLSelectElement::FromNodeOrNull(mContent);
   NS_ENSURE_TRUE(select, nullptr);
 
   return select->Item(aIndex);
@@ -1051,10 +1051,9 @@ nsListControlFrame::ResetList(bool aAllowScrolling)
     // Scroll to the selected index
     int32_t indexToSelect = kNothingSelected;
 
-    nsCOMPtr<nsIDOMHTMLSelectElement> selectElement(do_QueryInterface(mContent));
-    NS_ASSERTION(selectElement, "No select element!");
+    HTMLSelectElement* selectElement = HTMLSelectElement::FromNode(mContent);
     if (selectElement) {
-      selectElement->GetSelectedIndex(&indexToSelect);
+      indexToSelect = selectElement->SelectedIndex();
       AutoWeakFrame weakFrame(this);
       ScrollToIndex(indexToSelect);
       if (!weakFrame.IsAlive()) {
@@ -1110,7 +1109,7 @@ int32_t
 nsListControlFrame::GetSelectedIndex()
 {
   dom::HTMLSelectElement* select =
-    dom::HTMLSelectElement::FromContentOrNull(mContent);
+    dom::HTMLSelectElement::FromNodeOrNull(mContent);
   return select->SelectedIndex();
 }
 
@@ -1135,7 +1134,7 @@ nsListControlFrame::GetNonDisabledOptionFrom(int32_t aFromIndex,
                                              int32_t* aFoundIndex)
 {
   RefPtr<dom::HTMLSelectElement> selectElement =
-    dom::HTMLSelectElement::FromContent(mContent);
+    dom::HTMLSelectElement::FromNode(mContent);
 
   const uint32_t length = selectElement->Length();
   for (uint32_t i = std::max(aFromIndex, 0); i < length; ++i) {
@@ -1287,7 +1286,7 @@ nsListControlFrame::SetOptionsSelectedFromFrame(int32_t aStartIndex,
                                                 bool aClearAll)
 {
   RefPtr<dom::HTMLSelectElement> selectElement =
-    dom::HTMLSelectElement::FromContent(mContent);
+    dom::HTMLSelectElement::FromNode(mContent);
 
   uint32_t mask = dom::HTMLSelectElement::NOTIFY;
   if (mForceSelection) {
@@ -1311,7 +1310,7 @@ nsListControlFrame::ToggleOptionSelectedFromFrame(int32_t aIndex)
   NS_ENSURE_TRUE(option, false);
 
   RefPtr<dom::HTMLSelectElement> selectElement =
-    dom::HTMLSelectElement::FromContent(mContent);
+    dom::HTMLSelectElement::FromNode(mContent);
 
   uint32_t mask = dom::HTMLSelectElement::NOTIFY;
   if (!option->Selected()) {
@@ -1430,7 +1429,7 @@ nsListControlFrame::OnSetSelectedIndex(int32_t aOldIndex, int32_t aNewIndex)
 //----------------------------------------------------------------------
 
 nsresult
-nsListControlFrame::SetFormProperty(nsIAtom* aName,
+nsListControlFrame::SetFormProperty(nsAtom* aName,
                                 const nsAString& aValue)
 {
   if (nsGkAtoms::selected == aName) {
@@ -1465,7 +1464,7 @@ nsListControlFrame::AboutToDropDown()
   nsIFrame* ancestor = comboboxFrame->GetParent();
   mLastDropdownBackstopColor = NS_RGBA(0,0,0,0);
   while (NS_GET_A(mLastDropdownBackstopColor) < 255 && ancestor) {
-    nsStyleContext* context = ancestor->StyleContext();
+    ComputedStyle* context = ancestor->Style();
     mLastDropdownBackstopColor =
       NS_ComposeColors(context->StyleBackground()->BackgroundColor(context),
                        mLastDropdownBackstopColor);
@@ -1509,13 +1508,12 @@ nsListControlFrame::AboutToRollup()
 
 void
 nsListControlFrame::DidReflow(nsPresContext*           aPresContext,
-                              const ReflowInput* aReflowInput,
-                              nsDidReflowStatus        aStatus)
+                              const ReflowInput* aReflowInput)
 {
   bool wasInterrupted = !mHasPendingInterruptAtStartOfReflow &&
                           aPresContext->HasPendingInterrupt();
 
-  nsHTMLScrollFrame::DidReflow(aPresContext, aReflowInput, aStatus);
+  nsHTMLScrollFrame::DidReflow(aPresContext, aReflowInput);
 
   if (mNeedToReset && !wasInterrupted) {
     mNeedToReset = false;
@@ -1552,7 +1550,7 @@ nsresult
 nsListControlFrame::IsOptionDisabled(int32_t anIndex, bool &aIsDisabled)
 {
   RefPtr<dom::HTMLSelectElement> sel =
-    dom::HTMLSelectElement::FromContent(mContent);
+    dom::HTMLSelectElement::FromNode(mContent);
   if (sel) {
     sel->IsOptionDisabled(anIndex, &aIsDisabled);
     return NS_OK;
@@ -1564,17 +1562,11 @@ nsListControlFrame::IsOptionDisabled(int32_t anIndex, bool &aIsDisabled)
 // helper
 //----------------------------------------------------------------------
 bool
-nsListControlFrame::IsLeftButton(nsIDOMEvent* aMouseEvent)
+nsListControlFrame::IsLeftButton(dom::Event* aMouseEvent)
 {
   // only allow selection with the left button
-  nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aMouseEvent);
-  if (mouseEvent) {
-    int16_t whichButton;
-    if (NS_SUCCEEDED(mouseEvent->GetButton(&whichButton))) {
-      return whichButton != 0?false:true;
-    }
-  }
-  return false;
+  MouseEvent* mouseEvent = aMouseEvent->AsMouseEvent();
+  return mouseEvent && mouseEvent->Button() == 0;
 }
 
 nscoord
@@ -1593,7 +1585,7 @@ nsListControlFrame::CalcIntrinsicBSize(nscoord aBSizeOfARow,
                   "Shouldn't be in dropdown mode when we call this");
 
   dom::HTMLSelectElement* select =
-    dom::HTMLSelectElement::FromContentOrNull(mContent);
+    dom::HTMLSelectElement::FromNodeOrNull(mContent);
   if (select) {
     mNumDisplayRows = select->Size();
   } else {
@@ -1611,11 +1603,11 @@ nsListControlFrame::CalcIntrinsicBSize(nscoord aBSizeOfARow,
 // nsIDOMMouseListener
 //----------------------------------------------------------------------
 nsresult
-nsListControlFrame::MouseUp(nsIDOMEvent* aMouseEvent)
+nsListControlFrame::MouseUp(dom::Event* aMouseEvent)
 {
   NS_ASSERTION(aMouseEvent != nullptr, "aMouseEvent is null.");
 
-  nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aMouseEvent);
+  MouseEvent* mouseEvent = aMouseEvent->AsMouseEvent();
   NS_ENSURE_TRUE(mouseEvent, NS_ERROR_FAILURE);
 
   UpdateInListState(aMouseEvent);
@@ -1710,7 +1702,7 @@ nsListControlFrame::MouseUp(nsIDOMEvent* aMouseEvent)
 }
 
 void
-nsListControlFrame::UpdateInListState(nsIDOMEvent* aEvent)
+nsListControlFrame::UpdateInListState(dom::Event* aEvent)
 {
   if (!mComboboxFrame || !mComboboxFrame->IsDroppedDown())
     return;
@@ -1722,7 +1714,7 @@ nsListControlFrame::UpdateInListState(nsIDOMEvent* aEvent)
   }
 }
 
-bool nsListControlFrame::IgnoreMouseEventForSelection(nsIDOMEvent* aEvent)
+bool nsListControlFrame::IgnoreMouseEventForSelection(dom::Event* aEvent)
 {
   if (!mComboboxFrame)
     return false;
@@ -1753,8 +1745,8 @@ nsListControlFrame::FireMenuItemActiveEvent()
 #endif
 
 nsresult
-nsListControlFrame::GetIndexFromDOMEvent(nsIDOMEvent* aMouseEvent,
-                                         int32_t&     aCurIndex)
+nsListControlFrame::GetIndexFromDOMEvent(dom::Event* aMouseEvent,
+                                         int32_t&    aCurIndex)
 {
   if (IgnoreMouseEventForSelection(aMouseEvent))
     return NS_ERROR_FAILURE;
@@ -1773,7 +1765,7 @@ nsListControlFrame::GetIndexFromDOMEvent(nsIDOMEvent* aMouseEvent,
          PresContext()->EventStateManager()->GetEventTargetContent(nullptr);
        content && !option;
        content = content->GetParent()) {
-    option = dom::HTMLOptionElement::FromContent(content);
+    option = dom::HTMLOptionElement::FromNode(content);
   }
 
   if (option) {
@@ -1805,11 +1797,11 @@ FireShowDropDownEvent(nsIContent* aContent, bool aShow, bool aIsSourceTouchEvent
 }
 
 nsresult
-nsListControlFrame::MouseDown(nsIDOMEvent* aMouseEvent)
+nsListControlFrame::MouseDown(dom::Event* aMouseEvent)
 {
   NS_ASSERTION(aMouseEvent != nullptr, "aMouseEvent is null.");
 
-  nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aMouseEvent);
+  MouseEvent* mouseEvent = aMouseEvent->AsMouseEvent();
   NS_ENSURE_TRUE(mouseEvent, NS_ERROR_FAILURE);
 
   UpdateInListState(aMouseEvent);
@@ -1854,19 +1846,16 @@ nsListControlFrame::MouseDown(nsIDOMEvent* aMouseEvent)
       // Ignore the click that occurs on the option element when one is
       // selected from the parent process popup.
       if (mComboboxFrame->IsOpenInParentProcess()) {
-        nsCOMPtr<nsIDOMEventTarget> etarget;
-        aMouseEvent->GetTarget(getter_AddRefs(etarget));
-        nsCOMPtr<nsIDOMHTMLOptionElement> option = do_QueryInterface(etarget);
+        nsCOMPtr<nsIContent> econtent =
+          do_QueryInterface(aMouseEvent->GetTarget());
+        HTMLOptionElement* option = HTMLOptionElement::FromNodeOrNull(econtent);
         if (option) {
           return NS_OK;
         }
       }
 
-      uint16_t inputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
-      if (NS_FAILED(mouseEvent->GetMozInputSource(&inputSource))) {
-        return NS_ERROR_FAILURE;
-      }
-      bool isSourceTouchEvent = inputSource == nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+      uint16_t inputSource = mouseEvent->MozInputSource();
+      bool isSourceTouchEvent = inputSource == MouseEventBinding::MOZ_SOURCE_TOUCH;
       if (FireShowDropDownEvent(mContent, !mComboboxFrame->IsDroppedDownOrHasParentPopup(),
                                 isSourceTouchEvent)) {
         return NS_OK;
@@ -1894,14 +1883,11 @@ nsListControlFrame::MouseDown(nsIDOMEvent* aMouseEvent)
   return NS_OK;
 }
 
-//----------------------------------------------------------------------
-// nsIDOMMouseMotionListener
-//----------------------------------------------------------------------
 nsresult
-nsListControlFrame::MouseMove(nsIDOMEvent* aMouseEvent)
+nsListControlFrame::MouseMove(dom::Event* aMouseEvent)
 {
   NS_ASSERTION(aMouseEvent, "aMouseEvent is null.");
-  nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aMouseEvent);
+  MouseEvent* mouseEvent = aMouseEvent->AsMouseEvent();
   NS_ENSURE_TRUE(mouseEvent, NS_ERROR_FAILURE);
 
   UpdateInListState(aMouseEvent);
@@ -1922,7 +1908,7 @@ nsListControlFrame::MouseMove(nsIDOMEvent* aMouseEvent)
 }
 
 nsresult
-nsListControlFrame::DragMove(nsIDOMEvent* aMouseEvent)
+nsListControlFrame::DragMove(dom::Event* aMouseEvent)
 {
   NS_ASSERTION(aMouseEvent, "aMouseEvent is null.");
 
@@ -1935,13 +1921,13 @@ nsListControlFrame::DragMove(nsIDOMEvent* aMouseEvent)
       if (selectedIndex == mEndSelectionIndex) {
         return NS_OK;
       }
-      nsCOMPtr<nsIDOMMouseEvent> mouseEvent = do_QueryInterface(aMouseEvent);
-      NS_ASSERTION(mouseEvent, "aMouseEvent is not an nsIDOMMouseEvent!");
+      MouseEvent* mouseEvent = aMouseEvent->AsMouseEvent();
+      NS_ASSERTION(mouseEvent, "aMouseEvent is not a MouseEvent!");
       bool isControl;
 #ifdef XP_MACOSX
-      mouseEvent->GetMetaKey(&isControl);
+      isControl = mouseEvent->MetaKey();
 #else
-      mouseEvent->GetCtrlKey(&isControl);
+      isControl = mouseEvent->CtrlKey();
 #endif
       AutoWeakFrame weakFrame(this);
       // Turn SHIFT on when you are dragging, unless control is on.
@@ -1981,7 +1967,7 @@ nsListControlFrame::ScrollToFrame(dom::HTMLOptionElement& aOptElement)
   // otherwise we find the content's frame and scroll to it
   nsIFrame* childFrame = aOptElement.GetPrimaryFrame();
   if (childFrame) {
-    PresContext()->PresShell()->
+    PresShell()->
       ScrollFrameRectIntoView(childFrame,
                               nsRect(nsPoint(0, 0), childFrame->GetSize()),
                               nsIPresShell::ScrollAxis(), nsIPresShell::ScrollAxis(),
@@ -2104,7 +2090,7 @@ nsListControlFrame::Shutdown()
 }
 
 void
-nsListControlFrame::DropDownToggleKey(nsIDOMEvent* aKeyEvent)
+nsListControlFrame::DropDownToggleKey(dom::Event* aKeyEvent)
 {
   // Cocoa widgets do native popups, so don't try to show
   // dropdowns there.
@@ -2126,7 +2112,7 @@ nsListControlFrame::DropDownToggleKey(nsIDOMEvent* aKeyEvent)
 }
 
 nsresult
-nsListControlFrame::KeyDown(nsIDOMEvent* aKeyEvent)
+nsListControlFrame::KeyDown(dom::Event* aKeyEvent)
 {
   MOZ_ASSERT(aKeyEvent, "aKeyEvent is null.");
 
@@ -2317,7 +2303,7 @@ nsListControlFrame::KeyDown(nsIDOMEvent* aKeyEvent)
 }
 
 nsresult
-nsListControlFrame::KeyPress(nsIDOMEvent* aKeyEvent)
+nsListControlFrame::KeyPress(dom::Event* aKeyEvent)
 {
   MOZ_ASSERT(aKeyEvent, "aKeyEvent is null.");
 
@@ -2452,11 +2438,11 @@ nsListControlFrame::KeyPress(nsIDOMEvent* aKeyEvent)
     }
 
     nsAutoString text;
-    if (NS_FAILED(optionElement->GetText(text)) ||
-        !StringBeginsWith(
-           nsContentUtils::TrimWhitespace<
-             nsContentUtils::IsHTMLWhitespaceOrNBSP>(text, false),
-           incrementalString, nsCaseInsensitiveStringComparator())) {
+    optionElement->GetText(text);
+    if (!StringBeginsWith(
+          nsContentUtils::TrimWhitespace<
+          nsContentUtils::IsHTMLWhitespaceOrNBSP>(text, false),
+          incrementalString, nsCaseInsensitiveStringComparator())) {
       continue;
     }
 
@@ -2534,7 +2520,7 @@ nsListControlFrame::PostHandleKeyEvent(int32_t aNewIndex,
 NS_IMPL_ISUPPORTS(nsListEventListener, nsIDOMEventListener)
 
 NS_IMETHODIMP
-nsListEventListener::HandleEvent(nsIDOMEvent* aEvent)
+nsListEventListener::HandleEvent(dom::Event* aEvent)
 {
   if (!mFrame)
     return NS_OK;
@@ -2548,9 +2534,7 @@ nsListEventListener::HandleEvent(nsIDOMEvent* aEvent)
     return mFrame->nsListControlFrame::KeyPress(aEvent);
   }
   if (eventType.EqualsLiteral("mousedown")) {
-    bool defaultPrevented = false;
-    aEvent->GetDefaultPrevented(&defaultPrevented);
-    if (defaultPrevented) {
+    if (aEvent->DefaultPrevented()) {
       return NS_OK;
     }
     return mFrame->nsListControlFrame::MouseDown(aEvent);
@@ -2566,6 +2550,6 @@ nsListEventListener::HandleEvent(nsIDOMEvent* aEvent)
     return mFrame->nsListControlFrame::MouseMove(aEvent);
   }
 
-  NS_ABORT();
+  MOZ_ASSERT_UNREACHABLE("Unexpected eventType");
   return NS_OK;
 }

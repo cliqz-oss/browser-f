@@ -14,25 +14,15 @@ config = {
     "buildbot_json_path": "buildprops.json",
     "exes": {
         'python': sys.executable,
-        'virtualenv': [sys.executable, 'c:/mozilla-build/buildbotve/virtualenv.py'],
         'hg': 'c:/mozilla-build/hg/hg',
-        'mozinstall': ['%s/build/venv/scripts/python' % os.getcwd(),
-                       '%s/build/venv/scripts/mozinstall-script.py' % os.getcwd()],
-        'tooltool.py': [sys.executable, 'C:/mozilla-build/tooltool.py'],
     },
     ###
     "installer_path": INSTALLER_PATH,
     "binary_path": BINARY_PATH,
     "xpcshell_name": XPCSHELL_NAME,
     "virtualenv_path": 'venv',
-    "virtualenv_python_dll": os.path.join(os.path.dirname(sys.executable), "python27.dll"),
     "virtualenv_modules": ['pywin32'],
 
-    "find_links": [
-        "http://pypi.pvt.build.mozilla.org/pub",
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-    "pip_index": False,
     "exe_suffix": EXE_SUFFIX,
     "run_file_names": {
         "mochitest": "runtests.py",
@@ -53,17 +43,9 @@ config = {
         "modules/*",
         "mozbase/*",
         "tools/*",
+        "mozpack/*",
+        "mozbuild/*",
     ],
-    "specific_tests_zip_dirs": {
-        "mochitest": ["mochitest/*"],
-        "reftest": ["reftest/*", "jsreftest/*"],
-        "xpcshell": ["xpcshell/*"],
-        "cppunittest": ["cppunittest/*"],
-        "gtest": ["gtest/*"],
-        "jittest": ["jit-test/*"],
-        "mozbase": ["mozbase/*"],
-        "mozmill": ["mozmill/*"],
-    },
     "suite_definitions": {
         "cppunittest": {
             "options": [
@@ -98,6 +80,7 @@ config = {
                 "--log-errorsummary=%(error_summary_file)s",
                 "--screenshot-on-fail",
                 "--cleanup-crashes",
+                "--marionette-startup-timeout=180",
             ],
             "run_filename": "runtests.py",
             "testsdir": "mochitest"
@@ -129,6 +112,7 @@ config = {
                 "--log-raw=%(raw_log_file)s",
                 "--log-errorsummary=%(error_summary_file)s",
                 "--cleanup-crashes",
+                "--marionette-startup-timeout=180",
             ],
             "run_filename": "runreftest.py",
             "testsdir": "reftest"
@@ -173,13 +157,11 @@ config = {
         "browser-chrome-chunked": ["--flavor=browser", "--chunk-by-runtime"],
         "browser-chrome-addons": ["--flavor=browser", "--chunk-by-runtime", "--tag=addons"],
         "browser-chrome-screenshots": ["--flavor=browser", "--subsuite=screenshots"],
+        "browser-chrome-instrumentation": ["--flavor=browser"],
         "mochitest-gl": ["--subsuite=webgl"],
         "mochitest-devtools-chrome": ["--flavor=browser", "--subsuite=devtools"],
         "mochitest-devtools-chrome-chunked": ["--flavor=browser", "--subsuite=devtools", "--chunk-by-runtime"],
         "mochitest-metro-chrome": ["--flavor=browser", "--metro-immersive"],
-        "jetpack-package": ["--flavor=jetpack-package"],
-        "jetpack-package-clipboard": ["--flavor=jetpack-package", "--subsuite=clipboard"],
-        "jetpack-addon": ["--flavor=jetpack-addon"],
         "a11y": ["--flavor=a11y"],
     },
     # local reftest suites
@@ -189,7 +171,8 @@ config = {
             'tests': ["tests/reftest/tests/testing/crashtest/crashtests.list"]
         },
         "jsreftest": {
-            'options':["--extra-profile-file=tests/jsreftest/tests/user.js"],
+            'options':["--extra-profile-file=tests/jsreftest/tests/user.js",
+                       "--suite=jstestbrowser"],
             'tests': ["tests/jsreftest/tests/jstests.list"]
         },
         "reftest": {
@@ -267,8 +250,7 @@ config = {
     "default_blob_upload_servers": [
         "https://blobupload.elasticbeanstalk.com",
     ],
-    "unstructured_flavors": {"mochitest": ['jetpack'],
-                            "xpcshell": [],
+    "unstructured_flavors": {"xpcshell": [],
                             "gtest": [],
                             "mozmill": [],
                             "cppunittest": [],

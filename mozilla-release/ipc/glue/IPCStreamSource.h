@@ -8,8 +8,8 @@
 #define mozilla_ipc_IPCStreamSource_h
 
 #include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/dom/WorkerHolder.h"
 #include "mozilla/dom/WorkerPrivate.h"
-#include "mozilla/dom/workers/bindings/WorkerHolder.h"
 
 class nsIAsyncInputStream;
 
@@ -19,6 +19,10 @@ namespace dom {
 class nsIContentChild;
 class nsIContentParent;
 } // dom namespace
+
+namespace wr {
+struct ByteBuffer;
+} // wr namespace
 
 namespace ipc {
 
@@ -50,7 +54,7 @@ class PBackgroundParent;
 //
 // In general you should probably use the AutoIPCStreamSource RAII class
 // defined in InputStreamUtils.h instead of using IPCStreamSource directly.
-class IPCStreamSource : public dom::workers::WorkerHolder
+class IPCStreamSource : public dom::WorkerHolder
 {
 public:
   // Create a IPCStreamSource using a PContent IPC manager on the
@@ -109,7 +113,7 @@ protected:
   Close(nsresult aRv) = 0;
 
   virtual void
-  SendData(const nsCString& aBuffer) = 0;
+  SendData(const wr::ByteBuffer& aBuffer) = 0;
 
   void
   ActorConstructed();
@@ -119,13 +123,9 @@ private:
 
   // WorkerHolder methods
   virtual bool
-  Notify(dom::workers::Status aStatus) override;
+  Notify(dom::WorkerStatus aStatus) override;
 
-  enum class ReadReason {
-    Starting, // We're trying to read because we just started off.
-    Notified  // We're trying to read because the streams said it's ready.
-  };
-  void DoRead(ReadReason aReadReason);
+  void DoRead();
 
   void Wait();
 
@@ -137,7 +137,7 @@ private:
   // Raw pointer because this IPCStreamSource keeps the worker alive using a
   // WorkerHolder. The worker is kept alive when the actor is created and,
   // released when the actor is destroyed.
-  dom::workers::WorkerPrivate* mWorkerPrivate;
+  dom::WorkerPrivate* mWorkerPrivate;
 
 #ifdef DEBUG
 protected:

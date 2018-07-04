@@ -13,7 +13,7 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'uikit':
     gl_provider = 'EAGL'
 elif 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
-    if CONFIG['MOZ_EGL_XRENDER_COMPOSITE']:
+    if CONFIG['MOZ_EGL_XRENDER_COMPOSITE'] or CONFIG['MOZ_WAYLAND']:
         gl_provider = 'EGL'
     else:
         gl_provider = 'GLX'
@@ -69,6 +69,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
         'WGLLibrary.h',
     ]
     UNIFIED_SOURCES += [
+        'GLBlitHelperD3D.cpp',
         'GLContextProviderWGL.cpp',
         'SharedSurfaceANGLE.cpp',
         'SharedSurfaceD3D11Interop.cpp',
@@ -78,7 +79,7 @@ if CONFIG['MOZ_ENABLE_SKIA_GPU']:
     SOURCES += [
         'SkiaGLGlue.cpp',
     ]
-    if CONFIG['CLANG_CXX']:
+    if CONFIG['CC_TYPE'] == 'clang':
         # Suppress warnings from Skia header files.
         SOURCES['SkiaGLGlue.cpp'].flags += ['-Wno-implicit-fallthrough']
 
@@ -135,6 +136,7 @@ UNIFIED_SOURCES += [
     'GLScreenBuffer.cpp',
     'GLTextureImage.cpp',
     'GLUploadHelpers.cpp',
+    'MozFramebuffer.cpp',
     'ScopedGLHelpers.cpp',
     'SharedSurface.cpp',
     'SharedSurfaceEGL.cpp',
@@ -157,5 +159,5 @@ CFLAGS += CONFIG['TK_CFLAGS']
 
 LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

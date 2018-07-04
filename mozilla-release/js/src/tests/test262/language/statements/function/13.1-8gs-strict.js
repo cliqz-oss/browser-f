@@ -9,9 +9,11 @@ description: >
     Strict Mode - SyntaxError is thrown if a FunctionExpression has
     two identical parameters
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [onlyStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 var _13_1_8_fun = function (param, param) { };

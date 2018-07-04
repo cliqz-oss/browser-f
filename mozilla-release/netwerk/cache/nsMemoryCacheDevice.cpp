@@ -40,8 +40,8 @@ nsMemoryCacheDevice::nsMemoryCacheDevice()
       mMaxEntryCount(0),
       mMaxEntrySize(-1)  // -1 means "no limit"
 {
-    for (int i=0; i<kQueueCount; ++i)
-        PR_INIT_CLIST(&mEvictionList[i]);
+    for (auto& eviction : mEvictionList)
+        PR_INIT_CLIST(&eviction);
 }
 
 
@@ -272,8 +272,8 @@ nsMemoryCacheDevice::EntryIsTooBig(int64_t entrySize)
                      entrySize, mMaxEntrySize, mSoftLimit));
     if (mMaxEntrySize == -1)
         return entrySize > mSoftLimit;
-    else
-        return (entrySize > mSoftLimit || entrySize > mMaxEntrySize);
+
+    return (entrySize > mSoftLimit || entrySize > mMaxEntrySize);
 }
 
 size_t
@@ -364,7 +364,7 @@ nsMemoryCacheDevice::EvictEntriesIfNecessary(void)
         // LRU-SP eviction selection: Check the head of each segment (each
         // eviction list, kept in LRU order) and select the maximal-cost
         // entry for eviction. Cost is time-since-accessed * size / nref.
-        maxEntry = 0;
+        maxEntry = nullptr;
         for (int i = kQueueCount - 1; i >= 0; --i) {
             entry = (nsCacheEntry *)PR_LIST_HEAD(&mEvictionList[i]);
 
@@ -463,7 +463,7 @@ EntryMatchesClientID(nsCacheEntry* entry, void* args)
     const char * clientID = static_cast<ClientIDArgs*>(args)->clientID;
     uint32_t prefixLength = static_cast<ClientIDArgs*>(args)->prefixLength;
     const char * key = entry->Key()->get();
-    return !clientID || nsCRT::strncmp(clientID, key, prefixLength) == 0;
+    return !clientID || strncmp(clientID, key, prefixLength) == 0;
 }
 
 nsresult
@@ -537,9 +537,9 @@ nsMemoryCacheDevice::CheckEntryCount()
     if (!mInitialized)  return;
 
     int32_t evictionListCount = 0;
-    for (int i=0; i<kQueueCount; ++i) {
-        PRCList * elem = PR_LIST_HEAD(&mEvictionList[i]);
-        while (elem != &mEvictionList[i]) {
+    for (auto& eviction : mEvictionList) {
+        PRCList * elem = PR_LIST_HEAD(&eviction);
+        while (elem != &eviction) {
             elem = PR_NEXT_LINK(elem);
             ++evictionListCount;
         }
@@ -563,20 +563,17 @@ NS_IMPL_ISUPPORTS(nsMemoryCacheDeviceInfo, nsICacheDeviceInfo)
 
 
 NS_IMETHODIMP
-nsMemoryCacheDeviceInfo::GetDescription(char ** result)
+nsMemoryCacheDeviceInfo::GetDescription(nsACString& aDescription)
 {
-    NS_ENSURE_ARG_POINTER(result);
-    *result = NS_strdup("Memory cache device");
-    if (!*result) return NS_ERROR_OUT_OF_MEMORY;
+    aDescription.AssignLiteral("Memory cache device");
     return NS_OK;
 }
 
 
 NS_IMETHODIMP
-nsMemoryCacheDeviceInfo::GetUsageReport(char ** result)
+nsMemoryCacheDeviceInfo::GetUsageReport(nsACString& aUsageReport)
 {
-    NS_ENSURE_ARG_POINTER(result);
-    nsCString  buffer;
+    nsCString buffer;
 
     buffer.AssignLiteral("  <tr>\n"
                          "    <th>Inactive storage:</th>\n"
@@ -585,8 +582,7 @@ nsMemoryCacheDeviceInfo::GetUsageReport(char ** result)
     buffer.AppendLiteral(" KiB</td>\n"
                          "  </tr>\n");
 
-    *result = ToNewCString(buffer);
-    if (!*result) return NS_ERROR_OUT_OF_MEMORY;
+    aUsageReport.Assign(buffer);
     return NS_OK;
 }
 

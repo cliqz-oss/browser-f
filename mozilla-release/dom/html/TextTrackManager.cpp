@@ -43,7 +43,7 @@ CompareTextTracks::TrackChildPosition(TextTrack* aTextTrack) const {
   if (!trackElement) {
     return -1;
   }
-  return mMediaElement->IndexOf(trackElement);
+  return mMediaElement->ComputeIndexOf(trackElement);
 }
 
 bool
@@ -289,7 +289,7 @@ TextTrackManager::UpdateCueDisplay()
     RefPtr<nsVariantCC> jsCues = new nsVariantCC();
 
     jsCues->SetAsArray(nsIDataType::VTYPE_INTERFACE,
-                       &NS_GET_IID(nsIDOMEventTarget),
+                       &NS_GET_IID(EventTarget),
                        showingCues.Length(),
                        static_cast<void*>(showingCues.Elements()));
     nsPIDOMWindowInner* window = mMediaElement->OwnerDoc()->GetInnerWindow();
@@ -460,7 +460,7 @@ TextTrackManager::GetTextTracksOfKind(TextTrackKind aTextTrackKind,
 }
 
 NS_IMETHODIMP
-TextTrackManager::HandleEvent(nsIDOMEvent* aEvent)
+TextTrackManager::HandleEvent(Event* aEvent)
 {
   if (!mTextTracks) {
     return NS_OK;
@@ -498,11 +498,19 @@ public:
     , mCue(aCue)
   {}
 
-  NS_IMETHOD Run() {
+  NS_IMETHOD Run() override {
     WEBVTT_LOGV("SimpleTextTrackEvent cue %p mName %s mTime %lf",
       mCue.get(), NS_ConvertUTF16toUTF8(mName).get(), mTime);
     mCue->DispatchTrustedEvent(mName);
     return NS_OK;
+  }
+
+  void Dispatch() {
+    if (nsCOMPtr<nsIGlobalObject> global = mCue->GetOwnerGlobal()) {
+      global->Dispatch(TaskCategory::Other, do_AddRef(this));
+    } else {
+      NS_DispatchToMainThread(do_AddRef(this));
+    }
   }
 
 private:
@@ -519,7 +527,7 @@ private:
     if (aEvent->mTrack) {
       HTMLTrackElement* trackElement = aEvent->mTrack->GetTrackElement();
       if (trackElement) {
-        return mMediaElement->IndexOf(trackElement);
+        return mMediaElement->ComputeIndexOf(trackElement);
       }
     }
     return -1;
@@ -626,11 +634,11 @@ void
 TextTrackManager::DispatchUpdateCueDisplay()
 {
   if (!mUpdateCueDisplayDispatched && !IsShutdown() &&
-      (mMediaElement->GetHasUserInteraction() || mMediaElement->IsCurrentlyPlaying())) {
+      mMediaElement->IsCurrentlyPlaying()) {
     WEBVTT_LOG("DispatchUpdateCueDisplay");
     nsPIDOMWindowInner* win = mMediaElement->OwnerDoc()->GetInnerWindow();
     if (win) {
-      nsGlobalWindow::Cast(win)->Dispatch(
+      nsGlobalWindowInner::Cast(win)->Dispatch(
         TaskCategory::Other,
         NewRunnableMethod("dom::TextTrackManager::UpdateCueDisplay",
                           this,
@@ -648,11 +656,11 @@ TextTrackManager::DispatchTimeMarchesOn()
   // through its usual monotonic increase during normal playback; current
   // executing call upon completion will check queue for further 'work'.
   if (!mTimeMarchesOnDispatched && !IsShutdown() &&
-      (mMediaElement->GetHasUserInteraction() || mMediaElement->IsCurrentlyPlaying())) {
+      mMediaElement->IsCurrentlyPlaying()) {
     WEBVTT_LOG("DispatchTimeMarchesOn");
     nsPIDOMWindowInner* win = mMediaElement->OwnerDoc()->GetInnerWindow();
     if (win) {
-      nsGlobalWindow::Cast(win)->Dispatch(
+      nsGlobalWindowInner::Cast(win)->Dispatch(
         TaskCategory::Other,
         NewRunnableMethod("dom::TextTrackManager::TimeMarchesOn",
                           this,
@@ -850,7 +858,7 @@ TextTrackManager::TimeMarchesOn()
 
   // Fire the eventList
   for (uint32_t i = 0; i < eventList.Length(); ++i) {
-    NS_DispatchToMainThread(eventList[i].forget());
+    eventList[i]->Dispatch();
   }
 
   // Step 16.

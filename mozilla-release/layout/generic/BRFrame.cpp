@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -29,9 +30,9 @@ class BRFrame final : public nsFrame
 public:
   NS_DECL_FRAMEARENA_HELPERS(BRFrame)
 
-  friend nsIFrame* ::NS_NewBRFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  friend nsIFrame* ::NS_NewBRFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
-  virtual ContentOffsets CalcContentOffsetsFromFramePoint(nsPoint aPoint) override;
+  ContentOffsets CalcContentOffsetsFromFramePoint(const nsPoint& aPoint) override;
 
   virtual FrameSearchResult PeekOffsetNoAmount(bool aForward, int32_t* aOffset) override;
   virtual FrameSearchResult
@@ -65,8 +66,8 @@ public:
 #endif
 
 protected:
-  explicit BRFrame(nsStyleContext* aContext)
-    : nsFrame(aContext, kClassID)
+  explicit BRFrame(ComputedStyle* aStyle)
+    : nsFrame(aStyle, kClassID)
     , mAscent(NS_INTRINSIC_WIDTH_UNKNOWN)
   {}
 
@@ -78,9 +79,9 @@ protected:
 } // namespace mozilla
 
 nsIFrame*
-NS_NewBRFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewBRFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) BRFrame(aContext);
+  return new (aPresShell) BRFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(BRFrame)
@@ -98,6 +99,8 @@ BRFrame::Reflow(nsPresContext* aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("BRFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aMetrics, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
   WritingMode wm = aReflowInput.GetWritingMode();
   LogicalSize finalSize(wm);
   finalSize.BSize(wm) = 0; // BR frames with block size 0 are ignored in quirks
@@ -113,7 +116,7 @@ BRFrame::Reflow(nsPresContext* aPresContext,
   // own, because we may have custom "display" value that makes our
   // ShouldSuppressLineBreak() return false.
   nsLineLayout* ll = aReflowInput.mLineLayout;
-  if (ll && !GetParent()->StyleContext()->ShouldSuppressLineBreak()) {
+  if (ll && !GetParent()->Style()->ShouldSuppressLineBreak()) {
     // Note that the compatibility mode check excludes AlmostStandards
     // mode, since this is the inline box model.  See bug 161691.
     if ( ll->LineIsEmpty() ||
@@ -160,12 +163,8 @@ BRFrame::Reflow(nsPresContext* aPresContext,
       breakType = StyleClear::Line;
     }
 
-    aStatus.Reset();
     aStatus.SetInlineLineBreakAfter(breakType);
     ll->SetLineEndsInBR(true);
-  }
-  else {
-    aStatus.Reset();
   }
 
   aMetrics.SetSize(wm, finalSize);
@@ -180,7 +179,7 @@ BRFrame::Reflow(nsPresContext* aPresContext,
 BRFrame::AddInlineMinISize(gfxContext *aRenderingContext,
                            nsIFrame::InlineMinISizeData *aData)
 {
-  if (!GetParent()->StyleContext()->ShouldSuppressLineBreak()) {
+  if (!GetParent()->Style()->ShouldSuppressLineBreak()) {
     aData->ForceBreak();
   }
 }
@@ -189,7 +188,7 @@ BRFrame::AddInlineMinISize(gfxContext *aRenderingContext,
 BRFrame::AddInlinePrefISize(gfxContext *aRenderingContext,
                             nsIFrame::InlinePrefISizeData *aData)
 {
-  if (!GetParent()->StyleContext()->ShouldSuppressLineBreak()) {
+  if (!GetParent()->Style()->ShouldSuppressLineBreak()) {
     // Match the 1 appunit width assigned in the Reflow method above
     aData->mCurrentLine += 1;
     aData->ForceBreak();
@@ -218,12 +217,12 @@ BRFrame::GetLogicalBaseline(mozilla::WritingMode aWritingMode) const
   return mAscent;
 }
 
-nsIFrame::ContentOffsets BRFrame::CalcContentOffsetsFromFramePoint(nsPoint aPoint)
+nsIFrame::ContentOffsets BRFrame::CalcContentOffsetsFromFramePoint(const nsPoint& aPoint)
 {
   ContentOffsets offsets;
   offsets.content = mContent->GetParent();
   if (offsets.content) {
-    offsets.offset = offsets.content->IndexOf(mContent);
+    offsets.offset = offsets.content->ComputeIndexOf(mContent);
     offsets.secondaryOffset = offsets.offset;
     offsets.associate = CARET_ASSOCIATE_AFTER;
   }

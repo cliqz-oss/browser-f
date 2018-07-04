@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -22,10 +23,9 @@ X11TextureHost::X11TextureHost(TextureFlags aFlags,
                                const SurfaceDescriptorX11& aDescriptor)
  : TextureHost(aFlags)
 {
-  RefPtr<gfxXlibSurface> surface = aDescriptor.OpenForeign();
-  mSurface = surface.get();
+  mSurface = aDescriptor.OpenForeign();
 
-  if (!(aFlags & TextureFlags::DEALLOCATE_CLIENT)) {
+  if (mSurface && !(aFlags & TextureFlags::DEALLOCATE_CLIENT)) {
     mSurface->TakePixmap();
   }
 }
@@ -33,7 +33,7 @@ X11TextureHost::X11TextureHost(TextureFlags aFlags,
 bool
 X11TextureHost::Lock()
 {
-  if (!mCompositor) {
+  if (!mCompositor || !mSurface) {
     return false;
   }
 
@@ -74,6 +74,9 @@ X11TextureHost::SetTextureSourceProvider(TextureSourceProvider* aProvider)
 SurfaceFormat
 X11TextureHost::GetFormat() const
 {
+  if (!mSurface) {
+    return SurfaceFormat::UNKNOWN;
+  }
   gfxContentType type = mSurface->GetContentType();
 #ifdef GL_PROVIDER_GLX
   if (mCompositor->GetBackendType() == LayersBackend::LAYERS_OPENGL) {
@@ -86,6 +89,9 @@ X11TextureHost::GetFormat() const
 IntSize
 X11TextureHost::GetSize() const
 {
+  if (!mSurface) {
+    return IntSize();
+  }
   return mSurface->GetSize();
 }
 

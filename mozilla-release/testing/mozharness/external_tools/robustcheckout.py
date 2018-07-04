@@ -14,6 +14,7 @@ from __future__ import absolute_import
 import contextlib
 import errno
 import functools
+import json
 import os
 import random
 import re
@@ -31,22 +32,39 @@ from mercurial import (
     extensions,
     cmdutil,
     hg,
+    match as matchmod,
     registrar,
     scmutil,
     util,
 )
 
-testedwith = '3.7 3.8 3.9 4.0 4.1 4.2 4.3'
+# TRACKING hg43
+try:
+    from mercurial import configitems
+except ImportError:
+    configitems = None
+
+testedwith = '3.7 3.8 3.9 4.0 4.1 4.2 4.3 4.4 4.5'
 minimumhgversion = '3.7'
 
 cmdtable = {}
 
-# Mercurial 4.3 introduced registrar.command as a replacement for
+# TRACKING hg43 Mercurial 4.3 introduced registrar.command as a replacement for
 # cmdutil.command.
 if util.safehasattr(registrar, 'command'):
     command = registrar.command(cmdtable)
 else:
     command = cmdutil.command(cmdtable)
+
+# TRACKING hg43 Mercurial 4.3 introduced the config registrar. 4.4 requires
+# config items to be registered to avoid a devel warning
+if util.safehasattr(registrar, 'configitem'):
+    configtable = {}
+    configitem = registrar.configitem(configtable)
+
+    configitem('robustcheckout', 'retryjittermin', default=configitems.dynamicdefault)
+    configitem('robustcheckout', 'retryjittermax', default=configitems.dynamicdefault)
+
 
 # Mercurial 4.2 introduced the vfs module and deprecated the symbol in
 # scmutil.
@@ -56,6 +74,11 @@ def getvfs():
         return vfs
     except ImportError:
         return scmutil.vfs
+
+
+def getsparse():
+    from mercurial import sparse
+    return sparse
 
 
 if os.name == 'nt':
@@ -139,12 +162,43 @@ def purgewrapper(orig, ui, *args, **kwargs):
     ('', 'sharebase', '', 'Directory where shared repos should be placed'),
     ('', 'networkattempts', 3, 'Maximum number of attempts for network '
                                'operations'),
+    ('', 'sparseprofile', '', 'Sparse checkout profile to use (path in repo)'),
     ],
     '[OPTION]... URL DEST',
     norepo=True)
 def robustcheckout(ui, url, dest, upstream=None, revision=None, branch=None,
-                   purge=False, sharebase=None, networkattempts=None):
-    """Ensure a working copy has the specified revision checked out."""
+                   purge=False, sharebase=None, networkattempts=None,
+                   sparseprofile=None):
+    """Ensure a working copy has the specified revision checked out.
+
+    Repository data is automatically pooled into the common directory
+    specified by ``--sharebase``, which is a required argument. It is required
+    because pooling storage prevents excessive cloning, which makes operations
+    complete faster.
+
+    One of ``--revision`` or ``--branch`` must be specified. ``--revision``
+    is preferred, as it is deterministic and there is no ambiguity as to which
+    revision will actually be checked out.
+
+    If ``--upstream`` is used, the repo at that URL is used to perform the
+    initial clone instead of cloning from the repo where the desired revision
+    is located.
+
+    ``--purge`` controls whether to removed untracked and ignored files from
+    the working directory. If used, the end state of the working directory
+    should only contain files explicitly under version control for the requested
+    revision.
+
+    ``--sparseprofile`` can be used to specify a sparse checkout profile to use.
+    The sparse checkout profile corresponds to a file in the revision to be
+    checked out. If a previous sparse profile or config is present, it will be
+    replaced by this sparse profile. We choose not to "widen" the sparse config
+    so operations are as deterministic as possible. If an existing checkout
+    is present and it isn't using a sparse checkout, we error. This is to
+    prevent accidentally enabling sparse on a repository that may have
+    clients that aren't sparse aware. Sparse checkout support requires Mercurial
+    4.3 or newer and the ``sparse`` extension must be enabled.
+    """
     if not revision and not branch:
         raise error.Abort('must specify one of --revision or --branch')
 
@@ -161,6 +215,23 @@ def robustcheckout(ui, url, dest, upstream=None, revision=None, branch=None,
     if not sharebase:
         raise error.Abort('share base directory not defined; refusing to operate',
                           hint='define share.pool config option or pass --sharebase')
+
+    # Sparse profile support was added in Mercurial 4.3, where it was highly
+    # experimental. Because of the fragility of it, we only support sparse
+    # profiles on 4.3. When 4.4 is released, we'll need to opt in to sparse
+    # support. We /could/ silently fall back to non-sparse when not supported.
+    # However, given that sparse has performance implications, we want to fail
+    # fast if we can't satisfy the desired checkout request.
+    if sparseprofile:
+        if util.versiontuple(n=2) not in ((4, 3), (4, 4), (4, 5)):
+            raise error.Abort('sparse profile support only available for '
+                              'Mercurial versions greater than 4.3 (using %s)' % util.version())
+
+        try:
+            extensions.find('sparse')
+        except KeyError:
+            raise error.Abort('sparse extension must be enabled to use '
+                              '--sparseprofile')
 
     ui.warn('(using Mercurial %s)\n' % util.version())
 
@@ -180,17 +251,65 @@ def robustcheckout(ui, url, dest, upstream=None, revision=None, branch=None,
 
     sharebase = os.path.realpath(sharebase)
 
-    return _docheckout(ui, url, dest, upstream, revision, branch, purge,
-                       sharebase, networkattempts)
+    optimes = []
+    start = time.time()
+
+    try:
+        return _docheckout(ui, url, dest, upstream, revision, branch, purge,
+                           sharebase, optimes, networkattempts,
+                           sparse_profile=sparseprofile)
+    finally:
+        overall = time.time() - start
+        optimes.append(('overall', overall))
+
+        if 'TASKCLUSTER_INSTANCE_TYPE' in os.environ:
+            perfherder = {
+                'framework': {
+                    'name': 'vcs',
+                },
+                'suites': [],
+            }
+            for op, duration in optimes:
+                perfherder['suites'].append({
+                    'name': op,
+                    'value': duration,
+                    'lowerIsBetter': True,
+                    'shouldAlert': False,
+                    'extraOptions': [os.environ['TASKCLUSTER_INSTANCE_TYPE']],
+                    'subtests': [],
+                })
+
+            ui.write('PERFHERDER_DATA: %s\n' % json.dumps(perfherder,
+                                                          sort_keys=True))
 
 def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
-                networkattemptlimit, networkattempts=None):
+                optimes, networkattemptlimit, networkattempts=None,
+                sparse_profile=None):
     if not networkattempts:
         networkattempts = [1]
 
     def callself():
         return _docheckout(ui, url, dest, upstream, revision, branch, purge,
-                           sharebase, networkattemptlimit, networkattempts)
+                           sharebase, optimes, networkattemptlimit,
+                           networkattempts=networkattempts,
+                           sparse_profile=sparse_profile)
+
+    @contextlib.contextmanager
+    def timeit(op):
+        errored = False
+        try:
+            start = time.time()
+            yield
+        except Exception:
+            errored = True
+            raise
+        finally:
+            elapsed = time.time() - start
+
+            if errored:
+                op += '_errored'
+
+            optimes.append((op, elapsed))
 
     ui.write('ensuring %s@%s is available at %s\n' % (url, revision or branch,
                                                       dest))
@@ -216,10 +335,25 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
     if destvfs.exists() and not destvfs.exists('.hg'):
         raise error.Abort('destination exists but no .hg directory')
 
+    # Refuse to enable sparse checkouts on existing checkouts. The reasoning
+    # here is that another consumer of this repo may not be sparse aware. If we
+    # enabled sparse, we would lock them out.
+    if destvfs.exists() and sparse_profile and not destvfs.exists('.hg/sparse'):
+        raise error.Abort('cannot enable sparse profile on existing '
+                          'non-sparse checkout',
+                          hint='use a separate working directory to use sparse')
+
+    # And the other direction for symmetry.
+    if not sparse_profile and destvfs.exists('.hg/sparse'):
+        raise error.Abort('cannot use non-sparse checkout on existing sparse '
+                          'checkout',
+                          hint='use a separate working directory to use sparse')
+
     # Require checkouts to be tied to shared storage because efficiency.
     if destvfs.exists('.hg') and not destvfs.exists('.hg/sharedpath'):
         ui.warn('(destination is not shared; deleting)\n')
-        destvfs.rmtree(forcibly=True)
+        with timeit('remove_unshared_dest'):
+            destvfs.rmtree(forcibly=True)
 
     # Verify the shared path exists and is using modern pooled storage.
     if destvfs.exists('.hg/sharedpath'):
@@ -229,17 +363,20 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
 
         if not os.path.exists(storepath):
             ui.warn('(shared store does not exist; deleting destination)\n')
-            destvfs.rmtree(forcibly=True)
+            with timeit('removed_missing_shared_store'):
+                destvfs.rmtree(forcibly=True)
         elif not re.search('[a-f0-9]{40}/\.hg$', storepath.replace('\\', '/')):
             ui.warn('(shared store does not belong to pooled storage; '
                     'deleting destination to improve efficiency)\n')
-            destvfs.rmtree(forcibly=True)
+            with timeit('remove_unpooled_store'):
+                destvfs.rmtree(forcibly=True)
 
     if destvfs.isfileorlink('.hg/wlock'):
         ui.warn('(dest has an active working directory lock; assuming it is '
                 'left over from a previous process and that the destination '
                 'is corrupt; deleting it just to be sure)\n')
-        destvfs.rmtree(forcibly=True)
+        with timeit('remove_locked_wdir'):
+            destvfs.rmtree(forcibly=True)
 
     def handlerepoerror(e):
         if e.message == _('abandoned transaction found'):
@@ -248,7 +385,8 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
             if not repo.recover():
                 ui.warn('(could not recover repo state; '
                         'deleting shared store)\n')
-                deletesharedstore()
+                with timeit('remove_unrecovered_shared_store'):
+                    deletesharedstore()
 
             ui.warn('(attempting checkout from beginning)\n')
             return callself()
@@ -309,6 +447,12 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
                 ui.warn('socket error: %s\n' % e.reason)
                 handlenetworkfailure()
                 return True
+            else:
+                ui.warn('unhandled URLError; reason type: %s; value: %s' % (
+                    e.reason.__class__.__name__, e.reason))
+        else:
+            ui.warn('unhandled exception during network operation; type: %s; '
+                    'value: %s' % (e.__class__.__name__, e))
 
         return False
 
@@ -341,15 +485,21 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
                 'corrupt; deleting store and destination just to be '
                 'sure)\n')
         if destvfs.exists():
-            destvfs.rmtree(forcibly=True)
-        storevfs.rmtree(forcibly=True)
+            with timeit('remove_dest_active_lock'):
+                destvfs.rmtree(forcibly=True)
+
+        with timeit('remove_shared_store_active_lock'):
+            storevfs.rmtree(forcibly=True)
 
     if storevfs.exists() and not storevfs.exists('.hg/requires'):
         ui.warn('(shared store missing requires file; this is a really '
                 'odd failure; deleting store and destination)\n')
         if destvfs.exists():
-            destvfs.rmtree(forcibly=True)
-        storevfs.rmtree(forcibly=True)
+            with timeit('remove_dest_no_requires'):
+                destvfs.rmtree(forcibly=True)
+
+        with timeit('remove_shared_store_no_requires'):
+            storevfs.rmtree(forcibly=True)
 
     if storevfs.exists('.hg/requires'):
         requires = set(storevfs.read('.hg/requires').splitlines())
@@ -363,8 +513,11 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
                     'store and destination to ensure optimal behavior)\n' %
                     ', '.join(sorted(missing)))
             if destvfs.exists():
-                destvfs.rmtree(forcibly=True)
-            storevfs.rmtree(forcibly=True)
+                with timeit('remove_dest_missing_requires'):
+                    destvfs.rmtree(forcibly=True)
+
+            with timeit('remove_shared_store_missing_requires'):
+                storevfs.rmtree(forcibly=True)
 
     created = False
 
@@ -383,8 +536,10 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
             ui.write('(cloning from upstream repo %s)\n' % upstream)
 
         try:
-            res = hg.clone(ui, {}, clonepeer, dest=dest, update=False,
-                           shareopts={'pool': sharebase, 'mode': 'identity'})
+            with timeit('clone'):
+                shareopts = {'pool': sharebase, 'mode': 'identity'}
+                res = hg.clone(ui, {}, clonepeer, dest=dest, update=False,
+                               shareopts=shareopts)
         except (error.Abort, ssl.SSLError, urllib2.URLError) as e:
             if handlepullerror(e):
                 return callself()
@@ -393,7 +548,8 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
             return handlerepoerror(e)
         except error.RevlogError as e:
             ui.warn('(repo corruption: %s; deleting shared store)\n' % e.message)
-            deletesharedstore()
+            with timeit('remove_shared_store_revlogerror'):
+                deletesharedstore()
             return callself()
 
         # TODO retry here.
@@ -441,9 +597,10 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
             if checkoutrevision in repo:
                 ui.warn('(revision already present locally; not pulling)\n')
             else:
-                pullop = exchange.pull(repo, remote, heads=pullrevs)
-                if not pullop.rheads:
-                    raise error.Abort('unable to pull requested revision')
+                with timeit('pull'):
+                    pullop = exchange.pull(repo, remote, heads=pullrevs)
+                    if not pullop.rheads:
+                        raise error.Abort('unable to pull requested revision')
         except (error.Abort, ssl.SSLError, urllib2.URLError) as e:
             if handlepullerror(e):
                 return callself()
@@ -467,16 +624,74 @@ def _docheckout(ui, url, dest, upstream, revision, branch, purge, sharebase,
         ui.write('(purging working directory)\n')
         purgeext = extensions.find('purge')
 
-        if purgeext.purge(ui, repo, all=True, abort_on_err=True,
-                          # The function expects all arguments to be
-                          # defined.
-                          **{'print': None, 'print0': None, 'dirs': None,
-                             'files': None}):
-            raise error.Abort('error purging')
+        # Mercurial 4.3 doesn't purge files outside the sparse checkout.
+        # See https://bz.mercurial-scm.org/show_bug.cgi?id=5626. Force
+        # purging by monkeypatching the sparse matcher.
+        try:
+            old_sparse_fn = getattr(repo.dirstate, '_sparsematchfn', None)
+            if old_sparse_fn is not None:
+                assert util.versiontuple(n=2) in ((4, 3), (4, 4), (4, 5))
+                repo.dirstate._sparsematchfn = lambda: matchmod.always(repo.root, '')
+
+            with timeit('purge'):
+                if purgeext.purge(ui, repo, all=True, abort_on_err=True,
+                                  # The function expects all arguments to be
+                                  # defined.
+                                  **{'print': None,
+                                     'print0': None,
+                                     'dirs': None,
+                                     'files': None}):
+                    raise error.Abort('error purging')
+        finally:
+            if old_sparse_fn is not None:
+                repo.dirstate._sparsematchfn = old_sparse_fn
 
     # Update the working directory.
-    if commands.update(ui, repo, rev=checkoutrevision, clean=True):
-        raise error.Abort('error updating')
+
+    if sparse_profile:
+        sparsemod = getsparse()
+
+        # By default, Mercurial will ignore unknown sparse profiles. This could
+        # lead to a full checkout. Be more strict.
+        try:
+            repo.filectx(sparse_profile, changeid=checkoutrevision).data()
+        except error.ManifestLookupError:
+            raise error.Abort('sparse profile %s does not exist at revision '
+                              '%s' % (sparse_profile, checkoutrevision))
+
+        old_config = sparsemod.parseconfig(repo.ui, repo.vfs.tryread('sparse'))
+        old_includes, old_excludes, old_profiles = old_config
+
+        if old_profiles == {sparse_profile} and not old_includes and not \
+                old_excludes:
+            ui.write('(sparse profile %s already set; no need to update '
+                     'sparse config)\n' % sparse_profile)
+        else:
+            if old_includes or old_excludes or old_profiles:
+                ui.write('(replacing existing sparse config with profile '
+                         '%s)\n' % sparse_profile)
+            else:
+                ui.write('(setting sparse config to profile %s)\n' %
+                         sparse_profile)
+
+            # If doing an incremental update, this will perform two updates:
+            # one to change the sparse profile and another to update to the new
+            # revision. This is not desired. But there's not a good API in
+            # Mercurial to do this as one operation.
+            with repo.wlock(), timeit('sparse_update_config'):
+                fcounts = map(len, sparsemod._updateconfigandrefreshwdir(
+                    repo, [], [], [sparse_profile], force=True))
+
+                repo.ui.status('%d files added, %d files dropped, '
+                               '%d files conflicting\n' % tuple(fcounts))
+
+            ui.write('(sparse refresh complete)\n')
+
+    op = 'update_sparse' if sparse_profile else 'update'
+
+    with timeit(op):
+        if commands.update(ui, repo, rev=checkoutrevision, clean=True):
+            raise error.Abort('error updating')
 
     ui.write('updated to %s\n' % checkoutrevision)
     return None

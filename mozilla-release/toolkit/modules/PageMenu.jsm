@@ -2,11 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["PageMenuParent", "PageMenuChild"];
+var EXPORTED_SYMBOLS = ["PageMenuParent", "PageMenuChild"];
 
-var {interfaces: Ci} = Components;
-
-this.PageMenu = function PageMenu() {
+function PageMenu() {
 }
 
 PageMenu.prototype = {
@@ -239,10 +237,10 @@ PageMenu.prototype = {
       }
     }
   }
-}
+};
 
 // This object is expected to be used from a parent process.
-this.PageMenuParent = function PageMenuParent() {
+function PageMenuParent() {
 }
 
 PageMenuParent.prototype = {
@@ -275,10 +273,10 @@ PageMenuParent.prototype = {
   addToPopup(aMenu, aBrowser, aPopup) {
     return this.buildAndAttachMenuWithObject(aMenu, aBrowser, aPopup);
   }
-}
+};
 
 // This object is expected to be used from a child process.
-this.PageMenuChild = function PageMenuChild() {
+function PageMenuChild() {
 }
 
 PageMenuChild.prototype = {
@@ -314,4 +312,4 @@ PageMenuChild.prototype = {
       this._builder = null;
     }
   }
-}
+};

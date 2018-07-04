@@ -216,7 +216,8 @@ class MoveOp
         cycleEnd_(false),
         cycleBeginSlot_(-1),
         cycleEndSlot_(-1),
-        type_(type)
+        type_(type),
+        endCycleType_(GENERAL) // initialize to silence UBSan warning
     { }
 
     bool isCycleBegin() const {
@@ -331,6 +332,9 @@ class MoveResolver
     }
     uint32_t numCycles() const {
         return numCycles_;
+    }
+    bool hasNoPendingMoves() const {
+        return pending_.empty();
     }
     void setAllocator(TempAllocator& alloc) {
         movePool_.setAllocator(alloc);

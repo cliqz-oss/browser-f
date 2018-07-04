@@ -8,10 +8,10 @@
 
 #include "mozilla/Attributes.h"
 #include "nsGenericHTMLElement.h"
-#include "nsIDOMHTMLSelectElement.h"
 #include "nsIConstraintValidation.h"
 
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/HTMLOptionsCollection.h"
 #include "mozilla/ErrorResult.h"
 #include "nsCheapSets.h"
@@ -24,63 +24,18 @@ class nsContentList;
 class nsIDOMHTMLOptionElement;
 class nsIHTMLCollection;
 class nsISelectControlFrame;
-class nsPresState;
 
 namespace mozilla {
 
 class EventChainPostVisitor;
 class EventChainPreVisitor;
+class SelectContentData;
+class PresState;
 
 namespace dom {
 
 class HTMLFormSubmission;
 class HTMLSelectElement;
-
-#define NS_SELECT_STATE_IID                        \
-{ /* 4db54c7c-d159-455f-9d8e-f60ee466dbf3 */       \
-  0x4db54c7c,                                      \
-  0xd159,                                          \
-  0x455f,                                          \
-  {0x9d, 0x8e, 0xf6, 0x0e, 0xe4, 0x66, 0xdb, 0xf3} \
-}
-
-/**
- * The restore state used by select
- */
-class SelectState : public nsISupports
-{
-public:
-  SelectState()
-  {
-  }
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_SELECT_STATE_IID)
-  NS_DECL_ISUPPORTS
-
-  void PutOption(int32_t aIndex, const nsAString& aValue)
-  {
-    // If the option is empty, store the index.  If not, store the value.
-    if (aValue.IsEmpty()) {
-      mIndices.Put(aIndex);
-    } else {
-      mValues.Put(aValue);
-    }
-  }
-
-  bool ContainsOption(int32_t aIndex, const nsAString& aValue)
-  {
-    return mValues.Contains(aValue) || mIndices.Contains(aIndex);
-  }
-
-private:
-  virtual ~SelectState()
-  {
-  }
-
-  nsCheapSet<nsStringHashKey> mValues;
-  nsCheapSet<nsUint32HashKey> mIndices;
-};
-
-NS_DEFINE_STATIC_IID_ACCESSOR(SelectState, NS_SELECT_STATE_IID)
 
 class MOZ_STACK_CLASS SafeOptionListMutation
 {
@@ -120,7 +75,6 @@ private:
  * Implementation of &lt;select&gt;
  */
 class HTMLSelectElement final : public nsGenericHTMLFormElementWithState,
-                                public nsIDOMHTMLSelectElement,
                                 public nsIConstraintValidation
 {
 public:
@@ -151,7 +105,7 @@ public:
   explicit HTMLSelectElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
                              FromParser aFromParser = NOT_FROM_PARSER);
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLSelectElement, select)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLSelectElement, select)
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -163,9 +117,6 @@ public:
   {
     return true;
   }
-
-  // nsIDOMHTMLSelectElement
-  NS_DECL_NSIDOMHTMLSELECTELEMENT
 
   // WebIdl HTMLSelectElement
   bool Autofocus() const
@@ -204,14 +155,18 @@ public:
   {
     SetHTMLBoolAttr(nsGkAtoms::multiple, aVal, aRv);
   }
-  // Uses XPCOM GetName.
+
+  void GetName(DOMString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::name, aValue);
+  }
   void SetName(const nsAString& aName, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::name, aName, aRv);
   }
   bool Required() const
   {
-    return GetBoolAttr(nsGkAtoms::required);
+    return State().HasState(NS_EVENT_STATE_REQUIRED);
   }
   void SetRequired(bool aVal, ErrorResult& aRv)
   {
@@ -226,7 +181,7 @@ public:
     SetUnsignedIntAttr(nsGkAtoms::size, aSize, 0, aRv);
   }
 
-  // Uses XPCOM GetType.
+  void GetType(nsAString& aValue);
 
   HTMLOptionsCollection* Options() const
   {
@@ -252,14 +207,14 @@ public:
   void Add(const HTMLOptionElementOrHTMLOptGroupElement& aElement,
            const Nullable<HTMLElementOrLong>& aBefore,
            ErrorResult& aRv);
-  // Uses XPCOM Remove.
+  void Remove(int32_t aIndex);
   void IndexedSetter(uint32_t aIndex, HTMLOptionElement* aOption,
                      ErrorResult& aRv)
   {
     mOptions->IndexedSetter(aIndex, aOption, aRv);
   }
 
-  static bool MatchSelectedOptions(Element* aElement, int32_t, nsIAtom*,
+  static bool MatchSelectedOptions(Element* aElement, int32_t, nsAtom*,
                                    void*);
 
   nsIHTMLCollection* SelectedOptions();
@@ -273,7 +228,7 @@ public:
     aRv = SetSelectedIndexInternal(aIdx, true);
   }
   void GetValue(DOMString& aValue);
-  // Uses XPCOM SetValue.
+  void SetValue(const nsAString& aValue);
 
   // Override SetCustomValidity so we update our state properly when it's called
   // via bindings.
@@ -285,21 +240,23 @@ public:
   virtual JSObject* WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // nsIContent
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(
                      EventChainPostVisitor& aVisitor) override;
 
   virtual bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable, int32_t* aTabIndex) override;
-  virtual nsresult InsertChildAt(nsIContent* aKid, uint32_t aIndex,
-                                 bool aNotify) override;
-  virtual void RemoveChildAt(uint32_t aIndex, bool aNotify) override;
+  virtual nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
+                                     bool aNotify) override;
+  virtual nsresult InsertChildAt_Deprecated(nsIContent* aKid, uint32_t aIndex,
+                                            bool aNotify) override;
+  virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
+  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
 
   // Overriden nsIFormControl methods
   NS_IMETHOD Reset() override;
   NS_IMETHOD SubmitNamesValues(HTMLFormSubmission* aFormSubmission) override;
   NS_IMETHOD SaveState() override;
-  virtual bool RestoreState(nsPresState* aState) override;
+  virtual bool RestoreState(PresState* aState) override;
   virtual bool IsDisabledForEvents(EventMessage aMessage) override;
 
   virtual void FieldSetDisabledChanged(bool aNotify) override;
@@ -341,7 +298,7 @@ public:
    */
   NS_IMETHOD IsOptionDisabled(int32_t aIndex,
                               bool* aIsDisabled);
-  bool IsOptionDisabled(HTMLOptionElement* aOption);
+  bool IsOptionDisabled(HTMLOptionElement* aOption) const;
 
   /**
    * Sets multiple options (or just sets startIndex if select is single)
@@ -361,31 +318,19 @@ public:
                                  uint32_t aOptionsMask);
 
   /**
-   * Finds the index of a given option element
-   *
-   * @param aOption the option to get the index of
-   * @param aStartIndex the index to start looking at
-   * @param aForward TRUE to look forward, FALSE to look backward
-   * @return the option index
-   */
-  NS_IMETHOD GetOptionIndex(nsIDOMHTMLOptionElement* aOption,
-                            int32_t aStartIndex,
-                            bool aForward,
-                            int32_t* aIndex);
-
-  /**
    * Called when an attribute is about to be changed
    */
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                                nsIContent* aBindingParent,
                                bool aCompileEventHandlers) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
-  virtual nsresult BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                  const nsAttrValueOrString* aValue,
                                  bool aNotify) override;
-  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
 
   virtual void DoneAddingChildren(bool aHaveNotified) override;
@@ -394,13 +339,14 @@ public:
   }
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
-  virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
+  virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const override;
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult,
                          bool aPreallocateChildren) const override;
@@ -428,7 +374,7 @@ public:
     // If item index is out of range, insert to last.
     // (since beforeElement becomes null, it is inserted to last)
     nsIContent* beforeContent = mOptions->GetElementAt(aIndex);
-    return Add(aElement, nsGenericHTMLElement::FromContentOrNull(beforeContent),
+    return Add(aElement, nsGenericHTMLElement::FromNodeOrNull(beforeContent),
                aError);
   }
 
@@ -443,7 +389,10 @@ public:
   bool OpenInParentProcess();
   void SetOpenInParentProcess(bool aVal);
 
-  void GetPreviewValue(nsAString& aValue);
+  void GetPreviewValue(nsAString& aValue)
+  {
+    aValue = mPreviewValue;
+  }
   void SetPreviewValue(const nsAString& aValue);
 
 protected:
@@ -495,7 +444,7 @@ protected:
    * Restore state to a particular state string (representing the options)
    * @param aNewSelected the state string to restore to
    */
-  void RestoreStateTo(SelectState* aNewSelected);
+  void RestoreStateTo(const SelectContentData& aNewSelected);
 
   // Adding options
   /**
@@ -521,7 +470,7 @@ protected:
 
   // nsIConstraintValidation
   void UpdateBarredFromConstraintValidation();
-  bool IsValueMissing();
+  bool IsValueMissing() const;
 
   /**
    * Get the index of the first option at, under or following the content in
@@ -653,12 +602,17 @@ protected:
    * The temporary restore state in case we try to restore before parser is
    * done adding options
    */
-  nsCOMPtr<SelectState> mRestoreState;
+  UniquePtr<SelectContentData> mRestoreState;
 
   /**
    * The live list of selected options.
   */
   RefPtr<nsContentList> mSelectedOptions;
+
+  /**
+   * The current displayed preview text.
+  */
+  nsString  mPreviewValue;
 
 private:
   static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,

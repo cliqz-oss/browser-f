@@ -19,8 +19,8 @@
 #include "mozilla/dom/WebCryptoCommon.h"
 #include "mozilla/dom/WebCryptoTask.h"
 #include "mozilla/dom/WebCryptoThreadPool.h"
+#include "mozilla/dom/WorkerHolder.h"
 #include "mozilla/dom/WorkerPrivate.h"
-#include "mozilla/dom/workers/bindings/WorkerHolder.h"
 
 // Template taken from security/nss/lib/util/templates.c
 // This (or SGN_EncodeDigestInfo) would ideally be exported
@@ -38,12 +38,6 @@ const SEC_ASN1Template SGN_DigestInfoTemplate[] = {
 
 namespace mozilla {
 namespace dom {
-
-using mozilla::dom::workers::Canceling;
-using mozilla::dom::workers::GetCurrentThreadWorkerPrivate;
-using mozilla::dom::workers::Status;
-using mozilla::dom::workers::WorkerHolder;
-using mozilla::dom::workers::WorkerPrivate;
 
 // Pre-defined identifiers for telemetry histograms
 
@@ -144,6 +138,7 @@ private:
 class WebCryptoTask::InternalWorkerHolder final : public WorkerHolder
 {
   InternalWorkerHolder()
+    : WorkerHolder("WebCryptoTask::InternalWorkerHolder")
   { }
 
   ~InternalWorkerHolder()
@@ -168,7 +163,7 @@ public:
   }
 
   virtual bool
-  Notify(Status aStatus) override
+  Notify(WorkerStatus aStatus) override
   {
     NS_ASSERT_OWNINGTHREAD(InternalWorkerHolder);
     // Do nothing here.  Since WebCryptoTask dispatches back to
@@ -376,10 +371,9 @@ WebCryptoTask::DispatchWithPromise(Promise* aResultPromise)
   mEarlyRv = BeforeCrypto();
   MAYBE_EARLY_FAIL(mEarlyRv)
 
-  // Skip NSS if we're already done, or launch a CryptoTask
+  // Skip dispatch if we're already done. Otherwise launch a CryptoTask
   if (mEarlyComplete) {
     CallCallback(mEarlyRv);
-    Skip();
     return;
   }
 
@@ -410,13 +404,7 @@ WebCryptoTask::Run()
 {
   // Run heavy crypto operations on the thread pool, off the original thread.
   if (!IsOnOriginalThread()) {
-    nsNSSShutDownPreventionLock locker;
-
-    if (isAlreadyShutDown()) {
-      mRv = NS_ERROR_NOT_AVAILABLE;
-    } else {
-      mRv = CalculateResult();
-    }
+    mRv = CalculateResult();
 
     // Back to the original thread, i.e. continue below.
     mOriginalEventTarget->Dispatch(this, NS_DISPATCH_NORMAL);
@@ -424,12 +412,6 @@ WebCryptoTask::Run()
   }
 
   // We're now back on the calling thread.
-
-  // Release NSS resources now, before calling CallCallback, so that
-  // WebCryptoTasks have consistent behavior regardless of whether NSS is shut
-  // down between CalculateResult being called and CallCallback being called.
-  virtualDestroyNSSReference();
-
   CallCallback(mRv);
 
   // Stop holding the worker thread alive now that the async work has
@@ -466,10 +448,6 @@ nsresult
 WebCryptoTask::CalculateResult()
 {
   MOZ_ASSERT(!IsOnOriginalThread());
-
-  if (isAlreadyShutDown()) {
-    return NS_ERROR_DOM_UNKNOWN_ERR;
-  }
 
   return DoCrypto();
 }
@@ -716,12 +694,16 @@ private:
       return NS_ERROR_DOM_INVALID_ACCESS_ERR;
     }
 
+    // Check whether the integer addition would overflow.
+    if (std::numeric_limits<CryptoBuffer::size_type>::max() - 16 < mData.Length()) {
+      return NS_ERROR_DOM_DATA_ERR;
+    }
+
     // Initialize the output buffer (enough space for padding / a full tag)
-    uint32_t dataLen = mData.Length();
-    uint32_t maxLen = dataLen + 16;
-    if (!mResult.SetLength(maxLen, fallible)) {
+    if (!mResult.SetLength(mData.Length() + 16, fallible)) {
       return NS_ERROR_DOM_UNKNOWN_ERR;
     }
+
     uint32_t outLen = 0;
 
     // Perform the encryption/decryption
@@ -1447,7 +1429,7 @@ public:
     mDataIsJwk = false;
 
     // Try ArrayBuffer
-    RootedTypedArray<ArrayBuffer> ab(aCx);
+    RootedSpiderMonkeyInterface<ArrayBuffer> ab(aCx);
     if (ab.Init(aKeyData)) {
       if (!mKeyData.Assign(ab)) {
         mEarlyRv = NS_ERROR_DOM_OPERATION_ERR;
@@ -1456,7 +1438,7 @@ public:
     }
 
     // Try ArrayBufferView
-    RootedTypedArray<ArrayBufferView> abv(aCx);
+    RootedSpiderMonkeyInterface<ArrayBufferView> abv(aCx);
     if (abv.Init(aKeyData)) {
       if (!mKeyData.Assign(abv)) {
         mEarlyRv = NS_ERROR_DOM_OPERATION_ERR;
@@ -1770,8 +1752,6 @@ private:
 
   virtual nsresult DoCrypto() override
   {
-    nsNSSShutDownPreventionLock locker;
-
     // Import the key data itself
     UniqueSECKEYPublicKey pubKey;
     UniqueSECKEYPrivateKey privKey;
@@ -1780,9 +1760,9 @@ private:
          !mJwk.mD.WasPassed())) {
       // Public key import
       if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_SPKI)) {
-        pubKey = CryptoKey::PublicKeyFromSpki(mKeyData, locker);
+        pubKey = CryptoKey::PublicKeyFromSpki(mKeyData);
       } else {
-        pubKey = CryptoKey::PublicKeyFromJwk(mJwk, locker);
+        pubKey = CryptoKey::PublicKeyFromJwk(mJwk);
       }
 
       if (!pubKey) {
@@ -1799,9 +1779,9 @@ private:
          mJwk.mD.WasPassed())) {
       // Private key import
       if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_PKCS8)) {
-        privKey = CryptoKey::PrivateKeyFromPkcs8(mKeyData, locker);
+        privKey = CryptoKey::PrivateKeyFromPkcs8(mKeyData);
       } else {
-        privKey = CryptoKey::PrivateKeyFromJwk(mJwk, locker);
+        privKey = CryptoKey::PrivateKeyFromJwk(mJwk);
       }
 
       if (!privKey) {
@@ -1922,10 +1902,9 @@ private:
     UniqueSECKEYPublicKey pubKey;
     UniqueSECKEYPrivateKey privKey;
 
-    nsNSSShutDownPreventionLock locker;
     if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_JWK) && mJwk.mD.WasPassed()) {
       // Private key import
-      privKey = CryptoKey::PrivateKeyFromJwk(mJwk, locker);
+      privKey = CryptoKey::PrivateKeyFromJwk(mJwk);
       if (!privKey) {
         return NS_ERROR_DOM_DATA_ERR;
       }
@@ -1941,11 +1920,11 @@ private:
                 !mJwk.mD.WasPassed())) {
       // Public key import
       if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_RAW)) {
-        pubKey = CryptoKey::PublicECKeyFromRaw(mKeyData, mNamedCurve, locker);
+        pubKey = CryptoKey::PublicECKeyFromRaw(mKeyData, mNamedCurve);
       } else if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_SPKI)) {
-        pubKey = CryptoKey::PublicKeyFromSpki(mKeyData, locker);
+        pubKey = CryptoKey::PublicKeyFromSpki(mKeyData);
       } else if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_JWK)) {
-        pubKey = CryptoKey::PublicKeyFromJwk(mJwk, locker);
+        pubKey = CryptoKey::PublicKeyFromJwk(mJwk);
       } else {
         MOZ_ASSERT(false);
       }
@@ -2074,15 +2053,13 @@ private:
     // Import the key data itself
     UniqueSECKEYPublicKey pubKey;
 
-    nsNSSShutDownPreventionLock locker;
     if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_RAW) ||
         mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_SPKI)) {
       // Public key import
       if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_RAW)) {
-        pubKey = CryptoKey::PublicDhKeyFromRaw(mKeyData, mPrime, mGenerator,
-                                               locker);
+        pubKey = CryptoKey::PublicDhKeyFromRaw(mKeyData, mPrime, mGenerator);
       } else if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_SPKI)) {
-        pubKey = CryptoKey::PublicKeyFromSpki(mKeyData, locker);
+        pubKey = CryptoKey::PublicKeyFromSpki(mKeyData);
       } else {
         MOZ_ASSERT(false);
       }
@@ -2151,20 +2128,11 @@ protected:
   JsonWebKey mJwk;
 
 private:
-  virtual void ReleaseNSSResources() override
-  {
-    mPrivateKey = nullptr;
-    mPublicKey = nullptr;
-  }
-
   virtual nsresult DoCrypto() override
   {
-    nsNSSShutDownPreventionLock locker;
-
     if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_RAW)) {
       if (mPublicKey && mPublicKey->keyType == dhKey) {
-        nsresult rv = CryptoKey::PublicDhKeyToRaw(mPublicKey.get(), mResult,
-                                                  locker);
+        nsresult rv = CryptoKey::PublicDhKeyToRaw(mPublicKey.get(), mResult);
         if (NS_FAILED(rv)) {
           return NS_ERROR_DOM_OPERATION_ERR;
         }
@@ -2172,8 +2140,7 @@ private:
       }
 
       if (mPublicKey && mPublicKey->keyType == ecKey) {
-        nsresult rv = CryptoKey::PublicECKeyToRaw(mPublicKey.get(), mResult,
-                                                  locker);
+        nsresult rv = CryptoKey::PublicECKeyToRaw(mPublicKey.get(), mResult);
         if (NS_FAILED(rv)) {
           return NS_ERROR_DOM_OPERATION_ERR;
         }
@@ -2193,7 +2160,7 @@ private:
 
       switch (mPrivateKey->keyType) {
         case rsaKey: {
-          nsresult rv = CryptoKey::PrivateKeyToPkcs8(mPrivateKey.get(), mResult, locker);
+          nsresult rv = CryptoKey::PrivateKeyToPkcs8(mPrivateKey.get(), mResult);
           if (NS_FAILED(rv)) {
             return NS_ERROR_DOM_OPERATION_ERR;
           }
@@ -2207,7 +2174,7 @@ private:
         return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
       }
 
-      return CryptoKey::PublicKeyToSpki(mPublicKey.get(), mResult, locker);
+      return CryptoKey::PublicKeyToSpki(mPublicKey.get(), mResult);
     } else if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_JWK)) {
       if (mKeyType == CryptoKey::SECRET) {
         nsString k;
@@ -2222,7 +2189,7 @@ private:
           return NS_ERROR_DOM_UNKNOWN_ERR;
         }
 
-        nsresult rv = CryptoKey::PublicKeyToJwk(mPublicKey.get(), mJwk, locker);
+        nsresult rv = CryptoKey::PublicKeyToJwk(mPublicKey.get(), mJwk);
         if (NS_FAILED(rv)) {
           return NS_ERROR_DOM_OPERATION_ERR;
         }
@@ -2231,8 +2198,7 @@ private:
           return NS_ERROR_DOM_UNKNOWN_ERR;
         }
 
-        nsresult rv = CryptoKey::PrivateKeyToJwk(mPrivateKey.get(), mJwk,
-                                                 locker);
+        nsresult rv = CryptoKey::PrivateKeyToJwk(mPrivateKey.get(), mJwk);
         if (NS_FAILED(rv)) {
           return NS_ERROR_DOM_OPERATION_ERR;
         }
@@ -2565,13 +2531,6 @@ GenerateAsymmetricKeyTask::GenerateAsymmetricKeyTask(
     mEarlyRv = NS_ERROR_DOM_DATA_ERR;
     return;
   }
-}
-
-void
-GenerateAsymmetricKeyTask::ReleaseNSSResources()
-{
-  mPublicKey = nullptr;
-  mPrivateKey = nullptr;
 }
 
 nsresult
@@ -2936,7 +2895,6 @@ public:
                 const ObjectOrString& aDerivedKeyType, bool aExtractable,
                 const Sequence<nsString>& aKeyUsages)
     : DeriveBitsTask(aCx, aAlgorithm, aBaseKey, aDerivedKeyType)
-    , mResolved(false)
   {
     if (NS_FAILED(this->mEarlyRv)) {
       return;
@@ -2949,20 +2907,15 @@ public:
 
 protected:
   RefPtr<ImportSymmetricKeyTask> mTask;
-  bool mResolved;
 
 private:
   virtual void Resolve() override {
     mTask->SetRawKeyData(this->mResult);
     mTask->DispatchWithPromise(this->mResultPromise);
-    mResolved = true;
   }
 
   virtual void Cleanup() override
   {
-    if (mTask && !mResolved) {
-      mTask->Skip();
-    }
     mTask = nullptr;
   }
 };
@@ -3184,7 +3137,6 @@ public:
               CryptoKey& aWrappingKey,
               const ObjectOrString& aWrapAlgorithm)
     : ExportKeyTask(aFormat, aKey)
-    , mResolved(false)
   {
     if (NS_FAILED(mEarlyRv)) {
       return;
@@ -3195,7 +3147,6 @@ public:
 
 private:
   RefPtr<KeyEncryptTask> mTask;
-  bool mResolved;
 
   virtual nsresult AfterCrypto() override {
     // If wrapping JWK, stringify the JSON
@@ -3218,14 +3169,10 @@ private:
   {
     mTask->SetData(mResult);
     mTask->DispatchWithPromise(mResultPromise);
-    mResolved = true;
   }
 
   virtual void Cleanup() override
   {
-    if (mTask && !mResolved) {
-      mTask->Skip();
-    }
     mTask = nullptr;
   }
 };
@@ -3241,25 +3188,19 @@ public:
                 ImportKeyTask* aTask)
     : KeyEncryptTask(aCx, aUnwrapAlgorithm, aUnwrappingKey, aWrappedKey, false)
     , mTask(aTask)
-    , mResolved(false)
   {}
 
 private:
   RefPtr<ImportKeyTask> mTask;
-  bool mResolved;
 
   virtual void Resolve() override
   {
     mTask->SetKeyDataMaybeParseJWK(KeyEncryptTask::mResult);
     mTask->DispatchWithPromise(KeyEncryptTask::mResultPromise);
-    mResolved = true;
   }
 
   virtual void Cleanup() override
   {
-    if (mTask && !mResolved) {
-      mTask->Skip();
-    }
     mTask = nullptr;
   }
 };
@@ -3730,20 +3671,12 @@ WebCryptoTask::WebCryptoTask()
   , mEarlyRv(NS_OK)
   , mEarlyComplete(false)
   , mOriginalEventTarget(nullptr)
-  , mReleasedNSSResources(false)
   , mRv(NS_ERROR_NOT_INITIALIZED)
 {
 }
 
 WebCryptoTask::~WebCryptoTask()
 {
-  MOZ_ASSERT(mReleasedNSSResources);
-
-  nsNSSShutDownPreventionLock lock;
-  if (!isAlreadyShutDown()) {
-    shutdown(ShutdownCalledFrom::Object);
-  }
-
   if (mWorkerHolder) {
     NS_ProxyRelease(
       "WebCryptoTask::mWorkerHolder",

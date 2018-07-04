@@ -10,7 +10,6 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "nsDocument.h"
-#include "nsIDOMXMLDocument.h"
 #include "nsIScriptContext.h"
 
 class nsIURI;
@@ -19,13 +18,12 @@ class nsIChannel;
 namespace mozilla {
 namespace dom {
 
-class XMLDocument : public nsDocument,
-                    public nsIDOMXMLDocument
+class XMLDocument : public nsDocument
 {
 public:
   explicit XMLDocument(const char* aContentType = "application/xml");
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(XMLDocument, nsDocument)
 
   virtual void Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup) override;
   virtual void ResetToURI(nsIURI *aURI, nsILoadGroup *aLoadGroup,
@@ -46,15 +44,12 @@ public:
 
   virtual void EndLoad() override;
 
-  // nsIDOMXMLDocument
-  NS_DECL_NSIDOMXMLDOCUMENT
-
   virtual nsresult Init() override;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;
 
-  virtual void DocAddSizeOfExcludingThis(nsWindowSizes* aWindowSizes) const override;
+  virtual void DocAddSizeOfExcludingThis(nsWindowSizes& aWindowSizes) const override;
   // DocAddSizeOfIncludingThis is inherited from nsIDocument.
 
 

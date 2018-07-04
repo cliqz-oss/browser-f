@@ -9,15 +9,13 @@
 
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/TimeEventBinding.h"
-#include "nsIDOMTimeEvent.h"
 
-class nsGlobalWindow;
+class nsGlobalWindowInner;
 
 namespace mozilla {
 namespace dom {
 
-class TimeEvent final : public Event,
-                        public nsIDOMTimeEvent
+class TimeEvent final : public Event
 {
 public:
   TimeEvent(EventTarget* aOwner,
@@ -28,18 +26,12 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TimeEvent, Event)
 
-  // nsIDOMTimeEvent interface:
-  NS_DECL_NSIDOMTIMEEVENT
-
-  // Forward to base class
-  NS_FORWARD_TO_EVENT
-
   virtual JSObject* WrapObjectInternal(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override
   {
     return TimeEventBinding::Wrap(aCx, this, aGivenProto);
   }
 
-  void InitTimeEvent(const nsAString& aType, nsGlobalWindow* aView,
+  void InitTimeEvent(const nsAString& aType, nsGlobalWindowInner* aView,
                      int32_t aDetail);
 
 
@@ -52,6 +44,8 @@ public:
   {
     return mView;
   }
+
+  TimeEvent* AsTimeEvent() final { return this; }
 
 private:
   ~TimeEvent() {}

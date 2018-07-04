@@ -34,6 +34,9 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/gfx/2D.h"
 
+using namespace mozilla;
+using namespace mozilla::gfx;
+
 /**
  * gfxFT2Font
  */
@@ -63,13 +66,14 @@ void
 gfxFT2Font::AddRange(const char16_t *aText, uint32_t aOffset,
                      uint32_t aLength, gfxShapedText *aShapedText)
 {
+    typedef gfxShapedText::CompressedGlyph CompressedGlyph;
+
     const uint32_t appUnitsPerDevUnit = aShapedText->GetAppUnitsPerDevUnit();
     // we'll pass this in/figure it out dynamically, but at this point there can be only one face.
     gfxFT2LockedFace faceLock(this);
     FT_Face face = faceLock.get();
 
-    gfxShapedText::CompressedGlyph *charGlyphs =
-        aShapedText->GetCharacterGlyphs();
+    CompressedGlyph* charGlyphs = aShapedText->GetCharacterGlyphs();
 
     const gfxFT2Font::CachedGlyphData *cgd = nullptr, *cgdNext = nullptr;
 
@@ -136,8 +140,8 @@ gfxFT2Font::AddRange(const char16_t *aText, uint32_t aOffset,
         }
 
         if (advance >= 0 &&
-            gfxShapedText::CompressedGlyph::IsSimpleAdvance(advance) &&
-            gfxShapedText::CompressedGlyph::IsSimpleGlyphID(gid)) {
+            CompressedGlyph::IsSimpleAdvance(advance) &&
+            CompressedGlyph::IsSimpleGlyphID(gid)) {
             charGlyphs[aOffset].SetSimpleGlyph(advance, gid);
         } else if (gid == 0) {
             // gid = 0 only happens when the glyph is missing from the font
@@ -148,29 +152,46 @@ gfxFT2Font::AddRange(const char16_t *aText, uint32_t aOffset,
             NS_ASSERTION(details.mGlyphID == gid,
                          "Seriously weird glyph ID detected!");
             details.mAdvance = advance;
-            details.mXOffset = 0;
-            details.mYOffset = 0;
-            gfxShapedText::CompressedGlyph g;
-            g.SetComplex(charGlyphs[aOffset].IsClusterStart(), true, 1);
-            aShapedText->SetGlyphs(aOffset, g, &details);
+            bool isClusterStart = charGlyphs[aOffset].IsClusterStart();
+            aShapedText->SetGlyphs(aOffset,
+                                   CompressedGlyph::MakeComplex(isClusterStart,
+                                                                true, 1),
+                                   &details);
         }
     }
 }
 
-gfxFT2Font::gfxFT2Font(const RefPtr<mozilla::gfx::UnscaledFontFreeType>& aUnscaledFont,
+gfxFT2Font::gfxFT2Font(const RefPtr<UnscaledFontFreeType>& aUnscaledFont,
                        cairo_scaled_font_t *aCairoFont,
                        FT2FontEntry *aFontEntry,
-                       const gfxFontStyle *aFontStyle,
-                       bool aNeedsBold)
+                       const gfxFontStyle *aFontStyle)
     : gfxFT2FontBase(aUnscaledFont, aCairoFont, aFontEntry, aFontStyle)
     , mCharGlyphCache(32)
 {
     NS_ASSERTION(mFontEntry, "Unable to find font entry for font.  Something is whack.");
-    mApplySyntheticBold = aNeedsBold;
+    // TODO: use FreeType emboldening instead of multi-strike?
+    mApplySyntheticBold = aFontStyle->NeedsSyntheticBold(aFontEntry);
 }
 
 gfxFT2Font::~gfxFT2Font()
 {
+}
+
+already_AddRefed<ScaledFont>
+gfxFT2Font::GetScaledFont(DrawTarget *aTarget)
+{
+    if (!mAzureScaledFont) {
+        NativeFont nativeFont;
+        nativeFont.mType = NativeFontType::CAIRO_FONT_FACE;
+        nativeFont.mFont = GetCairoScaledFont();
+        mAzureScaledFont =
+            Factory::CreateScaledFontForNativeFont(nativeFont,
+                                                   GetUnscaledFont(),
+                                                   GetAdjustedSize());
+    }
+
+    RefPtr<ScaledFont> scaledFont(mAzureScaledFont);
+    return scaledFont.forget();
 }
 
 void
@@ -208,7 +229,7 @@ gfxFT2Font::FillGlyphDataForChar(FT_Face face, uint32_t ch, CachedGlyphData *gd)
 }
 
 void
-gfxFT2Font::AddSizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf,
+gfxFT2Font::AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
                                    FontCacheSizes* aSizes) const
 {
     gfxFont::AddSizeOfExcludingThis(aMallocSizeOf, aSizes);
@@ -217,7 +238,7 @@ gfxFT2Font::AddSizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf,
 }
 
 void
-gfxFT2Font::AddSizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf,
+gfxFT2Font::AddSizeOfIncludingThis(MallocSizeOf aMallocSizeOf,
                                    FontCacheSizes* aSizes) const
 {
     aSizes->mFontInstances += aMallocSizeOf(this);

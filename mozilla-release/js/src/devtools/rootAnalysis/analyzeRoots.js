@@ -5,6 +5,7 @@
 loadRelativeToScript('utility.js');
 loadRelativeToScript('annotations.js');
 loadRelativeToScript('CFG.js');
+loadRelativeToScript('dumpCFG.js');
 
 var sourceRoot = (os.getenv('SOURCE') || '') + '/'
 
@@ -29,8 +30,6 @@ var batch = (scriptArgs[5]|0) || 1;
 var numBatches = (scriptArgs[6]|0) || 1;
 var tmpfile = scriptArgs[7] || "tmp.txt";
 
-GCSuppressionTypes = loadTypeInfo(typeInfoFile)["Suppress GC"] || [];
-
 var gcFunctions = {};
 var text = snarf("gcFunctions.lst").split("\n");
 assert(text.pop().length == 0);
@@ -44,6 +43,8 @@ for (var line of text) {
     suppressedFunctions[line] = true;
 }
 text = null;
+
+var typeInfo = loadTypeInfo(typeInfoFile);
 
 var gcEdges = {};
 text = snarf(gcEdgesFile).split('\n');
@@ -82,9 +83,14 @@ function isUnrootedType(type)
 {
     if (type.Kind == "Pointer")
         return isGCType(type.Type);
-    else if (type.Kind == "Array")
+    else if (type.Kind == "Array") {
+        if (!type.Type) {
+            printErr("Received Array Kind with no Type");
+            printErr(JSON.stringify(type));
+            printErr(getBacktrace({args: true, locals: true}));
+        }
         return isUnrootedType(type.Type);
-    else if (type.Kind == "CSU")
+    } else if (type.Kind == "CSU")
         return type.Name in gcPointers;
     else
         return false;
@@ -749,7 +755,8 @@ function printEntryTrace(functionName, entry)
 
 function isRootedType(type)
 {
-    return type.Kind == "CSU" && isRootedTypeName(type.Name);
+    return type.Kind == "CSU" && ((type.Name in typeInfo.RootedPointers) ||
+                                  (type.Name in typeInfo.RootedGCThings));
 }
 
 function typeDesc(type)
@@ -841,7 +848,7 @@ function process(name, json) {
     for (var body of functionBodies)
         body.suppressed = [];
     for (var body of functionBodies) {
-        for (var [pbody, id] of allRAIIGuardedCallPoints(functionBodies, body, isSuppressConstructor))
+        for (var [pbody, id] of allRAIIGuardedCallPoints(typeInfo, functionBodies, body, isSuppressConstructor))
             pbody.suppressed[id] = true;
     }
     processBodies(functionName);

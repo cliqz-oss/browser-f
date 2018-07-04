@@ -9,11 +9,14 @@
 
 #include "mozilla/MemoryReporting.h"
 
-#include <cmath>
+#include <stdint.h>
 
 #include "NamespaceImports.h"
 
 namespace js {
+
+struct Class;
+class GlobalObject;
 
 typedef double (*UnaryFunType)(double);
 
@@ -83,8 +86,10 @@ class MathCache
  * JS math functions.
  */
 
+extern const Class MathClass;
+
 extern JSObject*
-InitMathClass(JSContext* cx, HandleObject obj);
+InitMathClass(JSContext* cx, Handle<GlobalObject*> global);
 
 extern uint64_t
 GenerateRandomSeed();
@@ -93,9 +98,6 @@ GenerateRandomSeed();
 // seeding a XorShift128+ random number generator.
 extern void
 GenerateXorShift128PlusSeed(mozilla::Array<uint64_t, 2>& seed);
-
-extern uint64_t
-random_next(uint64_t* rngState, int bits);
 
 extern double
 math_random_impl(JSContext* cx);
@@ -346,7 +348,7 @@ extern float
 math_roundf_impl(float x);
 
 extern double
-powi(double x, int y);
+powi(double x, int32_t y);
 
 extern double
 ecmaPow(double x, double y);

@@ -80,28 +80,27 @@ CurlWrapper::~CurlWrapper()
 bool
 CurlWrapper::Init()
 {
-  // libcurl might show up under different names, try them all until we find it
-  const char* libcurlNames[] = {
+  const char* libcurlPaths[] = {
+#if defined(XP_MACOSX)
+    // macOS
+    "/usr/lib/libcurl.dylib",
+    "/usr/lib/libcurl.4.dylib",
+    "/usr/lib/libcurl.3.dylib",
+#else // Linux, *BSD, ...
     "libcurl.so",
     "libcurl.so.4",
     // Debian gives libcurl a different name when it is built against GnuTLS
+    "libcurl-gnutls.so",
     "libcurl-gnutls.so.4",
-    // Older libcurl if we can't find anything better
+    // Older versions in case we find nothing better
     "libcurl.so.3",
-#ifndef HAVE_64BIT_BUILD
-    // 32-bit versions on 64-bit hosts
-    "/usr/lib32/libcurl.so",
-    "/usr/lib32/libcurl.so.4",
-    "/usr/lib32/libcurl-gnutls.so.4",
-    "/usr/lib32/libcurl.so.3",
+    "libcurl-gnutls.so.3", // See above for Debian
 #endif
-    // macOS
-    "libcurl.dylib",
-    "libcurl.4.dylib",
-    "libcurl.3.dylib"
   };
 
-  for (const char* libname : libcurlNames) {
+  // libcurl might show up under different names & paths, try them all until
+  // we find it
+  for (const char* libname : libcurlPaths) {
     mLib = dlopen(libname, RTLD_NOW);
 
     if (mLib) {

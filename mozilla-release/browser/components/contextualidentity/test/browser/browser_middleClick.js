@@ -28,13 +28,16 @@ add_task(async function() {
   let newTab = await new Promise((resolve, reject) => {
     gBrowser.tabContainer.addEventListener("TabOpen", function(openEvent) {
       resolve(openEvent.target);
-    }, {once: true})
+    }, {once: true});
 
     BrowserTestUtils.synthesizeMouseAtCenter("#clickMe", { button: 1 }, browser);
   });
 
   is(newTab.getAttribute("usercontextid"), 1, "Correct UserContextId?");
 
-  await BrowserTestUtils.removeTab(tab);
-  await BrowserTestUtils.removeTab(newTab);
+  // newTab shouldn't be closed in the same event tick as TabOpen.
+  await TestUtils.waitForTick();
+
+  BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(newTab);
 });

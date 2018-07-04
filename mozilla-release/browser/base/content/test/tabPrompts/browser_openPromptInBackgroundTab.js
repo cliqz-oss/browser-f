@@ -58,7 +58,7 @@ add_task(async function() {
   let permissionsList = document.getElementById("identity-popup-permission-list");
   let label = permissionsList.querySelector(".identity-popup-permission-label");
   is(label.textContent, labelText);
-  gIdentityHandler._identityPopup.hidePopup()
+  gIdentityHandler._identityPopup.hidePopup();
 
   // Check if the identity icon signals granted permission.
   ok(gIdentityHandler._identityBox.classList.contains("grantedPermissions"),
@@ -75,5 +75,11 @@ add_task(async function() {
   // should be switched back
   ok(openedTab.selected, "Ta-dah, the other tab should now be selected again!");
 
-  await BrowserTestUtils.removeTab(openedTab);
+  // In e10s, with the conformant promise scheduling, we have to wait for next tick
+  // to ensure that the prompt is open before removing the opened tab, because the
+  // promise callback of 'openedTabSelectedPromise' could be done at the middle of
+  // RemotePrompt.openTabPrompt() while 'DOMModalDialogClosed' event is fired.
+  await TestUtils.waitForTick();
+
+  BrowserTestUtils.removeTab(openedTab);
 });

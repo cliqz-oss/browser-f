@@ -29,8 +29,11 @@ WebGL2Context::FenceSync(GLenum condition, GLbitfield flags)
         return nullptr;
     }
 
-    MakeContextCurrent();
     RefPtr<WebGLSync> globj = new WebGLSync(this, condition, flags);
+
+    const auto& availRunnable = EnsureAvailabilityRunnable();
+    availRunnable->mSyncs.push_back(globj);
+
     return globj.forget();
 }
 
@@ -73,8 +76,26 @@ WebGL2Context::ClientWaitSync(const WebGLSync& sync, GLbitfield flags, GLuint64 
         return LOCAL_GL_WAIT_FAILED;
     }
 
-    MakeContextCurrent();
-    return gl->fClientWaitSync(sync.mGLName, flags, timeout);
+    const bool canBeAvailable = (sync.mCanBeAvailable ||
+                                 gfxPrefs::WebGLImmediateQueries());
+    if (!canBeAvailable) {
+        if (timeout) {
+            GenerateWarning("%s: Sync object not yet queryable. Please wait for the event"
+                            " loop.",
+                            funcName);
+        }
+        return LOCAL_GL_WAIT_FAILED;
+    }
+
+    const auto ret = gl->fClientWaitSync(sync.mGLName, flags, timeout);
+
+    if (ret == LOCAL_GL_CONDITION_SATISFIED ||
+        ret == LOCAL_GL_ALREADY_SIGNALED)
+    {
+        sync.MarkSignaled();
+    }
+
+    return ret;
 }
 
 void
@@ -97,7 +118,6 @@ WebGL2Context::WaitSync(const WebGLSync& sync, GLbitfield flags, GLint64 timeout
         return;
     }
 
-    MakeContextCurrent();
     gl->fWaitSync(sync.mGLName, flags, LOCAL_GL_TIMEOUT_IGNORED);
 }
 
@@ -115,7 +135,12 @@ WebGL2Context::GetSyncParameter(JSContext*, const WebGLSync& sync, GLenum pname,
 
     ////
 
-    gl->MakeCurrent();
+    const bool canBeAvailable = (sync.mCanBeAvailable ||
+                                 gfxPrefs::WebGLImmediateQueries());
+    if (!canBeAvailable && pname == LOCAL_GL_SYNC_STATUS) {
+        retval.set(JS::Int32Value(LOCAL_GL_UNSIGNALED));
+        return;
+    }
 
     GLint result = 0;
     switch (pname) {
@@ -124,6 +149,13 @@ WebGL2Context::GetSyncParameter(JSContext*, const WebGLSync& sync, GLenum pname,
     case LOCAL_GL_SYNC_CONDITION:
     case LOCAL_GL_SYNC_FLAGS:
         gl->fGetSynciv(sync.mGLName, pname, 1, nullptr, &result);
+
+        if (pname == LOCAL_GL_SYNC_STATUS &&
+            result == LOCAL_GL_SIGNALED)
+        {
+            sync.MarkSignaled();
+        }
+
         retval.set(JS::Int32Value(result));
         return;
 

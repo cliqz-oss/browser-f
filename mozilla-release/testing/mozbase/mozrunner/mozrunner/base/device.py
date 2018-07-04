@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 
 import datetime
 import re
@@ -20,7 +20,7 @@ from ..devices import BaseEmulator
 class DeviceRunner(BaseRunner):
     """
     The base runner class used for running gecko on
-    remote devices (or emulators), such as B2G.
+    remote devices (or emulators).
     """
     env = {'MOZ_CRASHREPORTER': '1',
            'MOZ_CRASHREPORTER_NO_REPORT': '1',
@@ -57,8 +57,8 @@ class DeviceRunner(BaseRunner):
     @property
     def command(self):
         cmd = [self.app_ctx.adb]
-        if self.app_ctx.dm._deviceSerial:
-            cmd.extend(['-s', self.app_ctx.dm._deviceSerial])
+        if self.app_ctx.device_serial:
+            cmd.extend(['-s', self.app_ctx.device_serial])
         cmd.append('shell')
         for k, v in self._device_env.iteritems():
             cmd.append('%s=%s' % (k, v))
@@ -82,12 +82,10 @@ class DeviceRunner(BaseRunner):
         pid = BaseRunner.start(self, *args, **kwargs)
 
         timeout = 10  # seconds
-        starttime = datetime.datetime.now()
-        while datetime.datetime.now() - starttime < datetime.timedelta(seconds=timeout):
-            if self.is_running():
-                break
-            time.sleep(1)
-        else:
+        end_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
+        while not self.is_running() and datetime.datetime.now() < end_time:
+            time.sleep(.1)
+        if not self.is_running():
             print("timed out waiting for '%s' process to start" % self.app_ctx.remote_process)
 
         if not self.device.wait_for_net():
@@ -95,34 +93,52 @@ class DeviceRunner(BaseRunner):
         return pid
 
     def stop(self, sig=None):
-        def _wait_for_shutdown(pid, timeout=10):
-            start_time = datetime.datetime.now()
-            end_time = datetime.timedelta(seconds=timeout)
-            while datetime.datetime.now() - start_time < end_time:
-                if self.is_running() != pid:
-                    return True
-                time.sleep(1)
-            return False
+        if self.is_running():
+            timeout = 10
 
-        remote_pid = self.is_running()
-        if remote_pid:
-            self.app_ctx.dm.killProcess(
-                self.app_ctx.remote_process, sig=sig)
-            if not _wait_for_shutdown(remote_pid) and sig is not None:
+            self.app_ctx.device.pkill(self.app_ctx.remote_process, sig=sig)
+            if self.wait(timeout) is None and sig is not None:
                 print("timed out waiting for '%s' process to exit, trying "
                       "without signal {}".format(
                           self.app_ctx.remote_process, sig))
 
             # need to call adb stop otherwise the system will attempt to
             # restart the process
-            remote_pid = self.is_running() or remote_pid
             self.app_ctx.stop_application()
-            if not _wait_for_shutdown(remote_pid):
+            if self.wait(timeout) is None:
                 print("timed out waiting for '%s' process to exit".format(
                     self.app_ctx.remote_process))
 
-    def is_running(self):
-        return self.app_ctx.dm.processExist(self.app_ctx.remote_process)
+    @property
+    def returncode(self):
+        """The returncode of the remote process.
+
+        A value of None indicates the process is still running. Otherwise 0 is
+        returned, because there is no known way yet to retrieve the real exit code.
+        """
+        if self.app_ctx.device.process_exist(self.app_ctx.remote_process):
+            return None
+
+        return 0
+
+    def wait(self, timeout=None):
+        """Wait for the remote process to exit.
+
+        :param timeout: if not None, will return after timeout seconds.
+
+        :returns: the process return code or None if timeout was reached
+                  and the process is still running.
+        """
+        end_time = None
+        if timeout is not None:
+            end_time = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
+
+        while self.is_running():
+            if end_time is not None and datetime.datetime.now() > end_time:
+                break
+            time.sleep(.1)
+
+        return self.returncode
 
     def on_output(self, line):
         match = re.findall(r"TEST-START \| ([^\s]*)", line)
@@ -170,8 +186,8 @@ class FennecRunner(DeviceRunner):
     @property
     def command(self):
         cmd = [self.app_ctx.adb]
-        if self.app_ctx.dm._deviceSerial:
-            cmd.extend(["-s", self.app_ctx.dm._deviceSerial])
+        if self.app_ctx.device_serial:
+            cmd.extend(["-s", self.app_ctx.device_serial])
         cmd.append("shell")
         app = "%s/org.mozilla.gecko.BrowserApp" % self.app_ctx.remote_process
         am_subcommand = ["am", "start", "-a", "android.activity.MAIN", "-n", app]

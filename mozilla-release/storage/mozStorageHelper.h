@@ -7,7 +7,7 @@
 #define MOZSTORAGEHELPER_H
 
 #include "nsAutoPtr.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "mozilla/DebugOnly.h"
 #include "nsIConsoleService.h"
 #include "nsIScriptError.h"
@@ -39,8 +39,8 @@
  *        Controls whether the transaction is committed or rolled back when
  *        this object goes out of scope.
  * @param aType [optional]
- *        The transaction type, as defined in mozIStorageConnection.  Defaults
- *        to TRANSACTION_DEFERRED.
+ *        The transaction type, as defined in mozIStorageConnection. Uses the
+ *        default transaction behavior for the connection if unspecified.
  * @param aAsyncCommit [optional]
  *        Whether commit should be executed asynchronously on the helper thread.
  *        This is a special option introduced as an interim solution to reduce
@@ -63,7 +63,7 @@ class mozStorageTransaction
 public:
   mozStorageTransaction(mozIStorageConnection* aConnection,
                         bool aCommitOnComplete,
-                        int32_t aType = mozIStorageConnection::TRANSACTION_DEFERRED,
+                        int32_t aType = mozIStorageConnection::TRANSACTION_DEFAULT,
                         bool aAsyncCommit = false)
     : mConnection(aConnection),
       mHasTransaction(false),
@@ -73,7 +73,11 @@ public:
   {
     if (mConnection) {
       nsAutoCString query("BEGIN");
-      switch(aType) {
+      int32_t type = aType;
+      if (type == mozIStorageConnection::TRANSACTION_DEFAULT) {
+        MOZ_ALWAYS_SUCCEEDS(mConnection->GetDefaultTransactionType(&type));
+      }
+      switch (type) {
         case mozIStorageConnection::TRANSACTION_IMMEDIATE:
           query.AppendLiteral(" IMMEDIATE");
           break;
@@ -208,34 +212,5 @@ protected:
 // statistics, especially PRAGMAs.  We don't include __LINE__ so that
 // queries are stable in the face of source code changes.
 #define MOZ_STORAGE_UNIQUIFY_QUERY_STR "/* " __FILE__ " */ "
-
-// Use this to show a console warning when using deprecated methods.
-#define WARN_DEPRECATED()                                                          \
-  PR_BEGIN_MACRO                                                                   \
-                                                                                   \
-  if (NS_IsMainThread()) {                                                         \
-    nsCOMPtr<nsIConsoleService> cs = do_GetService(NS_CONSOLESERVICE_CONTRACTID);  \
-                                                                                   \
-    if (cs) {                                                                      \
-      nsCString msg(__FUNCTION__);                                                 \
-      msg.AppendLiteral(" is deprecated and will be removed soon.");               \
-                                                                                   \
-      nsCOMPtr<nsIScriptError> e = do_CreateInstance(NS_SCRIPTERROR_CONTRACTID);   \
-      if (e && NS_SUCCEEDED(e->Init(NS_ConvertUTF8toUTF16(msg), EmptyString(),     \
-                                    EmptyString(), 0, 0,                           \
-                                    nsIScriptError::errorFlag, "Storage"))) {      \
-        cs->LogMessage(e);                                                         \
-      }                                                                            \
-    }                                                                              \
-  }                                                                                \
-  if (NS_IsMainThread()) {                                                         \
-    nsCOMPtr<nsIXPConnect> xpc = do_GetService(nsIXPConnect::GetCID());            \
-    if (xpc) {                                                                     \
-      mozilla::Unused << xpc->DebugDumpJSStack(false, false, false);               \
-    }                                                                              \
-  }                                                                                \
-  MOZ_ASSERT(false, "You are trying to use a deprecated mozStorage method. "       \
-                    "Check error message in console to identify the method name.");\
-  PR_END_MACRO
 
 #endif /* MOZSTORAGEHELPER_H */

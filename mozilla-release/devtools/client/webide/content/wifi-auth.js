@@ -4,13 +4,11 @@
 
 "use strict";
 
-var Cu = Components.utils;
 const { require } =
-  Cu.import("resource://devtools/shared/Loader.jsm", {});
-const Services = require("Services");
+  ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const QR = require("devtools/shared/qrcode/index");
 
-window.addEventListener("load", function () {
+window.addEventListener("load", function() {
   document.getElementById("close").onclick = () => window.close();
   document.getElementById("no-scanner").onclick = showToken;
   document.getElementById("yes-scanner").onclick = hideToken;

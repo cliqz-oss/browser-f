@@ -25,8 +25,10 @@ function finishBlockedRequest(request, response, query)
   response.setStatusLine(request.httpVersion, 200, "OK");
   response.setHeader("Cache-Control", "no-cache", false);
   response.setHeader("Content-Type", "application/javascript", false);
-  response.write("window.script_executed_" + query[1] + " = true; ok(true, 'Script " + query[1] + " executed');");
+  response.write("scriptLoaded('" + query[1] + "');");
   response.finish();
+
+  setGlobalState(undefined, query[1]);
 }
 
 function handleRequest(request, response)
@@ -35,12 +37,13 @@ function handleRequest(request, response)
   switch (query[0]) {
     case "blocked":
       var alreadyUnblocked = getGlobalState(query[1]);
-      if (alreadyUnblocked) {
+
+      response.processAsync();
+      if (alreadyUnblocked === true) {
         // the unblock request came before the blocked request, just go on and finish synchronously
         finishBlockedRequest(request, response, query);
       } else {
         setGlobalState(response, query[1]);
-        response.processAsync();
       }
       break;
 
@@ -51,10 +54,10 @@ function handleRequest(request, response)
       response.write("\x89PNG"); // just a broken image is enough for our purpose
 
       var blockedResponse = getGlobalState(query[1]);
-      if (!blockedResponse) {
+      if (blockedResponse === undefined) {
         // the unblock request came before the blocked request, remember to not block it
         setGlobalState(true, query[1]);
-      } else {
+      } else if (typeof blockedResponse == "object") {
         finishBlockedRequest(request, blockedResponse, query);
       }
       break;

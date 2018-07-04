@@ -21,10 +21,7 @@ public:
              nsPresContext* aPresContext,
              WidgetWheelEvent* aWheelEvent);
 
-  NS_DECL_ISUPPORTS_INHERITED
-
-  // Forward to base class
-  NS_FORWARD_TO_MOUSEEVENT
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(WheelEvent, MouseEvent)
 
   static
   already_AddRefed<WheelEvent> Constructor(const GlobalObject& aGlobal,
@@ -47,7 +44,7 @@ public:
 
   void
   InitWheelEvent(const nsAString& aType, bool aCanBubble, bool aCancelable,
-                 nsGlobalWindow* aView, int32_t aDetail,
+                 nsGlobalWindowInner* aView, int32_t aDetail,
                  int32_t aScreenX, int32_t aScreenY,
                  int32_t aClientX, int32_t aClientY, uint16_t aButton,
                  EventTarget* aRelatedTarget, const nsAString& aModifiersList,

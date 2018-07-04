@@ -7,9 +7,9 @@ description: AnnexB extension not honored in strict mode (IfStatement with a dec
 es6id: B.3.4
 flags: [onlyStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
-info: >
+info: |
     The following rules for IfStatement augment those in 13.6:
     
     IfStatement[Yield, Return]:
@@ -24,5 +24,7 @@ info: >
     2. If strict is *false*, then
        [...]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 if (false) ; else function f() {  }

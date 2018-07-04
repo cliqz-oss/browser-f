@@ -13,6 +13,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1345367
   "use strict";
   SimpleTest.waitForExplicitFinish();
 
+  var gUrl = SimpleTest.getTestFileURL('GeneralChromeScript.js');
+  var gScript = SpecialPowers.loadChromeScript(gUrl);
+
   const defaultMethods = [{
     supportedMethods: "basic-card",
   }];
@@ -41,6 +44,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1345367
   }
 
   function testAfterShow() {
+     const handler = SpecialPowers.getDOMWindowUtils(window).setHandlingUserInput(true);
+
      return new Promise((resolve, reject) => {
       const payRequest = new PaymentRequest(defaultMethods, defaultDetails);
       const acceptPromise = payRequest.show();
@@ -50,14 +55,23 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1345367
       }).catch( (err) => {
         ok(false, "Expected no error, but got '" + err.name + "'.");
         resolve();
-      });
+      }).finally(handler.destruct);
     });
+  }
+
+  function teardown() {
+    gScript.addMessageListener("teardown-complete", function teardownCompleteHandler() {
+      gScript.removeMessageListener("teardown-complete", teardownCompleteHandler);
+      gScript.destroy();
+      SimpleTest.finish();
+    });
+    gScript.sendAsyncMessage("teardown");
   }
 
   function runTests() {
     testBeforeShow()
     .then(testAfterShow)
-    .then(SimpleTest.finish)
+    .then(teardown)
     .catch( e => {
       ok(false, "Unexpected error: " + e.name);
       SimpleTest.finish();
@@ -76,11 +90,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1345367
 </head>
 <body>
 <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1345367">Mozilla Bug 1345367</a>
-<p id="display"></p>
-<div id="content" style="display: none">
-
-</div>
-<pre id="test">
 </pre>
 </body>
 </html>

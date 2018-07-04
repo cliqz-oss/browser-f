@@ -5,13 +5,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "gfx2DGlue.h"
+#include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/dom/SVGAnimatedTransformList.h"
 #include "mozilla/dom/SVGGraphicsElementBinding.h"
 #include "mozilla/dom/SVGTransformableElement.h"
 #include "mozilla/dom/SVGMatrix.h"
 #include "mozilla/dom/SVGSVGElement.h"
 #include "nsContentUtils.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsIFrame.h"
 #include "nsSVGDisplayableFrame.h"
 #include "mozilla/dom/SVGRect.h"
@@ -37,7 +37,7 @@ SVGTransformableElement::Transform()
 // nsIContent methods
 
 NS_IMETHODIMP_(bool)
-SVGTransformableElement::IsAttributeMapped(const nsIAtom* name) const
+SVGTransformableElement::IsAttributeMapped(const nsAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
     sColorMap,
@@ -50,7 +50,7 @@ SVGTransformableElement::IsAttributeMapped(const nsIAtom* name) const
 }
 
 nsChangeHint
-SVGTransformableElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
+SVGTransformableElement::GetAttributeChangeHint(const nsAtom* aAttribute,
                                                 int32_t aModType) const
 {
   nsChangeHint retval =
@@ -65,16 +65,18 @@ SVGTransformableElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
     }
 
     bool isAdditionOrRemoval = false;
-    if (aModType == nsIDOMMutationEvent::ADDITION ||
-        aModType == nsIDOMMutationEvent::REMOVAL) {
+    if (aModType == MutationEventBinding::ADDITION ||
+        aModType == MutationEventBinding::REMOVAL) {
       isAdditionOrRemoval = true;
     } else {
-      MOZ_ASSERT(aModType == nsIDOMMutationEvent::MODIFICATION,
+      MOZ_ASSERT(aModType == MutationEventBinding::MODIFICATION,
                  "Unknown modification type.");
       if (!mTransforms ||
-          !mTransforms->HasTransform() ||
-          !mTransforms->HadTransformBeforeLastBaseValChange()) {
-        // New or old value is empty; this is effectively addition or removal.
+          !mTransforms->HasTransform()) {
+        // New value is empty, treat as removal.
+        isAdditionOrRemoval = true;
+      } else if (mTransforms->RequiresFrameReconstruction()) {
+        // Old value was empty, treat as addition.
         isAdditionOrRemoval = true;
       }
     }
@@ -92,7 +94,7 @@ SVGTransformableElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
 }
 
 bool
-SVGTransformableElement::IsEventAttributeNameInternal(nsIAtom* aName)
+SVGTransformableElement::IsEventAttributeNameInternal(nsAtom* aName)
 {
   return nsContentUtils::IsEventAttributeName(aName, EventNameType_SVGGraphic);
 }
@@ -122,7 +124,7 @@ void
 SVGTransformableElement::SetAnimateMotionTransform(const gfx::Matrix* aMatrix)
 {
   if ((!aMatrix && !mAnimateMotionTransform) ||
-      (aMatrix && mAnimateMotionTransform && *aMatrix == *mAnimateMotionTransform)) {
+      (aMatrix && mAnimateMotionTransform && aMatrix->FuzzyEquals(*mAnimateMotionTransform))) {
     return;
   }
   bool transformSet = mTransforms && mTransforms->IsExplicitlySet();
@@ -131,11 +133,11 @@ SVGTransformableElement::SetAnimateMotionTransform(const gfx::Matrix* aMatrix)
   bool nowSet = mAnimateMotionTransform || transformSet;
   int32_t modType;
   if (prevSet && !nowSet) {
-    modType = nsIDOMMutationEvent::REMOVAL;
+    modType = MutationEventBinding::REMOVAL;
   } else if(!prevSet && nowSet) {
-    modType = nsIDOMMutationEvent::ADDITION;
+    modType = MutationEventBinding::ADDITION;
   } else {
-    modType = nsIDOMMutationEvent::MODIFICATION;
+    modType = MutationEventBinding::MODIFICATION;
   }
   DidAnimateTransformList(modType);
   nsIFrame* frame = GetPrimaryFrame();
@@ -188,7 +190,9 @@ SVGTransformableElement::GetBBox(const SVGBoundingBoxOptions& aOptions,
   }
 
   if (!NS_SVGNewGetBBoxEnabled()) {
-    return NS_NewSVGRect(this, ToRect(nsSVGUtils::GetBBox(frame)));
+    return NS_NewSVGRect(this, ToRect(nsSVGUtils::GetBBox(frame,
+                                      nsSVGUtils::eBBoxIncludeFillGeometry |
+                                      nsSVGUtils::eUseUserSpaceOfUseElement)));
   } else {
     uint32_t flags = 0;
     if (aOptions.mFill) {
@@ -210,6 +214,7 @@ SVGTransformableElement::GetBBox(const SVGBoundingBoxOptions& aOptions,
         flags == nsSVGUtils::eBBoxIncludeClipped) {
       flags |= nsSVGUtils::eBBoxIncludeFill;
     }
+    flags |= nsSVGUtils::eUseUserSpaceOfUseElement;
     return NS_NewSVGRect(this, ToRect(nsSVGUtils::GetBBox(frame, flags)));
   }
 }

@@ -24,6 +24,7 @@
 #include "nsHttpHandler.h"
 #include "nsHttpRequestHead.h"
 #include "nsHttpResponseHead.h"
+#include "nsIClassOfService.h"
 #include "nsIOService.h"
 #include "nsISocketTransport.h"
 #include "nsSocketTransportService2.h"
@@ -55,6 +56,8 @@ nsHttpConnection::nsHttpConnection()
     , mTotalBytesRead(0)
     , mTotalBytesWritten(0)
     , mContentBytesWritten(0)
+    , mUrgentStartPreferred(false)
+    , mUrgentStartPreferredKnown(false)
     , mConnectedTransport(false)
     , mKeepAlive(true) // assume to keep-alive by default
     , mKeepAliveMask(true)
@@ -78,6 +81,7 @@ nsHttpConnection::nsHttpConnection()
     , mEverUsedSpdy(false)
     , mLastHttpResponseVersion(NS_HTTP_VERSION_1_1)
     , mTransactionCaps(0)
+    , mDefaultTimeoutFactor(1)
     , mResponseTimeoutEnabled(false)
     , mTCPKeepaliveConfig(kTCPKeepaliveDisabled)
     , mForceSendPending(false)
@@ -87,9 +91,12 @@ nsHttpConnection::nsHttpConnection()
     , mEarlyDataNegotiated(false)
     , mDid0RTTSpdy(false)
     , mFastOpen(false)
-    , mFastOpenStatus(TFO_NOT_TRIED)
+    , mFastOpenStatus(TFO_NOT_SET)
     , mForceSendDuringFastOpenPending(false)
     , mReceivedSocketWouldBlockDuringFastOpen(false)
+    , mCheckNetworkStallsWithTFO(false)
+    , mLastRequestBytesSentTime(0)
+    , mBootstrappedTimingsSet(false)
 {
     LOG(("Creating nsHttpConnection @%p\n", this));
 
@@ -125,7 +132,16 @@ nsHttpConnection::~nsHttpConnection()
         mForceSendTimer = nullptr;
     }
 
-    Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN, mFastOpenStatus);
+    if ((mFastOpenStatus != TFO_FAILED) &&
+        (mFastOpenStatus != TFO_HTTP) &&
+        (((mFastOpenStatus > TFO_DISABLED_CONNECT) && (mFastOpenStatus < TFO_BACKUP_CONN)) ||
+         gHttpHandler->UseFastOpen())) {
+        // TFO_FAILED will be reported in the replacement connection with more
+        // details.
+        // Otherwise report only if TFO is enabled and supported.
+        // If TFO is disabled, report only connections ha cause it to be disabled, e.g. TFO_FAILED_NET_TIMEOUT, etc.
+        Telemetry::Accumulate(Telemetry::TCP_FAST_OPEN_3, mFastOpenStatus);
+    }
 }
 
 nsresult
@@ -138,7 +154,7 @@ nsHttpConnection::Init(nsHttpConnectionInfo *info,
                        nsIInterfaceRequestor *callbacks,
                        PRIntervalTime rtt)
 {
-    LOG(("nsHttpConnection::Init this=%p", this));
+    LOG(("nsHttpConnection::Init this=%p sockettransport=%p", this, transport));
     NS_ENSURE_ARG_POINTER(info);
     NS_ENSURE_TRUE(!mConnInfo, NS_ERROR_ALREADY_INITIALIZED);
 
@@ -233,6 +249,9 @@ void
 nsHttpConnection::Start0RTTSpdy(uint8_t spdyVersion)
 {
     LOG(("nsHttpConnection::Start0RTTSpdy [this=%p]", this));
+
+    MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+
     mDid0RTTSpdy = true;
     mUsingSpdyVersion = spdyVersion;
     mSpdySession = ASpdySession::NewSpdySession(spdyVersion, mSocketTransport,
@@ -257,14 +276,18 @@ nsHttpConnection::Start0RTTSpdy(uint8_t spdyVersion)
 }
 
 void
-nsHttpConnection::StartSpdy(uint8_t spdyVersion)
+nsHttpConnection::StartSpdy(nsISSLSocketControl *sslControl, uint8_t spdyVersion)
 {
     LOG(("nsHttpConnection::StartSpdy [this=%p, mDid0RTTSpdy=%d]\n", this, mDid0RTTSpdy));
 
+    MOZ_ASSERT(OnSocketThread(), "not on socket thread");
     MOZ_ASSERT(!mSpdySession || mDid0RTTSpdy);
 
     mUsingSpdyVersion = spdyVersion;
     mEverUsedSpdy = true;
+    if (sslControl) {
+        sslControl->SetDenyClientCert(true);
+    }
 
     if (!mDid0RTTSpdy) {
         mSpdySession = ASpdySession::NewSpdySession(spdyVersion, mSocketTransport,
@@ -332,7 +355,7 @@ nsHttpConnection::StartSpdy(uint8_t spdyVersion)
              "rv[0x%" PRIx32 "]", this, static_cast<uint32_t>(rv)));
     }
 
-    mIdleTimeout = gHttpHandler->SpdyTimeout();
+    mIdleTimeout = gHttpHandler->SpdyTimeout() * mDefaultTimeoutFactor;
 
     if (!mTLSFilter) {
         mTransaction = mSpdySession;
@@ -514,10 +537,21 @@ nsHttpConnection::EnsureNPNComplete(nsresult &aOut0RTTWriteHandshakeValue,
 
         if (!earlyDataAccepted) {
             LOG(("nsHttpConnection::EnsureNPNComplete [this=%p] early data not accepted", this));
+            if (mTransaction->QueryNullTransaction() &&
+                (mBootstrappedTimings.secureConnectionStart.IsNull() ||
+                 mBootstrappedTimings.tcpConnectEnd.IsNull())) {
+                // if TFO is used some socket event will be sent after
+                // mBootstrappedTimings has been set. therefore we should
+                // update them.
+                mBootstrappedTimings.secureConnectionStart =
+                    mTransaction->QueryNullTransaction()->GetSecureConnectionStart();
+                mBootstrappedTimings.tcpConnectEnd =
+                    mTransaction->QueryNullTransaction()->GetTcpConnectEnd();
+            }
             uint32_t infoIndex;
             const SpdyInformation *info = gHttpHandler->SpdyInfo();
             if (NS_SUCCEEDED(info->GetNPNIndex(negotiatedNPN, &infoIndex))) {
-                StartSpdy(info->Version[infoIndex]);
+                StartSpdy(ssl, info->Version[infoIndex]);
             }
         } else {
           LOG(("nsHttpConnection::EnsureNPNComplete [this=%p] - %" PRId64 " bytes "
@@ -528,7 +562,7 @@ nsHttpConnection::EnsureNPNComplete(nsresult &aOut0RTTWriteHandshakeValue,
               // spdy, since we know we're sticking with it.
               LOG(("nsHttpConnection::EnsureNPNComplete [this=%p] - finishing "
                    "StartSpdy for 0rtt spdy session %p", this, mSpdySession.get()));
-              StartSpdy(mSpdySession->SpdyVersion());
+              StartSpdy(ssl, mSpdySession->SpdyVersion());
           }
         }
 
@@ -543,9 +577,19 @@ npnComplete:
                                     NS_NET_STATUS_TLS_HANDSHAKE_ENDED, 0);
 
     // this is happening after the bootstrap was originally written to. so update it.
-    if (mBootstrappedTimings.secureConnectionStart.IsNull() &&
-        !mBootstrappedTimings.connectEnd.IsNull()) {
-        mBootstrappedTimings.secureConnectionStart = mBootstrappedTimings.connectEnd;
+    if (mTransaction->QueryNullTransaction() &&
+        (mBootstrappedTimings.secureConnectionStart.IsNull() ||
+         mBootstrappedTimings.tcpConnectEnd.IsNull())) {
+        // if TFO is used some socket event will be sent after
+        // mBootstrappedTimings has been set. therefore we should
+        // update them.
+        mBootstrappedTimings.secureConnectionStart =
+            mTransaction->QueryNullTransaction()->GetSecureConnectionStart();
+        mBootstrappedTimings.tcpConnectEnd =
+            mTransaction->QueryNullTransaction()->GetTcpConnectEnd();
+    }
+
+    if (securityInfo) {
         mBootstrappedTimings.connectEnd = TimeStamp::Now();
     }
 
@@ -592,13 +636,23 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
     LOG(("nsHttpConnection::Activate [this=%p trans=%p caps=%x]\n",
          this, trans, caps));
 
-    if (!mExperienced && !trans->IsNullTransaction() && !mFastOpen) {
-        mExperienced = true;
-        nsHttpTransaction *hTrans = trans->QueryHttpTransaction();
-        if (hTrans) {
-            hTrans->BootstrapTimings(mBootstrappedTimings);
+    if (!mExperienced && !trans->IsNullTransaction()) {
+        if (!mFastOpen) {
+            mExperienced = true;
+        }
+        if (mBootstrappedTimingsSet) {
+            mBootstrappedTimingsSet = false;
+            nsHttpTransaction *hTrans = trans->QueryHttpTransaction();
+            if (hTrans) {
+                hTrans->BootstrapTimings(mBootstrappedTimings);
+                SetUrgentStartPreferred(hTrans->ClassOfService() & nsIClassOfService::UrgentStart);
+            }
         }
         mBootstrappedTimings = TimingStruct();
+    }
+
+    if (caps & NS_HTTP_LARGE_KEEPALIVE) {
+        mDefaultTimeoutFactor = 10; // don't ever lower
     }
 
     mTransactionCaps = caps;
@@ -610,6 +664,18 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
     NS_ENSURE_ARG_POINTER(trans);
     NS_ENSURE_TRUE(!mTransaction, NS_ERROR_IN_PROGRESS);
 
+    // If TCP fast Open has been used and conection was idle for some time
+    // we will be cautious and watch out for bug 1395494.
+    if (mNPNComplete && (mFastOpenStatus == TFO_DATA_SENT) &&
+        gHttpHandler->CheckIfConnectionIsStalledOnlyIfIdleForThisAmountOfSeconds() &&
+        IdleTime() >= gHttpHandler->CheckIfConnectionIsStalledOnlyIfIdleForThisAmountOfSeconds()) {
+        // If a connection was using the TCP FastOpen and it was idle for a
+        // long time we should check for stalls like bug 1395494.
+        mCheckNetworkStallsWithTFO = true;
+        // Also reset last write. We should start measuring a stall time only
+        // after we really write a request to the network.
+        mLastRequestBytesSentTime = 0;
+    }
     // reset the read timers to wash away any idle time
     mLastWriteTime = mLastReadTime = PR_IntervalNow();
 
@@ -681,7 +747,7 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
         mTransaction = mTLSFilter;
     }
 
-    trans->OnActivated(false);
+    trans->OnActivated();
 
     rv = OnOutputStreamReady(mSocketOut);
 
@@ -989,14 +1055,20 @@ nsHttpConnection::IdleTime()
 uint32_t
 nsHttpConnection::TimeToLive()
 {
-    if (IdleTime() >= mIdleTimeout)
+    LOG(("nsHttpConnection::TTL: %p %s idle %d timeout %d\n",
+         this, mConnInfo->Origin(), IdleTime(), mIdleTimeout));
+
+    if (IdleTime() >= mIdleTimeout) {
         return 0;
+    }
+
     uint32_t timeToLive = PR_IntervalToSeconds(mIdleTimeout - IdleTime());
 
     // a positive amount of time can be rounded to 0. Because 0 is used
     // as the expiration signal, round all values from 0 to 1 up to 1.
-    if (!timeToLive)
+    if (!timeToLive) {
         timeToLive = 1;
+    }
     return timeToLive;
 }
 
@@ -1024,6 +1096,17 @@ nsHttpConnection::IsAlive()
 #endif
 
     return alive;
+}
+
+void
+nsHttpConnection::SetUrgentStartPreferred(bool urgent)
+{
+  if (mExperienced && !mUrgentStartPreferredKnown) {
+    // Set only according the first ever dispatched non-null transaction
+    mUrgentStartPreferredKnown = true;
+    mUrgentStartPreferred = urgent;
+    LOG(("nsHttpConnection::SetUrgentStartPreferred [this=%p urgent=%d]", this, urgent));
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -1116,7 +1199,7 @@ nsHttpConnection::OnHeadersAvailable(nsAHttpTransaction *trans,
             if (cp)
                 mIdleTimeout = PR_SecondsToInterval((uint32_t) atoi(cp + 8));
             else
-                mIdleTimeout = gHttpHandler->IdleTimeout();
+                mIdleTimeout = gHttpHandler->IdleTimeout() * mDefaultTimeoutFactor;
 
             cp = PL_strcasestr(keepAlive.get(), "max=");
             if (cp) {
@@ -1126,9 +1209,6 @@ nsHttpConnection::OnHeadersAvailable(nsAHttpTransaction *trans,
                     mRemainingConnectionUses = static_cast<uint32_t>(maxUses);
                 }
             }
-        }
-        else {
-            mIdleTimeout = gHttpHandler->SpdyTimeout();
         }
 
         LOG(("Connection can be reused [this=%p idle-timeout=%usec]\n",
@@ -1322,6 +1402,37 @@ nsHttpConnection::ReadTimeoutTick(PRIntervalTime now)
         nextTickAfter = PR_IntervalToSeconds(mTransaction->ResponseTimeout()) -
                         PR_IntervalToSeconds(initialResponseDelta);
         nextTickAfter = std::max(nextTickAfter, 1U);
+    }
+
+    // Check for the TCP Fast Open related stalls.
+    if (mCheckNetworkStallsWithTFO && mLastRequestBytesSentTime) {
+        PRIntervalTime initialResponseDelta = now - mLastRequestBytesSentTime;
+        if (initialResponseDelta >= gHttpHandler->FastOpenStallsTimeout()) {
+            gHttpHandler->IncrementFastOpenStallsCounter();
+            mCheckNetworkStallsWithTFO = false;
+        } else {
+            uint32_t next = PR_IntervalToSeconds(gHttpHandler->FastOpenStallsTimeout()) -
+                            PR_IntervalToSeconds(initialResponseDelta);
+            nextTickAfter = std::min(nextTickAfter, next);
+        }
+    }
+
+    if (!mNPNComplete) {
+      // We can reuse mLastWriteTime here, because it is set when the
+      // connection is activated and only change when a transaction
+      // succesfullu write to the socket and this can only happen after
+      // the TLS handshake is done.
+      PRIntervalTime initialTLSDelta = now - mLastWriteTime;
+      if (initialTLSDelta > gHttpHandler->TLSHandshakeTimeout()) {
+        LOG(("canceling transaction: tls handshake takes too long: tls handshake "
+             "last %ums, timeout is %dms.",
+             PR_IntervalToMilliseconds(initialTLSDelta),
+             gHttpHandler->TLSHandshakeTimeout()));
+
+        // This will also close the connection
+        CloseTransaction(mTransaction, NS_ERROR_NET_TIMEOUT);
+        return UINT32_MAX;
+      }
     }
 
     return nextTickAfter;
@@ -1533,13 +1644,13 @@ nsHttpConnection::MaybeForceSendIO()
     }
     MOZ_ASSERT(!mForceSendTimer);
     mForceSendPending = true;
-    mForceSendTimer = do_CreateInstance("@mozilla.org/timer;1");
-    return mForceSendTimer->InitWithNamedFuncCallback(
-      nsHttpConnection::ForceSendIO,
-      this,
-      kForceDelay,
-      nsITimer::TYPE_ONE_SHOT,
-      "net::nsHttpConnection::MaybeForceSendIO");
+    return NS_NewTimerWithFuncCallback(
+        getter_AddRefs(mForceSendTimer),
+        nsHttpConnection::ForceSendIO,
+        this,
+        kForceDelay,
+        nsITimer::TYPE_ONE_SHOT,
+        "net::nsHttpConnection::MaybeForceSendIO");
 }
 
 // trigger an asynchronous read
@@ -1807,6 +1918,9 @@ nsHttpConnection::OnSocketWritable()
                 mTransaction->OnTransportStatus(mSocketTransport,
                                                 NS_NET_STATUS_WAITING_FOR,
                                                 0);
+                if (mCheckNetworkStallsWithTFO) {
+                    mLastRequestBytesSentTime = PR_IntervalNow();
+                }
 
                 rv = ResumeRecv(); // start reading
             }
@@ -1848,6 +1962,8 @@ nsHttpConnection::OnWriteSegment(char *buf,
         mSocketInCondition = NS_BASE_STREAM_CLOSED;
     else
         mSocketInCondition = NS_OK; // reset condition
+
+    mCheckNetworkStallsWithTFO = false;
 
     return mSocketInCondition;
 }
@@ -2028,7 +2144,7 @@ nsHttpConnection::SetupProxyConnect()
     if (NS_FAILED(rv)) {
         return rv;
     }
-    return NS_NewCStringInputStream(getter_AddRefs(mProxyConnectStream), buf);
+    return NS_NewCStringInputStream(getter_AddRefs(mProxyConnectStream), Move(buf));
 }
 
 nsresult
@@ -2070,7 +2186,7 @@ nsHttpConnection::StartShortLivedTCPKeepalives()
     // Start a timer to move to long-lived keepalive config.
     if(!mTCPKeepaliveTransitionTimer) {
         mTCPKeepaliveTransitionTimer =
-            do_CreateInstance("@mozilla.org/timer;1");
+            NS_NewTimer();
     }
 
     if (mTCPKeepaliveTransitionTimer) {
@@ -2335,6 +2451,7 @@ nsAHttpTransaction *
 nsHttpConnection::CloseConnectionFastOpenTakesTooLongOrError(bool aCloseSocketTransport)
 {
     MOZ_ASSERT(!mCurrentBytesRead);
+    MOZ_ASSERT(OnSocketThread(), "not on socket thread");
 
     mFastOpenStatus = TFO_FAILED;
     RefPtr<nsAHttpTransaction> trans;
@@ -2389,14 +2506,99 @@ nsHttpConnection::SetFastOpen(bool aFastOpen)
     if (!mFastOpen &&
         mTransaction &&
         !mTransaction->IsNullTransaction()) {
+
         mExperienced = true;
+
+        nsHttpTransaction *hTrans = mTransaction->QueryHttpTransaction();
+        if (hTrans) {
+            SetUrgentStartPreferred(hTrans->ClassOfService() & nsIClassOfService::UrgentStart);
+        }
+    }
+}
+
+void
+nsHttpConnection::SetFastOpenStatus(uint8_t tfoStatus) {
+    mFastOpenStatus = tfoStatus;
+    if ((mFastOpenStatus >= TFO_FAILED_CONNECTION_REFUSED) &&
+        (mFastOpenStatus <= TFO_FAILED_BACKUP_CONNECTION_TFO_DATA_COOKIE_NOT_ACCEPTED) &&
+        mSocketTransport) {
+        nsresult firstRetryError;
+        if (NS_SUCCEEDED(mSocketTransport->GetFirstRetryError(&firstRetryError)) &&
+            (NS_FAILED(firstRetryError))) {
+            if ((mFastOpenStatus >= TFO_FAILED_BACKUP_CONNECTION_TFO_NOT_TRIED) &&
+                (mFastOpenStatus <= TFO_FAILED_BACKUP_CONNECTION_TFO_DATA_COOKIE_NOT_ACCEPTED)) {
+                mFastOpenStatus = TFO_FAILED_BACKUP_CONNECTION_NO_TFO_FAILED_TOO;
+            } else {
+                // We add +7 to tranform TFO_FAILED_CONNECTION_REFUSED into
+                // TFO_FAILED_CONNECTION_REFUSED_NO_TFO_FAILED_TOO, etc.
+                // If the list in TCPFastOpenLayer.h changes please addapt +7.
+                mFastOpenStatus = tfoStatus + 7;
+            }
+        }
     }
 }
 
 void
 nsHttpConnection::BootstrapTimings(TimingStruct times)
 {
+    mBootstrappedTimingsSet = true;
     mBootstrappedTimings = times;
+}
+
+void
+nsHttpConnection::SetEvent(nsresult aStatus)
+{
+  switch (aStatus) {
+  case NS_NET_STATUS_RESOLVING_HOST:
+    mBootstrappedTimings.domainLookupStart = TimeStamp::Now();
+    break;
+  case NS_NET_STATUS_RESOLVED_HOST:
+    mBootstrappedTimings.domainLookupEnd = TimeStamp::Now();
+    break;
+  case NS_NET_STATUS_CONNECTING_TO:
+    mBootstrappedTimings.connectStart = TimeStamp::Now();
+    break;
+  case NS_NET_STATUS_CONNECTED_TO:
+  {
+    TimeStamp tnow = TimeStamp::Now();
+    mBootstrappedTimings.tcpConnectEnd = tnow;
+    mBootstrappedTimings.connectEnd = tnow;
+    if ((mFastOpenStatus != TFO_DATA_SENT) &&
+        !mBootstrappedTimings.secureConnectionStart.IsNull()) {
+      mBootstrappedTimings.secureConnectionStart = tnow;
+    }
+    break;
+  }
+  case NS_NET_STATUS_TLS_HANDSHAKE_STARTING:
+    mBootstrappedTimings.secureConnectionStart = TimeStamp::Now();
+    break;
+  case NS_NET_STATUS_TLS_HANDSHAKE_ENDED:
+    mBootstrappedTimings.connectEnd = TimeStamp::Now();
+    break;
+  default:
+    break;
+  }
+}
+
+bool
+nsHttpConnection::NoClientCertAuth() const
+{
+  if (!mSocketTransport) {
+    return false;
+  }
+
+  nsCOMPtr<nsISupports> secInfo;
+  mSocketTransport->GetSecurityInfo(getter_AddRefs(secInfo));
+  if (!secInfo) {
+    return false;
+  }
+
+  nsCOMPtr<nsISSLSocketControl> ssc(do_QueryInterface(secInfo));
+  if (!ssc) {
+    return false;
+  }
+
+  return !ssc->GetClientCertSent();
 }
 
 } // namespace net

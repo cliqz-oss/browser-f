@@ -19,7 +19,7 @@
 #include "js/Debug.h"
 
 class nsPIDOMWindowInner;
-class nsGlobalWindow;
+class nsGlobalWindowInner;
 class nsIScriptContext;
 class nsIDocument;
 class nsIDocShell;
@@ -246,8 +246,8 @@ public:
   MOZ_MUST_USE bool Init(nsPIDOMWindowInner* aWindow);
   MOZ_MUST_USE bool Init(nsPIDOMWindowInner* aWindow, JSContext* aCx);
 
-  MOZ_MUST_USE bool Init(nsGlobalWindow* aWindow);
-  MOZ_MUST_USE bool Init(nsGlobalWindow* aWindow, JSContext* aCx);
+  MOZ_MUST_USE bool Init(nsGlobalWindowInner* aWindow);
+  MOZ_MUST_USE bool Init(nsGlobalWindowInner* aWindow, JSContext* aCx);
 
   JSContext* cx() const {
     MOZ_ASSERT(mCx, "Must call Init before using an AutoJSAPI");
@@ -293,7 +293,6 @@ protected:
   // AutoJSAPI, so Init must NOT be called on subclasses that use this.
   AutoJSAPI(nsIGlobalObject* aGlobalObject, bool aIsMainThread, Type aType);
 
-private:
   mozilla::Maybe<JSAutoRequest> mAutoRequest;
   mozilla::Maybe<JSAutoNullableCompartment> mAutoNullableCompartment;
   JSContext *mCx;
@@ -302,6 +301,7 @@ private:
   bool mIsMainThread;
   Maybe<JS::WarningReporter> mOldWarningReporter;
 
+private:
   void InitInternal(nsIGlobalObject* aGlobalObject, JSObject* aGlobal,
                     JSContext* aCx, bool aIsMainThread);
 

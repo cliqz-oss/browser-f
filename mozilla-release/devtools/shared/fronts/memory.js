@@ -4,7 +4,6 @@
 "use strict";
 
 const { memorySpec } = require("devtools/shared/specs/memory");
-const { Task } = require("devtools/shared/task");
 const protocol = require("devtools/shared/protocol");
 
 loader.lazyRequireGetter(this, "FileUtils",
@@ -13,7 +12,7 @@ loader.lazyRequireGetter(this, "HeapSnapshotFileUtils",
                          "devtools/shared/heapsnapshot/HeapSnapshotFileUtils");
 
 const MemoryFront = protocol.FrontClassWithSpec(memorySpec, {
-  initialize: function (client, form, rootForm = null) {
+  initialize: function(client, form, rootForm = null) {
     protocol.Front.prototype.initialize.call(this, client, form);
     this._client = client;
     this.actorID = form.memoryActor;
@@ -37,20 +36,20 @@ const MemoryFront = protocol.FrontClassWithSpec(memorySpec, {
    *
    * @params {Object|undefined} options.boundaries
    *         The boundaries for the heap snapshot. See
-   *         ThreadSafeChromeUtils.webidl for more details.
+   *         ChromeUtils.webidl for more details.
    *
    * @returns Promise<String>
    */
-  saveHeapSnapshot: protocol.custom(Task.async(function* (options = {}) {
-    const snapshotId = yield this._saveHeapSnapshotImpl(options.boundaries);
+  saveHeapSnapshot: protocol.custom(async function(options = {}) {
+    const snapshotId = await this._saveHeapSnapshotImpl(options.boundaries);
 
     if (!options.forceCopy &&
-        (yield HeapSnapshotFileUtils.haveHeapSnapshotTempFile(snapshotId))) {
+        (await HeapSnapshotFileUtils.haveHeapSnapshotTempFile(snapshotId))) {
       return HeapSnapshotFileUtils.getHeapSnapshotTempFilePath(snapshotId);
     }
 
-    return yield this.transferHeapSnapshot(snapshotId);
-  }), {
+    return this.transferHeapSnapshot(snapshotId);
+  }, {
     impl: "_saveHeapSnapshotImpl"
   }),
 
@@ -63,7 +62,7 @@ const MemoryFront = protocol.FrontClassWithSpec(memorySpec, {
    *
    * @returns Promise<String>
    */
-  transferHeapSnapshot: protocol.custom(function (snapshotId) {
+  transferHeapSnapshot: protocol.custom(function(snapshotId) {
     if (!this.heapSnapshotFileActorID) {
       throw new Error("MemoryFront initialized without a rootForm");
     }
@@ -80,11 +79,11 @@ const MemoryFront = protocol.FrontClassWithSpec(memorySpec, {
       const outFile = new FileUtils.File(outFilePath);
 
       const outFileStream = FileUtils.openSafeFileOutputStream(outFile);
-      request.on("bulk-reply", Task.async(function* ({ copyTo }) {
-        yield copyTo(outFileStream);
+      request.on("bulk-reply", async function({ copyTo }) {
+        await copyTo(outFileStream);
         FileUtils.closeSafeFileOutputStream(outFileStream);
         resolve(outFilePath);
-      }));
+      });
     });
   })
 });

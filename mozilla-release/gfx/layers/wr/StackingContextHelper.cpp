@@ -1,91 +1,80 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/layers/StackingContextHelper.h"
 
-#include "mozilla/layers/WebRenderLayer.h"
 #include "UnitTransforms.h"
+#include "nsDisplayList.h"
 
 namespace mozilla {
 namespace layers {
 
 StackingContextHelper::StackingContextHelper()
   : mBuilder(nullptr)
+  , mScale(1.0f, 1.0f)
+  , mAffectsClipPositioning(false)
+  , mIsPreserve3D(false)
+  , mRasterizeLocally(false)
 {
   // mOrigin remains at 0,0
 }
 
 StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParentSC,
                                              wr::DisplayListBuilder& aBuilder,
-                                             LayerRect aBoundForSC,
-                                             LayerPoint aOrigin,
-                                             uint64_t aAnimationsId,
+                                             const nsTArray<wr::WrFilterOp>& aFilters,
+                                             const LayoutDeviceRect& aBounds,
+                                             const gfx::Matrix4x4* aBoundTransform,
+                                             const wr::WrAnimationProperty* aAnimation,
                                              float* aOpacityPtr,
                                              gfx::Matrix4x4* aTransformPtr,
-                                             const nsTArray<wr::WrFilterOp>& aFilters)
+                                             gfx::Matrix4x4* aPerspectivePtr,
+                                             const gfx::CompositionOp& aMixBlendMode,
+                                             bool aBackfaceVisible,
+                                             bool aIsPreserve3D,
+                                             const Maybe<gfx::Matrix4x4>& aTransformForScrollData,
+                                             const wr::WrClipId* aClipNodeId,
+                                             bool aRasterizeLocally)
   : mBuilder(&aBuilder)
+  , mScale(1.0f, 1.0f)
+  , mTransformForScrollData(aTransformForScrollData)
+  , mIsPreserve3D(aIsPreserve3D)
+  , mRasterizeLocally(aRasterizeLocally || aParentSC.mRasterizeLocally)
 {
-  wr::LayoutRect scBounds = aParentSC.ToRelativeLayoutRect(aBoundForSC);
-  if (aTransformPtr) {
-    mTransform = *aTransformPtr;
+  // Compute scale for fallback rendering. We don't try to guess a scale for 3d
+  // transformed items
+  gfx::Matrix transform2d;
+  if (aBoundTransform && aBoundTransform->CanDraw2D(&transform2d)
+      && !aPerspectivePtr
+      && !aParentSC.mIsPreserve3D) {
+    mInheritedTransform = transform2d * aParentSC.mInheritedTransform;
+    mScale = mInheritedTransform.ScaleFactors(true);
+  } else {
+    mInheritedTransform = aParentSC.mInheritedTransform;
+    mScale = aParentSC.mScale;
   }
 
-  mBuilder->PushStackingContext(scBounds,
-                                aAnimationsId,
+  auto rasterSpace = mRasterizeLocally
+    ? wr::GlyphRasterSpace::Local(std::max(mScale.width, mScale.height))
+    : wr::GlyphRasterSpace::Screen();
+
+  mBuilder->PushStackingContext(wr::ToLayoutRect(aBounds),
+                                aClipNodeId,
+                                aAnimation,
                                 aOpacityPtr,
                                 aTransformPtr,
-                                wr::TransformStyle::Flat,
-                                // TODO: set correct blend mode.
-                                wr::ToMixBlendMode(gfx::CompositionOp::OP_OVER),
-                                aFilters);
+                                aIsPreserve3D ? wr::TransformStyle::Preserve3D : wr::TransformStyle::Flat,
+                                aPerspectivePtr,
+                                wr::ToMixBlendMode(aMixBlendMode),
+                                aFilters,
+                                aBackfaceVisible,
+                                rasterSpace);
 
-  mOrigin = aOrigin;
-}
-
-StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParentSC,
-                                             wr::DisplayListBuilder& aBuilder,
-                                             WebRenderLayer* aLayer,
-                                             const Maybe<gfx::Matrix4x4>& aTransform,
-                                             const nsTArray<wr::WrFilterOp>& aFilters)
-  : mBuilder(&aBuilder)
-{
-  wr::LayoutRect scBounds = aParentSC.ToRelativeLayoutRect(aLayer->BoundsForStackingContext());
-  Layer* layer = aLayer->GetLayer();
-  mTransform = aTransform.valueOr(layer->GetTransform());
-
-  float opacity = 1.0f;
-  mBuilder->PushStackingContext(scBounds, 0, &opacity,
-                                mTransform.IsIdentity() ? nullptr : &mTransform,
-                                wr::TransformStyle::Flat,
-                                wr::ToMixBlendMode(layer->GetMixBlendMode()),
-                                aFilters);
-  mOrigin = aLayer->Bounds().TopLeft();
-}
-
-StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParentSC,
-                                             wr::DisplayListBuilder& aBuilder,
-                                             WebRenderLayer* aLayer,
-                                             uint64_t aAnimationsId,
-                                             float* aOpacityPtr,
-                                             gfx::Matrix4x4* aTransformPtr,
-                                             const nsTArray<wr::WrFilterOp>& aFilters)
-  : mBuilder(&aBuilder)
-{
-  wr::LayoutRect scBounds = aParentSC.ToRelativeLayoutRect(aLayer->BoundsForStackingContext());
-  if (aTransformPtr) {
-    mTransform = *aTransformPtr;
-  }
-
-  mBuilder->PushStackingContext(scBounds,
-                                aAnimationsId,
-                                aOpacityPtr,
-                                aTransformPtr,
-                                wr::TransformStyle::Flat,
-                                wr::ToMixBlendMode(aLayer->GetLayer()->GetMixBlendMode()),
-                                aFilters);
-  mOrigin = aLayer->Bounds().TopLeft();
+  mAffectsClipPositioning =
+      (aTransformPtr && !aTransformPtr->IsIdentity()) ||
+      (aBounds.TopLeft() != LayoutDevicePoint());
 }
 
 StackingContextHelper::~StackingContextHelper()
@@ -95,28 +84,10 @@ StackingContextHelper::~StackingContextHelper()
   }
 }
 
-wr::LayoutRect
-StackingContextHelper::ToRelativeLayoutRect(const LayerRect& aRect) const
+const Maybe<gfx::Matrix4x4>&
+StackingContextHelper::GetTransformForScrollData() const
 {
-  return wr::ToLayoutRect(aRect - mOrigin);
-}
-
-wr::LayoutRect
-StackingContextHelper::ToRelativeLayoutRect(const LayoutDeviceRect& aRect) const
-{
-  return wr::ToLayoutRect(ViewAs<LayerPixel>(aRect, PixelCastJustification::WebRenderHasUnitResolution) - mOrigin);
-}
-
-wr::LayoutPoint
-StackingContextHelper::ToRelativeLayoutPoint(const LayerPoint& aPoint) const
-{
-  return wr::ToLayoutPoint(aPoint - mOrigin);
-}
-
-wr::LayoutRect
-StackingContextHelper::ToRelativeLayoutRectRounded(const LayoutDeviceRect& aRect) const
-{
-  return wr::ToLayoutRect(RoundedToInt(ViewAs<LayerPixel>(aRect, PixelCastJustification::WebRenderHasUnitResolution) - mOrigin));
+  return mTransformForScrollData;
 }
 
 } // namespace layers

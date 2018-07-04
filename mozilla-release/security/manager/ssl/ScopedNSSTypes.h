@@ -26,6 +26,7 @@
 #include "pkcs12.h"
 #include "prerror.h"
 #include "prio.h"
+#include "prmem.h"
 #include "sechash.h"
 #include "secmod.h"
 #include "secpkcs7.h"
@@ -80,7 +81,7 @@ MOZ_TYPE_SPECIFIC_UNIQUE_PTR_TEMPLATE(UniquePK11Context,
 /** A more convenient way of dealing with digests calculated into
  *  stack-allocated buffers. NSS must be initialized on the main thread before
  *  use, and the caller must ensure NSS isn't shut down, typically by
- *  subclassing nsNSSShutDownObject, while Digest is in use.
+ *  being within the lifetime of XPCOM.
  *
  * Typical usage, for digesting a buffer in memory:
  *
@@ -108,6 +109,7 @@ class Digest
 {
 public:
   Digest()
+  : mItemBuf()
   {
     mItem.type = siBuffer;
     mItem.data = mItemBuf;
@@ -327,9 +329,9 @@ MOZ_TYPE_SPECIFIC_UNIQUE_PTR_TEMPLATE(UniquePORTString,
 MOZ_TYPE_SPECIFIC_UNIQUE_PTR_TEMPLATE(UniquePRFileDesc,
                                       PRFileDesc,
                                       PR_Close)
-MOZ_TYPE_SPECIFIC_UNIQUE_PTR_TEMPLATE(UniquePRLibraryName,
+MOZ_TYPE_SPECIFIC_UNIQUE_PTR_TEMPLATE(UniquePRString,
                                       char,
-                                      PR_FreeLibraryName)
+                                      PR_Free)
 
 MOZ_TYPE_SPECIFIC_UNIQUE_PTR_TEMPLATE(UniqueSECAlgorithmID,
                                       SECAlgorithmID,

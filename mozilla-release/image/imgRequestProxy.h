@@ -30,6 +30,7 @@
     {0x8f, 0x65, 0x9c, 0x46, 0x2e, 0xe2, 0xbc, 0x95} \
 }
 
+class imgCacheValidator;
 class imgINotificationObserver;
 class imgStatusNotifyRunnable;
 class ProxyBehaviour;
@@ -83,8 +84,9 @@ public:
                                                // previous owner has already
                                                // sent notifications out!
 
+  // Add the request to the load group, if any. This should only be called once
+  // during initialization.
   void AddToLoadGroup();
-  void RemoveFromLoadGroup(bool releaseLoadGroup);
 
   inline bool HasObserver() const {
     return mListener != nullptr;
@@ -106,23 +108,29 @@ public:
                       const mozilla::gfx::IntRect* aRect = nullptr) override;
   virtual void OnLoadComplete(bool aLastPart) override;
 
-  // imgIOnloadBlocker methods:
-  virtual void BlockOnload() override;
-  virtual void UnblockOnload() override;
-
   // Other, internal-only methods:
   virtual void SetHasImage() override;
 
   // Whether we want notifications from ProgressTracker to be deferred until
-  // an event it has scheduled has been fired.
+  // an event it has scheduled has been fired and/or validation is complete.
   virtual bool NotificationsDeferred() const override
   {
-    return mDeferNotifications;
+    return IsValidating() || mPendingNotify;
   }
-  virtual void SetNotificationsDeferred(bool aDeferNotifications) override
+  virtual void MarkPendingNotify() override
   {
-    mDeferNotifications = aDeferNotifications;
+    mPendingNotify = true;
   }
+  virtual void ClearPendingNotify() override
+  {
+    mPendingNotify = false;
+  }
+  bool IsValidating() const
+  {
+    return mValidating;
+  }
+  void MarkValidating();
+  void ClearValidating();
 
   bool IsOnEventTarget() const;
   already_AddRefed<nsIEventTarget> GetEventTarget() const override;
@@ -168,15 +176,17 @@ protected:
       nsresult mStatus;
   };
 
+  /* Remove from and forget the load group. */
+  void RemoveFromLoadGroup();
+
+  /* Remove from the load group and readd as a background request. */
+  void MoveToBackgroundInLoadGroup();
+
   /* Finish up canceling ourselves */
   void DoCancel(nsresult status);
 
   /* Do the proper refcount management to null out mListener */
   void NullOutListener();
-
-  void DoRemoveFromLoadGroup() {
-    RemoveFromLoadGroup(true);
-  }
 
   // Return the ProgressTracker associated with mOwner and/or mImage. It may
   // live either on mOwner or mImage, depending on whether
@@ -195,6 +205,7 @@ protected:
   already_AddRefed<Image> GetImage() const;
   bool HasImage() const;
   imgRequest* GetOwner() const;
+  imgCacheValidator* GetValidator() const;
 
   nsresult PerformClone(imgINotificationObserver* aObserver,
                         nsIDocument* aLoadingDocument,
@@ -213,8 +224,10 @@ private:
   friend class imgCacheValidator;
 
   void AddToOwner(nsIDocument* aLoadingDocument);
+  void RemoveFromOwner(nsresult aStatus);
 
-  void Dispatch(already_AddRefed<nsIRunnable> aEvent);
+  nsresult DispatchWithTargetIfAvailable(already_AddRefed<nsIRunnable> aEvent);
+  void DispatchWithTarget(already_AddRefed<nsIRunnable> aEvent);
 
   // The URI of our request.
   RefPtr<ImageURL> mURI;
@@ -235,12 +248,14 @@ private:
   uint32_t    mAnimationConsumers;
   bool mCanceled : 1;
   bool mIsInLoadGroup : 1;
+  bool mForceDispatchLoadGroup : 1;
   bool mListenerIsStrongRef : 1;
   bool mDecodeRequested : 1;
 
   // Whether we want to defer our notifications by the non-virtual Observer
   // interfaces as image loads proceed.
-  bool mDeferNotifications : 1;
+  bool mPendingNotify : 1;
+  bool mValidating : 1;
   bool mHadListener : 1;
   bool mHadDispatch : 1;
 };

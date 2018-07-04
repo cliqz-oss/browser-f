@@ -1,24 +1,22 @@
 /* exported attachURL, evaluateJS */
 "use strict";
 
-var Cu = Components.utils;
-
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
-const {DebuggerClient} = require("devtools/shared/client/main");
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const {DebuggerClient} = require("devtools/shared/client/debugger-client");
 const {DebuggerServer} = require("devtools/server/main");
 
 const Services = require("Services");
 
 // Always log packets when running tests.
 Services.prefs.setBoolPref("devtools.debugger.log", true);
-SimpleTest.registerCleanupFunction(function () {
+SimpleTest.registerCleanupFunction(function() {
   Services.prefs.clearUserPref("devtools.debugger.log");
 });
 
 if (!DebuggerServer.initialized) {
   DebuggerServer.init();
-  DebuggerServer.addBrowserActors();
-  SimpleTest.registerCleanupFunction(function () {
+  DebuggerServer.registerAllActors();
+  SimpleTest.registerCleanupFunction(function() {
     DebuggerServer.destroy();
   });
 }
@@ -40,9 +38,9 @@ async function attachURL(url) {
   let win = window.open(url, "_blank");
   let client = null;
 
-  let cleanup = function* () {
+  let cleanup = async function() {
     if (client) {
-      yield client.close();
+      await client.close();
       client = null;
     }
     if (win) {

@@ -5,15 +5,9 @@
 %endif
 
 #identity-box {
-%ifdef MOZ_PHOTON_THEME
-  padding: 0 5px;
-%else
-  font-size: .9em;
-  padding: 3px 5px;
-  /* The padding-left and padding-right transitions handle the delayed hiding of
-     the forward button when hovered. */
-  transition: padding-left, padding-right;
-%endif
+  padding-inline-start: 8px;
+  padding-inline-end: 4px;
+  margin-inline-end: 4px;
   /* Set default fill for icons in the identity block.
      Individual icons can override this. */
   fill: currentColor;
@@ -22,26 +16,25 @@
   overflow: hidden;
 }
 
-%ifdef MOZ_PHOTON_THEME
 #identity-box:hover:not(.no-hover):not([open=true]) {
-  background-color: hsla(240,5%,5%,.05);
+  background-color: hsla(0,0%,70%,.2);
   fill-opacity: .8;
 }
 
 #identity-box:hover:active:not(.no-hover),
 #identity-box[open=true] {
-  background-color: hsla(240,5%,5%,.1);
+  background-color: hsla(0,0%,70%,.3);
   fill-opacity: .8;
 }
-%endif
 
 #urlbar[pageproxystate="valid"] > #identity-box.verifiedIdentity > #identity-icon-labels {
-%ifdef MOZ_PHOTON_THEME
   color: #058B00;
-%else
-  color: hsl(92,100%,30%);
-%endif
 }
+
+:root[lwt-toolbar-field-brighttext] #urlbar[pageproxystate="valid"] > #identity-box.verifiedIdentity > #identity-icon-labels {
+  color: #30e60b;
+}
+
 #urlbar[pageproxystate="valid"] > #identity-box.chromeUI > #identity-icon-labels {
 %ifdef MOZ_OFFICIAL_BRANDING
   color: rgb(229,115,0);
@@ -51,39 +44,34 @@
 }
 
 #identity-icon-labels:-moz-locale-dir(ltr) {
-  padding-left: 2px;
+  padding-left: 4px;
 }
 #identity-icon-labels:-moz-locale-dir(rtl) {
-  padding-right: 2px;
+  padding-right: 4px;
 }
-%ifdef MOZ_PHOTON_THEME
-#identity-box:not(.chromeUI):not(.extensionPage) {
+#identity-box:not(.chromeUI):not(.extensionPage):not(.notSecureText) {
   --urlbar-separator-color: transparent;
 }
 #urlbar[pageproxystate=valid] > #identity-box.verifiedIdentity {
   --urlbar-separator-color: rgba(18, 188, 0, .5);
 }
-%endif
 
-#identity-box {
-  padding-inline-end: 2px;
-  margin-inline-end: 2px;
-}
-
+#urlbar[pageproxystate=valid] > #identity-box.notSecureText,
 #urlbar[pageproxystate=valid] > #identity-box.verifiedIdentity,
 #urlbar[pageproxystate=valid] > #identity-box.chromeUI,
 #urlbar[pageproxystate=valid] > #identity-box.extensionPage,
 #urlbar-display-box {
-  margin-inline-end: 4px;
+  margin-inline-end: 8px;
   border-inline-end: 1px solid var(--urlbar-separator-color);
   border-image: linear-gradient(transparent 15%, var(--urlbar-separator-color) 15%, var(--urlbar-separator-color) 85%, transparent 85%);
   border-image-slice: 1;
 }
 
+#urlbar[pageproxystate=valid] > #identity-box.notSecureText,
 #urlbar[pageproxystate=valid] > #identity-box.verifiedIdentity,
 #urlbar[pageproxystate=valid] > #identity-box.chromeUI,
 #urlbar[pageproxystate=valid] > #identity-box.extensionPage {
-  padding-inline-end: 4px;
+  padding-inline-end: 8px;
 }
 
 #urlbar-display-box {
@@ -93,23 +81,7 @@
   border-image-slice: 1;
 }
 
-%ifndef MOZ_PHOTON_THEME
-@conditionalForwardWithUrlbar@ > #forward-button[disabled] + #urlbar > #identity-box {
-  padding-inline-start: calc(var(--backbutton-urlbar-overlap) + 5px);
-}
-@conditionalForwardWithUrlbar@:hover:not([switchingtabs]) > #forward-button[disabled] + #urlbar > #identity-box {
-  /* Forward button hiding is delayed when hovered, so we should use the same
-     delay for the identity box. We handle both horizontal paddings (for LTR and
-     RTL), the latter two delays here are for padding-left and padding-right. */
-  transition-delay: 100s, 100s;
-}
-
-@conditionalForwardWithUrlbar@:not(:hover) > #forward-button[disabled] + #urlbar > #identity-box {
-  /* when not hovered anymore, trigger a new non-delayed transition to react to the forward button hiding */
-  padding-inline-start: calc(var(--backbutton-urlbar-overlap) + 5.01px);
-}
-%endif
-
+#sharing-icon,
 #identity-icon,
 #tracking-protection-icon,
 #connection-icon,
@@ -118,7 +90,7 @@
 #extension-icon {
   width: 16px;
   height: 16px;
-  margin-inline-start: 2px;
+  margin-inline-start: 4px;
   -moz-context-properties: fill, fill-opacity;
 }
 
@@ -127,77 +99,50 @@
   margin-inline-start: 0;
   list-style-image: url(chrome://browser/skin/identity-icon.svg);
 }
-%ifndef MOZ_PHOTON_THEME
-#identity-box:not(.no-hover):hover > #identity-icon,
-#identity-box[open=true] > #identity-icon {
-  list-style-image: url(chrome://browser/skin/identity-icon-hover.svg);
-}
-#identity-box.grantedPermissions:not(.no-hover):hover > #identity-icon,
-#identity-box.grantedPermissions[open=true] > #identity-icon {
-  list-style-image: url(chrome://browser/skin/identity-icon-notice-hover.svg);
-}
-%endif
 
 #identity-box.grantedPermissions > #identity-icon {
   list-style-image: url(chrome://browser/skin/identity-icon-notice.svg);
 }
+
 #urlbar[pageproxystate="valid"] > #identity-box.chromeUI > #identity-icon {
   list-style-image: url(chrome://branding/content/identity-icons-brand.svg);
 }
-#urlbar[pageproxystate="invalid"] > #identity-box > #identity-icon {
-  fill-opacity: .3;
-}
 
-#urlbar[actiontype="searchengine"] > #identity-box > #identity-icon {
-  list-style-image: url(chrome://global/skin/icons/autocomplete-search.svg);
+#urlbar[pageproxystate="invalid"] > #identity-box > #identity-icon {
+  list-style-image: url(chrome://browser/skin/search-glass.svg);
+  fill-opacity: .4;
 }
 
 #urlbar[actiontype="extension"] > #identity-box > #identity-icon {
-  list-style-image: url(chrome://browser/skin/addons/addon-install-anchor.svg);
+  list-style-image: url(chrome://mozapps/skin/extensions/extensionGeneric-16.svg);
 }
 
 /* SHARING ICON */
 
-#sharing-icon {
-  width: 16px;
-  height: 16px;
-  margin-inline-start: -16px;
-  position: relative;
-  -moz-context-properties: fill;
-  fill: rgb(224, 41, 29);
-  display: none;
-}
-
 #identity-box[sharing="camera"] > #sharing-icon {
-  list-style-image: url("chrome://browser/skin/notification-icons.svg#camera-sharing");
+  list-style-image: url("chrome://browser/skin/notification-icons/camera.svg");
 }
 
 #identity-box[sharing="microphone"] > #sharing-icon {
-  list-style-image: url("chrome://browser/skin/notification-icons.svg#microphone-sharing");
+  list-style-image: url("chrome://browser/skin/notification-icons/microphone.svg");
 }
 
 #identity-box[sharing="screen"] > #sharing-icon {
-  list-style-image: url("chrome://browser/skin/notification-icons.svg#screen-sharing");
+  list-style-image: url("chrome://browser/skin/notification-icons/screen.svg");
 }
 
-#identity-box[sharing] > #sharing-icon {
-  display: -moz-box;
-  animation-delay: -1.5s;
+#identity-box:not([sharing]) > #sharing-icon {
+  display: none;
 }
 
-#identity-box[sharing] > #identity-icon,
-#sharing-icon {
-  animation: 3s linear identity-box-sharing-icon-pulse infinite;
+#identity-box[sharing]:not([paused]) > #sharing-icon {
+  animation: 1.5s ease in-use-blink infinite;
+  -moz-context-properties: fill;
+  fill: rgb(224, 41, 29);
 }
 
-/* This should remain identical to tab-sharing-icon-pulse in tabs.inc.css */
-@keyframes identity-box-sharing-icon-pulse {
-  0%, 16.66%, 83.33%, 100% {
-    opacity: 0;
-  }
-  33.33%, 66.66% {
-    opacity: 1;
-  }
+@keyframes in-use-blink {
+  50% { opacity: 0; }
 }
 
 /* TRACKING PROTECTION ICON */
@@ -216,11 +161,12 @@
 }
 
 #tracking-protection-icon:not([state]) {
-  margin-inline-end: -18px;
+  margin-inline-end: -20px;
   pointer-events: none;
   opacity: 0;
   /* Only animate the shield in, when it disappears hide it immediately. */
   transition: none;
+  list-style-image: none;
 }
 
 #urlbar[pageproxystate="invalid"] > #identity-box > #extension-icon,
@@ -240,11 +186,7 @@
   list-style-image: url(chrome://browser/skin/connection-secure.svg);
   visibility: visible;
   -moz-context-properties: fill;
-%ifdef MOZ_PHOTON_THEME
   fill: #12BC00;
-%else
-  fill: #4d9a26;
-%endif
 }
 #urlbar[pageproxystate="valid"] > #identity-box.weakCipher > #connection-icon,
 #urlbar[pageproxystate="valid"] > #identity-box.mixedDisplayContent > #connection-icon,
@@ -252,8 +194,11 @@
 #urlbar[pageproxystate="valid"] > #identity-box.certUserOverridden > #connection-icon {
   list-style-image: url(chrome://browser/skin/connection-mixed-passive-loaded.svg);
   visibility: visible;
+  fill: unset;
+  -moz-context-properties: fill, fill-opacity;
 }
 
+#urlbar[pageproxystate="valid"] > #identity-box.notSecure > #connection-icon,
 #urlbar[pageproxystate="valid"] > #identity-box.insecureLoginForms > #connection-icon,
 #urlbar[pageproxystate="valid"] > #identity-box.mixedActiveContent > #connection-icon {
   list-style-image: url(chrome://browser/skin/connection-mixed-active-loaded.svg);
@@ -261,7 +206,7 @@
 }
 
 #identity-box.extensionPage > #extension-icon {
-  list-style-image: url(chrome://browser/skin/controlcenter/extension.svg);
+  list-style-image: url(chrome://mozapps/skin/extensions/extensionGeneric-16.svg);
   visibility: visible;
 }
 

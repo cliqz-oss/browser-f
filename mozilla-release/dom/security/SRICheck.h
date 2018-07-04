@@ -11,7 +11,6 @@
 #include "nsICryptoHash.h"
 
 class nsIChannel;
-class nsIUnicharStreamLoader;
 class nsIConsoleReportCollector;
 
 namespace mozilla {
@@ -33,16 +32,6 @@ public:
                                     const nsACString& aSourceFileURI,
                                     nsIConsoleReportCollector* aReporter,
                                     SRIMetadata* outMetadata);
-
-  /**
-   * Process the integrity attribute of the element.  A result of false
-   * must prevent the resource from loading.
-   */
-  static nsresult VerifyIntegrity(const SRIMetadata& aMetadata,
-                                  nsIUnicharStreamLoader* aLoader,
-                                  const nsAString& aString,
-                                  const nsACString& aSourceFileURI,
-                                  nsIConsoleReportCollector* aReporter);
 };
 
 // The SRICheckDataVerifier can be used in 2 different mode:

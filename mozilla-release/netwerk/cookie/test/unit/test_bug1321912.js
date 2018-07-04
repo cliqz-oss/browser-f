@@ -1,6 +1,4 @@
-const {utils: Cu, interfaces: Ci, classes: Cc} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 do_get_profile();
 const dirSvc = Cc["@mozilla.org/file/directory_service;1"].
@@ -50,18 +48,18 @@ conn.executeSimpleSQL("INSERT INTO moz_cookies(" +
   now + ", " + now + ", " + now + ", 1, 1)");
 
 // Now start the cookie service, and then check the fields in the table.
+// Get sessionEnumerator to wait for the initialization in cookie thread
+const enumerator = Cc["@mozilla.org/cookieService;1"].
+                   getService(Ci.nsICookieManager).sessionEnumerator;
 
-const cs = Cc["@mozilla.org/cookieService;1"].
-           getService(Ci.nsICookieService);
-
-do_check_true(conn.schemaVersion, 8);
+Assert.ok(conn.schemaVersion, 8);
 let stmt = conn.createStatement("SELECT sql FROM sqlite_master " +
                                   "WHERE type = 'table' AND " +
                                   "      name = 'moz_cookies'");
 try {
-  do_check_true(stmt.executeStep());
+  Assert.ok(stmt.executeStep());
   let sql = stmt.getString(0);
-  do_check_eq(sql.indexOf("appId"), -1);
+  Assert.equal(sql.indexOf("appId"), -1);
 } finally {
   stmt.finalize();
 }
@@ -78,7 +76,7 @@ stmt = conn.createStatement("SELECT * FROM moz_cookies " +
                             "      isSecure = 1 AND " +
                             "      isHttpOnly = 1");
 try {
-  do_check_true(stmt.executeStep());
+  Assert.ok(stmt.executeStep());
 } finally {
   stmt.finalize();
 }

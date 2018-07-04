@@ -4,12 +4,13 @@
 
 //! The `Finite<T>` struct.
 
-use heapsize::HeapSizeOf;
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use num_traits::Float;
+use std::default::Default;
 use std::ops::Deref;
 
 /// Encapsulates the IDL restricted float type.
-#[derive(JSTraceable, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, JSTraceable, PartialEq)]
 pub struct Finite<T: Float>(T);
 
 impl<T: Float> Finite<T> {
@@ -40,8 +41,14 @@ impl<T: Float> Deref for Finite<T> {
     }
 }
 
-impl<T: Float + HeapSizeOf> HeapSizeOf for Finite<T> {
-    fn heap_size_of_children(&self) -> usize {
-        (**self).heap_size_of_children()
+impl<T: Float + MallocSizeOf> MallocSizeOf for Finite<T> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        (**self).size_of(ops)
+    }
+}
+
+impl<T: Float + Default> Default for Finite<T> {
+    fn default() -> Finite<T> {
+        Finite::wrap(T::default())
     }
 }

@@ -52,10 +52,10 @@
 #include "mozilla/Char16.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Types.h"
+#include "mozilla/WrappingOperations.h"
 
 #include <stdint.h>
 
-#ifdef __cplusplus
 namespace mozilla {
 
 /**
@@ -63,16 +63,16 @@ namespace mozilla {
  */
 static const uint32_t kGoldenRatioU32 = 0x9E3779B9U;
 
-inline uint32_t
-RotateBitsLeft32(uint32_t aValue, uint8_t aBits)
-{
-  MOZ_ASSERT(aBits < 32);
-  return (aValue << aBits) | (aValue >> (32 - aBits));
-}
-
 namespace detail {
 
-inline uint32_t
+MOZ_NO_SANITIZE_UNSIGNED_OVERFLOW
+constexpr uint32_t
+RotateLeft5(uint32_t aValue)
+{
+  return (aValue << 5) | (aValue >> 27);
+}
+
+constexpr uint32_t
 AddU32ToHash(uint32_t aHash, uint32_t aValue)
 {
   /*
@@ -96,32 +96,35 @@ AddU32ToHash(uint32_t aHash, uint32_t aValue)
    * Otherwise, if |aHash| is 0 (as it often is for the beginning of a
    * message), the expression
    *
-   *   (kGoldenRatioU32 * RotateBitsLeft(aHash, 5)) |xor| aValue
+   *   mozilla::WrappingMultiply(kGoldenRatioU32, RotateLeft5(aHash))
+   *   |xor|
+   *   aValue
    *
    * evaluates to |aValue|.
    *
    * (Number-theoretic aside: Because any odd number |m| is relatively prime to
-   * our modulus (2^32), the list
+   * our modulus (2**32), the list
    *
-   *    [x * m (mod 2^32) for 0 <= x < 2^32]
+   *    [x * m (mod 2**32) for 0 <= x < 2**32]
    *
    * has no duplicate elements.  This means that multiplying by |m| does not
    * cause us to skip any possible hash values.
    *
-   * It's also nice if |m| has large-ish order mod 2^32 -- that is, if the
-   * smallest k such that m^k == 1 (mod 2^32) is large -- so we can safely
+   * It's also nice if |m| has large-ish order mod 2**32 -- that is, if the
+   * smallest k such that m**k == 1 (mod 2**32) is large -- so we can safely
    * multiply our hash value by |m| a few times without negating the
-   * multiplicative effect.  Our golden ratio constant has order 2^29, which is
+   * multiplicative effect.  Our golden ratio constant has order 2**29, which is
    * more than enough for our purposes.)
    */
-  return kGoldenRatioU32 * (RotateBitsLeft32(aHash, 5) ^ aValue);
+  return mozilla::WrappingMultiply(kGoldenRatioU32,
+                                   RotateLeft5(aHash) ^ aValue);
 }
 
 /**
  * AddUintptrToHash takes sizeof(uintptr_t) as a template parameter.
  */
 template<size_t PtrSize>
-inline uint32_t
+constexpr uint32_t
 AddUintptrToHash(uint32_t aHash, uintptr_t aValue)
 {
   return AddU32ToHash(aHash, static_cast<uint32_t>(aValue));
@@ -177,7 +180,7 @@ AddToHash(uint32_t aHash, A* aA)
 // implicitly converted to 32 bits and then passed to AddUintptrToHash() to be hashed.
 template<typename T,
          typename U = typename mozilla::EnableIf<mozilla::IsIntegral<T>::value>::Type>
-MOZ_MUST_USE inline uint32_t
+MOZ_MUST_USE constexpr uint32_t
 AddToHash(uint32_t aHash, T aA)
 {
   return detail::AddUintptrToHash<sizeof(T)>(aHash, aA);
@@ -215,6 +218,19 @@ HashUntilZero(const T* aStr)
     hash = AddToHash(hash, c);
   }
   return hash;
+}
+
+// This is a `constexpr` alternative to HashUntilZero(const T*). It should
+// only be used for compile-time computation because it uses recursion.
+// XXX: once support for GCC 4.9 is dropped, this function should be removed
+// and HashUntilZero(const T*) should be made `constexpr`.
+template<typename T>
+constexpr uint32_t
+ConstExprHashUntilZero(const T* aStr, uint32_t aHash)
+{
+  return !*aStr
+       ? aHash
+       : ConstExprHashUntilZero(aStr + 1, AddToHash(aHash, *aStr));
 }
 
 template<typename T>
@@ -259,6 +275,21 @@ MOZ_MUST_USE inline uint32_t
 HashString(const char16_t* aStr)
 {
   return detail::HashUntilZero(aStr);
+}
+
+// This is a `constexpr` alternative to HashString(const char16_t*). It should
+// only be used for compile-time computation because it uses recursion.
+//
+// You may need to use the
+// MOZ_{PUSH,POP}_DISABLE_INTEGRAL_CONSTANT_OVERFLOW_WARNING macros if you use
+// this function. See the comment on those macros' definitions for more detail.
+//
+// XXX: once support for GCC 4.9 is dropped, this function should be removed
+// and HashString(const char16_t*) should be made `constexpr`.
+MOZ_MUST_USE constexpr uint32_t
+ConstExprHashString(const char16_t* aStr)
+{
+  return detail::ConstExprHashUntilZero(aStr, 0);
 }
 
 MOZ_MUST_USE inline uint32_t
@@ -358,17 +389,17 @@ private:
 
     void sipRound()
     {
-      mV0 += mV1;
+      mV0 = WrappingAdd(mV0, mV1);
       mV1 = RotateLeft(mV1, 13);
       mV1 ^= mV0;
       mV0 = RotateLeft(mV0, 32);
-      mV2 += mV3;
+      mV2 = WrappingAdd(mV2, mV3);
       mV3 = RotateLeft(mV3, 16);
       mV3 ^= mV2;
-      mV0 += mV3;
+      mV0 = WrappingAdd(mV0, mV3);
       mV3 = RotateLeft(mV3, 21);
       mV3 ^= mV0;
-      mV2 += mV1;
+      mV2 = WrappingAdd(mV2, mV1);
       mV1 = RotateLeft(mV1, 17);
       mV1 ^= mV2;
       mV2 = RotateLeft(mV2, 32);
@@ -379,6 +410,5 @@ private:
 };
 
 } /* namespace mozilla */
-#endif /* __cplusplus */
 
 #endif /* mozilla_HashFunctions_h */

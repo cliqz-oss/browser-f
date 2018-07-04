@@ -17,10 +17,6 @@ xhtml|link {
   -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#category");
 }
 
-.sort-controls {
-  -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#sorters");
-}
-
 .addon[status="installed"] {
   -moz-box-orient: vertical;
   -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#addon-generic");
@@ -61,64 +57,8 @@ xhtml|link {
   -moz-user-select: element;
 }
 
-setting, row[unsupported="true"] {
+row[unsupported="true"] {
   display: none;
-}
-
-setting[type="bool"] {
-  display: -moz-grid-line;
-  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-bool");
-}
-
-setting[type="bool"][localized="true"] {
-  display: -moz-grid-line;
-  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-localized-bool");
-}
-
-setting[type="bool"]:not([learnmore]) .preferences-learnmore,
-setting[type="boolint"]:not([learnmore]) .preferences-learnmore {
-  visibility: collapse;
-}
-
-setting[type="boolint"] {
-  display: -moz-grid-line;
-  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-boolint");
-}
-
-setting[type="integer"] {
-  display: -moz-grid-line;
-  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-integer");
-}
-
-setting[type="integer"]:not([size]) textbox {
-  -moz-box-flex: 1;
-}
-
-setting[type="control"] {
-  display: -moz-grid-line;
-  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-control");
-}
-
-setting[type="string"] {
-  display: -moz-grid-line;
-  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-string");
-}
-
-setting[type="color"] {
-  display: -moz-grid-line;
-  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-color");
-}
-
-setting[type="file"],
-setting[type="directory"] {
-  display: -moz-grid-line;
-  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-path");
-}
-
-setting[type="radio"],
-setting[type="menulist"] {
-  display: -moz-grid-line;
-  -moz-binding: url("chrome://mozapps/content/extensions/setting.xml#setting-multi");
 }
 
 #addonitem-popup > menuitem[disabled="true"] {
@@ -139,11 +79,6 @@ setting[type="menulist"] {
 
 #header-searching:not([active]) {
   visibility: hidden;
-}
-
-#search-list[local="false"]  > .addon[remote="false"],
-#search-list[remote="false"] > .addon[remote="true"] {
-  visibility: collapse;
 }
 
 #detail-view {
@@ -169,7 +104,6 @@ setting[type="menulist"] {
 #detail-view[loading] .detail-view-container,
 #detail-view:not([loading]) .alert-container,
 .detail-row:not([value]),
-#search-list[remote="false"] #search-allresults-link,
 #legacy-list .addon .disabled-postfix {
   display: none;
 }
@@ -204,8 +138,7 @@ setting[type="menulist"] {
 }
 
 #addons-page .view-pane:not([type="theme"]) #getthemes-container,
-#addons-page .view-pane:not([type="plugin"]) #plugindeprecation-notice,
-#addons-page .view-pane:not([type="experiment"]) .experiment-info-container {
+#addons-page .view-pane:not([type="plugin"]) #plugindeprecation-notice {
   display: none;
 }
 
@@ -239,39 +172,6 @@ richlistitem:not([selected]) * {
   display: none;
 }
 
-#experiments-learn-more[disabled="true"] {
-  display: none;
-}
-
-#experiments-change-telemetry[disabled="true"] {
-  display: none;
-}
-
 .view-pane:not(#legacy-view) .addon-control.replacement {
-  display: none;
-}
-
-.view-pane[type="experiment"] .error,
-.view-pane[type="experiment"] .warning,
-.view-pane[type="experiment"] .addon:not([pending="uninstall"]) .pending,
-.view-pane[type="experiment"] .disabled-postfix,
-.view-pane[type="experiment"] .update-postfix,
-.view-pane[type="experiment"] .addon-control.enable,
-.view-pane[type="experiment"] .addon-control.disable,
-#detail-view[type="experiment"] .alert-container,
-#detail-view[type="experiment"] #detail-version,
-#detail-view[type="experiment"] #detail-creator,
-#detail-view[type="experiment"] #detail-enable-btn,
-#detail-view[type="experiment"] #detail-disable-btn {
-  display: none;
-}
-
-.view-pane:not([type="experiment"]) .experiment-container,
-.view-pane:not([type="experiment"]) #detail-experiment-container {
-  display: none;
-}
-
-.addon[type="experiment"][status="installing"] .experiment-time,
-.addon[type="experiment"][status="installing"] .experiment-state {
   display: none;
 }

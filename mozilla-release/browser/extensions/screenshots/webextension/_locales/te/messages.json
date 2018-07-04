@@ -23,8 +23,29 @@
   "downloadScreenshot": {
     "message": "దింపుకోండి"
   },
+  "downloadOnlyNotice": {
+    "message": "మీరు ప్రస్తుతం దింపుకోలు-మాత్రమే రీతిలో ఉన్నారు."
+  },
+  "downloadOnlyDetailsPrivate": {
+    "message": "అంతరంగిక విహారణ కిటికీలో."
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "మూడవ-పక్ష కుకీలు అచేతనమయ్యాయి."
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "మీరు Firefox ESR ఉపయోగిస్తున్నారు."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "ఎక్కింపులు అచేతమై ఉన్నాయి."
+  },
   "notificationLinkCopiedTitle": {
     "message": "లంకె కాపీ అయింది"
+  },
+  "copyScreenshot": {
+    "message": "కాపీచెయ్యి"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "పట్టు కాపీఅయ్యింది"
   },
   "requestErrorTitle": {
     "message": "పని చెయుట లేదు."
@@ -50,13 +71,16 @@
   "genericErrorTitle": {
     "message": "అయ్యో! Firefox స్క్రీన్షాట్లు haywire వెళ్ళింది."
   },
-  "tourBodyOne": {
-    "message": "Firefox ను వదలకుండా స్క్రీన్షాట్లను తీసుకోండి, సేవ్ చేయండి మరియు పంచండి."
+  "tourBodyIntro": {
+    "message": "Firefoxను వదలకుండానే తెరపట్లు తీసుకోండి, భద్రపరచుకోండి, పంచుకోండి."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "భద్రపరచుకోడానికి కొత్త మార్గం"
+  },
+  "tourHeaderClickAndDrag": {
     "message": ""
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "మీకు నచ్చినట్టుగా"
   },
   "tourSkip": {
@@ -76,5 +100,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "గోప్యతా నోటీసు"
+  },
+  "libraryLabel": {
+    "message": "తెరపట్లు"
   }
 }

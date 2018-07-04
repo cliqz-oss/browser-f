@@ -5,7 +5,7 @@
 
 #include "nsHyphenationManager.h"
 #include "nsHyphenator.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIFile.h"
 #include "nsIURI.h"
 #include "nsIProperties.h"
@@ -21,6 +21,7 @@
 #include "nsCRT.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsDirectoryServiceUtils.h"
+#include "nsMemory.h"
 
 using namespace mozilla;
 
@@ -83,7 +84,7 @@ nsHyphenationManager::~nsHyphenationManager()
 }
 
 already_AddRefed<nsHyphenator>
-nsHyphenationManager::GetHyphenator(nsIAtom *aLocale)
+nsHyphenationManager::GetHyphenator(nsAtom *aLocale)
 {
   RefPtr<nsHyphenator> hyph;
   mHyphenators.Get(aLocale, getter_AddRefs(hyph));
@@ -92,7 +93,7 @@ nsHyphenationManager::GetHyphenator(nsIAtom *aLocale)
   }
   nsCOMPtr<nsIURI> uri = mPatternFiles.Get(aLocale);
   if (!uri) {
-    nsCOMPtr<nsIAtom> alias = mHyphAliases.Get(aLocale);
+    RefPtr<nsAtom> alias = mHyphAliases.Get(aLocale);
     if (alias) {
       mHyphenators.Get(alias, getter_AddRefs(hyph));
       if (hyph) {
@@ -113,8 +114,8 @@ nsHyphenationManager::GetHyphenator(nsIAtom *aLocale)
       }
       int32_t i = localeStr.RFindChar('-');
       if (i > 1) {
-        localeStr.Replace(i, localeStr.Length() - i, "-*");
-        nsCOMPtr<nsIAtom> fuzzyLocale = NS_Atomize(localeStr);
+        localeStr.ReplaceLiteral(i, localeStr.Length() - i, "-*");
+        RefPtr<nsAtom> fuzzyLocale = NS_Atomize(localeStr);
         return GetHyphenator(fuzzyLocale);
       } else {
         return nullptr;
@@ -210,7 +211,7 @@ nsHyphenationManager::LoadPatternListFromOmnijar(Omnijar::Type aType)
       continue;
     }
     nsCString locale;
-    rv = uri->GetPath(locale);
+    rv = uri->GetPathQueryRef(locale);
     if (NS_FAILED(rv)) {
       continue;
     }
@@ -225,7 +226,7 @@ nsHyphenationManager::LoadPatternListFromOmnijar(Omnijar::Type aType)
         locale.Replace(i, 1, '-');
       }
     }
-    nsCOMPtr<nsIAtom> localeAtom = NS_Atomize(locale);
+    RefPtr<nsAtom> localeAtom = NS_Atomize(locale);
     if (NS_SUCCEEDED(rv)) {
       mPatternFiles.Put(localeAtom, uri);
     }
@@ -283,7 +284,7 @@ nsHyphenationManager::LoadPatternListFromDir(nsIFile *aDir)
     printf("adding hyphenation patterns for %s: %s\n", locale.get(),
            NS_ConvertUTF16toUTF8(dictName).get());
 #endif
-    nsCOMPtr<nsIAtom> localeAtom = NS_Atomize(locale);
+    RefPtr<nsAtom> localeAtom = NS_Atomize(locale);
     nsCOMPtr<nsIURI> uri;
     nsresult rv = NS_NewFileURI(getter_AddRefs(uri), file);
     if (NS_SUCCEEDED(rv)) {
@@ -312,8 +313,8 @@ nsHyphenationManager::LoadAliases()
         alias.Cut(0, sizeof(kIntlHyphenationAliasPrefix) - 1);
         ToLowerCase(alias);
         ToLowerCase(value);
-        nsCOMPtr<nsIAtom> aliasAtom = NS_Atomize(alias);
-        nsCOMPtr<nsIAtom> valueAtom = NS_Atomize(value);
+        RefPtr<nsAtom> aliasAtom = NS_Atomize(alias);
+        RefPtr<nsAtom> valueAtom = NS_Atomize(value);
         mHyphAliases.Put(aliasAtom, valueAtom);
       }
     }

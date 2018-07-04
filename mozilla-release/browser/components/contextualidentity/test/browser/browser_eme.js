@@ -1,7 +1,7 @@
 /*
  * Bug 1283325 - A test case to test the EME is originAttributes aware or not.
  */
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
 
 const TEST_HOST = "example.com";
 const TEST_URL = "http://" + TEST_HOST + "/browser/browser/components/contextualidentity/test/browser/";
@@ -174,8 +174,8 @@ add_task(async function test() {
   });
 
   // Close default container tab.
-  await BrowserTestUtils.removeTab(defaultContainer.tab);
+  BrowserTestUtils.removeTab(defaultContainer.tab);
 
   // Close personal container tab.
-  await BrowserTestUtils.removeTab(personalContainer.tab);
+  BrowserTestUtils.removeTab(personalContainer.tab);
 });

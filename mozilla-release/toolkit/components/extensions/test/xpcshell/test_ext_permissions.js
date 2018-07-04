@@ -1,29 +1,48 @@
 "use strict";
 
-XPCOMUtils.defineLazyGetter(this, "ExtensionManager", () => {
-  const {ExtensionManager}
-    = Cu.import("resource://gre/modules/ExtensionChild.jsm", {});
-  return ExtensionManager;
-});
-Cu.import("resource://gre/modules/ExtensionPermissions.jsm");
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionPermissions.jsm");
+ChromeUtils.import("resource://gre/modules/MessageChannel.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+
+const BROWSER_PROPERTIES = "chrome://browser/locale/browser.properties";
 
 AddonTestUtils.init(this);
 AddonTestUtils.overrideCertDB();
 AddonTestUtils.createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
 
-// Find the DOMWindowUtils for the background page for the given
-// extension (wrapper)
-function findWinUtils(extension) {
-  let extensionChild = ExtensionManager.extensions.get(extension.extension.id);
-  let bgwin = null;
-  for (let view of extensionChild.views) {
-    if (view.viewType == "background") {
-      bgwin = view.contentWindow;
-    }
+let extensionHandlers = new WeakSet();
+
+function frameScript() {
+  /* globals content */
+  ChromeUtils.import("resource://gre/modules/MessageChannel.jsm");
+
+  let handle;
+  MessageChannel.addListener(this, "ExtensionTest:HandleUserInput", {
+    receiveMessage({name, data}) {
+      if (data) {
+        handle = content.QueryInterface(Ci.nsIInterfaceRequestor)
+                        .getInterface(Ci.nsIDOMWindowUtils)
+                        .setHandlingUserInput(true);
+      } else if (handle) {
+        handle.destruct();
+        handle = null;
+      }
+    },
+  });
+}
+
+async function withHandlingUserInput(extension, fn) {
+  let {messageManager} = extension.extension.groupFrameLoader;
+
+  if (!extensionHandlers.has(extension)) {
+    messageManager.loadFrameScript(`data:,(${frameScript})(this)`, false);
+    extensionHandlers.add(extension);
   }
-  notEqual(bgwin, null, "Found background window for the test extension");
-  return bgwin.QueryInterface(Ci.nsIInterfaceRequestor)
-              .getInterface(Ci.nsIDOMWindowUtils);
+
+  await MessageChannel.sendMessage(messageManager, "ExtensionTest:HandleUserInput", true);
+  await fn();
+  await MessageChannel.sendMessage(messageManager, "ExtensionTest:HandleUserInput", false);
 }
 
 let sawPrompt = false;
@@ -41,7 +60,7 @@ const observer = {
 add_task(function setup() {
   Services.prefs.setBoolPref("extensions.webextOptionalPermissionPrompts", true);
   Services.obs.addObserver(observer, "webextension-optional-permission-prompt");
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     Services.obs.removeObserver(observer, "webextension-optional-permission-prompt");
     Services.prefs.clearUserPref("extensions.webextOptionalPermissionPrompts");
   });
@@ -92,7 +111,6 @@ add_task(async function test_permissions() {
   });
 
   await extension.startup();
-  let winUtils = findWinUtils(extension);
 
   function call(method, arg) {
     extension.sendMessage(method, arg);
@@ -119,7 +137,7 @@ add_task(async function test_permissions() {
   }
   for (let origin of OPTIONAL_ORIGINS) {
     result = await call("contains", {origins: [origin]});
-    equal(result, false, `conains() returns false for origin ${origin}`);
+    equal(result, false, `contains() returns false for origin ${origin}`);
   }
 
   result = await call("contains", {
@@ -135,32 +153,49 @@ add_task(async function test_permissions() {
   result = await call("contains", {permissions: [perm]});
   equal(result, false, "Permission requested outside an event handler was not granted");
 
-  let userInputHandle = winUtils.setHandlingUserInput(true);
+  await withHandlingUserInput(extension, async () => {
+    result = await call("request", {permissions: ["notifications"]});
+    equal(result.status, "error", "request() for permission not in optional_permissions should fail");
+    ok(/since it was not declared in optional_permissions/.test(result.message),
+       "error message for undeclared optional_permission is reasonable");
 
-  result = await call("request", {permissions: ["notifications"]});
-  equal(result.status, "error", "request() for permission not in optional_permissions should fail");
-  ok(/since it was not declared in optional_permissions/.test(result.message),
-     "error message for undeclared optional_permission is reasonable");
+    // Check request() when the prompt is canceled.
+    acceptPrompt = false;
+    result = await call("request", {permissions: [perm]});
+    equal(result.status, "success", "request() returned cleanly");
+    equal(result.result, false, "request() returned false for rejected permission");
 
-  // Check request() when the prompt is canceled.
-  acceptPrompt = false;
-  result = await call("request", {permissions: [perm]});
-  equal(result.status, "success", "request() returned cleanly");
-  equal(result.result, false, "request() returned false for rejected permission");
+    result = await call("contains", {permissions: [perm]});
+    equal(result, false, "Rejected permission was not granted");
 
-  result = await call("contains", {permissions: [perm]});
-  equal(result, false, "Rejected permission was not granted");
+    // Call request() and accept the prompt
+    acceptPrompt = true;
+    let allOptional = {
+      permissions: OPTIONAL_PERMISSIONS,
+      origins: OPTIONAL_ORIGINS,
+    };
+    result = await call("request", allOptional);
+    equal(result.status, "success", "request() returned cleanly");
+    equal(result.result, true, "request() returned true for accepted permissions");
 
-  // Call request() and accept the prompt
-  acceptPrompt = true;
-  let allOptional = {
-    permissions: OPTIONAL_PERMISSIONS,
-    origins: OPTIONAL_ORIGINS,
-  };
-  result = await call("request", allOptional);
-  equal(result.status, "success", "request() returned cleanly");
-  equal(result.result, true, "request() returned true for accepted permissions");
-  userInputHandle.destruct();
+    // Verify that requesting a permission/origin in the wrong field fails
+    let originsAsPerms = {
+      permissions: OPTIONAL_ORIGINS,
+    };
+    let permsAsOrigins = {
+      origins: OPTIONAL_PERMISSIONS,
+    };
+
+    result = await call("request", originsAsPerms);
+    equal(result.status, "error", "Requesting an origin as a permission should fail");
+    ok(/Type error for parameter permissions \(Error processing permissions/.test(result.message),
+       "Error message for origin as permission is reasonable");
+
+    result = await call("request", permsAsOrigins);
+    equal(result.status, "error", "Requesting a permission as an origin should fail");
+    ok(/Type error for parameter permissions \(Error processing origins/.test(result.message),
+       "Error message for permission as origin is reasonable");
+  });
 
   let allPermissions = {
     permissions: [...REQUIRED_PERMISSIONS, ...OPTIONAL_PERMISSIONS],
@@ -238,21 +273,19 @@ add_task(async function test_startup() {
   let perms = await extension1.awaitMessage("perms");
   perms = await extension2.awaitMessage("perms");
 
-  let winUtils = findWinUtils(extension1);
-  let handle = winUtils.setHandlingUserInput(true);
-  extension1.sendMessage(PERMS1);
-  await extension1.awaitMessage("requested");
-  handle.destruct();
+  await withHandlingUserInput(extension1, async () => {
+    extension1.sendMessage(PERMS1);
+    await extension1.awaitMessage("requested");
+  });
 
-  winUtils = findWinUtils(extension2);
-  handle = winUtils.setHandlingUserInput(true);
-  extension2.sendMessage(PERMS2);
-  await extension2.awaitMessage("requested");
-  handle.destruct();
+  await withHandlingUserInput(extension2, async () => {
+    extension2.sendMessage(PERMS2);
+    await extension2.awaitMessage("requested");
+  });
 
   // Restart everything, and force the permissions store to be
   // re-read on startup
-  ExtensionPermissions._uninit();
+  await ExtensionPermissions._uninit();
   await AddonTestUtils.promiseRestartManager();
   await extension1.awaitStartup();
   await extension2.awaitStartup();
@@ -321,46 +354,203 @@ add_task(async function test_alreadyGranted() {
 
   await extension.startup();
 
-  let winUtils = findWinUtils(extension);
-  let handle = winUtils.setHandlingUserInput(true);
+  await withHandlingUserInput(extension, async () => {
+    let url = await extension.awaitMessage("ready");
+    let page = await ExtensionTestUtils.loadContentPage(url, {extension});
+    await extension.awaitMessage("page-ready");
 
-  let url = await extension.awaitMessage("ready");
-  await ExtensionTestUtils.loadContentPage(url);
-  await extension.awaitMessage("page-ready");
+    async function checkRequest(arg, expectPrompt, msg) {
+      sawPrompt = false;
+      extension.sendMessage("request", arg);
+      let result = await extension.awaitMessage("request.result");
+      ok(result, "request() call succeeded");
+      equal(sawPrompt, expectPrompt,
+            `Got ${expectPrompt ? "" : "no "}permission prompt for ${msg}`);
+    }
 
-  async function checkRequest(arg, expectPrompt, msg) {
-    sawPrompt = false;
-    extension.sendMessage("request", arg);
-    let result = await extension.awaitMessage("request.result");
-    ok(result, "request() call succeeded");
-    equal(sawPrompt, expectPrompt,
-          `Got ${expectPrompt ? "" : "no "}permission prompt for ${msg}`);
+    await checkRequest({permissions: ["geolocation"]}, false,
+                       "required permission from manifest");
+    await checkRequest({origins: ["http://required-host.com/"]}, false,
+                       "origin permission from manifest");
+    await checkRequest({origins: ["http://host.required-domain.com/"]}, false,
+                       "wildcard origin permission from manifest");
+
+    await checkRequest({permissions: ["clipboardRead"]}, true,
+                       "optional permission");
+    await checkRequest({permissions: ["clipboardRead"]}, false,
+                       "already granted optional permission");
+
+    await checkRequest({origins: ["http://optional-host.com/"]}, true,
+                       "optional origin");
+    await checkRequest({origins: ["http://optional-host.com/"]}, false,
+                       "already granted origin permission");
+
+    await checkRequest({origins: ["http://*.optional-domain.com/"]}, true,
+                       "optional wildcard origin");
+    await checkRequest({origins: ["http://*.optional-domain.com/"]}, false,
+                       "already granted optional wildcard origin");
+    await checkRequest({origins: ["http://host.optional-domain.com/"]}, false,
+                       "host matching optional wildcard origin");
+    await page.close();
+  });
+
+  await extension.unload();
+});
+
+// IMPORTANT: Do not change this list without review from a Web Extensions peer!
+
+const GRANTED_WITHOUT_USER_PROMPT = [
+  "activeTab",
+  "alarms",
+  "contextMenus",
+  "contextualIdentities",
+  "cookies",
+  "geckoProfiler",
+  "identity",
+  "idle",
+  "menus",
+  "mozillaAddons",
+  "storage",
+  "theme",
+  "webRequest",
+  "webRequestBlocking",
+];
+
+add_task(function test_permissions_have_localization_strings() {
+  const ns = Schemas.getNamespace("manifest");
+
+  const permissions = ns.get("Permission").choices;
+  const optional = ns.get("OptionalPermission").choices;
+
+  const bundle = Services.strings.createBundle(BROWSER_PROPERTIES);
+
+  for (const choice of permissions.concat(optional)) {
+    for (const perm of choice.enumeration || []) {
+      try {
+        const str = bundle.GetStringFromName(`webextPerms.description.${perm}`);
+
+        ok(str.length, `Found localization string for '${perm}' permission`);
+      } catch (e) {
+        ok(GRANTED_WITHOUT_USER_PROMPT.includes(perm),
+           `Permission '${perm}' intentionally granted without prompting the user`);
+      }
+    }
+  }
+});
+
+// Check <all_urls> used as an optional API permission.
+add_task(async function test_optional_all_urls() {
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      optional_permissions: ["<all_urls>"],
+    },
+
+    background() {
+      browser.test.onMessage.addListener(async () => {
+        let before = !!browser.tabs.captureVisibleTab;
+        let granted = await browser.permissions.request({origins: ["<all_urls>"]});
+        let after = !!browser.tabs.captureVisibleTab;
+
+        browser.test.sendMessage("results", [before, granted, after]);
+      });
+    },
+  });
+
+  await extension.startup();
+
+  await withHandlingUserInput(extension, async () => {
+    extension.sendMessage("request");
+    let [before, granted, after] = await extension.awaitMessage("results");
+
+    equal(before, false, "captureVisibleTab() unavailable before optional permission request()");
+    equal(granted, true, "request() for optional permissions granted");
+    equal(after, true, "captureVisibleTab() available after optional permission request()");
+  });
+
+  await extension.unload();
+});
+
+// Check that optional permissions are not included in update prompts
+add_task(async function test_permissions_prompt() {
+  function background() {
+    browser.test.onMessage.addListener(async (msg, arg) => {
+      if (msg == "request") {
+        let result = await browser.permissions.request(arg);
+        browser.test.sendMessage("result", result);
+      }
+    });
   }
 
-  await checkRequest({permissions: ["geolocation"]}, false,
-                     "required permission from manifest");
-  await checkRequest({origins: ["http://required-host.com/"]}, false,
-                     "origin permission from manifest");
-  await checkRequest({origins: ["http://host.required-domain.com/"]}, false,
-                     "wildcard origin permission from manifest");
+  let extension = ExtensionTestUtils.loadExtension({
+    background,
+    manifest: {
+      name: "permissions test",
+      description: "permissions test",
+      manifest_version: 2,
+      version: "1.0",
 
-  await checkRequest({permissions: ["clipboardRead"]}, true,
-                     "optional permission");
-  await checkRequest({permissions: ["clipboardRead"]}, false,
-                     "already granted optional permission");
+      permissions: ["tabs", "https://test1.example.com/*"],
+      optional_permissions: ["clipboardWrite", "<all_urls>"],
 
-  await checkRequest({origins: ["http://optional-host.com/"]}, true,
-                     "optional origin");
-  await checkRequest({origins: ["http://optional-host.com/"]}, false,
-                     "already granted origin permission");
+      content_scripts: [
+        {
+          matches: ["https://test2.example.com/*"],
+          js: [],
+        },
+      ],
+    },
+    useAddonManager: "permanent",
+  });
 
-  await checkRequest({origins: ["http://*.optional-domain.com/"]}, true,
-                     "optional wildcard origin");
-  await checkRequest({origins: ["http://*.optional-domain.com/"]}, false,
-                     "already granted optional wildcard origin");
-  await checkRequest({origins: ["http://host.optional-domain.com/"]}, false,
-                     "host matching optional wildcard origin");
+  await extension.startup();
 
-  handle.destruct();
+  await withHandlingUserInput(extension, async () => {
+    extension.sendMessage("request", {
+      permissions: ["clipboardWrite"],
+      origins: ["https://test2.example.com/*"],
+    });
+    let result = await extension.awaitMessage("result");
+    equal(result, true, "request() for optional permissions succeeded");
+  });
+
+  const PERMS = ["history", "tabs"];
+  const ORIGINS = ["https://test1.example.com/*", "https://test3.example.com/"];
+  let xpi = Extension.generateXPI({
+    background,
+    manifest: {
+      name: "permissions test",
+      description: "permissions test",
+      manifest_version: 2,
+      version: "2.0",
+
+      applications: {gecko: {id: extension.id}},
+
+      permissions: [...PERMS, ...ORIGINS],
+      optional_permissions: ["clipboardWrite", "<all_urls>"],
+    },
+  });
+
+  let install = await AddonManager.getInstallForFile(xpi);
+
+  Services.prefs.setBoolPref("extensions.webextPermissionPrompts", true);
+  registerCleanupFunction(() => {
+    Services.prefs.clearUserPref("extensions.webextPermissionPrompts");
+  });
+
+  let perminfo;
+  install.promptHandler = info => {
+    perminfo = info;
+    return Promise.resolve();
+  };
+
+  await AddonTestUtils.promiseCompleteInstall(install);
+  await extension.awaitStartup();
+
+  notEqual(perminfo, undefined, "Permission handler was invoked");
+  let perms = perminfo.addon.userPermissions;
+  deepEqual(perms.permissions, PERMS, "Update details includes only manifest api permissions");
+  deepEqual(perms.origins, ORIGINS, "Update details includes only manifest origin permissions");
+
   await extension.unload();
+  await OS.File.remove(xpi.path);
 });

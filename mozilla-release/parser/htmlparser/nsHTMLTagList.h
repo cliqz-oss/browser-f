@@ -12,6 +12,12 @@
 
   It is designed to be used as input to various places that will define the
   HTML_TAG macro in useful ways through the magic of C preprocessing.
+  Additionally, it is consumed by the self-regeneration code in
+  ElementName.java from which nsHtml5ElementName.cpp/h is translated.
+  See parser/html/java/README.txt.
+
+  If you edit this list, you need to re-run ElementName.java
+  self-regeneration and the HTML parser Java to C++ translation.
 
   All entries must be enclosed in the macro HTML_TAG which will have cruel
   and unusual things done to it.
@@ -52,6 +58,7 @@ HTML_TAG(audio, Audio, Audio)
 HTML_HTMLELEMENT_TAG(b)
 HTML_TAG(base, Shared, Base)
 HTML_HTMLELEMENT_TAG(basefont)
+HTML_HTMLELEMENT_TAG(bdi)
 HTML_HTMLELEMENT_TAG(bdo)
 HTML_TAG(bgsound, Unknown, Unknown)
 HTML_HTMLELEMENT_TAG(big)
@@ -66,7 +73,6 @@ HTML_HTMLELEMENT_TAG(cite)
 HTML_HTMLELEMENT_TAG(code)
 HTML_TAG(col, TableCol, TableCol)
 HTML_TAG(colgroup, TableCol, TableCol)
-HTML_TAG(content, Content, Content)
 HTML_TAG(data, Data, Data)
 HTML_TAG(datalist, DataList, DataList)
 HTML_HTMLELEMENT_TAG(dd)
@@ -148,8 +154,8 @@ HTML_HTMLELEMENT_TAG(samp)
 HTML_TAG(script, Script, Script)
 HTML_HTMLELEMENT_TAG(section)
 HTML_TAG(select, Select, Select)
-HTML_TAG(shadow, Shadow, Shadow)
 HTML_HTMLELEMENT_TAG(small)
+HTML_TAG(slot, Slot, Slot)
 HTML_TAG(source, Source, Source)
 HTML_TAG(span, Span, Span)
 HTML_HTMLELEMENT_TAG(strike)

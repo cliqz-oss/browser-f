@@ -23,3 +23,5 @@
 <!ENTITY safeb.blocked.unwantedPage.shortDesc "Die Website auf <span id='unwanted_sitename'/> wurde als Seite gemeldet, welche unerwünschte Software enthält, und wurde auf Grund Ihrer Sicherheitseinstellungen blockiert.">
 <!ENTITY safeb.blocked.unwantedPage.longDesc "Seiten mit unerwünschter Software versuchen, Software zu installieren, die betrügerisch sein und Ihr System in unerwarteter Weise beeinflussen kann.">
 
+<!ENTITY safeb.blocked.harmfulPage.title "Website mit eventuell Schadsoftware blockiert">
+<!ENTITY safeb.blocked.harmfulPage.shortDesc "&brandShortName; hat diese Seite blockiert, da sie versuchen könnte, schädliche Apps zu installieren, welche Ihre Informationen stehlen oder löschen (zum Beispiel Fotos, Passwörter, Nachrichten und Kreditkarteninformationen).">

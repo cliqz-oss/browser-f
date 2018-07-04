@@ -2,16 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cc = Components.classes;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/Messaging.jsm");
-
-Cu.importGlobalProperties(['File']);
+Cu.importGlobalProperties(["File"]);
 
 function FilePicker() {
 }
@@ -36,11 +32,11 @@ FilePicker.prototype = {
     this._mode = aMode;
     this._title = aTitle;
 
-    let idService = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator); 
+    let idService = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator);
     this.guid = idService.generateUUID().toString();
 
     if (aMode != Ci.nsIFilePicker.modeOpen && aMode != Ci.nsIFilePicker.modeOpenMultiple)
-      throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+      throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   },
 
   appendFilters: function(aFilterMask) {
@@ -114,7 +110,7 @@ FilePicker.prototype = {
   set filterIndex(val) {
     this._filterIndex = val;
   },
-  
+
   get displayDirectory() {
     return this._displayDirectory;
   },
@@ -209,8 +205,8 @@ FilePicker.prototype = {
     // Knowing the window lets us destroy any temp files when the tab is closed
     // Other consumers of the file picker may have to either wait for Android
     // to clean up the temp dir (not guaranteed) or clean up after themselves.
-    let win = Services.wm.getMostRecentWindow('navigator:browser');
-    let tab = win && win.BrowserApp.getTabForWindow(this._domWin.top)
+    let win = Services.wm.getMostRecentWindow("navigator:browser");
+    let tab = win && win.BrowserApp.getTabForWindow(this._domWin.top);
     if (tab) {
       msg.tabId = tab.id;
     }
@@ -225,6 +221,9 @@ FilePicker.prototype = {
     } else {
       msg.mode = "mimeType";
       msg.mimeType = this._mimeTypeFilter;
+    }
+    if (this._mode) {
+        msg.modeOpenAttribute = this._mode;
     }
 
     EventDispatcher.instance.sendRequestForResult(msg).then(file => {
@@ -254,7 +253,7 @@ FilePicker.prototype = {
 
   getEnumerator: function(files) {
     return {
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsISimpleEnumerator]),
+      QueryInterface: ChromeUtils.generateQI([Ci.nsISimpleEnumerator]),
       mFiles: files,
       mIndex: 0,
       hasMoreElements: function() {
@@ -262,7 +261,7 @@ FilePicker.prototype = {
       },
       getNext: function() {
         if (this.mIndex >= this.mFiles.length) {
-          throw Components.results.NS_ERROR_FAILURE;
+          throw Cr.NS_ERROR_FAILURE;
         }
         return this.mFiles[this.mIndex++];
       }
@@ -279,12 +278,12 @@ FilePicker.prototype = {
       let winUtils = aDomWin.QueryInterface(Ci.nsIInterfaceRequestor)
                            .getInterface(Ci.nsIDOMWindowUtils);
       winUtils.dispatchEventToChromeOnly(aDomWin, event);
-    } catch(ex) {
+    } catch (ex) {
     }
   },
 
   classID: Components.ID("{18a4e042-7c7c-424b-a583-354e68553a7f}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIFilePicker, Ci.nsIObserver])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIFilePicker, Ci.nsIObserver])
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([FilePicker]);

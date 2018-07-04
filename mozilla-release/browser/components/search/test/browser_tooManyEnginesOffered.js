@@ -4,13 +4,18 @@
 // popup shows a submenu that lists them instead of showing them in the popup
 // itself.
 
-const searchbar = document.getElementById("searchbar");
 const searchPopup = document.getElementById("PopupSearchAutoComplete");
 const oneOffsContainer =
   document.getAnonymousElementByAttribute(searchPopup, "anonid",
                                           "search-one-off-buttons");
 
 add_task(async function test() {
+  await SpecialPowers.pushPrefEnv({ set: [
+    ["browser.search.widget.inNavBar", true],
+  ]});
+
+  let searchbar = document.getElementById("searchbar");
+
   let rootDir = getRootDirectory(gTestPath);
   let url = rootDir + "tooManyEnginesOffered.html";
   await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
@@ -19,12 +24,12 @@ add_task(async function test() {
   let promise = promiseEvent(searchPopup, "popupshown");
   info("Opening search panel");
   searchbar.focus();
-  EventUtils.synthesizeKey("VK_DOWN", {});
+  EventUtils.synthesizeKey("KEY_ArrowDown");
   await promise;
 
   // Make sure it has only one add-engine menu button item.
   let items = getOpenSearchItems();
-  Assert.equal(items.length, 1, "A single button")
+  Assert.equal(items.length, 1, "A single button");
   let menuButton = items[0];
   Assert.equal(menuButton.type, "menu", "A menu button");
 
@@ -55,19 +60,19 @@ add_task(async function test() {
   for (let button = null;
        button != menuButton;
        button = searchbar.textbox.popup.oneOffButtons.selectedButton) {
-    EventUtils.synthesizeKey("VK_UP", {});
+    EventUtils.synthesizeKey("KEY_ArrowUp");
   }
 
   // Press the Right arrow key.  The submenu should open.
   promise = promiseEvent(buttonPopup, "popupshown");
-  EventUtils.synthesizeKey("VK_RIGHT", {});
+  EventUtils.synthesizeKey("KEY_ArrowRight");
   await promise;
 
   Assert.ok(menuButton.open, "Submenu should be open");
 
   // Press the Esc key.  The submenu should close.
   promise = promiseEvent(buttonPopup, "popuphidden");
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
   await promise;
 
   Assert.ok(!menuButton.open, "Submenu should be closed");

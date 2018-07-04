@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:set ts=2 sts=2 sw=2 et cin:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -188,7 +188,7 @@ CFStringRef MacIOSurfaceLib::GetIOConst(const char* symbole) {
 void MacIOSurfaceLib::LoadLibrary() {
   if (isLoaded) {
     return;
-  } 
+  }
   isLoaded = true;
   sIOSurfaceFramework = dlopen(IOSURFACE_FRAMEWORK_PATH,
                             RTLD_LAZY | RTLD_LOCAL);
@@ -278,7 +278,7 @@ void MacIOSurfaceLib::CloseLibrary() {
   sCoreVideoFramework = nullptr;
 }
 
-MacIOSurface::MacIOSurface(const void* aIOSurfacePtr,
+MacIOSurface::MacIOSurface(IOSurfacePtr aIOSurfacePtr,
                            double aContentsScaleFactor, bool aHasAlpha)
   : mIOSurfacePtr(aIOSurfacePtr)
   , mContentsScaleFactor(aContentsScaleFactor)
@@ -322,10 +322,10 @@ already_AddRefed<MacIOSurface> MacIOSurface::CreateIOSurface(int aWidth, int aHe
   ::CFDictionaryAddValue(props, MacIOSurfaceLib::kPropHeight,
                                 cfHeight);
   ::CFRelease(cfHeight);
-  ::CFDictionaryAddValue(props, MacIOSurfaceLib::kPropBytesPerElem, 
+  ::CFDictionaryAddValue(props, MacIOSurfaceLib::kPropBytesPerElem,
                                 cfBytesPerElem);
   ::CFRelease(cfBytesPerElem);
-  ::CFDictionaryAddValue(props, MacIOSurfaceLib::kPropIsGlobal, 
+  ::CFDictionaryAddValue(props, MacIOSurfaceLib::kPropIsGlobal,
                                 kCFBooleanTrue);
 
   IOSurfacePtr surfaceRef = MacIOSurfaceLib::IOSurfaceCreate(props);
@@ -348,7 +348,7 @@ already_AddRefed<MacIOSurface> MacIOSurface::CreateIOSurface(int aWidth, int aHe
 
 already_AddRefed<MacIOSurface> MacIOSurface::LookupSurface(IOSurfaceID aIOSurfaceID,
                                                        double aContentsScaleFactor,
-                                                       bool aHasAlpha) { 
+                                                       bool aHasAlpha) {
   if (!MacIOSurfaceLib::isInit() || aContentsScaleFactor <= 0)
     return nullptr;
 
@@ -368,11 +368,11 @@ already_AddRefed<MacIOSurface> MacIOSurface::LookupSurface(IOSurfaceID aIOSurfac
   return ioSurface.forget();
 }
 
-IOSurfaceID MacIOSurface::GetIOSurfaceID() { 
+IOSurfaceID MacIOSurface::GetIOSurfaceID() {
   return MacIOSurfaceLib::IOSurfaceGetID(mIOSurfacePtr);
 }
 
-void* MacIOSurface::GetBaseAddress() { 
+void* MacIOSurface::GetBaseAddress() {
   return MacIOSurfaceLib::IOSurfaceGetBaseAddress(mIOSurfacePtr);
 }
 
@@ -511,6 +511,18 @@ MacIOSurface::GetReadFormat()
 }
 
 CGLError
+MacIOSurface::CGLTexImageIOSurface2D(CGLContextObj ctx,
+                                     GLenum target, GLenum internalFormat,
+                                     GLsizei width, GLsizei height,
+                                     GLenum format, GLenum type,
+                                     GLuint plane) const
+{
+  return MacIOSurfaceLib::CGLTexImageIOSurface2D(ctx, target, internalFormat, width,
+                                                 height, format, type, mIOSurfacePtr,
+                                                 plane);
+}
+
+CGLError
 MacIOSurface::CGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL,
                                      CGLContextObj ctx,
                                      size_t plane,
@@ -577,15 +589,9 @@ MacIOSurface::CGLTexImageIOSurface2D(mozilla::gl::GLContext* aGL,
     }
   }
 
-  return MacIOSurfaceLib::CGLTexImageIOSurface2D(ctx,
-                                                 LOCAL_GL_TEXTURE_RECTANGLE_ARB,
-                                                 internalFormat,
-                                                 GetDevicePixelWidth(plane),
-                                                 GetDevicePixelHeight(plane),
-                                                 format,
-                                                 type,
-                                                 mIOSurfacePtr,
-                                                 plane);
+  return CGLTexImageIOSurface2D(ctx, LOCAL_GL_TEXTURE_RECTANGLE_ARB, internalFormat,
+                                GetDevicePixelWidth(plane), GetDevicePixelHeight(plane),
+                                format, type, plane);
 }
 
 static

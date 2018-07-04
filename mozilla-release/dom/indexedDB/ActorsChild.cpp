@@ -24,12 +24,15 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/PermissionMessageUtils.h"
 #include "mozilla/dom/TabChild.h"
 #include "mozilla/dom/indexedDB/PBackgroundIDBDatabaseFileChild.h"
 #include "mozilla/dom/indexedDB/PIndexedDBPermissionRequestChild.h"
 #include "mozilla/dom/ipc/PendingIPCBlobChild.h"
 #include "mozilla/dom/IPCBlobUtils.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
 #include "mozilla/Encoding.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/TaskQueue.h"
@@ -38,7 +41,6 @@
 #include "nsIAsyncInputStream.h"
 #include "nsIBFCacheEntry.h"
 #include "nsIDocument.h"
-#include "nsIDOMEvent.h"
 #include "nsIEventTarget.h"
 #include "nsIFileStreams.h"
 #include "nsNetCID.h"
@@ -48,8 +50,6 @@
 #include "PermissionRequestBase.h"
 #include "ProfilerHelpers.h"
 #include "ReportInternalError.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
 
 #ifdef DEBUG
 #include "IndexedDatabaseManager.h"
@@ -71,8 +71,6 @@ namespace mozilla {
 using ipc::PrincipalInfo;
 
 namespace dom {
-
-using namespace workers;
 
 namespace indexedDB {
 
@@ -726,7 +724,7 @@ void
 DispatchErrorEvent(IDBRequest* aRequest,
                    nsresult aErrorCode,
                    IDBTransaction* aTransaction = nullptr,
-                   nsIDOMEvent* aEvent = nullptr)
+                   Event* aEvent = nullptr)
 {
   MOZ_ASSERT(aRequest);
   aRequest->AssertIsOnOwningThread();
@@ -740,7 +738,7 @@ DispatchErrorEvent(IDBRequest* aRequest,
 
   request->SetError(aErrorCode);
 
-  nsCOMPtr<nsIDOMEvent> errorEvent;
+  RefPtr<Event> errorEvent;
   if (!aEvent) {
     // Make an error event and fire it at the target.
     errorEvent = CreateGenericEvent(request,
@@ -776,9 +774,9 @@ DispatchErrorEvent(IDBRequest* aRequest,
                  aErrorCode);
   }
 
-  bool doDefault;
-  nsresult rv = request->DispatchEvent(aEvent, &doDefault);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+  IgnoredErrorResult rv;
+  bool doDefault = request->DispatchEvent(*aEvent, CallerType::System, rv);
+  if (NS_WARN_IF(rv.Failed())) {
     return;
   }
 
@@ -802,7 +800,7 @@ DispatchErrorEvent(IDBRequest* aRequest,
 
 void
 DispatchSuccessEvent(ResultHelper* aResultHelper,
-                     nsIDOMEvent* aEvent = nullptr)
+                     Event* aEvent = nullptr)
 {
   MOZ_ASSERT(aResultHelper);
 
@@ -819,7 +817,7 @@ DispatchSuccessEvent(ResultHelper* aResultHelper,
     return;
   }
 
-  nsCOMPtr<nsIDOMEvent> successEvent;
+  RefPtr<Event> successEvent;
   if (!aEvent) {
     successEvent = CreateGenericEvent(request,
                                       nsDependentString(kSuccessEventType),
@@ -851,22 +849,26 @@ DispatchSuccessEvent(ResultHelper* aResultHelper,
                  IDB_LOG_STRINGIFY(aEvent, kSuccessEventType));
   }
 
-  bool dummy;
-  nsresult rv = request->DispatchEvent(aEvent, &dummy);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+  MOZ_ASSERT_IF(transaction,
+                transaction->IsOpen() && !transaction->IsAborted());
+
+  IgnoredErrorResult rv;
+  request->DispatchEvent(*aEvent, rv);
+  if (NS_WARN_IF(rv.Failed())) {
     return;
   }
-
-  MOZ_ASSERT_IF(transaction,
-                transaction->IsOpen() || transaction->IsAborted());
 
   WidgetEvent* internalEvent = aEvent->WidgetEventPtr();
   MOZ_ASSERT(internalEvent);
 
   if (transaction &&
-      transaction->IsOpen() &&
-      internalEvent->mFlags.mExceptionWasRaised) {
-    transaction->Abort(NS_ERROR_DOM_INDEXEDDB_ABORT_ERR);
+      transaction->IsOpen()) {
+    if (internalEvent->mFlags.mExceptionWasRaised) {
+      transaction->Abort(NS_ERROR_DOM_INDEXEDDB_ABORT_ERR);
+    } else {
+      // To handle upgrade transaction.
+      transaction->Run();
+    }
   }
 }
 
@@ -1477,6 +1479,7 @@ DispatchFileHandleSuccessEvent(FileHandleResultHelper* aResultHelper)
 class BackgroundRequestChild::PreprocessHelper final
   : public CancelableRunnable
   , public nsIInputStreamCallback
+  , public nsIFileMetadataCallback
 {
   typedef std::pair<nsCOMPtr<nsIInputStream>,
                     nsCOMPtr<nsIInputStream>> StreamPair;
@@ -1560,9 +1563,13 @@ private:
   void
   ContinueWithStatus(nsresult aStatus);
 
+  nsresult
+  DataIsReady(nsIInputStream* aInputStream);
+
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIRUNNABLE
   NS_DECL_NSIINPUTSTREAMCALLBACK
+  NS_DECL_NSIFILEMETADATACALLBACK
 
   virtual nsresult
   Cancel() override;
@@ -1750,6 +1757,7 @@ BackgroundFactoryRequestChild::BackgroundFactoryRequestChild(
                                                uint64_t aRequestedVersion)
   : BackgroundRequestChildBase(aOpenRequest)
   , mFactory(aFactory)
+  , mDatabaseActor(nullptr)
   , mRequestedVersion(aRequestedVersion)
   , mIsDeleteOp(aIsDeleteOp)
 {
@@ -1774,6 +1782,15 @@ BackgroundFactoryRequestChild::GetOpenDBRequest() const
   return static_cast<IDBOpenDBRequest*>(mRequest.get());
 }
 
+void
+BackgroundFactoryRequestChild::SetDatabaseActor(BackgroundDatabaseChild* aActor)
+{
+  AssertIsOnOwningThread();
+  MOZ_ASSERT(!aActor || !mDatabaseActor);
+
+  mDatabaseActor = aActor;
+}
+
 bool
 BackgroundFactoryRequestChild::HandleResponse(nsresult aResponse)
 {
@@ -1784,6 +1801,11 @@ BackgroundFactoryRequestChild::HandleResponse(nsresult aResponse)
   mRequest->Reset();
 
   DispatchErrorEvent(mRequest, aResponse);
+
+  if (mDatabaseActor) {
+    mDatabaseActor->ReleaseDOMObject();
+    MOZ_ASSERT(!mDatabaseActor);
+  }
 
   return true;
 }
@@ -1803,12 +1825,15 @@ BackgroundFactoryRequestChild::HandleResponse(
   IDBDatabase* database = databaseActor->GetDOMObject();
   if (!database) {
     databaseActor->EnsureDOMObject();
+    MOZ_ASSERT(mDatabaseActor);
 
     database = databaseActor->GetDOMObject();
     MOZ_ASSERT(database);
 
     MOZ_ASSERT(!database->IsClosed());
   }
+
+  MOZ_ASSERT(mDatabaseActor == databaseActor);
 
   if (database->IsClosed()) {
     // If the database was closed already, which is only possible if we fired an
@@ -1822,6 +1847,7 @@ BackgroundFactoryRequestChild::HandleResponse(
   }
 
   databaseActor->ReleaseDOMObject();
+  MOZ_ASSERT(!mDatabaseActor);
 
   return true;
 }
@@ -1834,13 +1860,15 @@ BackgroundFactoryRequestChild::HandleResponse(
 
   ResultHelper helper(mRequest, nullptr, &JS::UndefinedHandleValue);
 
-  nsCOMPtr<nsIDOMEvent> successEvent =
+  RefPtr<Event> successEvent =
     IDBVersionChangeEvent::Create(mRequest,
                                   nsDependentString(kSuccessEventType),
                                   aResponse.previousVersion());
   MOZ_ASSERT(successEvent);
 
   DispatchSuccessEvent(&helper, successEvent);
+
+  MOZ_ASSERT(!mDatabaseActor);
 
   return true;
 }
@@ -1986,7 +2014,7 @@ BackgroundFactoryRequestChild::RecvBlocked(const uint64_t& aCurrentVersion)
 
   const nsDependentString type(kBlockedEventType);
 
-  nsCOMPtr<nsIDOMEvent> blockedEvent;
+  RefPtr<Event> blockedEvent;
   if (mIsDeleteOp) {
     blockedEvent =
       IDBVersionChangeEvent::Create(mRequest, type, aCurrentVersion);
@@ -2007,8 +2035,9 @@ BackgroundFactoryRequestChild::RecvBlocked(const uint64_t& aCurrentVersion)
                IDB_LOG_ID_STRING(),
                kungFuDeathGrip->LoggingSerialNumber());
 
-  bool dummy;
-  if (NS_FAILED(kungFuDeathGrip->DispatchEvent(blockedEvent, &dummy))) {
+  IgnoredErrorResult rv;
+  kungFuDeathGrip->DispatchEvent(*blockedEvent, rv);
+  if (rv.Failed()) {
     NS_WARNING("Failed to dispatch event!");
   }
 
@@ -2090,6 +2119,8 @@ BackgroundDatabaseChild::EnsureDOMObject()
 
   mDatabase = mTemporaryStrongDatabase;
   mSpec.forget();
+
+  mOpenRequestActor->SetDatabaseActor(this);
 }
 
 void
@@ -2100,6 +2131,8 @@ BackgroundDatabaseChild::ReleaseDOMObject()
   mTemporaryStrongDatabase->AssertIsOnOwningThread();
   MOZ_ASSERT(mOpenRequestActor);
   MOZ_ASSERT(mDatabase == mTemporaryStrongDatabase);
+
+  mOpenRequestActor->SetDatabaseActor(nullptr);
 
   mOpenRequestActor = nullptr;
 
@@ -2233,7 +2266,7 @@ BackgroundDatabaseChild::RecvPBackgroundIDBVersionChangeTransactionConstructor(
 
   request->SetTransaction(transaction);
 
-  nsCOMPtr<nsIDOMEvent> upgradeNeededEvent =
+  RefPtr<Event> upgradeNeededEvent =
     IDBVersionChangeEvent::Create(request,
                                   nsDependentString(kUpgradeNeededEventType),
                                   aCurrentVersion,
@@ -2316,7 +2349,7 @@ BackgroundDatabaseChild::RecvVersionChange(const uint64_t& aOldVersion,
   // Otherwise fire a versionchange event.
   const nsDependentString type(kVersionChangeEventType);
 
-  nsCOMPtr<nsIDOMEvent> versionChangeEvent;
+  RefPtr<Event> versionChangeEvent;
 
   switch (aNewVersion.type()) {
     case NullableVersion::Tnull_t:
@@ -2342,8 +2375,9 @@ BackgroundDatabaseChild::RecvVersionChange(const uint64_t& aOldVersion,
                "IndexedDB %s: C: IDBDatabase \"versionchange\" event",
                IDB_LOG_ID_STRING());
 
-  bool dummy;
-  if (NS_FAILED(kungFuDeathGrip->DispatchEvent(versionChangeEvent, &dummy))) {
+  IgnoredErrorResult rv;
+  kungFuDeathGrip->DispatchEvent(*versionChangeEvent, rv);
+  if (rv.Failed()) {
     NS_WARNING("Failed to dispatch event!");
   }
 
@@ -3377,14 +3411,14 @@ PreprocessHelper::Init(const nsTArray<StructuredCloneFile>& aFiles)
     ErrorResult errorResult;
 
     nsCOMPtr<nsIInputStream> bytecodeStream;
-    bytecodeFile.mBlob->GetInternalStream(getter_AddRefs(bytecodeStream),
+    bytecodeFile.mBlob->CreateInputStream(getter_AddRefs(bytecodeStream),
                                           errorResult);
     if (NS_WARN_IF(errorResult.Failed())) {
       return errorResult.StealNSResult();
     }
 
     nsCOMPtr<nsIInputStream> compiledStream;
-    compiledFile.mBlob->GetInternalStream(getter_AddRefs(compiledStream),
+    compiledFile.mBlob->CreateInputStream(getter_AddRefs(compiledStream),
                                           errorResult);
     if (NS_WARN_IF(errorResult.Failed())) {
       return errorResult.StealNSResult();
@@ -3518,6 +3552,18 @@ PreprocessHelper::WaitForStreamReady(nsIInputStream* aInputStream)
   MOZ_ASSERT(!IsOnOwningThread());
   MOZ_ASSERT(aInputStream);
 
+  nsCOMPtr<nsIAsyncFileMetadata> asyncFileMetadata =
+    do_QueryInterface(aInputStream);
+  if (asyncFileMetadata) {
+    nsresult rv =
+      asyncFileMetadata->AsyncFileMetadataWait(this, mTaskQueueEventTarget);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    return NS_OK;
+  }
+
   nsCOMPtr<nsIAsyncInputStream> asyncStream = do_QueryInterface(aInputStream);
   if (!asyncStream) {
     return NS_ERROR_NO_INTERFACE;
@@ -3564,7 +3610,8 @@ PreprocessHelper::ContinueWithStatus(nsresult aStatus)
 }
 
 NS_IMPL_ISUPPORTS_INHERITED(BackgroundRequestChild::PreprocessHelper,
-                            CancelableRunnable, nsIInputStreamCallback)
+                            CancelableRunnable, nsIInputStreamCallback,
+                            nsIFileMetadataCallback)
 
 NS_IMETHODIMP
 BackgroundRequestChild::
@@ -3582,6 +3629,23 @@ PreprocessHelper::Run()
 NS_IMETHODIMP
 BackgroundRequestChild::
 PreprocessHelper::OnInputStreamReady(nsIAsyncInputStream* aStream)
+{
+  return DataIsReady(aStream);
+}
+
+NS_IMETHODIMP
+BackgroundRequestChild::
+PreprocessHelper::OnFileMetadataReady(nsIAsyncFileMetadata* aObject)
+{
+  nsCOMPtr<nsIInputStream> stream = do_QueryInterface(aObject);
+  MOZ_ASSERT(stream, "It was a stream before!");
+
+  return DataIsReady(stream);
+}
+
+nsresult
+BackgroundRequestChild::
+PreprocessHelper::DataIsReady(nsIInputStream* aStream)
 {
   MOZ_ASSERT(!IsOnOwningThread());
   MOZ_ASSERT(aStream);

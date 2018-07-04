@@ -23,10 +23,15 @@
 #include "nsHashKeys.h"
 #include "GeckoProfiler.h"
 #include "nsComponentManagerUtils.h"
-#include "nsINamed.h"
-#include "nsITimer.h"
 #include "ScreenHelperWin.h"
+#include "HeadlessScreenHelper.h"
 #include "mozilla/widget/ScreenManager.h"
+#include "mozilla/Atomics.h"
+
+#if defined(ACCESSIBILITY)
+#include "mozilla/a11y/Compatibility.h"
+#include "mozilla/a11y/Platform.h"
+#endif // defined(ACCESSIBILITY)
 
 // These are two messages that the code in winspool.drv on Windows 7 explicitly
 // waits for while it is pumping other Windows messages, during display of the
@@ -44,104 +49,53 @@ static mozilla::LazyLogModule gWinWakeLockLog("WinWakeLock");
 // Gecko. For example when we're playing video in a foreground tab we
 // don't want the screen saver to turn on.
 class WinWakeLockListener final : public nsIDOMMozWakeLockListener
-                                , public nsITimerCallback
-                                , public nsINamed {
+{
 public:
-  NS_DECL_ISUPPORTS;
+  NS_DECL_ISUPPORTS
 
-  NS_IMETHOD Notify(nsITimer *timer) override {
-    WAKE_LOCK_LOG("WinWakeLock: periodic timer fired");
-    ResetScreenSaverTimeout();
-    return NS_OK;
-  }
-
-  NS_IMETHOD GetName(nsACString& aName) override {
-    aName.AssignLiteral("WinWakeLockListener");
-    return NS_OK;
-  }
 private:
   ~WinWakeLockListener() {}
 
-  NS_IMETHOD Callback(const nsAString& aTopic, const nsAString& aState) {
-    if (!aTopic.EqualsASCII("screen")) {
+  NS_IMETHOD Callback(const nsAString& aTopic, const nsAString& aState) override {
+    if (!aTopic.EqualsASCII("screen") &&
+        !aTopic.EqualsASCII("audio-playing") &&
+        !aTopic.EqualsASCII("video-playing")) {
       return NS_OK;
     }
+
+    // we should still hold the lock for background audio.
+    if (aTopic.EqualsASCII("audio-playing") &&
+        aState.EqualsASCII("locked-background")) {
+      return NS_OK;
+    }
+
+    if (aTopic.EqualsASCII("screen") ||
+        aTopic.EqualsASCII("video-playing")) {
+      mRequireForDisplay = aState.EqualsASCII("locked-foreground");
+    }
+
     // Note the wake lock code ensures that we're not sent duplicate
-    // "locked-foreground" notifications when multipe wake locks are held.
+    // "locked-foreground" notifications when multiple wake locks are held.
     if (aState.EqualsASCII("locked-foreground")) {
       WAKE_LOCK_LOG("WinWakeLock: Blocking screen saver");
-      // We block the screen saver by periodically resetting the screen
-      // saver timeout.
-      StartTimer();
-      // Prevent the display turning off. On Win7 and later this also
-      // blocks the screen saver, but we need the timer started above
-      // to block on Win XP and Vista.
-      SetThreadExecutionState(ES_DISPLAY_REQUIRED|ES_CONTINUOUS);
+      if (mRequireForDisplay) {
+        // Prevent the display turning off and block the screen saver.
+        SetThreadExecutionState(ES_DISPLAY_REQUIRED|ES_CONTINUOUS);
+      } else {
+        SetThreadExecutionState(ES_SYSTEM_REQUIRED|ES_CONTINUOUS);
+      }
     } else {
       WAKE_LOCK_LOG("WinWakeLock: Unblocking screen saver");
-      // Re-enable screen saver.
-      StopTimer();
-      // Unblock display turning off.
+      // Unblock display/screen saver turning off.
       SetThreadExecutionState(ES_CONTINUOUS);
     }
     return NS_OK;
   }
 
-  void StartTimer() {
-    ResetScreenSaverTimeout();
-    MOZ_ASSERT(!mTimer);
-    if (mTimer) {
-      return;
-    }
-
-    nsresult rv;
-    nsCOMPtr<nsITimer> timer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
-    if (NS_FAILED(rv)) {
-      NS_WARNING("Failed to create screen saver timeout reset timer");
-      return;
-    }
-    // The minimum screensaver timeout that can be specified with Windows' UI
-    // is 60 seconds. We set a timer to re-jig the screen saver 10 seconds
-    // before we expect the timer to run out, but always at least in 1 second
-    // intervals. We reset the timer at a max of 50 seconds, so that if the
-    // user changes the timeout using the UI, we won't be caught out.
-    int32_t timeout = std::max(std::min(50, (int32_t)mScreenSaverTimeout - 10), 1);
-    uint32_t timeoutMs = (uint32_t)timeout * 1000;
-    WAKE_LOCK_LOG("WinWakeLock: Setting periodic timer for %d ms", timeoutMs);
-    rv = timer->InitWithCallback(this,
-                                 timeoutMs,
-                                 nsITimer::TYPE_REPEATING_SLACK);
-    if (NS_FAILED(rv)) {
-      NS_WARNING("Failed to initialize screen saver timeout reset timer");
-      return;
-    }
-
-    mTimer = timer.forget();
-  }
-
-  void StopTimer() {
-    WAKE_LOCK_LOG("WinWakeLock: StopTimer()");
-    if (!mTimer) {
-      return;
-    }
-    mTimer->Cancel();
-    mTimer = nullptr;
-  }
-
-  // Resets the operating system's timeout for when to disable the screen.
-  // Called periodically to keep the screensaver off.
-  void ResetScreenSaverTimeout() {
-    if (SystemParametersInfo(SPI_GETSCREENSAVETIMEOUT, 0, &mScreenSaverTimeout, 0)) {
-      SystemParametersInfo(SPI_SETSCREENSAVETIMEOUT, mScreenSaverTimeout, NULL, 0);
-    }
-    WAKE_LOCK_LOG("WinWakeLock: ResetScreenSaverTimeout() mScreenSaverTimeout=%d", mScreenSaverTimeout);
-  }
-
-  UINT mScreenSaverTimeout = 60;
-  nsCOMPtr<nsITimer> mTimer;
+  bool mRequireForDisplay = false;
 };
 
-NS_IMPL_ISUPPORTS(WinWakeLockListener, nsIDOMMozWakeLockListener, nsITimerCallback, nsINamed)
+NS_IMPL_ISUPPORTS(WinWakeLockListener, nsIDOMMozWakeLockListener)
 StaticRefPtr<WinWakeLockListener> sWakeLockListener;
 
 static void
@@ -165,6 +119,47 @@ RemoveScreenWakeLockListener()
     sPowerManagerService = nullptr;
     sWakeLockListener = nullptr;
   }
+}
+
+class SingleNativeEventPump final : public nsIThreadObserver
+{
+public:
+  NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_NSITHREADOBSERVER
+
+  SingleNativeEventPump()
+  {
+    MOZ_ASSERT(!XRE_UseNativeEventProcessing(),
+               "Should only be used when not properly processing events.");
+  }
+
+private:
+  ~SingleNativeEventPump() {}
+};
+
+NS_IMPL_ISUPPORTS(SingleNativeEventPump, nsIThreadObserver)
+
+NS_IMETHODIMP
+SingleNativeEventPump::OnDispatchedEvent() { return NS_OK; }
+
+NS_IMETHODIMP
+SingleNativeEventPump::OnProcessNextEvent(nsIThreadInternal* aThread,
+                                          bool aMayWait)
+{
+  MSG msg;
+  bool gotMessage = WinUtils::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE);
+  if (gotMessage) {
+    ::TranslateMessage(&msg);
+    ::DispatchMessageW(&msg);
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+SingleNativeEventPump::AfterProcessNextEvent(nsIThreadInternal* aThread,
+                                             bool aMayWait)
+{
+  return NS_OK;
 }
 
 namespace mozilla {
@@ -191,13 +186,23 @@ using mozilla::crashreporter::LSPAnnotate;
 
 //-------------------------------------------------------------------------
 
+// Note that since we're on x86-ish processors here, ReleaseAcquire is the
+// semantics that normal loads and stores would use anyway.
+static Atomic<size_t, ReleaseAcquire> sOutstandingNativeEventCallbacks;
+
 /*static*/ LRESULT CALLBACK
 nsAppShell::EventWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
   if (uMsg == sAppShellGeckoMsgId) {
+    // The app shell might have been destroyed between this message being
+    // posted and being executed, so be extra careful.
+    if (!sOutstandingNativeEventCallbacks) {
+      return TRUE;
+    }
+
     nsAppShell *as = reinterpret_cast<nsAppShell *>(lParam);
     as->NativeEventCallback();
-    NS_RELEASE(as);
+    --sOutstandingNativeEventCallbacks;
     return TRUE;
   }
   return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -211,49 +216,181 @@ nsAppShell::~nsAppShell()
     // the UI thread.
     SendMessage(mEventWnd, WM_CLOSE, 0, 0);
   }
+
+  // Cancel any outstanding native event callbacks.
+  sOutstandingNativeEventCallbacks = 0;
 }
+
+#if defined(ACCESSIBILITY)
+
+static ULONG gUiaMsg;
+static HHOOK gUiaHook;
+static uint32_t gUiaAttempts;
+static const uint32_t kMaxUiaAttempts = 5;
+
+static void InitUIADetection();
+
+static LRESULT CALLBACK
+UiaHookProc(int aCode, WPARAM aWParam, LPARAM aLParam)
+{
+  if (aCode < 0) {
+    return ::CallNextHookEx(nullptr, aCode, aWParam, aLParam);
+  }
+
+  auto cwp = reinterpret_cast<CWPSTRUCT*>(aLParam);
+  if (gUiaMsg && cwp->message == gUiaMsg) {
+    if (gUiaAttempts < kMaxUiaAttempts) {
+      ++gUiaAttempts;
+
+      Maybe<bool> shouldCallNextHook =
+        a11y::Compatibility::OnUIAMessage(cwp->wParam, cwp->lParam);
+      if (shouldCallNextHook.isSome()) {
+        // We've got an instantiator.
+        if (!shouldCallNextHook.value()) {
+          // We're blocking this instantiation. We need to keep this hook set
+          // so that we can catch any future instantiation attempts.
+          return 0;
+        }
+
+        // We're allowing the instantiator to proceed, so this hook is no longer
+        // needed.
+        if (::UnhookWindowsHookEx(gUiaHook)) {
+          gUiaHook = nullptr;
+        }
+      } else {
+        // Our hook might be firing after UIA; let's try reinstalling ourselves.
+        InitUIADetection();
+      }
+    } else {
+      // We've maxed out our attempts. Let's unhook.
+      if (::UnhookWindowsHookEx(gUiaHook)) {
+        gUiaHook = nullptr;
+      }
+    }
+  }
+
+  return ::CallNextHookEx(nullptr, aCode, aWParam, aLParam);
+}
+
+static void
+InitUIADetection()
+{
+  if (gUiaHook) {
+    // In this case we want to re-hook so that the hook is always called ahead
+    // of UIA's hook.
+    if (::UnhookWindowsHookEx(gUiaHook)) {
+      gUiaHook = nullptr;
+    }
+  }
+
+  if (!gUiaMsg) {
+    // This is the message that UIA sends to trigger a command. UIA's
+    // CallWndProc looks for this message and then handles the request.
+    // Our hook gets in front of UIA's hook and examines the message first.
+    gUiaMsg = ::RegisterWindowMessageW(L"HOOKUTIL_MSG");
+  }
+
+  if (!gUiaHook) {
+    gUiaHook = ::SetWindowsHookEx(WH_CALLWNDPROC, &UiaHookProc, nullptr,
+                                  ::GetCurrentThreadId());
+  }
+}
+
+NS_IMETHODIMP
+nsAppShell::Observe(nsISupports* aSubject, const char* aTopic,
+                    const char16_t* aData)
+{
+  if (XRE_IsParentProcess() && !strcmp(aTopic, "dll-loaded-main-thread")) {
+    if (a11y::PlatformDisabledState() != a11y::ePlatformIsDisabled && !gUiaHook) {
+      nsDependentString dllName(aData);
+
+      if (StringEndsWith(dllName, NS_LITERAL_STRING("uiautomationcore.dll"),
+                         nsCaseInsensitiveStringComparator())) {
+        InitUIADetection();
+
+        // Now that we've handled the observer notification, we can remove it
+        nsCOMPtr<nsIObserverService> obsServ(mozilla::services::GetObserverService());
+        obsServ->RemoveObserver(this, "dll-loaded-main-thread");
+      }
+    }
+
+    return NS_OK;
+  }
+
+  return nsBaseAppShell::Observe(aSubject, aTopic, aData);
+}
+
+#endif // defined(ACCESSIBILITY)
 
 nsresult
 nsAppShell::Init()
 {
-#ifdef MOZ_CRASHREPORTER
   LSPAnnotate();
-#endif
-
-  mLastNativeEventScheduled = TimeStamp::NowLoRes();
 
   mozilla::ipc::windows::InitUIThread();
 
   sTaskbarButtonCreatedMsg = ::RegisterWindowMessageW(kTaskbarButtonEventId);
   NS_ASSERTION(sTaskbarButtonCreatedMsg, "Could not register taskbar button creation message");
 
-  WNDCLASSW wc;
-  HINSTANCE module = GetModuleHandle(nullptr);
+  // The hidden message window is used for interrupting the processing of native
+  // events, so that we can process gecko events. Therefore, we only need it if
+  // we are processing native events.
+  if (XRE_UseNativeEventProcessing()) {
+    mLastNativeEventScheduled = TimeStamp::NowLoRes();
 
-  const wchar_t *const kWindowClass = L"nsAppShell:EventWindowClass";
-  if (!GetClassInfoW(module, kWindowClass, &wc)) {
-    wc.style         = 0;
-    wc.lpfnWndProc   = EventWindowProc;
-    wc.cbClsExtra    = 0;
-    wc.cbWndExtra    = 0;
-    wc.hInstance     = module;
-    wc.hIcon         = nullptr;
-    wc.hCursor       = nullptr;
-    wc.hbrBackground = (HBRUSH) nullptr;
-    wc.lpszMenuName  = (LPCWSTR) nullptr;
-    wc.lpszClassName = kWindowClass;
-    RegisterClassW(&wc);
+    WNDCLASSW wc;
+    HINSTANCE module = GetModuleHandle(nullptr);
+
+    const wchar_t *const kWindowClass = L"nsAppShell:EventWindowClass";
+    if (!GetClassInfoW(module, kWindowClass, &wc)) {
+      wc.style         = 0;
+      wc.lpfnWndProc   = EventWindowProc;
+      wc.cbClsExtra    = 0;
+      wc.cbWndExtra    = 0;
+      wc.hInstance     = module;
+      wc.hIcon         = nullptr;
+      wc.hCursor       = nullptr;
+      wc.hbrBackground = (HBRUSH) nullptr;
+      wc.lpszMenuName  = (LPCWSTR) nullptr;
+      wc.lpszClassName = kWindowClass;
+      RegisterClassW(&wc);
+    }
+
+    mEventWnd = CreateWindowW(kWindowClass, L"nsAppShell:EventWindow",
+                              0, 0, 0, 10, 10, HWND_MESSAGE, nullptr, module,
+                              nullptr);
+    NS_ENSURE_STATE(mEventWnd);
+  } else {
+    // We're not generally processing native events, but still using GDI and we
+    // still have some internal windows, e.g. from calling CoInitializeEx.
+    // So we use a class that will do a single event pump where previously we
+    // might have processed multiple events to make sure any occasional messages
+    // to these windows are processed. This also allows any internal Windows
+    // messages to be processed to ensure the GDI data remains fresh.
+    nsCOMPtr<nsIThreadInternal> threadInt =
+      do_QueryInterface(NS_GetCurrentThread());
+    if (threadInt) {
+      threadInt->SetObserver(new SingleNativeEventPump());
+    }
   }
-
-  mEventWnd = CreateWindowW(kWindowClass, L"nsAppShell:EventWindow",
-                            0, 0, 0, 10, 10, HWND_MESSAGE, nullptr, module,
-                            nullptr);
-  NS_ENSURE_STATE(mEventWnd);
 
   if (XRE_IsParentProcess()) {
     ScreenManager& screenManager = ScreenManager::GetSingleton();
-    screenManager.SetHelper(mozilla::MakeUnique<ScreenHelperWin>());
-    ScreenHelperWin::RefreshScreens();
+    if (gfxPlatform::IsHeadless()) {
+      screenManager.SetHelper(mozilla::MakeUnique<HeadlessScreenHelper>());
+    } else {
+      screenManager.SetHelper(mozilla::MakeUnique<ScreenHelperWin>());
+      ScreenHelperWin::RefreshScreens();
+    }
+
+#if defined(ACCESSIBILITY)
+    if (::GetModuleHandleW(L"uiautomationcore.dll")) {
+      InitUIADetection();
+    } else {
+      nsCOMPtr<nsIObserverService> obsServ(mozilla::services::GetObserverService());
+      obsServ->AddObserver(this, "dll-loaded-main-thread", false);
+    }
+#endif // defined(ACCESSIBILITY)
   }
 
   return nsBaseAppShell::Init();
@@ -285,6 +422,17 @@ nsAppShell::Run(void)
 NS_IMETHODIMP
 nsAppShell::Exit(void)
 {
+#if defined(ACCESSIBILITY)
+  if (XRE_IsParentProcess()) {
+    nsCOMPtr<nsIObserverService> obsServ(mozilla::services::GetObserverService());
+    obsServ->RemoveObserver(this, "dll-loaded-main-thread");
+
+    if (gUiaHook && ::UnhookWindowsHookEx(gUiaHook)) {
+      gUiaHook = nullptr;
+    }
+  }
+#endif // defined(ACCESSIBILITY)
+
   return nsBaseAppShell::Exit();
 }
 
@@ -325,8 +473,11 @@ nsAppShell::DoProcessMoreGeckoEvents()
 void
 nsAppShell::ScheduleNativeEventCallback()
 {
+  MOZ_ASSERT(mEventWnd,
+             "We should have created mEventWnd in Init, if this is called.");
+
   // Post a message to the hidden message window
-  NS_ADDREF_THIS(); // will be released when the event is processed
+  ++sOutstandingNativeEventCallbacks;
   {
     MutexAutoLock lock(mLastNativeEventScheduledMutex);
     // Time stamp this event so we can detect cases where the event gets
@@ -403,7 +554,7 @@ nsAppShell::ProcessNextNativeEvent(bool mayWait)
       // Block and wait for any posted application message
       mozilla::HangMonitor::Suspend();
       {
-        AutoProfilerThreadSleep sleep;
+        AUTO_PROFILER_THREAD_SLEEP;
         WinUtils::WaitForMessage();
       }
     }

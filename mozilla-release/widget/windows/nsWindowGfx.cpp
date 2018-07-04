@@ -100,13 +100,13 @@ static IconMetrics sIconMetrics[] = {
  **************************************************************/
 
 // GetRegionToPaint returns the invalidated region that needs to be painted
-nsIntRegion nsWindow::GetRegionToPaint(bool aForceFullRepaint,
-                                       PAINTSTRUCT ps, HDC aDC)
+LayoutDeviceIntRegion
+nsWindow::GetRegionToPaint(bool aForceFullRepaint, PAINTSTRUCT ps, HDC aDC)
 {
   if (aForceFullRepaint) {
     RECT paintRect;
     ::GetClientRect(mWnd, &paintRect);
-    return nsIntRegion(WinUtils::ToIntRect(paintRect));
+    return LayoutDeviceIntRegion(WinUtils::ToIntRect(paintRect));
   }
 
   HRGN paintRgn = ::CreateRectRgn(0, 0, 0, 0);
@@ -117,11 +117,11 @@ nsIntRegion nsWindow::GetRegionToPaint(bool aForceFullRepaint,
       ::MapWindowPoints(nullptr, mWnd, &pt, 1);
       ::OffsetRgn(paintRgn, pt.x, pt.y);
     }
-    nsIntRegion rgn(WinUtils::ConvertHRGNToRegion(paintRgn));
+    LayoutDeviceIntRegion rgn(WinUtils::ConvertHRGNToRegion(paintRgn));
     ::DeleteObject(paintRgn);
     return rgn;
   }
-  return nsIntRegion(WinUtils::ToIntRect(ps.rcPaint));
+  return LayoutDeviceIntRegion(WinUtils::ToIntRect(ps.rcPaint));
 }
 
 #define WORDSSIZE(x) ((x).width * (x).height)
@@ -221,14 +221,22 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel)
     return true;
   }
 
+  PAINTSTRUCT ps;
+
+  // Avoid starting the GPU process for the initial navigator:blank window.
+  if (mIsEarlyBlankWindow) {
+    // Call BeginPaint/EndPaint or Windows will keep sending us messages.
+    ::BeginPaint(mWnd, &ps);
+    ::EndPaint(mWnd, &ps);
+    return true;
+  }
+
   if (GetLayerManager()->AsKnowsCompositor() && !mBounds.IsEqualEdges(mLastPaintBounds)) {
     // Do an early async composite so that we at least have something on the
     // screen in the right place, even if the content is out of date.
     GetLayerManager()->ScheduleComposite();
   }
   mLastPaintBounds = mBounds;
-
-  PAINTSTRUCT ps;
 
 #ifdef MOZ_XUL
   if (!aDC && (eTransparencyTransparent == mTransparencyMode))
@@ -269,13 +277,13 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel)
 #else
   bool forceRepaint = nullptr != aDC;
 #endif
-  nsIntRegion region = GetRegionToPaint(forceRepaint, ps, hDC);
+  LayoutDeviceIntRegion region = GetRegionToPaint(forceRepaint, ps, hDC);
 
   if (GetLayerManager()->AsKnowsCompositor()) {
     // We need to paint to the screen even if nothing changed, since if we
     // don't have a compositing window manager, our pixels could be stale.
     GetLayerManager()->SetNeedsComposite(true);
-    GetLayerManager()->SendInvalidRegion(region);
+    GetLayerManager()->SendInvalidRegion(region.ToUnknownRegion());
   }
 
   RefPtr<nsWindow> strongThis(this);
@@ -304,7 +312,7 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel)
 #ifdef WIDGET_DEBUG_OUTPUT
     debug_DumpPaintEvent(stdout,
                          this,
-                         region,
+                         region.ToUnknownRegion(),
                          "noname",
                          (int32_t) mWnd);
 #endif // WIDGET_DEBUG_OUTPUT
@@ -373,8 +381,7 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel)
           {
             AutoLayerManagerSetup
               setupLayerManager(this, thebesContext, doubleBuffering);
-            result = listener->PaintWindow(
-              this, LayoutDeviceIntRegion::FromUnknownRegion(region));
+            result = listener->PaintWindow(this, region);
           }
 
 #ifdef MOZ_XUL
@@ -388,9 +395,9 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel)
         }
         break;
       case LayersBackend::LAYERS_CLIENT:
+      case LayersBackend::LAYERS_WR:
         {
-          result = listener->PaintWindow(
-            this, LayoutDeviceIntRegion::FromUnknownRegion(region));
+          result = listener->PaintWindow(this, region);
           if (!gfxEnv::DisableForcePresent() && gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
             nsCOMPtr<nsIRunnable> event =
               NewRunnableMethod("nsWindow::ForcePresent", this, &nsWindow::ForcePresent);
@@ -398,11 +405,6 @@ bool nsWindow::OnPaint(HDC aDC, uint32_t aNestingLevel)
           }
         }
         break;
-      case LayersBackend::LAYERS_WR:
-      {
-        GetLayerManager()->ScheduleComposite();
-        break;
-      }
       default:
         NS_ERROR("Unknown layers backend used!");
         break;

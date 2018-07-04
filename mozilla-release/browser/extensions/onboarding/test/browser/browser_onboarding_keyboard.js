@@ -45,10 +45,12 @@ const TOUR_LIST_TEST_DATA = [
 const BUTTONS_TEST_DATA = [
   { key: " ", expected: { focusedId: TOUR_IDs[0], visible: true }},
   { key: "VK_ESCAPE", expected: { focusedId: "onboarding-overlay-button", visible: false }},
-  { key: "VK_RETURN", expected: { focusedId: TOUR_IDs[0], visible: true }},
+  { key: "VK_RETURN", expected: { focusedId: TOUR_IDs[1], visible: true }},
+  { key: "VK_TAB", options: { shiftKey: true }, expected: { focusedId: TOUR_IDs[0], visible: true }},
   { key: "VK_TAB", options: { shiftKey: true }, expected: { focusedId: "onboarding-overlay-close-btn", visible: true }},
   { key: " ", expected: { focusedId: "onboarding-overlay-button", visible: false }},
-  { key: "VK_RETURN", expected: { focusedId: TOUR_IDs[0], visible: true }},
+  { key: "VK_RETURN", expected: { focusedId: TOUR_IDs[1], visible: true }},
+  { key: "VK_TAB", options: { shiftKey: true }, expected: { focusedId: TOUR_IDs[0], visible: true }},
   { key: "VK_TAB", options: { shiftKey: true }, expected: { focusedId: "onboarding-overlay-close-btn", visible: true }},
   { key: "VK_TAB", expected: { focusedId: TOUR_IDs[0], visible: true }},
   { key: "VK_TAB", options: { shiftKey: true }, expected: { focusedId: "onboarding-overlay-close-btn", visible: true }},
@@ -80,7 +82,7 @@ add_task(async function test_tour_list_keyboard_navigation() {
     await assertOverlayState(tab.linkedBrowser, expected);
   }
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function test_buttons_keyboard_navigation() {
@@ -102,7 +104,7 @@ add_task(async function test_buttons_keyboard_navigation() {
     await assertOverlayState(tab.linkedBrowser, expected);
   }
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function test_overlay_dialog_keyboard_navigation() {
@@ -131,5 +133,5 @@ add_task(async function test_overlay_dialog_keyboard_navigation() {
   await assertModalDialog(browser,
     { visible: false, keyboardFocus: true, focusedId: "onboarding-overlay-button" });
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

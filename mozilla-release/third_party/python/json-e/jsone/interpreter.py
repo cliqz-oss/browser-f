@@ -1,7 +1,7 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 from .prattparser import PrattParser, infix, prefix
-from .shared import JSONTemplateError, string
+from .shared import TemplateError, InterpreterError, string
 import operator
 import json
 
@@ -21,11 +21,9 @@ OPERATORS = {
 }
 
 
-class ExpressionError(JSONTemplateError):
-
-    @classmethod
-    def expectation(cls, operator, expected):
-        return cls('{} expected {}'.format(operator, expected))
+def infixExpectationError(operator, expected):
+    return InterpreterError('infix: {} expects {} {} {}'.
+                            format(operator, expected, operator, expected))
 
 
 class ExpressionEvaluator(PrattParser):
@@ -47,9 +45,9 @@ class ExpressionEvaluator(PrattParser):
         'null', 'number', 'identifier', 'string',
     ]
     precedence = [
-        ['in'],
         ['||'],
         ['&&'],
+        ['in'],
         ['==', '!='],
         ['>=', '<=', '<', '>'],
         ['+', '-'],
@@ -67,7 +65,7 @@ class ExpressionEvaluator(PrattParser):
 
     def parse(self, expression):
         if not isinstance(expression, string):
-            raise ExpressionError('expression to be evaluated must be a string')
+            raise TemplateError('expression to be evaluated must be a string')
         return super(ExpressionEvaluator, self).parse(expression)
 
     @prefix('number')
@@ -83,14 +81,14 @@ class ExpressionEvaluator(PrattParser):
     def uminus(self, token, pc):
         v = pc.parse('unary')
         if not isNumber(v):
-            raise ExpressionError.expectation('unary -', 'number')
+            raise InterpreterError('{} expects {}'.format('unary -', 'number'))
         return -v
 
     @prefix("+")
     def uplus(self, token, pc):
         v = pc.parse('unary')
         if not isNumber(v):
-            raise ExpressionError.expectation('unary +', 'number')
+            raise InterpreterError('{} expects {}'.format('unary +', 'number'))
         return v
 
     @prefix("identifier")
@@ -98,7 +96,8 @@ class ExpressionEvaluator(PrattParser):
         try:
             return self.context[token.value]
         except KeyError:
-            raise ExpressionError('no context value named "{}"'.format(token.value))
+            raise InterpreterError(
+                'unknown context value {}'.format(token.value))
 
     @prefix("null")
     def null(self, token, pc):
@@ -133,23 +132,23 @@ class ExpressionEvaluator(PrattParser):
     @infix("+")
     def plus(self, left, token, pc):
         if not isinstance(left, (string, int, float)) or isinstance(left, bool):
-            raise ExpressionError.expectation('+', 'number or string')
+            raise infixExpectationError('+', 'number/string')
         right = pc.parse(token.kind)
         if not isinstance(right, (string, int, float)) or isinstance(right, bool):
-            raise ExpressionError.expectation('+', 'number or string')
+            raise infixExpectationError('+', 'number/string')
         if type(right) != type(left) and \
                 (isinstance(left, string) or isinstance(right, string)):
-            raise ExpressionError.expectation('+', 'matching types')
+            raise infixExpectationError('+', 'numbers/strings')
         return left + right
 
     @infix('-', '*', '/', '**')
     def arith(self, left, token, pc):
         op = token.kind
         if not isNumber(left):
-            raise ExpressionError.expectation(op, 'number')
+            raise infixExpectationError(op, 'number')
         right = pc.parse({'**': '**-right-associative'}.get(op))
         if not isNumber(right):
-            raise ExpressionError.expectation(op, 'number')
+            raise infixExpectationError(op, 'number')
         return OPERATORS[op](left, right)
 
     @infix("[")
@@ -177,19 +176,20 @@ class ExpressionEvaluator(PrattParser):
     @infix(".")
     def property_dot(self, left, token, pc):
         if not isinstance(left, dict):
-            raise ExpressionError.expectation('.', 'object')
+            raise infixExpectationError('.', 'object')
         k = pc.require('identifier').value
         try:
             return left[k]
         except KeyError:
-            raise ExpressionError('{} not found in {}'.format(k, json.dumps(left)))
+            raise TemplateError(
+                '{} not found in {}'.format(k, json.dumps(left)))
 
     @infix("(")
     def function_call(self, left, token, pc):
         if not callable(left):
-            raise ExpressionError('function call', 'callable')
+            raise TemplateError('function call', 'callable')
         args = parseList(pc, ',', ')')
-        return left(args)
+        return left(*args)
 
     @infix('==', '!=', '||', '&&')
     def equality_and_logic(self, left, token, pc):
@@ -203,7 +203,7 @@ class ExpressionEvaluator(PrattParser):
         right = pc.parse(op)
         if type(left) != type(right) or \
                 not (isinstance(left, (int, float, string)) and not isinstance(left, bool)):
-            raise ExpressionError.expectation(op, 'matching types')
+            raise infixExpectationError(op, 'numbers/strings')
         return OPERATORS[op](left, right)
 
     @infix("in")
@@ -211,16 +211,17 @@ class ExpressionEvaluator(PrattParser):
         right = pc.parse(token.kind)
         if isinstance(right, dict):
             if not isinstance(left, string):
-                raise ExpressionError.expectation('in-object', 'string on left side')
+                raise infixExpectationError('in-object', 'string on left side')
         elif isinstance(right, string):
             if not isinstance(left, string):
-                raise ExpressionError.expectation('in-string', 'string on left side')
+                raise infixExpectationError('in-string', 'string on left side')
         elif not isinstance(right, list):
-            raise ExpressionError.expectation('in', 'Array, string, or object on right side')
+            raise infixExpectationError(
+                'in', 'Array, string, or object on right side')
         try:
             return left in right
         except TypeError:
-            raise ExpressionError.expectation('in', 'scalar value, collection')
+            raise infixExpectationError('in', 'scalar value, collection')
 
 
 def isNumber(v):
@@ -268,22 +269,21 @@ def accessProperty(value, a, b, is_interval):
             try:
                 return value[a:b]
             except TypeError:
-                raise ExpressionError.expectation('[..]', 'integer')
+                raise infixExpectationError('[..]', 'integer')
         else:
             try:
                 return value[a]
             except IndexError:
-                raise ExpressionError('index out of bounds')
+                raise TemplateError('index out of bounds')
             except TypeError:
-                raise ExpressionError.expectation('[..]', 'integer')
+                raise infixExpectationError('[..]', 'integer')
 
     if not isinstance(value, dict):
-        raise ExpressionError.expectation('[..]', 'object, array, or string')
+        raise infixExpectationError('[..]', 'object, array, or string')
     if not isinstance(a, string):
-        raise ExpressionError.expectation('[..]', 'string index')
+        raise infixExpectationError('[..]', 'string index')
 
     try:
         return value[a]
     except KeyError:
         return None
-        #raise ExpressionError('{} not found in {}'.format(a, json.dumps(value)))

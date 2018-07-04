@@ -14,6 +14,7 @@
 #include "gfxWindowsSurface.h"
 
 #include "nsUnicharUtils.h"
+#include "nsUnicodeProperties.h"
 
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
@@ -57,6 +58,7 @@
 #include <d3d10_1.h>
 
 #include "mozilla/gfx/2D.h"
+#include "mozilla/gfx/gfxVars.h"
 
 #include "nsMemory.h"
 
@@ -83,6 +85,7 @@ using namespace mozilla::gfx;
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 using namespace mozilla::image;
+using namespace mozilla::unicode;
 
 DCFromDrawTarget::DCFromDrawTarget(DrawTarget& aDrawTarget)
 {
@@ -367,6 +370,16 @@ gfxWindowsPlatform::InitAcceleration()
   UpdateCanUseHardwareVideoDecoding();
 }
 
+void
+gfxWindowsPlatform::InitWebRenderConfig()
+{
+  gfxPlatform::InitWebRenderConfig();
+
+  if (gfxVars::UseWebRender()) {
+    UpdateBackendPrefs();
+  }
+}
+
 bool
 gfxWindowsPlatform::CanUseHardwareVideoDecoding()
 {
@@ -425,20 +438,46 @@ gfxWindowsPlatform::HandleDeviceReset()
   return true;
 }
 
+BackendPrefsData
+gfxWindowsPlatform::GetBackendPrefs() const
+{
+  BackendPrefsData data;
+
+  data.mCanvasBitmask = BackendTypeBit(BackendType::CAIRO) |
+                        BackendTypeBit(BackendType::SKIA);
+  data.mContentBitmask = BackendTypeBit(BackendType::CAIRO) |
+                         BackendTypeBit(BackendType::SKIA);
+  data.mCanvasDefault = BackendType::SKIA;
+  data.mContentDefault = BackendType::SKIA;
+
+  if (gfxConfig::IsEnabled(Feature::DIRECT2D)) {
+    data.mCanvasBitmask |= BackendTypeBit(BackendType::DIRECT2D1_1);
+    data.mCanvasDefault = BackendType::DIRECT2D1_1;
+    // We do not use d2d for content when WebRender is used.
+    if (!gfxVars::UseWebRender()) {
+      data.mContentBitmask |= BackendTypeBit(BackendType::DIRECT2D1_1);
+      data.mContentDefault = BackendType::DIRECT2D1_1;
+    }
+  }
+  return mozilla::Move(data);
+}
+
 void
 gfxWindowsPlatform::UpdateBackendPrefs()
 {
-  uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) |
-                        BackendTypeBit(BackendType::SKIA);
-  uint32_t contentMask = BackendTypeBit(BackendType::CAIRO) |
-                         BackendTypeBit(BackendType::SKIA);
-  BackendType defaultBackend = BackendType::SKIA;
-  if (gfxConfig::IsEnabled(Feature::DIRECT2D) && Factory::HasD2D1Device()) {
-    contentMask |= BackendTypeBit(BackendType::DIRECT2D1_1);
-    canvasMask |= BackendTypeBit(BackendType::DIRECT2D1_1);
-    defaultBackend = BackendType::DIRECT2D1_1;
+  BackendPrefsData data = GetBackendPrefs();
+  // Remove DIRECT2D1 preference if D2D1Device does not exist.
+  if (!Factory::HasD2D1Device()) {
+    data.mCanvasBitmask &= ~BackendTypeBit(BackendType::DIRECT2D1_1);
+    data.mContentBitmask &= ~BackendTypeBit(BackendType::DIRECT2D1_1);
+    if (data.mCanvasDefault == BackendType::DIRECT2D1_1) {
+      data.mCanvasDefault = BackendType::SKIA;
+    }
+    if (data.mContentDefault == BackendType::DIRECT2D1_1) {
+      data.mContentDefault = BackendType::SKIA;
+    }
   }
-  InitBackendPrefs(canvasMask, defaultBackend, contentMask, defaultBackend);
+  InitBackendPrefs(mozilla::Move(data));
 }
 
 bool
@@ -470,11 +509,22 @@ gfxWindowsPlatform::UpdateRenderMode()
   }
 }
 
+bool
+gfxWindowsPlatform::AllowOpenGLCanvas()
+{
+  // OpenGL canvas is not supported on windows
+  return false;
+}
+
 mozilla::gfx::BackendType
 gfxWindowsPlatform::GetContentBackendFor(mozilla::layers::LayersBackend aLayers)
 {
   mozilla::gfx::BackendType defaultBackend = gfxPlatform::GetDefaultContentBackend();
   if (aLayers == LayersBackend::LAYERS_D3D11) {
+    return defaultBackend;
+  }
+
+  if (aLayers == LayersBackend::LAYERS_WR && gfx::gfxVars::UseWebRenderANGLE()) {
     return defaultBackend;
   }
 
@@ -485,6 +535,20 @@ gfxWindowsPlatform::GetContentBackendFor(mozilla::layers::LayersBackend aLayers)
 
   // Otherwise we have some non-accelerated backend and that's ok.
   return defaultBackend;
+}
+
+mozilla::gfx::BackendType
+gfxWindowsPlatform::GetPreferredCanvasBackend()
+{
+  mozilla::gfx::BackendType backend = gfxPlatform::GetPreferredCanvasBackend();
+
+  if (backend == BackendType::DIRECT2D1_1 &&
+      gfx::gfxVars::UseWebRender() &&
+      !gfx::gfxVars::UseWebRenderANGLE()) {
+    // We can't have D2D without ANGLE when WebRender is enabled, so fallback to Skia.
+    return BackendType::SKIA;
+  }
+  return backend;
 }
 
 gfxPlatformFontList*
@@ -506,6 +570,10 @@ gfxWindowsPlatform::CreatePlatformFontList()
         DisableD2D(FeatureStatus::Failed, "Failed to initialize fonts",
                    NS_LITERAL_CSTRING("FEATURE_FAILURE_FONT_FAIL"));
     }
+
+    // Ensure this is false, even if the Windows version was recent enough to
+    // permit it, as we're using GDI fonts.
+    mHasVariationFontSupport = false;
 
     pfl = new gfxGDIFontList();
 
@@ -554,34 +622,6 @@ gfxWindowsPlatform::CreateOffscreenSurface(const IntSize& aSize,
     return surf.forget();
 }
 
-already_AddRefed<ScaledFont>
-gfxWindowsPlatform::GetScaledFontForFont(DrawTarget* aTarget, gfxFont *aFont)
-{
-    if (aFont->GetType() == gfxFont::FONT_TYPE_DWRITE) {
-        return aFont->GetScaledFont(aTarget);
-    }
-
-    NS_ASSERTION(aFont->GetType() == gfxFont::FONT_TYPE_GDI,
-        "Fonts on windows should be GDI or DWrite!");
-
-    NativeFont nativeFont;
-    nativeFont.mType = NativeFontType::GDI_FONT_FACE;
-    LOGFONT lf;
-    GetObject(static_cast<gfxGDIFont*>(aFont)->GetHFONT(), sizeof(LOGFONT), &lf);
-    nativeFont.mFont = &lf;
-
-    if (aTarget->GetBackendType() == BackendType::CAIRO) {
-      return Factory::CreateScaledFontWithCairo(nativeFont,
-                                                aFont->GetUnscaledFont(),
-                                                aFont->GetAdjustedSize(),
-                                                aFont->GetCairoScaledFont());
-    }
-
-    return Factory::CreateScaledFontForNativeFont(nativeFont,
-                                                  aFont->GetUnscaledFont(),
-                                                  aFont->GetAdjustedSize());
-}
-
 static const char kFontAparajita[] = "Aparajita";
 static const char kFontArabicTypesetting[] = "Arabic Typesetting";
 static const char kFontArial[] = "Arial";
@@ -591,7 +631,6 @@ static const char kFontCambriaMath[] = "Cambria Math";
 static const char kFontEbrima[] = "Ebrima";
 static const char kFontEstrangeloEdessa[] = "Estrangelo Edessa";
 static const char kFontEuphemia[] = "Euphemia";
-static const char kFontEmojiOneMozilla[] = "EmojiOne Mozilla";
 static const char kFontGabriola[] = "Gabriola";
 static const char kFontJavaneseText[] = "Javanese Text";
 static const char kFontKhmerUI[] = "Khmer UI";
@@ -618,6 +657,7 @@ static const char kFontSegoeUIEmoji[] = "Segoe UI Emoji";
 static const char kFontSegoeUISymbol[] = "Segoe UI Symbol";
 static const char kFontSylfaen[] = "Sylfaen";
 static const char kFontTraditionalArabic[] = "Traditional Arabic";
+static const char kFontTwemojiMozilla[] = "Twemoji Mozilla";
 static const char kFontUtsaah[] = "Utsaah";
 static const char kFontYuGothic[] = "Yu Gothic";
 
@@ -626,9 +666,15 @@ gfxWindowsPlatform::GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
                                            Script aRunScript,
                                            nsTArray<const char*>& aFontList)
 {
-    if (aNextCh == 0xfe0fu) {
-        aFontList.AppendElement(kFontSegoeUIEmoji);
-        aFontList.AppendElement(kFontEmojiOneMozilla);
+    EmojiPresentation emoji = GetEmojiPresentation(aCh);
+    if (emoji != EmojiPresentation::TextOnly) {
+        if (aNextCh == kVariationSelector16 ||
+           (aNextCh != kVariationSelector15 &&
+            emoji == EmojiPresentation::EmojiDefault)) {
+            // if char is followed by VS16, try for a color emoji glyph
+            aFontList.AppendElement(kFontSegoeUIEmoji);
+            aFontList.AppendElement(kFontTwemojiMozilla);
+        }
     }
 
     // Arial is used as the default fallback for system fallback
@@ -637,17 +683,7 @@ gfxWindowsPlatform::GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
     if (!IS_IN_BMP(aCh)) {
         uint32_t p = aCh >> 16;
         if (p == 1) { // SMP plane
-            if (aNextCh == 0xfe0eu) {
-                aFontList.AppendElement(kFontSegoeUISymbol);
-                aFontList.AppendElement(kFontSegoeUIEmoji);
-                aFontList.AppendElement(kFontEmojiOneMozilla);
-            } else {
-                if (aNextCh != 0xfe0fu) {
-                    aFontList.AppendElement(kFontSegoeUIEmoji);
-                    aFontList.AppendElement(kFontEmojiOneMozilla);
-                }
-                aFontList.AppendElement(kFontSegoeUISymbol);
-            }
+            aFontList.AppendElement(kFontSegoeUISymbol);
             aFontList.AppendElement(kFontEbrima);
             aFontList.AppendElement(kFontNirmalaUI);
             aFontList.AppendElement(kFontCambriaMath);
@@ -1595,6 +1631,13 @@ gfxWindowsPlatform::InitGPUProcessSupport()
     return false;
   }
 
+  nsCString message;
+  nsCString failureId;
+  if (!gfxPlatform::IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_GPU_PROCESS, &message, failureId)) {
+    gpuProc.Disable(FeatureStatus::Blacklisted, message.get(), failureId);
+    return false;
+  }
+
   if (!gfxConfig::IsEnabled(Feature::D3D11_COMPOSITING)) {
     // Don't use the GPU process if not using D3D11, unless software
     // compositor is allowed
@@ -2023,4 +2066,11 @@ gfxWindowsPlatform::SupportsPluginDirectDXGIDrawing()
     return false;
   }
   return true;
+}
+
+bool
+gfxWindowsPlatform::CheckVariationFontSupport()
+{
+  // Variation font support is only available on Fall Creators Update or later.
+  return IsWin10FallCreatorsUpdateOrLater();
 }

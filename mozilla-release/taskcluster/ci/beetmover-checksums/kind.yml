@@ -5,11 +5,15 @@
 loader: taskgraph.loader.single_dep:loader
 
 transforms:
+   - taskgraph.transforms.name_sanity:transforms
    - taskgraph.transforms.beetmover_checksums:transforms
    - taskgraph.transforms.task:transforms
 
 kind-dependencies:
-  - checksums-signing
+   - checksums-signing
 
 only-for-attributes:
-  - nightly
+   - nightly
+
+job-template:
+   shipping-phase: promote

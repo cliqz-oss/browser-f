@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -120,10 +120,10 @@ FileDescriptorFile::GetPath(nsAString& aRetVal)
   return mFile->GetPath(aRetVal);
 }
 
-NS_IMETHODIMP
-FileDescriptorFile::GetNativePath(nsACString& aRetVal)
+PathString
+FileDescriptorFile::NativePath()
 {
-  return mFile->GetNativePath(aRetVal);
+  return mFile->NativePath();
 }
 
 NS_IMETHODIMP
@@ -148,6 +148,12 @@ NS_IMETHODIMP
 FileDescriptorFile::GetFollowLinks(bool* aFollowLinks)
 {
   return mFile->GetFollowLinks(aFollowLinks);
+}
+
+NS_IMETHODIMP
+FileDescriptorFile::GetPersistentDescriptor(nsACString& aPersistentDescriptor)
+{
+  return mFile->GetPersistentDescriptor(aPersistentDescriptor);
 }
 
 //-----------------------------------------------------------------------------
@@ -222,12 +228,6 @@ FileDescriptorFile::AppendRelativePath(const nsAString& aNode)
 
 NS_IMETHODIMP
 FileDescriptorFile::AppendRelativeNativePath(const nsACString& aFragment)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-FileDescriptorFile::GetPersistentDescriptor(nsACString& aPersistentDescriptor)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }

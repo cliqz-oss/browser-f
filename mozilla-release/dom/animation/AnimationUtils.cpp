@@ -7,7 +7,7 @@
 #include "AnimationUtils.h"
 
 #include "nsDebug.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsGlobalWindow.h"
@@ -27,7 +27,7 @@ AnimationUtils::LogAsyncAnimationFailure(nsCString& aMessage,
     aMessage.AppendLiteral(" [");
     aMessage.Append(nsAtomCString(aContent->NodeInfo()->NameAtom()));
 
-    nsIAtom* id = aContent->GetID();
+    nsAtom* id = aContent->GetID();
     if (id) {
       aMessage.AppendLiteral(" with id '");
       aMessage.Append(nsAtomCString(aContent->GetID()));
@@ -42,7 +42,17 @@ AnimationUtils::LogAsyncAnimationFailure(nsCString& aMessage,
 /* static */ nsIDocument*
 AnimationUtils::GetCurrentRealmDocument(JSContext* aCx)
 {
-  nsGlobalWindow* win = xpc::CurrentWindowOrNull(aCx);
+  nsGlobalWindowInner* win = xpc::CurrentWindowOrNull(aCx);
+  if (!win) {
+    return nullptr;
+  }
+  return win->GetDoc();
+}
+
+/* static */ nsIDocument*
+AnimationUtils::GetDocumentFromGlobal(JSObject* aGlobalObject)
+{
+  nsGlobalWindowInner* win = xpc::WindowOrNull(aGlobalObject);
   if (!win) {
     return nullptr;
   }
@@ -62,27 +72,6 @@ AnimationUtils::IsOffscreenThrottlingEnabled()
   }
 
   return sOffscreenThrottlingEnabled;
-}
-
-/* static */ bool
-AnimationUtils::IsCoreAPIEnabled()
-{
-  static bool sCoreAPIEnabled;
-  static bool sPrefCached = false;
-
-  if (!sPrefCached) {
-    sPrefCached = true;
-    Preferences::AddBoolVarCache(&sCoreAPIEnabled,
-                                 "dom.animations-api.core.enabled");
-  }
-
-  return sCoreAPIEnabled;
-}
-
-/* static */ bool
-AnimationUtils::IsCoreAPIEnabledForCaller(dom::CallerType aCallerType)
-{
-  return IsCoreAPIEnabled() || aCallerType == dom::CallerType::System;
 }
 
 /* static */ bool

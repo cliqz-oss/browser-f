@@ -12,15 +12,14 @@ debug("loaded");
 
 var BrowserElementIsReady;
 
-var { classes: Cc, interfaces: Ci, results: Cr, utils: Cu }  = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/BrowserElementPromptService.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserElementPromptService.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ManifestFinder",
-                                  "resource://gre/modules/ManifestFinder.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ManifestObtainer",
-                                  "resource://gre/modules/ManifestObtainer.jsm");
+ChromeUtils.defineModuleGetter(this, "ManifestFinder",
+                               "resource://gre/modules/ManifestFinder.jsm");
+ChromeUtils.defineModuleGetter(this, "ManifestObtainer",
+                               "resource://gre/modules/ManifestObtainer.jsm");
 
 
 var kLongestReturnedString = 128;
@@ -124,8 +123,8 @@ function BrowserElementChild() {
 
 BrowserElementChild.prototype = {
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
   _init: function() {
     debug("Starting up.");
@@ -140,8 +139,10 @@ BrowserElementChild.prototype = {
 
     let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
     if (!webNavigation.sessionHistory) {
-      webNavigation.sessionHistory = Cc["@mozilla.org/browser/shistory;1"]
-                                       .createInstance(Ci.nsISHistory);
+      // XXX(nika): I don't think this code should ever be hit? We should run
+      // TabChild::Init before we run this code which will perform this setup
+      // for us.
+      docShell.initSessionHistory();
     }
 
     // This is necessary to get security web progress notifications.
@@ -666,9 +667,9 @@ BrowserElementChild.prototype = {
   _ClickHandler: function(e) {
 
     let isHTMLLink = node =>
-      ((node instanceof Ci.nsIDOMHTMLAnchorElement && node.href) ||
-       (node instanceof Ci.nsIDOMHTMLAreaElement && node.href) ||
-        node instanceof Ci.nsIDOMHTMLLinkElement);
+        ((ChromeUtils.getClassName(node) === "HTMLAnchorElement" && node.href) ||
+         (ChromeUtils.getClassName(node) === "HTMLAreaElement" && node.href) ||
+         ChromeUtils.getClassName(node) === "HTMLLinkElement");
 
     // Open in a new tab if middle click or ctrl/cmd-click,
     // and e.target is a link or inside a link.
@@ -855,32 +856,34 @@ BrowserElementChild.prototype = {
   _getSystemCtxMenuData: function(elem) {
     let documentURI =
       docShell.QueryInterface(Ci.nsIWebNavigation).currentURI.spec;
-    if ((elem instanceof Ci.nsIDOMHTMLAnchorElement && elem.href) ||
-        (elem instanceof Ci.nsIDOMHTMLAreaElement && elem.href)) {
+
+    if ((ChromeUtils.getClassName(elem) === "HTMLAnchorElement" && elem.href) ||
+        (ChromeUtils.getClassName(elem) === "HTMLAreaElement" && elem.href)) {
       return {uri: elem.href,
               documentURI: documentURI,
               text: elem.textContent.substring(0, kLongestReturnedString)};
     }
-    if (elem instanceof Ci.nsIImageLoadingContent && elem.currentURI) {
-      return {uri: elem.currentURI.spec, documentURI: documentURI};
+    if (elem instanceof Ci.nsIImageLoadingContent && elem.currentRequestFinalURI) {
+      return {uri: elem.currentRequestFinalURI.spec, documentURI: documentURI};
     }
-    if (elem instanceof Ci.nsIDOMHTMLImageElement) {
+    if (ChromeUtils.getClassName(elem) === "HTMLImageElement") {
       return {uri: elem.src, documentURI: documentURI};
     }
-    if (elem instanceof Ci.nsIDOMHTMLMediaElement) {
+    if (ChromeUtils.getClassName(elem) === "HTMLVideoElement" ||
+        ChromeUtils.getClassName(elem) === "HTMLAudioElement") {
       let hasVideo = !(elem.readyState >= elem.HAVE_METADATA &&
                        (elem.videoWidth == 0 || elem.videoHeight == 0));
       return {uri: elem.currentSrc || elem.src,
               hasVideo: hasVideo,
               documentURI: documentURI};
     }
-    if (elem instanceof Ci.nsIDOMHTMLInputElement &&
+    if (ChromeUtils.getClassName(elem) === "HTMLInputElement" &&
         elem.hasAttribute("name")) {
       // For input elements, we look for a parent <form> and if there is
       // one we return the form's method and action uri.
       let parent = elem.parentNode;
       while (parent) {
-        if (parent instanceof Ci.nsIDOMHTMLFormElement &&
+        if (ChromeUtils.getClassName(parent) === "HTMLFormElement" &&
             parent.hasAttribute("action")) {
           let actionHref = docShell.QueryInterface(Ci.nsIWebNavigation)
                                    .currentURI
@@ -918,7 +921,7 @@ BrowserElementChild.prototype = {
 
     try {
       if (history && history.count) {
-        history.PurgeHistory(history.count);
+        history.legacySHistory.PurgeHistory(history.count);
       }
     } catch(e) {}
 
@@ -1329,7 +1332,7 @@ BrowserElementChild.prototype = {
 
   _initFinder: function() {
     if (!this._finder) {
-      let {Finder} = Components.utils.import("resource://gre/modules/Finder.jsm", {});
+      let {Finder} = ChromeUtils.import("resource://gre/modules/Finder.jsm", {});
       this._finder = new Finder(docShell);
     }
     let listener = {
@@ -1377,8 +1380,8 @@ BrowserElementChild.prototype = {
   // The docShell keeps a weak reference to the progress listener, so we need
   // to keep a strong ref to it ourselves.
   _progressListener: {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                           Ci.nsISupportsWeakReference]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener,
+                                            Ci.nsISupportsWeakReference]),
     _seenLoadStart: false,
 
     onLocationChange: function(webProgress, request, location, flags) {
@@ -1460,6 +1463,9 @@ BrowserElementChild.prototype = {
           case Cr.NS_ERROR_MALWARE_URI :
             sendAsyncMsg('error', { type: 'malwareBlocked' });
             return;
+          case Cr.NS_ERROR_HARMFUL_URI :
+            sendAsyncMsg('error', { type: 'harmfulBlocked' });
+            return;
           case Cr.NS_ERROR_UNWANTED_URI :
             sendAsyncMsg('error', { type: 'unwantedBlocked' });
             return;
@@ -1508,6 +1514,9 @@ BrowserElementChild.prototype = {
             return;
           case Cr.NS_ERROR_CORRUPTED_CONTENT :
             sendAsyncMsg('error', { type: 'corruptedContentErrorv2' });
+            return;
+          case Cr.NS_ERROR_BLOCKED_BY_POLICY :
+            sendAsyncMsg('error', { type: 'blockedByPolicy' });
             return;
 
           default:

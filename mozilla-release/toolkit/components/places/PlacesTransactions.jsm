@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PlacesTransactions"];
+var EXPORTED_SYMBOLS = ["PlacesTransactions"];
 
 /**
  * Overview
@@ -174,16 +174,12 @@ this.EXPORTED_SYMBOLS = ["PlacesTransactions"];
  * Note that when a new entry is created, all redo entries are removed.
  */
 
-const { utils: Cu, classes: Cc, interfaces: Ci } = Components;
-
 const TRANSACTIONS_QUEUE_TIMEOUT_MS = 240000; // 4 Mins.
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-                                  "resource://gre/modules/Console.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
 
 Cu.importGlobalProperties(["URL"]);
 
@@ -726,25 +722,41 @@ function isPrimitive(v) {
   return v === null || (typeof(v) != "object" && typeof(v) != "function");
 }
 
+function checkProperty(obj, prop, required, checkFn) {
+  if (prop in obj)
+    return checkFn(obj[prop]);
+
+  return !required;
+}
+
 DefineTransaction.annotationObjectValidate = function(obj) {
-  let checkProperty = (prop, required, checkFn) => {
-    if (prop in obj)
-      return checkFn(obj[prop]);
-
-    return !required;
-  };
-
   if (obj &&
-      checkProperty("name", true, v => typeof(v) == "string" && v.length > 0) &&
-      checkProperty("expires", false, Number.isInteger) &&
-      checkProperty("flags", false, Number.isInteger) &&
-      checkProperty("value", false, isPrimitive) ) {
+      checkProperty(obj, "name", true, v => typeof(v) == "string" && v.length > 0) &&
+      checkProperty(obj, "expires", false, Number.isInteger) &&
+      checkProperty(obj, "flags", false, Number.isInteger) &&
+      checkProperty(obj, "value", false, isPrimitive) ) {
     // Nothing else should be set
     let validKeys = ["name", "value", "flags", "expires"];
-    if (Object.keys(obj).every(k => validKeys.includes(k)))
-      return obj;
+    if (Object.keys(obj).every(k => validKeys.includes(k))) {
+      // Annotations objects are passed through to the backend, to avoid memory
+      // leaks, we must clone the object.
+      return {...obj};
+    }
   }
   throw new Error("Invalid annotation object");
+};
+
+DefineTransaction.childObjectValidate = function(obj) {
+  if (obj &&
+      checkProperty(obj, "title", false, v => typeof(v) == "string") &&
+      !("type" in obj && obj.type != PlacesUtils.bookmarks.TYPE_BOOKMARK)) {
+    obj.url = DefineTransaction.urlValidate(obj.url);
+    let validKeys = ["title", "url"];
+    if (Object.keys(obj).every(k => validKeys.includes(k))) {
+      return obj;
+    }
+  }
+  throw new Error("Invalid child object");
 };
 
 DefineTransaction.urlValidate = function(url) {
@@ -763,7 +775,7 @@ DefineTransaction.defineInputProps = function(names, validateFn, defaultValue) {
         try {
           return validateFn(value);
         } catch (ex) {
-          throw new Error(`Invalid value for input property ${name}`);
+          throw new Error(`Invalid value for input property ${name}: ${ex}`);
         }
       },
 
@@ -791,9 +803,15 @@ DefineTransaction.defineArrayInputProp = function(name, basePropertyName) {
       if (!Array.isArray(aValue))
         throw new Error(`${name} input property value must be an array`);
 
-      // This also takes care of abandoning the global scope of the input
-      // array (through Array.prototype).
-      return aValue.map(baseProp.validateValue);
+      // We must create a new array in the local scope to avoid a memory leak due
+      // to the array global object. We can't use Cu.cloneInto as that doesn't
+      // handle the URIs. Slice & map also aren't good enough, so we start off
+      // with a clean array and insert what we need into it.
+      let newArray = [];
+      for (let item of aValue) {
+        newArray.push(baseProp.validateValue(item));
+      }
+      return newArray;
     },
 
     // We allow setting either the array property itself (e.g. urls), or a
@@ -888,9 +906,9 @@ DefineTransaction.defineInputProps(["url", "feedUrl", "siteUrl"],
                                    DefineTransaction.urlValidate, null);
 DefineTransaction.defineInputProps(["guid", "parentGuid", "newParentGuid"],
                                    DefineTransaction.guidValidate);
-DefineTransaction.defineInputProps(["title"],
+DefineTransaction.defineInputProps(["title", "postData"],
                                    DefineTransaction.strOrNullValidate, null);
-DefineTransaction.defineInputProps(["keyword", "oldKeyword", "postData", "tag",
+DefineTransaction.defineInputProps(["keyword", "oldKeyword", "oldTag", "tag",
                                     "excludingAnnotation"],
                                    DefineTransaction.strValidate, "");
 DefineTransaction.defineInputProps(["index", "newIndex"],
@@ -898,10 +916,13 @@ DefineTransaction.defineInputProps(["index", "newIndex"],
                                    PlacesUtils.bookmarks.DEFAULT_INDEX);
 DefineTransaction.defineInputProps(["annotation"],
                                    DefineTransaction.annotationObjectValidate);
+DefineTransaction.defineInputProps(["child"],
+                                   DefineTransaction.childObjectValidate);
 DefineTransaction.defineArrayInputProp("guids", "guid");
 DefineTransaction.defineArrayInputProp("urls", "url");
 DefineTransaction.defineArrayInputProp("tags", "tag");
 DefineTransaction.defineArrayInputProp("annotations", "annotation");
+DefineTransaction.defineArrayInputProp("children", "child");
 DefineTransaction.defineArrayInputProp("excludingAnnotations",
                                        "excludingAnnotation");
 
@@ -971,8 +992,6 @@ function createItemsFromBookmarksTree(tree, restoring = false,
         if ("tags" in item) {
           PlacesUtils.tagging.tagURI(Services.io.newURI(item.uri),
                                      item.tags.split(","));
-          if (restoring)
-            shouldResetLastModified = true;
         }
         break;
       }
@@ -1019,9 +1038,8 @@ function createItemsFromBookmarksTree(tree, restoring = false,
 
       if (annos.length > 0) {
         let itemId = await PlacesUtils.promiseItemId(guid);
-        PlacesUtils.setAnnotationsForItem(itemId, annos);
-        if (restoring)
-          shouldResetLastModified = true;
+        PlacesUtils.setAnnotationsForItem(itemId, annos,
+          Ci.nsINavBookmarksService.SOURCE_DEFAULT, true);
       }
     }
 
@@ -1070,7 +1088,8 @@ PT.NewBookmark.prototype = Object.seal({
       info = await PlacesUtils.bookmarks.insert(info);
       if (annotations.length > 0) {
         let itemId = await PlacesUtils.promiseItemId(info.guid);
-        PlacesUtils.setAnnotationsForItem(itemId, annotations);
+        PlacesUtils.setAnnotationsForItem(itemId, annotations,
+          Ci.nsINavBookmarksService.SOURCE_DEFAULT, true);
       }
       if (tags.length > 0) {
         PlacesUtils.tagging.tagURI(Services.io.newURI(url.href), tags);
@@ -1089,10 +1108,6 @@ PT.NewBookmark.prototype = Object.seal({
     };
     this.redo = async function() {
       await createItem();
-      // CreateItem will update the lastModified value if tags or annotations
-      // are present, but we don't care to restore it. The likely of a user
-      // creating a bookmark, undoing and redoing that, and still caring
-      // about lastModified is basically non-existant.
     };
     return info.guid;
   }
@@ -1102,35 +1117,66 @@ PT.NewBookmark.prototype = Object.seal({
  * Transaction for creating a folder.
  *
  * Required Input Properties: title, parentGuid.
- * Optional Input Properties: index, annotations.
+ * Optional Input Properties: index, annotations, children
  *
  * When this transaction is executed, it's resolved to the new folder's GUID.
  */
 PT.NewFolder = DefineTransaction(["parentGuid", "title"],
-                                 ["index", "annotations"]);
+                                 ["index", "annotations", "children"]);
 PT.NewFolder.prototype = Object.seal({
-  async execute({ parentGuid, title, index, annotations }) {
-    let info = { type: PlacesUtils.bookmarks.TYPE_FOLDER,
-                 parentGuid, index, title };
+  async execute({ parentGuid, title, index, annotations, children }) {
+    let folderGuid;
+    let info = {
+      children: [{
+        // Ensure to specify a guid to be restored on redo.
+        guid: PlacesUtils.history.makeGuid(),
+        title,
+        type: PlacesUtils.bookmarks.TYPE_FOLDER,
+      }],
+      // insertTree uses guid as the parent for where it is being inserted
+      // into.
+      guid: parentGuid,
+    };
+
+    if (children && children.length > 0) {
+      // Ensure to specify a guid for each child to be restored on redo.
+      info.children[0].children = children.map(c => {
+        c.guid = PlacesUtils.history.makeGuid();
+        return c;
+      });
+    }
 
     async function createItem() {
-      info = await PlacesUtils.bookmarks.insert(info);
+      // Note, insertTree returns an array, rather than the folder/child structure.
+      // For simplicity, we only get the new folder id here. This means that
+      // an undo then redo won't retain exactly the same information for all
+      // the child bookmarks, but we believe that isn't important at the moment.
+      let bmInfo = await PlacesUtils.bookmarks.insertTree(info);
+      // insertTree returns an array, but we only need to deal with the folder guid.
+      folderGuid = bmInfo[0].guid;
+
+      // Bug 1388097: insertTree doesn't handle inserting at a specific index for the folder,
+      // therefore we update the bookmark manually afterwards.
+      if (index != PlacesUtils.bookmarks.DEFAULT_INDEX) {
+        bmInfo[0].index = index;
+        bmInfo = await PlacesUtils.bookmarks.update(bmInfo[0]);
+      }
+
       if (annotations.length > 0) {
-        let itemId = await PlacesUtils.promiseItemId(info.guid);
-        PlacesUtils.setAnnotationsForItem(itemId, annotations);
+        let itemId = await PlacesUtils.promiseItemId(folderGuid);
+        PlacesUtils.setAnnotationsForItem(itemId, annotations,
+          Ci.nsINavBookmarksService.SOURCE_DEFAULT, true);
       }
     }
     await createItem();
 
     this.undo = async function() {
-      await PlacesUtils.bookmarks.remove(info);
+      await PlacesUtils.bookmarks.remove(folderGuid);
     };
     this.redo = async function() {
       await createItem();
-      // See the reasoning in CreateItem for why we don't care
-      // about precisely resetting the lastModified value.
     };
-    return info.guid;
+    return folderGuid;
   }
 });
 
@@ -1176,7 +1222,8 @@ PT.NewLivemark.prototype = Object.seal({
     let createItem = async function() {
       let livemark = await PlacesUtils.livemarks.addLivemark(livemarkInfo);
       if (annotations.length > 0) {
-        PlacesUtils.setAnnotationsForItem(livemark.id, annotations);
+        PlacesUtils.setAnnotationsForItem(livemark.id, annotations,
+          Ci.nsINavBookmarksService.SOURCE_DEFAULT, true);
       }
       return livemark;
     };
@@ -1208,7 +1255,7 @@ PT.Move.prototype = Object.seal({
     let originalInfo = await PlacesUtils.bookmarks.fetch(guid);
     if (!originalInfo)
       throw new Error("Cannot move a non-existent item");
-    let updateInfo = { guid, parentGuid: newParentGuid, index: newIndex }
+    let updateInfo = { guid, parentGuid: newParentGuid, index: newIndex };
     updateInfo = await PlacesUtils.bookmarks.update(updateInfo);
 
     // Moving down in the same parent takes in count removal of the item
@@ -1309,7 +1356,7 @@ PT.Annotate.prototype = {
     let undoAnnosForItemId = new Map();
     for (let guid of guids) {
       let itemId = await PlacesUtils.promiseItemId(guid);
-      let currentAnnos = PlacesUtils.getAnnotationsForItem(itemId);
+      let currentAnnos = await PlacesUtils.promiseAnnotationsForItem(itemId);
 
       let undoAnnos = [];
       for (let newAnno of annotations) {
@@ -1441,28 +1488,32 @@ PT.SortByName.prototype = {
 PT.Remove = DefineTransaction(["guids"]);
 PT.Remove.prototype = {
   async execute({ guids }) {
-    let promiseBookmarksTree = async function(guid) {
-      let tree;
+    let removedItems = [];
+
+    for (let guid of guids) {
       try {
-        tree = await PlacesUtils.promiseBookmarksTree(guid);
+        // Although we don't strictly need to get this information for the remove,
+        // we do need it for the possibility of undo().
+        removedItems.push(await PlacesUtils.promiseBookmarksTree(guid));
       } catch (ex) {
         throw new Error("Failed to get info for the specified item (guid: " +
                           guid + "): " + ex);
       }
-      return tree;
-    };
-    let removedItems = [];
-    for (let guid of guids) {
-      removedItems.push(await promiseBookmarksTree(guid));
     }
+
     let removeThem = async function() {
+      let bmsToRemove = [];
       for (let info of removedItems) {
         if (info.annos &&
             info.annos.some(anno => anno.name == PlacesUtils.LMANNO_FEEDURI)) {
           await PlacesUtils.livemarks.removeLivemark({ guid: info.guid });
         } else {
-          await PlacesUtils.bookmarks.remove({ guid: info.guid });
+          bmsToRemove.push({guid: info.guid});
         }
+      }
+
+      if (bmsToRemove.length) {
+        await PlacesUtils.bookmarks.remove(bmsToRemove);
       }
     };
     await removeThem();
@@ -1473,25 +1524,6 @@ PT.Remove.prototype = {
       }
     };
     this.redo = removeThem;
-  }
-};
-
-/**
- * Transactions for removing all bookmarks for one or more urls.
- *
- * Required Input Properties: urls.
- */
-PT.RemoveBookmarksForUrls = DefineTransaction(["urls"]);
-PT.RemoveBookmarksForUrls.prototype = {
-  async execute({ urls }) {
-    let guids = [];
-    for (let url of urls) {
-      await PlacesUtils.bookmarks.fetch({ url }, b => guids.push(b.guid));
-    }
-    let removeTxn = TransactionsHistory.getRawTransaction(PT.Remove(guids));
-    await removeTxn.execute();
-    this.undo = removeTxn.undo.bind(removeTxn);
-    this.redo = removeTxn.redo.bind(removeTxn);
   }
 };
 
@@ -1519,13 +1551,15 @@ PT.Tag.prototype = {
         let uri = Services.io.newURI(url.href);
         let currentTags = PlacesUtils.tagging.getTagsForURI(uri);
         let newTags = tags.filter(t => !currentTags.includes(t));
-        PlacesUtils.tagging.tagURI(uri, newTags);
-        onUndo.unshift(() => {
-          PlacesUtils.tagging.untagURI(uri, newTags);
-        });
-        onRedo.push(() => {
+        if (newTags.length) {
           PlacesUtils.tagging.tagURI(uri, newTags);
-        });
+          onUndo.unshift(() => {
+            PlacesUtils.tagging.untagURI(uri, newTags);
+          });
+          onRedo.push(() => {
+            PlacesUtils.tagging.tagURI(uri, newTags);
+          });
+        }
       }
     }
     this.undo = async function() {
@@ -1590,6 +1624,96 @@ PT.Untag.prototype = {
 };
 
 /**
+ * Transaction for renaming a tag.
+ *
+ * Required Input Properties: oldTag, tag.
+ */
+PT.RenameTag = DefineTransaction(["oldTag", "tag"]);
+PT.RenameTag.prototype = {
+  async execute({ oldTag, tag }) {
+    // For now this is implemented by untagging and tagging all the bookmarks.
+    // We should create a specialized bookmarking API to just rename the tag.
+    let onUndo = [], onRedo = [];
+    let urls = PlacesUtils.tagging.getURIsForTag(oldTag);
+    if (urls.length > 0) {
+      let tagTxn = TransactionsHistory.getRawTransaction(
+        PT.Tag({ urls, tags: [tag] })
+      );
+      await tagTxn.execute();
+      onUndo.unshift(tagTxn.undo.bind(tagTxn));
+      onRedo.push(tagTxn.redo.bind(tagTxn));
+      let untagTxn = TransactionsHistory.getRawTransaction(
+        PT.Untag({ urls, tags: [oldTag] })
+      );
+      await untagTxn.execute();
+      onUndo.unshift(untagTxn.undo.bind(untagTxn));
+      onRedo.push(untagTxn.redo.bind(untagTxn));
+
+      // Update all the place: queries that refer to this tag.
+      let db = await PlacesUtils.promiseDBConnection();
+      let rows = await db.executeCached(`
+        SELECT h.url, b.guid, b.title
+        FROM moz_places h
+        JOIN moz_bookmarks b ON b.fk = h.id
+        WHERE url_hash BETWEEN hash("place", "prefix_lo")
+                           AND hash("place", "prefix_hi")
+          AND url LIKE :tagQuery
+      `, { tagQuery: "%tag=%" });
+      for (let row of rows) {
+        let url = row.getResultByName("url");
+        try {
+          url = new URL(url);
+          let urlParams = new URLSearchParams(url.pathname);
+          let tags = urlParams.getAll("tag");
+          if (!tags.includes(oldTag))
+            continue;
+          if (tags.length > 1) {
+            // URLSearchParams cannot set more than 1 same-named param.
+            urlParams.delete("tag");
+            urlParams.set("tag", tag);
+            url = new URL(url.protocol + urlParams +
+                          "&tag=" + tags.filter(t => t != oldTag).join("&tag="));
+          } else {
+            urlParams.set("tag", tag);
+            url = new URL(url.protocol + urlParams);
+          }
+        } catch (ex) {
+          Cu.reportError("Invalid bookmark url: " + row.getResultByName("url") + ": " + ex);
+          continue;
+        }
+        let guid = row.getResultByName("guid");
+        let title = row.getResultByName("title");
+
+        let editUrlTxn = TransactionsHistory.getRawTransaction(
+          PT.EditUrl({ guid, url })
+        );
+        await editUrlTxn.execute();
+        onUndo.unshift(editUrlTxn.undo.bind(editUrlTxn));
+        onRedo.push(editUrlTxn.redo.bind(editUrlTxn));
+        if (title == oldTag) {
+          let editTitleTxn = TransactionsHistory.getRawTransaction(
+            PT.EditTitle({ guid, title: tag })
+          );
+          await editTitleTxn.execute();
+          onUndo.unshift(editTitleTxn.undo.bind(editTitleTxn));
+          onRedo.push(editTitleTxn.redo.bind(editTitleTxn));
+        }
+      }
+    }
+    this.undo = async function() {
+      for (let f of onUndo) {
+        await f();
+      }
+    };
+    this.redo = async function() {
+      for (let f of onRedo) {
+        await f();
+      }
+    };
+  }
+};
+
+/**
  * Transaction for copying an item.
  *
  * Required Input Properties: guid, newParentGuid
@@ -1620,7 +1744,7 @@ PT.Copy.prototype = {
     };
     this.redo = async function() {
       await createItemsFromBookmarksTree(newItemInfo, true);
-    }
+    };
 
     return newItemGuid;
   }

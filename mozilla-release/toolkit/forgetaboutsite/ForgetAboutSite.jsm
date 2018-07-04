@@ -4,15 +4,17 @@
 
 "use strict";
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
-                                  "resource://gre/modules/Downloads.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Downloads",
+                               "resource://gre/modules/Downloads.jsm");
+ChromeUtils.defineModuleGetter(this, "ServiceWorkerCleanUp",
+                               "resource://gre/modules/ServiceWorkerCleanUp.jsm");
 
-this.EXPORTED_SYMBOLS = ["ForgetAboutSite"];
+var EXPORTED_SYMBOLS = ["ForgetAboutSite"];
 
 /**
  * Returns true if the string passed in is part of the root domain of the
@@ -38,22 +40,16 @@ function hasRootDomain(str, aDomain) {
          (prevChar == "." || prevChar == "/");
 }
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-this.ForgetAboutSite = {
+var ForgetAboutSite = {
   async removeDataFromDomain(aDomain) {
     PlacesUtils.history.removePagesFromHost(aDomain, true);
 
     let promises = [];
     // Cache
     promises.push((async function() {
-      let cs = Cc["@mozilla.org/netwerk/cache-storage-service;1"].
-               getService(Ci.nsICacheStorageService);
       // NOTE: there is no way to clear just that domain, so we clear out
       //       everything)
-      cs.clear();
+      Services.cache2.clear();
     })().catch(ex => {
       throw new Error("Exception thrown while clearing the cache: " + ex);
     }));
@@ -70,12 +66,10 @@ this.ForgetAboutSite = {
     // Cookies
     // Need to maximize the number of cookies cleaned here
     promises.push((async function() {
-      let cm = Cc["@mozilla.org/cookiemanager;1"].
-               getService(Ci.nsICookieManager2);
-      let enumerator = cm.getCookiesWithOriginAttributes(JSON.stringify({}), aDomain);
+      let enumerator = Services.cookies.getCookiesWithOriginAttributes(JSON.stringify({}), aDomain);
       while (enumerator.hasMoreElements()) {
         let cookie = enumerator.getNext().QueryInterface(Ci.nsICookie);
-        cm.remove(cookie.host, cookie.name, cookie.path, false, cookie.originAttributes);
+        Services.cookies.remove(cookie.host, cookie.name, cookie.path, false, cookie.originAttributes);
       }
     })().catch(ex => {
       throw new Error("Exception thrown while clearning cookies: " + ex);
@@ -119,32 +113,28 @@ this.ForgetAboutSite = {
 
     // Passwords
     promises.push((async function() {
-      let lm = Cc["@mozilla.org/login-manager;1"].
-               getService(Ci.nsILoginManager);
       // Clear all passwords for domain
-      let logins = lm.getAllLogins();
+      let logins = Services.logins.getAllLogins();
       for (let i = 0; i < logins.length; i++)
         if (hasRootDomain(logins[i].hostname, aDomain))
-          lm.removeLogin(logins[i]);
+          Services.logins.removeLogin(logins[i]);
     })().catch(ex => {
       // XXXehsan: is there a better way to do this rather than this
       // hacky comparison?
-      if (ex.message.indexOf("User canceled Master Password entry") == -1) {
+      if (!ex.message.includes("User canceled Master Password entry")) {
         throw new Error("Exception occured in clearing passwords :" + ex);
       }
     }));
 
     // Permissions
-    let pm = Cc["@mozilla.org/permissionmanager;1"].
-             getService(Ci.nsIPermissionManager);
     // Enumerate all of the permissions, and if one matches, remove it
-    let enumerator = pm.enumerator;
+    let enumerator = Services.perms.enumerator;
     while (enumerator.hasMoreElements()) {
       let perm = enumerator.getNext().QueryInterface(Ci.nsIPermission);
       promises.push(new Promise((resolve, reject) => {
         try {
           if (hasRootDomain(perm.principal.URI.host, aDomain)) {
-            pm.removePermission(perm);
+            Services.perms.removePermission(perm);
           }
         } catch (ex) {
           // Ignore entry
@@ -154,10 +144,12 @@ this.ForgetAboutSite = {
       }));
     }
 
-    // Offline Storages
+    // ServiceWorkers
+    await ServiceWorkerCleanUp.removeFromHost("http://" + aDomain);
+    await ServiceWorkerCleanUp.removeFromHost("https://" + aDomain);
+
+    // Offline Storages. This must run after the ServiceWorkers promises.
     promises.push((async function() {
-      let qms = Cc["@mozilla.org/dom/quota-manager-service;1"].
-                getService(Ci.nsIQuotaManagerService);
       // delete data from both HTTP and HTTPS sites
       let httpURI = NetUtil.newURI("http://" + aDomain);
       let httpsURI = NetUtil.newURI("https://" + aDomain);
@@ -168,8 +160,8 @@ this.ForgetAboutSite = {
                                    .createCodebasePrincipal(httpURI, {});
       let httpsPrincipal = Services.scriptSecurityManager
                                    .createCodebasePrincipal(httpsURI, {});
-      qms.clearStoragesForPrincipal(httpPrincipal, null, true);
-      qms.clearStoragesForPrincipal(httpsPrincipal, null, true);
+      Services.qms.clearStoragesForPrincipal(httpPrincipal, null, true);
+      Services.qms.clearStoragesForPrincipal(httpsPrincipal, null, true);
     })().catch(ex => {
       throw new Error("Exception occured while clearing offline storages: " + ex);
     }));
@@ -247,4 +239,4 @@ this.ForgetAboutSite = {
     if (ErrorCount !== 0)
       throw new Error(`There were a total of ${ErrorCount} errors during removal`);
   }
-}
+};

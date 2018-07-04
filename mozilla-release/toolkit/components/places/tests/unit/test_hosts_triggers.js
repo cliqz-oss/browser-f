@@ -113,7 +113,7 @@ add_task(async function test_bookmark_changes() {
     title: "bookmark title",
   });
 
-  do_check_true(isHostInMozPlaces(testUri));
+  Assert.ok(isHostInMozPlaces(testUri));
 
   // Change the hostname
   await PlacesUtils.bookmarks.update({
@@ -121,10 +121,10 @@ add_task(async function test_bookmark_changes() {
     url: NEW_URL,
   });
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
   let newUri = NetUtil.newURI(NEW_URL);
-  do_check_true(isHostInMozPlaces(newUri));
+  Assert.ok(isHostInMozPlaces(newUri));
   checkHostInMozHosts(newUri, false, null);
   checkHostNotInMozHosts(NetUtil.newURI("http://test.mozilla.org"), false, null);
 });
@@ -137,7 +137,7 @@ add_task(async function test_bookmark_removal() {
     unfiledBookmarksRoot.getChild(unfiledBookmarksRoot.childCount - 1).bookmarkGuid;
 
   await PlacesUtils.bookmarks.remove(itemGuid);
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
   checkHostNotInMozHosts(Services.io.newURI(NEW_URL), false, null);
 });
@@ -155,7 +155,7 @@ add_task(async function test_moz_hosts_typed_update() {
   await PlacesTestUtils.addVisits(places);
 
   checkHostInMozHosts(TEST_URI, true, null);
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function test_moz_hosts_www_remove() {
@@ -184,7 +184,7 @@ add_task(async function test_moz_hosts_www_remove() {
   const TEST_WWW_URI = NetUtil.newURI("http://www.rem.mozilla.com");
   await test_removal(TEST_URI, TEST_WWW_URI);
   await test_removal(TEST_WWW_URI, TEST_URI);
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function test_moz_hosts_ftp_matchall() {
@@ -360,10 +360,10 @@ const hostsUpdateTests = [{
 
 add_task(async function test_moz_hosts_update() {
   for (const section of hostsUpdateTests) {
-    do_print(section.title);
+    info(section.title);
 
     for (const test of section.tests) {
-      do_print(test.title);
+      info(test.title);
 
       if ("visits" in test) {
         await PlacesTestUtils.addVisits(test.visits);

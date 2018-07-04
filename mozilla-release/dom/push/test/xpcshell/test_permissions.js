@@ -16,7 +16,7 @@ function run_test() {
   });
 
   db = PushServiceWebSocket.newPushDB();
-  do_register_cleanup(() => {return db.drop().then(_ => db.close());});
+  registerCleanupFunction(() => {return db.drop().then(_ => db.close());});
 
   run_next_test();
 }
@@ -29,12 +29,12 @@ function promiseUnregister(keyID) {
 
 function makePushPermission(url, capability) {
   return {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIPermission]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIPermission]),
     capability: Ci.nsIPermissionManager[capability],
     expireTime: 0,
     expireType: Ci.nsIPermissionManager.EXPIRE_NEVER,
-    principal: Services.scriptSecurityManager.getCodebasePrincipal(
-      Services.io.newURI(url)
+    principal: Services.scriptSecurityManager.createCodebasePrincipal(
+      Services.io.newURI(url), {}
     ),
     type: 'desktop-notification',
   };

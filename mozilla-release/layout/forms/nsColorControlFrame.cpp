@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,15 +7,12 @@
 #include "nsColorControlFrame.h"
 
 #include "nsContentCreatorFunctions.h"
-#include "nsContentList.h"
 #include "nsContentUtils.h"
 #include "nsCSSPseudoElements.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsGkAtoms.h"
 #include "nsIDOMNode.h"
 #include "nsIFormControl.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "nsIDocument.h"
 
@@ -22,15 +20,15 @@ using mozilla::dom::Element;
 using mozilla::dom::HTMLInputElement;
 using mozilla::dom::CallerType;
 
-nsColorControlFrame::nsColorControlFrame(nsStyleContext* aContext)
-  : nsHTMLButtonControlFrame(aContext, kClassID)
+nsColorControlFrame::nsColorControlFrame(ComputedStyle* aStyle)
+  : nsHTMLButtonControlFrame(aStyle, kClassID)
 {
 }
 
 nsIFrame*
-NS_NewColorControlFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewColorControlFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsColorControlFrame(aContext);
+  return new (aPresShell) nsColorControlFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsColorControlFrame)
@@ -41,11 +39,11 @@ NS_QUERYFRAME_HEAD(nsColorControlFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsHTMLButtonControlFrame)
 
 
-void nsColorControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+void nsColorControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  nsContentUtils::DestroyAnonymousContent(&mColorContent);
-  nsHTMLButtonControlFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  aPostDestroyData.AddAnonymousContent(mColorContent.forget());
+  nsHTMLButtonControlFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 #ifdef DEBUG_FRAME_DUMP
@@ -91,22 +89,36 @@ nsresult
 nsColorControlFrame::UpdateColor()
 {
   // Get the color from the "value" property of our content; it will return the
-  // default color (through the sanitization algorithm) if there is none.
+  // default color (through the sanitization algorithm) if the value is empty.
   nsAutoString color;
-  HTMLInputElement* elt = HTMLInputElement::FromContent(mContent);
+  HTMLInputElement* elt = HTMLInputElement::FromNode(mContent);
   elt->GetValue(color, CallerType::System);
-  MOZ_ASSERT(!color.IsEmpty(),
-             "Content node's GetValue() should return a valid color string "
-             "(the default color, in case no valid color is set)");
 
-  // Set the background-color style property of the swatch element to this color
+  if (color.IsEmpty()) {
+    // OK, there is one case the color string might be empty -- if our content
+    // is still being created, i.e. if it has mDoneCreating==false.  In that
+    // case, we simply do nothing, because we'll be called again with a complete
+    // content node before we ever reflow or paint. Specifically: we can expect
+    // that HTMLInputElement::DoneCreatingElement() will set mDoneCreating to
+    // true (which enables sanitization) and then it'll call SetValueInternal(),
+    // which produces a nonempty color (via sanitization), and then it'll call
+    // this function here, and we'll get the nonempty default color.
+    MOZ_ASSERT(HasAnyStateBits(NS_FRAME_FIRST_REFLOW),
+               "Content node's GetValue() should return a valid color string "
+               "by the time we've been reflowed (the default color, in case "
+               "no valid color is set)");
+    return NS_OK;
+  }
+
+  // Set the background-color CSS property of the swatch element to this color.
   return mColorContent->SetAttr(kNameSpaceID_None, nsGkAtoms::style,
-      NS_LITERAL_STRING("background-color:") + color, true);
+                                NS_LITERAL_STRING("background-color:") + color,
+                                /* aNotify */ true);
 }
 
 nsresult
 nsColorControlFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                      nsIAtom* aAttribute,
+                                      nsAtom* aAttribute,
                                       int32_t  aModType)
 {
   NS_ASSERTION(mColorContent, "The color div must exist");

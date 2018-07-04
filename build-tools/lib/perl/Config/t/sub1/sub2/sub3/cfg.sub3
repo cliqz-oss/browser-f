@@ -1,0 +1,5 @@
+fruit     = apple
+sub3_seen = yup
+
+<<include ../cfg.sub2>>
+<<include ../cfg.sub2b>>

@@ -159,16 +159,15 @@ private:
             nsTimerCallbackFunc aCallbackFunc,
             const char* aName)
   {
-    mPickerCallbackTimer = do_CreateInstance("@mozilla.org/timer;1");
+    NS_NewTimerWithFuncCallback(getter_AddRefs(mPickerCallbackTimer),
+                                aCallbackFunc,
+                                aTarget,
+                                kDialogTimerTimeout,
+                                nsITimer::TYPE_REPEATING_SLACK,
+                                aName);
     if (!mPickerCallbackTimer) {
       NS_WARNING("do_CreateInstance for timer failed??");
-      return;
     }
-    mPickerCallbackTimer->InitWithNamedFuncCallback(aCallbackFunc,
-                                                    aTarget,
-                                                    kDialogTimerTimeout,
-                                                    nsITimer::TYPE_REPEATING_SLACK,
-                                                    aName);
   }
   nsCOMPtr<nsITimer> mPickerCallbackTimer;
 };
@@ -591,7 +590,7 @@ nsFilePicker::ShowFilePicker(const nsString& aInitialDir)
 ///////////////////////////////////////////////////////////////////////////////
 // nsIFilePicker impl.
 
-NS_IMETHODIMP
+nsresult
 nsFilePicker::ShowW(int16_t *aReturnVal)
 {
   NS_ENSURE_ARG_POINTER(aReturnVal);
@@ -647,7 +646,7 @@ nsFilePicker::ShowW(int16_t *aReturnVal)
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsFilePicker::Show(int16_t *aReturnVal)
 {
   return ShowW(aReturnVal);

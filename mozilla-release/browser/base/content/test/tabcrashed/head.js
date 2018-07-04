@@ -39,7 +39,7 @@ function promiseCrashReport(expectedExtra = {}) {
     }
 
     let file = Cc["@mozilla.org/file/local;1"]
-                 .createInstance(Ci.nsILocalFile);
+                 .createInstance(Ci.nsIFile);
     file.initWithPath(Services.crashmanager._submittedDumpsDir);
     file.append(remoteID + ".txt");
     if (!file.exists()) {
@@ -110,7 +110,7 @@ async function setupLocalCrashReportServer() {
   // crashreporter/test/Makefile.in.  Assign its URL to MOZ_CRASHREPORTER_URL,
   // which CrashSubmit.jsm uses as a server override.
   let env = Cc["@mozilla.org/process/environment;1"]
-              .getService(Components.interfaces.nsIEnvironment);
+              .getService(Ci.nsIEnvironment);
   let noReport = env.get("MOZ_CRASHREPORTER_NO_REPORT");
   let serverUrl = env.get("MOZ_CRASHREPORTER_URL");
   env.set("MOZ_CRASHREPORTER_NO_REPORT", "");
@@ -119,5 +119,17 @@ async function setupLocalCrashReportServer() {
   registerCleanupFunction(function() {
     env.set("MOZ_CRASHREPORTER_NO_REPORT", noReport);
     env.set("MOZ_CRASHREPORTER_URL", serverUrl);
+  });
+}
+
+/**
+ * Monkey patches TabCrashHandler.getDumpID to return null in order to test
+ * about:tabcrashed when a dump is not available.
+ */
+function prepareNoDump() {
+  let originalGetDumpID = TabCrashHandler.getDumpID;
+  TabCrashHandler.getDumpID = function(browser) { return null; };
+  registerCleanupFunction(() => {
+    TabCrashHandler.getDumpID = originalGetDumpID;
   });
 }

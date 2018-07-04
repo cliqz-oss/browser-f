@@ -6,8 +6,10 @@ description: Lexical declaration (let) not allowed in statement position
 esid: sec-for-in-and-for-of-statements
 es6id: 13.7.5
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 for (var x of []) let y;

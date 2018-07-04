@@ -2,28 +2,32 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["WebCompatReporter"];
+var EXPORTED_SYMBOLS = ["WebCompatReporter"];
 
-let { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-const TABLISTENER_JSM = "chrome://webcompat-reporter/content/TabListener.jsm";
-const WIDGET_ID = "webcompat-reporter-button";
-const PREF_STYLO_ENABLED = "layout.css.servo.enabled";
-
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-  "resource:///modules/CustomizableUI.jsm");
+ChromeUtils.defineModuleGetter(this, "PageActions",
+  "resource:///modules/PageActions.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "wcStrings", function() {
   return Services.strings.createBundle(
     "chrome://webcompat-reporter/locale/webcompat.properties");
 });
 
-XPCOMUtils.defineLazyGetter(this, "wcStyleURI", function() {
-  return Services.io.newURI("chrome://webcompat-reporter/skin/lightbulb.css");
-});
+// Gather values for interesting details we want to appear in reports.
+let details = {};
+XPCOMUtils.defineLazyPreferenceGetter(details, "gfx.webrender.all", "gfx.webrender.all", false);
+XPCOMUtils.defineLazyPreferenceGetter(details, "gfx.webrender.blob-images", "gfx.webrender.blob-images", true);
+XPCOMUtils.defineLazyPreferenceGetter(details, "gfx.webrender.enabled", "gfx.webrender.enabled", false);
+XPCOMUtils.defineLazyPreferenceGetter(details, "image.mem.shared", "image.mem.shared", true);
+details.buildID = Services.appinfo.appBuildID;
+details.channel = AppConstants.MOZ_UPDATE_CHANNEL;
+
+if (AppConstants.platform == "linux") {
+  XPCOMUtils.defineLazyPreferenceGetter(details, "layers.acceleration.force-enabled", "layers.acceleration.force-enabled", false);
+}
 
 let WebCompatReporter = {
   get endpoint() {
@@ -32,62 +36,26 @@ let WebCompatReporter = {
   },
 
   init() {
-    let styleSheetService = Cc["@mozilla.org/content/style-sheet-service;1"]
-      .getService(Ci.nsIStyleSheetService);
-    this._sheetType = styleSheetService.AUTHOR_SHEET;
-    this._cachedSheet = styleSheetService.preloadSheet(wcStyleURI,
-                                                       this._sheetType);
-
-    XPCOMUtils.defineLazyModuleGetter(this, "TabListener", TABLISTENER_JSM);
-
-    CustomizableUI.createWidget({
-      id: WIDGET_ID,
-      label: wcStrings.GetStringFromName("wc-reporter.label"),
-      tooltiptext: wcStrings.GetStringFromName("wc-reporter.tooltip"),
-      defaultArea: CustomizableUI.AREA_PANEL,
-      disabled: true,
-      onCommand: (e) => this.reportIssue(e.target.ownerDocument),
-    });
-
-    for (let win of CustomizableUI.windows) {
-      this.onWindowOpened(win);
-    }
-
-    CustomizableUI.addListener(this);
-  },
-
-  onWindowOpened(win) {
-    // Attach stylesheet for the button icon.
-    win.QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsIDOMWindowUtils)
-      .addSheet(this._cachedSheet, this._sheetType);
-    // Attach listeners to new window.
-    win._webcompatReporterTabListener = new this.TabListener(win);
-  },
-
-  onWindowClosed(win) {
-    if (win._webcompatReporterTabListener) {
-      win._webcompatReporterTabListener.removeListeners();
-      delete win._webcompatReporterTabListener;
-    }
+    PageActions.addAction(new PageActions.Action({
+      id: "webcompat-reporter-button",
+      title: wcStrings.GetStringFromName("wc-reporter.label2"),
+      iconURL: "chrome://webcompat-reporter/skin/lightbulb.svg",
+      labelForHistogram: "webcompat",
+      onCommand: (e) => this.reportIssue(e.target.ownerGlobal),
+      onLocationChange: (window) => this.onLocationChange(window)
+    }));
   },
 
   uninit() {
-    CustomizableUI.destroyWidget(WIDGET_ID);
+    let action = PageActions.actionForID("webcompat-reporter-button");
+    action.remove();
+  },
 
-    for (let win of CustomizableUI.windows) {
-      this.onWindowClosed(win);
-
-      win.QueryInterface(Ci.nsIInterfaceRequestor)
-        .getInterface(Ci.nsIDOMWindowUtils)
-        .removeSheet(wcStyleURI, this._sheetType);
-    }
-
-    CustomizableUI.removeListener(this);
-
-    if (Cu.isModuleLoaded(TABLISTENER_JSM)) {
-      Cu.unload(TABLISTENER_JSM);
-    }
+  onLocationChange(window) {
+    let action = PageActions.actionForID("webcompat-reporter-button");
+    let scheme = window.gBrowser.currentURI.scheme;
+    let isReportable = ["http", "https"].includes(scheme);
+    action.setDisabled(!isReportable, window);
   },
 
   // This method injects a framescript that should send back a screenshot blob
@@ -121,14 +89,14 @@ let WebCompatReporter = {
     const FRAMESCRIPT = "chrome://webcompat-reporter/content/wc-frame.js";
     let win = Services.wm.getMostRecentWindow("navigator:browser");
     const WEBCOMPAT_ORIGIN = new win.URL(WebCompatReporter.endpoint).origin;
-    let styloEnabled = Services.prefs.getBoolPref(PREF_STYLO_ENABLED, false);
 
     let params = new URLSearchParams();
     params.append("url", `${tabData.url}`);
     params.append("src", "desktop-reporter");
-    if (styloEnabled) {
-        params.append("details", "layout.css.servo.enabled: true");
-        params.append("label", "type-stylo");
+    params.append("details", JSON.stringify(details));
+
+    if (details["gfx.webrender.all"] || details["gfx.webrender.enabled"]) {
+      params.append("label", "type-webrender-enabled");
     }
 
     let tab = gBrowser.loadOneTab(
@@ -140,7 +108,7 @@ let WebCompatReporter = {
     if (tabData && tabData.blob) {
       let browser = gBrowser.getBrowserForTab(tab);
       let loadedListener = {
-        QueryInterface: XPCOMUtils.generateQI(["nsIWebProgressListener",
+        QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener",
           "nsISupportsWeakReference"]),
         onStateChange(webProgress, request, flags, status) {
           let isStopped = flags & Ci.nsIWebProgressListener.STATE_STOP;
@@ -169,8 +137,8 @@ let WebCompatReporter = {
     }
   },
 
-  reportIssue(xulDoc) {
-    this.getScreenshot(xulDoc.defaultView.gBrowser).then(this.openWebCompatTab)
-                                                   .catch(Cu.reportError);
+  reportIssue(global) {
+    this.getScreenshot(global.gBrowser).then(this.openWebCompatTab)
+                                       .catch(Cu.reportError);
   }
 };

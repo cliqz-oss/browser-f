@@ -44,38 +44,42 @@ class TestFirefoxRefresh(MarionetteTestCase):
           Services.logins.addLogin(myLogin)
         """, script_args=(self._username, self._password))
 
-    def createBookmark(self):
-        self.marionette.execute_script("""
+    def createBookmarkInMenu(self):
+        error = self.runAsyncCode("""
           let url = arguments[0];
           let title = arguments[1];
-          PlacesUtils.bookmarks.insertBookmark(PlacesUtils.bookmarks.bookmarksMenuFolder,
-            makeURI(url), 0, title);
+          PlacesUtils.bookmarks.insert({
+            parentGuid: PlacesUtils.bookmarks.menuGuid, url, title
+          }).then(() => marionetteScriptFinished(false), marionetteScriptFinished);
         """, script_args=(self._bookmarkURL, self._bookmarkText))
+        if error:
+            print error
+
+    def createBookmarksOnToolbar(self):
+        error = self.runAsyncCode("""
+          let children = [];
+          for (let i = 1; i <= 5; i++) {
+            children.push({url: `about:rights?p=${i}`, title: `Bookmark ${i}`});
+          }
+          PlacesUtils.bookmarks.insertTree({
+            guid: PlacesUtils.bookmarks.toolbarGuid,
+            children
+          }).then(() => marionetteScriptFinished(false), marionetteScriptFinished);
+        """)
+        if error:
+            print error
 
     def createHistory(self):
         error = self.runAsyncCode("""
-          // Copied from PlacesTestUtils, which isn't available in Marionette tests.
-          let didReturn;
-          PlacesUtils.asyncHistory.updatePlaces(
-            [{title: arguments[1], uri: makeURI(arguments[0]), visits: [{
-                transitionType: Ci.nsINavHistoryService.TRANSITION_LINK,
-                visitDate: (Date.now() - 5000) * 1000,
-                referrerURI: makeURI("about:mozilla"),
-              }]
-            }],
-            {
-              handleError(resultCode, place) {
-                didReturn = true;
-                marionetteScriptFinished("Unexpected error in adding visit: " + resultCode);
-              },
-              handleResult() {},
-              handleCompletion() {
-                if (!didReturn) {
-                  marionetteScriptFinished(false);
-                }
-              },
-            }
-          );
+          PlacesUtils.history.insert({
+            url: arguments[0],
+            title: arguments[1],
+            visits: [{
+              date: new Date(Date.now() - 5000),
+              referrer: "about:mozilla"
+            }]
+          }).then(() => marionetteScriptFinished(false),
+                  ex => marionetteScriptFinished("Unexpected error in adding visit: " + ex));
         """, script_args=(self._historyURL, self._historyTitle))
         if error:
             print error
@@ -121,8 +125,8 @@ class TestFirefoxRefresh(MarionetteTestCase):
             tel: "+15195555555",
             email: "user@example.com",
           };
-          return global.profileStorage.initialize().then(() => {
-            return global.profileStorage.addresses.add(TEST_ADDRESS_1);
+          return global.formAutofillStorage.initialize().then(() => {
+            return global.formAutofillStorage.addresses.add(TEST_ADDRESS_1);
           }).then(marionetteScriptFinished);
         """)
 
@@ -171,6 +175,17 @@ class TestFirefoxRefresh(MarionetteTestCase):
           }
         """, script_args=(self._expectedURLs,))
 
+    def createSync(self):
+        # This script will write an entry to the login manager and create
+        # a signedInUser.json in the profile dir.
+        self.runAsyncCode("""
+          Cu.import("resource://gre/modules/FxAccountsStorage.jsm");
+          let storage = new FxAccountsStorageManager();
+          let data = {email: "test@test.com", uid: "uid", keyFetchToken: "top-secret"};
+          storage.initialize(data);
+          storage.finalize().then(marionetteScriptFinished);
+        """);
+
     def checkPassword(self):
         loginInfo = self.marionette.execute_script("""
           let ary = Services.logins.findLogins({},
@@ -186,15 +201,26 @@ class TestFirefoxRefresh(MarionetteTestCase):
         loginCount = self.marionette.execute_script("""
           return Services.logins.getAllLogins().length;
         """)
-        self.assertEqual(loginCount, 1, "No other logins are present")
+        # Note that we expect 2 logins - one from us, one from sync.
+        self.assertEqual(loginCount, 2, "No other logins are present")
 
-    def checkBookmark(self):
-        titleInBookmarks = self.marionette.execute_script("""
+    def checkBookmarkInMenu(self):
+        titleInBookmarks = self.runAsyncCode("""
           let url = arguments[0];
-          let bookmarkIds = PlacesUtils.bookmarks.getBookmarkIdsForURI(makeURI(url), {}, {});
-          return bookmarkIds.length == 1 ? PlacesUtils.bookmarks.getItemTitle(bookmarkIds[0]) : "";
+          PlacesUtils.bookmarks.fetch({url}).then(
+            bookmark => marionetteScriptFinished(bookmark ? bookmark.title : ""),
+            ex => marionetteScriptFinished(ex)
+          );
         """, script_args=(self._bookmarkURL,))
         self.assertEqual(titleInBookmarks, self._bookmarkText)
+
+    def checkBookmarkToolbarVisibility(self):
+        toolbarVisible = self.marionette.execute_script("""
+          const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
+          let xulStore = Cc["@mozilla.org/xul/xulstore;1"].getService(Ci.nsIXULStore);
+          return xulStore.getValue(BROWSER_DOCURL, "PersonalToolbar", "collapsed")
+        """)
+        self.assertEqual(toolbarVisible, "false")
 
     def checkHistory(self):
         historyResult = self.runAsyncCode("""
@@ -255,8 +281,8 @@ class TestFirefoxRefresh(MarionetteTestCase):
             return
 
         formAutofillResults = self.runAsyncCode("""
-          return global.profileStorage.initialize().then(() => {
-            return global.profileStorage.addresses.getAll()
+          return global.formAutofillStorage.initialize().then(() => {
+            return global.formAutofillStorage.addresses.getAll()
           }).then(marionetteScriptFinished);
         """,)
         if type(formAutofillResults) == str:
@@ -336,24 +362,56 @@ class TestFirefoxRefresh(MarionetteTestCase):
         """)
         self.assertSequenceEqual(tabURIs, self._expectedURLs)
 
+    def checkSync(self, hasMigrated):
+        result = self.runAsyncCode("""
+          Cu.import("resource://gre/modules/FxAccountsStorage.jsm");
+          let prefs = new global.Preferences("services.sync.");
+          let storage = new FxAccountsStorageManager();
+          let result = {};
+          storage.initialize();
+          storage.getAccountData().then(data => {
+            result.accountData = data;
+            return storage.finalize();
+          }).then(() => {
+            result.prefUsername = prefs.get("username");
+            marionetteScriptFinished(result);
+          }).catch(err => {
+            marionetteScriptFinished(err.toString());
+          });
+        """);
+        if type(result) != dict:
+            self.fail(result)
+            return
+        self.assertEqual(result["accountData"]["email"], "test@test.com");
+        self.assertEqual(result["accountData"]["uid"], "uid");
+        self.assertEqual(result["accountData"]["keyFetchToken"], "top-secret");
+        if hasMigrated:
+          # This test doesn't actually configure sync itself, so the username
+          # pref only exists after migration.
+          self.assertEqual(result["prefUsername"], "test@test.com");
+
     def checkProfile(self, hasMigrated=False):
         self.checkPassword()
-        self.checkBookmark()
+        self.checkBookmarkInMenu()
         self.checkHistory()
         self.checkFormHistory()
         self.checkFormAutofill()
         self.checkCookie()
+        self.checkSync(hasMigrated);
         if hasMigrated:
+            self.checkBookmarkToolbarVisibility()
             self.checkSession()
 
     def createProfileData(self):
         self.savePassword()
-        self.createBookmark()
+        self.createBookmarkInMenu()
+        self.createBookmarksOnToolbar()
         self.createHistory()
         self.createFormHistory()
         self.createFormAutofill()
         self.createCookie()
         self.createSession()
+        self.createSync()
 
     def setUpScriptData(self):
         self.marionette.set_context(self.marionette.CONTEXT_CHROME)
@@ -366,7 +424,7 @@ class TestFirefoxRefresh(MarionetteTestCase):
         """)
         self._formAutofillAvailable = self.runCode("""
           try {
-            global.profileStorage = Cu.import("resource://formautofill/ProfileStorage.jsm", {}).profileStorage;
+            global.formAutofillStorage = Cu.import("resource://formautofill/FormAutofillStorage.jsm", {}).formAutofillStorage;
           } catch(e) {
             return false;
           }

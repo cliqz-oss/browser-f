@@ -1,15 +1,17 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim:set ts=2 sw=2 sts=2 et: */
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://testing-common/AppInfo.jsm");
-Cu.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://testing-common/AppInfo.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.defineModuleGetter(this, "TestUtils",
+                               "resource://testing-common/TestUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
 
 const BROWSER_SEARCH_PREF = "browser.search.";
 const NS_APP_SEARCH_DIR = "SrchPlugns";
@@ -22,6 +24,7 @@ const MODE_TRUNCATE = FileUtils.MODE_TRUNCATE;
 const CACHE_FILENAME = "search.json.mozlz4";
 
 // nsSearchService.js uses Services.appinfo.name to build a salt for a hash.
+// eslint-disable-next-line mozilla/use-services
 var XULRuntime = Components.classesByID["{95d89e3e-a169-41a3-8e56-719978e15b12}"]
                            .getService(Ci.nsIXULRuntime);
 
@@ -60,12 +63,6 @@ function configureToLoadJarEngines() {
                         .QueryInterface(Ci.nsIResProtocolHandler);
   resProt.setSubstitution("search-plugins",
                           Services.io.newURI(url));
-
-  // Ensure a test engine exists in the app dir anyway.
-  let dir = Services.dirsvc.get(NS_APP_SEARCH_DIR, Ci.nsIFile);
-  if (!dir.exists())
-    dir.create(dir.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
-  do_get_file("data/engine-app.xml").copyTo(dir, "app.xml");
 }
 
 /**
@@ -74,7 +71,7 @@ function configureToLoadJarEngines() {
  */
 function installAddonEngine(name = "engine-addon") {
   const XRE_EXTENSIONS_DIR_LIST = "XREExtDL";
-  const profD = do_get_profile().QueryInterface(Ci.nsILocalFile);
+  const profD = do_get_profile().QueryInterface(Ci.nsIFile);
 
   let dir = profD.clone();
   dir.append("extensions");
@@ -91,8 +88,8 @@ function installAddonEngine(name = "engine-addon") {
   do_get_file("data/" + name + ".xml").copyTo(dir, "bug645970.xml");
 
   Services.dirsvc.registerProvider({
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIDirectoryServiceProvider,
-                                           Ci.nsIDirectoryServiceProvider2]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIDirectoryServiceProvider,
+                                            Ci.nsIDirectoryServiceProvider2]),
 
     getFile(prop, persistant) {
       throw Cr.NS_ERROR_FAILURE;
@@ -110,7 +107,7 @@ function installAddonEngine(name = "engine-addon") {
       }
 
       return {
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsISimpleEnumerator]),
+        QueryInterface: ChromeUtils.generateQI([Ci.nsISimpleEnumerator]),
         hasMoreElements: () => result.length > 0,
         getNext: () => result.shift()
       };
@@ -125,7 +122,7 @@ function installAddonEngine(name = "engine-addon") {
 function installDistributionEngine() {
   const XRE_APP_DISTRIBUTION_DIR = "XREAppDist";
 
-  const profD = do_get_profile().QueryInterface(Ci.nsILocalFile);
+  const profD = do_get_profile().QueryInterface(Ci.nsIFile);
 
   let dir = profD.clone();
   dir.append("distribution");
@@ -148,23 +145,6 @@ function installDistributionEngine() {
       return null;
     }
   });
-}
-
-/**
- * Clean the profile of any metadata files left from a previous run.
- */
-function removeMetadata() {
-  let file = gProfD.clone();
-  file.append("search-metadata.json");
-  if (file.exists()) {
-    file.remove(false);
-  }
-
-  file = gProfD.clone();
-  file.append("search.sqlite");
-  if (file.exists()) {
-    file.remove(false);
-  }
 }
 
 function promiseCacheData() {
@@ -252,14 +232,14 @@ function isUSTimezone() {
 
 const kDefaultenginenamePref = "browser.search.defaultenginename";
 const kTestEngineName = "Test search engine";
-const kLocalePref = "general.useragent.locale";
+const REQ_LOCALES_CHANGED_TOPIC = "intl:requested-locales-changed";
 
 function getDefaultEngineName(isUS) {
   const nsIPLS = Ci.nsIPrefLocalizedString;
   // Copy the logic from nsSearchService
   let pref = kDefaultenginenamePref;
   if (isUS === undefined)
-    isUS = Services.prefs.getCharPref(kLocalePref) == "en-US" && isUSTimezone();
+    isUS = Services.locale.getRequestedLocale() == "en-US" && isUSTimezone();
   if (isUS) {
     pref += ".US";
   }
@@ -275,9 +255,8 @@ function promiseAfterCache() {
 }
 
 function parseJsonFromStream(aInputStream) {
-  const json = Cc["@mozilla.org/dom/json;1"].createInstance(Components.interfaces.nsIJSON);
-  const data = json.decodeFromStream(aInputStream, aInputStream.available());
-  return data;
+  let bytes = NetUtil.readInputStream(aInputStream, aInputStream.available());
+  return JSON.parse((new TextDecoder()).decode(bytes));
 }
 
 /**
@@ -304,12 +283,12 @@ function readJSONFile(aFile) {
 function isSubObjectOf(expectedObj, actualObj) {
   for (let prop in expectedObj) {
     if (expectedObj[prop] instanceof Object) {
-      do_check_eq(expectedObj[prop].length, actualObj[prop].length);
+      Assert.equal(expectedObj[prop].length, actualObj[prop].length);
       isSubObjectOf(expectedObj[prop], actualObj[prop]);
     } else {
       if (expectedObj[prop] != actualObj[prop])
-        do_print("comparing property " + prop);
-      do_check_eq(expectedObj[prop], actualObj[prop]);
+        info("comparing property " + prop);
+      Assert.equal(expectedObj[prop], actualObj[prop]);
     }
   }
 }
@@ -346,7 +325,7 @@ function useHttpServer() {
   httpServer.start(-1);
   httpServer.registerDirectory("/", do_get_cwd());
   gDataUrl = "http://localhost:" + httpServer.identity.primaryPort + "/data/";
-  do_register_cleanup(async function cleanup_httpServer() {
+  registerCleanupFunction(async function cleanup_httpServer() {
     await new Promise(resolve => {
       httpServer.stop(resolve);
     });
@@ -376,12 +355,12 @@ var addTestEngines = async function(aItems) {
   let engines = [];
 
   for (let item of aItems) {
-    do_print("Adding engine: " + item.name);
+    info("Adding engine: " + item.name);
     await new Promise((resolve, reject) => {
       Services.obs.addObserver(function obs(subject, topic, data) {
         try {
           let engine = subject.QueryInterface(Ci.nsISearchEngine);
-          do_print("Observed " + data + " for " + engine.name);
+          info("Observed " + data + " for " + engine.name);
           if (data != "engine-added" || engine.name != item.name) {
             return;
           }
@@ -410,23 +389,10 @@ var addTestEngines = async function(aItems) {
  * Installs a test engine into the test profile.
  */
 function installTestEngine() {
-  removeMetadata();
-  removeCacheFile();
-
-  do_check_false(Services.search.isInitialized);
-
-  let engineDummyFile = gProfD.clone();
-  engineDummyFile.append("searchplugins");
-  engineDummyFile.append("test-search-engine.xml");
-  let engineDir = engineDummyFile.parent;
-  engineDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
-
-  do_get_file("data/engine.xml").copyTo(engineDir, "engine.xml");
-
-  do_register_cleanup(function() {
-    removeMetadata();
-    removeCacheFile();
-  });
+  useHttpServer();
+  return addTestEngines([
+    { name: kTestEngineName, xmlFileName: "engine.xml" },
+  ]);
 }
 
 /**
@@ -445,32 +411,16 @@ function setLocalizedDefaultPref(aPrefName, aValue) {
  * Installs two test engines, sets them as default for US vs. general.
  */
 function setUpGeoDefaults() {
-  removeMetadata();
-  removeCacheFile();
-
-  do_check_false(Services.search.isInitialized);
-
-  let engineDummyFile = gProfD.clone();
-  engineDummyFile.append("searchplugins");
-  engineDummyFile.append("test-search-engine.xml");
-  let engineDir = engineDummyFile.parent;
-  engineDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
-
-  do_get_file("data/engine.xml").copyTo(engineDir, "engine.xml");
-
-  engineDummyFile = gProfD.clone();
-  engineDummyFile.append("searchplugins");
-  engineDummyFile.append("test-search-engine2.xml");
-
-  do_get_file("data/engine2.xml").copyTo(engineDir, "engine2.xml");
+  const kSecondTestEngineName = "A second test engine";
 
   setLocalizedDefaultPref("defaultenginename", "Test search engine");
   setLocalizedDefaultPref("defaultenginename.US", "A second test engine");
 
-  do_register_cleanup(function() {
-    removeMetadata();
-    removeCacheFile();
-  });
+  useHttpServer();
+  return addTestEngines([
+    { name: kTestEngineName, xmlFileName: "engine.xml" },
+    { name: kSecondTestEngineName, xmlFileName: "engine2.xml" },
+  ]);
 }
 
 /**
@@ -497,7 +447,7 @@ function waitForSearchNotification(aExpectedData) {
 function asyncInit() {
   return new Promise(resolve => {
     Services.search.init(function() {
-      do_check_true(Services.search.isInitialized);
+      Assert.ok(Services.search.isInitialized);
       resolve();
     });
   });
@@ -507,7 +457,7 @@ function asyncReInit() {
   let promise = waitForSearchNotification("reinit-complete");
 
   Services.search.QueryInterface(Ci.nsIObserver)
-          .observe(null, "nsPref:changed", kLocalePref);
+          .observe(null, REQ_LOCALES_CHANGED_TOPIC, null);
 
   return promise;
 }

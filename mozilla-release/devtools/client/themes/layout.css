@@ -13,95 +13,57 @@
  * Common styles for shared components
  */
 
+.flexbox-container,
 .grid-container {
   display: flex;
   flex-direction: column;
   flex: 1 auto;
-  align-items: center;
   min-width: 140px;
+  margin-inline-start: 16px;
 }
 
+.grid-container:first-child {
+  margin-bottom: 10px;
+}
+
+.flexbox-container > span,
 .grid-container > span {
   font-weight: 600;
   margin-bottom: 5px;
   pointer-events: none;
 }
 
+.flexbox-container > ul,
 .grid-container > ul {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+.flexbox-container li,
 .grid-container li {
   display: flex;
   align-items: center;
-  padding: 4px 0;
+  padding: 3px 0;
 }
 
+.flexbox-container input
 .grid-container input {
-  margin: 0 5px;
+  margin-inline-end: 7px;
 }
 
+.flexbox-container label,
 .grid-container label {
   display: flex;
   align-items: center;
-}
-
-/**
- * Layout Promote Bar
- */
-
-.layout-promote-bar {
-  align-items: center;
-  background-color: var(--theme-toolbar-background);
-  border-bottom: 1px solid var(--theme-splitter-color);
-  display: flex;
-  font-size: 11px;
-  padding: 5px;
-  transition: all 0.25s ease;
-  width: 100%;
-  -moz-user-select: none;
-}
-
-.layout-promote-bar:hover {
-  background-color: var(--theme-toolbar-hover);
-}
-
-.layout-promote-info-icon {
-  display: inline-block;
-  background-size: 16px;
-  width: 16px;
-  height: 16px;
-  margin: 6px;
-  background-image: url("chrome://browser/skin/info.svg");
-}
-
-.layout-promote-message {
-  flex: 1;
-}
-
-.layout-promote-learn-more-link {
-  margin-inline-start: 5px;
-}
-
-.layout-promote-learn-more-link:hover {
-  text-decoration: underline;
-}
-
-.layout-promote-close-button {
-  margin: 6px;
-}
-
-.layout-promote-close-button::before {
-  background-image: url("chrome://devtools/skin/images/close.svg");
-  margin: -6px 0 0 -6px;
+  margin-inline-start: -3px;
 }
 
 /**
  * Grid Container
  */
 
+#layout-flexbox-container,
 #layout-grid-container {
   display: flex;
   flex-direction: column;
@@ -112,6 +74,7 @@
  * Grid Content
  */
 
+.flexbox-content,
 .grid-content {
   display: flex;
   flex-wrap: wrap;
@@ -119,16 +82,12 @@
   margin: 5px 0;
 }
 
-.grid-container:first-child {
-  margin-bottom: 10px;
-}
-
 /**
  * Grid Outline
  */
 
 .grid-outline-container {
-  margin: 5px 0;
+  margin: 5px;
 }
 
 .grid-outline-container svg {
@@ -174,23 +133,13 @@
 }
 
 /**
- * Container when no grids are present
- */
-
-.layout-no-grids {
-  font-style: italic;
-  text-align: center;
-  padding: 0.5em;
-}
-
-/**
  * Grid Item
  */
 
 .grid-color-swatch {
   width: 12px;
   height: 12px;
-  margin-left: 5px;
+  margin-inline-start: -1px;
   border: 1px solid var(--theme-highlight-gray);
   border-radius: 50%;
   cursor: pointer;

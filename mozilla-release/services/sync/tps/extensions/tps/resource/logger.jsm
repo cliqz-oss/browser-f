@@ -9,7 +9,7 @@
 
 var EXPORTED_SYMBOLS = ["Logger"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var Logger = {
   _foStream: null,
@@ -22,16 +22,14 @@ var Logger = {
       return;
     }
 
-    let prefs = Cc["@mozilla.org/preferences-service;1"]
-                .getService(Ci.nsIPrefBranch);
     if (path) {
-      prefs.setCharPref("tps.logfile", path);
+      Services.prefs.setCharPref("tps.logfile", path);
     } else {
-      path = prefs.getCharPref("tps.logfile");
+      path = Services.prefs.getCharPref("tps.logfile");
     }
 
     this._file = Cc["@mozilla.org/file/local;1"]
-                 .createInstance(Ci.nsILocalFile);
+                 .createInstance(Ci.nsIFile);
     this._file.initWithPath(path);
     var exists = this._file.exists();
 
@@ -143,4 +141,3 @@ var Logger = {
     this.log("CROSSWEAVE TEST PASS: " + msg);
   },
 };
-

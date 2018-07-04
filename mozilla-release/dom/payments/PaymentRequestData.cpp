@@ -1,4 +1,5 @@
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,6 +7,7 @@
 #include "nsArrayUtils.h"
 #include "nsIMutableArray.h"
 #include "nsISupportsPrimitives.h"
+#include "nsUnicharUtils.h"
 #include "PaymentRequestData.h"
 #include "PaymentRequestUtils.h"
 
@@ -64,9 +66,14 @@ NS_IMPL_ISUPPORTS(PaymentCurrencyAmount,
 
 PaymentCurrencyAmount::PaymentCurrencyAmount(const nsAString& aCurrency,
                                              const nsAString& aValue)
-  : mCurrency(aCurrency)
-  , mValue(aValue)
+  : mValue(aValue)
 {
+  /*
+   *  According to the spec
+   *  https://w3c.github.io/payment-request/#validity-checkers
+   *  Set amount.currency to the result of ASCII uppercasing amount.currency.
+   */
+  ToUpperCase(aCurrency, mCurrency);
 }
 
 nsresult
@@ -101,10 +108,12 @@ NS_IMPL_ISUPPORTS(PaymentItem,
 
 PaymentItem::PaymentItem(const nsAString& aLabel,
                          nsIPaymentCurrencyAmount* aAmount,
-                         const bool aPending)
+                         const bool aPending,
+                         const nsAString& aType)
   : mLabel(aLabel)
   , mAmount(aAmount)
   , mPending(aPending)
+  , mType(aType)
 {
 }
 
@@ -119,7 +128,7 @@ PaymentItem::Create(const IPCPaymentItem& aIPCItem, nsIPaymentItem** aItem)
     return rv;
   }
   nsCOMPtr<nsIPaymentItem> item =
-    new PaymentItem(aIPCItem.label(), amount, aIPCItem.pending());
+    new PaymentItem(aIPCItem.label(), amount, aIPCItem.pending(), aIPCItem.type());
   item.forget(aItem);
   return NS_OK;
 }
@@ -146,6 +155,13 @@ PaymentItem::GetPending(bool* aPending)
 {
   NS_ENSURE_ARG_POINTER(aPending);
   *aPending = mPending;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+PaymentItem::GetType(nsAString& aType)
+{
+  aType = mType;
   return NS_OK;
 }
 
@@ -186,7 +202,7 @@ PaymentDetailsModifier::Create(const IPCPaymentDetailsModifier& aIPCModifier,
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
-      rv = items->AppendElement(additionalItem, false);
+      rv = items->AppendElement(additionalItem);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -355,7 +371,7 @@ PaymentDetails::Create(const IPCPaymentDetails& aIPCDetails,
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
-      rv = items->AppendElement(item, false);
+      rv = items->AppendElement(item);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -373,7 +389,7 @@ PaymentDetails::Create(const IPCPaymentDetails& aIPCDetails,
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
-      rv = options->AppendElement(option, false);
+      rv = options->AppendElement(option);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -391,7 +407,7 @@ PaymentDetails::Create(const IPCPaymentDetails& aIPCDetails,
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
-      rv = detailsModifiers->AppendElement(detailsModifier, false);
+      rv = detailsModifiers->AppendElement(detailsModifier);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -459,7 +475,7 @@ PaymentDetails::GetError(nsAString& aError)
 }
 
 NS_IMETHODIMP
-PaymentDetails::Update(nsIPaymentDetails* aDetails)
+PaymentDetails::Update(nsIPaymentDetails* aDetails, const bool aRequestShipping)
 {
   MOZ_ASSERT(aDetails);
   /*
@@ -485,12 +501,12 @@ PaymentDetails::Update(nsIPaymentDetails* aDetails)
     mDisplayItems = displayItems;
   }
 
-  nsCOMPtr<nsIArray> shippingOptions;
-  rv = aDetails->GetShippingOptions(getter_AddRefs(shippingOptions));
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-  if (shippingOptions) {
+  if (aRequestShipping) {
+    nsCOMPtr<nsIArray> shippingOptions;
+    rv = aDetails->GetShippingOptions(getter_AddRefs(shippingOptions));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
     mShippingOptions = shippingOptions;
   }
 
@@ -590,14 +606,18 @@ NS_IMPL_ISUPPORTS(PaymentRequest,
 
 PaymentRequest::PaymentRequest(const uint64_t aTabId,
                                const nsAString& aRequestId,
+                               nsIPrincipal* aTopLevelPrincipal,
                                nsIArray* aPaymentMethods,
                                nsIPaymentDetails* aPaymentDetails,
-                               nsIPaymentOptions* aPaymentOptions)
+                               nsIPaymentOptions* aPaymentOptions,
+			       const nsAString& aShippingOption)
   : mTabId(aTabId)
   , mRequestId(aRequestId)
+  , mTopLevelPrincipal(aTopLevelPrincipal)
   , mPaymentMethods(aPaymentMethods)
   , mPaymentDetails(aPaymentDetails)
   , mPaymentOptions(aPaymentOptions)
+  , mShippingOption(aShippingOption)
 {
 }
 
@@ -606,6 +626,16 @@ PaymentRequest::GetTabId(uint64_t* aTabId)
 {
   NS_ENSURE_ARG_POINTER(aTabId);
   *aTabId = mTabId;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+PaymentRequest::GetTopLevelPrincipal(nsIPrincipal** aTopLevelPrincipal)
+{
+  NS_ENSURE_ARG_POINTER(aTopLevelPrincipal);
+  MOZ_ASSERT(mTopLevelPrincipal);
+  nsCOMPtr<nsIPrincipal> principal = mTopLevelPrincipal;
+  principal.forget(aTopLevelPrincipal);
   return NS_OK;
 }
 
@@ -647,10 +677,38 @@ PaymentRequest::GetPaymentOptions(nsIPaymentOptions** aPaymentOptions)
 }
 
 NS_IMETHODIMP
-PaymentRequest::UpdatePaymentDetails(nsIPaymentDetails* aPaymentDetails)
+PaymentRequest::GetShippingOption(nsAString& aShippingOption)
+{
+  aShippingOption = mShippingOption;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+PaymentRequest::UpdatePaymentDetails(nsIPaymentDetails* aPaymentDetails,
+                                     const nsAString& aShippingOption)
 {
   MOZ_ASSERT(aPaymentDetails);
-  return mPaymentDetails->Update(aPaymentDetails);
+  bool requestShipping;
+  nsresult rv = mPaymentOptions->GetRequestShipping(&requestShipping);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+  mShippingOption = aShippingOption;
+  return mPaymentDetails->Update(aPaymentDetails, requestShipping);
+}
+
+NS_IMETHODIMP
+PaymentRequest::SetCompleteStatus(const nsAString& aCompleteStatus)
+{
+  mCompleteStatus = aCompleteStatus;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+PaymentRequest::GetCompleteStatus(nsAString& aCompleteStatus)
+{
+  aCompleteStatus = mCompleteStatus;
+  return NS_OK;
 }
 
 /* PaymentAddress */

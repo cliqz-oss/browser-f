@@ -2,7 +2,7 @@
  * Bug 1278037 - A Test case for checking whether forgetting APIs are working for the quota manager.
  */
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
 
 const TEST_HOST = "example.com";
 const TEST_URL = "http://" + TEST_HOST + "/browser/browser/components/contextualidentity/test/browser/";
@@ -117,22 +117,17 @@ add_task(async function test_quota_clearStoragesForPrincipal() {
     await setupIndexedDB(tabs[userContextId].browser);
 
     // Close this tab.
-    await BrowserTestUtils.removeTab(tabs[userContextId].tab);
+    BrowserTestUtils.removeTab(tabs[userContextId].tab);
   }
 
   // Using quota manager to clear all indexed DB for a given domain.
-  let qms = Cc["@mozilla.org/dom/quota-manager-service;1"].
-              getService(Ci.nsIQuotaManagerService);
-
   let caUtils = {};
-  let scriptLoader = Cc["@mozilla.org/moz/jssubscript-loader;1"].
-                       getService(Ci.mozIJSSubScriptLoader);
-  scriptLoader.loadSubScript("chrome://global/content/contentAreaUtils.js",
-                             caUtils);
+  Services.scriptloader.loadSubScript("chrome://global/content/contentAreaUtils.js",
+                                      caUtils);
   let httpURI = caUtils.makeURI("http://" + TEST_HOST);
   let httpPrincipal = Services.scriptSecurityManager
                               .createCodebasePrincipal(httpURI, {});
-  qms.clearStoragesForPrincipal(httpPrincipal, null, true);
+  Services.qms.clearStoragesForPrincipal(httpPrincipal, null, true);
 
   for (let userContextId of Object.keys(USER_CONTEXTS)) {
     // Open our tab in the given user context.
@@ -142,6 +137,6 @@ add_task(async function test_quota_clearStoragesForPrincipal() {
     await checkIndexedDB(tabs[userContextId].browser);
 
     // Close this tab.
-    await BrowserTestUtils.removeTab(tabs[userContextId].tab);
+    BrowserTestUtils.removeTab(tabs[userContextId].tab);
   }
 });

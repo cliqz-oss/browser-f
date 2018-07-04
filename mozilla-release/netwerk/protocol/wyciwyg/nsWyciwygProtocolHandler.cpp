@@ -13,6 +13,7 @@
 #include "plstr.h"
 #include "nsIObserverService.h"
 #include "nsIURI.h"
+#include "nsIURIMutator.h"
 
 #include "mozilla/net/NeckoChild.h"
 
@@ -65,17 +66,9 @@ nsWyciwygProtocolHandler::NewURI(const nsACString &aSpec,
                                  nsIURI *aBaseURI,
                                  nsIURI **result)
 {
-  nsresult rv;
-
-  nsCOMPtr<nsIURI> url = do_CreateInstance(NS_SIMPLEURI_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = url->SetSpec(aSpec);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  url.forget(result);
-
-  return rv;
+  return NS_MutateURI(NS_SIMPLEURIMUTATOR_CONTRACTID)
+           .SetSpec(aSpec)
+           .Finalize(result);
 }
 
 NS_IMETHODIMP
@@ -115,7 +108,7 @@ nsWyciwygProtocolHandler::NewChannel2(nsIURI* url,
     // If original channel used https, make sure PSM is initialized
     // (this may be first channel to load during a session restore)
     nsAutoCString path;
-    rv = url->GetPath(path);
+    rv = url->GetPathQueryRef(path);
     NS_ENSURE_SUCCESS(rv, rv);
     int32_t slashIndex = path.FindChar('/', 2);
     if (slashIndex == kNotFound)

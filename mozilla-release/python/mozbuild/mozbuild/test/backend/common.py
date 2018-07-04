@@ -161,6 +161,62 @@ CONFIGS = defaultdict(lambda: {
             'MOZ_APP_NAME': 'my_app',
         },
     },
+    'prog-lib-c-only': {
+        'defines': {},
+        'non_global_defines': [],
+        'substs': {
+            'COMPILE_ENVIRONMENT': '1',
+            'LIB_SUFFIX': '.a',
+            'BIN_SUFFIX': '',
+        },
+    },
+    'gn-processor': {
+        'defines': {},
+        'non_global_defines': [],
+        'substs': {
+            'BUILD_BACKENDS': [
+                'GnMozbuildWriter',
+                'RecursiveMake',
+            ],
+            'COMPILE_ENVIRONMENT': '1',
+            'STL_FLAGS': [],
+            'RUST_TARGET': 'x86_64-unknown-linux-gnu',
+            'LIB_PREFIX': 'lib',
+            'RUST_LIB_PREFIX': 'lib',
+            'LIB_SUFFIX': 'a',
+            'RUST_LIB_SUFFIX': 'a',
+            'OS_TARGET': 'Darwin',
+        },
+    },
+    'ipdl_sources': {
+        'defines': {},
+        'non_global_defines': [],
+        'substs': {
+            'COMPILE_ENVIRONMENT': '1',
+            'LIB_SUFFIX': '.a',
+            'BIN_SUFFIX': '',
+        },
+    },
+    'program-paths': {
+        'defines': {},
+        'non_global_defines': [],
+        'substs': {
+            'COMPILE_ENVIRONMENT': '1',
+            'BIN_SUFFIX': '.prog',
+        },
+    },
+    'linkage': {
+        'defines': {},
+        'non_global_defines': [],
+        'substs': {
+            'COMPILE_ENVIRONMENT': '1',
+            'LIB_SUFFIX': 'a',
+            'BIN_SUFFIX': '.exe',
+            'DLL_SUFFIX': '.so',
+            'OBJ_SUFFIX': 'o',
+            'EXPAND_LIBS_LIST_STYLE': 'list',
+        },
+    },
 })
 
 

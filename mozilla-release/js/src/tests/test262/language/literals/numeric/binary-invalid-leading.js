@@ -5,7 +5,7 @@
 /*---
 es6id: 11.8.3
 description: Binary-integer-literal-like sequence with a leading 0
-info: >
+info: |
     BinaryIntegerLiteral ::
       0b BinaryDigits
       0B BinaryDigits
@@ -15,8 +15,10 @@ info: >
     BinaryDigit :: one of
       0 1
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 00b0;

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=78: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,6 +10,7 @@
 #define nsCaret_h__
 
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/dom/Selection.h"
 #include "nsCoord.h"
 #include "nsISelectionListener.h"
 #include "nsIWeakReferenceUtils.h"
@@ -27,9 +28,6 @@ class nsIPresShell;
 class nsITimer;
 
 namespace mozilla {
-namespace dom {
-class Selection;
-} // namespace dom
 namespace gfx {
 class DrawTarget;
 } // namespace gfx
@@ -77,7 +75,30 @@ class nsCaret final : public nsISelectionListener
      *  It does not take account of blinking or the caret being hidden
      *  because we're in non-editable/disabled content.
      */
-    bool IsVisible();
+    bool IsVisible(nsISelection* aSelection = nullptr)
+    {
+      if (!mVisible || mHideCount) {
+        return false;
+      }
+
+      if (!mShowDuringSelection) {
+        mozilla::dom::Selection* selection;
+        if (aSelection) {
+          selection = static_cast<mozilla::dom::Selection*>(aSelection);
+        } else {
+          selection = GetSelectionInternal();
+        }
+        if (!selection || !selection->IsCollapsed()) {
+          return false;
+        }
+      }
+
+      if (IsMenuPopupHidingCaret()) {
+        return false;
+      }
+
+      return true;
+    }
     /**
      * AddForceHide() increases mHideCount and hide the caret even if
      * SetVisible(true) has been or will be called.  This is useful when the
@@ -109,13 +130,14 @@ class nsCaret final : public nsISelectionListener
      * instead of tracking its selection.
      * Passing null for aNode would set the caret to track its selection again.
      **/
+    void SetCaretPosition(nsINode* aNode, int32_t aOffset);
     void SetCaretPosition(nsIDOMNode* aNode, int32_t aOffset);
 
     /**
      * Schedule a repaint for the frame where the caret would appear.
      * Does not check visibility etc.
      */
-    void SchedulePaint();
+    void SchedulePaint(nsISelection* aSelection = nullptr);
 
     /**
      * Returns a frame to paint in, and the bounds of the painted caret

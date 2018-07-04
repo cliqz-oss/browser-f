@@ -14,17 +14,15 @@ Bug 1023018 - Tests whether or not the framerate actor can handle time ranges.
 <script>
 "use strict";
 
-window.onload = function () {
-  const Cu = Components.utils;
-
-  const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
-  const {DebuggerClient} = require("devtools/shared/client/main");
+window.onload = function() {
+  const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+  const {DebuggerClient} = require("devtools/shared/client/debugger-client");
   const {DebuggerServer} = require("devtools/server/main");
   const Services = require("Services");
 
   // Always log packets when running tests.
   Services.prefs.setBoolPref("devtools.debugger.log", true);
-  SimpleTest.registerCleanupFunction(function () {
+  SimpleTest.registerCleanupFunction(function() {
     Services.prefs.clearUserPref("devtools.debugger.log");
   });
 
@@ -35,14 +33,12 @@ window.onload = function () {
   const STOP_TICK = 3000;
   const TOTAL_TIME = 5000;
 
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
-  }
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
 
   let client = new DebuggerClient(DebuggerServer.connectPipe());
   client.connect().then(function onConnect() {
-    client.listTabs(function onListTabs(response) {
+    client.listTabs().then(function onListTabs(response) {
       let form = response.tabs[response.selected];
       let front = FramerateFront(client, form);
 

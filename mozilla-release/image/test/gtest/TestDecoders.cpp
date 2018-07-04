@@ -9,6 +9,7 @@
 #include "DecoderFactory.h"
 #include "decoders/nsBMPDecoder.h"
 #include "IDecodingTask.h"
+#include "ImageOps.h"
 #include "imgIContainer.h"
 #include "imgITools.h"
 #include "ImageFactory.h"
@@ -103,7 +104,7 @@ void WithSingleChunkDecode(const ImageTestCase& aTestCase,
   ASSERT_TRUE(NS_SUCCEEDED(rv));
 
   // Write the data into a SourceBuffer.
-  NotNull<RefPtr<SourceBuffer>> sourceBuffer = WrapNotNull(new SourceBuffer());
+  auto sourceBuffer = MakeNotNull<RefPtr<SourceBuffer>>();
   sourceBuffer->ExpectLength(length);
   rv = sourceBuffer->AppendFromInputStream(inputStream, length);
   ASSERT_TRUE(NS_SUCCEEDED(rv));
@@ -145,7 +146,7 @@ CheckDecoderMultiChunk(const ImageTestCase& aTestCase)
   ASSERT_TRUE(NS_SUCCEEDED(rv));
 
   // Create a SourceBuffer and a decoder.
-  NotNull<RefPtr<SourceBuffer>> sourceBuffer = WrapNotNull(new SourceBuffer());
+  auto sourceBuffer = MakeNotNull<RefPtr<SourceBuffer>>();
   sourceBuffer->ExpectLength(length);
   DecoderType decoderType =
     DecoderFactory::GetDecoderType(aTestCase.mMimeType);

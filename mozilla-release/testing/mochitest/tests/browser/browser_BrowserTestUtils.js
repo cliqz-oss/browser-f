@@ -1,12 +1,11 @@
-function getLastEventDetails(browser)
-{
+function getLastEventDetails(browser) {
   return ContentTask.spawn(browser, {}, async function() {
-    return content.document.getElementById('out').textContent;
+    return content.document.getElementById("out").textContent;
   });
 }
 
 add_task(async function() {
-  let onClickEvt = 'document.getElementById("out").textContent = event.target.localName + "," + event.clientX + "," + event.clientY;'
+  let onClickEvt = 'document.getElementById("out").textContent = event.target.localName + "," + event.clientX + "," + event.clientY;';
   const url = "<body onclick='" + onClickEvt + "' style='margin: 0'>" +
               "<button id='one' style='margin: 0; margin-left: 16px; margin-top: 14px; width: 30px; height: 40px;'>Test</button>" +
               "<div onmousedown='event.preventDefault()' style='margin: 0; width: 80px; height: 60px;'>Other</div>" +
@@ -55,7 +54,7 @@ add_task(async function() {
   let tab = await BrowserTestUtils.openNewForegroundTab(
     gBrowser, "about:about-pages-are-cool", true);
   ok(tab, "Successfully created an about: page and loaded it.");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   try {
     await BrowserTestUtils.unregisterAboutPage("about-pages-are-cool");
     ok(true, "Successfully unregistered the about page.");
@@ -67,4 +66,31 @@ add_task(async function() {
   }, () => {
     ok(true, "Should have returned a rejected promise trying to unregister an unknown about page");
   });
+});
+
+add_task(async function testWaitForEvent() {
+  // A promise returned by BrowserTestUtils.waitForEvent should not be resolved
+  // in the same event tick as the event listener is called.
+  let eventListenerCalled = false;
+  let waitForEventResolved = false;
+  // Use capturing phase to make sure the event listener added by
+  // BrowserTestUtils.waitForEvent is called before the normal event listener
+  // below.
+  let eventPromise = BrowserTestUtils.waitForEvent(gBrowser, "dummyevent", true);
+  eventPromise.then(() => {
+    waitForEventResolved = true;
+  });
+  // Add normal event listener that is called after the event listener added by
+  // BrowserTestUtils.waitForEvent.
+  gBrowser.addEventListener("dummyevent", () => {
+    eventListenerCalled = true;
+    is(waitForEventResolved, false, "BrowserTestUtils.waitForEvent promise resolution handler shouldn't be called at this point.");
+  }, { once: true });
+
+  var event = new CustomEvent("dummyevent");
+  gBrowser.dispatchEvent(event);
+
+  await eventPromise;
+
+  is(eventListenerCalled, true, "dummyevent listener should be called");
 });

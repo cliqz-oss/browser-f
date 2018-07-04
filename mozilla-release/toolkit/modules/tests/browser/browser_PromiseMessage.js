@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 /* global Cu, BrowserTestUtils, is, ok, add_task, gBrowser */
 "use strict";
-Cu.import("resource://gre/modules/PromiseMessage.jsm", this);
+ChromeUtils.import("resource://gre/modules/PromiseMessage.jsm", this);
 
 
 const url = "http://example.org/tests/dom/manifest/test/resource.sjs";
@@ -12,7 +12,7 @@ const url = "http://example.org/tests/dom/manifest/test/resource.sjs";
  * Test basic API error conditions
  */
 add_task(async function() {
-  await BrowserTestUtils.withNewTab({gBrowser, url}, testPromiseMessageAPI)
+  await BrowserTestUtils.withNewTab({gBrowser, url}, testPromiseMessageAPI);
 });
 
 async function testPromiseMessageAPI(aBrowser) {

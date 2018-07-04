@@ -1,20 +1,11 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/PlacesSyncUtils.jsm");
-Cu.import("resource://testing-common/PlacesTestUtils.jsm");
-Cu.import("resource:///modules/PlacesUIUtils.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource:///modules/PlacesUIUtils.jsm");
 
-Cu.import("resource://services-sync/engines/bookmarks.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/bookmark_repair.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
-
-initTestLogging("Trace");
-Log.repository.getLogger("Sync.Engine.Bookmarks").level = Log.Level.Trace;
-// sqlite logging generates lots of noise and typically isn't helpful here.
-Log.repository.getLogger("Sqlite").level = Log.Level.Error;
+ChromeUtils.import("resource://services-sync/engines/bookmarks.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/bookmark_repair.js");
 
 // Disable validation so that we don't try to automatically repair the server
 // when we sync.
@@ -24,7 +15,11 @@ Svc.Prefs.set("engine.bookmarks.validation.enabled", false);
 var recordedEvents = [];
 
 function checkRecordedEvents(expected) {
-  deepEqual(recordedEvents, expected);
+  // Ignore event telemetry from the merger and Places maintenance.
+  let repairEvents = recordedEvents.filter(event =>
+    !["mirror", "maintenance"].includes(event.object)
+  );
+  deepEqual(repairEvents, expected);
   // and clear the list so future checks are easier to write.
   recordedEvents = [];
 }
@@ -34,7 +29,7 @@ function getServerBookmarks(server) {
 }
 
 async function makeServer() {
-  let server = serverForFoo(bookmarksEngine);
+  let server = await serverForFoo(bookmarksEngine);
   await SyncTestingInfrastructure(server);
   return server;
 }
@@ -66,12 +61,12 @@ add_task(async function test_responder_error() {
     request: "upload",
     ids: [Utils.makeGUID()],
     flowID: Utils.makeGUID(),
-  }
+  };
   let responder = new BookmarkRepairResponder();
   // mock the responder to simulate an error.
   responder._fetchItemsToUpload = async function() {
     throw new Error("oh no!");
-  }
+  };
   await responder.repair(request, null);
 
   checkRecordedEvents([
@@ -98,7 +93,7 @@ add_task(async function test_responder_no_items() {
     request: "upload",
     ids: [Utils.makeGUID()],
     flowID: Utils.makeGUID(),
-  }
+  };
   let responder = new BookmarkRepairResponder();
   await responder.repair(request, null);
 
@@ -136,7 +131,7 @@ add_task(async function test_responder_upload() {
     request: "upload",
     ids: [bm.guid],
     flowID: Utils.makeGUID(),
-  }
+  };
   let responder = new BookmarkRepairResponder();
   await responder.repair(request, null);
 
@@ -185,7 +180,7 @@ add_task(async function test_responder_item_exists_locally() {
     request: "upload",
     ids: [bm.guid],
     flowID: Utils.makeGUID(),
-  }
+  };
   let responder = new BookmarkRepairResponder();
   await responder.repair(request, null);
 
@@ -253,7 +248,7 @@ add_task(async function test_responder_missing_items() {
     request: "upload",
     ids: [fxBmk.guid, tbBmk.guid, Utils.makeGUID()],
     flowID: Utils.makeGUID(),
-  }
+  };
   let responder = new BookmarkRepairResponder();
   await responder.repair(request, null);
 
@@ -281,97 +276,6 @@ add_task(async function test_responder_missing_items() {
       method: "finished",
       value: undefined,
       extra: {flowID: request.flowID, numIDs: "2"},
-    },
-  ]);
-
-  await cleanup(server);
-});
-
-add_task(async function test_non_syncable() {
-  let server = await makeServer();
-
-  await Service.sync(); // to create the collections on the server.
-
-  // Creates the left pane queries as a side effect.
-  let leftPaneId = PlacesUIUtils.leftPaneFolderId;
-  _(`Left pane root ID: ${leftPaneId}`);
-  await PlacesTestUtils.promiseAsyncUpdates();
-
-  // A child folder of the left pane root, containing queries for the menu,
-  // toolbar, and unfiled queries.
-  let allBookmarksId = PlacesUIUtils.leftPaneQueries.AllBookmarks;
-  let allBookmarksGuid = await PlacesUtils.promiseItemGuid(allBookmarksId);
-
-  let unfiledQueryId = PlacesUIUtils.leftPaneQueries.UnfiledBookmarks;
-  let unfiledQueryGuid = await PlacesUtils.promiseItemGuid(unfiledQueryId);
-
-  // Put the "Bookmarks Menu" on the server to simulate old bugs.
-  let bookmarksMenuQueryId = PlacesUIUtils.leftPaneQueries.BookmarksMenu;
-  let bookmarksMenuQueryGuid = await PlacesUtils.promiseItemGuid(bookmarksMenuQueryId);
-  let collection = getServerBookmarks(server);
-  collection.insert(bookmarksMenuQueryGuid, "doesn't matter");
-
-  // Explicitly request the unfiled and allBookmarksGuid queries; these will
-  // get tombstones. Because the BookmarksMenu is already on the server it
-  // should be removed even though it wasn't requested. We should ignore the
-  // toolbar query as it wasn't explicitly requested and isn't on the server.
-  let request = {
-    request: "upload",
-    ids: [allBookmarksGuid, unfiledQueryGuid],
-    flowID: Utils.makeGUID(),
-  }
-  let responder = new BookmarkRepairResponder();
-  await responder.repair(request, null);
-
-  checkRecordedEvents([
-    { object: "repairResponse",
-      method: "uploading",
-      value: undefined,
-      // Tombstones for the 2 items we requested and for bookmarksMenu
-      extra: {flowID: request.flowID, numIDs: "3"},
-    },
-  ]);
-
-  _("Sync to upload tombstones for items");
-  await Service.sync();
-
-  let toolbarQueryId = PlacesUIUtils.leftPaneQueries.BookmarksToolbar;
-  let menuQueryId = PlacesUIUtils.leftPaneQueries.BookmarksMenu;
-  let queryGuids = [
-    allBookmarksGuid,
-    await PlacesUtils.promiseItemGuid(toolbarQueryId),
-    await PlacesUtils.promiseItemGuid(menuQueryId),
-    unfiledQueryGuid,
-  ];
-
-  deepEqual(collection.keys().sort(), [
-    // We always upload roots on the first sync.
-    "menu",
-    "mobile",
-    "toolbar",
-    "unfiled",
-    ...request.ids,
-    bookmarksMenuQueryGuid,
-  ].sort(), "Should upload roots and queries on first sync");
-
-  for (let guid of queryGuids) {
-    let wbo = collection.wbo(guid);
-    if (request.ids.indexOf(guid) >= 0 || guid == bookmarksMenuQueryGuid) {
-      // explicitly requested or already on the server, so should have a tombstone.
-      let payload = JSON.parse(JSON.parse(wbo.payload).ciphertext);
-      ok(payload.deleted, `Should upload tombstone for left pane query ${guid}`);
-    } else {
-      // not explicitly requested and not on the server at the start, so should
-      // not be on the server now.
-      ok(!wbo, `Should not upload anything for left pane query ${guid}`);
-    }
-  }
-
-  checkRecordedEvents([
-    { object: "repairResponse",
-      method: "finished",
-      value: undefined,
-      extra: {flowID: request.flowID, numIDs: "3"},
     },
   ]);
 
@@ -409,7 +313,7 @@ add_task(async function test_folder_descendants() {
   _("Initial sync to upload roots and parent folder");
   await Service.sync();
 
-  let initialSyncIds = [
+  let initialRecordIds = [
     "menu",
     "mobile",
     "toolbar",
@@ -419,7 +323,7 @@ add_task(async function test_folder_descendants() {
     childFolder.guid,
     childSiblingBmk.guid,
   ].sort();
-  deepEqual(getServerBookmarks(server).keys().sort(), initialSyncIds,
+  deepEqual(getServerBookmarks(server).keys().sort(), initialRecordIds,
     "Should upload roots and partial folder contents on first sync");
 
   _("Insert missing bookmarks locally to request later");
@@ -428,29 +332,29 @@ add_task(async function test_folder_descendants() {
   // considered "changed" locally so never get uploaded.
   let childBmk = await PlacesSyncUtils.bookmarks.insert({
     kind: "bookmark",
-    syncId: Utils.makeGUID(),
-    parentSyncId: parentFolder.guid,
+    recordId: Utils.makeGUID(),
+    parentRecordId: parentFolder.guid,
     title: "Get Firefox",
     url: "http://getfirefox.com",
   });
   let grandChildBmk = await PlacesSyncUtils.bookmarks.insert({
     kind: "bookmark",
-    syncId: Utils.makeGUID(),
-    parentSyncId: childFolder.guid,
+    recordId: Utils.makeGUID(),
+    parentRecordId: childFolder.guid,
     title: "Bugzilla",
     url: "https://bugzilla.mozilla.org",
   });
   let grandChildSiblingBmk = await PlacesSyncUtils.bookmarks.insert({
     kind: "bookmark",
-    syncId: Utils.makeGUID(),
-    parentSyncId: childFolder.guid,
+    recordId: Utils.makeGUID(),
+    parentRecordId: childFolder.guid,
     title: "Mozilla",
     url: "https://mozilla.org",
   });
 
   _("Sync again; server contents shouldn't change");
   await Service.sync();
-  deepEqual(getServerBookmarks(server).keys().sort(), initialSyncIds,
+  deepEqual(getServerBookmarks(server).keys().sort(), initialRecordIds,
     "Second sync should not upload missing bookmarks");
 
   // This assumes the parent record on the server is correct, and the server
@@ -466,10 +370,10 @@ add_task(async function test_folder_descendants() {
       // Explicitly upload these. We should also upload `grandChildBmk`,
       // since it's a descendant of `parentFolder` and we requested its
       // ancestor.
-      childBmk.syncId,
-      grandChildSiblingBmk.syncId],
+      childBmk.recordId,
+      grandChildSiblingBmk.recordId],
     flowID: Utils.makeGUID(),
-  }
+  };
   let responder = new BookmarkRepairResponder();
   await responder.repair(request, null);
 
@@ -484,10 +388,10 @@ add_task(async function test_folder_descendants() {
   _("Sync after requesting repair; should upload missing records");
   await Service.sync();
   deepEqual(getServerBookmarks(server).keys().sort(), [
-    ...initialSyncIds,
-    childBmk.syncId,
-    grandChildBmk.syncId,
-    grandChildSiblingBmk.syncId,
+    ...initialRecordIds,
+    childBmk.recordId,
+    grandChildBmk.recordId,
+    grandChildSiblingBmk.recordId,
   ].sort(), "Third sync should upload requested items");
 
   checkRecordedEvents([
@@ -509,7 +413,7 @@ add_task(async function test_aborts_unknown_request() {
     request: "not-upload",
     ids: [],
     flowID: Utils.makeGUID(),
-  }
+  };
   let responder = new BookmarkRepairResponder();
   await responder.repair(request, null);
 
@@ -540,7 +444,7 @@ add_task(async function test_upload_fail() {
     request: "upload",
     ids: [bm.guid],
     flowID: Utils.makeGUID(),
-  }
+  };
   let responder = new BookmarkRepairResponder();
   await responder.repair(request, null);
 
@@ -557,7 +461,7 @@ add_task(async function test_upload_fail() {
   let oldCreateRecord = engine._createRecord;
   engine._createRecord = async function(id) {
     return "anything"; // doesn't have an "encrypt"
-  }
+  };
 
   let numFailures = 0;
   let numSuccesses = 0;
@@ -601,7 +505,7 @@ add_task(async function test_upload_fail() {
       value: undefined,
       extra: {flowID: request.flowID, numIDs: "1"},
     },
-  ])
+  ]);
 
   equal(numFailures, 1);
   equal(numSuccesses, 1);

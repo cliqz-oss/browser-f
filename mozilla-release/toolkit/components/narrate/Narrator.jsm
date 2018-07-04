@@ -4,14 +4,12 @@
 
 "use strict";
 
-const { interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 
-this.EXPORTED_SYMBOLS = [ "Narrator" ];
+var EXPORTED_SYMBOLS = [ "Narrator" ];
 
 // Maximum time into paragraph when pressing "skip previous" will go
 // to previous paragraph and not the start of current one.
@@ -89,7 +87,7 @@ Narrator.prototype = {
       // are no other strong references, and it will be GC'ed. Instead,
       // we rely on the window's lifetime and use it as a weak reference.
       this._treeWalkerRef.set(this._win,
-        this._doc.createTreeWalker(this._doc.getElementById("container"),
+        this._doc.createTreeWalker(this._doc.querySelector(".container"),
           nf.SHOW_ELEMENT, filter, false));
     }
 
@@ -303,7 +301,7 @@ Narrator.prototype = {
 /**
  * The Highlighter class is used to highlight a range of text in a container.
  *
- * @param {nsIDOMElement} container a text container
+ * @param {Element} container a text container
  */
 function Highlighter(container) {
   this.container = container;

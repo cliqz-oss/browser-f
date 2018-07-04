@@ -5,22 +5,14 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+var EXPORTED_SYMBOLS = [ "RemotePrompt" ];
 
-this.EXPORTED_SYMBOLS = [ "RemotePrompt" ];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUIUtils",
-                                  "resource:///modules/PlacesUIUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PromptUtils",
-                                  "resource://gre/modules/SharedPromptUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PromptUtils",
+                               "resource://gre/modules/SharedPromptUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
 var RemotePrompt = {
   // Listeners are added in nsBrowserGlue.js
@@ -30,7 +22,7 @@ var RemotePrompt = {
         if (message.data.uri) {
           this.openModalWindow(message.data, message.target);
         } else {
-          this.openTabPrompt(message.data, message.target)
+          this.openTabPrompt(message.data, message.target);
         }
         break;
     }
@@ -38,7 +30,7 @@ var RemotePrompt = {
 
   openTabPrompt(args, browser) {
     let window = browser.ownerGlobal;
-    let tabPrompt = window.gBrowser.getTabModalPromptBox(browser)
+    let tabPrompt = window.gBrowser.getTabModalPromptBox(browser);
     let newPrompt;
     let needRemove = false;
     let promptId = args._remoteId;

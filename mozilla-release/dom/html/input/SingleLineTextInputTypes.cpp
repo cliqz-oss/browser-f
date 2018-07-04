@@ -8,6 +8,7 @@
 
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/TextUtils.h"
 #include "HTMLSplitOnSpacesTokenizer.h"
 #include "nsContentUtils.h"
 #include "nsCRTGlue.h"
@@ -15,6 +16,9 @@
 #include "nsIIOService.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
+
+using mozilla::IsAsciiAlpha;
+using mozilla::IsAsciiDigit;
 
 bool
 SingleLineTextInputTypeBase::IsMutable() const
@@ -58,7 +62,7 @@ SingleLineTextInputTypeBase::IsTooShort() const
 bool
 SingleLineTextInputTypeBase::IsValueMissing() const
 {
-  if (!mInputElement->HasAttr(kNameSpaceID_None, nsGkAtoms::required)) {
+  if (!mInputElement->IsRequired()) {
     return false;
   }
 
@@ -72,8 +76,12 @@ SingleLineTextInputTypeBase::IsValueMissing() const
 bool
 SingleLineTextInputTypeBase::HasPatternMismatch() const
 {
+  if (!mInputElement->HasPatternAttribute()) {
+    return false;
+  }
+
   nsAutoString pattern;
- if (!mInputElement->GetAttr(kNameSpaceID_None, nsGkAtoms::pattern, pattern)) {
+  if (!mInputElement->GetAttr(kNameSpaceID_None, nsGkAtoms::pattern, pattern)) {
     return false;
   }
 
@@ -121,7 +129,7 @@ URLInputType::HasTypeMismatch() const
 }
 
 nsresult
-URLInputType::GetTypeMismatchMessage(nsXPIDLString& aMessage)
+URLInputType::GetTypeMismatchMessage(nsAString& aMessage)
 {
   return nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                             "FormValidationInvalidURL",
@@ -165,7 +173,7 @@ EmailInputType::HasBadInput() const
 }
 
 nsresult
-EmailInputType::GetTypeMismatchMessage(nsXPIDLString& aMessage)
+EmailInputType::GetTypeMismatchMessage(nsAString& aMessage)
 {
   return nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                             "FormValidationInvalidEmail",
@@ -173,7 +181,7 @@ EmailInputType::GetTypeMismatchMessage(nsXPIDLString& aMessage)
 }
 
 nsresult
-EmailInputType::GetBadInputMessage(nsXPIDLString& aMessage)
+EmailInputType::GetBadInputMessage(nsAString& aMessage)
 {
   return nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                             "FormValidationInvalidEmail",
@@ -219,7 +227,7 @@ EmailInputType::IsValidEmailAddress(const nsAString& aValue)
     char16_t c = value[i];
 
     // The username characters have to be in this list to be valid.
-    if (!(nsCRT::IsAsciiAlpha(c) || nsCRT::IsAsciiDigit(c) ||
+    if (!(IsAsciiAlpha(c) || IsAsciiDigit(c) ||
           c == '.' || c == '!' || c == '#' || c == '$' || c == '%' ||
           c == '&' || c == '\''|| c == '*' || c == '+' || c == '-' ||
           c == '/' || c == '=' || c == '?' || c == '^' || c == '_' ||
@@ -250,7 +258,7 @@ EmailInputType::IsValidEmailAddress(const nsAString& aValue)
       if (value[i-1] == '.') {
         return false;
       }
-    } else if (!(nsCRT::IsAsciiAlpha(c) || nsCRT::IsAsciiDigit(c) ||
+    } else if (!(IsAsciiAlpha(c) || IsAsciiDigit(c) ||
                  c == '-')) {
       // The domain characters have to be in this list to be valid.
       return false;

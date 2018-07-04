@@ -10,7 +10,7 @@ es6id: 13.3.2.4
 features: [destructuring-binding]
 flags: [generated, onlyStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     VariableDeclaration : BindingPattern Initializer
@@ -21,5 +21,6 @@ info: |
     4. Return the result of performing BindingInitialization for
        BindingPattern passing rval and undefined as arguments.
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 0, [...{ x = yield }] = [{}];

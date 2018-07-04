@@ -9,29 +9,27 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Doctor"];
+var EXPORTED_SYMBOLS = ["Doctor"];
 
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://services-common/observers.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/resource.js");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-common/observers.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/resource.js");
-
-Cu.import("resource://services-sync/util.js");
-XPCOMUtils.defineLazyModuleGetter(this, "getRepairRequestor",
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.defineModuleGetter(this, "getRepairRequestor",
   "resource://services-sync/collection_repair.js");
-XPCOMUtils.defineLazyModuleGetter(this, "getAllRepairRequestors",
+ChromeUtils.defineModuleGetter(this, "getAllRepairRequestors",
   "resource://services-sync/collection_repair.js");
 
 const log = Log.repository.getLogger("Sync.Doctor");
 
-this.REPAIR_ADVANCE_PERIOD = 86400; // 1 day
+var REPAIR_ADVANCE_PERIOD = 86400; // 1 day
 
-this.Doctor = {
+var Doctor = {
   anyClientsRepairing(service, collection, ignoreFlowID = null) {
     if (!service || !service.clientsEngine) {
       log.info("Missing clients engine, assuming we're in test code");
@@ -82,7 +80,7 @@ this.Doctor = {
           }
         }
       } finally {
-        this.lastRepairAdvance = this._now();
+        this.lastRepairAdvance = Math.floor(this._now());
       }
     }
   },
@@ -156,6 +154,9 @@ this.Doctor = {
       }
       let validator = engine.getValidator();
       if (!validator) {
+        // This is probably only possible in profile downgrade cases.
+        log.warn(`engine.getValidator returned null for ${engineName
+                 } but the pref that controls validation is enabled.`);
         continue;
       }
 
@@ -186,7 +187,7 @@ this.Doctor = {
           throw ex;
         }
         log.error(`Failed to run validation on ${engine.name}!`, ex);
-        Observers.notify("weave:engine:validate:error", ex, engine.name)
+        Observers.notify("weave:engine:validate:error", ex, engine.name);
         // Keep validating -- there's no reason to think that a failure for one
         // validator would mean the others will fail.
       }
@@ -247,7 +248,7 @@ this.Doctor = {
   // functions used so tests can mock them
   _now() {
     // We use the server time, which is SECONDS
-    return AsyncResource.serverTime;
+    return Resource.serverTime;
   },
 
   _getRepairRequestor(name) {
@@ -257,4 +258,4 @@ this.Doctor = {
   _getAllRepairRequestors() {
     return getAllRepairRequestors();
   }
-}
+};

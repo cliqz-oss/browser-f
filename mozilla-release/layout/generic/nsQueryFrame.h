@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -82,29 +84,66 @@ public:
   virtual void* QueryFrame(FrameIID id) = 0;
 };
 
-class do_QueryFrame
+class nsIFrame;
+
+template<class Source>
+class do_QueryFrameHelper
 {
 public:
-  explicit do_QueryFrame(nsQueryFrame *s) : mRawPtr(s) { }
+  explicit do_QueryFrameHelper(Source* s) : mRawPtr(s) { }
 
   // The return and argument types here are arbitrarily selected so no
   // corresponding member function exists.
-  typedef void (do_QueryFrame::* MatchNullptr)(double, float);
+  typedef void (do_QueryFrameHelper::* MatchNullptr)(double, float);
   // Implicit constructor for nullptr, trick borrowed from already_AddRefed.
-  MOZ_IMPLICIT do_QueryFrame(MatchNullptr aRawPtr) : mRawPtr(nullptr) {}
+  MOZ_IMPLICIT do_QueryFrameHelper(MatchNullptr aRawPtr) : mRawPtr(nullptr) {}
 
   template<class Dest>
   operator Dest*() {
     static_assert(mozilla::IsSame<Dest, typename Dest::Has_NS_DECL_QUERYFRAME_TARGET>::value,
                   "Dest must declare itself as a queryframe target");
-    if (!mRawPtr)
+    if (!mRawPtr) {
       return nullptr;
-
+    }
+    if (Dest* f = FastQueryFrame<Source, Dest>::QueryFrame(mRawPtr)) {
+      MOZ_ASSERT(f ==
+                 reinterpret_cast<Dest*>(mRawPtr->QueryFrame(Dest::kFrameIID)),
+                 "fast and slow paths should give the same result");
+      return f;
+    }
     return reinterpret_cast<Dest*>(mRawPtr->QueryFrame(Dest::kFrameIID));
   }
 
 private:
-  nsQueryFrame *mRawPtr;
+  // For non-nsIFrame types there is no fast-path.
+  template<class Src, class Dst, typename = void, typename = void>
+  struct FastQueryFrame
+  {
+    static Dst* QueryFrame(Src* aFrame) { return nullptr; }
+  };
+  
+  // Specialization for any nsIFrame type to any nsIFrame type -- if the source
+  // instance's mClass matches kFrameIID of the destination type then
+  // downcasting is safe.
+  template<class Src, class Dst>
+  struct FastQueryFrame<Src, Dst,
+    typename mozilla::EnableIf<mozilla::IsBaseOf<nsIFrame, Src>::value>::Type,
+    typename mozilla::EnableIf<mozilla::IsBaseOf<nsIFrame, Dst>::value>::Type>
+  {
+    static Dst* QueryFrame(Src* aFrame) {
+      return nsQueryFrame::FrameIID(aFrame->mClass) == Dst::kFrameIID ?
+        reinterpret_cast<Dst*>(aFrame) : nullptr;
+    }
+  };
+
+  Source* mRawPtr;
 };
+
+template<class T>
+inline do_QueryFrameHelper<T>
+do_QueryFrame(T* s)
+{
+  return do_QueryFrameHelper<T>(s);
+}
 
 #endif // nsQueryFrame_h

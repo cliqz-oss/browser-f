@@ -82,6 +82,10 @@ const browserElementTestHelpers = {
       this.unlockTestReady.bind(this));
   },
 
+  allowTopLevelDataURINavigation: function() {
+    this._setPref("security.data_uri.block_toplevel_data_uri_navigations", false);
+  },
+
   _observers: [],
 
   // This function is a wrapper which lets you register an observer to one of
@@ -242,7 +246,7 @@ function expectMozbrowserEvent(iframe, eventName) {
 //    content results in a broken security state.
 
 (function() {
-  var oop = location.pathname.indexOf('_inproc_') == -1;
+  var oop = !location.pathname.includes('_inproc_');
 
   browserElementTestHelpers.lockTestReady();
   SpecialPowers.setBoolPref("network.disable.ipc.security", true);

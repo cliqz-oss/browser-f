@@ -6,9 +6,9 @@
 // that aren't initialized outside of a XUL app environment like AddonManager
 // and the "@mozilla.org/xre/app-info;1" component.
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/Troubleshoot.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Troubleshoot.jsm");
 
 function test() {
   waitForExplicitFinish();
@@ -71,7 +71,7 @@ var tests = [
 
   function unicodePreferences(done) {
     let name = "font.name.sans-serif.x-western";
-    let utf8Value = "\xc4\x8capk\xc5\xafv Krasopis"
+    let utf8Value = "\xc4\x8capk\xc5\xafv Krasopis";
     let unicodeValue = "\u010Capk\u016Fv Krasopis";
 
     // set/getCharPref work with 8bit strings (utf8)
@@ -144,14 +144,8 @@ const SNAPSHOT_SCHEMA = {
         maxContentProcesses: {
           type: "number",
         },
-        styloBuild: {
-          type: "boolean",
-        },
-        styloDefault: {
-          type: "boolean",
-        },
-        styloResult: {
-          type: "boolean",
+        policiesStatus: {
+          type: "number",
         },
         keyGoogleFound: {
           type: "boolean",
@@ -217,6 +211,24 @@ const SNAPSHOT_SCHEMA = {
             required: true,
             type: "boolean",
           },
+        },
+      },
+    },
+    securitySoftware: {
+      required: false,
+      type: "object",
+      properties: {
+        registeredAntiVirus: {
+          required: true,
+          type: "string",
+        },
+        registeredAntiSpyware: {
+          required: true,
+          type: "string",
+        },
+        registeredFirewall: {
+          required: true,
+          type: "string",
         },
       },
     },
@@ -333,6 +345,18 @@ const SNAPSHOT_SCHEMA = {
         directWriteVersion: {
           type: "string",
         },
+        usesTiling: {
+          type: "boolean",
+        },
+        contentUsesTiling: {
+          type: "boolean",
+        },
+        offMainThreadPaintEnabled: {
+          type: "boolean",
+        },
+        offMainThreadPaintWorkerCount: {
+          type: "number",
+        },
         clearTypeParameters: {
           type: "string",
         },
@@ -403,10 +427,6 @@ const SNAPSHOT_SCHEMA = {
         currentMaxAudioChannels: {
           required: true,
           type: "number",
-        },
-        currentPreferredChannelLayout: {
-          required: true,
-          type: "string",
         },
         currentPreferredSampleRate: {
           required: true,
@@ -567,6 +587,9 @@ const SNAPSHOT_SCHEMA = {
         handlerUsed: {
           type: "boolean",
         },
+        instantiator: {
+          type: "string"
+        }
       },
     },
     libraryVersions: {
@@ -655,9 +678,6 @@ const SNAPSHOT_SCHEMA = {
         },
       },
     },
-    experiments: {
-      type: "array",
-    },
     sandbox: {
       required: false,
       type: "object",
@@ -727,6 +747,52 @@ const SNAPSHOT_SCHEMA = {
                   type: "string",
                 },
               },
+            },
+          },
+        },
+      },
+    },
+    intl: {
+      required: true,
+      type: "object",
+      properties: {
+        localeService: {
+          required: true,
+          type: "object",
+          properties: {
+            requested: {
+              required: true,
+              type: "array"
+            },
+            available: {
+              required: true,
+              type: "array"
+            },
+            supported: {
+              required: true,
+              type: "array"
+            },
+            regionalPrefs: {
+              required: true,
+              type: "array"
+            },
+            defaultLocale: {
+              required: true,
+              type: "string"
+            },
+          },
+        },
+        osPrefs: {
+          required: true,
+          type: "object",
+          properties: {
+            systemLocales: {
+              required: true,
+              type: "array"
+            },
+            regionalPrefsLocales: {
+              required: true,
+              type: "array"
             },
           },
         },

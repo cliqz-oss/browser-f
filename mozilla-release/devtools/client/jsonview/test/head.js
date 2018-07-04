@@ -2,7 +2,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 /* eslint no-unused-vars: [2, {"vars": "local", "args": "none"}] */
-/* import-globals-from ../../framework/test/shared-head.js */
+/* import-globals-from ../../shared/test/shared-head.js */
 /* import-globals-from ../../framework/test/head.js */
 
 "use strict";
@@ -20,60 +20,99 @@ registerCleanupFunction(() => {
   Services.prefs.clearUserPref(JSON_VIEW_PREF);
 });
 
-// XXX move some API into devtools/framework/test/shared-head.js
+// XXX move some API into devtools/shared/test/shared-head.js
 
 /**
  * Add a new test tab in the browser and load the given url.
  * @param {String} url
  *   The url to be loaded in the new tab.
- * @param {Number} timeout [optional]
- *   The maximum number of milliseconds allowed before the initialization of the
- *   JSON Viewer once the tab has been loaded. If exceeded, the initialization
- *   will be considered to have failed, and the returned promise will be rejected.
- *   If this parameter is not passed or is negative, it will be ignored.
+ *
+ * @param {Object} [optional]
+ *   An object with the following optional properties:
+ *   - appReadyState: The readyState of the JSON Viewer app that you want to
+ *     wait for. Its value can be one of:
+ *      - "uninitialized": The converter has started the request.
+ *        If JavaScript is disabled, there will be no more readyState changes.
+ *      - "loading": RequireJS started loading the scripts for the JSON Viewer.
+ *        If the load timeouts, there will be no more readyState changes.
+ *      - "interactive": The JSON Viewer app loaded, but possibly not all the JSON
+ *        data has been received.
+ *      - "complete" (default): The app is fully loaded with all the JSON.
+ *   - docReadyState: The standard readyState of the document that you want to
+ *     wait for. Its value can be one of:
+ *      - "loading": The JSON data has not been completely loaded (but the app might).
+ *      - "interactive": All the JSON data has been received.
+ *      - "complete" (default): Since there aren't sub-resources like images,
+ *        behaves as "interactive". Note the app might not be loaded yet.
  */
-function addJsonViewTab(url, timeout = -1) {
+async function addJsonViewTab(url, {
+  appReadyState = "complete",
+  docReadyState = "complete",
+} = {}) {
   info("Adding a new JSON tab with URL: '" + url + "'");
+  let tabAdded = BrowserTestUtils.waitForNewTab(gBrowser, url);
+  let tabLoaded = addTab(url);
+  let tab = await Promise.race([tabAdded, tabLoaded]);
+  let browser = tab.linkedBrowser;
 
-  let deferred = promise.defer();
-  addTab(url).then(tab => {
-    let browser = tab.linkedBrowser;
+  // Load devtools/shared/test/frame-script-utils.js
+  loadFrameScriptUtils();
+  let rootDir = getRootDirectory(gTestPath);
 
-    // Load devtools/shared/frame-script-utils.js
-    getFrameScript();
+  // Catch RequireJS errors (usually timeouts)
+  let error = tabLoaded.then(() => ContentTask.spawn(browser, null, function() {
+    return new Promise((resolve, reject) => {
+      let {requirejs} = content.wrappedJSObject;
+      if (requirejs) {
+        requirejs.onError = err => {
+          info(err);
+          ok(false, "RequireJS error");
+          reject(err);
+        };
+      }
+    });
+  }));
+
+  let data = {rootDir, appReadyState, docReadyState};
+  // eslint-disable-next-line no-shadow
+  await Promise.race([error, ContentTask.spawn(browser, data, async function(data) {
+    // Check if there is a JSONView object.
+    let {JSONView} = content.wrappedJSObject;
+    if (!JSONView) {
+      throw new Error("The JSON Viewer did not load.");
+    }
 
     // Load frame script with helpers for JSON View tests.
-    let rootDir = getRootDirectory(gTestPath);
-    let frameScriptUrl = rootDir + "doc_frame_script.js";
-    browser.messageManager.loadFrameScript(frameScriptUrl, false);
+    let frameScriptUrl = data.rootDir + "doc_frame_script.js";
+    Services.scriptloader.loadSubScript(frameScriptUrl, {}, "UTF-8");
 
-    // Resolve if the JSONView is fully loaded or wait
-    // for an initialization event.
-    if (content.window.wrappedJSObject.JSONView.initialized) {
-      deferred.resolve(tab);
-    } else {
-      waitForContentMessage("Test:JsonView:JSONViewInitialized").then(() => {
-        deferred.resolve(tab);
+    let docReadyStates = ["loading", "interactive", "complete"];
+    let docReadyIndex = docReadyStates.indexOf(data.docReadyState);
+    let appReadyStates = ["uninitialized", ...docReadyStates];
+    let appReadyIndex = appReadyStates.indexOf(data.appReadyState);
+    if (docReadyIndex < 0 || appReadyIndex < 0) {
+      throw new Error("Invalid app or doc readyState parameter.");
+    }
+
+    // Wait until the document readyState suffices.
+    let {document} = content;
+    while (docReadyStates.indexOf(document.readyState) < docReadyIndex) {
+      info(`DocReadyState is "${document.readyState}". Await "${data.docReadyState}"`);
+      await new Promise(resolve => {
+        document.addEventListener("readystatechange", resolve, {once: true});
       });
     }
 
-    // Add a timeout.
-    if (timeout >= 0) {
-      new Promise(resolve => {
-        if (content.window.document.readyState === "complete") {
-          resolve();
-        } else {
-          waitForContentMessage("Test:JsonView:load").then(resolve);
-        }
-      }).then(() => {
-        setTimeout(() => {
-          deferred.reject("JSON Viewer did not load.");
-        }, timeout);
+    // Wait until the app readyState suffices.
+    while (appReadyStates.indexOf(JSONView.readyState) < appReadyIndex) {
+      info(`AppReadyState is "${JSONView.readyState}". Await "${data.appReadyState}"`);
+      await new Promise(resolve => {
+        content.addEventListener("AppReadyStateChange", resolve, {once: true});
       });
     }
-  });
+  })]);
 
-  return deferred.promise;
+  return tab;
 }
 
 /**
@@ -123,6 +162,14 @@ function getElementText(selector) {
   });
 }
 
+function getElementAttr(selector, attr) {
+  info("Get attribute '" + attr + "' for element '" + selector + "'");
+
+  let data = {selector, attr};
+  return executeInContent("Test:JsonView:GetElementAttr", data)
+  .then(result => result.text);
+}
+
 function focusElement(selector) {
   info("Focus element: '" + selector + "'");
 
@@ -151,9 +198,7 @@ function sendString(str, selector) {
 }
 
 function waitForTime(delay) {
-  let deferred = promise.defer();
-  setTimeout(deferred.resolve, delay);
-  return deferred.promise;
+  return new Promise(resolve => setTimeout(resolve, delay));
 }
 
 function waitForFilter() {
@@ -162,4 +207,9 @@ function waitForFilter() {
 
 function normalizeNewLines(value) {
   return value.replace("(\r\n|\n)", "\n");
+}
+
+function evalInContent(code) {
+  return executeInContent("Test:JsonView:Eval", {code})
+  .then(result => result.result);
 }

@@ -58,6 +58,7 @@ if __name__ == "__main__":
     parser.add_option("-b", "--buildbot-configs", dest="buildbotConfigs")
     parser.add_option("-p", "--platform", dest="platform")
     parser.add_option("-C", "--release-channel", dest="release_channel")
+    parser.add_option("--verify-channel", dest="verify_channel")
     parser.add_option("--chunks", dest="chunks", type="int")
     parser.add_option("--this-chunk", dest="thisChunk", type="int")
 
@@ -77,6 +78,9 @@ if __name__ == "__main__":
         verifyConfig.read(path.join(UPDATE_VERIFY_DIR, verifyConfigFile))
         myVerifyConfig = verifyConfig.getChunk(
             options.chunks, options.thisChunk)
+        # override the channel if explicitly set
+        if options.verify_channel:
+            myVerifyConfig.channel = options.verify_channel
         myVerifyConfig.write(fh)
         fh.close()
         run_cmd(["cat", configFile])

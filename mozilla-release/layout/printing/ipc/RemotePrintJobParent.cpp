@@ -19,12 +19,15 @@
 #include "nsIPrintSettings.h"
 #include "nsIWebProgressListener.h"
 #include "PrintTranslator.h"
+#include "private/pprio.h"
+#include "nsAnonymousTemporaryFile.h"
 
 namespace mozilla {
 namespace layout {
 
 RemotePrintJobParent::RemotePrintJobParent(nsIPrintSettings* aPrintSettings)
   : mPrintSettings(aPrintSettings)
+  , mIsDoingPrinting(false)
 {
   MOZ_COUNT_CTOR(RemotePrintJobParent);
 }
@@ -38,14 +41,21 @@ RemotePrintJobParent::RecvInitializePrint(const nsString& aDocumentTitle,
   nsresult rv = InitializePrintDevice(aDocumentTitle, aPrintToFile, aStartPage,
                                       aEndPage);
   if (NS_FAILED(rv)) {
-    Unused << SendPrintInitializationResult(rv);
+    Unused << SendPrintInitializationResult(rv, FileDescriptor());
     Unused << Send__delete__(this);
     return IPC_OK();
   }
 
   mPrintTranslator.reset(new PrintTranslator(mPrintDeviceContext));
-  Unused << SendPrintInitializationResult(NS_OK);
+  FileDescriptor fd;
+  rv = PrepareNextPageFD(&fd);
+  if (NS_FAILED(rv)) {
+    Unused << SendPrintInitializationResult(rv, FileDescriptor());
+    Unused << Send__delete__(this);
+    return IPC_OK();
+  }
 
+  Unused << SendPrintInitializationResult(NS_OK, fd);
   return IPC_OK();
 }
 
@@ -75,29 +85,55 @@ RemotePrintJobParent::InitializePrintDevice(const nsString& aDocumentTitle,
 
   rv = mPrintDeviceContext->BeginDocument(aDocumentTitle, aPrintToFile,
                                           aStartPage, aEndPage);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+  if (NS_FAILED(rv)) {
+    NS_WARNING_ASSERTION(rv == NS_ERROR_ABORT,
+                         "Failed to initialize print device");
     return rv;
   }
+
+  if (!mPrintDeviceContext->IsSyncPagePrinting()) {
+    mPrintDeviceContext->RegisterPageDoneCallback([this](nsresult aResult) { PageDone(aResult); });
+  }
+
+  mIsDoingPrinting = true;
 
   return NS_OK;
 }
 
-mozilla::ipc::IPCResult
-RemotePrintJobParent::RecvProcessPage(const nsCString& aPageFileName)
+nsresult
+RemotePrintJobParent::PrepareNextPageFD(FileDescriptor* aFd)
 {
-  nsresult rv = PrintPage(aPageFileName);
-
+  PRFileDesc* prFd = nullptr;
+  nsresult rv = NS_OpenAnonymousTemporaryFile(&prFd);
   if (NS_FAILED(rv)) {
-    Unused << SendAbortPrint(rv);
-  } else {
-    Unused << SendPageProcessed();
+    return rv;
+  }
+  *aFd = FileDescriptor(
+    FileDescriptor::PlatformHandleType(PR_FileDesc2NativeHandle(prFd)));
+  mCurrentPageStream.OpenFD(prFd);
+  return NS_OK;
+}
+
+mozilla::ipc::IPCResult
+RemotePrintJobParent::RecvProcessPage()
+{
+  if (!mCurrentPageStream.IsOpen()) {
+    Unused << SendAbortPrint(NS_ERROR_FAILURE);
+    return IPC_OK();
+  }
+  mCurrentPageStream.Seek(0, PR_SEEK_SET);
+  nsresult rv = PrintPage(mCurrentPageStream);
+  mCurrentPageStream.Close();
+
+  if (mPrintDeviceContext->IsSyncPagePrinting()) {
+    PageDone(rv);
   }
 
   return IPC_OK();
 }
 
 nsresult
-RemotePrintJobParent::PrintPage(const nsCString& aPageFileName)
+RemotePrintJobParent::PrintPage(PRFileDescStream& aRecording)
 {
   MOZ_ASSERT(mPrintDeviceContext);
 
@@ -105,27 +141,7 @@ RemotePrintJobParent::PrintPage(const nsCString& aPageFileName)
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
-
-  nsCOMPtr<nsIFile> recordingFile;
-  rv = NS_GetSpecialDirectory(NS_APP_CONTENT_PROCESS_TEMP_DIR,
-                              getter_AddRefs(recordingFile));
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = recordingFile->AppendNative(aPageFileName);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  nsAutoCString recordingPath;
-  rv = recordingFile->GetNativePath(recordingPath);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  std::ifstream recording(recordingPath.get(), std::ifstream::binary);
-  if (!mPrintTranslator->TranslateRecording(recording)) {
+  if (!mPrintTranslator->TranslateRecording(aRecording)) {
     return NS_ERROR_FAILURE;
   }
 
@@ -134,13 +150,25 @@ RemotePrintJobParent::PrintPage(const nsCString& aPageFileName)
     return rv;
   }
 
-  recording.close();
-  rv = recordingFile->Remove(/* recursive= */ false);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
   return NS_OK;
+}
+
+void
+RemotePrintJobParent::PageDone(nsresult aResult)
+{
+  MOZ_ASSERT(mIsDoingPrinting);
+
+  if (NS_FAILED(aResult)) {
+    Unused << SendAbortPrint(aResult);
+  } else {
+    FileDescriptor fd;
+    aResult = PrepareNextPageFD(&fd);
+    if (NS_FAILED(aResult)) {
+      Unused << SendAbortPrint(aResult);
+    }
+
+    Unused << SendPageProcessed(fd);
+  }
 }
 
 mozilla::ipc::IPCResult
@@ -153,8 +181,14 @@ RemotePrintJobParent::RecvFinalizePrint()
 
     // Too late to abort the child just log.
     NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "EndDocument failed");
+
+    // Since RecvFinalizePrint is called after all page printed, there should
+    // be no more page-done callbacks after that, in theory. Unregistering
+    // page-done callback is not must have, but we still do this for safety.
+    mPrintDeviceContext->UnregisterPageDoneCallback();
   }
 
+  mIsDoingPrinting = false;
 
   Unused << Send__delete__(this);
   return IPC_OK();
@@ -165,7 +199,10 @@ RemotePrintJobParent::RecvAbortPrint(const nsresult& aRv)
 {
   if (mPrintDeviceContext) {
     Unused << mPrintDeviceContext->AbortDocument();
+    mPrintDeviceContext->UnregisterPageDoneCallback();
   }
+
+  mIsDoingPrinting = false;
 
   Unused << Send__delete__(this);
   return IPC_OK();
@@ -236,9 +273,20 @@ RemotePrintJobParent::~RemotePrintJobParent()
 void
 RemotePrintJobParent::ActorDestroy(ActorDestroyReason aWhy)
 {
+  if (mPrintDeviceContext) {
+    mPrintDeviceContext->UnregisterPageDoneCallback();
+  }
+
+  mIsDoingPrinting = false;
+
+  // If progress dialog is opened, notify closing it.
+  for (auto listener : mPrintProgressListeners) {
+    listener->OnStateChange(nullptr,
+                            nullptr,
+                            nsIWebProgressListener::STATE_STOP,
+                            NS_OK);
+  }
 }
 
 } // namespace layout
 } // namespace mozilla
-
-

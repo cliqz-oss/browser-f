@@ -6,8 +6,8 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Integration.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Integration.jsm", this);
 
 XPCOMUtils.defineLazyServiceGetter(this, "ContentPermissionPrompt",
                                    "@mozilla.org/content-permission/prompt;1",
@@ -26,7 +26,7 @@ function MockContentPermissionType(type) {
 }
 
 MockContentPermissionType.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentPermissionType]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIContentPermissionType]),
   // We expose the wrappedJSObject so that we can be sure
   // in some of our tests that we're passing the right
   // nsIContentPermissionType around.
@@ -49,7 +49,7 @@ function MockContentPermissionRequest(typesArray) {
 }
 
 MockContentPermissionRequest.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentPermissionRequest]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIContentPermissionRequest]),
   // We expose the wrappedJSObject so that we can be sure
   // in some of our tests that we're passing the right
   // nsIContentPermissionRequest around.
@@ -61,6 +61,7 @@ MockContentPermissionRequest.prototype = {
     this.cancelled = true;
   },
   cancelled: false,
+  principal: Services.scriptSecurityManager.getSystemPrincipal(),
 };
 
 /**
@@ -99,7 +100,7 @@ add_task(async function test_multiple_types() {
  */
 add_task(async function test_not_permission_type() {
   let mockRequest = new MockContentPermissionRequest([
-    { QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports]) },
+    { QueryInterface: ChromeUtils.generateQI([]) },
   ]);
 
   Assert.throws(() => { ContentPermissionPrompt.prompt(mockRequest); },

@@ -166,9 +166,9 @@ window.talosDebug = {
 
     alert(res);
   }
-}
+};
 
 // Enable testing outside of talos by providing an alternative report function.
-if (typeof (tpRecordTime) === "undefined") {
+if (typeof(tpRecordTime) === "undefined") {
   tpRecordTime = window.talosDebug.tpRecordTime;
 }

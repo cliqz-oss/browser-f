@@ -12,17 +12,17 @@
 #include "nsWeakPtr.h"
 #include "nsIDOMEventListener.h"
 
-class nsIAtom;
-class nsIDOMElement;
-class nsIDOMKeyEvent;
+class nsAtom;
 class nsXBLPrototypeHandler;
 
 namespace mozilla {
 class EventListenerManager;
+class WidgetKeyboardEvent;
 struct IgnoreModifierState;
 namespace dom {
 class Element;
 class EventTarget;
+class KeyboardEvent;
 } // namespace dom
 } // namespace mozilla
 
@@ -31,9 +31,11 @@ class nsXBLWindowKeyHandler : public nsIDOMEventListener
   typedef mozilla::EventListenerManager EventListenerManager;
   typedef mozilla::IgnoreModifierState IgnoreModifierState;
   typedef mozilla::layers::KeyboardMap KeyboardMap;
+  typedef mozilla::dom::KeyboardEvent KeyboardEvent;
 
 public:
-  nsXBLWindowKeyHandler(nsIDOMElement* aElement, mozilla::dom::EventTarget* aTarget);
+  nsXBLWindowKeyHandler(mozilla::dom::Element* aElement,
+                        mozilla::dom::EventTarget* aTarget);
 
   void InstallKeyboardEventListenersTo(
          EventListenerManager* aEventListenerManager);
@@ -48,18 +50,18 @@ public:
 protected:
   virtual ~nsXBLWindowKeyHandler();
 
-  nsresult WalkHandlers(nsIDOMKeyEvent* aKeyEvent, nsIAtom* aEventType);
+  nsresult WalkHandlers(KeyboardEvent* aKeyEvent, nsAtom* aEventType);
 
   // walk the handlers, looking for one to handle the event
-  bool WalkHandlersInternal(nsIDOMKeyEvent* aKeyEvent,
-                            nsIAtom* aEventType,
+  bool WalkHandlersInternal(KeyboardEvent* aKeyEvent,
+                            nsAtom* aEventType,
                             nsXBLPrototypeHandler* aHandler,
                             bool aExecute,
                             bool* aOutReservedForChrome = nullptr);
 
   // walk the handlers for aEvent, aCharCode and aIgnoreModifierState. Execute
   // it if aExecute = true.
-  bool WalkHandlersAndExecute(nsIDOMKeyEvent* aKeyEvent, nsIAtom* aEventType,
+  bool WalkHandlersAndExecute(KeyboardEvent* aKeyEvent, nsAtom* aEventType,
                               nsXBLPrototypeHandler* aHandler,
                               uint32_t aCharCode,
                               const IgnoreModifierState& aIgnoreModifierState,
@@ -67,20 +69,25 @@ protected:
                               bool* aOutReservedForChrome = nullptr);
 
   // HandleEvent function for the capturing phase in the default event group.
-  void HandleEventOnCaptureInDefaultEventGroup(nsIDOMKeyEvent* aEvent);
+  void HandleEventOnCaptureInDefaultEventGroup(KeyboardEvent* aEvent);
   // HandleEvent function for the capturing phase in the system event group.
-  void HandleEventOnCaptureInSystemEventGroup(nsIDOMKeyEvent* aEvent);
+  void HandleEventOnCaptureInSystemEventGroup(KeyboardEvent* aEvent);
 
   // Check if any handler would handle the given event. Optionally returns
   // whether the command handler for the event is marked with the "reserved"
   // attribute.
-  bool HasHandlerForEvent(nsIDOMKeyEvent* aEvent,
+  bool HasHandlerForEvent(KeyboardEvent* aEvent,
                           bool* aOutReservedForChrome = nullptr);
+
+  // Returns true if the key would be reserved for the given handler. A reserved
+  // key is not sent to a content process or single-process equivalent.
+  bool IsReservedKey(mozilla::WidgetKeyboardEvent* aKeyEvent,
+                     nsXBLPrototypeHandler* aHandler);
 
   // Returns event type for matching between aWidgetKeyboardEvent and
   // shortcut key handlers.  This is used for calling WalkHandlers(),
   // WalkHandlersInternal() and WalkHandlersAndExecute().
-  nsIAtom* ConvertEventToDOMEventType(
+  nsAtom* ConvertEventToDOMEventType(
              const mozilla::WidgetKeyboardEvent& aWidgetKeyboardEvent) const;
 
   // lazily load the special doc info for loading handlers
@@ -131,7 +138,7 @@ protected:
 };
 
 already_AddRefed<nsXBLWindowKeyHandler>
-NS_NewXBLWindowKeyHandler(nsIDOMElement* aElement,
+NS_NewXBLWindowKeyHandler(mozilla::dom::Element* aElement,
                           mozilla::dom::EventTarget* aTarget);
 
 #endif

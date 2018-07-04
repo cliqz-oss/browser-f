@@ -3,7 +3,6 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY  security.label                 "Sicherheit">
-<!ENTITY  phishingProtection.label       "Schutz vor Betrugsversuchen">
 
 <!ENTITY  warnOnAddonInstall2.label       "Warnen, wenn Websites versuchen, Add-ons zu installieren">
 <!ENTITY  warnOnAddonInstall2.accesskey   "W">
@@ -12,6 +11,8 @@
   It is important that wording follows the guidelines outlined on this page:
   https://developers.google.com/safe-browsing/developers_guide_v2#AcceptableUsage
 -->
+
+<!ENTITY  browsingProtection.label        "Schutz vor betrügerischen Inhalten und gefährlicher Software">
 <!ENTITY  enableSafeBrowsing.label        "Gefährliche und betrügerische Inhalte blockieren">
 <!ENTITY  enableSafeBrowsing.accesskey    "b">
 
@@ -29,6 +30,7 @@
 
 <!ENTITY  rememberLogins2.label         "Zugangsdaten und Passwörter für Websites speichern">
 <!ENTITY  rememberLogins2.accesskey     "Z">
+<!ENTITY  rememberLogins2.hint          "Diese Funktion kann nur genutzt werden, wenn Cliqz eine <label class='text-link' id='jumpToHistory'>Chronik</label> anlegen kann.">
 <!ENTITY  passwordExceptions.label      "Ausnahmen…">
 <!ENTITY  passwordExceptions.accesskey  "u">
 
@@ -47,8 +49,8 @@
 <!ENTITY  httpsEverywhereMore.label      "Erfahre mehr">
 
 <!ENTITY  passwordManager.title          "Passwort Manager">
-<!ENTITY  passwordManager.desc1          "Cliqz unterstützt die Einbindung von LastPass, einer Fremdsoftware für Passwort Management.">
-<!ENTITY  passwordManager.desc2          "Bitte beachte, dass Cliqz keine Kontrolle darüber hat, auf welche Daten diese Fremdsoftware Zugriff hat.">
+<!ENTITY  passwordManager.desc1          "Cliqz unterstützt die Einbindung von ausgewählten und geprüften Passwort-Manager Anwendungen.">
+<!ENTITY  passwordManager.desc2          "Diese Anwendungen wurden nicht von Cliqz entwickelt. Cliqz hat keine Kontrolle darüber, auf welche Daten sie Zugriff haben.">
 
 <!ENTITY  ghostery.title                 "Erweiterte Kontrolle der Privatsphäre">
 <!ENTITY  ghostery.desc1                 "Ghostery weist auf versteckte Dienste hin, die im Hintergrund private Daten an">

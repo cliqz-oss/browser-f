@@ -23,7 +23,9 @@
 #include "nsString.h"
 
 class nsIScriptContext;
+class nsIScriptElement;
 class nsIScriptGlobalObject;
+class nsXBLPrototypeBinding;
 
 namespace mozilla {
 namespace dom {
@@ -68,8 +70,10 @@ public:
 
   // ExecutionContext is used to switch compartment.
   class MOZ_STACK_CLASS ExecutionContext {
+#ifdef MOZ_GECKO_PROFILER
     // Register stack annotations for the Gecko profiler.
     mozilla::AutoProfilerLabel mAutoProfilerLabel;
+#endif
 
     JSContext* mCx;
 
@@ -183,17 +187,32 @@ public:
                                 JS::CompileOptions &aCompileOptions,
                                 JS::MutableHandle<JSObject*> aModule);
 
-  static nsresult ModuleDeclarationInstantiation(JSContext* aCx,
-                                                 JS::Handle<JSObject*> aModule);
+  static nsresult InitModuleSourceElement(JSContext* aCx,
+                                          JS::Handle<JSObject*> aModule,
+                                          nsIScriptElement* aElement);
 
-  static nsresult ModuleEvaluation(JSContext* aCx,
-                                   JS::Handle<JSObject*> aModule);
+  static nsresult ModuleInstantiate(JSContext* aCx,
+                                    JS::Handle<JSObject*> aModule);
+
+  static nsresult ModuleEvaluate(JSContext* aCx,
+                                 JS::Handle<JSObject*> aModule);
 
   // Returns false if an exception got thrown on aCx.  Passing a null
   // aElement is allowed; that wil produce an empty aScopeChain.
   static bool GetScopeChainForElement(JSContext* aCx,
                                       mozilla::dom::Element* aElement,
                                       JS::AutoObjectVector& aScopeChain);
+
+  // Returns a scope chain suitable for XBL execution.
+  //
+  // This is by default GetScopeChainForElemenet, but will be different if the
+  // <binding> element had the simpleScopeChain attribute.
+  //
+  // This is to prevent footguns like bug 1446342.
+  static bool GetScopeChainForXBL(JSContext* aCx,
+                                  mozilla::dom::Element* aBoundElement,
+                                  const nsXBLPrototypeBinding& aProtoBinding,
+                                  JS::AutoObjectVector& aScopeChain);
 
   static void ResetTimeZone();
 };

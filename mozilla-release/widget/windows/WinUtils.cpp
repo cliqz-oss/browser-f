@@ -14,8 +14,8 @@
 #include "nsWindow.h"
 #include "nsWindowDefs.h"
 #include "KeyboardLayout.h"
-#include "nsIDOMMouseEvent.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/DataSurfaceHelpers.h"
 #include "mozilla/HangMonitor.h"
@@ -32,7 +32,6 @@
 #include "nsDirectoryServiceUtils.h"
 #include "imgIContainer.h"
 #include "imgITools.h"
-#include "nsStringStream.h"
 #include "nsNetUtil.h"
 #include "nsIOutputStream.h"
 #include "nsNetCID.h"
@@ -61,6 +60,9 @@
 #include <shlwapi.h>
 
 mozilla::LazyLogModule gWindowsLog("Widget");
+
+#define LOG_E(...) MOZ_LOG(gWindowsLog, LogLevel::Error, (__VA_ARGS__))
+#define LOG_D(...) MOZ_LOG(gWindowsLog, LogLevel::Debug, (__VA_ARGS__))
 
 using namespace mozilla::gfx;
 
@@ -431,11 +433,6 @@ struct CoTaskMemFreePolicy
 
 SetThreadDpiAwarenessContextProc WinUtils::sSetThreadDpiAwarenessContext = NULL;
 EnableNonClientDpiScalingProc WinUtils::sEnableNonClientDpiScaling = NULL;
-#ifdef ACCESSIBILITY
-typedef NTSTATUS (NTAPI* NtTestAlertPtr)(VOID);
-static NtTestAlertPtr sNtTestAlert = nullptr;
-#endif
-
 
 /* static */
 void
@@ -459,12 +456,6 @@ WinUtils::Initialize()
       }
     }
   }
-
-#ifdef ACCESSIBILITY
-  sNtTestAlert = reinterpret_cast<NtTestAlertPtr>(
-      ::GetProcAddress(::GetModuleHandleW(L"ntdll.dll"), "NtTestAlert"));
-  MOZ_ASSERT(sNtTestAlert);
-#endif
 }
 
 // static
@@ -671,29 +662,16 @@ WinUtils::MonitorFromRect(const gfx::Rect& rect)
     IsPerMonitorDPIAware() ? 1.0 : LogToPhysFactor(GetPrimaryMonitor());
 
   RECT globalWindowBounds = {
-    NSToIntRound(dpiScale * rect.x),
-    NSToIntRound(dpiScale * rect.y),
-    NSToIntRound(dpiScale * (rect.x + rect.width)),
-    NSToIntRound(dpiScale * (rect.y + rect.height))
+    NSToIntRound(dpiScale * rect.X()),
+    NSToIntRound(dpiScale * rect.Y()),
+    NSToIntRound(dpiScale * (rect.XMost())),
+    NSToIntRound(dpiScale * (rect.YMost()))
   };
 
   return ::MonitorFromRect(&globalWindowBounds, MONITOR_DEFAULTTONEAREST);
 }
 
 #ifdef ACCESSIBILITY
-#ifndef STATUS_SUCCESS
-#define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
-#endif
-
-static Atomic<bool> sAPCPending;
-
-/* static */
-void
-WinUtils::SetAPCPending()
-{
-  sAPCPending = true;
-}
-
 /* static */
 a11y::Accessible*
 WinUtils::GetRootAccessibleForHWND(HWND aHwnd)
@@ -712,11 +690,6 @@ bool
 WinUtils::PeekMessage(LPMSG aMsg, HWND aWnd, UINT aFirstMessage,
                       UINT aLastMessage, UINT aOption)
 {
-#ifdef ACCESSIBILITY
-  if (NS_IsMainThread() && sAPCPending.exchange(false)) {
-    while (sNtTestAlert() != STATUS_SUCCESS) ;
-  }
-#endif
 #ifdef NS_ENABLE_TSF
   RefPtr<ITfMessagePump> msgPump = TSFTextStore::GetMessagePump();
   if (msgPump) {
@@ -788,10 +761,6 @@ WinUtils::WaitForMessage(DWORD aTimeoutMs)
 #if defined(ACCESSIBILITY)
     if (result == WAIT_IO_COMPLETION) {
       if (NS_IsMainThread()) {
-        if (sAPCPending.exchange(false)) {
-          // Clear out any pending APCs
-          while (sNtTestAlert() != STATUS_SUCCESS) ;
-        }
         // We executed an APC that would have woken up the hang monitor. Since
         // there are no more APCs pending and we are now going to sleep again,
         // we should notify the hang monitor.
@@ -1109,11 +1078,12 @@ WinUtils::GetNativeMessage(UINT aInternalMessage)
 uint16_t
 WinUtils::GetMouseInputSource()
 {
-  int32_t inputSource = nsIDOMMouseEvent::MOZ_SOURCE_MOUSE;
+  int32_t inputSource = dom::MouseEventBinding::MOZ_SOURCE_MOUSE;
   LPARAM lParamExtraInfo = ::GetMessageExtraInfo();
   if ((lParamExtraInfo & TABLET_INK_SIGNATURE) == TABLET_INK_CHECK) {
     inputSource = (lParamExtraInfo & TABLET_INK_TOUCH) ?
-      nsIDOMMouseEvent::MOZ_SOURCE_TOUCH : nsIDOMMouseEvent::MOZ_SOURCE_PEN;
+      dom::MouseEventBinding::MOZ_SOURCE_TOUCH :
+      dom::MouseEventBinding::MOZ_SOURCE_PEN;
   }
   return static_cast<uint16_t>(inputSource);
 }
@@ -1190,8 +1160,8 @@ WinUtils::InvalidatePluginAsWorkaround(nsIWidget* aWidget,
 
   if (windowRect.top == 0 && windowRect.left == 0) {
     RECT rect;
-    rect.left   = aRect.x;
-    rect.top    = aRect.y;
+    rect.left   = aRect.X();
+    rect.top    = aRect.Y();
     rect.right  = aRect.XMost();
     rect.bottom = aRect.YMost();
 
@@ -1281,19 +1251,12 @@ AsyncFaviconDataReady::OnComplete(nsIURI *aFaviconURI,
   rv = icoFile->GetPath(path);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Convert the obtained favicon data to an input stream
-  nsCOMPtr<nsIInputStream> stream;
-  rv = NS_NewByteInputStream(getter_AddRefs(stream),
-                             reinterpret_cast<const char*>(aData),
-                             aDataLen,
-                             NS_ASSIGNMENT_DEPEND);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   // Decode the image from the format it was returned to us in (probably PNG)
   nsCOMPtr<imgIContainer> container;
   nsCOMPtr<imgITools> imgtool = do_CreateInstance("@mozilla.org/image/tools;1");
-  rv = imgtool->DecodeImageData(stream, aMimeType,
-                                getter_AddRefs(container));
+  rv = imgtool->DecodeImageFromBuffer(reinterpret_cast<const char*>(aData),
+                                      aDataLen, aMimeType,
+                                      getter_AddRefs(container));
   NS_ENSURE_SUCCESS(rv, rv);
 
   RefPtr<SourceSurface> surface =
@@ -1741,12 +1704,12 @@ WinUtils::GetShellItemPath(IShellItem* aItem,
 }
 
 /* static */
-nsIntRegion
+LayoutDeviceIntRegion
 WinUtils::ConvertHRGNToRegion(HRGN aRgn)
 {
   NS_ASSERTION(aRgn, "Don't pass NULL region here");
 
-  nsIntRegion rgn;
+  LayoutDeviceIntRegion rgn;
 
   DWORD size = ::GetRegionData(aRgn, 0, nullptr);
   AutoTArray<uint8_t,100> buffer;
@@ -1770,12 +1733,12 @@ WinUtils::ConvertHRGNToRegion(HRGN aRgn)
   return rgn;
 }
 
-nsIntRect
+LayoutDeviceIntRect
 WinUtils::ToIntRect(const RECT& aRect)
 {
-  return nsIntRect(aRect.left, aRect.top,
-                   aRect.right - aRect.left,
-                   aRect.bottom - aRect.top);
+  return LayoutDeviceIntRect(aRect.left, aRect.top,
+                             aRect.right - aRect.left,
+                             aRect.bottom - aRect.top);
 }
 
 /* static */
@@ -1837,6 +1800,8 @@ WinUtils::GetMaxTouchPoints()
 bool
 WinUtils::ResolveJunctionPointsAndSymLinks(std::wstring& aPath)
 {
+  LOG_D("ResolveJunctionPointsAndSymLinks: Resolving path: %S", aPath.c_str());
+
   wchar_t path[MAX_PATH] = { 0 };
 
   nsAutoHandle handle(
@@ -1849,12 +1814,15 @@ WinUtils::ResolveJunctionPointsAndSymLinks(std::wstring& aPath)
                   nullptr));
 
   if (handle == INVALID_HANDLE_VALUE) {
+    LOG_E("Failed to open file handle to resolve path. GetLastError=%d",
+          GetLastError());
     return false;
   }
 
   DWORD pathLen = GetFinalPathNameByHandleW(
     handle, path, MAX_PATH, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
   if (pathLen == 0 || pathLen >= MAX_PATH) {
+    LOG_E("GetFinalPathNameByHandleW failed. GetLastError=%d", GetLastError());
     return false;
   }
   aPath = path;
@@ -1868,6 +1836,7 @@ WinUtils::ResolveJunctionPointsAndSymLinks(std::wstring& aPath)
     aPath.erase(0, 4);
   }
 
+  LOG_D("ResolveJunctionPointsAndSymLinks: Resolved path to: %S", aPath.c_str());
   return true;
 }
 
@@ -1894,6 +1863,28 @@ WinUtils::ResolveJunctionPointsAndSymLinks(nsIFile* aPath)
   }
 
   return true;
+}
+
+/* static */
+bool
+WinUtils::RunningFromANetworkDrive()
+{
+  wchar_t exePath[MAX_PATH];
+  if (!::GetModuleFileNameW(nullptr, exePath, MAX_PATH)) {
+    return false;
+  }
+
+  std::wstring exeString(exePath);
+  if (!widget::WinUtils::ResolveJunctionPointsAndSymLinks(exeString)) {
+    return false;
+  }
+
+  wchar_t volPath[MAX_PATH];
+  if (!::GetVolumePathNameW(exeString.c_str(), volPath, MAX_PATH)) {
+    return false;
+  }
+
+  return (::GetDriveTypeW(volPath) == DRIVE_REMOTE);
 }
 
 /* static */

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -51,13 +52,10 @@ public:
   }
 
   class AutoSaveRestore;
-  friend class AutoSaveRestore;
 
   class AutoClipContainingBlockDescendantsToContentBox;
-  friend class AutoClipContainingBlockDescendantsToContentBox;
 
   class AutoClipMultiple;
-  friend class AutoClipMultiple;
 
   enum {
     ASSUME_DRAWING_RESTRICTED_TO_CONTENT_RECT = 0x01
@@ -72,8 +70,6 @@ private:
     mCurrentCombinedClipChain = nullptr;
     mCurrentCombinedClipChainIsValid = false;
   }
-
-  void ClearUpToASR(const ActiveScrolledRoot* aASR);
 
   void SetClipChainForContainingBlockDescendants(const DisplayItemClipChain* aClipChain)
   {
@@ -166,15 +162,6 @@ public:
   {
     NS_ASSERTION(!mRestored, "Already restored!");
     mState.Clear();
-#ifdef DEBUG
-    mClipUsed = false;
-#endif
-  }
-
-  void ClearUpToASR(const ActiveScrolledRoot* aASR)
-  {
-    NS_ASSERTION(!mRestored, "Already restored!");
-    mState.ClearUpToASR(aASR);
 #ifdef DEBUG
     mClipUsed = false;
 #endif

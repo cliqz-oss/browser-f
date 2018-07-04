@@ -13,8 +13,10 @@
 #include "IDBRequest.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/EventDispatcher.h"
-#include "mozilla/dom/DOMError.h"
+#include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMStringList.h"
+#include "mozilla/dom/WorkerHolder.h"
+#include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "nsAutoPtr.h"
 #include "nsPIDOMWindow.h"
@@ -23,8 +25,6 @@
 #include "nsTHashtable.h"
 #include "ProfilerHelpers.h"
 #include "ReportInternalError.h"
-#include "WorkerHolder.h"
-#include "WorkerPrivate.h"
 
 // Include this last to avoid path problems on Windows.
 #include "ActorsChild.h"
@@ -33,11 +33,9 @@ namespace mozilla {
 namespace dom {
 
 using namespace mozilla::dom::indexedDB;
-using namespace mozilla::dom::workers;
 using namespace mozilla::ipc;
 
-class IDBTransaction::WorkerHolder final
-  : public mozilla::dom::workers::WorkerHolder
+class IDBTransaction::WorkerHolder final : public mozilla::dom::WorkerHolder
 {
   WorkerPrivate* mWorkerPrivate;
 
@@ -47,7 +45,8 @@ class IDBTransaction::WorkerHolder final
 
 public:
   WorkerHolder(WorkerPrivate* aWorkerPrivate, IDBTransaction* aTransaction)
-    : mWorkerPrivate(aWorkerPrivate)
+    : mozilla::dom::WorkerHolder("IDBTransaction::WorkerHolder")
+    , mWorkerPrivate(aWorkerPrivate)
     , mTransaction(aTransaction)
   {
     MOZ_ASSERT(aWorkerPrivate);
@@ -67,7 +66,7 @@ public:
 
 private:
   virtual bool
-  Notify(Status aStatus) override;
+  Notify(WorkerStatus aStatus) override;
 };
 
 IDBTransaction::IDBTransaction(IDBDatabase* aDatabase,
@@ -193,15 +192,11 @@ IDBTransaction::CreateVersionChange(
 
   transaction->SetScriptOwner(aDatabase->GetScriptOwner());
 
-  nsCOMPtr<nsIRunnable> runnable = do_QueryObject(transaction);
-  nsContentUtils::RunInMetastableState(runnable.forget());
-
   transaction->NoteActiveTransaction();
 
   transaction->mBackgroundActor.mVersionChangeBackgroundActor = aActor;
   transaction->mNextObjectStoreId = aNextObjectStoreId;
   transaction->mNextIndexId = aNextIndexId;
-  transaction->mCreating = true;
 
   aDatabase->RegisterTransaction(transaction);
   transaction->mRegistered = true;
@@ -230,23 +225,33 @@ IDBTransaction::Create(JSContext* aCx, IDBDatabase* aDatabase,
 
   transaction->SetScriptOwner(aDatabase->GetScriptOwner());
 
-  nsCOMPtr<nsIRunnable> runnable = do_QueryObject(transaction);
-  nsContentUtils::RunInMetastableState(runnable.forget());
-
-  transaction->mCreating = true;
-
-  aDatabase->RegisterTransaction(transaction);
-  transaction->mRegistered = true;
-
   if (!NS_IsMainThread()) {
     WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
     MOZ_ASSERT(workerPrivate);
 
     workerPrivate->AssertIsOnWorkerThread();
 
-    transaction->mWorkerHolder = new WorkerHolder(workerPrivate, transaction);
-    MOZ_ALWAYS_TRUE(transaction->mWorkerHolder->HoldWorker(workerPrivate, Canceling));
+    nsAutoPtr<WorkerHolder> workerHolder(
+      new WorkerHolder(workerPrivate, transaction));
+    if (NS_WARN_IF(!workerHolder->HoldWorker(workerPrivate, Canceling))) {
+      // Silence the destructor assertion if we never made this object live.
+#ifdef DEBUG
+      MOZ_ASSERT(!transaction->mSentCommitOrAbort);
+      transaction->mSentCommitOrAbort = true;
+#endif
+      return nullptr;
+    }
+
+    transaction->mWorkerHolder = Move(workerHolder);
   }
+
+  nsCOMPtr<nsIRunnable> runnable = do_QueryObject(transaction);
+  nsContentUtils::AddPendingIDBTransaction(runnable.forget());
+
+  transaction->mCreating = true;
+
+  aDatabase->RegisterTransaction(transaction);
+  transaction->mRegistered = true;
 
   return transaction.forget();
 }
@@ -663,13 +668,13 @@ IDBTransaction::RenameIndex(IDBObjectStore* aObjectStore,
 
 void
 IDBTransaction::AbortInternal(nsresult aAbortCode,
-                              already_AddRefed<DOMError> aError)
+                              already_AddRefed<DOMException> aError)
 {
   AssertIsOnOwningThread();
   MOZ_ASSERT(NS_FAILED(aAbortCode));
   MOZ_ASSERT(!IsCommittingOrDone());
 
-  RefPtr<DOMError> error = aError;
+  RefPtr<DOMException> error = aError;
 
   const bool isVersionChange = mMode == VERSION_CHANGE;
   const bool isInvalidated = mDatabase->IsInvalidated();
@@ -767,7 +772,7 @@ IDBTransaction::Abort(IDBRequest* aRequest)
   }
 
   ErrorResult rv;
-  RefPtr<DOMError> error = aRequest->GetError(rv);
+  RefPtr<DOMException> error = aRequest->GetError(rv);
 
   AbortInternal(aRequest->GetErrorCode(), error.forget());
 }
@@ -783,7 +788,7 @@ IDBTransaction::Abort(nsresult aErrorCode)
     return;
   }
 
-  RefPtr<DOMError> error = new DOMError(GetOwner(), aErrorCode);
+  RefPtr<DOMException> error = DOMException::Create(aErrorCode);
   AbortInternal(aErrorCode, error.forget());
 }
 
@@ -818,7 +823,7 @@ IDBTransaction::FireCompleteOrAbortEvents(nsresult aResult)
   // Make sure we drop the WorkerHolder when this function completes.
   nsAutoPtr<WorkerHolder> workerHolder = Move(mWorkerHolder);
 
-  nsCOMPtr<nsIDOMEvent> event;
+  RefPtr<Event> event;
   if (NS_SUCCEEDED(aResult)) {
     event = CreateGenericEvent(this,
                                nsDependentString(kCompleteEventType),
@@ -831,7 +836,7 @@ IDBTransaction::FireCompleteOrAbortEvents(nsresult aResult)
     }
 
     if (!mError && !mAbortedByScript) {
-      mError = new DOMError(GetOwner(), aResult);
+      mError = DOMException::Create(aResult);
     }
 
     event = CreateGenericEvent(this,
@@ -856,8 +861,9 @@ IDBTransaction::FireCompleteOrAbortEvents(nsresult aResult)
                  mAbortCode);
   }
 
-  bool dummy;
-  if (NS_FAILED(DispatchEvent(event, &dummy))) {
+  IgnoredErrorResult rv;
+  DispatchEvent(*event, rv);
+  if (rv.Failed()) {
     NS_WARNING("DispatchEvent failed!");
   }
 
@@ -925,7 +931,7 @@ IDBTransaction::GetMode(ErrorResult& aRv) const
   }
 }
 
-DOMError*
+DOMException*
 IDBTransaction::GetError() const
 {
   AssertIsOnOwningThread();
@@ -1008,7 +1014,7 @@ IDBTransaction::ObjectStore(const nsAString& aName, ErrorResult& aRv)
 NS_IMPL_ADDREF_INHERITED(IDBTransaction, IDBWrapperCache)
 NS_IMPL_RELEASE_INHERITED(IDBTransaction, IDBWrapperCache)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(IDBTransaction)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(IDBTransaction)
   NS_INTERFACE_MAP_ENTRY(nsIRunnable)
 NS_INTERFACE_MAP_END_INHERITING(IDBWrapperCache)
 
@@ -1037,14 +1043,13 @@ IDBTransaction::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
   return IDBTransactionBinding::Wrap(aCx, this, aGivenProto);
 }
 
-nsresult
+void
 IDBTransaction::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   AssertIsOnOwningThread();
 
   aVisitor.mCanHandle = true;
-  aVisitor.mParentTarget = mDatabase;
-  return NS_OK;
+  aVisitor.SetParentTarget(mDatabase, false);
 }
 
 NS_IMETHODIMP
@@ -1067,7 +1072,7 @@ IDBTransaction::Run()
 
 bool
 IDBTransaction::
-WorkerHolder::Notify(Status aStatus)
+WorkerHolder::Notify(WorkerStatus aStatus)
 {
   MOZ_ASSERT(mWorkerPrivate);
   mWorkerPrivate->AssertIsOnWorkerThread();

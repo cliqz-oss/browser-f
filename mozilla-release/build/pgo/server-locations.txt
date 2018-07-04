@@ -284,6 +284,9 @@ https://fail-handshake.example.com:443                            privileged,fai
 https://sha1ee.example.com:443                                    privileged,cert=sha1_end_entity
 https://sha256ee.example.com:443                                  privileged,cert=sha256_end_entity
 
+# Hosts for imminent distrust warning tests
+https://imminently-distrusted.example.com:443                     privileged,cert=imminently_distrusted
+
 # Hosts for ssl3/rc4 console warning tests
 https://ssl3.example.com:443        privileged,ssl3
 https://rc4.example.com:443         privileged,rc4
@@ -292,3 +295,6 @@ https://tls1.example.com:443        privileged,tls1
 
 # Hosts for youtube rewrite tests
 https://mochitest.youtube.com:443
+
+# Host for U2F localhost tests
+https://localhost:443

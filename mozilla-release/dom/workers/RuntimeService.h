@@ -7,11 +7,13 @@
 #ifndef mozilla_dom_workers_runtimeservice_h__
 #define mozilla_dom_workers_runtimeservice_h__
 
-#include "Workers.h"
+#include "mozilla/dom/WorkerCommon.h"
 
 #include "nsIObserver.h"
 
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/workerinternals/JSSettings.h"
+#include "mozilla/Mutex.h"
 #include "nsClassHashtable.h"
 #include "nsHashKeys.h"
 #include "nsTArray.h"
@@ -19,10 +21,13 @@
 class nsITimer;
 class nsPIDOMWindowInner;
 
-BEGIN_WORKERS_NAMESPACE
-
+namespace mozilla {
+namespace dom {
 class SharedWorker;
+struct WorkerLoadInfo;
 class WorkerThread;
+
+namespace workerinternals {
 
 class RuntimeService final : public nsIObserver
 {
@@ -45,7 +50,7 @@ class RuntimeService final : public nsIObserver
     nsTArray<WorkerPrivate*> mActiveWorkers;
     nsTArray<WorkerPrivate*> mActiveServiceWorkers;
     nsTArray<WorkerPrivate*> mQueuedWorkers;
-    nsClassHashtable<nsCStringHashKey, SharedWorkerInfo> mSharedWorkerInfos;
+    nsTArray<UniquePtr<SharedWorkerInfo>> mSharedWorkerInfos;
     uint32_t mChildWorkerCount;
 
     WorkerDomainInfo()
@@ -90,8 +95,7 @@ class RuntimeService final : public nsIObserver
   // Only used on the main thread.
   nsCOMPtr<nsITimer> mIdleThreadTimer;
 
-  static JSSettings sDefaultJSSettings;
-  static bool sDefaultPreferences[WORKERPREF_COUNT];
+  static workerinternals::JSSettings sDefaultJSSettings;
 
 public:
   struct NavigatorProperties
@@ -167,17 +171,10 @@ public:
   NoteIdleThread(WorkerThread* aThread);
 
   static void
-  GetDefaultJSSettings(JSSettings& aSettings)
+  GetDefaultJSSettings(workerinternals::JSSettings& aSettings)
   {
     AssertIsOnMainThread();
     aSettings = sDefaultJSSettings;
-  }
-
-  static void
-  GetDefaultPreferences(bool aPreferences[WORKERPREF_COUNT])
-  {
-    AssertIsOnMainThread();
-    memcpy(aPreferences, sDefaultPreferences, WORKERPREF_COUNT * sizeof(bool));
   }
 
   static void
@@ -201,9 +198,6 @@ public:
 
   void
   UpdateAllWorkerLanguages(const nsTArray<nsString>& aLanguages);
-
-  void
-  UpdateAllWorkerPreference(WorkerPreference aPref, bool aValue);
 
   static void
   SetDefaultJSGCSettings(JSGCParamKey aKey, uint32_t aValue)
@@ -242,6 +236,8 @@ public:
 
   uint32_t ClampedHardwareConcurrency() const;
 
+  void CrashIfHanging();
+
 private:
   RuntimeService();
   ~RuntimeService();
@@ -268,9 +264,6 @@ private:
   static void
   ShutdownIdleThreads(nsITimer* aTimer, void* aClosure);
 
-  static void
-  WorkerPrefChanged(const char* aPrefName, void* aClosure);
-
   nsresult
   CreateSharedWorkerFromLoadInfo(JSContext* aCx,
                                  WorkerLoadInfo* aLoadInfo,
@@ -279,6 +272,8 @@ private:
                                  SharedWorker** aSharedWorker);
 };
 
-END_WORKERS_NAMESPACE
+} // workerinternals namespace
+} // dom namespace
+} // mozilla namespace
 
 #endif /* mozilla_dom_workers_runtimeservice_h__ */

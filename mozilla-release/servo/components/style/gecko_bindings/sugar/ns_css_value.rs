@@ -4,17 +4,16 @@
 
 //! Little helpers for `nsCSSValue`.
 
-use app_units::Au;
 use gecko_bindings::bindings;
 use gecko_bindings::structs;
-use gecko_bindings::structs::{nsCSSValue, nsCSSUnit};
-use gecko_bindings::structs::{nsCSSValue_Array, nsCSSValueList, nscolor};
+use gecko_bindings::structs::{nsCSSUnit, nsCSSValue};
+use gecko_bindings::structs::{nsCSSValueList, nsCSSValue_Array};
 use gecko_string_cache::Atom;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Index, IndexMut};
 use std::slice;
-use values::computed::{Angle, LengthOrPercentage, Percentage};
+use values::computed::{Angle, Length, LengthOrPercentage, Percentage};
 use values::specified::url::SpecifiedUrl;
 
 impl nsCSSValue {
@@ -24,32 +23,27 @@ impl nsCSSValue {
         unsafe { mem::zeroed() }
     }
 
+    /// Returns true if this nsCSSValue is none.
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        self.mUnit == nsCSSUnit::eCSSUnit_None
+    }
+
     /// Returns this nsCSSValue value as an integer, unchecked in release
     /// builds.
     pub fn integer_unchecked(&self) -> i32 {
-        debug_assert!(self.mUnit == nsCSSUnit::eCSSUnit_Integer ||
-                      self.mUnit == nsCSSUnit::eCSSUnit_Enumerated ||
-                      self.mUnit == nsCSSUnit::eCSSUnit_EnumColor);
+        debug_assert!(
+            self.mUnit == nsCSSUnit::eCSSUnit_Integer ||
+                self.mUnit == nsCSSUnit::eCSSUnit_Enumerated
+        );
         unsafe { *self.mValue.mInt.as_ref() }
     }
 
     /// Checks if it is an integer and returns it if so
     pub fn integer(&self) -> Option<i32> {
-        if self.mUnit == nsCSSUnit::eCSSUnit_Integer ||
-           self.mUnit == nsCSSUnit::eCSSUnit_Enumerated ||
-           self.mUnit == nsCSSUnit::eCSSUnit_EnumColor {
+        if self.mUnit == nsCSSUnit::eCSSUnit_Integer || self.mUnit == nsCSSUnit::eCSSUnit_Enumerated
+        {
             Some(unsafe { *self.mValue.mInt.as_ref() })
-        } else {
-            None
-        }
-    }
-
-    /// Checks if it is an RGBA color, returning it if so
-    /// Only use it with colors set by SetColorValue(),
-    /// which always sets RGBA colors
-    pub fn color_value(&self) -> Option<nscolor> {
-        if self.mUnit == nsCSSUnit::eCSSUnit_RGBAColor {
-            Some(unsafe { *self.mValue.mColor.as_ref() })
         } else {
             None
         }
@@ -65,8 +59,10 @@ impl nsCSSValue {
     /// Returns this nsCSSValue as a nsCSSValue::Array, unchecked in release
     /// builds.
     pub unsafe fn array_unchecked(&self) -> &nsCSSValue_Array {
-        debug_assert!(nsCSSUnit::eCSSUnit_Array as u32 <= self.mUnit as u32 &&
-                      self.mUnit as u32 <= nsCSSUnit::eCSSUnit_Calc_Divided as u32);
+        debug_assert!(
+            nsCSSUnit::eCSSUnit_Array as u32 <= self.mUnit as u32 &&
+                self.mUnit as u32 <= nsCSSUnit::eCSSUnit_Calc_Divided as u32
+        );
         let array = *self.mValue.mArray.as_ref();
         debug_assert!(!array.is_null());
         &*array
@@ -75,37 +71,52 @@ impl nsCSSValue {
     /// Sets LengthOrPercentage value to this nsCSSValue.
     pub unsafe fn set_lop(&mut self, lop: LengthOrPercentage) {
         match lop {
-            LengthOrPercentage::Length(au) => {
-                bindings::Gecko_CSSValue_SetAbsoluteLength(self, au.0)
-            }
-            LengthOrPercentage::Percentage(pc) => {
-                bindings::Gecko_CSSValue_SetPercentage(self, pc.0)
-            }
-            LengthOrPercentage::Calc(calc) => {
-                bindings::Gecko_CSSValue_SetCalc(self, calc.into())
-            }
+            LengthOrPercentage::Length(px) => self.set_px(px.px()),
+            LengthOrPercentage::Percentage(pc) => self.set_percentage(pc.0),
+            LengthOrPercentage::Calc(calc) => bindings::Gecko_CSSValue_SetCalc(self, calc.into()),
         }
+    }
+
+    /// Sets a px value to this nsCSSValue.
+    pub unsafe fn set_px(&mut self, px: f32) {
+        bindings::Gecko_CSSValue_SetPixelLength(self, px)
+    }
+
+    /// Sets a percentage value to this nsCSSValue.
+    pub unsafe fn set_percentage(&mut self, unit_value: f32) {
+        bindings::Gecko_CSSValue_SetPercentage(self, unit_value)
     }
 
     /// Returns LengthOrPercentage value.
     pub unsafe fn get_lop(&self) -> LengthOrPercentage {
         match self.mUnit {
             nsCSSUnit::eCSSUnit_Pixel => {
-                LengthOrPercentage::Length(Au(bindings::Gecko_CSSValue_GetAbsoluteLength(self)))
+                LengthOrPercentage::Length(Length::new(bindings::Gecko_CSSValue_GetNumber(self)))
             },
-            nsCSSUnit::eCSSUnit_Percent => {
-                LengthOrPercentage::Percentage(Percentage(bindings::Gecko_CSSValue_GetPercentage(self)))
-            },
+            nsCSSUnit::eCSSUnit_Percent => LengthOrPercentage::Percentage(Percentage(
+                bindings::Gecko_CSSValue_GetPercentage(self),
+            )),
             nsCSSUnit::eCSSUnit_Calc => {
                 LengthOrPercentage::Calc(bindings::Gecko_CSSValue_GetCalc(self).into())
             },
-            x => panic!("The unit should not be {:?}", x),
+            _ => panic!("Unexpected unit"),
+        }
+    }
+
+    /// Returns Length  value.
+    pub unsafe fn get_length(&self) -> Length {
+        match self.mUnit {
+            nsCSSUnit::eCSSUnit_Pixel => Length::new(bindings::Gecko_CSSValue_GetNumber(self)),
+            _ => panic!("Unexpected unit"),
         }
     }
 
     fn set_valueless_unit(&mut self, unit: nsCSSUnit) {
         debug_assert_eq!(self.mUnit, nsCSSUnit::eCSSUnit_Null);
-        debug_assert!(unit as u32 <= nsCSSUnit::eCSSUnit_DummyInherit as u32, "Not a valueless unit");
+        debug_assert!(
+            unit as u32 <= nsCSSUnit::eCSSUnit_DummyInherit as u32,
+            "Not a valueless unit"
+        );
         self.mUnit = unit;
     }
 
@@ -156,14 +167,29 @@ impl nsCSSValue {
         unsafe { bindings::Gecko_CSSValue_SetAtomIdent(self, s.into_addrefed()) }
     }
 
-    /// Set to a font format
+    /// Set to a font format.
     pub fn set_font_format(&mut self, s: &str) {
         self.set_string_internal(s, nsCSSUnit::eCSSUnit_Font_Format);
     }
 
-    /// Set to a local font value
+    /// Set to a local font value.
     pub fn set_local_font(&mut self, s: &Atom) {
         self.set_string_from_atom_internal(s, nsCSSUnit::eCSSUnit_Local_Font);
+    }
+
+    /// Set to a font stretch.
+    pub fn set_font_stretch(&mut self, s: f32) {
+        unsafe { bindings::Gecko_CSSValue_SetFontStretch(self, s) }
+    }
+
+    /// Set to a font style
+    pub fn set_font_style(&mut self, s: f32) {
+        unsafe { bindings::Gecko_CSSValue_SetFontSlantStyle(self, s) }
+    }
+
+    /// Set to a font weight
+    pub fn set_font_weight(&mut self, w: f32) {
+        unsafe { bindings::Gecko_CSSValue_SetFontWeight(self, w) }
     }
 
     fn set_int_internal(&mut self, value: i32, unit: nsCSSUnit) {
@@ -180,9 +206,14 @@ impl nsCSSValue {
         self.set_int_internal(value.into(), nsCSSUnit::eCSSUnit_Enumerated);
     }
 
+    /// Set to a number value
+    pub fn set_number(&mut self, number: f32) {
+        unsafe { bindings::Gecko_CSSValue_SetFloat(self, number, nsCSSUnit::eCSSUnit_Number) }
+    }
+
     /// Set to a url value
     pub fn set_url(&mut self, url: &SpecifiedUrl) {
-        unsafe { bindings::Gecko_CSSValue_SetURL(self, url.for_ffi()) }
+        unsafe { bindings::Gecko_CSSValue_SetURL(self, url.url_value.get()) }
     }
 
     /// Set to an array of given length
@@ -201,9 +232,7 @@ impl nsCSSValue {
     /// Panics if the unit is not `eCSSUnit_Degree` `eCSSUnit_Grad`, `eCSSUnit_Turn`
     /// or `eCSSUnit_Radian`.
     pub fn get_angle(&self) -> Angle {
-        unsafe {
-            Angle::from_gecko_values(self.float_unchecked(), self.mUnit)
-        }
+        Angle::from_gecko_values(self.float_unchecked(), self.mUnit)
     }
 
     /// Sets Angle value to this nsCSSValue.
@@ -226,9 +255,14 @@ impl nsCSSValue {
     /// Set to a list value
     ///
     /// This is only supported on the main thread.
-    pub fn set_list<I>(&mut self, values: I) where I: ExactSizeIterator<Item=nsCSSValue> {
+    pub fn set_list<I>(&mut self, values: I)
+    where
+        I: ExactSizeIterator<Item = nsCSSValue>,
+    {
         debug_assert!(values.len() > 0, "Empty list is not supported");
-        unsafe { bindings::Gecko_CSSValue_SetList(self, values.len() as u32); }
+        unsafe {
+            bindings::Gecko_CSSValue_SetList(self, values.len() as u32);
+        }
         debug_assert_eq!(self.mUnit, nsCSSUnit::eCSSUnit_List);
         let list: &mut structs::nsCSSValueList = &mut unsafe {
             self.mValue.mList.as_ref() // &*nsCSSValueList_heap
@@ -243,9 +277,13 @@ impl nsCSSValue {
     ///
     /// This is only supported on the main thread.
     pub fn set_pair_list<I>(&mut self, mut values: I)
-    where I: ExactSizeIterator<Item=(nsCSSValue, nsCSSValue)> {
+    where
+        I: ExactSizeIterator<Item = (nsCSSValue, nsCSSValue)>,
+    {
         debug_assert!(values.len() > 0, "Empty list is not supported");
-        unsafe { bindings::Gecko_CSSValue_SetPairList(self, values.len() as u32); }
+        unsafe {
+            bindings::Gecko_CSSValue_SetPairList(self, values.len() as u32);
+        }
         debug_assert_eq!(self.mUnit, nsCSSUnit::eCSSUnit_PairList);
         let mut item_ptr = &mut unsafe {
             self.mValue.mPairList.as_ref() // &*nsCSSValuePairList_heap
@@ -261,13 +299,21 @@ impl nsCSSValue {
     }
 
     /// Set a shared list
-    pub fn set_shared_list<I>(&mut self, values: I) where I: ExactSizeIterator<Item=nsCSSValue> {
+    pub fn set_shared_list<I>(&mut self, values: I)
+    where
+        I: ExactSizeIterator<Item = nsCSSValue>,
+    {
         debug_assert!(values.len() > 0, "Empty list is not supported");
         unsafe { bindings::Gecko_CSSValue_InitSharedList(self, values.len() as u32) };
         debug_assert_eq!(self.mUnit, nsCSSUnit::eCSSUnit_SharedList);
         let list = unsafe {
-            self.mValue.mSharedList.as_ref()
-                .as_mut().expect("List pointer should be non-null").mHead.as_mut()
+            self.mValue
+                .mSharedList
+                .as_ref()
+                .as_mut()
+                .expect("List pointer should be non-null")
+                .mHead
+                .as_mut()
         };
         debug_assert!(list.is_some(), "New created shared list shouldn't be null");
         for (item, new_value) in list.unwrap().into_iter().zip(values) {
@@ -296,7 +342,7 @@ impl<'a> Iterator for nsCSSValueListIterator<'a> {
                 self.current = unsafe { item.mNext.as_ref() };
                 Some(&item.mValue)
             },
-            None => None
+            None => None,
         }
     }
 }
@@ -306,7 +352,9 @@ impl<'a> IntoIterator for &'a nsCSSValueList {
     type IntoIter = nsCSSValueListIterator<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        nsCSSValueListIterator { current: Some(self) }
+        nsCSSValueListIterator {
+            current: Some(self),
+        }
     }
 }
 
@@ -325,7 +373,7 @@ impl<'a> Iterator for nsCSSValueListMutIterator<'a> {
                 self.current = item.mNext;
                 Some(&mut item.mValue)
             },
-            None => None
+            None => None,
         }
     }
 }
@@ -335,8 +383,10 @@ impl<'a> IntoIterator for &'a mut nsCSSValueList {
     type IntoIter = nsCSSValueListMutIterator<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        nsCSSValueListMutIterator { current: self as *mut nsCSSValueList,
-                                    phantom: PhantomData }
+        nsCSSValueListMutIterator {
+            current: self as *mut nsCSSValueList,
+            phantom: PhantomData,
+        }
     }
 }
 
@@ -384,4 +434,12 @@ impl IndexMut<usize> for nsCSSValue_Array {
 pub trait ToNsCssValue {
     /// Convert
     fn convert(self, nscssvalue: &mut nsCSSValue);
+}
+
+impl<T: ToNsCssValue> From<T> for nsCSSValue {
+    fn from(value: T) -> nsCSSValue {
+        let mut result = nsCSSValue::null();
+        value.convert(&mut result);
+        result
+    }
 }

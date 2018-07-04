@@ -4,6 +4,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import, print_function
+
 import BaseHTTPServer
 import SimpleHTTPServer
 import errno
@@ -26,7 +28,7 @@ class EasyServer(ThreadingMixIn, BaseHTTPServer.HTTPServer):
     acceptable_errors = (errno.EPIPE, errno.ECONNABORTED)
 
     def handle_error(self, request, client_address):
-        error = sys.exc_value
+        error = sys.exc_info()[1]
 
         if ((isinstance(error, socket.error) and
              isinstance(error.args, tuple) and
@@ -323,7 +325,7 @@ def main(args=sys.argv[1:]):
     # create the server
     server = MozHttpd(host=host, port=options.port, docroot=options.docroot)
 
-    print "Serving '%s' at %s:%s" % (server.docroot, server.host, server.port)
+    print("Serving '%s' at %s:%s" % (server.docroot, server.host, server.port))
     server.start(block=True)
 
 

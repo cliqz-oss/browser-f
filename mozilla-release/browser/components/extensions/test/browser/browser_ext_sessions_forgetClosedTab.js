@@ -16,7 +16,7 @@ add_task(async function test_sessions_forget_closed_tab() {
           },
           error => {
             browser.test.assertEq(error.message,
-                     `Could not find closed tab using sessionId ${sessionId}.`);
+                                  `Could not find closed tab using sessionId ${sessionId}.`);
             browser.test.sendMessage("forget-reject");
           }
         );
@@ -35,9 +35,11 @@ add_task(async function test_sessions_forget_closed_tab() {
 
   let tabUrl = "http://example.com";
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, tabUrl);
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, tabUrl);
-  await BrowserTestUtils.removeTab(tab);
+  let sessionUpdatePromise = BrowserTestUtils.waitForSessionStoreUpdate(tab);
+  BrowserTestUtils.removeTab(tab);
+  await sessionUpdatePromise;
 
   extension.sendMessage("check-sessions");
   let recentlyClosed = await extension.awaitMessage("recentlyClosed");
@@ -45,8 +47,9 @@ add_task(async function test_sessions_forget_closed_tab() {
   let recentlyClosedTab = recentlyClosed[0].tab;
 
   // Check that forgetting a tab works properly
-  extension.sendMessage("forget-tab", recentlyClosedTab.windowId,
-                                      recentlyClosedTab.sessionId);
+  extension.sendMessage("forget-tab",
+                        recentlyClosedTab.windowId,
+                        recentlyClosedTab.sessionId);
   await extension.awaitMessage("forgot-tab");
   extension.sendMessage("check-sessions");
   let remainingClosed = await extension.awaitMessage("recentlyClosed");
@@ -56,8 +59,9 @@ add_task(async function test_sessions_forget_closed_tab() {
      "The correct tab was forgotten.");
 
   // Check that re-forgetting the same tab fails properly
-  extension.sendMessage("forget-tab", recentlyClosedTab.windowId,
-                                      recentlyClosedTab.sessionId);
+  extension.sendMessage("forget-tab",
+                        recentlyClosedTab.windowId,
+                        recentlyClosedTab.sessionId);
   await extension.awaitMessage("forget-reject");
   extension.sendMessage("check-sessions");
   remainingClosed = await extension.awaitMessage("recentlyClosed");

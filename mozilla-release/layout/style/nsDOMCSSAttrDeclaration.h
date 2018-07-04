@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,11 +10,14 @@
 #define nsDOMCSSAttributeDeclaration_h
 
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/DocGroup.h"
 #include "nsDOMCSSDeclaration.h"
 
 
+class nsSMILValue;
 namespace mozilla {
 namespace dom {
+class DomGroup;
 class Element;
 } // namespace dom
 } // namespace mozilla
@@ -30,15 +34,26 @@ public:
 
   // If GetCSSDeclaration returns non-null, then the decl it returns
   // is owned by our current style rule.
-  virtual mozilla::DeclarationBlock* GetCSSDeclaration(Operation aOperation) override;
-  virtual void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv) override;
-  nsDOMCSSDeclaration::ServoCSSParsingEnvironment GetServoCSSParsingEnvironment() const final;
-  NS_IMETHOD GetParentRule(nsIDOMCSSRule **aParent) override;
+  mozilla::DeclarationBlock* GetCSSDeclaration(Operation aOperation) final;
 
-  virtual nsINode* GetParentObject() override;
+  nsDOMCSSDeclaration::ServoCSSParsingEnvironment
+    GetServoCSSParsingEnvironment(nsIPrincipal* aSubjectPrincipal) const final;
 
-  NS_IMETHOD SetPropertyValue(const nsCSSPropertyID aPropID,
-                              const nsAString& aValue) override;
+  mozilla::css::Rule* GetParentRule() override
+  {
+    return nullptr;
+  }
+
+  nsINode* GetParentObject() override
+  {
+    return mElement;
+  }
+
+  nsresult SetSMILValue(const nsCSSPropertyID aPropID, const nsSMILValue&);
+
+  nsresult SetPropertyValue(const nsCSSPropertyID aPropID,
+                            const nsAString& aValue,
+                            nsIPrincipal* aSubjectPrincipal) override;
 
 protected:
   ~nsDOMCSSAttributeDeclaration();

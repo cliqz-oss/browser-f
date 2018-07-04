@@ -11,6 +11,7 @@
 #include "nsCycleCollectionParticipant.h"
 #include "mozilla/AnimationPerformanceWarning.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/EffectCompositor.h" // For EffectCompositor::CascadeLevel
 #include "mozilla/LinkedList.h"
@@ -44,6 +45,7 @@ struct AnimationRule;
 
 namespace dom {
 
+class AsyncFinishNotification;
 class CSSAnimation;
 class CSSTransition;
 
@@ -105,18 +107,22 @@ public:
   void SetTimeline(AnimationTimeline* aTimeline);
   Nullable<TimeDuration> GetStartTime() const { return mStartTime; }
   void SetStartTime(const Nullable<TimeDuration>& aNewStartTime);
-  Nullable<TimeDuration> GetCurrentTime() const;
+  Nullable<TimeDuration> GetCurrentTime() const {
+    return GetCurrentTimeForHoldTime(mHoldTime);
+  }
   void SetCurrentTime(const TimeDuration& aNewCurrentTime);
   double PlaybackRate() const { return mPlaybackRate; }
   void SetPlaybackRate(double aPlaybackRate);
   AnimationPlayState PlayState() const;
+  bool Pending() const { return mPendingState != PendingState::NotPending; }
   virtual Promise* GetReady(ErrorResult& aRv);
-  virtual Promise* GetFinished(ErrorResult& aRv);
+  Promise* GetFinished(ErrorResult& aRv);
   void Cancel();
-  virtual void Finish(ErrorResult& aRv);
+  void Finish(ErrorResult& aRv);
   virtual void Play(ErrorResult& aRv, LimitBehavior aLimitBehavior);
   virtual void Pause(ErrorResult& aRv);
-  virtual void Reverse(ErrorResult& aRv);
+  void Reverse(ErrorResult& aRv);
+  void UpdatePlaybackRate(double aPlaybackRate);
   bool IsRunningOnCompositor() const;
   IMPL_EVENT_HANDLER(finish);
   IMPL_EVENT_HANDLER(cancel);
@@ -133,6 +139,7 @@ public:
   void SetCurrentTimeAsDouble(const Nullable<double>& aCurrentTime,
                               ErrorResult& aRv);
   virtual AnimationPlayState PlayStateFromJS() const { return PlayState(); }
+  virtual bool PendingFromJS() const { return Pending(); }
   virtual void PlayFromJS(ErrorResult& aRv)
   {
     Play(aRv, LimitBehavior::AutoRewind);
@@ -153,9 +160,7 @@ public:
   virtual void Tick();
   bool NeedsTicks() const
   {
-    AnimationPlayState playState = PlayState();
-    return playState == AnimationPlayState::Running ||
-           playState == AnimationPlayState::Pending;
+    return Pending() || PlayState() == AnimationPlayState::Running;
   }
 
   /**
@@ -242,11 +247,54 @@ public:
   Nullable<TimeDuration> GetCurrentOrPendingStartTime() const;
 
   /**
-   * Calculates the corresponding start time to use for an animation that is
-   * currently pending with current time |mHoldTime| but should behave
-   * as if it began or resumed playback at timeline time |aReadyTime|.
+   * As with the start time, we should use the pending playback rate when
+   * producing layer animations.
    */
-  TimeDuration StartTimeFromReadyTime(const TimeDuration& aReadyTime) const;
+  double CurrentOrPendingPlaybackRate() const
+  {
+    return mPendingPlaybackRate.valueOr(mPlaybackRate);
+  }
+  bool HasPendingPlaybackRate() const { return mPendingPlaybackRate.isSome(); }
+
+  /**
+   * The following relationship from the definition of the 'current time' is
+   * re-used in many algorithms so we extract it here into a static method that
+   * can be re-used:
+   *
+   *   current time = (timeline time - start time) * playback rate
+   *
+   * As per https://drafts.csswg.org/web-animations-1/#current-time
+   */
+  static TimeDuration CurrentTimeFromTimelineTime(
+    const TimeDuration& aTimelineTime,
+    const TimeDuration& aStartTime,
+    float aPlaybackRate)
+  {
+    return (aTimelineTime - aStartTime).MultDouble(aPlaybackRate);
+  }
+
+  /**
+   * As with calculating the current time, we often need to calculate a start
+   * time from a current time. The following method simply inverts the current
+   * time relationship.
+   *
+   * In each case where this is used, the desired behavior for playbackRate ==
+   * 0 is to return the specified timeline time (often referred to as the ready
+   * time).
+   */
+  static TimeDuration StartTimeFromTimelineTime(
+    const TimeDuration& aTimelineTime,
+    const TimeDuration& aCurrentTime,
+    float aPlaybackRate)
+  {
+    TimeDuration result = aTimelineTime;
+    if (aPlaybackRate == 0) {
+      return result;
+    }
+
+    result -= aCurrentTime.MultDouble(1.0 / aPlaybackRate);
+    return result;
+  }
 
   /**
    * Converts a time in the timescale of this Animation's currentTime, to a
@@ -263,8 +311,7 @@ public:
 
   bool IsPausedOrPausing() const
   {
-    return PlayState() == AnimationPlayState::Paused ||
-           mPendingState == PendingState::PausePending;
+    return PlayState() == AnimationPlayState::Paused;
   }
 
   bool HasCurrentEffect() const
@@ -280,8 +327,8 @@ public:
   {
     return mPlaybackRate != 0.0 &&
            mTimeline &&
-           (PlayState() == AnimationPlayState::Running ||
-            mPendingState == PendingState::PlayPending);
+           !mTimeline->GetCurrentTime().IsNull() &&
+           PlayState() == AnimationPlayState::Running;
   }
 
   bool ShouldBeSynchronizedWithMainThread(
@@ -326,8 +373,7 @@ public:
    * Any properties contained in |aPropertiesToSkip| will not be added or
    * updated in |aComposeResult|.
    */
-  template<typename ComposeAnimationResult>
-  void ComposeStyle(ComposeAnimationResult&& aComposeResult,
+  void ComposeStyle(RawServoAnimationValueMap& aComposeResult,
                     const nsCSSPropertyIDSet& aPropertiesToSkip);
 
   void NotifyEffectTimingUpdated();
@@ -341,14 +387,12 @@ public:
    * is canceled, it will be released by its owning element and may not still
    * exist when we would normally go to queue events on the next tick.
    */
-  virtual void MaybeQueueCancelEvent(StickyTimeDuration aActiveTime) {};
+  virtual void MaybeQueueCancelEvent(const StickyTimeDuration& aActiveTime) {};
 
 protected:
   void SilentlySetCurrentTime(const TimeDuration& aNewCurrentTime);
-  void SilentlySetPlaybackRate(double aPlaybackRate);
   void CancelNoUpdate();
   void PlayNoUpdate(ErrorResult& aRv, LimitBehavior aLimitBehavior);
-  void PauseNoUpdate(ErrorResult& aRv);
   void ResumeAt(const TimeDuration& aReadyTime);
   void PauseAt(const TimeDuration& aReadyTime);
   void FinishPendingAt(const TimeDuration& aReadyTime)
@@ -359,6 +403,13 @@ protected:
       PauseAt(aReadyTime);
     } else {
       NS_NOTREACHED("Can't finish pending if we're not in a pending state");
+    }
+  }
+  void ApplyPendingPlaybackRate()
+  {
+    if (mPendingPlaybackRate) {
+      mPlaybackRate = *mPendingPlaybackRate;
+      mPendingPlaybackRate.reset();
     }
   }
 
@@ -381,12 +432,17 @@ protected:
   void UpdateFinishedState(SeekFlag aSeekFlag,
                            SyncNotifyFlag aSyncNotifyFlag);
   void UpdateEffect();
-  void FlushStyle() const;
+  /**
+   * Flush all pending styles other than throttled animation styles (e.g.
+   * animations running on the compositor).
+   */
+  void FlushUnanimatedStyle() const;
   void PostUpdate();
   void ResetFinishedPromise();
   void MaybeResolveFinishedPromise();
   void DoFinishNotification(SyncNotifyFlag aSyncNotifyFlag);
-  void DoFinishNotificationImmediately();
+  friend class AsyncFinishNotification;
+  void DoFinishNotificationImmediately(MicroTaskRunnable* aAsync = nullptr);
   void DispatchPlaybackEvent(const nsAString& aName);
 
   /**
@@ -409,13 +465,25 @@ protected:
    * ready time at the end of painting). Identifying such animations is
    * useful because in some cases animations that are painted together
    * may need to be synchronized.
+   *
+   * We don't, however, want to include animations with a fixed start time such
+   * as animations that are simply having their playbackRate updated or which
+   * are resuming from an aborted pause.
    */
   bool IsNewlyStarted() const {
     return mPendingState == PendingState::PlayPending &&
-           mPendingReadyTime.IsNull();
+           mPendingReadyTime.IsNull() &&
+           mStartTime.IsNull();
   }
   bool IsPossiblyOrphanedPendingAnimation() const;
   StickyTimeDuration EffectEnd() const;
+
+  Nullable<TimeDuration> GetCurrentTimeForHoldTime(
+    const Nullable<TimeDuration>& aHoldTime) const;
+  Nullable<TimeDuration> GetUnconstrainedCurrentTime() const
+  {
+    return GetCurrentTimeForHoldTime(Nullable<TimeDuration>());
+  }
 
   nsIDocument* GetRenderedDocument() const;
 
@@ -427,18 +495,19 @@ protected:
   Nullable<TimeDuration> mPendingReadyTime; // Timeline timescale
   Nullable<TimeDuration> mPreviousCurrentTime; // Animation timescale
   double mPlaybackRate;
+  Maybe<double> mPendingPlaybackRate;
 
   // A Promise that is replaced on each call to Play()
   // and fulfilled when Play() is successfully completed.
   // This object is lazily created by GetReady.
-  // See http://w3c.github.io/web-animations/#current-ready-promise
+  // See http://drafts.csswg.org/web-animations/#current-ready-promise
   RefPtr<Promise> mReady;
 
   // A Promise that is resolved when we reach the end of the effect, or
   // 0 when playing backwards. The Promise is replaced if the animation is
   // finished but then a state change makes it not finished.
   // This object is lazily created by GetFinished.
-  // See http://w3c.github.io/web-animations/#current-finished-promise
+  // See http://drafts.csswg.org/web-animations/#current-finished-promise
   RefPtr<Promise> mFinished;
 
   // Indicates if the animation is in the pending state (and what state it is
@@ -466,7 +535,7 @@ protected:
   // getAnimations() list.
   bool mIsRelevant;
 
-  nsRevocableEventPtr<nsRunnableMethod<Animation>> mFinishNotificationTask;
+  RefPtr<MicroTaskRunnable> mFinishNotificationTask;
   // True if mFinished is resolved or would be resolved if mFinished has
   // yet to be created. This is not set when mFinished is rejected since
   // in that case mFinished is immediately reset to represent a new current

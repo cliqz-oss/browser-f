@@ -1,12 +1,14 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef mozilla_gfx_layers_mlgpu_MLGDeviceTypes_h
 #define mozilla_gfx_layers_mlgpu_MLGDeviceTypes_h
 
 #include "mozilla/TypedEnumBits.h"
+#include "mozilla/gfx/Types.h"
 
 namespace mozilla {
 namespace layers {
@@ -47,6 +49,8 @@ enum class SamplerMode
   LinearClamp = 0,
   // Linear filter, clamped to transparent pixels.
   LinearClampToZero,
+  // Linear filter, wrap edges.
+  LinearRepeat,
   // Point filter, clamped to border.
   Point,
   MaxModes
@@ -103,6 +107,21 @@ MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(MLGRenderTargetFlags);
 // NVIDIA drivers crash when we supply too many rects to ClearView - it
 // seems to cause a stack overflow >= 20 rects. We cap to 12 for now.
 static const size_t kMaxClearViewRects = 12;
+
+static inline SamplerMode
+FilterToSamplerMode(gfx::SamplingFilter aFilter)
+{
+  switch (aFilter) {
+  case gfx::SamplingFilter::POINT:
+    return SamplerMode::Point;
+  case gfx::SamplingFilter::LINEAR:
+  case gfx::SamplingFilter::GOOD:
+    return SamplerMode::LinearClamp;
+  default:
+    MOZ_ASSERT_UNREACHABLE("Unknown sampler mode");
+    return SamplerMode::LinearClamp;
+  }
+}
 
 } // namespace layers
 } // namespace mozilla

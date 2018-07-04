@@ -5,20 +5,18 @@
 
 "use strict";
 
-function test()
-{
+function test() {
   waitForExplicitFinish();
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.selectedBrowser.addEventListener("load", function () {
+  BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(function() {
     openScratchpad(runTests);
-  }, {capture: true, once: true});
+  });
 
-  content.location = "data:text/html;charset=utf8,test Scratchpad pretty print.";
+  gBrowser.loadURI("data:text/html;charset=utf8,test Scratchpad pretty print.");
 }
 
-function runTests(sw)
-{
+function runTests(sw) {
   const sp = sw.Scratchpad;
   sp.setText([
     "// line 1",

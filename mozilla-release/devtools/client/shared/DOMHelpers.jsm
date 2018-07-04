@@ -4,10 +4,8 @@
 
 "use strict";
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const nodeFilterConstants = require("devtools/shared/dom-node-filter-constants");
 
 this.EXPORTED_SYMBOLS = ["DOMHelpers"];
@@ -28,8 +26,7 @@ this.DOMHelpers = function DOMHelpers(aWindow) {
 };
 
 DOMHelpers.prototype = {
-  getParentObject: function Helpers_getParentObject(node)
-  {
+  getParentObject: function Helpers_getParentObject(node) {
     let parentNode = node ? node.parentNode : null;
 
     if (!parentNode) {
@@ -39,12 +36,13 @@ DOMHelpers.prototype = {
         // document type
         if (node.defaultView) {
           let embeddingFrame = node.defaultView.frameElement;
-          if (embeddingFrame)
+          if (embeddingFrame) {
             return embeddingFrame.parentNode;
+          }
         }
       }
       // a Document object without a parentNode or window
-      return null;  // top level has no parent
+      return null; // top level has no parent
     }
 
     if (parentNode.nodeType == this.window.Node.DOCUMENT_NODE) {
@@ -55,22 +53,23 @@ DOMHelpers.prototype = {
       return null;
     }
 
-    if (!parentNode.localName)
+    if (!parentNode.localName) {
       return null;
+    }
 
     return parentNode;
   },
 
   getChildObject: function Helpers_getChildObject(node, index, previousSibling,
-                                                showTextNodesWithWhitespace)
-  {
-    if (!node)
+                                                showTextNodesWithWhitespace) {
+    if (!node) {
       return null;
+    }
 
     if (node.contentDocument) {
       // then the node is a frame
       if (index == 0) {
-        return node.contentDocument.documentElement;  // the node's HTMLElement
+        return node.contentDocument.documentElement; // the node's HTMLElement
       }
       return null;
     }
@@ -80,55 +79,56 @@ DOMHelpers.prototype = {
       if (svgDocument) {
         // then the node is a frame
         if (index == 0) {
-          return svgDocument.documentElement;  // the node's SVGElement
+          return svgDocument.documentElement; // the node's SVGElement
         }
         return null;
       }
     }
 
     let child = null;
-    if (previousSibling)  // then we are walking
+    if (previousSibling) {
+      // then we are walking
       child = this.getNextSibling(previousSibling);
-    else
+    } else {
       child = this.getFirstChild(node);
-
-    if (showTextNodesWithWhitespace)
-      return child;
-
-    for (; child; child = this.getNextSibling(child)) {
-      if (!this.isWhitespaceText(child))
-        return child;
     }
 
-    return null;  // we have no children worth showing.
+    if (showTextNodesWithWhitespace) {
+      return child;
+    }
+
+    for (; child; child = this.getNextSibling(child)) {
+      if (!this.isWhitespaceText(child)) {
+        return child;
+      }
+    }
+
+    return null; // we have no children worth showing.
   },
 
-  getFirstChild: function Helpers_getFirstChild(node)
-  {
+  getFirstChild: function Helpers_getFirstChild(node) {
     let SHOW_ALL = nodeFilterConstants.SHOW_ALL;
     this.treeWalker = node.ownerDocument.createTreeWalker(node,
       SHOW_ALL, null);
     return this.treeWalker.firstChild();
   },
 
-  getNextSibling: function Helpers_getNextSibling(node)
-  {
+  getNextSibling: function Helpers_getNextSibling(node) {
     let next = this.treeWalker.nextSibling();
 
-    if (!next)
+    if (!next) {
       delete this.treeWalker;
+    }
 
     return next;
   },
 
-  isWhitespaceText: function Helpers_isWhitespaceText(node)
-  {
+  isWhitespaceText: function Helpers_isWhitespaceText(node) {
     return node.nodeType == this.window.Node.TEXT_NODE &&
                             !/[^\s]/.exec(node.nodeValue);
   },
 
-  destroy: function Helpers_destroy()
-  {
+  destroy: function Helpers_destroy() {
     delete this.window;
     delete this.treeWalker;
   },
@@ -146,7 +146,7 @@ DOMHelpers.prototype = {
     let docShell = window.QueryInterface(Ci.nsIInterfaceRequestor)
                          .getInterface(Ci.nsIWebNavigation)
                          .QueryInterface(Ci.nsIDocShell);
-    let onReady = function (event) {
+    let onReady = function(event) {
       if (event.target == window.document) {
         docShell.chromeEventHandler.removeEventListener("DOMContentLoaded", onReady);
         // If in `callback` the URL of the window is changed and a listener to DOMContentLoaded

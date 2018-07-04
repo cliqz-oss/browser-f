@@ -1,7 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 add_task(async function() {
   let payload = {
@@ -24,5 +24,5 @@ add_task(async function() {
   let tab = await waitForTabPromise;
   Assert.ok("Tab successfully opened");
   Assert.equal(tab.linkedBrowser.currentURI.spec, payload.data.url);
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

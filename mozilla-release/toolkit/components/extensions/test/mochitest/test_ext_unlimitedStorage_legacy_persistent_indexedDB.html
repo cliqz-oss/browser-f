@@ -3,7 +3,7 @@
 <head>
   <title>Test for simple WebExtension</title>
   <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <script type="text/javascript" src="/tests/SimpleTest/ExtensionTestUtils.js"></script>
   <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
   <script type="text/javascript" src="head.js"></script>
@@ -58,7 +58,7 @@ add_task(async function test_legacy_indexedDB_storagePersistent_unlimitedStorage
 
         browser.test.notifyPass("indexeddb-storagePersistent-unlimitedStorage-done");
       } catch (error) {
-        const loggedError = error instanceof DOMError ? error.message : error;
+        const loggedError = error instanceof DOMException ? error.message : error;
         browser.test.fail(`error while testing persistent IndexedDB storage: ${loggedError}`);
         browser.test.notifyFail("indexeddb-storagePersistent-unlimitedStorage-done");
       }

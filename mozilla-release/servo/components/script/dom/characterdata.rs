@@ -4,7 +4,7 @@
 
 //! DOM bindings for `CharacterData`.
 
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::CharacterDataBinding::CharacterDataMethods;
 use dom::bindings::codegen::Bindings::NodeBinding::NodeBinding::NodeMethods;
 use dom::bindings::codegen::Bindings::ProcessingInstructionBinding::ProcessingInstructionMethods;
@@ -12,7 +12,7 @@ use dom::bindings::codegen::InheritTypes::{CharacterDataTypeId, NodeTypeId};
 use dom::bindings::codegen::UnionTypes::NodeOrString;
 use dom::bindings::error::{Error, ErrorResult, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{LayoutJS, Root};
+use dom::bindings::root::{DomRoot, LayoutDom};
 use dom::bindings::str::DOMString;
 use dom::comment::Comment;
 use dom::document::Document;
@@ -29,28 +29,28 @@ use std::cell::Ref;
 #[dom_struct]
 pub struct CharacterData {
     node: Node,
-    data: DOMRefCell<DOMString>,
+    data: DomRefCell<DOMString>,
 }
 
 impl CharacterData {
     pub fn new_inherited(data: DOMString, document: &Document) -> CharacterData {
         CharacterData {
             node: Node::new_inherited(document),
-            data: DOMRefCell::new(data),
+            data: DomRefCell::new(data),
         }
     }
 
-    pub fn clone_with_data(&self, data: DOMString, document: &Document) -> Root<Node> {
+    pub fn clone_with_data(&self, data: DOMString, document: &Document) -> DomRoot<Node> {
         match self.upcast::<Node>().type_id() {
             NodeTypeId::CharacterData(CharacterDataTypeId::Comment) => {
-                Root::upcast(Comment::new(data, &document))
+                DomRoot::upcast(Comment::new(data, &document))
             }
             NodeTypeId::CharacterData(CharacterDataTypeId::ProcessingInstruction) => {
                 let pi = self.downcast::<ProcessingInstruction>().unwrap();
-                Root::upcast(ProcessingInstruction::new(pi.Target(), data, &document))
+                DomRoot::upcast(ProcessingInstruction::new(pi.Target(), data, &document))
             },
             NodeTypeId::CharacterData(CharacterDataTypeId::Text) => {
-                Root::upcast(Text::new(data, &document))
+                DomRoot::upcast(Text::new(data, &document))
             },
             _ => unreachable!(),
         }
@@ -70,6 +70,16 @@ impl CharacterData {
     fn content_changed(&self) {
         let node = self.upcast::<Node>();
         node.dirty(NodeDamage::OtherNodeDamage);
+
+        // If this is a Text node, we might need to re-parse (say, if our parent
+        // is a <style> element.) We don't need to if this is a Comment or
+        // ProcessingInstruction.
+        if self.is::<Text>() {
+            if let Some(parent_node) = node.GetParentNode() {
+                let mutation = ChildrenMutation::ChangeText;
+                vtable_for(&parent_node).children_changed(&mutation);
+            }
+        }
     }
 }
 
@@ -87,16 +97,6 @@ impl CharacterDataMethods for CharacterData {
         self.content_changed();
         let node = self.upcast::<Node>();
         node.ranges().replace_code_units(node, 0, old_length, new_length);
-
-        // If this is a Text node, we might need to re-parse (say, if our parent
-        // is a <style> element.) We don't need to if this is a Comment or
-        // ProcessingInstruction.
-        if let Some(_) = self.downcast::<Text>() {
-            if let Some(parent_node) = node.GetParentNode() {
-                let mutation = ChildrenMutation::ChangeText;
-                vtable_for(&parent_node).children_changed(&mutation);
-            }
-        }
     }
 
     // https://dom.spec.whatwg.org/#dom-characterdata-length
@@ -237,13 +237,13 @@ impl CharacterDataMethods for CharacterData {
     }
 
     // https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
-    fn GetPreviousElementSibling(&self) -> Option<Root<Element>> {
-        self.upcast::<Node>().preceding_siblings().filter_map(Root::downcast).next()
+    fn GetPreviousElementSibling(&self) -> Option<DomRoot<Element>> {
+        self.upcast::<Node>().preceding_siblings().filter_map(DomRoot::downcast).next()
     }
 
     // https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
-    fn GetNextElementSibling(&self) -> Option<Root<Element>> {
-        self.upcast::<Node>().following_siblings().filter_map(Root::downcast).next()
+    fn GetNextElementSibling(&self) -> Option<DomRoot<Element>> {
+        self.upcast::<Node>().following_siblings().filter_map(DomRoot::downcast).next()
     }
 }
 
@@ -253,7 +253,7 @@ pub trait LayoutCharacterDataHelpers {
 }
 
 #[allow(unsafe_code)]
-impl LayoutCharacterDataHelpers for LayoutJS<CharacterData> {
+impl LayoutCharacterDataHelpers for LayoutDom<CharacterData> {
     #[inline]
     unsafe fn data_for_layout(&self) -> &str {
         &(*self.unsafe_get()).data.borrow_for_layout()
@@ -291,7 +291,7 @@ fn split_at_utf16_code_unit_offset(s: &str, offset: u32) -> Result<(&str, Option
         if c > '\u{FFFF}' {
             if code_units == offset {
                 if opts::get().replace_surrogates {
-                    debug_assert!(c.len_utf8() == 4);
+                    debug_assert_eq!(c.len_utf8(), 4);
                     return Ok((&s[..i], Some(c), &s[i + c.len_utf8()..]))
                 }
                 panic!("\n\n\

@@ -27,8 +27,6 @@ WebGL2Context::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
   if (IsContextLost())
     return JS::NullValue();
 
-  MakeContextCurrent();
-
   switch (pname) {
     /* GLboolean */
     case LOCAL_GL_RASTERIZER_DISCARD:
@@ -47,7 +45,7 @@ WebGL2Context::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
     /* GLenum */
     case LOCAL_GL_READ_BUFFER: {
       if (!mBoundReadFramebuffer)
-        return JS::Int32Value(gl->Screen()->GetReadBufferMode());
+        return JS::Int32Value(mDefaultFB_ReadBuffer);
 
       if (!mBoundReadFramebuffer->ColorReadBuffer())
         return JS::Int32Value(LOCAL_GL_NONE);
@@ -97,10 +95,10 @@ WebGL2Context::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
       return JS::Int32Value(mPixelStore_UnpackSkipRows);
 
     case LOCAL_GL_MAX_3D_TEXTURE_SIZE:
-      return JS::Int32Value(mImplMax3DTextureSize);
+      return JS::Int32Value(mGLMax3DTextureSize);
 
     case LOCAL_GL_MAX_ARRAY_TEXTURE_LAYERS:
-      return JS::Int32Value(mImplMaxArrayTextureLayers);
+      return JS::Int32Value(mGLMaxArrayTextureLayers);
 
     case LOCAL_GL_MAX_VARYING_COMPONENTS: {
       // On OS X Core Profile this is buggy.  The spec says that the
@@ -152,10 +150,7 @@ WebGL2Context::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
       return WebGLObjectAsJSValue(cx, mBoundPixelUnpackBuffer.get(), rv);
 
     case LOCAL_GL_TRANSFORM_FEEDBACK_BUFFER_BINDING:
-      {
-        const auto& tf = mBoundTransformFeedback;
-        return WebGLObjectAsJSValue(cx, tf->mGenericBufferBinding.get(), rv);
-      }
+      return WebGLObjectAsJSValue(cx, mBoundTransformFeedbackBuffer.get(), rv);
 
     case LOCAL_GL_UNIFORM_BUFFER_BINDING:
       return WebGLObjectAsJSValue(cx, mBoundUniformBuffer.get(), rv);

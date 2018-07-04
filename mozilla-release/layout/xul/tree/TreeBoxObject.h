@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -19,6 +20,7 @@ namespace dom {
 
 struct TreeCellInfo;
 class DOMRect;
+enum class CallerType : uint32_t;
 
 class TreeBoxObject final : public BoxObject,
                             public nsITreeBoxObject
@@ -42,9 +44,10 @@ public:
 
   already_AddRefed<nsTreeColumns> GetColumns();
 
-  already_AddRefed<nsITreeView> GetView();
+  already_AddRefed<nsITreeView> GetView(CallerType /* unused */);
 
-  void SetView(nsITreeView* arg, ErrorResult& aRv);
+  void SetView(nsITreeView* arg, CallerType aCallerType,
+               ErrorResult& aRv);
 
   bool Focused();
 

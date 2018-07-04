@@ -55,22 +55,19 @@ function TextEditor(container, node, type) {
       });
     },
     cssProperties: getCssProperties(this.markup.toolbox),
-    contextMenu: this.markup.inspector.onTextBoxContextMenu
   });
 
   this.update();
 }
 
 TextEditor.prototype = {
-  buildMarkup: function (type) {
+  buildMarkup: function(type) {
     let doc = this.markup.doc;
 
     this.elt = doc.createElement("span");
     this.elt.classList.add("editor", type);
 
     if (type === "comment") {
-      this.elt.classList.add("theme-comment");
-
       let openComment = doc.createElement("span");
       openComment.textContent = "<!--";
       this.elt.appendChild(openComment);
@@ -100,7 +97,7 @@ TextEditor.prototype = {
     this.update();
   },
 
-  update: function () {
+  update: function() {
     let longstr = null;
     this.node.getNodeValue().then(ret => {
       longstr = ret;
@@ -121,12 +118,12 @@ TextEditor.prototype = {
     }).catch(console.error);
   },
 
-  destroy: function () {},
+  destroy: function() {},
 
   /**
    * Stub method for consistency with ElementEditor.
    */
-  getInfoAtNode: function () {
+  getInfoAtNode: function() {
     return null;
   }
 };

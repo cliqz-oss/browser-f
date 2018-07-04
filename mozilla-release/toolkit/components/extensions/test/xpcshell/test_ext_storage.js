@@ -3,7 +3,7 @@
 "use strict";
 
 const STORAGE_SYNC_PREF = "webextensions.storage.sync.enabled";
-Cu.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 
 add_task(async function setup() {
   await ExtensionTestUtils.startAddonManager();
@@ -71,6 +71,37 @@ add_task(async function test_local_cache_invalidation() {
   await extension.awaitMessage("check-done");
 
   await extension.unload();
+});
+
+add_task(async function test_single_initialization() {
+  // Grab access to this via the backstage pass to check if we're calling openConnection too often.
+  const {FirefoxAdapter} = ChromeUtils.import("resource://gre/modules/ExtensionStorageSync.jsm", {});
+  const origOpenConnection = FirefoxAdapter.openConnection;
+  let callCount = 0;
+  FirefoxAdapter.openConnection = function(...args) {
+    ++callCount;
+    return origOpenConnection.apply(this, args);
+  };
+  function background() {
+    let promises = ["foo", "bar", "baz", "quux"].map(key =>
+      browser.storage.sync.get(key));
+    Promise.all(promises).then(() => browser.test.notifyPass("initialize once"));
+  }
+  try {
+    let extension = ExtensionTestUtils.loadExtension({
+      manifest: {
+        permissions: ["storage"],
+      },
+      background: `(${background})()`,
+    });
+
+    await extension.startup();
+    await extension.awaitFinish("initialize once");
+    await extension.unload();
+    equal(callCount, 1, "Initialized FirefoxAdapter connection and Kinto exactly once");
+  } finally {
+    FirefoxAdapter.openConnection = origOpenConnection;
+  }
 });
 
 add_task(async function test_config_flag_needed() {
@@ -143,7 +174,7 @@ add_task(async function test_reloading_extensions_works() {
   Preferences.reset(STORAGE_SYNC_PREF);
 });
 
-do_register_cleanup(() => {
+registerCleanupFunction(() => {
   Preferences.reset(STORAGE_SYNC_PREF);
 });
 
@@ -158,7 +189,7 @@ add_task(async function test_backgroundScript() {
 
     browser.storage.onChanged.addListener((changes, areaName) => {
       browser.test.assertEq(expectedAreaName, areaName,
-        "Expected area name received by listener");
+                            "Expected area name received by listener");
       gResolve(changes);
     });
 
@@ -189,7 +220,8 @@ add_task(async function test_backgroundScript() {
       // Set some data and then test getters.
       try {
         await storage.set({"test-prop1": "value1", "test-prop2": "value2"});
-        await checkChanges(areaName,
+        await checkChanges(
+          areaName,
           {"test-prop1": {newValue: "value1"}, "test-prop2": {newValue: "value2"}},
           "set (a)");
 
@@ -222,7 +254,8 @@ add_task(async function test_backgroundScript() {
         browser.test.assertEq(data["test-prop2"], "value2", "prop2 correct (c)");
 
         await storage.remove(["test-prop1", "test-prop2"]);
-        await checkChanges(areaName,
+        await checkChanges(
+          areaName,
           {"test-prop1": {oldValue: "value1"}, "test-prop2": {oldValue: "value2"}},
           "remove array");
 
@@ -239,7 +272,8 @@ add_task(async function test_backgroundScript() {
         clearGlobalChanges();
         await storage.clear();
 
-        await checkChanges(areaName,
+        await checkChanges(
+          areaName,
           {"test-prop1": {oldValue: "value1"}, "test-prop2": {oldValue: "value2"}},
           "clear");
         data = await storage.get(["test-prop1", "test-prop2"]);

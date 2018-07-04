@@ -9,9 +9,11 @@ description: >
     Checking if using "break Identifier" from within catch Block
     appears to be invalid
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 var x=0,y=0;
 

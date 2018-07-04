@@ -5,12 +5,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
 const SHARED_STRINGS_URI = "devtools/client/locales/shared.properties";
 
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const EventEmitter = require("devtools/shared/event-emitter");
 const { LocalizationHelper } = require("devtools/shared/l10n");
 const { ViewHelpers } = require("devtools/client/shared/widgets/view-helpers");
@@ -57,7 +54,7 @@ this.SideMenuWidget = function SideMenuWidget(aNode, aOptions = {}) {
   this._list.setAttribute("with-group-checkboxes", this._showGroupCheckboxes);
   this._list.setAttribute("tabindex", "0");
   this._list.addEventListener("contextmenu", e => this._showContextMenu(e));
-  this._list.addEventListener("keypress", e => this.emit("keyPress", e));
+  this._list.addEventListener("keydown", e => this.emit("keyDown", e));
   this._list.addEventListener("mousedown", e => this.emit("mousePress", e));
   this._parent.appendChild(this._list);
 
@@ -103,7 +100,7 @@ SideMenuWidget.prototype = {
    * @return nsIDOMNode
    *         The element associated with the displayed item.
    */
-  insertItemAt: function (aIndex, aContents, aAttachment = {}) {
+  insertItemAt: function(aIndex, aContents, aAttachment = {}) {
     let group = this._getMenuGroupForName(aAttachment.group);
     let item = this._getMenuItemForGroup(group, aContents, aAttachment);
     let element = item.insertSelfAt(aIndex);
@@ -118,7 +115,7 @@ SideMenuWidget.prototype = {
    *
    * @return bool
    */
-  isScrolledToBottom: function () {
+  isScrolledToBottom: function() {
     if (this._list.lastElementChild) {
       let utils = this.window.QueryInterface(Ci.nsIInterfaceRequestor)
                              .getInterface(Ci.nsIDOMWindowUtils);
@@ -136,7 +133,7 @@ SideMenuWidget.prototype = {
    * Scroll the list to the bottom after a timeout.
    * If the user scrolls in the meantime, cancel this operation.
    */
-  scrollToBottom: function () {
+  scrollToBottom: function() {
     this._list.scrollTop = this._list.scrollHeight;
     this.emit("scroll-to-bottom");
   },
@@ -149,7 +146,7 @@ SideMenuWidget.prototype = {
    * @return nsIDOMNode
    *         The element associated with the displayed item.
    */
-  getItemAtIndex: function (aIndex) {
+  getItemAtIndex: function(aIndex) {
     return this._orderedMenuElementsArray[aIndex];
   },
 
@@ -159,7 +156,7 @@ SideMenuWidget.prototype = {
    * @param nsIDOMNode aChild
    *        The element associated with the displayed item.
    */
-  removeChild: function (aChild) {
+  removeChild: function(aChild) {
     this._getNodeForContents(aChild).remove();
 
     this._orderedMenuElementsArray.splice(
@@ -175,8 +172,7 @@ SideMenuWidget.prototype = {
   /**
    * Removes all of the child nodes from this container.
    */
-  removeAllItems: function () {
-    let parent = this._parent;
+  removeAllItems: function() {
     let list = this._list;
 
     while (list.hasChildNodes()) {
@@ -225,7 +221,7 @@ SideMenuWidget.prototype = {
    * @param nsIDOMNode aElement
    *        The element to make visible.
    */
-  ensureElementIsVisible: function (aElement) {
+  ensureElementIsVisible: function(aElement) {
     if (!aElement) {
       return;
     }
@@ -239,7 +235,7 @@ SideMenuWidget.prototype = {
   /**
    * Shows all the groups, even the ones with no visible children.
    */
-  showEmptyGroups: function () {
+  showEmptyGroups: function() {
     for (let group of this._orderedGroupElementsArray) {
       group.hidden = false;
     }
@@ -248,7 +244,7 @@ SideMenuWidget.prototype = {
   /**
    * Hides all the groups which have no visible children.
    */
-  hideEmptyGroups: function () {
+  hideEmptyGroups: function() {
     let visibleChildNodes = ".side-menu-widget-item-contents:not([hidden=true])";
 
     for (let group of this._orderedGroupElementsArray) {
@@ -267,7 +263,7 @@ SideMenuWidget.prototype = {
    * @param string aValue
    *        The desired attribute value.
    */
-  setAttribute: function (aName, aValue) {
+  setAttribute: function(aName, aValue) {
     this._parent.setAttribute(aName, aValue);
 
     if (aName == "emptyText") {
@@ -281,7 +277,7 @@ SideMenuWidget.prototype = {
    * @param string aName
    *        The name of the attribute.
    */
-  removeAttribute: function (aName) {
+  removeAttribute: function(aName) {
     this._parent.removeAttribute(aName);
 
     if (aName == "emptyText") {
@@ -297,7 +293,7 @@ SideMenuWidget.prototype = {
    * @param boolean aCheckState
    *        True to check, false to uncheck.
    */
-  checkItem: function (aNode, aCheckState) {
+  checkItem: function(aNode, aCheckState) {
     const widgetItem = this._itemsByElement.get(aNode);
     if (!widgetItem) {
       throw new Error("No item for " + aNode);
@@ -320,7 +316,7 @@ SideMenuWidget.prototype = {
   /**
    * Creates and appends a label signaling that this container is empty.
    */
-  _showEmptyText: function () {
+  _showEmptyText: function() {
     if (this._emptyTextNode || !this._emptyTextValue) {
       return;
     }
@@ -335,7 +331,7 @@ SideMenuWidget.prototype = {
   /**
    * Removes the label representing a notice in this container.
    */
-  _removeEmptyText: function () {
+  _removeEmptyText: function() {
     if (!this._emptyTextNode) {
       return;
     }
@@ -353,7 +349,7 @@ SideMenuWidget.prototype = {
    * @return SideMenuGroup
    *         The newly created group.
    */
-  _getMenuGroupForName: function (aName) {
+  _getMenuGroupForName: function(aName) {
     let cachedGroup = this._groupsByName.get(aName);
     if (cachedGroup) {
       return cachedGroup;
@@ -380,7 +376,7 @@ SideMenuWidget.prototype = {
    * @param object aAttachment [optional]
    *        Some attached primitive/object.
    */
-  _getMenuItemForGroup: function (aGroup, aContents, aAttachment) {
+  _getMenuItemForGroup: function(aGroup, aContents, aAttachment) {
     return new SideMenuItem(aGroup, aContents, aAttachment, {
       showArrow: this._showArrows,
       showCheckbox: this._showItemCheckboxes
@@ -398,18 +394,17 @@ SideMenuWidget.prototype = {
    * @return nsIDOMNode
    *         The wrapper node if there is one, or the same child otherwise.
    */
-  _getNodeForContents: function (aChild) {
+  _getNodeForContents: function(aChild) {
     if (aChild.hasAttribute("merged-item-contents")) {
       return aChild;
-    } else {
-      return aChild.parentNode;
     }
+    return aChild.parentNode;
   },
 
   /**
    * Shows the contextMenu element.
    */
-  _showContextMenu: function (e) {
+  _showContextMenu: function(e) {
     if (!this._contextMenu) {
       return;
     }
@@ -490,9 +485,8 @@ function SideMenuGroup(aWidget, aName, aOptions = {}) {
     title.appendChild(name);
     target.appendChild(title);
     target.appendChild(list);
-  }
-  // Skip a few redundant nodes when no title is shown.
-  else {
+  } else {
+    // Skip a few redundant nodes when no title is shown.
     let target = this._target = this._list = this.document.createElement("vbox");
     target.className = "side-menu-widget-group side-menu-widget-group-list";
     target.setAttribute("merged-group-contents", "");
@@ -506,7 +500,9 @@ SideMenuGroup.prototype = {
   get _orderedMenuElementsArray() {
     return this.ownerView._orderedMenuElementsArray;
   },
-  get _itemsByElement() { return this.ownerView._itemsByElement; },
+  get _itemsByElement() {
+    return this.ownerView._itemsByElement;
+  },
 
   /**
    * Inserts this group in the parent container at the specified index.
@@ -514,7 +510,7 @@ SideMenuGroup.prototype = {
    * @param number aIndex
    *        The position in the container intended for this group.
    */
-  insertSelfAt: function (aIndex) {
+  insertSelfAt: function(aIndex) {
     let ownerList = this.ownerView._list;
     let groupsArray = this._orderedGroupElementsArray;
 
@@ -533,7 +529,7 @@ SideMenuGroup.prototype = {
    * @return number
    *         The expected index.
    */
-  findExpectedIndexForSelf: function (sortPredicate) {
+  findExpectedIndexForSelf: function(sortPredicate) {
     let identifier = this.identifier;
     let groupsArray = this._orderedGroupElementsArray;
 
@@ -598,9 +594,8 @@ function SideMenuItem(aGroup, aContents, aAttachment = {}, aOptions = {}) {
       arrow.className = "side-menu-widget-item-arrow";
       container.appendChild(arrow);
     }
-  }
-  // Skip a few redundant nodes when no horizontal arrow or checkbox is shown.
-  else {
+  } else {
+    // Skip a few redundant nodes when no horizontal arrow or checkbox is shown.
     let target = this._target = this._container = this.document.createElement("hbox");
     target.className = "side-menu-widget-item side-menu-widget-item-contents";
     target.setAttribute("merged-item-contents", "");
@@ -617,7 +612,9 @@ SideMenuItem.prototype = {
   get _orderedMenuElementsArray() {
     return this.ownerView._orderedMenuElementsArray;
   },
-  get _itemsByElement() { return this.ownerView._itemsByElement; },
+  get _itemsByElement() {
+    return this.ownerView._itemsByElement;
+  },
 
   /**
    * Inserts this item in the parent group at the specified index.
@@ -627,7 +624,7 @@ SideMenuItem.prototype = {
    * @return nsIDOMNode
    *         The element associated with the displayed item.
    */
-  insertSelfAt: function (aIndex) {
+  insertSelfAt: function(aIndex) {
     let ownerList = this.ownerView._list;
     let menuArray = this._orderedMenuElementsArray;
 
@@ -649,7 +646,7 @@ SideMenuItem.prototype = {
    * @param boolean aCheckState
    *        True to check, false to uncheck.
    */
-  check: function (aCheckState) {
+  check: function(aCheckState) {
     if (!this._checkbox) {
       throw new Error("Cannot check items that do not have checkboxes.");
     }

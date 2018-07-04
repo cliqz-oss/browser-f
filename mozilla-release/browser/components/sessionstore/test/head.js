@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {Utils} = Cu.import("resource://gre/modules/sessionstore/Utils.jsm", {});
+const {Utils} = ChromeUtils.import("resource://gre/modules/sessionstore/Utils.jsm", {});
 const triggeringPrincipal_base64 = Utils.SERIALIZED_SYSTEMPRINCIPAL;
 
 const TAB_STATE_NEEDS_RESTORE = 1;
@@ -15,26 +15,21 @@ const FRAME_SCRIPTS = [
   ROOT + "content-forms.js"
 ];
 
-var globalMM = Cc["@mozilla.org/globalmessagemanager;1"]
-           .getService(Ci.nsIMessageListenerManager);
-
 for (let script of FRAME_SCRIPTS) {
-  globalMM.loadFrameScript(script, true);
+  Services.mm.loadFrameScript(script, true);
 }
 
 registerCleanupFunction(() => {
   for (let script of FRAME_SCRIPTS) {
-    globalMM.removeDelayedFrameScript(script, true);
+    Services.mm.removeDelayedFrameScript(script, true);
   }
 });
 
-const {SessionStore} = Cu.import("resource:///modules/sessionstore/SessionStore.jsm", {});
-const {SessionSaver} = Cu.import("resource:///modules/sessionstore/SessionSaver.jsm", {});
-const {SessionFile} = Cu.import("resource:///modules/sessionstore/SessionFile.jsm", {});
-const {TabState} = Cu.import("resource:///modules/sessionstore/TabState.jsm", {});
-const {TabStateFlusher} = Cu.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
-
-const ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
+const {SessionSaver} = ChromeUtils.import("resource:///modules/sessionstore/SessionSaver.jsm", {});
+const {SessionFile} = ChromeUtils.import("resource:///modules/sessionstore/SessionFile.jsm", {});
+const {TabState} = ChromeUtils.import("resource:///modules/sessionstore/TabState.jsm", {});
+const {TabStateFlusher} = ChromeUtils.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
+const ss = SessionStore;
 
 // Some tests here assume that all restored tabs are loaded without waiting for
 // the user to bring them to the foreground. We ensure this by resetting the
@@ -184,6 +179,20 @@ function promiseTabState(tab, state) {
   let promise = promiseTabRestored(tab);
   ss.setTabState(tab, state);
   return promise;
+}
+
+function promiseWindowRestored(win) {
+  return new Promise(resolve => win.addEventListener("SSWindowRestored", resolve, {once: true}));
+}
+
+async function setBrowserState(state, win = window) {
+  ss.setBrowserState(typeof state != "string" ? JSON.stringify(state) : state);
+  await promiseWindowRestored(win);
+}
+
+async function setWindowState(win, state, overwrite = false) {
+  ss.setWindowState(win, typeof state != "string" ? JSON.stringify(state) : state, overwrite);
+  await promiseWindowRestored(win);
 }
 
 /**
@@ -369,7 +378,7 @@ var gProgressListener = {
   },
 
   onRestored(browser) {
-    if (browser.__SS_restoreState == TAB_STATE_RESTORING) {
+    if (ss.getInternalObjectState(browser) == TAB_STATE_RESTORING) {
       let args = [browser].concat(gProgressListener._countTabs());
       gProgressListener._callback.apply(gProgressListener, args);
     }
@@ -381,11 +390,12 @@ var gProgressListener = {
     for (let win of BrowserWindowIterator()) {
       for (let i = 0; i < win.gBrowser.tabs.length; i++) {
         let browser = win.gBrowser.tabs[i].linkedBrowser;
-        if (browser.isConnected && !browser.__SS_restoreState)
+        let state = ss.getInternalObjectState(browser);
+        if (browser.isConnected && !state)
           wasRestored++;
-        else if (browser.__SS_restoreState == TAB_STATE_RESTORING)
+        else if (state == TAB_STATE_RESTORING)
           isRestoring++;
-        else if (browser.__SS_restoreState == TAB_STATE_NEEDS_RESTORE || !browser.isConnected)
+        else if (state == TAB_STATE_NEEDS_RESTORE || !browser.isConnected)
           needsRestore++;
       }
     }
@@ -471,20 +481,12 @@ function promiseDelayedStartupFinished(aWindow) {
   return new Promise(resolve => whenDelayedStartupFinished(aWindow, resolve));
 }
 
-function promiseEvent(element, eventType, isCapturing = false) {
-  return new Promise(resolve => {
-    element.addEventListener(eventType, function(event) {
-      resolve(event);
-    }, {capture: isCapturing, once: true});
-  });
-}
-
 function promiseTabRestored(tab) {
-  return promiseEvent(tab, "SSTabRestored");
+  return BrowserTestUtils.waitForEvent(tab, "SSTabRestored");
 }
 
 function promiseTabRestoring(tab) {
-  return promiseEvent(tab, "SSTabRestoring");
+  return BrowserTestUtils.waitForEvent(tab, "SSTabRestoring");
 }
 
 function sendMessage(browser, name, data = {}) {
@@ -515,8 +517,10 @@ for (let name of FORM_HELPERS) {
 
 // Removes the given tab immediately and returns a promise that resolves when
 // all pending status updates (messages) of the closing tab have been received.
-function promiseRemoveTab(tab) {
-  return BrowserTestUtils.removeTab(tab);
+function promiseRemoveTabAndSessionState(tab) {
+  let sessionUpdatePromise = BrowserTestUtils.waitForSessionStoreUpdate(tab);
+  BrowserTestUtils.removeTab(tab);
+  return sessionUpdatePromise;
 }
 
 // Write DOMSessionStorage data to the given browser.
@@ -563,4 +567,11 @@ async function checkScroll(tab, expected, msg) {
 
   let scroll = JSON.parse(ss.getTabState(tab)).scroll || null;
   is(JSON.stringify(scroll), JSON.stringify(expected), msg);
+}
+
+function whenDomWindowClosedHandled(aCallback) {
+  Services.obs.addObserver(function observer(aSubject, aTopic) {
+    Services.obs.removeObserver(observer, aTopic);
+    aCallback();
+  }, "sessionstore-debug-domwindowclosed-handled");
 }

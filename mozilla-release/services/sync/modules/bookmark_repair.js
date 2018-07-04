@@ -4,25 +4,23 @@
 
 "use strict";
 
-const Cu = Components.utils;
+var EXPORTED_SYMBOLS = ["BookmarkRepairRequestor", "BookmarkRepairResponder"];
 
-this.EXPORTED_SYMBOLS = ["BookmarkRepairRequestor", "BookmarkRepairResponder"];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/collection_repair.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/resource.js");
+ChromeUtils.import("resource://services-sync/doctor.js");
+ChromeUtils.import("resource://services-sync/telemetry.js");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://services-common/utils.js");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://services-sync/collection_repair.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/resource.js");
-Cu.import("resource://services-sync/doctor.js");
-Cu.import("resource://services-sync/telemetry.js");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-common/utils.js");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesSyncUtils",
-                                  "resource://gre/modules/PlacesSyncUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesSyncUtils",
+                               "resource://gre/modules/PlacesSyncUtils.jsm");
 
 const log = Log.repository.getLogger("Sync.Engine.Bookmarks.Repair");
 
@@ -194,9 +192,11 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
     for (let id of validationInfo.problems.serverMissing) {
       engine.addForWeakUpload(id);
     }
-    let toFetch = engine.toFetch.concat(validationInfo.problems.clientMissing,
-                                        validationInfo.problems.serverDeleted);
-    engine.toFetch = Array.from(new Set(toFetch));
+    engine.toFetch = Utils.setAddAll(
+      Utils.setAddAll(engine.toFetch,
+                      validationInfo.problems.clientMissing),
+      validationInfo.problems.serverDeleted
+    );
     return true;
   }
 
@@ -214,7 +214,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
     if (ids.size > MAX_REQUESTED_IDS) {
       log.info("Not starting a repair as there are over " + MAX_REQUESTED_IDS + " problems");
       let extra = { flowID, reason: `too many problems: ${ids.size}` };
-      this.service.recordTelemetryEvent("repair", "aborted", undefined, extra)
+      this.service.recordTelemetryEvent("repair", "aborted", undefined, extra);
       return false;
     }
 
@@ -226,7 +226,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
     if (this.anyClientsRepairing()) {
       log.info("Can't start repair, since other clients are already repairing bookmarks");
       let extra = { flowID, reason: "other clients repairing" };
-      this.service.recordTelemetryEvent("repair", "aborted", undefined, extra)
+      this.service.recordTelemetryEvent("repair", "aborted", undefined, extra);
       return false;
     }
 
@@ -328,7 +328,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
           let extra = {
             deviceID: this.service.identity.hashedDeviceID(clientID),
             flowID,
-          }
+          };
           this.service.recordTelemetryEvent("repair", "abandon", "missing", extra);
           break;
         }
@@ -345,7 +345,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
             let extra = {
               deviceID: this.service.identity.hashedDeviceID(clientID),
               flowID,
-            }
+            };
             this.service.recordTelemetryEvent("repair", "abandon", "silent", extra);
             break;
           }
@@ -433,7 +433,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
       deviceID: this.service.identity.hashedDeviceID(clientID),
       flowID,
       numIDs: response.ids.length.toString(),
-    }
+    };
     this.service.recordTelemetryEvent("repair", "response", "upload", extra);
     return state;
   }
@@ -454,7 +454,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
       requestor: this.service.clientsEngine.localID,
       ids,
       flowID,
-    }
+    };
     await this.service.clientsEngine.sendCommand("repairRequest", [request], clientID, { flowID });
     this.prefs.set(PREF.REPAIR_WHEN, Math.floor(this._now()));
     // record telemetry about this
@@ -462,7 +462,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
       deviceID: this.service.identity.hashedDeviceID(clientID),
       flowID,
       numIDs: ids.length.toString(),
-    }
+    };
     this.service.recordTelemetryEvent("repair", "request", "upload", extra);
   }
 
@@ -474,7 +474,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
     remoteClients.sort((a, b) => b.serverLastModified - a.serverLastModified);
     for (let client of remoteClients) {
       log.trace("findNextClient considering", client);
-      if (alreadyDone.indexOf(client.id) == -1 && this._isSuitableClient(client)) {
+      if (!alreadyDone.includes(client.id) && this._isSuitableClient(client)) {
         return client.id;
       }
     }
@@ -557,7 +557,7 @@ class BookmarkRepairRequestor extends CollectionRepairRequestor {
   */
   _now() {
     // We use the server time, which is SECONDS
-    return AsyncResource.serverTime;
+    return Resource.serverTime;
   }
 }
 
@@ -582,7 +582,7 @@ class BookmarkRepairResponder extends CollectionRepairResponder {
       rawCommand,
       processedCommand: false,
       ids: [],
-    }
+    };
 
     try {
       let engine = this.service.engineManager.get("bookmarks");
@@ -637,8 +637,8 @@ class BookmarkRepairResponder extends CollectionRepairResponder {
     let engine = this.service.engineManager.get("bookmarks");
     // Determine every item that may be impacted by the requested IDs - eg,
     // this may include children if a requested ID is a folder.
-    // Turn an array of { syncId, syncable } into a map of syncId -> syncable.
-    let repairable = await PlacesSyncUtils.bookmarks.fetchSyncIdsForRepair(request.ids);
+    // Turn an array of { recordId, syncable } into a map of recordId -> syncable.
+    let repairable = await PlacesSyncUtils.bookmarks.fetchRecordIdsForRepair(request.ids);
     if (repairable.length == 0) {
       // server will get upset if we request an empty set, and we can't do
       // anything in that case, so bail now.
@@ -647,7 +647,7 @@ class BookmarkRepairResponder extends CollectionRepairResponder {
 
     // which of these items exist on the server?
     let itemSource = engine.itemSource();
-    itemSource.ids = repairable.map(item => item.syncId);
+    itemSource.ids = repairable.map(item => item.recordId);
     log.trace(`checking the server for items`, itemSource.ids);
     let itemsResponse = await itemSource.get();
     // If the response failed, don't bother trying to parse the output.
@@ -659,7 +659,7 @@ class BookmarkRepairResponder extends CollectionRepairResponder {
     if (!itemsResponse.success) {
       throw new Error(`request for server IDs failed: ${itemsResponse.status}`);
     }
-    let existRemotely = new Set(JSON.parse(itemsResponse));
+    let existRemotely = new Set(itemsResponse.obj);
     // We need to be careful about handing the requested items:
     // * If the item exists locally but isn't in the tree of items we sync
     //   (eg, it might be a left-pane item or similar, we write a tombstone.
@@ -667,7 +667,7 @@ class BookmarkRepairResponder extends CollectionRepairResponder {
     //   children which don't exist on the server. (Note that we assume the
     //   parents *do* exist)
     // Bug 1343101 covers additional issues we might repair in the future.
-    for (let { syncId: id, syncable } of repairable) {
+    for (let { recordId: id, syncable } of repairable) {
       if (requested.has(id)) {
         if (syncable) {
           log.debug(`repair request to upload item '${id}' which exists locally; uploading`);
@@ -701,7 +701,7 @@ class BookmarkRepairResponder extends CollectionRepairResponder {
       return;
     }
     log.debug(`bookmarks engine has uploaded stuff - creating a repair response`, subject);
-    Async.promiseSpinningly(this._finishRepair());
+    this.service.clientsEngine._tracker.asyncObserver.enqueueCall(() => this._finishRepair());
   }
 
   async _finishRepair() {
@@ -721,11 +721,11 @@ class BookmarkRepairResponder extends CollectionRepairResponder {
     let eventExtra = {
       flowID,
       numIDs: response.ids.length.toString(),
-    }
+    };
     if (this._currentState.failureReason) {
       // *sob* - recording this in "extra" means the value must be a string of
       // max 85 chars.
-      eventExtra.failureReason = JSON.stringify(this._currentState.failureReason).substring(0, 85)
+      eventExtra.failureReason = JSON.stringify(this._currentState.failureReason).substring(0, 85);
       this.service.recordTelemetryEvent("repairResponse", "failed", undefined, eventExtra);
     } else {
       this.service.recordTelemetryEvent("repairResponse", "finished", undefined, eventExtra);

@@ -24,8 +24,10 @@ info: |
     StatementListItem[~Yield, ~Return]
 flags: [module]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 yield;

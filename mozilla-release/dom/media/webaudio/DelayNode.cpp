@@ -19,7 +19,7 @@ namespace dom {
 NS_IMPL_CYCLE_COLLECTION_INHERITED(DelayNode, AudioNode,
                                    mDelay)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(DelayNode)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(DelayNode)
 NS_INTERFACE_MAP_END_INHERITING(AudioNode)
 
 NS_IMPL_ADDREF_INHERITED(DelayNode, AudioNode)
@@ -37,9 +37,7 @@ public:
     , mDelay(0.f)
     // Use a smoothing range of 20ms
     , mBuffer(std::max(aMaxDelayTicks,
-                       static_cast<double>(WEBAUDIO_BLOCK_SIZE)),
-              WebAudioUtils::ComputeSmoothingRate(0.02,
-                                                  mDestination->SampleRate()))
+                       static_cast<double>(WEBAUDIO_BLOCK_SIZE)))
     , mMaxDelay(aMaxDelayTicks)
     , mHaveProducedBeforeInput(false)
     , mLeftOverData(INT32_MIN)

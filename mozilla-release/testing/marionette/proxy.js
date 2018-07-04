@@ -4,27 +4,30 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const {
   error,
   WebDriverError,
-} = Cu.import("chrome://marionette/content/error.js", {});
-Cu.import("chrome://marionette/content/modal.js");
+} = ChromeUtils.import("chrome://marionette/content/error.js", {});
+ChromeUtils.import("chrome://marionette/content/evaluate.js");
+ChromeUtils.import("chrome://marionette/content/modal.js");
+const {
+  MessageManagerDestroyedPromise,
+} = ChromeUtils.import("chrome://marionette/content/sync.js", {});
 
 this.EXPORTED_SYMBOLS = ["proxy"];
 
-const uuidgen = Cc["@mozilla.org/uuid-generator;1"]
-    .getService(Ci.nsIUUIDGenerator);
+XPCOMUtils.defineLazyServiceGetter(
+    this, "uuidgen", "@mozilla.org/uuid-generator;1", "nsIUUIDGenerator");
 
-const logger = Log.repository.getLogger("Marionette");
+const log = Log.repository.getLogger("Marionette");
 
 // Proxy handler that traps requests to get a property.  Will prioritise
 // properties that exist on the object's own prototype.
-var ownPriorityGetterTrap = {
+const ownPriorityGetterTrap = {
   get: (obj, prop) => {
     if (obj.hasOwnProperty(prop)) {
       return obj[prop];
@@ -48,14 +51,13 @@ this.proxy = {};
  * passed literally.  The latter specialisation is temporary to achieve
  * backwards compatibility with listener.js.
  *
- * @param {function(): (nsIMessageSender|nsIMessageBroadcaster)} mmFn
- *     Closure function returning the current message manager.
  * @param {function(string, Object, number)} sendAsyncFn
  *     Callback for sending async messages.
+ * @param {function(): browser.Context} browserFn
+ *     Closure that returns the current browsing context.
  */
-proxy.toListener = function(mmFn, sendAsyncFn, browserFn) {
-  let sender = new proxy.AsyncMessageChannel(
-      mmFn, sendAsyncFn, browserFn);
+proxy.toListener = function(sendAsyncFn, browserFn) {
+  let sender = new proxy.AsyncMessageChannel(sendAsyncFn, browserFn);
   return new Proxy(sender, ownPriorityGetterTrap);
 };
 
@@ -64,12 +66,12 @@ proxy.toListener = function(mmFn, sendAsyncFn, browserFn) {
  *
  * The AsyncMessageChannel is an abstraction of the message manager
  * IPC architecture allowing calls to be made to any registered message
- * listener in Marionette.  The {@code #send(...)} method returns a promise
- * that gets resolved when the message handler calls {@code .reply(...)}.
+ * listener in Marionette.  The <code>#send(...)</code> method
+ * returns a promise that gets resolved when the message handler calls
+ * <code>.reply(...)</code>.
  */
 proxy.AsyncMessageChannel = class {
-  constructor(mmFn, sendAsyncFn, browserFn) {
-    this.mmFn_ = mmFn;
+  constructor(sendAsyncFn, browserFn) {
     this.sendAsync = sendAsyncFn;
     this.browserFn_ = browserFn;
 
@@ -85,23 +87,21 @@ proxy.AsyncMessageChannel = class {
     return this.browserFn_();
   }
 
-  get mm() {
-    return this.mmFn_();
-  }
-
   /**
    * Send a message across the channel.  The name of the function to
    * call must be registered as a message listener.
    *
    * Usage:
    *
+   * <pre><code>
    *     let channel = new AsyncMessageChannel(
    *         messageManager, sendAsyncMessage.bind(this));
-   *     let rv = yield channel.send("remoteFunction", ["argument"]);
+   *     let rv = await channel.send("remoteFunction", ["argument"]);
+   * </code></pre>
    *
    * @param {string} name
    *     Function to call in the listener, e.g. for the message listener
-   *     "Marionette:foo8", use "foo".
+   *     <tt>Marionette:foo8</tt>, use <tt>foo</tt>.
    * @param {Array.<?>=} args
    *     Argument list to pass the function. If args has a single entry
    *     that is an object, we assume it's an old style dispatch, and
@@ -123,43 +123,50 @@ proxy.AsyncMessageChannel = class {
       let path = proxy.AsyncMessageChannel.makePath(uuid);
       let cb = msg => {
         this.activeMessageId = null;
+        let {data, type} = msg.json;
 
         switch (msg.json.type) {
           case proxy.AsyncMessageChannel.ReplyType.Ok:
           case proxy.AsyncMessageChannel.ReplyType.Value:
-            resolve(msg.json.data);
+            let payload = evaluate.fromJSON(data);
+            resolve(payload);
             break;
 
           case proxy.AsyncMessageChannel.ReplyType.Error:
-            let err = WebDriverError.fromJSON(msg.json.data);
+            let err = WebDriverError.fromJSON(data);
             reject(err);
             break;
 
           default:
-            throw new TypeError(
-                `Unknown async response type: ${msg.json.type}`);
+            throw new TypeError(`Unknown async response type: ${type}`);
         }
       };
 
-      // The currently selected tab or window has been closed. No clean-up
-      // is necessary to do because all loaded listeners are gone.
-      this.closeHandler = event => {
-        logger.debug(`Received DOM event ${event.type} for ${event.target}`);
+      // The currently selected tab or window is closing. Make sure to wait
+      // until it's fully gone.
+      this.closeHandler = async ({type, target}) => {
+        log.debug(`Received DOM event ${type} for ${target}`);
 
-        switch (event.type) {
-          case "TabClose":
+        let messageManager;
+        switch (type) {
           case "unload":
-            this.removeHandlers();
-            resolve();
+            messageManager = this.browser.window.messageManager;
+            break;
+          case "TabClose":
+            messageManager = this.browser.messageManager;
             break;
         }
+
+        await new MessageManagerDestroyedPromise(messageManager);
+        this.removeHandlers();
+        resolve();
       };
 
       // A modal or tab modal dialog has been opened. To be able to handle it,
       // the active command has to be aborted. Therefore remove all handlers,
       // and cancel any ongoing requests in the listener.
       this.dialogueObserver_ = (subject, topic) => {
-        logger.debug(`Received observer notification "${topic}"`);
+        log.debug(`Received observer notification ${topic}`);
 
         this.removeAllListeners_();
         // TODO(ato): It's not ideal to have listener specific behaviour here:
@@ -210,7 +217,9 @@ proxy.AsyncMessageChannel = class {
       if (this.browser.tab) {
         let node = this.browser.tab.addEventListener ?
             this.browser.tab : this.browser.contentBrowser;
-        node.removeEventListener("TabClose", this.closeHandler);
+        if (node) {
+          node.removeEventListener("TabClose", this.closeHandler);
+        }
       }
     }
   }
@@ -218,8 +227,8 @@ proxy.AsyncMessageChannel = class {
   /**
    * Reply to an asynchronous request.
    *
-   * Passing an WebDriverError prototype will cause the receiving channel
-   * to throw this error.
+   * Passing an {@link WebDriverError} prototype will cause the receiving
+   * channel to throw this error.
    *
    * Usage:
    *
@@ -256,17 +265,11 @@ proxy.AsyncMessageChannel = class {
     }
   }
 
-  sendReply_(uuid, type, data = undefined) {
+  sendReply_(uuid, type, payload = undefined) {
     const path = proxy.AsyncMessageChannel.makePath(uuid);
 
-    let payload;
-    if (data && typeof data.toJSON == "function") {
-      payload = data.toJSON();
-    } else {
-      payload = data;
-    }
-
-    const msg = {type, data: payload};
+    let data = evaluate.toJSON(payload);
+    const msg = {type, data};
 
     // here sendAsync is actually the content frame's
     // sendAsyncMessage(path, message) global
@@ -294,7 +297,7 @@ proxy.AsyncMessageChannel = class {
       callback(msg);
     };
 
-    this.mm.addMessageListener(path, autoRemover);
+    Services.mm.addMessageListener(path, autoRemover);
     this.listeners_.set(path, autoRemover);
   }
 
@@ -304,7 +307,7 @@ proxy.AsyncMessageChannel = class {
     }
 
     let l = this.listeners_.get(path);
-    this.mm.removeMessageListener(path, l[1]);
+    Services.mm.removeMessageListener(path, l);
     return this.listeners_.delete(path);
   }
 
@@ -322,122 +325,9 @@ proxy.AsyncMessageChannel.ReplyType = {
   Error: 2,
 };
 
-/**
- * A transparent content-to-chrome RPC interface where responses are
- * presented as promises.
- *
- * @param {nsIFrameMessageManager} frameMessageManager
- *     The content frame's message manager, which itself is usually an
- *     implementor of.
- */
-proxy.toChromeAsync = function(frameMessageManager) {
-  let sender = new AsyncChromeSender(frameMessageManager);
-  return new Proxy(sender, ownPriorityGetterTrap);
-};
-
-/**
- * Sends asynchronous RPC messages to chrome space using a frame's
- * sendAsyncMessage (nsIAsyncMessageSender) function.
- *
- * Example on how to use from a frame content script:
- *
- *     let sender = new AsyncChromeSender(messageManager);
- *     let promise = sender.send("runEmulatorCmd", "my command");
- *     let rv = yield promise;
- */
-class AsyncChromeSender {
-  constructor(frameMessageManager) {
-    this.mm = frameMessageManager;
-  }
-
-  /**
-   * Call registered function in chrome context.
-   *
-   * @param {string} name
-   *     Function to call in the chrome, e.g. for "Marionette:foo", use
-   *     "foo".
-   * @param {*} args
-   *     Argument list to pass the function.  Must be JSON serialisable.
-   *
-   * @return {Promise}
-   *     A promise that resolves to the value sent back.
-   */
-  send(name, args) {
-    let uuid = uuidgen.generateUUID().toString();
-
-    let proxy = new Promise((resolve, reject) => {
-      let responseListener = msg => {
-        if (msg.json.id != uuid) {
-          return;
-        }
-
-        this.mm.removeMessageListener(
-            "Marionette:listenerResponse", responseListener);
-
-        if ("value" in msg.json) {
-          resolve(msg.json.value);
-        } else if ("error" in msg.json) {
-          reject(msg.json.error);
-        } else {
-          throw new TypeError(
-              `Unexpected response: ${msg.name} ${JSON.stringify(msg.json)}`);
-        }
-      };
-
-      let msg = {arguments: marshal(args), id: uuid};
-      this.mm.addMessageListener(
-          "Marionette:listenerResponse", responseListener);
-      this.mm.sendAsyncMessage("Marionette:" + name, msg);
-    });
-
-    return proxy;
-  }
-}
-
-/**
- * Creates a transparent interface from the content- to the chrome context.
- *
- * Calls to this object will be proxied via the frame's sendSyncMessage
- * (nsISyncMessageSender) function.  Since the message is synchronous,
- * the return value is presented as a return value.
- *
- * Example on how to use from a frame content script:
- *
- *     let chrome = proxy.toChrome(sendSyncMessage.bind(this));
- *     let cookie = chrome.getCookie("foo");
- *
- * @param {nsISyncMessageSender} sendSyncMessageFn
- *     The frame message manager's sendSyncMessage function.
- */
-proxy.toChrome = function(sendSyncMessageFn) {
-  let sender = new proxy.SyncChromeSender(sendSyncMessageFn);
-  return new Proxy(sender, ownPriorityGetterTrap);
-};
-
-/**
- * The SyncChromeSender sends synchronous RPC messages to the chrome
- * context, using a frame's sendSyncMessage (nsISyncMessageSender)
- * function.
- *
- * Example on how to use from a frame content script:
- *
- *     let sender = new SyncChromeSender(sendSyncMessage.bind(this));
- *     let res = sender.send("addCookie", cookie);
- */
-proxy.SyncChromeSender = class {
-  constructor(sendSyncMessage) {
-    this.sendSyncMessage_ = sendSyncMessage;
-  }
-
-  send(func, args) {
-    let name = "Marionette:" + func.toString();
-    return this.sendSyncMessage_(name, marshal(args));
-  }
-};
-
-var marshal = function(args) {
+function marshal(args) {
   if (args.length == 1 && typeof args[0] == "object") {
     return args[0];
   }
   return args;
-};
+}

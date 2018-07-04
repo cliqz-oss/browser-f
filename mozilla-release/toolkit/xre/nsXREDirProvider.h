@@ -37,14 +37,8 @@ public:
 
   static nsXREDirProvider* GetSingleton();
 
-  nsresult GetUserProfilesRootDir(nsIFile** aResult,
-                                  const nsACString* aProfileName,
-                                  const nsACString* aAppName,
-                                  const nsACString* aVendorName);
-  nsresult GetUserProfilesLocalDir(nsIFile** aResult,
-                                   const nsACString* aProfileName,
-                                   const nsACString* aAppName,
-                                   const nsACString* aVendorName);
+  nsresult GetUserProfilesRootDir(nsIFile** aResult);
+  nsresult GetUserProfilesLocalDir(nsIFile** aResult);
 
   // We only set the profile dir, we don't ensure that it exists;
   // that is the responsibility of the toolkit profile service.
@@ -52,21 +46,19 @@ public:
   // the responsibility of the apprunner.
   nsresult SetProfile(nsIFile* aProfileDir, nsIFile* aProfileLocalDir);
 
+  void InitializeUserPrefs();
+
   void DoShutdown();
 
   static nsresult GetUserAppDataDirectory(nsIFile* *aFile) {
-    return GetUserDataDirectory(aFile, false, nullptr, nullptr, nullptr);
+    return GetUserDataDirectory(aFile, false);
   }
   static nsresult GetUserLocalDataDirectory(nsIFile* *aFile) {
-    return GetUserDataDirectory(aFile, true, nullptr, nullptr, nullptr);
+    return GetUserDataDirectory(aFile, true);
   }
 
-  // By default GetUserDataDirectory gets profile path from gAppData,
-  // but that can be overridden by using aProfileName/aAppName/aVendorName.
-  static nsresult GetUserDataDirectory(nsIFile** aFile, bool aLocal,
-                                       const nsACString* aProfileName,
-                                       const nsACString* aAppName,
-                                       const nsACString* aVendorName);
+  // GetUserDataDirectory gets the profile path from gAppData.
+  static nsresult GetUserDataDirectory(nsIFile** aFile, bool aLocal);
 
   /* make sure you clone it, if you need to do stuff to it */
   nsIFile* GetGREDir() { return mGREDir; }
@@ -102,6 +94,7 @@ protected:
   nsresult GetFilesInternal(const char* aProperty, nsISimpleEnumerator** aResult);
   static nsresult GetUserDataDirectoryHome(nsIFile* *aFile, bool aLocal);
   static nsresult GetSysUserExtensionsDirectory(nsIFile* *aFile);
+  static nsresult GetSysUserExtensionsDevDirectory(nsIFile* *aFile);
 #if defined(XP_UNIX) || defined(XP_MACOSX)
   static nsresult GetSystemExtensionsDirectory(nsIFile** aFile);
 #endif
@@ -109,26 +102,18 @@ protected:
 
   // Determine the profile path within the UAppData directory. This is different
   // on every major platform.
-  static nsresult AppendProfilePath(nsIFile* aFile,
-                                    const nsACString* aProfileName,
-                                    const nsACString* aAppName,
-                                    const nsACString* aVendorName,
-                                    bool aLocal);
+  static nsresult AppendProfilePath(nsIFile* aFile, bool aLocal);
 
   static nsresult AppendSysUserExtensionPath(nsIFile* aFile);
+  static nsresult AppendSysUserExtensionsDevPath(nsIFile* aFile);
 
   // Internal helper that splits a path into components using the '/' and '\\'
   // delimiters.
   static inline nsresult AppendProfileString(nsIFile* aFile, const char* aPath);
 
-#if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_CONTENT_SANDBOX)
   // Load the temp directory for sandboxed content processes
   nsresult LoadContentProcessTempDir();
-#endif
-
-#ifdef MOZ_B2G
-  // Calculate and register app-bundled extension directories.
-  void LoadAppBundleDirs();
 #endif
 
   void Append(nsIFile* aDirectory);
@@ -143,7 +128,8 @@ protected:
   nsCOMPtr<nsIFile>      mProfileDir;
   nsCOMPtr<nsIFile>      mProfileLocalDir;
   bool                   mProfileNotified;
-#if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_CONTENT_SANDBOX)
+  bool                   mPrefsInitialized = false;
+#if defined(MOZ_CONTENT_SANDBOX)
   nsCOMPtr<nsIFile>      mContentTempDir;
   nsCOMPtr<nsIFile>      mContentProcessSandboxTempDir;
 #endif

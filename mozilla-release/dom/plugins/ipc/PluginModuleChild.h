@@ -32,19 +32,6 @@
 #include "mozilla/plugins/PluginMessageUtils.h"
 #include "mozilla/plugins/PluginQuirks.h"
 
-// NOTE: stolen from nsNPAPIPlugin.h
-
-#if defined(XP_WIN)
-#define NS_NPAPIPLUGIN_CALLBACK(_type, _name) _type (__stdcall * _name)
-#else
-#define NS_NPAPIPLUGIN_CALLBACK(_type, _name) _type (* _name)
-#endif
-
-typedef NS_NPAPIPLUGIN_CALLBACK(NPError, NP_GETENTRYPOINTS) (NPPluginFuncs* pCallbacks);
-typedef NS_NPAPIPLUGIN_CALLBACK(NPError, NP_PLUGININIT) (const NPNetscapeFuncs* pCallbacks);
-typedef NS_NPAPIPLUGIN_CALLBACK(NPError, NP_PLUGINUNIXINIT) (const NPNetscapeFuncs* pCallbacks, NPPluginFuncs* fCallbacks);
-typedef NS_NPAPIPLUGIN_CALLBACK(NPError, NP_PLUGINSHUTDOWN) (void);
-
 namespace mozilla {
 
 class ChildProfilerController;
@@ -77,6 +64,9 @@ protected:
 
     virtual mozilla::ipc::IPCResult
     RecvInitPluginModuleChild(Endpoint<PPluginModuleChild>&& endpoint) override;
+
+    virtual mozilla::ipc::IPCResult
+    RecvInitPluginFunctionBroker(Endpoint<PFunctionBrokerChild>&& endpoint) override;
 
     virtual PPluginInstanceChild*
     AllocPPluginInstanceChild(const nsCString& aMimeType,
@@ -233,10 +223,6 @@ private:
     bool InitGraphics();
     void DeinitGraphics();
 
-#if defined(OS_WIN)
-    void HookProtectedMode();
-#endif
-
 #if defined(MOZ_WIDGET_GTK)
     static gboolean DetectNestedEventLoop(gpointer data);
     static gboolean ProcessBrowserEvents(gpointer data);
@@ -327,7 +313,17 @@ public: // called by PluginInstanceChild
         return mFunctions.destroy(instance->GetNPP(), 0);
     }
 
+#if defined(OS_MACOSX) && defined(MOZ_SANDBOX)
+    void EnableFlashSandbox(int aLevel, bool aShouldEnableLogging);
+#endif
+
 private:
+
+#if defined(OS_MACOSX) && defined(MOZ_SANDBOX)
+    int mFlashSandboxLevel;
+    bool mEnableFlashSandboxLogging;
+#endif
+
 #if defined(OS_WIN)
     virtual void EnteredCall() override;
     virtual void ExitedCall() override;

@@ -3,7 +3,7 @@
 
 function run_test() {
   let profd = do_get_profile();
-  var SessionFile = Cu.import("resource:///modules/sessionstore/SessionFile.jsm", {}).SessionFile;
+  var SessionFile = ChromeUtils.import("resource:///modules/sessionstore/SessionFile.jsm", {}).SessionFile;
 
   let sourceSession = do_get_file("data/sessionstore_invalid.js");
   sourceSession.copyTo(profd, "sessionstore.js");
@@ -19,7 +19,7 @@ function run_test() {
         getService(Ci.nsISessionStartup);
 
     afterSessionStartupInitialization(function cb() {
-      do_check_eq(startup.sessionType, Ci.nsISessionStartup.NO_SESSION);
+      Assert.equal(startup.sessionType, Ci.nsISessionStartup.NO_SESSION);
       do_test_finished();
     });
   });

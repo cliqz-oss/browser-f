@@ -1,5 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 // This test tests <select> in a child process. This is different than
 // single-process as a <menulist> is used to implement the dropdown list.
@@ -104,7 +105,7 @@ function openSelectPopup(selectPopup, mode = "key", selector = "select", win = w
     return Promise.all([popupShownPromise, mousePromise]);
   }
 
-  EventUtils.synthesizeKey("KEY_ArrowDown", { altKey: true, code: "ArrowDown" }, win);
+  EventUtils.synthesizeKey("KEY_ArrowDown", {altKey: true}, win);
   return popupShownPromise;
 }
 
@@ -135,7 +136,7 @@ async function doSelectTests(contentType, content) {
 
   await openSelectPopup(selectPopup);
 
-  let isWindows = navigator.platform.indexOf("Win") >= 0;
+  let isWindows = navigator.platform.includes("Win");
 
   is(menulist.selectedIndex, 1, "Initial selection");
   is(selectPopup.firstChild.localName, "menucaption", "optgroup is caption");
@@ -143,15 +144,15 @@ async function doSelectTests(contentType, content) {
   is(selectPopup.childNodes[1].localName, "menuitem", "option is menuitem");
   is(selectPopup.childNodes[1].getAttribute("label"), "One", "option label");
 
-  EventUtils.synthesizeKey("KEY_ArrowDown", { code: "ArrowDown" });
+  EventUtils.synthesizeKey("KEY_ArrowDown");
   is(menulist.menuBoxObject.activeChild, menulist.getItemAtIndex(2), "Select item 2");
   is(menulist.selectedIndex, isWindows ? 2 : 1, "Select item 2 selectedIndex");
 
-  EventUtils.synthesizeKey("KEY_ArrowDown", { code: "ArrowDown" });
+  EventUtils.synthesizeKey("KEY_ArrowDown");
   is(menulist.menuBoxObject.activeChild, menulist.getItemAtIndex(3), "Select item 3");
   is(menulist.selectedIndex, isWindows ? 3 : 1, "Select item 3 selectedIndex");
 
-  EventUtils.synthesizeKey("KEY_ArrowDown", { code: "ArrowDown" });
+  EventUtils.synthesizeKey("KEY_ArrowDown");
 
   // On Windows, one can navigate on disabled menuitems
   is(menulist.menuBoxObject.activeChild, menulist.getItemAtIndex(9),
@@ -159,10 +160,10 @@ async function doSelectTests(contentType, content) {
   is(menulist.selectedIndex, isWindows ? 9 : 1, "Select or skip disabled item selectedIndex");
 
   for (let i = 0; i < 10; i++) {
-    is(menulist.getItemAtIndex(i).disabled, i >= 4 && i <= 7, "item " + i + " disabled")
+    is(menulist.getItemAtIndex(i).disabled, i >= 4 && i <= 7, "item " + i + " disabled");
   }
 
-  EventUtils.synthesizeKey("KEY_ArrowUp", { code: "ArrowUp" });
+  EventUtils.synthesizeKey("KEY_ArrowUp");
   is(menulist.menuBoxObject.activeChild, menulist.getItemAtIndex(3), "Select item 3 again");
   is(menulist.selectedIndex, isWindows ? 3 : 1, "Select item 3 selectedIndex");
 
@@ -179,9 +180,9 @@ async function doSelectTests(contentType, content) {
   // Backspace should not go back
   let handleKeyPress = function(event) {
     ok(false, "Should not get keypress event");
-  }
+  };
   window.addEventListener("keypress", handleKeyPress);
-  EventUtils.synthesizeKey("VK_BACK_SPACE", { });
+  EventUtils.synthesizeKey("KEY_Backspace");
   window.removeEventListener("keypress", handleKeyPress);
 
   await hideSelectPopup(selectPopup);
@@ -197,20 +198,20 @@ async function doSelectTests(contentType, content) {
   is((await getInputEvents()), 1, "Open and close with no change - number of input events");
   is((await getChangeEvents()), 1, "Open and close with no change - number of change events");
   is((await getClickEvents()), 1, "Open and close with no change - number of click events");
-  EventUtils.synthesizeKey("VK_TAB", { });
-  EventUtils.synthesizeKey("VK_TAB", { shiftKey: true });
+  EventUtils.synthesizeKey("KEY_Tab");
+  EventUtils.synthesizeKey("KEY_Tab", {shiftKey: true});
   is((await getInputEvents()), 1, "Tab away from select with no change - number of input events");
   is((await getChangeEvents()), 1, "Tab away from select with no change - number of change events");
   is((await getClickEvents()), 1, "Tab away from select with no change - number of click events");
 
   await openSelectPopup(selectPopup, "click");
-  EventUtils.synthesizeKey("KEY_ArrowDown", { code: "ArrowDown" });
+  EventUtils.synthesizeKey("KEY_ArrowDown");
   await hideSelectPopup(selectPopup, "escape");
   is((await getInputEvents()), isWindows ? 2 : 1, "Open and close with change - number of input events");
   is((await getChangeEvents()), isWindows ? 2 : 1, "Open and close with change - number of change events");
   is((await getClickEvents()), 2, "Open and close with change - number of click events");
-  EventUtils.synthesizeKey("VK_TAB", { });
-  EventUtils.synthesizeKey("VK_TAB", { shiftKey: true });
+  EventUtils.synthesizeKey("KEY_Tab");
+  EventUtils.synthesizeKey("KEY_Tab", {shiftKey: true});
   is((await getInputEvents()), isWindows ? 2 : 1, "Tab away from select with change - number of input events");
   is((await getChangeEvents()), isWindows ? 2 : 1, "Tab away from select with change - number of change events");
   is((await getClickEvents()), 2, "Tab away from select with change - number of click events");
@@ -218,7 +219,7 @@ async function doSelectTests(contentType, content) {
   is(selectPopup.lastChild.previousSibling.label, "Seven", "Spaces collapsed");
   is(selectPopup.lastChild.label, "\xA0\xA0Eight\xA0\xA0", "Non-breaking spaces not collapsed");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 add_task(async function setup() {
@@ -280,7 +281,7 @@ add_task(async function() {
   await openSelectPopup(selectPopup, "click", "#one");
 
   popupHiddenPromise = BrowserTestUtils.waitForEvent(selectPopup, "popuphidden");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await popupHiddenPromise;
 
   ok(true, "Popup hidden when tab is closed");
@@ -347,7 +348,7 @@ add_task(async function() {
     await hideSelectPopup(selectPopup);
   }
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 // Test that we get the right events when a select popup is changed.
@@ -434,7 +435,7 @@ add_task(async function test_event_order() {
         });
       });
 
-      EventUtils.synthesizeKey("KEY_ArrowDown", { code: "ArrowDown" });
+      EventUtils.synthesizeKey("KEY_ArrowDown");
       await hideSelectPopup(selectPopup, mode);
       await eventsPromise;
     }
@@ -560,7 +561,7 @@ async function performLargePopupTests(win) {
   if (navigator.platform.indexOf("Mac") == 0) {
     await ContentTask.spawn(browser, null, async function() {
       let doc = content.document;
-      doc.body.style = "padding-top: 400px;"
+      doc.body.style = "padding-top: 400px;";
 
       let select = doc.getElementById("one");
       select.options[41].selected = true;
@@ -584,7 +585,7 @@ add_task(async function test_large_popup() {
 
   await performLargePopupTests(window);
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 // This test checks the same as the previous test but in a new smaller window.
@@ -636,22 +637,22 @@ async function performSelectSearchTests(win) {
   is(selectPopup.childNodes[4].hidden, true, "Third option should be hidden");
   is(selectPopup.childNodes[1].hidden, true, "First group header should be hidden");
 
-  EventUtils.synthesizeKey("VK_BACK_SPACE", {}, win);
+  EventUtils.synthesizeKey("KEY_Backspace", {}, win);
   is(selectPopup.childNodes[4].hidden, false, "Third option should be visible");
 
-  EventUtils.synthesizeKey("VK_BACK_SPACE", {}, win);
+  EventUtils.synthesizeKey("KEY_Backspace", {}, win);
   is(selectPopup.childNodes[5].hidden, false, "Second group header should be visible");
 
-  EventUtils.synthesizeKey("VK_BACK_SPACE", {}, win);
+  EventUtils.synthesizeKey("KEY_Backspace", {}, win);
   EventUtils.synthesizeKey("O", {}, win);
   EventUtils.synthesizeKey("5", {}, win);
   is(selectPopup.childNodes[5].hidden, false, "Second group header should be visible");
   is(selectPopup.childNodes[1].hidden, true, "First group header should be hidden");
 
-  EventUtils.synthesizeKey("VK_BACK_SPACE", {}, win);
+  EventUtils.synthesizeKey("KEY_Backspace", {}, win);
   is(selectPopup.childNodes[1].hidden, false, "First group header should be shown");
 
-  EventUtils.synthesizeKey("VK_BACK_SPACE", {}, win);
+  EventUtils.synthesizeKey("KEY_Backspace", {}, win);
   is(selectPopup.childNodes[8].hidden, true, "Option hidden by content should remain hidden");
 
   await hideSelectPopup(selectPopup, "escape", win);
@@ -670,7 +671,7 @@ add_task(async function test_select_search() {
 
   await performSelectSearchTests(window);
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 
   await SpecialPowers.popPrefEnv();
 });
@@ -710,7 +711,7 @@ add_task(async function test_mousemove_correcttarget() {
     await popupHiddenPromise;
   }
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 // This test checks when a <select> element has some options with altered display values.
@@ -740,7 +741,7 @@ add_task(async function test_somehidden() {
   }
 
   await hideSelectPopup(selectPopup, "escape");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 // This test checks that the popup is closed when the select element is blurred.
@@ -772,5 +773,5 @@ add_task(async function test_blur_hides_popup() {
 
   ok(true, "Blur closed popup");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

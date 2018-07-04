@@ -8,9 +8,9 @@ use dom::bindings::codegen::Bindings::ResponseBinding::ResponseBinding::Response
 use dom::bindings::codegen::Bindings::ResponseBinding::ResponseType as DOMResponseType;
 use dom::bindings::error::Error;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
 use dom::bindings::refcounted::{Trusted, TrustedPromise};
 use dom::bindings::reflector::DomObject;
+use dom::bindings::root::DomRoot;
 use dom::bindings::trace::RootedTraceableBox;
 use dom::globalscope::GlobalScope;
 use dom::headers::Guard;
@@ -21,7 +21,7 @@ use dom::serviceworkerglobalscope::ServiceWorkerGlobalScope;
 use ipc_channel::ipc;
 use ipc_channel::router::ROUTER;
 use js::jsapi::JSAutoCompartment;
-use net_traits::{FetchResponseListener, NetworkError};
+use net_traits::{FetchChannels, FetchResponseListener, NetworkError};
 use net_traits::{FilteredMetadata, FetchMetadata, Metadata};
 use net_traits::CoreResourceMsg::Fetch as NetTraitsFetch;
 use net_traits::request::{Request as NetTraitsRequest, ServiceWorkersMode};
@@ -38,6 +38,58 @@ struct FetchContext {
     body: Vec<u8>,
 }
 
+/// RAII fetch canceller object. By default initialized to not having a canceller
+/// in it, however you can ask it for a cancellation receiver to send to Fetch
+/// in which case it will store the sender. You can manually cancel it
+/// or let it cancel on Drop in that case.
+#[derive(Default, JSTraceable, MallocSizeOf)]
+pub struct FetchCanceller {
+    #[ignore_malloc_size_of = "channels are hard"]
+    cancel_chan: Option<ipc::IpcSender<()>>
+}
+
+impl FetchCanceller {
+    /// Create an empty FetchCanceller
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Obtain an IpcReceiver to send over to Fetch, and initialize
+    /// the internal sender
+    pub fn initialize(&mut self) -> ipc::IpcReceiver<()> {
+        // cancel previous fetch
+        self.cancel();
+        let (rx, tx) = ipc::channel().unwrap();
+        self.cancel_chan = Some(rx);
+        tx
+    }
+
+    /// Cancel a fetch if it is ongoing
+    pub fn cancel(&mut self) {
+        if let Some(chan) = self.cancel_chan.take() {
+            // stop trying to make fetch happen
+            // it's not going to happen
+
+            // The receiver will be destroyed if the request has already completed;
+            // so we throw away the error. Cancellation is a courtesy call,
+            // we don't actually care if the other side heard.
+            let _ = chan.send(());
+        }
+    }
+
+    /// Use this if you don't want it to send a cancellation request
+    /// on drop (e.g. if the fetch completes)
+    pub fn ignore(&mut self) {
+        let _ = self.cancel_chan.take();
+    }
+}
+
+impl Drop for FetchCanceller {
+    fn drop(&mut self) {
+        self.cancel()
+    }
+}
+
 fn from_referrer_to_referrer_url(request: &NetTraitsRequest) -> Option<ServoUrl> {
     request.referrer.to_url().map(|url| url.clone())
 }
@@ -49,10 +101,9 @@ fn request_init_from_request(request: NetTraitsRequest) -> NetTraitsRequestInit 
         headers: request.headers.clone(),
         unsafe_request: request.unsafe_request,
         body: request.body.clone(),
-        type_: request.type_,
         destination: request.destination,
         synchronous: request.synchronous,
-        mode: request.mode,
+        mode: request.mode.clone(),
         use_cors_preflight: request.use_cors_preflight,
         credentials_mode: request.credentials_mode,
         use_url_credentials: request.use_url_credentials,
@@ -61,6 +112,7 @@ fn request_init_from_request(request: NetTraitsRequest) -> NetTraitsRequestInit 
         referrer_policy: request.referrer_policy,
         pipeline_id: request.pipeline_id,
         redirect_mode: request.redirect_mode,
+        cache_mode: request.cache_mode,
         ..NetTraitsRequestInit::default()
     }
 }
@@ -77,7 +129,7 @@ pub fn Fetch(global: &GlobalScope, input: RequestInfo, init: RootedTraceableBox<
     // Step 2
     let request = match Request::Constructor(global, input, init) {
         Err(e) => {
-            promise.reject_error(promise.global().get_cx(), e);
+            promise.reject_error(e);
             return promise;
         },
         Ok(r) => r.get_request(),
@@ -102,13 +154,14 @@ pub fn Fetch(global: &GlobalScope, input: RequestInfo, init: RootedTraceableBox<
     let listener = NetworkListener {
         context: fetch_context,
         task_source: global.networking_task_source(),
-        wrapper: Some(global.get_runnable_wrapper())
+        canceller: Some(global.task_canceller())
     };
 
-    ROUTER.add_route(action_receiver.to_opaque(), box move |message| {
+    ROUTER.add_route(action_receiver.to_opaque(), Box::new(move |message| {
         listener.notify_fetch(message.to().unwrap());
-    });
-    core_resource_thread.send(NetTraitsFetch(request_init, action_sender)).unwrap();
+    }));
+    core_resource_thread.send(
+        NetTraitsFetch(request_init, FetchChannels::ResponseMsg(action_sender, None))).unwrap();
 
     promise
 }
@@ -135,9 +188,7 @@ impl FetchResponseListener for FetchContext {
         match fetch_metadata {
             // Step 4.1
             Err(_) => {
-                promise.reject_error(
-                    promise.global().get_cx(),
-                    Error::Type("Network error occurred".to_string()));
+                promise.reject_error(Error::Type("Network error occurred".to_string()));
                 self.fetch_promise = Some(TrustedPromise::new(promise));
                 self.response_object.root().set_type(DOMResponseType::Error);
                 return;
@@ -167,9 +218,7 @@ impl FetchResponseListener for FetchContext {
             }
         }
         // Step 4.3
-        promise.resolve_native(
-            promise_cx,
-            &self.response_object.root());
+        promise.resolve_native(&self.response_object.root());
         self.fetch_promise = Some(TrustedPromise::new(promise));
     }
 
@@ -188,7 +237,7 @@ impl FetchResponseListener for FetchContext {
     }
 }
 
-fn fill_headers_with_metadata(r: Root<Response>, m: Metadata) {
+fn fill_headers_with_metadata(r: DomRoot<Response>, m: Metadata) {
     r.set_headers(m.headers);
     r.set_raw_status(m.status);
     r.set_final_url(m.final_url);

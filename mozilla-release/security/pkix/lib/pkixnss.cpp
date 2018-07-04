@@ -211,6 +211,14 @@ RegisterErrorTable()
     { "MOZILLA_PKIX_ERROR_EMPTY_ISSUER_NAME",
       "The server presented a certificate with an empty issuer distinguished "
       "name." },
+    { "MOZILLA_PKIX_ERROR_ADDITIONAL_POLICY_CONSTRAINT_FAILED",
+      "An additional policy constraint failed when validating this "
+      "certificate." },
+    { "MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT",
+      "The certificate is not trusted because it is self-signed." },
+    { "MOZILLA_PKIX_ERROR_MITM_DETECTED",
+      "Your connection is being intercepted by a TLS proxy. Uninstall it if "
+      "possible or configure your device to trust its root certificate." },
   };
   // Note that these error strings are not localizable.
   // When these strings change, update the localization information too.

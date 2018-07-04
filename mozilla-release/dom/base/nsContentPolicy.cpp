@@ -17,9 +17,9 @@
 #include "nsContentPolicy.h"
 #include "nsIURI.h"
 #include "nsIDocShell.h"
-#include "nsIDOMElement.h"
 #include "nsIDOMNode.h"
 #include "nsIDOMWindow.h"
+#include "nsITabChild.h"
 #include "nsIContent.h"
 #include "nsIImageLoadingContent.h"
 #include "nsILoadContext.h"
@@ -46,9 +46,6 @@ NS_NewContentPolicy(nsIContentPolicy **aResult)
 
 nsContentPolicy::nsContentPolicy()
     : mPolicies(NS_CONTENTPOLICY_CATEGORY)
-    , mSimplePolicies(NS_SIMPLECONTENTPOLICY_CATEGORY)
-    , mMixedContentBlocker(do_GetService(NS_MIXEDCONTENTBLOCKER_CONTRACTID))
-    , mCSPService(do_GetService(CSPSERVICE_CONTRACTID))
 {
 }
 
@@ -76,16 +73,20 @@ nsContentPolicy::~nsContentPolicy()
 
 inline nsresult
 nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
-                             SCPMethod         simplePolicyMethod,
-                             nsContentPolicyType contentType,
                              nsIURI           *contentLocation,
-                             nsIURI           *requestingLocation,
-                             nsISupports      *requestingContext,
+                             nsILoadInfo      *loadInfo,
                              const nsACString &mimeType,
-                             nsISupports      *extra,
-                             nsIPrincipal     *requestPrincipal,
                              int16_t           *decision)
 {
+    nsContentPolicyType contentType = loadInfo->InternalContentPolicyType();
+    nsCOMPtr<nsISupports> requestingContext = loadInfo->GetLoadingContext();
+    nsCOMPtr<nsIPrincipal> requestPrincipal = loadInfo->TriggeringPrincipal();
+    nsCOMPtr<nsIURI> requestingLocation;
+    nsCOMPtr<nsIPrincipal> loadingPrincipal = loadInfo->LoadingPrincipal();
+    if (loadingPrincipal) {
+      loadingPrincipal->GetURI(getter_AddRefs(requestingLocation));
+    }
+
     //sanity-check passed-through parameters
     NS_PRECONDITION(decision, "Null out pointer");
     WARN_IF_URI_UNINITIALIZED(contentLocation, "Request URI");
@@ -95,8 +96,9 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
     {
         nsCOMPtr<nsIDOMNode> node(do_QueryInterface(requestingContext));
         nsCOMPtr<nsIDOMWindow> window(do_QueryInterface(requestingContext));
-        NS_ASSERTION(!requestingContext || node || window,
-                     "Context should be a DOM node or a DOM window!");
+        nsCOMPtr<nsITabChild> tabChild(do_QueryInterface(requestingContext));
+        NS_ASSERTION(!requestingContext || node || window || tabChild,
+                     "Context should be a DOM node, DOM window or a tabChild!");
     }
 #endif
 
@@ -147,67 +149,8 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
     int32_t count = entries.Count();
     for (int32_t i = 0; i < count; i++) {
         /* check the appropriate policy */
-        // Send internal content policy type to CSP and mixed content blocker
-        nsContentPolicyType type = externalType;
-        if (mMixedContentBlocker == entries[i] || mCSPService == entries[i]) {
-          type = contentType;
-        }
-        rv = (entries[i]->*policyMethod)(type, contentLocation,
-                                         requestingLocation, requestingContext,
-                                         mimeType, extra, requestPrincipal,
-                                         decision);
-
-        if (NS_SUCCEEDED(rv) && NS_CP_REJECTED(*decision)) {
-            // If we are blocking an image, we have to let the
-            // ImageLoadingContent know that we blocked the load.
-            if (externalType == nsIContentPolicy::TYPE_IMAGE ||
-                externalType == nsIContentPolicy::TYPE_IMAGESET) {
-              nsCOMPtr<nsIImageLoadingContent> img =
-                do_QueryInterface(requestingContext);
-              if (img) {
-                img->SetBlockedRequest(*decision);
-              }
-            }
-            /* policy says no, no point continuing to check */
-            return NS_OK;
-        }
-    }
-
-    nsCOMPtr<nsIDOMElement> topFrameElement;
-    bool isTopLevel = true;
-
-    if (window) {
-        nsCOMPtr<nsIDocShell> docShell = window->GetDocShell();
-        nsCOMPtr<nsILoadContext> loadContext = do_QueryInterface(docShell);
-        if (loadContext) {
-          loadContext->GetTopFrameElement(getter_AddRefs(topFrameElement));
-        }
-
-        MOZ_ASSERT(window->IsOuterWindow());
-
-        if (topFrameElement) {
-            nsCOMPtr<nsPIDOMWindowOuter> topWindow = window->GetScriptableTop();
-            isTopLevel = topWindow == window;
-        } else {
-            // If we don't have a top frame element, then requestingContext is
-            // part of the top-level XUL document. Presumably it's the <browser>
-            // element that content is being loaded into, so we call it the
-            // topFrameElement.
-            topFrameElement = do_QueryInterface(requestingContext);
-            isTopLevel = true;
-        }
-    }
-
-    const nsCOMArray<nsISimpleContentPolicy>& simpleEntries =
-        mSimplePolicies.GetCachedEntries();
-    count = simpleEntries.Count();
-    for (int32_t i = 0; i < count; i++) {
-        /* check the appropriate policy */
-        rv = (simpleEntries[i]->*simplePolicyMethod)(externalType, contentLocation,
-                                                     requestingLocation,
-                                                     topFrameElement, isTopLevel,
-                                                     mimeType, extra, requestPrincipal,
-                                                     decision);
+        rv = (entries[i]->*policyMethod)(contentLocation, loadInfo,
+                                         mimeType, decision);
 
         if (NS_SUCCEEDED(rv) && NS_CP_REJECTED(*decision)) {
             // If we are blocking an image, we have to let the
@@ -234,6 +177,11 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
 //logType must be a literal string constant
 #define LOG_CHECK(logType)                                                     \
   PR_BEGIN_MACRO                                                               \
+    nsCOMPtr<nsIURI> requestingLocation;                                       \
+    nsCOMPtr<nsIPrincipal> loadingPrincipal = loadInfo->LoadingPrincipal();    \
+    if (loadingPrincipal) {                                                    \
+      loadingPrincipal->GetURI(getter_AddRefs(requestingLocation));            \
+    }                                                                          \
     /* skip all this nonsense if the call failed or logging is disabled */     \
     if (NS_SUCCEEDED(rv) && MOZ_LOG_TEST(gConPolLog, LogLevel::Debug)) {       \
       const char *resultName;                                                  \
@@ -254,44 +202,30 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
   PR_END_MACRO
 
 NS_IMETHODIMP
-nsContentPolicy::ShouldLoad(uint32_t          contentType,
-                            nsIURI           *contentLocation,
-                            nsIURI           *requestingLocation,
-                            nsISupports      *requestingContext,
+nsContentPolicy::ShouldLoad(nsIURI           *contentLocation,
+                            nsILoadInfo      *loadInfo,
                             const nsACString &mimeType,
-                            nsISupports      *extra,
-                            nsIPrincipal     *requestPrincipal,
                             int16_t          *decision)
 {
     // ShouldProcess does not need a content location, but we do
     NS_PRECONDITION(contentLocation, "Must provide request location");
     nsresult rv = CheckPolicy(&nsIContentPolicy::ShouldLoad,
-                              &nsISimpleContentPolicy::ShouldLoad,
-                              contentType,
-                              contentLocation, requestingLocation,
-                              requestingContext, mimeType, extra,
-                              requestPrincipal, decision);
+                              contentLocation, loadInfo,
+                              mimeType, decision);
     LOG_CHECK("ShouldLoad");
 
     return rv;
 }
 
 NS_IMETHODIMP
-nsContentPolicy::ShouldProcess(uint32_t          contentType,
-                               nsIURI           *contentLocation,
-                               nsIURI           *requestingLocation,
-                               nsISupports      *requestingContext,
+nsContentPolicy::ShouldProcess(nsIURI           *contentLocation,
+                               nsILoadInfo      *loadInfo,
                                const nsACString &mimeType,
-                               nsISupports      *extra,
-                               nsIPrincipal     *requestPrincipal,
                                int16_t          *decision)
 {
     nsresult rv = CheckPolicy(&nsIContentPolicy::ShouldProcess,
-                              &nsISimpleContentPolicy::ShouldProcess,
-                              contentType,
-                              contentLocation, requestingLocation,
-                              requestingContext, mimeType, extra,
-                              requestPrincipal, decision);
+                              contentLocation, loadInfo,
+                              mimeType, decision);
     LOG_CHECK("ShouldProcess");
 
     return rv;

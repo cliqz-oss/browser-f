@@ -35,9 +35,9 @@ function fireCopyEvent(element) {
  */
 function getComputedViewProperty(view, name) {
   let prop;
-  for (let property of view.styleDocument.querySelectorAll(".property-view")) {
-    let nameSpan = property.querySelector(".property-name");
-    let valueSpan = property.querySelector(".property-value");
+  for (let property of view.styleDocument.querySelectorAll(".computed-property-view")) {
+    let nameSpan = property.querySelector(".computed-property-name");
+    let valueSpan = property.querySelector(".computed-property-value");
 
     if (nameSpan.firstChild.textContent === name) {
       prop = {nameSpan: nameSpan, valueSpan: valueSpan};
@@ -68,11 +68,11 @@ function getComputedViewPropertyView(view, name) {
 }
 
 /**
- * Get a reference to the property-content element for a given property name in
+ * Get a reference to the computed-property-content element for a given property name in
  * the computed-view.
- * A property-content element always follows (nextSibling) the property itself
+ * A computed-property-content element always follows (nextSibling) the property itself
  * and is only shown when the twisty icon is expanded on the property.
- * A property-content element contains matched rules, with selectors,
+ * A computed-property-content element contains matched rules, with selectors,
  * properties, values and stylesheet links
  *
  * @param {CssComputedView} view
@@ -82,13 +82,13 @@ function getComputedViewPropertyView(view, name) {
  * @return {Promise} A promise that resolves to the property matched rules
  * container
  */
-var getComputedViewMatchedRules = Task.async(function* (view, name) {
+var getComputedViewMatchedRules = async function(view, name) {
   let expander;
   let propertyContent;
-  for (let property of view.styleDocument.querySelectorAll(".property-view")) {
-    let nameSpan = property.querySelector(".property-name");
+  for (let property of view.styleDocument.querySelectorAll(".computed-property-view")) {
+    let nameSpan = property.querySelector(".computed-property-name");
     if (nameSpan.firstChild.textContent === name) {
-      expander = property.querySelector(".expandable");
+      expander = property.querySelector(".computed-expandable");
       propertyContent = property.nextSibling;
       break;
     }
@@ -98,11 +98,11 @@ var getComputedViewMatchedRules = Task.async(function* (view, name) {
     // Need to expand the property
     let onExpand = view.inspector.once("computed-view-property-expanded");
     expander.click();
-    yield onExpand;
+    await onExpand;
   }
 
   return propertyContent;
-});
+};
 
 /**
  * Get the text value of the property corresponding to a given name in the
@@ -132,7 +132,7 @@ function getComputedViewPropertyValue(view, name, propertyName) {
  */
 function expandComputedViewPropertyByIndex(view, index) {
   info("Expanding property " + index + " in the computed view");
-  let expandos = view.styleDocument.querySelectorAll("#propertyContainer .expandable");
+  let expandos = view.styleDocument.querySelectorAll(".computed-expandable");
   if (!expandos.length || !expandos[index]) {
     return promise.reject();
   }
@@ -152,7 +152,7 @@ function expandComputedViewPropertyByIndex(view, index) {
  * @return {DOMNode} The link at the given index, if one exists, null otherwise
  */
 function getComputedViewLinkByIndex(view, index) {
-  let links = view.styleDocument.querySelectorAll(".rule-link .link");
+  let links = view.styleDocument.querySelectorAll(".rule-link .computed-link");
   return links[index];
 }
 
@@ -164,7 +164,7 @@ function getComputedViewLinkByIndex(view, index) {
  */
 function selectAllText(view) {
   info("Selecting all the text");
-  view._contextmenu._onSelectAll();
+  view.contextMenu._onSelectAll();
 }
 
 /**
@@ -175,14 +175,14 @@ function selectAllText(view) {
  * @param {String} expectedPattern
  *        A regular expression used to check the content of the clipboard
  */
-function* copyAllAndCheckClipboard(view, expectedPattern) {
+async function copyAllAndCheckClipboard(view, expectedPattern) {
   selectAllText(view);
   let contentDoc = view.styleDocument;
-  let prop = contentDoc.querySelector(".property-view");
+  let prop = contentDoc.querySelector(".computed-property-view");
 
   try {
     info("Trigger a copy event and wait for the clipboard content");
-    yield waitForClipboardPromise(() => fireCopyEvent(prop),
+    await waitForClipboardPromise(() => fireCopyEvent(prop),
                                   () => checkClipboard(expectedPattern));
   } catch (e) {
     failClipboardCheck(expectedPattern);
@@ -201,11 +201,11 @@ function* copyAllAndCheckClipboard(view, expectedPattern) {
  * @param {String} expectedPattern
  *        A regular expression used to check the content of the clipboard
  */
-function* copySomeTextAndCheckClipboard(view, positions, expectedPattern) {
+async function copySomeTextAndCheckClipboard(view, positions, expectedPattern) {
   info("Testing selection copy");
 
   let contentDocument = view.styleDocument;
-  let props = contentDocument.querySelectorAll(".property-view");
+  let props = contentDocument.querySelectorAll(".computed-property-view");
 
   info("Create the text selection range");
   let range = contentDocument.createRange();
@@ -215,7 +215,7 @@ function* copySomeTextAndCheckClipboard(view, positions, expectedPattern) {
 
   try {
     info("Trigger a copy event and wait for the clipboard content");
-    yield waitForClipboardPromise(() => fireCopyEvent(props[0]),
+    await waitForClipboardPromise(() => fireCopyEvent(props[0]),
                                   () => checkClipboard(expectedPattern));
   } catch (e) {
     failClipboardCheck(expectedPattern);

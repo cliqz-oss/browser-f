@@ -25,41 +25,12 @@
 
 namespace js {
 
+class GlobalObject;
 class TypedArrayObject;
 class WasmFunctionScope;
+class WasmInstanceScope;
 
 namespace wasm {
-
-// Creates a testing-only NaN JS object with fields as described above, for
-// T=float or T=double.
-
-template<typename T>
-JSObject*
-CreateCustomNaNObject(JSContext* cx, T* addr);
-
-// Converts a testing-only NaN JS object with a nan_low field to a float32 NaN
-// with nan_low as the payload.
-
-bool
-ReadCustomFloat32NaNObject(JSContext* cx, HandleValue v, uint32_t* ret);
-
-// Converts a testing-only NaN JS object with nan_{low,high} components to a
-// double NaN with nan_low|(nan_high)>>32 as the payload.
-
-bool
-ReadCustomDoubleNaNObject(JSContext* cx, HandleValue v, uint64_t* ret);
-
-// Creates a JS object containing two fields (low: low 32 bits; high: high 32
-// bits) of a given Int64 value. For testing purposes only.
-
-JSObject*
-CreateI64Object(JSContext* cx, int64_t i64);
-
-// Reads an int64 from a JS object with the same shape as described in the
-// comment above. For testing purposes only.
-
-bool
-ReadI64Object(JSContext* cx, HandleValue v, int64_t* i64);
 
 // Return whether WebAssembly can be compiled on this platform.
 // This must be checked and must be true to call any of the top-level wasm
@@ -72,6 +43,15 @@ HasCompilerSupport(JSContext* cx);
 
 bool
 HasSupport(JSContext* cx);
+
+// ToWebAssemblyValue and ToJSValue are conversion functions defined in
+// the Wasm JS API spec.
+
+bool
+ToWebAssemblyValue(JSContext* cx, ValType targetType, HandleValue v, Val* val);
+
+Value
+ToJSValue(const Val& val);
 
 // Compiles the given binary wasm module given the ArrayBufferObject
 // and links the module's imports with the given import object.
@@ -101,6 +81,9 @@ ExportedFunctionToInstanceObject(JSFunction* fun);
 extern uint32_t
 ExportedFunctionToFuncIndex(JSFunction* fun);
 
+extern bool
+IsSharedWasmMemoryObject(JSObject* obj);
+
 } // namespace wasm
 
 // The class of the WebAssembly global namespace object.
@@ -108,7 +91,7 @@ ExportedFunctionToFuncIndex(JSFunction* fun);
 extern const Class WebAssemblyClass;
 
 JSObject*
-InitWebAssemblyClass(JSContext* cx, HandleObject global);
+InitWebAssemblyClass(JSContext* cx, Handle<GlobalObject*> global);
 
 // The class of WebAssembly.Module. Each WasmModuleObject owns a
 // wasm::Module. These objects are used both as content-facing JS objects and as
@@ -137,6 +120,54 @@ class WasmModuleObject : public NativeObject
     wasm::Module& module() const;
 };
 
+// The class of WebAssembly.Global.  This wraps a storage location, and there is
+// a per-agent one-to-one relationship between the WasmGlobalObject and the
+// storage location (the Cell) it wraps: if a module re-exports an imported
+// global, the imported and exported WasmGlobalObjects are the same, and if a
+// module exports a global twice, the two exported WasmGlobalObjects are the
+// same.
+
+class WasmGlobalObject : public NativeObject
+{
+    static const unsigned TYPE_SLOT = 0;
+    static const unsigned MUTABLE_SLOT = 1;
+    static const unsigned CELL_SLOT = 2;
+
+    static const ClassOps classOps_;
+    static void finalize(FreeOp*, JSObject* obj);
+
+    static bool valueGetterImpl(JSContext* cx, const CallArgs& args);
+    static bool valueGetter(JSContext* cx, unsigned argc, Value* vp);
+    static bool valueSetterImpl(JSContext* cx, const CallArgs& args);
+    static bool valueSetter(JSContext* cx, unsigned argc, Value* vp);
+
+  public:
+    // For exposed globals the Cell holds the value of the global; the
+    // instance's global area holds a pointer to the Cell.
+    union Cell {
+        int32_t i32;
+        int64_t i64;
+        float   f32;
+        double  f64;
+    };
+
+    static const unsigned RESERVED_SLOTS = 3;
+    static const Class class_;
+    static const JSPropertySpec properties[];
+    static const JSFunctionSpec methods[];
+    static const JSFunctionSpec static_methods[];
+    static bool construct(JSContext*, unsigned, Value*);
+
+    static WasmGlobalObject* create(JSContext* cx, const wasm::Val& value, bool isMutable);
+
+    wasm::ValType type() const;
+    wasm::Val val() const;
+    bool isMutable() const;
+    // value() will MOZ_CRASH if the type is int64
+    Value value() const;
+    Cell* cell() const;
+};
+
 // The class of WebAssembly.Instance. Each WasmInstanceObject owns a
 // wasm::Instance. These objects are used both as content-facing JS objects and
 // as internal implementation details of asm.js.
@@ -147,6 +178,9 @@ class WasmInstanceObject : public NativeObject
     static const unsigned EXPORTS_OBJ_SLOT = 1;
     static const unsigned EXPORTS_SLOT = 2;
     static const unsigned SCOPES_SLOT = 3;
+    static const unsigned INSTANCE_SCOPE_SLOT = 4;
+    static const unsigned GLOBALS_SLOT = 5;
+
     static const ClassOps classOps_;
     static bool exportsGetterImpl(JSContext* cx, const CallArgs& args);
     static bool exportsGetter(JSContext* cx, unsigned argc, Value* vp);
@@ -174,7 +208,7 @@ class WasmInstanceObject : public NativeObject
     ScopeMap& scopes() const;
 
   public:
-    static const unsigned RESERVED_SLOTS = 4;
+    static const unsigned RESERVED_SLOTS = 6;
     static const Class class_;
     static const JSPropertySpec properties[];
     static const JSFunctionSpec methods[];
@@ -184,11 +218,13 @@ class WasmInstanceObject : public NativeObject
     static WasmInstanceObject* create(JSContext* cx,
                                       RefPtr<const wasm::Code> code,
                                       UniquePtr<wasm::DebugState> debug,
-                                      UniquePtr<wasm::GlobalSegment> globals,
+                                      wasm::UniqueTlsData tlsData,
                                       HandleWasmMemoryObject memory,
                                       Vector<RefPtr<wasm::Table>, 0, SystemAllocPolicy>&& tables,
                                       Handle<FunctionVector> funcImports,
-                                      const wasm::ValVector& globalImports,
+                                      const wasm::GlobalDescVector& globals,
+                                      const wasm::ValVector& globalImportValues,
+                                      const WasmGlobalObjectVector& globalObjs,
                                       HandleObject proto);
     void initExportsObj(JSObject& exportsObj);
 
@@ -202,9 +238,12 @@ class WasmInstanceObject : public NativeObject
 
     const wasm::CodeRange& getExportedFunctionCodeRange(HandleFunction fun, wasm::Tier tier);
 
+    static WasmInstanceScope* getScope(JSContext* cx, HandleWasmInstanceObject instanceObj);
     static WasmFunctionScope* getFunctionScope(JSContext* cx,
                                                HandleWasmInstanceObject instanceObj,
                                                uint32_t funcIndex);
+
+    WasmGlobalObjectVector& indirectGlobals() const;
 };
 
 // The class of WebAssembly.Memory. A WasmMemoryObject references an ArrayBuffer
@@ -220,6 +259,7 @@ class WasmMemoryObject : public NativeObject
     static bool bufferGetter(JSContext* cx, unsigned argc, Value* vp);
     static bool growImpl(JSContext* cx, const CallArgs& args);
     static bool grow(JSContext* cx, unsigned argc, Value* vp);
+    static uint32_t growShared(HandleWasmMemoryObject memory, uint32_t delta);
 
     using InstanceSet = JS::WeakCache<GCHashSet<ReadBarrieredWasmInstanceObject,
                                                 MovableCellHasher<ReadBarrieredWasmInstanceObject>,
@@ -239,9 +279,27 @@ class WasmMemoryObject : public NativeObject
     static WasmMemoryObject* create(JSContext* cx,
                                     Handle<ArrayBufferObjectMaybeShared*> buffer,
                                     HandleObject proto);
+
+    // `buffer()` returns the current buffer object always.  If the buffer
+    // represents shared memory then `buffer().byteLength()` never changes, and
+    // in particular it may be a smaller value than that returned from
+    // `volatileMemoryLength()` below.
+    //
+    // Generally, you do not want to call `buffer().byteLength()`, but to call
+    // `volatileMemoryLength()`, instead.
     ArrayBufferObjectMaybeShared& buffer() const;
 
+    // The current length of the memory.  In the case of shared memory, the
+    // length can change at any time.  Also note that this will acquire a lock
+    // for shared memory, so do not call this from a signal handler.
+    uint32_t volatileMemoryLength() const;
+
+    bool isShared() const;
     bool movingGrowable() const;
+
+    // If isShared() is true then obtain the underlying buffer object.
+    SharedArrayRawBuffer* sharedArrayRawBuffer() const;
+
     bool addMovingGrowObserver(JSContext* cx, WasmInstanceObject* instance);
     static uint32_t grow(HandleWasmMemoryObject memory, uint32_t delta, JSContext* cx);
 };

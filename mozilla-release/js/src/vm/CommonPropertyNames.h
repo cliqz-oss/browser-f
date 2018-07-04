@@ -9,7 +9,7 @@
 #ifndef vm_CommonPropertyNames_h
 #define vm_CommonPropertyNames_h
 
-#include "jsprototypes.h"
+#include "js/ProtoKey.h"
 
 #define FOR_EACH_COMMON_PROPERTYNAME(macro) \
     macro(add, add, "add") \
@@ -29,7 +29,6 @@
     macro(ArrayToLocaleString, ArrayToLocaleString, "ArrayToLocaleString") \
     macro(ArrayType, ArrayType, "ArrayType") \
     macro(ArrayValues, ArrayValues, "ArrayValues") \
-    macro(ArrayValuesAt, ArrayValuesAt, "ArrayValuesAt") \
     macro(as, as, "as") \
     macro(Async, Async, "Async") \
     macro(AsyncFromSyncIterator, AsyncFromSyncIterator, "Async-from-Sync Iterator") \
@@ -66,7 +65,6 @@
     macro(caseFirst, caseFirst, "caseFirst") \
     macro(catch, catch_, "catch") \
     macro(class, class_, "class") \
-    macro(close, close, "close") \
     macro(Collator, Collator, "Collator") \
     macro(collections, collections, "collections") \
     macro(columnNumber, columnNumber, "columnNumber") \
@@ -145,7 +143,6 @@
     macro(forceInterpreter, forceInterpreter, "forceInterpreter") \
     macro(forEach, forEach, "forEach") \
     macro(format, format, "format") \
-    macro(formatToParts, formatToParts, "formatToParts") \
     macro(fraction, fraction, "fraction") \
     macro(frame, frame, "frame") \
     macro(from, from, "from") \
@@ -156,12 +153,16 @@
     macro(gcCycleNumber, gcCycleNumber, "gcCycleNumber") \
     macro(Generator, Generator, "Generator") \
     macro(GeneratorFunction, GeneratorFunction, "GeneratorFunction") \
+    macro(GeneratorNext, GeneratorNext, "GeneratorNext") \
+    macro(GeneratorReturn, GeneratorReturn, "GeneratorReturn") \
+    macro(GeneratorThrow, GeneratorThrow, "GeneratorThrow") \
     macro(get, get, "get") \
     macro(getInternals, getInternals, "getInternals") \
     macro(getOwnPropertyDescriptor, getOwnPropertyDescriptor, "getOwnPropertyDescriptor") \
     macro(getOwnPropertyNames, getOwnPropertyNames, "getOwnPropertyNames") \
     macro(getPrefix, getPrefix, "get ") \
     macro(getPropertyDescriptor, getPropertyDescriptor, "getPropertyDescriptor") \
+    macro(getPropertySuper, getPropertySuper, "getPropertySuper") \
     macro(getPrototypeOf, getPrototypeOf, "getPrototypeOf") \
     macro(global, global, "global") \
     macro(group, group, "group") \
@@ -186,6 +187,7 @@
     macro(InitializeDateTimeFormat, InitializeDateTimeFormat, "InitializeDateTimeFormat") \
     macro(InitializeNumberFormat, InitializeNumberFormat, "InitializeNumberFormat") \
     macro(InitializePluralRules, InitializePluralRules, "InitializePluralRules") \
+    macro(InitializeRelativeTimeFormat, InitializeRelativeTimeFormat, "InitializeRelativeTimeFormat") \
     macro(innermost, innermost, "innermost") \
     macro(inNursery, inNursery, "inNursery") \
     macro(input, input, "input") \
@@ -206,13 +208,11 @@
     macro(isPrototypeOf, isPrototypeOf, "isPrototypeOf") \
     macro(IterableToList, IterableToList, "IterableToList") \
     macro(iterate, iterate, "iterate") \
-    macro(iteratorIntrinsic, iteratorIntrinsic, "__iterator__") \
     macro(join, join, "join") \
     macro(js, js, "js") \
     macro(keys, keys, "keys") \
     macro(label, label, "label") \
     macro(lastIndex, lastIndex, "lastIndex") \
-    macro(LegacyGeneratorCloseInternal, LegacyGeneratorCloseInternal, "LegacyGeneratorCloseInternal") \
     macro(length, length, "length") \
     macro(let, let, "let") \
     macro(line, line, "line") \
@@ -238,8 +238,8 @@
     macro(mode, mode, "mode") \
     macro(module, module, "module") \
     macro(Module, Module, "Module") \
-    macro(ModuleDeclarationInstantiation, ModuleDeclarationInstantiation, "ModuleDeclarationInstantiation") \
-    macro(ModuleEvaluation, ModuleEvaluation, "ModuleEvaluation") \
+    macro(ModuleInstantiate, ModuleInstantiate, "ModuleInstantiate") \
+    macro(ModuleEvaluate, ModuleEvaluate, "ModuleEvaluate") \
     macro(month, month, "month") \
     macro(multiline, multiline, "multiline") \
     macro(name, name, "name") \
@@ -257,7 +257,6 @@
     macro(noStack, noStack, "noStack") \
     macro(notes, notes, "notes") \
     macro(NumberFormat, NumberFormat, "NumberFormat") \
-    macro(NumberFormatFormatToParts, NumberFormatFormatToParts, "Intl_NumberFormat_formatToParts") \
     macro(numeric, numeric, "numeric") \
     macro(objectArguments, objectArguments, "[object Arguments]") \
     macro(objectArray, objectArray, "[object Array]") \
@@ -285,7 +284,6 @@
     macro(pattern, pattern, "pattern") \
     macro(pending, pending, "pending") \
     macro(PluralRules, PluralRules, "PluralRules") \
-    macro(PluralRulesSelect, PluralRulesSelect, "Intl_PluralRules_Select") \
     macro(percentSign, percentSign, "percentSign") \
     macro(plusSign, plusSign, "plusSign") \
     macro(public, public_, "public") \
@@ -353,6 +351,8 @@
     macro(Reify, Reify, "Reify") \
     macro(reject, reject, "reject") \
     macro(rejected, rejected, "rejected") \
+    macro(RelativeTimeFormat, RelativeTimeFormat, "RelativeTimeFormat") \
+    macro(RelativeTimeFormatFormat, RelativeTimeFormatFormat, "Intl_RelativeTimeFormat_Format") \
     macro(RequireObjectCoercible, RequireObjectCoercible, "RequireObjectCoercible") \
     macro(resolve, resolve, "resolve") \
     macro(resumeGenerator, resumeGenerator, "resumeGenerator") \
@@ -375,10 +375,6 @@
     macro(SpeciesConstructor, SpeciesConstructor, "SpeciesConstructor") \
     macro(stack, stack, "stack") \
     macro(star, star, "*") \
-    macro(starDefaultStar, starDefaultStar, "*default*") \
-    macro(StarGeneratorNext, StarGeneratorNext, "StarGeneratorNext") \
-    macro(StarGeneratorReturn, StarGeneratorReturn, "StarGeneratorReturn") \
-    macro(StarGeneratorThrow, StarGeneratorThrow, "StarGeneratorThrow") \
     macro(start, start, "start") \
     macro(startTimestamp, startTimestamp, "startTimestamp") \
     macro(state, state, "state") \
@@ -400,6 +396,10 @@
     macro(timestamp, timestamp, "timestamp") \
     macro(timeZone, timeZone, "timeZone") \
     macro(timeZoneName, timeZoneName, "timeZoneName") \
+    macro(trimEnd, trimEnd, "trimEnd") \
+    macro(trimLeft, trimLeft, "trimLeft") \
+    macro(trimRight, trimRight, "trimRight") \
+    macro(trimStart, trimStart, "trimStart") \
     macro(toGMTString, toGMTString, "toGMTString") \
     macro(toISOString, toISOString, "toISOString") \
     macro(toJSON, toJSON, "toJSON") \
@@ -421,6 +421,7 @@
     macro(unescape, unescape, "unescape") \
     macro(uneval, uneval, "uneval") \
     macro(unicode, unicode, "unicode") \
+    macro(unit, unit, "unit") \
     macro(uninitialized, uninitialized, "uninitialized") \
     macro(unsized, unsized, "unsized") \
     macro(unwatch, unwatch, "unwatch") \

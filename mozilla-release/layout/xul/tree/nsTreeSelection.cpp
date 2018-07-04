@@ -1,16 +1,17 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/AsyncEventDispatcher.h"
+#include "mozilla/dom/Element.h"
 #include "nsCOMPtr.h"
 #include "nsTreeSelection.h"
 #include "nsIBoxObject.h"
 #include "nsITreeBoxObject.h"
 #include "nsITreeView.h"
 #include "nsString.h"
-#include "nsIDOMElement.h"
 #include "nsIContent.h"
 #include "nsNameSpaceManager.h"
 #include "nsGkAtoms.h"
@@ -289,7 +290,7 @@ NS_IMETHODIMP nsTreeSelection::SetTree(nsITreeBoxObject * aTree)
 
 NS_IMETHODIMP nsTreeSelection::GetSingle(bool* aSingle)
 {
-  static nsIContent::AttrValuesArray strings[] =
+  static Element::AttrValuesArray strings[] =
     {&nsGkAtoms::single, &nsGkAtoms::cell, &nsGkAtoms::text, nullptr};
 
   nsCOMPtr<nsIContent> content = GetContent();
@@ -297,9 +298,10 @@ NS_IMETHODIMP nsTreeSelection::GetSingle(bool* aSingle)
     return NS_ERROR_NULL_POINTER;
   }
 
-  *aSingle = content->FindAttrValueIn(kNameSpaceID_None,
-                                      nsGkAtoms::seltype,
-                                      strings, eCaseMatters) >= 0;
+  *aSingle = content->IsElement() &&
+    content->AsElement()->FindAttrValueIn(kNameSpaceID_None,
+                                          nsGkAtoms::seltype,
+                                          strings, eCaseMatters) >= 0;
 
   return NS_OK;
 }
@@ -330,15 +332,15 @@ NS_IMETHODIMP nsTreeSelection::TimedSelect(int32_t aIndex, int32_t aMsec)
       if (mSelectTimer)
         mSelectTimer->Cancel();
 
-      mSelectTimer = do_CreateInstance("@mozilla.org/timer;1");
-      nsCOMPtr<nsIContent> content = GetContent();
-      if (content) {
-        mSelectTimer->SetTarget(
-            content->OwnerDoc()->EventTargetFor(TaskCategory::Other));
+      nsIEventTarget* target = nullptr;
+      if (nsCOMPtr<nsIContent> content = GetContent()) {
+        target = content->OwnerDoc()->EventTargetFor(TaskCategory::Other);
       }
-      mSelectTimer->InitWithNamedFuncCallback(SelectCallback, this, aMsec,
-                                              nsITimer::TYPE_ONE_SHOT,
-                                              "nsTreeSelection::SelectCallback");
+      NS_NewTimerWithFuncCallback(getter_AddRefs(mSelectTimer),
+                                  SelectCallback, this, aMsec,
+                                  nsITimer::TYPE_ONE_SHOT,
+                                  "nsTreeSelection::SelectCallback",
+                                  target);
     }
   }
 
@@ -637,17 +639,16 @@ NS_IMETHODIMP nsTreeSelection::SetCurrentIndex(int32_t aIndex)
   NS_ASSERTION(boxObject, "no box object!");
   if (!boxObject)
     return NS_ERROR_UNEXPECTED;
-  nsCOMPtr<nsIDOMElement> treeElt;
+  RefPtr<dom::Element> treeElt;
   boxObject->GetElement(getter_AddRefs(treeElt));
 
-  nsCOMPtr<nsINode> treeDOMNode(do_QueryInterface(treeElt));
-  NS_ENSURE_STATE(treeDOMNode);
+  NS_ENSURE_STATE(treeElt);
 
   NS_NAMED_LITERAL_STRING(DOMMenuItemActive, "DOMMenuItemActive");
   NS_NAMED_LITERAL_STRING(DOMMenuItemInactive, "DOMMenuItemInactive");
 
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-    new AsyncEventDispatcher(treeDOMNode,
+    new AsyncEventDispatcher(treeElt,
                              (aIndex != -1 ? DOMMenuItemActive :
                                              DOMMenuItemInactive),
                              true, false);
@@ -828,15 +829,12 @@ nsTreeSelection::FireOnSelectHandler()
   NS_ASSERTION(boxObject, "no box object!");
   if (!boxObject)
      return NS_ERROR_UNEXPECTED;
-  nsCOMPtr<nsIDOMElement> elt;
+  RefPtr<dom::Element> elt;
   boxObject->GetElement(getter_AddRefs(elt));
   NS_ENSURE_STATE(elt);
 
-  nsCOMPtr<nsINode> node(do_QueryInterface(elt));
-  NS_ENSURE_STATE(node);
-
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-    new AsyncEventDispatcher(node, NS_LITERAL_STRING("select"), true, false);
+    new AsyncEventDispatcher(elt, NS_LITERAL_STRING("select"), true, false);
   asyncDispatcher->RunDOMEventWhenSafe();
   return NS_OK;
 }
@@ -861,11 +859,9 @@ nsTreeSelection::GetContent()
 
   nsCOMPtr<nsIBoxObject> boxObject = do_QueryInterface(mTree);
 
-  nsCOMPtr<nsIDOMElement> element;
+  RefPtr<dom::Element> element;
   boxObject->GetElement(getter_AddRefs(element));
-
-  nsCOMPtr<nsIContent> content = do_QueryInterface(element);
-  return content.forget();
+  return element.forget();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

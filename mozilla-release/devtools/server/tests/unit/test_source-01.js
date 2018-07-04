@@ -26,9 +26,9 @@ function run_test() {
   );
 
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-grips",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_source();
                            });
@@ -42,29 +42,29 @@ const SOURCE_CONTENT = "stopMe()";
 function test_source() {
   DebuggerServer.LONG_STRING_LENGTH = 200;
 
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
-    gThreadClient.getSources(function (response) {
-      do_check_true(!!response);
-      do_check_true(!!response.sources);
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
+    gThreadClient.getSources(function(response) {
+      Assert.ok(!!response);
+      Assert.ok(!!response.sources);
 
-      let source = response.sources.filter(function (s) {
+      let source = response.sources.filter(function(s) {
         return s.url === SOURCE_URL;
       })[0];
 
-      do_check_true(!!source);
+      Assert.ok(!!source);
 
       let sourceClient = gThreadClient.source(source);
-      sourceClient.source(function (response) {
-        do_check_true(!!response);
-        do_check_true(!response.error);
-        do_check_true(!!response.contentType);
-        do_check_true(response.contentType.includes("javascript"));
+      sourceClient.source(function(response) {
+        Assert.ok(!!response);
+        Assert.ok(!response.error);
+        Assert.ok(!!response.contentType);
+        Assert.ok(response.contentType.includes("javascript"));
 
-        do_check_true(!!response.source);
-        do_check_eq(SOURCE_CONTENT,
-                    response.source);
+        Assert.ok(!!response.source);
+        Assert.equal(SOURCE_CONTENT,
+                     response.source);
 
-        gThreadClient.resume(function () {
+        gThreadClient.resume(function() {
           finishClient(gClient);
         });
       });

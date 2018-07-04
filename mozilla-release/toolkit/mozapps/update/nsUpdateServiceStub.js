@@ -3,10 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/FileUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm", this);
 
 const DIR_UPDATES         = "updates";
 const FILE_UPDATE_STATUS  = "update.status";
@@ -39,7 +37,7 @@ function UpdateServiceStub() {
 UpdateServiceStub.prototype = {
   observe() {},
   classID: Components.ID("{e43b0010-04ba-4da6-b523-1f92580bc150}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver])
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([UpdateServiceStub]);

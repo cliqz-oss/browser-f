@@ -37,7 +37,7 @@ function run_test() {
  */
 function newConnection(prefix) {
   let conn;
-  DebuggerServer.createRootActor = function (connection) {
+  DebuggerServer.createRootActor = function(connection) {
     conn = connection;
     return new RootActor(connection, {});
   };
@@ -88,15 +88,15 @@ function tryActors(reachables, completed) {
       { to: actor, type: "echo", value: "tango"},
       (response) => {
         if (reachables.has(actor)) {
-          do_check_matches({ from: actor, to: actor,
+          Assert.deepEqual({ from: actor, to: actor,
                              type: "echo", value: "tango" }, response);
         } else {
-          do_check_matches({ from: actor, error: "noSuchActor",
+          Assert.deepEqual({ from: actor, error: "noSuchActor",
                              message: "No such actor for ID: " + actor }, response);
         }
 
         if (--count == 0) {
-          do_execute_soon(completed, "tryActors callback " + completed.name);
+          executeSoon(completed, "tryActors callback " + completed.name);
         }
       });
   }
@@ -164,7 +164,7 @@ function EchoActor(connection) {
   this.conn = connection;
 }
 EchoActor.prototype.actorPrefix = "EchoActor";
-EchoActor.prototype.onEcho = function (request) {
+EchoActor.prototype.onEcho = function(request) {
   /*
    * Request packets are frozen. Copy request, so that
    * DebuggerServerConnection.onPacket can attach a 'from' property.

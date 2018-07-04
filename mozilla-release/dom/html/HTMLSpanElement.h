@@ -8,12 +8,10 @@
 #define mozilla_dom_HTMLSpanElement_h
 
 #include "mozilla/Attributes.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
-#include "nsIAtom.h"
-#include "nsRuleData.h"
+#include "nsAtom.h"
 
 namespace mozilla {
 namespace dom {

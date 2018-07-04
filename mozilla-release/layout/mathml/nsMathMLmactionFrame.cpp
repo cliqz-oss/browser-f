@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,8 +13,10 @@
 #include "nsIWebBrowserChrome.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsTextFragment.h"
-#include "nsIDOMEvent.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/dom/Event.h"
+
+using mozilla::dom::Event;
 
 //
 // <maction> -- bind actions to a subexpression - implementation
@@ -42,7 +45,10 @@ GetActionType(nsIContent* aContent)
   nsAutoString value;
 
   if (aContent) {
-    if (!aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::actiontype_, value))
+    if (!aContent->IsElement() ||
+        !aContent->AsElement()->GetAttr(kNameSpaceID_None,
+                                        nsGkAtoms::actiontype_,
+                                        value))
       return NS_MATHML_ACTION_TYPE_NONE;
   }
 
@@ -57,9 +63,9 @@ GetActionType(nsIContent* aContent)
 }
 
 nsIFrame*
-NS_NewMathMLmactionFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmactionFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmactionFrame(aContext);
+  return new (aPresShell) nsMathMLmactionFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmactionFrame)
@@ -130,7 +136,7 @@ nsMathMLmactionFrame::GetSelectedFrame()
     return mSelectedFrame;
   }
 
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::selection_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::selection_, value);
   if (!value.IsEmpty()) {
     nsresult errorCode;
     selection = value.ToInteger(&errorCode);
@@ -195,10 +201,12 @@ nsMathMLmactionFrame::SetInitialChildList(ChildListID     aListID,
 
 nsresult
 nsMathMLmactionFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                       nsIAtom* aAttribute,
+                                       nsAtom* aAttribute,
                                        int32_t  aModType)
 {
   bool needsReflow = false;
+
+  InvalidateFrame();
 
   if (aAttribute == nsGkAtoms::actiontype_) {
     // updating mActionType ...
@@ -223,7 +231,7 @@ nsMathMLmactionFrame::AttributeChanged(int32_t  aNameSpaceID,
   }
 
   if (needsReflow) {
-    PresContext()->PresShell()->
+    PresShell()->
       FrameNeedsReflow(this, nsIPresShell::eTreeChange, NS_FRAME_IS_DIRTY);
   }
 
@@ -240,7 +248,7 @@ NS_IMPL_ISUPPORTS(nsMathMLmactionFrame::MouseListener,
 
 // helper to show a msg on the status bar
 // curled from nsPluginFrame.cpp ...
-void
+static void
 ShowStatus(nsPresContext* aPresContext, nsString& aStatusMsg)
 {
   nsCOMPtr<nsIDocShellTreeItem> docShellItem(aPresContext->GetDocShell());
@@ -257,7 +265,7 @@ ShowStatus(nsPresContext* aPresContext, nsString& aStatusMsg)
 }
 
 NS_IMETHODIMP
-nsMathMLmactionFrame::MouseListener::HandleEvent(nsIDOMEvent* aEvent)
+nsMathMLmactionFrame::MouseListener::HandleEvent(Event* aEvent)
 {
   nsAutoString eventType;
   aEvent->GetType(eventType);
@@ -271,7 +279,7 @@ nsMathMLmactionFrame::MouseListener::HandleEvent(nsIDOMEvent* aEvent)
     mOwner->MouseOut();
   }
   else {
-    NS_ABORT();
+    MOZ_ASSERT_UNREACHABLE("Unexpected eventType");
   }
 
   return NS_OK;
@@ -327,10 +335,11 @@ nsMathMLmactionFrame::MouseClick()
       nsAutoString value;
       value.AppendInt(selection);
       bool notify = false; // don't yet notify the document
-      mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::selection_, value, notify);
+      mContent->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::selection_,
+                                     value, notify);
 
       // Now trigger a content-changed reflow...
-      PresContext()->PresShell()->
+      PresShell()->
         FrameNeedsReflow(mSelectedFrame, nsIPresShell::eTreeChange,
                          NS_FRAME_IS_DIRTY);
     }

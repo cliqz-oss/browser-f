@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,6 +16,7 @@
 #include "mozilla/Hal.h"
 #include "mozilla/Preferences.h"
 
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/Promise.h"
 #include "nsContentUtils.h"
 
@@ -24,7 +27,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(ScreenOrientation,
                                    DOMEventTargetHelper,
                                    mScreen);
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(ScreenOrientation)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ScreenOrientation)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(ScreenOrientation, DOMEventTargetHelper)
@@ -402,11 +405,9 @@ ScreenOrientation::UnlockDeviceOrientation()
   // Remove event listener in case of fullscreen lock.
   nsCOMPtr<EventTarget> target = do_QueryInterface(GetOwner()->GetDoc());
   if (target) {
-    DebugOnly<nsresult> rv =
-      target->RemoveSystemEventListener(NS_LITERAL_STRING("fullscreenchange"),
-                                        mFullScreenListener,
-                                        /* useCapture */ true);
-    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "RemoveSystemEventListener failed");
+    target->RemoveSystemEventListener(NS_LITERAL_STRING("fullscreenchange"),
+                                      mFullScreenListener,
+                                      /* useCapture */ true);
   }
 
   mFullScreenListener = nullptr;
@@ -599,11 +600,11 @@ ScreenOrientation::ShouldResistFingerprinting() const
 NS_IMPL_ISUPPORTS(ScreenOrientation::VisibleEventListener, nsIDOMEventListener)
 
 NS_IMETHODIMP
-ScreenOrientation::VisibleEventListener::HandleEvent(nsIDOMEvent* aEvent)
+ScreenOrientation::VisibleEventListener::HandleEvent(Event* aEvent)
 {
   // Document may have become visible, if the page is visible, run the steps
   // following the "now visible algorithm" as specified.
-  nsCOMPtr<EventTarget> target = aEvent->InternalDOMEvent()->GetCurrentTarget();
+  nsCOMPtr<EventTarget> target = aEvent->GetCurrentTarget();
   MOZ_ASSERT(target);
 
   nsCOMPtr<nsIDocument> doc = do_QueryInterface(target);
@@ -611,7 +612,7 @@ ScreenOrientation::VisibleEventListener::HandleEvent(nsIDOMEvent* aEvent)
     return NS_OK;
   }
 
-  auto* win = nsGlobalWindow::Cast(doc->GetInnerWindow());
+  auto* win = nsGlobalWindowInner::Cast(doc->GetInnerWindow());
   if (!win) {
     return NS_OK;
   }
@@ -626,11 +627,8 @@ ScreenOrientation::VisibleEventListener::HandleEvent(nsIDOMEvent* aEvent)
   ScreenOrientation* orientation = screen->Orientation();
   MOZ_ASSERT(orientation);
 
-  rv = target->RemoveSystemEventListener(NS_LITERAL_STRING("visibilitychange"),
-                                         this, true);
-  if (NS_WARN_IF(rv.Failed())) {
-    return rv.StealNSResult();
-  }
+  target->RemoveSystemEventListener(NS_LITERAL_STRING("visibilitychange"),
+                                    this, true);
 
   if (doc->CurrentOrientationType() != orientation->DeviceType(CallerType::System)) {
     doc->SetCurrentOrientation(orientation->DeviceType(CallerType::System),
@@ -658,7 +656,7 @@ ScreenOrientation::VisibleEventListener::HandleEvent(nsIDOMEvent* aEvent)
 NS_IMPL_ISUPPORTS(ScreenOrientation::FullScreenEventListener, nsIDOMEventListener)
 
 NS_IMETHODIMP
-ScreenOrientation::FullScreenEventListener::HandleEvent(nsIDOMEvent* aEvent)
+ScreenOrientation::FullScreenEventListener::HandleEvent(Event* aEvent)
 {
 #ifdef DEBUG
   nsAutoString eventType;
@@ -667,7 +665,7 @@ ScreenOrientation::FullScreenEventListener::HandleEvent(nsIDOMEvent* aEvent)
   MOZ_ASSERT(eventType.EqualsLiteral("fullscreenchange"));
 #endif
 
-  nsCOMPtr<EventTarget> target = aEvent->InternalDOMEvent()->GetCurrentTarget();
+  nsCOMPtr<EventTarget> target = aEvent->GetCurrentTarget();
   MOZ_ASSERT(target);
 
   nsCOMPtr<nsIDocument> doc = do_QueryInterface(target);
@@ -682,9 +680,7 @@ ScreenOrientation::FullScreenEventListener::HandleEvent(nsIDOMEvent* aEvent)
 
   hal::UnlockScreenOrientation();
 
-  nsresult rv = target->RemoveSystemEventListener(NS_LITERAL_STRING("fullscreenchange"),
-                                                  this, true);
-  NS_ENSURE_SUCCESS(rv, rv);
-
+  target->RemoveSystemEventListener(NS_LITERAL_STRING("fullscreenchange"),
+                                    this, true);
   return NS_OK;
 }

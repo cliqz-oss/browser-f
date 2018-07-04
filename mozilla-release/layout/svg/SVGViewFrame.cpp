@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -21,10 +22,10 @@ using namespace mozilla::dom;
 class SVGViewFrame : public nsFrame
 {
   friend nsIFrame*
-  NS_NewSVGViewFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGViewFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 protected:
-  explicit SVGViewFrame(nsStyleContext* aContext)
-    : nsFrame(aContext, kClassID)
+  explicit SVGViewFrame(ComputedStyle* aStyle)
+    : nsFrame(aStyle, kClassID)
   {
     AddStateBits(NS_FRAME_IS_NONDISPLAY);
   }
@@ -51,7 +52,7 @@ public:
 #endif
 
   virtual nsresult AttributeChanged(int32_t  aNameSpaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     int32_t  aModType) override;
 
   virtual bool ComputeCustomOverflow(nsOverflowAreas& aOverflowAreas) override {
@@ -61,9 +62,9 @@ public:
 };
 
 nsIFrame*
-NS_NewSVGViewFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGViewFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) SVGViewFrame(aContext);
+  return new (aPresShell) SVGViewFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(SVGViewFrame)
@@ -83,15 +84,14 @@ SVGViewFrame::Init(nsIContent*       aContent,
 
 nsresult
 SVGViewFrame::AttributeChanged(int32_t  aNameSpaceID,
-                               nsIAtom* aAttribute,
+                               nsAtom* aAttribute,
                                int32_t  aModType)
 {
   // Ignore zoomAndPan as it does not cause the <svg> element to re-render
 
   if (aNameSpaceID == kNameSpaceID_None &&
       (aAttribute == nsGkAtoms::preserveAspectRatio ||
-       aAttribute == nsGkAtoms::viewBox ||
-       aAttribute == nsGkAtoms::viewTarget)) {
+       aAttribute == nsGkAtoms::viewBox)) {
 
     nsSVGOuterSVGFrame *outerSVGFrame = nsSVGUtils::GetOuterSVGFrame(this);
     NS_ASSERTION(outerSVGFrame->GetContent()->IsSVGElement(nsGkAtoms::svg),
@@ -101,7 +101,7 @@ SVGViewFrame::AttributeChanged(int32_t  aNameSpaceID,
       static_cast<SVGSVGElement*>(outerSVGFrame->GetContent());
 
     nsAutoString viewID;
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::id, viewID);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::id, viewID);
 
     if (svgElement->IsOverriddenBy(viewID)) {
       // We're the view that's providing overrides, so pretend that the frame

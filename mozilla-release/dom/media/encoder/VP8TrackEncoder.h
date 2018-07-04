@@ -27,17 +27,18 @@ class VP8TrackEncoder : public VideoTrackEncoder
     ENCODE_I_FRAME, // The next frame will be encoded as I-Frame.
     SKIP_FRAME, // Skip the next frame.
   };
+
 public:
-  explicit VP8TrackEncoder(TrackRate aTrackRate);
+  VP8TrackEncoder(TrackRate aTrackRate, FrameDroppingMode aFrameDroppingMode);
   virtual ~VP8TrackEncoder();
 
-  already_AddRefed<TrackMetadataBase> GetMetadata() final override;
+  already_AddRefed<TrackMetadataBase> GetMetadata() final;
 
-  nsresult GetEncodedTrack(EncodedFrameContainer& aData) final override;
+  nsresult GetEncodedTrack(EncodedFrameContainer& aData) final;
 
 protected:
   nsresult Init(int32_t aWidth, int32_t aHeight,
-                int32_t aDisplayWidth, int32_t aDisplayHeight) final override;
+                int32_t aDisplayWidth, int32_t aDisplayHeight) final;
 
 private:
   // Get the EncodeOperation for next target frame.
@@ -77,6 +78,11 @@ private:
 
   // I420 frame, for converting to I420.
   nsTArray<uint8_t> mI420Frame;
+
+  /**
+   * A duration of non-key frames in milliseconds.
+  */
+  StreamTime mDurationSinceLastKeyframe;
 
   /**
    * A local segment queue which takes the raw data out from mRawSegment in the

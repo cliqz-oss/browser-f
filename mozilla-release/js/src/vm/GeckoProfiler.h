@@ -12,10 +12,9 @@
 
 #include <stddef.h>
 
-#include "jsscript.h"
-
 #include "js/ProfilingStack.h"
 #include "threading/ExclusiveData.h"
+#include "vm/JSScript.h"
 #include "vm/MutexIDs.h"
 
 /*
@@ -110,44 +109,6 @@ using ProfileStringMap = HashMap<JSScript*,
                                  DefaultHasher<JSScript*>,
                                  SystemAllocPolicy>;
 
-class AutoGeckoProfilerEntry;
-class GeckoProfilerEntryMarker;
-class GeckoProfilerBaselineOSRMarker;
-
-class GeckoProfilerThread
-{
-    friend class AutoGeckoProfilerEntry;
-    friend class GeckoProfilerEntryMarker;
-    friend class GeckoProfilerBaselineOSRMarker;
-
-    PseudoStack*         pseudoStack_;
-
-  public:
-    GeckoProfilerThread();
-
-    uint32_t stackPointer() { MOZ_ASSERT(installed()); return pseudoStack_->stackPointer; }
-    ProfileEntry* stack() { return pseudoStack_->entries; }
-
-    /* management of whether instrumentation is on or off */
-    bool installed() { return pseudoStack_ != nullptr; }
-
-    void setProfilingStack(PseudoStack* pseudoStack);
-    void trace(JSTracer* trc);
-
-    /*
-     * Functions which are the actual instrumentation to track run information
-     *
-     *   - enter: a function has started to execute
-     *   - updatePC: updates the pc information about where a function
-     *               is currently executing
-     *   - exit: this function has ceased execution, and no further
-     *           entries/exits will be made
-     */
-    bool enter(JSContext* cx, JSScript* script, JSFunction* maybeFun);
-    void exit(JSScript* script, JSFunction* maybeFun);
-    inline void updatePC(JSContext* cx, JSScript* script, jsbytecode* pc);
-};
-
 class GeckoProfilerRuntime
 {
     JSRuntime*           rt;
@@ -209,14 +170,17 @@ GeckoProfilerRuntime::stringsReset()
 class MOZ_RAII GeckoProfilerEntryMarker
 {
   public:
-    explicit GeckoProfilerEntryMarker(JSContext* cx,
-                                      JSScript* script
-                                      MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
-    ~GeckoProfilerEntryMarker();
+    explicit MOZ_ALWAYS_INLINE
+    GeckoProfilerEntryMarker(JSContext* cx,
+                             JSScript* script
+                             MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
+    MOZ_ALWAYS_INLINE ~GeckoProfilerEntryMarker();
 
   private:
-    GeckoProfilerThread* profiler;
-    mozilla::DebugOnly<uint32_t> spBefore_;
+    GeckoProfilerThread* profiler_;
+#ifdef DEBUG
+    uint32_t spBefore_;
+#endif
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
@@ -228,14 +192,17 @@ class MOZ_RAII GeckoProfilerEntryMarker
 class MOZ_NONHEAP_CLASS AutoGeckoProfilerEntry
 {
   public:
-    explicit AutoGeckoProfilerEntry(JSContext* cx, const char* label,
-                                    ProfileEntry::Category category = ProfileEntry::Category::JS
-                                    MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
-    ~AutoGeckoProfilerEntry();
+    explicit MOZ_ALWAYS_INLINE
+    AutoGeckoProfilerEntry(JSContext* cx, const char* label,
+                           ProfileEntry::Category category = ProfileEntry::Category::JS
+                           MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
+    MOZ_ALWAYS_INLINE ~AutoGeckoProfilerEntry();
 
   private:
     GeckoProfilerThread* profiler_;
-    mozilla::DebugOnly<uint32_t> spBefore_;
+#ifdef DEBUG
+    uint32_t spBefore_;
+#endif
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 

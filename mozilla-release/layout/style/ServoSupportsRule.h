@@ -22,21 +22,17 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
 
-  already_AddRefed<css::Rule> Clone() const override;
-  bool UseForPresentation(nsPresContext* aPresContext,
-                          nsMediaQueryResultCacheKey& aKey) final;
 #ifdef DEBUG
   void List(FILE* out = stdout, int32_t aIndent = 0) const final;
 #endif
 
   RawServoSupportsRule* Raw() const { return mRawRule; }
 
-  // nsIDOMCSSConditionRule interface
-  NS_DECL_NSIDOMCSSCONDITIONRULE
-
   // WebIDL interface
-  void GetCssTextImpl(nsAString& aCssText) const override;
-  using CSSSupportsRule::SetConditionText;
+  void GetCssText(nsAString& aCssText) const final;
+  void GetConditionText(nsAString& aConditionText) final;
+  void SetConditionText(const nsAString& aConditionText,
+                        ErrorResult& aRv) final;
 
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
     const override;

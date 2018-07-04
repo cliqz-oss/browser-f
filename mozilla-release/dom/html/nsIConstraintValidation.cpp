@@ -45,16 +45,6 @@ nsIConstraintValidation::Validity()
   return mValidity;
 }
 
-nsresult
-nsIConstraintValidation::GetValidity(nsIDOMValidityState** aValidity)
-{
-  NS_ENSURE_ARG_POINTER(aValidity);
-
-  NS_ADDREF(*aValidity = Validity());
-
-  return NS_OK;
-}
-
 void
 nsIConstraintValidation::GetValidationMessage(nsAString& aValidationMessage,
                                               ErrorResult& aError)
@@ -62,11 +52,11 @@ nsIConstraintValidation::GetValidationMessage(nsAString& aValidationMessage,
   aValidationMessage.Truncate();
 
   if (IsCandidateForConstraintValidation() && !IsValid()) {
-    nsCOMPtr<nsIContent> content = do_QueryInterface(this);
-    NS_ASSERTION(content, "This class should be inherited by HTML elements only!");
+    nsCOMPtr<Element> element = do_QueryInterface(this);
+    NS_ASSERTION(element, "This class should be inherited by HTML elements only!");
 
     nsAutoString authorMessage;
-    content->GetAttr(kNameSpaceID_None, nsGkAtoms::x_moz_errormessage,
+    element->GetAttr(kNameSpaceID_None, nsGkAtoms::x_moz_errormessage,
                      authorMessage);
 
     if (!authorMessage.IsEmpty()) {
@@ -170,7 +160,7 @@ nsIConstraintValidation::ReportValidity()
 
   nsCOMPtr<nsIMutableArray> invalidElements =
     do_CreateInstance(NS_ARRAY_CONTRACTID, &rv);
-  invalidElements->AppendElement(content, false);
+  invalidElements->AppendElement(content);
 
   NS_ENSURE_SUCCESS(rv, true);
   nsCOMPtr<nsISupports> inst;
@@ -187,9 +177,7 @@ nsIConstraintValidation::ReportValidity()
 
   if (content->IsHTMLElement(nsGkAtoms::input) &&
       nsContentUtils::IsFocusedContent(content)) {
-    HTMLInputElement* inputElement =
-    HTMLInputElement::FromContentOrNull(content);
-
+    HTMLInputElement* inputElement = HTMLInputElement::FromNode(content);
     inputElement->UpdateValidityUIBits(true);
   }
 

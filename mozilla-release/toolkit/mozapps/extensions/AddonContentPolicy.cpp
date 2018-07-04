@@ -72,15 +72,13 @@ LogMessage(const nsAString &aMessage, nsIURI* aSourceURI, const nsAString &aSour
   nsCOMPtr<nsIScriptError> error = do_CreateInstance(NS_SCRIPTERROR_CONTRACTID);
   NS_ENSURE_TRUE(error, NS_ERROR_OUT_OF_MEMORY);
 
-  nsCString sourceName = aSourceURI->GetSpecOrDefault();
-
   uint64_t windowID = 0;
   GetWindowIDFromContext(aContext, &windowID);
 
   nsresult rv =
-    error->InitWithWindowID(aMessage, NS_ConvertUTF8toUTF16(sourceName),
-                            aSourceSample, 0, 0, nsIScriptError::errorFlag,
-                            "JavaScript", windowID);
+    error->InitWithSourceURI(aMessage, aSourceURI,
+                             aSourceSample, 0, 0, nsIScriptError::errorFlag,
+                             "JavaScript", windowID);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIConsoleService> console = do_GetService(NS_CONSOLESERVICE_CONTRACTID);
@@ -94,15 +92,19 @@ LogMessage(const nsAString &aMessage, nsIURI* aSourceURI, const nsAString &aSour
 // Content policy enforcement:
 
 NS_IMETHODIMP
-AddonContentPolicy::ShouldLoad(uint32_t aContentType,
-                               nsIURI* aContentLocation,
-                               nsIURI* aRequestOrigin,
-                               nsISupports* aContext,
+AddonContentPolicy::ShouldLoad(nsIURI* aContentLocation,
+                               nsILoadInfo* aLoadInfo,
                                const nsACString& aMimeTypeGuess,
-                               nsISupports* aExtra,
-                               nsIPrincipal* aRequestPrincipal,
                                int16_t* aShouldLoad)
 {
+  uint32_t aContentType = aLoadInfo->GetExternalContentPolicyType();
+  nsCOMPtr<nsISupports> aContext = aLoadInfo->GetLoadingContext();
+  nsCOMPtr<nsIURI> aRequestOrigin;
+  nsCOMPtr<nsIPrincipal> loadingPrincipal = aLoadInfo->LoadingPrincipal();
+  if (loadingPrincipal) {
+    loadingPrincipal->GetURI(getter_AddRefs(aRequestOrigin));
+  }
+
   MOZ_ASSERT(aContentType == nsContentUtils::InternalContentPolicyTypeToExternal(aContentType),
              "We should only see external content policy types here.");
 
@@ -141,17 +143,16 @@ AddonContentPolicy::ShouldLoad(uint32_t aContentType,
 }
 
 NS_IMETHODIMP
-AddonContentPolicy::ShouldProcess(uint32_t aContentType,
-                                  nsIURI* aContentLocation,
-                                  nsIURI* aRequestOrigin,
-                                  nsISupports* aRequestingContext,
+AddonContentPolicy::ShouldProcess(nsIURI* aContentLocation,
+                                  nsILoadInfo* aLoadInfo,
                                   const nsACString& aMimeTypeGuess,
-                                  nsISupports* aExtra,
-                                  nsIPrincipal* aRequestPrincipal,
                                   int16_t* aShouldProcess)
 {
+#ifdef DEBUG
+  uint32_t aContentType = aLoadInfo->GetExternalContentPolicyType();
   MOZ_ASSERT(aContentType == nsContentUtils::InternalContentPolicyTypeToExternal(aContentType),
              "We should only see external content policy types here.");
+#endif
 
   *aShouldProcess = nsIContentPolicy::ACCEPT;
   return NS_OK;
@@ -198,6 +199,7 @@ class CSPValidator final : public nsCSPSrcVisitor {
     {
       // Start with the default error message for a missing directive, since no
       // visitors will be called if the directive isn't present.
+      mError.SetIsVoid(true);
       if (aDirectiveRequired) {
         FormatError("csp.error.missing-directive");
       }
@@ -264,9 +266,8 @@ class CSPValidator final : public nsCSPSrcVisitor {
         return true;
 
       default:
-        NS_ConvertASCIItoUTF16 keyword(CSP_EnumToKeyword(src.getKeyword()));
-
-        FormatError("csp.error.illegal-keyword", keyword);
+        FormatError("csp.error.illegal-keyword",
+                    nsDependentString(CSP_EnumToUTF16Keyword(src.getKeyword())));
         return false;
       }
     };
@@ -368,8 +369,8 @@ class CSPValidator final : public nsCSPSrcVisitor {
       nsCOMPtr<nsIStringBundle> stringBundle = GetStringBundle();
 
       if (stringBundle) {
-        rv = stringBundle->FormatStringFromName(aName, aParams, aLength,
-                                                getter_Copies(mError));
+        rv =
+          stringBundle->FormatStringFromName(aName, aParams, aLength, mError);
       }
 
       if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -382,7 +383,7 @@ class CSPValidator final : public nsCSPSrcVisitor {
 
     nsAutoString mURL;
     NS_ConvertASCIItoUTF16 mDirective;
-    nsXPIDLString mError;
+    nsString mError;
 
     bool mFoundSelf;
 };

@@ -20,7 +20,13 @@ button {
 
 /* Category panels */
 
+#categories {
+  display: flex;
+  flex-direction: column;
+}
+
 .category {
+  border: 0 solid transparent;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -63,6 +69,7 @@ button {
 
 .target-icon {
   height: 24px;
+  width: 24px;
   margin-inline-end: 5px;
 }
 
@@ -212,14 +219,16 @@ button {
   align-items: center;
   margin-top: 1em;
   margin-bottom: 1em;
-  background-image: url(chrome://devtools/skin/images/help.svg);
-  background-repeat: no-repeat;
-  padding-inline-start: 32px;
   height: 24px;
 }
 
 .addons-tip-icon {
-  margin-inline-end: 1ch;
+  width: 24px;
+  height: 24px;
+  background-image: url(chrome://devtools/skin/images/help.svg);
+  background-repeat: no-repeat;
+  background-size: 24px;
+  margin-inline-end: 8px;
 }
 
 .error-page {

@@ -1,14 +1,14 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
 
 const sampleAddon = {
   id: "webextension1@tests.mozilla.org",
   name: "webextension_1",
-}
+};
 
 const manifestSample = {
   id: "bootstrap1@tests.mozilla.org",
@@ -36,7 +36,7 @@ add_task(async function test_reloading_a_temp_addon() {
     return;
   await promiseRestartManager();
   await AddonManager.installTemporaryAddon(do_get_addon(sampleAddon.name));
-  const addon = await promiseAddonByID(sampleAddon.id)
+  const addon = await promiseAddonByID(sampleAddon.id);
 
   var receivedOnUninstalled = false;
   var receivedOnUninstalling = false;
@@ -66,7 +66,7 @@ add_task(async function test_reloading_a_temp_addon() {
         AddonManager.removeAddonListener(listener);
         resolve();
       },
-    }
+    };
     AddonManager.addAddonListener(listener);
   });
 
@@ -95,22 +95,22 @@ add_task(async function test_can_reload_permanent_addon() {
   let enabledCalled = false;
   AddonManager.addAddonListener({
     onDisabled: (aAddon) => {
-      do_check_false(enabledCalled);
-      disabledCalled = true
+      Assert.ok(!enabledCalled);
+      disabledCalled = true;
     },
     onEnabled: (aAddon) => {
-      do_check_true(disabledCalled);
-      enabledCalled = true
+      Assert.ok(disabledCalled);
+      enabledCalled = true;
     }
-  })
+  });
 
   await Promise.all([
     addon.reload(),
     promiseWebExtensionStartup(),
   ]);
 
-  do_check_true(disabledCalled);
-  do_check_true(enabledCalled);
+  Assert.ok(disabledCalled);
+  Assert.ok(enabledCalled);
 
   notEqual(addon, null);
   equal(addon.appDisabled, false);

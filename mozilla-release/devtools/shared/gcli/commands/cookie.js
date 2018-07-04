@@ -9,7 +9,7 @@
  * If we want these commands to run on remote devices/connections, they need to
  * run on the server (runAt=server). Unfortunately, cookie commands not only
  * need to run on the server, they also need to access to the parent process to
- * retrieve and manipulate cookies via nsICookieManager2.
+ * retrieve and manipulate cookies via nsICookieManager.
  * However, server-running commands have no way of accessing the parent process
  * for now.
  *
@@ -20,13 +20,9 @@
  * This way, they'll always run in the parent process.
  */
 
-const { Ci, Cc } = require("chrome");
+const { Ci } = require("chrome");
+const Services = require("Services");
 const l10n = require("gcli/l10n");
-const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyGetter(this, "cookieMgr", function () {
-  return Cc["@mozilla.org/cookiemanager;1"].getService(Ci.nsICookieManager2);
-});
 
 /**
  * Check host value and remove port part as it is not used
@@ -86,7 +82,7 @@ exports.items = [
     description: l10n.lookup("cookieListDesc"),
     manual: l10n.lookup("cookieListManual"),
     returnType: "cookies",
-    exec: function (args, context) {
+    exec: function(args, context) {
       if (context.environment.target.isRemote) {
         throw new Error("The cookie gcli commands only work in a local tab, " +
                         "see bug 1221488");
@@ -95,7 +91,7 @@ exports.items = [
       let contentWindow = context.environment.window;
       host = sanitizeHost(host);
       let { originAttributes } = contentWindow.document.nodePrincipal;
-      let enm = cookieMgr.getCookiesFromHost(host, originAttributes);
+      let enm = Services.cookies.getCookiesFromHost(host, originAttributes);
 
       let cookies = [];
       while (enm.hasMoreElements()) {
@@ -130,7 +126,7 @@ exports.items = [
         description: l10n.lookup("cookieRemoveKeyDesc"),
       }
     ],
-    exec: function (args, context) {
+    exec: function(args, context) {
       if (context.environment.target.isRemote) {
         throw new Error("The cookie gcli commands only work in a local tab, " +
                         "see bug 1221488");
@@ -139,14 +135,14 @@ exports.items = [
       let contentWindow = context.environment.window;
       host = sanitizeHost(host);
       let { originAttributes } = contentWindow.document.nodePrincipal;
-      let enm = cookieMgr.getCookiesFromHost(host, originAttributes);
+      let enm = Services.cookies.getCookiesFromHost(host, originAttributes);
 
       while (enm.hasMoreElements()) {
         let cookie = enm.getNext().QueryInterface(Ci.nsICookie);
         if (isCookieAtHost(cookie, host)) {
           if (cookie.name == args.name) {
-            cookieMgr.remove(cookie.host, cookie.name, cookie.path,
-                             false, cookie.originAttributes);
+            Services.cookies.remove(cookie.host, cookie.name, cookie.path,
+                                    false, cookie.originAttributes);
           }
         }
       }
@@ -156,7 +152,7 @@ exports.items = [
     item: "converter",
     from: "cookies",
     to: "view",
-    exec: function (cookies, context) {
+    exec: function(cookies, context) {
       if (cookies.length == 0) {
         let host = new URL(context.environment.target.url).host;
         host = sanitizeHost(host);
@@ -273,7 +269,7 @@ exports.items = [
         ]
       }
     ],
-    exec: function (args, context) {
+    exec: function(args, context) {
       if (context.environment.target.isRemote) {
         throw new Error("The cookie gcli commands only work in a local tab, " +
                         "see bug 1221488");
@@ -282,15 +278,15 @@ exports.items = [
       host = sanitizeHost(host);
       let time = Date.parse(args.expires) / 1000;
       let contentWindow = context.environment.window;
-      cookieMgr.add(args.domain ? "." + args.domain : host,
-                    args.path ? args.path : "/",
-                    args.name,
-                    args.value,
-                    args.secure,
-                    args.httpOnly,
-                    args.session,
-                    time,
-                    contentWindow.document.nodePrincipal.originAttributes);
+      Services.cookies.add(args.domain ? "." + args.domain : host,
+                           args.path ? args.path : "/",
+                           args.name,
+                           args.value,
+                           args.secure,
+                           args.httpOnly,
+                           args.session,
+                           time,
+                           contentWindow.document.nodePrincipal.originAttributes);
     }
   }
 ];

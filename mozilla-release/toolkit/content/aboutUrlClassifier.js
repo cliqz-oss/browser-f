@@ -2,11 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const bundle = Services.strings.createBundle(
   "chrome://global/locale/aboutUrlClassifier.properties");
@@ -130,7 +126,7 @@ var Provider = {
           btn.id = "update-" + provider;
           btn.addEventListener("click", () => { this.update(provider); });
 
-          let str = bundle.GetStringFromName("TriggerUpdate")
+          let str = bundle.GetStringFromName("TriggerUpdate");
           btn.appendChild(document.createTextNode(str));
           td.appendChild(btn);
         } else {
@@ -174,11 +170,9 @@ var Provider = {
                       .getService(Ci.nsIUrlListManager);
 
     let pref = "browser.safebrowsing.provider." + provider + ".lists";
-    let tables = Services.prefs.getCharPref(pref, "").split(",");
-    let table = tables.find(t => listmanager.getUpdateUrl(t) != "");
+    let tables = Services.prefs.getCharPref(pref, "");
 
-    let updateUrl = listmanager.getUpdateUrl(table);
-    if (!listmanager.checkForUpdates(updateUrl)) {
+    if (!listmanager.forceUpdates(tables)) {
       // This may because of back-off algorithm.
       let elem = document.getElementById(provider + "-col-lastupdateresult");
       elem.childNodes[0].nodeValue = bundle.GetStringFromName("CannotUpdate");
@@ -197,7 +191,7 @@ var Cache = {
   init() {
     this.showCacheEnties = new Set();
 
-    this.register()
+    this.register();
     this.render();
   },
 
@@ -255,7 +249,7 @@ var Cache = {
         let elem = typeof v === "object" ? v : document.createTextNode(v);
         td.appendChild(elem);
         tr.appendChild(td);
-      })
+      });
       body.appendChild(tr);
     }
 
@@ -267,57 +261,60 @@ var Cache = {
       let tables = Services.prefs.getCharPref(pref, "").split(",");
 
       for (let table of tables) {
-        let cache = dbservice.getCacheInfo(table);
-        let entries = cache.entries;
-        if (entries.length === 0) {
-          this.showCacheEnties.delete(table);
-          continue;
-        }
-
-        let positiveCacheCount = 0;
-        for (let i = 0; i < entries.length ; i++) {
-          let entry = entries.queryElementAt(i, Ci.nsIUrlClassifierCacheEntry);
-          let matches = entry.matches;
-          positiveCacheCount += matches.length;
-
-          // If we don't have to show cache entries for this table then just
-          // skip the following code.
-          if (!this.showCacheEnties.has(table)) {
-            continue;
-          }
-
-          let tds = [table, entry.prefix, new Date(entry.expiry * 1000).toString()];
-          let j = 0;
-          do {
-            if (matches.length >= 1) {
-              let match =
-                matches.queryElementAt(j, Ci.nsIUrlClassifierPositiveCacheEntry);
-              let list = [match.fullhash, new Date(match.expiry * 1000).toString()];
-              tds = tds.concat(list);
-            } else {
-              tds = tds.concat([STR_NA, STR_NA])
+        dbservice.getCacheInfo(table, {
+          onGetCacheComplete: (aCache) => {
+            let entries = aCache.entries;
+            if (entries.length === 0) {
+              this.showCacheEnties.delete(table);
+              return;
             }
-            createRow(tds, document.getElementById("cache-entries-table-body"), 5);
-            j++;
-            tds = [""];
-          } while (j < matches.length)
-        }
 
-        // Create cache information entries.
-        let chk = document.createElement("input");
-        chk.type = "checkbox";
-        chk.checked = this.showCacheEnties.has(table);
-        chk.addEventListener("click", () => {
-          if (chk.checked) {
-            this.showCacheEnties.add(table);
-          } else {
-            this.showCacheEnties.delete(table);
+            let positiveCacheCount = 0;
+            for (let i = 0; i < entries.length ; i++) {
+              let entry = entries.queryElementAt(i, Ci.nsIUrlClassifierCacheEntry);
+              let matches = entry.matches;
+              positiveCacheCount += matches.length;
+
+              // If we don't have to show cache entries for this table then just
+              // skip the following code.
+              if (!this.showCacheEnties.has(table)) {
+                continue;
+              }
+
+              let tds = [table, entry.prefix, new Date(entry.expiry * 1000).toString()];
+              let j = 0;
+              do {
+                if (matches.length >= 1) {
+                  let match =
+                    matches.queryElementAt(j, Ci.nsIUrlClassifierPositiveCacheEntry);
+                  let list = [match.fullhash, new Date(match.expiry * 1000).toString()];
+                  tds = tds.concat(list);
+                } else {
+                  tds = tds.concat([STR_NA, STR_NA]);
+                }
+                createRow(tds, document.getElementById("cache-entries-table-body"), 5);
+                j++;
+                tds = [""];
+              } while (j < matches.length);
+            }
+
+            // Create cache information entries.
+            let chk = document.createElement("input");
+            chk.type = "checkbox";
+            chk.checked = this.showCacheEnties.has(table);
+            chk.addEventListener("click", () => {
+              if (chk.checked) {
+                this.showCacheEnties.add(table);
+              } else {
+                this.showCacheEnties.delete(table);
+              }
+              this.refresh();
+            });
+
+            let tds = [table, entries.length, positiveCacheCount, chk];
+            createRow(tds, document.getElementById("cache-table-body"), tds.length);
           }
-          this.refresh();
         });
-
-        let tds = [table, entries.length, positiveCacheCount, chk];
-        createRow(tds, document.getElementById("cache-table-body"), tds.length);
       }
     }
 
@@ -390,7 +387,7 @@ var Debug = {
       chk.id = "chk-" + module;
       chk.type = "checkbox";
       chk.checked = true;
-      chk.addEventListener("click", () => { logModuleUpdate(module) });
+      chk.addEventListener("click", () => { logModuleUpdate(module); });
       container.appendChild(chk, modules);
 
       let label = document.createElement("label");

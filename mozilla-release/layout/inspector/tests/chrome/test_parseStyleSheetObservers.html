@@ -12,10 +12,8 @@ body { color: red; }
 <script type="application/javascript">
 SimpleTest.waitForExplicitFinish();
 
-let DOMUtils = SpecialPowers.Cc["@mozilla.org/inspector/dom-utils;1"]
-               .getService(SpecialPowers.Ci.inIDOMUtils);
 const Cu = SpecialPowers.Components.utils;
-const { ContentTaskUtils } = Cu.import("resource://testing-common/ContentTaskUtils.jsm", {});
+const { ContentTaskUtils } = ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm", {});
 
 let sheet = document.styleSheets[1];
 document.styleSheetChangeEventsEnabled = true;
@@ -41,7 +39,7 @@ function test1Setup() {
   document.addEventListener("StyleRuleAdded", countingAddListener, listenerOptions);
   document.addEventListener("StyleRuleRemoved", countingRemoveListener, listenerOptions);
 
-  DOMUtils.parseStyleSheet(sheet, "body { color: blue; } p { color: green; }");
+  InspectorUtils.parseStyleSheet(sheet, "body { color: blue; } p { color: green; }");
   is(sheet.cssRules.length, 2, "Test 1: Stylesheet now has 2 rules.");
 
   SimpleTest.executeSoon(test1Result);
@@ -58,31 +56,37 @@ function test1Result() {
 }
 
 // Test 2: Import rules should be deferred until sheet is actually loaded.
-// We'll test this by parsing an import rule followed by style rule, then
-// ensuring that the event for the style rule lands first.
+// When the import rule lands, the associated sheet should be loaded.
 // This test is constructed with async functions so we can await an event that
 // might take awhile to arrive (but is guaranteed to arrive, per spec).
 let foundImport = false;
 let foundStyle = false;
 let styleFirstAddProcessor = function(event) {
-  info("styleFirstAddProcessor: called");
+  info("styleFirstAddProcessor: called with event "+ event.rule.cssText);
   if (event.rule.type == CSSRule.IMPORT_RULE) {
     foundImport = true;
+    isnot(event.rule.styleSheet, null, "Test 2: import rule has stylesheet loaded.");
   } else if (event.rule.type == CSSRule.STYLE_RULE) {
     foundStyle = true;
-    is(foundImport, false, "Test 2: The style rule arrived before the import rule.");
   }
-}
+  return foundImport && foundStyle;
+};
 
 async function test2Setup() {
   info("test2Setup: called");
 
-  DOMUtils.parseStyleSheet(sheet, "@import url('imported_no_op.css'); p { color: purple; }");
+  // Create a Promise to watch for two StyleRuleAdded events. The first invocation will
+  // likely be the style rule, though this is not guaranteed. We use the same processor
+  // for both events, but the processor will only return true (completing the Promise) when
+  // both rules have been processed.
+  let gotAllStyleRuleAddedEvents = ContentTaskUtils.waitForEvent(document,
+    "StyleRuleAdded", true, styleFirstAddProcessor);
+
+  InspectorUtils.parseStyleSheet(sheet, "@import url('imported_no_op.css'); p {color: purple;}");
   is(sheet.cssRules.length, 2, "Test 2: Stylesheet now has 2 rules.");
 
-  // Await and then process the 2 events we expect to arrive.
-  styleFirstAddProcessor(await ContentTaskUtils.waitForEvent(document, "StyleRuleAdded", true));
-  styleFirstAddProcessor(await ContentTaskUtils.waitForEvent(document, "StyleRuleAdded", true));
+  // Await and then process the events we expect to arrive.
+  await gotAllStyleRuleAddedEvents;
 
   is(foundStyle, true, "Test 2: Got the style rule.");
   is(foundImport, true, "Test 2: Got the import rule.");

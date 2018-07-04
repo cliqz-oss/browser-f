@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 function test() {
   /** Test for Bug 506482 **/
@@ -9,9 +10,7 @@ function test() {
   waitForExplicitFinish();
 
   // read the sessionstore.js mtime (picked from browser_248970_a.js)
-  let profilePath = Cc["@mozilla.org/file/directory_service;1"].
-                    getService(Ci.nsIProperties).
-                    get("ProfD", Ci.nsIFile);
+  let profilePath = Services.dirsvc.get("ProfD", Ci.nsIFile);
   function getSessionstoreFile() {
     let sessionStoreJS = profilePath.clone();
     sessionStoreJS.append("sessionstore.jsonlz4");
@@ -33,13 +32,13 @@ function test() {
 
   // test content URL
   const TEST_URL = "data:text/html;charset=utf-8,"
-    + "<body style='width: 100000px; height: 100000px;'><p>top</p></body>"
+    + "<body style='width: 100000px; height: 100000px;'><p>top</p></body>";
 
   // preferences that we use
   const PREF_INTERVAL = "browser.sessionstore.interval";
 
   // make sure sessionstore.js is saved ASAP on all events
-  gPrefService.setIntPref(PREF_INTERVAL, 0);
+  Services.prefs.setIntPref(PREF_INTERVAL, 0);
 
   // get the initial sessionstore.js mtime (-1 if it doesn't exist yet)
   let mtime0 = getSessionstorejsModificationTime();
@@ -63,8 +62,8 @@ function test() {
            "tab selection and scrolling: sessionstore.js not updated");
 
         // ok, done, cleanup and finish
-        if (gPrefService.prefHasUserValue(PREF_INTERVAL))
-          gPrefService.clearUserPref(PREF_INTERVAL);
+        if (Services.prefs.prefHasUserValue(PREF_INTERVAL))
+          Services.prefs.clearUserPref(PREF_INTERVAL);
         gBrowser.removeTab(tab);
         finish();
       }, 3500); // end of sleep after tab selection and scrolling

@@ -3,17 +3,46 @@
  *   spoofed/disabled correctly.
  */
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
+
+ChromeUtils.defineModuleGetter(this, "AppConstants",
+  "resource://gre/modules/AppConstants.jsm");
 
 const TEST_PATH = "http://example.net/browser/browser/" +
-                  "components/resistfingerprinting/test/browser/"
+                  "components/resistfingerprinting/test/browser/";
 
 var spoofedUserAgent;
 
-const SPOOFED_APPNAME        = "Netscape";
-const SPOOFED_APPVERSION     = "5.0 (Windows)";
-const SPOOFED_PLATFORM       = "Win64";
-const SPOOFED_OSCPU          = "Windows NT 6.1; Win64; x64";
+const SPOOFED_APPNAME = "Netscape";
+
+const SPOOFED_APPVERSION = {
+  linux: "5.0 (X11)",
+  win: "5.0 (Windows)",
+  macosx: "5.0 (Macintosh)",
+  android: "5.0 (Android 6.0)",
+  other: "5.0 (X11)",
+};
+const SPOOFED_PLATFORM = {
+  linux: "Linux x86_64",
+  win: "Win64",
+  macosx: "MacIntel",
+  android: "Linux armv7l",
+  other: "Linux x86_64",
+};
+const SPOOFED_OSCPU = {
+  linux: "Linux x86_64",
+  win: "Windows NT 6.1; Win64; x64",
+  macosx: "Intel Mac OS X 10.13",
+  android: "Linux armv7l",
+  other: "Linux x86_64",
+};
+const SPOOFED_UA_OS = {
+  linux: "X11; Linux x86_64",
+  win: "Windows NT 6.1; Win64; x64",
+  macosx: "Macintosh; Intel Mac OS X 10.13",
+  android: "Android 6.0; Mobile",
+  other: "X11; Linux x86_64",
+};
 const SPOOFED_BUILDID        = "20100101";
 const SPOOFED_HW_CONCURRENCY = 2;
 
@@ -35,14 +64,14 @@ async function testNavigator() {
   result = JSON.parse(result);
 
   is(result.appName, SPOOFED_APPNAME, "Navigator.appName is correctly spoofed.");
-  is(result.appVersion, SPOOFED_APPVERSION, "Navigator.appVersion is correctly spoofed.");
-  is(result.platform, SPOOFED_PLATFORM, "Navigator.platform is correctly spoofed.");
+  is(result.appVersion, SPOOFED_APPVERSION[AppConstants.platform], "Navigator.appVersion is correctly spoofed.");
+  is(result.platform, SPOOFED_PLATFORM[AppConstants.platform], "Navigator.platform is correctly spoofed.");
   is(result.userAgent, spoofedUserAgent, "Navigator.userAgent is correctly spoofed.");
   is(result.mimeTypesLength, 0, "Navigator.mimeTypes has a length of 0.");
   is(result.pluginsLength, 0, "Navigator.plugins has a length of 0.");
-  is(result.oscpu, SPOOFED_OSCPU, "Navigator.oscpu is correctly spoofed.");
+  is(result.oscpu, SPOOFED_OSCPU[AppConstants.platform], "Navigator.oscpu is correctly spoofed.");
   is(result.buildID, SPOOFED_BUILDID, "Navigator.buildID is correctly spoofed.");
-  is(result.hardwareConcurrency, SPOOFED_HW_CONCURRENCY, "Navigator.hardwareConcurrency is correctly spoofed.")
+  is(result.hardwareConcurrency, SPOOFED_HW_CONCURRENCY, "Navigator.hardwareConcurrency is correctly spoofed.");
 
   is(result.appCodeName, CONST_APPCODENAME, "Navigator.appCodeName reports correct constant value.");
   is(result.product, CONST_PRODUCT, "Navigator.product reports correct constant value.");
@@ -50,7 +79,7 @@ async function testNavigator() {
   is(result.vendor, CONST_VENDOR, "Navigator.vendor reports correct constant value.");
   is(result.vendorSub, CONST_VENDORSUB, "Navigator.vendorSub reports correct constant value.");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 async function testWorkerNavigator() {
@@ -73,15 +102,15 @@ async function testWorkerNavigator() {
   result = JSON.parse(result);
 
   is(result.appName, SPOOFED_APPNAME, "Navigator.appName is correctly spoofed.");
-  is(result.appVersion, SPOOFED_APPVERSION, "Navigator.appVersion is correctly spoofed.");
-  is(result.platform, SPOOFED_PLATFORM, "Navigator.platform is correctly spoofed.");
+  is(result.appVersion, SPOOFED_APPVERSION[AppConstants.platform], "Navigator.appVersion is correctly spoofed.");
+  is(result.platform, SPOOFED_PLATFORM[AppConstants.platform], "Navigator.platform is correctly spoofed.");
   is(result.userAgent, spoofedUserAgent, "Navigator.userAgent is correctly spoofed.");
-  is(result.hardwareConcurrency, SPOOFED_HW_CONCURRENCY, "Navigator.hardwareConcurrency is correctly spoofed.")
+  is(result.hardwareConcurrency, SPOOFED_HW_CONCURRENCY, "Navigator.hardwareConcurrency is correctly spoofed.");
 
   is(result.appCodeName, CONST_APPCODENAME, "Navigator.appCodeName reports correct constant value.");
   is(result.product, CONST_PRODUCT, "Navigator.product reports correct constant value.");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 add_task(async function setup() {
@@ -89,10 +118,9 @@ add_task(async function setup() {
     [["privacy.resistFingerprinting", true]]
   });
 
-  let appInfo = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULAppInfo);
-  let appVersion = parseInt(appInfo.version);
-  let spoofedVersion = appVersion - (appVersion % 10);
-  spoofedUserAgent = `Mozilla/5.0 (${SPOOFED_OSCPU}; rv:${spoofedVersion}.0) Gecko/20100101 Firefox/${spoofedVersion}.0`;
+  let appVersion = parseInt(Services.appinfo.version);
+  let spoofedVersion = appVersion - ((appVersion - 4) % 7);
+  spoofedUserAgent = `Mozilla/5.0 (${SPOOFED_UA_OS[AppConstants.platform]}; rv:${spoofedVersion}.0) Gecko/20100101 Firefox/${spoofedVersion}.0`;
 });
 
 add_task(async function runNavigatorTest() {

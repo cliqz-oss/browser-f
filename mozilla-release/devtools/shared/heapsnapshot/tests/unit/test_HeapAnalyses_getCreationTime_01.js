@@ -12,16 +12,12 @@ function waitForThirtyMilliseconds() {
   }
 }
 
-function run_test() {
-  run_next_test();
-}
-
 const BREAKDOWN = {
   by: "internalType",
   then: { by: "count", count: true, bytes: true }
 };
 
-add_task(function* () {
+add_task(async function() {
   const client = new HeapAnalysesClient();
   const start = Date.now() * 1000;
 
@@ -33,12 +29,12 @@ add_task(function* () {
   waitForThirtyMilliseconds();
   const end = Date.now() * 1000;
 
-  yield client.readHeapSnapshot(snapshotFilePath);
+  await client.readHeapSnapshot(snapshotFilePath);
   ok(true, "Should have read the heap snapshot");
 
   let threw = false;
   try {
-    yield client.getCreationTime("/not/a/real/path", {
+    await client.getCreationTime("/not/a/real/path", {
       breakdown: BREAKDOWN
     });
   } catch (_) {
@@ -46,7 +42,7 @@ add_task(function* () {
   }
   ok(threw, "getCreationTime should throw when snapshot does not exist");
 
-  let time = yield client.getCreationTime(snapshotFilePath, {
+  let time = await client.getCreationTime(snapshotFilePath, {
     breakdown: BREAKDOWN
   });
 

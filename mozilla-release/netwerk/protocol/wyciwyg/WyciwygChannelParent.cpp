@@ -28,10 +28,6 @@ WyciwygChannelParent::WyciwygChannelParent()
 {
 }
 
-WyciwygChannelParent::~WyciwygChannelParent()
-{
-}
-
 void
 WyciwygChannelParent::ActorDestroy(ActorDestroyReason why)
 {
@@ -117,6 +113,7 @@ WyciwygChannelParent::RecvInit(const URIParams&          aURI,
                                            triggeringPrincipal,
                                            aSecurityFlags,
                                            aContentPolicyType,
+                                           nullptr,   // PerformanceStorage
                                            nullptr,   // loadGroup
                                            nullptr,   // aCallbacks
                                            nsIRequest::LOAD_NORMAL,
@@ -159,6 +156,10 @@ WyciwygChannelParent::RecvAppData(const IPC::SerializedLoadContext& loadContext,
 
   if (!SetupAppData(loadContext, parent))
     return IPC_FAIL_NO_REASON(this);
+
+  if (!mChannel) {
+    return IPC_FAIL(this, "Should have a channel");
+  }
 
   mChannel->SetNotificationCallbacks(this);
   return IPC_OK();
@@ -325,9 +326,12 @@ WyciwygChannelParent::OnStartRequest(nsIRequest *aRequest, nsISupports *aContext
 
   // Send down any permissions which are relevant to this URL if we are
   // performing a document load.
-  PContentParent* pcp = Manager()->Manager();
-  rv = static_cast<ContentParent*>(pcp)->AboutToLoadHttpFtpWyciwygDocumentForChild(chan);
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
+  if (!mIPCClosed) {
+    PContentParent* pcp = Manager()->Manager();
+    MOZ_ASSERT(pcp, "We should have a manager if our IPC isn't closed");
+    rv = static_cast<ContentParent*>(pcp)->AboutToLoadHttpFtpWyciwygDocumentForChild(chan);
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+  }
 
   nsresult status;
   chan->GetStatus(&status);

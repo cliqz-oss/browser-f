@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,6 +16,7 @@
 #include "nsIPresShell.h"
 #include "mozilla/CSSAlignUtils.h"
 #include "mozilla/ReflowInput.h"
+#include "nsPlaceholderFrame.h"
 #include "nsPresContext.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsGridContainerFrame.h"
@@ -69,7 +71,7 @@ nsAbsoluteContainingBlock::AppendFrames(nsIFrame*      aDelegatingFrame,
 
   // no damage to intrinsic widths, since absolutely positioned frames can't
   // change them
-  aDelegatingFrame->PresContext()->PresShell()->
+  aDelegatingFrame->PresShell()->
     FrameNeedsReflow(aDelegatingFrame, nsIPresShell::eResize,
                      NS_FRAME_HAS_DIRTY_CHILDREN);
 }
@@ -91,7 +93,7 @@ nsAbsoluteContainingBlock::InsertFrames(nsIFrame*      aDelegatingFrame,
 
   // no damage to intrinsic widths, since absolutely positioned frames can't
   // change them
-  aDelegatingFrame->PresContext()->PresShell()->
+  aDelegatingFrame->PresShell()->
     FrameNeedsReflow(aDelegatingFrame, nsIPresShell::eResize,
                      NS_FRAME_HAS_DIRTY_CHILDREN);
 }
@@ -165,6 +167,8 @@ nsAbsoluteContainingBlock::Reflow(nsContainerFrame*        aDelegatingFrame,
       nsReflowStatus kidStatus;
       ReflowAbsoluteFrame(aDelegatingFrame, aPresContext, aReflowInput, cb,
                           aFlags, kidFrame, kidStatus, aOverflowAreas);
+      MOZ_ASSERT(!kidStatus.IsInlineBreakBefore(),
+                 "ShouldAvoidBreakInside should prevent this from happening");
       nsIFrame* nextFrame = kidFrame->GetNextInFlow();
       if (!kidStatus.IsFullyComplete() &&
           aDelegatingFrame->IsFrameOfType(nsIFrame::eCanContainOverflowContainers)) {
@@ -349,9 +353,10 @@ nsAbsoluteContainingBlock::FrameDependsOnContainer(nsIFrame* f,
 
 void
 nsAbsoluteContainingBlock::DestroyFrames(nsIFrame* aDelegatingFrame,
-                                         nsIFrame* aDestructRoot)
+                                         nsIFrame* aDestructRoot,
+                                         PostDestroyData& aPostDestroyData)
 {
-  mAbsoluteFrames.DestroyFramesFrom(aDestructRoot);
+  mAbsoluteFrames.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
 }
 
 void
@@ -441,14 +446,30 @@ OffsetToAlignedStaticPos(const ReflowInput& aKidReflowInput,
                         ? GetOrthogonalAxis(aAbsPosCBAxis)
                         : aAbsPosCBAxis);
 
+  const bool placeholderContainerIsContainingBlock =
+    aPlaceholderContainer == aKidReflowInput.mCBReflowInput->mFrame;
+
   LayoutFrameType parentType = aPlaceholderContainer->Type();
   LogicalSize alignAreaSize(pcWM);
   if (parentType == LayoutFrameType::FlexContainer) {
-    // The alignment container is the flex container's content box:
-    alignAreaSize = aPlaceholderContainer->GetLogicalSize(pcWM);
-    LogicalMargin pcBorderPadding =
-      aPlaceholderContainer->GetLogicalUsedBorderAndPadding(pcWM);
-    alignAreaSize -= pcBorderPadding.Size(pcWM);
+    // We store the frame rect in FinishAndStoreOverflow, which runs _after_
+    // reflowing the absolute frames, so handle the special case of the frame
+    // being the actual containing block here, by getting the size from
+    // aAbsPosCBSize.
+    //
+    // The alignment container is the flex container's content box.
+    if (placeholderContainerIsContainingBlock) {
+      alignAreaSize = aAbsPosCBSize.ConvertTo(pcWM, aAbsPosCBWM);
+      // aAbsPosCBSize is the padding-box, so substract the padding to get the
+      // content box.
+      alignAreaSize -=
+        aPlaceholderContainer->GetLogicalUsedPadding(pcWM).Size(pcWM);
+    } else {
+      alignAreaSize = aPlaceholderContainer->GetLogicalSize(pcWM);
+      LogicalMargin pcBorderPadding =
+        aPlaceholderContainer->GetLogicalUsedBorderAndPadding(pcWM);
+      alignAreaSize -= pcBorderPadding.Size(pcWM);
+    }
   } else if (parentType == LayoutFrameType::GridContainer) {
     // This abspos elem's parent is a grid container. Per CSS Grid 10.1 & 10.2:
     //  - If the grid container *also* generates the abspos containing block (a
@@ -456,7 +477,7 @@ OffsetToAlignedStaticPos(const ReflowInput& aKidReflowInput,
     // the alignment container, too. (And its size is aAbsPosCBSize.)
     //  - Otherwise, we use the grid's padding box as the alignment container.
     // https://drafts.csswg.org/css-grid/#static-position
-    if (aPlaceholderContainer == aKidReflowInput.mCBReflowInput->mFrame) {
+    if (placeholderContainerIsContainingBlock) {
       // The alignment container is the grid area that we're using as the
       // absolute containing block.
       alignAreaSize = aAbsPosCBSize.ConvertTo(pcWM, aAbsPosCBWM);
@@ -630,6 +651,8 @@ nsAbsoluteContainingBlock::ReflowAbsoluteFrame(nsIFrame*                aDelegat
                                                nsReflowStatus&          aStatus,
                                                nsOverflowAreas*         aOverflowAreas)
 {
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
 #ifdef DEBUG
   if (nsBlockFrame::gNoisyReflow) {
     nsFrame::IndentBy(stdout,nsBlockFrame::gNoiseIndent);
@@ -681,8 +704,8 @@ nsAbsoluteContainingBlock::ReflowAbsoluteFrame(nsIFrame*                aDelegat
 
   // Get the border values
   WritingMode outerWM = aReflowInput.GetWritingMode();
-  const LogicalMargin border(outerWM,
-                             aReflowInput.mStyleBorder->GetComputedBorder());
+  const LogicalMargin border(outerWM, aDelegatingFrame->GetUsedBorder());
+
   LogicalMargin margin =
     kidReflowInput.ComputedLogicalMargin().ConvertTo(outerWM, wm);
 
@@ -771,8 +794,7 @@ nsAbsoluteContainingBlock::ReflowAbsoluteFrame(nsIFrame*                aDelegat
     nsContainerFrame::PositionChildViews(aKidFrame);
   }
 
-  aKidFrame->DidReflow(aPresContext, &kidReflowInput,
-                       nsDidReflowStatus::FINISHED);
+  aKidFrame->DidReflow(aPresContext, &kidReflowInput);
 
 #ifdef DEBUG
   if (nsBlockFrame::gNoisyReflow) {

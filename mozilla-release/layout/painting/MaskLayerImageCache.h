@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -15,7 +16,7 @@ namespace mozilla {
 
 namespace layers {
 class ImageContainer;
-class ShadowLayerForwarder;
+class KnowsCompositor;
 } // namespace layers
 
 /**
@@ -34,7 +35,7 @@ class ShadowLayerForwarder;
 class MaskLayerImageCache
 {
   typedef mozilla::layers::ImageContainer ImageContainer;
-  typedef mozilla::layers::ShadowLayerForwarder ShadowLayerForwarder;
+  typedef mozilla::layers::KnowsCompositor KnowsCompositor;
 public:
   MaskLayerImageCache();
   ~MaskLayerImageCache();
@@ -154,19 +155,19 @@ public:
       for (uint32_t i = 0; i < mRoundedClipRects.Length(); ++i) {
         hash = AddToHash(hash, mRoundedClipRects[i].Hash());
       }
-      hash = AddToHash(hash, mForwarder.get());
+      hash = AddToHash(hash, mKnowsCompositor.get());
 
       return hash;
     }
 
     bool operator==(const MaskLayerImageKey& aOther) const
     {
-      return mForwarder == aOther.mForwarder &&
+      return mKnowsCompositor == aOther.mKnowsCompositor &&
              mRoundedClipRects == aOther.mRoundedClipRects;
     }
 
     nsTArray<PixelRoundedRect> mRoundedClipRects;
-    RefPtr<ShadowLayerForwarder> mForwarder;
+    RefPtr<KnowsCompositor> mKnowsCompositor;
   private:
     void IncLayerCount() const { ++mLayerCount; }
     void DecLayerCount() const

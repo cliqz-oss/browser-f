@@ -1,6 +1,4 @@
-const ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
-
-const {Utils} = Cu.import("resource://gre/modules/sessionstore/Utils.jsm", {});
+const {Utils} = ChromeUtils.import("resource://gre/modules/sessionstore/Utils.jsm", {});
 const triggeringPrincipal_base64 = Utils.SERIALIZED_SYSTEMPRINCIPAL;
 
 add_task(async function() {
@@ -15,13 +13,13 @@ add_task(async function() {
     // Test button
     let button = doc.getElementById("button");
     button.focus();
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     await checkPageScrolling(container, "button");
 
     // Test checkbox
     let checkbox = doc.getElementById("checkbox");
     checkbox.focus();
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     ok(checkbox.checked, "Checkbox is checked");
     await checkPageScrolling(container, "checkbox");
 
@@ -29,14 +27,14 @@ add_task(async function() {
     let listbox = doc.getElementById("listbox");
     let listitem = doc.getElementById("listitem");
     listbox.focus();
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     ok(listitem.selected, "Listitem is selected");
     await checkPageScrolling(container, "listbox");
 
     // Test radio
     let radiogroup = doc.getElementById("radiogroup");
     radiogroup.focus();
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     await checkPageScrolling(container, "radio");
   });
 
@@ -47,9 +45,9 @@ add_task(async function() {
     // Test search
     let engineList = doc.getElementById("engineList");
     engineList.focus();
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     is(engineList.view.selection.currentIndex, 0, "Search engineList is selected");
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     await checkPageScrolling(container, "search engineList");
   });
 
@@ -68,7 +66,7 @@ add_task(async function() {
   let tab = gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank");
 
   // Fake a post-crash tab
-  ss.setTabState(tab, JSON.stringify(TAB_STATE));
+  SessionStore.setTabState(tab, JSON.stringify(TAB_STATE));
 
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   let doc = tab.linkedBrowser.contentDocument;
@@ -76,9 +74,9 @@ add_task(async function() {
   // Make body scrollable
   doc.body.style.height = (doc.body.clientHeight + 100) + "px";
 
-  let tabList = doc.getElementById("tabList");
-  tabList.focus();
-  EventUtils.synthesizeKey(" ", {});
+  let tabsToggle = doc.getElementById("tabsToggle");
+  tabsToggle.focus();
+  EventUtils.sendString(" ");
   await checkPageScrolling(doc.documentElement, "session restore");
 
   gBrowser.removeCurrentTab();

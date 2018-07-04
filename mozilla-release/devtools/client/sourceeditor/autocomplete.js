@@ -41,7 +41,7 @@ function initializeAutoCompletion(ctx, options = {}) {
     win.tern = require("./tern/tern");
     cm.tern = new CodeMirror.TernServer({
       defs: defs,
-      typeTip: function (data) {
+      typeTip: function(data) {
         let tip = document.createElement("span");
         tip.className = "CodeMirror-Tern-information";
         let tipType = document.createElement("strong");
@@ -88,7 +88,7 @@ function initializeAutoCompletion(ctx, options = {}) {
     };
     cm.addKeyMap(keyMap);
 
-    let destroyTern = function () {
+    let destroyTern = function() {
       ed.off("destroy", destroyTern);
       cm.off("cursorActivity", updateArgHintsCallback);
       cm.removeKeyMap(keyMap);
@@ -139,6 +139,7 @@ function initializeAutoCompletion(ctx, options = {}) {
 
   let cycle = reverse => {
     if (popup && popup.isOpen) {
+      // eslint-disable-next-line mozilla/no-compare-against-boolean-literals
       cycleSuggestions(ed, reverse == true);
       return null;
     }
@@ -237,7 +238,7 @@ function autoComplete({ ed, cm }) {
     });
     popup.openPopup(cursorElement, -1 * left, 0);
     autocompleteOpts.suggestionInsertedOnce = false;
-  }).catch(e => console.error(e));
+  }).catch(console.error);
 }
 
 /**

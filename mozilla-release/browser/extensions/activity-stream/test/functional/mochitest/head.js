@@ -1,5 +1,8 @@
 "use strict";
 
+ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
+  "resource://testing-common/PlacesTestUtils.jsm");
+
 function popPrefs() {
   return SpecialPowers.popPrefEnv();
 }
@@ -7,11 +10,19 @@ function pushPrefs(...prefs) {
   return SpecialPowers.pushPrefEnv({set: prefs});
 }
 
-// Activity Stream tests expect it to be enabled, and make sure to clear out any
-// preloaded browsers that might have about:newtab that we don't want to test
-const ACTIVITY_STREAM_PREF = "browser.newtabpage.activity-stream.enabled";
-pushPrefs([ACTIVITY_STREAM_PREF, true]);
-gBrowser.removePreloadedBrowser();
+async function setDefaultTopSites() { // eslint-disable-line no-unused-vars
+  // The pref for TopSites is empty by default.
+  await pushPrefs(["browser.newtabpage.activity-stream.default.sites",
+    "https://www.youtube.com/,https://www.facebook.com/,https://www.amazon.com/,https://www.reddit.com/,https://www.wikipedia.org/,https://twitter.com/"]);
+  // Toggle the feed off and on as a workaround to read the new prefs.
+  await pushPrefs(["browser.newtabpage.activity-stream.feeds.topsites", false]);
+  await pushPrefs(["browser.newtabpage.activity-stream.feeds.topsites", true]);
+}
+
+async function clearHistoryAndBookmarks() { // eslint-disable-line no-unused-vars
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesUtils.history.clear();
+}
 
 /**
  * Helper to wait for potentially preloaded browsers to "load" where a preloaded
@@ -23,6 +34,61 @@ async function waitForPreloaded(browser) {
   if (readyState !== "complete") {
     await BrowserTestUtils.browserLoaded(browser);
   }
+}
+
+/**
+ * Helper to force the HighlightsFeed to update.
+ */
+function refreshHighlightsFeed() {
+  // Toggling the pref will clear the feed cache and force a places query.
+  Services.prefs.setBoolPref("browser.newtabpage.activity-stream.feeds.section.highlights", false);
+  Services.prefs.setBoolPref("browser.newtabpage.activity-stream.feeds.section.highlights", true);
+}
+
+/**
+ * Helper to populate the Highlights section with bookmark cards.
+ * @param count Number of items to add.
+ */
+async function addHighlightsBookmarks(count) { // eslint-disable-line no-unused-vars
+  const bookmarks = new Array(count).fill(null).map((entry, i) => ({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    title: "foo",
+    url: `https://mozilla${i}.com/nowNew`
+  }));
+
+  for (let placeInfo of bookmarks) {
+    await PlacesUtils.bookmarks.insert(placeInfo);
+    // Bookmarks need at least one visit to show up as highlights.
+    await PlacesTestUtils.addVisits(placeInfo.url);
+  }
+
+  // Force HighlightsFeed to make a request for the new items.
+  refreshHighlightsFeed();
+}
+
+/**
+ * Helper to add various helpers to the content process by injecting variables
+ * and functions to the `content` global.
+ */
+function addContentHelpers() {
+  const {document} = content;
+  Object.assign(content, {
+    /**
+     * Click the context menu button for an item and get its options list.
+     *
+     * @param selector {String} Selector to get an item (e.g., top site, card)
+     * @return {Array} The nodes for the options.
+     */
+    openContextMenuAndGetOptions(selector) {
+      const item = document.querySelector(selector);
+      const contextButton = item.querySelector(".context-menu-button");
+      contextButton.click();
+
+      const contextMenu = item.querySelector(".context-menu");
+      const contextMenuList = contextMenu.querySelector(".context-menu-list");
+      return [...contextMenuList.getElementsByClassName("context-menu-item")];
+    }
+  });
 }
 
 /**
@@ -52,11 +118,11 @@ function test_newtab(testInfo) { // eslint-disable-line no-unused-vars
 
   // Helper to push prefs for just this test and pop them when done
   let needPopPrefs = false;
-  let scopedPushPrefs = async(...args) => {
+  let scopedPushPrefs = async (...args) => {
     needPopPrefs = true;
     await pushPrefs(...args);
   };
-  let scopedPopPrefs = async() => {
+  let scopedPopPrefs = async () => {
     if (needPopPrefs) {
       await popPrefs();
     }
@@ -64,13 +130,16 @@ function test_newtab(testInfo) { // eslint-disable-line no-unused-vars
 
   // Make the test task with optional before/after and content task to run in a
   // new tab that opens and closes.
-  let testTask = async() => {
+  let testTask = async () => {
     // Open about:newtab without using the default load listener
     let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:newtab", false);
 
     // Specially wait for potentially preloaded browsers
     let browser = tab.linkedBrowser;
     await waitForPreloaded(browser);
+
+    // Add shared helpers to the content process
+    ContentTask.spawn(browser, {}, addContentHelpers);
 
     // Wait for React to render something
     await BrowserTestUtils.waitForCondition(() => ContentTask.spawn(browser, {},
@@ -85,7 +154,7 @@ function test_newtab(testInfo) { // eslint-disable-line no-unused-vars
     } finally {
       // Clean up for next tests
       await scopedPopPrefs();
-      await BrowserTestUtils.removeTab(tab);
+      BrowserTestUtils.removeTab(tab);
     }
   };
 

@@ -10,10 +10,8 @@
 #include "mozilla/dom/AnimatableBinding.h"
 #include "mozilla/dom/KeyframeAnimationOptionsBinding.h"
 #include "mozilla/dom/KeyframeEffectBinding.h"
-#include "mozilla/ServoBindings.h"
-#include "nsCSSParser.h" // For nsCSSParser
+#include "mozilla/ServoCSSParser.h"
 #include "nsIDocument.h"
-#include "nsRuleNode.h"
 
 namespace mozilla {
 
@@ -117,75 +115,18 @@ TimingParams::ParseEasing(const nsAString& aEasing,
 {
   MOZ_ASSERT(aDocument);
 
-  if (aDocument->IsStyledByServo()) {
-    nsTimingFunction timingFunction;
-    // FIXME this is using the wrong base uri (bug 1343919)
-    RefPtr<URLExtraData> data = new URLExtraData(aDocument->GetDocumentURI(),
-                                                 aDocument->GetDocumentURI(),
-                                                 aDocument->NodePrincipal());
-    if (!Servo_ParseEasing(&aEasing, data, &timingFunction)) {
-      aRv.ThrowTypeError<dom::MSG_INVALID_EASING_ERROR>(aEasing);
-      return Nothing();
-    }
-
-    if (timingFunction.mType == nsTimingFunction::Type::Linear) {
-      return Nothing();
-    }
-
-    return Some(ComputedTimingFunction(timingFunction));
+  nsTimingFunction timingFunction;
+  RefPtr<URLExtraData> url = ServoCSSParser::GetURLExtraData(aDocument);
+  if (!ServoCSSParser::ParseEasing(aEasing, url, timingFunction)) {
+    aRv.ThrowTypeError<dom::MSG_INVALID_EASING_ERROR>(aEasing);
+    return Nothing();
   }
 
-  nsCSSValue value;
-  nsCSSParser parser;
-  parser.ParseLonghandProperty(eCSSProperty_animation_timing_function,
-                               aEasing,
-                               aDocument->GetDocumentURI(),
-                               aDocument->GetDocumentURI(),
-                               aDocument->NodePrincipal(),
-                               value);
-
-  switch (value.GetUnit()) {
-    case eCSSUnit_List: {
-      const nsCSSValueList* list = value.GetListValue();
-      if (list->mNext) {
-        // don't support a list of timing functions
-        break;
-      }
-      switch (list->mValue.GetUnit()) {
-        case eCSSUnit_Enumerated:
-          // Return Nothing() if "linear" is passed in.
-          if (list->mValue.GetIntValue() ==
-              NS_STYLE_TRANSITION_TIMING_FUNCTION_LINEAR) {
-            return Nothing();
-          }
-          MOZ_FALLTHROUGH;
-        case eCSSUnit_Cubic_Bezier:
-        case eCSSUnit_Function:
-        case eCSSUnit_Steps: {
-          nsTimingFunction timingFunction;
-          nsRuleNode::ComputeTimingFunction(list->mValue, timingFunction);
-          return Some(ComputedTimingFunction(timingFunction));
-        }
-        default:
-          MOZ_ASSERT_UNREACHABLE("unexpected animation-timing-function list "
-                                 "item unit");
-        break;
-      }
-      break;
-    }
-    case eCSSUnit_Inherit:
-    case eCSSUnit_Initial:
-    case eCSSUnit_Unset:
-    case eCSSUnit_TokenStream:
-    case eCSSUnit_Null:
-      break;
-    default:
-      MOZ_ASSERT_UNREACHABLE("unexpected animation-timing-function unit");
-      break;
+  if (timingFunction.mType == nsTimingFunction::Type::Linear) {
+    return Nothing();
   }
 
-  aRv.ThrowTypeError<dom::MSG_INVALID_EASING_ERROR>(aEasing);
-  return Nothing();
+  return Some(ComputedTimingFunction(timingFunction));
 }
 
 bool

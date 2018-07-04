@@ -1,31 +1,25 @@
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+/* exported createHttpServer, promiseConsoleOutput, cleanupDir, clearCache, testEnv */
 
-/* exported createHttpServer, promiseConsoleOutput, cleanupDir, testEnv */
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://testing-common/AddonTestUtils.jsm");
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Timer.jsm");
-Components.utils.import("resource://testing-common/AddonTestUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "ContentTask",
-                                  "resource://testing-common/ContentTask.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Extension",
-                                  "resource://gre/modules/Extension.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionData",
-                                  "resource://gre/modules/Extension.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionTestUtils",
-                                  "resource://testing-common/ExtensionXPCShellUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
-                                  "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "HttpServer",
-                                  "resource://testing-common/httpd.js");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Schemas",
-                                  "resource://gre/modules/Schemas.jsm");
+// eslint-disable-next-line no-unused-vars
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ContentTask: "resource://testing-common/ContentTask.jsm",
+  Extension: "resource://gre/modules/Extension.jsm",
+  ExtensionData: "resource://gre/modules/Extension.jsm",
+  ExtensionParent: "resource://gre/modules/ExtensionParent.jsm",
+  ExtensionTestUtils: "resource://testing-common/ExtensionXPCShellUtils.jsm",
+  FileUtils: "resource://gre/modules/FileUtils.jsm",
+  NetUtil: "resource://gre/modules/NetUtil.jsm",
+  PromiseTestUtils: "resource://testing-common/PromiseTestUtils.jsm",
+  Schemas: "resource://gre/modules/Schemas.jsm",
+});
 
 // These values may be changed in later head files and tested in check_remote
 // below.
@@ -41,32 +35,25 @@ add_task(function check_remote() {
 
 ExtensionTestUtils.init(this);
 
-/**
- * Creates a new HttpServer for testing, and begins listening on the
- * specified port. Automatically shuts down the server when the test
- * unit ends.
- *
- * @param {integer} [port]
- *        The port to listen on. If omitted, listen on a random
- *        port. The latter is the preferred behavior.
- *
- * @returns {HttpServer}
- */
-function createHttpServer(port = -1) {
-  let server = new HttpServer();
-  server.start(port);
-
-  do_register_cleanup(() => {
-    return new Promise(resolve => {
-      server.stop(resolve);
-    });
-  });
-
-  return server;
-}
+var createHttpServer = (...args) => {
+  AddonTestUtils.maybeInit(this);
+  return AddonTestUtils.createHttpServer(...args);
+};
 
 if (AppConstants.platform === "android") {
   Services.io.offline = true;
+}
+
+/**
+ * Clears the HTTP and content image caches.
+ */
+function clearCache() {
+  Services.cache2.clear();
+
+  let imageCache = Cc["@mozilla.org/image/tools;1"]
+      .getService(Ci.imgITools)
+      .getImgCacheForDocument(null);
+  imageCache.clearCache(false);
 }
 
 var promiseConsoleOutput = async function(task) {
@@ -80,6 +67,7 @@ var promiseConsoleOutput = async function(task) {
         resolve();
       } else {
         void (msg instanceof Ci.nsIConsoleMessage);
+        void (msg instanceof Ci.nsIScriptError);
         messages.push(msg);
       }
     };

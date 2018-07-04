@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use {OpaqueStyleAndLayoutData, TrustedNodeAddress, PendingImage};
+use {OpaqueStyleAndLayoutData, PendingImage, TrustedNodeAddress};
 use app_units::Au;
 use euclid::{Point2D, Rect};
 use gfx_traits::Epoch;
@@ -20,15 +20,20 @@ use servo_atoms::Atom;
 use servo_url::ServoUrl;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
-use style::context::{QuirksMode, ReflowGoal};
+use style::context::QuirksMode;
 use style::properties::PropertyId;
 use style::selector_parser::PseudoElement;
 use style::stylesheets::Stylesheet;
 
 /// Asynchronous messages that script can send to layout.
 pub enum Msg {
-    /// Adds the given stylesheet to the document.
-    AddStylesheet(ServoArc<Stylesheet>),
+    /// Adds the given stylesheet to the document. The second stylesheet is the
+    /// insertion point (if it exists, the sheet needs to be inserted before
+    /// it).
+    AddStylesheet(ServoArc<Stylesheet>, Option<ServoArc<Stylesheet>>),
+
+    /// Removes a stylesheet from the document.
+    RemoveStylesheet(ServoArc<Stylesheet>),
 
     /// Change the quirks mode.
     SetQuirksMode(QuirksMode),
@@ -92,32 +97,84 @@ pub enum Msg {
     RegisterPaint(Atom, Vec<Atom>, Box<Painter>),
 
     /// Send to layout the precise time when the navigation started.
-    SetNavigationStart(f64),
+    SetNavigationStart(u64),
 }
 
-
-/// Any query to perform with this reflow.
 #[derive(Debug, PartialEq)]
-pub enum ReflowQueryType {
-    NoQuery,
+pub enum NodesFromPointQueryType {
+    All,
+    Topmost,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum QueryMsg {
     ContentBoxQuery(TrustedNodeAddress),
     ContentBoxesQuery(TrustedNodeAddress),
-    NodeOverflowQuery(TrustedNodeAddress),
-    HitTestQuery(Point2D<f32>, bool),
-    NodeScrollRootIdQuery(TrustedNodeAddress),
+    NodeScrollIdQuery(TrustedNodeAddress),
     NodeGeometryQuery(TrustedNodeAddress),
     NodeScrollGeometryQuery(TrustedNodeAddress),
     ResolvedStyleQuery(TrustedNodeAddress, Option<PseudoElement>, PropertyId),
     OffsetParentQuery(TrustedNodeAddress),
-    MarginStyleQuery(TrustedNodeAddress),
-    TextIndexQuery(TrustedNodeAddress, i32, i32),
-    NodesFromPoint(Point2D<f32>),
+    StyleQuery(TrustedNodeAddress),
+    TextIndexQuery(TrustedNodeAddress, Point2D<f32>),
+    NodesFromPointQuery(Point2D<f32>, NodesFromPointQueryType),
+    ElementInnerTextQuery(TrustedNodeAddress),
+}
+
+/// Any query to perform with this reflow.
+#[derive(Debug, PartialEq)]
+pub enum ReflowGoal {
+    Full,
+    TickAnimations,
+    LayoutQuery(QueryMsg, u64),
+}
+
+impl ReflowGoal {
+    /// Returns true if the given ReflowQuery needs a full, up-to-date display list to
+    /// be present or false if it only needs stacking-relative positions.
+    pub fn needs_display_list(&self) -> bool {
+        match *self {
+            ReflowGoal::Full | ReflowGoal::TickAnimations => true,
+            ReflowGoal::LayoutQuery(ref querymsg, _) => match querymsg {
+                &QueryMsg::NodesFromPointQuery(..) |
+                &QueryMsg::TextIndexQuery(..) |
+                &QueryMsg::ElementInnerTextQuery(_) => true,
+                &QueryMsg::ContentBoxQuery(_) |
+                &QueryMsg::ContentBoxesQuery(_) |
+                &QueryMsg::NodeGeometryQuery(_) |
+                &QueryMsg::NodeScrollGeometryQuery(_) |
+                &QueryMsg::NodeScrollIdQuery(_) |
+                &QueryMsg::ResolvedStyleQuery(..) |
+                &QueryMsg::OffsetParentQuery(_) |
+                &QueryMsg::StyleQuery(_) => false,
+            },
+        }
+    }
+
+    /// Returns true if the given ReflowQuery needs its display list send to WebRender or
+    /// false if a layout_thread display list is sufficient.
+    pub fn needs_display(&self) -> bool {
+        match *self {
+            ReflowGoal::Full | ReflowGoal::TickAnimations => true,
+            ReflowGoal::LayoutQuery(ref querymsg, _) => match querymsg {
+                &QueryMsg::NodesFromPointQuery(..) |
+                &QueryMsg::TextIndexQuery(..) |
+                &QueryMsg::ElementInnerTextQuery(_) => true,
+                &QueryMsg::ContentBoxQuery(_) |
+                &QueryMsg::ContentBoxesQuery(_) |
+                &QueryMsg::NodeGeometryQuery(_) |
+                &QueryMsg::NodeScrollGeometryQuery(_) |
+                &QueryMsg::NodeScrollIdQuery(_) |
+                &QueryMsg::ResolvedStyleQuery(..) |
+                &QueryMsg::OffsetParentQuery(_) |
+                &QueryMsg::StyleQuery(_) => false,
+            },
+        }
+    }
 }
 
 /// Information needed for a reflow.
 pub struct Reflow {
-    /// The goal of reflow: either to render to the screen or to flush layout info for script.
-    pub goal: ReflowGoal,
     ///  A clipping rectangle for the page, an enlarged rectangle containing the viewport.
     pub page_clip_rect: Rect<Au>,
 }
@@ -137,16 +194,14 @@ pub struct ScriptReflow {
     pub reflow_info: Reflow,
     /// The document node.
     pub document: TrustedNodeAddress,
-    /// The document's list of stylesheets.
-    pub document_stylesheets: Vec<ServoArc<Stylesheet>>,
     /// Whether the document's stylesheets have changed since the last script reflow.
     pub stylesheets_changed: bool,
     /// The current window size.
     pub window_size: WindowSizeData,
     /// The channel that we send a notification to.
     pub script_join_chan: Sender<ReflowComplete>,
-    /// The type of query if any to perform during this reflow.
-    pub query_type: ReflowQueryType,
+    /// The goal of this reflow.
+    pub reflow_goal: ReflowGoal,
     /// The number of objects in the dom #10110
     pub dom_count: u32,
 }

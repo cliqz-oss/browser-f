@@ -7,23 +7,18 @@
 #ifndef HLSDecoder_h_
 #define HLSDecoder_h_
 
-#include "ChannelMediaDecoder.h"
+#include "MediaDecoder.h"
+#include "GeneratedJNIWrappers.h"
 
 namespace mozilla {
-class MediaFormatReader;
 
-class HLSDecoder final : public ChannelMediaDecoder
+class HLSResourceCallbacksSupport;
+
+class HLSDecoder final : public MediaDecoder
 {
 public:
   // MediaDecoder interface.
-  explicit HLSDecoder(MediaDecoderInit& aInit)
-    : ChannelMediaDecoder(aInit)
-  {
-  }
-
-  ChannelMediaDecoder* Clone(MediaDecoderInit& aInit) override;
-
-  MediaDecoderStateMachine* CreateStateMachine() override;
+  explicit HLSDecoder(MediaDecoderInit& aInit);
 
   // Returns true if the HLS backend is pref'ed on.
   static bool IsEnabled();
@@ -33,14 +28,39 @@ public:
   // If provided, codecs are checked for support.
   static bool IsSupportedType(const MediaContainerType& aContainerType);
 
-  nsresult Load(nsIChannel* aChannel,
-                bool aIsPrivateBrowsing,
-                nsIStreamListener**) override;
-  nsresult Load(MediaResource*) override;
+  nsresult Load(nsIChannel* aChannel);
 
-  nsresult Play() override;
+  void Play() override;
 
   void Pause() override;
+
+  void AddSizeOfResources(ResourceSizes* aSizes) override;
+  already_AddRefed<nsIPrincipal> GetCurrentPrincipal() override;
+  bool IsTransportSeekable() override { return true; }
+  void Suspend() override;
+  void Resume() override;
+  void Shutdown() override;
+
+  // Called as data arrives on the underlying HLS player. Main thread only.
+  void NotifyDataArrived();
+
+private:
+  friend class HLSResourceCallbacksSupport;
+
+  MediaDecoderStateMachine* CreateStateMachine();
+
+  bool CanPlayThroughImpl() final
+  {
+    // TODO: We don't know how to estimate 'canplaythrough' for this decoder.
+    // For now we just return true for 'autoplay' can work.
+    return true;
+  }
+
+  nsCOMPtr<nsIChannel> mChannel;
+  nsCOMPtr<nsIURI> mURI;
+  java::GeckoHLSResourceWrapper::GlobalRef mHLSResourceWrapper;
+  java::GeckoHLSResourceWrapper::Callbacks::GlobalRef mJavaCallbacks;
+  RefPtr<HLSResourceCallbacksSupport> mCallbackSupport;
 };
 
 } // namespace mozilla

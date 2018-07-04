@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,9 +15,9 @@
 //
 
 nsIFrame*
-NS_NewMathMLmspaceFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmspaceFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmspaceFrame(aContext);
+  return new (aPresShell) nsMathMLmspaceFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmspaceFrame)
@@ -44,11 +45,11 @@ nsMathMLmspaceFrame::ProcessAttributes(nsPresContext* aPresContext)
   // as an example. Hence we allow negative values.
   //
   mWidth = 0;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::width, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::width, value);
   if (!value.IsEmpty()) {
     ParseNumericValue(value, &mWidth,
                       nsMathMLElement::PARSE_ALLOW_NEGATIVE,
-                      aPresContext, mStyleContext, fontSizeInflation);
+                      aPresContext, mComputedStyle, fontSizeInflation);
   }
 
   // height
@@ -62,10 +63,10 @@ nsMathMLmspaceFrame::ProcessAttributes(nsPresContext* aPresContext)
   // We do not allow negative values. See bug 716349.
   //
   mHeight = 0;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::height, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::height, value);
   if (!value.IsEmpty()) {
     ParseNumericValue(value, &mHeight, 0,
-                      aPresContext, mStyleContext, fontSizeInflation);
+                      aPresContext, mComputedStyle, fontSizeInflation);
   }
 
   // depth
@@ -79,10 +80,10 @@ nsMathMLmspaceFrame::ProcessAttributes(nsPresContext* aPresContext)
   // We do not allow negative values. See bug 716349.
   //
   mDepth = 0;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::depth_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::depth_, value);
   if (!value.IsEmpty()) {
     ParseNumericValue(value, &mDepth, 0,
-                      aPresContext, mStyleContext, fontSizeInflation);
+                      aPresContext, mComputedStyle, fontSizeInflation);
   }
 }
 
@@ -93,6 +94,8 @@ nsMathMLmspaceFrame::Reflow(nsPresContext*          aPresContext,
                             nsReflowStatus&          aStatus)
 {
   MarkInReflow();
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
   mPresentationData.flags &= ~NS_MATHML_ERROR;
   ProcessAttributes(aPresContext);
 
@@ -109,7 +112,6 @@ nsMathMLmspaceFrame::Reflow(nsPresContext*          aPresContext,
   // Also return our bounding metrics
   aDesiredSize.mBoundingMetrics = mBoundingMetrics;
 
-  aStatus.Reset();
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
 

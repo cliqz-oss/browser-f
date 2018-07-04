@@ -3,11 +3,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 function testForExpectedSymbols(stage, data) {
   const expectedSymbols = [ "Worker", "ChromeWorker" ];
@@ -99,7 +96,7 @@ WorkerTestBootstrap.prototype = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver])
 };
 
 var gFactory = {

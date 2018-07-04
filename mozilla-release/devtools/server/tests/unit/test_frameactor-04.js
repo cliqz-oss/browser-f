@@ -15,9 +15,9 @@ function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-stack");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-stack",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_pause_frame();
                            });
@@ -53,10 +53,10 @@ function test_frame_slice() {
   }
 
   let test = gSliceTests.shift();
-  gThreadClient.getFrames(test.start, test.count, function (response) {
+  gThreadClient.getFrames(test.start, test.count, function(response) {
     let testFrames = gFrames.slice(test.start,
                                    test.count ? test.start + test.count : undefined);
-    do_check_eq(testFrames.length, response.frames.length);
+    Assert.equal(testFrames.length, response.frames.length);
     for (let i = 0; i < testFrames.length; i++) {
       let expected = testFrames[i];
       let actual = response.frames[i];
@@ -66,7 +66,7 @@ function test_frame_slice() {
       }
 
       for (let key of ["type", "callee-name"]) {
-        do_check_eq(expected[key] || undefined, actual[key]);
+        Assert.equal(expected[key] || undefined, actual[key]);
       }
     }
     test_frame_slice();
@@ -74,11 +74,11 @@ function test_frame_slice() {
 }
 
 function test_pause_frame() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
     test_frame_slice();
   });
 
-  gDebuggee.eval("(" + function () {
+  gDebuggee.eval("(" + function() {
     function depth3() {
       debugger;
     }

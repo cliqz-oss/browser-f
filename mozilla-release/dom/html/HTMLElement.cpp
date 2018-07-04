@@ -28,6 +28,9 @@ protected:
 HTMLElement::HTMLElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
   : nsGenericHTMLElement(aNodeInfo)
 {
+  if (NodeInfo()->Equals(nsGkAtoms::bdi)) {
+    AddStatesSilently(NS_EVENT_STATE_DIR_ATTR_LIKE_AUTO);
+  }
 }
 
 HTMLElement::~HTMLElement()
@@ -50,6 +53,15 @@ HTMLElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 nsGenericHTMLElement*
 NS_NewHTMLElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                   mozilla::dom::FromParser aFromParser)
+{
+  return new mozilla::dom::HTMLElement(aNodeInfo);
+}
+
+// Distinct from the above in order to have function pointer that compared unequal
+// to a function pointer to the above.
+nsGenericHTMLElement*
+NS_NewCustomElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
+                    mozilla::dom::FromParser aFromParser)
 {
   return new mozilla::dom::HTMLElement(aNodeInfo);
 }

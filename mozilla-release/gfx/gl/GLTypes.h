@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#if !defined(GLTYPES_H_)
+#ifndef GLTYPES_H_
 #define GLTYPES_H_
 
 #include <stddef.h>
@@ -19,7 +19,7 @@
 # endif
 #endif
 
-typedef int8_t realGLboolean;
+typedef uint8_t realGLboolean;
 
 #if !defined(__gltypes_h_) && !defined(__gl_h_)
 #define __gltypes_h_
@@ -44,8 +44,13 @@ typedef void GLvoid;
 
 typedef char GLchar;
 #ifndef __gl2_h_
-typedef intptr_t GLsizeiptr;
-typedef intptr_t GLintptr;
+#ifdef _WIN64
+typedef signed long long int GLintptr;
+typedef signed long long int GLsizeiptr;
+#else
+typedef signed long int GLintptr;
+typedef signed long int GLsizeiptr;
+#endif
 #endif
 
 #endif /* #if !defined(__gltypes_h_) && !defined(__gl_h_) */
@@ -94,4 +99,21 @@ typedef uint64_t EGLTime;
 #define EGL_NO_SYNC          ((EGLSync)0)
 #define EGL_NO_IMAGE         ((EGLImage)0)
 
+
+#ifdef XP_WIN
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN 1
+    #endif
+
+    #include <windef.h>
+
+    typedef HDC EGLNativeDisplayType;
+    typedef HBITMAP EGLNativePixmapType;
+    typedef HWND EGLNativeWindowType;
+#else
+    typedef void* EGLNativeDisplayType;
+    typedef void* EGLNativePixmapType;
+    typedef void* EGLNativeWindowType;
 #endif
+
+#endif // GLTYPES_H_

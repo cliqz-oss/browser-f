@@ -6,25 +6,24 @@
 
 #include "gc/Barrier.h"
 
-#include "jscompartment.h"
-#include "jsobj.h"
-
 #include "builtin/TypedObject.h"
 #include "gc/Policy.h"
 #include "gc/Zone.h"
 #include "js/HashTable.h"
 #include "js/Value.h"
 #include "vm/EnvironmentObject.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSObject.h"
 #include "vm/SharedArrayObject.h"
-#include "vm/Symbol.h"
+#include "vm/SymbolType.h"
 #include "wasm/WasmJS.h"
 
 namespace js {
 
 bool
-RuntimeFromActiveCooperatingThreadIsHeapMajorCollecting(JS::shadow::Zone* shadowZone)
+RuntimeFromMainThreadIsHeapMajorCollecting(JS::shadow::Zone* shadowZone)
 {
-    MOZ_ASSERT(CurrentThreadCanAccessRuntime(shadowZone->runtimeFromActiveCooperatingThread()));
+    MOZ_ASSERT(CurrentThreadCanAccessRuntime(shadowZone->runtimeFromMainThread()));
     return JS::CurrentThreadIsHeapMajorCollecting();
 }
 
@@ -33,15 +32,7 @@ RuntimeFromActiveCooperatingThreadIsHeapMajorCollecting(JS::shadow::Zone* shadow
 bool
 IsMarkedBlack(JSObject* obj)
 {
-    // Note: we assume conservatively that Nursery things will be live.
-    if (!obj->isTenured())
-        return true;
-
-    gc::TenuredCell& tenured = obj->asTenured();
-    if (tenured.isMarkedAny() || tenured.arena()->allocatedDuringIncremental)
-        return true;
-
-    return false;
+    return obj->isMarkedBlack();
 }
 
 bool
@@ -68,7 +59,7 @@ HeapSlot::assertPreconditionForWriteBarrierPost(NativeObject* obj, Kind kind, ui
                    target);
     }
 
-    CheckEdgeIsNotBlackToGray(obj, target);
+    CheckTargetIsNotGray(obj);
 }
 
 bool
@@ -87,6 +78,23 @@ bool
 CurrentThreadIsGCSweeping()
 {
     return TlsContext.get()->gcSweeping;
+}
+
+bool CurrentThreadIsTouchingGrayThings()
+{
+    return TlsContext.get()->isTouchingGrayThings;
+}
+
+AutoTouchingGrayThings::AutoTouchingGrayThings()
+{
+    TlsContext.get()->isTouchingGrayThings++;
+}
+
+AutoTouchingGrayThings::~AutoTouchingGrayThings()
+{
+    JSContext* cx = TlsContext.get();
+    MOZ_ASSERT(cx->isTouchingGrayThings);
+    cx->isTouchingGrayThings--;
 }
 
 #endif // DEBUG
@@ -225,6 +233,13 @@ JS::HeapObjectPostBarrier(JSObject** objp, JSObject* prev, JSObject* next)
 {
     MOZ_ASSERT(objp);
     js::InternalBarrierMethods<JSObject*>::postBarrier(objp, prev, next);
+}
+
+JS_PUBLIC_API(void)
+JS::HeapStringPostBarrier(JSString** strp, JSString* prev, JSString* next)
+{
+    MOZ_ASSERT(strp);
+    js::InternalBarrierMethods<JSString*>::postBarrier(strp, prev, next);
 }
 
 JS_PUBLIC_API(void)

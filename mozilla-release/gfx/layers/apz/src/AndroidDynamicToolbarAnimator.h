@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -22,6 +22,7 @@ namespace mozilla {
 namespace layers {
 
 struct FrameMetrics;
+class APZCTreeManager;
 class CompositorOGL;
 
 /*
@@ -51,14 +52,15 @@ class CompositorOGL;
 class AndroidDynamicToolbarAnimator {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(AndroidDynamicToolbarAnimator);
-  AndroidDynamicToolbarAnimator();
-  void Initialize(uint64_t aRootLayerTreeId);
+  explicit AndroidDynamicToolbarAnimator(APZCTreeManager* aApz);
+  void Initialize(LayersId aRootLayerTreeId);
+  void ClearTreeManager();
   // Used to intercept events to determine if the event affects the toolbar.
   // May apply translation to touch events if the toolbar is visible.
   // Returns nsEventStatus_eIgnore when the event is not consumed and
   // nsEventStatus_eConsumeNoDefault when the event was used to translate the
   // toolbar.
-  nsEventStatus ReceiveInputEvent(InputData& aEvent, const ScreenPoint& aScrollOffset);
+  nsEventStatus ReceiveInputEvent(const RefPtr<APZCTreeManager>& aApz, InputData& aEvent, const ScreenPoint& aScrollOffset);
   void SetMaxToolbarHeight(ScreenIntCoord aHeight);
   // When a pinned reason is set to true, the animator will prevent
   // touch events from altering the height of the toolbar. All pinned
@@ -131,7 +133,7 @@ protected:
   };
 
   ~AndroidDynamicToolbarAnimator(){}
-  nsEventStatus ProcessTouchDelta(StaticToolbarState aCurrentToolbarState, ScreenIntCoord aDelta, uint32_t aTimeStamp);
+  nsEventStatus ProcessTouchDelta(const RefPtr<APZCTreeManager>& aApz, StaticToolbarState aCurrentToolbarState, ScreenIntCoord aDelta, uint32_t aTimeStamp);
   // Called when a touch ends
   void HandleTouchEnd(StaticToolbarState aCurrentToolbarState, ScreenIntCoord aCurrentTouch);
   // Sends a message to the UI thread. May be called from any thread
@@ -166,7 +168,8 @@ protected:
   void QueueMessage(int32_t aMessage);
 
   // Read only Compositor and Controller threads after Initialize()
-  uint64_t mRootLayerTreeId;
+  LayersId mRootLayerTreeId;
+  MOZ_NON_OWNING_REF APZCTreeManager* mApz;
 
   // Read/Write Compositor Thread, Read only Controller thread
   Atomic<StaticToolbarState> mToolbarState; // Current toolbar state.

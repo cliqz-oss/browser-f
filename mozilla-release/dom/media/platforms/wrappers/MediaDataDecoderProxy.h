@@ -15,7 +15,11 @@
 
 namespace mozilla {
 
-class MediaDataDecoderProxy : public MediaDataDecoder
+DDLoggedTypeDeclNameAndBase(MediaDataDecoderProxy, MediaDataDecoder);
+
+class MediaDataDecoderProxy
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<MediaDataDecoderProxy>
 {
 public:
   explicit MediaDataDecoderProxy(already_AddRefed<AbstractThread> aProxyThread)
@@ -33,12 +37,14 @@ public:
     , mIsShutdown(false)
 #endif
   {
+    DDLINKCHILD("proxy decoder", mProxyDecoder.get());
   }
 
   void SetProxyTarget(MediaDataDecoder* aProxyDecoder)
   {
     MOZ_ASSERT(aProxyDecoder);
     mProxyDecoder = aProxyDecoder;
+    DDLINKCHILD("proxy decoder", aProxyDecoder);
   }
 
   RefPtr<InitPromise> Init() override;
@@ -46,7 +52,7 @@ public:
   RefPtr<DecodePromise> Drain() override;
   RefPtr<FlushPromise> Flush() override;
   RefPtr<ShutdownPromise> Shutdown() override;
-  const char* GetDescriptionName() const override;
+  nsCString GetDescriptionName() const override;
   bool IsHardwareAccelerated(nsACString& aFailureReason) const override;
   void SetSeekThreshold(const media::TimeUnit& aTime) override;
   bool SupportDecoderRecycling() const override;

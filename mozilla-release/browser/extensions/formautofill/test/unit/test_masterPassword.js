@@ -4,8 +4,8 @@
 
 "use strict";
 const {MockRegistrar} =
-  Cu.import("resource://testing-common/MockRegistrar.jsm", {});
-let {MasterPassword} = Cu.import("resource://formautofill/MasterPassword.jsm", {});
+  ChromeUtils.import("resource://testing-common/MockRegistrar.jsm", {});
+let {MasterPassword} = ChromeUtils.import("resource://formautofill/MasterPassword.jsm", {});
 
 const TESTCASES = [{
   description: "With master password set",
@@ -38,7 +38,7 @@ let gMockPrompter = {
       return false;
     }
     equal(text,
-          "Please enter the master password for the Software Security Device.",
+          "Please enter your master password.",
           "password prompt text should be as expected");
     equal(checkMsg, null, "checkMsg should be null");
     ok(this.passwordToTry, "passwordToTry should be non-null");
@@ -46,14 +46,14 @@ let gMockPrompter = {
     return true;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPrompt]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPrompt]),
 };
 
 // Mock nsIWindowWatcher. PSM calls getNewPrompter on this to get an nsIPrompt
 // to call promptPassword. We return the mock one, above.
 let gWindowWatcher = {
   getNewPrompter: () => gMockPrompter,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWindowWatcher]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWindowWatcher]),
 };
 
 // Ensure that the appropriate initialization has happened.
@@ -62,7 +62,7 @@ do_get_profile();
 let windowWatcherCID =
   MockRegistrar.register("@mozilla.org/embedcomp/window-watcher;1",
                          gWindowWatcher);
-do_register_cleanup(() => {
+registerCleanupFunction(() => {
   MockRegistrar.unregister(windowWatcherCID);
 });
 
@@ -70,7 +70,7 @@ TESTCASES.forEach(testcase => {
   let token = MasterPassword._token;
 
   add_task(async function test_encrypt_decrypt() {
-    do_print("Starting testcase: " + testcase.description);
+    info("Starting testcase: " + testcase.description);
     token.initPassword(testcase.masterPassword);
 
     // Test only: Force the token login without asking for master password

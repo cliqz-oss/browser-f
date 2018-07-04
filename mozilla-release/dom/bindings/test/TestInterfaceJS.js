@@ -4,19 +4,16 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
-const Cu = Components.utils;
-const Ci = Components.interfaces;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function TestInterfaceJS(anyArg, objectArg) {}
 
 TestInterfaceJS.prototype = {
   classID: Components.ID("{2ac4e026-cf25-47d5-b067-78d553c3cad8}"),
   contractID: "@mozilla.org/dom/test-interface-js;1",
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports,
-                                         Ci.nsIDOMGlobalPropertyInitializer]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer, Ci.mozITestInterfaceJS]),
 
   init: function(win) { this._win = win; },
 
@@ -75,6 +72,16 @@ TestInterfaceJS.prototype = {
 
   testThrowTypeError: function() {
     throw new this._win.TypeError("We are a TypeError");
+  },
+
+  testThrowNsresult: function() {
+      throw Cr.NS_BINDING_ABORTED;
+  },
+
+  testThrowNsresultFromNative: function(x) {
+    // We want to throw an exception that we generate from an nsresult thrown
+    // by a C++ component.
+    Services.netUtils.notImplemented();
   },
 
   testThrowCallbackError: function(callback) {

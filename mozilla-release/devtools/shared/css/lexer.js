@@ -17,20 +17,20 @@
 // White space of any kind.  No value fields are used.  Note that
 // comments do *not* count as white space; comments separate tokens
 // but are not themselves tokens.
-const eCSSToken_Whitespace = "whitespace";     //
+const eCSSToken_Whitespace = "whitespace"; //
 // A comment.
-const eCSSToken_Comment = "comment";        // /*...*/
+const eCSSToken_Comment = "comment"; // /*...*/
 
 // Identifier-like tokens.  mIdent is the text of the identifier.
 // The difference between ID and Hash is: if the text after the #
 // would have been a valid Ident if the # hadn't been there, the
 // scanner produces an ID token.  Otherwise it produces a Hash token.
 // (This distinction is required by css3-selectors.)
-const eCSSToken_Ident = "ident";          // word
-const eCSSToken_Function = "function";       // word(
-const eCSSToken_AtKeyword = "at";      // @word
-const eCSSToken_ID = "id";             // #word
-const eCSSToken_Hash = "hash";           // #0word
+const eCSSToken_Ident = "ident"; // word
+const eCSSToken_Function = "function"; // word(
+const eCSSToken_AtKeyword = "at"; // @word
+const eCSSToken_ID = "id"; // #word
+const eCSSToken_Hash = "hash"; // #0word
 
 // Numeric tokens.  mNumber is the floating-point value of the
 // number, and mHasSign indicates whether there was an explicit sign
@@ -42,32 +42,32 @@ const eCSSToken_Hash = "hash";           // #0word
 // are always considered not to be integers, even if their numeric
 // value is integral (100% => mNumber = 1.0).  For Dimension
 // tokens, mIdent holds the text of the unit.
-const eCSSToken_Number = "number";         // 1 -5 +2e3 3.14159 7.297352e-3
-const eCSSToken_Dimension = "dimension";      // 24px 8.5in
-const eCSSToken_Percentage = "percentage";     // 85% 1280.4%
+const eCSSToken_Number = "number"; // 1 -5 +2e3 3.14159 7.297352e-3
+const eCSSToken_Dimension = "dimension"; // 24px 8.5in
+const eCSSToken_Percentage = "percentage"; // 85% 1280.4%
 
 // String-like tokens.  In all cases, mIdent holds the text
 // belonging to the string, and mSymbol holds the delimiter
 // character, which may be ', ", or zero (only for unquoted URLs).
 // Bad_String and Bad_URL tokens are emitted when the closing
 // delimiter or parenthesis was missing.
-const eCSSToken_String = "string";         // 'foo bar' "foo bar"
-const eCSSToken_Bad_String = "bad_string";     // 'foo bar
-const eCSSToken_URL = "url";            // url(foobar) url("foo bar")
-const eCSSToken_Bad_URL = "bad_url";        // url(foo
+const eCSSToken_String = "string"; // 'foo bar' "foo bar"
+const eCSSToken_Bad_String = "bad_string"; // 'foo bar
+const eCSSToken_URL = "url"; // url(foobar) url("foo bar")
+const eCSSToken_Bad_URL = "bad_url"; // url(foo
 
 // Any one-character symbol.  mSymbol holds the character.
-const eCSSToken_Symbol = "symbol";         // . ; { } ! *
+const eCSSToken_Symbol = "symbol"; // . ; { } ! *
 
 // Match operators.  These are single tokens rather than pairs of
 // Symbol tokens because css3-selectors forbids the presence of
 // comments between the two characters.  No value fields are used;
 // the token type indicates which operator.
-const eCSSToken_Includes = "includes";       // ~=
-const eCSSToken_Dashmatch = "dashmatch";      // |=
-const eCSSToken_Beginsmatch = "beginsmatch";    // ^=
-const eCSSToken_Endsmatch = "endsmatch";      // $=
-const eCSSToken_Containsmatch = "containsmatch";  // *=
+const eCSSToken_Includes = "includes"; // ~=
+const eCSSToken_Dashmatch = "dashmatch"; // |=
+const eCSSToken_Beginsmatch = "beginsmatch"; // ^=
+const eCSSToken_Endsmatch = "endsmatch"; // $=
+const eCSSToken_Containsmatch = "containsmatch"; // *=
 
 // Unicode-range token: currently used only in @font-face.
 // The lexical rule for this token includes several forms that are
@@ -77,7 +77,7 @@ const eCSSToken_Containsmatch = "containsmatch";  // *=
 // token is semantically valid.  In that case, mInteger holds the
 // lowest value included in the range, and mInteger2 holds the
 // highest value included in the range.
-const eCSSToken_URange = "urange";         // U+007e U+01?? U+2000-206F
+const eCSSToken_URange = "urange"; // U+007e U+01?? U+2000-206F
 
 // HTML comment delimiters, ignored as a unit when they appear at
 // the top level of a style sheet, for compatibility with websites
@@ -85,7 +85,7 @@ const eCSSToken_URange = "urange";         // U+007e U+01?? U+2000-206F
 // subsumes the css2.1 CDO and CDC tokens, which are always treated
 // the same by the parser.  mIdent holds the text of the token, for
 // diagnostics.
-const eCSSToken_HTMLComment = "htmlcomment";    // <!-- -->
+const eCSSToken_HTMLComment = "htmlcomment"; // <!-- -->
 
 const eEOFCharacters_None = 0x0000;
 
@@ -202,7 +202,7 @@ const SUIJ = S | U | I | J;
 const SUIX = S | U | I | X;
 const SUIJX = S | U | I | J | X;
 
-/* eslint-disable indent, no-multi-spaces, comma-spacing, spaced-comment */
+/* eslint-disable indent, indent-legacy, no-multi-spaces, comma-spacing, spaced-comment */
 const gLexTable = [
 // 00    01    02    03    04    05    06    07
     0,    S,    S,    S,    S,    S,    S,    S,
@@ -237,7 +237,7 @@ const gLexTable = [
 //  x     y     z     {     |     }     ~    7F
  SUIJ, SUIJ, SUIJ,   SU,   SU,   SU,   SU,    S,
 ];
-/* eslint-enable indent, no-multi-spaces, comma-spacing, spaced-comment */
+/* eslint-enable indent, indent-legacy, no-multi-spaces, comma-spacing, spaced-comment */
 
 /**
  * True if 'ch' is in character class 'cls', which should be one of
@@ -390,7 +390,7 @@ Scanner.prototype = {
   /**
    * @see CSSLexer.performEOFFixup
    */
-  performEOFFixup: function (aInputString, aPreserveBackslash) {
+  performEOFFixup: function(aInputString, aPreserveBackslash) {
     let result = aInputString;
 
     let eofChars = this.mEOFCharacters;
@@ -418,7 +418,7 @@ Scanner.prototype = {
   /**
    * @see CSSLexer.nextToken
    */
-  nextToken: function () {
+  nextToken: function() {
     let token = {};
     if (!this.Next(token)) {
       return null;
@@ -491,7 +491,7 @@ Scanner.prototype = {
    * the read buffer.  If that is beyond the end of the buffer, returns
    * -1 to indicate end of input.
    */
-  Peek: function (n = 0) {
+  Peek: function(n = 0) {
     if (this.mOffset + n >= this.mCount) {
       return -1;
     }
@@ -504,7 +504,7 @@ Scanner.prototype = {
    * stop at the end.  May not be used to advance over a line boundary;
    * AdvanceLine() must be used instead.
    */
-  Advance: function (n = 1) {
+  Advance: function(n = 1) {
     if (this.mOffset + n >= this.mCount || this.mOffset + n < this.mOffset) {
       this.mOffset = this.mCount;
     } else {
@@ -515,7 +515,7 @@ Scanner.prototype = {
   /**
    * Advance |this.mOffset| over a line boundary.
    */
-  AdvanceLine: function () {
+  AdvanceLine: function() {
     // Advance over \r\n as a unit.
     if (this.mBuffer.charCodeAt(this.mOffset) == CARRIAGE_RETURN &&
         this.mOffset + 1 < this.mCount &&
@@ -535,7 +535,7 @@ Scanner.prototype = {
    * Skip over a sequence of whitespace characters (vertical or
    * horizontal) starting at the current read position.
    */
-  SkipWhitespace: function () {
+  SkipWhitespace: function() {
     for (;;) {
       let ch = this.Peek();
       if (!IsWhitespace(ch)) { // EOF counts as non-whitespace
@@ -552,7 +552,7 @@ Scanner.prototype = {
   /**
    * Skip over one CSS comment starting at the current read position.
    */
-  SkipComment: function () {
+  SkipComment: function() {
     this.Advance(2);
     for (;;) {
       let ch = this.Peek();
@@ -586,7 +586,7 @@ Scanner.prototype = {
    * unmodified, and return false.  If |aInString| is true, accept the
    * additional form of escape sequence allowed within string-like tokens.
    */
-  GatherEscape: function (aOutput, aInString) {
+  GatherEscape: function(aOutput, aInString) {
     let ch = this.Peek(1);
     if (ch < 0) {
       // If we are in a string (or a url() containing a string), we want to drop
@@ -675,7 +675,7 @@ Scanner.prototype = {
    * Returns true if at least one character was appended to |aText|,
    * false otherwise.
    */
-  GatherText: function (aClass, aText) {
+  GatherText: function(aClass, aText) {
     let start = this.mOffset;
     let inString = aClass == IS_STRING;
 
@@ -719,7 +719,7 @@ Scanner.prototype = {
    * produce a Symbol token when an apparent identifier actually led
    * into an invalid escape sequence.
    */
-  ScanIdent: function (aToken) {
+  ScanIdent: function(aToken) {
     if (!this.GatherText(IS_IDCHAR, aToken.mIdent)) {
       aToken.mSymbol = this.Peek();
       this.Advance();
@@ -745,7 +745,7 @@ Scanner.prototype = {
    * Scan an AtKeyword token.  Also handles production of Symbol when
    * an '@' is not followed by an identifier.
    */
-  ScanAtKeyword: function (aToken) {
+  ScanAtKeyword: function(aToken) {
     // Fall back for when '@' isn't followed by an identifier.
     aToken.mSymbol = COMMERCIAL_AT;
     this.Advance();
@@ -764,7 +764,7 @@ Scanner.prototype = {
    * and eCSSToken_Hash, and handles production of Symbol when a '#'
    * is not followed by identifier characters.
    */
-  ScanHash: function (aToken) {
+  ScanHash: function(aToken) {
     // Fall back for when '#' isn't followed by identifier characters.
     aToken.mSymbol = NUMBER_SIGN;
     this.Advance();
@@ -789,7 +789,7 @@ Scanner.prototype = {
    * '.' and then a digit.  Can also produce a HTMLComment when it
    * encounters '-->'.
    */
-  ScanNumber: function (aToken) {
+  ScanNumber: function(aToken) {
     let c = this.Peek();
 
     // Sign of the mantissa (-1 or 1).
@@ -920,7 +920,7 @@ Scanner.prototype = {
    * either a String or a Bad_String token; the latter occurs when the
    * close quote is missing.  Always returns true (for convenience in Next()).
    */
-  ScanString: function (aToken) {
+  ScanString: function(aToken) {
     let aStop = this.Peek();
     aToken.mType = eCSSToken_String;
     aToken.mSymbol = aStop; // Remember how it's quoted.
@@ -969,7 +969,7 @@ Scanner.prototype = {
    * Note that this does not validate the numeric range, only the syntactic
    * form.
    */
-  ScanURange: function (aResult) {
+  ScanURange: function(aResult) {
     let intro1 = this.Peek();
     let intro2 = this.Peek(1);
     let ch = this.Peek(2);
@@ -1030,15 +1030,15 @@ Scanner.prototype = {
     return true;
   },
 
-  SetEOFCharacters: function (aEOFCharacters) {
+  SetEOFCharacters: function(aEOFCharacters) {
     this.mEOFCharacters = aEOFCharacters;
   },
 
-  AddEOFCharacters: function (aEOFCharacters) {
+  AddEOFCharacters: function(aEOFCharacters) {
     this.mEOFCharacters = this.mEOFCharacters | aEOFCharacters;
   },
 
-  AppendImpliedEOFCharacters: function (aEOFCharacters, aResult) {
+  AppendImpliedEOFCharacters: function(aEOFCharacters, aResult) {
     // First, ignore eEOFCharacters_DropBackslash.
     let c = aEOFCharacters >> 1;
 
@@ -1060,7 +1060,7 @@ Scanner.prototype = {
    * Exposed for use by nsCSSParser::ParseMozDocumentRule, which applies
    * the special lexical rules for URL tokens in a nonstandard context.
    */
-  NextURL: function (aToken) {
+  NextURL: function(aToken) {
     this.SkipWhitespace();
 
     // aToken.mIdent may be "url" at this point; clear that out
@@ -1126,7 +1126,7 @@ Scanner.prototype = {
    * been reached.  Will always advance the current read position by at
    * least one character unless called when already at EOF.
    */
-  Next: function (aToken, aSkip) {
+  Next: function(aToken, aSkip) {
     let ch;
 
     // do this here so we don't have to do it in dozens of other places

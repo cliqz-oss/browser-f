@@ -5,10 +5,10 @@
 /*---
 description: RestParameter does not support an initializer (class expression method)
 esid: sec-class-definitions-runtime-semantics-evaluation
-features: [default-parameters]
+features: [default-parameters, generators]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     ClassDeclaration : class BindingIdentifier ClassTail
@@ -62,6 +62,7 @@ info: |
            iteratorRecord and env as arguments.
     [...]
 
+
     14.1 Function Definitions
 
     Syntax
@@ -80,6 +81,7 @@ info: |
       ...BindingPattern[?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 class C {
   *method(...x = []) {

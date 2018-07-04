@@ -30,10 +30,9 @@
   </script>
 </head>
 <body>
-<p id="display"><span><span id="elementf"></span></span>
 <iframe id="unstyledn" src="unstyled.xml" height="10" width="10" onload="load_done()"></iframe>
 <iframe id="unstyledf" src="unstyled-frame.xml" height="10" width="10" onload="load_done()"></iframe>
-</p>
+<p id="display"><span><span id="elementf"></span></span></p>
 <div id="content" style="display: none">
 
 <div><span id="elementn"></span></div>
@@ -83,11 +82,11 @@ var gBadComputedNoFrame = {
 
 function xfail_value(property, value, is_initial, has_frame) {
   if ((property in gBadComputed) &&
-      gBadComputed[property].indexOf(value) != -1)
+      gBadComputed[property].includes(value))
     return true;
 
   if (!has_frame && (property in gBadComputedNoFrame) &&
-      gBadComputedNoFrame[property].indexOf(value) != -1)
+      gBadComputedNoFrame[property].includes(value))
     return true;
 
   return false;
@@ -101,7 +100,7 @@ var gSwapInitialWhenHaveFrame = {
 
 function swap_when_frame(property, value) {
   return (property in gSwapInitialWhenHaveFrame) &&
-         gSwapInitialWhenHaveFrame[property].indexOf(value) != -1;
+         gSwapInitialWhenHaveFrame[property].includes(value);
 }
 
 var gDisplayTree = document.getElementById("display");

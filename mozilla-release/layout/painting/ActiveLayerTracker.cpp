@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -45,10 +47,6 @@ public:
     ACTIVITY_TOP,
     ACTIVITY_RIGHT,
     ACTIVITY_BOTTOM,
-    ACTIVITY_MARGIN_LEFT,
-    ACTIVITY_MARGIN_TOP,
-    ACTIVITY_MARGIN_RIGHT,
-    ACTIVITY_MARGIN_BOTTOM,
     ACTIVITY_BACKGROUND_POSITION,
 
     ACTIVITY_SCALE,
@@ -80,10 +78,6 @@ public:
     case eCSSProperty_top: return ACTIVITY_TOP;
     case eCSSProperty_right: return ACTIVITY_RIGHT;
     case eCSSProperty_bottom: return ACTIVITY_BOTTOM;
-    case eCSSProperty_margin_left: return ACTIVITY_MARGIN_LEFT;
-    case eCSSProperty_margin_top: return ACTIVITY_MARGIN_TOP;
-    case eCSSProperty_margin_right: return ACTIVITY_MARGIN_RIGHT;
-    case eCSSProperty_margin_bottom: return ACTIVITY_MARGIN_BOTTOM;
     case eCSSProperty_background_position: return ACTIVITY_BACKGROUND_POSITION;
     case eCSSProperty_background_position_x: return ACTIVITY_BACKGROUND_POSITION;
     case eCSSProperty_background_position_y: return ACTIVITY_BACKGROUND_POSITION;
@@ -101,7 +95,7 @@ public:
   nsExpirationState mState;
 
   // Previous scale due to the CSS transform property.
-  Maybe<gfxSize> mPreviousTransformScale;
+  Maybe<Size> mPreviousTransformScale;
 
   // The scroll frame during for which we most recently received a call to
   // NotifyAnimatedFromScrollHandler.
@@ -130,7 +124,7 @@ public:
     AgeAllGenerations();
   }
 
-  virtual void NotifyExpired(LayerActivity* aObject);
+  virtual void NotifyExpired(LayerActivity* aObject) override;
 
 public:
   WeakFrame mCurrentScrollHandlerFrame;
@@ -254,7 +248,8 @@ static void
 IncrementScaleRestyleCountIfNeeded(nsIFrame* aFrame, LayerActivity* aActivity)
 {
   const nsStyleDisplay* display = aFrame->StyleDisplay();
-  if (!display->mSpecifiedTransform) {
+  RefPtr<nsCSSValueSharedList> transformList = display->GetCombinedTransform();
+  if (!transformList) {
     // The transform was removed.
     aActivity->mPreviousTransformScale = Nothing();
     IncrementMutationCount(&aActivity->mRestyleCounts[LayerActivity::ACTIVITY_SCALE]);
@@ -262,16 +257,12 @@ IncrementScaleRestyleCountIfNeeded(nsIFrame* aFrame, LayerActivity* aActivity)
   }
 
   // Compute the new scale due to the CSS transform property.
-  nsPresContext* presContext = aFrame->PresContext();
-  RuleNodeCacheConditions dummy;
   bool dummyBool;
   nsStyleTransformMatrix::TransformReferenceBox refBox(aFrame);
   Matrix4x4 transform =
-    nsStyleTransformMatrix::ReadTransforms(display->mSpecifiedTransform->mHead,
-                                           aFrame->StyleContext(),
-                                           presContext,
-                                           dummy, refBox,
-                                           presContext->AppUnitsPerCSSPixel(),
+    nsStyleTransformMatrix::ReadTransforms(transformList->mHead,
+                                           refBox,
+                                           nsPresContext::AppUnitsPerCSSPixel(),
                                            &dummyBool);
   Matrix transform2D;
   if (!transform.Is2D(&transform2D)) {
@@ -281,7 +272,7 @@ IncrementScaleRestyleCountIfNeeded(nsIFrame* aFrame, LayerActivity* aActivity)
     return;
   }
 
-  gfxSize scale = ThebesMatrix(transform2D).ScaleFactors(true);
+  Size scale = transform2D.ScaleFactors(true);
   if (aActivity->mPreviousTransformScale == Some(scale)) {
     return;  // Nothing changed.
   }
@@ -445,22 +436,22 @@ ActiveLayerTracker::IsStyleAnimated(nsDisplayListBuilder* aBuilder,
   if (aProperty == eCSSProperty_transform && aFrame->Combines3DTransformWithAncestors()) {
     return IsStyleAnimated(aBuilder, aFrame->GetParent(), aProperty);
   }
-  return nsLayoutUtils::HasEffectiveAnimation(aFrame, aProperty);
+  if (aBuilder) {
+    return nsLayoutUtils::HasEffectiveAnimation(aFrame, aProperty);
+  } else {
+    return nsLayoutUtils::MayHaveEffectiveAnimation(aFrame, aProperty);
+  }
 }
 
 /* static */ bool
-ActiveLayerTracker::IsOffsetOrMarginStyleAnimated(nsIFrame* aFrame)
+ActiveLayerTracker::IsOffsetStyleAnimated(nsIFrame* aFrame)
 {
   LayerActivity* layerActivity = GetLayerActivity(aFrame);
   if (layerActivity) {
     if (layerActivity->mRestyleCounts[LayerActivity::ACTIVITY_LEFT] >= 2 ||
         layerActivity->mRestyleCounts[LayerActivity::ACTIVITY_TOP] >= 2 ||
         layerActivity->mRestyleCounts[LayerActivity::ACTIVITY_RIGHT] >= 2 ||
-        layerActivity->mRestyleCounts[LayerActivity::ACTIVITY_BOTTOM] >= 2 ||
-        layerActivity->mRestyleCounts[LayerActivity::ACTIVITY_MARGIN_LEFT] >= 2 ||
-        layerActivity->mRestyleCounts[LayerActivity::ACTIVITY_MARGIN_TOP] >= 2 ||
-        layerActivity->mRestyleCounts[LayerActivity::ACTIVITY_MARGIN_RIGHT] >= 2 ||
-        layerActivity->mRestyleCounts[LayerActivity::ACTIVITY_MARGIN_BOTTOM] >= 2) {
+        layerActivity->mRestyleCounts[LayerActivity::ACTIVITY_BOTTOM] >= 2) {
       return true;
     }
   }

@@ -96,9 +96,9 @@ TryAllocAlignedBytes(size_t aSize)
     void* ptr;
     // Try to align for fast alpha recovery.  This should only help
     // cairo too, can't hurt.
-    return moz_posix_memalign(&ptr,
-                              1 << gfxAlphaRecovery::GoodAlignmentLog2(),
-                              aSize) ?
+    return posix_memalign(&ptr,
+                          1 << gfxAlphaRecovery::GoodAlignmentLog2(),
+                          aSize) ?
              nullptr : ptr;
 #else
     // Oh well, hope that luck is with us in the allocator
@@ -279,7 +279,8 @@ gfxImageSurface::CopyFrom (SourceSurface *aSurface)
         return false;
     }
 
-    CopyForStride(mData, data->GetData(), size, mStride, data->Stride());
+    DataSourceSurface::ScopedMap map(data, DataSourceSurface::READ);
+    CopyForStride(mData, map.GetData(), size, mStride, map.GetStride());
 
     return true;
 }
@@ -319,7 +320,8 @@ gfxImageSurface::CopyTo(SourceSurface *aSurface) {
         return false;
     }
 
-    CopyForStride(data->GetData(), mData, size, data->Stride(), mStride);
+    DataSourceSurface::ScopedMap map(data, DataSourceSurface::READ_WRITE);
+    CopyForStride(map.GetData(), mData, size, map.GetStride(), mStride);
 
     return true;
 }

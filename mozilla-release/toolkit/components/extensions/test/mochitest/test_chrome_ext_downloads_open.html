@@ -2,8 +2,9 @@
 <html>
 <head>
   <title>Test for permissions</title>
-  <script src="chrome://mochikit/content/tests/SimpleTest/SpawnTask.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
   <script src="chrome://mochikit/content/tests/SimpleTest/ExtensionTestUtils.js"></script>
   <link rel="stylesheet" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
 </head>
@@ -15,7 +16,7 @@
 add_task(async function test_downloads_open_permission() {
   function backgroundScript() {
     browser.test.assertEq(browser.downloads.open, undefined,
-                             "`downloads.open` permission is required.");
+                          "`downloads.open` permission is required.");
     browser.test.notifyPass("downloads tests");
   }
 
@@ -100,8 +101,7 @@ add_task(async function downloads_open_invalid_id() {
   let win = window.open(url);
   await extension.awaitMessage("page-ready");
 
-  let winutils = SpecialPowers.getDOMWindowUtils(win);
-  winutils.sendKeyEvent("keypress", KeyEvent.DOM_VK_A, 0, 0);
+  synthesizeKey("a", {}, win);
   let result = await extension.awaitMessage("download-open.result");
 
   is(result.success, false, "Opening download fails.");

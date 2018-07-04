@@ -8,12 +8,8 @@
  * This file tests the methods on XPCOMUtils.jsm.
  */
 
-Components.utils.import("resource://gre/modules/Preferences.jsm");
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Tests
@@ -21,24 +17,24 @@ const Ci = Components.interfaces;
 add_test(function test_generateQI_string_names()
 {
     var x = {
-        QueryInterface: XPCOMUtils.generateQI([
-            Components.interfaces.nsIClassInfo,
-            "nsIDOMNode"
+        QueryInterface: ChromeUtils.generateQI([
+            Ci.nsIClassInfo,
+            "nsIObserver"
         ])
     };
 
     try {
-        x.QueryInterface(Components.interfaces.nsIClassInfo);
+        x.QueryInterface(Ci.nsIClassInfo);
     } catch(e) {
         do_throw("Should QI to nsIClassInfo");
     }
     try {
-        x.QueryInterface(Components.interfaces.nsIDOMNode);
+        x.QueryInterface(Ci.nsIObserver);
     } catch(e) {
-        do_throw("Should QI to nsIDOMNode");
+        do_throw("Should QI to nsIObserver");
     }
     try {
-        x.QueryInterface(Components.interfaces.nsIDOMDocument);
+        x.QueryInterface(Ci.nsIObserverService);
         do_throw("QI should not have succeeded!");
     } catch(e) {}
     run_next_test();
@@ -49,9 +45,15 @@ add_test(function test_generateCI()
 {
     const classID = Components.ID("562dae2e-7cff-432b-995b-3d4c03fa2b89");
     const classDescription = "generateCI test component";
-    const flags = Components.interfaces.nsIClassInfo.DOM_OBJECT;
+    const flags = Ci.nsIClassInfo.DOM_OBJECT;
     var x = {
-        QueryInterface: XPCOMUtils.generateQI([]),
+        QueryInterface: function(iid) {
+            if (iid.equals(Ci.nsIClassInfo))
+                return this.classInfo;
+            if (iid.equals(Ci.nsISupports))
+                return this;
+            throw Cr.NS_ERROR_NO_INTERFACE;
+        },
         classInfo: XPCOMUtils.generateCI({classID: classID,
                                           interfaces: [],
                                           flags: flags,
@@ -59,12 +61,12 @@ add_test(function test_generateCI()
     };
 
     try {
-        var ci = x.QueryInterface(Components.interfaces.nsIClassInfo);
-        ci = ci.QueryInterface(Components.interfaces.nsISupports);
-        ci = ci.QueryInterface(Components.interfaces.nsIClassInfo);
-        do_check_eq(ci.classID, classID);
-        do_check_eq(ci.flags, flags);
-        do_check_eq(ci.classDescription, classDescription);
+        var ci = x.QueryInterface(Ci.nsIClassInfo);
+        ci = ci.QueryInterface(Ci.nsISupports);
+        ci = ci.QueryInterface(Ci.nsIClassInfo);
+        Assert.equal(ci.classID, classID);
+        Assert.equal(ci.flags, flags);
+        Assert.equal(ci.classDescription, classDescription);
     } catch(e) {
         do_throw("Classinfo for x should not be missing or broken");
     }
@@ -83,17 +85,17 @@ add_test(function test_defineLazyGetter()
         this.inScope = true;
         return TEST_VALUE;
     });
-    do_check_eq(accessCount, 0);
+    Assert.equal(accessCount, 0);
 
     // Get the property, making sure the access count has increased.
-    do_check_eq(obj.foo, TEST_VALUE);
-    do_check_eq(accessCount, 1);
-    do_check_true(obj.inScope);
+    Assert.equal(obj.foo, TEST_VALUE);
+    Assert.equal(accessCount, 1);
+    Assert.ok(obj.inScope);
 
     // Get the property once more, making sure the access count has not
     // increased.
-    do_check_eq(obj.foo, TEST_VALUE);
-    do_check_eq(accessCount, 1);
+    Assert.equal(obj.foo, TEST_VALUE);
+    Assert.equal(accessCount, 1);
     run_next_test();
 });
 
@@ -110,9 +112,9 @@ add_test(function test_defineLazyServiceGetter()
     // Check that the lazy service getter and the actual service have the same
     // properties.
     for (let prop in obj.service)
-        do_check_true(prop in service);
+        Assert.ok(prop in service);
     for (let prop in service)
-        do_check_true(prop in obj.service);
+        Assert.ok(prop in obj.service);
     run_next_test();
 });
 
@@ -130,7 +132,7 @@ add_test(function test_defineLazyPreferenceGetter()
     Preferences.set(PREF, "currentValue");
 
 
-    do_print("Create second getter on new object");
+    info("Create second getter on new object");
 
     obj = {};
     XPCOMUtils.defineLazyPreferenceGetter(obj, "pref", PREF, "defaultValue");
@@ -175,7 +177,7 @@ add_test(function test_categoryRegistration()
 
   // Create a fake app entry for our category registration apps filter.
   let tmp = {};
-  Components.utils.import("resource://testing-common/AppInfo.jsm", tmp);
+  ChromeUtils.import("resource://testing-common/AppInfo.jsm", tmp);
   let XULAppInfo = tmp.newAppInfo({
     name: "catRegTest",
     ID: "{adb42a9a-0d19-4849-bf4d-627614ca19be}",
@@ -209,11 +211,11 @@ add_test(function test_categoryRegistration()
   for (let [name, value] of XPCOMUtils.enumerateCategoryEntries(CATEGORY_NAME)) {
     print("Verify that the name/value pair exists in the expected entries.");
     ok(EXPECTED_ENTRIES.has(name));
-    do_check_eq(EXPECTED_ENTRIES.get(name), value);
+    Assert.equal(EXPECTED_ENTRIES.get(name), value);
     EXPECTED_ENTRIES.delete(name);
   }
   print("Check that all of the expected entries have been deleted.");
-  do_check_eq(EXPECTED_ENTRIES.size, 0);
+  Assert.equal(EXPECTED_ENTRIES.size, 0);
   run_next_test();
 });
 
@@ -226,7 +228,7 @@ add_test(function test_generateSingletonFactory()
   XPCComponent.prototype = {
     classID: XPCCOMPONENT_CID,
     _xpcom_factory: XPCOMUtils.generateSingletonFactory(XPCComponent),
-    QueryInterface: XPCOMUtils.generateQI([])
+    QueryInterface: ChromeUtils.generateQI([])
   };
   let NSGetFactory = XPCOMUtils.generateNSGetFactory([XPCComponent]);
   let registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
@@ -240,11 +242,11 @@ add_test(function test_generateSingletonFactory()
   // First, try to instance the component.
   let instance = Cc[XPCCOMPONENT_CONTRACTID].createInstance(Ci.nsISupports);
   // Try again, check that it returns the same instance as before.
-  do_check_eq(instance,
-              Cc[XPCCOMPONENT_CONTRACTID].createInstance(Ci.nsISupports));
+  Assert.equal(instance,
+               Cc[XPCCOMPONENT_CONTRACTID].createInstance(Ci.nsISupports));
   // Now, for sanity, check that getService is also returning the same instance.
-  do_check_eq(instance,
-              Cc[XPCCOMPONENT_CONTRACTID].getService(Ci.nsISupports));
+  Assert.equal(instance,
+               Cc[XPCCOMPONENT_CONTRACTID].getService(Ci.nsISupports));
 
   run_next_test();
 });

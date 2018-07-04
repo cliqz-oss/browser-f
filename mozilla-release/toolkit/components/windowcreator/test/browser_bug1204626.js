@@ -1,6 +1,5 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 "use strict"; // -*- js-indent-level: 2; indent-tabs-mode: nil -*-
-var Cc = Components.classes;
-var Ci = Components.interfaces;
 const contentBase = "https://example.com/browser/toolkit/components/windowcreator/test/";
 const chromeBase = "chrome://mochitests/content/browser/toolkit/components/windowcreator/test/";
 const testPageURL = contentBase + "bug1204626_doc0.html";
@@ -12,8 +11,7 @@ function one_test(delay, continuation) {
   BrowserTestUtils.openNewForegroundTab(gBrowser, testPageURL).then((tab) => {
     browser = tab.linkedBrowser;
     let persistable = browser.QueryInterface(Ci.nsIFrameLoaderOwner)
-                             .frameLoader
-                             .QueryInterface(Ci.nsIWebBrowserPersistable);
+                             .frameLoader;
     persistable.startPersistence(/* outer window ID: */ 0, {
       onDocumentReady,
       onError(status) {
@@ -27,9 +25,7 @@ function one_test(delay, continuation) {
     const nameStem = "test_bug1204626_" + Date.now();
     let wbp = Cc["@mozilla.org/embedding/browser/nsWebBrowserPersist;1"]
               .createInstance(Ci.nsIWebBrowserPersist);
-    let tmp = Cc["@mozilla.org/file/directory_service;1"]
-              .getService(Ci.nsIProperties)
-              .get("TmpD", Ci.nsIFile);
+    let tmp = Services.dirsvc.get("TmpD", Ci.nsIFile);
     let tmpFile = tmp.clone();
     tmpFile.append(nameStem + "_saved.html");
     let tmpDir = tmp.clone();
@@ -56,7 +52,7 @@ function one_test(delay, continuation) {
         ok(true, "Finished save (" + delayStr + ") but might have crashed.");
         continuation();
       }
-    }
+    };
 
     function doSave() {
       wbp.saveDocument(doc, tmpFile, tmpDir, null, 0, 0);

@@ -4,66 +4,61 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["GeckoViewProgress"];
+var EXPORTED_SYMBOLS = ["GeckoViewProgress"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/GeckoViewModule.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/GeckoViewModule.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+XPCOMUtils.defineLazyServiceGetter(this, "OverrideService",
+  "@mozilla.org/security/certoverride;1", "nsICertOverrideService");
 
-XPCOMUtils.defineLazyModuleGetter(this, "EventDispatcher",
-  "resource://gre/modules/Messaging.jsm");
-
-var dump = Cu.import("resource://gre/modules/AndroidLog.jsm", {})
-           .AndroidLog.d.bind(null, "ViewProgress");
-
-function debug(aMsg) {
-  // dump(aMsg);
-}
+XPCOMUtils.defineLazyServiceGetter(this, "IDNService",
+  "@mozilla.org/network/idn-service;1", "nsIIDNService");
 
 var IdentityHandler = {
+  // The definitions below should be kept in sync with those in GeckoView.ProgressListener.SecurityInformation
   // No trusted identity information. No site identity icon is shown.
-  IDENTITY_MODE_UNKNOWN: "unknown",
+  IDENTITY_MODE_UNKNOWN: 0,
 
   // Domain-Validation SSL CA-signed domain verification (DV).
-  IDENTITY_MODE_IDENTIFIED: "identified",
+  IDENTITY_MODE_IDENTIFIED: 1,
 
   // Extended-Validation SSL CA-signed identity information (EV). A more rigorous validation process.
-  IDENTITY_MODE_VERIFIED: "verified",
+  IDENTITY_MODE_VERIFIED: 2,
 
   // The following mixed content modes are only used if "security.mixed_content.block_active_content"
   // is enabled. Our Java frontend coalesces them into one indicator.
 
   // No mixed content information. No mixed content icon is shown.
-  MIXED_MODE_UNKNOWN: "unknown",
+  MIXED_MODE_UNKNOWN: 0,
 
   // Blocked active mixed content.
-  MIXED_MODE_CONTENT_BLOCKED: "blocked",
+  MIXED_MODE_CONTENT_BLOCKED: 1,
 
   // Loaded active mixed content.
-  MIXED_MODE_CONTENT_LOADED: "loaded",
+  MIXED_MODE_CONTENT_LOADED: 2,
 
   // The following tracking content modes are only used if tracking protection
   // is enabled. Our Java frontend coalesces them into one indicator.
 
   // No tracking content information. No tracking content icon is shown.
-  TRACKING_MODE_UNKNOWN: "unknown",
+  TRACKING_MODE_UNKNOWN: 0,
 
   // Blocked active tracking content. Shield icon is shown, with a popup option to load content.
-  TRACKING_MODE_CONTENT_BLOCKED: "blocked",
+  TRACKING_MODE_CONTENT_BLOCKED: 1,
 
   // Loaded active tracking content. Yellow triangle icon is shown.
-  TRACKING_MODE_CONTENT_LOADED: "loaded",
+  TRACKING_MODE_CONTENT_LOADED: 2,
 
-  _useTrackingProtection : false,
-  _usePrivateMode : false,
+  _useTrackingProtection: false,
+  _usePrivateMode: false,
 
-  setUseTrackingProtection : function(aUse) {
+  setUseTrackingProtection: function(aUse) {
     this._useTrackingProtection = aUse;
   },
 
-  setUsePrivateMode : function(aUse) {
+  setUsePrivateMode: function(aUse) {
     this._usePrivateMode = aUse;
   },
 
@@ -126,56 +121,46 @@ var IdentityHandler = {
    * (if available). Return the data needed to update the UI.
    */
   checkIdentity: function checkIdentity(aState, aBrowser) {
-    let lastStatus = aBrowser.securityUI.QueryInterface(Ci.nsISSLStatusProvider).SSLStatus;
-
-    // Don't pass in the actual location object, since it can cause us to
-    // hold on to the window object too long.  Just pass in the fields we
-    // care about. (bug 424829)
-    let lastLocation = {};
-    try {
-      let location = aBrowser.contentWindow.location;
-      lastLocation.host = location.host;
-      lastLocation.hostname = location.hostname;
-      lastLocation.port = location.port;
-      lastLocation.origin = location.origin;
-    } catch (ex) {
-      // Can sometimes throw if the URL being visited has no host/hostname,
-      // e.g. about:blank. The _state for these pages means we won't need these
-      // properties anyways, though.
-    }
-
-    let uri = aBrowser.currentURI;
-    try {
-      uri = Services.uriFixup.createExposableURI(uri);
-    } catch (e) {}
-
     let identityMode = this.getIdentityMode(aState);
     let mixedDisplay = this.getMixedDisplayMode(aState);
     let mixedActive = this.getMixedActiveMode(aState);
     let trackingMode = this.getTrackingMode(aState);
     let result = {
-      origin: lastLocation.origin,
       mode: {
         identity: identityMode,
         mixed_display: mixedDisplay,
         mixed_active: mixedActive,
-        tracking: trackingMode
+        tracking: trackingMode,
       }
     };
+
+    if (aBrowser.contentPrincipal) {
+      result.origin = aBrowser.contentPrincipal.originNoSuffix;
+    }
 
     // Don't show identity data for pages with an unknown identity or if any
     // mixed content is loaded (mixed display content is loaded by default).
     if (identityMode === this.IDENTITY_MODE_UNKNOWN ||
-        aState & Ci.nsIWebProgressListener.STATE_IS_BROKEN) {
+        (aState & Ci.nsIWebProgressListener.STATE_IS_BROKEN)) {
       result.secure = false;
       return result;
     }
 
     result.secure = true;
 
-    result.host = this.getEffectiveHost(lastLocation, uri);
+    let uri = aBrowser.currentURI || {};
+    try {
+      uri = Services.uriFixup.createExposableURI(uri);
+    } catch (e) {}
 
-    let status = lastStatus.QueryInterface(Ci.nsISSLStatus);
+    try {
+      result.host = IDNService.convertToDisplayIDN(uri.host, {});
+    } catch (e) {
+      result.host = uri.host;
+    }
+
+    let status = aBrowser.securityUI.QueryInterface(Ci.nsISSLStatusProvider)
+                         .SSLStatus.QueryInterface(Ci.nsISSLStatus);
     let cert = status.serverCert;
 
     result.organization = cert.organization;
@@ -183,53 +168,23 @@ var IdentityHandler = {
     result.issuerOrganization = cert.issuerOrganization;
     result.issuerCommonName = cert.issuerCommonName;
 
-    // Cache the override service the first time we need to check it
-    if (!this._overrideService) {
-      this._overrideService = Cc["@mozilla.org/security/certoverride;1"].getService(Ci.nsICertOverrideService);
+    try {
+      result.securityException = OverrideService.hasMatchingOverride(
+          uri.host, uri.port, cert, {}, {});
+    } catch (e) {
     }
 
-    // Check whether this site is a security exception. XPConnect does the right
-    // thing here in terms of converting lastLocation.port from string to int, but
-    // the overrideService doesn't like undefined ports, so make sure we have
-    // something in the default case (bug 432241).
-    // .hostname can return an empty string in some exceptional cases -
-    // hasMatchingOverride does not handle that, so avoid calling it.
-    // Updating the tooltip value in those cases isn't critical.
-    // FIXME: Fixing bug 646690 would probably makes this check unnecessary
-    if (lastLocation.hostname &&
-        this._overrideService.hasMatchingOverride(lastLocation.hostname,
-                                                  (lastLocation.port || 443),
-                                                  cert, {}, {})) {
-      result.securityException = true;
-    }
     return result;
   },
-
-  /**
-   * Attempt to provide proper IDN treatment for host names
-   */
-  getEffectiveHost: function getEffectiveHost(aLastLocation, aUri) {
-    if (!this._IDNService) {
-      this._IDNService = Cc["@mozilla.org/network/idn-service;1"]
-                         .getService(Ci.nsIIDNService);
-    }
-    try {
-      return this._IDNService.convertToDisplayIDN(aUri.host, {});
-    } catch (e) {
-      // If something goes wrong (e.g. hostname is an IP address) just fail back
-      // to the full domain.
-      return aLastLocation.hostname;
-    }
-  }
 };
 
 class GeckoViewProgress extends GeckoViewModule {
-  init() {
+  onInit() {
     this._hostChanged = false;
   }
 
-  register() {
-    debug("register");
+  onEnable() {
+    debug `onEnable`;
 
     let flags = Ci.nsIWebProgress.NOTIFY_STATE_NETWORK |
                 Ci.nsIWebProgress.NOTIFY_SECURITY |
@@ -241,8 +196,8 @@ class GeckoViewProgress extends GeckoViewModule {
     this.browser.addProgressListener(this.progressFilter, flags);
   }
 
-  unregister() {
-    debug("unregister");
+  onDisable() {
+    debug `onDisable`;
 
     if (this.progressFilter) {
       this.progressFilter.removeProgressListener(this);
@@ -251,25 +206,28 @@ class GeckoViewProgress extends GeckoViewModule {
   }
 
   onSettingsUpdate() {
-    let settings = this.settings;
-    debug("onSettingsUpdate: " + JSON.stringify(settings));
+    const settings = this.settings;
+    debug `onSettingsUpdate: ${settings}`;
 
     IdentityHandler.setUseTrackingProtection(!!settings.useTrackingProtection);
     IdentityHandler.setUsePrivateMode(!!settings.usePrivateMode);
   }
 
   onStateChange(aWebProgress, aRequest, aStateFlags, aStatus) {
-    debug("onStateChange()");
+    debug `onStateChange: isTopLevel=${aWebProgress.isTopLevel},
+                          flags=${aStateFlags}, status=${aStatus}`;
 
     if (!aWebProgress.isTopLevel) {
       return;
     }
 
+    const uriSpec = aRequest.QueryInterface(Ci.nsIChannel).URI.displaySpec;
+    debug `onStateChange: uri=${uriSpec}`;
+
     if (aStateFlags & Ci.nsIWebProgressListener.STATE_START) {
-      let uri = aRequest.QueryInterface(Ci.nsIChannel).URI;
-      let message = {
+      const message = {
         type: "GeckoView:PageStart",
-        uri: uri.spec,
+        uri: uriSpec,
       };
 
       this.eventDispatcher.sendRequest(message);
@@ -285,6 +243,8 @@ class GeckoViewProgress extends GeckoViewModule {
   }
 
   onSecurityChange(aWebProgress, aRequest, aState) {
+    debug `onSecurityChange`;
+
     // Don't need to do anything if the data we use to update the UI hasn't changed
     if (this._state === aState && !this._hostChanged) {
       return;
@@ -304,6 +264,16 @@ class GeckoViewProgress extends GeckoViewModule {
   }
 
   onLocationChange(aWebProgress, aRequest, aLocationURI, aFlags) {
+    debug `onLocationChange: location=${aLocationURI.displaySpec},
+                             flags=${aFlags}`;
+
     this._hostChanged = true;
+    if (aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_ERROR_PAGE) {
+      // We apparently don't get a STATE_STOP in onStateChange(), so emit PageStop here
+      this.eventDispatcher.sendRequest({
+        type: "GeckoView:PageStop",
+        success: false
+      });
+    }
   }
 }

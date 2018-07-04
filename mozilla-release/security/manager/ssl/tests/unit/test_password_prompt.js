@@ -22,7 +22,7 @@ var gMockPrompter = {
       return false;
     }
     equal(text,
-          "Please enter the master password for the Software Security Device.",
+          "Please enter your master password.",
           "password prompt text should be as expected");
     equal(checkMsg, null, "checkMsg should be null");
     ok(this.passwordToTry, "passwordToTry should be non-null");
@@ -30,14 +30,14 @@ var gMockPrompter = {
     return true;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPrompt]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPrompt]),
 };
 
 // Mock nsIWindowWatcher. PSM calls getNewPrompter on this to get an nsIPrompt
 // to call promptPassword. We return the mock one, above.
 var gWindowWatcher = {
   getNewPrompter: () => gMockPrompter,
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWindowWatcher]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWindowWatcher]),
 };
 
 function run_test() {
@@ -46,7 +46,7 @@ function run_test() {
   let windowWatcherCID =
     MockRegistrar.register("@mozilla.org/embedcomp/window-watcher;1",
                            gWindowWatcher);
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     MockRegistrar.unregister(windowWatcherCID);
   });
 

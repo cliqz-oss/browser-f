@@ -8,8 +8,8 @@
  * (including Unicode)
  */
 
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(API_CALLS_URL);
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(API_CALLS_URL);
   info("Starting test... ");
 
   let { document, store, windowRequire } = monitor.panelWin;
@@ -29,13 +29,10 @@ add_task(function* () {
     "http://example.com/api/search/?q=search%E2%98%A2"
   ];
 
-  let wait = waitForNetworkEvents(monitor, 5);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests();
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 5);
 
-  REQUEST_URIS.forEach(function (uri, index) {
+  REQUEST_URIS.forEach(function(uri, index) {
     verifyRequestItemTarget(
       document,
       getDisplayedRequests(store.getState()),
@@ -45,5 +42,5 @@ add_task(function* () {
      );
   });
 
-  yield teardown(monitor);
+  await teardown(monitor);
 });

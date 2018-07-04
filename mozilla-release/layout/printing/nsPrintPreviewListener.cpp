@@ -1,6 +1,6 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,12 +8,9 @@
 
 #include "mozilla/TextEvents.h"
 #include "mozilla/dom/Element.h"
-#include "mozilla/dom/Event.h" // for nsIDOMEvent::InternalDOMEvent()
+#include "mozilla/dom/Event.h" // for Event
 #include "nsIDOMWindow.h"
 #include "nsPIDOMWindow.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMKeyEvent.h"
-#include "nsIDOMEvent.h"
 #include "nsIDocument.h"
 #include "nsIDocShell.h"
 #include "nsPresContext.h"
@@ -109,7 +106,7 @@ enum eEventAction {
 };
 
 static eEventAction
-GetActionForEvent(nsIDOMEvent* aEvent)
+GetActionForEvent(Event* aEvent)
 {
   WidgetKeyboardEvent* keyEvent =
     aEvent->WidgetEventPtr()->AsKeyboardEvent();
@@ -158,10 +155,10 @@ GetActionForEvent(nsIDOMEvent* aEvent)
 }
 
 NS_IMETHODIMP
-nsPrintPreviewListener::HandleEvent(nsIDOMEvent* aEvent)
+nsPrintPreviewListener::HandleEvent(Event* aEvent)
 {
   nsCOMPtr<nsIContent> content = do_QueryInterface(
-    aEvent ? aEvent->InternalDOMEvent()->GetOriginalTarget() : nullptr);
+    aEvent ? aEvent->GetOriginalTarget() : nullptr);
   if (content && !content->IsXULElement()) {
     eEventAction action = ::GetActionForEvent(aEvent);
     switch (action) {
@@ -184,11 +181,9 @@ nsPrintPreviewListener::HandleEvent(nsIDOMEvent* aEvent)
           nsIFocusManager* fm = nsFocusManager::GetFocusManager();
           if (fm && win) {
             dom::Element* fromElement = parentDoc->FindContentForSubDocument(doc);
-            nsCOMPtr<nsIDOMElement> from = do_QueryInterface(fromElement);
-
             bool forward = (action == eEventAction_Tab);
-            nsCOMPtr<nsIDOMElement> result;
-            fm->MoveFocus(win, from,
+            RefPtr<dom::Element> result;
+            fm->MoveFocus(win, fromElement,
                           forward ? nsIFocusManager::MOVEFOCUS_FORWARD :
                                     nsIFocusManager::MOVEFOCUS_BACKWARD,
                           nsIFocusManager::FLAG_BYKEY, getter_AddRefs(result));

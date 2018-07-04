@@ -11,8 +11,7 @@
 
 #include <stdint.h>
 #include "jspubtd.h"
-#include "nsIException.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "jsapi.h"
 
 class nsIStackFrame;
@@ -38,8 +37,6 @@ ThrowAndReport(nsPIDOMWindowInner* aWindow, nsresult aRv);
 // aCx before they return.
 void
 ThrowExceptionObject(JSContext* aCx, Exception* aException);
-void
-ThrowExceptionObject(JSContext* aCx, nsIException* aException);
 
 // Create an exception object for the given nsresult and message. If we're
 // throwing a DOMException and aMessage is empty, the default message for the

@@ -10,10 +10,6 @@ using mozilla::OriginAttributes;
 
 NS_IMPL_ISUPPORTS(nsUDPSocketProvider, nsISocketProvider)
 
-nsUDPSocketProvider::~nsUDPSocketProvider()
-{
-}
-
 NS_IMETHODIMP
 nsUDPSocketProvider::NewSocket(int32_t aFamily,
                                const char *aHost,
@@ -21,6 +17,7 @@ nsUDPSocketProvider::NewSocket(int32_t aFamily,
                                nsIProxyInfo *aProxy,
                                const OriginAttributes &originAttributes,
                                uint32_t aFlags,
+                               uint32_t aTlsFlags,
                                PRFileDesc * *aFileDesc,
                                nsISupports **aSecurityInfo)
 {
@@ -41,6 +38,7 @@ nsUDPSocketProvider::AddToSocket(int32_t aFamily,
                                  nsIProxyInfo *aProxy,
                                  const OriginAttributes &originAttributes,
                                  uint32_t aFlags,
+                                 uint32_t aTlsFlags,
                                  struct PRFileDesc * aFileDesc,
                                  nsISupports **aSecurityInfo)
 {

@@ -7,65 +7,42 @@
 #include "Fetch.h"
 #include "FetchConsumer.h"
 
+#include "mozilla/dom/WorkerCommon.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRef.h"
+#include "mozilla/dom/WorkerRunnable.h"
+#include "mozilla/dom/WorkerScope.h"
+#include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "nsIInputStreamPump.h"
+#include "nsIThreadRetargetableRequest.h"
 #include "nsProxyRelease.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
-#include "WorkerScope.h"
-#include "Workers.h"
 
 namespace mozilla {
 namespace dom {
 
-using namespace workers;
-
 namespace {
-
-template <class Derived>
-class FetchBodyWorkerHolder final : public workers::WorkerHolder
-{
-  RefPtr<FetchBodyConsumer<Derived>> mConsumer;
-  bool mWasNotified;
-
-public:
-  explicit FetchBodyWorkerHolder(FetchBodyConsumer<Derived>* aConsumer)
-    : mConsumer(aConsumer)
-    , mWasNotified(false)
-  {
-    MOZ_ASSERT(aConsumer);
-  }
-
-  ~FetchBodyWorkerHolder() = default;
-
-  bool Notify(workers::Status aStatus) override
-  {
-    MOZ_ASSERT(aStatus > workers::Running);
-    if (!mWasNotified) {
-      mWasNotified = true;
-      mConsumer->ShutDownMainThreadConsuming();
-    }
-
-    return true;
-  }
-};
 
 template <class Derived>
 class BeginConsumeBodyRunnable final : public Runnable
 {
-  RefPtr<FetchBodyConsumer<Derived>> mFetchBodyConsumer;
-
 public:
-  explicit BeginConsumeBodyRunnable(FetchBodyConsumer<Derived>* aConsumer)
+  BeginConsumeBodyRunnable(FetchBodyConsumer<Derived>* aConsumer,
+                           ThreadSafeWorkerRef* aWorkerRef)
     : Runnable("BeginConsumeBodyRunnable")
     , mFetchBodyConsumer(aConsumer)
+    , mWorkerRef(aWorkerRef)
   { }
 
   NS_IMETHOD
   Run() override
   {
-    mFetchBodyConsumer->BeginConsumeBodyMainThread();
+    mFetchBodyConsumer->BeginConsumeBodyMainThread(mWorkerRef);
     return NS_OK;
   }
+
+private:
+  RefPtr<FetchBodyConsumer<Derived>> mFetchBodyConsumer;
+  RefPtr<ThreadSafeWorkerRef> mWorkerRef;
 };
 
 /*
@@ -81,9 +58,10 @@ class ContinueConsumeBodyRunnable final : public MainThreadWorkerRunnable
 
 public:
   ContinueConsumeBodyRunnable(FetchBodyConsumer<Derived>* aFetchBodyConsumer,
+                              WorkerPrivate* aWorkerPrivate,
                               nsresult aStatus, uint32_t aLength,
                               uint8_t* aResult)
-    : MainThreadWorkerRunnable(aFetchBodyConsumer->GetWorkerPrivate())
+    : MainThreadWorkerRunnable(aWorkerPrivate)
     , mFetchBodyConsumer(aFetchBodyConsumer)
     , mStatus(aStatus)
     , mLength(aLength)
@@ -100,23 +78,27 @@ public:
   }
 };
 
+// ControlRunnable used to complete the releasing of resources on the worker
+// thread when already shutting down.
 template <class Derived>
-class FailConsumeBodyWorkerRunnable : public MainThreadWorkerControlRunnable
+class AbortConsumeBodyControlRunnable final : public MainThreadWorkerControlRunnable
 {
-  RefPtr<FetchBodyConsumer<Derived>> mBodyConsumer;
+  RefPtr<FetchBodyConsumer<Derived>> mFetchBodyConsumer;
 
 public:
-  explicit FailConsumeBodyWorkerRunnable(FetchBodyConsumer<Derived>* aBodyConsumer)
-    : MainThreadWorkerControlRunnable(aBodyConsumer->GetWorkerPrivate())
-    , mBodyConsumer(aBodyConsumer)
+  AbortConsumeBodyControlRunnable(FetchBodyConsumer<Derived>* aFetchBodyConsumer,
+                                  WorkerPrivate* aWorkerPrivate)
+    : MainThreadWorkerControlRunnable(aWorkerPrivate)
+    , mFetchBodyConsumer(aFetchBodyConsumer)
   {
-    AssertIsOnMainThread();
+    MOZ_ASSERT(NS_IsMainThread());
   }
 
   bool
   WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
   {
-    mBodyConsumer->ContinueConsumeBody(NS_ERROR_FAILURE, 0, nullptr);
+    mFetchBodyConsumer->ContinueConsumeBody(NS_BINDING_ABORTED, 0, nullptr,
+                                            true /* shutting down */);
     return true;
   }
 };
@@ -128,28 +110,34 @@ public:
 template <class Derived>
 class MOZ_STACK_CLASS AutoFailConsumeBody final
 {
-  RefPtr<FetchBodyConsumer<Derived>> mBodyConsumer;
-
 public:
-  explicit AutoFailConsumeBody(FetchBodyConsumer<Derived>* aBodyConsumer)
+  AutoFailConsumeBody(FetchBodyConsumer<Derived>* aBodyConsumer,
+                      ThreadSafeWorkerRef* aWorkerRef)
     : mBodyConsumer(aBodyConsumer)
+    , mWorkerRef(aWorkerRef)
   {}
 
   ~AutoFailConsumeBody()
   {
     AssertIsOnMainThread();
 
-    if (mBodyConsumer) {
-      if (mBodyConsumer->GetWorkerPrivate()) {
-        RefPtr<FailConsumeBodyWorkerRunnable<Derived>> r =
-          new FailConsumeBodyWorkerRunnable<Derived>(mBodyConsumer);
-        if (!r->Dispatch()) {
-          MOZ_CRASH("We are going to leak");
-        }
-      } else {
-        mBodyConsumer->ContinueConsumeBody(NS_ERROR_FAILURE, 0, nullptr);
-      }
+    if (!mBodyConsumer) {
+      return;
     }
+
+    // Web Worker
+    if (mWorkerRef) {
+      RefPtr<AbortConsumeBodyControlRunnable<Derived>> r =
+        new AbortConsumeBodyControlRunnable<Derived>(mBodyConsumer,
+                                                     mWorkerRef->Private());
+      if (!r->Dispatch()) {
+        MOZ_CRASH("We are going to leak");
+      }
+      return;
+    }
+
+    // Main-thread
+    mBodyConsumer->ContinueConsumeBody(NS_ERROR_FAILURE, 0, nullptr);
   }
 
   void
@@ -157,6 +145,10 @@ public:
   {
     mBodyConsumer = nullptr;
   }
+
+private:
+  RefPtr<FetchBodyConsumer<Derived>> mBodyConsumer;
+  RefPtr<ThreadSafeWorkerRef> mWorkerRef;
 };
 
 /*
@@ -170,8 +162,9 @@ class ContinueConsumeBlobBodyRunnable final : public MainThreadWorkerRunnable
 
 public:
   ContinueConsumeBlobBodyRunnable(FetchBodyConsumer<Derived>* aFetchBodyConsumer,
+                                  WorkerPrivate* aWorkerPrivate,
                                   BlobImpl* aBlobImpl)
-    : MainThreadWorkerRunnable(aFetchBodyConsumer->GetWorkerPrivate())
+    : MainThreadWorkerRunnable(aWorkerPrivate)
     , mFetchBodyConsumer(aFetchBodyConsumer)
     , mBlobImpl(aBlobImpl)
   {
@@ -187,17 +180,43 @@ public:
   }
 };
 
+// ControlRunnable used to complete the releasing of resources on the worker
+// thread when already shutting down.
 template <class Derived>
-class ConsumeBodyDoneObserver : public nsIStreamLoaderObserver
-                              , public MutableBlobStorageCallback
+class AbortConsumeBlobBodyControlRunnable final
+  : public MainThreadWorkerControlRunnable
 {
   RefPtr<FetchBodyConsumer<Derived>> mFetchBodyConsumer;
 
 public:
+  AbortConsumeBlobBodyControlRunnable(FetchBodyConsumer<Derived>* aFetchBodyConsumer,
+                                      WorkerPrivate* aWorkerPrivate)
+    : MainThreadWorkerControlRunnable(aWorkerPrivate)
+    , mFetchBodyConsumer(aFetchBodyConsumer)
+  {
+    MOZ_ASSERT(NS_IsMainThread());
+  }
+
+  bool
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override
+  {
+    mFetchBodyConsumer->ContinueConsumeBlobBody(nullptr,
+                                                true /* shutting down */);
+    return true;
+  }
+};
+
+template <class Derived>
+class ConsumeBodyDoneObserver final : public nsIStreamLoaderObserver
+                                    , public MutableBlobStorageCallback
+{
+public:
   NS_DECL_THREADSAFE_ISUPPORTS
 
-  explicit ConsumeBodyDoneObserver(FetchBodyConsumer<Derived>* aFetchBodyConsumer)
+  ConsumeBodyDoneObserver(FetchBodyConsumer<Derived>* aFetchBodyConsumer,
+                          ThreadSafeWorkerRef* aWorkerRef)
     : mFetchBodyConsumer(aFetchBodyConsumer)
+    , mWorkerRef(aWorkerRef)
   { }
 
   NS_IMETHOD
@@ -214,24 +233,41 @@ public:
     mFetchBodyConsumer->NullifyConsumeBodyPump();
 
     uint8_t* nonconstResult = const_cast<uint8_t*>(aResult);
-    if (mFetchBodyConsumer->GetWorkerPrivate()) {
+
+    // Main-thread.
+    if (!mWorkerRef) {
+      mFetchBodyConsumer->ContinueConsumeBody(aStatus, aResultLength,
+                                              nonconstResult);
+      // FetchBody is responsible for data.
+      return NS_SUCCESS_ADOPTED_DATA;
+    }
+
+    // Web Worker.
+    {
       RefPtr<ContinueConsumeBodyRunnable<Derived>> r =
         new ContinueConsumeBodyRunnable<Derived>(mFetchBodyConsumer,
+                                                 mWorkerRef->Private(),
                                                  aStatus,
                                                  aResultLength,
                                                  nonconstResult);
-      if (!r->Dispatch()) {
-        NS_WARNING("Could not dispatch ConsumeBodyRunnable");
-        // Return failure so that aResult is freed.
-        return NS_ERROR_FAILURE;
+      if (r->Dispatch()) {
+        // FetchBody is responsible for data.
+        return NS_SUCCESS_ADOPTED_DATA;
       }
-    } else {
-      mFetchBodyConsumer->ContinueConsumeBody(aStatus, aResultLength,
-                                              nonconstResult);
     }
 
-    // FetchBody is responsible for data.
-    return NS_SUCCESS_ADOPTED_DATA;
+    // The worker is shutting down. Let's use a control runnable to complete the
+    // shutting down procedure.
+
+    RefPtr<AbortConsumeBodyControlRunnable<Derived>> r =
+      new AbortConsumeBodyControlRunnable<Derived>(mFetchBodyConsumer,
+                                                   mWorkerRef->Private());
+    if (NS_WARN_IF(!r->Dispatch())) {
+      return NS_ERROR_FAILURE;
+    }
+
+    // We haven't taken ownership of the data.
+    return NS_OK;
   }
 
   virtual void BlobStoreCompleted(MutableBlobStorage* aBlobStorage,
@@ -250,23 +286,39 @@ public:
 
     MOZ_ASSERT(aBlob);
 
-    if (mFetchBodyConsumer->GetWorkerPrivate()) {
+    // Main-thread.
+    if (!mWorkerRef) {
+      mFetchBodyConsumer->ContinueConsumeBlobBody(aBlob->Impl());
+      return;
+    }
+
+    // Web Worker.
+    {
       RefPtr<ContinueConsumeBlobBodyRunnable<Derived>> r =
         new ContinueConsumeBlobBodyRunnable<Derived>(mFetchBodyConsumer,
+                                                     mWorkerRef->Private(),
                                                      aBlob->Impl());
 
-      if (!r->Dispatch()) {
-        NS_WARNING("Could not dispatch ConsumeBlobBodyRunnable");
+      if (r->Dispatch()) {
         return;
       }
-    } else {
-      mFetchBodyConsumer->ContinueConsumeBlobBody(aBlob->Impl());
     }
+
+    // The worker is shutting down. Let's use a control runnable to complete the
+    // shutting down procedure.
+
+    RefPtr<AbortConsumeBlobBodyControlRunnable<Derived>> r =
+      new AbortConsumeBlobBodyControlRunnable<Derived>(mFetchBodyConsumer,
+                                                       mWorkerRef->Private());
+
+    Unused << NS_WARN_IF(!r->Dispatch());
   }
 
 private:
-  virtual ~ConsumeBodyDoneObserver()
-  { }
+  ~ConsumeBodyDoneObserver() = default;
+
+  RefPtr<FetchBodyConsumer<Derived>> mFetchBodyConsumer;
+  RefPtr<ThreadSafeWorkerRef> mWorkerRef;
 };
 
 template <class Derived>
@@ -286,6 +338,7 @@ template <class Derived>
 FetchBodyConsumer<Derived>::Create(nsIGlobalObject* aGlobal,
                                    nsIEventTarget* aMainThreadEventTarget,
                                    FetchBody<Derived>* aBody,
+                                   AbortSignal* aSignal,
                                    FetchConsumeType aType,
                                    ErrorResult& aRv)
 {
@@ -306,23 +359,28 @@ FetchBodyConsumer<Derived>::Create(nsIGlobalObject* aGlobal,
     return nullptr;
   }
 
-  WorkerPrivate* workerPrivate = nullptr;
-  if (!NS_IsMainThread()) {
-    workerPrivate = GetCurrentThreadWorkerPrivate();
-    MOZ_ASSERT(workerPrivate);
-  }
-
   RefPtr<FetchBodyConsumer<Derived>> consumer =
     new FetchBodyConsumer<Derived>(aMainThreadEventTarget, aGlobal,
-                                   workerPrivate, aBody, bodyStream, promise,
+                                   aBody, bodyStream, promise,
                                    aType);
 
+  RefPtr<ThreadSafeWorkerRef> workerRef;
+
   if (!NS_IsMainThread()) {
+    WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
     MOZ_ASSERT(workerPrivate);
-    if (NS_WARN_IF(!consumer->RegisterWorkerHolder())) {
+
+    RefPtr<StrongWorkerRef> strongWorkerRef =
+      StrongWorkerRef::Create(workerPrivate, "FetchBodyConsumer",
+                              [consumer]() {
+        consumer->ShutDownMainThreadConsuming();
+      });
+    if (NS_WARN_IF(!strongWorkerRef)) {
       aRv.Throw(NS_ERROR_FAILURE);
       return nullptr;
     }
+
+    workerRef = new ThreadSafeWorkerRef(strongWorkerRef);
   } else {
     nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
     if (NS_WARN_IF(!os)) {
@@ -341,10 +399,15 @@ FetchBodyConsumer<Derived>::Create(nsIGlobalObject* aGlobal,
     }
   }
 
-  nsCOMPtr<nsIRunnable> r = new BeginConsumeBodyRunnable<Derived>(consumer);
+  nsCOMPtr<nsIRunnable> r =
+    new BeginConsumeBodyRunnable<Derived>(consumer, workerRef);
   aRv = aMainThreadEventTarget->Dispatch(r.forget(), NS_DISPATCH_NORMAL);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
+  }
+
+  if (aSignal) {
+    consumer->Follow(aSignal);
   }
 
   return promise.forget();
@@ -365,17 +428,17 @@ FetchBodyConsumer<Derived>::ReleaseObject()
   }
 
   mGlobal = nullptr;
-  mWorkerHolder = nullptr;
 
 #ifdef DEBUG
   mBody = nullptr;
 #endif
+
+  Unfollow();
 }
 
 template <class Derived>
 FetchBodyConsumer<Derived>::FetchBodyConsumer(nsIEventTarget* aMainThreadEventTarget,
                                               nsIGlobalObject* aGlobalObject,
-                                              WorkerPrivate* aWorkerPrivate,
                                               FetchBody<Derived>* aBody,
                                               nsIInputStream* aBodyStream,
                                               Promise* aPromise,
@@ -388,7 +451,6 @@ FetchBodyConsumer<Derived>::FetchBodyConsumer(nsIEventTarget* aMainThreadEventTa
   , mBodyStream(aBodyStream)
   , mBlobStorageType(MutableBlobStorage::eOnlyInMemory)
   , mGlobal(aGlobalObject)
-  , mWorkerPrivate(aWorkerPrivate)
   , mConsumeType(aType)
   , mConsumePromise(aPromise)
   , mBodyConsumed(false)
@@ -425,25 +487,6 @@ FetchBodyConsumer<Derived>::AssertIsOnTargetThread() const
   MOZ_ASSERT(NS_GetCurrentThread() == mTargetThread);
 }
 
-template <class Derived>
-bool
-FetchBodyConsumer<Derived>::RegisterWorkerHolder()
-{
-  MOZ_ASSERT(mWorkerPrivate);
-  mWorkerPrivate->AssertIsOnWorkerThread();
-
-  MOZ_ASSERT(!mWorkerHolder);
-  mWorkerHolder.reset(new FetchBodyWorkerHolder<Derived>(this));
-
-  if (!mWorkerHolder->HoldWorker(mWorkerPrivate, Closing)) {
-    NS_WARNING("Failed to add workerHolder");
-    mWorkerHolder = nullptr;
-    return false;
-  }
-
-  return true;
-}
-
 /*
  * BeginConsumeBodyMainThread() will automatically reject the consume promise
  * and clean up on any failures, so there is no need for callers to do so,
@@ -451,11 +494,11 @@ FetchBodyConsumer<Derived>::RegisterWorkerHolder()
  */
 template <class Derived>
 void
-FetchBodyConsumer<Derived>::BeginConsumeBodyMainThread()
+FetchBodyConsumer<Derived>::BeginConsumeBodyMainThread(ThreadSafeWorkerRef* aWorkerRef)
 {
   AssertIsOnMainThread();
 
-  AutoFailConsumeBody<Derived> autoReject(this);
+  AutoFailConsumeBody<Derived> autoReject(this, aWorkerRef);
 
   if (mShuttingDown) {
     // We haven't started yet, but we have been terminated. AutoFailConsumeBody
@@ -465,14 +508,14 @@ FetchBodyConsumer<Derived>::BeginConsumeBodyMainThread()
 
   nsCOMPtr<nsIInputStreamPump> pump;
   nsresult rv = NS_NewInputStreamPump(getter_AddRefs(pump),
-                                      mBodyStream, -1, -1, 0, 0, false,
+                                      mBodyStream.forget(), 0, 0, false,
                                       mMainThreadEventTarget);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
 
   RefPtr<ConsumeBodyDoneObserver<Derived>> p =
-   new ConsumeBodyDoneObserver<Derived>(this);
+   new ConsumeBodyDoneObserver<Derived>(this, aWorkerRef);
 
   nsCOMPtr<nsIStreamListener> listener;
   if (mConsumeType == CONSUME_BLOB) {
@@ -506,7 +549,7 @@ FetchBodyConsumer<Derived>::BeginConsumeBodyMainThread()
   if (rr) {
     nsCOMPtr<nsIEventTarget> sts = do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID);
     rv = rr->RetargetDeliveryTo(sts);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
+    if (NS_FAILED(rv)) {
       NS_WARNING("Retargeting failed");
     }
   }
@@ -516,9 +559,15 @@ template <class Derived>
 void
 FetchBodyConsumer<Derived>::ContinueConsumeBody(nsresult aStatus,
                                                 uint32_t aResultLength,
-                                                uint8_t* aResult)
+                                                uint8_t* aResult,
+                                                bool aShuttingDown)
 {
   AssertIsOnTargetThread();
+
+  // This makes sure that we free the data correctly.
+  auto autoFree = mozilla::MakeScopeExit([&] {
+    free(aResult);
+  });
 
   if (mBodyConsumed) {
     return;
@@ -529,17 +578,18 @@ FetchBodyConsumer<Derived>::ContinueConsumeBody(nsresult aStatus,
   // sync with a body read.
   MOZ_ASSERT(mBody->BodyUsed());
 
-  auto autoFree = mozilla::MakeScopeExit([&] {
-    free(aResult);
-  });
-
   MOZ_ASSERT(mConsumePromise);
   RefPtr<Promise> localPromise = mConsumePromise.forget();
 
   RefPtr<FetchBodyConsumer<Derived>> self = this;
-  auto autoReleaseObject = mozilla::MakeScopeExit([&] {
+  auto autoReleaseObject = mozilla::MakeScopeExit([self] {
     self->ReleaseObject();
   });
+
+  if (aShuttingDown) {
+    // If shutting down, we don't want to resolve any promise.
+    return;
+  }
 
   if (NS_WARN_IF(NS_FAILED(aStatus))) {
     localPromise->MaybeReject(NS_ERROR_DOM_ABORT_ERR);
@@ -623,7 +673,8 @@ FetchBodyConsumer<Derived>::ContinueConsumeBody(nsresult aStatus,
 
 template <class Derived>
 void
-FetchBodyConsumer<Derived>::ContinueConsumeBlobBody(BlobImpl* aBlobImpl)
+FetchBodyConsumer<Derived>::ContinueConsumeBlobBody(BlobImpl* aBlobImpl,
+                                                    bool aShuttingDown)
 {
   AssertIsOnTargetThread();
   MOZ_ASSERT(mConsumeType == CONSUME_BLOB);
@@ -640,10 +691,12 @@ FetchBodyConsumer<Derived>::ContinueConsumeBlobBody(BlobImpl* aBlobImpl)
   MOZ_ASSERT(mConsumePromise);
   RefPtr<Promise> localPromise = mConsumePromise.forget();
 
-  RefPtr<dom::Blob> blob = dom::Blob::Create(mGlobal, aBlobImpl);
-  MOZ_ASSERT(blob);
+  if (!aShuttingDown) {
+    RefPtr<dom::Blob> blob = dom::Blob::Create(mGlobal, aBlobImpl);
+    MOZ_ASSERT(blob);
 
-  localPromise->MaybeResolve(blob);
+    localPromise->MaybeResolve(blob);
+  }
 
   ReleaseObject();
 }
@@ -690,6 +743,15 @@ FetchBodyConsumer<Derived>::Observe(nsISupports* aSubject,
   }
 
   return NS_OK;
+}
+
+template <class Derived>
+void
+FetchBodyConsumer<Derived>::Abort()
+{
+  AssertIsOnTargetThread();
+  ShutDownMainThreadConsuming();
+  ContinueConsumeBody(NS_ERROR_DOM_ABORT_ERR, 0, nullptr);
 }
 
 template <class Derived>

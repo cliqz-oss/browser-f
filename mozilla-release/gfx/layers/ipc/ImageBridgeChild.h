@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -18,7 +19,6 @@
 #include "mozilla/layers/PImageBridgeChild.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/webrender/WebRenderTypes.h"
-#include "nsDebug.h"                    // for NS_RUNTIMEABORT
 #include "nsIObserver.h"
 #include "nsRegion.h"                   // for nsIntRegion
 #include "nsRefPtrHashtable.h"
@@ -41,6 +41,7 @@ namespace layers {
 class AsyncCanvasRenderer;
 class ImageClient;
 class ImageContainer;
+class ImageContainerListener;
 class ImageBridgeParent;
 class CompositableClient;
 struct CompositableTransaction;
@@ -172,6 +173,7 @@ public:
 
   virtual PTextureChild*
   AllocPTextureChild(const SurfaceDescriptor& aSharedData,
+                     const ReadLockDescriptor& aReadLock,
                      const LayersBackend& aLayersBackend,
                      const TextureFlags& aFlags,
                      const uint64_t& aSerial,
@@ -205,7 +207,6 @@ public:
                                                     TextureFlags aFlag);
   void UpdateAsyncCanvasRenderer(AsyncCanvasRenderer* aClient);
   void UpdateImageClient(RefPtr<ImageContainer> aContainer);
-  static void DispatchReleaseTextureClient(TextureClient* aClient);
 
   /**
    * Flush all Images sent to CompositableHost.
@@ -238,8 +239,6 @@ private:
     CompositableType aType,
     ImageContainer* aImageContainer);
 
-  void ReleaseTextureClientNow(TextureClient* aClient);
-
   void UpdateAsyncCanvasRendererNow(AsyncCanvasRenderer* aClient);
   void UpdateAsyncCanvasRendererSync(
     SynchronousTask* aTask,
@@ -252,6 +251,8 @@ private:
 
   void ProxyAllocShmemNow(SynchronousTask* aTask, AllocShmemParams* aParams);
   void ProxyDeallocShmemNow(SynchronousTask* aTask, Shmem* aShmem, bool* aResult);
+
+  void UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aIdentifier);
 
 public:
   // CompositableForwarder
@@ -331,6 +332,7 @@ public:
 
   virtual PTextureChild* CreateTexture(
     const SurfaceDescriptor& aSharedData,
+    const ReadLockDescriptor& aReadLock,
     LayersBackend aLayersBackend,
     TextureFlags aFlags,
     uint64_t aSerial,
@@ -346,7 +348,7 @@ public:
     return InImageBridgeChildThread();
   }
 
-  virtual void HandleFatalError(const char* aName, const char* aMsg) const override;
+  virtual void HandleFatalError(const char* aMsg) const override;
 
   virtual wr::MaybeExternalImageId GetNextExternalImageId() override;
 
@@ -399,7 +401,7 @@ private:
    * Mapping from async compositable IDs to image containers.
    */
   Mutex mContainerMapLock;
-  nsDataHashtable<nsUint64HashKey, ImageContainer*> mImageContainers;
+  nsRefPtrHashtable<nsUint64HashKey, ImageContainerListener> mImageContainerListeners;
 };
 
 } // namespace layers

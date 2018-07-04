@@ -363,44 +363,81 @@ typedef struct aom_codec_enc_cfg {
    */
   unsigned int rc_dropframe_thresh;
 
-  /*!\brief Enable/disable spatial resampling, if supported by the codec.
+  /*!\brief Mode for spatial resampling, if supported by the codec.
    *
    * Spatial resampling allows the codec to compress a lower resolution
-   * version of the frame, which is then upscaled by the encoder to the
+   * version of the frame, which is then upscaled by the decoder to the
    * correct presentation resolution. This increases visual quality at
    * low data rates, at the expense of CPU time on the encoder/decoder.
    */
-  unsigned int rc_resize_allowed;
+  unsigned int rc_resize_mode;
 
-  /*!\brief Internal coded frame width.
+  /*!\brief Frame resize denominator.
    *
-   * If spatial resampling is enabled this specifies the width of the
-   * encoded frame.
+   * The denominator for resize to use, assuming 8 as the numerator.
+   *
+   * Valid denominators are  8 - 16 for now.
    */
-  unsigned int rc_scaled_width;
+  unsigned int rc_resize_denominator;
 
-  /*!\brief Internal coded frame height.
+  /*!\brief Keyframe resize denominator.
    *
-   * If spatial resampling is enabled this specifies the height of the
-   * encoded frame.
+   * The denominator for resize to use, assuming 8 as the numerator.
+   *
+   * Valid denominators are  8 - 16 for now.
    */
-  unsigned int rc_scaled_height;
+  unsigned int rc_resize_kf_denominator;
 
-  /*!\brief Spatial resampling up watermark.
+  /*!\brief Frame super-resolution scaling mode.
    *
-   * This threshold is described as a percentage of the target data buffer.
-   * When the data buffer rises above this percentage of fullness, the
-   * encoder will step up to a higher resolution version of the frame.
+   * Similar to spatial resampling, frame super-resolution integrates
+   * upscaling after the encode/decode process. Taking control of upscaling and
+   * using restoration filters should allow it to outperform normal resizing.
+   *
+   * Mode 0 is SUPERRES_NONE, mode 1 is SUPERRES_FIXED, mode 2 is
+   * SUPERRES_RANDOM and mode 3 is SUPERRES_QTHRESH.
    */
-  unsigned int rc_resize_up_thresh;
+  unsigned int rc_superres_mode;
 
-  /*!\brief Spatial resampling down watermark.
+  /*!\brief Frame super-resolution denominator.
    *
-   * This threshold is described as a percentage of the target data buffer.
-   * When the data buffer falls below this percentage of fullness, the
-   * encoder will step down to a lower resolution version of the frame.
+   * The denominator for superres to use. If fixed it will only change if the
+   * cumulative scale change over resizing and superres is greater than 1/2;
+   * this forces superres to reduce scaling.
+   *
+   * Valid denominators are 8 to 16.
+   *
+   * Used only by SUPERRES_FIXED.
    */
-  unsigned int rc_resize_down_thresh;
+  unsigned int rc_superres_denominator;
+
+  /*!\brief Keyframe super-resolution denominator.
+   *
+   * The denominator for superres to use. If fixed it will only change if the
+   * cumulative scale change over resizing and superres is greater than 1/2;
+   * this forces superres to reduce scaling.
+   *
+   * Valid denominators are 8 - 16 for now.
+   */
+  unsigned int rc_superres_kf_denominator;
+
+  /*!\brief Frame super-resolution q threshold.
+   *
+   * The q level threshold after which superres is used.
+   * Valid values are 1 to 63.
+   *
+   * Used only by SUPERRES_QTHRESH
+   */
+  unsigned int rc_superres_qthresh;
+
+  /*!\brief Keyframe super-resolution q threshold.
+   *
+   * The q level threshold after which superres is used for key frames.
+   * Valid values are 1 to 63.
+   *
+   * Used only by SUPERRES_QTHRESH
+   */
+  unsigned int rc_superres_kf_qthresh;
 
   /*!\brief Rate control algorithm to use.
    *
@@ -574,6 +611,56 @@ typedef struct aom_codec_enc_cfg {
    * equal to kf_max_dist for a fixed interval.
    */
   unsigned int kf_max_dist;
+
+  /*!\brief Tile coding mode
+   *
+   * This value indicates the tile coding mode.
+   * A value of 0 implies a normal non-large-scale tile coding. A value of 1
+   * implies a large-scale tile coding.
+   */
+  unsigned int large_scale_tile;
+
+  /*!\brief Number of explicit tile widths specified
+   *
+   * This value indicates the number of tile widths specified
+   * A value of 0 implies no tile widths are specified.
+   * Tile widths are given in the array tile_widths[]
+   */
+  int tile_width_count;
+
+  /*!\brief Number of explicit tile heights specified
+   *
+   * This value indicates the number of tile heights specified
+   * A value of 0 implies no tile heights are specified.
+   * Tile heights are given in the array tile_heights[]
+   */
+  int tile_height_count;
+
+/*!\brief Maximum number of tile widths in tile widths array
+ *
+ * This define gives the maximum number of elements in the tile_widths array.
+ */
+#define MAX_TILE_WIDTHS 64  // maximum tile width array length
+
+  /*!\brief Array of specified tile widths
+   *
+   * This array specifies tile widths (and may be empty)
+   * The number of widths specified is given by tile_width_count
+   */
+  int tile_widths[MAX_TILE_WIDTHS];
+
+/*!\brief Maximum number of tile heights in tile heights array.
+ *
+ * This define gives the maximum number of elements in the tile_heights array.
+ */
+#define MAX_TILE_HEIGHTS 64  // maximum tile height array length
+
+  /*!\brief Array of specified tile heights
+   *
+   * This array specifies tile heights (and may be empty)
+   * The number of heights specified is given by tile_height_count
+   */
+  int tile_heights[MAX_TILE_HEIGHTS];
 } aom_codec_enc_cfg_t; /**< alias for struct aom_codec_enc_cfg */
 
 /*!\brief Initialize an encoder instance
@@ -589,7 +676,7 @@ typedef struct aom_codec_enc_cfg {
  *
  * \param[in]    ctx     Pointer to this instance's context.
  * \param[in]    iface   Pointer to the algorithm interface to use.
- * \param[in]    cfg     Configuration to use, if known. May be NULL.
+ * \param[in]    cfg     Configuration to use, if known.
  * \param[in]    flags   Bitfield of AOM_CODEC_USE_* flags
  * \param[in]    ver     ABI version number. Must be set to
  *                       AOM_ENCODER_ABI_VERSION
@@ -619,7 +706,7 @@ aom_codec_err_t aom_codec_enc_init_ver(aom_codec_ctx_t *ctx,
  *
  * \param[in]    ctx     Pointer to this instance's context.
  * \param[in]    iface   Pointer to the algorithm interface to use.
- * \param[in]    cfg     Configuration to use, if known. May be NULL.
+ * \param[in]    cfg     Configuration to use, if known.
  * \param[in]    num_enc Total number of encoders.
  * \param[in]    flags   Bitfield of AOM_CODEC_USE_* flags
  * \param[in]    dsf     Pointer to down-sampling factors.

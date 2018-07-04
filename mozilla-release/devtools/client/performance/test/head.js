@@ -1,8 +1,14 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
+
+/* import-globals-from ../../shared/test/telemetry-test-helpers.js */
+
 "use strict";
 
-const { require, loader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { require, loader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/devtools/client/shared/test/telemetry-test-helpers.js", this);
 
 /* exported loader, either, click, dblclick, mousedown, rightMousedown, key */
 // All tests are asynchronous.
@@ -52,10 +58,7 @@ const key = (id, win = window) => {
 
 // Don't pollute global scope.
 (() => {
-  const flags = require("devtools/shared/flags");
   const PrefUtils = require("devtools/client/performance/test/helpers/prefs");
-
-  flags.testing = true;
 
   // Make sure all the prefs are reverted to their defaults once tests finish.
   let stopObservingPrefs = PrefUtils.whenUnknownPrefChanged("devtools.performance",
@@ -71,7 +74,6 @@ const key = (id, win = window) => {
 
   registerCleanupFunction(() => {
     info("finish() was called, cleaning up...");
-    flags.testing = false;
 
     PrefUtils.rollbackPrefsToDefault();
     stopObservingPrefs();
@@ -80,9 +82,7 @@ const key = (id, win = window) => {
     // avoid at least some leaks on OSX. Theoretically the module should never
     // be active at this point. We shouldn't have to do this, but rather
     // find and fix the leak in the module itself. Bug 1257439.
-    let nsIProfilerModule = Cc["@mozilla.org/tools/profiler;1"]
-      .getService(Ci.nsIProfiler);
-    nsIProfilerModule.StopProfiler();
+    Services.profiler.StopProfiler();
 
     // Forces GC, CC and shrinking GC to get rid of disconnected docshells
     // and windows.

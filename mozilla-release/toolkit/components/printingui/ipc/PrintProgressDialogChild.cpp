@@ -19,8 +19,10 @@ NS_IMPL_ISUPPORTS(PrintProgressDialogChild,
                   nsIPrintProgressParams)
 
 PrintProgressDialogChild::PrintProgressDialogChild(
-  nsIObserver* aOpenObserver) :
-  mOpenObserver(aOpenObserver)
+  nsIObserver* aOpenObserver,
+  nsIPrintSettings* aPrintSettings) :
+  mOpenObserver(aOpenObserver),
+  mPrintSettings(aPrintSettings)
 {
 }
 
@@ -36,10 +38,19 @@ PrintProgressDialogChild::~PrintProgressDialogChild()
 mozilla::ipc::IPCResult
 PrintProgressDialogChild::RecvDialogOpened()
 {
-  // nsPrintEngine's observer, which we're reporting to here, doesn't care
+  // nsPrintJob's observer, which we're reporting to here, doesn't care
   // what gets passed as the subject, topic or data, so we'll just send
   // nullptrs.
   mOpenObserver->Observe(nullptr, nullptr, nullptr);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+PrintProgressDialogChild::RecvCancelledCurrentJob()
+{
+  if (mPrintSettings) {
+    mPrintSettings->SetIsCancelled(true);
+  }
   return IPC_OK();
 }
 
@@ -96,33 +107,33 @@ PrintProgressDialogChild::OnSecurityChange(nsIWebProgress* aProgress,
 
 // nsIPrintProgressParams
 
-NS_IMETHODIMP PrintProgressDialogChild::GetDocTitle(char16_t* *aDocTitle)
+NS_IMETHODIMP
+PrintProgressDialogChild::GetDocTitle(nsAString& aDocTitle)
 {
-  NS_ENSURE_ARG(aDocTitle);
-
-  *aDocTitle = ToNewUnicode(mDocTitle);
+  aDocTitle = mDocTitle;
   return NS_OK;
 }
 
-NS_IMETHODIMP PrintProgressDialogChild::SetDocTitle(const char16_t* aDocTitle)
+NS_IMETHODIMP
+PrintProgressDialogChild::SetDocTitle(const nsAString& aDocTitle)
 {
   mDocTitle = aDocTitle;
-  Unused << SendDocTitleChange(nsString(aDocTitle));
+  Unused << SendDocTitleChange(PromiseFlatString(aDocTitle));
   return NS_OK;
 }
 
-NS_IMETHODIMP PrintProgressDialogChild::GetDocURL(char16_t **aDocURL)
+NS_IMETHODIMP
+PrintProgressDialogChild::GetDocURL(nsAString& aDocURL)
 {
-  NS_ENSURE_ARG(aDocURL);
-
-  *aDocURL = ToNewUnicode(mDocURL);
+  aDocURL = mDocURL;
   return NS_OK;
 }
 
-NS_IMETHODIMP PrintProgressDialogChild::SetDocURL(const char16_t* aDocURL)
+NS_IMETHODIMP
+PrintProgressDialogChild::SetDocURL(const nsAString& aDocURL)
 {
   mDocURL = aDocURL;
-  Unused << SendDocURLChange(nsString(aDocURL));
+  Unused << SendDocURLChange(PromiseFlatString(aDocURL));
   return NS_OK;
 }
 

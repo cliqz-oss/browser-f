@@ -1,7 +1,7 @@
-const {ActivityStreamMessageChannel, DEFAULT_OPTIONS} = require("lib/ActivityStreamMessageChannel.jsm");
-const {addNumberReducer, GlobalOverrider} = require("test/unit/utils");
-const {createStore, applyMiddleware} = require("redux");
-const {actionTypes: at, actionCreators: ac} = require("common/Actions.jsm");
+import {actionCreators as ac, actionTypes as at} from "common/Actions.jsm";
+import {ActivityStreamMessageChannel, DEFAULT_OPTIONS} from "lib/ActivityStreamMessageChannel.jsm";
+import {addNumberReducer, GlobalOverrider} from "test/unit/utils";
+import {applyMiddleware, createStore} from "redux";
 
 const OPTIONS = ["pageURL, outgoingMessageName", "incomingMessageName", "dispatch"];
 
@@ -80,13 +80,44 @@ describe("ActivityStreamMessageChannel", () => {
         mm.createChannel();
         assert.notCalled(global.AboutNewTab.override);
       });
-      it("should simluate load for loaded ports", () => {
+    });
+    describe("#simulateMessagesForExistingTabs", () => {
+      beforeEach(() => {
         sinon.stub(mm, "onActionFromContent");
-        RPmessagePorts.push({loaded: true, portID: "foo"});
-
         mm.createChannel();
+      });
+      it("should simulate init for existing ports", () => {
+        RPmessagePorts.push({
+          url: "about:monkeys",
+          loaded: false,
+          portID: "inited",
+          simulated: true,
+          browser: {getAttribute: () => "preloaded"}
+        });
+        RPmessagePorts.push({
+          url: "about:sheep",
+          loaded: true,
+          portID: "loaded",
+          simulated: true,
+          browser: {getAttribute: () => "preloaded"}
+        });
+
+        mm.simulateMessagesForExistingTabs();
+
+        assert.calledWith(mm.onActionFromContent.firstCall, {type: at.NEW_TAB_INIT, data: RPmessagePorts[0]});
+        assert.calledWith(mm.onActionFromContent.secondCall, {type: at.NEW_TAB_INIT, data: RPmessagePorts[1]});
+      });
+      it("should simulate load for loaded ports", () => {
+        RPmessagePorts.push({loaded: true, portID: "foo", browser: {getAttribute: () => "preloaded"}});
+
+        mm.simulateMessagesForExistingTabs();
 
         assert.calledWith(mm.onActionFromContent, {type: at.NEW_TAB_LOAD}, "foo");
+      });
+      it("should set renderLayers on preloaded browsers after load", () => {
+        RPmessagePorts.push({loaded: true, portID: "foo", browser: {getAttribute: () => "preloaded"}});
+        mm.simulateMessagesForExistingTabs();
+        assert.equal(RPmessagePorts[0].browser.renderLayers, true);
       });
     });
     describe("#destroyChannel", () => {
@@ -134,17 +165,61 @@ describe("ActivityStreamMessageChannel", () => {
         assert.equal(mm.getTargetById("bar"), null);
       });
     });
+    describe("#getPreloadedBrowser", () => {
+      it("should get a preloaded browser if it exists", () => {
+        const port = {
+          browser: {
+            getAttribute() {
+              return "preloaded";
+            }
+          }
+        };
+        mm.createChannel();
+        mm.channel.messagePorts.push(port);
+        assert.equal(mm.getPreloadedBrowser()[0], port);
+      });
+      it("should get all the preloaded browsers across windows if they exist", () => {
+        const port = {
+          browser: {
+            getAttribute() {
+              return "preloaded";
+            }
+          }
+        };
+        mm.createChannel();
+        mm.channel.messagePorts.push(port);
+        mm.channel.messagePorts.push(port);
+        assert.equal(mm.getPreloadedBrowser().length, 2);
+      });
+      it("should return null if there is no preloaded browser", () => {
+        const port = {
+          browser: {
+            getAttribute() {
+              return "consumed";
+            }
+          }
+        };
+        mm.createChannel();
+        mm.channel.messagePorts.push(port);
+        assert.equal(mm.getPreloadedBrowser(), null);
+      });
+    });
     describe("#onNewTabInit", () => {
       it("should dispatch a NEW_TAB_INIT action", () => {
-        const t = {portID: "foo"};
+        const t = {portID: "foo", url: "about:monkeys"};
         sinon.stub(mm, "onActionFromContent");
+
         mm.onNewTabInit({target: t});
-        assert.calledWith(mm.onActionFromContent, {type: at.NEW_TAB_INIT}, "foo");
+
+        assert.calledWith(mm.onActionFromContent, {
+          type: at.NEW_TAB_INIT,
+          data: t
+        });
       });
     });
     describe("#onNewTabLoad", () => {
       it("should dispatch a NEW_TAB_LOAD action", () => {
-        const t = {portID: "foo"};
+        const t = {portID: "foo", browser: {getAttribute: () => "preloaded"}};
         sinon.stub(mm, "onActionFromContent");
         mm.onNewTabLoad({target: t});
         assert.calledWith(mm.onActionFromContent, {type: at.NEW_TAB_LOAD}, "foo");
@@ -162,16 +237,16 @@ describe("ActivityStreamMessageChannel", () => {
       let sandbox;
       beforeEach(() => {
         sandbox = sinon.sandbox.create();
-        sandbox.spy(global.Components.utils, "reportError");
+        sandbox.spy(global.Cu, "reportError");
       });
       afterEach(() => sandbox.restore());
       it("should report an error if the msg.data is missing", () => {
         mm.onMessage({target: {portID: "foo"}});
-        assert.calledOnce(global.Components.utils.reportError);
+        assert.calledOnce(global.Cu.reportError);
       });
       it("should report an error if the msg.data.type is missing", () => {
         mm.onMessage({target: {portID: "foo"}, data: "foo"});
-        assert.calledOnce(global.Components.utils.reportError);
+        assert.calledOnce(global.Cu.reportError);
       });
       it("should call onActionFromContent", () => {
         sinon.stub(mm, "onActionFromContent");
@@ -192,14 +267,14 @@ describe("ActivityStreamMessageChannel", () => {
         const t = {portID: "foo", sendAsyncMessage: sinon.spy()};
         mm.createChannel();
         mm.channel.messagePorts = [t];
-        const action = ac.SendToContent({type: "HELLO"}, "foo");
+        const action = ac.AlsoToOneContent({type: "HELLO"}, "foo");
         mm.send(action, "foo");
         assert.calledWith(t.sendAsyncMessage, DEFAULT_OPTIONS.outgoingMessageName, action);
       });
       it("should not throw if the target isn't around", () => {
         mm.createChannel();
         // port is not added to the channel
-        const action = ac.SendToContent({type: "HELLO"}, "foo");
+        const action = ac.AlsoToOneContent({type: "HELLO"}, "foo");
 
         assert.doesNotThrow(() => mm.send(action, "foo"));
       });
@@ -212,17 +287,64 @@ describe("ActivityStreamMessageChannel", () => {
         assert.calledWith(mm.channel.sendAsyncMessage, DEFAULT_OPTIONS.outgoingMessageName, action);
       });
     });
+    describe("#preloaded browser", () => {
+      it("should send the message to the preloaded browser if there's data and a preloaded browser exists", () => {
+        const port = {
+          browser: {
+            getAttribute() {
+              return "preloaded";
+            }
+          },
+          sendAsyncMessage: sinon.spy()
+        };
+        mm.createChannel();
+        mm.channel.messagePorts.push(port);
+        const action = ac.AlsoToPreloaded({type: "HELLO", data: 10});
+        mm.sendToPreloaded(action);
+        assert.calledWith(port.sendAsyncMessage, DEFAULT_OPTIONS.outgoingMessageName, action);
+      });
+      it("should send the message to all the preloaded browsers if there's data and they exist", () => {
+        const port = {
+          browser: {
+            getAttribute() {
+              return "preloaded";
+            }
+          },
+          sendAsyncMessage: sinon.spy()
+        };
+        mm.createChannel();
+        mm.channel.messagePorts.push(port);
+        mm.channel.messagePorts.push(port);
+        mm.sendToPreloaded(ac.AlsoToPreloaded({type: "HELLO", data: 10}));
+        assert.calledTwice(port.sendAsyncMessage);
+      });
+      it("should not send the message to the preloaded browser if there's no data and a preloaded browser does not exists", () => {
+        const port = {
+          browser: {
+            getAttribute() {
+              return "consumed";
+            }
+          },
+          sendAsyncMessage: sinon.spy()
+        };
+        mm.createChannel();
+        mm.channel.messagePorts.push(port);
+        const action = ac.AlsoToPreloaded({type: "HELLO"});
+        mm.sendToPreloaded(action);
+        assert.notCalled(port.sendAsyncMessage);
+      });
+    });
   });
   describe("Handling actions", () => {
     describe("#onActionFromContent", () => {
       beforeEach(() => mm.onActionFromContent({type: "FOO"}, "foo"));
-      it("should dispatch a SendToMain action", () => {
+      it("should dispatch a AlsoToMain action", () => {
         assert.calledOnce(dispatch);
-        const action = dispatch.firstCall.args[0];
+        const [action] = dispatch.firstCall.args;
         assert.equal(action.type, "FOO", "action.type");
       });
       it("should have the right fromTarget", () => {
-        const action = dispatch.firstCall.args[0];
+        const [action] = dispatch.firstCall.args;
         assert.equal(action.meta.fromTarget, "foo", "meta.fromTarget");
       });
     });
@@ -235,14 +357,25 @@ describe("ActivityStreamMessageChannel", () => {
         store.dispatch({type: "ADD", data: 10});
         assert.equal(store.getState(), 10);
       });
-      it("should call .send if the action is SendToContent", () => {
+      it("should call .send but not affect the main store if an OnlyToOneContent action is dispatched", () => {
         sinon.stub(mm, "send");
-        const action = ac.SendToContent({type: "FOO"}, "foo");
-
+        const action = ac.OnlyToOneContent({type: "ADD", data: 10}, "foo");
         mm.createChannel();
+
         store.dispatch(action);
 
         assert.calledWith(mm.send, action);
+        assert.equal(store.getState(), 0);
+      });
+      it("should call .send and update the main store if an AlsoToOneContent action is dispatched", () => {
+        sinon.stub(mm, "send");
+        const action = ac.AlsoToOneContent({type: "ADD", data: 10}, "foo");
+        mm.createChannel();
+
+        store.dispatch(action);
+
+        assert.calledWith(mm.send, action);
+        assert.equal(store.getState(), 10);
       });
       it("should call .broadcast if the action is BroadcastToContent", () => {
         sinon.stub(mm, "broadcast");
@@ -253,9 +386,19 @@ describe("ActivityStreamMessageChannel", () => {
 
         assert.calledWith(mm.broadcast, action);
       });
+      it("should call .sendToPreloaded if the action is AlsoToPreloaded", () => {
+        sinon.stub(mm, "sendToPreloaded");
+        const action = ac.AlsoToPreloaded({type: "FOO"});
+
+        mm.createChannel();
+        store.dispatch(action);
+
+        assert.calledWith(mm.sendToPreloaded, action);
+      });
       it("should dispatch other actions normally", () => {
         sinon.stub(mm, "send");
         sinon.stub(mm, "broadcast");
+        sinon.stub(mm, "sendToPreloaded");
 
         mm.createChannel();
         store.dispatch({type: "ADD", data: 1});
@@ -263,6 +406,7 @@ describe("ActivityStreamMessageChannel", () => {
         assert.equal(store.getState(), 1);
         assert.notCalled(mm.send);
         assert.notCalled(mm.broadcast);
+        assert.notCalled(mm.sendToPreloaded);
       });
     });
   });

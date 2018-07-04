@@ -355,6 +355,20 @@ protected:
    */
   virtual void NotifyExpiredLocked(T*, const AutoLock&) = 0;
 
+  /**
+   * This may be overridden to perform any post-aging work that needs to be
+   * done while still holding the lock. It will be called once after each timer
+   * event, and each low memory event has been handled.
+   */
+  virtual void NotifyHandlerEndLocked(const AutoLock&) { };
+
+  /**
+   * This may be overridden to perform any post-aging work that needs to be
+   * done outside the lock. It will be called once after each
+   * NotifyEndTransactionLocked call.
+   */
+  virtual void NotifyHandlerEnd() { };
+
   virtual Mutex& GetMutex() = 0;
 
 private:
@@ -398,18 +412,26 @@ private:
   };
 
   void HandleLowMemory() {
-    AutoLock lock(GetMutex());
-    AgeAllGenerationsLocked(lock);
+    {
+      AutoLock lock(GetMutex());
+      AgeAllGenerationsLocked(lock);
+      NotifyHandlerEndLocked(lock);
+    }
+    NotifyHandlerEnd();
   }
 
   void HandleTimeout() {
-    AutoLock lock(GetMutex());
-    AgeOneGenerationLocked(lock);
-    // Cancel the timer if we have no objects to track
-    if (IsEmptyLocked(lock)) {
-      mTimer->Cancel();
-      mTimer = nullptr;
+    {
+      AutoLock lock(GetMutex());
+      AgeOneGenerationLocked(lock);
+      // Cancel the timer if we have no objects to track
+      if (IsEmptyLocked(lock)) {
+        mTimer->Cancel();
+        mTimer = nullptr;
+      }
+      NotifyHandlerEndLocked(lock);
     }
+    NotifyHandlerEnd();
   }
 
   static void TimerCallback(nsITimer* aTimer, void* aThis)
@@ -423,26 +445,22 @@ private:
     if (mTimer || !mTimerPeriod) {
       return NS_OK;
     }
-    mTimer = do_CreateInstance("@mozilla.org/timer;1");
-    if (!mTimer) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-    if (mEventTarget) {
-      mTimer->SetTarget(mEventTarget);
-    } else if (!NS_IsMainThread()) {
+    nsCOMPtr<nsIEventTarget> target = mEventTarget;
+    if (!target && !NS_IsMainThread()) {
       // TimerCallback should always be run on the main thread to prevent races
       // to the destruction of the tracker.
-      nsCOMPtr<nsIEventTarget> target = do_GetMainThread();
+      target = do_GetMainThread();
       NS_ENSURE_STATE(target);
-      mTimer->SetTarget(target);
     }
-    mTimer->InitWithNamedFuncCallback(
+
+    return NS_NewTimerWithFuncCallback(
+      getter_AddRefs(mTimer),
       TimerCallback,
       this,
       mTimerPeriod,
       nsITimer::TYPE_REPEATING_SLACK_LOW_PRIORITY,
-      mName);
-    return NS_OK;
+      mName,
+      target);
   }
 };
 
@@ -490,6 +508,14 @@ class nsExpirationTracker : protected ::detail::SingleThreadedExpirationTracker<
   {
     NotifyExpired(aObject);
   }
+
+  /**
+   * Since there are no users of these callbacks in the single threaded case,
+   * we mark them as final with the hope that the compiler can optimize the
+   * method calls out entirely.
+   */
+  void NotifyHandlerEndLocked(const AutoLock&) final { }
+  void NotifyHandlerEnd() final { }
 
 protected:
   virtual void NotifyExpired(T* aObj) = 0;

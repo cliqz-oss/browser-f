@@ -13,10 +13,12 @@
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Move.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 #include "nsAppRunner.h"
+#include "mozilla/UniquePtr.h"
 #include "nsAutoPtr.h"
 #include "nsDebug.h"
 #include "nsISupportsImpl.h"
@@ -33,13 +35,8 @@ using mozilla::Move;
 // Undo the damage done by mozzconf.h
 #undef compress
 
-// Logging seems to be somewhat broken on b2g.
-#ifdef MOZ_B2G
-#define IPC_LOG(...)
-#else
 static mozilla::LazyLogModule sLogModule("ipc");
 #define IPC_LOG(...) MOZ_LOG(sLogModule, LogLevel::Debug, (__VA_ARGS__))
-#endif
 
 /*
  * IPC design:
@@ -421,7 +418,7 @@ public:
         MOZ_RELEASE_ASSERT(aMessage.transaction_id() == mTransaction);
         MOZ_RELEASE_ASSERT(!mReply);
         IPC_LOG("Reply received on worker thread: seqno=%d", mSeqno);
-        mReply = new IPC::Message(Move(aMessage));
+        mReply = MakeUnique<IPC::Message>(Move(aMessage));
         MOZ_RELEASE_ASSERT(IsComplete());
     }
 
@@ -460,7 +457,7 @@ public:
         return mReply->is_reply_error();
     }
 
-    nsAutoPtr<IPC::Message> GetReply() {
+    UniquePtr<IPC::Message> GetReply() {
         return Move(mReply);
     }
 
@@ -485,12 +482,12 @@ private:
     AutoEnterTransaction *mNext;
 
     // Pointer the a reply received for this message, if one was received.
-    nsAutoPtr<IPC::Message> mReply;
+    UniquePtr<IPC::Message> mReply;
 };
 
-class PromiseReporter final : public nsIMemoryReporter
+class PendingResponseReporter final : public nsIMemoryReporter
 {
-    ~PromiseReporter() {}
+    ~PendingResponseReporter() {}
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
 
@@ -499,15 +496,15 @@ public:
                    bool aAnonymize) override
     {
         MOZ_COLLECT_REPORT(
-            "unresolved-ipc-promises", KIND_OTHER, UNITS_COUNT, MessageChannel::gUnresolvedPromises,
-            "Outstanding IPC async message promises that is still not resolved.");
+            "unresolved-ipc-responses", KIND_OTHER, UNITS_COUNT, MessageChannel::gUnresolvedResponses,
+            "Outstanding IPC async message responses that are still not resolved.");
         return NS_OK;
     }
 };
 
-NS_IMPL_ISUPPORTS(PromiseReporter, nsIMemoryReporter)
+NS_IMPL_ISUPPORTS(PendingResponseReporter, nsIMemoryReporter)
 
-Atomic<size_t> MessageChannel::gUnresolvedPromises;
+Atomic<size_t> MessageChannel::gUnresolvedResponses;
 
 MessageChannel::MessageChannel(const char* aName,
                                IToplevelProtocol *aListener)
@@ -537,7 +534,8 @@ MessageChannel::MessageChannel(const char* aName,
     mFlags(REQUIRE_DEFAULT),
     mPeerPidSet(false),
     mPeerPid(-1),
-    mIsPostponingSends(false)
+    mIsPostponingSends(false),
+    mInKillHardShutdown(false)
 {
     MOZ_COUNT_CTOR(ipc::MessageChannel);
 
@@ -558,7 +556,7 @@ MessageChannel::MessageChannel(const char* aName,
 
     static Atomic<bool> registered;
     if (registered.compareExchange(false, true)) {
-        RegisterStrongMemoryReporter(new PromiseReporter());
+        RegisterStrongMemoryReporter(new PendingResponseReporter());
     }
 }
 
@@ -677,13 +675,16 @@ MessageChannel::CanSend() const
 void
 MessageChannel::WillDestroyCurrentMessageLoop()
 {
-#if defined(DEBUG) && !defined(ANDROID)
-#if defined(MOZ_CRASHREPORTER)
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ProtocolName"),
-                                       nsDependentCString(mName));
-#endif
+#if defined(DEBUG)
+    CrashReporter::AnnotateCrashReport(
+        NS_LITERAL_CSTRING("IPCFatalErrorProtocol"),
+        nsDependentCString(mName));
     MOZ_CRASH("MessageLoop destroyed before MessageChannel that's bound to it");
 #endif
+
+    // Clear mWorkerThread to avoid posting to it in the future.
+    MonitorAutoLock lock(*mMonitor);
+    mWorkerLoop = nullptr;
 }
 
 void
@@ -700,12 +701,37 @@ MessageChannel::Clear()
     // before mListener.  But just to be safe, mListener is a weak pointer.
 
 #if !defined(ANDROID)
-    if (!Unsound_IsClosed()) {
-#if defined(MOZ_CRASHREPORTER)
-        CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ProtocolName"),
-                                           nsDependentCString(mName));
-#endif
-        MOZ_CRASH("MessageChannel destroyed without being closed");
+    // KillHard shutdowns can occur with the channel in connected state. We are
+    // already collecting crash dump data about KillHard shutdowns and we
+    // shouldn't intentionally crash here.
+    if (!Unsound_IsClosed() && !mInKillHardShutdown) {
+        CrashReporter::AnnotateCrashReport(
+            NS_LITERAL_CSTRING("IPCFatalErrorProtocol"),
+            nsDependentCString(mName));
+        switch (mChannelState) {
+            case ChannelOpening:
+                MOZ_CRASH("MessageChannel destroyed without being closed " \
+                          "(mChannelState == ChannelOpening).");
+                break;
+            case ChannelConnected:
+                MOZ_CRASH("MessageChannel destroyed without being closed " \
+                          "(mChannelState == ChannelConnected).");
+                break;
+            case ChannelTimeout:
+                MOZ_CRASH("MessageChannel destroyed without being closed " \
+                          "(mChannelState == ChannelTimeout).");
+                break;
+            case ChannelClosing:
+                MOZ_CRASH("MessageChannel destroyed without being closed " \
+                          "(mChannelState == ChannelClosing).");
+                break;
+            case ChannelError:
+                MOZ_CRASH("MessageChannel destroyed without being closed " \
+                          "(mChannelState == ChannelError).");
+                break;
+            default:
+                MOZ_CRASH("MessageChannel destroyed without being closed.");
+        }
     }
 #endif
 
@@ -717,13 +743,11 @@ MessageChannel::Clear()
         mWorkerLoop->RemoveDestructionObserver(this);
     }
 
-    gUnresolvedPromises -= mPendingPromises.size();
-    for (auto& pair : mPendingPromises) {
-        pair.second.mRejectFunction(pair.second.mPromise,
-                                    PromiseRejectReason::ChannelClosed,
-                                    __func__);
+    gUnresolvedResponses -= mPendingResponses.size();
+    for (auto& pair : mPendingResponses) {
+        pair.second.get()->Reject(ResponseRejectReason::ChannelClosed);
     }
-    mPendingPromises.clear();
+    mPendingResponses.clear();
 
     mWorkerLoop = nullptr;
     delete mLink;
@@ -849,7 +873,7 @@ MessageChannel::CommonThreadOpenInit(MessageChannel *aTargetChan, Side aSide)
 bool
 MessageChannel::Echo(Message* aMsg)
 {
-    nsAutoPtr<Message> msg(aMsg);
+    UniquePtr<Message> msg(aMsg);
     AssertWorkerThread();
     mMonitor->AssertNotCurrentThreadOwns();
     if (MSG_ROUTING_NONE == msg->routing_id()) {
@@ -860,11 +884,11 @@ MessageChannel::Echo(Message* aMsg)
     MonitorAutoLock lock(*mMonitor);
 
     if (!Connected()) {
-        ReportConnectionError("MessageChannel", msg);
+        ReportConnectionError("MessageChannel", msg.get());
         return false;
     }
 
-    mLink->EchoMessage(msg.forget());
+    mLink->EchoMessage(msg.release());
     return true;
 }
 
@@ -892,7 +916,7 @@ MessageChannel::Send(Message* aMsg)
 
     CxxStackFrame frame(*this, OUT_MESSAGE, aMsg);
 
-    nsAutoPtr<Message> msg(aMsg);
+    UniquePtr<Message> msg(aMsg);
     AssertWorkerThread();
     mMonitor->AssertNotCurrentThreadOwns();
     if (MSG_ROUTING_NONE == msg->routing_id()) {
@@ -902,11 +926,10 @@ MessageChannel::Send(Message* aMsg)
 
     MonitorAutoLock lock(*mMonitor);
     if (!Connected()) {
-        ReportConnectionError("MessageChannel", msg);
+        ReportConnectionError("MessageChannel", msg.get());
         return false;
     }
-
-    SendMessageToLink(msg.forget());
+    SendMessageToLink(msg.release());
     return true;
 }
 
@@ -952,36 +975,33 @@ MessageChannel::StopPostponingSends()
     mPostponedSends.clear();
 }
 
-already_AddRefed<MozPromiseRefcountable>
-MessageChannel::PopPromise(const Message& aMsg)
+UniquePtr<MessageChannel::UntypedCallbackHolder>
+MessageChannel::PopCallback(const Message& aMsg)
 {
-    auto iter = mPendingPromises.find(aMsg.seqno());
-    if (iter != mPendingPromises.end()) {
-        PromiseHolder ret = iter->second;
-        mPendingPromises.erase(iter);
-        gUnresolvedPromises--;
-        return ret.mPromise.forget();
+    auto iter = mPendingResponses.find(aMsg.seqno());
+    if (iter != mPendingResponses.end()) {
+        UniquePtr<MessageChannel::UntypedCallbackHolder> ret = Move(iter->second);
+        mPendingResponses.erase(iter);
+        gUnresolvedResponses--;
+        return ret;
     }
     return nullptr;
 }
 
 void
-MessageChannel::RejectPendingPromisesForActor(ActorIdType aActorId)
+MessageChannel::RejectPendingResponsesForActor(ActorIdType aActorId)
 {
-  auto itr = mPendingPromises.begin();
-  while (itr != mPendingPromises.end()) {
-    if (itr->second.mActorId != aActorId) {
+  auto itr = mPendingResponses.begin();
+  while (itr != mPendingResponses.end()) {
+    if (itr->second.get()->mActorId != aActorId) {
       ++itr;
       continue;
     }
-    auto& promise = itr->second.mPromise;
-    itr->second.mRejectFunction(promise,
-                                PromiseRejectReason::ActorDestroyed,
-                                __func__);
+    itr->second.get()->Reject(ResponseRejectReason::ActorDestroyed);
     // Take special care of advancing the iterator since we are
     // removing it while iterating.
-    itr = mPendingPromises.erase(itr);
-    gUnresolvedPromises--;
+    itr = mPendingResponses.erase(itr);
+    gUnresolvedResponses--;
   }
 }
 
@@ -1019,7 +1039,7 @@ MessageChannel::SendBuildID()
     MonitorAutoLock lock(*mMonitor);
     if (!Connected()) {
         ReportConnectionError("MessageChannel", msg);
-        MOZ_CRASH();
+        return;
     }
     mLink->SendMessage(msg.forget());
 }
@@ -1149,7 +1169,9 @@ MessageChannel::OnMessageReceivedFromLink(Message&& aMsg)
     if (MaybeInterceptSpecialIOMessage(aMsg))
         return;
 
+#ifdef EARLY_BETA_OR_EARLIER
     mListener->OnChannelReceivedMessage(aMsg);
+#endif
 
     // Regardless of the Interrupt stack, if we're awaiting a sync reply,
     // we know that it needs to be immediately handled to unblock us.
@@ -1358,7 +1380,7 @@ MessageChannel::Send(Message* aMsg, Message* aReply)
         Telemetry::Accumulate(Telemetry::IPC_MESSAGE_SIZE2, aMsg->size());
     }
 
-    nsAutoPtr<Message> msg(aMsg);
+    UniquePtr<Message> msg(aMsg);
 
     // Sanity checks.
     AssertWorkerThread();
@@ -1372,7 +1394,7 @@ MessageChannel::Send(Message* aMsg, Message* aReply)
     AutoScopedLabel autolabel("sync message %s", aMsg->name());
 #endif
 
-    CxxStackFrame f(*this, OUT_MESSAGE, msg);
+    CxxStackFrame f(*this, OUT_MESSAGE, msg.get());
 
     MonitorAutoLock lock(*mMonitor);
 
@@ -1432,7 +1454,7 @@ MessageChannel::Send(Message* aMsg, Message* aReply)
                "not allowed to send messages while dispatching urgent messages");
 
     if (!Connected()) {
-        ReportConnectionError("MessageChannel::SendAndWait", msg);
+        ReportConnectionError("MessageChannel::SendAndWait", msg.get());
         mLastSendError = SyncSendError::NotConnectedBeforeSend;
         return false;
     }
@@ -1461,7 +1483,7 @@ MessageChannel::Send(Message* aMsg, Message* aReply)
     // msg will be destroyed soon, but name() is not owned by msg.
     const char* msgName = msg->name();
 
-    SendMessageToLink(msg.forget());
+    SendMessageToLink(msg.release());
 
     while (true) {
         MOZ_RELEASE_ASSERT(!transact.IsCanceled());
@@ -1539,7 +1561,7 @@ MessageChannel::Send(Message* aMsg, Message* aReply)
     IPC_LOG("Got reply: seqno=%d, xid=%d, msgName=%s, latency=%ums",
             seqno, transaction, msgName, latencyMs);
 
-    nsAutoPtr<Message> reply = transact.GetReply();
+    UniquePtr<Message> reply = transact.GetReply();
 
     MOZ_RELEASE_ASSERT(reply);
     MOZ_RELEASE_ASSERT(reply->is_reply(), "expected reply");
@@ -1565,7 +1587,7 @@ MessageChannel::Send(Message* aMsg, Message* aReply)
 bool
 MessageChannel::Call(Message* aMsg, Message* aReply)
 {
-    nsAutoPtr<Message> msg(aMsg);
+    UniquePtr<Message> msg(aMsg);
     AssertWorkerThread();
     mMonitor->AssertNotCurrentThreadOwns();
 
@@ -1578,11 +1600,11 @@ MessageChannel::Call(Message* aMsg, Message* aReply)
 
     // This must come before MonitorAutoLock, as its destructor acquires the
     // monitor lock.
-    CxxStackFrame cxxframe(*this, OUT_MESSAGE, msg);
+    CxxStackFrame cxxframe(*this, OUT_MESSAGE, msg.get());
 
     MonitorAutoLock lock(*mMonitor);
     if (!Connected()) {
-        ReportConnectionError("MessageChannel::Call", msg);
+        ReportConnectionError("MessageChannel::Call", msg.get());
         return false;
     }
 
@@ -1598,7 +1620,7 @@ MessageChannel::Call(Message* aMsg, Message* aReply)
     msg->set_interrupt_remote_stack_depth_guess(mRemoteStackDepthGuess);
     msg->set_interrupt_local_stack_depth(1 + InterruptStackDepth());
     mInterruptStack.push(MessageInfo(*msg));
-    mLink->SendMessage(msg.forget());
+    mLink->SendMessage(msg.release());
 
     while (true) {
         // if a handler invoked by *Dispatch*() spun a nested event
@@ -1850,16 +1872,25 @@ MessageChannel::RunMessage(MessageTask& aTask)
     }
 
     // Check that we're going to run the first message that's valid to run.
+#if 0
 #ifdef DEBUG
+    nsCOMPtr<nsIEventTarget> messageTarget =
+        mListener->GetMessageEventTarget(msg);
+
     for (MessageTask* task : mPending) {
         if (task == &aTask) {
             break;
         }
 
+        nsCOMPtr<nsIEventTarget> taskTarget =
+            mListener->GetMessageEventTarget(task->Msg());
+
         MOZ_ASSERT(!ShouldRunMessage(task->Msg()) ||
+                   taskTarget != messageTarget ||
                    aTask.Msg().priority() != task->Msg().priority());
 
     }
+#endif
 #endif
 
     if (!mDeferred.empty()) {
@@ -1890,7 +1921,7 @@ MessageChannel::RunMessage(MessageTask& aTask)
 NS_IMPL_ISUPPORTS_INHERITED(MessageChannel::MessageTask, CancelableRunnable, nsIRunnablePriority)
 
 MessageChannel::MessageTask::MessageTask(MessageChannel* aChannel, Message&& aMessage)
-  : CancelableRunnable(StringFromIPCMessageType(aMessage.type()))
+  : CancelableRunnable(aMessage.name())
   , mChannel(aChannel)
   , mMessage(Move(aMessage))
   , mScheduled(false)
@@ -1960,7 +1991,7 @@ MessageChannel::MessageTask::Post()
 
     if (eventTarget) {
         eventTarget->Dispatch(self.forget(), NS_DISPATCH_NORMAL);
-    } else {
+    } else if (mChannel->mWorkerLoop) {
         mChannel->mWorkerLoop->PostTask(self.forget());
     }
 }
@@ -1976,9 +2007,32 @@ MessageChannel::MessageTask::Clear()
 NS_IMETHODIMP
 MessageChannel::MessageTask::GetPriority(uint32_t* aPriority)
 {
-  *aPriority = mMessage.priority() == Message::HIGH_PRIORITY ?
-               PRIORITY_HIGH : PRIORITY_NORMAL;
+  switch (mMessage.priority()) {
+  case Message::NORMAL_PRIORITY:
+    *aPriority = PRIORITY_NORMAL;
+    break;
+  case Message::INPUT_PRIORITY:
+    *aPriority = PRIORITY_INPUT;
+    break;
+  case Message::HIGH_PRIORITY:
+    *aPriority = PRIORITY_HIGH;
+    break;
+  default:
+    MOZ_ASSERT(false);
+    break;
+  }
   return NS_OK;
+}
+
+bool
+MessageChannel::MessageTask::GetAffectedSchedulerGroups(SchedulerGroupSet& aGroups)
+{
+    if (!mChannel) {
+        return false;
+    }
+
+    mChannel->AssertWorkerThread();
+    return mChannel->mListener->GetMessageSchedulerGroups(mMessage, aGroups);
 }
 
 void
@@ -2064,11 +2118,7 @@ MessageChannel::DispatchSyncMessage(const Message& aMsg, Message*& aReply)
     }
 
     if (!MaybeHandleError(rv, aMsg, "DispatchSyncMessage")) {
-        aReply = new Message();
-        aReply->set_sync();
-        aReply->set_nested_level(aMsg.nested_level());
-        aReply->set_reply();
-        aReply->set_reply_error();
+        aReply = Message::ForSyncDispatchError(aMsg.nested_level());
     }
     aReply->set_seqno(aMsg.seqno());
     aReply->set_transaction_id(aMsg.transaction_id());
@@ -2125,10 +2175,7 @@ MessageChannel::DispatchInterruptMessage(Message&& aMsg, size_t stackDepth)
     --mRemoteStackDepthGuess;
 
     if (!MaybeHandleError(rv, aMsg, "DispatchInterruptMessage")) {
-        reply = new Message();
-        reply->set_interrupt();
-        reply->set_reply();
-        reply->set_reply_error();
+        reply = Message::ForInterruptDispatchError();
     }
     reply->set_seqno(aMsg.seqno());
 
@@ -2278,13 +2325,6 @@ MessageChannel::EnqueuePendingMessages()
     RepostAllMessages();
 }
 
-static inline bool
-IsTimeoutExpired(PRIntervalTime aStart, PRIntervalTime aTimeout)
-{
-    return (aTimeout != PR_INTERVAL_NO_TIMEOUT) &&
-           (aTimeout <= (PR_IntervalNow() - aStart));
-}
-
 bool
 MessageChannel::WaitResponse(bool aWaitTimedOut)
 {
@@ -2314,17 +2354,14 @@ MessageChannel::WaitForSyncNotify(bool /* aHandleWindowsMessages */)
     }
 #endif
 
-    PRIntervalTime timeout = (kNoTimeout == mTimeoutMs) ?
-                             PR_INTERVAL_NO_TIMEOUT :
-                             PR_MillisecondsToInterval(mTimeoutMs);
-    // XXX could optimize away this syscall for "no timeout" case if desired
-    PRIntervalTime waitStart = PR_IntervalNow();
-
-    mMonitor->Wait(timeout);
+    TimeDuration timeout = (kNoTimeout == mTimeoutMs) ?
+                           TimeDuration::Forever() :
+                           TimeDuration::FromMilliseconds(mTimeoutMs);
+    CVStatus status = mMonitor->Wait(timeout);
 
     // If the timeout didn't expire, we know we received an event. The
     // converse is not true.
-    return WaitResponse(IsTimeoutExpired(waitStart, timeout));
+    return WaitResponse(status == CVStatus::Timeout);
 }
 
 bool
@@ -2386,7 +2423,9 @@ MessageChannel::OnChannelConnected(int32_t peer_id)
     mPeerPidSet = true;
     mPeerPid = peer_id;
     RefPtr<CancelableRunnable> task = mOnChannelConnectedTask;
-    mWorkerLoop->PostTask(task.forget());
+    if (mWorkerLoop) {
+        mWorkerLoop->PostTask(task.forget());
+    }
 }
 
 void
@@ -2479,7 +2518,7 @@ MessageChannel::MaybeHandleError(Result code, const Message& aMsg, const char* c
     }
 
     char reason[512];
-    const char* msgname = StringFromIPCMessageType(aMsg.type());
+    const char* msgname = aMsg.name();
     if (msgname[0] == '?') {
         SprintfLiteral(reason,"(msgtype=0x%X) %s", aMsg.type(), errorMsg);
     } else {
@@ -2579,7 +2618,9 @@ MessageChannel::OnNotifyMaybeChannelError()
         &MessageChannel::OnNotifyMaybeChannelError);
       RefPtr<Runnable> task = mChannelErrorTask;
       // 10 ms delay is completely arbitrary
-      mWorkerLoop->PostDelayedTask(task.forget(), 10);
+      if (mWorkerLoop) {
+          mWorkerLoop->PostDelayedTask(task.forget(), 10);
+      }
       return;
     }
 
@@ -2591,7 +2632,7 @@ MessageChannel::PostErrorNotifyTask()
 {
     mMonitor->AssertCurrentThreadOwns();
 
-    if (mChannelErrorTask)
+    if (mChannelErrorTask || !mWorkerLoop)
         return;
 
     // This must be the last code that runs on this thread!
@@ -2662,7 +2703,16 @@ MessageChannel::Close()
     AssertWorkerThread();
 
     {
-        MonitorAutoLock lock(*mMonitor);
+        // We don't use MonitorAutoLock here as that causes some sort of
+        // deadlock in the error/timeout-with-a-listener state below when
+        // compiling an optimized msvc build.
+        mMonitor->Lock();
+
+        // Instead just use a ScopeExit to manage the unlock.
+        RefPtr<RefCountedMonitor> monitor(mMonitor);
+        auto exit = MakeScopeExit([m = Move(monitor)] () {
+          m->Unlock();
+        });
 
         if (ChannelError == mChannelState || ChannelTimeout == mChannelState) {
             // See bug 538586: if the listener gets deleted while the
@@ -2671,7 +2721,8 @@ MessageChannel::Close()
             // also be deleted and the listener will never be notified
             // of the channel error.
             if (mListener) {
-                MonitorAutoUnlock unlock(*mMonitor);
+                exit.release(); // Explicitly unlocking, clear scope exit.
+                mMonitor->Unlock();
                 NotifyMaybeChannelError();
             }
             return;
@@ -2756,7 +2807,7 @@ MessageChannel::DebugAbort(const char* file, int line, const char* cond,
         pending.popFirst();
     }
 
-    NS_RUNTIMEABORT(why);
+    MOZ_CRASH_UNSAFE_OOL(why);
 }
 
 void
@@ -2811,6 +2862,7 @@ MessageChannel::RepostAllMessages()
     for (MessageTask* task : mPending) {
         if (!task->IsScheduled()) {
             needRepost = true;
+            break;
         }
     }
     if (!needRepost) {

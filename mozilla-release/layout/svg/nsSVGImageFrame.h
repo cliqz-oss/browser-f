@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,12 +13,10 @@
 #include "mozilla/gfx/2D.h"
 #include "imgIContainer.h"
 #include "nsContainerFrame.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsIImageLoadingContent.h"
 #include "nsLayoutUtils.h"
 #include "imgINotificationObserver.h"
-#include "nsSVGEffects.h"
-#include "mozilla/dom/SVGSVGElement.h"
+#include "SVGObserverUtils.h"
 #include "nsSVGUtils.h"
 #include "SVGContentUtils.h"
 #include "SVGGeometryFrame.h"
@@ -55,11 +54,11 @@ class nsSVGImageFrame final
   , public nsIReflowCallback
 {
   friend nsIFrame*
-  NS_NewSVGImageFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGImageFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
 protected:
-  explicit nsSVGImageFrame(nsStyleContext* aContext)
-    : SVGGeometryFrame(aContext, kClassID)
+  explicit nsSVGImageFrame(ComputedStyle* aStyle)
+    : SVGGeometryFrame(aStyle, kClassID)
     , mReflowCallbackPosted(false)
     , mForceSyncDecoding(false)
   {
@@ -85,7 +84,7 @@ public:
 
   // nsIFrame interface:
   virtual nsresult  AttributeChanged(int32_t         aNameSpaceID,
-                                     nsIAtom*        aAttribute,
+                                     nsAtom*        aAttribute,
                                      int32_t         aModType) override;
 
   void OnVisibilityChange(Visibility aNewVisibility,
@@ -94,7 +93,7 @@ public:
   virtual void Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
 #ifdef DEBUG_FRAME_DUMP
   virtual nsresult GetFrameName(nsAString& aResult) const override

@@ -6,12 +6,12 @@
 // the common JS files used by safebrowsing and url-classifier into a
 // single component.
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
 const G_GDEBUG = false;
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
+const PREF_DISABLE_TEST_BACKOFF = "browser.safebrowsing.provider.test.disableBackoff";
 /**
  * Partially applies a function to a particular "this object" and zero or
  * more arguments. The result is a new function with some arguments of the first
@@ -45,21 +45,21 @@ this.BindToObject = function BindToObject(fn, self, opt_args) {
     // Combine the static args and the new args into one big array
     var args = boundargs.concat(Array.slice(arguments));
     return fn.apply(self, args);
-  }
+  };
 
   newfn.boundArgs_ = boundargs;
   newfn.boundSelf_ = self;
   newfn.boundFn_ = fn;
 
   return newfn;
-}
+};
 
 // This implements logic for stopping requests if the server starts to return
 // too many errors.  If we get MAX_ERRORS errors in ERROR_PERIOD minutes, we
 // back off for TIMEOUT_INCREMENT minutes.  If we get another error
 // immediately after we restart, we double the timeout and add
 // TIMEOUT_INCREMENT minutes, etc.
-// 
+//
 // This is similar to the logic used by the search suggestion service.
 
 // HTTP responses that count as an error.  We also include any 5xx response
@@ -77,17 +77,20 @@ this.HTTP_TEMPORARY_REDIRECT    = 307;
  * @param timeoutIncrement Number time (ms) the starting timeout period
  *     we double this time for consecutive errors
  * @param maxTimeout Number time (ms) maximum timeout period
+ * @param tolerance Checking next request tolerance.
  */
 this.RequestBackoff =
 function RequestBackoff(maxErrors, retryIncrement,
                         maxRequests, requestPeriod,
-                        timeoutIncrement, maxTimeout) {
+                        timeoutIncrement, maxTimeout,
+                        tolerance, provider = null) {
   this.MAX_ERRORS_ = maxErrors;
   this.RETRY_INCREMENT_ = retryIncrement;
   this.MAX_REQUESTS_ = maxRequests;
   this.REQUEST_PERIOD_ = requestPeriod;
   this.TIMEOUT_INCREMENT_ = timeoutIncrement;
   this.MAX_TIMEOUT_ = maxTimeout;
+  this.TOLERANCE_ = tolerance;
 
   // Queue of ints keeping the time of all requests
   this.requestTimes_ = [];
@@ -95,7 +98,18 @@ function RequestBackoff(maxErrors, retryIncrement,
   this.numErrors_ = 0;
   this.errorTimeout_ = 0;
   this.nextRequestTime_ = 0;
-}
+
+  // For test provider, we will disable backoff if preference is set to false.
+  if (provider === "test") {
+    this.canMakeRequestDefault = this.canMakeRequest;
+    this.canMakeRequest = function() {
+      if (Services.prefs.getBoolPref(PREF_DISABLE_TEST_BACKOFF, true)) {
+        return true;
+      }
+      return this.canMakeRequestDefault();
+    };
+  }
+};
 
 /**
  * Reset the object for reuse. This deliberately doesn't clear requestTimes_.
@@ -104,20 +118,22 @@ RequestBackoff.prototype.reset = function() {
   this.numErrors_ = 0;
   this.errorTimeout_ = 0;
   this.nextRequestTime_ = 0;
-}
+};
 
 /**
  * Check to see if we can make a request.
  */
 RequestBackoff.prototype.canMakeRequest = function() {
   var now = Date.now();
-  if (now < this.nextRequestTime_) {
+  // Note that nsITimer delay is approximate: the timer can be fired before the
+  // requested time has elapsed. So, give it a tolerance
+  if (now + this.TOLERANCE_ < this.nextRequestTime_) {
     return false;
   }
 
   return (this.requestTimes_.length < this.MAX_REQUESTS_ ||
           (now - this.requestTimes_[0]) > this.REQUEST_PERIOD_);
-}
+};
 
 RequestBackoff.prototype.noteRequest = function() {
   var now = Date.now();
@@ -126,11 +142,11 @@ RequestBackoff.prototype.noteRequest = function() {
   // We only care about keeping track of MAX_REQUESTS
   if (this.requestTimes_.length > this.MAX_REQUESTS_)
     this.requestTimes_.shift();
-}
+};
 
 RequestBackoff.prototype.nextRequestDelay = function() {
   return Math.max(0, this.nextRequestTime_ - Date.now());
-}
+};
 
 /**
  * Notify this object of the last server response.  If it's an error,
@@ -152,7 +168,7 @@ RequestBackoff.prototype.noteServerResponse = function(status) {
     // Reset error timeout, allow requests to go through.
     this.reset();
   }
-}
+};
 
 /**
  * We consider 302, 303, 307, 4xx, and 5xx http responses to be errors.
@@ -164,15 +180,16 @@ RequestBackoff.prototype.isErrorStatus = function(status) {
           HTTP_FOUND == status ||
           HTTP_SEE_OTHER == status ||
           HTTP_TEMPORARY_REDIRECT == status);
-}
+};
 
 // Wrap a general-purpose |RequestBackoff| to a v4-specific one
 // since both listmanager and hashcompleter would use it.
 // Note that |maxRequests| and |requestPeriod| is still configurable
 // to throttle pending requests.
-function RequestBackoffV4(maxRequests, requestPeriod) {
+function RequestBackoffV4(maxRequests, requestPeriod,
+                          provider = null) {
   let rand = Math.random();
-  let retryInterval = Math.floor(15 * 60 * 1000 * (rand + 1));   // 15 ~ 30 min.
+  let retryInterval = Math.floor(15 * 60 * 1000 * (rand + 1)); // 15 ~ 30 min.
   let backoffInterval = Math.floor(30 * 60 * 1000 * (rand + 1)); // 30 ~ 60 min.
 
   return new RequestBackoff(2 /* max errors */,
@@ -180,7 +197,9 @@ function RequestBackoffV4(maxRequests, requestPeriod) {
                   maxRequests /* num requests */,
                 requestPeriod /* request time, 60 min */,
               backoffInterval /* backoff interval, 60 min */,
-          24 * 60 * 60 * 1000 /* max backoff, 24hr */);
+          24 * 60 * 60 * 1000 /* max backoff, 24hr */,
+                         1000 /* tolerance of 1 sec */,
+                     provider /* provider name */);
 }
 
 // Expose this whole component.
@@ -190,6 +209,6 @@ function UrlClassifierLib() {
   this.wrappedJSObject = lib;
 }
 UrlClassifierLib.prototype.classID = Components.ID("{26a4a019-2827-4a89-a85c-5931a678823a}");
-UrlClassifierLib.prototype.QueryInterface = XPCOMUtils.generateQI([]);
+UrlClassifierLib.prototype.QueryInterface = ChromeUtils.generateQI([]);
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([UrlClassifierLib]);

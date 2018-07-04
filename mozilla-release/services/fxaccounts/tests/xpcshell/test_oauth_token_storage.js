@@ -3,20 +3,20 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/FxAccounts.jsm");
-Cu.import("resource://gre/modules/FxAccountsClient.jsm");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsClient.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 // We grab some additional stuff via backstage passes.
-var {AccountState} = Cu.import("resource://gre/modules/FxAccounts.jsm", {});
+var {AccountState} = ChromeUtils.import("resource://gre/modules/FxAccounts.jsm", {});
 
 function promiseNotification(topic) {
   return new Promise(resolve => {
     let observe = () => {
       Services.obs.removeObserver(observe, topic);
       resolve();
-    }
+    };
     Services.obs.addObserver(observe, topic);
   });
 }
@@ -55,7 +55,7 @@ MockStorageManager.prototype = {
     this.accountData = null;
     return Promise.resolve();
   }
-}
+};
 
 
 // Just enough mocks so we can avoid hawk etc.
@@ -78,7 +78,7 @@ function MockFxAccountsClient() {
 
 MockFxAccountsClient.prototype = {
   __proto__: FxAccountsClient.prototype
-}
+};
 
 function MockFxAccounts(device = {}) {
   return new FxAccounts({
@@ -111,8 +111,10 @@ async function createMockFxA() {
     uid: "1234@lcip.org",
     assertion: "foobar",
     sessionToken: "dead",
-    kA: "beef",
-    kB: "cafe",
+    kSync: "beef",
+    kXCS: "cafe",
+    kExtSync: "bacon",
+    kExtKbHash: "cheese",
     verified: true
   };
   await fxa.setSignedInUser(credentials);
@@ -120,16 +122,13 @@ async function createMockFxA() {
 }
 
 // The tests.
-function run_test() {
-  run_next_test();
-}
 
 add_task(async function testCacheStorage() {
   let fxa = await createMockFxA();
 
   // Hook what the impl calls to save to disk.
   let cas = fxa.internal.currentAccountState;
-  let origPersistCached = cas._persistCachedTokens.bind(cas)
+  let origPersistCached = cas._persistCachedTokens.bind(cas);
   cas._persistCachedTokens = function() {
     return origPersistCached().then(() => {
       Services.obs.notifyObservers(null, "testhelper-fxa-cache-persist-done");

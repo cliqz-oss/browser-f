@@ -11,6 +11,7 @@
 #include "gfxFontConstants.h"
 #include "gfxFontFeatures.h"
 #include "gfxFontUtils.h"
+#include "gfxFontVariations.h"
 #include "nsTArray.h"
 #include "nsTHashtable.h"
 #include "mozilla/HashFunctions.h"
@@ -19,6 +20,7 @@
 #include "nsUnicodeScriptCodes.h"
 #include "nsDataHashtable.h"
 #include "harfbuzz/hb.h"
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WeakPtr.h"
@@ -37,11 +39,13 @@ class gfxUserFontData;
 class gfxSVGGlyphs;
 class FontInfoData;
 struct FontListSizes;
-class nsIAtom;
+class nsAtom;
 
 namespace mozilla {
 class SVGContextPaint;
 };
+
+#define NO_FONT_LANGUAGE_OVERRIDE      0
 
 class gfxCharacterMap : public gfxSparseBitSet {
 public:
@@ -98,15 +102,35 @@ private:
     gfxCharacterMap& operator=(const gfxCharacterMap&);
 };
 
+// Info on an individual font feature, for reporting available features
+// to DevTools via the GetFeatureInfo method.
+struct gfxFontFeatureInfo {
+    uint32_t mTag;
+    uint32_t mScript;
+    uint32_t mLangSys;
+};
+
 class gfxFontEntry {
 public:
     typedef mozilla::gfx::DrawTarget DrawTarget;
     typedef mozilla::unicode::Script Script;
+    typedef mozilla::FontWeight FontWeight;
+    typedef mozilla::FontSlantStyle FontSlantStyle;
+    typedef mozilla::FontStretch FontStretch;
+    typedef mozilla::WeightRange WeightRange;
+    typedef mozilla::SlantStyleRange SlantStyleRange;
+    typedef mozilla::StretchRange StretchRange;
 
     // Used by stylo
     NS_INLINE_DECL_THREADSAFE_REFCOUNTING(gfxFontEntry)
 
     explicit gfxFontEntry(const nsAString& aName, bool aIsStandardFace = false);
+
+    // Create a new entry that refers to the same font as this, but without
+    // additional state that may have been set up (such as family name).
+    // (This is only to be used for system fonts in the platform font list,
+    // not user fonts.)
+    virtual gfxFontEntry* Clone() const = 0;
 
     // unique name for the face, *not* the family; not necessarily the
     // "real" or user-friendly name, may be an internal identifier
@@ -124,29 +148,43 @@ public:
     // returns Name() if nothing better is available.
     virtual nsString RealFaceName();
 
-    uint16_t Weight() const { return mWeight; }
-    int16_t Stretch() const { return mStretch; }
+    WeightRange Weight() const { return mWeightRange; }
+    StretchRange Stretch() const { return mStretchRange; }
+    SlantStyleRange SlantStyle() const { return mStyleRange; }
 
     bool IsUserFont() const { return mIsDataUserFont || mIsLocalUserFont; }
     bool IsLocalUserFont() const { return mIsLocalUserFont; }
     bool IsFixedPitch() const { return mFixedPitch; }
-    bool IsItalic() const { return mStyle == NS_FONT_STYLE_ITALIC; }
-    bool IsOblique() const { return mStyle == NS_FONT_STYLE_OBLIQUE; }
-    bool IsUpright() const { return mStyle == NS_FONT_STYLE_NORMAL; }
-    bool IsBold() const { return mWeight >= 600; } // bold == weights 600 and above
+    bool IsItalic() const { return SlantStyle().Min().IsItalic(); }
+    bool IsOblique() const { return SlantStyle().Min().IsOblique(); }
+    bool IsUpright() const { return SlantStyle().Min().IsNormal(); }
+    inline bool SupportsBold(); // defined below, because of RangeFlags use
     bool IgnoreGDEF() const { return mIgnoreGDEF; }
     bool IgnoreGSUB() const { return mIgnoreGSUB; }
 
+    // Return whether the face corresponds to "normal" CSS style properties:
+    //    font-style: normal;
+    //    font-weight: normal;
+    //    font-stretch: normal;
+    // If this is false, we might want to fall back to a different face and
+    // possibly apply synthetic styling.
+    bool IsNormalStyle() const
+    {
+        return IsUpright() &&
+               Weight().Min() <= FontWeight::Normal() &&
+               Weight().Max() >= FontWeight::Normal() &&
+               Stretch().Min() <= FontStretch::Normal() &&
+               Stretch().Max() >= FontStretch::Normal();
+    }
+
     // whether a feature is supported by the font (limited to a small set
     // of features for which some form of fallback needs to be implemented)
-    bool SupportsOpenTypeFeature(Script aScript, uint32_t aFeatureTag);
+    virtual bool SupportsOpenTypeFeature(Script aScript, uint32_t aFeatureTag);
     bool SupportsGraphiteFeature(uint32_t aFeatureTag);
 
     // returns a set containing all input glyph ids for a given feature
     const hb_set_t*
     InputsForOpenTypeFeature(Script aScript, uint32_t aFeatureTag);
-
-    virtual bool IsSymbolFont();
 
     virtual bool HasFontTable(uint32_t aTableTag);
 
@@ -188,7 +226,7 @@ public:
     bool TryGetSVGData(gfxFont* aFont);
     bool HasSVGGlyph(uint32_t aGlyphId);
     bool GetSVGGlyphExtents(DrawTarget* aDrawTarget, uint32_t aGlyphId,
-                            gfxRect *aResult);
+                            gfxFloat aSize, gfxRect* aResult);
     void RenderSVGGlyph(gfxContext *aContext, uint32_t aGlyphId,
                         mozilla::SVGContextPaint* aContextPaint);
     // Call this when glyph geometry or rendering has changed
@@ -200,13 +238,6 @@ public:
                                 const mozilla::gfx::Color& aDefaultColor,
                                 nsTArray<uint16_t>& layerGlyphs,
                                 nsTArray<mozilla::gfx::Color>& layerColors);
-
-    virtual bool MatchesGenericFamily(const nsACString& aGeneric) const {
-        return true;
-    }
-    virtual bool SupportsLangGroup(nsIAtom *aLangGroup) const {
-        return true;
-    }
 
     // Access to raw font table data (needed for Harfbuzz):
     // returns a pointer to data owned by the fontEntry or the OS,
@@ -256,7 +287,6 @@ public:
     // the caller may only need to use the font temporarily and doesn't need
     // a strong reference.
     gfxFont* FindOrMakeFont(const gfxFontStyle *aStyle,
-                            bool aNeedsBold,
                             gfxCharacterMap* aUnicodeRangeMap = nullptr);
 
     // Get an existing font table cache entry in aBlob if it has been
@@ -334,18 +364,100 @@ public:
 
     bool SupportsScriptInGSUB(const hb_tag_t* aScriptTags);
 
+    /**
+     * Font-variation query methods.
+     *
+     * Font backends that don't support variations should provide empty
+     * implementations.
+     */
+    virtual bool HasVariations() = 0;
+
+    virtual void
+    GetVariationAxes(nsTArray<gfxFontVariationAxis>& aVariationAxes) = 0;
+
+    virtual void
+    GetVariationInstances(nsTArray<gfxFontVariationInstance>& aInstances) = 0;
+
+    bool HasBoldVariableWeight();
+
+    // Set up the entry's weight/stretch/style ranges according to axes found
+    // by GetVariationAxes (for installed fonts; do NOT call this for user
+    // fonts, where the ranges are provided by @font-face descriptors).
+    void SetupVariationRanges();
+
+    // Get variation axis settings that should be used to implement a particular
+    // font style using this resource.
+    void GetVariationsForStyle(nsTArray<gfxFontVariation>& aResult,
+                               const gfxFontStyle& aStyle);
+
+    // Get the font's list of features (if any) for DevTools support.
+    void GetFeatureInfo(nsTArray<gfxFontFeatureInfo>& aFeatureInfo);
+
     nsString         mName;
     nsString         mFamilyName;
 
-    uint8_t          mStyle       : 2; // italic/oblique
+    RefPtr<gfxCharacterMap> mCharacterMap;
+
+    mozilla::UniquePtr<uint8_t[]> mUVSData;
+    mozilla::UniquePtr<gfxUserFontData> mUserFontData;
+    mozilla::UniquePtr<gfxSVGGlyphs> mSVGGlyphs;
+    // list of gfxFonts that are using SVG glyphs
+    nsTArray<gfxFont*> mFontsUsingSVGGlyphs;
+    nsTArray<gfxFontFeature> mFeatureSettings;
+    nsTArray<gfxFontVariation> mVariationSettings;
+    mozilla::UniquePtr<nsDataHashtable<nsUint32HashKey,bool>> mSupportedFeatures;
+    mozilla::UniquePtr<nsDataHashtable<nsUint32HashKey,hb_set_t*>> mFeatureInputs;
+
+    // Color Layer font support
+    hb_blob_t*       mCOLR = nullptr;
+    hb_blob_t*       mCPAL = nullptr;
+
+    // bitvector of substitution space features per script, one each
+    // for default and non-default features
+    uint32_t         mDefaultSubSpaceFeatures[(int(Script::NUM_SCRIPT_CODES) + 31) / 32];
+    uint32_t         mNonDefaultSubSpaceFeatures[(int(Script::NUM_SCRIPT_CODES) + 31) / 32];
+
+    uint32_t         mUVSOffset = 0;
+
+    uint32_t         mLanguageOverride = NO_FONT_LANGUAGE_OVERRIDE;
+
+    WeightRange      mWeightRange = WeightRange(FontWeight(500));
+    StretchRange     mStretchRange = StretchRange(FontStretch::Normal());
+    SlantStyleRange  mStyleRange = SlantStyleRange(FontSlantStyle::Normal());
+
+    // For user fonts (only), we need to record whether or not weight/stretch/
+    // slant variations should be clamped to the range specified in the entry
+    // properties. When the @font-face rule omitted one or more of these
+    // descriptors, it is treated as the initial value for font-matching (and
+    // so that is what we record in the font entry), but when rendering the
+    // range is NOT clamped.
+    enum class RangeFlags : uint8_t {
+        eNoFlags        = 0,
+        eAutoWeight     = (1 << 0),
+        eAutoStretch    = (1 << 1),
+        eAutoSlantStyle = (1 << 2),
+        // Flag to record whether the face has a variable "wght" axis
+        // that supports "bold" values, used to disable the application
+        // of synthetic-bold effects.
+        eBoldVariableWeight = (1 << 3),
+        // Flags to record if the face uses a non-CSS-compatible scale
+        // for weight and/or stretch, in which case we won't map the
+        // properties to the variation axes (though they can still be
+        // explicitly set using font-variation-settings).
+        eNonCSSWeight   = (1 << 4),
+        eNonCSSStretch  = (1 << 5)
+    };
+    RangeFlags       mRangeFlags = RangeFlags::eNoFlags;
+
+    // NOTE that there are currently exactly 24 one-bit flags defined here,
+    // so together with the 8-bit RangeFlags above, this packs neatly to a
+    // 32-bit boundary. Worth considering if further flags are wanted.
     bool             mFixedPitch  : 1;
-    bool             mIsValid     : 1;
     bool             mIsBadUnderlineFont : 1;
     bool             mIsUserFontContainer : 1; // userfont entry
     bool             mIsDataUserFont : 1;      // platform font entry (data)
     bool             mIsLocalUserFont : 1;     // platform font entry (local)
     bool             mStandardFace : 1;
-    bool             mSymbolFont  : 1;
     bool             mIgnoreGDEF  : 1;
     bool             mIgnoreGSUB  : 1;
     bool             mSVGInitialized : 1;
@@ -363,30 +475,7 @@ public:
     bool             mHasCmapTable : 1;
     bool             mGrFaceInitialized : 1;
     bool             mCheckedForColorGlyph : 1;
-
-    // bitvector of substitution space features per script, one each
-    // for default and non-default features
-    uint32_t         mDefaultSubSpaceFeatures[(int(Script::NUM_SCRIPT_CODES) + 31) / 32];
-    uint32_t         mNonDefaultSubSpaceFeatures[(int(Script::NUM_SCRIPT_CODES) + 31) / 32];
-
-    uint16_t         mWeight;
-    int16_t          mStretch;
-
-    RefPtr<gfxCharacterMap> mCharacterMap;
-    uint32_t         mUVSOffset;
-    mozilla::UniquePtr<uint8_t[]> mUVSData;
-    mozilla::UniquePtr<gfxUserFontData> mUserFontData;
-    mozilla::UniquePtr<gfxSVGGlyphs> mSVGGlyphs;
-    // list of gfxFonts that are using SVG glyphs
-    nsTArray<gfxFont*> mFontsUsingSVGGlyphs;
-    nsTArray<gfxFontFeature> mFeatureSettings;
-    mozilla::UniquePtr<nsDataHashtable<nsUint32HashKey,bool>> mSupportedFeatures;
-    mozilla::UniquePtr<nsDataHashtable<nsUint32HashKey,hb_set_t*>> mFeatureInputs;
-    uint32_t         mLanguageOverride;
-
-    // Color Layer font support
-    hb_blob_t*       mCOLR;
-    hb_blob_t*       mCPAL;
+    bool             mCheckedForVariableWeight : 1;
 
 protected:
     friend class gfxPlatformFontList;
@@ -401,8 +490,7 @@ protected:
     // Protected destructor, to discourage deletion outside of Release():
     virtual ~gfxFontEntry();
 
-    virtual gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle,
-                                        bool aNeedsBold) = 0;
+    virtual gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle) = 0;
 
     virtual void CheckForGraphiteTables();
 
@@ -417,15 +505,10 @@ protected:
     // lookup the cmap in cached font data
     virtual already_AddRefed<gfxCharacterMap>
     GetCMAPFromFontInfo(FontInfoData *aFontInfoData,
-                        uint32_t& aUVSOffset,
-                        bool& aSymbolFont);
+                        uint32_t& aUVSOffset);
 
     // helper for HasCharacter(), which is what client code should call
     virtual bool TestCharacterMap(uint32_t aCh);
-
-    // Font's unitsPerEm from the 'head' table, if available (will be set to
-    // kInvalidUPEM for non-sfnt font formats)
-    uint16_t mUnitsPerEm;
 
     // Shaper-specific face objects, shared by all instantiations of the same
     // physical font, regardless of size.
@@ -437,7 +520,7 @@ protected:
     // in its destructor. The font entry has only this non-owning reference to
     // the face; when the face is deleted, it will tell the font entry to forget
     // it, so that a new face will be created next time it is needed.
-    hb_face_t* mHBFace;
+    hb_face_t* mHBFace = nullptr;
 
     static hb_blob_t* HBGetTable(hb_face_t *face, uint32_t aTag, void *aUserData);
 
@@ -448,14 +531,14 @@ protected:
     // entry, and we'll keep a count of how many references we've handed out;
     // each shaper is responsible to call ReleaseGrFace on its entry when
     // finished with it, so that we know when it can be deleted.
-    gr_face*   mGrFace;
+    gr_face*   mGrFace = nullptr;
 
     // hashtable to map raw table data ptr back to its owning blob, for use by
     // graphite table-release callback
-    nsDataHashtable<nsPtrHashKey<const void>,void*>* mGrTableMap;
+    nsDataHashtable<nsPtrHashKey<const void>,void*>* mGrTableMap = nullptr;
 
     // number of current users of this entry's mGrFace
-    nsrefcnt mGrFaceRefCnt;
+    nsrefcnt mGrFaceRefCnt = 0;
 
     static const void* GrGetTable(const void *aAppFaceHandle,
                                   unsigned int aName,
@@ -467,7 +550,11 @@ protected:
     // We record this in the font entry because the actual data block may be
     // handed over to platform APIs, so that it would become difficult (and
     // platform-specific) to measure it directly at report-gathering time.
-    uint32_t mComputedSizeOfUserFont;
+    uint32_t mComputedSizeOfUserFont = 0;
+
+    // Font's unitsPerEm from the 'head' table, if available (will be set to
+    // kInvalidUPEM for non-sfnt font formats)
+    uint16_t mUnitsPerEm = 0;
 
 private:
     /**
@@ -569,22 +656,34 @@ private:
     gfxFontEntry& operator=(const gfxFontEntry&);
 };
 
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(gfxFontEntry::RangeFlags)
+
+inline bool
+gfxFontEntry::SupportsBold()
+{
+    // bold == weights 600 and above
+    // We return true if the face has a max weight descriptor >= 600,
+    // OR if it's a user font with auto-weight (no descriptor) and has
+    // a weight axis that supports values >= 600
+    return Weight().Max().IsBold() ||
+           ((mRangeFlags & RangeFlags::eAutoWeight) ==
+               RangeFlags::eAutoWeight &&
+            HasBoldVariableWeight());
+}
 
 // used when iterating over all fonts looking for a match for a given character
 struct GlobalFontMatch {
     GlobalFontMatch(const uint32_t aCharacter,
-                    mozilla::unicode::Script aRunScript,
                     const gfxFontStyle *aStyle) :
-        mCh(aCharacter), mRunScript(aRunScript), mStyle(aStyle),
-        mMatchRank(0), mCount(0), mCmapsTested(0)
+        mCh(aCharacter), mStyle(aStyle),
+        mMatchRank(0.0f), mCount(0), mCmapsTested(0)
         {
 
         }
 
     const uint32_t         mCh;          // codepoint to be matched
-    mozilla::unicode::Script mRunScript;   // Unicode script for the codepoint
     const gfxFontStyle*    mStyle;       // style to match
-    int32_t                mMatchRank;   // metric indicating closest match
+    float                  mMatchRank;   // metric indicating closest match
     RefPtr<gfxFontEntry> mBestMatch;   // current best match
     RefPtr<gfxFontFamily> mMatchedFamily; // the family it belongs to
     uint32_t               mCount;       // number of fonts matched
@@ -606,14 +705,23 @@ public:
         mIsBadUnderlineFamily(false),
         mFamilyCharacterMapInitialized(false),
         mSkipDefaultFeatureSpaceCheck(false),
-        mCheckForFallbackFaces(false)
+        mCheckForFallbackFaces(false),
+        mCheckedForLegacyFamilyNames(false)
         { }
 
     const nsString& Name() { return mName; }
 
     virtual void LocalizedName(nsAString& aLocalizedName);
     virtual bool HasOtherFamilyNames();
-    
+
+    // See https://bugzilla.mozilla.org/show_bug.cgi?id=835204:
+    // check the font's 'name' table to see if it has a legacy family name
+    // that would have been used by GDI (e.g. to split extra-bold or light
+    // faces in a large family into separate "styled families" because of
+    // GDI's 4-faces-per-family limitation). If found, the styled family
+    // name will be added to the font list's "other family names" table.
+    bool CheckForLegacyFamilyNames(gfxPlatformFontList* aFontList);
+
     nsTArray<RefPtr<gfxFontEntry> >& GetFontList() { return mAvailableFonts; }
     
     void AddFontEntry(RefPtr<gfxFontEntry> aFontEntry) {
@@ -631,6 +739,18 @@ public:
         }
         aFontEntry->mSkipDefaultFeatureSpaceCheck = mSkipDefaultFeatureSpaceCheck;
         mAvailableFonts.AppendElement(aFontEntry);
+
+        // If we're adding a face to a family that has been marked as "simple",
+        // we need to ensure any null entries are removed, as well as clearing
+        // the flag (which may be set again later).
+        if (mIsSimpleFamily) {
+            for (size_t i = mAvailableFonts.Length() - 1; i-- > 0; ) {
+                if (!mAvailableFonts[i]) {
+                    mAvailableFonts.RemoveElementAt(i);
+                }
+            }
+            mIsSimpleFamily = false;
+        }
     }
 
     // note that the styles for this family have been added
@@ -640,15 +760,13 @@ public:
     // choose a specific face to match a style using CSS font matching
     // rules (weight matching occurs here).  may return a face that doesn't
     // precisely match (e.g. normal face when no italic face exists).
-    // aNeedsSyntheticBold is set to true when synthetic bolding is
-    // needed, false otherwise
     gfxFontEntry *FindFontForStyle(const gfxFontStyle& aFontStyle, 
-                                   bool& aNeedsSyntheticBold);
+                                   bool aIgnoreSizeTolerance = false);
 
     virtual void
     FindAllFontsForStyle(const gfxFontStyle& aFontStyle,
                          nsTArray<gfxFontEntry*>& aFontEntryList,
-                         bool& aNeedsSyntheticBold);
+                         bool aIgnoreSizeTolerance = false);
 
     // checks for a matching font within the family
     // used as part of the font fallback process
@@ -735,6 +853,17 @@ public:
         mSkipDefaultFeatureSpaceCheck = aSkipCheck;
     }
 
+    // Check whether this family is appropriate to include in the Preferences
+    // font list for the given langGroup and CSS generic, if the platform lets
+    // us determine this.
+    // Return true if the family should be included in the list, false to omit.
+    // Default implementation returns true for everything, so no filtering
+    // will occur; individual platforms may override.
+    virtual bool FilterForFontList(nsAtom* aLangGroup,
+                                   const nsACString& aGeneric) const {
+        return true;
+    }
+
 protected:
     // Protected destructor, to discourage deletion outside of Release():
     virtual ~gfxFontFamily();
@@ -765,6 +894,7 @@ protected:
     bool mFamilyCharacterMapInitialized : 1;
     bool mSkipDefaultFeatureSpaceCheck : 1;
     bool mCheckForFallbackFaces : 1;  // check other faces for character
+    bool mCheckedForLegacyFamilyNames : 1;
 
     enum {
         // for "simple" families, the faces are stored in mAvailableFonts

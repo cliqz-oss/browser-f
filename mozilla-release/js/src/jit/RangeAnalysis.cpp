@@ -15,9 +15,10 @@
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
 #include "js/Conversions.h"
+#include "vm/ArgumentsObject.h"
 #include "vm/TypedArrayObject.h"
 
-#include "jsopcodeinlines.h"
+#include "vm/BytecodeUtil-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -29,7 +30,6 @@ using mozilla::ExponentComponent;
 using mozilla::FloorLog2;
 using mozilla::IsInfinite;
 using mozilla::IsNaN;
-using mozilla::IsNegative;
 using mozilla::IsNegativeZero;
 using mozilla::NegativeInfinity;
 using mozilla::PositiveInfinity;
@@ -598,8 +598,8 @@ Range::Range(const MDefinition* def)
         // mimick a possible truncation.
         switch (def->type()) {
           case MIRType::Int32:
-            // MToInt32 cannot truncate. So we can safely clamp.
-            if (def->isToInt32())
+            // MToNumberInt32 cannot truncate. So we can safely clamp.
+            if (def->isToNumberInt32())
                 clampToInt32();
             else
                 wrapAroundToInt32();
@@ -1742,7 +1742,7 @@ MTruncateToInt32::computeRange(TempAllocator& alloc)
 }
 
 void
-MToInt32::computeRange(TempAllocator& alloc)
+MToNumberInt32::computeRange(TempAllocator& alloc)
 {
     // No clamping since this computes the range *before* bailouts.
     setRange(new(alloc) Range(getOperand(0)));
@@ -1802,16 +1802,6 @@ MLoadUnboxedScalar::computeRange(TempAllocator& alloc)
 }
 
 void
-MLoadTypedArrayElementStatic::computeRange(TempAllocator& alloc)
-{
-    // We don't currently use MLoadTypedArrayElementStatic for uint32, so we
-    // don't have to worry about it returning a value outside our type.
-    MOZ_ASSERT(someTypedArray_->as<TypedArrayObject>().type() != Scalar::Uint32);
-
-    setRange(GetTypedArrayRange(alloc, someTypedArray_->as<TypedArrayObject>().type()));
-}
-
-void
 MArrayLength::computeRange(TempAllocator& alloc)
 {
     // Array lengths can go up to UINT32_MAX, but we only create MArrayLength
@@ -1845,9 +1835,9 @@ MArgumentsLength::computeRange(TempAllocator& alloc)
 {
     // This is is a conservative upper bound on what |TooManyActualArguments|
     // checks.  If exceeded, Ion will not be entered in the first place.
-    MOZ_ASSERT(JitOptions.maxStackArgs <= UINT32_MAX,
-               "NewUInt32Range requires a uint32 value");
-    setRange(Range::NewUInt32Range(alloc, 0, JitOptions.maxStackArgs));
+    static_assert(ARGS_LENGTH_MAX <= UINT32_MAX,
+                  "NewUInt32Range requires a uint32 value");
+    setRange(Range::NewUInt32Range(alloc, 0, ARGS_LENGTH_MAX));
 }
 
 void
@@ -1856,6 +1846,13 @@ MBoundsCheck::computeRange(TempAllocator& alloc)
     // Just transfer the incoming index range to the output. The length() is
     // also interesting, but it is handled as a bailout check, and we're
     // computing a pre-bailout range here.
+    setRange(new(alloc) Range(index()));
+}
+
+void
+MSpectreMaskIndex::computeRange(TempAllocator& alloc)
+{
+    // Just transfer the incoming index range to the output for now.
     setRange(new(alloc) Range(index()));
 }
 
@@ -1976,7 +1973,7 @@ RangeAnalysis::analyzeLoop(MBasicBlock* header)
     // loop, expressed in terms of the iteration bound just computed.
 
     for (MPhiIterator iter(header->phisBegin()); iter != header->phisEnd(); iter++)
-        analyzeLoopPhi(header, iterationBound, *iter);
+        analyzeLoopPhi(iterationBound, *iter);
 
     if (!mir->compilingWasm()) {
         // Try to hoist any bounds checks from the loop using symbolic bounds.
@@ -2151,7 +2148,7 @@ RangeAnalysis::analyzeLoopIterationCount(MBasicBlock* header,
 }
 
 void
-RangeAnalysis::analyzeLoopPhi(MBasicBlock* header, LoopIterationBound* loopBound, MPhi* phi)
+RangeAnalysis::analyzeLoopPhi(LoopIterationBound* loopBound, MPhi* phi)
 {
     // Given a bound on the number of backedges taken, compute an upper and
     // lower bound for a phi node that may change by a constant amount each
@@ -2666,18 +2663,6 @@ MToDouble::truncate()
 }
 
 bool
-MLoadTypedArrayElementStatic::needTruncation(TruncateKind kind)
-{
-    // IndirectTruncate not possible, since it returns 'undefined'
-    // upon out of bounds read. Doing arithmetic on 'undefined' gives wrong
-    // results. So only set infallible if explicitly truncated.
-    if (kind == Truncate)
-        setInfallible();
-
-    return false;
-}
-
-bool
 MLimitedTruncate::needTruncation(TruncateKind kind)
 {
     setTruncateKind(kind);
@@ -2798,13 +2783,6 @@ MStoreTypedArrayElementHole::operandTruncateKind(size_t index) const
 }
 
 MDefinition::TruncateKind
-MStoreTypedArrayElementStatic::operandTruncateKind(size_t index) const
-{
-    // An integer store truncates the stored value.
-    return index == 1 && isIntegerWrite() ? Truncate : NoTruncate;
-}
-
-MDefinition::TruncateKind
 MDiv::operandTruncateKind(size_t index) const
 {
     return Min(truncateKind(), TruncateAfterBailouts);
@@ -2853,7 +2831,7 @@ TruncateTest(TempAllocator& alloc, MTest* test)
             if (!alloc.ensureBallast())
                 return false;
             MBasicBlock* block = inner->block();
-            inner = MToInt32::New(alloc, inner);
+            inner = MToNumberInt32::New(alloc, inner);
             block->insertBefore(block->lastIns(), inner->toInstruction());
         }
         MOZ_ASSERT(inner->type() == MIRType::Int32);
@@ -3041,7 +3019,7 @@ RemoveTruncatesOnOutput(MDefinition* truncated)
 
     for (MUseDefIterator use(truncated); use; use++) {
         MDefinition* def = use.def();
-        if (!def->isTruncateToInt32() || !def->isToInt32())
+        if (!def->isTruncateToInt32() || !def->isToNumberInt32())
             continue;
 
         def->replaceAllUsesWith(truncated);
@@ -3066,7 +3044,7 @@ AdjustTruncatedInputs(TempAllocator& alloc, MDefinition* truncated)
         } else {
             MInstruction* op;
             if (kind == MDefinition::TruncateAfterBailouts)
-                op = MToInt32::New(alloc, truncated->getOperand(i));
+                op = MToNumberInt32::New(alloc, truncated->getOperand(i));
             else
                 op = MTruncateToInt32::New(alloc, truncated->getOperand(i));
 
@@ -3125,12 +3103,12 @@ RangeAnalysis::truncate()
 
             // Remember all bitop instructions for folding after range analysis.
             switch (iter->op()) {
-              case MDefinition::Op_BitAnd:
-              case MDefinition::Op_BitOr:
-              case MDefinition::Op_BitXor:
-              case MDefinition::Op_Lsh:
-              case MDefinition::Op_Rsh:
-              case MDefinition::Op_Ursh:
+              case MDefinition::Opcode::BitAnd:
+              case MDefinition::Opcode::BitOr:
+              case MDefinition::Opcode::BitXor:
+              case MDefinition::Opcode::Lsh:
+              case MDefinition::Opcode::Rsh:
+              case MDefinition::Opcode::Ursh:
                 if (!bitops.append(static_cast<MBinaryBitwiseInstruction*>(*iter)))
                     return false;
                 break;
@@ -3262,36 +3240,6 @@ MLoadElementHole::collectRangeInfoPreTrunc()
 }
 
 void
-MLoadTypedArrayElementStatic::collectRangeInfoPreTrunc()
-{
-    Range range(ptr());
-
-    if (range.hasInt32LowerBound() && range.hasInt32UpperBound()) {
-        int64_t offset = this->offset();
-        int64_t lower = range.lower() + offset;
-        int64_t upper = range.upper() + offset;
-        int64_t length = this->length();
-        if (lower >= 0 && upper < length)
-            setNeedsBoundsCheck(false);
-    }
-}
-
-void
-MStoreTypedArrayElementStatic::collectRangeInfoPreTrunc()
-{
-    Range range(ptr());
-
-    if (range.hasInt32LowerBound() && range.hasInt32UpperBound()) {
-        int64_t offset = this->offset();
-        int64_t lower = range.lower() + offset;
-        int64_t upper = range.upper() + offset;
-        int64_t length = this->length();
-        if (lower >= 0 && upper < length)
-            setNeedsBoundsCheck(false);
-    }
-}
-
-void
 MClz::collectRangeInfoPreTrunc()
 {
     Range inputRange(input());
@@ -3377,7 +3325,7 @@ MMod::collectRangeInfoPreTrunc()
 }
 
 void
-MToInt32::collectRangeInfoPreTrunc()
+MToNumberInt32::collectRangeInfoPreTrunc()
 {
     Range inputRange(input());
     if (!inputRange.canBeNegativeZero())

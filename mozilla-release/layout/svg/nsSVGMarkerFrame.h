@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -20,7 +21,7 @@ class gfxContext;
 namespace mozilla {
 class SVGGeometryFrame;
 namespace dom {
-class SVGSVGElement;
+class SVGViewportElement;
 } // namespace dom
 } // namespace mozilla
 
@@ -32,10 +33,10 @@ class nsSVGMarkerFrame final : public nsSVGContainerFrame
 
   friend class nsSVGMarkerAnonChildFrame;
   friend nsContainerFrame*
-  NS_NewSVGMarkerFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGMarkerFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 protected:
-  explicit nsSVGMarkerFrame(nsStyleContext* aContext)
-    : nsSVGContainerFrame(aContext, kClassID)
+  explicit nsSVGMarkerFrame(ComputedStyle* aStyle)
+    : nsSVGContainerFrame(aStyle, kClassID)
     , mMarkedFrame(nullptr)
     , mInUse(false)
     , mInUse2(false)
@@ -54,11 +55,10 @@ public:
 #endif
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override {}
 
   virtual nsresult AttributeChanged(int32_t         aNameSpaceID,
-                                    nsIAtom*        aAttribute,
+                                    nsAtom*        aAttribute,
                                     int32_t         aModType) override;
 
 #ifdef DEBUG_FRAME_DUMP
@@ -119,7 +119,7 @@ private:
   };
 
   // nsSVGMarkerFrame methods:
-  void SetParentCoordCtxProvider(mozilla::dom::SVGSVGElement *aContext);
+  void SetParentCoordCtxProvider(mozilla::dom::SVGViewportElement *aContext);
 
   // recursion prevention flag
   bool mInUse;
@@ -135,10 +135,10 @@ class nsSVGMarkerAnonChildFrame final : public nsSVGDisplayContainerFrame
 {
   friend nsContainerFrame*
   NS_NewSVGMarkerAnonChildFrame(nsIPresShell* aPresShell,
-                                nsStyleContext* aContext);
+                                ComputedStyle* aStyle);
 
-  explicit nsSVGMarkerAnonChildFrame(nsStyleContext* aContext)
-    : nsSVGDisplayContainerFrame(aContext, kClassID)
+  explicit nsSVGMarkerAnonChildFrame(ComputedStyle* aStyle)
+    : nsSVGDisplayContainerFrame(aStyle, kClassID)
   {}
 
 public:

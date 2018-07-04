@@ -6,16 +6,17 @@
 /*---
 description: It's an early error if the AssignmentExpression is a function body with yield as an identifier in strict mode. (Generator method)
 esid: prod-GeneratorMethod
-features: [object-spread]
+features: [object-spread, generators]
 flags: [generated, onlyStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     14.4 Generator Function Definitions
 
     GeneratorMethod[Yield, Await]:
       * PropertyName[?Yield, ?Await] ( UniqueFormalParameters[+Yield, ~Await] ) { GeneratorBody }
+
 
     Spread Properties
 
@@ -24,6 +25,7 @@ info: |
       ...AssignmentExpression[In, ?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 var callCount = 0;
 

@@ -7,7 +7,7 @@ Bug 1302702 - Test connect to a webextension addon
   <meta charset="utf-8">
   <title>Mozilla Bug</title>
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script src="chrome://mochikit/content/tests/SimpleTest/SpawnTask.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
   <script src="chrome://mochikit/content/tests/SimpleTest/ExtensionTestUtils.js"></script>
   <script src="webextension-helpers.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css">
@@ -21,7 +21,7 @@ async function test_connect_addon(oopMode) {
   // Install and start a test webextension.
   let extension = ExtensionTestUtils.loadExtension({
     useAddonManager: "temporary",
-    background: function () {
+    background: function() {
       browser.test.log("background script executed");
       browser.test.sendMessage("background page ready");
     },

@@ -7,6 +7,7 @@
 #define nsPluginHost_h_
 
 #include "mozilla/LinkedList.h"
+#include "mozilla/StaticPtr.h"
 
 #include "nsIPluginHost.h"
 #include "nsIObserver.h"
@@ -27,6 +28,7 @@
 #include "nsIEffectiveTLDService.h"
 #include "nsIIDNService.h"
 #include "nsCRT.h"
+#include "mozilla/dom/PromiseNativeHandler.h"
 
 #ifdef XP_WIN
 #include <minwindef.h>
@@ -37,6 +39,7 @@ namespace mozilla {
 namespace plugins {
 class FakePluginTag;
 class PluginTag;
+class BlocklistPromiseHandler;
 } // namespace plugins
 } // namespace mozilla
 
@@ -182,8 +185,6 @@ public:
   AddHeadersToChannel(const char *aHeadersData, uint32_t aHeadersDataLen,
                       nsIChannel *aGenericChannel);
 
-  static nsresult GetPluginTempDir(nsIFile **aDir);
-
   // Helper that checks if a type is whitelisted in plugin.allowed_types.
   // Always returns true if plugin.allowed_types is not set
   static bool IsTypeWhitelisted(const char *aType);
@@ -257,6 +258,7 @@ public:
                                nsTArray<mozilla::plugins::FakePluginTag>& aFakePlugins);
 private:
   friend class nsPluginUnloadRunnable;
+  friend class mozilla::plugins::BlocklistPromiseHandler;
 
   void DestroyRunningInstances(nsPluginTag* aPluginTag);
 
@@ -317,6 +319,9 @@ private:
                                    nsRegisterType aType);
 
   void AddPluginTag(nsPluginTag* aPluginTag);
+
+  void UpdatePluginBlocklistState(nsPluginTag* aPluginTag,
+                                  bool aShouldSoftblock = false);
 
   nsresult
   ScanPluginsDirectory(nsIFile *pluginsDir,
@@ -417,7 +422,7 @@ private:
 
   // We need to hold a global ptr to ourselves because we register for
   // two different CIDs for some reason...
-  static nsPluginHost* sInst;
+  static mozilla::StaticRefPtr<nsPluginHost> sInst;
 };
 
 class PluginDestructionGuard : public mozilla::LinkedListElement<PluginDestructionGuard>

@@ -3,10 +3,11 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-/* import-globals-from shared-head.js */
+/* import-globals-from ../../shared/test/shared-head.js */
+/* import-globals-from ../../shared/test/telemetry-test-helpers.js */
 
 // shared-head.js handles imports, constants, and utility functions
-Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js", this);
+Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js", this);
 
 const EventEmitter = require("devtools/shared/event-emitter");
 
@@ -23,15 +24,12 @@ function toggleAllTools(state) {
   }
 }
 
-function getChromeActors(callback)
-{
+function getChromeActors(callback) {
   let { DebuggerServer } = require("devtools/server/main");
-  let { DebuggerClient } = require("devtools/shared/client/main");
+  let { DebuggerClient } = require("devtools/shared/client/debugger-client");
 
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
-  }
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
   DebuggerServer.allowChromeProcess = true;
 
   let client = new DebuggerClient(DebuggerServer.connectPipe());
@@ -57,14 +55,14 @@ function getSourceActor(aSources, aURL) {
  * @return nsIDOMWindow
  *         The new window object that holds Scratchpad.
  */
-function* openScratchpadWindow() {
+async function openScratchpadWindow() {
   let { promise: p, resolve } = defer();
   let win = ScratchpadManager.openScratchpad();
 
-  yield once(win, "load");
+  await once(win, "load");
 
   win.Scratchpad.addObserver({
-    onReady: function () {
+    onReady: function() {
       win.Scratchpad.removeObserver(this);
       resolve(win);
     }
@@ -111,9 +109,8 @@ function executeInContent(name, data = {}, objects = {}, expectResponse = true) 
   mm.sendAsyncMessage(name, data, objects);
   if (expectResponse) {
     return waitForContentMessage(name);
-  } else {
-    return promise.resolve();
   }
+  return promise.resolve();
 }
 
 /**
@@ -158,14 +155,16 @@ function checkHostType(toolbox, hostType, previousHostType) {
  */
 function createScript(url) {
   info(`Creating script: ${url}`);
-  let mm = getFrameScript();
+  // This is not ideal if called multiple times, as it loads the frame script
+  // separately each time.  See bug 1443680.
+  loadFrameScriptUtils();
   let command = `
     let script = document.createElement("script");
     script.setAttribute("src", "${url}");
     document.body.appendChild(script);
     null;
   `;
-  return evalInDebuggee(mm, command);
+  return evalInDebuggee(command);
 }
 
 /**
@@ -180,7 +179,7 @@ function waitForSourceLoad(toolbox, url) {
   return new Promise(resolve => {
     let target = toolbox.target;
 
-    function sourceHandler(_, sourceEvent) {
+    function sourceHandler(sourceEvent) {
       if (sourceEvent && sourceEvent.source && sourceEvent.source.url === url) {
         resolve();
         target.off("source-updated", sourceHandler);
@@ -203,10 +202,11 @@ function DevToolPanel(iframeWindow, toolbox) {
   EventEmitter.decorate(this);
 
   this._toolbox = toolbox;
+  this._window = iframeWindow;
 }
 
 DevToolPanel.prototype = {
-  open: function () {
+  open: function() {
     let deferred = defer();
 
     executeSoon(() => {
@@ -216,6 +216,10 @@ DevToolPanel.prototype = {
     });
 
     return deferred.promise;
+  },
+
+  get document() {
+    return this._window.document;
   },
 
   get target() {
@@ -232,7 +236,7 @@ DevToolPanel.prototype = {
 
   _isReady: false,
 
-  destroy: function () {
+  destroy: function() {
     return defer(null);
   },
 };
@@ -243,4 +247,114 @@ DevToolPanel.prototype = {
  */
 function createTestPanel(iframeWindow, toolbox) {
   return new DevToolPanel(iframeWindow, toolbox);
+}
+
+async function openChevronMenu(toolbox) {
+  let chevronMenuButton = toolbox.doc.querySelector(".tools-chevron-menu");
+  EventUtils.synthesizeMouseAtCenter(chevronMenuButton, {}, toolbox.win);
+
+  let menuPopup = toolbox.doc.querySelector("#tools-chevron-menupopup");
+  ok(menuPopup, "tools-chevron-menupopup is available");
+
+  info("Waiting for the menu popup to be displayed");
+  await waitUntil(() => menuPopup && menuPopup.state === "open");
+
+  return menuPopup;
+}
+
+function prepareToolTabReorderTest(toolbox, startingOrder) {
+  Services.prefs.setCharPref("devtools.toolbox.tabsOrder", startingOrder.join(","));
+  ok(!toolbox.doc.getElementById("tools-chevron-menu-button"),
+     "The size of the screen being too small");
+
+  for (const id of startingOrder) {
+    ok(getElementByToolIdOrExtensionIdOrSelector(toolbox, id),
+       `Tab element should exist for ${ id }`);
+  }
+}
+
+async function dndToolTab(toolbox, dragTarget, dropTarget, passedTargets = []) {
+  info(`Drag ${ dragTarget } to ${ dropTarget }`);
+  const dragTargetEl = getElementByToolIdOrExtensionIdOrSelector(toolbox, dragTarget);
+
+  const onReady = dragTargetEl.classList.contains("selected")
+                ? Promise.resolve() : toolbox.once("select");
+  EventUtils.synthesizeMouseAtCenter(dragTargetEl,
+                                     { type: "mousedown" },
+                                     dragTargetEl.ownerGlobal);
+  await onReady;
+
+  for (const passedTarget of passedTargets) {
+    info(`Via ${ passedTarget }`);
+    const passedTargetEl =
+      getElementByToolIdOrExtensionIdOrSelector(toolbox, passedTarget);
+    EventUtils.synthesizeMouseAtCenter(passedTargetEl,
+                                       { type: "mousemove" },
+                                       passedTargetEl.ownerGlobal);
+  }
+
+  if (dropTarget) {
+    const dropTargetEl = getElementByToolIdOrExtensionIdOrSelector(toolbox, dropTarget);
+    EventUtils.synthesizeMouseAtCenter(dropTargetEl,
+                                       { type: "mousemove" },
+                                       dropTargetEl.ownerGlobal);
+    EventUtils.synthesizeMouseAtCenter(dropTargetEl,
+                                       { type: "mouseup" },
+                                       dropTargetEl.ownerGlobal);
+  } else {
+    const containerEl = toolbox.doc.getElementById("toolbox-container");
+    EventUtils.synthesizeMouse(containerEl, 0, 0,
+                               { type: "mouseout" }, containerEl.ownerGlobal);
+  }
+}
+
+function assertToolTabOrder(toolbox, expectedOrder) {
+  info("Check the order of the tabs on the toolbar");
+
+  const tabEls = toolbox.doc.querySelectorAll(".devtools-tab");
+
+  for (let i = 0; i < expectedOrder.length; i++) {
+    const isOrdered = tabEls[i].dataset.id === expectedOrder[i] ||
+                      tabEls[i].dataset.extensionId === expectedOrder[i];
+    ok(isOrdered, `The tab[${ expectedOrder[i] }] should exist at [${ i }]`);
+  }
+}
+
+function assertToolTabSelected(toolbox, dragTarget) {
+  info("Check whether the drag target was selected");
+  const dragTargetEl = getElementByToolIdOrExtensionIdOrSelector(toolbox, dragTarget);
+  ok(dragTargetEl.classList.contains("selected"), "The dragged tool should be selected");
+}
+
+function assertToolTabPreferenceOrder(expectedOrder) {
+  info("Check the order in DevTools preference for tabs order");
+  is(Services.prefs.getCharPref("devtools.toolbox.tabsOrder"), expectedOrder.join(","),
+     "The preference should be correct");
+}
+
+function getElementByToolIdOrExtensionIdOrSelector(toolbox, idOrSelector) {
+  for (const tabEl of toolbox.doc.querySelectorAll(".devtools-tab")) {
+    if (tabEl.dataset.id === idOrSelector ||
+        tabEl.dataset.extensionId === idOrSelector) {
+      return tabEl;
+    }
+  }
+
+  return toolbox.doc.querySelector(idOrSelector);
+}
+
+function getWindow(toolbox) {
+  return toolbox.win.parent;
+}
+
+async function resizeWindow(toolbox, width, height) {
+  const hostWindow = toolbox.win.parent;
+  const originalWidth = hostWindow.outerWidth;
+  const originalHeight = hostWindow.outerHeight;
+  const toWidth = width || originalWidth;
+  const toHeight = height || originalHeight;
+
+  const onResize = once(hostWindow, "resize");
+  hostWindow.resizeTo(toWidth, toHeight);
+  await onResize;
 }

@@ -14,15 +14,16 @@ public:
     nsLookAndFeel();
     virtual ~nsLookAndFeel();
 
-    virtual nsresult NativeGetColor(ColorID aID, nscolor &aResult);
-    virtual void NativeInit() final {};
-    virtual nsresult GetIntImpl(IntID aID, int32_t &aResult);
-    virtual nsresult GetFloatImpl(FloatID aID, float &aResult);
+    void NativeInit() final;
+    virtual void RefreshImpl() override;
+    virtual nsresult NativeGetColor(ColorID aID, nscolor &aResult) override;
+    virtual nsresult GetIntImpl(IntID aID, int32_t &aResult) override;
+    virtual nsresult GetFloatImpl(FloatID aID, float &aResult) override;
     virtual bool GetFontImpl(FontID aID, nsString& aName, gfxFontStyle& aStyle,
-                             float aDevPixPerCSSPixel);
-    virtual bool GetEchoPasswordImpl();
-    virtual uint32_t GetPasswordMaskDelayImpl();
-    virtual char16_t GetPasswordCharacterImpl();
+                             float aDevPixPerCSSPixel) override;
+    virtual bool GetEchoPasswordImpl() override;
+    virtual uint32_t GetPasswordMaskDelayImpl() override;
+    virtual char16_t GetPasswordCharacterImpl() override;
 
 protected:
     static bool mInitializedSystemColors;
@@ -32,6 +33,9 @@ protected:
 
     nsresult GetSystemColors();
     nsresult CallRemoteGetSystemColors();
+
+    void EnsureInitSystemColors();
+    void EnsureInitShowPassword();
 };
 
 #endif

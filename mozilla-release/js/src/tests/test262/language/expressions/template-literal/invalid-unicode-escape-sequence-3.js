@@ -5,8 +5,10 @@
 esid: sec-template-literal-lexical-components
 description: Invalid unicode escape sequence
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 `\u00g`;

@@ -27,7 +27,7 @@
 // The tickler only applies to wifi on mobile right now. Hopefully it
 // can also be restricted to particular handset models in the future.
 
-#if defined(ANDROID) && !defined(MOZ_B2G)
+#if defined(ANDROID) && !defined(MOZ_PROXY_BYPASS_PROTECTION)
 #define MOZ_USE_WIFI_TICKLER
 #endif
 
@@ -111,11 +111,11 @@ NS_DEFINE_STATIC_IID_ACCESSOR(Tickler, NS_TICKLER_IID)
 
 class Tickler final : public nsISupports
 {
-  ~Tickler() { }
+  ~Tickler() = default;
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
 
-  Tickler() { }
+  Tickler() = default;
   nsresult Init() { return NS_ERROR_NOT_IMPLEMENTED; }
   void Cancel() { }
   void SetIPV4Address(uint32_t) { };

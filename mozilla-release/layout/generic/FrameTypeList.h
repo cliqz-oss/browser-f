@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,6 +15,7 @@ FRAME_TYPE(Br)
 FRAME_TYPE(Bullet)
 FRAME_TYPE(BCTableCell)
 FRAME_TYPE(Canvas)
+FRAME_TYPE(CheckboxRadio)
 FRAME_TYPE(ColorControl)
 FRAME_TYPE(ColumnSet)
 FRAME_TYPE(ComboboxControl)
@@ -24,7 +26,6 @@ FRAME_TYPE(Details)
 FRAME_TYPE(FieldSet)
 FRAME_TYPE(FlexContainer)
 FRAME_TYPE(FrameSet)
-FRAME_TYPE(FormControl)
 FRAME_TYPE(GfxButtonControl)
 FRAME_TYPE(GridContainer)
 FRAME_TYPE(HTMLButtonControl)

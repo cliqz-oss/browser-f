@@ -3,34 +3,44 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
-this.EXPORTED_SYMBOLS = ["Pocket"];
+var EXPORTED_SYMBOLS = ["Pocket"];
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
   "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-  "resource:///modules/CustomizableUI.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
-  "resource://gre/modules/ReaderMode.jsm");
 
 var Pocket = {
   get site() { return Services.prefs.getCharPref("extensions.pocket.site"); },
   get listURL() { return "https://" + Pocket.site + "/?src=ff_ext"; },
 
+  openList(event) {
+    let win = event.view;
+    let where = win.whereToOpenLink(event);
+    // Never override the current tab unless it's blank:
+    if (where == "current" && !win.isTabEmpty(win.gBrowser.selectedTab)) {
+      where = "tab";
+    }
+    win.openTrustedLinkIn(this.listURL, where);
+  },
+
   /**
    * Functions related to the Pocket panel UI.
    */
-  onBeforeCommand(event) {
-    BrowserUtils.setToolbarButtonHeightProperty(event.target);
+  onShownInPhotonPageActionPanel(panel, iframe) {
+    let window = panel.ownerGlobal;
+    window.pktUI.setPhotonPageActionPanelFrame(iframe);
+    Pocket._initPanelView(window);
   },
 
   onPanelViewShowing(event) {
-    let document = event.target.ownerDocument;
-    let window = document.defaultView;
+    Pocket._initPanelView(event.target.ownerGlobal);
+  },
+
+  _initPanelView(window) {
+    let document = window.document;
     let iframe = window.pktUI.getPanelFrame();
 
     let libraryButton = document.getElementById("library-button");
@@ -83,22 +93,18 @@ var Pocket = {
   _urlToSave: null,
   _titleToSave: null,
   savePage(browser, url, title) {
-    let document = browser.ownerDocument;
-    let pocketWidget = document.getElementById("pocket-button");
-    let placement = CustomizableUI.getPlacementOfWidget("pocket-button");
-    if (!placement)
-      return;
-
-    this._urlToSave = url;
-    this._titleToSave = title;
-    if (placement.area == CustomizableUI.AREA_PANEL) {
-      let win = document.defaultView;
-      win.PanelUI.show().then(function() {
-        pocketWidget = document.getElementById("pocket-button");
-        pocketWidget.doCommand();
-      });
-    } else {
-      pocketWidget.doCommand();
+    if (this.pageAction) {
+      this._urlToSave = url;
+      this._titleToSave = title;
+      this.pageAction.doCommand(browser.ownerGlobal);
     }
   },
+
+  get pageAction() {
+    return this._pageAction;
+  },
+  set pageAction(pageAction) {
+    return this._pageAction = pageAction;
+  },
+  _pageAction: null,
 };

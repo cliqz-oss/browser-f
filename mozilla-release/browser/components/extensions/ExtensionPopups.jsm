@@ -6,24 +6,23 @@
 
 var EXPORTED_SYMBOLS = ["BasePopup", "PanelPopup", "ViewPopup"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "CustomizableUI",
+                               "resource:///modules/CustomizableUI.jsm");
+ChromeUtils.defineModuleGetter(this, "E10SUtils",
+                               "resource://gre/modules/E10SUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionParent",
+                               "resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.defineModuleGetter(this, "setTimeout",
+                               "resource://gre/modules/Timer.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-                                  "resource:///modules/CustomizableUI.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "E10SUtils",
-                                  "resource:///modules/E10SUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionParent",
-                                  "resource://gre/modules/ExtensionParent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
-                                  "resource://gre/modules/Timer.jsm");
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 var {
   DefaultWeakMap,
+  makeWidgetId,
   promiseEvent,
 } = ExtensionUtils;
 
@@ -31,12 +30,6 @@ var {
 const POPUP_LOAD_TIMEOUT_MS = 200;
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-
-function makeWidgetId(id) {
-  id = id.toLowerCase();
-  // FIXME: This allows for collisions.
-  return id.replace(/[^a-z0-9_-]/g, "_");
-}
 
 function promisePopupShown(popup) {
   return new Promise(resolve => {
@@ -62,6 +55,8 @@ XPCOMUtils.defineLazyGetter(this, "standaloneStylesheets", () => {
   return stylesheets;
 });
 
+const REMOTE_PANEL_ID = "webextension-remote-preload-panel";
+
 class BasePopup {
   constructor(extension, viewNode, popupURL, browserStyle, fixedWidth = false, blockParser = false) {
     this.extension = extension;
@@ -80,10 +75,7 @@ class BasePopup {
     });
 
     this.viewNode.addEventListener(this.DESTROY_EVENT, this);
-
-    let doc = viewNode.ownerDocument;
-    let arrowContent = doc.getAnonymousElementByAttribute(this.panel, "class", "panel-arrowcontent");
-    this.borderColor = doc.defaultView.getComputedStyle(arrowContent).borderTopColor;
+    this.panel.addEventListener("popuppositioned", this, {once: true, capture: true});
 
     this.browser = null;
     this.browserLoaded = new Promise((resolve, reject) => {
@@ -115,7 +107,7 @@ class BasePopup {
     return this.browserReady.then(() => {
       if (this.browser) {
         this.destroyBrowser(this.browser, true);
-        this.browser.remove();
+        this.browser.parentNode.remove();
       }
       if (this.stack) {
         this.stack.remove();
@@ -123,14 +115,16 @@ class BasePopup {
 
       if (this.viewNode) {
         this.viewNode.removeEventListener(this.DESTROY_EVENT, this);
-        this.viewNode.style.maxHeight = "";
         delete this.viewNode.customRectGetter;
       }
 
       let {panel} = this;
       if (panel) {
+        panel.removeEventListener("popuppositioned", this, {capture: true});
+      }
+      if (panel && panel.id !== REMOTE_PANEL_ID) {
         panel.style.removeProperty("--arrowpanel-background");
-        panel.style.removeProperty("--panel-arrow-image-vertical");
+        panel.style.removeProperty("--arrowpanel-border-color");
         panel.removeAttribute("remote");
       }
 
@@ -217,6 +211,18 @@ class BasePopup {
       case this.DESTROY_EVENT:
         if (!this.destroyed) {
           this.destroy();
+        }
+        break;
+      case "popuppositioned":
+        if (!this.destroyed) {
+          this.browserLoaded.then(() => {
+            if (this.destroyed) {
+              return;
+            }
+            this.browser.messageManager.sendAsyncMessage("Extension:GrabFocus", {});
+          }).catch(() => {
+            // If the panel closes too fast an exception is raised here and tests will fail.
+          });
         }
         break;
     }
@@ -311,7 +317,7 @@ class BasePopup {
         stylesheets: this.STYLESHEETS,
       });
 
-      browser.loadURI(popupURL);
+      browser.loadURI(popupURL, {triggeringPrincipal: this.extension.principal});
     });
   }
 
@@ -331,16 +337,9 @@ class BasePopup {
       height = Math.min(height, maxHeight);
       this.browser.style.height = `${height}px`;
 
-      // Set a maximum height on the <panelview> element to our preferred
-      // maximum height, so that the PanelUI resizing code can make an accurate
-      // calculation. If we don't do this, the flex sizing logic will prevent us
-      // from ever reporting a preferred size smaller than the height currently
-      // available to us in the panel.
-      height = Math.max(height, this.viewHeight);
-      this.viewNode.style.maxHeight = `${height}px`;
       // Used by the panelmultiview code to figure out sizing without reparenting
       // (which would destroy the browser and break us).
-      this.lastCalculatedInViewHeight = height;
+      this.lastCalculatedInViewHeight = Math.max(height, this.viewHeight);
     } else {
       this.browser.style.width = `${width}px`;
       this.browser.style.minWidth = `${width}px`;
@@ -353,23 +352,21 @@ class BasePopup {
   }
 
   setBackground(background) {
-    let panelBackground = "";
-    let panelArrow = "";
-
-    if (background) {
-      let borderColor = this.borderColor || background;
-
-      panelBackground = background;
-      panelArrow = `url("data:image/svg+xml,${encodeURIComponent(`<?xml version="1.0" encoding="UTF-8"?>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="10">
-          <path d="M 0,10 L 10,0 20,10 z" fill="${borderColor}"/>
-          <path d="M 1,10 L 10,1 19,10 z" fill="${background}"/>
-        </svg>
-      `)}")`;
+    // Panels inherit the applied theme (light, dark, etc) and there is a high
+    // likelihood that most extension authors will not have tested with a dark theme.
+    // If they have not set a background-color, we force it to white to ensure visibility
+    // of the extension content. Passing `null` should be treated the same as no argument,
+    // which is why we can't use default parameters here.
+    if (!background) {
+      background = "#fff";
     }
-
-    this.panel.style.setProperty("--arrowpanel-background", panelBackground);
-    this.panel.style.setProperty("--panel-arrow-image-vertical", panelArrow);
+    if (this.panel.id != "widget-overflow") {
+      this.panel.style.setProperty("--arrowpanel-background", background);
+    }
+    if (background == "#fff") {
+      // Set a usable default color that work with the default background-color.
+      this.panel.style.setProperty("--arrowpanel-border-color", "hsla(210,4%,10%,.15)");
+    }
     this.background = background;
   }
 }
@@ -382,9 +379,7 @@ class BasePopup {
 BasePopup.instances = new DefaultWeakMap(() => new WeakMap());
 
 class PanelPopup extends BasePopup {
-  constructor(extension, imageNode, popupURL, browserStyle) {
-    let document = imageNode.ownerDocument;
-
+  constructor(extension, document, popupURL, browserStyle) {
     let panel = document.createElement("panel");
     panel.setAttribute("id", makeWidgetId(extension.id) + "-panel");
     panel.setAttribute("class", "browser-extension-panel");
@@ -397,17 +392,15 @@ class PanelPopup extends BasePopup {
 
     document.getElementById("mainPopupSet").appendChild(panel);
 
-    super(extension, panel, popupURL, browserStyle);
-
-    this.contentReady.then(() => {
-      panel.openPopup(imageNode, "bottomcenter topright", 0, 0, false, false);
-
+    panel.addEventListener("popupshowing", () => {
       let event = new this.window.CustomEvent("WebExtPopupLoaded", {
         bubbles: true,
         detail: {extension},
       });
       this.browser.dispatchEvent(event);
-    });
+    }, {once: true});
+
+    super(extension, panel, popupURL, browserStyle);
   }
 
   get DESTROY_EVENT() {
@@ -434,15 +427,31 @@ class ViewPopup extends BasePopup {
   constructor(extension, window, popupURL, browserStyle, fixedWidth, blockParser) {
     let document = window.document;
 
+    let createPanel = remote => {
+      let panel = document.createElement("panel");
+      panel.setAttribute("type", "arrow");
+      if (remote) {
+        panel.setAttribute("remote", "true");
+      }
+
+      document.getElementById("mainPopupSet").appendChild(panel);
+      return panel;
+    };
+
     // Create a temporary panel to hold the browser while it pre-loads its
     // content. This panel will never be shown, but the browser's docShell will
-    // be swapped with the browser in the real panel when it's ready.
-    let panel = document.createElement("panel");
-    panel.setAttribute("type", "arrow");
+    // be swapped with the browser in the real panel when it's ready. For remote
+    // extensions, this popup is shared between all extensions.
+    let panel;
     if (extension.remote) {
-      panel.setAttribute("remote", "true");
+      panel = document.getElementById(REMOTE_PANEL_ID);
+      if (!panel) {
+        panel = createPanel(true);
+        panel.id = REMOTE_PANEL_ID;
+      }
+    } else {
+      panel = createPanel();
     }
-    document.getElementById("mainPopupSet").appendChild(panel);
 
     super(extension, panel, popupURL, browserStyle, fixedWidth, blockParser);
 
@@ -451,6 +460,7 @@ class ViewPopup extends BasePopup {
     this.attached = false;
     this.shown = false;
     this.tempPanel = panel;
+    this.tempBrowser = this.browser;
 
     this.browser.classList.add("webextension-preload-browser");
   }
@@ -471,6 +481,7 @@ class ViewPopup extends BasePopup {
     this.viewNode.addEventListener(this.DESTROY_EVENT, this);
     this.viewNode.setAttribute("closemenu", "none");
 
+    this.panel.addEventListener("popuppositioned", this, {once: true, capture: true});
     if (this.extension.remote) {
       this.panel.setAttribute("remote", "true");
     }
@@ -531,7 +542,10 @@ class ViewPopup extends BasePopup {
     this.browser.swapDocShells(browser);
     this.destroyBrowser(browser);
 
-    if (this.dimensions && !this.fixedWidth) {
+    if (this.dimensions) {
+      if (this.fixedWidth) {
+        delete this.dimensions.width;
+      }
       this.resizeBrowser(this.dimensions);
     }
 
@@ -539,8 +553,7 @@ class ViewPopup extends BasePopup {
       return {height: this.lastCalculatedInViewHeight || this.viewHeight};
     };
 
-    this.tempPanel.remove();
-    this.tempPanel = null;
+    this.removeTempPanel();
 
     this.shown = true;
 
@@ -559,12 +572,22 @@ class ViewPopup extends BasePopup {
     return true;
   }
 
+  removeTempPanel() {
+    if (this.tempPanel) {
+      if (this.tempPanel.id !== REMOTE_PANEL_ID) {
+        this.tempPanel.remove();
+      }
+      this.tempPanel = null;
+    }
+    if (this.tempBrowser) {
+      this.tempBrowser.parentNode.remove();
+      this.tempBrowser = null;
+    }
+  }
+
   destroy() {
     return super.destroy().then(() => {
-      if (this.tempPanel) {
-        this.tempPanel.remove();
-        this.tempPanel = null;
-      }
+      this.removeTempPanel();
     });
   }
 

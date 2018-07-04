@@ -35,6 +35,8 @@
 #include "nsPIDOMWindow.h"
 #include "nsXULAppAPI.h"
 #include "nsQueryObject.h"
+#include "nsIUrlClassifierDBService.h"
+#include "nsIURLFormatter.h"
 
 #include "mozilla/ErrorNames.h"
 #include "mozilla/Logging.h"
@@ -206,20 +208,36 @@ LowerPriorityHelper(nsIChannel* aChannel)
 {
   MOZ_ASSERT(aChannel);
 
-  nsCOMPtr<nsISupportsPriority> p = do_QueryInterface(aChannel);
-  if (p) {
-    p->SetPriority(nsISupportsPriority::PRIORITY_LOWEST);
-  }
-}
-
-static void
-SetThrottleableHelper(nsIChannel* aChannel)
-{
-  MOZ_ASSERT(aChannel);
+  bool isBlockingResource = false;
 
   nsCOMPtr<nsIClassOfService> cos(do_QueryInterface(aChannel));
   if (cos) {
-    cos->AddClassFlags(nsIClassOfService::Throttleable);
+    if (nsContentUtils::IsTailingEnabled()) {
+      uint32_t cosFlags = 0;
+      cos->GetClassFlags(&cosFlags);
+      isBlockingResource = cosFlags & (nsIClassOfService::UrgentStart |
+                                       nsIClassOfService::Leader |
+                                       nsIClassOfService::Unblocked);
+
+      // Requests not allowed to be tailed are usually those with higher
+      // prioritization.  That overweights being a tracker: don't throttle
+      // them when not in background.
+      if (!(cosFlags & nsIClassOfService::TailForbidden)) {
+        cos->AddClassFlags(nsIClassOfService::Throttleable);
+      }
+    } else {
+      // Yes, we even don't want to evaluate the isBlockingResource when tailing is off
+      // see bug 1395525.
+
+      cos->AddClassFlags(nsIClassOfService::Throttleable);
+    }
+  }
+
+  if (!isBlockingResource) {
+    nsCOMPtr<nsISupportsPriority> p = do_QueryInterface(aChannel);
+    if (p) {
+      p->SetPriority(nsISupportsPriority::PRIORITY_LOWEST);
+    }
   }
 }
 
@@ -234,7 +252,13 @@ nsChannelClassifier::nsChannelClassifier(nsIChannel *aChannel)
     mTrackingProtectionEnabled(Nothing()),
     mTrackingAnnotationEnabled(Nothing())
 {
+  LOG(("nsChannelClassifier::nsChannelClassifier %p", this));
   MOZ_ASSERT(mChannel);
+}
+
+nsChannelClassifier::~nsChannelClassifier()
+{
+  LOG(("nsChannelClassifier::~nsChannelClassifier %p", this));
 }
 
 bool
@@ -319,7 +343,9 @@ nsChannelClassifier::ShouldEnableTrackingProtectionInternal(
 
     nsCOMPtr<nsIURI> topWinURI;
     rv = chan->GetTopWindowURI(getter_AddRefs(topWinURI));
-    NS_ENSURE_SUCCESS(rv, rv);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
 
     if (!topWinURI) {
       LOG(("nsChannelClassifier[%p]: No window URI\n", this));
@@ -616,7 +642,7 @@ nsChannelClassifier::StartInternal()
     // The classify is running in parent process, no need to give a valid event
     // target
     rv = uriClassifier->Classify(principal, nullptr,
-                                 ShouldEnableTrackingProtection(),
+                                 false,
                                  this, &expectCallback);
     if (NS_FAILED(rv)) {
         return rv;
@@ -747,7 +773,7 @@ nsChannelClassifier::HasBeenClassified(nsIChannel *aChannel)
         return false;
     }
 
-    nsXPIDLCString tag;
+    nsCString tag;
     cacheEntry->GetMetaDataElement("necko:classified", getter_Copies(tag));
     return tag.EqualsLiteral("1");
 }
@@ -785,10 +811,9 @@ nsChannelClassifier::SetBlockedContent(nsIChannel *channel,
                                        nsresult aErrorCode,
                                        const nsACString& aList,
                                        const nsACString& aProvider,
-                                       const nsACString& aPrefix)
+                                       const nsACString& aFullHash)
 {
   NS_ENSURE_ARG(!aList.IsEmpty());
-  NS_ENSURE_ARG(!aPrefix.IsEmpty());
 
   // Can be called in EITHER the parent or child process.
   nsCOMPtr<nsIParentChannel> parentChannel;
@@ -796,7 +821,7 @@ nsChannelClassifier::SetBlockedContent(nsIChannel *channel,
   if (parentChannel) {
     // This channel is a parent-process proxy for a child process request.
     // Tell the child process channel to do this instead.
-    parentChannel->SetClassifierMatchedInfo(aList, aProvider, aPrefix);
+    parentChannel->SetClassifierMatchedInfo(aList, aProvider, aFullHash);
     return NS_OK;
   }
 
@@ -805,7 +830,7 @@ nsChannelClassifier::SetBlockedContent(nsIChannel *channel,
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (classifiedChannel) {
-    classifiedChannel->SetMatchedInfo(aList, aProvider, aPrefix);
+    classifiedChannel->SetMatchedInfo(aList, aProvider, aFullHash);
   }
 
   nsCOMPtr<mozIDOMWindowProxy> win;
@@ -848,7 +873,7 @@ nsChannelClassifier::SetBlockedContent(nsIChannel *channel,
     state |= nsIWebProgressListener::STATE_BLOCKED_UNSAFE_CONTENT;
   }
 
-  eventSink->OnSecurityChange(nullptr, state);
+  eventSink->OnSecurityChange(channel, state);
 
   // Log a warning to the web console.
   nsCOMPtr<nsIURI> uri;
@@ -873,206 +898,141 @@ nsChannelClassifier::SetBlockedContent(nsIChannel *channel,
 
 namespace {
 
-// The purpose of this class is only for implementing all nsISupports methods.
-// This is a workaround for template derived class.
-class URIClassifierCallbackBase : public nsIURIClassifierCallback {
-public:
-  URIClassifierCallbackBase() = default;
-
-  NS_DECL_THREADSAFE_ISUPPORTS
-
-protected:
-  virtual ~URIClassifierCallbackBase() = default;
-};
-
-NS_IMPL_ISUPPORTS(URIClassifierCallbackBase, nsIURIClassifierCallback)
-
-// A template class for reusing the code.
-// OnClassifyCompleteInternal will be called to pass the result.
-template<class T>
-class IsTrackerWhitelistedCallback final : public URIClassifierCallbackBase {
-public:
-  explicit IsTrackerWhitelistedCallback(T* aClosure,
-                                        const nsACString& aList,
-                                        const nsACString& aProvider,
-                                        const nsACString& aPrefix,
-                                        nsIURI* aWhitelistURI)
-    : mClosure(aClosure)
-    , mWhitelistURI(aWhitelistURI)
-    , mList(aList)
-    , mProvider(aProvider)
-    , mPrefix(aPrefix)
-  {
-  }
-
-  NS_IMETHOD OnClassifyComplete(nsresult /*aErrorCode*/,
-                                const nsACString& aLists, // Only this matters.
-                                const nsACString& /*aProvider*/,
-                                const nsACString& /*aPrefix*/) override
-  {
-    nsresult rv;
-    if (aLists.IsEmpty()) {
-      if (LOG_ENABLED()) {
-        MOZ_ASSERT(mWhitelistURI);
-
-        LOG(("nsChannelClassifier[%p]: %s is not in the whitelist",
-             mClosure.get(), mWhitelistURI->GetSpecOrDefault().get()));
-      }
-      rv = NS_ERROR_TRACKING_URI;
-    } else {
-      LOG(("nsChannelClassifier[%p]:OnClassifyComplete tracker found "
-           "in whitelist so we won't block it", mClosure.get()));
-      rv = NS_OK;
-    }
-
-    rv = mClosure->OnClassifyCompleteInternal(rv, mList, mProvider, mPrefix);
-    mClosure = nullptr;
-    return rv;
-  }
-
-private:
-  ~IsTrackerWhitelistedCallback() = default;
-
-  RefPtr<T> mClosure;
-  nsCOMPtr<nsIURI> mWhitelistURI;
-
-  // The following 3 values are for forwarding the callback.
-  nsCString mList;
-  nsCString mProvider;
-  nsCString mPrefix;
-};
-
 // This class is designed to get the results of checking blacklist and whitelist.
-// 1. The result of local blacklist will be sent back via
-//    OnClassifyComplete, which is called by nsIURIClassifier service.
-// 2. The result of local whitelist is got via OnClassifyCompleteInternal,
-//    which is called by IsTrackerWhitelistedCallback::OnClassifyComplete.
-class IsTrackerBlacklistedCallback final : public nsIURIClassifierCallback {
+// |mExpectWhitelistResult| is used to indicate that |OnClassifyComplete| is called
+// for the result of blacklist or whitelist check.
+class TrackingURICallback final : public nsIURIClassifierCallback {
 public:
-  explicit IsTrackerBlacklistedCallback(nsChannelClassifier* aChannelClassifier,
-                                        nsIURIClassifierCallback* aCallback)
-    : mChannelClassifier(aChannelClassifier)
-    , mChannelCallback(aCallback)
-  {
-  }
-
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIURICLASSIFIERCALLBACK
 
-  nsresult OnClassifyCompleteInternal(nsresult aErrorCode,
-                                      const nsACString& aList,
-                                      const nsACString& aProvider,
-                                      const nsACString& aPrefix);
-
-private:
-  ~IsTrackerBlacklistedCallback() = default;
-
-  RefPtr<nsChannelClassifier> mChannelClassifier;
-  nsCOMPtr<nsIURIClassifierCallback> mChannelCallback;
-};
-
-NS_IMPL_ISUPPORTS(IsTrackerBlacklistedCallback, nsIURIClassifierCallback)
-
-/*virtual*/ nsresult
-IsTrackerBlacklistedCallback::OnClassifyComplete(nsresult aErrorCode,
-                                                 const nsACString& aLists,
-                                                 const nsACString& aProvider,
-                                                 const nsACString& aPrefix)
-{
-  nsresult status = aLists.IsEmpty() ? NS_OK : NS_ERROR_TRACKING_URI;
-  bool tpEnabled = mChannelClassifier->ShouldEnableTrackingProtection();
-
-  LOG(("IsTrackerBlacklistedCallback[%p]:OnClassifyComplete "
-       " status=0x%" PRIx32 ", tpEnabled=%d",
-       mChannelClassifier.get(), static_cast<uint32_t>(status), tpEnabled));
-
-  // If this is not in local blacklist or tracking protection is enabled,
-  // directly send the status back.
-  // The whitelist will be checked at nsChannelClassifier::OnClassifyComplete
-  // when tracking protection is enabled, so we can just return here.
-  if (NS_SUCCEEDED(status) || tpEnabled) {
-    return mChannelCallback->OnClassifyComplete(
-      status, aLists, aProvider, aPrefix);
+  explicit TrackingURICallback(nsChannelClassifier* aChannelClassifier,
+                               std::function<void()>&& aCallback)
+    : mChannelClassifier(aChannelClassifier)
+    , mChannelCallback(std::move(aCallback))
+    , mExpectWhitelistResult(false)
+  {
+    MOZ_ASSERT(mChannelClassifier);
   }
 
-  nsCOMPtr<nsIChannel> channel = mChannelClassifier->GetChannel();
+private:
+  ~TrackingURICallback() = default;
+  nsresult OnBlacklistResult(nsresult aErrorCode);
+  nsresult OnWhitelistResult(nsresult aErrorCode);
+  void OnTrackerFound(nsresult aErrorCode);
+
+  RefPtr<nsChannelClassifier> mChannelClassifier;
+  std::function<void()> mChannelCallback;
+  bool mExpectWhitelistResult;
+
+  // Only need to save the result of blacklist check.
+  nsCString mList;
+  nsCString mProvider;
+  nsCString mFullHash;
+};
+
+NS_IMPL_ISUPPORTS(TrackingURICallback, nsIURIClassifierCallback)
+
+/*virtual*/ nsresult
+TrackingURICallback::OnClassifyComplete(nsresult aErrorCode,
+                                        const nsACString& aLists,
+                                        const nsACString& aProvider,
+                                        const nsACString& aFullHash)
+{
+  if (!mExpectWhitelistResult) {
+    nsresult status = aLists.IsEmpty() ? NS_OK : NS_ERROR_TRACKING_URI;
+    mList = aLists;
+    mProvider = aProvider;
+    mFullHash = aFullHash;
+    return OnBlacklistResult(status);
+  }
+
+  nsresult status = aLists.IsEmpty() ? NS_ERROR_TRACKING_URI : NS_OK;
+  return OnWhitelistResult(status);
+}
+
+nsresult
+TrackingURICallback::OnBlacklistResult(nsresult aErrorCode)
+{
+  LOG(("TrackingURICallback[%p]::OnBlacklistResult aErrorCode=0x%" PRIx32,
+       mChannelClassifier.get(), static_cast<uint32_t>(aErrorCode)));
+
+  if (NS_SUCCEEDED(aErrorCode)) {
+    mChannelCallback();
+    return NS_OK;
+  }
+
   if (LOG_ENABLED()) {
+    nsCOMPtr<nsIChannel> channel = mChannelClassifier->GetChannel();
     nsCOMPtr<nsIURI> uri;
     channel->GetURI(getter_AddRefs(uri));
-    LOG(("IsTrackerBlacklistedCallback[%p]:OnClassifyComplete channel [%p] "
+    LOG(("TrackingURICallback[%p]::OnBlacklistResult channel [%p] "
          "uri=%s, is in blacklist. Start checking whitelist.",
          mChannelClassifier.get(), channel.get(),
          uri->GetSpecOrDefault().get()));
   }
 
   nsCOMPtr<nsIURI> whitelistURI = mChannelClassifier->CreateWhiteListURI();
-  nsCOMPtr<nsIURIClassifierCallback> callback =
-    new IsTrackerWhitelistedCallback<IsTrackerBlacklistedCallback>(
-      this, aLists, aProvider, aPrefix, whitelistURI);
 
   // If IsTrackerWhitelisted has failed, it means the uri is not in whitelist.
-  if (NS_FAILED(mChannelClassifier->IsTrackerWhitelisted(whitelistURI, callback))) {
-    LOG(("IsTrackerBlacklistedCallback[%p]:OnClassifyComplete channel [%p] "
+  if (NS_FAILED(mChannelClassifier->IsTrackerWhitelisted(whitelistURI, this))) {
+    LOG(("TrackingURICallback[%p]:OnBlacklistResult "
          "IsTrackerWhitelisted has failed.",
-         mChannelClassifier.get(), channel.get()));
+         mChannelClassifier.get()));
 
+    OnTrackerFound(aErrorCode);
+    mChannelCallback();
+  } else {
+    mExpectWhitelistResult = true;
+  }
+
+  return NS_OK;
+}
+
+nsresult
+TrackingURICallback::OnWhitelistResult(nsresult aErrorCode)
+{
+  LOG(("TrackingURICallback[%p]::OnWhitelistResult aErrorCode=0x%" PRIx32,
+       mChannelClassifier.get(), static_cast<uint32_t>(aErrorCode)));
+
+  if (NS_SUCCEEDED(aErrorCode)) {
+    LOG(("TrackingURICallback[%p]::OnWhitelistResult tracker found "
+         "in whitelist so we won't block it", mChannelClassifier.get()));
+    mChannelCallback();
+    return NS_OK;
+  }
+
+  if (LOG_ENABLED()) {
+    nsCOMPtr<nsIChannel> channel = mChannelClassifier->GetChannel();
+    nsCOMPtr<nsIURI> uri;
+    channel->GetURI(getter_AddRefs(uri));
+    LOG(("TrackingURICallback[%p]::OnWhitelistResult "
+         "channel [%p] uri=%s, is not in whitelist",
+         mChannelClassifier.get(), channel.get(),
+         uri->GetSpecOrDefault().get()));
+  }
+
+  OnTrackerFound(aErrorCode);
+  mChannelCallback();
+  return NS_OK;
+}
+
+void
+TrackingURICallback::OnTrackerFound(nsresult aErrorCode)
+{
+  nsCOMPtr<nsIChannel> channel = mChannelClassifier->GetChannel();
+  if (mChannelClassifier->ShouldEnableTrackingProtection()) {
+    mChannelClassifier->SetBlockedContent(channel, aErrorCode,
+                                          mList, mProvider, mFullHash);
+    channel->Cancel(aErrorCode);
+  } else {
     MOZ_ASSERT(mChannelClassifier->ShouldEnableTrackingAnnotation());
 
     SetIsTrackingResourceHelper(channel);
     if (CachedPrefs::GetInstance()->IsLowerNetworkPriority()) {
       LowerPriorityHelper(channel);
     }
-    SetThrottleableHelper(channel);
-
-    // We don't want to disable speculative connection when tracking protection
-    // is disabled. So, change the status to NS_OK.
-    status = NS_OK;
-
-    return mChannelCallback->OnClassifyComplete(
-      status, aLists, aProvider, aPrefix);
   }
-
-  // OnClassifyCompleteInternal() will be called once we know
-  // if the tracker is whitelisted.
-  return NS_OK;
-}
-
-nsresult
-IsTrackerBlacklistedCallback::OnClassifyCompleteInternal(nsresult aErrorCode,
-                                                         const nsACString& aLists,
-                                                         const nsACString& aProvider,
-                                                         const nsACString& aPrefix)
-{
-  LOG(("IsTrackerBlacklistedCallback[%p]:OnClassifyCompleteInternal"
-       " status=0x%" PRIx32,
-       mChannelClassifier.get(), static_cast<uint32_t>(aErrorCode)));
-
-  if (NS_SUCCEEDED(aErrorCode)) {
-    return mChannelCallback->OnClassifyComplete(
-      aErrorCode, aLists, aProvider, aPrefix);
-  }
-
-  MOZ_ASSERT(mChannelClassifier->ShouldEnableTrackingAnnotation());
-  MOZ_ASSERT(aErrorCode == NS_ERROR_TRACKING_URI);
-
-  nsCOMPtr<nsIChannel> channel = mChannelClassifier->GetChannel();
-  if (LOG_ENABLED()) {
-    nsCOMPtr<nsIURI> uri;
-    channel->GetURI(getter_AddRefs(uri));
-    LOG(("IsTrackerBlacklistedCallback[%p]:OnClassifyCompleteInternal "
-         "channel [%p] uri=%s, is not in whitelist",
-         mChannelClassifier.get(), channel.get(),
-         uri->GetSpecOrDefault().get()));
-  }
-
-  SetIsTrackingResourceHelper(channel);
-  if (CachedPrefs::GetInstance()->IsLowerNetworkPriority()) {
-    LowerPriorityHelper(channel);
-  }
-  SetThrottleableHelper(channel);
-
-  return mChannelCallback->OnClassifyComplete(
-      NS_OK, aLists, aProvider, aPrefix);
 }
 
 } // end of unnamed namespace/
@@ -1144,76 +1104,92 @@ nsChannelClassifier::IsTrackerWhitelisted(nsIURI* aWhiteListURI,
   return uriClassifier->AsyncClassifyLocalWithTables(aWhiteListURI, trackingWhitelist, aCallback);
 }
 
+/* static */
+nsresult
+nsChannelClassifier::SendThreatHitReport(nsIChannel *aChannel,
+                                         const nsACString& aProvider,
+                                         const nsACString& aList,
+                                         const nsACString& aFullHash)
+{
+  NS_ENSURE_ARG_POINTER(aChannel);
+
+  nsAutoCString provider(aProvider);
+  nsPrintfCString reportEnablePref("browser.safebrowsing.provider.%s.dataSharing.enabled",
+                                   provider.get());
+  if (!Preferences::GetBool(reportEnablePref.get(), false)) {
+    LOG(("nsChannelClassifier::SendThreatHitReport data sharing disabled for %s",
+         provider.get()));
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIURIClassifier> uriClassifier =
+    do_GetService(NS_URLCLASSIFIERDBSERVICE_CONTRACTID);
+  if (!uriClassifier) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  nsresult rv = uriClassifier->SendThreatHitReport(aChannel, aProvider, aList,
+                                                   aFullHash);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 nsChannelClassifier::OnClassifyComplete(nsresult aErrorCode,
                                         const nsACString& aList,
                                         const nsACString& aProvider,
-                                        const nsACString& aPrefix)
+                                        const nsACString& aFullHash)
 {
   // Should only be called in the parent process.
   MOZ_ASSERT(XRE_IsParentProcess());
+  MOZ_ASSERT(aErrorCode != NS_ERROR_TRACKING_URI);
 
-  if (aErrorCode == NS_ERROR_TRACKING_URI) {
-    nsCOMPtr<nsIURI> whitelistURI = CreateWhiteListURI();
-    nsCOMPtr<nsIURIClassifierCallback> callback =
-      new IsTrackerWhitelistedCallback<nsChannelClassifier>(
-        this, aList, aProvider, aPrefix, whitelistURI);
-    if (whitelistURI &&
-        NS_SUCCEEDED(IsTrackerWhitelisted(whitelistURI, callback))) {
-      // OnClassifyCompleteInternal() will be called once we know
-      // if the tracker is whitelisted.
-      return NS_OK;
+  if (mSuspendedChannel) {
+    nsAutoCString errorName;
+    if (LOG_ENABLED()) {
+      GetErrorName(aErrorCode, errorName);
+      LOG(("nsChannelClassifier[%p]:OnClassifyComplete %s (suspended channel)",
+           this, errorName.get()));
     }
+    MarkEntryClassified(aErrorCode);
+
+    if (NS_FAILED(aErrorCode)) {
+      if (LOG_ENABLED()) {
+        nsCOMPtr<nsIURI> uri;
+        mChannel->GetURI(getter_AddRefs(uri));
+        LOG(("nsChannelClassifier[%p]: cancelling channel %p for %s "
+             "with error code %s", this, mChannel.get(),
+              uri->GetSpecOrDefault().get(), errorName.get()));
+      }
+
+      // Channel will be cancelled (page element blocked) due to Safe Browsing.
+      // Do update the security state of the document and fire a security
+      // change event.
+      SetBlockedContent(mChannel, aErrorCode, aList, aProvider, aFullHash);
+
+      if (aErrorCode == NS_ERROR_MALWARE_URI ||
+          aErrorCode == NS_ERROR_PHISHING_URI ||
+          aErrorCode == NS_ERROR_UNWANTED_URI ||
+          aErrorCode == NS_ERROR_HARMFUL_URI) {
+        SendThreatHitReport(mChannel, aProvider, aList, aFullHash);
+      }
+
+      mChannel->Cancel(aErrorCode);
+    }
+    LOG(("nsChannelClassifier[%p]: resuming channel %p from "
+         "OnClassifyComplete", this, mChannel.get()));
+    mChannel->Resume();
   }
 
-  return OnClassifyCompleteInternal(aErrorCode, aList, aProvider, aPrefix);
+  mChannel = nullptr;
+  RemoveShutdownObserver();
+
+  return NS_OK;
 }
 
 nsresult
-nsChannelClassifier::OnClassifyCompleteInternal(nsresult aErrorCode,
-                                                const nsACString& aList,
-                                                const nsACString& aProvider,
-                                                const nsACString& aPrefix)
-{
-    if (mSuspendedChannel) {
-      nsAutoCString errorName;
-      if (LOG_ENABLED()) {
-        GetErrorName(aErrorCode, errorName);
-        LOG(("nsChannelClassifier[%p]:OnClassifyComplete %s (suspended channel)",
-             this, errorName.get()));
-      }
-      MarkEntryClassified(aErrorCode);
-
-      if (NS_FAILED(aErrorCode)) {
-        if (LOG_ENABLED()) {
-          nsCOMPtr<nsIURI> uri;
-          mChannel->GetURI(getter_AddRefs(uri));
-          LOG(("nsChannelClassifier[%p]: cancelling channel %p for %s "
-               "with error code %s", this, mChannel.get(),
-               uri->GetSpecOrDefault().get(), errorName.get()));
-        }
-
-        // Channel will be cancelled (page element blocked) due to tracking
-        // protection or Safe Browsing.
-        // Do update the security state of the document and fire a security
-        // change event.
-        SetBlockedContent(mChannel, aErrorCode, aList, aProvider, aPrefix);
-
-        mChannel->Cancel(aErrorCode);
-      }
-      LOG(("nsChannelClassifier[%p]: resuming channel %p from "
-           "OnClassifyComplete", this, mChannel.get()));
-      mChannel->Resume();
-    }
-
-    mChannel = nullptr;
-    RemoveShutdownObserver();
-
-    return NS_OK;
-}
-
-nsresult
-nsChannelClassifier::CheckIsTrackerWithLocalTable(nsIURIClassifierCallback* aCallback)
+nsChannelClassifier::CheckIsTrackerWithLocalTable(std::function<void()>&& aCallback)
 {
   nsresult rv;
 
@@ -1246,7 +1222,7 @@ nsChannelClassifier::CheckIsTrackerWithLocalTable(nsIURIClassifierCallback* aCal
   }
 
   nsCOMPtr<nsIURIClassifierCallback> callback =
-    new IsTrackerBlacklistedCallback(this, aCallback);
+    new TrackingURICallback(this, std::move(aCallback));
 
   LOG(("nsChannelClassifier[%p]:CheckIsTrackerWithLocalTable for uri=%s\n",
        this, uri->GetSpecOrDefault().get()));

@@ -21,7 +21,6 @@ user_pref("app.update.enabled", false);
 user_pref("app.update.staging.enabled", false);
 user_pref("app.update.url.android", "");
 // Ensure we can load the reftest extension
-user_pref("extensions.allow-non-mpc-extensions", true);
 user_pref("extensions.legacy.enabled", true);
 user_pref("security.turn_off_all_security_so_that_viruses_can_take_over_this_computer", true);
 // Disable addon updates and prefetching so we don't leak them
@@ -64,7 +63,11 @@ user_pref("browser.search.countryCode", "US");
 user_pref("browser.search.geoSpecificDefaults", false);
 
 // Make sure Shield doesn't hit the network.
-user_pref("extensions.shield-recipe-client.api_url", "https://localhost/selfsupport-dummy/");
+user_pref("app.normandy.api_url", "https://localhost/selfsupport-dummy/");
+
+// Make sure Ping Centre doesn't hit the network.
+user_pref("browser.ping-centre.staging.endpoint", "https://localhost");
+user_pref("browser.ping-centre.production.endpoint", "https://localhost");
 
 // use about:blank, not browser.startup.homepage
 user_pref("browser.startup.page", 0);
@@ -82,21 +85,27 @@ user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
 // Ensure that telemetry is disabled, so we don't connect to the telemetry
 // server in the middle of the tests.
 user_pref("toolkit.telemetry.enabled", false);
-user_pref("toolkit.telemetry.unified", false);
+user_pref("toolkit.telemetry.server", "https://%(server)s/telemetry-dummy/");
+user_pref("datareporting.healthreport.uploadEnabled", false);
 // Likewise for safebrowsing.
 user_pref("browser.safebrowsing.phishing.enabled", false);
 user_pref("browser.safebrowsing.malware.enabled", false);
 user_pref("browser.safebrowsing.blockedURIs.enabled", false);
+user_pref("browser.safebrowsing.passwords.enabled", false);
+user_pref("browser.safebrowsing.downloads.enabled", false);
+user_pref("plugins.show_infobar", false);
 user_pref("browser.safebrowsing.downloads.remote.url", "http://127.0.0.1/safebrowsing-dummy/gethash");
-user_pref("browser.safebrowsing.provider.google.gethashURL", "http://127.0.0.1/safebrowsing-dummy/gethash");
-user_pref("browser.safebrowsing.provider.google.updateURL", "http://127.0.0.1/safebrowsing-dummy/update");
-user_pref("browser.safebrowsing.provider.google4.gethashURL", "http://127.0.0.1/safebrowsing-dummy/gethash");
-user_pref("browser.safebrowsing.provider.google4.updateURL", "http://127.0.0.1/safebrowsing-dummy/update");
-// Likewise for tracking protection.
+user_pref("browser.safebrowsing.provider.google.gethashURL", "http://127.0.0.1/safebrowsing-dummyg/gethash");
+user_pref("browser.safebrowsing.provider.google.updateURL", "http://127.0.0.1/safebrowsing-dummyg/update");
+user_pref("browser.safebrowsing.provider.google4.gethashURL", "http://127.0.0.1/safebrowsing-dummyg4/gethash");
+user_pref("browser.safebrowsing.provider.google4.updateURL", "http://127.0.0.1/safebrowsing-dummyg4/update");
+// Likewise for lists served from the Mozilla server.
+user_pref("plugins.flashBlock.enabled", false);
+user_pref("privacy.trackingprotection.annotate_channels", false);
 user_pref("privacy.trackingprotection.enabled", false);
 user_pref("privacy.trackingprotection.pbmode.enabled", false);
-user_pref("browser.safebrowsing.provider.mozilla.gethashURL", "http://127.0.0.1/safebrowsing-dummy/gethash");
-user_pref("browser.safebrowsing.provider.mozilla.updateURL", "http://127.0.0.1/safebrowsing-dummy/update");
+user_pref("browser.safebrowsing.provider.mozilla.gethashURL", "http://127.0.0.1/safebrowsing-dummym/gethash");
+user_pref("browser.safebrowsing.provider.mozilla.updateURL", "http://127.0.0.1/safebrowsing-dummym/update");
 // And for snippets.
 user_pref("browser.snippets.enabled", false);
 user_pref("browser.snippets.syncPromo.enabled", false);
@@ -105,18 +114,12 @@ user_pref("browser.snippets.firstrunHomepage.enabled", false);
 user_pref("general.useragent.updates.enabled", false);
 // And for webapp updates.  Yes, it is supposed to be an integer.
 user_pref("browser.webapps.checkForUpdates", 0);
-// And for about:newtab content fetch.
-user_pref("browser.newtabpage.directory.source", "data:application/json,{\"reftest\":1}");
 // Only allow add-ons from the profile and app and allow foreign
 // injection
 user_pref("extensions.enabledScopes", 5);
 user_pref("extensions.autoDisableScopes", 0);
 // Allow unsigned add-ons
 user_pref("xpinstall.signatures.required", false);
-
-// Don't use auto-enabled e10s
-user_pref("browser.tabs.remote.autostart.1", false);
-user_pref("browser.tabs.remote.autostart.2", false);
 
 user_pref("startup.homepage_welcome_url", "");
 user_pref("startup.homepage_welcome_url.additional", "");
@@ -126,7 +129,7 @@ user_pref("media.gmp-manager.url.override", "http://localhost/dummy-gmp-manager.
 user_pref("media.gmp-manager.updateEnabled", false);
 
 // A fake bool pref for "@supports -moz-bool-pref" sanify test.
-user_pref("testing.supports.moz-bool-pref", true);
+user_pref("testing.supports.moz-bool-pref", false);
 
 // Reftests load a lot of URLs very quickly. This puts avoidable and
 // unnecessary I/O pressure on the Places DB (measured to be in the
@@ -144,6 +147,10 @@ user_pref("media.openUnsupportedTypeWithExternalApp", false);
 // consumer automation; not vendor testing.
 user_pref("marionette.prefs.recommended", false);
 
-// Make sure we don't reach out to the network with pocket or snippets
+// Make sure we don't reach out to the network for activity stream services
 user_pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
 user_pref("browser.newtabpage.activity-stream.feeds.snippets", false);
+user_pref("browser.newtabpage.activity-stream.tippyTop.service.endpoint", "");
+
+// Don't forcibly kill content processes after a timeout
+user_pref("dom.ipc.tabs.shutdownTimeoutSecs", 0);

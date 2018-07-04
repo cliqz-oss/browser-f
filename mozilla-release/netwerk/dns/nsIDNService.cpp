@@ -17,7 +17,6 @@
 #include "nsISupportsPrimitives.h"
 #include "punycode.h"
 
-#ifdef IDNA2008
 // Currently we use the non-transitional processing option -- see
 // http://unicode.org/reports/tr46/
 // To switch to transitional processing, change the value of this flag
@@ -26,7 +25,7 @@
 const bool kIDNA2008_TransitionalProcessing = false;
 
 #include "ICUUtils.h"
-#endif
+#include "unicode/uscript.h"
 
 using namespace mozilla::unicode;
 
@@ -103,14 +102,14 @@ void nsIDNService::prefsChanged(nsIPrefBranch *prefBranch, const char16_t *pref)
   mLock.AssertCurrentThreadOwns();
 
   if (!pref || NS_LITERAL_STRING(NS_NET_PREF_IDNBLACKLIST).Equals(pref)) {
-    nsCOMPtr<nsISupportsString> blacklist;
-    nsresult rv = prefBranch->GetComplexValue(NS_NET_PREF_IDNBLACKLIST,
-                                              NS_GET_IID(nsISupportsString),
-                                              getter_AddRefs(blacklist));
-    if (NS_SUCCEEDED(rv))
-      blacklist->ToString(getter_Copies(mIDNBlacklist));
-    else
+    nsAutoCString blacklist;
+    nsresult rv = prefBranch->GetStringPref(NS_NET_PREF_IDNBLACKLIST,
+                                            EmptyCString(), 0, blacklist);
+    if (NS_SUCCEEDED(rv)) {
+      CopyUTF8toUTF16(blacklist, mIDNBlacklist);
+    } else {
       mIDNBlacklist.Truncate();
+    }
   }
   if (!pref || NS_LITERAL_STRING(NS_NET_PREF_SHOWPUNYCODE).Equals(pref)) {
     bool val;
@@ -124,9 +123,9 @@ void nsIDNService::prefsChanged(nsIPrefBranch *prefBranch, const char16_t *pref)
       mIDNUseWhitelist = val;
   }
   if (!pref || NS_LITERAL_STRING(NS_NET_PREF_IDNRESTRICTION).Equals(pref)) {
-    nsXPIDLCString profile;
+    nsAutoCString profile;
     if (NS_FAILED(prefBranch->GetCharPref(NS_NET_PREF_IDNRESTRICTION,
-                                          getter_Copies(profile)))) {
+                                          profile))) {
       profile.Truncate();
     }
     if (profile.EqualsLiteral("moderate")) {
@@ -146,34 +145,21 @@ nsIDNService::nsIDNService()
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-#ifdef IDNA2008
   uint32_t IDNAOptions = UIDNA_CHECK_BIDI | UIDNA_CHECK_CONTEXTJ;
   if (!kIDNA2008_TransitionalProcessing) {
     IDNAOptions |= UIDNA_NONTRANSITIONAL_TO_UNICODE;
   }
   UErrorCode errorCode = U_ZERO_ERROR;
   mIDNA = uidna_openUTS46(IDNAOptions, &errorCode);
-#else
-  if (idn_success != idn_nameprep_create(nullptr, &mNamePrepHandle))
-    mNamePrepHandle = nullptr;
-
-  mNormalizer = do_GetService(NS_UNICODE_NORMALIZER_CONTRACTID);
-  /* member initializers and constructor code */
-#endif
 }
 
 nsIDNService::~nsIDNService()
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-#ifdef IDNA2008
   uidna_close(mIDNA);
-#else
-  idn_nameprep_destroy(mNamePrepHandle);
-#endif
 }
 
-#ifdef IDNA2008
 nsresult
 nsIDNService::IDNA2008ToUnicode(const nsACString& input, nsAString& output)
 {
@@ -222,7 +208,15 @@ nsIDNService::IDNA2008StringPrep(const nsAString& input,
   }
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Output the result of nameToUnicode even if there were errors
+  // Output the result of nameToUnicode even if there were errors.
+  // But in the case of invalid punycode, the uidna_labelToUnicode result
+  // appears to get an appended U+FFFD REPLACEMENT CHARACTER, which will
+  // confuse our subsequent processing, so we drop that.
+  // (https://bugzilla.mozilla.org/show_bug.cgi?id=1399540#c9)
+  if ((info.errors & UIDNA_ERROR_PUNYCODE) &&
+      outLen > 0 && outputBuffer[outLen - 1] == 0xfffd) {
+    --outLen;
+  }
   ICUUtils::AssignUCharArrayToString(outputBuffer, outLen, output);
 
   if (flag == eStringPrepIgnoreErrors) {
@@ -238,7 +232,6 @@ nsIDNService::IDNA2008StringPrep(const nsAString& input,
 
   return rv;
 }
-#endif
 
 NS_IMETHODIMP nsIDNService::ConvertUTF8toACE(const nsACString & input, nsACString & ace)
 {
@@ -300,6 +293,10 @@ nsresult nsIDNService::ACEtoUTF8(const nsACString & input, nsACString & _retval,
   // RFC 3490 - 4.2 ToUnicode
   // ToUnicode never fails.  If any step fails, then the original input
   // sequence is returned immediately in that step.
+  //
+  // Note that this refers to the decoding of a single label.
+  // ACEtoUTF8 may be called with a sequence of labels separated by dots;
+  // this test applies individually to each label.
 
   uint32_t len = 0, offset = 0;
   nsAutoCString decodedBuf;
@@ -313,13 +310,15 @@ nsresult nsIDNService::ACEtoUTF8(const nsACString & input, nsACString & _retval,
   while (start != end) {
     len++;
     if (*start++ == '.') {
-      if (NS_FAILED(decodeACE(Substring(input, offset, len - 1), decodedBuf,
-                              flag))) {
-        _retval.Assign(input);
-        return NS_OK;
+      nsDependentCSubstring origLabel(input, offset, len - 1);
+      if (NS_FAILED(decodeACE(origLabel, decodedBuf, flag))) {
+        // If decoding failed, use the original input sequence
+        // for this label.
+        _retval.Append(origLabel);
+      } else {
+        _retval.Append(decodedBuf);
       }
 
-      _retval.Append(decodedBuf);
       _retval.Append('.');
       offset += len;
       len = 0;
@@ -327,11 +326,12 @@ nsresult nsIDNService::ACEtoUTF8(const nsACString & input, nsACString & _retval,
   }
   // decode the last node
   if (len) {
-    if (NS_FAILED(decodeACE(Substring(input, offset, len), decodedBuf,
-                            flag)))
-      _retval.Assign(input);
-    else
+    nsDependentCSubstring origLabel(input, offset, len);
+    if (NS_FAILED(decodeACE(origLabel, decodedBuf, flag))) {
+      _retval.Append(origLabel);
+    } else {
       _retval.Append(decodedBuf);
+    }
   }
 
   return NS_OK;
@@ -531,21 +531,6 @@ static nsresult utf16ToUcs4(const nsAString& in,
   return NS_OK;
 }
 
-#ifndef IDNA2008
-static void ucs4toUtf16(const uint32_t *in, nsAString& out)
-{
-  while (*in) {
-    if (!IS_IN_BMP(*in)) {
-      out.Append((char16_t) H_SURROGATE(*in));
-      out.Append((char16_t) L_SURROGATE(*in));
-    }
-    else
-      out.Append((char16_t) *in);
-    in++;
-  }
-}
-#endif
-
 static nsresult punycode(const nsAString& in, nsACString& out)
 {
   uint32_t ucs4Buf[kMaxDNSNodeLen + 1];
@@ -599,71 +584,7 @@ static nsresult punycode(const nsAString& in, nsACString& out)
 nsresult nsIDNService::stringPrep(const nsAString& in, nsAString& out,
                                   stringPrepFlag flag)
 {
-#ifdef IDNA2008
   return IDNA2008StringPrep(in, out, flag);
-#else
-  if (!mNamePrepHandle || !mNormalizer)
-    return NS_ERROR_FAILURE;
-
-  uint32_t ucs4Buf[kMaxDNSNodeLen + 1];
-  uint32_t ucs4Len;
-  nsresult rv = utf16ToUcs4(in, ucs4Buf, kMaxDNSNodeLen, &ucs4Len);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // map
-  idn_result_t idn_err;
-
-  uint32_t namePrepBuf[kMaxDNSNodeLen * 3];   // map up to three characters
-  idn_err = idn_nameprep_map(mNamePrepHandle, (const uint32_t *) ucs4Buf,
-		                     (uint32_t *) namePrepBuf, kMaxDNSNodeLen * 3);
-  NS_ENSURE_TRUE(idn_err == idn_success, NS_ERROR_MALFORMED_URI);
-
-  nsAutoString namePrepStr;
-  ucs4toUtf16(namePrepBuf, namePrepStr);
-  if (namePrepStr.Length() >= kMaxDNSNodeLen)
-    return NS_ERROR_MALFORMED_URI;
-
-  // normalize
-  nsAutoString normlizedStr;
-  rv = mNormalizer->NormalizeUnicodeNFKC(namePrepStr, normlizedStr);
-  if (normlizedStr.Length() >= kMaxDNSNodeLen)
-    return NS_ERROR_MALFORMED_URI;
-
-  // set the result string
-  out.Assign(normlizedStr);
-
-  if (flag == eStringPrepIgnoreErrors) {
-    return NS_OK;
-  }
-
-  // prohibit
-  const uint32_t *found = nullptr;
-  idn_err = idn_nameprep_isprohibited(mNamePrepHandle,
-                                      (const uint32_t *) ucs4Buf, &found);
-  if (idn_err != idn_success || found) {
-    rv = NS_ERROR_MALFORMED_URI;
-  } else {
-    // check bidi
-    idn_err = idn_nameprep_isvalidbidi(mNamePrepHandle,
-                                       (const uint32_t *) ucs4Buf, &found);
-    if (idn_err != idn_success || found) {
-      rv = NS_ERROR_MALFORMED_URI;
-    } else  if (flag == eStringPrepForUI) {
-      // check unassigned code points
-      idn_err = idn_nameprep_isunassigned(mNamePrepHandle,
-                                          (const uint32_t *) ucs4Buf, &found);
-      if (idn_err != idn_success || found) {
-        rv = NS_ERROR_MALFORMED_URI;
-      }
-    }
-  }
-
-  if (flag == eStringPrepForDNS && NS_FAILED(rv)) {
-    out.Truncate();
-  }
-
-  return rv;
-#endif
 }
 
 nsresult nsIDNService::stringPrepAndACE(const nsAString& in, nsACString& out,
@@ -733,7 +654,7 @@ void nsIDNService::normalizeFullStops(nsAString& s)
       case 0x3002:
       case 0xFF0E:
       case 0xFF61:
-        s.Replace(index, 1, NS_LITERAL_STRING("."));
+        s.ReplaceLiteral(index, 1, u".");
         break;
       default:
         break;
@@ -754,31 +675,9 @@ nsresult nsIDNService::decodeACE(const nsACString& in, nsACString& out,
   }
 
   nsAutoString utf16;
-#ifdef IDNA2008
   nsresult result = IDNA2008ToUnicode(in, utf16);
   NS_ENSURE_SUCCESS(result, result);
-#else
-  // RFC 3490 - 4.2 ToUnicode
-  // The ToUnicode output never contains more code points than its input.
-  punycode_uint output_length = in.Length() - kACEPrefixLen + 1;
-  auto *output = new punycode_uint[output_length];
-  NS_ENSURE_TRUE(output, NS_ERROR_OUT_OF_MEMORY);
 
-  enum punycode_status status = punycode_decode(in.Length() - kACEPrefixLen,
-                                                PromiseFlatCString(in).get() + kACEPrefixLen,
-                                                &output_length,
-                                                output,
-                                                nullptr);
-  if (status != punycode_success) {
-    delete [] output;
-    return NS_ERROR_MALFORMED_URI;
-  }
-
-  // UCS4 -> UTF8
-  output[output_length] = 0;
-  ucs4toUtf16(output, utf16);
-  delete [] output;
-#endif
   if (flag != eStringPrepForUI || isLabelSafe(utf16)) {
     CopyUTF16toUTF8(utf16, out);
   } else {
@@ -851,6 +750,7 @@ bool nsIDNService::isLabelSafe(const nsAString &label)
 
   Script lastScript = Script::INVALID;
   uint32_t previousChar = 0;
+  uint32_t baseChar = 0; // last non-diacritic seen (base char for marks)
   uint32_t savedNumberingSystem = 0;
 // Simplified/Traditional Chinese check temporarily disabled -- bug 857481
 #if 0
@@ -881,12 +781,11 @@ bool nsIDNService::isLabelSafe(const nsAString &label)
       if (illegalScriptCombo(script, savedScript)) {
         return false;
       }
-      lastScript = script;
     }
 
     // Check for mixed numbering systems
-    if (GetGeneralCategory(ch) ==
-        HB_UNICODE_GENERAL_CATEGORY_DECIMAL_NUMBER) {
+    auto genCat = GetGeneralCategory(ch);
+    if (genCat == HB_UNICODE_GENERAL_CATEGORY_DECIMAL_NUMBER) {
       uint32_t zeroCharacter = ch - GetNumericValue(ch);
       if (savedNumberingSystem == 0) {
         // If we encounter a decimal number, save the zero character from that
@@ -897,11 +796,53 @@ bool nsIDNService::isLabelSafe(const nsAString &label)
       }
     }
 
-    // Check for consecutive non-spacing marks
-    if (previousChar != 0 &&
-        previousChar == ch &&
-        GetGeneralCategory(ch) == HB_UNICODE_GENERAL_CATEGORY_NON_SPACING_MARK) {
-      return false;
+    if (genCat == HB_UNICODE_GENERAL_CATEGORY_NON_SPACING_MARK) {
+      // Check for consecutive non-spacing marks.
+      if (previousChar != 0 && previousChar == ch) {
+        return false;
+      }
+      // Check for marks whose expected script doesn't match the base script.
+      if (lastScript != Script::INVALID) {
+        const size_t kMaxScripts = 32; // more than ample for current values
+                                       // of ScriptExtensions property
+        UScriptCode scripts[kMaxScripts];
+        UErrorCode errorCode = U_ZERO_ERROR;
+        int nScripts = uscript_getScriptExtensions(ch, scripts, kMaxScripts,
+                                                   &errorCode);
+        MOZ_ASSERT(U_SUCCESS(errorCode), "uscript_getScriptExtensions failed");
+        if (U_FAILURE(errorCode)) {
+          return false;
+        }
+        // nScripts will always be >= 1, because even for undefined characters
+        // uscript_getScriptExtensions will return Script::INVALID.
+        // If the mark just has script=COMMON or INHERITED, we can't check any
+        // more carefully, but if it has specific scriptExtension codes, then
+        // assume those are the only valid scripts to use it with.
+        if (nScripts > 1 ||
+            (Script(scripts[0]) != Script::COMMON &&
+             Script(scripts[0]) != Script::INHERITED)) {
+          while (--nScripts >= 0) {
+            if (Script(scripts[nScripts]) == lastScript) {
+              break;
+            }
+          }
+          if (nScripts == -1) {
+            return false;
+          }
+        }
+      }
+      // Check for diacritics on dotless-i, which would be indistinguishable
+      // from normal accented letter i.
+      if (baseChar == 0x0131 &&
+          ((ch >= 0x0300 && ch <= 0x0314) || ch == 0x031a)) {
+        return false;
+      }
+    } else {
+      baseChar = ch;
+    }
+
+    if (script != Script::COMMON && script != Script::INHERITED) {
+      lastScript = script;
     }
 
     // Simplified/Traditional Chinese check temporarily disabled -- bug 857481

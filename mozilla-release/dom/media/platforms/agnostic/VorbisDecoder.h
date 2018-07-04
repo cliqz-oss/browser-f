@@ -18,7 +18,11 @@
 
 namespace mozilla {
 
-class VorbisDataDecoder : public MediaDataDecoder
+DDLoggedTypeDeclNameAndBase(VorbisDataDecoder, MediaDataDecoder);
+
+class VorbisDataDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<VorbisDataDecoder>
 {
 public:
   explicit VorbisDataDecoder(const CreateDecoderParams& aParams);
@@ -29,9 +33,9 @@ public:
   RefPtr<DecodePromise> Drain() override;
   RefPtr<FlushPromise> Flush() override;
   RefPtr<ShutdownPromise> Shutdown() override;
-  const char* GetDescriptionName() const override
+  nsCString GetDescriptionName() const override
   {
-    return "vorbis audio decoder";
+    return NS_LITERAL_CSTRING("vorbis audio decoder");
   }
 
   // Return true if mimetype is Vorbis

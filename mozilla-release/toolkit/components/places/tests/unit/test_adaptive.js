@@ -59,16 +59,16 @@ AutoCompleteInput.prototype = {
   popup: {
     set selectedIndex(aIndex) {},
     invalidate() {},
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompletePopup])
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompletePopup])
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompleteInput])
-}
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompleteInput])
+};
 
 /**
  * Checks that autocomplete results are ordered correctly.
  */
-function ensure_results(expected, searchTerm) {
+function ensure_results(expected, searchTerm, callback) {
   let controller = Cc["@mozilla.org/autocomplete/controller;1"].
                    getService(Ci.nsIAutoCompleteController);
 
@@ -79,16 +79,16 @@ function ensure_results(expected, searchTerm) {
   controller.input = input;
 
   input.onSearchComplete = function() {
-    do_check_eq(controller.searchStatus,
-                Ci.nsIAutoCompleteController.STATUS_COMPLETE_MATCH);
-    do_check_eq(controller.matchCount, expected.length);
+    Assert.equal(controller.searchStatus,
+                 Ci.nsIAutoCompleteController.STATUS_COMPLETE_MATCH);
+    Assert.equal(controller.matchCount, expected.length);
     for (let i = 0; i < controller.matchCount; i++) {
       print("Testing for '" + expected[i].uri.spec + "' got '" + controller.getValueAt(i) + "'");
-      do_check_eq(controller.getValueAt(i), expected[i].uri.spec);
-      do_check_eq(controller.getStyleAt(i), expected[i].style);
+      Assert.equal(controller.getValueAt(i), expected[i].uri.spec);
+      Assert.equal(controller.getStyleAt(i), expected[i].style);
     }
 
-    deferEnsureResults.resolve();
+    callback();
   };
 
   controller.startSearch(searchTerm);
@@ -107,9 +107,9 @@ async function task_setCountRank(aURI, aCount, aRank, aSearch, aBookmark) {
 
   // Make a nsIAutoCompleteController and friends for instrumentation feedback.
   let thing = {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompleteInput,
-                                           Ci.nsIAutoCompletePopup,
-                                           Ci.nsIAutoCompleteController]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompleteInput,
+                                            Ci.nsIAutoCompletePopup,
+                                            Ci.nsIAutoCompleteController]),
     get popup() {
       return thing;
     },
@@ -148,14 +148,10 @@ async function task_setCountRank(aURI, aCount, aRank, aSearch, aBookmark) {
  * Decay the adaptive entries by sending the daily idle topic.
  */
 function doAdaptiveDecay() {
-  PlacesUtils.history.runInBatchMode({
-    runBatched() {
-      for (let i = 0; i < 10; i++) {
-        PlacesUtils.history.QueryInterface(Ci.nsIObserver)
-                           .observe(null, "idle-daily", null);
-      }
-    }
-  }, this);
+  for (let i = 0; i < 10; i++) {
+    PlacesUtils.history.QueryInterface(Ci.nsIObserver)
+                       .observe(null, "idle-daily", null);
+  }
 }
 
 var uri1 = uri("http://site.tld/1");
@@ -171,17 +167,24 @@ var s0 = "";
 var s1 = "si";
 var s2 = "site";
 
-var observer = {
-  results: null,
-  search: null,
-  runCount: -1,
-  observe(aSubject, aTopic, aData) {
-    if (--this.runCount > 0)
-      return;
-    ensure_results(this.results, this.search);
-  }
-};
-Services.obs.addObserver(observer, PlacesUtils.TOPIC_FEEDBACK_UPDATED);
+var observer;
+
+function promiseResultsCompleted() {
+  return new Promise(resolve => {
+    observer = {
+      results: null,
+      search: null,
+      runCount: -1,
+      observe(aSubject, aTopic, aData) {
+        if (--this.runCount > 0)
+          return;
+        ensure_results(this.results, this.search, resolve);
+        Services.obs.removeObserver(observer, PlacesUtils.TOPIC_FEEDBACK_UPDATED);
+      }
+    };
+    Services.obs.addObserver(observer, PlacesUtils.TOPIC_FEEDBACK_UPDATED);
+  });
+}
 
 /**
  * Make the result object for a given URI that will be passed to ensure_results.
@@ -368,35 +371,25 @@ var tests = [
 ];
 
 /**
- * This deferred object contains a promise that is resolved when the
- * ensure_results function has finished its execution.
- */
-var deferEnsureResults;
-
-/**
  * Test adaptive autocomplete.
  */
 add_task(async function test_adaptive() {
   // Disable autoFill for this test.
   Services.prefs.setBoolPref("browser.urlbar.autoFill", false);
-  do_register_cleanup(() => Services.prefs.clearUserPref("browser.urlbar.autoFill"));
+  registerCleanupFunction(() => Services.prefs.clearUserPref("browser.urlbar.autoFill"));
   for (let test of tests) {
     // Cleanup.
-    PlacesUtils.bookmarks.removeFolderChildren(PlacesUtils.unfiledBookmarksFolderId);
-    PlacesUtils.bookmarks.removeFolderChildren(PlacesUtils.tagsFolderId);
-    observer.runCount = -1;
+    await PlacesUtils.bookmarks.eraseEverything();
 
     let types = ["history", "bookmark", "openpage"];
     for (let type of types) {
       Services.prefs.clearUserPref("browser.urlbar.suggest." + type);
     }
 
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
 
-    deferEnsureResults = PromiseUtils.defer();
+    let resultsCompletedPromise = promiseResultsCompleted();
     await test();
-    await deferEnsureResults.promise;
+    await resultsCompletedPromise;
   }
-
-  Services.obs.removeObserver(observer, PlacesUtils.TOPIC_FEEDBACK_UPDATED);
 });

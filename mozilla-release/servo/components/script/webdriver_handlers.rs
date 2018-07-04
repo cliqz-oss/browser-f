@@ -13,7 +13,7 @@ use dom::bindings::codegen::Bindings::NodeBinding::NodeMethods;
 use dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use dom::bindings::conversions::{ConversionResult, FromJSValConvertible, StringificationBehavior};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::element::Element;
 use dom::globalscope::GlobalScope;
@@ -25,8 +25,9 @@ use dom::node::{Node, window_from_node};
 use euclid::{Point2D, Rect, Size2D};
 use hyper_serde::Serde;
 use ipc_channel::ipc::{self, IpcSender};
-use js::jsapi::{HandleValue, JSContext};
+use js::jsapi::JSContext;
 use js::jsval::UndefinedValue;
+use js::rust::HandleValue;
 use msg::constellation_msg::BrowsingContextId;
 use msg::constellation_msg::PipelineId;
 use net_traits::CookieSource::{HTTP, NonHTTP};
@@ -40,7 +41,7 @@ use servo_url::ServoUrl;
 fn find_node_by_unique_id(documents: &Documents,
                           pipeline: PipelineId,
                           node_id: String)
-                          -> Option<Root<Node>> {
+                          -> Option<DomRoot<Node>> {
     documents.find_document(pipeline).and_then(|document|
         document.upcast::<Node>().traverse_preorder().find(|candidate| candidate.unique_id() == node_id)
     )
@@ -392,7 +393,7 @@ pub fn handle_is_selected(documents: &Documents,
             else if let Some(option_element) = node.downcast::<HTMLOptionElement>() {
                 Ok(option_element.Selected())
             }
-            else if let Some(_) = node.downcast::<HTMLElement>() {
+            else if node.is::<HTMLElement>() {
                 Ok(false) // regular elements are not selectable
             } else {
                 Err(())

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,16 +9,16 @@
 #include "nsCOMPtr.h"
 #include "nsIContent.h"
 #include "nsPresContext.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsBoxLayoutState.h"
 #include "nsIScrollableFrame.h"
 #include "nsIRootBox.h"
 #include "nsMenuPopupFrame.h"
 
 nsIFrame*
-NS_NewPopupSetFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewPopupSetFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsPopupSetFrame(aContext);
+  return new (aPresShell) nsPopupSetFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsPopupSetFrame)
@@ -101,9 +102,9 @@ nsPopupSetFrame::GetChildLists(nsTArray<ChildList>* aLists) const
 }
 
 void
-nsPopupSetFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsPopupSetFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  mPopupList.DestroyFramesFrom(aDestructRoot);
+  mPopupList.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
 
   // Normally the root box is our grandparent, but in case of wrapping
   // it can be our great-grandparent.
@@ -112,7 +113,7 @@ nsPopupSetFrame::DestroyFrom(nsIFrame* aDestructRoot)
     rootBox->SetPopupSetFrame(nullptr);
   }
 
-  nsBoxFrame::DestroyFrom(aDestructRoot);
+  nsBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 NS_IMETHODIMP

@@ -9,8 +9,6 @@
 #include "Role.h"
 
 #include "mozilla/FloatingPoint.h"
-#include "nsIDOMHTMLFormElement.h"
-#include "nsIDOMXULElement.h"
 #include "nsIDOMXULControlElement.h"
 
 using namespace mozilla::a11y;
@@ -40,7 +38,7 @@ ProgressMeterAccessible<Max>::NativeState()
 
   // An undetermined progressbar (i.e. without a value) has a mixed state.
   nsAutoString attrValue;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::value, attrValue);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::value, attrValue);
 
   if (attrValue.IsEmpty())
     state |= states::MIXED;
@@ -94,7 +92,7 @@ ProgressMeterAccessible<Max>::MaxValue() const
     return value;
 
   nsAutoString strValue;
-  if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::max, strValue)) {
+  if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::max, strValue)) {
     nsresult result = NS_OK;
     value = strValue.ToDouble(&result);
     if (NS_SUCCEEDED(result))
@@ -129,7 +127,7 @@ ProgressMeterAccessible<Max>::CurValue() const
     return value;
 
   nsAutoString attrValue;
-  if (!mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::value, attrValue))
+  if (!mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::value, attrValue))
     return UnspecifiedNaN<double>();
 
   nsresult error = NS_OK;

@@ -40,9 +40,6 @@ public:
   // Enqueued messages in background channel will be flushed.
   void OnStartRequestReceived();
 
-  // Callback while failed to create PBackground IPC channel.
-  void OnBackgroundChannelCreationFailed();
-
 protected:
   IPCResult RecvOnTransportAndData(const nsresult& aChannelStatus,
                                    const nsresult& aTransportStatus,
@@ -51,7 +48,9 @@ protected:
                                    const nsCString& aData) override;
 
   IPCResult RecvOnStopRequest(const nsresult& aChannelStatus,
-                              const ResourceTimingStruct& aTiming) override;
+                              const ResourceTimingStruct& aTiming,
+                              const TimeStamp& aLastActiveTabOptHit,
+                              const nsHttpHeaderArray& aResponseTrailers) override;
 
   IPCResult RecvOnProgress(const int64_t& aProgress,
                            const int64_t& aProgressMax) override;

@@ -8,11 +8,14 @@
 #define WaveDecoder_h_
 
 #include "PlatformDecoderModule.h"
-#include "mp4_demuxer/ByteReader.h"
 
 namespace mozilla {
 
-class WaveDataDecoder : public MediaDataDecoder
+DDLoggedTypeDeclNameAndBase(WaveDataDecoder, MediaDataDecoder);
+
+class WaveDataDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<WaveDataDecoder>
 {
 public:
   explicit WaveDataDecoder(const CreateDecoderParams& aParams);
@@ -25,9 +28,9 @@ public:
   RefPtr<DecodePromise> Drain() override;
   RefPtr<FlushPromise> Flush() override;
   RefPtr<ShutdownPromise> Shutdown() override;
-  const char* GetDescriptionName() const override
+  nsCString GetDescriptionName() const override
   {
-    return "wave audio decoder";
+    return NS_LITERAL_CSTRING("wave audio decoder");
   }
 
 private:

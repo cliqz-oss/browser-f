@@ -11,6 +11,8 @@
 #include "AudioStreamTrack.h"
 #include "nsIDocument.h"
 #include "mozilla/CORSMode.h"
+#include "nsContentUtils.h"
+#include "nsIScriptError.h"
 
 namespace mozilla {
 namespace dom {
@@ -28,7 +30,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(MediaStreamAudioSourceNode, Au
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mInputTrack)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(MediaStreamAudioSourceNode)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(MediaStreamAudioSourceNode)
 NS_INTERFACE_MAP_END_INHERITING(AudioNode)
 
 NS_IMPL_ADDREF_INHERITED(MediaStreamAudioSourceNode, AudioNode)
@@ -53,6 +55,18 @@ MediaStreamAudioSourceNode::Create(AudioContext& aAudioContext,
   }
 
   if (aAudioContext.CheckClosed(aRv)) {
+    return nullptr;
+  }
+
+  if (aAudioContext.Graph() != aOptions.mMediaStream->GetPlaybackStream()->Graph()) {
+    nsCOMPtr<nsPIDOMWindowInner> pWindow = aAudioContext.GetParentObject();
+    nsIDocument* document = pWindow ? pWindow->GetExtantDoc() : nullptr;
+    nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
+                                    NS_LITERAL_CSTRING("Web Audio"),
+                                    document,
+                                    nsContentUtils::eDOM_PROPERTIES,
+                                    "MediaStreamAudioSourceNodeDifferentRate");
+    aRv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
     return nullptr;
   }
 
@@ -85,7 +99,7 @@ MediaStreamAudioSourceNode::Init(DOMMediaStream* aMediaStream, ErrorResult& aRv)
   mInputStream = aMediaStream;
   AudioNodeEngine* engine = new MediaStreamAudioSourceNodeEngine(this);
   mStream = AudioNodeExternalInputStream::Create(graph, engine);
-  mInputStream->AddConsumerToKeepAlive(static_cast<nsIDOMEventTarget*>(this));
+  mInputStream->AddConsumerToKeepAlive(ToSupports(this));
 
   mInputStream->RegisterTrackListener(this);
   AttachToFirstTrack(mInputStream);

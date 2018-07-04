@@ -44,7 +44,7 @@ const UPDATE_PORT = 50625;
 const ADDRESS = "224.0.0.115";
 const REPLY_TIMEOUT = 5000;
 
-const { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm", {});
+const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "converter", () => {
   let conv = Cc["@mozilla.org/intl/scriptableunicodeconverter"]
@@ -55,11 +55,6 @@ XPCOMUtils.defineLazyGetter(this, "converter", () => {
 
 XPCOMUtils.defineLazyGetter(this, "sysInfo", () => {
   return Cc["@mozilla.org/system-info;1"].getService(Ci.nsIPropertyBag2);
-});
-
-XPCOMUtils.defineLazyGetter(this, "libcutils", function () {
-  let { libcutils } = Cu.import("resource://gre/modules/systemlibs.js", {});
-  return libcutils;
 });
 
 var logging = Services.prefs.getBoolPref("devtools.discovery.log");
@@ -95,7 +90,7 @@ Transport.prototype = {
    * @param port integer
    *        UDP port to send the message to
    */
-  send: function (object, port) {
+  send: function(object, port) {
     if (logging) {
       log("Send to " + port + ":\n" + JSON.stringify(object, null, 2));
     }
@@ -108,13 +103,13 @@ Transport.prototype = {
     }
   },
 
-  destroy: function () {
+  destroy: function() {
     this.socket.close();
   },
 
   // nsIUDPSocketListener
 
-  onPacketReceived: function (socket, message) {
+  onPacketReceived: function(socket, message) {
     let messageData = message.data;
     let object = JSON.parse(messageData);
     object.from = message.fromAddr.address;
@@ -130,7 +125,7 @@ Transport.prototype = {
     this.emit("message", object);
   },
 
-  onStopListening: function () {}
+  onStopListening: function() {}
 
 };
 
@@ -149,7 +144,7 @@ LocalDevice.UNKNOWN = "unknown";
 
 LocalDevice.prototype = {
 
-  _get: function () {
+  _get: function() {
     // Without Settings API, just generate a name and stop, since the value
     // can't be persisted.
     this._generate();
@@ -159,19 +154,8 @@ LocalDevice.prototype = {
    * Generate a new device name from various platform-specific properties.
    * Triggers the |name| setter to persist if needed.
    */
-  _generate: function () {
-    if (Services.appinfo.widgetToolkit == "gonk") {
-      // For Firefox OS devices, create one from the device name plus a little
-      // randomness.  The goal is just to distinguish devices in an office
-      // environment where many people may have the same device model for
-      // testing purposes (which would otherwise all report the same name).
-      let name = libcutils.property_get("ro.product.device");
-      // Pick a random number from [0, 2^32)
-      let randomID = Math.floor(Math.random() * Math.pow(2, 32));
-      // To hex and zero pad
-      randomID = ("00000000" + randomID.toString(16)).slice(-8);
-      this.name = name + "-" + randomID;
-    } else if (Services.appinfo.widgetToolkit == "android") {
+  _generate: function() {
+    if (Services.appinfo.widgetToolkit == "android") {
       // For Firefox for Android, use the device's model name.
       // TODO: Bug 1180997: Find the right way to expose an editable name
       this.name = sysInfo.get("device");
@@ -225,7 +209,7 @@ Discovery.prototype = {
    * @param info object
    *        Arbitrary data about the service to announce to scanning devices
    */
-  addService: function (service, info) {
+  addService: function(service, info) {
     log("ADDING LOCAL SERVICE");
     if (Object.keys(this.localServices).length === 0) {
       this._startListeningForScan();
@@ -238,7 +222,7 @@ Discovery.prototype = {
    * @param service string
    *        Name of the service
    */
-  removeService: function (service) {
+  removeService: function(service) {
     delete this.localServices[service];
     if (Object.keys(this.localServices).length === 0) {
       this._stopListeningForScan();
@@ -248,7 +232,7 @@ Discovery.prototype = {
   /**
    * Scan for service updates from other devices.
    */
-  scan: function () {
+  scan: function() {
     this._startListeningForUpdate();
     this._waitForReplies();
     // TODO Bug 1027457: Use timer to debounce
@@ -258,7 +242,7 @@ Discovery.prototype = {
   /**
    * Get a list of all remote devices currently offering some service.:w
    */
-  getRemoteDevices: function () {
+  getRemoteDevices: function() {
     let devices = new Set();
     for (let service in this.remoteServices) {
       for (let device in this.remoteServices[service]) {
@@ -271,7 +255,7 @@ Discovery.prototype = {
   /**
    * Get a list of all remote devices currently offering a particular service.
    */
-  getRemoteDevicesWithService: function (service) {
+  getRemoteDevicesWithService: function(service) {
     let devicesWithService = this.remoteServices[service] || {};
     return Object.keys(devicesWithService);
   },
@@ -280,12 +264,12 @@ Discovery.prototype = {
    * Get service info (any details registered by the remote device) for a given
    * service on a device.
    */
-  getRemoteService: function (service, device) {
+  getRemoteService: function(service, device) {
     let devicesWithService = this.remoteServices[service] || {};
     return devicesWithService[device];
   },
 
-  _waitForReplies: function () {
+  _waitForReplies: function() {
     clearTimeout(this._expectingReplies.timer);
     this._expectingReplies.from = new Set(this.getRemoteDevices());
     this._expectingReplies.timer =
@@ -296,7 +280,7 @@ Discovery.prototype = {
     return this._factories.Transport;
   },
 
-  _startListeningForScan: function () {
+  _startListeningForScan: function() {
     if (this._transports.scan) {
       // Already listening
       return;
@@ -306,7 +290,7 @@ Discovery.prototype = {
     this._transports.scan.on("message", this._onRemoteScan);
   },
 
-  _stopListeningForScan: function () {
+  _stopListeningForScan: function() {
     if (!this._transports.scan) {
       // Not listening
       return;
@@ -316,7 +300,7 @@ Discovery.prototype = {
     this._transports.scan = null;
   },
 
-  _startListeningForUpdate: function () {
+  _startListeningForUpdate: function() {
     if (this._transports.update) {
       // Already listening
       return;
@@ -326,7 +310,7 @@ Discovery.prototype = {
     this._transports.update.on("message", this._onRemoteUpdate);
   },
 
-  _stopListeningForUpdate: function () {
+  _stopListeningForUpdate: function() {
     if (!this._transports.update) {
       // Not listening
       return;
@@ -336,7 +320,7 @@ Discovery.prototype = {
     this._transports.update = null;
   },
 
-  _restartListening: function () {
+  _restartListening: function() {
     if (this._transports.scan) {
       this._stopListeningForScan();
       this._startListeningForScan();
@@ -361,7 +345,7 @@ Discovery.prototype = {
     return null;
   },
 
-  _sendStatusTo: function (port) {
+  _sendStatusTo: function(port) {
     let status = {
       device: this.device.name,
       services: this.localServices
@@ -369,13 +353,13 @@ Discovery.prototype = {
     this._outgoingTransport.send(status, port);
   },
 
-  _onRemoteScan: function () {
+  _onRemoteScan: function() {
     // Send my own status in response
     log("GOT SCAN REQUEST");
     this._sendStatusTo(UPDATE_PORT);
   },
 
-  _onRemoteUpdate: function (e, update) {
+  _onRemoteUpdate: function(update) {
     log("GOT REMOTE UPDATE");
 
     let remoteDevice = update.device;
@@ -431,7 +415,7 @@ Discovery.prototype = {
     }
   },
 
-  _purgeMissingDevices: function () {
+  _purgeMissingDevices: function() {
     log("PURGING MISSING DEVICES");
     for (let service in this.remoteServices) {
       let devicesWithService = this.remoteServices[service];

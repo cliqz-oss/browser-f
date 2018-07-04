@@ -70,12 +70,7 @@ pref("browser.cache.disk.max_entry_size", 4096); // kilobytes
 pref("browser.cache.disk.smart_size.enabled", true);
 pref("browser.cache.disk.smart_size.first_run", true);
 
-#ifdef MOZ_PKG_SPECIAL
-// low memory devices
-pref("browser.cache.memory.enable", false);
-#else
 pref("browser.cache.memory.enable", true);
-#endif
 pref("browser.cache.memory.capacity", 1024); // kilobytes
 
 pref("browser.cache.memory_limit", 5120); // 5 MB
@@ -88,6 +83,9 @@ pref("browser.offline-apps.notify", true);
 pref("browser.cache.offline.enable", true);
 pref("browser.cache.offline.capacity", 5120); // kilobytes
 pref("offline-apps.quota.warn", 1024); // kilobytes
+
+// Automatically shrink-to-fit image documents.
+pref("browser.enable_automatic_image_resizing", true);
 
 // cache compression turned off for now - see bug #715198
 pref("browser.cache.compression_level", 0);
@@ -124,9 +122,6 @@ pref("network.predictor.preserve", 50); // percentage of predictor data to keep 
 // Use JS mDNS as a fallback
 pref("network.mdns.use_js_fallback", false);
 
-/* history max results display */
-pref("browser.display.history.maxresults", 100);
-
 /* How many times should have passed before the remote tabs list is refreshed */
 pref("browser.display.remotetabs.timeout", 10);
 
@@ -144,6 +139,10 @@ pref("browser.sessionstore.max_tabs_undo", 10);
 pref("browser.sessionstore.max_resumed_crashes", 2);
 pref("browser.sessionstore.privacy_level", 0); // saving data: 0 = all, 1 = unencrypted sites, 2 = never
 pref("browser.sessionstore.debug_logging", false);
+
+// Download protection lists are not available on Fennec.
+pref("urlclassifier.downloadAllowTable", "");
+pref("urlclassifier.downloadBlockTable", "");
 
 /* these should help performance */
 pref("mozilla.widget.force-24bpp", true);
@@ -180,14 +179,15 @@ pref("browser.formfill.enable", true);
 pref("layout.spellcheckDefault", 0);
 
 /* new html5 forms */
-pref("dom.experimental_forms", true);
-pref("dom.forms.number", true);
+pref("dom.forms.datetime", true);
+pref("dom.forms.datetime.others", true);
 
 /* extension manager and xpinstall */
 pref("xpinstall.whitelist.directRequest", false);
 pref("xpinstall.whitelist.fileRequest", false);
 pref("xpinstall.whitelist.add", "https://addons.mozilla.org,https://testpilot.firefox.com");
 
+pref("extensions.langpacks.signatures.required", true);
 pref("xpinstall.signatures.required", true);
 
 pref("extensions.enabledScopes", 1);
@@ -196,11 +196,9 @@ pref("extensions.autoupdate.interval", 86400);
 pref("extensions.update.enabled", true);
 pref("extensions.update.interval", 86400);
 pref("extensions.dss.enabled", false);
-pref("extensions.dss.switchPending", false);
 pref("extensions.ignoreMTimeChanges", false);
 pref("extensions.logging.enabled", false);
 pref("extensions.hideInstallButton", true);
-pref("extensions.showMismatchUI", false);
 pref("extensions.hideUpdateButton", false);
 pref("extensions.strictCompatibility", false);
 pref("extensions.minCompatibleAppVersion", "11.0");
@@ -208,20 +206,12 @@ pref("extensions.minCompatibleAppVersion", "11.0");
 pref("extensions.update.url", "https://versioncheck.addons.mozilla.org/update/VersionCheck.php?reqVersion=%REQ_VERSION%&id=%ITEM_ID%&version=%ITEM_VERSION%&maxAppVersion=%ITEM_MAXAPPVERSION%&status=%ITEM_STATUS%&appID=%APP_ID%&appVersion=%APP_VERSION%&appOS=%APP_OS%&appABI=%APP_ABI%&locale=%APP_LOCALE%&currentAppVersion=%CURRENT_APP_VERSION%&updateType=%UPDATE_TYPE%&compatMode=%COMPATIBILITY_MODE%");
 pref("extensions.update.background.url", "https://versioncheck-bg.addons.mozilla.org/update/VersionCheck.php?reqVersion=%REQ_VERSION%&id=%ITEM_ID%&version=%ITEM_VERSION%&maxAppVersion=%ITEM_MAXAPPVERSION%&status=%ITEM_STATUS%&appID=%APP_ID%&appVersion=%APP_VERSION%&appOS=%APP_OS%&appABI=%APP_ABI%&locale=%APP_LOCALE%&currentAppVersion=%CURRENT_APP_VERSION%&updateType=%UPDATE_TYPE%&compatMode=%COMPATIBILITY_MODE%");
 
-pref("extensions.hotfix.id", "firefox-android-hotfix@mozilla.org");
-pref("extensions.hotfix.cert.checkAttributes", true);
-pref("extensions.hotfix.certs.1.sha1Fingerprint", "91:53:98:0C:C1:86:DF:47:8F:35:22:9E:11:C9:A7:31:04:49:A1:AA");
-
 /* preferences for the Get Add-ons pane */
 pref("extensions.getAddons.cache.enabled", true);
-pref("extensions.getAddons.maxResults", 15);
-pref("extensions.getAddons.recommended.browseURL", "https://addons.mozilla.org/%LOCALE%/android/recommended/");
-pref("extensions.getAddons.recommended.url", "https://services.addons.mozilla.org/%LOCALE%/android/api/%API_VERSION%/list/featured/all/%MAX_RESULTS%/%OS%/%VERSION%");
 pref("extensions.getAddons.search.browseURL", "https://addons.mozilla.org/%LOCALE%/android/search?q=%TERMS%&platform=%OS%&appver=%VERSION%");
-pref("extensions.getAddons.search.url", "https://services.addons.mozilla.org/%LOCALE%/android/api/%API_VERSION%/search/%TERMS%/all/%MAX_RESULTS%/%OS%/%VERSION%/%COMPATIBILITY_MODE%");
 pref("extensions.getAddons.browseAddons", "https://addons.mozilla.org/%LOCALE%/android/");
-pref("extensions.getAddons.get.url", "https://services.addons.mozilla.org/%LOCALE%/android/api/%API_VERSION%/search/guid:%IDS%?src=mobile&appOS=%OS%&appVersion=%VERSION%");
-pref("extensions.getAddons.getWithPerformance.url", "https://services.addons.mozilla.org/%LOCALE%/android/api/%API_VERSION%/search/guid:%IDS%?src=mobile&appOS=%OS%&appVersion=%VERSION%&tMain=%TIME_MAIN%&tFirstPaint=%TIME_FIRST_PAINT%&tSessionRestored=%TIME_SESSION_RESTORED%");
+pref("extensions.getAddons.get.url", "https://services.addons.mozilla.org/api/v3/addons/search/?guid=%IDS%&lang=%LOCALE%");
+pref("extensions.getAddons.compatOverides.url", "https://services.addons.mozilla.org/api/v3/addons/compat-override/?guid=%IDS%&lang=%LOCALE%");
 
 /* preference for the locale picker */
 pref("extensions.getLocales.get.url", "");
@@ -230,9 +220,14 @@ pref("extensions.compatability.locales.buildid", "0");
 /* Don't let XPIProvider install distribution add-ons; we do our own thing on mobile. */
 pref("extensions.installDistroAddons", false);
 
+pref("extensions.webextPermissionPrompts", true);
+pref("extensions.webextOptionalPermissionPrompts", true);
+
 // Add-on content security policies.
 pref("extensions.webextensions.base-content-security-policy", "script-src 'self' https://* moz-extension: blob: filesystem: 'unsafe-eval' 'unsafe-inline'; object-src 'self' https://* moz-extension: blob: filesystem:;");
 pref("extensions.webextensions.default-content-security-policy", "script-src 'self'; object-src 'self';");
+
+pref("extensions.legacy.enabled", false);
 
 /* block popups by default, and notify the user about blocked popups */
 pref("dom.disable_open_during_load", true);
@@ -328,8 +323,8 @@ pref("gfx.displayport.strategy_pb.threshold", -1); // velocity threshold in inch
 // Allow 24-bit colour when the hardware supports it
 pref("gfx.android.rgb16.force", false);
 
-// Allow GLContexts to be attached/detached from SurfaceTextures
-pref("gfx.SurfaceTexture.detach.enabled", true);
+// Use SurfaceTextures as preferred backend for TextureClient/Host
+pref("gfx.use-surfacetexture-textures", false);
 
 // don't allow JS to move and resize existing windows
 pref("dom.disable_window_move_resize", true);
@@ -372,24 +367,7 @@ pref("geo.enabled", true);
 //pref("content.sink.perf_deflect_count", 1000000);
 //pref("content.sink.perf_parse_time", 50000000);
 
-// Disable the JS engine's gc on memory pressure, since we do one in the mobile
-// browser (bug 669346).
-pref("javascript.options.gc_on_memory_pressure", false);
-
-#ifdef MOZ_PKG_SPECIAL
-// low memory devices
-pref("javascript.options.mem.gc_high_frequency_heap_growth_max", 120);
-pref("javascript.options.mem.gc_high_frequency_heap_growth_min", 120);
-pref("javascript.options.mem.gc_high_frequency_high_limit_mb", 40);
-pref("javascript.options.mem.gc_high_frequency_low_limit_mb", 10);
-pref("javascript.options.mem.gc_low_frequency_heap_growth", 120);
-pref("javascript.options.mem.high_water_mark", 16);
-pref("javascript.options.mem.gc_allocation_threshold_mb", 3);
-pref("javascript.options.mem.gc_min_empty_chunk_count", 1);
-pref("javascript.options.mem.gc_max_empty_chunk_count", 2);
-#else
 pref("javascript.options.mem.high_water_mark", 32);
-#endif
 
 pref("dom.max_chrome_script_run_time", 0); // disable slow script dialog for chrome
 pref("dom.max_script_run_time", 20);
@@ -406,20 +384,15 @@ pref("font.size.inflation.minTwips", 0);
 // When true, zooming will be enabled on all sites, even ones that declare user-scalable=no.
 pref("browser.ui.zoom.force-user-scalable", false);
 
+// With the typical screen sizes on mobile devices, we want to wrap page sources by default.
+pref("view_source.wrap_long_lines", true);
+
 // When removing this Nightly flag, also remember to remove the flags surrounding this feature
 // in GeckoPreferences and BrowserApp (see bug 1245930).
 #ifdef NIGHTLY_BUILD
 pref("ui.bookmark.mobilefolder.enabled", true);
 #else
 pref("ui.bookmark.mobilefolder.enabled", false);
-#endif
-
-#if MOZ_UPDATE_CHANNEL == nightly
-pref("mma.enabled", true);
-#elif MOZ_UPDATE_CHANNEL == beta
-pref("mma.enabled", true);
-#else
-pref("mma.enabled", true);
 #endif
 
 
@@ -560,6 +533,7 @@ pref("apz.fling_curve_threshold_inches_per_ms", "0.01");
 // apz.fling_friction and apz.fling_stopped_threshold are currently ignored by Fennec.
 pref("apz.fling_friction", "0.004");
 pref("apz.fling_stopped_threshold", "0.0");
+pref("apz.frame_delay.enabled", true);
 pref("apz.max_velocity_inches_per_ms", "0.07");
 pref("apz.overscroll.enabled", true);
 pref("apz.second_tap_tolerance", "0.3");
@@ -589,11 +563,6 @@ pref("browser.meta_refresh_when_inactive.disabled", true);
 // prevent video elements from preloading too much data
 pref("media.preload.default", 1); // default to preload none
 pref("media.preload.auto", 2);    // preload metadata if preload=auto
-pref("media.cache_size", 32768);    // 32MB media cache
-// Try to save battery by not resuming reading from a connection until we fall
-// below 10s of buffered data.
-pref("media.cache_resume_threshold", 10);
-pref("media.cache_readahead_limit", 30);
 // On mobile we'll throttle the download once the readahead_limit is hit,
 // even if the download is slow. This is to preserve battery and data.
 pref("media.throttle-regardless-of-download-rate", true);
@@ -610,36 +579,23 @@ pref("media.video-queue.default-size", 3);
 // (the most recent) image data.
 pref("media.video-queue.send-to-compositor-size", 1);
 
-// Allow to check if the decoder supports recycling only on Fennec nightly build.
-pref("media.decoder.recycle.enabled", true);
-
-// Enable the MediaCodec PlatformDecoderModule by default.
-pref("media.android-media-codec.enabled", true);
-pref("media.android-media-codec.preferred", true);
-
 // Enable MSE
 pref("media.mediasource.enabled", true);
 
 pref("media.mediadrm-widevinecdm.visible", true);
 
-#ifdef NIGHTLY_BUILD
-// Enable EME (Encrypted Media Extensions)
-pref("media.eme.enabled", true);
-#endif
-
-#ifdef NIGHTLY_BUILD
-pref("media.hls.enabled", true);
-#endif
-
-// Whether to suspend decoding of videos in background tabs.
-pref("media.suspend-bkgnd-video.enabled", true);
-
 // optimize images memory usage
 pref("image.downscale-during-decode.enabled", true);
 
+// The download protection UI is not implemented yet (bug 1239094).
 pref("browser.safebrowsing.downloads.enabled", false);
 
-pref("browser.safebrowsing.id", @MOZ_APP_UA_NAME@);
+// The application reputation lists are not available on Android.
+pref("urlclassifier.downloadAllowTable", "");
+pref("urlclassifier.downloadBlockTable", "");
+
+// The Potentially Harmful Apps list replaces the malware one on Android.
+pref("urlclassifier.malwareTable", "goog-harmful-proto,goog-unwanted-proto,test-harmful-simple,test-malware-simple,test-unwanted-simple");
 
 // True if this is the first time we are showing about:firstrun
 pref("browser.firstrun.show.uidiscovery", true);
@@ -719,9 +675,6 @@ pref("network.tickle-wifi.enabled", true);
 // Mobile manages state by autodetection
 pref("network.manage-offline-status", true);
 
-// increase the timeout clamp for background tabs to 15 minutes
-pref("dom.min_background_timeout_value", 900000);
-
 // Media plugins for libstagefright playback on android
 pref("media.plugins.enabled", true);
 
@@ -734,10 +687,6 @@ pref("media.stagefright.omxcodec.flags", 0);
 // Coalesce touch events to prevent them from flooding the event queue
 pref("dom.event.touch.coalescing.enabled", false);
 
-// On memory pressure, release dirty but unused pages held by jemalloc
-// back to the system.
-pref("memory.free_dirty_pages", true);
-
 pref("layout.framevisibility.numscrollportwidths", 1);
 pref("layout.framevisibility.numscrollportheights", 1);
 
@@ -748,12 +697,6 @@ pref("browser.chrome.dynamictoolbar", true);
 
 // Hide common parts of URLs like "www." or "http://"
 pref("browser.urlbar.trimURLs", true);
-
-#ifdef MOZ_PKG_SPECIAL
-// Disable webgl on ARMv6 because running the reftests takes
-// too long for some reason (bug 843738)
-pref("webgl.disabled", true);
-#endif
 
 // initial web feed readers list
 pref("browser.contentHandlers.types.0.title", "chrome://browser/locale/region.properties");
@@ -882,7 +825,10 @@ pref("browser.tabs.showAudioPlayingIcon", true);
 
 pref("dom.serviceWorkers.enabled", true);
 pref("dom.serviceWorkers.interception.enabled", true);
-pref("dom.serviceWorkers.openWindow.enabled", true);
+
+// Allow service workers to open windows for a longer period after a notification
+// click on mobile.  This is to account for some devices being quite slow.
+pref("dom.serviceWorkers.disable_open_click_delay", 5000);
 
 pref("dom.push.debug", false);
 // The upstream autopush endpoint must have the Google API key corresponding to
@@ -931,3 +877,6 @@ pref("javascript.options.native_regexp", false);
 
 // Ask for permission when enumerating WebRTC devices.
 pref("media.navigator.permission.device", true);
+
+// Allow system add-on updates
+pref("extensions.systemAddon.update.url", "https://aus5.mozilla.org/update/3/SystemAddons/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");

@@ -13,7 +13,6 @@
 #include "mozilla/TimeStamp.h"
 
 class nsILoadContextInfo;
-class nsACString;
 
 namespace mozilla {
 namespace net {
@@ -41,7 +40,7 @@ class ValidityPair {
 public:
   ValidityPair(uint32_t aOffset, uint32_t aLen);
 
-  ValidityPair& operator=(const ValidityPair& aOther);
+  ValidityPair& operator=(const ValidityPair& aOther) = default;
 
   // Returns true when two pairs can be merged, i.e. they do overlap or the one
   // ends exactly where the other begins.

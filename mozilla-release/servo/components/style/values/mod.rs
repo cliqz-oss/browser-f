@@ -9,16 +9,22 @@
 #![deny(missing_docs)]
 
 use Atom;
-pub use cssparser::{RGBA, Token, Parser, serialize_identifier, BasicParseError, CowRcStr};
+pub use cssparser::{serialize_identifier, CowRcStr, Parser, SourceLocation, Token, RGBA};
 use parser::{Parse, ParserContext};
-use selectors::parser::SelectorParseError;
-use std::ascii::AsciiExt;
-use std::fmt::{self, Debug};
+use selectors::parser::SelectorParseErrorKind;
+use std::fmt::{self, Debug, Write};
 use std::hash;
-use style_traits::{ToCss, ParseError, StyleParseError};
+use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
+use values::distance::{ComputeSquaredDistance, SquaredDistance};
+
+#[cfg(feature = "servo")]
+pub use servo::url::CssUrl;
+#[cfg(feature = "gecko")]
+pub use gecko::url::CssUrl;
 
 pub mod animated;
 pub mod computed;
+pub mod distance;
 pub mod generics;
 pub mod specified;
 
@@ -28,30 +34,68 @@ pub type CSSFloat = f32;
 /// A CSS integer value.
 pub type CSSInteger = i32;
 
-/// The default font size.
-pub const FONT_MEDIUM_PX: i32 = 16;
-
 define_keyword_type!(None_, "none");
 define_keyword_type!(Auto, "auto");
 define_keyword_type!(Normal, "normal");
 
+/// Serialize an identifier which is represented as an atom.
+#[cfg(feature = "gecko")]
+pub fn serialize_atom_identifier<W>(ident: &Atom, dest: &mut W) -> fmt::Result
+where
+    W: Write,
+{
+    ident.with_str(|s| serialize_identifier(s, dest))
+}
+
+/// Serialize an identifier which is represented as an atom.
+#[cfg(feature = "servo")]
+pub fn serialize_atom_identifier<Static, W>(
+    ident: &::string_cache::Atom<Static>,
+    dest: &mut W,
+) -> fmt::Result
+where
+    Static: ::string_cache::StaticAtomSet,
+    W: Write,
+{
+    serialize_identifier(&ident, dest)
+}
+
+/// Serialize a normalized value into percentage.
+pub fn serialize_percentage<W>(value: CSSFloat, dest: &mut CssWriter<W>) -> fmt::Result
+where
+    W: Write,
+{
+    (value * 100.).to_css(dest)?;
+    dest.write_str("%")
+}
+
 /// Convenience void type to disable some properties and values through types.
-#[cfg_attr(feature = "servo", derive(Deserialize, HeapSizeOf, Serialize))]
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue, ToCss)]
+#[cfg_attr(feature = "servo", derive(Deserialize, MallocSizeOf, Serialize))]
+#[derive(Clone, Copy, Debug, PartialEq, SpecifiedValueInfo, ToAnimatedValue, ToComputedValue, ToCss)]
 pub enum Impossible {}
+
+// FIXME(nox): This should be derived but the derive code cannot cope
+// with uninhabited enums.
+impl ComputeSquaredDistance for Impossible {
+    #[inline]
+    fn compute_squared_distance(&self, _other: &Self) -> Result<SquaredDistance, ()> {
+        match *self {}
+    }
+}
 
 impl Parse for Impossible {
     fn parse<'i, 't>(
         _context: &ParserContext,
-        _input: &mut Parser<'i, 't>)
-    -> Result<Self, ParseError<'i>> {
-        Err(StyleParseError::UnspecifiedError.into())
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
     }
 }
 
 /// A struct representing one of two kinds of values.
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Copy, HasViewportPercentage, PartialEq, ToAnimatedValue, ToComputedValue, ToCss)]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, MallocSizeOf, PartialEq,
+         SpecifiedValueInfo, ToAnimatedValue, ToAnimatedZero, ToComputedValue,
+         ToCss)]
 pub enum Either<A, B> {
     /// The first value.
     First(A),
@@ -69,8 +113,10 @@ impl<A: Debug, B: Debug> Debug for Either<A, B> {
 }
 
 impl<A: Parse, B: Parse> Parse for Either<A, B> {
-    fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                     -> Result<Either<A, B>, ParseError<'i>> {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Either<A, B>, ParseError<'i>> {
         if let Ok(v) = input.try(|i| A::parse(context, i)) {
             Ok(Either::First(v))
         } else {
@@ -79,23 +125,27 @@ impl<A: Parse, B: Parse> Parse for Either<A, B> {
     }
 }
 
-/// https://drafts.csswg.org/css-values-4/#custom-idents
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+/// <https://drafts.csswg.org/css-values-4/#custom-idents>
+#[derive(Clone, Debug, Eq, Hash, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue)]
 pub struct CustomIdent(pub Atom);
 
 impl CustomIdent {
     /// Parse an already-tokenizer identifier
-    pub fn from_ident<'i>(ident: &CowRcStr<'i>, excluding: &[&str]) -> Result<Self, ParseError<'i>> {
+    pub fn from_ident<'i>(
+        location: SourceLocation,
+        ident: &CowRcStr<'i>,
+        excluding: &[&str],
+    ) -> Result<Self, ParseError<'i>> {
         let valid = match_ignore_ascii_case! { ident,
             "initial" | "inherit" | "unset" | "default" => false,
             _ => true
         };
         if !valid {
-            return Err(SelectorParseError::UnexpectedIdent(ident.clone()).into());
+            return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(ident.clone())));
         }
         if excluding.iter().any(|s| ident.eq_ignore_ascii_case(s)) {
-            Err(StyleParseError::UnspecifiedError.into())
+            Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         } else {
             Ok(CustomIdent(Atom::from(ident.as_ref())))
         }
@@ -103,14 +153,16 @@ impl CustomIdent {
 }
 
 impl ToCss for CustomIdent {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-        serialize_identifier(&self.0.to_string(), dest)
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        serialize_atom_identifier(&self.0, dest)
     }
 }
 
-/// https://drafts.csswg.org/css-animations/#typedef-keyframes-name
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+/// <https://drafts.csswg.org/css-animations/#typedef-keyframes-name>
+#[derive(Clone, Debug, MallocSizeOf, SpecifiedValueInfo, ToComputedValue)]
 pub enum KeyframesName {
     /// <custom-ident>
     Ident(CustomIdent),
@@ -119,13 +171,25 @@ pub enum KeyframesName {
 }
 
 impl KeyframesName {
-    /// https://drafts.csswg.org/css-animations/#dom-csskeyframesrule-name
+    /// <https://drafts.csswg.org/css-animations/#dom-csskeyframesrule-name>
     pub fn from_ident(value: &str) -> Self {
-        let custom_ident = CustomIdent::from_ident(&value.into(), &["none"]).ok();
+        let location = SourceLocation { line: 0, column: 0 };
+        let custom_ident = CustomIdent::from_ident(location, &value.into(), &["none"]).ok();
         match custom_ident {
             Some(ident) => KeyframesName::Ident(ident),
             None => KeyframesName::QuotedString(value.into()),
         }
+    }
+
+    /// Create a new KeyframesName from Atom.
+    #[cfg(feature = "gecko")]
+    pub fn from_atom(atom: Atom) -> Self {
+        debug_assert_ne!(atom, atom!(""));
+
+        // FIXME: We might want to preserve <string>, but currently Gecko
+        // stores both of <custom-ident> and <string> into nsAtom, so
+        // we can't tell it.
+        KeyframesName::Ident(CustomIdent(atom))
     }
 
     /// The name as an Atom
@@ -146,36 +210,40 @@ impl PartialEq for KeyframesName {
 }
 
 impl hash::Hash for KeyframesName {
-    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: hash::Hasher,
+    {
         self.as_atom().hash(state)
     }
 }
 
 impl Parse for KeyframesName {
-    fn parse<'i, 't>(_context: &ParserContext, input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
-        match input.next() {
-            Ok(&Token::Ident(ref s)) => Ok(KeyframesName::Ident(CustomIdent::from_ident(s, &["none"])?)),
-            Ok(&Token::QuotedString(ref s)) => Ok(KeyframesName::QuotedString(Atom::from(s.as_ref()))),
-            Ok(t) => Err(BasicParseError::UnexpectedToken(t.clone()).into()),
-            Err(e) => Err(e.into()),
+    fn parse<'i, 't>(
+        _context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        let location = input.current_source_location();
+        match *input.next()? {
+            Token::Ident(ref s) => Ok(KeyframesName::Ident(CustomIdent::from_ident(
+                location,
+                s,
+                &["none"],
+            )?)),
+            Token::QuotedString(ref s) => Ok(KeyframesName::QuotedString(Atom::from(s.as_ref()))),
+            ref t => Err(location.new_unexpected_token_error(t.clone())),
         }
     }
 }
 
 impl ToCss for KeyframesName {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
         match *self {
             KeyframesName::Ident(ref ident) => ident.to_css(dest),
             KeyframesName::QuotedString(ref atom) => atom.to_string().to_css(dest),
         }
     }
 }
-
-// A type for possible values for min- and max- flavors of width,
-// height, block-size, and inline-size.
-define_css_keyword_enum!(ExtremumLength:
-                         "-moz-max-content" => MaxContent,
-                         "-moz-min-content" => MinContent,
-                         "-moz-fit-content" => FitContent,
-                         "-moz-available" => FillAvailable);
-no_viewport_percentage!(ExtremumLength);

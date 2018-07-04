@@ -10,75 +10,72 @@
 
 var gDebuggee;
 var gClient;
-var gThreadClient;
 var gCallback;
 
 function run_test() {
-  run_test_with_server(DebuggerServer, function () {
+  do_test_pending();
+  run_test_with_server(DebuggerServer, function() {
     run_test_with_server(WorkerDebuggerServer, do_test_finished);
   });
-  do_test_pending();
 }
 
 function run_test_with_server(server, callback) {
   gCallback = callback;
   initTestDebuggerServer(server);
-  gDebuggee = addTestGlobal("test-stack", server);
+  gDebuggee = addTestGlobal("test-stepping", server);
   gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function () {
-    attachTestTabAndResume(gClient, "test-stack",
-                           function (response, tabClient, threadClient) {
-                             gThreadClient = threadClient;
-                             test_simple_stepping();
-                           });
-  });
+  gClient.connect(test_simple_stepping);
 }
 
-function test_simple_stepping() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
-    gThreadClient.addOneTimeListener("paused", function (event, packet) {
-      // Check the return value.
-      do_check_eq(packet.type, "paused");
-      do_check_eq(packet.frame.where.line, gDebuggee.line0 + 2);
-      do_check_eq(packet.why.type, "resumeLimit");
-      // Check that stepping worked.
-      do_check_eq(gDebuggee.a, undefined);
-      do_check_eq(gDebuggee.b, undefined);
+async function test_simple_stepping() {
+  const [attachResponse,, threadClient] = await attachTestTabAndResume(
+    gClient,
+    "test-stepping"
+  );
 
-      gThreadClient.addOneTimeListener("paused", function (event, packet) {
-        // Check the return value.
-        do_check_eq(packet.type, "paused");
-        do_check_eq(packet.frame.where.line, gDebuggee.line0 + 3);
-        do_check_eq(packet.why.type, "resumeLimit");
-        // Check that stepping worked.
-        do_check_eq(gDebuggee.a, 1);
-        do_check_eq(gDebuggee.b, undefined);
+  ok(!attachResponse.error, "Should not get an error attaching");
 
-        gThreadClient.addOneTimeListener("paused", function (event, packet) {
-          // Check the return value.
-          do_check_eq(packet.type, "paused");
-          // When leaving a stack frame the line number doesn't change.
-          do_check_eq(packet.frame.where.line, gDebuggee.line0 + 3);
-          do_check_eq(packet.why.type, "resumeLimit");
-          // Check that stepping worked.
-          do_check_eq(gDebuggee.a, 1);
-          do_check_eq(gDebuggee.b, 2);
+  dumpn("Evaluating test code and waiting for first debugger statement");
+  const dbgStmt = await executeOnNextTickAndWaitForPause(evaluateTestCode, gClient);
+  equal(dbgStmt.frame.where.line, 2, "Should be at debugger statement on line 2");
+  equal(gDebuggee.a, undefined);
+  equal(gDebuggee.b, undefined);
 
-          gThreadClient.resume(function () {
-            gClient.close().then(gCallback);
-          });
-        });
-        gThreadClient.stepIn();
-      });
-      gThreadClient.stepIn();
-    });
-    gThreadClient.stepIn();
-  });
+  const step1 = await stepIn(gClient, threadClient);
+  equal(step1.type, "paused");
+  equal(step1.why.type, "resumeLimit");
+  equal(step1.frame.where.line, 3);
+  equal(gDebuggee.a, undefined);
+  equal(gDebuggee.b, undefined);
 
+  const step3 = await stepIn(gClient, threadClient);
+  equal(step3.type, "paused");
+  equal(step3.why.type, "resumeLimit");
+  equal(step3.frame.where.line, 4);
+  equal(gDebuggee.a, 1);
+  equal(gDebuggee.b, undefined);
+
+  const step4 = await stepIn(gClient, threadClient);
+  equal(step4.type, "paused");
+  equal(step4.why.type, "resumeLimit");
+  equal(step4.frame.where.line, 4);
+  equal(gDebuggee.a, 1);
+  equal(gDebuggee.b, 2);
+
+  finishClient(gClient, gCallback);
+}
+
+function evaluateTestCode() {
   /* eslint-disable */
-  gDebuggee.eval("var line0 = Error().lineNumber;\n" +
-                 "debugger;\n" +   // line0 + 1
-                 "var a = 1;\n" +  // line0 + 2
-                 "var b = 2;\n");  // line0 + 3
-  /* eslint-enable */
+  Cu.evalInSandbox(
+    `                                   // 1
+    debugger;                           // 2
+    var a = 1;                          // 3
+    var b = 2;`,                        // 4
+    gDebuggee,
+    "1.8",
+    "test_stepping-01-test-code.js",
+    1
+  );
+  /* eslint-disable */
 }

@@ -19,7 +19,6 @@
 
 <!ENTITY responsiveDesignTool.label      "Bildschirmgrößen testen">
 <!ENTITY responsiveDesignTool.accesskey  "B">
-<!ENTITY responsiveDesignTool.commandkey "M">
 
 <!ENTITY eyedropper.label                "Pipette">
 <!ENTITY eyedropper.accesskey            "P">

@@ -6,7 +6,7 @@
 
 #include "mozilla/dom/MediaKeyMessageEvent.h"
 #include "mozilla/dom/MediaKeyMessageEventBinding.h"
-#include "js/GCAPI.h"
+#include "js/RootingAPI.h"
 #include "jsfriendapi.h"
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/PrimitiveConversions.h"
@@ -35,7 +35,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(MediaKeyMessageEvent, Event)
   mozilla::DropJSObjects(this);
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(MediaKeyMessageEvent)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(MediaKeyMessageEvent)
 NS_INTERFACE_MAP_END_INHERITING(Event)
 
 MediaKeyMessageEvent::MediaKeyMessageEvent(EventTarget* aOwner)

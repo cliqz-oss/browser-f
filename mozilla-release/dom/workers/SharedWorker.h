@@ -7,12 +7,15 @@
 #ifndef mozilla_dom_workers_sharedworker_h__
 #define mozilla_dom_workers_sharedworker_h__
 
-#include "Workers.h"
+#include "WorkerCommon.h"
 
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/DOMEventTargetHelper.h"
 
-class nsIDOMEvent;
+#ifdef XP_WIN
+#undef PostMessage
+#endif
+
 class nsPIDOMWindowInner;
 
 namespace mozilla {
@@ -21,24 +24,23 @@ class EventChainPreVisitor;
 namespace dom {
 class MessagePort;
 class StringOrWorkerOptions;
-}
-} // namespace mozilla
-
-BEGIN_WORKERS_NAMESPACE
-
-class RuntimeService;
 class WorkerPrivate;
+class Event;
+
+namespace workerinternals {
+class RuntimeService;
+}
 
 class SharedWorker final : public DOMEventTargetHelper
 {
-  friend class RuntimeService;
+  friend class workerinternals::RuntimeService;
 
   typedef mozilla::ErrorResult ErrorResult;
   typedef mozilla::dom::GlobalObject GlobalObject;
 
   RefPtr<WorkerPrivate> mWorkerPrivate;
   RefPtr<MessagePort> mMessagePort;
-  nsTArray<nsCOMPtr<nsIDOMEvent>> mFrozenEvents;
+  nsTArray<RefPtr<Event>> mFrozenEvents;
   bool mFrozen;
 
 public:
@@ -62,7 +64,7 @@ public:
   Thaw();
 
   void
-  QueueEvent(nsIDOMEvent* aEvent);
+  QueueEvent(Event* aEvent);
 
   void
   Close();
@@ -75,8 +77,7 @@ public:
   virtual JSObject*
   WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
-  virtual nsresult
-  GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
   WorkerPrivate*
   GetWorkerPrivate() const
@@ -99,6 +100,7 @@ private:
               const Sequence<JSObject*>& aTransferable, ErrorResult& aRv);
 };
 
-END_WORKERS_NAMESPACE
+} // dom namespace
+} // mozilla namespace
 
 #endif // mozilla_dom_workers_sharedworker_h__

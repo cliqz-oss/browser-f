@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -30,7 +31,7 @@ class TreeBoxObject;
 
 nsresult NS_NewTreeContentView(nsITreeView** aResult);
 
-class nsTreeContentView final : public nsINativeTreeView,
+class nsTreeContentView final : public nsITreeView,
                                 public nsITreeContentView,
                                 public nsStubDocumentObserver,
                                 public nsWrapperCache
@@ -40,7 +41,7 @@ class nsTreeContentView final : public nsINativeTreeView,
 
     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
     NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsTreeContentView,
-                                                           nsINativeTreeView)
+                                                           nsITreeView)
 
     virtual JSObject* WrapObject(JSContext* aCx,
                                  JS::Handle<JSObject*> aGivenProto) override;
@@ -81,8 +82,6 @@ class nsTreeContentView final : public nsINativeTreeView,
     int32_t GetLevel(int32_t aRow, mozilla::ErrorResult& aError);
     void GetImageSrc(int32_t aRow, nsTreeColumn& aColumn, nsAString& aSrc,
                      mozilla::ErrorResult& aError);
-    int32_t GetProgressMode(int32_t aRow, nsTreeColumn& aColumn,
-                            mozilla::ErrorResult& aError);
     void GetCellValue(int32_t aRow, nsTreeColumn& aColumn, nsAString& aValue,
                       mozilla::ErrorResult& aError);
     void GetCellText(int32_t aRow, nsTreeColumn& aColumn, nsAString& aText,
@@ -118,8 +117,6 @@ class nsTreeContentView final : public nsINativeTreeView,
     int32_t GetIndexOfItem(mozilla::dom::Element* aItem);
 
     NS_DECL_NSITREEVIEW
-    // nsINativeTreeView: Untrusted code can use us
-    NS_IMETHOD EnsureNative() override { return NS_OK; }
 
     NS_DECL_NSITREECONTENTVIEW
 
@@ -170,8 +167,12 @@ class nsTreeContentView final : public nsINativeTreeView,
 
     void UpdateParentIndexes(int32_t aIndex, int32_t aSkip, int32_t aCount);
 
+    bool CanDrop(int32_t aRow, int32_t aOrientation,
+                 mozilla::ErrorResult& aError);
+    void Drop(int32_t aRow, int32_t aOrientation, mozilla::ErrorResult& aError);
+
     // Content helpers.
-    nsIContent* GetCell(nsIContent* aContainer, nsTreeColumn& aCol);
+    mozilla::dom::Element* GetCell(nsIContent* aContainer, nsTreeColumn& aCol);
 
   private:
     bool IsValidRowIndex(int32_t aRowIndex);

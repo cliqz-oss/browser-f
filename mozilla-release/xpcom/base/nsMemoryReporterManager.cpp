@@ -18,7 +18,9 @@
 #include "nsIObserverService.h"
 #include "nsIGlobalObject.h"
 #include "nsIXPConnect.h"
+#ifdef MOZ_GECKO_PROFILER
 #include "GeckoProfilerReporter.h"
+#endif
 #if defined(XP_UNIX) || defined(MOZ_DMD)
 #include "nsMemoryInfoDumper.h"
 #endif
@@ -330,10 +332,11 @@ VsizeMaxContiguousDistinguishedAmount(int64_t* aN)
 #include <unistd.h>
 
 static void
-XMappingIter(int64_t& aVsize, int64_t& aResident)
+XMappingIter(int64_t& aVsize, int64_t& aResident, int64_t& aShared)
 {
   aVsize = -1;
   aResident = -1;
+  aShared = -1;
   int mapfd = open("/proc/self/xmap", O_RDONLY);
   struct stat st;
   prxmap_t* prmapp = nullptr;
@@ -357,9 +360,13 @@ XMappingIter(int64_t& aVsize, int64_t& aResident)
         if (nmap >= n / sizeof(prxmap_t)) {
           aVsize = 0;
           aResident = 0;
+          aShared = 0;
           for (int i = 0; i < n / sizeof(prxmap_t); i++) {
             aVsize += prmapp[i].pr_size;
             aResident += prmapp[i].pr_rss * prmapp[i].pr_pagesize;
+            if (prmapp[i].pr_mflags & MA_SHARED) {
+              aShared += prmapp[i].pr_rss * prmapp[i].pr_pagesize;
+            }
           }
           break;
         }
@@ -375,8 +382,8 @@ XMappingIter(int64_t& aVsize, int64_t& aResident)
 static MOZ_MUST_USE nsresult
 VsizeDistinguishedAmount(int64_t* aN)
 {
-  int64_t vsize, resident;
-  XMappingIter(vsize, resident);
+  int64_t vsize, resident, shared;
+  XMappingIter(vsize, resident, shared);
   if (vsize == -1) {
     return NS_ERROR_FAILURE;
   }
@@ -387,8 +394,8 @@ VsizeDistinguishedAmount(int64_t* aN)
 static MOZ_MUST_USE nsresult
 ResidentDistinguishedAmount(int64_t* aN)
 {
-  int64_t vsize, resident;
-  XMappingIter(vsize, resident);
+  int64_t vsize, resident, shared;
+  XMappingIter(vsize, resident, shared);
   if (resident == -1) {
     return NS_ERROR_FAILURE;
   }
@@ -400,6 +407,19 @@ static MOZ_MUST_USE nsresult
 ResidentFastDistinguishedAmount(int64_t* aN)
 {
   return ResidentDistinguishedAmount(aN);
+}
+
+#define HAVE_RESIDENT_UNIQUE_REPORTER 1
+static MOZ_MUST_USE nsresult
+ResidentUniqueDistinguishedAmount(int64_t* aN)
+{
+  int64_t vsize, resident, shared;
+  XMappingIter(vsize, resident, shared);
+  if (resident == -1) {
+    return NS_ERROR_FAILURE;
+  }
+  *aN = resident - shared;
+  return NS_OK;
 }
 
 #elif defined(XP_MACOSX)
@@ -721,6 +741,14 @@ SystemHeapSize(int64_t* aSizeOut)
   int64_t heapsSize = 0;
   for (DWORD i = 0; i < nHeaps; i++) {
     HANDLE heap = heaps[i];
+
+    // Bug 1235982: When Control Flow Guard is enabled for the process,
+    // GetProcessHeap may return some protected heaps that are in read-only
+    // memory and thus crash in HeapLock. Ignore such heaps.
+    MEMORY_BASIC_INFORMATION mbi = {0};
+    if (VirtualQuery(heap, &mbi, sizeof(mbi)) && mbi.Protect == PAGE_READONLY) {
+      continue;
+    }
 
     NS_ENSURE_TRUE(HeapLock(heap), NS_ERROR_FAILURE);
 
@@ -1385,16 +1413,23 @@ public:
   NS_IMETHOD CollectReports(nsIHandleReportCallback* aHandleReport,
                             nsISupports* aData, bool aAnonymize) override
   {
-    size_t Main, Static;
-    NS_SizeOfAtomTablesIncludingThis(MallocSizeOf, &Main, &Static);
+    AtomsSizes sizes;
+    NS_AddSizeOfAtoms(MallocSizeOf, sizes);
 
     MOZ_COLLECT_REPORT(
-      "explicit/atom-tables/main", KIND_HEAP, UNITS_BYTES, Main,
-      "Memory used by the main atoms table.");
+      "explicit/atoms/table", KIND_HEAP, UNITS_BYTES, sizes.mTable,
+      "Memory used by the atom table.");
 
     MOZ_COLLECT_REPORT(
-      "explicit/atom-tables/static", KIND_HEAP, UNITS_BYTES, Static,
-      "Memory used by the static atoms table.");
+      "explicit/atoms/dynamic/atom-objects", KIND_HEAP, UNITS_BYTES,
+      sizes.mDynamicAtomObjects,
+      "Memory used by dynamic atom objects.");
+
+    MOZ_COLLECT_REPORT(
+      "explicit/atoms/dynamic/unshared-buffers", KIND_HEAP, UNITS_BYTES,
+      sizes.mDynamicUnsharedBuffers,
+      "Memory used by unshared string buffers pointed to by dynamic atom "
+      "objects.");
 
     return NS_OK;
   }
@@ -1734,13 +1769,9 @@ nsMemoryReporterManager::StartGettingReports()
   }
 
   if (!s->mChildrenPending.IsEmpty()) {
-    nsCOMPtr<nsITimer> timer = do_CreateInstance(NS_TIMER_CONTRACTID);
-    // Don't use NS_ENSURE_* here; can't return until the report is finished.
-    if (NS_WARN_IF(!timer)) {
-      FinishReporting();
-      return NS_ERROR_FAILURE;
-    }
-    rv = timer->InitWithNamedFuncCallback(
+    nsCOMPtr<nsITimer> timer;
+    rv = NS_NewTimerWithFuncCallback(
+      getter_AddRefs(timer),
       TimeoutCallback,
       this,
       kTimeoutLengthMS,

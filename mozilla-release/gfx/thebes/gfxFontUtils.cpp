@@ -7,6 +7,8 @@
 #include "mozilla/BinarySearch.h"
 
 #include "gfxFontUtils.h"
+#include "gfxFontEntry.h"
+#include "gfxFontVariations.h"
 
 #include "nsServiceManagerUtils.h"
 
@@ -413,8 +415,7 @@ gfxFontUtils::ReadCMAPTableFormat14(const uint8_t *aBuf, uint32_t aLength,
 uint32_t
 gfxFontUtils::FindPreferredSubtable(const uint8_t *aBuf, uint32_t aBufLength,
                                     uint32_t *aTableOffset,
-                                    uint32_t *aUVSTableOffset,
-                                    bool *aSymbolEncoding)
+                                    uint32_t *aUVSTableOffset)
 {
     enum {
         OffsetVersion = 0,
@@ -474,17 +475,14 @@ gfxFontUtils::FindPreferredSubtable(const uint8_t *aBuf, uint32_t aBufLength,
         if (isSymbol(platformID, encodingID)) {
             keepFormat = format;
             *aTableOffset = offset;
-            *aSymbolEncoding = true;
             break;
         } else if (format == 4 && acceptableFormat4(platformID, encodingID, keepFormat)) {
             keepFormat = format;
             *aTableOffset = offset;
-            *aSymbolEncoding = false;
         } else if ((format == 10 || format == 12 || format == 13) &&
                    acceptableUCS4Encoding(platformID, encodingID, keepFormat)) {
             keepFormat = format;
             *aTableOffset = offset;
-            *aSymbolEncoding = false;
             if (platformID > PLATFORM_ID_UNICODE || !aUVSTableOffset || *aUVSTableOffset) {
                 break; // we don't want to try anything else when this format is available.
             }
@@ -502,36 +500,23 @@ gfxFontUtils::FindPreferredSubtable(const uint8_t *aBuf, uint32_t aBufLength,
 nsresult
 gfxFontUtils::ReadCMAP(const uint8_t *aBuf, uint32_t aBufLength,
                        gfxSparseBitSet& aCharacterMap,
-                       uint32_t& aUVSOffset,
-                       bool& aUnicodeFont, bool& aSymbolFont)
+                       uint32_t& aUVSOffset)
 {
     uint32_t offset;
-    bool     symbol;
     uint32_t format = FindPreferredSubtable(aBuf, aBufLength,
-                                            &offset, &aUVSOffset, &symbol);
+                                            &offset, &aUVSOffset);
 
     switch (format) {
     case 4:
-        if (symbol) {
-            aUnicodeFont = false;
-            aSymbolFont = true;
-        } else {
-            aUnicodeFont = true;
-            aSymbolFont = false;
-        }
         return ReadCMAPTableFormat4(aBuf + offset, aBufLength - offset,
                                     aCharacterMap);
 
     case 10:
-        aUnicodeFont = true;
-        aSymbolFont = false;
         return ReadCMAPTableFormat10(aBuf + offset, aBufLength - offset,
                                      aCharacterMap);
 
     case 12:
     case 13:
-        aUnicodeFont = true;
-        aSymbolFont = false;
         return ReadCMAPTableFormat12or13(aBuf + offset, aBufLength - offset,
                                          aCharacterMap);
 
@@ -584,55 +569,64 @@ typedef struct {
 #pragma pack()
 
 uint32_t
-gfxFontUtils::MapCharToGlyphFormat4(const uint8_t *aBuf, char16_t aCh)
+gfxFontUtils::MapCharToGlyphFormat4(const uint8_t* aBuf, uint32_t aLength,
+                                    char16_t aCh)
 {
     const Format4Cmap *cmap4 = reinterpret_cast<const Format4Cmap*>(aBuf);
-    uint16_t segCount;
-    const AutoSwap_PRUint16 *endCodes;
-    const AutoSwap_PRUint16 *startCodes;
-    const AutoSwap_PRUint16 *idDelta;
-    const AutoSwap_PRUint16 *idRangeOffset;
-    uint16_t probe;
-    uint16_t rangeShiftOver2;
-    uint16_t index;
 
-    segCount = (uint16_t)(cmap4->segCountX2) / 2;
+    uint16_t segCount = (uint16_t)(cmap4->segCountX2) / 2;
 
-    endCodes = &cmap4->arrays[0];
-    startCodes = &cmap4->arrays[segCount + 1]; // +1 for reserved word between arrays
-    idDelta = &startCodes[segCount];
-    idRangeOffset = &idDelta[segCount];
+    const AutoSwap_PRUint16* endCodes = &cmap4->arrays[0];
+    const AutoSwap_PRUint16* startCodes = &cmap4->arrays[segCount + 1];
+    const AutoSwap_PRUint16* idDelta = &startCodes[segCount];
+    const AutoSwap_PRUint16* idRangeOffset = &idDelta[segCount];
 
-    probe = 1 << (uint16_t)(cmap4->entrySelector);
-    rangeShiftOver2 = (uint16_t)(cmap4->rangeShift) / 2;
-
-    if ((uint16_t)(startCodes[rangeShiftOver2]) <= aCh) {
-        index = rangeShiftOver2;
-    } else {
-        index = 0;
+    // Sanity-check that the fixed-size arrays don't exceed the buffer.
+    const uint8_t* const limit = aBuf + aLength;
+    if ((const uint8_t*)(&idRangeOffset[segCount]) > limit) {
+        return 0; // broken font, just bail out safely
     }
 
-    while (probe > 1) {
-        probe >>= 1;
-        if ((uint16_t)(startCodes[index + probe]) <= aCh) {
-            index += probe;
+    // For most efficient binary search, we want to work on a range of segment
+    // indexes that is a power of 2 so that we can always halve it by shifting.
+    // So we find the largest power of 2 that is <= segCount.
+    // We will offset this range by segOffset so as to reach the end
+    // of the table, provided that doesn't put us beyond the target
+    // value from the outset.
+    uint32_t powerOf2 = mozilla::FindHighestBit(segCount);
+    uint32_t segOffset = segCount - powerOf2;
+    uint32_t idx = 0;
+
+    if (uint16_t(startCodes[segOffset]) <= aCh) {
+        idx = segOffset;
+    }
+
+    // Repeatedly halve the size of the range until we find the target group
+    while (powerOf2 > 1) {
+        powerOf2 >>= 1;
+        if (uint16_t(startCodes[idx + powerOf2]) <= aCh) {
+            idx += powerOf2;
         }
     }
 
-    if (aCh >= (uint16_t)(startCodes[index]) && aCh <= (uint16_t)(endCodes[index])) {
+    if (aCh >= uint16_t(startCodes[idx]) && aCh <= uint16_t(endCodes[idx])) {
         uint16_t result;
-        if ((uint16_t)(idRangeOffset[index]) == 0) {
+        if (uint16_t(idRangeOffset[idx]) == 0) {
             result = aCh;
         } else {
-            uint16_t offset = aCh - (uint16_t)(startCodes[index]);
-            const AutoSwap_PRUint16 *glyphIndexTable =
-                (const AutoSwap_PRUint16*)((const char*)&idRangeOffset[index] +
-                                           (uint16_t)(idRangeOffset[index]));
+            uint16_t offset = aCh - uint16_t(startCodes[idx]);
+            const AutoSwap_PRUint16* glyphIndexTable =
+                (const AutoSwap_PRUint16*)((const char*)&idRangeOffset[idx] +
+                                           uint16_t(idRangeOffset[idx]));
+            if ((const uint8_t*)(glyphIndexTable + offset + 1) > limit) {
+                return 0; // broken font, just bail out safely
+            }
             result = glyphIndexTable[offset];
         }
 
-        // note that this is unsigned 16-bit arithmetic, and may wrap around
-        result += (uint16_t)(idDelta[index]);
+        // Note that this is unsigned 16-bit arithmetic, and may wrap around
+        // (which is required behavior per spec)
+        result += uint16_t(idDelta[idx]);
         return result;
     }
 
@@ -769,15 +763,15 @@ gfxFontUtils::MapCharToGlyph(const uint8_t *aCmapBuf, uint32_t aBufLength,
                              uint32_t aUnicode, uint32_t aVarSelector)
 {
     uint32_t offset, uvsOffset;
-    bool     symbol;
     uint32_t format = FindPreferredSubtable(aCmapBuf, aBufLength, &offset,
-                                            &uvsOffset, &symbol);
+                                            &uvsOffset);
 
     uint32_t gid;
     switch (format) {
     case 4:
         gid = aUnicode < UNICODE_BMP_LIMIT ?
-            MapCharToGlyphFormat4(aCmapBuf + offset, char16_t(aUnicode)) : 0;
+            MapCharToGlyphFormat4(aCmapBuf + offset, aBufLength - offset,
+                                  char16_t(aUnicode)) : 0;
         break;
     case 10:
         gid = MapCharToGlyphFormat10(aCmapBuf + offset, aUnicode);
@@ -802,6 +796,7 @@ gfxFontUtils::MapCharToGlyph(const uint8_t *aCmapBuf, uint32_t aBufLength,
                 case 4:
                     if (aUnicode < UNICODE_BMP_LIMIT) {
                         varGID = MapCharToGlyphFormat4(aCmapBuf + offset,
+                                                       aBufLength - offset,
                                                        char16_t(aUnicode));
                     }
                     break;
@@ -1322,58 +1317,58 @@ gfxFontUtils::ReadCanonicalName(const char *aNameData, uint32_t aDataLen,
 // encoding=roman, lang=english, in order that common entries will be found
 // on the first search.
 
-#define ANY 0xffff
+const uint16_t ANY = 0xffff;
 const gfxFontUtils::MacFontNameCharsetMapping gfxFontUtils::gMacFontNameCharsets[] =
 {
-    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_ENGLISH,      "macintosh"       },
-    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_ICELANDIC,    "x-mac-icelandic" },
-    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_TURKISH,      "x-mac-turkish"   },
-    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_POLISH,       "x-mac-ce"        },
-    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_ROMANIAN,     "x-mac-romanian"  },
-    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_CZECH,        "x-mac-ce"        },
-    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_SLOVAK,       "x-mac-ce"        },
-    { ENCODING_ID_MAC_ROMAN,        ANY,                      "macintosh"       },
-    { ENCODING_ID_MAC_JAPANESE,     LANG_ID_MAC_JAPANESE,     "Shift_JIS"       },
-    { ENCODING_ID_MAC_JAPANESE,     ANY,                      "Shift_JIS"       },
-    { ENCODING_ID_MAC_TRAD_CHINESE, LANG_ID_MAC_TRAD_CHINESE, "Big5"            },
-    { ENCODING_ID_MAC_TRAD_CHINESE, ANY,                      "Big5"            },
-    { ENCODING_ID_MAC_KOREAN,       LANG_ID_MAC_KOREAN,       "EUC-KR"          },
-    { ENCODING_ID_MAC_KOREAN,       ANY,                      "EUC-KR"          },
-    { ENCODING_ID_MAC_ARABIC,       LANG_ID_MAC_ARABIC,       "x-mac-arabic"    },
-    { ENCODING_ID_MAC_ARABIC,       LANG_ID_MAC_URDU,         "x-mac-farsi"     },
-    { ENCODING_ID_MAC_ARABIC,       LANG_ID_MAC_FARSI,        "x-mac-farsi"     },
-    { ENCODING_ID_MAC_ARABIC,       ANY,                      "x-mac-arabic"    },
-    { ENCODING_ID_MAC_HEBREW,       LANG_ID_MAC_HEBREW,       "x-mac-hebrew"    },
-    { ENCODING_ID_MAC_HEBREW,       ANY,                      "x-mac-hebrew"    },
-    { ENCODING_ID_MAC_GREEK,        ANY,                      "x-mac-greek"     },
-    { ENCODING_ID_MAC_CYRILLIC,     ANY,                      "x-mac-cyrillic"  },
-    { ENCODING_ID_MAC_DEVANAGARI,   ANY,                      "x-mac-devanagari"},
-    { ENCODING_ID_MAC_GURMUKHI,     ANY,                      "x-mac-gurmukhi"  },
-    { ENCODING_ID_MAC_GUJARATI,     ANY,                      "x-mac-gujarati"  },
-    { ENCODING_ID_MAC_SIMP_CHINESE, LANG_ID_MAC_SIMP_CHINESE, "gb18030"         },
-    { ENCODING_ID_MAC_SIMP_CHINESE, ANY,                      "gb18030"         }
+    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_ENGLISH,      MACINTOSH_ENCODING },
+    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_ICELANDIC,    X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_TURKISH,      X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_POLISH,       X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_ROMANIAN,     X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_CZECH,        X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_ROMAN,        LANG_ID_MAC_SLOVAK,       X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_ROMAN,        ANY,                      MACINTOSH_ENCODING },
+    { ENCODING_ID_MAC_JAPANESE,     LANG_ID_MAC_JAPANESE,     SHIFT_JIS_ENCODING },
+    { ENCODING_ID_MAC_JAPANESE,     ANY,                      SHIFT_JIS_ENCODING },
+    { ENCODING_ID_MAC_TRAD_CHINESE, LANG_ID_MAC_TRAD_CHINESE, BIG5_ENCODING },
+    { ENCODING_ID_MAC_TRAD_CHINESE, ANY,                      BIG5_ENCODING },
+    { ENCODING_ID_MAC_KOREAN,       LANG_ID_MAC_KOREAN,       EUC_KR_ENCODING },
+    { ENCODING_ID_MAC_KOREAN,       ANY,                      EUC_KR_ENCODING },
+    { ENCODING_ID_MAC_ARABIC,       LANG_ID_MAC_ARABIC,       X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_ARABIC,       LANG_ID_MAC_URDU,         X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_ARABIC,       LANG_ID_MAC_FARSI,        X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_ARABIC,       ANY,                      X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_HEBREW,       LANG_ID_MAC_HEBREW,       X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_HEBREW,       ANY,                      X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_GREEK,        ANY,                      X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_CYRILLIC,     ANY,                      X_MAC_CYRILLIC_ENCODING },
+    { ENCODING_ID_MAC_DEVANAGARI,   ANY,                      X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_GURMUKHI,     ANY,                      X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_GUJARATI,     ANY,                      X_USER_DEFINED_ENCODING },
+    { ENCODING_ID_MAC_SIMP_CHINESE, LANG_ID_MAC_SIMP_CHINESE, GB18030_ENCODING },
+    { ENCODING_ID_MAC_SIMP_CHINESE, ANY,                      GB18030_ENCODING }
 };
 
-const char* gfxFontUtils::gISOFontNameCharsets[] = 
+const Encoding* gfxFontUtils::gISOFontNameCharsets[] =
 {
-    /* 0 */ "windows-1252", /* US-ASCII */
+    /* 0 */ WINDOWS_1252_ENCODING, /* US-ASCII */
     /* 1 */ nullptr       , /* spec says "ISO 10646" but does not specify encoding form! */
-    /* 2 */ "windows-1252"  /* ISO-8859-1 */
+    /* 2 */ WINDOWS_1252_ENCODING  /* ISO-8859-1 */
 };
 
-const char* gfxFontUtils::gMSFontNameCharsets[] =
+const Encoding* gfxFontUtils::gMSFontNameCharsets[] =
 {
-    /* [0] ENCODING_ID_MICROSOFT_SYMBOL */      ""          ,
-    /* [1] ENCODING_ID_MICROSOFT_UNICODEBMP */  ""          ,
-    /* [2] ENCODING_ID_MICROSOFT_SHIFTJIS */    "Shift_JIS" ,
+    /* [0] ENCODING_ID_MICROSOFT_SYMBOL */      UTF_16BE_ENCODING,
+    /* [1] ENCODING_ID_MICROSOFT_UNICODEBMP */  UTF_16BE_ENCODING,
+    /* [2] ENCODING_ID_MICROSOFT_SHIFTJIS */    SHIFT_JIS_ENCODING,
     /* [3] ENCODING_ID_MICROSOFT_PRC */         nullptr      ,
-    /* [4] ENCODING_ID_MICROSOFT_BIG5 */        "Big5"      ,
+    /* [4] ENCODING_ID_MICROSOFT_BIG5 */        BIG5_ENCODING,
     /* [5] ENCODING_ID_MICROSOFT_WANSUNG */     nullptr      ,
     /* [6] ENCODING_ID_MICROSOFT_JOHAB */       nullptr      ,
     /* [7] reserved */                          nullptr      ,
     /* [8] reserved */                          nullptr      ,
     /* [9] reserved */                          nullptr      ,
-    /*[10] ENCODING_ID_MICROSOFT_UNICODEFULL */ ""
+    /*[10] ENCODING_ID_MICROSOFT_UNICODEFULL */ UTF_16BE_ENCODING
 };
 
 struct MacCharsetMappingComparator
@@ -1393,18 +1388,19 @@ struct MacCharsetMappingComparator
     }
 };
 
-// Return the name of the charset we should use to decode a font name
+// Return the Encoding object we should use to decode a font name
 // given the name table attributes.
 // Special return values:
-//    ""       charset is UTF16BE, no need for a converter
-//    nullptr   unknown charset, do not attempt conversion
-const char*
+//    X_USER_DEFINED_ENCODING  One of Mac legacy encodings that is not a part
+//                             of Encoding Standard
+//    nullptr                  unknown charset, do not attempt conversion
+const Encoding*
 gfxFontUtils::GetCharsetForFontName(uint16_t aPlatform, uint16_t aScript, uint16_t aLanguage)
 {
     switch (aPlatform)
     {
     case PLATFORM_ID_UNICODE:
-        return "";
+        return UTF_16BE_ENCODING;
 
     case PLATFORM_ID_MAC:
         {
@@ -1413,7 +1409,7 @@ gfxFontUtils::GetCharsetForFontName(uint16_t aPlatform, uint16_t aScript, uint16
                 size_t idx;
                 if (BinarySearchIf(gMacFontNameCharsets, 0, ArrayLength(gMacFontNameCharsets),
                                             MacCharsetMappingComparator(searchValue), &idx)) {
-                    return gMacFontNameCharsets[idx].mCharsetName;
+                    return gMacFontNameCharsets[idx].mEncoding;
                 }
 
                 // no match, so try again finding one in any language
@@ -1461,9 +1457,9 @@ gfxFontUtils::DecodeFontName(const char *aNameData, int32_t aByteLen,
         return true;
     }
 
-    const char *csName = GetCharsetForFontName(aPlatformCode, aScriptCode, aLangCode);
+    auto encoding = GetCharsetForFontName(aPlatformCode, aScriptCode, aLangCode);
 
-    if (!csName) {
+    if (!encoding) {
         // nullptr -> unknown charset
 #ifdef DEBUG
         char warnBuf[128];
@@ -1476,8 +1472,8 @@ gfxFontUtils::DecodeFontName(const char *aNameData, int32_t aByteLen,
         return false;
     }
 
-    if (csName[0] == 0) {
-        // empty charset name: data is utf16be, no need to instantiate a converter
+    if (encoding == UTF_16BE_ENCODING) {
+        // no need to instantiate a converter
         uint32_t strLen = aByteLen / 2;
         aName.SetLength(strLen);
 #ifdef IS_LITTLE_ENDIAN
@@ -1489,9 +1485,7 @@ gfxFontUtils::DecodeFontName(const char *aNameData, int32_t aByteLen,
         return true;
     }
 
-    nsDependentCString encodingName(csName);
-    if (StartsWith(encodingName, "x-mac-") &&
-        !encodingName.EqualsLiteral("x-mac-cyrillic")) {
+    if (encoding == X_USER_DEFINED_ENCODING) {
 #ifdef XP_MACOSX
         // Special case for macOS only: support legacy Mac encodings
         // that aren't part of the Encoding Standard.
@@ -1514,7 +1508,6 @@ gfxFontUtils::DecodeFontName(const char *aNameData, int32_t aByteLen,
         return false;
     }
 
-    auto encoding = Encoding::ForName(encodingName);
     auto rv = encoding->DecodeWithoutBOMHandling(
       AsBytes(MakeSpan(aNameData, aByteLen)), aName);
     return NS_SUCCEEDED(rv);
@@ -1821,6 +1814,145 @@ gfxFontUtils::GetColorGlyphLayers(hb_blob_t* aCOLR,
         layer++;
     }
     return true;
+}
+
+void
+gfxFontUtils::GetVariationInstances(gfxFontEntry* aFontEntry,
+                                    nsTArray<gfxFontVariationInstance>& aInstances)
+{
+    MOZ_ASSERT(aInstances.IsEmpty());
+
+    if (!aFontEntry->HasVariations()) {
+        return;
+    }
+
+    // Some platforms don't offer a simple API to return the list of instances,
+    // so we have to interpret the 'fvar' table ourselves.
+
+    // https://www.microsoft.com/typography/otspec/fvar.htm#fvarHeader
+    struct FvarHeader {
+        AutoSwap_PRUint16 majorVersion;
+        AutoSwap_PRUint16 minorVersion;
+        AutoSwap_PRUint16 axesArrayOffset;
+        AutoSwap_PRUint16 reserved;
+        AutoSwap_PRUint16 axisCount;
+        AutoSwap_PRUint16 axisSize;
+        AutoSwap_PRUint16 instanceCount;
+        AutoSwap_PRUint16 instanceSize;
+    };
+
+    // https://www.microsoft.com/typography/otspec/fvar.htm#variationAxisRecord
+    struct AxisRecord {
+        AutoSwap_PRUint32 axisTag;
+        AutoSwap_PRInt32  minValue;
+        AutoSwap_PRInt32  defaultValue;
+        AutoSwap_PRInt32  maxValue;
+        AutoSwap_PRUint16 flags;
+        AutoSwap_PRUint16 axisNameID;
+    };
+
+    // https://www.microsoft.com/typography/otspec/fvar.htm#instanceRecord
+    struct InstanceRecord {
+        AutoSwap_PRUint16 subfamilyNameID;
+        AutoSwap_PRUint16 flags;
+        AutoSwap_PRInt32  coordinates[1]; // variable-size array [axisCount]
+        // The variable-length 'coordinates' array may be followed by an
+        // optional extra field 'postScriptNameID'. We can't directly
+        // represent this in the struct, because its offset varies depending
+        // on the number of axes present.
+        // (Not currently used by our code here anyhow.)
+    //  AutoSwap_PRUint16 postScriptNameID;
+    };
+
+    // Helper to ensure we free a font table when we return.
+    class AutoHBBlob {
+    public:
+        explicit AutoHBBlob(hb_blob_t* aBlob) : mBlob(aBlob)
+        { }
+
+        ~AutoHBBlob() {
+            if (mBlob) {
+                hb_blob_destroy(mBlob);
+            }
+        }
+
+        operator hb_blob_t* () { return mBlob; }
+
+    private:
+        hb_blob_t* const mBlob;
+    };
+
+    // Load the two font tables we need as harfbuzz blobs; if either is absent,
+    // just bail out.
+    AutoHBBlob fvarTable(aFontEntry->GetFontTable(TRUETYPE_TAG('f','v','a','r')));
+    AutoHBBlob nameTable(aFontEntry->GetFontTable(TRUETYPE_TAG('n','a','m','e')));
+    if (!fvarTable || !nameTable) {
+        return;
+    }
+    unsigned int len;
+    const char* data = hb_blob_get_data(fvarTable, &len);
+    if (len < sizeof(FvarHeader)) {
+        return;
+    }
+    // Read the fields of the table header; bail out if it looks broken.
+    auto fvar = reinterpret_cast<const FvarHeader*>(data);
+    if (uint16_t(fvar->majorVersion) != 1 ||
+        uint16_t(fvar->minorVersion) != 0 ||
+        uint16_t(fvar->reserved) != 2) {
+        return;
+    }
+    uint16_t axisCount = fvar->axisCount;
+    uint16_t axisSize = fvar->axisSize;
+    uint16_t instanceCount = fvar->instanceCount;
+    uint16_t instanceSize = fvar->instanceSize;
+    if (axisCount == 0 || // no axes?
+        // https://www.microsoft.com/typography/otspec/fvar.htm#axisSize
+        axisSize != 20 || // required value for current table version
+        instanceCount == 0 || // no instances?
+        // https://www.microsoft.com/typography/otspec/fvar.htm#instanceSize
+        (instanceSize != axisCount * sizeof(int32_t) + 4 &&
+         instanceSize != axisCount * sizeof(int32_t) + 6)) {
+        return;
+    }
+    // Check that axis array will not exceed table size
+    uint16_t axesOffset = fvar->axesArrayOffset;
+    if (axesOffset + uint32_t(axisCount) * axisSize > len) {
+        return;
+    }
+    // Get pointer to the array of axis records
+    auto axes = reinterpret_cast<const AxisRecord*>(data + axesOffset);
+    // Get address of instance array, and check it doesn't overflow table size.
+    // https://www.microsoft.com/typography/otspec/fvar.htm#axisAndInstanceArrays
+    auto instData = data + axesOffset + axisCount * axisSize;
+    if (instData + uint32_t(instanceCount) * instanceSize > data + len) {
+        return;
+    }
+    aInstances.SetCapacity(instanceCount);
+    for (unsigned i = 0; i < instanceCount; ++i, instData += instanceSize) {
+        // Typed pointer to the current instance record, to read its fields.
+        auto inst = reinterpret_cast<const InstanceRecord*>(instData);
+        // Pointer to the coordinates array within the instance record.
+        // This array has axisCount elements, and is included in instanceSize
+        // (which depends on axisCount, and was validated above) so we know
+        // access to coords[j] below will not be outside the table bounds.
+        auto coords = &inst->coordinates[0];
+        gfxFontVariationInstance instance;
+        uint16_t nameID = inst->subfamilyNameID;
+        nsresult rv =
+            ReadCanonicalName(nameTable, nameID, instance.mName);
+        if (NS_FAILED(rv)) {
+            // If no name was available for the instance, ignore it.
+            continue;
+        }
+        instance.mValues.SetCapacity(axisCount);
+        for (unsigned j = 0; j < axisCount; ++j) {
+            gfxFontVariationValue value;
+            value.mAxis = axes[j].axisTag;
+            value.mValue = int32_t(coords[j]) / 65536.0;
+            instance.mValues.AppendElement(value);
+        }
+        aInstances.AppendElement(instance);
+    }
 }
 
 #ifdef XP_WIN

@@ -394,7 +394,7 @@ public:
 
   /**
    * GetMouseInputSource() returns a pointing device information.  The value is
-   * one of nsIDOMMouseEvent::MOZ_SOURCE_*.  This method MUST be called during
+   * one of MouseEventBinding::MOZ_SOURCE_*.  This method MUST be called during
    * mouse message handling.
    */
   static uint16_t GetMouseInputSource();
@@ -420,20 +420,20 @@ public:
                                nsString& aResultString);
 
   /**
-   * ConvertHRGNToRegion converts a Windows HRGN to an nsIntRegion.
+   * ConvertHRGNToRegion converts a Windows HRGN to an LayoutDeviceIntRegion.
    *
    * aRgn the HRGN to convert.
-   * returns the nsIntRegion.
+   * returns the LayoutDeviceIntRegion.
    */
-  static nsIntRegion ConvertHRGNToRegion(HRGN aRgn);
+  static LayoutDeviceIntRegion ConvertHRGNToRegion(HRGN aRgn);
 
   /**
-   * ToIntRect converts a Windows RECT to a nsIntRect.
+   * ToIntRect converts a Windows RECT to a LayoutDeviceIntRect.
    *
    * aRect the RECT to convert.
-   * returns the nsIntRect.
+   * returns the LayoutDeviceIntRect.
    */
-  static nsIntRect ToIntRect(const RECT& aRect);
+  static LayoutDeviceIntRect ToIntRect(const RECT& aRect);
 
   /**
    * Helper used in invalidating flash plugin windows owned
@@ -481,6 +481,12 @@ public:
   static bool ResolveJunctionPointsAndSymLinks(std::wstring& aPath);
   static bool ResolveJunctionPointsAndSymLinks(nsIFile* aPath);
 
+
+  /**
+   * Returns true if executable's path is on a network drive.
+   */
+  static bool RunningFromANetworkDrive();
+
   static void Initialize();
 
   static bool ShouldHideScrollbars();
@@ -498,8 +504,6 @@ public:
   static bool GetAppInitDLLs(nsAString& aOutput);
 
 #ifdef ACCESSIBILITY
-  static void SetAPCPending();
-
   static a11y::Accessible* GetRootAccessibleForHWND(HWND aHwnd);
 #endif
 

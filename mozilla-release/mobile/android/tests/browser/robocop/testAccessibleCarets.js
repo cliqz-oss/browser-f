@@ -4,10 +4,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+/* eslint-disable mozilla/use-chromeutils-import */
+
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Messaging.jsm");
-Cu.import('resource://gre/modules/Geometry.jsm');
+Cu.import("resource://gre/modules/Geometry.jsm");
 
 const ACCESSIBLECARET_PREF = "layout.accessiblecaret.enabled";
 const BASE_TEST_URL = "http://mochi.test:8888/tests/robocop/testAccessibleCarets.html";
@@ -18,6 +19,8 @@ const TAB_CHANGE_EVENT = "testAccessibleCarets:TabChange";
 const TAB_STOP_EVENT = "STOP";
 
 const gChromeWin = Services.wm.getMostRecentWindow("navigator:browser");
+const gActionBarHandler = Cc["@mozilla.org/browser/browser-clh;1"]
+    .getService().wrappedJSObject.ActionBarHandler;
 
 /**
  * Wait for and return, when an expected tab change event occurs.
@@ -43,8 +46,10 @@ function do_promiseTabChangeEvent(tabId, eventType) {
  * or if we have basic content.
  */
 function isInputOrTextarea(element) {
-  return ((element instanceof Ci.nsIDOMHTMLInputElement) ||
-          (element instanceof Ci.nsIDOMHTMLTextAreaElement));
+  // ChromeUtils isn't included in robocop tests, so we have to use a different
+  // way to test elements.
+  return (element.namespaceURI === "http://www.w3.org/1999/xhtml" &&
+         (element.localName === "input" || element.localName === "textarea"));
 }
 
 /**
@@ -115,10 +120,9 @@ function getLongPressResult(browser, midPoint) {
   domWinUtils.sendTouchEventToWindow("touchend", [0], [midPoint.x], [midPoint.y],
                                      [1], [1], [0], [1], 1, 0);
 
-  let ActionBarHandler = gChromeWin.ActionBarHandler;
-  return { focusedElement: ActionBarHandler._targetElement,
-           text: ActionBarHandler._getSelectedText(),
-           selectionID: ActionBarHandler._selectionID,
+  return { focusedElement: gActionBarHandler._targetElement,
+           text: gActionBarHandler._getSelectedText(),
+           selectionID: gActionBarHandler._selectionID,
   };
 }
 
@@ -130,7 +134,7 @@ function getLongPressResult(browser, midPoint) {
  * @return Result boolean.
  */
 function UIhasActionByID(expectedActionID) {
-  let actions = gChromeWin.ActionBarHandler._actionBarActions;
+  let actions = gActionBarHandler._actionBarActions;
   return actions.some(action => {
     return action.id === expectedActionID;
   });
@@ -141,18 +145,18 @@ function UIhasActionByID(expectedActionID) {
  */
 function closeSelectionUI() {
   gChromeWin.WindowEventDispatcher.dispatch("TextSelection:End",
-    {selectionID: gChromeWin.ActionBarHandler._selectionID});
+    {selectionID: gActionBarHandler._selectionID});
 }
 
 /**
  * Main test method.
  */
-add_task(function* testAccessibleCarets() {
+add_task(async function testAccessibleCarets() {
   // Wait to start loading our test page until after the initial browser tab is
   // completely loaded. This allows each tab to complete its layer initialization,
   // importantly, its viewport and zoomContraints info.
   let BrowserApp = gChromeWin.BrowserApp;
-  yield do_promiseTabChangeEvent(BrowserApp.selectedTab.id, TAB_STOP_EVENT);
+  await do_promiseTabChangeEvent(BrowserApp.selectedTab.id, TAB_STOP_EVENT);
 
   // Ensure Gecko Selection and Touch carets are enabled.
   Services.prefs.setBoolPref(ACCESSIBLECARET_PREF, true);
@@ -160,7 +164,7 @@ add_task(function* testAccessibleCarets() {
   // Load test page, wait for load completion, register cleanup.
   let browser = BrowserApp.addTab(BASE_TEST_URL).browser;
   let tab = BrowserApp.getTabForBrowser(browser);
-  yield do_promiseTabChangeEvent(tab.id, TAB_STOP_EVENT);
+  await do_promiseTabChangeEvent(tab.id, TAB_STOP_EVENT);
 
   do_register_cleanup(function cleanup() {
     BrowserApp.closeTab(tab);
@@ -273,7 +277,7 @@ add_task(function* testAccessibleCarets() {
 /**
  * DesignMode test method.
  */
-add_task(function* testAccessibleCarets_designMode() {
+add_task(async function testAccessibleCarets_designMode() {
   let BrowserApp = gChromeWin.BrowserApp;
 
   // Pre-populate the clipboard to ensure PASTE action available.
@@ -283,7 +287,7 @@ add_task(function* testAccessibleCarets_designMode() {
   // Load test page, wait for load completion.
   let browser = BrowserApp.addTab(DESIGNMODE_TEST_URL).browser;
   let tab = BrowserApp.getTabForBrowser(browser, { selected: true });
-  yield do_promiseTabChangeEvent(tab.id, TAB_STOP_EVENT);
+  await do_promiseTabChangeEvent(tab.id, TAB_STOP_EVENT);
 
   // References to test document elements, ActionBarHandler.
   let doc = browser.contentDocument;

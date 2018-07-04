@@ -1,8 +1,8 @@
 add_task(async function() {
-  let browserLoadedPromise = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-  window.browserDOMWindow.openURI(makeURI("about:"), null,
+  let browserLoadedPromise = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser, false, "about:mozilla");
+  window.browserDOMWindow.openURI(makeURI("about:mozilla"), null,
                                   Ci.nsIBrowserDOMWindow.OPEN_CURRENTWINDOW, null,
-                                  Services.scriptSecurityManager.getSystemPrincipal())
+                                  Services.scriptSecurityManager.getSystemPrincipal());
   await browserLoadedPromise;
-  is(gBrowser.currentURI.spec, "about:", "page loads in the current content window");
+  is(gBrowser.currentURI.spec, "about:mozilla", "page loads in the current content window");
 });

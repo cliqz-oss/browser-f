@@ -7,6 +7,7 @@
 #include "mozilla/dom/TimeRanges.h"
 #include "mozilla/dom/TimeRangesBinding.h"
 #include "mozilla/dom/HTMLMediaElement.h"
+#include "TimeUnits.h"
 #include "nsError.h"
 
 namespace mozilla {
@@ -17,7 +18,6 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(TimeRanges)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(TimeRanges)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TimeRanges)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY(nsIDOMTimeRanges)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
@@ -31,53 +31,58 @@ TimeRanges::TimeRanges(nsISupports* aParent)
 {
 }
 
+TimeRanges::TimeRanges(nsISupports* aParent,
+                       const media::TimeIntervals& aTimeIntervals)
+  : TimeRanges(aParent)
+{
+  if (aTimeIntervals.IsInvalid()) {
+    return;
+  }
+  for (const media::TimeInterval& interval : aTimeIntervals) {
+    Add(interval.mStart.ToSeconds(), interval.mEnd.ToSeconds());
+  }
+}
+
+TimeRanges::TimeRanges(const media::TimeIntervals& aTimeIntervals)
+  : TimeRanges(nullptr, aTimeIntervals)
+{
+}
+
+media::TimeIntervals
+TimeRanges::ToTimeIntervals() const
+{
+  media::TimeIntervals t;
+  for (uint32_t i = 0; i < Length(); i++) {
+    t += media::TimeInterval(media::TimeUnit::FromSeconds(Start(i)),
+                             media::TimeUnit::FromSeconds(End(i)));
+  }
+  return t;
+}
+
 TimeRanges::~TimeRanges()
 {
 }
 
-NS_IMETHODIMP
-TimeRanges::GetLength(uint32_t* aLength)
-{
-  *aLength = Length();
-  return NS_OK;
-}
-
 double
-TimeRanges::Start(uint32_t aIndex, ErrorResult& aRv)
+TimeRanges::Start(uint32_t aIndex, ErrorResult& aRv) const
 {
   if (aIndex >= mRanges.Length()) {
     aRv = NS_ERROR_DOM_INDEX_SIZE_ERR;
     return 0;
   }
 
-  return mRanges[aIndex].mStart;
-}
-
-NS_IMETHODIMP
-TimeRanges::Start(uint32_t aIndex, double* aTime)
-{
-  ErrorResult rv;
-  *aTime = Start(aIndex, rv);
-  return rv.StealNSResult();
+  return Start(aIndex);
 }
 
 double
-TimeRanges::End(uint32_t aIndex, ErrorResult& aRv)
+TimeRanges::End(uint32_t aIndex, ErrorResult& aRv) const
 {
   if (aIndex >= mRanges.Length()) {
     aRv = NS_ERROR_DOM_INDEX_SIZE_ERR;
     return 0;
   }
 
-  return mRanges[aIndex].mEnd;
-}
-
-NS_IMETHODIMP
-TimeRanges::End(uint32_t aIndex, double* aTime)
-{
-  ErrorResult rv;
-  *aTime = End(aIndex, rv);
-  return rv.StealNSResult();
+  return End(aIndex);
 }
 
 void

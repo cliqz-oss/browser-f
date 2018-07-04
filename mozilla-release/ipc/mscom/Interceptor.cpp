@@ -9,20 +9,30 @@
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/Move.h"
 #include "mozilla/mscom/DispatchForwarder.h"
+#include "mozilla/mscom/FastMarshaler.h"
 #include "mozilla/mscom/Interceptor.h"
 #include "mozilla/mscom/InterceptorLog.h"
 #include "mozilla/mscom/MainThreadInvoker.h"
 #include "mozilla/mscom/Objref.h"
 #include "mozilla/mscom/Registration.h"
 #include "mozilla/mscom/Utils.h"
+#include "mozilla/ThreadLocal.h"
 #include "MainThreadUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/DebugOnly.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsDirectoryServiceUtils.h"
+#include "nsExceptionHandler.h"
+#include "nsPrintfCString.h"
 #include "nsRefPtrHashtable.h"
 #include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
+
+#define ENSURE_HR_SUCCEEDED(hr) \
+  MOZ_ASSERT(SUCCEEDED((HRESULT)hr)); \
+  if (FAILED((HRESULT)hr)) { \
+    return hr; \
+  }
 
 namespace mozilla {
 namespace mscom {
@@ -107,6 +117,111 @@ private:
   LiveSet*  mLiveSet;
 };
 
+class MOZ_RAII ReentrySentinel final
+{
+public:
+  explicit ReentrySentinel(Interceptor* aCurrent)
+    : mCurInterceptor(aCurrent)
+  {
+    static const bool kHasTls = tlsSentinelStackTop.init();
+    MOZ_RELEASE_ASSERT(kHasTls);
+
+    mPrevSentinel = tlsSentinelStackTop.get();
+    tlsSentinelStackTop.set(this);
+  }
+
+  ~ReentrySentinel()
+  {
+    tlsSentinelStackTop.set(mPrevSentinel);
+  }
+
+  bool IsOutermost() const
+  {
+    return !(mPrevSentinel && mPrevSentinel->IsMarshaling(mCurInterceptor));
+  }
+
+  ReentrySentinel(const ReentrySentinel&) = delete;
+  ReentrySentinel(ReentrySentinel&&) = delete;
+  ReentrySentinel& operator=(const ReentrySentinel&) = delete;
+  ReentrySentinel& operator=(ReentrySentinel&&) = delete;
+
+private:
+  bool IsMarshaling(Interceptor* aTopInterceptor) const
+  {
+    return aTopInterceptor == mCurInterceptor ||
+           (mPrevSentinel && mPrevSentinel->IsMarshaling(aTopInterceptor));
+  }
+
+private:
+  Interceptor*      mCurInterceptor;
+  ReentrySentinel*  mPrevSentinel;
+
+  static MOZ_THREAD_LOCAL(ReentrySentinel*) tlsSentinelStackTop;
+};
+
+MOZ_THREAD_LOCAL(ReentrySentinel*) ReentrySentinel::tlsSentinelStackTop;
+
+class MOZ_RAII LoggedQIResult final
+{
+public:
+  explicit LoggedQIResult(REFIID aIid)
+    : mIid(aIid)
+    , mHr(E_UNEXPECTED)
+    , mTarget(nullptr)
+    , mInterceptor(nullptr)
+    , mBegin(TimeStamp::Now())
+  {
+  }
+
+  ~LoggedQIResult()
+  {
+    if (!mTarget) {
+      return;
+    }
+
+    TimeStamp end(TimeStamp::Now());
+    TimeDuration total(end - mBegin);
+    TimeDuration overhead(total - mNonOverheadDuration);
+
+    InterceptorLog::QI(mHr, mTarget, mIid, mInterceptor, &overhead,
+                       &mNonOverheadDuration);
+  }
+
+  void Log(IUnknown* aTarget, IUnknown* aInterceptor)
+  {
+    mTarget = aTarget;
+    mInterceptor = aInterceptor;
+  }
+
+  void operator=(HRESULT aHr)
+  {
+    mHr = aHr;
+  }
+
+  operator HRESULT()
+  {
+    return mHr;
+  }
+
+  operator TimeDuration*()
+  {
+    return &mNonOverheadDuration;
+  }
+
+  LoggedQIResult(const LoggedQIResult&) = delete;
+  LoggedQIResult(LoggedQIResult&&) = delete;
+  LoggedQIResult& operator=(const LoggedQIResult&) = delete;
+  LoggedQIResult& operator=(LoggedQIResult&&) = delete;
+
+private:
+  REFIID        mIid;
+  HRESULT       mHr;
+  IUnknown*     mTarget;
+  IUnknown*     mInterceptor;
+  TimeDuration  mNonOverheadDuration;
+  TimeStamp     mBegin;
+};
+
 } // namespace detail
 
 static detail::LiveSet&
@@ -115,6 +230,8 @@ GetLiveSet()
   static detail::LiveSet sLiveSet;
   return sLiveSet;
 }
+
+MOZ_THREAD_LOCAL(bool) Interceptor::tlsCreatingStdMarshal;
 
 /* static */ HRESULT
 Interceptor::Create(STAUniquePtr<IUnknown> aTarget, IInterceptorSink* aSink,
@@ -152,9 +269,13 @@ Interceptor::Create(STAUniquePtr<IUnknown> aTarget, IInterceptorSink* aSink,
 Interceptor::Interceptor(IInterceptorSink* aSink)
   : WeakReferenceSupport(WeakReferenceSupport::Flags::eDestroyOnMainThread)
   , mEventSink(aSink)
-  , mMutex("mozilla::mscom::Interceptor::mMutex")
+  , mInterceptorMapMutex("mozilla::mscom::Interceptor::mInterceptorMapMutex")
+  , mStdMarshalMutex("mozilla::mscom::Interceptor::mStdMarshalMutex")
   , mStdMarshal(nullptr)
 {
+  static const bool kHasTls = tlsCreatingStdMarshal.init();
+  MOZ_ASSERT(kHasTls);
+
   MOZ_ASSERT(aSink);
   RefPtr<IWeakReference> weakRef;
   if (SUCCEEDED(GetWeakReference(getter_AddRefs(weakRef)))) {
@@ -192,39 +313,14 @@ Interceptor::GetClassForHandler(DWORD aDestContext, void* aDestContextPtr,
   return mEventSink->GetHandler(WrapNotNull(aHandlerClsid));
 }
 
-/**
- * When we are marshaling to the parent process main thread, we want to turn
- * off COM's ping functionality. That functionality is designed to free
- * strong references held by defunct client processes. Since our content
- * processes cannot outlive our parent process, we turn off pings when we know
- * that the COM client is going to be our parent process. This provides a
- * significant performance boost in a11y code due to large numbers of remote
- * objects being created and destroyed within a short period of time.
- */
-DWORD
-Interceptor::GetMarshalFlags(DWORD aDestContext, DWORD aMarshalFlags)
+REFIID
+Interceptor::MarshalAs(REFIID aIid) const
 {
-  // Only worry about local contexts.
-  if (aDestContext != MSHCTX_LOCAL) {
-    return aMarshalFlags;
-  }
-
-  // Get the caller TID. We check for S_FALSE to ensure that the caller is a
-  // different process from ours, which is the only scenario we care about.
-  DWORD callerTid;
-  if (::CoGetCallerTID(&callerTid) != S_FALSE) {
-    return aMarshalFlags;
-  }
-
-  // Now we compare the caller TID to our parent main thread TID.
-  const DWORD chromeMainTid =
-    dom::ContentChild::GetSingleton()->GetChromeMainThreadId();
-  if (callerTid != chromeMainTid) {
-    return aMarshalFlags;
-  }
-
-  // The caller is our parent main thread. Disable ping functionality.
-  return aMarshalFlags | MSHLFLAGS_NOPING;
+#if defined(MOZ_MSCOM_REMARSHAL_NO_HANDLER)
+  return IsCallerExternalProcess() ? aIid : mEventSink->MarshalAs(aIid);
+#else
+  return mEventSink->MarshalAs(aIid);
+#endif // defined(MOZ_MSCOM_REMARSHAL_NO_HANDLER)
 }
 
 HRESULT
@@ -232,9 +328,8 @@ Interceptor::GetUnmarshalClass(REFIID riid, void* pv, DWORD dwDestContext,
                                void* pvDestContext, DWORD mshlflags,
                                CLSID* pCid)
 {
-  return mStdMarshal->GetUnmarshalClass(riid, pv, dwDestContext, pvDestContext,
-                                        GetMarshalFlags(dwDestContext,
-                                                        mshlflags), pCid);
+  return mStdMarshal->GetUnmarshalClass(MarshalAs(riid), pv, dwDestContext,
+                                        pvDestContext, mshlflags, pCid);
 }
 
 HRESULT
@@ -242,17 +337,17 @@ Interceptor::GetMarshalSizeMax(REFIID riid, void* pv, DWORD dwDestContext,
                                void* pvDestContext, DWORD mshlflags,
                                DWORD* pSize)
 {
-  HRESULT hr = mStdMarshal->GetMarshalSizeMax(riid, pv, dwDestContext,
-                                              pvDestContext,
-                                              GetMarshalFlags(dwDestContext,
-                                                              mshlflags),
-                                              pSize);
-  if (FAILED(hr)) {
+  detail::ReentrySentinel sentinel(this);
+
+  HRESULT hr = mStdMarshal->GetMarshalSizeMax(MarshalAs(riid), pv, dwDestContext,
+                                              pvDestContext, mshlflags, pSize);
+  if (FAILED(hr) || !sentinel.IsOutermost()) {
     return hr;
   }
 
   DWORD payloadSize = 0;
-  hr = mEventSink->GetHandlerPayloadSize(WrapNotNull(&payloadSize));
+  hr = mEventSink->GetHandlerPayloadSize(WrapNotNull(this),
+                                         WrapNotNull(&payloadSize));
   if (hr == E_NOTIMPL) {
     return S_OK;
   }
@@ -268,6 +363,8 @@ Interceptor::MarshalInterface(IStream* pStm, REFIID riid, void* pv,
                               DWORD dwDestContext, void* pvDestContext,
                               DWORD mshlflags)
 {
+  detail::ReentrySentinel sentinel(this);
+
   HRESULT hr;
 
 #if defined(MOZ_MSCOM_REMARSHAL_NO_HANDLER)
@@ -284,46 +381,35 @@ Interceptor::MarshalInterface(IStream* pStm, REFIID riid, void* pv,
 
 #endif // defined(MOZ_MSCOM_REMARSHAL_NO_HANDLER)
 
-  hr = mStdMarshal->MarshalInterface(pStm, riid, pv, dwDestContext,
-                                     pvDestContext,
-                                     GetMarshalFlags(dwDestContext, mshlflags));
-  if (FAILED(hr)) {
+  hr = mStdMarshal->MarshalInterface(pStm, MarshalAs(riid), pv, dwDestContext,
+                                     pvDestContext, mshlflags);
+  if (FAILED(hr) || !sentinel.IsOutermost()) {
     return hr;
   }
 
 #if defined(MOZ_MSCOM_REMARSHAL_NO_HANDLER)
-  if (XRE_IsContentProcess()) {
-    const DWORD chromeMainTid =
-      dom::ContentChild::GetSingleton()->GetChromeMainThreadId();
+  if (XRE_IsContentProcess() && IsCallerExternalProcess()) {
+    // The caller isn't our chrome process, so do not provide a handler.
 
-    /*
-     * CoGetCallerTID() gives us the caller's thread ID when that thread resides
-     * in a single-threaded apartment. Since our chrome main thread does live
-     * inside an STA, we will therefore be able to check whether the caller TID
-     * equals our chrome main thread TID. This enables us to distinguish
-     * between our chrome thread vs other out-of-process callers.
-     */
-    DWORD callerTid;
-    if (::CoGetCallerTID(&callerTid) == S_FALSE && callerTid != chromeMainTid) {
-      // The caller isn't our chrome process, so do not provide a handler.
-      // First, seek back to the stream position that we prevously saved.
-      seekTo.QuadPart = objrefPos.QuadPart;
-      hr = pStm->Seek(seekTo, STREAM_SEEK_SET, nullptr);
-      if (FAILED(hr)) {
-        return hr;
-      }
-
-      // Now strip out the handler.
-      if (!StripHandlerFromOBJREF(WrapNotNull(pStm))) {
-        return E_FAIL;
-      }
-
-      return S_OK;
+    // First, save the current position that marks the current end of the
+    // OBJREF in the stream.
+    ULARGE_INTEGER endPos;
+    hr = pStm->Seek(seekTo, STREAM_SEEK_CUR, &endPos);
+    if (FAILED(hr)) {
+      return hr;
     }
+
+    // Now strip out the handler.
+    if (!StripHandlerFromOBJREF(WrapNotNull(pStm), objrefPos.QuadPart,
+                                endPos.QuadPart)) {
+      return E_FAIL;
+    }
+
+    return S_OK;
   }
 #endif // defined(MOZ_MSCOM_REMARSHAL_NO_HANDLER)
 
-  hr = mEventSink->WriteHandlerPayload(WrapNotNull(pStm));
+  hr = mEventSink->WriteHandlerPayload(WrapNotNull(this), WrapNotNull(pStm));
   if (hr == E_NOTIMPL) {
     return S_OK;
   }
@@ -347,13 +433,15 @@ Interceptor::ReleaseMarshalData(IStream* pStm)
 HRESULT
 Interceptor::DisconnectObject(DWORD dwReserved)
 {
+  mEventSink->DisconnectHandlerRemotes();
   return mStdMarshal->DisconnectObject(dwReserved);
 }
 
 Interceptor::MapEntry*
 Interceptor::Lookup(REFIID aIid)
 {
-  mMutex.AssertCurrentThreadOwns();
+  mInterceptorMapMutex.AssertCurrentThreadOwns();
+
   for (uint32_t index = 0, len = mInterceptorMap.Length(); index < len; ++index) {
     if (mInterceptorMap[index].mIID == aIid) {
       return &mInterceptorMap[index];
@@ -366,7 +454,7 @@ HRESULT
 Interceptor::GetTargetForIID(REFIID aIid,
                              InterceptorTargetPtr<IUnknown>& aTarget)
 {
-  MutexAutoLock lock(mMutex);
+  MutexAutoLock lock(mInterceptorMapMutex);
   MapEntry* entry = Lookup(aIid);
   if (entry) {
     aTarget.reset(entry->mTargetInterface);
@@ -416,40 +504,13 @@ Interceptor::CreateInterceptor(REFIID aIid, IUnknown* aOuter, IUnknown** aOutput
 }
 
 HRESULT
-Interceptor::GetInitialInterceptorForIID(detail::LiveSetAutoLock& aLock,
-                                         REFIID aTargetIid,
-                                         STAUniquePtr<IUnknown> aTarget,
-                                         void** aOutInterceptor)
+Interceptor::PublishTarget(detail::LiveSetAutoLock& aLiveSetLock,
+                           RefPtr<IUnknown> aInterceptor,
+                           REFIID aTargetIid,
+                           STAUniquePtr<IUnknown> aTarget)
 {
-  MOZ_ASSERT(aOutInterceptor);
-  MOZ_ASSERT(aTargetIid != IID_IUnknown && aTargetIid != IID_IMarshal);
-  MOZ_ASSERT(!IsProxy(aTarget.get()));
-
-  // Raise the refcount for stabilization purposes during aggregation
-  RefPtr<IUnknown> kungFuDeathGrip(static_cast<IUnknown*>(
-        static_cast<WeakReferenceSupport*>(this)));
-
-  RefPtr<IUnknown> unkInterceptor;
-  HRESULT hr = CreateInterceptor(aTargetIid, kungFuDeathGrip,
-                                 getter_AddRefs(unkInterceptor));
-  if (FAILED(hr)) {
-    return hr;
-  }
-
-  RefPtr<ICallInterceptor> interceptor;
-  hr = unkInterceptor->QueryInterface(IID_ICallInterceptor,
-                                      getter_AddRefs(interceptor));
-  if (FAILED(hr)) {
-    return hr;
-  }
-
-  hr = interceptor->RegisterSink(mEventSink);
-  if (FAILED(hr)) {
-    return hr;
-  }
-
   RefPtr<IWeakReference> weakRef;
-  hr = GetWeakReference(getter_AddRefs(weakRef));
+  HRESULT hr = GetWeakReference(getter_AddRefs(weakRef));
   if (FAILED(hr)) {
     return hr;
   }
@@ -460,20 +521,79 @@ Interceptor::GetInitialInterceptorForIID(detail::LiveSetAutoLock& aLock,
   mTarget = ToInterceptorTargetPtr(aTarget);
   GetLiveSet().Put(mTarget.get(), weakRef.forget());
 
-  // Release the live set lock because GetInterceptorForIID will post work to
-  // the main thread, creating potential for deadlocks.
-  aLock.Unlock();
-
   // Now we transfer aTarget's ownership into mInterceptorMap.
   mInterceptorMap.AppendElement(MapEntry(aTargetIid,
-                                         unkInterceptor,
+                                         aInterceptor,
                                          aTarget.release()));
 
-  if (mEventSink->MarshalAs(aTargetIid) == aTargetIid) {
-    return unkInterceptor->QueryInterface(aTargetIid, aOutInterceptor);
+  // Release the live set lock because subsequent operations may post work to
+  // the main thread, creating potential for deadlocks.
+  aLiveSetLock.Unlock();
+  return S_OK;
+}
+
+HRESULT
+Interceptor::GetInitialInterceptorForIID(detail::LiveSetAutoLock& aLiveSetLock,
+                                         REFIID aTargetIid,
+                                         STAUniquePtr<IUnknown> aTarget,
+                                         void** aOutInterceptor)
+{
+  MOZ_ASSERT(aOutInterceptor);
+  MOZ_ASSERT(aTargetIid != IID_IMarshal);
+  MOZ_ASSERT(!IsProxy(aTarget.get()));
+
+  if (aTargetIid == IID_IUnknown) {
+    // We must lock mInterceptorMapMutex so that nothing can race with us once
+    // we have been published to the live set.
+    MutexAutoLock lock(mInterceptorMapMutex);
+
+    HRESULT hr = PublishTarget(aLiveSetLock, nullptr, aTargetIid, Move(aTarget));
+    ENSURE_HR_SUCCEEDED(hr);
+
+    hr = QueryInterface(aTargetIid, aOutInterceptor);
+    ENSURE_HR_SUCCEEDED(hr);
+    return hr;
   }
 
-  return GetInterceptorForIID(aTargetIid, aOutInterceptor);
+  // Raise the refcount for stabilization purposes during aggregation
+  WeakReferenceSupport::StabilizeRefCount stabilizer(*this);
+
+  RefPtr<IUnknown> unkInterceptor;
+  HRESULT hr = CreateInterceptor(aTargetIid,
+                                 static_cast<WeakReferenceSupport*>(this),
+                                 getter_AddRefs(unkInterceptor));
+  ENSURE_HR_SUCCEEDED(hr);
+
+  RefPtr<ICallInterceptor> interceptor;
+  hr = unkInterceptor->QueryInterface(IID_ICallInterceptor,
+                                      getter_AddRefs(interceptor));
+  ENSURE_HR_SUCCEEDED(hr);
+
+  hr = interceptor->RegisterSink(mEventSink);
+  ENSURE_HR_SUCCEEDED(hr);
+
+  // We must lock mInterceptorMapMutex so that nothing can race with us once we have
+  // been published to the live set.
+  MutexAutoLock lock(mInterceptorMapMutex);
+
+  hr = PublishTarget(aLiveSetLock, unkInterceptor, aTargetIid, Move(aTarget));
+  ENSURE_HR_SUCCEEDED(hr);
+
+  if (MarshalAs(aTargetIid) == aTargetIid) {
+    hr = unkInterceptor->QueryInterface(aTargetIid, aOutInterceptor);
+    ENSURE_HR_SUCCEEDED(hr);
+    return hr;
+  }
+
+  hr = GetInterceptorForIID(aTargetIid, aOutInterceptor, &lock);
+  ENSURE_HR_SUCCEEDED(hr);
+  return hr;
+}
+
+HRESULT
+Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
+{
+  return GetInterceptorForIID(aIid, aOutInterceptor, nullptr);
 }
 
 /**
@@ -483,10 +603,15 @@ Interceptor::GetInitialInterceptorForIID(detail::LiveSetAutoLock& aLock,
  * @param aIid ID of the desired interface
  * @param aOutInterceptor The resulting emulated vtable that corresponds to
  * the interface specified by aIid.
+ * @param aAlreadyLocked Proof of an existing lock on |mInterceptorMapMutex|,
+ *                       if present.
  */
 HRESULT
-Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
+Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor,
+                                  MutexAutoLock* aAlreadyLocked)
 {
+  detail::LoggedQIResult result(aIid);
+
   if (!aOutInterceptor) {
     return E_INVALIDARG;
   }
@@ -498,21 +623,26 @@ Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
     return S_OK;
   }
 
-  REFIID interceptorIid = mEventSink->MarshalAs(aIid);
+  REFIID interceptorIid = MarshalAs(aIid);
 
   RefPtr<IUnknown> unkInterceptor;
   IUnknown* interfaceForQILog = nullptr;
 
   // (1) Check to see if we already have an existing interceptor for
   // interceptorIid.
-
-  { // Scope for lock
-    MutexAutoLock lock(mMutex);
+  auto doLookup = [&]() -> void {
     MapEntry* entry = Lookup(interceptorIid);
     if (entry) {
       unkInterceptor = entry->mInterceptor;
       interfaceForQILog = entry->mTargetInterface;
     }
+  };
+
+  if (aAlreadyLocked) {
+    doLookup();
+  } else {
+    MutexAutoLock lock(mInterceptorMapMutex);
+    doLookup();
   }
 
   // (1a) A COM interceptor already exists for this interface, so all we need
@@ -521,9 +651,10 @@ Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
     // Technically we didn't actually execute a QI on the target interface, but
     // for logging purposes we would like to record the fact that this interface
     // was requested.
-    InterceptorLog::QI(S_OK, mTarget.get(), aIid, interfaceForQILog);
-
-    return unkInterceptor->QueryInterface(interceptorIid, aOutInterceptor);
+    result.Log(mTarget.get(), interfaceForQILog);
+    result = unkInterceptor->QueryInterface(interceptorIid, aOutInterceptor);
+    ENSURE_HR_SUCCEEDED(result);
+    return result;
   }
 
   // (2) Obtain a new target interface.
@@ -536,13 +667,15 @@ Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
 
   STAUniquePtr<IUnknown> targetInterface;
   IUnknown* rawTargetInterface = nullptr;
-  hr = QueryInterfaceTarget(interceptorIid, (void**)&rawTargetInterface);
+  hr = QueryInterfaceTarget(interceptorIid, (void**)&rawTargetInterface, result);
   targetInterface.reset(rawTargetInterface);
-  InterceptorLog::QI(hr, mTarget.get(), aIid, targetInterface.get());
+  result = hr;
+  result.Log(mTarget.get(), targetInterface.get());
   MOZ_ASSERT(SUCCEEDED(hr) || hr == E_NOINTERFACE);
-  if (FAILED(hr)) {
+  if (hr == E_NOINTERFACE) {
     return hr;
   }
+  ENSURE_HR_SUCCEEDED(hr);
 
   // We *really* shouldn't be adding interceptors to proxies
   MOZ_ASSERT(aIid != IID_IMarshal);
@@ -551,37 +684,35 @@ Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
   // IUnknown to |this|.
 
   // Raise the refcount for stabilization purposes during aggregation
-  RefPtr<IUnknown> kungFuDeathGrip(static_cast<IUnknown*>(
-        static_cast<WeakReferenceSupport*>(this)));
+  WeakReferenceSupport::StabilizeRefCount stabilizer(*this);
 
-  hr = CreateInterceptor(interceptorIid, kungFuDeathGrip,
+  hr = CreateInterceptor(interceptorIid,
+                         static_cast<WeakReferenceSupport*>(this),
                          getter_AddRefs(unkInterceptor));
-  if (FAILED(hr)) {
-    return hr;
-  }
+  ENSURE_HR_SUCCEEDED(hr);
 
   // (4) Obtain the interceptor's ICallInterceptor interface and register our
   // event sink.
   RefPtr<ICallInterceptor> interceptor;
   hr = unkInterceptor->QueryInterface(IID_ICallInterceptor,
                                       (void**)getter_AddRefs(interceptor));
-  if (FAILED(hr)) {
-    return hr;
-  }
+  ENSURE_HR_SUCCEEDED(hr);
 
   hr = interceptor->RegisterSink(mEventSink);
-  if (FAILED(hr)) {
-    return hr;
-  }
+  ENSURE_HR_SUCCEEDED(hr);
 
   // (5) Now that we have this new COM interceptor, insert it into the map.
-
-  { // Scope for lock
-    MutexAutoLock lock(mMutex);
+  auto doInsertion = [&]() -> void {
     // We might have raced with another thread, so first check that we don't
     // already have an entry for this
     MapEntry* entry = Lookup(interceptorIid);
     if (entry && entry->mInterceptor) {
+      // Bug 1433046: Because of aggregation, the QI for |interceptor|
+      // AddRefed |this|, not |unkInterceptor|. Thus, releasing |unkInterceptor|
+      // will destroy the object. Before we do that, we must first release
+      // |interceptor|. Otherwise, |interceptor| would be invalidated when
+      // |unkInterceptor| is destroyed.
+      interceptor = nullptr;
       unkInterceptor = entry->mInterceptor;
     } else {
       // MapEntry has a RefPtr to unkInterceptor, OTOH we must not touch the
@@ -592,17 +723,38 @@ Interceptor::GetInterceptorForIID(REFIID aIid, void** aOutInterceptor)
                                              unkInterceptor,
                                              rawTargetInterface));
     }
+  };
+
+  if (aAlreadyLocked) {
+    doInsertion();
+  } else {
+    MutexAutoLock lock(mInterceptorMapMutex);
+    doInsertion();
   }
 
-  return unkInterceptor->QueryInterface(interceptorIid, aOutInterceptor);
+  hr = unkInterceptor->QueryInterface(interceptorIid, aOutInterceptor);
+  ENSURE_HR_SUCCEEDED(hr);
+  return hr;
 }
 
 HRESULT
-Interceptor::QueryInterfaceTarget(REFIID aIid, void** aOutput)
+Interceptor::QueryInterfaceTarget(REFIID aIid, void** aOutput,
+                                  TimeDuration* aOutDuration)
 {
   // NB: This QI needs to run on the main thread because the target object
   // is probably Gecko code that is not thread-safe. Note that this main
   // thread invocation is *synchronous*.
+  if (!NS_IsMainThread() && tlsCreatingStdMarshal.get()) {
+    mStdMarshalMutex.AssertCurrentThreadOwns();
+    // COM queries for special interfaces such as IFastRundown when creating a
+    // marshaler. We don't want these being dispatched to the main thread,
+    // since this would cause a deadlock on mStdMarshalMutex if the main
+    // thread is also querying for IMarshal. If we do need to respond to these
+    // special interfaces, this should be done before this point; e.g. in
+    // Interceptor::QueryInterface like we do for INoMarshal.
+    return E_NOINTERFACE;
+  }
+
   MainThreadInvoker invoker;
   HRESULT hr;
   auto runOnMainThread = [&]() -> void {
@@ -612,25 +764,34 @@ Interceptor::QueryInterfaceTarget(REFIID aIid, void** aOutput)
   if (!invoker.Invoke(NS_NewRunnableFunction("Interceptor::QueryInterface", runOnMainThread))) {
     return E_FAIL;
   }
+  if (aOutDuration) {
+    *aOutDuration = invoker.GetDuration();
+  }
   return hr;
 }
 
 HRESULT
 Interceptor::QueryInterface(REFIID riid, void** ppv)
 {
-  return WeakReferenceSupport::QueryInterface(riid, ppv);
-}
-
-HRESULT
-Interceptor::ThreadSafeQueryInterface(REFIID aIid, IUnknown** aOutInterface)
-{
-  if (aIid == IID_INoMarshal) {
+  if (riid == IID_INoMarshal) {
     // This entire library is designed around marshaling, so there's no point
     // propagating this QI request all over the place!
     return E_NOINTERFACE;
   }
 
+  return WeakReferenceSupport::QueryInterface(riid, ppv);
+}
+
+HRESULT
+Interceptor::WeakRefQueryInterface(REFIID aIid, IUnknown** aOutInterface)
+{
   if (aIid == IID_IStdMarshalInfo) {
+    detail::ReentrySentinel sentinel(this);
+
+    if (!sentinel.IsOutermost()) {
+      return E_NOINTERFACE;
+    }
+
     // Do not indicate that this interface is available unless we actually
     // support it. We'll check that by looking for a successful call to
     // IInterceptorSink::GetHandler()
@@ -645,21 +806,28 @@ Interceptor::ThreadSafeQueryInterface(REFIID aIid, IUnknown** aOutInterface)
   }
 
   if (aIid == IID_IMarshal) {
+    MutexAutoLock lock(mStdMarshalMutex);
+
+    HRESULT hr;
+
     if (!mStdMarshalUnk) {
-      HRESULT hr = ::CoGetStdMarshalEx(static_cast<IWeakReferenceSource*>(this),
-                                       SMEXF_SERVER,
-                                       getter_AddRefs(mStdMarshalUnk));
-      if (FAILED(hr)) {
-        return hr;
+      MOZ_ASSERT(!tlsCreatingStdMarshal.get());
+      tlsCreatingStdMarshal.set(true);
+      if (XRE_IsContentProcess()) {
+        hr = FastMarshaler::Create(static_cast<IWeakReferenceSource*>(this),
+                                   getter_AddRefs(mStdMarshalUnk));
+      } else {
+        hr = ::CoGetStdMarshalEx(static_cast<IWeakReferenceSource*>(this),
+                                 SMEXF_SERVER, getter_AddRefs(mStdMarshalUnk));
       }
+      tlsCreatingStdMarshal.set(false);
+
+      ENSURE_HR_SUCCEEDED(hr);
     }
 
     if (!mStdMarshal) {
-      HRESULT hr = mStdMarshalUnk->QueryInterface(IID_IMarshal,
-                                                  (void**)&mStdMarshal);
-      if (FAILED(hr)) {
-        return hr;
-      }
+      hr = mStdMarshalUnk->QueryInterface(IID_IMarshal, (void**)&mStdMarshal);
+      ENSURE_HR_SUCCEEDED(hr);
 
       // mStdMarshal is weak, so drop its refcount
       mStdMarshal->Release();
@@ -680,14 +848,13 @@ Interceptor::ThreadSafeQueryInterface(REFIID aIid, IUnknown** aOutInterface)
     STAUniquePtr<IDispatch> disp;
     IDispatch* rawDisp = nullptr;
     HRESULT hr = QueryInterfaceTarget(aIid, (void**)&rawDisp);
-    if (FAILED(hr)) {
-      return hr;
-    }
+    ENSURE_HR_SUCCEEDED(hr);
+
     disp.reset(rawDisp);
     return DispatchForwarder::Create(this, disp, aOutInterface);
   }
 
-  return GetInterceptorForIID(aIid, (void**)aOutInterface);
+  return GetInterceptorForIID(aIid, (void**)aOutInterface, nullptr);
 }
 
 ULONG
@@ -700,6 +867,31 @@ ULONG
 Interceptor::Release()
 {
   return WeakReferenceSupport::Release();
+}
+
+/* static */ HRESULT
+Interceptor::DisconnectRemotesForTarget(IUnknown* aTarget)
+{
+  MOZ_ASSERT(aTarget);
+
+  detail::LiveSetAutoLock lock(GetLiveSet());
+
+  // It is not an error if the interceptor doesn't exist, so we return
+  // S_FALSE instead of an error in that case.
+  RefPtr<IWeakReference> existingWeak(Move(GetLiveSet().Get(aTarget)));
+  if (!existingWeak) {
+    return S_FALSE;
+  }
+
+  RefPtr<IWeakReferenceSource> existingStrong;
+  if (FAILED(existingWeak->ToStrongRef(getter_AddRefs(existingStrong)))) {
+    return S_FALSE;
+  }
+  // Since we now hold a strong ref on the interceptor, we may now release the
+  // lock.
+  lock.Unlock();
+
+  return ::CoDisconnectObject(existingStrong, 0);
 }
 
 } // namespace mscom

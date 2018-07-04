@@ -6,15 +6,17 @@
 
 #include "mozilla/ArrayUtils.h"
 
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsString.h"
 #include "UTFStrings.h"
 #include "nsIServiceManager.h"
-#include "nsStaticAtom.h"
+#include "nsThreadUtils.h"
 
 #include "gtest/gtest.h"
 
 using namespace mozilla;
+
+int32_t NS_GetUnusedAtomCount(void);
 
 namespace TestAtoms {
 
@@ -24,7 +26,7 @@ TEST(Atoms, Basic)
     nsDependentString str16(ValidStrings[i].m16);
     nsDependentCString str8(ValidStrings[i].m8);
 
-    nsCOMPtr<nsIAtom> atom = NS_Atomize(str16);
+    RefPtr<nsAtom> atom = NS_Atomize(str16);
 
     EXPECT_TRUE(atom->Equals(str16));
 
@@ -46,8 +48,8 @@ TEST(Atoms, Basic)
 TEST(Atoms, 16vs8)
 {
   for (unsigned int i = 0; i < ArrayLength(ValidStrings); ++i) {
-    nsCOMPtr<nsIAtom> atom16 = NS_Atomize(ValidStrings[i].m16);
-    nsCOMPtr<nsIAtom> atom8 = NS_Atomize(ValidStrings[i].m8);
+    RefPtr<nsAtom> atom16 = NS_Atomize(ValidStrings[i].m16);
+    RefPtr<nsAtom> atom8 = NS_Atomize(ValidStrings[i].m8);
     EXPECT_EQ(atom16, atom8);
   }
 }
@@ -57,7 +59,7 @@ TEST(Atoms, BufferSharing)
   nsString unique;
   unique.AssignLiteral("this is a unique string !@#$");
 
-  nsCOMPtr<nsIAtom> atom = NS_Atomize(unique);
+  RefPtr<nsAtom> atom = NS_Atomize(unique);
 
   EXPECT_EQ(unique.get(), atom->GetUTF16String());
 }
@@ -69,8 +71,8 @@ TEST(Atoms, Null)
 
   EXPECT_FALSE(str.Equals(strCut));
 
-  nsCOMPtr<nsIAtom> atomCut = NS_Atomize(strCut);
-  nsCOMPtr<nsIAtom> atom = NS_Atomize(str);
+  RefPtr<nsAtom> atomCut = NS_Atomize(strCut);
+  RefPtr<nsAtom> atom = NS_Atomize(str);
 
   EXPECT_EQ(atom->GetLength(), str.Length());
   EXPECT_TRUE(atom->Equals(str));
@@ -84,7 +86,7 @@ TEST(Atoms, Invalid)
     nsrefcnt count = NS_GetNumberOfAtoms();
 
     {
-      nsCOMPtr<nsIAtom> atom16 = NS_Atomize(Invalid16Strings[i].m16);
+      RefPtr<nsAtom> atom16 = NS_Atomize(Invalid16Strings[i].m16);
       EXPECT_TRUE(atom16->Equals(nsDependentString(Invalid16Strings[i].m16)));
     }
 
@@ -95,8 +97,8 @@ TEST(Atoms, Invalid)
     nsrefcnt count = NS_GetNumberOfAtoms();
 
     {
-      nsCOMPtr<nsIAtom> atom8 = NS_Atomize(Invalid8Strings[i].m8);
-      nsCOMPtr<nsIAtom> atom16 = NS_Atomize(Invalid8Strings[i].m16);
+      RefPtr<nsAtom> atom8 = NS_Atomize(Invalid8Strings[i].m8);
+      RefPtr<nsAtom> atom16 = NS_Atomize(Invalid8Strings[i].m16);
       EXPECT_EQ(atom16, atom8);
       EXPECT_TRUE(atom16->Equals(nsDependentString(Invalid8Strings[i].m16)));
     }
@@ -106,12 +108,12 @@ TEST(Atoms, Invalid)
 
 // Don't run this test in debug builds as that intentionally asserts.
 #ifndef DEBUG
-  nsCOMPtr<nsIAtom> emptyAtom = NS_Atomize("");
+  RefPtr<nsAtom> emptyAtom = NS_Atomize("");
 
   for (unsigned int i = 0; i < ArrayLength(Malformed8Strings); ++i) {
     nsrefcnt count = NS_GetNumberOfAtoms();
 
-    nsCOMPtr<nsIAtom> atom8 = NS_Atomize(Malformed8Strings[i]);
+    RefPtr<nsAtom> atom8 = NS_Atomize(Malformed8Strings[i]);
     EXPECT_EQ(atom8, emptyAtom);
     EXPECT_EQ(count, NS_GetNumberOfAtoms());
   }
@@ -123,7 +125,7 @@ TEST(Atoms, Invalid)
 #define THIRD_ATOM_STR "third static atom?!"
 
 bool
-isStaticAtom(nsIAtom* atom)
+isStaticAtom(nsAtom* atom)
 {
   // Don't use logic && in order to ensure that all addrefs/releases are always
   // run, even if one of the tests fail. This allows us to run this code on a
@@ -142,12 +144,49 @@ TEST(Atoms, Table)
 {
   nsrefcnt count = NS_GetNumberOfAtoms();
 
-  nsCOMPtr<nsIAtom> thirdDynamic = NS_Atomize(THIRD_ATOM_STR);
+  RefPtr<nsAtom> thirdDynamic = NS_Atomize(THIRD_ATOM_STR);
 
   EXPECT_FALSE(isStaticAtom(thirdDynamic));
 
   EXPECT_TRUE(thirdDynamic);
   EXPECT_EQ(NS_GetNumberOfAtoms(), count + 1);
+}
+
+class nsAtomRunner final : public nsIRunnable
+{
+public:
+  NS_DECL_THREADSAFE_ISUPPORTS
+
+  NS_IMETHOD Run() final
+  {
+    for (int i = 0; i < 10000; i++) {
+      RefPtr<nsAtom> atom = NS_Atomize(u"A Testing Atom");
+    }
+    return NS_OK;
+  }
+
+private:
+  ~nsAtomRunner() {}
+};
+
+NS_IMPL_ISUPPORTS(nsAtomRunner, nsIRunnable)
+
+TEST(Atoms, ConcurrentAccessing)
+{
+  static const size_t kThreadCount = 4;
+  // Force a GC before so that we don't have any unused atom.
+  NS_GetNumberOfAtoms();
+  EXPECT_EQ(NS_GetUnusedAtomCount(), int32_t(0));
+  nsCOMPtr<nsIThread> threads[kThreadCount];
+  for (size_t i = 0; i < kThreadCount; i++) {
+    nsresult rv = NS_NewThread(getter_AddRefs(threads[i]), new nsAtomRunner);
+    EXPECT_TRUE(NS_SUCCEEDED(rv));
+  }
+  for (size_t i = 0; i < kThreadCount; i++) {
+    threads[i]->Shutdown();
+  }
+  // We should have one unused atom from this test.
+  EXPECT_EQ(NS_GetUnusedAtomCount(), int32_t(1));
 }
 
 }

@@ -4,8 +4,6 @@
 
 // This test make sure that the favicon of the private browsing is isolated.
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
-
 const TEST_SITE = "http://mochi.test:8888";
 const TEST_CACHE_SITE = "http://www.example.com";
 const TEST_DIRECTORY = "/browser/browser/components/privatebrowsing/test/browser/";
@@ -16,13 +14,13 @@ const FAVICON_URI = TEST_SITE + TEST_DIRECTORY + "file_favicon.png";
 const FAVICON_CACHE_URI = TEST_CACHE_SITE + TEST_DIRECTORY + "file_favicon.png";
 
 let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-let makeURI = Cu.import("resource://gre/modules/BrowserUtils.jsm", {}).BrowserUtils.makeURI;
+let makeURI = ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm", {}).BrowserUtils.makeURI;
 
 function clearAllImageCaches() {
   let tools = SpecialPowers.Cc["@mozilla.org/image/tools;1"]
                              .getService(SpecialPowers.Ci.imgITools);
   let imageCache = tools.getImgCacheForDocument(window.document);
-  imageCache.clearCache(true);  // true=chrome
+  imageCache.clearCache(true); // true=chrome
   imageCache.clearCache(false); // false=content
 }
 
@@ -169,7 +167,7 @@ async function assignCookies(aBrowser, aURL, aCookieValue) {
     content.document.cookie = value;
   });
 
-  await BrowserTestUtils.removeTab(tabInfo.tab);
+  BrowserTestUtils.removeTab(tabInfo.tab);
 }
 
 async function openTab(aBrowser, aURL) {
@@ -184,25 +182,17 @@ async function openTab(aBrowser, aURL) {
   return {tab, browser};
 }
 
-// A clean up function to prevent affecting other tests.
-registerCleanupFunction(() => {
-  // Clear all cookies.
-  let cookieMgr = Cc["@mozilla.org/cookiemanager;1"]
-                     .getService(Ci.nsICookieManager);
-  cookieMgr.removeAll();
-
-  // Clear all image caches and network caches.
+registerCleanupFunction(async () => {
+  Services.cookies.removeAll();
   clearAllImageCaches();
-
-  let networkCache = Cc["@mozilla.org/netwerk/cache-storage-service;1"]
-                        .getService(Ci.nsICacheStorageService);
-  networkCache.clear();
+  Services.cache2.clear();
+  await PlacesUtils.history.clear();
+  await PlacesUtils.bookmarks.eraseEverything();
 });
 
 add_task(async function test_favicon_privateBrowsing() {
   // Clear all image caches before running the test.
   clearAllImageCaches();
-
   // Clear all favicons in Places.
   await clearAllPlacesFavicons();
 
@@ -225,14 +215,23 @@ add_task(async function test_favicon_privateBrowsing() {
   // Add the observer earlier in case we don't capture events in time.
   let promiseObserveFavicon = observeFavicon(true, cookies[0], pageURI);
 
+  // The page must be bookmarked for favicon requests to go through in PB mode.
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    url: TEST_PAGE
+  });
+
   // Open a tab for the private window.
   let tabInfo = await openTab(privateWindow.gBrowser, TEST_PAGE);
 
-  // Waiting until favicon requests are all made.
+  info("Waiting until favicon requests are all made in private window.");
   await promiseObserveFavicon;
 
   // Close the tab.
-  await BrowserTestUtils.removeTab(tabInfo.tab);
+  BrowserTestUtils.removeTab(tabInfo.tab);
+  // FIXME: We need to wait for the next event tick here to avoid observing
+  //        the previous tab info in the next step (bug 1446725).
+  await new Promise(executeSoon);
 
   // Add the observer earlier in case we don't capture events in time.
   promiseObserveFavicon = observeFavicon(false, cookies[1], pageURI);
@@ -240,21 +239,19 @@ add_task(async function test_favicon_privateBrowsing() {
   // Open a tab for the non-private window.
   tabInfo = await openTab(gBrowser, TEST_PAGE);
 
-  // Waiting until favicon requests are all made.
+  info("Waiting until favicon requests are all made in non-private window.");
   await promiseObserveFavicon;
 
   // Close the tab.
-  await BrowserTestUtils.removeTab(tabInfo.tab);
+  BrowserTestUtils.removeTab(tabInfo.tab);
   await BrowserTestUtils.closeWindow(privateWindow);
 });
 
 add_task(async function test_favicon_cache_privateBrowsing() {
-  // Clear all image cahces and network cache before running the test.
+  // Clear all image caches and network cache before running the test.
   clearAllImageCaches();
 
-  let networkCache = Cc["@mozilla.org/netwerk/cache-storage-service;1"]
-                        .getService(Ci.nsICacheStorageService);
-  networkCache.clear();
+  Services.cache2.clear();
 
   // Clear all favicons in Places.
   await clearAllPlacesFavicons();
@@ -277,6 +274,12 @@ add_task(async function test_favicon_cache_privateBrowsing() {
   // Create a private browsing window.
   let privateWindow = await BrowserTestUtils.openNewBrowserWindow({ private: true });
 
+  // The page must be bookmarked for favicon requests to go through in PB mode.
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    url: TEST_CACHE_PAGE
+  });
+
   // Open a tab for the private window.
   let tabInfoPrivate = await openTab(privateWindow.gBrowser, TEST_CACHE_PAGE);
 
@@ -287,7 +290,7 @@ add_task(async function test_favicon_cache_privateBrowsing() {
   is(response.topic, "http-on-examine-response", "The favicon image should be loaded through the network again.");
   is(response.privateBrowsingId, 1, "We should observe the network response for the private tab.");
 
-  await BrowserTestUtils.removeTab(tabInfoPrivate.tab);
-  await BrowserTestUtils.removeTab(tabInfoNonPrivate.tab);
+  BrowserTestUtils.removeTab(tabInfoPrivate.tab);
+  BrowserTestUtils.removeTab(tabInfoNonPrivate.tab);
   await BrowserTestUtils.closeWindow(privateWindow);
 });

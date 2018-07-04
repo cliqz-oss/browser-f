@@ -20,11 +20,7 @@
 #include "xpcpublic.h"
 
 class nsICycleCollectorListener;
-class nsScriptNameSpaceManager;
-
-namespace JS {
-class AutoValueVector;
-} // namespace JS
+class nsIDocShell;
 
 namespace mozilla {
 template <class> class Maybe;
@@ -101,7 +97,14 @@ public:
   static uint32_t GetMaxCCSliceTimeSinceClear();
   static void ClearMaxCCSliceTime();
 
-  static void RunNextCollectorTimer();
+  // If there is some pending CC or GC timer/runner, this will run it.
+  static void RunNextCollectorTimer(JS::gcreason::Reason aReason,
+                                    mozilla::TimeStamp aDeadline = mozilla::TimeStamp());
+  // If user has been idle and aDocShell is for an iframe being loaded in an
+  // already loaded top level docshell, this will run a CC or GC
+  // timer/runner if there is such pending.
+  static void MaybeRunNextCollectorSlice(nsIDocShell* aDocShell,
+                                         JS::gcreason::Reason aReason);
 
   // The GC should probably run soon, in the zone of object aObj (if given).
   static void PokeGC(JS::gcreason::Reason aReason, JSObject* aObj, int aDelay = 0);
@@ -163,12 +166,6 @@ namespace dom {
 
 void StartupJSEnvironment();
 void ShutdownJSEnvironment();
-
-// Get the NameSpaceManager, creating if necessary
-nsScriptNameSpaceManager* GetNameSpaceManager();
-
-// Peek the NameSpaceManager, without creating it.
-nsScriptNameSpaceManager* PeekNameSpaceManager();
 
 // Runnable that's used to do async error reporting
 class AsyncErrorReporter final : public mozilla::Runnable

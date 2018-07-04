@@ -269,6 +269,12 @@ nsSecureBrowserUIImpl::MapInternalToExternalState(uint32_t* aState, lockIconStat
   if (docShell->GetHasTrackingContentLoaded())
     *aState |= nsIWebProgressListener::STATE_LOADED_TRACKING_CONTENT;
 
+  // Copy forward any diagnostic flags for downstream use (e.g., warnings)
+  if (mNewToplevelSecurityStateKnown &&
+      mNewToplevelSecurityState & STATE_CERT_DISTRUST_IMMINENT) {
+    *aState |= nsIWebProgressListener::STATE_CERT_DISTRUST_IMMINENT;
+  }
+
   return NS_OK;
 }
 
@@ -577,7 +583,7 @@ nsSecureBrowserUIImpl::OnStateChange(nsIWebProgress* aWebProgress,
   }
 
   if (MOZ_LOG_TEST(gSecureDocLog, LogLevel::Debug)) {
-    nsXPIDLCString reqname;
+    nsCString reqname;
     aRequest->GetName(reqname);
     MOZ_LOG(gSecureDocLog, LogLevel::Debug,
            ("SecureUI:%p: %p %p OnStateChange %x %s\n", this, aWebProgress,

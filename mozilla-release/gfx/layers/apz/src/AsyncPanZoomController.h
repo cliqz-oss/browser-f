@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,17 +9,15 @@
 
 #include "CrossProcessMutex.h"
 #include "mozilla/layers/GeckoContentController.h"
-#include "mozilla/layers/APZCTreeManager.h"
-#include "mozilla/layers/AsyncPanZoomAnimation.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/Monitor.h"
-#include "mozilla/ReentrantMonitor.h"
+#include "mozilla/RecursiveMutex.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Atomics.h"
 #include "InputData.h"
-#include "Axis.h"
+#include "Axis.h"                       // for Axis, Side, etc.
 #include "InputQueue.h"
 #include "APZUtils.h"
 #include "Layers.h"                     // for Layer::ScrollDirection
@@ -43,18 +41,23 @@ class SharedMemoryBasic;
 namespace layers {
 
 class AsyncDragMetrics;
+class APZCTreeManager;
 struct ScrollableLayerGuid;
 class CompositorController;
 class MetricsSharingController;
 class GestureEventListener;
 struct AsyncTransform;
 class AsyncPanZoomAnimation;
-class AndroidFlingAnimation;
-class GenericFlingAnimation;
+class StackScrollerFlingAnimation;
+template <typename FlingPhysics> class GenericFlingAnimation;
+class AndroidFlingPhysics;
+class DesktopFlingPhysics;
 class InputBlockState;
+struct FlingHandoffState;
 class TouchBlockState;
 class PanGestureBlockState;
 class OverscrollHandoffChain;
+struct OverscrollHandoffState;
 class StateChangeNotificationBlocker;
 class CheckerboardEvent;
 class OverscrollEffectBase;
@@ -66,8 +69,59 @@ struct KeyboardScrollAction;
 // Base class for grouping platform-specific APZC state variables.
 class PlatformSpecificStateBase {
 public:
-  virtual ~PlatformSpecificStateBase() {}
+  virtual ~PlatformSpecificStateBase() = default;
   virtual AndroidSpecificState* AsAndroidSpecificState() { return nullptr; }
+  // PLPPI = "ParentLayer pixels per (Screen) inch"
+  virtual AsyncPanZoomAnimation* CreateFlingAnimation(AsyncPanZoomController& aApzc,
+                                                      const FlingHandoffState& aHandoffState,
+                                                      float aPLPPI);
+
+  static void InitializeGlobalState() {}
+};
+
+/*
+ * Represents a transform from the ParentLayer coordinate space of an APZC
+ * to the ParentLayer coordinate space of its parent APZC.
+ * Each layer along the way contributes to the transform. We track
+ * contributions that are perspective transforms separately, as sometimes
+ * these require special handling.
+ */
+struct AncestorTransform {
+  gfx::Matrix4x4 mTransform;
+  gfx::Matrix4x4 mPerspectiveTransform;
+
+  AncestorTransform() = default;
+
+  AncestorTransform(const gfx::Matrix4x4& aTransform, bool aTransformIsPerspective) {
+    (aTransformIsPerspective ? mPerspectiveTransform : mTransform) = aTransform;
+  }
+
+  AncestorTransform(const gfx::Matrix4x4& aTransform,
+                    const gfx::Matrix4x4& aPerspectiveTransform)
+    : mTransform(aTransform)
+    , mPerspectiveTransform(aPerspectiveTransform)
+  {}
+
+  gfx::Matrix4x4 CombinedTransform() const {
+    return mTransform * mPerspectiveTransform;
+  }
+
+  bool ContainsPerspectiveTransform() const {
+    return !mPerspectiveTransform.IsIdentity();
+  }
+
+  gfx::Matrix4x4 GetPerspectiveTransform() const {
+    return mPerspectiveTransform;
+  }
+
+  friend AncestorTransform operator*(const AncestorTransform& aA,
+                                     const AncestorTransform& aB)
+  {
+    return AncestorTransform{
+      aA.mTransform * aB.mTransform,
+      aA.mPerspectiveTransform * aB.mPerspectiveTransform
+    };
+  }
 };
 
 /**
@@ -107,6 +161,11 @@ public:
   };
 
   /**
+   * Gets the DPI from the tree manager.
+   */
+  float GetDPI() const;
+
+  /**
    * Constant describing the tolerance in distance we use, multiplied by the
    * device DPI, before we start panning the screen. This is to prevent us from
    * accidentally processing taps as touch moves, and from very short/accidental
@@ -114,15 +173,21 @@ public:
    * Note: It's an abuse of the 'Coord' class to use it to represent a 2D
    *       distance, but it's the closest thing we currently have.
    */
-  static ScreenCoord GetTouchStartTolerance();
+  ScreenCoord GetTouchStartTolerance() const;
+  /**
+   * Same as GetTouchStartTolerance, but the tolerance for how far the touch
+   * has to move before it starts allowing touchmove events to be dispatched
+   * to content, for non-scrollable content.
+   */
+  ScreenCoord GetTouchMoveTolerance() const;
   /**
    * Same as GetTouchStartTolerance, but the tolerance for how close the second
    * tap has to be to the first tap in order to be counted as part of a multi-tap
    * gesture (double-tap or one-touch-pinch).
    */
-  static ScreenCoord GetSecondTapTolerance();
+  ScreenCoord GetSecondTapTolerance() const;
 
-  AsyncPanZoomController(uint64_t aLayersId,
+  AsyncPanZoomController(LayersId aLayersId,
                          APZCTreeManager* aTreeManager,
                          const RefPtr<InputQueue>& aInputQueue,
                          GeckoContentController* aController,
@@ -145,7 +210,7 @@ public:
 
   /**
    * Kicks an animation to zoom to a rect. This may be either a zoom out or zoom
-   * in. The actual animation is done on the compositor thread after being set
+   * in. The actual animation is done on the sampler thread after being set
    * up.
    */
   void ZoomToRect(CSSRect aRect, const uint32_t aFlags);
@@ -168,7 +233,7 @@ public:
   void PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs);
 
   // --------------------------------------------------------------------------
-  // These methods must only be called on the compositor thread.
+  // These methods must only be called on the sampler thread.
   //
 
   /**
@@ -182,6 +247,10 @@ public:
 
   bool UpdateAnimation(const TimeStamp& aSampleTime,
                        nsTArray<RefPtr<Runnable>>* aOutDeferredTasks);
+
+  // --------------------------------------------------------------------------
+  // These methods must only be called on the updater thread.
+  //
 
   /**
    * A shadow layer update has arrived. |aScrollMetdata| is the new ScrollMetadata
@@ -389,7 +458,7 @@ public:
   /**
    * Returns the matrix that transforms points from global screen space into
    * this APZC's ParentLayer space.
-   * To respect the lock ordering, mMonitor must NOT be held when calling
+   * To respect the lock ordering, mRecursiveMutex must NOT be held when calling
    * this function (since this function acquires the tree lock).
    */
   ScreenToParentLayerMatrix4x4 GetTransformToThis() const;
@@ -399,7 +468,7 @@ public:
    * this APZC's ParentLayer coordinates into screen coordinates.
    * The anchor is necessary because with 3D tranforms, the location of the
    * vector can affect the result of the transform.
-   * To respect the lock ordering, mMonitor must NOT be held when calling
+   * To respect the lock ordering, mRecursiveMutex must NOT be held when calling
    * this function (since this function acquires the tree lock).
    */
   ScreenPoint ToScreenCoordinates(const ParentLayerPoint& aVector,
@@ -410,7 +479,7 @@ public:
    * screen coordinates into this APZC's ParentLayer coordinates.
    * The anchor is necessary because with 3D tranforms, the location of the
    * vector can affect the result of the transform.
-   * To respect the lock ordering, mMonitor must NOT be held when calling
+   * To respect the lock ordering, mRecursiveMutex must NOT be held when calling
    * this function (since this function acquires the tree lock).
    */
   ParentLayerPoint ToParentLayerCoordinates(const ScreenPoint& aVector,
@@ -420,8 +489,16 @@ public:
   // direction.
   bool CanScroll(const InputData& aEvent) const;
 
+  // Return the directions in which this APZC allows handoff (as governed by
+  // overscroll-behavior).
+  ScrollDirections GetAllowedHandoffDirections() const;
+
   // Return whether or not a scroll delta will be able to scroll in either
   // direction.
+  bool CanScroll(const ParentLayerPoint& aDelta) const;
+
+  // Return whether or not a scroll delta will be able to scroll in either
+  // direction with wheel.
   bool CanScrollWithWheel(const ParentLayerPoint& aDelta) const;
 
   // Return whether or not there is room to scroll this APZC
@@ -434,9 +511,18 @@ public:
    * Only the component in the direction of scrolling is returned.
    */
   CSSCoord ConvertScrollbarPoint(const ParentLayerPoint& aScrollbarPoint,
-                                 const ScrollThumbData& aThumbData) const;
+                                 const ScrollbarData& aThumbData) const;
 
   void NotifyMozMouseScrollEvent(const nsString& aString) const;
+
+  bool OverscrollBehaviorAllowsSwipe() const;
+
+private:
+  // Get whether the horizontal content of the honoured target of auto-dir
+  // scrolling starts from right to left. If you don't know of auto-dir
+  // scrolling or what a honoured target means,
+  // @see mozilla::WheelDeltaAdjustmentStrategy
+  bool IsContentOfHonouredTargetRightToLeft(bool aHonoursRoot) const;
 
 protected:
   // Protected destructor, to discourage deletion outside of Release():
@@ -504,7 +590,39 @@ protected:
    */
   nsEventStatus OnScrollWheel(const ScrollWheelInput& aEvent);
 
+  /**
+   * Gets the scroll wheel delta's values in parent-layer pixels from the
+   * original delta's values of a wheel input.
+   */
   ParentLayerPoint GetScrollWheelDelta(const ScrollWheelInput& aEvent) const;
+
+  /**
+   * This function is like GetScrollWheelDelta(aEvent).
+   * The difference is the four added parameters provide values as alternatives
+   * to the original wheel input's delta values, so |aEvent|'s delta values are
+   * ignored in this function, we only use some other member variables and
+   * functions of |aEvent|.
+   */
+  ParentLayerPoint
+  GetScrollWheelDelta(const ScrollWheelInput& aEvent,
+                      double aDeltaX,
+                      double aDeltaY,
+                      double aMultiplierX,
+                      double aMultiplierY) const;
+
+  /**
+   * This deleted function is used for:
+   * 1. avoiding accidental implicit value type conversions of input delta
+   *    values when callers intend to call the above function;
+   * 2. decoupling the manual relationship between the delta value type and the
+   *    above function. If by any chance the defined delta value type in
+   *    ScrollWheelInput has changed, this will automatically result in build
+   *    time failure, so we can learn of it the first time and accordingly
+   *    redefine those parameters' value types in the above function.
+   */
+  template <typename T>
+  ParentLayerPoint
+  GetScrollWheelDelta(ScrollWheelInput&, T, T, T, T) = delete;
 
   /**
    * Helper methods for handling keyboard events.
@@ -629,6 +747,11 @@ protected:
   void HandlePanningUpdate(const ScreenPoint& aDelta);
 
   /**
+   * Set and update the pinch lock
+   */
+  void HandlePinchLocking(ScreenCoord spanDistance, ScreenPoint focusChange);
+
+  /**
    * Sets up anything needed for panning. This takes us out of the "TOUCHING"
    * state and starts actually panning us.
    */
@@ -669,11 +792,20 @@ protected:
   const FrameMetrics& GetFrameMetrics() const;
 
   /**
+   * Gets the current scroll metadata. This is *not* the Gecko copy stored in
+   * the layers code/
+   */
+  const ScrollMetadata& GetScrollMetadata() const;
+
+  /**
    * Gets the pointer to the apzc tree manager. All the access to tree manager
    * should be made via this method and not via private variable since this method
    * ensures that no lock is set.
    */
   APZCTreeManager* GetApzcTreeManager() const;
+
+  void AssertOnSamplerThread() const;
+  void AssertOnUpdaterThread() const;
 
   /**
    * Convert ScreenPoint relative to the screen to LayoutDevicePoint relative
@@ -691,6 +823,14 @@ protected:
 
   static AxisLockMode GetAxisLockMode();
 
+  enum PinchLockMode {
+    PINCH_FREE,     /* No locking at all */
+    PINCH_STANDARD, /* Default pinch locking mode that remains locked until pinch gesture ends*/
+    PINCH_STICKY,   /* Allow lock to be broken, with hysteresis */
+  };
+
+  static PinchLockMode GetPinchLockMode();
+
   // Helper function for OnSingleTapUp(), OnSingleTapConfirmed(), and
   // OnLongPressUp().
   nsEventStatus GenerateSingleTap(GeckoContentController::TapType aType,
@@ -700,13 +840,13 @@ protected:
   // Common processing at the end of a touch block.
   void OnTouchEndOrCancel();
 
-  uint64_t mLayersId;
+  LayersId mLayersId;
   RefPtr<CompositorController> mCompositorController;
   RefPtr<MetricsSharingController> mMetricsSharingController;
 
   /* Access to the following two fields is protected by the mRefPtrMonitor,
      since they are accessed on the UI thread but can be cleared on the
-     compositor thread. */
+     updater thread. */
   RefPtr<GeckoContentController> mGeckoContentController;
   RefPtr<GestureEventListener> mGestureEventListener;
   mutable Monitor mRefPtrMonitor;
@@ -737,7 +877,20 @@ protected:
   // IMPORTANT: See the note about lock ordering at the top of APZCTreeManager.h.
   // This is mutable to allow entering it from 'const' methods; doing otherwise
   // would significantly limit what methods could be 'const'.
-  mutable ReentrantMonitor mMonitor;
+  // FIXME: Please keep in mind that due to some existing coupled relationships
+  // among the class members, we should be aware of indirect usage of the
+  // monitor-protected members. That is, although this monitor isn't required to
+  // be held before manipulating non-protected class members, some functions on
+  // those members might indirectly manipulate the protected members; in such
+  // cases, the monitor should still be held. Let's take mX.CanScroll for
+  // example:
+  // Axis::CanScroll(ParentLayerCoord) calls Axis::CanScroll() which calls
+  // Axis::GetPageLength() which calls Axis::GetFrameMetrics() which calls
+  // AsyncPanZoomController::GetFrameMetrics(), therefore, this monitor should
+  // be held before calling the CanScroll function of |mX| and |mY|. These
+  // coupled relationships bring us the burden of taking care of when the
+  // monitor should be held, so they should be decoupled in the future.
+  mutable RecursiveMutex mRecursiveMutex;
 
 private:
   // Metadata of the container layer corresponding to this APZC. This is
@@ -766,6 +919,10 @@ private:
   // This flag is set to true when we are in a axis-locked pan as a result of
   // the touch-action CSS property.
   bool mPanDirRestricted;
+
+  // This flag is set to true when we are in a pinch-locked state. ie: user
+  // is performing a two-finger pan rather than a pinch gesture
+  bool mPinchLocked;
 
   // Most up-to-date constraints on zooming. These should always be reasonable
   // values; for example, allowing a min zoom of 0.0 can cause very bad things
@@ -804,7 +961,7 @@ public:
   template <typename Callable>
   auto CallWithLastContentPaintMetrics(const Callable& callable) const
     -> decltype(callable(mLastContentPaintMetrics)) {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     return callable(mLastContentPaintMetrics);
   }
 
@@ -916,10 +1073,10 @@ protected:
                                  CSSOM-View smooth scroll-behavior */
     WHEEL_SCROLL,             /* Smooth scrolling to a destination for a wheel event. */
     KEYBOARD_SCROLL,          /* Smooth scrolling to a destination for a keyboard event. */
-    AUTOSCROLL                /* Autoscroll animation. */
+    AUTOSCROLL,               /* Autoscroll animation. */
+    SCROLLBAR_DRAG            /* Async scrollbar drag. */
   };
-
-  // This is in theory protected by |mMonitor|; that is, it should be held whenever
+  // This is in theory protected by |mRecursiveMutex|; that is, it should be held whenever
   // this is updated. In practice though... see bug 897017.
   PanZoomState mState;
 
@@ -928,7 +1085,7 @@ private:
   /**
    * A counter of how many StateChangeNotificationBlockers are active.
    * A non-zero count will prevent state change notifications from
-   * being dispatched. Only code that holds mMonitor should touch this.
+   * being dispatched. Only code that holds mRecursiveMutex should touch this.
    */
   int mNotificationBlockers;
 
@@ -997,21 +1154,23 @@ private:
 public:
   /**
    * Attempt a fling with the velocity specified in |aHandoffState|.
-   * If we are not pannable, the fling is handed off to the next APZC in
-   * the handoff chain via mTreeManager->DispatchFling().
-   * Returns true iff. the entire velocity of the fling was consumed by
-   * this APZC. |aHandoffState.mVelocity| is modified to contain any
-   * unused, residual velocity.
    * |aHandoffState.mIsHandoff| should be true iff. the fling was handed off
    * from a previous APZC, and determines whether acceleration is applied
    * to the fling.
+   * We only accept the fling in the direction(s) in which we are pannable.
+   * Returns the "residual velocity", i.e. the portion of
+   * |aHandoffState.mVelocity| that this APZC did not consume.
    */
-  bool AttemptFling(FlingHandoffState& aHandoffState);
+  ParentLayerPoint AttemptFling(const FlingHandoffState& aHandoffState);
+
+  ParentLayerPoint AdjustHandoffVelocityForOverscrollBehavior(ParentLayerPoint& aHandoffVelocity) const;
 
 private:
-  friend class AndroidFlingAnimation;
+  friend class StackScrollerFlingAnimation;
   friend class AutoscrollAnimation;
-  friend class GenericFlingAnimation;
+  template <typename FlingPhysics> friend class GenericFlingAnimation;
+  friend class AndroidFlingPhysics;
+  friend class DesktopFlingPhysics;
   friend class OverscrollAnimation;
   friend class SmoothScrollAnimation;
   friend class GenericScrollAnimation;
@@ -1039,9 +1198,6 @@ private:
 
   void HandleSmoothScrollOverscroll(const ParentLayerPoint& aVelocity);
 
-  // Helper function used by AttemptFling().
-  void AcceptFling(FlingHandoffState& aHandoffState);
-
   // Start an overscroll animation with the given initial velocity.
   void StartOverscrollAnimation(const ParentLayerPoint& aVelocity);
 
@@ -1052,6 +1208,10 @@ private:
 
   // Invoked by the pinch repaint timer.
   void DoDelayedRequestContentRepaint();
+
+  // Compute the number of ParentLayer pixels per (Screen) inch at the given
+  // point and in the given direction.
+  float ComputePLPPI(ParentLayerPoint aPoint, ParentLayerPoint aDirection) const;
 
   /* ===================================================================
    * The functions and members in this section are used to make ancestor chains
@@ -1075,12 +1235,12 @@ public:
   }
 
   bool IsRootForLayersId() const {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     return mScrollMetadata.IsLayersIdRoot();
   }
 
   bool IsRootContent() const {
-    ReentrantMonitorAutoEnter lock(mMonitor);
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
     return mFrameMetrics.IsRootContent();
   }
 
@@ -1180,6 +1340,8 @@ private:
    */
   void OverscrollBy(ParentLayerPoint& aOverscroll);
 
+  // Helper function for CanScroll().
+  ParentLayerPoint GetDeltaForEvent(const InputData& aEvent) const;
 
   /* ===================================================================
    * The functions and members in this section are used to maintain the
@@ -1187,12 +1349,21 @@ private:
    * hit-testing to see which APZC instance should handle touch events.
    */
 public:
-  void SetAncestorTransform(const Matrix4x4& aTransformToLayer) {
-    mAncestorTransform = aTransformToLayer;
+  void SetAncestorTransform(const AncestorTransform& aAncestorTransform) {
+    mAncestorTransform = aAncestorTransform;
   }
 
   Matrix4x4 GetAncestorTransform() const {
-    return mAncestorTransform;
+    return mAncestorTransform.CombinedTransform();
+  }
+
+  bool AncestorTransformContainsPerspective() const {
+    return mAncestorTransform.ContainsPerspectiveTransform();
+  }
+
+  // Return the perspective transform component of the ancestor transform.
+  Matrix4x4 GetAncestorTransformPerspective() const {
+    return mAncestorTransform.GetPerspectiveTransform();
   }
 
   // Returns whether or not this apzc contains the given screen point within
@@ -1209,7 +1380,7 @@ private:
   /* This is the cumulative CSS transform for all the layers from (and including)
    * the parent APZC down to (but excluding) this one, and excluding any
    * perspective transforms. */
-  Matrix4x4 mAncestorTransform;
+  AncestorTransform mAncestorTransform;
 
 
   /* ===================================================================
@@ -1252,17 +1423,11 @@ public:
   /**
    * Set an extra offset for testing async scrolling.
    */
-  void SetTestAsyncScrollOffset(const CSSPoint& aPoint)
-  {
-    mTestAsyncScrollOffset = aPoint;
-  }
+  void SetTestAsyncScrollOffset(const CSSPoint& aPoint);
   /**
    * Set an extra offset for testing async scrolling.
    */
-  void SetTestAsyncZoom(const LayerToParentLayerScale& aZoom)
-  {
-    mTestAsyncZoom = aZoom;
-  }
+  void SetTestAsyncZoom(const LayerToParentLayerScale& aZoom);
 
   void MarkAsyncTransformAppliedToContent()
   {
@@ -1274,7 +1439,7 @@ public:
     return mAsyncTransformAppliedToContent;
   }
 
-  uint64_t GetLayersId() const
+  LayersId GetLayersId() const
   {
     return mLayersId;
   }
@@ -1324,6 +1489,9 @@ private:
   bool MaybeAdjustDeltaForScrollSnapping(const ScrollWheelInput& aEvent,
                                          ParentLayerPoint& aDelta,
                                          CSSPoint& aStartPosition);
+
+  bool MaybeAdjustDestinationForScrollSnapping(const KeyboardInput& aEvent,
+                                               CSSPoint& aDestination);
 
   // Snap to a snap position nearby the current scroll position, if appropriate.
   void ScrollSnap();

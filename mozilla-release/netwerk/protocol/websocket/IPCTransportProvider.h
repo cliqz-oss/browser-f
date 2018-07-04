@@ -34,8 +34,7 @@
  * the child. At this time the child gets its first addref.
  *
  * A reference to the TransportProvider is then sent as part of some other
- * message from the parent to the child. For example in the
- * PFlyWebPublishedServer.WebSocketRequest message.
+ * message from the parent to the child.
  *
  * The receiver of that message can then grab the TransportProviderChild and
  * without addreffing it, effectively using the refcount that the
@@ -54,7 +53,7 @@ class TransportProviderParent final : public PTransportProviderParent
                                     , public nsIHttpUpgradeListener
 {
 public:
-  TransportProviderParent();
+  TransportProviderParent() = default;
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSITRANSPORTPROVIDER
@@ -63,7 +62,7 @@ public:
   void ActorDestroy(ActorDestroyReason aWhy) override {};
 
 private:
-  ~TransportProviderParent();
+  ~TransportProviderParent() = default;
 
   void MaybeNotify();
 
@@ -77,7 +76,7 @@ class TransportProviderChild final : public PTransportProviderChild
                                    , public nsITransportProvider
 {
 public:
-  TransportProviderChild();
+  TransportProviderChild() = default;
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSITRANSPORTPROVIDER

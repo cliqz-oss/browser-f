@@ -1,21 +1,26 @@
 /* -*- js-indent-level: 2; tab-width: 2; indent-tabs-mode: nil -*- */
+
+/* eslint-env mozilla/browser-window */
+/* import-globals-from chrome-harness.js */
+/* import-globals-from mochitest-e10s-utils.js */
+
 // Test timeout (seconds)
 var gTimeoutSeconds = 45;
 var gConfig;
+var gSaveInstrumentationData = null;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Task.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ContentSearch",
+ChromeUtils.defineModuleGetter(this, "ContentSearch",
   "resource:///modules/ContentSearch.jsm");
 
 const SIMPLETEST_OVERRIDES =
   ["ok", "is", "isnot", "todo", "todo_is", "todo_isnot", "info", "expectAssertions", "requestCompleteLog"];
 
 // non-android is bootstrapped by marionette
-if (Services.appinfo.OS == 'Android') {
+if (Services.appinfo.OS == "Android") {
   window.addEventListener("load", function() {
     window.addEventListener("MozAfterPaint", function() {
       setTimeout(testInit, 0);
@@ -29,17 +34,17 @@ var TabDestroyObserver = {
   outstanding: new Set(),
   promiseResolver: null,
 
-  init: function() {
+  init() {
     Services.obs.addObserver(this, "message-manager-close");
     Services.obs.addObserver(this, "message-manager-disconnect");
   },
 
-  destroy: function() {
+  destroy() {
     Services.obs.removeObserver(this, "message-manager-close");
     Services.obs.removeObserver(this, "message-manager-disconnect");
   },
 
-  observe: function(subject, topic, data) {
+  observe(subject, topic, data) {
     if (topic == "message-manager-close") {
       this.outstanding.add(subject);
     } else if (topic == "message-manager-disconnect") {
@@ -50,7 +55,7 @@ var TabDestroyObserver = {
     }
   },
 
-  wait: function() {
+  wait() {
     if (!this.outstanding.size) {
       return Promise.resolve();
     }
@@ -83,18 +88,22 @@ function testInit() {
   } else {
     // This code allows us to redirect without requiring specialpowers for chrome and a11y tests.
     let messageHandler = function(m) {
+      // eslint-disable-next-line no-undef
       messageManager.removeMessageListener("chromeEvent", messageHandler);
       var url = m.json.data;
 
       // Window is the [ChromeWindow] for messageManager, so we need content.window
       // Currently chrome tests are run in a content window instead of a ChromeWindow
-      var webNav = content.window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                         .getInterface(Components.interfaces.nsIWebNavigation);
+      // eslint-disable-next-line no-undef
+      var webNav = content.window.QueryInterface(Ci.nsIInterfaceRequestor)
+                         .getInterface(Ci.nsIWebNavigation);
       webNav.loadURI(url, null, null, null, null);
     };
 
     var listener = 'data:,function doLoad(e) { var data=e.detail&&e.detail.data;removeEventListener("contentEvent", function (e) { doLoad(e); }, false, true);sendAsyncMessage("chromeEvent", {"data":data}); };addEventListener("contentEvent", function (e) { doLoad(e); }, false, true);';
+    // eslint-disable-next-line no-undef
     messageManager.addMessageListener("chromeEvent", messageHandler);
+    // eslint-disable-next-line no-undef
     messageManager.loadFrameScript(listener, true);
   }
   if (gConfig.e10s) {
@@ -107,16 +116,266 @@ function testInit() {
       prefs.setIntPref("dom.ipc.keepProcessesAlive.web", processCount);
     }
 
-    let globalMM = Cc["@mozilla.org/globalmessagemanager;1"]
-                     .getService(Ci.nsIMessageListenerManager);
-    globalMM.loadFrameScript("chrome://mochikit/content/shutdown-leaks-collector.js", true);
+    Services.mm.loadFrameScript("chrome://mochikit/content/shutdown-leaks-collector.js", true);
   } else {
     // In non-e10s, only run the ShutdownLeaksCollector in the parent process.
-    Components.utils.import("chrome://mochikit/content/ShutdownLeaksCollector.jsm");
+    ChromeUtils.import("chrome://mochikit/content/ShutdownLeaksCollector.jsm");
   }
 
-  let gmm = Cc["@mozilla.org/globalmessagemanager;1"].getService(Ci.nsIMessageListenerManager);
-  gmm.loadFrameScript("chrome://mochikit/content/tests/SimpleTest/AsyncUtilsContent.js", true);
+  Services.mm.loadFrameScript("chrome://mochikit/content/tests/SimpleTest/AsyncUtilsContent.js", true);
+
+  var testSuite = Cc["@mozilla.org/process/environment;1"].
+                    getService(Ci.nsIEnvironment).
+                    get("TEST_SUITE");
+  if (testSuite == "browser-chrome-instrumentation") {
+    takeInstrumentation();
+  }
+}
+
+function takeInstrumentation() {
+
+  let instrumentData = {
+    elements: {}
+  };
+
+  function pad(str, length) {
+    if (str.length >= length)
+      return str;
+
+    return str + " ".repeat(length - str.length);
+  }
+
+  function byCount(a, b) {
+    return b[1] - a[1];
+  }
+
+  function getSummaryText() {
+    let summary = [];
+    let allData = {};
+    for (let selector of Object.keys(instrumentData.elements)) {
+      allData[selector] = instrumentData.elements[selector];
+    }
+
+    let selectors = Object.keys(allData);
+    let elements = selectors.map(s => allData[s]);
+
+    let namespaceMap = new Map();
+    let bindingMap = new Map();
+
+    for (let element of elements) {
+      if (!bindingMap.has(element.binding)) {
+        bindingMap.set(element.binding, 1);
+      } else {
+        bindingMap.set(element.binding, bindingMap.get(element.binding) + 1);
+      }
+
+      if (!namespaceMap.has(element.namespaceURI)) {
+        namespaceMap.set(element.namespaceURI, new Map());
+      }
+
+      let localNameMap = namespaceMap.get(element.namespaceURI);
+      if (!localNameMap.has(element.localName)) {
+        localNameMap.set(element.localName, 1);
+      } else {
+        localNameMap.set(element.localName, localNameMap.get(element.localName) + 1);
+      }
+    }
+
+    for (let [namespace, localNameMap] of namespaceMap) {
+      summary.push(`Elements in namespace ${namespace}`);
+
+      let entries = Array.from(localNameMap);
+      entries.sort(byCount);
+      for (let entry of entries) {
+        summary.push(`  ${pad(entry[1] + "", 5)} ${entry[0]}`);
+      }
+    }
+
+    summary.push("XBL bindings");
+    let bindings = Array.from(bindingMap);
+    bindings.sort(byCount);
+    let bindingsJSON = {};
+    for (let binding of bindings) {
+      summary.push(`  ${pad(binding[1] + "", 5)} ${binding[0]}`);
+      if (binding[0]) {
+        bindingsJSON[binding[0].split("#")[1].split('"')[0]] = binding[1];
+      }
+    }
+
+    summary.push("XBL bindings as JSON");
+    summary.push(JSON.stringify(bindingsJSON, null, 2));
+
+    return summary.join("\n");
+  }
+
+  // Saves instrumantation data
+  function saveData() {
+    let path = Cc["@mozilla.org/process/environment;1"].
+               getService(Ci.nsIEnvironment).
+               get("MOZ_UPLOAD_DIR");
+    let encoder = new TextEncoder();
+
+    let instrumentPath = OS.Path.join(path, "xulinstrument.txt");
+    OS.File.writeAtomic(instrumentPath, encoder.encode(JSON.stringify(instrumentData, null, 2)));
+
+    let summaryPath = OS.Path.join(path, "xulsummary.txt");
+    OS.File.writeAtomic(summaryPath, encoder.encode(getSummaryText()));
+  }
+
+  // An iterator over an element and its ancestors
+  function* elementPath(element) {
+    yield element;
+    while ((element = element.parentNode) && (element instanceof Element)) {
+      yield element;
+    }
+  }
+
+  // Returns the information we care about for an element
+  function getElementInfo(element) {
+    let style = element.ownerGlobal.getComputedStyle(element);
+    let binding = style && style.getPropertyValue("-moz-binding");
+
+    return {
+      namespaceURI: element.namespaceURI,
+      localName: element.localName,
+      binding: (binding && binding != "none") ? binding : null,
+    };
+  }
+
+  // The selector for just this element
+  function immediateSelector(element) {
+    if (element.localName == "notificationbox" && element.parentNode &&
+        element.parentNode.classList.contains("tabbrowser-tabpanels")) {
+      // Don't do a full selector for a tabpanel's notificationbox
+      return element.localName;
+    }
+
+    if (element.localName == "tab" && element.classList.contains("tabbrowser-tab")) {
+      // Don't do a full selector for a tab
+      return element.localName;
+    }
+
+    if (element.id) {
+      return `#${element.id}`;
+    }
+
+    let selector = element.localName;
+
+    if (element.classList.length) {
+      selector += `.${Array.from(element.classList).join(".")}`;
+    }
+
+    for (let attr of ["src", "label"]) {
+      if (element.hasAttribute(attr)) {
+        selector += `[${attr}=${JSON.stringify(element.getAttribute(attr))}]`;
+      }
+    }
+
+    return selector;
+  }
+
+  // The selector chain for the element
+  function elementSelector(element) {
+    return Array.from(elementPath(element)).reverse().map(immediateSelector).join(" > ");
+  }
+
+  // An iterator over all elements in the window
+  function* windowElements(win) {
+    yield* elementDescendants(win.document.documentElement);
+  }
+
+  // An iterator over an element and all of its descendants
+  function* elementDescendants(element) {
+    let walker = Cc["@mozilla.org/inspector/deep-tree-walker;1"].
+                 createInstance(Ci.inIDeepTreeWalker);
+    walker.showAnonymousContent = true;
+    walker.showSubDocuments = false;
+    walker.showDocumentsAsNodes = false;
+    walker.init(element, NodeFilter.SHOW_ELEMENT);
+
+    yield element;
+    while (walker.nextNode()) {
+      if (walker.currentNode instanceof Element) {
+        yield walker.currentNode;
+      }
+    }
+  }
+
+  // Checks if we've seen an element and if not adds it to the instrumentation data
+  function instrumentElement(element) {
+    if (element.__instrumentSeen) {
+      return;
+    }
+
+    let selector = elementSelector(element);
+    element.__instrumentSeen = true;
+
+    if (selector in instrumentData.elements) {
+      return;
+    }
+
+    instrumentData.elements[selector] = getElementInfo(element);
+  }
+
+  // Instruments every element in a window
+  function scanWindow(win) {
+    Array.from(windowElements(win)).forEach(instrumentElement);
+  }
+
+  // Instruments every element in an element's descendants
+  function scanElement(element) {
+    Array.from(elementDescendants(element)).forEach(instrumentElement);
+  }
+
+  function handleMutation(mutation) {
+    if (mutation.type != "childList") {
+      return;
+    }
+
+    for (let node of mutation.addedNodes) {
+      if (node instanceof Element) {
+        scanElement(node);
+      }
+    }
+  }
+  // Watches a window for new elements to instrument
+  function observeWindow(win) {
+    let observer = new MutationObserver((mutations) => {
+      mutations.forEach(handleMutation);
+    });
+
+    observer.observe(win.document, {
+      childList: true,
+      subtree: true,
+    });
+
+    win.addEventListener("unload", () => {
+      observer.takeRecords().forEach(handleMutation);
+    }, { once: true });
+  }
+
+  scanWindow(window);
+  observeWindow(window);
+  gSaveInstrumentationData = saveData;
+
+  Services.ww.registerNotification((win, topic, data) => {
+    if (topic != "domwindowopened") {
+      return;
+    }
+
+    win.addEventListener("load", () => {
+      if (win.location.href != "chrome://browser/content/browser.xul") {
+        return;
+      }
+
+      scanWindow(win);
+      observeWindow(win);
+    }, { once: true });
+  });
+}
+
+function isGenerator(value) {
+  return value && typeof value === "object" && typeof value.next === "function";
 }
 
 function Tester(aTests, structuredLogger, aCallback) {
@@ -127,6 +386,16 @@ function Tester(aTests, structuredLogger, aCallback) {
   this._scriptLoader = Services.scriptloader;
   this.EventUtils = {};
   this._scriptLoader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", this.EventUtils);
+
+  // In order to allow existing tests to continue using unsafe CPOWs
+  // with EventUtils, we need to load a separate copy into a sandbox
+  // which has unsafe CPOW usage whitelisted.
+  this.cpowSandbox = Cu.Sandbox(window, {sandboxPrototype: window});
+  Cu.permitCPOWsInScope(this.cpowSandbox);
+
+  this.cpowEventUtils = new this.cpowSandbox.Object();
+  this._scriptLoader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", this.cpowEventUtils);
+
   var simpleTestScope = {};
   this._scriptLoader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/specialpowersAPI.js", simpleTestScope);
   this._scriptLoader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/SpecialPowersObserverAPI.js", simpleTestScope);
@@ -148,14 +417,12 @@ function Tester(aTests, structuredLogger, aCallback) {
   this.SimpleTest.harnessParameters = gConfig;
 
   this.MemoryStats = simpleTestScope.MemoryStats;
-  this.Task = Task;
-  this.ContentTask = Components.utils.import("resource://testing-common/ContentTask.jsm", null).ContentTask;
-  this.BrowserTestUtils = Components.utils.import("resource://testing-common/BrowserTestUtils.jsm", null).BrowserTestUtils;
-  this.TestUtils = Components.utils.import("resource://testing-common/TestUtils.jsm", null).TestUtils;
-  this.Task.Debugging.maintainStack = true;
-  this.Promise = Components.utils.import("resource://gre/modules/Promise.jsm", null).Promise;
-  this.PromiseTestUtils = Components.utils.import("resource://testing-common/PromiseTestUtils.jsm", null).PromiseTestUtils;
-  this.Assert = Components.utils.import("resource://testing-common/Assert.jsm", null).Assert;
+  this.ContentTask = ChromeUtils.import("resource://testing-common/ContentTask.jsm", null).ContentTask;
+  this.BrowserTestUtils = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm", null).BrowserTestUtils;
+  this.TestUtils = ChromeUtils.import("resource://testing-common/TestUtils.jsm", null).TestUtils;
+  this.Promise = ChromeUtils.import("resource://gre/modules/Promise.jsm", null).Promise;
+  this.PromiseTestUtils = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", null).PromiseTestUtils;
+  this.Assert = ChromeUtils.import("resource://testing-common/Assert.jsm", null).Assert;
 
   this.PromiseTestUtils.init();
 
@@ -166,29 +433,35 @@ function Tester(aTests, structuredLogger, aCallback) {
 
   this._coverageCollector = null;
 
+  const XPCOMUtilsMod = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
+
   // Avoid failing tests when XPCOMUtils.defineLazyScriptGetter is used.
-  Services.scriptloader = {
-    loadSubScript: (url, obj, charset) => {
-      let before = Object.keys(window);
-      try {
-        return this._scriptLoader.loadSubScript(url, obj, charset);
-      } finally {
-        for (let property of Object.keys(window)) {
-          if (!before.includes(property) && !this._globalProperties.includes(property)) {
-            this._globalProperties.push(property);
-            this.SimpleTest.info("Global property added while loading " + url + ": " + property);
+  XPCOMUtilsMod.Services = Object.create(Services, {
+    scriptloader: {
+      configurable: true,
+      writable: true,
+      value: {
+        loadSubScript: (url, obj, charset) => {
+          let before = Object.keys(window);
+          try {
+            return this._scriptLoader.loadSubScript(url, obj, charset);
+          } finally {
+            for (let property of Object.keys(window)) {
+              if (!before.includes(property) && !this._globalProperties.includes(property)) {
+                this._globalProperties.push(property);
+                this.SimpleTest.info("Global property added while loading " + url + ": " + property);
+              }
+            }
           }
-        }
-      }
+        },
+        loadSubScriptWithOptions: this._scriptLoader.loadSubScriptWithOptions.bind(this._scriptLoader),
+      },
     },
-    loadSubScriptWithOptions: this._scriptLoader.loadSubScriptWithOptions.bind(this._scriptLoader),
-    precompileScript: this._scriptLoader.precompileScript.bind(this._scriptLoader)
-  };
+  });
 }
 Tester.prototype = {
   EventUtils: {},
   SimpleTest: {},
-  Task: null,
   ContentTask: null,
   ExtensionTestUtils: null,
   Assert: null,
@@ -205,13 +478,13 @@ Tester.prototype = {
     return this.tests[this.currentTestIndex];
   },
   get done() {
-    return this.currentTestIndex == this.tests.length - 1;
+    return (this.currentTestIndex == this.tests.length - 1) && (this.repeat <= 0);
   },
 
   start: function Tester_start() {
     TabDestroyObserver.init();
 
-    //if testOnLoad was not called, then gConfig is not defined
+    // if testOnLoad was not called, then gConfig is not defined
     if (!gConfig)
       gConfig = readConfig();
 
@@ -223,8 +496,8 @@ Tester.prototype = {
 
     if (gConfig.jscovDirPrefix) {
       let coveragePath = gConfig.jscovDirPrefix;
-      let {CoverageCollector} = Cu.import("resource://testing-common/CoverageUtils.jsm",
-                                          {});
+      let {CoverageCollector} = ChromeUtils.import("resource://testing-common/CoverageUtils.jsm",
+                                                   {});
       this._coverageCollector = new CoverageCollector(coveragePath);
     }
 
@@ -260,7 +533,7 @@ Tester.prototype = {
 
   waitForWindowsState: function Tester_waitForWindowsState(aCallback) {
     let timedOut = this.currentTest && this.currentTest.timedOut;
-    let startTime = Date.now();
+    // eslint-disable-next-line no-nested-ternary
     let baseMsg = timedOut ? "Found a {elt} after previous test timed out"
                            : this.currentTest ? "Found an unexpected {elt} at the end of test run"
                                               : "Found an unexpected {elt}";
@@ -269,18 +542,22 @@ Tester.prototype = {
     if (this.currentTest && window.gBrowser && gBrowser.tabs.length > 1) {
       while (gBrowser.tabs.length > 1) {
         let lastTab = gBrowser.tabContainer.lastChild;
-        this.currentTest.addResult(new testResult({
-          name: baseMsg.replace("{elt}", "tab") + ": " +
-                lastTab.linkedBrowser.currentURI.spec,
-          allowFailure: this.currentTest.allowFailure,
-        }));
+        if (!lastTab.closing) {
+          // Report the stale tab as an error only when they're not closing.
+          // Tests can finish without waiting for the closing tabs.
+          this.currentTest.addResult(new testResult({
+            name: baseMsg.replace("{elt}", "tab") + ": " +
+              lastTab.linkedBrowser.currentURI.spec,
+            allowFailure: this.currentTest.allowFailure,
+          }));
+        }
         gBrowser.removeTab(lastTab);
       }
     }
 
     // Replace the last tab with a fresh one
     if (window.gBrowser) {
-      let newTab = gBrowser.addTab("about:blank", { skipAnimation: true });
+      gBrowser.addTab("about:blank", { skipAnimation: true });
       gBrowser.removeTab(gBrowser.selectedTab, { skipPermitUnload: true });
       gBrowser.stop();
     }
@@ -329,39 +606,37 @@ Tester.prototype = {
     // Include failures from window state checking prior to running the first test
     failCount += this.failuresFromInitialWindowState;
 
-    if (this.repeat > 0) {
-      --this.repeat;
-      this.currentTestIndex = -1;
-      this.nextTest();
+    TabDestroyObserver.destroy();
+    Services.console.unregisterListener(this);
+
+    // It's important to terminate the module to avoid crashes on shutdown.
+    this.PromiseTestUtils.uninit();
+
+    // In the main process, we print the ShutdownLeaksCollector message here.
+    let pid = Services.appinfo.processID;
+    dump("Completed ShutdownLeaks collections in process " + pid + "\n");
+
+    this.structuredLogger.info("TEST-START | Shutdown");
+
+    if (this.tests.length) {
+      let e10sMode = gMultiProcessBrowser ? "e10s" : "non-e10s";
+      this.structuredLogger.info("Browser Chrome Test Summary");
+      this.structuredLogger.info("Passed:  " + passCount);
+      this.structuredLogger.info("Failed:  " + failCount);
+      this.structuredLogger.info("Todo:    " + todoCount);
+      this.structuredLogger.info("Mode:    " + e10sMode);
     } else {
-      TabDestroyObserver.destroy();
-      Services.console.unregisterListener(this);
+      this.structuredLogger.error("browser-test.js | No tests to run. Did you pass invalid test_paths?");
+    }
+    this.structuredLogger.info("*** End BrowserChrome Test Results ***");
 
-      // It's important to terminate the module to avoid crashes on shutdown.
-      this.PromiseTestUtils.uninit();
+    // Tests complete, notify the callback and return
+    this.callback(this.tests);
+    this.callback = null;
+    this.tests = null;
 
-      // In the main process, we print the ShutdownLeaksCollector message here.
-      let pid = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).processID;
-      dump("Completed ShutdownLeaks collections in process " + pid + "\n");
-
-      this.structuredLogger.info("TEST-START | Shutdown");
-
-      if (this.tests.length) {
-        let e10sMode = gMultiProcessBrowser ? "e10s" : "non-e10s";
-        this.structuredLogger.info("Browser Chrome Test Summary");
-        this.structuredLogger.info("Passed:  " + passCount);
-        this.structuredLogger.info("Failed:  " + failCount);
-        this.structuredLogger.info("Todo:    " + todoCount);
-        this.structuredLogger.info("Mode:    " + e10sMode);
-      } else {
-        this.structuredLogger.error("browser-test.js | No tests to run. Did you pass invalid test_paths?");
-      }
-      this.structuredLogger.info("*** End BrowserChrome Test Results ***");
-
-      // Tests complete, notify the callback and return
-      this.callback(this.tests);
-      this.callback = null;
-      this.tests = null;
+    if (gSaveInstrumentationData) {
+      gSaveInstrumentationData();
     }
   },
 
@@ -394,7 +669,7 @@ Tester.prototype = {
     }
   },
 
-  nextTest: Task.async(function*() {
+  async nextTest() {
     if (this.currentTest) {
       if (this._coverageCollector) {
         this._coverageCollector.recordTestCoverage(this.currentTest.path);
@@ -406,9 +681,11 @@ Tester.prototype = {
       while (testScope.__cleanupFunctions.length > 0) {
         let func = testScope.__cleanupFunctions.shift();
         try {
-          yield func.apply(testScope);
-        }
-        catch (ex) {
+          let result = await func.apply(testScope);
+          if (isGenerator(result)) {
+            this.SimpleTest.ok(false, "Cleanup function returned a generator");
+          }
+        } catch (ex) {
           this.currentTest.addResult(new testResult({
             name: "Cleanup function threw an exception",
             ex,
@@ -448,7 +725,7 @@ Tester.prototype = {
       this.PromiseTestUtils.assertNoUncaughtRejections();
       this.PromiseTestUtils.assertNoMoreExpectedRejections();
 
-      Object.keys(window).forEach(function (prop) {
+      Object.keys(window).forEach(function(prop) {
         if (parseInt(prop) == prop) {
           // This is a string which when parsed as an integer and then
           // stringified gives the original string.  As in, this is in fact a
@@ -456,9 +733,9 @@ Tester.prototype = {
           // window.frames.  Skip those.
           return;
         }
-        if (this._globalProperties.indexOf(prop) == -1) {
+        if (!this._globalProperties.includes(prop)) {
           this._globalProperties.push(prop);
-          if (this._globalPropertyWhitelist.indexOf(prop) == -1) {
+          if (!this._globalPropertyWhitelist.includes(prop)) {
             this.currentTest.addResult(new testResult({
               name: "test left unexpected property on window: " + prop,
               allowFailure: this.currentTest.allowFailure,
@@ -472,7 +749,8 @@ Tester.prototype = {
       // behavior of returning the last opened popup.
       document.popupNode = null;
 
-      yield new Promise(resolve => SpecialPowers.flushPrefEnv(resolve));
+      // eslint-disable-next-line no-undef
+      await new Promise(resolve => SpecialPowers.flushPrefEnv(resolve));
 
       if (gConfig.cleanupCrashes) {
         let gdir = Services.dirsvc.get("UAppData", Ci.nsIFile);
@@ -483,8 +761,13 @@ Tester.prototype = {
           while (entries.hasMoreElements()) {
             let entry = entries.getNext().QueryInterface(Ci.nsIFile);
             if (entry.isFile()) {
-              entry.remove(false);
-              let msg = "this test left a pending crash report; deleted " + entry.path;
+              let msg = "this test left a pending crash report; ";
+              try {
+                entry.remove(false);
+                msg += "deleted " + entry.path;
+              } catch (e) {
+                msg += "could not delete " + entry.path;
+              }
               this.structuredLogger.info(msg);
             }
           }
@@ -563,10 +846,7 @@ Tester.prototype = {
       }
 
       // Dump memory stats for main thread.
-      if (Cc["@mozilla.org/xre/runtime;1"]
-          .getService(Ci.nsIXULRuntime)
-          .processType == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT)
-      {
+      if (Services.appinfo.processType == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT) {
         this.MemoryStats.dump(this.currentTestIndex,
                               this.currentTest.path,
                               gConfig.dumpOutputDirectory,
@@ -609,7 +889,7 @@ Tester.prototype = {
         // frames and browser intentionally kept alive until shutdown to
         // eliminate false positives.
         if (gConfig.testRoot == "browser") {
-          //Skip if SeaMonkey
+          // Skip if SeaMonkey
           if (AppConstants.MOZ_APP_NAME != "seamonkey") {
             // Replace the document currently loaded in the browser's sidebar.
             // This will prevent false positives for tests that were the last
@@ -619,13 +899,11 @@ Tester.prototype = {
             sidebar.setAttribute("src", "data:text/html;charset=utf-8,");
             sidebar.docShell.createAboutBlankContentViewer(null);
             sidebar.setAttribute("src", "about:blank");
-
-            SocialShare.uninit();
           }
 
           // Destroy BackgroundPageThumbs resources.
           let {BackgroundPageThumbs} =
-            Cu.import("resource://gre/modules/BackgroundPageThumbs.jsm", {});
+            ChromeUtils.import("resource://gre/modules/BackgroundPageThumbs.jsm", {});
           BackgroundPageThumbs._destroy();
 
           // Destroy preloaded browsers.
@@ -656,7 +934,7 @@ Tester.prototype = {
 
 
         let {AsyncShutdown} =
-          Cu.import("resource://gre/modules/AsyncShutdown.jsm", {});
+          ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm", {});
 
         let barrier = new AsyncShutdown.Barrier(
           "ShutdownLeaks: Wait for cleanup to be finished before checking for leaks");
@@ -685,10 +963,20 @@ Tester.prototype = {
         return;
       }
 
-      this.currentTestIndex++;
-      this.execTest();
+      if (this.repeat > 0) {
+        --this.repeat;
+        if (this.currentTestIndex < 0) {
+          this.currentTestIndex = 0;
+        }
+        this.execTest();
+      } else {
+        this.currentTestIndex++;
+        if (gConfig.repeat)
+          this.repeat = gConfig.repeat;
+        this.execTest();
+      }
     });
-  }),
+  },
 
   execTest: function Tester_execTest() {
     this.structuredLogger.testStart(this.currentTest.path);
@@ -700,16 +988,16 @@ Tester.prototype = {
     let currentTest = this.currentTest;
 
     // Import utils in the test scope.
-    this.currentTest.scope.EventUtils = this.EventUtils;
-    this.currentTest.scope.SimpleTest = this.SimpleTest;
-    this.currentTest.scope.gTestPath = this.currentTest.path;
-    this.currentTest.scope.Task = this.Task;
-    this.currentTest.scope.ContentTask = this.ContentTask;
-    this.currentTest.scope.BrowserTestUtils = this.BrowserTestUtils;
-    this.currentTest.scope.TestUtils = this.TestUtils;
-    this.currentTest.scope.ExtensionTestUtils = this.ExtensionTestUtils;
+    let {scope} = this.currentTest;
+    scope.EventUtils = this.currentTest.usesUnsafeCPOWs ? this.cpowEventUtils : this.EventUtils;
+    scope.SimpleTest = this.SimpleTest;
+    scope.gTestPath = this.currentTest.path;
+    scope.ContentTask = this.ContentTask;
+    scope.BrowserTestUtils = this.BrowserTestUtils;
+    scope.TestUtils = this.TestUtils;
+    scope.ExtensionTestUtils = this.ExtensionTestUtils;
     // Pass a custom report function for mochitest style reporting.
-    this.currentTest.scope.Assert = new this.Assert(function(err, message, stack) {
+    scope.Assert = new this.Assert(function(err, message, stack) {
       currentTest.addResult(new testResult(err ? {
         name: err.message,
         ex: err.stack,
@@ -721,13 +1009,12 @@ Tester.prototype = {
         stack,
         allowFailure: currentTest.allowFailure,
       }));
-    });
+    }, true);
 
-    this.PromiseTestUtils.Assert = this.currentTest.scope.Assert;
     this.ContentTask.setTestScope(currentScope);
 
     // Allow Assert.jsm methods to be tacked to the current scope.
-    this.currentTest.scope.export_assertions = function() {
+    scope.export_assertions = function() {
       for (let func in this.Assert) {
         this[func] = this.Assert[func].bind(this.Assert);
       }
@@ -736,11 +1023,11 @@ Tester.prototype = {
     // Override SimpleTest methods with ours.
     SIMPLETEST_OVERRIDES.forEach(function(m) {
       this.SimpleTest[m] = this[m];
-    }, this.currentTest.scope);
+    }, scope);
 
-    //load the tools to work with chrome .jar and remote
+    // load the tools to work with chrome .jar and remote
     try {
-      this._scriptLoader.loadSubScript("chrome://mochikit/content/chrome-harness.js", this.currentTest.scope);
+      this._scriptLoader.loadSubScript("chrome://mochikit/content/chrome-harness.js", scope);
     } catch (ex) { /* no chrome-harness tools */ }
 
     // Import head.js script if it exists.
@@ -748,7 +1035,7 @@ Tester.prototype = {
       this.currentTest.path.substr(0, this.currentTest.path.lastIndexOf("/"));
     var headPath = currentTestDirPath + "/head.js";
     try {
-      this._scriptLoader.loadSubScript(headPath, this.currentTest.scope);
+      this._scriptLoader.loadSubScript(headPath, scope);
     } catch (ex) {
       // Ignore if no head.js exists, but report all other errors.  Note this
       // will also ignore an existing head.js attempting to import a missing
@@ -763,8 +1050,7 @@ Tester.prototype = {
 
     // Import the test script.
     try {
-      this._scriptLoader.loadSubScript(this.currentTest.path,
-                                       this.currentTest.scope);
+      this._scriptLoader.loadSubScript(this.currentTest.path, scope);
       // Run the test
       this.lastStartTime = Date.now();
       if (this.currentTest.scope.__tasks) {
@@ -772,7 +1058,6 @@ Tester.prototype = {
         if ("test" in this.currentTest.scope) {
           throw "Cannot run both a add_task test and a normal test at the same time.";
         }
-        let Promise = this.Promise;
         let PromiseTestUtils = this.PromiseTestUtils;
 
         // Allow for a task to be skipped; we need only use the structured logger
@@ -786,7 +1071,7 @@ Tester.prototype = {
           logger.activateBuffering();
         };
 
-        this.Task.spawn(function*() {
+        (async function() {
           let task;
           while ((task = this.__tasks.shift())) {
             if (task.__skipMe || (this.__runOnlyThisTask && task != this.__runOnlyThisTask)) {
@@ -795,7 +1080,10 @@ Tester.prototype = {
             }
             this.SimpleTest.info("Entering test " + task.name);
             try {
-              yield task();
+              let result = await task();
+              if (isGenerator(result)) {
+                this.SimpleTest.ok(false, "Task returned a generator");
+              }
             } catch (ex) {
               if (currentTest.timedOut) {
                 currentTest.addResult(new testResult({
@@ -807,7 +1095,7 @@ Tester.prototype = {
                 }));
                 // We timed out, so we've already cleaned up for this test, just get outta here.
                 return;
-              } else {
+              }
                 currentTest.addResult(new testResult({
                   name: "Uncaught exception",
                   pass: this.SimpleTest.isExpectingUncaughtException(),
@@ -815,15 +1103,15 @@ Tester.prototype = {
                   stack: (typeof ex == "object" && "stack" in ex) ? ex.stack : null,
                   allowFailure: currentTest.allowFailure,
                 }));
-              }
+
             }
             PromiseTestUtils.assertNoUncaughtRejections();
             this.SimpleTest.info("Leaving test " + task.name);
           }
           this.finish();
-        }.bind(currentScope));
-      } else if (typeof this.currentTest.scope.test == "function") {
-        this.currentTest.scope.test();
+        }).call(currentScope);
+      } else if (typeof scope.test == "function") {
+        scope.test();
       } else {
         throw "This test didn't call add_task, nor did it define a generatorTest() function, nor did it define a test() function, so we don't know how to run it.";
       }
@@ -846,8 +1134,7 @@ Tester.prototype = {
     // will trigger the next test when it is done.
     if (this.currentTest.scope.__done) {
       this.nextTest();
-    }
-    else {
+    } else {
       var self = this;
       var timeoutExpires = Date.now() + gTimeoutSeconds * 1000;
       var waitUntilAtLeast = timeoutExpires - 1000;
@@ -895,12 +1182,12 @@ Tester.prototype = {
     }
   },
 
-  QueryInterface: function(aIID) {
+  QueryInterface(aIID) {
     if (aIID.equals(Ci.nsIConsoleListener) ||
         aIID.equals(Ci.nsISupports))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 };
 
@@ -959,7 +1246,7 @@ function testResult({ name, pass, todo, ex, stack, allowFailure }) {
   if (stack) {
     this.msg += "\nStack trace:\n";
     let normalized;
-    if (stack instanceof Components.interfaces.nsIStackFrame) {
+    if (stack instanceof Ci.nsIStackFrame) {
       let frames = [];
       for (let frame = stack; frame; frame = frame.caller) {
         frames.push(frame.filename + ":" + frame.name + ":" + frame.lineNumber);
@@ -968,12 +1255,13 @@ function testResult({ name, pass, todo, ex, stack, allowFailure }) {
     } else {
       normalized = "" + stack;
     }
-    this.msg += Task.Debugging.generateReadableStack(normalized, "    ");
+    this.msg += normalized;
   }
 
   if (gConfig.debugOnFailure) {
     // You've hit this line because you requested to break into the
     // debugger upon a testcase failure on your test run.
+    // eslint-disable-next-line no-debugger
     debugger;
   }
 }
@@ -1027,7 +1315,7 @@ function testScope(aTester, aTest, expected) {
 
   this.executeSoon = function test_executeSoon(func) {
     Services.tm.dispatchToMainThread({
-      run: function() {
+      run() {
         func();
       }
     });
@@ -1101,8 +1389,21 @@ function testScope(aTester, aTest, expected) {
     self.__tester.structuredLogger.deactivateBuffering();
     self.registerCleanupFunction(function() {
       self.__tester.structuredLogger.activateBuffering();
-    })
+    });
   };
+
+  // If we're running a test that requires unsafe CPOWs, create a
+  // separate sandbox scope, with CPOWS whitelisted, for that test, and
+  // mirror all of our properties onto it. Test files will be loaded
+  // into this sandbox.
+  //
+  // Otherwise, load test files directly into the testScope instance.
+  if (aTest.usesUnsafeCPOWs) {
+    let sandbox = this._createSandbox();
+    Cu.permitCPOWsInScope(sandbox);
+    return sandbox;
+  }
+  return this;
 }
 
 function decorateTaskFn(fn) {
@@ -1124,39 +1425,57 @@ testScope.prototype = {
 
   EventUtils: {},
   SimpleTest: {},
-  Task: null,
   ContentTask: null,
   BrowserTestUtils: null,
   TestUtils: null,
   ExtensionTestUtils: null,
   Assert: null,
 
+  _createSandbox() {
+    let sandbox = Cu.Sandbox(window, {sandboxPrototype: window});
+
+    for (let prop in this) {
+      if (typeof this[prop] == "function") {
+        sandbox[prop] = this[prop].bind(this);
+      } else {
+        Object.defineProperty(sandbox, prop, {
+          configurable: true,
+          enumerable: true,
+          get: () => {
+            return this[prop];
+          },
+          set: (value) => {
+            this[prop] = value;
+          }
+        });
+      }
+    }
+
+    return sandbox;
+  },
+
   /**
-   * Add a test function which is a Task function.
+   * Add a function which returns a promise (usually an async function)
+   * as a test task.
    *
-   * Task functions are functions fed into Task.jsm's Task.spawn(). They are
-   * generators that emit promises.
-   *
-   * If an exception is thrown, an assertion fails, or if a rejected
-   * promise is yielded, the test function aborts immediately and the test is
-   * reported as a failure. Execution continues with the next test function.
-   *
-   * To trigger premature (but successful) termination of the function, simply
-   * return or throw a Task.Result instance.
+   * The task ends when the promise returned by the function resolves or
+   * rejects. If the test function throws, or the promise it returns
+   * rejects, the test is reported as a failure. Execution continues
+   * with the next test function.
    *
    * Example usage:
    *
-   * add_task(function test() {
+   * add_task(async function test() {
    *   let result = yield Promise.resolve(true);
    *
    *   ok(result);
    *
-   *   let secondary = yield someFunctionThatReturnsAPromise(result);
+   *   let secondary = await someFunctionThatReturnsAPromise(result);
    *   is(secondary, "expected value");
    * });
    *
-   * add_task(function test_early_return() {
-   *   let result = yield somethingThatReturnsAPromise();
+   * add_task(async function test_early_return() {
+   *   let result = await somethingThatReturnsAPromise();
    *
    *   if (!result) {
    *     // Test is ended immediately, with success.
@@ -1166,7 +1485,7 @@ testScope.prototype = {
    *   is(result, "foo");
    * });
    */
-  add_task: function(aFunction) {
+  add_task(aFunction) {
     if (!this.__tasks) {
       this.waitForExplicitFinish();
       this.__tasks = [];

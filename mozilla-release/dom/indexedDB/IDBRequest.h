@@ -26,7 +26,7 @@ class ErrorResult;
 
 namespace dom {
 
-class DOMError;
+class DOMException;
 class IDBCursor;
 class IDBDatabase;
 class IDBFactory;
@@ -35,6 +35,7 @@ class IDBObjectStore;
 class IDBTransaction;
 template <typename> struct Nullable;
 class OwningIDBObjectStoreOrIDBIndexOrIDBCursor;
+class StrongWorkerRef;
 
 class IDBRequest
   : public IDBWrapperCache
@@ -49,7 +50,7 @@ protected:
   RefPtr<IDBTransaction> mTransaction;
 
   JS::Heap<JS::Value> mResultVal;
-  RefPtr<DOMError> mError;
+  RefPtr<DOMException> mError;
 
   nsString mFilename;
   uint64_t mLoggingSerialNumber;
@@ -83,9 +84,8 @@ public:
   static uint64_t
   NextSerialNumber();
 
-  // nsIDOMEventTarget
-  virtual nsresult
-  GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+  // EventTarget
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
   void
   GetSource(Nullable<OwningIDBObjectStoreOrIDBIndexOrIDBCursor>& aSource) const;
@@ -109,7 +109,7 @@ public:
   }
 #endif
 
-  DOMError*
+  DOMException*
   GetErrorAfterResult() const
 #ifdef DEBUG
   ;
@@ -119,7 +119,7 @@ public:
   }
 #endif
 
-  DOMError*
+  DOMException*
   GetError(ErrorResult& aRv);
 
   void
@@ -216,12 +216,10 @@ protected:
 class IDBOpenDBRequest final
   : public IDBRequest
 {
-  class WorkerHolder;
-
   // Only touched on the owning thread.
   RefPtr<IDBFactory> mFactory;
 
-  nsAutoPtr<WorkerHolder> mWorkerHolder;
+  RefPtr<StrongWorkerRef> mWorkerRef;
 
   const bool mFileHandleDisabled;
   bool mIncreasedActiveDatabaseCount;
@@ -253,7 +251,7 @@ public:
   void
   NoteComplete();
 
-  // nsIDOMEventTarget
+  // EventTarget
   virtual nsresult
   PostHandleEvent(EventChainPostVisitor& aVisitor) override;
 

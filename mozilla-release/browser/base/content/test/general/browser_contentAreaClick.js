@@ -42,10 +42,10 @@ var gTests = [
   {
     desc: "Shift+Alt left click",
     setup() {
-      gPrefService.setBoolPref("browser.altClickSave", true);
+      Services.prefs.setBoolPref("browser.altClickSave", true);
     },
     clean() {
-      gPrefService.clearUserPref("browser.altClickSave");
+      Services.prefs.clearUserPref("browser.altClickSave");
     },
     event: { shiftKey: true,
              altKey: true },
@@ -57,10 +57,10 @@ var gTests = [
   {
     desc: "Shift+Alt left click on XLinks",
     setup() {
-      gPrefService.setBoolPref("browser.altClickSave", true);
+      Services.prefs.setBoolPref("browser.altClickSave", true);
     },
     clean() {
-      gPrefService.clearUserPref("browser.altClickSave");
+      Services.prefs.clearUserPref("browser.altClickSave");
     },
     event: { shiftKey: true,
              altKey: true },
@@ -82,10 +82,10 @@ var gTests = [
   {
     desc: "Alt click",
     setup() {
-      gPrefService.setBoolPref("browser.altClickSave", true);
+      Services.prefs.setBoolPref("browser.altClickSave", true);
     },
     clean() {
-      gPrefService.clearUserPref("browser.altClickSave");
+      Services.prefs.clearUserPref("browser.altClickSave");
     },
     event: { altKey: true },
     targets: [ "commonlink", "maplink" ],
@@ -96,10 +96,10 @@ var gTests = [
   {
     desc: "Alt click on XLinks",
     setup() {
-      gPrefService.setBoolPref("browser.altClickSave", true);
+      Services.prefs.setBoolPref("browser.altClickSave", true);
     },
     clean() {
-      gPrefService.clearUserPref("browser.altClickSave");
+      Services.prefs.clearUserPref("browser.altClickSave");
     },
     event: { altKey: true },
     targets: [ "mathxlink", "svgxlink" ],
@@ -130,10 +130,10 @@ var gTests = [
   {
     desc: "Simple middle click openwin",
     setup() {
-      gPrefService.setBoolPref("browser.tabs.opentabfor.middleclick", false);
+      Services.prefs.setBoolPref("browser.tabs.opentabfor.middleclick", false);
     },
     clean() {
-      gPrefService.clearUserPref("browser.tabs.opentabfor.middleclick");
+      Services.prefs.clearUserPref("browser.tabs.opentabfor.middleclick");
     },
     event: { button: 1 },
     targets: [ "commonlink", "mathxlink", "svgxlink", "maplink" ],
@@ -144,12 +144,12 @@ var gTests = [
   {
     desc: "Middle mouse paste",
     setup() {
-      gPrefService.setBoolPref("middlemouse.contentLoadURL", true);
-      gPrefService.setBoolPref("general.autoScroll", false);
+      Services.prefs.setBoolPref("middlemouse.contentLoadURL", true);
+      Services.prefs.setBoolPref("general.autoScroll", false);
     },
     clean() {
-      gPrefService.clearUserPref("middlemouse.contentLoadURL");
-      gPrefService.clearUserPref("general.autoScroll");
+      Services.prefs.clearUserPref("middlemouse.contentLoadURL");
+      Services.prefs.clearUserPref("general.autoScroll");
     },
     event: { button: 1 },
     targets: [ "emptylink" ],
@@ -208,7 +208,7 @@ var gClickHandler = {
     gTestWin.contentAreaClick(event, isPanelClick);
     let prevent = event.defaultPrevented;
     is(prevent, gCurrentTest.preventDefault,
-       gCurrentTest.desc + ": event.defaultPrevented is correct (" + prevent + ")")
+       gCurrentTest.desc + ": event.defaultPrevented is correct (" + prevent + ")");
 
     // Check that all required methods have been called.
     gCurrentTest.expectedInvokedMethods.forEach(function(aExpectedMethodName) {
@@ -226,7 +226,7 @@ var gClickHandler = {
 
     executeSoon(runNextTest);
   }
-}
+};
 
 // Wraps around the methods' replacement mock function.
 function wrapperMethod(aInvokedMethods, aMethodName) {
@@ -234,7 +234,7 @@ function wrapperMethod(aInvokedMethods, aMethodName) {
     aInvokedMethods.push(aMethodName);
     // At least getShortcutOrURIAndPostData requires to return url
     return (aMethodName == "getShortcutOrURIAndPostData") ? arguments.url : arguments[0];
-  }
+  };
 }
 
 function setupTestBrowserWindow() {
@@ -256,7 +256,7 @@ function setupTestBrowserWindow() {
     '<p><a id="emptylink">Empty link</a></p>' +
     '<p><math id="mathxlink" xmlns="http://www.w3.org/1998/Math/MathML" xlink:type="simple" xlink:href="http://mochi.test/moz/"><mtext>MathML XLink</mtext></math></p>' +
     '<p><svg id="svgxlink" xmlns="http://www.w3.org/2000/svg" width="100px" height="50px" version="1.1"><a xlink:type="simple" xlink:href="http://mochi.test/moz/"><text transform="translate(10, 25)">SVG XLink</text></a></svg></p>' +
-    '<p><map name="map" id="map"><area href="http://mochi.test/moz/" shape="rect" coords="0,0,128,128" /></map><img id="maplink" usemap="#map" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAABGdBTUEAALGPC%2FxhBQAAAOtJREFUeF7t0IEAAAAAgKD9qRcphAoDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGBgwIAAAT0N51AAAAAASUVORK5CYII%3D"/></p>'
+    '<p><map name="map" id="map"><area href="http://mochi.test/moz/" shape="rect" coords="0,0,128,128" /></map><img id="maplink" usemap="#map" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAABGdBTUEAALGPC%2FxhBQAAAOtJREFUeF7t0IEAAAAAgKD9qRcphAoDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGBgwIAAAT0N51AAAAAASUVORK5CYII%3D"/></p>';
   doc.body.appendChild(mainDiv);
 }
 
@@ -267,7 +267,7 @@ function runNextTest() {
   }
 
   if (gCurrentTest.targets.length == 0) {
-    info(gCurrentTest.desc + ": cleaning up...")
+    info(gCurrentTest.desc + ": cleaning up...");
     gCurrentTest.clean();
 
     if (gTests.length > 0) {

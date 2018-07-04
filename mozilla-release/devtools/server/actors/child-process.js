@@ -5,8 +5,9 @@
 "use strict";
 
 const { Cc, Ci, Cu } = require("chrome");
+const Services = require("Services");
 
-const { ChromeDebuggerActor } = require("devtools/server/actors/script");
+const { ChromeDebuggerActor } = require("devtools/server/actors/thread");
 const { WebConsoleActor } = require("devtools/server/actors/webconsole");
 const makeDebugger = require("devtools/server/actors/utils/make-debugger");
 const { ActorPool } = require("devtools/server/main");
@@ -27,11 +28,30 @@ function ChildProcessActor(connection) {
     shouldAddNewGlobalAsDebuggee: global => true
   });
 
+  let sandboxPrototype = {
+    get tabs() {
+      let tabs = [];
+      let windowEnumerator = Services.ww.getWindowEnumerator();
+      while (windowEnumerator.hasMoreElements()) {
+        let window = windowEnumerator.getNext().QueryInterface(Ci.nsIDOMWindow);
+        let tabChildGlobal = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                                   .getInterface(Ci.nsIDocShell)
+                                   .sameTypeRootTreeItem
+                                   .QueryInterface(Ci.nsIInterfaceRequestor)
+                                   .getInterface(Ci.nsIContentFrameMessageManager);
+        tabs.push(tabChildGlobal);
+      }
+      return tabs;
+    },
+  };
+
   // Scope into which the webconsole executes:
-  // An empty sandbox with chrome privileges
+  // A sandbox with chrome privileges with a `tabs` getter.
   let systemPrincipal = Cc["@mozilla.org/systemprincipal;1"]
     .createInstance(Ci.nsIPrincipal);
-  let sandbox = Cu.Sandbox(systemPrincipal);
+  let sandbox = Cu.Sandbox(systemPrincipal, {
+    sandboxPrototype,
+  });
   this._consoleScope = sandbox;
 
   this._workerList = null;
@@ -67,7 +87,7 @@ ChildProcessActor.prototype = {
     return this._sources;
   },
 
-  form: function () {
+  form: function() {
     if (!this._consoleActor) {
       this._consoleActor = new WebConsoleActor(this.conn, this);
       this._contextPool.addActor(this._consoleActor);
@@ -92,7 +112,7 @@ ChildProcessActor.prototype = {
     };
   },
 
-  onListWorkers: function () {
+  onListWorkers: function() {
     if (!this._workerList) {
       this._workerList = new WorkerActorList(this.conn, {});
     }
@@ -115,12 +135,12 @@ ChildProcessActor.prototype = {
     });
   },
 
-  _onWorkerListChanged: function () {
+  _onWorkerListChanged: function() {
     this.conn.send({ from: this.actorID, type: "workerListChanged" });
     this._workerList.onListChanged = null;
   },
 
-  destroy: function () {
+  destroy: function() {
     this.conn.removeActorPool(this._contextPool);
     this._contextPool = null;
 
@@ -130,13 +150,13 @@ ChildProcessActor.prototype = {
     }
   },
 
-  preNest: function () {
+  preNest: function() {
     // TODO: freeze windows
     // window mediator doesn't work in child.
     // it doesn't throw, but doesn't return any window
   },
 
-  postNest: function () {
+  postNest: function() {
   },
 };
 

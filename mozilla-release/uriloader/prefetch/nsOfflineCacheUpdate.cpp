@@ -14,12 +14,12 @@
 #include "nsIContent.h"
 #include "mozilla/dom/Element.h"
 #include "nsIDocumentLoader.h"
-#include "nsIDOMElement.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMOfflineResourceList.h"
 #include "nsIDocument.h"
 #include "nsIObserverService.h"
 #include "nsIURL.h"
+#include "nsIURIMutator.h"
 #include "nsIWebProgress.h"
 #include "nsICryptoHash.h"
 #include "nsICacheEntry.h"
@@ -82,11 +82,13 @@ private:
 namespace {
 
 nsresult
-DropReferenceFromURL(nsIURI * aURI)
+DropReferenceFromURL(nsCOMPtr<nsIURI>& aURI)
 {
     // XXXdholbert If this SetRef fails, callers of this method probably
     // want to call aURI->CloneIgnoringRef() and use the result of that.
-    return aURI->SetRef(EmptyCString());
+    return NS_MutateURI(aURI)
+             .SetRef(EmptyCString())
+             .Finalize(aURI);
 }
 
 void
@@ -181,6 +183,7 @@ nsManifestCheck::Begin()
                        mLoadingPrincipal,
                        nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED,
                        nsIContentPolicy::TYPE_OTHER,
+                       nullptr,   // PerformanceStorage
                        nullptr,   // loadGroup
                        nullptr,   // aCallbacks
                        nsIRequest::LOAD_BYPASS_CACHE);
@@ -378,6 +381,7 @@ nsOfflineCacheUpdateItem::OpenChannel(nsOfflineCacheUpdate *aUpdate)
                        mLoadingPrincipal,
                        nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
                        nsIContentPolicy::TYPE_OTHER,
+                       nullptr,   // PerformanceStorage
                        nullptr,  // aLoadGroup
                        this,     // aCallbacks
                        flags);
@@ -794,7 +798,7 @@ nsOfflineManifestItem::AddNamespace(uint32_t namespaceType,
     rv = ns->Init(namespaceType, namespaceSpec, data);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = mNamespaces->AppendElement(ns, false);
+    rv = mNamespaces->AppendElement(ns);
     NS_ENSURE_SUCCESS(rv, rv);
 
     return NS_OK;

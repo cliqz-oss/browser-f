@@ -14,9 +14,7 @@
 
 <script>
 <![CDATA[
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 let panel, anchor, arrow;
 
@@ -40,8 +38,8 @@ let observer = {
     // we've simply cargo-culted this test from browser_tabopen_reflows.js!
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIReflowObserver,
-                                         Ci.nsISupportsWeakReference])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIReflowObserver,
+                                          Ci.nsISupportsWeakReference])
 };
 
 // A test utility that counts the reflows caused by a test function.  If the
@@ -51,9 +49,9 @@ function countReflows(testfn, expected) {
   return new Promise(resolve => {
     observer.reflows = [];
     let docShell = panel.ownerGlobal
-                    .QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                    .getInterface(Components.interfaces.nsIWebNavigation)
-                    .QueryInterface(Components.interfaces.nsIDocShell);
+                    .QueryInterface(Ci.nsIInterfaceRequestor)
+                    .getInterface(Ci.nsIWebNavigation)
+                    .QueryInterface(Ci.nsIDocShell);
     docShell.addWeakReflowObserver(observer);
     testfn().then(() => {
       docShell.removeWeakReflowObserver(observer);
@@ -100,7 +98,7 @@ addEventListener("load", function() {
   arrow.style.transition = "none";
 
   // and off we go...
-  countReflows(testSimplePanel, 1).then(SimpleTest.finish);
+  countReflows(testSimplePanel, 0).then(SimpleTest.finish);
 });
 ]]>
 </script>

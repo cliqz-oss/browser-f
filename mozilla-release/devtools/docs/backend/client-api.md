@@ -12,10 +12,8 @@ Components.utils.import("resource://gre/modules/devtools/dbg-client.jsm");
 
 function start() {
   // Start the server.
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
-  }
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
 
   // Listen to an nsIPipe
   let transport = DebuggerServer.connectPipe();
@@ -41,10 +39,8 @@ Components.utils.import("resource://gre/modules/devtools/dbg-client.jsm");
 
 function startServer() {
   // Start the server.
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
-  }
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
 
   // For an nsIServerSocket we do this:
   DebuggerServer.openListener(2929); // A connection on port 2929.
@@ -84,7 +80,7 @@ Attaching to a browser tab requires enumerating the available tabs and attaching
 ```javascript
 function attachToTab() {
   // Get the list of tabs to find the one to attach to.
-  client.listTabs((response) => {
+  client.listTabs().then((response) => {
     // Find the active tab.
     let tab = response.tabs[response.selected];
 
@@ -166,10 +162,8 @@ let threadClient;
 
 function startDebugger() {
   // Start the server.
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
-  }
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
   // Listen to an nsIPipe
   let transport = DebuggerServer.connectPipe();
   // For an nsIServerSocket we do this:
@@ -197,7 +191,7 @@ function shutdownDebugger() {
  */
 function debugTab() {
   // Get the list of tabs to find the one to attach to.
-  client.listTabs(response => {
+  client.listTabs().then(response => {
     // Find the active tab.
     let tab = response.tabs[response.selected];
     // Attach to the tab.

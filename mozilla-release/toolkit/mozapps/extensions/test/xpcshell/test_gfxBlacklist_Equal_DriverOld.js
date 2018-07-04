@@ -3,24 +3,14 @@
  */
 
 // This should eventually be moved to head_addons.js
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
 // Test whether a machine which is older than the equal
 // blacklist entry is correctly allowed.
 // Uses test_gfxBlacklist.xml
 
-Cu.import("resource://testing-common/httpd.js");
+var gTestserver = AddonTestUtils.createHttpServer({hosts: ["example.com"]});
 
-var gTestserver = new HttpServer();
-gTestserver.start(-1);
 gPort = gTestserver.identity.primaryPort;
-mapFile("/data/test_gfxBlacklist.xml", gTestserver);
-
-function get_platform() {
-  var xulRuntime = Cc["@mozilla.org/xre/app-info;1"]
-                             .getService(Ci.nsIXULRuntime);
-  return xulRuntime.OS;
-}
+gTestserver.registerDirectory("/data/", do_get_file("data"));
 
 function load_blocklist(file) {
   Services.prefs.setCharPref("extensions.blocklist.url", "http://localhost:" +
@@ -43,7 +33,7 @@ function run_test() {
   gfxInfo.QueryInterface(Ci.nsIGfxInfoDebug);
 
   // Set the vendor/device ID, etc, to match the test file.
-  switch (get_platform()) {
+  switch (Services.appinfo.OS) {
     case "WINNT":
       gfxInfo.spoofVendorID("0xdcdc");
       gfxInfo.spoofDeviceID("0x1234");
@@ -73,19 +63,19 @@ function run_test() {
 
   function checkBlacklist() {
     var status = gfxInfo.getFeatureStatus(Ci.nsIGfxInfo.FEATURE_DIRECT2D);
-    do_check_eq(status, Ci.nsIGfxInfo.FEATURE_STATUS_OK);
+    Assert.equal(status, Ci.nsIGfxInfo.FEATURE_STATUS_OK);
 
     // Make sure unrelated features aren't affected
     status = gfxInfo.getFeatureStatus(Ci.nsIGfxInfo.FEATURE_DIRECT3D_9_LAYERS);
-    do_check_eq(status, Ci.nsIGfxInfo.FEATURE_STATUS_OK);
+    Assert.equal(status, Ci.nsIGfxInfo.FEATURE_STATUS_OK);
 
-    gTestserver.stop(do_test_finished);
+    do_test_finished();
   }
 
   Services.obs.addObserver(function(aSubject, aTopic, aData) {
     // If we wait until after we go through the event loop, gfxInfo is sure to
     // have processed the gfxItems event.
-    do_execute_soon(checkBlacklist);
+    executeSoon(checkBlacklist);
   }, "blocklist-data-gfxItems");
 
   load_blocklist("test_gfxBlacklist.xml");

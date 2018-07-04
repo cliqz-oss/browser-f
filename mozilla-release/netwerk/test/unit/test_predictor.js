@@ -1,12 +1,6 @@
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
-var Cc = Components.classes;
-
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/LoadContextInfo.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var running_single_process = false;
 
@@ -40,7 +34,7 @@ ValidityChecker.prototype = {
         iid.equals(Ci.nsICacheEntryOpenCallback)) {
       return this;
     }
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   onCacheEntryCheck: function(entry, appCache)
@@ -51,7 +45,7 @@ ValidityChecker.prototype = {
   onCacheEntryAvailable: function(entry, isnew, appCache, status)
   {
     // Check if forced valid
-    do_check_eq(entry.isForcedValid, this.httpStatus === 200);
+    Assert.equal(entry.isForcedValid, this.httpStatus === 200);
     this.verifier.maybe_run_next_test();
   }
 }
@@ -89,7 +83,7 @@ Verifier.prototype = {
         this.expected_preresolves.length === 0 &&
         !this.complete) {
       this.complete = true;
-      do_check_true(true, "Well this is unexpected...");
+      Assert.ok(true, "Well this is unexpected...");
       // This kicks off the ability to run the next test
       reset_predictor();
     }
@@ -98,7 +92,7 @@ Verifier.prototype = {
   onPredictPrefetch: function verifier_onPredictPrefetch(uri, status) {
     var index = this.expected_prefetches.indexOf(uri.asciiSpec);
     if (index == -1 && !this.complete) {
-      do_check_true(false, "Got prefetch for unexpected uri " + uri.asciiSpec);
+      Assert.ok(false, "Got prefetch for unexpected uri " + uri.asciiSpec);
     } else {
       this.expected_prefetches.splice(index, 1);
     }
@@ -106,7 +100,7 @@ Verifier.prototype = {
     dump("checking validity of entry for " + uri.spec + "\n");
     var checker = new ValidityChecker(this, status);
     asyncOpenCacheEntry(uri.spec, "disk",
-        Ci.nsICacheStorage.OPEN_NORMALLY, LoadContextInfo.default,
+        Ci.nsICacheStorage.OPEN_NORMALLY, Services.loadContextInfo.default,
         checker);
   },
 
@@ -114,7 +108,7 @@ Verifier.prototype = {
     var origin = extract_origin(uri);
     var index = this.expected_preconnects.indexOf(origin);
     if (index == -1 && !this.complete) {
-      do_check_true(false, "Got preconnect for unexpected uri " + origin);
+      Assert.ok(false, "Got preconnect for unexpected uri " + origin);
     } else {
       this.expected_preconnects.splice(index, 1);
     }
@@ -125,7 +119,7 @@ Verifier.prototype = {
     var origin = extract_origin(uri);
     var index = this.expected_preresolves.indexOf(origin);
     if (index == -1 && !this.complete) {
-      do_check_true(false, "Got preresolve for unexpected uri " + origin);
+      Assert.ok(false, "Got preresolve for unexpected uri " + origin);
     } else {
       this.expected_preresolves.splice(index, 1);
     }
@@ -168,7 +162,7 @@ var prepListener = {
   },
 
   onCacheEntryAvailable: function (entry, isNew, appCache, result) {
-    do_check_eq(result, Cr.NS_OK);
+    Assert.equal(result, Cr.NS_OK);
     entry.setMetaDataElement("predictor_test", "1");
     entry.metaDataReady();
     this.numEntriesOpened++;
@@ -179,7 +173,7 @@ var prepListener = {
 };
 
 function open_and_continue(uris, continueCallback) {
-  var ds = Services.cache2.diskCacheStorage(LoadContextInfo.default, false);
+  var ds = Services.cache2.diskCacheStorage(Services.loadContextInfo.default, false);
 
   prepListener.init(uris.length, continueCallback);
   for (var i = 0; i < uris.length; ++i) {
@@ -381,7 +375,7 @@ function continue_test_origin() {
   predictor.learn(sruri, origin_toplevel, predictor.LEARN_LOAD_SUBRESOURCE, origin_attributes);
   do_timeout(0, () => {
   var origin = extract_origin(sruri);
-  if (preconns.indexOf(origin) === -1) {
+  if (!preconns.includes(origin)) {
     preconns.push(origin);
   }
 
@@ -389,7 +383,7 @@ function continue_test_origin() {
   predictor.learn(sruri, origin_toplevel, predictor.LEARN_LOAD_SUBRESOURCE, origin_attributes);
   do_timeout(0, () => {
   var origin = extract_origin(sruri);
-  if (preconns.indexOf(origin) === -1) {
+  if (!preconns.includes(origin)) {
     preconns.push(origin);
   }
 
@@ -397,7 +391,7 @@ function continue_test_origin() {
   predictor.learn(sruri, origin_toplevel, predictor.LEARN_LOAD_SUBRESOURCE, origin_attributes);
   do_timeout(0, () => {
   var origin = extract_origin(sruri);
-  if (preconns.indexOf(origin) === -1) {
+  if (!preconns.includes(origin)) {
     preconns.push(origin);
   }
 
@@ -433,7 +427,7 @@ function prefetchHandler(metadata, response) {
 
 var prefetchListener = {
   onStartRequest: function(request, ctx) {
-    do_check_eq(request.status, Cr.NS_OK);
+    Assert.equal(request.status, Cr.NS_OK);
   },
 
   onDataAvailable: function(request, cx, stream, offset, cnt) {
@@ -604,25 +598,21 @@ function unregisterObserver() {
 }
 
 function run_test_real() {
-  tests.forEach(add_test);
+  tests.forEach(f => add_test(f));
   do_get_profile();
 
   Services.prefs.setBoolPref("network.predictor.enabled", true);
   Services.prefs.setBoolPref("network.predictor.cleaned-up", true);
-  Services.prefs.setBoolPref("browser.cache.use_new_backend_temp", true);
-  Services.prefs.setIntPref("browser.cache.use_new_backend", 1);
   Services.prefs.setBoolPref("network.predictor.doing-tests", true);
 
   predictor = Cc["@mozilla.org/network/predictor;1"].getService(Ci.nsINetworkPredictor);
 
   registerObserver();
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     Services.prefs.clearUserPref("network.predictor.preconnect-min-confidence");
     Services.prefs.clearUserPref("network.predictor.enabled");
     Services.prefs.clearUserPref("network.predictor.cleaned-up");
-    Services.prefs.clearUserPref("browser.cache.use_new_backend_temp");
-    Services.prefs.clearUserPref("browser.cache.use_new_backend");
     Services.prefs.clearUserPref("network.predictor.preresolve-min-confidence");
     Services.prefs.clearUserPref("network.predictor.enable-prefetch");
     Services.prefs.clearUserPref("network.predictor.prefetch-rolling-load-count");

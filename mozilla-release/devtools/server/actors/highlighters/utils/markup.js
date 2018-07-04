@@ -4,34 +4,30 @@
 
 "use strict";
 
-const { Cc, Ci, Cu, Cr } = require("chrome");
+const { Ci, Cu, Cr } = require("chrome");
 const { getCurrentZoom, getWindowDimensions, getViewportDimensions,
   getRootBindingParent, loadSheet } = require("devtools/shared/layout/utils");
-const { on, emit } = require("sdk/event/core");
+const EventEmitter = require("devtools/shared/event-emitter");
+const InspectorUtils = require("InspectorUtils");
 
 const lazyContainer = {};
 
 loader.lazyRequireGetter(lazyContainer, "CssLogic",
-  "devtools/server/css-logic", true);
+  "devtools/server/actors/inspector/css-logic", true);
 exports.getComputedStyle = (node) =>
   lazyContainer.CssLogic.getComputedStyle(node);
 
 exports.getBindingElementAndPseudo = (node) =>
   lazyContainer.CssLogic.getBindingElementAndPseudo(node);
 
-loader.lazyGetter(lazyContainer, "DOMUtils", () =>
-  Cc["@mozilla.org/inspector/dom-utils;1"].getService(Ci.inIDOMUtils));
 exports.hasPseudoClassLock = (...args) =>
-  lazyContainer.DOMUtils.hasPseudoClassLock(...args);
+  InspectorUtils.hasPseudoClassLock(...args);
 
 exports.addPseudoClassLock = (...args) =>
-  lazyContainer.DOMUtils.addPseudoClassLock(...args);
+  InspectorUtils.addPseudoClassLock(...args);
 
 exports.removePseudoClassLock = (...args) =>
-  lazyContainer.DOMUtils.removePseudoClassLock(...args);
-
-exports.getCSSStyleRules = (...args) =>
-  lazyContainer.DOMUtils.getCSSStyleRules(...args);
+  InspectorUtils.removePseudoClassLock(...args);
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -61,7 +57,7 @@ ClassList.prototype = {
     if (!this.contains(token)) {
       this[_tokens].push(token);
     }
-    emit(this, "update");
+    EventEmitter.emit(this, "update");
   },
   remove(token) {
     let index = this[_tokens].indexOf(token);
@@ -69,7 +65,7 @@ ClassList.prototype = {
     if (index > -1) {
       this[_tokens].splice(index, 1);
     }
-    emit(this, "update");
+    EventEmitter.emit(this, "update");
   },
   toggle(token) {
     if (this.contains(token)) {
@@ -258,7 +254,7 @@ CanvasFrameAnonymousContentHelper.prototype = {
     }
 
     // For now highlighters.css is injected in content as a ua sheet because
-    // <style scoped> doesn't work inside anonymous content (see bug 1086532).
+    // we no longer support scoped style sheets (see bug 1345702).
     // If it did, highlighters.css would be injected as an anonymous content
     // node using CanvasFrameAnonymousContentHelper instead.
     loadSheet(this.highlighterEnv.window, STYLESHEET_URI);
@@ -306,9 +302,8 @@ CanvasFrameAnonymousContentHelper.prototype = {
    *   - when first attaching to a page
    *   - when swapping frame loaders (moving tabs, toggling RDM)
    */
-  _onWindowReady(e, {isTopLevel}) {
+  _onWindowReady({isTopLevel}) {
     if (isTopLevel) {
-      this._remove();
       this._removeAllListeners();
       this.elements.clear();
       this._insert();
@@ -482,7 +477,7 @@ CanvasFrameAnonymousContentHelper.prototype = {
 
     let classList = new ClassList(this.getAttributeForElement(id, "class"));
 
-    on(classList, "update", () => {
+    EventEmitter.on(classList, "update", () => {
       this.setAttributeForElement(id, "class", classList.toString());
     });
 

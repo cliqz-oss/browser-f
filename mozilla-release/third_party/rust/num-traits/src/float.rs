@@ -1,15 +1,24 @@
+#[cfg(feature = "std")]
 use std::mem;
+#[cfg(feature = "std")]
 use std::ops::Neg;
+#[cfg(feature = "std")]
 use std::num::FpCategory;
 
 // Used for default implementation of `epsilon`
+#[cfg(feature = "std")]
 use std::f32;
 
+#[cfg(feature = "std")]
 use {Num, NumCast};
 
 // FIXME: these doctests aren't actually helpful, because they're using and
 // testing the inherent methods directly, not going through `Float`.
 
+/// Generic trait for floating point numbers
+///
+/// This trait is only available with the `std` feature.
+#[cfg(feature = "std")]
 pub trait Float
     : Num
     + Copy
@@ -323,8 +332,26 @@ pub trait Float
     /// ```
     fn signum(self) -> Self;
 
-    /// Returns `true` if `self` is positive, including `+0.0` and
-    /// `Float::infinity()`.
+    /// Returns `true` if `self` is positive, including `+0.0`,
+    /// `Float::infinity()`, and with newer versions of Rust `f64::NAN`.
+    ///
+    /// ```
+    /// use num_traits::Float;
+    /// use std::f64;
+    ///
+    /// let neg_nan: f64 = -f64::NAN;
+    ///
+    /// let f = 7.0;
+    /// let g = -7.0;
+    ///
+    /// assert!(f.is_sign_positive());
+    /// assert!(!g.is_sign_positive());
+    /// assert!(!neg_nan.is_sign_positive());
+    /// ```
+    fn is_sign_positive(self) -> bool;
+
+    /// Returns `true` if `self` is negative, including `-0.0`,
+    /// `Float::neg_infinity()`, and with newer versions of Rust `-f64::NAN`.
     ///
     /// ```
     /// use num_traits::Float;
@@ -335,29 +362,9 @@ pub trait Float
     /// let f = 7.0;
     /// let g = -7.0;
     ///
-    /// assert!(f.is_sign_positive());
-    /// assert!(!g.is_sign_positive());
-    /// // Requires both tests to determine if is `NaN`
-    /// assert!(!nan.is_sign_positive() && !nan.is_sign_negative());
-    /// ```
-    fn is_sign_positive(self) -> bool;
-
-    /// Returns `true` if `self` is negative, including `-0.0` and
-    /// `Float::neg_infinity()`.
-    ///
-    /// ```
-    /// use num_traits::Float;
-    /// use std::f64;
-    ///
-    /// let nan = f64::NAN;
-    ///
-    /// let f = 7.0;
-    /// let g = -7.0;
-    ///
     /// assert!(!f.is_sign_negative());
     /// assert!(g.is_sign_negative());
-    /// // Requires both tests to determine if is `NaN`.
-    /// assert!(!nan.is_sign_positive() && !nan.is_sign_negative());
+    /// assert!(!nan.is_sign_negative());
     /// ```
     fn is_sign_negative(self) -> bool;
 
@@ -925,6 +932,7 @@ pub trait Float
     fn integer_decode(self) -> (u64, i16, i8);
 }
 
+#[cfg(feature = "std")]
 macro_rules! float_impl {
     ($T:ident $decode:ident) => (
         impl Float for $T {
@@ -1221,6 +1229,7 @@ macro_rules! float_impl {
     )
 }
 
+#[cfg(feature = "std")]
 fn integer_decode_f32(f: f32) -> (u64, i16, i8) {
     let bits: u32 = unsafe { mem::transmute(f) };
     let sign: i8 = if bits >> 31 == 0 {
@@ -1239,6 +1248,7 @@ fn integer_decode_f32(f: f32) -> (u64, i16, i8) {
     (mantissa as u64, exponent, sign)
 }
 
+#[cfg(feature = "std")]
 fn integer_decode_f64(f: f64) -> (u64, i16, i8) {
     let bits: u64 = unsafe { mem::transmute(f) };
     let sign: i8 = if bits >> 63 == 0 {
@@ -1257,7 +1267,9 @@ fn integer_decode_f64(f: f64) -> (u64, i16, i8) {
     (mantissa, exponent, sign)
 }
 
+#[cfg(feature = "std")]
 float_impl!(f32 integer_decode_f32);
+#[cfg(feature = "std")]
 float_impl!(f64 integer_decode_f64);
 
 macro_rules! float_const_impl {
@@ -1274,7 +1286,7 @@ macro_rules! float_const_impl {
             $(
                 #[inline]
                 fn $constant() -> Self {
-                    ::std::$T::consts::$constant
+                    ::core::$T::consts::$constant
                 }
             )+
         }
@@ -1316,13 +1328,13 @@ float_const_impl! {
     SQRT_2,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use Float;
 
     #[test]
     fn convert_deg_rad() {
-        use std::f64::consts;
+        use core::f64::consts;
 
         const DEG_RAD_PAIRS: [(f64, f64); 7] = [
             (0.0, 0.),

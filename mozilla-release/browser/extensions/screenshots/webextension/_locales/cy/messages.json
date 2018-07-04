@@ -29,6 +29,27 @@
   "downloadScreenshot": {
     "message": "Llwytho i Lawr"
   },
+  "downloadOnlyNotice": {
+    "message": "Rydych yn y modd Llwytho i Lawr yn Unig."
+  },
+  "downloadOnlyDetails": {
+    "message": "Mae Firefox Screenshots yn newid yn awtomatig i'r modd Llwytho i Lawr y Unig yn y sefyllfaoedd hyn:"
+  },
+  "downloadOnlyDetailsPrivate": {
+    "message": "Mewn ffenestr Pori Prefat."
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "Mae cwcis trydydd parti wedi eu hanalluogi."
+  },
+  "downloadOnlyDetailsNeverRemember": {
+    "message": "Mae “Peidio cofio hanes” wedi ei alluogi."
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "Rydych yn defnyddio Firefox ESR."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "Mae llwytho i fyny wedi ei atal."
+  },
   "notificationLinkCopiedTitle": {
     "message": "Dolen wedi ei Chadw"
   },
@@ -36,6 +57,28 @@
     "message": "Mae'r ddolen i'ch llun wedi ei gopïo i'r clipfwrdd. Pwyswch $META_KEY$-V i'w ludo.",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyScreenshot": {
+    "message": "Copïo"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "Copïwyd y Llun"
+  },
+  "notificationImageCopiedDetails": {
+    "message": "Mae eich llun wedi ei gopïo i'r clipfwrdd. Pwyswch $META_KEY$-V i'w ludo.",
+    "placeholders": {
+      "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "imageCroppedWarning": {
+    "message": "Mae'r ddelwedd wedi ei thocio i $PIXELS$px.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -79,25 +122,31 @@
   "genericErrorDetails": {
     "message": "Nid ydym yn gwybod beth sydd wedi ddigwydd. Ceisiwch eto neu dynnu llun o dudalen wahanol?"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Cymryd, cadw a rhannu lluniau sgrin heb adael Firefox."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "Ffordd newydd i gadw"
+  },
+  "tourBodyPageAction": {
+    "message": "Ehangwch y ddewislen gweithredoedd tudalen yn y bar cyfeiriad unrhyw bryd fyddwch am gymryd llun sgrin."
+  },
+  "tourHeaderClickAndDrag": {
     "message": "Cipio Dim ond Beth Rydych ei Angen"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "Cliciwch a llusgo i gipio rhan o dudalen. Gallwch hofran i amlygu eich dewis."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "Cipio Ffenestri neu Dudalennau Cyfan"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "Dewiswch y botymau ar y dde uchod i gipio ardal gweladwy mewn ffenestr neu i gipio tudalen gyfan."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "Yn Ôl eich Dewis"
   },
-  "tourBodyFour": {
+  "tourBodyDownloadUpload": {
     "message": "Cadwch eich lluniau wedi eu golygu i'r We ar gyfer rhannu haws, neu eu llwytho i lawr i'ch cyfrifiadur. Gallwch hefyd glicio ar Fy Lluniau i weld pob llun sydd gennych."
   },
   "tourSkip": {
@@ -112,8 +161,8 @@
   "tourDone": {
     "message": "Gorffen"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Drwy ddefnyddio Firefox Screenshots, rydych yn cytuno i Firefox Cloud Services $TERMSANDPRIVACYNOTICETERMSLINK$ a $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
+  "termsAndPrivacyNotice2": {
+    "message": "Drwy ddefnyddio Firefox Screenshots, rydych yn cytuno i'n $TERMSANDPRIVACYNOTICETERMSLINK$ a'n $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +177,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "Hysbysiad Preifatrwydd"
+  },
+  "libraryLabel": {
+    "message": "Rhannu ar Pinterest"
   }
 }

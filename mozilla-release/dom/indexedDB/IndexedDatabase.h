@@ -65,6 +65,10 @@ struct StructuredCloneReadInfo
   bool mHasPreprocessInfo;
 
   // In IndexedDatabaseInlines.h
+  inline explicit
+  StructuredCloneReadInfo(JS::StructuredCloneScope aScope);
+
+  // In IndexedDatabaseInlines.h
   inline
   StructuredCloneReadInfo();
 
@@ -83,6 +87,10 @@ struct StructuredCloneReadInfo
   // In IndexedDatabaseInlines.h
   inline
   MOZ_IMPLICIT StructuredCloneReadInfo(SerializedStructuredCloneReadInfo&& aOther);
+
+  // In IndexedDatabaseInlines.h
+  inline
+  size_t Size() const;
 };
 
 } // namespace indexedDB

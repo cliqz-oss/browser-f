@@ -3,44 +3,38 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #![cfg_attr(feature = "nightly", feature(nonzero))]
-#![cfg_attr(feature = "cargo-clippy", allow(too_many_arguments, float_cmp))]
+#![cfg_attr(feature = "cargo-clippy", allow(float_cmp, too_many_arguments, unreadable_literal))]
 
 extern crate app_units;
 extern crate bincode;
+#[macro_use]
+extern crate bitflags;
 extern crate byteorder;
 #[cfg(feature = "nightly")]
 extern crate core;
-extern crate euclid;
-extern crate gleam;
-#[macro_use]
-extern crate heapsize;
-#[cfg(feature = "ipc")]
-extern crate ipc_channel;
-#[cfg(feature = "webgl")]
-extern crate offscreen_gl_context;
-#[macro_use]
-extern crate serde;
-extern crate time;
-
 #[cfg(target_os = "macos")]
 extern crate core_foundation;
-
 #[cfg(target_os = "macos")]
 extern crate core_graphics;
-
 #[cfg(target_os = "windows")]
 extern crate dwrote;
+extern crate euclid;
+#[cfg(feature = "ipc")]
+extern crate ipc_channel;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate time;
 
-mod units;
+
 mod api;
-mod color;
 pub mod channel;
+mod color;
 mod display_item;
 mod display_list;
 mod font;
 mod image;
-#[cfg(feature = "webgl")]
-mod webgl;
+mod units;
 
 pub use api::*;
 pub use color::*;
@@ -49,5 +43,3 @@ pub use display_list::*;
 pub use font::*;
 pub use image::*;
 pub use units::*;
-#[cfg(feature = "webgl")]
-pub use webgl::*;

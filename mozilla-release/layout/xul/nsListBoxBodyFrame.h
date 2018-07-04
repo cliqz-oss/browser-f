@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -18,13 +19,19 @@
 class nsPresContext;
 class nsListScrollSmoother;
 nsIFrame* NS_NewListBoxBodyFrame(nsIPresShell* aPresShell,
-                                 nsStyleContext* aContext);
+                                 mozilla::ComputedStyle* aStyle);
+
+namespace mozilla {
+namespace dom {
+class Element;
+} // namespace dom
+} // namespace mozilla
 
 class nsListBoxBodyFrame final : public nsBoxFrame,
                                  public nsIScrollbarMediator,
                                  public nsIReflowCallback
 {
-  nsListBoxBodyFrame(nsStyleContext* aContext,
+  nsListBoxBodyFrame(ComputedStyle* aStyle,
                      nsBoxLayout* aLayoutManager);
   virtual ~nsListBoxBodyFrame();
 
@@ -38,19 +45,19 @@ public:
   nsresult EnsureIndexIsVisible(int32_t aRowIndex);
   nsresult ScrollToIndex(int32_t aRowIndex);
   nsresult ScrollByLines(int32_t aNumLines);
-  nsresult GetItemAtIndex(int32_t aIndex, nsIDOMElement **aResult);
-  nsresult GetIndexOfItem(nsIDOMElement *aItem, int32_t *aResult);
+  nsresult GetItemAtIndex(int32_t aIndex, mozilla::dom::Element **aResult);
+  nsresult GetIndexOfItem(mozilla::dom::Element *aItem, int32_t *aResult);
 
   friend nsIFrame* NS_NewListBoxBodyFrame(nsIPresShell* aPresShell,
-                                          nsStyleContext* aContext);
+                                          ComputedStyle* aStyle);
 
   // nsIFrame
   virtual void Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsIAtom* aAttribute, int32_t aModType) override;
+  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute, int32_t aModType) override;
 
   // nsIScrollbarMediator
   virtual void ScrollByPage(nsScrollbarFrame* aScrollbar, int32_t aDirection,

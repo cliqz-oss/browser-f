@@ -4,6 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+include "mozilla/dom/TabMessageUtils.h";
+
 include protocol PBrowser;
 include PBrowserOrId;
 
@@ -42,9 +44,6 @@ struct FrameIPCTabContext
   // Whether this is a mozbrowser frame.  <iframe mozbrowser mozapp> and
   // <xul:browser> are not considered to be mozbrowser frames.
   bool isMozBrowserElement;
-
-  // Whether this TabContext should work in prerender mode.
-  bool isPrerendered;
 
   // The requested presentation URL.
   // This value would be empty if the TabContext isn't created for

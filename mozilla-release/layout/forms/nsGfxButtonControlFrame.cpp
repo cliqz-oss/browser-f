@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,35 +7,29 @@
 #include "nsGfxButtonControlFrame.h"
 #include "nsIFormControl.h"
 #include "nsGkAtoms.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "nsContentUtils.h"
-// MouseEvent suppression in PP
-#include "nsContentList.h"
-
-#include "nsIDOMHTMLInputElement.h"
 #include "nsTextNode.h"
 
 using namespace mozilla;
 
-nsGfxButtonControlFrame::nsGfxButtonControlFrame(nsStyleContext* aContext)
-  : nsHTMLButtonControlFrame(aContext, kClassID)
+nsGfxButtonControlFrame::nsGfxButtonControlFrame(ComputedStyle* aStyle)
+  : nsHTMLButtonControlFrame(aStyle, kClassID)
 {
 }
 
 nsContainerFrame*
-NS_NewGfxButtonControlFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewGfxButtonControlFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsGfxButtonControlFrame(aContext);
+  return new (aPresShell) nsGfxButtonControlFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsGfxButtonControlFrame)
 
-void nsGfxButtonControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+void nsGfxButtonControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  nsContentUtils::DestroyAnonymousContent(&mTextContent);
-  nsHTMLButtonControlFrame::DestroyFrom(aDestructRoot);
+  aPostDestroyData.AddAnonymousContent(mTextContent.forget());
+  nsHTMLButtonControlFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 #ifdef DEBUG_FRAME_DUMP
@@ -50,8 +45,9 @@ nsGfxButtonControlFrame::GetFrameName(nsAString& aResult) const
 nsresult
 nsGfxButtonControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 {
-  nsXPIDLString label;
-  GetLabel(label);
+  nsAutoString label;
+  nsresult rv = GetLabel(label);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   // Add a child text content node for the label
   mTextContent = new nsTextNode(mContent->NodeInfo()->NodeInfoManager());
@@ -83,7 +79,7 @@ NS_QUERYFRAME_TAIL_INHERITING(nsHTMLButtonControlFrame)
 // label from a string bundle as is done for all other UI strings.
 // See bug 16999 for further details.
 nsresult
-nsGfxButtonControlFrame::GetDefaultLabel(nsXPIDLString& aString) const
+nsGfxButtonControlFrame::GetDefaultLabel(nsAString& aString) const
 {
   nsCOMPtr<nsIFormControl> form = do_QueryInterface(mContent);
   NS_ENSURE_TRUE(form, NS_ERROR_UNEXPECTED);
@@ -106,12 +102,12 @@ nsGfxButtonControlFrame::GetDefaultLabel(nsXPIDLString& aString) const
 }
 
 nsresult
-nsGfxButtonControlFrame::GetLabel(nsXPIDLString& aLabel)
+nsGfxButtonControlFrame::GetLabel(nsString& aLabel)
 {
   // Get the text from the "value" property on our content if there is
   // one; otherwise set it to a default value (localized).
-  dom::HTMLInputElement* elt = dom::HTMLInputElement::FromContent(mContent);
-  if (mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::value) && elt) {
+  dom::HTMLInputElement* elt = dom::HTMLInputElement::FromNode(mContent);
+  if (elt && elt->HasAttr(kNameSpaceID_None, nsGkAtoms::value)) {
     elt->GetValue(aLabel, dom::CallerType::System);
   } else {
     // Generate localized label.
@@ -152,7 +148,7 @@ nsGfxButtonControlFrame::GetLabel(nsXPIDLString& aLabel)
 
 nsresult
 nsGfxButtonControlFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                          nsIAtom*        aAttribute,
+                                          nsAtom*        aAttribute,
                                           int32_t         aModType)
 {
   nsresult rv = NS_OK;
@@ -160,7 +156,7 @@ nsGfxButtonControlFrame::AttributeChanged(int32_t         aNameSpaceID,
   // If the value attribute is set, update the text of the label
   if (nsGkAtoms::value == aAttribute) {
     if (mTextContent && mContent) {
-      nsXPIDLString label;
+      nsAutoString label;
       rv = GetLabel(label);
       NS_ENSURE_SUCCESS(rv, rv);
 
@@ -191,10 +187,7 @@ nsGfxButtonControlFrame::HandleEvent(nsPresContext* aPresContext,
   // from being called. The nsFrame::HandleEvent causes the button label
   // to be selected (Drawn with an XOR rectangle over the label)
 
-  // do we have user-input style?
-  const nsStyleUserInterface* uiStyle = StyleUserInterface();
-  if (uiStyle->mUserInput == StyleUserInput::None ||
-      uiStyle->mUserInput == StyleUserInput::Disabled) {
+  if (IsContentDisabled()) {
     return nsFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
   }
   return NS_OK;

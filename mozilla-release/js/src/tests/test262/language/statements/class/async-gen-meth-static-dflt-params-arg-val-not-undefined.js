@@ -1,9 +1,8 @@
-// |reftest| skip-if(release_or_beta) -- async-iteration is not released yet
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-arg-val-not-undefined.case
 // - src/function-forms/default/cls-decl-async-gen-meth-static.template
 /*---
-description: Use of intializer when argument value is not `undefined` (static class declaration async generator method)
+description: Use of initializer when argument value is not `undefined` (static class declaration async generator method)
 esid: sec-runtime-semantics-bindingclassdeclarationevaluation
 features: [default-parameters, async-iteration]
 flags: [generated, async]

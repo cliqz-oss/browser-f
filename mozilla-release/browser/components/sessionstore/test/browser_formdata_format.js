@@ -29,7 +29,7 @@ function test() {
     { "#input1": "value24", "/xhtml:html/xhtml:body/xhtml:input[@name='input2']": "value25", id: { "input1": "value26" } },
     { "#input1": "value27", "/xhtml:html/xhtml:body/xhtml:input[@name='input2']": "value28", id: { "input1": "value29" }, xpath: { "/xhtml:html/xhtml:body/xhtml:input[@name='input2']": "value30" } },
     { "#input1": "value31", "/xhtml:html/xhtml:body/xhtml:input[@name='input2']": "value32", xpath: { "/xhtml:html/xhtml:body/xhtml:input[@name='input2']": "value33" } }
-  ]
+  ];
   let expectedValues = [
     [ "", "" ],
     // old format
@@ -86,7 +86,7 @@ async function testTabRestoreData(aFormData, aExpectedValue) {
        "FormData format is valid: " + restoredFormData);
     // validate that there are no old keys
     for (let key of Object.keys(restoredFormData)) {
-      if (["id", "xpath", "url"].indexOf(key) === -1) {
+      if (!["id", "xpath", "url"].includes(key)) {
         ok(false, "FormData format is invalid.");
       }
     }

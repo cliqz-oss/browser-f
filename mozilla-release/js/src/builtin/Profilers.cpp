@@ -8,6 +8,7 @@
 
 #include "builtin/Profilers.h"
 
+#include "mozilla/Compiler.h"
 #include "mozilla/Sprintf.h"
 
 #include <stdarg.h>
@@ -29,7 +30,7 @@
 
 #include "vm/Probes.h"
 
-#include "jscntxtinlines.h"
+#include "vm/JSContext-inl.h"
 
 using namespace js;
 
@@ -180,7 +181,7 @@ JS_DumpProfile(const char* outfile, const char* profileName)
 {
     bool ok = true;
 #ifdef MOZ_CALLGRIND
-    js_DumpCallgrind(outfile);
+    ok = js_DumpCallgrind(outfile);
 #endif
     return ok;
 }
@@ -412,6 +413,34 @@ JS_DefineProfilingFunctions(JSContext* cx, HandleObject obj)
 }
 
 #ifdef MOZ_CALLGRIND
+
+/* Wrapper for various macros to stop warnings coming from their expansions. */
+#if defined(__clang__)
+# define JS_SILENCE_UNUSED_VALUE_IN_EXPR(expr)                                \
+    JS_BEGIN_MACRO                                                            \
+        _Pragma("clang diagnostic push")                                      \
+        /* If these _Pragmas cause warnings for you, try disabling ccache. */ \
+        _Pragma("clang diagnostic ignored \"-Wunused-value\"")                \
+        { expr; }                                                             \
+        _Pragma("clang diagnostic pop")                                       \
+    JS_END_MACRO
+#elif MOZ_IS_GCC
+
+# define JS_SILENCE_UNUSED_VALUE_IN_EXPR(expr)                                \
+    JS_BEGIN_MACRO                                                            \
+        _Pragma("GCC diagnostic push")                                        \
+        _Pragma("GCC diagnostic ignored \"-Wunused-but-set-variable\"")       \
+        expr;                                                                 \
+        _Pragma("GCC diagnostic pop")                                         \
+    JS_END_MACRO
+#endif
+
+#if !defined(JS_SILENCE_UNUSED_VALUE_IN_EXPR)
+# define JS_SILENCE_UNUSED_VALUE_IN_EXPR(expr)                                \
+    JS_BEGIN_MACRO                                                            \
+        expr;                                                                 \
+    JS_END_MACRO
+#endif
 
 JS_FRIEND_API(bool)
 js_StartCallgrind()

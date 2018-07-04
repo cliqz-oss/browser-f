@@ -14,9 +14,6 @@
 
 #include <stdarg.h>
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-
 #include "jit/CompileInfo.h"
 #include "jit/JitAllocPolicy.h"
 #include "jit/JitCompartment.h"
@@ -25,6 +22,8 @@
 # include "jit/PerfSpewer.h"
 #endif
 #include "jit/RegisterSets.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 
 namespace js {
 namespace jit {
@@ -53,13 +52,16 @@ class MIRGenerator
         return alloc().ensureBallast();
     }
     const JitRuntime* jitRuntime() const {
-        return GetJitContext()->runtime->jitRuntime();
+        return runtime->jitRuntime();
     }
     const CompileInfo& info() const {
         return *info_;
     }
     const OptimizationInfo& optimizationInfo() const {
         return *optimizationInfo_;
+    }
+    bool hasProfilingScripts() const {
+        return runtime && runtime->profilingScripts();
     }
 
     template <typename T>
@@ -91,7 +93,7 @@ class MIRGenerator
 
     MOZ_MUST_USE bool instrumentedProfiling() {
         if (!instrumentedProfilingIsCached_) {
-            instrumentedProfiling_ = GetJitContext()->runtime->geckoProfiler().enabled();
+            instrumentedProfiling_ = runtime->geckoProfiler().enabled();
             instrumentedProfilingIsCached_ = true;
         }
         return instrumentedProfiling_;
@@ -106,6 +108,10 @@ class MIRGenerator
                !JitOptions.disableOptimizationTracking;
     }
 
+    bool stringsCanBeInNursery() const {
+        return stringsCanBeInNursery_;
+    }
+
     bool safeForMinorGC() const {
         return safeForMinorGC_;
     }
@@ -113,21 +119,12 @@ class MIRGenerator
         safeForMinorGC_ = false;
     }
 
-    // Whether the active thread is trying to cancel this build.
+    // Whether the main thread is trying to cancel this build.
     bool shouldCancel(const char* why) {
-        maybePause();
         return cancelBuild_;
     }
     void cancel() {
         cancelBuild_ = true;
-    }
-
-    void maybePause() {
-        if (pauseBuild_ && *pauseBuild_)
-            PauseCurrentHelperThread();
-    }
-    void setPauseFlag(mozilla::Atomic<bool, mozilla::Relaxed>* pauseBuild) {
-        pauseBuild_ = pauseBuild;
     }
 
     bool compilingWasm() const {
@@ -179,6 +176,7 @@ class MIRGenerator
 
   public:
     CompileCompartment* compartment;
+    CompileRuntime* runtime;
 
   protected:
     const CompileInfo* info_;
@@ -187,7 +185,6 @@ class MIRGenerator
     MIRGraph* graph_;
     AbortReasonOr<Ok> offThreadStatus_;
     ObjectGroupVector abortedPreliminaryGroups_;
-    mozilla::Atomic<bool, mozilla::Relaxed>* pauseBuild_;
     mozilla::Atomic<bool, mozilla::Relaxed> cancelBuild_;
 
     uint32_t wasmMaxStackArgBytes_;
@@ -204,6 +201,7 @@ class MIRGenerator
     bool instrumentedProfiling_;
     bool instrumentedProfilingIsCached_;
     bool safeForMinorGC_;
+    bool stringsCanBeInNursery_;
 
     void addAbortedPreliminaryGroup(ObjectGroup* group);
 

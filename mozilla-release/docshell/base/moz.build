@@ -39,12 +39,7 @@ XPIDL_SOURCES += [
     'nsCDefaultURIFixup.idl',
     'nsIClipboardCommands.idl',
     'nsIContentViewer.idl',
-    'nsIContentViewerContainer.idl',
     'nsIContentViewerEdit.idl',
-    'nsIContentViewerFile.idl',
-    'nsIContextMenuListener.idl',
-    'nsIContextMenuListener2.idl',
-    'nsIDocCharset.idl',
     'nsIDocShell.idl',
     'nsIDocShellLoadInfo.idl',
     'nsIDocShellTreeItem.idl',
@@ -83,27 +78,24 @@ EXPORTS.mozilla += [
     'LoadContext.h',
 ]
 
-EXPORTS.mozilla.dom += [
-    'PendingGlobalHistoryEntry.h',
-]
-
 UNIFIED_SOURCES += [
     'LoadContext.cpp',
     'nsAboutRedirector.cpp',
-    'nsContextMenuInfo.cpp',
     'nsDefaultURIFixup.cpp',
     'nsDocShell.cpp',
     'nsDocShellEditorData.cpp',
     'nsDocShellEnumerator.cpp',
     'nsDocShellLoadInfo.cpp',
-    'nsDocShellTransferableHooks.cpp',
     'nsDocShellTreeOwner.cpp',
-    'nsDownloadHistory.cpp',
     'nsDSURIContentListener.cpp',
+    'nsPingListener.cpp',
+    'nsRefreshTimer.cpp',
     'nsWebNavigationInfo.cpp',
-    'PendingGlobalHistoryEntry.cpp',
     'SerializedLoadContext.cpp',
 ]
+
+if not CONFIG['MOZ_PLACES']:
+    UNIFIED_SOURCES += ['nsDownloadHistory.cpp']
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
@@ -124,5 +116,5 @@ LOCAL_INCLUDES += [
 if CONFIG['MOZ_TOOLKIT_SEARCH']:
     DEFINES['MOZ_TOOLKIT_SEARCH'] = True
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

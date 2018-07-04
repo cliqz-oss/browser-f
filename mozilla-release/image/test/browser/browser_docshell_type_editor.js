@@ -1,18 +1,17 @@
 
 "use strict";
 
-const Ci = Components.interfaces;
 const SIMPLE_HTML = "data:text/html,<html><head></head><body></body></html>";
 
 /**
  * Returns the directory where the chrome.manifest file for the test can be found.
  *
- * @return nsILocalFile of the manifest directory
+ * @return nsIFile of the manifest directory
  */
 function getManifestDir() {
   let path = getTestFilePath("browser_docshell_type_editor");
-  let file = Components.classes["@mozilla.org/file/local;1"]
-                       .createInstance(Components.interfaces.nsILocalFile);
+  let file = Cc["@mozilla.org/file/local;1"]
+               .createInstance(Ci.nsIFile);
   file.initWithPath(path);
   return file;
 }
@@ -109,7 +108,9 @@ add_task(async function() {
           resolve();
         }
         doc.body.appendChild(image);
-        image.src = "chrome://test1/skin/privileged.png";
+        // Set the src via wrappedJSObject so the load is triggered with
+        // the content page's principal rather than ours.
+        image.wrappedJSObject.src = "chrome://test1/skin/privileged.png";
       });
     });
   });

@@ -6,15 +6,13 @@
 
 #include "mozilla/dom/Exceptions.h"
 
-#include "js/GCAPI.h"
+#include "js/RootingAPI.h"
 #include "js/TypeDecls.h"
 #include "jsapi.h"
-#include "jsprf.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/ScriptSettings.h"
-#include "nsIProgrammingLanguage.h"
 #include "nsPIDOMWindow.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
@@ -31,7 +29,7 @@ namespace dom {
 // that an exception is pending on aCx when it returns.
 static void
 ThrowExceptionValueIfSafe(JSContext* aCx, JS::Handle<JS::Value> exnVal,
-                          nsIException* aOriginalException)
+                          Exception* aOriginalException)
 {
   MOZ_ASSERT(aOriginalException);
 
@@ -70,28 +68,6 @@ ThrowExceptionValueIfSafe(JSContext* aCx, JS::Handle<JS::Value> exnVal,
 }
 
 void
-ThrowExceptionObject(JSContext* aCx, nsIException* aException)
-{
-  // See if we really have an Exception.
-  nsCOMPtr<Exception> exception = do_QueryInterface(aException);
-  if (exception) {
-    ThrowExceptionObject(aCx, exception);
-    return;
-  }
-
-  // We only have an nsIException (probably an XPCWrappedJS).  Fall back on old
-  // wrapping.
-  MOZ_ASSERT(NS_IsMainThread());
-
-  JS::Rooted<JS::Value> val(aCx);
-  if (!WrapObject(aCx, aException, &NS_GET_IID(nsIException), &val)) {
-    return;
-  }
-
-  ThrowExceptionValueIfSafe(aCx, val, aException);
-}
-
-void
 ThrowExceptionObject(JSContext* aCx, Exception* aException)
 {
   JS::Rooted<JS::Value> thrown(aCx);
@@ -110,9 +86,8 @@ ThrowExceptionObject(JSContext* aCx, Exception* aException)
     // create the right sort of Exception or DOMException, with the right
     // global.
     if (thrown.isNumber()) {
-      nsresult exceptionResult;
-      if (NS_SUCCEEDED(aException->GetResult(&exceptionResult)) &&
-          double(exceptionResult) == thrown.toNumber()) {
+      nsresult exceptionResult = aException->GetResult();
+      if (double(exceptionResult) == thrown.toNumber()) {
         Throw(aCx, exceptionResult);
         return;
       }
@@ -146,7 +121,7 @@ Throw(JSContext* aCx, nsresult aRv, const nsACString& aMessage)
   }
 
   CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
-  nsCOMPtr<nsIException> existingException = context->GetPendingException();
+  RefPtr<Exception> existingException = context->GetPendingException();
   // Make sure to clear the pending exception now.  Either we're going to reuse
   // it (and we already grabbed it), or we plan to throw something else and this
   // pending exception is no longer relevant.
@@ -154,9 +129,7 @@ Throw(JSContext* aCx, nsresult aRv, const nsACString& aMessage)
 
   // Ignore the pending exception if we have a non-default message passed in.
   if (aMessage.IsEmpty() && existingException) {
-    nsresult nr;
-    if (NS_SUCCEEDED(existingException->GetResult(&nr)) &&
-        aRv == nr) {
+    if (aRv == existingException->GetResult()) {
       // Reuse the existing exception.
       ThrowExceptionObject(aCx, existingException);
       return false;
@@ -214,7 +187,7 @@ already_AddRefed<nsIStackFrame>
 GetCurrentJSStack(int32_t aMaxDepth)
 {
   // is there a current context available?
-  JSContext* cx = nsContentUtils::GetCurrentJSContextForThread();
+  JSContext* cx = nsContentUtils::GetCurrentJSContext();
 
   if (!cx || !js::GetContextCompartment(cx)) {
     return nullptr;
@@ -243,11 +216,6 @@ public:
 
   // aStack must not be null.
   explicit JSStackFrame(JS::Handle<JSObject*> aStack);
-
-protected:
-  int32_t GetLineno(JSContext* aCx);
-
-  int32_t GetColNo(JSContext* aCx);
 
 private:
   virtual ~JSStackFrame();
@@ -318,18 +286,6 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(JSStackFrame)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-NS_IMETHODIMP JSStackFrame::GetLanguage(uint32_t* aLanguage)
-{
-  *aLanguage = nsIProgrammingLanguage::JAVASCRIPT;
-  return NS_OK;
-}
-
-NS_IMETHODIMP JSStackFrame::GetLanguageName(nsACString& aLanguageName)
-{
-  aLanguageName.AssignLiteral("JavaScript");
-  return NS_OK;
-}
-
 // Helper method to get the value of a stack property, if it's not already
 // cached.  This will make sure we skip the cache if the access is happening
 // over Xrays.
@@ -367,11 +323,18 @@ GetValueIfNotCached(JSContext* aCx, const JS::Heap<JSObject*>& aStack,
   aPropGetter(aCx, stack, aValue, JS::SavedFrameSelfHosted::Exclude);
 }
 
-NS_IMETHODIMP JSStackFrame::GetFilename(JSContext* aCx, nsAString& aFilename)
+NS_IMETHODIMP JSStackFrame::GetFilenameXPCOM(JSContext* aCx, nsAString& aFilename)
+{
+  GetFilename(aCx, aFilename);
+  return NS_OK;
+}
+
+void
+JSStackFrame::GetFilename(JSContext* aCx, nsAString& aFilename)
 {
   if (!mStack) {
     aFilename.Truncate();
-    return NS_OK;
+    return;
   }
 
   JS::Rooted<JSString*> filename(aCx);
@@ -381,14 +344,14 @@ NS_IMETHODIMP JSStackFrame::GetFilename(JSContext* aCx, nsAString& aFilename)
                       &canCache, &useCachedValue, &filename);
   if (useCachedValue) {
     aFilename = mFilename;
-    return NS_OK;
+    return;
   }
 
   nsAutoJSString str;
   if (!str.init(aCx, filename)) {
     JS_ClearPendingException(aCx);
     aFilename.Truncate();
-    return NS_OK;
+    return;
   }
   aFilename = str;
 
@@ -396,15 +359,21 @@ NS_IMETHODIMP JSStackFrame::GetFilename(JSContext* aCx, nsAString& aFilename)
     mFilename = str;
     mFilenameInitialized = true;
   }
+}
 
+NS_IMETHODIMP
+JSStackFrame::GetNameXPCOM(JSContext* aCx, nsAString& aFunction)
+{
+  GetName(aCx, aFunction);
   return NS_OK;
 }
 
-NS_IMETHODIMP JSStackFrame::GetName(JSContext* aCx, nsAString& aFunction)
+void
+JSStackFrame::GetName(JSContext* aCx, nsAString& aFunction)
 {
   if (!mStack) {
     aFunction.Truncate();
-    return NS_OK;
+    return;
   }
 
   JS::Rooted<JSString*> name(aCx);
@@ -415,7 +384,7 @@ NS_IMETHODIMP JSStackFrame::GetName(JSContext* aCx, nsAString& aFunction)
 
   if (useCachedValue) {
     aFunction = mFunname;
-    return NS_OK;
+    return;
   }
 
   if (name) {
@@ -423,7 +392,7 @@ NS_IMETHODIMP JSStackFrame::GetName(JSContext* aCx, nsAString& aFunction)
     if (!str.init(aCx, name)) {
       JS_ClearPendingException(aCx);
       aFunction.Truncate();
-      return NS_OK;
+      return;
     }
     aFunction = str;
   } else {
@@ -434,12 +403,10 @@ NS_IMETHODIMP JSStackFrame::GetName(JSContext* aCx, nsAString& aFunction)
     mFunname = aFunction;
     mFunnameInitialized = true;
   }
-
-  return NS_OK;
 }
 
 int32_t
-JSStackFrame::GetLineno(JSContext* aCx)
+JSStackFrame::GetLineNumber(JSContext* aCx)
 {
   if (!mStack) {
     return 0;
@@ -462,14 +429,15 @@ JSStackFrame::GetLineno(JSContext* aCx)
   return line;
 }
 
-NS_IMETHODIMP JSStackFrame::GetLineNumber(JSContext* aCx, int32_t* aLineNumber)
+NS_IMETHODIMP
+JSStackFrame::GetLineNumberXPCOM(JSContext* aCx, int32_t* aLineNumber)
 {
-  *aLineNumber = GetLineno(aCx);
+  *aLineNumber = GetLineNumber(aCx);
   return NS_OK;
 }
 
 int32_t
-JSStackFrame::GetColNo(JSContext* aCx)
+JSStackFrame::GetColumnNumber(JSContext* aCx)
 {
   if (!mStack) {
     return 0;
@@ -492,10 +460,11 @@ JSStackFrame::GetColNo(JSContext* aCx)
   return col;
 }
 
-NS_IMETHODIMP JSStackFrame::GetColumnNumber(JSContext* aCx,
-                                            int32_t* aColumnNumber)
+NS_IMETHODIMP
+JSStackFrame::GetColumnNumberXPCOM(JSContext* aCx,
+                                   int32_t* aColumnNumber)
 {
-  *aColumnNumber = GetColNo(aCx);
+  *aColumnNumber = GetColumnNumber(aCx);
   return NS_OK;
 }
 
@@ -505,12 +474,21 @@ NS_IMETHODIMP JSStackFrame::GetSourceLine(nsACString& aSourceLine)
   return NS_OK;
 }
 
-NS_IMETHODIMP JSStackFrame::GetAsyncCause(JSContext* aCx,
-                                          nsAString& aAsyncCause)
+NS_IMETHODIMP
+JSStackFrame::GetAsyncCauseXPCOM(JSContext* aCx,
+                                 nsAString& aAsyncCause)
+{
+  GetAsyncCause(aCx, aAsyncCause);
+  return NS_OK;
+}
+
+void
+JSStackFrame::GetAsyncCause(JSContext* aCx,
+                            nsAString& aAsyncCause)
 {
   if (!mStack) {
     aAsyncCause.Truncate();
-    return NS_OK;
+    return;
   }
 
   JS::Rooted<JSString*> asyncCause(aCx);
@@ -521,7 +499,7 @@ NS_IMETHODIMP JSStackFrame::GetAsyncCause(JSContext* aCx,
 
   if (useCachedValue) {
     aAsyncCause = mAsyncCause;
-    return NS_OK;
+    return;
   }
 
   if (asyncCause) {
@@ -529,7 +507,7 @@ NS_IMETHODIMP JSStackFrame::GetAsyncCause(JSContext* aCx,
     if (!str.init(aCx, asyncCause)) {
       JS_ClearPendingException(aCx);
       aAsyncCause.Truncate();
-      return NS_OK;
+      return;
     }
     aAsyncCause = str;
   } else {
@@ -540,16 +518,21 @@ NS_IMETHODIMP JSStackFrame::GetAsyncCause(JSContext* aCx,
     mAsyncCause = aAsyncCause;
     mAsyncCauseInitialized = true;
   }
+}
 
+NS_IMETHODIMP
+JSStackFrame::GetAsyncCallerXPCOM(JSContext* aCx,
+                                  nsIStackFrame** aAsyncCaller)
+{
+  *aAsyncCaller = GetAsyncCaller(aCx).take();
   return NS_OK;
 }
 
-NS_IMETHODIMP JSStackFrame::GetAsyncCaller(JSContext* aCx,
-                                           nsIStackFrame** aAsyncCaller)
+already_AddRefed<nsIStackFrame>
+JSStackFrame::GetAsyncCaller(JSContext* aCx)
 {
   if (!mStack) {
-    *aAsyncCaller = nullptr;
-    return NS_OK;
+    return nullptr;
   }
 
   JS::Rooted<JSObject*> asyncCallerObj(aCx);
@@ -559,27 +542,33 @@ NS_IMETHODIMP JSStackFrame::GetAsyncCaller(JSContext* aCx,
                       &asyncCallerObj);
 
   if (useCachedValue) {
-    NS_IF_ADDREF(*aAsyncCaller = mAsyncCaller);
-    return NS_OK;
+    nsCOMPtr<nsIStackFrame> asyncCaller = mAsyncCaller;
+    return asyncCaller.forget();
   }
 
   nsCOMPtr<nsIStackFrame> asyncCaller =
     asyncCallerObj ? new JSStackFrame(asyncCallerObj) : nullptr;
-  asyncCaller.forget(aAsyncCaller);
 
   if (canCache) {
-    mAsyncCaller = *aAsyncCaller;
+    mAsyncCaller = asyncCaller;
     mAsyncCallerInitialized = true;
   }
 
+  return asyncCaller.forget();
+}
+
+NS_IMETHODIMP
+JSStackFrame::GetCallerXPCOM(JSContext* aCx, nsIStackFrame** aCaller)
+{
+  *aCaller = GetCaller(aCx).take();
   return NS_OK;
 }
 
-NS_IMETHODIMP JSStackFrame::GetCaller(JSContext* aCx, nsIStackFrame** aCaller)
+already_AddRefed<nsIStackFrame>
+JSStackFrame::GetCaller(JSContext* aCx)
 {
   if (!mStack) {
-    *aCaller = nullptr;
-    return NS_OK;
+    return nullptr;
   }
 
   JS::Rooted<JSObject*> callerObj(aCx);
@@ -588,27 +577,34 @@ NS_IMETHODIMP JSStackFrame::GetCaller(JSContext* aCx, nsIStackFrame** aCaller)
                       &canCache, &useCachedValue, &callerObj);
 
   if (useCachedValue) {
-    NS_IF_ADDREF(*aCaller = mCaller);
-    return NS_OK;
+    nsCOMPtr<nsIStackFrame> caller = mCaller;
+    return caller.forget();
   }
 
   nsCOMPtr<nsIStackFrame> caller =
     callerObj ? new JSStackFrame(callerObj) : nullptr;
-  caller.forget(aCaller);
 
   if (canCache) {
-    mCaller = *aCaller;
+    mCaller = caller;
     mCallerInitialized = true;
   }
 
+  return caller.forget();
+}
+
+NS_IMETHODIMP
+JSStackFrame::GetFormattedStackXPCOM(JSContext* aCx, nsAString& aStack)
+{
+  GetFormattedStack(aCx, aStack);
   return NS_OK;
 }
 
-NS_IMETHODIMP JSStackFrame::GetFormattedStack(JSContext* aCx, nsAString& aStack)
+void
+JSStackFrame::GetFormattedStack(JSContext* aCx, nsAString& aStack)
 {
   if (!mStack) {
     aStack.Truncate();
-    return NS_OK;
+    return;
   }
 
   // Sadly we can't use GetValueIfNotCached here, because our getter
@@ -622,7 +618,7 @@ NS_IMETHODIMP JSStackFrame::GetFormattedStack(JSContext* aCx, nsAString& aStack)
     js::GetContextCompartment(aCx) == js::GetObjectCompartment(mStack);
   if (canCache && mFormattedStackInitialized) {
     aStack = mFormattedStack;
-    return NS_OK;
+    return;
   }
 
   JS::Rooted<JSObject*> stack(aCx, mStack);
@@ -631,14 +627,14 @@ NS_IMETHODIMP JSStackFrame::GetFormattedStack(JSContext* aCx, nsAString& aStack)
   if (!JS::BuildStackString(aCx, stack, &formattedStack)) {
     JS_ClearPendingException(aCx);
     aStack.Truncate();
-    return NS_OK;
+    return;
   }
 
   nsAutoJSString str;
   if (!str.init(aCx, formattedStack)) {
     JS_ClearPendingException(aCx);
     aStack.Truncate();
-    return NS_OK;
+    return;
   }
 
   aStack = str;
@@ -647,8 +643,6 @@ NS_IMETHODIMP JSStackFrame::GetFormattedStack(JSContext* aCx, nsAString& aStack)
     mFormattedStack = str;
     mFormattedStackInitialized = true;
   }
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP JSStackFrame::GetNativeSavedFrame(JS::MutableHandle<JS::Value> aSavedFrame)
@@ -657,34 +651,39 @@ NS_IMETHODIMP JSStackFrame::GetNativeSavedFrame(JS::MutableHandle<JS::Value> aSa
   return NS_OK;
 }
 
-NS_IMETHODIMP JSStackFrame::ToString(JSContext* aCx, nsACString& _retval)
+NS_IMETHODIMP
+JSStackFrame::ToStringXPCOM(JSContext* aCx, nsACString& _retval)
+{
+  ToString(aCx, _retval);
+  return NS_OK;
+}
+
+void
+JSStackFrame::ToString(JSContext* aCx, nsACString& _retval)
 {
   _retval.Truncate();
 
   nsString filename;
-  nsresult rv = GetFilename(aCx, filename);
-  NS_ENSURE_SUCCESS(rv, rv);
+  GetFilename(aCx, filename);
 
   if (filename.IsEmpty()) {
     filename.AssignLiteral("<unknown filename>");
   }
 
   nsString funname;
-  rv = GetName(aCx, funname);
-  NS_ENSURE_SUCCESS(rv, rv);
+  GetName(aCx, funname);
 
   if (funname.IsEmpty()) {
     funname.AssignLiteral("<TOP_LEVEL>");
   }
 
-  int32_t lineno = GetLineno(aCx);
+  int32_t lineno = GetLineNumber(aCx);
 
   static const char format[] = "JS frame :: %s :: %s :: line %d";
   _retval.AppendPrintf(format,
                        NS_ConvertUTF16toUTF8(filename).get(),
                        NS_ConvertUTF16toUTF8(funname).get(),
                        lineno);
-  return NS_OK;
 }
 
 already_AddRefed<nsIStackFrame>

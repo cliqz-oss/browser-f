@@ -289,6 +289,12 @@ NullHttpChannel::RedirectTo(nsIURI *aNewURI)
 }
 
 NS_IMETHODIMP
+NullHttpChannel::UpgradeToSecure()
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
 NullHttpChannel::GetRequestContextID(uint64_t *_retval)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -564,13 +570,25 @@ NullHttpChannel::SetTimingEnabled(bool aTimingEnabled)
 }
 
 NS_IMETHODIMP
-NullHttpChannel::GetRedirectCount(uint16_t *aRedirectCount)
+NullHttpChannel::GetRedirectCount(uint8_t *aRedirectCount)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
-NullHttpChannel::SetRedirectCount(uint16_t aRedirectCount)
+NullHttpChannel::SetRedirectCount(uint8_t aRedirectCount)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::GetInternalRedirectCount(uint8_t *aRedirectCount)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::SetInternalRedirectCount(uint8_t aRedirectCount)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -691,6 +709,13 @@ NS_IMETHODIMP
 NullHttpChannel::GetConnectStart(mozilla::TimeStamp *aConnectStart)
 {
   *aConnectStart = mAsyncOpenTime;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::GetTcpConnectEnd(mozilla::TimeStamp *aTcpConnectEnd)
+{
+  *aTcpConnectEnd = mAsyncOpenTime;
   return NS_OK;
 }
 
@@ -860,6 +885,28 @@ NullHttpChannel::LogBlockedCORSRequest(const nsAString& aMessage)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+NS_IMETHODIMP
+NullHttpChannel::SetReportResourceTiming(bool enabled) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::GetReportResourceTiming(bool* _retval) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::GetServerTiming(nsIArray **aServerTiming)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::GetNativeServerTiming(nsTArray<nsCOMPtr<nsIServerTiming>>& aServerTiming)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
 #define IMPL_TIMING_ATTR(name)                                 \
 NS_IMETHODIMP                                                  \
 NullHttpChannel::Get##name##Time(PRTime* _retval) {            \
@@ -885,6 +932,7 @@ IMPL_TIMING_ATTR(HandleFetchEventEnd)
 IMPL_TIMING_ATTR(DomainLookupStart)
 IMPL_TIMING_ATTR(DomainLookupEnd)
 IMPL_TIMING_ATTR(ConnectStart)
+IMPL_TIMING_ATTR(TcpConnectEnd)
 IMPL_TIMING_ATTR(SecureConnectionStart)
 IMPL_TIMING_ATTR(ConnectEnd)
 IMPL_TIMING_ATTR(RequestStart)

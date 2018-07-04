@@ -14,15 +14,14 @@
 
 #include "nsAttrAndChildArray.h"
 #include "nsMappedAttributeElement.h"
-#include "nsIStyleRule.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/ServoBindingTypes.h"
 #include "mozilla/MemoryReporting.h"
 
-class nsIAtom;
+class nsAtom;
 class nsHTMLStyleSheet;
 
-class nsMappedAttributes final : public nsIStyleRule
+class nsMappedAttributes final
 {
 public:
   nsMappedAttributes(nsHTMLStyleSheet* aSheet,
@@ -32,11 +31,11 @@ public:
   void* operator new(size_t size, uint32_t aAttrCount = 1) CPP_THROW_NEW;
   nsMappedAttributes* Clone(bool aWillAddAttr);
 
-  NS_DECL_ISUPPORTS
+  NS_INLINE_DECL_REFCOUNTING_WITH_DESTROY(nsMappedAttributes, LastRelease())
 
-  void SetAndSwapAttr(nsIAtom* aAttrName, nsAttrValue& aValue,
+  void SetAndSwapAttr(nsAtom* aAttrName, nsAttrValue& aValue,
                       bool* aValueWasSet);
-  const nsAttrValue* GetAttr(nsIAtom* aAttrName) const;
+  const nsAttrValue* GetAttr(nsAtom* aAttrName) const;
   const nsAttrValue* GetAttr(const nsAString& aAttrName) const;
 
   uint32_t Count() const
@@ -71,11 +70,11 @@ public:
   // aValue; any value that was already in aValue is destroyed.
   void RemoveAttrAt(uint32_t aPos, nsAttrValue& aValue);
   const nsAttrName* GetExistingAttrNameFromQName(const nsAString& aName) const;
-  int32_t IndexOfAttr(nsIAtom* aLocalName) const;
+  int32_t IndexOfAttr(nsAtom* aLocalName) const;
 
   // Apply the contained mapper to the contained set of servo rules,
   // unless the servo rules have already been initialized.
-  void LazilyResolveServoDeclaration(nsPresContext* aPresContext);
+  void LazilyResolveServoDeclaration(nsIDocument* aDocument);
 
   // Obtain the contained servo declaration block
   // May return null if called before the inner block
@@ -90,14 +89,6 @@ public:
     mServoStyle = nullptr;
   }
 
-  // nsIStyleRule
-  virtual void MapRuleInfoInto(nsRuleData* aRuleData) override;
-  virtual bool MightMapInheritedStyleData() override;
-  virtual bool GetDiscretelyAnimatedCSSValue(nsCSSPropertyID aProperty,
-                                             nsCSSValue* aValue) override;
-#ifdef DEBUG
-  virtual void List(FILE* out = stdout, int32_t aIndent = 0) const override;
-#endif
 
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 

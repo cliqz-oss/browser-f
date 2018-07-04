@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -40,7 +41,7 @@ static inline D2D1_SIZE_U D2DIntSize(const IntSize &aSize)
 template <typename T>
 static inline D2D1_RECT_F D2DRect(const T &aRect)
 {
-  return D2D1::RectF(aRect.x, aRect.y, aRect.XMost(), aRect.YMost());
+  return D2D1::RectF(aRect.X(), aRect.Y(), aRect.XMost(), aRect.YMost());
 }
 
 static inline D2D1_EXTEND_MODE D2DExtend(ExtendMode aExtendMode, Axis aAxis)
@@ -578,7 +579,7 @@ CreatePartialBitmapForSurface(DataSourceSurface *aSurface, const Matrix &aDestin
 
   Rect uploadRect(0, 0, Float(size.width), Float(size.height));
   if (aSourceRect) {
-    uploadRect = Rect(aSourceRect->x, aSourceRect->y, aSourceRect->width, aSourceRect->height);
+    uploadRect = Rect(aSourceRect->X(), aSourceRect->Y(), aSourceRect->Width(), aSourceRect->Height());
   }
 
   // Limit the uploadRect as much as possible without supporting discontiguous uploads 
@@ -608,12 +609,12 @@ CreatePartialBitmapForSurface(DataSourceSurface *aSurface, const Matrix &aDestin
 
     // We now proceed to check if we can limit at least one dimension of the
     // upload rect safely without looking at extend mode.
-  } else if (rect.x >= 0 && rect.XMost() < size.width) {
-    uploadRect.x = rect.x;
-    uploadRect.width = rect.width;
-  } else if (rect.y >= 0 && rect.YMost() < size.height) {
-    uploadRect.y = rect.y;
-    uploadRect.height = rect.height;
+  } else if (rect.X() >= 0 && rect.XMost() < size.width) {
+    uploadRect.MoveToX(rect.X());
+    uploadRect.SetWidth(rect.Width());
+  } else if (rect.Y() >= 0 && rect.YMost() < size.height) {
+    uploadRect.MoveToY(rect.Y());
+    uploadRect.SetHeight(rect.Height());
   }
 
   if (uploadRect.IsEmpty()) {
@@ -621,8 +622,8 @@ CreatePartialBitmapForSurface(DataSourceSurface *aSurface, const Matrix &aDestin
     return nullptr;
   }
 
-  if (uploadRect.width <= aRT->GetMaximumBitmapSize() &&
-      uploadRect.height <= aRT->GetMaximumBitmapSize()) {
+  if (uploadRect.Width() <= aRT->GetMaximumBitmapSize() &&
+      uploadRect.Height() <= aRT->GetMaximumBitmapSize()) {
     {
       // Scope to auto-Unmap() |mapping|.
       DataSourceSurface::ScopedMap mapping(aSurface, DataSourceSurface::READ);
@@ -631,14 +632,14 @@ CreatePartialBitmapForSurface(DataSourceSurface *aSurface, const Matrix &aDestin
       }
 
       // A partial upload will suffice.
-      aRT->CreateBitmap(D2D1::SizeU(uint32_t(uploadRect.width), uint32_t(uploadRect.height)),
-                        mapping.GetData() + int(uploadRect.x) * Bpp + int(uploadRect.y) * mapping.GetStride(),
+      aRT->CreateBitmap(D2D1::SizeU(uint32_t(uploadRect.Width()), uint32_t(uploadRect.Height())),
+                        mapping.GetData() + int(uploadRect.X()) * Bpp + int(uploadRect.Y()) * mapping.GetStride(),
                         mapping.GetStride(),
                         D2D1::BitmapProperties(D2DPixelFormat(aSurface->GetFormat())),
                         getter_AddRefs(bitmap));
     }
 
-    aSourceTransform.PreTranslate(uploadRect.x, uploadRect.y);
+    aSourceTransform.PreTranslate(uploadRect.X(), uploadRect.Y());
 
     return bitmap.forget();
   } else {

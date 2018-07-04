@@ -22,13 +22,26 @@ public:
   Create(AudioContext& aAudioContext, const ChannelSplitterOptions& aOptions,
          ErrorResult& aRv);
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(ChannelSplitterNode, AudioNode)
 
   static already_AddRefed<ChannelSplitterNode>
   Constructor(const GlobalObject& aGlobal, AudioContext& aAudioContext,
               const ChannelSplitterOptions& aOptions, ErrorResult& aRv)
   {
     return Create(aAudioContext, aOptions, aRv);
+  }
+
+  void SetChannelCount(uint32_t aChannelCount, ErrorResult& aRv) override
+  {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+  }
+  void SetChannelCountModeValue(ChannelCountMode aMode, ErrorResult& aRv) override
+  {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+  }
+  void SetChannelInterpretationValue(ChannelInterpretation aMode, ErrorResult& aRv) override
+  {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
   }
 
   JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;

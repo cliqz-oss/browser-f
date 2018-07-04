@@ -29,7 +29,7 @@ add_task(async function test_formdata() {
     await setInputValue(browser, {id: "txt", value: INNER_VALUE, frame: 0});
 
     // Remove the tab.
-    await promiseRemoveTab(tab);
+    await promiseRemoveTabAndSessionState(tab);
   }
 
   await createAndRemoveTab();
@@ -103,7 +103,7 @@ add_task(async function test_nested() {
 
   const FORM_DATA = {
     children: [{
-      xpath: {"/xhtml:html/xhtml:body/xhtml:input": "M"},
+      xpath: {"/xhtml:html/xhtml:body/xhtml:input": "m"},
       url: "data:text/html;charset=utf-8,<input%20autofocus=true>"
     }]
   };
@@ -114,10 +114,10 @@ add_task(async function test_nested() {
   await promiseBrowserLoaded(browser);
 
   // Modify the input field's value.
-  await sendMessage(browser, "ss-test:sendKeyEvent", {key: "m", frame: 0});
+  await BrowserTestUtils.synthesizeKey("m", {}, browser);
 
   // Remove the tab and check that we stored form data correctly.
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
   let [{state: {formdata}}] = JSON.parse(ss.getClosedTabData(window));
   is(JSON.stringify(formdata), JSON.stringify(FORM_DATA),
     "formdata for iframe stored correctly");
@@ -151,28 +151,28 @@ add_task(async function test_design_mode() {
   await promiseBrowserLoaded(browser);
 
   // Modify the document content.
-  await sendMessage(browser, "ss-test:sendKeyEvent", {key: "m"});
+  await BrowserTestUtils.synthesizeKey("m", {}, browser);
 
   // Close and restore the tab.
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
   tab = ss.undoCloseTab(window, 0);
   browser = tab.linkedBrowser;
   await promiseTabRestored(tab);
 
   // Check that the innerHTML value was restored.
   let html = await getInnerHTML(browser);
-  let expected = "<h1>Mmozilla</h1><script>document.designMode='on'</script>";
+  let expected = "<h1>mmozilla</h1><script>document.designMode='on'</script>";
   is(html, expected, "editable document has been restored correctly");
 
   // Close and restore the tab.
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
   tab = ss.undoCloseTab(window, 0);
   browser = tab.linkedBrowser;
   await promiseTabRestored(tab);
 
   // Check that the innerHTML value was restored.
   html = await getInnerHTML(browser);
-  expected = "<h1>Mmozilla</h1><script>document.designMode='on'</script>";
+  expected = "<h1>mmozilla</h1><script>document.designMode='on'</script>";
   is(html, expected, "editable document has been restored correctly");
 
   // Cleanup.

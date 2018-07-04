@@ -1,3 +1,4 @@
+// |reftest| skip -- regexp-named-groups is not supported
 // Copyright 2017 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -6,7 +7,7 @@ description: Properties of the groups object are created with CreateDataProperty
 includes: [compareArray.js, propertyHelper.js]
 esid: sec-regexpbuiltinexec
 features: [regexp-named-groups]
-info: >
+info: |
   Runtime Semantics: RegExpBuiltinExec ( R, S )
     25. For each integer i such that i > 0 and i ≤ n
       f. If the ith capture of R was defined with a GroupName,
@@ -31,11 +32,5 @@ assert.sameValue(counter, 0);
 verifyWritable(groups, "x");
 verifyEnumerable(groups, "x");
 verifyConfigurable(groups, "x");
-
-// The '__proto__' property on the groups object is not special,
-// and does not affect the [[Prototype]] of the resulting groups object.
-groups = /(?<__proto__>a)/u.exec("a").groups;
-assert.sameValue("a", groups.__proto__);
-assert.sameValue(null, Object.getPrototypeOf(groups));
 
 reportCompare(0, 0);

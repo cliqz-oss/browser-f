@@ -182,12 +182,6 @@ interface TestInterface {
   [DependsOn=DeviceState, Affects=Nothing]
   byte returnDeviceStateDependentByte();
 
-  [UnsafeInPrerendering]
-  void unsafePrerenderMethod();
-  [UnsafeInPrerendering]
-  attribute long unsafePrerenderWritable;
-  [UnsafeInPrerendering]
-  readonly attribute long unsafePrerenderReadonly;
   readonly attribute short readonlyShort;
   attribute short writableShort;
   void passShort(short arg);
@@ -799,11 +793,11 @@ interface TestInterface {
   void exerciseTypedefInterfaces3(YetAnotherNameForTestInterface arg);
 
   // Deprecated methods and attributes
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   attribute byte deprecatedAttribute;
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   byte deprecatedMethod();
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   byte deprecatedMethodWithContext(any arg);
 
   // Static methods and attributes
@@ -815,11 +809,11 @@ interface TestInterface {
   static void assert(boolean arg);
 
   // Deprecated static methods and attributes
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   static attribute byte staticDeprecatedAttribute;
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   static void staticDeprecatedMethod();
-  [Deprecated="GetAttributeNode"]
+  [Deprecated="EnablePrivilege"]
   static void staticDeprecatedMethodWithContext(any arg);
 
   // Overload resolution tests
@@ -957,6 +951,8 @@ interface TestInterface {
   [NeedsSubjectPrincipal] attribute boolean needsSubjectPrincipalAttr;
   [NeedsCallerType] void needsCallerTypeMethod();
   [NeedsCallerType] attribute boolean needsCallerTypeAttr;
+  [NeedsSubjectPrincipal=NonSystem] void needsNonSystemSubjectPrincipalMethod();
+  [NeedsSubjectPrincipal=NonSystem] attribute boolean needsNonSystemSubjectPrincipalAttr;
   [CEReactions] void ceReactionsMethod();
   [CEReactions] void ceReactionsMethodOverload();
   [CEReactions] void ceReactionsMethodOverload(DOMString bar);
@@ -974,6 +970,18 @@ interface TestInterface {
 
   attribute byte dashed-attribute;
   void dashed-method();
+
+  // [NonEnumerable] tests
+  [NonEnumerable]
+  attribute boolean nonEnumerableAttr;
+  [NonEnumerable]
+  const boolean nonEnumerableConst = true;
+  [NonEnumerable]
+  void nonEnumerableMethod();
+
+  // [NeedsWindowsUndef] test generation
+  [NeedsWindowsUndef]
+  const unsigned long NO_ERROR = 0xffffffff;
 
   // If you add things here, add them to TestExampleGen and TestJSImplGen as well
 };
@@ -1199,7 +1207,7 @@ interface TestNamedGetterInterface {
 interface TestIndexedGetterAndSetterAndNamedGetterInterface {
   getter DOMString (DOMString myName);
   getter long (unsigned long index);
-  setter creator void (unsigned long index, long arg);
+  setter void (unsigned long index, long arg);
   readonly attribute unsigned long length;
 };
 
@@ -1210,29 +1218,29 @@ interface TestIndexedAndNamedGetterInterface {
 };
 
 interface TestIndexedSetterInterface {
-  setter creator void setItem(unsigned long idx, DOMString item);
+  setter void setItem(unsigned long idx, DOMString item);
   getter DOMString (unsigned long idx);
   readonly attribute unsigned long length;
 };
 
 interface TestNamedSetterInterface {
-  setter creator void (DOMString myName, TestIndexedSetterInterface item);
+  setter void (DOMString myName, TestIndexedSetterInterface item);
   getter TestIndexedSetterInterface (DOMString name);
 };
 
 interface TestIndexedAndNamedSetterInterface {
-  setter creator void (unsigned long index, TestIndexedSetterInterface item);
+  setter void (unsigned long index, TestIndexedSetterInterface item);
   getter TestIndexedSetterInterface (unsigned long index);
   readonly attribute unsigned long length;
-  setter creator void setNamedItem(DOMString name, TestIndexedSetterInterface item);
+  setter void setNamedItem(DOMString name, TestIndexedSetterInterface item);
   getter TestIndexedSetterInterface (DOMString name);
 };
 
 interface TestIndexedAndNamedGetterAndSetterInterface : TestIndexedSetterInterface {
   getter long item(unsigned long index);
   getter DOMString namedItem(DOMString name);
-  setter creator void (unsigned long index, long item);
-  setter creator void (DOMString name, DOMString item);
+  setter void (unsigned long index, long item);
+  setter void (DOMString name, DOMString item);
   stringifier DOMString ();
   readonly attribute unsigned long length;
 };
@@ -1253,7 +1261,7 @@ interface TestCppKeywordNamedMethodsInterface {
   long volatile();
 };
 
-[Deprecated="GetAttributeNode", Constructor()]
+[Deprecated="EnablePrivilege", Constructor()]
 interface TestDeprecatedInterface {
   static void alsoDeprecated();
 };
@@ -1291,6 +1299,8 @@ interface TestWorkerExposedInterface {
   [NeedsSubjectPrincipal] attribute boolean needsSubjectPrincipalAttr;
   [NeedsCallerType] void needsCallerTypeMethod();
   [NeedsCallerType] attribute boolean needsCallerTypeAttr;
+  [NeedsSubjectPrincipal=NonSystem] void needsNonSystemSubjectPrincipalMethod();
+  [NeedsSubjectPrincipal=NonSystem] attribute boolean needsNonSystemSubjectPrincipalAttr;
 };
 
 [HTMLConstructor]
@@ -1298,8 +1308,8 @@ interface TestHTMLConstructorInterface {
 };
 
 interface TestCEReactionsInterface {
-  [CEReactions] setter creator void (unsigned long index, long item);
-  [CEReactions] setter creator void (DOMString name, DOMString item);
+  [CEReactions] setter void (unsigned long index, long item);
+  [CEReactions] setter void (DOMString name, DOMString item);
   [CEReactions] deleter void (DOMString name);
   getter long item(unsigned long index);
   getter DOMString (DOMString name);

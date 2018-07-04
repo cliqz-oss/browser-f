@@ -13,20 +13,20 @@
 #include "nsUnicodeProperties.h"
 #include "gfx2DGlue.h"
 #include "gfxFcPlatformFontList.h"
-#include "gfxFontconfigUtils.h"
-#include "gfxFontconfigFonts.h"
 #include "gfxConfig.h"
 #include "gfxContext.h"
 #include "gfxUserFontSet.h"
 #include "gfxUtils.h"
 #include "gfxFT2FontBase.h"
 #include "gfxPrefs.h"
+#include "gfxTextRun.h"
 #include "VsyncSource.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Monitor.h"
 #include "base/task.h"
 #include "base/thread.h"
 #include "base/message_loop.h"
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/gfx/Logging.h"
 
 #include "mozilla/gfx/2D.h"
@@ -66,10 +66,7 @@
 using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::unicode;
-
-#if (MOZ_WIDGET_GTK == 2)
-static cairo_user_data_key_t cairo_gdk_drawable_key;
-#endif
+using mozilla::dom::SystemFontListEntry;
 
 gfxPlatformGtk::gfxPlatformGtk()
 {
@@ -89,14 +86,7 @@ gfxPlatformGtk::gfxPlatformGtk()
     }
 #endif
 
-    uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO);
-    uint32_t contentMask = BackendTypeBit(BackendType::CAIRO);
-#ifdef USE_SKIA
-    canvasMask |= BackendTypeBit(BackendType::SKIA);
-    contentMask |= BackendTypeBit(BackendType::SKIA);
-#endif
-    InitBackendPrefs(canvasMask, BackendType::CAIRO,
-                     contentMask, BackendType::CAIRO);
+    InitBackendPrefs(GetBackendPrefs());
 
 #ifdef MOZ_X11
     if (gfxPlatform::IsHeadless() && GDK_IS_X11_DISPLAY(gdk_display_get_default())) {
@@ -183,7 +173,7 @@ gfxPlatformGtk::CreateOffscreenSurface(const IntSize& aSize,
 }
 
 nsresult
-gfxPlatformGtk::GetFontList(nsIAtom *aLangGroup,
+gfxPlatformGtk::GetFontList(nsAtom *aLangGroup,
                             const nsACString& aGenericFamily,
                             nsTArray<nsString>& aListOfFonts)
 {
@@ -204,10 +194,10 @@ gfxPlatformGtk::UpdateFontList()
 // out a more general list
 static const char kFontDejaVuSans[] = "DejaVu Sans";
 static const char kFontDejaVuSerif[] = "DejaVu Serif";
-static const char kFontEmojiOneMozilla[] = "EmojiOne Mozilla";
 static const char kFontFreeSans[] = "FreeSans";
 static const char kFontFreeSerif[] = "FreeSerif";
 static const char kFontTakaoPGothic[] = "TakaoPGothic";
+static const char kFontTwemojiMozilla[] = "Twemoji Mozilla";
 static const char kFontDroidSansFallback[] = "Droid Sans Fallback";
 static const char kFontWenQuanYiMicroHei[] = "WenQuanYi Micro Hei";
 static const char kFontNanumGothic[] = "NanumGothic";
@@ -217,24 +207,20 @@ gfxPlatformGtk::GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
                                        Script aRunScript,
                                        nsTArray<const char*>& aFontList)
 {
-    if (aNextCh == 0xfe0fu) {
-      // if char is followed by VS16, try for a color emoji glyph
-      aFontList.AppendElement(kFontEmojiOneMozilla);
+    EmojiPresentation emoji = GetEmojiPresentation(aCh);
+    if (emoji != EmojiPresentation::TextOnly) {
+        if (aNextCh == kVariationSelector16 ||
+           (aNextCh != kVariationSelector15 &&
+            emoji == EmojiPresentation::EmojiDefault)) {
+            // if char is followed by VS16, try for a color emoji glyph
+            aFontList.AppendElement(kFontTwemojiMozilla);
+        }
     }
 
     aFontList.AppendElement(kFontDejaVuSerif);
     aFontList.AppendElement(kFontFreeSerif);
     aFontList.AppendElement(kFontDejaVuSans);
     aFontList.AppendElement(kFontFreeSans);
-
-    if (!IS_IN_BMP(aCh)) {
-        uint32_t p = aCh >> 16;
-        if (p == 1) { // try color emoji font, unless VS15 (text style) present
-            if (aNextCh != 0xfe0fu && aNextCh != 0xfe0eu) {
-                aFontList.AppendElement(kFontEmojiOneMozilla);
-            }
-        }
-    }
 
     // add fonts for CJK ranges
     // xxx - this isn't really correct, should use the same CJK font ordering
@@ -248,6 +234,13 @@ gfxPlatformGtk::GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
         aFontList.AppendElement(kFontWenQuanYiMicroHei);
         aFontList.AppendElement(kFontNanumGothic);
     }
+}
+
+void
+gfxPlatformGtk::ReadSystemFontList(
+    InfallibleTArray<SystemFontListEntry>* retValue)
+{
+    gfxFcPlatformFontList::PlatformFontList()->ReadSystemFontList(retValue);
 }
 
 gfxPlatformFontList*
@@ -278,30 +271,6 @@ gfxPlatformGtk::CreateFontGroup(const FontFamilyList& aFontFamilyList,
 {
     return new gfxFontGroup(aFontFamilyList, aStyle, aTextPerf,
                             aUserFontSet, aDevToCssSize);
-}
-
-gfxFontEntry*
-gfxPlatformGtk::LookupLocalFont(const nsAString& aFontName,
-                                uint16_t aWeight,
-                                int16_t aStretch,
-                                uint8_t aStyle)
-{
-    gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
-    return pfl->LookupLocalFont(aFontName, aWeight, aStretch,
-                                aStyle);
-}
-
-gfxFontEntry*
-gfxPlatformGtk::MakePlatformFont(const nsAString& aFontName,
-                                 uint16_t aWeight,
-                                 int16_t aStretch,
-                                 uint8_t aStyle,
-                                 const uint8_t* aFontData,
-                                 uint32_t aLength)
-{
-    gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
-    return pfl->MakePlatformFont(aFontName, aWeight, aStretch,
-                                 aStyle, aFontData, aLength);
 }
 
 FT_Library
@@ -391,6 +360,12 @@ uint32_t gfxPlatformGtk::MaxGenericSubstitions()
     }
 
     return uint32_t(mMaxGenericSubstitutions);
+}
+
+bool
+gfxPlatformGtk::AccelerateLayersByDefault()
+{
+    return gfxPrefs::WebRenderAll();
 }
 
 void
@@ -522,64 +497,15 @@ gfxPlatformGtk::GetPlatformCMSOutputProfile(void *&mem, size_t &size)
 #endif
 }
 
-
-#if (MOZ_WIDGET_GTK == 2)
-void
-gfxPlatformGtk::SetGdkDrawable(cairo_surface_t *target,
-                               GdkDrawable *drawable)
+bool
+gfxPlatformGtk::CheckVariationFontSupport()
 {
-    if (cairo_surface_status(target))
-        return;
-
-    g_object_ref(drawable);
-
-    cairo_surface_set_user_data (target,
-                                 &cairo_gdk_drawable_key,
-                                 drawable,
-                                 g_object_unref);
-}
-
-GdkDrawable *
-gfxPlatformGtk::GetGdkDrawable(cairo_surface_t *target)
-{
-    if (cairo_surface_status(target))
-        return nullptr;
-
-    GdkDrawable *result;
-
-    result = (GdkDrawable*) cairo_surface_get_user_data (target,
-                                                         &cairo_gdk_drawable_key);
-    if (result)
-        return result;
-
-#ifdef MOZ_X11
-    if (cairo_surface_get_type(target) != CAIRO_SURFACE_TYPE_XLIB)
-        return nullptr;
-
-    // try looking it up in gdk's table
-    result = (GdkDrawable*) gdk_xid_table_lookup(cairo_xlib_surface_get_drawable(target));
-    if (result) {
-        SetGdkDrawable(target, result);
-        return result;
-    }
-#endif
-
-    return nullptr;
-}
-#endif
-
-already_AddRefed<ScaledFont>
-gfxPlatformGtk::GetScaledFontForFont(DrawTarget* aTarget, gfxFont *aFont)
-{
-  if (aFont->GetType() == gfxFont::FONT_TYPE_FONTCONFIG) {
-      gfxFontconfigFontBase* fcFont = static_cast<gfxFontconfigFontBase*>(aFont);
-      return Factory::CreateScaledFontForFontconfigFont(
-              fcFont->GetCairoScaledFont(),
-              fcFont->GetPattern(),
-              fcFont->GetUnscaledFont(),
-              fcFont->GetAdjustedSize());
-  }
-  return GetScaledFontForFontWithCairoSkia(aTarget, aFont);
+  // Although there was some variation/multiple-master support in FreeType
+  // in older versions, it seems too incomplete/unstable for us to use
+  // until at least 2.7.1.
+  FT_Int major, minor, patch;
+  FT_Library_Version(GetFTLibrary(), &major, &minor, &patch);
+  return major * 1000000 + minor * 1000 + patch >= 2007001;
 }
 
 #ifdef GL_PROVIDER_GLX

@@ -4,22 +4,16 @@
 
 /* eslint-env mozilla/frame-script */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/BrowserUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/RemoteAddonsChild.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PageThumbUtils",
+ChromeUtils.defineModuleGetter(this, "PageThumbUtils",
   "resource://gre/modules/PageThumbUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/sessionstore/Utils.jsm");
 
 if (AppConstants.MOZ_CRASHREPORTER) {
@@ -111,6 +105,7 @@ var WebProgressListener = {
 
     return {
       contentWindow: content,
+      contentDocument: content.document,
       // DOMWindow is not necessarily the content-window with subframes.
       DOMWindow: domWindow,
       webProgress: aWebProgress,
@@ -119,11 +114,7 @@ var WebProgressListener = {
   },
 
   _send(name, data, objects) {
-    if (RemoteAddonsChild.useSyncWebProgress) {
-      sendRpcMessage(name, data, objects);
-    } else {
-      sendAsyncMessage(name, data, objects);
-    }
+    sendAsyncMessage(name, data, objects);
   },
 
   onStateChange: function onStateChange(aWebProgress, aRequest, aStateFlags, aStatus) {
@@ -186,12 +177,17 @@ var WebProgressListener = {
       json.principal = content.document.nodePrincipal;
       json.synthetic = content.document.mozSyntheticDocument;
       json.inLoadURI = WebNavigation.inLoadURI;
+      json.requestContextID = content.document.documentLoadGroup
+        ? content.document.documentLoadGroup.requestContextID
+        : null;
 
       if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {
-        let uri = aLocationURI.clone();
+        let uri = aLocationURI;
         try {
           // If the current URI contains a username/password, remove it.
-          uri.userPass = "";
+          uri = uri.mutate()
+                   .setUserPass("")
+                   .finalize();
         } catch (ex) { /* Ignore failures on about: URIs. */ }
         CrashReporter.annotateCrashReport("URL", uri.spec);
       }
@@ -220,6 +216,11 @@ var WebProgressListener = {
     json.state = aState;
     json.status = SecurityUI.getSSLStatusAsString();
 
+    json.matchedList = null;
+    if (aRequest && aRequest instanceof Ci.nsIClassifiedChannel) {
+      json.matchedList = aRequest.matchedList;
+    }
+
     this._send("Content:SecurityChange", json, objects);
   },
 
@@ -231,16 +232,9 @@ var WebProgressListener = {
     sendAsyncMessage("Content:LoadURIResult");
   },
 
-  QueryInterface: function QueryInterface(aIID) {
-    if (aIID.equals(Ci.nsIWebProgressListener) ||
-        aIID.equals(Ci.nsIWebProgressListener2) ||
-        aIID.equals(Ci.nsISupportsWeakReference) ||
-        aIID.equals(Ci.nsISupports)) {
-        return this;
-    }
-
-    throw Components.results.NS_ERROR_NO_INTERFACE;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener",
+                                          "nsIWebProgressListener2",
+                                          "nsISupportsWeakReference"]),
 };
 
 WebProgressListener.init();
@@ -257,6 +251,8 @@ var WebNavigation =  {
     addMessageListener("WebNavigation:SetOriginAttributes", this);
     addMessageListener("WebNavigation:Reload", this);
     addMessageListener("WebNavigation:Stop", this);
+    // This message is used for measuring content process startup performance.
+    sendAsyncMessage("Content:BrowserChildReady", { time: Services.telemetry.msSystemNow() });
   },
 
   get webNavigation() {
@@ -335,7 +331,9 @@ var WebNavigation =  {
       try {
         let url = Services.io.newURI(uri);
         // If the current URI contains a username/password, remove it.
-        url.userPass = "";
+        url = url.mutate()
+                 .setUserPass("")
+                 .finalize();
         annotation = url.spec;
       } catch (ex) { /* Ignore failures to parse and failures
                       on about: URIs. */ }
@@ -350,7 +348,7 @@ var WebNavigation =  {
     if (baseURI)
       baseURI = Services.io.newURI(baseURI);
     if (triggeringPrincipal)
-      triggeringPrincipal = Utils.deserializePrincipal(triggeringPrincipal)
+      triggeringPrincipal = Utils.deserializePrincipal(triggeringPrincipal);
     this._wrapURIChangeCall(() => {
       return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
                                                    postData, headers, baseURI,
@@ -422,9 +420,9 @@ var ControllerCommands = {
         break;
     }
   }
-}
+};
 
-ControllerCommands.init()
+ControllerCommands.init();
 
 addEventListener("DOMTitleChanged", function(aEvent) {
   if (!aEvent.isTrusted || aEvent.target.defaultView != content)
@@ -561,9 +559,11 @@ addMessageListener("Browser:Thumbnail:Request", function(aMessage) {
  * Remote isSafeForCapture request handler for PageThumbs.
  */
 addMessageListener("Browser:Thumbnail:CheckState", function(aMessage) {
-  let result = PageThumbUtils.shouldStoreContentThumbnail(content, docShell);
-  sendAsyncMessage("Browser:Thumbnail:CheckState:Response", {
-    result
+  Services.tm.idleDispatchToMainThread(() => {
+    let result = PageThumbUtils.shouldStoreContentThumbnail(content, docShell);
+    sendAsyncMessage("Browser:Thumbnail:CheckState:Response", {
+      result
+    });
   });
 });
 
@@ -595,15 +595,6 @@ addMessageListener("Browser:CreateAboutBlank", function(aMessage) {
   docShell.createAboutBlankContentViewer(principal);
 });
 
-// The AddonsChild needs to be rooted so that it stays alive as long as
-// the tab.
-var AddonsChild = RemoteAddonsChild.init(this);
-if (AddonsChild) {
-  addEventListener("unload", () => {
-    RemoteAddonsChild.uninit(AddonsChild);
-  });
-}
-
 addMessageListener("InPermitUnload", msg => {
   let inPermitUnload = docShell.contentViewer && docShell.contentViewer.inPermitUnload;
   sendAsyncMessage("InPermitUnload", {id: msg.data.id, inPermitUnload});
@@ -614,7 +605,7 @@ addMessageListener("PermitUnload", msg => {
 
   let permitUnload = true;
   if (docShell && docShell.contentViewer) {
-    permitUnload = docShell.contentViewer.permitUnload();
+    permitUnload = docShell.contentViewer.permitUnload(msg.data.aPermitUnloadFlags);
   }
 
   sendAsyncMessage("PermitUnload", {id: msg.data.id, kind: "end", permitUnload});

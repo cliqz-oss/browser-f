@@ -102,9 +102,17 @@ public:
 
   /**
    * IsComposing() returns true after calling StartComposition() and before
-   * calling CommitComposition().
+   * calling CommitComposition().  In other words, native IME has composition
+   * when this returns true.
    */
   bool IsComposing() const { return mIsComposing; }
+
+  /**
+   * IsHandlingComposition() returns true after calling StartComposition() and
+   * content has not handled eCompositionCommit(AsIs) event.  In other words,
+   * our content has composition when this returns true.
+   */
+  bool IsHandlingComposition() const { return mIsHandlingComposition; }
 
   /**
    * IsInNativeInputTransaction() returns true if native IME handler began a
@@ -436,6 +444,9 @@ private:
   // See IsComposing().
   bool mIsComposing;
 
+  // See IsHandlingComposition().
+  bool mIsHandlingComposition;
+
   // true while NOTIFY_IME_OF_FOCUS is received but NOTIFY_IME_OF_BLUR has not
   // received yet.  Otherwise, false.
   bool mHasFocus;
@@ -443,6 +454,9 @@ private:
   // If this is true, keydown and keyup events are dispatched even when there
   // is a composition.
   static bool sDispatchKeyEventsDuringComposition;
+  // If this is true, keypress events for non-printable keys are dispatched only
+  // for event listeners of the system event group in web content.
+  static bool sDispatchKeyPressEventsOnlySystemGroupInContent;
 
   nsresult BeginInputTransactionInternal(
              TextEventDispatcherListener* aListener,

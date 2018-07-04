@@ -4,27 +4,54 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["GeckoViewContentModule"];
+var EXPORTED_SYMBOLS = ["GeckoViewContentModule"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/GeckoViewUtils.jsm");
 
-var dump = Cu.import("resource://gre/modules/AndroidLog.jsm", {})
-           .AndroidLog.d.bind(null, "ViewContentModule");
-
-function debug(aMsg) {
-  // dump(aMsg);
-}
+GeckoViewUtils.initLogging("GeckoView.Module.[C]", this);
 
 class GeckoViewContentModule {
-  constructor(aModuleName, aMessageManager) {
-    this.moduleName = aModuleName;
-    this.messageManager = aMessageManager;
+  static initLogging(aModuleName) {
+    this._moduleName = aModuleName;
+    const tag = aModuleName.replace("GeckoView", "GeckoView.") + ".[C]";
+    return GeckoViewUtils.initLogging(tag, {});
+  }
 
+  static create(aGlobal, aModuleName) {
+    return new this(aModuleName || this._moduleName, aGlobal);
+  }
+
+  constructor(aModuleName, aGlobal) {
+    this.moduleName = aModuleName;
+    this.messageManager = aGlobal;
+
+    if (!aGlobal._gvEventDispatcher) {
+      aGlobal._gvEventDispatcher =
+          GeckoViewUtils.getDispatcherForWindow(aGlobal.content);
+      aGlobal.addEventListener("unload", event => {
+        if (event.target === this.messageManager) {
+          aGlobal._gvEventDispatcher.finalize();
+        }
+      }, {
+        mozSystemGroup: true,
+      });
+    }
+    this.eventDispatcher = aGlobal._gvEventDispatcher;
+
+    this.messageManager.addMessageListener(
+      "GeckoView:UpdateSettings",
+      aMsg => {
+        this.settings = aMsg.data;
+        this.onSettingsUpdate();
+      }
+    );
     this.messageManager.addMessageListener(
       "GeckoView:Register",
       aMsg => {
         if (aMsg.data.module == this.moduleName) {
-          this.register();
+          this.settings = aMsg.data.settings;
+          this.onEnable();
         }
       }
     );
@@ -32,15 +59,26 @@ class GeckoViewContentModule {
       "GeckoView:Unregister",
       aMsg => {
         if (aMsg.data.module == this.moduleName) {
-          this.unregister();
+          this.onDisable();
         }
       }
     );
 
-    this.init();
+    this.onInit();
+
+    this.messageManager.sendAsyncMessage(
+      "GeckoView:ContentRegistered", { module: this.moduleName });
   }
 
-  init() {}
-  register() {}
-  unregister() {}
+  // Override to initialize module.
+  onInit() {}
+
+  // Override to detect settings change. Access settings via this.settings.
+  onSettingsUpdate() {}
+
+  // Override to enable module after setting a Java delegate.
+  onEnable() {}
+
+  // Override to disable module after clearing the Java delegate.
+  onDisable() {}
 }

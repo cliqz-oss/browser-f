@@ -6,8 +6,10 @@
 #ifndef nsTextAttrs_h_
 #define nsTextAttrs_h_
 
+#include "mozilla/FontPropertyTypes.h"
 #include "nsCOMPtr.h"
 #include "nsColor.h"
+#include "nsString.h"
 #include "nsStyleConsts.h"
 
 class nsIFrame;
@@ -334,7 +336,7 @@ protected:
   /**
    * Class is used for the work with "font-style" text attribute.
    */
-  class FontStyleTextAttr : public TTextAttr<nscoord>
+  class FontStyleTextAttr : public TTextAttr<mozilla::FontSlantStyle>
   {
   public:
     FontStyleTextAttr(nsIFrame* aRootFrame, nsIFrame* aFrame);
@@ -343,17 +345,17 @@ protected:
   protected:
 
     // TTextAttr
-    virtual bool GetValueFor(Accessible* aContent, nscoord* aValue)
+    virtual bool GetValueFor(Accessible* aContent, mozilla::FontSlantStyle* aValue)
       override;
     virtual void ExposeValue(nsIPersistentProperties* aAttributes,
-                             const nscoord& aValue) override;
+                             const mozilla::FontSlantStyle& aValue) override;
   };
 
 
   /**
    * Class is used for the work with "font-weight" text attribute.
    */
-  class FontWeightTextAttr : public TTextAttr<int32_t>
+  class FontWeightTextAttr : public TTextAttr<mozilla::FontWeight>
   {
   public:
     FontWeightTextAttr(nsIFrame* aRootFrame, nsIFrame* aFrame);
@@ -362,13 +364,14 @@ protected:
   protected:
 
     // TTextAttr
-    virtual bool GetValueFor(Accessible* aAccessible, int32_t* aValue)
+    virtual bool GetValueFor(Accessible* aAccessible,
+                             mozilla::FontWeight* aValue)
       override;
     virtual void ExposeValue(nsIPersistentProperties* aAttributes,
-                             const int32_t& aValue) override;
+                             const mozilla::FontWeight& aValue) override;
 
   private:
-    int32_t GetFontWeight(nsIFrame* aFrame);
+    mozilla::FontWeight GetFontWeight(nsIFrame* aFrame);
   };
 
   /**
@@ -399,7 +402,9 @@ protected:
   class TextDecorValue
   {
   public:
-    TextDecorValue() { }
+    TextDecorValue() :
+      mColor{0}, mLine{NS_STYLE_TEXT_DECORATION_LINE_NONE},
+      mStyle{NS_STYLE_TEXT_DECORATION_STYLE_NONE} { }
     explicit TextDecorValue(nsIFrame* aFrame);
 
     nscolor Color() const { return mColor; }

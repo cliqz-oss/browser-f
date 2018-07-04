@@ -11,6 +11,7 @@
 // JSScript.
 
 #include "mozilla/LinkedList.h"
+#include "mozilla/Maybe.h"
 
 #include "jit/BaselineInspector.h"
 #include "jit/BytecodeAnalysis.h"
@@ -34,7 +35,9 @@ enum class InlinableNative : uint16_t;
 // Records information about a baseline frame for compilation that is stable
 // when later used off thread.
 BaselineFrameInspector*
-NewBaselineFrameInspector(TempAllocator* temp, BaselineFrame* frame, CompileInfo* info);
+NewBaselineFrameInspector(TempAllocator* temp, BaselineFrame* frame);
+
+using CallTargets = Vector<JSFunction*, 6, JitAllocPolicy>;
 
 class IonBuilder
   : public MIRGenerator,
@@ -139,7 +142,7 @@ class IonBuilder
 
     AbortReasonOr<Ok> initParameters();
     void initLocals();
-    void rewriteParameter(uint32_t slotIdx, MDefinition* param, int32_t argIndex);
+    void rewriteParameter(uint32_t slotIdx, MDefinition* param);
     AbortReasonOr<Ok> rewriteParameters();
     AbortReasonOr<Ok> initEnvironmentChain(MDefinition* callee = nullptr);
     void initArgumentsObject();
@@ -147,9 +150,8 @@ class IonBuilder
 
     MConstant* constant(const Value& v);
     MConstant* constantInt(int32_t i);
-    MInstruction* initializedLength(MDefinition* obj, MDefinition* elements,
-                                    JSValueType unboxedType);
-    MInstruction* setInitializedLength(MDefinition* obj, JSValueType unboxedType, size_t count);
+    MInstruction* initializedLength(MDefinition* elements);
+    MInstruction* setInitializedLength(MDefinition* obj, size_t count);
 
     // Improve the type information at tests
     AbortReasonOr<Ok> improveTypesAtTest(MDefinition* ins, bool trueBranch, MTest* test);
@@ -181,15 +183,12 @@ class IonBuilder
     // added to |current| in this case.
     MDefinition* ensureDefiniteType(MDefinition* def, MIRType definiteType);
 
-    // Creates a MDefinition based on the given def improved with type as TypeSet.
-    MDefinition* ensureDefiniteTypeSet(MDefinition* def, TemporaryTypeSet* types);
-
     void maybeMarkEmpty(MDefinition* ins);
 
     JSObject* getSingletonPrototype(JSFunction* target);
 
     MDefinition* createThisScripted(MDefinition* callee, MDefinition* newTarget);
-    MDefinition* createThisScriptedSingleton(JSFunction* target, MDefinition* callee);
+    MDefinition* createThisScriptedSingleton(JSFunction* target);
     MDefinition* createThisScriptedBaseline(MDefinition* callee);
     MDefinition* createThis(JSFunction* target, MDefinition* callee, MDefinition* newTarget);
     MInstruction* createNamedLambdaObject(MDefinition* callee, MDefinition* envObj);
@@ -199,7 +198,9 @@ class IonBuilder
 
     MInstruction* addConvertElementsToDoubles(MDefinition* elements);
     MDefinition* addMaybeCopyElementsForWrite(MDefinition* object, bool checkNative);
+
     MInstruction* addBoundsCheck(MDefinition* index, MDefinition* length);
+
     MInstruction* addShapeGuard(MDefinition* obj, Shape* const shape, BailoutKind bailoutKind);
     MInstruction* addGroupGuard(MDefinition* obj, ObjectGroup* group, BailoutKind bailoutKind);
     MInstruction* addUnboxedExpandoGuard(MDefinition* obj, bool hasExpando, BailoutKind bailoutKind);
@@ -208,12 +209,9 @@ class IonBuilder
     MInstruction*
     addGuardReceiverPolymorphic(MDefinition* obj, const BaselineInspector::ReceiverVector& receivers);
 
-    MDefinition* convertShiftToMaskForStaticTypedArray(MDefinition* id,
-                                                       Scalar::Type viewType);
-
     bool invalidatedIdempotentCache();
 
-    bool hasStaticEnvironmentObject(EnvironmentCoordinate ec, JSObject** pcall);
+    bool hasStaticEnvironmentObject(JSObject** pcall);
     AbortReasonOr<Ok> loadSlot(MDefinition* obj, size_t slot, size_t nfixed, MIRType rvalType,
                                BarrierKind barrier, TemporaryTypeSet* types);
     AbortReasonOr<Ok> loadSlot(MDefinition* obj, Shape* shape, MIRType rvalType,
@@ -248,6 +246,8 @@ class IonBuilder
                                              TemporaryTypeSet* types, bool innerized = false);
     AbortReasonOr<Ok> getPropTryInlineAccess(bool* emitted, MDefinition* obj, PropertyName* name,
                                              BarrierKind barrier, TemporaryTypeSet* types);
+    AbortReasonOr<Ok> getPropTryInlineProtoAccess(bool* emitted, MDefinition* obj, PropertyName* name,
+                                                  TemporaryTypeSet* types);
     AbortReasonOr<Ok> getPropTryTypedObject(bool* emitted, MDefinition* obj, PropertyName* name);
     AbortReasonOr<Ok> getPropTryScalarPropOfTypedObject(bool* emitted, MDefinition* typedObj,
                                                         int32_t fieldOffset,
@@ -273,10 +273,10 @@ class IonBuilder
                                                 TemporaryTypeSet* objTypes);
     AbortReasonOr<Ok> setPropTryDefiniteSlot(bool* emitted, MDefinition* obj,
                                              PropertyName* name, MDefinition* value,
-                                             bool barrier, TemporaryTypeSet* objTypes);
+                                             bool barrier);
     AbortReasonOr<Ok> setPropTryUnboxed(bool* emitted, MDefinition* obj,
                                         PropertyName* name, MDefinition* value,
-                                        bool barrier, TemporaryTypeSet* objTypes);
+                                        bool barrier);
     AbortReasonOr<Ok> setPropTryInlineAccess(bool* emitted, MDefinition* obj,
                                              PropertyName* name, MDefinition* value,
                                              bool barrier, TemporaryTypeSet* objTypes);
@@ -286,14 +286,25 @@ class IonBuilder
                                                            int32_t fieldOffset, MDefinition* value,
                                                            TypedObjectPrediction fieldPrediction,
                                                            PropertyName* name);
+    AbortReasonOr<Ok> setPropTryReferenceTypedObjectValue(bool* emitted,
+                                                          MDefinition* typedObj,
+                                                          const LinearSum& byteOffset,
+                                                          ReferenceTypeDescr::Type type,
+                                                          MDefinition* value,
+                                                          PropertyName* name);
     AbortReasonOr<Ok> setPropTryScalarPropOfTypedObject(bool* emitted,
                                                         MDefinition* obj,
                                                         int32_t fieldOffset,
                                                         MDefinition* value,
                                                         TypedObjectPrediction fieldTypeReprs);
+    AbortReasonOr<Ok> setPropTryScalarTypedObjectValue(bool* emitted,
+                                                       MDefinition* typedObj,
+                                                       const LinearSum& byteOffset,
+                                                       ScalarTypeDescr::Type type,
+                                                       MDefinition* value);
     AbortReasonOr<Ok> setPropTryCache(bool* emitted, MDefinition* obj,
                                       PropertyName* name, MDefinition* value,
-                                      bool barrier, TemporaryTypeSet* objTypes);
+                                      bool barrier);
 
     // jsop_binary_arith helpers.
     MBinaryArithInstruction* binaryArithInstruction(JSOp op, MDefinition* left, MDefinition* right);
@@ -316,14 +327,13 @@ class IonBuilder
 
     // jsop_compare helpers.
     AbortReasonOr<Ok> compareTrySpecialized(bool* emitted, JSOp op, MDefinition* left,
-                                            MDefinition* right);
+                                            MDefinition* right, bool canTrackOptimization);
     AbortReasonOr<Ok> compareTryBitwise(bool* emitted, JSOp op, MDefinition* left,
                                         MDefinition* right);
     AbortReasonOr<Ok> compareTrySpecializedOnBaselineInspector(bool* emitted, JSOp op,
                                                                MDefinition* left,
                                                                MDefinition* right);
-    AbortReasonOr<Ok> compareTrySharedStub(bool* emitted, JSOp op, MDefinition* left,
-                                           MDefinition* right);
+    AbortReasonOr<Ok> compareTrySharedStub(bool* emitted, MDefinition* left, MDefinition* right);
 
     // jsop_newarray helpers.
     AbortReasonOr<Ok> newArrayTrySharedStub(bool* emitted);
@@ -339,6 +349,7 @@ class IonBuilder
     // jsop_in/jsop_hasown helpers.
     AbortReasonOr<Ok> inTryDense(bool* emitted, MDefinition* obj, MDefinition* id);
     AbortReasonOr<Ok> hasTryNotDefined(bool* emitted, MDefinition* obj, MDefinition* id, bool ownProperty);
+    AbortReasonOr<Ok> hasTryDefiniteSlotOrUnboxed(bool* emitted, MDefinition* obj, MDefinition* id);
 
     // binary data lookup helpers.
     TypedObjectPrediction typedObjectPrediction(MDefinition* typedObj);
@@ -361,17 +372,7 @@ class IonBuilder
     MDefinition* typeObjectForElementFromArrayStructType(MDefinition* typedObj);
     MDefinition* typeObjectForFieldFromStructType(MDefinition* type,
                                                   size_t fieldIndex);
-    AbortReasonOr<bool> storeReferenceTypedObjectValue(MDefinition* typedObj,
-                                                       const LinearSum& byteOffset,
-                                                       ReferenceTypeDescr::Type type,
-                                                       MDefinition* value,
-                                                       PropertyName* name);
-    AbortReasonOr<Ok> storeScalarTypedObjectValue(MDefinition* typedObj,
-                                                  const LinearSum& byteOffset,
-                                                  ScalarTypeDescr::Type type,
-                                                  MDefinition* value);
     bool checkTypedObjectIndexInBounds(uint32_t elemSize,
-                                       MDefinition* obj,
                                        MDefinition* index,
                                        TypedObjectPrediction objTypeDescrs,
                                        LinearSum* indexAsByteOffset);
@@ -387,20 +388,16 @@ class IonBuilder
                                                        const LinearSum& byteOffset,
                                                        ReferenceTypeDescr::Type type,
                                                        PropertyName* name);
-    AbortReasonOr<JSObject*> getStaticTypedArrayObject(MDefinition* obj, MDefinition* index);
 
     // jsop_setelem() helpers.
     AbortReasonOr<Ok> setElemTryTypedArray(bool* emitted, MDefinition* object,
                                            MDefinition* index, MDefinition* value);
     AbortReasonOr<Ok> setElemTryTypedObject(bool* emitted, MDefinition* obj,
                                             MDefinition* index, MDefinition* value);
-    AbortReasonOr<Ok> setElemTryTypedStatic(bool* emitted, MDefinition* object,
-                                            MDefinition* index, MDefinition* value);
     AbortReasonOr<Ok> initOrSetElemTryDense(bool* emitted, MDefinition* object,
                                             MDefinition* index, MDefinition* value,
                                             bool writeHole);
-    AbortReasonOr<Ok> setElemTryArguments(bool* emitted, MDefinition* object,
-                                          MDefinition* index, MDefinition* value);
+    AbortReasonOr<Ok> setElemTryArguments(bool* emitted, MDefinition* object);
     AbortReasonOr<Ok> initOrSetElemTryCache(bool* emitted, MDefinition* object,
                                             MDefinition* index, MDefinition* value);
     AbortReasonOr<Ok> setElemTryReferenceElemOfTypedObject(bool* emitted,
@@ -417,14 +414,13 @@ class IonBuilder
                                                         TypedObjectPrediction elemTypeReprs,
                                                         uint32_t elemSize);
     AbortReasonOr<Ok> initializeArrayElement(MDefinition* obj, size_t index, MDefinition* value,
-                                             JSValueType unboxedType,
                                              bool addResumePointAndIncrementInitializedLength);
 
     // jsop_getelem() helpers.
     AbortReasonOr<Ok> getElemTryDense(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryGetProp(bool* emitted, MDefinition* obj, MDefinition* index);
-    AbortReasonOr<Ok> getElemTryTypedStatic(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryTypedArray(bool* emitted, MDefinition* obj, MDefinition* index);
+    AbortReasonOr<Ok> getElemTryCallSiteObject(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryTypedObject(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryString(bool* emitted, MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> getElemTryArguments(bool* emitted, MDefinition* obj, MDefinition* index);
@@ -498,7 +494,7 @@ class IonBuilder
     AbortReasonOr<Ok> jsop_setarg(uint32_t arg);
     AbortReasonOr<Ok> jsop_defvar(uint32_t index);
     AbortReasonOr<Ok> jsop_deflexical(uint32_t index);
-    AbortReasonOr<Ok> jsop_deffun(uint32_t index);
+    AbortReasonOr<Ok> jsop_deffun();
     AbortReasonOr<Ok> jsop_notearg();
     AbortReasonOr<Ok> jsop_throwsetconst();
     AbortReasonOr<Ok> jsop_checklexical();
@@ -528,15 +524,13 @@ class IonBuilder
     AbortReasonOr<Ok> jsop_bindname(PropertyName* name);
     AbortReasonOr<Ok> jsop_bindvar();
     AbortReasonOr<Ok> jsop_getelem();
-    AbortReasonOr<Ok> jsop_getelem_dense(MDefinition* obj, MDefinition* index,
-                                         JSValueType unboxedType);
+    AbortReasonOr<Ok> jsop_getelem_dense(MDefinition* obj, MDefinition* index);
     AbortReasonOr<Ok> jsop_getelem_typed(MDefinition* obj, MDefinition* index,
                                          ScalarTypeDescr::Type arrayType);
     AbortReasonOr<Ok> jsop_setelem();
     AbortReasonOr<Ok> initOrSetElemDense(TemporaryTypeSet::DoubleConversion conversion,
                                          MDefinition* object, MDefinition* index,
-                                         MDefinition* value, JSValueType unboxedType,
-                                         bool writeHole, bool* emitted);
+                                         MDefinition* value, bool writeHole, bool* emitted);
     AbortReasonOr<Ok> jsop_setelem_typed(ScalarTypeDescr::Type arrayType,
                                          MDefinition* object, MDefinition* index,
                                          MDefinition* value);
@@ -547,6 +541,9 @@ class IonBuilder
     AbortReasonOr<Ok> jsop_runonce();
     AbortReasonOr<Ok> jsop_rest();
     AbortReasonOr<Ok> jsop_not();
+    AbortReasonOr<Ok> jsop_superbase();
+    AbortReasonOr<Ok> jsop_getprop_super(PropertyName* name);
+    AbortReasonOr<Ok> jsop_getelem_super();
     AbortReasonOr<Ok> jsop_getprop(PropertyName* name);
     AbortReasonOr<Ok> jsop_setprop(PropertyName* name);
     AbortReasonOr<Ok> jsop_delprop(PropertyName* name);
@@ -577,10 +574,11 @@ class IonBuilder
     AbortReasonOr<Ok> jsop_toasyncgen();
     AbortReasonOr<Ok> jsop_toasynciter();
     AbortReasonOr<Ok> jsop_toid();
-    AbortReasonOr<Ok> jsop_iter(uint8_t flags);
+    AbortReasonOr<Ok> jsop_iter();
     AbortReasonOr<Ok> jsop_itermore();
     AbortReasonOr<Ok> jsop_isnoiter();
     AbortReasonOr<Ok> jsop_iterend();
+    AbortReasonOr<Ok> jsop_iternext();
     AbortReasonOr<Ok> jsop_in();
     AbortReasonOr<Ok> jsop_hasown();
     AbortReasonOr<Ok> jsop_instanceof();
@@ -592,6 +590,7 @@ class IonBuilder
     AbortReasonOr<Ok> jsop_checkiscallable(uint8_t kind);
     AbortReasonOr<Ok> jsop_checkobjcoercible();
     AbortReasonOr<Ok> jsop_pushcallobj();
+    AbortReasonOr<Ok> jsop_implicitthis(PropertyName* name);
 
     /* Inlining. */
 
@@ -666,6 +665,7 @@ class IonBuilder
     InliningResult inlineStrFromCharCode(CallInfo& callInfo);
     InliningResult inlineStrFromCodePoint(CallInfo& callInfo);
     InliningResult inlineStrCharAt(CallInfo& callInfo);
+    InliningResult inlineStringConvertCase(CallInfo& callInfo, MStringConvertCase::Mode mode);
 
     // String intrinsics.
     InliningResult inlineStringReplaceString(CallInfo& callInfo);
@@ -685,7 +685,9 @@ class IonBuilder
     InliningResult inlineGetFirstDollarIndex(CallInfo& callInfo);
 
     // Object natives and intrinsics.
+    InliningResult inlineObject(CallInfo& callInfo);
     InliningResult inlineObjectCreate(CallInfo& callInfo);
+    InliningResult inlineObjectIs(CallInfo& callInfo);
     InliningResult inlineObjectToString(CallInfo& callInfo);
     InliningResult inlineDefineDataProperty(CallInfo& callInfo);
 
@@ -783,6 +785,7 @@ class IonBuilder
                                   const Class* clasp2 = nullptr,
                                   const Class* clasp3 = nullptr,
                                   const Class* clasp4 = nullptr);
+    InliningResult inlineGuardToClass(CallInfo& callInfo, const Class* clasp);
     InliningResult inlineIsConstructing(CallInfo& callInfo);
     InliningResult inlineSubstringKernel(CallInfo& callInfo);
     InliningResult inlineObjectHasPrototype(CallInfo& callInfo);
@@ -810,9 +813,11 @@ class IonBuilder
                                   BoolVector& choiceSet, MGetPropertyCache* maybeCache);
 
     // Inlining helpers.
-    AbortReasonOr<Ok> inlineGenericFallback(JSFunction* target, CallInfo& callInfo,
+    AbortReasonOr<Ok> inlineGenericFallback(const mozilla::Maybe<CallTargets>& targets,
+                                            CallInfo& callInfo,
                                             MBasicBlock* dispatchBlock);
-    AbortReasonOr<Ok> inlineObjectGroupFallback(CallInfo& callInfo, MBasicBlock* dispatchBlock,
+    AbortReasonOr<Ok> inlineObjectGroupFallback(const mozilla::Maybe<CallTargets>& targets,
+                                                CallInfo& callInfo, MBasicBlock* dispatchBlock,
                                                 MObjectGroupDispatch* dispatch,
                                                 MGetPropertyCache* cache,
                                                 MBasicBlock** fallbackTarget);
@@ -829,7 +834,9 @@ class IonBuilder
 
     bool testNeedsArgumentCheck(JSFunction* target, CallInfo& callInfo);
 
-    AbortReasonOr<MCall*> makeCallHelper(JSFunction* target, CallInfo& callInfo);
+    AbortReasonOr<MCall*> makeCallHelper(const mozilla::Maybe<CallTargets>& targets,
+                                         CallInfo& callInfo);
+    AbortReasonOr<Ok> makeCall(const mozilla::Maybe<CallTargets>& targets, CallInfo& callInfo);
     AbortReasonOr<Ok> makeCall(JSFunction* target, CallInfo& callInfo);
 
     MDefinition* patchInlinedReturn(CallInfo& callInfo, MBasicBlock* exit, MBasicBlock* bottom);
@@ -872,11 +879,11 @@ class IonBuilder
 
     AbortReasonOr<bool> testNotDefinedProperty(MDefinition* obj, jsid id, bool ownProperty = false);
 
-    uint32_t getDefiniteSlot(TemporaryTypeSet* types, PropertyName* name, uint32_t* pnfixed);
+    uint32_t getDefiniteSlot(TemporaryTypeSet* types, jsid id, uint32_t* pnfixed);
     MDefinition* convertUnboxedObjects(MDefinition* obj);
     MDefinition* convertUnboxedObjects(MDefinition* obj,
                                        const BaselineInspector::ObjectGroupVector& list);
-    uint32_t getUnboxedOffset(TemporaryTypeSet* types, PropertyName* name,
+    uint32_t getUnboxedOffset(TemporaryTypeSet* types, jsid id,
                               JSValueType* punboxedType);
     MInstruction* loadUnboxedProperty(MDefinition* obj, size_t offset, JSValueType unboxedType,
                                       BarrierKind barrier, TemporaryTypeSet* types);
@@ -1081,9 +1088,6 @@ class IonBuilder
     // an outer script.
     bool failedLexicalCheck_;
 
-    // Has an iterator other than 'for in'.
-    bool nonStringIteration_;
-
 #ifdef DEBUG
     // If this script uses the lazy arguments object.
     bool hasLazyArguments_;
@@ -1124,6 +1128,8 @@ class IonBuilder
     }
 
     MGetPropertyCache* maybeFallbackFunctionGetter_;
+
+    bool needsPostBarrier(MDefinition* value);
 
     // Used in tracking outcomes of optimization strategies for devtools.
     void startTrackingOptimizations();
@@ -1181,6 +1187,11 @@ class IonBuilder
     void trackOptimizationOutcomeUnchecked(JS::TrackedOutcome outcome);
     void trackOptimizationSuccessUnchecked();
     void trackInlineSuccessUnchecked(InliningStatus status);
+
+  public:
+
+    // This is only valid for IonBuilders that have moved to background
+    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 };
 
 class CallInfo
@@ -1189,6 +1200,9 @@ class CallInfo
     MDefinition* thisArg_;
     MDefinition* newTargetArg_;
     MDefinitionVector args_;
+    // If non-empty, this corresponds to the stack prior any implicit inlining
+    // such as before JSOP_FUNAPPLY.
+    MDefinitionVector priorArgs_;
 
     bool constructing_:1;
 
@@ -1196,16 +1210,19 @@ class CallInfo
     bool ignoresReturnValue_:1;
 
     bool setter_:1;
+    bool apply_:1;
 
   public:
-    CallInfo(TempAllocator& alloc, bool constructing, bool ignoresReturnValue)
+    CallInfo(TempAllocator& alloc, jsbytecode* pc, bool constructing, bool ignoresReturnValue)
       : fun_(nullptr),
         thisArg_(nullptr),
         newTargetArg_(nullptr),
         args_(alloc),
+        priorArgs_(alloc),
         constructing_(constructing),
         ignoresReturnValue_(ignoresReturnValue),
-        setter_(false)
+        setter_(false),
+        apply_(JSOp(*pc) == JSOP_FUNAPPLY)
     { }
 
     MOZ_MUST_USE bool init(CallInfo& callInfo) {
@@ -1245,11 +1262,39 @@ class CallInfo
         return true;
     }
 
-    void popFormals(MBasicBlock* current) {
+    // Before doing any pop to the stack, capture whatever flows into the
+    // instruction, such that we can restore it later.
+    AbortReasonOr<Ok> savePriorCallStack(MIRGenerator* mir, MBasicBlock* current, size_t peekDepth);
+
+    void popPriorCallStack(MBasicBlock* current) {
+        if (priorArgs_.empty())
+            popCallStack(current);
+        else
+            current->popn(priorArgs_.length());
+    }
+
+    AbortReasonOr<Ok> pushPriorCallStack(MIRGenerator* mir, MBasicBlock* current) {
+        if (priorArgs_.empty())
+            return pushCallStack(mir, current);
+        for (MDefinition* def : priorArgs_)
+            current->push(def);
+        return Ok();
+    }
+
+    void popCallStack(MBasicBlock* current) {
         current->popn(numFormals());
     }
 
-    void pushFormals(MBasicBlock* current) {
+    AbortReasonOr<Ok> pushCallStack(MIRGenerator* mir, MBasicBlock* current) {
+        // Ensure sufficient space in the slots: needed for inlining from FUNAPPLY.
+        if (apply_) {
+            uint32_t depth = current->stackDepth() + numFormals();
+            if (depth > current->nslots()) {
+                if (!current->increaseSlots(depth - current->nslots()))
+                    return mir->abort(AbortReason::Alloc);
+            }
+        }
+
         current->push(fun());
         current->push(thisArg());
 
@@ -1258,6 +1303,8 @@ class CallInfo
 
         if (constructing())
             current->push(getNewTarget());
+
+        return Ok();
     }
 
     uint32_t argc() const {
@@ -1348,8 +1395,6 @@ class CallInfo
             getArg(i)->setImplicitlyUsedUnchecked();
     }
 };
-
-bool NeedsPostBarrier(MDefinition* value);
 
 } // namespace jit
 } // namespace js

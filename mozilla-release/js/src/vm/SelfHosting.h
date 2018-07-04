@@ -12,8 +12,6 @@
 
 #include "vm/Stack.h"
 
-class JSAtom;
-
 namespace js {
 
 /*
@@ -52,6 +50,9 @@ intrinsic_NewArrayIterator(JSContext* cx, unsigned argc, JS::Value* vp);
 
 bool
 intrinsic_NewStringIterator(JSContext* cx, unsigned argc, JS::Value* vp);
+
+bool
+intrinsic_IsSuspendedGenerator(JSContext* cx, unsigned argc, JS::Value* vp);
 
 } /* namespace js */
 

@@ -10,7 +10,7 @@
 #include "mozilla/css/Rule.h"
 #include "mozilla/dom/CSSNamespaceRuleBinding.h"
 
-class nsIAtom;
+class nsAtom;
 
 namespace mozilla {
 namespace dom {
@@ -24,20 +24,20 @@ public:
   bool IsCCLeaf() const final {
     return Rule::IsCCLeaf();
   }
-  int32_t GetType() const final {
-    return Rule::NAMESPACE_RULE;
-  }
-  using Rule::GetType;
 
-  virtual nsIAtom* GetPrefix() const = 0;
+  virtual nsAtom* GetPrefix() const = 0;
   virtual void GetURLSpec(nsString& aURLSpec) const = 0;
 
   // WebIDL interfaces
-  uint16_t Type() const final {
-    return nsIDOMCSSRule::NAMESPACE_RULE;
+  uint16_t Type() const final { return CSSRuleBinding::NAMESPACE_RULE; }
+  void GetNamespaceURI(nsString& aNamespaceURI) {
+    GetURLSpec(aNamespaceURI);
+  }
+  void GetPrefix(DOMString& aPrefix) {
+    aPrefix.SetKnownLiveAtom(GetPrefix(), DOMString::eTreatNullAsEmpty);
   }
 
-  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const = 0;
+  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override = 0;
 
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) final {

@@ -16,7 +16,7 @@ const DATA_URL_INLINE_STYLE='color: red; background: url("data:image/png;base64,
 const DATA_URL_INLINE_STYLE_COLLAPSED='color: red; background: url("data:image/png;base64,iVBORw0KG\u2026NDDeNGe4Ug9C9zwz3gVLMDA/A6P9/AFGGFyjOXZtQAAAAAElFTkSuQmCC");';
 const DATA_URL_ATTRIBUTE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAQMAAAAlPW0iAAAABlBMVEUAAAD///+l2Z/dAAAAM0lEQVR4nGP4/5/h/1+G/58ZDrAz3D/McH8yw83NDDeNGe4Ug9C9zwz3gVLMDA/A6P9/AFGGFyjOXZtQAAAAAElFTkSuQmCC";
 const DATA_URL_ATTRIBUTE_COLLAPSED = "data:image/png;base64,iVBORw0K\u20269/AFGGFyjOXZtQAAAAAElFTkSuQmCC";
-/*eslint-enable */
+/* eslint-enable */
 
 var TEST_URL = "data:text/html,<div>markup-view attributes addition test</div>";
 var TEST_DATA = [{
@@ -89,7 +89,7 @@ var TEST_DATA = [{
   expectedAttributes: {
     "data-long": LONG_ATTRIBUTE
   },
-  setUp: function (inspector) {
+  setUp: function(inspector) {
     Services.prefs.setBoolPref("devtools.markup.collapseAttributes", false);
   },
   validate: (container, inspector) => {
@@ -100,7 +100,7 @@ var TEST_DATA = [{
       .textContent;
     is(visibleAttrText, LONG_ATTRIBUTE);
   },
-  tearDown: function (inspector) {
+  tearDown: function(inspector) {
     Services.prefs.clearUserPref("devtools.markup.collapseAttributes");
   }
 }, {
@@ -109,7 +109,7 @@ var TEST_DATA = [{
   expectedAttributes: {
     "data-long": LONG_ATTRIBUTE
   },
-  setUp: function (inspector) {
+  setUp: function(inspector) {
     Services.prefs.setIntPref("devtools.markup.collapseAttributeLength", 2);
   },
   validate: (container, inspector) => {
@@ -123,13 +123,13 @@ var TEST_DATA = [{
       .textContent;
     is(visibleAttrText, collapsed);
   },
-  tearDown: function (inspector) {
+  tearDown: function(inspector) {
     Services.prefs.clearUserPref("devtools.markup.collapseAttributeLength");
   }
 }];
 
-add_task(function* () {
-  let {inspector, testActor} = yield openInspectorForURL(TEST_URL);
-  yield runAddAttributesTests(TEST_DATA, "div", inspector, testActor);
+add_task(async function() {
+  let {inspector, testActor} = await openInspectorForURL(TEST_URL);
+  await runAddAttributesTests(TEST_DATA, "div", inspector, testActor);
 });
 

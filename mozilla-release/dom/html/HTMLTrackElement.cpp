@@ -25,8 +25,6 @@
 #include "nsIContentPolicy.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIDocument.h"
-#include "nsIDOMEventTarget.h"
-#include "nsIDOMHTMLMediaElement.h"
 #include "nsIHttpChannel.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsILoadGroup.h"
@@ -36,7 +34,6 @@
 #include "nsISupportsPrimitives.h"
 #include "nsMappedAttributes.h"
 #include "nsNetUtil.h"
-#include "nsRuleData.h"
 #include "nsStyleConsts.h"
 #include "nsThreadUtils.h"
 #include "nsVideoFrame.h"
@@ -68,7 +65,7 @@ static constexpr nsAttrValue::EnumTable kKindTable[] = {
 
 // Invalid values are treated as "metadata" in ParseAttribute, but if no value
 // at all is specified, it's treated as "subtitles" in GetKind
-static constexpr const nsAttrValue::EnumTable* kKindTableInvalidValueDefault = &kKindTable[4];
+static const nsAttrValue::EnumTable* const kKindTableInvalidValueDefault = &kKindTable[4];
 
 class WindowDestroyObserver final : public nsIObserver
 {
@@ -146,14 +143,11 @@ HTMLTrackElement::~HTMLTrackElement()
 
 NS_IMPL_ELEMENT_CLONE(HTMLTrackElement)
 
-NS_IMPL_ADDREF_INHERITED(HTMLTrackElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLTrackElement, Element)
-
 NS_IMPL_CYCLE_COLLECTION_INHERITED(HTMLTrackElement, nsGenericHTMLElement,
                                    mTrack, mMediaParent, mListener)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(HTMLTrackElement)
-NS_INTERFACE_MAP_END_INHERITING(nsGenericHTMLElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED_0(HTMLTrackElement,
+                                               nsGenericHTMLElement)
 
 void
 HTMLTrackElement::GetKind(DOMString& aKind) const
@@ -219,8 +213,9 @@ HTMLTrackElement::CreateTextTrack()
 
 bool
 HTMLTrackElement::ParseAttribute(int32_t aNamespaceID,
-                                 nsIAtom* aAttribute,
+                                 nsAtom* aAttribute,
                                  const nsAString& aValue,
+                                 nsIPrincipal* aMaybeScriptedPrincipal,
                                  nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None && aAttribute == nsGkAtoms::kind) {
@@ -233,6 +228,7 @@ HTMLTrackElement::ParseAttribute(int32_t aNamespaceID,
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID,
                                               aAttribute,
                                               aValue,
+                                              aMaybeScriptedPrincipal,
                                               aResult);
 }
 
@@ -328,6 +324,7 @@ HTMLTrackElement::LoadResource()
                      static_cast<Element*>(this),
                      secFlags,
                      nsIContentPolicy::TYPE_INTERNAL_TRACK,
+                     nullptr, // PerformanceStorage
                      loadGroup,
                      nullptr,   // aCallbacks
                      nsIRequest::LOAD_NORMAL | nsIChannel::LOAD_CLASSIFY_URI);
@@ -363,13 +360,14 @@ HTMLTrackElement::BindToTree(nsIDocument* aDocument,
   NS_ENSURE_SUCCESS(rv, rv);
 
   LOG(LogLevel::Debug, ("Track Element bound to tree."));
-  if (!aParent || !aParent->IsNodeOfType(nsINode::eMEDIA)) {
+  auto* parent = HTMLMediaElement::FromNodeOrNull(aParent);
+  if (!parent) {
     return NS_OK;
   }
 
   // Store our parent so we can look up its frame for display.
   if (!mMediaParent) {
-    mMediaParent = static_cast<HTMLMediaElement*>(aParent);
+    mMediaParent = parent;
 
     // TODO: separate notification for 'alternate' tracks?
     mMediaParent->NotifyAddedSource();

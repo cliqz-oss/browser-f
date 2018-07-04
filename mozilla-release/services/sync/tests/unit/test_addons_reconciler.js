@@ -3,21 +3,52 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/AddonManager.jsm");
-Cu.import("resource://services-sync/addonsreconciler.js");
-Cu.import("resource://services-sync/engines/addons.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://services-sync/addonsreconciler.js");
+ChromeUtils.import("resource://services-sync/engines/addons.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
-loadAddonTestFunctions();
-startupManager();
+AddonTestUtils.init(this);
+AddonTestUtils.createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
+AddonTestUtils.overrideCertDB();
+AddonTestUtils.awaitPromise(AddonTestUtils.promiseStartupManager());
 
-add_task(async function run_test() {
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.AddonsReconciler").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.AddonsReconciler").level =
-    Log.Level.Trace;
+const ADDONS = {
+  test_bootstrap1_1: {
+    "install.rdf": {
+      id: "bootstrap1@tests.mozilla.org",
+      version: "1.0",
+      bootstrap: "true",
+      multiprocessCompatible: "true",
+      name: "Test Bootstrap 1",
+      description: "Test Description",
 
+      iconURL: "chrome://foo/skin/icon.png",
+      aboutURL: "chrome://foo/content/about.xul",
+      optionsURL: "chrome://foo/content/options.xul",
+
+      targetApplications: [{
+          id: "xpcshell@tests.mozilla.org",
+          minVersion: "1",
+          maxVersion: "1"}],
+    },
+  },
+};
+
+const XPIS = {};
+for (let [name, files] of Object.entries(ADDONS)) {
+  XPIS[name] = AddonTestUtils.createTempXPIFile(files);
+}
+
+function makeAddonsReconciler() {
+  const log = Service.engineManager.get("addons")._log;
+  const queueCaller = Async.asyncQueueCaller(log);
+  return new AddonsReconciler(queueCaller);
+}
+
+add_task(async function setup() {
   Svc.Prefs.set("engine.addons", true);
   await Service.engineManager.register(AddonsEngine);
 });
@@ -25,95 +56,95 @@ add_task(async function run_test() {
 add_task(async function test_defaults() {
   _("Ensure new objects have reasonable defaults.");
 
-  let reconciler = new AddonsReconciler();
+  let reconciler = makeAddonsReconciler();
   await reconciler.ensureStateLoaded();
 
-  do_check_false(reconciler._listening);
-  do_check_eq("object", typeof(reconciler.addons));
-  do_check_eq(0, Object.keys(reconciler.addons).length);
-  do_check_eq(0, reconciler._changes.length);
-  do_check_eq(0, reconciler._listeners.length);
+  Assert.ok(!reconciler._listening);
+  Assert.equal("object", typeof(reconciler.addons));
+  Assert.equal(0, Object.keys(reconciler.addons).length);
+  Assert.equal(0, reconciler._changes.length);
+  Assert.equal(0, reconciler._listeners.length);
 });
 
 add_task(async function test_load_state_empty_file() {
   _("Ensure loading from a missing file results in defaults being set.");
 
-  let reconciler = new AddonsReconciler();
+  let reconciler = makeAddonsReconciler();
   await reconciler.ensureStateLoaded();
 
   let loaded = await reconciler.loadState();
-  do_check_false(loaded);
+  Assert.ok(!loaded);
 
-  do_check_eq("object", typeof(reconciler.addons));
-  do_check_eq(0, Object.keys(reconciler.addons).length);
-  do_check_eq(0, reconciler._changes.length);
+  Assert.equal("object", typeof(reconciler.addons));
+  Assert.equal(0, Object.keys(reconciler.addons).length);
+  Assert.equal(0, reconciler._changes.length);
 });
 
 add_task(async function test_install_detection() {
   _("Ensure that add-on installation results in appropriate side-effects.");
 
-  let reconciler = new AddonsReconciler();
+  let reconciler = makeAddonsReconciler();
   await reconciler.ensureStateLoaded();
   reconciler.startListening();
 
   let before = new Date();
-  let addon = installAddon("test_bootstrap1_1");
+  let addon = await installAddon(XPIS.test_bootstrap1_1);
   let after = new Date();
 
-  do_check_eq(1, Object.keys(reconciler.addons).length);
-  do_check_true(addon.id in reconciler.addons);
+  Assert.equal(1, Object.keys(reconciler.addons).length);
+  Assert.ok(addon.id in reconciler.addons);
   let record = reconciler.addons[addon.id];
 
   const KEYS = ["id", "guid", "enabled", "installed", "modified", "type",
                 "scope", "foreignInstall"];
   for (let key of KEYS) {
-    do_check_true(key in record);
-    do_check_neq(null, record[key]);
+    Assert.ok(key in record);
+    Assert.notEqual(null, record[key]);
   }
 
-  do_check_eq(addon.id, record.id);
-  do_check_eq(addon.syncGUID, record.guid);
-  do_check_true(record.enabled);
-  do_check_true(record.installed);
-  do_check_true(record.modified >= before && record.modified <= after);
-  do_check_eq("extension", record.type);
-  do_check_false(record.foreignInstall);
+  Assert.equal(addon.id, record.id);
+  Assert.equal(addon.syncGUID, record.guid);
+  Assert.ok(record.enabled);
+  Assert.ok(record.installed);
+  Assert.ok(record.modified >= before && record.modified <= after);
+  Assert.equal("extension", record.type);
+  Assert.ok(!record.foreignInstall);
 
-  do_check_eq(1, reconciler._changes.length);
+  Assert.equal(1, reconciler._changes.length);
   let change = reconciler._changes[0];
-  do_check_true(change[0] >= before && change[1] <= after);
-  do_check_eq(CHANGE_INSTALLED, change[1]);
-  do_check_eq(addon.id, change[2]);
+  Assert.ok(change[0] >= before && change[1] <= after);
+  Assert.equal(CHANGE_INSTALLED, change[1]);
+  Assert.equal(addon.id, change[2]);
 
-  uninstallAddon(addon);
+  await uninstallAddon(addon);
 });
 
 add_task(async function test_uninstall_detection() {
   _("Ensure that add-on uninstallation results in appropriate side-effects.");
 
-  let reconciler = new AddonsReconciler();
+  let reconciler = makeAddonsReconciler();
   await reconciler.ensureStateLoaded();
   reconciler.startListening();
 
   reconciler._addons = {};
   reconciler._changes = [];
 
-  let addon = installAddon("test_bootstrap1_1");
+  let addon = await installAddon(XPIS.test_bootstrap1_1);
   let id = addon.id;
 
   reconciler._changes = [];
-  uninstallAddon(addon);
+  await uninstallAddon(addon, reconciler);
 
-  do_check_eq(1, Object.keys(reconciler.addons).length);
-  do_check_true(id in reconciler.addons);
+  Assert.equal(1, Object.keys(reconciler.addons).length);
+  Assert.ok(id in reconciler.addons);
 
   let record = reconciler.addons[id];
-  do_check_false(record.installed);
+  Assert.ok(!record.installed);
 
-  do_check_eq(1, reconciler._changes.length);
+  Assert.equal(1, reconciler._changes.length);
   let change = reconciler._changes[0];
-  do_check_eq(CHANGE_UNINSTALLED, change[1]);
-  do_check_eq(id, change[2]);
+  Assert.equal(CHANGE_UNINSTALLED, change[1]);
+  Assert.equal(id, change[2]);
 });
 
 add_task(async function test_load_state_future_version() {
@@ -121,7 +152,7 @@ add_task(async function test_load_state_future_version() {
 
   const FILENAME = "TEST_LOAD_STATE_FUTURE_VERSION";
 
-  let reconciler = new AddonsReconciler();
+  let reconciler = makeAddonsReconciler();
   await reconciler.ensureStateLoaded();
 
   // First we populate our new file.
@@ -132,17 +163,17 @@ add_task(async function test_load_state_future_version() {
   await Utils.jsonSave(FILENAME, reconciler, state);
 
   let loaded = await reconciler.loadState(FILENAME);
-  do_check_false(loaded);
+  Assert.ok(!loaded);
 
-  do_check_eq("object", typeof(reconciler.addons));
-  do_check_eq(0, Object.keys(reconciler.addons).length);
-  do_check_eq(0, reconciler._changes.length);
+  Assert.equal("object", typeof(reconciler.addons));
+  Assert.equal(0, Object.keys(reconciler.addons).length);
+  Assert.equal(0, reconciler._changes.length);
 });
 
 add_task(async function test_prune_changes_before_date() {
   _("Ensure that old changes are pruned properly.");
 
-  let reconciler = new AddonsReconciler();
+  let reconciler = makeAddonsReconciler();
   await reconciler.ensureStateLoaded();
   reconciler._changes = [];
 
@@ -151,29 +182,29 @@ add_task(async function test_prune_changes_before_date() {
 
   _("Ensure pruning an empty changes array works.");
   reconciler.pruneChangesBeforeDate(now);
-  do_check_eq(0, reconciler._changes.length);
+  Assert.equal(0, reconciler._changes.length);
 
   let old = new Date(now.getTime() - HOUR_MS);
   let young = new Date(now.getTime() - 1000);
   reconciler._changes.push([old, CHANGE_INSTALLED, "foo"]);
   reconciler._changes.push([young, CHANGE_INSTALLED, "bar"]);
-  do_check_eq(2, reconciler._changes.length);
+  Assert.equal(2, reconciler._changes.length);
 
   _("Ensure pruning with an old time won't delete anything.");
   let threshold = new Date(old.getTime() - 1);
   reconciler.pruneChangesBeforeDate(threshold);
-  do_check_eq(2, reconciler._changes.length);
+  Assert.equal(2, reconciler._changes.length);
 
   _("Ensure pruning a single item works.");
   threshold = new Date(young.getTime() - 1000);
   reconciler.pruneChangesBeforeDate(threshold);
-  do_check_eq(1, reconciler._changes.length);
-  do_check_neq(undefined, reconciler._changes[0]);
-  do_check_eq(young, reconciler._changes[0][0]);
-  do_check_eq("bar", reconciler._changes[0][2]);
+  Assert.equal(1, reconciler._changes.length);
+  Assert.notEqual(undefined, reconciler._changes[0]);
+  Assert.equal(young, reconciler._changes[0][0]);
+  Assert.equal("bar", reconciler._changes[0][2]);
 
   _("Ensure pruning all changes works.");
   reconciler._changes.push([old, CHANGE_INSTALLED, "foo"]);
   reconciler.pruneChangesBeforeDate(now);
-  do_check_eq(0, reconciler._changes.length);
+  Assert.equal(0, reconciler._changes.length);
 });

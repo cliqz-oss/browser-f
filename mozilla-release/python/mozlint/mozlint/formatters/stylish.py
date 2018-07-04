@@ -2,31 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
+
+from mozterm import Terminal
 
 from ..result import ResultContainer
-
-try:
-    import blessings
-except ImportError:
-    blessings = None
-
-
-class NullTerminal(object):
-    """Replacement for `blessings.Terminal()` that does no formatting."""
-    class NullCallableString(unicode):
-        """A dummy callable Unicode stolen from blessings"""
-        def __new__(cls):
-            new = unicode.__new__(cls, u'')
-            return new
-
-        def __call__(self, *args):
-            if len(args) != 1 or isinstance(args[0], int):
-                return u''
-            return args[0]
-
-    def __getattr__(self, attr):
-        return self.NullCallableString()
 
 
 class StylishFormatter(object):
@@ -45,11 +25,8 @@ class StylishFormatter(object):
     fmt = "  {c1}{lineno}{column}  {c2}{level}{normal}  {message}  {c1}{rule}({linter}){normal}"
     fmt_summary = "{t.bold}{c}\u2716 {problem} ({error}, {warning}{failure}){t.normal}"
 
-    def __init__(self, disable_colors=None):
-        if disable_colors or not blessings:
-            self.term = NullTerminal()
-        else:
-            self.term = blessings.Terminal()
+    def __init__(self, disable_colors=False):
+        self.term = Terminal(disable_styling=disable_colors)
         self.num_colors = self.term.number_of_colors
 
     def color(self, color):
@@ -113,7 +90,7 @@ class StylishFormatter(object):
 
         # If there were failures, make it clear which linters failed
         for fail in failed:
-            message.append("{c}A failure occured in the {name} linter.".format(
+            message.append("{c}A failure occurred in the {name} linter.".format(
                 c=self.color('brightred'),
                 name=fail,
             ))

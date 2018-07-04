@@ -14,7 +14,11 @@
 
 namespace mozilla {
 
-class RemoteDataDecoder : public MediaDataDecoder
+DDLoggedTypeDeclNameAndBase(RemoteDataDecoder, MediaDataDecoder);
+
+class RemoteDataDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<RemoteDataDecoder>
 {
 public:
   static already_AddRefed<MediaDataDecoder>
@@ -31,9 +35,9 @@ public:
   RefPtr<DecodePromise> Drain() override;
   RefPtr<FlushPromise> Flush() override;
   RefPtr<ShutdownPromise> Shutdown() override;
-  const char* GetDescriptionName() const override
+  nsCString GetDescriptionName() const override
   {
-    return "android remote decoder";
+    return NS_LITERAL_CSTRING("android decoder (remote)");
   }
 
 protected:
@@ -46,7 +50,7 @@ protected:
   // Methods only called on mTaskQueue.
   RefPtr<ShutdownPromise> ProcessShutdown();
   void UpdateInputStatus(int64_t aTimestamp, bool aProcessed);
-  void UpdateOutputStatus(MediaData* aSample);
+  void UpdateOutputStatus(RefPtr<MediaData>&& aSample);
   void ReturnDecodedData();
   void DrainComplete();
   void Error(const MediaResult& aError);
@@ -54,6 +58,9 @@ protected:
   {
     MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());
   }
+
+  // Whether the sample will be used.
+  virtual bool IsUsefulData(const RefPtr<MediaData>& aSample) { return true; }
 
   MediaData::Type mType;
 

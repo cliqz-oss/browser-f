@@ -11,9 +11,6 @@
 #include "mozilla/mscom/Ptr.h"
 #include "mozilla/RefPtr.h"
 #include "nsString.h"
-#if defined(MOZ_TELEMETRY_REPORTING)
-#include "nsThreadUtils.h"
-#endif // defined(MOZ_TELEMETRY_REPORTING)
 
 #include <oleacc.h>
 
@@ -83,43 +80,10 @@ private:
   explicit LazyInstantiator(HWND aHwnd);
   ~LazyInstantiator();
 
+  bool IsBlockedInjection();
   bool ShouldInstantiate(const DWORD aClientTid);
 
-  bool GetClientExecutableName(const DWORD aClientTid, nsIFile** aOutClientExe);
-#if defined(MOZ_TELEMETRY_REPORTING) || defined(MOZ_CRASHREPORTER)
-  class AccumulateRunnable final : public Runnable
-  {
-  public:
-    explicit AccumulateRunnable(LazyInstantiator* aObj)
-      : Runnable("mozilla::a11y::LazyInstantiator::AccumulateRunnable")
-      , mObj(aObj)
-    {
-      MOZ_ASSERT(NS_IsMainThread());
-      aObj->AddRef();
-    }
-
-    void SetData(const nsAString& aData)
-    {
-      mData = aData;
-    }
-
-    NS_IMETHOD Run() override
-    {
-      mObj->AccumulateTelemetry(mData);
-      return NS_OK;
-    }
-
-  private:
-    mscom::STAUniquePtr<LazyInstantiator> mObj;
-    nsString                              mData;
-  };
-
-  friend class AccumulateRunnable;
-
-  void AppendVersionInfo(nsIFile* aClientExe, nsAString& aStrToAppend);
-  void GatherTelemetry(nsIFile* aClientExe, AccumulateRunnable* aRunnable);
-  void AccumulateTelemetry(const nsString& aValue);
-#endif // defined(MOZ_TELEMETRY_REPORTING) || defined(MOZ_CRASHREPORTER)
+  DWORD GetClientPid(const DWORD aClientTid);
 
   /**
    * @return S_OK if we have a valid mRealRoot to invoke methods on
@@ -151,9 +115,6 @@ private:
   RootAccessibleWrap* mWeakRootAccWrap;
   IAccessible*        mWeakAccessible;
   IDispatch*          mWeakDispatch;
-#if defined(MOZ_TELEMETRY_REPORTING) || defined(MOZ_CRASHREPORTER)
-  nsCOMPtr<nsIThread> mTelemetryThread;
-#endif // defined(MOZ_TELEMETRY_REPORTING) || defined(MOZ_CRASHREPORTER)
 };
 
 } // namespace a11y

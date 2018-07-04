@@ -1,4 +1,3 @@
-
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
@@ -33,12 +32,21 @@ public:
   void Unlock() { UnlockInternal(); }
 #endif
 
-  void AssertCurrentThreadIn()
 #ifdef DEBUG
-    ;
-#else
+  /**
+   * AssertCurrentThreadIn
+   **/
+  void AssertCurrentThreadIn();
+  /**
+   * AssertNotCurrentThreadIn
+   **/
+  void AssertNotCurrentThreadIn()
   {
+    //Not currently implemented. See bug 476536 for discussion.
   }
+#else
+  void AssertCurrentThreadIn() {}
+  void AssertNotCurrentThreadIn() {}
 #endif
 
 private:

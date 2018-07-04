@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,29 +19,23 @@
 #include "nsCSSAnonBoxes.h"
 #include "mozilla/css/ErrorReporter.h"
 #include "nsCSSKeywords.h"
-#include "nsCSSParser.h"
 #include "nsCSSProps.h"
-#include "nsCSSPseudoClasses.h"
 #include "nsCSSPseudoElements.h"
 #include "nsCSSRendering.h"
 #include "nsGenericHTMLFrameElement.h"
 #include "mozilla/dom/Attr.h"
-#include "nsDOMClassInfo.h"
 #include "mozilla/EventListenerManager.h"
 #include "nsFrame.h"
 #include "nsGlobalWindow.h"
 #include "nsGkAtoms.h"
 #include "nsImageFrame.h"
 #include "nsLayoutStylesheetCache.h"
-#include "mozilla/RuleProcessorCache.h"
-#include "ContentPrincipal.h"
 #include "nsRange.h"
 #include "nsRegion.h"
 #include "nsRepeatService.h"
 #include "nsFloatManager.h"
 #include "nsSprocketLayout.h"
 #include "nsStackLayout.h"
-#include "nsStyleSet.h"
 #include "nsTextControlFrame.h"
 #include "nsXBLService.h"
 #include "txMozillaXSLTProcessor.h"
@@ -48,7 +44,7 @@
 #include "nsTextFrame.h"
 #include "nsCCUncollectableMarker.h"
 #include "nsTextFragment.h"
-#include "nsCSSRuleProcessor.h"
+#include "nsMediaFeatures.h"
 #include "nsCORSListenerProxy.h"
 #include "nsHTMLDNSPrefetch.h"
 #include "nsHtml5Module.h"
@@ -67,7 +63,6 @@
 #include "CacheObserver.h"
 #include "DisplayItemClip.h"
 #include "ActiveLayerTracker.h"
-#include "CounterStyleManager.h"
 #include "FrameLayerBuilder.h"
 #include "AnimationCommon.h"
 #include "LayerAnimationInfo.h"
@@ -82,15 +77,7 @@
 #include "nsXULPrototypeCache.h"
 #include "nsXULTooltipListener.h"
 
-#include "inDOMView.h"
-
 #include "nsMenuBarListener.h"
-#endif
-
-#include "nsTextServicesDocument.h"
-
-#ifdef MOZ_WEBSPEECH
-#include "nsSynthVoiceRegistry.h"
 #endif
 
 #include "CubebUtils.h"
@@ -104,7 +91,6 @@
 #include "nsFrameMessageManager.h"
 #include "nsDOMMutationObserver.h"
 #include "nsHyphenationManager.h"
-#include "nsEditorSpellCheck.h"
 #include "nsWindowMemoryReporter.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/ProcessPriorityManager.h"
@@ -112,19 +98,20 @@
 #include "nsCookieService.h"
 #include "nsApplicationCacheService.h"
 #include "mozilla/dom/CustomElementRegistry.h"
-#include "mozilla/dom/time/DateCacheCleaner.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/dom/HTMLVideoElement.h"
 #include "TouchManager.h"
+#include "DecoderDoctorLogger.h"
 #include "MediaDecoder.h"
-#include "MediaPrefs.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/StaticPresData.h"
-#include "mozilla/StylePrefs.h"
 #include "mozilla/dom/WebIDLGlobalNameHash.h"
 #include "mozilla/dom/ipc/IPCBlobInputStreamStorage.h"
 #include "mozilla/dom/U2FTokenManager.h"
+#include "mozilla/dom/PointerEventHandler.h"
+#include "nsHostObjectProtocolHandler.h"
+#include "nsThreadManager.h"
 
 using namespace mozilla;
 using namespace mozilla::net;
@@ -147,28 +134,20 @@ nsLayoutStatics::Initialize()
 
   ContentParent::StartUp();
 
-  // Register all of our atoms once
-  nsCSSAnonBoxes::AddRefAtoms();
-  nsCSSPseudoClasses::AddRefAtoms();
-  nsCSSPseudoElements::AddRefAtoms();
+  // Register static atoms. Note that nsGkAtoms must be initialized earlier
+  // than here, so it's done in NS_InitAtomTable() instead.
+  nsCSSAnonBoxes::RegisterStaticAtoms();
+  nsCSSPseudoElements::RegisterStaticAtoms();
   nsCSSKeywords::AddRefTable();
   nsCSSProps::AddRefTable();
   nsColorNames::AddRefTable();
-  nsGkAtoms::AddRefAtoms();
-  nsTextServicesDocument::RegisterAtoms();
-  nsHTMLTags::RegisterAtoms();
-  nsRDFAtoms::RegisterAtoms();
 
-  NS_SealStaticAtomTable();
+  NS_SetStaticAtomsDone();
 
   StartupJSEnvironment();
-  rv = nsRegion::InitStatic();
-  if (NS_FAILED(rv)) {
-    NS_ERROR("Could not initialize nsRegion");
-    return rv;
-  }
 
-  nsGlobalWindow::Init();
+  nsGlobalWindowInner::Init();
+  nsGlobalWindowOuter::Init();
   Navigator::Init();
   nsXBLService::Init();
 
@@ -192,6 +171,7 @@ nsLayoutStatics::Initialize()
 
   nsCellMap::Init();
 
+  mozilla::SharedFontList::Initialize();
   StaticPresData::Init();
   nsCSSRendering::Init();
 
@@ -235,9 +215,6 @@ nsLayoutStatics::Initialize()
     return rv;
   }
 
-  StylePrefs::Init();
-  nsCSSRuleProcessor::Startup();
-
 #ifdef MOZ_XUL
   rv = nsXULPopupManager::Init();
   if (NS_FAILED(rv)) {
@@ -253,6 +230,7 @@ nsLayoutStatics::Initialize()
   }
 
   AsyncLatencyLogger::InitializeStatics();
+  DecoderDoctorLogger::Init();
   MediaManager::StartupInit();
   CubebUtils::InitLibrary();
 
@@ -260,9 +238,8 @@ nsLayoutStatics::Initialize()
   nsHtml5Module::InitializeStatics();
   mozilla::dom::FallbackEncoding::Initialize();
   nsLayoutUtils::Initialize();
-  nsIPresShell::InitializeStatics();
+  PointerEventHandler::InitializeStatics();
   TouchManager::InitializeStatics();
-  ContentPrincipal::InitializeStatics();
 
   nsCORSListenerProxy::Startup();
 
@@ -286,14 +263,11 @@ nsLayoutStatics::Initialize()
 
   CacheObserver::Init();
 
-  CounterStyleManager::InitializeBuiltinCounterStyles();
-
   IMEStateManager::Init();
 
   ServiceWorkerRegistrar::Initialize();
 
 #ifdef DEBUG
-  GeckoStyleContext::Initialize();
   mozilla::LayerAnimationInfo::Initialize();
 #endif
 
@@ -303,19 +277,23 @@ nsLayoutStatics::Initialize()
 
   mozilla::dom::WebCryptoThreadPool::Initialize();
 
-#ifdef MOZ_STYLO
-  InitializeServo();
-#endif
-
-#ifndef MOZ_WIDGET_ANDROID
-  // On Android, we instantiate it when constructing AndroidBridge.
-  MediaPrefs::GetSingleton();
-#endif
+  if (XRE_IsParentProcess() || XRE_IsContentProcess()) {
+    InitializeServo();
+  }
 
   // This must be initialized on the main-thread.
   mozilla::dom::IPCBlobInputStreamStorage::Initialize();
 
   mozilla::dom::U2FTokenManager::Initialize();
+
+  if (XRE_IsParentProcess()) {
+    // On content process we initialize DOMPrefs when PContentChild is fully
+    // initialized.
+    mozilla::dom::DOMPrefs::Initialize();
+  }
+
+  nsThreadManager::InitializeShutdownObserver();
+
   return NS_OK;
 }
 
@@ -325,10 +303,10 @@ nsLayoutStatics::Shutdown()
   // Don't need to shutdown nsWindowMemoryReporter, that will be done by the
   // memory reporter manager.
 
-#ifdef MOZ_STYLO
-  ShutdownServo();
-  URLExtraData::ReleaseDummy();
-#endif
+  if (XRE_IsParentProcess() || XRE_IsContentProcess()) {
+    ShutdownServo();
+    URLExtraData::ReleaseDummy();
+  }
 
   nsMessageManagerScriptExecutor::Shutdown();
   nsFocusManager::Shutdown();
@@ -340,8 +318,7 @@ nsLayoutStatics::Shutdown()
   Attr::Shutdown();
   EventListenerManager::Shutdown();
   IMEStateManager::Shutdown();
-  nsCSSParser::Shutdown();
-  nsCSSRuleProcessor::Shutdown();
+  nsMediaFeatures::Shutdown();
   nsHTMLDNSPrefetch::Shutdown();
   nsCSSRendering::Shutdown();
   StaticPresData::Shutdown();
@@ -378,11 +355,10 @@ nsLayoutStatics::Shutdown()
   nsAttrValue::Shutdown();
   nsContentUtils::Shutdown();
   nsLayoutStylesheetCache::Shutdown();
-  RuleProcessorCache::Shutdown();
 
   ShutdownJSEnvironment();
-  nsGlobalWindow::ShutDown();
-  nsDOMClassInfo::ShutDown();
+  nsGlobalWindowInner::ShutDown();
+  nsGlobalWindowOuter::ShutDown();
   WebIDLGlobalNameHash::Shutdown();
   nsListControlFrame::Shutdown();
   nsXBLService::Shutdown();
@@ -393,13 +369,9 @@ nsLayoutStatics::Shutdown()
   AsyncLatencyLogger::ShutdownLogger();
   WebAudioUtils::Shutdown();
 
-#ifdef MOZ_WEBSPEECH
-  nsSynthVoiceRegistry::Shutdown();
-#endif
-
   nsCORSListenerProxy::Shutdown();
 
-  nsIPresShell::ReleaseStatics();
+  PointerEventHandler::ReleaseStatics();
 
   TouchManager::ReleaseStatics();
 
@@ -409,13 +381,12 @@ nsLayoutStatics::Shutdown()
 
   mozilla::dom::FallbackEncoding::Shutdown();
 
-  nsRegion::ShutdownStatic();
-
   mozilla::EventDispatcher::Shutdown();
 
   HTMLInputElement::DestroyUploadLastDir();
 
   nsLayoutUtils::Shutdown();
+  mozilla::SharedFontList::Shutdown();
 
   nsHyphenationManager::Shutdown();
   nsDOMMutationObserver::Shutdown();
@@ -429,4 +400,6 @@ nsLayoutStatics::Shutdown()
   CacheObserver::Shutdown();
 
   PromiseDebugging::Shutdown();
+
+  nsHostObjectProtocolHandler::RemoveDataEntries();
 }

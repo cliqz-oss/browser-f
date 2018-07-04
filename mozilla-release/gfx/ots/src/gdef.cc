@@ -12,6 +12,10 @@
 #include "layout.h"
 #include "maxp.h"
 
+#ifdef OTS_VARIATIONS
+#include "variations.h"
+#endif
+
 // GDEF - The Glyph Definition Table
 // http://www.microsoft.com/typography/otspec/gdef.htm
 
@@ -228,16 +232,13 @@ bool OpenTypeGDEF::Parse(const uint8_t *data, size_t length) {
 
   Buffer table(data, length);
 
-  uint32_t version = 0;
-  if (!table.ReadU32(&version)) {
+  uint16_t version_major = 0, version_minor = 0;
+  if (!table.ReadU16(&version_major) ||
+      !table.ReadU16(&version_minor)) {
     return Error("Incomplete table");
   }
-  if (version < 0x00010000 || version == 0x00010001) {
+  if (version_major != 1 || version_minor == 1) { // there is no v1.1
     return Error("Bad version");
-  }
-
-  if (version >= 0x00010002) {
-    this->version_2 = true;
   }
 
   uint16_t offset_glyph_class_def = 0;
@@ -251,15 +252,23 @@ bool OpenTypeGDEF::Parse(const uint8_t *data, size_t length) {
     return Error("Incomplete table");
   }
   uint16_t offset_mark_glyph_sets_def = 0;
-  if (this->version_2) {
+  if (version_minor >= 2) {
     if (!table.ReadU16(&offset_mark_glyph_sets_def)) {
+      return Error("Incomplete table");
+    }
+  }
+  uint32_t item_var_store_offset = 0;
+  if (version_minor >= 3) {
+    if (!table.ReadU32(&item_var_store_offset)) {
       return Error("Incomplete table");
     }
   }
 
   unsigned gdef_header_end = 4 + 4 * 2;
-  if (this->version_2)
+  if (version_minor >= 2)
     gdef_header_end += 2;
+  if (version_minor >= 3)
+    gdef_header_end += 4;
 
   // Parse subtables
   if (offset_glyph_class_def) {
@@ -272,7 +281,6 @@ bool OpenTypeGDEF::Parse(const uint8_t *data, size_t length) {
                                  this->m_num_glyphs, kMaxGlyphClassDefValue)) {
       return Error("Invalid glyph classes");
     }
-    this->has_glyph_class_def = true;
   }
 
   if (offset_attach_list) {
@@ -308,7 +316,6 @@ bool OpenTypeGDEF::Parse(const uint8_t *data, size_t length) {
                                  this->m_num_glyphs, kMaxClassDefValue)) {
       return Error("Invalid mark attachment list");
     }
-    this->has_mark_attachment_class_def = true;
   }
 
   if (offset_mark_glyph_sets_def) {
@@ -320,8 +327,21 @@ bool OpenTypeGDEF::Parse(const uint8_t *data, size_t length) {
                                     length - offset_mark_glyph_sets_def)) {
       return Error("Invalid mark glyph sets");
     }
-    this->has_mark_glyph_sets_def = true;
   }
+
+  if (item_var_store_offset) {
+    if (item_var_store_offset >= length ||
+        item_var_store_offset < gdef_header_end) {
+      return Error("invalid offset to item variation store");
+    }
+#ifdef OTS_VARIATIONS
+    if (!ParseItemVariationStore(GetFont(), data + item_var_store_offset,
+                                 length - item_var_store_offset)) {
+      return Error("Invalid item variation store");
+    }
+#endif
+  }
+
   this->m_data = data;
   this->m_length = length;
   return true;

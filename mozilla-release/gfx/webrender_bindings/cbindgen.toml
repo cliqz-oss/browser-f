@@ -4,8 +4,8 @@ header = """/* This Source Code Form is subject to the terms of the Mozilla Publ
 autogen_warning = """/* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
  * To generate this file:
  *   1. Get the latest cbindgen using `cargo install --force cbindgen`
- *      a. Alternatively, you can clone `https://github.com/rlhunt/cbindgen` and use a tagged release
- *   2. Run `cbindgen toolkit/library/rust/ --crate webrender_bindings -o gfx/webrender_bindings/webrender_ffi_generated.h`
+ *      a. Alternatively, you can clone `https://github.com/eqrion/cbindgen` and use a tagged release
+ *   2. Run `rustup run nightly cbindgen toolkit/library/rust/ --lockfile Cargo.lock --crate webrender_bindings -o gfx/webrender_bindings/webrender_ffi_generated.h`
  */"""
 include_version = true
 braces = "SameLine"
@@ -16,7 +16,7 @@ namespaces = ["mozilla", "wr"]
 
 [parse]
 parse_deps = true
-include = ["webrender", "webrender_api"]
+include = ["log", "webrender", "webrender_api"]
 expand = ["euclid"]
 
 [fn]
@@ -27,7 +27,12 @@ rename_args = "GeckoCase"
 
 [struct]
 derive_eq = true
-generic_template_specialization = false
 
 [enum]
 add_sentinel = true
+derive_helper_methods = true
+
+[defines]
+"target_os = windows" = "XP_WIN"
+"target_os = macos" = "XP_MACOSX"
+

@@ -5,20 +5,16 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
 const myScope = this;
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/PromiseUtils.jsm", this);
-Cu.import("resource://gre/modules/DeferredTask.jsm", this);
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/DeferredTask.jsm", this);
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const Utils = TelemetryUtils;
 
@@ -50,35 +46,25 @@ const PING_TYPE_DELETION = "deletion";
 const REASON_GATHER_PAYLOAD = "gather-payload";
 const REASON_GATHER_SUBSESSION_PAYLOAD = "gather-subsession-payload";
 
-XPCOMUtils.defineLazyModuleGetter(this, "ClientID",
-                                  "resource://gre/modules/ClientID.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "Telemetry",
                                    "@mozilla.org/base/telemetry;1",
                                    "nsITelemetry");
-XPCOMUtils.defineLazyModuleGetter(this, "AsyncShutdown",
-                                  "resource://gre/modules/AsyncShutdown.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStorage",
-                                  "resource://gre/modules/TelemetryStorage.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ThirdPartyCookieProbe",
-                                  "resource://gre/modules/ThirdPartyCookieProbe.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryEnvironment",
-                                  "resource://gre/modules/TelemetryEnvironment.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
-                                  "resource://gre/modules/UpdateUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryArchive",
-                                  "resource://gre/modules/TelemetryArchive.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetrySession",
-                                  "resource://gre/modules/TelemetrySession.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetrySend",
-                                  "resource://gre/modules/TelemetrySend.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryReportingPolicy",
-                                  "resource://gre/modules/TelemetryReportingPolicy.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryModules",
-                                  "resource://gre/modules/TelemetryModules.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "UpdatePing",
-                                  "resource://gre/modules/UpdatePing.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryHealthPing",
-                                  "resource://gre/modules/TelemetryHealthPing.jsm");
+
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ClientID: "resource://gre/modules/ClientID.jsm",
+  AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
+  TelemetryStorage: "resource://gre/modules/TelemetryStorage.jsm",
+  TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.jsm",
+  UpdateUtils: "resource://gre/modules/UpdateUtils.jsm",
+  TelemetryArchive: "resource://gre/modules/TelemetryArchive.jsm",
+  TelemetrySession: "resource://gre/modules/TelemetrySession.jsm",
+  TelemetrySend: "resource://gre/modules/TelemetrySend.jsm",
+  TelemetryReportingPolicy: "resource://gre/modules/TelemetryReportingPolicy.jsm",
+  TelemetryModules: "resource://gre/modules/TelemetryModules.jsm",
+  UpdatePing: "resource://gre/modules/UpdatePing.jsm",
+  TelemetryHealthPing: "resource://gre/modules/TelemetryHealthPing.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+});
 
 /**
  * Setup Telemetry logging. This function also gets called when loggin related
@@ -120,11 +106,11 @@ var Policy = {
   now: () => new Date(),
   generatePingId: () => Utils.generateUUID(),
   getCachedClientID: () => ClientID.getCachedClientID(),
-}
+};
 
-this.EXPORTED_SYMBOLS = ["TelemetryController"];
+var EXPORTED_SYMBOLS = ["TelemetryController"];
 
-this.TelemetryController = Object.freeze({
+var TelemetryController = Object.freeze({
   /**
    * Used only for testing purposes.
    */
@@ -165,6 +151,13 @@ this.TelemetryController = Object.freeze({
    */
   testSetupContent() {
     return Impl.setupContentTelemetry(true);
+  },
+
+  /**
+   * Used only for testing purposes.
+   */
+  testPromiseJsProbeRegistration() {
+    return Promise.resolve(Impl._probeRegistrationPromise);
   },
 
   /**
@@ -270,34 +263,6 @@ this.TelemetryController = Object.freeze({
   },
 
   /**
-   * Write a ping to a specified location on the disk. Does not add the ping to the
-   * pending pings.
-   *
-   * @param {String} aType The type of the ping.
-   * @param {Object} aPayload The actual data payload for the ping.
-   * @param {String} aFilePath The path to save the ping to.
-   * @param {Object} [aOptions] Options object.
-   * @param {Boolean} [aOptions.addClientId=false] true if the ping should contain the client
-   *                  id, false otherwise.
-   * @param {Boolean} [aOptions.addEnvironment=false] true if the ping should contain the
-   *                  environment data.
-   * @param {Boolean} [aOptions.overwrite=false] true overwrites a ping with the same name,
-   *                  if found.
-   * @param {Object}  [aOptions.overrideEnvironment=null] set to override the environment data.
-   *
-   * @returns {Promise} A promise that resolves with the ping id when the ping is saved to
-   *                    disk.
-   */
-  savePing(aType, aPayload, aFilePath, aOptions = {}) {
-    let options = aOptions;
-    options.addClientId = aOptions.addClientId || false;
-    options.addEnvironment = aOptions.addEnvironment || false;
-    options.overwrite = aOptions.overwrite || false;
-
-    return Impl.savePing(aType, aPayload, aFilePath, options);
-  },
-
-  /**
    * Allows waiting for TelemetryControllers delayed initialization to complete.
    * The returned promise is guaranteed to resolve before TelemetryController is shutting down.
    * @return {Promise} Resolved when delayed TelemetryController initialization completed.
@@ -333,6 +298,8 @@ var Impl = {
   _testMode: false,
   // The task performing the delayed sending of the "new-profile" ping.
   _delayedNewPingTask: null,
+  // The promise used to wait for the JS probe registration (dynamic builtin).
+  _probeRegistrationPromise: null,
 
   get _log() {
     if (!this._logger) {
@@ -550,32 +517,6 @@ var Impl = {
   },
 
   /**
-   * Write a ping to a specified location on the disk. Does not add the ping to the
-   * pending pings.
-   *
-   * @param {String} aType The type of the ping.
-   * @param {Object} aPayload The actual data payload for the ping.
-   * @param {String} aFilePath The path to save the ping to.
-   * @param {Object} aOptions Options object.
-   * @param {Boolean} aOptions.addClientId true if the ping should contain the client id,
-   *                  false otherwise.
-   * @param {Boolean} aOptions.addEnvironment true if the ping should contain the
-   *                  environment data.
-   * @param {Boolean} aOptions.overwrite true overwrites a ping with the same name, if found.
-   * @param {Object}  [aOptions.overrideEnvironment=null] set to override the environment data.
-   *
-   * @returns {Promise} A promise that resolves with the ping id when the ping is saved to
-   *                    disk.
-   */
-  savePing: function savePing(aType, aPayload, aFilePath, aOptions) {
-    this._log.trace("savePing - Type " + aType + ", File Path " + aFilePath +
-                    ", aOptions " + JSON.stringify(aOptions));
-    let pingData = this.assemblePing(aType, aPayload, aOptions);
-    return TelemetryStorage.savePingToFile(pingData, aFilePath, aOptions.overwrite)
-                        .then(() => pingData.id);
-  },
-
-  /**
    * Check whether we have an aborted-session ping. If so add it to the pending pings and archive it.
    *
    * @return {Promise} Promise that is resolved when the ping is submitted and archived.
@@ -633,9 +574,13 @@ var Impl = {
     // Configure base Telemetry recording.
     // Unified Telemetry makes it opt-out. If extended Telemetry is enabled, base recording
     // is always on as well.
-    const enabled = Utils.isTelemetryEnabled;
-    Telemetry.canRecordBase = enabled || IS_UNIFIED_TELEMETRY;
-    Telemetry.canRecordExtended = enabled;
+    if (IS_UNIFIED_TELEMETRY) {
+      TelemetryUtils.setTelemetryRecordingFlags();
+    } else {
+      // We're not on unified Telemetry, stick to the old behaviour for
+      // supporting Fennec.
+      Telemetry.canRecordBase = Telemetry.canRecordExtended = Utils.isTelemetryEnabled;
+    }
 
     this._log.config("enableTelemetryRecording - canRecordBase:" + Telemetry.canRecordBase +
                      ", canRecordExtended: " + Telemetry.canRecordExtended);
@@ -674,6 +619,11 @@ var Impl = {
       this._log.error("setupTelemetry - already initialized");
       return Promise.resolve();
     }
+
+    // Enable adding scalars in artifact builds and build faster modes.
+    // The function is async: we intentionally don't wait for it to complete
+    // as we don't want to delay startup.
+    this._probeRegistrationPromise = this.registerJsProbes();
 
     // This will trigger displaying the datachoices infobar.
     TelemetryReportingPolicy.setup();
@@ -745,7 +695,8 @@ var Impl = {
       } finally {
         this._delayedInitTask = null;
       }
-    }, this._testMode ? TELEMETRY_TEST_DELAY : TELEMETRY_DELAY);
+    }, this._testMode ? TELEMETRY_TEST_DELAY : TELEMETRY_DELAY,
+       this._testMode ? 0 : undefined);
 
     AsyncShutdown.sendTelemetry.addBlocker("TelemetryController: shutting down",
                                            () => this.shutdown(),
@@ -919,7 +870,7 @@ var Impl = {
       "TelemetryController: removing pending pings after data upload was disabled", p);
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsISupportsWeakReference]),
 
   _attachObservers() {
     if (IS_UNIFIED_TELEMETRY) {
@@ -947,7 +898,7 @@ var Impl = {
   },
 
   getCurrentPingData(aSubsession) {
-    this._log.trace("getCurrentPingData - subsession: " + aSubsession)
+    this._log.trace("getCurrentPingData - subsession: " + aSubsession);
 
     // Telemetry is disabled, don't gather any data.
     if (!Telemetry.canRecordBase) {
@@ -1032,5 +983,95 @@ var Impl = {
     await TelemetryController.submitExternalPing("new-profile", payload, options)
                              .then(() => TelemetrySession.markNewProfilePingSent(),
                                    e => this._log.error("sendNewProfilePing - failed to submit new-profile ping", e));
+  },
+
+  /**
+   * Register 'dynamic builtin' probes from the JSON definition files.
+   * This is needed to support adding new probes in developer builds
+   * without rebuilding the whole codebase.
+   *
+   * This is not meant to be used outside of local developer builds.
+   */
+  async registerJsProbes() {
+    // We don't support this outside of developer builds.
+    if (AppConstants.MOZILLA_OFFICIAL && !this._testMode) {
+      return;
+    }
+
+    this._log.trace("registerJsProbes - registering builtin JS probes");
+
+    await this.registerScalarProbes();
+    await this.registerEventProbes();
+  },
+
+  _loadProbeDefinitions(filename) {
+    let probeFile = Services.dirsvc.get("GreD", Ci.nsIFile);
+    probeFile.append(filename);
+    if (!probeFile.exists()) {
+      this._log.trace(`loadProbeDefinitions - no builtin JS probe file ${filename}`);
+      return null;
+    }
+
+    return OS.File.read(probeFile.path, { encoding: "utf-8" });
+  },
+
+  async registerScalarProbes() {
+    this._log.trace("registerScalarProbes - registering scalar builtin JS probes");
+
+    // Load the scalar probes JSON file.
+    const scalarProbeFilename = "ScalarArtifactDefinitions.json";
+    let scalarJSProbes = {};
+    try {
+      let fileContent = await this._loadProbeDefinitions(scalarProbeFilename);
+      scalarJSProbes = JSON.parse(fileContent, (property, value) => {
+        // Fixup the "kind" property: it's a string, and we need the constant
+        // coming from nsITelemetry.
+        if (property !== "kind" || typeof value != "string") {
+          return value;
+        }
+
+        let newValue;
+        switch (value) {
+          case "nsITelemetry::SCALAR_TYPE_COUNT":
+            newValue = Telemetry.SCALAR_TYPE_COUNT;
+            break;
+          case "nsITelemetry::SCALAR_TYPE_BOOLEAN":
+            newValue = Telemetry.SCALAR_TYPE_BOOLEAN;
+            break;
+          case "nsITelemetry::SCALAR_TYPE_STRING":
+            newValue = Telemetry.SCALAR_TYPE_STRING;
+            break;
+        }
+        return newValue;
+      });
+    } catch (ex) {
+      this._log.error(`registerScalarProbes - there was an error loading ${scalarProbeFilename}`,
+                      ex);
+    }
+
+    // Register the builtin probes.
+    for (let category in scalarJSProbes) {
+      Telemetry.registerBuiltinScalars(category, scalarJSProbes[category]);
+    }
+  },
+
+  async registerEventProbes() {
+    this._log.trace("registerEventProbes - registering builtin JS Event probes");
+
+    // Load the event probes JSON file.
+    const eventProbeFilename = "EventArtifactDefinitions.json";
+    let eventJSProbes = {};
+    try {
+      let fileContent = await this._loadProbeDefinitions(eventProbeFilename);
+      eventJSProbes = JSON.parse(fileContent);
+    } catch (ex) {
+      this._log.error(`registerEventProbes - there was an error loading ${eventProbeFilename}`,
+                      ex);
+    }
+
+    // Register the builtin probes.
+    for (let category in eventJSProbes) {
+      Telemetry.registerBuiltinEvents(category, eventJSProbes[category]);
+    }
   },
 };

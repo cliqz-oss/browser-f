@@ -14,52 +14,46 @@
 #define mozilla_GenericSpecifiedValues_h
 
 #include "mozilla/ServoUtils.h"
-#include "nsCSSProps.h"
+#include "mozilla/FontPropertyTypes.h"
+#include "nsCSSPropertyID.h"
 #include "nsCSSValue.h"
-#include "nsPresContext.h"
+#include "nsColor.h"
 
-struct nsRuleData;
+class nsAttrValue;
 
 namespace mozilla {
 
 class ServoSpecifiedValues;
 
-// This provides a common interface for attribute mappers (MapAttributesIntoRule)
-// to use regardless of the style backend. If the style backend is Gecko,
-// this will contain an nsRuleData. If it is Servo, it will be a PropertyDeclarationBlock.
+// This provides a common interface for attribute mappers
+// (MapAttributesIntoRule) to use regardless of the style backend. If the style
+// backend is Gecko, this will contain an nsRuleData. If it is Servo, it will be
+// a PropertyDeclarationBlock.
 class GenericSpecifiedValues
 {
 protected:
-  explicit GenericSpecifiedValues(StyleBackendType aType,
-                                  nsPresContext* aPresContext,
-                                  uint32_t aSIDs)
-    : mType(aType)
-    , mPresContext(aPresContext)
-    , mSIDs(aSIDs)
+  explicit GenericSpecifiedValues(nsIDocument* aDoc)
+    : mDocument(aDoc)
   {}
 
 public:
   MOZ_DECL_STYLO_METHODS(nsRuleData, ServoSpecifiedValues)
 
-  // Check if we already contain a certain longhand
-  inline bool PropertyIsSet(nsCSSPropertyID aId);
-  // Check if we are able to hold longhands from a given
-  // style struct. Pass the result of NS_STYLE_INHERIT_BIT to this
-  // function. Can accept multiple inherit bits or'd together.
-  inline bool ShouldComputeStyleStruct(uint64_t aInheritBits)
+  nsIDocument* Document()
   {
-    return aInheritBits & mSIDs;
+    return mDocument;
   }
 
-  inline nsPresContext* PresContext() { return mPresContext; }
+  // Check if we already contain a certain longhand
+  inline bool PropertyIsSet(nsCSSPropertyID aId);
 
   // Set a property to an identifier (string)
   inline void SetIdentStringValue(nsCSSPropertyID aId, const nsString& aValue);
   inline void SetIdentStringValueIfUnset(nsCSSPropertyID aId,
                                          const nsString& aValue);
 
-  inline void SetIdentAtomValue(nsCSSPropertyID aId, nsIAtom* aValue);
-  inline void SetIdentAtomValueIfUnset(nsCSSPropertyID aId, nsIAtom* aValue);
+  inline void SetIdentAtomValue(nsCSSPropertyID aId, nsAtom* aValue);
+  inline void SetIdentAtomValueIfUnset(nsCSSPropertyID aId, nsAtom* aValue);
 
   // Set a property to a keyword (usually NS_STYLE_* or StyleFoo::*)
   inline void SetKeywordValue(nsCSSPropertyID aId, int32_t aValue);
@@ -115,9 +109,7 @@ public:
   inline void SetTextDecorationColorOverride();
   inline void SetBackgroundImage(nsAttrValue& value);
 
-  const mozilla::StyleBackendType mType;
-  nsPresContext* const mPresContext;
-  const uint32_t mSIDs;
+  nsIDocument* const mDocument;
 };
 
 } // namespace mozilla

@@ -25,7 +25,6 @@ add_task(async function setup() {
 
   await SpecialPowers.pushPrefEnv({"set": [
     ["dom.select_events.enabled", true], // We want select events to be fired.
-    ["toolkit.telemetry.enabled", true]  // And Extended Telemetry to be enabled.
   ]});
 
   // Enable event recording for the events tested here.
@@ -36,7 +35,7 @@ add_task(async function setup() {
     Services.search.currentEngine = originalEngine;
     Services.search.removeEngine(engineDefault);
     Services.search.removeEngine(engineOneOff);
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
     Services.telemetry.setEventRecordingEnabled("navigation", false);
   });
 });
@@ -45,7 +44,7 @@ add_task(async function test_context_menu() {
   // Let's reset the Telemetry data.
   Services.telemetry.clearScalars();
   Services.telemetry.clearEvents();
-  let search_hist = getSearchCountsHistogram();
+  let search_hist = getAndClearKeyedHistogram("SEARCH_COUNTS");
 
   // Open a new tab with a page containing some text.
   let tab =
@@ -85,15 +84,15 @@ add_task(async function test_context_menu() {
   checkEvents(events, [["navigation", "search", "contextmenu", null, {engine: "other-MozSearch"}]]);
 
   contextMenu.hidePopup();
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function test_about_newtab() {
   // Let's reset the counts.
   Services.telemetry.clearScalars();
   Services.telemetry.clearEvents();
-  let search_hist = getSearchCountsHistogram();
+  let search_hist = getAndClearKeyedHistogram("SEARCH_COUNTS");
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:newtab", false);
   await ContentTask.spawn(tab.linkedBrowser, null, async function() {
@@ -120,5 +119,5 @@ add_task(async function test_about_newtab() {
   events = (events.parent || []).filter(e => e[1] == "navigation" && e[2] == "search");
   checkEvents(events, [["navigation", "search", "about_newtab", "enter", {engine: "other-MozSearch"}]]);
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

@@ -49,16 +49,14 @@ must be one of the following:
 
 1. Inclusion of another manifest
 
-   <failure-type>* include <relative_path>
+   <skip-type>* include <relative_path>
 
-   <failure-type> is the same as listed below for a test item.  As for
-   test items, multiple failure types listed on the same line are
-   combined by using the last matching failure type listed on the line.
-   However, the failure type on a manifest is combined with the failure
-   type on the test (or on a nested manifest) with the rule that the
-   last in the following list wins:  fails, random, skip.  (In other
-   words, when combining <failure-type> from the manifest include and
-   the test line, skip always wins, and random beats fails.)
+   <skip-type> is one of the skip or skip-if items (see their definitions
+   in <failure-type> below). If any of the skip types evaluate to true (i.e.
+   they are a plain "skip" or they are a "skip-if" with a condition that
+   evaluates to true), then the include statement is skipped. Otherwise,
+   reftests in the specified manifest are included in the set of reftests
+   that are run.
 
 2. A test item
 
@@ -278,6 +276,51 @@ must be one of the following:
 
              url_ref must be omitted. The test may be marked as fails or
              random. (Used to test the JavaScript Engine.)
+      print  The test passes if the printouts (as PDF) of the two renderings
+             are the SAME by applying the following comparisons:
+
+              - The number of pages generated for both printouts must match.
+              - The text content of both printouts must match (rasterized text
+                does not match real text).
+
+             You can specify a print range by setting the reftest-print-range
+             attribute on the document element. Example:
+
+              <html reftest-print-range="2-3">
+              ...
+
+             The following example would lead to a single page print:
+
+              <html reftest-print-range="2-2">
+              ...
+
+             You can also print selected elements only:
+
+              <html reftest-print-range="selection">
+              ...
+
+             Make sure to include code in your test that actually selects something.
+
+             Future additions to the set of comparisons might include:
+
+              - Matching the paper size
+              - Validating printed headers and footers
+              - Testing (fuzzy) position of elements
+              - Testing specific print related CSS properties
+              - ...
+
+             The main difference between 'print' and '=='/'!=' reftests is that
+             'print' makes us compare the structure of print results (by parsing
+             the output PDF) rather than taking screenshots and comparing pixel
+             values. This allows us to test for common printing related issues
+             like text being rasterized when it shouldn't. This difference in
+             behavior is also why this is its own reftest operator, rather than
+             a flavor of ==/!=. It would be somewhat misleading to list these
+             print reftests as ==/!=, because they don't actually check for
+             pixel matching.
+
+             See the chapter about Pagination Tests if you are looking for testing
+             layout in pagination mode.
 
    e. <url> is either a relative file path or an absolute URL for the
       test page

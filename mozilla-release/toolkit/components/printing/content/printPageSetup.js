@@ -4,15 +4,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+
 var gDialog;
 var paramBlock;
-var gPrefs         = null;
 var gPrintService  = null;
 var gPrintSettings = null;
 var gStringBundle  = null;
 var gDoingMetric   = false;
 
-var gPrintSettingsInterface = Components.interfaces.nsIPrintSettings;
+var gPrintSettingsInterface = Ci.nsIPrintSettings;
 var gDoDebug = false;
 
 // ---------------------------------------------------
@@ -63,7 +64,8 @@ function initDialog() {
 
 // ---------------------------------------------------
 function isListOfPrinterFeaturesAvailable() {
-  return gPrefs.getBoolPref("print.tmp.printerfeatures." + gPrintSettings.printerName + ".has_special_printerfeatures", false);
+  return Services.prefs.getBoolPref("print.tmp.printerfeatures." +
+    gPrintSettings.printerName + ".has_special_printerfeatures", false);
 }
 
 // ---------------------------------------------------
@@ -143,12 +145,10 @@ function changeMargins() {
 function customize( node ) {
   // If selection is now "Custom..." then prompt user for custom setting.
   if ( node.value == 6 ) {
-    var prompter = Components.classes["@mozilla.org/embedcomp/prompt-service;1"]
-                     .getService( Components.interfaces.nsIPromptService );
     var title      = gDialog.strings["customPrompt.title"];
     var promptText = gDialog.strings["customPrompt.prompt"];
     var result = { value: node.custom };
-    var ok = prompter.prompt(window, title, promptText, result, null, { value: false } );
+    var ok = Services.prompt.prompt(window, title, promptText, result, null, { value: false } );
     if ( ok ) {
         node.custom = result.value;
     }
@@ -236,13 +236,11 @@ function loadDialog() {
   var print_margin_right  = 0.5;
 
   try {
-    gPrefs = Components.classes["@mozilla.org/preferences-service;1"].getService(Components.interfaces.nsIPrefBranch);
-
-    gPrintService = Components.classes["@mozilla.org/gfx/printsettings-service;1"];
+    gPrintService = Cc["@mozilla.org/gfx/printsettings-service;1"];
     if (gPrintService) {
       gPrintService = gPrintService.getService();
       if (gPrintService) {
-        gPrintService = gPrintService.QueryInterface(Components.interfaces.nsIPrintSettingsService);
+        gPrintService = gPrintService.QueryInterface(Ci.nsIPrintSettingsService);
       }
     }
   } catch (ex) {
@@ -315,7 +313,7 @@ function loadDialog() {
   // Enable/disable widgets based in the information whether the selected
   // printer supports the matching feature or not
   if (isListOfPrinterFeaturesAvailable()) {
-    if (gPrefs.getBoolPref("print.tmp.printerfeatures." + gPrintSettings.printerName + ".can_change_orientation"))
+    if (Services.prefs.getBoolPref("print.tmp.printerfeatures." + gPrintSettings.printerName + ".can_change_orientation"))
       gDialog.orientation.removeAttribute("disabled");
     else
       gDialog.orientation.setAttribute("disabled", "true");
@@ -332,8 +330,8 @@ function onLoad() {
   initDialog();
 
   if (window.arguments[0] != null) {
-    gPrintSettings = window.arguments[0].QueryInterface(Components.interfaces.nsIPrintSettings);
-    paramBlock     = window.arguments[1].QueryInterface(Components.interfaces.nsIDialogParamBlock);
+    gPrintSettings = window.arguments[0].QueryInterface(Ci.nsIPrintSettings);
+    paramBlock     = window.arguments[1].QueryInterface(Ci.nsIDialogParamBlock);
   } else if (gDoDebug) {
     alert("window.arguments[0] == null!");
   }

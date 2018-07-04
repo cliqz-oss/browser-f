@@ -4,9 +4,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#ifndef nsTDependentString_h
+#define nsTDependentString_h
+
+#include "nsTString.h"
 
 /**
- * nsTDependentString_CharT
+ * nsTDependentString
  *
  * Stores a null-terminated, immutable sequence of characters.
  *
@@ -16,11 +20,37 @@
  * nsTDependentString continues to reference valid memory for the
  * duration of its use.
  */
-class nsTDependentString_CharT : public nsTString_CharT
+template <typename T>
+class nsTDependentString : public nsTString<T>
 {
 public:
 
-  typedef nsTDependentString_CharT self_type;
+  typedef nsTDependentString<T> self_type;
+  typedef nsTString<T> base_string_type;
+  typedef typename base_string_type::string_type string_type;
+
+  typedef typename base_string_type::fallible_t fallible_t;
+
+  typedef typename base_string_type::char_type char_type;
+  typedef typename base_string_type::char_traits char_traits;
+  typedef typename base_string_type::incompatible_char_type incompatible_char_type;
+
+  typedef typename base_string_type::substring_tuple_type substring_tuple_type;
+
+  typedef typename base_string_type::const_iterator const_iterator;
+  typedef typename base_string_type::iterator iterator;
+
+  typedef typename base_string_type::comparator_type comparator_type;
+
+  typedef typename base_string_type::char_iterator char_iterator;
+  typedef typename base_string_type::const_char_iterator const_char_iterator;
+
+  typedef typename base_string_type::index_type index_type;
+  typedef typename base_string_type::size_type size_type;
+
+  // These are only for internal use within the string classes:
+  typedef typename base_string_type::DataFlags DataFlags;
+  typedef typename base_string_type::ClassFlags ClassFlags;
 
 public:
 
@@ -28,62 +58,74 @@ public:
    * constructors
    */
 
-  nsTDependentString_CharT(const char_type* aStart, const char_type* aEnd);
+  nsTDependentString(const char_type* aStart, const char_type* aEnd);
 
-  nsTDependentString_CharT(const char_type* aData, uint32_t aLength)
+  nsTDependentString(const char_type* aData, uint32_t aLength)
     : string_type(const_cast<char_type*>(aData), aLength,
                   DataFlags::TERMINATED, ClassFlags(0))
   {
-    AssertValidDependentString();
+    this->AssertValidDependentString();
   }
 
-#if defined(CharT_is_PRUnichar) && defined(MOZ_USE_CHAR16_WRAPPER)
-  nsTDependentString_CharT(char16ptr_t aData, uint32_t aLength)
-    : nsTDependentString_CharT(static_cast<const char16_t*>(aData), aLength)
+#if defined(MOZ_USE_CHAR16_WRAPPER)
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
+  nsTDependentString(char16ptr_t aData, uint32_t aLength)
+    : nsTDependentString(static_cast<const char16_t*>(aData), aLength)
   {
   }
 #endif
 
   explicit
-  nsTDependentString_CharT(const char_type* aData)
+  nsTDependentString(const char_type* aData)
     : string_type(const_cast<char_type*>(aData),
                   uint32_t(char_traits::length(aData)),
                   DataFlags::TERMINATED, ClassFlags(0))
   {
-    AssertValidDependentString();
+    string_type::AssertValidDependentString();
   }
 
-#if defined(CharT_is_PRUnichar) && defined(MOZ_USE_CHAR16_WRAPPER)
+#if defined(MOZ_USE_CHAR16_WRAPPER)
+  template <typename Q = T, typename EnableIfChar16 = mozilla::Char16OnlyT<Q>>
   explicit
-  nsTDependentString_CharT(char16ptr_t aData)
-    : nsTDependentString_CharT(static_cast<const char16_t*>(aData))
+  nsTDependentString(char16ptr_t aData)
+    : nsTDependentString(static_cast<const char16_t*>(aData))
   {
   }
 #endif
 
-  nsTDependentString_CharT(const string_type& aStr, uint32_t aStartPos)
+  nsTDependentString(const string_type& aStr, uint32_t aStartPos)
     : string_type()
   {
     Rebind(aStr, aStartPos);
   }
 
   // Create a nsTDependentSubstring to be bound later
-  nsTDependentString_CharT()
+  nsTDependentString()
     : string_type()
   {
   }
 
-  // XXX are you sure??
-  // auto-generated copy-constructor OK
-  // auto-generated copy-assignment operator OK
   // auto-generated destructor OK
 
+  nsTDependentString(self_type&& aStr)
+    : string_type()
+  {
+    Rebind(aStr, /* aStartPos = */ 0);
+    aStr.SetToEmptyBuffer();
+  }
+
+  explicit
+  nsTDependentString(const self_type& aStr)
+    : string_type()
+  {
+    Rebind(aStr, /* aStartPos = */ 0);
+  }
 
   /**
    * allow this class to be bound to a different string...
    */
 
-  using nsTString_CharT::Rebind;
+  using nsTString<T>::Rebind;
   void Rebind(const char_type* aData)
   {
     Rebind(aData, uint32_t(char_traits::length(aData)));
@@ -95,5 +137,11 @@ public:
 private:
 
   // NOT USED
-  nsTDependentString_CharT(const substring_tuple_type&) = delete;
+  nsTDependentString(const substring_tuple_type&) = delete;
+  self_type& operator=(const self_type& aStr) = delete;
 };
+
+extern template class nsTDependentString<char>;
+extern template class nsTDependentString<char16_t>;
+
+#endif

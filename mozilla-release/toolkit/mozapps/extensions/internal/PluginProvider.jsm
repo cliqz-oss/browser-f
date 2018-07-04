@@ -6,22 +6,20 @@
 
 /* exported logger */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
+var EXPORTED_SYMBOLS = [];
 
-this.EXPORTED_SYMBOLS = [];
-
-Cu.import("resource://gre/modules/AddonManager.jsm");
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 /* globals AddonManagerPrivate*/
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+
+ChromeUtils.defineModuleGetter(this, "Blocklist",
+                               "resource://gre/modules/Blocklist.jsm");
 
 const URI_EXTENSION_STRINGS  = "chrome://mozapps/locale/extensions/extensions.properties";
-const STRING_TYPE_NAME       = "type.%ID%.name";
 const LIST_UPDATED_TOPIC     = "plugins-list-updated";
 const FLASH_MIME_TYPE        = "application/x-shockwave-flash";
 
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 const LOGGER_ID = "addons.plugins";
 
 // Create a new logger for use by the Addons Plugin Provider
@@ -51,27 +49,28 @@ var PluginProvider = {
     Services.obs.removeObserver(this, LIST_UPDATED_TOPIC);
   },
 
-  observe(aSubject, aTopic, aData) {
+  async observe(aSubject, aTopic, aData) {
     switch (aTopic) {
     case AddonManager.OPTIONS_NOTIFICATION_DISPLAYED:
-      this.getAddonByID(aData, function(plugin) {
-        if (!plugin)
-          return;
+      let plugin = await this.getAddonByID(aData);
+      if (!plugin)
+        return;
 
-        let libLabel = aSubject.getElementById("pluginLibraries");
-        libLabel.textContent = plugin.pluginLibraries.join(", ");
+      let document = aSubject.getElementById("addon-options").contentDocument;
 
-        let typeLabel = aSubject.getElementById("pluginMimeTypes"), types = [];
-        for (let type of plugin.pluginMimeTypes) {
-          let extras = [type.description.trim(), type.suffixes].
-                       filter(x => x).join(": ");
-          types.push(type.type + (extras ? " (" + extras + ")" : ""));
-        }
-        typeLabel.textContent = types.join(",\n");
-        let showProtectedModePref = canDisableFlashProtectedMode(plugin);
-        aSubject.getElementById("pluginEnableProtectedMode")
-          .setAttribute("collapsed", showProtectedModePref ? "" : "true");
-      });
+      let libLabel = document.getElementById("pluginLibraries");
+      libLabel.textContent = plugin.pluginLibraries.join(", ");
+
+      let typeLabel = document.getElementById("pluginMimeTypes"), types = [];
+      for (let type of plugin.pluginMimeTypes) {
+        let extras = [type.description.trim(), type.suffixes].
+                     filter(x => x).join(": ");
+        types.push(type.type + (extras ? " (" + extras + ")" : ""));
+      }
+      typeLabel.textContent = types.join(",\n");
+      let showProtectedModePref = canDisableFlashProtectedMode(plugin);
+      document.getElementById("pluginEnableProtectedMode")
+        .setAttribute("collapsed", showProtectedModePref ? "" : "true");
       break;
     case LIST_UPDATED_TOPIC:
       if (this.plugins)
@@ -95,17 +94,14 @@ var PluginProvider = {
    *
    * @param  aId
    *         The ID of the add-on to retrieve
-   * @param  aCallback
-   *         A callback to pass the Addon to
    */
-  getAddonByID(aId, aCallback) {
+  async getAddonByID(aId) {
     if (!this.plugins)
       this.buildPluginList();
 
     if (aId in this.plugins)
-      aCallback(this.buildWrapper(this.plugins[aId]));
-    else
-      aCallback(null);
+      return this.buildWrapper(this.plugins[aId]);
+    return null;
   },
 
   /**
@@ -113,24 +109,17 @@ var PluginProvider = {
    *
    * @param  aTypes
    *         An array of types to fetch. Can be null to get all types.
-   * @param  callback
-   *         A callback to pass an array of Addons to
    */
-  getAddonsByTypes(aTypes, aCallback) {
-    if (aTypes && aTypes.indexOf("plugin") < 0) {
-      aCallback([]);
-      return;
+  async getAddonsByTypes(aTypes) {
+    if (aTypes && !aTypes.includes("plugin")) {
+      return [];
     }
 
     if (!this.plugins)
       this.buildPluginList();
 
-    let results = [];
-
-    for (let id in this.plugins)
-      this.getAddonByID(id, (addon) => results.push(addon));
-
-    aCallback(results);
+    return Promise.all(Object.keys(this.plugins).map(
+      id => this.getAddonByID(id)));
   },
 
   /**
@@ -138,11 +127,9 @@ var PluginProvider = {
    *
    * @param  aTypes
    *         An array of types to fetch. Can be null to get all types
-   * @param  aCallback
-   *         A callback to pass an array of Addons to
    */
-  getAddonsWithOperationsByTypes(aTypes, aCallback) {
-    aCallback([]);
+  async getAddonsWithOperationsByTypes(aTypes) {
+    return [];
   },
 
   /**
@@ -150,11 +137,9 @@ var PluginProvider = {
    *
    * @param  aTypes
    *         An array of types or null to get all types
-   * @param  aCallback
-   *         A callback to pass the array of AddonInstalls to
    */
-  getInstallsByTypes(aTypes, aCallback) {
-    aCallback([]);
+  getInstallsByTypes(aTypes) {
+    return [];
   },
 
   /**
@@ -380,16 +365,12 @@ PluginWrapper.prototype = {
 
   get blocklistState() {
     let { tags: [tag] } = pluginFor(this);
-    let bs = Cc["@mozilla.org/extensions/blocklist;1"].
-             getService(Ci.nsIBlocklistService);
-    return bs.getPluginBlocklistState(tag);
+    return tag.blocklistState;
   },
 
-  get blocklistURL() {
+  async getBlocklistURL() {
     let { tags: [tag] } = pluginFor(this);
-    let bs = Cc["@mozilla.org/extensions/blocklist;1"].
-             getService(Ci.nsIBlocklistService);
-    return bs.getPluginBlocklistURL(tag);
+    return Blocklist.getPluginBlockURL(tag);
   },
 
   get size() {
@@ -479,7 +460,7 @@ PluginWrapper.prototype = {
       if (path.startsWith(dir.path))
         return AddonManager.SCOPE_USER;
     } catch (e) {
-      if (!e.result || e.result != Components.results.NS_ERROR_FAILURE)
+      if (!e.result || e.result != Cr.NS_ERROR_FAILURE)
         throw e;
       // Do nothing: missing "Home".
     }
@@ -526,7 +507,7 @@ PluginWrapper.prototype = {
   },
 
   get optionsType() {
-    return AddonManager.OPTIONS_TYPE_INLINE;
+    return AddonManager.OPTIONS_TYPE_INLINE_BROWSER;
   },
 
   get optionsURL() {
@@ -569,7 +550,7 @@ PluginWrapper.prototype = {
 
 AddonManagerPrivate.registerProvider(PluginProvider, [
   new AddonManagerPrivate.AddonType("plugin", URI_EXTENSION_STRINGS,
-                                    STRING_TYPE_NAME,
+                                    "type.plugin.name",
                                     AddonManager.VIEW_TYPE_LIST, 6000,
                                     AddonManager.TYPE_SUPPORTS_ASK_TO_ACTIVATE)
 ]);

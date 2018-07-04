@@ -10,7 +10,7 @@
 #include <cfloat>
 #include <stdarg.h>
 
-#include "jsprf.h"
+#include "js/Printf.h"
 
 #include "jsapi-tests/tests.h"
 
@@ -52,7 +52,7 @@ BEGIN_TEST(testPrintf)
     CHECK(print_one("27270", "%zu", (size_t) 27270));
     CHECK(print_one("27270", "%zu", (size_t) 27270));
     CHECK(print_one("hello", "he%so", "ll"));
-    CHECK(print_one("(null)", "%s", zero()));
+    CHECK(print_one("(null)", "%s", ::zero()));
     CHECK(print_one("0", "%p", (char *) 0));
     CHECK(print_one("h", "%c", 'h'));
     CHECK(print_one("1.500000", "%f", 1.5f));

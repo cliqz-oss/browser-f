@@ -17,7 +17,12 @@
 
 namespace mozilla {
 
-class AppleVTDecoder : public MediaDataDecoder {
+DDLoggedTypeDeclNameAndBase(AppleVTDecoder, MediaDataDecoder);
+
+class AppleVTDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<AppleVTDecoder>
+{
 public:
   AppleVTDecoder(const VideoInfo& aConfig,
                  TaskQueue* aTaskQueue,
@@ -53,11 +58,11 @@ public:
     return mIsHardwareAccelerated;
   }
 
-  const char* GetDescriptionName() const override
+  nsCString GetDescriptionName() const override
   {
     return mIsHardwareAccelerated
-           ? "apple hardware VT decoder"
-           : "apple software VT decoder";
+           ? NS_LITERAL_CSTRING("apple hardware VT decoder")
+           : NS_LITERAL_CSTRING("apple software VT decoder");
   }
 
   ConversionRequired NeedsConversion() const override
@@ -91,7 +96,7 @@ private:
   const uint32_t mDisplayHeight;
 
   // Method to set up the decompression session.
-  nsresult InitializeSession();
+  MediaResult InitializeSession();
   nsresult WaitForAsynchronousFrames();
   CFDictionaryRef CreateDecoderSpecification();
   CFDictionaryRef CreateDecoderExtensions();

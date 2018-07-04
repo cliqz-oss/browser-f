@@ -31,22 +31,16 @@
 
 /* :::::::: Constants and Helpers ::::::::::::::: */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-  "resource://gre/modules/Console.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionFile",
+ChromeUtils.defineModuleGetter(this, "SessionFile",
   "resource:///modules/sessionstore/SessionFile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "StartupPerformance",
+ChromeUtils.defineModuleGetter(this, "StartupPerformance",
   "resource:///modules/sessionstore/StartupPerformance.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CrashMonitor",
+ChromeUtils.defineModuleGetter(this, "CrashMonitor",
   "resource://gre/modules/CrashMonitor.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 const STATE_RUNNING_STR = "running";
@@ -87,6 +81,8 @@ SessionStartup.prototype = {
   // Stores whether the previous session crashed.
   _previousSessionCrashed: null,
 
+  _resumeSessionEnabled: null,
+
 /* ........ Global Event Handlers .............. */
 
   /**
@@ -102,6 +98,10 @@ SessionStartup.prototype = {
       gOnceInitializedDeferred.resolve();
       return;
     }
+
+    this._resumeSessionEnabled =
+      Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
+      Services.prefs.getBoolPref("browser.startup.restoreTabs");
 
     SessionFile.read().then(
       this._onSessionFileRead.bind(this),
@@ -163,12 +163,8 @@ SessionStartup.prototype = {
       Services.telemetry.scalarSet("browser.engagement.restored_pinned_tabs_count", pinnedTabCount);
     }, 60000);
 
-    let shouldResumeSessionOnce = Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
-    let shouldResumeSession = shouldResumeSessionOnce ||
-          Services.prefs.getBoolPref("browser.startup.restoreTabs");
-
     // If this is a normal restore then throw away any previous session
-    if (!shouldResumeSessionOnce && this._initialState) {
+    if (!this._resumeSessionEnabled && this._initialState) {
       delete this._initialState.lastSessionState;
     }
 
@@ -213,7 +209,7 @@ SessionStartup.prototype = {
       // set the startup type
       if (this._previousSessionCrashed && resumeFromCrash)
         this._sessionType = Ci.nsISessionStartup.RECOVER_SESSION;
-      else if (!this._previousSessionCrashed && shouldResumeSession)
+      else if (!this._previousSessionCrashed && this._resumeSessionEnabled)
         this._sessionType = Ci.nsISessionStartup.RESUME_SESSION;
       else if (this._initialState)
         this._sessionType = Ci.nsISessionStartup.DEFER_SESSION;
@@ -295,6 +291,10 @@ SessionStartup.prototype = {
    * @returns bool
    */
   isAutomaticRestoreEnabled() {
+    if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
+      return false;
+    }
+
     return Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
            Services.prefs.getBoolPref("browser.startup.restoreTabs");
   },
@@ -308,31 +308,42 @@ SessionStartup.prototype = {
            this._sessionType == Ci.nsISessionStartup.RESUME_SESSION;
   },
 
+  _willRestoreCliqz() {
+    //     Either we'll show a recovery page
+    return this._sessionType == Ci.nsISessionStartup.RECOVER_SESSION ||
+    //        Or just previously open tabs (without start pages)
+              (this._sessionType == Ci.nsISessionStartup.RESUME_SESSION &&
+               !Services.prefs.getBoolPref("browser.startup.addFreshTab"));
+  },
+
   /**
-   * Returns whether we will restore a session that ends up replacing the
-   * homepage. The browser uses this to not start loading the homepage if
-   * we're going to stop its load anyway shortly after.
-   *
-   * This is meant to be an optimization for the average case that loading the
-   * session file finishes before we may want to start loading the default
-   * homepage. Should this be called before the session file has been read it
-   * will just return false.
-   *
-   * @returns bool
+   * Returns a boolean or a promise that resolves to a boolean, indicating
+   * whether we will restore a session that ends up replacing the homepage.
+   * True guarantees that we'll restore a session; false means that we
+   * /probably/ won't do so.
+   * The browser uses this to avoid unnecessarily loading the homepage when
+   * restoring a session.
    */
   get willOverrideHomepage() {
-    if (this._initialState &&  // last session data is there
-        // and either we'll show a recovery page
-        (this._sessionType == Ci.nsISessionStartup.RECOVER_SESSION ||
-         // or just previously open tabs (without start pages)
-         (this._sessionType == Ci.nsISessionStartup.RESUME_SESSION &&
-          !Services.prefs.getBoolPref("browser.startup.addFreshTab")))) {
-      let windows = this._initialState.windows || null;
-      // If there are valid windows with not only pinned tabs, signal that we
-      // will override the default homepage by restoring a session.
-      return windows && windows.some(w => w.tabs.some(t => !t.pinned));
+    // If the session file hasn't been read yet and resuming the session isn't
+    // enabled via prefs, go ahead and load the homepage. We may still replace
+    // it when recovering from a crash, which we'll only know after reading the
+    // session file, but waiting for that would delay loading the homepage in
+    // the non-crash case.
+    if (!this._initialState && !this._resumeSessionEnabled) {
+      return false;
     }
-    return false;
+
+    return new Promise(resolve => {
+      this.onceInitialized.then(() => {
+        // If there are valid windows with not only pinned tabs, signal that we
+        // will override the default homepage by restoring a session.
+        resolve(this._willRestoreCliqz() &&
+                this._initialState &&
+                this._initialState.windows &&
+                this._initialState.windows.some(w => w.tabs.some(t => !t.pinned)));
+      });
+    });
   },
 
   /**
@@ -350,9 +361,9 @@ SessionStartup.prototype = {
   },
 
   /* ........ QueryInterface .............. */
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference,
-                                         Ci.nsISessionStartup]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference,
+                                          Ci.nsISessionStartup]),
   classID: Components.ID("{ec7a6c20-e081-11da-8ad9-0800200c9a66}")
 };
 

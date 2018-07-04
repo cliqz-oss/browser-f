@@ -7,23 +7,44 @@
 #include "nsISupports.idl"
 #include "nsIContentPolicy.idl"
 
+interface nsIChannel;
 interface nsIDOMDocument;
 interface nsINode;
 interface nsIPrincipal;
 interface nsIRedirectHistoryEntry;
 interface nsIURI;
+native LoadContextRef(already_AddRefed<nsISupports>);
 %{C++
 #include "nsTArray.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/LoadTainting.h"
+#include "mozilla/UniquePtr.h"
+#include "nsStringFwd.h"
 
-class nsCString;
+namespace mozilla {
+namespace dom {
+class ClientInfo;
+class ClientSource;
+class PerformanceStorage;
+class ServiceWorkerDescriptor;
+} // namespace dom
+} // namespace mozilla
 %}
 
 [ref] native nsIRedirectHistoryEntryArray(const nsTArray<nsCOMPtr<nsIRedirectHistoryEntry>>);
 native OriginAttributes(mozilla::OriginAttributes);
 [ref] native const_OriginAttributesRef(const mozilla::OriginAttributes);
 [ref] native StringArrayRef(const nsTArray<nsCString>);
+[ref] native Uint64ArrayRef(const nsTArray<uint64_t>);
+[ref] native PrincipalArrayRef(const nsTArray<nsCOMPtr<nsIPrincipal>>);
+[ref] native const_ClientInfoRef(const mozilla::dom::ClientInfo);
+      native UniqueClientSource(mozilla::UniquePtr<mozilla::dom::ClientSource>);
+      native UniqueClientSourceMove(mozilla::UniquePtr<mozilla::dom::ClientSource>&&);
+[ref] native const_MaybeClientInfoRef(const mozilla::Maybe<mozilla::dom::ClientInfo>);
+[ref] native const_ServiceWorkerDescriptorRef(const mozilla::dom::ServiceWorkerDescriptor);
+[ref] native const_MaybeServiceWorkerDescriptorRef(const mozilla::Maybe<mozilla::dom::ServiceWorkerDescriptor>);
+[ptr] native PerformanceStoragePtr(mozilla::dom::PerformanceStorage);
+      native LoadTainting(mozilla::LoadTainting);
 
 typedef unsigned long nsSecurityFlags;
 
@@ -40,14 +61,6 @@ typedef unsigned long nsSecurityFlags;
 interface nsILoadInfo : nsISupports
 {
   /**
-   * *** DEPRECATED ***
-   * No LoadInfo created within Gecko should contain this security flag.
-   * Please use any of the five security flags defined underneath.
-   * We only keep this security flag to provide backwards compatibilty.
-   */
-  const unsigned long SEC_NORMAL = 0;
-
-  /**
    * The following five flags determine the security mode and hence what kind of
    * security checks should be performed throughout the lifetime of the channel.
    *
@@ -62,6 +75,16 @@ interface nsILoadInfo : nsISupports
    * return the correct result principal. If none or more than one of these
    * flags are set AsyncOpen2 will fail.
    */
+
+   /**
+    * Warning: Never use this flag when creating a new channel!
+    * Only use this flag if you have to create a temporary LoadInfo
+    * for performing an explicit nsIContentPolicy check, like e.g.
+    * when loading something from the cache that needs an explicit
+    * nsIContentPolicy check. In all other cases pick one of the
+    * security flags underneath.
+    */
+  const unsigned long SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK = 0;
 
   /*
    * Enforce the same origin policy where data: loads inherit the principal.
@@ -299,6 +322,13 @@ interface nsILoadInfo : nsISupports
   nsIPrincipal binaryPrincipalToInherit();
 
   /**
+   * Finds the correct principal to inherit for the given channel, based on
+   * the values of PrincipalToInherit and TriggeringPrincipal.
+   */
+  [noscript, notxpcom, nostdcall]
+  nsIPrincipal FindPrincipalToInherit(in nsIChannel aChannel);
+
+  /**
    * This is the ownerDocument of the LoadingNode. Unless the LoadingNode
    * is a Document, in which case the LoadingDocument is the same as the
    * LoadingNode.
@@ -331,6 +361,31 @@ interface nsILoadInfo : nsISupports
    */
   [noscript, notxpcom, nostdcall, binaryname(LoadingNode)]
   nsINode binaryLoadingNode();
+
+  /**
+   * A C++ friendly version of the loadingContext for toplevel loads.
+   * Most likely you want to query the ownerDocument or LoadingNode
+   * and not this context only available for TYPE_DOCUMENT loads.
+   * Please note that except for loads of TYPE_DOCUMENT, this
+   * ContextForTopLevelLoad will always return null.
+   */
+  [noscript, notxpcom, nostdcall, binaryname(ContextForTopLevelLoad)]
+  nsISupports binaryContextForTopLevelLoad();
+
+  /**
+   * For all loads except loads of TYPE_DOCUMENT, the loadingContext
+   * simply returns the loadingNode. For loads of TYPE_DOCUMENT this
+   * will return the context available for top-level loads which
+   * do not have a loadingNode.
+   */
+  [binaryname(LoadingContextXPCOM)]
+  readonly attribute nsISupports loadingContext;
+  
+  /**
+   * A C++ friendly version of the loadingContext.
+   */
+  [noscript, notxpcom, nostdcall, binaryname(GetLoadingContext)]
+  LoadContextRef binaryGetLoadingContext();
 
   /**
    * The securityFlags of that channel.
@@ -429,6 +484,15 @@ interface nsILoadInfo : nsISupports
   [infallible] readonly attribute boolean loadErrorPage;
 
   /**
+   * Returns true if this is a non-subresource request that was triggered
+   * by docshell with the LOAD_CMD_RELOAD flag set.  Note, this is more
+   * specific than looking at the load flags which indicate whether to
+   * bypass the http cache.  The load flags can be set for other reasons,
+   * so they can't be used to infer this value.
+   */
+  [infallible] attribute boolean isDocshellReload;
+
+  /**
    * The external contentPolicyType of the channel, used for security checks
    * like Mixed Content Blocking and Content Security Policy.
    *
@@ -472,6 +536,21 @@ interface nsILoadInfo : nsISupports
   [infallible] readonly attribute boolean upgradeInsecureRequests;
 
   /**
+   * Returns true if the the page is https and the content is upgradable from http
+   * requires 'security.mixed_content.upgrade_display_content' pref to be true.
+   * Currently this only upgrades display content but might be expanded to other loads.
+   * This is very similar in implementation to upgradeInsecureRequests but browser set.
+   */
+  [infallible] readonly attribute boolean browserUpgradeInsecureRequests;
+
+  /**
+   * Returns true if the the page is https and the content is upgradable from http
+   * requires 'security.mixed_content.upgrade_display_content' pref to be false.
+   * See browserUpgradeInsecureRequests for more details, this only happens
+   * when *not* upgrading purely for telemetry.
+   */
+  [infallible] readonly attribute boolean browserWouldUpgradeInsecureRequests;
+  /**
    * If true, the content of the channel is queued up and checked
    * if it matches a content signature. Note, setting this flag
    * to true will negatively impact performance since the preloader
@@ -488,6 +567,26 @@ interface nsILoadInfo : nsISupports
   [infallible] attribute boolean enforceSRI;
 
   /**
+   * If true, toplevel data: URI navigation is allowed
+   */
+  [infallible] attribute boolean forceAllowDataURI;
+
+  /**
+   * If true, insecure redirects to a data: URI are allowed.
+   */
+  [infallible] attribute boolean allowInsecureRedirectToDataURI;
+
+  /**
+   * If true, the content policy security check is excluded from web requests.
+   */
+  [infallible] attribute boolean skipContentPolicyCheckForWebRequest;
+
+  /**
+   * If true, this is the load of a frame's original src attribute
+   */
+  [infallible] attribute boolean originalFrameSrcLoad;
+
+  /**
    * The SEC_FORCE_INHERIT_PRINCIPAL flag may be dropped when a load info
    * object is created.  Specifically, it will be dropped if the SEC_SANDBOXED
    * flag is also present.  This flag is set if SEC_FORCE_INHERIT_PRINCIPAL was
@@ -498,15 +597,17 @@ interface nsILoadInfo : nsISupports
   /**
    * These are the window IDs of the window in which the element being
    * loaded lives. parentOuterWindowID is the window ID of this window's
-   * parent.
+   * parent. topOuterWindowID is the ID of the top-level window of the same
+   * docShell type.
    *
    * Note that these window IDs can be 0 if the window is not
-   * available. parentOuterWindowID will be the same as outerWindowID if the
-   * window has no parent.
+   * available. parentOuterWindowID and topOuterWindowID will be the same as
+   * outerWindowID if the window has no parent.
    */
   [infallible] readonly attribute unsigned long long innerWindowID;
   [infallible] readonly attribute unsigned long long outerWindowID;
   [infallible] readonly attribute unsigned long long parentOuterWindowID;
+  [infallible] readonly attribute unsigned long long topOuterWindowID;
 
   /**
    * Only when the element being loaded is <frame src="foo.html">
@@ -526,6 +627,18 @@ interface nsILoadInfo : nsISupports
    * you are doing!!!
    */
   void resetPrincipalToInheritToNullPrincipal();
+
+  /**
+   * Allows certain top-level channels to be agnostic to CSP. If set,
+   * this attribute needs to be set before the CSP is initialized
+   * within nsDocument. If set after, this attribute has no effect.
+   * Please note, that this logic is only available for loads of TYPE_DOCUMENT,
+   * and is discarded for other loads.
+   *
+   * WARNING: Please only use that function if you know exactly what
+   * you are doing!!!
+   */
+  [infallible] attribute boolean allowDocumentToBeAgnosticToCSP;
 
   /**
    * Customized OriginAttributes within LoadInfo to allow overwriting of the
@@ -586,6 +699,18 @@ interface nsILoadInfo : nsISupports
   [infallible] attribute boolean initialSecurityCheckDone;
 
   /**
+   * Returns true if the load was triggered from an external application
+   * (e.g. Thunderbird). Please note that this flag will only ever be true
+   * if the load is of TYPE_DOCUMENT. 
+   */
+  [infallible] attribute boolean loadTriggeredFromExternal;
+
+  /**
+   * True if the tainting has been set by the service worker.
+   */
+  [noscript, infallible] readonly attribute boolean serviceWorkerTaintingSynthesized;
+
+  /**
    * Whenever a channel gets redirected, append the redirect history entry of
    * the channel which contains principal referrer and remote address [before
    * the channels got redirected] to the loadinfo, so that at every point this
@@ -632,6 +757,36 @@ interface nsILoadInfo : nsISupports
   nsIRedirectHistoryEntryArray binaryRedirectChain();
 
   /**
+   * An array of nsIPrincipals which stores the principals of the parent frames,
+   * not including the frame loading this request.  The closest ancestor is at
+   * index zero and the top level ancestor is at the last index.
+   *
+   * The ancestorPrincipals[0] entry for an iframe load will be the principal of
+   * the iframe element's owner document.
+   * The ancestorPrincipals[0] entry for an image loaded in an iframe will be the
+   * principal of the iframe element's owner document.
+   *
+   * See nsIDocument::AncestorPrincipals for more information.
+   *
+   * Please note that this array has the same lifetime as the
+   * loadInfo object - use with caution!
+   */
+  [noscript, notxpcom, nostdcall]
+  PrincipalArrayRef AncestorPrincipals();
+
+
+  /**
+   * An array of outerWindowIDs which correspond to nsILoadInfo::AncestorPrincipals
+   * above.  AncestorOuterWindowIDs[0] is the outerWindowID of the frame
+   * associated with the principal at ancestorPrincipals[0], and so forth.
+   *
+   * Please note that this array has the same lifetime as the
+   * loadInfo object - use with caution!
+   */
+  [noscript, notxpcom, nostdcall]
+  Uint64ArrayRef AncestorOuterWindowIDs();
+
+  /**
    * Sets the list of unsafe headers according to CORS spec, as well as
    * potentially forces a preflight.
    * Note that you do not need to set the Content-Type header. That will be
@@ -660,42 +815,6 @@ interface nsILoadInfo : nsISupports
    * A C++ friendly getter for the forcePreflight flag.
    */
   [infallible] readonly attribute boolean isPreflight;
-
-  /**
-   * When this request would be mixed-content and we do not have an
-   * entry in the HSTS cache, we send an HSTS priming request to
-   * determine if it is ok to upgrade the request to HTTPS.
-   */
-  /**
-   * True if this is a mixed-content load and HSTS priming request will be sent.
-   */
-  [noscript, infallible] readonly attribute boolean forceHSTSPriming;
-  /**
-   * Carry the decision whether this load would be blocked by mixed content so
-   * that if HSTS priming fails, the correct decision can be made.
-   */
-  [noscript, infallible] readonly attribute boolean mixedContentWouldBlock;
-
-  /**
-   * True if this load is an HSTS priming request.
-   */
-  [noscript, infallible] attribute boolean isHSTSPriming;
-
-  /**
-   * True if this load was upgraded from HSTS priming
-   */
-  [noscript, infallible] attribute boolean isHSTSPrimingUpgrade;
-
-  /**
-   * Mark this LoadInfo as needing HSTS Priming
-   *
-   * @param wouldBlock Carry the decision of Mixed Content Blocking to be
-   * applied when HSTS priming is complete.
-   */
-  [noscript, notxpcom, nostdcall]
-  void setHSTSPriming(in boolean mixeContentWouldBlock);
-  [noscript, notxpcom, nostdcall]
-  void clearHSTSPriming();
 
   /**
   * Constants reflecting the channel tainting.  These are mainly defined here
@@ -768,4 +887,131 @@ interface nsILoadInfo : nsISupports
    * is returned every time.
    */
   [noscript] readonly attribute nsIPrincipal sandboxedLoadingPrincipal;
+
+  /**
+   * Note which client (i.e. global) initiated this network request.  All
+   * nsGlobalWindow and WorkerPrivate can be converted to a ClientInfo to
+   * be set here.  While this is being added to support service worker
+   * FetchEvent, it can also be used to communicate other information about
+   * the source global context in the future.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetClientInfo(in const_ClientInfoRef aClientInfo);
+
+  /**
+   * Get the ClientInfo for the global that initiated the network request,
+   * if it has been set.
+   */
+  [noscript, nostdcall, notxpcom]
+  const_MaybeClientInfoRef GetClientInfo();
+
+  /**
+   * Give a pre-allocated ClientSource to the channel LoadInfo.  This is
+   * intended to be used by docshell when loading windows without an
+   * initial about:blank document.  The docshell will allocate the ClientSource
+   * to represent the client that will be created as a result of the navigation
+   * network request.  If the channel succeeds and remains same-origin, then
+   * the result nsGlobalWindow will take ownership of the reserved ClientSource.
+   *
+   * This method is also called when a cross-origin redirect occurs.  A new
+   * ClientSource with a different UUID must be created in this case.
+   *
+   * This method automatically calls SetReservedClientInfo() with the
+   * ClientSource::Info().
+   */
+  [noscript, nostdcall, notxpcom]
+  void GiveReservedClientSource(in UniqueClientSourceMove aClientSource);
+
+  /**
+   * This method takes ownership of the reserved ClientSource previously
+   * provided in GiveReservedClientSource().  It may return nullptr if the
+   * nsILoadInfo does not own a ClientSource object.
+   */
+  [noscript, nostdcall, notxpcom]
+  UniqueClientSource TakeReservedClientSource();
+
+  /**
+   * Note the reserved client that be created if this non-subresource
+   * network request succeeds.  Depending on the type of client this
+   * may be called directly or indirectly via GiveReservedClientSource().
+   * For example, web workers do not call give their ClientSource to
+   * the nsILoadInfo, but must still call this method to indicate the
+   * reserved client for their main script load.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetReservedClientInfo(in const_ClientInfoRef aClientInfo);
+
+  /**
+   * Return the reserved ClientInfo for this load, if one has been set.
+   */
+  [noscript, nostdcall, notxpcom]
+  const_MaybeClientInfoRef GetReservedClientInfo();
+
+  /**
+   * Note that this non-subresource network request will result in
+   * re-using an existing "initial" active client.  This mainly only
+   * happens when an initial about:blank document is replaced with
+   * a real load in a window.  In these cases we need to track this
+   * initial client so that we may report its existence in a FetchEvent.
+   *
+   * Note, an nsILoadInfo may only have a reserved client or an
+   * initial client.  It should never have both.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetInitialClientInfo(in const_ClientInfoRef aClientInfo);
+
+  /**
+   * Return the initial ClientInfo for this load, if one has been set.
+   */
+  [noscript, nostdcall, notxpcom]
+  const_MaybeClientInfoRef GetInitialClientInfo();
+
+  /**
+   * Note that this network request should be controlled by a service worker.
+   * For non-subresource requests this may be set during the load when
+   * the first service worker interception occurs.  For subresource requests
+   * it may be set by the source client if its already controlled by a
+   * service worker.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetController(in const_ServiceWorkerDescriptorRef aServiceWorker);
+
+  /**
+   * Clear the service worker controller for this channel.  This should only
+   * be used for window navigation redirects.  By default we want to keep
+   * the controller in all other cases.
+   */
+  [noscript, nostdcall, notxpcom]
+  void ClearController();
+
+  /**
+   * Get the service worker controlling this network request, if one has
+   * been set.
+   */
+  [noscript, nostdcall, notxpcom]
+  const_MaybeServiceWorkerDescriptorRef GetController();
+
+  /**
+   * Set a custom performance storage. This is meant to be executed only for
+   * workers. If a PerformanceStorage is not set, the loadingDocument->Window
+   * Performance object will be used instead.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SetPerformanceStorage(in PerformanceStoragePtr aPerformanceStorage);
+
+  /**
+   * Get the PerformanceStorage.
+   */
+  [noscript, nostdcall, notxpcom]
+  PerformanceStoragePtr GetPerformanceStorage();
+
+  /* The service worker and fetch specifications require returning the
+   * exact tainting level of the Response passed to FetchEvent.respondWith().
+   * This method allows us to override the tainting level in that case.
+   *
+   * NOTE: This should not be used outside of service worker code! Use
+   *       nsILoadInfo::MaybeIncreaseTainting() instead.
+   */
+  [noscript, nostdcall, notxpcom]
+  void SynthesizeServiceWorkerTainting(in LoadTainting aTainting);
 };

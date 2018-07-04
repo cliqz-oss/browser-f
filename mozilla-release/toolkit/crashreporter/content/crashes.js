@@ -2,16 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { classes: Cc, utils: Cu, interfaces: Ci } = Components;
-
 var reportURL;
 
-Cu.import("resource://gre/modules/CrashReports.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/CrashReports.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "CrashSubmit",
+ChromeUtils.defineModuleGetter(this, "CrashSubmit",
   "resource://gre/modules/CrashSubmit.jsm");
 
 const buildID = Services.appinfo.appBuildID;
@@ -49,12 +47,8 @@ function submitPendingReport(event) {
 }
 
 function populateReportList() {
-
-  var prefService = Cc["@mozilla.org/preferences-service;1"].
-                    getService(Ci.nsIPrefBranch);
-
   try {
-    reportURL = prefService.getCharPref("breakpad.reportURL");
+    reportURL = Services.prefs.getCharPref("breakpad.reportURL");
     // Ignore any non http/https urls
     if (!/^https?:/i.test(reportURL))
       reportURL = null;
@@ -77,8 +71,8 @@ function populateReportList() {
   var dateFormatter;
   var timeFormatter;
   try {
-    dateFormatter = Services.intl.createDateTimeFormat(undefined, { dateStyle: "short" });
-    timeFormatter = Services.intl.createDateTimeFormat(undefined, { timeStyle: "short" });
+    dateFormatter = new Services.intl.DateTimeFormat(undefined, { dateStyle: "short" });
+    timeFormatter = new Services.intl.DateTimeFormat(undefined, { timeStyle: "short" });
   } catch (e) {
     // XXX Fallback to be removed once bug 1215247 is complete
     // and the Intl API is available on all platforms.
@@ -86,18 +80,16 @@ function populateReportList() {
       format(date) {
         return date.toLocaleDateString();
       }
-    }
+    };
     timeFormatter = {
       format(date) {
         return date.toLocaleTimeString();
       }
-    }
+    };
   }
-  var ios = Cc["@mozilla.org/network/io-service;1"].
-            getService(Ci.nsIIOService);
-  var reportURI = ios.newURI(reportURL);
+  var reportURI = Services.io.newURI(reportURL);
   // resolving this URI relative to /report/index
-  var aboutThrottling = ios.newURI("../../about/throttling", null, reportURI);
+  var aboutThrottling = Services.io.newURI("../../about/throttling", null, reportURI);
 
   for (var i = 0; i < reports.length; i++) {
     var row = document.createElement("tr");

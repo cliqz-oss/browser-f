@@ -3,7 +3,7 @@
 
 "use strict";
 
-Cu.import("resource://services-common/hawkclient.js");
+ChromeUtils.import("resource://services-common/hawkclient.js");
 
 const SECOND_MS = 1000;
 const MINUTE_MS = SECOND_MS * 60;
@@ -20,7 +20,7 @@ initTestLogging("Trace");
 add_task(function test_now() {
   let client = new HawkClient("https://example.com");
 
-  do_check_true(client.now() - Date.now() < SECOND_MS);
+  Assert.ok(client.now() - Date.now() < SECOND_MS);
 });
 
 add_task(function test_updateClockOffset() {
@@ -30,7 +30,7 @@ add_task(function test_updateClockOffset() {
   let serverDate = now.toUTCString();
 
   // Client's clock is off
-  client.now = () => { return now.valueOf() + HOUR_MS; }
+  client.now = () => { return now.valueOf() + HOUR_MS; };
 
   client._updateClockOffset(serverDate);
 
@@ -40,7 +40,7 @@ add_task(function test_updateClockOffset() {
   // localtimeOffsetMsec is how many milliseconds to add to the local clock so
   // that it agrees with the server.  We are one hour ahead of the server, so
   // our offset should be -1 hour.
-  do_check_true(Math.abs(client.localtimeOffsetMsec + HOUR_MS) <= SECOND_MS);
+  Assert.ok(Math.abs(client.localtimeOffsetMsec + HOUR_MS) <= SECOND_MS);
 });
 
 add_task(async function test_authenticated_get_request() {
@@ -48,7 +48,7 @@ add_task(async function test_authenticated_get_request() {
   let method = "GET";
 
   let server = httpd_setup({"/foo": (request, response) => {
-      do_check_true(request.hasHeader("Authorization"));
+      Assert.ok(request.hasHeader("Authorization"));
 
       response.setStatusLine(request.httpVersion, 200, "OK");
       response.bodyOutputStream.write(message, message.length);
@@ -60,14 +60,14 @@ add_task(async function test_authenticated_get_request() {
   let response = await client.request("/foo", method, TEST_CREDS);
   let result = JSON.parse(response.body);
 
-  do_check_eq("Great Success!", result.msg);
+  Assert.equal("Great Success!", result.msg);
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 async function check_authenticated_request(method) {
   let server = httpd_setup({"/foo": (request, response) => {
-      do_check_true(request.hasHeader("Authorization"));
+      Assert.ok(request.hasHeader("Authorization"));
 
       response.setStatusLine(request.httpVersion, 200, "OK");
       response.setHeader("Content-Type", "application/json");
@@ -80,28 +80,28 @@ async function check_authenticated_request(method) {
   let response = await client.request("/foo", method, TEST_CREDS, {foo: "bar"});
   let result = JSON.parse(response.body);
 
-  do_check_eq("bar", result.foo);
+  Assert.equal("bar", result.foo);
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 }
 
-add_task(function test_authenticated_post_request() {
-  check_authenticated_request("POST");
+add_task(async function test_authenticated_post_request() {
+  await check_authenticated_request("POST");
 });
 
-add_task(function test_authenticated_put_request() {
-  check_authenticated_request("PUT");
+add_task(async function test_authenticated_put_request() {
+  await check_authenticated_request("PUT");
 });
 
-add_task(function test_authenticated_patch_request() {
-  check_authenticated_request("PATCH");
+add_task(async function test_authenticated_patch_request() {
+  await check_authenticated_request("PATCH");
 });
 
 add_task(async function test_extra_headers() {
   let server = httpd_setup({"/foo": (request, response) => {
-      do_check_true(request.hasHeader("Authorization"));
-      do_check_true(request.hasHeader("myHeader"));
-      do_check_eq(request.getHeader("myHeader"), "fake");
+      Assert.ok(request.hasHeader("Authorization"));
+      Assert.ok(request.hasHeader("myHeader"));
+      Assert.equal(request.getHeader("myHeader"), "fake");
 
       response.setStatusLine(request.httpVersion, 200, "OK");
       response.setHeader("Content-Type", "application/json");
@@ -115,16 +115,16 @@ add_task(async function test_extra_headers() {
                                       {"myHeader": "fake"});
   let result = JSON.parse(response.body);
 
-  do_check_eq("bar", result.foo);
+  Assert.equal("bar", result.foo);
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_credentials_optional() {
   let method = "GET";
   let server = httpd_setup({
     "/foo": (request, response) => {
-      do_check_false(request.hasHeader("Authorization"));
+      Assert.ok(!request.hasHeader("Authorization"));
 
       let message = JSON.stringify({msg: "you're in the friend zone"});
       response.setStatusLine(request.httpVersion, 200, "OK");
@@ -135,9 +135,9 @@ add_task(async function test_credentials_optional() {
 
   let client = new HawkClient(server.baseURI);
   let result = await client.request("/foo", method); // credentials undefined
-  do_check_eq(JSON.parse(result.body).msg, "you're in the friend zone");
+  Assert.equal(JSON.parse(result.body).msg, "you're in the friend zone");
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_server_error() {
@@ -156,11 +156,11 @@ add_task(async function test_server_error() {
     await client.request("/foo", method, TEST_CREDS);
     do_throw("Expected an error");
   } catch (err) {
-    do_check_eq(418, err.code);
-    do_check_eq("I am a Teapot", err.message);
+    Assert.equal(418, err.code);
+    Assert.equal("I am a Teapot", err.message);
   }
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_server_error_json() {
@@ -179,10 +179,10 @@ add_task(async function test_server_error_json() {
     await client.request("/foo", method, TEST_CREDS);
     do_throw("Expected an error");
   } catch (err) {
-    do_check_eq("Cannot get ye flask.", err.error);
+    Assert.equal("Cannot get ye flask.", err.error);
   }
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_offset_after_request() {
@@ -199,13 +199,13 @@ add_task(async function test_offset_after_request() {
   let now = Date.now();
   client.now = () => { return now + HOUR_MS; };
 
-  do_check_eq(client.localtimeOffsetMsec, 0);
+  Assert.equal(client.localtimeOffsetMsec, 0);
 
   await client.request("/foo", method, TEST_CREDS);
   // Should be about an hour off
-  do_check_true(Math.abs(client.localtimeOffsetMsec + HOUR_MS) < SECOND_MS);
+  Assert.ok(Math.abs(client.localtimeOffsetMsec + HOUR_MS) < SECOND_MS);
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_offset_in_hawk_header() {
@@ -240,15 +240,15 @@ add_task(async function test_offset_in_hawk_header() {
   };
 
   // We begin with no offset
-  do_check_eq(client.localtimeOffsetMsec, 0);
+  Assert.equal(client.localtimeOffsetMsec, 0);
   await client.request("/first", method, TEST_CREDS);
 
   // After the first server response, our offset is updated to -12 hours.
   // We should be safely in the window, now.
-  do_check_true(Math.abs(client.localtimeOffsetMsec + 12 * HOUR_MS) < MINUTE_MS);
+  Assert.ok(Math.abs(client.localtimeOffsetMsec + 12 * HOUR_MS) < MINUTE_MS);
   await client.request("/second", method, TEST_CREDS);
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_2xx_success() {
@@ -270,9 +270,9 @@ add_task(async function test_2xx_success() {
   let response = await client.request("/foo", method, credentials);
 
   // Shouldn't be any content in a 202
-  do_check_eq(response.body, "");
+  Assert.equal(response.body, "");
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_retry_request_on_fail() {
@@ -289,13 +289,13 @@ add_task(async function test_retry_request_on_fail() {
       // This path should be hit exactly twice; once with a bad timestamp, and
       // again when the client retries the request with a corrected timestamp.
       attempts += 1;
-      do_check_true(attempts <= 2);
+      Assert.ok(attempts <= 2);
 
       let delta = getTimestampDelta(request.getHeader("Authorization"));
 
       // First time through, we should have a bad timestamp
       if (attempts === 1) {
-        do_check_true(delta > MINUTE_MS);
+        Assert.ok(delta > MINUTE_MS);
         let message = "never!!!";
         response.setStatusLine(request.httpVersion, 401, "Unauthorized");
         response.bodyOutputStream.write(message, message.length);
@@ -303,7 +303,7 @@ add_task(async function test_retry_request_on_fail() {
       }
 
       // Second time through, timestamp should be corrected by client
-      do_check_true(delta < MINUTE_MS);
+      Assert.ok(delta < MINUTE_MS);
       let message = "i love you!!!";
       response.setStatusLine(request.httpVersion, 200, "OK");
       response.bodyOutputStream.write(message, message.length);
@@ -317,13 +317,13 @@ add_task(async function test_retry_request_on_fail() {
   };
 
   // We begin with no offset
-  do_check_eq(client.localtimeOffsetMsec, 0);
+  Assert.equal(client.localtimeOffsetMsec, 0);
 
   // Request will have bad timestamp; client will retry once
   let response = await client.request("/maybe", method, credentials);
-  do_check_eq(response.body, "i love you!!!");
+  Assert.equal(response.body, "i love you!!!");
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_multiple_401_retry_once() {
@@ -343,7 +343,7 @@ add_task(async function test_multiple_401_retry_once() {
       // again when the client retries the request with a corrected timestamp.
       attempts += 1;
 
-      do_check_true(attempts <= 2);
+      Assert.ok(attempts <= 2);
 
       let message = "never!!!";
       response.setStatusLine(request.httpVersion, 401, "Unauthorized");
@@ -358,18 +358,18 @@ add_task(async function test_multiple_401_retry_once() {
   };
 
   // We begin with no offset
-  do_check_eq(client.localtimeOffsetMsec, 0);
+  Assert.equal(client.localtimeOffsetMsec, 0);
 
   // Request will have bad timestamp; client will retry once
   try {
     await client.request("/maybe", method, credentials);
     do_throw("Expected an error");
   } catch (err) {
-    do_check_eq(err.code, 401);
+    Assert.equal(err.code, 401);
   }
-  do_check_eq(attempts, 2);
+  Assert.equal(attempts, 2);
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_500_no_retry() {
@@ -403,10 +403,10 @@ add_task(async function test_500_no_retry() {
     await client.request("/no-shutup", method, credentials);
     do_throw("Expected an error");
   } catch (err) {
-    do_check_eq(err.code, 500);
+    Assert.equal(err.code, 500);
   }
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function test_401_then_500() {
@@ -426,14 +426,14 @@ add_task(async function test_401_then_500() {
       // This path should be hit exactly twice; once with a bad timestamp, and
       // again when the client retries the request with a corrected timestamp.
       attempts += 1;
-      do_check_true(attempts <= 2);
+      Assert.ok(attempts <= 2);
 
       let delta = getTimestampDelta(request.getHeader("Authorization"));
 
       // First time through, we should have a bad timestamp
       // Client will retry
       if (attempts === 1) {
-        do_check_true(delta > MINUTE_MS);
+        Assert.ok(delta > MINUTE_MS);
         let message = "never!!!";
         response.setStatusLine(request.httpVersion, 401, "Unauthorized");
         response.bodyOutputStream.write(message, message.length);
@@ -442,7 +442,7 @@ add_task(async function test_401_then_500() {
 
       // Second time through, timestamp should be corrected by client
       // And fail on the client
-      do_check_true(delta < MINUTE_MS);
+      Assert.ok(delta < MINUTE_MS);
       let message = "Cannot get ye flask.";
       response.setStatusLine(request.httpVersion, 500, "Internal server error");
       response.bodyOutputStream.write(message, message.length);
@@ -456,17 +456,17 @@ add_task(async function test_401_then_500() {
   };
 
   // We begin with no offset
-  do_check_eq(client.localtimeOffsetMsec, 0);
+  Assert.equal(client.localtimeOffsetMsec, 0);
 
   // Request will have bad timestamp; client will retry once
   try {
     await client.request("/maybe", method, credentials);
   } catch (err) {
-    do_check_eq(err.code, 500);
+    Assert.equal(err.code, 500);
   }
-  do_check_eq(attempts, 2);
+  Assert.equal(attempts, 2);
 
-  await deferredStop(server);
+  await promiseStopServer(server);
 });
 
 add_task(async function throw_if_not_json_body() {
@@ -475,7 +475,7 @@ add_task(async function throw_if_not_json_body() {
     await client.request("/bogus", "GET", {}, "I am not json");
     do_throw("Expected an error");
   } catch (err) {
-    do_check_true(!!err.message);
+    Assert.ok(!!err.message);
   }
 });
 
@@ -486,12 +486,6 @@ function getTimestampDelta(authHeader, now = Date.now()) {
   let tsMS = new Date(
       parseInt(/ts="(\d+)"/.exec(authHeader)[1], 10) * SECOND_MS);
   return Math.abs(tsMS - now);
-}
-
-function deferredStop(server) {
-  return new Promise(resolve => {
-    server.stop(resolve);
-  });
 }
 
 function run_test() {

@@ -8,7 +8,8 @@
 
 const actions = require("../actions/event-listeners");
 const { bindActionCreators } = require("devtools/client/shared/vendor/redux");
-const { Heritage, WidgetMethods } = require("devtools/client/shared/widgets/view-helpers");
+const { extend } = require("devtools/shared/extend");
+const { WidgetMethods } = require("devtools/client/shared/widgets/view-helpers");
 const { SideMenuWidget } = require("resource://devtools/client/shared/widgets/SideMenuWidget.jsm");
 
 /**
@@ -26,7 +27,7 @@ function EventListenersView(controller) {
   controller.onChange("event-listeners", this.renderListeners.bind(this));
 }
 
-EventListenersView.prototype = Heritage.extend(WidgetMethods, {
+EventListenersView.prototype = extend(WidgetMethods, {
   /**
    * Initialization function, called when the debugger is started.
    */
@@ -94,7 +95,7 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
 
     if (eventItem) {
       let { selectors, view: { targets } } = eventItem.attachment;
-      if (selectors.indexOf(selector) == -1) {
+      if (!selectors.includes(selector)) {
         selectors.push(selector);
         targets.setAttribute("value", L10N.getFormatStr("eventNodes", selectors.length));
       }
@@ -103,7 +104,7 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
 
     // There's no easy way of grouping event types into higher-level groups,
     // so we need to do this by hand.
-    let is = (...args) => args.indexOf(type) != -1;
+    let is = (...args) => args.includes(type);
     let has = str => type.includes(str);
     let starts = str => type.startsWith(str);
     let group;
@@ -167,7 +168,7 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
     // Event breakpoints survive target navigations. Make sure the newly
     // inserted event item is correctly checked.
     const activeEventNames = this.getState().activeEventNames;
-    const checkboxState = activeEventNames.indexOf(type) != -1;
+    const checkboxState = activeEventNames.includes(type);
 
     // Append an event listener item to this container.
     this.push([itemView.container], {

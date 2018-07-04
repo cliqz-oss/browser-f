@@ -37,11 +37,15 @@ class ErrorResult;
 class MediaByteBuffer;
 template <typename T> class AsyncEventRunner;
 
+DDLoggedTypeName(dom::SourceBuffer);
+
 namespace dom {
 
 class TimeRanges;
 
-class SourceBuffer final : public DOMEventTargetHelper
+class SourceBuffer final
+  : public DOMEventTargetHelper
+  , public DecoderDoctorLifeLogger<SourceBuffer>
 {
 public:
   /** WebIDL Methods. */
@@ -88,6 +92,8 @@ public:
   void AbortBufferAppend();
 
   void Remove(double aStart, double aEnd, ErrorResult& aRv);
+
+  void ChangeType(const nsAString& aType, ErrorResult& aRv);
 
   IMPL_EVENT_HANDLER(updatestart);
   IMPL_EVENT_HANDLER(update);
@@ -179,7 +185,7 @@ private:
 
   MozPromiseRequestHolder<SourceBufferTask::AppendPromise> mPendingAppend;
   MozPromiseRequestHolder<SourceBufferTask::RangeRemovalPromise> mPendingRemoval;
-  const MediaContainerType mType;
+  MediaContainerType mType;
 
   RefPtr<TimeRanges> mBuffered;
 

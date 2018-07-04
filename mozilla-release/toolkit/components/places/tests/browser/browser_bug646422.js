@@ -23,12 +23,12 @@ add_task(async function() {
 
       onBeginUpdateBatch() { },
       onEndUpdateBatch() { },
-      onVisit() { },
+      onVisits() { },
       onDeleteURI() { },
       onClearHistory() { },
       onPageChanged() { },
       onDeleteVisits() { },
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsINavHistoryObserver])
+      QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver])
     };
 
     PlacesUtils.history.addObserver(observer);
@@ -46,6 +46,6 @@ add_task(async function() {
     Assert.equal(args.newtitle, content.document.title, "Title after pushstate.");
   });
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   gBrowser.removeTab(tab);
 });

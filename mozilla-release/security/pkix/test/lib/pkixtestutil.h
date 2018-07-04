@@ -22,8 +22,8 @@
  * limitations under the License.
  */
 
-#ifndef mozilla_pkix_test_pkixtestutils_h
-#define mozilla_pkix_test_pkixtestutils_h
+#ifndef mozilla_pkix_test_pkixtestutil_h
+#define mozilla_pkix_test_pkixtestutil_h
 
 #include <ctime>
 #include <stdint.h> // Some Mozilla-supported compilers lack <cstdint>
@@ -87,8 +87,8 @@ enum class TestDigestAlgorithmID
 
 struct TestPublicKeyAlgorithm
 {
-  explicit TestPublicKeyAlgorithm(const ByteString& algorithmIdentifier)
-    : algorithmIdentifier(algorithmIdentifier) { }
+  explicit TestPublicKeyAlgorithm(const ByteString& aAlgorithmIdentifier)
+    : algorithmIdentifier(aAlgorithmIdentifier) { }
   bool operator==(const TestPublicKeyAlgorithm& other) const
   {
     return algorithmIdentifier == other.algorithmIdentifier;
@@ -445,4 +445,4 @@ ByteString CreateEncodedOCSPResponse(OCSPResponseContext& context);
 
 } } } // namespace mozilla::pkix::test
 
-#endif // mozilla_pkix_test_pkixtestutils_h
+#endif // mozilla_pkix_test_pkixtestutil_h

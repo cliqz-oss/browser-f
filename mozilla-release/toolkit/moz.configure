@@ -27,7 +27,7 @@ def gecko_profiler(target):
     if target.os == 'Android':
         return target.cpu in ('aarch64', 'arm', 'x86')
     elif target.kernel == 'Linux':
-        return target.cpu in ('x86', 'x86_64')
+        return target.cpu in ('x86', 'x86_64', 'mips64', 'arm')
     return target.os in ('OSX', 'WINNT')
 
 @depends(gecko_profiler)
@@ -55,18 +55,39 @@ imply_option('--enable-profiling', dmd)
 imply_option('--enable-jemalloc', dmd)
 imply_option('--enable-replace-malloc', dmd)
 
+# ALSA cubeb backend
+# ==============================================================
+option('--enable-alsa', env='MOZ_ALSA',
+       help='Enable ALSA audio backend.')
+
+alsa = pkg_check_modules('MOZ_ALSA', 'alsa', when='--enable-alsa')
+
+set_config('MOZ_ALSA', depends_if(alsa)(lambda _: True))
+set_define('MOZ_ALSA', depends_if(alsa)(lambda _: True))
+
 # JACK cubeb backend
 # ==============================================================
 option('--enable-jack', env='MOZ_JACK',
        help='Enable JACK audio backend.')
 
-@depends('--enable-jack')
-def jack(value):
-    if value:
-        return True
+jack = pkg_check_modules('MOZ_JACK', 'jack', when='--enable-jack')
 
-set_config('MOZ_JACK', jack)
-set_define('MOZ_JACK', jack)
+set_config('MOZ_JACK', depends_if(jack)(lambda _: True))
+set_define('MOZ_JACK', depends_if(jack)(lambda _: True))
+
+# PulseAudio cubeb backend
+# ==============================================================
+@depends(target)
+def pulseaudio_default(target):
+    return target.os not in ('WINNT', 'OSX', 'iOS', 'Android', 'OpenBSD')
+
+option('--enable-pulseaudio', env='MOZ_PULSEAUDIO', default=pulseaudio_default,
+       help='Enable PulseAudio audio backend.')
+
+pulseaudio = pkg_check_modules('MOZ_PULSEAUDIO', 'libpulse', when='--enable-pulseaudio')
+
+set_config('MOZ_PULSEAUDIO', depends_if(pulseaudio)(lambda _: True))
+set_define('MOZ_PULSEAUDIO', depends_if(pulseaudio)(lambda _: True))
 
 # Javascript engine
 # ==============================================================
@@ -86,12 +107,20 @@ option('--with-l10n-base', nargs=1, env='L10NBASEDIR',
 
 @depends('--with-l10n-base')
 @imports(_from='os.path', _import='isdir')
+@imports(_from='os.path', _import='expanduser')
+@imports(_from='os', _import='environ')
 def l10n_base(value):
     if value:
         path = value[0]
         if not isdir(path):
             die("Invalid value --with-l10n-base, %s doesn't exist", path)
-        return os.path.realpath(os.path.abspath(path))
+    else:
+        path = os.path.join(
+            environ.get(
+                'MOZBUILD_STATE_PATH',
+                expanduser(os.path.join('~', '.mozbuild'))),
+            'l10n-central')
+    return os.path.realpath(os.path.abspath(path))
 
 set_config('L10NBASEDIR', l10n_base)
 
@@ -112,7 +141,6 @@ option('--enable-default-toolkit', nargs=1,
 def toolkit(value, target, _):
     # Define possible choices for each platform. The default is the first one
     # listed when there are several.
-    os = target.os
     if target.os == 'WINNT':
         platform_choices = ('cairo-windows',)
     elif target.os == 'OSX':
@@ -120,19 +148,15 @@ def toolkit(value, target, _):
     elif target.os == 'iOS':
         platform_choices = ('cairo-uikit',)
     elif target.os == 'Android':
-        if value.origin == 'implied':
-            # Trust values coming from imply_option() (used in
-            # b2g/moz.configure).
-            platform_choices = tuple(value)
-        else:
-            platform_choices = ('cairo-android',)
+        platform_choices = ('cairo-android',)
     else:
         platform_choices = ('cairo-gtk3', 'cairo-gtk3-wayland')
 
     if value:
         if value[0] not in platform_choices:
             die('`%s` is not a valid value for --enable-default-toolkit on %s\n'
-                'Valid values: %s', value[0], os, ', '.join(platform_choices))
+                'Valid values: %s', value[0], target.os,
+                ', '.join(platform_choices))
         return value[0]
 
     return platform_choices[0]
@@ -143,9 +167,7 @@ def wayland(toolkit):
 
 @depends(toolkit)
 def toolkit(toolkit):
-    if toolkit == 'cairo-gtk2-x11':
-        widget_toolkit = 'gtk2'
-    elif toolkit == 'cairo-gtk3-wayland' :
+    if toolkit == 'cairo-gtk3-wayland':
         widget_toolkit = 'gtk3'
     else:
         widget_toolkit = toolkit.replace('cairo-', '')
@@ -156,16 +178,14 @@ add_old_configure_assignment('MOZ_WIDGET_TOOLKIT', toolkit)
 
 @depends(toolkit)
 def toolkit_gtk(toolkit):
-    if toolkit == 'gtk2':
-        return '2'
-    elif toolkit == 'gtk3':
+    if toolkit == 'gtk3':
         return '3'
 
 set_define('MOZ_WIDGET_GTK', toolkit_gtk)
 
 @depends(toolkit)
 def toolkit_define(toolkit):
-    if toolkit not in ('gtk2', 'gtk3', 'windows'):
+    if toolkit not in ('gtk3', 'windows'):
         return 'MOZ_WIDGET_%s' % toolkit.upper()
 
 set_define(toolkit_define, True)
@@ -178,7 +198,7 @@ def x11(value, toolkit):
     if not value:
         die('--without-x is not supported')
 
-    x11_toolkits = ('gtk2', 'gtk3')
+    x11_toolkits = ('gtk3',)
     if value and value.origin != 'default' and toolkit not in x11_toolkits:
         die('--with-x is only valid with --enable-default-toolkit={%s}',
             ','.join(x11_toolkits))
@@ -215,10 +235,12 @@ def gl_provider_define(provider):
 
 set_define('MOZ_GL_PROVIDER', gl_provider_define)
 
-@depends(gl_provider, x11)
-def gl_default_provider(value, x11):
+@depends(gl_provider, wayland, x11)
+def gl_default_provider(value, wayland, x11):
     if value:
         return value
+    elif wayland:
+        return 'EGL'
     elif x11:
         return 'GLX'
 
@@ -237,7 +259,7 @@ set_define(gl_provider_define, True)
 # ==============================================================
 @depends(toolkit)
 def pdf_printing(toolkit):
-    if toolkit in ('windows', 'gtk2', 'gtk3', 'android'):
+    if toolkit in ('windows', 'gtk3', 'android'):
         return True
 
 @depends(pdf_printing)
@@ -259,7 +281,7 @@ option(env='MOZ_INSTRUMENT_EVENT_LOOP',
 
 @depends('MOZ_INSTRUMENT_EVENT_LOOP', toolkit)
 def instrument_event_loop(value, toolkit):
-    if value or (toolkit in ('windows', 'gtk2', 'gtk3', 'cocoa', 'android') and
+    if value or (toolkit in ('windows', 'gtk3', 'cocoa', 'android') and
                  value.origin == 'default'):
         return True
 
@@ -274,7 +296,7 @@ option(env='USE_FC_FREETYPE',
 
 @depends('USE_FC_FREETYPE', toolkit)
 def fc_freetype(value, toolkit):
-    if value or (toolkit in ('gtk2', 'gtk3') and
+    if value or (toolkit == 'gtk3' and
                  value.origin == 'default'):
         return True
 
@@ -397,6 +419,20 @@ set_config('MOZ_FMP4', fmp4)
 set_define('MOZ_FMP4', fmp4)
 add_old_configure_assignment('MOZ_FMP4', fmp4)
 
+# OpenMAX IL Decoding Support
+# ==============================================================
+option('--enable-openmax',
+       help='Enable OpenMAX IL for video/audio decoding')
+
+@depends('--enable-openmax')
+def openmax(value):
+    enabled = bool(value)
+    if enabled:
+        return True
+
+set_config('MOZ_OMX', openmax)
+set_define('MOZ_OMX', openmax)
+
 # EME Support
 # ==============================================================
 # Widevine is enabled by default in desktop browser builds.
@@ -482,10 +518,6 @@ project_flag('MOZ_PLACES',
              help='Build Places if required',
              set_as_define=True)
 
-project_flag('MOZ_SOCIAL',
-             help='Build SocialAPI if required',
-             default=True)
-
 project_flag('MOZ_SERVICES_HEALTHREPORT',
              help='Build Firefox Health Reporter Service',
              set_for_old_configure=True,
@@ -498,60 +530,22 @@ project_flag('MOZ_ANDROID_HISTORY',
              help='Enable Android History instead of Places',
              set_as_define=True)
 
-project_flag('MOZ_ALLOW_LEGACY_EXTENSIONS',
-             help='Allow legacy browser extensions',
-             default=True, set_as_define=True)
+option(env='MOZ_ALLOW_LEGACY_EXTENSIONS',
+       default=milestone.is_nightly,
+       help='Allow legacy browser extensions')
 
-option(env='MOZ_PHOTON_ANIMATIONS',
-       help='Enable Photon UI animations',
-       default=milestone.is_nightly)
+@depends('MOZ_ALLOW_LEGACY_EXTENSIONS')
+def legacy_extensions(value):
+    if bool(value):
+        return True
 
-@depends('MOZ_PHOTON_ANIMATIONS')
-def photon_animations(value):
-    if value:
-        return bool(value)
-
-set_config('MOZ_PHOTON_ANIMATIONS', photon_animations)
-set_define('MOZ_PHOTON_ANIMATIONS', photon_animations)
-
-option(env='MOZ_PHOTON_PREFERENCES',
-       help='Enable Photon preferences',
-       default=milestone.is_nightly)
-
-@depends('MOZ_PHOTON_PREFERENCES')
-def photon_preferences(value):
-    if value:
-        return bool(value)
-
-set_config('MOZ_PHOTON_PREFERENCES', photon_preferences)
-set_define('MOZ_PHOTON_PREFERENCES', photon_preferences)
-
-option(env='MOZ_PHOTON_THEME',
-       help='Enable Photon theme',
-       default=milestone.is_nightly)
-
-@depends('MOZ_PHOTON_THEME')
-def photon_theme(value):
-    if value:
-        return bool(value)
-
-set_config('MOZ_PHOTON_THEME', photon_theme)
-set_define('MOZ_PHOTON_THEME', photon_theme)
+set_config('MOZ_ALLOW_LEGACY_EXTENSIONS', legacy_extensions)
+set_define('MOZ_ALLOW_LEGACY_EXTENSIONS', legacy_extensions)
 
 @depends('MOZ_PLACES', 'MOZ_ANDROID_HISTORY')
 def check_places_and_android_history(places, android_history):
     if places and android_history:
         die('Cannot use MOZ_ANDROID_HISTORY alongside MOZ_PLACES.')
-
-# Permissions system
-# ==============================================================
-option(name='--disable-permissions',
-       help='Disable permissions (popup and cookie blocking)')
-
-moz_permissions = depends_if('--disable-permissions')(lambda _: True)
-
-set_config('MOZ_PERMISSIONS', moz_permissions)
-set_define('MOZ_PERMISSIONS', moz_permissions)
 
 # gpsd support
 # ==============================================================
@@ -573,6 +567,7 @@ set_config('MOZ_GPSD', depends_if(system_gpsd)(lambda _: True))
 check_prog('TAR', ('gnutar', 'gtar', 'tar'))
 check_prog('UNZIP', ('unzip',))
 check_prog('ZIP', ('zip',))
+check_prog('GN', ('gn',), allow_missing=True)
 
 # Key files
 # ==============================================================
@@ -588,50 +583,7 @@ simple_keyfile('Adjust SDK')
 
 id_and_secret_keyfile('Leanplum SDK')
 
-# Servo integration
-# ==============================================================
-option('--enable-stylo', nargs='?', choices=('build',),
-       help='Include Stylo in the build and/or enable it at runtime')
-
-@depends('--enable-stylo', '--help', target)
-def stylo_config(value, _, target):
-    build_stylo = None
-    enable_stylo = None
-
-    # If nothing is specified, default to building stylo where possible.
-    if value.origin == 'default':
-        if target.os == 'GNU' and target.bitness == 32:
-            # The clang setup we use in automation is a little unusual, and
-            # doesn't play well with bindgen on 32-bit Linux.
-            pass
-        elif target.os == 'Android':
-            # Stylo on Android is happening Later(tm).
-            pass
-        else:
-            build_stylo = True
-    elif len(value) and value[0] == 'build':
-        # Build but disable by request.
-        build_stylo = True
-    elif bool(value):
-        # Build and enable.
-        build_stylo = True
-        enable_stylo = True
-
-    return namespace(
-        build = build_stylo,
-        enable = enable_stylo,
-    )
-
-option('--disable-stylo-build-bindgen',
-       help='Disable build-time bindgen for Stylo')
-
-@depends(stylo_config, '--enable-stylo-build-bindgen', '--enable-compile-environment')
-def building_stylo_bindgen(stylo_config, bindgen_enabled, compile_environment):
-    if not compile_environment:
-        return False
-    if not bindgen_enabled:
-        return False
-    return stylo_config.build
+simple_keyfile('Pocket API')
 
 # We support setting up the appropriate options for Stylo's build-time
 # bindings generation via setting LLVM_CONFIG or by providing explicit
@@ -643,14 +595,15 @@ def building_stylo_bindgen(stylo_config, bindgen_enabled, compile_environment):
 @imports('os')
 @imports('subprocess')
 def llvm_config_paths(host):
-    llvm_config_progs = [
-        'llvm-config-4.0',
-        'llvm-config-mp-4.0',   # MacPorts' chosen naming scheme.
-        'llvm-config40',
-        'llvm-config-3.9',
-        'llvm-config39',
-        'llvm-config',
-    ]
+    llvm_supported_versions = ['6.0', '5.0', '4.0', '3.9']
+    llvm_config_progs = []
+    for version in llvm_supported_versions:
+        llvm_config_progs += [
+            'llvm-config-%s' % version,
+            'llvm-config-mp-%s' % version,    # MacPorts' chosen naming scheme.
+            'llvm-config%s' % version.replace('.', ''),
+        ]
+    llvm_config_progs.append('llvm-config')
 
     # Homebrew on macOS doesn't make clang available on PATH, so we have to
     # look for it in non-standard places.
@@ -681,10 +634,10 @@ def llvm_config_paths(host):
     return llvm_config_progs
 
 llvm_config = check_prog('LLVM_CONFIG', llvm_config_paths,
-                         when=building_stylo_bindgen,
+                         when='--enable-compile-environment',
                          what='llvm-config', allow_missing=True)
 
-with only_when(building_stylo_bindgen):
+with only_when('--enable-compile-environment'):
     option('--with-libclang-path', nargs=1,
            help='Absolute path to a directory containing Clang/LLVM libraries for Stylo (version 3.9.x or above)')
     option('--with-clang-path', nargs=1,
@@ -764,10 +717,19 @@ with only_when(building_stylo_bindgen):
             # but not have other packages installed.  Since the user is trying
             # to use their system packages, we can't be more specific about what
             # they need.
+            clang_resolved = find_program(clang_path)
+            if not clang_resolved:
+                die(dedent('''\
+                The file {} returned by `llvm-config {}` does not exist.
+                clang is required to build Firefox.  Please install the
+                necessary packages, or run `mach bootstrap`.
+                '''.format(clang_path, '--bindir')))
+
             if not os.path.exists(libclang_path):
                 die(dedent('''\
                 The directory {} returned by `llvm-config {}` does not exist.
-                Please check your system configuration.
+                clang is required to build Firefox.  Please install the
+                necessary packages, or run `mach bootstrap`.
                 '''.format(libclang_path, libclang_arg)))
 
             (found, searched) = search_for_libclang(libclang_path)
@@ -775,15 +737,9 @@ with only_when(building_stylo_bindgen):
                 die(dedent('''\
                 Could not find the clang shared library in the path {}
                 returned by `llvm-config {}` (searched for files {}).
-                Please check your system configuration.
+                clang is required to build Firefox.  Please install the
+                necessary packages, or run `mach bootstrap`.
                 '''.format(libclang_path, libclang_arg, searched)))
-
-            clang_resolved = find_program(clang_path)
-            if not clang_resolved:
-                die(dedent('''\
-                The file {} returned by `llvm-config {}` does not exist.
-                Please check your system configuration.
-                '''.format(clang_path, '--bindir')))
 
             return namespace(
                 libclang_path=libclang_path,
@@ -825,12 +781,6 @@ with only_when(building_stylo_bindgen):
 
     set_config('MOZ_LIBCLANG_PATH', bindgen_config_paths.libclang_path)
     set_config('MOZ_CLANG_PATH', bindgen_config_paths.clang_path)
-    set_config('MOZ_STYLO_BINDGEN', depends_if('--enable-stylo-build-bindgen')(lambda _: True))
-
-set_config('MOZ_STYLO', stylo_config.build)
-set_define('MOZ_STYLO', stylo_config.build)
-set_config('MOZ_STYLO_ENABLE', stylo_config.enable)
-set_define('MOZ_STYLO_ENABLE', stylo_config.enable)
 
 option('--with-servo', env='SERVO_TARGET_DIR', nargs=1,
        help='Absolute path of the target directory where libgeckoservo can '
@@ -912,7 +862,7 @@ set_define('NS_PRINT_PREVIEW', printing)
 # ==============================================================
 @depends(toolkit)
 def no_speechd_on_non_gtk(toolkit):
-    if toolkit not in ('gtk2', 'gtk3'):
+    if toolkit != 'gtk3':
         return False
 
 imply_option('--enable-synth-speechd', no_speechd_on_non_gtk,
@@ -936,26 +886,6 @@ set_config('MOZ_WEBSPEECH', webspeech)
 set_define('MOZ_WEBSPEECH', webspeech)
 add_old_configure_assignment('MOZ_WEBSPEECH', webspeech)
 
-# Speech API pocketsphinx backend
-# ==============================================================
-@depends(build_project, milestone, webspeech)
-def webspeech_pocketsphinx(build_project, milestone, webspeech):
-    if webspeech and milestone.is_nightly and build_project == 'b2g':
-        return True
-
-set_config('MOZ_WEBSPEECH_POCKETSPHINX', webspeech_pocketsphinx)
-set_define('MOZ_WEBSPEECH_POCKETSPHINX', webspeech_pocketsphinx)
-
-# Speech API models
-# ==============================================================
-@depends(build_project, milestone, webspeech)
-def webspeech_models(build_project, milestone, webspeech):
-    if webspeech and milestone.is_nightly and build_project == 'b2g':
-        return True
-
-set_config('MOZ_WEBSPEECH_MODELS', webspeech_models)
-set_define('MOZ_WEBSPEECH_MODELS', webspeech_models)
-
 # Speech API test backend
 # ==============================================================
 option('--enable-webspeechtestbackend', default=webspeech,
@@ -976,72 +906,6 @@ set_config('MOZ_IPDL_TESTS',
            depends_if('--enable-ipdl-tests')(lambda _: True))
 
 include('nss.configure')
-
-# Network protocol support
-# ==============================================================
-@depends(check_build_environment, toolkit_gtk, '--help')
-@imports('os')
-@imports(_from='__builtin__', _import='sorted')
-def all_necko_protocols(build_env, toolkit_gtk, _):
-    basedir = os.path.join(build_env.topsrcdir, 'netwerk', 'protocol')
-    return tuple(sorted(p for p in os.listdir(basedir)
-                        if (os.path.isdir(os.path.join(basedir, p)) and
-                            (p != 'gio' or toolkit_gtk))))
-
-default_necko_protocols = all_necko_protocols
-
-@deprecated_option('--enable-necko-protocols', nargs='*')
-def necko_protocols(protocols):
-    return protocols
-
-@depends(necko_protocols, default_necko_protocols)
-def necko_protocols(protocols, default_protocols):
-    if protocols is None or (protocols and len(protocols) == 0):
-        return None
-    if len(protocols) == 1 and protocols[0] == '':
-        return False
-    result = set()
-    for p in protocols:
-        if p in ('yes', 'all', 'default'):
-            result |= set(default_protocols)
-            continue
-        if p in ('no', 'none'):
-            result = set()
-            continue
-        if p.startswith('-'):
-            if p[1:] in result:
-                result.remove(p[1:])
-        else:
-            result.add(p)
-    if result != set(default_protocols):
-        return tuple(result)
-
-imply_option('--enable-network-protocols', necko_protocols,
-             reason='--enable-necko-protocols')
-
-option('--enable-network-protocols', nargs='+', default=default_necko_protocols,
-       choices=all_necko_protocols,
-       help='Enable/disable specific protocol handlers')
-
-@depends('--enable-network-protocols')
-def necko_protocol_defines(protocols):
-    return tuple('NECKO_PROTOCOL_%s' % p for p in protocols)
-
-add_old_configure_assignment('_NON_GLOBAL_ACDEFINES', necko_protocol_defines)
-
-@depends(necko_protocol_defines)
-@imports('__sandbox__')
-def set_necko_protocol_defines(protocols):
-    for p in protocols:
-        __sandbox__.set_define_impl(p, True)
-
-@depends('--enable-network-protocols')
-@imports(_from='__builtin__', _import='sorted')
-def necko_protocols(protocols):
-    return tuple(sorted(protocols))
-
-set_config('NECKO_PROTOCOLS', necko_protocols)
-add_old_configure_assignment('NECKO_PROTOCOLS', necko_protocols)
 
 # Graphics
 # ==============================================================
@@ -1067,13 +931,10 @@ set_define('SK_BUILD_FOR_ANDROID_NDK', skia_android)
 
 option('--disable-skia-gpu', help='Disable use of Skia-GPU')
 
-@depends('--disable-skia-gpu', skia, target)
-def skia_gpu(value, skia, target):
+@depends('--disable-skia-gpu', skia)
+def skia_gpu(value, skia):
     if value.origin == 'default':
         if not skia:
-            return None
-        # Skia GPU support may not reliably build on certain *BSDs (see bug 1234494)
-        if target.os in ('NetBSD', 'OpenBSD'):
             return None
     elif value and not skia:
         die('Cannot enable Skia-GPU without enabling Skia')
@@ -1085,12 +946,12 @@ set_define('USE_SKIA_GPU', skia_gpu)
 
 option('--enable-skia-pdf', help='Enable Skia PDF')
 
-@depends('--enable-skia-pdf', skia, milestone)
-def skia_pdf(value, skia, milestone):
+@depends('--enable-skia-pdf', skia, target, milestone)
+def skia_pdf(value, skia, target, milestone):
     if value.origin == 'default':
         if not skia:
             return None
-        if milestone.is_nightly:
+        if milestone.is_nightly and target.os != 'WINNT':
             return True
     elif value and not skia:
         die('Cannot enable Skia PDF without enabling Skia')
@@ -1125,22 +986,17 @@ def sfntly_includes(skia_pdf_sfntly):
 
 set_config('SFNTLY_INCLUDES', sfntly_includes)
 
-@depends(skia, skia_gpu)
-def skia_includes(skia, skia_gpu):
+@depends(skia)
+def skia_includes(skia):
     includes = []
     if skia:
         includes += [
             '/gfx/skia',
             '/gfx/skia/skia/include/config',
             '/gfx/skia/skia/include/core',
-        ]
-
-    if skia_gpu:
-        includes += [
             '/gfx/skia/skia/include/gpu',
             '/gfx/skia/skia/include/utils',
         ]
-
     return includes
 
 set_config('SKIA_INCLUDES', skia_includes)
@@ -1223,9 +1079,8 @@ option('--enable-geckodriver', help='Enable WebDriver implementation')
          'MOZ_AUTOMATION',
          compile_environment,
          cross_compiling,
-         hazard_analysis,
-         target)
-def geckodriver(enable, automation, compile_env, cross_compile, hazard, target):
+         hazard_analysis)
+def geckodriver(enable, automation, compile_env, cross_compile, hazard):
     """
     geckodriver is implied on supported platforms when MOZ_AUTOMATION
     is set, but we also provide the --enable-geckodriver option for
@@ -1243,24 +1098,101 @@ def geckodriver(enable, automation, compile_env, cross_compile, hazard, target):
         return True
 
     if enable.origin == 'default':
-        linux32 = target.kernel == 'Linux' and target.cpu == 'x86'
-        broken_platforms = cross_compile or linux32 or hazard
+        broken_platforms = cross_compile or hazard
 
         if automation and compile_env and not broken_platforms:
             return True
 
 set_config('ENABLE_GECKODRIVER', geckodriver)
 
-# Code Coverage
+# WebRTC
+# ========================================================
+@depends(target)
+def webrtc_default(target):
+    # Turn off webrtc for OS's we don't handle yet, but allow
+    # --enable-webrtc to override.
+    os_match = False
+    for os_fragment in ('linux', 'mingw', 'android', 'linuxandroid',
+                        'dragonfly', 'freebsd', 'netbsd', 'openbsd',
+                        'darwin'):
+        if target.raw_os.startswith(os_fragment):
+            os_match = True
+
+    cpu_match = False
+    if (target.cpu in ('x86_64', 'arm', 'aarch64', 'x86', 'ia64', 'mips32', 'mips64') or
+        target.cpu.startswith('ppc')):
+        cpu_match = True
+
+    if os_match and cpu_match:
+        return True
+    return False
+
+option('--disable-webrtc', default=webrtc_default,
+       help='Disable support for WebRTC')
+
+@depends('--disable-webrtc')
+def webrtc(enabled):
+    if enabled:
+        return True
+
+set_config('MOZ_WEBRTC', webrtc)
+set_define('MOZ_WEBRTC', webrtc)
+add_old_configure_assignment('MOZ_WEBRTC', webrtc)
+set_config('MOZ_WEBRTC_SIGNALING', webrtc)
+set_define('MOZ_WEBRTC_SIGNALING', webrtc)
+set_config('MOZ_PEERCONNECTION', webrtc)
+set_define('MOZ_PEERCONNECTION', webrtc)
+# MOZ_WEBRTC_ASSERT_ALWAYS turns on a number of safety asserts in
+# opt/production builds (via MOZ_CRASH())
+set_config('MOZ_WEBRTC_ASSERT_ALWAYS', webrtc)
+set_define('MOZ_WEBRTC_ASSERT_ALWAYS', webrtc)
+
+# ASan Reporter Addon
 # ==============================================================
+option('--enable-address-sanitizer-reporter',
+       help='Enable Address Sanitizer Reporter Extension')
 
-option('--enable-coverage', env='MOZ_CODE_COVERAGE',
-       help='Enable code coverage')
-
-@depends('--enable-coverage')
-def code_coverage(value):
+@depends('--enable-address-sanitizer-reporter')
+def enable_asan_reporter(value):
     if value:
         return True
 
-set_config('MOZ_CODE_COVERAGE', code_coverage)
-set_define('MOZ_CODE_COVERAGE', code_coverage)
+set_config('MOZ_ASAN_REPORTER', enable_asan_reporter)
+set_define('MOZ_ASAN_REPORTER', enable_asan_reporter)
+add_old_configure_assignment('MOZ_ASAN_REPORTER', enable_asan_reporter)
+
+# Elfhack
+# ==============================================================
+@depends(host, target)
+def has_elfhack(host, target):
+    return target.kernel == 'Linux' and host.kernel == 'Linux' and \
+           target.cpu in ('arm', 'x86', 'x86_64')
+
+with only_when(has_elfhack):
+    option('--disable-elf-hack', help='Disable elf hacks')
+
+    set_config('USE_ELF_HACK',
+               depends_if('--enable-elf-hack')(lambda _: True))
+
+
+@depends(check_build_environment)
+def idl_roots(build_env):
+    return namespace(ipdl_root=os.path.join(build_env.topobjdir, 'ipc', 'ipdl'),
+                     webidl_root=os.path.join(build_env.topobjdir,
+                                              'dom', 'bindings'))
+
+set_config('WEBIDL_ROOT', idl_roots.webidl_root)
+set_config('IPDL_ROOT', idl_roots.ipdl_root)
+
+# Proxy bypass protection
+# ==============================================================
+
+option('--enable-proxy-bypass-protection',
+       help='Prevent suspected or confirmed proxy bypasses')
+
+@depends_if('--enable-proxy-bypass-protection')
+def proxy_bypass_protection(_):
+    return True
+
+set_config('MOZ_PROXY_BYPASS_PROTECTION', proxy_bypass_protection)
+set_define('MOZ_PROXY_BYPASS_PROTECTION', proxy_bypass_protection)

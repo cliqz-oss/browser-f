@@ -51,7 +51,7 @@ The actor implementation would go somewhere like
     // You also need to export the actor class in your module for discovery.
     exports.HelloActor = HelloActor;
 
-To activate your actor, register it in the `addBrowserActors` method in `server/main.js`.
+To activate your actor, register it in the `_addBrowserActors` method in `server/main.js`.
 The registration code would look something like this:
 
     this.registerModule("devtools/server/actors/hello-world", {
@@ -487,11 +487,11 @@ Here's how you'd set it up in a spec:
 
 Here's how the implementation would look:
 
-    const event = require("sdk/event/core");
+    const EventEmitter = require("devtools/shared/event-emitter");
 
     // In your protocol.ActorClassWithSpec definition:
     giveGoodNews: function (news) {
-      event.emit(this, "good-news", news);
+      EventEmitter.emit(this, "good-news", news);
     }
 
 Now you can listen to events on a front:

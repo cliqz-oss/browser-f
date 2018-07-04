@@ -9,10 +9,12 @@ description: >
     Strict Mode - octal extension is forbidden in strict mode (after a
     hex number is assigned to a variable)
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [onlyStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 var a;
 a = 0x1;

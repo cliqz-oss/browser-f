@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -26,6 +27,8 @@ struct VertexShaderConstants;
 struct PixelShaderConstants;
 }
 namespace gfx {
+class VRThread;
+
 namespace impl {
 
 enum class OculusControllerAxisType : uint16_t {
@@ -36,16 +39,19 @@ enum class OculusControllerAxisType : uint16_t {
 
 class VROculusSession
 {
-  NS_INLINE_DECL_REFCOUNTING(VROculusSession);
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VROculusSession);
+  friend class VRDisplayOculus;
 public:
   VROculusSession();
-  void Refresh();
+  void Refresh(bool aForceRefresh = false);
+  void StartTracking();
+  void StopTracking();
   bool IsTrackingReady() const;
-  bool IsRenderReady() const;
-  ovrSession Get();
   void StartPresentation(const IntSize& aSize);
   void StopPresentation();
-  void StopTracking();
+  bool IsPresentationReady() const;
+  bool IsMounted() const;
+  ovrSession Get();
   bool IsQuitTimeoutActive();
   already_AddRefed<layers::CompositingRenderTargetD3D11> GetNextRenderTarget();
   ovrTextureSwapChain GetSwapChain();
@@ -56,17 +62,23 @@ private:
   ovrInitFlags mInitFlags;
   ovrTextureSwapChain mTextureSet;
   nsTArray<RefPtr<layers::CompositingRenderTargetD3D11>> mRenderTargets;
-  bool mPresenting;
   IntSize mPresentationSize;
   RefPtr<ID3D11Device> mDevice;
+  RefPtr<VRThread> mSubmitThread;
   // The timestamp of the last time Oculus set ShouldQuit to true.
   TimeStamp mLastShouldQuit;
   // The timestamp of the last ending presentation
   TimeStamp mLastPresentationEnd;
-  TimeStamp mPresentationStart;
+  VRTelemetry mTelemetry;
+  bool mRequestPresentation;
+  bool mRequestTracking;
+  bool mTracking;
+  bool mDrawBlack;
+  bool mIsConnected;
+  bool mIsMounted;
 
   ~VROculusSession();
-  void Uninitialize(bool aUnloadLib);
+  void Uninitialize();
   bool Initialize(ovrInitFlags aFlags);
   bool LoadOvrLib();
   void UnloadOvrLib();
@@ -81,14 +93,13 @@ private:
 class VRDisplayOculus : public VRDisplayHost
 {
 public:
-  virtual void NotifyVSync() override;
   void ZeroSensor() override;
 
 protected:
   virtual VRHMDSensorState GetSensorState() override;
   virtual void StartPresentation() override;
   virtual void StopPresentation() override;
-  virtual bool SubmitFrame(mozilla::layers::TextureSourceD3D11* aSource,
+  virtual bool SubmitFrame(ID3D11Texture2D* aSource,
                            const IntSize& aSize,
                            const gfx::Rect& aLeftEyeRect,
                            const gfx::Rect& aRightEyeRect) override;
@@ -97,6 +108,7 @@ protected:
 public:
   explicit VRDisplayOculus(VROculusSession* aSession);
   void Destroy();
+  void Refresh();
 
 protected:
   virtual ~VRDisplayOculus();
@@ -107,8 +119,6 @@ protected:
   RefPtr<VROculusSession> mSession;
   ovrFovPort mFOVPort[2];
 
-  RefPtr<ID3D11Device> mDevice;
-  RefPtr<ID3D11DeviceContext> mContext;
   ID3D11VertexShader* mQuadVS;
   ID3D11PixelShader* mQuadPS;
   RefPtr<ID3D11SamplerState> mLinearSamplerState;
@@ -122,6 +132,7 @@ protected:
   float mEyeHeight;
 
   bool UpdateConstantBuffers();
+  void UpdateEyeParameters(gfx::Matrix4x4* aHeadToEyeTransforms = nullptr);
 
   struct Vertex
   {
@@ -143,8 +154,9 @@ public:
                      uint32_t aHapticIndex,
                      double aIntensity,
                      double aDuration,
-                     uint32_t aPromiseID);
+                     const VRManagerPromise& aPromise);
   void StopVibrateHaptic();
+  void ShutdownVibrateHapticThread();
 
 protected:
   virtual ~VRControllerOculus();
@@ -155,14 +167,14 @@ private:
                            double aIntensity,
                            double aDuration,
                            uint64_t aVibrateIndex,
-                           uint32_t aPromiseID);
-  void VibrateHapticComplete(ovrSession aSession, uint32_t aPromiseID, bool aStop);
+                           const VRManagerPromise& aPromise);
+  void VibrateHapticComplete(ovrSession aSession, const VRManagerPromise& aPromise, bool aStop);
 
   float mAxisMove[static_cast<uint32_t>(
                   OculusControllerAxisType::NumVRControllerAxisType)];
   float mIndexTrigger;
   float mHandTrigger;
-  nsCOMPtr<nsIThread> mVibrateThread;
+  RefPtr<VRThread> mVibrateThread;
   Atomic<bool> mIsVibrateStopped;
 };
 
@@ -174,7 +186,10 @@ public:
   static already_AddRefed<VRSystemManagerOculus> Create();
   virtual void Destroy() override;
   virtual void Shutdown() override;
-  virtual bool GetHMDs(nsTArray<RefPtr<VRDisplayHost> >& aHMDResult) override;
+  virtual void Enumerate() override;
+  virtual void NotifyVSync() override;
+  virtual bool ShouldInhibitEnumeration() override;
+  virtual void GetHMDs(nsTArray<RefPtr<VRDisplayHost> >& aHMDResult) override;
   virtual bool GetIsPresenting() override;
   virtual void HandleInput() override;
   virtual void GetControllers(nsTArray<RefPtr<VRControllerHost>>&
@@ -182,7 +197,7 @@ public:
   virtual void ScanForControllers() override;
   virtual void RemoveControllers() override;
   virtual void VibrateHaptic(uint32_t aControllerIdx, uint32_t aHapticIndex,
-                             double aIntensity, double aDuration, uint32_t aPromiseID) override;
+                             double aIntensity, double aDuration, const VRManagerPromise& aPromise) override;
   virtual void StopVibrateHaptic(uint32_t aControllerIdx) override;
 
 protected:

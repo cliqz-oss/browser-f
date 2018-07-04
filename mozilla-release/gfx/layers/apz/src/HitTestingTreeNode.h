@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,9 +7,9 @@
 #ifndef mozilla_layers_HitTestingTreeNode_h
 #define mozilla_layers_HitTestingTreeNode_h
 
-#include "APZUtils.h"                       // for HitTestResult
 #include "FrameMetrics.h"                   // for ScrollableLayerGuid
 #include "Layers.h"
+#include "mozilla/gfx/CompositorHitTestInfo.h"
 #include "mozilla/gfx/Matrix.h"             // for Matrix4x4
 #include "mozilla/layers/LayersTypes.h"     // for EventRegions
 #include "mozilla/Maybe.h"                  // for Maybe
@@ -56,8 +56,8 @@ private:
   ~HitTestingTreeNode();
 public:
   HitTestingTreeNode(AsyncPanZoomController* aApzc, bool aIsPrimaryHolder,
-                     uint64_t aLayersId);
-  void RecycleWith(AsyncPanZoomController* aApzc, uint64_t aLayersId);
+                     LayersId aLayersId);
+  void RecycleWith(AsyncPanZoomController* aApzc, LayersId aLayersId);
   void Destroy();
 
   /* Tree construction methods */
@@ -81,7 +81,7 @@ public:
   AsyncPanZoomController* GetApzc() const;
   AsyncPanZoomController* GetNearestContainingApzc() const;
   bool IsPrimaryHolder() const;
-  uint64_t GetLayersId() const;
+  LayersId GetLayersId() const;
 
   /* Hit test related methods */
 
@@ -89,20 +89,21 @@ public:
                       const LayerIntRegion& aVisibleRegion,
                       const CSSTransformMatrix& aTransform,
                       const Maybe<ParentLayerIntRegion>& aClipRegion,
-                      const EventRegionsOverride& aOverride);
+                      const EventRegionsOverride& aOverride,
+                      bool aIsBackfaceHidden);
   bool IsOutsideClip(const ParentLayerPoint& aPoint) const;
 
   /* Scrollbar info */
 
-  void SetScrollbarData(FrameMetrics::ViewID aScrollViewId,
-                        const uint64_t& aScrollbarAnimationId,
-                        const ScrollThumbData& aThumbData,
-                        bool aIsScrollContainer);
+  void SetScrollbarData(const uint64_t& aScrollbarAnimationId,
+                        const ScrollbarData& aScrollbarData);
   bool MatchesScrollDragMetrics(const AsyncDragMetrics& aDragMetrics) const;
   bool IsScrollbarNode() const;  // Scroll thumb or scrollbar container layer.
+  // This can only be called if IsScrollbarNode() is true
+  ScrollDirection GetScrollbarDirection() const;
   bool IsScrollThumbNode() const;  // Scroll thumb container layer.
   FrameMetrics::ViewID GetScrollTargetId() const;
-  const ScrollThumbData& GetScrollThumbData() const;
+  const ScrollbarData& GetScrollbarData() const;
   const uint64_t& GetScrollbarAnimationId() const;
 
   /* Fixed pos info */
@@ -117,7 +118,7 @@ public:
                                 const LayerToParentLayerMatrix4x4& aTransform) const;
   /* Assuming aPoint is inside the clip region for this node, check which of the
    * event region spaces it falls inside. */
-  HitTestResult HitTest(const LayerPoint& aPoint) const;
+  gfx::CompositorHitTestInfo HitTest(const LayerPoint& aPoint) const;
   /* Returns the mOverride flag. */
   EventRegionsOverride GetEventRegionsOverride() const;
   const CSSTransformMatrix& GetTransform() const;
@@ -136,22 +137,15 @@ private:
   RefPtr<AsyncPanZoomController> mApzc;
   bool mIsPrimaryApzcHolder;
 
-  uint64_t mLayersId;
-
-  // This is set for both scroll track and scroll thumb Container layers, and
-  // represents the scroll id of the scroll frame scrolled by the scrollbar.
-  FrameMetrics::ViewID mScrollViewId;
+  LayersId mLayersId;
 
   // This is only set to non-zero if WebRender is enabled, and only for HTTNs
   // where IsScrollThumbNode() returns true. It holds the animation id that we
   // use to move the thumb node to reflect async scrolling.
   uint64_t mScrollbarAnimationId;
 
-  // This is set for scroll thumb Container layers only.
-  ScrollThumbData mScrollThumbData;
-
-  // This is set for scroll track Container layers only.
-  bool mIsScrollbarContainer;
+  // This is set for scrollbar Container and Thumb layers.
+  ScrollbarData mScrollbarData;
 
   FrameMetrics::ViewID mFixedPosTarget;
 
@@ -169,6 +163,14 @@ private:
   /* This is the transform from layer L. This does NOT include any async
    * transforms. */
   CSSTransformMatrix mTransform;
+
+  /* Whether layer L is backface-visibility:hidden, and its backface is
+   * currently visible. It's true that the latter depends on the layer's
+   * shadow transform, but the sorts of changes APZ makes to the shadow
+   * transform shouldn't change the backface from hidden to visible or
+   * vice versa, so it's sufficient to record this at hit test tree
+   * building time. */
+  bool mIsBackfaceHidden;
 
   /* This is clip rect for L that we wish to use for hit-testing purposes. Note
    * that this may not be exactly the same as the clip rect on layer L because

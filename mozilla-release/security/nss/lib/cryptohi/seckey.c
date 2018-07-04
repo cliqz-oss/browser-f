@@ -221,8 +221,7 @@ SECKEY_CreateECPrivateKey(SECKEYECParams *param, SECKEYPublicKey **pubk, void *c
                                             PK11_ATTR_SESSION |
                                                 PK11_ATTR_INSENSITIVE |
                                                 PK11_ATTR_PUBLIC,
-                                            CKF_DERIVE, CKF_DERIVE |
-                                                            CKF_SIGN,
+                                            CKF_DERIVE, CKF_DERIVE | CKF_SIGN,
                                             cx);
     if (!privk)
         privk = PK11_GenerateKeyPairWithOpFlags(slot, CKM_EC_KEY_PAIR_GEN,
@@ -230,8 +229,7 @@ SECKEY_CreateECPrivateKey(SECKEYECParams *param, SECKEYPublicKey **pubk, void *c
                                                 PK11_ATTR_SESSION |
                                                     PK11_ATTR_SENSITIVE |
                                                     PK11_ATTR_PRIVATE,
-                                                CKF_DERIVE, CKF_DERIVE |
-                                                                CKF_SIGN,
+                                                CKF_DERIVE, CKF_DERIVE | CKF_SIGN,
                                                 cx);
 
     PK11_FreeSlot(slot);
@@ -1048,6 +1046,7 @@ SECKEY_SignatureLen(const SECKEYPublicKey *pubk)
 
     switch (pubk->keyType) {
         case rsaKey:
+        case rsaPssKey:
             b0 = pubk->u.rsa.modulus.data[0];
             return b0 ? pubk->u.rsa.modulus.len : pubk->u.rsa.modulus.len - 1;
         case dsaKey:
@@ -1973,4 +1972,119 @@ SECKEY_GetECCOid(const SECKEYECParams *params)
         return 0;
 
     return oidData->offset;
+}
+
+static CK_MECHANISM_TYPE
+sec_GetHashMechanismByOidTag(SECOidTag tag)
+{
+    switch (tag) {
+        case SEC_OID_SHA512:
+            return CKM_SHA512;
+        case SEC_OID_SHA384:
+            return CKM_SHA384;
+        case SEC_OID_SHA256:
+            return CKM_SHA256;
+        case SEC_OID_SHA224:
+            return CKM_SHA224;
+        case SEC_OID_SHA1:
+            return CKM_SHA_1;
+        default:
+            PORT_SetError(SEC_ERROR_INVALID_ALGORITHM);
+            return CKM_INVALID_MECHANISM;
+    }
+}
+
+static CK_RSA_PKCS_MGF_TYPE
+sec_GetMgfTypeByOidTag(SECOidTag tag)
+{
+    switch (tag) {
+        case SEC_OID_SHA512:
+            return CKG_MGF1_SHA512;
+        case SEC_OID_SHA384:
+            return CKG_MGF1_SHA384;
+        case SEC_OID_SHA256:
+            return CKG_MGF1_SHA256;
+        case SEC_OID_SHA224:
+            return CKG_MGF1_SHA224;
+        case SEC_OID_SHA1:
+            return CKG_MGF1_SHA1;
+        default:
+            PORT_SetError(SEC_ERROR_INVALID_ALGORITHM);
+            return 0;
+    }
+}
+
+SECStatus
+sec_RSAPSSParamsToMechanism(CK_RSA_PKCS_PSS_PARAMS *mech,
+                            const SECKEYRSAPSSParams *params)
+{
+    SECStatus rv = SECSuccess;
+    SECOidTag hashAlgTag;
+    unsigned long saltLength;
+    unsigned long trailerField;
+
+    PORT_Memset(mech, 0, sizeof(CK_RSA_PKCS_PSS_PARAMS));
+
+    if (params->hashAlg) {
+        hashAlgTag = SECOID_GetAlgorithmTag(params->hashAlg);
+    } else {
+        hashAlgTag = SEC_OID_SHA1; /* default, SHA-1 */
+    }
+    mech->hashAlg = sec_GetHashMechanismByOidTag(hashAlgTag);
+    if (mech->hashAlg == CKM_INVALID_MECHANISM) {
+        return SECFailure;
+    }
+
+    if (params->maskAlg) {
+        SECAlgorithmID maskHashAlg;
+        SECOidTag maskHashAlgTag;
+        PORTCheapArenaPool tmpArena;
+
+        if (SECOID_GetAlgorithmTag(params->maskAlg) != SEC_OID_PKCS1_MGF1) {
+            /* only MGF1 is known to PKCS#11 */
+            PORT_SetError(SEC_ERROR_INVALID_ALGORITHM);
+            return SECFailure;
+        }
+
+        PORT_InitCheapArena(&tmpArena, DER_DEFAULT_CHUNKSIZE);
+        rv = SEC_QuickDERDecodeItem(&tmpArena.arena, &maskHashAlg,
+                                    SEC_ASN1_GET(SECOID_AlgorithmIDTemplate),
+                                    &params->maskAlg->parameters);
+        PORT_DestroyCheapArena(&tmpArena);
+        if (rv != SECSuccess) {
+            return rv;
+        }
+        maskHashAlgTag = SECOID_GetAlgorithmTag(&maskHashAlg);
+        mech->mgf = sec_GetMgfTypeByOidTag(maskHashAlgTag);
+        if (mech->mgf == 0) {
+            return SECFailure;
+        }
+    } else {
+        mech->mgf = CKG_MGF1_SHA1; /* default, MGF1 with SHA-1 */
+    }
+
+    if (params->saltLength.data) {
+        rv = SEC_ASN1DecodeInteger((SECItem *)&params->saltLength, &saltLength);
+        if (rv != SECSuccess) {
+            return rv;
+        }
+    } else {
+        saltLength = 20; /* default, 20 */
+    }
+    mech->sLen = saltLength;
+
+    if (params->trailerField.data) {
+        rv = SEC_ASN1DecodeInteger((SECItem *)&params->trailerField, &trailerField);
+        if (rv != SECSuccess) {
+            return rv;
+        }
+        if (trailerField != 1) {
+            /* the value must be 1, which represents the trailer field
+             * with hexadecimal value 0xBC */
+            PORT_SetError(SEC_ERROR_INVALID_ARGS);
+            return SECFailure;
+        }
+    }
+
+    return rv;
 }

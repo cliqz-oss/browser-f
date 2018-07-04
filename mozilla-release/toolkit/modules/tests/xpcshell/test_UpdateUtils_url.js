@@ -3,13 +3,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://testing-common/AppInfo.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ctypes.jsm");
 
-Cu.import("resource://gre/modules/UpdateUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://testing-common/AppInfo.jsm");
-Cu.import("resource://gre/modules/ctypes.jsm");
+ChromeUtils.defineModuleGetter(this, "WindowsRegistry",
+                               "resource://gre/modules/WindowsRegistry.jsm");
 
 const PREF_APP_UPDATE_CHANNEL     = "app.update.channel";
 const PREF_APP_PARTNER_BRANCH     = "app.partner.";
@@ -71,7 +73,8 @@ function getServicePack() {
       throw ("Failure in GetVersionEx (returned 0)");
     }
 
-    return winVer.wServicePackMajor + "." + winVer.wServicePackMinor;
+    return winVer.wServicePackMajor + "." + winVer.wServicePackMinor + "." +
+           winVer.dwBuildNumber;
   } finally {
     kernel32.close();
   }
@@ -131,38 +134,16 @@ function getProcArchitecture() {
 
 // Gets the supported CPU instruction set.
 function getInstructionSet() {
-  if (AppConstants.platform == "win") {
-    const PF_MMX_INSTRUCTIONS_AVAILABLE = 3; // MMX
-    const PF_XMMI_INSTRUCTIONS_AVAILABLE = 6; // SSE
-    const PF_XMMI64_INSTRUCTIONS_AVAILABLE = 10; // SSE2
-    const PF_SSE3_INSTRUCTIONS_AVAILABLE = 13; // SSE3
-
-    let lib = ctypes.open("kernel32.dll");
-    let IsProcessorFeaturePresent = lib.declare("IsProcessorFeaturePresent",
-                                                ctypes.winapi_abi,
-                                                ctypes.int32_t, /* success */
-                                                ctypes.uint32_t); /* DWORD */
-    let instructionSet = "unknown";
-    try {
-      if (IsProcessorFeaturePresent(PF_SSE3_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "SSE3";
-      } else if (IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "SSE2";
-      } else if (IsProcessorFeaturePresent(PF_XMMI_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "SSE";
-      } else if (IsProcessorFeaturePresent(PF_MMX_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "MMX";
-      }
-    } catch (e) {
-      Cu.reportError("Error getting processor instruction set. " +
-                     "Exception: " + e);
+  const CPU_EXTENSIONS = ["hasSSE4_2", "hasSSE4_1", "hasSSE4A", "hasSSSE3",
+                          "hasSSE3", "hasSSE2", "hasSSE", "hasMMX",
+                          "hasNEON", "hasARMv7", "hasARMv6"];
+  for (let ext of CPU_EXTENSIONS) {
+    if (Services.sysinfo.getProperty(ext)) {
+      return ext.substring(3);
     }
-
-    lib.close();
-    return instructionSet;
   }
 
-  return "NA";
+  return "error";
 }
 
 // Gets the RAM size in megabytes. This will round the value because sysinfo
@@ -235,6 +216,11 @@ add_task(async function test_build_target() {
     abi += "-" + getProcArchitecture();
   }
 
+  if (AppConstants.ASAN) {
+    // Allow ASan builds to receive their own updates
+    abi += "-asan";
+  }
+
   Assert.equal(await getResult(url), gAppInfo.OS + "_" + abi,
                "the url param for %BUILD_TARGET%" + MSG_SHOULD_EQUAL);
 });
@@ -282,9 +268,8 @@ add_task(async function test_platform_version() {
 // url constructed with %OS_VERSION%
 add_task(async function test_os_version() {
   let url = URL_PREFIX + "%OS_VERSION%/";
-  let osVersion;
-  let sysInfo = Cc["@mozilla.org/system-info;1"].getService(Ci.nsIPropertyBag2);
-  osVersion = sysInfo.getProperty("name") + " " + sysInfo.getProperty("version");
+  let osVersion = Services.sysinfo.getProperty("name") + " " +
+                  Services.sysinfo.getProperty("version");
 
   if (AppConstants.platform == "win") {
     try {
@@ -294,20 +279,24 @@ add_task(async function test_os_version() {
       do_throw("Failure obtaining service pack: " + e);
     }
 
-    if ("5.0" === sysInfo.getProperty("version")) { // Win2K
-      osVersion += " (unknown)";
-    } else {
-      try {
-        osVersion += " (" + getProcArchitecture() + ")";
-      } catch (e) {
-        do_throw("Failed to obtain processor architecture: " + e);
-      }
+    if (Services.vc.compare(Services.sysinfo.getProperty("version"), "10") >= 0) {
+      const WINDOWS_UBR_KEY_PATH = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+      let ubr = WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_LOCAL_MACHINE,
+                                           WINDOWS_UBR_KEY_PATH, "UBR",
+                                           Ci.nsIWindowsRegKey.WOW64_64);
+      osVersion += (ubr !== undefined) ? "." + ubr : ".unknown";
+    }
+
+    try {
+      osVersion += " (" + getProcArchitecture() + ")";
+    } catch (e) {
+      do_throw("Failed to obtain processor architecture: " + e);
     }
   }
 
   if (osVersion) {
     try {
-      osVersion += " (" + sysInfo.getProperty("secondaryLibrary") + ")";
+      osVersion += " (" + Services.sysinfo.getProperty("secondaryLibrary") + ")";
     } catch (e) {
       // Not all platforms have a secondary widget library, so an error is
       // nothing to worry about.
@@ -346,11 +335,6 @@ add_task(async function test_custom() {
 add_task(async function test_systemCapabilities() {
   let url = URL_PREFIX + "%SYSTEM_CAPABILITIES%/";
   let systemCapabilities = "ISET:" + getInstructionSet() + ",MEM:" + getMemoryMB();
-  if (AppConstants.platform == "win") {
-    // The default value for shouldBlockIncompatJaws in the mock
-    // Services.appinfo is false so the value should be JAWS:0
-    systemCapabilities += ",JAWS:0";
-  }
   Assert.equal(await getResult(url), systemCapabilities,
                "the url param for %SYSTEM_CAPABILITIES%" + MSG_SHOULD_EQUAL);
 });

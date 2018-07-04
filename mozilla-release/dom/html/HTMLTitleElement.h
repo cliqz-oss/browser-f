@@ -21,7 +21,6 @@ class HTMLTitleElement final : public nsGenericHTMLElement,
 {
 public:
   using Element::GetText;
-  using Element::SetText;
 
   explicit HTMLTitleElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
@@ -53,8 +52,7 @@ public:
 protected:
   virtual ~HTMLTitleElement();
 
-  virtual JSObject* WrapNode(JSContext* cx, JS::Handle<JSObject*> aGivenProto)
-    override final;
+  JSObject* WrapNode(JSContext* cx, JS::Handle<JSObject*> aGivenProto) final;
 
 private:
   void SendTitleChangeEvent(bool aBound);

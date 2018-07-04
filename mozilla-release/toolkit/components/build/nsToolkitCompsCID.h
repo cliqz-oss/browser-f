@@ -21,9 +21,6 @@
 #define NS_AUTOCOMPLETEMDBRESULT_CONTRACTID \
   "@mozilla.org/autocomplete/mdb-result;1"
 
-#define NS_DOWNLOADMANAGER_CONTRACTID \
-  "@mozilla.org/download-manager;1"
-
 #define NS_DOWNLOADPLATFORM_CONTRACTID \
   "@mozilla.org/toolkit/download-platform;1"
 
@@ -89,9 +86,6 @@
 #define NS_ADDONCONTENTPOLICY_CONTRACTID \
   "@mozilla.org/addons/content-policy;1"
 
-#define NS_ADDONPATHSERVICE_CONTRACTID \
-    "@mozilla.org/addon-path-service;1"
-
 /////////////////////////////////////////////////////////////////////////////
 
 #define ALERT_NOTIFICATION_CID \
@@ -116,9 +110,6 @@
 // {7A6F70B6-2BBD-44b5-9304-501352D44AB5}
 #define NS_AUTOCOMPLETEMDBRESULT_CID \
 { 0x7a6f70b6, 0x2bbd, 0x44b5, { 0x93, 0x4, 0x50, 0x13, 0x52, 0xd4, 0x4a, 0xb5 } }
-
-#define NS_DOWNLOADMANAGER_CID \
-    { 0xedb0490e, 0x1dd1, 0x11b2, { 0x83, 0xb8, 0xdb, 0xf8, 0xd8, 0x59, 0x06, 0xa6 } }
 
 #define NS_DOWNLOADPLATFORM_CID \
     { 0x649a14c9, 0xfe5c, 0x48ec, { 0x9c, 0x85, 0x00, 0xca, 0xd9, 0xcc, 0xf3, 0x2e } }
@@ -176,16 +167,19 @@
 #endif
 
 #define NS_APPLICATION_REPUTATION_SERVICE_CONTRACTID \
-  "@mozilla.org/downloads/application-reputation-service;1"
+  "@mozilla.org/reputationservice/application-reputation-service;1"
 
 #define NS_APPLICATION_REPUTATION_SERVICE_CID \
-{ 0x8576c950, 0xf4a2, 0x11e2, { 0xb7, 0x78, 0x08, 0x00, 0x20, 0x0c, 0x9a, 0x66 } }
+{ 0xd21b4c33, 0x716f, 0x4117, { 0x80, 0x41, 0x27, 0x70, 0xb5, 0x9f, 0xf8, 0xa6 } }
+
+#define NS_LOGIN_REPUTATION_SERVICE_CONTRACTID \
+  "@mozilla.org/reputationservice/login-reputation-service;1"
+
+#define NS_LOGIN_REPUTATION_SERVICE_CID \
+{ 0x91fa9e67, 0x1427, 0x4ee9, { 0x8e, 0xe0, 0x1a, 0x6e, 0xd5, 0x78, 0xbe, 0xe1 } }
 
 #define NS_ADDONCONTENTPOLICY_CID \
 { 0xc26a8241, 0xecf4, 0x4aed, { 0x9f, 0x3c, 0xf1, 0xf5, 0xc7, 0x13, 0xb9, 0xa5 } }
-
-#define NS_ADDON_PATH_SERVICE_CID \
-{ 0xa39f39d0, 0xdfb6, 0x11e3, { 0x8b, 0x68, 0x08, 0x00, 0x20, 0x0c, 0x9a, 0x66 } }
 
 #define NS_ADDON_POLICY_SERVICE_CID \
 { 0x562de129, 0x8338, 0x482c, { 0xbb, 0x96, 0xa1, 0xff, 0x09, 0xee, 0x53, 0xcc } }

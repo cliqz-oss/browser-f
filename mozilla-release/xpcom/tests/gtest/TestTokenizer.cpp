@@ -11,7 +11,8 @@
 
 using namespace mozilla;
 
-static bool IsOperator(char const c)
+template <typename Char>
+static bool IsOperator(Char const c)
 {
   return c == '+' || c == '*';
 }
@@ -200,6 +201,121 @@ TEST(Tokenizer, Main)
   p.Rollback();
   EXPECT_TRUE(p.Next(t));
   EXPECT_TRUE(t.Type() == Tokenizer::TOKEN_EOF);
+
+  EXPECT_FALSE(p.Next(t));
+
+  p.Rollback();
+  EXPECT_TRUE(p.CheckEOF());
+
+  EXPECT_FALSE(p.CheckEOF());
+}
+
+TEST(Tokenizer, Main16)
+{
+  Tokenizer16::Token t;
+
+  // Synthetic code-specific test
+
+  Tokenizer16 p(NS_LITERAL_STRING("test123 ,15  \t*\r\n%xx,-15\r\r"));
+
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_WORD);
+  EXPECT_TRUE(t.AsString() == NS_LITERAL_STRING("test123"));
+
+  Tokenizer16::Token u;
+  EXPECT_FALSE(p.Check(u));
+
+  EXPECT_FALSE(p.CheckChar('!'));
+
+  EXPECT_FALSE(p.Check(Tokenizer16::Token::Number(123)));
+
+  EXPECT_TRUE(p.CheckWhite());
+
+  EXPECT_TRUE(p.CheckChar(','));
+
+  EXPECT_TRUE(p.Check(Tokenizer16::Token::Number(15)));
+
+  p.Rollback();
+  EXPECT_TRUE(p.Check(Tokenizer16::Token::Number(15)));
+
+  p.Rollback();
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_INTEGER);
+  EXPECT_TRUE(t.AsInteger() == 15);
+
+  EXPECT_FALSE(p.CheckChar(IsOperator));
+
+  EXPECT_TRUE(p.CheckWhite());
+
+  p.SkipWhites();
+
+  EXPECT_FALSE(p.CheckWhite());
+
+  p.Rollback();
+
+  EXPECT_TRUE(p.CheckWhite());
+  EXPECT_TRUE(p.CheckWhite());
+
+  p.Record(Tokenizer16::EXCLUDE_LAST);
+
+  EXPECT_TRUE(p.CheckChar(IsOperator));
+
+  p.Rollback();
+
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_CHAR);
+  EXPECT_TRUE(t.AsChar() == '*');
+
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_EOL);
+
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_CHAR);
+  EXPECT_TRUE(t.AsChar() == '%');
+
+  nsAutoString claim;
+  p.Claim(claim, Tokenizer16::EXCLUDE_LAST);
+  EXPECT_TRUE(claim == NS_LITERAL_STRING("*\r\n"));
+  p.Claim(claim, Tokenizer16::INCLUDE_LAST);
+  EXPECT_TRUE(claim == NS_LITERAL_STRING("*\r\n%"));
+
+  p.Rollback();
+  EXPECT_TRUE(p.CheckChar('%'));
+
+  p.Record(Tokenizer16::INCLUDE_LAST);
+
+  EXPECT_FALSE(p.CheckWord(NS_LITERAL_STRING("xy")));
+
+  EXPECT_TRUE(p.CheckWord(NS_LITERAL_STRING("xx")));
+
+
+  p.Claim(claim, Tokenizer16::INCLUDE_LAST);
+  EXPECT_TRUE(claim == NS_LITERAL_STRING("%xx"));
+
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_CHAR);
+  EXPECT_TRUE(t.AsChar() == ',');
+
+  EXPECT_TRUE(p.CheckChar('-'));
+
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_INTEGER);
+  EXPECT_TRUE(t.AsInteger() == 15);
+
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_EOL);
+
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_EOL);
+
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_EOF);
+
+  EXPECT_FALSE(p.Next(t));
+
+  p.Rollback();
+  EXPECT_TRUE(p.Next(t));
+  EXPECT_TRUE(t.Type() == Tokenizer16::TOKEN_EOF);
 
   EXPECT_FALSE(p.Next(t));
 
@@ -825,7 +941,7 @@ TEST(Tokenizer, CustomRaw)
 
 TEST(Tokenizer, Incremental)
 {
-  typedef TokenizerBase::Token Token;
+  typedef IncrementalTokenizer::Token Token;
 
   int test = 0;
   IncrementalTokenizer i([&](Token const& t, IncrementalTokenizer& i) -> nsresult
@@ -858,7 +974,7 @@ TEST(Tokenizer, Incremental)
 
 TEST(Tokenizer, IncrementalRollback)
 {
-  typedef TokenizerBase::Token Token;
+  typedef IncrementalTokenizer::Token Token;
 
   int test = 0;
   IncrementalTokenizer i([&](Token const& t, IncrementalTokenizer& i) -> nsresult
@@ -894,7 +1010,7 @@ TEST(Tokenizer, IncrementalRollback)
 
 TEST(Tokenizer, IncrementalNeedMoreInput)
 {
-  typedef TokenizerBase::Token Token;
+  typedef IncrementalTokenizer::Token Token;
 
   int test = 0;
   IncrementalTokenizer i([&](Token const& t, IncrementalTokenizer& i) -> nsresult
@@ -953,7 +1069,7 @@ TEST(Tokenizer, IncrementalNeedMoreInput)
 
 TEST(Tokenizer, IncrementalCustom)
 {
-  typedef TokenizerBase::Token Token;
+  typedef IncrementalTokenizer::Token Token;
 
   int test = 0;
   Token custom;
@@ -981,7 +1097,7 @@ TEST(Tokenizer, IncrementalCustom)
 
 TEST(Tokenizer, IncrementalCustomRaw)
 {
-  typedef TokenizerBase::Token Token;
+  typedef IncrementalTokenizer::Token Token;
 
   int test = 0;
   Token custom;
@@ -1023,7 +1139,7 @@ TEST(Tokenizer, IncrementalCustomRaw)
 
 TEST(Tokenizer, IncrementalCustomRemove)
 {
-  typedef TokenizerBase::Token Token;
+  typedef IncrementalTokenizer::Token Token;
 
   int test = 0;
   Token custom;
@@ -1051,7 +1167,7 @@ TEST(Tokenizer, IncrementalCustomRemove)
 
 TEST(Tokenizer, IncrementalBuffering1)
 {
-  typedef TokenizerBase::Token Token;
+  typedef IncrementalTokenizer::Token Token;
 
   int test = 0;
   Token custom;
@@ -1098,7 +1214,7 @@ TEST(Tokenizer, IncrementalBuffering1)
 
 TEST(Tokenizer, IncrementalBuffering2)
 {
-  typedef TokenizerBase::Token Token;
+  typedef IncrementalTokenizer::Token Token;
 
   int test = 0;
   Token custom;
@@ -1151,5 +1267,66 @@ TEST(Tokenizer, RecordAndReadUntil)
   EXPECT_FALSE(t.ReadUntil(mozilla::Tokenizer::Token::Char(','), subject));
   EXPECT_TRUE(subject.Length() == 0);
 
+  EXPECT_TRUE(t.CheckEOF());
+}
+
+TEST(Tokenizer, ReadIntegers)
+{
+  // Make sure that adding dash (the 'minus' sign) as an additional char
+  // doesn't break reading negative numbers.
+  Tokenizer t("100,-100,200,-200,4294967295,-4294967295,-2147483647", nullptr, "-");
+
+  uint32_t unsigned_value32;
+  int32_t signed_value32;
+  int64_t signed_value64;
+
+  // "100,"
+  EXPECT_TRUE(t.ReadInteger(&unsigned_value32));
+  EXPECT_TRUE(unsigned_value32 == 100);
+  EXPECT_TRUE(t.CheckChar(','));
+
+  // "-100,"
+  EXPECT_FALSE(t.ReadInteger(&unsigned_value32));
+  EXPECT_FALSE(t.CheckChar(','));
+
+  EXPECT_TRUE(t.ReadSignedInteger(&signed_value32));
+  EXPECT_TRUE(signed_value32 == -100);
+  EXPECT_TRUE(t.CheckChar(','));
+
+  // "200,"
+  EXPECT_TRUE(t.ReadSignedInteger(&signed_value32));
+  EXPECT_TRUE(signed_value32 == 200);
+  EXPECT_TRUE(t.CheckChar(','));
+
+  // "-200,"
+  EXPECT_TRUE(t.ReadSignedInteger(&signed_value32));
+  EXPECT_TRUE(signed_value32 == -200);
+  EXPECT_TRUE(t.CheckChar(','));
+
+  // "4294967295,"
+  EXPECT_FALSE(t.ReadSignedInteger(&signed_value32));
+  EXPECT_FALSE(t.CheckChar(','));
+
+  EXPECT_TRUE(t.ReadInteger(&unsigned_value32));
+  EXPECT_TRUE(unsigned_value32 == 4294967295UL);
+  EXPECT_TRUE(t.CheckChar(','));
+
+  // "-4294967295,"
+  EXPECT_FALSE(t.ReadSignedInteger(&signed_value32));
+  EXPECT_FALSE(t.CheckChar(','));
+
+  EXPECT_FALSE(t.ReadInteger(&unsigned_value32));
+  EXPECT_FALSE(t.CheckChar(','));
+
+  EXPECT_TRUE(t.ReadSignedInteger(&signed_value64));
+  EXPECT_TRUE(signed_value64 == -4294967295LL);
+  EXPECT_TRUE(t.CheckChar(','));
+
+  // "-2147483647"
+  EXPECT_FALSE(t.ReadInteger(&unsigned_value32));
+  EXPECT_FALSE(t.CheckChar(','));
+
+  EXPECT_TRUE(t.ReadSignedInteger(&signed_value32));
+  EXPECT_TRUE(signed_value32 == -2147483647L);
   EXPECT_TRUE(t.CheckEOF());
 }

@@ -1,11 +1,9 @@
 
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySession.jsm", this);
-Cu.import("resource://gre/modules/PromiseUtils.jsm", this);
-Cu.import("resource://testing-common/ContentTaskUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", this);
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm", this);
 
-const MESSAGE_TELEMETRY_PAYLOAD = "Telemetry:Payload";
-const MESSAGE_TELEMETRY_GET_CHILD_PAYLOAD = "Telemetry:GetChildPayload";
 const MESSAGE_CHILD_TEST_DONE = "ChildTest:Done";
 
 const PLATFORM_VERSION = "1.9.2";
@@ -59,23 +57,23 @@ function check_histogram_values(payload) {
   Assert.ok("TELEMETRY_TEST_COUNT" in hs, "Should have count test histogram.");
   Assert.ok("TELEMETRY_TEST_FLAG" in hs, "Should have flag test histogram.");
   Assert.ok("TELEMETRY_TEST_CATEGORICAL" in hs, "Should have categorical test histogram.");
-  Assert.equal(hs["TELEMETRY_TEST_COUNT"].sum, 2,
+  Assert.equal(hs.TELEMETRY_TEST_COUNT.sum, 2,
                "Count test histogram should have the right value.");
-  Assert.equal(hs["TELEMETRY_TEST_FLAG"].sum, 1,
+  Assert.equal(hs.TELEMETRY_TEST_FLAG.sum, 1,
                "Flag test histogram should have the right value.");
-  Assert.equal(hs["TELEMETRY_TEST_CATEGORICAL"].sum, 3,
+  Assert.equal(hs.TELEMETRY_TEST_CATEGORICAL.sum, 3,
                "Categorical test histogram should have the right sum.");
 
   const kh = payload.keyedHistograms;
   Assert.ok("TELEMETRY_TEST_KEYED_COUNT" in kh, "Should have keyed count test histogram.");
   Assert.ok("TELEMETRY_TEST_KEYED_FLAG" in kh, "Should have keyed flag test histogram.");
-  Assert.equal(kh["TELEMETRY_TEST_KEYED_COUNT"]["a"].sum, 1,
+  Assert.equal(kh.TELEMETRY_TEST_KEYED_COUNT.a.sum, 1,
                "Keyed count test histogram should have the right value.");
-  Assert.equal(kh["TELEMETRY_TEST_KEYED_COUNT"]["b"].sum, 2,
+  Assert.equal(kh.TELEMETRY_TEST_KEYED_COUNT.b.sum, 2,
                "Keyed count test histogram should have the right value.");
-  Assert.equal(kh["TELEMETRY_TEST_KEYED_FLAG"]["a"].sum, 1,
+  Assert.equal(kh.TELEMETRY_TEST_KEYED_FLAG.a.sum, 1,
                "Keyed flag test histogram should have the right value.");
-  Assert.equal(kh["TELEMETRY_TEST_KEYED_FLAG"]["b"].sum, 1,
+  Assert.equal(kh.TELEMETRY_TEST_KEYED_FLAG.b.sum, 1,
                "Keyed flag test histogram should have the right value.");
 }
 
@@ -91,7 +89,6 @@ add_task(async function() {
   // Setup.
   do_get_profile(true);
   loadAddonManager(APP_ID, APP_NAME, APP_VERSION, PLATFORM_VERSION);
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
   finishAddonManagerStartup();
   await TelemetryController.testSetup();
   if (runningInParent) {

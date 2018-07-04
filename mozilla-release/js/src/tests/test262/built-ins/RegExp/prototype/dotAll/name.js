@@ -1,10 +1,11 @@
+// |reftest| skip -- regexp-dotall is not supported
 // Copyright (C) 2017 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
 esid: sec-get-regexp.prototype.dotall
 description: >
   RegExp.prototype.dotAll name
-info: >
+info: |
   17 ECMAScript Standard Built-in Objects
 
   Functions that are specified as get or set accessor functions of built-in

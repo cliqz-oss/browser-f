@@ -3,16 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { interfaces: Ci, results: Cr, manager: Cm, utils: Cu } = Components;
+const Cm = Components.manager;
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
 const PREF_LOG_LEVEL = "loop.debug.loglevel";
 
+// eslint-disable-next-line no-unused-vars
 XPCOMUtils.defineLazyGetter(this, "log", () => {
-  let ConsoleAPI = Cu.import("resource://gre/modules/Console.jsm", {}).ConsoleAPI;
+  let ConsoleAPI = ChromeUtils.import("resource://gre/modules/Console.jsm", {}).ConsoleAPI;
   let consoleOptions = {
     maxLogLevelPref: PREF_LOG_LEVEL,
     prefix: "Loop"
@@ -30,7 +31,7 @@ function AboutPage(chromeURL, aboutHost, classID, description, uriFlags) {
 }
 
 AboutPage.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutModule]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAboutModule]),
   getURIFlags(aURI) { // eslint-disable-line no-unused-vars
     return this.uriFlags;
   },
@@ -90,4 +91,4 @@ XPCOMUtils.defineLazyGetter(AboutPocket, "aboutSignup", () =>
                 Ci.nsIAboutModule.HIDE_FROM_ABOUTABOUT)
 );
 
-this.EXPORTED_SYMBOLS = ["AboutPocket"];
+var EXPORTED_SYMBOLS = ["AboutPocket"];

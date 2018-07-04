@@ -7,17 +7,17 @@
 #ifndef vm_Caches_h
 #define vm_Caches_h
 
-#include "jsatom.h"
-#include "jsbytecode.h"
 #include "jsmath.h"
-#include "jsobj.h"
-#include "jsscript.h"
 
-#include "ds/FixedSizeHash.h"
 #include "frontend/SourceNotes.h"
 #include "gc/Tracer.h"
 #include "js/RootingAPI.h"
+#include "js/TypeDecls.h"
 #include "js/UniquePtr.h"
+#include "vm/ArrayObject.h"
+#include "vm/JSAtom.h"
+#include "vm/JSObject.h"
+#include "vm/JSScript.h"
 #include "vm/NativeObject.h"
 
 namespace js {
@@ -65,6 +65,15 @@ struct EvalCacheEntry
     JSScript* script;
     JSScript* callerScript;
     jsbytecode* pc;
+
+    // We sweep this cache before a nursery collection to remove entries with
+    // string keys in the nursery.
+    //
+    // The entire cache is purged on a major GC, so we don't need to sweep it
+    // then.
+    bool needsSweep() {
+        return !str->isTenured();
+    }
 };
 
 struct EvalCacheLookup
@@ -72,7 +81,6 @@ struct EvalCacheLookup
     explicit EvalCacheLookup(JSContext* cx) : str(cx), callerScript(cx) {}
     RootedLinearString str;
     RootedScript callerScript;
-    JSVersion version;
     jsbytecode* pc;
 };
 
@@ -84,34 +92,7 @@ struct EvalCacheHashPolicy
     static bool match(const EvalCacheEntry& entry, const EvalCacheLookup& l);
 };
 
-typedef HashSet<EvalCacheEntry, EvalCacheHashPolicy, SystemAllocPolicy> EvalCache;
-
-struct LazyScriptHashPolicy
-{
-    struct Lookup {
-        JSContext* cx;
-        LazyScript* lazy;
-
-        Lookup(JSContext* cx, LazyScript* lazy)
-          : cx(cx), lazy(lazy)
-        {}
-    };
-
-    static const size_t NumHashes = 3;
-
-    static void hash(const Lookup& lookup, HashNumber hashes[NumHashes]);
-    static bool match(JSScript* script, const Lookup& lookup);
-
-    // Alternate methods for use when removing scripts from the hash without an
-    // explicit LazyScript lookup.
-    static void hash(JSScript* script, HashNumber hashes[NumHashes]);
-    static bool match(JSScript* script, JSScript* lookup) { return script == lookup; }
-
-    static void clear(JSScript** pscript) { *pscript = nullptr; }
-    static bool isCleared(JSScript* script) { return !script; }
-};
-
-typedef FixedSizeHashSet<JSScript*, LazyScriptHashPolicy, 769> LazyScriptCache;
+typedef GCHashSet<EvalCacheEntry, EvalCacheHashPolicy, SystemAllocPolicy> EvalCache;
 
 /*
  * Cache for speeding up repetitive creation of objects in the VM.
@@ -229,6 +210,9 @@ class NewObjectCache
         MOZ_ASSERT(entry_ == makeIndex(clasp, key, kind));
         Entry* entry = &entries[entry_];
 
+        MOZ_ASSERT(!obj->hasDynamicSlots());
+        MOZ_ASSERT(obj->hasEmptyElements() || obj->is<ArrayObject>());
+
         entry->clasp = clasp;
         entry->key = key;
         entry->kind = kind;
@@ -239,8 +223,10 @@ class NewObjectCache
 
     static void copyCachedToObject(NativeObject* dst, NativeObject* src, gc::AllocKind kind) {
         js_memcpy(dst, src, gc::Arena::thingSize(kind));
-        Shape::writeBarrierPost(&dst->shape_, nullptr, dst->shape_);
-        ObjectGroup::writeBarrierPost(&dst->group_, nullptr, dst->group_);
+
+        // Initialize with barriers
+        dst->initGroup(src->group());
+        dst->initShape(src->shape());
     }
 };
 
@@ -256,7 +242,6 @@ class RuntimeCaches
     js::NewObjectCache newObjectCache;
     js::UncompressedSourceCache uncompressedSourceCache;
     js::EvalCache evalCache;
-    LazyScriptCache lazyScriptCache;
 
     bool init();
 
@@ -265,6 +250,24 @@ class RuntimeCaches
     }
     js::MathCache* maybeGetMathCache() {
         return mathCache_.get();
+    }
+
+    void purgeForMinorGC(JSRuntime* rt) {
+        newObjectCache.clearNurseryObjects(rt);
+        evalCache.sweep();
+    }
+
+    void purgeForCompaction() {
+        newObjectCache.purge();
+        if (evalCache.initialized())
+            evalCache.clear();
+    }
+
+    void purge() {
+        purgeForCompaction();
+        gsnCache.purge();
+        envCoordinateNameCache.purge();
+        uncompressedSourceCache.purge();
     }
 };
 

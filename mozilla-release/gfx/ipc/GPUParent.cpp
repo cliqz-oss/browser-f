@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=99: */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,6 +8,7 @@
 #endif
 #include "GPUParent.h"
 #include "gfxConfig.h"
+#include "gfxCrashReporterUtils.h"
 #include "gfxPlatform.h"
 #include "gfxPrefs.h"
 #include "GPUProcessHost.h"
@@ -21,8 +22,9 @@
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/ProcessChild.h"
+#include "mozilla/layers/APZInputBridgeParent.h"
 #include "mozilla/layers/APZThreadUtils.h"
-#include "mozilla/layers/APZCTreeManager.h"
+#include "mozilla/layers/APZUtils.h"    // for apz::InitializeGlobalState
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorManagerParent.h"
 #include "mozilla/layers/CompositorThread.h"
@@ -31,17 +33,21 @@
 #include "mozilla/layers/UiCompositorControllerParent.h"
 #include "mozilla/layers/MemoryReportingMLGPU.h"
 #include "mozilla/webrender/RenderThread.h"
+#include "mozilla/webrender/WebRenderAPI.h"
+#include "mozilla/HangDetails.h"
 #include "nsDebugImpl.h"
-#include "nsExceptionHandler.h"
+#include "nsIGfxInfo.h"
 #include "nsThreadManager.h"
 #include "prenv.h"
 #include "ProcessUtils.h"
 #include "VRManager.h"
 #include "VRManagerParent.h"
+#include "VRThread.h"
 #include "VsyncBridgeParent.h"
 #if defined(XP_WIN)
 # include "mozilla/gfx/DeviceManagerDx.h"
 # include <process.h>
+# include <dwrite.h>
 #endif
 #ifdef MOZ_WIDGET_GTK
 # include <gtk/gtk.h>
@@ -93,10 +99,13 @@ GPUParent::Init(base::ProcessId aParentPid,
 
   nsDebugImpl::SetMultiprocessMode("GPU");
 
-#ifdef MOZ_CRASHREPORTER
+  // This must be sent before any IPDL message, which may hit sentinel
+  // errors due to parent and content processes having different
+  // versions.
+  GetIPCChannel()->SendBuildID();
+
   // Init crash reporter support.
   CrashReporterClient::InitSingleton(this);
-#endif
 
   // Ensure gfxPrefs are initialized.
   gfxPrefs::GetSingleton();
@@ -115,8 +124,10 @@ GPUParent::Init(base::ProcessId aParentPid,
   }
 
   CompositorThreadHolder::Start();
-  APZThreadUtils::SetControllerThread(CompositorThreadHolder::Loop());
-  APZCTreeManager::InitializeGlobalState();
+  // TODO: Bug 1406327, Start VRListenerThreadHolder when loading VR content.
+  VRListenerThreadHolder::Start();
+  APZThreadUtils::SetControllerThread(MessageLoop::current());
+  apz::InitializeGlobalState();
   LayerTreeOwnerTracker::Initialize();
   mozilla::ipc::SetThisProcessName("GPU Process");
 #ifdef XP_WIN
@@ -152,6 +163,22 @@ GPUParent::NotifyDeviceReset()
   Unused << SendNotifyDeviceReset(data);
 }
 
+PAPZInputBridgeParent*
+GPUParent::AllocPAPZInputBridgeParent(const LayersId& aLayersId)
+{
+  APZInputBridgeParent* parent = new APZInputBridgeParent(aLayersId);
+  parent->AddRef();
+  return parent;
+}
+
+bool
+GPUParent::DeallocPAPZInputBridgeParent(PAPZInputBridgeParent* aActor)
+{
+  APZInputBridgeParent* parent = static_cast<APZInputBridgeParent*>(aActor);
+  parent->Release();
+  return true;
+}
+
 mozilla::ipc::IPCResult
 GPUParent::RecvInit(nsTArray<GfxPrefSetting>&& prefs,
                     nsTArray<GfxVarUpdate>&& vars,
@@ -174,6 +201,14 @@ GPUParent::RecvInit(nsTArray<GfxPrefSetting>&& prefs,
   gfxConfig::Inherit(Feature::ADVANCED_LAYERS, devicePrefs.advancedLayers());
   gfxConfig::Inherit(Feature::DIRECT2D, devicePrefs.useD2D1());
 
+  { // Let the crash reporter know if we've got WR enabled or not. For other
+    // processes this happens in gfxPlatform::InitWebRenderConfig.
+    ScopedGfxFeatureReporter reporter("WR", gfxPlatform::WebRenderPrefEnabled());
+    if (gfxVars::UseWebRender()) {
+      reporter.SetSuccessful();
+    }
+  }
+
   for (const LayerTreeIdMapping& map : aMappings) {
     LayerTreeOwnerTracker::Get()->Map(map.layersId(), map.ownerId());
   }
@@ -181,6 +216,14 @@ GPUParent::RecvInit(nsTArray<GfxPrefSetting>&& prefs,
 #if defined(XP_WIN)
   if (gfxConfig::IsEnabled(Feature::D3D11_COMPOSITING)) {
     DeviceManagerDx::Get()->CreateCompositorDevices();
+  }
+  if (gfxVars::UseWebRender()) {
+    DeviceManagerDx::Get()->CreateDirectCompositionDevice();
+    // Ensure to initialize GfxInfo
+    nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
+    Unused << gfxInfo;
+
+    Factory::EnsureDWriteFactory();
   }
 #endif
 
@@ -201,6 +244,15 @@ GPUParent::RecvInit(nsTArray<GfxPrefSetting>&& prefs,
     gtk_init(&argc, &argvp);
   } else {
     gtk_init(nullptr, nullptr);
+  }
+
+  // Ensure we have an FT library for font instantiation.
+  // This would normally be set by gfxPlatform::Init().
+  // Since we bypass that, we must do it here instead.
+  if (gfxVars::UseWebRender()) {
+    FT_Library library = Factory::NewFTLibrary();
+    MOZ_ASSERT(library);
+    Factory::SetFTLibrary(library);
   }
 #endif
 
@@ -248,7 +300,7 @@ GPUParent::RecvInitVRManager(Endpoint<PVRManagerParent>&& aEndpoint)
 }
 
 mozilla::ipc::IPCResult
-GPUParent::RecvInitUiCompositorController(const uint64_t& aRootLayerTreeId, Endpoint<PUiCompositorControllerParent>&& aEndpoint)
+GPUParent::RecvInitUiCompositorController(const LayersId& aRootLayerTreeId, Endpoint<PUiCompositorControllerParent>&& aEndpoint)
 {
   UiCompositorControllerParent::Start(aRootLayerTreeId, Move(aEndpoint));
   return IPC_OK();
@@ -316,6 +368,17 @@ GPUParent::RecvGetDeviceStatus(GPUDeviceData* aOut)
   aOut->gpuDevice() = null_t();
 #endif
 
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+GPUParent::RecvSimulateDeviceReset(GPUDeviceData* aOut)
+{
+#if defined(XP_WIN)
+  DeviceManagerDx::Get()->ForceDeviceReset(ForcedDeviceResetReason::COMPOSITOR_UPDATED);
+  DeviceManagerDx::Get()->MaybeResetAndReacquireDevices();
+#endif
+  RecvGetDeviceStatus(aOut);
   return IPC_OK();
 }
 
@@ -423,7 +486,10 @@ GPUParent::ActorDestroy(ActorDestroyReason aWhy)
   }
   dom::VideoDecoderManagerParent::ShutdownVideoBridge();
   CompositorThreadHolder::Shutdown();
-  if (gfxVars::UseWebRender()) {
+  VRListenerThreadHolder::Shutdown();
+  // There is a case that RenderThread exists when gfxVars::UseWebRender() is false.
+  // This could happen when WebRender was fallbacked to compositor.
+  if (wr::RenderThread::Get()) {
     wr::RenderThread::ShutDown();
   }
   Factory::ShutDown();
@@ -434,9 +500,7 @@ GPUParent::ActorDestroy(ActorDestroyReason aWhy)
   gfxVars::Shutdown();
   gfxConfig::Shutdown();
   gfxPrefs::DestroySingleton();
-#ifdef MOZ_CRASHREPORTER
   CrashReporterClient::DestroySingleton();
-#endif
   XRE_ShutdownChildProcess();
 }
 

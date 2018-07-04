@@ -4,17 +4,14 @@
 
 "use strict";
 
-const { Cc, Ci } = require("chrome");
 const Services = require("Services");
 const l10n = require("gcli/l10n");
+const { DevToolsLoader } = require("resource://devtools/shared/Loader.jsm");
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DevToolsLoader",
-  "resource://devtools/shared/Loader.jsm");
 
-const BRAND_SHORT_NAME = Cc["@mozilla.org/intl/stringbundle;1"]
-                           .getService(Ci.nsIStringBundleService)
-                           .createBundle("chrome://branding/locale/brand.properties")
-                           .GetStringFromName("brandShortName");
+const BRAND_SHORT_NAME =
+  Services.strings.createBundle("chrome://branding/locale/brand.properties")
+                  .GetStringFromName("brandShortName");
 
 XPCOMUtils.defineLazyGetter(this, "debuggerServer", () => {
   // Create a separate loader instance, so that we can be sure to receive
@@ -25,9 +22,10 @@ XPCOMUtils.defineLazyGetter(this, "debuggerServer", () => {
   // settings).
   let serverLoader = new DevToolsLoader();
   serverLoader.invisibleToDebugger = true;
+  // eslint-disable-next-line no-shadow
   let { DebuggerServer: debuggerServer } = serverLoader.require("devtools/server/main");
   debuggerServer.init();
-  debuggerServer.addBrowserActors();
+  debuggerServer.registerAllActors();
   debuggerServer.allowChromeProcess = !l10n.hiddenByChromePref();
   return debuggerServer;
 });
@@ -68,7 +66,7 @@ exports.items = [
         description: l10n.lookup("listenProtocolDesc"),
       },
     ],
-    exec: function (args, context) {
+    exec: function(args, context) {
       let listener = debuggerServer.createListener();
       if (!listener) {
         throw new Error(l10n.lookup("listenDisabledOutput"));
@@ -98,7 +96,7 @@ exports.items = [
     name: "unlisten",
     description: l10n.lookup("unlistenDesc"),
     manual: l10n.lookup("unlistenManual"),
-    exec: function (args, context) {
+    exec: function(args, context) {
       debuggerServer.closeAllListeners();
       return l10n.lookup("unlistenOutput");
     }

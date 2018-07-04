@@ -29,14 +29,27 @@ from mozharness.mozilla.testing.codecoverage import (
     code_coverage_config_options
 )
 
+
 class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCoverageMixin):
     config_options = [
         [["--e10s"],
-        {"action": "store_true",
-         "dest": "e10s",
-         "default": False,
-         "help": "Run tests with multiple processes. (Desktop builds only)",
-         }]
+         {"action": "store_true",
+          "dest": "e10s",
+          "default": False,
+          "help": "Run tests with multiple processes. (Desktop builds only)",
+          }],
+        [["--single-stylo-traversal"],
+         {"action": "store_true",
+          "dest": "single_stylo_traversal",
+          "default": False,
+          "help": "Set STYLO_THREADS=1.",
+          }],
+        [["--enable-webrender"],
+         {"action": "store_true",
+          "dest": "enable_webrender",
+          "default": False,
+          "help": "Tries to enable the WebRender compositor.",
+          }]
     ] + testing_config_options + copy.deepcopy(blobupload_config_options) \
                                + copy.deepcopy(code_coverage_config_options)
 
@@ -66,8 +79,7 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
         self.installer_url = self.config.get("installer_url")
         self.tests = None
 
-        abs_work_dir = self.query_abs_dirs()['abs_work_dir']
-        self.testdir = os.path.join(abs_work_dir, 'tests')
+        self.testdir = self.query_abs_dirs()['abs_test_install_dir']
         self.awsy_path = os.path.join(self.testdir, 'awsy')
         self.awsy_libdir = os.path.join(self.awsy_path, 'awsy')
         self.webroot_dir = os.path.join(self.testdir, 'html')
@@ -81,6 +93,7 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
 
         dirs = {}
         dirs['abs_blob_upload_dir'] = os.path.join(abs_dirs['abs_work_dir'], 'blobber_upload_dir')
+        dirs['abs_test_install_dir'] = os.path.join(abs_dirs['abs_work_dir'], 'tests')
         abs_dirs.update(dirs)
         self.abs_dirs = abs_dirs
         return self.abs_dirs
@@ -103,7 +116,6 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
 
         self.register_virtualenv_module('awsy', self.awsy_path)
 
-
     def populate_webroot(self):
         """Populate the production test slaves' webroots"""
         self.info("Downloading pageset with tooltool...")
@@ -121,7 +133,6 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
         unzip_cmd = [unzip, '-q', '-o', archive, '-d', page_load_test_dir]
         self.run_command(unzip_cmd, halt_on_failure=True)
         self.run_command("ls %s" % page_load_test_dir)
-
 
     def run_tests(self, args=None, **kw):
         '''
@@ -158,6 +169,18 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
         test_file = os.path.join(self.awsy_libdir, 'test_memory_usage.py')
         cmd.append(test_file)
 
+        if self.config['single_stylo_traversal']:
+            env['STYLO_THREADS'] = '1'
+        else:
+            env['STYLO_THREADS'] = '4'
+
+        # TODO: consider getting rid of this as stylo is enabled by default
+        env['STYLO_FORCE_ENABLED'] = '1'
+
+        if self.config['enable_webrender']:
+            env['MOZ_WEBRENDER'] = '1'
+            env['MOZ_ACCELERATED'] = '1'
+
         env['MOZ_UPLOAD_DIR'] = dirs['abs_blob_upload_dir']
         if not os.path.isdir(env['MOZ_UPLOAD_DIR']):
             self.mkdir_p(env['MOZ_UPLOAD_DIR'])
@@ -177,7 +200,7 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
                                        output_parser=parser)
 
         level = INFO
-        tbpl_status, log_level = parser.evaluate_parser(
+        tbpl_status, log_level, summary = parser.evaluate_parser(
             return_code=return_code)
 
         self.log("AWSY exited with return code %s: %s" % (return_code, tbpl_status),

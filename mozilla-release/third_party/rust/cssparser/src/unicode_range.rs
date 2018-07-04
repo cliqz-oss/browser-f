@@ -6,7 +6,6 @@
 
 use {Parser, ToCss, BasicParseError};
 use std::char;
-use std::cmp;
 use std::fmt;
 use tokenizer::Token;
 
@@ -44,10 +43,10 @@ impl UnicodeRange {
 
         let range = match parse_concatenated(concatenated_tokens.as_bytes()) {
             Ok(range) => range,
-            Err(()) => return Err(BasicParseError::UnexpectedToken(Token::Ident(concatenated_tokens.into()))),
+            Err(()) => return Err(input.new_basic_unexpected_token_error(Token::Ident(concatenated_tokens.into()))),
         };
         if range.end > char::MAX as u32 || range.start > range.end {
-            Err(BasicParseError::UnexpectedToken(Token::Ident(concatenated_tokens.into())))
+            Err(input.new_basic_unexpected_token_error(Token::Ident(concatenated_tokens.into())))
         } else {
             Ok(range)
         }
@@ -57,10 +56,11 @@ impl UnicodeRange {
 fn parse_tokens<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), BasicParseError<'i>> {
     match input.next_including_whitespace()?.clone() {
         Token::Delim('+') => {
-            match *input.next_including_whitespace()? {
+            // FIXME: remove .clone() when lifetimes are non-lexical.
+            match input.next_including_whitespace()?.clone() {
                 Token::Ident(_) => {}
                 Token::Delim('?') => {}
-                ref t => return Err(BasicParseError::UnexpectedToken(t.clone()))
+                t => return Err(input.new_basic_unexpected_token_error(t))
             }
             parse_question_marks(input)
         }
@@ -68,15 +68,15 @@ fn parse_tokens<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), BasicParseErro
             parse_question_marks(input)
         }
         Token::Number { .. } => {
-            let after_number = input.position();
+            let after_number = input.state();
             match input.next_including_whitespace() {
                 Ok(&Token::Delim('?')) => parse_question_marks(input),
                 Ok(&Token::Dimension { .. }) => {}
                 Ok(&Token::Number { .. }) => {}
-                _ => input.reset(after_number)
+                _ => input.reset(&after_number)
             }
         }
-        t => return Err(BasicParseError::UnexpectedToken(t))
+        t => return Err(input.new_basic_unexpected_token_error(t))
     }
     Ok(())
 }
@@ -84,11 +84,11 @@ fn parse_tokens<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), BasicParseErro
 /// Consume as many '?' as possible
 fn parse_question_marks(input: &mut Parser) {
     loop {
-        let position = input.position();
+        let start = input.state();
         match input.next_including_whitespace() {
             Ok(&Token::Delim('?')) => {}
             _ => {
-                input.reset(position);
+                input.reset(&start);
                 return
             }
         }
@@ -165,32 +165,9 @@ impl fmt::Debug for UnicodeRange {
 
 impl ToCss for UnicodeRange {
     fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-        dest.write_str("U+")?;
-
-        // How many bits are 0 at the end of start and also 1 at the end of end.
-        let bits = cmp::min(self.start.trailing_zeros(), (!self.end).trailing_zeros());
-
-        let question_marks = bits / 4;
-
-        // How many lower bits can be represented as question marks
-        let bits = question_marks * 4;
-
-        let truncated_start = self.start >> bits;
-        let truncated_end = self.end >> bits;
-        if truncated_start == truncated_end {
-            // Bits not covered by question marks are the same in start and end,
-            // we can use the question mark syntax.
-            if truncated_start != 0 {
-                write!(dest, "{:X}", truncated_start)?;
-            }
-            for _ in 0..question_marks {
-                dest.write_str("?")?;
-            }
-        } else {
-            write!(dest, "{:X}", self.start)?;
-            if self.end != self.start {
-                write!(dest, "-{:X}", self.end)?;
-            }
+        write!(dest, "U+{:X}", self.start)?;
+        if self.end != self.start {
+            write!(dest, "-{:X}", self.end)?;
         }
         Ok(())
     }

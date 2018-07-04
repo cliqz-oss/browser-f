@@ -1,3 +1,8 @@
+# This config references releases/l10n/mozilla-release instead of l10n-central
+# because 52 predates cross-channel localization, which rides the train
+# with 57.
+# If you copy this config for the ESR following 57, change hg_l10n_base
+# to l10n-central.
 config = {
     "nightly_build": True,
     "branch": "mozilla-esr52",
@@ -8,7 +13,6 @@ config = {
     "hg_l10n_base": "https://hg.mozilla.org/releases/l10n/mozilla-release",
 
     # repositories
-    "mozilla_dir": "mozilla-esr52",
     "repos": [{
         "vcs": "hg",
         "repo": "https://hg.mozilla.org/build/tools",
@@ -24,14 +28,4 @@ config = {
     # purge options
     'purge_minsize': 12,
     'is_automation': True,
-    'default_actions': [
-        "clobber",
-        "pull",
-        "clone-locales",
-        "list-locales",
-        "setup",
-        "repack",
-        "taskcluster-upload",
-        "summary",
-    ],
 }

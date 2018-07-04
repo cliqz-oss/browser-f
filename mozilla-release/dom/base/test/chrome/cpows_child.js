@@ -1,7 +1,6 @@
 dump('loaded child cpow test\n');
 
-var Cu = Components.utils;
-var Ci = Components.interfaces;
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 (function start() {
   [is_remote] = sendRpcMessage("cpows:is_remote");
@@ -45,7 +44,6 @@ function ok(condition, message) {
   dump('condition: ' + condition  + ', ' + message + '\n');
   if (!condition) {
     sendAsyncMessage("cpows:fail", { message: message });
-    throw 'failed check: ' + message;
   }
 }
 
@@ -106,7 +104,13 @@ function parent_test(finish)
 
   addMessageListener("cpows:from_parent", (msg) => {
     let obj = msg.objects.obj;
-    ok(obj.a == 1, "correct value from parent");
+    if (is_remote) {
+      ok(obj.a == undefined, "__exposedProps__ should not work");
+    } else {
+      // The same process test is not run as content, so the field can
+      // be accessed even though __exposedProps__ has been removed.
+      ok(obj.a == 1, "correct value from parent");
+    }
 
     // Test that a CPOW reference to a function in the chrome process
     // is callable from unprivileged content. Greasemonkey uses this
@@ -133,7 +137,7 @@ function dom_test(finish)
   content.document.body.appendChild(element);
 
   sendRpcMessage("cpows:dom_test", {}, {element: element});
-  Components.utils.schedulePreciseGC(function() {
+  Cu.schedulePreciseGC(function() {
     sendRpcMessage("cpows:dom_test_after_gc");
     finish();
   });
@@ -261,11 +265,11 @@ function lifetime_test(finish)
   var obj = {"will_die": {"f": 1}};
   let [result] = sendRpcMessage("cpows:lifetime_test_1", {}, {obj: obj});
   ok(result == 10, "got sync result");
-  ok(obj.wont_die.f == 2, "got reverse CPOW");
+  ok(obj.wont_die.f == undefined, "got reverse CPOW");
   obj.will_die = null;
-  Components.utils.schedulePreciseGC(function() {
+  Cu.schedulePreciseGC(function() {
     addMessageListener("cpows:lifetime_test_3", (msg) => {
-      ok(obj.wont_die.f == 2, "reverse CPOW still works");
+      ok(obj.wont_die.f == undefined, "reverse CPOW still works");
       finish();
     });
     sendRpcMessage("cpows:lifetime_test_2");
@@ -313,8 +317,7 @@ function cancel_test2(finish)
   // CPOW is canceled. The parent starts running again immediately
   // after the CPOW is canceled; f also continues running.
   function f() {
-    let req = Components.classes["@mozilla.org/xmlextras/xmlhttprequest;1"].
-              createInstance(Components.interfaces.nsIXMLHttpRequest);
+    let req = new XMLHttpRequest();
     let fin = false;
     let reqListener = () => {
       if (req.readyState != req.DONE) {

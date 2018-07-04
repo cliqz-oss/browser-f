@@ -14,8 +14,11 @@
 #include "nsIAccessibleTypes.h"
 #include "nsIPersistentProperties2.h"
 #include "nsISimpleEnumerator.h"
+#include "nsUTF8Utils.h"
 
 #include "mozilla/Likely.h"
+
+#include "DOMtoATK.h"
 
 using namespace mozilla;
 using namespace mozilla::a11y;
@@ -127,9 +130,8 @@ static void
 ConvertTexttoAsterisks(AccessibleWrap* accWrap, nsAString& aString)
 {
   // convert each char to "*" when it's "password text"
-  if (accWrap->NativeRole() == roles::PASSWORD_TEXT) {
-    for (uint32_t i = 0; i < aString.Length(); i++)
-      aString.Replace(i, 1, NS_LITERAL_STRING("*"));
+  if (accWrap->IsPassword()) {
+    DOMtoATK::ConvertTexttoAsterisks(aString);
   }
 }
 
@@ -142,20 +144,49 @@ getTextCB(AtkText *aText, gint aStartOffset, gint aEndOffset)
   nsAutoString autoStr;
   if (accWrap) {
     HyperTextAccessible* text = accWrap->AsHyperText();
-    if (!text || !text->IsTextRole())
+    if (!text || !text->IsTextRole() || text->IsDefunct())
       return nullptr;
 
-    text->TextSubstring(aStartOffset, aEndOffset, autoStr);
+    return DOMtoATK::NewATKString(text, aStartOffset, aEndOffset,
+         accWrap->IsPassword() ?
+           DOMtoATK::AtkStringConvertFlags::ConvertTextToAsterisks :
+           DOMtoATK::AtkStringConvertFlags::None);
 
-    ConvertTexttoAsterisks(accWrap, autoStr);
   } else if (ProxyAccessible* proxy = GetProxy(ATK_OBJECT(aText))) {
-    proxy->TextSubstring(aStartOffset, aEndOffset, autoStr);
+    return DOMtoATK::NewATKString(proxy, aStartOffset, aEndOffset,
+         DOMtoATK::AtkStringConvertFlags::None);
   }
 
-  NS_ConvertUTF16toUTF8 cautoStr(autoStr);
+  return nullptr;
+}
 
-  //copy and return, libspi will free it.
-  return (cautoStr.get()) ? g_strdup(cautoStr.get()) : nullptr;
+static gint getCharacterCountCB(AtkText* aText);
+
+// Note: this does not support magic offsets, which is fine for its callers
+// which do not implement any.
+static gchar*
+getCharTextAtOffset(AtkText* aText, gint aOffset,
+                    gint* aStartOffset, gint* aEndOffset)
+{
+  gint end = aOffset + 1;
+  gint count = getCharacterCountCB(aText);
+
+  if (aOffset > count) {
+    aOffset = count;
+  }
+  if (end > count) {
+    end = count;
+  }
+  if (aOffset < 0) {
+    aOffset = 0;
+  }
+  if (end < 0) {
+    end = 0;
+  }
+  *aStartOffset = aOffset;
+  *aEndOffset = end;
+
+  return getTextCB(aText, aOffset, end);
 }
 
 static gchar*
@@ -163,6 +194,10 @@ getTextAfterOffsetCB(AtkText *aText, gint aOffset,
                      AtkTextBoundary aBoundaryType,
                      gint *aStartOffset, gint *aEndOffset)
 {
+  if (aBoundaryType == ATK_TEXT_BOUNDARY_CHAR) {
+    return getCharTextAtOffset(aText, aOffset + 1, aStartOffset, aEndOffset);
+  }
+
     nsAutoString autoStr;
   int32_t startOffset = 0, endOffset = 0;
   AccessibleWrap* accWrap = GetAccessibleWrap(ATK_OBJECT(aText));
@@ -181,8 +216,8 @@ getTextAfterOffsetCB(AtkText *aText, gint aOffset,
   *aStartOffset = startOffset;
   *aEndOffset = endOffset;
 
-  NS_ConvertUTF16toUTF8 cautoStr(autoStr);
-  return (cautoStr.get()) ? g_strdup(cautoStr.get()) : nullptr;
+  // libspi will free it.
+  return DOMtoATK::Convert(autoStr);
 }
 
 static gchar*
@@ -190,6 +225,10 @@ getTextAtOffsetCB(AtkText *aText, gint aOffset,
                   AtkTextBoundary aBoundaryType,
                   gint *aStartOffset, gint *aEndOffset)
 {
+  if (aBoundaryType == ATK_TEXT_BOUNDARY_CHAR) {
+    return getCharTextAtOffset(aText, aOffset, aStartOffset, aEndOffset);
+  }
+
   nsAutoString autoStr;
   int32_t startOffset = 0, endOffset = 0;
   AccessibleWrap* accWrap = GetAccessibleWrap(ATK_OBJECT(aText));
@@ -208,8 +247,8 @@ getTextAtOffsetCB(AtkText *aText, gint aOffset,
   *aStartOffset = startOffset;
   *aEndOffset = endOffset;
 
-  NS_ConvertUTF16toUTF8 cautoStr(autoStr);
-  return (cautoStr.get()) ? g_strdup(cautoStr.get()) : nullptr;
+  // libspi will free it.
+  return DOMtoATK::Convert(autoStr);
 }
 
 static gunichar
@@ -221,13 +260,11 @@ getCharacterAtOffsetCB(AtkText* aText, gint aOffset)
     if (!text || !text->IsTextRole()) {
       return 0;
     }
-
-    // char16_t is unsigned short in Mozilla, gnuichar is guint32 in glib.
-    return static_cast<gunichar>(text->CharAt(aOffset));
+    return DOMtoATK::ATKCharacter(text, aOffset);
   }
 
   if (ProxyAccessible* proxy = GetProxy(ATK_OBJECT(aText))) {
-    return static_cast<gunichar>(proxy->CharAt(aOffset));
+    return DOMtoATK::ATKCharacter(proxy, aOffset);
   }
 
   return 0;
@@ -238,6 +275,10 @@ getTextBeforeOffsetCB(AtkText *aText, gint aOffset,
                       AtkTextBoundary aBoundaryType,
                       gint *aStartOffset, gint *aEndOffset)
 {
+  if (aBoundaryType == ATK_TEXT_BOUNDARY_CHAR) {
+    return getCharTextAtOffset(aText, aOffset - 1, aStartOffset, aEndOffset);
+  }
+
   nsAutoString autoStr;
   int32_t startOffset = 0, endOffset = 0;
   AccessibleWrap* accWrap = GetAccessibleWrap(ATK_OBJECT(aText));
@@ -257,8 +298,8 @@ getTextBeforeOffsetCB(AtkText *aText, gint aOffset,
   *aStartOffset = startOffset;
   *aEndOffset = endOffset;
 
-  NS_ConvertUTF16toUTF8 cautoStr(autoStr);
-  return (cautoStr.get()) ? g_strdup(cautoStr.get()) : nullptr;
+  // libspi will free it.
+  return DOMtoATK::Convert(autoStr);
 }
 
 static gint

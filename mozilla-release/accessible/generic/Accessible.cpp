@@ -13,11 +13,13 @@
 #include "nsAccUtils.h"
 #include "nsAccessibilityService.h"
 #include "ApplicationAccessible.h"
+#include "nsGenericHTMLElement.h"
 #include "NotificationController.h"
 #include "nsEventShell.h"
 #include "nsTextEquivUtils.h"
 #include "DocAccessibleChild.h"
 #include "EventTree.h"
+#include "GeckoProfiler.h"
 #include "Relation.h"
 #include "Role.h"
 #include "RootAccessible.h"
@@ -26,18 +28,13 @@
 #include "TableAccessible.h"
 #include "TableCellAccessible.h"
 #include "TreeWalker.h"
+#include "XULDocument.h"
 
-#include "nsIDOMElement.h"
-#include "nsIDOMNodeFilter.h"
-#include "nsIDOMHTMLElement.h"
-#include "nsIDOMKeyEvent.h"
-#include "nsIDOMTreeWalker.h"
 #include "nsIDOMXULButtonElement.h"
-#include "nsIDOMXULDocument.h"
-#include "nsIDOMXULElement.h"
 #include "nsIDOMXULLabelElement.h"
 #include "nsIDOMXULSelectCntrlEl.h"
 #include "nsIDOMXULSelectCntrlItemEl.h"
+#include "nsINodeList.h"
 #include "nsPIDOMWindow.h"
 
 #include "nsIDocument.h"
@@ -56,11 +53,11 @@
 #include "nsIScrollableFrame.h"
 #include "nsFocusManager.h"
 
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "nsUnicharUtils.h"
 #include "nsReadableUtils.h"
 #include "prdtoa.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIURI.h"
 #include "nsArrayUtils.h"
 #include "nsIMutableArray.h"
@@ -69,12 +66,10 @@
 #include "nsWhitespaceTokenizer.h"
 #include "nsAttrName.h"
 
-#ifdef DEBUG
-#include "nsIDOMCharacterData.h"
-#endif
-
 #include "mozilla/Assertions.h"
 #include "mozilla/BasicEvents.h"
+#include "mozilla/ErrorResult.h"
+#include "mozilla/EventStateManager.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/MouseEvents.h"
@@ -84,6 +79,7 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/dom/HTMLBodyElement.h"
+#include "mozilla/dom/KeyboardEventBinding.h"
 #include "mozilla/dom/TreeWalker.h"
 
 using namespace mozilla;
@@ -152,12 +148,12 @@ Accessible::Name(nsString& aName)
 
   // In the end get the name from tooltip.
   if (mContent->IsHTMLElement()) {
-    if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::title, aName)) {
+    if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::title, aName)) {
       aName.CompressWhitespace();
       return eNameFromTooltip;
     }
   } else if (mContent->IsXULElement()) {
-    if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltiptext, aName)) {
+    if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltiptext, aName)) {
       aName.CompressWhitespace();
       return eNameFromTooltip;
     }
@@ -188,7 +184,7 @@ Accessible::Description(nsString& aDescription)
   // 3. it doesn't have an accName; or
   // 4. its title attribute already equals to its accName nsAutoString name;
 
-  if (!HasOwnContent() || mContent->IsNodeOfType(nsINode::eTEXT))
+  if (!HasOwnContent() || mContent->IsText())
     return;
 
   nsTextEquivUtils::
@@ -201,9 +197,9 @@ Accessible::Description(nsString& aDescription)
     if (aDescription.IsEmpty()) {
       // Keep the Name() method logic.
       if (mContent->IsHTMLElement()) {
-        mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::title, aDescription);
+        mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::title, aDescription);
       } else if (mContent->IsXULElement()) {
-        mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltiptext, aDescription);
+        mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltiptext, aDescription);
       } else if (mContent->IsSVGElement()) {
         for (nsIContent* childElm = mContent->GetFirstChild(); childElm;
              childElm = childElm->GetNextSibling()) {
@@ -261,13 +257,13 @@ Accessible::AccessKey() const
   switch (Preferences::GetInt("ui.key.generalAccessKey", -1)) {
   case -1:
     break;
-  case nsIDOMKeyEvent::DOM_VK_SHIFT:
+  case dom::KeyboardEventBinding::DOM_VK_SHIFT:
     return KeyBinding(key, KeyBinding::kShift);
-  case nsIDOMKeyEvent::DOM_VK_CONTROL:
+  case dom::KeyboardEventBinding::DOM_VK_CONTROL:
     return KeyBinding(key, KeyBinding::kControl);
-  case nsIDOMKeyEvent::DOM_VK_ALT:
+  case dom::KeyboardEventBinding::DOM_VK_ALT:
     return KeyBinding(key, KeyBinding::kAlt);
-  case nsIDOMKeyEvent::DOM_VK_META:
+  case dom::KeyboardEventBinding::DOM_VK_META:
     return KeyBinding(key, KeyBinding::kMeta);
   default:
     return KeyBinding();
@@ -317,10 +313,9 @@ Accessible::TranslateString(const nsString& aKey, nsAString& aStringOut)
   if (!stringBundle)
     return;
 
-  nsXPIDLString xsValue;
+  nsAutoString xsValue;
   nsresult rv =
-    stringBundle->GetStringFromName(NS_ConvertUTF16toUTF8(aKey).get(),
-                                    getter_Copies(xsValue));
+    stringBundle->GetStringFromName(NS_ConvertUTF16toUTF8(aKey).get(), xsValue);
   if (NS_SUCCEEDED(rv))
     aStringOut.Assign(xsValue);
 }
@@ -451,7 +446,7 @@ Accessible::NativeState()
 
   // Check if a XUL element has the popup attribute (an attached popup menu).
   if (HasOwnContent() && mContent->IsXULElement() &&
-      mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::popup))
+      mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::popup))
     state |= states::HASPOPUP;
 
   // Bypass the link states specialization for non links.
@@ -491,8 +486,9 @@ Accessible::NativelyUnavailable() const
   if (mContent->IsHTMLElement())
     return mContent->AsElement()->State().HasState(NS_EVENT_STATE_DISABLED);
 
-  return mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::disabled,
-                               nsGkAtoms::_true, eCaseMatters);
+  return mContent->IsElement() &&
+    mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::disabled,
+                                       nsGkAtoms::_true, eCaseMatters);
 }
 
 Accessible*
@@ -513,8 +509,7 @@ Accessible::ChildAtPoint(int32_t aX, int32_t aY,
   // we return |this| if the point is within it, otherwise nullptr.
   Accessible* fallbackAnswer = nullptr;
   nsIntRect rect = Bounds();
-  if (aX >= rect.x && aX < rect.x + rect.width &&
-      aY >= rect.y && aY < rect.y + rect.height)
+  if (rect.Contains(aX, aY))
     fallbackAnswer = this;
 
   if (nsAccUtils::MustPrune(this))  // Do not dig any further
@@ -542,7 +537,7 @@ Accessible::ChildAtPoint(int32_t aX, int32_t aY,
 
   WidgetMouseEvent dummyEvent(true, eMouseMove, rootWidget,
                               WidgetMouseEvent::eSynthesized);
-  dummyEvent.mRefPoint = LayoutDeviceIntPoint(aX - rootRect.x, aY - rootRect.y);
+  dummyEvent.mRefPoint = LayoutDeviceIntPoint(aX - rootRect.X(), aY - rootRect.Y());
 
   nsIFrame* popupFrame = nsLayoutUtils::
     GetPopupFrameForEventCoordinates(accDocument->PresContext()->GetRootPresContext(),
@@ -564,8 +559,13 @@ Accessible::ChildAtPoint(int32_t aX, int32_t aY,
 
   nsPresContext* presContext = startFrame->PresContext();
   nsRect screenRect = startFrame->GetScreenRectInAppUnits();
-    nsPoint offset(presContext->DevPixelsToAppUnits(aX) - screenRect.x,
-                   presContext->DevPixelsToAppUnits(aY) - screenRect.y);
+  nsPoint offset(presContext->DevPixelsToAppUnits(aX) - screenRect.X(),
+                 presContext->DevPixelsToAppUnits(aY) - screenRect.Y());
+
+  // We need to take into account a non-1 resolution set on the presshell.
+  // This happens in mobile platforms with async pinch zooming.
+  offset = offset.RemoveResolution(presContext->PresShell()->GetResolution());
+
   nsIFrame* foundFrame = nsLayoutUtils::GetFrameForPoint(startFrame, offset);
 
   nsIContent* content = nullptr;
@@ -616,8 +616,7 @@ Accessible::ChildAtPoint(int32_t aX, int32_t aY,
     Accessible* child = accessible->GetChildAt(childIdx);
 
     nsIntRect childRect = child->Bounds();
-    if (aX >= childRect.x && aX < childRect.x + childRect.width &&
-        aY >= childRect.y && aY < childRect.y + childRect.height &&
+    if (childRect.Contains(aX, aY) &&
         (child->State() & states::INVISIBLE) == 0) {
 
       if (aWhichChild == eDeepestChild)
@@ -650,7 +649,7 @@ Accessible::RelativeBounds(nsIFrame** aBoundingFrame) const
       if (canvasFrame) {
         *aBoundingFrame = canvasFrame;
         dom::HTMLCanvasElement *canvas =
-          dom::HTMLCanvasElement::FromContent(canvasFrame->GetContent());
+          dom::HTMLCanvasElement::FromNode(canvasFrame->GetContent());
 
         // get the bounding rect of the hit region
         nsRect bounds;
@@ -670,29 +669,37 @@ Accessible::RelativeBounds(nsIFrame** aBoundingFrame) const
   return nsRect();
 }
 
-nsIntRect
-Accessible::Bounds() const
+nsRect
+Accessible::BoundsInAppUnits() const
 {
   nsIFrame* boundingFrame = nullptr;
   nsRect unionRectTwips = RelativeBounds(&boundingFrame);
-  if (!boundingFrame)
-    return nsIntRect();
+  if (!boundingFrame) {
+    return nsRect();
+  }
 
-  nsIntRect screenRect;
-  nsPresContext* presContext = mDoc->PresContext();
-  screenRect.x = presContext->AppUnitsToDevPixels(unionRectTwips.x);
-  screenRect.y = presContext->AppUnitsToDevPixels(unionRectTwips.y);
-  screenRect.width = presContext->AppUnitsToDevPixels(unionRectTwips.width);
-  screenRect.height = presContext->AppUnitsToDevPixels(unionRectTwips.height);
-
+  // We need to take into account a non-1 resolution set on the presshell.
+  // This happens in mobile platforms with async pinch zooming. Here we
+  // scale the bounds before adding the screen-relative offset.
+  unionRectTwips.ScaleRoundOut(mDoc->PresContext()->PresShell()->GetResolution());
   // We have the union of the rectangle, now we need to put it in absolute
   // screen coords.
-  nsIntRect orgRectPixels = boundingFrame->GetScreenRectInAppUnits().
-    ToNearestPixels(presContext->AppUnitsPerDevPixel());
-  screenRect.x += orgRectPixels.x;
-  screenRect.y += orgRectPixels.y;
+  nsRect orgRectPixels = boundingFrame->GetScreenRectInAppUnits();
+  unionRectTwips.MoveBy(orgRectPixels.X(), orgRectPixels.Y());
 
-  return screenRect;
+  return unionRectTwips;
+}
+
+nsIntRect
+Accessible::Bounds() const
+{
+  return BoundsInAppUnits().ToNearestPixels(mDoc->PresContext()->AppUnitsPerDevPixel());
+}
+
+nsIntRect
+Accessible::BoundsInCSSPixels() const
+{
+  return BoundsInAppUnits().ToNearestPixels(mDoc->PresContext()->AppUnitsPerCSSPixel());
 }
 
 void
@@ -704,12 +711,14 @@ Accessible::SetSelected(bool aSelect)
   Accessible* select = nsAccUtils::GetSelectableContainer(this, State());
   if (select) {
     if (select->State() & states::MULTISELECTABLE) {
-      if (ARIARoleMap()) {
+      if (mContent->IsElement() && ARIARoleMap()) {
         if (aSelect) {
-          mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::aria_selected,
-                            NS_LITERAL_STRING("true"), true);
+          mContent->AsElement()->SetAttr(kNameSpaceID_None,
+                                         nsGkAtoms::aria_selected,
+                                         NS_LITERAL_STRING("true"), true);
         } else {
-          mContent->UnsetAttr(kNameSpaceID_None, nsGkAtoms::aria_selected, true);
+          mContent->AsElement()->UnsetAttr(kNameSpaceID_None,
+                                           nsGkAtoms::aria_selected, true);
         }
       }
       return;
@@ -754,10 +763,14 @@ Accessible::TakeFocus()
     }
   }
 
-  nsCOMPtr<nsIDOMElement> element(do_QueryInterface(focusContent));
   nsFocusManager* fm = nsFocusManager::GetFocusManager();
-  if (fm)
+  if (fm) {
+    AutoHandlingUserInputStatePusher inputStatePusher(true, nullptr, focusContent->OwnerDoc());
+    // XXXbz: Can we actually have a non-element content here?
+    RefPtr<Element> element =
+      focusContent->IsElement() ? focusContent->AsElement() : nullptr;
     fm->SetFocus(element, 0);
+  }
 }
 
 void
@@ -789,10 +802,8 @@ Accessible::XULElmName(DocAccessible* aDocument,
       nsCOMPtr<nsIDOMXULSelectControlElement> select = do_QueryInterface(aElm);
       // Use label if this is not a select control element which
       // uses label attribute to indicate which option is selected
-      if (!select) {
-        nsCOMPtr<nsIDOMXULElement> xulEl(do_QueryInterface(aElm));
-        if (xulEl)
-          xulEl->GetAttribute(NS_LITERAL_STRING("label"), aName);
+      if (!select && aElm->IsElement()) {
+        aElm->AsElement()->GetAttribute(NS_LITERAL_STRING("label"), aName);
       }
     }
   }
@@ -825,9 +836,10 @@ Accessible::XULElmName(DocAccessible* aDocument,
   nsAutoString ancestorTitle;
   while (parent) {
     if (parent->IsXULElement(nsGkAtoms::toolbaritem) &&
-        parent->GetAttr(kNameSpaceID_None, nsGkAtoms::title, ancestorTitle)) {
+        parent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::title, ancestorTitle)) {
       // Before returning this, check if the element itself has a tooltip:
-      if (aElm->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltiptext, aName)) {
+      if (aElm->IsElement() &&
+          aElm->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::tooltiptext, aName)) {
         aName.CompressWhitespace();
         return;
       }
@@ -844,6 +856,17 @@ nsresult
 Accessible::HandleAccEvent(AccEvent* aEvent)
 {
   NS_ENSURE_ARG_POINTER(aEvent);
+
+#ifdef MOZ_GECKO_PROFILER
+  if (profiler_is_active()) {
+    nsAutoCString strEventType;
+    GetAccService()->GetStringEventType(aEvent->GetEventType(), strEventType);
+    nsAutoCString strMarker;
+    strMarker.AppendLiteral("A11y Event - ");
+    strMarker.Append(strEventType);
+    profiler_add_marker(strMarker.get());
+  }
+#endif
 
   if (IPCAccessibilityActive() && Document()) {
     DocAccessibleChild* ipcDoc = mDoc->IPCDoc();
@@ -924,14 +947,14 @@ Accessible::Attributes()
     return attributes.forget();
 
   // 'xml-roles' attribute for landmark.
-  nsIAtom* landmark = LandmarkRole();
+  nsAtom* landmark = LandmarkRole();
   if (landmark) {
     nsAccUtils::SetAccAttr(attributes, nsGkAtoms::xmlroles, landmark);
 
   } else {
     // 'xml-roles' attribute coming from ARIA.
     nsAutoString xmlRoles;
-    if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::role, xmlRoles))
+    if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::role, xmlRoles))
       nsAccUtils::SetAccAttr(attributes, nsGkAtoms::xmlroles, xmlRoles);
   }
 
@@ -946,10 +969,6 @@ Accessible::Attributes()
     nsAccUtils::SetAccAttr(attributes, nsGkAtoms::hidden,
                            NS_LITERAL_STRING("true"));
   }
-
-  // XXX: In ARIA 1.1, the value of aria-haspopup became a token (bug 1355449).
-  if (aria::UniversalStatesFor(mContent->AsElement()) & states::HASPOPUP)
-    nsAccUtils::SetAccAttr(attributes, nsGkAtoms::haspopup, NS_LITERAL_STRING("true"));
 
   // If there is no aria-live attribute then expose default value of 'live'
   // object attribute used for ARIA role of this accessible.
@@ -1056,7 +1075,7 @@ Accessible::NativeAttributes()
 
   // Expose class because it may have useful microformat information.
   nsAutoString _class;
-  if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::_class, _class))
+  if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::_class, _class))
     nsAccUtils::SetAccAttr(attributes, nsGkAtoms::_class, _class);
 
   // Expose tag.
@@ -1065,11 +1084,8 @@ Accessible::NativeAttributes()
   nsAccUtils::SetAccAttr(attributes, nsGkAtoms::tag, tagName);
 
   // Expose draggable object attribute.
-  nsCOMPtr<nsIDOMHTMLElement> htmlElement = do_QueryInterface(mContent);
-  if (htmlElement) {
-    bool draggable = false;
-    htmlElement->GetDraggable(&draggable);
-    if (draggable) {
+  if (auto htmlElement = nsGenericHTMLElement::FromNode(mContent)) {
+    if (htmlElement->Draggable()) {
       nsAccUtils::SetAccAttr(attributes, nsGkAtoms::draggable,
                              NS_LITERAL_STRING("true"));
     }
@@ -1082,7 +1098,7 @@ Accessible::NativeAttributes()
 
   // CSS style based object attributes.
   nsAutoString value;
-  StyleInfo styleInfo(mContent->AsElement(), mDoc->PresShell());
+  StyleInfo styleInfo(mContent->AsElement());
 
   // Expose 'display' attribute.
   styleInfo.Display(value);
@@ -1170,9 +1186,10 @@ Accessible::State()
   // it as selected to make ARIA widget authors life easier.
   const nsRoleMapEntry* roleMapEntry = ARIARoleMap();
   if (roleMapEntry && !(state & states::SELECTED) &&
-      !mContent->AttrValueIs(kNameSpaceID_None,
-                             nsGkAtoms::aria_selected,
-                             nsGkAtoms::_false, eCaseMatters)) {
+      (!mContent->IsElement() ||
+       !mContent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                           nsGkAtoms::aria_selected,
+                                           nsGkAtoms::_false, eCaseMatters))) {
     // Special case for tabs: focused tab or focus inside related tab panel
     // implies selected state.
     if (roleMapEntry->role == roles::PAGETAB) {
@@ -1330,10 +1347,14 @@ Accessible::Value(nsString& aValue)
     // aria-valuenow is a number, and aria-valuetext is the optional text
     // equivalent. For the string value, we will try the optional text
     // equivalent first.
-    if (!mContent->GetAttr(kNameSpaceID_None,
-                           nsGkAtoms::aria_valuetext, aValue)) {
-      mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_valuenow,
-                        aValue);
+    if (!mContent->IsElement()) {
+      return;
+    }
+
+    if (!mContent->AsElement()->GetAttr(kNameSpaceID_None,
+                                        nsGkAtoms::aria_valuetext, aValue)) {
+      mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_valuenow,
+                                     aValue);
     }
     return;
   }
@@ -1409,8 +1430,12 @@ Accessible::SetCurValue(double aValue)
   nsAutoString strValue;
   strValue.AppendFloat(aValue);
 
+  if (!mContent->IsElement())
+    return true;
+
   return NS_SUCCEEDED(
-    mContent->SetAttr(kNameSpaceID_None, nsGkAtoms::aria_valuenow, strValue, true));
+    mContent->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::aria_valuenow,
+                                   strValue, true));
 }
 
 role
@@ -1441,10 +1466,11 @@ Accessible::ARIATransformRole(role aRole)
       return roles::TOGGLE_BUTTON;
     }
 
-    if (mContent->AttrValueIs(kNameSpaceID_None,
-                              nsGkAtoms::aria_haspopup,
-                              nsGkAtoms::_true,
-                              eCaseMatters)) {
+    if (mContent->IsElement() &&
+        mContent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                           nsGkAtoms::aria_haspopup,
+                                           nsGkAtoms::_true,
+                                           eCaseMatters)) {
       // For button with aria-haspopup="true".
       return roles::BUTTONMENU;
     }
@@ -1469,8 +1495,9 @@ Accessible::ARIATransformRole(role aRole)
 
   } else if (aRole == roles::MENUITEM) {
     // Menuitem has a submenu.
-    if (mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::aria_haspopup,
-                              nsGkAtoms::_true, eCaseMatters)) {
+    if (mContent->IsElement() &&
+        mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::aria_haspopup,
+                                           nsGkAtoms::_true, eCaseMatters)) {
       return roles::PARENT_MENUITEM;
     }
   }
@@ -1478,7 +1505,7 @@ Accessible::ARIATransformRole(role aRole)
   return aRole;
 }
 
-nsIAtom*
+nsAtom*
 Accessible::LandmarkRole() const
 {
   const nsRoleMapEntry* roleMapEntry = ARIARoleMap();
@@ -1584,7 +1611,10 @@ Accessible::GetAtomicRegion() const
 {
   nsIContent *loopContent = mContent;
   nsAutoString atomic;
-  while (loopContent && !loopContent->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_atomic, atomic))
+  while (loopContent &&
+         (!loopContent->IsElement() ||
+          !loopContent->AsElement()->GetAttr(kNameSpaceID_None,
+                                             nsGkAtoms::aria_atomic, atomic)))
     loopContent = loopContent->GetParent();
 
   return atomic.EqualsLiteral("true") ? loopContent : nullptr;
@@ -1733,22 +1763,18 @@ Accessible::RelationByType(RelationType aType)
         }
       } else {
         // In XUL, use first <button default="true" .../> in the document
-        nsCOMPtr<nsIDOMXULDocument> xulDoc =
-          do_QueryInterface(mContent->OwnerDoc());
+        nsIDocument* doc = mContent->OwnerDoc();
         nsCOMPtr<nsIDOMXULButtonElement> buttonEl;
-        if (xulDoc) {
-          nsCOMPtr<nsIDOMNodeList> possibleDefaultButtons;
-          xulDoc->GetElementsByAttribute(NS_LITERAL_STRING("default"),
-                                         NS_LITERAL_STRING("true"),
-                                         getter_AddRefs(possibleDefaultButtons));
+        if (doc->IsXULDocument()) {
+          dom::XULDocument* xulDoc = doc->AsXULDocument();
+          nsCOMPtr<nsINodeList> possibleDefaultButtons =
+            xulDoc->GetElementsByAttribute(NS_LITERAL_STRING("default"),
+                                           NS_LITERAL_STRING("true"));
           if (possibleDefaultButtons) {
-            uint32_t length;
-            possibleDefaultButtons->GetLength(&length);
-            nsCOMPtr<nsIDOMNode> possibleButton;
+            uint32_t length = possibleDefaultButtons->Length();
             // Check for button in list of default="true" elements
             for (uint32_t count = 0; count < length && !buttonEl; count ++) {
-              possibleDefaultButtons->Item(count, getter_AddRefs(possibleButton));
-              buttonEl = do_QueryInterface(possibleButton);
+              buttonEl = do_QueryInterface(possibleDefaultButtons->Item(count));
             }
           }
           if (!buttonEl) { // Check for anonymous accept button in <dialog>
@@ -1974,7 +2000,9 @@ Accessible::ARIAName(nsString& aName)
   }
 
   if (aName.IsEmpty() &&
-      mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_label, aName)) {
+      mContent->IsElement() &&
+      mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_label,
+                                     aName)) {
     aName.CompressWhitespace();
   }
 }
@@ -2318,7 +2346,7 @@ Accessible::GetIndexOfEmbeddedChild(Accessible* aChild)
 // HyperLinkAccessible methods
 
 bool
-Accessible::IsLink()
+Accessible::IsLink() const
 {
   // Every embedded accessible within hypertext accessible implements
   // hyperlink interface.
@@ -2531,7 +2559,8 @@ bool
 Accessible::AreItemsOperable() const
 {
   return HasOwnContent() &&
-    mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::aria_activedescendant);
+    mContent->IsElement() &&
+    mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::aria_activedescendant);
 }
 
 Accessible*
@@ -2543,8 +2572,9 @@ Accessible::CurrentItem()
   // with the aria-activedescendant attribute.
   nsAutoString id;
   if (HasOwnContent() &&
-      mContent->GetAttr(kNameSpaceID_None,
-                        nsGkAtoms::aria_activedescendant, id)) {
+      mContent->IsElement() &&
+      mContent->AsElement()->GetAttr(kNameSpaceID_None,
+                                     nsGkAtoms::aria_activedescendant, id)) {
     nsIDocument* DOMDoc = mContent->OwnerDoc();
     dom::Element* activeDescendantElm = DOMDoc->GetElementById(id);
     if (activeDescendantElm) {
@@ -2559,12 +2589,14 @@ Accessible::CurrentItem()
 void
 Accessible::SetCurrentItem(Accessible* aItem)
 {
-  nsIAtom* id = aItem->GetContent()->GetID();
+  nsAtom* id = aItem->GetContent()->GetID();
   if (id) {
     nsAutoString idStr;
     id->ToString(idStr);
-    mContent->SetAttr(kNameSpaceID_None,
-                      nsGkAtoms::aria_activedescendant, idStr, true);
+    mContent->AsElement()->SetAttr(kNameSpaceID_None,
+                                   nsGkAtoms::aria_activedescendant,
+                                   idStr,
+                                   true);
   }
 }
 
@@ -2575,8 +2607,9 @@ Accessible::ContainerWidget() const
     for (Accessible* parent = Parent(); parent; parent = parent->Parent()) {
       nsIContent* parentContent = parent->GetContent();
       if (parentContent &&
-        parentContent->HasAttr(kNameSpaceID_None,
-                               nsGkAtoms::aria_activedescendant)) {
+          parentContent->IsElement() &&
+          parentContent->AsElement()->HasAttr(kNameSpaceID_None,
+                                              nsGkAtoms::aria_activedescendant)) {
         return parent;
       }
 
@@ -2642,14 +2675,15 @@ Accessible::GetSiblingAtOffset(int32_t aOffset, nsresult* aError) const
 }
 
 double
-Accessible::AttrNumericValue(nsIAtom* aAttr) const
+Accessible::AttrNumericValue(nsAtom* aAttr) const
 {
   const nsRoleMapEntry* roleMapEntry = ARIARoleMap();
   if (!roleMapEntry || roleMapEntry->valueRule == eNoValue)
     return UnspecifiedNaN<double>();
 
   nsAutoString attrValue;
-  if (!mContent->GetAttr(kNameSpaceID_None, aAttr, attrValue))
+  if (!mContent->IsElement() ||
+      !mContent->AsElement()->GetAttr(kNameSpaceID_None, aAttr, attrValue))
     return UnspecifiedNaN<double>();
 
   nsresult error = NS_OK;
@@ -2665,7 +2699,7 @@ Accessible::GetActionRule() const
 
   // Return "click" action on elements that have an attached popup menu.
   if (mContent->IsXULElement())
-    if (mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::popup))
+    if (mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::popup))
       return eClickAction;
 
   // Has registered 'click' event handler.
@@ -2835,37 +2869,32 @@ KeyBinding::ToPlatformFormat(nsAString& aValue) const
     return;
 
   nsAutoString separator;
-  keyStringBundle->GetStringFromName("MODIFIER_SEPARATOR",
-                                     getter_Copies(separator));
+  keyStringBundle->GetStringFromName("MODIFIER_SEPARATOR", separator);
 
   nsAutoString modifierName;
   if (mModifierMask & kControl) {
-    keyStringBundle->GetStringFromName("VK_CONTROL",
-                                       getter_Copies(modifierName));
+    keyStringBundle->GetStringFromName("VK_CONTROL", modifierName);
 
     aValue.Append(modifierName);
     aValue.Append(separator);
   }
 
   if (mModifierMask & kAlt) {
-    keyStringBundle->GetStringFromName("VK_ALT",
-                                       getter_Copies(modifierName));
+    keyStringBundle->GetStringFromName("VK_ALT", modifierName);
 
     aValue.Append(modifierName);
     aValue.Append(separator);
   }
 
   if (mModifierMask & kShift) {
-    keyStringBundle->GetStringFromName("VK_SHIFT",
-                                       getter_Copies(modifierName));
+    keyStringBundle->GetStringFromName("VK_SHIFT", modifierName);
 
     aValue.Append(modifierName);
     aValue.Append(separator);
   }
 
   if (mModifierMask & kMeta) {
-    keyStringBundle->GetStringFromName("VK_META",
-                                       getter_Copies(modifierName));
+    keyStringBundle->GetStringFromName("VK_META", modifierName);
 
     aValue.Append(modifierName);
     aValue.Append(separator);

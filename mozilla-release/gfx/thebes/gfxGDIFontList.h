@@ -6,6 +6,7 @@
 #ifndef GFX_GDIFONTLIST_H
 #define GFX_GDIFONTLIST_H
 
+#include "mozilla/FontPropertyTypes.h"
 #include "mozilla/MemoryReporting.h"
 #include "gfxWindowsPlatform.h"
 #include "gfxPlatformFontList.h"
@@ -109,11 +110,11 @@ class GDIFontEntry : public gfxFontEntry
 public:
     LPLOGFONTW GetLogFont() { return &mLogFont; }
 
-    nsresult ReadCMAP(FontInfoData *aFontInfoData = nullptr);
+    nsresult ReadCMAP(FontInfoData *aFontInfoData = nullptr) override;
 
-    virtual bool IsSymbolFont();
-
-    void FillLogFont(LOGFONTW *aLogFont, uint16_t aWeight, gfxFloat aSize);
+    void FillLogFont(LOGFONTW *aLogFont,
+                     LONG aWeight,
+                     gfxFloat aSize);
 
     static gfxWindowsFontType DetermineFontType(const NEWTEXTMETRICW& metrics, 
                                                 DWORD fontType)
@@ -147,7 +148,89 @@ public:
                 mFontType == GFX_FONT_TYPE_TT_OPENTYPE);
     }
 
-    virtual bool MatchesGenericFamily(const nsACString& aGeneric) const {
+    virtual bool SupportsRange(uint8_t range) {
+        return mUnicodeRanges.test(range);
+    }
+
+    virtual bool SkipDuringSystemFallback() {
+        return !HasCmapTable(); // explicitly skip non-SFNT fonts
+    }
+
+    virtual bool TestCharacterMap(uint32_t aCh);
+
+    virtual void AddSizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf,
+                                        FontListSizes* aSizes) const;
+
+    gfxFontEntry* Clone() const override;
+
+    // GDI backend doesn't support font variations:
+    bool HasVariations() override { return false; }
+    void GetVariationAxes(nsTArray<gfxFontVariationAxis>&) override {}
+    void GetVariationInstances(nsTArray<gfxFontVariationInstance>&) override {}
+
+    // create a font entry for a font with a given name
+    static GDIFontEntry* CreateFontEntry(const nsAString& aName,
+                                         gfxWindowsFontType aFontType,
+                                         SlantStyleRange aStyle,
+                                         WeightRange aWeight,
+                                         StretchRange aStretch,
+                                         gfxUserFontData* aUserFontData);
+
+    gfxWindowsFontType mFontType;
+    bool mForceGDI;
+
+    gfxSparseBitSet mUnicodeRanges;
+
+protected:
+    friend class gfxGDIFont;
+
+    GDIFontEntry(const nsAString& aFaceName, gfxWindowsFontType aFontType,
+                 SlantStyleRange aStyle, WeightRange aWeight, StretchRange aStretch,
+                 gfxUserFontData *aUserFontData);
+
+    void InitLogFont(const nsAString& aName, gfxWindowsFontType aFontType);
+
+    gfxFont* CreateFontInstance(const gfxFontStyle *aFontStyle) override;
+
+    virtual nsresult CopyFontTable(uint32_t aTableTag,
+                                   nsTArray<uint8_t>& aBuffer) override;
+
+    already_AddRefed<mozilla::gfx::UnscaledFontGDI> LookupUnscaledFont(HFONT aFont);
+
+    LOGFONTW mLogFont;
+
+    mozilla::ThreadSafeWeakPtr<mozilla::gfx::UnscaledFontGDI> mUnscaledFont;
+};
+
+// a single font family, referencing one or more faces
+class GDIFontFamily : public gfxFontFamily
+{
+public:
+    explicit GDIFontFamily(const nsAString& aName) :
+        gfxFontFamily(aName),
+        mWindowsFamily(0),
+        mWindowsPitch(0),
+        mCharset()
+    {}
+
+    virtual void FindStyleVariations(FontInfoData *aFontInfoData = nullptr);
+
+    bool FilterForFontList(nsAtom* aLangGroup,
+                           const nsACString& aGeneric) const final {
+        return !IsSymbolFontFamily() &&
+               SupportsLangGroup(aLangGroup) &&
+               MatchesGenericFamily(aGeneric);
+    }
+
+protected:
+    friend class gfxGDIFontList;
+
+    // helpers for FilterForFontList
+    bool IsSymbolFontFamily() const {
+        return mCharset.test(SYMBOL_CHARSET);
+    }
+
+    bool MatchesGenericFamily(const nsACString& aGeneric) const {
         if (aGeneric.IsEmpty()) {
             return true;
         }
@@ -183,7 +266,7 @@ public:
         return false;
     }
 
-    virtual bool SupportsLangGroup(nsIAtom* aLangGroup) const override {
+    bool SupportsLangGroup(nsAtom* aLangGroup) const {
         if (!aLangGroup || aLangGroup == nsGkAtoms::Unicode) {
             return true;
         }
@@ -201,7 +284,7 @@ public:
             bit = GB2312_CHARSET;
         } else if (aLangGroup == nsGkAtoms::zh_tw) {
             bit = CHINESEBIG5_CHARSET;
-        } else if (aLangGroup == nsGkAtoms::el_) {
+        } else if (aLangGroup == nsGkAtoms::el) {
             bit = GREEK_CHARSET;
         } else if (aLangGroup == nsGkAtoms::he) {
             bit = HEBREW_CHARSET;
@@ -220,77 +303,10 @@ public:
         return false;
     }
 
-    virtual bool SupportsRange(uint8_t range) {
-        return mUnicodeRanges.test(range);
-    }
-
-    virtual bool SkipDuringSystemFallback() { 
-        return !HasCmapTable(); // explicitly skip non-SFNT fonts
-    }
-
-    virtual bool TestCharacterMap(uint32_t aCh);
-
-    virtual void AddSizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf,
-                                        FontListSizes* aSizes) const;
-
-    // create a font entry for a font with a given name
-    static GDIFontEntry* CreateFontEntry(const nsAString& aName,
-                                         gfxWindowsFontType aFontType,
-                                         uint8_t aStyle,
-                                         uint16_t aWeight, int16_t aStretch,
-                                         gfxUserFontData* aUserFontData,
-                                         bool aFamilyHasItalicFace);
-
-    // create a font entry for a font referenced by its fullname
-    static GDIFontEntry* LoadLocalFont(const nsAString& aFontName,
-                                       uint16_t aWeight,
-                                       int16_t aStretch,
-                                       uint8_t aStyle);
-
     uint8_t mWindowsFamily;
     uint8_t mWindowsPitch;
 
-    gfxWindowsFontType mFontType;
-    bool mForceGDI    : 1;
-
-    // For src:local user-fonts, we keep track of whether the platform family
-    // contains an italic face, because in this case we can't safely ask GDI
-    // to create synthetic italics (oblique) via the LOGFONT.
-    // (For other types of font, this is just set to false.)
-    bool mFamilyHasItalicFace : 1;
-
     gfxSparseBitSet mCharset;
-    gfxSparseBitSet mUnicodeRanges;
-
-protected:
-    friend class gfxGDIFont;
-
-    GDIFontEntry(const nsAString& aFaceName, gfxWindowsFontType aFontType,
-                 uint8_t aStyle, uint16_t aWeight, int16_t aStretch,
-                 gfxUserFontData *aUserFontData, bool aFamilyHasItalicFace);
-
-    void InitLogFont(const nsAString& aName, gfxWindowsFontType aFontType);
-
-    virtual gfxFont *CreateFontInstance(const gfxFontStyle *aFontStyle, bool aNeedsBold);
-
-    virtual nsresult CopyFontTable(uint32_t aTableTag,
-                                   nsTArray<uint8_t>& aBuffer) override;
-
-    already_AddRefed<mozilla::gfx::UnscaledFontGDI> LookupUnscaledFont(HFONT aFont);
-
-    LOGFONTW mLogFont;
-
-    mozilla::WeakPtr<mozilla::gfx::UnscaledFont> mUnscaledFont;
-};
-
-// a single font family, referencing one or more faces
-class GDIFontFamily : public gfxFontFamily
-{
-public:
-    explicit GDIFontFamily(nsAString &aName) :
-        gfxFontFamily(aName) {}
-
-    virtual void FindStyleVariations(FontInfoData *aFontInfoData = nullptr);
 
 private:
     static int CALLBACK FamilyAddStylesProc(const ENUMLOGFONTEXW *lpelfe,
@@ -307,20 +323,23 @@ public:
     // initialize font lists
     virtual nsresult InitFontListForPlatform() override;
 
+    gfxFontFamily* CreateFontFamily(const nsAString& aName) const override;
+
     bool FindAndAddFamilies(const nsAString& aFamily,
                             nsTArray<gfxFontFamily*>* aOutput,
+                            FindFamiliesFlags aFlags,
                             gfxFontStyle* aStyle = nullptr,
                             gfxFloat aDevToCssSize = 1.0) override;
 
     virtual gfxFontEntry* LookupLocalFont(const nsAString& aFontName,
-                                          uint16_t aWeight,
-                                          int16_t aStretch,
-                                          uint8_t aStyle);
+                                          WeightRange aWeightForEntry,
+                                          StretchRange aStretchForEntry,
+                                          SlantStyleRange aStyleForEntry);
 
     virtual gfxFontEntry* MakePlatformFont(const nsAString& aFontName,
-                                           uint16_t aWeight,
-                                           int16_t aStretch,
-                                           uint8_t aStyle,
+                                           WeightRange aWeightForEntry,
+                                           StretchRange aStretchForEntry,
+                                           SlantStyleRange aStyleForEntry,
                                            const uint8_t* aFontData,
                                            uint32_t aLength);
 

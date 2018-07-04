@@ -129,6 +129,7 @@ class ArtifactJob(object):
         ('bin/BadCertServer', ('bin', 'bin')),
         ('bin/GenerateOCSPResponse', ('bin', 'bin')),
         ('bin/OCSPStaplingServer', ('bin', 'bin')),
+        ('bin/SymantecSanctionsServer', ('bin', 'bin')),
         ('bin/certutil', ('bin', 'bin')),
         ('bin/fileid', ('bin', 'bin')),
         ('bin/geckodriver', ('bin', 'bin')),
@@ -244,7 +245,6 @@ class AndroidArtifactJob(ArtifactJob):
         'application.ini',
         'platform.ini',
         '**/*.so',
-        '**/interfaces.xpt',
     }
 
     def process_package_artifact(self, filename, processed_filename):
@@ -282,7 +282,6 @@ class LinuxArtifactJob(ArtifactJob):
         'firefox/plugin-container',
         'firefox/updater',
         'firefox/**/*.so',
-        'firefox/**/interfaces.xpt',
     }
 
     def process_package_artifact(self, filename, processed_filename):
@@ -381,7 +380,6 @@ class MacArtifactJob(ArtifactJob):
                     'gmp-clearkey/0.1/libclearkey.dylib',
                     # 'gmp-fake/1.0/libfake.dylib',
                     # 'gmp-fakeopenh264/1.0/libfakeopenh264.dylib',
-                    '**/interfaces.xpt',
                 ]),
             ]
 
@@ -424,7 +422,7 @@ class WinArtifactJob(ArtifactJob):
         'firefox/application.ini',
         'firefox/**/*.dll',
         'firefox/*.exe',
-        'firefox/**/interfaces.xpt',
+        'firefox/*.tlb',
     }
 
     product = 'firefox'
@@ -434,6 +432,7 @@ class WinArtifactJob(ArtifactJob):
         ('bin/BadCertServer.exe', ('bin', 'bin')),
         ('bin/GenerateOCSPResponse.exe', ('bin', 'bin')),
         ('bin/OCSPStaplingServer.exe', ('bin', 'bin')),
+        ('bin/SymantecSanctionsServer.exe', ('bin', 'bin')),
         ('bin/certutil.exe', ('bin', 'bin')),
         ('bin/fileid.exe', ('bin', 'bin')),
         ('bin/geckodriver.exe', ('bin', 'bin')),
@@ -658,7 +657,7 @@ class TaskCache(CacheManager):
                  'Searching Taskcluster index with namespace: {namespace}')
         try:
             taskId = find_task_id(namespace)
-        except Exception:
+        except KeyError:
             # Not all revisions correspond to pushes that produce the job we
             # care about; and even those that do may not have completed yet.
             raise ValueError('Task for {namespace} does not exist (yet)!'.format(namespace=namespace))
@@ -744,7 +743,13 @@ class ArtifactPersistLimit(PersistLimit):
             if f.path in self._downloaded_now:
                 kept.append(f)
                 continue
-            fs.remove(f.path)
+            try:
+                fs.remove(f.path)
+            except WindowsError:
+                # For some reason, on automation, we can't remove those files.
+                # So for now, ignore the error.
+                kept.append(f)
+                continue
             self.log(logging.INFO, 'artifact',
                 {'filename': f.path},
                 'Purged artifact {filename}')
@@ -790,7 +795,9 @@ class ArtifactCache(object):
             # human readable unique name, but extracting build IDs is time consuming
             # (especially on Mac OS X, where we must mount a large DMG file).
             hash = hashlib.sha256(url).hexdigest()[:16]
-            fname = hash + '-' + os.path.basename(url)
+            # Strip query string and fragments.
+            basename = os.path.basename(urlparse.urlparse(url).path)
+            fname = hash + '-' + basename
 
         path = os.path.abspath(mozpath.join(self._cache_dir, fname))
         if self._skip_cache and os.path.exists(path):
@@ -919,7 +926,16 @@ class Artifacts(object):
 
         with self._pushhead_cache as pushhead_cache:
             found_pushids = {}
-            for tree in CANDIDATE_TREES:
+
+            search_trees = list(CANDIDATE_TREES)
+            # We aren't generally interested in pushes from autoland because
+            # people aren't generally working off of autoland locally, but we
+            # sometimes find errant public pushheads on autoland in automation,
+            # so we check autoland in automation as a workaround.
+            if os.environ.get('MOZ_AUTOMATION'):
+                search_trees += ['integration/autoland']
+
+            for tree in search_trees:
                 self.log(logging.INFO, 'artifact',
                          {'tree': tree,
                           'rev': rev},
@@ -976,12 +992,15 @@ class Artifacts(object):
         if self._git:
             return self._get_hg_revisions_from_git()
 
-        return subprocess.check_output([
+        # Mercurial updated the ordering of "last" in 4.3. We use revision
+        # numbers to order here to accommodate multiple versions of hg.
+        last_revs = subprocess.check_output([
             self._hg, 'log',
-            '--template', '{node}\n',
+            '--template', '{rev}:{node}\n',
             '-r', 'last(public() and ::., {num})'.format(
                 num=NUM_REVISIONS_TO_QUERY)
         ], cwd=self._topsrcdir).splitlines()
+        return [i.split(':')[-1] for i in sorted(last_revs, reverse=True)]
 
     def _find_pushheads(self):
         """Returns an iterator of recent pushhead revisions, starting with the

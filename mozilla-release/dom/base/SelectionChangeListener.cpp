@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=78: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,7 +10,11 @@
 
 #include "SelectionChangeListener.h"
 
+#include "mozilla/AsyncEventDispatcher.h"
+#include "nsCOMPtr.h"
 #include "nsContentUtils.h"
+#include "nsIDocument.h"
+#include "nsIDOMDocument.h"
 #include "nsFrameSelection.h"
 #include "nsRange.h"
 #include "Selection.h"

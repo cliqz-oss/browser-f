@@ -45,7 +45,7 @@ function test() {
           if (mutation.attributeName == "searchEngineName") {
             // Re-add the listener, and perform a search
             gBrowser.addProgressListener(listener);
-            gMutationObserver.disconnect()
+            gMutationObserver.disconnect();
             gMutationObserver = null;
             executeSoon(function() {
               doc.getElementById("searchText").value = "foo";
@@ -66,13 +66,6 @@ function test() {
       searchURL: replaceUrl("http://www.bing.com/search?q=foo&pc=MOZI&form=MOZSPG"),
       run() {
         verify_about_home_search("Bing");
-      }
-    },
-    {
-      name: "Search with Yahoo from about:home",
-      searchURL: replaceUrl("https://search.yahoo.com/search?p=foo&ei=UTF-8&fr=moz35"),
-      run() {
-        verify_about_home_search("Yahoo");
       }
     },
     {
@@ -122,11 +115,11 @@ function test() {
       is(req.originalURI.spec, gCurrTest.searchURL, "search URL was loaded");
       info("Actual URI: " + req.URI.spec);
 
-      req.cancel(Components.results.NS_ERROR_FAILURE);
+      req.cancel(Cr.NS_ERROR_FAILURE);
 
       executeSoon(nextTest);
     }
-  }
+  };
 
   registerCleanupFunction(function() {
     Services.search.currentEngine = previouslySelectedEngine;

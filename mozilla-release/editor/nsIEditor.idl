@@ -8,7 +8,6 @@
 #include "domstubs.idl"
 
 interface nsIURI;
-interface nsIAtom;
 interface nsIContent;
 interface nsISelection;
 interface nsISelectionController;
@@ -21,17 +20,17 @@ interface nsIEditActionListener;
 interface nsIInlineSpellChecker;
 interface nsITransferable;
 
+webidl Element;
+
 %{C++
 namespace mozilla {
-namespace widget {
-struct IMEState;
-} // namespace widget
+class EditorBase;
+class HTMLEditor;
+class TextEditor;
 } // namespace mozilla
 %}
 
-native IMEState(mozilla::widget::IMEState);
-
-[scriptable, uuid(094be624-f0bf-400f-89e2-6a84baab9474)]
+[scriptable, builtinclass, uuid(094be624-f0bf-400f-89e2-6a84baab9474)]
 interface nsIEditor  : nsISupports
 {
 %{C++
@@ -51,41 +50,13 @@ interface nsIEditor  : nsISupports
 
   readonly attribute nsISelection selection;
 
-  /**
-   * Finalizes selection and caret for the editor.
-   */
-  [noscript] void finalizeSelection();
-
-  /**
-   * Init is to tell the implementation of nsIEditor to begin its services
-   * @param aDoc          The dom document interface being observed
-   * @param aRoot         This is the root of the editable section of this
-   *                      document. If it is null then we get root
-   *                      from document body.
-   * @param aSelCon       this should be used to get the selection location
-   *                      (will be null for HTML editors)
-   * @param aFlags        A bitmask of flags for specifying the behavior
-   *                      of the editor.
-   */
-  [noscript] void init(in nsIDOMDocument doc,
-                       in nsIContent aRoot,
-                       in nsISelectionController aSelCon,
-                       in unsigned long aFlags,
-                       in AString initialValue);
-
-  void setAttributeOrEquivalent(in nsIDOMElement element,
+  void setAttributeOrEquivalent(in Element element,
                                 in AString sourceAttrName,
                                 in AString sourceAttrValue,
                                 in boolean aSuppressTransaction);
-  void removeAttributeOrEquivalent(in nsIDOMElement element,
+  void removeAttributeOrEquivalent(in Element element,
                                    in DOMString sourceAttrName,
                                    in boolean aSuppressTransaction);
-
-  /**
-   * postCreate should be called after Init, and is the time that the editor
-   * tells its documentStateObservers that the document has been created.
-   */
-  void postCreate();
 
   /**
    * preDestroy is called before the editor goes away, and gives the editor a
@@ -117,7 +88,7 @@ interface nsIEditor  : nsISupports
 
   /** the body element, i.e. the root of the editable document.
    */
-  readonly attribute  nsIDOMElement rootElement;
+  readonly attribute Element rootElement;
 
   /**
    * the selection controller for the current presentation, refcounted.
@@ -194,16 +165,6 @@ interface nsIEditor  : nsISupports
     */
   void enableUndo(in boolean enable);
 
-  /**
-   * The number of items on the undo stack.
-   */
-  readonly attribute long numberOfUndoItems;
-
-  /**
-   * The number of items on the redo stack.
-   */
-  readonly attribute long numberOfRedoItems;
-
   /** undo reverses the effects of the last Do operation,
     * if Undo is enabled in the editor.
     * It is provided here so clients need no knowledge of whether
@@ -262,8 +223,6 @@ interface nsIEditor  : nsISupports
     */
   void endTransaction();
 
-  void beginPlaceHolderTransaction(in nsIAtom name);
-  void endPlaceHolderTransaction();
   boolean shouldTxnSetSelection();
 
   /** Set the flag that prevents insertElementTxn from changing the selection
@@ -287,12 +246,6 @@ interface nsIEditor  : nsISupports
     *                     WILL RETURN NULL.
     */
   nsIInlineSpellChecker getInlineSpellChecker(in boolean autoCreate);
-
-  /** Resyncs spellchecking state (enabled/disabled).  This should be called
-    * when anything that affects spellchecking state changes, such as the
-    * spellcheck attribute value.
-    */
-  void syncRealTimeSpell();
 
   /** Called when the user manually overrides the spellchecking state for this
     * editor.
@@ -357,7 +310,18 @@ interface nsIEditor  : nsISupports
   /** sets the document selection to the entire contents of the document */
   void selectAll();
 
-  /** sets the document selection to the beginning of the document */
+  /**
+   * Collapses selection at start of the document.  If it's an HTML editor,
+   * collapses selection at start of current editing host (<body> element if
+   * it's in designMode) instead.  If there is a non-editable node before any
+   * editable text nodes or inline elements which can have text nodes as their
+   * children, collapses selection at start of the editing host.  If there is
+   * an editable text node which is not collapsed, collapses selection at
+   * start of the text node.  If there is an editable inline element which
+   * cannot have text nodes as its child, collapses selection at before the
+   * element node.  Otherwise, collapses selection at start of the editing
+   * host.
+   */
   void beginningOfDocument();
 
   /** sets the document selection to the end of the document */
@@ -374,7 +338,7 @@ interface nsIEditor  : nsISupports
    * @param aAttribute  the string representation of the attribute to set
    * @param aValue      the value to set aAttribute to
    */
-  void setAttribute(in nsIDOMElement aElement, in AString attributestr,
+  void setAttribute(in Element aElement, in AString attributestr,
                     in AString attvalue);
 
   /**
@@ -387,7 +351,7 @@ interface nsIEditor  : nsISupports
    * @return              PR_TRUE if aAttribute is set on the current node,
    *                      PR_FALSE if it is not.
    */
-  boolean getAttributeValue(in nsIDOMElement aElement,
+  boolean getAttributeValue(in Element aElement,
                             in AString attributestr,
                             out AString resultValue);
 
@@ -398,7 +362,7 @@ interface nsIEditor  : nsISupports
    * @param aElement      the content element to operate on
    * @param aAttribute    the string representation of the attribute to get
    */
-  void removeAttribute(in nsIDOMElement aElement,
+  void removeAttribute(in Element aElement,
                        in AString aAttribute);
 
   /**
@@ -428,18 +392,6 @@ interface nsIEditor  : nsISupports
    * @param aSourceNode   the source element to copy attributes from
    */
   void cloneAttributes(in nsIDOMNode destNode, in nsIDOMNode sourceNode);
-
-  /**
-   * createNode instantiates a new element of type aTag and inserts it
-   * into aParent at aPosition.
-   * @param aTag      The type of object to create
-   * @param aParent   The node to insert the new object into
-   * @param aPosition The place in aParent to insert the new node
-   * @return          The node created.  Caller must release aNewNode.
-   */
-  nsIDOMNode createNode(in AString tag,
-                        in nsIDOMNode parent,
-                        in long position);
 
   /**
    * insertNode inserts aNode into aParent at aPosition.
@@ -491,12 +443,6 @@ interface nsIEditor  : nsISupports
   void deleteNode(in nsIDOMNode child);
 
   /**
-   * Returns true if markNodeDirty() has any effect.  Returns false if
-   * markNodeDirty() is a no-op.
-   */
-  [notxpcom] boolean outputsMozDirty();
-
-  /**
    * markNodeDirty() sets a special dirty attribute on the node.
    * Usually this will be called immediately after creating a new node.
    * @param aNode      The node for which to insert formatting.
@@ -519,11 +465,6 @@ interface nsIEditor  : nsISupports
    */
   AString outputToString(in AString formatType,
                          in unsigned long flags);
-  void outputToStream(in nsIOutputStream aStream,
-                      in AString formatType,
-                      in ACString charsetOverride,
-                      in unsigned long flags);
-
 
   /* ------------ Various listeners methods --------------
    * nsIEditor holds strong references to the editor observers, action listeners
@@ -562,31 +503,42 @@ interface nsIEditor  : nsISupports
   /* Run unit tests. Noop in optimized builds */
   void debugUnitTests(out long outNumTests, out long  outNumTestsFailed);
 
-  /* checks if a node is read-only or not */
-  [notxpcom] boolean isModifiableNode(in nsIDOMNode aNode);
-
-  /* Set true if you want to suppress dispatching input event. */
-  attribute boolean suppressDispatchingInputEvent;
-
-  /**
-   * True if an edit action is being handled (in other words, between calls of
-   * nsIEditorObserver::BeforeEditAction() and nsIEditorObserver::EditAction()
-   * or nsIEditorObserver::CancelEditAction().  Otherwise, false.
-   */
-  [noscript] readonly attribute boolean isInEditAction;
-
   /**
    * forceCompositionEnd() force the composition end
    */
   void forceCompositionEnd();
 
   /**
-   * Get preferred IME status of current widget.
-   */
-  [noscript] IMEState getPreferredIMEState();
-
-  /**
    * whether this editor has active IME transaction
    */
   readonly attribute boolean composing;
+
+%{C++
+  /**
+   * AsEditorBase() returns a pointer to EditorBase class.
+   *
+   * In order to avoid circular dependency issues, this method is defined
+   * in mozilla/EditorBase.h.  Consumers need to #include that header.
+   */
+  inline mozilla::EditorBase* AsEditorBase();
+  inline const mozilla::EditorBase* AsEditorBase() const;
+
+  /**
+   * AsTextEditor() returns a pointer to TextEditor class.
+   *
+   * In order to avoid circular dependency issues, this method is defined
+   * in mozilla/TextEditor.h.  Consumers need to #include that header.
+   */
+  inline mozilla::TextEditor* AsTextEditor();
+  inline const mozilla::TextEditor* AsTextEditor() const;
+
+  /**
+   * AsHTMLEditor() returns a pointer to HTMLEditor class.
+   *
+   * In order to avoid circular dependency issues, this method is defined
+   * in mozilla/HTMLEditor.h.  Consumers need to #include that header.
+   */
+  inline mozilla::HTMLEditor* AsHTMLEditor();
+  inline const mozilla::HTMLEditor* AsHTMLEditor() const;
+%}
 };

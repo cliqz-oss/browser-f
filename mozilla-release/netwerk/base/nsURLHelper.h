@@ -91,7 +91,7 @@ bool net_IsAbsoluteURL(const nsACString& inURL);
  * Extract URI-Scheme if possible
  *
  * @param inURI     URI spec
- * @param scheme    scheme copied to this buffer on return (may be null)
+ * @param scheme    scheme copied to this buffer on return. Is lowercase.
  */
 nsresult net_ExtractURLScheme(const nsACString &inURI,
                               nsACString &scheme);
@@ -114,6 +114,18 @@ inline bool net_IsValidScheme(const nsCString& scheme)
  * @param result the out param to write to if filtering happens
  */
 void net_FilterURIString(const nsACString& input, nsACString& result);
+
+/**
+ * This function performs character stripping just like net_FilterURIString,
+ * with the added benefit of also performing percent escaping of dissallowed
+ * characters, all in one pass. Saving one pass is very important when operating
+ * on really large strings.
+ *
+ * @param aInput the URL spec we want to filter
+ * @param aFlags the flags which control which characters we escape
+ * @param aResult the out param to write to if filtering happens
+ */
+nsresult net_FilterAndEscapeURI(const nsACString& aInput, uint32_t aFlags, nsACString& aResult);
 
 #if defined(XP_WIN)
 /**
@@ -209,7 +221,7 @@ void net_ParseContentType(const nsACString &aHeaderStr,
 /* inline versions */
 
 /* remember the 64-bit platforms ;-) */
-#define NET_MAX_ADDRESS (((char*)0)-1)
+#define NET_MAX_ADDRESS ((char*)UINTPTR_MAX)
 
 inline char *net_FindCharInSet(const char *str, const char *set)
 {

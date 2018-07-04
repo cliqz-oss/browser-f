@@ -9,6 +9,7 @@
 #include "DOMSVGPoint.h"
 #include "gfxPlatform.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/dom/SVGLengthBinding.h"
 #include "nsComputedDOMStyle.h"
 #include "nsSVGUtils.h"
 #include "nsSVGLength2.h"
@@ -16,6 +17,7 @@
 
 using namespace mozilla;
 using namespace mozilla::gfx;
+using namespace mozilla::dom;
 
 nsSVGElement::NumberInfo SVGGeometryElement::sNumberInfo =
 { &nsGkAtoms::pathLength, 0, false };
@@ -35,9 +37,11 @@ SVGGeometryElement::GetNumberInfo()
 }
 
 nsresult
-SVGGeometryElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+SVGGeometryElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                  const nsAttrValue* aValue,
-                                 const nsAttrValue* aOldValue, bool aNotify)
+                                 const nsAttrValue* aOldValue,
+                                 nsIPrincipal* aSubjectPrincipal,
+                                 bool aNotify)
 {
   if (mCachedPath &&
       aNamespaceID == kNameSpaceID_None &&
@@ -45,11 +49,19 @@ SVGGeometryElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
     mCachedPath = nullptr;
   }
   return SVGGeometryElementBase::AfterSetAttr(aNamespaceID, aName,
-                                              aValue, aOldValue, aNotify);
+                                              aValue, aOldValue,
+                                              aSubjectPrincipal,
+                                              aNotify);
 }
 
 bool
-SVGGeometryElement::AttributeDefinesGeometry(const nsIAtom *aName)
+SVGGeometryElement::IsNodeOfType(uint32_t aFlags) const
+{
+  return !(aFlags & ~eSHAPE);
+}
+
+bool
+SVGGeometryElement::AttributeDefinesGeometry(const nsAtom *aName)
 {
   if (aName == nsGkAtoms::pathLength) {
     return true;
@@ -72,7 +84,8 @@ SVGGeometryElement::GeometryDependsOnCoordCtx()
   // Check the nsSVGLength2 attribute
   LengthAttributesInfo info = const_cast<SVGGeometryElement*>(this)->GetLengthInfo();
   for (uint32_t i = 0; i < info.mLengthCount; i++) {
-    if (info.mLengths[i].GetSpecifiedUnitType() == nsIDOMSVGLength::SVG_LENGTHTYPE_PERCENTAGE) {
+    if (info.mLengths[i].GetSpecifiedUnitType() ==
+          SVGLengthBinding::SVG_LENGTHTYPE_PERCENTAGE) {
       return true;
     }
   }
@@ -91,26 +104,21 @@ SVGGeometryElement::GetMarkPoints(nsTArray<nsSVGMark> *aMarks)
 }
 
 already_AddRefed<Path>
-SVGGeometryElement::GetOrBuildPath(const DrawTarget& aDrawTarget,
+SVGGeometryElement::GetOrBuildPath(const DrawTarget* aDrawTarget,
                                    FillRule aFillRule)
 {
   // We only cache the path if it matches the backend used for screen painting:
-  bool cacheable  = aDrawTarget.GetBackendType() ==
+  bool cacheable  = aDrawTarget->GetBackendType() ==
                     gfxPlatform::GetPlatform()->GetDefaultContentBackend();
 
-  // Checking for and returning mCachedPath before checking the pref means
-  // that the pref is only live on page reload (or app restart for SVG in
-  // chrome). The benefit is that we avoid causing a CPU memory cache miss by
-  // looking at the global variable that the pref's stored in.
-  if (cacheable && mCachedPath) {
-    if (aDrawTarget.GetBackendType() == mCachedPath->GetBackendType()) {
-      RefPtr<Path> path(mCachedPath);
-      return path.forget();
-    }
+  if (cacheable && mCachedPath && mCachedPath->GetFillRule() == aFillRule &&
+      aDrawTarget->GetBackendType() == mCachedPath->GetBackendType()) {
+    RefPtr<Path> path(mCachedPath);
+    return path.forget();
   }
-  RefPtr<PathBuilder> builder = aDrawTarget.CreatePathBuilder(aFillRule);
+  RefPtr<PathBuilder> builder = aDrawTarget->CreatePathBuilder(aFillRule);
   RefPtr<Path> path = BuildPath(builder);
-  if (cacheable && NS_SVGPathCachingEnabled()) {
+  if (cacheable) {
     mCachedPath = path;
   }
   return path.forget();
@@ -119,7 +127,10 @@ SVGGeometryElement::GetOrBuildPath(const DrawTarget& aDrawTarget,
 already_AddRefed<Path>
 SVGGeometryElement::GetOrBuildPathForMeasuring()
 {
-  return nullptr;
+  RefPtr<DrawTarget> drawTarget =
+    gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
+  FillRule fillRule = mCachedPath ? mCachedPath->GetFillRule() : GetFillRule();
+  return GetOrBuildPath(drawTarget, fillRule);
 }
 
 FillRule
@@ -127,19 +138,19 @@ SVGGeometryElement::GetFillRule()
 {
   FillRule fillRule = FillRule::FILL_WINDING; // Equivalent to StyleFillRule::Nonzero
 
-  RefPtr<nsStyleContext> styleContext =
-    nsComputedDOMStyle::GetStyleContextNoFlush(this, nullptr, nullptr);
+  RefPtr<ComputedStyle> computedStyle =
+    nsComputedDOMStyle::GetComputedStyleNoFlush(this, nullptr);
 
-  if (styleContext) {
-    MOZ_ASSERT(styleContext->StyleSVG()->mFillRule == StyleFillRule::Nonzero ||
-               styleContext->StyleSVG()->mFillRule == StyleFillRule::Evenodd);
+  if (computedStyle) {
+    MOZ_ASSERT(computedStyle->StyleSVG()->mFillRule == StyleFillRule::Nonzero ||
+               computedStyle->StyleSVG()->mFillRule == StyleFillRule::Evenodd);
 
-    if (styleContext->StyleSVG()->mFillRule == StyleFillRule::Evenodd) {
+    if (computedStyle->StyleSVG()->mFillRule == StyleFillRule::Evenodd) {
       fillRule = FillRule::FILL_EVEN_ODD;
     }
   } else {
     // ReportToConsole
-    NS_WARNING("Couldn't get style context for content in GetFillRule");
+    NS_WARNING("Couldn't get ComputedStyle for content in GetFillRule");
   }
 
   return fillRule;
@@ -161,21 +172,41 @@ SVGGeometryElement::GetPointAtLength(float distance, ErrorResult& rv)
     return nullptr;
   }
 
-  float totalLength = path->ComputeLength();
-  if (mPathLength.IsExplicitlySet()) {
-    float pathLength = mPathLength.GetAnimValue();
-    if (pathLength <= 0) {
-      rv.Throw(NS_ERROR_FAILURE);
-      return nullptr;
-    }
-    distance *= totalLength / pathLength;
-  }
-  distance = std::max(0.f,         distance);
-  distance = std::min(totalLength, distance);
-
   nsCOMPtr<nsISVGPoint> point =
-    new DOMSVGPoint(path->ComputePointAtLength(distance));
+    new DOMSVGPoint(path->ComputePointAtLength(
+      clamped(distance, 0.f, path->ComputeLength())));
   return point.forget();
+}
+
+float
+SVGGeometryElement::GetPathLengthScale(PathLengthScaleForType aFor)
+{
+  MOZ_ASSERT(aFor == eForTextPath || aFor == eForStroking,
+             "Unknown enum");
+  if (mPathLength.IsExplicitlySet()) {
+    float authorsPathLengthEstimate = mPathLength.GetAnimValue();
+    if (authorsPathLengthEstimate > 0) {
+      RefPtr<Path> path = GetOrBuildPathForMeasuring();
+      if (!path) {
+        // The path is empty or invalid so its length must be zero and
+        // we know that 0 / authorsPathLengthEstimate = 0.
+        return 0.0;
+      }
+      if (aFor == eForTextPath) {
+        // For textPath, a transform on the referenced path affects the
+        // textPath layout, so when calculating the actual path length
+        // we need to take that into account.
+        gfxMatrix matrix = PrependLocalTransformsTo(gfxMatrix());
+        if (!matrix.IsIdentity()) {
+          RefPtr<PathBuilder> builder =
+            path->TransformedCopyToBuilder(ToMatrix(matrix));
+          path = builder->Finish();
+        }
+      }
+      return path->ComputeLength() / authorsPathLengthEstimate;
+    }
+  }
+  return 1.0;
 }
 
 already_AddRefed<SVGAnimatedNumber>

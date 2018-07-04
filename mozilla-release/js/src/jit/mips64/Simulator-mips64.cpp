@@ -36,10 +36,14 @@
 #include "mozilla/MathAlgorithms.h"
 
 #include <float.h>
+#include <limits>
 
+#include "jit/AtomicOperations.h"
 #include "jit/mips64/Assembler-mips64.h"
 #include "threading/LockGuard.h"
 #include "vm/Runtime.h"
+#include "wasm/WasmInstance.h"
+#include "wasm/WasmSignalHandlers.h"
 
 #define I8(v)   static_cast<int8_t>(v)
 #define I16(v)  static_cast<int16_t>(v)
@@ -50,6 +54,12 @@
 #define U64(v)  static_cast<uint64_t>(v)
 #define I128(v) static_cast<__int128_t>(v)
 #define U128(v) static_cast<__uint128_t>(v)
+
+#define I32_CHECK(v) \
+({ \
+    MOZ_ASSERT(I64(I32(v)) == I64(v)); \
+    I32((v)); \
+})
 
 namespace js {
 namespace jit {
@@ -235,7 +245,7 @@ class SimInstruction
     bool isForbiddenInBranchDelay() const;
     // Say if the instruction 'links'. e.g. jal, bal.
     bool isLinkingInstruction() const;
-    // Say if the instruction is a break or a trap.
+    // Say if the instruction is a debugger break/trap.
     bool isTrap() const;
 
   private:
@@ -321,13 +331,14 @@ SimInstruction::isTrap() const
     } else {
         switch (functionFieldRaw()) {
           case ff_break:
+            return instructionBits() != kCallRedirInstr;
           case ff_tge:
           case ff_tgeu:
           case ff_tlt:
           case ff_tltu:
           case ff_teq:
           case ff_tne:
-            return true;
+            return bits(15, 6) != kWasmTrapCode;
           default:
             return false;
         };
@@ -462,6 +473,7 @@ SimInstruction::instructionType() const
       case op_lwl:
       case op_lwr:
       case op_ll:
+      case op_lld:
       case op_ld:
       case op_ldl:
       case op_ldr:
@@ -471,6 +483,7 @@ SimInstruction::instructionType() const
       case op_swl:
       case op_swr:
       case op_sc:
+      case op_scd:
       case op_sd:
       case op_sdl:
       case op_sdr:
@@ -538,8 +551,6 @@ class AutoLockSimulatorCache : public LockGuard<Mutex>
 
 mozilla::Atomic<size_t, mozilla::ReleaseAcquire>
     SimulatorProcess::ICacheCheckingDisableCount(1);  // Checking is disabled by default.
-mozilla::Atomic<bool, mozilla::ReleaseAcquire>
-    SimulatorProcess::cacheInvalidatedBySignalHandler_(false);
 SimulatorProcess* SimulatorProcess::singleton_ = nullptr;
 
 int64_t Simulator::StopSimAt = -1;
@@ -867,8 +878,7 @@ MipsDebugger::debug()
                               cmd, arg1, arg2);
             if ((strcmp(cmd, "si") == 0) || (strcmp(cmd, "stepi") == 0)) {
                 SimInstruction* instr = reinterpret_cast<SimInstruction*>(sim_->get_pc());
-                if (!(instr->isTrap()) ||
-                        instr->instructionBits() == kCallRedirInstr) {
+                if (!instr->isTrap()) {
                     sim_->instructionDecode(
                         reinterpret_cast<SimInstruction*>(sim_->get_pc()));
                 } else {
@@ -1149,10 +1159,10 @@ GetCachePageLocked(SimulatorProcess::ICacheMap& i_cache, void* page)
     SimulatorProcess::ICacheMap::AddPtr p = i_cache.lookupForAdd(page);
     if (p)
         return p->value();
-
+    AutoEnterOOMUnsafeRegion oomUnsafe;
     CachePage* new_page = js_new<CachePage>();
-    if (!i_cache.add(p, page, new_page))
-        return nullptr;
+    if (!new_page || !i_cache.add(p, page, new_page))
+         oomUnsafe.crash("Simulator CachePage");
     return new_page;
 }
 
@@ -1204,25 +1214,11 @@ SimulatorProcess::checkICacheLocked(SimInstruction* instr)
     bool cache_hit = (*cache_valid_byte == CachePage::LINE_VALID);
     char* cached_line = cache_page->cachedData(offset & ~CachePage::kLineMask);
 
-    // Read all state before considering signal handler effects.
-    int cmpret = 0;
     if (cache_hit) {
         // Check that the data in memory matches the contents of the I-cache.
-        cmpret = memcmp(reinterpret_cast<void*>(instr),
-                        cache_page->cachedData(offset),
-                        SimInstruction::kInstrSize);
-    }
-
-    // Check for signal handler interruption between reading state and asserting.
-    // It is safe for the signal to arrive during the !cache_hit path, since it
-    // will be cleared the next time this function is called.
-    if (cacheInvalidatedBySignalHandler_) {
-        icache().clear();
-        cacheInvalidatedBySignalHandler_ = false;
-        return;
-    }
-
-    if (cache_hit) {
+        int cmpret = memcmp(reinterpret_cast<void*>(instr),
+                            cache_page->cachedData(offset),
+                            SimInstruction::kInstrSize);
         MOZ_ASSERT(cmpret == 0);
     } else {
         // Cache miss.  Load memory into the cache.
@@ -1267,7 +1263,6 @@ Simulator::Simulator()
     pc_modified_ = false;
     icount_ = 0;
     break_count_ = 0;
-    resume_pc_ = 0;
     break_pc_ = nullptr;
     break_instr_ = 0;
     single_stepping_ = false;
@@ -1281,6 +1276,9 @@ Simulator::Simulator()
     for (int i = 0; i < Simulator::FPURegister::kNumFPURegisters; i++)
         FPUregisters_[i] = 0;
     FCSR_ = 0;
+    LLBit_ = false;
+    LLAddr_ = 0;
+    lastLLValue_ = 0;
 
     // The ra and pc are initialized to a known bad value that will cause an
     // access violation if the simulator ever tries to execute it.
@@ -1356,11 +1354,10 @@ class Redirection
             }
         }
 
+        AutoEnterOOMUnsafeRegion oomUnsafe;
         Redirection* redir = (Redirection*)js_malloc(sizeof(Redirection));
         if (!redir) {
-            MOZ_ReportAssertionFailure("[unhandlable oom] Simulator redirection",
-                                       __FILE__, __LINE__);
-            MOZ_CRASH();
+            oomUnsafe.crash("Simulator redirection");
         }
         new(redir) Redirection(nativeFunction, type);
         return redir;
@@ -1561,28 +1558,42 @@ Simulator::testFCSRBit(uint32_t cc)
 
 // Sets the rounding error codes in FCSR based on the result of the rounding.
 // Returns true if the operation was invalid.
+template <typename T>
 bool
 Simulator::setFCSRRoundError(double original, double rounded)
 {
     bool ret = false;
 
+    setFCSRBit(kFCSRInexactCauseBit, false);
+    setFCSRBit(kFCSRUnderflowCauseBit, false);
+    setFCSRBit(kFCSROverflowCauseBit, false);
+    setFCSRBit(kFCSRInvalidOpCauseBit, false);
+
     if (!std::isfinite(original) || !std::isfinite(rounded)) {
         setFCSRBit(kFCSRInvalidOpFlagBit, true);
+        setFCSRBit(kFCSRInvalidOpCauseBit, true);
         ret = true;
     }
 
-    if (original != rounded)
+    if (original != rounded) {
         setFCSRBit(kFCSRInexactFlagBit, true);
+        setFCSRBit(kFCSRInexactCauseBit, true);
+    }
 
     if (rounded < DBL_MIN && rounded > -DBL_MIN && rounded != 0) {
         setFCSRBit(kFCSRUnderflowFlagBit, true);
+        setFCSRBit(kFCSRUnderflowCauseBit, true);
         ret = true;
     }
 
-    if (rounded > INT_MAX || rounded < INT_MIN) {
+    if ((long double)rounded > (long double)std::numeric_limits<T>::max() ||
+        (long double)rounded < (long double)std::numeric_limits<T>::min())
+    {
         setFCSRBit(kFCSROverflowFlagBit, true);
+        setFCSRBit(kFCSROverflowCauseBit, true);
         // The reference is not really clear but it seems this is required:
         setFCSRBit(kFCSRInvalidOpFlagBit, true);
+        setFCSRBit(kFCSRInvalidOpCauseBit, true);
         ret = true;
     }
 
@@ -1610,17 +1621,110 @@ Simulator::get_pc() const
     return registers_[pc];
 }
 
-// The MIPS cannot do unaligned reads and writes.  On some MIPS platforms an
-// interrupt is caused.  On others it does a funky rotation thing.  For now we
-// simply disallow unaligned reads, but at some point we may want to move to
-// emulating the rotate behaviour.  Note that simulator runs have the runtime
-// system running directly on the host system and only generated code is
-// executed in the simulator.  Since the host is typically IA32 we will not
-// get the correct MIPS-like behaviour on unaligned accesses.
+JS::ProfilingFrameIterator::RegisterState
+Simulator::registerState()
+{
+    wasm::RegisterState state;
+    state.pc = (void*) get_pc();
+    state.fp = (void*) getRegister(fp);
+    state.sp = (void*) getRegister(sp);
+    state.lr = (void*) getRegister(ra);
+    return state;
+}
+
+// WebAssembly memories contain an extra region of guard pages (see
+// WasmArrayRawBuffer comment). The guard pages catch out-of-bounds accesses
+// using a signal handler that redirects PC to a stub that safely reports an
+// error. However, if the handler is hit by the simulator, the PC is in C++ code
+// and cannot be redirected. Therefore, we must avoid hitting the handler by
+// redirecting in the simulator before the real handler would have been hit.
+bool
+Simulator::handleWasmFault(uint64_t addr, unsigned numBytes)
+{
+    if (!wasm::CodeExists)
+        return false;
+
+    JSContext* cx = TlsContext.get();
+    if (!cx->activation() || !cx->activation()->isJit())
+        return false;
+    JitActivation* act = cx->activation()->asJit();
+
+    void* pc = reinterpret_cast<void*>(get_pc());
+    uint8_t* fp = reinterpret_cast<uint8_t*>(getRegister(Register::fp));
+
+    const wasm::CodeSegment* segment = wasm::LookupCodeSegment(pc);
+    if (!segment || !segment->isModule())
+        return false;
+    const wasm::ModuleSegment* moduleSegment = segment->asModule();
+
+    wasm::Instance* instance = wasm::LookupFaultingInstance(*moduleSegment, pc, fp);
+    if (!instance)
+        return false;
+
+    MOZ_RELEASE_ASSERT(&instance->code() == &moduleSegment->code());
+
+    if (!instance->memoryAccessInGuardRegion((uint8_t*)addr, numBytes))
+         return false;
+
+    LLBit_ = false;
+
+    wasm::Trap trap;
+    wasm::BytecodeOffset bytecode;
+    if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode)) {
+        act->startWasmTrap(wasm::Trap::OutOfBounds, 0, registerState());
+        set_pc(int64_t(moduleSegment->outOfBoundsCode()));
+        return true;
+    }
+
+    act->startWasmTrap(wasm::Trap::OutOfBounds, bytecode.offset(), registerState());
+    set_pc(int64_t(moduleSegment->trapCode()));
+    return true;
+}
+
+bool
+Simulator::handleWasmTrapFault()
+{
+    if (!wasm::CodeExists)
+        return false;
+
+    JSContext* cx = TlsContext.get();
+    if (!cx->activation() || !cx->activation()->isJit())
+        return false;
+    JitActivation* act = cx->activation()->asJit();
+
+    void* pc = reinterpret_cast<void*>(get_pc());
+
+    const wasm::CodeSegment* segment = wasm::LookupCodeSegment(pc);
+    if (!segment || !segment->isModule())
+        return false;
+    const wasm::ModuleSegment* moduleSegment = segment->asModule();
+
+    wasm::Trap trap;
+    wasm::BytecodeOffset bytecode;
+    if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode))
+        return false;
+
+    act->startWasmTrap(trap, bytecode.offset(), registerState());
+    set_pc(int64_t(moduleSegment->trapCode()));
+    return true;
+}
+
+// MIPS memory instructions (except lw(d)l/r , sw(d)l/r) trap on unaligned memory
+// access enabling the OS to handle them via trap-and-emulate.
+// Note that simulator runs have the runtime system running directly on the host
+// system and only generated code is executed in the simulator.
+// Since the host is typically IA32 it will not trap on unaligned memory access.
+// We assume that that executing correct generated code will not produce unaligned
+// memory access, so we explicitly check for address alignment and trap.
+// Note that trapping does not occur when executing wasm code, which requires that
+// unaligned memory access provides correct result.
 
 uint8_t
 Simulator::readBU(uint64_t addr, SimInstruction* instr)
 {
+    if (handleWasmFault(addr, 1))
+        return 0xff;
+
     uint8_t* ptr = reinterpret_cast<uint8_t*>(addr);
     return* ptr;
 }
@@ -1628,6 +1732,9 @@ Simulator::readBU(uint64_t addr, SimInstruction* instr)
 int8_t
 Simulator::readB(uint64_t addr, SimInstruction* instr)
 {
+    if (handleWasmFault(addr, 1))
+        return -1;
+
     int8_t* ptr = reinterpret_cast<int8_t*>(addr);
     return* ptr;
 }
@@ -1635,6 +1742,9 @@ Simulator::readB(uint64_t addr, SimInstruction* instr)
 void
 Simulator::writeB(uint64_t addr, uint8_t value, SimInstruction* instr)
 {
+    if (handleWasmFault(addr, 1))
+        return;
+
     uint8_t* ptr = reinterpret_cast<uint8_t*>(addr);
     *ptr = value;
 }
@@ -1642,6 +1752,9 @@ Simulator::writeB(uint64_t addr, uint8_t value, SimInstruction* instr)
 void
 Simulator::writeB(uint64_t addr, int8_t value, SimInstruction* instr)
 {
+    if (handleWasmFault(addr, 1))
+        return;
+
     int8_t* ptr = reinterpret_cast<int8_t*>(addr);
     *ptr = value;
 }
@@ -1649,7 +1762,10 @@ Simulator::writeB(uint64_t addr, int8_t value, SimInstruction* instr)
 uint16_t
 Simulator::readHU(uint64_t addr, SimInstruction* instr)
 {
-    if ((addr & 1) == 0) {
+    if (handleWasmFault(addr, 2))
+        return 0xffff;
+
+    if ((addr & 1) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         uint16_t* ptr = reinterpret_cast<uint16_t*>(addr);
         return *ptr;
     }
@@ -1662,7 +1778,10 @@ Simulator::readHU(uint64_t addr, SimInstruction* instr)
 int16_t
 Simulator::readH(uint64_t addr, SimInstruction* instr)
 {
-    if ((addr & 1) == 0) {
+    if (handleWasmFault(addr, 2))
+        return -1;
+
+    if ((addr & 1) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         int16_t* ptr = reinterpret_cast<int16_t*>(addr);
         return *ptr;
     }
@@ -1675,8 +1794,12 @@ Simulator::readH(uint64_t addr, SimInstruction* instr)
 void
 Simulator::writeH(uint64_t addr, uint16_t value, SimInstruction* instr)
 {
-    if ((addr & 1) == 0) {
+    if (handleWasmFault(addr, 2))
+        return;
+
+    if ((addr & 1) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         uint16_t* ptr = reinterpret_cast<uint16_t*>(addr);
+        LLBit_ = false;
         *ptr = value;
         return;
     }
@@ -1688,8 +1811,12 @@ Simulator::writeH(uint64_t addr, uint16_t value, SimInstruction* instr)
 void
 Simulator::writeH(uint64_t addr, int16_t value, SimInstruction* instr)
 {
-    if ((addr & 1) == 0) {
+    if (handleWasmFault(addr, 2))
+        return;
+
+    if ((addr & 1) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         int16_t* ptr = reinterpret_cast<int16_t*>(addr);
+        LLBit_ = false;
         *ptr = value;
         return;
     }
@@ -1701,13 +1828,10 @@ Simulator::writeH(uint64_t addr, int16_t value, SimInstruction* instr)
 uint32_t
 Simulator::readWU(uint64_t addr, SimInstruction* instr)
 {
-    if (addr < 0x400) {
-        // This has to be a NULL-dereference, drop into debugger.
-        printf("Memory read from bad address: 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
-               addr, reinterpret_cast<intptr_t>(instr));
-        MOZ_CRASH();
-    }
-    if ((addr & 3) == 0) {
+    if (handleWasmFault(addr, 4))
+        return -1;
+
+    if ((addr & 3) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         uint32_t* ptr = reinterpret_cast<uint32_t*>(addr);
         return *ptr;
     }
@@ -1720,13 +1844,10 @@ Simulator::readWU(uint64_t addr, SimInstruction* instr)
 int32_t
 Simulator::readW(uint64_t addr, SimInstruction* instr)
 {
-    if (addr < 0x400) {
-        // This has to be a NULL-dereference, drop into debugger.
-        printf("Memory read from bad address: 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
-               addr, reinterpret_cast<intptr_t>(instr));
-        MOZ_CRASH();
-    }
-    if ((addr & 3) == 0) {
+    if (handleWasmFault(addr, 4))
+        return -1;
+
+    if ((addr & 3) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         int32_t* ptr = reinterpret_cast<int32_t*>(addr);
         return *ptr;
     }
@@ -1739,14 +1860,12 @@ Simulator::readW(uint64_t addr, SimInstruction* instr)
 void
 Simulator::writeW(uint64_t addr, uint32_t value, SimInstruction* instr)
 {
-    if (addr < 0x400) {
-        // This has to be a NULL-dereference, drop into debugger.
-        printf("Memory write to bad address: 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
-               addr, reinterpret_cast<intptr_t>(instr));
-        MOZ_CRASH();
-    }
-    if ((addr & 3) == 0) {
+    if (handleWasmFault(addr, 4))
+        return;
+
+    if ((addr & 3) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         uint32_t* ptr = reinterpret_cast<uint32_t*>(addr);
+        LLBit_ = false;
         *ptr = value;
         return;
     }
@@ -1758,14 +1877,12 @@ Simulator::writeW(uint64_t addr, uint32_t value, SimInstruction* instr)
 void
 Simulator::writeW(uint64_t addr, int32_t value, SimInstruction* instr)
 {
-    if (addr < 0x400) {
-        // This has to be a NULL-dereference, drop into debugger.
-        printf("Memory write to bad address: 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
-               addr, reinterpret_cast<intptr_t>(instr));
-        MOZ_CRASH();
-    }
-    if ((addr & 3) == 0) {
+    if (handleWasmFault(addr, 4))
+        return;
+
+    if ((addr & 3) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         int32_t* ptr = reinterpret_cast<int32_t*>(addr);
+        LLBit_ = false;
         *ptr = value;
         return;
     }
@@ -1777,15 +1894,12 @@ Simulator::writeW(uint64_t addr, int32_t value, SimInstruction* instr)
 int64_t
 Simulator::readDW(uint64_t addr, SimInstruction* instr)
 {
-    if (addr < 0x400) {
-        // This has to be a NULL-dereference, drop into debugger.
-        printf("Memory read from bad address: 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
-               addr, reinterpret_cast<intptr_t>(instr));
-        MOZ_CRASH();
-    }
-    if ((addr & kPointerAlignmentMask) == 0) {
-        int64_t* ptr = reinterpret_cast<int64_t*>(addr);
-        return* ptr;
+    if (handleWasmFault(addr, 8))
+        return -1;
+
+    if ((addr & kPointerAlignmentMask) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
+        intptr_t* ptr = reinterpret_cast<intptr_t*>(addr);
+        return *ptr;
     }
     printf("Unaligned read at 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
            addr, reinterpret_cast<intptr_t>(instr));
@@ -1796,14 +1910,12 @@ Simulator::readDW(uint64_t addr, SimInstruction* instr)
 void
 Simulator::writeDW(uint64_t addr, int64_t value, SimInstruction* instr)
 {
-    if (addr < 0x400) {
-        // This has to be a NULL-dereference, drop into debugger.
-        printf("Memory write to bad address: 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
-               addr, reinterpret_cast<intptr_t>(instr));
-        MOZ_CRASH();
-    }
-    if ((addr & kPointerAlignmentMask) == 0) {
+    if (handleWasmFault(addr, 8))
+        return;
+
+    if ((addr & kPointerAlignmentMask) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         int64_t* ptr = reinterpret_cast<int64_t*>(addr);
+        LLBit_ = false;
         *ptr = value;
         return;
     }
@@ -1815,7 +1927,10 @@ Simulator::writeDW(uint64_t addr, int64_t value, SimInstruction* instr)
 double
 Simulator::readD(uint64_t addr, SimInstruction* instr)
 {
-    if ((addr & kDoubleAlignmentMask) == 0) {
+    if (handleWasmFault(addr, 8))
+        return NAN;
+
+    if ((addr & kDoubleAlignmentMask) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         double* ptr = reinterpret_cast<double*>(addr);
         return *ptr;
     }
@@ -1828,14 +1943,122 @@ Simulator::readD(uint64_t addr, SimInstruction* instr)
 void
 Simulator::writeD(uint64_t addr, double value, SimInstruction* instr)
 {
-    if ((addr & kDoubleAlignmentMask) == 0) {
+    if (handleWasmFault(addr, 8))
+        return;
+
+    if ((addr & kDoubleAlignmentMask) == 0 || wasm::InCompiledCode(reinterpret_cast<void *>(get_pc()))) {
         double* ptr = reinterpret_cast<double*>(addr);
+        LLBit_ = false;
         *ptr = value;
         return;
     }
     printf("Unaligned (double) write at 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
            addr, reinterpret_cast<intptr_t>(instr));
     MOZ_CRASH();
+}
+
+int
+Simulator::loadLinkedW(uint64_t addr, SimInstruction* instr)
+{
+    if ((addr & 3) == 0) {
+
+        if (handleWasmFault(addr, 4))
+            return -1;
+
+        volatile int32_t* ptr = reinterpret_cast<volatile int32_t*>(addr);
+        int32_t value = *ptr;
+        lastLLValue_ = value;
+        LLAddr_ = addr;
+        // Note that any memory write or "external" interrupt should reset this value to false.
+        LLBit_ = true;
+        return value;
+    }
+    printf("Unaligned write at 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
+           addr, reinterpret_cast<intptr_t>(instr));
+    MOZ_CRASH();
+    return 0;
+}
+
+int
+Simulator::storeConditionalW(uint64_t addr, int value, SimInstruction* instr)
+{
+    // Correct behavior in this case, as defined by architecture, is to just return 0,
+    // but there is no point at allowing that. It is certainly an indicator of a bug.
+    if (addr != LLAddr_) {
+        printf("SC to bad address: 0x%016" PRIx64 ", pc=0x%016" PRIx64 ", expected: 0x%016" PRIx64 "\n",
+               addr, reinterpret_cast<intptr_t>(instr), LLAddr_);
+        MOZ_CRASH();
+    }
+
+    if ((addr & 3) == 0) {
+        SharedMem<int32_t*> ptr = SharedMem<int32_t*>::shared(reinterpret_cast<int32_t*>(addr));
+
+        if (!LLBit_) {
+            return 0;
+        }
+
+        LLBit_ = false;
+        LLAddr_ = 0;
+        int32_t expected = int32_t(lastLLValue_);
+        int32_t old = AtomicOperations::compareExchangeSeqCst(ptr, expected, int32_t(value));
+        return (old == expected) ? 1:0;
+    }
+    printf("Unaligned SC at 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
+           addr, reinterpret_cast<intptr_t>(instr));
+    MOZ_CRASH();
+    return 0;
+}
+
+int64_t
+Simulator::loadLinkedD(uint64_t addr, SimInstruction* instr)
+{
+    if ((addr & kPointerAlignmentMask) == 0) {
+
+        if (handleWasmFault(addr, 8))
+            return -1;
+
+        volatile int64_t* ptr = reinterpret_cast<volatile int64_t*>(addr);
+        int64_t value = *ptr;
+        lastLLValue_ = value;
+        LLAddr_ = addr;
+        // Note that any memory write or "external" interrupt should reset this value to false.
+        LLBit_ = true;
+        return value;
+    }
+    printf("Unaligned write at 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
+           addr, reinterpret_cast<intptr_t>(instr));
+    MOZ_CRASH();
+    return 0;
+}
+
+int
+Simulator::storeConditionalD(uint64_t addr, int64_t value, SimInstruction* instr)
+{
+    // Correct behavior in this case, as defined by architecture, is to just return 0,
+    // but there is no point at allowing that. It is certainly an indicator of a bug.
+    if (addr != LLAddr_) {
+        printf("SC to bad address: 0x%016" PRIx64 ", pc=0x%016" PRIx64 ", expected: 0x%016" PRIx64 "\n",
+               addr, reinterpret_cast<intptr_t>(instr), LLAddr_);
+        MOZ_CRASH();
+    }
+
+    if ((addr & kPointerAlignmentMask) == 0) {
+        SharedMem<int64_t*> ptr = SharedMem<int64_t*>::shared(reinterpret_cast<int64_t*>(addr));
+
+        if (!LLBit_) {
+            return 0;
+        }
+
+        LLBit_ = false;
+        LLAddr_ = 0;
+        int64_t expected = lastLLValue_;
+        int64_t old = AtomicOperations::compareExchangeSeqCst(ptr, expected, int64_t(value));
+        return (old == expected) ? 1:0;
+    }
+    printf("Unaligned SC at 0x%016" PRIx64 ", pc=0x%016" PRIxPTR "\n",
+           addr, reinterpret_cast<intptr_t>(instr));
+    MOZ_CRASH();
+    return 0;
 }
 
 uintptr_t
@@ -1890,7 +2113,10 @@ typedef int64_t (*Prototype_General7)(int64_t arg0, int64_t arg1, int64_t arg2, 
                                       int64_t arg4, int64_t arg5, int64_t arg6);
 typedef int64_t (*Prototype_General8)(int64_t arg0, int64_t arg1, int64_t arg2, int64_t arg3,
                                       int64_t arg4, int64_t arg5, int64_t arg6, int64_t arg7);
-
+typedef int32_t (*Prototype_Int_GeneralGeneralGeneralInt64)(int64_t arg0, int64_t arg1, int64_t arg2,
+                                                        int64_t arg3);
+typedef int32_t (*Prototype_Int_GeneralGeneralInt64Int64)(int64_t arg0, int64_t arg1, int64_t arg2,
+                                                      int64_t arg3);
 typedef double (*Prototype_Double_None)();
 typedef double (*Prototype_Double_Double)(double arg0);
 typedef double (*Prototype_Double_Int)(int64_t arg0);
@@ -1899,8 +2125,10 @@ typedef int64_t (*Prototype_Int_DoubleIntInt)(double arg0, int64_t arg1, int64_t
 typedef int64_t (*Prototype_Int_IntDoubleIntInt)(int64_t arg0, double arg1, int64_t arg2,
                                                  int64_t arg3);
 typedef float (*Prototype_Float32_Float32)(float arg0);
+typedef float (*Prototype_Float32_Float32Float32)(float arg0, float arg1);
+typedef float (*Prototype_Float32_IntInt)(int64_t arg0, int64_t arg1);
 
-typedef double (*Prototype_DoubleInt)(double arg0, int64_t arg1);
+typedef double (*Prototype_Double_DoubleInt)(double arg0, int64_t arg1);
 typedef double (*Prototype_Double_IntDouble)(int64_t arg0, double arg1);
 typedef double (*Prototype_Double_DoubleDouble)(double arg0, double arg1);
 typedef int64_t (*Prototype_Int_IntDouble)(int64_t arg0, double arg1);
@@ -1966,6 +2194,8 @@ Simulator::softwareInterrupt(SimInstruction* instr)
           case Args_General3: {
             Prototype_General3 target = reinterpret_cast<Prototype_General3>(external);
             int64_t result = target(arg0, arg1, arg2);
+            if (external == intptr_t(&js::wasm::Instance::wake))
+                result = int32_t(result);
             setCallResult(result);
             break;
           }
@@ -2011,22 +2241,42 @@ Simulator::softwareInterrupt(SimInstruction* instr)
           case Args_Int_Double: {
             double dval0 = getFpuRegisterDouble(12);
             Prototype_Int_Double target = reinterpret_cast<Prototype_Int_Double>(external);
-            int64_t res = target(dval0);
-            setRegister(v0, res);
+            int64_t result = target(dval0);
+            if (external == intptr_t((int32_t(*)(double))JS::ToInt32))
+                result = int32_t(result);
+            setRegister(v0, result);
+            break;
+          }
+          case Args_Int_GeneralGeneralGeneralInt64: {
+            Prototype_Int_GeneralGeneralGeneralInt64 target =
+                reinterpret_cast<Prototype_Int_GeneralGeneralGeneralInt64>(external);
+            int64_t result = target(arg0, arg1, arg2, arg3);
+            if (external == intptr_t(&js::wasm::Instance::wait_i32))
+                result = int32_t(result);
+            setRegister(v0, result);
+            break;
+          }
+          case Args_Int_GeneralGeneralInt64Int64: {
+            Prototype_Int_GeneralGeneralInt64Int64 target =
+                reinterpret_cast<Prototype_Int_GeneralGeneralInt64Int64>(external);
+            int64_t result = target(arg0, arg1, arg2, arg3);
+            if (external == intptr_t(&js::wasm::Instance::wait_i64))
+                result = int32_t(result);
+            setRegister(v0, result);
             break;
           }
           case Args_Int_DoubleIntInt: {
             double dval = getFpuRegisterDouble(12);
             Prototype_Int_DoubleIntInt target = reinterpret_cast<Prototype_Int_DoubleIntInt>(external);
-            int64_t res = target(dval, arg1, arg2);
-            setRegister(v0, res);
+            int64_t result = target(dval, arg1, arg2);
+            setRegister(v0, result);
             break;
           }
           case Args_Int_IntDoubleIntInt: {
             double dval = getFpuRegisterDouble(13);
             Prototype_Int_IntDoubleIntInt target = reinterpret_cast<Prototype_Int_IntDoubleIntInt>(external);
-            int64_t res = target(arg0, dval, arg2, arg3);
-            setRegister(v0, res);
+            int64_t result = target(arg0, dval, arg2, arg3);
+            setRegister(v0, result);
             break;
           }
           case Args_Double_Double: {
@@ -2044,6 +2294,22 @@ Simulator::softwareInterrupt(SimInstruction* instr)
             setCallResultFloat(fresult);
             break;
           }
+          case Args_Float32_Float32Float32: {
+            float fval0;
+            float fval1;
+            fval0 = getFpuRegisterFloat(12);
+            fval1 = getFpuRegisterFloat(13);
+            Prototype_Float32_Float32Float32 target = reinterpret_cast<Prototype_Float32_Float32Float32>(external);
+            float fresult = target(fval0, fval1);
+            setCallResultFloat(fresult);
+            break;
+          }
+          case Args_Float32_IntInt: {
+            Prototype_Float32_IntInt target = reinterpret_cast<Prototype_Float32_IntInt>(external);
+            float fresult = target(arg0, arg1);
+            setCallResultFloat(fresult);
+            break;
+          }
           case Args_Double_Int: {
             Prototype_Double_Int target = reinterpret_cast<Prototype_Double_Int>(external);
             double dresult = target(arg0);
@@ -2052,7 +2318,7 @@ Simulator::softwareInterrupt(SimInstruction* instr)
           }
           case Args_Double_DoubleInt: {
             double dval0 = getFpuRegisterDouble(12);
-            Prototype_DoubleInt target = reinterpret_cast<Prototype_DoubleInt>(external);
+            Prototype_Double_DoubleInt target = reinterpret_cast<Prototype_Double_DoubleInt>(external);
             double dresult = target(dval0, arg1);
             setCallResultDouble(dresult);
             break;
@@ -2118,6 +2384,16 @@ Simulator::softwareInterrupt(SimInstruction* instr)
             handleStop(code, instr);
         }
     } else {
+        switch (func) {
+            case ff_tge:
+            case ff_tgeu:
+            case ff_tlt:
+            case ff_tltu:
+            case ff_teq:
+            case ff_tne:
+            if (instr->bits(15, 6) == kWasmTrapCode && handleWasmTrapFault())
+                return;
+        };
         // All remaining break_ codes, and all traps are handled here.
         MipsDebugger dbg(this);
         dbg.debug();
@@ -2307,7 +2583,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             return_addr_reg = instr->rdValue();
             break;
           case ff_sll:
-            alu_out = I32(rt) << sa;
+            alu_out = I64(I32(rt) << sa);
             break;
           case ff_dsll:
             alu_out = rt << sa;
@@ -2319,12 +2595,12 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             if (rs_reg == 0) {
                 // Regular logical right shift of a word by a fixed number of
                 // bits instruction. RS field is always equal to 0.
-                alu_out = I32(U32(rt) >> sa);
+                alu_out = I64(I32(U32(I32_CHECK(rt)) >> sa));
             } else {
                 // Logical right-rotate of a word by a fixed number of bits. This
                 // is special case of SRL instruction, added in MIPS32 Release 2.
                 // RS field is equal to 00001.
-                alu_out = I32((U32(rt) >> sa) | (U32(rt) << (32 - sa)));
+                alu_out = I64(I32((U32(I32_CHECK(rt)) >> sa) | (U32(I32_CHECK(rt)) << (32 - sa))));
             }
             break;
           case ff_dsrl:
@@ -2352,7 +2628,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             }
             break;
           case ff_sra:
-            alu_out = I32(rt) >> sa;
+            alu_out = I64(I32_CHECK(rt)) >> sa;
             break;
           case ff_dsra:
             alu_out = rt >> sa;
@@ -2361,7 +2637,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             alu_out = rt >> (sa + 32);
             break;
           case ff_sllv:
-            alu_out = I32(rt) << rs;
+            alu_out = I64(I32(rt) << rs);
             break;
           case ff_dsllv:
             alu_out = rt << rs;
@@ -2370,12 +2646,12 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             if (sa == 0) {
                 // Regular logical right-shift of a word by a variable number of
                 // bits instruction. SA field is always equal to 0.
-                alu_out = I32(U32(rt) >> rs);
+                alu_out = I64(I32(U32(I32_CHECK(rt)) >> rs));
             } else {
                 // Logical right-rotate of a word by a variable number of bits.
                 // This is special case od SRLV instruction, added in MIPS32
                 // Release 2. SA field is equal to 00001.
-                alu_out = I32((U32(rt) >> rs) | (U32(rt) << (32 - rs)));
+                alu_out = I64(I32((U32(I32_CHECK(rt)) >> rs) | (U32(I32_CHECK(rt)) << (32 - rs))));
             }
             break;
           case ff_dsrlv:
@@ -2391,7 +2667,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             }
             break;
           case ff_srav:
-            alu_out = I32(rt) >> rs;
+            alu_out = I64(I32_CHECK(rt) >> rs);
             break;
           case ff_dsrav:
             alu_out = rt >> rs;
@@ -2403,19 +2679,19 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             alu_out = getRegister(LO);
             break;
           case ff_mult:
-            i128hilo = I32(rs) * I32(rt);
+            i128hilo = I64(U32(I32_CHECK(rs))) * I64(U32(I32_CHECK(rt)));
             break;
           case ff_dmult:
             i128hilo = I128(rs) * I128(rt);
             break;
           case ff_multu:
-            u128hilo = U32(rs) * U32(rt);
+            u128hilo = U64(U32(I32_CHECK(rs))) * U64(U32(I32_CHECK(rt)));
             break;
           case ff_dmultu:
             u128hilo = U128(rs) * U128(rt);
             break;
           case ff_add:
-            alu_out = I32(rs) + I32(rt);
+            alu_out = I32_CHECK(rs) + I32_CHECK(rt);
             if ((alu_out << 32) != (alu_out << 31))
               exceptions[kIntegerOverflow] = 1;
             alu_out = I32(alu_out);
@@ -2427,13 +2703,13 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             alu_out = I64(temp);
             break;
           case ff_addu:
-            alu_out = I32(U32(rs) + U32(rt));
+            alu_out = I32(I32_CHECK(rs) + I32_CHECK(rt));
             break;
           case ff_daddu:
             alu_out = rs + rt;
             break;
           case ff_sub:
-            alu_out = I32(rs) - I32(rt);
+            alu_out = I32_CHECK(rs) - I32_CHECK(rt);
             if ((alu_out << 32) != (alu_out << 31))
               exceptions[kIntegerUnderflow] = 1;
             alu_out = I32(alu_out);
@@ -2445,7 +2721,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             alu_out = I64(temp);
             break;
           case ff_subu:
-            alu_out = I32(U32(rs) - U32(rt));
+            alu_out = I32(I32_CHECK(rs) - I32_CHECK(rt));
             break;
           case ff_dsubu:
             alu_out = rs - rt;
@@ -2463,7 +2739,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             alu_out = ~(rs | rt);
             break;
           case ff_slt:
-            alu_out = rs < rt ? 1 : 0;
+            alu_out = I64(rs) < I64(rt) ? 1 : 0;
             break;
           case ff_sltu:
             alu_out = U64(rs) < U64(rt) ? 1 : 0;
@@ -2498,16 +2774,16 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             // No action taken on decode.
             break;
           case ff_div:
-            if (I32(rs) == INT_MIN && I32(rt) == -1) {
+            if (I32_CHECK(rs) == INT_MIN && I32_CHECK(rt) == -1) {
                 i128hilo = U32(INT_MIN);
             } else {
-                uint32_t div = I32(rs) / I32(rt);
-                uint32_t mod = I32(rs) % I32(rt);
+                uint32_t div = I32_CHECK(rs) / I32_CHECK(rt);
+                uint32_t mod = I32_CHECK(rs) % I32_CHECK(rt);
                 i128hilo = (I64(mod) << 32) | div;
             }
             break;
           case ff_ddiv:
-            if (I32(rs) == INT_MIN && I32(rt) == -1) {
+            if (I64(rs) == INT64_MIN && I64(rt) == -1) {
                 i128hilo = U64(INT64_MIN);
             } else {
                 uint64_t div = rs / rt;
@@ -2516,8 +2792,8 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             }
             break;
           case ff_divu: {
-                uint32_t div = U32(rs) / U32(rt);
-                uint32_t mod = U32(rs) % U32(rt);
+                uint32_t div = U32(I32_CHECK(rs)) / U32(I32_CHECK(rt));
+                uint32_t mod = U32(I32_CHECK(rs)) % U32(I32_CHECK(rt));
                 i128hilo = (U64(mod) << 32) | div;
             }
             break;
@@ -2537,10 +2813,10 @@ Simulator::configureTypeRegister(SimInstruction* instr,
       case op_special2:
         switch (instr->functionFieldRaw()) {
           case ff_mul:
-            alu_out = I32(I32(rs) * I32(rt));  // Only the lower 32 bits are kept.
+            alu_out = I32(I32_CHECK(rs) * I32_CHECK(rt));  // Only the lower 32 bits are kept.
             break;
           case ff_clz:
-            alu_out = U32(rs) ? __builtin_clz(U32(rs)) : 32;
+            alu_out = U32(I32_CHECK(rs)) ? __builtin_clz(U32(I32_CHECK(rs))) : 32;
             break;
           case ff_dclz:
             alu_out = U64(rs) ? __builtin_clzl(U64(rs)) : 64;
@@ -2561,7 +2837,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             if (lsb > msb)
               alu_out = Unpredictable;
             else
-              alu_out = (U32(rt) & ~(mask << lsb)) | ((U32(rs) & mask) << lsb);
+              alu_out = (U32(I32_CHECK(rt)) & ~(mask << lsb)) | ((U32(I32_CHECK(rs)) & mask) << lsb);
             break;
           }
           case ff_dins: {   // Mips64r2 instruction.
@@ -2610,7 +2886,7 @@ Simulator::configureTypeRegister(SimInstruction* instr,
             if ((lsb + msb) > 31)
               alu_out = Unpredictable;
             else
-              alu_out = (U32(rs) & (mask << lsb)) >> lsb;
+              alu_out = (U32(I32_CHECK(rs)) & (mask << lsb)) >> lsb;
             break;
           }
           case ff_dext: {   // Mips64r2 instruction.
@@ -2651,9 +2927,9 @@ Simulator::configureTypeRegister(SimInstruction* instr,
           }
           case ff_bshfl: {   // Mips32r2 instruction.
             if (16 == sa) // seb
-              alu_out = I64(I8(rt));
-            else if (24 == sa) // seh
-              alu_out = I64(I16(rt));
+              alu_out = I64(I8(I32_CHECK(rt)));
+             else if (24 == sa) // seh
+              alu_out = I64(I16(I32_CHECK(rt)));
             break;
           }
           default:
@@ -2720,6 +2996,7 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
             break;
           case rs_cfc1:
             setRegister(rt_reg, alu_out);
+            MOZ_FALLTHROUGH;
           case rs_mfc1:
             setRegister(rt_reg, alu_out);
             break;
@@ -2808,6 +3085,7 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 // Rounding modes are not yet supported.
                 MOZ_ASSERT((FCSR_ & 3) == 0);
                 // In rounding mode 0 it should behave like ROUND.
+                MOZ_FALLTHROUGH;
               case ff_round_w_fmt: { // Round double to word (round half to even).
                 float rounded = std::floor(fs_value + 0.5);
                 int32_t result = I32(rounded);
@@ -2817,68 +3095,90 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                     result--;
                 }
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(fs_value, rounded)) {
+                if (setFCSRRoundError<int32_t>(fs_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
-                }
                 break;
               }
               case ff_trunc_w_fmt: { // Truncate float to word (round towards 0).
                 float rounded = truncf(fs_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(fs_value, rounded)) {
+                if (setFCSRRoundError<int32_t>(fs_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
-                }
                 break;
               }
               case ff_floor_w_fmt: { // Round float to word towards negative infinity.
                 float rounded = std::floor(fs_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(fs_value, rounded)) {
+                if (setFCSRRoundError<int32_t>(fs_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
-                }
                 break;
               }
               case ff_ceil_w_fmt: { // Round double to word towards positive infinity.
                 float rounded = std::ceil(fs_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(fs_value, rounded)) {
+                if (setFCSRRoundError<int32_t>(fs_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
-                }
                 break;
               }
-              case ff_cvt_l_fmt: {  // Mips64r2: Truncate float to 64-bit long-word.
-                float rounded = truncf(fs_value);
-                i64 = I64(rounded);
-                setFpuRegister(fd_reg, i64);
-                break;
-              }
+              case ff_cvt_l_fmt:  // Mips64r2: Truncate float to 64-bit long-word.
+                // Rounding modes are not yet supported.
+                MOZ_ASSERT((FCSR_ & 3) == 0);
+                // In rounding mode 0 it should behave like ROUND.
+                MOZ_FALLTHROUGH;
               case ff_round_l_fmt: {  // Mips64r2 instruction.
                 float rounded =
                     fs_value > 0 ? std::floor(fs_value + 0.5) : std::ceil(fs_value - 0.5);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(fs_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
               case ff_trunc_l_fmt: {  // Mips64r2 instruction.
                 float rounded = truncf(fs_value);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(fs_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
-              case ff_floor_l_fmt:  // Mips64r2 instruction.
-                i64 = I64(std::floor(fs_value));
+              case ff_floor_l_fmt: {  // Mips64r2 instruction.
+                float rounded = std::floor(fs_value);
+                i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(fs_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
-              case ff_ceil_l_fmt:  // Mips64r2 instruction.
-                i64 = I64(std::ceil(fs_value));
+              }
+              case ff_ceil_l_fmt: {  // Mips64r2 instruction.
+                float rounded = std::ceil(fs_value);
+                i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(fs_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
+              }
               case ff_cvt_ps_s:
               case ff_c_f_fmt:
                 MOZ_CRASH();
+                break;
+              case ff_movf_fmt:
+                if (testFCSRBit(fcsr_cc)) {
+                  setFpuRegisterFloat(fd_reg, getFpuRegisterFloat(fs_reg));
+                }
+                break;
+              case ff_movz_fmt:
+                if (rt == 0) {
+                  setFpuRegisterFloat(fd_reg, getFpuRegisterFloat(fs_reg));
+                }
+                break;
+              case ff_movn_fmt:
+                if (rt != 0) {
+                  setFpuRegisterFloat(fd_reg, getFpuRegisterFloat(fs_reg));
+                }
                 break;
               default:
                 MOZ_CRASH();
@@ -2943,6 +3243,7 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 // Rounding modes are not yet supported.
                 MOZ_ASSERT((FCSR_ & 3) == 0);
                 // In rounding mode 0 it should behave like ROUND.
+                MOZ_FALLTHROUGH;
               case ff_round_w_fmt: { // Round double to word (round half to even).
                 double rounded = std::floor(ds_value + 0.5);
                 int32_t result = I32(rounded);
@@ -2952,7 +3253,7 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                     result--;
                 }
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(ds_value, rounded))
+                if (setFCSRRoundError<int32_t>(ds_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
                 break;
               }
@@ -2960,7 +3261,7 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 double rounded = trunc(ds_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(ds_value, rounded))
+                if (setFCSRRoundError<int32_t>(ds_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
                 break;
               }
@@ -2968,7 +3269,7 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 double rounded = std::floor(ds_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(ds_value, rounded))
+                if (setFCSRRoundError<int32_t>(ds_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
                 break;
               }
@@ -2976,40 +3277,51 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 double rounded = std::ceil(ds_value);
                 int32_t result = I32(rounded);
                 setFpuRegisterLo(fd_reg, result);
-                if (setFCSRRoundError(ds_value, rounded))
+                if (setFCSRRoundError<int32_t>(ds_value, rounded))
                     setFpuRegisterLo(fd_reg, kFPUInvalidResult);
                 break;
               }
               case ff_cvt_s_fmt:  // Convert double to float (single).
                 setFpuRegisterFloat(fd_reg, static_cast<float>(ds_value));
                 break;
-              case ff_cvt_l_fmt: {  // Mips64r2: Truncate double to 64-bit long-word.
-                double rounded = trunc(ds_value);
+              case ff_cvt_l_fmt:  // Mips64r2: Truncate double to 64-bit long-word.
+                // Rounding modes are not yet supported.
+                MOZ_ASSERT((FCSR_ & 3) == 0);
+                // In rounding mode 0 it should behave like ROUND.
+                MOZ_FALLTHROUGH;
+              case ff_round_l_fmt: {  // Mips64r2 instruction.
+                double rounded =
+                    ds_value > 0 ? std::floor(ds_value + 0.5) : std::ceil(ds_value - 0.5);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(ds_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
               case ff_trunc_l_fmt: {  // Mips64r2 instruction.
                 double rounded = trunc(ds_value);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(ds_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
-              case ff_round_l_fmt: {  // Mips64r2 instruction.
-                double rounded =
-                    ds_value > 0 ? std::floor(ds_value + 0.5) : std::ceil(ds_value - 0.5);
+              case ff_floor_l_fmt: {  // Mips64r2 instruction.
+                double rounded = std::floor(ds_value);
                 i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(ds_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
               }
-              case ff_floor_l_fmt:  // Mips64r2 instruction.
-                i64 = I64(std::floor(ds_value));
+              case ff_ceil_l_fmt: {  // Mips64r2 instruction.
+                double rounded = std::ceil(ds_value);
+                i64 = I64(rounded);
                 setFpuRegister(fd_reg, i64);
+                if (setFCSRRoundError<int64_t>(ds_value, rounded))
+                    setFpuRegister(fd_reg, kFPUInvalidResult64);
                 break;
-              case ff_ceil_l_fmt:  // Mips64r2 instruction.
-                i64 = I64(std::ceil(ds_value));
-                setFpuRegister(fd_reg, i64);
-                break;
+              }
               case ff_c_f_fmt:
                 MOZ_CRASH();
                 break;
@@ -3024,6 +3336,9 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 }
                 break;
               case ff_movf_fmt:
+              // location of cc field in MOVF is equal to float branch instructions
+                cc = instr->fbccValue();
+                fcsr_cc = GetFCSRConditionBit(cc);
                 if (testFCSRBit(fcsr_cc)) {
                   setFpuRegisterDouble(fd_reg, getFpuRegisterDouble(fs_reg));
                 }
@@ -3053,7 +3368,8 @@ Simulator::decodeTypeRegister(SimInstruction* instr)
                 setFpuRegisterDouble(fd_reg, static_cast<double>(i64));
                 break;
               case ff_cvt_s_fmt:
-                MOZ_CRASH();
+                i64 = getFpuRegister(fs_reg);
+                setFpuRegisterFloat(fd_reg, static_cast<float>(i64));
                 break;
               default:
                 MOZ_CRASH();
@@ -3314,6 +3630,7 @@ Simulator::decodeTypeImmediate(SimInstruction* instr)
             } else {
                 next_pc = current_pc + kBranchReturnOffset;
             }
+            break;
           default:
             break;
         };
@@ -3335,10 +3652,10 @@ Simulator::decodeTypeImmediate(SimInstruction* instr)
         break;
         // ------------- Arithmetic instructions.
       case op_addi:
-        alu_out = I32(rs) + se_imm16;
+        alu_out = I32_CHECK(rs) + se_imm16;
         if ((alu_out << 32) != (alu_out << 31))
           exceptions[kIntegerOverflow] = 1;
-        alu_out = I32(alu_out);
+        alu_out = I32_CHECK(alu_out);
         break;
       case op_daddi:
         temp = alu_out = rs + se_imm16;
@@ -3347,7 +3664,7 @@ Simulator::decodeTypeImmediate(SimInstruction* instr)
         alu_out = I64(temp);
         break;
       case op_addiu:
-        alu_out = I32(I32(rs) + se_imm16);
+        alu_out = I32(I32_CHECK(rs) + se_imm16);
         break;
       case op_daddiu:
         alu_out = rs + se_imm16;
@@ -3419,7 +3736,11 @@ Simulator::decodeTypeImmediate(SimInstruction* instr)
       }
       case op_ll:
         addr = rs + se_imm16;
-        alu_out = readW(addr, instr);
+        alu_out = loadLinkedW(addr, instr);
+        break;
+      case op_lld:
+        addr = rs + se_imm16;
+        alu_out = loadLinkedD(addr, instr);
         break;
       case op_ld:
         addr = rs + se_imm16;
@@ -3474,6 +3795,9 @@ Simulator::decodeTypeImmediate(SimInstruction* instr)
         break;
       }
       case op_sc:
+        addr = rs + se_imm16;
+        break;
+      case op_scd:
         addr = rs + se_imm16;
         break;
       case op_sd:
@@ -3557,6 +3881,7 @@ Simulator::decodeTypeImmediate(SimInstruction* instr)
       case op_lwl:
       case op_lwr:
       case op_ll:
+      case op_lld:
       case op_ld:
       case op_ldl:
       case op_ldr:
@@ -3578,8 +3903,10 @@ Simulator::decodeTypeImmediate(SimInstruction* instr)
         writeW(addr, I32(mem_value), instr);
         break;
       case op_sc:
-        writeW(addr, I32(rt), instr);
-        setRegister(rt_reg, 1);
+        setRegister(rt_reg, storeConditionalW(addr, I32(rt), instr));
+        break;
+      case op_scd:
+        setRegister(rt_reg, storeConditionalD(addr, rt, instr));
         break;
       case op_sd:
         writeDW(addr, rt, instr);
@@ -3677,9 +4004,6 @@ Simulator::instructionDecode(SimInstruction* instr)
 void
 Simulator::branchDelayInstructionDecode(SimInstruction* instr)
 {
-    if (single_stepping_)
-        single_step_callback_(single_step_callback_arg_, this, (void*)instr);
-
     if (instr->instructionBits() == NopInst) {
         // Short-cut generic nop instructions. They are always valid and they
         // never change the simulator state.
@@ -3722,7 +4046,6 @@ Simulator::execute()
     // Get the PC to simulate. Cannot use the accessor here as we need the
     // raw PC value and not the one used as input to arithmetic instructions.
     int64_t program_counter = get_pc();
-    WasmActivation* activation = TlsContext.get()->wasmActivationStack();
 
     while (program_counter != end_sim_pc) {
         if (enableStopSimAt && (icount_ == Simulator::StopSimAt)) {
@@ -3734,14 +4057,6 @@ Simulator::execute()
             SimInstruction* instr = reinterpret_cast<SimInstruction *>(program_counter);
             instructionDecode(instr);
             icount_++;
-
-            int64_t rpc = resume_pc_;
-            if (MOZ_UNLIKELY(rpc != 0)) {
-                // wasm signal handler ran and we have to adjust the pc.
-                activation->setResumePC((void*)get_pc());
-                set_pc(rpc);
-                resume_pc_ = 0;
-            }
         }
         program_counter = get_pc();
     }

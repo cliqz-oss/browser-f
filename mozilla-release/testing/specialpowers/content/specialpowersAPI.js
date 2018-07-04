@@ -12,17 +12,15 @@
 
 var global = this;
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
-
-Cu.import("chrome://specialpowers/content/MockFilePicker.jsm");
-Cu.import("chrome://specialpowers/content/MockColorPicker.jsm");
-Cu.import("chrome://specialpowers/content/MockPermissionPrompt.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("chrome://specialpowers/content/MockFilePicker.jsm");
+ChromeUtils.import("chrome://specialpowers/content/MockColorPicker.jsm");
+ChromeUtils.import("chrome://specialpowers/content/MockPermissionPrompt.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/ServiceWorkerCleanUp.jsm");
 
 // We're loaded with "this" not set to the global in some cases, so we
 // have to play some games to get at the global object here.  Normally
@@ -30,7 +28,7 @@ Cu.import("resource://gre/modules/NetUtil.jsm");
 // but this whole file is in strict mode.  So instead fall back on
 // returning "this" from indirect eval, which returns the global.
 if (!(function() { var e = eval; return e("this"); })().File) { // eslint-disable-line no-eval
-    Cu.importGlobalProperties(["File"]);
+    Cu.importGlobalProperties(["DOMParser", "File", "InspectorUtils", "NodeFilter"]);
 }
 
 // Allow stuff from this scope to be accessed from non-privileged scopes. This
@@ -50,8 +48,6 @@ function SpecialPowersAPI() {
   this._pendingPermissions = [];
   this._applyingPermissions = false;
   this._observingPermissions = false;
-  this._fm = null;
-  this._cb = null;
 }
 
 function bindDOMWindowUtils(aWindow) {
@@ -61,17 +57,6 @@ function bindDOMWindowUtils(aWindow) {
   var util = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
                     .getInterface(Ci.nsIDOMWindowUtils);
   return wrapPrivileged(util);
-}
-
-function getRawComponents(aWindow) {
-  // If we're running in automation that supports enablePrivilege, then we also
-  // provided access to the privileged Components.
-  try {
-    let win = Cu.waiveXrays(aWindow);
-    if (typeof win.netscape.security.PrivilegeManager == "object")
-      Cu.forcePrivilegedComponentsForScope(aWindow);
-  } catch (e) {}
-  return Cu.getComponentsForScope(aWindow);
 }
 
 function isWrappable(x) {
@@ -100,7 +85,7 @@ function isObjectOrArray(obj) {
                       "Uint32Array", "Float32Array", "Float64Array",
                       "Uint8ClampedArray"];
   let className = Cu.getClassName(obj, true);
-  return arrayClasses.indexOf(className) != -1;
+  return arrayClasses.includes(className);
 }
 
 // In general, we want Xray wrappers for content DOM objects, because waiving
@@ -185,6 +170,13 @@ function unwrapPrivileged(x) {
   return obj;
 }
 
+function specialPowersHasInstance(value) {
+  // Because we return wrapped versions of this function, when it's called its
+  // wrapper will unwrap the "this" as well as the function itself.  So our
+  // "this" is the unwrapped thing we started out with.
+  return value instanceof this;
+}
+
 function SpecialPowersHandler(wrappedObject) {
   this.wrappedObject = wrappedObject;
 }
@@ -229,7 +221,16 @@ SpecialPowersHandler.prototype = {
       return this.wrappedObject;
 
     let obj = waiveXraysIfAppropriate(this.wrappedObject, prop);
-    return wrapIfUnwrapped(Reflect.get(obj, prop));
+    let val = Reflect.get(obj, prop);
+    if (val === undefined && prop == Symbol.hasInstance) {
+      // Special-case Symbol.hasInstance to pass the hasInstance check on to our
+      // target.  We only do this when the target doesn't have its own
+      // Symbol.hasInstance already.  Once we get rid of JS engine class
+      // instance hooks (bug 1448218) and always use Symbol.hasInstance, we can
+      // remove this bit (bug 1448400).
+      return wrapPrivileged(specialPowersHasInstance);
+    }
+    return wrapIfUnwrapped(val);
   },
 
   set(target, prop, val, receiver) {
@@ -261,8 +262,19 @@ SpecialPowersHandler.prototype = {
     let obj = waiveXraysIfAppropriate(this.wrappedObject, prop);
     let desc = Reflect.getOwnPropertyDescriptor(obj, prop);
 
-    if (desc === undefined)
+    if (desc === undefined) {
+      if (prop == Symbol.hasInstance) {
+        // Special-case Symbol.hasInstance to pass the hasInstance check on to
+        // our target.  We only do this when the target doesn't have its own
+        // Symbol.hasInstance already.  Once we get rid of JS engine class
+        // instance hooks (bug 1448218) and always use Symbol.hasInstance, we
+        // can remove this bit (bug 1448400).
+        return { value: wrapPrivileged(specialPowersHasInstance),
+                 writeable: true, configurable: true, enumerable: false };
+      }
+
       return undefined;
+    }
 
     // Transitively maintain the wrapper membrane.
     function wrapIfExists(key) {
@@ -313,7 +325,9 @@ function SPConsoleListener(callback) {
 }
 
 SPConsoleListener.prototype = {
-  observe(msg) {
+  // Overload the observe method for both nsIConsoleListener and nsIObserver.
+  // The topic will be null for nsIConsoleListener.
+  observe(msg, topic) {
     let m = { message: msg.message,
               errorMessage: null,
               sourceName: null,
@@ -323,6 +337,7 @@ SPConsoleListener.prototype = {
               category: null,
               windowID: null,
               isScriptError: false,
+              isConsoleEvent: false,
               isWarning: false,
               isException: false,
               isStrict: false };
@@ -339,6 +354,17 @@ SPConsoleListener.prototype = {
       m.isWarning     = ((msg.flags & Ci.nsIScriptError.warningFlag) === 1);
       m.isException   = ((msg.flags & Ci.nsIScriptError.exceptionFlag) === 1);
       m.isStrict      = ((msg.flags & Ci.nsIScriptError.strictFlag) === 1);
+    } else if (topic === "console-api-log-event") {
+      // This is a dom/console event.
+      let unwrapped = msg.wrappedJSObject;
+      m.errorMessage   = unwrapped.arguments[0];
+      m.sourceName     = unwrapped.filename;
+      m.lineNumber     = unwrapped.lineNumber;
+      m.columnNumber   = unwrapped.columnNumber;
+      m.windowID       = unwrapped.ID;
+      m.innerWindowID  = unwrapped.innerID;
+      m.isConsoleEvent = true;
+      m.isWarning      = unwrapped.level === "warning";
     }
 
     Object.freeze(m);
@@ -349,18 +375,21 @@ SPConsoleListener.prototype = {
       this.callback.call(undefined, m);
     });
 
-    if (!m.isScriptError && m.message === "SENTINEL")
+    if (!m.isScriptError && !m.isConsoleEvent && m.message === "SENTINEL") {
+      Services.obs.removeObserver(this, "console-api-log-event");
       Services.console.unregisterListener(this);
+    }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIConsoleListener])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIConsoleListener,
+                                          Ci.nsIObserver])
 };
 
 function wrapCallback(cb) {
   return function SpecialPowersCallbackWrapper() {
     var args = Array.prototype.map.call(arguments, wrapIfUnwrapped);
     return cb.apply(this, args);
-  }
+  };
 }
 
 function wrapCallbackObject(obj) {
@@ -616,58 +645,61 @@ SpecialPowersAPI.prototype = {
   },
 
   /*
-   * In general, any Components object created for unprivileged scopes is
-   * neutered (it implements nsIXPCComponentsBase, but not nsIXPCComponents).
-   * We override this in certain legacy automation configurations (see the
-   * implementation of getRawComponents() above), but don't want to support
-   * it in cases where it isn't already required.
-   *
-   * In scopes with neutered Components, we don't have a natural referent for
-   * things like SpecialPowers.Cc. So in those cases, we fall back to the
-   * Components object from the SpecialPowers scope. This doesn't quite behave
-   * the same way (in particular, SpecialPowers.Cc[foo].createInstance() will
-   * create an instance in the SpecialPowers scope), but SpecialPowers wrapping
-   * is already a YMMV / Whatever-It-Takes-To-Get-TBPL-Green sort of thing.
-   *
-   * It probably wouldn't be too much work to just make SpecialPowers.Components
-   * unconditionally point to the Components object in the SpecialPowers scope.
-   * Try will tell what needs to be fixed up.
+   * A getter for the privileged Components object we have.
    */
   getFullComponents() {
-    if (this.Components && typeof this.Components.classes == "object") {
-      return this.Components;
-    }
     return Components;
   },
 
   /*
-   * Convenient shortcuts to the standard Components abbreviations. Note that
-   * we don't SpecialPowers-wrap Components.interfaces, because it's available
-   * to untrusted content, and wrapping it confuses QI and identity checks.
+   * Convenient shortcuts to the standard Components abbreviations.
    */
   get Cc() { return wrapPrivileged(this.getFullComponents().classes); },
-  get Ci() {
- return this.Components ? this.Components.interfaces
-                                    : Components.interfaces;
-},
+  get Ci() { return wrapPrivileged(this.getFullComponents().interfaces); },
   get Cu() { return wrapPrivileged(this.getFullComponents().utils); },
-  get Cr() { return wrapPrivileged(this.Components.results); },
-
-  /*
-   * SpecialPowers.getRawComponents() allows content to get a reference to a
-   * naked (and, in certain automation configurations, privileged) Components
-   * object for its scope.
-   *
-   * SpecialPowers.getRawComponents(window) is defined as the global property
-   * window.SpecialPowers.Components for convenience.
-   */
-  getRawComponents,
+  get Cr() { return wrapPrivileged(this.getFullComponents().results); },
 
   getDOMWindowUtils(aWindow) {
     if (aWindow == this.window.get() && this.DOMWindowUtils != null)
       return this.DOMWindowUtils;
 
     return bindDOMWindowUtils(aWindow);
+  },
+
+  /*
+   * A method to get a DOMParser that can't parse XUL.
+   */
+  getNoXULDOMParser() {
+    // If we create it with a system subject principal (so it gets a
+    // nullprincipal), it won't be able to parse XUL by default.
+    return wrapPrivileged(new DOMParser());
+  },
+
+  get InspectorUtils() { return wrapPrivileged(InspectorUtils); },
+
+  waitForCrashes(aExpectingProcessCrash) {
+    return new Promise((resolve, reject) => {
+      if (!aExpectingProcessCrash) {
+        resolve();
+      }
+
+      var crashIds = this._encounteredCrashDumpFiles.filter((filename) => {
+        return ((filename.length === 40) && filename.endsWith(".dmp"));
+      }).map((id) => {
+        return id.slice(0, -4); // Strip the .dmp extension to get the ID
+      });
+
+      let self = this;
+      function messageListener(msg) {
+        self._removeMessageListener("SPProcessCrashManagerWait", messageListener);
+        resolve();
+      }
+
+      this._addMessageListener("SPProcessCrashManagerWait", messageListener);
+      this._sendAsyncMessage("SPProcessCrashManagerWait", {
+        crashIds
+      });
+    });
   },
 
   removeExpectedCrashDumpFiles(aExpectingProcessCrash) {
@@ -779,7 +811,7 @@ SpecialPowersAPI.prototype = {
                              : Ci.nsIPermissionManager.DENY_ACTION;
         }
 
-        if (permission.remove == true)
+        if (permission.remove)
           perm = Ci.nsIPermissionManager.UNKNOWN_ACTION;
 
         if (originalValue == perm) {
@@ -798,7 +830,7 @@ SpecialPowersAPI.prototype = {
 
         var cleanupTodo = Object.assign({}, todo);
 
-        if (permission.remove == true)
+        if (permission.remove)
           todo.op = "remove";
 
         pendingPermissions.push(todo);
@@ -985,7 +1017,7 @@ SpecialPowersAPI.prototype = {
         self._applyingPermissions = false;
         // Now apply any permissions that may have been queued while we were applying
         self._applyPermissions();
-    }
+    };
 
     for (var idx in pendingActions) {
       var perm = pendingActions[idx];
@@ -1147,6 +1179,22 @@ SpecialPowersAPI.prototype = {
     });
   },
 
+  _isPrefActionNeeded(prefAction) {
+    if (prefAction.action === "clear") {
+      return Services.prefs.prefHasUserValue(prefAction.name);
+    } else if (prefAction.action === "set") {
+      try {
+        let currentValue  = this._getPref(prefAction.name, prefAction.type, {});
+        return currentValue != prefAction.value;
+      } catch (e) {
+        // If the preference is not defined yet, setting the value will have an effect.
+        return true;
+      }
+    }
+    // Only "clear" and "set" actions are supported.
+    return false;
+  },
+
   /*
     Iterate through one atomic set of pref actions and perform sets/clears as appropriate.
     All actions performed must modify the relevant pref.
@@ -1162,19 +1210,33 @@ SpecialPowersAPI.prototype = {
     var pendingActions = transaction[0];
     var callback = transaction[1];
 
-    var lastPref = pendingActions[pendingActions.length - 1];
+    // Filter out all the pending actions that will not have any effect.
+    pendingActions = pendingActions.filter(action => {
+      return this._isPrefActionNeeded(action);
+    });
 
-    var pb = Services.prefs;
     var self = this;
-    pb.addObserver(lastPref.name, function prefObs(subject, topic, data) {
-      pb.removeObserver(lastPref.name, prefObs);
-
+    let onPrefActionsApplied = function() {
       self._setTimeout(callback);
       self._setTimeout(function() {
         self._applyingPrefs = false;
         // Now apply any prefs that may have been queued while we were applying
         self._applyPrefs();
       });
+    };
+
+    // If no valid action remains, call onPrefActionsApplied directly and bail out.
+    if (pendingActions.length === 0) {
+      onPrefActionsApplied();
+      return;
+    }
+
+    var lastPref = pendingActions[pendingActions.length - 1];
+
+    var pb = Services.prefs;
+    pb.addObserver(lastPref.name, function prefObs(subject, topic, data) {
+      pb.removeObserver(lastPref.name, prefObs);
+      onPrefActionsApplied();
     });
 
     for (var idx in pendingActions) {
@@ -1373,12 +1435,12 @@ SpecialPowersAPI.prototype = {
   },
   get formHistory() {
     let tmp = {};
-    Cu.import("resource://gre/modules/FormHistory.jsm", tmp);
+    ChromeUtils.import("resource://gre/modules/FormHistory.jsm", tmp);
     return wrapPrivileged(tmp.FormHistory);
   },
   getFormFillController(window) {
-    return Components.classes["@mozilla.org/satchel/form-fill-controller;1"]
-                     .getService(Components.interfaces.nsIFormFillController);
+    return Cc["@mozilla.org/satchel/form-fill-controller;1"]
+             .getService(Ci.nsIFormFillController);
   },
   attachFormFillControllerTo(window) {
     this.getFormFillController()
@@ -1411,6 +1473,9 @@ SpecialPowersAPI.prototype = {
   registerConsoleListener(callback) {
     let listener = new SPConsoleListener(callback);
     Services.console.registerListener(listener);
+
+    // listen for dom/console events as well
+    Services.obs.addObserver(listener, "console-api-log-event");
   },
   postConsoleSentinel() {
     Services.console.logStringMessage("SENTINEL");
@@ -1421,6 +1486,9 @@ SpecialPowersAPI.prototype = {
 
   getFullZoom(window) {
     return this._getMUDV(window).fullZoom;
+  },
+  getDeviceFullZoom(window) {
+    return this._getMUDV(window).deviceFullZoom;
   },
   setFullZoom(window, zoom) {
     this._getMUDV(window).fullZoom = zoom;
@@ -1524,10 +1592,18 @@ SpecialPowersAPI.prototype = {
         } else if (cb) {
           cb();
         }
-      }
+      };
     }
 
     Cu.schedulePreciseGC(genGCCallback(callback));
+  },
+
+  getMemoryReports() {
+    try {
+      Cc["@mozilla.org/memory-reporter-manager;1"]
+        .getService(Ci.nsIMemoryReporterManager)
+        .getReports(() => {}, null, () => {}, null, false);
+    } catch (e) { }
   },
 
   setGCZeal(zeal) {
@@ -1536,9 +1612,7 @@ SpecialPowersAPI.prototype = {
 
   isMainProcess() {
     try {
-      return Cc["@mozilla.org/xre/app-info;1"].
-               getService(Ci.nsIXULRuntime).
-               processType == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT;
+      return Services.appinfo.processType == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT;
     } catch (e) { }
     return true;
   },
@@ -1549,9 +1623,7 @@ SpecialPowersAPI.prototype = {
     if (this._xpcomabi != null)
       return this._xpcomabi;
 
-    var xulRuntime = Cc["@mozilla.org/xre/app-info;1"]
-                        .getService(Components.interfaces.nsIXULAppInfo)
-                        .QueryInterface(Components.interfaces.nsIXULRuntime);
+    var xulRuntime = Services.appinfo.QueryInterface(Ci.nsIXULRuntime);
 
     this._xpcomabi = xulRuntime.XPCOMABI;
     return this._xpcomabi;
@@ -1575,23 +1647,15 @@ SpecialPowersAPI.prototype = {
     if (this._os != null)
       return this._os;
 
-    var xulRuntime = Cc["@mozilla.org/xre/app-info;1"]
-                        .getService(Components.interfaces.nsIXULAppInfo)
-                        .QueryInterface(Components.interfaces.nsIXULRuntime);
-
-    this._os = xulRuntime.OS;
+    this._os = Services.appinfo.OS;
     return this._os;
   },
 
   addSystemEventListener(target, type, listener, useCapture) {
-    Cc["@mozilla.org/eventlistenerservice;1"].
-      getService(Ci.nsIEventListenerService).
-      addSystemEventListener(target, type, listener, useCapture);
+    Services.els.addSystemEventListener(target, type, listener, useCapture);
   },
   removeSystemEventListener(target, type, listener, useCapture) {
-    Cc["@mozilla.org/eventlistenerservice;1"].
-      getService(Ci.nsIEventListenerService).
-      removeSystemEventListener(target, type, listener, useCapture);
+    Services.els.removeSystemEventListener(target, type, listener, useCapture);
   },
 
   // helper method to check if the event is consumed by either default group's
@@ -1609,7 +1673,7 @@ SpecialPowersAPI.prototype = {
                  "fireDone", "fireDetailedError"];
     for (var i in props) {
       let prop = props[i];
-      res[prop] = function() { return serv[prop].apply(serv, arguments) };
+      res[prop] = function() { return serv[prop].apply(serv, arguments); };
     }
     return res;
   },
@@ -1627,14 +1691,14 @@ SpecialPowersAPI.prototype = {
   },
 
   addCategoryEntry(category, entry, value, persists, replace) {
-    Components.classes["@mozilla.org/categorymanager;1"].
-      getService(Components.interfaces.nsICategoryManager).
+    Cc["@mozilla.org/categorymanager;1"].
+      getService(Ci.nsICategoryManager).
       addCategoryEntry(category, entry, value, persists, replace);
   },
 
   deleteCategoryEntry(category, entry, persists) {
-    Components.classes["@mozilla.org/categorymanager;1"].
-      getService(Components.interfaces.nsICategoryManager).
+    Cc["@mozilla.org/categorymanager;1"].
+      getService(Ci.nsICategoryManager).
       deleteCategoryEntry(category, entry, persists);
   },
   openDialog(win, args) {
@@ -1662,28 +1726,22 @@ SpecialPowersAPI.prototype = {
     return obj;
   },
 
-  get focusManager() {
-    if (this._fm != null)
-      return this._fm;
-
-    this._fm = Components.classes["@mozilla.org/focus-manager;1"].
-                        getService(Components.interfaces.nsIFocusManager);
-
-    return this._fm;
-  },
-
   getFocusedElementForWindow(targetWindow, aDeep) {
     var outParam = {};
-    this.focusManager.getFocusedElementForWindow(targetWindow, aDeep, outParam);
+    Services.focus.getFocusedElementForWindow(targetWindow, aDeep, outParam);
     return outParam.value;
   },
 
+  get focusManager() {
+    return Services.focus;
+  },
+
   activeWindow() {
-    return this.focusManager.activeWindow;
+    return Services.focus.activeWindow;
   },
 
   focusedWindow() {
-    return this.focusManager.focusedWindow;
+    return Services.focus.focusedWindow;
   },
 
   focus(aWindow) {
@@ -1707,21 +1765,18 @@ SpecialPowersAPI.prototype = {
   },
 
   getClipboardData(flavor, whichClipboard) {
-    if (this._cb == null)
-      this._cb = Components.classes["@mozilla.org/widget/clipboard;1"].
-                            getService(Components.interfaces.nsIClipboard);
     if (whichClipboard === undefined)
-      whichClipboard = this._cb.kGlobalClipboard;
+      whichClipboard = Services.clipboard.kGlobalClipboard;
 
-    var xferable = Components.classes["@mozilla.org/widget/transferable;1"].
-                   createInstance(Components.interfaces.nsITransferable);
+    var xferable = Cc["@mozilla.org/widget/transferable;1"].
+                   createInstance(Ci.nsITransferable);
     // in e10s b-c tests |content.window| is a CPOW whereas |window| works fine.
     // for some non-e10s mochi tests, |window| is null whereas |content.window|
     // works fine.  So we take whatever is non-null!
     xferable.init(this._getDocShell(typeof(window) == "undefined" ? content.window : window)
-                      .QueryInterface(Components.interfaces.nsILoadContext));
+                      .QueryInterface(Ci.nsILoadContext));
     xferable.addDataFlavor(flavor);
-    this._cb.getData(xferable, whichClipboard);
+    Services.clipboard.getData(xferable, whichClipboard);
     var data = {};
     try {
       xferable.getTransferData(flavor, data, {});
@@ -1730,7 +1785,7 @@ SpecialPowersAPI.prototype = {
     if (data == null)
       return "";
 
-    return data.QueryInterface(Components.interfaces.nsISupportsString).data;
+    return data.QueryInterface(Ci.nsISupportsString).data;
   },
 
   clipboardCopyString(str) {
@@ -1740,18 +1795,14 @@ SpecialPowersAPI.prototype = {
   },
 
   supportsSelectionClipboard() {
-    if (this._cb == null) {
-      this._cb = Components.classes["@mozilla.org/widget/clipboard;1"].
-                            getService(Components.interfaces.nsIClipboard);
-    }
-    return this._cb.supportsSelectionClipboard();
+    return Services.clipboard.supportsSelectionClipboard();
   },
 
   swapFactoryRegistration(cid, contractID, newFactory, oldFactory) {
     newFactory = Cu.waiveXrays(newFactory);
     oldFactory = Cu.waiveXrays(oldFactory);
 
-    var componentRegistrar = Components.manager.QueryInterface(Components.interfaces.nsIComponentRegistrar);
+    var componentRegistrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
 
     var unregisterFactory = newFactory;
     var registerFactory = oldFactory;
@@ -1759,8 +1810,8 @@ SpecialPowersAPI.prototype = {
     if (cid == null) {
       if (contractID != null) {
         cid = componentRegistrar.contractIDToCID(contractID);
-        oldFactory = Components.manager.getClassObject(Components.classes[contractID],
-                                                            Components.interfaces.nsIFactory);
+        oldFactory = Components.manager.getClassObject(Cc[contractID],
+                                                            Ci.nsIFactory);
       } else {
         return {"error": "trying to register a new contract ID: Missing contractID"};
       }
@@ -1804,9 +1855,7 @@ SpecialPowersAPI.prototype = {
    * Get the message manager associated with an <iframe mozbrowser>.
    */
   getBrowserFrameMessageManager(aFrameElement) {
-    return this.wrap(aFrameElement.QueryInterface(Ci.nsIFrameLoaderOwner)
-                                  .frameLoader
-                                  .messageManager);
+    return this.wrap(aFrameElement.frameLoader.messageManager);
   },
 
   _getPrincipalFromArg(arg) {
@@ -1922,11 +1971,11 @@ SpecialPowersAPI.prototype = {
   },
 
   removeAllServiceWorkerData() {
-    this.notifyObserversInParentProcess(null, "browser:purge-session-history", "");
+    return wrapIfUnwrapped(ServiceWorkerCleanUp.removeAll());
   },
 
   removeServiceWorkerDataForExampleDomain() {
-    this.notifyObserversInParentProcess(null, "browser:purge-domain-data", "example.com");
+    return wrapIfUnwrapped(ServiceWorkerCleanUp.removeFromHost("example.com"));
   },
 
   cleanUpSTSData(origin, flags) {
@@ -2109,7 +2158,7 @@ SpecialPowersAPI.prototype = {
     let walker = Cc["@mozilla.org/inspector/deep-tree-walker;1"].
                  createInstance(Ci.inIDeepTreeWalker);
     walker.showAnonymousContent = showAnonymousContent;
-    walker.init(node.ownerDocument, Ci.nsIDOMNodeFilter.SHOW_ALL);
+    walker.init(node.ownerDocument, NodeFilter.SHOW_ALL);
     walker.currentNode = node;
     return {
       get firstChild() {
@@ -2181,8 +2230,9 @@ SpecialPowersAPI.prototype = {
                                                           wrapCallback);
   },
 
+  EARLY_BETA_OR_EARLIER: AppConstants.EARLY_BETA_OR_EARLIER,
+
 };
 
 this.SpecialPowersAPI = SpecialPowersAPI;
 this.bindDOMWindowUtils = bindDOMWindowUtils;
-this.getRawComponents = getRawComponents;

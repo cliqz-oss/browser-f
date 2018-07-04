@@ -1,6 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -101,10 +101,7 @@ NS_IMETHODIMP nsScriptableRegion::IsEqualRegion(nsIScriptableRegion *aRegion, bo
 NS_IMETHODIMP nsScriptableRegion::GetBoundingBox(int32_t *aX, int32_t *aY, int32_t *aWidth, int32_t *aHeight)
 {
   mozilla::gfx::IntRect boundRect = mRegion.GetBounds();
-  *aX = boundRect.x;
-  *aY = boundRect.y;
-  *aWidth = boundRect.width;
-  *aHeight = boundRect.height;
+  boundRect.GetRect(aX, aY, aWidth, aHeight);
   return NS_OK;
 }
 
@@ -146,10 +143,10 @@ NS_IMETHODIMP nsScriptableRegion::GetRects(JSContext* aCx, JS::MutableHandle<JS:
   uint32_t n = 0;
   for (auto iter = mRegion.RectIter(); !iter.Done(); iter.Next()) {
     const mozilla::gfx::IntRect& rect = iter.Get();
-    if (!JS_DefineElement(aCx, destArray, n, rect.x, JSPROP_ENUMERATE) ||
-        !JS_DefineElement(aCx, destArray, n + 1, rect.y, JSPROP_ENUMERATE) ||
-        !JS_DefineElement(aCx, destArray, n + 2, rect.width, JSPROP_ENUMERATE) ||
-        !JS_DefineElement(aCx, destArray, n + 3, rect.height, JSPROP_ENUMERATE)) {
+    if (!JS_DefineElement(aCx, destArray, n, rect.X(), JSPROP_ENUMERATE) ||
+        !JS_DefineElement(aCx, destArray, n + 1, rect.Y(), JSPROP_ENUMERATE) ||
+        !JS_DefineElement(aCx, destArray, n + 2, rect.Width(), JSPROP_ENUMERATE) ||
+        !JS_DefineElement(aCx, destArray, n + 3, rect.Height(), JSPROP_ENUMERATE)) {
       return NS_ERROR_FAILURE;
     }
     n += 4;

@@ -11,7 +11,9 @@
 // use XPCOM assertion/debugging macros, etc.
 
 #include "nscore.h"
+#include "mozilla/arm.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/EndianUtils.h"
 #include "mozilla/SSE.h"
 #include "mozilla/TypeTraits.h"
 
@@ -53,6 +55,30 @@ public:
   static bool is6byte(char aChar)
   {
     return (aChar & 0xFE) == 0xFC;
+  }
+  // return the number of bytes in a sequence beginning with aChar
+  static int bytes(char aChar)
+  {
+    if (isASCII(aChar)) {
+      return 1;
+    }
+    if (is2byte(aChar)) {
+      return 2;
+    }
+    if (is3byte(aChar)) {
+      return 3;
+    }
+    if (is4byte(aChar)) {
+      return 4;
+    }
+    if (is5byte(aChar)) {
+      return 5;
+    }
+    if (is6byte(aChar)) {
+      return 6;
+    }
+    MOZ_ASSERT_UNREACHABLE("should not be used for in-sequence characters");
+    return 1;
   }
 };
 
@@ -663,6 +689,12 @@ public:
       return;
     }
 #endif
+#if defined(MOZILLA_MAY_SUPPORT_NEON) && defined(MOZ_LITTLE_ENDIAN)
+    if (mozilla::supports_neon()) {
+      write_neon(aSource, aSourceLength);
+      return;
+    }
+#endif
     const char* done_writing = aSource + aSourceLength;
     while (aSource < done_writing) {
       *mDestination++ = (char16_t)(unsigned char)(*aSource++);
@@ -671,6 +703,10 @@ public:
 
   void
   write_sse2(const char* aSource, uint32_t aSourceLength);
+#if defined(MOZILLA_MAY_SUPPORT_NEON) && defined(MOZ_LITTLE_ENDIAN)
+  void
+  write_neon(const char* aSource, uint32_t aSourceLength);
+#endif
 
   void
   write_terminator()
@@ -707,6 +743,12 @@ public:
       return;
     }
 #endif
+#if defined(MOZILLA_MAY_SUPPORT_NEON) && defined(MOZ_LITTLE_ENDIAN)
+    if (mozilla::supports_neon()) {
+      write_neon(aSource, aSourceLength);
+      return;
+    }
+#endif
     const char16_t* done_writing = aSource + aSourceLength;
     while (aSource < done_writing) {
       *mDestination++ = (char)(*aSource++);
@@ -716,6 +758,10 @@ public:
 #ifdef MOZILLA_MAY_SUPPORT_SSE2
   void
   write_sse2(const char16_t* aSource, uint32_t aSourceLength);
+#endif
+#if defined(MOZILLA_MAY_SUPPORT_NEON) && defined(MOZ_LITTLE_ENDIAN)
+  void
+  write_neon(const char16_t* aSource, uint32_t aSourceLength);
 #endif
 
   void

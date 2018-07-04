@@ -34,16 +34,26 @@
 #include "mozilla/Atomics.h"
 
 #include "jit/IonTypes.h"
+#include "js/ProfilingFrameIterator.h"
 #include "threading/Thread.h"
 #include "vm/MutexIDs.h"
+#include "wasm/WasmCode.h"
 
 namespace js {
+
 namespace jit {
+
+class JitActivation;
 
 class Simulator;
 class Redirection;
 class CachePage;
 class AutoLockSimulator;
+
+// When the SingleStepCallback is called, the simulator is about to execute
+// sim->get_pc() and the current machine state represents the completed
+// execution of the previous pc.
+typedef void (*SingleStepCallback)(void* arg, Simulator* sim, void* pc);
 
 const intptr_t kPointerAlignment = 4;
 const intptr_t kPointerAlignmentMask = kPointerAlignment - 1;
@@ -73,6 +83,12 @@ const uint32_t kFCSROverflowFlagBit = 4;
 const uint32_t kFCSRDivideByZeroFlagBit = 5;
 const uint32_t kFCSRInvalidOpFlagBit = 6;
 
+const uint32_t kFCSRInexactCauseBit = 12;
+const uint32_t kFCSRUnderflowCauseBit = 13;
+const uint32_t kFCSROverflowCauseBit = 14;
+const uint32_t kFCSRDivideByZeroCauseBit = 15;
+const uint32_t kFCSRInvalidOpCauseBit = 16;
+
 const uint32_t kFCSRInexactFlagMask = 1 << kFCSRInexactFlagBit;
 const uint32_t kFCSRUnderflowFlagMask = 1 << kFCSRUnderflowFlagBit;
 const uint32_t kFCSROverflowFlagMask = 1 << kFCSROverflowFlagBit;
@@ -97,6 +113,7 @@ const uint32_t kFCSRExceptionFlagMask = kFCSRFlagMask ^ kFCSRInexactFlagMask;
 //   debugger.
 const uint32_t kMaxWatchpointCode = 31;
 const uint32_t kMaxStopCode = 127;
+const uint32_t kWasmTrapCode = 6;
 
 // -----------------------------------------------------------------------------
 // Utility functions
@@ -151,6 +168,8 @@ class Simulator {
     Simulator();
     ~Simulator();
 
+    static bool supportsAtomics() { return true; }
+
     // The currently executing Simulator instance. Potentially there can be one
     // for each native thread.
     static Simulator* Current();
@@ -188,9 +207,8 @@ class Simulator {
     template <typename T>
     T get_pc_as() const { return reinterpret_cast<T>(get_pc()); }
 
-    void set_resume_pc(void* value) {
-        resume_pc_ = int32_t(value);
-    }
+    void enable_single_stepping(SingleStepCallback cb, void* arg);
+    void disable_single_stepping();
 
     // Accessor to the internal simulator stack area.
     uintptr_t stackLimit() const;
@@ -255,6 +273,9 @@ class Simulator {
     inline double readD(uint32_t addr, SimInstruction* instr);
     inline void writeD(uint32_t addr, double value, SimInstruction* instr);
 
+    inline int32_t loadLinkedW(uint32_t addr, SimInstruction* instr);
+    inline int32_t storeConditionalW(uint32_t addr, int32_t value, SimInstruction* instr);
+
     // Executing is handled based on the instruction type.
     void decodeTypeRegister(SimInstruction* instr);
 
@@ -284,6 +305,11 @@ class Simulator {
     void increaseStopCounter(uint32_t code);
     void printStopInfo(uint32_t code);
 
+    JS::ProfilingFrameIterator::RegisterState registerState();
+
+    // Handle any wasm faults, returning true if the fault was handled.
+    bool handleWasmFault(int32_t addr, unsigned numBytes);
+    bool handleWasmTrapFault();
 
     // Executes one instruction.
     void instructionDecode(SimInstruction* instr);
@@ -291,8 +317,6 @@ class Simulator {
     void branchDelayInstructionDecode(SimInstruction* instr);
 
   public:
-    static bool ICacheCheckingEnabled;
-
     static int StopSimAt;
 
     // Runtime call support.
@@ -329,6 +353,10 @@ class Simulator {
     // FPU control register.
     uint32_t FCSR_;
 
+    bool LLBit_;
+    uint32_t LLAddr_;
+    int32_t lastLLValue_;
+
     // Simulator support.
     char* stack_;
     uintptr_t stackLimit_;
@@ -336,14 +364,17 @@ class Simulator {
     int icount_;
     int break_count_;
 
-    int32_t resume_pc_;
-
     // Debugger input.
     char* lastDebuggerInput_;
 
     // Registered breakpoints.
     SimInstruction* break_pc_;
     Instr break_instr_;
+
+    // Single-stepping support
+    bool single_stepping_;
+    SingleStepCallback single_step_callback_;
+    void* single_step_callback_arg_;
 
     // A stop is watched if its code is less than kNumOfWatchedStops.
     // Only watched stops support enabling/disabling and the counter feature.
@@ -384,12 +415,6 @@ class SimulatorProcess
 
     static mozilla::Atomic<size_t, mozilla::ReleaseAcquire> ICacheCheckingDisableCount;
     static void FlushICache(void* start, size_t size);
-
-    // Jitcode may be rewritten from a signal handler, but is prevented from
-    // calling FlushICache() because the signal may arrive within the critical
-    // area of an AutoLockSimulatorCache. This flag instructs the Simulator
-    // to remove all cache entries the next time it checks, avoiding false negatives.
-    static mozilla::Atomic<bool, mozilla::ReleaseAcquire> cacheInvalidatedBySignalHandler_;
 
     static void checkICacheLocked(SimInstruction* instr);
 

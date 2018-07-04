@@ -7,18 +7,22 @@
 #ifndef nsXBLPrototypeResources_h__
 #define nsXBLPrototypeResources_h__
 
+#include "mozilla/MemoryReporting.h"
 #include "mozilla/StyleSheet.h"
+#include "mozilla/ServoStyleRuleMap.h"
 #include "nsICSSLoaderObserver.h"
 
 class nsCSSRuleProcessor;
-class nsIAtom;
+class nsAtom;
 class nsIContent;
 class nsXBLPrototypeBinding;
 class nsXBLResourceLoader;
+struct RawServoAuthorStyles;
 
 namespace mozilla {
 class CSSStyleSheet;
 class ServoStyleSet;
+class ServoStyleRuleMap;
 } // namespace mozilla
 
 // *********************************************************************/
@@ -31,7 +35,7 @@ public:
   ~nsXBLPrototypeResources();
 
   bool LoadResources(nsIContent* aBoundElement);
-  void AddResource(nsIAtom* aResourceType, const nsAString& aSrc);
+  void AddResource(nsAtom* aResourceType, const nsAString& aSrc);
   void AddResourceListener(nsIContent* aElement);
   nsresult FlushSkinSheets();
 
@@ -45,42 +49,56 @@ public:
   void AppendStyleSheet(mozilla::StyleSheet* aSheet);
   void RemoveStyleSheet(mozilla::StyleSheet* aSheet);
   void InsertStyleSheetAt(size_t aIndex, mozilla::StyleSheet* aSheet);
-  mozilla::StyleSheet* StyleSheetAt(size_t aIndex) const;
-  size_t SheetCount() const;
-  bool HasStyleSheets() const;
+
+  mozilla::StyleSheet* StyleSheetAt(size_t aIndex) const
+  {
+    return mStyleSheetList[aIndex];
+  }
+
+  size_t SheetCount() const
+  {
+    return mStyleSheetList.Length();
+  }
+
+  bool HasStyleSheets() const
+  {
+    return !mStyleSheetList.IsEmpty();
+  }
+
   void AppendStyleSheetsTo(nsTArray<mozilla::StyleSheet*>& aResult) const;
 
-  /**
-   * Recreates mRuleProcessor to represent the current list of style sheets
-   * stored in mStyleSheetList.  (Named GatherRuleProcessor to parallel
-   * nsStyleSet::GatherRuleProcessors.)
-   */
-  void GatherRuleProcessor();
 
-  nsCSSRuleProcessor* GetRuleProcessor() const { return mRuleProcessor; }
+  const RawServoAuthorStyles* GetServoStyles() const
+  {
+    return mServoStyles.get();
+  }
+
+  void SyncServoStyles();
+
+  mozilla::ServoStyleRuleMap* GetServoStyleRuleMap();
 
   // Updates the ServoStyleSet object that holds the result of cascading the
   // sheets in mStyleSheetList. Equivalent to GatherRuleProcessor(), but for
   // the Servo style backend.
-  void ComputeServoStyleSet(nsPresContext* aPresContext);
+  void ComputeServoStyles(const mozilla::ServoStyleSet& aMasterStyleSet);
 
-  const mozilla::ServoStyleSet* GetServoStyleSet() const { return mServoStyleSet.get(); }
+  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
 private:
   // A loader object. Exists only long enough to load resources, and then it dies.
   RefPtr<nsXBLResourceLoader> mLoader;
 
   // A list of loaded stylesheets for this binding.
+  //
+  // FIXME(emilio): Remove when the old style system is gone, defer to
+  // mServoStyles.
   nsTArray<RefPtr<mozilla::StyleSheet>> mStyleSheetList;
 
-  // The list of stylesheets converted to a rule processor.
-  RefPtr<nsCSSRuleProcessor> mRuleProcessor;
 
   // The result of cascading the XBL style sheets like mRuleProcessor, but
   // for the Servo style backend.
-  // XXX: We might want to design a better representation for the result of
-  // cascading the XBL style sheets, like a collection of SelectorMaps.
-  mozilla::UniquePtr<mozilla::ServoStyleSet> mServoStyleSet;
+  mozilla::UniquePtr<RawServoAuthorStyles> mServoStyles;
+  mozilla::UniquePtr<mozilla::ServoStyleRuleMap> mStyleRuleMap;
 };
 
 #endif

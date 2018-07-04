@@ -1,6 +1,6 @@
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var httpserver = new HttpServer();
 
@@ -14,7 +14,7 @@ function setupChannel(suffix, xRequest, flags) {
     if (flags)
         chan.loadFlags |= flags;
 
-    var httpChan = chan.QueryInterface(Components.interfaces.nsIHttpChannel);
+    var httpChan = chan.QueryInterface(Ci.nsIHttpChannel);
     httpChan.setRequestHeader("x-request", xRequest, false);
         
     return httpChan;
@@ -28,11 +28,11 @@ Listener.prototype = {
     _buffer: null,
 
     QueryInterface: function(iid) {
-        if (iid.equals(Components.interfaces.nsIStreamListener) ||
-            iid.equals(Components.interfaces.nsIRequestObserver) ||
-            iid.equals(Components.interfaces.nsISupports))
+        if (iid.equals(Ci.nsIStreamListener) ||
+            iid.equals(Ci.nsIRequestObserver) ||
+            iid.equals(Ci.nsISupports))
           return this;
-        throw Components.results.NS_ERROR_NO_INTERFACE;
+        throw Cr.NS_ERROR_NO_INTERFACE;
     },
 
     onStartRequest: function (request, ctx) {
@@ -42,7 +42,7 @@ Listener.prototype = {
         this._buffer = this._buffer.concat(read_stream(stream, count));
     },
     onStopRequest: function (request, ctx, status) {
-        do_check_eq(this._buffer, this._response);
+        Assert.equal(this._buffer, this._response);
         if (--expectedOnStopRequests == 0)
             do_timeout(10, function() {
                         httpserver.stop(do_test_finished);

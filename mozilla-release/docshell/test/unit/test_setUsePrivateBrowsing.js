@@ -1,9 +1,7 @@
 "use strict";
 
-const {utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 add_task(async function() {
   let webNav = Services.appShell.createWindowlessBrowser(false);
@@ -40,7 +38,7 @@ add_task(async function() {
   webNav.loadURI("data:text/html,", webNav.LOAD_FLAGS_NONE, null, null, null);
 
   // Return to the event loop so the load can begin.
-  await new Promise(do_execute_soon);
+  await new Promise(executeSoon);
 
   // This causes a failed assertion rather than an exception on debug
   // builds.

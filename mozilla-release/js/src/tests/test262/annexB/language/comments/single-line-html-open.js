@@ -3,7 +3,6 @@
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
 esid: sec-html-like-comments
-es6id: B1.3
 description: SingleLineHTMLOpenComment
 info: |
     Comment ::

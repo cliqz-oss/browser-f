@@ -5,11 +5,8 @@
  */
 
 interface XULControllers;
-interface MozFrameLoader;
-interface MozRDFCompositeDataSource;
-interface MozRDFResource;
 
-[Func="IsChromeOrXBL"]
+[HTMLConstructor, Func="IsChromeOrXBL"]
 interface XULElement : Element {
   // Layout properties
   [SetterThrows]
@@ -18,8 +15,6 @@ interface XULElement : Element {
   attribute DOMString dir;
   [SetterThrows]
   attribute DOMString flex;
-  [SetterThrows]
-  attribute DOMString flexGroup;
   [SetterThrows]
   attribute DOMString ordinal;
   [SetterThrows]
@@ -57,10 +52,6 @@ interface XULElement : Element {
   [SetterThrows]
   attribute DOMString maxHeight;
 
-  // Persistence
-  [SetterThrows]
-  attribute DOMString persist;
-
   // Position properties for
   // * popups - these are screen coordinates
   // * other elements - these are client coordinates relative to parent stack.
@@ -69,24 +60,16 @@ interface XULElement : Element {
   [SetterThrows]
   attribute DOMString top;
 
-  // XUL Template Builder
-  [SetterThrows]
-  attribute DOMString datasources;
-  [SetterThrows]
-  attribute DOMString ref;
-
-  // Tooltip and status info
+  // Tooltip
   [SetterThrows]
   attribute DOMString tooltipText;
+
+  // Properties for images
   [SetterThrows]
-  attribute DOMString statusText;
+  attribute DOMString src;
 
   attribute boolean allowEvents;
 
-  readonly attribute MozRDFCompositeDataSource? database;
-  readonly attribute XULTemplateBuilder?        builder;
-  [Throws]
-  readonly attribute MozRDFResource?            resource;
   [Throws, ChromeOnly]
   readonly attribute XULControllers             controllers;
   [Throws]
@@ -116,10 +99,7 @@ interface XULElement : Element {
 [NoInterfaceObject]
 interface MozFrameLoaderOwner {
   [ChromeOnly]
-  readonly attribute MozFrameLoader? frameLoader;
-
-  [ChromeOnly]
-  void setIsPrerendered();
+  readonly attribute FrameLoader? frameLoader;
 
   [ChromeOnly, Throws]
   void presetOpenerWindow(WindowProxy? window);

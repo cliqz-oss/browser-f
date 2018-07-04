@@ -1,7 +1,8 @@
-/* globals catcher, log */
+/* globals catcher, communication, log */
 
 "use strict";
 
+// eslint-disable-next-line no-var
 var global = this;
 
 this.selectorLoader = (function() {
@@ -15,6 +16,7 @@ this.selectorLoader = (function() {
     "catcher.js",
     "assertIsTrusted.js",
     "assertIsBlankDocument.js",
+    "blobConverters.js",
     "background/selectorLoader.js",
     "selector/callBackground.js",
     "selector/util.js"
@@ -61,24 +63,49 @@ this.selectorLoader = (function() {
     });
   };
 
-  let loadingTabs = new Set();
+  const loadingTabs = new Set();
 
   exports.loadModules = function(tabId, hasSeenOnboarding) {
-    let promise;
-    loadingTabs.add(tabId);
-    if (hasSeenOnboarding) {
-      promise = executeModules(tabId, standardScripts.concat(selectorScripts));
-    } else {
-      promise = executeModules(tabId, standardScripts.concat(onboardingScripts).concat(selectorScripts));
-    }
-    return promise.then((result) => {
-      loadingTabs.delete(tabId);
-      return result;
-    }, (error) => {
-      loadingTabs.delete(tabId);
-      throw error;
-    });
+    catcher.watchPromise(hasSeenOnboarding.then(onboarded => {
+      loadingTabs.add(tabId);
+      let promise = downloadOnlyCheck(tabId);
+      if (onboarded) {
+        promise = promise.then(() => {
+          return executeModules(tabId, standardScripts.concat(selectorScripts));
+        });
+      } else {
+        promise = promise.then(() => {
+          return executeModules(tabId, standardScripts.concat(onboardingScripts).concat(selectorScripts));
+        });
+      }
+      return promise.then((result) => {
+        loadingTabs.delete(tabId);
+        return result;
+      }, (error) => {
+        loadingTabs.delete(tabId);
+        throw error;
+      });
+    }));
   };
+
+  // TODO: since bootstrap communication is now required, would this function
+  // make more sense inside background/main?
+  function downloadOnlyCheck(tabId) {
+    return communication.sendToBootstrap("isHistoryEnabled").then((historyEnabled) => {
+      return communication.sendToBootstrap("isUploadDisabled").then((uploadDisabled) => {
+        return browser.tabs.get(tabId).then(tab => {
+          const downloadOnly = !historyEnabled || uploadDisabled || tab.incognito;
+          return browser.tabs.executeScript(tabId, {
+            // Note: `window` here refers to a global accessible to content
+            // scripts, but not the scripts in the underlying page. For more
+            // details, see https://mdn.io/WebExtensions/Content_scripts#Content_script_environment
+            code: `window.downloadOnly = ${downloadOnly}`,
+            runAt: "document_start"
+          });
+        });
+      });
+    });
+  }
 
   function executeModules(tabId, scripts) {
     let lastPromise = Promise.resolve(null);
@@ -86,7 +113,7 @@ this.selectorLoader = (function() {
       lastPromise = lastPromise.then(() => {
         return browser.tabs.executeScript(tabId, {
           file,
-          runAt: "document_end"
+          runAt: "document_start"
         }).catch((error) => {
           log.error("error in script:", file, error);
           error.scriptName = file;
@@ -106,12 +133,12 @@ this.selectorLoader = (function() {
 
   exports.unloadModules = function() {
     const watchFunction = catcher.watchFunction;
-    let allScripts = standardScripts.concat(onboardingScripts).concat(selectorScripts);
+    const allScripts = standardScripts.concat(onboardingScripts).concat(selectorScripts);
     const moduleNames = allScripts.map((filename) =>
       filename.replace(/^.*\//, "").replace(/\.js$/, ""));
     moduleNames.reverse();
-    for (let moduleName of moduleNames) {
-      let moduleObj = global[moduleName];
+    for (const moduleName of moduleNames) {
+      const moduleObj = global[moduleName];
       if (moduleObj && moduleObj.unload) {
         try {
           watchFunction(moduleObj.unload)();

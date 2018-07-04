@@ -193,9 +193,6 @@ class Registers {
         AllMask & ~VolatileMask & ~(1 << X86Encoding::rsp);
 
     static const SetType AllocatableMask = AllMask & ~NonAllocatableMask;
-
-    // Registers that can be allocated without being saved, generally.
-    static const SetType TempMask = VolatileMask & ~NonAllocatableMask;
 };
 
 typedef Registers::SetType PackedRegisterMask;
@@ -238,13 +235,11 @@ class FloatRegisters {
     static const uint32_t TotalPhys = 8;
     static const uint32_t Allocatable = 7;
     typedef uint32_t SetType;
-
 #elif defined(JS_CODEGEN_X64)
     static const uint32_t Total = 16 * NumTypes;
     static const uint32_t TotalPhys = 16;
     static const uint32_t Allocatable = 15;
     typedef uint64_t SetType;
-
 #endif
 
     static_assert(sizeof(SetType) * 8 >= Total,
@@ -285,7 +280,6 @@ class FloatRegisters {
           (1 << X86Encoding::xmm5)
         ) * SpreadScalar
         | AllPhysMask * SpreadVector;
-
 #else
     static const SetType VolatileMask =
         AllMask;
@@ -425,14 +419,12 @@ struct FloatRegister {
         return numAliased();
     }
 
-    // N.B. FloatRegister is an explicit outparam here because msvc-2010
-    // miscompiled it on win64 when the value was simply returned
-    void aliased(uint32_t aliasIdx, FloatRegister* ret) const {
+    FloatRegister aliased(uint32_t aliasIdx) const {
         MOZ_ASSERT(aliasIdx < Codes::NumTypes);
-        *ret = FloatRegister(reg_, Codes::ContentType((aliasIdx + type_) % Codes::NumTypes));
+        return FloatRegister(reg_, Codes::ContentType((aliasIdx + type_) % Codes::NumTypes));
     }
-    void alignedAliased(uint32_t aliasIdx, FloatRegister* ret) const {
-        aliased(aliasIdx, ret);
+    FloatRegister alignedAliased(uint32_t aliasIdx) const {
+        return aliased(aliasIdx);
     }
 
     SetType alignedOrDominatedAliasedSet() const {

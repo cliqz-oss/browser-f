@@ -12,44 +12,43 @@
 #include "mozilla/Unused.h"
 
 #if defined(XP_DARWIN)
-#include <mach/mach.h>
+# include <mach/mach.h>
 #elif defined(XP_UNIX)
-#include <sys/resource.h>
+# include <sys/resource.h>
 #endif // defined(XP_DARWIN) || defined(XP_UNIX) || defined(XP_WIN)
-
 #include <locale.h>
 #include <string.h>
-
 #ifdef JS_CAN_CHECK_THREADSAFE_ACCESSES
 # include <sys/mman.h>
 #endif
 
-#include "jsatom.h"
-#include "jsgc.h"
+#include "jsfriendapi.h"
 #include "jsmath.h"
-#include "jsobj.h"
-#include "jsscript.h"
-#include "jswatchpoint.h"
-#include "jswin.h"
-#include "jswrapper.h"
 
 #include "builtin/Promise.h"
+#include "gc/FreeOp.h"
 #include "gc/GCInternals.h"
+#include "gc/PublicIterators.h"
 #include "jit/arm/Simulator-arm.h"
 #include "jit/arm64/vixl/Simulator-vixl.h"
+#include "jit/IonBuilder.h"
 #include "jit/JitCompartment.h"
 #include "jit/mips32/Simulator-mips32.h"
 #include "jit/mips64/Simulator-mips64.h"
 #include "js/Date.h"
 #include "js/MemoryMetrics.h"
 #include "js/SliceBudget.h"
+#include "js/Wrapper.h"
+#include "util/Windows.h"
 #include "vm/Debugger.h"
+#include "vm/JSAtom.h"
+#include "vm/JSObject.h"
+#include "vm/JSScript.h"
 #include "vm/TraceLogging.h"
 #include "vm/TraceLoggingGraph.h"
-#include "wasm/WasmSignalHandlers.h"
 
-#include "jscntxtinlines.h"
-#include "jsgcinlines.h"
+#include "gc/GC-inl.h"
+#include "vm/JSContext-inl.h"
 
 using namespace js;
 using namespace js::gc;
@@ -58,9 +57,7 @@ using mozilla::Atomic;
 using mozilla::DebugOnly;
 using mozilla::NegativeInfinity;
 using mozilla::PodZero;
-using mozilla::PodArrayZero;
 using mozilla::PositiveInfinity;
-using JS::GenericNaN;
 using JS::DoubleNaNValue;
 
 /* static */ MOZ_THREAD_LOCAL(JSContext*) js::TlsContext;
@@ -96,18 +93,10 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     updateChildRuntimeCount(parentRuntime),
     initialized_(false),
 #endif
-    activeContext_(nullptr),
-    activeContextChangeProhibited_(0),
-    singleThreadedExecutionRequired_(0),
-    startingSingleThreadedExecution_(false),
-    beginSingleThreadedExecutionCallback(nullptr),
-    endSingleThreadedExecutionCallback(nullptr),
-    profilerSampleBufferGen_(0),
-    profilerSampleBufferLapCount_(1),
+    mainContext_(nullptr),
+    profilerSampleBufferRangeStart_(0),
     telemetryCallback(nullptr),
-    startAsyncTaskCallback(nullptr),
-    finishAsyncTaskCallback(nullptr),
-    promiseTasksToDestroy(mutexid::PromiseTaskPtrVector),
+    consumeStreamCallback(nullptr),
     readableStreamDataRequestCallback(nullptr),
     readableStreamWriteIntoReadRequestCallback(nullptr),
     readableStreamCancelCallback(nullptr),
@@ -119,6 +108,8 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     destroyCompartmentCallback(nullptr),
     sizeOfIncludingThisCompartmentCallback(nullptr),
     compartmentNameCallback(nullptr),
+    destroyRealmCallback(nullptr),
+    realmNameCallback(nullptr),
     externalStringSizeofCallback(nullptr),
     securityCallbacks(&NullSecurityCallbacks),
     DOMcallbacks(nullptr),
@@ -137,11 +128,14 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
 #ifdef DEBUG
     activeThreadHasExclusiveAccess(false),
 #endif
-    numHelperThreadZones(0),
+    scriptDataLock(mutexid::RuntimeScriptData),
+#ifdef DEBUG
+    activeThreadHasScriptDataAccess(false),
+#endif
+    numActiveHelperThreadZones(0),
     numCompartments(0),
     localeCallbacks(nullptr),
     defaultLocale(nullptr),
-    defaultVersion_(JSVERSION_DEFAULT),
     profilingScripts(false),
     scriptAndCountsVector(nullptr),
     lcovOutput_(),
@@ -177,10 +171,12 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     oomCallback(nullptr),
     debuggerMallocSizeOf(ReturnZeroSize),
     lastAnimationTime(0),
-    performanceMonitoring_(thisFromCtor()),
+    performanceMonitoring_(),
     stackFormat_(parentRuntime ? js::StackFormat::Default
-                               : js::StackFormat::SpiderMonkey)
+                               : js::StackFormat::SpiderMonkey),
+    wasmInstances(mutexid::WasmRuntimeInstances)
 {
+    JS_COUNT_CTOR(JSRuntime);
     liveRuntimesCount++;
 
     /* Initialize infallibly first, so we can goto bad and JS_DestroyRuntime. */
@@ -191,10 +187,13 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
 
 JSRuntime::~JSRuntime()
 {
+    JS_COUNT_DTOR(JSRuntime);
     MOZ_ASSERT(!initialized_);
 
     DebugOnly<size_t> oldCount = liveRuntimesCount--;
     MOZ_ASSERT(oldCount > 0);
+
+    MOZ_ASSERT(wasmInstances.lock()->empty());
 }
 
 bool
@@ -208,9 +207,7 @@ JSRuntime::init(JSContext* cx, uint32_t maxbytes, uint32_t maxNurseryBytes)
     if (CanUseExtraThreads() && !EnsureHelperThreadsInitialized())
         return false;
 
-    activeContext_ = cx;
-    if (!cooperatingContexts().append(cx))
-        return false;
+    mainContext_ = cx;
 
     defaultFreeOp_ = js_new<js::FreeOp>(this);
     if (!defaultFreeOp_)
@@ -219,12 +216,12 @@ JSRuntime::init(JSContext* cx, uint32_t maxbytes, uint32_t maxNurseryBytes)
     if (!gc.init(maxbytes, maxNurseryBytes))
         return false;
 
-    ScopedJSDeletePtr<Zone> atomsZone(new_<Zone>(this, nullptr));
+    ScopedJSDeletePtr<Zone> atomsZone(js_new<Zone>(this));
     if (!atomsZone || !atomsZone->init(true))
         return false;
 
     JS::CompartmentOptions options;
-    ScopedJSDeletePtr<JSCompartment> atomsCompartment(new_<JSCompartment>(atomsZone.get(), options));
+    ScopedJSDeletePtr<JSCompartment> atomsCompartment(js_new<JSCompartment>(atomsZone.get(), options));
     if (!atomsCompartment || !atomsCompartment->init(nullptr))
         return false;
 
@@ -285,7 +282,7 @@ JSRuntime::destroyRuntime()
          * Finish any in-progress GCs first. This ensures the parseWaitingOnGC
          * list is empty in CancelOffThreadParses.
          */
-        JSContext* cx = TlsContext.get();
+        JSContext* cx = mainContextFromOwnThread();
         if (JS::IsIncrementalGCInProgress(cx))
             FinishGC(cx);
 
@@ -295,7 +292,7 @@ JSRuntime::destroyRuntime()
         /*
          * Cancel any pending, in progress or completed Ion compilations and
          * parse tasks. Waiting for wasm and compression tasks is done
-         * synchronously (on the active thread or during parse tasks), so no
+         * synchronously (on the main thread or during parse tasks), so no
          * explicit canceling is needed for these.
          */
         CancelOffThreadIonCompile(this);
@@ -314,9 +311,6 @@ JSRuntime::destroyRuntime()
         /* Allow the GC to release scripts that were being profiled. */
         profilingScripts = false;
 
-        /* Set the profiler sampler buffer generation to invalid. */
-        profilerSampleBufferGen_ = UINT32_MAX;
-
         JS::PrepareForFullGC(cx);
         gc.gc(GC_NORMAL, JS::gcreason::DESTROY_RUNTIME);
     }
@@ -324,13 +318,12 @@ JSRuntime::destroyRuntime()
     AutoNoteSingleThreadedRegion anstr;
 
     MOZ_ASSERT(!hasHelperThreadZones());
-    AutoLockForExclusiveAccess lock(this);
 
     /*
      * Even though all objects in the compartment are dead, we may have keep
      * some filenames around because of gcKeepAtoms.
      */
-    FreeScriptData(this, lock);
+    FreeScriptData(this);
 
 #if !EXPOSE_INTL_API
     FinishRuntimeNumberState(this);
@@ -349,89 +342,6 @@ JSRuntime::destroyRuntime()
 #endif
 }
 
-static void
-CheckCanChangeActiveContext(JSRuntime* rt)
-{
-    // The runtime might not currently have an active context, in which case
-    // the accesses below to ActiveThreadData data would not normally be
-    // allowed. Suppress protected data checks so these accesses will be
-    // tolerated --- if the active context is null then we're about to set it
-    // to the current thread.
-    AutoNoteSingleThreadedRegion anstr;
-
-    MOZ_RELEASE_ASSERT(!rt->activeContextChangeProhibited());
-    MOZ_RELEASE_ASSERT(!rt->activeContext() || rt->gc.canChangeActiveContext(rt->activeContext()));
-
-    if (rt->singleThreadedExecutionRequired()) {
-        for (ZoneGroupsIter group(rt); !group.done(); group.next())
-            MOZ_RELEASE_ASSERT(group->ownerContext().context() == nullptr);
-    }
-}
-
-void
-JSRuntime::setActiveContext(JSContext* cx)
-{
-    CheckCanChangeActiveContext(this);
-    MOZ_ASSERT_IF(cx, cx->isCooperativelyScheduled());
-
-    activeContext_ = cx;
-}
-
-void
-JSRuntime::setNewbornActiveContext(JSContext* cx)
-{
-    CheckCanChangeActiveContext(this);
-
-    activeContext_ = cx;
-
-    AutoEnterOOMUnsafeRegion oomUnsafe;
-    if (!cooperatingContexts().append(cx))
-        oomUnsafe.crash("Add cooperating context");
-}
-
-void
-JSRuntime::deleteActiveContext(JSContext* cx)
-{
-    CheckCanChangeActiveContext(this);
-    MOZ_ASSERT(cx == activeContext());
-
-    js_delete_poison(cx);
-    activeContext_ = nullptr;
-}
-
-bool
-JSRuntime::beginSingleThreadedExecution(JSContext* cx)
-{
-    if (singleThreadedExecutionRequired_ == 0) {
-        if (startingSingleThreadedExecution_)
-            return false;
-        startingSingleThreadedExecution_ = true;
-        if (beginSingleThreadedExecutionCallback)
-            beginSingleThreadedExecutionCallback(cx);
-        MOZ_ASSERT(startingSingleThreadedExecution_);
-        startingSingleThreadedExecution_ = false;
-    }
-
-    singleThreadedExecutionRequired_++;
-
-    for (ZoneGroupsIter group(this); !group.done(); group.next()) {
-        MOZ_RELEASE_ASSERT(group->ownedByCurrentThread() ||
-                           group->ownerContext().context() == nullptr);
-    }
-
-    return true;
-}
-
-void
-JSRuntime::endSingleThreadedExecution(JSContext* cx)
-{
-    MOZ_ASSERT(singleThreadedExecutionRequired_);
-    if (--singleThreadedExecutionRequired_ == 0) {
-        if (endSingleThreadedExecutionCallback)
-            endSingleThreadedExecutionCallback(cx);
-    }
-}
-
 void
 JSRuntime::addTelemetry(int id, uint32_t sample, const char* key)
 {
@@ -446,13 +356,28 @@ JSRuntime::setTelemetryCallback(JSRuntime* rt, JSAccumulateTelemetryDataCallback
 }
 
 void
+JSRuntime::setUseCounter(JSObject* obj, JSUseCounter counter)
+{
+    if (useCounterCallback)
+        (*useCounterCallback)(obj, counter);
+}
+
+void
+JSRuntime::setUseCounterCallback(JSRuntime* rt, JSSetUseCounterCallback callback)
+{
+    rt->useCounterCallback = callback;
+}
+
+void
 JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::RuntimeSizes* rtSizes)
 {
-    // Several tables in the runtime enumerated below can be used off thread.
-    AutoLockForExclusiveAccess lock(this);
-
     rtSizes->object += mallocSizeOf(this);
-    rtSizes->atomsTable += atoms(lock).sizeOfIncludingThis(mallocSizeOf);
+
+    {
+        AutoLockForExclusiveAccess lock(this);
+        rtSizes->atomsTable += atoms(lock).sizeOfIncludingThis(mallocSizeOf);
+        rtSizes->gc.marker += gc.marker.sizeOfExcludingThis(mallocSizeOf, lock);
+    }
 
     if (!parentRuntime) {
         rtSizes->atomsTable += mallocSizeOf(staticStrings);
@@ -460,17 +385,15 @@ JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::Runtim
         rtSizes->atomsTable += permanentAtoms->sizeOfIncludingThis(mallocSizeOf);
     }
 
-    for (const CooperatingContext& target : cooperatingContexts()) {
-        JSContext* cx = target.context();
-        rtSizes->contexts += mallocSizeOf(cx);
-        rtSizes->contexts += cx->sizeOfExcludingThis(mallocSizeOf);
-        rtSizes->temporary += cx->tempLifoAlloc().sizeOfExcludingThis(mallocSizeOf);
-        rtSizes->interpreterStack += cx->interpreterStack().sizeOfExcludingThis(mallocSizeOf);
+    JSContext* cx = mainContextFromAnyThread();
+    rtSizes->contexts += mallocSizeOf(cx);
+    rtSizes->contexts += cx->sizeOfExcludingThis(mallocSizeOf);
+    rtSizes->temporary += cx->tempLifoAlloc().sizeOfExcludingThis(mallocSizeOf);
+    rtSizes->interpreterStack += cx->interpreterStack().sizeOfExcludingThis(mallocSizeOf);
 #ifdef JS_TRACE_LOGGING
-        if (cx->traceLogger)
-            rtSizes->tracelogger += cx->traceLogger->sizeOfIncludingThis(mallocSizeOf);
+    if (cx->traceLogger)
+        rtSizes->tracelogger += cx->traceLogger->sizeOfIncludingThis(mallocSizeOf);
 #endif
-    }
 
     if (MathCache* cache = caches().maybeGetMathCache())
         rtSizes->mathCache += cache->sizeOfIncludingThis(mallocSizeOf);
@@ -489,20 +412,26 @@ JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::Runtim
 
     rtSizes->sharedIntlData += sharedIntlData.ref().sizeOfExcludingThis(mallocSizeOf);
 
-    rtSizes->scriptData += scriptDataTable(lock).sizeOfExcludingThis(mallocSizeOf);
-    for (ScriptDataTable::Range r = scriptDataTable(lock).all(); !r.empty(); r.popFront())
-        rtSizes->scriptData += mallocSizeOf(r.front());
+    {
+        AutoLockScriptData lock(this);
+        rtSizes->scriptData += scriptDataTable(lock).sizeOfExcludingThis(mallocSizeOf);
+        for (ScriptDataTable::Range r = scriptDataTable(lock).all(); !r.empty(); r.popFront())
+            rtSizes->scriptData += mallocSizeOf(r.front());
+    }
 
     if (jitRuntime_) {
         jitRuntime_->execAlloc().addSizeOfCode(&rtSizes->code);
-        jitRuntime_->backedgeExecAlloc().addSizeOfCode(&rtSizes->code);
+
+        // Sizes of the IonBuilders we are holding for lazy linking
+        for (auto builder : jitRuntime_->ionLazyLinkList(this))
+            rtSizes->jitLazyLink += builder->sizeOfExcludingThis(mallocSizeOf);
     }
 
-    rtSizes->gc.marker += gc.marker.sizeOfExcludingThis(mallocSizeOf);
+    rtSizes->wasmRuntime += wasmInstances.lock()->sizeOfExcludingThis(mallocSizeOf);
 }
 
 static bool
-InvokeInterruptCallback(JSContext* cx)
+HandleInterrupt(JSContext* cx, bool invokeCallback)
 {
     MOZ_ASSERT(cx->requestDepth >= 1);
     MOZ_ASSERT(!cx->compartment()->isAtomsCompartment());
@@ -511,7 +440,11 @@ InvokeInterruptCallback(JSContext* cx)
 
     // A worker thread may have requested an interrupt after finishing an Ion
     // compilation.
-    jit::AttachFinishedCompilations(cx->zone()->group(), cx);
+    jit::AttachFinishedCompilations(cx);
+
+    // Don't call the interrupt callback if we only interrupted for GC or Ion.
+    if (!invokeCallback)
+        return true;
 
     // Important: Additional callbacks can occur inside the callback handler
     // if it re-enters the JS engine. The embedding must ensure that the
@@ -536,15 +469,15 @@ InvokeInterruptCallback(JSContext* cx)
             {
                 RootedValue rval(cx);
                 switch (Debugger::onSingleStep(cx, &rval)) {
-                  case JSTRAP_ERROR:
+                  case ResumeMode::Terminate:
                     return false;
-                  case JSTRAP_CONTINUE:
+                  case ResumeMode::Continue:
                     return true;
-                  case JSTRAP_RETURN:
+                  case ResumeMode::Return:
                     // See note in Debugger::propagateForcedReturn.
                     Debugger::propagateForcedReturn(cx, iter.abstractFramePtr(), rval);
                     return false;
-                  case JSTRAP_THROW:
+                  case ResumeMode::Throw:
                     cx->setPendingException(rval);
                     return false;
                   default:;
@@ -573,22 +506,20 @@ InvokeInterruptCallback(JSContext* cx)
 }
 
 void
-JSContext::requestInterrupt(InterruptMode mode)
+JSContext::requestInterrupt(InterruptReason reason)
 {
-    interrupt_ = true;
+    interruptBits_ |= uint32_t(reason);
     jitStackLimit = UINTPTR_MAX;
 
-    if (mode == JSContext::RequestInterruptUrgent) {
-        // If this interrupt is urgent (slow script dialog and garbage
-        // collection among others), take additional steps to
-        // interrupt corner cases where the above fields are not
-        // regularly polled.  Wake both ilooping JIT code and
-        // Atomics.wait().
-        fx.lock();
+    if (reason == InterruptReason::CallbackUrgent) {
+        // If this interrupt is urgent (slow script dialog for instance), take
+        // additional steps to interrupt corner cases where the above fields are
+        // not regularly polled.
+        FutexThread::lock();
         if (fx.isWaiting())
             fx.wake(FutexThread::WakeForJSInterrupt);
         fx.unlock();
-        InterruptRunningJitCode(this);
+        wasm::InterruptRunningCode(this);
     }
 }
 
@@ -596,10 +527,13 @@ bool
 JSContext::handleInterrupt()
 {
     MOZ_ASSERT(CurrentThreadCanAccessRuntime(runtime()));
-    if (interrupt_ || jitStackLimit == UINTPTR_MAX) {
-        interrupt_ = false;
+    if (hasAnyPendingInterrupt() || jitStackLimit == UINTPTR_MAX) {
+        bool invokeCallback =
+            hasPendingInterrupt(InterruptReason::CallbackUrgent) ||
+            hasPendingInterrupt(InterruptReason::CallbackCanWait);
+        interruptBits_ = 0;
         resetJitStackLimit();
-        return InvokeInterruptCallback(this);
+        return HandleInterrupt(this, invokeCallback);
     }
     return true;
 }
@@ -610,7 +544,7 @@ JSRuntime::setDefaultLocale(const char* locale)
     if (!locale)
         return false;
     resetDefaultLocale();
-    defaultLocale = JS_strdup(activeContextFromOwnThread(), locale);
+    defaultLocale = JS_strdup(mainContextFromOwnThread(), locale);
     return defaultLocale != nullptr;
 }
 
@@ -627,17 +561,13 @@ JSRuntime::getDefaultLocale()
     if (defaultLocale)
         return defaultLocale;
 
-    const char* locale;
-#ifdef HAVE_SETLOCALE
-    locale = setlocale(LC_ALL, nullptr);
-#else
-    locale = getenv("LANG");
-#endif
+    const char* locale = setlocale(LC_ALL, nullptr);
+
     // convert to a well-formed BCP 47 language tag
     if (!locale || !strcmp(locale, "C"))
         locale = "und";
 
-    char* lang = JS_strdup(activeContextFromOwnThread(), locale);
+    char* lang = JS_strdup(mainContextFromOwnThread(), locale);
     if (!lang)
         return nullptr;
 
@@ -715,7 +645,7 @@ JSRuntime::enqueuePromiseJob(JSContext* cx, HandleFunction job, HandleObject pro
                              HandleObject incumbentGlobal)
 {
     MOZ_ASSERT(cx->enqueuePromiseJobCallback,
-               "Must set a callback using JS_SetEnqeueuPromiseJobCallback before using Promises");
+               "Must set a callback using JS::SetEnqueuePromiseJobCallback before using Promises");
     MOZ_ASSERT_IF(incumbentGlobal, !IsWrapper(incumbentGlobal) && !IsWindowProxy(incumbentGlobal));
 
     void* data = cx->enqueuePromiseJobCallbackData;
@@ -742,7 +672,7 @@ JSRuntime::addUnhandledRejectedPromise(JSContext* cx, js::HandleObject promise)
 
     void* data = cx->promiseRejectionTrackerCallbackData;
     cx->promiseRejectionTrackerCallback(cx, promise,
-                                        PromiseRejectionHandlingState::Unhandled, data);
+                                        JS::PromiseRejectionHandlingState::Unhandled, data);
 }
 
 void
@@ -754,7 +684,7 @@ JSRuntime::removeUnhandledRejectedPromise(JSContext* cx, js::HandleObject promis
 
     void* data = cx->promiseRejectionTrackerCallbackData;
     cx->promiseRejectionTrackerCallback(cx, promise,
-                                        PromiseRejectionHandlingState::Handled, data);
+                                        JS::PromiseRejectionHandlingState::Handled, data);
 }
 
 mozilla::non_crypto::XorShift128PlusRNG&
@@ -786,13 +716,7 @@ JSRuntime::forkRandomKeyGenerator()
 void
 JSRuntime::updateMallocCounter(size_t nbytes)
 {
-    updateMallocCounter(nullptr, nbytes);
-}
-
-void
-JSRuntime::updateMallocCounter(JS::Zone* zone, size_t nbytes)
-{
-    gc.updateMallocCounter(zone, nbytes);
+    gc.updateMallocCounter(nbytes);
 }
 
 JS_FRIEND_API(void*)
@@ -879,19 +803,19 @@ JSRuntime::destroyAtomsAddedWhileSweepingTable()
 void
 JSRuntime::setUsedByHelperThread(Zone* zone)
 {
-    MOZ_ASSERT(!zone->group()->usedByHelperThread);
+    MOZ_ASSERT(!zone->usedByHelperThread());
     MOZ_ASSERT(!zone->wasGCStarted());
-    zone->group()->usedByHelperThread = true;
-    numHelperThreadZones++;
+    zone->setUsedByHelperThread();
+    numActiveHelperThreadZones++;
 }
 
 void
 JSRuntime::clearUsedByHelperThread(Zone* zone)
 {
-    MOZ_ASSERT(zone->group()->usedByHelperThread);
-    zone->group()->usedByHelperThread = false;
-    numHelperThreadZones--;
-    JSContext* cx = TlsContext.get();
+    MOZ_ASSERT(zone->usedByHelperThread());
+    zone->clearUsedByHelperThread();
+    numActiveHelperThreadZones--;
+    JSContext* cx = mainContextFromOwnThread();
     if (gc.fullGCForAtomsRequested() && cx->canCollectAtoms())
         gc.triggerFullGCForAtoms(cx);
 }
@@ -899,17 +823,18 @@ JSRuntime::clearUsedByHelperThread(Zone* zone)
 bool
 js::CurrentThreadCanAccessRuntime(const JSRuntime* rt)
 {
-    return rt->activeContext() == TlsContext.get();
+    return rt->mainContextFromAnyThread() == TlsContext.get();
 }
 
 bool
 js::CurrentThreadCanAccessZone(Zone* zone)
 {
-    if (CurrentThreadCanAccessRuntime(zone->runtime_))
-        return true;
+    // Helper thread zones can only be used by their owning thread.
+    if (zone->usedByHelperThread())
+        return zone->ownedByCurrentHelperThread();
 
-    // Only zones marked for use by a helper thread can be used off thread.
-    return zone->usedByHelperThread() && zone->group()->ownedByCurrentThread();
+    // Other zones can only be accessed by the runtime's active context.
+    return CurrentThreadCanAccessRuntime(zone->runtime_);
 }
 
 #ifdef DEBUG
@@ -921,11 +846,9 @@ js::CurrentThreadIsPerformingGC()
 #endif
 
 JS_FRIEND_API(void)
-JS::UpdateJSContextProfilerSampleBufferGen(JSContext* cx, uint32_t generation,
-                                           uint32_t lapCount)
+JS::SetJSContextProfilerSampleBufferRangeStart(JSContext* cx, uint64_t rangeStart)
 {
-    cx->runtime()->setProfilerSampleBufferGen(generation);
-    cx->runtime()->updateProfilerSampleBufferLapCount(lapCount);
+    cx->runtime()->setProfilerSampleBufferRangeStart(rangeStart);
 }
 
 JS_FRIEND_API(bool)

@@ -4,28 +4,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const I                    = Components.interfaces;
-const C                    = Components.classes;
+const I                    = Ci;
+const C                    = Cc;
 
-const nsILocalFile         = I.nsILocalFile;
+const nsIFile         = I.nsIFile;
 const nsIProperties        = I.nsIProperties;
 const nsIFileInputStream   = I.nsIFileInputStream;
 const nsIInputStream       = I.nsIInputStream;
 
-const nsIDOMParser         = I.nsIDOMParser;
-const nsIDOMSerializer     = I.nsIDOMSerializer;
 const nsIDOMDocument       = I.nsIDOMDocument;
-const nsIDOMElement        = I.nsIDOMElement;
 const nsIDOMNode           = I.nsIDOMNode;
-const nsIDOMCharacterData  = I.nsIDOMCharacterData;
-const nsIDOMAttr           = I.nsIDOMAttr;
-const nsIDOMNodeList       = I.nsIDOMNodeList;
-const nsIDOMXULElement     = I.nsIDOMXULElement;
-const nsIDOMProcessingInstruction = I.nsIDOMProcessingInstruction;
 
-function DOMParser() {
-  var parser = C["@mozilla.org/xmlextras/domparser;1"].createInstance(nsIDOMParser);
-  parser.init();
+Cu.importGlobalProperties(["DOMParser", "Element", "XMLSerializer"]);
+
+function getParser() {
+  var parser = new DOMParser();
+  parser.forceEnableXULXBL();
   return parser;
 }
 
@@ -41,7 +35,7 @@ function ParseFile(file) {
     file = fileObj;
   }
 
-  do_check_eq(file instanceof nsILocalFile, true);
+  Assert.equal(file instanceof nsIFile, true);
 
   var fileStr = C["@mozilla.org/network/file-input-stream;1"]
                  .createInstance(nsIFileInputStream);
@@ -52,18 +46,17 @@ function ParseFile(file) {
 
 function ParseXML(data) {
   if (typeof(data) == "string") {
-    return DOMParser().parseFromString(data, "application/xml");
+    return getParser().parseFromString(data, "application/xml");
   }
 
-  do_check_eq(data instanceof nsIInputStream, true);
+  Assert.equal(data instanceof nsIInputStream, true);
   
-  return DOMParser().parseFromStream(data, "UTF-8", data.available(),
+  return getParser().parseFromStream(data, "UTF-8", data.available(),
                                      "application/xml");
 }
 
 function DOMSerializer() {
-  return C["@mozilla.org/xmlextras/xmlserializer;1"]
-          .createInstance(nsIDOMSerializer);
+  return new XMLSerializer();
 }
 
 function SerializeXML(node) {
@@ -75,7 +68,7 @@ function roundtrip(obj) {
     return SerializeXML(ParseXML(obj));
   }
 
-  do_check_eq(obj instanceof nsIDOMNode, true);
+  Assert.equal(obj instanceof nsIDOMNode, true);
   return ParseXML(SerializeXML(obj));
 }
 
@@ -94,37 +87,32 @@ function do_compare_attrs(e1, e2) {
         do_throw("Missing attribute with namespaceURI '" + att.namespaceURI +
                  "' and localName '" + att.localName + "'");
       }
-      do_check_eq(att.QueryInterface(nsIDOMAttr).value, 
-                  att2.QueryInterface(nsIDOMAttr).value);
+      Assert.equal(att.value, att2.value);
     }
   }
 }
 
 function do_check_equiv(dom1, dom2) {
-  do_check_eq(dom1.nodeType, dom2.nodeType);
-  // There's no classinfo around, so we'll need to do some QIing to
-  // make sure the right interfaces are flattened as needed.
+  Assert.equal(dom1.nodeType, dom2.nodeType);
   switch (dom1.nodeType) {
   case nsIDOMNode.PROCESSING_INSTRUCTION_NODE:
-    do_check_eq(dom1.QueryInterface(nsIDOMProcessingInstruction).target, 
-                dom2.QueryInterface(nsIDOMProcessingInstruction).target);
-    do_check_eq(dom1.data, dom2.data);
+    Assert.equal(dom1.target, dom2.target);
+    Assert.equal(dom1.data, dom2.data);
   case nsIDOMNode.TEXT_NODE:
   case nsIDOMNode.CDATA_SECTION_NODE:
   case nsIDOMNode.COMMENT_NODE:
-    do_check_eq(dom1.QueryInterface(nsIDOMCharacterData).data,
-                dom2.QueryInterface(nsIDOMCharacterData).data);
+    Assert.equal(dom1.data, dom2.data);
     break;
   case nsIDOMNode.ELEMENT_NODE:
-    do_check_eq(dom1.namespaceURI, dom2.namespaceURI);
-    do_check_eq(dom1.localName, dom2.localName);
+    Assert.equal(dom1.namespaceURI, dom2.namespaceURI);
+    Assert.equal(dom1.localName, dom2.localName);
     // Compare attrs in both directions -- do_compare_attrs does a
     // subset check.
     do_compare_attrs(dom1, dom2);
     do_compare_attrs(dom2, dom1);
     // Fall through
   case nsIDOMNode.DOCUMENT_NODE:
-    do_check_eq(dom1.childNodes.length, dom2.childNodes.length);
+    Assert.equal(dom1.childNodes.length, dom2.childNodes.length);
     for (var i = 0; i < dom1.childNodes.length; ++i) {
       do_check_equiv(dom1.childNodes.item(i), dom2.childNodes.item(i));
     }

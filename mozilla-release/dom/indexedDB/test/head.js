@@ -20,7 +20,7 @@ function registerPopupEventHandler(eventName, callback, win) {
     delete gActiveListeners[eventName];
 
     callback.call(win.PopupNotifications.panel);
-  }
+  };
   win.PopupNotifications.panel.addEventListener(eventName,
                                                 gActiveListeners[eventName]);
 }
@@ -72,7 +72,7 @@ function dismissNotification(popup)
 {
   info("dismissing notification");
   executeSoon(function() {
-    EventUtils.synthesizeKey("VK_ESCAPE", {});
+    EventUtils.synthesizeKey("KEY_Escape");
   });
 }
 
@@ -80,11 +80,14 @@ function waitForMessage(aMessage, browser)
 {
   return new Promise((resolve, reject) => {
     /* eslint-disable no-undef */
+    // When contentScript runs, "this" is a ContentFrameMessageManager (so that's where
+    // addEventListener will add the listener), but the non-bubbling "message" event is
+    // sent to the Window involved, so we need a capturing listener.
     function contentScript() {
       addEventListener("message", function(event) {
         sendAsyncMessage("testLocal:message",
           {message: event.data});
-      }, {once: true}, true);
+      }, {once: true, capture: true}, true);
     }
     /* eslint-enable no-undef */
 
@@ -117,45 +120,25 @@ function dispatchEvent(eventName)
 
 function setPermission(url, permission)
 {
-  const nsIPermissionManager = Components.interfaces.nsIPermissionManager;
+  let uri = Services.io.newURI(url);
+  let principal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
 
-  let uri = Components.classes["@mozilla.org/network/io-service;1"]
-                      .getService(Components.interfaces.nsIIOService)
-                      .newURI(url);
-  let ssm = Components.classes["@mozilla.org/scriptsecuritymanager;1"]
-                      .getService(Ci.nsIScriptSecurityManager);
-  let principal = ssm.createCodebasePrincipal(uri, {});
-
-  Components.classes["@mozilla.org/permissionmanager;1"]
-            .getService(nsIPermissionManager)
-            .addFromPrincipal(principal, permission,
-                              nsIPermissionManager.ALLOW_ACTION);
+  Services.perms.addFromPrincipal(principal, permission,
+                                  Ci.nsIPermissionManager.ALLOW_ACTION);
 }
 
 function removePermission(url, permission)
 {
-  let uri = Components.classes["@mozilla.org/network/io-service;1"]
-                      .getService(Components.interfaces.nsIIOService)
-                      .newURI(url);
-  let ssm = Components.classes["@mozilla.org/scriptsecuritymanager;1"]
-                      .getService(Ci.nsIScriptSecurityManager);
-  let principal = ssm.createCodebasePrincipal(uri, {});
+  let uri = Services.io.newURI(url);
+  let principal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
 
-  Components.classes["@mozilla.org/permissionmanager;1"]
-            .getService(Components.interfaces.nsIPermissionManager)
-            .removeFromPrincipal(principal, permission);
+  Services.perms.removeFromPrincipal(principal, permission);
 }
 
 function getPermission(url, permission)
 {
-  let uri = Components.classes["@mozilla.org/network/io-service;1"]
-                      .getService(Components.interfaces.nsIIOService)
-                      .newURI(url);
-  let ssm = Components.classes["@mozilla.org/scriptsecuritymanager;1"]
-                      .getService(Ci.nsIScriptSecurityManager);
-  let principal = ssm.createCodebasePrincipal(uri, {});
+  let uri = Services.io.newURI(url);
+  let principal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
 
-  return Components.classes["@mozilla.org/permissionmanager;1"]
-                   .getService(Components.interfaces.nsIPermissionManager)
-                   .testPermissionFromPrincipal(principal, permission);
+  return Services.perms.testPermissionFromPrincipal(principal, permission);
 }

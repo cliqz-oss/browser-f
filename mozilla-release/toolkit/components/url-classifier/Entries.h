@@ -35,21 +35,25 @@ struct SafebrowsingHash
   typedef SafebrowsingHash<S, Comparator> self_type;
   uint8_t buf[S];
 
-  nsresult FromPlaintext(const nsACString& aPlainText, nsICryptoHash* aHash) {
+  nsresult FromPlaintext(const nsACString& aPlainText) {
     // From the protocol doc:
     // Each entry in the chunk is composed
     // of the SHA 256 hash of a suffix/prefix expression.
-
-    nsresult rv = aHash->Init(nsICryptoHash::SHA256);
+    nsresult rv;
+    nsCOMPtr<nsICryptoHash> hash =
+      do_CreateInstance(NS_CRYPTO_HASH_CONTRACTID, &rv);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = aHash->Update
+    rv = hash->Init(nsICryptoHash::SHA256);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = hash->Update
       (reinterpret_cast<const uint8_t*>(aPlainText.BeginReading()),
        aPlainText.Length());
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsAutoCString hashed;
-    rv = aHash->Finish(false, hashed);
+    rv = hash->Finish(false, hashed);
     NS_ENSURE_SUCCESS(rv, rv);
 
     NS_ASSERTION(hashed.Length() >= sHashSize,
@@ -100,7 +104,7 @@ struct SafebrowsingHash
 
     aStr.SetCapacity(2 * len);
     for (size_t i = 0; i < len; ++i) {
-      const char c = static_cast<const char>(buf[i]);
+      const char c = static_cast<char>(buf[i]);
       aStr.Append(lut[(c >> 4) & 0x0F]);
       aStr.Append(lut[c & 15]);
     }

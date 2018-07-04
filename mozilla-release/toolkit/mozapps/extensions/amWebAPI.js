@@ -4,10 +4,8 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyPreferenceGetter(this, "WEBEXT_PERMISSION_PROMPTS",
                                       "extensions.webextPermissionPrompts", false);
@@ -245,7 +243,7 @@ class WebAPI extends APIObject {
     return WEBEXT_PERMISSION_PROMPTS;
   }
 
-  eventListenerWasAdded(type) {
+  eventListenerAdded(type) {
     if (this.listenerCount == 0) {
       this.broker.setAddonListener(data => {
         let event = new this.window.AddonEvent(data.event, data);
@@ -255,21 +253,13 @@ class WebAPI extends APIObject {
     this.listenerCount++;
   }
 
-  eventListenerWasRemoved(type) {
+  eventListenerRemoved(type) {
     this.listenerCount--;
     if (this.listenerCount == 0) {
       this.broker.setAddonListener(null);
     }
   }
-
-  QueryInterface(iid) {
-    if (iid.equals(WebAPI.classID) || iid.equals(Ci.nsISupports)
-        || iid.equals(Ci.nsIDOMGlobalPropertyInitializer)) {
-      return this;
-    }
-    return Cr.NS_ERROR_NO_INTERFACE;
-  }
 }
-
+WebAPI.prototype.QueryInterface = ChromeUtils.generateQI(["nsIDOMGlobalPropertyInitializer"]);
 WebAPI.prototype.classID = Components.ID("{8866d8e3-4ea5-48b7-a891-13ba0ac15235}");
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([WebAPI]);

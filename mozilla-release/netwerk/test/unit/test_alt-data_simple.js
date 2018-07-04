@@ -9,9 +9,9 @@
  * - this time the alt data must arive
  */
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "URL", function() {
   return "http://localhost:" + httpServer.identity.primaryPort + "/content";
@@ -67,7 +67,7 @@ function check_has_alt_data_in_index(aHasAltData)
   }
   var hasAltData = {};
   cache_storage.getCacheIndexEntryAttrs(createURI(URL), "", hasAltData, {});
-  do_check_eq(hasAltData.value, aHasAltData);
+  Assert.equal(hasAltData.value, aHasAltData);
 }
 
 function run_test()
@@ -100,44 +100,54 @@ function readServerContent(request, buffer)
 {
   var cc = request.QueryInterface(Ci.nsICacheInfoChannel);
 
-  do_check_eq(buffer, responseContent);
-  do_check_eq(cc.alternativeDataType, "");
+  Assert.equal(buffer, responseContent);
+  Assert.equal(cc.alternativeDataType, "");
   check_has_alt_data_in_index(false);
 
-  do_execute_soon(() => {
-    var os = cc.openAlternativeOutputStream(altContentType);
+  executeSoon(() => {
+    var os = cc.openAlternativeOutputStream(altContentType, altContent.length);
     os.write(altContent, altContent.length);
     os.close();
 
-    do_execute_soon(flushAndOpenAltChannel);
+    executeSoon(flushAndOpenAltChannel);
   });
 }
 
 // needs to be rooted
 var cacheFlushObserver = cacheFlushObserver = { observe: function() {
   cacheFlushObserver = null;
-
-  var chan = make_channel(URL);
-  var cc = chan.QueryInterface(Ci.nsICacheInfoChannel);
-  cc.preferAlternativeDataType(altContentType);
-
-  chan.asyncOpen2(new ChannelListener(readAltContent, null));
+  openAltChannel();
 }};
 
 function flushAndOpenAltChannel()
 {
   // We need to do a GC pass to ensure the cache entry has been freed.
   gc();
-  Services.cache2.QueryInterface(Ci.nsICacheTesting).flush(cacheFlushObserver);
+  if (!inChildProcess()) {
+    Services.cache2.QueryInterface(Ci.nsICacheTesting).flush(cacheFlushObserver);
+  } else {
+    do_send_remote_message('flush');
+    do_await_remote_message('flushed').then(() => {
+      openAltChannel();
+    });
+  }
+}
+
+function openAltChannel() {
+  var chan = make_channel(URL);
+  var cc = chan.QueryInterface(Ci.nsICacheInfoChannel);
+  cc.preferAlternativeDataType(altContentType);
+
+  chan.asyncOpen2(new ChannelListener(readAltContent, null));
 }
 
 function readAltContent(request, buffer)
 {
   var cc = request.QueryInterface(Ci.nsICacheInfoChannel);
 
-  do_check_eq(servedNotModified, true);
-  do_check_eq(cc.alternativeDataType, altContentType);
-  do_check_eq(buffer, altContent);
+  Assert.equal(servedNotModified, true);
+  Assert.equal(cc.alternativeDataType, altContentType);
+  Assert.equal(buffer, altContent);
   check_has_alt_data_in_index(true);
 
   requestAgain();
@@ -157,8 +167,8 @@ function readEmptyAltContent(request, buffer)
   var cc = request.QueryInterface(Ci.nsICacheInfoChannel);
 
   // the cache is overwrite and the alt-data is reset
-  do_check_eq(cc.alternativeDataType, "");
-  do_check_eq(buffer, responseContent2);
+  Assert.equal(cc.alternativeDataType, "");
+  Assert.equal(buffer, responseContent2);
   check_has_alt_data_in_index(false);
 
   httpServer.stop(do_test_finished);

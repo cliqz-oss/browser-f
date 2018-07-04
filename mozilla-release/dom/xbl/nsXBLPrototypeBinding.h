@@ -19,10 +19,11 @@
 #include "nsXBLProtoImplMethod.h"
 #include "nsXBLPrototypeHandler.h"
 #include "nsXBLPrototypeResources.h"
+#include "mozilla/MemoryReporting.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/StyleSheet.h"
 
-class nsIAtom;
+class nsAtom;
 class nsIContent;
 class nsIDocument;
 class nsXBLAttributeEntry;
@@ -41,8 +42,8 @@ class nsXBLPrototypeBinding final :
 public:
   MOZ_DECLARE_WEAKREFERENCE_TYPENAME(nsXBLPrototypeBinding)
 
-  nsIContent* GetBindingElement() const { return mBinding; }
-  void SetBindingElement(nsIContent* aElement);
+  mozilla::dom::Element* GetBindingElement() const { return mBinding; }
+  void SetBindingElement(mozilla::dom::Element* aElement);
 
   nsIURI* BindingURI() const { return mBindingURI; }
   nsIURI* AlternateBindingURI() const { return mAlternateBindingURI; }
@@ -61,7 +62,7 @@ public:
   // aBoundElement is passed in here because we need to get owner document
   // and PresContext in nsXBLResourceLoader::LoadResources().
   bool LoadResources(nsIContent* aBoundElement);
-  nsresult AddResource(nsIAtom* aResourceType, const nsAString& aSrc);
+  nsresult AddResource(nsAtom* aResourceType, const nsAString& aSrc);
 
   bool InheritsStyle() const { return mInheritStyle; }
   void SetInheritsStyle(bool aInheritStyle) { mInheritStyle = aInheritStyle; }
@@ -110,8 +111,9 @@ public:
   nsresult InstallImplementation(nsXBLBinding* aBinding);
   bool HasImplementation() const { return mImplementation != nullptr; }
 
-  void AttributeChanged(nsIAtom* aAttribute, int32_t aNameSpaceID,
-                        bool aRemoveFlag, nsIContent* aChangedElement,
+  void AttributeChanged(nsAtom* aAttribute, int32_t aNameSpaceID,
+                        bool aRemoveFlag,
+                        mozilla::dom::Element* aChangedElement,
                         nsIContent* aAnonymousContent, bool aNotify);
 
   void SetBasePrototype(nsXBLPrototypeBinding* aBinding);
@@ -120,7 +122,8 @@ public:
   nsXBLDocumentInfo* XBLDocumentInfo() const { return mXBLDocInfoWeak; }
   bool IsChrome() { return mXBLDocInfoWeak->IsChrome(); }
 
-  void SetInitialAttributes(nsIContent* aBoundElement, nsIContent* aAnonymousContent);
+  void SetInitialAttributes(mozilla::dom::Element* aBoundElement,
+                            nsIContent* aAnonymousContent);
 
   void AppendStyleSheet(mozilla::StyleSheet* aSheet);
   void RemoveStyleSheet(mozilla::StyleSheet* aSheet);
@@ -130,13 +133,34 @@ public:
   bool HasStyleSheets() const;
   void AppendStyleSheetsTo(nsTArray<mozilla::StyleSheet*>& aResult) const;
 
-  nsIStyleRuleProcessor* GetRuleProcessor();
-  const mozilla::ServoStyleSet* GetServoStyleSet() const;
+
+  const RawServoAuthorStyles* GetServoStyles() const
+  {
+    return mResources ? mResources->GetServoStyles() : nullptr;
+  }
+
+  void SyncServoStyles()
+  {
+    MOZ_ASSERT(mResources);
+    mResources->SyncServoStyles();
+  }
+
+  RawServoAuthorStyles* GetServoStyles()
+  {
+    return mResources
+      ? const_cast<RawServoAuthorStyles*>(mResources->GetServoStyles())
+      : nullptr;
+  }
+
+  mozilla::ServoStyleRuleMap* GetServoStyleRuleMap()
+  {
+    return mResources ? mResources->GetServoStyleRuleMap() : nullptr;
+  }
 
   nsresult FlushSkinSheets();
 
-  nsIAtom* GetBaseTag(int32_t* aNamespaceID);
-  void SetBaseTag(int32_t aNamespaceID, nsIAtom* aTag);
+  nsAtom* GetBaseTag(int32_t* aNamespaceID);
+  void SetBaseTag(int32_t aNamespaceID, nsAtom* aTag);
 
   bool ImplementsInterface(REFNSIID aIID) const;
 
@@ -245,12 +269,14 @@ public:
   // binding's handlers, properties, etc are all set.
   nsresult Init(const nsACString& aRef,
                 nsXBLDocumentInfo* aInfo,
-                nsIContent* aElement,
+                mozilla::dom::Element* aElement,
                 bool aFirstBinding = false);
 
   void Traverse(nsCycleCollectionTraversalCallback &cb) const;
   void Unlink();
   void Trace(const TraceCallbacks& aCallbacks, void *aClosure) const;
+
+  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
 // Internal member functions.
 public:
@@ -258,25 +284,26 @@ public:
    * GetImmediateChild locates the immediate child of our binding element which
    * has the localname given by aTag and is in the XBL namespace.
    */
-  nsIContent* GetImmediateChild(nsIAtom* aTag);
-  nsIContent* LocateInstance(nsIContent* aBoundElt,
-                             nsIContent* aTemplRoot,
-                             nsIContent* aCopyRoot,
-                             nsIContent* aTemplChild);
+  mozilla::dom::Element* GetImmediateChild(nsAtom* aTag);
+  mozilla::dom::Element* LocateInstance(mozilla::dom::Element* aBoundElt,
+                                        nsIContent* aTemplRoot,
+                                        nsIContent* aCopyRoot,
+                                        mozilla::dom::Element* aTemplChild);
 
-  bool ChromeOnlyContent() { return mChromeOnlyContent; }
-  bool BindToUntrustedContent() { return mBindToUntrustedContent; }
+  bool ChromeOnlyContent() const { return mChromeOnlyContent; }
+  bool SimpleScopeChain() const { return mSimpleScopeChain; }
+  bool BindToUntrustedContent() const { return mBindToUntrustedContent; }
 
-  typedef nsClassHashtable<nsISupportsHashKey, nsXBLAttributeEntry> InnerAttributeTable;
+  typedef nsClassHashtable<nsRefPtrHashKey<nsAtom>, nsXBLAttributeEntry> InnerAttributeTable;
 
 protected:
   // Ensure that mAttributeTable has been created.
   void EnsureAttributeTable();
   // Ad an entry to the attribute table
-  void AddToAttributeTable(int32_t aSourceNamespaceID, nsIAtom* aSourceTag,
-                           int32_t aDestNamespaceID, nsIAtom* aDestTag,
-                           nsIContent* aContent);
-  void ConstructAttributeTable(nsIContent* aElement);
+  void AddToAttributeTable(int32_t aSourceNamespaceID, nsAtom* aSourceTag,
+                           int32_t aDestNamespaceID, nsAtom* aDestTag,
+                           mozilla::dom::Element* aContent);
+  void ConstructAttributeTable(mozilla::dom::Element* aElement);
   void CreateKeyHandlers();
 
 private:
@@ -286,7 +313,7 @@ private:
 protected:
   nsCOMPtr<nsIURI> mBindingURI;
   nsCOMPtr<nsIURI> mAlternateBindingURI; // Alternate id-less URI that is only non-null on the first binding.
-  nsCOMPtr<nsIContent> mBinding; // Strong. We own a ref to our content element in the binding doc.
+  RefPtr<mozilla::dom::Element> mBinding; // Strong. We own a ref to our content element in the binding doc.
   nsAutoPtr<nsXBLPrototypeHandler> mPrototypeHandler; // Strong. DocInfo owns us, and we own the handlers.
 
   // the url of the base binding
@@ -302,6 +329,9 @@ protected:
   bool mKeyHandlersRegistered;
   bool mChromeOnlyContent;
   bool mBindToUntrustedContent;
+  // True if constructors, handlers, etc for this binding would skip the scope
+  // chain for parent elements and go directly to the document.
+  bool mSimpleScopeChain;
 
   nsAutoPtr<nsXBLPrototypeResources> mResources; // If we have any resources, this will be non-null.
 
@@ -354,7 +384,7 @@ protected:
   nsInterfaceHashtable<IIDHashKey, nsIContent> mInterfaceTable; // A table of cached interfaces that we support.
 
   int32_t mBaseNameSpaceID;    // If we extend a tagname/namespace, then that information will
-  nsCOMPtr<nsIAtom> mBaseTag;  // be stored in here.
+  RefPtr<nsAtom> mBaseTag;  // be stored in here.
 
   nsCOMArray<nsXBLKeyEventHandler> mKeyHandlers;
 };

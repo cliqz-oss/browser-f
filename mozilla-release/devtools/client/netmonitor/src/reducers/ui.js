@@ -4,11 +4,12 @@
 
 "use strict";
 
-const I = require("devtools/client/shared/vendor/immutable");
 const Services = require("Services");
 const {
   CLEAR_REQUESTS,
   OPEN_NETWORK_DETAILS,
+  RESIZE_NETWORK_DETAILS,
+  ENABLE_PERSISTENT_LOGS,
   DISABLE_BROWSER_CACHE,
   OPEN_STATISTICS,
   REMOVE_SELECTED_CUSTOM_REQUEST,
@@ -19,6 +20,7 @@ const {
   SELECT_REQUEST,
   TOGGLE_COLUMN,
   WATERFALL_RESIZE,
+  PANELS,
 } = require("../constants");
 
 const cols = {
@@ -42,65 +44,111 @@ const cols = {
   latency: false,
   waterfall: true,
 };
-const Columns = I.Record(
-  Object.assign(
+function Columns() {
+  return Object.assign(
     cols,
     RESPONSE_HEADERS.reduce((acc, header) => Object.assign(acc, { [header]: false }), {})
-  )
-);
+  );
+}
 
-const UI = I.Record({
-  columns: new Columns(),
-  detailsPanelSelectedTab: "headers",
-  networkDetailsOpen: false,
-  browserCacheDisabled: Services.prefs.getBoolPref("devtools.cache.disabled"),
-  statisticsOpen: false,
-  waterfallWidth: null,
-});
+function UI(initialState = {}) {
+  return {
+    columns: Columns(),
+    detailsPanelSelectedTab: PANELS.HEADERS,
+    networkDetailsOpen: false,
+    networkDetailsWidth: null,
+    networkDetailsHeight: null,
+    persistentLogsEnabled: Services.prefs.getBoolPref("devtools.netmonitor.persistlog"),
+    browserCacheDisabled: Services.prefs.getBoolPref("devtools.cache.disabled"),
+    statisticsOpen: false,
+    waterfallWidth: null,
+    ...initialState,
+  };
+}
 
 function resetColumns(state) {
-  return state.set("columns", new Columns());
+  return {
+    ...state,
+    columns: Columns()
+  };
 }
 
 function resizeWaterfall(state, action) {
-  return state.set("waterfallWidth", action.width);
+  return {
+    ...state,
+    waterfallWidth: action.width
+  };
 }
 
 function openNetworkDetails(state, action) {
-  return state.set("networkDetailsOpen", action.open);
+  return {
+    ...state,
+    networkDetailsOpen: action.open
+  };
+}
+
+function resizeNetworkDetails(state, action) {
+  return {
+    ...state,
+    networkDetailsWidth: action.width,
+    networkDetailsHeight: action.height,
+  };
+}
+
+function enablePersistentLogs(state, action) {
+  return {
+    ...state,
+    persistentLogsEnabled: action.enabled
+  };
 }
 
 function disableBrowserCache(state, action) {
-  return state.set("browserCacheDisabled", action.disabled);
+  return {
+    ...state,
+    browserCacheDisabled: action.disabled
+  };
 }
 
 function openStatistics(state, action) {
-  return state.set("statisticsOpen", action.open);
+  return {
+    ...state,
+    statisticsOpen: action.open
+  };
 }
 
 function setDetailsPanelTab(state, action) {
-  return state.set("detailsPanelSelectedTab", action.id);
+  return {
+    ...state,
+    detailsPanelSelectedTab: action.id
+  };
 }
 
 function toggleColumn(state, action) {
   let { column } = action;
 
-  if (!state.has(column)) {
+  if (!state.columns.hasOwnProperty(column)) {
     return state;
   }
 
-  let newState = state.withMutations(columns => {
-    columns.set(column, !state.get(column));
-  });
-  return newState;
+  return {
+    ...state,
+    columns: {
+      ...state.columns,
+      [column]: !state.columns[column]
+    }
+  };
 }
 
-function ui(state = new UI(), action) {
+function ui(state = UI(), action) {
   switch (action.type) {
     case CLEAR_REQUESTS:
       return openNetworkDetails(state, { open: false });
     case OPEN_NETWORK_DETAILS:
       return openNetworkDetails(state, action);
+    case RESIZE_NETWORK_DETAILS:
+      return resizeNetworkDetails(state, action);
+    case ENABLE_PERSISTENT_LOGS:
+      return enablePersistentLogs(state, action);
     case DISABLE_BROWSER_CACHE:
       return disableBrowserCache(state, action);
     case OPEN_STATISTICS:
@@ -115,7 +163,7 @@ function ui(state = new UI(), action) {
     case SELECT_REQUEST:
       return openNetworkDetails(state, { open: true });
     case TOGGLE_COLUMN:
-      return state.set("columns", toggleColumn(state.columns, action));
+      return toggleColumn(state, action);
     case WATERFALL_RESIZE:
       return resizeWaterfall(state, action);
     default:

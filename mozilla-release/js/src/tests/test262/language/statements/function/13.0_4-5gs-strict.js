@@ -9,9 +9,11 @@ description: >
     Strict Mode - SourceElements is evaluated as strict mode code when
     a FunctionDeclaration is contained in strict mode code
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [onlyStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 function _13_0_4_5_fun() { eval = 42; };

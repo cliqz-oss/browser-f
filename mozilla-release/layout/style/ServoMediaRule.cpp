@@ -9,7 +9,7 @@
 #include "mozilla/ServoMediaRule.h"
 
 #include "mozilla/ServoBindings.h"
-#include "mozilla/ServoMediaList.h"
+#include "mozilla/dom/MediaList.h"
 
 using namespace mozilla::dom;
 
@@ -24,37 +24,30 @@ ServoMediaRule::ServoMediaRule(RefPtr<RawServoMediaRule> aRawRule,
 
 ServoMediaRule::~ServoMediaRule()
 {
+  if (mMediaList) {
+    mMediaList->SetStyleSheet(nullptr);
+  }
 }
 
 NS_IMPL_ADDREF_INHERITED(ServoMediaRule, CSSMediaRule)
 NS_IMPL_RELEASE_INHERITED(ServoMediaRule, CSSMediaRule)
 
 // QueryInterface implementation for MediaRule
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(ServoMediaRule)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ServoMediaRule)
 NS_INTERFACE_MAP_END_INHERITING(CSSMediaRule)
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED(ServoMediaRule, CSSMediaRule,
-                                   mMediaList)
+NS_IMPL_CYCLE_COLLECTION_CLASS(ServoMediaRule)
 
-/* virtual */ already_AddRefed<css::Rule>
-ServoMediaRule::Clone() const
-{
-  // Rule::Clone is only used when CSSStyleSheetInner is cloned in
-  // preparation of being mutated. However, ServoStyleSheet never clones
-  // anything, so this method should never be called.
-  MOZ_ASSERT_UNREACHABLE("Shouldn't be cloning ServoMediaRule");
-  return nullptr;
-}
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(ServoMediaRule, CSSMediaRule)
+  if (tmp->mMediaList) {
+    tmp->mMediaList->SetStyleSheet(nullptr);
+    tmp->mMediaList = nullptr;
+  }
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-/* virtual */ bool
-ServoMediaRule::UseForPresentation(nsPresContext* aPresContext,
-                                   nsMediaQueryResultCacheKey& aKey)
-{
-  // GroupRule::UseForPresentation is only used in nsCSSRuleProcessor,
-  // so this should never be called.
-  MOZ_ASSERT_UNREACHABLE("Shouldn't be calling UseForPresentation");
-  return false;
-}
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(ServoMediaRule, CSSMediaRule)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMediaList)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 /* virtual */ void
 ServoMediaRule::SetStyleSheet(StyleSheet* aSheet)
@@ -78,22 +71,21 @@ ServoMediaRule::List(FILE* out, int32_t aIndent) const
 }
 #endif
 
-// nsIDOMCSSConditionRule methods
-
-NS_IMETHODIMP
+void
 ServoMediaRule::GetConditionText(nsAString& aConditionText)
 {
-  return Media()->GetMediaText(aConditionText);
+  Media()->GetMediaText(aConditionText);
 }
 
-NS_IMETHODIMP
-ServoMediaRule::SetConditionText(const nsAString& aConditionText)
+void
+ServoMediaRule::SetConditionText(const nsAString& aConditionText,
+                                 ErrorResult& aRv)
 {
-  return Media()->SetMediaText(aConditionText);
+  Media()->SetMediaText(aConditionText);
 }
 
 /* virtual */ void
-ServoMediaRule::GetCssTextImpl(nsAString& aCssText) const
+ServoMediaRule::GetCssText(nsAString& aCssText) const
 {
   Servo_MediaRule_GetCssText(mRawRule, &aCssText);
 }
@@ -102,8 +94,7 @@ ServoMediaRule::GetCssTextImpl(nsAString& aCssText) const
 ServoMediaRule::Media()
 {
   if (!mMediaList) {
-    mMediaList =
-      new ServoMediaList(Servo_MediaRule_GetMedia(mRawRule).Consume());
+    mMediaList = new MediaList(Servo_MediaRule_GetMedia(mRawRule).Consume());
     mMediaList->SetStyleSheet(GetStyleSheet());
   }
   return mMediaList;

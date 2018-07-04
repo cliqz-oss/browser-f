@@ -16,7 +16,7 @@
 #include "nsDOMMutationObserver.h"
 #include "nsTArray.h"
 
-class nsIAtom;
+class nsAtom;
 class nsPresContext;
 
 namespace mozilla {
@@ -35,10 +35,9 @@ class AnimationCollection
   typedef AnimationCollection<AnimationType> SelfType;
   typedef AnimationTypeTraits<AnimationType> TraitsType;
 
-  AnimationCollection(dom::Element* aElement, nsIAtom* aElementProperty)
+  AnimationCollection(dom::Element* aElement, nsAtom* aElementProperty)
     : mElement(aElement)
     , mElementProperty(aElementProperty)
-    , mCheckGeneration(0)
 #ifdef DEBUG
     , mCalledPropertyDtor(false)
 #endif
@@ -61,7 +60,7 @@ public:
     mElement->DeleteProperty(mElementProperty);
   }
 
-  static void PropertyDtor(void *aObject, nsIAtom *aPropertyName,
+  static void PropertyDtor(void *aObject, nsAtom *aPropertyName,
                            void *aPropertyValue, void *aData);
 
   // Get the collection of animations for the given |aElement| and
@@ -88,28 +87,17 @@ public:
                                    CSSPseudoElementType aPseudoType,
                                    bool* aCreatedCollection);
 
-  static nsString PseudoTypeAsString(CSSPseudoElementType aPseudoType);
-
   dom::Element *mElement;
 
   // the atom we use in mElement's prop table (must be a static atom,
   // i.e., in an atom list)
-  nsIAtom *mElementProperty;
+  nsAtom *mElementProperty;
 
   InfallibleTArray<RefPtr<AnimationType>> mAnimations;
 
-  // For CSS transitions only, we record the most recent generation
-  // for which we've done the transition update, so that we avoid doing
-  // it more than once per style change.
-  // (Note that we also store an animation generation on each EffectSet in
-  // order to track when we need to update animations on layers.)
-  uint64_t mCheckGeneration;
-
-  // Update mCheckGeneration to RestyleManager's count
-  void UpdateCheckGeneration(nsPresContext* aPresContext);
 
 private:
-  static nsIAtom* GetPropertyAtomForPseudoType(
+  static nsAtom* GetPropertyAtomForPseudoType(
     CSSPseudoElementType aPseudoType);
 
 #ifdef DEBUG

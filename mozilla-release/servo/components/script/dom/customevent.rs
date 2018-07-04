@@ -7,22 +7,23 @@ use dom::bindings::codegen::Bindings::CustomEventBinding::CustomEventMethods;
 use dom::bindings::codegen::Bindings::EventBinding::EventMethods;
 use dom::bindings::error::Fallible;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
 use dom::bindings::reflector::reflect_dom_object;
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::bindings::trace::RootedTraceableBox;
 use dom::event::Event;
 use dom::globalscope::GlobalScope;
 use dom_struct::dom_struct;
-use js::jsapi::{Heap, HandleValue, JSContext};
+use js::jsapi::{Heap, JSContext};
 use js::jsval::JSVal;
+use js::rust::HandleValue;
 use servo_atoms::Atom;
 
 // https://dom.spec.whatwg.org/#interface-customevent
 #[dom_struct]
 pub struct CustomEvent {
     event: Event,
-    #[ignore_heap_size_of = "Defined in rust-mozjs"]
+    #[ignore_malloc_size_of = "Defined in rust-mozjs"]
     detail: Heap<JSVal>,
 }
 
@@ -34,8 +35,8 @@ impl CustomEvent {
         }
     }
 
-    pub fn new_uninitialized(global: &GlobalScope) -> Root<CustomEvent> {
-        reflect_dom_object(box CustomEvent::new_inherited(),
+    pub fn new_uninitialized(global: &GlobalScope) -> DomRoot<CustomEvent> {
+        reflect_dom_object(Box::new(CustomEvent::new_inherited()),
                            global,
                            CustomEventBinding::Wrap)
     }
@@ -44,7 +45,7 @@ impl CustomEvent {
                bubbles: bool,
                cancelable: bool,
                detail: HandleValue)
-               -> Root<CustomEvent> {
+               -> DomRoot<CustomEvent> {
         let ev = CustomEvent::new_uninitialized(global);
         ev.init_custom_event(type_, bubbles, cancelable, detail);
         ev
@@ -54,7 +55,7 @@ impl CustomEvent {
     pub fn Constructor(global: &GlobalScope,
                        type_: DOMString,
                        init: RootedTraceableBox<CustomEventBinding::CustomEventInit>)
-                       -> Fallible<Root<CustomEvent>> {
+                       -> Fallible<DomRoot<CustomEvent>> {
         Ok(CustomEvent::new(global,
                             Atom::from(type_),
                             init.parent.bubbles,

@@ -6,9 +6,6 @@
 // Non-string preferences are not tested here, because their behavior
 // should not be affected by this filtering.
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-
 function isParentProcess() {
     let appInfo = Cc["@mozilla.org/xre/app-info;1"];
     return (!appInfo || appInfo.getService(Ci.nsIXULRuntime).processType == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT);
@@ -79,7 +76,7 @@ function run_test() {
       }
       let pref_name = prefName(def, user);
       if (isParent || (def.name != "Large" && user.name != "Large")) {
-        do_check_eq(pb.getCharPref(pref_name), expectedPrefValue(def, user));
+        Assert.equal(pb.getCharPref(pref_name), expectedPrefValue(def, user));
       } else {
         // This is the child, and either the default or user value is
         // large, so the preference should not be set.

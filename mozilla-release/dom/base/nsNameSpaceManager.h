@@ -9,14 +9,13 @@
 
 #include "nsDataHashtable.h"
 #include "nsHashKeys.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIDocument.h"
 #include "nsIObserver.h"
+#include "nsStringFwd.h"
 #include "nsTArray.h"
 
 #include "mozilla/StaticPtr.h"
-
-class nsAString;
 
 /**
  * The Name Space Manager tracks the association between a NameSpace
@@ -39,27 +38,26 @@ public:
   NS_DECL_NSIOBSERVER
   virtual nsresult RegisterNameSpace(const nsAString& aURI,
                                      int32_t& aNameSpaceID);
+  nsresult RegisterNameSpace(already_AddRefed<nsAtom> aURI,
+                             int32_t& aNameSpaceID);
 
   virtual nsresult GetNameSpaceURI(int32_t aNameSpaceID, nsAString& aURI);
 
   // Returns the atom for the namespace URI associated with the given ID. The
   // ID must be within range and not be kNameSpaceID_None (i.e. zero);
-  nsIAtom* NameSpaceURIAtom(int32_t aNameSpaceID) {
+  //
+  // NB: The requirement of mapping from the first entry to the empty atom is
+  // necessary for Servo, though it can be removed if needed adding a branch in
+  // GeckoElement::get_namespace().
+  nsAtom* NameSpaceURIAtom(int32_t aNameSpaceID) {
     MOZ_ASSERT(aNameSpaceID > 0);
-    return NameSpaceURIAtomForServo(aNameSpaceID);
-  }
-
-  // NB: This function should only be called by Servo code (and the above
-  // accessor), which uses the empty atom to represent kNameSpaceID_None.
-  nsIAtom* NameSpaceURIAtomForServo(int32_t aNameSpaceID) {
-    MOZ_ASSERT(aNameSpaceID >= 0);
     MOZ_ASSERT((int64_t) aNameSpaceID < (int64_t) mURIArray.Length());
     return mURIArray.ElementAt(aNameSpaceID);
   }
 
   int32_t GetNameSpaceID(const nsAString& aURI,
                          bool aInChromeDoc);
-  int32_t GetNameSpaceID(nsIAtom* aURI,
+  int32_t GetNameSpaceID(nsAtom* aURI,
                          bool aInChromeDoc);
 
   bool HasElementCreator(int32_t aNameSpaceID);
@@ -70,13 +68,13 @@ public:
 
 private:
   bool Init();
-  nsresult AddNameSpace(already_AddRefed<nsIAtom> aURI, const int32_t aNameSpaceID);
-  nsresult AddDisabledNameSpace(already_AddRefed<nsIAtom> aURI, const int32_t aNameSpaceID);
+  nsresult AddNameSpace(already_AddRefed<nsAtom> aURI, const int32_t aNameSpaceID);
+  nsresult AddDisabledNameSpace(already_AddRefed<nsAtom> aURI, const int32_t aNameSpaceID);
   ~nsNameSpaceManager() {};
 
-  nsDataHashtable<nsISupportsHashKey, int32_t> mURIToIDTable;
-  nsDataHashtable<nsISupportsHashKey, int32_t> mDisabledURIToIDTable;
-  nsTArray<nsCOMPtr<nsIAtom>> mURIArray;
+  nsDataHashtable<nsRefPtrHashKey<nsAtom>, int32_t> mURIToIDTable;
+  nsDataHashtable<nsRefPtrHashKey<nsAtom>, int32_t> mDisabledURIToIDTable;
+  nsTArray<RefPtr<nsAtom>> mURIArray;
 
   static mozilla::StaticRefPtr<nsNameSpaceManager> sInstance;
 };

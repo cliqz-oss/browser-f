@@ -25,10 +25,6 @@ namespace nss_test {
     if (g_ssl_gtest_verbose) LOG(a); \
   } while (false)
 
-void DummyPrSocket::SetPacketFilter(std::shared_ptr<PacketFilter> filter) {
-  filter_ = filter;
-}
-
 ScopedPRFileDesc DummyPrSocket::CreateFD() {
   static PRDescIdentity test_fd_identity =
       PR_GetUniqueIdentity("testtransportadapter");
@@ -98,8 +94,13 @@ int32_t DummyPrSocket::Recv(PRFileDesc *f, void *buf, int32_t buflen,
 }
 
 int32_t DummyPrSocket::Write(PRFileDesc *f, const void *buf, int32_t length) {
-  auto peer = peer_.lock();
-  if (!peer || !writeable_) {
+  if (write_error_) {
+    PR_SetError(write_error_, 0);
+    return -1;
+  }
+
+  auto dst = peer_.lock();
+  if (!dst) {
     PR_SetError(PR_IO_ERROR, 0);
     return -1;
   }
@@ -109,20 +110,20 @@ int32_t DummyPrSocket::Write(PRFileDesc *f, const void *buf, int32_t length) {
   DataBuffer filtered;
   PacketFilter::Action action = PacketFilter::KEEP;
   if (filter_) {
-    action = filter_->Filter(packet, &filtered);
+    action = filter_->Process(packet, &filtered);
   }
   switch (action) {
     case PacketFilter::CHANGE:
       LOG("Original packet: " << packet);
       LOG("Filtered packet: " << filtered);
-      peer->PacketReceived(filtered);
+      dst->PacketReceived(filtered);
       break;
     case PacketFilter::DROP:
       LOG("Droppped packet: " << packet);
       break;
     case PacketFilter::KEEP:
       LOGV("Packet: " << packet);
-      peer->PacketReceived(packet);
+      dst->PacketReceived(packet);
       break;
   }
   // libssl can't handle it if this reports something other than the length

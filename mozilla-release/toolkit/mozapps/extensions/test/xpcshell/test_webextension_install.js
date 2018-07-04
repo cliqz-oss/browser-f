@@ -1,9 +1,5 @@
 
-Components.utils.import("resource://gre/modules/addons/AddonSettings.jsm")
-
-function run_test() {
-  run_next_test();
-}
+ChromeUtils.import("resource://gre/modules/addons/AddonSettings.jsm");
 
 let profileDir;
 add_task(async function setup() {
@@ -11,7 +7,7 @@ add_task(async function setup() {
   profileDir.append("extensions");
 
   if (!profileDir.exists())
-    profileDir.create(AM_Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+    profileDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
   startupManager();
@@ -108,6 +104,8 @@ add_task(async function test_unsigned_no_id_temp_install() {
   ]);
   // The IDs should be the same.
   equal(secondAddon.id, addon.id, "Reinstalled add-on has the expected ID");
+  equal(secondAddon.installDate.valueOf(), addon.installDate.valueOf(),
+        "Reloaded add-on has the expected installDate.");
 
   secondAddon.uninstall();
   Services.obs.notifyObservers(addonDir, "flush-cache-entry");
@@ -140,7 +138,7 @@ add_task(async function test_multiple_no_id_extensions() {
 
   const allAddons = await AddonManager.getAllAddons();
 
-  do_print(`Found these add-ons: ${allAddons.map(a => a.name).join(", ")}`);
+  info(`Found these add-ons: ${allAddons.map(a => a.name).join(", ")}`);
   const filtered = allAddons.filter(addon => addon.name === manifest.name);
   // Make sure we have two add-ons by the same name.
   equal(filtered.length, 2, "Two add-ons are installed with the same name");
@@ -205,7 +203,7 @@ add_task(async function test_two_ids() {
         id: GOOD_ID
       }
     }
-  }
+  };
 
   let extension = ExtensionTestUtils.loadExtension({
     manifest,
@@ -242,7 +240,7 @@ add_task(async function test_strict_min_max() {
         strict_max_version: "1"
       },
     },
-  }
+  };
   let testManifest = Object.assign(apps, MANIFEST);
 
   let extension = ExtensionTestUtils.loadExtension({
@@ -268,7 +266,7 @@ add_task(async function test_strict_min_max() {
         strict_max_version: "2"
       },
     },
-  }
+  };
   testManifest = Object.assign(apps, MANIFEST);
 
   extension = ExtensionTestUtils.loadExtension({
@@ -294,7 +292,7 @@ add_task(async function test_strict_min_max() {
         strict_max_version: "1"
       },
     },
-  }
+  };
   testManifest = Object.assign(apps, MANIFEST);
 
   extension = ExtensionTestUtils.loadExtension({
@@ -319,7 +317,7 @@ add_task(async function test_strict_min_max() {
         strict_min_version: "2"
       },
     },
-  }
+  };
   testManifest = Object.assign(apps, MANIFEST);
 
   extension = ExtensionTestUtils.loadExtension({
@@ -344,7 +342,7 @@ add_task(async function test_strict_min_max() {
         strict_max_version: "1"
       },
     },
-  }
+  };
   testManifest = Object.assign(apps, MANIFEST);
 
   extension = ExtensionTestUtils.loadExtension({
@@ -370,7 +368,7 @@ add_task(async function test_strict_min_max() {
         strict_max_version: "2"
       },
     },
-  }
+  };
   testManifest = Object.assign(apps, MANIFEST);
 
   extension = ExtensionTestUtils.loadExtension({
@@ -394,7 +392,7 @@ add_task(async function test_strict_min_max() {
         strict_min_version: "1",
       },
     },
-  }
+  };
   testManifest = Object.assign(apps, MANIFEST);
 
   extension = ExtensionTestUtils.loadExtension({
@@ -419,7 +417,7 @@ add_task(async function test_strict_min_max() {
         strict_max_version: "2",
       },
     },
-  }
+  };
   testManifest = Object.assign(apps, MANIFEST);
 
   extension = ExtensionTestUtils.loadExtension({
@@ -445,7 +443,7 @@ add_task(async function test_strict_min_max() {
           strict_min_version: version,
         },
       },
-    }
+    };
 
     let minStarTestManifest = Object.assign(minStarApps, MANIFEST);
 
@@ -472,7 +470,7 @@ add_task(async function test_strict_min_max() {
         strict_max_version: "1",
       },
     },
-  }
+  };
   testManifest = Object.assign(apps, MANIFEST);
 
   extension = ExtensionTestUtils.loadExtension({
@@ -500,7 +498,7 @@ add_task(async function test_permissions_prompt() {
     manifest_version: 2,
     version: "1.0",
 
-    permissions: ["tabs", "storage", "https://*.example.com/*", "<all_urls>", "experiments.test"],
+    permissions: ["tabs", "storage", "https://*.example.com/*", "<all_urls>"],
   };
 
   let xpi = ExtensionTestCommon.generateXPI({manifest});
@@ -513,7 +511,10 @@ add_task(async function test_permissions_prompt() {
     return Promise.resolve();
   };
 
-  await promiseCompleteInstall(install);
+  await Promise.all([
+    promiseCompleteInstall(install),
+    promiseWebExtensionStartup(),
+  ]);
 
   notEqual(perminfo, undefined, "Permission handler was invoked");
   equal(perminfo.existingAddon, null, "Permission info does not include an existing addon");
@@ -521,7 +522,6 @@ add_task(async function test_permissions_prompt() {
   let perms = perminfo.addon.userPermissions;
   deepEqual(perms.permissions, ["tabs", "storage"], "API permissions are correct");
   deepEqual(perms.origins, ["https://*.example.com/*", "<all_urls>"], "Host permissions are correct");
-  deepEqual(perms.apis, ["test"], "Experiments permissions are correct");
 
   let addon = await promiseAddonByID(perminfo.addon.id);
   notEqual(addon, null, "Extension was installed");

@@ -23,7 +23,7 @@
 #include "nsTHashtable.h"
 #include "nsUnicharUtils.h"
 #include "nsXPCOMCID.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "pkix/pkixtypes.h"
 
 using namespace mozilla;
@@ -55,10 +55,12 @@ CompareCacheHashEntryPtr::~CompareCacheHashEntryPtr()
 }
 
 CompareCacheHashEntry::CompareCacheHashEntry()
-:key(nullptr)
+  : key(nullptr)
+  , mCritInit()
 {
   for (int i = 0; i < max_criterions; ++i) {
     mCritInit[i] = false;
+    mCrit[i].SetIsVoid(true);
   }
 }
 
@@ -152,6 +154,8 @@ NS_IMPL_ISUPPORTS(nsCertTree, nsICertTree, nsITreeView)
 
 nsCertTree::nsCertTree()
   : mTreeArray(nullptr)
+  , mNumOrgs(0)
+  , mNumRows(0)
   , mCompareCache(&gMapOps, sizeof(CompareCacheHashEntryPtr),
                   kInitialCacheLength)
 {
@@ -479,14 +483,6 @@ nsCertTree::GetCertsByTypeFromCertList(CERTCertList *aCertList,
         addOverrides = true;
       }
       else
-      if (aWantedType == nsIX509Cert::UNKNOWN_CERT
-          && thisCertType == nsIX509Cert::UNKNOWN_CERT) {
-        // This unknown cert was stored without trust.
-        // If there are associated overrides, do not show as unknown.
-        // If there are no associated overrides, display as unknown.
-        wantThisCertIfNoOverrides = true;
-      }
-      else
       if (aWantedType == nsIX509Cert::SERVER_CERT
           && thisCertType == nsIX509Cert::SERVER_CERT) {
         // This server cert is explicitly marked as a web site peer,
@@ -612,7 +608,6 @@ nsCertTree::GetCertsByType(uint32_t           aType,
                            nsCertCompareFunc  aCertCmpFn,
                            void              *aCertCmpFnArg)
 {
-  nsNSSShutDownPreventionLock locker;
   nsCOMPtr<nsIInterfaceRequestor> cxt = new PipUIContext();
   UniqueCERTCertList certList(PK11_ListCerts(PK11CertListUnique, cxt));
   return GetCertsByTypeFromCertList(certList.get(), aType, aCertCmpFn,
@@ -626,18 +621,10 @@ nsCertTree::GetCertsByTypeFromCache(nsIX509CertList   *aCache,
                                     void              *aCertCmpFnArg)
 {
   NS_ENSURE_ARG_POINTER(aCache);
-  // GetRawCertList checks for NSS shutdown since we can't do it ourselves here
-  // easily. We still have to acquire a shutdown prevention lock to prevent NSS
-  // shutting down after GetRawCertList has returned. While cumbersome, this is
-  // at least mostly correct. The rest of this implementation doesn't even go
-  // this far in attempting to check for or prevent NSS shutdown at the
-  // appropriate times. If this were reimplemented at a higher level using
-  // more encapsulated types that handled NSS shutdown themselves, we wouldn't
-  // be having these kinds of problems.
-  nsNSSShutDownPreventionLock locker;
   CERTCertList* certList = aCache->GetRawCertList();
-  if (!certList)
+  if (!certList) {
     return NS_ERROR_FAILURE;
+  }
   return GetCertsByTypeFromCertList(certList, aType, aCertCmpFn, aCertCmpFnArg);
 }
 
@@ -1014,12 +1001,6 @@ nsCertTree::GetImageSrc(int32_t row, nsITreeColumn* col,
 }
 
 NS_IMETHODIMP
-nsCertTree::GetProgressMode(int32_t row, nsITreeColumn* col, int32_t* _retval)
-{
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsCertTree::GetCellValue(int32_t row, nsITreeColumn* col,
                          nsAString& _retval)
 {
@@ -1120,7 +1101,7 @@ nsCertTree::GetCellText(int32_t row, nsITreeColumn* col,
     nsCOMPtr<nsISupportsString> text(do_CreateInstance(NS_SUPPORTS_STRING_CONTRACTID, &rv));
     NS_ENSURE_SUCCESS(rv, rv);
     text->SetData(_retval);
-    mCellText->ReplaceElementAt(text, arrayIndex, false);
+    mCellText->ReplaceElementAt(text, arrayIndex);
   }
   return rv;
 }
@@ -1243,7 +1224,8 @@ nsCertTree::dumpMap()
 // CanDrop
 //
 NS_IMETHODIMP nsCertTree::CanDrop(int32_t index, int32_t orientation,
-                                  nsIDOMDataTransfer* aDataTransfer, bool *_retval)
+                                  mozilla::dom::DataTransfer* aDataTransfer,
+                                  bool *_retval)
 {
   NS_ENSURE_ARG_POINTER(_retval);
   *_retval = false;
@@ -1255,7 +1237,8 @@ NS_IMETHODIMP nsCertTree::CanDrop(int32_t index, int32_t orientation,
 //
 // Drop
 //
-NS_IMETHODIMP nsCertTree::Drop(int32_t row, int32_t orient, nsIDOMDataTransfer* aDataTransfer)
+NS_IMETHODIMP nsCertTree::Drop(int32_t row, int32_t orient,
+			                         mozilla::dom::DataTransfer* aDataTransfer)
 {
   return NS_OK;
 }
@@ -1281,7 +1264,7 @@ nsCertTree::CmpInitCriterion(nsIX509Cert *cert, CompareCacheHashEntry *entry,
   NS_ENSURE_TRUE(cert && entry, RETURN_NOTHING);
 
   entry->mCritInit[level] = true;
-  nsXPIDLString &str = entry->mCrit[level];
+  nsString& str = entry->mCrit[level];
 
   switch (crit) {
     case sort_IssuerOrg:
@@ -1343,14 +1326,14 @@ nsCertTree::CmpByCrit(nsIX509Cert *a, CompareCacheHashEntry *ace,
     CmpInitCriterion(b, bce, crit, level);
   }
 
-  nsXPIDLString &str_a = ace->mCrit[level];
-  nsXPIDLString &str_b = bce->mCrit[level];
+  nsString& str_a = ace->mCrit[level];
+  nsString& str_b = bce->mCrit[level];
 
   int32_t result;
-  if (str_a && str_b)
+  if (!str_a.IsVoid() && !str_b.IsVoid())
     result = Compare(str_a, str_b, nsCaseInsensitiveStringComparator());
   else
-    result = !str_a ? (!str_b ? 0 : -1) : 1;
+    result = str_a.IsVoid() ? (str_b.IsVoid() ? 0 : -1) : 1;
 
   if (sort_IssuedDateDescending == crit)
     result *= -1; // reverse compare order

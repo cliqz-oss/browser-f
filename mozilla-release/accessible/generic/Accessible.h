@@ -24,7 +24,7 @@ struct nsRoleMapEntry;
 
 struct nsRect;
 class nsIFrame;
-class nsIAtom;
+class nsAtom;
 class nsIPersistentProperties;
 
 namespace mozilla {
@@ -166,11 +166,7 @@ public:
    * Return DOM node associated with the accessible.
    */
   virtual nsINode* GetNode() const;
-  inline already_AddRefed<nsIDOMNode> DOMNode() const
-  {
-    nsCOMPtr<nsIDOMNode> DOMNode = do_QueryInterface(GetNode());
-    return DOMNode.forget();
-  }
+
   nsIContent* GetContent() const { return mContent; }
   mozilla::dom::Element* Elm() const
     { return mContent && mContent->IsElement() ? mContent->AsElement() : nullptr; }
@@ -179,7 +175,7 @@ public:
    * Return node type information of DOM node associated with the accessible.
    */
   bool IsContent() const
-    { return GetNode() && GetNode()->IsNodeOfType(nsINode::eCONTENT); }
+    { return GetNode() && GetNode()->IsContent(); }
 
   /**
    * Return the unique identifier of the accessible.
@@ -232,7 +228,7 @@ public:
    * Return true if ARIA role is specified on the element.
    */
   bool HasARIARole() const;
-  bool IsARIARole(nsIAtom* aARIARole) const;
+  bool IsARIARole(nsAtom* aARIARole) const;
   bool HasStrongARIARole() const;
 
   /**
@@ -249,7 +245,7 @@ public:
   /**
    * Return a landmark role if applied.
    */
-  virtual nsIAtom* LandmarkRole() const;
+  virtual nsAtom* LandmarkRole() const;
 
   /**
    * Returns enumerated accessible role from native markup (see constants in
@@ -448,9 +444,9 @@ public:
     {  return GetSiblingAtOffset(1); }
   inline Accessible* PrevSibling() const
     { return GetSiblingAtOffset(-1); }
-  inline Accessible* FirstChild()
+  inline Accessible* FirstChild() const
     { return GetChildAt(0); }
-  inline Accessible* LastChild()
+  inline Accessible* LastChild() const
   {
     uint32_t childCount = ChildCount();
     return childCount != 0 ? GetChildAt(childCount - 1) : nullptr;
@@ -498,7 +494,7 @@ public:
    * Return true if the accessible is an acceptable child.
    */
   virtual bool IsAcceptableChild(nsIContent* aEl) const
-    { return true; }
+    { return aEl && !aEl->IsAnyOfHTMLElements(nsGkAtoms::option, nsGkAtoms::optgroup); }
 
   /**
    * Returns text of accessible if accessible has text role otherwise empty
@@ -514,9 +510,19 @@ public:
                             uint32_t aLength = UINT32_MAX);
 
   /**
+   * Return boundaries in screen coordinates in app units.
+   */
+  virtual nsRect BoundsInAppUnits() const;
+
+  /**
    * Return boundaries in screen coordinates.
    */
   virtual nsIntRect Bounds() const;
+
+  /**
+   * Return boundaries in screen coordinates in CSS pixels.
+   */
+  virtual nsIntRect BoundsInCSSPixels() const;
 
   /**
    * Return boundaries rect relative the bounding frame.
@@ -649,7 +655,10 @@ public:
 
   bool IsTableRow() const { return HasGenericType(eTableRow); }
 
-  bool IsTextField() const { return mType == eHTMLTextFieldType; }
+  bool IsTextField() const { return mType == eHTMLTextFieldType ||
+                                    mType == eHTMLTextPasswordFieldType; }
+
+  bool IsPassword() const { return mType == eHTMLTextPasswordFieldType; }
 
   bool IsText() const { return mGenericTypes & eText; }
 
@@ -717,7 +726,7 @@ public:
   /**
    * Return true if the accessible is hyper link accessible.
    */
-  virtual bool IsLink();
+  virtual bool IsLink() const;
 
   /**
    * Return the start offset of the link within the parent accessible.
@@ -861,7 +870,7 @@ public:
   /**
    * Return true if the accessible is defunct.
    */
-  bool IsDefunct() const { return mStateFlags & eIsDefunct; }
+  bool IsDefunct() const;
 
   /**
    * Return false if the accessible is no longer in the document.
@@ -898,19 +907,6 @@ public:
    */
   bool NeedsDOMUIEvent() const
     { return !(mStateFlags & eIgnoreDOMUIEvent); }
-
-  /**
-   * Get/set survivingInUpdate bit on child indicating that parent recollects
-   * its children.
-   */
-  bool IsSurvivingInUpdate() const { return mStateFlags & eSurvivingInUpdate; }
-  void SetSurvivingInUpdate(bool aIsSurviving)
-  {
-    if (aIsSurviving)
-      mStateFlags |= eSurvivingInUpdate;
-    else
-      mStateFlags &= ~eSurvivingInUpdate;
-  }
 
   /**
    * Get/set repositioned bit indicating that the accessible was moved in
@@ -1039,11 +1035,10 @@ protected:
     eGroupInfoDirty = 1 << 5, // accessible needs to update group info
     eKidsMutating = 1 << 6, // subtree is being mutated
     eIgnoreDOMUIEvent = 1 << 7, // don't process DOM UI events for a11y events
-    eSurvivingInUpdate = 1 << 8, // parent drops children to recollect them
-    eRelocated = 1 << 9, // accessible was moved in tree
-    eNoXBLKids = 1 << 10, // accessible don't allows XBL children
-    eNoKidsFromDOM = 1 << 11, // accessible doesn't allow children from DOM
-    eHasTextKids = 1 << 12, // accessible have a text leaf in children
+    eRelocated = 1 << 8, // accessible was moved in tree
+    eNoXBLKids = 1 << 9, // accessible don't allows XBL children
+    eNoKidsFromDOM = 1 << 10, // accessible doesn't allow children from DOM
+    eHasTextKids = 1 << 11, // accessible have a text leaf in children
 
     eLastStateFlag = eNoKidsFromDOM
   };
@@ -1123,7 +1118,7 @@ protected:
    * @param aARIAProperty  [in] the ARIA property we're using
    * @return  a numeric value
    */
-  double AttrNumericValue(nsIAtom* aARIAAttr) const;
+  double AttrNumericValue(nsAtom* aARIAAttr) const;
 
   /**
    * Return the action rule based on ARIA enum constants EActionRule
@@ -1144,7 +1139,7 @@ protected:
   nsTArray<Accessible*> mChildren;
   int32_t mIndexInParent;
 
-  static const uint8_t kStateFlagsBits = 13;
+  static const uint8_t kStateFlagsBits = 12;
   static const uint8_t kContextFlagsBits = 3;
   static const uint8_t kTypeBits = 6;
   static const uint8_t kGenericTypesBits = 16;

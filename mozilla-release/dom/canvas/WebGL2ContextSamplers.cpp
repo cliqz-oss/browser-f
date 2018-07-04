@@ -16,7 +16,6 @@ WebGL2Context::CreateSampler()
         return nullptr;
 
     GLuint sampler;
-    MakeContextCurrent();
     gl->fGenSamplers(1, &sampler);
 
     RefPtr<WebGLSampler> globj = new WebGLSampler(this, sampler);
@@ -29,7 +28,7 @@ WebGL2Context::DeleteSampler(WebGLSampler* sampler)
     if (!ValidateDeleteObject("deleteSampler", sampler))
         return;
 
-    for (int n = 0; n < mGLMaxTextureUnits; n++) {
+    for (uint32_t n = 0; n < mGLMaxTextureUnits; n++) {
         if (mBoundSamplers[n] == sampler) {
             mBoundSamplers[n] = nullptr;
 
@@ -46,7 +45,6 @@ WebGL2Context::IsSampler(const WebGLSampler* sampler)
     if (!ValidateIsObject("isSampler", sampler))
         return false;
 
-    MakeContextCurrent();
     return gl->fIsSampler(sampler->mGLName);
 }
 
@@ -59,12 +57,11 @@ WebGL2Context::BindSampler(GLuint unit, WebGLSampler* sampler)
     if (sampler && !ValidateObject("bindSampler", *sampler))
         return;
 
-    if (GLint(unit) >= mGLMaxTextureUnits)
-        return ErrorInvalidValue("bindSampler: unit must be < %d", mGLMaxTextureUnits);
+    if (unit >= mGLMaxTextureUnits)
+        return ErrorInvalidValue("bindSampler: unit must be < %u", mGLMaxTextureUnits);
 
     ////
 
-    gl->MakeCurrent();
     gl->fBindSampler(unit, sampler ? sampler->mGLName : 0);
 
     InvalidateResolveCacheForTextureWithTexUnit(unit);
@@ -111,8 +108,6 @@ WebGL2Context::GetSamplerParameter(JSContext*, const WebGLSampler& sampler, GLen
         return;
 
     ////
-
-    gl->MakeCurrent();
 
     switch (pname) {
     case LOCAL_GL_TEXTURE_MIN_FILTER:

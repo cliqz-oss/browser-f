@@ -6,20 +6,24 @@
 
 #include "mozilla/dom/cache/CacheStreamControlParent.h"
 
+#include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/cache/CacheTypes.h"
 #include "mozilla/dom/cache/ReadStream.h"
 #include "mozilla/dom/cache/StreamList.h"
 #include "mozilla/ipc/FileDescriptorSetParent.h"
+#include "mozilla/ipc/IPCStreamUtils.h"
 #include "mozilla/ipc/PBackgroundParent.h"
 #include "mozilla/ipc/PFileDescriptorSetParent.h"
 #include "nsISupportsImpl.h"
+#include "nsTArray.h"
 
 namespace mozilla {
 namespace dom {
 namespace cache {
 
 using mozilla::dom::OptionalFileDescriptorSet;
+using mozilla::ipc::AutoIPCStream;
 using mozilla::ipc::FileDescriptor;
 using mozilla::ipc::FileDescriptorSetParent;
 using mozilla::ipc::PFileDescriptorSetParent;
@@ -59,13 +63,31 @@ CacheStreamControlParent::SerializeStream(CacheReadStream* aReadStreamOut,
 {
   NS_ASSERT_OWNINGTHREAD(CacheStreamControlParent);
   MOZ_DIAGNOSTIC_ASSERT(aReadStreamOut);
-  MOZ_DIAGNOSTIC_ASSERT(aStream);
 
   UniquePtr<AutoIPCStream> autoStream(new AutoIPCStream(aReadStreamOut->stream()));
   DebugOnly<bool> ok = autoStream->Serialize(aStream, Manager());
   MOZ_ASSERT(ok);
 
   aStreamCleanupList.AppendElement(Move(autoStream));
+}
+
+void
+CacheStreamControlParent::OpenStream(const nsID& aId,
+                                     InputStreamResolver&& aResolver)
+{
+  NS_ASSERT_OWNINGTHREAD(CacheStreamControlParent);
+  MOZ_DIAGNOSTIC_ASSERT(aResolver);
+
+  if (!mStreamList || !mStreamList->ShouldOpenStreamFor(aId)) {
+    aResolver(nullptr);
+    return;
+  }
+
+  // Make sure to add ourself as a Listener even thought we are using
+  // a separate resolver function to signal the completion of the
+  // operation.  The Manager uses the existence of the Listener to ensure
+  // that its safe to complete the operation.
+  mStreamList->GetManager()->ExecuteOpenStream(this, Move(aResolver), aId);
 }
 
 void
@@ -93,9 +115,23 @@ CacheStreamControlParent::ActorDestroy(ActorDestroyReason aReason)
   if (!mStreamList) {
     return;
   }
+  mStreamList->GetManager()->RemoveListener(this);
   mStreamList->RemoveStreamControl(this);
   mStreamList->NoteClosedAll();
   mStreamList = nullptr;
+}
+
+mozilla::ipc::IPCResult
+CacheStreamControlParent::RecvOpenStream(const nsID& aStreamId,
+                                         OpenStreamResolver&& aResolver)
+{
+  NS_ASSERT_OWNINGTHREAD(CacheStreamControlParent);
+
+  OpenStream(aStreamId, [aResolver](nsCOMPtr<nsIInputStream>&& aStream) {
+      aResolver(aStream);
+    });
+
+  return IPC_OK();
 }
 
 mozilla::ipc::IPCResult

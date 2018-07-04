@@ -34,11 +34,19 @@ var gEMEHandler = {
     }
     return true;
   },
-  getLearnMoreLink(msgId) {
-    let text = gNavigatorBundle.getString("emeNotifications." + msgId + ".learnMoreLabel");
+  getEMEDisabledFragment(msgId) {
+    let mainMessage = gNavigatorBundle.getString("emeNotifications.drmContentDisabled.message");
+    let text = gNavigatorBundle.getString("emeNotifications.drmContentDisabled.learnMoreLabel");
     let baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
-    return "<label class='text-link' href='" + baseURL + "drm-content'>" +
-           text + "</label>";
+    let link = document.createElement("label");
+    link.className = "text-link";
+    link.setAttribute("href", baseURL + "drm-content");
+    link.textContent = text;
+    return BrowserUtils.getLocalizedFragment(document, mainMessage, link);
+  },
+  getMessageWithBrandName(notificationId) {
+    let msgId = "emeNotifications." + notificationId + ".message";
+    return gNavigatorBundle.getFormattedString(msgId, [this._brandShortName]);
   },
   receiveMessage({target: browser, data: data}) {
     let parsedData;
@@ -56,7 +64,8 @@ var gEMEHandler = {
 
     let notificationId;
     let buttonCallback;
-    let params = [];
+    // Notification message can be either a string or a DOM fragment.
+    let notificationMessage;
     switch (status) {
       case "available":
       case "cdm-created":
@@ -70,18 +79,18 @@ var gEMEHandler = {
       case "api-disabled":
       case "cdm-disabled":
         notificationId = "drmContentDisabled";
-        buttonCallback = gEMEHandler.ensureEMEEnabled.bind(gEMEHandler, browser, keySystem)
-        params = [this.getLearnMoreLink(notificationId)];
+        buttonCallback = gEMEHandler.ensureEMEEnabled.bind(gEMEHandler, browser, keySystem);
+        notificationMessage = this.getEMEDisabledFragment();
         break;
 
       case "cdm-insufficient-version":
         notificationId = "drmContentCDMInsufficientVersion";
-        params = [this._brandShortName];
+        notificationMessage = this.getMessageWithBrandName(notificationId);
         break;
 
       case "cdm-not-installed":
         notificationId = "drmContentCDMInstalling";
-        params = [this._brandShortName];
+        notificationMessage = this.getMessageWithBrandName(notificationId);
         break;
 
       case "cdm-not-supported":
@@ -93,44 +102,27 @@ var gEMEHandler = {
         return;
     }
 
-    this.showNotificationBar(browser, notificationId, keySystem, params, buttonCallback);
-  },
-  showNotificationBar(browser, notificationId, keySystem, labelParams, callback) {
+    // Now actually create the notification
+
     let box = gBrowser.getNotificationBox(browser);
     if (box.getNotificationWithValue(notificationId)) {
       return;
     }
 
-    let msgPrefix = "emeNotifications." + notificationId + ".";
-    let msgId = msgPrefix + "message";
-
-    let message = labelParams.length ?
-                  gNavigatorBundle.getFormattedString(msgId, labelParams) :
-                  gNavigatorBundle.getString(msgId);
-
     let buttons = [];
-    if (callback) {
+    if (buttonCallback) {
+      let msgPrefix = "emeNotifications." + notificationId + ".";
       let btnLabelId = msgPrefix + "button.label";
       let btnAccessKeyId = msgPrefix + "button.accesskey";
       buttons.push({
         label: gNavigatorBundle.getString(btnLabelId),
         accessKey: gNavigatorBundle.getString(btnAccessKeyId),
-        callback
+        callback: buttonCallback,
       });
     }
 
-    let iconURL = "chrome://browser/skin/drm-icon.svg#chains-black";
-
-    // Do a little dance to get rich content into the notification:
-    let fragment = document.createDocumentFragment();
-    let descriptionContainer = document.createElement("description");
-    // eslint-disable-next-line no-unsanitized/property
-    descriptionContainer.innerHTML = message;
-    while (descriptionContainer.childNodes.length) {
-      fragment.appendChild(descriptionContainer.childNodes[0]);
-    }
-
-    box.appendNotification(fragment, notificationId, iconURL, box.PRIORITY_WARNING_MEDIUM,
+    let iconURL = "chrome://browser/skin/drm-icon.svg";
+    box.appendNotification(notificationMessage, notificationId, iconURL, box.PRIORITY_WARNING_MEDIUM,
                            buttons);
   },
   showPopupNotificationForSuccess(browser, keySystem) {
@@ -169,11 +161,7 @@ var gEMEHandler = {
       label: gNavigatorBundle.getString(btnLabelId),
       accessKey: gNavigatorBundle.getString(btnAccessKeyId),
       callback() {
-        if (Services.prefs.getBoolPref("browser.preferences.useOldOrganization")) {
-          openPreferences("paneContent", {origin: "browserMedia"});
-        } else {
-          openPreferences("general-drm", {origin: "browserMedia"});
-        }
+        openPreferences("general-drm", {origin: "browserMedia"});
       },
       dismiss: true
     };
@@ -184,7 +172,6 @@ var gEMEHandler = {
     };
     PopupNotifications.show(browser, "drmContentPlaying", message, anchorId, mainAction, null, options);
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIMessageListener])
 };
 
 XPCOMUtils.defineLazyGetter(gEMEHandler, "_brandShortName", function() {
@@ -275,7 +262,7 @@ let gDecoderDoctorHandler = {
     type = type.toLowerCase();
     // Error out early on invalid ReportId
     if (!(/^\w+$/mi).test(decoderDoctorReportId)) {
-      return
+      return;
     }
     let title = gDecoderDoctorHandler.getLabelForNotificationBox(type);
     if (!title) {
@@ -333,7 +320,7 @@ let gDecoderDoctorHandler = {
             histogram.add(decoderDoctorReportId, TELEMETRY_DDSTAT_CLICKED);
 
             let baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
-            openUILinkIn(baseURL + sumo, "tab");
+            openTrustedLinkIn(baseURL + sumo, "tab");
           }
         });
       }
@@ -356,10 +343,14 @@ let gDecoderDoctorHandler = {
             params.append("label", "type-media");
             params.append("problem_type", "video_bug");
             params.append("src", "media-decode-error");
-            params.append("details",
-                          "Technical Information:\n" + decodeIssue +
-                          (resourceURL ? ("\nResource: " + resourceURL) : ""));
-            openUILinkIn(endpoint + "?" + params.toString(), "tab");
+
+            let details = {"Technical Information:": decodeIssue};
+            if (resourceURL) {
+              details["Resource:"] = resourceURL;
+            }
+
+            params.append("details", JSON.stringify(details));
+            openTrustedLinkIn(endpoint + "?" + params.toString(), "tab");
           }
         });
       }
@@ -379,7 +370,7 @@ let gDecoderDoctorHandler = {
       histogram.add(decoderDoctorReportId, TELEMETRY_DDSTAT_SOLVED);
     }
   },
-}
+};
 
 window.getGroupMessageManager("browsers").addMessageListener("DecoderDoctor:Notification", gDecoderDoctorHandler);
 window.getGroupMessageManager("browsers").addMessageListener("EMEVideo:ContentMediaKeysRequest", gEMEHandler);

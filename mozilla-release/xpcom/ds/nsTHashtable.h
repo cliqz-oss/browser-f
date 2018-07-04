@@ -12,7 +12,6 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/fallible.h"
-#include "mozilla/MemoryChecking.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Move.h"
 #include "mozilla/OperatorNewExtensions.h"
@@ -372,6 +371,27 @@ private:
   nsTHashtable<EntryType>& operator=(nsTHashtable<EntryType>& aToEqual) = delete;
 };
 
+namespace mozilla {
+namespace detail {
+
+// Like PLDHashTable::MoveEntryStub, but specialized for fixed N (i.e. the size
+// of the entries in the hashtable).  Saves a memory read to figure out the size
+// from the table and gives the compiler the opportunity to inline the memcpy.
+//
+// We define this outside of nsTHashtable so only one copy exists for every N,
+// rather than separate copies for every EntryType used with nsTHashtable.
+template<size_t N>
+static void
+FixedSizeEntryMover(PLDHashTable*,
+                    const PLDHashEntryHdr* aFrom,
+                    PLDHashEntryHdr* aTo)
+{
+  memcpy(aTo, aFrom, N);
+}
+
+} // namespace detail
+} // namespace mozilla
+
 //
 // template definitions
 //
@@ -380,9 +400,6 @@ template<class EntryType>
 nsTHashtable<EntryType>::nsTHashtable(nsTHashtable<EntryType>&& aOther)
   : mTable(mozilla::Move(aOther.mTable))
 {
-  // aOther shouldn't touch mTable after this, because we've stolen the table's
-  // pointers but not overwitten them.
-  MOZ_MAKE_MEM_UNDEFINED(&aOther.mTable, sizeof(aOther.mTable));
 }
 
 template<class EntryType>
@@ -401,7 +418,7 @@ nsTHashtable<EntryType>::Ops()
   {
     s_HashKey,
     s_MatchEntry,
-    EntryType::ALLOW_MEMMOVE ? PLDHashTable::MoveEntryStub : s_CopyEntry,
+    EntryType::ALLOW_MEMMOVE ? mozilla::detail::FixedSizeEntryMover<sizeof(EntryType)> : s_CopyEntry,
     s_ClearEntry,
     s_InitEntry
   };
@@ -414,7 +431,7 @@ template<class EntryType>
 PLDHashNumber
 nsTHashtable<EntryType>::s_HashKey(const void* aKey)
 {
-  return EntryType::HashKey(static_cast<const KeyTypePointer>(aKey));
+  return EntryType::HashKey(static_cast<KeyTypePointer>(aKey));
 }
 
 template<class EntryType>
@@ -423,7 +440,7 @@ nsTHashtable<EntryType>::s_MatchEntry(const PLDHashEntryHdr* aEntry,
                                       const void* aKey)
 {
   return ((const EntryType*)aEntry)->KeyEquals(
-    static_cast<const KeyTypePointer>(aKey));
+    static_cast<KeyTypePointer>(aKey));
 }
 
 template<class EntryType>

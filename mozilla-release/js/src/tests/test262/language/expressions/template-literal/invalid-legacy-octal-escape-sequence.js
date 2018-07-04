@@ -4,12 +4,14 @@
 /*---
 es6id: 16.1
 description: Invalid octal escape sequence
-info: >
+info: |
     TemplateCharacter (11.8.6) must not be extended to include
     LegacyOctalEscapeSequence as defined in B.1.2.
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 `\00`;

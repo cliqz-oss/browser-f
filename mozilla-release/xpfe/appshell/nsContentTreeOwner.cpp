@@ -15,12 +15,9 @@
 
 // Interfaces needed to be included
 #include "nsIDOMNode.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMNodeList.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMChromeWindow.h"
 #include "nsIBrowserDOMWindow.h"
-#include "nsIDOMXULElement.h"
 #include "nsIEmbeddingSiteWindow.h"
 #include "nsIPrompt.h"
 #include "nsIAuthPrompt.h"
@@ -37,6 +34,7 @@
 #include "nsWindowWatcher.h"
 #include "NullPrincipal.h"
 #include "mozilla/BrowserElementParent.h"
+#include "nsIDocShellLoadInfo.h"
 
 #include "nsIDOMDocument.h"
 #include "nsIScriptObjectPrincipal.h"
@@ -429,25 +427,6 @@ NS_IMETHODIMP nsContentTreeOwner::ReloadInFreshProcess(nsIDocShell* aDocShell,
   return NS_OK;
 }
 
-NS_IMETHODIMP nsContentTreeOwner::StartPrerenderingDocument(nsIURI* aHref,
-                                                            nsIURI* aReferrer,
-                                                            nsIPrincipal* aTriggeringPrincipal)
-{
-  NS_WARNING("Cannot prerender a document in the parent process");
-  return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP nsContentTreeOwner::ShouldSwitchToPrerenderedDocument(nsIURI* aHref,
-                                                                    nsIURI* aReferrer,
-                                                                    nsIRunnable* aSuccess,
-                                                                    nsIRunnable* aFailure,
-                                                                    bool* aRetval)
-{
-  NS_WARNING("Cannot switch to prerendered document in the parent process");
-  *aRetval = false;
-  return NS_OK;
-}
-
 //*****************************************************************************
 // nsContentTreeOwner::nsIWebBrowserChrome2
 //*****************************************************************************
@@ -469,12 +448,9 @@ NS_IMETHODIMP nsContentTreeOwner::SetStatusWithContext(uint32_t aStatusType,
   {
     switch(aStatusType)
     {
-    case STATUS_SCRIPT:
-      xulBrowserWindow->SetJSStatus(aStatusText);
-      break;
     case STATUS_LINK:
       {
-        nsCOMPtr<nsIDOMElement> element = do_QueryInterface(aStatusContext);
+        nsCOMPtr<dom::Element> element = do_QueryInterface(aStatusContext);
         xulBrowserWindow->SetOverLink(aStatusText, element);
         break;
       }
@@ -713,15 +689,14 @@ NS_IMETHODIMP nsContentTreeOwner::SetFocus()
    return mXULWindow->SetFocus();
 }
 
-NS_IMETHODIMP nsContentTreeOwner::GetTitle(char16_t** aTitle)
+NS_IMETHODIMP nsContentTreeOwner::GetTitle(nsAString& aTitle)
 {
-   NS_ENSURE_ARG_POINTER(aTitle);
    NS_ENSURE_STATE(mXULWindow);
 
    return mXULWindow->GetTitle(aTitle);
 }
 
-NS_IMETHODIMP nsContentTreeOwner::SetTitle(const char16_t* aTitle)
+NS_IMETHODIMP nsContentTreeOwner::SetTitle(const nsAString& aTitle)
 {
    // We only allow the title to be set from the primary content shell
   if(!mPrimary || !mContentTitleSetting)
@@ -810,7 +785,7 @@ NS_IMETHODIMP nsContentTreeOwner::SetTitle(const char16_t* aTitle)
     return rv.StealNSResult();
   }
 
-  return mXULWindow->SetTitle(title.get());
+  return mXULWindow->SetTitle(title);
 }
 
 //*****************************************************************************
@@ -826,6 +801,7 @@ nsContentTreeOwner::ProvideWindow(mozIDOMWindowProxy* aParent,
                                   const nsAString& aName,
                                   const nsACString& aFeatures,
                                   bool aForceNoOpener,
+                                  nsIDocShellLoadInfo* aLoadInfo,
                                   bool* aWindowIsNew,
                                   mozIDOMWindowProxy** aReturn)
 {
@@ -923,16 +899,15 @@ nsContentTreeOwner::ProvideWindow(mozIDOMWindowProxy* aParent,
       flags |= nsIBrowserDOMWindow::OPEN_NO_OPENER;
     }
 
-    // Get a new rendering area from the browserDOMWin.  We don't want
-    // to be starting any loads here, so get it with a null URI. Since/
-    // we are not loading any URI, we follow the principle of least privlege
-    // and use a nullPrincipal as the triggeringPrincipal.
+    // Get a new rendering area from the browserDOMWin.
+    // Since we are not loading any URI, we follow the principle of least
+    // privilege and use a nullPrincipal as the triggeringPrincipal.
     //
     // This method handles setting the opener for us, so we don't need to set it
     // ourselves.
-    RefPtr<NullPrincipal> nullPrincipal = NullPrincipal::Create();
-    return browserDOMWin->OpenURI(nullptr, aParent, openLocation,
-                                  flags, nullPrincipal, aReturn);
+    RefPtr<NullPrincipal> nullPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
+    return browserDOMWin->CreateContentWindow(aURI, aParent, openLocation,
+                                              flags, nullPrincipal, aReturn);
   }
 }
 
@@ -1149,13 +1124,13 @@ nsSiteWindow::SetVisibility(bool aVisibility)
 }
 
 NS_IMETHODIMP
-nsSiteWindow::GetTitle(char16_t * *aTitle)
+nsSiteWindow::GetTitle(nsAString& aTitle)
 {
   return mAggregator->GetTitle(aTitle);
 }
 
 NS_IMETHODIMP
-nsSiteWindow::SetTitle(const char16_t * aTitle)
+nsSiteWindow::SetTitle(const nsAString& aTitle)
 {
   return mAggregator->SetTitle(aTitle);
 }

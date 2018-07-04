@@ -9,9 +9,13 @@
 
 #include "nsIContent.h"
 #include "nsIDocument.h"
+#include "nsBindingManager.h"
 #include "nsContentUtils.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
+#include "nsIFrame.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/HTMLSlotElement.h"
+#include "mozilla/dom/ShadowRoot.h"
 
 inline bool
 nsIContent::IsInHTMLDocument() const
@@ -25,67 +29,109 @@ nsIContent::IsInChromeDocument() const
   return nsContentUtils::IsChromeDoc(OwnerDoc());
 }
 
+inline void
+nsIContent::SetPrimaryFrame(nsIFrame* aFrame)
+{
+  MOZ_ASSERT(IsInUncomposedDoc() || IsInShadowTree(), "This will end badly!");
+  NS_PRECONDITION(!aFrame || !mPrimaryFrame || aFrame == mPrimaryFrame,
+                  "Losing track of existing primary frame");
+
+  if (aFrame) {
+    if (MOZ_LIKELY(!IsHTMLElement(nsGkAtoms::area)) ||
+        aFrame->GetContent() == this) {
+      aFrame->SetIsPrimaryFrame(true);
+    }
+  } else if (nsIFrame* currentPrimaryFrame = GetPrimaryFrame()) {
+    if (MOZ_LIKELY(!IsHTMLElement(nsGkAtoms::area)) ||
+        currentPrimaryFrame->GetContent() == this) {
+      currentPrimaryFrame->SetIsPrimaryFrame(false);
+    }
+  }
+
+  mPrimaryFrame = aFrame;
+}
+
 inline mozilla::dom::ShadowRoot* nsIContent::GetShadowRoot() const
 {
   if (!IsElement()) {
     return nullptr;
   }
 
-  return AsElement()->FastGetShadowRoot();
+  return AsElement()->GetShadowRoot();
 }
 
-template<nsIContent::FlattenedParentType Type>
-static inline bool FlattenedTreeParentIsParent(const nsINode* aNode)
-{
-  // Try to short-circuit past the complicated and not-exactly-fast logic for
-  // computing the flattened parent.
-  //
-  // WARNING! This logic is replicated in Servo to avoid out of line calls.
-  // If you change the cases here, you need to change them in Servo as well!
-
-  // Check if the node is an explicit child of an XBL-bound element, re-bound to
-  // an XBL insertion point, or is a top-level element in a shadow tree, whose
-  // flattened parent is the host element (as opposed to the actual parent which
-  // is the shadow root).
-  if (aNode->HasFlag(NODE_MAY_BE_IN_BINDING_MNGR | NODE_IS_IN_SHADOW_TREE)) {
-    return false;
-  }
-
-  // Check if we want the flattened parent for style, and the node is the root
-  // of a native anonymous content subtree parented to the document's root element.
-  if (Type == nsIContent::eForStyle && aNode->HasFlag(NODE_IS_NATIVE_ANONYMOUS_ROOT) &&
-      aNode->OwnerDoc()->GetRootElement() == aNode->GetParentNode())
-  {
-    return false;
-  }
-
-  // Check if the node is an explicit child of an element with a shadow root,
-  // re-bound to an insertion point.
-  nsIContent* parent = aNode->GetParent();
-  if (parent && parent->GetShadowRoot()) {
-    return false;
-  }
-
-  // Common case.
-  return true;
-}
-
-template<nsIContent::FlattenedParentType Type>
+template<nsINode::FlattenedParentType aType>
 static inline nsINode*
 GetFlattenedTreeParentNode(const nsINode* aNode)
 {
-  if (MOZ_LIKELY(FlattenedTreeParentIsParent<Type>(aNode))) {
-    return aNode->GetParentNode();
+  if (!aNode->IsContent()) {
+    return nullptr;
   }
 
-  MOZ_ASSERT(aNode->IsContent());
-  return aNode->AsContent()->GetFlattenedTreeParentNodeInternal(Type);
+  nsINode* parent = aNode->GetParentNode();
+  if (!parent || !parent->IsContent()) {
+    return parent;
+  }
+
+  const nsIContent* content = aNode->AsContent();
+  nsIContent* parentAsContent = parent->AsContent();
+
+  if (aType == nsINode::eForStyle &&
+      content->IsRootOfNativeAnonymousSubtree() &&
+      parentAsContent == content->OwnerDoc()->GetRootElement()) {
+    const bool docLevel =
+      content->GetProperty(nsGkAtoms::docLevelNativeAnonymousContent);
+    return docLevel ? content->OwnerDocAsNode() : parent;
+  }
+
+  if (content->IsRootOfAnonymousSubtree()) {
+    return parent;
+  }
+
+  if (parentAsContent->GetShadowRoot()) {
+    // If it's not assigned to any slot it's not part of the flat tree, and thus
+    // we return null.
+    return content->GetAssignedSlot();
+  }
+
+  if (parentAsContent->IsInShadowTree()) {
+    if (auto* slot = mozilla::dom::HTMLSlotElement::FromNode(parentAsContent)) {
+      // If the assigned nodes list is empty, we're fallback content which is
+      // active, otherwise we are not part of the flat tree.
+      return slot->AssignedNodes().IsEmpty()
+        ? parent
+        : nullptr;
+    }
+
+    if (auto* shadowRoot = mozilla::dom::ShadowRoot::FromNode(parentAsContent)) {
+      return shadowRoot->GetHost();
+    }
+  }
+
+  if (content->HasFlag(NODE_MAY_BE_IN_BINDING_MNGR) ||
+      parent->HasFlag(NODE_MAY_BE_IN_BINDING_MNGR)) {
+    if (nsIContent* xblInsertionPoint = content->GetXBLInsertionPoint()) {
+      return xblInsertionPoint->GetParent();
+    }
+
+    if (parent->OwnerDoc()->BindingManager()->GetBindingWithContent(parentAsContent)) {
+      // This is an unassigned node child of the bound element, so it isn't part
+      // of the flat tree.
+      return nullptr;
+    }
+  }
+
+  MOZ_ASSERT(!parentAsContent->IsActiveChildrenElement(),
+             "<xbl:children> isn't in the flattened tree");
+
+  // Common case.
+  return parent;
 }
 
 inline nsINode*
 nsINode::GetFlattenedTreeParentNode() const
 {
-  return ::GetFlattenedTreeParentNode<nsIContent::eNotForStyle>(this);
+  return ::GetFlattenedTreeParentNode<nsINode::eNotForStyle>(this);
 }
 
 inline nsIContent*
@@ -96,7 +142,7 @@ nsIContent::GetFlattenedTreeParent() const
 }
 
 inline bool
-nsIContent::IsEventAttributeName(nsIAtom* aName)
+nsIContent::IsEventAttributeName(nsAtom* aName)
 {
   const char16_t* name = aName->GetUTF16String();
   if (name[0] != 'o' || name[1] != 'n') {
@@ -109,13 +155,53 @@ nsIContent::IsEventAttributeName(nsIAtom* aName)
 inline nsINode*
 nsINode::GetFlattenedTreeParentNodeForStyle() const
 {
-  return ::GetFlattenedTreeParentNode<nsIContent::eForStyle>(this);
+  return ::GetFlattenedTreeParentNode<nsINode::eForStyle>(this);
 }
 
 inline bool
 nsINode::NodeOrAncestorHasDirAuto() const
 {
   return AncestorHasDirAuto() || (IsElement() && AsElement()->HasDirAuto());
+}
+
+inline bool
+nsIContent::IsActiveChildrenElement() const
+{
+  if (!mNodeInfo->Equals(nsGkAtoms::children, kNameSpaceID_XBL)) {
+    return false;
+  }
+
+  nsIContent* bindingParent = GetBindingParent();
+  if (!bindingParent) {
+    return false;
+  }
+
+  // We reuse the binding parent machinery for Shadow DOM too, so prevent that
+  // from getting us confused in this case.
+  return !bindingParent->GetShadowRoot();
+}
+
+inline bool
+nsIContent::IsInAnonymousSubtree() const
+{
+  NS_ASSERTION(!IsInNativeAnonymousSubtree() || GetBindingParent() ||
+               (!IsInUncomposedDoc() &&
+                static_cast<nsIContent*>(SubtreeRoot())->IsInNativeAnonymousSubtree()),
+               "Must have binding parent when in native anonymous subtree which is in document.\n"
+               "Native anonymous subtree which is not in document must have native anonymous root.");
+
+  if (IsInNativeAnonymousSubtree()) {
+    return true;
+  }
+
+  nsIContent* bindingParent = GetBindingParent();
+  if (!bindingParent) {
+    return false;
+  }
+
+  // We reuse the binding parent machinery for Shadow DOM too, so prevent that
+  // from getting us confused in this case.
+  return !bindingParent->GetShadowRoot();
 }
 
 #endif // nsIContentInlines_h

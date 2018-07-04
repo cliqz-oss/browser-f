@@ -48,7 +48,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(SpeechSynthesis, DOMEventTarge
   }
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(SpeechSynthesis)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SpeechSynthesis)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
@@ -61,7 +61,6 @@ SpeechSynthesis::SpeechSynthesis(nsPIDOMWindowInner* aParent)
   , mHoldQueue(false)
   , mInnerID(aParent->WindowID())
 {
-  MOZ_ASSERT(aParent->IsInnerWindow());
   MOZ_ASSERT(NS_IsMainThread());
 
   nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
@@ -138,6 +137,10 @@ bool SpeechSynthesis::HasVoices() const
 void
 SpeechSynthesis::Speak(SpeechSynthesisUtterance& aUtterance)
 {
+  if (!mInnerID) {
+    return;
+  }
+
   if (aUtterance.mState != SpeechSynthesisUtterance::STATE_NONE) {
     // XXX: Should probably raise an error
     return;
@@ -210,7 +213,7 @@ SpeechSynthesis::Pause()
   }
 
   if (mCurrentTask && !mSpeechQueue.IsEmpty() &&
-      mSpeechQueue.ElementAt(0)->GetState() != SpeechSynthesisUtterance::STATE_ENDED) {
+      mSpeechQueue.ElementAt(0)->GetState() == SpeechSynthesisUtterance::STATE_SPEAKING) {
     mCurrentTask->Pause();
   } else {
     mHoldQueue = true;
@@ -224,10 +227,11 @@ SpeechSynthesis::Resume()
     return;
   }
 
+  mHoldQueue = false;
+
   if (mCurrentTask) {
     mCurrentTask->Resume();
   } else {
-    mHoldQueue = false;
     AdvanceQueue();
   }
 }
@@ -317,6 +321,7 @@ SpeechSynthesis::Observe(nsISupports* aSubject, const char* aTopic,
     NS_ENSURE_SUCCESS(rv, rv);
 
     if (innerID == mInnerID) {
+      mInnerID = 0;
       Cancel();
 
       nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();

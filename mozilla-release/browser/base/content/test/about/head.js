@@ -23,12 +23,6 @@ function waitForCondition(condition, nextTest, errorMsg, retryTimes) {
   var moveOn = function() { clearInterval(interval); nextTest(); };
 }
 
-function promiseWaitForCondition(aConditionFn) {
-  return new Promise(resolve => {
-    waitForCondition(aConditionFn, resolve, "Condition didn't pass.");
-  });
-}
-
 function whenTabLoaded(aTab, aCallback) {
   promiseTabLoadEvent(aTab).then(aCallback);
 }
@@ -90,8 +84,7 @@ function promiseTabLoadEvent(tab, url) {
  */
 function waitForDocLoadAndStopIt(aExpectedURL, aBrowser = gBrowser.selectedBrowser, aStopFromProgressListener = true) {
   function content_script(contentStopFromProgressListener) {
-    let { interfaces: Ci, utils: Cu } = Components;
-    Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+    ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
     let wp = docShell.QueryInterface(Ci.nsIWebProgress);
 
     function stopContent(now, uri) {
@@ -120,7 +113,7 @@ function waitForDocLoadAndStopIt(aExpectedURL, aBrowser = gBrowser.selectedBrows
           stopContent(contentStopFromProgressListener, chan.originalURI.spec);
         }
       },
-      QueryInterface: XPCOMUtils.generateQI(["nsISupportsWeakReference"])
+      QueryInterface: ChromeUtils.generateQI(["nsISupportsWeakReference"])
     };
     wp.addProgressListener(progressListener, wp.NOTIFY_STATE_WINDOW);
 
@@ -150,6 +143,44 @@ function waitForDocLoadAndStopIt(aExpectedURL, aBrowser = gBrowser.selectedBrows
   });
 }
 
-function promiseDisableOnboardingTours() {
-  return SpecialPowers.pushPrefEnv({set: [["browser.onboarding.enabled", false]]});
+/**
+ * Wait for the search engine to change.
+ */
+function promiseContentSearchChange(browser, newEngineName) {
+  return ContentTask.spawn(browser, { newEngineName }, async function(args) {
+    return new Promise(resolve => {
+      content.addEventListener("ContentSearchService", function listener(aEvent) {
+        if (aEvent.detail.type == "CurrentState" &&
+            content.wrappedJSObject.gContentSearchController.defaultEngine.name == args.newEngineName) {
+          content.removeEventListener("ContentSearchService", listener);
+          resolve();
+        }
+      });
+    });
+  });
+}
+
+/**
+ * Wait for the search engine to be added.
+ */
+function promiseNewEngine(basename) {
+  info("Waiting for engine to be added: " + basename);
+  return new Promise((resolve, reject) => {
+    let url = getRootDirectory(gTestPath) + basename;
+    Services.search.addEngine(url, null, "", false, {
+      onSuccess(engine) {
+        info("Search engine added: " + basename);
+        registerCleanupFunction(() => {
+          try {
+            Services.search.removeEngine(engine);
+          } catch (ex) { /* Can't remove the engine more than once */ }
+        });
+        resolve(engine);
+      },
+      onError(errCode) {
+        ok(false, "addEngine failed with error code " + errCode);
+        reject();
+      },
+    });
+  });
 }

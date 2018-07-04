@@ -21,7 +21,6 @@ using mozilla::ipc::BrowserProcessSubThread;
 using mozilla::ipc::GeckoChildProcessHost;
 using mozilla::plugins::LaunchCompleteTask;
 using mozilla::plugins::PluginProcessParent;
-using base::ProcessArchitecture;
 
 #ifdef XP_WIN
 PluginProcessParent::PidSet* PluginProcessParent::sPidSet = nullptr;
@@ -53,10 +52,16 @@ PluginProcessParent::~PluginProcessParent()
 
 bool
 PluginProcessParent::Launch(mozilla::UniquePtr<LaunchCompleteTask> aLaunchCompleteTask,
-                            int32_t aSandboxLevel)
+                            int32_t aSandboxLevel,
+                            bool aIsSandboxLoggingEnabled)
 {
-#if defined(XP_WIN) && defined(MOZ_SANDBOX)
+#if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_SANDBOX)
+    // At present, the Mac Flash plugin sandbox does not support different
+    // levels and is enabled via a boolean pref or environment variable.
+    // On Mac, when |aSandboxLevel| is positive, we enable the sandbox.
+#if defined(XP_WIN)
     mSandboxLevel = aSandboxLevel;
+#endif // XP_WIN
 #else
     if (aSandboxLevel != 0) {
         MOZ_ASSERT(false,
@@ -64,48 +69,22 @@ PluginProcessParent::Launch(mozilla::UniquePtr<LaunchCompleteTask> aLaunchComple
     }
 #endif
 
-    ProcessArchitecture currentArchitecture = base::GetCurrentProcessArchitecture();
-    uint32_t containerArchitectures = GetSupportedArchitecturesForProcessType(GeckoProcessType_Plugin);
-
-    uint32_t pluginLibArchitectures = currentArchitecture;
-#ifdef XP_MACOSX
-    nsresult rv = GetArchitecturesForBinary(mPluginFilePath.c_str(), &pluginLibArchitectures);
-    if (NS_FAILED(rv)) {
-        // If the call failed just assume that we want the current architecture.
-        pluginLibArchitectures = currentArchitecture;
-    }
-#endif
-
-    ProcessArchitecture selectedArchitecture = currentArchitecture;
-    if (!(pluginLibArchitectures & containerArchitectures & currentArchitecture)) {
-        // Prefererence in order: x86_64, i386, PPC. The only particularly important thing
-        // about this order is that we'll prefer 64-bit architectures first.
-        if (base::PROCESS_ARCH_X86_64 & pluginLibArchitectures & containerArchitectures) {
-            selectedArchitecture = base::PROCESS_ARCH_X86_64;
-        }
-        else if (base::PROCESS_ARCH_I386 & pluginLibArchitectures & containerArchitectures) {
-            selectedArchitecture = base::PROCESS_ARCH_I386;
-        }
-        else if (base::PROCESS_ARCH_PPC & pluginLibArchitectures & containerArchitectures) {
-            selectedArchitecture = base::PROCESS_ARCH_PPC;
-        }
-        else if (base::PROCESS_ARCH_ARM & pluginLibArchitectures & containerArchitectures) {
-          selectedArchitecture = base::PROCESS_ARCH_ARM;
-        }
-        else if (base::PROCESS_ARCH_MIPS & pluginLibArchitectures & containerArchitectures) {
-          selectedArchitecture = base::PROCESS_ARCH_MIPS;
-        }
-        else {
-            return false;
-        }
-    }
-
     mLaunchCompleteTask = mozilla::Move(aLaunchCompleteTask);
 
     vector<string> args;
     args.push_back(MungePluginDsoPath(mPluginFilePath));
 
-    bool result = AsyncLaunch(args, selectedArchitecture);
+#if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
+    if (aSandboxLevel > 0) {
+        args.push_back("-flashSandboxLevel");
+        args.push_back(std::to_string(aSandboxLevel));
+        if (aIsSandboxLoggingEnabled) {
+            args.push_back("-flashSandboxLogging");
+        }
+    }
+#endif
+
+    bool result = AsyncLaunch(args);
     if (!result) {
         mLaunchCompleteTask = nullptr;
     }

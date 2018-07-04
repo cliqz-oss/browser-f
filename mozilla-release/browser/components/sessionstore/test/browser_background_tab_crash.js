@@ -61,8 +61,8 @@ async function setupBackgroundTabs(testFn) {
 
   await testFn([tab1, tab2]);
 
-  await BrowserTestUtils.removeTab(tab1);
-  await BrowserTestUtils.removeTab(tab2);
+  BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab2);
 }
 
 /**
@@ -147,7 +147,7 @@ add_task(async function test_background_crash_simple() {
  */
 add_task(async function test_background_crash_autosubmit_backlogged() {
   await SpecialPowers.pushPrefEnv({
-    set: [["browser.crashReports.unsubmittedCheck.autoSubmit", true]],
+    set: [["browser.crashReports.unsubmittedCheck.autoSubmit2", true]],
   });
 
   await setupBackgroundTabs(async function([tab1, tab2]) {
@@ -226,12 +226,6 @@ add_task(async function test_preload_crash() {
   if (!Services.prefs.getBoolPref("browser.newtab.preload")) {
     return;
   }
-
-  // Since new tab is only crashable for the activity-stream version,
-  // we need to flip the pref
-  await SpecialPowers.pushPrefEnv({
-    set: [[ "browser.newtabpage.activity-stream.enabled", true ]]
-  });
 
   // Release any existing preloaded browser
   gBrowser.removePreloadedBrowser();

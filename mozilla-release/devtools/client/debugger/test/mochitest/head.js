@@ -6,7 +6,7 @@
 "use strict";
 
 // shared-head.js handles imports, constants, and utility functions
-Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js", this);
+Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js", this);
 
 // Disable logging for faster test runs. Set this pref to true if you want to
 // debug a test in your try runs. Both the debugger server and frontend will
@@ -14,17 +14,19 @@ Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtool
 var gEnableLogging = Services.prefs.getBoolPref("devtools.debugger.log");
 Services.prefs.setBoolPref("devtools.debugger.log", false);
 
-var { BrowserToolboxProcess } = Cu.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
+var { BrowserToolboxProcess } = ChromeUtils.import("resource://devtools/client/framework/ToolboxProcess.jsm", {});
 var { DebuggerServer } = require("devtools/server/main");
-var { DebuggerClient, ObjectClient } = require("devtools/shared/client/main");
-var { AddonManager } = Cu.import("resource://gre/modules/AddonManager.jsm", {});
+var { DebuggerClient } = require("devtools/shared/client/debugger-client");
+var ObjectClient = require("devtools/shared/client/object-client");
+var { AddonManager } = ChromeUtils.import("resource://gre/modules/AddonManager.jsm", {});
 var EventEmitter = require("devtools/shared/event-emitter");
 var { Toolbox } = require("devtools/client/framework/toolbox");
+var { Task } = require("devtools/shared/task");
 
 const chromeRegistry = Cc["@mozilla.org/chrome/chrome-registry;1"].getService(Ci.nsIChromeRegistry);
 
 // Override promise with deprecated-sync-thenables
-promise = Cu.import("resource://devtools/shared/deprecated-sync-thenables.js", {}).Promise;
+promise = require("devtools/shared/deprecated-sync-thenables");
 
 const EXAMPLE_URL = "http://example.com/browser/devtools/client/debugger/test/mochitest/";
 const FRAME_SCRIPT_URL = getRootDirectory(gTestPath) + "code_frame-script.js";
@@ -33,7 +35,7 @@ const CHROME_URI = Services.io.newURI(CHROME_URL);
 
 Services.prefs.setBoolPref("devtools.debugger.new-debugger-frontend", false);
 
-registerCleanupFunction(function* () {
+registerCleanupFunction(async function() {
   Services.prefs.clearUserPref("devtools.debugger.new-debugger-frontend");
 
   info("finish() was called, cleaning up...");
@@ -42,7 +44,7 @@ registerCleanupFunction(function* () {
   while (gBrowser && gBrowser.tabs && gBrowser.tabs.length > 1) {
     info("Destroying toolbox.");
     let target = TargetFactory.forTab(gBrowser.selectedTab);
-    yield gDevTools.closeToolbox(target);
+    await gDevTools.closeToolbox(target);
 
     info("Removing tab.");
     gBrowser.removeCurrentTab();
@@ -53,7 +55,7 @@ registerCleanupFunction(function* () {
 
   // Debugger tests use a lot of memory, so force a GC to help fragmentation.
   info("Forcing GC/CC after debugger test.");
-  yield new Promise(resolve => {
+  await new Promise(resolve => {
     Cu.forceGC();
     Cu.forceCC();
     Cu.schedulePreciseGC(resolve);
@@ -160,7 +162,7 @@ function removeAddon(aAddon) {
 function getTabActorForUrl(aClient, aUrl) {
   let deferred = promise.defer();
 
-  aClient.listTabs(aResponse => {
+  aClient.listTabs().then(aResponse => {
     let tabActor = aResponse.tabs.filter(aGrip => aGrip.url == aUrl).pop();
     deferred.resolve(tabActor);
   });
@@ -207,7 +209,10 @@ function attachThreadActorForUrl(aClient, aUrl) {
   return deferred.promise;
 }
 
-function once(aTarget, aEventName, aUseCapture = false) {
+// Override once from shared-head, as some tests depend on trying native DOM listeners
+// before EventEmitter.  Since this directory is deprecated, there's little value in
+// resolving the descrepency here.
+this.once = function (aTarget, aEventName, aUseCapture = false) {
   info("Waiting for event: '" + aEventName + "' on " + aTarget + ".");
 
   let deferred = promise.defer();
@@ -227,7 +232,7 @@ function once(aTarget, aEventName, aUseCapture = false) {
   }
 
   return deferred.promise;
-}
+};
 
 function waitForTick() {
   let deferred = promise.defer();
@@ -375,7 +380,7 @@ function waitForDebuggerEvents(aPanel, aEventName, aEventRepeat = 1) {
   let panelWin = aPanel.panelWin;
   let count = 0;
 
-  panelWin.on(aEventName, function onEvent(aEventName, ...aArgs) {
+  panelWin.on(aEventName, function onEvent(...aArgs) {
     info("Debugger event '" + aEventName + "' fired: " + (++count) + " time(s).");
 
     if (count == aEventRepeat) {
@@ -566,7 +571,7 @@ let initDebugger = Task.async(function*(urlOrTab, options) {
   }
   info("Debugee tab added successfully: " + urlOrTab);
 
-  let debuggee = tab.linkedBrowser.contentWindow.wrappedJSObject;
+  let debuggee = tab.linkedBrowser.contentWindowAsCPOW.wrappedJSObject;
   let target = TargetFactory.forTab(tab);
 
   let toolbox = yield gDevTools.showToolbox(target, "jsdebugger");
@@ -626,10 +631,8 @@ AddonDebugger.prototype = {
   init: Task.async(function* (aAddonId) {
     info("Initializing an addon debugger panel.");
 
-    if (!DebuggerServer.initialized) {
-      DebuggerServer.init();
-      DebuggerServer.addBrowserActors();
-    }
+    DebuggerServer.init();
+    DebuggerServer.registerAllActors();
     DebuggerServer.allowChromeProcess = true;
 
     this.frame = document.createElement("iframe");
@@ -771,7 +774,7 @@ function initChromeDebugger(aOnClose) {
   let deferred = promise.defer();
 
   // Wait for the toolbox process to start...
-  BrowserToolboxProcess.init(aOnClose, (aEvent, aProcess) => {
+  BrowserToolboxProcess.init(aOnClose, aProcess => {
     info("Browser toolbox process started successfully.");
 
     prepareDebugger(aProcess);
@@ -1223,10 +1226,6 @@ function source(sourceClient) {
 // console if necessary.  This cleans up the split console pref so
 // it won't pollute other tests.
 function getSplitConsole(toolbox, win) {
-  registerCleanupFunction(() => {
-    Services.prefs.clearUserPref("devtools.toolbox.splitconsoleEnabled");
-  });
-
   if (!win) {
     win = toolbox.win;
   }
@@ -1322,26 +1321,24 @@ function waitForDispatch(panel, type, eventRepeat = 1) {
   });
 }
 
-function* initWorkerDebugger(TAB_URL, WORKER_URL) {
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
-  }
+async function initWorkerDebugger(TAB_URL, WORKER_URL) {
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
 
   let client = new DebuggerClient(DebuggerServer.connectPipe());
-  yield connect(client);
+  await connect(client);
 
-  let tab = yield addTab(TAB_URL);
-  let { tabs } = yield listTabs(client);
-  let [, tabClient] = yield attachTab(client, findTab(tabs, TAB_URL));
+  let tab = await addTab(TAB_URL);
+  let { tabs } = await listTabs(client);
+  let [, tabClient] = await attachTab(client, findTab(tabs, TAB_URL));
 
-  yield createWorkerInTab(tab, WORKER_URL);
+  await createWorkerInTab(tab, WORKER_URL);
 
-  let { workers } = yield listWorkers(tabClient);
-  let [, workerClient] = yield attachWorker(tabClient,
+  let { workers } = await listWorkers(tabClient);
+  let [, workerClient] = await attachWorker(tabClient,
                                              findWorker(workers, WORKER_URL));
 
-  let toolbox = yield gDevTools.showToolbox(TargetFactory.forWorker(workerClient),
+  let toolbox = await gDevTools.showToolbox(TargetFactory.forWorker(workerClient),
                                             "jsdebugger",
                                             Toolbox.HostType.WINDOW);
 

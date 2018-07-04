@@ -10,6 +10,8 @@ ANALYSIS_SRCDIR=$JS_SRCDIR/devtools/rootAnalysis
 
 export CC="$TOOLTOOL_DIR/gcc/bin/gcc"
 export CXX="$TOOLTOOL_DIR/gcc/bin/g++"
+export PATH="$TOOLTOOL_DIR/gcc/bin:$PATH"
+export LD_LIBRARY_PATH="$TOOLTOOL_DIR/gcc/lib64"
 
 PYTHON=python2.7
 if ! which $PYTHON; then
@@ -39,14 +41,15 @@ function build_js_shell () {
     (
     unset MOZ_OBJDIR
     unset MOZCONFIG
-    ( cd $JS_SRCDIR; autoconf-2.13 )
+    cp -P $JS_SRCDIR/configure.in $JS_SRCDIR/configure
+    chmod +x $JS_SRCDIR/configure
     if [[ -z "$HAZ_DEP" ]]; then
         [ -d $HAZARD_SHELL_OBJDIR ] && rm -rf $HAZARD_SHELL_OBJDIR
     fi
     mkdir -p $HAZARD_SHELL_OBJDIR || true
     cd $HAZARD_SHELL_OBJDIR
-    $JS_SRCDIR/configure --enable-optimize --disable-debug --enable-ctypes --enable-nspr-build --without-intl-api --with-ccache
-    make -j4
+    $JS_SRCDIR/configure --enable-optimize --disable-debug --enable-ctypes --enable-nspr-build --without-intl-api
+    make -j$(nproc)
     ) # Restore MOZ_OBJDIR and MOZCONFIG
 }
 
@@ -97,7 +100,7 @@ function run_analysis () {
 
     (
         cd "$analysis_dir"
-        $PYTHON "$ANALYSIS_SRCDIR/analyze.py" --buildcommand="$GECKO_DIR/testing/mozharness/scripts/spidermonkey/build.${build_type}"
+        $PYTHON "$ANALYSIS_SRCDIR/analyze.py" --buildcommand="$GECKO_DIR/taskcluster/scripts/builder/hazard-${build_type}.sh"
     )
 }
 
@@ -146,6 +149,7 @@ function check_hazards () {
     NUM_HAZARDS=$(grep -c 'Function.*has unrooted.*live across GC call' "$1"/rootingHazards.txt)
     NUM_UNSAFE=$(grep -c '^Function.*takes unsafe address of unrooted' "$1"/refs.txt)
     NUM_UNNECESSARY=$(grep -c '^Function.* has unnecessary root' "$1"/unnecessary.txt)
+    NUM_DROPPED=$(grep -c '^Dropped CFG' "$1"/build_xgill.log)
     NUM_WRITE_HAZARDS=$(perl -lne 'print $1 if m!found (\d+)/\d+ allowed errors!' "$1"/heapWriteHazards.txt)
 
     set +x
@@ -154,17 +158,29 @@ function check_hazards () {
     echo "TinderboxPrint: (unnecessary roots)<br/>$NUM_UNNECESSARY"
     echo "TinderboxPrint: heap write hazards<br/>$NUM_WRITE_HAZARDS"
 
+    exit_status=0
+
     if [ $NUM_HAZARDS -gt 0 ]; then
         echo "TEST-UNEXPECTED-FAIL $NUM_HAZARDS rooting hazards detected" >&2
         echo "TinderboxPrint: documentation<br/><a href='https://wiki.mozilla.org/Javascript:Hazard_Builds#Diagnosing_a_rooting_hazards_failure'>static rooting hazard analysis failures</a>, visit \"Inspect Task\" link for hazard details"
-        exit 1
+        exit_status=1
     fi
 
-    NUM_ALLOWED_WRITE_HAZARDS=4
+    NUM_ALLOWED_WRITE_HAZARDS=0
     if [ $NUM_WRITE_HAZARDS -gt $NUM_ALLOWED_WRITE_HAZARDS ]; then
         echo "TEST-UNEXPECTED-FAIL $NUM_WRITE_HAZARDS heap write hazards detected out of $NUM_ALLOWED_WRITE_HAZARDS allowed" >&2
         echo "TinderboxPrint: documentation<br/><a href='https://wiki.mozilla.org/Javascript:Hazard_Builds#Diagnosing_a_heap_write_hazard_failure'>heap write hazard analysis failures</a>, visit \"Inspect Task\" link for hazard details"
-        exit 1
+        exit_status = 1
+    fi
+
+    if [ $NUM_DROPPED -gt 0 ]; then
+        echo "TEST-UNEXPECTED-FAIL $NUM_DROPPED CFGs dropped" >&2
+        echo "TinderboxPrint: sixgill unable to handle constructs<br/>$NUM_DROPPED"
+        exit_status=1
+    fi
+
+    if [ $exit_status -ne 0 ]; then
+        exit $exit_status
     fi
     )
 }

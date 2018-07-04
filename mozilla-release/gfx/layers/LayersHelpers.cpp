@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -28,15 +29,15 @@ ComputeBackdropCopyRect(const gfx::Rect& aRect,
 
   // Apply the layer transform.
   RectDouble dest = aTransform.TransformAndClipBounds(
-    RectDouble(aRect.x, aRect.y, aRect.width, aRect.height),
-    RectDouble(renderBounds.x, renderBounds.y, renderBounds.width, renderBounds.height));
+    RectDouble(aRect.X(), aRect.Y(), aRect.Width(), aRect.Height()),
+    RectDouble(renderBounds.X(), renderBounds.Y(), renderBounds.Width(), renderBounds.Height()));
   dest -= rtOffset;
 
   // Ensure we don't round out to -1, which trips up Direct3D.
   dest.IntersectRect(dest, RectDouble(0, 0, rtSize.width, rtSize.height));
 
   if (aOutLayerQuad) {
-    *aOutLayerQuad = Rect(dest.x, dest.y, dest.width, dest.height);
+    *aOutLayerQuad = Rect(dest.X(), dest.Y(), dest.Width(), dest.Height());
   }
 
   // Round out to integer.
@@ -49,8 +50,8 @@ ComputeBackdropCopyRect(const gfx::Rect& aRect,
   // uv-space.
   Matrix4x4 transform;
   transform.PostScale(rtSize.width, rtSize.height, 1.0);
-  transform.PostTranslate(-result.x, -result.y, 0.0);
-  transform.PostScale(1 / float(result.width), 1 / float(result.height), 1.0);
+  transform.PostTranslate(-result.X(), -result.Y(), 0.0);
+  transform.PostScale(1 / float(result.Width()), 1 / float(result.Height()), 1.0);
   *aOutTransform = transform;
   return result;
 }

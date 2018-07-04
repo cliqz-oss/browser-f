@@ -143,20 +143,6 @@ DefaultController::GetThumbnailAspectRatio(float *aThumbnailAspectRatio) {
   return NS_OK;
 }
 
-// deprecated
-NS_IMETHODIMP
-DefaultController::DrawPreview(nsISupports *ctx, bool *rDrawFrame) {
-  *rDrawFrame = true;
-  return NS_ERROR_UNEXPECTED;
-}
-
-// deprecated
-NS_IMETHODIMP
-DefaultController::DrawThumbnail(nsISupports *ctx, uint32_t width, uint32_t height, bool *rDrawFrame) {
-  *rDrawFrame = false;
-  return NS_ERROR_UNEXPECTED;
-}
-
 NS_IMETHODIMP
 DefaultController::RequestThumbnail(nsITaskbarPreviewCallback *aCallback, uint32_t width, uint32_t height) {
   return NS_OK;
@@ -245,7 +231,7 @@ WinTaskbar::GetAppUserModelID(nsAString & aDefaultGroupId) {
     bool exists = false;
     if (profileDir && NS_SUCCEEDED(profileDir->Exists(&exists)) && exists) {
       nsAutoCString path;
-      if (NS_SUCCEEDED(profileDir->GetNativePath(path))) {
+      if (NS_SUCCEEDED(profileDir->GetPersistentDescriptor(path))) {
         nsAutoString id;
         id.AppendInt(HashString(path));
         if (!id.IsEmpty()) {

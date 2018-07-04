@@ -22,8 +22,6 @@ static_assert((CHUNK_COUNT & (CHUNK_COUNT - 1)) == 0,
 
 namespace dom {
 
-NS_IMPL_ISUPPORTS_INHERITED0(AnalyserNode, AudioNode)
-
 class AnalyserNodeEngine final : public AudioNodeEngine
 {
   class TransferBuffer final : public Runnable
@@ -122,12 +120,9 @@ AnalyserNode::Create(AudioContext& aAudioContext,
     return nullptr;
   }
 
-  analyserNode->SetMinDecibels(aOptions.mMinDecibels, aRv);
-  if (NS_WARN_IF(aRv.Failed())) {
-    return nullptr;
-  }
-
-  analyserNode->SetMaxDecibels(aOptions.mMaxDecibels, aRv);
+  analyserNode->SetMinAndMaxDecibels(aOptions.mMinDecibels,
+                                     aOptions.mMaxDecibels,
+                                     aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
@@ -219,6 +214,17 @@ AnalyserNode::SetMaxDecibels(double aValue, ErrorResult& aRv)
     return;
   }
   mMaxDecibels = aValue;
+}
+
+void
+AnalyserNode::SetMinAndMaxDecibels(double aMinValue, double aMaxValue, ErrorResult& aRv)
+{
+  if (aMinValue >= aMaxValue) {
+    aRv.Throw(NS_ERROR_DOM_INDEX_SIZE_ERR);
+    return;
+  }
+  mMinDecibels = aMinValue;
+  mMaxDecibels = aMaxValue;
 }
 
 void

@@ -19,12 +19,10 @@
 
 "use strict";
 
-const DOMUtils = Components.classes["@mozilla.org/inspector/dom-utils;1"]
-                           .getService(Components.interfaces.inIDOMUtils);
-
 const {PSEUDO_ELEMENTS, CSS_PROPERTIES, PREFERENCES} = require("devtools/shared/css/generated/properties-db");
 const {generateCssProperties} = require("devtools/server/actors/css-properties");
 const {Preferences} = require("resource://gre/modules/Preferences.jsm");
+const InspectorUtils = require("InspectorUtils");
 
 function run_test() {
   const propertiesErrorMessage = "If this assertion fails, then the client side CSS " +
@@ -34,8 +32,9 @@ function run_test() {
                                  "the client side properties.";
 
   // Check that the platform and client match for pseudo elements.
-  deepEqual(PSEUDO_ELEMENTS, DOMUtils.getCSSPseudoElementNames(), `The pseudo elements ` +
-            `match on the client and platform. ${propertiesErrorMessage}`);
+  deepEqual(PSEUDO_ELEMENTS, InspectorUtils.getCSSPseudoElementNames(),
+            "The pseudo elements match on the client and platform. " +
+            propertiesErrorMessage);
 
   /**
    * Check that the platform and client match for the details on their CSS properties.
@@ -72,7 +71,7 @@ function run_test() {
    */
   const mismatches = getKeyMismatches(platformProperties, CSS_PROPERTIES)
     // Filter out OS-specific properties.
-    .filter(name => name && name.indexOf("-moz-osx-") === -1);
+    .filter(name => name && !name.includes("-moz-osx-"));
 
   if (mismatches.length === 0) {
     ok(true, "No client and platform CSS property database mismatches were found.");

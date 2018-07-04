@@ -78,8 +78,8 @@ nsMIMEHeaderParamImpl::DoGetParameter(const nsACString& aHeaderVal,
 
     // get parameter (decode RFC 2231/5987 when applicable, as specified by
     // aDecoding (5987 being a subset of 2231) and return charset.)
-    nsXPIDLCString med;
-    nsXPIDLCString charset;
+    nsCString med;
+    nsCString charset;
     rv = DoParameterInternal(PromiseFlatCString(aHeaderVal).get(), aParamName,
                              aDecoding, getter_Copies(charset), aLang,
                              getter_Copies(med));
@@ -470,10 +470,12 @@ nsMIMEHeaderParamImpl::DoParameterInternal(const char *aHeaderValue,
     if (!*str) {
       break;
     }
-    if (*str++ != '=') {
+    if (*str != '=') {
       // don't accept parameters without "="
       goto increment_str;
     }
+    // Skip over '=' only if it was actually there
+    str++;
     while (nsCRT::IsAsciiSpace(*str)) ++str;
 
     if (*str != '"') {

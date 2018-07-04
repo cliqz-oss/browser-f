@@ -11,11 +11,16 @@ IPDL_SOURCES += [
     'PWebAuthnTransaction.ipdl'
 ]
 
+XPIDL_SOURCES += [
+    'nsIU2FTokenManager.idl'
+]
+
+XPIDL_MODULE = 'dom_webauthn'
+
 EXPORTS.mozilla.dom += [
     'AuthenticatorAssertionResponse.h',
     'AuthenticatorAttestationResponse.h',
     'AuthenticatorResponse.h',
-    'NSSU2FTokenRemote.h',
     'PublicKeyCredential.h',
     'U2FHIDTokenManager.h',
     'U2FSoftTokenManager.h',
@@ -23,7 +28,7 @@ EXPORTS.mozilla.dom += [
     'U2FTokenTransport.h',
     'WebAuthnCBORUtil.h',
     'WebAuthnManager.h',
-    'WebAuthnRequest.h',
+    'WebAuthnManagerBase.h',
     'WebAuthnTransactionChild.h',
     'WebAuthnTransactionParent.h',
     'WebAuthnUtil.h',
@@ -35,13 +40,13 @@ UNIFIED_SOURCES += [
     'AuthenticatorResponse.cpp',
     'cbor-cpp/src/encoder.cpp',
     'cbor-cpp/src/output_dynamic.cpp',
-    'NSSU2FTokenRemote.cpp',
     'PublicKeyCredential.cpp',
     'U2FHIDTokenManager.cpp',
     'U2FSoftTokenManager.cpp',
     'U2FTokenManager.cpp',
     'WebAuthnCBORUtil.cpp',
     'WebAuthnManager.cpp',
+    'WebAuthnManagerBase.cpp',
     'WebAuthnTransactionChild.cpp',
     'WebAuthnTransactionParent.cpp',
     'WebAuthnUtil.cpp',
@@ -59,4 +64,10 @@ LOCAL_INCLUDES += [
     '/security/pkix/lib',
 ]
 
+if CONFIG['OS_ARCH'] == 'WINNT':
+    OS_LIBS += [
+        'hid',
+    ]
+
 MOCHITEST_MANIFESTS += ['tests/mochitest.ini']
+BROWSER_CHROME_MANIFESTS += ['tests/browser/browser.ini']

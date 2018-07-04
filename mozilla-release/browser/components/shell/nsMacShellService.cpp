@@ -4,8 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsDirectoryServiceDefs.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMHTMLImageElement.h"
 #include "nsIImageLoadingContent.h"
 #include "nsIDocument.h"
 #include "nsIContent.h"
@@ -23,9 +21,12 @@
 #include "nsString.h"
 #include "nsIDocShell.h"
 #include "nsILoadContext.h"
+#include "mozilla/dom/Element.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <ApplicationServices/ApplicationServices.h>
+
+using mozilla::dom::Element;
 
 #define NETWORK_PREFPANE NS_LITERAL_CSTRING("/System/Library/PreferencePanes/Network.prefPane")
 #define DESKTOP_PREFPANE NS_LITERAL_CSTRING("/System/Library/PreferencePanes/DesktopScreenEffectsPref.prefPane")
@@ -98,8 +99,9 @@ nsMacShellService::SetDefaultBrowser(bool aClaimAllTypes, bool aForAllUsers)
 }
 
 NS_IMETHODIMP
-nsMacShellService::SetDesktopBackground(nsIDOMElement* aElement,
-                                        int32_t aPosition)
+nsMacShellService::SetDesktopBackground(Element* aElement,
+                                        int32_t aPosition,
+                                        const nsACString& aImageName)
 {
   // Note: We don't support aPosition on OS X.
 
@@ -112,24 +114,10 @@ nsMacShellService::SetDesktopBackground(nsIDOMElement* aElement,
   rv = imageContent->GetCurrentURI(getter_AddRefs(imageURI));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // We need the referer URI for nsIWebBrowserPersist::saveURI
-  nsCOMPtr<nsIContent> content = do_QueryInterface(aElement, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsIURI *docURI = content->OwnerDoc()->GetDocumentURI();
+  nsIURI *docURI = aElement->OwnerDoc()->GetDocumentURI();
   if (!docURI)
     return NS_ERROR_FAILURE;
 
-  // Get the desired image file name
-  nsCOMPtr<nsIURL> imageURL(do_QueryInterface(imageURI));
-  if (!imageURL) {
-    // XXXmano (bug 300293): Non-URL images (e.g. the data: protocol) are not
-    // yet supported. What filename should we take here?
-    return NS_ERROR_NOT_IMPLEMENTED;
-  }
-
-  nsAutoCString fileName;
-  imageURL->GetFileName(fileName);
   nsCOMPtr<nsIProperties> fileLocator
     (do_GetService("@mozilla.org/file/directory_service;1", &rv));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -141,7 +129,7 @@ nsMacShellService::SetDesktopBackground(nsIDOMElement* aElement,
     return NS_ERROR_OUT_OF_MEMORY;
 
   nsAutoString fileNameUnicode;
-  CopyUTF8toUTF16(fileName, fileNameUnicode);
+  CopyUTF8toUTF16(aImageName, fileNameUnicode);
 
   // and add the imgage file name itself:
   mBackgroundFile->Append(fileNameUnicode);
@@ -159,14 +147,14 @@ nsMacShellService::SetDesktopBackground(nsIDOMElement* aElement,
   wbp->SetProgressListener(this);
 
   nsCOMPtr<nsILoadContext> loadContext;
-  nsCOMPtr<nsISupports> container = content->OwnerDoc()->GetContainer();
+  nsCOMPtr<nsISupports> container = aElement->OwnerDoc()->GetContainer();
   nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(container);
   if (docShell) {
     loadContext = do_QueryInterface(docShell);
   }
 
-  return wbp->SaveURI(imageURI, nullptr,
-                      docURI, content->OwnerDoc()->GetReferrerPolicy(),
+  return wbp->SaveURI(imageURI, 0,
+                      docURI, aElement->OwnerDoc()->GetReferrerPolicy(),
                       nullptr, nullptr,
                       mBackgroundFile, loadContext);
 }

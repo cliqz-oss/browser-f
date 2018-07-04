@@ -8,15 +8,13 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SearchWidgetTracker"];
+var EXPORTED_SYMBOLS = ["SearchWidgetTracker"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-                                  "resource:///modules/CustomizableUI.jsm");
+ChromeUtils.defineModuleGetter(this, "CustomizableUI",
+                               "resource:///modules/CustomizableUI.jsm");
 
 const WIDGET_ID = "search-container";
 const PREF_NAME = "browser.search.widget.inNavBar";
@@ -36,6 +34,15 @@ const SearchWidgetTracker = {
     CustomizableUI.addListener(this);
     Services.prefs.addObserver(PREF_NAME,
                                () => this.syncWidgetWithPreference());
+  },
+
+  onAreaNodeRegistered(aArea) {
+    // The placement of the widget always takes priority, and the preference
+    // should always match the actual placement when the browser starts up - i.e.
+    // once the navigation bar has been registered.
+    if (aArea == CustomizableUI.AREA_NAVBAR) {
+      this.syncPreferenceWithWidget();
+    }
   },
 
   onCustomizeEnd() {

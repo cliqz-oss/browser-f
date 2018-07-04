@@ -117,7 +117,7 @@ NS_strncmp(const char16_t* aStrA, const char16_t* aStrB, size_t aLen)
     --aLen;
   }
 
-  return aLen ? *aStrA != '\0' : *aStrA - *aStrB;
+  return aLen ? *aStrA != '\0' : 0;
 }
 
 char16_t*
@@ -131,7 +131,7 @@ template<typename CharT>
 CharT*
 NS_strndup(const CharT* aString, uint32_t aLen)
 {
-  auto newBuf = (CharT*)NS_Alloc((aLen + 1) * sizeof(CharT));
+  auto newBuf = (CharT*)moz_xmalloc((aLen + 1) * sizeof(CharT));
   if (newBuf) {
     memcpy(newBuf, aString, aLen * sizeof(CharT));
     newBuf[aLen] = '\0';
@@ -146,7 +146,7 @@ char*
 NS_strdup(const char* aString)
 {
   uint32_t len = strlen(aString);
-  char* str = (char*)NS_Alloc(len + 1);
+  char* str = (char*)moz_xmalloc(len + 1);
   if (str) {
     memcpy(str, aString, len);
     str[len] = '\0';
@@ -214,71 +214,6 @@ bool
 NS_IsLower(char aChar)
 {
   return aChar != (char)nsLowerUpperUtils::kLower2Upper[(unsigned char)aChar];
-}
-
-bool
-NS_IsAscii(char16_t aChar)
-{
-  return (0x0080 > aChar);
-}
-
-bool
-NS_IsAscii(const char16_t* aString)
-{
-  while (*aString) {
-    if (0x0080 <= *aString) {
-      return false;
-    }
-    aString++;
-  }
-  return true;
-}
-
-bool
-NS_IsAscii(const char* aString)
-{
-  while (*aString) {
-    if (0x80 & *aString) {
-      return false;
-    }
-    aString++;
-  }
-  return true;
-}
-
-bool
-NS_IsAscii(const char* aString, uint32_t aLength)
-{
-  const char* end = aString + aLength;
-  while (aString < end) {
-    if (0x80 & *aString) {
-      return false;
-    }
-    ++aString;
-  }
-  return true;
-}
-
-bool
-NS_IsAsciiAlpha(char16_t aChar)
-{
-  return (aChar >= 'A' && aChar <= 'Z') ||
-         (aChar >= 'a' && aChar <= 'z');
-}
-
-bool
-NS_IsAsciiWhitespace(char16_t aChar)
-{
-  return aChar == ' ' ||
-         aChar == '\r' ||
-         aChar == '\n' ||
-         aChar == '\t';
-}
-
-bool
-NS_IsAsciiDigit(char16_t aChar)
-{
-  return aChar >= '0' && aChar <= '9';
 }
 
 #ifndef XPCOM_GLUE_AVOID_NSPR

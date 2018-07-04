@@ -34,11 +34,6 @@ function dumpLog(msg) {
 
 netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
 
-if (Cc === undefined) {
-  var Cc = Components.classes;
-  var Ci = Components.interfaces;
-}
-
 const FOSTREAM_CID = "@mozilla.org/network/file-output-stream;1";
 const LF_CID = "@mozilla.org/file/local;1";
 
@@ -74,12 +69,12 @@ var MozFileLogger = {};
 MozFileLogger.init = function(path) {
   netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
 
-  MozFileLogger._file = Cc[LF_CID].createInstance(Ci.nsILocalFile);
+  MozFileLogger._file = Cc[LF_CID].createInstance(Ci.nsIFile);
   MozFileLogger._file.initWithPath(path);
   MozFileLogger._foStream = Cc[FOSTREAM_CID].createInstance(Ci.nsIFileOutputStream);
   MozFileLogger._foStream.init(this._file, PR_WRITE_ONLY | PR_CREATE_FILE | PR_APPEND,
                                    0o664, 0);
-}
+};
 
 MozFileLogger.getLogCallback = function() {
   return function(msg) {
@@ -89,11 +84,11 @@ MozFileLogger.getLogCallback = function() {
     if (MozFileLogger._foStream)
       MozFileLogger._foStream.write(data, data.length);
 
-    if (data.indexOf("SimpleTest FINISH") >= 0) {
+    if (data.includes("SimpleTest FINISH")) {
       MozFileLogger.close();
     }
-  }
-}
+  };
+};
 
 // This is only used from chrome space by the reftest harness
 MozFileLogger.log = function(msg) {
@@ -103,7 +98,7 @@ MozFileLogger.log = function(msg) {
     if (MozFileLogger._foStream)
       MozFileLogger._foStream.write(msg, msg.length);
   } catch (ex) {}
-}
+};
 
 MozFileLogger.close = function() {
   if (ipcMode) {
@@ -118,12 +113,12 @@ MozFileLogger.close = function() {
 
   MozFileLogger._foStream = null;
   MozFileLogger._file = null;
-}
+};
 
 try {
-  var prefs = Components.classes["@mozilla.org/preferences-service;1"]
-    .getService(Components.interfaces.nsIPrefBranch2);
-  var filename = prefs.getCharPref("talos.logfile");
+  // ChromeUtils is not available in this scope.
+  // eslint-disable-next-line mozilla/use-chromeutils-import
+  Cu.import("resource://gre/modules/Services.jsm");
+  var filename = Services.prefs.getCharPref("talos.logfile");
   MozFileLogger.init(filename);
 } catch (ex) {} // pref does not exist, return empty string
-

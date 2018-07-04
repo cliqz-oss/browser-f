@@ -7,10 +7,13 @@
 #define mozilla_image_Image_h
 
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/Tuple.h"
 #include "mozilla/TimeStamp.h"
 #include "gfx2DGlue.h"
 #include "imgIContainer.h"
 #include "ImageURL.h"
+#include "ImageContainer.h"
+#include "LookupResult.h"
 #include "nsStringFwd.h"
 #include "ProgressTracker.h"
 #include "SurfaceCache.h"
@@ -33,7 +36,7 @@ struct MemoryCounter
     : mSource(0)
     , mDecodedHeap(0)
     , mDecodedNonHeap(0)
-    , mSharedHandles(0)
+    , mExternalHandles(0)
   { }
 
   void SetSource(size_t aCount) { mSource = aCount; }
@@ -42,15 +45,15 @@ struct MemoryCounter
   size_t DecodedHeap() const { return mDecodedHeap; }
   void SetDecodedNonHeap(size_t aCount) { mDecodedNonHeap = aCount; }
   size_t DecodedNonHeap() const { return mDecodedNonHeap; }
-  void SetSharedHandles(size_t aCount) { mSharedHandles = aCount; }
-  size_t SharedHandles() const { return mSharedHandles; }
+  void SetExternalHandles(size_t aCount) { mExternalHandles = aCount; }
+  size_t ExternalHandles() const { return mExternalHandles; }
 
   MemoryCounter& operator+=(const MemoryCounter& aOther)
   {
     mSource += aOther.mSource;
     mDecodedHeap += aOther.mDecodedHeap;
     mDecodedNonHeap += aOther.mDecodedNonHeap;
-    mSharedHandles += aOther.mSharedHandles;
+    mExternalHandles += aOther.mExternalHandles;
     return *this;
   }
 
@@ -58,7 +61,7 @@ private:
   size_t mSource;
   size_t mDecodedHeap;
   size_t mDecodedNonHeap;
-  size_t mSharedHandles;
+  size_t mExternalHandles;
 };
 
 enum class SurfaceMemoryCounterType
@@ -72,11 +75,15 @@ struct SurfaceMemoryCounter
 {
   SurfaceMemoryCounter(const SurfaceKey& aKey,
                        bool aIsLocked,
+                       bool aCannotSubstitute,
+                       bool aIsFactor2,
                        SurfaceMemoryCounterType aType =
                          SurfaceMemoryCounterType::NORMAL)
     : mKey(aKey)
     , mType(aType)
     , mIsLocked(aIsLocked)
+    , mCannotSubstitute(aCannotSubstitute)
+    , mIsFactor2(aIsFactor2)
   { }
 
   const SurfaceKey& Key() const { return mKey; }
@@ -84,12 +91,16 @@ struct SurfaceMemoryCounter
   const MemoryCounter& Values() const { return mValues; }
   SurfaceMemoryCounterType Type() const { return mType; }
   bool IsLocked() const { return mIsLocked; }
+  bool CannotSubstitute() const { return mCannotSubstitute; }
+  bool IsFactor2() const { return mIsFactor2; }
 
 private:
   const SurfaceKey mKey;
   MemoryCounter mValues;
   const SurfaceMemoryCounterType mType;
   const bool mIsLocked;
+  const bool mCannotSubstitute;
+  const bool mIsFactor2;
 };
 
 struct ImageMemoryCounter
@@ -237,8 +248,7 @@ public:
     return progressTracker.forget();
   }
 
-  void SetProgressTracker(
-                       ProgressTracker* aProgressTracker) override final
+  void SetProgressTracker(ProgressTracker* aProgressTracker) final
   {
     MOZ_ASSERT(aProgressTracker);
     MOZ_ASSERT(!mProgressTracker);
@@ -310,6 +320,11 @@ protected:
 
   void SendOnUnlockedDraw(uint32_t aFlags);
 
+#ifdef DEBUG
+  // Records the image drawing for startup performance testing.
+  void NotifyDrawingObservers();
+#endif
+
   // Member data shared by all implementations of this abstract class
   RefPtr<ProgressTracker>     mProgressTracker;
   RefPtr<ImageURL>            mURI;
@@ -320,6 +335,73 @@ protected:
   bool                          mInitialized:1; // Have we been initalized?
   bool                          mAnimating:1;   // Are we currently animating?
   bool                          mError:1;       // Error handling
+
+  virtual Tuple<ImgDrawResult, gfx::IntSize, RefPtr<gfx::SourceSurface>>
+    GetFrameInternal(const gfx::IntSize& aSize,
+                     const Maybe<SVGImageContext>& aSVGContext,
+                     uint32_t aWhichFrame,
+                     uint32_t aFlags)
+  {
+    return MakeTuple(ImgDrawResult::BAD_IMAGE, aSize,
+                     RefPtr<gfx::SourceSurface>());
+  }
+
+  /**
+   * Calculate the estimated size to use for an image container with the given
+   * parameters. It may not be the same as the given size, and it may not be
+   * the same as the size of the surface in the image container, but it is the
+   * best effort estimate.
+   */
+  virtual gfx::IntSize GetImageContainerSize(layers::LayerManager* aManager,
+                                             const gfx::IntSize& aSize,
+                                             uint32_t aFlags)
+  {
+    return gfx::IntSize(0, 0);
+  }
+
+  already_AddRefed<layers::ImageContainer>
+    GetImageContainerImpl(layers::LayerManager* aManager,
+                          const gfx::IntSize& aSize,
+                          const Maybe<SVGImageContext>& aSVGContext,
+                          uint32_t aFlags);
+
+  void UpdateImageContainer();
+
+  void ReleaseImageContainer();
+
+private:
+  void SetCurrentImage(layers::ImageContainer* aContainer,
+                       gfx::SourceSurface* aSurface,
+                       bool aInTransaction);
+
+  struct ImageContainerEntry {
+    ImageContainerEntry(const gfx::IntSize& aSize,
+                        const Maybe<SVGImageContext>& aSVGContext,
+                        layers::ImageContainer* aContainer,
+                        uint32_t aFlags)
+      : mSize(aSize)
+      , mSVGContext(aSVGContext)
+      , mContainer(aContainer)
+      , mLastDrawResult(ImgDrawResult::NOT_READY)
+      , mFlags(aFlags)
+    { }
+
+    gfx::IntSize                        mSize;
+    Maybe<SVGImageContext>              mSVGContext;
+    // A weak pointer to our ImageContainer, which stays alive only as long as
+    // the layer system needs it.
+    WeakPtr<layers::ImageContainer>     mContainer;
+    // If mContainer is non-null, this contains the ImgDrawResult we obtained
+    // the last time we updated it.
+    ImgDrawResult                          mLastDrawResult;
+    // Cached flags to use for decoding. FLAG_ASYNC_NOTIFY should always be set
+    // but FLAG_HIGH_QUALITY_SCALING may vary.
+    uint32_t                            mFlags;
+  };
+
+  AutoTArray<ImageContainerEntry, 1> mImageContainers;
+  layers::ImageContainer::ProducerID mImageProducerID;
+  layers::ImageContainer::FrameID mLastFrameID;
 };
 
 } // namespace image

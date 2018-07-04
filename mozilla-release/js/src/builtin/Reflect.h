@@ -7,12 +7,14 @@
 #ifndef builtin_Reflect_h
 #define builtin_Reflect_h
 
-#include "jsobj.h"
+#include "vm/JSObject.h"
 
 namespace js {
 
+class GlobalObject;
+
 extern JSObject*
-InitReflect(JSContext* cx, js::HandleObject obj);
+InitReflect(JSContext* cx, js::Handle<GlobalObject*> global);
 
 }
 
@@ -23,6 +25,9 @@ Reflect_getPrototypeOf(JSContext* cx, unsigned argc, Value* vp);
 
 extern MOZ_MUST_USE bool
 Reflect_isExtensible(JSContext* cx, unsigned argc, Value* vp);
+
+extern MOZ_MUST_USE bool
+Reflect_ownKeys(JSContext* cx, unsigned argc, Value* vp);
 
 }
 

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=99: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -48,7 +48,7 @@ VsyncBridgeParent::Open(Endpoint<PVsyncBridgeParent>&& aEndpoint)
 }
 
 mozilla::ipc::IPCResult
-VsyncBridgeParent::RecvNotifyVsync(const TimeStamp& aTimeStamp, const uint64_t& aLayersId)
+VsyncBridgeParent::RecvNotifyVsync(const TimeStamp& aTimeStamp, const LayersId& aLayersId)
 {
   CompositorBridgeParent::NotifyVsync(aTimeStamp, aLayersId);
   return IPC_OK();

@@ -8,6 +8,7 @@ from __future__ import with_statement
 import sys
 import os
 from optparse import OptionParser
+from os import environ as env
 import manifestparser
 import mozprocess
 import mozinfo
@@ -16,6 +17,9 @@ import mozfile
 import mozlog
 
 SCRIPT_DIR = os.path.abspath(os.path.realpath(os.path.dirname(__file__)))
+
+# Export directory js/src for tests that need it.
+env['CPP_UNIT_TESTS_DIR_JS_SRC'] = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 
 
 class CPPUnitTests(object):
@@ -84,7 +88,6 @@ class CPPUnitTests(object):
         """
         Add environment variables likely to be used across all platforms, including remote systems.
         """
-        env["MOZILLA_FIVE_HOME"] = self.xre_path
         env["MOZ_XRE_DIR"] = self.xre_path
         # TODO: switch this to just abort once all C++ unit tests have
         # been fixed to enable crash reporting
@@ -96,7 +99,8 @@ class CPPUnitTests(object):
     def build_environment(self):
         """
         Create and return a dictionary of all the appropriate env variables and values.
-        On a remote system, we overload this to set different values and are missing things like os.environ and PATH.
+        On a remote system, we overload this to set different values and are missing things
+        like os.environ and PATH.
         """
         if not os.path.isdir(self.xre_path):
             raise Exception("xre_path does not exist: %s", self.xre_path)
@@ -154,7 +158,7 @@ class CPPUnitTests(object):
         """
         self.xre_path = xre_path
         self.log = mozlog.get_default_logger()
-        self.log.suite_start(programs)
+        self.log.suite_start(programs, name='cppunittest')
         env = self.build_environment()
         pass_count = 0
         fail_count = 0
@@ -186,7 +190,8 @@ class CPPUnittestOptions(OptionParser):
         self.add_option("--symbols-path",
                         action="store", type="string", dest="symbols_path",
                         default=None,
-                        help="absolute path to directory containing breakpad symbols, or the URL of a zip file containing symbols")
+                        help="absolute path to directory containing breakpad symbols, or "
+                        "the URL of a zip file containing symbols")
         self.add_option("--manifest-path",
                         action="store", type="string", dest="manifest_path",
                         default=None,
@@ -219,9 +224,16 @@ def extract_unittests_from_args(args, environ, manifest_path):
     active_tests = mp.active_tests(exists=False, disabled=False, **environ)
     suffix = '.exe' if mozinfo.isWin else ''
     if binary_path:
-        tests.extend([(os.path.join(binary_path, test['relpath'] + suffix), int(test.get('requesttimeoutfactor', 1))) for test in active_tests])
+        tests.extend([
+            (os.path.join(binary_path, test['relpath'] + suffix),
+             int(test.get('requesttimeoutfactor', 1)))
+            for test in active_tests])
     else:
-        tests.extend([(test['path'] + suffix, int(test.get('requesttimeoutfactor', 1))) for test in active_tests])
+        tests.extend([
+            (test['path'] + suffix,
+             int(test.get('requesttimeoutfactor', 1)))
+            for test in active_tests
+        ])
 
     # skip non-existing tests
     tests = [test for test in tests if os.path.isfile(test[0])]

@@ -13,6 +13,7 @@
 #include "nsString.h"
 #include "nsError.h"
 #include "nsTArray.h"
+#include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
 
 // http version codes
@@ -57,7 +58,7 @@ typedef uint8_t nsHttpVersion;
 //-----------------------------------------------------------------------------
 
 #define NS_HTTP_ALLOW_KEEPALIVE      (1<<0)
-// NS_HTTP_ALLOW_PIPELINING          (1<<1) removed
+#define NS_HTTP_LARGE_KEEPALIVE      (1<<1)
 
 // a transaction with this caps flag will continue to own the connection,
 // preventing it from being reclaimed, even after the transaction completes.
@@ -216,6 +217,14 @@ namespace nsHttp
                                          bool isHttps, bool *weaklyFramed,
                                          bool *isImmutable);
 
+    // Called when an optimization feature affecting active vs background tab load
+    // took place.  Called only on the parent process and only updates
+    // mLastActiveTabLoadOptimizationHit timestamp to now.
+    void NotifyActiveTabLoadOptimization();
+    TimeStamp const GetLastActiveTabLoadOptimizationHit();
+    void SetLastActiveTabLoadOptimizationHit(TimeStamp const &when);
+    bool IsBeforeLastActiveTabLoadOptimization(TimeStamp const &when);
+
     // Declare all atoms
     //
     // The atom names and values are stored in nsHttpAtomList.h and are brought
@@ -257,48 +266,55 @@ class ParsedHeaderPair
 {
 public:
     ParsedHeaderPair(const char *name, int32_t nameLen,
-                     const char *val, int32_t valLen)
-    {
-        if (nameLen > 0) {
-            mName.Rebind(name, name + nameLen);
-        }
-        if (valLen > 0) {
-            mValue.Rebind(val, val + valLen);
-        }
-    }
+                     const char *val, int32_t valLen, bool isQuotedValue);
 
     ParsedHeaderPair(ParsedHeaderPair const &copy)
         : mName(copy.mName)
         , mValue(copy.mValue)
+        , mUnquotedValue(copy.mUnquotedValue)
+        , mIsQuotedValue(copy.mIsQuotedValue)
     {
+        if (mIsQuotedValue) {
+            mValue.Rebind(mUnquotedValue.BeginReading(), mUnquotedValue.Length());
+        }
     }
 
     nsDependentCSubstring mName;
     nsDependentCSubstring mValue;
+
+private:
+    nsCString mUnquotedValue;
+    bool mIsQuotedValue;
+
+    void RemoveQuotedStringEscapes(const char *val, int32_t valLen);
 };
 
 class ParsedHeaderValueList
 {
 public:
-    ParsedHeaderValueList(char *t, uint32_t len);
+    ParsedHeaderValueList(const char *t, uint32_t len, bool allowInvalidValue);
     nsTArray<ParsedHeaderPair> mValues;
 
 private:
-    void ParsePair(char *t, uint32_t len);
-    void Tokenize(char *input, uint32_t inputLen, char **token,
-                  uint32_t *tokenLen, bool *foundEquals, char **next);
+    void ParseNameAndValue(const char *input, bool allowInvalidValue);
 };
 
 class ParsedHeaderValueListList
 {
 public:
-    explicit ParsedHeaderValueListList(const nsCString &txt);
+    // RFC 7231 section 3.2.6 defines the syntax of the header field values.
+    // |allowInvalidValue| indicates whether the rule will be used to check
+    // the input text.
+    // Note that ParsedHeaderValueListList is currently used to parse
+    // Alt-Svc and Server-Timing header. |allowInvalidValue| is set to true
+    // when parsing Alt-Svc for historical reasons.
+    explicit ParsedHeaderValueListList(const nsCString &txt,
+                                       bool allowInvalidValue = true);
     nsTArray<ParsedHeaderValueList> mValues;
 
 private:
     nsCString mFull;
 };
-
 
 } // namespace net
 } // namespace mozilla

@@ -5,10 +5,12 @@
 
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+/* eslint-disable mozilla/use-chromeutils-import */
 
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/SimpleServiceDiscovery.jsm");
+
+Cu.importGlobalProperties(["InspectorUtils"]);
 
 // The chrome window
 var chromeWin;
@@ -58,8 +60,7 @@ add_test(function test_ogg() {
 });
 
 function getButtonByAttribute(aName, aValue) {
-  let domUtil = Cc["@mozilla.org/inspector/dom-utils;1"].getService(Ci.inIDOMUtils);
-  let kids = domUtil.getChildrenForNode(video, true);
+  let kids = InspectorUtils.getChildrenForNode(video, true);
   let videocontrols = kids[1];
   return contentDocument.getAnonymousElementByAttribute(videocontrols, aName, aValue);
 }
@@ -88,7 +89,7 @@ function testLoad() {
 function testPlay(aEvent) {
   video.removeEventListener("play", testPlay);
   let playButton = getButtonByAttribute("class", "playButton");
-  ok(playButton.hasAttribute("paused") == false, "Play button is not paused");
+  ok(!playButton.hasAttribute("paused"), "Play button is not paused");
 
   // Let the video play for 2 seconds, then pause it
   chromeWin.setTimeout(function() {

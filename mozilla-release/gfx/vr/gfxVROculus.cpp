@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -10,14 +11,15 @@
 #include <math.h>
 
 
-#include "prlink.h"
 #include "prenv.h"
 #include "gfxPrefs.h"
 #include "nsString.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/SharedLibrary.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/gfx/DeviceManagerDx.h"
+#include "mozilla/layers/CompositorThread.h"
 #include "ipc/VRLayerParent.h"
 
 #include "mozilla/gfx/Quaternion.h"
@@ -27,8 +29,9 @@
 #include "TextureD3D11.h"
 
 #include "gfxVROculus.h"
+#include "VRManagerParent.h"
+#include "VRThread.h"
 
-#include "mozilla/layers/CompositorThread.h"
 #include "mozilla/dom/GamepadEventTypes.h"
 #include "mozilla/dom/GamepadBinding.h"
 #include "mozilla/Telemetry.h"
@@ -73,6 +76,8 @@ static pfn_ovr_GetTrackerDesc ovr_GetTrackerDesc = nullptr;
 static pfn_ovr_Create ovr_Create = nullptr;
 static pfn_ovr_Destroy ovr_Destroy = nullptr;
 static pfn_ovr_GetSessionStatus ovr_GetSessionStatus = nullptr;
+static pfn_ovr_IsExtensionSupported ovr_IsExtensionSupported = nullptr;
+static pfn_ovr_EnableExtension ovr_EnableExtension = nullptr;
 static pfn_ovr_SetTrackingOriginType ovr_SetTrackingOriginType = nullptr;
 static pfn_ovr_GetTrackingOriginType ovr_GetTrackingOriginType = nullptr;
 static pfn_ovr_RecenterTrackingOrigin ovr_RecenterTrackingOrigin = nullptr;
@@ -102,7 +107,10 @@ static pfn_ovr_CommitTextureSwapChain ovr_CommitTextureSwapChain = nullptr;
 static pfn_ovr_DestroyTextureSwapChain ovr_DestroyTextureSwapChain = nullptr;
 static pfn_ovr_DestroyMirrorTexture ovr_DestroyMirrorTexture = nullptr;
 static pfn_ovr_GetFovTextureSize ovr_GetFovTextureSize = nullptr;
-static pfn_ovr_GetRenderDesc ovr_GetRenderDesc = nullptr;
+static pfn_ovr_GetRenderDesc2 ovr_GetRenderDesc2 = nullptr;
+static pfn_ovr_WaitToBeginFrame ovr_WaitToBeginFrame = nullptr;
+static pfn_ovr_BeginFrame ovr_BeginFrame = nullptr;
+static pfn_ovr_EndFrame ovr_EndFrame = nullptr;
 static pfn_ovr_SubmitFrame ovr_SubmitFrame = nullptr;
 static pfn_ovr_GetPerfStats ovr_GetPerfStats = nullptr;
 static pfn_ovr_ResetPerfStats ovr_ResetPerfStats = nullptr;
@@ -141,7 +149,7 @@ static pfn_ovr_GetMirrorTextureBufferGL ovr_GetMirrorTextureBufferGL = nullptr;
 
 #define OVR_PRODUCT_VERSION 1
 #define OVR_MAJOR_VERSION   1
-#define OVR_MINOR_VERSION   15
+#define OVR_MINOR_VERSION   19
 
 enum class OculusLeftControllerButtonType : uint16_t {
   LThumb,
@@ -197,7 +205,11 @@ VROculusSession::VROculusSession()
   , mSession(nullptr)
   , mInitFlags((ovrInitFlags)0)
   , mTextureSet(nullptr)
-  , mPresenting(false)
+  , mRequestPresentation(false)
+  , mRequestTracking(false)
+  , mDrawBlack(false)
+  , mIsConnected(false)
+  , mIsMounted(false)
 {
 }
 
@@ -211,59 +223,102 @@ VROculusSession::Get()
 bool
 VROculusSession::IsTrackingReady() const
 {
-  return mSession != nullptr;
+  // We should return true only if the HMD is connected and we
+  // are ready for tracking
+  MOZ_ASSERT(!mIsConnected || mSession);
+  return mIsConnected;
 }
 
 bool
-VROculusSession::IsRenderReady() const
+VROculusSession::IsPresentationReady() const
 {
   return !mRenderTargets.IsEmpty();
+}
+
+bool
+VROculusSession::IsMounted() const
+{
+  return mIsMounted;
 }
 
 void
 VROculusSession::StopTracking()
 {
-  Uninitialize(true);
+  if (mRequestTracking) {
+    mRequestTracking = false;
+    Refresh();
+  }
+}
+
+void
+VROculusSession::StartTracking()
+{
+  if (!mRequestTracking) {
+    mRequestTracking = true;
+    Refresh();
+  }
 }
 
 void
 VROculusSession::StartPresentation(const IntSize& aSize)
 {
-  if (!mPresenting) {
-    mPresenting = true;
-    mPresentationSize = aSize;
-    Refresh();
-    mPresentationStart = TimeStamp::Now();
+  if (!mRequestPresentation) {
+    mRequestPresentation = true;
+    mTelemetry.Clear();
+    mTelemetry.mPresentationStart = TimeStamp::Now();
+
+    ovrPerfStats perfStats;
+    if (ovr_GetPerfStats(mSession, &perfStats) == ovrSuccess) {
+      if (perfStats.FrameStatsCount) {
+        mTelemetry.mLastDroppedFrameCount = perfStats.FrameStats[0].AppDroppedFrameCount;
+      }
+    }
   }
+
+  // Update the size, even when we are already presenting.
+  mPresentationSize = aSize;
+  Refresh();
 }
 
 void
 VROculusSession::StopPresentation()
 {
-  if (mPresenting) {
+  if (mRequestPresentation) {
     mLastPresentationEnd = TimeStamp::Now();
-    mPresenting = false;
+    mRequestPresentation = false;
+
+    const TimeDuration duration = mLastPresentationEnd - mTelemetry.mPresentationStart;
     Telemetry::Accumulate(Telemetry::WEBVR_USERS_VIEW_IN, 1);
-    Telemetry::AccumulateTimeDelta(Telemetry::WEBVR_TIME_SPENT_VIEWING_IN_OCULUS,
-                                   mPresentationStart);
+    Telemetry::Accumulate(Telemetry::WEBVR_TIME_SPENT_VIEWING_IN_OCULUS,
+                          duration.ToMilliseconds());
+
+    if (mTelemetry.IsLastDroppedFrameValid() && duration.ToSeconds()) {
+      ovrPerfStats perfStats;
+      if (ovr_GetPerfStats(mSession, &perfStats) == ovrSuccess) {
+        if (perfStats.FrameStatsCount) {
+          const uint32_t droppedFramesPerSec = (perfStats.FrameStats[0].AppDroppedFrameCount -
+                                                mTelemetry.mLastDroppedFrameCount) / duration.ToSeconds();
+          Telemetry::Accumulate(Telemetry::WEBVR_DROPPED_FRAMES_IN_OCULUS, droppedFramesPerSec);
+        }
+      }
+    }
     Refresh();
   }
 }
 
 VROculusSession::~VROculusSession()
 {
-  Uninitialize(true);
+  mSubmitThread = nullptr;
+  Uninitialize();
 }
 
 void
-VROculusSession::Uninitialize(bool aUnloadLib)
+VROculusSession::Uninitialize()
 {
   StopRendering();
   StopSession();
   StopLib();
-  if (aUnloadLib) {
-    UnloadOvrLib();
-  }
+  UnloadOvrLib();
 }
 
 void
@@ -284,6 +339,8 @@ VROculusSession::StopSession()
 {
   if (mSession) {
     ovr_Destroy(mSession);
+    mIsConnected = false;
+    mIsMounted = false;
     mSession = nullptr;
   }
 }
@@ -298,11 +355,25 @@ VROculusSession::StopLib()
 }
 
 void
-VROculusSession::Refresh()
+VROculusSession::Refresh(bool aForceRefresh)
 {
+  // We are waiting for drawing the black layer command for
+  // Compositor thread. Ignore Refresh() calls from other threads.
+  if (mDrawBlack && !aForceRefresh) {
+    return;
+  }
+
+  if (!mRequestTracking) {
+    Uninitialize();
+    return;
+  }
+
   ovrInitFlags flags = (ovrInitFlags)(ovrInit_RequestVersion | ovrInit_MixedRendering);
   bool bInvisible = true;
-  if (mPresenting) {
+  if (!gfxPrefs::VROculusInvisibleEnabled()) {
+    bInvisible = false;
+  }
+  if (mRequestPresentation) {
     bInvisible = false;
   } else if (!mLastPresentationEnd.IsNull()) {
     TimeDuration duration = TimeStamp::Now() - mLastPresentationEnd;
@@ -317,11 +388,28 @@ VROculusSession::Refresh()
       // While we are waiting for either the timeout or a new presentation,
       // fill the HMD with black / no layers.
       if (mSession && mTextureSet) {
+        if (!aForceRefresh) {
+          // VROculusSession didn't start submitting frames yet.
+          // Or, the VR thread has been shut down already.
+          if (!mSubmitThread || !mSubmitThread->IsActive()) {
+            return;
+          }
+          // ovr_SubmitFrame is running at VR Submit thread,
+          // so we post this task to VR Submit thread and let it paint
+          // a black frame.
+          mDrawBlack = true;
+          mSubmitThread->PostTask(NewRunnableMethod<bool>(
+            "gfx::VROculusSession::Refresh",
+            this,
+            &VROculusSession::Refresh, true));
+          return;
+        }
         ovrLayerEyeFov layer;
         memset(&layer, 0, sizeof(layer));
         layer.Header.Type = ovrLayerType_Disabled;
         ovrLayerHeader *layers = &layer.Header;
         ovr_SubmitFrame(mSession, 0, nullptr, &layers, 1);
+        mDrawBlack = false;
       }
     }
   }
@@ -330,18 +418,28 @@ VROculusSession::Refresh()
   }
 
   if (mInitFlags != flags) {
-    Uninitialize(false);
+    Uninitialize();
   }
 
-  Initialize(flags);
+  if(!Initialize(flags)) {
+    // If we fail to initialize, ensure the Oculus libraries
+    // are unloaded, as we can't poll for ovrSessionStatus::ShouldQuit
+    // without an active ovrSession.
+    Uninitialize();
+  }
 
   if (mSession) {
     ovrSessionStatus status;
     if (OVR_SUCCESS(ovr_GetSessionStatus(mSession, &status))) {
+      mIsConnected = status.HmdPresent;
+      mIsMounted = status.HmdMounted;
       if (status.ShouldQuit) {
         mLastShouldQuit = TimeStamp::Now();
-        Uninitialize(true);
+        Uninitialize();
       }
+    } else {
+      mIsConnected = false;
+      mIsMounted = false;
     }
   }
 }
@@ -386,12 +484,12 @@ VROculusSession::Initialize(ovrInitFlags aFlags)
 bool
 VROculusSession::StartRendering()
 {
-  if (!mPresenting) {
+  if (!mRequestPresentation) {
     // Nothing to do if we aren't presenting
     return true;
   }
   if (!mDevice) {
-    mDevice = gfx::DeviceManagerDx::Get()->GetCompositorDevice();
+    mDevice = gfx::DeviceManagerDx::Get()->GetVRDevice();
     if (!mDevice) {
       NS_WARNING("Failed to get a D3D11Device for Oculus");
       return false;
@@ -522,51 +620,52 @@ VROculusSession::LoadOvrLib()
     // Already loaded, early exit
     return true;
   }
-  nsTArray<nsCString> libSearchPaths;
-  nsCString libName;
-  nsCString searchPath;
-
 #if defined(_WIN32)
+  nsTArray<nsString> libSearchPaths;
+  nsString libName;
+  nsString searchPath;
+
   static const char dirSep = '\\';
   static const int pathLen = 260;
   searchPath.SetCapacity(pathLen);
-  int realLen = ::GetSystemDirectoryA(searchPath.BeginWriting(), pathLen);
+  int realLen = ::GetSystemDirectoryW(char16ptr_t(searchPath.BeginWriting()),
+                                      pathLen);
   if (realLen != 0 && realLen < pathLen) {
     searchPath.SetLength(realLen);
     libSearchPaths.AppendElement(searchPath);
   }
   libName.AppendPrintf("LibOVRRT%d_%d.dll", BUILD_BITS, OVR_PRODUCT_VERSION);
-#else
-#error "Unsupported platform!"
-#endif
 
   // search the path/module dir
-  libSearchPaths.InsertElementsAt(0, 1, nsCString());
+  libSearchPaths.InsertElementsAt(0, 1, EmptyString());
 
   // If the env var is present, we override libName
-  if (PR_GetEnv("OVR_LIB_PATH")) {
-    searchPath = PR_GetEnv("OVR_LIB_PATH");
+  if (_wgetenv(L"OVR_LIB_PATH")) {
+    searchPath = _wgetenv(L"OVR_LIB_PATH");
     libSearchPaths.InsertElementsAt(0, 1, searchPath);
   }
 
-  if (PR_GetEnv("OVR_LIB_NAME")) {
-    libName = PR_GetEnv("OVR_LIB_NAME");
+  if (_wgetenv(L"OVR_LIB_NAME")) {
+    libName = _wgetenv(L"OVR_LIB_NAME");
   }
 
   for (uint32_t i = 0; i < libSearchPaths.Length(); ++i) {
-    nsCString& libPath = libSearchPaths[i];
-    nsCString fullName;
+    nsString& libPath = libSearchPaths[i];
+    nsString fullName;
     if (libPath.Length() == 0) {
       fullName.Assign(libName);
     } else {
-      fullName.AppendPrintf("%s%c%s", libPath.BeginReading(), dirSep, libName.BeginReading());
+      fullName.AppendPrintf("%s%c%s", libPath.get(), dirSep, libName.get());
     }
 
-    mOvrLib = PR_LoadLibrary(fullName.BeginReading());
+    mOvrLib = LoadLibraryWithFlags(fullName.get());
     if (mOvrLib) {
       break;
     }
   }
+#else
+#error "Unsupported platform!"
+#endif
 
   if (!mOvrLib) {
     return false;
@@ -589,6 +688,8 @@ VROculusSession::LoadOvrLib()
   REQUIRE_FUNCTION(ovr_Create);
   REQUIRE_FUNCTION(ovr_Destroy);
   REQUIRE_FUNCTION(ovr_GetSessionStatus);
+  REQUIRE_FUNCTION(ovr_IsExtensionSupported);
+  REQUIRE_FUNCTION(ovr_EnableExtension);
   REQUIRE_FUNCTION(ovr_SetTrackingOriginType);
   REQUIRE_FUNCTION(ovr_GetTrackingOriginType);
   REQUIRE_FUNCTION(ovr_RecenterTrackingOrigin);
@@ -618,7 +719,10 @@ VROculusSession::LoadOvrLib()
   REQUIRE_FUNCTION(ovr_DestroyTextureSwapChain);
   REQUIRE_FUNCTION(ovr_DestroyMirrorTexture);
   REQUIRE_FUNCTION(ovr_GetFovTextureSize);
-  REQUIRE_FUNCTION(ovr_GetRenderDesc);
+  REQUIRE_FUNCTION(ovr_GetRenderDesc2);
+  REQUIRE_FUNCTION(ovr_WaitToBeginFrame);
+  REQUIRE_FUNCTION(ovr_BeginFrame);
+  REQUIRE_FUNCTION(ovr_EndFrame);
   REQUIRE_FUNCTION(ovr_SubmitFrame);
   REQUIRE_FUNCTION(ovr_GetPerfStats);
   REQUIRE_FUNCTION(ovr_ResetPerfStats);
@@ -703,51 +807,46 @@ VRDisplayOculus::VRDisplayOculus(VROculusSession* aSession)
   , mEyeHeight(OVR_DEFAULT_EYE_HEIGHT)
 {
   MOZ_COUNT_CTOR_INHERITED(VRDisplayOculus, VRDisplayHost);
-
-  mDisplayInfo.mDisplayName.AssignLiteral("Oculus VR HMD");
-  mDisplayInfo.mIsConnected = true;
-  mDisplayInfo.mIsMounted = false;
+  VRDisplayState& state = mDisplayInfo.mDisplayState;
+  strncpy(state.mDisplayName, "Oculus VR HMD", kVRDisplayNameMaxLen);
+  state.mIsConnected = true;
+  state.mIsMounted = false;
 
   mDesc = ovr_GetHmdDesc(aSession->Get());
 
-  mDisplayInfo.mCapabilityFlags = VRDisplayCapabilityFlags::Cap_None;
+  state.mCapabilityFlags = VRDisplayCapabilityFlags::Cap_None;
   if (mDesc.AvailableTrackingCaps & ovrTrackingCap_Orientation) {
-    mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_Orientation;
-    mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_AngularAcceleration;
+    state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_Orientation;
+    state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_AngularAcceleration;
   }
   if (mDesc.AvailableTrackingCaps & ovrTrackingCap_Position) {
-    mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_Position;
-    mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_LinearAcceleration;
-    mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_StageParameters;
+    state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_Position;
+    state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_LinearAcceleration;
+    state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_StageParameters;
   }
-  mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_External;
-  mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_MountDetection;
-  mDisplayInfo.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_Present;
+  state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_External;
+  state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_MountDetection;
+  state.mCapabilityFlags |= VRDisplayCapabilityFlags::Cap_Present;
 
-  mFOVPort[VRDisplayInfo::Eye_Left] = mDesc.DefaultEyeFov[ovrEye_Left];
-  mFOVPort[VRDisplayInfo::Eye_Right] = mDesc.DefaultEyeFov[ovrEye_Right];
+  mFOVPort[VRDisplayState::Eye_Left] = mDesc.DefaultEyeFov[ovrEye_Left];
+  mFOVPort[VRDisplayState::Eye_Right] = mDesc.DefaultEyeFov[ovrEye_Right];
 
-  mDisplayInfo.mEyeFOV[VRDisplayInfo::Eye_Left] = FromFovPort(mFOVPort[VRDisplayInfo::Eye_Left]);
-  mDisplayInfo.mEyeFOV[VRDisplayInfo::Eye_Right] = FromFovPort(mFOVPort[VRDisplayInfo::Eye_Right]);
+  state.mEyeFOV[VRDisplayState::Eye_Left] = FromFovPort(mFOVPort[VRDisplayState::Eye_Left]);
+  state.mEyeFOV[VRDisplayState::Eye_Right] = FromFovPort(mFOVPort[VRDisplayState::Eye_Right]);
 
   float pixelsPerDisplayPixel = 1.0;
   ovrSizei texSize[2];
 
-  // get eye parameters and create the mesh
-  for (uint32_t eye = 0; eye < VRDisplayInfo::NumEyes; eye++) {
-
-    ovrEyeRenderDesc renderDesc = ovr_GetRenderDesc(mSession->Get(), (ovrEyeType)eye, mFOVPort[eye]);
-
-    // As of Oculus 0.6.0, the HmdToEyeOffset values are correct and don't need to be negated.
-    mDisplayInfo.mEyeTranslation[eye] = Point3D(renderDesc.HmdToEyeOffset.x, renderDesc.HmdToEyeOffset.y, renderDesc.HmdToEyeOffset.z);
-
+  // get eye texture sizes
+  for (uint32_t eye = 0; eye < VRDisplayState::NumEyes; eye++) {
     texSize[eye] = ovr_GetFovTextureSize(mSession->Get(), (ovrEyeType)eye, mFOVPort[eye], pixelsPerDisplayPixel);
   }
 
   // take the max of both for eye resolution
-  mDisplayInfo.mEyeResolution.width = std::max(texSize[VRDisplayInfo::Eye_Left].w, texSize[VRDisplayInfo::Eye_Right].w);
-  mDisplayInfo.mEyeResolution.height = std::max(texSize[VRDisplayInfo::Eye_Left].h, texSize[VRDisplayInfo::Eye_Right].h);
+  state.mEyeResolution.width = std::max(texSize[VRDisplayState::Eye_Left].w, texSize[VRDisplayState::Eye_Right].w);
+  state.mEyeResolution.height = std::max(texSize[VRDisplayState::Eye_Left].h, texSize[VRDisplayState::Eye_Right].h);
 
+  UpdateEyeParameters();
   UpdateStageParameters();
 }
 
@@ -764,44 +863,69 @@ VRDisplayOculus::Destroy()
 }
 
 void
+VRDisplayOculus::UpdateEyeParameters(gfx::Matrix4x4* aHeadToEyeTransforms /* = nullptr */)
+{
+  // Note this must be called every frame, as the IPD adjustment can be changed
+  // by the user during a VR session.
+  for (uint32_t eye = 0; eye < VRDisplayState::NumEyes; eye++) {
+    // As of Oculus 1.17 SDK, we must use the ovr_GetRenderDesc2 function to return the updated
+    // version of ovrEyeRenderDesc.  This is normally done by the Oculus static lib shim, but we
+    // need to do this explicitly as we are loading the Oculus runtime dll directly.
+    ovrEyeRenderDesc renderDesc = ovr_GetRenderDesc2(mSession->Get(), (ovrEyeType)eye, mFOVPort[eye]);
+    VRDisplayState& state = mDisplayInfo.mDisplayState;
+    state.mEyeTranslation[eye].x = renderDesc.HmdToEyePose.Position.x;
+    state.mEyeTranslation[eye].y = renderDesc.HmdToEyePose.Position.y;
+    state.mEyeTranslation[eye].z = renderDesc.HmdToEyePose.Position.z;
+    if (aHeadToEyeTransforms) {
+      Matrix4x4 pose;
+      pose.SetRotationFromQuaternion(gfx::Quaternion(renderDesc.HmdToEyePose.Orientation.x, renderDesc.HmdToEyePose.Orientation.y, renderDesc.HmdToEyePose.Orientation.z, renderDesc.HmdToEyePose.Orientation.w));
+      pose.PreTranslate(renderDesc.HmdToEyePose.Position.x, renderDesc.HmdToEyePose.Position.y, renderDesc.HmdToEyePose.Position.z);
+      pose.Invert();
+      aHeadToEyeTransforms[eye] = pose;
+    }
+  }
+}
+
+void
 VRDisplayOculus::UpdateStageParameters()
 {
   if (!mSession->IsTrackingReady()) {
     return;
   }
+  VRDisplayState& state = mDisplayInfo.mDisplayState;
   ovrVector3f playArea;
   ovrResult res = ovr_GetBoundaryDimensions(mSession->Get(), ovrBoundary_PlayArea, &playArea);
   if (res == ovrSuccess) {
-    mDisplayInfo.mStageSize.width = playArea.x;
-    mDisplayInfo.mStageSize.height = playArea.z;
+    state.mStageSize.width = playArea.x;
+    state.mStageSize.height = playArea.z;
   } else {
     // If we fail, fall back to reasonable defaults.
     // 1m x 1m space
-    mDisplayInfo.mStageSize.width = 1.0f;
-    mDisplayInfo.mStageSize.height = 1.0f;
+    state.mStageSize.width = 1.0f;
+    state.mStageSize.height = 1.0f;
   }
 
   mEyeHeight = ovr_GetFloat(mSession->Get(), OVR_KEY_EYE_HEIGHT, OVR_DEFAULT_EYE_HEIGHT);
 
-  mDisplayInfo.mSittingToStandingTransform._11 = 1.0f;
-  mDisplayInfo.mSittingToStandingTransform._12 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._13 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._14 = 0.0f;
+  state.mSittingToStandingTransform[0] = 1.0f;
+  state.mSittingToStandingTransform[1] = 0.0f;
+  state.mSittingToStandingTransform[2] = 0.0f;
+  state.mSittingToStandingTransform[3] = 0.0f;
 
-  mDisplayInfo.mSittingToStandingTransform._21 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._22 = 1.0f;
-  mDisplayInfo.mSittingToStandingTransform._23 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._24 = 0.0f;
+  state.mSittingToStandingTransform[4] = 0.0f;
+  state.mSittingToStandingTransform[5] = 1.0f;
+  state.mSittingToStandingTransform[6] = 0.0f;
+  state.mSittingToStandingTransform[7] = 0.0f;
 
-  mDisplayInfo.mSittingToStandingTransform._31 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._32 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._33 = 1.0f;
-  mDisplayInfo.mSittingToStandingTransform._34 = 0.0f;
+  state.mSittingToStandingTransform[8] = 0.0f;
+  state.mSittingToStandingTransform[9] = 0.0f;
+  state.mSittingToStandingTransform[10] = 1.0f;
+  state.mSittingToStandingTransform[11] = 0.0f;
 
-  mDisplayInfo.mSittingToStandingTransform._41 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._42 = mEyeHeight;
-  mDisplayInfo.mSittingToStandingTransform._43 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._44 = 1.0f;
+  state.mSittingToStandingTransform[12] = 0.0f;
+  state.mSittingToStandingTransform[13] = mEyeHeight;
+  state.mSittingToStandingTransform[14] = 0.0f;
+  state.mSittingToStandingTransform[15] = 1.0f;
 }
 
 void
@@ -817,8 +941,10 @@ VRDisplayOculus::ZeroSensor()
 VRHMDSensorState
 VRDisplayOculus::GetSensorState()
 {
-  VRHMDSensorState result;
+  VRHMDSensorState result{};
   if (mSession->IsTrackingReady()) {
+    gfx::Matrix4x4 headToEyeTransforms[2];
+    UpdateEyeParameters(headToEyeTransforms);
     double predictedFrameTime = 0.0f;
     if (gfxPrefs::VRPosePredictionEnabled()) {
       // XXX We might need to call ovr_GetPredictedDisplayTime even if we don't use the result.
@@ -826,17 +952,18 @@ VRDisplayOculus::GetSensorState()
       predictedFrameTime = ovr_GetPredictedDisplayTime(mSession->Get(), 0);
     }
     result = GetSensorState(predictedFrameTime);
+    result.position[1] -= mEyeHeight;
+    result.CalcViewMatrices(headToEyeTransforms);
   }
   result.inputFrameID = mDisplayInfo.mFrameId;
-  result.position[1] -= mEyeHeight;
-  mDisplayInfo.mLastSensorState[result.inputFrameID % kVRMaxLatencyFrames] = result;
+
   return result;
 }
 
 VRHMDSensorState
 VRDisplayOculus::GetSensorState(double absTime)
 {
-  VRHMDSensorState result;
+  VRHMDSensorState result{};
 
   ovrTrackingState state = ovr_GetTrackingState(mSession->Get(), absTime, true);
   ovrPoseStatef& pose(state.HeadPose);
@@ -850,7 +977,7 @@ VRDisplayOculus::GetSensorState(double absTime)
     result.orientation[1] = pose.ThePose.Orientation.y;
     result.orientation[2] = pose.ThePose.Orientation.z;
     result.orientation[3] = pose.ThePose.Orientation.w;
-    
+
     result.angularVelocity[0] = pose.AngularVelocity.x;
     result.angularVelocity[1] = pose.AngularVelocity.y;
     result.angularVelocity[2] = pose.AngularVelocity.z;
@@ -860,6 +987,9 @@ VRDisplayOculus::GetSensorState(double absTime)
     result.angularAcceleration[0] = pose.AngularAcceleration.x;
     result.angularAcceleration[1] = pose.AngularAcceleration.y;
     result.angularAcceleration[2] = pose.AngularAcceleration.z;
+  } else {
+    // default to an identity quaternion
+    result.orientation[3] = 1.0f;
   }
 
   if (state.StatusFlags & ovrStatus_PositionTracked) {
@@ -868,7 +998,7 @@ VRDisplayOculus::GetSensorState(double absTime)
     result.position[0] = pose.ThePose.Position.x;
     result.position[1] = pose.ThePose.Position.y;
     result.position[2] = pose.ThePose.Position.z;
-    
+
     result.linearVelocity[0] = pose.LinearVelocity.x;
     result.linearVelocity[1] = pose.LinearVelocity.y;
     result.linearVelocity[2] = pose.LinearVelocity.z;
@@ -889,25 +1019,12 @@ VRDisplayOculus::GetSensorState(double absTime)
 void
 VRDisplayOculus::StartPresentation()
 {
-  mSession->StartPresentation(IntSize(mDisplayInfo.mEyeResolution.width * 2, mDisplayInfo.mEyeResolution.height));
-  if (!mSession->IsRenderReady()) {
+  if (!CreateD3DObjects()) {
     return;
   }
-
-  if (!mDevice) {
-    mDevice = gfx::DeviceManagerDx::Get()->GetCompositorDevice();
-    if (!mDevice) {
-      NS_WARNING("Failed to get a D3D11Device for Oculus");
-      return;
-    }
-  }
-
-  if (!mContext) {
-    mDevice->GetImmediateContext(getter_AddRefs(mContext));
-    if (!mContext) {
-      NS_WARNING("Failed to get immediate context for Oculus");
-      return;
-    }
+  mSession->StartPresentation(IntSize(mDisplayInfo.mDisplayState.mEyeResolution.width * 2, mDisplayInfo.mDisplayState.mEyeResolution.height));
+  if (!mSession->IsPresentationReady()) {
+    return;
   }
 
   if (!mQuadVS) {
@@ -1022,12 +1139,22 @@ VRDisplayOculus::UpdateConstantBuffers()
 }
 
 bool
-VRDisplayOculus::SubmitFrame(TextureSourceD3D11* aSource,
-  const IntSize& aSize,
-  const gfx::Rect& aLeftEyeRect,
-  const gfx::Rect& aRightEyeRect)
+VRDisplayOculus::SubmitFrame(ID3D11Texture2D* aSource,
+                             const IntSize& aSize,
+                             const gfx::Rect& aLeftEyeRect,
+                             const gfx::Rect& aRightEyeRect)
 {
-  if (!mSession->IsRenderReady() || !mDevice || !mContext) {
+  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
+  if (!CreateD3DObjects()) {
+    return false;
+  }
+
+  AutoRestoreRenderState restoreState(this);
+  if (!restoreState.IsSuccess()) {
+    return false;
+  }
+
+  if (!mSession->IsPresentationReady()) {
     return false;
   }
   /**
@@ -1086,12 +1213,15 @@ VRDisplayOculus::SubmitFrame(TextureSourceD3D11* aSource,
   mContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
   mContext->VSSetShader(mQuadVS, nullptr, 0);
   mContext->PSSetShader(mQuadPS, nullptr, 0);
-  ID3D11ShaderResourceView* srView = aSource->GetShaderResourceView();
-  if (!srView) {
-    NS_WARNING("Failed to get SRV for Oculus");
+
+  RefPtr<ID3D11ShaderResourceView> srView;
+  HRESULT hr = mDevice->CreateShaderResourceView(aSource, nullptr, getter_AddRefs(srView));
+  if (FAILED(hr)) {
+    gfxWarning() << "Could not create shader resource view for Oculus: " << hexa(hr);
     return false;
   }
-  mContext->PSSetShaderResources(0 /* 0 == TexSlot::RGB */, 1, &srView);
+  ID3D11ShaderResourceView* viewPtr = srView.get();
+  mContext->PSSetShaderResources(0 /* 0 == TexSlot::RGB */, 1, &viewPtr);
   // XXX Use Constant from TexSlot in CompositorD3D11.cpp?
 
   ID3D11SamplerState *sampler = mLinearSamplerState;
@@ -1118,36 +1248,34 @@ VRDisplayOculus::SubmitFrame(TextureSourceD3D11* aSource,
   layer.ColorTexture[1] = nullptr;
   layer.Fov[0] = mFOVPort[0];
   layer.Fov[1] = mFOVPort[1];
-  layer.Viewport[0].Pos.x = aSize.width * aLeftEyeRect.x;
-  layer.Viewport[0].Pos.y = aSize.height * aLeftEyeRect.y;
-  layer.Viewport[0].Size.w = aSize.width * aLeftEyeRect.width;
-  layer.Viewport[0].Size.h = aSize.height * aLeftEyeRect.height;
-  layer.Viewport[1].Pos.x = aSize.width * aRightEyeRect.x;
-  layer.Viewport[1].Pos.y = aSize.height * aRightEyeRect.y;
-  layer.Viewport[1].Size.w = aSize.width * aRightEyeRect.width;
-  layer.Viewport[1].Size.h = aSize.height * aRightEyeRect.height;
-
-  const Point3D& l = mDisplayInfo.mEyeTranslation[0];
-  const Point3D& r = mDisplayInfo.mEyeTranslation[1];
-  const ovrVector3f hmdToEyeViewOffset[2] = { { l.x, l.y, l.z },
-                                              { r.x, r.y, r.z } };
+  layer.Viewport[0].Pos.x = aSize.width * aLeftEyeRect.X();
+  layer.Viewport[0].Pos.y = aSize.height * aLeftEyeRect.Y();
+  layer.Viewport[0].Size.w = aSize.width * aLeftEyeRect.Width();
+  layer.Viewport[0].Size.h = aSize.height * aLeftEyeRect.Height();
+  layer.Viewport[1].Pos.x = aSize.width * aRightEyeRect.X();
+  layer.Viewport[1].Pos.y = aSize.height * aRightEyeRect.Y();
+  layer.Viewport[1].Size.w = aSize.width * aRightEyeRect.Width();
+  layer.Viewport[1].Size.h = aSize.height * aRightEyeRect.Height();
 
   const VRHMDSensorState& sensorState = mDisplayInfo.GetSensorState();
+  gfx::Matrix4x4 matView[2];
+  memcpy(matView[0].components, sensorState.leftViewMatrix, sizeof(sensorState.leftViewMatrix));
+  memcpy(matView[1].components, sensorState.rightViewMatrix, sizeof(sensorState.rightViewMatrix));
 
   for (uint32_t i = 0; i < 2; ++i) {
-    Quaternion o(sensorState.orientation[0],
-      sensorState.orientation[1],
-      sensorState.orientation[2],
-      sensorState.orientation[3]);
-    Point3D vo(hmdToEyeViewOffset[i].x, hmdToEyeViewOffset[i].y, hmdToEyeViewOffset[i].z);
-    Point3D p = o.RotatePoint(vo);
-    layer.RenderPose[i].Orientation.x = o.x;
-    layer.RenderPose[i].Orientation.y = o.y;
-    layer.RenderPose[i].Orientation.z = o.z;
-    layer.RenderPose[i].Orientation.w = o.w;
-    layer.RenderPose[i].Position.x = p.x + sensorState.position[0];
-    layer.RenderPose[i].Position.y = p.y + sensorState.position[1];
-    layer.RenderPose[i].Position.z = p.z + sensorState.position[2];
+    Point3D eyeTranslation;
+    Quaternion eyeRotation;
+    Point3D eyeScale;
+    if (!matView[i].Decompose(eyeTranslation, eyeRotation, eyeScale)) {
+      NS_WARNING("Failed to decompose eye pose matrix for Oculus");
+    }
+    layer.RenderPose[i].Orientation.x = eyeRotation.x;
+    layer.RenderPose[i].Orientation.y = eyeRotation.y;
+    layer.RenderPose[i].Orientation.z = eyeRotation.z;
+    layer.RenderPose[i].Orientation.w = eyeRotation.w;
+    layer.RenderPose[i].Position.x = eyeTranslation.x;
+    layer.RenderPose[i].Position.y = eyeTranslation.y;
+    layer.RenderPose[i].Position.z = eyeTranslation.z;
   }
 
   ovrLayerHeader *layers = &layer.Header;
@@ -1167,22 +1295,15 @@ VRDisplayOculus::SubmitFrame(TextureSourceD3D11* aSource,
     return false;
   }
 
+  mSession->mSubmitThread = mSubmitThread;
   return true;
 }
 
 void
-VRDisplayOculus::NotifyVSync()
+VRDisplayOculus::Refresh()
 {
-  mSession->Refresh();
-  if (mSession->IsTrackingReady()) {
-    ovrSessionStatus sessionStatus;
-    ovrResult ovr = ovr_GetSessionStatus(mSession->Get(), &sessionStatus);
-    mDisplayInfo.mIsConnected = (ovr == ovrSuccess && sessionStatus.HmdPresent);
-  } else {
-    mDisplayInfo.mIsConnected = false;
-  }
-
-  VRDisplayHost::NotifyVSync();
+  mDisplayInfo.mDisplayState.mIsConnected = mSession->IsTrackingReady();
+  mDisplayInfo.mDisplayState.mIsMounted = mSession->IsMounted();
 }
 
 VRControllerOculus::VRControllerOculus(dom::GamepadHand aHand, uint32_t aDisplayID)
@@ -1193,6 +1314,8 @@ VRControllerOculus::VRControllerOculus(dom::GamepadHand aHand, uint32_t aDisplay
   , mIsVibrateStopped(false)
 {
   MOZ_COUNT_CTOR_INHERITED(VRControllerOculus, VRControllerHost);
+
+  VRControllerState& state = mControllerInfo.mControllerState;
 
   char* touchID = "";
   switch (aHand) {
@@ -1206,17 +1329,18 @@ VRControllerOculus::VRControllerOculus(dom::GamepadHand aHand, uint32_t aDisplay
       MOZ_ASSERT(false);
       break;
   }
-  mControllerInfo.mControllerName = touchID;
+
+  strncpy(state.mControllerName, touchID, kVRControllerNameMaxLen);
 
   MOZ_ASSERT(kNumOculusButton ==
              static_cast<uint32_t>(OculusLeftControllerButtonType::NumButtonType)
              && kNumOculusButton ==
              static_cast<uint32_t>(OculusRightControllerButtonType::NumButtonType));
 
-  mControllerInfo.mNumButtons = kNumOculusButton;
-  mControllerInfo.mNumAxes = static_cast<uint32_t>(
-                             OculusControllerAxisType::NumVRControllerAxisType);
-  mControllerInfo.mNumHaptics = kNumOculusHaptcs;
+  state.mNumButtons = kNumOculusButton;
+  state.mNumAxes = static_cast<uint32_t>(
+                   OculusControllerAxisType::NumVRControllerAxisType);
+  state.mNumHaptics = kNumOculusHaptcs;
 }
 
 float
@@ -1257,6 +1381,7 @@ VRControllerOculus::SetHandTrigger(float aValue)
 
 VRControllerOculus::~VRControllerOculus()
 {
+  ShutdownVibrateHapticThread();
   MOZ_COUNT_DTOR_INHERITED(VRControllerOculus, VRControllerHost);
 }
 
@@ -1266,19 +1391,19 @@ VRControllerOculus::UpdateVibrateHaptic(ovrSession aSession,
                                         double aIntensity,
                                         double aDuration,
                                         uint64_t aVibrateIndex,
-                                        uint32_t aPromiseID)
+                                        const VRManagerPromise& aPromise)
 {
   // UpdateVibrateHaptic() only can be called by mVibrateThread
-  MOZ_ASSERT(mVibrateThread == NS_GetCurrentThread());
+  MOZ_ASSERT(mVibrateThread->GetThread() == NS_GetCurrentThread());
 
   // It has been interrupted by loss focus.
   if (mIsVibrateStopped) {
-    VibrateHapticComplete(aSession, aPromiseID, true);
+    VibrateHapticComplete(aSession, aPromise, true);
     return;
   }
   // Avoid the previous vibrate event to override the new one.
   if (mVibrateIndex != aVibrateIndex) {
-    VibrateHapticComplete(aSession, aPromiseID, false);
+    VibrateHapticComplete(aSession, aPromise, false);
     return;
   }
 
@@ -1323,19 +1448,19 @@ VRControllerOculus::UpdateVibrateHaptic(ovrSession aSession,
     MOZ_ASSERT(mVibrateThread);
 
     RefPtr<Runnable> runnable =
-      NewRunnableMethod<ovrSession, uint32_t, double, double, uint64_t, uint32_t>(
-        "VRControllerOculus::UpdateVibrateHaptic",
-        this, &VRControllerOculus::UpdateVibrateHaptic, aSession,
-        aHapticIndex, aIntensity, (duration > kVibrateRate) ? remainingTime : 0, aVibrateIndex, aPromiseID);
-    NS_DelayedDispatchToCurrentThread(runnable.forget(),
-                                      (duration > kVibrateRate) ? kVibrateRate : remainingTime);
+      NewRunnableMethod<ovrSession, uint32_t, double, double, uint64_t,
+        StoreCopyPassByConstLRef<VRManagerPromise>>(
+          "VRControllerOculus::UpdateVibrateHaptic",
+          this, &VRControllerOculus::UpdateVibrateHaptic, aSession,
+          aHapticIndex, aIntensity, (duration > kVibrateRate) ? remainingTime : 0, aVibrateIndex, aPromise);
+    mVibrateThread->PostDelayedTask(runnable.forget(), (duration > kVibrateRate) ? kVibrateRate : remainingTime);
   } else {
-    VibrateHapticComplete(aSession, aPromiseID, true);
+    VibrateHapticComplete(aSession, aPromise, true);
   }
 }
 
 void
-VRControllerOculus::VibrateHapticComplete(ovrSession aSession, uint32_t aPromiseID,
+VRControllerOculus::VibrateHapticComplete(ovrSession aSession, const VRManagerPromise& aPromise,
                                           bool aStop)
 {
   if (aStop) {
@@ -1363,9 +1488,10 @@ VRControllerOculus::VibrateHapticComplete(ovrSession aSession, uint32_t aPromise
   VRManager *vm = VRManager::Get();
   MOZ_ASSERT(vm);
 
-  CompositorThreadHolder::Loop()->PostTask(NewRunnableMethod<uint32_t>(
-                                             "VRManager::NotifyVibrateHapticCompleted",
-                                             vm, &VRManager::NotifyVibrateHapticCompleted, aPromiseID));
+  VRListenerThreadHolder::Loop()->PostTask(
+    NewRunnableMethod<StoreCopyPassByConstLRef<VRManagerPromise>>(
+      "VRManager::NotifyVibrateHapticCompleted",
+      vm, &VRManager::NotifyVibrateHapticCompleted, aPromise));
 }
 
 void
@@ -1373,32 +1499,39 @@ VRControllerOculus::VibrateHaptic(ovrSession aSession,
                                   uint32_t aHapticIndex,
                                   double aIntensity,
                                   double aDuration,
-                                  uint32_t aPromiseID)
+                                  const VRManagerPromise& aPromise)
 {
   // Spinning up the haptics thread at the first haptics call.
   if (!mVibrateThread) {
-    nsresult rv = NS_NewThread(getter_AddRefs(mVibrateThread));
-    MOZ_ASSERT(mVibrateThread);
-
-    if (NS_FAILED(rv)) {
-      MOZ_ASSERT(false, "Failed to create async thread.");
-    }
+    mVibrateThread = new VRThread(NS_LITERAL_CSTRING("Oculus_Vibration"));
   }
+  mVibrateThread->Start();
   ++mVibrateIndex;
   mIsVibrateStopped = false;
 
   RefPtr<Runnable> runnable =
-       NewRunnableMethod<ovrSession, uint32_t, double, double, uint64_t, uint32_t>
-         ("VRControllerOculus::UpdateVibrateHaptic",
-          this, &VRControllerOculus::UpdateVibrateHaptic, aSession,
-          aHapticIndex, aIntensity, aDuration, mVibrateIndex, aPromiseID);
-  mVibrateThread->Dispatch(runnable.forget(), NS_DISPATCH_NORMAL);
+    NewRunnableMethod<ovrSession, uint32_t, double, double, uint64_t,
+      StoreCopyPassByConstLRef<VRManagerPromise>>(
+        "VRControllerOculus::UpdateVibrateHaptic",
+        this, &VRControllerOculus::UpdateVibrateHaptic, aSession,
+        aHapticIndex, aIntensity, aDuration, mVibrateIndex, aPromise);
+  mVibrateThread->PostTask(runnable.forget());
 }
 
 void
 VRControllerOculus::StopVibrateHaptic()
 {
   mIsVibrateStopped = true;
+}
+
+void
+VRControllerOculus::ShutdownVibrateHapticThread()
+{
+  StopVibrateHaptic();
+  if (mVibrateThread) {
+    mVibrateThread->Shutdown();
+    mVibrateThread = nullptr;
+  }
 }
 
 /*static*/ already_AddRefed<VRSystemManagerOculus>
@@ -1440,37 +1573,74 @@ VRSystemManagerOculus::Shutdown()
   mDisplay = nullptr;
 }
 
+void
+VRSystemManagerOculus::NotifyVSync()
+{
+  VRSystemManager::NotifyVSync();
+  if (!mSession) {
+    return;
+  }
+  mSession->Refresh();
+  if (mDisplay) {
+    mDisplay->Refresh();
+  }
+  // Detect disconnection
+  if (!mSession->IsTrackingReady()) {
+    // No HMD connected
+    mDisplay = nullptr;
+    // Prevent enumeration from continuously running
+    // after the headset is disconnected.
+    mSession->StopTracking();
+  }
+}
+
 bool
-VRSystemManagerOculus::GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult)
+VRSystemManagerOculus::ShouldInhibitEnumeration()
+{
+  if (VRSystemManager::ShouldInhibitEnumeration()) {
+    return true;
+  }
+  if (mDisplay) {
+    // When we find an Oculus VR device, don't
+    // allow any further enumeration as it
+    // may get picked up redundantly by other
+    // API's such as OpenVR.
+    return true;
+  }
+  if (mSession && mSession->IsQuitTimeoutActive()) {
+    // When we are responding to ShouldQuit, we return true here
+    // to prevent further enumeration by other VRSystemManager's such as
+    // VRSystemManagerOpenVR which would also enumerate the connected Oculus
+    // HMD, resulting in interference with the Oculus runtime software updates.
+    return true;
+  }
+  return false;
+}
+
+void
+VRSystemManagerOculus::Enumerate()
 {
   if (!mSession) {
     mSession = new VROculusSession();
   }
-  mSession->Refresh();
-  if (mSession->IsQuitTimeoutActive()) {
-    // We have responded to a ShouldQuit flag set by the Oculus runtime
-    // and are waiting for a timeout duration to elapse before allowing
-    // re-initialization of the Oculus OVR lib.  We return true in this case
-    // to prevent further enumeration by other VRSystemManager's such as
-    // VRSystemManagerOpenVR which would also enumerate the connected Oculus
-    // HMD, resulting in interference with the Oculus runtime software updates.
-    mDisplay = nullptr;
-    return true;
-  }
-
-  if (!mSession->IsTrackingReady()) {
-    // No HMD connected.
-    mDisplay = nullptr;
-  } else if (mDisplay == nullptr) {
+  mSession->StartTracking();
+  if (mDisplay == nullptr && mSession->IsTrackingReady()) {
     // HMD Detected
     mDisplay = new VRDisplayOculus(mSession);
   }
+  if (mDisplay == nullptr) {
+    // Prevent enumeration from continuously running
+    // when a headset was not found.
+    mSession->StopTracking();
+  }
+}
 
+void
+VRSystemManagerOculus::GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult)
+{
   if (mDisplay) {
     aHMDResult.AppendElement(mDisplay);
-    return true;
   }
-  return false;
 }
 
 bool
@@ -1727,18 +1897,19 @@ VRSystemManagerOculus::VibrateHaptic(uint32_t aControllerIdx,
                                      uint32_t aHapticIndex,
                                      double aIntensity,
                                      double aDuration,
-                                     uint32_t aPromiseID)
+                                     const VRManagerPromise& aPromise)
 {
   // The session is available after VRDisplay is created
   // at GetHMDs().
-  if (!mSession || !mSession->IsTrackingReady()) {
+  if (!mSession || !mSession->IsTrackingReady() ||
+      (aControllerIdx >= mOculusController.Length())) {
     return;
   }
 
   RefPtr<impl::VRControllerOculus> controller = mOculusController[aControllerIdx];
   MOZ_ASSERT(controller);
 
-  controller->VibrateHaptic(mSession->Get(), aHapticIndex, aIntensity, aDuration, aPromiseID);
+  controller->VibrateHaptic(mSession->Get(), aHapticIndex, aIntensity, aDuration, aPromise);
 }
 
 void
@@ -1838,6 +2009,7 @@ VRSystemManagerOculus::RemoveControllers()
 {
   // controller count is changed, removing the existing gamepads first.
   for (uint32_t i = 0; i < mOculusController.Length(); ++i) {
+    mOculusController[i]->ShutdownVibrateHapticThread();
     RemoveGamepad(i);
   }
 

@@ -14,6 +14,7 @@ namespace mozilla { namespace pkix { struct CertPolicyId; } }
 namespace mozilla { namespace psm {
 
 nsresult LoadExtendedValidationInfo();
+
 /**
  * Finds the first policy OID in the given cert that is known to be an EV policy
  * OID.

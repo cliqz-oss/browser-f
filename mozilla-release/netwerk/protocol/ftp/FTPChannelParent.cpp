@@ -152,7 +152,7 @@ FTPChannelParent::DoAsyncOpen(const URIParams& aURI,
 
   nsCOMPtr<nsIChannel> chan;
   rv = NS_NewChannelInternal(getter_AddRefs(chan), uri, loadInfo,
-                             nullptr, nullptr,
+                             nullptr, nullptr, nullptr,
                              nsIRequest::LOAD_NORMAL, ios);
 
   if (NS_FAILED(rv))
@@ -254,7 +254,7 @@ public:
   {
   }
 
-  void Run()
+  void Run() override
   {
     mParent->DivertOnDataAvailable(mData, mOffset, mCount);
   }
@@ -341,7 +341,8 @@ public:
   {
   }
 
-  void Run() {
+  void Run() override
+  {
     mParent->DivertOnStopRequest(mStatusCode);
   }
 
@@ -399,7 +400,8 @@ public:
   {
   }
 
-  void Run() {
+  void Run() override
+  {
     mParent->DivertComplete();
   }
 
@@ -460,10 +462,13 @@ FTPChannelParent::OnStartRequest(nsIRequest* aRequest, nsISupports* aContext)
 
   // Send down any permissions which are relevant to this URL if we are
   // performing a document load.
-  PContentParent* pcp = Manager()->Manager();
-  DebugOnly<nsresult> rv =
-    static_cast<ContentParent*>(pcp)->AboutToLoadHttpFtpWyciwygDocumentForChild(chan);
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
+  if (!mIPCClosed) {
+    PContentParent* pcp = Manager()->Manager();
+    MOZ_ASSERT(pcp, "We should have a manager if our IPC isn't closed");
+    DebugOnly<nsresult> rv =
+      static_cast<ContentParent*>(pcp)->AboutToLoadHttpFtpWyciwygDocumentForChild(chan);
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+  }
 
   int64_t contentLength;
   chan->GetContentLength(&contentLength);
@@ -484,8 +489,7 @@ FTPChannelParent::OnStartRequest(nsIRequest* aRequest, nsISupports* aContext)
   }
   nsCOMPtr<nsIHttpChannelInternal> httpChan = do_QueryInterface(aRequest);
   if (httpChan) {
-    DebugOnly<nsresult> rv = httpChan->GetLastModifiedTime(&lastModified);
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
+    Unused << httpChan->GetLastModifiedTime(&lastModified);
   }
 
   URIParams uriparam;
@@ -581,7 +585,7 @@ FTPChannelParent::NotifyTrackingResource()
 NS_IMETHODIMP
 FTPChannelParent::SetClassifierMatchedInfo(const nsACString& aList,
                                            const nsACString& aProvider,
-                                           const nsACString& aPrefix)
+                                           const nsACString& aFullHash)
 {
   // One day, this should probably be filled in.
   return NS_OK;
@@ -635,9 +639,8 @@ FTPChannelParent::SuspendChannel()
     do_QueryInterface(mChannel);
   if (chan) {
     return chan->SuspendInternal();
-  } else {
-    return mChannel->Suspend();
   }
+  return mChannel->Suspend();
 }
 
 nsresult
@@ -647,9 +650,8 @@ FTPChannelParent::ResumeChannel()
     do_QueryInterface(mChannel);
   if (chan) {
     return chan->ResumeInternal();
-  } else {
-    return mChannel->Resume();
   }
+  return mChannel->Resume();
 }
 
 //-----------------------------------------------------------------------------
@@ -732,6 +734,15 @@ FTPChannelParent::ResumeMessageDiversion()
 {
   // This only need to resumes message queue.
   mEventQ->Resume();
+  return NS_OK;
+}
+
+nsresult
+FTPChannelParent::CancelDiversion()
+{
+  // Only HTTP channels can have child-process-sourced-data that's long-lived
+  // so this isn't currently relevant for FTP channels and there is nothing to
+  // do.
   return NS_OK;
 }
 
@@ -919,4 +930,3 @@ FTPChannelParent::SetErrorMsg(const char *aMsg, bool aUseUTF8)
 //---------------------
 } // namespace net
 } // namespace mozilla
-

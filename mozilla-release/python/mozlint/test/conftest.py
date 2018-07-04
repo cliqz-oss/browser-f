@@ -2,8 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import os
 import sys
+from argparse import Namespace
 
 import pytest
 
@@ -16,7 +19,19 @@ here = os.path.abspath(os.path.dirname(__file__))
 @pytest.fixture
 def lint(request):
     lintargs = getattr(request.module, 'lintargs', {})
-    return LintRoller(root=here, **lintargs)
+    lint = LintRoller(root=here, **lintargs)
+
+    # Add a few super powers to our lint instance
+    def mock_vcs(files):
+        def _fake_vcs_files(*args, **kwargs):
+            return files
+
+        setattr(lint.vcs, 'get_changed_files', _fake_vcs_files)
+        setattr(lint.vcs, 'get_outgoing_files', _fake_vcs_files)
+
+    setattr(lint, 'vcs', Namespace())
+    setattr(lint, 'mock_vcs', mock_vcs)
+    return lint
 
 
 @pytest.fixture(scope='session')
@@ -40,6 +55,6 @@ def lintdir():
 
 @pytest.fixture(scope='module')
 def linters(lintdir, request):
-    suffix_filter = getattr(request.module, 'linters', ['.lint.py'])
+    suffix_filter = getattr(request.module, 'linters', ['.yml'])
     return [os.path.join(lintdir, p) for p in os.listdir(lintdir)
             if any(p.endswith(suffix) for suffix in suffix_filter)]

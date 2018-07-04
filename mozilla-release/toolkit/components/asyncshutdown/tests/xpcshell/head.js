@@ -2,13 +2,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
-var Cu = Components.utils;
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AsyncShutdown.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
 var asyncShutdownService = Cc["@mozilla.org/async-shutdown-service;1"].
   getService(Ci.nsIAsyncShutdownService);
@@ -160,13 +155,13 @@ function get_exn(f) {
 }
 
 function do_check_exn(exn, constructor) {
-  do_check_neq(exn, null);
+  Assert.notEqual(exn, null);
   if (exn.name == constructor) {
-    do_check_eq(exn.constructor.name, constructor);
+    Assert.equal(exn.constructor.name, constructor);
     return;
   }
-  do_print("Wrong error constructor");
-  do_print(exn.constructor.name);
-  do_print(exn.stack);
-  do_check_true(false);
+  info("Wrong error constructor");
+  info(exn.constructor.name);
+  info(exn.stack);
+  Assert.ok(false);
 }

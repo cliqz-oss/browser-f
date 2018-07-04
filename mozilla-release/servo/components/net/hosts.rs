@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use parse_hosts::HostsFile;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Mutex;
 
 lazy_static! {
@@ -16,22 +15,13 @@ lazy_static! {
 }
 
 fn create_host_table() -> Option<HashMap<String, IpAddr>> {
-    // TODO: handle bad file path
-    let path = match env::var("HOST_FILE") {
-        Ok(host_file_path) => host_file_path,
-        Err(_) => return None,
-    };
+    let path = env::var_os("HOST_FILE")?;
 
-    let mut file = match File::open(&path) {
-        Ok(f) => BufReader::new(f),
-        Err(_) => return None,
-    };
+    let file = File::open(&path).ok()?;
+    let mut reader = BufReader::new(file);
 
     let mut lines = String::new();
-    match file.read_to_string(&mut lines) {
-        Ok(_) => (),
-        Err(_) => return None,
-    };
+    reader.read_to_string(&mut lines).ok()?;
 
     Some(parse_hostsfile(&lines))
 }
@@ -41,10 +31,17 @@ pub fn replace_host_table(table: HashMap<String, IpAddr>) {
 }
 
 pub fn parse_hostsfile(hostsfile_content: &str) -> HashMap<String, IpAddr> {
-    HostsFile::read_buffered(hostsfile_content.as_bytes())
-        .pairs()
-        .filter_map(Result::ok)
-        .collect()
+    hostsfile_content.lines().filter_map(|line| {
+        let mut iter = line.split('#').next().unwrap().split_whitespace();
+        Some((iter.next()?.parse().ok()?, iter))
+    }).flat_map(|(ip, hosts)| {
+        hosts.filter(|host| {
+            let invalid = ['\0', '\t', '\n', '\r', ' ', '#', '%', '/', ':', '?', '@', '[', '\\', ']'];
+            host.parse::<Ipv4Addr>().is_err() && !host.contains(&invalid[..])
+        }).map(move |host| {
+            (host.to_owned(), ip)
+        })
+    }).collect()
 }
 
 pub fn replace_host(host: &str) -> Cow<str> {

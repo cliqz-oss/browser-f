@@ -17,7 +17,7 @@
 #include "mozilla/net/ReferrerPolicy.h"
 
 extern bool
-TX_XSLTFunctionAvailable(nsIAtom* aName, int32_t aNameSpaceID);
+TX_XSLTFunctionAvailable(nsAtom* aName, int32_t aNameSpaceID);
 
 class txHandlerTable;
 class txElementContext;
@@ -61,10 +61,10 @@ public:
 #define TX_DECL_ACOMPILEOBSERVER \
   nsresult loadURI(const nsAString& aUri, const nsAString& aReferrerUri, \
                    mozilla::net::ReferrerPolicy aReferrerPolicy, \
-                   txStylesheetCompiler* aCompiler); \
+                   txStylesheetCompiler* aCompiler) override; \
   void onDoneCompiling(txStylesheetCompiler* aCompiler, nsresult aResult, \
                        const char16_t *aErrorText = nullptr, \
-                       const char16_t *aParam = nullptr);
+                       const char16_t *aParam = nullptr) override;
 
 class txStylesheetCompilerState : public txIParseContext
 {
@@ -124,8 +124,8 @@ public:
     nsresult addVariable(const txExpandedName& aName);
 
     // txIParseContext
-    nsresult resolveNamespacePrefix(nsIAtom* aPrefix, int32_t& aID) override;
-    nsresult resolveFunctionCall(nsIAtom* aName, int32_t aID,
+    nsresult resolveNamespacePrefix(nsAtom* aPrefix, int32_t& aID) override;
+    nsresult resolveFunctionCall(nsAtom* aName, int32_t aID,
                                  FunctionCall** aFunction) override;
     bool caseInsensitiveNameTests() override;
 
@@ -151,8 +151,6 @@ public:
         return aResult != NS_ERROR_XSLT_CALL_TO_KEY_NOT_ALLOWED &&
                fcp();
     }
-
-    static void shutdown();
 
 
     RefPtr<txStylesheet> mStylesheet;
@@ -194,8 +192,8 @@ private:
 struct txStylesheetAttr
 {
     int32_t mNamespaceID;
-    nsCOMPtr<nsIAtom> mLocalName;
-    nsCOMPtr<nsIAtom> mPrefix;
+    RefPtr<nsAtom> mLocalName;
+    RefPtr<nsAtom> mPrefix;
     nsString mValue;
 };
 
@@ -204,7 +202,7 @@ class txStylesheetCompiler final : private txStylesheetCompilerState,
 {
 public:
     friend class txStylesheetCompilerState;
-    friend bool TX_XSLTFunctionAvailable(nsIAtom* aName,
+    friend bool TX_XSLTFunctionAvailable(nsAtom* aName,
                                            int32_t aNameSpaceID);
     txStylesheetCompiler(const nsAString& aStylesheetURI,
                          mozilla::net::ReferrerPolicy  aReferrerPolicy,
@@ -217,8 +215,8 @@ public:
 
     void setBaseURI(const nsString& aBaseURI);
 
-    nsresult startElement(int32_t aNamespaceID, nsIAtom* aLocalName,
-                          nsIAtom* aPrefix, txStylesheetAttr* aAttributes,
+    nsresult startElement(int32_t aNamespaceID, nsAtom* aLocalName,
+                          nsAtom* aPrefix, txStylesheetAttr* aAttributes,
                           int32_t aAttrCount);
     nsresult startElement(const char16_t *aName,
                           const char16_t **aAtts,
@@ -233,7 +231,7 @@ public:
     txStylesheet* getStylesheet();
 
     TX_DECL_ACOMPILEOBSERVER
-    NS_INLINE_DECL_REFCOUNTING(txStylesheetCompiler)
+    NS_INLINE_DECL_REFCOUNTING(txStylesheetCompiler, override)
 
 private:
     // Private destructor, to discourage deletion outside of Release():
@@ -241,8 +239,8 @@ private:
     {
     }
 
-    nsresult startElementInternal(int32_t aNamespaceID, nsIAtom* aLocalName,
-                                  nsIAtom* aPrefix,
+    nsresult startElementInternal(int32_t aNamespaceID, nsAtom* aLocalName,
+                                  nsAtom* aPrefix,
                                   txStylesheetAttr* aAttributes,
                                   int32_t aAttrCount);
 

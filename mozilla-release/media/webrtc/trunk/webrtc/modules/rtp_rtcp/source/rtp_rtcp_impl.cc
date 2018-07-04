@@ -43,6 +43,12 @@ RTPExtensionType StringToRtpExtensionType(const std::string& extension) {
     return kRtpExtensionPlayoutDelay;
   if (extension == RtpExtension::kRtpStreamIdUri)
     return kRtpExtensionRtpStreamId;
+  if (extension == RtpExtension::kRepairedRtpStreamIdUri)
+    return kRtpExtensionRepairedRtpStreamId;
+  if (extension == RtpExtension::kMIdUri)
+    return kRtpExtensionMId;
+  if (extension == RtpExtension::kCsrcAudioLevelUri)
+    return kRtpExtensionCsrcAudioLevel;
   RTC_NOTREACHED() << "Looking up unsupported RTP extension.";
   return kRtpExtensionNone;
 }
@@ -327,6 +333,10 @@ void ModuleRtpRtcpImpl::SetCsrcs(const std::vector<uint32_t>& csrcs) {
 int32_t ModuleRtpRtcpImpl::SetRID(const char *rid) {
   //XXX rtcp_sender_.SetRID(rid);
   return rtp_sender_.SetRID(rid);
+}
+
+int32_t ModuleRtpRtcpImpl::SetMID(const char *mid) {
+  return rtp_sender_.SetMId(mid);
 }
 
 // TODO(pbos): Handle media and RTX streams separately (separate RTCP

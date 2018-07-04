@@ -65,7 +65,7 @@ function normalizeId(id) {
   let [, root, path] = id.match(/^(\w+:\/\/\/?|\/)?(.*)/);
 
   let stack = [];
-  path.split("/").forEach(function (component) {
+  path.split("/").forEach(function(component) {
     switch (component) {
       case "":
       case ".":
@@ -405,9 +405,9 @@ var chrome = {
 };
 
 var loader = {
-  lazyGetter: function (object, name, lambda) {
+  lazyGetter: function(object, name, lambda) {
     Object.defineProperty(object, name, {
-      get: function () {
+      get: function() {
         delete object[name];
         object[name] = lambda.apply(object);
         return object[name];
@@ -416,13 +416,13 @@ var loader = {
       enumerable: true
     });
   },
-  lazyImporter: function () {
+  lazyImporter: function() {
     throw new Error("Can't import JSM from worker thread!");
   },
-  lazyServiceGetter: function () {
+  lazyServiceGetter: function() {
     throw new Error("Can't import XPCOM service from worker thread!");
   },
-  lazyRequireGetter: function (obj, property, module, destructure) {
+  lazyRequireGetter: function(obj, property, module, destructure) {
     Object.defineProperty(obj, property, {
       get: () => destructure ? worker.require(module)[property]
                              : worker.require(module || property)
@@ -446,7 +446,7 @@ var {
   reportError,
   setImmediate,
   xpcInspector,
-} = (function () {
+} = (function() {
   // Main thread
   if (typeof Components === "object") {
     let {
@@ -468,7 +468,7 @@ var {
     );
     let Debugger = sandbox.Debugger;
 
-    let createSandbox = function (name, prototype) {
+    let createSandbox = function(name, prototype) {
       return Cu.Sandbox(principal, {
         invisibleToDebugger: true,
         sandboxName: name,
@@ -480,18 +480,19 @@ var {
 
     let rpc = undefined;
 
+    // eslint-disable-next-line mozilla/use-services
     let subScriptLoader = Cc["@mozilla.org/moz/jssubscript-loader;1"]
                  .getService(Ci.mozIJSSubScriptLoader);
 
-    let loadSubScript = function (url, sandbox) {
+    let loadSubScript = function(url, sandbox) {
       subScriptLoader.loadSubScript(url, sandbox, "UTF-8");
     };
 
     let reportError = Cu.reportError;
 
-    let Timer = Cu.import("resource://gre/modules/Timer.jsm", {});
+    let Timer = ChromeUtils.import("resource://gre/modules/Timer.jsm", {});
 
-    let setImmediate = function (callback) {
+    let setImmediate = function(callback) {
       Timer.setTimeout(callback, 0);
     };
 
@@ -524,13 +525,13 @@ var {
       return requestors.length === 0 ? null : requestors[requestors.length - 1];
     },
 
-    enterNestedEventLoop: function (requestor) {
+    enterNestedEventLoop: function(requestor) {
       requestors.push(requestor);
       scope.enterEventLoop();
       return requestors.length;
     },
 
-    exitNestedEventLoop: function () {
+    exitNestedEventLoop: function() {
       requestors.pop();
       scope.leaveEventLoop();
       return requestors.length;
@@ -577,15 +578,6 @@ this.worker = new WorkerDebuggerLoader({
     "xpcInspector": xpcInspector
   },
   paths: {
-    // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
-    "": "resource://gre/modules/commonjs/",
-    // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
-    // Modules here are intended to have one implementation for
-    // chrome, and a separate implementation for content.  Here we
-    // map the directory to the chrome subdirectory, but the content
-    // loader will map to the content subdirectory.  See the
-    // README.md in devtools/shared/platform.
-    "devtools/shared/platform": "resource://devtools/shared/platform/chrome",
     // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠
     "devtools": "resource://devtools",
     // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠

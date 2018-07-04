@@ -4,17 +4,16 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Toolbars"];
+var EXPORTED_SYMBOLS = ["Toolbars"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-
-this.Toolbars = {
+var Toolbars = {
   init(libDir) {},
 
   configurations: {
     onlyNavBar: {
+      selectors: ["#navigator-toolbox"],
       async applyConfig() {
         let browserWindow = Services.wm.getMostRecentWindow("navigator:browser");
         let personalToolbar = browserWindow.document.getElementById("PersonalToolbar");
@@ -24,6 +23,7 @@ this.Toolbars = {
     },
 
     allToolbars: {
+      selectors: ["#navigator-toolbox"],
       async applyConfig() { // Boookmarks and menubar
         let browserWindow = Services.wm.getMostRecentWindow("navigator:browser");
         let personalToolbar = browserWindow.document.getElementById("PersonalToolbar");
@@ -34,7 +34,7 @@ this.Toolbars = {
       async verifyConfig() {
         let browserWindow = Services.wm.getMostRecentWindow("navigator:browser");
         if (browserWindow.fullScreen) {
-          return Promise.reject("The bookmark toolbar and menubar are not shown in fullscreen.");
+          return "The bookmark toolbar and menubar are not shown in fullscreen.";
         }
         return undefined;
       },

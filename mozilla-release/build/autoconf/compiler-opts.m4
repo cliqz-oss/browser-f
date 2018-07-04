@@ -123,6 +123,12 @@ if test "$GNU_CC"; then
     if test -z "$DEVELOPER_OPTIONS"; then
         CFLAGS="$CFLAGS -ffunction-sections -fdata-sections"
         CXXFLAGS="$CXXFLAGS -ffunction-sections -fdata-sections"
+
+        # For MinGW, we need big-obj otherwise we create too many sections in Unified builds
+        if test "${OS_ARCH}" = "WINNT"; then
+            CFLAGS="$CFLAGS -Wa,-mbig-obj"
+            CXXFLAGS="$CXXFLAGS -Wa,-mbig-obj"
+        fi
     fi
     CFLAGS="$CFLAGS -fno-math-errno"
     CXXFLAGS="$CXXFLAGS -fno-exceptions -fno-math-errno"
@@ -198,10 +204,14 @@ if test "$GNU_CC" -a "$GCC_USE_GNU_LD" -a -z "$DEVELOPER_OPTIONS"; then
     fi
 fi
 
-# bionic in Android < 4.1 doesn't support PIE
 # On OSX, the linker defaults to building PIE programs when targeting OSX 10.7.
 # On other Unix systems, some file managers (Nautilus) can't start PIE programs
-MOZ_PIE=
+if test "$OS_TARGET" = Android; then
+    # bionic in Android >= 4.1 supports PIE, and we target those versions.
+    MOZ_PIE=1
+else
+    MOZ_PIE=
+fi
 
 MOZ_ARG_ENABLE_BOOL(pie,
 [  --enable-pie           Enable Position Independent Executables],

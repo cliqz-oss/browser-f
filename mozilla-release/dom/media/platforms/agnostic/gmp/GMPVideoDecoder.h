@@ -27,8 +27,12 @@ struct GMPVideoDecoderParams
   RefPtr<GMPCrashHelper> mCrashHelper;
 };
 
-class GMPVideoDecoder : public MediaDataDecoder,
-                        public GMPVideoDecoderCallbackProxy
+DDLoggedTypeDeclNameAndBase(GMPVideoDecoder, MediaDataDecoder);
+
+class GMPVideoDecoder
+  : public MediaDataDecoder
+  , public GMPVideoDecoderCallbackProxy
+  , public DecoderDoctorLifeLogger<GMPVideoDecoder>
 {
 public:
   explicit GMPVideoDecoder(const GMPVideoDecoderParams& aParams);
@@ -38,9 +42,9 @@ public:
   RefPtr<DecodePromise> Drain() override;
   RefPtr<FlushPromise> Flush() override;
   RefPtr<ShutdownPromise> Shutdown() override;
-  const char* GetDescriptionName() const override
+  nsCString GetDescriptionName() const override
   {
-    return "GMP video decoder";
+    return NS_LITERAL_CSTRING("gmp video decoder");
   }
   ConversionRequired NeedsConversion() const override
   {

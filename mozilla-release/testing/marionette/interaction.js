@@ -4,21 +4,20 @@
 
 "use strict";
 
-const {utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 
-Cu.import("chrome://marionette/content/accessibility.js");
-Cu.import("chrome://marionette/content/atom.js");
+ChromeUtils.import("chrome://marionette/content/accessibility.js");
+ChromeUtils.import("chrome://marionette/content/atom.js");
+ChromeUtils.import("chrome://marionette/content/element.js");
 const {
   ElementClickInterceptedError,
   ElementNotInteractableError,
-  error,
-  InvalidArgument,
   InvalidArgumentError,
   InvalidElementStateError,
-  pprint,
-} = Cu.import("chrome://marionette/content/error.js", {});
-Cu.import("chrome://marionette/content/element.js");
-Cu.import("chrome://marionette/content/event.js");
+} = ChromeUtils.import("chrome://marionette/content/error.js", {});
+ChromeUtils.import("chrome://marionette/content/event.js");
+const {pprint} = ChromeUtils.import("chrome://marionette/content/format.js", {});
+const {TimedPromise} = ChromeUtils.import("chrome://marionette/content/sync.js", {});
 
 Cu.importGlobalProperties(["File"]);
 
@@ -31,7 +30,6 @@ const DISABLED_ATTRIBUTE_SUPPORTED_XUL = new Set([
   "CHECKBOX",
   "COLORPICKER",
   "COMMAND",
-  "DATEPICKER",
   "DESCRIPTION",
   "KEY",
   "KEYSET",
@@ -54,28 +52,8 @@ const DISABLED_ATTRIBUTE_SUPPORTED_XUL = new Set([
   "TAB",
   "TABS",
   "TEXTBOX",
-  "TIMEPICKER",
   "TOOLBARBUTTON",
   "TREE",
-]);
-
-/** XUL elements that support checked property. */
-const CHECKED_PROPERTY_SUPPORTED_XUL = new Set([
-  "BUTTON",
-  "CHECKBOX",
-  "LISTITEM",
-  "TOOLBARBUTTON",
-]);
-
-/** XUL elements that support selected property. */
-const SELECTED_PROPERTY_SUPPORTED_XUL = new Set([
-  "LISTITEM",
-  "MENU",
-  "MENUITEM",
-  "MENUSEPARATOR",
-  "RADIO",
-  "RICHLISTITEM",
-  "TAB",
 ]);
 
 /**
@@ -142,19 +120,19 @@ this.interaction = {};
  * @throws {InvalidElementStateError}
  *     If <var>el</var> is not enabled.
  */
-interaction.clickElement = function* (
+interaction.clickElement = async function(
     el, strict = false, specCompat = false) {
   const a11y = accessibility.get(strict);
   if (element.isXULElement(el)) {
-    yield chromeClick(el, a11y);
+    await chromeClick(el, a11y);
   } else if (specCompat) {
-    yield webdriverClickElement(el, a11y);
+    await webdriverClickElement(el, a11y);
   } else {
-    yield seleniumClickElement(el, a11y);
+    await seleniumClickElement(el, a11y);
   }
 };
 
-function* webdriverClickElement(el, a11y) {
+async function webdriverClickElement(el, a11y) {
   const win = getWindow(el);
 
   // step 3
@@ -178,7 +156,7 @@ function* webdriverClickElement(el, a11y) {
   // there is no point in checking if it is pointer-interactable
   if (!element.isInView(containerEl)) {
     throw new ElementNotInteractableError(
-        error.pprint`Element ${el} could not be scrolled into view`);
+        pprint`Element ${el} could not be scrolled into view`);
   }
 
   // step 7
@@ -189,37 +167,35 @@ function* webdriverClickElement(el, a11y) {
     throw new ElementClickInterceptedError(containerEl, clickPoint);
   }
 
-  yield a11y.getAccessible(el, true).then(acc => {
-    a11y.assertVisible(acc, el, true);
-    a11y.assertEnabled(acc, el, true);
-    a11y.assertActionable(acc, el);
-  });
+  let acc = await a11y.getAccessible(el, true);
+  a11y.assertVisible(acc, el, true);
+  a11y.assertEnabled(acc, el, true);
+  a11y.assertActionable(acc, el);
 
   // step 8
   if (el.localName == "option") {
     interaction.selectOption(el);
   } else {
+    // step 9
+    let clicked = interaction.flushEventLoop(containerEl);
     event.synthesizeMouseAtPoint(clickPoint.x, clickPoint.y, {}, win);
+    await clicked;
   }
-
-  // step 9
-  yield interaction.flushEventLoop(win);
 
   // step 10
   // if the click causes navigation, the post-navigation checks are
   // handled by the load listener in listener.js
 }
 
-function* chromeClick(el, a11y) {
+async function chromeClick(el, a11y) {
   if (!atom.isElementEnabled(el)) {
     throw new InvalidElementStateError("Element is not enabled");
   }
 
-  yield a11y.getAccessible(el, true).then(acc => {
-    a11y.assertVisible(acc, el, true);
-    a11y.assertEnabled(acc, el, true);
-    a11y.assertActionable(acc, el);
-  });
+  let acc = await a11y.getAccessible(el, true);
+  a11y.assertVisible(acc, el, true);
+  a11y.assertEnabled(acc, el, true);
+  a11y.assertActionable(acc, el);
 
   if (el.localName == "option") {
     interaction.selectOption(el);
@@ -228,7 +204,7 @@ function* chromeClick(el, a11y) {
   }
 }
 
-function* seleniumClickElement(el, a11y) {
+async function seleniumClickElement(el, a11y) {
   let win = getWindow(el);
 
   let visibilityCheckEl  = el;
@@ -244,11 +220,10 @@ function* seleniumClickElement(el, a11y) {
     throw new InvalidElementStateError("Element is not enabled");
   }
 
-  yield a11y.getAccessible(el, true).then(acc => {
-    a11y.assertVisible(acc, el, true);
-    a11y.assertEnabled(acc, el, true);
-    a11y.assertActionable(acc, el);
-  });
+  let acc = await a11y.getAccessible(el, true);
+  a11y.assertVisible(acc, el, true);
+  a11y.assertEnabled(acc, el, true);
+  a11y.assertActionable(acc, el);
 
   if (el.localName == "option") {
     interaction.selectOption(el);
@@ -293,55 +268,200 @@ interaction.selectOption = function(el) {
   event.mouseover(containerEl);
   event.mousemove(containerEl);
   event.mousedown(containerEl);
-  event.focus(containerEl);
-  event.input(containerEl);
+  containerEl.focus();
 
-  // Clicking <option> in <select> should not be deselected if selected.
-  // However, clicking one in a <select multiple> should toggle
-  // selectedness the way holding down Control works.
-  if (containerEl.multiple) {
-    el.selected = !el.selected;
-  } else if (!el.selected) {
-    el.selected = true;
+  if (!el.disabled) {
+    // Clicking <option> in <select> should not be deselected if selected.
+    // However, clicking one in a <select multiple> should toggle
+    // selectedness the way holding down Control works.
+    if (containerEl.multiple) {
+      el.selected = !el.selected;
+    } else if (!el.selected) {
+      el.selected = true;
+    }
+    event.input(containerEl);
+    event.change(containerEl);
   }
 
-  event.change(containerEl);
   event.mouseup(containerEl);
   event.click(containerEl);
+  containerEl.blur();
 };
 
 /**
- * Flushes the event loop by requesting an animation frame.
+ * Clears the form control or the editable element, if required.
  *
- * This will wait for the browser to repaint before returning, typically
- * flushing any queued events.
+ * Before clearing the element, it will attempt to scroll it into
+ * view if it is not already in the viewport.  An error is raised
+ * if the element cannot be brought into view.
  *
- * If the document is unloaded during this request, the promise is
- * rejected.
+ * If the element is a submittable form control and it is empty
+ * (it has no value or it has no files associated with it, in the
+ * case it is a <code>&lt;input type=file&gt;</code> element) or
+ * it is an editing host and its <code>innerHTML</code> content IDL
+ * attribute is empty, this function acts as a no-op.
  *
- * @param {Window} win
- *     Associated window.
+ * @param {Element} el
+ *     Element to clear.
+ *
+ * @throws {InvalidElementStateError}
+ *     If element is disabled, read-only, non-editable, not a submittable
+ *     element or not an editing host, or cannot be scrolled into view.
+ */
+interaction.clearElement = function(el) {
+  if (element.isDisabled(el)) {
+    throw new InvalidElementStateError(pprint`Element is disabled: ${el}`);
+  }
+  if (element.isReadOnly(el)) {
+    throw new InvalidElementStateError(pprint`Element is read-only: ${el}`);
+  }
+  if (!element.isEditable(el)) {
+    throw new InvalidElementStateError(
+        pprint`Unable to clear element that cannot be edited: ${el}`);
+  }
+
+  if (!element.isInView(el)) {
+    element.scrollIntoView(el);
+  }
+  if (!element.isInView(el)) {
+    throw new ElementNotInteractableError(
+        pprint`Element ${el} could not be scrolled into view`);
+  }
+
+  if (element.isEditingHost(el)) {
+    clearContentEditableElement(el);
+  } else {
+    clearResettableElement(el);
+  }
+};
+
+function clearContentEditableElement(el) {
+  if (el.innerHTML === "") {
+    return;
+  }
+  el.focus();
+  el.innerHTML = "";
+  event.change(el);
+  el.blur();
+}
+
+function clearResettableElement(el) {
+  if (!element.isMutableFormControl(el)) {
+    throw new InvalidElementStateError(pprint`Not an editable form control: ${el}`);
+  }
+
+  let isEmpty;
+  switch (el.type) {
+    case "file":
+      isEmpty = el.files.length == 0;
+      break;
+
+    default:
+      isEmpty = el.value === "";
+      break;
+  }
+
+  if (el.validity.valid && isEmpty) {
+    return;
+  }
+
+  el.focus();
+  el.value = "";
+  event.change(el);
+  el.blur();
+}
+
+/**
+ * Waits until the event loop has spun enough times to process the
+ * DOM events generated by clicking an element, or until the document
+ * is unloaded.
+ *
+ * @param {Element} el
+ *     Element that is expected to receive the click.
  *
  * @return {Promise}
- *     Promise is accepted once event queue is flushed, or rejected if
- *     <var>win</var> has closed or been unloaded before the queue can
- *     be flushed.
+ *     Promise is resolved once <var>el</var> has been clicked
+ *     (its <code>click</code> event fires), the document is unloaded,
+ *     or a 500 ms timeout is reached.
  */
-interaction.flushEventLoop = function* (win) {
-  return new Promise(resolve => {
-    let handleEvent = event => {
-      win.removeEventListener("beforeunload", this);
-      resolve();
+interaction.flushEventLoop = async function(el) {
+  const win = el.ownerGlobal;
+  let unloadEv, clickEv;
+
+  let spinEventLoop = resolve => {
+    unloadEv = resolve;
+    clickEv = () => {
+      if (win.closed) {
+        resolve();
+      } else {
+        win.setTimeout(resolve, 0);
+      }
     };
 
-    if (win.closed) {
-      resolve();
-      return;
-    }
+    win.addEventListener("unload", unloadEv, {mozSystemGroup: true});
+    el.addEventListener("click", clickEv, {mozSystemGroup: true});
+  };
+  let removeListeners = () => {
+    // only one event fires
+    win.removeEventListener("unload", unloadEv);
+    el.removeEventListener("click", clickEv);
+  };
 
-    win.addEventListener("beforeunload", handleEvent);
-    win.requestAnimationFrame(handleEvent);
-  });
+  return new TimedPromise(spinEventLoop, {timeout: 500, throws: null})
+      .then(removeListeners);
+};
+
+/**
+ * If <var>el<var> is a textual form control and no previous
+ * selection state exists, move the caret to the end of the form control.
+ *
+ * The element has to be a <code>&lt;input type=text&gt;</code>
+ * or <code>&lt;textarea&gt;</code> element for the cursor to move
+ * be moved.
+ *
+ * @param {Element} el
+ *     Element to potential move the caret in.
+ */
+interaction.moveCaretToEnd = function(el) {
+  if (!element.isDOMElement(el)) {
+    return;
+  }
+
+  let isTextarea = el.localName == "textarea";
+  let isInputText = el.localName == "input" && el.type == "text";
+
+  if (isTextarea || isInputText) {
+    if (el.selectionEnd == 0) {
+      let len = el.value.length;
+      el.setSelectionRange(len, len);
+    }
+  }
+};
+
+/**
+ * Performs checks if <var>el</var> is keyboard-interactable.
+ *
+ * To decide if an element is keyboard-interactable various properties,
+ * and computed CSS styles have to be evaluated. Whereby it has to be taken
+ * into account that the element can be part of a container (eg. option),
+ * and as such the container has to be checked instead.
+ *
+ * @param {Element} el
+ *     Element to check.
+ *
+ * @return {boolean}
+ *     True if element is keyboard-interactable, false otherwise.
+ */
+interaction.isKeyboardInteractable = function(el) {
+  const win = getWindow(el);
+
+  // body and document element are always keyboard-interactable
+  if (el.localName === "body" || el === win.document.documentElement) {
+    return true;
+  }
+
+  el.focus();
+  return el === win.document.activeElement;
 };
 
 /**
@@ -352,15 +472,15 @@ interaction.flushEventLoop = function* (win) {
  *     An <tt>&lt;input type=file&gt;</tt> element.
  * @param {string} path
  *     Full path to file.
+ *
+ * @throws {InvalidArgumentError}
+ *     If <var>path</var> can not be found.
  */
-interaction.uploadFile = function* (el, path) {
-  let file = yield File.createFromFileName(path).then(file => {
-    return file;
-  }, () => {
-    return null;
-  });
-
-  if (!file) {
+interaction.uploadFile = async function(el, path) {
+  let file;
+  try {
+    file = await File.createFromFileName(path);
+  } catch (e) {
     throw new InvalidArgumentError("File not found: " + path);
   }
 
@@ -373,13 +493,14 @@ interaction.uploadFile = function* (el, path) {
   event.mouseover(el);
   event.mousemove(el);
   event.mousedown(el);
-  event.focus(el);
+  el.focus();
   event.mouseup(el);
   event.click(el);
 
   el.mozSetFileArray(fs);
 
   event.change(el);
+  el.blur();
 };
 
 /**
@@ -393,7 +514,7 @@ interaction.uploadFile = function* (el, path) {
  * @throws {TypeError}
  *     If <var>el</var> is not an supported form element.
  */
-interaction.setFormControlValue = function* (el, value) {
+interaction.setFormControlValue = function(el, value) {
   if (!COMMON_FORM_CONTROLS.has(el.localName)) {
     throw new TypeError("This function is for form elements only");
   }
@@ -415,20 +536,75 @@ interaction.setFormControlValue = function* (el, value) {
  *     Element to send key events to.
  * @param {Array.<string>} value
  *     Sequence of keystrokes to send to the element.
- * @param {boolean} ignoreVisibility
- *     Flag to enable or disable element visibility tests.
  * @param {boolean=} [strict=false] strict
  *     Enforce strict accessibility tests.
+ * @param {boolean=} [specCompat=false] specCompat
+ *     Use WebDriver specification compatible interactability definition.
  */
-interaction.sendKeysToElement = function(
-    el, value, ignoreVisibility, strict = false) {
-  let win = getWindow(el);
-  let a11y = accessibility.get(strict);
-  return a11y.getAccessible(el, true).then(acc => {
-    a11y.assertActionable(acc, el);
-    event.sendKeysToElement(value, el, {ignoreVisibility: false}, win);
-  });
+interaction.sendKeysToElement = async function(
+    el, value, strict = false, specCompat = false) {
+  const a11y = accessibility.get(strict);
+
+  if (specCompat) {
+    await webdriverSendKeysToElement(el, value, a11y);
+  } else {
+    await legacySendKeysToElement(el, value, a11y);
+  }
 };
+
+async function webdriverSendKeysToElement(el, value, a11y) {
+  const win = getWindow(el);
+
+  let containerEl = element.getContainer(el);
+
+  // TODO: Wait for element to be keyboard-interactible
+  if (!interaction.isKeyboardInteractable(containerEl)) {
+    throw new ElementNotInteractableError(
+        pprint`Element ${el} is not reachable by keyboard`);
+  }
+
+  let acc = await a11y.getAccessible(el, true);
+  a11y.assertActionable(acc, el);
+
+  el.focus();
+  interaction.moveCaretToEnd(el);
+
+  if (el.type == "file") {
+    await interaction.uploadFile(el, value);
+  } else if ((el.type == "date" || el.type == "time") &&
+      Preferences.get("dom.forms.datetime")) {
+    interaction.setFormControlValue(el, value);
+  } else {
+    event.sendKeysToElement(value, el, win);
+  }
+}
+
+async function legacySendKeysToElement(el, value, a11y) {
+  const win = getWindow(el);
+
+  if (el.type == "file") {
+    await interaction.uploadFile(el, value);
+  } else if ((el.type == "date" || el.type == "time") &&
+      Preferences.get("dom.forms.datetime")) {
+    interaction.setFormControlValue(el, value);
+  } else {
+    let visibilityCheckEl  = el;
+    if (el.localName == "option") {
+      visibilityCheckEl = element.getContainer(el);
+    }
+
+    if (!element.isVisible(visibilityCheckEl)) {
+      throw new ElementNotInteractableError("Element is not visible");
+    }
+
+    let acc = await a11y.getAccessible(el, true);
+    a11y.assertActionable(acc, el);
+
+    interaction.moveCaretToEnd(el);
+    el.focus();
+    event.sendKeysToElement(value, el, win);
+  }
+}
 
 /**
  * Determine the element displayedness of an element.
@@ -468,8 +644,7 @@ interaction.isElementEnabled = function(el, strict = false) {
   if (element.isXULElement(el)) {
     // check if XUL element supports disabled attribute
     if (DISABLED_ATTRIBUTE_SUPPORTED_XUL.has(el.tagName.toUpperCase())) {
-      let disabled = atom.getElementAttribute(el, "disabled", win);
-      if (disabled && disabled === "true") {
+      if (el.hasAttribute("disabled") && el.getAttribute("disabled") === "true") {
         enabled = false;
       }
     }
@@ -485,34 +660,25 @@ interaction.isElementEnabled = function(el, strict = false) {
 };
 
 /**
- * Determines if the referenced element is selected or not.
+ * Determines if the referenced element is selected or not, with
+ * an additional accessibility check if <var>strict</var> is true.
  *
- * This operation only makes sense on input elements of the Checkbox-
- * and Radio Button states, or option elements.
+ * This operation only makes sense on input elements of the checkbox-
+ * and radio button states, and option elements.
  *
- * @param {DOMElement|XULElement} el
+ * @param {(DOMElement|XULElement)} el
  *     Element to test if is selected.
  * @param {boolean=} [strict=false] strict
  *     Enforce strict accessibility tests.
  *
  * @return {boolean}
  *     True if element is selected, false otherwise.
+ *
+ * @throws {ElementNotAccessibleError}
+ *     If <var>el</var> is not accessible when <var>strict</var> is true.
  */
 interaction.isElementSelected = function(el, strict = false) {
-  let selected = true;
-  let win = getWindow(el);
-
-  if (element.isXULElement(el)) {
-    let tagName = el.tagName.toUpperCase();
-    if (CHECKED_PROPERTY_SUPPORTED_XUL.has(tagName)) {
-      selected = el.checked;
-    }
-    if (SELECTED_PROPERTY_SUPPORTED_XUL.has(tagName)) {
-      selected = el.selected;
-    }
-  } else {
-    selected = atom.isElementSelected(el, win);
-  }
+  let selected = element.isSelected(el);
 
   let a11y = accessibility.get(strict);
   return a11y.getAccessible(el).then(acc => {
@@ -522,5 +688,5 @@ interaction.isElementSelected = function(el, strict = false) {
 };
 
 function getWindow(el) {
-  return el.ownerGlobal;
+  return el.ownerDocument.defaultView;  // eslint-disable-line
 }

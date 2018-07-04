@@ -114,14 +114,15 @@ nsRDFXMLParser::ParseString(nsIRDFDataSource* aSink, nsIURI* aBaseURI, const nsA
     rv = NS_NewCStringInputStream(getter_AddRefs(stream), aString);
     if (NS_FAILED(rv)) return rv;
 
-    nsCOMPtr<nsIPrincipal> nullPrincipal = NullPrincipal::Create();
+    nsCOMPtr<nsIPrincipal> nullPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
 
     // The following channel is never openend, so it does not matter what
     // securityFlags we pass; let's follow the principle of least privilege.
     nsCOMPtr<nsIChannel> channel;
+    nsCOMPtr<nsIInputStream> tmpStream = stream;
     rv = NS_NewInputStreamChannel(getter_AddRefs(channel),
                                   aBaseURI,
-                                  stream,
+                                  tmpStream.forget(),
                                   nullPrincipal,
                                   nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED,
                                   nsIContentPolicy::TYPE_OTHER,

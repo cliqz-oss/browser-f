@@ -8,14 +8,18 @@
  * initialized with empty data.
  */
 
-add_task(function* () {
+add_task(async function() {
   let { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
 
-  let { monitor } = yield initNetMonitor(SIMPLE_URL);
+  let { monitor, tab } = await initNetMonitor(SIMPLE_URL);
   info("Starting test... ");
 
   let { document, windowRequire } = monitor.panelWin;
   let { Chart } = windowRequire("devtools/client/shared/widgets/Chart");
+
+  let wait = waitForNetworkEvents(monitor, 1);
+  tab.linkedBrowser.loadURI(SIMPLE_URL);
+  await wait;
 
   let table = Chart.Table(document, {
     title: "Table title",
@@ -76,5 +80,5 @@ add_task(function* () {
     "World 0",
     "The second sum's value is correct.");
 
-  yield teardown(monitor);
+  await teardown(monitor);
 });

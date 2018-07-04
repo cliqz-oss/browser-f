@@ -45,6 +45,42 @@ const translate = (tx = 0, ty = tx) => [
 exports.translate = translate;
 
 /**
+ * Returns a matrix that reflects about the Y axis.  For example, the point (x1, y1) would
+ * become (-x1, y1).
+ *
+ * @return {Array}
+ *         The new matrix.
+ */
+const reflectAboutY = () => [
+  -1, 0, 0,
+  0,  1, 0,
+  0,  0, 1,
+];
+exports.reflectAboutY = reflectAboutY;
+
+/**
+ * Returns a matrix for the rotation given.
+ * Calling `rotate()` or `rotate(0)` returns a new identity matrix.
+ *
+ * @param {Number} [angle = 0]
+ *        The angle, in radians, for which to return a corresponding rotation matrix.
+ *        If unspecified, it will equal `0`.
+ * @return {Array}
+ *         The new matrix.
+ */
+const rotate = (angle = 0) => {
+  let cos = Math.cos(angle);
+  let sin = Math.sin(angle);
+
+  return [
+    cos,  sin, 0,
+    -sin, cos, 0,
+    0,    0,   1
+  ];
+};
+exports.rotate = rotate;
+
+/**
  * Returns a new identity matrix.
  *
  * @return {Array}
@@ -119,8 +155,56 @@ const isIdentity = (M) =>
 exports.isIdentity = isIdentity;
 
 /**
+ * Get the change of basis matrix and inverted change of basis matrix
+ * for the coordinate system based on the two given vectors, as well as
+ * the lengths of the two given vectors.
+ *
+ * @param {Array} u
+ *        The first vector, serving as the "x axis" of the coordinate system.
+ * @param {Array} v
+ *        The second vector, serving as the "y axis" of the coordinate system.
+ * @return {Object}
+ *        { basis, invertedBasis, uLength, vLength }
+ *        basis and invertedBasis are the change of basis matrices. uLength and
+ *        vLength are the lengths of u and v.
+ */
+const getBasis = (u, v) => {
+  let uLength = Math.abs(Math.sqrt(u[0] ** 2 + u[1] ** 2));
+  let vLength = Math.abs(Math.sqrt(v[0] ** 2 + v[1] ** 2));
+  let basis =
+    [ u[0] / uLength, v[0] / vLength, 0,
+      u[1] / uLength, v[1] / vLength, 0,
+      0,                0,                1 ];
+  let determinant = 1 / (basis[0] * basis[4] - basis[1] * basis[3]);
+  let invertedBasis =
+    [ basis[4] / determinant,  -basis[1] / determinant, 0,
+      -basis[3] / determinant,  basis[0] / determinant, 0,
+      0,                        0,                      1 ];
+  return { basis, invertedBasis, uLength, vLength };
+};
+exports.getBasis = getBasis;
+
+/**
+ * Convert the given matrix to a new coordinate system, based on the change of basis
+ * matrix.
+ *
+ * @param {Array} M
+ *        The matrix to convert
+ * @param {Array} basis
+ *        The change of basis matrix
+ * @param {Array} invertedBasis
+ *        The inverted change of basis matrix
+ * @return {Array}
+ *        The converted matrix.
+ */
+const changeMatrixBase = (M, basis, invertedBasis) => {
+  return multiply(invertedBasis, multiply(M, basis));
+};
+exports.changeMatrixBase = changeMatrixBase;
+
+/**
  * Returns the transformation matrix for the given node, relative to the ancestor passed
- * as second argument.
+ * as second argument; considering the ancestor transformation too.
  * If no ancestor is specified, it will returns the transformation matrix relative to the
  * node's parent element.
  *
@@ -128,11 +212,12 @@ exports.isIdentity = isIdentity;
  *        The node.
  * @param {DOMNode} ancestor
  *        The ancestor of the node given.
- ** @return {Array}
+ * @return {Array}
  *        The transformation matrix.
  */
 function getNodeTransformationMatrix(node, ancestor = node.parentElement) {
-  let { a, b, c, d, e, f } = node.getTransformToAncestor(ancestor);
+  let { a, b, c, d, e, f } = ancestor.getTransformToParent()
+                                     .multiply(node.getTransformToAncestor(ancestor));
 
   return [
     a, c, e,
@@ -141,3 +226,94 @@ function getNodeTransformationMatrix(node, ancestor = node.parentElement) {
   ];
 }
 exports.getNodeTransformationMatrix = getNodeTransformationMatrix;
+
+/**
+ * Returns the matrix to rotate, translate, and reflect (if needed) from the element's
+ * top-left origin into the actual writing mode and text direction applied to the element.
+ *
+ * @param  {Object} size
+ *         An element's untransformed content `width` and `height` (excluding any margin,
+ *         borders, or padding).
+ * @param  {Object} style
+ *         The computed `writingMode` and `direction` properties for the element.
+ * @return {Array}
+ *         The matrix with adjustments for writing mode and text direction, if any.
+ */
+function getWritingModeMatrix(size, style) {
+  let currentMatrix = identity();
+  let { width, height } = size;
+  let { direction, writingMode } = style;
+
+  switch (writingMode) {
+    case "horizontal-tb":
+      // This is the initial value. No further adjustment needed.
+      break;
+    case "vertical-rl":
+      currentMatrix = multiply(
+        translate(width, 0),
+        rotate(-Math.PI / 2)
+      );
+      break;
+    case "vertical-lr":
+      currentMatrix = multiply(
+        reflectAboutY(),
+        rotate(-Math.PI / 2)
+      );
+      break;
+    case "sideways-rl":
+      currentMatrix = multiply(
+        translate(width, 0),
+        rotate(-Math.PI / 2)
+      );
+      break;
+    case "sideways-lr":
+      currentMatrix = multiply(
+        rotate(Math.PI / 2),
+        translate(-height, 0)
+      );
+      break;
+    default:
+      console.error(`Unexpected writing-mode: ${writingMode}`);
+  }
+
+  switch (direction) {
+    case "ltr":
+      // This is the initial value. No further adjustment needed.
+      break;
+    case "rtl":
+      let rowLength = width;
+      if (writingMode != "horizontal-tb") {
+        rowLength = height;
+      }
+      currentMatrix = multiply(currentMatrix, translate(rowLength, 0));
+      currentMatrix = multiply(currentMatrix, reflectAboutY());
+      break;
+    default:
+      console.error(`Unexpected direction: ${direction}`);
+  }
+
+  return currentMatrix;
+}
+exports.getWritingModeMatrix = getWritingModeMatrix;
+
+/**
+ * Convert from the matrix format used in this module:
+ *   a, c, e,
+ *   b, d, f,
+ *   0, 0, 1
+ * to the format used by the `matrix()` CSS transform function:
+ *   a, b, c, d, e, f
+ *
+ * @param  {Array} M
+ *         The matrix in this module's 9 element format.
+ * @return {String}
+ *         The matching 6 element CSS transform function.
+ */
+function getCSSMatrixTransform(M) {
+  let [
+    a, c, e,
+    b, d, f,
+  ] = M;
+  return `matrix(${a}, ${b}, ${c}, ${d}, ${e}, ${f})`;
+}
+exports.getCSSMatrixTransform = getCSSMatrixTransform;

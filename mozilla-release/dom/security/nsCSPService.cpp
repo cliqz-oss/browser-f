@@ -43,21 +43,25 @@ NS_IMPL_ISUPPORTS(CSPService, nsIContentPolicy, nsIChannelEventSink)
 // Helper function to identify protocols and content types not subject to CSP.
 bool
 subjectToCSP(nsIURI* aURI, nsContentPolicyType aContentType) {
+
+  nsContentPolicyType contentType =
+    nsContentUtils::InternalContentPolicyTypeToExternal(aContentType);
+
   // These content types are not subject to CSP content policy checks:
   // TYPE_CSP_REPORT -- csp can't block csp reports
   // TYPE_REFRESH    -- never passed to ShouldLoad (see nsIContentPolicy.idl)
   // TYPE_DOCUMENT   -- used for frame-ancestors
-  if (aContentType == nsIContentPolicy::TYPE_CSP_REPORT ||
-      aContentType == nsIContentPolicy::TYPE_REFRESH ||
-      aContentType == nsIContentPolicy::TYPE_DOCUMENT) {
+  if (contentType == nsIContentPolicy::TYPE_CSP_REPORT ||
+      contentType == nsIContentPolicy::TYPE_REFRESH ||
+      contentType == nsIContentPolicy::TYPE_DOCUMENT) {
     return false;
   }
 
   // The three protocols: data:, blob: and filesystem: share the same
-  // protocol flag (URI_IS_LOCAL_RESOURCE) with other protocols, like
-  // chrome:, resource:, moz-icon:, but those three protocols get
-  // special attention in CSP and are subject to CSP, hence we have
-  // to make sure those protocols are subject to CSP, see:
+  // protocol flag (URI_IS_LOCAL_RESOURCE) with other protocols,
+  // but those three protocols get special attention in CSP and
+  // are subject to CSP, hence we have to make sure those
+  // protocols are subject to CSP, see:
   // http://www.w3.org/TR/CSP2/#source-list-guid-matching
   bool match = false;
   nsresult rv = aURI->SchemeIs("data", &match);
@@ -85,12 +89,27 @@ subjectToCSP(nsIURI* aURI, nsContentPolicyType aContentType) {
     return false;
   }
 
-  // Other protocols are not subject to CSP and can be whitelisted:
-  // * URI_IS_LOCAL_RESOURCE
-  //   e.g. chrome:, data:, blob:, resource:, moz-icon:
   // Please note that it should be possible for websites to
   // whitelist their own protocol handlers with respect to CSP,
-  // hence we use protocol flags to accomplish that.
+  // hence we use protocol flags to accomplish that, but we also
+  // want resource:, chrome: and moz-icon to be subject to CSP
+  // (which also use URI_IS_LOCAL_RESOURCE).
+  // Exception to the rule are images and styles using a scheme
+  // of resource: or chrome:
+  bool isImgOrStyle = contentType == nsIContentPolicy::TYPE_IMAGE ||
+                      contentType == nsIContentPolicy::TYPE_STYLESHEET;
+  rv = aURI->SchemeIs("resource", &match);
+  if (NS_SUCCEEDED(rv) && match && !isImgOrStyle) {
+    return true;
+  }
+  rv = aURI->SchemeIs("chrome", &match);
+  if (NS_SUCCEEDED(rv) && match && !isImgOrStyle) {
+    return true;
+  }
+  rv = aURI->SchemeIs("moz-icon", &match);
+  if (NS_SUCCEEDED(rv) && match) {
+    return true;
+  }
   rv = NS_URIChainHasFlags(aURI, nsIProtocolHandler::URI_IS_LOCAL_RESOURCE, &match);
   if (NS_SUCCEEDED(rv) && match) {
     return false;
@@ -101,17 +120,22 @@ subjectToCSP(nsIURI* aURI, nsContentPolicyType aContentType) {
 
 /* nsIContentPolicy implementation */
 NS_IMETHODIMP
-CSPService::ShouldLoad(uint32_t aContentType,
-                       nsIURI *aContentLocation,
-                       nsIURI *aRequestOrigin,
-                       nsISupports *aRequestContext,
+CSPService::ShouldLoad(nsIURI *aContentLocation,
+                       nsILoadInfo* aLoadInfo,
                        const nsACString &aMimeTypeGuess,
-                       nsISupports *aExtra,
-                       nsIPrincipal *aRequestPrincipal,
                        int16_t *aDecision)
 {
   if (!aContentLocation) {
     return NS_ERROR_FAILURE;
+  }
+
+  uint32_t aContentType = aLoadInfo->InternalContentPolicyType();
+  nsCOMPtr<nsISupports> aRequestContext = aLoadInfo->GetLoadingContext();
+  nsCOMPtr<nsIPrincipal> aRequestPrincipal = aLoadInfo->TriggeringPrincipal();
+  nsCOMPtr<nsIURI> aRequestOrigin;
+  nsCOMPtr<nsIPrincipal> loadingPrincipal = aLoadInfo->LoadingPrincipal();
+  if (loadingPrincipal) {
+    loadingPrincipal->GetURI(getter_AddRefs(aRequestOrigin));
   }
 
   if (MOZ_LOG_TEST(gCspPRLog, LogLevel::Debug)) {
@@ -132,12 +156,18 @@ CSPService::ShouldLoad(uint32_t aContentType,
     return NS_OK;
   }
 
-  // query the principal of the document; if no document is passed, then
-  // fall back to using the requestPrincipal (e.g. service workers do not
-  // pass a document).
+  // Find a principal to retrieve the CSP from. If we don't have a context node
+  // (because, for instance, the load originates in a service worker), or the
+  // requesting principal's CSP overrides our document CSP, use the request
+  // principal. Otherwise, use the document principal.
   nsCOMPtr<nsINode> node(do_QueryInterface(aRequestContext));
-  nsCOMPtr<nsIPrincipal> principal = node ? node->NodePrincipal()
-                                          : aRequestPrincipal;
+  nsCOMPtr<nsIPrincipal> principal;
+  if (!node || (aRequestPrincipal &&
+                BasePrincipal::Cast(aRequestPrincipal)->OverridesCSP(node->NodePrincipal()))) {
+    principal = aRequestPrincipal;
+  } else  {
+    principal = node->NodePrincipal();
+  }
   if (!principal) {
     // if we can't query a principal, then there is nothing to do.
     return NS_OK;
@@ -193,18 +223,15 @@ CSPService::ShouldLoad(uint32_t aContentType,
 }
 
 NS_IMETHODIMP
-CSPService::ShouldProcess(uint32_t         aContentType,
-                          nsIURI           *aContentLocation,
-                          nsIURI           *aRequestOrigin,
-                          nsISupports      *aRequestContext,
+CSPService::ShouldProcess(nsIURI           *aContentLocation,
+                          nsILoadInfo*     aLoadInfo,
                           const nsACString &aMimeTypeGuess,
-                          nsISupports      *aExtra,
-                          nsIPrincipal     *aRequestPrincipal,
                           int16_t          *aDecision)
 {
   if (!aContentLocation) {
     return NS_ERROR_FAILURE;
   }
+  uint32_t aContentType = aLoadInfo->InternalContentPolicyType();
 
   if (MOZ_LOG_TEST(gCspPRLog, LogLevel::Debug)) {
     MOZ_LOG(gCspPRLog, LogLevel::Debug,
@@ -225,13 +252,9 @@ CSPService::ShouldProcess(uint32_t         aContentType,
     return NS_OK;
   }
 
-  return ShouldLoad(aContentType,
-                    aContentLocation,
-                    aRequestOrigin,
-                    aRequestContext,
+  return ShouldLoad(aContentLocation,
+                    aLoadInfo,
                     aMimeTypeGuess,
-                    aExtra,
-                    aRequestPrincipal,
                     aDecision);
 }
 

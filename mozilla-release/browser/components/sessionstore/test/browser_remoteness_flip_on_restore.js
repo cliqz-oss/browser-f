@@ -114,7 +114,7 @@ async function runScenarios(scenarios) {
         // The window starts with one tab, so we need to create
         // any of the additional ones required by this test.
         info("Opening a new tab");
-        tab = await BrowserTestUtils.openNewForegroundTab(tabbrowser)
+        tab = await BrowserTestUtils.openNewForegroundTab(tabbrowser);
       } else {
         info("Using the selected tab");
         tab = tabbrowser.selectedTab;
@@ -134,7 +134,7 @@ async function runScenarios(scenarios) {
     let state = prepareState(scenario.stateToRestore,
                              scenario.selectedTab);
 
-    SessionStore.setWindowState(win, state, true);
+    await setWindowState(win, state, true);
 
     for (let i = 0; i < scenario.expectedRemoteness.length; ++i) {
       let expectedRemoteness = scenario.expectedRemoteness[i];

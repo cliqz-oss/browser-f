@@ -1,6 +1,6 @@
 "use strict";
 
-const {TabStateFlusher} = Cu.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
+const {TabStateFlusher} = ChromeUtils.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
 
 // Keep this in sync with the order in Histograms.json for
 // BUSY_TAB_ABANDONED
@@ -186,11 +186,11 @@ const PROBE_TESTS = [
     prepare(browser) {},
 
     async doAction(browser) {
-      openUILinkIn(PAGE_2, "current");
+      openTrustedLinkIn(PAGE_2, "current");
       await BrowserTestUtils.browserLoaded(browser);
     },
   },
-]
+];
 
 /**
  * Takes a Telemetry histogram snapshot and makes sure
@@ -299,7 +299,7 @@ add_task(async function test_probes() {
   // middle of loading some resources.
   newTab.setAttribute("busy", true);
 
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
   let snapshot = histogram.snapshot();
   assertOnlyOneTypeSet(snapshot, "tabClosed");
 });

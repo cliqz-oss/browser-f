@@ -11,9 +11,9 @@
  * JS interpreter interface.
  */
 
-#include "jsiter.h"
 #include "jspubtd.h"
 
+#include "vm/Iteration.h"
 #include "vm/Stack.h"
 
 namespace js {
@@ -230,10 +230,8 @@ class RunState
 
     JS::HandleScript script() const { return script_; }
 
-    virtual InterpreterFrame* pushInterpreterFrame(JSContext* cx) = 0;
-    virtual void setReturnValue(const Value& v) = 0;
-
-    bool maybeCreateThisForConstructor(JSContext* cx);
+    InterpreterFrame* pushInterpreterFrame(JSContext* cx);
+    inline void setReturnValue(const Value& v);
 
   private:
     RunState(const RunState& other) = delete;
@@ -261,13 +259,16 @@ class ExecuteState : public RunState
         result_(result)
     { }
 
-    Value newTarget() { return newTargetValue_; }
+    Value newTarget() const { return newTargetValue_; }
+    void setNewTarget(const Value& v) { newTargetValue_ = v; }
+    Value* addressOfNewTarget() { return newTargetValue_.address(); }
+
     JSObject* environmentChain() const { return envChain_; }
     bool isDebuggerEval() const { return !!evalInFrame_; }
 
-    virtual InterpreterFrame* pushInterpreterFrame(JSContext* cx);
+    InterpreterFrame* pushInterpreterFrame(JSContext* cx);
 
-    virtual void setReturnValue(const Value& v) {
+    void setReturnValue(const Value& v) {
         if (result_)
             *result_ = v;
     }
@@ -278,28 +279,32 @@ class InvokeState final : public RunState
 {
     const CallArgs& args_;
     MaybeConstruct construct_;
-    bool createSingleton_;
 
   public:
     InvokeState(JSContext* cx, const CallArgs& args, MaybeConstruct construct)
       : RunState(cx, Invoke, args.callee().as<JSFunction>().nonLazyScript()),
         args_(args),
-        construct_(construct),
-        createSingleton_(false)
+        construct_(construct)
     { }
-
-    bool createSingleton() const { return createSingleton_; }
-    void setCreateSingleton() { createSingleton_ = true; }
 
     bool constructing() const { return construct_; }
     const CallArgs& args() const { return args_; }
 
-    virtual InterpreterFrame* pushInterpreterFrame(JSContext* cx);
+    InterpreterFrame* pushInterpreterFrame(JSContext* cx);
 
-    virtual void setReturnValue(const Value& v) {
+    void setReturnValue(const Value& v) {
         args_.rval().set(v);
     }
 };
+
+inline void
+RunState::setReturnValue(const Value& v)
+{
+    if (isInvoke())
+        asInvoke()->setReturnValue(v);
+    else
+        asExecute()->setReturnValue(v);
+}
 
 extern bool
 RunScript(JSContext* cx, RunState& state);
@@ -547,6 +552,9 @@ ReportRuntimeLexicalError(JSContext* cx, unsigned errorNumber, HandlePropertyNam
 void
 ReportRuntimeLexicalError(JSContext* cx, unsigned errorNumber, HandleScript script, jsbytecode* pc);
 
+void
+ReportInNotObjectError(JSContext* cx, HandleValue lref, int lindex, HandleValue rref, int rindex);
+
 // The parser only reports redeclarations that occurs within a single
 // script. Due to the extensibility of the global lexical scope, we also check
 // for redeclarations during runtime in JSOP_DEF{VAR,LET,CONST}.
@@ -575,7 +583,7 @@ bool
 ThrowUninitializedThis(JSContext* cx, AbstractFramePtr frame);
 
 bool
-ThrowInitializedThis(JSContext* cx, AbstractFramePtr frame);
+ThrowInitializedThis(JSContext* cx);
 
 bool
 DefaultClassConstructor(JSContext* cx, unsigned argc, Value* vp);

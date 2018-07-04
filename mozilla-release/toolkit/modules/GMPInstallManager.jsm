@@ -4,41 +4,25 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [];
-
-const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu, manager: Cm} =
-  Components;
 // 1 day default
 const DEFAULT_SECONDS_BETWEEN_CHECKS = 60 * 60 * 24;
 
-var GMPInstallFailureReason = {
-  GMP_INVALID: 1,
-  GMP_HIDDEN: 2,
-  GMP_DISABLED: 3,
-  GMP_UPDATE_DISABLED: 4,
-};
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/GMPUtils.jsm");
+ChromeUtils.import("resource://gre/modules/addons/ProductAddonChecker.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/GMPUtils.jsm");
-Cu.import("resource://gre/modules/addons/ProductAddonChecker.jsm");
+var EXPORTED_SYMBOLS = ["GMPInstallManager", "GMPExtractor", "GMPDownloader",
+                        "GMPAddon"];
 
-this.EXPORTED_SYMBOLS = ["GMPInstallManager", "GMPExtractor", "GMPDownloader",
-                         "GMPAddon"];
-
-// Shared code for suppressing bad cert dialogs
-XPCOMUtils.defineLazyGetter(this, "gCertUtils", function() {
-  let temp = { };
-  Cu.import("resource://gre/modules/CertUtils.jsm", temp);
-  return temp;
-});
-
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
-                                  "resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "CertUtils",
+                               "resource://gre/modules/CertUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+                               "resource://gre/modules/UpdateUtils.jsm");
 
 function getScopedLogger(prefix) {
   // `PARENT_LOGGER_ID.` being passed here effectively links this logger
@@ -100,7 +84,7 @@ GMPInstallManager.prototype = {
     if (!Services.prefs.prefHasUserValue(GMPPrefs.KEY_URL_OVERRIDE)) {
       allowNonBuiltIn = !GMPPrefs.getString(GMPPrefs.KEY_CERT_REQUIREBUILTIN, true);
       if (GMPPrefs.getBool(GMPPrefs.KEY_CERT_CHECKATTRS, true)) {
-        certs = gCertUtils.readCertPrefs(GMPPrefs.KEY_CERTS_BRANCH);
+        certs = CertUtils.readCertPrefs(GMPPrefs.KEY_CERTS_BRANCH);
       }
     }
 
@@ -195,7 +179,7 @@ GMPInstallManager.prototype = {
     } else {
       let secondsBetweenChecks =
         GMPPrefs.getInt(GMPPrefs.KEY_SECONDS_BETWEEN_CHECKS,
-                        DEFAULT_SECONDS_BETWEEN_CHECKS)
+                        DEFAULT_SECONDS_BETWEEN_CHECKS);
       let secondsSinceLast = this._getTimeSinceLastCheck();
       log.info("Last check was: " + secondsSinceLast +
                " seconds ago, minimum seconds: " + secondsBetweenChecks);
@@ -236,7 +220,7 @@ GMPInstallManager.prototype = {
         }
 
         let addonUpdateEnabled = false;
-        if (GMP_PLUGIN_IDS.indexOf(gmpAddon.id) >= 0) {
+        if (GMP_PLUGIN_IDS.includes(gmpAddon.id)) {
           if (!this._isAddonEnabled(gmpAddon.id)) {
             log.info("GMP |" + gmpAddon.id + "| has been disabled; skipping check.");
           } else if (!this._isAddonUpdateEnabled(gmpAddon.id)) {
@@ -399,7 +383,7 @@ GMPExtractor.prototype = {
       }
       log.info("Successfully extracted zip file: " + zipPath);
       return deferredPromise.resolve(msg.data.extractedPaths);
-    }
+    };
     worker.postMessage({zipPath, relativeInstallPath});
     return this._deferred.promise;
   }
@@ -429,7 +413,6 @@ GMPDownloader.prototype = {
       log.info("gmpAddon is not valid, will not continue");
       return Promise.reject({
         target: this,
-        status,
         type: "downloaderr"
       });
     }

@@ -7,7 +7,7 @@
 
 // Until X509.jsm is actually used in production code, this is where we have to
 // import it from.
-var { X509 } = Cu.import("resource://testing-common/psm/X509.jsm", {});
+var { X509 } = ChromeUtils.import("resource://testing-common/psm/X509.jsm", {});
 
 function stringToBytes(s) {
   let b = [];
@@ -30,16 +30,14 @@ function run_test() {
 
   // serialNumber
   deepEqual(certificate.tbsCertificate.serialNumber,
-            [ 0x35, 0x1b, 0xe9, 0x3a, 0x1b, 0x03, 0x1c, 0x46, 0x1b, 0x45,
-              0xfe, 0x9b, 0xb2, 0x20, 0x0f, 0x6e, 0xf2, 0x9e, 0xd9, 0x50 ],
+            [ 0x59, 0xb5, 0x8b, 0x4f, 0x02, 0xc1, 0xbd, 0xfc, 0x1c, 0xa2, 0x25,
+              0x3b, 0x23, 0xc9, 0x43, 0xcf, 0xdb, 0x27, 0x7d, 0x48 ],
             "default-ee.pem should have expected serialNumber");
 
   deepEqual(certificate.tbsCertificate.signature.algorithm._values,
             [ 1, 2, 840, 113549, 1, 1, 11 ], // sha256WithRSAEncryption
             "default-ee.pem should have sha256WithRSAEncryption signature");
-  // TODO: there should actually be an explicit encoded NULL here, but it looks
-  // like pycert doesn't include it.
-  deepEqual(certificate.tbsCertificate.signature.parameters, null,
+  deepEqual(certificate.tbsCertificate.signature.parameters._contents, [],
             "default-ee.pem should have NULL parameters for signature");
 
   equal(certificate.tbsCertificate.issuer.rdns.length, 1,
@@ -51,10 +49,10 @@ function run_test() {
             "default-ee.pem should have issuer 'Test CA'");
 
   equal(certificate.tbsCertificate.validity.notBefore.time.getTime(),
-        Date.parse("2015-11-28T00:00:00.000Z"),
+        Date.parse("2016-11-27T00:00:00.000Z"),
         "default-ee.pem should have the correct value for notBefore");
   equal(certificate.tbsCertificate.validity.notAfter.time.getTime(),
-        Date.parse("2018-02-05T00:00:00.000Z"),
+        Date.parse("2019-02-05T00:00:00.000Z"),
         "default-ee.pem should have the correct value for notAfter");
 
   equal(certificate.tbsCertificate.subject.rdns.length, 1,
@@ -75,9 +73,7 @@ function run_test() {
   deepEqual(certificate.signatureAlgorithm.algorithm._values,
             [ 1, 2, 840, 113549, 1, 1, 11 ], // sha256WithRSAEncryption
             "default-ee.pem should have sha256WithRSAEncryption signatureAlgorithm");
-  // TODO: there should actually be an explicit encoded NULL here, but it looks
-  // like pycert doesn't include it.
-  deepEqual(certificate.signatureAlgorithm.parameters, null,
+  deepEqual(certificate.signatureAlgorithm.parameters._contents, [],
             "default-ee.pem should have NULL parameters for signatureAlgorithm");
 
   equal(certificate.signatureValue.length, 2048 / 8,

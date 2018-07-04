@@ -2,15 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+const { PromptUtils } = ChromeUtils.import("resource://gre/modules/SharedPromptUtils.jsm", {});
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-const { PromptUtils } = Cu.import("resource://gre/modules/SharedPromptUtils.jsm", {});
-
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
 
 const LoginInfo =
       Components.Constructor("@mozilla.org/login-manager/loginInfo;1",
@@ -41,7 +39,7 @@ function LoginManagerPromptFactory() {
 LoginManagerPromptFactory.prototype = {
 
   classID: Components.ID("{749e62f4-60ae-4569-a8a2-de78b649660e}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPromptFactory, Ci.nsIObserver, Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPromptFactory, Ci.nsIObserver, Ci.nsISupportsWeakReference]),
 
   _asyncPrompts: {},
   _asyncPromptInProgress: false,
@@ -87,12 +85,12 @@ LoginManagerPromptFactory.prototype = {
     var prompt = this._asyncPrompts[hashKey];
     var prompter = prompt.prompter;
     var [hostname, httpRealm] = prompter._getAuthTarget(prompt.channel, prompt.authInfo);
-    var hasLogins = (prompter._pwmgr.countLogins(hostname, null, httpRealm) > 0);
+    var hasLogins = (Services.logins.countLogins(hostname, null, httpRealm) > 0);
     if (!hasLogins && LoginHelper.schemeUpgrades && hostname.startsWith("https://")) {
       let httpHostname = hostname.replace(/^https:\/\//, "http://");
-      hasLogins = (prompter._pwmgr.countLogins(httpHostname, null, httpRealm) > 0);
+      hasLogins = (Services.logins.countLogins(httpHostname, null, httpRealm) > 0);
     }
-    if (hasLogins && prompter._pwmgr.uiBusy) {
+    if (hasLogins && Services.logins.uiBusy) {
       this.log("_doAsyncPrompt:run bypassed, master password UI busy");
       return;
     }
@@ -128,8 +126,8 @@ LoginManagerPromptFactory.prototype = {
                 e.result == Cr.NS_ERROR_NOT_AVAILABLE) {
               self.log("_doAsyncPrompt:run bypassed, UI is not available in this context");
             } else {
-              Components.utils.reportError("LoginManagerPrompter: " +
-                                           "_doAsyncPrompt:run: " + e + "\n");
+              Cu.reportError("LoginManagerPrompter: " +
+                             "_doAsyncPrompt:run: " + e + "\n");
             }
           }
 
@@ -242,39 +240,19 @@ function LoginManagerPrompter() {}
 LoginManagerPrompter.prototype = {
 
   classID: Components.ID("{8aa66d77-1bbb-45a6-991e-b8f47751c291}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAuthPrompt,
-                                          Ci.nsIAuthPrompt2,
-                                          Ci.nsILoginManagerPrompter]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAuthPrompt,
+                                           Ci.nsIAuthPrompt2,
+                                           Ci.nsILoginManagerPrompter]),
 
   _factory: null,
   _chromeWindow: null,
   _browser: null,
   _opener: null,
 
-  __pwmgr: null, // Password Manager service
-  get _pwmgr() {
-    if (!this.__pwmgr)
-      this.__pwmgr = Cc["@mozilla.org/login-manager;1"].
-                     getService(Ci.nsILoginManager);
-    return this.__pwmgr;
-  },
-
-  __promptService: null, // Prompt service for user interaction
-  get _promptService() {
-    if (!this.__promptService)
-      this.__promptService =
-          Cc["@mozilla.org/embedcomp/prompt-service;1"].
-          getService(Ci.nsIPromptService2);
-    return this.__promptService;
-  },
-
-
   __strBundle: null, // String bundle for L10N
   get _strBundle() {
     if (!this.__strBundle) {
-      var bunService = Cc["@mozilla.org/intl/stringbundle;1"].
-                       getService(Ci.nsIStringBundleService);
-      this.__strBundle = bunService.createBundle(
+      this.__strBundle = Services.strings.createBundle(
                   "chrome://passwordmgr/locale/passwordmgr.properties");
       if (!this.__strBundle)
         throw new Error("String bundle for Login Manager not present!");
@@ -333,7 +311,7 @@ LoginManagerPrompter.prototype = {
       aResult.value = aDefaultText;
     }
 
-    return this._promptService.prompt(this._chromeWindow,
+    return Services.prompt.prompt(this._chromeWindow,
            aDialogTitle, aText, aResult, null, {});
   },
 
@@ -363,15 +341,15 @@ LoginManagerPrompter.prototype = {
       else
         canRememberLogin = (aSavePassword ==
                             Ci.nsIAuthPrompt.SAVE_PASSWORD_PERMANENTLY) &&
-                           this._pwmgr.getLoginSavingEnabled(hostname);
+                           Services.logins.getLoginSavingEnabled(hostname);
 
       // if checkBoxLabel is null, the checkbox won't be shown at all.
       if (canRememberLogin)
         checkBoxLabel = this._getLocalizedString("rememberPassword");
 
       // Look for existing logins.
-      var foundLogins = this._pwmgr.findLogins({}, hostname, null,
-                                  realm);
+      var foundLogins = Services.logins.findLogins({}, hostname, null,
+                                                   realm);
 
       // XXX Like the original code, we can't deal with multiple
       // account selection. (bug 227632)
@@ -395,7 +373,7 @@ LoginManagerPrompter.prototype = {
       }
     }
 
-    var ok = this._promptService.promptUsernameAndPassword(this._chromeWindow,
+    var ok = Services.prompt.promptUsernameAndPassword(this._chromeWindow,
                 aDialogTitle, aText, aUsername, aPassword,
                 checkBoxLabel, checkBox);
 
@@ -421,7 +399,7 @@ LoginManagerPrompter.prototype = {
     if (!selectedLogin) {
       // add as new
       this.log("New login seen for " + realm);
-      this._pwmgr.addLogin(newLogin);
+      Services.logins.addLogin(newLogin);
     } else if (aPassword.value != selectedLogin.password) {
       // update password
       this.log("Updating password for  " + realm);
@@ -461,7 +439,7 @@ LoginManagerPrompter.prototype = {
     if (hostname && !this._inPrivateBrowsing) {
       var canRememberLogin = (aSavePassword ==
                               Ci.nsIAuthPrompt.SAVE_PASSWORD_PERMANENTLY) &&
-                             this._pwmgr.getLoginSavingEnabled(hostname);
+                             Services.logins.getLoginSavingEnabled(hostname);
 
       // if checkBoxLabel is null, the checkbox won't be shown at all.
       if (canRememberLogin)
@@ -469,8 +447,8 @@ LoginManagerPrompter.prototype = {
 
       if (!aPassword.value) {
         // Look for existing logins.
-        var foundLogins = this._pwmgr.findLogins({}, hostname, null,
-                                          realm);
+        var foundLogins = Services.logins.findLogins({}, hostname, null,
+                                                     realm);
 
         // XXX Like the original code, we can't deal with multiple
         // account selection (bug 227632). We can deal with finding the
@@ -486,9 +464,9 @@ LoginManagerPrompter.prototype = {
       }
     }
 
-    var ok = this._promptService.promptPassword(this._chromeWindow, aDialogTitle,
-                                                aText, aPassword,
-                                                checkBoxLabel, checkBox);
+    var ok = Services.prompt.promptPassword(this._chromeWindow, aDialogTitle,
+                                            aText, aPassword,
+                                            checkBoxLabel, checkBox);
 
     if (ok && checkBox.value && hostname && aPassword.value) {
       var newLogin = Cc["@mozilla.org/login-manager/loginInfo;1"].
@@ -498,7 +476,7 @@ LoginManagerPrompter.prototype = {
 
       this.log("New login seen for " + realm);
 
-      this._pwmgr.addLogin(newLogin);
+      Services.logins.addLogin(newLogin);
     }
 
     return ok;
@@ -527,8 +505,8 @@ LoginManagerPrompter.prototype = {
     var uri = Services.io.newURI(aRealmString);
     var pathname = "";
 
-    if (uri.path != "/")
-      pathname = uri.path;
+    if (uri.pathQueryRef != "/")
+      pathname = uri.pathQueryRef;
 
     var formattedHostname = this._getFormattedHostname(uri);
 
@@ -599,7 +577,7 @@ LoginManagerPrompter.prototype = {
         checkbox.value = true;
       }
 
-      var canRememberLogin = this._pwmgr.getLoginSavingEnabled(hostname);
+      var canRememberLogin = Services.logins.getLoginSavingEnabled(hostname);
       if (this._inPrivateBrowsing)
         canRememberLogin = false;
 
@@ -610,7 +588,7 @@ LoginManagerPrompter.prototype = {
     } catch (e) {
       // Ignore any errors and display the prompt anyway.
       epicfail = true;
-      Components.utils.reportError("LoginManagerPrompter: " +
+      Cu.reportError("LoginManagerPrompter: " +
           "Epic fail in promptAuth: " + e + "\n");
     }
 
@@ -618,9 +596,9 @@ LoginManagerPrompter.prototype = {
     if (!ok) {
       if (this._chromeWindow)
         PromptUtils.fireDialogEvent(this._chromeWindow, "DOMWillOpenModalDialog", this._browser);
-      ok = this._promptService.promptAuth(this._chromeWindow,
-                                          aChannel, aLevel, aAuthInfo,
-                                          checkboxLabel, checkbox);
+      ok = Services.prompt.promptAuth(this._chromeWindow,
+                                      aChannel, aLevel, aAuthInfo,
+                                      checkboxLabel, checkbox);
     }
 
     // If there's a notification box, use it to allow the user to
@@ -657,7 +635,7 @@ LoginManagerPrompter.prototype = {
         if (notifyObj)
           this._showSaveLoginNotification(notifyObj, newLogin);
         else
-          this._pwmgr.addLogin(newLogin);
+          Services.logins.addLogin(newLogin);
       } else if (password != selectedLogin.password) {
         this.log("Updating password for " + username +
                  " @ " + hostname + " (" + httpRealm + ")");
@@ -671,7 +649,7 @@ LoginManagerPrompter.prototype = {
         this._updateLogin(selectedLogin);
       }
     } catch (e) {
-      Components.utils.reportError("LoginManagerPrompter: " +
+      Cu.reportError("LoginManagerPrompter: " +
           "Fail2 in promptAuth: " + e + "\n");
     }
 
@@ -715,7 +693,7 @@ LoginManagerPrompter.prototype = {
       this._factory._asyncPrompts[hashKey] = asyncPrompt;
       this._factory._doAsyncPrompt();
     } catch (e) {
-      Components.utils.reportError("LoginManagerPrompter: " +
+      Cu.reportError("LoginManagerPrompter: " +
           "asyncPromptAuth: " + e + "\nFalling back to promptAuth\n");
       // Fail the prompt operation to let the consumer fall back
       // to synchronous promptAuth method
@@ -736,7 +714,7 @@ LoginManagerPrompter.prototype = {
       // There may be no applicable window e.g. in a Sandbox or JSM.
       this._chromeWindow = null;
       this._browser = null;
-    } else if (aWindow instanceof Ci.nsIDOMChromeWindow) {
+    } else if (aWindow.isChromeWindow) {
       this._chromeWindow = aWindow;
       // needs to be set explicitly using setBrowser
       this._browser = null;
@@ -808,6 +786,9 @@ LoginManagerPrompter.prototype = {
    */
   _showLoginCaptureDoorhanger(login, type) {
     let { browser } = this._getNotifyWindow();
+    if (!browser) {
+      return;
+    }
 
     let saveMsgNames = {
       prompt: login.username === "" ? "saveLoginMsgNoUser"
@@ -840,6 +821,14 @@ LoginManagerPrompter.prototype = {
                                                 : "PWMGR_PROMPT_UPDATE_ACTION";
     let histogram = Services.telemetry.getHistogramById(histogramName);
     histogram.add(PROMPT_DISPLAYED);
+
+    const promptType = type == "password-save" ? "save" : "update";
+    const flow_id = browser.ownerGlobal.gBrowser.getTabForBrowser(browser).linkedPanel;
+    Services.telemetry.recordEvent("savant", "pwmgr", "ask", promptType,
+                                  {
+                                    subcategory: "prompt",
+                                    flow_id,
+                                  });
 
     let chromeDoc = browser.ownerDocument;
 
@@ -968,8 +957,20 @@ LoginManagerPrompter.prototype = {
       accessKey: this._getLocalizedString(initialMsgNames.buttonAccessKey),
       callback: () => {
         histogram.add(PROMPT_ADD_OR_UPDATE);
+        const flow_id = browser.ownerGlobal.gBrowser.getTabForBrowser(browser).linkedPanel;
         if (histogramName == "PWMGR_PROMPT_REMEMBER_ACTION") {
           Services.obs.notifyObservers(null, "LoginStats:NewSavedPassword");
+          Services.telemetry.recordEvent("savant", "pwmgr", "save", null,
+                                        {
+                                          subcategory: "prompt",
+                                          flow_id,
+                                        });
+        } else if (histogramName == "PWMGR_PROMPT_UPDATE_ACTION") {
+          Services.telemetry.recordEvent("savant", "pwmgr", "update", null,
+                                        {
+                                          subcategory: "prompt",
+                                          flow_id,
+                                        });
         }
         readDataFromUI();
         persistData();
@@ -1091,11 +1092,6 @@ LoginManagerPrompter.prototype = {
                                   "rememberPasswordMsgNoUsername",
                                   [displayHost]);
 
-    // The callbacks in |buttons| have a closure to access the variables
-    // in scope here; set one to |this._pwmgr| so we can get back to pwmgr
-    // without a getService() call.
-    var pwmgr = this._pwmgr;
-
     // Notification is a PopupNotification
     if (aNotifyObj == this._getPopupNote()) {
       this._showLoginCaptureDoorhanger(aLogin, "password-save");
@@ -1111,7 +1107,7 @@ LoginManagerPrompter.prototype = {
           accessKey: rememberButtonAccessKey,
           popup:     null,
           callback(aNotifyObj, aButton) {
-            pwmgr.addLogin(aLogin);
+            Services.logins.addLogin(aLogin);
           }
         },
 
@@ -1121,7 +1117,7 @@ LoginManagerPrompter.prototype = {
           accessKey: neverButtonAccessKey,
           popup:     null,
           callback(aNotifyObj, aButton) {
-            pwmgr.setLoginSavingEnabled(aLogin.hostname, false);
+            Services.logins.setLoginSavingEnabled(aLogin.hostname, false);
           }
         },
 
@@ -1199,21 +1195,21 @@ LoginManagerPrompter.prototype = {
                                     "notNowButtonText");
 
     this.log("Prompting user to save/ignore login");
-    var userChoice = this._promptService.confirmEx(this._chromeWindow,
-                                        dialogTitle, dialogText,
-                                        buttonFlags, rememberButtonText,
-                                        notNowButtonText, neverButtonText,
-                                        null, {});
+    var userChoice = Services.prompt.confirmEx(this._chromeWindow,
+                                               dialogTitle, dialogText,
+                                               buttonFlags, rememberButtonText,
+                                               notNowButtonText, neverButtonText,
+                                               null, {});
     //  Returns:
     //   0 - Save the login
     //   1 - Ignore the login this time
     //   2 - Never save logins for this site
     if (userChoice == 2) {
       this.log("Disabling " + aLogin.hostname + " logins by request.");
-      this._pwmgr.setLoginSavingEnabled(aLogin.hostname, false);
+      Services.logins.setLoginSavingEnabled(aLogin.hostname, false);
     } else if (userChoice == 0) {
       this.log("Saving login for " + aLogin.hostname);
-      this._pwmgr.addLogin(aLogin);
+      Services.logins.addLogin(aLogin);
     } else {
       // userChoice == 1 --> just ignore the login.
       this.log("Ignoring login.");
@@ -1269,11 +1265,6 @@ LoginManagerPrompter.prototype = {
     var notificationText = this._getLocalizedString("updatePasswordMsg",
                                                     [displayHost]);
 
-    // The callbacks in |buttons| have a closure to access the variables
-    // in scope here; set one to |this._pwmgr| so we can get back to pwmgr
-    // without a getService() call.
-    var self = this;
-
     // Notification is a PopupNotification
     if (aNotifyObj == this._getPopupNote()) {
       aOldLogin.hostname = aNewLogin.hostname;
@@ -1293,7 +1284,7 @@ LoginManagerPrompter.prototype = {
           accessKey: changeButtonAccessKey,
           popup:     null,
           callback(aNotifyObj, aButton) {
-            self._updateLogin(aOldLogin, aNewLogin);
+            Services.logins._updateLogin(aOldLogin, aNewLogin);
           }
         },
 
@@ -1336,10 +1327,10 @@ LoginManagerPrompter.prototype = {
                                 "passwordChangeTitle");
 
     // returns 0 for yes, 1 for no.
-    var ok = !this._promptService.confirmEx(this._chromeWindow,
-                            dialogTitle, dialogText, buttonFlags,
-                            null, null, null,
-                            null, {});
+    var ok = !Services.prompt.confirmEx(this._chromeWindow,
+                                        dialogTitle, dialogText, buttonFlags,
+                                        null, null, null,
+                                        null, {});
     if (ok) {
       this.log("Updating password for user " + aOldLogin.username);
       this._updateLogin(aOldLogin, aNewLogin);
@@ -1371,10 +1362,10 @@ LoginManagerPrompter.prototype = {
 
     // If user selects ok, outparam.value is set to the index
     // of the selected username.
-    var ok = this._promptService.select(this._chromeWindow,
-                            dialogTitle, dialogText,
-                            usernames.length, usernames,
-                            selectedIndex);
+    var ok = Services.prompt.select(this._chromeWindow,
+                                    dialogTitle, dialogText,
+                                    usernames.length, usernames,
+                                    selectedIndex);
     if (ok) {
       // Now that we know which login to use, modify its password.
       var selectedLogin = logins[selectedIndex.value];
@@ -1413,17 +1404,41 @@ LoginManagerPrompter.prototype = {
     }
     propBag.setProperty("timeLastUsed", now);
     propBag.setProperty("timesUsedIncrement", 1);
-    this._pwmgr.modifyLogin(login, propBag);
+    Services.logins.modifyLogin(login, propBag);
   },
 
   /**
    * Given a content DOM window, returns the chrome window and browser it's in.
    */
   _getChromeWindow(aWindow) {
+    // Handle non-e10s toolkit consumers.
+    if (!Cu.isCrossProcessWrapper(aWindow)) {
+      let chromeWin = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                             .getInterface(Ci.nsIWebNavigation)
+                             .QueryInterface(Ci.nsIDocShell)
+                             .chromeEventHandler.ownerGlobal;
+      if (!chromeWin) {
+        return null;
+      }
+
+      // gBrowser only exists on some apps, like Firefox.
+      let tabbrowser = chromeWin.gBrowser ||
+        (typeof chromeWin.getBrowser == "function" ? chromeWin.getBrowser() : null);
+      // At least serve the chrome window if getBrowser()
+      // or getBrowserForContentWindow() are not supported.
+      if (!tabbrowser || typeof tabbrowser.getBrowserForContentWindow != "function") {
+        return { win: chromeWin };
+      }
+
+      let browser = tabbrowser.getBrowserForContentWindow(aWindow);
+      return { win: chromeWin, browser };
+    }
+
     let windows = Services.wm.getEnumerator(null);
     while (windows.hasMoreElements()) {
       let win = windows.getNext();
-      let browser = win.gBrowser.getBrowserForContentWindow(aWindow);
+      let tabbrowser = win.gBrowser || win.getBrowser();
+      let browser = tabbrowser.getBrowserForContentWindow(aWindow);
       if (browser) {
         return { win, browser };
       }
@@ -1551,7 +1566,7 @@ LoginManagerPrompter.prototype = {
       uri = Services.io.newURI(aURI);
     }
 
-    return uri.scheme + "://" + uri.hostPort;
+    return uri.scheme + "://" + uri.displayHostPort;
   },
 
 
@@ -1563,13 +1578,11 @@ LoginManagerPrompter.prototype = {
   _getShortDisplayHost(aURIString) {
     var displayHost;
 
-    var eTLDService = Cc["@mozilla.org/network/effective-tld-service;1"].
-                      getService(Ci.nsIEffectiveTLDService);
     var idnService = Cc["@mozilla.org/network/idn-service;1"].
                      getService(Ci.nsIIDNService);
     try {
       var uri = Services.io.newURI(aURIString);
-      var baseDomain = eTLDService.getBaseDomain(uri);
+      var baseDomain = Services.eTLD.getBaseDomain(uri);
       displayHost = idnService.convertToDisplayIDN(baseDomain, {});
     } catch (e) {
       this.log("_getShortDisplayHost couldn't process " + aURIString);
@@ -1673,7 +1686,7 @@ LoginManagerPrompter.prototype = {
 
   _newAsyncPromptConsumer(aCallback, aContext) {
     return {
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsICancelable]),
+      QueryInterface: ChromeUtils.generateQI([Ci.nsICancelable]),
       callback: aCallback,
       context: aContext,
       cancel() {

@@ -28,26 +28,26 @@
 #ifndef jit_ExecutableAllocator_h
 #define jit_ExecutableAllocator_h
 
+#include "mozilla/EnumeratedArray.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/XorShift128PlusRNG.h"
 
 #include <limits>
 #include <stddef.h> // for ptrdiff_t
 
-#include "jsalloc.h"
-
 #ifdef JS_CODEGEN_ARM
-#include "jit/arm/Architecture-arm.h"
+# include "jit/arm/Architecture-arm.h"
 #endif
 #include "jit/arm/Simulator-arm.h"
 #if defined(JS_CODEGEN_ARM64)
-#include "jit/arm64/vixl/Cpu-vixl.h"
+# include "jit/arm64/vixl/Cpu-vixl.h"
 #endif
 #include "jit/mips32/Simulator-mips32.h"
 #include "jit/mips64/Simulator-mips64.h"
 #include "jit/ProcessExecutableMemory.h"
-#include "js/GCAPI.h"
+#include "js/AllocPolicy.h"
 #include "js/HashTable.h"
+#include "js/TypeDecls.h"
 #include "js/Vector.h"
 
 #if defined(__sparc__)
@@ -83,7 +83,13 @@ namespace JS {
 namespace js {
 namespace jit {
 
-enum CodeKind { ION_CODE = 0, BASELINE_CODE, REGEXP_CODE, OTHER_CODE };
+enum class CodeKind : uint8_t {
+    Ion,
+    Baseline,
+    RegExp,
+    Other,
+    Count
+};
 
 class ExecutableAllocator;
 class JitRuntime;
@@ -110,11 +116,8 @@ class ExecutablePool
     // Flag that can be used by algorithms operating on pools.
     bool m_mark:1;
 
-    // Number of bytes currently used for Method and Regexp JIT code.
-    size_t m_ionCodeBytes;
-    size_t m_baselineCodeBytes;
-    size_t m_regexpCodeBytes;
-    size_t m_otherCodeBytes;
+    // Number of bytes currently allocated for each CodeKind.
+    mozilla::EnumeratedArray<CodeKind, CodeKind::Count, size_t> m_codeBytes;
 
   public:
     void release(bool willDestroy = false);
@@ -124,9 +127,11 @@ class ExecutablePool
 
     ExecutablePool(ExecutableAllocator* allocator, Allocation a)
       : m_allocator(allocator), m_freePtr(a.pages), m_end(m_freePtr + a.size), m_allocation(a),
-        m_refCount(1), m_mark(false), m_ionCodeBytes(0), m_baselineCodeBytes(0),
-        m_regexpCodeBytes(0), m_otherCodeBytes(0)
-    { }
+        m_refCount(1), m_mark(false)
+    {
+        for (size_t& count : m_codeBytes)
+            count = 0;
+    }
 
     ~ExecutablePool();
 
@@ -149,6 +154,15 @@ class ExecutablePool
     void* alloc(size_t n, CodeKind kind);
 
     size_t available() const;
+
+    // Returns the number of bytes that are currently in use (referenced by
+    // live JitCode objects).
+    size_t usedCodeBytes() const {
+        size_t res = 0;
+        for (size_t count : m_codeBytes)
+            res += count;
+        return res;
+    }
 };
 
 struct JitPoisonRange
@@ -166,10 +180,8 @@ typedef Vector<JitPoisonRange, 0, SystemAllocPolicy> JitPoisonRangeVector;
 
 class ExecutableAllocator
 {
-    JSRuntime* rt_;
-
   public:
-    explicit ExecutableAllocator(JSRuntime* rt);
+    ExecutableAllocator() = default;
     ~ExecutableAllocator();
 
     void purge();
@@ -208,13 +220,6 @@ class ExecutableAllocator
     static bool makeExecutable(void* start, size_t size)
     {
         return ReprotectRegion(start, size, ProtectionSetting::Executable);
-    }
-
-    void makeAllWritable() {
-        reprotectAll(ProtectionSetting::Writable);
-    }
-    void makeAllExecutable() {
-        reprotectAll(ProtectionSetting::Executable);
     }
 
     static void poisonCode(JSRuntime* rt, JitPoisonRangeVector& ranges);
@@ -312,8 +317,6 @@ class ExecutableAllocator
   private:
     ExecutableAllocator(const ExecutableAllocator&) = delete;
     void operator=(const ExecutableAllocator&) = delete;
-
-    void reprotectAll(ProtectionSetting);
 
     // These are strong references;  they keep pools alive.
     static const size_t maxSmallPools = 4;

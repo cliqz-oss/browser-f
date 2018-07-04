@@ -262,7 +262,8 @@ macro_rules! _clap_count_exprs {
 /// retrieve a `Vec<&'static str>` of the variant names, as well as implementing [`FromStr`] and
 /// [`Display`] automatically.
 ///
-/// **NOTE:** Case insensitivity is supported for ASCII characters only
+/// **NOTE:** Case insensitivity is supported for ASCII characters only. It's highly recommended to
+/// use [`Arg::case_insensitive(true)`] for args that will be used with these enums
 ///
 /// **NOTE:** This macro automatically implements [`std::str::FromStr`] and [`std::fmt::Display`]
 ///
@@ -270,12 +271,12 @@ macro_rules! _clap_count_exprs {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```rust
 /// # #[macro_use]
 /// # extern crate clap;
 /// # use clap::{App, Arg};
 /// arg_enum!{
-///     #[derive(Debug)]
+///     #[derive(PartialEq, Debug)]
 ///     pub enum Foo {
 ///         Bar,
 ///         Baz,
@@ -286,17 +287,22 @@ macro_rules! _clap_count_exprs {
 /// // and implements std::str::FromStr to use with the value_t! macros
 /// fn main() {
 ///     let m = App::new("app")
-///                 .arg_from_usage("<foo> 'the foo'")
-///                 .get_matches();
+///                 .arg(Arg::from_usage("<foo> 'the foo'")
+///                     .possible_values(&Foo::variants())
+///                     .case_insensitive(true))
+///                 .get_matches_from(vec![
+///                     "app", "baz"
+///                 ]);
 ///     let f = value_t!(m, "foo", Foo).unwrap_or_else(|e| e.exit());
 ///
-///     // Use f like any other Foo variant...
+///     assert_eq!(f, Foo::Baz);
 /// }
 /// ```
 /// [`FromStr`]: https://doc.rust-lang.org/std/str/trait.FromStr.html
 /// [`std::str::FromStr`]: https://doc.rust-lang.org/std/str/trait.FromStr.html
 /// [`Display`]: https://doc.rust-lang.org/std/fmt/trait.Display.html
 /// [`std::fmt::Display`]: https://doc.rust-lang.org/std/fmt/trait.Display.html
+/// [`Arg::case_insensitive(true)`]: ./struct.Arg.html#method.case_insensitive
 #[macro_export]
 macro_rules! arg_enum {
     (@as_item $($i:item)*) => ($($i)*);
@@ -308,6 +314,7 @@ macro_rules! arg_enum {
             type Err = String;
 
             fn from_str(s: &str) -> ::std::result::Result<Self,Self::Err> {
+                #[allow(unused_imports)]
                 use ::std::ascii::AsciiExt;
                 match s {
                     $(stringify!($v) |
@@ -338,6 +345,14 @@ macro_rules! arg_enum {
             }
         });
     };
+    ($(#[$($m:meta),+])+ pub enum $e:ident { $($v:ident $(=$val:expr)*,)+ } ) => {
+        arg_enum!(@impls
+            ($(#[$($m),+])+
+            pub enum $e {
+                $($v$(=$val)*),+
+            }) -> ($e, $($v),+)
+        );
+    };
     ($(#[$($m:meta),+])+ pub enum $e:ident { $($v:ident $(=$val:expr)*),+ } ) => {
         arg_enum!(@impls
             ($(#[$($m),+])+
@@ -346,7 +361,14 @@ macro_rules! arg_enum {
             }) -> ($e, $($v),+)
         );
     };
-    ($(#[$($m:meta),+])+ enum $e:ident { $($v:ident $(=$val:expr)*),+  } ) => {
+    ($(#[$($m:meta),+])+ enum $e:ident { $($v:ident $(=$val:expr)*,)+ } ) => {
+        arg_enum!($(#[$($m:meta),+])+
+            enum $e:ident {
+                $($v:ident $(=$val:expr)*),+
+            }
+        );
+    };
+    ($(#[$($m:meta),+])+ enum $e:ident { $($v:ident $(=$val:expr)*),+ } ) => {
         arg_enum!(@impls
             ($(#[$($m),+])+
             enum $e {
@@ -354,12 +376,22 @@ macro_rules! arg_enum {
             }) -> ($e, $($v),+)
         );
     };
+    (pub enum $e:ident { $($v:ident $(=$val:expr)*,)+ } ) => {
+        arg_enum!(pub enum $e:ident {
+            $($v:ident $(=$val:expr)*),+
+        });
+    };
     (pub enum $e:ident { $($v:ident $(=$val:expr)*),+ } ) => {
         arg_enum!(@impls
             (pub enum $e {
                 $($v$(=$val)*),+
             }) -> ($e, $($v),+)
         );
+    };
+    (enum $e:ident { $($v:ident $(=$val:expr)*,)+ } ) => {
+        arg_enum!(enum $e:ident {
+            $($v:ident $(=$val:expr)*),+
+        });
     };
     (enum $e:ident { $($v:ident $(=$val:expr)*),+ } ) => {
         arg_enum!(@impls
@@ -371,7 +403,7 @@ macro_rules! arg_enum {
 }
 
 /// Allows you to pull the version from your Cargo.toml at compile time as
-/// MAJOR.MINOR.PATCH_PKGVERSION_PRE
+/// `MAJOR.MINOR.PATCH_PKGVERSION_PRE`
 ///
 /// # Examples
 ///
@@ -385,7 +417,7 @@ macro_rules! arg_enum {
 ///             .get_matches();
 /// # }
 /// ```
-#[cfg(not(feature="no_cargo"))]
+#[cfg(not(feature = "no_cargo"))]
 #[macro_export]
 macro_rules! crate_version {
     () => {
@@ -414,7 +446,7 @@ macro_rules! crate_version {
 ///             .get_matches();
 /// # }
 /// ```
-#[cfg(not(feature="no_cargo"))]
+#[cfg(not(feature = "no_cargo"))]
 #[macro_export]
 macro_rules! crate_authors {
     ($sep:expr) => {{
@@ -422,26 +454,29 @@ macro_rules! crate_authors {
         use std::sync::{ONCE_INIT, Once};
 
         #[allow(missing_copy_implementations)]
-        #[allow(non_camel_case_types)]
         #[allow(dead_code)]
-        struct CARGO_AUTHORS {__private_field: ()}
-        static CARGO_AUTHORS: CARGO_AUTHORS = CARGO_AUTHORS {__private_field: ()};
+        struct CargoAuthors { __private_field: () };
 
-        impl Deref for CARGO_AUTHORS {
-            type Target = String;
+        impl Deref for CargoAuthors {
+            type Target = str;
 
             #[allow(unsafe_code)]
-            fn deref<'a>(&'a self) -> &'a String {
-                unsafe {
-                    static mut LAZY: (*const String, Once) = (0 as *const String, ONCE_INIT);
+            fn deref(&self) -> &'static str {
+                static ONCE: Once = ONCE_INIT;
+                static mut VALUE: *const String = 0 as *const String;
 
-                    LAZY.1.call_once(|| LAZY.0 = Box::into_raw(Box::new(env!("CARGO_PKG_AUTHORS").replace(':', $sep))));
-                    &*LAZY.0
+                unsafe {
+                    ONCE.call_once(|| {
+                        let s = env!("CARGO_PKG_AUTHORS").replace(':', $sep);
+                        VALUE = Box::into_raw(Box::new(s));
+                    });
+
+                    &(*VALUE)[..]
                 }
             }
         }
 
-        &CARGO_AUTHORS[..]
+        &*CargoAuthors { __private_field: () }
     }};
     () => {
         env!("CARGO_PKG_AUTHORS")
@@ -462,7 +497,7 @@ macro_rules! crate_authors {
 ///             .get_matches();
 /// # }
 /// ```
-#[cfg(not(feature="no_cargo"))]
+#[cfg(not(feature = "no_cargo"))]
 #[macro_export]
 macro_rules! crate_description {
     () => {
@@ -483,7 +518,7 @@ macro_rules! crate_description {
 ///             .get_matches();
 /// # }
 /// ```
-#[cfg(not(feature="no_cargo"))]
+#[cfg(not(feature = "no_cargo"))]
 #[macro_export]
 macro_rules! crate_name {
     () => {
@@ -514,7 +549,7 @@ macro_rules! crate_name {
 /// let m = app_from_crate!().get_matches();
 /// # }
 /// ```
-#[cfg(not(feature="no_cargo"))]
+#[cfg(not(feature = "no_cargo"))]
 #[macro_export]
 macro_rules! app_from_crate {
     () => {
@@ -736,7 +771,7 @@ macro_rules! clap_app {
 }
 
 macro_rules! impl_settings {
-    ($n:ident, $($v:ident => $c:ident),+) => {
+    ($n:ident, $($v:ident => $c:path),+) => {
         pub fn set(&mut self, s: $n) {
             match s {
                 $($n::$v => self.0.insert($c)),+
@@ -764,15 +799,10 @@ macro_rules! wlnerr(
         writeln!(&mut stderr(), $($arg)*).ok();
     })
 );
-macro_rules! werr(
-    ($($arg:tt)*) => ({
-        use std::io::{Write, stderr};
-        write!(&mut stderr(), $($arg)*).ok();
-    })
-);
 
 #[cfg(feature = "debug")]
 #[cfg_attr(feature = "debug", macro_use)]
+#[cfg_attr(feature = "debug", allow(unused_macros))]
 mod debug_macros {
     macro_rules! debugln {
         ($fmt:expr) => (println!(concat!("DEBUG:clap:", $fmt)));
@@ -803,10 +833,6 @@ mod debug_macros {
         ($fmt:expr) => ();
         ($fmt:expr, $($arg:tt)*) => ();
     }
-    macro_rules! sdebug {
-        ($fmt:expr) => ();
-        ($fmt:expr, $($arg:tt)*) => ();
-    }
     macro_rules! debug {
         ($fmt:expr) => ();
         ($fmt:expr, $($arg:tt)*) => ();
@@ -817,37 +843,13 @@ mod debug_macros {
 // used in:
 //    src/args/arg_builder/*.rs
 //    src/app/mod.rs
-macro_rules! write_spaces {
-    ($num:expr, $w:ident) => ({
-        debugln!("write_spaces!;");
-        for _ in 0..$num {
-            try!(write!($w, " "));
-        }
-    })
-}
-
-// Helper/deduplication macro for printing the correct number of spaces in help messages
-// used in:
-//    src/args/arg_builder/*.rs
-//    src/app/mod.rs
 macro_rules! write_nspaces {
     ($dst:expr, $num:expr) => ({
         debugln!("write_spaces!: num={}", $num);
         for _ in 0..$num {
-            try!($dst.write_all(b" "));
+            $dst.write_all(b" ")?;
         }
     })
-}
-
-// convenience macro for remove an item from a vec
-macro_rules! vec_remove {
-    ($vec:expr, $to_rem:expr) => {
-        debugln!("vec_remove!: to_rem={:?}", $to_rem);
-        for i in (0 .. $vec.len()).rev() {
-            let should_remove = &$vec[i] == $to_rem;
-            if should_remove { $vec.swap_remove(i); }
-        }
-    };
 }
 
 // convenience macro for remove an item from a vec
@@ -864,21 +866,21 @@ macro_rules! find_from {
     ($_self:expr, $arg_name:expr, $from:ident, $matcher:expr) => {{
         let mut ret = None;
         for k in $matcher.arg_names() {
-            if let Some(f) = find_by_name!($_self, &k, flags, iter) {
+            if let Some(f) = find_by_name!($_self, k, flags, iter) {
                 if let Some(ref v) = f.$from() {
                     if v.contains($arg_name) {
                         ret = Some(f.to_string());
                     }
                 }
             }
-            if let Some(o) = find_by_name!($_self, &k, opts, iter) {
+            if let Some(o) = find_by_name!($_self, k, opts, iter) {
                 if let Some(ref v) = o.$from() {
                     if v.contains(&$arg_name) {
                         ret = Some(o.to_string());
                     }
                 }
             }
-            if let Some(pos) = find_by_name!($_self, &k, positionals, values) {
+            if let Some(pos) = find_by_name!($_self, k, positionals, values) {
                 if let Some(ref v) = pos.$from() {
                     if v.contains($arg_name) {
                         ret = Some(pos.b.name.to_owned());
@@ -894,21 +896,21 @@ macro_rules! find_name_from {
     ($_self:expr, $arg_name:expr, $from:ident, $matcher:expr) => {{
         let mut ret = None;
         for k in $matcher.arg_names() {
-            if let Some(f) = find_by_name!($_self, &k, flags, iter) {
+            if let Some(f) = find_by_name!($_self, k, flags, iter) {
                 if let Some(ref v) = f.$from() {
                     if v.contains($arg_name) {
                         ret = Some(f.b.name);
                     }
                 }
             }
-            if let Some(o) = find_by_name!($_self, &k, opts, iter) {
+            if let Some(o) = find_by_name!($_self, k, opts, iter) {
                 if let Some(ref v) = o.$from() {
                     if v.contains(&$arg_name) {
                         ret = Some(o.b.name);
                     }
                 }
             }
-            if let Some(pos) = find_by_name!($_self, &k, positionals, values) {
+            if let Some(pos) = find_by_name!($_self, k, positionals, values) {
                 if let Some(ref v) = pos.$from() {
                     if v.contains($arg_name) {
                         ret = Some(pos.b.name);
@@ -923,7 +925,7 @@ macro_rules! find_name_from {
 // Finds an arg by name
 macro_rules! find_by_name {
     ($p:expr, $name:expr, $what:ident, $how:ident) => {
-        $p.$what.$how().find(|o| &o.b.name == $name)
+        $p.$what.$how().find(|o| o.b.name == $name)
     }
 }
 
@@ -946,26 +948,20 @@ macro_rules! find_flag_by_long {
     }};
 }
 
-macro_rules! find_any_by_long {
-    ($_self:ident, $long:expr, $what:ident) => {
-        _find_flag_by_long!($_self, $long).or(_find_opt_by_long!($_self, $long))
-    }
-}
-
 macro_rules! _find_by_long {
     ($_self:ident, $long:expr, $what:ident) => {{
         $_self.$what
             .iter()
             .filter(|a| a.s.long.is_some())
             .find(|a| {
-                &&a.s.long.unwrap() == &$long ||
+                a.s.long.unwrap() == $long ||
                 (a.s.aliases.is_some() &&
                  a.s
                     .aliases
                     .as_ref()
                     .unwrap()
                     .iter()
-                    .any(|&(alias, _)| &&alias == &$long))
+                    .any(|&(alias, _)| alias == $long))
             })
     }}
 }
@@ -981,12 +977,6 @@ macro_rules! find_flag_by_short {
     ($_self:ident, $short:expr) => {{
         _find_by_short!($_self, $short, flags)
     }}
-}
-
-macro_rules! find_any_by_short {
-    ($_self:ident, $short:expr, $what:ident) => {
-        _find_flag_by_short!($_self, $short).or(_find_opt_by_short!($_self, $short))
-    }
 }
 
 macro_rules! _find_by_short {

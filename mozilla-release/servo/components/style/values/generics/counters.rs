@@ -4,48 +4,73 @@
 
 //! Generic types for counters-related CSS values.
 
-use std::fmt;
-use style_traits::{HasViewportPercentage, ToCss};
+use std::ops::Deref;
 use values::CustomIdent;
 
+/// A name / value pair for counters.
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
+pub struct CounterPair<Integer> {
+    /// The name of the counter.
+    pub name: CustomIdent,
+    /// The value of the counter / increment / etc.
+    pub value: Integer,
+}
+
 /// A generic value for the `counter-increment` property.
-///
-/// Keyword `none` is represented by an empty slice.
-#[derive(Clone, Debug, PartialEq, ToComputedValue)]
-pub struct CounterIncrement<Integer>(Box<[(CustomIdent, Integer)]);
+#[derive(Clone, Debug, Default, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
+pub struct CounterIncrement<I>(Counters<I>);
 
 impl<I> CounterIncrement<I> {
-    /// Returns `none`.
+    /// Returns a new value for `counter-increment`.
     #[inline]
-    pub fn none() -> Self {
-        CounterIncrement(vec![].into_boxed_slice())
+    pub fn new(counters: Vec<CounterPair<I>>) -> Self {
+        CounterIncrement(Counters(counters.into_boxed_slice()))
     }
 }
 
-impl<I> HasViewportPercentage for CounterIncrement<I> {
-    #[inline] fn has_viewport_percentage(&self) -> bool { false }
+impl<I> Deref for CounterIncrement<I> {
+    type Target = [CounterPair<I>];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &(self.0).0
+    }
 }
 
-impl<I> ToCss for CounterIncrement<I>
-where
-    I: ToCss,
-{
+/// A generic value for the `counter-reset` property.
+#[derive(Clone, Debug, Default, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
+pub struct CounterReset<I>(Counters<I>);
+
+impl<I> CounterReset<I> {
+    /// Returns a new value for `counter-reset`.
     #[inline]
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-    where
-        W: fmt::Write,
-    {
-        if self.0.is_empty() {
-            return dest.write_str("none");
-        }
-        for (&(ref name, ref value), i) in self.0.iter().enumerate() {
-            if i != 0 {
-                dest.write_str(" ")?;
-            }
-            name.to_css(dest)?;
-            dest.write_str(" ")?;
-            value.to_css(dest)?;
-        }
-        Ok(())
+    pub fn new(counters: Vec<CounterPair<I>>) -> Self {
+        CounterReset(Counters(counters.into_boxed_slice()))
+    }
+}
+
+impl<I> Deref for CounterReset<I> {
+    type Target = [CounterPair<I>];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &(self.0).0
+    }
+}
+
+/// A generic value for lists of counters.
+///
+/// Keyword `none` is represented by an empty vector.
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
+pub struct Counters<I>(#[css(iterable, if_empty = "none")] Box<[CounterPair<I>]>);
+
+impl<I> Default for Counters<I> {
+    #[inline]
+    fn default() -> Self {
+        Counters(vec![].into_boxed_slice())
     }
 }

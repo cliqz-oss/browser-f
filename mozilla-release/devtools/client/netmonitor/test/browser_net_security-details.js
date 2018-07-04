@@ -7,8 +7,10 @@
  * Test that Security details tab contains the expected data.
  */
 
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(CUSTOM_GET_URL);
+add_task(async function() {
+  await pushPref("security.pki.certificate_transparency.mode", 1);
+
+  let { tab, monitor } = await initNetMonitor(CUSTOM_GET_URL);
   let { document, store, windowRequire } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
 
@@ -17,17 +19,16 @@ add_task(function* () {
   info("Performing a secure request.");
   const REQUESTS_URL = "https://example.com" + CORS_SJS_PATH;
   let wait = waitForNetworkEvents(monitor, 1);
-  yield ContentTask.spawn(tab.linkedBrowser, REQUESTS_URL, function* (url) {
+  await ContentTask.spawn(tab.linkedBrowser, REQUESTS_URL, async function(url) {
     content.wrappedJSObject.performRequests(1, url);
   });
-  yield wait;
+  await wait;
 
-  wait = waitForDOM(document, "#security-panel");
-  EventUtils.sendMouseEvent({ type: "click" },
-    document.querySelector(".network-details-panel-toggle"));
+  store.dispatch(Actions.toggleNetworkDetails());
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector("#security-tab"));
-  yield wait;
+  await waitUntil(() => document.querySelector(
+    "#security-panel .security-info-value"));
 
   let tabpanel = document.querySelector("#security-panel");
   let textboxes = tabpanel.querySelectorAll(".textbox-input");
@@ -48,31 +49,37 @@ add_task(function* () {
   is(tabpanel.querySelectorAll(".treeLabel.objectLabel")[1].textContent,
      "Host example.com:",
      "Label has the expected value.");
-  is(textboxes[2].value, "Disabled", "Label has the expected value.");
-  is(textboxes[3].value, "Disabled", "Label has the expected value.");
+  // These two values can change. So only check they're not empty.
+  ok(textboxes[2].value !== "", "Label value is not empty.");
+  ok(textboxes[3].value !== "", "Label value is not empty.");
+  is(textboxes[4].value, "Disabled", "Label has the expected value.");
+  is(textboxes[5].value, "Disabled", "Label has the expected value.");
 
   // Cert
-  is(textboxes[4].value, "example.com", "Label has the expected value.");
-  is(textboxes[5].value, "<Not Available>", "Label has the expected value.");
-  is(textboxes[6].value, "<Not Available>", "Label has the expected value.");
+  is(textboxes[6].value, "example.com", "Label has the expected value.");
+  is(textboxes[7].value, "<Not Available>", "Label has the expected value.");
+  is(textboxes[8].value, "<Not Available>", "Label has the expected value.");
 
-  is(textboxes[7].value, "Temporary Certificate Authority",
+  is(textboxes[9].value, "Temporary Certificate Authority",
      "Label has the expected value.");
-  is(textboxes[8].value, "Mozilla Testing", "Label has the expected value.");
-  is(textboxes[9].value, "Profile Guided Optimization", "Label has the expected value.");
+  is(textboxes[10].value, "Mozilla Testing", "Label has the expected value.");
+  is(textboxes[11].value, "Profile Guided Optimization", "Label has the expected value.");
 
   // Locale sensitive and varies between timezones. Cant't compare equality or
   // the test fails depending on which part of the world the test is executed.
 
   // cert validity begins
-  isnot(textboxes[10].value, "", "Label was not empty.");
-  // cert validity expires
-  isnot(textboxes[11].value, "", "Label was not empty.");
-
-  // cert sha1 fingerprint
   isnot(textboxes[12].value, "", "Label was not empty.");
-  // cert sha256 fingerprint
+  // cert validity expires
   isnot(textboxes[13].value, "", "Label was not empty.");
 
-  yield teardown(monitor);
+  // cert sha1 fingerprint
+  isnot(textboxes[14].value, "", "Label was not empty.");
+  // cert sha256 fingerprint
+  isnot(textboxes[15].value, "", "Label was not empty.");
+
+  // Certificate transparency
+  isnot(textboxes[16].value, "", "Label was not empty.");
+
+  await teardown(monitor);
 });

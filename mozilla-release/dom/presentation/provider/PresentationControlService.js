@@ -5,23 +5,21 @@
 /* globals Components, dump */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
 /* globals XPCOMUtils */
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 /* globals Services */
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 /* globals NetUtil */
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 /* globals setTimeout, clearTimeout */
-Cu.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
 /* globals ControllerStateMachine */
-XPCOMUtils.defineLazyModuleGetter(this, "ControllerStateMachine", // jshint ignore:line
-                                  "resource://gre/modules/presentation/ControllerStateMachine.jsm");
+ChromeUtils.defineModuleGetter(this, "ControllerStateMachine", // jshint ignore:line
+                               "resource://gre/modules/presentation/ControllerStateMachine.jsm");
 /* global ReceiverStateMachine */
-XPCOMUtils.defineLazyModuleGetter(this, "ReceiverStateMachine", // jshint ignore:line
-                                  "resource://gre/modules/presentation/ReceiverStateMachine.jsm");
+ChromeUtils.defineModuleGetter(this, "ReceiverStateMachine", // jshint ignore:line
+                               "resource://gre/modules/presentation/ReceiverStateMachine.jsm");
 
 const kProtocolVersion = 1; // need to review isCompatibleServer while fiddling the version number.
 const kLocalCertName = "presentation";
@@ -360,9 +358,9 @@ PresentationControlService.prototype = {
   },
 
   classID: Components.ID("{f4079b8b-ede5-4b90-a112-5b415a931deb}"),
-  QueryInterface : XPCOMUtils.generateQI([Ci.nsIServerSocketListener,
-                                          Ci.nsIPresentationControlService,
-                                          Ci.nsIObserver]),
+  QueryInterface : ChromeUtils.generateQI([Ci.nsIServerSocketListener,
+                                           Ci.nsIPresentationControlService,
+                                           Ci.nsIObserver]),
 };
 
 function ChannelDescription(aInit) {
@@ -409,7 +407,7 @@ ChannelDescription.prototype = {
   },
 
   classID: Components.ID("{82507aea-78a2-487e-904a-858a6c5bf4e1}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationChannelDescription]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationChannelDescription]),
 };
 
 // Helper function: transfer nsIPresentationChannelDescription to json
@@ -663,7 +661,7 @@ TCPControlChannel.prototype = {
                  this._direction); // jshint ignore:line
     this._pump = Cc["@mozilla.org/network/input-stream-pump;1"].
                createInstance(Ci.nsIInputStreamPump);
-    this._pump.init(this._input, -1, -1, 0, 0, false);
+    this._pump.init(this._input, 0, 0, false);
     this._pump.asyncRead(this, null);
     this._stateMachine.onChannelReady();
   },
@@ -954,8 +952,8 @@ TCPControlChannel.prototype = {
   },
 
   classID: Components.ID("{fefb8286-0bdc-488b-98bf-0c11b485c955}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationControlChannel,
-                                         Ci.nsIStreamListener]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationControlChannel,
+                                          Ci.nsIStreamListener]),
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([PresentationControlService]); // jshint ignore:line

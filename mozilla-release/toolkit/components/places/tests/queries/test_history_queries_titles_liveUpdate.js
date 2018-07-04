@@ -59,16 +59,16 @@ add_task(async function pages_query() {
   compareArrayToResult([gTestData[0], gTestData[1], gTestData[2]], root);
   for (let i = 0; i < root.childCount; i++) {
     let node = root.getChild(i);
-    do_check_eq(node.title, gTestData[i].title);
+    Assert.equal(node.title, gTestData[i].title);
     let uri = NetUtil.newURI(node.uri);
     await PlacesTestUtils.addVisits({uri, title: "changedTitle"});
-    do_check_eq(node.title, "changedTitle");
+    Assert.equal(node.title, "changedTitle");
     await PlacesTestUtils.addVisits({uri, title: gTestData[i].title});
-    do_check_eq(node.title, gTestData[i].title);
+    Assert.equal(node.title, gTestData[i].title);
   }
 
   root.containerOpen = false;
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function visits_query() {
@@ -84,17 +84,17 @@ add_task(async function visits_query() {
   for (let testData of gTestData) {
     let uri = NetUtil.newURI(testData.uri);
     let node = searchNodeHavingUrl(root, testData.uri);
-    do_check_eq(node.title, testData.title);
+    Assert.equal(node.title, testData.title);
     await PlacesTestUtils.addVisits({uri, title: "changedTitle"});
     node = searchNodeHavingUrl(root, testData.uri);
-    do_check_eq(node.title, "changedTitle");
+    Assert.equal(node.title, "changedTitle");
     await PlacesTestUtils.addVisits({uri, title: testData.title});
     node = searchNodeHavingUrl(root, testData.uri);
-    do_check_eq(node.title, testData.title);
+    Assert.equal(node.title, testData.title);
   }
 
   root.containerOpen = false;
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function pages_searchterm_query() {
@@ -109,15 +109,15 @@ add_task(async function pages_searchterm_query() {
   for (let i = 0; i < root.childCount; i++) {
     let node = root.getChild(i);
     let uri = NetUtil.newURI(node.uri);
-    do_check_eq(node.title, gTestData[i].title);
+    Assert.equal(node.title, gTestData[i].title);
     await PlacesTestUtils.addVisits({uri, title: "changedTitle"});
-    do_check_eq(node.title, "changedTitle");
+    Assert.equal(node.title, "changedTitle");
     await PlacesTestUtils.addVisits({uri, title: gTestData[i].title});
-    do_check_eq(node.title, gTestData[i].title);
+    Assert.equal(node.title, gTestData[i].title);
   }
 
   root.containerOpen = false;
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function visits_searchterm_query() {
@@ -133,17 +133,17 @@ add_task(async function visits_searchterm_query() {
   for (let testData of gTestData) {
     let uri = NetUtil.newURI(testData.uri);
     let node = searchNodeHavingUrl(root, testData.uri);
-    do_check_eq(node.title, testData.title);
+    Assert.equal(node.title, testData.title);
     await PlacesTestUtils.addVisits({uri, title: "changedTitle"});
     node = searchNodeHavingUrl(root, testData.uri);
-    do_check_eq(node.title, "changedTitle");
+    Assert.equal(node.title, "changedTitle");
     await PlacesTestUtils.addVisits({uri, title: testData.title});
     node = searchNodeHavingUrl(root, testData.uri);
-    do_check_eq(node.title, testData.title);
+    Assert.equal(node.title, testData.title);
   }
 
   root.containerOpen = false;
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function pages_searchterm_is_title_query() {
@@ -168,7 +168,7 @@ add_task(async function pages_searchterm_is_title_query() {
   }
 
   root.containerOpen = false;
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function visits_searchterm_is_title_query() {
@@ -184,15 +184,20 @@ add_task(async function visits_searchterm_is_title_query() {
     let uri = NetUtil.newURI(data.uri);
     let origTitle = data.title;
     data.title = "match";
+
+    info("Adding " + uri.spec);
     await PlacesTestUtils.addVisits({ uri, title: data.title,
                                       visitDate: data.lastVisit });
+
     compareArrayToResult([data], root);
     data.title = origTitle;
+    info("Clobbering " + uri.spec);
     await PlacesTestUtils.addVisits({ uri, title: data.title,
                                       visitDate: data.lastVisit });
+
     compareArrayToResult([], root);
   }
 
   root.containerOpen = false;
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });

@@ -7,7 +7,6 @@
 #include "mozilla/AnimationCollection.h"
 
 #include "mozilla/RestyleManager.h"
-#include "mozilla/RestyleManagerInlines.h"
 #include "nsAnimationManager.h" // For dom::CSSAnimation
 #include "nsPresContext.h"
 #include "nsTransitionManager.h" // For dom::CSSTransition
@@ -17,7 +16,7 @@ namespace mozilla {
 template <class AnimationType>
 /* static */ void
 AnimationCollection<AnimationType>::PropertyDtor(void* aObject,
-                                                 nsIAtom* aPropertyName,
+                                                 nsAtom* aPropertyName,
                                                  void* aPropertyValue,
                                                  void* aData)
 {
@@ -48,7 +47,7 @@ AnimationCollection<AnimationType>::GetAnimationCollection(
     return nullptr;
   }
 
-  nsIAtom* propName = GetPropertyAtomForPseudoType(aPseudoType);
+  nsAtom* propName = GetPropertyAtomForPseudoType(aPseudoType);
   if (!propName) {
     return nullptr;
   }
@@ -87,7 +86,7 @@ AnimationCollection<AnimationType>::GetOrCreateAnimationCollection(
   MOZ_ASSERT(aCreatedCollection);
   *aCreatedCollection = false;
 
-  nsIAtom* propName = GetPropertyAtomForPseudoType(aPseudoType);
+  nsAtom* propName = GetPropertyAtomForPseudoType(aPseudoType);
   MOZ_ASSERT(propName, "Should only try to create animations for one of the"
              " recognized pseudo types");
 
@@ -116,37 +115,13 @@ AnimationCollection<AnimationType>::GetOrCreateAnimationCollection(
   return collection;
 }
 
-template <class AnimationType>
-/* static */ nsString
-AnimationCollection<AnimationType>::PseudoTypeAsString(
-  CSSPseudoElementType aPseudoType)
-{
-  switch (aPseudoType) {
-    case CSSPseudoElementType::before:
-      return NS_LITERAL_STRING("::before");
-    case CSSPseudoElementType::after:
-      return NS_LITERAL_STRING("::after");
-    default:
-      MOZ_ASSERT(aPseudoType == CSSPseudoElementType::NotPseudo,
-                 "Unexpected pseudo type");
-      return EmptyString();
-  }
-}
-
-template <class AnimationType>
-void
-AnimationCollection<AnimationType>::UpdateCheckGeneration(
-  nsPresContext* aPresContext)
-{
-  mCheckGeneration = aPresContext->RestyleManager()->GetAnimationGeneration();
-}
 
 template<class AnimationType>
-/*static*/ nsIAtom*
+/*static*/ nsAtom*
 AnimationCollection<AnimationType>::GetPropertyAtomForPseudoType(
   CSSPseudoElementType aPseudoType)
 {
-  nsIAtom* propName = nullptr;
+  nsAtom* propName = nullptr;
 
   if (aPseudoType == CSSPseudoElementType::NotPseudo) {
     propName = TraitsType::ElementPropertyAtom();

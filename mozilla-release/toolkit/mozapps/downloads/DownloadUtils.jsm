@@ -5,7 +5,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [ "DownloadUtils" ];
+var EXPORTED_SYMBOLS = [ "DownloadUtils" ];
 
 /**
  * This module provides the DownloadUtils object which contains useful methods
@@ -37,31 +37,23 @@ this.EXPORTED_SYMBOLS = [ "DownloadUtils" ];
  * convertTimeUnits(double aSecs)
  */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
-                                  "resource://gre/modules/PluralForm.jsm");
+ChromeUtils.defineModuleGetter(this, "PluralForm",
+                               "resource://gre/modules/PluralForm.jsm");
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 var localeNumberFormatCache = new Map();
 function getLocaleNumberFormat(fractionDigits) {
-  // Backward compatibility: don't use localized digits
-  let locale = Intl.NumberFormat().resolvedOptions().locale +
-               "-u-nu-latn";
-  let key = locale + "_" + fractionDigits;
-  if (!localeNumberFormatCache.has(key)) {
-    localeNumberFormatCache.set(key,
-      Intl.NumberFormat(locale,
+  if (!localeNumberFormatCache.has(fractionDigits)) {
+    localeNumberFormatCache.set(fractionDigits,
+      new Services.intl.NumberFormat(undefined,
                         { maximumFractionDigits: fractionDigits,
                           minimumFractionDigits: fractionDigits }));
   }
-  return localeNumberFormatCache.get(key);
+  return localeNumberFormatCache.get(fractionDigits);
 }
 
 const kDownloadProperties =
@@ -79,7 +71,6 @@ var gStr = {
   timeLeftDouble: "timeLeftDouble3",
   timeFewSeconds: "timeFewSeconds2",
   timeUnknown: "timeUnknown2",
-  monthDate: "monthDate2",
   yesterday: "yesterday",
   doneScheme: "doneScheme2",
   doneFileScheme: "doneFileScheme",
@@ -95,9 +86,7 @@ Object.defineProperty(this, "gBundle", {
   enumerable: true,
   get() {
     delete this.gBundle;
-    return this.gBundle = Cc["@mozilla.org/intl/stringbundle;1"].
-                          getService(Ci.nsIStringBundleService).
-                          createBundle(kDownloadProperties);
+    return this.gBundle = Services.strings.createBundle(kDownloadProperties);
   },
 });
 
@@ -106,7 +95,7 @@ Object.defineProperty(this, "gBundle", {
 const kCachedLastMaxSize = 10;
 var gCachedLast = [];
 
-this.DownloadUtils = {
+var DownloadUtils = {
   /**
    * Generate a full status string for a download given its current progress,
    * total size, speed, last time remaining
@@ -262,6 +251,7 @@ this.DownloadUtils = {
    * @return A pair: [time left text, new value of "last seconds"]
    */
   getTimeLeft: function DU_getTimeLeft(aSeconds, aLastSec) {
+    let nf = new Services.intl.NumberFormat();
     if (aLastSec == null)
       aLastSec = Infinity;
 
@@ -304,9 +294,9 @@ this.DownloadUtils = {
         DownloadUtils.convertTimeUnits(aSeconds);
 
       let pair1 =
-        gBundle.formatStringFromName(gStr.timePair, [time1, unit1], 2);
+        gBundle.formatStringFromName(gStr.timePair, [nf.format(time1), unit1], 2);
       let pair2 =
-        gBundle.formatStringFromName(gStr.timePair, [time2, unit2], 2);
+        gBundle.formatStringFromName(gStr.timePair, [nf.format(time2), unit2], 2);
 
       // Only show minutes for under 1 hour unless there's a few minutes left;
       // or the second pair is 0.
@@ -352,7 +342,7 @@ this.DownloadUtils = {
 
     // Figure out if the time is from today, yesterday, this week, etc.
     if (aDate >= today) {
-      let dts = Services.intl.createDateTimeFormat(undefined, {
+      let dts = new Services.intl.DateTimeFormat(undefined, {
         timeStyle: "short"
       });
       dateTimeCompact = dts.format(aDate);
@@ -364,14 +354,15 @@ this.DownloadUtils = {
       dateTimeCompact = aDate.toLocaleDateString(undefined, { weekday: "long" });
     } else {
       // Show month/day
-      let month = aDate.toLocaleDateString(undefined, { month: "long" });
-      let date = aDate.getDate();
-      dateTimeCompact = gBundle.formatStringFromName(gStr.monthDate, [month, date], 2);
+      dateTimeCompact = aDate.toLocaleString(undefined, {
+                          month: "long",
+                          day: "numeric"
+      });
     }
 
     const dtOptions = { dateStyle: "long", timeStyle: "short" };
     dateTimeFull =
-      Services.intl.createDateTimeFormat(undefined, dtOptions).format(aDate);
+      new Services.intl.DateTimeFormat(undefined, dtOptions).format(aDate);
 
     return [dateTimeCompact, dateTimeFull];
   },
@@ -385,17 +376,13 @@ this.DownloadUtils = {
    * @return A pair: [display host for the URI string, full host name]
    */
   getURIHost: function DU_getURIHost(aURIString) {
-    let ioService = Cc["@mozilla.org/network/io-service;1"].
-                    getService(Ci.nsIIOService);
-    let eTLDService = Cc["@mozilla.org/network/effective-tld-service;1"].
-                      getService(Ci.nsIEffectiveTLDService);
     let idnService = Cc["@mozilla.org/network/idn-service;1"].
                      getService(Ci.nsIIDNService);
 
     // Get a URI that knows about its components
     let uri;
     try {
-      uri = ioService.newURI(aURIString);
+      uri = Services.io.newURI(aURIString);
     } catch (ex) {
       return ["", ""];
     }
@@ -415,7 +402,7 @@ this.DownloadUtils = {
     let displayHost;
     try {
       // This might fail if it's an IP address or doesn't have more than 1 part
-      let baseDomain = eTLDService.getBaseDomain(uri);
+      let baseDomain = Services.eTLD.getBaseDomain(uri);
 
       // Convert base domain for display; ignore the isAscii out param
       displayHost = idnService.convertToDisplayIDN(baseDomain, {});
@@ -553,9 +540,8 @@ function convertTimeUnitsUnits(aTime, aIndex) {
  * @param aMsg
  *        Error message to log or an array of strings to concat
  */
-function log(aMsg) {
-  let msg = "DownloadUtils.jsm: " + (aMsg.join ? aMsg.join("") : aMsg);
-  Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService).
-    logStringMessage(msg);
-  dump(msg + "\n");
-}
+// function log(aMsg) {
+//   let msg = "DownloadUtils.jsm: " + (aMsg.join ? aMsg.join("") : aMsg);
+//   Services.console.logStringMessage(msg);
+//   dump(msg + "\n");
+// }

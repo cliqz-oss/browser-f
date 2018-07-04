@@ -23,11 +23,11 @@ from mozharness.base.python import (
     virtualenv_config_options,
 )
 from mozharness.mozilla.buildbot import BuildbotMixin, TBPL_WARNING
-from mozharness.mozilla.proxxy import Proxxy
 from mozharness.mozilla.structuredlog import StructuredOutputParser
 from mozharness.mozilla.taskcluster_helper import TaskClusterArtifactFinderMixin
 from mozharness.mozilla.testing.unittest import DesktopUnittestOutputParser
 from mozharness.mozilla.testing.try_tools import TryToolsMixin, try_config_options
+from mozharness.mozilla.testing.verify_tools import VerifyToolsMixin, verify_config_options
 from mozharness.mozilla.tooltool import TooltoolMixin
 
 from mozharness.lib.python.authentication import get_credentials
@@ -98,12 +98,15 @@ testing_config_options = [
      "choices": ['ondemand', 'true'],
      "help": "Download and extract crash reporter symbols.",
       }],
-] + copy.deepcopy(virtualenv_config_options) + copy.deepcopy(try_config_options)
+] + copy.deepcopy(virtualenv_config_options) \
+  + copy.deepcopy(try_config_options) \
+  + copy.deepcopy(verify_config_options)
 
 
 # TestingMixin {{{1
 class TestingMixin(VirtualenvMixin, BuildbotMixin, ResourceMonitoringMixin,
-                   TaskClusterArtifactFinderMixin, TooltoolMixin, TryToolsMixin):
+                   TaskClusterArtifactFinderMixin, TooltoolMixin, TryToolsMixin,
+                   VerifyToolsMixin):
     """
     The steps to identify + download the proper bits for [browser] unit
     tests and Talos.
@@ -120,34 +123,6 @@ class TestingMixin(VirtualenvMixin, BuildbotMixin, ResourceMonitoringMixin,
     minidump_stackwalk_path = None
     nodejs_path = None
     default_tools_repo = 'https://hg.mozilla.org/build/tools'
-    proxxy = None
-
-    def _query_proxxy(self):
-        """manages the proxxy"""
-        if not self.proxxy:
-            self.proxxy = Proxxy(self.config, self.log_obj)
-        return self.proxxy
-
-    def download_proxied_file(self, url, file_name=None, parent_dir=None,
-                              create_parent_dir=True, error_level=FATAL,
-                              exit_code=3):
-        proxxy = self._query_proxxy()
-        return proxxy.download_proxied_file(url=url, file_name=file_name,
-                                            parent_dir=parent_dir,
-                                            create_parent_dir=create_parent_dir,
-                                            error_level=error_level,
-                                            exit_code=exit_code)
-
-    def download_file(self, *args, **kwargs):
-        '''
-        This function helps not to use download of proxied files
-        since it does not support authenticated downloads.
-        This could be re-factored and fixed in bug 1087664.
-        '''
-        if self.config.get("developer_mode"):
-            return super(TestingMixin, self).download_file(*args, **kwargs)
-        else:
-            return self.download_proxied_file(*args, **kwargs)
 
     def query_build_dir_url(self, file_name):
         """
@@ -438,6 +413,7 @@ You can set this by:
             'mochitest-plain-gpu': 'mochitest',
             'mochitest-gl': 'mochitest',
             'geckoview': 'mochitest',
+            'geckoview-junit': 'mochitest',
             'jsreftest': 'reftest',
             'crashtest': 'reftest',
             'reftest-debug': 'reftest',
@@ -615,7 +591,7 @@ Did you run with --create-virtualenv? Is mozinstall in virtualenv_modules?""")
     def install_app(self, app=None, target_dir=None, installer_path=None):
         """ Dependent on mozinstall """
         # install the application
-        cmd = self.query_exe("mozinstall", default=self.query_python_path("mozinstall"), return_type="list")
+        cmd = [self.query_python_path("mozinstall")]
         if app:
             cmd.extend(['--app', app])
         # Remove the below when we no longer need to support mozinstall 0.3

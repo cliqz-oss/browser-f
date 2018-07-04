@@ -7,37 +7,12 @@
 
 "use strict";
 
-/**
- * Gets a directory from the directory service.
- * @param aKey
- *        The directory service key indicating the directory to get.
- */
-var _dirSvc = null;
-function getDir(aKey, aIFace) {
-  if (!aKey) {
-    do_throw("getDir requires a directory key!");
-  }
-
-  if (!_dirSvc) {
-    _dirSvc = Cc["@mozilla.org/file/directory_service;1"].
-               getService(Ci.nsIProperties);
-  }
-  return _dirSvc.get(aKey, aIFace || Ci.nsIFile);
-}
-
-function makeURI(uri) {
-  return Services.io.newURI(uri);
-}
-
 var cacheTemplate, appPluginsPath, profPlugins;
 
 /**
  * Test reading from search.json.mozlz4
  */
 function run_test() {
-  removeMetadata();
-  removeCacheFile();
-
   let cacheTemplateFile = do_get_file("data/search.json");
   cacheTemplate = readJSONFile(cacheTemplateFile);
   cacheTemplate.buildID = getAppInfo().platformBuildID;
@@ -62,7 +37,7 @@ function run_test() {
   let list = sis.read(sis.available());
   let searchSettings = JSON.parse(list);
 
-  cacheTemplate.visibleDefaultEngines = searchSettings["default"]["visibleDefaultEngines"];
+  cacheTemplate.visibleDefaultEngines = searchSettings.default.visibleDefaultEngines;
 
   run_next_test();
 }
@@ -78,23 +53,22 @@ add_test(function prepare_test_data() {
  * Start the search service and confirm the engine properties match the expected values.
  */
 add_test(function test_cached_engine_properties() {
-  do_print("init search service");
+  info("init search service");
 
   Services.search.init(function initComplete(aResult) {
-    do_print("init'd search service");
-    do_check_true(Components.isSuccessCode(aResult));
+    info("init'd search service");
+    Assert.ok(Components.isSuccessCode(aResult));
 
     let engines = Services.search.getEngines({});
     let engine = engines[0];
 
-    do_check_true(engine instanceof Ci.nsISearchEngine);
+    Assert.ok(engine instanceof Ci.nsISearchEngine);
     isSubObjectOf(EXPECTED_ENGINE.engine, engine);
 
     let engineFromSS = Services.search.getEngineByName(EXPECTED_ENGINE.engine.name);
-    do_check_true(!!engineFromSS);
+    Assert.ok(!!engineFromSS);
     isSubObjectOf(EXPECTED_ENGINE.engine, engineFromSS);
 
-    removeMetadata();
     removeCacheFile();
     run_next_test();
   });
@@ -104,15 +78,15 @@ add_test(function test_cached_engine_properties() {
  * Test that the JSON cache written in the profile is correct.
  */
 add_test(function test_cache_write() {
-  do_print("test cache writing");
+  info("test cache writing");
 
   let cache = gProfD.clone();
   cache.append(CACHE_FILENAME);
-  do_check_false(cache.exists());
+  Assert.ok(!cache.exists());
 
-  do_print("Next step is forcing flush");
+  info("Next step is forcing flush");
   do_timeout(0, function forceFlush() {
-    do_print("Forcing flush");
+    info("Forcing flush");
     // Force flush
     // Note: the timeout is needed, to avoid some reentrency
     // issues in nsSearchService.
@@ -123,12 +97,12 @@ add_test(function test_cache_write() {
           return;
         }
         Services.obs.removeObserver(cacheWriteObserver, "browser-search-service");
-        do_print("Cache write complete");
-        do_check_true(cache.exists());
+        info("Cache write complete");
+        Assert.ok(cache.exists());
         // Check that the search.json.mozlz4 cache matches the template
 
         promiseCacheData().then(cacheWritten => {
-          do_print("Check search.json.mozlz4");
+          info("Check search.json.mozlz4");
           isSubObjectOf(cacheTemplate, cacheWritten);
 
           run_next_test();

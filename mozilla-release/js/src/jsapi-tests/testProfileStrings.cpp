@@ -9,9 +9,8 @@
 
 #include "mozilla/Atomics.h"
 
-#include "jscntxt.h"
-
 #include "jsapi-tests/tests.h"
+#include "vm/JSContext.h"
 
 static PseudoStack pseudoStack;
 static uint32_t peakStackPointer = 0;
@@ -70,10 +69,10 @@ Prof(JSContext* cx, unsigned argc, JS::Value* vp)
 }
 
 static const JSFunctionSpec ptestFunctions[] = {
-    JS_FS("test_fn", test_fn, 0, 0),
-    JS_FS("test_fn2", test_fn2, 0, 0),
-    JS_FS("enable", enable, 0, 0),
-    JS_FS("disable", disable, 0, 0),
+    JS_FN("test_fn", test_fn, 0, 0),
+    JS_FN("test_fn2", test_fn2, 0, 0),
+    JS_FN("enable", enable, 0, 0),
+    JS_FN("disable", disable, 0, 0),
     JS_FS_END
 };
 

@@ -3,7 +3,7 @@
 var SOURCE_URL = getFileUrl("setBreakpoint-on-line.js");
 
 function run_test() {
-  return Task.spawn(function* () {
+  return (async function() {
     do_test_pending();
 
     DebuggerServer.registerModule("xpcshell-test/testactors");
@@ -13,45 +13,45 @@ function run_test() {
     DebuggerServer.addTestGlobal(global);
 
     let client = new DebuggerClient(DebuggerServer.connectPipe());
-    yield connect(client);
+    await connect(client);
 
-    let { tabs } = yield listTabs(client);
+    let { tabs } = await listTabs(client);
     let tab = findTab(tabs, "test");
-    let [, tabClient] = yield attachTab(client, tab);
+    let [, tabClient] = await attachTab(client, tab);
 
-    let [, threadClient] = yield attachThread(tabClient);
-    yield resume(threadClient);
+    let [, threadClient] = await attachThread(tabClient);
+    await resume(threadClient);
 
     let promise = waitForNewSource(threadClient, SOURCE_URL);
     loadSubScript(SOURCE_URL, global);
-    let { source } = yield promise;
+    let { source } = await promise;
     let sourceClient = threadClient.source(source);
 
     let location = { line: 5 };
-    let [packet, breakpointClient] = yield setBreakpoint(sourceClient, location);
-    do_check_false(packet.isPending);
-    do_check_false("actualLocation" in packet);
+    let [packet, breakpointClient] = await setBreakpoint(sourceClient, location);
+    Assert.ok(!packet.isPending);
+    Assert.equal(false, "actualLocation" in packet);
 
-    packet = yield executeOnNextTickAndWaitForPause(function () {
+    packet = await executeOnNextTickAndWaitForPause(function() {
       Cu.evalInSandbox("f()", global);
     }, client);
-    do_check_eq(packet.type, "paused");
+    Assert.equal(packet.type, "paused");
     let why = packet.why;
-    do_check_eq(why.type, "breakpoint");
-    do_check_eq(why.actors.length, 1);
-    do_check_eq(why.actors[0], breakpointClient.actor);
+    Assert.equal(why.type, "breakpoint");
+    Assert.equal(why.actors.length, 1);
+    Assert.equal(why.actors[0], breakpointClient.actor);
     let frame = packet.frame;
     let where = frame.where;
-    do_check_eq(where.source.actor, source.actor);
-    do_check_eq(where.line, location.line);
+    Assert.equal(where.source.actor, source.actor);
+    Assert.equal(where.line, location.line);
     let variables = frame.environment.bindings.variables;
-    do_check_eq(variables.a.value, 1);
-    do_check_eq(variables.b.value.type, "undefined");
-    do_check_eq(variables.c.value.type, "undefined");
+    Assert.equal(variables.a.value, 1);
+    Assert.equal(variables.b.value.type, "undefined");
+    Assert.equal(variables.c.value.type, "undefined");
 
-    yield resume(threadClient);
-    yield close(client);
+    await resume(threadClient);
+    await close(client);
 
     do_test_finished();
-  });
+  })();
 }

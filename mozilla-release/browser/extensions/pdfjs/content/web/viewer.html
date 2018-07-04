@@ -20,7 +20,7 @@ Adobe CMap resources are covered by their own copyright but the same license:
 
 See https://github.com/adobe-type-tools/cmap-resources
 -->
-<html dir="ltr" mozdisallowselectionprint moznomarginboxes>
+<html dir="ltr" mozdisallowselectionprint>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
@@ -32,7 +32,6 @@ See https://github.com/adobe-type-tools/cmap-resources
 
 
     <link rel="stylesheet" href="viewer.css">
-
 
 
 
@@ -65,6 +64,7 @@ See https://github.com/adobe-type-tools/cmap-resources
           <div id="attachmentsView" class="hidden">
           </div>
         </div>
+        <div id="sidebarResizer" class="hidden"></div>
       </div>  <!-- sidebarContainer -->
 
       <div id="mainContainer">
@@ -328,6 +328,9 @@ See https://github.com/adobe-type-tools/cmap-resources
             </div>
             <div class="row">
               <span data-l10n-id="document_properties_page_count">Page Count:</span> <p id="pageCountField">-</p>
+            </div>
+            <div class="row">
+              <span data-l10n-id="document_properties_page_size">Page Size:</span> <p id="pageSizeField">-</p>
             </div>
             <div class="buttonRow">
               <button id="documentPropertiesClose" class="overlayButton"><span data-l10n-id="document_properties_close">Close</span></button>

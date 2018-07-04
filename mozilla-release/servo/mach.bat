@@ -1,5 +1,7 @@
 @echo off
 
+pushd .
+
 IF EXIST "%ProgramFiles(x86)%" (
   set "ProgramFiles32=%ProgramFiles(x86)%"
 ) ELSE (
@@ -10,7 +12,7 @@ set VC14VARS=%VS140COMNTOOLS%..\..\VC\vcvarsall.bat
 IF EXIST "%VC14VARS%" (
   set "VS_VCVARS=%VC14VARS%"
 ) ELSE (
-  for %%e in (Enterprise Professional Community) do (
+  for %%e in (Enterprise Professional Community BuildTools) do (
     IF EXIST "%ProgramFiles32%\Microsoft Visual Studio\2017\%%e\VC\Auxiliary\Build\vcvarsall.bat" (
       set "VS_VCVARS=%ProgramFiles32%\Microsoft Visual Studio\2017\%%e\VC\Auxiliary\Build\vcvarsall.bat"
     )
@@ -31,5 +33,7 @@ IF EXIST "%VS_VCVARS%" (
   ECHO Download and install Visual Studio 2015 or 2017 from https://www.visualstudio.com/
   EXIT /B
 )
+
+popd
 
 python mach %*

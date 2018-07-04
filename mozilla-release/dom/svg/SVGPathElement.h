@@ -35,17 +35,16 @@ protected:
   explicit SVGPathElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
 public:
-  // DOM memory reporter participant
-  NS_DECL_SIZEOF_EXCLUDING_THIS
+  NS_DECL_ADDSIZEOFEXCLUDINGTHIS
 
   // nsIContent interface
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* name) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* name) const override;
 
   // nsSVGSVGElement methods:
   virtual bool HasValidDimensions() const override;
 
   // SVGGeometryElement methods:
-  virtual bool AttributeDefinesGeometry(const nsIAtom *aName) override;
+  virtual bool AttributeDefinesGeometry(const nsAtom *aName) override;
   virtual bool IsMarkable() override;
   virtual void GetMarkPoints(nsTArray<nsSVGMark> *aMarks) override;
   virtual already_AddRefed<Path> BuildPath(PathBuilder* aBuilder) override;
@@ -65,21 +64,9 @@ public:
     return &mD;
   }
 
-  virtual nsIAtom* GetPathDataAttrName() const override {
+  virtual nsAtom* GetPathDataAttrName() const override {
     return nsGkAtoms::d;
   }
-
-  enum PathLengthScaleForType {
-    eForTextPath,
-    eForStroking
-  };
-
-  /**
-   * Gets the ratio of the actual path length to the content author's estimated
-   * length (as provided by the <path> element's 'pathLength' attribute). This
-   * is used to scale stroke dashing, and to scale offsets along a textPath.
-   */
-  float GetPathLengthScale(PathLengthScaleForType aFor);
 
   // WebIDL
   uint32_t GetPathSegAtLength(float distance);

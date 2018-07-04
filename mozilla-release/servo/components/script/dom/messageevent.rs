@@ -7,16 +7,17 @@ use dom::bindings::codegen::Bindings::MessageEventBinding;
 use dom::bindings::codegen::Bindings::MessageEventBinding::MessageEventMethods;
 use dom::bindings::error::Fallible;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
 use dom::bindings::reflector::reflect_dom_object;
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::bindings::trace::RootedTraceableBox;
 use dom::event::Event;
 use dom::eventtarget::EventTarget;
 use dom::globalscope::GlobalScope;
 use dom_struct::dom_struct;
-use js::jsapi::{HandleValue, Heap, JSContext};
+use js::jsapi::{Heap, JSContext};
 use js::jsval::JSVal;
+use js::rust::HandleValue;
 use servo_atoms::Atom;
 
 #[dom_struct]
@@ -28,7 +29,7 @@ pub struct MessageEvent {
 }
 
 impl MessageEvent {
-    pub fn new_uninitialized(global: &GlobalScope) -> Root<MessageEvent> {
+    pub fn new_uninitialized(global: &GlobalScope) -> DomRoot<MessageEvent> {
         MessageEvent::new_initialized(global,
                                       HandleValue::undefined(),
                                       DOMString::new(),
@@ -38,13 +39,13 @@ impl MessageEvent {
     pub fn new_initialized(global: &GlobalScope,
                            data: HandleValue,
                            origin: DOMString,
-                           lastEventId: DOMString) -> Root<MessageEvent> {
-        let ev = box MessageEvent {
+                           lastEventId: DOMString) -> DomRoot<MessageEvent> {
+        let ev = Box::new(MessageEvent {
             event: Event::new_inherited(),
             data: Heap::default(),
             origin: origin,
             lastEventId: lastEventId,
-        };
+        });
         let ev = reflect_dom_object(ev, global, MessageEventBinding::Wrap);
         ev.data.set(data.get());
 
@@ -54,7 +55,7 @@ impl MessageEvent {
     pub fn new(global: &GlobalScope, type_: Atom,
                bubbles: bool, cancelable: bool,
                data: HandleValue, origin: DOMString, lastEventId: DOMString)
-               -> Root<MessageEvent> {
+               -> DomRoot<MessageEvent> {
         let ev = MessageEvent::new_initialized(global, data, origin, lastEventId);
         {
             let event = ev.upcast::<Event>();
@@ -66,7 +67,7 @@ impl MessageEvent {
     pub fn Constructor(global: &GlobalScope,
                        type_: DOMString,
                        init: RootedTraceableBox<MessageEventBinding::MessageEventInit>)
-                       -> Fallible<Root<MessageEvent>> {
+                       -> Fallible<DomRoot<MessageEvent>> {
         let ev = MessageEvent::new(global,
                                    Atom::from(type_),
                                    init.parent.bubbles,

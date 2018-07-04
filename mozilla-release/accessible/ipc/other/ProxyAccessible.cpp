@@ -119,7 +119,7 @@ ProxyAccessible::IsSearchbox() const
   return retVal;
 }
 
-nsIAtom*
+nsAtom*
 ProxyAccessible::LandmarkRole() const
 {
   nsString landmark;
@@ -127,7 +127,7 @@ ProxyAccessible::LandmarkRole() const
   return NS_GetStaticAtom(landmark);
 }
 
-nsIAtom*
+nsAtom*
 ProxyAccessible::ARIARoleAtom() const
 {
   nsString role;
@@ -1010,6 +1010,16 @@ ProxyAccessible::Bounds()
   Unused << mDoc->SendExtents(mID, false,
                               &(rect.x), &(rect.y),
                               &(rect.width), &(rect.height));
+  return rect;
+}
+
+nsIntRect
+ProxyAccessible::BoundsInCSSPixels()
+{
+  nsIntRect rect;
+  Unused << mDoc->SendExtentsInCSSPixels(mID,
+                                         &rect.x, &rect.y,
+                                         &rect.width, &rect.height);
   return rect;
 }
 

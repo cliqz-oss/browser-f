@@ -18,21 +18,17 @@
 
     <link rel="icon" type="image/png" id="favicon"
           href="chrome://branding/content/icon32.png"/>
-    <link rel="stylesheet" href="chrome://global/skin/in-content/common.css"
-          type="text/css"/>
     <link rel="stylesheet" href="chrome://global/skin/aboutSupport.css"
           type="text/css"/>
 
     <script type="application/javascript"
             src="chrome://global/content/aboutSupport.js"/>
-    <script type="application/javascript"
-            src="chrome://global/content/resetProfile.js"/>
   </head>
 
-  <body dir="&locale.dir;">
+  <body dir="&locale.dir;" class="wide-container">
 
 #ifndef ANDROID
-    <div id="action-box">
+    <div id="action-box" class="notice-box">
       <div id="reset-box">
         <h3>&refreshProfile.title;</h3>
         <button id="reset-box-button">
@@ -166,6 +162,8 @@
 #endif
 #endif
                </button>
+               <span id="profile-dir-box">
+               </span>
             </td>
           </tr>
 
@@ -237,12 +235,12 @@
             </td>
           </tr>
 
-          <tr>
+          <tr id="policies-status-row">
             <th class="column">
-              Stylo
+              &aboutSupport.enterprisePolicies;
             </th>
 
-            <td id="stylo-box">
+            <td id="policies-status">
             </td>
           </tr>
 
@@ -368,6 +366,53 @@
 
       <!-- - - - - - - - - - - - - - - - - - - - - -->
 
+      <h2 class="major-section" id="security-software-title">
+        &aboutSupport.securitySoftwareTitle;
+      </h2>
+
+      <table id="security-software-table">
+        <thead>
+          <tr>
+            <th>
+              &aboutSupport.securitySoftwareType;
+            </th>
+            <th>
+              &aboutSupport.securitySoftwareName;
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th class="column">
+              &aboutSupport.securitySoftwareAntivirus;
+            </th>
+
+            <td id="security-software-antivirus">
+            </td>
+          </tr>
+
+          <tr>
+            <th class="column">
+              &aboutSupport.securitySoftwareAntiSpyware;
+            </th>
+
+            <td id="security-software-antispyware">
+            </td>
+          </tr>
+
+          <tr>
+            <th class="column">
+              &aboutSupport.securitySoftwareFirewall;
+            </th>
+
+            <td id="security-software-firewall">
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- - - - - - - - - - - - - - - - - - - - - -->
+
       <h2 class="major-section">
         &aboutSupport.graphicsTitle;
       </h2>
@@ -452,7 +497,7 @@
 
         <tbody id="media-output-devices-tbody">
           <tr>
-            <th colspan="10" class="title-column">
+            <th colspan="9" class="title-column">
               &aboutSupport.mediaOutputDevicesTitle;
             </th>
           </tr>
@@ -489,7 +534,7 @@
 
         <tbody id="media-input-devices-tbody">
           <tr>
-            <th colspan="10" class="title-column">
+            <th colspan="9" class="title-column">
               &aboutSupport.mediaInputDevicesTitle;
             </th>
           </tr>
@@ -646,6 +691,15 @@
             <td id="a11y-handler-used">
             </td>
           </tr>
+
+          <tr>
+            <th class="column">
+              &aboutSupport.a11yInstantiator;
+            </th>
+
+            <td id="a11y-instantiator">
+            </td>
+          </tr>
 #endif
         </tbody>
       </table>
@@ -660,40 +714,6 @@
         </tbody>
       </table>
 
-
-      <h2 class="major-section">
-        &aboutSupport.experimentsTitle;
-      </h2>
-
-      <table>
-        <thead>
-          <tr>
-            <th>
-              &aboutSupport.experimentName;
-            </th>
-            <th>
-              &aboutSupport.experimentId;
-            </th>
-            <th>
-              &aboutSupport.experimentDescription;
-            </th>
-            <th>
-              &aboutSupport.experimentActive;
-            </th>
-            <th>
-              &aboutSupport.experimentEndDate;
-            </th>
-            <th>
-              &aboutSupport.experimentHomepage;
-            </th>
-            <th>
-              &aboutSupport.experimentBranch;
-            </th>
-          </tr>
-        </thead>
-        <tbody id="experiments-tbody">
-        </tbody>
-      </table>
       <!-- - - - - - - - - - - - - - - - - - - - - -->
 
 #if defined(MOZ_SANDBOX)
@@ -739,6 +759,77 @@
       </table>
 #endif
 #endif
+
+      <h2 class="major-section">
+        &aboutSupport.intlTitle;
+      </h2>
+
+      <table>
+        <tbody id="intl-localeservice-tbody">
+          <tr>
+            <th colspan="2" class="title-column">
+              &aboutSupport.intlAppTitle;
+            </th>
+          </tr>
+          <tr>
+            <th class="column">
+              &aboutSupport.intlLocalesRequested;
+            </th>
+            <td id="intl-locale-requested">
+            </td>
+          </tr>
+          <tr>
+            <th class="column">
+              &aboutSupport.intlLocalesAvailable;
+            </th>
+            <td id="intl-locale-available">
+            </td>
+          </tr>
+          <tr>
+            <th class="column">
+              &aboutSupport.intlLocalesSupported;
+            </th>
+            <td id="intl-locale-supported">
+            </td>
+          </tr>
+          <tr>
+            <th class="column">
+              &aboutSupport.intlRegionalPrefs;
+            </th>
+            <td id="intl-locale-regionalprefs">
+            </td>
+          </tr>
+          <tr>
+            <th class="column">
+              &aboutSupport.intlLocalesDefault;
+            </th>
+            <td id="intl-locale-default">
+            </td>
+          </tr>
+        </tbody>
+        <tbody id="intl-ospreferences-tbody">
+          <tr>
+            <th colspan="2" class="title-column">
+              &aboutSupport.intlOSTitle;
+            </th>
+          </tr>
+          <tr>
+            <th class="column">
+              &aboutSupport.intlOSPrefsSystemLocales;
+            </th>
+            <td id="intl-osprefs-systemlocales">
+            </td>
+          </tr>
+          <tr>
+            <th class="column">
+              &aboutSupport.intlRegionalPrefs;
+            </th>
+            <td id="intl-osprefs-regionalprefs">
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <!-- - - - - - - - - - - - - - - - - - - - - -->
 
     </div>
 

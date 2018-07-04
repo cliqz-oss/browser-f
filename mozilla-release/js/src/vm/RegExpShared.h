@@ -15,26 +15,23 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/MemoryReporting.h"
 
-#include "jsalloc.h"
-#include "jsatom.h"
-
 #include "builtin/SelfHostingDefines.h"
 #include "gc/Barrier.h"
 #include "gc/Heap.h"
 #include "gc/Marking.h"
+#include "js/AllocPolicy.h"
 #include "js/UbiNode.h"
 #include "js/Vector.h"
 #include "vm/ArrayObject.h"
-
-struct JSContext;
+#include "vm/JSAtom.h"
 
 namespace js {
 
 class ArrayObject;
-class MatchPairs;
 class RegExpCompartment;
 class RegExpShared;
 class RegExpStatics;
+class VectorMatchPairs;
 
 using RootedRegExpShared = JS::Rooted<RegExpShared*>;
 using HandleRegExpShared = JS::Handle<RegExpShared*>;
@@ -116,7 +113,7 @@ class RegExpShared : public gc::TenuredCell
     };
 
     /* Source to the RegExp, for lazy compilation. */
-    HeapPtr<JSAtom*>   source;
+    GCPtr<JSAtom*>     source;
 
     RegExpFlag         flags;
     bool               canStringMatch;
@@ -162,7 +159,7 @@ class RegExpShared : public gc::TenuredCell
     // matches if specified and otherwise only determining if there is a match.
     static RegExpRunStatus execute(JSContext* cx, MutableHandleRegExpShared res,
                                    HandleLinearString input, size_t searchIndex,
-                                   MatchPairs* matches, size_t* endIndex);
+                                   VectorMatchPairs* matches, size_t* endIndex);
 
     // Register a table with this RegExpShared, and take ownership.
     bool addTable(JitCodeTable table) {
@@ -260,7 +257,7 @@ class RegExpZone
      * The set of all RegExpShareds in the zone. On every GC, every RegExpShared
      * that was not marked is deleted and removed from the set.
      */
-    using Set = JS::WeakCache<JS::GCHashSet<ReadBarriered<RegExpShared*>, Key, RuntimeAllocPolicy>>;
+    using Set = JS::WeakCache<JS::GCHashSet<ReadBarriered<RegExpShared*>, Key, ZoneAllocPolicy>>;
     Set set_;
 
   public:
@@ -274,10 +271,19 @@ class RegExpZone
 
     bool empty() const { return set_.empty(); }
 
+    RegExpShared* maybeGet(JSAtom* source, RegExpFlag flags) const {
+        Set::Ptr p = set_.lookup(Key(source, flags));
+        return p ? *p : nullptr;
+    }
+
     RegExpShared* get(JSContext* cx, HandleAtom source, RegExpFlag flags);
 
     /* Like 'get', but compile 'maybeOpt' (if non-null). */
     RegExpShared* get(JSContext* cx, HandleAtom source, JSString* maybeOpt);
+
+#ifdef DEBUG
+    void clear() { set_.clear(); }
+#endif
 
     size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf);
 };
@@ -315,9 +321,9 @@ class RegExpCompartment
     ArrayObject* createMatchResultTemplateObject(JSContext* cx);
 
   public:
-    explicit RegExpCompartment(Zone* zone);
+    explicit RegExpCompartment();
 
-    void sweep(JSRuntime* rt);
+    void sweep();
 
     /* Get or create template object used to base the result of .exec() on. */
     ArrayObject* getOrCreateMatchResultTemplateObject(JSContext* cx) {

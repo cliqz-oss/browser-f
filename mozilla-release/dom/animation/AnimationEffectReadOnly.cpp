@@ -6,6 +6,9 @@
 
 #include "mozilla/dom/AnimationEffectReadOnly.h"
 #include "mozilla/dom/AnimationEffectReadOnlyBinding.h"
+
+#include "mozilla/dom/Animation.h"
+#include "mozilla/dom/KeyframeEffectReadOnly.h"
 #include "mozilla/AnimationUtils.h"
 #include "mozilla/FloatingPoint.h"
 
@@ -43,7 +46,7 @@ AnimationEffectReadOnly::AnimationEffectReadOnly(
   MOZ_ASSERT(aTiming);
 }
 
-// https://w3c.github.io/web-animations/#current
+// https://drafts.csswg.org/web-animations/#current
 bool
 AnimationEffectReadOnly::IsCurrent() const
 {
@@ -56,7 +59,7 @@ AnimationEffectReadOnly::IsCurrent() const
          computedTiming.mPhase == ComputedTiming::AnimationPhase::Active;
 }
 
-// https://w3c.github.io/web-animations/#in-effect
+// https://drafts.csswg.org/web-animations/#in-effect
 bool
 AnimationEffectReadOnly::IsInEffect() const
 {
@@ -80,6 +83,9 @@ AnimationEffectReadOnly::SetSpecifiedTiming(const TimingParams& aTiming)
   mTiming->SetTimingParams(aTiming);
   if (mAnimation) {
     mAnimation->NotifyEffectTimingUpdated();
+    if (AsKeyframeEffect()) {
+      AsKeyframeEffect()->RequestRestyle(EffectCompositor::RestyleType::Layer);
+    }
   }
   // For keyframe effects, NotifyEffectTimingUpdated above will eventually cause
   // KeyframeEffectReadOnly::NotifyAnimationTimingUpdated to be called so it can
@@ -92,7 +98,7 @@ AnimationEffectReadOnly::GetComputedTimingAt(
     const TimingParams& aTiming,
     double aPlaybackRate)
 {
-  const StickyTimeDuration zeroDuration;
+  static const StickyTimeDuration zeroDuration;
 
   // Always return the same object to benefit from return-value optimization.
   ComputedTiming result;
@@ -158,16 +164,16 @@ AnimationEffectReadOnly::GetComputedTimingAt(
       = std::max(StickyTimeDuration(localTime - aTiming.Delay()),
                  zeroDuration);
   } else {
-    MOZ_ASSERT(result.mActiveDuration != zeroDuration,
+    MOZ_ASSERT(result.mActiveDuration,
                "How can we be in the middle of a zero-duration interval?");
     result.mPhase = ComputedTiming::AnimationPhase::Active;
     result.mActiveTime = localTime - aTiming.Delay();
   }
 
   // Convert active time to a multiple of iterations.
-  // https://w3c.github.io/web-animations/#overall-progress
+  // https://drafts.csswg.org/web-animations/#overall-progress
   double overallProgress;
-  if (result.mDuration == zeroDuration) {
+  if (!result.mDuration) {
     overallProgress = result.mPhase == ComputedTiming::AnimationPhase::Before
                       ? 0.0
                       : result.mIterations;
@@ -181,7 +187,7 @@ AnimationEffectReadOnly::GetComputedTimingAt(
   }
 
   // Determine the 0-based index of the current iteration.
-  // https://w3c.github.io/web-animations/#current-iteration
+  // https://drafts.csswg.org/web-animations/#current-iteration
   result.mCurrentIteration =
     (result.mIterations >= UINT64_MAX
      && result.mPhase == ComputedTiming::AnimationPhase::After)
@@ -192,25 +198,23 @@ AnimationEffectReadOnly::GetComputedTimingAt(
 
   // Convert the overall progress to a fraction of a single iteration--the
   // simply iteration progress.
-  // https://w3c.github.io/web-animations/#simple-iteration-progress
+  // https://drafts.csswg.org/web-animations/#simple-iteration-progress
   double progress = IsFinite(overallProgress)
                     ? fmod(overallProgress, 1.0)
                     : fmod(result.mIterationStart, 1.0);
 
-  // When we finish exactly at the end of an iteration we need to report
-  // the end of the final iteration and not the start of the next iteration.
-  // We *don't* want to do this when we have a zero-iteration animation or
-  // when the animation has been effectively made into a zero-duration animation
-  // using a negative end-delay, however.
-  if (result.mPhase == ComputedTiming::AnimationPhase::After &&
-      progress == 0.0 &&
-      result.mIterations != 0.0 &&
-      (result.mActiveTime != zeroDuration ||
-       result.mDuration == zeroDuration)) {
-    // The only way we can be in the after phase with a progress of zero and
-    // a current iteration of zero, is if we have a zero iteration count or
-    // were clipped using a negative end delay--both of which we should have
-    // detected above.
+  // When we are at the end of the active interval and the end of an iteration
+  // we need to report the end of the final iteration and not the start of the
+  // next iteration. We *don't* want to do this, however, when we have
+  // a zero-iteration animation.
+  if (progress == 0.0 &&
+      (result.mPhase == ComputedTiming::AnimationPhase::After ||
+       result.mPhase == ComputedTiming::AnimationPhase::Active) &&
+      result.mActiveTime == result.mActiveDuration &&
+      result.mIterations != 0.0) {
+    // The only way we can reach the end of the active interval and have
+    // a progress of zero and a current iteration of zero, is if we have a zero
+    // iteration count -- something we should have detected above.
     MOZ_ASSERT(result.mCurrentIteration != 0,
                "Should not have zero current iteration");
     progress = 1.0;
@@ -280,11 +284,15 @@ GetComputedTimingDictionary(const ComputedTiming& aComputedTiming,
   aRetVal.mDelay = aTiming.Delay().ToMilliseconds();
   aRetVal.mEndDelay = aTiming.EndDelay().ToMilliseconds();
   aRetVal.mFill = aComputedTiming.mFill;
-  aRetVal.mIterations = aComputedTiming.mIterations;
   aRetVal.mIterationStart = aComputedTiming.mIterationStart;
+  aRetVal.mIterations = aComputedTiming.mIterations;
   aRetVal.mDuration.SetAsUnrestrictedDouble() =
     aComputedTiming.mDuration.ToMilliseconds();
   aRetVal.mDirection = aTiming.Direction();
+  if (aTiming.TimingFunction()) {
+    aRetVal.mEasing.Truncate();
+    aTiming.TimingFunction()->AppendToString(aRetVal.mEasing);
+  }
 
   // ComputedTimingProperties
   aRetVal.mActiveDuration = aComputedTiming.mActiveDuration.ToMilliseconds();

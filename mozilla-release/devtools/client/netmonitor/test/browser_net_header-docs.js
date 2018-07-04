@@ -7,8 +7,8 @@
  * Tests if "Learn More" links are correctly displayed
  * next to headers.
  */
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(POST_DATA_URL);
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(POST_DATA_URL);
   info("Starting test... ");
 
   let { document, store, windowRequire } = monitor.panelWin;
@@ -20,11 +20,8 @@ add_task(function* () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, 0, 2);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests();
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 2);
 
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelectorAll(".request-list-item")[0]);

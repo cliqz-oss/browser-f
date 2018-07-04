@@ -5,7 +5,7 @@
   <title>Test autofill submit</title>
   <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
   <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <script type="text/javascript" src="formautofill_common.js"></script>
   <script type="text/javascript" src="satchel_common.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
@@ -13,7 +13,7 @@
 <body>
 
 <script>
-/* import-globals-from ../../../../../testing/mochitest/tests/SimpleTest/SpawnTask.js */
+/* import-globals-from ../../../../../testing/mochitest/tests/SimpleTest/AddTask.js */
 /* import-globals-from ../../../../../toolkit/components/satchel/test/satchel_common.js */
 /* import-globals-from formautofill_common.js */
 
@@ -33,19 +33,19 @@ add_task(async function setupStorage() {
 
 add_task(async function check_switch_form_popup() {
   await setInput("#additional-name", "");
-  doKey("down");
+  synthesizeKey("KEY_ArrowDown");
   await expectPopup();
 
   // We need an intentional wait here before switching form.
   await sleep();
   await setInput("#organization", "");
-  doKey("down");
+  synthesizeKey("KEY_ArrowDown");
   const {open: popupOpen} = await getPopupState();
   is(popupOpen, false);
 
   await sleep();
   await setInput("#given-name", "");
-  doKey("down");
+  synthesizeKey("KEY_ArrowDown");
   await expectPopup();
 });
 

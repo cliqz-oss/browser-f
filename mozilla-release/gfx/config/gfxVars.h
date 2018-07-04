@@ -1,5 +1,5 @@
-/* -*- Mode: C++; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set sts=2 ts=8 sw=2 tw=99 et: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -34,10 +34,14 @@ class gfxVarReceiver;
   _(PDMWMFDisableD3D11Dlls,     nsCString,        nsCString())          \
   _(PDMWMFDisableD3D9Dlls,      nsCString,        nsCString())          \
   _(DXInterop2Blocked,          bool,             false)                \
+  _(DXNV12Blocked,              bool,             false)                \
   _(UseWebRender,               bool,             false)                \
   _(UseWebRenderANGLE,          bool,             false)                \
+  _(UseWebRenderDCompWin,       bool,             false)                \
+  _(UseWebRenderProgramBinary,  bool,             false)                \
+  _(WebRenderDebugFlags,        int32_t,          0)                    \
   _(ScreenDepth,                int32_t,          0)                    \
-  _(GREDirectory,               nsCString,        nsCString())          \
+  _(GREDirectory,               nsString,         nsString())           \
   _(UseOMTP,                    bool,             false)                \
   _(AllowD3D11KeyedMutex,       bool,             false)                \
 
@@ -133,6 +137,12 @@ private:                                                        \
   VarImpl<DataType, Get##CxxName##Default> mVar##CxxName;       \
 public:                                                         \
   static const DataType& CxxName() {                            \
+    return sInstance->mVar##CxxName.Get();                      \
+  }                                                             \
+  static DataType Get##CxxName##OrDefault() {                   \
+    if (!sInstance) {                                           \
+      return DefaultValue;                                      \
+    }                                                           \
     return sInstance->mVar##CxxName.Get();                      \
   }                                                             \
   static void Set##CxxName(const DataType& aValue) {            \

@@ -26,47 +26,10 @@ HTMLFrameSetElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
   return HTMLFrameSetElementBinding::Wrap(aCx, this, aGivenProto);
 }
 
-NS_IMPL_ISUPPORTS_INHERITED(HTMLFrameSetElement, nsGenericHTMLElement,
-                            nsIDOMHTMLFrameSetElement)
-
 NS_IMPL_ELEMENT_CLONE(HTMLFrameSetElement)
 
-NS_IMETHODIMP
-HTMLFrameSetElement::SetCols(const nsAString& aCols)
-{
-  ErrorResult rv;
-  SetCols(aCols, rv);
-  return rv.StealNSResult();
-}
-
-NS_IMETHODIMP
-HTMLFrameSetElement::GetCols(nsAString& aCols)
-{
-  DOMString cols;
-  GetCols(cols);
-  cols.ToString(aCols);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-HTMLFrameSetElement::SetRows(const nsAString& aRows)
-{
-  ErrorResult rv;
-  SetRows(aRows, rv);
-  return rv.StealNSResult();
-}
-
-NS_IMETHODIMP
-HTMLFrameSetElement::GetRows(nsAString& aRows)
-{
-  DOMString rows;
-  GetRows(rows);
-  rows.ToString(aRows);
-  return NS_OK;
-}
-
 nsresult
-HTMLFrameSetElement::BeforeSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+HTMLFrameSetElement::BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                    const nsAttrValueOrString* aValue,
                                    bool aNotify)
 {
@@ -170,8 +133,9 @@ HTMLFrameSetElement::GetColSpec(int32_t *aNumValues,
 
 bool
 HTMLFrameSetElement::ParseAttribute(int32_t aNamespaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     const nsAString& aValue,
+                                    nsIPrincipal* aMaybeScriptedPrincipal,
                                     nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -187,11 +151,11 @@ HTMLFrameSetElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 nsChangeHint
-HTMLFrameSetElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
+HTMLFrameSetElement::GetAttributeChangeHint(const nsAtom* aAttribute,
                                             int32_t aModType) const
 {
   nsChangeHint retval =
@@ -337,7 +301,7 @@ HTMLFrameSetElement::ParseRowCol(const nsAString & aValue,
 }
 
 bool
-HTMLFrameSetElement::IsEventAttributeNameInternal(nsIAtom *aName)
+HTMLFrameSetElement::IsEventAttributeNameInternal(nsAtom *aName)
 {
   return nsContentUtils::IsEventAttributeName(aName,
                                               EventNameType_HTML |
@@ -354,7 +318,7 @@ HTMLFrameSetElement::IsEventAttributeNameInternal(nsIAtom *aName)
   HTMLFrameSetElement::GetOn##name_()                                          \
   {                                                                            \
     if (nsPIDOMWindowInner* win = OwnerDoc()->GetInnerWindow()) {              \
-      nsGlobalWindow* globalWin = nsGlobalWindow::Cast(win);                   \
+      nsGlobalWindowInner* globalWin = nsGlobalWindowInner::Cast(win);         \
       return globalWin->GetOn##name_();                                        \
     }                                                                          \
     return nullptr;                                                            \
@@ -367,7 +331,7 @@ HTMLFrameSetElement::IsEventAttributeNameInternal(nsIAtom *aName)
       return;                                                                  \
     }                                                                          \
                                                                                \
-    nsGlobalWindow* globalWin = nsGlobalWindow::Cast(win);                     \
+    nsGlobalWindowInner* globalWin = nsGlobalWindowInner::Cast(win);           \
     return globalWin->SetOn##name_(handler);                                   \
   }
 #define WINDOW_EVENT(name_, id_, type_, struct_)                               \

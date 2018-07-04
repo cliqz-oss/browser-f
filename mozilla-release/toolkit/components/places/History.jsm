@@ -66,21 +66,18 @@
  * @see nsINavHistoryObserver
  */
 
-this.EXPORTED_SYMBOLS = [ "History" ];
+var EXPORTED_SYMBOLS = [ "History" ];
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AsyncShutdown",
-                                  "resource://gre/modules/AsyncShutdown.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Sqlite",
-                                  "resource://gre/modules/Sqlite.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
+XPCOMUtils.defineLazyServiceGetter(this, "asyncHistory",
+                                   "@mozilla.org/browser/history;1",
+                                   "mozIAsyncHistory");
+
 Cu.importGlobalProperties(["URL"]);
 
 /**
@@ -113,7 +110,7 @@ function notify(observers, notification, args = []) {
   }
 }
 
-this.History = Object.freeze({
+var History = Object.freeze({
   /**
    * Fetch the available information for one page.
    *
@@ -534,7 +531,7 @@ this.History = Object.freeze({
     // Quick fallback to the cpp version.
     if (guidOrURI instanceof Ci.nsIURI) {
       return new Promise(resolve => {
-        PlacesUtils.asyncHistory.isURIVisited(guidOrURI, (aURI, aIsVisited) => {
+        asyncHistory.isURIVisited(guidOrURI, (aURI, aIsVisited) => {
           resolve(aIsVisited);
         });
       });
@@ -543,7 +540,7 @@ this.History = Object.freeze({
     guidOrURI = PlacesUtils.normalizeToURLOrGUID(guidOrURI);
     let isGuid = typeof guidOrURI == "string";
     let sqlFragment = isGuid ? "guid = :val"
-                             : "url_hash = hash(:val) AND url = :val "
+                             : "url_hash = hash(:val) AND url = :val ";
 
     return PlacesUtils.promiseDBConnection().then(async db => {
       let rows = await db.executeCached(`SELECT 1 FROM moz_places
@@ -710,6 +707,7 @@ this.History = Object.freeze({
  */
 function convertForUpdatePlaces(pageInfo) {
   let info = {
+    guid: pageInfo.guid,
     uri: PlacesUtils.toURI(pageInfo.url),
     title: pageInfo.title,
     visits: [],
@@ -768,13 +766,16 @@ var clear = async function(db) {
     // Remove all non-bookmarked places entries first, this will speed up the
     // triggers work.
     await db.execute(`DELETE FROM moz_places WHERE foreign_count = 0`);
-    await db.execute(`DELETE FROM moz_updatehosts_temp`);
+    await db.execute(`DELETE FROM moz_updatehostsdelete_temp`);
 
     // Expire orphan icons.
     await db.executeCached(`DELETE FROM moz_pages_w_icons
                             WHERE page_url_hash NOT IN (SELECT url_hash FROM moz_places)`);
-    await db.executeCached(`DELETE FROM moz_icons
-                            WHERE root = 0 AND id NOT IN (SELECT icon_id FROM moz_icons_to_pages)`);
+    await db.executeCached(`DELETE FROM moz_icons WHERE id IN (
+                              SELECT id FROM moz_icons WHERE root = 0
+                              EXCEPT
+                              SELECT icon_id FROM moz_icons_to_pages
+                            )`);
 
     // Expire annotations.
     await db.execute(`DELETE FROM moz_items_annos WHERE expiration = :expire_session`,
@@ -842,28 +843,34 @@ var clear = async function(db) {
 var cleanupPages = async function(db, pages) {
   await invalidateFrecencies(db, pages.filter(p => p.hasForeign || p.hasVisits).map(p => p.id));
 
-  let pageIdsToRemove = pages.filter(p => !p.hasForeign && !p.hasVisits).map(p => p.id);
-  if (pageIdsToRemove.length > 0) {
-    let idsList = sqlList(pageIdsToRemove);
-    // Note, we are already in a transaction, since callers create it.
-    // Check relations regardless, to avoid creating orphans in case of
-    // async race conditions.
-    await db.execute(`DELETE FROM moz_places WHERE id IN ( ${ idsList } )
-                      AND foreign_count = 0 AND last_visit_date ISNULL`);
-    // Hosts accumulated during the places delete are updated through a trigger
-    // (see nsPlacesTriggers.h).
-    await db.executeCached(`DELETE FROM moz_updatehosts_temp`);
+  let pagesToRemove = pages.filter(p => !p.hasForeign && !p.hasVisits);
+  if (pagesToRemove.length == 0)
+    return;
 
-    // Expire orphans.
-    await db.executeCached(`DELETE FROM moz_pages_w_icons
-                            WHERE page_url_hash NOT IN (SELECT url_hash FROM moz_places)`);
-    await db.executeCached(`DELETE FROM moz_icons
-                            WHERE root = 0 AND id NOT IN (SELECT icon_id FROM moz_icons_to_pages)`);
-    await db.execute(`DELETE FROM moz_annos
-                      WHERE place_id IN ( ${ idsList } )`);
-    await db.execute(`DELETE FROM moz_inputhistory
-                      WHERE place_id IN ( ${ idsList } )`);
-  }
+  let idsList = sqlList(pagesToRemove.map(p => p.id));
+  // Note, we are already in a transaction, since callers create it.
+  // Check relations regardless, to avoid creating orphans in case of
+  // async race conditions.
+  await db.execute(`DELETE FROM moz_places WHERE id IN ( ${ idsList } )
+                    AND foreign_count = 0 AND last_visit_date ISNULL`);
+  // Hosts accumulated during the places delete are updated through a trigger
+  // (see nsPlacesTriggers.h).
+  await db.executeCached(`DELETE FROM moz_updatehostsdelete_temp`);
+
+  // Expire orphans.
+  let hashesToRemove = pagesToRemove.map(p => p.hash);
+  await db.executeCached(`DELETE FROM moz_pages_w_icons
+                          WHERE page_url_hash IN (${sqlList(hashesToRemove)})`);
+  await db.executeCached(`DELETE FROM moz_icons WHERE id IN (
+                            SELECT id FROM moz_icons WHERE root = 0
+                            EXCEPT
+                            SELECT icon_id FROM moz_icons_to_pages
+                          )`);
+
+  await db.execute(`DELETE FROM moz_annos
+                    WHERE place_id IN ( ${ idsList } )`);
+  await db.execute(`DELETE FROM moz_inputhistory
+                    WHERE place_id IN ( ${ idsList } )`);
 };
 
 /**
@@ -959,7 +966,7 @@ var fetch = async function(db, guidOrURL, options) {
 
   let visitSelectionFragment = "";
   let joinFragment = "";
-  let visitOrderFragment = ""
+  let visitOrderFragment = "";
   if (options.includeVisits) {
     visitSelectionFragment = ", v.visit_date, v.visit_type";
     joinFragment = "JOIN moz_historyvisits v ON h.id = v.place_id";
@@ -991,7 +998,7 @@ var fetch = async function(db, guidOrURL, options) {
         };
       }
       if (options.includeMeta) {
-        pageInfo.description = row.getResultByName("description") || ""
+        pageInfo.description = row.getResultByName("description") || "";
         let previewImageURL = row.getResultByName("preview_image_url");
         pageInfo.previewImageURL = previewImageURL ? new URL(previewImageURL) : null;
       }
@@ -1081,7 +1088,7 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
 
       // 3. Find out which pages have been orphaned
       await db.execute(
-        `SELECT id, url, guid,
+        `SELECT id, url, url_hash, guid,
           (foreign_count != 0) AS has_foreign,
           (last_visit_date NOTNULL) as has_visits
          FROM moz_places
@@ -1094,6 +1101,7 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
              hasForeign: row.getResultByName("has_foreign"),
              hasVisits: row.getResultByName("has_visits"),
              url: new URL(row.getResultByName("url")),
+             hash: row.getResultByName("url_hash"),
            };
            pages.push(page);
          });
@@ -1160,7 +1168,7 @@ var removeByFilter = async function(db, filter, onResult = null) {
   // 3. Find out what needs to be removed
   let fragmentArray = [hostFilterSQLFragment, dateFilterSQLFragment];
   let query =
-      `SELECT h.id, url, rev_host, guid, title, frecency, foreign_count
+      `SELECT h.id, url, url_hash, rev_host, guid, title, frecency, foreign_count
        FROM moz_places h WHERE
        (${ fragmentArray.filter(f => f !== "").join(") AND (") })`;
   let onResultData = onResult ? [] : null;
@@ -1183,7 +1191,8 @@ var removeByFilter = async function(db, filter, onResult = null) {
         guid,
         hasForeign,
         hasVisits: false,
-        url: new URL(url)
+        url: new URL(url),
+        hash: row.getResultByName("url_hash"),
       };
       pages.push(page);
       if (onResult) {
@@ -1223,7 +1232,7 @@ var removeByFilter = async function(db, filter, onResult = null) {
 var remove = async function(db, {guids, urls}, onResult = null) {
   // 1. Find out what needs to be removed
   let query =
-    `SELECT id, url, guid, foreign_count, title, frecency
+    `SELECT id, url, url_hash, guid, foreign_count, title, frecency
      FROM moz_places
      WHERE guid IN (${ sqlList(guids) })
         OR (url_hash IN (${ urls.map(u => "hash(" + JSON.stringify(u) + ")").join(",") })
@@ -1247,6 +1256,7 @@ var remove = async function(db, {guids, urls}, onResult = null) {
       hasForeign,
       hasVisits: false,
       url: new URL(url),
+      hash: row.getResultByName("url_hash"),
     };
     pages.push(page);
     if (onResult) {
@@ -1302,6 +1312,7 @@ var remove = async function(db, {guids, urls}, onResult = null) {
  */
 function mergeUpdateInfoIntoPageInfo(updateInfo, pageInfo = {}) {
   pageInfo.guid = updateInfo.guid;
+  pageInfo.title = updateInfo.title;
   if (!pageInfo.url) {
     pageInfo.url = new URL(updateInfo.uri.spec);
     pageInfo.title = updateInfo.title;
@@ -1310,7 +1321,7 @@ function mergeUpdateInfoIntoPageInfo(updateInfo, pageInfo = {}) {
         date: PlacesUtils.toDate(visit.visitDate),
         transition: visit.transitionType,
         referrer: (visit.referrerURI) ? new URL(visit.referrerURI.spec) : null
-      }
+      };
     });
   }
   return pageInfo;
@@ -1321,7 +1332,7 @@ var insert = function(db, pageInfo) {
   let info = convertForUpdatePlaces(pageInfo);
 
   return new Promise((resolve, reject) => {
-    PlacesUtils.asyncHistory.updatePlaces(info, {
+    asyncHistory.updatePlaces(info, {
       handleError: error => {
         reject(error);
       },
@@ -1347,7 +1358,7 @@ var insertMany = function(db, pageInfos, onResult, onError) {
   }
 
   return new Promise((resolve, reject) => {
-    PlacesUtils.asyncHistory.updatePlaces(infos, {
+    asyncHistory.updatePlaces(infos, {
       handleError: (resultCode, result) => {
         let pageInfo = mergeUpdateInfoIntoPageInfo(result);
         onErrorData.push(pageInfo);
@@ -1364,7 +1375,7 @@ var insertMany = function(db, pageInfos, onResult, onError) {
         if (updatedCount > 0) {
           resolve();
         } else {
-          reject({message: "No items were added to history."})
+          reject({message: "No items were added to history."});
         }
       }
     }, true);
@@ -1375,27 +1386,31 @@ var insertMany = function(db, pageInfos, onResult, onError) {
 var update = async function(db, pageInfo) {
   let updateFragments = [];
   let whereClauseFragment = "";
-  let info = {};
+  let params = {};
 
   // Prefer GUID over url if it's present
   if (typeof pageInfo.guid === "string") {
-    whereClauseFragment = "WHERE guid = :guid";
-    info.guid = pageInfo.guid;
+    whereClauseFragment = "guid = :guid";
+    params.guid = pageInfo.guid;
   } else {
-    whereClauseFragment = "WHERE url_hash = hash(:url) AND url = :url";
-    info.url = pageInfo.url.href;
+    whereClauseFragment = "url_hash = hash(:url) AND url = :url";
+    params.url = pageInfo.url.href;
   }
 
   if (pageInfo.description || pageInfo.description === null) {
-    updateFragments.push("description = :description");
-    info.description = pageInfo.description;
+    updateFragments.push("description");
+    params.description = pageInfo.description;
   }
   if (pageInfo.previewImageURL || pageInfo.previewImageURL === null) {
-    updateFragments.push("preview_image_url = :previewImageURL");
-    info.previewImageURL = pageInfo.previewImageURL ? pageInfo.previewImageURL.href : null;
+    updateFragments.push("preview_image_url");
+    params.preview_image_url = pageInfo.previewImageURL ? pageInfo.previewImageURL.href : null;
   }
-  let query = `UPDATE moz_places
-               SET ${updateFragments.join(", ")}
-               ${whereClauseFragment}`;
-  await db.execute(query, info);
-}
+  // Since this data may be written at every visit and is textual, avoid
+  // overwriting the existing record if it didn't change.
+  await db.execute(`
+    UPDATE moz_places
+    SET ${updateFragments.map(v => `${v} = :${v}`).join(", ")}
+    WHERE ${whereClauseFragment}
+      AND (${updateFragments.map(v => `IFNULL(${v}, "") <> IFNULL(:${v}, "")`).join(" OR ")})
+  `, params);
+};

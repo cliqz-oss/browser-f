@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "xpcprivate.h"
-#include "jsprf.h"
 #include "nsThreadUtils.h"
 #include "nsContentUtils.h"
 
@@ -15,22 +14,23 @@
 #include <windows.h>
 #endif
 
+#ifdef ANDROID
+#include <android/log.h>
+#endif
+
 static void DebugDump(const char* fmt, ...)
 {
   char buffer[2048];
   va_list ap;
   va_start(ap, fmt);
-#ifdef XPWIN
-  _vsnprintf(buffer, sizeof(buffer), fmt, ap);
-  buffer[sizeof(buffer)-1] = '\0';
-#else
   VsprintfLiteral(buffer, fmt, ap);
-#endif
   va_end(ap);
 #ifdef XP_WIN
   if (IsDebuggerPresent()) {
     OutputDebugStringA(buffer);
   }
+#elif defined(ANDROID)
+  __android_log_write(ANDROID_LOG_DEBUG, "Gecko", buffer);
 #endif
   printf("%s", buffer);
 }
@@ -38,7 +38,7 @@ static void DebugDump(const char* fmt, ...)
 bool
 xpc_DumpJSStack(bool showArgs, bool showLocals, bool showThisProps)
 {
-    JSContext* cx = nsContentUtils::GetCurrentJSContextForThread();
+    JSContext* cx = nsContentUtils::GetCurrentJSContext();
     if (!cx) {
         printf("there is no JSContext on the stack!\n");
     } else if (JS::UniqueChars buf = xpc_PrintJSStack(cx, showArgs, showLocals, showThisProps)) {

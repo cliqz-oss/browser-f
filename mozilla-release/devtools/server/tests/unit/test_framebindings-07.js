@@ -14,9 +14,9 @@ function run_test() {
   gDebuggee = addTestGlobal("test-bindings");
 
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-bindings",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_banana_environment();
                            });
@@ -25,27 +25,27 @@ function run_test() {
 }
 
 function test_banana_environment() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
     let environment = packet.frame.environment;
-    do_check_eq(environment.type, "function");
+    Assert.equal(environment.type, "function");
 
     let parent = environment.parent;
-    do_check_eq(parent.type, "block");
+    Assert.equal(parent.type, "block");
 
     let grandpa = parent.parent;
-    do_check_eq(grandpa.type, "function");
+    Assert.equal(grandpa.type, "function");
 
     let envClient = gThreadClient.environment(environment);
     envClient.getBindings(response => {
-      do_check_eq(response.bindings.arguments[0].z.value, "z");
+      Assert.equal(response.bindings.arguments[0].z.value, "z");
 
       let parentClient = gThreadClient.environment(parent);
       parentClient.getBindings(response => {
-        do_check_eq(response.bindings.variables.banana3.value.class, "Function");
+        Assert.equal(response.bindings.variables.banana3.value.class, "Function");
 
         let grandpaClient = gThreadClient.environment(grandpa);
         grandpaClient.getBindings(response => {
-          do_check_eq(response.bindings.arguments[0].y.value, "y");
+          Assert.equal(response.bindings.arguments[0].y.value, "y");
           gThreadClient.resume(() => finishClient(gClient));
         });
       });

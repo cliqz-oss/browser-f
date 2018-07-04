@@ -11,7 +11,9 @@ SOURCES += ['!ThirdPartyPaths.cpp']
 UNIFIED_SOURCES += [
     'ArithmeticArgChecker.cpp',
     'AssertAssignmentChecker.cpp',
+    'CanRunScriptChecker.cpp',
     'CustomTypeAnnotation.cpp',
+    'DanglingOnTemporaryChecker.cpp',
     'DiagnosticsMatcher.cpp',
     'ExplicitImplicitChecker.cpp',
     'ExplicitOperatorBoolChecker.cpp',
@@ -31,12 +33,22 @@ UNIFIED_SOURCES += [
     'NonParamInsideFunctionDeclChecker.cpp',
     'OverrideBaseCallChecker.cpp',
     'OverrideBaseCallUsageChecker.cpp',
+    'ParamTraitsEnumChecker.cpp',
     'RefCountedCopyConstructorChecker.cpp',
     'RefCountedInsideLambdaChecker.cpp',
     'ScopeChecker.cpp',
     'SprintfLiteralChecker.cpp',
     'TrivialCtorDtorChecker.cpp',
+    'VariableUsageHelpers.cpp',
 ]
+
+if CONFIG['ENABLE_MOZSEARCH_PLUGIN']:
+    UNIFIED_SOURCES += [
+        'mozsearch-plugin/FileOperations.cpp',
+        'mozsearch-plugin/JSONFormatter.cpp',
+        'mozsearch-plugin/MozsearchIndexer.cpp',
+        'mozsearch-plugin/StringOperations.cpp',
+    ]
 
 GENERATED_FILES += ['ThirdPartyPaths.cpp']
 third_party_paths = GENERATED_FILES['ThirdPartyPaths.cpp']
@@ -45,8 +57,8 @@ third_party_paths.inputs = [
     '/tools/rewriting/ThirdPartyPaths.txt',
 ]
 
-DISABLE_STL_WRAPPING = True
-NO_VISIBILITY_FLAGS = True
+DisableStlWrapping()
+NoVisibilityFlags()
 
 # libc++ is required to build plugins against clang on OS X.
 if CONFIG['HOST_OS_ARCH'] == 'Darwin':
@@ -56,3 +68,28 @@ if CONFIG['HOST_OS_ARCH'] == 'Darwin':
 DIRS += [
     'tests',
 ]
+
+
+# In the current moz.build world, we need to override essentially every
+# variable to limit ourselves to what we need to build the clang plugin.
+if CONFIG['HOST_OS_ARCH'] == 'WINNT':
+    extra_cxxflags = ['-GR-', '-EHsc']
+else:
+    extra_cxxflags = ['-fno-rtti', '-fno-exceptions']
+
+if CONFIG['LLVM_CXXFLAGS']:
+    COMPILE_FLAGS['OS_CXXFLAGS'] = CONFIG['LLVM_CXXFLAGS'] + extra_cxxflags
+
+COMPILE_FLAGS['CLANG_PLUGIN'] = []
+COMPILE_FLAGS['OPTIMIZE'] = []
+COMPILE_FLAGS['DEBUG'] = []
+COMPILE_FLAGS['OS_COMPILE_CXXFLAGS'] = []
+
+LINK_FLAGS['OS'] = CONFIG['LLVM_LDFLAGS'] + CONFIG['CLANG_LDFLAGS']
+# The ldflags above override most other categories.
+for var in ('LINKER', 'OPTIMIZE'):
+    LINK_FLAGS[var] = []
+
+if CONFIG['HOST_OS_ARCH'] == 'Linux' and CONFIG['OS_ARCH'] == 'Darwin':
+    # Don't pass OSX linker arguments.
+    LINK_FLAGS['FIX_LINK_PATHS'] = []

@@ -4,10 +4,8 @@
 
 'use strict';
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import('resource://gre/modules/XPCOMUtils.jsm');
-Cu.import('resource://gre/modules/Services.jsm');
+ChromeUtils.import('resource://gre/modules/XPCOMUtils.jsm');
+ChromeUtils.import('resource://gre/modules/Services.jsm');
 
 const manager = Cc['@mozilla.org/presentation-device/manager;1']
                   .getService(Ci.nsIPresentationDeviceManager);
@@ -18,7 +16,7 @@ function TestPresentationDevice() {}
 function TestPresentationControlChannel() {}
 
 TestPresentationControlChannel.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationControlChannel]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationControlChannel]),
   sendOffer: function(offer) {},
   sendAnswer: function(answer) {},
   disconnect: function() {},
@@ -30,7 +28,7 @@ TestPresentationControlChannel.prototype = {
 };
 
 var testProvider = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationDeviceProvider]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationDeviceProvider]),
 
   forceDiscovery: function() {
   },
@@ -42,7 +40,7 @@ var testProvider = {
 
 const forbiddenRequestedUrl = 'http://example.com';
 var testDevice = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationDevice]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationDevice]),
   id: 'id',
   name: 'name',
   type: 'type',

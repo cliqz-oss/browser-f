@@ -27,7 +27,7 @@
       {
         "id": "ContextType",
         "type": "string",
-        "enum": ["all", "page", "frame", "selection", "link", "editable", "password", "image", "video", "audio", "launcher", "browser_action", "page_action", "tab"],
+        "enum": ["all", "page", "frame", "selection", "link", "editable", "password", "image", "video", "audio", "launcher", "bookmark", "browser_action", "page_action", "tab"],
         "description": "The different contexts a menu can appear in. Specifying 'all' is equivalent to the combination of all other contexts except for 'tab' and 'tools_menu'."
       }
     ]
@@ -46,7 +46,7 @@
       {
         "id": "ContextType",
         "type": "string",
-        "enum": ["all", "page", "frame", "selection", "link", "editable", "password", "image", "video", "audio", "launcher", "browser_action", "page_action", "tab", "tools_menu"],
+        "enum": ["all", "page", "frame", "selection", "link", "editable", "password", "image", "video", "audio", "launcher", "bookmark", "browser_action", "page_action", "tab", "tools_menu"],
         "description": "The different contexts a menu can appear in. Specifying 'all' is equivalent to the combination of all other contexts except for 'tab' and 'tools_menu'."
       },
       {
@@ -123,6 +123,10 @@
             "type": "boolean",
             "optional": true,
             "description": "A flag indicating the state of a checkbox or radio item after it is clicked."
+          },
+          "bookmarkId": {
+            "type": "string",
+            "description": "The id of the bookmark where the context menu was clicked, if it was on a bookmark."
           },
           "modifiers": {
             "type": "array",
@@ -370,6 +374,13 @@
             "description": "Called when removal is complete."
           }
         ]
+      },
+      {
+        "name": "refresh",
+        "type": "function",
+        "description": "Updates the extension items in the shown menu, including changes that have been made since the menu was shown. Has no effect if the menu is hidden. Rebuilding a shown menu is an expensive operation, only invoke this method when necessary.",
+        "async": true,
+        "parameters": []
       }
     ],
     "events": [
@@ -390,6 +401,77 @@
             "optional": true
           }
         ]
+      },
+      {
+        "name": "onShown",
+        "type": "function",
+        "description": "Fired when a menu is shown. The extension can add, modify or remove menu items and call menus.refresh() to update the menu.",
+        "parameters": [
+          {
+            "name": "info",
+            "type": "object",
+            "description": "Information about the context of the menu action and the created menu items. For more information about each property, see contextMenusInternal.OnClickData. The following properties are only set if the extension has host permissions for the given context: linkUrl, linkText, srcUrl, pageUrl, frameUrl, selectionText.",
+            "properties": {
+              "menuIds": {
+                "description": "A list of IDs of the menu items that were shown.",
+                "type": "array",
+                "items": {
+                  "choices": [
+                    { "type": "integer" },
+                    { "type": "string" }
+                  ]
+                }
+              },
+              "contexts": {
+                "description": "A list of all contexts that apply to the menu.",
+                "type": "array",
+                "items": {"$ref": "ContextType"}
+              },
+              "editable": {
+                "type": "boolean"
+              },
+              "mediaType": {
+                "type": "string",
+                "optional": true
+              },
+              "linkUrl": {
+                "type": "string",
+                "optional": true
+              },
+              "linkText": {
+                "type": "string",
+                "optional": true
+              },
+              "srcUrl": {
+                "type": "string",
+                "optional": true
+              },
+              "pageUrl": {
+                "type": "string",
+                "optional": true
+              },
+              "frameUrl": {
+                "type": "string",
+                "optional": true
+              },
+              "selectionText": {
+                "type": "string",
+                "optional": true
+              }
+            }
+          },
+          {
+            "name": "tab",
+            "$ref": "tabs.Tab",
+            "description": "The details of the tab where the menu was opened."
+          }
+        ]
+      },
+      {
+        "name": "onHidden",
+        "type": "function",
+        "description": "Fired when a menu is hidden. This event is only fired if onShown has fired before.",
+        "parameters": []
       }
     ]
   }

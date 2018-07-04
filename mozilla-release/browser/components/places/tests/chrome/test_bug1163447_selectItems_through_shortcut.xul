@@ -11,7 +11,6 @@
 
 <?xml-stylesheet href="chrome://browser/content/places/places.css"?>
 <?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
-<?xul-overlay href="chrome://browser/content/places/placesOverlay.xul"?>
 
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="1163447:  selectItems in Places no longer selects items within Toolbar or Sidebar folders"
@@ -72,11 +71,10 @@
         let tree = document.getElementById("tree");
         tree.place = "place:folder=TOOLBAR";
 
-        // Select the folder via the selectItems(itemId) API being tested
-        let itemId = await PlacesUtils.promiseItemId(folder.guid);
-        tree.selectItems([itemId]);
+        // Select the folder via the selectItems(folder.guid) API being tested
+        tree.selectItems([folder.guid]);
 
-        is(tree.selectedNode && tree.selectedNode.itemId, itemId, "The node was selected through the shortcut");
+        is(tree.selectedNode && tree.selectedNode.bookmarkGuid, folder.guid, "The node was selected through the shortcut");
 
         // Cleanup
         await bmu.eraseEverything();

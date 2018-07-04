@@ -18,13 +18,13 @@
 #include "nsGlobalWindow.h"
 #include "nsFocusManager.h"
 #include "nsIContent.h"
-#include "nsIDOMHTMLInputElement.h"
-#include "nsIDOMHTMLTextAreaElement.h"
 #include "nsIControllers.h"
 #include "nsIController.h"
 #include "xpcpublic.h"
 #include "nsCycleCollectionParticipant.h"
 #include "mozilla/dom/TabParent.h"
+#include "mozilla/dom/HTMLTextAreaElement.h"
+#include "mozilla/dom/HTMLInputElement.h"
 
 #ifdef MOZ_XUL
 #include "nsXULElement.h"
@@ -36,7 +36,6 @@ using namespace mozilla::dom;
 nsWindowRoot::nsWindowRoot(nsPIDOMWindowOuter* aWindow)
 {
   mWindow = aWindow;
-  MOZ_ASSERT(mWindow->IsOuterWindow());
 
   // Keyboard indicators are not shown on Mac by default.
 #if defined(XP_MACOSX)
@@ -62,97 +61,32 @@ NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(nsWindowRoot,
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsWindowRoot)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMEventTarget)
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
   NS_INTERFACE_MAP_ENTRY(nsPIWindowRoot)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMEventTarget)
   NS_INTERFACE_MAP_ENTRY(mozilla::dom::EventTarget)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsWindowRoot)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsWindowRoot)
 
-NS_IMPL_DOMTARGET_DEFAULTS(nsWindowRoot)
-
-NS_IMETHODIMP
-nsWindowRoot::RemoveEventListener(const nsAString& aType, nsIDOMEventListener* aListener, bool aUseCapture)
-{
-  if (RefPtr<EventListenerManager> elm = GetExistingListenerManager()) {
-    elm->RemoveEventListener(aType, aListener, aUseCapture);
-  }
-  return NS_OK;
-}
-
-NS_IMPL_REMOVE_SYSTEM_EVENT_LISTENER(nsWindowRoot)
-
-NS_IMETHODIMP
-nsWindowRoot::DispatchEvent(nsIDOMEvent* aEvt, bool *aRetVal)
+bool
+nsWindowRoot::DispatchEvent(Event& aEvent, CallerType aCallerType,
+                            ErrorResult& aRv)
 {
   nsEventStatus status = nsEventStatus_eIgnore;
   nsresult rv =  EventDispatcher::DispatchDOMEvent(
-    static_cast<EventTarget*>(this), nullptr, aEvt, nullptr, &status);
-  *aRetVal = (status != nsEventStatus_eConsumeNoDefault);
-  return rv;
-}
-
-nsresult
-nsWindowRoot::DispatchDOMEvent(WidgetEvent* aEvent,
-                               nsIDOMEvent* aDOMEvent,
-                               nsPresContext* aPresContext,
-                               nsEventStatus* aEventStatus)
-{
-  return EventDispatcher::DispatchDOMEvent(static_cast<EventTarget*>(this),
-                                           aEvent, aDOMEvent,
-                                           aPresContext, aEventStatus);
-}
-
-NS_IMETHODIMP
-nsWindowRoot::AddEventListener(const nsAString& aType,
-                               nsIDOMEventListener *aListener,
-                               bool aUseCapture, bool aWantsUntrusted,
-                               uint8_t aOptionalArgc)
-{
-  NS_ASSERTION(!aWantsUntrusted || aOptionalArgc > 1,
-               "Won't check if this is chrome, you want to set "
-               "aWantsUntrusted to false or make the aWantsUntrusted "
-               "explicit by making optional_argc non-zero.");
-
-  EventListenerManager* elm = GetOrCreateListenerManager();
-  NS_ENSURE_STATE(elm);
-  elm->AddEventListener(aType, aListener, aUseCapture, aWantsUntrusted);
-  return NS_OK;
-}
-
-void
-nsWindowRoot::AddEventListener(const nsAString& aType,
-                                EventListener* aListener,
-                                const AddEventListenerOptionsOrBoolean& aOptions,
-                                const Nullable<bool>& aWantsUntrusted,
-                                ErrorResult& aRv)
-{
-  bool wantsUntrusted = !aWantsUntrusted.IsNull() && aWantsUntrusted.Value();
-  EventListenerManager* elm = GetOrCreateListenerManager();
-  if (!elm) {
-    aRv.Throw(NS_ERROR_UNEXPECTED);
-    return;
+    static_cast<EventTarget*>(this), nullptr, &aEvent, nullptr, &status);
+  bool retval = !aEvent.DefaultPrevented(aCallerType);
+  if (NS_FAILED(rv)) {
+    aRv.Throw(rv);
   }
-  elm->AddEventListener(aType, aListener, aOptions, wantsUntrusted);
+  return retval;
 }
 
-
-NS_IMETHODIMP
-nsWindowRoot::AddSystemEventListener(const nsAString& aType,
-                                     nsIDOMEventListener *aListener,
-                                     bool aUseCapture,
-                                     bool aWantsUntrusted,
-                                     uint8_t aOptionalArgc)
+bool
+nsWindowRoot::ComputeDefaultWantsUntrusted(ErrorResult& aRv)
 {
-  NS_ASSERTION(!aWantsUntrusted || aOptionalArgc > 1,
-               "Won't check if this is chrome, you want to set "
-               "aWantsUntrusted to false or make the aWantsUntrusted "
-               "explicit by making optional_argc non-zero.");
-
-  return NS_AddSystemEventListener(this, aType, aListener, aUseCapture,
-                                   aWantsUntrusted);
+  return false;
 }
 
 EventListenerManager*
@@ -172,22 +106,14 @@ nsWindowRoot::GetExistingListenerManager() const
   return mListenerManager;
 }
 
-nsIScriptContext*
-nsWindowRoot::GetContextForEventHandlers(nsresult* aRv)
-{
-  *aRv = NS_OK;
-  return nullptr;
-}
-
-nsresult
+void
 nsWindowRoot::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   aVisitor.mCanHandle = true;
   aVisitor.mForceContentDispatch = true; //FIXME! Bug 329119
   // To keep mWindow alive
   aVisitor.mItemData = static_cast<nsISupports *>(mWindow);
-  aVisitor.mParentTarget = mParent;
-  return NS_OK;
+  aVisitor.SetParentTarget(mParent, false);
 }
 
 nsresult
@@ -218,7 +144,8 @@ nsWindowRoot::GetWindow()
 }
 
 nsresult
-nsWindowRoot::GetControllers(nsIControllers** aResult)
+nsWindowRoot::GetControllers(bool aForVisibleWindow,
+                             nsIControllers** aResult)
 {
   *aResult = nullptr;
 
@@ -226,12 +153,16 @@ nsWindowRoot::GetControllers(nsIControllers** aResult)
   // describes controllers, so this code would have no special
   // knowledge of what object might have controllers.
 
+  nsFocusManager::SearchRange searchRange =
+    aForVisibleWindow ? nsFocusManager::eIncludeVisibleDescendants :
+                        nsFocusManager::eIncludeAllDescendants;
   nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
   nsIContent* focusedContent =
-    nsFocusManager::GetFocusedDescendant(mWindow, true, getter_AddRefs(focusedWindow));
+    nsFocusManager::GetFocusedDescendant(mWindow, searchRange,
+                                         getter_AddRefs(focusedWindow));
   if (focusedContent) {
 #ifdef MOZ_XUL
-    RefPtr<nsXULElement> xulElement = nsXULElement::FromContent(focusedContent);
+    RefPtr<nsXULElement> xulElement = nsXULElement::FromNode(focusedContent);
     if (xulElement) {
       ErrorResult rv;
       *aResult = xulElement->GetControllers(rv);
@@ -240,13 +171,13 @@ nsWindowRoot::GetControllers(nsIControllers** aResult)
     }
 #endif
 
-    nsCOMPtr<nsIDOMHTMLTextAreaElement> htmlTextArea =
-      do_QueryInterface(focusedContent);
+    HTMLTextAreaElement* htmlTextArea =
+      HTMLTextAreaElement::FromNode(focusedContent);
     if (htmlTextArea)
       return htmlTextArea->GetControllers(aResult);
 
-    nsCOMPtr<nsIDOMHTMLInputElement> htmlInputElement =
-      do_QueryInterface(focusedContent);
+    HTMLInputElement* htmlInputElement =
+      HTMLInputElement::FromNode(focusedContent);
     if (htmlInputElement)
       return htmlInputElement->GetControllers(aResult);
 
@@ -261,7 +192,8 @@ nsWindowRoot::GetControllers(nsIControllers** aResult)
 }
 
 nsresult
-nsWindowRoot::GetControllerForCommand(const char * aCommand,
+nsWindowRoot::GetControllerForCommand(const char* aCommand,
+                                      bool aForVisibleWindow,
                                       nsIController** _retval)
 {
   NS_ENSURE_ARG_POINTER(_retval);
@@ -269,7 +201,7 @@ nsWindowRoot::GetControllerForCommand(const char * aCommand,
 
   {
     nsCOMPtr<nsIControllers> controllers;
-    GetControllers(getter_AddRefs(controllers));
+    GetControllers(aForVisibleWindow, getter_AddRefs(controllers));
     if (controllers) {
       nsCOMPtr<nsIController> controller;
       controllers->GetControllerForCommand(aCommand, getter_AddRefs(controller));
@@ -280,8 +212,12 @@ nsWindowRoot::GetControllerForCommand(const char * aCommand,
     }
   }
 
+  nsFocusManager::SearchRange searchRange =
+    aForVisibleWindow ? nsFocusManager::eIncludeVisibleDescendants :
+                        nsFocusManager::eIncludeAllDescendants;
   nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
-  nsFocusManager::GetFocusedDescendant(mWindow, true, getter_AddRefs(focusedWindow));
+  nsFocusManager::GetFocusedDescendant(mWindow, searchRange,
+                                       getter_AddRefs(focusedWindow));
   while (focusedWindow) {
     nsCOMPtr<nsIControllers> controllers;
     focusedWindow->GetControllers(getter_AddRefs(controllers));
@@ -296,7 +232,7 @@ nsWindowRoot::GetControllerForCommand(const char * aCommand,
     }
 
     // XXXndeakin P3 is this casting safe?
-    nsGlobalWindow *win = nsGlobalWindow::Cast(focusedWindow);
+    nsGlobalWindowOuter *win = nsGlobalWindowOuter::Cast(focusedWindow);
     focusedWindow = win->GetPrivateParent();
   }
 
@@ -351,14 +287,16 @@ nsWindowRoot::GetEnabledDisabledCommands(nsTArray<nsCString>& aEnabledCommands,
   nsTHashtable<nsCharPtrHashKey> commandsHandled;
 
   nsCOMPtr<nsIControllers> controllers;
-  GetControllers(getter_AddRefs(controllers));
+  GetControllers(false, getter_AddRefs(controllers));
   if (controllers) {
     GetEnabledDisabledCommandsForControllers(controllers, commandsHandled,
                                              aEnabledCommands, aDisabledCommands);
   }
 
   nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
-  nsFocusManager::GetFocusedDescendant(mWindow, true, getter_AddRefs(focusedWindow));
+  nsFocusManager::GetFocusedDescendant(mWindow,
+                                       nsFocusManager::eIncludeAllDescendants,
+                                       getter_AddRefs(focusedWindow));
   while (focusedWindow) {
     focusedWindow->GetControllers(getter_AddRefs(controllers));
     if (controllers) {
@@ -366,20 +304,20 @@ nsWindowRoot::GetEnabledDisabledCommands(nsTArray<nsCString>& aEnabledCommands,
                                                aEnabledCommands, aDisabledCommands);
     }
 
-    nsGlobalWindow* win = nsGlobalWindow::Cast(focusedWindow);
+    nsGlobalWindowOuter* win = nsGlobalWindowOuter::Cast(focusedWindow);
     focusedWindow = win->GetPrivateParent();
   }
 }
 
-nsIDOMNode*
+already_AddRefed<nsINode>
 nsWindowRoot::GetPopupNode()
 {
-  nsCOMPtr<nsIDOMNode> popupNode = do_QueryReferent(mPopupNode);
-  return popupNode;
+  nsCOMPtr<nsINode> popupNode = do_QueryReferent(mPopupNode);
+  return popupNode.forget();
 }
 
 void
-nsWindowRoot::SetPopupNode(nsIDOMNode* aNode)
+nsWindowRoot::SetPopupNode(nsINode* aNode)
 {
   mPopupNode = do_GetWeakReference(aNode);
 }

@@ -3,7 +3,7 @@
 */
 "use strict";
 
-Cu.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/main.js");
 
 Services.prefs.setCharPref("services.sync.username", "someone@somewhere.com");
 Services.prefs.setCharPref("services.sync.registerEngines", "");
@@ -17,22 +17,22 @@ function MockTabsEngine() {
 MockTabsEngine.prototype = {
   name: "tabs",
 
+  startTracking() {},
   getAllClients() {
     return this.clients;
   },
-}
+};
 
 // A clients engine that doesn't need to be a constructor.
 let MockClientsEngine = {
-  isMobile(guid) {
+  getClientType(guid) {
     Assert.ok(guid.endsWith("desktop") || guid.endsWith("mobile"));
-    return guid.endsWith("mobile");
-  },
-}
+    return guid.endsWith("mobile") ? "phone" : "desktop";
+  }
+};
 
 // Tell Sync about the mocks.
 Weave.Service.engineManager.register(MockTabsEngine);
-Weave.Service.clientsEngine = MockClientsEngine;
 
 // Tell the Sync XPCOM service it is initialized.
 let weaveXPCService = Cc["@mozilla.org/weave/service;1"]
@@ -45,6 +45,7 @@ function configureEngine(clients) {
   // Configure the instance Sync created.
   let engine = Weave.Service.engineManager.get("tabs");
   engine.clients = clients;
+  Weave.Service.clientsEngine = MockClientsEngine;
   // Send an observer that pretends the engine just finished a sync.
   Services.obs.notifyObservers(null, "weave:engine:sync:finish", "tabs");
 }
@@ -56,7 +57,7 @@ function makeRemoteTabMatch(url, deviceName, extra = {}) {
     title: extra.title || url,
     style: [ "action", "remotetab" ],
     icon: extra.icon,
-  }
+  };
 }
 
 // The tests.
@@ -199,6 +200,34 @@ add_task(async function test_localtab_matches_override() {
     searchParam: "enable-actions",
     matches: [ makeSearchMatch("ex", { heuristic: true }),
                makeSwitchToTabMatch("http://foo.com/", { title: "An Example" }),
+             ],
+  });
+});
+
+add_task(async function test_remotetab_matches_override() {
+  // If We have an history result to the same page, we should only get the
+  // remote tab match.
+  let url = "http://foo.remote.com/";
+  // First setup Sync to have the page as a remote tab.
+  configureEngine({
+    guid_mobile: {
+      clientName: "My Phone",
+      tabs: [{
+        urlHistory: [url],
+        title: "An Example",
+      }],
+    }
+  });
+
+  // Setup Places to think the tab is open locally.
+  await PlacesTestUtils.addVisits(url);
+
+  await check_autocomplete({
+    search: "rem",
+    searchParam: "enable-actions",
+    matches: [ makeSearchMatch("rem", { heuristic: true }),
+               makeRemoteTabMatch("http://foo.remote.com/", "My Phone",
+                                  { title: "An Example" }),
              ],
   });
 });

@@ -16,9 +16,9 @@
 
 #include <string.h>
 
-#include "jsalloc.h"
 #include "jspubtd.h"
 
+#include "js/AllocPolicy.h"
 #include "js/HashTable.h"
 #include "js/TracingAPI.h"
 #include "js/Utility.h"
@@ -37,7 +37,13 @@ struct TabSizes
         Other
     };
 
-    TabSizes() { mozilla::PodZero(this); }
+    TabSizes()
+      : objects(0)
+      , strings(0)
+      , private_(0)
+      , other(0)
+    {
+    }
 
     void add(Kind kind, size_t n) {
         switch (kind) {
@@ -498,9 +504,53 @@ struct NotableScriptSourceInfo : public ScriptSourceInfo
     NotableScriptSourceInfo(const NotableScriptSourceInfo& info) = delete;
 };
 
+struct HelperThreadStats
+{
+#define FOR_EACH_SIZE(macro) \
+    macro(_, MallocHeap, stateData) \
+    macro(_, MallocHeap, parseTask) \
+    macro(_, MallocHeap, ionBuilder) \
+    macro(_, MallocHeap, wasmCompile)
+
+    explicit HelperThreadStats()
+      : FOR_EACH_SIZE(ZERO_SIZE)
+        idleThreadCount(0),
+        activeThreadCount(0)
+    { }
+
+    FOR_EACH_SIZE(DECL_SIZE)
+
+    unsigned idleThreadCount;
+    unsigned activeThreadCount;
+
+#undef FOR_EACH_SIZE
+};
+
 /**
- * These measurements relate directly to the JSRuntime, and not to zones and
- * compartments within it.
+ * Measurements that not associated with any individual runtime.
+ */
+struct GlobalStats
+{
+#define FOR_EACH_SIZE(macro) \
+    macro(_, MallocHeap, tracelogger)
+
+    explicit GlobalStats(mozilla::MallocSizeOf mallocSizeOf)
+      : FOR_EACH_SIZE(ZERO_SIZE)
+        mallocSizeOf_(mallocSizeOf)
+    { }
+
+    FOR_EACH_SIZE(DECL_SIZE)
+
+    HelperThreadStats helperThread;
+
+    mozilla::MallocSizeOf mallocSizeOf_;
+
+#undef FOR_EACH_SIZE
+};
+
+/**
+ * These measurements relate directly to the JSRuntime, and not to zones,
+ * compartments, and realms within it.
  */
 struct RuntimeSizes
 {
@@ -516,7 +566,9 @@ struct RuntimeSizes
     macro(_, MallocHeap, sharedIntlData) \
     macro(_, MallocHeap, uncompressedSourceCache) \
     macro(_, MallocHeap, scriptData) \
-    macro(_, MallocHeap, tracelogger)
+    macro(_, MallocHeap, tracelogger) \
+    macro(_, MallocHeap, wasmRuntime) \
+    macro(_, MallocHeap, jitLazyLink)
 
     RuntimeSizes()
       : FOR_EACH_SIZE(ZERO_SIZE)
@@ -688,7 +740,7 @@ struct ZoneStats
         js_delete(allStrings);
     }
 
-    bool initStrings(JSRuntime* rt);
+    bool initStrings();
 
     void addSizes(const ZoneStats& other) {
         MOZ_ASSERT(isTotals);
@@ -774,9 +826,9 @@ struct CompartmentStats
     macro(Other,   MallocHeap, savedStacksSet) \
     macro(Other,   MallocHeap, varNamesSet) \
     macro(Other,   MallocHeap, nonSyntacticLexicalScopesTable) \
-    macro(Other,   MallocHeap, templateLiteralMap) \
     macro(Other,   MallocHeap, jitCompartment) \
-    macro(Other,   MallocHeap, privateData)
+    macro(Other,   MallocHeap, privateData) \
+    macro(Other,   MallocHeap, scriptCountsMap)
 
     CompartmentStats()
       : FOR_EACH_SIZE(ZERO_SIZE)
@@ -808,7 +860,7 @@ struct CompartmentStats
         js_delete(allClasses);
     }
 
-    bool initClasses(JSRuntime* rt);
+    bool initClasses();
 
     void addSizes(const CompartmentStats& other) {
         MOZ_ASSERT(isTotals);
@@ -947,6 +999,9 @@ class ObjectPrivateVisitor
 };
 
 extern JS_PUBLIC_API(bool)
+CollectGlobalStats(GlobalStats* gStats);
+
+extern JS_PUBLIC_API(bool)
 CollectRuntimeStats(JSContext* cx, RuntimeStats* rtStats, ObjectPrivateVisitor* opv, bool anonymize);
 
 extern JS_PUBLIC_API(size_t)
@@ -965,9 +1020,6 @@ AddSizeOfTab(JSContext* cx, JS::HandleObject obj, mozilla::MallocSizeOf mallocSi
 extern JS_PUBLIC_API(bool)
 AddServoSizeOf(JSContext* cx, mozilla::MallocSizeOf mallocSizeOf,
                ObjectPrivateVisitor* opv, ServoSizes* sizes);
-
-extern JS_PUBLIC_API(void)
-CollectTraceLoggerStateStats(RuntimeStats* rtStats);
 
 } // namespace JS
 

@@ -5,21 +5,17 @@
 
 #include "mozilla/EditorUtils.h"
 
+#include "mozilla/EditorDOMPoint.h"
 #include "mozilla/OwningNonNull.h"
 #include "mozilla/dom/Selection.h"
 #include "nsComponentManagerUtils.h"
 #include "nsError.h"
-#include "nsIClipboardDragDropHookList.h"
-// hooks
-#include "nsIClipboardDragDropHooks.h"
 #include "nsIContent.h"
 #include "nsIContentIterator.h"
-#include "nsIDOMDocument.h"
 #include "nsIDocShell.h"
 #include "nsIDocument.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsINode.h"
-#include "nsISimpleEnumerator.h"
 
 class nsISupports;
 class nsRange;
@@ -135,19 +131,23 @@ DOMSubtreeIterator::~DOMSubtreeIterator()
  *****************************************************************************/
 
 bool
-EditorUtils::IsDescendantOf(nsINode* aNode,
-                            nsINode* aParent,
-                            int32_t* aOffset)
+EditorUtils::IsDescendantOf(const nsINode& aNode,
+                            const nsINode& aParent,
+                            EditorRawDOMPoint* aOutPoint /* = nullptr */)
 {
-  MOZ_ASSERT(aNode && aParent);
-  if (aNode == aParent) {
+  if (aOutPoint) {
+    aOutPoint->Clear();
+  }
+
+  if (&aNode == &aParent) {
     return false;
   }
 
-  for (nsCOMPtr<nsINode> node = aNode; node; node = node->GetParentNode()) {
-    if (node->GetParentNode() == aParent) {
-      if (aOffset) {
-        *aOffset = aParent->IndexOf(node);
+  for (const nsINode* node = &aNode; node; node = node->GetParentNode()) {
+    if (node->GetParentNode() == &aParent) {
+      if (aOutPoint) {
+        MOZ_ASSERT(node->IsContent());
+        aOutPoint->Set(node->AsContent());
       }
       return true;
     }
@@ -157,71 +157,25 @@ EditorUtils::IsDescendantOf(nsINode* aNode,
 }
 
 bool
-EditorUtils::IsDescendantOf(nsIDOMNode* aNode,
-                            nsIDOMNode* aParent,
-                            int32_t* aOffset)
+EditorUtils::IsDescendantOf(const nsINode& aNode,
+                            const nsINode& aParent,
+                            EditorDOMPoint* aOutPoint)
 {
-  nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
-  nsCOMPtr<nsINode> parent = do_QueryInterface(aParent);
-  NS_ENSURE_TRUE(node && parent, false);
-  return IsDescendantOf(node, parent, aOffset);
-}
+  MOZ_ASSERT(aOutPoint);
+  aOutPoint->Clear();
+  if (&aNode == &aParent) {
+    return false;
+  }
 
-bool
-EditorUtils::IsLeafNode(nsIDOMNode* aNode)
-{
-  bool hasChildren = false;
-  if (aNode)
-    aNode->HasChildNodes(&hasChildren);
-  return !hasChildren;
-}
-
-/******************************************************************************
- * utility methods for drag/drop/copy/paste hooks
- *****************************************************************************/
-
-nsresult
-EditorHookUtils::GetHookEnumeratorFromDocument(nsIDOMDocument* aDoc,
-                                               nsISimpleEnumerator** aResult)
-{
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(aDoc);
-  NS_ENSURE_TRUE(doc, NS_ERROR_FAILURE);
-
-  nsCOMPtr<nsIDocShell> docShell = doc->GetDocShell();
-  nsCOMPtr<nsIClipboardDragDropHookList> hookObj = do_GetInterface(docShell);
-  NS_ENSURE_TRUE(hookObj, NS_ERROR_FAILURE);
-
-  return hookObj->GetHookEnumerator(aResult);
-}
-
-bool
-EditorHookUtils::DoInsertionHook(nsIDOMDocument* aDoc,
-                                 nsIDOMEvent* aDropEvent,
-                                 nsITransferable *aTrans)
-{
-  nsCOMPtr<nsISimpleEnumerator> enumerator;
-  GetHookEnumeratorFromDocument(aDoc, getter_AddRefs(enumerator));
-  NS_ENSURE_TRUE(enumerator, true);
-
-  bool hasMoreHooks = false;
-  while (NS_SUCCEEDED(enumerator->HasMoreElements(&hasMoreHooks)) &&
-         hasMoreHooks) {
-    nsCOMPtr<nsISupports> isupp;
-    if (NS_FAILED(enumerator->GetNext(getter_AddRefs(isupp)))) {
-      break;
-    }
-
-    nsCOMPtr<nsIClipboardDragDropHooks> override = do_QueryInterface(isupp);
-    if (override) {
-      bool doInsert = true;
-      DebugOnly<nsresult> hookResult =
-        override->OnPasteOrDrop(aDropEvent, aTrans, &doInsert);
-      NS_ASSERTION(NS_SUCCEEDED(hookResult), "hook failure in OnPasteOrDrop");
-      NS_ENSURE_TRUE(doInsert, false);
+  for (const nsINode* node = &aNode; node; node = node->GetParentNode()) {
+    if (node->GetParentNode() == &aParent) {
+      MOZ_ASSERT(node->IsContent());
+      aOutPoint->Set(node->AsContent());
+      return true;
     }
   }
 
-  return true;
+  return false;
 }
 
 } // namespace mozilla

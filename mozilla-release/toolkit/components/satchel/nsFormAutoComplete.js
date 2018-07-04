@@ -5,12 +5,8 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils", "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function isAutocompleteDisabled(aField) {
   if (aField.autocomplete !== "") {
@@ -117,11 +113,16 @@ FormHistoryClient.prototype = {
    *
    *        The value to remove for this particular
    *        field.
+   *
+   * @param {string} guid
+   *
+   *        The guid for the item being removed.
    */
-  remove(value) {
+  remove(value, guid) {
     this.mm.sendAsyncMessage("FormHistory:RemoveEntry", {
       inputName: this.inputName,
       value,
+      guid,
     });
   },
 
@@ -158,7 +159,7 @@ function FormAutoComplete() {
  */
 FormAutoComplete.prototype = {
   classID: Components.ID("{c11c21b2-71c9-4f87-a0f8-5e13f50495fd}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIFormAutoComplete, Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIFormAutoComplete, Ci.nsISupportsWeakReference]),
 
   _prefBranch: null,
   _debug: true, // mirrors browser.formfill.debug
@@ -196,7 +197,7 @@ FormAutoComplete.prototype = {
   observer: {
     _self: null,
 
-    QueryInterface: XPCOMUtils.generateQI([
+    QueryInterface: ChromeUtils.generateQI([
       Ci.nsIObserver,
       Ci.nsISupportsWeakReference,
     ]),
@@ -265,7 +266,7 @@ FormAutoComplete.prototype = {
    *
    * aInputName    -- |name| attribute from the form input being autocompleted.
    * aUntrimmedSearchString -- current value of the input
-   * aField -- nsIDOMHTMLInputElement being autocompleted (may be null if from chrome)
+   * aField -- HTMLInputElement being autocompleted (may be null if from chrome)
    * aPreviousResult -- previous search result, if any.
    * aDatalistResult -- results from list=datalist for aField.
    * aListener -- nsIFormAutoCompleteObserver that listens for the nsIAutoCompleteResult
@@ -455,8 +456,8 @@ FormAutoComplete.prototype = {
     // that we use the one defined here. To get around that, we explicitly
     // import the module here, out of the way of the other uses of
     // FormAutoCompleteResult.
-    let {FormAutoCompleteResult} = Cu.import("resource://gre/modules/nsFormAutoCompleteResult.jsm",
-                                             {});
+    let {FormAutoCompleteResult} = ChromeUtils.import(
+        "resource://gre/modules/nsFormAutoCompleteResult.jsm", {});
     return new FormAutoCompleteResult(datalistResult.searchString,
                                       Ci.nsIAutoCompleteResult.RESULT_SUCCESS,
                                       0,
@@ -549,7 +550,7 @@ function FormAutoCompleteResult(client,
 }
 
 FormAutoCompleteResult.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompleteResult, Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompleteResult, Ci.nsISupportsWeakReference]),
 
   // private
   client: null,
@@ -621,7 +622,7 @@ FormAutoCompleteResult.prototype = {
     let [removedEntry] = this.entries.splice(index, 1);
 
     if (removeFromDB) {
-      this.client.remove(removedEntry.text);
+      this.client.remove(removedEntry.text, removedEntry.guid);
     }
   },
 };

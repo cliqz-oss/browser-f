@@ -1,13 +1,14 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 // This test makes sure that the web pages can't register protocol handlers
 // inside the private browsing mode.
 
 add_task(async function test() {
   let notificationValue = "Protocol Registration: testprotocol";
-  let testURI = "http://example.com/browser/" +
+  let testURI = "https://example.com/browser/" +
     "browser/components/privatebrowsing/test/browser/browser_privatebrowsing_protocolhandler_page.html";
 
   let doTest = async function(aIsPrivateMode, aWindow) {

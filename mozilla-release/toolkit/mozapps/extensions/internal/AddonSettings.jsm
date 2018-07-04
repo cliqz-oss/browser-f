@@ -4,17 +4,16 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+var EXPORTED_SYMBOLS = [ "AddonSettings" ];
 
-this.EXPORTED_SYMBOLS = [ "AddonSettings" ];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const PREF_SIGNATURES_REQUIRED = "xpinstall.signatures.required";
+const PREF_LANGPACK_SIGNATURES = "extensions.langpacks.signatures.required";
 const PREF_ALLOW_LEGACY = "extensions.legacy.enabled";
 
-this.AddonSettings = {};
+var AddonSettings = {};
 
 // Make a non-changable property that can't be manipulated from other
 // code in the app.
@@ -31,9 +30,12 @@ makeConstant("ADDON_SIGNING", AppConstants.MOZ_ADDON_SIGNING);
 
 if (AppConstants.MOZ_REQUIRE_SIGNING && !Cu.isInAutomation) {
   makeConstant("REQUIRE_SIGNING", true);
+  makeConstant("LANGPACKS_REQUIRE_SIGNING", true);
 } else {
   XPCOMUtils.defineLazyPreferenceGetter(AddonSettings, "REQUIRE_SIGNING",
                                         PREF_SIGNATURES_REQUIRED, false);
+  XPCOMUtils.defineLazyPreferenceGetter(AddonSettings, "LANGPACKS_REQUIRE_SIGNING",
+                                        PREF_LANGPACK_SIGNATURES, false);
 }
 
 if (AppConstants.MOZ_ALLOW_LEGACY_EXTENSIONS || Cu.isInAutomation) {

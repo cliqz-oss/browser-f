@@ -1,5 +1,5 @@
 const ACTIVITY_STREAM_PREF_BRANCH = "browser.newtabpage.activity-stream.";
-const {Prefs, DefaultPrefs} = require("lib/ActivityStreamPrefs.jsm");
+import {DefaultPrefs, Prefs} from "lib/ActivityStreamPrefs.jsm";
 
 const TEST_PREF_CONFIG = new Map([
   ["foo", {value: true}],
@@ -101,8 +101,12 @@ describe("ActivityStreamPrefs", () => {
         defaultPrefs.init();
         assert.calledWith(defaultPrefs.branch.setIntPref, "baz", 1);
       });
+      it("should initialize a pref with value if Firefox is not a local build", () => {
+        defaultPrefs.init();
+        assert.calledWith(defaultPrefs.branch.setStringPref, "qux", "foo");
+      });
       it("should initialize a pref with value_local_dev if Firefox is a local build", () => {
-        sandbox.stub(global.Services.prefs, "getStringPref", () => "default"); // eslint-disable-line max-nested-callbacks
+        sandbox.stub(global.AppConstants, "MOZILLA_OFFICIAL").value(false);
         defaultPrefs.init();
         assert.calledWith(defaultPrefs.branch.setStringPref, "qux", "foofoo");
       });

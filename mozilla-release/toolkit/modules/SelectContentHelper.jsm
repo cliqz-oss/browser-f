@@ -4,18 +4,14 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
+                               "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "DeferredTask",
+                               "resource://gre/modules/DeferredTask.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyServiceGetter(this, "DOMUtils",
-                                   "@mozilla.org/inspector/dom-utils;1", "inIDOMUtils");
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
-                                  "resource://gre/modules/DeferredTask.jsm");
+Cu.importGlobalProperties(["InspectorUtils"]);
 
 const kStateActive = 0x00000001; // NS_EVENT_STATE_ACTIVE
 const kStateHover = 0x00000004; // NS_EVENT_STATE_HOVER
@@ -32,15 +28,15 @@ const SUPPORTED_PROPERTIES = [
 // via SelectContentHelper.open.
 var gOpen = false;
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "SelectContentHelper"
 ];
 
-this.SelectContentHelper = function(aElement, aOptions, aGlobal) {
+var SelectContentHelper = function(aElement, aOptions, aGlobal) {
   this.element = aElement;
   this.initialSelection = aElement[aElement.selectedIndex] || null;
   this.global = aGlobal;
-  this.closedWithEnter = false;
+  this.closedWithClickOn = false;
   this.isOpenedViaTouch = aOptions.isOpenedViaTouch;
   this._selectBackgroundColor = null;
   this._selectColor = null;
@@ -54,7 +50,7 @@ this.SelectContentHelper = function(aElement, aOptions, aGlobal) {
   this.init();
   this.showDropDown();
   this._updateTimer = new DeferredTask(this._update.bind(this), 0);
-}
+};
 
 Object.defineProperty(SelectContentHelper, "open", {
   get() {
@@ -139,14 +135,14 @@ this.SelectContentHelper.prototype = {
     // Do all of the things that change style at once, before we read
     // any styles.
     this._pseudoStylesSetup = true;
-    DOMUtils.addPseudoClassLock(this.element, ":focus");
+    InspectorUtils.addPseudoClassLock(this.element, ":focus");
     let lockedDescendants = this._lockedDescendants = this.element.querySelectorAll(":checked");
     for (let child of lockedDescendants) {
       // Selected options have the :checked pseudo-class, which
       // we want to disable before calculating the computed
       // styles since the user agent styles alter the styling
       // based on :checked.
-      DOMUtils.addPseudoClassLock(child, ":checked", false);
+      InspectorUtils.addPseudoClassLock(child, ":checked", false);
     }
   },
 
@@ -156,10 +152,10 @@ this.SelectContentHelper.prototype = {
     }
     // Undo all of the things that change style at once, after we're
     // done reading styles.
-    DOMUtils.clearPseudoClassLocks(this.element);
+    InspectorUtils.clearPseudoClassLocks(this.element);
     let lockedDescendants = this._lockedDescendants;
     for (let child of lockedDescendants) {
-      DOMUtils.clearPseudoClassLocks(child);
+      InspectorUtils.clearPseudoClassLocks(child);
     }
     this._lockedDescendants = null;
     this._pseudoStylesSetup = false;
@@ -260,58 +256,58 @@ this.SelectContentHelper.prototype = {
     switch (message.name) {
       case "Forms:SelectDropDownItem":
         this.element.selectedIndex = message.data.value;
-        this.closedWithEnter = message.data.closedWithEnter;
+        this.closedWithClickOn = !message.data.closedWithEnter;
         break;
 
-      case "Forms:DismissedDropDown":
-        let selectedOption = this.element.item(this.element.selectedIndex);
-        if (this.initialSelection === selectedOption) {
-          // Clear active document
-          DOMUtils.removeContentState(this.element,
-                                      kStateActive,
-                                      /* aClearActiveDocument */ true);
-        } else {
+      case "Forms:DismissedDropDown": {
           let win = this.element.ownerGlobal;
+          let selectedOption = this.element.item(this.element.selectedIndex);
+
           // For ordering of events, we're using non-e10s as our guide here,
-          // since the spec isn't exactly clear. In non-e10s, we fire:
-          // mousedown, mouseup, input, change, click if the user clicks
-          // on an element in the dropdown. If the user uses the keyboard
-          // to select an element in the dropdown, we only fire input and
-          // change events.
-          if (!this.closedWithEnter) {
+          // since the spec isn't exactly clear. In non-e10s:
+          // - If the user clicks on an element in the dropdown, we fire
+          //   mousedown, mouseup, input, change, and click events.
+          // - If the user uses the keyboard to select an element in the
+          //   dropdown, we only fire input and change events.
+          // - If the user pressed ESC key or clicks outside the dropdown,
+          //   we fire nothing as the selected option is unchanged.
+          if (this.closedWithClickOn) {
             this.dispatchMouseEvent(win, selectedOption, "mousedown");
             this.dispatchMouseEvent(win, selectedOption, "mouseup");
           }
-          // Clear active document no matter user selects
-          // via keyboard or mouse
-          DOMUtils.removeContentState(this.element,
-                                      kStateActive,
-                                      /* aClearActiveDocument */ true);
 
-          let inputEvent = new win.UIEvent("input", {
-            bubbles: true,
-          });
-          this.element.dispatchEvent(inputEvent);
+          // Clear active document no matter user selects via keyboard or mouse
+          InspectorUtils.removeContentState(this.element, kStateActive,
+                                            /* aClearActiveDocument */ true);
 
-          let changeEvent = new win.Event("change", {
-            bubbles: true,
-          });
-          this.element.dispatchEvent(changeEvent);
+          // Fire input and change events when selected option changes
+          if (this.initialSelection !== selectedOption) {
+            let inputEvent = new win.UIEvent("input", {
+              bubbles: true,
+            });
+            this.element.dispatchEvent(inputEvent);
 
-          if (!this.closedWithEnter) {
+            let changeEvent = new win.Event("change", {
+              bubbles: true,
+            });
+            this.element.dispatchEvent(changeEvent);
+          }
+
+          // Fire click event
+          if (this.closedWithClickOn) {
             this.dispatchMouseEvent(win, selectedOption, "click");
           }
+
+          this.uninit();
+          break;
         }
 
-        this.uninit();
-        break;
-
       case "Forms:MouseOver":
-        DOMUtils.setContentState(this.element, kStateHover);
+        InspectorUtils.setContentState(this.element, kStateHover);
         break;
 
       case "Forms:MouseOut":
-        DOMUtils.removeContentState(this.element, kStateHover);
+        InspectorUtils.removeContentState(this.element, kStateHover);
         break;
 
       case "Forms:MouseUp":
@@ -319,7 +315,7 @@ this.SelectContentHelper.prototype = {
         if (message.data.onAnchor) {
           this.dispatchMouseEvent(win, this.element, "mouseup");
         }
-        DOMUtils.removeContentState(this.element, kStateActive);
+        InspectorUtils.removeContentState(this.element, kStateActive);
         if (message.data.onAnchor) {
           this.dispatchMouseEvent(win, this.element, "click");
         }
@@ -365,14 +361,14 @@ this.SelectContentHelper.prototype = {
         }
         break;
       case "transitionend":
-        if (SUPPORTED_PROPERTIES.indexOf(event.propertyName) != -1) {
+        if (SUPPORTED_PROPERTIES.includes(event.propertyName)) {
           this._updateTimer.arm();
         }
         break;
     }
   }
 
-}
+};
 
 function getComputedStyles(element) {
   return element.ownerGlobal.getComputedStyle(element);

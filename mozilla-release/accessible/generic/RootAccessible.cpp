@@ -23,13 +23,15 @@
 #include "XULTreeAccessible.h"
 #endif
 
+#include "mozilla/dom/BindingUtils.h"
+#include "mozilla/dom/CustomEvent.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/ScriptSettings.h"
 
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocShellTreeOwner.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/EventTarget.h"
-#include "nsIDOMCustomEvent.h"
 #include "nsIDOMXULMultSelectCntrlEl.h"
 #include "nsIDocument.h"
 #include "nsIInterfaceRequestorUtils.h"
@@ -42,7 +44,6 @@
 #include "nsGlobalWindow.h"
 
 #ifdef MOZ_XUL
-#include "nsIXULDocument.h"
 #include "nsIXULWindow.h"
 #endif
 
@@ -53,7 +54,7 @@ using namespace mozilla::dom;
 ////////////////////////////////////////////////////////////////////////////////
 // nsISupports
 
-NS_IMPL_ISUPPORTS_INHERITED0(RootAccessible, DocAccessible)
+NS_IMPL_ISUPPORTS_INHERITED(RootAccessible, DocAccessible, nsIDOMEventListener)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor/destructor
@@ -191,7 +192,7 @@ RootAccessible::AddEventListeners()
                    * const* e_end = ArrayEnd(kEventTypes);
          e < e_end; ++e) {
       nsresult rv = nstarget->AddEventListener(NS_ConvertASCIItoUTF16(*e),
-                                               this, true, true, 2);
+                                               this, true, true);
       NS_ENSURE_SUCCESS(rv, rv);
     }
   }
@@ -207,8 +208,7 @@ RootAccessible::RemoveEventListeners()
     for (const char* const* e = kEventTypes,
                    * const* e_end = ArrayEnd(kEventTypes);
          e < e_end; ++e) {
-      nsresult rv = target->RemoveEventListener(NS_ConvertASCIItoUTF16(*e), this, true);
-      NS_ENSURE_SUCCESS(rv, rv);
+      target->RemoveEventListener(NS_ConvertASCIItoUTF16(*e), this, true);
     }
   }
 
@@ -230,11 +230,10 @@ RootAccessible::DocumentActivated(DocAccessible* aDocument)
 // nsIDOMEventListener
 
 NS_IMETHODIMP
-RootAccessible::HandleEvent(nsIDOMEvent* aDOMEvent)
+RootAccessible::HandleEvent(Event* aDOMEvent)
 {
   MOZ_ASSERT(aDOMEvent);
-  Event* event = aDOMEvent->InternalDOMEvent();
-  nsCOMPtr<nsINode> origTargetNode = do_QueryInterface(event->GetOriginalTarget());
+  nsCOMPtr<nsINode> origTargetNode = do_QueryInterface(aDOMEvent->GetOriginalTarget());
   if (!origTargetNode)
     return NS_OK;
 
@@ -253,7 +252,7 @@ RootAccessible::HandleEvent(nsIDOMEvent* aDOMEvent)
     // Root accessible exists longer than any of its descendant documents so
     // that we are guaranteed notification is processed before root accessible
     // is destroyed.
-    document->HandleNotification<RootAccessible, nsIDOMEvent>
+    document->HandleNotification<RootAccessible, Event>
       (this, &RootAccessible::ProcessDOMEvent, aDOMEvent);
   }
 
@@ -262,11 +261,11 @@ RootAccessible::HandleEvent(nsIDOMEvent* aDOMEvent)
 
 // RootAccessible protected
 void
-RootAccessible::ProcessDOMEvent(nsIDOMEvent* aDOMEvent)
+RootAccessible::ProcessDOMEvent(Event* aDOMEvent)
 {
   MOZ_ASSERT(aDOMEvent);
-  Event* event = aDOMEvent->InternalDOMEvent();
-  nsCOMPtr<nsINode> origTargetNode = do_QueryInterface(event->GetOriginalTarget());
+  nsCOMPtr<nsINode> origTargetNode =
+    do_QueryInterface(aDOMEvent->GetOriginalTarget());
 
   nsAutoString eventType;
   aDOMEvent->GetType(eventType);
@@ -283,7 +282,10 @@ RootAccessible::ProcessDOMEvent(nsIDOMEvent* aDOMEvent)
 
   DocAccessible* targetDocument = GetAccService()->
     GetDocAccessible(origTargetNode->OwnerDoc());
-  NS_ASSERTION(targetDocument, "No document while accessible is in document?!");
+  if (!targetDocument) {
+    // Document has ceased to exist.
+    return;
+  }
 
   Accessible* accessible =
     targetDocument->GetAccessibleOrContainer(origTargetNode);
@@ -485,7 +487,8 @@ RootAccessible::RelationByType(RelationType aType)
     return DocAccessibleWrap::RelationByType(aType);
 
   if (nsPIDOMWindowOuter* rootWindow = mDocumentNode->GetWindow()) {
-    nsCOMPtr<nsPIDOMWindowOuter> contentWindow = nsGlobalWindow::Cast(rootWindow)->GetContent();
+    nsCOMPtr<nsPIDOMWindowOuter> contentWindow =
+      nsGlobalWindowOuter::Cast(rootWindow)->GetContent();
     if (contentWindow) {
       nsCOMPtr<nsIDocument> contentDocumentNode = contentWindow->GetDoc();
       if (contentDocumentNode) {
@@ -647,22 +650,42 @@ RootAccessible::HandlePopupHidingEvent(nsINode* aPopupNode)
 }
 
 #ifdef MOZ_XUL
-void
-RootAccessible::HandleTreeRowCountChangedEvent(nsIDOMEvent* aEvent,
-                                               XULTreeAccessible* aAccessible)
+static void
+GetPropertyBagFromEvent(Event* aEvent, nsIPropertyBag2** aPropertyBag)
 {
-  nsCOMPtr<nsIDOMCustomEvent> customEvent(do_QueryInterface(aEvent));
+  *aPropertyBag = nullptr;
+
+  CustomEvent* customEvent = aEvent->AsCustomEvent();
   if (!customEvent)
     return;
 
-  nsCOMPtr<nsIVariant> detailVariant;
-  customEvent->GetDetail(getter_AddRefs(detailVariant));
-  if (!detailVariant)
+  AutoJSAPI jsapi;
+  if (!jsapi.Init(customEvent->GetParentObject()))
     return;
 
-  nsCOMPtr<nsISupports> supports;
-  detailVariant->GetAsISupports(getter_AddRefs(supports));
-  nsCOMPtr<nsIPropertyBag2> propBag(do_QueryInterface(supports));
+  JSContext* cx = jsapi.cx();
+  JS::Rooted<JS::Value> detail(cx);
+  customEvent->GetDetail(cx, &detail);
+  if (!detail.isObject())
+    return;
+
+  JS::Rooted<JSObject*> detailObj(cx, &detail.toObject());
+
+  nsresult rv;
+  nsCOMPtr<nsIPropertyBag2> propBag;
+  rv = UnwrapArg<nsIPropertyBag2>(cx, detailObj, getter_AddRefs(propBag));
+  if (NS_FAILED(rv))
+    return;
+
+  propBag.forget(aPropertyBag);
+}
+
+void
+RootAccessible::HandleTreeRowCountChangedEvent(Event* aEvent,
+                                               XULTreeAccessible* aAccessible)
+{
+  nsCOMPtr<nsIPropertyBag2> propBag;
+  GetPropertyBagFromEvent(aEvent, getter_AddRefs(propBag));
   if (!propBag)
     return;
 
@@ -680,21 +703,11 @@ RootAccessible::HandleTreeRowCountChangedEvent(nsIDOMEvent* aEvent,
 }
 
 void
-RootAccessible::HandleTreeInvalidatedEvent(nsIDOMEvent* aEvent,
+RootAccessible::HandleTreeInvalidatedEvent(Event* aEvent,
                                            XULTreeAccessible* aAccessible)
 {
-  nsCOMPtr<nsIDOMCustomEvent> customEvent(do_QueryInterface(aEvent));
-  if (!customEvent)
-    return;
-
-  nsCOMPtr<nsIVariant> detailVariant;
-  customEvent->GetDetail(getter_AddRefs(detailVariant));
-  if (!detailVariant)
-    return;
-
-  nsCOMPtr<nsISupports> supports;
-  detailVariant->GetAsISupports(getter_AddRefs(supports));
-  nsCOMPtr<nsIPropertyBag2> propBag(do_QueryInterface(supports));
+  nsCOMPtr<nsIPropertyBag2> propBag;
+  GetPropertyBagFromEvent(aEvent, getter_AddRefs(propBag));
   if (!propBag)
     return;
 

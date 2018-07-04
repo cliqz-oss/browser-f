@@ -32,6 +32,7 @@ public abstract class TabsLayout extends RecyclerView
     private final boolean isPrivate;
     private TabsPanel tabsPanel;
     private final TabsLayoutAdapter tabsAdapter;
+    private View emptyView;
 
     public TabsLayout(Context context, AttributeSet attrs, int itemViewLayoutResId) {
         super(context, attrs);
@@ -72,7 +73,13 @@ public abstract class TabsLayout extends RecyclerView
 
     @Override
     public void show() {
-        setVisibility(View.VISIBLE);
+        final boolean hasTabs = (tabsAdapter.getItemCount() > 0);
+        setVisibility(hasTabs ? VISIBLE : GONE);
+
+        if (emptyView != null) {
+            emptyView.setVisibility(hasTabs ? GONE : VISIBLE);
+        }
+
         Tabs.getInstance().refreshThumbnails();
         Tabs.registerOnTabsChangedListener(this);
         refreshTabsData();
@@ -83,6 +90,10 @@ public abstract class TabsLayout extends RecyclerView
         setVisibility(View.GONE);
         Tabs.unregisterOnTabsChangedListener(this);
         tabsAdapter.clear();
+
+        if (emptyView != null) {
+            emptyView.setVisibility(VISIBLE);
+        }
     }
 
     @Override
@@ -188,6 +199,14 @@ public abstract class TabsLayout extends RecyclerView
 
         tabsAdapter.setTabs(tabData);
         scrollSelectedTabToTopOfTray();
+
+        // Show empty view if we're in private panel and there's no private tabs.
+        boolean hasTabs = !tabData.isEmpty();
+        setVisibility(hasTabs ? VISIBLE : GONE);
+
+        if (emptyView != null) {
+            emptyView.setVisibility(hasTabs ? GONE : VISIBLE);
+        }
     }
 
     private void closeTab(View view) {
@@ -203,17 +222,6 @@ public abstract class TabsLayout extends RecyclerView
         Tabs.getInstance().closeTab(tab, true);
         if (closingLastTab) {
             autoHidePanel();
-        }
-    }
-
-    protected void closeAllTabs() {
-        final Iterable<Tab> tabs = Tabs.getInstance().getTabsInOrder();
-        for (final Tab tab : tabs) {
-            // In the normal panel we want to close all tabs (both private and normal),
-            // but in the private panel we only want to close private tabs.
-            if (!isPrivate || tab.isPrivate()) {
-                Tabs.getInstance().closeTab(tab, false);
-            }
         }
     }
 
@@ -235,9 +243,13 @@ public abstract class TabsLayout extends RecyclerView
 
     @Override
     public void setEmptyView(View emptyView) {
-        // We never display an empty view.
+        this.emptyView = emptyView;
     }
 
     @Override
-    abstract public void closeAll();
+    abstract public void onCloseAll();
+
+    protected boolean isNormal() {
+        return !isPrivate;
+    }
 }

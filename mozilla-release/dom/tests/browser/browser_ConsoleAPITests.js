@@ -128,7 +128,7 @@ function testConsoleData(aMessageObject) {
       // It'd be nice to just use XPCNativeWrapper.unwrap here, but there are
       // a number of dumb reasons we can't. See bug 868675.
       var arg = aMessageObject.arguments[i];
-      if (Components.utils.isXrayWrapper(arg))
+      if (Cu.isXrayWrapper(arg))
         arg = arg.wrappedJSObject;
       is(arg, a, "correct arg " + i);
     });
@@ -267,10 +267,10 @@ async function startTraceTest(browser) {
     dump("Observer attached\n");
     gLevel = "trace";
     gArgs = [
-      {columnNumber: 9, filename: TEST_URI, functionName: "window.foobar585956c", language: 2, lineNumber: 6},
-      {columnNumber: 16, filename: TEST_URI, functionName: "foobar585956b", language: 2, lineNumber: 11},
-      {columnNumber: 16, filename: TEST_URI, functionName: "foobar585956a", language: 2, lineNumber: 15},
-      {columnNumber: 1, filename: TEST_URI, functionName: "onclick", language: 2, lineNumber: 1}
+      {columnNumber: 9, filename: TEST_URI, functionName: "window.foobar585956c", lineNumber: 6},
+      {columnNumber: 16, filename: TEST_URI, functionName: "foobar585956b", lineNumber: 11},
+      {columnNumber: 16, filename: TEST_URI, functionName: "foobar585956a", lineNumber: 15},
+      {columnNumber: 1, filename: TEST_URI, functionName: "onclick", lineNumber: 1}
     ];
 
   });

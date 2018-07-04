@@ -3,9 +3,7 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-const { XPCOMUtils } = Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const paymentSrv = Cc["@mozilla.org/dom/payments/payment-request-service;1"].getService(Ci.nsIPaymentRequestService);
 
@@ -14,6 +12,11 @@ function emitTestFail(message) {
 }
 
 function checkSimplestRequest(payRequest) {
+  if (payRequest.topLevelPrincipal.origin != "https://example.com") {
+    emitTestFail("Top level principal's Origin should be 'https://example.com', but got '"
+                 + payRequest.topLevelPrincipal.origin + "'.");
+  }
+
   if (payRequest.paymentMethods.length != 1) {
     emitTestFail("paymentMethods' length should be 1.");
   }
@@ -72,6 +75,11 @@ function checkSimplestRequest(payRequest) {
 }
 
 function checkComplexRequest(payRequest) {
+  if (payRequest.topLevelPrincipal.origin != "https://example.com") {
+    emitTestFail("Top level principal's origin should be 'https://example.com', but got '"
+                 + payRequest.topLevelPrincipal.origin + "'.");
+  }
+
   if (payRequest.paymentMethods.length != 1) {
     emitTestFail("paymentMethods' length should be 1.");
   }
@@ -133,8 +141,8 @@ function checkComplexRequest(payRequest) {
   if (!details.displayItems) {
     emitTestFail("details.displayItems should not be undefined.");
   }
-  if (displayItems.length != 2) {
-    emitTestFail("displayItems' length should be 2.")
+  if (displayItems.length != 3) {
+    emitTestFail("displayItems' length should be 3.")
   }
   let item = displayItems.queryElementAt(0, Ci.nsIPaymentItem);
   if (item.label != "First item") {
@@ -146,6 +154,9 @@ function checkComplexRequest(payRequest) {
   if (item.amount.value != "60.00") {
     emitTestFail("1st display item's value should be '60.00'.");
   }
+  if (item.type != "") {
+    emitTestFail("1st display item's type should be ''.");
+  }
   item = displayItems.queryElementAt(1, Ci.nsIPaymentItem);
   if (item.label != "Second item") {
     emitTestFail("2nd display item's label should be 'Second item'.");
@@ -155,6 +166,22 @@ function checkComplexRequest(payRequest) {
   }
   if (item.amount.value != "40.00") {
     emitTestFail("2nd display item's value should be '40.00'.");
+  }
+  if (item.type != "") {
+    emitTestFail("2nd display item's type should be ''.");
+  }
+  item = displayItems.queryElementAt(2, Ci.nsIPaymentItem);
+  if (item.label != "Tax") {
+    emitTestFail("3rd display item's label should be 'Tax'.");
+  }
+  if (item.amount.currency != "USD") {
+    emitTestFail("3rd display item's currency should be 'USD'.");
+  }
+  if (item.amount.value != "5.00") {
+    emitTestFail("3rd display item's value should be '5.00'.");
+  }
+  if (item.type != "tax") {
+    emitTestFail("3rd display item's type should be 'tax'.");
   }
 
   const modifiers = details.modifiers;
@@ -321,67 +348,6 @@ function checkNonBasicCardRequest(payRequest) {
   }
 }
 
-function checkDuplicateShippingOptionsRequest(payRequest) {
-  if (payRequest.paymentMethods.length != 1) {
-    emitTestFail("paymentMethods' length should be 1.");
-  }
-
-  const methodData = payRequest.paymentMethods.queryElementAt(0, Ci.nsIPaymentMethodData);
-  if (!methodData) {
-    emitTestFail("Fail to get payment methodData.");
-  }
-  let supportedMethod = methodData.supportedMethods;
-  if (supportedMethod != "basic-card") {
-    emitTestFail("supported method should be 'basic-card'.");
-  }
-  // checking the passed PaymentDetails parameter
-  const details = payRequest.paymentDetails;
-  if (details.id != "duplicate shipping options details" ) {
-    emitTestFail("details.id should be 'duplicate shipping options details'.");
-  }
-  if (details.totalItem.label != "Total") {
-    emitTestFail("total item's label should be 'Total'.");
-  }
-  if (details.totalItem.amount.currency != "USD") {
-    emitTestFail("total item's currency should be 'USD'.");
-  }
-  if (details.totalItem.amount.value != "1.00") {
-    emitTestFail("total item's value should be '1.00'.");
-  }
-
-  if (details.displayItems) {
-    emitTestFail("details.displayItems should be undefined.");
-  }
-  if (details.modifiers) {
-    emitTestFail("details.displayItems should be undefined.");
-  }
-  const shippingOptions = details.shippingOptions;
-  if (!shippingOptions) {
-    emitTestFail("details.shippingOptions should not be undefined.");
-  }
-  if (shippingOptions.length != 0) {
-    emitTestFail("shippingOptions' length should be 0.");
-  }
-
-  // checking the default generated PaymentOptions parameter
-  const paymentOptions = payRequest.paymentOptions;
-  if (paymentOptions.requestPayerName) {
-    emitTestFail("requestPayerName option should be false.");
-  }
-  if (paymentOptions.requestPayerEmail) {
-    emitTestFail("requestPayerEmail option should be false.");
-  }
-  if (paymentOptions.requestPayerPhone) {
-    emitTestFail("requestPayerPhone option should be false.");
-  }
-  if (paymentOptions.requestShipping) {
-    emitTestFail("requestShipping option should be false.");
-  }
-  if (paymentOptions.shippingType != "shipping") {
-    emitTestFail("shippingType option should be 'shipping'.")
-  }
-}
-
 function checkSimplestRequestHandler() {
   const paymentEnum = paymentSrv.enumerate();
   if (!paymentEnum.hasMoreElements()) {
@@ -433,23 +399,6 @@ function checkNonBasicCardRequestHandler() {
   sendAsyncMessage("check-complete");
 }
 
-function checkDuplicateShippingOptionsRequestHandler() {
-  const paymentEnum = paymentSrv.enumerate();
-  if (!paymentEnum.hasMoreElements()) {
-    emitTestFail("PaymentRequestService should have at least one payment request.");
-  }
-  while (paymentEnum.hasMoreElements()) {
-    let payRequest = paymentEnum.getNext().QueryInterface(Ci.nsIPaymentRequest);
-    if (!payRequest) {
-      emitTestFail("Fail to get existing payment request.");
-      break;
-    }
-    checkDuplicateShippingOptionsRequest(payRequest);
-  }
-  paymentSrv.cleanup();
-  sendAsyncMessage("check-complete");
-}
-
 function checkMultipleRequestsHandler () {
   const paymentEnum = paymentSrv.enumerate();
   if (!paymentEnum.hasMoreElements()) {
@@ -463,8 +412,6 @@ function checkMultipleRequestsHandler () {
     }
     if (payRequest.paymentDetails.id == "payment details") {
       checkComplexRequest(payRequest);
-    } else if (payRequest.paymentDetails.id == "duplicate shipping options details") {
-      checkDuplicateShippingOptionsRequest(payRequest);
     } else {
       checkSimplestRequest(payRequest);
     }
@@ -473,11 +420,31 @@ function checkMultipleRequestsHandler () {
   sendAsyncMessage("check-complete");
 }
 
+function checkCrossOriginTopLevelPrincipalHandler() {
+  const paymentEnum = paymentSrv.enumerate();
+  if (!paymentEnum.hasMoreElements()) {
+    emitTestFail("PaymentRequestService should have at least one payment request.");
+  }
+  while (paymentEnum.hasMoreElements()) {
+    let payRequest = paymentEnum.getNext().QueryInterface(Ci.nsIPaymentRequest);
+    if (!payRequest) {
+      emitTestFail("Fail to get existing payment request.");
+      break;
+    }
+    if (payRequest.topLevelPrincipal.origin != "https://example.com") {
+      emitTestFail("Top level principal's origin should be 'https://example.com', but got '"
+                   + payRequest.topLevelPrincipal.origin + "'.");
+    }
+  }
+  paymentSrv.cleanup();
+  sendAsyncMessage("check-complete");
+}
+
 addMessageListener("check-simplest-request", checkSimplestRequestHandler);
 addMessageListener("check-complex-request", checkComplexRequestHandler);
-addMessageListener("check-duplicate-shipping-options-request", checkDuplicateShippingOptionsRequestHandler);
 addMessageListener("check-multiple-requests", checkMultipleRequestsHandler);
 addMessageListener("check-nonbasiccard-request", checkNonBasicCardRequestHandler);
+addMessageListener("check-cross-origin-top-level-principal", checkCrossOriginTopLevelPrincipalHandler);
 
 addMessageListener("teardown", function() {
   paymentSrv.cleanup();

@@ -40,7 +40,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_ADDREF_INHERITED(UDPSocket, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(UDPSocket, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(UDPSocket)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(UDPSocket)
   NS_INTERFACE_MAP_ENTRY(nsIUDPSocketListener)
   NS_INTERFACE_MAP_ENTRY(nsIUDPSocketInternal)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
@@ -123,7 +123,6 @@ UDPSocket::UDPSocket(nsPIDOMWindowInner* aOwner,
   , mReadyState(SocketReadyState::Opening)
 {
   MOZ_ASSERT(aOwner);
-  MOZ_ASSERT(aOwner->IsInnerWindow());
 
   nsIDocument* aDoc = aOwner->GetExtantDoc();
   if (aDoc) {
@@ -343,7 +342,7 @@ UDPSocket::Send(const StringOrBlobOrArrayBufferOrArrayBufferView& aData,
   if (aData.IsBlob()) {
     Blob& blob = aData.GetAsBlob();
 
-    blob.GetInternalStream(getter_AddRefs(stream), aRv);
+    blob.CreateInputStream(getter_AddRefs(stream), aRv);
     if (NS_WARN_IF(aRv.Failed())) {
       return false;
     }

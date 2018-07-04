@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import inspect
 
 convertor_registry = {}
@@ -120,7 +122,7 @@ class DataType(object):
 
         try:
             return self.convert(value)
-        except:
+        except Exception:
             raise ValueError("Failed to convert value %s of type %s for field %s to type %s" %
                              (value, type(value).__name__, self.name, self.__class__.__name__))
 

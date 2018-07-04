@@ -3,16 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /** * =================== SAVED SIGNONS CODE =================== ***/
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
-                                  "resource://gre/modules/DeferredTask.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "DeferredTask",
+                               "resource://gre/modules/DeferredTask.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
 
 let kSignonBundle;
 
@@ -60,9 +58,9 @@ let signonReloadDisplay = {
 };
 
 // Formatter for localization.
-let dateFormatter = Services.intl.createDateTimeFormat(undefined,
+let dateFormatter = new Services.intl.DateTimeFormat(undefined,
                       { dateStyle: "medium" });
-let dateAndTimeFormatter = Services.intl.createDateTimeFormat(undefined,
+let dateAndTimeFormatter = new Services.intl.DateTimeFormat(undefined,
                              { dateStyle: "medium",
                                timeStyle: "short" });
 
@@ -80,7 +78,7 @@ function Startup() {
 
   togglePasswordsButton.label = kSignonBundle.getString("showPasswords");
   togglePasswordsButton.accessKey = kSignonBundle.getString("showPasswordsAccessKey");
-  signonsIntro.textContent = kSignonBundle.getString("loginsDescriptionAll");
+  signonsIntro.textContent = kSignonBundle.getString("loginsDescriptionAll2");
   removeAllButton.setAttribute("label", kSignonBundle.getString("removeAll.label"));
   removeAllButton.setAttribute("accesskey", kSignonBundle.getString("removeAll.accesskey"));
   document.getElementsByTagName("treecols")[0].addEventListener("click", (event) => {
@@ -120,14 +118,7 @@ function setFilter(aFilterString) {
 }
 
 let signonsTreeView = {
-  // Keep track of which favicons we've fetched or started fetching.
-  // Maps a login origin to a favicon URL.
-  _faviconMap: new Map(),
   _filterSet: [],
-  // Coalesce invalidations to avoid repeated flickering.
-  _invalidateTask: new DeferredTask(() => {
-    signonsTree.treeBoxObject.invalidateColumn(signonsTree.columns.siteCol);
-  }, 10),
   _lastSelectedRanges: [],
   selection: null,
 
@@ -140,24 +131,8 @@ let signonsTreeView = {
 
     const signon = GetVisibleLogins()[row];
 
-    // We already have the favicon URL or we started to fetch (value is null).
-    if (this._faviconMap.has(signon.hostname)) {
-      return this._faviconMap.get(signon.hostname);
-    }
-
-    // Record the fact that we already starting fetching a favicon for this
-    // origin in order to avoid multiple requests for the same origin.
-    this._faviconMap.set(signon.hostname, null);
-
-    PlacesUtils.promiseFaviconLinkUrl(signon.hostname)
-      .then(faviconURI => {
-        this._faviconMap.set(signon.hostname, faviconURI.spec);
-        this._invalidateTask.arm();
-      }).catch(Cu.reportError);
-
-    return "";
+    return PlacesUtils.urlWithSizeRef(window, "page-icon:" + signon.hostname, 16);
   },
-  getProgressMode(row, column) {},
   getCellValue(row, column) {},
   getCellText(row, column) {
     let time;
@@ -400,16 +375,13 @@ function DeleteSignon() {
 }
 
 function DeleteAllSignons() {
-  let prompter = Cc["@mozilla.org/embedcomp/prompt-service;1"]
-                           .getService(Ci.nsIPromptService);
-
   // Confirm the user wants to remove all passwords
   let dummy = { value: false };
-  if (prompter.confirmEx(window,
-                         kSignonBundle.getString("removeAllPasswordsTitle"),
-                         kSignonBundle.getString("removeAllPasswordsPrompt"),
-                         prompter.STD_YES_NO_BUTTONS + prompter.BUTTON_POS_1_DEFAULT,
-                         null, null, null, null, dummy) == 1) // 1 == "No" button
+  if (Services.prompt.confirmEx(window,
+    kSignonBundle.getString("removeAllPasswordsTitle"),
+    kSignonBundle.getString("removeAllPasswordsPrompt"),
+    Services.prompt.STD_YES_NO_BUTTONS + Services.prompt.BUTTON_POS_1_DEFAULT,
+    null, null, null, null, dummy) == 1) // 1 == "No" button
     return;
 
   let syncNeeded = signonsTreeView._filterSet.length != 0;
@@ -455,14 +427,13 @@ function TogglePasswordVisible() {
 }
 
 function AskUserShowPasswords() {
-  let prompter = Cc["@mozilla.org/embedcomp/prompt-service;1"].getService(Ci.nsIPromptService);
   let dummy = { value: false };
 
   // Confirm the user wants to display passwords
-  return prompter.confirmEx(window,
+  return Services.prompt.confirmEx(window,
           null,
-          kSignonBundle.getString("noMasterPasswordPrompt"), prompter.STD_YES_NO_BUTTONS,
-          null, null, null, null, dummy) == 0;    // 0=="Yes" button
+          kSignonBundle.getString("noMasterPasswordPrompt"), Services.prompt.STD_YES_NO_BUTTONS,
+          null, null, null, null, dummy) == 0; // 0=="Yes" button
 }
 
 function FinalizeSignonDeletions(syncNeeded) {
@@ -558,7 +529,7 @@ function SignonClearFilter() {
   }
   signonsTreeView._lastSelectedRanges = [];
 
-  signonsIntro.textContent = kSignonBundle.getString("loginsDescriptionAll");
+  signonsIntro.textContent = kSignonBundle.getString("loginsDescriptionAll2");
   removeAllButton.setAttribute("label", kSignonBundle.getString("removeAll.label"));
   removeAllButton.setAttribute("accesskey", kSignonBundle.getString("removeAll.accesskey"));
 }
@@ -570,16 +541,16 @@ function FocusFilterBox() {
 }
 
 function SignonMatchesFilter(aSignon, aFilterValue) {
-  if (aSignon.hostname.toLowerCase().indexOf(aFilterValue) != -1)
+  if (aSignon.hostname.toLowerCase().includes(aFilterValue))
     return true;
   if (aSignon.username &&
-      aSignon.username.toLowerCase().indexOf(aFilterValue) != -1)
+      aSignon.username.toLowerCase().includes(aFilterValue))
     return true;
   if (aSignon.httpRealm &&
-      aSignon.httpRealm.toLowerCase().indexOf(aFilterValue) != -1)
+      aSignon.httpRealm.toLowerCase().includes(aFilterValue))
     return true;
   if (showingPasswords && aSignon.password &&
-      aSignon.password.toLowerCase().indexOf(aFilterValue) != -1)
+      aSignon.password.toLowerCase().includes(aFilterValue))
     return true;
 
   return false;
@@ -633,6 +604,15 @@ function FilterPasswords() {
   removeAllButton.setAttribute("accesskey", kSignonBundle.getString("removeAllShown.accesskey"));
 }
 
+function CopySiteUrl() {
+  // Copy selected site url to clipboard
+  let clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].
+                  getService(Ci.nsIClipboardHelper);
+  let row = signonsTree.currentIndex;
+  let url = signonsTreeView.getCellText(row, {id: "siteCol"});
+  clipboard.copyString(url);
+}
+
 function CopyPassword() {
   // Don't copy passwords if we aren't already showing the passwords & a master
   // password hasn't been entered.
@@ -663,6 +643,12 @@ function EditCellInSelectedRow(columnName) {
   signonsTree.startEditing(row, signonsTree.columns.getColumnFor(columnElement));
 }
 
+function LaunchSiteUrl() {
+  let row = signonsTree.currentIndex;
+  let url = signonsTreeView.getCellText(row, {id: "siteCol"});
+  window.openWebLinkIn(url, "tab");
+}
+
 function UpdateContextMenu() {
   let singleSelection = (signonsTreeView.selection.count == 1);
   let menuItems = new Map();
@@ -680,6 +666,14 @@ function UpdateContextMenu() {
 
   let selectedRow = signonsTree.currentIndex;
 
+  // Don't display "Launch Site URL" if we're not a browser.
+  if (window.openWebLinkIn) {
+    menuItems.get("context-launchsiteurl").removeAttribute("disabled");
+  } else {
+    menuItems.get("context-launchsiteurl").setAttribute("disabled", "true");
+    menuItems.get("context-launchsiteurl").setAttribute("hidden", "true");
+  }
+
   // Disable "Copy Username" if the username is empty.
   if (signonsTreeView.getCellText(selectedRow, { id: "userCol" }) != "") {
     menuItems.get("context-copyusername").removeAttribute("disabled");
@@ -687,6 +681,7 @@ function UpdateContextMenu() {
     menuItems.get("context-copyusername").setAttribute("disabled", "true");
   }
 
+  menuItems.get("context-copysiteurl").removeAttribute("disabled");
   menuItems.get("context-editusername").removeAttribute("disabled");
   menuItems.get("context-copypassword").removeAttribute("disabled");
 
@@ -711,7 +706,7 @@ function masterPasswordLogin(noPasswordCallback) {
   // So there's a master password. But since checkPassword didn't succeed, we're logged out (per nsIPK11Token.idl).
   try {
     // Relogin and ask for the master password.
-    token.login(true);  // 'true' means always prompt for token password. User will be prompted until
+    token.login(true); // 'true' means always prompt for token password. User will be prompted until
                         // clicking 'Cancel' or entering the correct password.
   } catch (e) {
     // An exception will be thrown if the user cancels the login prompt dialog.
@@ -730,7 +725,7 @@ function escapeKeyHandler() {
 }
 
 function OpenMigrator() {
-  const { MigrationUtils } = Cu.import("resource:///modules/MigrationUtils.jsm", {});
+  const { MigrationUtils } = ChromeUtils.import("resource:///modules/MigrationUtils.jsm", {});
   // We pass in the type of source we're using for use in telemetry:
   MigrationUtils.showMigrationWizard(window, [MigrationUtils.MIGRATION_ENTRYPOINT_PASSWORDS]);
 }

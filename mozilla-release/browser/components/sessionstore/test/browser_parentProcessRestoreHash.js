@@ -12,7 +12,7 @@ const TESTURL = "about:testpageforsessionrestore#foo";
 
 
 let TestAboutPage = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutModule]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAboutModule]),
   getURIFlags(aURI) {
     // No CAN_ or MUST_LOAD_IN_CHILD means this loads in the parent:
     return Ci.nsIAboutModule.ALLOW_SCRIPT |
@@ -89,7 +89,7 @@ add_task(async function() {
 
   ok(!tab.linkedBrowser.userTypedValue, "No userTypedValue should be on the browser.");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   gBrowser.removeProgressListener(wpl);
   TestAboutPage.unregister();
 });

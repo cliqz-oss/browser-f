@@ -20,6 +20,7 @@
 #include "nsNetUtil.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIURI.h"
+#include "nsIURIMutator.h"
 #include "nsIAuthPrompt.h"
 #include "nsIChannel.h"
 #include "nsIInputStream.h"
@@ -85,8 +86,6 @@ MapGIOResult(gint code)
     default:
       return NS_ERROR_FAILURE;
   }
-
-  return NS_ERROR_FAILURE;
 }
 
 static nsresult
@@ -828,17 +827,17 @@ mount_operation_ask_password (GMountOperation   *mount_op,
       if (!realm.IsEmpty()) {
         const char16_t *strings[] = { realm.get(), dispHost.get() };
         bundle->FormatStringFromName("EnterLoginForRealm3",
-                                     strings, 2, getter_Copies(nsmessage));
+                                     strings, 2, nsmessage);
       } else {
         const char16_t *strings[] = { dispHost.get() };
         bundle->FormatStringFromName("EnterUserPasswordFor2",
-                                     strings, 1, getter_Copies(nsmessage));
+                                     strings, 1, nsmessage);
       }
     } else {
       NS_ConvertUTF8toUTF16 userName(default_user);
       const char16_t *strings[] = { userName.get(), dispHost.get() };
       bundle->FormatStringFromName("EnterPasswordFor",
-                                   strings, 2, getter_Copies(nsmessage));
+                                   strings, 2, nsmessage);
     }
   } else {
     g_warning("Unknown mount operation request (flags: %x)", flags);
@@ -926,14 +925,19 @@ nsGIOProtocolHandler::InitSupportedProtocolsPref(nsIPrefBranch *prefs)
   // irrelevant to process by browser. By default accept only smb and sftp
   // protocols so far.
   nsresult rv = prefs->GetCharPref(MOZ_GIO_SUPPORTED_PROTOCOLS,
-                                   getter_Copies(mSupportedProtocols));
+                                   mSupportedProtocols);
   if (NS_SUCCEEDED(rv)) {
     mSupportedProtocols.StripWhitespace();
     ToLowerCase(mSupportedProtocols);
+  } else {
+    mSupportedProtocols.AssignLiteral(
+#ifdef MOZ_PROXY_BYPASS_PROTECTION
+      ""           // use none
+#else
+      "smb:,sftp:" // use defaults
+#endif
+    );
   }
-  else
-    mSupportedProtocols.AssignLiteral("smb:,sftp:"); // use defaults
-
   LOG(("gio: supported protocols \"%s\"\n", mSupportedProtocols.get()));
 }
 
@@ -963,7 +967,7 @@ nsGIOProtocolHandler::IsSupportedProtocol(const nsCString &aSpec)
 NS_IMETHODIMP
 nsGIOProtocolHandler::GetScheme(nsACString &aScheme)
 {
-  aScheme.Assign(MOZ_GIO_SCHEME);
+  aScheme.AssignLiteral(MOZ_GIO_SCHEME);
   return NS_OK;
 }
 
@@ -1028,18 +1032,12 @@ nsGIOProtocolHandler::NewURI(const nsACString &aSpec,
     }
   }
 
-  nsresult rv;
-  nsCOMPtr<nsIStandardURL> url =
-      do_CreateInstance(NS_STANDARDURL_CONTRACTID, &rv);
-  if (NS_FAILED(rv))
-    return rv;
-
-  rv = url->Init(nsIStandardURL::URLTYPE_STANDARD, -1, flatSpec,
-                 aOriginCharset, aBaseURI);
-  if (NS_SUCCEEDED(rv))
-    rv = CallQueryInterface(url, aResult);
-  return rv;
-
+  nsCOMPtr<nsIURI> base(aBaseURI);
+  return NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+    .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                            nsIStandardURL::URLTYPE_STANDARD,
+                            -1, flatSpec, aOriginCharset, base, nullptr))
+    .Finalize(aResult);
 }
 
 NS_IMETHODIMP
@@ -1060,9 +1058,10 @@ nsGIOProtocolHandler::NewChannel2(nsIURI* aURI,
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
+  RefPtr<nsGIOInputStream> tmpStream = stream;
   rv = NS_NewInputStreamChannelInternal(aResult,
                                         aURI,
-                                        stream,
+                                        tmpStream.forget(),
                                         NS_LITERAL_CSTRING(UNKNOWN_CONTENT_TYPE),
                                         EmptyCString(), // aContentCharset
                                         aLoadInfo);

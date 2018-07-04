@@ -12,12 +12,15 @@
 
 #include "nsISupports.idl"
 
+%{C++
+class nsAtom;
+%}
+[ptr] native nsAtomPtr(nsAtom);
+
 // XXX Until these get scriptable. See nsIRDFXMLSink::AddNameSpace()
-[ptr] native nsIAtomPtr(nsIAtom);
 [ref] native nsStringRef(nsString);
 %{C++
-class nsIAtom;
-class nsString;
+#include "nsStringFwd.h"
 %}
 
 interface nsIRDFXMLSink;
@@ -102,7 +105,7 @@ interface nsIRDFXMLSink : nsISupports
      * @param aPrefix the namespace prefix
      * @param aURI the namespace URI
      */
-    [noscript] void addNameSpace(in nsIAtomPtr aPrefix,
+    [noscript] void addNameSpace(in nsAtomPtr aPrefix,
                                  [const] in nsStringRef aURI);
 
     /**

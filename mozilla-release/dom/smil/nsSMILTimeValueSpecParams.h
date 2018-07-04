@@ -8,7 +8,7 @@
 #define NS_SMILTIMEVALUESPECPARAMS_H_
 
 #include "nsSMILTimeValue.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 
 //----------------------------------------------------------------------
 // nsSMILTimeValueSpecParams
@@ -20,10 +20,9 @@ class nsSMILTimeValueSpecParams
 {
 public:
   nsSMILTimeValueSpecParams()
-  :
-    mType(INDEFINITE),
-    mSyncBegin(false),
-    mRepeatIterationOrAccessKey(0)
+    : mType(INDEFINITE)
+    , mSyncBegin(false)
+    , mRepeatIteration(0)
   { }
 
   // The type of value this specification describes
@@ -32,7 +31,6 @@ public:
     SYNCBASE,
     EVENT,
     REPEAT,
-    ACCESSKEY,
     WALLCLOCK,
     INDEFINITE
   } mType;
@@ -42,27 +40,26 @@ public:
   // - type SYNCBASE: the timebase's begin or end time
   // - type EVENT: the event time
   // - type REPEAT: the repeat time
-  // - type ACCESSKEY: the keypress time
   // It is not used for WALLCLOCK or INDEFINITE times
   nsSMILTimeValue   mOffset;
 
   // The base element that this specification refers to.
   // For SYNCBASE types, this is the timebase
   // For EVENT and REPEAT types, this is the eventbase
-  RefPtr<nsIAtom> mDependentElemID;
+  RefPtr<nsAtom> mDependentElemID;
 
   // The event to respond to.
   // Only used for EVENT types.
-  RefPtr<nsIAtom> mEventSymbol;
+  RefPtr<nsAtom> mEventSymbol;
 
   // Indicates if this specification refers to the begin or end of the dependent
   // element.
   // Only used for SYNCBASE types.
   bool              mSyncBegin;
 
-  // The repeat iteration (type=REPEAT) or access key (type=ACCESSKEY) to
-  // respond to.
-  uint32_t          mRepeatIterationOrAccessKey;
+  // The repeat iteration to respond to.
+  // Only used for mType=REPEAT.
+  uint32_t mRepeatIteration;
 };
 
 #endif // NS_SMILTIMEVALUESPECPARAMS_H_

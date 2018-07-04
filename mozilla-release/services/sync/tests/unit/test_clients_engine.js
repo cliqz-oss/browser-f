@@ -1,16 +1,15 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/engines/clients.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/engines/clients.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 const MORE_THAN_CLIENTS_TTL_REFRESH = 691200; // 8 days
-const LESS_THAN_CLIENTS_TTL_REFRESH = 86400;  // 1 day
+const LESS_THAN_CLIENTS_TTL_REFRESH = 86400; // 1 day
 
 let engine;
 
@@ -18,8 +17,8 @@ let engine;
  * Unpack the record with this ID, and verify that it has the same version that
  * we should be putting into records.
  */
-function check_record_version(user, id) {
-    let payload = JSON.parse(user.collection("clients").wbo(id).payload);
+async function check_record_version(user, id) {
+    let payload = user.collection("clients").wbo(id).data;
 
     let rec = new CryptoWrapper();
     rec.id = id;
@@ -28,7 +27,7 @@ function check_record_version(user, id) {
     rec.hmac = payload.hmac;
     rec.IV = payload.IV;
 
-    let cleartext = rec.decrypt(Service.collectionKeys.keyForCollection("clients"));
+    let cleartext = await rec.decrypt(Service.collectionKeys.keyForCollection("clients"));
 
     _("Payload is " + JSON.stringify(cleartext));
     equal(Services.appinfo.version, cleartext.version);
@@ -48,14 +47,22 @@ function compareCommands(actual, expected, description) {
   equal(allIDs.size, actual.length, "all items have unique IDs");
 }
 
+async function syncClientsEngine(server) {
+  engine.lastModified = server.getCollection("foo", "clients").timestamp;
+  await engine._sync();
+}
+
 add_task(async function setup() {
   engine = Service.clientsEngine;
 });
 
 async function cleanup() {
   Svc.Prefs.resetBranch("");
-  engine._tracker.clearChangedIDs();
+  await engine._tracker.clearChangedIDs();
   await engine._resetClient();
+  // un-cleanup the logs (the resetBranch will have reset their levels), since
+  // not all the tests use SyncTestingInfrastructure, and it's cheap.
+  syncTestLogging();
   // We don't finalize storage at cleanup, since we use the same clients engine
   // instance across all tests.
 }
@@ -72,8 +79,8 @@ add_task(async function test_bad_hmac() {
     onCollectionDeleted(username, coll) {
       deletedCollections.push(coll);
     }
-  }
-  let server = serverForFoo(engine, callback);
+  };
+  let server = await serverForFoo(engine, callback);
   let user   = server.user("foo");
 
   function check_clients_count(expectedCount) {
@@ -91,9 +98,9 @@ add_task(async function test_bad_hmac() {
   }
 
   async function uploadNewKeys() {
-    generateNewKeys(Service.collectionKeys);
+    await generateNewKeys(Service.collectionKeys);
     let serverKeys = Service.collectionKeys.asWBO("crypto", "keys");
-    serverKeys.encrypt(Service.identity.syncKeyBundle);
+    await serverKeys.encrypt(Service.identity.syncKeyBundle);
     ok((await serverKeys.upload(Service.resource(Service.cryptoKeysURL))).success);
   }
 
@@ -101,33 +108,35 @@ add_task(async function test_bad_hmac() {
     await configureIdentity({username: "foo"}, server);
     await Service.login();
 
-    generateNewKeys(Service.collectionKeys);
+    await generateNewKeys(Service.collectionKeys);
 
     _("First sync, client record is uploaded");
     equal(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
     check_clients_count(0);
-    await engine._sync();
+    await syncClientsEngine(server);
     check_clients_count(1);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
 
     // Our uploaded record has a version.
-    check_record_version(user, engine.localID);
+    await check_record_version(user, engine.localID);
 
     // Initial setup can wipe the server, so clean up.
     deletedCollections = [];
     deletedItems       = [];
 
     _("Change our keys and our client ID, reupload keys.");
-    let oldLocalID  = engine.localID;     // Preserve to test for deletion!
+    let oldLocalID  = engine.localID; // Preserve to test for deletion!
     engine.localID = Utils.makeGUID();
     await engine.resetClient();
-    generateNewKeys(Service.collectionKeys);
+    await generateNewKeys(Service.collectionKeys);
     let serverKeys = Service.collectionKeys.asWBO("crypto", "keys");
-    serverKeys.encrypt(Service.identity.syncKeyBundle);
+    await serverKeys.encrypt(Service.identity.syncKeyBundle);
     ok((await serverKeys.upload(Service.resource(Service.cryptoKeysURL))).success);
 
     _("Sync.");
-    await engine._sync();
+    await syncClientsEngine(server);
 
     _("Old record " + oldLocalID + " was deleted, new one uploaded.");
     check_clients_count(1);
@@ -138,11 +147,11 @@ add_task(async function test_bad_hmac() {
     Service.lastHMACEvent = 0;
     engine.localID = Utils.makeGUID();
     await engine.resetClient();
-    generateNewKeys(Service.collectionKeys);
+    await generateNewKeys(Service.collectionKeys);
     deletedCollections = [];
     deletedItems       = [];
     check_clients_count(1);
-    await engine._sync();
+    await syncClientsEngine(server);
 
     _("Old record was not deleted, new one uploaded.");
     equal(deletedCollections.length, 0);
@@ -162,7 +171,7 @@ add_task(async function test_bad_hmac() {
     await uploadNewKeys();
 
     // Sync once to upload a record.
-    await engine._sync();
+    await syncClientsEngine(server);
     check_clients_count(1);
 
     // Generate and upload new keys, so the old client record is wrong.
@@ -171,15 +180,15 @@ add_task(async function test_bad_hmac() {
     // Create a new client record and new keys. Now our keys are wrong, as well
     // as the object on the server. We'll download the new keys and also delete
     // the bad client record.
-    oldLocalID  = engine.localID;         // Preserve to test for deletion!
+    oldLocalID  = engine.localID; // Preserve to test for deletion!
     engine.localID = Utils.makeGUID();
     await engine.resetClient();
-    generateNewKeys(Service.collectionKeys);
+    await generateNewKeys(Service.collectionKeys);
     let oldKey = Service.collectionKeys.keyForCollection();
 
     equal(deletedCollections.length, 0);
     equal(deletedItems.length, 0);
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(deletedItems.length, 1);
     check_client_deleted(oldLocalID);
     check_clients_count(1);
@@ -210,39 +219,41 @@ add_task(async function test_full_sync() {
   _("Ensure that Clients engine fetches all records for each sync.");
 
   let now = Date.now() / 1000;
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   let user   = server.user("foo");
 
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
   let activeID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(activeID, encryptPayload({
+  user.collection("clients").insertRecord({
     id: activeID,
     name: "Active client",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   let deletedID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(deletedID, encryptPayload({
+  user.collection("clients").insertRecord({
     id: deletedID,
     name: "Client to delete",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   try {
     let store = engine._store;
 
     _("First sync. 2 records downloaded; our record uploaded.");
     strictEqual(engine.lastRecordUpload, 0);
-    await engine._sync();
+    ok(engine.isFirstSync);
+    await syncClientsEngine(server);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
     deepEqual(user.collection("clients").keys().sort(),
               [activeID, deletedID, engine.localID].sort(),
               "Our record should be uploaded on first sync");
@@ -255,8 +266,7 @@ add_task(async function test_full_sync() {
     let collection = server.getCollection("foo", "clients");
     collection.remove(deletedID);
     // Simulate a timestamp update in info/collections.
-    engine.lastModified = now;
-    await engine._sync();
+    await syncClientsEngine(server);
 
     _("Record should be updated");
     ids = await store.getAllIDs();
@@ -277,11 +287,11 @@ add_task(async function test_full_sync() {
 add_task(async function test_sync() {
   _("Ensure that Clients engine uploads a new client record once a week.");
 
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   let user   = server.user("foo");
 
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
   function clientWBO() {
     return user.collection("clients").wbo(engine.localID);
@@ -292,17 +302,20 @@ add_task(async function test_sync() {
     _("First sync. Client record is uploaded.");
     equal(clientWBO(), undefined);
     equal(engine.lastRecordUpload, 0);
-    await engine._sync();
+    ok(engine.isFirstSync);
+    await syncClientsEngine(server);
     ok(!!clientWBO().payload);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
 
     _("Let's time travel more than a week back, new record should've been uploaded.");
     engine.lastRecordUpload -= MORE_THAN_CLIENTS_TTL_REFRESH;
     let lastweek = engine.lastRecordUpload;
     clientWBO().payload = undefined;
-    await engine._sync();
+    await syncClientsEngine(server);
     ok(!!clientWBO().payload);
     ok(engine.lastRecordUpload > lastweek);
+    ok(!engine.isFirstSync);
 
     _("Remove client record.");
     await engine.removeClientData();
@@ -311,9 +324,10 @@ add_task(async function test_sync() {
     _("Time travel one day back, no record uploaded.");
     engine.lastRecordUpload -= LESS_THAN_CLIENTS_TTL_REFRESH;
     let yesterday = engine.lastRecordUpload;
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(clientWBO().payload, undefined);
     equal(engine.lastRecordUpload, yesterday);
+    ok(!engine.isFirstSync);
 
   } finally {
     await cleanup();
@@ -329,26 +343,29 @@ add_task(async function test_client_name_change() {
   engine.localID; // Needed to increase the tracker changedIDs count.
   let initialName = engine.localName;
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  tracker.start();
   _("initial name: " + initialName);
 
   // Tracker already has data, so clear it.
-  tracker.clearChangedIDs();
+  await tracker.clearChangedIDs();
 
   let initialScore = tracker.score;
 
-  equal(Object.keys(tracker.changedIDs).length, 0);
+  let changedIDs = await tracker.getChangedIDs();
+  equal(Object.keys(changedIDs).length, 0);
 
   Svc.Prefs.set("client.name", "new name");
+  await tracker.asyncObserver.promiseObserversComplete();
 
   _("new name: " + engine.localName);
   notEqual(initialName, engine.localName);
-  equal(Object.keys(tracker.changedIDs).length, 1);
-  ok(engine.localID in tracker.changedIDs);
+  changedIDs = await tracker.getChangedIDs();
+  equal(Object.keys(changedIDs).length, 1);
+  ok(engine.localID in changedIDs);
   ok(tracker.score > initialScore);
   ok(tracker.score >= SCORE_INCREMENT_XLARGE);
 
-  Svc.Obs.notify("weave:engine:stop-tracking");
+  await tracker.stop();
 
   await cleanup();
 });
@@ -357,27 +374,27 @@ add_task(async function test_last_modified() {
   _("Ensure that remote records have a sane serverLastModified attribute.");
 
   let now = Date.now() / 1000;
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   let user   = server.user("foo");
 
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
   let activeID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(activeID, encryptPayload({
+  user.collection("clients").insertRecord({
     id: activeID,
     name: "Active client",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   try {
     let collection = user.collection("clients");
 
     _("Sync to download the record");
-    await engine._sync();
+    await syncClientsEngine(server);
 
     equal(engine._store._remoteClients[activeID].serverLastModified, now - 10,
           "last modified in the local record is correctly the server last-modified");
@@ -386,13 +403,15 @@ add_task(async function test_last_modified() {
     // set a new name to make sure we really did upload.
     engine._store._remoteClients[activeID].name = "New name";
     engine._modified.set(activeID, 0);
+    // The sync above also did a POST, so adjust our lastModified.
+    engine.lastModified = server.getCollection("foo", "clients").timestamp;
     await engine._uploadOutgoing();
 
     _("Local record should have updated timestamp");
     ok(engine._store._remoteClients[activeID].serverLastModified >= now);
 
     _("Record on the server should have new name but not serverLastModified");
-    let payload = JSON.parse(JSON.parse(collection.payload(activeID)).ciphertext);
+    let payload = collection.cleartext(activeID);
     equal(payload.name, "New name");
     equal(payload.serverLastModified, undefined);
 
@@ -416,7 +435,7 @@ add_task(async function test_send_command() {
 
   let action = "testCommand";
   let args = ["foo", "bar"];
-  let extra = { flowID: "flowy" }
+  let extra = { flowID: "flowy" };
 
   await engine._sendCommandToClient(action, args, remoteId, extra);
 
@@ -431,7 +450,9 @@ add_task(async function test_send_command() {
   deepEqual(command.args, args);
   ok(command.flowID);
 
-  notEqual(tracker.changedIDs[remoteId], undefined);
+
+  const changes = await tracker.getChangedIDs();
+  notEqual(changes[remoteId], undefined);
 
   await cleanup();
 });
@@ -493,7 +514,8 @@ add_task(async function test_command_validation() {
       deepEqual(command.args, args);
 
       notEqual(engine._tracker, undefined);
-      notEqual(engine._tracker.changedIDs[remoteId], undefined);
+      const changes = await engine._tracker.getChangedIDs();
+      notEqual(changes[remoteId], undefined);
     } else {
       _("Ensuring command is scrubbed: " + action);
       equal(clientCommands, undefined);
@@ -587,52 +609,54 @@ add_task(async function test_filter_duplicate_names() {
   _("Ensure that we exclude clients with identical names that haven't synced in a week.");
 
   let now = Date.now() / 1000;
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   let user   = server.user("foo");
 
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
   // Synced recently.
   let recentID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(recentID, encryptPayload({
+  user.collection("clients").insertRecord({
     id: recentID,
     name: "My Phone",
     type: "mobile",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   // Dupe of our client, synced more than 1 week ago.
   let dupeID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(dupeID, encryptPayload({
+  user.collection("clients").insertRecord({
     id: dupeID,
     name: engine.localName,
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 604810));
+  }, now - 604820);
 
   // Synced more than 1 week ago, but not a dupe.
   let oldID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(oldID, encryptPayload({
+  user.collection("clients").insertRecord({
     id: oldID,
     name: "My old desktop",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 604820));
+  }, now - 604820);
 
   try {
     let store = engine._store;
 
     _("First sync");
     strictEqual(engine.lastRecordUpload, 0);
-    await engine._sync();
+    ok(engine.isFirstSync);
+    await syncClientsEngine(server);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
     deepEqual(user.collection("clients").keys().sort(),
               [recentID, dupeID, oldID, engine.localID].sort(),
               "Our record should be uploaded on first sync");
@@ -666,7 +690,7 @@ add_task(async function test_filter_duplicate_names() {
       counts = subject;
     });
 
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(counts.applied, 0); // We didn't report applying any records.
     equal(counts.reconciled, 4); // We reported reconcilliation for all records
     equal(counts.succeeded, 0);
@@ -675,33 +699,33 @@ add_task(async function test_filter_duplicate_names() {
 
     _("Broadcast logout to all clients");
     await engine.sendCommand("logout", []);
-    await engine._sync();
+    await syncClientsEngine(server);
 
     let collection = server.getCollection("foo", "clients");
-    let recentPayload = JSON.parse(JSON.parse(collection.payload(recentID)).ciphertext);
+    let recentPayload = collection.cleartext(recentID);
     compareCommands(recentPayload.commands, [{ command: "logout", args: [] }],
                     "Should send commands to the recent client");
 
-    let oldPayload = JSON.parse(JSON.parse(collection.payload(oldID)).ciphertext);
+    let oldPayload = collection.cleartext(oldID);
     compareCommands(oldPayload.commands, [{ command: "logout", args: [] }],
                     "Should send commands to the week-old client");
 
-    let dupePayload = JSON.parse(JSON.parse(collection.payload(dupeID)).ciphertext);
+    let dupePayload = collection.cleartext(dupeID);
     deepEqual(dupePayload.commands, [],
               "Should not send commands to the dupe client");
 
     _("Update the dupe client's modified time");
-    server.insertWBO("foo", "clients", new ServerWBO(dupeID, encryptPayload({
+    collection.insertRecord({
       id: dupeID,
       name: engine.localName,
       type: "desktop",
       commands: [],
       version: "48",
       protocols: ["1.5"],
-    }), now - 10));
+    }, now - 10);
 
     _("Second sync.");
-    await engine._sync();
+    await syncClientsEngine(server);
 
     ids = await store.getAllIDs();
     deepEqual(Object.keys(ids).sort(),
@@ -738,9 +762,9 @@ add_task(async function test_command_sync() {
   _("Ensure that commands are synced across clients.");
 
   await engine._store.wipe();
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
-  let server   = serverForFoo(engine);
+  let server   = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
 
   let user     = server.user("foo");
@@ -751,18 +775,18 @@ add_task(async function test_command_sync() {
   }
 
   _("Create remote client record");
-  server.insertWBO("foo", "clients", new ServerWBO(remoteId, encryptPayload({
+  user.collection("clients").insertRecord({
     id: remoteId,
     name: "Remote client",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), Date.now() / 1000));
+  });
 
   try {
     _("Syncing.");
-    await engine._sync();
+    await syncClientsEngine(server);
 
     _("Checking remote record was downloaded.");
     let clientRecord = engine._store._remoteClients[remoteId];
@@ -773,19 +797,20 @@ add_task(async function test_command_sync() {
     await engine.sendCommand("wipeAll", []);
     let clientCommands = (await engine._readCommands())[remoteId];
     equal(clientCommands.length, 1);
-    await engine._sync();
+    await syncClientsEngine(server);
 
     _("Checking record was uploaded.");
     notEqual(clientWBO(engine.localID).payload, undefined);
     ok(engine.lastRecordUpload > 0);
+    ok(!engine.isFirstSync);
 
     notEqual(clientWBO(remoteId).payload, undefined);
 
     Svc.Prefs.set("client.GUID", remoteId);
-    engine._resetClient();
+    await engine._resetClient();
     equal(engine.localID, remoteId);
     _("Performing sync on resetted client.");
-    await engine._sync();
+    await syncClientsEngine(server);
     notEqual(engine.localCommands, undefined);
     equal(engine.localCommands.length, 1);
 
@@ -809,16 +834,17 @@ add_task(async function test_clients_not_in_fxa_list() {
   _("Ensure that clients not in the FxA devices list are marked as stale.");
 
   await engine._store.wipe();
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
-  let server   = serverForFoo(engine);
+  let server   = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
 
   let remoteId = Utils.makeGUID();
   let remoteId2 = Utils.makeGUID();
+  let collection = server.getCollection("foo", "clients");
 
   _("Create remote client records");
-  server.insertWBO("foo", "clients", new ServerWBO(remoteId, encryptPayload({
+  collection.insertRecord({
     id: remoteId,
     name: "Remote client",
     type: "desktop",
@@ -826,8 +852,9 @@ add_task(async function test_clients_not_in_fxa_list() {
     version: "48",
     fxaDeviceId: remoteId,
     protocols: ["1.5"],
-  }), Date.now() / 1000));
-  server.insertWBO("foo", "clients", new ServerWBO(remoteId2, encryptPayload({
+  });
+
+  collection.insertRecord({
     id: remoteId2,
     name: "Remote client 2",
     type: "desktop",
@@ -835,7 +862,7 @@ add_task(async function test_clients_not_in_fxa_list() {
     version: "48",
     fxaDeviceId: remoteId2,
     protocols: ["1.5"],
-  }), Date.now() / 1000));
+  });
 
   let fxAccounts = engine.fxAccounts;
   engine.fxAccounts = {
@@ -846,7 +873,7 @@ add_task(async function test_clients_not_in_fxa_list() {
 
   try {
     _("Syncing.");
-    await engine._sync();
+    await syncClientsEngine(server);
 
     ok(!engine._store._remoteClients[remoteId].stale);
     ok(engine._store._remoteClients[remoteId2].stale);
@@ -856,13 +883,75 @@ add_task(async function test_clients_not_in_fxa_list() {
     await cleanup();
 
     try {
-      let collection = server.getCollection("foo", "clients");
       collection.remove(remoteId);
     } finally {
       await promiseStopServer(server);
     }
   }
 });
+
+
+add_task(async function test_dupe_device_ids() {
+  _("Ensure that we mark devices with duplicate fxaDeviceIds but older lastModified as stale.");
+
+  await engine._store.wipe();
+  await generateNewKeys(Service.collectionKeys);
+
+  let server   = await serverForFoo(engine);
+  await SyncTestingInfrastructure(server);
+
+  let remoteId = Utils.makeGUID();
+  let remoteId2 = Utils.makeGUID();
+  let remoteDeviceId = Utils.makeGUID();
+
+  let collection = server.getCollection("foo", "clients");
+
+  _("Create remote client records");
+  collection.insertRecord({
+    id: remoteId,
+    name: "Remote client",
+    type: "desktop",
+    commands: [],
+    version: "48",
+    fxaDeviceId: remoteDeviceId,
+    protocols: ["1.5"],
+  }, Date.now() / 1000 - 30000);
+  collection.insertRecord({
+    id: remoteId2,
+    name: "Remote client",
+    type: "desktop",
+    commands: [],
+    version: "48",
+    fxaDeviceId: remoteDeviceId,
+    protocols: ["1.5"],
+  });
+
+  let fxAccounts = engine.fxAccounts;
+  engine.fxAccounts = {
+    notifyDevices() { return Promise.resolve(true); },
+    getDeviceId() { return fxAccounts.getDeviceId(); },
+    getDeviceList() { return Promise.resolve([{ id: remoteDeviceId }]); }
+  };
+
+  try {
+    _("Syncing.");
+    await syncClientsEngine(server);
+
+    ok(engine._store._remoteClients[remoteId].stale);
+    ok(!engine._store._remoteClients[remoteId2].stale);
+
+  } finally {
+    engine.fxAccounts = fxAccounts;
+    await cleanup();
+
+    try {
+      collection.remove(remoteId);
+    } finally {
+      await promiseStopServer(server);
+    }
+  }
+});
+
 
 add_task(async function test_send_uri_to_client_for_display() {
   _("Ensure sendURIToClientForDisplay() sends command properly.");
@@ -876,7 +965,7 @@ add_task(async function test_send_uri_to_client_for_display() {
   await store.create(rec);
   await store.createRecord(remoteId, "clients");
 
-  tracker.clearChangedIDs();
+  await tracker.clearChangedIDs();
   let initialScore = tracker.score;
 
   let uri = "http://www.mozilla.org/";
@@ -987,13 +1076,14 @@ add_task(async function test_merge_commands() {
   _("Verifies local commands for remote clients are merged with the server's");
 
   let now = Date.now() / 1000;
-  let server = serverForFoo(engine);
-
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
+
+  let collection = server.getCollection("foo", "clients");
 
   let desktopID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(desktopID, encryptPayload({
+  collection.insertRecord({
     id: desktopID,
     name: "Desktop client",
     type: "desktop",
@@ -1004,10 +1094,10 @@ add_task(async function test_merge_commands() {
     }],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   let mobileID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(mobileID, encryptPayload({
+  collection.insertRecord({
     id: mobileID,
     name: "Mobile client",
     type: "mobile",
@@ -1018,19 +1108,19 @@ add_task(async function test_merge_commands() {
     }],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   try {
     _("First sync. 2 records downloaded.");
     strictEqual(engine.lastRecordUpload, 0);
-    await engine._sync();
+    ok(engine.isFirstSync);
+    await syncClientsEngine(server);
 
     _("Broadcast logout to all clients");
     await engine.sendCommand("logout", []);
-    await engine._sync();
+    await syncClientsEngine(server);
 
-    let collection = server.getCollection("foo", "clients");
-    let desktopPayload = JSON.parse(JSON.parse(collection.payload(desktopID)).ciphertext);
+    let desktopPayload = collection.cleartext(desktopID);
     compareCommands(desktopPayload.commands, [{
       command: "displayURI",
       args: ["https://example.com", engine.localID, "Yak Herders Anonymous"],
@@ -1039,7 +1129,7 @@ add_task(async function test_merge_commands() {
       args: [],
     }], "Should send the logout command to the desktop client");
 
-    let mobilePayload = JSON.parse(JSON.parse(collection.payload(mobileID)).ciphertext);
+    let mobilePayload = collection.cleartext(mobileID);
     compareCommands(mobilePayload.commands, [{ command: "logout", args: [] }],
                     "Should not send a duplicate logout to the mobile client");
   } finally {
@@ -1057,46 +1147,48 @@ add_task(async function test_duplicate_remote_commands() {
   _("Verifies local commands for remote clients are sent only once (bug 1289287)");
 
   let now = Date.now() / 1000;
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
 
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
+
+  let collection = server.getCollection("foo", "clients");
 
   let desktopID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(desktopID, encryptPayload({
+  collection.insertRecord({
     id: desktopID,
     name: "Desktop client",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   try {
     _("First sync. 1 record downloaded.");
     strictEqual(engine.lastRecordUpload, 0);
-    await engine._sync();
+    ok(engine.isFirstSync);
+    await syncClientsEngine(server);
 
     _("Send tab to client");
     await engine.sendCommand("displayURI", ["https://example.com", engine.localID, "Yak Herders Anonymous"]);
-    await engine._sync();
+    await syncClientsEngine(server);
 
     _("Simulate the desktop client consuming the command and syncing to the server");
-    server.insertWBO("foo", "clients", new ServerWBO(desktopID, encryptPayload({
+    collection.insertRecord({
       id: desktopID,
       name: "Desktop client",
       type: "desktop",
       commands: [],
       version: "48",
       protocols: ["1.5"],
-    }), now - 10));
+    }, now - 10);
 
     _("Send another tab to the desktop client");
     await engine.sendCommand("displayURI", ["https://foobar.com", engine.localID, "Foo bar!"], desktopID);
-    await engine._sync();
+    await syncClientsEngine(server);
 
-    let collection = server.getCollection("foo", "clients");
-    let desktopPayload = JSON.parse(JSON.parse(collection.payload(desktopID)).ciphertext);
+    let desktopPayload = collection.cleartext(desktopID);
     compareCommands(desktopPayload.commands, [{
       command: "displayURI",
       args: ["https://foobar.com", engine.localID, "Foo bar!"],
@@ -1116,14 +1208,16 @@ add_task(async function test_upload_after_reboot() {
   _("Multiple downloads, reboot, then upload (bug 1289287)");
 
   let now = Date.now() / 1000;
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
 
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
+
+  let collection = server.getCollection("foo", "clients");
 
   let deviceBID = Utils.makeGUID();
   let deviceCID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(deviceBID, encryptPayload({
+  collection.insertRecord({
     id: deviceBID,
     name: "Device B",
     type: "desktop",
@@ -1134,52 +1228,52 @@ add_task(async function test_upload_after_reboot() {
     }],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
-  server.insertWBO("foo", "clients", new ServerWBO(deviceCID, encryptPayload({
+  }, now - 10);
+  collection.insertRecord({
     id: deviceCID,
     name: "Device C",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   try {
     _("First sync. 2 records downloaded.");
     strictEqual(engine.lastRecordUpload, 0);
-    await engine._sync();
+    ok(engine.isFirstSync);
+    await syncClientsEngine(server);
 
     _("Send tab to client");
     await engine.sendCommand("displayURI", ["https://example.com", engine.localID, "Yak Herders Anonymous"], deviceBID);
 
     const oldUploadOutgoing = SyncEngine.prototype._uploadOutgoing;
     SyncEngine.prototype._uploadOutgoing = async () => engine._onRecordsWritten([], [deviceBID]);
-    await engine._sync();
+    await syncClientsEngine(server);
 
-    let collection = server.getCollection("foo", "clients");
-    let deviceBPayload = JSON.parse(JSON.parse(collection.payload(deviceBID)).ciphertext);
+    let deviceBPayload = collection.cleartext(deviceBID);
     compareCommands(deviceBPayload.commands, [{
       command: "displayURI", args: ["https://deviceclink.com", deviceCID, "Device C link"]
     }], "Should be the same because the upload failed");
 
     _("Simulate the client B consuming the command and syncing to the server");
-    server.insertWBO("foo", "clients", new ServerWBO(deviceBID, encryptPayload({
+    collection.insertRecord({
       id: deviceBID,
       name: "Device B",
       type: "desktop",
       commands: [],
       version: "48",
       protocols: ["1.5"],
-    }), now - 10));
+    }, now - 10);
 
     // Simulate reboot
     SyncEngine.prototype._uploadOutgoing = oldUploadOutgoing;
     engine = Service.clientsEngine = new ClientEngine(Service);
     await engine.initialize();
 
-    await engine._sync();
+    await syncClientsEngine(server);
 
-    deviceBPayload = JSON.parse(JSON.parse(collection.payload(deviceBID)).ciphertext);
+    deviceBPayload = collection.cleartext(deviceBID);
     compareCommands(deviceBPayload.commands, [{
       command: "displayURI",
       args: ["https://example.com", engine.localID, "Yak Herders Anonymous"],
@@ -1199,14 +1293,16 @@ add_task(async function test_keep_cleared_commands_after_reboot() {
   _("Download commands, fail upload, reboot, then apply new commands (bug 1289287)");
 
   let now = Date.now() / 1000;
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
 
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
+
+  let collection = server.getCollection("foo", "clients");
 
   let deviceBID = Utils.makeGUID();
   let deviceCID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(engine.localID, encryptPayload({
+  collection.insertRecord({
     id: engine.localID,
     name: "Device A",
     type: "desktop",
@@ -1222,39 +1318,39 @@ add_task(async function test_keep_cleared_commands_after_reboot() {
     }],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
-  server.insertWBO("foo", "clients", new ServerWBO(deviceBID, encryptPayload({
+  }, now - 10);
+  collection.insertRecord({
     id: deviceBID,
     name: "Device B",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
-  server.insertWBO("foo", "clients", new ServerWBO(deviceCID, encryptPayload({
+  }, now - 10);
+  collection.insertRecord({
     id: deviceCID,
     name: "Device C",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   try {
     _("First sync. Download remote and our record.");
     strictEqual(engine.lastRecordUpload, 0);
+    ok(engine.isFirstSync);
 
-    let collection = server.getCollection("foo", "clients");
     const oldUploadOutgoing = SyncEngine.prototype._uploadOutgoing;
     SyncEngine.prototype._uploadOutgoing = async () => engine._onRecordsWritten([], [deviceBID]);
     let commandsProcessed = 0;
-    engine._handleDisplayURIs = (uris) => { commandsProcessed = uris.length };
+    engine._handleDisplayURIs = (uris) => { commandsProcessed = uris.length; };
 
-    await engine._sync();
+    await syncClientsEngine(server);
     await engine.processIncomingCommands(); // Not called by the engine.sync(), gotta call it ourselves
     equal(commandsProcessed, 2, "We processed 2 commands");
 
-    let localRemoteRecord = JSON.parse(JSON.parse(collection.payload(engine.localID)).ciphertext);
+    let localRemoteRecord = collection.cleartext(engine.localID);
     compareCommands(localRemoteRecord.commands, [{
       command: "displayURI", args: ["https://deviceblink.com", deviceBID, "Device B link"]
     },
@@ -1263,7 +1359,7 @@ add_task(async function test_keep_cleared_commands_after_reboot() {
     }], "Should be the same because the upload failed");
 
     // Another client sends another link
-    server.insertWBO("foo", "clients", new ServerWBO(engine.localID, encryptPayload({
+    collection.insertRecord({
       id: engine.localID,
       name: "Device A",
       type: "desktop",
@@ -1284,7 +1380,7 @@ add_task(async function test_keep_cleared_commands_after_reboot() {
       }],
       version: "48",
       protocols: ["1.5"],
-    }), now - 10));
+    }, now - 5);
 
     // Simulate reboot
     SyncEngine.prototype._uploadOutgoing = oldUploadOutgoing;
@@ -1292,12 +1388,12 @@ add_task(async function test_keep_cleared_commands_after_reboot() {
     await engine.initialize();
 
     commandsProcessed = 0;
-    engine._handleDisplayURIs = (uris) => { commandsProcessed = uris.length };
-    await engine._sync();
+    engine._handleDisplayURIs = (uris) => { commandsProcessed = uris.length; };
+    await syncClientsEngine(server);
     await engine.processIncomingCommands();
     equal(commandsProcessed, 1, "We processed one command (the other were cleared)");
 
-    localRemoteRecord = JSON.parse(JSON.parse(collection.payload(deviceBID)).ciphertext);
+    localRemoteRecord = collection.cleartext(deviceBID);
     deepEqual(localRemoteRecord.commands, [], "Should be empty");
   } finally {
     await cleanup();
@@ -1305,7 +1401,7 @@ add_task(async function test_keep_cleared_commands_after_reboot() {
     // Reset service (remove mocks)
     engine = Service.clientsEngine = new ClientEngine(Service);
     await engine.initialize();
-    engine._resetClient();
+    await engine._resetClient();
 
     try {
       server.deleteCollections("foo");
@@ -1319,47 +1415,48 @@ add_task(async function test_deleted_commands() {
   _("Verifies commands for a deleted client are discarded");
 
   let now = Date.now() / 1000;
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
 
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
+
+  let collection = server.getCollection("foo", "clients");
 
   let activeID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(activeID, encryptPayload({
+  collection.insertRecord({
     id: activeID,
     name: "Active client",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   let deletedID = Utils.makeGUID();
-  server.insertWBO("foo", "clients", new ServerWBO(deletedID, encryptPayload({
+  collection.insertRecord({
     id: deletedID,
     name: "Client to delete",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"],
-  }), now - 10));
+  }, now - 10);
 
   try {
     _("First sync. 2 records downloaded.");
-    await engine._sync();
+    await syncClientsEngine(server);
 
     _("Delete a record on the server.");
-    let collection = server.getCollection("foo", "clients");
     collection.remove(deletedID);
 
     _("Broadcast a command to all clients");
     await engine.sendCommand("logout", []);
-    await engine._sync();
+    await syncClientsEngine(server);
 
     deepEqual(collection.keys().sort(), [activeID, engine.localID].sort(),
       "Should not reupload deleted clients");
 
-    let activePayload = JSON.parse(JSON.parse(collection.payload(activeID)).ciphertext);
+    let activePayload = collection.cleartext(activeID);
     compareCommands(activePayload.commands, [{ command: "logout", args: [] }],
       "Should send the command to the active client");
   } finally {
@@ -1377,30 +1474,30 @@ add_task(async function test_send_uri_ack() {
   _("Ensure a sent URI is deleted when the client syncs");
 
   let now = Date.now() / 1000;
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
 
   await SyncTestingInfrastructure(server);
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
   try {
     let fakeSenderID = Utils.makeGUID();
 
     _("Initial sync for empty clients collection");
-    await engine._sync();
+    await syncClientsEngine(server);
     let collection = server.getCollection("foo", "clients");
-    let ourPayload = JSON.parse(JSON.parse(collection.payload(engine.localID)).ciphertext);
-    ok(ourPayload, "Should upload our client record");
 
-    _("Send a URL to the device on the server");
-    ourPayload.commands = [{
-      command: "displayURI",
-      args: ["https://example.com", fakeSenderID, "Yak Herders Anonymous"],
-      flowID: Utils.makeGUID(),
-    }];
-    server.insertWBO("foo", "clients", new ServerWBO(engine.localID, encryptPayload(ourPayload), now));
+    collection.updateRecord(engine.localID, payload => {
+      _("Send a URL to the device on the server");
+      payload.commands = [{
+        command: "displayURI",
+        args: ["https://example.com", fakeSenderID, "Yak Herders Anonymous"],
+        flowID: Utils.makeGUID(),
+      }];
+    }, now - 10);
 
     _("Sync again");
-    await engine._sync();
+    await syncClientsEngine(server);
+
     compareCommands(engine.localCommands, [{
       command: "displayURI",
       args: ["https://example.com", fakeSenderID, "Yak Herders Anonymous"],
@@ -1413,8 +1510,8 @@ add_task(async function test_send_uri_ack() {
     }], "Should mark the commands as cleared after processing");
 
     _("Check that the command was removed on the server");
-    await engine._sync();
-    ourPayload = JSON.parse(JSON.parse(collection.payload(engine.localID)).ciphertext);
+    await syncClientsEngine(server);
+    let ourPayload = collection.cleartext(engine.localID);
     ok(ourPayload, "Should upload the synced client record");
     deepEqual(ourPayload.commands, [], "Should not reupload cleared commands");
   } finally {
@@ -1432,9 +1529,9 @@ add_task(async function test_command_sync() {
   _("Notify other clients when writing their record.");
 
   await engine._store.wipe();
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
-  let server    = serverForFoo(engine);
+  let server    = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
 
   let collection = server.getCollection("foo", "clients");
@@ -1442,45 +1539,45 @@ add_task(async function test_command_sync() {
   let remoteId2  = Utils.makeGUID();
 
   _("Create remote client record 1");
-  server.insertWBO("foo", "clients", new ServerWBO(remoteId, encryptPayload({
+  collection.insertRecord({
     id: remoteId,
     name: "Remote client",
     type: "desktop",
     commands: [],
     version: "48",
     protocols: ["1.5"]
-  }), Date.now() / 1000));
+  });
 
   _("Create remote client record 2");
-  server.insertWBO("foo", "clients", new ServerWBO(remoteId2, encryptPayload({
+  collection.insertRecord({
     id: remoteId2,
     name: "Remote client 2",
     type: "mobile",
     commands: [],
     version: "48",
     protocols: ["1.5"]
-  }), Date.now() / 1000));
+  });
 
   try {
     equal(collection.count(), 2, "2 remote records written");
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(collection.count(), 3, "3 remote records written (+1 for the synced local record)");
 
     await engine.sendCommand("wipeAll", []);
-    engine._tracker.addChangedID(engine.localID);
+    await engine._tracker.addChangedID(engine.localID);
     const getClientFxaDeviceId = sinon.stub(engine, "getClientFxaDeviceId", (id) => "fxa-" + id);
     const engineMock = sinon.mock(engine);
     let _notifyCollectionChanged = engineMock.expects("_notifyCollectionChanged")
                                              .withArgs(["fxa-" + remoteId, "fxa-" + remoteId2]);
     _("Syncing.");
-    await engine._sync();
+    await syncClientsEngine(server);
     _notifyCollectionChanged.verify();
 
     engineMock.restore();
     getClientFxaDeviceId.restore();
   } finally {
     await cleanup();
-    engine._tracker.clearChangedIDs();
+    await engine._tracker.clearChangedIDs();
 
     try {
       server.deleteCollections("foo");
@@ -1491,44 +1588,45 @@ add_task(async function test_command_sync() {
 });
 
 add_task(async function ensureSameFlowIDs() {
-  let events = []
+  let events = [];
   let origRecordTelemetryEvent = Service.recordTelemetryEvent;
   Service.recordTelemetryEvent = (object, method, value, extra) => {
     events.push({ object, method, value, extra });
-  }
+  };
 
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   try {
     // Setup 2 clients, send them a command, and ensure we get to events
     // written, both with the same flowID.
     await SyncTestingInfrastructure(server);
+    let collection = server.getCollection("foo", "clients");
 
     let remoteId   = Utils.makeGUID();
     let remoteId2  = Utils.makeGUID();
 
     _("Create remote client record 1");
-    server.insertWBO("foo", "clients", new ServerWBO(remoteId, encryptPayload({
+    collection.insertRecord({
       id: remoteId,
       name: "Remote client",
       type: "desktop",
       commands: [],
       version: "48",
       protocols: ["1.5"]
-    }), Date.now() / 1000));
+    });
 
     _("Create remote client record 2");
-    server.insertWBO("foo", "clients", new ServerWBO(remoteId2, encryptPayload({
+    collection.insertRecord({
       id: remoteId2,
       name: "Remote client 2",
       type: "mobile",
       commands: [],
       version: "48",
       protocols: ["1.5"]
-    }), Date.now() / 1000));
+    });
 
-    await engine._sync();
+    await syncClientsEngine(server);
     await engine.sendCommand("wipeAll", []);
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(events.length, 2);
     // we don't know what the flowID is, but do know it should be the same.
     equal(events[0].extra.flowID, events[1].extra.flowID);
@@ -1540,7 +1638,7 @@ add_task(async function ensureSameFlowIDs() {
     events.length = 0;
     let flowID = Utils.makeGUID();
     await engine.sendCommand("wipeAll", [], null, { flowID });
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(events.length, 2);
     equal(events[0].extra.flowID, flowID);
     equal(events[1].extra.flowID, flowID);
@@ -1553,7 +1651,7 @@ add_task(async function ensureSameFlowIDs() {
     // and that it works when something else is in "extra"
     events.length = 0;
     await engine.sendCommand("wipeAll", [], null, { reason: "testing" });
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(events.length, 2);
     equal(events[0].extra.flowID, events[1].extra.flowID);
     equal(events[0].extra.reason, "testing");
@@ -1566,7 +1664,7 @@ add_task(async function ensureSameFlowIDs() {
     // and when both are specified.
     events.length = 0;
     await engine.sendCommand("wipeAll", [], null, { reason: "testing", flowID });
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(events.length, 2);
     equal(events[0].extra.flowID, flowID);
     equal(events[1].extra.flowID, flowID);
@@ -1585,45 +1683,46 @@ add_task(async function ensureSameFlowIDs() {
 });
 
 add_task(async function test_duplicate_commands_telemetry() {
-  let events = []
+  let events = [];
   let origRecordTelemetryEvent = Service.recordTelemetryEvent;
   Service.recordTelemetryEvent = (object, method, value, extra) => {
     events.push({ object, method, value, extra });
-  }
+  };
 
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   try {
     await SyncTestingInfrastructure(server);
+    let collection = server.getCollection("foo", "clients");
 
     let remoteId   = Utils.makeGUID();
     let remoteId2  = Utils.makeGUID();
 
     _("Create remote client record 1");
-    server.insertWBO("foo", "clients", new ServerWBO(remoteId, encryptPayload({
+    collection.insertRecord({
       id: remoteId,
       name: "Remote client",
       type: "desktop",
       commands: [],
       version: "48",
       protocols: ["1.5"]
-    }), Date.now() / 1000));
+    });
 
     _("Create remote client record 2");
-    server.insertWBO("foo", "clients", new ServerWBO(remoteId2, encryptPayload({
+    collection.insertRecord({
       id: remoteId2,
       name: "Remote client 2",
       type: "mobile",
       commands: [],
       version: "48",
       protocols: ["1.5"]
-    }), Date.now() / 1000));
+    });
 
-    await engine._sync();
+    await syncClientsEngine(server);
     // Make sure deduping works before syncing
     await engine.sendURIToClientForDisplay("https://example.com", remoteId, "Example");
     await engine.sendURIToClientForDisplay("https://example.com", remoteId, "Example");
     equal(events.length, 1);
-    await engine._sync();
+    await syncClientsEngine(server);
     // And after syncing.
     await engine.sendURIToClientForDisplay("https://example.com", remoteId, "Example");
     equal(events.length, 1);
@@ -1640,11 +1739,11 @@ add_task(async function test_duplicate_commands_telemetry() {
 add_task(async function test_other_clients_notified_on_first_sync() {
   _("Ensure that other clients are notified when we upload our client record for the first time.");
 
-  engine.resetLastSync();
-  engine._store.wipe();
-  generateNewKeys(Service.collectionKeys);
+  await engine.resetLastSync();
+  await engine._store.wipe();
+  await generateNewKeys(Service.collectionKeys);
 
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
 
   const fxAccounts = engine.fxAccounts;
@@ -1660,11 +1759,11 @@ add_task(async function test_other_clients_notified_on_first_sync() {
   try {
     engine.lastRecordUpload = 0;
     _("First sync, should notify other clients");
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(calls, 1);
 
     _("Second sync, should not notify other clients");
-    await engine._sync();
+    await syncClientsEngine(server);
     equal(calls, 1);
   } finally {
     engine.fxAccounts = fxAccounts;
@@ -1675,6 +1774,20 @@ add_task(async function test_other_clients_notified_on_first_sync() {
 
 add_task(async function device_disconnected_notification_updates_known_stale_clients() {
   const spyUpdate = sinon.spy(engine, "updateKnownStaleClients");
+
+  Services.obs.notifyObservers(null, "fxaccounts:device_disconnected",
+                               JSON.stringify({ isLocalDevice: false }));
+  ok(spyUpdate.calledOnce, "updateKnownStaleClients should be called");
+  spyUpdate.reset();
+
+  Services.obs.notifyObservers(null, "fxaccounts:device_disconnected",
+                               JSON.stringify({ isLocalDevice: true }));
+  ok(spyUpdate.notCalled, "updateKnownStaleClients should not be called");
+
+  spyUpdate.restore();
+});
+
+add_task(async function update_known_stale_clients() {
   const makeFakeClient = (id) => ({ id, fxaDeviceId: `fxa-${id}` });
   const clients = [makeFakeClient("one"), makeFakeClient("two"), makeFakeClient("three")];
   const stubRemoteClients = sinon.stub(engine._store, "_remoteClients").get(() => {
@@ -1685,26 +1798,12 @@ add_task(async function device_disconnected_notification_updates_known_stale_cli
   });
 
   engine._knownStaleFxADeviceIds = null;
-  Services.obs.notifyObservers(null, "fxaccounts:device_disconnected",
-                               JSON.stringify({ isLocalDevice: false }));
-  ok(spyUpdate.calledOnce, "updateKnownStaleClients should be called");
+  await engine.updateKnownStaleClients();
   ok(clients[0].stale);
   ok(clients[1].stale);
   ok(!clients[2].stale);
-  spyUpdate.reset();
-
-  ok(engine._knownStaleFxADeviceIds)
-  Services.obs.notifyObservers(null, "fxaccounts:device_disconnected",
-                               JSON.stringify({ isLocalDevice: false }));
-  ok(spyUpdate.calledOnce, "updateKnownStaleClients should be called");
-  spyUpdate.reset();
-
-  Services.obs.notifyObservers(null, "fxaccounts:device_disconnected",
-                               JSON.stringify({ isLocalDevice: true }));
-  ok(spyUpdate.notCalled, "updateKnownStaleClients should not be called");
 
   stubRemoteClients.restore();
-  spyUpdate.restore();
   stubRefresh.restore();
 });
 
@@ -1726,8 +1825,100 @@ add_task(async function process_incoming_refreshes_known_stale_clients() {
   stubRefresh.restore();
 });
 
-function run_test() {
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Engine.Clients").level = Log.Level.Trace;
-  run_next_test();
-}
+add_task(async function process_incoming_refreshes_known_stale_clients() {
+  Services.prefs.clearUserPref("services.sync.clients.lastModifiedOnProcessCommands");
+  engine._localClientLastModified = Math.round(Date.now() / 1000);
+
+  const stubRemoveLocalCommand = sinon.stub(engine, "removeLocalCommand");
+  const tabProcessedSpy = sinon.spy(engine, "_handleDisplayURIs");
+  engine.localCommands = [{ command: "displayURI", args: ["https://foo.bar", "fxaid1", "foo"] }];
+
+  await engine.processIncomingCommands();
+  ok(tabProcessedSpy.calledOnce);
+  // Let's say we failed to upload and we end up calling processIncomingCommands again
+  await engine.processIncomingCommands();
+  ok(tabProcessedSpy.calledOnce);
+
+  tabProcessedSpy.restore();
+  stubRemoveLocalCommand.restore();
+});
+
+add_task(async function test_create_record_command_limit() {
+  await engine._store.wipe();
+  await generateNewKeys(Service.collectionKeys);
+
+  let server = await serverForFoo(engine);
+  await SyncTestingInfrastructure(server);
+
+  const fakeLimit = 4 * 1024;
+
+  let maxSizeStub = sinon.stub(Service,
+    "getMemcacheMaxRecordPayloadSize", () => fakeLimit);
+
+  let user = server.user("foo");
+  let remoteId = Utils.makeGUID();
+
+  _("Create remote client record");
+  user.collection("clients").insertRecord({
+    id: remoteId,
+    name: "Remote client",
+    type: "desktop",
+    commands: [],
+    version: "57",
+    protocols: ["1.5"],
+  });
+
+  try {
+    _("Initial sync.");
+    await syncClientsEngine(server);
+
+    _("Send a fairly sane number of commands.");
+
+    for (let i = 0; i < 5; ++i) {
+      await engine.sendURIToClientForDisplay(
+        `https://www.example.com/1/${i}`, remoteId, `Page 1.${i}`);
+    }
+
+    await syncClientsEngine(server);
+
+    _("Make sure they all fit and weren't dropped.");
+    let parsedServerRecord = user.collection("clients").cleartext(remoteId);
+
+    equal(parsedServerRecord.commands.length, 5);
+
+    await engine.sendCommand("wipeEngine", ["history"], remoteId);
+
+    _("Send a not-sane number of commands.");
+    // Much higher than the maximum number of commands we could actually fit.
+    for (let i = 0; i < 500; ++i) {
+      await engine.sendURIToClientForDisplay(
+        `https://www.example.com/2/${i}`, remoteId, `Page 2.${i}`);
+    }
+
+    await syncClientsEngine(server);
+
+    _("Ensure we didn't overflow the server limit.");
+    let wbo = user.collection("clients").wbo(remoteId);
+    less(wbo.payload.length, fakeLimit);
+
+    _("And that the data we uploaded is both sane json and containing some commands.");
+    let remoteCommands = wbo.getCleartext().commands;
+    greater(remoteCommands.length, 2);
+    let firstCommand = remoteCommands[0];
+    _("The first command should still be present, since it had a high priority");
+    equal(firstCommand.command, "wipeEngine");
+    _("And the last command in the list should be the last command we sent.");
+    let lastCommand = remoteCommands[remoteCommands.length - 1];
+    equal(lastCommand.command, "displayURI");
+    deepEqual(lastCommand.args, ["https://www.example.com/2/499", engine.localID, "Page 2.499"]);
+  } finally {
+    maxSizeStub.restore();
+    await cleanup();
+    try {
+      let collection = server.getCollection("foo", "clients");
+      collection.remove(remoteId);
+    } finally {
+      await promiseStopServer(server);
+    }
+  }
+});

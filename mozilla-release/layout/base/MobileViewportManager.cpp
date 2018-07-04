@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,7 +9,8 @@
 #include "gfxPrefs.h"
 #include "LayersLogging.h"
 #include "mozilla/PresShell.h"
-#include "nsIDOMEvent.h"
+#include "mozilla/dom/Event.h"
+#include "mozilla/dom/EventTarget.h"
 #include "nsIFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsViewManager.h"
@@ -21,11 +23,11 @@
 
 NS_IMPL_ISUPPORTS(MobileViewportManager, nsIDOMEventListener, nsIObserver)
 
-static const nsLiteralString DOM_META_ADDED = NS_LITERAL_STRING("DOMMetaAdded");
-static const nsLiteralString DOM_META_CHANGED = NS_LITERAL_STRING("DOMMetaChanged");
-static const nsLiteralString FULL_ZOOM_CHANGE = NS_LITERAL_STRING("FullZoomChange");
-static const nsLiteralString LOAD = NS_LITERAL_STRING("load");
-static const nsLiteralCString BEFORE_FIRST_PAINT = NS_LITERAL_CSTRING("before-first-paint");
+#define DOM_META_ADDED NS_LITERAL_STRING("DOMMetaAdded")
+#define DOM_META_CHANGED NS_LITERAL_STRING("DOMMetaChanged")
+#define FULL_ZOOM_CHANGE NS_LITERAL_STRING("FullZoomChange")
+#define LOAD NS_LITERAL_STRING("load")
+#define BEFORE_FIRST_PAINT NS_LITERAL_CSTRING("before-first-paint")
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -120,7 +122,7 @@ MobileViewportManager::ResolutionUpdated()
 }
 
 NS_IMETHODIMP
-MobileViewportManager::HandleEvent(nsIDOMEvent* event)
+MobileViewportManager::HandleEvent(dom::Event* event)
 {
   nsAutoString type;
   event->GetType(type);

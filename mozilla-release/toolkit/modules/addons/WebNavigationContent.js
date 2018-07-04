@@ -2,13 +2,22 @@
 
 /* eslint-env mozilla/frame-script */
 
-var Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "WebNavigationFrames",
+                               "resource://gre/modules/WebNavigationFrames.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "WebNavigationFrames",
-                                  "resource://gre/modules/WebNavigationFrames.jsm");
+function getDocShellOuterWindowId(docShell) {
+  if (!docShell) {
+    return undefined;
+  }
+
+  return docShell.QueryInterface(Ci.nsIInterfaceRequestor)
+                 .getInterface(Ci.nsIDOMWindow)
+                 .getInterface(Ci.nsIDOMWindowUtils)
+                 .outerWindowID;
+}
 
 function loadListener(event) {
   let document = event.target;
@@ -25,7 +34,7 @@ addMessageListener("Extension:DisableWebNavigation", () => {
 });
 
 var CreatedNavigationTargetListener = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver, Ci.nsISupportsWeakReference]),
 
   init() {
     Services.obs.addObserver(this, "webNavigation-createdNavigationTarget-from-js");
@@ -56,8 +65,9 @@ var CreatedNavigationTargetListener = {
     }
 
     const isSourceTab = docShell === sourceDocShell || isSourceTabDescendant;
+
     const sourceFrameId = WebNavigationFrames.getDocShellFrameId(sourceDocShell);
-    const createdWindowId = WebNavigationFrames.getDocShellFrameId(createdDocShell);
+    const createdOuterWindowId = getDocShellOuterWindowId(sourceDocShell);
 
     let url;
     if (props.hasKey("url")) {
@@ -67,16 +77,16 @@ var CreatedNavigationTargetListener = {
     sendAsyncMessage("Extension:CreatedNavigationTarget", {
       url,
       sourceFrameId,
-      createdWindowId,
+      createdOuterWindowId,
       isSourceTab,
     });
   },
 };
 
 var FormSubmitListener = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsIFormSubmitObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsIFormSubmitObserver,
+                                          Ci.nsISupportsWeakReference]),
   init() {
     this.formSubmitWindows = new WeakSet();
     Services.obs.addObserver(FormSubmitListener, "earlyformsubmit");
@@ -296,7 +306,7 @@ var WebProgressListener = {
     return frameTransitionData;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIWebProgressListener,
     Ci.nsIWebProgressListener2,
     Ci.nsISupportsWeakReference,

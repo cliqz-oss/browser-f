@@ -2,8 +2,11 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 #ifndef nsHtml5StreamParserPtr_h
 #define nsHtml5StreamParserPtr_h
+
+#include "nsHtml5StreamParser.h"
 #include "nsThreadUtils.h"
 #include "mozilla/dom/DocGroup.h"
 
@@ -24,6 +27,7 @@ public:
     return NS_OK;
   }
 };
+
 /**
  * Like nsRefPtr except release is proxied to the main
  * thread. Mostly copied from nsRefPtr.
@@ -127,19 +131,20 @@ public:
   }
   nsHtml5StreamParser* get() const
   /*
-            Prefer the implicit conversion provided automatically by |operator nsHtml5StreamParser*() const|.
-            Use |get()| to resolve ambiguity or to get a castable pointer.
+            Prefer the implicit conversion provided automatically by |operator
+     nsHtml5StreamParser*() const|. Use |get()| to resolve ambiguity or to get a
+     castable pointer.
           */
   {
     return const_cast<nsHtml5StreamParser*>(mRawPtr);
   }
   operator nsHtml5StreamParser*() const
   /*
-            ...makes an |nsHtml5StreamParserPtr| act like its underlying raw pointer type whenever it
-            is used in a context where a raw pointer is expected.  It is this operator
-            that makes an |nsHtml5StreamParserPtr| substitutable for a raw pointer.
-            Prefer the implicit use of this operator to calling |get()|, except where
-            necessary to resolve ambiguity.
+            ...makes an |nsHtml5StreamParserPtr| act like its underlying raw
+     pointer type whenever it is used in a context where a raw pointer is
+     expected.  It is this operator that makes an |nsHtml5StreamParserPtr|
+     substitutable for a raw pointer. Prefer the implicit use of this operator
+     to calling |get()|, except where necessary to resolve ambiguity.
           */
   {
     return get();
@@ -202,11 +207,11 @@ class nsHtml5StreamParserPtrGetterAddRefs
       argument list of calls that return COM interface pointers, e.g.,
         nsHtml5StreamParserPtr<IFoo> fooP;
         ...->GetAddRefedPointer(getter_AddRefs(fooP))
-      DO NOT USE THIS TYPE DIRECTLY IN YOUR CODE.  Use |getter_AddRefs()| instead.
-      When initialized with a |nsHtml5StreamParserPtr|, as in the example above, it returns
-      a |void**|, a |T**|, or an |nsISupports**| as needed, that the
-      outer call (|GetAddRefedPointer| in this case) can fill in.
-      This type should be a nested class inside |nsHtml5StreamParserPtr<T>|.
+      DO NOT USE THIS TYPE DIRECTLY IN YOUR CODE.  Use |getter_AddRefs()|
+   instead. When initialized with a |nsHtml5StreamParserPtr|, as in the example
+   above, it returns a |void**|, a |T**|, or an |nsISupports**| as needed, that
+   the outer call (|GetAddRefedPointer| in this case) can fill in. This type
+   should be a nested class inside |nsHtml5StreamParserPtr<T>|.
     */
 {
 public:
@@ -233,7 +238,7 @@ private:
 inline nsHtml5StreamParserPtrGetterAddRefs
 getter_AddRefs(nsHtml5StreamParserPtr& aSmartPtr)
 /*
-      Used around a |nsHtml5StreamParserPtr| when 
+      Used around a |nsHtml5StreamParserPtr| when
       ...makes the class |nsHtml5StreamParserPtrGetterAddRefs| invisible.
     */
 {
@@ -265,4 +270,5 @@ operator!=(decltype(nullptr), const nsHtml5StreamParserPtr& rhs)
 {
   return nullptr != rhs.get();
 }
+
 #endif // !defined(nsHtml5StreamParserPtr_h)

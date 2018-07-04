@@ -8,7 +8,7 @@ esid: sec-function-definitions-runtime-semantics-instantiatefunctionobject
 features: [default-parameters]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     FunctionDeclaration :
@@ -60,6 +60,7 @@ info: |
       ...BindingPattern[?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 function f(...x = []) {
   

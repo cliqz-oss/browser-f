@@ -2,12 +2,15 @@
 const BASE = getRootDirectory(gTestPath)
   .replace("chrome://mochitests/content/", "https://example.com/");
 
-Cu.import("resource:///modules/ExtensionsUI.jsm");
+ChromeUtils.import("resource:///modules/ExtensionsUI.jsm");
 XPCOMUtils.defineLazyGetter(this, "Management", () => {
-  const {Management} = Components.utils.import("resource://gre/modules/Extension.jsm", {});
+  // eslint-disable-next-line no-shadow
+  const {Management} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
   return Management;
 });
 
+ChromeUtils.import("resource://testing-common/CustomizableUITestUtils.jsm", this);
+let gCUITestUtils = new CustomizableUITestUtils(window);
 
 /**
  * Wait for the given PopupNotification to display
@@ -71,7 +74,7 @@ function promiseInstallEvent(addon, event) {
  *          object as the resolution value.
  */
 async function promiseInstallAddon(url) {
-  let install = await AddonManager.getInstallForURL(url, null, "application/x-xpinstall");
+  let install = await AddonManager.getInstallForURL(url, "application/x-xpinstall");
   install.install();
 
   let addon = await new Promise(resolve => {
@@ -139,7 +142,7 @@ function is_hidden(element) {
   if (style.visibility != "visible")
     return true;
   if (style.display == "-moz-popup")
-    return ["hiding", "closed"].indexOf(element.state) != -1;
+    return ["hiding", "closed"].includes(element.state);
 
   // Hiding a parent element will hide all its children
   if (element.parentNode != element.ownerDocument)
@@ -315,8 +318,10 @@ async function testInstallMethod(installFn, telemetryBase) {
         ["webextPerms.hostDescription.wildcard", "wildcard.domain"],
         ["webextPerms.hostDescription.oneSite", "singlehost.domain"],
         ["webextPerms.description.nativeMessaging"],
-        ["webextPerms.description.tabs"],
+        // The below permissions are deliberately in this order as permissions
+        // are sorted alphabetically by the permission string to match AMO.
         ["webextPerms.description.history"],
+        ["webextPerms.description.tabs"],
       ]);
     } else if (filename == NO_PERMS_XPI) {
       checkNotification(panel, isDefaultIcon, []);
@@ -350,7 +355,7 @@ async function testInstallMethod(installFn, telemetryBase) {
       addon.uninstall();
     }
 
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
   }
 
   // A few different tests for each installation method:
@@ -468,7 +473,7 @@ async function interactiveUpdateTest(autoUpdate, checkFn) {
 
   await checkPromise;
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
   addon.uninstall();
   await SpecialPowers.popPrefEnv();
 }

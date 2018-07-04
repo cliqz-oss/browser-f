@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from marionette_driver import Actions, By, Wait
 from marionette_driver.keys import Keys
 
@@ -42,8 +44,8 @@ class TestSwitchToWindowContent(WindowManagerMixin, MarionetteTestCase):
                   Components.utils.import("resource://gre/modules/Services.jsm");
                   win = Services.wm.getMostRecentWindow("navigator:browser");
                 } else {
-                  Components.utils.import("resource:///modules/RecentWindow.jsm");
-                  win = RecentWindow.getMostRecentBrowserWindow();
+                  Components.utils.import("resource:///modules/BrowserWindowTracker.jsm");
+                  win = BrowserWindowTracker.getTopWindow();
                 }
 
                 let tabBrowser = null;

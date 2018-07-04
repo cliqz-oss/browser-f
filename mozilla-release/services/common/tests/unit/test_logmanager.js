@@ -4,13 +4,9 @@
 // NOTE: The sync test_errorhandler_* tests have quite good coverage for
 // other aspects of this.
 
-Cu.import("resource://services-common/logmanager.js");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-
-function run_test() {
-  run_next_test();
-}
+ChromeUtils.import("resource://services-common/logmanager.js");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
 
 // Returns an array of [consoleAppender, dumpAppender, [fileAppenders]] for
 // the specified log.  Note that fileAppenders will usually have length=1
@@ -114,7 +110,7 @@ function checkLogFile(prefix) {
   } else {
     // expecting 1 file.
     ok(entries.hasMoreElements());
-    let logfile = entries.getNext().QueryInterface(Ci.nsILocalFile);
+    let logfile = entries.getNext().QueryInterface(Ci.nsIFile);
     equal(logfile.leafName.slice(-4), ".txt");
     ok(logfile.leafName.startsWith(prefix + "-test-"), logfile.leafName);
     // and remove it ready for the next check.
@@ -224,6 +220,40 @@ add_task(async function test_logFileError() {
   log.info("an info message");
   await lm.resetFileLog();
   checkLogFile(null);
+
+  lm.finalize();
+});
+
+function countLogFiles() {
+  let logsdir = FileUtils.getDir("ProfD", ["weave", "logs"], true);
+  let count = 0;
+  let entries = logsdir.directoryEntries;
+  while (entries.hasMoreElements()) {
+    count += 1;
+    entries.getNext();
+  }
+  return count;
+}
+
+// Test that removeAllLogs removes all log files.
+add_task(async function test_logFileError() {
+  Services.prefs.setBoolPref("log-manager.test.log.appender.file.logOnError", true);
+  Services.prefs.setBoolPref("log-manager.test.log.appender.file.logOnSuccess", true);
+
+  let lm = new LogManager("log-manager.test.", ["TestLog2"], "test");
+
+  let log = Log.repository.getLogger("TestLog2");
+  log.info("an info message");
+  let reason = await lm.resetFileLog();
+  Assert.equal(reason, lm.SUCCESS_LOG_WRITTEN, "success log was written.");
+
+  log.error("an error message");
+  reason = await lm.resetFileLog();
+  Assert.equal(reason, lm.ERROR_LOG_WRITTEN);
+
+  Assert.equal(countLogFiles(), 2, "expect 2 log files");
+  await lm.removeAllLogs();
+  Assert.equal(countLogFiles(), 0, "should be no log files after removing them");
 
   lm.finalize();
 });

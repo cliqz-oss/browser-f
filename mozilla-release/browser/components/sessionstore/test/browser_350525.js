@@ -4,7 +4,7 @@ add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [["dom.ipc.processCount", 1]]
   });
-})
+});
 
 add_task(async function() {
   /** Test for Bug 350525 **/
@@ -38,7 +38,7 @@ add_task(async function() {
   ok(test(() => ss.deleteWindowValue(window, key)), "delete non-existent window value");
 
   /**
-   * setTabValue, et al.
+   * setCustomTabValue, et al.
    */
   key = "Unique name: " + Math.random();
   value = "Unique value: " + Date.now();
@@ -46,22 +46,22 @@ add_task(async function() {
   tab.linkedBrowser.stop();
 
   // test adding
-  ok(test(() => ss.setTabValue(tab, key, value)), "store a tab value");
+  ok(test(() => ss.setCustomTabValue(tab, key, value)), "store a tab value");
 
   // test retrieving
-  is(ss.getTabValue(tab, key), value, "stored tab value match original");
+  is(ss.getCustomTabValue(tab, key), value, "stored tab value match original");
 
   // test deleting
-  ok(test(() => ss.deleteTabValue(tab, key)), "delete the tab value");
+  ok(test(() => ss.deleteCustomTabValue(tab, key)), "delete the tab value");
 
   // value should not exist post-delete
-  is(ss.getTabValue(tab, key), "", "tab value was deleted");
+  is(ss.getCustomTabValue(tab, key), "", "tab value was deleted");
 
   // test deleting a non-existent value
-  ok(test(() => ss.deleteTabValue(tab, key)), "delete non-existent tab value");
+  ok(test(() => ss.deleteCustomTabValue(tab, key)), "delete non-existent tab value");
 
   // clean up
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
 
   /**
    * getClosedTabCount, undoCloseTab
@@ -69,21 +69,21 @@ add_task(async function() {
 
   // get closed tab count
   let count = ss.getClosedTabCount(window);
-  let max_tabs_undo = gPrefService.getIntPref("browser.sessionstore.max_tabs_undo");
+  let max_tabs_undo = Services.prefs.getIntPref("browser.sessionstore.max_tabs_undo");
   ok(0 <= count && count <= max_tabs_undo,
      "getClosedTabCount returns zero or at most max_tabs_undo");
 
   // create a new tab
-  let testURL = "about:";
+  let testURL = "about:mozilla";
   tab = BrowserTestUtils.addTab(gBrowser, testURL);
   await promiseBrowserLoaded(tab.linkedBrowser);
 
   // make sure that the next closed tab will increase getClosedTabCount
-  gPrefService.setIntPref("browser.sessionstore.max_tabs_undo", max_tabs_undo + 1);
-  registerCleanupFunction(() => gPrefService.clearUserPref("browser.sessionstore.max_tabs_undo"));
+  Services.prefs.setIntPref("browser.sessionstore.max_tabs_undo", max_tabs_undo + 1);
+  registerCleanupFunction(() => Services.prefs.clearUserPref("browser.sessionstore.max_tabs_undo"));
 
   // remove tab
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
 
   // getClosedTabCount
   let newcount = ss.getClosedTabCount(window);
@@ -91,7 +91,7 @@ add_task(async function() {
 
   // undoCloseTab
   tab = test(() => ss.undoCloseTab(window, 0));
-  ok(tab, "undoCloseTab doesn't throw")
+  ok(tab, "undoCloseTab doesn't throw");
 
   await promiseTabRestored(tab);
   is(tab.linkedBrowser.currentURI.spec, testURL, "correct tab was reopened");

@@ -9,10 +9,10 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/dom/SVGLengthBinding.h"
 #include "nsCoord.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsError.h"
-#include "nsIDOMSVGLength.h"
 #include "nsISMILAttr.h"
 #include "nsMathUtils.h"
 #include "nsSVGElement.h"
@@ -97,7 +97,8 @@ public:
   void Init(uint8_t aCtxType = SVGContentUtils::XY,
             uint8_t aAttrEnum = 0xff,
             float aValue = 0,
-            uint8_t aUnitType = nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER) {
+            uint8_t aUnitType =
+              mozilla::dom::SVGLengthBinding::SVG_LENGTHTYPE_NUMBER) {
     mAnimVal = mBaseVal = aValue;
     mSpecifiedUnitType = aUnitType;
     mAttrEnum = aAttrEnum;
@@ -122,26 +123,27 @@ public:
   void GetAnimValueString(nsAString& aValue) const;
 
   float GetBaseValue(nsSVGElement* aSVGElement) const
-    { return mBaseVal / GetUnitScaleFactor(aSVGElement, mSpecifiedUnitType); }
+    { return mBaseVal * GetPixelsPerUnit(aSVGElement, mSpecifiedUnitType); }
 
   float GetAnimValue(nsSVGElement* aSVGElement) const
-    { return mAnimVal / GetUnitScaleFactor(aSVGElement, mSpecifiedUnitType); }
+    { return mAnimVal * GetPixelsPerUnit(aSVGElement, mSpecifiedUnitType); }
   float GetAnimValue(nsIFrame* aFrame) const
-    { return mAnimVal / GetUnitScaleFactor(aFrame, mSpecifiedUnitType); }
+    { return mAnimVal * GetPixelsPerUnit(aFrame, mSpecifiedUnitType); }
   float GetAnimValue(SVGViewportElement* aCtx) const
-    { return mAnimVal / GetUnitScaleFactor(aCtx, mSpecifiedUnitType); }
+    { return mAnimVal * GetPixelsPerUnit(aCtx, mSpecifiedUnitType); }
   float GetAnimValue(const UserSpaceMetrics& aMetrics) const
-    { return mAnimVal / GetUnitScaleFactor(aMetrics, mSpecifiedUnitType); }
+    { return mAnimVal * GetPixelsPerUnit(aMetrics, mSpecifiedUnitType); }
 
   uint8_t GetCtxType() const { return mCtxType; }
   uint8_t GetSpecifiedUnitType() const { return mSpecifiedUnitType; }
   bool IsPercentage() const
-    { return mSpecifiedUnitType == nsIDOMSVGLength::SVG_LENGTHTYPE_PERCENTAGE; }
+    { return mSpecifiedUnitType ==
+        mozilla::dom::SVGLengthBinding::SVG_LENGTHTYPE_PERCENTAGE; }
   float GetAnimValInSpecifiedUnits() const { return mAnimVal; }
   float GetBaseValInSpecifiedUnits() const { return mBaseVal; }
 
   float GetBaseValue(SVGViewportElement* aCtx) const
-    { return mBaseVal / GetUnitScaleFactor(aCtx, mSpecifiedUnitType); }
+    { return mBaseVal * GetPixelsPerUnit(aCtx, mSpecifiedUnitType); }
 
   bool HasBaseVal() const {
     return mIsBaseSet;
@@ -150,7 +152,7 @@ public:
   // set (either by animation, or by taking on the base value which has been
   // explicitly set by markup or a DOM call), false otherwise.
   // If this returns false, the animated value is still valid, that is,
-  // useable, and represents the default base value of the attribute.
+  // usable, and represents the default base value of the attribute.
   bool IsExplicitlySet() const
     { return mIsAnimated || mIsBaseSet; }
 
@@ -168,16 +170,23 @@ private:
   bool mIsAnimated:1;
   bool mIsBaseSet:1;
 
-  float GetUnitScaleFactor(nsIFrame* aFrame, uint8_t aUnitType) const;
-  float GetUnitScaleFactor(const UserSpaceMetrics& aMetrics, uint8_t aUnitType) const;
-  float GetUnitScaleFactor(nsSVGElement* aSVGElement, uint8_t aUnitType) const;
-  float GetUnitScaleFactor(SVGViewportElement* aCtx, uint8_t aUnitType) const;
+  // These APIs returns the number of user-unit pixels per unit of the
+  // given type, in a given context (frame/element/etc).
+  float GetPixelsPerUnit(nsIFrame* aFrame, uint8_t aUnitType) const;
+  float GetPixelsPerUnit(const UserSpaceMetrics& aMetrics, uint8_t aUnitType) const;
+  float GetPixelsPerUnit(nsSVGElement* aSVGElement, uint8_t aUnitType) const;
+  float GetPixelsPerUnit(SVGViewportElement* aCtx, uint8_t aUnitType) const;
 
-  // SetBaseValue and SetAnimValue set the value in user units
-  void SetBaseValue(float aValue, nsSVGElement *aSVGElement, bool aDoSetAttr);
+  // SetBaseValue and SetAnimValue set the value in user units. This may fail
+  // if unit conversion fails e.g. conversion to ex or em units where the
+  // font-size is 0.
+  // SetBaseValueInSpecifiedUnits and SetAnimValueInSpecifiedUnits do not
+  // perform unit conversion and are therefore infallible.
+  nsresult SetBaseValue(float aValue, nsSVGElement *aSVGElement,
+                        bool aDoSetAttr);
   void SetBaseValueInSpecifiedUnits(float aValue, nsSVGElement *aSVGElement,
                                     bool aDoSetAttr);
-  void SetAnimValue(float aValue, nsSVGElement *aSVGElement);
+  nsresult SetAnimValue(float aValue, nsSVGElement *aSVGElement);
   void SetAnimValueInSpecifiedUnits(float aValue, nsSVGElement *aSVGElement);
   nsresult NewValueSpecifiedUnits(uint16_t aUnitType, float aValue,
                                   nsSVGElement *aSVGElement);

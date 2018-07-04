@@ -14,7 +14,6 @@
 #include "nsISupportsImpl.h"
 #include "nsTArray.h"
 #include "nsWrapperCache.h"
-#include "nsIIPCBackgroundChildCreateCallback.h"
 
 class nsIGlobalObject;
 
@@ -30,17 +29,14 @@ namespace dom {
 
 enum class CacheStorageNamespace : uint8_t;
 class Promise;
-
-namespace workers {
-  class WorkerPrivate;
-} // namespace workers
+class WorkerPrivate;
 
 namespace cache {
 
 class CacheStorageChild;
 class CacheWorkerHolder;
 
-class CacheStorage final : public nsIIPCBackgroundChildCreateCallback
+class CacheStorage final : public nsISupports
                          , public nsWrapperCache
                          , public TypeUtils
 {
@@ -54,15 +50,15 @@ public:
 
   static already_AddRefed<CacheStorage>
   CreateOnWorker(Namespace aNamespace, nsIGlobalObject* aGlobal,
-                 workers::WorkerPrivate* aWorkerPrivate, ErrorResult& aRv);
+                 WorkerPrivate* aWorkerPrivate, ErrorResult& aRv);
 
   static bool
   DefineCaches(JSContext* aCx, JS::Handle<JSObject*> aGlobal);
 
   // webidl interface methods
-  already_AddRefed<Promise> Match(const RequestOrUSVString& aRequest,
-                                  const CacheQueryOptions& aOptions,
-                                  ErrorResult& aRv);
+  already_AddRefed<Promise>
+  Match(JSContext* aCx, const RequestOrUSVString& aRequest,
+        const CacheQueryOptions& aOptions, ErrorResult& aRv);
   already_AddRefed<Promise> Has(const nsAString& aKey, ErrorResult& aRv);
   already_AddRefed<Promise> Open(const nsAString& aKey, ErrorResult& aRv);
   already_AddRefed<Promise> Delete(const nsAString& aKey, ErrorResult& aRv);
@@ -74,14 +70,8 @@ public:
               nsIPrincipal* aPrincipal, ErrorResult& aRv);
 
   // binding methods
-  static bool PrefEnabled(JSContext* aCx, JSObject* aObj);
-
   nsISupports* GetParentObject() const;
   virtual JSObject* WrapObject(JSContext* aContext, JS::Handle<JSObject*> aGivenProto) override;
-
-  // nsIIPCbackgroundChildCreateCallback methods
-  virtual void ActorCreated(PBackgroundChild* aActor) override;
-  virtual void ActorFailed() override;
 
   // Called when CacheStorageChild actor is being destroyed
   void DestroyInternal(CacheStorageChild* aActor);
@@ -102,25 +92,24 @@ private:
   explicit CacheStorage(nsresult aFailureResult);
   ~CacheStorage();
 
-  void MaybeRunPendingRequests();
+  struct Entry;
+  void RunRequest(nsAutoPtr<Entry>&& aEntry);
+
+  OpenMode
+  GetOpenMode() const;
 
   const Namespace mNamespace;
   nsCOMPtr<nsIGlobalObject> mGlobal;
   UniquePtr<mozilla::ipc::PrincipalInfo> mPrincipalInfo;
-  RefPtr<CacheWorkerHolder> mWorkerHolder;
 
   // weak ref cleared in DestroyInternal
   CacheStorageChild* mActor;
-
-  struct Entry;
-  nsTArray<nsAutoPtr<Entry>> mPendingRequests;
 
   nsresult mStatus;
 
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(CacheStorage,
-                                           nsIIPCBackgroundChildCreateCallback)
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(CacheStorage)
 };
 
 } // namespace cache

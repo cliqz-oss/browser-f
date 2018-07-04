@@ -3,9 +3,9 @@
 // whether there is an autocomplete entry for the private search.
 
 add_task(async function() {
-  // Don't use about:home as the homepage for new windows
-  Services.prefs.setIntPref("browser.startup.page", 0);
-  registerCleanupFunction(() => Services.prefs.clearUserPref("browser.startup.page"));
+  await SpecialPowers.pushPrefEnv({ set: [
+    ["browser.search.widget.inNavBar", true],
+  ]});
 
   let windowsToClose = [];
 
@@ -63,14 +63,8 @@ add_task(async function() {
 });
 
 function getMenuEntries(searchBar) {
-  let entries = [];
-  let autocompleteMenu = searchBar.textbox.popup;
   // Could perhaps pull values directly from the controller, but it seems
-  // more reliable to test the values that are actually in the tree?
-  let column = autocompleteMenu.tree.columns[0];
-  let numRows = autocompleteMenu.tree.view.rowCount;
-  for (let i = 0; i < numRows; i++) {
-    entries.push(autocompleteMenu.tree.view.getValueAt(i, column));
-  }
-  return entries;
+  // more reliable to test the values that are actually in the richlistbox?
+  return Array.map(searchBar.textbox.popup.richlistbox.children,
+                   item => item.getAttribute("ac-value"));
 }

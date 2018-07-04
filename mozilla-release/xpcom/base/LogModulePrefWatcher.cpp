@@ -8,6 +8,7 @@
 
 #include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
+#include "nsMemory.h"
 #include "nsString.h"
 #include "nsXULAppAPI.h"
 #include "base/process_util.h"
@@ -73,7 +74,7 @@ LoadPrefValue(const char* aName)
 
       // If the pref value doesn't have a PID placeholder, append it to the end.
       if (!strstr(prefValue.get(), "%PID")) {
-        prefValue.Append("%PID");
+        prefValue.AppendLiteral("%PID");
       }
 
       LogModule::SetLogFile(prefValue.BeginReading());

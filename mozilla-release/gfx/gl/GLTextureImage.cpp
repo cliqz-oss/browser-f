@@ -149,6 +149,9 @@ BasicTextureImage::DirectUpdate(gfx::DataSourceSurface* aSurf, const nsIntRegion
                                &uploadSize,
                                needInit,
                                aFrom);
+    if (mTextureFormat == SurfaceFormat::UNKNOWN) {
+        return false;
+    }
 
     if (uploadSize > 0) {
         UpdateUploadSize(uploadSize);
@@ -285,8 +288,8 @@ TiledTextureImage::DirectUpdate(gfx::DataSourceSurface* aSurf, const nsIntRegion
     BeginBigImageIteration();
     do {
         IntRect tileRect = GetSrcTileRect();
-        int xPos = tileRect.x;
-        int yPos = tileRect.y;
+        int xPos = tileRect.X();
+        int yPos = tileRect.Y();
 
         nsIntRegion tileRegion;
         tileRegion.And(region, tileRect); // intersect with tile
@@ -359,9 +362,9 @@ gfx::IntRect TiledTextureImage::GetSrcTileRect()
 {
     gfx::IntRect rect = GetTileRect();
     const bool needsYFlip = mFlags & OriginBottomLeft;
-    unsigned int srcY = needsYFlip ? mSize.height - rect.height - rect.y
-                                   : rect.y;
-    return gfx::IntRect(rect.x, srcY, rect.width, rect.height);
+    unsigned int srcY = needsYFlip ? mSize.height - rect.Height() - rect.Y()
+                                   : rect.Y();
+    return gfx::IntRect(rect.X(), srcY, rect.Width(), rect.Height());
 }
 
 void
@@ -460,7 +463,7 @@ void TiledTextureImage::Resize(const gfx::IntSize& aSize)
     // Prune any unused tiles at the end of the store.
     unsigned int length = mImages.Length();
     for (; i < length; i++)
-      mImages.RemoveElementAt(mImages.Length()-1);
+      mImages.RemoveLastElement();
 
     // Reset tile-store properties.
     mRows = rows;

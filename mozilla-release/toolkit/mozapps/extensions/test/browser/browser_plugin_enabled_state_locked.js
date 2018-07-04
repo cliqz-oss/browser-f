@@ -4,7 +4,6 @@
 
 // Tests that state menu is displayed correctly (enabled or disabled) in the add-on manager
 // when the preference is unlocked / locked
-var {classes: Cc, interfaces: Ci} = Components;
 const gIsWindows = ("@mozilla.org/windows-registry-key;1" in Cc);
 const gIsLinux = ("@mozilla.org/gnome-gconf-service;1" in Cc) ||
   ("@mozilla.org/gio-service;1" in Cc);
@@ -28,9 +27,7 @@ registerCleanupFunction(() => {
 });
 
 function getPlugins() {
-  return new Promise(resolve => {
-    AddonManager.getAddonsByTypes(["plugin"], plugins => resolve(plugins));
-  });
+  return AddonManager.getAddonsByTypes(["plugin"]);
 }
 
 function getTestPlugin(aPlugins) {
@@ -74,14 +71,13 @@ function checkStateMenuDetail(locked) {
   is_element_visible(details, "Details link should be visible.");
   EventUtils.synthesizeMouseAtCenter(details, {}, gManagerWindow);
 
-  return new Promise(resolve => {
-    wait_for_view_load(gManagerWindow, function() {
-      let menuList = gManagerWindow.document.getElementById("detail-state-menulist");
-      is_element_visible(menuList, "Details state menu should be visible.");
-      Assert.equal(menuList.disabled, locked,
-        "Details state menu enabled state should be correct.");
-      resolve();
-    });
+  return new Promise(async resolve => {
+    await wait_for_view_load(gManagerWindow);
+    let menuList = gManagerWindow.document.getElementById("detail-state-menulist");
+    is_element_visible(menuList, "Details state menu should be visible.");
+    Assert.equal(menuList.disabled, locked,
+      "Details state menu enabled state should be correct.");
+    resolve();
   });
 }
 

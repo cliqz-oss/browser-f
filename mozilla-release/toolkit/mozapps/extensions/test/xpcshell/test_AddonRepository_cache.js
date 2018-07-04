@@ -4,25 +4,82 @@
 
 // Tests caching in AddonRepository.jsm
 
-Components.utils.import("resource://gre/modules/addons/AddonRepository.jsm");
+ChromeUtils.import("resource://gre/modules/addons/AddonRepository.jsm");
 
 var gServer;
 
-const PORT      = 4444;
-const BASE_URL  = "http://localhost:" + PORT;
+const HOST      = "example.com";
+const BASE_URL  = "http://example.com";
 
 const PREF_GETADDONS_CACHE_ENABLED = "extensions.getAddons.cache.enabled";
 const PREF_GETADDONS_CACHE_TYPES   = "extensions.getAddons.cache.types";
-const GETADDONS_RESULTS            = BASE_URL + "/data/test_AddonRepository_cache.xml";
-const GETADDONS_EMPTY              = BASE_URL + "/data/test_AddonRepository_empty.xml";
-const GETADDONS_FAILED             = BASE_URL + "/data/test_AddonRepository_failed.xml";
+const GETADDONS_RESULTS            = BASE_URL + "/data/test_AddonRepository_cache.json";
+const COMPAT_RESULTS               = BASE_URL + "/data/test_AddonRepository_cache_compat.json";
+const EMPTY_RESULT                 = BASE_URL + "/data/test_AddonRepository_empty.json";
+const FAILED_RESULT                = BASE_URL + "/data/test_AddonRepository_fail.json";
 
 const FILE_DATABASE = "addons.json";
-const ADDON_NAMES = ["test_AddonRepository_1",
-                     "test_AddonRepository_2",
-                     "test_AddonRepository_3"];
-const ADDON_IDS = ADDON_NAMES.map(aName => aName + "@tests.mozilla.org");
-const ADDON_FILES = ADDON_NAMES.map(do_get_addon);
+
+const ADDONS = [
+  {
+    "install.rdf": {
+      id: "test_AddonRepository_1@tests.mozilla.org",
+      version: "1.1",
+      bootstrap: true,
+
+      name: "XPI Add-on 1",
+      description: "XPI Add-on 1 - Description",
+      creator: "XPI Add-on 1 - Creator",
+      developer: ["XPI Add-on 1 - First Developer",
+                  "XPI Add-on 1 - Second Developer"],
+      translator: ["XPI Add-on 1 - First Translator",
+                   "XPI Add-on 1 - Second Translator"],
+      contributor: ["XPI Add-on 1 - First Contributor",
+                    "XPI Add-on 1 - Second Contributor"],
+      homepageURL: "http://example.com/xpi/1/homepage.html",
+      optionsURL: "http://example.com/xpi/1/options.html",
+      aboutURL: "http://example.com/xpi/1/about.html",
+      iconURL: "http://example.com/xpi/1/icon.png",
+
+      targetApplications: [{
+        id: "xpcshell@tests.mozilla.org",
+        minVersion: "1",
+        maxVersion: "1"}],
+    },
+  },
+  {
+    "manifest.json": {
+      manifest_version: 2,
+      name: "XPI Add-on 2",
+      version: "1.2",
+      applications: {
+        gecko: {
+          id: "test_AddonRepository_2@tests.mozilla.org",
+        },
+      },
+      theme: {},
+    },
+  },
+  {
+    "manifest.json": {
+      manifest_version: 2,
+      name: "XPI Add-on 3",
+      version: "1.3",
+      applications: {
+        gecko: {
+          id: "test_AddonRepository_3@tests.mozilla.org",
+        },
+      },
+      theme: {},
+      icons: {32: "icon.png"},
+    },
+    "icon.png": "",
+    "preview.png": "",
+  },
+];
+
+const ADDON_IDS = ADDONS.map(addon => addon["install.rdf"] ? addon["install.rdf"].id : addon["manifest.json"].applications.gecko.id);
+const ADDON_FILES = ADDONS.map(addon => AddonTestUtils.createTempXPIFile(addon));
 
 const PREF_ADDON0_CACHE_ENABLED = "extensions." + ADDON_IDS[0] + ".getAddons.cache.enabled";
 const PREF_ADDON1_CACHE_ENABLED = "extensions." + ADDON_IDS[1] + ".getAddons.cache.enabled";
@@ -32,13 +89,11 @@ const PREF_ADDON1_CACHE_ENABLED = "extensions." + ADDON_IDS[1] + ".getAddons.cac
 const ADDON_PROPERTIES = ["id", "type", "name", "version", "creator",
                           "developers", "translators", "contributors",
                           "description", "fullDescription",
-                          "developerComments", "eula", "iconURL", "icons",
+                          "iconURL", "icons",
                           "screenshots", "homepageURL", "supportURL",
                           "optionsURL", "aboutURL", "contributionURL",
-                          "contributionAmount", "averageRating", "reviewCount",
-                          "reviewURL", "totalDownloads", "weeklyDownloads",
-                          "dailyUsers", "sourceURI", "repositoryStatus",
-                          "compatibilityOverrides"];
+                          "averageRating", "reviewCount",
+                          "reviewURL", "weeklyDownloads", "sourceURI"];
 
 // The size and updateDate properties are annoying to test for XPI add-ons.
 // However, since we only care about whether the repository value vs. the
@@ -75,37 +130,16 @@ const REPOSITORY_ADDONS = [{
                           }],
   description:            "Repo Add-on 1 - Description\nSecond line",
   fullDescription:        "Repo Add-on 1 - Full Description & some extra",
-  developerComments:      "Repo Add-on 1\nDeveloper Comments",
-  eula:                   "Repo Add-on 1 - EULA",
   iconURL:                BASE_URL + "/repo/1/icon.png",
   icons:                  { "32": BASE_URL + "/repo/1/icon.png" },
   homepageURL:            BASE_URL + "/repo/1/homepage.html",
   supportURL:             BASE_URL + "/repo/1/support.html",
   contributionURL:        BASE_URL + "/repo/1/meetDevelopers.html",
-  contributionAmount:     "$11.11",
   averageRating:          1,
   reviewCount:            1111,
   reviewURL:              BASE_URL + "/repo/1/review.html",
-  totalDownloads:         2221,
   weeklyDownloads:        3331,
-  dailyUsers:             4441,
-  sourceURI:              BASE_URL + "/repo/1/install.xpi",
-  repositoryStatus:       4,
-  compatibilityOverrides: [{
-                            type: "incompatible",
-                            minVersion: 0.1,
-                            maxVersion: 0.2,
-                            appID: "xpcshell@tests.mozilla.org",
-                            appMinVersion: 3.0,
-                            appMaxVersion: 4.0
-                          }, {
-                            type: "incompatible",
-                            minVersion: 0.2,
-                            maxVersion: 0.3,
-                            appID: "xpcshell@tests.mozilla.org",
-                            appMinVersion: 5.0,
-                            appMaxVersion: 6.0
-                          }]
+  sourceURI:              BASE_URL + "/repo/1/install.xpi"
 }, {
   id:                     ADDON_IDS[1],
   type:                   "theme",
@@ -124,8 +158,6 @@ const REPOSITORY_ADDONS = [{
                           }],
   description:            "Repo Add-on 2 - Description",
   fullDescription:        "Repo Add-on 2 - Full Description",
-  developerComments:      "Repo Add-on 2 - Developer Comments",
-  eula:                   "Repo Add-on 2 - EULA",
   iconURL:                BASE_URL + "/repo/2/icon.png",
   icons:                  { "32": BASE_URL + "/repo/2/icon.png" },
   screenshots:            [{
@@ -140,15 +172,11 @@ const REPOSITORY_ADDONS = [{
   homepageURL:            BASE_URL + "/repo/2/homepage.html",
   supportURL:             BASE_URL + "/repo/2/support.html",
   contributionURL:        BASE_URL + "/repo/2/meetDevelopers.html",
-  contributionAmount:     null,
   averageRating:          2,
   reviewCount:            1112,
   reviewURL:              BASE_URL + "/repo/2/review.html",
-  totalDownloads:         2222,
   weeklyDownloads:        3332,
-  dailyUsers:             4442,
   sourceURI:              BASE_URL + "/repo/2/install.xpi",
-  repositoryStatus:       9
 }, {
   id:                     ADDON_IDS[2],
   type:                   "theme",
@@ -229,7 +257,6 @@ const WITH_CACHE = [{
                            { name: "XPI Add-on 1 - Second Contributor" }],
   description:            "XPI Add-on 1 - Description",
   fullDescription:        "Repo Add-on 1 - Full Description & some extra",
-  developerComments:      "Repo Add-on 1\nDeveloper Comments",
   eula:                   "Repo Add-on 1 - EULA",
   iconURL:                BASE_URL + "/xpi/1/icon.png",
   icons:                  { "32": BASE_URL + "/xpi/1/icon.png" },
@@ -247,21 +274,6 @@ const WITH_CACHE = [{
   dailyUsers:             4441,
   sourceURI:              NetUtil.newURI(ADDON_FILES[0]).spec,
   repositoryStatus:       4,
-  compatibilityOverrides: [{
-                            type: "incompatible",
-                            minVersion: 0.1,
-                            maxVersion: 0.2,
-                            appID: "xpcshell@tests.mozilla.org",
-                            appMinVersion: 3.0,
-                            appMaxVersion: 4.0
-                          }, {
-                            type: "incompatible",
-                            minVersion: 0.2,
-                            maxVersion: 0.3,
-                            appID: "xpcshell@tests.mozilla.org",
-                            appMinVersion: 5.0,
-                            appMaxVersion: 6.0
-                          }]
 }, {
   id:                     ADDON_IDS[1],
   type:                   "theme",
@@ -280,7 +292,6 @@ const WITH_CACHE = [{
                           }],
   description:            "Repo Add-on 2 - Description",
   fullDescription:        "Repo Add-on 2 - Full Description",
-  developerComments:      "Repo Add-on 2 - Developer Comments",
   eula:                   "Repo Add-on 2 - EULA",
   iconURL:                BASE_URL + "/repo/2/icon.png",
   icons:                  { "32": BASE_URL + "/repo/2/icon.png" },
@@ -346,7 +357,6 @@ const WITH_EXTENSION_CACHE = [{
                            { name: "XPI Add-on 1 - Second Contributor" }],
   description:            "XPI Add-on 1 - Description",
   fullDescription:        "Repo Add-on 1 - Full Description & some extra",
-  developerComments:      "Repo Add-on 1\nDeveloper Comments",
   eula:                   "Repo Add-on 1 - EULA",
   iconURL:                BASE_URL + "/xpi/1/icon.png",
   icons:                  { "32": BASE_URL + "/xpi/1/icon.png" },
@@ -364,21 +374,6 @@ const WITH_EXTENSION_CACHE = [{
   dailyUsers:             4441,
   sourceURI:              NetUtil.newURI(ADDON_FILES[0]).spec,
   repositoryStatus:       4,
-  compatibilityOverrides: [{
-                            type: "incompatible",
-                            minVersion: 0.1,
-                            maxVersion: 0.2,
-                            appID: "xpcshell@tests.mozilla.org",
-                            appMinVersion: 3.0,
-                            appMaxVersion: 4.0
-                          }, {
-                            type: "incompatible",
-                            minVersion: 0.2,
-                            maxVersion: 0.3,
-                            appID: "xpcshell@tests.mozilla.org",
-                            appMinVersion: 5.0,
-                            appMaxVersion: 6.0
-                          }]
 }, {
   id:                     ADDON_IDS[1],
   type:                   "theme",
@@ -424,11 +419,11 @@ function check_results(aActualAddons, aExpectedAddons, aFromRepository) {
   // REPOSITORY values if they are from the repository)
   aActualAddons.forEach(function(aActualAddon) {
     if (aActualAddon.size)
-      do_check_eq(aActualAddon.size === REPOSITORY_SIZE, aFromRepository);
+      Assert.equal(aActualAddon.size === REPOSITORY_SIZE, aFromRepository);
 
     if (aActualAddon.updateDate) {
       let time = aActualAddon.updateDate.getTime();
-      do_check_eq(time === 1000 * REPOSITORY_UPDATEDATE, aFromRepository);
+      Assert.equal(time === 1000 * REPOSITORY_UPDATEDATE, aFromRepository);
     }
   });
 }
@@ -448,7 +443,7 @@ function check_results(aActualAddons, aExpectedAddons, aFromRepository) {
  *         Resolves once the checks are complete
  */
 function check_cache(aExpectedToFind, aExpectedImmediately) {
-  do_check_eq(aExpectedToFind.length, REPOSITORY_ADDONS.length);
+  Assert.equal(aExpectedToFind.length, REPOSITORY_ADDONS.length);
 
   let lookups = [];
 
@@ -459,9 +454,9 @@ function check_cache(aExpectedToFind, aExpectedImmediately) {
       // can't Promise-wrap this because we're also testing whether the callback is
       // sync or async
       AddonRepository.getCachedAddonByID(REPOSITORY_ADDONS[i].id, function(aAddon) {
-        do_check_eq(immediatelyFound, aExpectedImmediately);
+        Assert.equal(immediatelyFound, aExpectedImmediately);
         if (expected == null)
-          do_check_eq(aAddon, null);
+          Assert.equal(aAddon, null);
         else
           check_results([aAddon], [expected], true);
         resolve();
@@ -490,10 +485,6 @@ async function check_initialized_cache(aExpectedToFind) {
   await check_cache(aExpectedToFind, !cacheEnabled);
 }
 
-function run_test() {
-  run_next_test();
-}
-
 add_task(async function setup() {
   // Setup for test
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9");
@@ -504,48 +495,51 @@ add_task(async function setup() {
   await promiseInstallAllFiles(ADDON_FILES);
   await promiseRestartManager();
 
-  gServer = createHttpServer(PORT);
+  gServer = AddonTestUtils.createHttpServer({hosts: [HOST]});
   gServer.registerDirectory("/data/", do_get_file("data"));
 });
 
 // Tests AddonRepository.cacheEnabled
 add_task(async function run_test_1() {
   Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, false);
-  do_check_false(AddonRepository.cacheEnabled);
+  Assert.ok(!AddonRepository.cacheEnabled);
   Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, true);
-  do_check_true(AddonRepository.cacheEnabled);
+  Assert.ok(AddonRepository.cacheEnabled);
 });
 
 // Tests that the cache and database begin as empty
 add_task(async function run_test_2() {
-  do_check_false(gDBFile.exists());
+  Assert.ok(!gDBFile.exists());
   await check_cache([false, false, false], false);
   await AddonRepository.flush();
 });
 
 // Tests repopulateCache when the search fails
 add_task(async function run_test_3() {
-  do_check_true(gDBFile.exists());
+  Assert.ok(gDBFile.exists());
   Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, true);
-  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, GETADDONS_FAILED);
+  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, FAILED_RESULT);
+  Services.prefs.setCharPref(PREF_COMPAT_OVERRIDES, FAILED_RESULT);
 
-  await AddonRepository.repopulateCache();
+  await AddonRepository.backgroundUpdateCheck();
   await check_initialized_cache([false, false, false]);
 });
 
 // Tests repopulateCache when search returns no results
 add_task(async function run_test_4() {
-  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, GETADDONS_EMPTY);
+  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, EMPTY_RESULT);
+  Services.prefs.setCharPref(PREF_COMPAT_OVERRIDES, FAILED_RESULT);
 
-  await AddonRepository.repopulateCache();
+  await AddonRepository.backgroundUpdateCheck();
   await check_initialized_cache([false, false, false]);
 });
 
 // Tests repopulateCache when search returns results
 add_task(async function run_test_5() {
   Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, GETADDONS_RESULTS);
+  Services.prefs.setCharPref(PREF_COMPAT_OVERRIDES, COMPAT_RESULTS);
 
-  await AddonRepository.repopulateCache();
+  await AddonRepository.backgroundUpdateCheck();
   await check_initialized_cache([true, true, true]);
 });
 
@@ -553,7 +547,7 @@ add_task(async function run_test_5() {
 add_task(async function run_test_5_1() {
   Services.prefs.setBoolPref(PREF_ADDON0_CACHE_ENABLED, false);
 
-  await AddonRepository.repopulateCache();
+  await AddonRepository.backgroundUpdateCheck();
 
   // Reset pref for next test
   Services.prefs.setBoolPref(PREF_ADDON0_CACHE_ENABLED, true);
@@ -563,12 +557,12 @@ add_task(async function run_test_5_1() {
 
 // Tests repopulateCache when caching is disabled
 add_task(async function run_test_6() {
-  do_check_true(gDBFile.exists());
+  Assert.ok(gDBFile.exists());
   Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, false);
 
-  await AddonRepository.repopulateCache();
+  await AddonRepository.backgroundUpdateCheck();
   // Database should have been deleted
-  do_check_false(gDBFile.exists());
+  Assert.ok(!gDBFile.exists());
 
   Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, true);
   await check_cache([false, false, false], false);
@@ -577,20 +571,18 @@ add_task(async function run_test_6() {
 
 // Tests cacheAddons when the search fails
 add_task(async function run_test_7() {
-  do_check_true(gDBFile.exists());
-  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, GETADDONS_FAILED);
+  Assert.ok(gDBFile.exists());
+  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, FAILED_RESULT);
 
-  await new Promise((resolve, reject) =>
-    AddonRepository.cacheAddons(ADDON_IDS, resolve));
+  await AddonRepository.cacheAddons(ADDON_IDS);
   await check_initialized_cache([false, false, false]);
 });
 
 // Tests cacheAddons when the search returns no results
 add_task(async function run_test_8() {
-  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, GETADDONS_EMPTY);
+  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, EMPTY_RESULT);
 
-  await new Promise((resolve, reject) =>
-    AddonRepository.cacheAddons(ADDON_IDS, resolve));
+  await AddonRepository.cacheAddons(ADDON_IDS);
   await check_initialized_cache([false, false, false]);
 });
 
@@ -598,8 +590,7 @@ add_task(async function run_test_8() {
 add_task(async function run_test_9() {
   Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, GETADDONS_RESULTS);
 
-  await new Promise((resolve, reject) =>
-    AddonRepository.cacheAddons([ADDON_IDS[0]], resolve));
+  await AddonRepository.cacheAddons([ADDON_IDS[0]]);
   await check_initialized_cache([true, false, false]);
 });
 
@@ -607,8 +598,7 @@ add_task(async function run_test_9() {
 add_task(async function run_test_9_1() {
   Services.prefs.setBoolPref(PREF_ADDON1_CACHE_ENABLED, false);
 
-  await new Promise((resolve, reject) =>
-    AddonRepository.cacheAddons(ADDON_IDS, resolve));
+  await AddonRepository.cacheAddons(ADDON_IDS);
 
   // Reset pref for next test
   Services.prefs.setBoolPref(PREF_ADDON1_CACHE_ENABLED, true);
@@ -618,19 +608,17 @@ add_task(async function run_test_9_1() {
 
 // Tests cacheAddons for multiple add-ons, some already in the cache,
 add_task(async function run_test_10() {
-  await new Promise((resolve, reject) =>
-    AddonRepository.cacheAddons(ADDON_IDS, resolve));
+  await AddonRepository.cacheAddons(ADDON_IDS);
   await check_initialized_cache([true, true, true]);
 });
 
 // Tests cacheAddons when caching is disabled
 add_task(async function run_test_11() {
-  do_check_true(gDBFile.exists());
+  Assert.ok(gDBFile.exists());
   Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, false);
 
-  await new Promise((resolve, reject) =>
-    AddonRepository.cacheAddons(ADDON_IDS, resolve));
-  do_check_true(gDBFile.exists());
+  await AddonRepository.cacheAddons(ADDON_IDS);
+  Assert.ok(gDBFile.exists());
 
   Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, true);
   await check_initialized_cache([true, true, true]);
@@ -639,7 +627,7 @@ add_task(async function run_test_11() {
 // Tests that XPI add-ons do not use any of the repository properties if
 // caching is disabled, even if there are repository properties available
 add_task(async function run_test_12() {
-  do_check_true(gDBFile.exists());
+  Assert.ok(gDBFile.exists());
   Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, false);
   Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, GETADDONS_RESULTS);
 
@@ -650,12 +638,12 @@ add_task(async function run_test_12() {
 // Tests that a background update with caching disabled deletes the add-ons
 // database, and that XPI add-ons still do not use any of repository properties
 add_task(async function run_test_13() {
-  do_check_true(gDBFile.exists());
-  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS_PERFORMANCE, GETADDONS_EMPTY);
+  Assert.ok(gDBFile.exists());
+  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, EMPTY_RESULT);
 
   await AddonManagerInternal.backgroundUpdateCheck();
   // Database should have been deleted
-  do_check_false(gDBFile.exists());
+  Assert.ok(!gDBFile.exists());
 
   let aAddons = await promiseAddonsByIDs(ADDON_IDS);
   check_results(aAddons, WITHOUT_CACHE);
@@ -668,7 +656,7 @@ add_task(async function run_test_14() {
 
   await AddonManagerInternal.backgroundUpdateCheck();
   await AddonRepository.flush();
-  do_check_true(gDBFile.exists());
+  Assert.ok(gDBFile.exists());
 
   let aAddons = await promiseAddonsByIDs(ADDON_IDS);
   check_results(aAddons, WITHOUT_CACHE);
@@ -677,7 +665,7 @@ add_task(async function run_test_14() {
 // Tests that the XPI add-ons correctly use the repository properties when
 // caching is enabled and the repository information is available
 add_task(async function run_test_15() {
-  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS_PERFORMANCE, GETADDONS_RESULTS);
+  Services.prefs.setCharPref(PREF_GETADDONS_BYIDS, GETADDONS_RESULTS);
 
   await AddonManagerInternal.backgroundUpdateCheck();
   let aAddons = await promiseAddonsByIDs(ADDON_IDS);

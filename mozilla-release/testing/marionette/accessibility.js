@@ -4,21 +4,14 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 
 const logger = Log.repository.getLogger("Marionette");
 
 const {ElementNotAccessibleError} =
-    Cu.import("chrome://marionette/content/error.js", {});
-
-XPCOMUtils.defineLazyModuleGetter(
-    this, "setInterval", "resource://gre/modules/Timer.jsm");
-XPCOMUtils.defineLazyModuleGetter(
-    this, "clearInterval", "resource://gre/modules/Timer.jsm");
+    ChromeUtils.import("chrome://marionette/content/error.js", {});
 
 XPCOMUtils.defineLazyGetter(this, "service", () => {
   try {
@@ -156,7 +149,7 @@ accessibility.Checks = class {
       }
       // Accessibility for the doc is busy, so wait for the state to change.
       let eventObserver = {
-        observe(subject, topic, data) {
+        observe(subject, topic) {
           if (topic !== "accessible-event") {
             return;
           }

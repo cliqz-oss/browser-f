@@ -11,7 +11,6 @@
 #include "base/debug/alias.h"
 #include "base/debug/stack_trace.h"
 #include "base/hash.h"
-#include "base/lazy_instance.h"
 #include "base/logging.h"
 #include "base/macros.h"
 #include "base/synchronization/lock_impl.h"
@@ -43,10 +42,13 @@ struct Info {
 };
 typedef std::unordered_map<HANDLE, Info, HandleHash> HandleMap;
 
-// g_lock protects the handle map and setting g_active_verifier within this
+// GetLock() protects the handle map and setting g_active_verifier within this
 // module.
 typedef base::internal::LockImpl NativeLock;
-base::LazyInstance<NativeLock>::Leaky g_lock = LAZY_INSTANCE_INITIALIZER;
+NativeLock* GetLock() {
+  static auto* native_lock = new NativeLock();
+  return native_lock;
+}
 
 // Simple automatic locking using a native critical section so it supports
 // recursive locking.
@@ -70,9 +72,7 @@ class AutoNativeLock {
 // way to delete this object from the wrong side of it (or any side, actually).
 class ActiveVerifier {
  public:
-  explicit ActiveVerifier(bool enabled)
-      : enabled_(enabled), lock_(g_lock.Pointer()) {
-  }
+  explicit ActiveVerifier(bool enabled) : enabled_(enabled), lock_(GetLock()) {}
 
   // Retrieves the current verifier.
   static ActiveVerifier* Get();
@@ -113,15 +113,17 @@ ActiveVerifier* ActiveVerifier::Get() {
 
 bool CloseHandleWrapper(HANDLE handle) {
   if (!::CloseHandle(handle))
-    CHECK(false);  // CloseHandle failed.
+    // Making this DCHECK as we are hitting this frequently, looks like we are
+    // closing handles twice somewhere. See bug 1449480.
+    DCHECK(false);  // CloseHandle failed.
   return true;
 }
 
-// Assigns the g_active_verifier global within the g_lock lock.
+// Assigns the g_active_verifier global within the GetLock() lock.
 // If |existing_verifier| is non-null then |enabled| is ignored.
 void ThreadSafeAssignOrCreateActiveVerifier(ActiveVerifier* existing_verifier,
                                             bool enabled) {
-  AutoNativeLock lock(g_lock.Get());
+  AutoNativeLock lock(*GetLock());
   // Another thread in this module might be trying to assign the global
   // verifier, so check that within the lock here.
   if (g_active_verifier)

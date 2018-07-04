@@ -8,7 +8,8 @@ var MANIFESTS = [
 ];
 
 // Stub in the locale service so we can control what gets returned as the OS locale setting
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 registerManifests(MANIFESTS);
 
@@ -16,10 +17,6 @@ var chromeReg = Cc["@mozilla.org/chrome/chrome-registry;1"]
                 .getService(Ci.nsIXULChromeRegistry)
                 .QueryInterface(Ci.nsIToolkitChromeRegistry);
 chromeReg.checkForNewChrome();
-
-var prefService = Cc["@mozilla.org/preferences-service;1"]
-                  .getService(Ci.nsIPrefService)
-                  .QueryInterface(Ci.nsIPrefBranch);
 
 function enum_to_array(strings) {
   let rv = [];
@@ -33,16 +30,16 @@ function enum_to_array(strings) {
 function run_test() {
 
   // without override
-  prefService.setCharPref("general.useragent.locale", "de");
-  do_check_eq(chromeReg.getSelectedLocale("basepack"), "en-US");
-  do_check_eq(chromeReg.getSelectedLocale("overpack"), "de");
-  do_check_matches(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
-                   ['en-US', 'fr']);
+  Services.locale.setRequestedLocales(["de"]);
+  Assert.equal(chromeReg.getSelectedLocale("basepack"), "en-US");
+  Assert.equal(chromeReg.getSelectedLocale("overpack"), "de");
+  Assert.deepEqual(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
+                   ["en-US", "fr"]);
 
   // with override
-  prefService.setCharPref("chrome.override_package.basepack", "overpack");
-  do_check_eq(chromeReg.getSelectedLocale("basepack"), "de");
-  do_check_matches(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
-                   ['de', 'en-US']);
+  Services.prefs.setCharPref("chrome.override_package.basepack", "overpack");
+  Assert.equal(chromeReg.getSelectedLocale("basepack"), "de");
+  Assert.deepEqual(enum_to_array(chromeReg.getLocalesForPackage("basepack")),
+                   ["de", "en-US"]);
 
 }

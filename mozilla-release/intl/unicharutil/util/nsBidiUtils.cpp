@@ -5,6 +5,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "nsBidiUtils.h"
 
+namespace mozilla {
+static const uint32_t kMinRTLChar = 0x0590;
+} // namespace mozilla;
+
 #define ARABIC_TO_HINDI_DIGIT_INCREMENT (START_HINDI_DIGITS - START_ARABIC_DIGITS)
 #define PERSIAN_TO_HINDI_DIGIT_INCREMENT (START_HINDI_DIGITS - START_FARSI_DIGITS)
 #define ARABIC_TO_PERSIAN_DIGIT_INCREMENT (START_FARSI_DIGITS - START_ARABIC_DIGITS)
@@ -80,22 +84,4 @@ nsresult HandleNumbers(char16_t* aBuffer, uint32_t aSize, uint32_t aNumFlag)
       break;
   }
   return NS_OK;
-}
-
-bool HasRTLChars(const char16_t* aText, uint32_t aLength)
-{
-  // This is used to determine whether a string has right-to-left characters
-  // that mean it will require bidi processing.
-  const char16_t* cp = aText;
-  const char16_t* end = cp + aLength;
-  while (cp < end) {
-    uint32_t ch = *cp++;
-    if (NS_IS_HIGH_SURROGATE(ch) && cp < end && NS_IS_LOW_SURROGATE(*cp)) {
-      ch = SURROGATE_TO_UCS4(ch, *cp++);
-    }
-    if (UTF32_CHAR_IS_BIDI(ch) || IsBidiControlRTL(ch)) {
-      return true;
-    }
-  }
-  return false;
 }

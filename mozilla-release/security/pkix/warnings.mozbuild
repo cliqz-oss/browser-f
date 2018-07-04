@@ -1,4 +1,4 @@
-if CONFIG['CLANG_CXX']:
+if CONFIG['CC_TYPE'] == 'clang':
   CXXFLAGS += [
     '-Weverything',
 
@@ -8,10 +8,9 @@ if CONFIG['CLANG_CXX']:
     '-Wno-missing-variable-declarations',
     '-Wno-padded',
     '-Wno-reserved-id-macro', # NSPR and NSS use reserved IDs in their include guards.
-    '-Wno-shadow', # XXX: Clang's rules are too strict for constructors.
     '-Wno-weak-vtables', # We rely on the linker to merge the duplicate vtables.
   ]
-elif CONFIG['_MSC_VER']:
+elif CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
   CXXFLAGS += [
     '-sdl', # Enable additional security checks based on Microsoft's SDL.
 

@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["TabAttributes"];
+var EXPORTED_SYMBOLS = ["TabAttributes"];
 
 // We never want to directly read or write these attributes.
 // 'image' should not be accessed directly but handled by using the
@@ -12,18 +12,18 @@ this.EXPORTED_SYMBOLS = ["TabAttributes"];
 // 'muted' should not be accessed directly but handled by using the
 //         tab.linkedBrowser.audioMuted/toggleMuteAudio methods.
 // 'pending' is used internal by sessionstore and managed accordingly.
-// 'iconLoadingPrincipal' is same as 'image' that it should be handled by
+// 'iconloadingprincipal' is same as 'image' that it should be handled by
 //                        using the gBrowser.getIcon()/setIcon() methods.
 // 'activemedia-blocked' should not be accessed directly but handled by using
 //                       tab's toggleMuteAudio() or linkedBrowser's methods
 //                       activeMediaBlockStarted()/activeMediaBlockBlockStopped().
-const ATTRIBUTES_TO_SKIP = new Set(["image", "muted", "pending", "iconLoadingPrincipal",
+const ATTRIBUTES_TO_SKIP = new Set(["image", "muted", "pending", "iconloadingprincipal",
                                     "skipbackgroundnotify", "activemedia-blocked"]);
 
 // A set of tab attributes to persist. We will read a given list of tab
 // attributes when collecting tab data and will re-set those attributes when
 // the given tab data is restored to a new tab.
-this.TabAttributes = Object.freeze({
+var TabAttributes = Object.freeze({
   persist(name) {
     return TabAttributesInternal.persist(name);
   },

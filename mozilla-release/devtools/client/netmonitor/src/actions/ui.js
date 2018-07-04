@@ -7,6 +7,8 @@
 const {
   ACTIVITY_TYPE,
   OPEN_NETWORK_DETAILS,
+  RESIZE_NETWORK_DETAILS,
+  ENABLE_PERSISTENT_LOGS,
   DISABLE_BROWSER_CACHE,
   OPEN_STATISTICS,
   RESET_COLUMNS,
@@ -14,7 +16,8 @@ const {
   TOGGLE_COLUMN,
   WATERFALL_RESIZE,
 } = require("../constants");
-const { triggerActivity } = require("../connector/index");
+
+const { getDisplayedRequests } = require("../selectors/index");
 
 /**
  * Change network details panel.
@@ -22,9 +25,41 @@ const { triggerActivity } = require("../connector/index");
  * @param {boolean} open - expected network details panel open state
  */
 function openNetworkDetails(open) {
+  return (dispatch, getState) => {
+    const visibleRequestItems = getDisplayedRequests(getState());
+    let defaultSelectedId = visibleRequestItems.length ? visibleRequestItems[0].id : null;
+
+    return dispatch({
+      type: OPEN_NETWORK_DETAILS,
+      open,
+      defaultSelectedId,
+    });
+  };
+}
+
+/**
+ * Change network details panel size.
+ *
+ * @param {integer} width
+ * @param {integer} height
+ */
+function resizeNetworkDetails(width, height) {
   return {
-    type: OPEN_NETWORK_DETAILS,
-    open,
+    type: RESIZE_NETWORK_DETAILS,
+    width,
+    height,
+  };
+}
+
+/**
+ * Change persistent logs state.
+ *
+ * @param {boolean} enabled - expected persistent logs enabled state
+ */
+function enablePersistentLogs(enabled) {
+  return {
+    type: ENABLE_PERSISTENT_LOGS,
+    enabled,
   };
 }
 
@@ -43,11 +78,12 @@ function disableBrowserCache(disabled) {
 /**
  * Change performance statistics panel open state.
  *
+ * @param {Object} connector - connector object to the backend
  * @param {boolean} visible - expected performance statistics panel open state
  */
-function openStatistics(open) {
+function openStatistics(connector, open) {
   if (open) {
-    triggerActivity(ACTIVITY_TYPE.RELOAD.WITH_CACHE_ENABLED);
+    connector.triggerActivity(ACTIVITY_TYPE.RELOAD.WITH_CACHE_ENABLED);
   }
   return {
     type: OPEN_STATISTICS,
@@ -108,6 +144,14 @@ function toggleNetworkDetails() {
 }
 
 /**
+ * Toggle persistent logs status.
+ */
+function togglePersistentLogs() {
+  return (dispatch, getState) =>
+    dispatch(enablePersistentLogs(!getState().ui.persistentLogsEnabled));
+}
+
+/**
  * Toggle browser cache status.
  */
 function toggleBrowserCache() {
@@ -118,13 +162,15 @@ function toggleBrowserCache() {
 /**
  * Toggle performance statistics panel.
  */
-function toggleStatistics() {
+function toggleStatistics(connector) {
   return (dispatch, getState) =>
-    dispatch(openStatistics(!getState().ui.statisticsOpen));
+    dispatch(openStatistics(connector, !getState().ui.statisticsOpen));
 }
 
 module.exports = {
   openNetworkDetails,
+  resizeNetworkDetails,
+  enablePersistentLogs,
   disableBrowserCache,
   openStatistics,
   resetColumns,
@@ -132,6 +178,7 @@ module.exports = {
   selectDetailsPanelTab,
   toggleColumn,
   toggleNetworkDetails,
+  togglePersistentLogs,
   toggleBrowserCache,
   toggleStatistics,
 };

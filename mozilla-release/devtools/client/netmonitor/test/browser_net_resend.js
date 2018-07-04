@@ -12,11 +12,11 @@ const ADD_HEADER = "Test-header: true";
 const ADD_UA_HEADER = "User-Agent: Custom-Agent";
 const ADD_POSTDATA = "&t3=t4";
 
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(POST_DATA_URL);
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(POST_DATA_URL);
   info("Starting test... ");
 
-  let { document, store, windowRequire } = monitor.panelWin;
+  let { document, store, windowRequire, connector } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
   let {
     getSelectedRequest,
@@ -25,37 +25,54 @@ add_task(function* () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, 0, 2);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests();
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 2);
+
+  let origItemId = getSortedRequests(store.getState()).get(0).id;
+
+  store.dispatch(Actions.selectRequest(origItemId));
+  await waitForRequestData(store, ["requestHeaders", "requestPostData"], origItemId);
 
   let origItem = getSortedRequests(store.getState()).get(0);
 
-  store.dispatch(Actions.selectRequest(origItem.id));
-
   // add a new custom request cloned from selected request
-  store.dispatch(Actions.cloneSelectedRequest());
 
-  testCustomForm(origItem);
+  store.dispatch(Actions.cloneSelectedRequest());
+  await testCustomForm(origItem);
 
   let customItem = getSelectedRequest(store.getState());
   testCustomItem(customItem, origItem);
 
   // edit the custom request
-  yield editCustomForm();
+  await editCustomForm();
+
   // FIXME: reread the customItem, it's been replaced by a new object (immutable!)
   customItem = getSelectedRequest(store.getState());
   testCustomItemChanged(customItem, origItem);
 
   // send the new request
-  wait = waitForNetworkEvents(monitor, 0, 1);
-  store.dispatch(Actions.sendCustomRequest());
-  yield wait;
+  wait = waitForNetworkEvents(monitor, 1);
+  store.dispatch(Actions.sendCustomRequest(connector));
+  await wait;
 
-  let sentItem = getSelectedRequest(store.getState());
-  testSentRequest(sentItem, origItem);
+  let sentItem;
+  // Testing sent request will require updated requestHeaders and requestPostData,
+  // we must wait for both properties get updated before starting test.
+  await waitUntil(() => {
+    sentItem = getSelectedRequest(store.getState());
+    origItem = getSortedRequests(store.getState()).get(0);
+    return sentItem.requestHeaders && sentItem.requestPostData &&
+      origItem.requestHeaders && origItem.requestPostData;
+  });
+
+  await testSentRequest(sentItem, origItem);
+
+  // Ensure the UI shows the new request, selected, and that the detail panel was closed.
+  is(getSortedRequests(store.getState()).length, 3, "There are 3 requests shown");
+  is(document.querySelector(".request-list-item.selected").getAttribute("data-id"),
+    sentItem.id, "The sent request is selected");
+  is(document.querySelector(".network-details-panel"), null,
+    "The detail panel is hidden");
 
   return teardown(monitor);
 
@@ -74,8 +91,8 @@ add_task(function* () {
   /*
    * Test that the New Request form was populated correctly
    */
-  function* testCustomForm(data) {
-    yield waitUntil(() => document.querySelector(".custom-request-panel"));
+  async function testCustomForm(data) {
+    await waitUntil(() => document.querySelector(".custom-request-panel"));
     is(document.getElementById("custom-method-value").value, data.method,
        "new request form showing correct method");
 
@@ -88,7 +105,7 @@ add_task(function* () {
 
     let headers = document.getElementById("custom-headers-value").value.split("\n");
     for (let {name, value} of data.requestHeaders.headers) {
-      ok(headers.indexOf(name + ": " + value) >= 0, "form contains header from request");
+      ok(headers.includes(name + ": " + value), "form contains header from request");
     }
 
     let postData = document.getElementById("custom-postdata-value");
@@ -99,7 +116,7 @@ add_task(function* () {
   /*
    * Add some params and headers to the request form
    */
-  function* editCustomForm() {
+  async function editCustomForm() {
     monitor.panelWin.focus();
 
     let query = document.getElementById("custom-query-value");
@@ -108,7 +125,7 @@ add_task(function* () {
     // focus only works if delayed by one tick.
     query.setSelectionRange(query.value.length, query.value.length);
     executeSoon(() => query.focus());
-    yield queryFocus;
+    await queryFocus;
 
     // add params to url query string field
     type(["VK_RETURN"]);
@@ -118,7 +135,7 @@ add_task(function* () {
     let headersFocus = once(headers, "focus", false);
     headers.setSelectionRange(headers.value.length, headers.value.length);
     headers.focus();
-    yield headersFocus;
+    await headersFocus;
 
     // add a header
     type(["VK_RETURN"]);
@@ -133,16 +150,17 @@ add_task(function* () {
     let postFocus = once(postData, "focus", false);
     postData.setSelectionRange(postData.value.length, postData.value.length);
     postData.focus();
-    yield postFocus;
+    await postFocus;
 
-    // add to POST data
+    // add to POST data once textarea has updated
+    await waitUntil(() => postData.textContent !== "");
     type(ADD_POSTDATA);
   }
 
   /*
    * Make sure newly created event matches expected request
    */
-  function testSentRequest(data, origData) {
+  async function testSentRequest(data, origData) {
     is(data.method, origData.method, "correct method in sent request");
     is(data.url, origData.url + "&" + ADD_QUERY, "correct url in sent request");
 
@@ -154,8 +172,8 @@ add_task(function* () {
     ok(hasUAHeader, "User-Agent header added to sent request");
 
     is(data.requestPostData.postData.text,
-       origData.requestPostData.postData.text + ADD_POSTDATA,
-       "post data added to sent request");
+      origData.requestPostData.postData.text + ADD_POSTDATA,
+      "post data added to sent request");
   }
 
   function type(string) {

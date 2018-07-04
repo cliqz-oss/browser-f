@@ -12,9 +12,8 @@
 #include "jspubtd.h"
 #include "js/TypeDecls.h"
 #include "mozilla/Attributes.h"
+#include "xptinfo.h"
 #include "nsCOMPtr.h"
-
-struct JSFreeOp;
 
 class nsWrapperCache;
 %}
@@ -24,30 +23,18 @@ class nsWrapperCache;
 // NB: jsval and jsid are declared in nsrootidl.idl
 
 [ptr] native JSContextPtr(JSContext);
-[ptr] native JSClassPtr(JSClass);
-[ptr] native JSFreeOpPtr(JSFreeOp);
 [ptr] native JSObjectPtr(JSObject);
-[ptr] native JSValConstPtr(const JS::Value);
-      native JSEqualityOp(JSEqualityOp);
 [ptr] native JSScriptPtr(JSScript);
-[ptr] native voidPtrPtr(void*);
 [ptr] native nsWrapperCachePtr(nsWrapperCache);
-[ref] native JSCompartmentOptions(JS::CompartmentOptions);
-[ref] native JSCallArgsRef(const JS::CallArgs);
       native JSHandleId(JS::Handle<jsid>);
+[ptr] native InterfaceInfoPtr(const nsXPTInterfaceInfo);
 
 /***************************************************************************/
 
 // forward declarations...
-interface nsIXPCScriptable;
-interface nsIXPConnect;
-interface nsIXPConnectWrappedNative;
-interface nsIInterfaceInfo;
-interface nsIXPCSecurityManager;
 interface nsIPrincipal;
 interface nsIClassInfo;
 interface nsIVariant;
-interface nsIStackFrame;
 interface nsIObjectInputStream;
 interface nsIObjectOutputStream;
 
@@ -62,24 +49,8 @@ interface nsIXPConnectJSObjectHolder : nsISupports
 interface nsIXPConnectWrappedNative : nsIXPConnectJSObjectHolder
 {
     /* attribute 'JSObject' inherited from nsIXPConnectJSObjectHolder */
-    readonly attribute nsISupports      Native;
-    readonly attribute JSObjectPtr      JSObjectPrototype;
-
-    /**
-     * These are here as an aid to nsIXPCScriptable implementors
-     */
-
-    nsIInterfaceInfo FindInterfaceWithMember(in JSHandleId nameID);
-    nsIInterfaceInfo FindInterfaceWithName(in JSHandleId nameID);
-    [notxpcom] bool HasNativeMember(in JSHandleId name);
 
     void debugDump(in short depth);
-
-    /*
-     * NOTE: Add new IDL methods _before_ the C++ block below if you
-     * add them.  Otherwise the vtable won't be what xpidl thinks it
-     * is, since GetObjectPrincipal() is virtual.
-     */
 
 %{C++
     /**
@@ -117,7 +88,7 @@ do_QueryWrappedNative(nsIXPConnectWrappedNative *aWrappedNative,
 interface nsIXPConnectWrappedJS : nsIXPConnectJSObjectHolder
 {
     /* attribute 'JSObject' inherited from nsIXPConnectJSObjectHolder */
-    readonly attribute nsIInterfaceInfo InterfaceInfo;
+    readonly attribute InterfaceInfoPtr InterfaceInfo;
     readonly attribute nsIIDPtr         InterfaceIID;
 
     void debugDump(in short depth);
@@ -216,53 +187,6 @@ interface nsIXPCWrappedJSObjectGetter : nsISupports
 
 /***************************************************************************/
 
-/*
- * This interface is implemented by outside code and registered with xpconnect
- * via nsIXPConnect::setFunctionThisTranslator.
- *
- * The reason this exists is to support calls to JavaScript event callbacks
- * needed by the DOM via xpconnect from C++ code.
- *
- * We've added support for wrapping JS function objects as xpcom interfaces
- * by declaring the given interface as a [function] interface. However, to
- * support the requirements of JS event callbacks we need to call the JS
- * function with the 'this' set as the JSObject for which the event is being
- * fired; e.g. a form node.
- *
- * We've decided that for all cases we care about the appropriate 'this' object
- * can be derived from the first param in the call to the callback. In the
- * event handler case the first param is an event object.
- *
- * Though we can't change all the JS code so that it would setup its own 'this',
- * we can add plugin 'helper' support to xpconnect. And that is what we have
- * here.
- *
- * The idea is that at startup time some code that cares about this issue
- * (e.g. the DOM helper code) can register a nsIXPCFunctionThisTranslator
- * object with xpconnect to handle calls to [function] interfaces of a given
- * iid. When xpconnect goes to invoke a method on a wrapped JSObject for
- * an interface marked as [function], xpconnect will check if the first param
- * of the method is an xpcom object pointer and if so it will check to see if a
- * nsIXPCFunctionThisTranslator has been registered for the given iid of the
- * interface being called. If so it will call the translator and get an
- * interface pointer to use as the 'this' for the call. If the translator
- * returns a non-null interface pointer (which it should then have addref'd
- * since it is being returned as an out param), xpconnect will attempt to build
- * a wrapper around the pointer and get a JSObject from that wrapper to use
- * as the 'this' for the call.
- *
- * If a null interface pointer is returned then xpconnect will use the default
- * 'this' - the same JSObject as the function object it is calling.
- */
-
-[uuid(f5f84b70-92eb-41f1-a1dd-2eaac0ed564c)]
-interface nsIXPCFunctionThisTranslator : nsISupports
-{
-    nsISupports TranslateThis(in nsISupports aInitialThis);
-};
-
-/***************************************************************************/
-
 
 %{ C++
 // For use with the service manager
@@ -278,33 +202,6 @@ interface nsIXPConnect : nsISupports
 %{ C++
   NS_DEFINE_STATIC_CID_ACCESSOR(NS_XPCONNECT_CID)
 %}
-
-    /**
-     * Creates a new global object using the given aCOMObj as the global
-     * object. The object will be set up according to the flags (defined
-     * below). If you do not pass INIT_JS_STANDARD_CLASSES, then aCOMObj
-     * must implement nsIXPCScriptable so it can resolve the standard
-     * classes when asked by the JS engine.
-     *
-     * @param aJSContext the context to use while creating the global object.
-     * @param aCOMObj the native object that represents the global object.
-     * @param aPrincipal the principal of the code that will run in this
-     *                   compartment. Can be null if not on the main thread.
-     * @param aFlags one of the flags below specifying what options this
-     *               global object wants.
-     * @param aOptions JSAPI-specific options for the new compartment.
-     */
-    nsIXPConnectJSObjectHolder
-    initClassesWithNewWrappedGlobal(
-                  in JSContextPtr         aJSContext,
-                  in nsISupports          aCOMObj,
-                  in nsIPrincipal         aPrincipal,
-                  in uint32_t             aFlags,
-                  in JSCompartmentOptions aOptions);
-
-    const uint32_t INIT_JS_STANDARD_CLASSES  = 1 << 0;
-    const uint32_t DONT_FIRE_ONNEWGLOBALHOOK = 1 << 1;
-    const uint32_t OMIT_COMPONENTS_OBJECT    = 1 << 2;
 
     /**
     * wrapNative will create a new JSObject or return an existing one.
@@ -336,15 +233,6 @@ interface nsIXPConnect : nsISupports
                in JSObjectPtr  aScope,
                in nsISupports  aCOMObj,
                in nsIIDRef     aIID);
-
-    /**
-     * Same as wrapNative, but it returns the JSObject in an nsIXPConnectJSObjectHolder.
-     */
-    nsIXPConnectJSObjectHolder
-    wrapNativeHolder(in JSContextPtr aJSContext,
-                     in JSObjectPtr  aScope,
-                     in nsISupports  aCOMObj,
-                     in nsIIDRef     aIID);
 
     /**
      * Same as wrapNative, but it returns the JSObject in aVal. C++ callers
@@ -411,9 +299,6 @@ interface nsIXPConnect : nsISupports
     getWrappedNativeOfJSObject(in JSContextPtr aJSContext,
                                in JSObjectPtr  aJSObj);
 
-    // Will return null if there is no JS stack right now.
-    readonly attribute nsIStackFrame                CurrentJSStack;
-
     void debugDump(in short depth);
     void debugDumpObject(in nsISupports aCOMObj, in short depth);
     void debugDumpJSStack(in boolean showArgs,
@@ -442,20 +327,6 @@ interface nsIXPConnect : nsISupports
                              [iid_is(aIID),retval] out nsQIResult result);
 
     // Methods added since mozilla 0.6....
-
-    /**
-    * This only succeeds if the native object is already wrapped by xpconnect.
-    * A new wrapper is *never* constructed.
-    */
-    nsIXPConnectWrappedNative
-    getWrappedNativeOfNativeObject(in JSContextPtr aJSContext,
-                                   in JSObjectPtr  aScope,
-                                   in nsISupports  aCOMObj,
-                                   in nsIIDRef     aIID);
-
-    void
-    setFunctionThisTranslator(in nsIIDRef aIID,
-                              in nsIXPCFunctionThisTranslator aTranslator);
 
     JSObjectPtr
     getWrappedNativePrototype(in JSContextPtr aJSContext,
@@ -493,32 +364,6 @@ interface nsIXPConnect : nsISupports
     [noscript] jsval evalInSandboxObject(in AString source, in string filename,
                                          in JSContextPtr cx,
                                          in JSObjectPtr sandbox);
-
-    /**
-     * Trigger a JS garbage collection.
-     * Use a js::gcreason::Reason from jsfriendapi.h for the kind.
-     */
-    void GarbageCollect(in uint32_t reason);
-
-    /**
-     * Signals a good place to do an incremental GC slice, because the
-     * browser is drawing a frame.
-     */
-    void NotifyDidPaint();
-
-%{C++
-    /**
-     * Get the object principal for this wrapper.  Note that this may well end
-     * up being null; in that case one should seek principals elsewhere.  Null
-     * here does NOT indicate system principal or no principals at all, just
-     * that this wrapper doesn't have an intrinsic one.
-     */
-    virtual nsIPrincipal* GetPrincipal(JSObject* obj,
-                                       bool allowShortCircuit) const = 0;
-    virtual char* DebugPrintJSStack(bool showArgs,
-                                    bool showLocals,
-                                    bool showThisProps) = 0;
-%}
 
     [noscript] void writeScript(in nsIObjectOutputStream aStream,
                                 in JSContextPtr aJSContext,

@@ -146,7 +146,7 @@ exports.items = [
     name: "paintflashing toggle",
     hidden: true,
     buttonId: "command-button-paintflashing",
-    buttonClass: "command-button command-button-invertable",
+    buttonClass: "command-button",
     state: {
       isChecked: (target) => CommandState.isEnabledForTarget(target, "paintflashing"),
       onChange: (_, handler) => CommandState.on("changed", handler),
@@ -176,7 +176,7 @@ exports.items = [
       },
     ],
     returnType: "paintFlashingState",
-    exec: function (args, context) {
+    exec: function(args, context) {
       let { window } = context.environment;
 
       return setPaintFlashing(window, args.state);

@@ -23,7 +23,6 @@
 #include "nsToolkit.h"
 #include "nsIDOMWindow.h"
 #include "nsPIDOMWindow.h"
-#include "nsIDOMElement.h"
 #include "nsThreadUtils.h"
 #include "nsMenuBarX.h"
 #include "nsMenuUtilsX.h"
@@ -35,6 +34,7 @@
 #include "nsIScreenManager.h"
 #include "nsIWidgetListener.h"
 #include "nsIPresShell.h"
+#include "VibrancyManager.h"
 
 #include "gfxPlatform.h"
 #include "gfxPrefs.h"
@@ -78,6 +78,21 @@ enum NSWindowOcclusionState {
 
 @interface NSWindow(OcclusionState)
 - (NSWindowOcclusionState) occlusionState;
+@end
+
+#endif
+
+#if !defined(MAC_OS_X_VERSION_10_10) || \
+    MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_10
+
+enum NSWindowTitleVisibility {
+  NSWindowTitleVisible = 0,
+  NSWindowTitleHidden  = 1
+};
+
+@interface NSWindow(TitleVisibility)
+- (void)setTitleVisibility:(NSWindowTitleVisibility)visibility;
+- (void)setTitlebarAppearsTransparent:(BOOL)isTitlebarTransparent;
 @end
 
 #endif
@@ -472,6 +487,11 @@ nsresult nsCocoaWindow::CreateNativeWindow(const NSRect &aRect,
   mWindow = [[windowClass alloc] initWithContentRect:contentRect styleMask:features 
                                  backing:NSBackingStoreBuffered defer:YES];
 
+  // Make sure that window titles don't leak to disk in private browsing mode
+  // due to macOS' resume feature.
+  [mWindow setRestorable:NO];
+  [mWindow disableSnapshotRestoration];
+
   // setup our notification delegate. Note that setDelegate: does NOT retain.
   mDelegate = [[WindowDelegate alloc] initWithGeckoWindow:this];
   [mWindow setDelegate:mDelegate];
@@ -533,8 +553,11 @@ nsCocoaWindow::CreatePopupContentView(const LayoutDeviceIntRect &aRect,
     return rv;
   }
 
-  ChildView* newContentView = (ChildView*)mPopupContentView->GetNativeData(NS_NATIVE_WIDGET);
-  [mWindow setContentView:newContentView];
+  NSView* contentView = [mWindow contentView];
+  ChildView* childView = (ChildView*)mPopupContentView->GetNativeData(NS_NATIVE_WIDGET);
+  [childView setFrame:[contentView bounds]];
+  [childView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+  [contentView addSubview:childView];
 
   return NS_OK;
 
@@ -1476,6 +1499,13 @@ nsCocoaWindow::PerformFullscreenTransition(FullscreenTransitionStage aStage,
   [mFullscreenTransitionAnimation startAnimation];
 }
 
+void nsCocoaWindow::WillEnterFullScreen(bool aFullScreen)
+{
+  if (mWidgetListener) {
+    mWidgetListener->FullscreenWillChange(aFullScreen);
+  }
+}
+
 void nsCocoaWindow::EnteredFullScreen(bool aFullScreen, bool aNativeMode)
 {
   mInFullScreenTransition = false;
@@ -1675,6 +1705,10 @@ nsCocoaWindow::UpdateBounds()
   }
   mBounds =
     nsCocoaUtils::CocoaRectToGeckoRectDevPix(frame, BackingScaleFactor());
+
+  if (mPopupContentView) {
+    mPopupContentView->UpdateBoundsFromView();
+  }
 }
 
 LayoutDeviceIntRect
@@ -1796,6 +1830,7 @@ nsCocoaWindow::BackingScaleFactorChanged()
   if (presShell) {
     presShell->BackingScaleFactorChanged();
   }
+  mWidgetListener->UIResolutionChanged();
 }
 
 int32_t
@@ -1830,15 +1865,16 @@ nsCocoaWindow::SetTitle(const nsAString& aTitle)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
-  if (!mWindow)
+  if (!mWindow) {
     return NS_OK;
+  }
 
   const nsString& strTitle = PromiseFlatString(aTitle);
-  NSString* title = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(strTitle.get())
+  const unichar* uniTitle = reinterpret_cast<const unichar*>(strTitle.get());
+  NSString* title = [NSString stringWithCharacters:uniTitle
                                             length:strTitle.Length()];
-
   if ([mWindow drawsContentsIntoWindowFrame] && ![mWindow wantsTitleDrawn]) {
-    // Don't cause invalidations.
+    // Don't cause invalidations when the title isn't displayed.
     [mWindow disableSetNeedsDisplay];
     [mWindow setTitle:title];
     [mWindow enableSetNeedsDisplay];
@@ -2114,7 +2150,17 @@ nsCocoaWindow::ClientToWindowSize(const LayoutDeviceIntSize& aClientSize)
   LayoutDeviceIntRect r(0, 0, aClientSize.width, aClientSize.height);
   NSRect rect = nsCocoaUtils::DevPixelsToCocoaPoints(r, backingScale);
 
-  NSRect inflatedRect = [mWindow frameRectForContentRect:rect];
+  // Our caller expects the inflated rect for windows *with separate titlebars*,
+  // i.e. for windows where [mWindow drawsContentsIntoWindowFrame] is NO.
+  //
+  // So we call frameRectForContentRect on NSWindow here, instead of mWindow, so
+  // that we don't run into our override if this window is a window that draws
+  // its content into the titlebar.
+  //
+  // This is the same thing the windows widget does, but we probably should fix
+  // that, see bug 1445738.
+  unsigned int features = [mWindow styleMask];
+  NSRect inflatedRect = [NSWindow frameRectForContentRect:rect styleMask:features];
   r = nsCocoaUtils::CocoaRectToGeckoRectDevPix(inflatedRect, backingScale);
   return r.Size();
 
@@ -2199,13 +2245,7 @@ nsCocoaWindow::SetWindowShadowStyle(int32_t aStyle)
 
   // Shadowless windows are only supported on popups.
   if (mWindowType == eWindowType_popup) {
-    MOZ_ASSERT(mPopupContentView);
-
-    // Drop shadows are not sized correctly for composited popups when they are
-    // animated, so disable them entirely if the popup is composited.
-    bool disableShadow = (aStyle == NS_STYLE_WINDOW_SHADOW_NONE ||
-                          mPopupContentView->ShouldUseOffMainThreadCompositing());
-    [mWindow setHasShadow:!disableShadow];
+    [mWindow setHasShadow:aStyle != NS_STYLE_WINDOW_SHADOW_NONE];
   }
 
   [mWindow setUseMenuStyle:(aStyle == NS_STYLE_WINDOW_SHADOW_MENU)];
@@ -2249,6 +2289,12 @@ nsCocoaWindow::SetWindowTransform(const gfx::Matrix& aTransform)
 
   if (!mWindow) {
     return;
+  }
+
+  // Calling CGSSetWindowTransform when the window is not visible results in
+  // misplacing the window into doubled x,y coordinates (see bug 1448132).
+  if (![mWindow isVisible] || NSIsEmptyRect([mWindow frame])) {
+      return;
   }
 
   if (gfxPrefs::WindowTransformsDisabled()) {
@@ -2362,7 +2408,13 @@ nsCocoaWindow::SetDrawsTitle(bool aDrawTitle)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
 
-  [mWindow setWantsTitleDrawn:aDrawTitle];
+  if (![mWindow drawsContentsIntoWindowFrame]) {
+    // If we don't draw into the window frame, we always want to display window
+    // titles.
+    [mWindow setWantsTitleDrawn:YES];
+  } else {
+    [mWindow setWantsTitleDrawn:aDrawTitle];
+  }
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
@@ -2387,44 +2439,6 @@ nsCocoaWindow::SetNonClientMargins(LayoutDeviceIntMargin &margins)
   return NS_OK;
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NSRESULT;
-}
-
-void
-nsCocoaWindow::SetWindowTitlebarColor(nscolor aColor, bool aActive)
-{
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-  if (!mWindow)
-    return;
-
-  // If they pass a color with a complete transparent alpha component, use the
-  // native titlebar appearance.
-  if (NS_GET_A(aColor) == 0) {
-    [mWindow setTitlebarColor:nil forActiveWindow:(BOOL)aActive]; 
-  } else {
-    // Transform from sRGBA to monitor RGBA. This seems like it would make trying
-    // to match the system appearance lame, so probably we just shouldn't color 
-    // correct chrome.
-    if (gfxPlatform::GetCMSMode() == eCMSMode_All) {
-      qcms_transform *transform = gfxPlatform::GetCMSRGBATransform();
-      if (transform) {
-        uint8_t color[3];
-        color[0] = NS_GET_R(aColor);
-        color[1] = NS_GET_G(aColor);
-        color[2] = NS_GET_B(aColor);
-        qcms_transform_data(transform, color, color, 1);
-        aColor = NS_RGB(color[0], color[1], color[2]);
-      }
-    }
-
-    [mWindow setTitlebarColor:[NSColor colorWithDeviceRed:NS_GET_R(aColor)/255.0
-                                                    green:NS_GET_G(aColor)/255.0
-                                                     blue:NS_GET_B(aColor)/255.0
-                                                    alpha:NS_GET_A(aColor)/255.0]
-              forActiveWindow:(BOOL)aActive];
-  }
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
 void nsCocoaWindow::SetDrawsInTitlebar(bool aState)
@@ -2620,6 +2634,15 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
   mGeckoWindow->ReportMoveEvent();
 }
 
+- (void)windowWillEnterFullScreen:(NSNotification *)notification
+{
+  if (!mGeckoWindow) {
+    return;
+  }
+
+  mGeckoWindow->WillEnterFullScreen(true);
+}
+
 // Lion's full screen mode will bypass our internal fullscreen tracking, so
 // we need to catch it when we transition and call our own methods, which in
 // turn will fire "fullscreen" events.
@@ -2653,6 +2676,15 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
   if ([titlebarContainerView respondsToSelector:@selector(setTransparent:)]) {
     [titlebarContainerView setTransparent:NO];
   }
+}
+
+- (void)windowWillExitFullScreen:(NSNotification *)notification
+{
+  if (!mGeckoWindow) {
+    return;
+  }
+
+  mGeckoWindow->WillEnterFullScreen(false);
 }
 
 - (void)windowDidExitFullScreen:(NSNotification *)notification
@@ -2808,6 +2840,14 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
   return YES;
 }
 
+- (NSRect)window:(NSWindow*)window willPositionSheet:(NSWindow*)sheet usingRect:(NSRect)rect
+{
+  if ([window isKindOfClass:[ToolbarWindow class]]) {
+    rect.origin.y = [(ToolbarWindow*)window sheetAttachmentPosition];
+  }
+  return rect;
+}
+
 - (void)didEndSheet:(NSWindow*)sheet returnCode:(int)returnCode contextInfo:(void*)contextInfo
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
@@ -2891,6 +2931,7 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
 - (NSPoint)FrameView__closeButtonOrigin;
 - (NSPoint)FrameView__fullScreenButtonOrigin;
 - (BOOL)FrameView__wantsFloatingTitlebar;
+- (NSRect)FrameView__unifiedToolbarFrame;
 @end
 
 @implementation NSView(FrameViewMethodSwizzling)
@@ -2904,11 +2945,6 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
   return defaultPosition;
 }
 
-- (BOOL)FrameView__wantsFloatingTitlebar
-{
-  return NO;
-}
-
 - (NSPoint)FrameView__fullScreenButtonOrigin
 {
   NSPoint defaultPosition = [self FrameView__fullScreenButtonOrigin];
@@ -2916,6 +2952,24 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
     return [(ToolbarWindow*)[self window] fullScreenButtonPositionWithDefaultPosition:defaultPosition];
   }
   return defaultPosition;
+}
+
+- (BOOL)FrameView__wantsFloatingTitlebar
+{
+  return NO;
+}
+
+- (NSRect)FrameView__unifiedToolbarFrame
+{
+  NSRect defaultFrame = [self FrameView__unifiedToolbarFrame];
+  if ([[self window] isKindOfClass:[ToolbarWindow class]]) {
+    CGFloat unifiedToolbarHeight = [(ToolbarWindow*)[self window] unifiedToolbarHeight];
+    CGFloat topEdge = NSMaxY(defaultFrame);
+    CGFloat bottomEdge = topEdge - unifiedToolbarHeight;
+    return NSMakeRect(defaultFrame.origin.x, bottomEdge,
+                      defaultFrame.size.width, unifiedToolbarHeight);
+  }
+  return defaultFrame;
 }
 
 @end
@@ -2931,12 +2985,6 @@ static NSMutableSet *gSwizzledFrameViewClasses = nil;
 // this declaration in order to avoid compiler warnings.
 @interface NSView(PrivateAddKnownSubviewMethod)
  - (void)_addKnownSubview:(NSView*)aView positioned:(NSWindowOrderingMode)place relativeTo:(NSView*)otherView;
-@end
-
-// Available on 10.10
-@interface NSWindow(PrivateCornerMaskMethod)
- - (id)_cornerMask;
- - (void)_cornerMaskChanged;
 @end
 
 #if !defined(MAC_OS_X_VERSION_10_10) || \
@@ -2959,6 +3007,10 @@ static NSMutableSet *gSwizzledFrameViewClasses = nil;
 
 #endif
 
+@interface NSView(NSVisualEffectViewSetMaskImage)
+- (void)setMaskImage:(NSImage*)image;
+@end
+
 @interface BaseWindow(Private)
 - (void)removeTrackingArea;
 - (void)cursorUpdated:(NSEvent*)aEvent;
@@ -2967,25 +3019,6 @@ static NSMutableSet *gSwizzledFrameViewClasses = nil;
 @end
 
 @implementation BaseWindow
-
-- (id)_cornerMask
-{
-  if (!mUseMenuStyle) {
-    return [super _cornerMask];
-  }
-
-  CGFloat radius = 4.0f;
-  NSEdgeInsets insets = { 5, 5, 5, 5 };
-  NSSize maskSize = { 12, 12 };
-  NSImage* maskImage = [NSImage imageWithSize:maskSize flipped:YES drawingHandler:^BOOL(NSRect dstRect) {
-    NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:dstRect xRadius:radius yRadius:radius];
-    [[NSColor colorWithDeviceWhite:1.0 alpha:1.0] set];
-    [path fill];
-    return YES;
-  }];
-  [maskImage setCapInsets:insets];
-  return maskImage;
-}
 
 // The frame of a window is implemented using undocumented NSView subclasses.
 // We offset the window buttons by overriding the methods _closeButtonOrigin
@@ -3016,6 +3049,9 @@ static NSMutableSet *gSwizzledFrameViewClasses = nil;
   static IMP our_wantsFloatingTitlebar =
     class_getMethodImplementation([NSView class],
                                   @selector(FrameView__wantsFloatingTitlebar));
+  static IMP our_unifiedToolbarFrame =
+    class_getMethodImplementation([NSView class],
+                                  @selector(FrameView__unifiedToolbarFrame));
 
   if (![gSwizzledFrameViewClasses containsObject:frameViewClass]) {
     // Either of these methods might be implemented in both a subclass of
@@ -3046,6 +3082,14 @@ static NSMutableSet *gSwizzledFrameViewClasses = nil;
       nsToolkit::SwizzleMethods(frameViewClass, @selector(_wantsFloatingTitlebar),
                                 @selector(FrameView__wantsFloatingTitlebar));
     }
+    IMP _unifiedToolbarFrame =
+      class_getMethodImplementation(frameViewClass,
+                                    @selector(_unifiedToolbarFrame));
+    if (_unifiedToolbarFrame &&
+        _unifiedToolbarFrame != our_unifiedToolbarFrame) {
+      nsToolkit::SwizzleMethods(frameViewClass, @selector(_unifiedToolbarFrame),
+                                @selector(FrameView__unifiedToolbarFrame));
+    }
     [gSwizzledFrameViewClasses addObject:frameViewClass];
   }
 
@@ -3057,8 +3101,6 @@ static NSMutableSet *gSwizzledFrameViewClasses = nil;
   mDrawsIntoWindowFrame = NO;
   [super initWithContentRect:aContentRect styleMask:aStyle backing:aBufferingType defer:aFlag];
   mState = nil;
-  mActiveTitlebarColor = nil;
-  mInactiveTitlebarColor = nil;
   mDisabledNeedsDisplay = NO;
   mTrackingArea = nil;
   mDirtyRect = NSZeroRect;
@@ -3071,14 +3113,54 @@ static NSMutableSet *gSwizzledFrameViewClasses = nil;
   return self;
 }
 
+// Returns an autoreleased NSImage.
+static NSImage*
+GetMenuMaskImage()
+{
+  CGFloat radius = 4.0f;
+  NSEdgeInsets insets = { 5, 5, 5, 5 };
+  NSSize maskSize = { 12, 12 };
+  NSImage* maskImage = [NSImage imageWithSize:maskSize flipped:YES drawingHandler:^BOOL(NSRect dstRect) {
+    NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:dstRect xRadius:radius yRadius:radius];
+    [[NSColor colorWithDeviceWhite:1.0 alpha:1.0] set];
+    [path fill];
+    return YES;
+  }];
+  [maskImage setCapInsets:insets];
+  return maskImage;
+}
+
+- (void)swapOutChildViewWrapper:(NSView*)aNewWrapper
+{
+  [aNewWrapper setFrame:[[self contentView] frame]];
+  NSView* childView = [[self mainChildView] retain];
+  [childView removeFromSuperview];
+  [aNewWrapper addSubview:childView];
+  [childView release];
+  [super setContentView:aNewWrapper];
+}
+
 - (void)setUseMenuStyle:(BOOL)aValue
 {
-  if (aValue != mUseMenuStyle) {
-    mUseMenuStyle = aValue;
-    if ([self respondsToSelector:@selector(_cornerMaskChanged)]) {
-      [self _cornerMaskChanged];
-    }
+  if (!VibrancyManager::SystemSupportsVibrancy()) {
+    return;
   }
+
+  if (aValue && !mUseMenuStyle) {
+    // Turn on rounded corner masking.
+    NSView* effectView = VibrancyManager::CreateEffectView(VibrancyType::MENU, YES);
+    if ([effectView respondsToSelector:@selector(setMaskImage:)]) {
+      [effectView setMaskImage:GetMenuMaskImage()];
+    }
+    [self swapOutChildViewWrapper:effectView];
+    [effectView release];
+  } else if (mUseMenuStyle && !aValue) {
+    // Turn off rounded corner masking.
+    NSView* wrapper = [[NSView alloc] initWithFrame:NSZeroRect];
+    [self swapOutChildViewWrapper:wrapper];
+    [wrapper release];
+  }
+  mUseMenuStyle = aValue;
 }
 
 - (void)setBeingShown:(BOOL)aValue
@@ -3108,8 +3190,6 @@ static NSMutableSet *gSwizzledFrameViewClasses = nil;
 
 - (void)dealloc
 {
-  [mActiveTitlebarColor release];
-  [mInactiveTitlebarColor release];
   [self removeTrackingArea];
   ChildViewMouseTracker::OnDestroyWindow(self);
   [super dealloc];
@@ -3117,17 +3197,15 @@ static NSMutableSet *gSwizzledFrameViewClasses = nil;
 
 static const NSString* kStateTitleKey = @"title";
 static const NSString* kStateDrawsContentsIntoWindowFrameKey = @"drawsContentsIntoWindowFrame";
-static const NSString* kStateActiveTitlebarColorKey = @"activeTitlebarColor";
-static const NSString* kStateInactiveTitlebarColorKey = @"inactiveTitlebarColor";
 static const NSString* kStateShowsToolbarButton = @"showsToolbarButton";
 static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 
 - (void)importState:(NSDictionary*)aState
 {
-  [self setTitle:[aState objectForKey:kStateTitleKey]];
+  if (NSString* title = [aState objectForKey:kStateTitleKey]) {
+    [self setTitle:title];
+  }
   [self setDrawsContentsIntoWindowFrame:[[aState objectForKey:kStateDrawsContentsIntoWindowFrameKey] boolValue]];
-  [self setTitlebarColor:[aState objectForKey:kStateActiveTitlebarColorKey] forActiveWindow:YES];
-  [self setTitlebarColor:[aState objectForKey:kStateInactiveTitlebarColorKey] forActiveWindow:NO];
   [self setShowsToolbarButton:[[aState objectForKey:kStateShowsToolbarButton] boolValue]];
   [self setCollectionBehavior:[[aState objectForKey:kStateCollectionBehavior] unsignedIntValue]];
 }
@@ -3135,17 +3213,11 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 - (NSMutableDictionary*)exportState
 {
   NSMutableDictionary* state = [NSMutableDictionary dictionaryWithCapacity:10];
-  [state setObject:[self title] forKey:kStateTitleKey];
+  if (NSString* title = [self title]) {
+    [state setObject:title forKey:kStateTitleKey];
+  }
   [state setObject:[NSNumber numberWithBool:[self drawsContentsIntoWindowFrame]]
             forKey:kStateDrawsContentsIntoWindowFrameKey];
-  NSColor* activeTitlebarColor = [self titlebarColorForActiveWindow:YES];
-  if (activeTitlebarColor) {
-    [state setObject:activeTitlebarColor forKey:kStateActiveTitlebarColorKey];
-  }
-  NSColor* inactiveTitlebarColor = [self titlebarColorForActiveWindow:NO];
-  if (inactiveTitlebarColor) {
-    [state setObject:inactiveTitlebarColor forKey:kStateInactiveTitlebarColorKey];
-  }
   [state setObject:[NSNumber numberWithBool:[self showsToolbarButton]]
             forKey:kStateShowsToolbarButton];
   [state setObject:[NSNumber numberWithUnsignedInt: [self collectionBehavior]]
@@ -3160,6 +3232,9 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
   if (changed) {
     [self updateContentViewSize];
     [self reflowTitlebarElements];
+    if ([self respondsToSelector:@selector(setTitlebarAppearsTransparent:)]) {
+      [self setTitlebarAppearsTransparent:mDrawsIntoWindowFrame];
+    }
   }
 }
 
@@ -3171,6 +3246,10 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 - (void)setWantsTitleDrawn:(BOOL)aDrawTitle
 {
   mDrawTitle = aDrawTitle;
+  if ([self respondsToSelector:@selector(setTitleVisibility:)]) {
+    [self setTitleVisibility:mDrawTitle ? NSWindowTitleVisible :
+                                          NSWindowTitleHidden];
+  }
 }
 
 - (BOOL)wantsTitleDrawn
@@ -3189,24 +3268,6 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
   return mBrightTitlebarForeground;
 }
 
-// Pass nil here to get the default appearance.
-- (void)setTitlebarColor:(NSColor*)aColor forActiveWindow:(BOOL)aActive
-{
-  [aColor retain];
-  if (aActive) {
-    [mActiveTitlebarColor release];
-    mActiveTitlebarColor = aColor;
-  } else {
-    [mInactiveTitlebarColor release];
-    mInactiveTitlebarColor = aColor;
-  }
-}
-
-- (NSColor*)titlebarColorForActiveWindow:(BOOL)aActive
-{
-  return aActive ? mActiveTitlebarColor : mInactiveTitlebarColor;
-}
-
 - (NSView*)trackingAreaView
 {
   NSView* contentView = [self contentView];
@@ -3215,11 +3276,7 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 
 - (ChildView*)mainChildView
 {
-  NSView *contentView = [self contentView];
-  // A PopupWindow's contentView is a ChildView object.
-  if ([contentView isKindOfClass:[ChildView class]]) {
-    return (ChildView*)contentView;
-  }
+  NSView* contentView = [self contentView];
   NSView* lastView = [[contentView subviews] lastObject];
   if ([lastView isKindOfClass:[ChildView class]]) {
     return (ChildView*)lastView;
@@ -3445,19 +3502,7 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 
 // This class allows us to exercise control over the window's title bar. This
 // allows for a "unified toolbar" look without having to extend the content
-// area into the title bar. It works like this:
-// 1) We set the window's style to textured.
-// 2) Because of this, the background color applies to the entire window, including
-//     the titlebar area. For normal textured windows, the default pattern is a 
-//    "brushed metal" image on Tiger and a unified gradient on Leopard.
-// 3) We set the background color to a custom NSColor subclass that knows how tall the window is.
-//    When -set is called on it, it sets a pattern (with a draw callback) as the fill. In that callback,
-//    it paints the the titlebar and background colors in the correct areas of the context it's given,
-//    which will fill the entire window (CG will tile it horizontally for us).
-// 4) Whenever the window's main state changes and when [window display] is called,
-//    Cocoa redraws the titlebar using the patternDraw callback function.
-//
-// This class also provides us with a pill button to show/hide the toolbar up to 10.6.
+// area into the title bar.
 //
 // Drawing the unified gradient in the titlebar and the toolbar works like this:
 // 1) In the style sheet we set the toolbar's -moz-appearance to toolbar.
@@ -3488,14 +3533,9 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NIL;
 
-  aStyle = aStyle | NSTexturedBackgroundWindowMask;
   if ((self = [super initWithContentRect:aContentRect styleMask:aStyle backing:aBufferingType defer:aFlag])) {
-    mColor = [[TitlebarAndBackgroundColor alloc] initWithWindow:self];
-    // Bypass our guard method below.
-    [super setBackgroundColor:mColor];
-    mBackgroundColor = [[NSColor whiteColor] retain];
-
     mUnifiedToolbarHeight = 22.0f;
+    mSheetAttachmentPosition = aContentRect.size.height;
     mWindowButtonsRect = NSZeroRect;
     mFullScreenButtonRect = NSZeroRect;
 
@@ -3503,54 +3543,10 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
     // we respond to it just in case.
     if ([self respondsToSelector:@selector(setBottomCornerRounded:)])
       [self setBottomCornerRounded:YES];
-
-    [self setAutorecalculatesContentBorderThickness:NO forEdge:NSMaxYEdge];
-    [self setContentBorderThickness:0.0f forEdge:NSMaxYEdge];
   }
   return self;
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
-}
-
-- (void)dealloc
-{
-  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
-
-  [super setBackgroundColor:[NSColor whiteColor]];
-  [mColor release];
-  [mBackgroundColor release];
-  [mTitlebarView release];
-  [super dealloc];
-
-  NS_OBJC_END_TRY_ABORT_BLOCK;
-}
-
-- (void)setTitlebarColor:(NSColor*)aColor forActiveWindow:(BOOL)aActive
-{
-  [super setTitlebarColor:aColor forActiveWindow:aActive];
-  [self setTitlebarNeedsDisplayInRect:[self titlebarRect]];
-}
-
-- (void)setBackgroundColor:(NSColor*)aColor
-{
-  [aColor retain];
-  [mBackgroundColor release];
-  mBackgroundColor = aColor;
-}
-
-- (NSColor*)windowBackgroundColor
-{
-  return mBackgroundColor;
-}
-
-- (void)setTemporaryBackgroundColor
-{
-  [super setBackgroundColor:[NSColor whiteColor]];
-}
-
-- (void)restoreBackgroundColor
-{
-  [super setBackgroundColor:mBackgroundColor];
 }
 
 - (void)setTitlebarNeedsDisplayInRect:(NSRect)aRect
@@ -3650,8 +3646,12 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 
 - (void)setSheetAttachmentPosition:(CGFloat)aY
 {
-  CGFloat topMargin = aY - [self titlebarHeight];
-  [self setContentBorderThickness:topMargin forEdge:NSMaxYEdge];
+  mSheetAttachmentPosition = aY;
+}
+
+- (CGFloat)sheetAttachmentPosition
+{
+  return mSheetAttachmentPosition;
 }
 
 - (void)placeWindowButtons:(NSRect)aRect
@@ -3781,87 +3781,6 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 
 @end
 
-// Custom NSColor subclass where most of the work takes place for drawing in
-// the titlebar area. Not used in drawsContentsIntoWindowFrame mode.
-@implementation TitlebarAndBackgroundColor
-
-- (id)initWithWindow:(ToolbarWindow*)aWindow
-{
-  if ((self = [super init])) {
-    mWindow = aWindow; // weak ref to avoid a cycle
-  }
-  return self;
-}
-
-static void
-DrawNativeTitlebar(CGContextRef aContext, CGRect aTitlebarRect,
-                   CGFloat aUnifiedToolbarHeight, BOOL aIsMain)
-{
-  nsNativeThemeCocoa::DrawNativeTitlebar(aContext, aTitlebarRect, aUnifiedToolbarHeight, aIsMain, NO);
-
-  // The call to CUIDraw doesn't draw the top pixel strip at some window widths.
-  // We don't want to have a flickering transparent line, so we overdraw it.
-  CGContextSetRGBFillColor(aContext, 0.95, 0.95, 0.95, 1);
-  CGContextFillRect(aContext, CGRectMake(0, CGRectGetMaxY(aTitlebarRect) - 1,
-                                           aTitlebarRect.size.width, 1));
-}
-
-// Pattern draw callback for standard titlebar gradients and solid titlebar colors
-static void
-TitlebarDrawCallback(void* aInfo, CGContextRef aContext)
-{
-  ToolbarWindow *window = (ToolbarWindow*)aInfo;
-  if (![window drawsContentsIntoWindowFrame]) {
-    NSRect titlebarRect = [window titlebarRect];
-    BOOL isMain = [window isMainWindow];
-    NSColor *titlebarColor = [window titlebarColorForActiveWindow:isMain];
-    if (!titlebarColor) {
-      // If the titlebar color is nil, draw the default titlebar shading.
-      DrawNativeTitlebar(aContext, NSRectToCGRect(titlebarRect),
-                         [window unifiedToolbarHeight], isMain);
-    } else {
-      // If the titlebar color is not nil, just set and draw it normally.
-      [NSGraphicsContext saveGraphicsState];
-      [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:aContext flipped:NO]];
-      [titlebarColor set];
-      NSRectFill(titlebarRect);
-      [NSGraphicsContext restoreGraphicsState];
-    }
-  }
-}
-
-- (void)setFill
-{
-  float patternWidth = [mWindow frame].size.width;
-
-  CGPatternCallbacks callbacks = {0, &TitlebarDrawCallback, NULL};
-  CGPatternRef pattern = CGPatternCreate(mWindow, CGRectMake(0.0f, 0.0f, patternWidth, [mWindow frame].size.height), 
-                                         CGAffineTransformIdentity, patternWidth, [mWindow frame].size.height,
-                                         kCGPatternTilingConstantSpacing, true, &callbacks);
-
-  // Set the pattern as the fill, which is what we were asked to do. All our
-  // drawing will take place in the patternDraw callback.
-  CGColorSpaceRef patternSpace = CGColorSpaceCreatePattern(NULL);
-  CGContextRef context = (CGContextRef)[[NSGraphicsContext currentContext] graphicsPort];
-  CGContextSetFillColorSpace(context, patternSpace);
-  CGColorSpaceRelease(patternSpace);
-  CGFloat component = 1.0f;
-  CGContextSetFillPattern(context, pattern, &component);
-  CGPatternRelease(pattern);
-}
-
-- (void)set
-{
-  [self setFill];
-}
-
-- (NSString*)colorSpaceName
-{
-  return NSDeviceRGBColorSpace;
-}
-
-@end
-
 @implementation PopupWindow
 
 - (id)initWithContentRect:(NSRect)contentRect styleMask:(NSUInteger)styleMask
@@ -3874,6 +3793,15 @@ TitlebarDrawCallback(void* aInfo, CGContextRef aContext)
           backing:bufferingType defer:deferCreation];
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
+}
+
+// Override the private API _backdropBleedAmount. This determines how much the
+// desktop wallpaper contributes to the vibrancy backdrop.
+// Return 0 in order to match what the system does for sheet windows and
+// _NSPopoverWindows.
+- (CGFloat)_backdropBleedAmount
+{
+  return 0.0;
 }
 
 - (BOOL)isContextMenu

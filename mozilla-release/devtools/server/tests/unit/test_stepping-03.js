@@ -10,11 +10,10 @@
 
 var gDebuggee;
 var gClient;
-var gThreadClient;
 var gCallback;
 
 function run_test() {
-  run_test_with_server(DebuggerServer, function () {
+  run_test_with_server(DebuggerServer, function() {
     run_test_with_server(WorkerDebuggerServer, do_test_finished);
   });
   do_test_pending();
@@ -23,42 +22,45 @@ function run_test() {
 function run_test_with_server(server, callback) {
   gCallback = callback;
   initTestDebuggerServer(server);
-  gDebuggee = addTestGlobal("test-stack", server);
+  gDebuggee = addTestGlobal("test-stepping", server);
   gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function () {
-    attachTestTabAndResume(gClient, "test-stack",
-                           function (response, tabClient, threadClient) {
-                             gThreadClient = threadClient;
-                             test_simple_stepping();
-                           });
-  });
+  gClient.connect(test_simple_stepping);
 }
 
-function test_simple_stepping() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
-    gThreadClient.addOneTimeListener("paused", function (event, packet) {
-      // Check the return value.
-      do_check_eq(packet.type, "paused");
-      do_check_eq(packet.frame.where.line, gDebuggee.line0 + 5);
-      do_check_eq(packet.why.type, "resumeLimit");
-      // Check that stepping worked.
-      do_check_eq(gDebuggee.a, 1);
-      do_check_eq(gDebuggee.b, 2);
+async function test_simple_stepping() {
+  const [attachResponse,, threadClient] = await attachTestTabAndResume(gClient,
+                                                                       "test-stepping");
+  ok(!attachResponse.error, "Should not get an error attaching");
 
-      gThreadClient.resume(function () {
-        gClient.close().then(gCallback);
-      });
-    });
-    gThreadClient.stepOut();
-  });
+  dumpn("Evaluating test code and waiting for first debugger statement");
+  await executeOnNextTickAndWaitForPause(evaluateTestCode, gClient);
 
+  const step1 = await stepOut(gClient, threadClient);
+  equal(step1.type, "paused");
+  equal(step1.frame.where.line, 6);
+  equal(step1.why.type, "resumeLimit");
+
+  equal(gDebuggee.a, 1);
+  equal(gDebuggee.b, 2);
+
+  finishClient(gClient, gCallback);
+}
+
+function evaluateTestCode() {
   /* eslint-disable */
-  gDebuggee.eval("var line0 = Error().lineNumber;\n" +
-                 "function f() {\n" + // line0 + 1
-                 "  debugger;\n" +    // line0 + 2
-                 "  this.a = 1;\n" +  // line0 + 3
-                 "  this.b = 2;\n" +  // line0 + 4
-                 "}\n" +              // line0 + 5
-                 "f();\n");           // line0 + 6
-  /* eslint-enable */
+  Cu.evalInSandbox(
+    `                                   // 1
+    function f() {                      // 2
+      debugger;                         // 3
+      this.a = 1;                       // 4
+      this.b = 2;                       // 5
+    }                                   // 6
+    f();                                // 7
+    `,                                  // 8
+    gDebuggee,
+    "1.8",
+    "test_stepping-01-test-code.js",
+    1
+  );
+  /* eslint-disable */
 }

@@ -26,6 +26,7 @@ LazyLogModule gVP8TrackEncoderLog("VP8TrackEncoder");
                                         (msg, ##__VA_ARGS__))
 
 #define DEFAULT_BITRATE_BPS 2500000
+#define MAX_KEYFRAME_INTERVAL 600
 
 using namespace mozilla::gfx;
 using namespace mozilla::layers;
@@ -56,9 +57,11 @@ GetSourceSurface(already_AddRefed<Image> aImg)
   return surf.forget();
 }
 
-VP8TrackEncoder::VP8TrackEncoder(TrackRate aTrackRate)
-  : VideoTrackEncoder(aTrackRate)
+VP8TrackEncoder::VP8TrackEncoder(TrackRate aTrackRate,
+                                 FrameDroppingMode aFrameDroppingMode)
+  : VideoTrackEncoder(aTrackRate, aFrameDroppingMode)
   , mEncodedTimestamp(0)
+  , mDurationSinceLastKeyframe(0)
   , mVPXContext(new vpx_codec_ctx_t())
   , mVPXImageWrapper(new vpx_image_t())
 {
@@ -74,7 +77,6 @@ VP8TrackEncoder::~VP8TrackEncoder()
 void
 VP8TrackEncoder::Destroy()
 {
-  ReentrantMonitorAutoEnter mon(mReentrantMonitor);
   if (mInitialized) {
     vpx_codec_destroy(mVPXContext);
   }
@@ -93,7 +95,6 @@ VP8TrackEncoder::Init(int32_t aWidth, int32_t aHeight, int32_t aDisplayWidth,
     return NS_ERROR_FAILURE;
   }
 
-  ReentrantMonitorAutoEnter mon(mReentrantMonitor);
   if (mInitialized) {
     MOZ_ASSERT(false);
     return NS_ERROR_FAILURE;
@@ -121,8 +122,7 @@ VP8TrackEncoder::Init(int32_t aWidth, int32_t aHeight, int32_t aDisplayWidth,
   vpx_codec_control(mVPXContext, VP8E_SET_TOKEN_PARTITIONS,
                     VP8_ONE_TOKENPARTITION);
 
-  mInitialized = true;
-  mon.NotifyAll();
+  SetInitialized();
 
   return NS_OK;
 }
@@ -136,13 +136,11 @@ VP8TrackEncoder::Reconfigure(int32_t aWidth, int32_t aHeight,
     return NS_ERROR_FAILURE;
   }
 
-  ReentrantMonitorAutoEnter mon(mReentrantMonitor);
   if (!mInitialized) {
     MOZ_ASSERT(false);
     return NS_ERROR_FAILURE;
   }
 
-  mInitialized = false;
   // Recreate image wrapper
   vpx_img_free(mVPXImageWrapper);
   vpx_img_wrap(mVPXImageWrapper, VPX_IMG_FMT_I420, aWidth, aHeight, 1, nullptr);
@@ -155,7 +153,6 @@ VP8TrackEncoder::Reconfigure(int32_t aWidth, int32_t aHeight,
     VP8LOG(LogLevel::Error, "Failed to set new configuration");
     return NS_ERROR_FAILURE;
   }
-  mInitialized = true;
   return NS_OK;
 }
 
@@ -213,9 +210,10 @@ VP8TrackEncoder::SetConfigurationValues(int32_t aWidth, int32_t aHeight, int32_t
   config.rc_buf_optimal_sz = 600;
   config.rc_buf_sz = 1000;
 
+  // we set key frame interval to automatic and later manually
+  // force key frame by setting VPX_EFLAG_FORCE_KF when mKeyFrameInterval > 0
   config.kf_mode = VPX_KF_AUTO;
-  // Ensure that we can output one I-frame per second.
-  config.kf_max_dist = 60;
+  config.kf_max_dist = MAX_KEYFRAME_INTERVAL;
 
   return NS_OK;
 }
@@ -224,15 +222,14 @@ already_AddRefed<TrackMetadataBase>
 VP8TrackEncoder::GetMetadata()
 {
   AUTO_PROFILER_LABEL("VP8TrackEncoder::GetMetadata", OTHER);
-  {
-    // Wait if mEncoder is not initialized.
-    ReentrantMonitorAutoEnter mon(mReentrantMonitor);
-    while (!mCanceled && !mInitialized) {
-      mon.Wait();
-    }
-  }
+
+  MOZ_ASSERT(mInitialized || mCanceled);
 
   if (mCanceled || mEncodingComplete) {
+    return nullptr;
+  }
+
+  if (!mInitialized) {
     return nullptr;
   }
 
@@ -241,6 +238,10 @@ VP8TrackEncoder::GetMetadata()
   meta->mHeight = mFrameHeight;
   meta->mDisplayWidth = mDisplayWidth;
   meta->mDisplayHeight = mDisplayHeight;
+
+  VP8LOG(LogLevel::Info, "GetMetadata() width=%d, height=%d, "
+                         "displayWidht=%d, displayHeight=%d",
+         meta->mWidth, meta->mHeight, meta->mDisplayWidth, meta->mDisplayHeight);
 
   return meta.forget();
 }
@@ -579,6 +580,10 @@ VP8TrackEncoder::EncodeOperation
 VP8TrackEncoder::GetNextEncodeOperation(TimeDuration aTimeElapsed,
                                         StreamTime aProcessedDuration)
 {
+  if (mFrameDroppingMode == FrameDroppingMode::DISALLOW) {
+    return ENCODE_NORMAL_FRAME;
+  }
+
   int64_t durationInUsec =
     FramesToUsecs(aProcessedDuration, mTrackRate).value();
   if (aTimeElapsed.ToMicroseconds() > (durationInUsec * SKIP_FRAME_RATIO)) {
@@ -613,24 +618,18 @@ nsresult
 VP8TrackEncoder::GetEncodedTrack(EncodedFrameContainer& aData)
 {
   AUTO_PROFILER_LABEL("VP8TrackEncoder::GetEncodedTrack", OTHER);
-  bool EOS;
-  {
-    // Move all the samples from mRawSegment to mSourceSegment. We only hold
-    // the monitor in this block.
-    ReentrantMonitorAutoEnter mon(mReentrantMonitor);
-    // Wait if mEncoder is not initialized, or when not enough raw data, but is
-    // not the end of stream nor is being canceled.
-    while (!mCanceled && (!mInitialized ||
-           (mRawSegment.GetDuration() + mSourceSegment.GetDuration() == 0 &&
-            !mEndOfStream))) {
-      mon.Wait();
-    }
-    if (mCanceled || mEncodingComplete) {
-      return NS_ERROR_FAILURE;
-    }
-    mSourceSegment.AppendFrom(&mRawSegment);
-    EOS = mEndOfStream;
+
+  MOZ_ASSERT(mInitialized || mCanceled);
+
+  if (mCanceled || mEncodingComplete) {
+    return NS_ERROR_FAILURE;
   }
+
+  if (!mInitialized) {
+    return NS_ERROR_FAILURE;
+  }
+
+  TakeTrackData(mSourceSegment);
 
   StreamTime totalProcessedDuration = 0;
   TimeStamp timebase = TimeStamp::Now();
@@ -653,6 +652,18 @@ VP8TrackEncoder::GetEncodedTrack(EncodedFrameContainer& aData)
         VP8LOG(LogLevel::Warning, "MediaRecorder lagging behind. Encoding keyframe.");
         flags |= VPX_EFLAG_FORCE_KF;
       }
+
+      // Sum duration of non-key frames and force keyframe if exceeded the given keyframe interval
+      if (mKeyFrameInterval > 0)
+      {
+        if ((mDurationSinceLastKeyframe * 1000 / mTrackRate) >= mKeyFrameInterval)
+        {
+          mDurationSinceLastKeyframe = 0;
+          flags |= VPX_EFLAG_FORCE_KF;
+        }
+        mDurationSinceLastKeyframe += chunk.GetDuration();
+      }
+
       if (vpx_codec_encode(mVPXContext, mVPXImageWrapper, mEncodedTimestamp,
                            (unsigned long)chunk.GetDuration(), flags,
                            VPX_DL_REALTIME)) {
@@ -701,12 +712,11 @@ VP8TrackEncoder::GetEncodedTrack(EncodedFrameContainer& aData)
   mSourceSegment.Clear();
 
   // End of stream, pull the rest frames in encoder.
-  if (EOS) {
+  if (mEndOfStream) {
     VP8LOG(LogLevel::Debug, "mEndOfStream is true");
     mEncodingComplete = true;
     // Bug 1243611, keep calling vpx_codec_encode and vpx_codec_get_cx_data
     // until vpx_codec_get_cx_data return null.
-
     do {
       if (vpx_codec_encode(mVPXContext, nullptr, mEncodedTimestamp,
                            0, 0, VPX_DL_REALTIME)) {

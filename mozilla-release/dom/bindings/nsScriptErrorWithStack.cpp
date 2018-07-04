@@ -22,7 +22,7 @@ using namespace mozilla::dom;
 namespace {
 
 static nsCString
-FormatStackString(JSContext* cx, HandleObject aStack) {
+FormatStackString(JSContext* cx, JS::HandleObject aStack) {
     JS::RootedString formattedStack(cx);
 
     if (!JS::BuildStackString(cx, aStack, &formattedStack)) {
@@ -74,18 +74,6 @@ nsScriptErrorWithStack::~nsScriptErrorWithStack() {
 }
 
 NS_IMETHODIMP
-nsScriptErrorWithStack::Init(const nsAString& message,
-                             const nsAString& sourceName,
-                             const nsAString& sourceLine,
-                             uint32_t lineNumber,
-                             uint32_t columnNumber,
-                             uint32_t flags,
-                             const char* category)
-{
-  MOZ_CRASH("nsScriptErrorWithStack requires to be initialized with a document, by using InitWithWindowID");
-}
-
-NS_IMETHODIMP
 nsScriptErrorWithStack::GetStack(JS::MutableHandleValue aStack) {
     aStack.setObjectOrNull(mStack);
     return NS_OK;
@@ -111,7 +99,7 @@ nsScriptErrorWithStack::ToString(nsACString& /*UTF8*/ aResult)
     }
 
     JSContext* cx = jsapi.cx();
-    RootedObject stack(cx, mStack);
+    JS::RootedObject stack(cx, mStack);
     nsCString stackString = FormatStackString(cx, stack);
     nsCString combined = message + NS_LITERAL_CSTRING("\n") + stackString;
     aResult.Assign(combined);

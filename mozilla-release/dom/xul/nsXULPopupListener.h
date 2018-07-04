@@ -13,10 +13,14 @@
 #include "nsCOMPtr.h"
 
 #include "mozilla/dom/Element.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMMouseEvent.h"
 #include "nsIDOMEventListener.h"
 #include "nsCycleCollectionParticipant.h"
+
+namespace mozilla {
+namespace dom {
+class MouseEvent;
+} // namespace dom
+} // namespace mozilla
 
 class nsXULPopupListener : public nsIDOMEventListener
 {
@@ -37,7 +41,8 @@ protected:
 
     // open the popup. aEvent is the event that triggered the popup such as
     // a mouse click and aTargetContent is the target of this event.
-    virtual nsresult LaunchPopup(nsIDOMEvent* aEvent, nsIContent* aTargetContent);
+    virtual nsresult LaunchPopup(mozilla::dom::MouseEvent* aEvent,
+                                 nsIContent* aTargetContent);
 
     // close the popup when the listener goes away
     virtual void ClosePopup();
@@ -49,10 +54,10 @@ private:
 #endif
 
     // |mElement| is the node to which this listener is attached.
-    nsCOMPtr<mozilla::dom::Element> mElement;
+    RefPtr<mozilla::dom::Element> mElement;
 
     // The popup that is getting shown on top of mElement.
-    nsCOMPtr<nsIContent> mPopupContent;
+    RefPtr<mozilla::dom::Element> mPopupContent;
 
     // true if a context popup
     bool mIsContext;

@@ -4,19 +4,17 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PlacesSyncUtils"];
-
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["PlacesSyncUtils"];
 
 Cu.importGlobalProperties(["URL", "URLSearchParams"]);
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "Log",
-                                  "resource://gre/modules/Log.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Log",
+                               "resource://gre/modules/Log.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
 
 /**
  * This module exports functions for Sync to use when applying remote
@@ -24,21 +22,38 @@ XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
  * `nsINavBookmarksService`, with special handling for smart bookmarks,
  * tags, keywords, synced annotations, and missing parents.
  */
-var PlacesSyncUtils = {};
+var PlacesSyncUtils = {
+  /**
+   * Auxiliary generator function that yields an array in chunks
+   *
+   * @param  array
+   * @param  chunkLength
+   * @yields {Array}
+   *         New Array with the next chunkLength elements of array.
+   *         If the array has less than chunkLength elements, yields all of them
+   */
+  * chunkArray(array, chunkLength) {
+    if (!array.length || chunkLength <= 0) {
+      return;
+    }
+    let startIndex = 0;
+    while (startIndex < array.length) {
+      yield array.slice(startIndex, startIndex + chunkLength);
+      startIndex += chunkLength;
+    }
+  },
+};
 
 const { SOURCE_SYNC } = Ci.nsINavBookmarksService;
 
 const MICROSECONDS_PER_SECOND = 1000000;
 const SQLITE_MAX_VARIABLE_NUMBER = 999;
 
-const ORGANIZER_QUERY_ANNO = "PlacesOrganizer/OrganizerQuery";
-const ORGANIZER_ALL_BOOKMARKS_ANNO_VALUE = "AllBookmarks";
-const ORGANIZER_MOBILE_QUERY_ANNO_VALUE = "MobileBookmarks";
 const MOBILE_BOOKMARKS_PREF = "browser.bookmarks.showMobileBookmarks";
 
 // These are defined as lazy getters to defer initializing the bookmarks
 // service until it's needed.
-XPCOMUtils.defineLazyGetter(this, "ROOT_SYNC_ID_TO_GUID", () => ({
+XPCOMUtils.defineLazyGetter(this, "ROOT_RECORD_ID_TO_GUID", () => ({
   menu: PlacesUtils.bookmarks.menuGuid,
   places: PlacesUtils.bookmarks.rootGuid,
   tags: PlacesUtils.bookmarks.tagsGuid,
@@ -47,7 +62,7 @@ XPCOMUtils.defineLazyGetter(this, "ROOT_SYNC_ID_TO_GUID", () => ({
   mobile: PlacesUtils.bookmarks.mobileGuid,
 }));
 
-XPCOMUtils.defineLazyGetter(this, "ROOT_GUID_TO_SYNC_ID", () => ({
+XPCOMUtils.defineLazyGetter(this, "ROOT_GUID_TO_RECORD_ID", () => ({
   [PlacesUtils.bookmarks.menuGuid]: "menu",
   [PlacesUtils.bookmarks.rootGuid]: "places",
   [PlacesUtils.bookmarks.tagsGuid]: "tags",
@@ -57,24 +72,142 @@ XPCOMUtils.defineLazyGetter(this, "ROOT_GUID_TO_SYNC_ID", () => ({
 }));
 
 XPCOMUtils.defineLazyGetter(this, "ROOTS", () =>
-  Object.keys(ROOT_SYNC_ID_TO_GUID)
+  Object.keys(ROOT_RECORD_ID_TO_GUID)
 );
 
-/**
- * Auxiliary generator function that yields an array in chunks
- *
- * @param array
- * @param chunkLength
- * @yields {Array} New Array with the next chunkLength elements of array. If the array has less than chunkLength elements, yields all of them
- */
-function* chunkArray(array, chunkLength) {
-  let startIndex = 0;
-  while (startIndex < array.length) {
-    yield array.slice(startIndex, startIndex += chunkLength);
-  }
-}
-
 const HistorySyncUtils = PlacesSyncUtils.history = Object.freeze({
+  SYNC_ID_META_KEY: "sync/history/syncId",
+  LAST_SYNC_META_KEY: "sync/history/lastSync",
+
+  /**
+   * Returns the current history sync ID, or `""` if one isn't set.
+   */
+  async getSyncId() {
+    let syncId = await PlacesUtils.metadata.get(
+      HistorySyncUtils.SYNC_ID_META_KEY);
+    return syncId || "";
+  },
+
+  /**
+   * Assigns a new sync ID. This is called when we sync for the first time with
+   * a new account, and when we're the first to sync after a node reassignment.
+   *
+   * @return {Promise} resolved once the ID has been updated.
+   * @resolves to the new sync ID.
+   */
+  resetSyncId() {
+    return PlacesUtils.withConnectionWrapper(
+      "HistorySyncUtils: resetSyncId",
+      function(db) {
+        let newSyncId = PlacesUtils.history.makeGuid();
+        return db.executeTransaction(async function() {
+          await setHistorySyncId(db, newSyncId);
+          return newSyncId;
+        });
+      }
+    );
+  },
+
+  /**
+   * Ensures that the existing local sync ID, if any, is up-to-date with the
+   * server. This is called when we sync with an existing account.
+   *
+   * @param newSyncId
+   *        The server's sync ID.
+   * @return {Promise} resolved once the ID has been updated.
+   */
+  async ensureCurrentSyncId(newSyncId) {
+    if (!newSyncId || typeof newSyncId != "string") {
+      throw new TypeError("Invalid new history sync ID");
+    }
+    await PlacesUtils.withConnectionWrapper(
+      "HistorySyncUtils: ensureCurrentSyncId",
+      async function(db) {
+        let existingSyncId = await PlacesUtils.metadata.getWithConnection(
+          db, HistorySyncUtils.SYNC_ID_META_KEY);
+
+        if (existingSyncId == newSyncId) {
+          HistorySyncLog.trace("History sync ID up-to-date",
+                               { existingSyncId });
+          return;
+        }
+
+        HistorySyncLog.info("History sync ID changed; resetting metadata",
+                            { existingSyncId, newSyncId });
+        await db.executeTransaction(function() {
+          return setHistorySyncId(db, newSyncId);
+        });
+      }
+    );
+  },
+
+  /**
+   * Returns the last sync time, in seconds, for the history collection, or 0
+   * if history has never synced before.
+   */
+  async getLastSync() {
+    let lastSync = await PlacesUtils.metadata.get(
+      HistorySyncUtils.LAST_SYNC_META_KEY);
+    return lastSync ? lastSync / 1000 : 0;
+  },
+
+  /**
+   * Updates the history collection last sync time.
+   *
+   * @param lastSyncSeconds
+   *        The collection last sync time, in seconds, as a number or string.
+   */
+  async setLastSync(lastSyncSeconds) {
+    let lastSync = Math.floor(lastSyncSeconds * 1000);
+    if (!Number.isInteger(lastSync)) {
+      throw new TypeError("Invalid history last sync timestamp");
+    }
+    await PlacesUtils.metadata.set(HistorySyncUtils.LAST_SYNC_META_KEY,
+                                   lastSync);
+  },
+
+  /**
+   * Removes all history visits and pages from the database. Sync calls this
+   * method when it receives a command from a remote client to wipe all stored
+   * data.
+   *
+   * @return {Promise} resolved once all pages and visits have been removed.
+   */
+  async wipe() {
+    await PlacesUtils.history.clear();
+    await HistorySyncUtils.reset();
+  },
+
+  /**
+   * Removes the sync ID and last sync time for the history collection. Unlike
+   * `wipe`, this keeps all existing history pages and visits.
+   *
+   * @return {Promise} resolved once the metadata have been removed.
+   */
+  reset() {
+    return PlacesUtils.metadata.delete(HistorySyncUtils.SYNC_ID_META_KEY,
+      HistorySyncUtils.LAST_SYNC_META_KEY);
+  },
+
+  /**
+   * Clamps a history visit date between the current date and the earliest
+   * sensible date.
+   *
+   * @param {Date} visitDate
+   *        The visit date.
+   * @return {Date} The clamped visit date.
+   */
+  clampVisitDate(visitDate) {
+    let currentDate = new Date();
+    if (visitDate > currentDate) {
+      return currentDate;
+    }
+    if (visitDate < BookmarkSyncUtils.EARLIEST_BOOKMARK_TIMESTAMP) {
+      return new Date(BookmarkSyncUtils.EARLIEST_BOOKMARK_TIMESTAMP);
+    }
+    return visitDate;
+  },
+
   /**
    * Fetches the frecency for the URL provided
    *
@@ -110,7 +243,7 @@ const HistorySyncUtils = PlacesSyncUtils.history = Object.freeze({
     // aren't stored in the database.
     let db = await PlacesUtils.promiseDBConnection();
     let nonSyncableGuids = [];
-    for (let chunk of chunkArray(guids, SQLITE_MAX_VARIABLE_NUMBER)) {
+    for (let chunk of PlacesSyncUtils.chunkArray(guids, SQLITE_MAX_VARIABLE_NUMBER)) {
       let rows = await db.execute(`
         SELECT DISTINCT p.guid FROM moz_places p
         JOIN moz_historyvisits v ON p.id = v.place_id
@@ -132,7 +265,7 @@ const HistorySyncUtils = PlacesSyncUtils.history = Object.freeze({
   changeGuid(uri, guid) {
       let canonicalURL = PlacesUtils.SYNC_BOOKMARK_VALIDATORS.url(uri);
       let validatedGuid = PlacesUtils.BOOKMARK_VALIDATORS.guid(guid);
-      return PlacesUtils.withConnectionWrapper("HistorySyncUtils: changeGuid",
+      return PlacesUtils.withConnectionWrapper("PlacesSyncUtils.history: changeGuid",
         async function(db) {
           await db.executeCached(`
             UPDATE moz_places
@@ -195,7 +328,7 @@ const HistorySyncUtils = PlacesSyncUtils.history = Object.freeze({
   async fetchURLInfoForGuid(guid) {
     let db = await PlacesUtils.promiseDBConnection();
     let rows = await db.executeCached(`
-      SELECT url, title, frecency
+      SELECT url, IFNULL(title, "") AS title, frecency
       FROM moz_places
       WHERE guid = :guid`,
       { guid }
@@ -249,7 +382,10 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
   DESCRIPTION_ANNO: "bookmarkProperties/description",
   SIDEBAR_ANNO: "bookmarkProperties/loadInSidebar",
   SYNC_PARENT_ANNO: "sync/parent",
-  SYNC_MOBILE_ROOT_ANNO: "mobile/bookmarksRoot",
+
+  SYNC_ID_META_KEY: "sync/bookmarks/syncId",
+  LAST_SYNC_META_KEY: "sync/bookmarks/lastSync",
+  WIPE_REMOTE_META_KEY: "sync/bookmarks/wipeRemote",
 
   // Jan 23, 1993 in milliseconds since 1970. Corresponds roughly to the release
   // of the original NCSA Mosiac. We can safely assume that any dates before
@@ -269,41 +405,220 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
   },
 
   /**
-   * Converts a Places GUID to a Sync ID. Sync IDs are identical to Places
-   * GUIDs for all items except roots.
+   * Returns the current bookmarks sync ID, or `""` if one isn't set.
    */
-  guidToSyncId(guid) {
-    return ROOT_GUID_TO_SYNC_ID[guid] || guid;
+  async getSyncId() {
+    let syncId = await PlacesUtils.metadata.get(
+      BookmarkSyncUtils.SYNC_ID_META_KEY);
+    return syncId || "";
+  },
+
+  /**
+   * Indicates if the bookmarks engine should erase all bookmarks on the server
+   * and all other clients, because the user manually restored their bookmarks
+   * from a backup on this client.
+   */
+  async shouldWipeRemote() {
+    let shouldWipeRemote = await PlacesUtils.metadata.get(
+      BookmarkSyncUtils.WIPE_REMOTE_META_KEY);
+    return !!shouldWipeRemote;
+  },
+
+  /**
+   * Assigns a new sync ID, bumps the change counter, and flags all items as
+   * "NEW" for upload. This is called when we sync for the first time with a
+   * new account, when we're the first to sync after a node reassignment, and
+   * on the first sync after a manual restore.
+   *
+   * @return {Promise} resolved once the ID and all items have been updated.
+   * @resolves to the new sync ID.
+   */
+  resetSyncId() {
+    return PlacesUtils.withConnectionWrapper(
+      "BookmarkSyncUtils: resetSyncId",
+      function(db) {
+        let newSyncId = PlacesUtils.history.makeGuid();
+        return db.executeTransaction(async function() {
+          await setBookmarksSyncId(db, newSyncId);
+          await resetAllSyncStatuses(db,
+            PlacesUtils.bookmarks.SYNC_STATUS.NEW);
+          return newSyncId;
+        });
+      }
+    );
+  },
+
+  /**
+   * Ensures that the existing local sync ID, if any, is up-to-date with the
+   * server. This is called when we sync with an existing account.
+   *
+   * We always take the server's sync ID. If we don't have an existing ID,
+   * we're either syncing for the first time with an existing account, or Places
+   * has automatically restored from a backup. If the sync IDs don't match,
+   * we're likely syncing after a node reassignment, where another client
+   * uploaded their bookmarks first.
+   *
+   * @param newSyncId
+   *        The server's sync ID.
+   * @return {Promise} resolved once the ID and all items have been updated.
+   */
+  async ensureCurrentSyncId(newSyncId) {
+    if (!newSyncId || typeof newSyncId != "string") {
+      throw new TypeError("Invalid new bookmarks sync ID");
+    }
+    await PlacesUtils.withConnectionWrapper(
+      "BookmarkSyncUtils: ensureCurrentSyncId",
+      async function(db) {
+        let existingSyncId = await PlacesUtils.metadata.getWithConnection(
+          db, BookmarkSyncUtils.SYNC_ID_META_KEY);
+
+        // If we don't have a sync ID, take the server's without resetting
+        // sync statuses.
+        if (!existingSyncId) {
+          BookmarkSyncLog.info("Taking new bookmarks sync ID", { newSyncId });
+          await db.executeTransaction(() => setBookmarksSyncId(db, newSyncId));
+          return;
+        }
+
+        // If the existing sync ID matches the server, great!
+        if (existingSyncId == newSyncId) {
+          BookmarkSyncLog.trace("Bookmarks sync ID up-to-date",
+                                { existingSyncId });
+          return;
+        }
+
+        // Otherwise, we have a sync ID, but it doesn't match, so we were likely
+        // node reassigned. Take the server's sync ID and reset all items to
+        // "UNKNOWN" so that we can merge.
+        BookmarkSyncLog.info("Bookmarks sync ID changed; resetting sync " +
+                             "statuses", { existingSyncId, newSyncId });
+        await db.executeTransaction(async function() {
+          await setBookmarksSyncId(db, newSyncId);
+          await resetAllSyncStatuses(db,
+            PlacesUtils.bookmarks.SYNC_STATUS.UNKNOWN);
+        });
+      }
+    );
+  },
+
+  /**
+   * Returns the last sync time, in seconds, for the bookmarks collection, or 0
+   * if bookmarks have never synced before.
+   */
+  async getLastSync() {
+    let lastSync = await PlacesUtils.metadata.get(
+      BookmarkSyncUtils.LAST_SYNC_META_KEY);
+    return lastSync ? lastSync / 1000 : 0;
+  },
+
+  /**
+   * Updates the bookmarks collection last sync time.
+   *
+   * @param lastSyncSeconds
+   *        The collection last sync time, in seconds, as a number or string.
+   */
+  async setLastSync(lastSyncSeconds) {
+    let lastSync = Math.floor(lastSyncSeconds * 1000);
+    if (!Number.isInteger(lastSync)) {
+      throw new TypeError("Invalid bookmarks last sync timestamp");
+    }
+    await PlacesUtils.metadata.set(BookmarkSyncUtils.LAST_SYNC_META_KEY,
+                                   lastSync);
+  },
+
+  /**
+   * Resets Sync metadata for bookmarks in Places. This function behaves
+   * differently depending on the change source, and may be called from
+   * `PlacesSyncUtils.bookmarks.reset` or
+   * `PlacesUtils.bookmarks.eraseEverything`.
+   *
+   * - RESTORE: The user is restoring from a backup. Drop the sync ID, last
+   *   sync time, and tombstones; reset sync statuses for remaining items to
+   *   "NEW"; then set a flag to wipe the server and all other clients. On the
+   *   next sync, we'll replace their bookmarks with ours.
+   *
+   * - RESTORE_ON_STARTUP: Places is automatically restoring from a backup to
+   *   recover from a corrupt database. The sync ID, last sync time, and
+   *   tombstones don't exist, since we don't back them up; reset sync statuses
+   *   for the roots to "UNKNOWN"; but don't wipe the server. On the next sync,
+   *   we'll merge the restored bookmarks with the ones on the server.
+   *
+   * - SYNC: Either another client told us to erase our bookmarks
+   *   (`PlacesSyncUtils.bookmarks.wipe`), or the user disconnected Sync
+   *   (`PlacesSyncUtils.bookmarks.reset`). In both cases, drop the existing
+   *   sync ID, last sync time, and tombstones; reset sync statuses for
+   *   remaining items to "NEW"; and don't wipe the server.
+   *
+   * @param db
+   *        the Sqlite.jsm connection handle.
+   * @param source
+   *        the change source constant.
+   */
+  async resetSyncMetadata(db, source) {
+    if (![ PlacesUtils.bookmarks.SOURCES.RESTORE,
+           PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
+           PlacesUtils.bookmarks.SOURCES.SYNC ].includes(source)) {
+      return;
+    }
+
+    // Remove the sync ID and last sync time in all cases.
+    await PlacesUtils.metadata.deleteWithConnection(db,
+      BookmarkSyncUtils.SYNC_ID_META_KEY,
+      BookmarkSyncUtils.LAST_SYNC_META_KEY);
+
+    // If we're manually restoring from a backup, wipe the server and other
+    // clients, so that we replace their bookmarks with the restored tree. If
+    // we're automatically restoring to recover from a corrupt database, don't
+    // wipe; we want to merge the restored tree with the one on the server.
+    await PlacesUtils.metadata.setWithConnection(db,
+      BookmarkSyncUtils.WIPE_REMOTE_META_KEY,
+      source == PlacesUtils.bookmarks.SOURCES.RESTORE);
+
+    // Reset change counters and sync statuses for roots and remaining
+    // items, and drop tombstones.
+    let syncStatus =
+      source == PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP ?
+      PlacesUtils.bookmarks.SYNC_STATUS.UNKNOWN :
+      PlacesUtils.bookmarks.SYNC_STATUS.NEW;
+    await resetAllSyncStatuses(db, syncStatus);
+  },
+
+  /**
+   * Converts a Places GUID to a Sync record ID. Record IDs are identical to
+   * Places GUIDs for all items except roots.
+   */
+  guidToRecordId(guid) {
+    return ROOT_GUID_TO_RECORD_ID[guid] || guid;
   },
 
   /**
    * Converts a Sync record ID to a Places GUID.
    */
-  syncIdToGuid(syncId) {
-    return ROOT_SYNC_ID_TO_GUID[syncId] || syncId;
+  recordIdToGuid(recordId) {
+    return ROOT_RECORD_ID_TO_GUID[recordId] || recordId;
   },
 
   /**
-   * Fetches the sync IDs for a folder's children, ordered by their position
+   * Fetches the record IDs for a folder's children, ordered by their position
    * within the folder.
    */
-  fetchChildSyncIds(parentSyncId) {
-    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.syncId(parentSyncId);
-    let parentGuid = BookmarkSyncUtils.syncIdToGuid(parentSyncId);
+  fetchChildRecordIds(parentRecordId) {
+    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.recordId(parentRecordId);
+    let parentGuid = BookmarkSyncUtils.recordIdToGuid(parentRecordId);
 
     return PlacesUtils.withConnectionWrapper(
-      "BookmarkSyncUtils: fetchChildSyncIds", async function(db) {
+      "BookmarkSyncUtils: fetchChildRecordIds", async function(db) {
         let childGuids = await fetchChildGuids(db, parentGuid);
         return childGuids.map(guid =>
-          BookmarkSyncUtils.guidToSyncId(guid)
+          BookmarkSyncUtils.guidToRecordId(guid)
         );
       }
     );
   },
 
   /**
-   * Returns an array of `{ syncId, syncable }` tuples for all items in
-   * `requestedSyncIds`. If any requested ID is a folder, all its descendants
+   * Returns an array of `{ recordId, syncable }` tuples for all items in
+   * `requestedRecordIds`. If any requested ID is a folder, all its descendants
    * will be included. Ancestors of non-syncable items are not included; if
    * any are missing on the server, the requesting client will need to make
    * another repair request.
@@ -311,10 +626,10 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    * Sync calls this method to respond to incoming bookmark repair requests
    * and upload items that are missing on the server.
    */
-  fetchSyncIdsForRepair(requestedSyncIds) {
-    let requestedGuids = requestedSyncIds.map(BookmarkSyncUtils.syncIdToGuid);
+  fetchRecordIdsForRepair(requestedRecordIds) {
+    let requestedGuids = requestedRecordIds.map(BookmarkSyncUtils.recordIdToGuid);
     return PlacesUtils.withConnectionWrapper(
-      "BookmarkSyncUtils: fetchSyncIdsForRepair", async function(db) {
+      "BookmarkSyncUtils: fetchRecordIdsForRepair", async function(db) {
         let rows = await db.executeCached(`
           WITH RECURSIVE
           syncedItems(id) AS (
@@ -338,16 +653,16 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
           LEFT JOIN syncedItems s ON s.id = d.id
           `);
         return rows.map(row => {
-          let syncId = BookmarkSyncUtils.guidToSyncId(row.getResultByName("guid"));
+          let recordId = BookmarkSyncUtils.guidToRecordId(row.getResultByName("guid"));
           let syncable = !!row.getResultByName("syncable");
-          return { syncId, syncable };
+          return { recordId, syncable };
         });
       }
     );
   },
 
   /**
-   * Migrates an array of `{ syncId, modified }` tuples from the old JSON-based
+   * Migrates an array of `{ recordId, modified }` tuples from the old JSON-based
    * tracker to the new sync change counter. `modified` is when the change was
    * added to the old tracker, in milliseconds.
    *
@@ -392,8 +707,8 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
           )`);
 
           try {
-            for (let { syncId, modified } of entries) {
-              let guid = BookmarkSyncUtils.syncIdToGuid(syncId);
+            for (let { recordId, modified } of entries) {
+              let guid = BookmarkSyncUtils.recordIdToGuid(recordId);
               if (!PlacesUtils.isValidGuid(guid)) {
                 BookmarkSyncLog.warn(`migrateOldTrackerEntries: Ignoring ` +
                                      `change for invalid item ${guid}`);
@@ -449,18 +764,18 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    * @rejects if an error happens while reordering.
    * @throws if the arguments are invalid.
    */
-  order(parentSyncId, childSyncIds) {
-    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.syncId(parentSyncId);
-    if (!childSyncIds.length) {
+  order(parentRecordId, childRecordIds) {
+    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.recordId(parentRecordId);
+    if (!childRecordIds.length) {
       return undefined;
     }
-    let parentGuid = BookmarkSyncUtils.syncIdToGuid(parentSyncId);
+    let parentGuid = BookmarkSyncUtils.recordIdToGuid(parentRecordId);
     if (parentGuid == PlacesUtils.bookmarks.rootGuid) {
       // Reordering roots doesn't make sense, but Sync will do this on the
       // first sync.
       return undefined;
     }
-    let orderedChildrenGuids = childSyncIds.map(BookmarkSyncUtils.syncIdToGuid);
+    let orderedChildrenGuids = childRecordIds.map(BookmarkSyncUtils.recordIdToGuid);
     return PlacesUtils.bookmarks.reorder(parentGuid, orderedChildrenGuids,
                                          { source: SOURCE_SYNC });
   },
@@ -500,7 +815,7 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    *
    * @return {Promise} resolved once all items have been fetched.
    * @resolves to an object containing records for changed bookmarks, keyed by
-   *           the sync ID.
+   *           the record ID.
    * @see pullSyncChanges for the implementation, and markChangesAsSyncing for
    *      an explanation of why we update the sync status.
    */
@@ -539,19 +854,26 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
     return PlacesUtils.withConnectionWrapper(
       "BookmarkSyncUtils: pushChanges", async function(db) {
         let skippedCount = 0;
-        let syncedTombstoneGuids = [];
-        let syncedChanges = [];
+        let weakCount = 0;
+        let updateParams = [];
+        let tombstoneGuidsToRemove = [];
 
-        for (let syncId in changeRecords) {
+        for (let recordId in changeRecords) {
           // Validate change records to catch coding errors.
           let changeRecord = validateChangeRecord(
             "BookmarkSyncUtils: pushChanges",
-            changeRecords[syncId], {
+            changeRecords[recordId], {
               tombstone: { required: true },
               counter: { required: true },
               synced: { required: true },
             }
           );
+
+          // Skip weakly uploaded records.
+          if (!changeRecord.counter) {
+            weakCount++;
+            continue;
+          }
 
           // Sync sets the `synced` flag for reconciled or successfully
           // uploaded items. If upload failed, ignore the change; we'll
@@ -561,38 +883,45 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
             continue;
           }
 
-          let guid = BookmarkSyncUtils.syncIdToGuid(syncId);
+          let guid = BookmarkSyncUtils.recordIdToGuid(recordId);
           if (changeRecord.tombstone) {
-            syncedTombstoneGuids.push(guid);
+            tombstoneGuidsToRemove.push(guid);
           } else {
-            syncedChanges.push([guid, changeRecord]);
+            updateParams.push({
+              guid,
+              syncChangeDelta: changeRecord.counter,
+              syncStatus: PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
+            });
           }
         }
 
-        if (syncedChanges.length || syncedTombstoneGuids.length) {
+        // Reduce the change counter and update the sync status for
+        // reconciled and uploaded items. If the bookmark was updated
+        // during the sync, its change counter will still be > 0 for the
+        // next sync.
+        if (updateParams.length || tombstoneGuidsToRemove.length) {
           await db.executeTransaction(async function() {
-            for (let [guid, changeRecord] of syncedChanges) {
-              // Reduce the change counter and update the sync status for
-              // reconciled and uploaded items. If the bookmark was updated
-              // during the sync, its change counter will still be > 0 for the
-              // next sync.
+            if (updateParams.length) {
               await db.executeCached(`
                 UPDATE moz_bookmarks
                 SET syncChangeCounter = MAX(syncChangeCounter - :syncChangeDelta, 0),
                     syncStatus = :syncStatus
                 WHERE guid = :guid`,
-                { guid, syncChangeDelta: changeRecord.counter,
-                  syncStatus: PlacesUtils.bookmarks.SYNC_STATUS.NORMAL });
+                updateParams);
+              // and if there are *both* bookmarks and tombstones for these
+              // items, we nuke the tombstones.
+              // This should be unlikely, but bad if it happens.
+              let dupedGuids = updateParams.map(({ guid }) => guid);
+              await removeUndeletedTombstones(db, dupedGuids);
             }
-
-            await removeTombstones(db, syncedTombstoneGuids);
+            await removeTombstones(db, tombstoneGuidsToRemove);
           });
         }
 
         BookmarkSyncLog.debug(`pushChanges: Processed change records`,
-                              { skipped: skippedCount,
-                                updated: syncedChanges.length,
-                                tombstones: syncedTombstoneGuids.length });
+                              { weak: weakCount,
+                                skipped: skippedCount,
+                                updated: updateParams.length });
       }
     );
   },
@@ -616,20 +945,20 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    * See the comment above `BookmarksStore::deletePending` for the details on
    * why delete works the way it does.
    */
-  remove(syncIds) {
-    if (!syncIds.length) {
+  remove(recordIds) {
+    if (!recordIds.length) {
       return null;
     }
 
     return PlacesUtils.withConnectionWrapper("BookmarkSyncUtils: remove",
       async function(db) {
         let folderGuids = [];
-        for (let syncId of syncIds) {
-          if (syncId in ROOT_SYNC_ID_TO_GUID) {
-            BookmarkSyncLog.warn(`remove: Refusing to remove root ${syncId}`);
+        for (let recordId of recordIds) {
+          if (recordId in ROOT_RECORD_ID_TO_GUID) {
+            BookmarkSyncLog.warn(`remove: Refusing to remove root ${recordId}`);
             continue;
           }
-          let guid = BookmarkSyncUtils.syncIdToGuid(syncId);
+          let guid = BookmarkSyncUtils.recordIdToGuid(recordId);
           let bookmarkItem = await PlacesUtils.bookmarks.fetch(guid);
           if (!bookmarkItem) {
             BookmarkSyncLog.trace(`remove: Item ${guid} already removed`);
@@ -672,17 +1001,17 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    * calls this method to override a remote deletion for an item that's changed
    * locally.
    *
-   * @param syncId
-   *        The sync ID to revive.
+   * @param recordId
+   *        The record ID to revive.
    * @return {Promise} resolved once the change counters have been updated.
    * @resolves to `null` if the item doesn't exist or is a folder. Otherwise,
    *           resolves to an object containing new change records for the item
    *           and its parent. The bookmarks engine merges these records into
    *           the changeset for the current sync.
    */
-  async touch(syncId) {
-    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.syncId(syncId);
-    let guid = BookmarkSyncUtils.syncIdToGuid(syncId);
+  async touch(recordId) {
+    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.recordId(recordId);
+    let guid = BookmarkSyncUtils.recordIdToGuid(recordId);
 
     let bookmarkItem = await PlacesUtils.bookmarks.fetch(guid);
     if (!bookmarkItem) {
@@ -707,26 +1036,23 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
   },
 
   /**
-   * Returns true for sync IDs that are considered roots.
+   * Returns true for record IDs that are considered roots.
    */
-  isRootSyncID(syncID) {
-    return ROOT_SYNC_ID_TO_GUID.hasOwnProperty(syncID);
+  isRootRecordID(id) {
+    return ROOT_RECORD_ID_TO_GUID.hasOwnProperty(id);
   },
 
   /**
    * Removes all bookmarks and tombstones from the database. Sync calls this
    * method when it receives a command from a remote client to wipe all stored
-   * data, or when replacing stored data with remote data on a first sync.
+   * data.
    *
    * @return {Promise} resolved once all items have been removed.
    */
-  async wipe() {
-    // Remove all children from all roots.
-    await PlacesUtils.bookmarks.eraseEverything({
+  wipe() {
+    return PlacesUtils.bookmarks.eraseEverything({
       source: SOURCE_SYNC,
     });
-    // Remove tombstones and reset change tracking info for the roots.
-    await BookmarkSyncUtils.reset();
   },
 
   /**
@@ -740,29 +1066,14 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
     return PlacesUtils.withConnectionWrapper(
       "BookmarkSyncUtils: reset", function(db) {
         return db.executeTransaction(async function() {
-          // Reset change counters and statuses for all bookmarks.
-          await db.executeCached(`
-            UPDATE moz_bookmarks
-            SET syncChangeCounter = 1,
-                syncStatus = :syncStatus`,
-            { syncStatus: PlacesUtils.bookmarks.SYNC_STATUS.NEW });
-
-          // The orphan anno isn't meaningful when Sync is disconnected.
-          await db.execute(`
-            DELETE FROM moz_items_annos
-            WHERE anno_attribute_id = (SELECT id FROM moz_anno_attributes
-                                       WHERE name = :orphanAnno)`,
-            { orphanAnno: BookmarkSyncUtils.SYNC_PARENT_ANNO });
-
-          // Drop stale tombstones.
-          await db.executeCached("DELETE FROM moz_bookmarks_deleted");
+          await BookmarkSyncUtils.resetSyncMetadata(db, SOURCE_SYNC);
         });
       }
     );
   },
 
   /**
-   * De-dupes an item by changing its sync ID to match the ID on the server.
+   * De-dupes an item by changing its record ID to match the ID on the server.
    * Sync calls this method when it detects an incoming item is a duplicate of
    * an existing local item.
    *
@@ -770,11 +1081,11 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    * IDs are different. That happens after de-duping, when the bookmarks engine
    * calls `update` to update the item.
    *
-   * @param localSyncId
+   * @param localRecordId
    *        The local ID to change.
-   * @param remoteSyncId
+   * @param remoteRecordId
    *        The remote ID that should replace the local ID.
-   * @param remoteParentSyncId
+   * @param remoteParentRecordId
    *        The remote record's parent ID.
    * @return {Promise} resolved once the ID has been changed.
    * @resolves to an object containing new change records for the old item,
@@ -782,15 +1093,15 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    *           local parent. The bookmarks engine merges these records into the
    *           changeset for the current sync.
    */
-  dedupe(localSyncId, remoteSyncId, remoteParentSyncId) {
-    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.syncId(localSyncId);
-    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.syncId(remoteSyncId);
-    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.syncId(remoteParentSyncId);
+  dedupe(localRecordId, remoteRecordId, remoteParentRecordId) {
+    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.recordId(localRecordId);
+    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.recordId(remoteRecordId);
+    PlacesUtils.SYNC_BOOKMARK_VALIDATORS.recordId(remoteParentRecordId);
 
     return PlacesUtils.withConnectionWrapper("BookmarkSyncUtils: dedupe", db =>
-      dedupeSyncBookmark(db, BookmarkSyncUtils.syncIdToGuid(localSyncId),
-                         BookmarkSyncUtils.syncIdToGuid(remoteSyncId),
-                         BookmarkSyncUtils.syncIdToGuid(remoteParentSyncId))
+      dedupeSyncBookmark(db, BookmarkSyncUtils.recordIdToGuid(localRecordId),
+                         BookmarkSyncUtils.recordIdToGuid(remoteRecordId),
+                         BookmarkSyncUtils.recordIdToGuid(remoteParentRecordId))
     );
   },
 
@@ -820,7 +1131,7 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    */
   update(info) {
     let updateInfo = validateSyncBookmarkObject("BookmarkSyncUtils: update",
-      info, { syncId: { required: true } });
+      info, { recordId: { required: true } });
 
     return PlacesUtils.withConnectionWrapper("BookmarkSyncUtils: update",
       db => updateSyncBookmark(db, updateInfo));
@@ -864,8 +1175,8 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    * the following properties, depending on the item's kind:
    *
    *  - kind (all): A string representing the item's kind.
-   *  - syncId (all): The item's sync ID.
-   *  - parentSyncId (all): The sync ID of the item's parent.
+   *  - recordId (all): The item's record ID.
+   *  - parentRecordId (all): The record ID of the item's parent.
    *  - parentTitle (all): The title of the item's parent, used for de-duping.
    *    Omitted for the Places root and parents with empty titles.
    *  - dateAdded (all): Timestamp in milliseconds, when the bookmark was added
@@ -882,15 +1193,15 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    *  - feed ("livemark"): A `URL` object pointing to the livemark's feed URL.
    *  - site ("livemark"): A `URL` object pointing to the livemark's site URL,
    *    or `null` if one isn't set.
-   *  - childSyncIds ("folder"): An array containing the sync IDs of the item's
+   *  - childRecordIds ("folder"): An array containing the record IDs of the item's
    *    children, used to determine child order.
    *  - folder ("query"): The tag folder name, if this is a tag query.
    *  - query ("query"): The smart bookmark query name, if this is a smart
    *    bookmark.
    *  - index ("separator"): The separator's position within its parent.
    */
-  async fetch(syncId) {
-    let guid = BookmarkSyncUtils.syncIdToGuid(syncId);
+  async fetch(recordId) {
+    let guid = BookmarkSyncUtils.recordIdToGuid(recordId);
     let bookmarkItem = await PlacesUtils.bookmarks.fetch(guid);
     if (!bookmarkItem) {
       return null;
@@ -958,7 +1269,7 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
       // Incoming bookmarks are "NORMAL", since they already exist on the server.
       return PlacesUtils.bookmarks.SYNC_STATUS.NORMAL;
     }
-    if (source == PlacesUtils.bookmarks.SOURCES.IMPORT_REPLACE) {
+    if (source == PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP) {
       // If the user restores from a backup, or Places automatically recovers
       // from a corrupt database, all prior sync tracking is lost. Setting the
       // status to "UNKNOWN" allows Sync to reconcile restored bookmarks with
@@ -998,14 +1309,14 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
   },
 
   /**
-   * Returns `undefined` if no sensible timestamp could be found.
+   * Returns `0` if no sensible timestamp could be found.
    * Otherwise, returns the earliest sensible timestamp between `existingMillis`
    * and `serverMillis`.
    */
   ratchetTimestampBackwards(existingMillis, serverMillis, lowerBound = BookmarkSyncUtils.EARLIEST_BOOKMARK_TIMESTAMP) {
     const possible = [+existingMillis, +serverMillis].filter(n => !isNaN(n) && n > lowerBound);
     if (!possible.length) {
-      return undefined;
+      return 0;
     }
     return Math.min(...possible);
   },
@@ -1022,72 +1333,12 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
    *   exist, or will be updated with the correct title and URL otherwise.
    */
   async ensureMobileQuery() {
-    Services.prefs.setBoolPref(MOBILE_BOOKMARKS_PREF, true);
-
     let db = await PlacesUtils.promiseDBConnection();
 
-    let maybeAllBookmarksGuids = await fetchGuidsWithAnno(db,
-      ORGANIZER_QUERY_ANNO, ORGANIZER_ALL_BOOKMARKS_ANNO_VALUE);
-    if (!maybeAllBookmarksGuids.length) {
-      return;
-    }
+    let mobileChildGuids = await fetchChildGuids(db, PlacesUtils.bookmarks.mobileGuid);
+    let hasMobileBookmarks = mobileChildGuids.length > 0;
 
-    let hasMobileBookmarks = (await db.executeCached(`SELECT EXISTS(
-      SELECT 1 FROM moz_bookmarks b
-      JOIN moz_bookmarks p ON p.id = b.parent
-      WHERE p.guid = :mobileGuid
-    ) AS hasMobile`, {
-      mobileGuid: PlacesUtils.bookmarks.mobileGuid,
-    }))[0].getResultByName("hasMobile");
-
-    let allBookmarksGuid = maybeAllBookmarksGuids[0];
-    let mobileTitle = PlacesUtils.getString("MobileBookmarksFolderTitle");
-
-    let maybeMobileQueryGuids = await fetchGuidsWithAnno(db,
-      ORGANIZER_QUERY_ANNO, ORGANIZER_MOBILE_QUERY_ANNO_VALUE);
-    if (maybeMobileQueryGuids.length) {
-      let mobileQueryGuid = maybeMobileQueryGuids[0];
-      if (hasMobileBookmarks) {
-        // We have a left pane query for mobile bookmarks, and at least one
-        // mobile bookmark. Make sure the query title is correct.
-        await PlacesUtils.bookmarks.update({
-          guid: mobileQueryGuid,
-          url: "place:folder=MOBILE_BOOKMARKS",
-          title: mobileTitle,
-          source: SOURCE_SYNC,
-        });
-      } else {
-        // We have a left pane query for mobile bookmarks, but no mobile
-        // bookmarks. Remove the query.
-        await PlacesUtils.bookmarks.remove(mobileQueryGuid, {
-          source: SOURCE_SYNC,
-        });
-      }
-    } else if (hasMobileBookmarks) {
-      // We have mobile bookmarks, but no left pane query. Create the query.
-      let mobileQuery = await PlacesUtils.bookmarks.insert({
-        parentGuid: allBookmarksGuid,
-        url: "place:folder=MOBILE_BOOKMARKS",
-        title: mobileTitle,
-        source: SOURCE_SYNC,
-      });
-
-      let mobileQueryId = await PlacesUtils.promiseItemId(mobileQuery.guid);
-
-      PlacesUtils.annotations.setItemAnnotation(mobileQueryId,
-        ORGANIZER_QUERY_ANNO, ORGANIZER_MOBILE_QUERY_ANNO_VALUE, 0,
-        PlacesUtils.annotations.EXPIRE_NEVER, SOURCE_SYNC);
-      PlacesUtils.annotations.setItemAnnotation(mobileQueryId,
-        PlacesUtils.EXCLUDE_FROM_BACKUP_ANNO, 1, 0,
-        PlacesUtils.annotations.EXPIRE_NEVER, SOURCE_SYNC);
-    }
-
-    // Make sure the mobile root title matches the query.
-    await PlacesUtils.bookmarks.update({
-      guid: PlacesUtils.bookmarks.mobileGuid,
-      title: mobileTitle,
-      source: SOURCE_SYNC,
-    });
+    Services.prefs.setBoolPref(MOBILE_BOOKMARKS_PREF, hasMobileBookmarks);
   },
 
   /**
@@ -1100,8 +1351,14 @@ const BookmarkSyncUtils = PlacesSyncUtils.bookmarks = Object.freeze({
   },
 });
 
+XPCOMUtils.defineLazyGetter(this, "HistorySyncLog", () => {
+  return Log.repository.getLogger("Sync.Engine.History.HistorySyncUtils");
+});
+
 XPCOMUtils.defineLazyGetter(this, "BookmarkSyncLog", () => {
-  return Log.repository.getLogger("BookmarkSyncUtils");
+  // Use a sub-log of the bookmarks engine, so setting the level for that
+  // engine also adjust the level of this log.
+  return Log.repository.getLogger("Sync.Engine.Bookmarks.BookmarkSyncUtils");
 });
 
 function validateSyncBookmarkObject(name, input, behavior) {
@@ -1145,10 +1402,10 @@ var GUIDMissing = async function(guid) {
   }
 };
 
-// Tag queries use a `place:` URL that refers to the tag folder ID. When we
-// apply a synced tag query from a remote client, we need to update the URL to
-// point to the local tag folder.
-async function updateTagQueryFolder(db, info) {
+// Legacy tag queries may use a `place:` URL that refers to the tag folder ID.
+// When we apply a synced tag query from a remote client, we need to update the
+// URL to point to the local tag.
+function updateTagQueryFolder(db, info) {
   if (info.kind != BookmarkSyncUtils.KINDS.QUERY || !info.folder || !info.url ||
       info.url.protocol != "place:") {
     return info;
@@ -1156,27 +1413,26 @@ async function updateTagQueryFolder(db, info) {
 
   let params = new URLSearchParams(info.url.pathname);
   let type = +params.get("type");
-
   if (type != Ci.nsINavHistoryQueryOptions.RESULTS_AS_TAG_CONTENTS) {
     return info;
   }
 
-  let id = await getOrCreateTagFolder(db, info.folder);
-  BookmarkSyncLog.debug(`updateTagQueryFolder: Tag query folder: ${
-    info.folder} = ${id}`);
+  BookmarkSyncLog.debug(`updateTagQueryFolder: Tag query folder: ${info.folder}`);
 
-  // Rewrite the query to reference the new ID.
-  params.set("folder", id);
+  // Rewrite the query to directly reference the tag.
+  params.delete("queryType");
+  params.delete("type");
+  params.delete("folder");
+  params.set("tag", info.folder);
   info.url = new URL(info.url.protocol + params);
-
   return info;
 }
 
-async function annotateOrphan(item, requestedParentSyncId) {
-  let guid = BookmarkSyncUtils.syncIdToGuid(item.syncId);
+async function annotateOrphan(item, requestedParentRecordId) {
+  let guid = BookmarkSyncUtils.recordIdToGuid(item.recordId);
   let itemId = await PlacesUtils.promiseItemId(guid);
   PlacesUtils.annotations.setItemAnnotation(itemId,
-    BookmarkSyncUtils.SYNC_PARENT_ANNO, requestedParentSyncId, 0,
+    BookmarkSyncUtils.SYNC_PARENT_ANNO, requestedParentRecordId, 0,
     PlacesUtils.annotations.EXPIRE_NEVER,
     SOURCE_SYNC);
 }
@@ -1187,16 +1443,16 @@ var reparentOrphans = async function(db, item) {
   }
   let orphanGuids = await fetchGuidsWithAnno(db,
                                              BookmarkSyncUtils.SYNC_PARENT_ANNO,
-                                             item.syncId);
-  let folderGuid = BookmarkSyncUtils.syncIdToGuid(item.syncId);
+                                             item.recordId);
+  let folderGuid = BookmarkSyncUtils.recordIdToGuid(item.recordId);
   BookmarkSyncLog.debug(`reparentOrphans: Reparenting ${
-    JSON.stringify(orphanGuids)} to ${item.syncId}`);
+    JSON.stringify(orphanGuids)} to ${item.recordId}`);
   for (let i = 0; i < orphanGuids.length; ++i) {
     try {
       // Reparenting can fail if we have a corrupted or incomplete tree
       // where an item's parent is one of its descendants.
       BookmarkSyncLog.trace(`reparentOrphans: Attempting to move item ${
-        orphanGuids[i]} to new parent ${item.syncId}`);
+        orphanGuids[i]} to new parent ${item.recordId}`);
       await PlacesUtils.bookmarks.update({
         guid: orphanGuids[i],
         parentGuid: folderGuid,
@@ -1205,27 +1461,27 @@ var reparentOrphans = async function(db, item) {
       });
     } catch (ex) {
       BookmarkSyncLog.error(`reparentOrphans: Failed to reparent item ${
-        orphanGuids[i]} to ${item.syncId}`, ex);
+        orphanGuids[i]} to ${item.recordId}`, ex);
     }
   }
-}
+};
 
 // Inserts a synced bookmark into the database.
 async function insertSyncBookmark(db, insertInfo) {
-  let requestedParentSyncId = insertInfo.parentSyncId;
+  let requestedParentRecordId = insertInfo.parentRecordId;
   let requestedParentGuid =
-    BookmarkSyncUtils.syncIdToGuid(insertInfo.parentSyncId);
+    BookmarkSyncUtils.recordIdToGuid(insertInfo.parentRecordId);
   let isOrphan = await GUIDMissing(requestedParentGuid);
 
   // Default to "unfiled" for new bookmarks if the parent doesn't exist.
   if (!isOrphan) {
     BookmarkSyncLog.debug(`insertSyncBookmark: Item ${
-      insertInfo.syncId} is not an orphan`);
+      insertInfo.recordId} is not an orphan`);
   } else {
     BookmarkSyncLog.debug(`insertSyncBookmark: Item ${
-      insertInfo.syncId} is an orphan: parent ${
-      insertInfo.parentSyncId} doesn't exist; reparenting to unfiled`);
-    insertInfo.parentSyncId = "unfiled";
+      insertInfo.recordId} is an orphan: parent ${
+      insertInfo.parentRecordId} doesn't exist; reparenting to unfiled`);
+    insertInfo.parentRecordId = "unfiled";
   }
 
   // If we're inserting a tag query, make sure the tag exists and fix the
@@ -1245,9 +1501,9 @@ async function insertSyncBookmark(db, insertInfo) {
     return null;
   }
 
-  // If the item is an orphan, annotate it with its real parent sync ID.
+  // If the item is an orphan, annotate it with its real parent record ID.
   if (isOrphan) {
-    await annotateOrphan(newItem, requestedParentSyncId);
+    await annotateOrphan(newItem, requestedParentRecordId);
   }
 
   // Reparent all orphans that expect this folder as the parent.
@@ -1260,7 +1516,7 @@ async function insertSyncBookmark(db, insertInfo) {
 async function insertSyncLivemark(db, insertInfo) {
   if (!insertInfo.feed) {
     BookmarkSyncLog.debug(`insertSyncLivemark: ${
-      insertInfo.syncId} missing feed URL`);
+      insertInfo.recordId} missing feed URL`);
     return null;
   }
   let livemarkInfo = syncBookmarkToPlacesBookmark(insertInfo);
@@ -1269,8 +1525,8 @@ async function insertSyncLivemark(db, insertInfo) {
   if (parentIsLivemark) {
     // A livemark can't be a descendant of another livemark.
     BookmarkSyncLog.debug(`insertSyncLivemark: Invalid parent ${
-      insertInfo.parentSyncId}; skipping livemark record ${
-      insertInfo.syncId}`);
+      insertInfo.parentRecordId}; skipping livemark record ${
+      insertInfo.recordId}`);
     return null;
   }
 
@@ -1299,8 +1555,8 @@ function removeConflictingKeywords(bookmarkURL, newKeyword) {
           keyword: entryForURL.keyword,
           source: SOURCE_SYNC,
         });
-        // This will cause us to reupload this record for this sync, but without it,
-        // we will risk data corruption.
+        // This will cause us to reupload this record for this sync, but
+        // without it, we will risk data corruption.
         await BookmarkSyncUtils.addSyncChangesForBookmarksWithURL(
           db, entryForURL.url, 1);
       }
@@ -1340,7 +1596,7 @@ async function insertBookmarkMetadata(db, bookmarkItem, insertInfo) {
     newItem.tags = tagItem(bookmarkItem, insertInfo.tags);
   } catch (ex) {
     BookmarkSyncLog.warn(`insertBookmarkMetadata: Error tagging item ${
-      insertInfo.syncId}`, ex);
+      insertInfo.recordId}`, ex);
   }
 
   if (insertInfo.keyword) {
@@ -1418,7 +1674,7 @@ var shouldReinsertLivemark = async function(updateInfo) {
   if (!hasFeed && !hasSite) {
     return false;
   }
-  let guid = BookmarkSyncUtils.syncIdToGuid(updateInfo.syncId);
+  let guid = BookmarkSyncUtils.recordIdToGuid(updateInfo.recordId);
   let livemark = await PlacesUtils.livemarks.getLivemark({
     guid,
   });
@@ -1441,11 +1697,11 @@ var shouldReinsertLivemark = async function(updateInfo) {
 };
 
 async function updateSyncBookmark(db, updateInfo) {
-  let guid = BookmarkSyncUtils.syncIdToGuid(updateInfo.syncId);
+  let guid = BookmarkSyncUtils.recordIdToGuid(updateInfo.recordId);
   let oldBookmarkItem = await PlacesUtils.bookmarks.fetch(guid);
   if (!oldBookmarkItem) {
-    throw new Error(`Bookmark with sync ID ${
-      updateInfo.syncId} does not exist`);
+    throw new Error(`Bookmark with record ID ${
+      updateInfo.recordId} does not exist`);
   }
 
   if (updateInfo.hasOwnProperty("dateAdded")) {
@@ -1465,10 +1721,10 @@ async function updateSyncBookmark(db, updateInfo) {
     // we must remove and reinsert.
     shouldReinsert = true;
     if (BookmarkSyncLog.level <= Log.Level.Warn) {
-      let oldSyncId = BookmarkSyncUtils.guidToSyncId(oldBookmarkItem.guid);
+      let oldRecordId = BookmarkSyncUtils.guidToRecordId(oldBookmarkItem.guid);
       BookmarkSyncLog.warn(`updateSyncBookmark: Local ${
-        oldSyncId} kind = ${oldKind}; remote ${
-        updateInfo.syncId} kind = ${
+        oldRecordId} kind = ${oldKind}; remote ${
+        updateInfo.recordId} kind = ${
         updateInfo.kind}. Deleting and recreating`);
     }
   } else if (oldKind == BookmarkSyncUtils.KINDS.LIVEMARK) {
@@ -1476,10 +1732,10 @@ async function updateSyncBookmark(db, updateInfo) {
     // reinsert.
     shouldReinsert = await shouldReinsertLivemark(updateInfo);
     if (BookmarkSyncLog.level <= Log.Level.Debug) {
-      let oldSyncId = BookmarkSyncUtils.guidToSyncId(oldBookmarkItem.guid);
+      let oldRecordId = BookmarkSyncUtils.guidToRecordId(oldBookmarkItem.guid);
       BookmarkSyncLog.debug(`updateSyncBookmark: Local ${
-        oldSyncId} and remote ${
-        updateInfo.syncId} livemarks have different URLs`);
+        oldRecordId} and remote ${
+        updateInfo.recordId} livemarks have different URLs`);
     }
   }
 
@@ -1502,35 +1758,35 @@ async function updateSyncBookmark(db, updateInfo) {
     return insertSyncBookmark(db, newInfo);
   }
 
-  let isOrphan = false, requestedParentSyncId;
-  if (updateInfo.hasOwnProperty("parentSyncId")) {
-    requestedParentSyncId = updateInfo.parentSyncId;
-    let oldParentSyncId =
-      BookmarkSyncUtils.guidToSyncId(oldBookmarkItem.parentGuid);
-    if (requestedParentSyncId != oldParentSyncId) {
+  let isOrphan = false, requestedParentRecordId;
+  if (updateInfo.hasOwnProperty("parentRecordId")) {
+    requestedParentRecordId = updateInfo.parentRecordId;
+    let oldParentRecordId =
+      BookmarkSyncUtils.guidToRecordId(oldBookmarkItem.parentGuid);
+    if (requestedParentRecordId != oldParentRecordId) {
       let oldId = await PlacesUtils.promiseItemId(oldBookmarkItem.guid);
       if (PlacesUtils.isRootItem(oldId)) {
         throw new Error(`Cannot move Places root ${oldId}`);
       }
       let requestedParentGuid =
-        BookmarkSyncUtils.syncIdToGuid(requestedParentSyncId);
+        BookmarkSyncUtils.recordIdToGuid(requestedParentRecordId);
       isOrphan = await GUIDMissing(requestedParentGuid);
       if (!isOrphan) {
         BookmarkSyncLog.debug(`updateSyncBookmark: Item ${
-          updateInfo.syncId} is not an orphan`);
+          updateInfo.recordId} is not an orphan`);
       } else {
         // Don't move the item if the new parent doesn't exist. Instead, mark
         // the item as an orphan. We'll annotate it with its real parent after
         // updating.
         BookmarkSyncLog.trace(`updateSyncBookmark: Item ${
-          updateInfo.syncId} is an orphan: could not find parent ${
-          requestedParentSyncId}`);
-        delete updateInfo.parentSyncId;
+          updateInfo.recordId} is an orphan: could not find parent ${
+          requestedParentRecordId}`);
+        delete updateInfo.parentRecordId;
       }
     } else {
       // If the parent is the same, just omit it so that `update` doesn't do
       // extra work.
-      delete updateInfo.parentSyncId;
+      delete updateInfo.parentRecordId;
     }
   }
 
@@ -1543,9 +1799,9 @@ async function updateSyncBookmark(db, updateInfo) {
   let newItem = await updateBookmarkMetadata(db, oldBookmarkItem,
                                              newBookmarkItem, updateInfo);
 
-  // If the item is an orphan, annotate it with its real parent sync ID.
+  // If the item is an orphan, annotate it with its real parent record ID.
   if (isOrphan) {
-    await annotateOrphan(newItem, requestedParentSyncId);
+    await annotateOrphan(newItem, requestedParentRecordId);
   }
 
   // Reparent all orphans that expect this folder as the parent.
@@ -1566,7 +1822,7 @@ async function updateBookmarkMetadata(db, oldBookmarkItem,
     newItem.tags = tagItem(newBookmarkItem, updateInfo.tags);
   } catch (ex) {
     BookmarkSyncLog.warn(`updateBookmarkMetadata: Error tagging item ${
-      updateInfo.syncId}`, ex);
+      updateInfo.recordId}`, ex);
   }
 
   if (updateInfo.hasOwnProperty("keyword")) {
@@ -1622,12 +1878,12 @@ async function updateBookmarkMetadata(db, oldBookmarkItem,
 function validateNewBookmark(name, info) {
   let insertInfo = validateSyncBookmarkObject(name, info,
     { kind: { required: true },
-      syncId: { required: true },
+      recordId: { required: true },
       url: { requiredIf: b => [ BookmarkSyncUtils.KINDS.BOOKMARK,
                                 BookmarkSyncUtils.KINDS.QUERY ].includes(b.kind),
             validIf: b => [ BookmarkSyncUtils.KINDS.BOOKMARK,
                             BookmarkSyncUtils.KINDS.QUERY ].includes(b.kind) },
-      parentSyncId: { required: true },
+      parentRecordId: { required: true },
       title: { validIf: b => [ BookmarkSyncUtils.KINDS.BOOKMARK,
                                BookmarkSyncUtils.KINDS.QUERY,
                                BookmarkSyncUtils.KINDS.FOLDER,
@@ -1707,51 +1963,22 @@ function shouldUpdateBookmark(bookmarkInfo) {
          bookmarkInfo.hasOwnProperty("url");
 }
 
-// Returns the folder ID for `tag`, or `null` if the tag doesn't exist.
-async function getTagFolder(db, tag) {
-  let results = await db.executeCached(`
-    SELECT id
-    FROM moz_bookmarks
-    WHERE type = :type AND
-          parent = :tagsFolderId AND
-          title = :tag`,
-    { type: PlacesUtils.bookmarks.TYPE_FOLDER,
-      tagsFolderId: PlacesUtils.tagsFolderId, tag });
-  return results.length ? results[0].getResultByName("id") : null;
-}
-
-// Returns the folder ID for `tag`, creating one if it doesn't exist.
-async function getOrCreateTagFolder(db, tag) {
-  let id = await getTagFolder(db, tag);
-  if (id) {
-    return id;
-  }
-  // Create the tag if it doesn't exist.
-  let item = await PlacesUtils.bookmarks.insert({
-    type: PlacesUtils.bookmarks.TYPE_FOLDER,
-    parentGuid: PlacesUtils.bookmarks.tagsGuid,
-    title: tag,
-    source: SOURCE_SYNC,
-  });
-  return PlacesUtils.promiseItemId(item.guid);
-}
-
 // Converts a Places bookmark or livemark to a Sync bookmark. This function
-// maps Places GUIDs to sync IDs and filters out extra Places properties like
+// maps Places GUIDs to record IDs and filters out extra Places properties like
 // date added, last modified, and index.
 async function placesBookmarkToSyncBookmark(db, bookmarkItem) {
   let item = {};
 
   for (let prop in bookmarkItem) {
     switch (prop) {
-      // Sync IDs are identical to Places GUIDs for all items except roots.
+      // Record IDs are identical to Places GUIDs for all items except roots.
       case "guid":
-        item.syncId = BookmarkSyncUtils.guidToSyncId(bookmarkItem.guid);
+        item.recordId = BookmarkSyncUtils.guidToRecordId(bookmarkItem.guid);
         break;
 
       case "parentGuid":
-        item.parentSyncId =
-          BookmarkSyncUtils.guidToSyncId(bookmarkItem.parentGuid);
+        item.parentRecordId =
+          BookmarkSyncUtils.guidToRecordId(bookmarkItem.parentGuid);
         break;
 
       // Sync uses kinds instead of types, which distinguish between folders,
@@ -1787,7 +2014,7 @@ async function placesBookmarkToSyncBookmark(db, bookmarkItem) {
 }
 
 // Converts a Sync bookmark object to a Places bookmark or livemark object.
-// This function maps sync IDs to Places GUIDs, and filters out extra Sync
+// This function maps record IDs to Places GUIDs, and filters out extra Sync
 // properties like keywords, tags, and descriptions. Returns an object that can
 // be passed to `PlacesUtils.livemarks.addLivemark` or
 // `PlacesUtils.bookmarks.{insert, update}`.
@@ -1802,18 +2029,18 @@ function syncBookmarkToPlacesBookmark(info) {
         bookmarkInfo.type = getTypeForKind(info.kind);
         break;
 
-      // Convert sync IDs to Places GUIDs for roots.
-      case "syncId":
-        bookmarkInfo.guid = BookmarkSyncUtils.syncIdToGuid(info.syncId);
+      // Convert record IDs to Places GUIDs for roots.
+      case "recordId":
+        bookmarkInfo.guid = BookmarkSyncUtils.recordIdToGuid(info.recordId);
         break;
 
       case "dateAdded":
         bookmarkInfo.dateAdded = new Date(info.dateAdded);
         break;
 
-      case "parentSyncId":
+      case "parentRecordId":
         bookmarkInfo.parentGuid =
-          BookmarkSyncUtils.syncIdToGuid(info.parentSyncId);
+          BookmarkSyncUtils.recordIdToGuid(info.parentRecordId);
         // Instead of providing an index, Sync reorders children at the end of
         // the sync using `BookmarkSyncUtils.order`. We explicitly specify the
         // default index here to prevent `PlacesUtils.bookmarks.update` and
@@ -1889,8 +2116,8 @@ async function fetchFolderItem(db, bookmarkItem) {
   }
 
   let childGuids = await fetchChildGuids(db, bookmarkItem.guid);
-  item.childSyncIds = childGuids.map(guid =>
-    BookmarkSyncUtils.guidToSyncId(guid)
+  item.childRecordIds = childGuids.map(guid =>
+    BookmarkSyncUtils.guidToRecordId(guid)
   );
 
   return item;
@@ -1935,21 +2162,10 @@ async function fetchQueryItem(db, bookmarkItem) {
     item.description = description;
   }
 
-  let folder = null;
   let params = new URLSearchParams(bookmarkItem.url.pathname);
-  let tagFolderId = +params.get("folder");
-  if (tagFolderId) {
-    try {
-      let tagFolderGuid = await PlacesUtils.promiseItemGuid(tagFolderId);
-      let tagFolder = await PlacesUtils.bookmarks.fetch(tagFolderGuid);
-      folder = tagFolder.title;
-    } catch (ex) {
-      BookmarkSyncLog.warn("fetchQueryItem: Query " + bookmarkItem.url.href +
-                           " points to nonexistent folder " + tagFolderId, ex);
-    }
-  }
-  if (folder != null) {
-    item.folder = folder;
+  let tags = params.getAll("tag");
+  if (tags.length == 1) {
+    item.folder = tags[0];
   }
 
   let query = await getAnno(db, bookmarkItem.guid,
@@ -1962,19 +2178,41 @@ async function fetchQueryItem(db, bookmarkItem) {
 }
 
 function addRowToChangeRecords(row, changeRecords) {
-  let syncId = BookmarkSyncUtils.guidToSyncId(row.getResultByName("guid"));
+  let guid = row.getResultByName("guid");
+  if (!guid) {
+    throw new Error(`Changed item missing GUID`);
+  }
+  let isTombstone = !!row.getResultByName("tombstone");
+  let recordId = BookmarkSyncUtils.guidToRecordId(guid);
+  if (recordId in changeRecords) {
+    let existingRecord = changeRecords[recordId];
+    if (existingRecord.tombstone == isTombstone) {
+      // Should never happen: `moz_bookmarks.guid` has a unique index, and
+      // `moz_bookmarks_deleted.guid` is the primary key.
+      throw new Error(`Duplicate item or tombstone ${recordId} in changeset`);
+    }
+    if (!existingRecord.tombstone && isTombstone) {
+      // Don't replace undeleted items with tombstones...
+      BookmarkSyncLog.warn("addRowToChangeRecords: Ignoring tombstone for " +
+                           "undeleted item", recordId);
+      return;
+    }
+    // ...But replace undeleted tombstones with items.
+    BookmarkSyncLog.warn("addRowToChangeRecords: Replacing tombstone for " +
+                         "undeleted item", recordId);
+  }
   let modifiedAsPRTime = row.getResultByName("modified");
   let modified = modifiedAsPRTime / MICROSECONDS_PER_SECOND;
   if (Number.isNaN(modified) || modified <= 0) {
     BookmarkSyncLog.error("addRowToChangeRecords: Invalid modified date for " +
-                          syncId, modifiedAsPRTime);
+                          recordId, modifiedAsPRTime);
     modified = 0;
   }
-  changeRecords[syncId] = {
+  changeRecords[recordId] = {
     modified,
     counter: row.getResultByName("syncChangeCounter"),
     status: row.getResultByName("syncStatus"),
-    tombstone: !!row.getResultByName("tombstone"),
+    tombstone: isTombstone,
     synced: false,
   };
 }
@@ -1987,12 +2225,12 @@ function addRowToChangeRecords(row, changeRecords) {
  *        The Sqlite.jsm connection handle.
  * @return {Promise} resolved once all items have been fetched.
  * @resolves to an object containing records for changed bookmarks, keyed by
- *           the sync ID.
+ *           the record ID.
  */
 var pullSyncChanges = async function(db) {
   let changeRecords = {};
 
-  await db.executeCached(`
+  let rows = await db.executeCached(`
     WITH RECURSIVE
     syncedItems(id, guid, modified, syncChangeCounter, syncStatus) AS (
       SELECT b.id, b.guid, b.lastModified, b.syncChangeCounter, b.syncStatus
@@ -2011,8 +2249,10 @@ var pullSyncChanges = async function(db) {
     SELECT guid, dateRemoved AS modified, 1 AS syncChangeCounter,
            :deletedSyncStatus, 1 AS tombstone
     FROM moz_bookmarks_deleted`,
-    { deletedSyncStatus: PlacesUtils.bookmarks.SYNC_STATUS.NORMAL },
-    row => addRowToChangeRecords(row, changeRecords));
+    { deletedSyncStatus: PlacesUtils.bookmarks.SYNC_STATUS.NORMAL });
+  for (let row of rows) {
+    addRowToChangeRecords(row, changeRecords);
+  }
 
   return changeRecords;
 };
@@ -2021,7 +2261,7 @@ var touchSyncBookmark = async function(db, bookmarkItem) {
   if (BookmarkSyncLog.level <= Log.Level.Trace) {
     BookmarkSyncLog.trace(
       `touch: Reviving item "${bookmarkItem.guid}" and marking parent ` +
-      BookmarkSyncUtils.guidToSyncId(bookmarkItem.parentGuid) + ` as modified`);
+      BookmarkSyncUtils.guidToRecordId(bookmarkItem.parentGuid) + ` as modified`);
   }
 
   // Bump the change counter of the item and its parent, so that we upload
@@ -2126,8 +2366,8 @@ var dedupeSyncBookmark = async function(db, localGuid, remoteGuid,
   let changeRecords = await pullSyncChanges(db);
 
   if (BookmarkSyncLog.level <= Log.Level.Debug && !sameParent) {
-    let remoteParentSyncId = BookmarkSyncUtils.guidToSyncId(remoteParentGuid);
-    if (!changeRecords.hasOwnProperty(remoteParentSyncId)) {
+    let remoteParentRecordId = BookmarkSyncUtils.guidToRecordId(remoteParentGuid);
+    if (!changeRecords.hasOwnProperty(remoteParentRecordId)) {
       BookmarkSyncLog.debug("dedupeSyncBookmark: Incoming duplicate item " +
                             remoteGuid + " specifies non-existing parent " +
                             remoteParentGuid);
@@ -2154,7 +2394,7 @@ async function deleteSyncedFolder(db, bookmarkItem) {
     BookmarkSyncLog.trace(
       `deleteSyncedFolder: Moving ${JSON.stringify(childGuids)} children of ` +
       `"${bookmarkItem.guid}" to grandparent
-      "${BookmarkSyncUtils.guidToSyncId(bookmarkItem.parentGuid)}" before ` +
+      "${BookmarkSyncUtils.guidToRecordId(bookmarkItem.parentGuid)}" before ` +
       `deletion`);
   }
 
@@ -2228,15 +2468,15 @@ var deleteSyncedAtom = async function(bookmarkItem) {
  */
 function markChangesAsSyncing(db, changeRecords) {
   let unsyncedGuids = [];
-  for (let syncId in changeRecords) {
-    if (changeRecords[syncId].tombstone) {
+  for (let recordId in changeRecords) {
+    if (changeRecords[recordId].tombstone) {
       continue;
     }
-    if (changeRecords[syncId].status ==
+    if (changeRecords[recordId].status ==
         PlacesUtils.bookmarks.SYNC_STATUS.NORMAL) {
       continue;
     }
-    let guid = BookmarkSyncUtils.syncIdToGuid(syncId);
+    let guid = BookmarkSyncUtils.recordIdToGuid(recordId);
     unsyncedGuids.push(JSON.stringify(guid));
   }
   if (!unsyncedGuids.length) {
@@ -2264,6 +2504,22 @@ var removeTombstones = function(db, guids) {
 };
 
 /**
+ * Removes tombstones for successfully synced items where the specified GUID
+ * exists in *both* the bookmarks and tombstones tables.
+ *
+ * @return {Promise}
+ */
+var removeUndeletedTombstones = function(db, guids) {
+  if (!guids.length) {
+    return Promise.resolve();
+  }
+  // sqlite can't join in a DELETE, so we use a subquery.
+  return db.execute(`
+    DELETE FROM moz_bookmarks_deleted
+    WHERE guid IN (${guids.map(guid => JSON.stringify(guid)).join(",")})
+    AND guid IN (SELECT guid from moz_bookmarks)`);
+};
+/**
  * Sends a bookmarks notification through the given observers.
  *
  * @param observers
@@ -2279,4 +2535,44 @@ function notify(observers, notification, args = []) {
       observer[notification](...args);
     } catch (ex) {}
   }
+}
+
+// Sets the history sync ID and clears the last sync time.
+async function setHistorySyncId(db, newSyncId) {
+  await PlacesUtils.metadata.setWithConnection(db,
+    HistorySyncUtils.SYNC_ID_META_KEY, newSyncId);
+
+  await PlacesUtils.metadata.deleteWithConnection(db,
+    HistorySyncUtils.LAST_SYNC_META_KEY);
+}
+
+// Sets the bookmarks sync ID and clears the last sync time.
+async function setBookmarksSyncId(db, newSyncId) {
+  await PlacesUtils.metadata.setWithConnection(db,
+    BookmarkSyncUtils.SYNC_ID_META_KEY, newSyncId);
+
+  await PlacesUtils.metadata.deleteWithConnection(db,
+    BookmarkSyncUtils.LAST_SYNC_META_KEY,
+    BookmarkSyncUtils.WIPE_REMOTE_META_KEY);
+}
+
+// Bumps the change counter and sets the given sync status for all bookmarks,
+// removes all orphan annos, and drops stale tombstones.
+async function resetAllSyncStatuses(db, syncStatus) {
+  await db.execute(`
+    UPDATE moz_bookmarks
+    SET syncChangeCounter = 1,
+        syncStatus = :syncStatus`,
+    { syncStatus });
+
+  // The orphan anno isn't meaningful after a restore, disconnect, or node
+  // reassignment.
+  await db.execute(`
+    DELETE FROM moz_items_annos
+    WHERE anno_attribute_id = (SELECT id FROM moz_anno_attributes
+                               WHERE name = :orphanAnno)`,
+    { orphanAnno: BookmarkSyncUtils.SYNC_PARENT_ANNO });
+
+  // Drop stale tombstones.
+  await db.execute("DELETE FROM moz_bookmarks_deleted");
 }

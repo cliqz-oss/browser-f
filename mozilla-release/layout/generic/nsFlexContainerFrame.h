@@ -1,9 +1,8 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
-
-/* This Source Code is subject to the terms of the Mozilla Public License
- * version 2.0 (the "License"). You can obtain a copy of the License at
- * http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* rendering object for CSS "display: flex" and "display: -webkit-box" */
 
@@ -13,14 +12,65 @@
 #include "nsContainerFrame.h"
 #include "mozilla/UniquePtr.h"
 
+class nsStyleCoord;
+
 namespace mozilla {
 template <class T> class LinkedList;
 class LogicalPoint;
 } // namespace mozilla
 
 nsContainerFrame* NS_NewFlexContainerFrame(nsIPresShell* aPresShell,
-                                           nsStyleContext* aContext);
+                                           mozilla::ComputedStyle* aStyle);
 
+/**
+ * These structures are used to capture data during reflow to be
+ * extracted by devtools via Chrome APIs. The structures are only
+ * created when requested in GetFlexFrameWithComputedInfo(), and
+ * the structures are attached to the nsFlexContainerFrame via the
+ * FlexContainerInfo property.
+ */
+struct ComputedFlexItemInfo
+{
+  nsCOMPtr<nsINode> mNode;
+  /**
+   * mMainBaseSize is a measure of the size of the item in the main
+   * axis before the flex sizing algorithm is applied. In the spec,
+   * this is called "flex base size", but we use this name to connect
+   * the value to the other main axis sizes.
+   */
+  nscoord mMainBaseSize;
+  /**
+   * mMainDeltaSize is the value that the flex sizing algorithm
+   * "wants" to use to stretch or shrink the item, before clamping to
+   * the item's main min and max sizes. Since the flex sizing
+   * algorithm proceeds linearly, the mMainDeltaSize for an item only
+   * respects the resolved size of items already frozen.
+   */
+  nscoord mMainDeltaSize;
+  nscoord mMainMinSize;
+  nscoord mMainMaxSize;
+  nscoord mCrossMinSize;
+  nscoord mCrossMaxSize;
+};
+
+struct ComputedFlexLineInfo
+{
+  nsTArray<ComputedFlexItemInfo> mItems;
+  nscoord mCrossStart;
+  nscoord mCrossSize;
+  nscoord mFirstBaselineOffset;
+  nscoord mLastBaselineOffset;
+  enum GrowthState {
+    UNCHANGED,
+    SHRINKING,
+    GROWING,
+  } mGrowthState;
+};
+
+struct ComputedFlexContainerInfo
+{
+  nsTArray<ComputedFlexLineInfo> mLines;
+};
 
 /**
  * This is the rendering object used for laying out elements with
@@ -49,7 +99,7 @@ public:
 
   // Factory method:
   friend nsContainerFrame* NS_NewFlexContainerFrame(nsIPresShell* aPresShell,
-                                                    nsStyleContext* aContext);
+                                                    ComputedStyle* aStyle);
 
   // Forward-decls of helper classes
   class FlexItem;
@@ -64,7 +114,6 @@ public:
             nsIFrame*         aPrevInFlow) override;
 
   void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                        const nsRect&           aDirtyRect,
                         const nsDisplayListSet& aLists) override;
 
   void MarkIntrinsicISizesDirty() override;
@@ -106,33 +155,82 @@ public:
             const ReflowInput& aChildRI,
             mozilla::LogicalAxis aLogicalAxis) const override;
 
-  // Flexbox-specific public methods
-  bool IsHorizontal();
-
   /**
-    * Helper function to calculate packing space and initial offset of alignment
-    * subjects in MainAxisPositionTracker() and CrossAxisPositionTracker() for
-    * space-between, space-around, and space-evenly.
-    *
-    * @param aNumThingsToPack             Number of alignment subjects.
-    * @param aAlignVal                    Value for align-self or justify-self.
-    * @param aFirstSubjectOffset          Outparam for first subject offset.
-    * @param aNumPackingSpacesRemaining   Outparam for number of equal-sized
-    *                                     packing spaces to apply between each
-    *                                     alignment subject.
-    * @param aPackingSpaceRemaining       Outparam for total amount of packing
-    *                                     space to be divided up.
-    */
+   * Helper function to calculate packing space and initial offset of alignment
+   * subjects in MainAxisPositionTracker() and CrossAxisPositionTracker() for
+   * space-between, space-around, and space-evenly.
+   *    * @param aNumThingsToPack             Number of alignment subjects.
+   * @param aAlignVal                    Value for align-self or justify-self.
+   * @param aFirstSubjectOffset          Outparam for first subject offset.
+   * @param aNumPackingSpacesRemaining   Outparam for number of equal-sized
+   *                                     packing spaces to apply between each
+   *                                     alignment subject.
+   * @param aPackingSpaceRemaining       Outparam for total amount of packing
+   *                                     space to be divided up.
+   */
   static void CalculatePackingSpace(uint32_t aNumThingsToPack,
                                     uint8_t aAlignVal,
                                     nscoord* aFirstSubjectOffset,
                                     uint32_t* aNumPackingSpacesRemaining,
                                     nscoord* aPackingSpaceRemaining);
 
+  /**
+   * This property is created by a call to
+   * nsFlexContainerFrame::GetFlexFrameWithComputedInfo.
+   */
+  NS_DECLARE_FRAME_PROPERTY_DELETABLE(FlexContainerInfo, ComputedFlexContainerInfo)
+  /**
+   * This function should only be called on a nsFlexContainerFrame
+   * that has just been returned by a call to
+   * GetFlexFrameWithComputedInfo.
+   */
+  const ComputedFlexContainerInfo* GetFlexContainerInfo()
+  {
+    const ComputedFlexContainerInfo* info = GetProperty(FlexContainerInfo());
+    MOZ_ASSERT(info, "Property generation wasn't requested.");
+    return info;
+  }
+
+  /**
+   * Return aFrame as a flex frame after ensuring it has computed flex info.
+   * @return nullptr if aFrame is null or doesn't have a flex frame
+   *         as its content insertion frame.
+   * @note this might destroy layout/style data since it may flush layout.
+   */
+  static nsFlexContainerFrame* GetFlexFrameWithComputedInfo(nsIFrame* aFrame);
+
+  /**
+   * Given a frame for a flex item, this method returns true IFF that flex
+   * item's inline axis is the same as (i.e. not orthogonal to) its flex
+   * container's main axis.
+   *
+   * (This method is only intended to be used from external
+   * callers. Inside of flex reflow code, FlexItem::IsInlineAxisMainAxis() is
+   * equivalent & more optimal.)
+   *
+   * @param aFrame a flex item (must return true from IsFlexItem)
+   * @return true iff aFrame's inline axis is the same as (i.e. not orthogonal
+   *              to) its flex container's main axis. Otherwise, false.
+   */
+  static bool IsItemInlineAxisMainAxis(nsIFrame* aFrame);
+
+  /**
+   * Returns true iff the given computed 'flex-basis' & main-size property
+   * values collectively represent a used flex-basis of 'content'.
+   * See https://drafts.csswg.org/css-flexbox-1/#valdef-flex-basis-auto
+   *
+   * @param aFlexBasis the computed 'flex-basis' for a flex item.
+   * @param aMainSize the computed main-size property for a flex item.
+   */
+  static bool IsUsedFlexBasisContent(const nsStyleCoord* aFlexBasis,
+                                     const nsStyleCoord* aMainSize);
+
 protected:
   // Protected constructor & destructor
-  explicit nsFlexContainerFrame(nsStyleContext* aContext)
-    : nsContainerFrame(aContext, kClassID)
+  explicit nsFlexContainerFrame(ComputedStyle* aStyle)
+    : nsContainerFrame(aStyle, kClassID)
+    , mCachedMinISize(NS_INTRINSIC_WIDTH_UNKNOWN)
+    , mCachedPrefISize(NS_INTRINSIC_WIDTH_UNKNOWN)
     , mBaselineFromLastReflow(NS_INTRINSIC_WIDTH_UNKNOWN)
     , mLastBaselineFromLastReflow(NS_INTRINSIC_WIDTH_UNKNOWN)
   {}
@@ -202,21 +300,21 @@ protected:
    * This avoids exponential reflows, see the comment on
    * CachedMeasuringReflowResult.
    */
-  const CachedMeasuringReflowResult& MeasureAscentAndHeightForFlexItem(
+  const CachedMeasuringReflowResult& MeasureAscentAndBSizeForFlexItem(
     FlexItem& aItem,
     nsPresContext* aPresContext,
     ReflowInput& aChildReflowInput);
 
   /**
-   * This method performs a "measuring" reflow to get the content height of
-   * aFlexItem.Frame() (treating it as if it had auto-height), & returns the
-   * resulting height.
+   * This method performs a "measuring" reflow to get the content BSize of
+   * aFlexItem.Frame() (treating it as if it had a computed BSize of "auto"),
+   * and returns the resulting BSize measurement.
    * (Helper for ResolveAutoFlexBasisAndMinSize().)
    */
-  nscoord MeasureFlexItemContentHeight(nsPresContext* aPresContext,
-                                       FlexItem& aFlexItem,
-                                       bool aForceVerticalResizeForMeasuringReflow,
-                                       const ReflowInput& aParentReflowInput);
+  nscoord MeasureFlexItemContentBSize(nsPresContext* aPresContext,
+                                      FlexItem& aFlexItem,
+                                      bool aForceBResizeForMeasuringReflow,
+                                      const ReflowInput& aParentReflowInput);
 
   /**
    * This method resolves an "auto" flex-basis and/or min-main-size value
@@ -227,6 +325,17 @@ protected:
                                       FlexItem& aFlexItem,
                                       const ReflowInput& aItemReflowInput,
                                       const FlexboxAxisTracker& aAxisTracker);
+
+  /**
+   * Returns true if "this" is the nsFlexContainerFrame for a -moz-box or
+   * a -moz-inline-box -- these boxes have special behavior for flex items with
+   * "visibility:collapse".
+   *
+   * @param aFlexStyleDisp This frame's StyleDisplay(). (Just an optimization to
+   *                       avoid repeated lookup; some callers already have it.)
+   * @return true if "this" is the nsFlexContainerFrame for a -moz-{inline}box.
+   */
+  bool ShouldUseMozBoxCollapseBehavior(const nsStyleDisplay* aFlexStyleDisp);
 
   /**
    * This method:
@@ -328,6 +437,18 @@ protected:
                           nsTArray<nsIFrame*>& aPlaceholders,
                           const mozilla::LogicalPoint& aContentBoxOrigin,
                           const nsSize& aContainerSize);
+
+  /**
+   * Helper for GetMinISize / GetPrefISize.
+   */
+  nscoord IntrinsicISize(gfxContext* aRenderingContext,
+                         nsLayoutUtils::IntrinsicISizeType aType);
+
+  /**
+   * Cached values to optimize GetMinISize/GetPrefISize.
+   */
+  nscoord mCachedMinISize;
+  nscoord mCachedPrefISize;
 
   nscoord mBaselineFromLastReflow;
   // Note: the last baseline is a distance from our border-box end edge.

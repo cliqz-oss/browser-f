@@ -18,6 +18,10 @@ namespace js {
  *
  * Proxy objects use ShapedObject::shape_ primarily to record flags.  Property
  * information, &c. is all dynamically computed.
+ *
+ * There is no class_ member to force specialization of JSObject::is<T>().
+ * The implementation in JSObject is incorrect for proxies since it doesn't
+ * take account of the handler type.
  */
 class ProxyObject : public ShapedObject
 {
@@ -62,10 +66,6 @@ class ProxyObject : public ShapedObject
     void setCrossCompartmentPrivate(const Value& priv);
     void setSameCompartmentPrivate(const Value& priv);
 
-    GCPtrValue* slotOfPrivate() {
-        return reinterpret_cast<GCPtrValue*>(&detail::GetProxyDataLayout(this)->values()->privateSlot);
-    }
-
     JSObject* target() const {
         return const_cast<ProxyObject*>(this)->private_().toObjectOrNull();
     }
@@ -103,6 +103,12 @@ class ProxyObject : public ShapedObject
         return reinterpret_cast<GCPtrValue*>(&detail::GetProxyDataLayout(this)->reservedSlots->slots[n]);
     }
 
+    GCPtrValue* slotOfPrivate() {
+        return reinterpret_cast<GCPtrValue*>(&detail::GetProxyDataLayout(this)->values()->privateSlot);
+    }
+
+    void setPrivate(const Value& priv);
+
     static bool isValidProxyClass(const Class* clasp) {
         // Since we can take classes from the outside, make sure that they
         // are "sane". They have to quack enough like proxies for us to belive
@@ -122,12 +128,9 @@ class ProxyObject : public ShapedObject
 
     static void trace(JSTracer* trc, JSObject* obj);
 
-    void nuke();
+    static void traceEdgeToTarget(JSTracer* trc, ProxyObject* obj);
 
-    // There is no class_ member to force specialization of JSObject::is<T>().
-    // The implementation in JSObject is incorrect for proxies since it doesn't
-    // take account of the handler type.
-    static const Class proxyClass;
+    void nuke();
 };
 
 inline bool

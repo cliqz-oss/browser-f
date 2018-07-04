@@ -3,11 +3,7 @@
 const TEST_ENGINE_NAME = "Foo";
 const TEST_ENGINE_BASENAME = "testEngine.xml";
 
-const searchbar = document.getElementById("searchbar");
 const searchPopup = document.getElementById("PopupSearchAutoComplete");
-const searchIcon = document.getAnonymousElementByAttribute(
-  searchbar, "anonid", "searchbar-search-button"
-);
 const oneOffBinding = document.getAnonymousElementByAttribute(
   searchPopup, "anonid", "search-one-off-buttons"
 );
@@ -21,7 +17,19 @@ const searchInNewTabMenuItem = document.getAnonymousElementByAttribute(
   oneOffBinding, "anonid", "search-one-offs-context-open-in-new-tab"
 );
 
+let searchbar;
+let searchIcon;
+
 add_task(async function init() {
+  await SpecialPowers.pushPrefEnv({ set: [
+    ["browser.search.widget.inNavBar", true],
+  ]});
+
+  searchbar = document.getElementById("searchbar");
+  searchIcon = document.getAnonymousElementByAttribute(
+    searchbar, "anonid", "searchbar-search-button"
+  );
+
   await promiseNewEngine(TEST_ENGINE_BASENAME, {
     setAsCurrent: false,
   });
@@ -66,7 +74,7 @@ async function doTest() {
   // By default the search will open in the background and the popup will stay open:
   promise = promiseEvent(searchPopup, "popuphidden");
   info("Closing search panel");
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
   await promise;
 
   // Check the loaded tab.
@@ -74,7 +82,7 @@ async function doTest() {
                "http://mochi.test:8888/browser/browser/components/search/test/",
                "Expected search tab should have loaded");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 
   // Move the cursor out of the panel area to avoid messing with other tests.
   await EventUtils.synthesizeNativeMouseMove(searchbar);

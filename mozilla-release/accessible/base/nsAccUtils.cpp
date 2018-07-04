@@ -25,7 +25,7 @@ using namespace mozilla::a11y;
 
 void
 nsAccUtils::GetAccAttr(nsIPersistentProperties *aAttributes,
-                       nsIAtom *aAttrName, nsAString& aAttrValue)
+                       nsAtom *aAttrName, nsAString& aAttrValue)
 {
   aAttrValue.Truncate();
 
@@ -34,7 +34,7 @@ nsAccUtils::GetAccAttr(nsIPersistentProperties *aAttributes,
 
 void
 nsAccUtils::SetAccAttr(nsIPersistentProperties *aAttributes,
-                       nsIAtom *aAttrName, const nsAString& aAttrValue)
+                       nsAtom *aAttrName, const nsAString& aAttrValue)
 {
   nsAutoString oldValue;
   aAttributes->SetStringProperty(nsAtomCString(aAttrName), aAttrValue, oldValue);
@@ -42,7 +42,7 @@ nsAccUtils::SetAccAttr(nsIPersistentProperties *aAttributes,
 
 void
 nsAccUtils::SetAccAttr(nsIPersistentProperties *aAttributes,
-                       nsIAtom* aAttrName, nsIAtom* aAttrValue)
+                       nsAtom* aAttrName, nsAtom* aAttrValue)
 {
   nsAutoString oldValue;
   aAttributes->SetStringProperty(nsAtomCString(aAttrName),
@@ -141,7 +141,8 @@ nsAccUtils::SetLiveContainerAttributes(nsIPersistentProperties *aAttributes,
     // container-relevant attribute
     if (relevant.IsEmpty() &&
         HasDefinedARIAToken(ancestor, nsGkAtoms::aria_relevant) &&
-        ancestor->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_relevant, relevant))
+        ancestor->AsElement()->GetAttr(kNameSpaceID_None,
+                                       nsGkAtoms::aria_relevant, relevant))
       SetAccAttr(aAttributes, nsGkAtoms::containerRelevant, relevant);
 
     // container-live, and container-live-role attributes
@@ -151,7 +152,7 @@ nsAccUtils::SetLiveContainerAttributes(nsIPersistentProperties *aAttributes,
         role = aria::GetRoleMap(ancestor->AsElement());
       }
       if (HasDefinedARIAToken(ancestor, nsGkAtoms::aria_live)) {
-        ancestor->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_live, live);
+        ancestor->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_live, live);
       } else if (role) {
         GetLiveAttrValue(role->liveAttRule, live);
       }
@@ -165,8 +166,10 @@ nsAccUtils::SetLiveContainerAttributes(nsIPersistentProperties *aAttributes,
     }
 
     // container-atomic attribute
-    if (ancestor->AttrValueIs(kNameSpaceID_None, nsGkAtoms::aria_atomic,
-                              nsGkAtoms::_true, eCaseMatters)) {
+    if (ancestor->IsElement() &&
+        ancestor->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                           nsGkAtoms::aria_atomic,
+                                           nsGkAtoms::_true, eCaseMatters)) {
       SetAccAttr(aAttributes, nsGkAtoms::containerAtomic,
                  NS_LITERAL_STRING("true"));
     }
@@ -174,7 +177,7 @@ nsAccUtils::SetLiveContainerAttributes(nsIPersistentProperties *aAttributes,
     // container-busy attribute
     if (busy.IsEmpty() &&
         HasDefinedARIAToken(ancestor, nsGkAtoms::aria_busy) &&
-        ancestor->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_busy, busy))
+        ancestor->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_busy, busy))
       SetAccAttr(aAttributes, nsGkAtoms::containerBusy, busy);
 
     if (ancestor == aTopEl)
@@ -187,27 +190,31 @@ nsAccUtils::SetLiveContainerAttributes(nsIPersistentProperties *aAttributes,
 }
 
 bool
-nsAccUtils::HasDefinedARIAToken(nsIContent *aContent, nsIAtom *aAtom)
+nsAccUtils::HasDefinedARIAToken(nsIContent *aContent, nsAtom *aAtom)
 {
   NS_ASSERTION(aContent, "aContent is null in call to HasDefinedARIAToken!");
 
-  if (!aContent->HasAttr(kNameSpaceID_None, aAtom) ||
-      aContent->AttrValueIs(kNameSpaceID_None, aAtom,
-                            nsGkAtoms::_empty, eCaseMatters) ||
-      aContent->AttrValueIs(kNameSpaceID_None, aAtom,
-                            nsGkAtoms::_undefined, eCaseMatters)) {
+  if (!aContent->IsElement())
+    return false;
+
+  Element* element = aContent->AsElement();
+  if (!element->HasAttr(kNameSpaceID_None, aAtom) ||
+      element->AttrValueIs(kNameSpaceID_None, aAtom, nsGkAtoms::_empty,
+                           eCaseMatters) ||
+      element->AttrValueIs(kNameSpaceID_None, aAtom, nsGkAtoms::_undefined,
+                           eCaseMatters)) {
         return false;
   }
   return true;
 }
 
-nsIAtom*
-nsAccUtils::GetARIAToken(dom::Element* aElement, nsIAtom* aAttr)
+nsAtom*
+nsAccUtils::GetARIAToken(dom::Element* aElement, nsAtom* aAttr)
 {
   if (!HasDefinedARIAToken(aElement, aAttr))
     return nsGkAtoms::_empty;
 
-  static nsIContent::AttrValuesArray tokens[] =
+  static Element::AttrValuesArray tokens[] =
     { &nsGkAtoms::_false, &nsGkAtoms::_true,
       &nsGkAtoms::mixed, nullptr};
 
@@ -239,7 +246,9 @@ nsAccUtils::GetSelectableContainer(Accessible* aAccessible, uint64_t aState)
 bool
 nsAccUtils::IsARIASelected(Accessible* aAccessible)
 {
-  return aAccessible->GetContent()->
+  if (!aAccessible->GetContent()->IsElement())
+    return false;
+  return aAccessible->GetContent()->AsElement()->
     AttrValueIs(kNameSpaceID_None, nsGkAtoms::aria_selected,
                 nsGkAtoms::_true, eCaseMatters);
 }
@@ -359,7 +368,7 @@ nsAccUtils::GetScreenCoordsForParent(Accessible* aAccessible)
     return nsIntPoint(0, 0);
 
   nsRect rect = parentFrame->GetScreenRectInAppUnits();
-  return nsPoint(rect.x, rect.y).
+  return nsPoint(rect.X(), rect.Y()).
     ToNearestPixels(parentFrame->PresContext()->AppUnitsPerDevPixel());
 }
 
@@ -427,21 +436,27 @@ nsAccUtils::MustPrune(Accessible* aAccessible)
 {
   roles::Role role = aAccessible->Role();
 
-  // Don't prune the tree for certain roles if the tree is more complex than
-  // a single text leaf.
   return
-    (role == roles::MENUITEM ||
-     role == roles::COMBOBOX_OPTION ||
-     role == roles::OPTION ||
-     role == roles::ENTRY ||
-     role == roles::FLAT_EQUATION ||
-     role == roles::PASSWORD_TEXT ||
-     role == roles::PUSHBUTTON ||
-     role == roles::TOGGLE_BUTTON ||
-     role == roles::GRAPHIC ||
-     role == roles::SLIDER ||
-     role == roles::PROGRESSBAR ||
-     role == roles::SEPARATOR) &&
-    aAccessible->ContentChildCount() == 1 &&
-    aAccessible->ContentChildAt(0)->IsTextLeaf();
+    // Always prune the tree for sliders, as it doesn't make sense for a slider
+    // to have descendants and this confuses NVDA.
+    role == roles::SLIDER ||
+    // Don't prune the tree for certain roles if the tree is more complex than
+    // a single text leaf.
+    (
+     (
+      role == roles::MENUITEM ||
+      role == roles::COMBOBOX_OPTION ||
+      role == roles::OPTION ||
+      role == roles::ENTRY ||
+      role == roles::FLAT_EQUATION ||
+      role == roles::PASSWORD_TEXT ||
+      role == roles::PUSHBUTTON ||
+      role == roles::TOGGLE_BUTTON ||
+      role == roles::GRAPHIC ||
+      role == roles::PROGRESSBAR ||
+      role == roles::SEPARATOR
+     ) &&
+     aAccessible->ContentChildCount() == 1 &&
+     aAccessible->ContentChildAt(0)->IsTextLeaf()
+    );
 }

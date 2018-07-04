@@ -5,10 +5,9 @@ const TEST_VALUE = "example.com";
 const START_VALUE = "example.org";
 
 add_task(async function setup() {
-  Services.prefs.setBoolPref("browser.altClickSave", true);
-
-  registerCleanupFunction(() => {
-    Services.prefs.clearUserPref("browser.altClickSave");
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.altClickSave", true],
+          ["browser.urlbar.autoFill", false]],
   });
 });
 
@@ -158,16 +157,17 @@ add_task(async function load_in_new_tab_test() {
 });
 
 function triggerCommand(shouldClick, event) {
-  gURLBar.value = TEST_VALUE;
   gURLBar.focus();
+  gURLBar.value = "";
+  EventUtils.sendString(TEST_VALUE);
 
   if (shouldClick) {
-    is(gURLBar.getAttribute("pageproxystate"), "invalid",
-       "page proxy state must be invalid for go button to be visible");
+    ok(gURLBar.hasAttribute("usertyping"),
+       "usertyping attribute must be set for the go button to be visible");
 
     EventUtils.synthesizeMouseAtCenter(gURLBar.goButton, event);
   } else {
-    EventUtils.synthesizeKey("VK_RETURN", event);
+    EventUtils.synthesizeKey("KEY_Enter", event);
   }
 }
 
@@ -208,8 +208,6 @@ function promiseCheckChildNoFocusedElement(browser) {
   }
 
   return ContentTask.spawn(browser, { }, async function() {
-    const fm = Components.classes["@mozilla.org/focus-manager;1"].
-                          getService(Components.interfaces.nsIFocusManager);
-    Assert.equal(fm.focusedElement, null, "There should be no focused element");
+    Assert.equal(Services.focus.focusedElement, null, "There should be no focused element");
   });
 }

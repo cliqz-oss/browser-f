@@ -6,10 +6,11 @@
 
 #include "js/UbiNodeCensus.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-#include "jsobjinlines.h"
+#include "util/Text.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 
+#include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -102,11 +103,11 @@ SimpleCount::report(JSContext* cx, CountBase& countBase, MutableHandleValue repo
         return false;
 
     RootedValue countValue(cx, NumberValue(count.total_));
-    if (reportCount && !DefineProperty(cx, obj, cx->names().count, countValue))
+    if (reportCount && !DefineDataProperty(cx, obj, cx->names().count, countValue))
         return false;
 
     RootedValue bytesValue(cx, NumberValue(count.totalBytes_));
-    if (reportBytes && !DefineProperty(cx, obj, cx->names().bytes, bytesValue))
+    if (reportBytes && !DefineDataProperty(cx, obj, cx->names().bytes, bytesValue))
         return false;
 
     if (label) {
@@ -114,7 +115,7 @@ SimpleCount::report(JSContext* cx, CountBase& countBase, MutableHandleValue repo
         if (!labelString)
             return false;
         RootedValue labelValue(cx, StringValue(labelString));
-        if (!DefineProperty(cx, obj, cx->names().label, labelValue))
+        if (!DefineDataProperty(cx, obj, cx->names().label, labelValue))
             return false;
     }
 
@@ -290,22 +291,22 @@ ByCoarseType::report(JSContext* cx, CountBase& countBase, MutableHandleValue rep
 
     RootedValue objectsReport(cx);
     if (!count.objects->report(cx, &objectsReport) ||
-        !DefineProperty(cx, obj, cx->names().objects, objectsReport))
+        !DefineDataProperty(cx, obj, cx->names().objects, objectsReport))
         return false;
 
     RootedValue scriptsReport(cx);
     if (!count.scripts->report(cx, &scriptsReport) ||
-        !DefineProperty(cx, obj, cx->names().scripts, scriptsReport))
+        !DefineDataProperty(cx, obj, cx->names().scripts, scriptsReport))
         return false;
 
     RootedValue stringsReport(cx);
     if (!count.strings->report(cx, &stringsReport) ||
-        !DefineProperty(cx, obj, cx->names().strings, stringsReport))
+        !DefineDataProperty(cx, obj, cx->names().strings, stringsReport))
         return false;
 
     RootedValue otherReport(cx);
     if (!count.other->report(cx, &otherReport) ||
-        !DefineProperty(cx, obj, cx->names().other, otherReport))
+        !DefineDataProperty(cx, obj, cx->names().other, otherReport))
         return false;
 
     report.setObject(*obj);
@@ -358,8 +359,10 @@ countMapToObject(JSContext* cx, Map& map, GetName getName) {
     for (auto r = map.all(); !r.empty(); r.popFront())
         entries.infallibleAppend(&r.front());
 
-    qsort(entries.begin(), entries.length(), sizeof(*entries.begin()),
-          compareEntries<typename Map::Entry>);
+    if (entries.length()) {
+        qsort(entries.begin(), entries.length(), sizeof(*entries.begin()),
+              compareEntries<typename Map::Entry>);
+    }
 
     RootedPlainObject obj(cx, NewBuiltinClassInstance<PlainObject>(cx));
     if (!obj)
@@ -378,7 +381,7 @@ countMapToObject(JSContext* cx, Map& map, GetName getName) {
             return nullptr;
 
         RootedId entryId(cx, AtomToId(atom));
-        if (!DefineProperty(cx, obj, entryId, thenReport))
+        if (!DefineDataProperty(cx, obj, entryId, thenReport))
             return nullptr;
     }
 
@@ -484,7 +487,7 @@ ByObjectClass::report(JSContext* cx, CountBase& countBase, MutableHandleValue re
 
     RootedValue otherReport(cx);
     if (!count.other->report(cx, &otherReport) ||
-        !DefineProperty(cx, obj, cx->names().other, otherReport))
+        !DefineDataProperty(cx, obj, cx->names().other, otherReport))
         return false;
 
     report.setObject(*obj);
@@ -575,7 +578,8 @@ ByUbinodeType::report(JSContext* cx, CountBase& countBase, MutableHandleValue re
         return false;
     for (Table::Range r = count.table.all(); !r.empty(); r.popFront())
         entries.infallibleAppend(&r.front());
-    qsort(entries.begin(), entries.length(), sizeof(*entries.begin()), compareEntries<Entry>);
+    if (entries.length())
+        qsort(entries.begin(), entries.length(), sizeof(*entries.begin()), compareEntries<Entry>);
 
     // Now build the result by iterating over the sorted vector.
     RootedPlainObject obj(cx, NewBuiltinClassInstance<PlainObject>(cx));
@@ -595,7 +599,7 @@ ByUbinodeType::report(JSContext* cx, CountBase& countBase, MutableHandleValue re
             return false;
         RootedId entryId(cx, AtomToId(atom));
 
-        if (!DefineProperty(cx, obj, entryId, typeReport))
+        if (!DefineDataProperty(cx, obj, entryId, typeReport))
             return false;
     }
 
@@ -741,7 +745,8 @@ ByAllocationStack::report(JSContext* cx, CountBase& countBase, MutableHandleValu
         return false;
     for (Table::Range r = count.table.all(); !r.empty(); r.popFront())
         entries.infallibleAppend(&r.front());
-    qsort(entries.begin(), entries.length(), sizeof(*entries.begin()), compareEntries<Entry>);
+    if (entries.length())
+        qsort(entries.begin(), entries.length(), sizeof(*entries.begin()), compareEntries<Entry>);
 
     // Now build the result by iterating over the sorted vector.
     Rooted<MapObject*> map(cx, MapObject::create(cx));
@@ -903,7 +908,7 @@ ByFilename::report(JSContext* cx, CountBase& countBase, MutableHandleValue repor
 
     RootedValue noFilenameReport(cx);
     if (!count.noFilename->report(cx, &noFilenameReport) ||
-        !DefineProperty(cx, obj, cx->names().noFilename, noFilenameReport))
+        !DefineDataProperty(cx, obj, cx->names().noFilename, noFilenameReport))
     {
         return false;
     }

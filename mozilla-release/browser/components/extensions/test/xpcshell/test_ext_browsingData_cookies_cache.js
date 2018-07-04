@@ -3,8 +3,8 @@
 /* eslint-disable mozilla/no-arbitrary-setTimeout */
 "use strict";
 
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
-                                  "resource://gre/modules/Timer.jsm");
+ChromeUtils.defineModuleGetter(this, "setTimeout",
+                               "resource://gre/modules/Timer.jsm");
 
 const COOKIE = {
   host: "example.com",
@@ -83,6 +83,20 @@ add_task(async function testCache() {
 });
 
 add_task(async function testCookies() {
+  // Above in setUpCookies we create an 'old' cookies, wait 10ms, then log a timestamp.
+  // Here we ask the browser to delete all cookies after the timestamp, with the intention
+  // that the 'old' cookie is not removed. The issue arises when the timer precision is
+  // low enough such that the timestamp that gets logged is the same as the 'old' cookie.
+  // We hardcode a precision value to ensure that there is time between the 'old' cookie
+  // and the timestamp generation.
+  Services.prefs.setBoolPref("privacy.reduceTimerPrecision", true);
+  Services.prefs.setIntPref("privacy.resistFingerprinting.reduceTimerPrecision.microseconds", 2000);
+
+  registerCleanupFunction(function() {
+    Services.prefs.clearUserPref("privacy.reduceTimerPrecision");
+    Services.prefs.clearUserPref("privacy.resistFingerprinting.reduceTimerPrecision.microseconds");
+  });
+
   function background() {
     browser.test.onMessage.addListener(async (msg, options) => {
       if (msg == "removeCookies") {

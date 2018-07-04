@@ -25,9 +25,11 @@ async function testModeMenuitem(mode, modePref) {
   is(normalItem.getAttribute("active"), "true",
      "Normal mode menuitem should be active by default");
 
-  // Hover over the mode menuitem and wait until the UI density is updated.
+  // Hover over the mode menuitem and wait for the event that updates the UI
+  // density.
+  let mouseoverPromise = BrowserTestUtils.waitForEvent(item, "mouseover");
   EventUtils.synthesizeMouseAtCenter(item, { type: "mouseover" });
-  await BrowserTestUtils.waitForAttribute("uidensity", win, mode);
+  await mouseoverPromise;
 
   is(win.getAttribute("uidensity"), mode,
      `UI Density should be set to ${mode} on ${mode} menuitem hover`);
@@ -116,20 +118,10 @@ async function testModeMenuitem(mode, modePref) {
 }
 
 add_task(async function test_compact_mode_menuitem() {
-  if (!AppConstants.MOZ_PHOTON_THEME) {
-    ok(true, "Skipping test because Photon is not enabled.");
-    return;
-  }
-
   await testModeMenuitem("compact", window.gUIDensity.MODE_COMPACT);
 });
 
 add_task(async function test_touch_mode_menuitem() {
-  if (!AppConstants.MOZ_PHOTON_THEME) {
-    ok(true, "Skipping test because Photon is not enabled.");
-    return;
-  }
-
   // OSX doesn't get touch mode for now.
   if (AppConstants.platform == "macosx") {
     is(document.getElementById("customization-uidensity-menuitem-touch"), null,

@@ -3,7 +3,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<resources>
+<resources
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
         Base application theme. This could be overridden by GeckoBaseTheme
@@ -14,13 +15,6 @@
         <item name="windowActionBar">false</item>
         <item name="android:windowContentOverlay">@null</item>
     </style>
-
-    <style name="GeckoDialogBase" parent="@android:style/Theme.Dialog">
-        <item name="android:windowNoTitle">true</item>
-        <item name="android:windowContentOverlay">@null</item>
-    </style>
-
-    <style name="GeckoTitleDialogBase" parent="@android:style/Theme.Dialog" />
 
     <style name="Gecko.Preferences">
         <item name="windowActionBar">true</item>
@@ -52,7 +46,7 @@
         <item name="android:textColorHintInverse">@color/text_color_hint_inverse</item>
 
         <!-- Highlight colors -->
-        <item name="android:textColorHighlight">@color/fennec_ui_orange</item>
+        <item name="android:textColorHighlight">@color/fennec_ui_accent</item>
         <item name="android:textColorHighlightInverse">@color/text_color_highlight_inverse</item>
 
         <!-- Link colors -->
@@ -68,14 +62,10 @@
         <item name="android:textAppearanceMediumInverse">@style/TextAppearance.Medium.Inverse</item>
         <item name="android:textAppearanceSmallInverse">@style/TextAppearance.Small.Inverse</item>
 
-        <item name="colorAccent">@color/action_orange</item>
+        <item name="colorAccent">@color/action_accent</item>
 
         <item name="actionBarTheme">@style/GeckoActionBar</item>
     </style>
-
-    <style name="Gecko.Dialog" parent="GeckoDialogBase"/>
-
-    <style name="Gecko.TitleDialog" parent="GeckoTitleDialogBase"/>
 
     <!--
         Activity based themes, dependent on API level. This theme is replaced
@@ -126,10 +116,11 @@
     </style>
 
     <!-- Bookmark full-page dialog theme -->
-    <style name="Bookmark" parent="Theme.AppCompat.Light.DialogWhenLarge"/>
+    <style name="Bookmark" parent="Theme.AppCompat.Light.DialogWhenLarge"
+           tools:ignore="UnusedResources" />
     <style name="Bookmark.Gecko" parent="Gecko">
         <item name="toolbarStyle">@style/BookmarkToolbarStyle</item>
-        <item name="colorAccent">@color/fennec_ui_orange</item>
+        <item name="colorAccent">@color/fennec_ui_accent</item>
         <item name="colorControlNormal">@color/disabled_grey</item>
 
         <item name="android:textColorHint">@color/tabs_tray_icon_grey</item>

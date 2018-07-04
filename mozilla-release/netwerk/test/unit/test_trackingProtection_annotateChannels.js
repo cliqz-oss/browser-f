@@ -1,7 +1,7 @@
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://testing-common/UrlClassifierTestUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/UrlClassifierTestUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
 
 // This test supports both e10s and non-e10s mode. In non-e10s mode, this test
 // drives itself by creating a profile directory, setting up the URL classifier
@@ -26,8 +26,6 @@ if (runtime.processType == runtime.PROCESS_TYPE_DEFAULT) {
 
 const topWindowURI = NetUtil.newURI("http://www.itisatrap.org/");
 
-var Ci = Components.interfaces;
-
 function listener(tracking, priority, nextTest) {
   this._tracking = tracking;
   this._priority = priority;
@@ -35,15 +33,15 @@ function listener(tracking, priority, nextTest) {
 }
 listener.prototype = {
   onStartRequest: function(request, context) {
-    do_check_eq(request.QueryInterface(Ci.nsIHttpChannel).isTrackingResource,
-                this._tracking);
-    do_check_eq(request.QueryInterface(Ci.nsISupportsPriority).priority,
-                this._priority);
+    Assert.equal(request.QueryInterface(Ci.nsIHttpChannel).isTrackingResource,
+                 this._tracking);
+    Assert.equal(request.QueryInterface(Ci.nsISupportsPriority).priority,
+                 this._priority);
     if (runtime.processType == runtime.PROCESS_TYPE_DEFAULT && this._tracking) {
-      do_check_true(request.QueryInterface(Ci.nsIClassOfService).classFlags &
-                    Ci.nsIClassOfService.Throttleable);
+      Assert.ok(request.QueryInterface(Ci.nsIClassOfService).classFlags &
+                Ci.nsIClassOfService.Throttleable);
     }
-    request.cancel(Components.results.NS_ERROR_ABORT);
+    request.cancel(Cr.NS_ERROR_ABORT);
     this._nextTest();
   },
   onDataAvailable: function(request, context, stream, offset, count) {

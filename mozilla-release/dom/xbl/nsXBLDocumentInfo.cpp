@@ -23,6 +23,7 @@
 #include "nsIScriptSecurityManager.h"
 #include "nsContentUtils.h"
 #include "nsDOMJSUtils.h"
+#include "nsWindowSizes.h"
 #include "mozilla/Services.h"
 #include "xpcpublic.h"
 #include "mozilla/scache/StartupCache.h"
@@ -233,11 +234,6 @@ nsXBLDocumentInfo::ReadPrototypeBindings(nsIURI* aURI, nsXBLDocumentInfo** aDocI
   nsCOMPtr<nsIDocument> doc = do_QueryInterface(domdoc);
   NS_ASSERTION(doc, "Must have a document!");
 
-  // Set the style backend type immediately after creating the XBL document.
-  // Assume gecko if there's no bound document.
-  doc->SetStyleBackendType(aBoundDocument ? aBoundDocument->GetStyleBackendType()
-                                          : StyleBackendType::Gecko);
-
   RefPtr<nsXBLDocumentInfo> docInfo = new nsXBLDocumentInfo(doc);
 
   while (1) {
@@ -301,7 +297,7 @@ nsXBLDocumentInfo::WritePrototypeBindings()
   rv = NewBufferFromStorageStream(storageStream, &buf, &len);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return startupCache->PutBuffer(spec.get(), buf.get(), len);
+  return startupCache->PutBuffer(spec.get(), Move(buf), len);
 }
 
 void
@@ -328,3 +324,23 @@ AssertInCompilationScope()
   MOZ_ASSERT(xpc::CompilationScope() == JS::CurrentGlobalOrNull(cx));
 }
 #endif
+
+size_t
+nsXBLDocumentInfo::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  size_t n = aMallocSizeOf(this);
+  if (mDocument) {
+    SizeOfState state(aMallocSizeOf);
+    nsWindowSizes windowSizes(state);
+    mDocument->DocAddSizeOfIncludingThis(windowSizes);
+    n += windowSizes.getTotalSize();
+  }
+  if (mBindingTable) {
+    n += mBindingTable->ShallowSizeOfIncludingThis(aMallocSizeOf);
+    for (auto iter = mBindingTable->Iter(); !iter.Done(); iter.Next()) {
+      nsXBLPrototypeBinding* binding = iter.UserData();
+      n += binding->SizeOfIncludingThis(aMallocSizeOf);
+    }
+  }
+  return n;
+}

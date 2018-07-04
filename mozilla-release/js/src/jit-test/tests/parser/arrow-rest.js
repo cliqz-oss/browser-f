@@ -135,10 +135,6 @@ testThrow(`
 throw ...a) =>
 `, 6);
 
-testThrow(`
-try {} catch (x if ...a) =>
-`, 19);
-
 // class
 
 testThrow(`
@@ -172,20 +168,6 @@ testThrow(`
 testThrow(`
 delete ...a) =>
 `, 7);
-
-// array comprehension
-
-testThrow(`
-[for (...a) =>
-`, 6);
-
-testThrow(`
-[for (x of y) if (...a) =>
-`, 18);
-
-testThrow(`
-[for (x of y) if (x) ...a) =>
-`, 21);
 
 // new
 

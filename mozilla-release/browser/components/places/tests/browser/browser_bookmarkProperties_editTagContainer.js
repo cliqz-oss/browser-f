@@ -1,4 +1,4 @@
-"use strict"
+"use strict";
 
 add_task(async function() {
   info("Bug 479348 - Properties on a root should be read-only.");
@@ -19,7 +19,7 @@ add_task(async function() {
     await promiseLibraryClosed(library);
   });
 
-  PlacesOrganizer.selectLeftPaneQuery("Tags");
+  PlacesOrganizer.selectLeftPaneBuiltIn("Tags");
   let tree = PlacesOrganizer._places;
   let tagsContainer = tree.selectedNode;
   tagsContainer.containerOpen = true;
@@ -31,8 +31,11 @@ add_task(async function() {
   Assert.ok(tree.controller.isCommandEnabled("placesCmd_show:info"),
             "'placesCmd_show:info' on current selected node is enabled");
 
-  let promiseTitleResetNotification = PlacesTestUtils.waitForNotification(
-      "onItemChanged", (itemId, prop, isAnno, val) => prop == "title" && val == "tag1");
+  let promiseTagResetNotification = PlacesTestUtils.waitForNotification(
+    "onItemChanged", (itemId, prop) => {
+      let tags = PlacesUtils.tagging.getTagsForURI(uri);
+      return prop == "tags" && tags.length == 1 && tags[0] == "tag1";
+  });
 
   await withBookmarksDialog(
     true,
@@ -47,27 +50,37 @@ add_task(async function() {
       let namepicker = dialogWin.document.getElementById("editBMPanel_namePicker");
       Assert.ok(!namepicker.readOnly, "Name field should not be read-only");
       Assert.equal(namepicker.value, "tag1", "Node title is correct");
-
-      let promiseTitleChangeNotification = PlacesTestUtils.waitForNotification(
-          "onItemChanged", (itemId, prop, isAnno, val) => prop == "title" && val == "tag2");
+      let promiseTagChangeNotification = PlacesTestUtils.waitForNotification(
+        "onItemChanged", (itemId, prop) => {
+          let tags = PlacesUtils.tagging.getTagsForURI(uri);
+          return prop == "tags" && tags.length == 1 && tags[0] == "tag2";
+      });
 
       fillBookmarkTextField("editBMPanel_namePicker", "tag2", dialogWin);
 
-      await promiseTitleChangeNotification;
+      await promiseTagChangeNotification;
 
-      Assert.equal(namepicker.value, "tag2", "Node title has been properly edited");
+      Assert.equal(namepicker.value, "tag2", "The title field has been changed");
 
       // Check the shortcut's title.
+      Assert.equal(tree.selectedNode.title, "tag2", "The node has the correct title");
+
+      // Try to set an empty title, it should restore the previous one.
+      fillBookmarkTextField("editBMPanel_namePicker", "", dialogWin);
+      Assert.equal(namepicker.value, "tag2", "The title field has been changed");
       Assert.equal(tree.selectedNode.title, "tag2", "The node has the correct title");
 
       // Check the tags have been edited.
       let tags = PlacesUtils.tagging.getTagsForURI(uri);
       Assert.equal(tags.length, 1, "Found the right number of tags");
       Assert.ok(tags.includes("tag2"), "Found the expected tag");
+
+      // Ensure that the addition really is finished before we hit cancel.
+      await PlacesTestUtils.promiseAsyncUpdates();
     }
   );
 
-  await promiseTitleResetNotification;
+  await promiseTagResetNotification;
 
   // Check the tag change has been reverted.
   let tags = PlacesUtils.tagging.getTagsForURI(uri);

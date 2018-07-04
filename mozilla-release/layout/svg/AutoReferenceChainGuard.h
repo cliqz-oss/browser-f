@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -82,23 +83,23 @@ public:
                           MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
     : mFrame(aFrame)
     , mFrameInUse(aFrameInUse)
+    , mChainCounter(aChainCounter)
     , mMaxChainLength(aMaxChainLength)
+    , mBrokeReference(false)
   {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     MOZ_ASSERT(aFrame && aFrameInUse && aChainCounter);
-    MOZ_ASSERT(!(*mFrameInUse), "Undetected reference loop!");
     MOZ_ASSERT(aMaxChainLength > 0);
     MOZ_ASSERT(*aChainCounter == noChain ||
                (*aChainCounter >= 0 && *aChainCounter < aMaxChainLength));
-
-    if (*aChainCounter == noChain) {
-      // Initialize - we start at aMaxChainLength and decrement towards zero.
-      *aChainCounter = aMaxChainLength;
-    }
-    mChainCounter = aChainCounter;
   }
 
   ~AutoReferenceChainGuard() {
+    if (mBrokeReference) {
+      // We didn't change mFrameInUse or mChainCounter
+      return;
+    }
+
     *mFrameInUse = false;
 
     // If we fail this assert then there were more destructor calls than
@@ -122,32 +123,44 @@ public:
    */
   MOZ_MUST_USE bool Reference() {
     if (MOZ_UNLIKELY(*mFrameInUse)) {
+      mBrokeReference = true;
       ReportErrorToConsole();
       return false;
     }
 
-    // If we fail this assertion then either a consumer failed to break a
-    // reference loop/chain, or else they called Reference() more than once
-    MOZ_ASSERT(*mChainCounter >= 0);
+    if (*mChainCounter == noChain) {
+      // Initialize - we start at aMaxChainLength and decrement towards zero.
+      *mChainCounter = mMaxChainLength;
+    } else {
+      // If we fail this assertion then either a consumer failed to break a
+      // reference loop/chain, or else they called Reference() more than once
+      MOZ_ASSERT(*mChainCounter >= 0);
 
+      if (MOZ_UNLIKELY(*mChainCounter < 1)) {
+        mBrokeReference = true;
+        ReportErrorToConsole();
+        return false;
+      }
+    }
+
+    // We only set these once we know we're returning true.
+    *mFrameInUse = true;
     (*mChainCounter)--;
 
-    if (MOZ_UNLIKELY(*mChainCounter < 0)) {
-      ReportErrorToConsole();
-      return false;
-    }
     return true;
   }
 
 private:
   void ReportErrorToConsole() {
-    nsAutoString tag;
-    mFrame->GetContent()->AsElement()->GetTagName(tag);
-    const char16_t* params[] = { tag.get() };
+    nsAutoString tag, id;
+    dom::Element* element = mFrame->GetContent()->AsElement();
+    element->GetTagName(tag);
+    element->GetId(id);
+    const char16_t* params[] = { tag.get(), id.get() };
     auto doc = mFrame->GetContent()->OwnerDoc();
     auto warning = *mFrameInUse ?
-                     nsIDocument::eSVGReferenceLoop :
-                     nsIDocument::eSVGReferenceChainLengthExceeded;
+                     nsIDocument::eSVGRefLoop :
+                     nsIDocument::eSVGRefChainLengthExceeded;
     doc->WarnOnceAbout(warning, /* asError */ true,
                        params, ArrayLength(params));
   }
@@ -156,6 +169,7 @@ private:
   bool* mFrameInUse;
   int16_t* mChainCounter;
   const int16_t mMaxChainLength;
+  bool mBrokeReference;
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 

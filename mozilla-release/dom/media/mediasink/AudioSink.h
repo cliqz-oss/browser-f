@@ -12,7 +12,6 @@
 #include "MediaInfo.h"
 #include "MediaSink.h"
 
-#include "mozilla/dom/AudioChannelBinding.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
@@ -33,8 +32,7 @@ public:
   AudioSink(AbstractThread* aThread,
             MediaQueue<AudioData>& aAudioQueue,
             const TimeUnit& aStartTime,
-            const AudioInfo& aInfo,
-            dom::AudioChannel aChannel);
+            const AudioInfo& aInfo);
 
   ~AudioSink();
 
@@ -65,6 +63,8 @@ public:
     return mAudibleEvent;
   }
 
+  nsCString GetDebugInfo();
+
 private:
   // Allocate and initialize mAudioStream. Returns NS_OK on success.
   nsresult InitializeAudioStream(const PlaybackParams& aParams);
@@ -91,8 +91,6 @@ private:
   TimeUnit mLastGoodPosition;
 
   const AudioInfo mInfo;
-
-  const dom::AudioChannel mChannel;
 
   // Used on the task queue of MDSM only.
   bool mPlaying;

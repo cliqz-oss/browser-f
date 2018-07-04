@@ -15,9 +15,11 @@
 
 #undef GP_PLAT_x86_android
 #undef GP_PLAT_arm_android
-#undef GP_PLAT_aarch64_android
+#undef GP_PLAT_arm64_android
 #undef GP_PLAT_x86_linux
 #undef GP_PLAT_amd64_linux
+#undef GP_PLAT_arm_linux
+#undef GP_PLAT_mips64_linux
 #undef GP_PLAT_amd64_darwin
 #undef GP_PLAT_x86_windows
 #undef GP_PLAT_amd64_windows
@@ -25,7 +27,8 @@
 #undef GP_ARCH_x86
 #undef GP_ARCH_amd64
 #undef GP_ARCH_arm
-#undef GP_ARCH_aarch64
+#undef GP_ARCH_arm64
+#undef GP_ARCH_mips64
 
 #undef GP_OS_android
 #undef GP_OS_linux
@@ -46,8 +49,8 @@
 # define GP_OS_android 1
 
 #elif defined(__ANDROID__) && defined(__aarch64__)
-# define GP_PLAT_aarch64_android 1
-# define GP_ARCH_aarch64 1
+# define GP_PLAT_arm64_android 1
+# define GP_ARCH_arm64 1
 # define GP_OS_android 1
 
 #elif defined(__linux__) && defined(__i386__)
@@ -58,6 +61,21 @@
 #elif defined(__linux__) && defined(__x86_64__)
 # define GP_PLAT_amd64_linux 1
 # define GP_ARCH_amd64 1
+# define GP_OS_linux 1
+
+#elif defined(__linux__) && defined(__arm__)
+# define GP_PLAT_arm_linux 1
+# define GP_ARCH_arm 1
+# define GP_OS_linux 1
+
+#elif defined(__linux__) && defined(__aarch64__)
+# define GP_PLAT_arm64_linux 1
+# define GP_ARCH_arm64 1
+# define GP_OS_linux 1
+
+#elif defined(__linux__) && defined(__mips64)
+# define GP_PLAT_mips64_linux 1
+# define GP_ARCH_mips64 1
 # define GP_OS_linux 1
 
 #elif defined(__APPLE__) && defined(__x86_64__)

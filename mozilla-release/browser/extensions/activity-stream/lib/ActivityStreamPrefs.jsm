@@ -3,14 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {utils: Cu} = Components;
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const ACTIVITY_STREAM_PREF_BRANCH = "browser.newtabpage.activity-stream.";
 
 this.Prefs = class Prefs extends Preferences {
-
   /**
    * Prefs - A wrapper around Preferences that always sets the branch to
    *         ACTIVITY_STREAM_PREF_BRANCH
@@ -20,14 +19,17 @@ this.Prefs = class Prefs extends Preferences {
     this._branchName = branch;
     this._branchObservers = new Map();
   }
+
   get branchName() {
     return this._branchName;
   }
+
   ignoreBranch(listener) {
     const observer = this._branchObservers.get(listener);
     this._prefBranch.removeObserver("", observer);
     this._branchObservers.delete(listener);
   }
+
   observeBranch(listener) {
     const observer = (subject, topic, pref) => {
       listener.onPrefChanged(pref, this.get(pref));
@@ -38,7 +40,6 @@ this.Prefs = class Prefs extends Preferences {
 };
 
 this.DefaultPrefs = class DefaultPrefs {
-
   /**
    * DefaultPrefs - A helper for setting and resetting default prefs for the add-on
    *
@@ -77,9 +78,8 @@ this.DefaultPrefs = class DefaultPrefs {
    * init - Set default prefs for all prefs in the config
    */
   init() {
-    // If Firefox is a locally built version or a testing build on try, etc.
-    // the value of the app.update.channel pref should be "default"
-    const IS_UNOFFICIAL_BUILD = Services.prefs.getStringPref("app.update.channel") === "default";
+    // Local developer builds (with the default mozconfig) aren't OFFICIAL
+    const IS_UNOFFICIAL_BUILD = !AppConstants.MOZILLA_OFFICIAL;
 
     for (const pref of this._config.keys()) {
       const prefConfig = this._config.get(pref);
@@ -103,4 +103,4 @@ this.DefaultPrefs = class DefaultPrefs {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["DefaultPrefs", "Prefs"];
+const EXPORTED_SYMBOLS = ["DefaultPrefs", "Prefs"];

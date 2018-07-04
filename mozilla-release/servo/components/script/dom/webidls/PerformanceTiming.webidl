@@ -6,7 +6,7 @@
  * https://dvcs.w3.org/hg/webperf/raw-file/tip/specs/NavigationTiming/Overview.html#sec-navigation-timing-interface
  */
 
-[Exposed=(Window,Worker)]
+[Exposed=(Window)]
 interface PerformanceTiming {
   readonly attribute unsigned long long navigationStart;
   /*  readonly attribute unsigned long long unloadEventStart;
@@ -29,4 +29,7 @@ interface PerformanceTiming {
   readonly attribute unsigned long long domComplete;
   readonly attribute unsigned long long loadEventStart;
   readonly attribute unsigned long long loadEventEnd;
+  /* Servo-onnly attribute for measuring when the top-level document (not iframes) is complete. */
+  [Pref="dom.testperf.enabled"]
+  readonly attribute unsigned long long topLevelDomComplete;
 };

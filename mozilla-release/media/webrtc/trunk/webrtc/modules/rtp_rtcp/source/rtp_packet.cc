@@ -172,8 +172,10 @@ void Packet::GetHeader(RTPHeader* header) const {
   header->extension.hasVideoRotation =
       GetExtension<VideoOrientation>(&header->extension.videoRotation);
   GetExtension<RtpStreamId>(&header->extension.rtpStreamId);
-  GetExtension<RepairedRtpStreamId>(&header->extension.repairedStreamId);
+  GetExtension<RepairedRtpStreamId>(&header->extension.repairedRtpStreamId);
   GetExtension<PlayoutDelayLimits>(&header->extension.playout_delay);
+  GetExtension<MId>(&header->extension.mId);
+  GetExtension<CsrcAudioLevel>(&header->extension.csrcAudioLevels);
 }
 
 size_t Packet::headers_size() const {

@@ -21,12 +21,18 @@
 // this one for it, for ParentDict. Hopefully it won't begin to rely on it in more fundamental ways.
 namespace mozilla {
 namespace dom {
+class DocGroup;
 class TestExternalInterface;
 class Promise;
 } // namespace dom
 } // namespace mozilla
 
 // We don't export TestCodeGenBinding.h, but it's right in our parent dir.
+#ifdef XP_WIN
+// If we're on windows, simulate including windows.h. This step will cause
+// compilation failure if NeedsWindowsUndef is not defined.
+#define NO_ERROR 0x1
+#endif
 #include "../TestCodeGenBinding.h"
 
 extern bool TestFuncControlledMember(JSContext*, JSObject*);
@@ -110,8 +116,9 @@ class TestInterface : public nsISupports,
 public:
   NS_DECL_ISUPPORTS
 
-  // We need a GetParentObject to make binding codegen happy
+  // We need a GetParentObject and GetDocGroup to make binding codegen happy
   virtual nsISupports* GetParentObject();
+  DocGroup* GetDocGroup() const;
 
   // And now our actual WebIDL API
   // Constructors
@@ -206,9 +213,9 @@ public:
   int8_t CachedWritableByte();
   void SetCachedWritableByte(int8_t);
   int8_t SideEffectFreeByte();
-  int8_t SetSideEffectFreeByte(int8_t);
+  void SetSideEffectFreeByte(int8_t);
   int8_t DomDependentByte();
-  int8_t SetDomDependentByte(int8_t);
+  void SetDomDependentByte(int8_t);
   int8_t ConstantByte();
   int8_t DeviceStateDependentByte();
   int8_t ReturnByteSideEffectFree();
@@ -821,7 +828,7 @@ public:
 
   // Deprecated methods and attributes
   int8_t DeprecatedAttribute();
-  int8_t SetDeprecatedAttribute(int8_t);
+  void SetDeprecatedAttribute(int8_t);
   int8_t DeprecatedMethod();
   int8_t DeprecatedMethodWithContext(JSContext*, const JS::Value&);
 
@@ -834,9 +841,9 @@ public:
 
   // Deprecated static methods and attributes
   static int8_t StaticDeprecatedAttribute(const GlobalObject&);
-  static int8_t SetStaticDeprecatedAttribute(const GlobalObject&, int8_t);
-  static int8_t StaticDeprecatedMethod(const GlobalObject&);
-  static int8_t StaticDeprecatedMethodWithContext(const GlobalObject&, const JS::Value&);
+  static void SetStaticDeprecatedAttribute(const GlobalObject&, int8_t);
+  static void StaticDeprecatedMethod(const GlobalObject&);
+  static void StaticDeprecatedMethodWithContext(const GlobalObject&, const JS::Value&);
 
   // Overload resolution tests
   bool Overload1(TestInterface&);
@@ -964,6 +971,9 @@ public:
   void NeedsCallerTypeMethod(CallerType);
   bool NeedsCallerTypeAttr(CallerType);
   void SetNeedsCallerTypeAttr(bool, CallerType);
+  void NeedsNonSystemSubjectPrincipalMethod(nsIPrincipal*);
+  bool NeedsNonSystemSubjectPrincipalAttr(nsIPrincipal*);
+  void SetNeedsNonSystemSubjectPrincipalAttr(bool, nsIPrincipal*);
   void CeReactionsMethod();
   void CeReactionsMethodOverload();
   void CeReactionsMethodOverload(const nsAString&);
@@ -977,6 +987,10 @@ public:
   void SetDashed_attribute(int8_t);
   int8_t Dashed_attribute();
   void Dashed_method();
+
+  bool NonEnumerableAttr() const;
+  void SetNonEnumerableAttr(bool);
+  void NonEnumerableMethod();
 
   // Methods and properties imported via "implements"
   bool ImplementedProperty();
@@ -1455,6 +1469,9 @@ public:
   void NeedsCallerTypeMethod(CallerType);
   bool NeedsCallerTypeAttr(CallerType);
   void SetNeedsCallerTypeAttr(bool, CallerType);
+  void NeedsNonSystemSubjectPrincipalMethod(Maybe<nsIPrincipal*>);
+  bool NeedsNonSystemSubjectPrincipalAttr(Maybe<nsIPrincipal*>);
+  void SetNeedsNonSystemSubjectPrincipalAttr(bool, Maybe<nsIPrincipal*>);
 };
 
 class TestHTMLConstructorInterface : public nsGenericHTMLElement
@@ -1469,8 +1486,9 @@ class TestCEReactionsInterface : public nsISupports,
 public:
   NS_DECL_ISUPPORTS
 
-  // We need a GetParentObject to make binding codegen happy
+  // We need a GetParentObject and GetDocGroup to make binding codegen happy
   virtual nsISupports* GetParentObject();
+  DocGroup* GetDocGroup() const;
 
   int32_t Item(uint32_t);
   uint32_t Length() const;

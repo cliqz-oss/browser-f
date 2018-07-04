@@ -10,10 +10,17 @@
 
 namespace sandbox {
 
+#ifdef __MINGW32__
+// Map Microsoft's proprietary more-safe version of copy() back to
+// the std::basic_string method
+#define _Copy_s copy
+#endif
+
 // Operation result codes returned by the sandbox API.
 //
 // Note: These codes are listed in a histogram and any new codes should be added
-// at the end.
+// at the end. If the underlying type is changed then the forward declaration in
+// sandbox_init.h must be updated.
 //
 enum ResultCode : int {
   SBOX_ALL_OK = 0,

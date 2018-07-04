@@ -18,20 +18,20 @@ function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-black-box");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(
       gClient, "test-black-box",
-      function (response, tabClient, threadClient) {
+      function(response, tabClient, threadClient) {
         gThreadClient = threadClient;
 
-        promise.resolve(setup_code())
+        Promise.resolve(setup_code())
           .then(black_box_code)
           .then(run_code)
           .then(test_correct_location)
-          .catch(function (error) {
-            do_check_true(false, "Should not get an error, got " + error);
+          .catch(function(error) {
+            Assert.ok(false, "Should not get an error, got " + error);
           })
-          .then(function () {
+          .then(function() {
             finishClient(gClient);
           });
       });
@@ -40,7 +40,7 @@ function run_test() {
 }
 
 function setup_code() {
-  /* eslint-disable */
+  /* eslint-disable no-multi-spaces, no-undef */
   let { code, map } = (new SourceNode(null, null, null, [
     new SourceNode(1, 0, "a.js", "" + function a() {
       return b();
@@ -59,28 +59,28 @@ function setup_code() {
     file: "abc.js",
     sourceRoot: "http://example.com/"
   });
-  /* eslint-enable */
+  /* eslint-enable no-multi-spaces, no-undef */
 
   code += "//# sourceMappingURL=data:text/json," + map.toString();
 
-  Components.utils.evalInSandbox(code,
-                                 gDebuggee,
-                                 "1.8",
-                                 "http://example.com/abc.js");
+  Cu.evalInSandbox(code,
+                   gDebuggee,
+                   "1.8",
+                   "http://example.com/abc.js");
 }
 
 function black_box_code() {
-  const d = promise.defer();
+  const d = defer();
 
-  gThreadClient.getSources(function ({ sources, error }) {
-    do_check_true(!error, "Shouldn't get an error getting sources");
+  gThreadClient.getSources(function({ sources, error }) {
+    Assert.ok(!error, "Shouldn't get an error getting sources");
     const source = sources.filter((s) => {
-      return s.url.indexOf("b.js") !== -1;
+      return s.url.includes("b.js");
     })[0];
-    do_check_true(!!source, "We should have our source in the sources list");
+    Assert.ok(!!source, "We should have our source in the sources list");
 
-    gThreadClient.source(source).blackBox(function ({ error }) {
-      do_check_true(!error, "Should not get an error black boxing");
+    gThreadClient.source(source).blackBox(function({ error }) {
+      Assert.ok(!error, "Should not get an error black boxing");
       d.resolve(true);
     });
   });
@@ -89,9 +89,9 @@ function black_box_code() {
 }
 
 function run_code() {
-  const d = promise.defer();
+  const d = defer();
 
-  gClient.addOneTimeListener("paused", function (event, packet) {
+  gClient.addOneTimeListener("paused", function(event, packet) {
     d.resolve(packet);
     gThreadClient.resume();
   });
@@ -101,9 +101,9 @@ function run_code() {
 }
 
 function test_correct_location(packet) {
-  do_check_eq(packet.why.type, "debuggerStatement",
-              "Should hit a debugger statement.");
-  do_check_eq(packet.frame.where.source.url, "http://example.com/c.js",
-              "Should have skipped over the debugger statement in the" +
-              " black boxed source");
+  Assert.equal(packet.why.type, "debuggerStatement",
+               "Should hit a debugger statement.");
+  Assert.equal(packet.frame.where.source.url, "http://example.com/c.js",
+               "Should have skipped over the debugger statement in the" +
+               " black boxed source");
 }

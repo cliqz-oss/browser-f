@@ -4,7 +4,7 @@
 
 "use strict";
 
-Cu.import("resource://formautofill/FormAutofillNameUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillNameUtils.jsm");
 
 // Test cases initially copied from
 // https://cs.chromium.org/chromium/src/components/autofill/core/browser/autofill_data_util_unittest.cc
@@ -268,7 +268,7 @@ const TESTCASES = [
 add_task(async function test_splitName() {
   TESTCASES.forEach(testcase => {
     if (testcase.fullName) {
-      do_print("Starting testcase: " + testcase.description);
+      info("Starting testcase: " + testcase.description);
       let nameParts = FormAutofillNameUtils.splitName(testcase.fullName);
       Assert.deepEqual(nameParts, testcase.nameParts);
     }
@@ -277,8 +277,8 @@ add_task(async function test_splitName() {
 
 add_task(async function test_joinName() {
   TESTCASES.forEach(testcase => {
-    do_print("Starting testcase: " + testcase.description);
+    info("Starting testcase: " + testcase.description);
     let name = FormAutofillNameUtils.joinNameParts(testcase.nameParts);
-    do_check_eq(name, testcase.expectedFullName || testcase.fullName);
+    Assert.equal(name, testcase.expectedFullName || testcase.fullName);
   });
 });

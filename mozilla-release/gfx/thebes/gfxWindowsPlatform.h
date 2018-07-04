@@ -121,9 +121,6 @@ public:
       CreateOffscreenSurface(const IntSize& aSize,
                              gfxImageFormat aFormat) override;
 
-    virtual already_AddRefed<mozilla::gfx::ScaledFont>
-      GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont) override;
-
     enum RenderMode {
         /* Use GDI and windows surfaces */
         RENDER_GDI = 0,
@@ -177,7 +174,11 @@ public:
     void SchedulePaintIfDeviceReset() override;
     void CheckForContentOnlyDeviceReset();
 
+    bool AllowOpenGLCanvas() override;
+
     mozilla::gfx::BackendType GetContentBackendFor(mozilla::layers::LayersBackend aLayers) override;
+
+    mozilla::gfx::BackendType GetPreferredCanvasBackend() override;
 
     static void GetDLLVersion(char16ptr_t aDLLPath, nsAString& aVersion);
 
@@ -232,12 +233,17 @@ protected:
     void ImportContentDeviceData(const mozilla::gfx::ContentDeviceData& aData) override;
     void BuildContentDeviceData(mozilla::gfx::ContentDeviceData* aOut) override;
 
+    BackendPrefsData GetBackendPrefs() const override;
+
+    bool CheckVariationFontSupport() override;
+
 protected:
     RenderMode mRenderMode;
 
 private:
     void Init();
     void InitAcceleration() override;
+    void InitWebRenderConfig() override;
 
     void InitializeDevices();
     void InitializeD3D11();

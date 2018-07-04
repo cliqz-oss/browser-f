@@ -6,9 +6,11 @@
  * 1. add watch expressions
  * 2. edit watch expressions
  * 3. delete watch expressions
+ * 4. expanding properties when not paused
  */
 
 const expressionSelectors = {
+  plusIcon: ".watch-expressions-pane button.plus",
   input: "input.input-expression"
 };
 
@@ -20,12 +22,23 @@ function getValue(dbg, index) {
   return findElement(dbg, "expressionValue", index).innerText;
 }
 
-function toggleExpression(dbg, index) {
-  findElement(dbg, "expressionNode", index).click();
+function assertEmptyValue(dbg, index) {
+  const value = findElement(dbg, "expressionValue", index);
+  if (value) {
+    is(value.innerText, "");
+    return;
+  }
+
+  is(value, null);
 }
 
 async function addExpression(dbg, input) {
   info("Adding an expression");
+
+  const plusIcon = findElementWithSelector(dbg, expressionSelectors.plusIcon);
+  if(plusIcon) {
+    plusIcon.click();
+  }
   findElementWithSelector(dbg, expressionSelectors.input).focus();
   type(dbg, input);
   pressKey(dbg, "Enter");
@@ -34,38 +47,50 @@ async function addExpression(dbg, input) {
 }
 
 async function editExpression(dbg, input) {
-  info("updating the expression");
+  info("Updating the expression");
   dblClickElement(dbg, "expressionNode", 1);
   // Position cursor reliably at the end of the text.
   pressKey(dbg, "End");
   type(dbg, input);
+  const evaluated = waitForDispatch(dbg, "EVALUATE_EXPRESSIONS");
   pressKey(dbg, "Enter");
-  await waitForDispatch(dbg, "EVALUATE_EXPRESSION");
+  await evaluated;
 }
 
-add_task(function*() {
-  const dbg = yield initDebugger("doc-script-switching.html");
+add_task(async function() {
+  const dbg = await initDebugger("doc-script-switching.html");
 
   invokeInTab("firstCall");
-  yield waitForPaused(dbg);
+  await waitForPaused(dbg);
 
-  yield addExpression(dbg, "f");
+  await addExpression(dbg, "f");
   is(getLabel(dbg, 1), "f");
   is(getValue(dbg, 1), "(unavailable)");
 
-  yield editExpression(dbg, "oo");
+  await editExpression(dbg, "oo");
   is(getLabel(dbg, 1), "foo()");
-  is(getValue(dbg, 1), "");
 
-  yield addExpression(dbg, "location");
+  // There is no "value" element for functions.
+  assertEmptyValue(dbg, 1);
+
+  await addExpression(dbg, "location");
   is(getLabel(dbg, 2), "location");
   ok(getValue(dbg, 2).includes("Location"), "has a value");
 
   // can expand an expression
-  toggleExpression(dbg, 2);
-  yield waitForDispatch(dbg, "LOAD_OBJECT_PROPERTIES");
+  await toggleExpressionNode(dbg, 2);
 
-  yield deleteExpression(dbg, "foo");
-  yield deleteExpression(dbg, "location");
+  await deleteExpression(dbg, "foo");
+  await deleteExpression(dbg, "location");
+  is(findAllElements(dbg, "expressionNodes").length, 0);
+
+  // Test expanding properties when the debuggee is active
+  await resume(dbg);
+  await addExpression(dbg, "location");
+  await toggleExpressionNode(dbg, 1);
+
+  is(findAllElements(dbg, "expressionNodes").length, 17);
+
+  await deleteExpression(dbg, "location");
   is(findAllElements(dbg, "expressionNodes").length, 0);
 });

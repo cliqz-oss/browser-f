@@ -38,15 +38,12 @@
 
 "use strict";
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
+ChromeUtils.defineModuleGetter(this, "PromiseUtils",
   "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Task",
+ChromeUtils.defineModuleGetter(this, "Task",
   "resource://gre/modules/Task.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "gDebug",
   "@mozilla.org/xpcom/debug;1", "nsIDebug2");
@@ -65,9 +62,10 @@ Object.defineProperty(this, "gCrashReporter", {
 });
 
 // `true` if this is a content process, `false` otherwise.
-// It would be nicer to go through `Services.appInfo`, but some tests need to be
+// It would be nicer to go through `Services.appinfo`, but some tests need to be
 // able to replace that field with a custom implementation before it is first
 // called.
+// eslint-disable-next-line mozilla/use-services
 const isContent = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
 
 // Display timeout warnings after 10 seconds
@@ -338,18 +336,18 @@ function getOrigin(topFrame, filename = null, lineNumber = null, stack = null) {
       filename: "<internal error: could not get origin>",
       lineNumber: -1,
       stack: "<internal error: could not get origin>",
-    }
+    };
   }
 }
 
-this.EXPORTED_SYMBOLS = ["AsyncShutdown"];
+var EXPORTED_SYMBOLS = ["AsyncShutdown"];
 
 /**
  * {string} topic -> phase
  */
 var gPhases = new Map();
 
-this.AsyncShutdown = {
+var AsyncShutdown = {
   /**
    * Access function getPhase. For testing purposes only.
    */
@@ -359,6 +357,15 @@ this.AsyncShutdown = {
       return getPhase;
     }
     return undefined;
+  },
+
+  /**
+   * This constant is used as the amount of milliseconds to allow shutdown to be
+   * blocked until we crash the process forcibly and is read from the
+   * 'toolkit.asyncshutdown.crash_timeout' pref.
+   */
+  get DELAY_CRASH_MS() {
+    return DELAY_CRASH_MS;
   }
 };
 
@@ -704,7 +711,7 @@ function Barrier(name) {
             } catch (ex) {
               reject(ex);
             }
-          }
+          };
         });
       } else {
         // If `condition` is not a function, `trigger` is not particularly

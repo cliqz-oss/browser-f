@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import argparse
 import optparse
 import os
@@ -13,17 +15,26 @@ from . import formatters
 from .structuredlog import StructuredLogger, set_default_logger
 
 log_formatters = {
-    'raw': (formatters.JSONFormatter, "Raw structured log messages"),
-    'unittest': (formatters.UnittestFormatter, "Unittest style output"),
-    'xunit': (formatters.XUnitFormatter, "xUnit compatible XML"),
-    'html': (formatters.HTMLFormatter, "HTML report"),
-    'mach': (formatters.MachFormatter, "Human-readable output"),
-    'tbpl': (formatters.TbplFormatter, "TBPL style log format"),
+    'raw': (formatters.JSONFormatter, "Raw structured log messages "
+                                      "(provided by mozlog)"),
+    'unittest': (formatters.UnittestFormatter, "Unittest style output "
+                                               "(provided by mozlog)"),
+    'xunit': (formatters.XUnitFormatter, "xUnit compatible XML "
+                                         "(povided by mozlog)"),
+    'html': (formatters.HTMLFormatter, "HTML report "
+                                       "(provided by mozlog)"),
+    'mach': (formatters.MachFormatter, "Human-readable output "
+                                       "(provided by mozlog)"),
+    'tbpl': (formatters.TbplFormatter, "TBPL style log format "
+                                       "(provided by mozlog)"),
     'errorsummary': (formatters.ErrorSummaryFormatter, argparse.SUPPRESS),
 }
 
 TEXT_FORMATTERS = ('raw', 'mach')
 """a subset of formatters for non test harnesses related applications"""
+
+
+DOCS_URL = "https://firefox-source-docs.mozilla.org/mozbase/mozlog.html"
 
 
 def level_filter_wrapper(formatter, level):
@@ -119,10 +130,12 @@ def add_logging_group(parser, include_formatters=None):
     group_name = "Output Logging"
     group_description = ("Each option represents a possible logging format "
                          "and takes a filename to write that format to, "
-                         "or '-' to write to stdout.")
+                         "or '-' to write to stdout. Some options are "
+                         "provided by the mozlog utility; see %s "
+                         "for extended documentation." % DOCS_URL)
 
     if include_formatters is None:
-        include_formatters = log_formatters.keys()
+        include_formatters = list(log_formatters.keys())
 
     if isinstance(parser, optparse.OptionParser):
         group = optparse.OptionGroup(parser,

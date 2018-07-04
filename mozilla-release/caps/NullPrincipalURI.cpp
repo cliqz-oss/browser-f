@@ -19,12 +19,10 @@
 //// NullPrincipalURI
 
 NullPrincipalURI::NullPrincipalURI()
-  : mPath(mPathBytes, ArrayLength(mPathBytes), ArrayLength(mPathBytes) - 1)
 {
 }
 
 NullPrincipalURI::NullPrincipalURI(const NullPrincipalURI& aOther)
-  : mPath(mPathBytes, ArrayLength(mPathBytes), ArrayLength(mPathBytes) - 1)
 {
   mPath.Assign(aOther.mPath);
 }
@@ -40,9 +38,9 @@ NullPrincipalURI::Init()
   nsresult rv = uuidgen->GenerateUUIDInPlace(&id);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  MOZ_ASSERT(mPathBytes == mPath.BeginWriting());
-
-  id.ToProvidedString(mPathBytes);
+  mPath.SetLength(NSID_LENGTH - 1); // -1 because NSID_LENGTH counts the '\0'
+  id.ToProvidedString(
+    *reinterpret_cast<char(*)[NSID_LENGTH]>(mPath.BeginWriting()));
 
   MOZ_ASSERT(mPath.Length() == NSID_LENGTH - 1);
   MOZ_ASSERT(strlen(mPath.get()) == NSID_LENGTH - 1);
@@ -111,7 +109,7 @@ NullPrincipalURI::GetHost(nsACString& _host)
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetHost(const nsACString& aHost)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -123,23 +121,10 @@ NullPrincipalURI::GetHostPort(nsACString& _host)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetHostPort(const nsACString& aHost)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-NullPrincipalURI::SetHostAndPort(const nsACString& aHost)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-NullPrincipalURI::GetOriginCharset(nsACString& _charset)
-{
-  _charset.Truncate();
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -148,21 +133,21 @@ NullPrincipalURI::GetPassword(nsACString& _password)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetPassword(const nsACString& aPassword)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
-NullPrincipalURI::GetPath(nsACString& _path)
+NullPrincipalURI::GetPathQueryRef(nsACString& _path)
 {
   _path = mPath;
   return NS_OK;
 }
 
-NS_IMETHODIMP
-NullPrincipalURI::SetPath(const nsACString& aPath)
+nsresult
+NullPrincipalURI::SetPathQueryRef(const nsACString& aPath)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -174,7 +159,7 @@ NullPrincipalURI::GetFilePath(nsACString& aFilePath)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetFilePath(const nsACString& aFilePath)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -187,8 +172,15 @@ NullPrincipalURI::GetQuery(nsACString& aQuery)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetQuery(const nsACString& aQuery)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+nsresult
+NullPrincipalURI::SetQueryWithEncoding(const nsACString& aQuery,
+                                       const Encoding* aEncoding)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -200,7 +192,7 @@ NullPrincipalURI::GetRef(nsACString& _ref)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetRef(const nsACString& aRef)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -219,7 +211,7 @@ NullPrincipalURI::GetPort(int32_t* _port)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetPort(int32_t aPort)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -232,7 +224,7 @@ NullPrincipalURI::GetScheme(nsACString& _scheme)
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetScheme(const nsACString& aScheme)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -259,8 +251,8 @@ NullPrincipalURI::GetHasRef(bool* _result)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-NullPrincipalURI::SetSpec(const nsACString& aSpec)
+nsresult
+NullPrincipalURI::SetSpecInternal(const nsACString& aSpec)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -271,7 +263,7 @@ NullPrincipalURI::GetUsername(nsACString& _username)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetUsername(const nsACString& aUsername)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -283,7 +275,7 @@ NullPrincipalURI::GetUserPass(nsACString& _userPass)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP
+nsresult
 NullPrincipalURI::SetUserPass(const nsACString& aUserPass)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -311,6 +303,20 @@ NullPrincipalURI::CloneWithNewRef(const nsACString& newRef, nsIURI** _newURI)
   // GetRef/SetRef not supported by NullPrincipalURI, so
   // CloneWithNewRef() is the same as Clone().
   return Clone(_newURI);
+}
+
+NS_IMPL_ISUPPORTS(NullPrincipalURI::Mutator, nsIURISetters, nsIURIMutator)
+
+NS_IMETHODIMP
+NullPrincipalURI::Mutate(nsIURIMutator** aMutator)
+{
+    RefPtr<NullPrincipalURI::Mutator> mutator = new NullPrincipalURI::Mutator();
+    nsresult rv = mutator->InitFromURI(this);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+    mutator.forget(aMutator);
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -365,6 +371,12 @@ NS_IMETHODIMP
 NullPrincipalURI::GetDisplayHost(nsACString &aUnicodeHost)
 {
   return GetHost(aUnicodeHost);
+}
+
+NS_IMETHODIMP
+NullPrincipalURI::GetDisplayPrePath(nsACString &aPrePath)
+{
+    return GetPrePath(aPrePath);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

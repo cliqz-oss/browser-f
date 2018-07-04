@@ -9,7 +9,7 @@
   */
 
 // Include PlacesDBUtils module.
-Components.utils.import("resource://gre/modules/PlacesDBUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesDBUtils.jsm");
 
 add_task(async function() {
   let tasksStatusMap = await PlacesDBUtils.checkAndFixDatabase();
@@ -23,7 +23,7 @@ add_task(async function() {
         failedTasks.push(val);
       }
     });
-    Assert.equal(numberOfTasksRun, 6, "Check that we have run all tasks.");
-    Assert.equal(successfulTasks.length, 6, "Check that we have run all tasks successfully");
+    Assert.equal(numberOfTasksRun, 7, "Check that we have run all tasks.");
+    Assert.equal(successfulTasks.length, 7, "Check that we have run all tasks successfully");
     Assert.equal(failedTasks.length, 0, "Check that no task is failing");
 });

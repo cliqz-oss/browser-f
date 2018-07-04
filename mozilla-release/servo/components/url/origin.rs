@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use servo_rand;
-use servo_rand::Rng;
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::{Host, Origin};
@@ -11,7 +10,7 @@ use url_serde;
 use uuid::Uuid;
 
 /// The origin of an URL
-#[derive(PartialEq, Eq, Clone, Debug, HeapSizeOf, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, MallocSizeOf, PartialEq, Serialize)]
 pub enum ImmutableOrigin {
     /// A globally unique identifier
     Opaque(OpaqueOrigin),
@@ -43,7 +42,7 @@ impl ImmutableOrigin {
 
     /// Creates a new opaque origin that is only equal to itself.
     pub fn new_opaque() -> ImmutableOrigin {
-        ImmutableOrigin::Opaque(OpaqueOrigin(servo_rand::thread_rng().gen()))
+        ImmutableOrigin::Opaque(OpaqueOrigin(servo_rand::random_uuid()))
     }
 
     pub fn scheme(&self) -> Option<&str> {
@@ -83,28 +82,28 @@ impl ImmutableOrigin {
         }
     }
 
-    /// https://html.spec.whatwg.org/multipage/#ascii-serialisation-of-an-origin
+    /// <https://html.spec.whatwg.org/multipage/#ascii-serialisation-of-an-origin>
     pub fn ascii_serialization(&self) -> String {
         self.clone().into_url_origin().ascii_serialization()
     }
 
-    /// https://html.spec.whatwg.org/multipage/#unicode-serialisation-of-an-origin
+    /// <https://html.spec.whatwg.org/multipage/#unicode-serialisation-of-an-origin>
     pub fn unicode_serialization(&self) -> String {
         self.clone().into_url_origin().unicode_serialization()
     }
 }
 
 /// Opaque identifier for URLs that have file or other schemes
-#[derive(Eq, PartialEq, Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct OpaqueOrigin(Uuid);
 
-known_heap_size!(0, OpaqueOrigin);
+malloc_size_of_is_0!(OpaqueOrigin);
 
 /// A representation of an [origin](https://html.spec.whatwg.org/multipage/#origin-2).
 #[derive(Clone, Debug)]
 pub struct MutableOrigin(Rc<(ImmutableOrigin, RefCell<Option<Host>>)>);
 
-known_heap_size!(0, MutableOrigin);
+malloc_size_of_is_0!(MutableOrigin);
 
 impl MutableOrigin {
     pub fn new(origin: ImmutableOrigin) -> MutableOrigin {

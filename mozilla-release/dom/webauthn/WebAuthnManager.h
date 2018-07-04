@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,7 +9,7 @@
 
 #include "mozilla/MozPromise.h"
 #include "mozilla/dom/PWebAuthnTransaction.h"
-#include "nsIIPCBackgroundChildCreateCallback.h"
+#include "mozilla/dom/WebAuthnManagerBase.h"
 
 /*
  * Content process manager for the WebAuthn protocol. Created on calls to the
@@ -41,87 +41,110 @@
  *
  */
 
-// Forward decl because of nsHTMLDocument.h's complex dependency on /layout/style
-class nsHTMLDocument {
-public:
-  bool IsRegistrableDomainSuffixOfOrEqualTo(const nsAString& aHostSuffixString,
-                                            const nsACString& aOrigHost);
-};
-
 namespace mozilla {
 namespace dom {
 
-struct Account;
-class ArrayBufferViewOrArrayBuffer;
-struct AssertionOptions;
-class OwningArrayBufferViewOrArrayBuffer;
-struct ScopedCredentialOptions;
-struct ScopedCredentialParameters;
-class Promise;
-class WebAuthnTransactionChild;
-class WebAuthnTransactionInfo;
+class WebAuthnTransaction
+{
+public:
+  WebAuthnTransaction(const RefPtr<Promise>& aPromise,
+                      const nsTArray<uint8_t>& aRpIdHash,
+                      const nsCString& aClientData,
+                      bool aDirectAttestation,
+                      AbortSignal* aSignal)
+    : mPromise(aPromise)
+    , mRpIdHash(aRpIdHash)
+    , mClientData(aClientData)
+    , mDirectAttestation(aDirectAttestation)
+    , mSignal(aSignal)
+    , mId(NextId())
+  {
+    MOZ_ASSERT(mId > 0);
+  }
 
-class WebAuthnManager final : public nsIIPCBackgroundChildCreateCallback
+  // JS Promise representing the transaction status.
+  RefPtr<Promise> mPromise;
+
+  // The RP ID hash.
+  nsTArray<uint8_t> mRpIdHash;
+
+  // Client data used to assemble reply objects.
+  nsCString mClientData;
+
+  // The RP might request direct attestation.
+  // Only used by the MakeCredential operation.
+  bool mDirectAttestation;
+
+  // An optional AbortSignal instance.
+  RefPtr<AbortSignal> mSignal;
+
+  // Unique transaction id.
+  uint64_t mId;
+
+private:
+  // Generates a unique id for new transactions. This doesn't have to be unique
+  // forever, it's sufficient to differentiate between temporally close
+  // transactions, where messages can intersect. Can overflow.
+  static uint64_t NextId() {
+    static uint64_t id = 0;
+    return ++id;
+  }
+};
+
+class WebAuthnManager final : public WebAuthnManagerBase
+                            , public AbortFollower
 {
 public:
   NS_DECL_ISUPPORTS
-  static WebAuthnManager* GetOrCreate();
-  static WebAuthnManager* Get();
 
-  void
-  FinishMakeCredential(nsTArray<uint8_t>& aRegBuffer);
-
-  void
-  FinishGetAssertion(nsTArray<uint8_t>& aCredentialId,
-                     nsTArray<uint8_t>& aSigBuffer);
-
-  void
-  Cancel(const nsresult& aError);
+  explicit WebAuthnManager(nsPIDOMWindowInner* aParent)
+    : WebAuthnManagerBase(aParent)
+  { }
 
   already_AddRefed<Promise>
-  MakeCredential(nsPIDOMWindowInner* aParent,
-                 const MakeCredentialOptions& aOptions);
+  MakeCredential(const PublicKeyCredentialCreationOptions& aOptions,
+                 const Optional<OwningNonNull<AbortSignal>>& aSignal);
 
   already_AddRefed<Promise>
-  GetAssertion(nsPIDOMWindowInner* aParent,
-               const PublicKeyCredentialRequestOptions& aOptions);
+  GetAssertion(const PublicKeyCredentialRequestOptions& aOptions,
+               const Optional<OwningNonNull<AbortSignal>>& aSignal);
 
-  void StartRegister();
-  void StartSign();
+  already_AddRefed<Promise>
+  Store(const Credential& aCredential);
 
-  // nsIIPCbackgroundChildCreateCallback methods
-  void ActorCreated(PBackgroundChild* aActor) override;
-  void ActorFailed() override;
-  void ActorDestroyed();
+  // WebAuthnManagerBase
+
+  void
+  FinishMakeCredential(const uint64_t& aTransactionId,
+                       const WebAuthnMakeCredentialResult& aResult) override;
+
+  void
+  FinishGetAssertion(const uint64_t& aTransactionId,
+                     const WebAuthnGetAssertionResult& aResult) override;
+
+  void
+  RequestAborted(const uint64_t& aTransactionId,
+                 const nsresult& aError) override;
+
+  // AbortFollower
+
+  void Abort() override;
+
+protected:
+  // Cancels the current transaction (by sending a Cancel message to the
+  // parent) and rejects it by calling RejectTransaction().
+  void CancelTransaction(const nsresult& aError) override;
+
 private:
-  WebAuthnManager();
   virtual ~WebAuthnManager();
 
-  void MaybeClearTransaction();
+  // Clears all information we have about the current transaction.
+  void ClearTransaction();
+  // Rejects the current transaction and calls ClearTransaction().
+  void RejectTransaction(const nsresult& aError);
 
-  typedef MozPromise<nsresult, nsresult, false> BackgroundActorPromise;
-
-  RefPtr<BackgroundActorPromise> GetOrCreateBackgroundActor();
-
-  // JS Promise representing transaction status.
-  RefPtr<Promise> mTransactionPromise;
-
-  // IPC Channel for the current transaction.
-  RefPtr<WebAuthnTransactionChild> mChild;
-
-  // Parent of the context we're currently running the transaction in.
-  nsCOMPtr<nsPIDOMWindowInner> mCurrentParent;
-
-  // Client data, stored on successful transaction creation, so that it can be
-  // used to assemble reply objects.
-  Maybe<nsCString> mClientData;
-
-  // Holds the parameters of the current transaction, as we need them both
-  // before the transaction request is sent, and on successful return.
-  Maybe<WebAuthnTransactionInfo> mInfo;
-
-  // Promise for dealing with PBackground Actor creation.
-  MozPromiseHolder<BackgroundActorPromise> mPBackgroundCreationPromise;
+  // The current transaction, if any.
+  Maybe<WebAuthnTransaction> mTransaction;
 };
 
 } // namespace dom

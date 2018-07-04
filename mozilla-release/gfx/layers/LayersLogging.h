@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -19,19 +20,6 @@
 #include "nscore.h"                     // for nsACString, etc
 
 namespace mozilla {
-
-namespace wr {
-struct ColorF;
-
-struct TypedSize2D_f32__LayerPixel;
-typedef TypedSize2D_f32__LayerPixel LayerSize;
-typedef LayerSize LayoutSize;
-
-struct TypedRect_f32__LayerPixel;
-typedef TypedRect_f32__LayerPixel LayerRect;
-typedef LayerRect LayoutRect;
-
-} // namespace wr
 
 namespace gfx {
 template <class units, class F> struct RectTyped;
@@ -71,6 +59,14 @@ AppendToString(std::stringstream& aStream, const mozilla::gfx::PointTyped<T>& p,
 
 template<class T>
 void
+AppendToString(std::stringstream& aStream, const mozilla::gfx::Point3DTyped<T>& p,
+               const char* pfx="", const char* sfx="")
+{
+  aStream << pfx << p << sfx;
+}
+
+template<class T>
+void
 AppendToString(std::stringstream& aStream, const mozilla::gfx::IntPointTyped<T>& p,
                const char* pfx="", const char* sfx="")
 {
@@ -85,7 +81,7 @@ AppendToString(std::stringstream& aStream, const mozilla::gfx::RectTyped<T>& r,
   aStream << pfx;
   aStream << nsPrintfCString(
     "(x=%f, y=%f, w=%f, h=%f)",
-    r.x, r.y, r.width, r.height).get();
+    r.X(), r.Y(), r.Width(), r.Height()).get();
   aStream << sfx;
 }
 
@@ -97,7 +93,7 @@ AppendToString(std::stringstream& aStream, const mozilla::gfx::IntRectTyped<T>& 
   aStream << pfx;
   aStream << nsPrintfCString(
     "(x=%d, y=%d, w=%d, h=%d)",
-    r.x, r.y, r.width, r.height).get();
+    r.X(), r.Y(), r.Width(), r.Height()).get();
   aStream << sfx;
 }
 
@@ -111,6 +107,14 @@ AppendToString(std::stringstream& aStream, const wr::LayoutRect& r,
 
 void
 AppendToString(std::stringstream& aStream, const wr::LayoutSize& s,
+               const char* pfx="", const char* sfx="");
+
+void
+AppendToString(std::stringstream& aStream, const nsSize& sz,
+               const char* pfx="", const char* sfx="");
+
+void
+AppendToString(std::stringstream& aStream, const wr::StickyOffsetBounds& s,
                const char* pfx="", const char* sfx="");
 
 void
@@ -152,6 +156,10 @@ AppendToString(std::stringstream& aStream, const mozilla::gfx::TiledRegion<T>& r
 
 void
 AppendToString(std::stringstream& aStream, const EventRegions& e,
+               const char* pfx="", const char* sfx="");
+
+void
+AppendToString(std::stringstream& aStream, OverscrollBehavior aBehavior,
                const char* pfx="", const char* sfx="");
 
 void

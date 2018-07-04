@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Cu.import("resource:///modules/webrtcUI.jsm");
+ChromeUtils.import("resource:///modules/webrtcUI.jsm");
 
 const ORIGIN = "https://example.com";
 
@@ -211,7 +211,7 @@ var gTests = [
       let blocker2Called = false, blocker2 = params => {
         blocker2Called = true;
         return "allow";
-      }
+      };
       webrtcUI.addPeerConnectionBlocker(blocker2);
 
       await tryPeerConnection(browser, "NotAllowedError");

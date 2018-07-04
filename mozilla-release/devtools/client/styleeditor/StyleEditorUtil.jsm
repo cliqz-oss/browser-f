@@ -17,15 +17,10 @@ this.EXPORTED_SYMBOLS = [
   "showFilePicker"
 ];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
 const PROPERTIES_URL = "chrome://devtools/locale/styleeditor.properties";
 
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const Services = require("Services");
-const console = require("resource://gre/modules/Console.jsm").console;
 const gStringBundle = Services.strings.createBundle(PROPERTIES_URL);
 
 /**
@@ -157,7 +152,7 @@ function wire(root, selectorOrElement, descriptor) {
 
   for (let i = 0; i < matches.length; i++) {
     let element = matches[i];
-    forEach(descriptor.events, function (name, handler) {
+    forEach(descriptor.events, function(name, handler) {
       element.addEventListener(name, handler);
     });
     forEach(descriptor.attributes, element.setAttribute);
@@ -196,7 +191,7 @@ function showFilePicker(path, toSave, parentWindow, callback,
     }
     try {
       let file =
-          Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
+          Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
       file.initWithPath(path);
       callback(file);
       return;
@@ -214,7 +209,7 @@ function showFilePicker(path, toSave, parentWindow, callback,
   let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
   let mode = toSave ? fp.modeSave : fp.modeOpen;
   let key = toSave ? "saveStyleSheet" : "importStyleSheet";
-  let fpCallback = function (result) {
+  let fpCallback = function(result) {
     if (result == Ci.nsIFilePicker.returnCancel) {
       callback(null);
     } else {

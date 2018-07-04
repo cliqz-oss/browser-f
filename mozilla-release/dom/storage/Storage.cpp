@@ -14,6 +14,8 @@
 namespace mozilla {
 namespace dom {
 
+static const char kStorageEnabled[] = "dom.storage.enabled";
+
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(Storage, mWindow, mPrincipal)
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(Storage)
@@ -36,11 +38,17 @@ Storage::Storage(nsPIDOMWindowInner* aWindow, nsIPrincipal* aPrincipal)
 Storage::~Storage()
 {}
 
+/* static */ bool
+Storage::StoragePrefIsEnabled()
+{
+  return mozilla::Preferences::GetBool(kStorageEnabled);
+}
+
 bool
 Storage::CanUseStorage(nsIPrincipal& aSubjectPrincipal)
 {
   // This method is responsible for correct setting of mIsSessionOnly.
-  if (!mozilla::Preferences::GetBool(kStorageEnabled)) {
+  if (!StoragePrefIsEnabled()) {
     return false;
   }
 

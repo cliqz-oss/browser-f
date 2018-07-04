@@ -1,7 +1,7 @@
 //Used by JSHint:
 /*global ok, is, Cu, BrowserTestUtils, add_task, gBrowser, makeTestURL, requestLongerTimeout*/
 'use strict';
-const { ManifestObtainer } = Cu.import('resource://gre/modules/ManifestObtainer.jsm', {});
+const { ManifestObtainer } = ChromeUtils.import('resource://gre/modules/ManifestObtainer.jsm', {});
 const remoteURL = 'http://mochi.test:8888/browser/dom/manifest/test/resource.sjs';
 const defaultURL = new URL('http://example.org/browser/dom/manifest/test/resource.sjs');
 defaultURL.searchParams.set('Content-Type', 'text/html; charset=utf-8');
@@ -152,18 +152,21 @@ add_task(async function() {
     `http://www.example.com:80${defaultPath}`,
   ];
   // Open tabs an collect corresponding browsers
-  let browsers = [
-    for (url of tabURLs) BrowserTestUtils.addTab(gBrowser, url).linkedBrowser
-  ];
+  let browsers = tabURLs.map(url => BrowserTestUtils.addTab(gBrowser, url).linkedBrowser);
+
   // Once all the pages have loaded, run a bunch of tests in "parallel".
-  await Promise.all((
-    for (browser of browsers) BrowserTestUtils.browserLoaded(browser)
-  ));
+  await Promise.all((function*() {
+    for (let browser of browsers) {
+      yield BrowserTestUtils.browserLoaded(browser);
+    }
+  })());
   // Flood random browsers with requests. Once promises settle, check that
   // responses all pass.
-  const results = await Promise.all((
-    for (browser of randBrowsers(browsers, 50)) ManifestObtainer.browserObtainManifest(browser)
-  ));
+  const results = await Promise.all((function*() {
+    for (let browser of randBrowsers(browsers, 50)) {
+      yield ManifestObtainer.browserObtainManifest(browser);
+    }
+  })());
   const pass = results.every(manifest => manifest.name === 'pass');
   ok(pass, 'Expect every manifest to have name equal to `pass`.');
   //cleanup

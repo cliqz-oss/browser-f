@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -33,9 +34,9 @@ using namespace mozilla::gfx;
 #define THICK_FRACTION_LINE_MINIMUM_PIXELS   2  // minimum of 2 pixels
 
 nsIFrame*
-NS_NewMathMLmfracFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmfracFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmfracFrame(aContext);
+  return new (aPresShell) nsMathMLmfracFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmfracFrame)
@@ -93,7 +94,7 @@ nsMathMLmfracFrame::TransmitAutomaticData()
 
 nscoord
 nsMathMLmfracFrame::CalcLineThickness(nsPresContext*  aPresContext,
-                                      nsStyleContext*  aStyleContext,
+                                      ComputedStyle*  aComputedStyle,
                                       nsString&        aThicknessAttribute,
                                       nscoord          onePixel,
                                       nscoord          aDefaultRuleThickness,
@@ -135,7 +136,7 @@ nsMathMLmfracFrame::CalcLineThickness(nsPresContext*  aPresContext,
       lineThickness = defaultThickness;
       ParseNumericValue(aThicknessAttribute, &lineThickness,
                         nsMathMLElement::PARSE_ALLOW_UNITLESS,
-                        aPresContext, aStyleContext, aFontSizeInflation);
+                        aPresContext, aComputedStyle, aFontSizeInflation);
     }
   }
 
@@ -148,12 +149,11 @@ nsMathMLmfracFrame::CalcLineThickness(nsPresContext*  aPresContext,
 
 void
 nsMathMLmfracFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                     const nsRect&           aDirtyRect,
                                      const nsDisplayListSet& aLists)
 {
   /////////////
   // paint the numerator and denominator
-  nsMathMLContainerFrame::BuildDisplayList(aBuilder, aDirtyRect, aLists);
+  nsMathMLContainerFrame::BuildDisplayList(aBuilder, aLists);
 
   /////////////
   // paint the fraction line
@@ -167,7 +167,7 @@ nsMathMLmfracFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
 nsresult
 nsMathMLmfracFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                     nsIAtom* aAttribute,
+                                     nsAtom* aAttribute,
                                      int32_t  aModType)
 {
   if (nsGkAtoms::linethickness_ == aAttribute) {
@@ -255,13 +255,13 @@ nsMathMLmfracFrame::PlaceInternal(DrawTarget*          aDrawTarget,
 
   // see if the linethickness attribute is there
   nsAutoString value;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::linethickness_, value);
-  mLineThickness = CalcLineThickness(presContext, mStyleContext, value,
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::linethickness_, value);
+  mLineThickness = CalcLineThickness(presContext, mComputedStyle, value,
                                      onePixel, defaultRuleThickness,
                                      fontSizeInflation);
 
   // bevelled attribute
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::bevelled_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::bevelled_, value);
   mIsBevelled = value.EqualsLiteral("true");
 
   bool displayStyle = StyleFont()->mMathDisplay == NS_MATHML_DISPLAYSTYLE_BLOCK;
@@ -413,14 +413,14 @@ nsMathMLmfracFrame::PlaceInternal(DrawTarget*          aDrawTarget,
     width += leftSpace + rightSpace;
 
     // see if the numalign attribute is there
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::numalign_, value);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::numalign_, value);
     if (value.EqualsLiteral("left"))
       dxNum = leftSpace;
     else if (value.EqualsLiteral("right"))
       dxNum = width - rightSpace - sizeNum.Width();
 
     // see if the denomalign attribute is there
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::denomalign_, value);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::denomalign_, value);
     if (value.EqualsLiteral("left"))
       dxDen = leftSpace;
     else if (value.EqualsLiteral("right"))
@@ -656,7 +656,7 @@ nsMathMLmfracFrame::DisplaySlash(nsDisplayListBuilder* aBuilder,
   if (!aFrame->StyleVisibility()->IsVisible() || aRect.IsEmpty())
     return;
 
-  aLists.Content()->AppendNewToTop(new (aBuilder)
-    nsDisplayMathMLSlash(aBuilder, aFrame, aRect, aThickness,
-                         StyleVisibility()->mDirection));
+  aLists.Content()->AppendToTop(
+    MakeDisplayItem<nsDisplayMathMLSlash>(aBuilder, aFrame, aRect, aThickness,
+                                          StyleVisibility()->mDirection));
 }

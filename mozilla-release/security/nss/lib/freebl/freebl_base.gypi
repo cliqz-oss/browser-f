@@ -8,8 +8,10 @@
     'alghmac.c',
     'arcfive.c',
     'arcfour.c',
+    'blake2b.c',
     'camellia.c',
     'chacha20poly1305.c',
+    'crypto_primitives.c',
     'ctr.c',
     'cts.c',
     'des.c',
@@ -57,7 +59,7 @@
     'sha_fast.c',
     'shvfy.c',
     'sysrand.c',
-    'tlsprfalg.c'
+    'tlsprfalg.c',
   ],
   'conditions': [
     [ 'OS=="linux" or OS=="android"', {
@@ -98,10 +100,6 @@
       ],
     }],
     [ 'OS=="win"', {
-      'sources': [
-        #TODO: building with mingw should not need this.
-        'ecl/uint128.c',
-      ],
       'libraries': [
         'advapi32.lib',
       ],
@@ -124,6 +122,11 @@
             'intel-gcm-x86-masm.asm',
           ],
         }],
+        [ 'cc_use_gnu_ld==1', {
+          # mingw
+          'sources': [
+          ],
+        }],
         [ 'cc_is_clang!=1', {
           # MSVC
           'sources': [
@@ -132,30 +135,52 @@
         }],
       ],
     }],
-    ['target_arch=="ia32" or target_arch=="x64"', {
+    ['target_arch=="ia32" or target_arch=="x64" or target_arch=="arm64" or target_arch=="aarch64"', {
       'sources': [
-        # All intel architectures get the 64 bit version
+        # All intel and 64-bit ARM architectures get the 64 bit version.
         'ecl/curve25519_64.c',
+        'verified/Hacl_Curve25519.c',
       ],
     }, {
       'sources': [
-        # All non intel architectures get the generic 32 bit implementation (slow!)
+        # All other architectures get the generic 32 bit implementation (slow!)
         'ecl/curve25519_32.c',
       ],
     }],
-    #TODO uint128.c
     [ 'disable_chachapoly==0', {
+      # The ChaCha20 code is linked in through the static ssse3-crypto lib on
+      # all platforms that support SSSE3. There are runtime checks in place to
+      # choose the correct ChaCha implementation at runtime.
+      'sources': [
+        'verified/Hacl_Chacha20.c',
+      ],
       'conditions': [
-        [ 'OS!="win" and target_arch=="x64"', {
-          'sources': [
-            'chacha20_vec.c',
-            'poly1305-donna-x64-sse2-incremental-source.c',
+        [ 'OS!="win"', {
+          'conditions': [
+            [ 'target_arch=="x64"', {
+              'sources': [
+                'verified/Hacl_Poly1305_64.c',
+              ],
+            }, {
+              # !Windows & !x64
+              'conditions': [
+                [ 'target_arch=="arm64" or target_arch=="aarch64"', {
+                  'sources': [
+                    'verified/Hacl_Poly1305_64.c',
+                  ],
+                }, {
+                  # !Windows & !x64 & !arm64 & !aarch64
+                  'sources': [
+                    'verified/Hacl_Poly1305_32.c',
+                  ],
+                }],
+              ],
+            }],
           ],
         }, {
-          # not x64
+          # Windows
           'sources': [
-            'chacha20.c',
-            'poly1305.c',
+            'verified/Hacl_Poly1305_32.c',
           ],
         }],
       ],
@@ -193,6 +218,9 @@
           ],
         }],
       ],
+    }],
+    [ 'have_int128_support==0', {
+        'sources': [ 'verified/FStar.c' ],
     }],
   ],
  'ldflags': [

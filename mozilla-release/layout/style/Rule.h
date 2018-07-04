@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,10 +9,10 @@
 #ifndef mozilla_css_Rule_h___
 #define mozilla_css_Rule_h___
 
+#include "mozilla/dom/CSSRuleBinding.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/MemoryReporting.h"
 #include "nsISupports.h"
-#include "nsIDOMCSSRule.h"
 #include "nsWrapperCache.h"
 
 class nsIDocument;
@@ -23,7 +24,7 @@ namespace mozilla {
 namespace css {
 class GroupRule;
 
-class Rule : public nsIDOMCSSRule
+class Rule : public nsISupports
            , public nsWrapperCache
 {
 protected:
@@ -53,36 +54,9 @@ public:
   // sense that it doesn't have any outgoing owning edges.
   virtual bool IsCCLeaf() const MOZ_MUST_OVERRIDE;
 
-  // nsIDOMCSSRule interface
-  NS_DECL_NSIDOMCSSRULE
-
 #ifdef DEBUG
   virtual void List(FILE* out = stdout, int32_t aIndent = 0) const = 0;
 #endif
-
-  // The constants in this list must maintain the following invariants:
-  //   If a rule of type N must appear before a rule of type M in stylesheets
-  //   then N < M
-  // Note that CSSStyleSheet::RebuildChildList assumes that no other kinds of
-  // rules can come between two rules of type IMPORT_RULE.
-  enum {
-    UNKNOWN_RULE = 0,
-    CHARSET_RULE,
-    IMPORT_RULE,
-    NAMESPACE_RULE,
-    STYLE_RULE,
-    MEDIA_RULE,
-    FONT_FACE_RULE,
-    PAGE_RULE,
-    KEYFRAME_RULE,
-    KEYFRAMES_RULE,
-    DOCUMENT_RULE,
-    SUPPORTS_RULE,
-    FONT_FEATURE_VALUES_RULE,
-    COUNTER_STYLE_RULE
-  };
-
-  virtual int32_t GetType() const = 0;
 
   StyleSheet* GetStyleSheet() const { return mSheet; }
 
@@ -95,31 +69,34 @@ public:
 
   virtual void SetStyleSheet(StyleSheet* aSheet);
 
-  void SetParentRule(GroupRule* aRule) {
-    // We don't reference count this up reference. The group rule
-    // will tell us when it's going away or when we're detached from
-    // it.
+  // We don't reference count this up reference. The rule will tell us
+  // when it's going away or when we're detached from it.
+  void SetParentRule(Rule* aRule) {
+#ifdef DEBUG
+    if (aRule) {
+      int16_t type = aRule->Type();
+      MOZ_ASSERT(type == dom::CSSRuleBinding::MEDIA_RULE ||
+                 type == dom::CSSRuleBinding::DOCUMENT_RULE ||
+                 type == dom::CSSRuleBinding::SUPPORTS_RULE ||
+                 (type == dom::CSSRuleBinding::KEYFRAMES_RULE &&
+                  Type() == dom::CSSRuleBinding::KEYFRAME_RULE));
+    }
+#endif
     mParentRule = aRule;
   }
 
   uint32_t GetLineNumber() const { return mLineNumber; }
   uint32_t GetColumnNumber() const { return mColumnNumber; }
 
-  /**
-   * Clones |this|. Never returns nullptr.
-   */
-  virtual already_AddRefed<Rule> Clone() const = 0;
-
   // This is pure virtual because all of Rule's data members are non-owning and
   // thus measured elsewhere.
   virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
     const MOZ_MUST_OVERRIDE = 0;
 
-  // WebIDL interface, aka helpers for nsIDOMCSSRule implementation.
+  // WebIDL interface
   virtual uint16_t Type() const = 0;
-  virtual void GetCssTextImpl(nsAString& aCssText) const = 0;
-  void GetCssText(nsAString& aCssText) const { GetCssTextImpl(aCssText); }
-  // XPCOM SetCssText is OK, since it never throws.
+  virtual void GetCssText(nsAString& aCssText) const = 0;
+  void SetCssText(const nsAString& aCssText);
   Rule* GetParentRule() const;
   StyleSheet* GetParentStyleSheet() const { return GetStyleSheet(); }
   nsIDocument* GetParentObject() const { return GetDocument(); }
@@ -132,7 +109,7 @@ protected:
   StyleSheet* mSheet;
   // When the parent GroupRule is destroyed, it will call SetParentRule(nullptr)
   // on this object. (Through SetParentRuleReference);
-  GroupRule* MOZ_NON_OWNING_REF mParentRule;
+  Rule* MOZ_NON_OWNING_REF mParentRule;
 
   // Keep the same type so that MSVC packs them.
   uint32_t          mLineNumber;

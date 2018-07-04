@@ -3,12 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cr = Components.results;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Import common head.
 {
@@ -19,3 +14,37 @@ Cu.import("resource://gre/modules/Services.jsm");
 }
 
 // Put any other stuff relative to this test folder below.
+
+function expectNotifications(skipDescendants) {
+  let notifications = [];
+  let observer = new Proxy(NavBookmarkObserver, {
+    get(target, name) {
+      if (name == "skipDescendantsOnItemRemoval") {
+        return skipDescendants;
+      }
+
+      if (name == "check") {
+        PlacesUtils.bookmarks.removeObserver(observer);
+        return expectedNotifications =>
+          Assert.deepEqual(notifications, expectedNotifications);
+      }
+
+      if (name.startsWith("onItem")) {
+        return (...origArgs) => {
+          let args = Array.from(origArgs, arg => {
+            if (arg && arg instanceof Ci.nsIURI)
+              return new URL(arg.spec);
+            return arg;
+          });
+          notifications.push({ name, arguments: { guid: args[5] }});
+        };
+      }
+
+      if (name in target)
+        return target[name];
+      return undefined;
+    }
+  });
+  PlacesUtils.bookmarks.addObserver(observer);
+  return observer;
+}

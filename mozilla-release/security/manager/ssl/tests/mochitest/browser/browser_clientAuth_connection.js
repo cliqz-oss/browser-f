@@ -8,7 +8,7 @@
 // is called at the appropriate times and with the correct arguments.
 
 const { MockRegistrar } =
-  Cu.import("resource://testing-common/MockRegistrar.jsm", {});
+  ChromeUtils.import("resource://testing-common/MockRegistrar.jsm", {});
 
 const DialogState = {
   // Assert that chooseCertificate() is never called.
@@ -70,7 +70,7 @@ const gClientAuthDialogs = {
     return false;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIClientAuthDialogs])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIClientAuthDialogs])
 };
 
 add_task(async function setup() {

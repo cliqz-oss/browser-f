@@ -15,243 +15,9 @@
     <resources>
       <stylesheet src="chrome://global/skin/popup.css"/>
     </resources>
-
-    <implementation implements="nsIDOMXULPopupElement">
-      <property name="label" onget="return this.getAttribute('label');"
-                             onset="this.setAttribute('label', val); return val;"/>
-      <property name="position" onget="return this.getAttribute('position');"
-                                onset="this.setAttribute('position', val); return val;"/>
-      <property name="popupBoxObject">
-        <getter>
-          return this.boxObject;
-        </getter>
-      </property>
-
-      <property name="state" readonly="true"
-                onget="return this.popupBoxObject.popupState"/>
-
-      <property name="triggerNode" readonly="true"
-                onget="return this.popupBoxObject.triggerNode"/>
-
-      <property name="anchorNode" readonly="true"
-                onget="return this.popupBoxObject.anchorNode"/>
-
-      <method name="openPopup">
-        <parameter name="aAnchorElement"/>
-        <parameter name="aPosition"/>
-        <parameter name="aX"/>
-        <parameter name="aY"/>
-        <parameter name="aIsContextMenu"/>
-        <parameter name="aAttributesOverride"/>
-        <parameter name="aTriggerEvent"/>
-        <body>
-        <![CDATA[
-          // Allow for passing an options object as the second argument.
-          if (arguments.length == 2 &&
-              arguments[1] != null &&
-              typeof arguments[1] == "object") {
-            let params = arguments[1];
-            aPosition = params.position;
-            aX = params.x;
-            aY = params.y;
-            aIsContextMenu = params.isContextMenu;
-            aAttributesOverride = params.attributesOverride;
-            aTriggerEvent = params.triggerEvent;
-          }
-
-          try {
-            var popupBox = this.popupBoxObject;
-            if (popupBox)
-              popupBox.openPopup(aAnchorElement, aPosition, aX, aY,
-                                 aIsContextMenu, aAttributesOverride, aTriggerEvent);
-          } catch (e) {}
-        ]]>
-        </body>
-      </method>
-
-      <method name="openPopupAtScreen">
-        <parameter name="aX"/>
-        <parameter name="aY"/>
-        <parameter name="aIsContextMenu"/>
-        <parameter name="aTriggerEvent"/>
-        <body>
-        <![CDATA[
-          try {
-            var popupBox = this.popupBoxObject;
-            if (popupBox)
-              popupBox.openPopupAtScreen(aX, aY, aIsContextMenu, aTriggerEvent);
-          } catch (e) {}
-        ]]>
-        </body>
-      </method>
-
-      <method name="openPopupAtScreenRect">
-        <parameter name="aPosition"/>
-        <parameter name="aX"/>
-        <parameter name="aY"/>
-        <parameter name="aWidth"/>
-        <parameter name="aHeight"/>
-        <parameter name="aIsContextMenu"/>
-        <parameter name="aAttributesOverride"/>
-        <parameter name="aTriggerEvent"/>
-        <body>
-        <![CDATA[
-          try {
-            var popupBox = this.popupBoxObject;
-            if (popupBox)
-              popupBox.openPopupAtScreenRect(aPosition, aX, aY, aWidth, aHeight,
-                                             aIsContextMenu, aAttributesOverride, aTriggerEvent);
-          } catch (e) {}
-        ]]>
-        </body>
-      </method>
-
-      <method name="showPopup">
-        <parameter name="element"/>
-        <parameter name="xpos"/>
-        <parameter name="ypos"/>
-        <parameter name="popuptype"/>
-        <parameter name="anchoralignment"/>
-        <parameter name="popupalignment"/>
-        <body>
-        <![CDATA[
-          var popupBox = null;
-          var menuBox = null;
-          try {
-            popupBox = this.popupBoxObject;
-          } catch (e) {}
-          try {
-            menuBox = this.parentNode.boxObject;
-          } catch (e) {}
-          if (menuBox instanceof MenuBoxObject)
-            menuBox.openMenu(true);
-          else if (popupBox)
-            popupBox.showPopup(element, this, xpos, ypos, popuptype, anchoralignment, popupalignment);
-        ]]>
-        </body>
-      </method>
-
-      <method name="hidePopup">
-        <parameter name="cancel"/>
-        <body>
-        <![CDATA[
-          var popupBox = null;
-          var menuBox = null;
-          try {
-            popupBox = this.popupBoxObject;
-          } catch (e) {}
-          try {
-            menuBox = this.parentNode.boxObject;
-          } catch (e) {}
-          if (menuBox instanceof MenuBoxObject)
-            menuBox.openMenu(false);
-          else if (popupBox instanceof PopupBoxObject)
-            popupBox.hidePopup(cancel);
-        ]]>
-        </body>
-      </method>
-
-      <property name="autoPosition">
-        <getter>
-        <![CDATA[
-          return this.popupBoxObject.autoPosition;
-        ]]>
-        </getter>
-        <setter>
-        <![CDATA[
-          return this.popupBoxObject.autoPosition = val;
-        ]]>
-        </setter>
-      </property>
-
-      <property name="alignmentPosition" readonly="true">
-        <getter>
-        <![CDATA[
-          return this.popupBoxObject.alignmentPosition;
-        ]]>
-        </getter>
-      </property>
-
-      <property name="alignmentOffset" readonly="true">
-        <getter>
-        <![CDATA[
-          return this.popupBoxObject.alignmentOffset;
-        ]]>
-        </getter>
-      </property>
-
-      <method name="enableKeyboardNavigator">
-        <parameter name="aEnableKeyboardNavigator"/>
-        <body>
-        <![CDATA[
-          this.popupBoxObject.enableKeyboardNavigator(aEnableKeyboardNavigator);
-        ]]>
-        </body>
-      </method>
-
-      <method name="enableRollup">
-        <parameter name="aEnableRollup"/>
-        <body>
-        <![CDATA[
-          this.popupBoxObject.enableRollup(aEnableRollup);
-        ]]>
-        </body>
-      </method>
-
-      <method name="sizeTo">
-        <parameter name="aWidth"/>
-        <parameter name="aHeight"/>
-        <body>
-        <![CDATA[
-          this.popupBoxObject.sizeTo(aWidth, aHeight);
-        ]]>
-        </body>
-      </method>
-
-      <method name="moveTo">
-        <parameter name="aLeft"/>
-        <parameter name="aTop"/>
-        <body>
-        <![CDATA[
-          this.popupBoxObject.moveTo(aLeft, aTop);
-        ]]>
-        </body>
-      </method>
-
-      <method name="moveToAnchor">
-        <parameter name="aAnchorElement"/>
-        <parameter name="aPosition"/>
-        <parameter name="aX"/>
-        <parameter name="aY"/>
-        <parameter name="aAttributesOverride"/>
-        <body>
-        <![CDATA[
-          this.popupBoxObject.moveToAnchor(aAnchorElement, aPosition, aX, aY, aAttributesOverride);
-        ]]>
-        </body>
-      </method>
-
-      <method name="getOuterScreenRect">
-        <body>
-        <![CDATA[
-          return this.popupBoxObject.getOuterScreenRect();
-        ]]>
-        </body>
-      </method>
-
-      <method name="setConstraintRect">
-        <parameter name="aRect"/>
-        <body>
-        <![CDATA[
-          this.popupBoxObject.setConstraintRect(aRect);
-        ]]>
-        </body>
-      </method>
-    </implementation>
-
   </binding>
 
-  <binding id="popup" role="xul:menupopup"
+  <binding id="popup"
            extends="chrome://global/content/bindings/popup.xml#popup-base">
 
     <content>
@@ -289,39 +55,23 @@
     </handlers>
   </binding>
 
-  <binding id="panel" role="xul:panel"
+  <binding id="panel"
            extends="chrome://global/content/bindings/popup.xml#popup-base">
-    <implementation implements="nsIDOMXULPopupElement">
+    <implementation>
       <field name="_prevFocus">0</field>
-      <field name="_dragBindingAlive">true</field>
-      <constructor>
-      <![CDATA[
-        if (this.getAttribute("backdrag") == "true" && !this._draggableStarted) {
-          this._draggableStarted = true;
-          try {
-            let tmp = {};
-            Components.utils.import("resource://gre/modules/WindowDraggingUtils.jsm", tmp);
-            let draghandle = new tmp.WindowDraggingElement(this);
-            draghandle.mouseDownCheck = function() {
-              return this._dragBindingAlive;
-            }
-          } catch (e) {}
-        }
-      ]]>
-      </constructor>
     </implementation>
 
     <handlers>
       <handler event="popupshowing"><![CDATA[
         // Capture the previous focus before has a chance to get set inside the panel
         try {
-          this._prevFocus = Components.utils
+          this._prevFocus = Cu
                             .getWeakReference(document.commandDispatcher.focusedElement);
           if (this._prevFocus.get())
             return;
         } catch (ex) { }
 
-        this._prevFocus = Components.utils.getWeakReference(document.activeElement);
+        this._prevFocus = Cu.getWeakReference(document.activeElement);
       ]]></handler>
       <handler event="popupshown"><![CDATA[
         // Fire event for accessibility APIs
@@ -341,8 +91,8 @@
           // Focus was set on an element inside this panel,
           // so we need to move it back to where it was previously
           try {
-            let fm = Components.classes["@mozilla.org/focus-manager;1"]
-                               .getService(Components.interfaces.nsIFocusManager);
+            let fm = Cc["@mozilla.org/focus-manager;1"]
+                       .getService(Ci.nsIFocusManager);
             fm.setFocus(prevFocus, fm.FLAG_NOSCROLL);
           } catch (e) {
             prevFocus.focus();
@@ -402,30 +152,6 @@
     </content>
     <implementation>
       <field name="_fadeTimer">null</field>
-      <method name="sizeTo">
-        <parameter name="aWidth"/>
-        <parameter name="aHeight"/>
-        <body>
-        <![CDATA[
-          this.popupBoxObject.sizeTo(aWidth, aHeight);
-          if (this.state == "open") {
-            this.adjustArrowPosition();
-          }
-        ]]>
-        </body>
-      </method>
-      <method name="moveToAnchor">
-        <parameter name="aAnchorElement"/>
-        <parameter name="aPosition"/>
-        <parameter name="aX"/>
-        <parameter name="aY"/>
-        <parameter name="aAttributesOverride"/>
-        <body>
-        <![CDATA[
-          this.popupBoxObject.moveToAnchor(aAnchorElement, aPosition, aX, aY, aAttributesOverride);
-        ]]>
-        </body>
-      </method>
       <method name="adjustArrowPosition">
         <body>
         <![CDATA[
@@ -492,10 +218,11 @@
         document.getAnonymousElementByAttribute(this, "anonid", "arrowbox")
                 .style.removeProperty("transform");
 
-        this.adjustArrowPosition();
-
         if (this.getAttribute("animate") != "false") {
           this.setAttribute("animate", "open");
+          // the animating attribute prevents user interaction during transition
+          // it is removed when popupshown fires
+          this.setAttribute("animating", "true");
         }
 
         // set fading
@@ -525,6 +252,7 @@
         }
       </handler>
       <handler event="popupshown" phase="target">
+        this.removeAttribute("animating");
         this.setAttribute("panelopen", "true");
       </handler>
       <handler event="popuphidden" phase="target">
@@ -539,7 +267,7 @@
     </handlers>
   </binding>
 
-  <binding id="tooltip" role="xul:tooltip"
+  <binding id="tooltip"
            extends="chrome://global/content/bindings/popup.xml#popup-base">
     <content>
       <children>
@@ -564,8 +292,8 @@
         <getter>
         <![CDATA[
           if (!this._textProvider) {
-            this._textProvider = Components.classes["@mozilla.org/embedcomp/default-tooltiptextprovider;1"]
-                                 .getService(Components.interfaces.nsITooltipTextProvider);
+            this._textProvider = Cc["@mozilla.org/embedcomp/default-tooltiptextprovider;1"]
+                                 .getService(Ci.nsITooltipTextProvider);
           }
           return this._textProvider;
         ]]>

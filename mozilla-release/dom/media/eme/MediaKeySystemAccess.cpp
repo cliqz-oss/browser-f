@@ -8,11 +8,9 @@
 #include "mozilla/dom/MediaKeySystemAccessBinding.h"
 #include "mozilla/dom/MediaKeySession.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs.h"
 #include "MediaContainerType.h"
-#include "MediaPrefs.h"
-#ifdef MOZ_FMP4
-#include "MP4Decoder.h"
-#endif
+#include "nsMimeTypes.h"
 #ifdef XP_WIN
 #include "WMFDecoderModule.h"
 #endif
@@ -34,8 +32,10 @@
 #include "mozilla/ClearOnShutdown.h"
 #include "nsUnicharUtils.h"
 #include "mozilla/dom/MediaSource.h"
+#include "DecoderTraits.h"
 #ifdef MOZ_WIDGET_ANDROID
 #include "FennecJNIWrappers.h"
+#include "GeneratedJNIWrappers.h"
 #endif
 #include <functional>
 
@@ -105,9 +105,7 @@ MediaKeySystemAccess::CreateMediaKeys(ErrorResult& aRv)
 static bool
 HavePluginForKeySystem(const nsCString& aKeySystem)
 {
-  nsCString api = MediaPrefs::EMEChromiumAPIEnabled()
-                    ? NS_LITERAL_CSTRING(CHROMIUM_CDM_API)
-                    : NS_LITERAL_CSTRING(GMP_API_DECRYPTOR);
+  nsCString api = NS_LITERAL_CSTRING(CHROMIUM_CDM_API);
 
   bool havePlugin = HaveGMPFor(api, { aKeySystem });
 #ifdef MOZ_WIDGET_ANDROID
@@ -136,7 +134,8 @@ MediaKeySystemStatus
 MediaKeySystemAccess::GetKeySystemStatus(const nsAString& aKeySystem,
                                          nsACString& aOutMessage)
 {
-  MOZ_ASSERT(MediaPrefs::EMEEnabled() || IsClearkeyKeySystem(aKeySystem));
+  MOZ_ASSERT(StaticPrefs::MediaEmeEnabled() ||
+             IsClearkeyKeySystem(aKeySystem));
 
   if (IsClearkeyKeySystem(aKeySystem)) {
     return EnsureCDMInstalled(aKeySystem, aOutMessage);
@@ -278,7 +277,7 @@ GetSupportedKeySystems()
       clearkey.mPersistentState = KeySystemFeatureSupport::Requestable;
       clearkey.mDistinctiveIdentifier = KeySystemFeatureSupport::Prohibited;
       clearkey.mSessionTypes.AppendElement(MediaKeySessionType::Temporary);
-      if (MediaPrefs::ClearKeyPersistentLicenseEnabled()) {
+      if (StaticPrefs::MediaClearkeyPersistentLicenseEnabled()) {
         clearkey.mSessionTypes.AppendElement(MediaKeySessionType::Persistent_license);
       }
 #if defined(XP_WIN)
@@ -344,13 +343,13 @@ GetSupportedKeySystems()
       } DataForValidation;
 
       DataForValidation validationList[] = {
-        { nsCString("video/mp4"), EME_CODEC_H264, MediaDrmProxy::AVC, &widevine.mMP4 },
-        { nsCString("video/mp4"), EME_CODEC_VP9, MediaDrmProxy::AVC, &widevine.mMP4 },
-        { nsCString("audio/mp4"), EME_CODEC_AAC, MediaDrmProxy::AAC, &widevine.mMP4 },
-        { nsCString("video/webm"), EME_CODEC_VP8, MediaDrmProxy::VP8, &widevine.mWebM },
-        { nsCString("video/webm"), EME_CODEC_VP9, MediaDrmProxy::VP9, &widevine.mWebM},
-        { nsCString("audio/webm"), EME_CODEC_VORBIS, MediaDrmProxy::VORBIS, &widevine.mWebM},
-        { nsCString("audio/webm"), EME_CODEC_OPUS, MediaDrmProxy::OPUS, &widevine.mWebM},
+        { nsCString(VIDEO_MP4), EME_CODEC_H264, MediaDrmProxy::AVC, &widevine.mMP4 },
+        { nsCString(VIDEO_MP4), EME_CODEC_VP9, MediaDrmProxy::AVC, &widevine.mMP4 },
+        { nsCString(AUDIO_MP4), EME_CODEC_AAC, MediaDrmProxy::AAC, &widevine.mMP4 },
+        { nsCString(VIDEO_WEBM), EME_CODEC_VP8, MediaDrmProxy::VP8, &widevine.mWebM },
+        { nsCString(VIDEO_WEBM), EME_CODEC_VP9, MediaDrmProxy::VP9, &widevine.mWebM},
+        { nsCString(AUDIO_WEBM), EME_CODEC_VORBIS, MediaDrmProxy::VORBIS, &widevine.mWebM},
+        { nsCString(AUDIO_WEBM), EME_CODEC_OPUS, MediaDrmProxy::OPUS, &widevine.mWebM},
       };
 
       for (const auto& data: validationList) {

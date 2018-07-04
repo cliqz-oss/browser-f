@@ -12,7 +12,7 @@ add_task(async function() {
   let navbar = document.getElementById(CustomizableUI.AREA_NAVBAR);
   ok(!navbar.hasAttribute("overflowing"), "Should start with a non-overflowing toolbar.");
   ok(CustomizableUI.inDefaultState, "Should start in default state.");
-  window.resizeTo(400, window.outerHeight);
+  window.resizeTo(kForceOverflowWidthPx, window.outerHeight);
   await waitForCondition(() => navbar.hasAttribute("overflowing"));
   ok(navbar.hasAttribute("overflowing"), "Should have an overflowing toolbar.");
 
@@ -25,8 +25,8 @@ add_task(async function() {
   // async-ness of the 'shown' yield...
   let panelHiddenPromise = promisePanelElementHidden(window, widgetOverflowPanel);
 
-  var ds = Components.classes["@mozilla.org/widget/dragservice;1"].
-           getService(Components.interfaces.nsIDragService);
+  var ds = Cc["@mozilla.org/widget/dragservice;1"].
+           getService(Ci.nsIDragService);
 
   ds.startDragSession();
   try {

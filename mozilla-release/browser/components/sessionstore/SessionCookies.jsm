@@ -4,26 +4,20 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SessionCookies"];
+var EXPORTED_SYMBOLS = ["SessionCookies"];
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
-  "resource://gre/modules/sessionstore/Utils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivacyLevel",
+ChromeUtils.defineModuleGetter(this, "PrivacyLevel",
   "resource://gre/modules/sessionstore/PrivacyLevel.jsm");
 
-// MAX_EXPIRY should be 2^63-1, but JavaScript can't handle that precision.
-const MAX_EXPIRY = Math.pow(2, 62);
+const MAX_EXPIRY = Number.MAX_SAFE_INTEGER;
 
 /**
  * The external API implemented by the SessionCookies module.
  */
-this.SessionCookies = Object.freeze({
+var SessionCookies = Object.freeze({
   collect() {
     return SessionCookiesInternal.collect();
   },
@@ -63,10 +57,20 @@ var SessionCookiesInternal = {
       };
 
       let originAttributes = cookie.originAttributes || {};
-      if (!Services.cookies.cookieExists(cookieObj, originAttributes)) {
-        Services.cookies.add(cookie.host, cookie.path || "", cookie.name || "",
-                             cookie.value, !!cookie.secure, !!cookie.httponly,
-                             /* isSession = */ true, expiry, originAttributes);
+      let exists = false;
+      try {
+        exists = Services.cookies.cookieExists(cookieObj, originAttributes);
+      } catch (ex) {
+        Cu.reportError(`nsCookieService::CookieExists failed with error '${ex}' for '${JSON.stringify(cookie)}'.`);
+      }
+      if (!exists) {
+        try {
+          Services.cookies.add(cookie.host, cookie.path || "", cookie.name || "",
+                               cookie.value, !!cookie.secure, !!cookie.httponly,
+                               /* isSession = */ true, expiry, originAttributes);
+        } catch (ex) {
+          Cu.reportError(`nsCookieService::Add failed with error '${ex}' for cookie ${JSON.stringify(cookie)}.`);
+        }
       }
     }
   },

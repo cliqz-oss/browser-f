@@ -32,11 +32,12 @@ public:
 
   ApplicationAccessible();
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(ApplicationAccessible, AccessibleWrap)
 
   // Accessible
   virtual void Shutdown() override;
   virtual nsIntRect Bounds() const override;
+  virtual nsRect BoundsInAppUnits() const override;
   virtual already_AddRefed<nsIPersistentProperties> NativeAttributes() override;
   virtual GroupPos GroupPosition() override;
   virtual ENameValueFlag Name(nsString& aName) override;

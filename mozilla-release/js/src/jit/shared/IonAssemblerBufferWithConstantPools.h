@@ -642,6 +642,7 @@ struct AssemblerBufferWithConstantPools : public AssemblerBuffer<SliceSize, Inst
     // followed.
     const uint32_t nopFillInst_;
     const unsigned nopFill_;
+
     // For inhibiting the insertion of fill NOPs in the dynamic context in which
     // they are being inserted.
     bool inhibitNops_;
@@ -1083,7 +1084,17 @@ struct AssemblerBufferWithConstantPools : public AssemblerBuffer<SliceSize, Inst
         canNotPlacePool_ = false;
 
         // Validate the maxInst argument supplied to enterNoPool().
-        MOZ_ASSERT(this->nextOffset().getOffset() - canNotPlacePoolStartOffset_ <= canNotPlacePoolMaxInst_ * InstSize);
+        MOZ_ASSERT(this->nextOffset().getOffset() - canNotPlacePoolStartOffset_ <=
+                   canNotPlacePoolMaxInst_ * InstSize);
+    }
+
+    void enterNoNops() {
+        MOZ_ASSERT(!inhibitNops_);
+        inhibitNops_ = true;
+    }
+    void leaveNoNops() {
+        MOZ_ASSERT(inhibitNops_);
+        inhibitNops_ = false;
     }
 
     void align(unsigned alignment) {
@@ -1126,17 +1137,18 @@ struct AssemblerBufferWithConstantPools : public AssemblerBuffer<SliceSize, Inst
         }
     }
 
-    bool appendBuffer(const AssemblerBufferWithConstantPools& other) {
+    bool appendRawCode(const uint8_t* code, size_t numBytes) {
         if (this->oom())
             return false;
         // The pools should have all been flushed, check.
         MOZ_ASSERT(pool_.numEntries() == 0);
-        for (Slice* cur = other.getHead(); cur != nullptr; cur = cur->getNext()) {
-            this->putBytes(cur->length(), &cur->instructions[0]);
-            if (this->oom())
-                return false;
+        while (numBytes > SliceSize) {
+            this->putBytes(SliceSize, code);
+            numBytes -= SliceSize;
+            code += SliceSize;
         }
-        return true;
+        this->putBytes(numBytes, code);
+        return !this->oom();
     }
 
   public:

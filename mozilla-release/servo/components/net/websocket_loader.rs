@@ -15,39 +15,40 @@ use hyper::method::Method;
 use hyper::net::HttpStream;
 use hyper::status::StatusCode;
 use hyper::version::HttpVersion;
-use net_traits::{CookieSource, MessageData, NetworkError, WebSocketCommunicate, WebSocketConnectData};
+use ipc_channel::ipc::{IpcReceiver, IpcSender};
+use net_traits::{CookieSource, MessageData, NetworkError};
 use net_traits::{WebSocketDomAction, WebSocketNetworkEvent};
-use net_traits::request::{Destination, Type};
+use net_traits::request::{Destination, RequestInit, RequestMode};
 use servo_url::ServoUrl;
-use std::ascii::AsciiExt;
 use std::io::{self, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use url::Position;
-use websocket::{Message, Receiver as WSReceiver, Sender as WSSender};
+use websocket::Message;
 use websocket::header::{Origin, WebSocketAccept, WebSocketKey, WebSocketProtocol, WebSocketVersion};
-use websocket::message::Type as MessageType;
-use websocket::receiver::Receiver;
-use websocket::sender::Sender;
+use websocket::message::OwnedMessage;
+use websocket::receiver::{Reader as WsReader, Receiver as WsReceiver};
+use websocket::sender::{Sender as WsSender, Writer as WsWriter};
+use websocket::ws::dataframe::DataFrame;
 
-pub fn init(connect: WebSocketCommunicate,
-            connect_data: WebSocketConnectData,
-            http_state: Arc<HttpState>) {
-    thread::Builder::new().name(format!("WebSocket connection to {}", connect_data.resource_url)).spawn(move || {
-        let channel = establish_a_websocket_connection(connect_data.resource_url,
-                                                       connect_data.origin,
-                                                       connect_data.protocols,
-                                                       &http_state);
+pub fn init(
+    req_init: RequestInit,
+    resource_event_sender: IpcSender<WebSocketNetworkEvent>,
+    dom_action_receiver: IpcReceiver<WebSocketDomAction>,
+    http_state: Arc<HttpState>
+) {
+    thread::Builder::new().name(format!("WebSocket connection to {}", req_init.url)).spawn(move || {
+        let channel = establish_a_websocket_connection(req_init, &http_state);
         let (ws_sender, mut receiver) = match channel {
             Ok((protocol_in_use, sender, receiver)) => {
-                let _ = connect.event_sender.send(WebSocketNetworkEvent::ConnectionEstablished { protocol_in_use });
+                let _ = resource_event_sender.send(WebSocketNetworkEvent::ConnectionEstablished { protocol_in_use });
                 (sender, receiver)
             },
             Err(e) => {
                 debug!("Failed to establish a WebSocket connection: {:?}", e);
-                let _ = connect.event_sender.send(WebSocketNetworkEvent::Fail);
+                let _ = resource_event_sender.send(WebSocketNetworkEvent::Fail);
                 return;
             }
 
@@ -58,10 +59,9 @@ pub fn init(connect: WebSocketCommunicate,
 
         let initiated_close_incoming = initiated_close.clone();
         let ws_sender_incoming = ws_sender.clone();
-        let resource_event_sender = connect.event_sender;
         thread::spawn(move || {
             for message in receiver.incoming_messages() {
-                let message: Message = match message {
+                let message = match message {
                     Ok(m) => m,
                     Err(e) => {
                         debug!("Error receiving incoming WebSocket message: {:?}", e);
@@ -69,21 +69,25 @@ pub fn init(connect: WebSocketCommunicate,
                         break;
                     }
                 };
-                let message = match message.opcode {
-                    MessageType::Text => MessageData::Text(String::from_utf8_lossy(&message.payload).into_owned()),
-                    MessageType::Binary => MessageData::Binary(message.payload.into_owned()),
-                    MessageType::Ping => {
-                        let pong = Message::pong(message.payload);
+                let message = match message {
+                    OwnedMessage::Text(_) => {
+                        MessageData::Text(String::from_utf8_lossy(&message.take_payload()).into_owned())
+                    },
+                    OwnedMessage::Binary(_) => MessageData::Binary(message.take_payload()),
+                    OwnedMessage::Ping(_) => {
+                        let pong = Message::pong(message.take_payload());
                         ws_sender_incoming.lock().unwrap().send_message(&pong).unwrap();
                         continue;
                     },
-                    MessageType::Pong => continue,
-                    MessageType::Close => {
+                    OwnedMessage::Pong(_) => continue,
+                    OwnedMessage::Close(ref msg) => {
                         if !initiated_close_incoming.fetch_or(true, Ordering::SeqCst) {
                             ws_sender_incoming.lock().unwrap().send_message(&message).unwrap();
                         }
-                        let code = message.cd_status_code;
-                        let reason = String::from_utf8_lossy(&message.payload).into_owned();
+                        let (code, reason) = match *msg {
+                            None => (None, "".into()),
+                            Some(ref data) => (Some(data.status_code), data.reason.clone())
+                        };
                         let _ = resource_event_sender.send(WebSocketNetworkEvent::Close(code, reason));
                         break;
                     },
@@ -92,7 +96,7 @@ pub fn init(connect: WebSocketCommunicate,
             }
         });
 
-        while let Ok(dom_action) = connect.action_receiver.recv() {
+        while let Ok(dom_action) = dom_action_receiver.recv() {
             match dom_action {
                 WebSocketDomAction::SendMessage(MessageData::Text(data)) => {
                     ws_sender.lock().unwrap().send_message(&Message::text(data)).unwrap();
@@ -146,14 +150,15 @@ fn obtain_a_websocket_connection(url: &ServoUrl) -> Result<Stream, NetworkError>
 }
 
 // https://fetch.spec.whatwg.org/#concept-websocket-establish
-fn establish_a_websocket_connection(resource_url: ServoUrl,
-                                    origin: String,
-                                    protocols: Vec<String>,
-                                    http_state: &HttpState)
-                                    -> Result<(Option<String>,
-                                               Sender<Stream>,
-                                               Receiver<Stream>),
-                                              NetworkError> {
+fn establish_a_websocket_connection(
+    req_init: RequestInit,
+    http_state: &HttpState
+) -> Result<(Option<String>, WsWriter<HttpStream>, WsReader<HttpStream>), NetworkError>
+{
+    let protocols = match req_init.mode {
+        RequestMode::WebSocket { protocols } => protocols.clone(),
+        _ => panic!("Received a RequestInit with a non-websocket mode in websocket_loader"),
+    };
     // Steps 1 is not really applicable here, given we don't exactly go
     // through the same infrastructure as the Fetch spec.
 
@@ -184,7 +189,7 @@ fn establish_a_websocket_connection(resource_url: ServoUrl,
     // TODO: handle permessage-deflate extension.
 
     // Step 11 and network error check from step 12.
-    let response = fetch(resource_url, origin, headers, http_state)?;
+    let response = fetch(req_init.url, req_init.origin.ascii_serialization(), headers, http_state)?;
 
     // Step 12, the status code check.
     if response.status != StatusCode::SwitchingProtocols {
@@ -255,9 +260,19 @@ fn establish_a_websocket_connection(resource_url: ServoUrl,
         None
     };
 
-    let sender = Sender::new(response.writer, true);
-    let receiver = Receiver::new(response.reader, false);
-    Ok((protocol_in_use, sender, receiver))
+    let sender = WsSender::new(true);
+    let writer = WsWriter {
+        stream: response.writer,
+        sender
+    };
+
+    let receiver = WsReceiver::new(false);
+    let reader = WsReader {
+        stream: response.reader,
+        receiver,
+    };
+
+    Ok((protocol_in_use, writer, reader))
 }
 
 struct Response {
@@ -280,7 +295,7 @@ fn fetch(url: ServoUrl,
     // TODO: handle request's origin.
 
     // Step 3.
-    set_default_accept(Type::None, Destination::None, &mut headers);
+    set_default_accept(Destination::None, &mut headers);
 
     // Step 4.
     set_default_accept_language(&mut headers);
@@ -352,7 +367,7 @@ fn main_fetch(url: ServoUrl,
         // doesn't need to be filtered at all.
 
         // Step 12.2.
-        basic_fetch(&url, origin, &mut headers, http_state)
+        scheme_fetch(&url, origin, &mut headers, http_state)
     });
 
     // Step 13.
@@ -370,7 +385,7 @@ fn main_fetch(url: ServoUrl,
         // TODO: handle blocking as mixed content.
         // TODO: handle blocking by content security policy.
         // Not applicable: blocking due to MIME type matters only for scripts.
-        if should_be_blocked_due_to_nosniff(Type::None, &headers) {
+        if should_be_blocked_due_to_nosniff(Destination::None, &headers) {
             response = Err(NetworkError::Internal("Request should be blocked due to nosniff.".into()));
         }
     }
@@ -386,8 +401,8 @@ fn main_fetch(url: ServoUrl,
     response
 }
 
-// https://fetch.spec.whatwg.org/#concept-basic-fetch
-fn basic_fetch(url: &ServoUrl,
+// https://fetch.spec.whatwg.org/#concept-scheme-fetch
+fn scheme_fetch(url: &ServoUrl,
                origin: String,
                headers: &mut Headers,
                http_state: &HttpState)

@@ -19,6 +19,7 @@ namespace mozilla {
 namespace safebrowsing {
 
 const int LookupCacheV4::VER = 4;
+const uint32_t LookupCacheV4::MAX_METADATA_VALUE_LENGTH = 256;
 
 // Prefixes coming from updates and VLPrefixSet are both stored in the HashTable
 // where the (key, value) pair is a prefix size and a lexicographic-sorted string.
@@ -30,13 +31,12 @@ class VLPrefixSet
 {
 public:
   explicit VLPrefixSet(const PrefixStringMap& aMap);
-  explicit VLPrefixSet(const TableUpdateV4::PrefixStdStringMap& aMap);
 
   // This function will merge the prefix map in VLPrefixSet to aPrefixMap.
   void Merge(PrefixStringMap& aPrefixMap);
 
   // Find the smallest string from the map in VLPrefixSet.
-  bool GetSmallestPrefix(nsDependentCSubstring& aOutString);
+  bool GetSmallestPrefix(nsACString& aOutString);
 
   // Return the number of prefixes in the map
   uint32_t Count() const { return mCount; }
@@ -47,19 +47,39 @@ private:
   // |pos| increases each time GetSmallestPrefix finds the smallest string.
   struct PrefixString {
     PrefixString(const nsACString& aStr, uint32_t aSize)
-     : pos(0)
-     , size(aSize)
+      : data(aStr)
+      , pos(0)
+      , size(aSize)
     {
-      data.Rebind(aStr.BeginReading(), aStr.Length());
+      MOZ_ASSERT(data.Length() % size == 0,
+                 "PrefixString length must be a multiple of the prefix size.");
     }
 
-    const char* get() {
-      return pos < data.Length() ? data.BeginReading() + pos : nullptr;
+    void getRemainingString(nsACString& out) {
+      MOZ_ASSERT(out.IsEmpty());
+      if (remaining() > 0) {
+        out = Substring(data, pos);
+      }
     }
-    void next() { pos += size; }
-    uint32_t remaining() { return data.Length() - pos; }
+    void getPrefix(nsACString& out) {
+      MOZ_ASSERT(out.IsEmpty());
+      if (remaining() >= size) {
+        out = Substring(data, pos, size);
+      } else {
+        MOZ_ASSERT(remaining() == 0,
+                   "Remaining bytes but not enough for a (size)-byte prefix.");
+      }
+    }
+    void next() {
+      pos += size;
+      MOZ_ASSERT(pos <= data.Length());
+    }
+    uint32_t remaining() {
+      return data.Length() - pos;
+      MOZ_ASSERT(pos <= data.Length());
+    }
 
-    nsDependentCSubstring data;
+    nsCString data;
     uint32_t pos;
     uint32_t size;
   };
@@ -128,12 +148,21 @@ LookupCacheV4::Build(PrefixStringMap& aPrefixMap)
 {
   Telemetry::AutoTimer<Telemetry::URLCLASSIFIER_VLPS_CONSTRUCT_TIME> timer;
 
-  return mVLPrefixSet->SetPrefixes(aPrefixMap);
+  nsresult rv = mVLPrefixSet->SetPrefixes(aPrefixMap);
+  NS_ENSURE_SUCCESS(rv, rv);
+  mPrimed = true;
+
+  return rv;
 }
 
 nsresult
 LookupCacheV4::GetPrefixes(PrefixStringMap& aPrefixMap)
 {
+  if (!mPrimed) {
+    // This can happen if its a new table, so no error.
+    LOG(("GetPrefixes from empty LookupCache"));
+    return NS_OK;
+  }
   return mVLPrefixSet->GetPrefixes(aPrefixMap);
 }
 
@@ -167,6 +196,8 @@ LookupCacheV4::LoadFromFile(nsIFile* aFile)
 
   nsCString state, checksum;
   rv = LoadMetadata(state, checksum);
+  Telemetry::Accumulate(Telemetry::URLCLASSIFIER_VLPS_METADATA_CORRUPT,
+                        rv == NS_ERROR_FILE_CORRUPTED);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -185,15 +216,16 @@ LookupCacheV4::SizeOfPrefixSet()
 }
 
 static nsresult
-AppendPrefixToMap(PrefixStringMap& prefixes, nsDependentCSubstring& prefix)
+AppendPrefixToMap(PrefixStringMap& prefixes, const nsACString& prefix)
 {
   uint32_t len = prefix.Length();
+  MOZ_ASSERT(len >= PREFIX_SIZE && len <= COMPLETE_SIZE);
   if (!len) {
     return NS_OK;
   }
 
   nsCString* prefixString = prefixes.LookupOrAdd(len);
-  if (!prefixString->Append(prefix.BeginReading(), len, fallible)) {
+  if (!prefixString->Append(prefix, fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -239,8 +271,8 @@ LookupCacheV4::ApplyUpdate(TableUpdateV4* aTableUpdate,
   uint32_t removalIndex = 0;
   int32_t numOldPrefixPicked = -1;
 
-  nsDependentCSubstring smallestOldPrefix;
-  nsDependentCSubstring smallestAddPrefix;
+  nsAutoCString smallestOldPrefix;
+  nsAutoCString smallestAddPrefix;
 
   bool isOldMapEmpty = false, isAddMapEmpty = false;
 
@@ -377,7 +409,7 @@ LookupCacheV4::VerifyChecksum(const nsACString& aChecksum)
   VLPrefixSet loadPSet(map);
   uint32_t index = loadPSet.Count() + 1;
   for(;index > 0; index--) {
-    nsDependentCSubstring prefix;
+    nsAutoCString prefix;
     if (!loadPSet.GetSmallestPrefix(prefix)) {
       break;
     }
@@ -403,6 +435,8 @@ namespace {
 template<typename T>
 struct ValueTraits
 {
+  static_assert(sizeof(T) <= LookupCacheV4::MAX_METADATA_VALUE_LENGTH,
+                "LookupCacheV4::MAX_METADATA_VALUE_LENGTH is too small.");
   static uint32_t Length(const T& aValue) { return sizeof(T); }
   static char* WritePtr(T& aValue, uint32_t aLength) { return (char*)&aValue; }
   static const char* ReadPtr(const T& aValue) { return (char*)&aValue; }
@@ -435,6 +469,8 @@ template<typename T> static nsresult
 WriteValue(nsIOutputStream *aOutputStream, const T& aValue)
 {
   uint32_t writeLength = ValueTraits<T>::Length(aValue);
+  MOZ_ASSERT(writeLength <= LookupCacheV4::MAX_METADATA_VALUE_LENGTH,
+             "LookupCacheV4::MAX_METADATA_VALUE_LENGTH is too small.");
   if (!ValueTraits<T>::IsFixedLength()) {
     // We need to write out the variable value length.
     nsresult rv = WriteValue(aOutputStream, writeLength);
@@ -445,9 +481,9 @@ WriteValue(nsIOutputStream *aOutputStream, const T& aValue)
   auto valueReadPtr = ValueTraits<T>::ReadPtr(aValue);
   uint32_t written;
   nsresult rv = aOutputStream->Write(valueReadPtr, writeLength, &written);
-  if (NS_FAILED(rv) || written != writeLength) {
-    LOG(("Failed to write the value."));
-    return NS_FAILED(rv) ? rv : NS_ERROR_FAILURE;
+  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_WARN_IF(written != writeLength)) {
+    return NS_ERROR_FAILURE;
   }
 
   return rv;
@@ -465,6 +501,12 @@ ReadValue(nsIInputStream* aInputStream, T& aValue)
     // Read the variable value length from file.
     nsresult rv = ReadValue(aInputStream, readLength);
     NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  // Sanity-check the readLength in case of disk corruption
+  // (see bug 1433636).
+  if (readLength > LookupCacheV4::MAX_METADATA_VALUE_LENGTH) {
+    return NS_ERROR_FILE_CORRUPTED;
   }
 
   // Read the value.
@@ -500,24 +542,15 @@ LookupCacheV4::WriteMetadata(TableUpdateV4* aTableUpdate)
   nsCOMPtr<nsIOutputStream> outputStream;
   rv = NS_NewLocalFileOutputStream(getter_AddRefs(outputStream), metaFile,
                                    PR_WRONLY | PR_TRUNCATE | PR_CREATE_FILE);
-  if (!NS_SUCCEEDED(rv)) {
-    LOG(("Unable to create file to store metadata."));
-    return rv;
-  }
+  NS_ENSURE_SUCCESS(rv, rv);
 
   // Write the state.
   rv = WriteValue(outputStream, aTableUpdate->ClientState());
-  if (NS_FAILED(rv)) {
-    LOG(("Failed to write the list state."));
-    return rv;
-  }
+  NS_ENSURE_SUCCESS(rv, rv);
 
   // Write the checksum.
   rv = WriteValue(outputStream, aTableUpdate->Checksum());
-  if (NS_FAILED(rv)) {
-    LOG(("Failed to write the list checksum."));
-    return rv;
-  }
+  NS_ENSURE_SUCCESS(rv, rv);
 
   return rv;
 }
@@ -562,18 +595,10 @@ VLPrefixSet::VLPrefixSet(const PrefixStringMap& aMap)
 {
   for (auto iter = aMap.ConstIter(); !iter.Done(); iter.Next()) {
     uint32_t size = iter.Key();
+    MOZ_ASSERT(iter.Data()->Length() % size == 0,
+               "PrefixString must be a multiple of the prefix size.");
     mMap.Put(size, new PrefixString(*iter.Data(), size));
     mCount += iter.Data()->Length() / size;
-  }
-}
-
-VLPrefixSet::VLPrefixSet(const TableUpdateV4::PrefixStdStringMap& aMap)
-  : mCount(0)
-{
-  for (auto iter = aMap.ConstIter(); !iter.Done(); iter.Next()) {
-    uint32_t size = iter.Key();
-    mMap.Put(size, new PrefixString(iter.Data()->GetPrefixString(), size));
-    mCount += iter.Data()->GetPrefixString().Length() / size;
   }
 }
 
@@ -583,31 +608,37 @@ VLPrefixSet::Merge(PrefixStringMap& aPrefixMap) {
     nsCString* prefixString = aPrefixMap.LookupOrAdd(iter.Key());
     PrefixString* str = iter.Data();
 
-    if (str->get()) {
-      prefixString->Append(str->get(), str->remaining());
+    nsAutoCString remainingString;
+    str->getRemainingString(remainingString);
+    if (!remainingString.IsEmpty()) {
+      MOZ_ASSERT(remainingString.Length() == str->remaining());
+      prefixString->Append(remainingString);
     }
   }
 }
 
 bool
-VLPrefixSet::GetSmallestPrefix(nsDependentCSubstring& aOutString) {
+VLPrefixSet::GetSmallestPrefix(nsACString& aOutString) {
   PrefixString* pick = nullptr;
   for (auto iter = mMap.ConstIter(); !iter.Done(); iter.Next()) {
     PrefixString* str = iter.Data();
 
-    if (!str->get()) {
+    if (str->remaining() <= 0) {
       continue;
     }
 
     if (aOutString.IsEmpty()) {
-      aOutString.Rebind(str->get(), iter.Key());
+      str->getPrefix(aOutString);
+      MOZ_ASSERT(aOutString.Length() == iter.Key());
       pick = str;
       continue;
     }
 
-    nsDependentCSubstring cur(str->get(), iter.Key());
-    if (cur < aOutString) {
-      aOutString.Rebind(str->get(), iter.Key());
+    nsAutoCString cur;
+    str->getPrefix(cur);
+    if (!cur.IsEmpty() && cur < aOutString) {
+      aOutString.Assign(cur);
+      MOZ_ASSERT(aOutString.Length() == iter.Key());
       pick = str;
     }
   }

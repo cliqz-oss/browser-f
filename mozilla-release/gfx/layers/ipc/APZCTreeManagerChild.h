@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=99: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,12 +7,14 @@
 #ifndef mozilla_layers_APZCTreeManagerChild_h
 #define mozilla_layers_APZCTreeManagerChild_h
 
+#include "mozilla/layers/APZInputBridge.h"
 #include "mozilla/layers/IAPZCTreeManager.h"
 #include "mozilla/layers/PAPZCTreeManagerChild.h"
 
 namespace mozilla {
 namespace layers {
 
+class APZInputBridgeChild;
 class RemoteCompositorSession;
 
 class APZCTreeManagerChild
@@ -23,12 +25,8 @@ public:
   APZCTreeManagerChild();
 
   void SetCompositorSession(RemoteCompositorSession* aSession);
-
-  nsEventStatus
-  ReceiveInputEvent(
-          InputData& aEvent,
-          ScrollableLayerGuid* aOutTargetGuid,
-          uint64_t* aOutInputBlockId) override;
+  void SetInputBridge(APZInputBridgeChild* aInputBridge);
+  void Destroy();
 
   void
   SetKeyboardMap(const KeyboardMap& aKeyboardMap) override;
@@ -55,9 +53,6 @@ public:
           const Maybe<ZoomConstraints>& aConstraints) override;
 
   void
-  CancelAnimation(const ScrollableLayerGuid &aGuid) override;
-
-  void
   SetDPI(float aDpiValue) override;
 
   void
@@ -70,7 +65,7 @@ public:
           const ScrollableLayerGuid& aGuid,
           const AsyncDragMetrics& aDragMetrics) override;
 
-  void
+  bool
   StartAutoscroll(
           const ScrollableLayerGuid& aGuid,
           const ScreenPoint& aAnchorLocation) override;
@@ -81,19 +76,8 @@ public:
   void
   SetLongTapEnabled(bool aTapGestureEnabled) override;
 
-  void
-  ProcessTouchVelocity(uint32_t aTimestampMs, float aSpeedY) override;
-
-  void
-  ProcessUnhandledEvent(
-          LayoutDeviceIntPoint* aRefPoint,
-          ScrollableLayerGuid*  aOutTargetGuid,
-          uint64_t*             aOutFocusSequenceNumber) override;
-
-  void
-  UpdateWheelTransaction(
-          LayoutDeviceIntPoint aRefPoint,
-          EventMessage aEventMessage) override;
+  APZInputBridge*
+  InputBridge() override;
 
 protected:
   mozilla::ipc::IPCResult RecvHandleTap(const TapType& aType,
@@ -107,11 +91,13 @@ protected:
                                                  const LayoutDeviceCoord& aSpanChange,
                                                  const Modifiers& aModifiers) override;
 
-  virtual
-  ~APZCTreeManagerChild() { }
+  mozilla::ipc::IPCResult RecvCancelAutoscroll(const FrameMetrics::ViewID& aScrollId) override;
+
+  virtual ~APZCTreeManagerChild();
 
 private:
   MOZ_NON_OWNING_REF RemoteCompositorSession* mCompositorSession;
+  RefPtr<APZInputBridgeChild> mInputBridge;
 };
 
 } // namespace layers

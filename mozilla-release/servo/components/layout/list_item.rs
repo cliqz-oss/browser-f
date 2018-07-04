@@ -10,7 +10,8 @@
 use app_units::Au;
 use block::BlockFlow;
 use context::{LayoutContext, with_thread_local_font_context};
-use display_list_builder::{DisplayListBuildState, ListItemFlowDisplayListBuilding};
+use display_list::{DisplayListBuildState, ListItemFlowDisplayListBuilding};
+use display_list::StackingContextCollectionState;
 use euclid::Point2D;
 use floats::FloatKind;
 use flow::{Flow, FlowClass, OpaqueFlow};
@@ -18,13 +19,18 @@ use fragment::{CoordinateSystem, Fragment, FragmentBorderBoxIterator, GeneratedC
 use fragment::Overflow;
 use generated_content;
 use inline::InlineFlow;
-use style::computed_values::{list_style_type, position};
+use style::computed_values::list_style_type::T as ListStyleType;
+use style::computed_values::position::T as Position;
 use style::logical_geometry::LogicalSize;
 use style::properties::ComputedValues;
-use style::servo::restyle_damage::RESOLVE_GENERATED_CONTENT;
+use style::servo::restyle_damage::ServoRestyleDamage;
+
+#[allow(unsafe_code)]
+unsafe impl ::flow::HasBaseFlow for ListItemFlow {}
 
 /// A block with the CSS `display` property equal to `list-item`.
 #[derive(Debug)]
+#[repr(C)]
 pub struct ListItemFlow {
     /// Data common to all block flows.
     pub block_flow: BlockFlow,
@@ -45,17 +51,67 @@ impl ListItemFlow {
 
         if let Some(ref marker) = this.marker_fragments.first() {
             match marker.style().get_list().list_style_type {
-                list_style_type::T::disc |
-                list_style_type::T::none |
-                list_style_type::T::circle |
-                list_style_type::T::square |
-                list_style_type::T::disclosure_open |
-                list_style_type::T::disclosure_closed => {}
-                _ => this.block_flow.base.restyle_damage.insert(RESOLVE_GENERATED_CONTENT),
+                ListStyleType::Disc |
+                ListStyleType::None |
+                ListStyleType::Circle |
+                ListStyleType::Square |
+                ListStyleType::DisclosureOpen |
+                ListStyleType::DisclosureClosed => {}
+                _ => this.block_flow.base.restyle_damage.insert(ServoRestyleDamage::RESOLVE_GENERATED_CONTENT),
             }
         }
 
         this
+    }
+
+    /// Assign inline size and position for the marker. This is done during the `assign_block_size`
+    /// traversal because floats will impact the marker position. Therefore we need to have already
+    /// called `assign_block_size` on the list item's block flow, in order to know which floats
+    /// impact the position.
+    ///
+    /// Per CSS 2.1 § 12.5.1, the marker position is not precisely specified, but it must be on the
+    /// left side of the content (for ltr direction). However, flowing the marker around floats
+    /// matches the rendering of Gecko and Blink.
+    fn assign_marker_inline_sizes(&mut self, layout_context: &LayoutContext) {
+        let base = &self.block_flow.base;
+        let available_rect = base.floats.available_rect(
+            -base.position.size.block,
+            base.position.size.block,
+            base.block_container_inline_size);
+        let mut marker_inline_start = available_rect.unwrap_or(self.block_flow.fragment.border_box).start.i;
+
+        for marker in self.marker_fragments.iter_mut().rev() {
+            let container_block_size =
+                self.block_flow.explicit_block_containing_size(layout_context.shared_context());
+            marker.assign_replaced_inline_size_if_necessary(base.block_container_inline_size, container_block_size);
+
+            // Do this now. There's no need to do this in bubble-widths, since markers do not
+            // contribute to the inline size of this flow.
+            let intrinsic_inline_sizes = marker.compute_intrinsic_inline_sizes();
+
+            marker.border_box.size.inline =
+                intrinsic_inline_sizes.content_intrinsic_sizes.preferred_inline_size;
+            marker_inline_start = marker_inline_start - marker.border_box.size.inline;
+            marker.border_box.start.i = marker_inline_start;
+        }
+    }
+
+    fn assign_marker_block_sizes(&mut self, layout_context: &LayoutContext) {
+        // FIXME(pcwalton): Do this during flow construction, like `InlineFlow` does?
+        let marker_line_metrics = with_thread_local_font_context(layout_context, |font_context| {
+            InlineFlow::minimum_line_metrics_for_fragments(&self.marker_fragments,
+                                                           font_context,
+                                                           &*self.block_flow.fragment.style)
+        });
+
+        for marker in &mut self.marker_fragments {
+            marker.assign_replaced_block_size_if_necessary();
+            let marker_inline_metrics = marker.aligned_inline_metrics(layout_context,
+                                                                      &marker_line_metrics,
+                                                                      Some(&marker_line_metrics));
+            marker.border_box.start.b = marker_line_metrics.space_above_baseline -
+                marker_inline_metrics.ascent;
+        }
     }
 }
 
@@ -79,52 +135,24 @@ impl Flow for ListItemFlow {
 
     fn assign_inline_sizes(&mut self, layout_context: &LayoutContext) {
         self.block_flow.assign_inline_sizes(layout_context);
-
-        let mut marker_inline_start = self.block_flow.fragment.border_box.start.i;
-
-        for marker in self.marker_fragments.iter_mut().rev() {
-            let containing_block_inline_size = self.block_flow.base.block_container_inline_size;
-            let container_block_size =
-                self.block_flow.explicit_block_containing_size(layout_context.shared_context());
-            marker.assign_replaced_inline_size_if_necessary(containing_block_inline_size, container_block_size);
-
-            // Do this now. There's no need to do this in bubble-widths, since markers do not
-            // contribute to the inline size of this flow.
-            let intrinsic_inline_sizes = marker.compute_intrinsic_inline_sizes();
-
-            marker.border_box.size.inline =
-                intrinsic_inline_sizes.content_intrinsic_sizes.preferred_inline_size;
-            marker_inline_start = marker_inline_start - marker.border_box.size.inline;
-            marker.border_box.start.i = marker_inline_start;
-        }
     }
 
     fn assign_block_size(&mut self, layout_context: &LayoutContext) {
         self.block_flow.assign_block_size(layout_context);
-
-        // FIXME(pcwalton): Do this during flow construction, like `InlineFlow` does?
-        let marker_line_metrics = with_thread_local_font_context(layout_context, |font_context| {
-            InlineFlow::minimum_line_metrics_for_fragments(&self.marker_fragments,
-                                                           font_context,
-                                                           &*self.block_flow.fragment.style)
-        });
-
-        for marker in &mut self.marker_fragments {
-            marker.assign_replaced_block_size_if_necessary();
-            let marker_inline_metrics = marker.aligned_inline_metrics(layout_context,
-                                                                      &marker_line_metrics,
-                                                                      Some(&marker_line_metrics));
-            marker.border_box.start.b = marker_line_metrics.space_above_baseline -
-                marker_inline_metrics.ascent;
-        }
+        self.assign_marker_inline_sizes(layout_context);
+        self.assign_marker_block_sizes(layout_context);
     }
 
-    fn compute_absolute_position(&mut self, layout_context: &LayoutContext) {
-        self.block_flow.compute_absolute_position(layout_context)
+    fn compute_stacking_relative_position(&mut self, layout_context: &LayoutContext) {
+        self.block_flow.compute_stacking_relative_position(layout_context)
     }
 
     fn place_float_if_applicable<'a>(&mut self) {
         self.block_flow.place_float_if_applicable()
+    }
+
+    fn contains_roots_of_absolute_flow_tree(&self) -> bool {
+        self.block_flow.contains_roots_of_absolute_flow_tree()
     }
 
     fn is_absolute_containing_block(&self) -> bool {
@@ -143,7 +171,7 @@ impl Flow for ListItemFlow {
         self.build_display_list_for_list_item(state);
     }
 
-    fn collect_stacking_contexts(&mut self, state: &mut DisplayListBuildState) {
+    fn collect_stacking_contexts(&mut self, state: &mut StackingContextCollectionState) {
         self.block_flow.collect_stacking_contexts(state);
     }
 
@@ -168,7 +196,7 @@ impl Flow for ListItemFlow {
     }
 
     /// The 'position' property of this flow.
-    fn positioning(&self) -> position::T {
+    fn positioning(&self) -> Position {
         self.block_flow.positioning()
     }
 
@@ -220,17 +248,20 @@ pub enum ListStyleTypeContent {
 
 impl ListStyleTypeContent {
     /// Returns the content to be used for the given value of the `list-style-type` property.
-    pub fn from_list_style_type(list_style_type: list_style_type::T) -> ListStyleTypeContent {
+    pub fn from_list_style_type(list_style_type: ListStyleType) -> ListStyleTypeContent {
         // Just to keep things simple, use a nonbreaking space (Unicode 0xa0) to provide the marker
         // separation.
         match list_style_type {
-            list_style_type::T::none => ListStyleTypeContent::None,
-            list_style_type::T::disc | list_style_type::T::circle | list_style_type::T::square |
-            list_style_type::T::disclosure_open | list_style_type::T::disclosure_closed => {
+            ListStyleType::None => ListStyleTypeContent::None,
+            ListStyleType::Disc |
+            ListStyleType::Circle |
+            ListStyleType::Square |
+            ListStyleType::DisclosureOpen |
+            ListStyleType::DisclosureClosed => {
                 let text = generated_content::static_representation(list_style_type);
                 ListStyleTypeContent::StaticText(text)
             }
-            _ => ListStyleTypeContent::GeneratedContent(box GeneratedContentInfo::ListItem),
+            _ => ListStyleTypeContent::GeneratedContent(Box::new(GeneratedContentInfo::ListItem)),
         }
     }
 }

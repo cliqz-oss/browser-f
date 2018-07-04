@@ -20,16 +20,25 @@ loadHelperScript("helper_html_tooltip.js");
 const TOOLTIP_HEIGHT = 160;
 const TOOLTIP_WIDTH = 200;
 
-add_task(function* () {
+add_task(async function() {
   // Force the toolbox to be 200px high;
-  yield pushPref("devtools.toolbox.footer.height", 200);
+  await pushPref("devtools.toolbox.footer.height", 200);
 
-  let [, win, doc] = yield createHost("bottom", TEST_URI);
+  let [, win, doc] = await createHost("bottom", TEST_URI);
 
-  info("Resizing window to have some space below the window.");
+  info("Resize and move the window to have space below.");
   let originalWidth = win.top.outerWidth;
   let originalHeight = win.top.outerHeight;
-  win.top.resizeBy(0, -100);
+  win.top.resizeBy(-100, -200);
+  let originalTop = win.top.screenTop;
+  let originalLeft = win.top.screenLeft;
+  win.top.moveTo(100, 100);
+
+  registerCleanupFunction(() => {
+    info("Restore original window dimensions and position.");
+    win.top.resizeTo(originalWidth, originalHeight);
+    win.top.moveTo(originalTop, originalLeft);
+  });
 
   info("Create HTML tooltip");
   let tooltip = new HTMLTooltip(doc, {useXulWrapper: true});
@@ -42,22 +51,19 @@ add_task(function* () {
 
   // Above box1: check that the tooltip can overflow onto the content page.
   info("Display the tooltip above box1.");
-  yield showTooltip(tooltip, box1, {position: "top"});
+  await showTooltip(tooltip, box1, {position: "top"});
   checkTooltip(tooltip, "top", TOOLTIP_HEIGHT);
-  yield hideTooltip(tooltip);
+  await hideTooltip(tooltip);
 
   // Below box1: check that the tooltip can overflow out of the browser window.
   info("Display the tooltip below box1.");
-  yield showTooltip(tooltip, box1, {position: "bottom"});
+  await showTooltip(tooltip, box1, {position: "bottom"});
   checkTooltip(tooltip, "bottom", TOOLTIP_HEIGHT);
-  yield hideTooltip(tooltip);
+  await hideTooltip(tooltip);
 
   is(tooltip.isVisible(), false, "Tooltip is not visible");
 
   tooltip.destroy();
-
-  info("Restore original window dimensions.");
-  win.top.resizeTo(originalWidth, originalHeight);
 });
 
 function checkTooltip(tooltip, position, height) {

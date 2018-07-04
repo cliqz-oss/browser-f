@@ -15,6 +15,7 @@
 #include "jsapi.h"
 #include "jsfriendapi.h"
 #include "nsIScriptContext.h"
+#include "nsIScriptElement.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIXPConnect.h"
 #include "nsCOMPtr.h"
@@ -25,12 +26,14 @@
 #include "xpcpublic.h"
 #include "nsContentUtils.h"
 #include "nsGlobalWindow.h"
-
+#include "nsXBLPrototypeBinding.h"
+#include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/Date.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ScriptSettings.h"
 
+using namespace mozilla;
 using namespace mozilla::dom;
 
 bool
@@ -83,7 +86,7 @@ nsJSUtils::GetCurrentlyRunningCodeInnerWindowID(JSContext *aContext)
   if (!aContext)
     return 0;
 
-  nsGlobalWindow* win = xpc::CurrentWindowOrNull(aContext);
+  nsGlobalWindowInner* win = xpc::CurrentWindowOrNull(aContext);
   return win ? win->WindowID() : 0;
 }
 
@@ -101,7 +104,6 @@ nsJSUtils::CompileFunction(AutoJSAPI& jsapi,
   MOZ_ASSERT(js::GetEnterCompartmentDepth(cx) > 0);
   MOZ_ASSERT_IF(aScopeChain.length() != 0,
                 js::IsObjectInContextCompartment(aScopeChain[0], cx));
-  MOZ_ASSERT_IF(aOptions.versionSet, aOptions.version != JSVERSION_UNKNOWN);
 
   // Do the junk Gecko is supposed to do before calling into JSAPI.
   for (size_t i = 0; i < aScopeChain.length(); ++i) {
@@ -135,8 +137,10 @@ EvaluationExceptionToNSResult(JSContext* aCx)
 nsJSUtils::ExecutionContext::ExecutionContext(JSContext* aCx,
                                               JS::Handle<JSObject*> aGlobal)
   :
+#ifdef MOZ_GECKO_PROFILER
     mAutoProfilerLabel("nsJSUtils::ExecutionContext", /* dynamicStr */ nullptr,
                        __LINE__, js::ProfileEntry::Category::JS),
+#endif
     mCx(aCx)
   , mCompartment(aCx, aGlobal)
   , mRetValue(aCx)
@@ -152,7 +156,8 @@ nsJSUtils::ExecutionContext::ExecutionContext(JSContext* aCx,
 {
   MOZ_ASSERT(aCx == nsContentUtils::GetCurrentJSContext());
   MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(nsContentUtils::IsInMicroTask());
+  MOZ_ASSERT(CycleCollectedJSContext::Get() &&
+             CycleCollectedJSContext::Get()->MicroTaskLevel());
   MOZ_ASSERT(mRetValue.isUndefined());
 
   MOZ_ASSERT(js::GetGlobalForObjectCrossCompartment(aGlobal) == aGlobal);
@@ -233,8 +238,6 @@ nsJSUtils::ExecutionContext::CompileAndExec(JS::CompileOptions& aCompileOptions,
     return mRv;
   }
 
-  MOZ_ASSERT_IF(aCompileOptions.versionSet,
-                aCompileOptions.version != JSVERSION_UNKNOWN);
   MOZ_ASSERT(aSrcBuf.get());
   MOZ_ASSERT(mRetValue.isUndefined());
 #ifdef DEBUG
@@ -382,15 +385,14 @@ nsJSUtils::CompileModule(JSContext* aCx,
 {
   AUTO_PROFILER_LABEL("nsJSUtils::CompileModule", JS);
 
-  MOZ_ASSERT_IF(aCompileOptions.versionSet,
-                aCompileOptions.version != JSVERSION_UNKNOWN);
   MOZ_ASSERT(aCx == nsContentUtils::GetCurrentJSContext());
   MOZ_ASSERT(aSrcBuf.get());
   MOZ_ASSERT(js::GetGlobalForObjectCrossCompartment(aEvaluationGlobal) ==
              aEvaluationGlobal);
   MOZ_ASSERT(JS::CurrentGlobalOrNull(aCx) == aEvaluationGlobal);
   MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(nsContentUtils::IsInMicroTask());
+  MOZ_ASSERT(CycleCollectedJSContext::Get() &&
+             CycleCollectedJSContext::Get()->MicroTaskLevel());
 
   NS_ENSURE_TRUE(xpc::Scriptability::Get(aEvaluationGlobal).Allowed(), NS_OK);
 
@@ -402,16 +404,22 @@ nsJSUtils::CompileModule(JSContext* aCx,
 }
 
 nsresult
-nsJSUtils::ModuleDeclarationInstantiation(JSContext* aCx, JS::Handle<JSObject*> aModule)
+nsJSUtils::InitModuleSourceElement(JSContext* aCx,
+                                   JS::Handle<JSObject*> aModule,
+                                   nsIScriptElement* aElement)
 {
-  AUTO_PROFILER_LABEL("nsJSUtils::ModuleDeclarationInstantiation", JS);
+  JS::Rooted<JS::Value> value(aCx);
+  nsresult rv = nsContentUtils::WrapNative(aCx, aElement, &value,
+                                           /* aAllowWrapping = */ true);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
 
-  MOZ_ASSERT(aCx == nsContentUtils::GetCurrentJSContext());
-  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(value.isObject());
+  JS::Rooted<JSObject*> object(aCx, &value.toObject());
 
-  NS_ENSURE_TRUE(xpc::Scriptability::Get(aModule).Allowed(), NS_OK);
-
-  if (!JS::ModuleDeclarationInstantiation(aCx, aModule)) {
+  JS::Rooted<JSScript*> script(aCx, JS::GetModuleScript(aModule));
+  if (!JS::InitScriptSourceElement(aCx, script, object, nullptr)) {
     return NS_ERROR_FAILURE;
   }
 
@@ -419,40 +427,97 @@ nsJSUtils::ModuleDeclarationInstantiation(JSContext* aCx, JS::Handle<JSObject*> 
 }
 
 nsresult
-nsJSUtils::ModuleEvaluation(JSContext* aCx, JS::Handle<JSObject*> aModule)
+nsJSUtils::ModuleInstantiate(JSContext* aCx, JS::Handle<JSObject*> aModule)
 {
-  AUTO_PROFILER_LABEL("nsJSUtils::ModuleEvaluation", JS);
+  AUTO_PROFILER_LABEL("nsJSUtils::ModuleInstantiate", JS);
 
   MOZ_ASSERT(aCx == nsContentUtils::GetCurrentJSContext());
   MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(nsContentUtils::IsInMicroTask());
+  MOZ_ASSERT(CycleCollectedJSContext::Get() &&
+             CycleCollectedJSContext::Get()->MicroTaskLevel());
 
   NS_ENSURE_TRUE(xpc::Scriptability::Get(aModule).Allowed(), NS_OK);
 
-  if (!JS::ModuleEvaluation(aCx, aModule)) {
+  if (!JS::ModuleInstantiate(aCx, aModule)) {
     return NS_ERROR_FAILURE;
   }
 
   return NS_OK;
 }
 
+nsresult
+nsJSUtils::ModuleEvaluate(JSContext* aCx, JS::Handle<JSObject*> aModule)
+{
+  AUTO_PROFILER_LABEL("nsJSUtils::ModuleEvaluate", JS);
+
+  MOZ_ASSERT(aCx == nsContentUtils::GetCurrentJSContext());
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(CycleCollectedJSContext::Get() &&
+             CycleCollectedJSContext::Get()->MicroTaskLevel());
+
+  NS_ENSURE_TRUE(xpc::Scriptability::Get(aModule).Allowed(), NS_OK);
+
+  if (!JS::ModuleEvaluate(aCx, aModule)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  return NS_OK;
+}
+
+static bool
+AddScopeChainItem(JSContext* aCx,
+                  nsINode* aNode,
+                  JS::AutoObjectVector& aScopeChain)
+{
+  JS::RootedValue val(aCx);
+  if (!GetOrCreateDOMReflector(aCx, aNode, &val)) {
+    return false;
+  }
+
+  if (!aScopeChain.append(&val.toObject())) {
+    return false;
+  }
+
+  return true;
+}
+
 /* static */
 bool
 nsJSUtils::GetScopeChainForElement(JSContext* aCx,
-                                   mozilla::dom::Element* aElement,
+                                   Element* aElement,
                                    JS::AutoObjectVector& aScopeChain)
 {
   for (nsINode* cur = aElement; cur; cur = cur->GetScopeChainParent()) {
-    JS::RootedValue val(aCx);
-    if (!GetOrCreateDOMReflector(aCx, cur, &val)) {
-      return false;
-    }
-
-    if (!aScopeChain.append(&val.toObject())) {
+    if (!AddScopeChainItem(aCx, cur, aScopeChain)) {
       return false;
     }
   }
 
+  return true;
+}
+
+/* static */
+bool
+nsJSUtils::GetScopeChainForXBL(JSContext* aCx,
+                               Element* aElement,
+                               const nsXBLPrototypeBinding& aProtoBinding,
+                               JS::AutoObjectVector& aScopeChain)
+{
+  if (!aElement) {
+    return true;
+  }
+
+  if (!aProtoBinding.SimpleScopeChain()) {
+    return GetScopeChainForElement(aCx, aElement, aScopeChain);
+  }
+
+  if (!AddScopeChainItem(aCx, aElement, aScopeChain)) {
+    return false;
+  }
+
+  if (!AddScopeChainItem(aCx, aElement->OwnerDoc(), aScopeChain)) {
+    return false;
+  }
   return true;
 }
 

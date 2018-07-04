@@ -1,4 +1,4 @@
-// |reftest| skip-if(release_or_beta) error:SyntaxError -- async-iteration is not released yet
+// |reftest| error:SyntaxError
 'use strict';
 // This file was procedurally generated from the following sources:
 // - src/async-generators/yield-identifier-strict.case
@@ -9,7 +9,7 @@ esid: prod-AsyncGeneratorDeclaration
 features: [async-iteration]
 flags: [generated, onlyStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     Async Generator Function Definitions
@@ -19,6 +19,7 @@ info: |
         AsyncGeneratorBody }
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 
 var callCount = 0;

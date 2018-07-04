@@ -18,17 +18,15 @@
 #include "GeckoProfiler.h"
 #include "MainThreadUtils.h"
 #include "mozilla/CheckedInt.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/Tools.h"
+#include "mozilla/gfx/SourceSurfaceRawData.h"
 #include "mozilla/layers/SourceSurfaceSharedData.h"
 #include "mozilla/layers/SourceSurfaceVolatileData.h"
 #include "mozilla/Likely.h"
 #include "mozilla/MemoryReporting.h"
 #include "nsMargin.h"
 #include "nsThreadUtils.h"
-
-#ifdef ANDROID
-#define ANIMATED_FRAMES_USE_HEAP
-#endif
 
 namespace mozilla {
 
@@ -80,6 +78,33 @@ CreateLockedSurface(DataSourceSurface *aSurface,
   return nullptr;
 }
 
+static bool
+ShouldUseHeap(const IntSize& aSize,
+              int32_t aStride,
+              bool aIsAnimated)
+{
+  // On some platforms (i.e. Android), a volatile buffer actually keeps a file
+  // handle active. We would like to avoid too many since we could easily
+  // exhaust the pool. However, other platforms we do not have the file handle
+  // problem, and additionally we may avoid a superfluous memset since the
+  // volatile memory starts out as zero-filled. Hence the knobs below.
+
+  // For as long as an animated image is retained, its frames will never be
+  // released to let the OS purge volatile buffers.
+  if (aIsAnimated && gfxPrefs::ImageMemAnimatedUseHeap()) {
+    return true;
+  }
+
+  // Lets us avoid too many small images consuming all of the handles. The
+  // actual allocation checks for overflow.
+  int32_t bufferSize = (aStride * aSize.width) / 1024;
+  if (bufferSize < gfxPrefs::ImageMemVolatileMinThresholdKB()) {
+    return true;
+  }
+
+  return false;
+}
+
 static already_AddRefed<DataSourceSurface>
 AllocateBufferForImage(const IntSize& size,
                        SurfaceFormat format,
@@ -87,21 +112,16 @@ AllocateBufferForImage(const IntSize& size,
 {
   int32_t stride = VolatileSurfaceStride(size, format);
 
-#ifdef ANIMATED_FRAMES_USE_HEAP
-  if (aIsAnimated) {
-    // For as long as an animated image is retained, its frames will never be
-    // released to let the OS purge volatile buffers. On Android, a volatile
-    // buffer actually keeps a file handle active, which we would like to avoid
-    // since many images and frames could easily exhaust the pool. As such, we
-    // use the heap. On the other platforms we do not have the file handle
-    // problem, and additionally we may avoid a superfluous memset since the
-    // volatile memory starts out as zero-filled.
-    return Factory::CreateDataSourceSurfaceWithStride(size, format,
-                                                      stride, false);
+  if (ShouldUseHeap(size, stride, aIsAnimated)) {
+    RefPtr<SourceSurfaceAlignedRawData> newSurf =
+      new SourceSurfaceAlignedRawData();
+    if (newSurf->Init(size, format, false, 0, stride)) {
+      return newSurf.forget();
+    }
   }
-#endif
 
-  if (!aIsAnimated && gfxPrefs::ImageMemShared()) {
+  if (!aIsAnimated && gfxVars::GetUseWebRenderOrDefault()
+                   && gfxPrefs::ImageMemShared()) {
     RefPtr<SourceSurfaceSharedData> newSurf = new SourceSurfaceSharedData();
     if (newSurf->Init(size, stride, format)) {
       return newSurf.forget();
@@ -138,19 +158,6 @@ ClearSurface(DataSourceSurface* aSurface, const IntSize& aSize, SurfaceFormat aF
   return true;
 }
 
-void
-MarkSurfaceShared(SourceSurface* aSurface)
-{
-  // Depending on what requested the image decoding, the buffer may or may not
-  // end up being shared with another process (e.g. put in a painted layer,
-  // used inside a canvas). If not shared, we should ensure are not keeping the
-  // handle only because we have yet to share it.
-  if (aSurface && aSurface->GetType() == SurfaceType::DATA_SHARED) {
-    auto sharedSurface = static_cast<SourceSurfaceSharedData*>(aSurface);
-    sharedSurface->FinishedSharing();
-  }
-}
-
 // Returns true if an image of aWidth x aHeight is allowed and legal.
 static bool
 AllowedImageSize(int32_t aWidth, int32_t aHeight)
@@ -182,7 +189,7 @@ static bool AllowedImageAndFrameDimensions(const nsIntSize& aImageSize,
   if (!AllowedImageSize(aImageSize.width, aImageSize.height)) {
     return false;
   }
-  if (!AllowedImageSize(aFrameRect.width, aFrameRect.height)) {
+  if (!AllowedImageSize(aFrameRect.Width(), aFrameRect.Height())) {
     return false;
   }
   nsIntRect imageRect(0, 0, aImageSize.width, aImageSize.height);
@@ -324,9 +331,7 @@ imgFrame::InitWithDrawable(gfxDrawable* aDrawable,
 
   RefPtr<DrawTarget> target;
 
-  bool canUseDataSurface =
-    gfxPlatform::GetPlatform()->CanRenderContentToDataSurface();
-
+  bool canUseDataSurface = Factory::DoesBackendSupportDataDrawtarget(aBackend);
   if (canUseDataSurface) {
     // It's safe to use data surfaces for content on this platform, so we can
     // get away with using volatile buffers.
@@ -509,8 +514,8 @@ imgFrame::SurfaceForDrawing(bool               aDoPartialDecode,
                              mFormat);
   }
 
-  gfxRect available = gfxRect(mDecoded.x, mDecoded.y, mDecoded.width,
-                              mDecoded.height);
+  gfxRect available = gfxRect(mDecoded.X(), mDecoded.Y(), mDecoded.Width(),
+                              mDecoded.Height());
 
   if (aDoTile) {
     // Create a temporary surface.
@@ -525,7 +530,7 @@ imgFrame::SurfaceForDrawing(bool               aDoPartialDecode,
 
     SurfacePattern pattern(aSurface,
                            aRegion.GetExtendMode(),
-                           Matrix::Translation(mDecoded.x, mDecoded.y));
+                           Matrix::Translation(mDecoded.X(), mDecoded.Y()));
     target->FillRect(ToRect(aRegion.Intersect(available).Rect()), pattern);
 
     RefPtr<SourceSurface> newsurf = target->Snapshot();
@@ -536,7 +541,7 @@ imgFrame::SurfaceForDrawing(bool               aDoPartialDecode,
   // Not tiling, and we have a surface, so we can account for
   // a partial decode just by twiddling parameters.
   aRegion = aRegion.Intersect(available);
-  IntSize availableSize(mDecoded.width, mDecoded.height);
+  IntSize availableSize(mDecoded.Width(), mDecoded.Height());
 
   return SurfaceWithFormat(new gfxSurfaceDrawable(aSurface, availableSize),
                            mFormat);
@@ -588,9 +593,6 @@ bool imgFrame::Draw(gfxContext* aContext, const ImageRegion& aRegion,
                                aSamplingFilter, aImageFlags, aOpacity);
   }
 
-  // Image got put into a painted layer, it will not be shared with another
-  // process.
-  MarkSurfaceShared(surf);
   return true;
 }
 
@@ -612,6 +614,14 @@ imgFrame::ImageUpdatedInternal(const nsIntRect& aUpdateRect)
   // decoded rect that extends outside the bounds of the frame rect.
   mDecoded.IntersectRect(mDecoded, mFrameRect);
 
+  // Update our invalidation counters for any consumers watching for changes
+  // in the surface.
+  if (mRawSurface) {
+    mRawSurface->Invalidate();
+  }
+  if (mLockedSurface && mRawSurface != mLockedSurface) {
+    mLockedSurface->Invalidate();
+  }
   return NS_OK;
 }
 
@@ -649,11 +659,11 @@ imgFrame::GetImageBytesPerRow() const
   mMonitor.AssertCurrentThreadOwns();
 
   if (mRawSurface) {
-    return mFrameRect.width * BytesPerPixel(mFormat);
+    return mFrameRect.Width() * BytesPerPixel(mFormat);
   }
 
   if (mPaletteDepth) {
-    return mFrameRect.width;
+    return mFrameRect.Width();
   }
 
   return 0;
@@ -662,7 +672,7 @@ imgFrame::GetImageBytesPerRow() const
 uint32_t
 imgFrame::GetImageDataLength() const
 {
-  return GetImageBytesPerRow() * mFrameRect.height;
+  return GetImageBytesPerRow() * mFrameRect.Height();
 }
 
 void
@@ -941,7 +951,7 @@ void
 imgFrame::AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
                                  size_t& aHeapSizeOut,
                                  size_t& aNonHeapSizeOut,
-                                 size_t& aSharedHandlesOut) const
+                                 size_t& aExtHandlesOut) const
 {
   MonitorAutoLock lock(mMonitor);
 
@@ -957,15 +967,7 @@ imgFrame::AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
   if (mRawSurface) {
     aHeapSizeOut += aMallocSizeOf(mRawSurface);
     mRawSurface->AddSizeOfExcludingThis(aMallocSizeOf, aHeapSizeOut,
-                                        aNonHeapSizeOut);
-
-    if (mRawSurface->GetType() == SurfaceType::DATA_SHARED) {
-      auto sharedSurface =
-        static_cast<SourceSurfaceSharedData*>(mRawSurface.get());
-      if (sharedSurface->CanShare()) {
-        ++aSharedHandlesOut;
-      }
-    }
+                                        aNonHeapSizeOut, aExtHandlesOut);
   }
 }
 

@@ -2,8 +2,10 @@
 // Test whether an install fails when authentication is required and it is
 // canceled
 // This verifies bug 312473
-
 function test() {
+  // Turn off the authentication dialog blocking for this test.
+  Services.prefs.setBoolPref("network.auth.non-web-content-triggered-resources-http-auth-allow", true);
+
   Harness.authenticationCallback = get_auth_info;
   Harness.downloadFailedCallback = download_failed;
   Harness.installEndedCallback = install_ended;
@@ -35,11 +37,13 @@ function install_ended(install, addon) {
 
 function finish_test(count) {
   is(count, 0, "No add-ons should have been installed");
-  var authMgr = Components.classes["@mozilla.org/network/http-auth-manager;1"]
-                          .getService(Components.interfaces.nsIHttpAuthManager);
+  var authMgr = Cc["@mozilla.org/network/http-auth-manager;1"]
+                  .getService(Ci.nsIHttpAuthManager);
   authMgr.clearAll();
 
   Services.perms.remove(makeURI("http://example.com"), "install");
+
+  Services.prefs.clearUserPref("network.auth.non-web-content-triggered-resources-http-auth-allow");
 
   gBrowser.removeCurrentTab();
   Harness.finish();

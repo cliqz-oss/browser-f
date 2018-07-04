@@ -9,9 +9,11 @@ description: >
     Using "case" that has no Expresson after it. "CaseClause: case
     Expression : [StatementList]"
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 function SwitchTest(value){
   var result = 0;

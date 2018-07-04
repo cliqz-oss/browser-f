@@ -68,10 +68,10 @@ add_task(async function test_insertMany() {
       });
     }
 
-    do_print(name);
-    do_print(`filter: ${filter}`);
-    do_print(`useCallbacks: ${useCallbacks}`);
-    await PlacesTestUtils.clearHistory();
+    info(name);
+    info(`filter: ${filter}`);
+    info(`useCallbacks: ${useCallbacks}`);
+    await PlacesUtils.history.clear();
 
     let result;
     let allUrls = GOOD_URLS.concat(BAD_URLS);
@@ -124,7 +124,7 @@ add_task(async function test_insertMany() {
       Assert.equal("No items were added to history.", error.message, "History.insertMany rejected promise with all bad URLs");
     });
   } finally {
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
   }
 });
 
@@ -144,4 +144,52 @@ add_task(async function test_transitions() {
     ++count;
   });
   Assert.equal(count, Object.keys(PlacesUtils.history.TRANSITIONS).length);
+});
+
+add_task(async function test_guid() {
+  const guidA = "aaaaaaaaaaaa";
+  const guidB = "bbbbbbbbbbbb";
+  const guidC = "cccccccccccc";
+
+  await PlacesUtils.history.insertMany([
+    {
+      title: "foo",
+      url: "http://example.com/foo",
+      guid: guidA,
+      visits: [
+        { transition: TRANSITION_LINK, date: new Date() }
+      ]
+    }
+  ]);
+
+  Assert.ok(await PlacesUtils.history.fetch(guidA),
+            "Record is inserted with correct GUID");
+
+  let expectedGuids = new Set([guidB, guidC]);
+  await PlacesUtils.history.insertMany([
+    {
+      title: "bar",
+      url: "http://example.com/bar",
+      guid: guidB,
+      visits: [
+        { transition: TRANSITION_LINK, date: new Date() }
+      ]
+    },
+    {
+      title: "baz",
+      url: "http://example.com/baz",
+      guid: guidC,
+      visits: [
+        { transition: TRANSITION_LINK, date: new Date() }
+      ]
+    }
+  ], pageInfo => {
+    Assert.ok(expectedGuids.has(pageInfo.guid));
+    expectedGuids.delete(pageInfo.guid);
+  });
+  Assert.equal(expectedGuids.size, 0);
+
+
+  Assert.ok(await PlacesUtils.history.fetch(guidB), "Record B is fetchable after insertMany");
+  Assert.ok(await PlacesUtils.history.fetch(guidC), "Record C is fetchable after insertMany");
 });

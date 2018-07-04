@@ -1,11 +1,12 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Keep in (case-insensitive) order:
 #include "gfxRect.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "nsSVGGFrame.h"
 #include "mozilla/dom/SVGSwitchElement.h"
 #include "nsSVGUtils.h"
@@ -16,10 +17,10 @@ using namespace mozilla::image;
 class nsSVGSwitchFrame final : public nsSVGGFrame
 {
   friend nsIFrame*
-  NS_NewSVGSwitchFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGSwitchFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 protected:
-  explicit nsSVGSwitchFrame(nsStyleContext* aContext)
-    : nsSVGGFrame(aContext, kClassID)
+  explicit nsSVGSwitchFrame(ComputedStyle* aStyle)
+    : nsSVGGFrame(aStyle, kClassID)
   {}
 
 public:
@@ -39,7 +40,6 @@ public:
 #endif
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   // nsSVGDisplayableFrame interface:
@@ -60,9 +60,9 @@ private:
 // Implementation
 
 nsIFrame*
-NS_NewSVGSwitchFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGSwitchFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsSVGSwitchFrame(aContext);
+  return new (aPresShell) nsSVGSwitchFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGSwitchFrame)
@@ -82,12 +82,11 @@ nsSVGSwitchFrame::Init(nsIContent*       aContent,
 
 void
 nsSVGSwitchFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                   const nsRect&           aDirtyRect,
                                    const nsDisplayListSet& aLists)
 {
   nsIFrame* kid = GetActiveChildFrame();
   if (kid) {
-    BuildDisplayListForChild(aBuilder, kid, aDirtyRect, aLists);
+    BuildDisplayListForChild(aBuilder, kid, aLists);
   }
 }
 
@@ -132,7 +131,7 @@ nsSVGSwitchFrame::GetFrameForPoint(const gfxPoint& aPoint)
     // Transform the point from our SVG user space to our child's.
     gfxPoint point = aPoint;
     gfxMatrix m =
-      static_cast<const nsSVGElement*>(mContent)->
+      static_cast<const nsSVGElement*>(GetContent())->
         PrependLocalTransformsTo(gfxMatrix(), eChildToUserSpace);
     m = static_cast<const nsSVGElement*>(kid->GetContent())->
           PrependLocalTransformsTo(m, eUserSpaceToParent);
@@ -174,7 +173,7 @@ nsSVGSwitchFrame::ReflowSVG()
     (GetParent()->GetStateBits() & NS_FRAME_FIRST_REFLOW) == 0;
 
   if (outerSVGHasHadFirstReflow) {
-    mState &= ~NS_FRAME_FIRST_REFLOW; // tell our children
+    RemoveStateBits(NS_FRAME_FIRST_REFLOW); // tell our children
   }
 
   nsOverflowAreas overflowRects;
@@ -196,15 +195,15 @@ nsSVGSwitchFrame::ReflowSVG()
     // Make sure we have our filter property (if any) before calling
     // FinishAndStoreOverflow (subsequent filter changes are handled off
     // nsChangeHint_UpdateEffects):
-    nsSVGEffects::UpdateEffects(this);
+    SVGObserverUtils::UpdateEffects(this);
   }
 
   FinishAndStoreOverflow(overflowRects, mRect.Size());
 
   // Remove state bits after FinishAndStoreOverflow so that it doesn't
   // invalidate on first reflow:
-  mState &= ~(NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_DIRTY |
-              NS_FRAME_HAS_DIRTY_CHILDREN);
+  RemoveStateBits(NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_DIRTY |
+                  NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
 SVGBBox
@@ -229,7 +228,7 @@ nsIFrame *
 nsSVGSwitchFrame::GetActiveChildFrame()
 {
   nsIContent *activeChild =
-    static_cast<mozilla::dom::SVGSwitchElement*>(mContent)->GetActiveChild();
+    static_cast<mozilla::dom::SVGSwitchElement*>(GetContent())->GetActiveChild();
 
   if (activeChild) {
     for (nsIFrame* kid = mFrames.FirstChild(); kid;

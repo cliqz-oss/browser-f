@@ -28,16 +28,6 @@ full-update:: complete-patch
 ifeq ($(OS_TARGET), WINNT)
 MOZ_PKG_FORMAT	:= SFX7Z
 UNPACKAGE	= '$(subst $(DIST),$(ABS_DIST),$(INSTALLER_PACKAGE))'
-# Cliqz. This doesn't work as expected on build machine, when trying to generate
-# update package (mar) with localization installer (AB_CD). Script searching for
-# installer in different location, where it doesn't exist (and can not exist in
-# current build system). Looks like Mozilla create update repacks on separate
-# build machine, not which one build a browser installer itself
-ifdef 0
-ifdef AB_CD
-UNPACKAGE	= '$(PACKAGE_BASE_DIR)/$(PACKAGE)'
-endif
-endif
 endif
 
 include $(topsrcdir)/config/rules.mk
@@ -50,13 +40,22 @@ MOZ_EXTERNAL_SIGNING_FORMAT := $(filter-out sha2signcode,$(MOZ_EXTERNAL_SIGNING_
 MOZ_EXTERNAL_SIGNING_FORMAT := mar $(MOZ_EXTERNAL_SIGNING_FORMAT)
 endif
 
+ifndef MAR_OLD_FORMAT
+MAR_SIGN_FORMAT=mar_sha384
+else
+MAR_SIGN_FORMAT=mar
+endif
+
 dir-stage := $(call mkdir_deps,$(STAGE_DIR))
 
 complete-patch:: $(dir-stage)
+# unpack the windows installer, unless we're an l10n repack, we just packed this
+ifndef IS_LANGUAGE_REPACK
 ifeq ($(OS_TARGET), WINNT)
 	test -f $(UNPACKAGE)
 	$(RM) -rf '$(PACKAGE_DIR)'
 	cd $(PACKAGE_BASE_DIR) && $(INNER_UNMAKE_PACKAGE)
+endif
 endif
 	MAR=$(MAR_BIN) \
 	MOZ_PRODUCT_VERSION=$(MOZ_APP_VERSION) \
@@ -64,7 +63,7 @@ endif
 	  '$(DIST)/$(COMPLETE_MAR)' \
 	  '$(PACKAGE_DIR)'
 ifdef MOZ_SIGN_CMD
-	$(MOZ_SIGN_CMD) -f mar_sha384 '$(DIST)/$(COMPLETE_MAR)'
+	$(MOZ_SIGN_CMD) -f $(MAR_SIGN_FORMAT) '$(DIST)/$(COMPLETE_MAR)'
 endif
 
 partial-patch:: $(dir-stage)
@@ -76,5 +75,5 @@ partial-patch:: $(dir-stage)
 	  '$(SRC_BUILD)' \
 	  '$(DST_BUILD)'
 ifdef MOZ_SIGN_CMD
-	$(MOZ_SIGN_CMD) -f mar_sha384 '$(STAGE_DIR)/$(PKG_UPDATE_BASENAME).partial.$(SRC_BUILD_ID)-$(DST_BUILD_ID).mar'
+	$(MOZ_SIGN_CMD) -f $(MAR_SIGN_FORMAT) '$(STAGE_DIR)/$(PKG_UPDATE_BASENAME).partial.$(SRC_BUILD_ID)-$(DST_BUILD_ID).mar'
 endif

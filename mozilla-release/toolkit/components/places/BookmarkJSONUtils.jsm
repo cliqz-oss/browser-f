@@ -2,27 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = [ "BookmarkJSONUtils" ];
+var EXPORTED_SYMBOLS = [ "BookmarkJSONUtils" ];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/PlacesUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
+ChromeUtils.defineModuleGetter(this, "NetUtil",
   "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesBackups",
+ChromeUtils.defineModuleGetter(this, "PlacesBackups",
   "resource://gre/modules/PlacesBackups.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Deprecated",
-  "resource://gre/modules/Deprecated.jsm");
-
-XPCOMUtils.defineLazyGetter(this, "gTextDecoder", () => new TextDecoder());
-XPCOMUtils.defineLazyGetter(this, "gTextEncoder", () => new TextEncoder());
 
 /**
  * Generates an hash for the given string.
@@ -42,76 +32,78 @@ function generateHash(aString) {
   return cryptoHash.finish(true).replace(/\//g, "-");
 }
 
-this.BookmarkJSONUtils = Object.freeze({
+var BookmarkJSONUtils = Object.freeze({
   /**
    * Import bookmarks from a url.
    *
    * @param aSpec
    *        url of the bookmark data.
-   * @param aReplace
-   *        Boolean if true, replace existing bookmarks, else merge.
+   * @param [options.replace]
+   *        Whether we should erase existing bookmarks before importing.
+   * @param [options.source]
+   *        The bookmark change source, used to determine the sync status for
+   *        imported bookmarks. Defaults to `RESTORE` if `replace = true`, or
+   *        `IMPORT` otherwise.
    *
    * @return {Promise}
    * @resolves When the new bookmarks have been created.
    * @rejects JavaScript exception.
    */
-  importFromURL: function BJU_importFromURL(aSpec, aReplace) {
-    return (async function() {
-      notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_BEGIN);
-      try {
-        let importer = new BookmarkImporter(aReplace);
-        await importer.importFromURL(aSpec);
+  async importFromURL(aSpec, {
+    replace: aReplace = false,
+    source: aSource = aReplace ? PlacesUtils.bookmarks.SOURCES.RESTORE :
+                                 PlacesUtils.bookmarks.SOURCES.IMPORT,
+  } = {}) {
+    notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_BEGIN, aReplace);
+    try {
+      let importer = new BookmarkImporter(aReplace, aSource);
+      await importer.importFromURL(aSpec);
 
-        notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_SUCCESS);
-      } catch (ex) {
-        Cu.reportError("Failed to restore bookmarks from " + aSpec + ": " + ex);
-        notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_FAILED);
-      }
-    })();
+      notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_SUCCESS, aReplace);
+    } catch (ex) {
+      Cu.reportError("Failed to restore bookmarks from " + aSpec + ": " + ex);
+      notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_FAILED, aReplace);
+    }
   },
 
   /**
    * Restores bookmarks and tags from a JSON file.
-   * @note any item annotated with "places/excludeFromBackup" won't be removed
-   *       before executing the restore.
    *
    * @param aFilePath
    *        OS.File path string of bookmarks in JSON or JSONlz4 format to be restored.
-   * @param aReplace
-   *        Boolean if true, replace existing bookmarks, else merge.
+   * @param [options.replace]
+   *        Whether we should erase existing bookmarks before importing.
+   * @param [options.source]
+   *        The bookmark change source, used to determine the sync status for
+   *        imported bookmarks. Defaults to `RESTORE` if `replace = true`, or
+   *        `IMPORT` otherwise.
    *
    * @return {Promise}
    * @resolves When the new bookmarks have been created.
    * @rejects JavaScript exception.
-   * @deprecated passing an nsIFile is deprecated
    */
-  importFromFile: function BJU_importFromFile(aFilePath, aReplace) {
-    if (aFilePath instanceof Ci.nsIFile) {
-      Deprecated.warning("Passing an nsIFile to BookmarksJSONUtils.importFromFile " +
-                         "is deprecated. Please use an OS.File path string instead.",
-                         "https://developer.mozilla.org/docs/JavaScript_OS.File");
-      aFilePath = aFilePath.path;
-    }
+  async importFromFile(aFilePath, {
+    replace: aReplace = false,
+    source: aSource = aReplace ? PlacesUtils.bookmarks.SOURCES.RESTORE :
+                                 PlacesUtils.bookmarks.SOURCES.IMPORT,
+  } = {}) {
+    notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_BEGIN, aReplace);
+    try {
+      if (!(await OS.File.exists(aFilePath)))
+        throw new Error("Cannot restore from nonexisting json file");
 
-    return (async function() {
-      notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_BEGIN);
-      try {
-        if (!(await OS.File.exists(aFilePath)))
-          throw new Error("Cannot restore from nonexisting json file");
-
-        let importer = new BookmarkImporter(aReplace);
-        if (aFilePath.endsWith("jsonlz4")) {
-          await importer.importFromCompressedFile(aFilePath);
-        } else {
-          await importer.importFromURL(OS.Path.toFileURI(aFilePath));
-        }
-        notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_SUCCESS);
-      } catch (ex) {
-        Cu.reportError("Failed to restore bookmarks from " + aFilePath + ": " + ex);
-        notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_FAILED);
-        throw ex;
+      let importer = new BookmarkImporter(aReplace, aSource);
+      if (aFilePath.endsWith("jsonlz4")) {
+        await importer.importFromCompressedFile(aFilePath);
+      } else {
+        await importer.importFromURL(OS.Path.toFileURI(aFilePath));
       }
-    })();
+      notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_SUCCESS, aReplace);
+    } catch (ex) {
+      Cu.reportError("Failed to restore bookmarks from " + aFilePath + ": " + ex);
+      notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_FAILED, aReplace);
+      throw ex;
+    }
   },
 
   /**
@@ -130,55 +122,43 @@ this.BookmarkJSONUtils = Object.freeze({
    *            - count: number of exported bookmarks
    *            - hash: file hash for contents comparison
    * @rejects JavaScript exception.
-   * @deprecated passing an nsIFile is deprecated
    */
-  exportToFile: function BJU_exportToFile(aFilePath, aOptions = {}) {
-    if (aFilePath instanceof Ci.nsIFile) {
-      Deprecated.warning("Passing an nsIFile to BookmarksJSONUtils.exportToFile " +
-                         "is deprecated. Please use an OS.File path string instead.",
-                         "https://developer.mozilla.org/docs/JavaScript_OS.File");
-      aFilePath = aFilePath.path;
+  async exportToFile(aFilePath, aOptions = {}) {
+    let [bookmarks, count] = await PlacesBackups.getBookmarksTree();
+    let startTime = Date.now();
+    let jsonString = JSON.stringify(bookmarks);
+    // Report the time taken to convert the tree to JSON.
+    try {
+      Services.telemetry
+              .getHistogramById("PLACES_BACKUPS_TOJSON_MS")
+              .add(Date.now() - startTime);
+    } catch (ex) {
+      Cu.reportError("Unable to report telemetry.");
     }
-    return (async function() {
-      let [bookmarks, count] = await PlacesBackups.getBookmarksTree();
-      let startTime = Date.now();
-      let jsonString = JSON.stringify(bookmarks);
-      // Report the time taken to convert the tree to JSON.
-      try {
-        Services.telemetry
-                .getHistogramById("PLACES_BACKUPS_TOJSON_MS")
-                .add(Date.now() - startTime);
-      } catch (ex) {
-        Components.utils.reportError("Unable to report telemetry.");
-      }
 
-      let hash = generateHash(jsonString);
+    let hash = generateHash(jsonString);
 
-      if (hash === aOptions.failIfHashIs) {
-        let e = new Error("Hash conflict");
-        e.becauseSameHash = true;
-        throw e;
-      }
+    if (hash === aOptions.failIfHashIs) {
+      let e = new Error("Hash conflict");
+      e.becauseSameHash = true;
+      throw e;
+    }
 
-      // Do not write to the tmp folder, otherwise if it has a different
-      // filesystem writeAtomic will fail.  Eventual dangling .tmp files should
-      // be cleaned up by the caller.
-      let writeOptions = { tmpPath: OS.Path.join(aFilePath + ".tmp") };
-      if (aOptions.compress)
-        writeOptions.compression = "lz4";
+    // Do not write to the tmp folder, otherwise if it has a different
+    // filesystem writeAtomic will fail.  Eventual dangling .tmp files should
+    // be cleaned up by the caller.
+    let writeOptions = { tmpPath: OS.Path.join(aFilePath + ".tmp") };
+    if (aOptions.compress)
+      writeOptions.compression = "lz4";
 
-      await OS.File.writeAtomic(aFilePath, jsonString, writeOptions);
-      return { count, hash };
-    })();
+    await OS.File.writeAtomic(aFilePath, jsonString, writeOptions);
+    return { count, hash };
   }
 });
 
-function BookmarkImporter(aReplace) {
+function BookmarkImporter(aReplace, aSource) {
   this._replace = aReplace;
-  // The bookmark change source, used to determine the sync status and change
-  // counter.
-  this._source = aReplace ? PlacesUtils.bookmarks.SOURCE_IMPORT_REPLACE :
-                            PlacesUtils.bookmarks.SOURCE_IMPORT;
+  this._source = aSource;
 }
 BookmarkImporter.prototype = {
   /**
@@ -263,7 +243,7 @@ BookmarkImporter.prototype = {
 
     // If we're replacing, then erase existing bookmarks first.
     if (this._replace) {
-      await PlacesBackups.eraseEverythingIncludingUserRoots({ source: this._source });
+      await PlacesUtils.bookmarks.eraseEverything({ source: this._source });
     }
 
     let folderIdToGuidMap = {};
@@ -274,7 +254,7 @@ BookmarkImporter.prototype = {
     // so we can repair any searches after inserting the bookmarks (see bug 824502).
     for (let node of nodes) {
       if (!node.children || node.children.length == 0)
-        continue;  // Nothing to restore for this root
+        continue; // Nothing to restore for this root
 
       // Ensure we set the source correctly.
       node.source = this._source;
@@ -293,15 +273,13 @@ BookmarkImporter.prototype = {
         continue;
       }
 
-      // Places is moving away from supporting user-defined folders at the top
-      // of the tree, however, until we have a migration strategy we need to
-      // ensure any non-built-in folders are created (xref bug 1310299).
+      // Drop any roots whose guid we don't recognise - we don't support anything
+      // apart from the built-in roots.
       if (!PlacesUtils.bookmarks.userContentRoots.includes(node.guid)) {
-        node.parentGuid = PlacesUtils.bookmarks.rootGuid;
-        await PlacesUtils.bookmarks.insert(node);
+        continue;
       }
 
-      await PlacesUtils.bookmarks.insertTree(node);
+      await PlacesUtils.bookmarks.insertTree(node, { fixupOrSkipInvalidEntries: true });
 
       // Now add any favicons.
       try {
@@ -323,8 +301,8 @@ BookmarkImporter.prototype = {
   },
 };
 
-function notifyObservers(topic) {
-  Services.obs.notifyObservers(null, topic, "json");
+function notifyObservers(topic, replace) {
+  Services.obs.notifyObservers(null, topic, replace ? "json" : "json-append");
 }
 
 /**
@@ -354,13 +332,13 @@ async function fixupQuery(aQueryURI, aFolderIdMap) {
   let queryFolderGuids = [];
   for (let folderString of found) {
     let existingFolderId = folderString.match(re)[0];
-    queryFolderGuids.push(aFolderIdMap[existingFolderId])
+    queryFolderGuids.push(aFolderIdMap[existingFolderId]);
   }
 
   let newFolderIds = await PlacesUtils.promiseManyItemIds(queryFolderGuids);
   let convert = function(str, p1) {
     return "folder=" + newFolderIds.get(aFolderIdMap[p1]);
-  }
+  };
   return uri.replace(reGlobal, convert);
 }
 
@@ -442,7 +420,7 @@ function translateTreeTypes(node) {
       }
       break;
     default:
-      // TODO We should handle this in a more robust fashion, see bug 1373610.
+      // No need to throw/reject here, insertTree will remove this node automatically.
       Cu.reportError(`Unexpected bookmark type ${node.type}`);
       break;
   }
@@ -455,7 +433,7 @@ function translateTreeTypes(node) {
     let lastModified = PlacesUtils.toDate(node.lastModified);
     // Ensure we get a last modified date that's later or equal to the dateAdded
     // so that we don't upset the Bookmarks API.
-    if (lastModified >= node.dataAdded) {
+    if (lastModified >= node.dateAdded) {
       node.lastModified = lastModified;
     } else {
       delete node.lastModified;
@@ -518,7 +496,7 @@ function insertFaviconForNode(node) {
         PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE, null,
         Services.scriptSecurityManager.getSystemPrincipal());
     } catch (ex) {
-      Components.utils.reportError("Failed to import favicon data:" + ex);
+      Cu.reportError("Failed to import favicon data:" + ex);
     }
   }
 
@@ -532,7 +510,7 @@ function insertFaviconForNode(node) {
       PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE, null,
       Services.scriptSecurityManager.getSystemPrincipal());
   } catch (ex) {
-    Components.utils.reportError("Failed to import favicon URI:" + ex);
+    Cu.reportError("Failed to import favicon URI:" + ex);
   }
 }
 

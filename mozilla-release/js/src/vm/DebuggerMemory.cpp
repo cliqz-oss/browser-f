@@ -12,12 +12,9 @@
 
 #include <stdlib.h>
 
-#include "jsalloc.h"
-#include "jscntxt.h"
-#include "jscompartment.h"
-
 #include "builtin/MapObject.h"
 #include "gc/Marking.h"
+#include "js/AllocPolicy.h"
 #include "js/Debug.h"
 #include "js/TracingAPI.h"
 #include "js/UbiNode.h"
@@ -25,6 +22,8 @@
 #include "js/Utility.h"
 #include "vm/Debugger.h"
 #include "vm/GlobalObject.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "vm/SavedStacks.h"
 
 #include "vm/Debugger-inl.h"
@@ -32,13 +31,8 @@
 
 using namespace js;
 
-using JS::ubi::BreadthFirst;
-using JS::ubi::Edge;
-using JS::ubi::Node;
-
 using mozilla::Forward;
 using mozilla::Maybe;
-using mozilla::Move;
 using mozilla::Nothing;
 
 /* static */ DebuggerMemory*
@@ -46,14 +40,14 @@ DebuggerMemory::create(JSContext* cx, Debugger* dbg)
 {
     Value memoryProtoValue = dbg->object->getReservedSlot(Debugger::JSSLOT_DEBUG_MEMORY_PROTO);
     RootedObject memoryProto(cx, &memoryProtoValue.toObject());
-    RootedNativeObject memory(cx, NewNativeObjectWithGivenProto(cx, &class_, memoryProto));
+    Rooted<DebuggerMemory*> memory(cx, NewObjectWithGivenProto<DebuggerMemory>(cx, memoryProto));
     if (!memory)
         return nullptr;
 
     dbg->object->setReservedSlot(Debugger::JSSLOT_DEBUG_MEMORY_INSTANCE, ObjectValue(*memory));
     memory->setReservedSlot(JSSLOT_DEBUGGER, ObjectValue(*dbg->object));
 
-    return &memory->as<DebuggerMemory>();
+    return memory;
 }
 
 Debugger*
@@ -203,34 +197,34 @@ DebuggerMemory::drainAllocationsLog(JSContext* cx, unsigned argc, Value* vp)
         Debugger::AllocationsLogEntry& entry = dbg->allocationsLog.front();
 
         RootedValue frame(cx, ObjectOrNullValue(entry.frame));
-        if (!DefineProperty(cx, obj, cx->names().frame, frame))
+        if (!DefineDataProperty(cx, obj, cx->names().frame, frame))
             return false;
 
         double when = (entry.when -
                        mozilla::TimeStamp::ProcessCreation()).ToMilliseconds();
         RootedValue timestampValue(cx, NumberValue(when));
-        if (!DefineProperty(cx, obj, cx->names().timestamp, timestampValue))
+        if (!DefineDataProperty(cx, obj, cx->names().timestamp, timestampValue))
             return false;
 
         RootedString className(cx, Atomize(cx, entry.className, strlen(entry.className)));
         if (!className)
             return false;
         RootedValue classNameValue(cx, StringValue(className));
-        if (!DefineProperty(cx, obj, cx->names().class_, classNameValue))
+        if (!DefineDataProperty(cx, obj, cx->names().class_, classNameValue))
             return false;
 
         RootedValue ctorName(cx, NullValue());
         if (entry.ctorName)
             ctorName.setString(entry.ctorName);
-        if (!DefineProperty(cx, obj, cx->names().constructor, ctorName))
+        if (!DefineDataProperty(cx, obj, cx->names().constructor, ctorName))
             return false;
 
         RootedValue size(cx, NumberValue(entry.size));
-        if (!DefineProperty(cx, obj, cx->names().size, size))
+        if (!DefineDataProperty(cx, obj, cx->names().size, size))
             return false;
 
         RootedValue inNursery(cx, BooleanValue(entry.inNursery));
-        if (!DefineProperty(cx, obj, cx->names().inNursery, inNursery))
+        if (!DefineDataProperty(cx, obj, cx->names().inNursery, inNursery))
             return false;
 
         result->setDenseElement(i, ObjectValue(*obj));
@@ -238,10 +232,7 @@ DebuggerMemory::drainAllocationsLog(JSContext* cx, unsigned argc, Value* vp)
         // Pop the front queue entry, and delete it immediately, so that the GC
         // sees the AllocationsLogEntry's HeapPtr barriers run atomically with
         // the change to the graph (the queue link).
-        if (!dbg->allocationsLog.popFront()) {
-            ReportOutOfMemory(cx);
-            return false;
-        }
+        dbg->allocationsLog.popFront();
     }
 
     dbg->allocationsLogOverflowed = false;
@@ -278,12 +269,8 @@ DebuggerMemory::setMaxAllocationsLogLength(JSContext* cx, unsigned argc, Value* 
     Debugger* dbg = memory->getDebugger();
     dbg->maxAllocationsLogLength = max;
 
-    while (dbg->allocationsLog.length() > dbg->maxAllocationsLogLength) {
-        if (!dbg->allocationsLog.popFront()) {
-            ReportOutOfMemory(cx);
-            return false;
-        }
-    }
+    while (dbg->allocationsLog.length() > dbg->maxAllocationsLogLength)
+        dbg->allocationsLog.popFront();
 
     args.rval().setUndefined();
     return true;

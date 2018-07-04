@@ -7,12 +7,11 @@
 #ifndef builtin_TypedObject_h
 #define builtin_TypedObject_h
 
-#include "jsobj.h"
-#include "jsweakmap.h"
-
 #include "builtin/TypedObjectConstants.h"
+#include "gc/WeakMap.h"
 #include "js/Conversions.h"
 #include "vm/ArrayBufferObject.h"
+#include "vm/JSObject.h"
 #include "vm/ShapedObject.h"
 
 /*
@@ -93,6 +92,8 @@
  */
 
 namespace js {
+
+class GlobalObject;
 
 /*
  * Helper method for converting a double into other scalar
@@ -592,7 +593,9 @@ class TypedObject : public ShapedObject
     static MOZ_MUST_USE bool GetBuffer(JSContext* cx, unsigned argc, Value* vp);
     static MOZ_MUST_USE bool GetByteOffset(JSContext* cx, unsigned argc, Value* vp);
 
-    Shape** addressOfShapeFromGC() { return shape_.unsafeUnbarrieredForTracing(); }
+    Shape** addressOfShapeFromGC() {
+        return shapeRef().unsafeUnbarrieredForTracing();
+    }
 };
 
 typedef Handle<TypedObject*> HandleTypedObject;
@@ -707,12 +710,7 @@ class InlineTypedObject : public TypedObject
   public:
     static const size_t MaximumSize = JSObject::MAX_BYTE_SIZE - sizeof(TypedObject);
 
-    static gc::AllocKind allocKindForTypeDescriptor(TypeDescr* descr) {
-        size_t nbytes = descr->size();
-        MOZ_ASSERT(nbytes <= MaximumSize);
-
-        return gc::GetGCObjectKindForBytes(nbytes + sizeof(TypedObject));
-    }
+    static inline gc::AllocKind allocKindForTypeDescriptor(TypeDescr* descr);
 
     uint8_t* inlineTypedMem(const JS::AutoRequireNoGC&) const {
         return inlineTypedMem();
@@ -723,7 +721,7 @@ class InlineTypedObject : public TypedObject
     }
 
     static void obj_trace(JSTracer* trace, JSObject* object);
-    static void objectMovedDuringMinorGC(JSTracer* trc, JSObject* dst, JSObject* src);
+    static size_t obj_moved(JSObject* dst, JSObject* src);
 
     static size_t offsetOfDataStart() {
         return offsetof(InlineTypedObject, data_);
@@ -757,7 +755,7 @@ class InlineOpaqueTypedObject : public InlineTypedObject
 };
 
 // Class for the global SIMD object.
-class SimdObject : public JSObject
+class SimdObject : public NativeObject
 {
   public:
     static const Class class_;
@@ -1025,7 +1023,7 @@ TypedObject::opaque() const
 }
 
 JSObject*
-InitTypedObjectModuleObject(JSContext* cx, JS::HandleObject obj);
+InitTypedObjectModuleObject(JSContext* cx, JS::Handle<GlobalObject*> global);
 
 } // namespace js
 

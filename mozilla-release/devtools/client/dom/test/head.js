@@ -2,16 +2,13 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 /* eslint no-unused-vars: [2, {"vars": "local", "args": "none"}] */
-/* import-globals-from ../../framework/test/shared-head.js */
+/* import-globals-from ../../shared/test/shared-head.js */
 
 "use strict";
 
-const FRAME_SCRIPT_UTILS_URL =
-  "chrome://devtools/content/shared/frame-script-utils.js";
-
 // shared-head.js handles imports, constants, and utility functions
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js", this);
+  "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js", this);
 
 // DOM panel actions.
 const constants = require("devtools/client/dom/content/constants");
@@ -40,8 +37,8 @@ function addTestTab(url) {
 
   return new Promise(resolve => {
     addTab(url).then(tab => {
-      // Load devtools/shared/frame-script-utils.js
-      getFrameScript();
+      // Load devtools/shared/test/frame-script-utils.js
+      loadFrameScriptUtils();
 
       // Select the DOM panel and wait till it's initialized.
       initDOMPanel(tab).then(panel => {
@@ -60,7 +57,7 @@ function addTestTab(url) {
 /**
  * Open the DOM panel for the given tab.
  *
- * @param {nsIDOMElement} tab
+ * @param {Element} tab
  *        Optional tab element for which you want open the DOM panel.
  *        The default tab is taken from the global variable |tab|.
  * @return a promise that is resolved once the web console is open.
@@ -188,7 +185,7 @@ function evaluateJSAsync(panel, expression) {
 
 function refreshPanel(panel) {
   let doc = panel.panelWin.document;
-  let button = doc.querySelector(".btn.refresh");
+  let button = doc.querySelector("#dom-refresh-button");
   return synthesizeMouseClickSoon(panel, button).then(() => {
     // Wait till children (properties) are fetched
     // from the backend.
@@ -228,12 +225,12 @@ function waitForDispatch(panel, type, eventRepeat = 1) {
   const actionType = constants[type];
   let count = 0;
 
-  return Task.spawn(function* () {
+  return (async function() {
     info("Waiting for " + type + " to dispatch " + eventRepeat + " time(s)");
     while (count < eventRepeat) {
-      yield _afterDispatchDone(store, actionType);
+      await _afterDispatchDone(store, actionType);
       count++;
       info(type + " dispatched " + count + " time(s)");
     }
-  });
+  })();
 }

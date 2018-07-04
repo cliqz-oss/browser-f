@@ -9,6 +9,7 @@
 #include "nsIObserver.h"
 #include "nsString.h"
 #include "nsTArray.h"
+#include "nsWeakReference.h"
 
 #include "mozILocaleService.h"
 
@@ -67,8 +68,9 @@ namespace intl {
  * try to be specific when naming APIs, so the service is for locales,
  * but we negotiate between languages etc.
  */
-class LocaleService : public mozILocaleService,
-                      public nsIObserver
+class LocaleService final : public mozILocaleService,
+                            public nsIObserver,
+                            public nsSupportsWeakReference
 {
 public:
   NS_DECL_ISUPPORTS
@@ -199,7 +201,14 @@ public:
   bool GetAvailableLocales(nsTArray<nsCString>& aRetVal);
 
   /**
-   * Those three functions allow to trigger cache invalidation on one of the
+   * Returns a list of locales packaged into the app bundle.
+   *
+   * (See mozILocaleService.idl for a JS-callable version of this.)
+   */
+  void GetPackagedLocales(nsTArray<nsCString>& aRetVal);
+
+  /**
+   * Those two functions allow to trigger cache invalidation on one of the
    * three cached values.
    *
    * In most cases, the functions will be called by the observer in
@@ -211,9 +220,8 @@ public:
    *
    * This code should be called only in the server mode..
    */
-  void OnAvailableLocalesChanged();
-  void OnRequestedLocalesChanged();
-  void OnLocalesChanged();
+  void RequestedLocalesChanged();
+  void LocalesChanged();
 
   /**
    * Negotiates the best locales out of an ordered list of requested locales and
@@ -230,11 +238,12 @@ public:
    *
    * Strategy is one of the three strategies described at the top of this file.
    *
-   * The result list is ordered according to the order of the requested locales.
+   * The result list is canonicalized and ordered according to the order
+   * of the requested locales.
    *
    * (See mozILocaleService.idl for a JS-callable version of this.)
    */
-  bool NegotiateLanguages(const nsTArray<nsCString>& aRequested,
+  void NegotiateLanguages(const nsTArray<nsCString>& aRequested,
                           const nsTArray<nsCString>& aAvailable,
                           const nsACString& aDefaultLocale,
                           LangNegStrategy aLangNegStrategy,
@@ -245,56 +254,12 @@ public:
    */
   bool IsAppLocaleRTL();
 
-  static bool LanguagesMatch(const nsCString& aRequested,
-                             const nsCString& aAvailable);
+  static bool LanguagesMatch(const nsACString& aRequested,
+                             const nsACString& aAvailable);
 
   bool IsServer();
 
 private:
-  /**
-   * Locale object, a BCP47-style tag decomposed into subtags for
-   * matching purposes.
-   *
-   * If constructed with aRange = true, any missing subtags will be
-   * set to "*".
-   */
-  class Locale
-  {
-  public:
-    Locale(const nsCString& aLocale, bool aRange);
-
-    bool Matches(const Locale& aLocale) const;
-    bool LanguageMatches(const Locale& aLocale) const;
-
-    void SetVariantRange();
-    void SetRegionRange();
-
-    // returns false if nothing changed
-    bool AddLikelySubtags();
-    bool AddLikelySubtagsWithoutRegion();
-
-    const nsCString& AsString() const {
-      return mLocaleStr;
-    }
-
-    bool operator== (const Locale& aOther) {
-      const auto& cmp = nsCaseInsensitiveCStringComparator();
-      return mLanguage.Equals(aOther.mLanguage, cmp) &&
-             mScript.Equals(aOther.mScript, cmp) &&
-             mRegion.Equals(aOther.mRegion, cmp) &&
-             mVariant.Equals(aOther.mVariant, cmp);
-    }
-
-  private:
-    const nsCString& mLocaleStr;
-    nsCString mLanguage;
-    nsCString mScript;
-    nsCString mRegion;
-    nsCString mVariant;
-
-    bool AddLikelySubtagsForLocale(const nsACString& aLocale);
-  };
-
   void FilterMatches(const nsTArray<nsCString>& aRequested,
                      const nsTArray<nsCString>& aAvailable,
                      LangNegStrategy aStrategy,
@@ -302,11 +267,15 @@ private:
 
   void NegotiateAppLocales(nsTArray<nsCString>& aRetVal);
 
+  void InitPackagedLocales();
+
   virtual ~LocaleService();
 
+  nsAutoCStringN<16>  mDefaultLocale;
   nsTArray<nsCString> mAppLocales;
   nsTArray<nsCString> mRequestedLocales;
   nsTArray<nsCString> mAvailableLocales;
+  nsTArray<nsCString> mPackagedLocales;
   const bool mIsServer;
 
   static StaticRefPtr<LocaleService> sInstance;

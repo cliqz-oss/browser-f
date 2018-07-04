@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,8 +7,8 @@
 // Keep in (case-insensitive) order:
 #include "gfxMatrix.h"
 #include "mozilla/dom/SVGAElement.h"
+#include "mozilla/dom/MutationEventBinding.h"
 #include "nsAutoPtr.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsSVGContainerFrame.h"
 #include "nsSVGIntegrationUtils.h"
 #include "nsSVGUtils.h"
@@ -18,10 +19,10 @@ using namespace mozilla;
 class nsSVGAFrame : public nsSVGDisplayContainerFrame
 {
   friend nsIFrame*
-  NS_NewSVGAFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGAFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 protected:
-  explicit nsSVGAFrame(nsStyleContext* aContext)
-    : nsSVGDisplayContainerFrame(aContext, kClassID)
+  explicit nsSVGAFrame(ComputedStyle* aStyle)
+    : nsSVGDisplayContainerFrame(aStyle, kClassID)
   {}
 
 public:
@@ -35,7 +36,7 @@ public:
 
   // nsIFrame:
   virtual nsresult  AttributeChanged(int32_t         aNameSpaceID,
-                                     nsIAtom*        aAttribute,
+                                     nsAtom*        aAttribute,
                                      int32_t         aModType) override;
 
 #ifdef DEBUG_FRAME_DUMP
@@ -44,23 +45,15 @@ public:
     return MakeFrameName(NS_LITERAL_STRING("SVGA"), aResult);
   }
 #endif
-  // nsSVGDisplayableFrame interface:
-  virtual void NotifySVGChanged(uint32_t aFlags) override;
-
-  // nsSVGContainerFrame methods:
-  virtual gfxMatrix GetCanvasTM() override;
-
-private:
-  nsAutoPtr<gfxMatrix> mCanvasTM;
 };
 
 //----------------------------------------------------------------------
 // Implementation
 
 nsIFrame*
-NS_NewSVGAFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGAFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsSVGAFrame(aContext);
+  return new (aPresShell) nsSVGAFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGAFrame)
@@ -83,7 +76,7 @@ nsSVGAFrame::Init(nsIContent*       aContent,
 
 nsresult
 nsSVGAFrame::AttributeChanged(int32_t         aNameSpaceID,
-                              nsIAtom*        aAttribute,
+                              nsAtom*        aAttribute,
                               int32_t         aModType)
 {
   if (aNameSpaceID == kNameSpaceID_None &&
@@ -98,12 +91,12 @@ nsSVGAFrame::AttributeChanged(int32_t         aNameSpaceID,
   // Currently our SMIL implementation does not modify the DOM attributes. Once
   // we implement the SVG 2 SMIL behaviour this can be removed
   // SVGAElement::SetAttr/UnsetAttr's ResetLinkState() call will be sufficient.
-  if (aModType == nsIDOMMutationEvent::SMIL &&
+  if (aModType == dom::MutationEventBinding::SMIL &&
       aAttribute == nsGkAtoms::href &&
       (aNameSpaceID == kNameSpaceID_None ||
        aNameSpaceID == kNameSpaceID_XLink)) {
 
-    dom::SVGAElement* content = static_cast<dom::SVGAElement*>(mContent);
+    dom::SVGAElement* content = static_cast<dom::SVGAElement*>(GetContent());
 
     // SMIL may change whether an <a> element is a link, in which case we will
     // need to update the link state.
@@ -111,41 +104,4 @@ nsSVGAFrame::AttributeChanged(int32_t         aNameSpaceID,
   }
 
  return NS_OK;
-}
-
-//----------------------------------------------------------------------
-// nsSVGDisplayableFrame methods
-
-void
-nsSVGAFrame::NotifySVGChanged(uint32_t aFlags)
-{
-  MOZ_ASSERT(aFlags & (TRANSFORM_CHANGED | COORD_CONTEXT_CHANGED),
-             "Invalidation logic may need adjusting");
-
-  if (aFlags & TRANSFORM_CHANGED) {
-    // make sure our cached transform matrix gets (lazily) updated
-    mCanvasTM = nullptr;
-  }
-
-  nsSVGDisplayContainerFrame::NotifySVGChanged(aFlags);
-}
-
-//----------------------------------------------------------------------
-// nsSVGContainerFrame methods:
-
-gfxMatrix
-nsSVGAFrame::GetCanvasTM()
-{
-  if (!mCanvasTM) {
-    NS_ASSERTION(GetParent(), "null parent");
-
-    nsSVGContainerFrame *parent = static_cast<nsSVGContainerFrame*>(GetParent());
-    dom::SVGAElement *content = static_cast<dom::SVGAElement*>(mContent);
-
-    gfxMatrix tm = content->PrependLocalTransformsTo(parent->GetCanvasTM());
-
-    mCanvasTM = new gfxMatrix(tm);
-  }
-
-  return *mCanvasTM;
 }

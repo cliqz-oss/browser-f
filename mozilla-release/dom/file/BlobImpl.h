@@ -51,6 +51,8 @@ public:
 
   virtual void GetType(nsAString& aType) = 0;
 
+  virtual size_t GetAllocationSize() const = 0;
+
   /**
    * An effectively-unique serial number identifying this instance of FileImpl.
    *
@@ -70,7 +72,7 @@ public:
   virtual const nsTArray<RefPtr<BlobImpl>>*
   GetSubBlobImpls() const = 0;
 
-  virtual void GetInternalStream(nsIInputStream** aStream,
+  virtual void CreateInputStream(nsIInputStream** aStream,
                                  ErrorResult& aRv) = 0;
 
   virtual int64_t GetFileId() = 0;

@@ -32,7 +32,9 @@ XPIDL_MODULE = 'content_html'
 
 EXPORTS += [
     'nsGenericHTMLElement.h',
+    'nsGenericHTMLFrameElement.h',
     'nsHTMLDNSPrefetch.h',
+    'nsHTMLDocument.h',
     'nsIConstraintValidation.h',
     'nsIForm.h',
     'nsIFormControl.h',
@@ -45,6 +47,10 @@ EXPORTS += [
     'nsTextEditorState.h',
 ]
 
+EXPORTS.mozilla += [
+    'TextInputListener.h',
+]
+
 EXPORTS.mozilla.dom += [
     'HTMLAllCollection.h',
     'HTMLAnchorElement.h',
@@ -54,7 +60,6 @@ EXPORTS.mozilla.dom += [
     'HTMLBRElement.h',
     'HTMLButtonElement.h',
     'HTMLCanvasElement.h',
-    'HTMLContentElement.h',
     'HTMLDataElement.h',
     'HTMLDataListElement.h',
     'HTMLDetailsElement.h',
@@ -95,9 +100,9 @@ EXPORTS.mozilla.dom += [
     'HTMLProgressElement.h',
     'HTMLScriptElement.h',
     'HTMLSelectElement.h',
-    'HTMLShadowElement.h',
     'HTMLSharedElement.h',
     'HTMLSharedListElement.h',
+    'HTMLSlotElement.h',
     'HTMLSourceElement.h',
     'HTMLSpanElement.h',
     'HTMLStyleElement.h',
@@ -118,6 +123,7 @@ EXPORTS.mozilla.dom += [
     'ImageDocument.h',
     'MediaError.h',
     'nsBrowserElement.h',
+    'PlayPromise.h',
     'RadioNodeList.h',
     'TextTrackManager.h',
     'TimeRanges.h',
@@ -133,7 +139,6 @@ UNIFIED_SOURCES += [
     'HTMLBRElement.cpp',
     'HTMLButtonElement.cpp',
     'HTMLCanvasElement.cpp',
-    'HTMLContentElement.cpp',
     'HTMLDataElement.cpp',
     'HTMLDataListElement.cpp',
     'HTMLDetailsElement.cpp',
@@ -175,9 +180,9 @@ UNIFIED_SOURCES += [
     'HTMLProgressElement.cpp',
     'HTMLScriptElement.cpp',
     'HTMLSelectElement.cpp',
-    'HTMLShadowElement.cpp',
     'HTMLSharedElement.cpp',
     'HTMLSharedListElement.cpp',
+    'HTMLSlotElement.cpp',
     'HTMLSourceElement.cpp',
     'HTMLSpanElement.cpp',
     'HTMLStyleElement.cpp',
@@ -208,6 +213,7 @@ UNIFIED_SOURCES += [
     'nsIConstraintValidation.cpp',
     'nsRadioVisitor.cpp',
     'nsTextEditorState.cpp',
+    'PlayPromise.cpp',
     'RadioNodeList.cpp',
     'TextTrackManager.cpp',
     'TimeRanges.cpp',
@@ -237,7 +243,6 @@ LOCAL_INCLUDES += [
     '/dom/security',
     '/dom/xbl',
     '/dom/xul',
-    '/editor/txmgr',
     '/image',
     '/layout/forms',
     '/layout/generic',
@@ -249,5 +254,8 @@ LOCAL_INCLUDES += [
 
 FINAL_LIBRARY = 'xul'
 
-if CONFIG['GNU_CXX']:
+if CONFIG['MOZ_ANDROID_HLS_SUPPORT']:
+    DEFINES['MOZ_ANDROID_HLS_SUPPORT'] = True
+
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

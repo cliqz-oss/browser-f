@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -174,7 +174,7 @@ TCPPresentationChannelDescription::GetTcpAddress(nsIArray** aRetVal)
   }
   address->SetData(mAddress);
 
-  array->AppendElement(address, false);
+  array->AppendElement(address);
   array.forget(aRetVal);
 
   return NS_OK;
@@ -395,7 +395,7 @@ PresentationSessionInfo::GetWindow()
     return nullptr;
   }
 
-  auto window = nsGlobalWindow::GetInnerWindowWithId(windowId);
+  auto window = nsGlobalWindowInner::GetInnerWindowWithId(windowId);
   if (!window) {
     return nullptr;
   }
@@ -645,6 +645,10 @@ PresentationControllingInfo::Shutdown(nsresult aReason)
 nsresult
 PresentationControllingInfo::GetAddress()
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return NS_ERROR_FAILURE;
+  }
+
 #if defined(MOZ_WIDGET_ANDROID)
   RefPtr<PresentationNetworkHelper> networkHelper =
     new PresentationNetworkHelper(this,
@@ -1168,11 +1172,8 @@ PresentationPresentingInfo::Init(nsIPresentationControlChannel* aControlChannel)
   nsresult rv;
   int32_t timeout =
     Preferences::GetInt("presentation.receiver.loading.timeout", 10000);
-  mTimer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-  rv = mTimer->InitWithCallback(this, timeout, nsITimer::TYPE_ONE_SHOT);
+  rv = NS_NewTimerWithCallback(getter_AddRefs(mTimer),
+                               this, timeout, nsITimer::TYPE_ONE_SHOT);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -1584,7 +1585,7 @@ PresentationPresentingInfo::ResolvedCallback(JSContext* aCx,
     return;
   }
 
-  nsCOMPtr<nsIFrameLoader> frameLoader = owner->GetFrameLoader();
+  RefPtr<nsFrameLoader> frameLoader = owner->GetFrameLoader();
   if (NS_WARN_IF(!frameLoader)) {
     ReplyError(NS_ERROR_DOM_OPERATION_ERR);
     return;
@@ -1599,9 +1600,9 @@ PresentationPresentingInfo::ResolvedCallback(JSContext* aCx,
     Unused << NS_WARN_IF(!static_cast<ContentParent*>(mContentParent.get())->SendNotifyPresentationReceiverLaunched(tabParent, mSessionId));
   } else {
     // In-process frame
-    nsCOMPtr<nsIDocShell> docShell;
-    rv = frameLoader->GetDocShell(getter_AddRefs(docShell));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
+    IgnoredErrorResult error;
+    nsCOMPtr<nsIDocShell> docShell = frameLoader->GetDocShell(error);
+    if (NS_WARN_IF(error.Failed())) {
       ReplyError(NS_ERROR_DOM_OPERATION_ERR);
       return;
     }

@@ -10,6 +10,10 @@
 
 const { createEnum } = require("devtools/client/shared/enum");
 
+const {
+  CHANGE_NETWORK_THROTTLING,
+} = require("devtools/client/shared/components/throttling/actions");
+
 createEnum([
 
   // Add a new device.
@@ -34,24 +38,30 @@ createEnum([
   "CHANGE_DISPLAY_PIXEL_RATIO",
 
   // Change the network throttling profile.
-  "CHANGE_NETWORK_THROTTLING",
+  CHANGE_NETWORK_THROTTLING,
 
   // The pixel ratio of the viewport has changed. This may be triggered by the user
   // when changing the device displayed in the viewport, or when a pixel ratio is
-  // selected from the DPR dropdown.
+  // selected from the device pixel ratio dropdown.
   "CHANGE_PIXEL_RATIO",
+
+  // Change one of the reload conditions.
+  "CHANGE_RELOAD_CONDITION",
 
   // Change the touch simulation state.
   "CHANGE_TOUCH_SIMULATION",
 
-  // Indicates that the device list is being loaded
+  // Indicates that the device list is being loaded.
   "LOAD_DEVICE_LIST_START",
 
-  // Indicates that the device list loading action threw an error
+  // Indicates that the device list loading action threw an error.
   "LOAD_DEVICE_LIST_ERROR",
 
-  // Indicates that the device list has been loaded successfully
+  // Indicates that the device list has been loaded successfully.
   "LOAD_DEVICE_LIST_END",
+
+  // Indicates that the reload conditions have been loaded successfully.
+  "LOAD_RELOAD_CONDITIONS_END",
 
   // Remove a device.
   "REMOVE_DEVICE",

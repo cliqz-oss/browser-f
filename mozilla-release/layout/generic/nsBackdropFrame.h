@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,17 +16,16 @@ class nsBackdropFrame final : public nsFrame
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsBackdropFrame)
 
-  explicit nsBackdropFrame(nsStyleContext* aContext)
-    : nsFrame(aContext, kClassID)
+  explicit nsBackdropFrame(ComputedStyle* aStyle)
+    : nsFrame(aStyle, kClassID)
   {}
 
 #ifdef DEBUG_FRAME_DUMP
   virtual nsresult GetFrameName(nsAString& aResult) const override;
 #endif
-  virtual nsStyleContext*
-    GetParentStyleContext(nsIFrame** aProviderFrame) const override;
+  virtual ComputedStyle*
+    GetParentComputedStyle(nsIFrame** aProviderFrame) const override;
   virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsRect& aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
   virtual mozilla::LogicalSize
     ComputeAutoSize(gfxContext*                 aRenderingContext,

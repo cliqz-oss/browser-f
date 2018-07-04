@@ -749,7 +749,7 @@ plugin
 theme
     Integer count of installed themes.
 lwtheme
-    Integer count of installed lightweigh themes.
+    Integer count of installed lightweight themes.
 
 Notes
 ^^^^^
@@ -827,7 +827,7 @@ All of the properties appear in the *last* section except for
 Example
 ^^^^^^^
 
-This example comes from an official OS X Nightly build::
+This example comes from an official macOS Nightly build::
 
     "org.mozilla.appInfo.appinfo": {
       "_v": 1,
@@ -1353,7 +1353,7 @@ downloadFailures
 installAttempts
     Integer count of times the hotfix attempted to run the installer.
     This should ideally be 1. It should only be greater than 1 if UAC
-    elevation was cancelled or not allowed.
+    elevation was canceled or not allowed.
 
 installFailures
     Integer count of total installation failures this client experienced.
@@ -1987,6 +1987,7 @@ Example
 ^^^^^^^
 
 ::
+
     "org.mozilla.passwordmgr.passwordmgr": {
       "_v": 2,
       "numSavedPasswords": 32,

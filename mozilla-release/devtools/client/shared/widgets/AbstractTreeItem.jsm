@@ -5,18 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { interfaces: Ci, utils: Cu } = Components;
-
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
-const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
+const { require, loader } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { ViewHelpers } = require("devtools/client/shared/widgets/view-helpers");
 const { KeyCodes } = require("devtools/client/shared/keycodes");
 
-XPCOMUtils.defineLazyModuleGetter(this, "EventEmitter",
-  "resource://devtools/shared/event-emitter.js");
-
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-  "resource://gre/modules/Console.jsm");
+loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 
 this.EXPORTED_SYMBOLS = ["AbstractTreeItem"];
 
@@ -42,7 +35,7 @@ this.EXPORTED_SYMBOLS = ["AbstractTreeItem"];
  *   this.itemDataSrc = dataSrc;
  * }
  *
- * MyCustomTreeItem.prototype = Heritage.extend(AbstractTreeItem.prototype, {
+ * MyCustomTreeItem.prototype = extend(AbstractTreeItem.prototype, {
  *   _displaySelf: function(document, arrowNode) {
  *     let node = document.createElement("hbox");
  *     ...
@@ -155,7 +148,7 @@ AbstractTreeItem.prototype = {
    * @param nsIDOMNode arrowNode
    * @return nsIDOMNode
    */
-  _displaySelf: function (document, arrowNode) {
+  _displaySelf: function(document, arrowNode) {
     throw new Error(
       "The `_displaySelf` method needs to be implemented by inheriting classes.");
   },
@@ -168,7 +161,7 @@ AbstractTreeItem.prototype = {
    *
    * @param array:AbstractTreeItem children
    */
-  _populateSelf: function (children) {
+  _populateSelf: function(children) {
     throw new Error(
       "The `_populateSelf` method needs to be implemented by inheriting classes.");
   },
@@ -258,7 +251,7 @@ AbstractTreeItem.prototype = {
    * @param nsIDOMNode beforeNode [optional]
    *        An optional child element which should succeed this tree item.
    */
-  attachTo: function (containerNode, fragmentNode = containerNode, beforeNode = null) {
+  attachTo: function(containerNode, fragmentNode = containerNode, beforeNode = null) {
     this._containerNode = containerNode;
     this._constructTargetNode();
 
@@ -277,7 +270,7 @@ AbstractTreeItem.prototype = {
    * Permanently removes this tree item (and all subsequent children) from the
    * parent container.
    */
-  remove: function () {
+  remove: function() {
     this._targetNode.remove();
     this._hideChildren();
     this._childTreeItems.length = 0;
@@ -286,14 +279,14 @@ AbstractTreeItem.prototype = {
   /**
    * Focuses this item in the tree.
    */
-  focus: function () {
+  focus: function() {
     this._targetNode.focus();
   },
 
   /**
    * Expands this item in the tree.
    */
-  expand: function () {
+  expand: function() {
     if (this._expanded) {
       return;
     }
@@ -307,7 +300,7 @@ AbstractTreeItem.prototype = {
   /**
    * Collapses this item in the tree.
    */
-  collapse: function () {
+  collapse: function() {
     if (!this._expanded) {
       return;
     }
@@ -324,7 +317,7 @@ AbstractTreeItem.prototype = {
    * @param number index
    * @return AbstractTreeItem
    */
-  getChild: function (index = 0) {
+  getChild: function(index = 0) {
     return this._childTreeItems[index];
   },
 
@@ -333,7 +326,7 @@ AbstractTreeItem.prototype = {
    * If this item was never expanded, then no descendents exist yet.
    * @param function cb
    */
-  traverse: function (cb) {
+  traverse: function(cb) {
     for (let child of this._childTreeItems) {
       cb(child);
       child.bfs();
@@ -346,7 +339,7 @@ AbstractTreeItem.prototype = {
    * @param function predicate
    * @return AbstractTreeItem
    */
-  find: function (predicate) {
+  find: function(predicate) {
     for (let child of this._childTreeItems) {
       if (predicate(child) || child.find(predicate)) {
         return child;
@@ -362,7 +355,7 @@ AbstractTreeItem.prototype = {
    * @param boolean visible
    *        True if the children should be visible, false otherwise.
    */
-  _toggleChildren: function (visible) {
+  _toggleChildren: function(visible) {
     if (visible) {
       if (!this._populated) {
         this._populateSelf(this._childTreeItems);
@@ -377,16 +370,15 @@ AbstractTreeItem.prototype = {
   /**
    * Shows all children of this item in the tree.
    */
-  _showChildren: function () {
+  _showChildren: function() {
     // If this is the root item and we're not expanding any child nodes,
     // it is safe to append everything at once.
     if (this == this._rootItem && this.autoExpandDepth == 0) {
       this._appendChildrenBatch();
-    }
-    // Otherwise, append the child items and their descendants successively;
-    // if not, the tree will become garbled and nodes will intertwine,
-    // since all the tree items are sharing a single container node.
-    else {
+    } else {
+      // Otherwise, append the child items and their descendants successively;
+      // if not, the tree will become garbled and nodes will intertwine,
+      // since all the tree items are sharing a single container node.
       this._appendChildrenSuccessive();
     }
   },
@@ -394,7 +386,7 @@ AbstractTreeItem.prototype = {
   /**
    * Hides all children of this item in the tree.
    */
-  _hideChildren: function () {
+  _hideChildren: function() {
     for (let item of this._childTreeItems) {
       item._targetNode.remove();
       item._hideChildren();
@@ -405,7 +397,7 @@ AbstractTreeItem.prototype = {
    * Appends all children in a single batch.
    * This only works properly for root nodes when no child nodes will expand.
    */
-  _appendChildrenBatch: function () {
+  _appendChildrenBatch: function() {
     if (this._fragment === undefined) {
       this._fragment = this.document.createDocumentFragment();
     }
@@ -422,7 +414,7 @@ AbstractTreeItem.prototype = {
   /**
    * Appends all children successively.
    */
-  _appendChildrenSuccessive: function () {
+  _appendChildrenSuccessive: function() {
     let childTreeItems = this._childTreeItems;
     let expandedChildTreeItems = childTreeItems.filter(e => e._expanded);
     let nextNode = this._getSiblingAtDelta(1);
@@ -438,14 +430,14 @@ AbstractTreeItem.prototype = {
   /**
    * Constructs and stores the target node displaying this tree item.
    */
-  _constructTargetNode: function () {
+  _constructTargetNode: function() {
     if (this._constructed) {
       return;
     }
     this._onArrowClick = this._onArrowClick.bind(this);
     this._onClick = this._onClick.bind(this);
     this._onDoubleClick = this._onDoubleClick.bind(this);
-    this._onKeyPress = this._onKeyPress.bind(this);
+    this._onKeyDown = this._onKeyDown.bind(this);
     this._onFocus = this._onFocus.bind(this);
     this._onBlur = this._onBlur.bind(this);
 
@@ -460,7 +452,7 @@ AbstractTreeItem.prototype = {
 
     targetNode.addEventListener("mousedown", this._onClick);
     targetNode.addEventListener("dblclick", this._onDoubleClick);
-    targetNode.addEventListener("keypress", this._onKeyPress);
+    targetNode.addEventListener("keydown", this._onKeyDown);
     targetNode.addEventListener("focus", this._onFocus);
     targetNode.addEventListener("blur", this._onBlur);
 
@@ -476,7 +468,7 @@ AbstractTreeItem.prototype = {
    * @return nsIDOMNode
    *         The element displaying the target item at the specified offset.
    */
-  _getSiblingAtDelta: function (delta) {
+  _getSiblingAtDelta: function(delta) {
     let childNodes = this._containerNode.childNodes;
     let indexOfSelf = Array.indexOf(childNodes, this._targetNode);
     if (indexOfSelf + delta >= 0) {
@@ -502,7 +494,7 @@ AbstractTreeItem.prototype = {
   /**
    * Focuses the first item in this tree.
    */
-  _focusFirstNode: function () {
+  _focusFirstNode: function() {
     let childNodes = this._containerNode.childNodes;
     // The root node of the tree may be hidden in practice, so uses for-loop
     // here to find the next visible node.
@@ -518,7 +510,7 @@ AbstractTreeItem.prototype = {
   /**
    * Focuses the last item in this tree.
    */
-  _focusLastNode: function () {
+  _focusLastNode: function() {
     let childNodes = this._containerNode.childNodes;
     childNodes[childNodes.length - 1].focus();
   },
@@ -526,17 +518,21 @@ AbstractTreeItem.prototype = {
   /**
    * Focuses the next item in this tree.
    */
-  _focusNextNode: function () {
+  _focusNextNode: function() {
     let nextElement = this._getSiblingAtDelta(1);
-    if (nextElement) nextElement.focus(); // nsIDOMNode
+    if (nextElement) {
+      nextElement.focus();
+    } // nsIDOMNode
   },
 
   /**
    * Focuses the previous item in this tree.
    */
-  _focusPrevNode: function () {
+  _focusPrevNode: function() {
     let prevElement = this._getSiblingAtDelta(-1);
-    if (prevElement) prevElement.focus(); // nsIDOMNode
+    if (prevElement) {
+      prevElement.focus();
+    } // nsIDOMNode
   },
 
   /**
@@ -545,15 +541,17 @@ AbstractTreeItem.prototype = {
    * The parent item is not always the previous item, because any tree item
    * may have multiple children.
    */
-  _focusParentNode: function () {
+  _focusParentNode: function() {
     let parentItem = this._parentItem;
-    if (parentItem) parentItem.focus(); // AbstractTreeItem
+    if (parentItem) {
+      parentItem.focus();
+    } // AbstractTreeItem
   },
 
   /**
    * Handler for the "click" event on the arrow node of this tree item.
    */
-  _onArrowClick: function (e) {
+  _onArrowClick: function(e) {
     if (!this._expanded) {
       this.expand();
     } else {
@@ -564,7 +562,7 @@ AbstractTreeItem.prototype = {
   /**
    * Handler for the "click" event on the element displaying this tree item.
    */
-  _onClick: function (e) {
+  _onClick: function(e) {
     e.stopPropagation();
     this.focus();
   },
@@ -572,7 +570,7 @@ AbstractTreeItem.prototype = {
   /**
    * Handler for the "dblclick" event on the element displaying this tree item.
    */
-  _onDoubleClick: function (e) {
+  _onDoubleClick: function(e) {
     // Ignore dblclick on the arrow as it has already recived and handled two
     // click events.
     if (!e.target.classList.contains("arrow")) {
@@ -582,9 +580,9 @@ AbstractTreeItem.prototype = {
   },
 
   /**
-   * Handler for the "keypress" event on the element displaying this tree item.
+   * Handler for the "keydown" event on the element displaying this tree item.
    */
-  _onKeyPress: function (e) {
+  _onKeyDown: function(e) {
     // Prevent scrolling when pressing navigation keys.
     ViewHelpers.preventScrolling(e);
 
@@ -641,21 +639,20 @@ AbstractTreeItem.prototype = {
 
       case KeyCodes.DOM_VK_END:
         this._focusLastNode();
-        return;
     }
   },
 
   /**
    * Handler for the "focus" event on the element displaying this tree item.
    */
-  _onFocus: function (e) {
+  _onFocus: function(e) {
     this._rootItem.emit("focus", this);
   },
 
   /**
    * Handler for the "blur" event on the element displaying this tree item.
    */
-  _onBlur: function (e) {
+  _onBlur: function(e) {
     this._rootItem.emit("blur", this);
   }
 };

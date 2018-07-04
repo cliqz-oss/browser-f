@@ -1,7 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const MODULE_BASE = "resource://services-common/";
 const shared_modules = [
@@ -20,16 +20,12 @@ const shared_test_modules = [
   "logging.js",
 ];
 
-const non_android_test_modules = [
-  "storageserver.js",
-];
-
 function expectImportsToSucceed(mm, base = MODULE_BASE) {
   for (let m of mm) {
     let resource = base + m;
     let succeeded = false;
     try {
-      Components.utils.import(resource, {});
+      ChromeUtils.import(resource, {});
       succeeded = true;
     } catch (e) {}
 
@@ -44,7 +40,7 @@ function expectImportsToFail(mm, base = MODULE_BASE) {
     let resource = base + m;
     let succeeded = false;
     try {
-      Components.utils.import(resource, {});
+      ChromeUtils.import(resource, {});
       succeeded = true;
     } catch (e) {}
 
@@ -60,9 +56,7 @@ function run_test() {
 
   if (AppConstants.platform != "android") {
     expectImportsToSucceed(non_android_modules);
-    expectImportsToSucceed(non_android_test_modules, TEST_BASE);
   } else {
     expectImportsToFail(non_android_modules);
-    expectImportsToFail(non_android_test_modules, TEST_BASE);
   }
 }

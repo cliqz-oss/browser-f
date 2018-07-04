@@ -4,7 +4,6 @@
 "use strict";
 
 const { Arg, RetVal, generateActorSpec } = require("devtools/shared/protocol");
-require("devtools/shared/specs/performance-recording");
 
 const performanceSpec = generateActorSpec({
   typeName: "performance",
@@ -80,7 +79,7 @@ const performanceSpec = generateActorSpec({
 
     setProfilerStatusInterval: {
       request: { interval: Arg(0, "number") },
-      response: { oneway: true }
+      oneway: true
     },
   }
 });

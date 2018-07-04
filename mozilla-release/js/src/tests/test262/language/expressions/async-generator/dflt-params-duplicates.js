@@ -1,4 +1,4 @@
-// |reftest| skip-if(release_or_beta) error:SyntaxError -- async-iteration is not released yet
+// |reftest| error:SyntaxError
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-duplicates.case
 // - src/function-forms/syntax/async-gen-func-expr.template
@@ -8,7 +8,7 @@ esid: sec-asyncgenerator-definitions-evaluation
 features: [default-parameters, async-iteration]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     AsyncGeneratorExpression : async [no LineTerminator here] function * ( FormalParameters ) {
@@ -34,6 +34,7 @@ info: |
       elements.
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 
 0, async function*(x = 0, x) {

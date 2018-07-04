@@ -4,25 +4,23 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
 Cu.importGlobalProperties(["URL"]);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "AutoCompletePopup",
-                                  "resource://gre/modules/AutoCompletePopup.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
-                                  "resource://gre/modules/DeferredTask.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "AutoCompletePopup",
+                               "resource://gre/modules/AutoCompletePopup.jsm");
+ChromeUtils.defineModuleGetter(this, "DeferredTask",
+                               "resource://gre/modules/DeferredTask.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "log", () => {
   let logger = LoginHelper.createLogger("LoginManagerParent");
   return logger.log.bind(logger);
 });
 
-this.EXPORTED_SYMBOLS = [ "LoginManagerParent" ];
+var EXPORTED_SYMBOLS = [ "LoginManagerParent" ];
 
 var LoginManagerParent = {
   /**
@@ -66,24 +64,8 @@ var LoginManagerParent = {
     return LoginHelper.dedupeLogins(logins, ["username"], resolveBy, formOrigin);
   },
 
-  // This should only be called on Android. Listeners are added in
-  // nsBrowserGlue.js on desktop. Please make sure that the list of
-  // listeners added here stays in sync with the listeners added in
-  // nsBrowserGlue when you change either.
-  init() {
-    let mm = Cc["@mozilla.org/globalmessagemanager;1"]
-               .getService(Ci.nsIMessageListenerManager);
-    // PLEASE KEEP THIS LIST IN SYNC WITH THE LISTENERS ADDED IN nsBrowserGlue
-    mm.addMessageListener("RemoteLogins:findLogins", this);
-    mm.addMessageListener("RemoteLogins:findRecipes", this);
-    mm.addMessageListener("RemoteLogins:onFormSubmit", this);
-    mm.addMessageListener("RemoteLogins:autoCompleteLogins", this);
-    mm.addMessageListener("RemoteLogins:removeLogin", this);
-    mm.addMessageListener("RemoteLogins:insecureLoginFormPresent", this);
-    // PLEASE KEEP THIS LIST IN SYNC WITH THE LISTENERS ADDED IN nsBrowserGlue
-  },
-
-  // Listeners are added in nsBrowserGlue.js
+  // Listeners are added in nsBrowserGlue.js on desktop
+  // and in BrowserCLH.js on mobile.
   receiveMessage(msg) {
     let data = msg.data;
     switch (msg.name) {
@@ -111,6 +93,13 @@ var LoginManagerParent = {
                           data.oldPasswordField,
                           msg.objects.openerTopWindow,
                           msg.target);
+
+        const flow_id = msg.target.ownerGlobal.gBrowser.getTabForBrowser(msg.target).linkedPanel;
+        Services.telemetry.recordEvent("savant", "login_form", "submit", null,
+                                      {
+                                        subcategory: "encounter",
+                                        flow_id,
+                                      });
         break;
       }
 
@@ -127,6 +116,28 @@ var LoginManagerParent = {
       case "RemoteLogins:removeLogin": {
         let login = LoginHelper.vanillaObjectToLogin(data.login);
         AutoCompletePopup.removeLogin(login);
+        break;
+      }
+
+      case "LoginStats:LoginFillSuccessful": {
+        const flow_id = msg.target.ownerGlobal.gBrowser.getTabForBrowser(msg.target).linkedPanel;
+        Services.telemetry.recordEvent("savant", "pwmgr_use", "use", null,
+                                      {
+                                        subcategory: "feature",
+                                        flow_id,
+                                      });
+        break;
+      }
+
+      case "LoginStats:LoginEncountered": {
+        const canRecordSubmit = (!data.isPrivateWindow && data.isPwmgrEnabled).toString();
+        const flow_id = msg.target.ownerGlobal.gBrowser.getTabForBrowser(msg.target).linkedPanel;
+        Services.telemetry.recordEvent("savant", "login_form", "load", null,
+                                      {
+                                        subcategory: "encounter",
+                                        flow_id,
+                                        canRecordSubmit,
+                                      });
         break;
       }
     }
@@ -199,8 +210,8 @@ var LoginManagerParent = {
       log("deferring sendLoginDataToChild for", formOrigin);
       let self = this;
       let observer = {
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                               Ci.nsISupportsWeakReference]),
+        QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                                Ci.nsISupportsWeakReference]),
 
         observe(subject, topic, data) {
           log("Got deferred sendLoginDataToChild notification:", topic);
@@ -494,7 +505,7 @@ var LoginManagerParent = {
 };
 
 XPCOMUtils.defineLazyGetter(LoginManagerParent, "recipeParentPromise", function() {
-  const { LoginRecipesParent } = Cu.import("resource://gre/modules/LoginRecipes.jsm", {});
+  const { LoginRecipesParent } = ChromeUtils.import("resource://gre/modules/LoginRecipes.jsm", {});
   this._recipeManager = new LoginRecipesParent({
     defaults: Services.prefs.getStringPref("signon.recipes.path"),
   });

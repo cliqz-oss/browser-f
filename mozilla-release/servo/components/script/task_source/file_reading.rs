@@ -4,46 +4,41 @@
 
 use dom::domexception::DOMErrorName;
 use dom::filereader::{FileReader, TrustedFileReader, GenerationId, ReadMetaData};
+use msg::constellation_msg::PipelineId;
 use script_runtime::{CommonScriptMsg, ScriptThreadEventCategory, ScriptChan};
-use script_thread::{Runnable, RunnableWrapper};
 use std::sync::Arc;
+use task::{TaskCanceller, TaskOnce};
 use task_source::TaskSource;
 
 #[derive(JSTraceable)]
-pub struct FileReadingTaskSource(pub Box<ScriptChan + Send + 'static>);
+pub struct FileReadingTaskSource(pub Box<ScriptChan + Send + 'static>, pub PipelineId);
 
 impl Clone for FileReadingTaskSource {
     fn clone(&self) -> FileReadingTaskSource {
-        FileReadingTaskSource(self.0.clone())
+        FileReadingTaskSource(self.0.clone(), self.1.clone())
     }
 }
 
 impl TaskSource for FileReadingTaskSource {
-    fn queue_with_wrapper<T>(&self,
-                             msg: Box<T>,
-                             wrapper: &RunnableWrapper)
-                             -> Result<(), ()>
-                             where T: Runnable + Send + 'static {
-        self.0.send(CommonScriptMsg::RunnableMsg(ScriptThreadEventCategory::FileRead,
-                                                 wrapper.wrap_runnable(msg)))
+    fn queue_with_canceller<T>(
+        &self,
+        task: T,
+        canceller: &TaskCanceller,
+    ) -> Result<(), ()>
+    where
+        T: TaskOnce + 'static,
+    {
+        self.0.send(CommonScriptMsg::Task(
+            ScriptThreadEventCategory::FileRead,
+            Box::new(canceller.wrap_task(task)),
+            Some(self.1),
+        ))
     }
 }
 
-pub struct FileReadingRunnable {
-    task: FileReadingTask,
-}
-
-impl FileReadingRunnable {
-    pub fn new(task: FileReadingTask) -> Box<FileReadingRunnable> {
-        box FileReadingRunnable {
-            task: task
-        }
-    }
-}
-
-impl Runnable for FileReadingRunnable {
-    fn handler(self: Box<FileReadingRunnable>) {
-        self.task.handle_task();
+impl TaskOnce for FileReadingTask {
+    fn run_once(self) {
+        self.handle_task();
     }
 }
 

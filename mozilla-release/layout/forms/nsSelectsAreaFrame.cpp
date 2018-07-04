@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,9 +12,9 @@
 using namespace mozilla;
 
 nsContainerFrame*
-NS_NewSelectsAreaFrame(nsIPresShell* aShell, nsStyleContext* aContext, nsFrameState aFlags)
+NS_NewSelectsAreaFrame(nsIPresShell* aShell, ComputedStyle* aStyle, nsFrameState aFlags)
 {
-  nsSelectsAreaFrame* it = new (aShell) nsSelectsAreaFrame(aContext);
+  nsSelectsAreaFrame* it = new (aShell) nsSelectsAreaFrame(aStyle);
 
   // We need NS_BLOCK_FLOAT_MGR to ensure that the options inside the select
   // aren't expanded by right floats outside the select.
@@ -73,12 +74,12 @@ class nsOptionEventGrabberWrapper : public nsDisplayWrapper
 public:
   nsOptionEventGrabberWrapper() {}
   virtual nsDisplayItem* WrapList(nsDisplayListBuilder* aBuilder,
-                                  nsIFrame* aFrame, nsDisplayList* aList) {
-    return new (aBuilder) nsDisplayOptionEventGrabber(aBuilder, aFrame, aList);
+                                  nsIFrame* aFrame, nsDisplayList* aList) override {
+    return MakeDisplayItem<nsDisplayOptionEventGrabber>(aBuilder, aFrame, aList);
   }
   virtual nsDisplayItem* WrapItem(nsDisplayListBuilder* aBuilder,
-                                  nsDisplayItem* aItem) {
-    return new (aBuilder) nsDisplayOptionEventGrabber(aBuilder, aItem->Frame(), aItem);
+                                  nsDisplayItem* aItem) override {
+    return MakeDisplayItem<nsDisplayOptionEventGrabber>(aBuilder, aItem->Frame(), aItem);
   }
 };
 
@@ -106,7 +107,9 @@ public:
   }
 #endif
 
-  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) override {
+  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder,
+                           bool* aSnap) const override
+  {
     *aSnap = false;
     // override bounds because the list item focus ring may extend outside
     // the nsSelectsAreaFrame
@@ -126,16 +129,15 @@ public:
 
 void
 nsSelectsAreaFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                     const nsRect&           aDirtyRect,
                                      const nsDisplayListSet& aLists)
 {
   if (!aBuilder->IsForEventDelivery()) {
-    BuildDisplayListInternal(aBuilder, aDirtyRect, aLists);
+    BuildDisplayListInternal(aBuilder, aLists);
     return;
   }
 
-  nsDisplayListCollection set;
-  BuildDisplayListInternal(aBuilder, aDirtyRect, set);
+  nsDisplayListCollection set(aBuilder);
+  BuildDisplayListInternal(aBuilder, set);
 
   nsOptionEventGrabberWrapper wrapper;
   wrapper.WrapLists(aBuilder, this, set, aLists);
@@ -143,18 +145,17 @@ nsSelectsAreaFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
 void
 nsSelectsAreaFrame::BuildDisplayListInternal(nsDisplayListBuilder*   aBuilder,
-                                             const nsRect&           aDirtyRect,
                                              const nsDisplayListSet& aLists)
 {
-  nsBlockFrame::BuildDisplayList(aBuilder, aDirtyRect, aLists);
+  nsBlockFrame::BuildDisplayList(aBuilder, aLists);
 
   nsListControlFrame* listFrame = GetEnclosingListFrame(this);
   if (listFrame && listFrame->IsFocused()) {
     // we can't just associate the display item with the list frame,
     // because then the list's scrollframe won't clip it (the scrollframe
     // only clips contained descendants).
-    aLists.Outlines()->AppendNewToTop(new (aBuilder)
-      nsDisplayListFocus(aBuilder, this));
+    aLists.Outlines()->AppendToTop(
+      MakeDisplayItem<nsDisplayListFocus>(aBuilder, this));
   }
 }
 
@@ -164,6 +165,8 @@ nsSelectsAreaFrame::Reflow(nsPresContext*           aPresContext,
                            const ReflowInput& aReflowInput,
                            nsReflowStatus&          aStatus)
 {
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
   nsListControlFrame* list = GetEnclosingListFrame(this);
   NS_ASSERTION(list,
                "Must have an nsListControlFrame!  Frame constructor is "

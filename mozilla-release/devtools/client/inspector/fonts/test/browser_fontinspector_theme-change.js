@@ -17,24 +17,24 @@ registerCleanupFunction(() => {
   setTheme(originalTheme);
 });
 
-add_task(function* () {
-  let { inspector, view } = yield openFontInspectorForURL(TEST_URI);
+add_task(async function() {
+  let { inspector, view } = await openFontInspectorForURL(TEST_URI);
   let { document: doc } = view;
 
-  yield selectNode(".normal-text", inspector);
+  await selectNode(".normal-text", inspector);
 
   // Store the original preview URI for later comparison.
-  let originalURI = doc.querySelector("#all-fonts .font-preview").src;
+  let originalURI = doc.querySelector("#font-container .font-preview").src;
   let newTheme = originalTheme === "light" ? "dark" : "light";
 
   info(`Original theme was '${originalTheme}'.`);
 
-  yield setThemeAndWaitForUpdate(newTheme, inspector);
-  isnot(doc.querySelector("#all-fonts .font-preview").src, originalURI,
+  await setThemeAndWaitForUpdate(newTheme, inspector);
+  isnot(doc.querySelector("#font-container .font-preview").src, originalURI,
     "The preview image changed with the theme.");
 
-  yield setThemeAndWaitForUpdate(originalTheme, inspector);
-  is(doc.querySelector("#all-fonts .font-preview").src, originalURI,
+  await setThemeAndWaitForUpdate(originalTheme, inspector);
+  is(doc.querySelector("#font-container .font-preview").src, originalURI,
     "The preview image is correct after the original theme was restored.");
 });
 
@@ -44,12 +44,12 @@ add_task(function* () {
  * @param {String} theme - the new theme
  * @param {Object} inspector - the inspector panel
  */
-function* setThemeAndWaitForUpdate(theme, inspector) {
+async function setThemeAndWaitForUpdate(theme, inspector) {
   let onUpdated = inspector.once("fontinspector-updated");
 
   info(`Setting theme to '${theme}'.`);
   setTheme(theme);
 
   info("Waiting for font-inspector to update.");
-  yield onUpdated;
+  await onUpdated;
 }

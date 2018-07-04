@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,35 +10,44 @@
 
 #include "mozilla/ArrayUtils.h"
 
-#include "nsAtomListUtils.h"
-#include "nsStaticAtom.h"
 #include "nsCSSAnonBoxes.h"
 #include "nsDOMString.h"
 
 using namespace mozilla;
 
-// define storage for all atoms
-#define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
-  nsICSSPseudoElement* nsCSSPseudoElements::name_;
-#include "nsCSSPseudoElementList.h"
-#undef CSS_PSEUDO_ELEMENT
+namespace mozilla {
+namespace detail {
 
-#define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
-  NS_STATIC_ATOM_BUFFER(name_##_pseudo_element_buffer, value_)
-#include "nsCSSPseudoElementList.h"
-#undef CSS_PSEUDO_ELEMENT
-
-// Array of nsStaticAtom for each of the pseudo-elements.
-static const nsStaticAtom CSSPseudoElements_info[] = {
-#define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
-  NS_STATIC_ATOM(name_##_pseudo_element_buffer, (nsIAtom**)&nsCSSPseudoElements::name_),
-#include "nsCSSPseudoElementList.h"
-#undef CSS_PSEUDO_ELEMENT
+MOZ_PUSH_DISABLE_INTEGRAL_CONSTANT_OVERFLOW_WARNING
+extern constexpr CSSPseudoElementAtoms gCSSPseudoElementAtoms = {
+  #define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
+    NS_STATIC_ATOM_INIT_STRING(value_)
+  #include "nsCSSPseudoElementList.h"
+  #undef CSS_PSEUDO_ELEMENT
+  {
+    #define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
+      NS_STATIC_ATOM_INIT_ATOM( \
+        nsICSSPseudoElement, CSSPseudoElementAtoms, name_, value_)
+    #include "nsCSSPseudoElementList.h"
+    #undef CSS_PSEUDO_ELEMENT
+  }
 };
+MOZ_POP_DISABLE_INTEGRAL_CONSTANT_OVERFLOW_WARNING
 
-// Flags data for each of the pseudo-elements, which must be separate
-// from the previous array since there's no place for it in
-// nsStaticAtom.
+} // namespace detail
+} // namespace mozilla
+
+const nsStaticAtom* const nsCSSPseudoElements::sAtoms =
+  mozilla::detail::gCSSPseudoElementAtoms.mAtoms;
+
+#define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
+  NS_STATIC_ATOM_DEFN_PTR( \
+    nsICSSPseudoElement, mozilla::detail::CSSPseudoElementAtoms, \
+    mozilla::detail::gCSSPseudoElementAtoms, nsCSSPseudoElements, name_);
+#include "nsCSSPseudoElementList.h"
+#undef CSS_PSEUDO_ELEMENT
+
+// Flags data for each of the pseudo-elements.
 /* static */ const uint32_t
 nsCSSPseudoElements::kPseudoElementFlags[] = {
 #define CSS_PSEUDO_ELEMENT(name_, value_, flags_) \
@@ -46,19 +56,18 @@ nsCSSPseudoElements::kPseudoElementFlags[] = {
 #undef CSS_PSEUDO_ELEMENT
 };
 
-void nsCSSPseudoElements::AddRefAtoms()
+void nsCSSPseudoElements::RegisterStaticAtoms()
 {
-  NS_RegisterStaticAtoms(CSSPseudoElements_info);
+  NS_RegisterStaticAtoms(sAtoms, sAtomsLen);
 }
 
-bool nsCSSPseudoElements::IsPseudoElement(nsIAtom *aAtom)
+bool nsCSSPseudoElements::IsPseudoElement(nsAtom *aAtom)
 {
-  return nsAtomListUtils::IsMember(aAtom, CSSPseudoElements_info,
-                                   ArrayLength(CSSPseudoElements_info));
+  return nsStaticAtomUtils::IsMember(aAtom, sAtoms, sAtomsLen);
 }
 
 /* static */ bool
-nsCSSPseudoElements::IsCSS2PseudoElement(nsIAtom *aAtom)
+nsCSSPseudoElements::IsCSS2PseudoElement(nsAtom *aAtom)
 {
   // We don't implement this using PseudoElementHasFlags because callers
   // want to pass things that could be anon boxes.
@@ -78,19 +87,16 @@ nsCSSPseudoElements::IsCSS2PseudoElement(nsIAtom *aAtom)
 }
 
 /* static */ CSSPseudoElementType
-nsCSSPseudoElements::GetPseudoType(nsIAtom *aAtom, EnabledState aEnabledState)
+nsCSSPseudoElements::GetPseudoType(nsAtom *aAtom, EnabledState aEnabledState)
 {
-  for (CSSPseudoElementTypeBase i = 0;
-       i < ArrayLength(CSSPseudoElements_info);
-       ++i) {
-    if (*CSSPseudoElements_info[i].mAtom == aAtom) {
-      auto type = static_cast<Type>(i);
-      // ::moz-placeholder is an alias for ::placeholder
-      if (type == CSSPseudoElementType::mozPlaceholder) {
-        type = CSSPseudoElementType::placeholder;
-      }
-      return IsEnabled(type, aEnabledState) ? type : Type::NotPseudo;
+  Maybe<uint32_t> index = nsStaticAtomUtils::Lookup(aAtom, sAtoms, sAtomsLen);
+  if (index.isSome()) {
+    auto type = static_cast<Type>(*index);
+    // ::moz-placeholder is an alias for ::placeholder
+    if (type == CSSPseudoElementType::mozPlaceholder) {
+      type = CSSPseudoElementType::placeholder;
     }
+    return IsEnabled(type, aEnabledState) ? type : Type::NotPseudo;
   }
 
   if (nsCSSAnonBoxes::IsAnonBox(aAtom)) {
@@ -110,15 +116,15 @@ nsCSSPseudoElements::GetPseudoType(nsIAtom *aAtom, EnabledState aEnabledState)
   return Type::NotPseudo;
 }
 
-/* static */ nsIAtom*
+/* static */ nsAtom*
 nsCSSPseudoElements::GetPseudoAtom(Type aType)
 {
-  NS_ASSERTION(aType < Type::Count, "Unexpected type");
-  return *CSSPseudoElements_info[
-    static_cast<CSSPseudoElementTypeBase>(aType)].mAtom;
+  MOZ_ASSERT(aType < Type::Count, "Unexpected type");
+  return const_cast<nsStaticAtom*>(
+    &sAtoms[static_cast<CSSPseudoElementTypeBase>(aType)]);
 }
 
-/* static */ already_AddRefed<nsIAtom>
+/* static */ already_AddRefed<nsAtom>
 nsCSSPseudoElements::GetPseudoAtom(const nsAString& aPseudoElement)
 {
   if (DOMStringIsNull(aPseudoElement) || aPseudoElement.IsEmpty() ||
@@ -137,7 +143,7 @@ nsCSSPseudoElements::GetPseudoAtom(const nsAString& aPseudoElement)
     --start;
     haveTwoColons = false;
   }
-  nsCOMPtr<nsIAtom> pseudo = NS_Atomize(Substring(start, end));
+  RefPtr<nsAtom> pseudo = NS_Atomize(Substring(start, end));
   MOZ_ASSERT(pseudo);
 
   // There aren't any non-CSS2 pseudo-elements with a single ':'
@@ -157,3 +163,19 @@ nsCSSPseudoElements::PseudoElementSupportsUserActionState(const Type aType)
   return PseudoElementHasFlags(aType,
                                CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE);
 }
+
+/* static */ nsString
+nsCSSPseudoElements::PseudoTypeAsString(Type aPseudoType)
+{
+  switch (aPseudoType) {
+    case CSSPseudoElementType::before:
+      return NS_LITERAL_STRING("::before");
+    case CSSPseudoElementType::after:
+      return NS_LITERAL_STRING("::after");
+    default:
+      MOZ_ASSERT(aPseudoType == CSSPseudoElementType::NotPseudo,
+                 "Unexpected pseudo type");
+      return EmptyString();
+  }
+}
+

@@ -1,5 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 // gBrowser.selectedTab.lastAccessed and Date.now() called from this test can't
 // run concurrently, and therefore don't always match exactly.
@@ -19,9 +20,14 @@ var newTab;
 
 function test() {
   waitForExplicitFinish();
-
-  originalTab = gBrowser.selectedTab;
-  nextStep(step2);
+  // This test assumes that time passes between operations. But if the precision
+  // is low enough, and the test fast enough, an operation, and a successive call
+  // to Date.now() will have the same time value.
+  SpecialPowers.pushPrefEnv({"set": [["privacy.reduceTimerPrecision", false]]},
+    function() {
+      originalTab = gBrowser.selectedTab;
+      nextStep(step2);
+    });
 }
 
 function step2() {

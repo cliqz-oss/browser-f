@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,8 +8,8 @@
 #include "mozilla/dom/MenuBoxObjectBinding.h"
 
 #include "mozilla/dom/KeyboardEvent.h"
+#include "mozilla/dom/KeyboardEventBinding.h"
 #include "mozilla/dom/Element.h"
-#include "nsIDOMKeyEvent.h"
 #include "nsIFrame.h"
 #include "nsMenuBarFrame.h"
 #include "nsMenuBarListener.h"
@@ -58,10 +59,9 @@ MenuBoxObject::GetActiveChild()
 {
   nsMenuFrame* menu = do_QueryFrame(GetFrame(false));
   if (menu) {
-    nsCOMPtr<nsIDOMElement> el;
+    RefPtr<Element> el;
     menu->GetActiveChild(getter_AddRefs(el));
-    nsCOMPtr<Element> ret(do_QueryInterface(el));
-    return ret.forget();
+    return el.forget();
   }
   return nullptr;
 }
@@ -70,8 +70,7 @@ void MenuBoxObject::SetActiveChild(Element* arg)
 {
   nsMenuFrame* menu = do_QueryFrame(GetFrame(false));
   if (menu) {
-    nsCOMPtr<nsIDOMElement> el(do_QueryInterface(arg));
-    menu->SetActiveChild(el);
+    menu->SetActiveChild(arg);
   }
 }
 
@@ -83,9 +82,7 @@ bool MenuBoxObject::HandleKeyPress(KeyboardEvent& keyEvent)
   }
 
   // if event has already been handled, bail
-  bool eventHandled = false;
-  keyEvent.GetDefaultPrevented(&eventHandled);
-  if (eventHandled) {
+  if (keyEvent.DefaultPrevented()) {
     return false;
   }
 
@@ -104,10 +101,10 @@ bool MenuBoxObject::HandleKeyPress(KeyboardEvent& keyEvent)
 
   uint32_t keyCode = keyEvent.KeyCode();
   switch (keyCode) {
-    case nsIDOMKeyEvent::DOM_VK_UP:
-    case nsIDOMKeyEvent::DOM_VK_DOWN:
-    case nsIDOMKeyEvent::DOM_VK_HOME:
-    case nsIDOMKeyEvent::DOM_VK_END:
+    case KeyboardEventBinding::DOM_VK_UP:
+    case KeyboardEventBinding::DOM_VK_DOWN:
+    case KeyboardEventBinding::DOM_VK_HOME:
+    case KeyboardEventBinding::DOM_VK_END:
     {
       nsNavigationDirection theDirection;
       theDirection = NS_DIRECTION_FROM_KEY_CODE(popupFrame, keyCode);

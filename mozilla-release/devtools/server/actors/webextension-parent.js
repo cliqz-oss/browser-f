@@ -73,7 +73,9 @@ const WebExtensionParentActor = protocol.ActorClassWithSpec(webExtensionSpec, {
       iconURL: this.addon.iconURL,
       debuggable: this.addon.isDebuggable,
       temporarilyInstalled: this.addon.temporarilyInstalled,
-      isWebExtension: true,
+      type: this.addon.type,
+      isWebExtension: this.addon.isWebExtension,
+      isAPIExtension: this.addon.isAPIExtension,
       manifestURL: policy && policy.getURL("manifest.json"),
       warnings: ExtensionParent.DebugUtils.getExtensionManifestWarnings(this.id),
     };
@@ -159,7 +161,7 @@ ProxyChildActor.prototype = {
 
     this._browser = await ExtensionParent.DebugUtils.getExtensionProcessBrowser(this);
 
-    this._form = await DebuggerServer.connectToChild(this._conn, this._browser, onDestroy,
+    this._form = await DebuggerServer.connectToFrame(this._conn, this._browser, onDestroy,
                                                      {addonId: this.addonId});
 
     this._childActorID = this._form.actor;

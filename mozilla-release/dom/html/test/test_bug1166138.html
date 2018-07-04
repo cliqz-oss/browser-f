@@ -7,7 +7,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1166138
   <meta charset="utf-8">
   <title>Test for Bug 1166138</title>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body>
@@ -15,10 +15,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1166138
   <p id="display"></p>
   <div id="content" style="display: none">
   </div>
-
-  <img srcset="file_bug1166138_1x.png 1x, file_bug1166138_2x.png 2x"
-       src="file_bug1166138_def.png"
-       onload="onLoad()">
 
   <script type="application/javascript">
     var img1x = "http://mochi.test:8888/tests/dom/html/test/file_bug1166138_1x.png";
@@ -126,5 +122,10 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1166138
       done = true;
     });
   </script>
+
+  <img srcset="file_bug1166138_1x.png 1x, file_bug1166138_2x.png 2x"
+       src="file_bug1166138_def.png"
+       onload="onLoad()">
+
 </body>
 </html>

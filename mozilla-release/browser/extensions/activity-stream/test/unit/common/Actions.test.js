@@ -1,13 +1,15 @@
-const {
-  actionTypes: at,
-  actionCreators: ac,
-  actionUtils: au,
-  MAIN_MESSAGE_TYPE,
-  CONTENT_MESSAGE_TYPE,
-  UI_CODE,
+import {
+
+  actionCreators as ac,
+  actionTypes as at,
+  actionUtils as au,
   BACKGROUND_PROCESS,
-  globalImportContext
-} = require("common/Actions.jsm");
+  CONTENT_MESSAGE_TYPE,
+  globalImportContext,
+  MAIN_MESSAGE_TYPE,
+  PRELOAD_MESSAGE_TYPE,
+  UI_CODE
+} from "common/Actions.jsm";
 
 describe("Actions", () => {
   it("should set globalImportContext to UI_CODE", () => {
@@ -39,10 +41,10 @@ describe("ActionCreators", () => {
       assert.isUndefined(action.meta.fromTarget);
     });
   });
-  describe("SendToMain", () => {
+  describe("AlsoToMain", () => {
     it("should create the right action", () => {
       const action = {type: "FOO", data: "BAR"};
-      const newAction = ac.SendToMain(action);
+      const newAction = ac.AlsoToMain(action);
       assert.deepEqual(newAction, {
         type: "FOO",
         data: "BAR",
@@ -51,24 +53,24 @@ describe("ActionCreators", () => {
     });
     it("should add the fromTarget if it was supplied", () => {
       const action = {type: "FOO", data: "BAR"};
-      const newAction = ac.SendToMain(action, "port123");
+      const newAction = ac.AlsoToMain(action, "port123");
       assert.equal(newAction.meta.fromTarget, "port123");
     });
     describe("isSendToMain", () => {
-      it("should return true if action is SendToMain", () => {
-        const newAction = ac.SendToMain({type: "FOO"});
+      it("should return true if action is AlsoToMain", () => {
+        const newAction = ac.AlsoToMain({type: "FOO"});
         assert.isTrue(au.isSendToMain(newAction));
       });
-      it("should return false if action is not SendToMain", () => {
+      it("should return false if action is not AlsoToMain", () => {
         assert.isFalse(au.isSendToMain({type: "FOO"}));
       });
     });
   });
-  describe("SendToContent", () => {
+  describe("AlsoToOneContent", () => {
     it("should create the right action", () => {
       const action = {type: "FOO", data: "BAR"};
       const targetId = "abc123";
-      const newAction = ac.SendToContent(action, targetId);
+      const newAction = ac.AlsoToOneContent(action, targetId);
       assert.deepEqual(newAction, {
         type: "FOO",
         data: "BAR",
@@ -77,17 +79,31 @@ describe("ActionCreators", () => {
     });
     it("should throw if no targetId is provided", () => {
       assert.throws(() => {
-        ac.SendToContent({type: "FOO"});
+        ac.AlsoToOneContent({type: "FOO"});
       });
     });
-    describe("isSendToContent", () => {
-      it("should return true if action is SendToContent", () => {
-        const newAction = ac.SendToContent({type: "FOO"}, "foo123");
-        assert.isTrue(au.isSendToContent(newAction));
+    describe("isSendToOneContent", () => {
+      it("should return true if action is AlsoToOneContent", () => {
+        const newAction = ac.AlsoToOneContent({type: "FOO"}, "foo123");
+        assert.isTrue(au.isSendToOneContent(newAction));
       });
-      it("should return false if action is not SendToMain", () => {
-        assert.isFalse(au.isSendToContent({type: "FOO"}));
-        assert.isFalse(au.isSendToContent(ac.BroadcastToContent({type: "FOO"})));
+      it("should return false if action is not AlsoToMain", () => {
+        assert.isFalse(au.isSendToOneContent({type: "FOO"}));
+        assert.isFalse(au.isSendToOneContent(ac.BroadcastToContent({type: "FOO"})));
+      });
+    });
+    describe("isFromMain", () => {
+      it("should return true if action is AlsoToOneContent", () => {
+        const newAction = ac.AlsoToOneContent({type: "FOO"}, "foo123");
+        assert.isTrue(au.isFromMain(newAction));
+      });
+      it("should return true if action is BroadcastToContent", () => {
+        const newAction = ac.BroadcastToContent({type: "FOO"});
+        assert.isTrue(au.isFromMain(newAction));
+      });
+      it("should return false if action is AlsoToMain", () => {
+        const newAction = ac.AlsoToMain({type: "FOO"});
+        assert.isFalse(au.isFromMain(newAction));
       });
     });
   });
@@ -107,8 +123,28 @@ describe("ActionCreators", () => {
       });
       it("should return false if action is not BroadcastToContent", () => {
         assert.isFalse(au.isBroadcastToContent({type: "FOO"}));
-        assert.isFalse(au.isBroadcastToContent(ac.SendToContent({type: "FOO"}, "foo123")));
+        assert.isFalse(au.isBroadcastToContent(ac.AlsoToOneContent({type: "FOO"}, "foo123")));
       });
+    });
+  });
+  describe("AlsoToPreloaded", () => {
+    it("should create the right action", () => {
+      const action = {type: "FOO", data: "BAR"};
+      const newAction = ac.AlsoToPreloaded(action);
+      assert.deepEqual(newAction, {
+        type: "FOO",
+        data: "BAR",
+        meta: {from: MAIN_MESSAGE_TYPE, to: PRELOAD_MESSAGE_TYPE}
+      });
+    });
+  });
+  describe("isSendToPreloaded", () => {
+    it("should return true if action is AlsoToPreloaded", () => {
+      assert.isTrue(au.isSendToPreloaded(ac.AlsoToPreloaded({type: "FOO"})));
+    });
+    it("should return false if action is not AlsoToPreloaded", () => {
+      assert.isFalse(au.isSendToPreloaded({type: "FOO"}));
+      assert.isFalse(au.isSendToPreloaded(ac.BroadcastToContent({type: "FOO"})));
     });
   });
   describe("UserEvent", () => {
@@ -116,8 +152,18 @@ describe("ActionCreators", () => {
       const data = {action: "foo"};
       assert.equal(ac.UserEvent(data).data, data);
     });
-    it("should wrap with SendToMain", () => {
+    it("should wrap with AlsoToMain", () => {
       const action = ac.UserEvent({action: "foo"});
+      assert.isTrue(au.isSendToMain(action), "isSendToMain");
+    });
+  });
+  describe("ASRouterUserEvent", () => {
+    it("should include the given data", () => {
+      const data = {action: "foo"};
+      assert.equal(ac.ASRouterUserEvent(data).data, data);
+    });
+    it("should wrap with AlsoToMain", () => {
+      const action = ac.ASRouterUserEvent({action: "foo"});
       assert.isTrue(au.isSendToMain(action), "isSendToMain");
     });
   });
@@ -126,10 +172,10 @@ describe("ActionCreators", () => {
       const data = {action: "foo"};
       assert.equal(ac.UndesiredEvent(data).data, data);
     });
-    it("should wrap with SendToMain if in UI code", () => {
+    it("should wrap with AlsoToMain if in UI code", () => {
       assert.isTrue(au.isSendToMain(ac.UndesiredEvent({action: "foo"})), "isSendToMain");
     });
-    it("should not wrap with SendToMain if not in UI code", () => {
+    it("should not wrap with AlsoToMain if not in UI code", () => {
       const action = ac.UndesiredEvent({action: "foo"}, BACKGROUND_PROCESS);
       assert.isFalse(au.isSendToMain(action), "isSendToMain");
     });
@@ -139,10 +185,10 @@ describe("ActionCreators", () => {
       const data = {action: "foo"};
       assert.equal(ac.UndesiredEvent(data).data, data);
     });
-    it("should wrap with SendToMain if in UI code", () => {
+    it("should wrap with AlsoToMain if in UI code", () => {
       assert.isTrue(au.isSendToMain(ac.PerfEvent({action: "foo"})), "isSendToMain");
     });
-    it("should not wrap with SendToMain if not in UI code", () => {
+    it("should not wrap with AlsoToMain if not in UI code", () => {
       const action = ac.PerfEvent({action: "foo"}, BACKGROUND_PROCESS);
       assert.isFalse(au.isSendToMain(action), "isSendToMain");
     });
@@ -152,21 +198,37 @@ describe("ActionCreators", () => {
       const data = {action: "foo"};
       assert.equal(ac.ImpressionStats(data).data, data);
     });
-    it("should wrap with SendToMain if in UI code", () => {
+    it("should wrap with AlsoToMain if in UI code", () => {
       assert.isTrue(au.isSendToMain(ac.ImpressionStats({action: "foo"})), "isSendToMain");
     });
-    it("should not wrap with SendToMain if not in UI code", () => {
+    it("should not wrap with AlsoToMain if not in UI code", () => {
       const action = ac.ImpressionStats({action: "foo"}, BACKGROUND_PROCESS);
       assert.isFalse(au.isSendToMain(action), "isSendToMain");
+    });
+  });
+  describe("WebExtEvent", () => {
+    it("should set the provided type", () => {
+      const action = ac.WebExtEvent(at.WEBEXT_CLICK, {source: "MyExtension", url: "foo.com"});
+      assert.equal(action.type, at.WEBEXT_CLICK);
+    });
+    it("should set the provided data", () => {
+      const data = {source: "MyExtension", url: "foo.com"};
+      const action = ac.WebExtEvent(at.WEBEXT_CLICK, data);
+      assert.equal(action.data, data);
+    });
+    it("should throw if the 'source' property is missing", () => {
+      assert.throws(() => {
+        ac.WebExtEvent(at.WEBEXT_CLICK, {});
+      });
     });
   });
 });
 
 describe("ActionUtils", () => {
   describe("getPortIdOfSender", () => {
-    it("should return the PortID from a SendToMain action", () => {
+    it("should return the PortID from a AlsoToMain action", () => {
       const portID = "foo123";
-      const result = au.getPortIdOfSender(ac.SendToMain({type: "FOO"}, portID));
+      const result = au.getPortIdOfSender(ac.AlsoToMain({type: "FOO"}, portID));
       assert.equal(result, portID);
     });
   });

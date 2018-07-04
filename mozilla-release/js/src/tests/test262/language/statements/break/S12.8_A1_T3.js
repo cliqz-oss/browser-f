@@ -9,9 +9,11 @@ description: >
     Checking if break statement with no loop, placed into a block,
     fails
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 //////////////////////////////////////////////////////////////////////////////
 //CHECK#1

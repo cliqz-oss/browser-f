@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SessionFile"];
+var EXPORTED_SYMBOLS = ["SessionFile"];
 
 /**
  * Implementation of all the disk I/O required by the session store.
@@ -25,31 +25,20 @@ this.EXPORTED_SYMBOLS = ["SessionFile"];
  * This implementation uses OS.File, which guarantees property 1.
  */
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/AsyncShutdown.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-  "resource://gre/modules/Console.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
-  "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RunState",
+ChromeUtils.defineModuleGetter(this, "RunState",
   "resource:///modules/sessionstore/RunState.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
-  "resource://gre/modules/TelemetryStopwatch.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "Telemetry",
   "@mozilla.org/base/telemetry;1", "nsITelemetry");
 XPCOMUtils.defineLazyServiceGetter(this, "sessionStartup",
   "@mozilla.org/browser/sessionstartup;1", "nsISessionStartup");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionWorker",
+ChromeUtils.defineModuleGetter(this, "SessionWorker",
   "resource:///modules/sessionstore/SessionWorker.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
+ChromeUtils.defineModuleGetter(this, "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm");
 
 const PREF_UPGRADE_BACKUP = "browser.sessionstore.upgradeBackup.latestBuildID";
@@ -58,7 +47,10 @@ const PREF_MAX_UPGRADE_BACKUPS = "browser.sessionstore.upgradeBackup.maxUpgradeB
 const PREF_MAX_SERIALIZE_BACK = "browser.sessionstore.max_serialize_back";
 const PREF_MAX_SERIALIZE_FWD = "browser.sessionstore.max_serialize_forward";
 
-this.SessionFile = {
+XPCOMUtils.defineLazyPreferenceGetter(this, "kMaxWriteFailures",
+  "browser.sessionstore.max_write_failures", 5);
+
+var SessionFile = {
   /**
    * Read the contents of the session file, asynchronously.
    */
@@ -84,6 +76,10 @@ this.SessionFile = {
    */
   get Paths() {
     return SessionFileInternal.Paths;
+  },
+
+  get MaxWriteFailures() {
+    return kMaxWriteFailures;
   }
 };
 
@@ -187,13 +183,22 @@ var SessionFileInternal = {
   // Used for error reporting.
   _failures: 0,
 
-  // Resolved once initialization is complete.
-  // The promise never rejects.
-  _deferredInitialized: PromiseUtils.defer(),
+  // Object that keeps statistics that should help us make informed decisions
+  // about the current status of the worker.
+  _workerHealth: {
+    failures: 0
+  },
 
-  // `true` once we have started initialization, i.e. once something
-  // has been scheduled that will eventually resolve `_deferredInitialized`.
+  // `true` once we have started initialization of the worker.
   _initializationStarted: false,
+
+  // A string that will be set to the session file name part that was read from
+  // disk. It will be available _after_ a session file read() is done.
+  _readOrigin: null,
+
+  // `true` if the old, uncompressed, file format was used to read from disk, as
+  // a fallback mechanism.
+  _usingOldExtension: false,
 
   // The ID of the latest version of Gecko for which we have an upgrade backup
   // or |undefined| if no upgrade backup was ever written.
@@ -208,6 +213,7 @@ var SessionFileInternal = {
   async _readInternal(useOldExtension) {
     let result;
     let noFilesFound = true;
+    this._usingOldExtension = useOldExtension;
 
     // Attempt to load by order of priority from the various backups
     for (let key of this.Paths.loadOrder) {
@@ -231,7 +237,8 @@ var SessionFileInternal = {
 
         if (!SessionStore.isFormatVersionCompatible(parsed.version || ["sessionrestore", 0] /* fallback for old versions*/)) {
           // Skip sessionstore files that we don't understand.
-          Cu.reportError("Cannot extract data from Session Restore file " + path + ". Wrong format/version: " + JSON.stringify(parsed.version) + ".");
+          Cu.reportError("Cannot extract data from Session Restore file " + path +
+            ". Wrong format/version: " + JSON.stringify(parsed.version) + ".");
           continue;
         }
         result = {
@@ -271,8 +278,6 @@ var SessionFileInternal = {
 
   // Find the correct session file, read it and setup the worker.
   async read() {
-    this._initializationStarted = true;
-
     // Load session files with lz4 compression.
     let {result, noFilesFound} = await this._readInternal(false);
     if (!result) {
@@ -296,40 +301,74 @@ var SessionFileInternal = {
         useOldExtension: false
       };
     }
+    this._readOrigin = result.origin;
 
     result.noFilesFound = noFilesFound;
 
     // Initialize the worker (in the background) to let it handle backups and also
     // as a workaround for bug 964531.
-    let promiseInitialized = SessionWorker.post("init", [result.origin, result.useOldExtension, this.Paths, {
-      maxUpgradeBackups: Services.prefs.getIntPref(PREF_MAX_UPGRADE_BACKUPS, 3),
-      maxSerializeBack: Services.prefs.getIntPref(PREF_MAX_SERIALIZE_BACK, 10),
-      maxSerializeForward: Services.prefs.getIntPref(PREF_MAX_SERIALIZE_FWD, -1)
-    }]);
-
-    promiseInitialized.catch(err => {
-      // Ensure that we report errors but that they do not stop us.
-      Promise.reject(err);
-    }).then(() => this._deferredInitialized.resolve());
+    this._initWorker();
 
     return result;
   },
 
-  // Post a message to the worker, making sure that it has been initialized
-  // first.
-  async _postToWorker(...args) {
-    if (!this._initializationStarted) {
-      // Initializing the worker is somewhat complex, as proper handling of
-      // backups requires us to first read and check the session. Consequently,
-      // the only way to initialize the worker is to first call `this.read()`.
+  // Initialize the worker in the background.
+  // Since this called _before_ any other messages are posted to the worker (see
+  // `_postToWorker()`), we know that this initialization process will be completed
+  // on time.
+  // Thus, effectively, this blocks callees on its completion.
+  // In case of a worker crash/ shutdown during its initialization phase,
+  // `_checkWorkerHealth()` will detect it and flip the `_initializationStarted`
+  // property back to `false`. This means that we'll respawn the worker upon the
+  // next request, followed by the initialization sequence here. In other words;
+  // exactly the same procedure as when the worker crashed/ shut down 'regularly'.
+  //
+  // This will never throw an error.
+  _initWorker() {
+    return new Promise(resolve => {
+      if (this._initializationStarted) {
+        resolve();
+        return;
+      }
 
-      // The call to `this.read()` causes background initialization of the worker.
-      // Initialization will be complete once `this._deferredInitialized.promise`
-      // resolves.
-      this.read();
+      if (!this._readOrigin) {
+        throw new Error("_initWorker called too early! Please read the session file from disk first.");
+      }
+
+      this._initializationStarted = true;
+      SessionWorker.post("init", [this._readOrigin, this._usingOldExtension, this.Paths, {
+        maxUpgradeBackups: Services.prefs.getIntPref(PREF_MAX_UPGRADE_BACKUPS, 3),
+        maxSerializeBack: Services.prefs.getIntPref(PREF_MAX_SERIALIZE_BACK, 10),
+        maxSerializeForward: Services.prefs.getIntPref(PREF_MAX_SERIALIZE_FWD, -1)
+      }]).catch(err => {
+        // Ensure that we report errors but that they do not stop us.
+        Promise.reject(err);
+      }).then(resolve);
+    });
+  },
+
+  // Post a message to the worker, making sure that it has been initialized first.
+  async _postToWorker(...args) {
+    await this._initWorker();
+    return SessionWorker.post(...args);
+  },
+
+  /**
+   * For good measure, terminate the worker when we've had over `kMaxWriteFailures`
+   * amount of failures to deal with. This will spawn a fresh worker upon the next
+   * write.
+   * This also resets the `_workerHealth` stats.
+   */
+  _checkWorkerHealth() {
+    if (this._workerHealth.failures >= kMaxWriteFailures) {
+      SessionWorker.terminate();
+      // Flag as not-initialized, to ensure that the worker state init is performed
+      // upon the next request.
+      this._initializationStarted = false;
+      // Reset the counter and report to telemetry.
+      this._workerHealth.failures = 0;
+      Telemetry.scalarAdd("browser.session.restore.worker_restart_count", 1);
     }
-    await this._deferredInitialized.promise;
-    return SessionWorker.post(...args)
   },
 
   write(aData) {
@@ -367,6 +406,7 @@ var SessionFileInternal = {
       // Catch and report any errors.
       console.error("Could not write session state file ", err, err.stack);
       this._failures++;
+      this._workerHealth.failures++;
       // By not doing anything special here we ensure that |promise| cannot
       // be rejected anymore. The shutdown/cleanup code at the end of the
       // function will thus always be executed.
@@ -395,12 +435,18 @@ var SessionFileInternal = {
 
       if (isFinalWrite) {
         Services.obs.notifyObservers(null, "sessionstore-final-state-write-complete");
+      } else {
+        this._checkWorkerHealth();
       }
     });
   },
 
   wipe() {
-    return this._postToWorker("wipe");
+    return this._postToWorker("wipe").then(() => {
+      // After a wipe, we need to make sure to re-initialize upon the next read(),
+      // because the state variables as sent to the worker have changed.
+      this._initializationStarted = false;
+    });
   },
 
   _recordTelemetry(telemetry) {

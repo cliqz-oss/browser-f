@@ -7,32 +7,31 @@
 use app_units::Au;
 use context::QuirksMode;
 use cssparser::{Parser, RGBA};
-use euclid::{ScaleFactor, Size2D, TypedSize2D};
-use font_metrics::ServoMetricsProvider;
+use euclid::{Size2D, TypedScale, TypedSize2D};
 use media_queries::MediaType;
 use parser::ParserContext;
-use properties::{ComputedValues, StyleBuilder};
-use properties::longhands::font_size;
-use selectors::parser::SelectorParseError;
-use std::fmt;
+use properties::ComputedValues;
+use selectors::parser::SelectorParseErrorKind;
+use std::fmt::{self, Write};
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use style_traits::{CSSPixel, DevicePixel, ToCss, ParseError};
+use style_traits::{CSSPixel, CssWriter, DevicePixel, ParseError, ToCss};
 use style_traits::viewport::ViewportConstraints;
+use values::{specified, KeyframesName};
 use values::computed::{self, ToComputedValue};
-use values::specified;
+use values::computed::font::FontSize;
 
 /// A device is a structure that represents the current media a given document
 /// is displayed in.
 ///
 /// This is the struct against which media queries are evaluated.
-#[derive(HeapSizeOf)]
+#[derive(MallocSizeOf)]
 pub struct Device {
     /// The current media type used by de device.
     media_type: MediaType,
     /// The current viewport size, in CSS pixels.
     viewport_size: TypedSize2D<f32, CSSPixel>,
     /// The current device pixel ratio, from CSS pixels to device pixels.
-    device_pixel_ratio: ScaleFactor<f32, CSSPixel, DevicePixel>,
+    device_pixel_ratio: TypedScale<f32, CSSPixel, DevicePixel>,
 
     /// The font size of the root element
     /// This is set when computing the style of the root
@@ -42,26 +41,32 @@ pub struct Device {
     /// other style being computed at the same time, given we need the style of
     /// the parent to compute everything else. So it is correct to just use
     /// a relaxed atomic here.
-    #[ignore_heap_size_of = "Pure stack type"]
+    #[ignore_malloc_size_of = "Pure stack type"]
     root_font_size: AtomicIsize,
     /// Whether any styles computed in the document relied on the root font-size
     /// by using rem units.
-    #[ignore_heap_size_of = "Pure stack type"]
+    #[ignore_malloc_size_of = "Pure stack type"]
     used_root_font_size: AtomicBool,
+    /// Whether any styles computed in the document relied on the viewport size.
+    #[ignore_malloc_size_of = "Pure stack type"]
+    used_viewport_units: AtomicBool,
 }
 
 impl Device {
     /// Trivially construct a new `Device`.
-    pub fn new(media_type: MediaType,
-               viewport_size: TypedSize2D<f32, CSSPixel>,
-               device_pixel_ratio: ScaleFactor<f32, CSSPixel, DevicePixel>)
-               -> Device {
+    pub fn new(
+        media_type: MediaType,
+        viewport_size: TypedSize2D<f32, CSSPixel>,
+        device_pixel_ratio: TypedScale<f32, CSSPixel, DevicePixel>,
+    ) -> Device {
         Device {
-            media_type: media_type,
-            viewport_size: viewport_size,
-            device_pixel_ratio: device_pixel_ratio,
-            root_font_size: AtomicIsize::new(font_size::get_initial_value().0 as isize), // FIXME(bz): Seems dubious?
+            media_type,
+            viewport_size,
+            device_pixel_ratio,
+            // FIXME(bz): Seems dubious?
+            root_font_size: AtomicIsize::new(FontSize::medium().size().0 as isize),
             used_root_font_size: AtomicBool::new(false),
+            used_viewport_units: AtomicBool::new(false),
         }
     }
 
@@ -81,7 +86,21 @@ impl Device {
 
     /// Set the font size of the root element (for rem)
     pub fn set_root_font_size(&self, size: Au) {
-        self.root_font_size.store(size.0 as isize, Ordering::Relaxed)
+        self.root_font_size
+            .store(size.0 as isize, Ordering::Relaxed)
+    }
+
+    /// Sets the body text color for the "inherit color from body" quirk.
+    ///
+    /// <https://quirks.spec.whatwg.org/#the-tables-inherit-color-from-body-quirk>
+    pub fn set_body_text_color(&self, _color: RGBA) {
+        // Servo doesn't implement this quirk (yet)
+    }
+
+    /// Whether a given animation name may be referenced from style.
+    pub fn animation_name_may_be_referenced(&self, _: &KeyframesName) -> bool {
+        // Assume it is, since we don't have any good way to prove it's not.
+        true
     }
 
     /// Returns whether we ever looked up the root font size of the Device.
@@ -93,18 +112,25 @@ impl Device {
     /// among other things, to resolve viewport units.
     #[inline]
     pub fn au_viewport_size(&self) -> Size2D<Au> {
-        Size2D::new(Au::from_f32_px(self.viewport_size.width),
-                    Au::from_f32_px(self.viewport_size.height))
+        Size2D::new(
+            Au::from_f32_px(self.viewport_size.width),
+            Au::from_f32_px(self.viewport_size.height),
+        )
     }
 
-    /// Returns the viewport size in pixels.
-    #[inline]
-    pub fn px_viewport_size(&self) -> TypedSize2D<f32, CSSPixel> {
-        self.viewport_size
+    /// Like the above, but records that we've used viewport units.
+    pub fn au_viewport_size_for_viewport_unit_resolution(&self) -> Size2D<Au> {
+        self.used_viewport_units.store(true, Ordering::Relaxed);
+        self.au_viewport_size()
+    }
+
+    /// Whether viewport units were used since the last device change.
+    pub fn used_viewport_units(&self) -> bool {
+        self.used_viewport_units.load(Ordering::Relaxed)
     }
 
     /// Returns the device pixel ratio.
-    pub fn device_pixel_ratio(&self) -> ScaleFactor<f32, CSSPixel, DevicePixel> {
+    pub fn device_pixel_ratio(&self) -> TypedScale<f32, CSSPixel, DevicePixel> {
         self.device_pixel_ratio
     }
 
@@ -132,19 +158,19 @@ impl Device {
 /// A expression kind servo understands and parses.
 ///
 /// Only `pub` for unit testing, please don't use it directly!
-#[derive(PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 pub enum ExpressionKind {
-    /// http://dev.w3.org/csswg/mediaqueries-3/#width
+    /// <http://dev.w3.org/csswg/mediaqueries-3/#width>
     Width(Range<specified::Length>),
 }
 
 /// A single expression a per:
 ///
-/// http://dev.w3.org/csswg/mediaqueries-3/#media1
-#[derive(PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-pub struct Expression(ExpressionKind);
+/// <http://dev.w3.org/csswg/mediaqueries-3/#media1>
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
+pub struct Expression(pub ExpressionKind);
 
 impl Expression {
     /// The kind of expression we're, just for unit testing.
@@ -161,8 +187,10 @@ impl Expression {
     /// ```
     ///
     /// Only supports width and width ranges for now.
-    pub fn parse<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                         -> Result<Self, ParseError<'i>> {
+    pub fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
         input.expect_parenthesis_block()?;
         input.parse_nested_block(|input| {
             let name = input.expect_ident_cloned()?;
@@ -178,7 +206,7 @@ impl Expression {
                 "width" => {
                     ExpressionKind::Width(Range::Eq(specified::Length::parse_non_negative(context, input)?))
                 },
-                _ => return Err(SelectorParseError::UnexpectedIdent(name.clone()).into())
+                _ => return Err(input.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
             }))
         })
     }
@@ -191,28 +219,28 @@ impl Expression {
         match self.0 {
             ExpressionKind::Width(ref range) => {
                 match range.to_computed_range(device, quirks_mode) {
-                    Range::Min(ref width) => { value >= *width },
-                    Range::Max(ref width) => { value <= *width },
-                    Range::Eq(ref width) => { value == *width },
+                    Range::Min(ref width) => value >= *width,
+                    Range::Max(ref width) => value <= *width,
+                    Range::Eq(ref width) => value == *width,
                 }
-            }
+            },
         }
     }
 }
 
 impl ToCss for Expression {
-    fn to_css<W>(&self, dest: &mut W) -> fmt::Result
-        where W: fmt::Write,
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
     {
-        write!(dest, "(")?;
-        let (mm, l) = match self.0 {
-            ExpressionKind::Width(Range::Min(ref l)) => ("min-", l),
-            ExpressionKind::Width(Range::Max(ref l)) => ("max-", l),
-            ExpressionKind::Width(Range::Eq(ref l)) => ("", l),
+        let (s, l) = match self.0 {
+            ExpressionKind::Width(Range::Min(ref l)) => ("(min-width: ", l),
+            ExpressionKind::Width(Range::Max(ref l)) => ("(max-width: ", l),
+            ExpressionKind::Width(Range::Eq(ref l)) => ("(width: ", l),
         };
-        write!(dest, "{}width: ", mm)?;
+        dest.write_str(s)?;
         l.to_css(dest)?;
-        write!(dest, ")")
+        dest.write_char(')')
     }
 }
 
@@ -220,8 +248,8 @@ impl ToCss for Expression {
 ///
 /// Only public for testing, implementation details of `Expression` may change
 /// for Stylo.
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 pub enum Range<T> {
     /// At least the inner value.
     Min(T),
@@ -233,26 +261,10 @@ pub enum Range<T> {
 
 impl Range<specified::Length> {
     fn to_computed_range(&self, device: &Device, quirks_mode: QuirksMode) -> Range<Au> {
-        let default_values = device.default_computed_values();
-        // http://dev.w3.org/csswg/mediaqueries3/#units
-        // em units are relative to the initial font-size.
-        let context = computed::Context {
-            is_root_element: false,
-            builder: StyleBuilder::for_derived_style(device, default_values, None, None),
-            // Servo doesn't support font metrics
-            // A real provider will be needed here once we do; since
-            // ch units can exist in media queries.
-            font_metrics_provider: &ServoMetricsProvider,
-            in_media_query: true,
-            cached_system_font: None,
-            quirks_mode: quirks_mode,
-            for_smil_animation: false,
-        };
-
-        match *self {
-            Range::Min(ref width) => Range::Min(width.to_computed_value(&context)),
-            Range::Max(ref width) => Range::Max(width.to_computed_value(&context)),
-            Range::Eq(ref width) => Range::Eq(width.to_computed_value(&context))
-        }
+        computed::Context::for_media_query_evaluation(device, quirks_mode, |context| match *self {
+            Range::Min(ref width) => Range::Min(Au::from(width.to_computed_value(&context))),
+            Range::Max(ref width) => Range::Max(Au::from(width.to_computed_value(&context))),
+            Range::Eq(ref width) => Range::Eq(Au::from(width.to_computed_value(&context))),
+        })
     }
 }

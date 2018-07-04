@@ -9,9 +9,11 @@ description: >
     identifier "let" disallowed as lefthandside expression in strict mode
 flags: [onlyStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 var o = { a: 1 };
 for (let in o) { }
 

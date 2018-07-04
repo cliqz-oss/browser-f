@@ -8,6 +8,7 @@
 #define mozilla_dom_XMLStylesheetProcessingInstruction_h
 
 #include "mozilla/Attributes.h"
+#include "mozilla/Unused.h"
 #include "mozilla/dom/ProcessingInstruction.h"
 #include "nsIURI.h"
 #include "nsStyleLinkElement.h"
@@ -31,7 +32,7 @@ public:
     : ProcessingInstruction(aNodeInfoManager->GetNodeInfo(
                                        nsGkAtoms::processingInstructionTagName,
                                        nullptr, kNameSpaceID_None,
-                                       nsIDOMNode::PROCESSING_INSTRUCTION_NODE,
+                                       PROCESSING_INSTRUCTION_NODE,
                                        nsGkAtoms::xml_stylesheet), aData)
   {
   }
@@ -60,31 +61,31 @@ public:
   virtual void OverrideBaseURI(nsIURI* aNewBaseURI) override;
 
   // nsStyleLinkElement
-  NS_IMETHOD GetCharset(nsAString& aCharset) override;
+  void GetCharset(nsAString& aCharset) override;
 
   virtual void SetData(const nsAString& aData, mozilla::ErrorResult& rv) override
   {
-    nsGenericDOMDataNode::SetData(aData, rv);
+    CharacterData::SetData(aData, rv);
     if (rv.Failed()) {
       return;
     }
-    UpdateStyleSheetInternal(nullptr, nullptr, true);
+    Unused << UpdateStyleSheetInternal(nullptr, nullptr, ForceUpdate::Yes);
   }
-  using ProcessingInstruction::SetData; // Prevent hiding overloaded virtual function.
 
 protected:
   virtual ~XMLStylesheetProcessingInstruction();
 
   nsCOMPtr<nsIURI> mOverriddenBaseURI;
 
-  already_AddRefed<nsIURI> GetStyleSheetURL(bool* aIsInline) override;
+  already_AddRefed<nsIURI>
+    GetStyleSheetURL(bool* aIsInline, nsIPrincipal** aTriggeringPrincipal) final;
   void GetStyleSheetInfo(nsAString& aTitle,
                          nsAString& aType,
                          nsAString& aMedia,
-                         bool* aIsScoped,
-                         bool* aIsAlternate) override;
-  virtual nsGenericDOMDataNode* CloneDataNode(mozilla::dom::NodeInfo *aNodeInfo,
-                                              bool aCloneText) const override;
+                         bool* aIsAlternate) final;
+  already_AddRefed<CharacterData>
+    CloneDataNode(mozilla::dom::NodeInfo* aNodeInfo,
+                  bool aCloneText) const final;
 };
 
 } // namespace dom

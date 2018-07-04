@@ -7,8 +7,8 @@
  * Tests if focus modifiers work for the SideMenuWidget.
  */
 
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(CUSTOM_GET_URL);
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(CUSTOM_GET_URL);
   info("Starting test... ");
 
   // It seems that this test may be slow on Ubuntu builds running on ec2.
@@ -30,11 +30,8 @@ add_task(function* () {
       "The network details panel should render correctly.");
   }
 
-  let wait = waitForNetworkEvents(monitor, 2);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests(2);
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 2);
 
   check(-1, false);
 
@@ -53,11 +50,8 @@ add_task(function* () {
   store.dispatch(Actions.selectDelta(-10));
   check(0, true);
 
-  wait = waitForNetworkEvents(monitor, 18);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests(18);
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 18);
 
   store.dispatch(Actions.selectDelta(+Infinity));
   check(19, true);

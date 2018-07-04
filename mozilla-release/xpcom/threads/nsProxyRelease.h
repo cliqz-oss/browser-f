@@ -27,11 +27,11 @@
 namespace detail {
 
 template<typename T>
-class ProxyReleaseEvent : public mozilla::Runnable
+class ProxyReleaseEvent : public mozilla::CancelableRunnable
 {
 public:
   ProxyReleaseEvent(const char* aName, already_AddRefed<T> aDoomed)
-  : Runnable(aName), mDoomed(aDoomed.take()) {}
+  : CancelableRunnable(aName), mDoomed(aDoomed.take()) {}
 
   NS_IMETHOD Run() override
   {
@@ -39,19 +39,22 @@ public:
     return NS_OK;
   }
 
+  nsresult Cancel() override
+  {
+    return Run();
+  }
+
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   NS_IMETHOD GetName(nsACString& aName) override
   {
-#ifdef RELEASE_OR_BETA
-    aName.Truncate();
-#else
     if (mName) {
       aName.Append(nsPrintfCString("ProxyReleaseEvent for %s", mName));
     } else {
       aName.AssignLiteral("ProxyReleaseEvent");
     }
-#endif
     return NS_OK;
   }
+#endif
 
 private:
   T* MOZ_OWNING_REF mDoomed;
@@ -365,14 +368,7 @@ public:
   // These all call through to nsMainThreadPtrHolder, and thus implicitly
   // assert that we're on the main thread. Off-main-thread consumers must treat
   // these handles as opaque.
-  T* get()
-  {
-    if (mPtr) {
-      return mPtr.get()->get();
-    }
-    return nullptr;
-  }
-  const T* get() const
+  T* get() const
   {
     if (mPtr) {
       return mPtr.get()->get();
@@ -380,8 +376,8 @@ public:
     return nullptr;
   }
 
-  operator T*() { return get(); }
-  T* operator->() MOZ_NO_ADDREF_RELEASE_ON_RETURN { return get(); }
+  operator T*() const { return get(); }
+  T* operator->() const MOZ_NO_ADDREF_RELEASE_ON_RETURN { return get(); }
 
   // These are safe to call on other threads with appropriate external locking.
   bool operator==(const nsMainThreadPtrHandle<T>& aOther) const

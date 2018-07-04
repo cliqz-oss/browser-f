@@ -1,3 +1,4 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 "use strict";
 
 add_task(async function test_add_address() {

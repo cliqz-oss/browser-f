@@ -15,7 +15,6 @@
 #include "nsCOMPtr.h"
 #include "nsIDOMBlob.h"
 #include "nsIMutable.h"
-#include "nsIXMLHttpRequest.h"
 #include "nsWrapperCache.h"
 #include "nsWeakReference.h"
 
@@ -29,14 +28,12 @@ class File;
 class OwningArrayBufferViewOrArrayBufferOrBlobOrUSVString;
 
 class Blob : public nsIDOMBlob
-           , public nsIXHRSendable
            , public nsIMutable
            , public nsSupportsWeakReference
            , public nsWrapperCache
 {
 public:
   NS_DECL_NSIDOMBLOB
-  NS_DECL_NSIXHRSENDABLE
   NS_DECL_NSIMUTABLE
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -58,11 +55,6 @@ public:
   static already_AddRefed<Blob>
   CreateMemoryBlob(nsISupports* aParent, void* aMemoryBuffer, uint64_t aLength,
                    const nsAString& aContentType);
-
-  static already_AddRefed<Blob>
-  CreateTemporaryBlob(nsISupports* aParent, PRFileDesc* aFD,
-                      uint64_t aStartPos, uint64_t aLength,
-                      const nsAString& aContentType);
 
   BlobImpl* Impl() const
   {
@@ -88,7 +80,7 @@ public:
               ErrorResult& aRv);
 
   void
-  GetInternalStream(nsIInputStream** aStream, ErrorResult& aRv);
+  CreateInputStream(nsIInputStream** aStream, ErrorResult& aRv);
 
   int64_t
   GetFileId();
@@ -127,8 +119,16 @@ public:
 
   already_AddRefed<Blob> Slice(const Optional<int64_t>& aStart,
                                const Optional<int64_t>& aEnd,
-                               const nsAString& aContentType,
+                               const Optional<nsAString>& aContentType,
                                ErrorResult& aRv);
+
+  size_t GetAllocationSize() const;
+
+  nsresult
+  GetSendInfo(nsIInputStream** aBody,
+              uint64_t* aContentLength,
+              nsACString& aContentType,
+              nsACString& aCharset) const;
 
 protected:
   // File constructor should never be used directly. Use Blob::Create instead.
@@ -146,6 +146,10 @@ protected:
 private:
   nsCOMPtr<nsISupports> mParent;
 };
+
+// Override BindingJSObjectMallocBytes for blobs to tell the JS GC how much
+// memory is held live by the binding object.
+size_t BindingJSObjectMallocBytes(Blob* aBlob);
 
 } // namespace dom
 } // namespace mozilla

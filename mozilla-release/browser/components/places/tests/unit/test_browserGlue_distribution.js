@@ -35,7 +35,7 @@ function run_test() {
   run_next_test();
 }
 
-do_register_cleanup(function() {
+registerCleanupFunction(function() {
   // Remove the distribution file, even if the test failed, otherwise all
   // next tests will import it.
   let iniFile = gProfD.clone();
@@ -51,7 +51,7 @@ add_task(async function() {
   // Disable Smart Bookmarks creation.
   Services.prefs.setIntPref(PREF_SMART_BOOKMARKS_VERSION, -1);
 
-  let glue = Cc["@mozilla.org/browser/browserglue;1"].getService(Ci.nsIObserver)
+  let glue = Cc["@mozilla.org/browser/browserglue;1"].getService(Ci.nsIObserver);
   // Initialize Places through the History Service and check that a new
   // database has been created.
   Assert.equal(PlacesUtils.history.databaseStatus,

@@ -8,6 +8,7 @@
 
 .content-container {
   -moz-appearance: -moz-mac-source-list;
+  -moz-font-smoothing-background-color: -moz-mac-source-list;
 }
 
 .item {
@@ -28,10 +29,12 @@
 
 .item.selected > .item-title-container {
   -moz-appearance: -moz-mac-source-list-selection;
+  -moz-font-smoothing-background-color: -moz-mac-source-list-selection;
 }
 
 .item.selected:focus > .item-title-container {
   -moz-appearance: -moz-mac-active-source-list-selection;
+  -moz-font-smoothing-background-color: -moz-mac-active-source-list-selection;
 }
 
 .item.client .item-twisty-container {
@@ -40,7 +43,7 @@
   background-image: url("chrome://global/skin/tree/arrow-disclosure.svg#arrow-disclosure-expanded");
 }
 
-@media not all and (-moz-mac-yosemite-theme) {
+@media (-moz-mac-yosemite-theme: 0) {
   .item.client.selected .item-twisty-container {
     background-image: url("chrome://global/skin/tree/arrow-disclosure.svg#arrow-disclosure-expanded-inverted");
   }
@@ -98,7 +101,7 @@
 }
 
 .sidebar-search-container {
-  border-bottom: 1px solid #bdbdbd;
+  padding: 4px;
 }
 
 .search-box {
@@ -106,24 +109,13 @@
   padding: 1px;
   font-size: 12px;
   cursor: text;
-  margin: 4px 8px 10px;
-  border-width: 3px;
-  border-style: solid;
-  border-color: currentcolor;
-  border-image: none;
-  -moz-border-top-colors: transparent #888 #000;
-  -moz-border-right-colors: transparent #FFF #000;
-  -moz-border-bottom-colors: transparent #FFF #000;
-  -moz-border-left-colors: transparent #888 #000;
-  border-top-right-radius: 2px;
-  border-bottom-left-radius: 2px;
-  background-color: #FFF;
-  color: #000;
+  margin: 4px;
+  color: -moz-fieldText;
   -moz-user-select: text;
   text-shadow: none;
 }
 
-.search-box.compact > .textbox-input-box > .textbox-search-icons > .textbox-search-clear {
+.search-box > .textbox-input-box > .textbox-search-icons > .textbox-search-clear {
   background-image: url(chrome://global/skin/icons/searchfield-cancel.svg);
   background-repeat: no-repeat;
   background-size: 11px 11px;
@@ -131,24 +123,6 @@
   height: 11px;
 }
 
-.search-box.compact > .textbox-input-box > .textbox-search-icons > .textbox-search-icon {
-  display: none;
-}
-
-.search-box[focused="true"] {
-  -moz-border-top-colors: -moz-mac-focusring -moz-mac-focusring #000000;
-  -moz-border-right-colors: -moz-mac-focusring -moz-mac-focusring #000000;
-  -moz-border-bottom-colors: -moz-mac-focusring -moz-mac-focusring #000000;
-  -moz-border-left-colors: -moz-mac-focusring -moz-mac-focusring #000000;
-}
-
-.search-box.compact {
-    padding: 0px;
-    /* font size is in px because the XUL it was copied from uses px */
-    font-size: 11px;
-}
-
-.textbox-search-clear,
-.textbox-search-icon {
+.textbox-search-clear {
   margin-top: 1px;
 }

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,6 +9,10 @@
 #include "nsQuoteList.h"
 #include "nsReadableUtils.h"
 #include "nsIContent.h"
+#include "mozilla/ErrorResult.h"
+#include "mozilla/dom/Text.h"
+
+using namespace mozilla;
 
 bool
 nsQuoteNode::InitTextFrame(nsGenConList* aList, nsIFrame* aPseudoFrame,
@@ -26,7 +30,7 @@ nsQuoteNode::InitTextFrame(nsGenConList* aList, nsIFrame* aPseudoFrame,
 
   // Don't set up text for 'no-open-quote' and 'no-close-quote'.
   if (IsRealQuote()) {
-    aTextFrame->GetContent()->SetText(*Text(), false);
+    aTextFrame->GetContent()->AsText()->SetText(*Text(), false);
   }
   return dirty;
 }
@@ -79,7 +83,7 @@ nsQuoteList::RecalcAll()
     Calc(node);
 
     if (node->mDepthBefore != oldDepth && node->mText && node->IsRealQuote())
-      node->mText->SetData(*node->Text());
+      node->mText->SetData(*node->Text(), IgnoreErrors());
   }
 }
 

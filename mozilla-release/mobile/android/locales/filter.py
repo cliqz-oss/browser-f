@@ -17,7 +17,6 @@ def test(mod, path, entity = None):
   if mod == "toolkit":
     # keep this file list in sync with jar.mn
     if path in (
-        "chrome/global/about.dtd",
         "chrome/global/aboutAbout.dtd",
         "chrome/global/aboutReader.properties",
         "chrome/global/aboutRights.dtd",
@@ -25,7 +24,6 @@ def test(mod, path, entity = None):
         "chrome/global/commonDialogs.properties",
         "chrome/global/intl.properties",
         "chrome/global/intl.css",
-        "chrome/passwordmgr/passwordmgr.properties",
         "chrome/search/search.properties",
         "chrome/pluginproblem/pluginproblem.dtd",
         "chrome/global/aboutSupport.dtd",

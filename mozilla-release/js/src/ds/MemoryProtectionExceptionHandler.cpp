@@ -10,7 +10,7 @@
 #include "mozilla/Atomics.h"
 
 #if defined(XP_WIN)
-# include "jswin.h"
+# include "util/Windows.h"
 #elif defined(XP_UNIX) && !defined(XP_DARWIN)
 # include <signal.h>
 # include <sys/types.h>
@@ -29,8 +29,11 @@
 #include "threading/LockGuard.h"
 #include "threading/Thread.h"
 #include "vm/MutexIDs.h"
+#include "vm/Runtime.h"
 
 namespace js {
+
+static mozilla::Atomic<bool> sProtectedRegionsInit(false);
 
 /*
  * A class to store the addresses of the regions recognized as protected
@@ -60,11 +63,21 @@ class ProtectedRegionTree
     SplayTree<Region, Region> tree;
 
   public:
-    ProtectedRegionTree() : lock(mutexid::ProtectedRegionTree),
-                            alloc(4096),
-                            tree(&alloc) {}
+    ProtectedRegionTree()
+      : lock(mutexid::ProtectedRegionTree),
+        alloc(4096),
+        tree(&alloc)
+    {
+        sProtectedRegionsInit = true;
+    }
 
-    ~ProtectedRegionTree() { MOZ_ASSERT(tree.empty()); }
+    ~ProtectedRegionTree() {
+        // See Bug 1445619: Currently many users of the JS engine are leaking
+        // the world, unfortunately LifoAlloc owned by JSRuntimes have
+        // registered memory regions.
+        sProtectedRegionsInit = false;
+        MOZ_ASSERT_IF(!JSRuntime::hasLiveRuntimes(), tree.empty());
+    }
 
     void insert(uintptr_t addr, size_t size) {
         MOZ_ASSERT(addr && size);
@@ -114,14 +127,14 @@ MemoryProtectionExceptionHandler::isDisabled()
 void
 MemoryProtectionExceptionHandler::addRegion(void* addr, size_t size)
 {
-    if (sExceptionHandlerInstalled)
+    if (sExceptionHandlerInstalled && sProtectedRegionsInit)
         sProtectedRegions.insert(uintptr_t(addr), size);
 }
 
 void
 MemoryProtectionExceptionHandler::removeRegion(void* addr)
 {
-    if (sExceptionHandlerInstalled)
+    if (sExceptionHandlerInstalled && sProtectedRegionsInit)
         sProtectedRegions.remove(uintptr_t(addr));
 }
 
@@ -180,7 +193,7 @@ VectoredExceptionHandler(EXCEPTION_POINTERS* ExceptionInfo)
 
             // If the faulting address is in one of our protected regions, we
             // want to annotate the crash to make it stand out from the crowd.
-            if (sProtectedRegions.isProtected(address)) {
+            if (sProtectedRegionsInit && sProtectedRegions.isProtected(address)) {
                 ReportCrashIfDebug("Hit MOZ_CRASH(Tried to access a protected region!)\n");
                 MOZ_CRASH_ANNOTATE("MOZ_CRASH(Tried to access a protected region!)");
             }
@@ -250,7 +263,7 @@ UnixExceptionHandler(int signum, siginfo_t* info, void* context)
 
             // If the faulting address is in one of our protected regions, we
             // want to annotate the crash to make it stand out from the crowd.
-            if (sProtectedRegions.isProtected(address)) {
+            if (sProtectedRegionsInit && sProtectedRegions.isProtected(address)) {
                 ReportCrashIfDebug("Hit MOZ_CRASH(Tried to access a protected region!)\n");
                 MOZ_CRASH_ANNOTATE("MOZ_CRASH(Tried to access a protected region!)");
             }
@@ -282,7 +295,7 @@ MemoryProtectionExceptionHandler::install()
 
     // Install our new exception handler and save the previous one.
     struct sigaction faultHandler = {};
-    faultHandler.sa_flags = SA_SIGINFO | SA_NODEFER;
+    faultHandler.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
     faultHandler.sa_sigaction = UnixExceptionHandler;
     sigemptyset(&faultHandler.sa_mask);
     sExceptionHandlerInstalled = !sigaction(SIGSEGV, &faultHandler, &sPrevSEGVHandler);
@@ -521,15 +534,12 @@ struct ExceptionHandlerState
 
     /* Each Mach exception handler runs in its own thread. */
     Thread handlerThread;
-
-    /* Ensure that the exception handler thread is terminated before we quit. */
-    ~ExceptionHandlerState() { MemoryProtectionExceptionHandler::uninstall(); }
 };
 
 /* This choice of ID is arbitrary, but must not match our exception ID. */
 static const mach_msg_id_t sIDQuit = 42;
 
-static ExceptionHandlerState sMachExceptionState;
+static ExceptionHandlerState* sMachExceptionState = nullptr;
 
 /*
  * The meat of our exception handler. This thread waits for an exception
@@ -540,8 +550,8 @@ static void
 MachExceptionHandler()
 {
     kern_return_t ret;
-    MachExceptionParameters& current = sMachExceptionState.current;
-    MachExceptionParameters& previous = sMachExceptionState.previous;
+    MachExceptionParameters& current = sMachExceptionState->current;
+    MachExceptionParameters& previous = sMachExceptionState->previous;
 
     // We use the simplest kind of 64-bit exception message here.
     ExceptionRequest64 request = {};
@@ -577,7 +587,7 @@ MachExceptionHandler()
 
     // If the faulting address is inside one of our protected regions, we
     // want to annotate the crash to make it stand out from the crowd.
-    if (sProtectedRegions.isProtected(address)) {
+    if (sProtectedRegionsInit && sProtectedRegions.isProtected(address)) {
         ReportCrashIfDebug("Hit MOZ_CRASH(Tried to access a protected region!)\n");
         MOZ_CRASH_ANNOTATE("MOZ_CRASH(Tried to access a protected region!)");
     }
@@ -668,7 +678,7 @@ TerminateMachExceptionHandlerThread()
     mach_msg_header_t msg;
     msg.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
     msg.msgh_size = static_cast<mach_msg_size_t>(sizeof(msg));
-    msg.msgh_remote_port = sMachExceptionState.current.port;
+    msg.msgh_remote_port = sMachExceptionState->current.port;
     msg.msgh_local_port = MACH_PORT_NULL;
     msg.msgh_reserved = 0;
     msg.msgh_id = sIDQuit;
@@ -676,7 +686,7 @@ TerminateMachExceptionHandlerThread()
                                  MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
 
     if (ret == MACH_MSG_SUCCESS)
-        sMachExceptionState.handlerThread.join();
+        sMachExceptionState->handlerThread.join();
     else
         MOZ_CRASH("MachExceptionHandler: Handler thread failed to terminate!");
 }
@@ -685,17 +695,22 @@ bool
 MemoryProtectionExceptionHandler::install()
 {
     MOZ_ASSERT(!sExceptionHandlerInstalled);
+    MOZ_ASSERT(!sMachExceptionState);
 
     // If the exception handler is disabled, report success anyway.
     if (MemoryProtectionExceptionHandler::isDisabled())
         return true;
 
+    sMachExceptionState = js_new<ExceptionHandlerState>();
+    if (!sMachExceptionState)
+        return false;
+
     kern_return_t ret;
     mach_port_t task = mach_task_self();
 
     // Allocate a new exception port with receive rights.
-    sMachExceptionState.current = {};
-    MachExceptionParameters& current = sMachExceptionState.current;
+    sMachExceptionState->current = {};
+    MachExceptionParameters& current = sMachExceptionState->current;
     ret = mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &current.port);
     if (ret != KERN_SUCCESS)
         return false;
@@ -709,7 +724,7 @@ MemoryProtectionExceptionHandler::install()
     }
 
     // Start the thread that will receive the messages from our exception port.
-    if (!sMachExceptionState.handlerThread.init(MachExceptionHandler)) {
+    if (!sMachExceptionState->handlerThread.init(MachExceptionHandler)) {
         mach_port_deallocate(task, current.port);
         current = {};
         return false;
@@ -721,8 +736,8 @@ MemoryProtectionExceptionHandler::install()
     current.flavor = THREAD_STATE_NONE;
 
     // Tell the task to use our exception handler, and save the previous one.
-    sMachExceptionState.previous = {};
-    MachExceptionParameters& previous = sMachExceptionState.previous;
+    sMachExceptionState->previous = {};
+    MachExceptionParameters& previous = sMachExceptionState->previous;
     mach_msg_type_number_t previousCount = 1;
     ret = task_swap_exception_ports(task, current.mask, current.port, current.behavior,
                                     current.flavor, &previous.mask, &previousCount,
@@ -746,20 +761,25 @@ void
 MemoryProtectionExceptionHandler::uninstall()
 {
     if (sExceptionHandlerInstalled) {
+        MOZ_ASSERT(sMachExceptionState);
+
         mach_port_t task = mach_task_self();
 
         // Restore the previous exception handler.
-        MachExceptionParameters& previous = sMachExceptionState.previous;
+        MachExceptionParameters& previous = sMachExceptionState->previous;
         task_set_exception_ports(task, previous.mask, previous.port,
                                  previous.behavior, previous.flavor);
 
         TerminateMachExceptionHandlerThread();
 
         // Release the Mach IPC port we used.
-        mach_port_deallocate(task, sMachExceptionState.current.port);
+        mach_port_deallocate(task, sMachExceptionState->current.port);
 
-        sMachExceptionState.current = {};
-        sMachExceptionState.previous = {};
+        sMachExceptionState->current = {};
+        sMachExceptionState->previous = {};
+
+        js_delete(sMachExceptionState);
+        sMachExceptionState = nullptr;
 
         sExceptionHandlerInstalled = false;
     }

@@ -9,6 +9,8 @@ Library('imagetest')
 UNIFIED_SOURCES = [
     'Common.cpp',
     'TestADAM7InterpolatingFilter.cpp',
+    'TestAnimationFrameBuffer.cpp',
+    'TestContainers.cpp',
     'TestCopyOnWrite.cpp',
     'TestDecoders.cpp',
     'TestDecodeToSurface.cpp',
@@ -17,6 +19,7 @@ UNIFIED_SOURCES = [
     'TestRemoveFrameRectFilter.cpp',
     'TestSourceBuffer.cpp',
     'TestStreamingLexer.cpp',
+    'TestSurfaceCache.cpp',
     'TestSurfaceSink.cpp',
 ]
 
@@ -78,5 +81,5 @@ LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
 
 FINAL_LIBRARY = 'xul-gtest'
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

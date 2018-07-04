@@ -17,7 +17,7 @@
 const CC = Components.Constructor;
 const Cm = Components.manager;
 
-Cu.import("resource://testing-common/AppInfo.jsm");
+ChromeUtils.import("resource://testing-common/AppInfo.jsm");
 /* global updateAppInfo:false */ // Imported via AppInfo.jsm.
 updateAppInfo();
 
@@ -44,7 +44,7 @@ function getReportCheck(expectReport, expectedError) {
                               function(request, response) {
       if (expectReport) {
         let report = JSON.parse(readDataFromRequest(request));
-        do_check_eq(report.errorCode, expectedError);
+        Assert.equal(report.errorCode, expectedError);
         response.setStatusLine(null, 201, "Created");
         response.write("Created");
       } else {

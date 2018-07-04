@@ -41,8 +41,8 @@ add_task(async function() {
     let bounds = plugin.getBoundingClientRect();
     let left = (bounds.left + bounds.right) / 2;
     let top = (bounds.top + bounds.bottom) / 2;
-    let utils = content.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                       .getInterface(Components.interfaces.nsIDOMWindowUtils);
+    let utils = content.QueryInterface(Ci.nsIInterfaceRequestor)
+                       .getInterface(Ci.nsIDOMWindowUtils);
     utils.sendMouseEvent("mousedown", left, top, 0, 1, 0, false, 0, 0);
     utils.sendMouseEvent("mouseup", left, top, 0, 1, 0, false, 0, 0);
   });
@@ -55,7 +55,7 @@ add_task(async function() {
   let condition = () => !PopupNotifications.getNotification("click-to-play-plugins", gTestBrowser).dismissed &&
     PopupNotifications.panel.firstChild;
   await promiseForCondition(condition);
-  PopupNotifications.panel.firstChild._primaryButton.click();
+  PopupNotifications.panel.firstChild.button.click();
 
   // check plugin state
   pluginInfo = await promiseForPluginInfo("plugin");

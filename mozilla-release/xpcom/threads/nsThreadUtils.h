@@ -18,16 +18,17 @@
 #include "nsIThreadManager.h"
 #include "nsITimer.h"
 #include "nsIThread.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsCOMPtr.h"
 #include "nsAutoPtr.h"
 #include "mozilla/Atomics.h"
-#include "mozilla/IndexSequence.h"
 #include "mozilla/Likely.h"
 #include "mozilla/Move.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Tuple.h"
 #include "mozilla/TypeTraits.h"
+
+#include <utility>
 
 //-----------------------------------------------------------------------------
 // These methods are alternatives to the methods on nsIThreadManager, provided
@@ -74,7 +75,7 @@ NS_NewNamedThread(const char (&aName)[LEN],
 }
 
 /**
- * Get a reference to the current thread.
+ * Get a reference to the current thread, creating it if it does not exist yet.
  *
  * @param aResult
  *   The resulting nsIThread object.
@@ -344,6 +345,8 @@ SpinEventLoopUntil(Pred&& aPredicate, nsIThread* aThread = nullptr)
  */
 extern bool NS_IsInCompositorThread();
 
+extern bool NS_IsInVRThread();
+
 //-----------------------------------------------------------------------------
 // Helpers that work with nsCOMPtr:
 
@@ -366,11 +369,18 @@ do_GetMainThread()
 //-----------------------------------------------------------------------------
 
 #ifdef MOZILLA_INTERNAL_API
-// Fast access to the current thread.  Do not release the returned pointer!  If
-// you want to use this pointer from some other thread, then you will need to
-// AddRef it.  Otherwise, you should only consider this pointer valid from code
-// running on the current thread.
+// Fast access to the current thread.  Will create an nsIThread if one does not
+// exist already!  Do not release the returned pointer!  If you want to use this
+// pointer from some other thread, then you will need to AddRef it.  Otherwise,
+// you should only consider this pointer valid from code running on the current
+// thread.
 extern nsIThread* NS_GetCurrentThread();
+
+// Exactly the same as NS_GetCurrentThread, except it will not create an
+// nsThread if one does not exist yet. This is useful in cases where you have
+// code that runs on threads that may or may not not be driven by an nsThread
+// event loop, and wish to avoid inadvertently creating a superfluous nsThread.
+extern nsIThread* NS_GetCurrentThreadNoCreate();
 
 /**
  * Set the name of the current thread. Prefer this function over
@@ -416,26 +426,39 @@ enum RunnableKind
   IdleWithTimer
 };
 
+// Implementing nsINamed on Runnable bloats vtables for the hundreds of
+// Runnable subclasses that we have, so we want to avoid that overhead
+// when we're not using nsINamed for anything.
+#ifndef RELEASE_OR_BETA
+#define MOZ_COLLECTING_RUNNABLE_TELEMETRY
+#endif
+
 // This class is designed to be subclassed.
-class Runnable : public nsIRunnable, public nsINamed
+class Runnable
+  : public nsIRunnable
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+  , public nsINamed
+#endif
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIRUNNABLE
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   NS_DECL_NSINAMED
+#endif
 
   Runnable() = delete;
 
-#ifdef RELEASE_OR_BETA
-  explicit Runnable(const char* aName) {}
-#else
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   explicit Runnable(const char* aName) : mName(aName) {}
+#else
+  explicit Runnable(const char* aName) {}
 #endif
 
 protected:
   virtual ~Runnable() {}
 
-#ifndef RELEASE_OR_BETA
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   const char* mName = nullptr;
 #endif
 
@@ -484,6 +507,28 @@ private:
   IdleRunnable(const IdleRunnable&) = delete;
   IdleRunnable& operator=(const IdleRunnable&) = delete;
   IdleRunnable& operator=(const IdleRunnable&&) = delete;
+};
+
+// This class is designed to be a wrapper of a real runnable to support event
+// prioritizable.
+class PrioritizableRunnable : public Runnable, public nsIRunnablePriority
+{
+public:
+  PrioritizableRunnable(already_AddRefed<nsIRunnable>&& aRunnable,
+                        uint32_t aPriority);
+
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+  NS_IMETHOD GetName(nsACString& aName) override;
+#endif
+
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_NSIRUNNABLE
+  NS_DECL_NSIRUNNABLEPRIORITY
+
+protected:
+  virtual ~PrioritizableRunnable() {};
+  nsCOMPtr<nsIRunnable> mRunnable;
+  uint32_t mPriority;
 };
 
 namespace detail {
@@ -618,8 +663,6 @@ NS_NewRunnableFunction(const char* aName, Function&& aFunction)
 namespace mozilla {
 namespace detail {
 
-already_AddRefed<nsITimer> CreateTimer();
-
 template <RunnableKind Kind>
 class TimerBehaviour
 {
@@ -638,7 +681,7 @@ public:
   nsITimer* GetTimer()
   {
     if (!mTimer) {
-      mTimer = CreateTimer();
+      mTimer = NS_NewTimer();
     }
 
     return mTimer;
@@ -822,8 +865,8 @@ struct IsParameterStorageClass : public mozilla::FalseType {};
 template<typename T>
 struct StoreCopyPassByValue
 {
-  typedef T stored_type;
-  typedef T passed_type;
+  typedef typename mozilla::Decay<T>::Type stored_type;
+  typedef stored_type passed_type;
   stored_type m;
   template <typename A>
   MOZ_IMPLICIT StoreCopyPassByValue(A&& a) : m(mozilla::Forward<A>(a)) {}
@@ -836,8 +879,8 @@ struct IsParameterStorageClass<StoreCopyPassByValue<S>>
 template<typename T>
 struct StoreCopyPassByConstLRef
 {
-  typedef T stored_type;
-  typedef const T& passed_type;
+  typedef typename mozilla::Decay<T>::Type stored_type;
+  typedef const stored_type& passed_type;
   stored_type m;
   template <typename A>
   MOZ_IMPLICIT StoreCopyPassByConstLRef(A&& a) : m(mozilla::Forward<A>(a)) {}
@@ -850,8 +893,8 @@ struct IsParameterStorageClass<StoreCopyPassByConstLRef<S>>
 template<typename T>
 struct StoreCopyPassByLRef
 {
-  typedef T stored_type;
-  typedef T& passed_type;
+  typedef typename mozilla::Decay<T>::Type stored_type;
+  typedef stored_type& passed_type;
   stored_type m;
   template <typename A>
   MOZ_IMPLICIT StoreCopyPassByLRef(A&& a) : m(mozilla::Forward<A>(a)) {}
@@ -864,8 +907,8 @@ struct IsParameterStorageClass<StoreCopyPassByLRef<S>>
 template<typename T>
 struct StoreCopyPassByRRef
 {
-  typedef T stored_type;
-  typedef T&& passed_type;
+  typedef typename mozilla::Decay<T>::Type stored_type;
+  typedef stored_type&& passed_type;
   stored_type m;
   template <typename A>
   MOZ_IMPLICIT StoreCopyPassByRRef(A&& a) : m(mozilla::Forward<A>(a)) {}
@@ -1116,17 +1159,17 @@ struct RunnableMethodArguments final
   {}
   template<typename C, typename M, typename... Args, size_t... Indices>
   static auto
-  applyImpl(C* o, M m, Tuple<Args...>& args, IndexSequence<Indices...>)
+  applyImpl(C* o, M m, Tuple<Args...>& args, std::index_sequence<Indices...>)
       -> decltype(((*o).*m)(Get<Indices>(args).PassAsParameter()...))
   {
     return ((*o).*m)(Get<Indices>(args).PassAsParameter()...);
   }
   template<class C, typename M> auto apply(C* o, M m)
       -> decltype(applyImpl(o, m, mArguments,
-                  typename IndexSequenceFor<Ts...>::Type()))
+                  std::index_sequence_for<Ts...>{}))
   {
     return applyImpl(o, m, mArguments,
-        typename IndexSequenceFor<Ts...>::Type());
+        std::index_sequence_for<Ts...>{});
   }
 };
 
@@ -1164,6 +1207,7 @@ public:
   {
     static_assert(sizeof...(Storages) == sizeof...(Args), "Storages and Args should have equal sizes");
   }
+
   NS_IMETHOD Run()
   {
     CancelTimer();
@@ -1612,6 +1656,13 @@ private:
   RefPtr<T> mEvent;
 };
 
+template <class T>
+inline already_AddRefed<T>
+do_AddRef(nsRevocableEventPtr<T>& aObj)
+{
+  return do_AddRef(aObj.get());
+}
+
 /**
  * A simple helper to suffix thread pool name
  * with incremental numbers.
@@ -1660,6 +1711,18 @@ private:
 
 void
 NS_SetMainThread();
+
+// Used only on cooperatively scheduled "main" threads. Causes the thread to be
+// considered a main thread and also causes GetCurrentVirtualThread to return
+// aVirtualThread.
+void
+NS_SetMainThread(PRThread* aVirtualThread);
+
+// Used only on cooperatively scheduled "main" threads. Causes the thread to no
+// longer be considered a main thread. Also causes GetCurrentVirtualThread() to
+// return a unique value.
+void
+NS_UnsetMainThread();
 
 /**
  * Return the expiration time of the next timer to run on the current

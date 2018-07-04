@@ -46,13 +46,6 @@ CheckProgressConsistency(Progress aOldProgress, Progress aNewProgress, bool aIsM
   if (aNewProgress & FLAG_LOAD_COMPLETE) {
     MOZ_ASSERT(aIsMultipart || aNewProgress & (FLAG_SIZE_AVAILABLE | FLAG_HAS_ERROR));
   }
-  if (aNewProgress & FLAG_ONLOAD_BLOCKED) {
-    // No preconditions.
-  }
-  if (aNewProgress & FLAG_ONLOAD_UNBLOCKED) {
-    MOZ_ASSERT(aNewProgress & FLAG_ONLOAD_BLOCKED);
-    MOZ_ASSERT(aIsMultipart || aNewProgress & (FLAG_SIZE_AVAILABLE | FLAG_HAS_ERROR));
-  }
   if (aNewProgress & FLAG_IS_ANIMATED) {
     // No preconditions; like FLAG_HAS_TRANSPARENCY, we should normally never
     // discover this *after* FLAG_SIZE_AVAILABLE, but unfortunately some corrupt
@@ -148,7 +141,7 @@ class AsyncNotifyRunnable : public Runnable
       MOZ_ASSERT(NS_IsMainThread(), "Should be running on the main thread");
       MOZ_ASSERT(mTracker, "mTracker should not be null");
       for (uint32_t i = 0; i < mObservers.Length(); ++i) {
-        mObservers[i]->SetNotificationsDeferred(false);
+        mObservers[i]->ClearPendingNotify();
         mTracker->SyncNotify(mObservers[i]);
       }
 
@@ -178,6 +171,11 @@ ProgressTracker::Notify(IProgressObserver* aObserver)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
+  if (aObserver->NotificationsDeferred()) {
+    // There is a pending notification, or the observer isn't ready yet.
+    return;
+  }
+
   if (MOZ_LOG_TEST(gImgLog, LogLevel::Debug)) {
     RefPtr<Image> image = GetImage();
     if (image && image->GetURI()) {
@@ -192,7 +190,7 @@ ProgressTracker::Notify(IProgressObserver* aObserver)
     }
   }
 
-  aObserver->SetNotificationsDeferred(true);
+  aObserver->MarkPendingNotify();
 
   // If we have an existing runnable that we can use, we just append this
   // observer to its list of observers to be notified. This ensures we don't
@@ -228,7 +226,7 @@ class AsyncNotifyCurrentStateRunnable : public Runnable
     NS_IMETHOD Run() override
     {
       MOZ_ASSERT(NS_IsMainThread(), "Should be running on the main thread");
-      mObserver->SetNotificationsDeferred(false);
+      mObserver->ClearPendingNotify();
 
       mProgressTracker->SyncNotify(mObserver);
       return NS_OK;
@@ -248,6 +246,11 @@ ProgressTracker::NotifyCurrentState(IProgressObserver* aObserver)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
+  if (aObserver->NotificationsDeferred()) {
+    // There is a pending notification, or the observer isn't ready yet.
+    return;
+  }
+
   if (MOZ_LOG_TEST(gImgLog, LogLevel::Debug)) {
     RefPtr<Image> image = GetImage();
     nsAutoCString spec;
@@ -258,7 +261,7 @@ ProgressTracker::NotifyCurrentState(IProgressObserver* aObserver)
                         "ProgressTracker::NotifyCurrentState", "uri", spec.get());
   }
 
-  aObserver->SetNotificationsDeferred(true);
+  aObserver->MarkPendingNotify();
 
   nsCOMPtr<nsIRunnable> ev = new AsyncNotifyCurrentStateRunnable(this,
                                                                  aObserver);
@@ -333,10 +336,6 @@ SyncNotifyInternal(const T& aObservers,
     notify([](IProgressObserver* aObs) { aObs->Notify(I::SIZE_AVAILABLE); });
   }
 
-  if (aProgress & FLAG_ONLOAD_BLOCKED) {
-    notify([](IProgressObserver* aObs) { aObs->BlockOnload(); });
-  }
-
   if (aHasImage) {
     // OnFrameUpdate
     // If there's any content in this frame at all (always true for
@@ -361,13 +360,6 @@ SyncNotifyInternal(const T& aObservers,
     }
   }
 
-  // Send UnblockOnload before OnStopDecode and OnStopRequest. This allows
-  // observers that can fire events when they receive those notifications to do
-  // so then, instead of being forced to wait for UnblockOnload.
-  if (aProgress & FLAG_ONLOAD_UNBLOCKED) {
-    notify([](IProgressObserver* aObs) { aObs->UnblockOnload(); });
-  }
-
   if (aProgress & FLAG_DECODE_COMPLETE) {
     MOZ_ASSERT(aHasImage, "Stopped decoding without ever having an image?");
     notify([](IProgressObserver* aObs) { aObs->Notify(I::DECODE_COMPLETE); });
@@ -387,22 +379,8 @@ ProgressTracker::SyncNotifyProgress(Progress aProgress,
 {
   MOZ_ASSERT(NS_IsMainThread(), "Use mObservers on main thread only");
 
-  // Don't unblock onload if we're not blocked.
   Progress progress = Difference(aProgress);
-  if (!((mProgress | progress) & FLAG_ONLOAD_BLOCKED)) {
-    progress &= ~FLAG_ONLOAD_UNBLOCKED;
-  }
-
   CheckProgressConsistency(mProgress, mProgress | progress, mIsMultipart);
-
-  // XXX(seth): Hack to work around the fact that some observers have bugs and
-  // need to get onload blocking notifications multiple times. We should fix
-  // those observers and remove this.
-  if ((aProgress & FLAG_DECODE_COMPLETE) &&
-      (mProgress & FLAG_ONLOAD_BLOCKED) &&
-      (mProgress & FLAG_ONLOAD_UNBLOCKED)) {
-    progress |= FLAG_ONLOAD_BLOCKED | FLAG_ONLOAD_UNBLOCKED;
-  }
 
   // Apply the changes.
   mProgress |= progress;
@@ -433,10 +411,13 @@ ProgressTracker::SyncNotify(IProgressObserver* aObserver)
 
   nsIntRect rect;
   if (image) {
-    if (NS_FAILED(image->GetWidth(&rect.width)) ||
-        NS_FAILED(image->GetHeight(&rect.height))) {
+    int32_t width, height;
+    if (NS_FAILED(image->GetWidth(&width)) ||
+        NS_FAILED(image->GetHeight(&height))) {
       // Either the image has no intrinsic size, or it has an error.
       rect = GetMaxSizedIntRect();
+    } else {
+      rect.SizeTo(width, height);
     }
   }
 
@@ -449,10 +430,6 @@ ProgressTracker::EmulateRequestFinished(IProgressObserver* aObserver)
   MOZ_ASSERT(NS_IsMainThread(),
              "SyncNotifyState and mObservers are not threadsafe");
   RefPtr<IProgressObserver> kungFuDeathGrip(aObserver);
-
-  if (mProgress & FLAG_ONLOAD_BLOCKED && !(mProgress & FLAG_ONLOAD_UNBLOCKED)) {
-    aObserver->UnblockOnload();
-  }
 
   if (!(mProgress & FLAG_LOAD_COMPLETE)) {
     aObserver->OnLoadComplete(true);
@@ -549,7 +526,7 @@ ProgressTracker::RemoveObserver(IProgressObserver* aObserver)
 
   if (aObserver->NotificationsDeferred() && runnable) {
     runnable->RemoveObserver(aObserver);
-    aObserver->SetNotificationsDeferred(false);
+    aObserver->ClearPendingNotify();
   }
 
   return removed;

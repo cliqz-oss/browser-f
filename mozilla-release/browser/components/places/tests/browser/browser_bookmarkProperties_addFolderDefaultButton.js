@@ -1,4 +1,4 @@
-"use strict"
+"use strict";
 
 add_task(async function() {
   info("Bug 475529 - Add is the default button for the new folder dialog + " +
@@ -13,12 +13,11 @@ add_task(async function() {
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url: "http://example.com/",
   });
-  let newBookmarkId = await PlacesUtils.promiseItemId(newBookmark.guid);
 
   await withSidebarTree("bookmarks", async function(tree) {
     // Select the new bookmark in the sidebar.
-    tree.selectItems([newBookmarkId]);
-    ok(tree.controller.isCommandEnabled("placesCmd_new:folder"),
+    tree.selectItems([newBookmark.guid]);
+    Assert.ok(tree.controller.isCommandEnabled("placesCmd_new:folder"),
        "'placesCmd_new:folder' on current selected node is enabled");
 
     // Create a new folder.  Since the new bookmark is selected, and new items
@@ -30,7 +29,7 @@ add_task(async function() {
         tree.controller.doCommand("placesCmd_new:folder");
       },
       async function test(dialogWin) {
-        let promiseTitleChangeNotification = promiseBookmarksNotification(
+        let promiseTitleChangeNotification = PlacesTestUtils.waitForNotification(
           "onItemChanged", (itemId, prop, isAnno, val) => prop == "title" && val == "n");
 
         fillBookmarkTextField("editBMPanel_namePicker", "n", dialogWin, false);
@@ -45,6 +44,11 @@ add_task(async function() {
         });
 
         is(newFolder.title, "n", "folder name has been edited");
+
+        let bm = await PlacesUtils.bookmarks.fetch(newBookmark.guid);
+        Assert.equal(bm.index, insertionIndex + 1,
+          "Bookmark should have been shifted to the next index");
+
         await PlacesUtils.bookmarks.remove(newFolder);
         await PlacesUtils.bookmarks.remove(newBookmark);
       }

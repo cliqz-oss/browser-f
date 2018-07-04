@@ -24,7 +24,7 @@ function check_audio_pause_state(expectPause) {
   }
 
   is(audio.paused, expectPause,
-    "The pause state of audio is corret.")
+    "The pause state of audio is corret.");
 }
 
 function play_audio() {
@@ -39,7 +39,7 @@ function play_audio() {
       audio.onplay = null;
       ok(true, "Audio starts playing.");
       resolve();
-    }
+    };
   });
 }
 
@@ -80,5 +80,5 @@ add_task(async function media_should_be_able_to_play_in_visible_tab() {
                           check_audio_suspended);
 
   info("- remove tab -");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

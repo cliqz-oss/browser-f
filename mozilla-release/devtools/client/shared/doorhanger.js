@@ -6,8 +6,6 @@
 
 const Services = require("Services");
 const { DOMHelpers } = require("resource://devtools/client/shared/DOMHelpers.jsm");
-const { Task } = require("devtools/shared/task");
-const defer = require("devtools/shared/defer");
 
 const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 const DEV_EDITION_PROMO_URL = "chrome://devtools/content/framework/dev-edition-promo/dev-edition-promo.xul";
@@ -66,7 +64,7 @@ var panelAttrs = {
  *        The selector that the doorhanger should be appended to within
  *        `window`.  Defaults to a XUL Document's `window` element.
  */
-exports.showDoorhanger = Task.async(function* ({ window, type, anchor }) {
+exports.showDoorhanger = async function({ window, type, anchor }) {
   let { predicate, success, url, action } = TYPES[type];
   // Abort if predicate fails
   if (!predicate()) {
@@ -79,7 +77,7 @@ exports.showDoorhanger = Task.async(function* ({ window, type, anchor }) {
 
   // Wait 200ms to prevent flickering where the popup is displayed
   // before the underlying window (Windows 7, 64bit)
-  yield wait(200);
+  await wait(200);
 
   let document = window.document;
 
@@ -95,7 +93,7 @@ exports.showDoorhanger = Task.async(function* ({ window, type, anchor }) {
   panel.appendChild(frame);
   parentEl.appendChild(panel);
 
-  yield onFrameLoad(frame);
+  await onFrameLoad(frame);
 
   panel.openPopup(anchor);
 
@@ -113,7 +111,7 @@ exports.showDoorhanger = Task.async(function* ({ window, type, anchor }) {
       close();
     });
   }
-});
+};
 
 function setDoorhangerStyle(panel, frame) {
   Object.keys(panelAttrs).forEach(prop => {
@@ -132,20 +130,18 @@ function setDoorhangerStyle(panel, frame) {
 }
 
 function onFrameLoad(frame) {
-  let { resolve, promise } = defer();
-
-  if (frame.contentWindow) {
-    let domHelper = new DOMHelpers(frame.contentWindow);
-    domHelper.onceDOMReady(resolve);
-  } else {
-    let callback = () => {
-      frame.removeEventListener("DOMContentLoaded", callback);
-      resolve();
-    };
-    frame.addEventListener("DOMContentLoaded", callback);
-  }
-
-  return promise;
+  return new Promise((resolve, reject) => {
+    if (frame.contentWindow) {
+      let domHelper = new DOMHelpers(frame.contentWindow);
+      domHelper.onceDOMReady(resolve);
+    } else {
+      let callback = () => {
+        frame.removeEventListener("DOMContentLoaded", callback);
+        resolve();
+      };
+      frame.addEventListener("DOMContentLoaded", callback);
+    }
+  });
 }
 
 function getGBrowser() {
@@ -153,7 +149,7 @@ function getGBrowser() {
 }
 
 function wait(n) {
-  let { resolve, promise } = defer();
-  setTimeout(resolve, n);
-  return promise;
+  return new Promise((resolve, reject) => {
+    setTimeout(resolve, n);
+  });
 }

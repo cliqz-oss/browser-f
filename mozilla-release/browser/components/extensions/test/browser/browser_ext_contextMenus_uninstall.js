@@ -3,7 +3,8 @@
 "use strict";
 
 add_task(async function() {
-  let tab1 = await BrowserTestUtils.openNewForegroundTab(gBrowser,
+  let tab1 = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
     "http://mochi.test:8888/browser/browser/components/extensions/test/browser/context.html");
 
   // Install an extension.
@@ -80,5 +81,5 @@ add_task(async function() {
 
   await closeContextMenu();
 
-  await BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab1);
 });

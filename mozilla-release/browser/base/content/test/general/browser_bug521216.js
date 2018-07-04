@@ -13,12 +13,13 @@ function test() {
 
 function record(aName) {
   info("got " + aName);
-  if (actual.indexOf(aName) == -1)
+  if (!actual.includes(aName))
     actual.push(aName);
   if (actual.length == expected.length) {
     is(actual.toString(), expected.toString(),
        "got events and progress notifications in expected order");
 
+    // eslint-disable-next-line no-shadow
     executeSoon(function(tab) {
       gBrowser.removeTab(tab);
       gBrowser.removeTabsProgressListener(progressListener);
@@ -30,21 +31,21 @@ function record(aName) {
 
 function TabOpen(aEvent) {
   if (aEvent.target == tab)
-    record(arguments.callee.name);
+    record("TabOpen");
 }
 
 var progressListener = {
   onLocationChange: function onLocationChange(aBrowser) {
     if (aBrowser == tab.linkedBrowser)
-      record(arguments.callee.name);
+      record("onLocationChange");
   },
   onStateChange: function onStateChange(aBrowser) {
     if (aBrowser == tab.linkedBrowser)
-      record(arguments.callee.name);
+      record("onStateChange");
   },
   onLinkIconAvailable: function onLinkIconAvailable(aBrowser, aIconURL) {
     if (aBrowser == tab.linkedBrowser &&
         aIconURL == "about:logo")
-      record(arguments.callee.name);
+      record("onLinkIconAvailable");
   }
 };

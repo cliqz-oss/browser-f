@@ -4,7 +4,7 @@
 
 function confirmDefaults() {
   let identityIconURL = getComputedStyle(document.getElementById("identity-icon")).listStyleImage;
-  is(identityIconURL, "url(\"chrome://browser/skin/identity-icon.svg\")", "Identity icon should be the default identity icon");
+  is(identityIconURL, "url(\"chrome://browser/skin/search-glass.svg\")", "Identity icon should be the search icon");
 
   let connectionIconURL = getComputedStyle(document.getElementById("connection-icon")).listStyleImage;
   is(connectionIconURL, "none", "Connection icon should not be displayed");
@@ -25,7 +25,7 @@ function confirmExtensionPage() {
 
   let extensionIconEl = document.getElementById("extension-icon");
   let extensionIconURL = getComputedStyle(extensionIconEl).listStyleImage;
-  is(extensionIconURL, "url(\"chrome://browser/skin/controlcenter/extension.svg\")", "Extension icon should be the default extension icon");
+  is(extensionIconURL, "url(\"chrome://mozapps/skin/extensions/extensionGeneric-16.svg\")", "Extension icon should be the default extension icon");
   let tooltip = extensionIconEl.tooltipText;
   is(tooltip, "Loaded by extension: Test Extension", "The correct tooltip should be used");
 
@@ -53,6 +53,43 @@ add_task(async function testIdentityIndication() {
   let url = await extension.awaitMessage("url");
   await BrowserTestUtils.withNewTab({gBrowser, url}, async function() {
     confirmExtensionPage();
+  });
+
+  await extension.unload();
+
+  confirmDefaults();
+});
+
+add_task(async function testIdentityIndicationNewTab() {
+  let extension = ExtensionTestUtils.loadExtension({
+    background() {
+      browser.test.sendMessage("url", browser.extension.getURL("newtab.html"));
+    },
+    manifest: {
+      name: "Test Extension",
+      applications: {
+        gecko: {
+          id: "@newtab",
+        },
+      },
+      chrome_url_overrides: {
+        newtab: "newtab.html",
+      },
+    },
+    files: {
+      "newtab.html": "<h1>New tab!</h1>",
+    },
+    useAddonManager: "temporary",
+  });
+
+  await extension.startup();
+
+  confirmDefaults();
+
+  let url = await extension.awaitMessage("url");
+  await BrowserTestUtils.withNewTab({gBrowser, url}, async function() {
+    confirmExtensionPage();
+    is(gURLBar.value, "", "The URL bar is blank");
   });
 
   await extension.unload();

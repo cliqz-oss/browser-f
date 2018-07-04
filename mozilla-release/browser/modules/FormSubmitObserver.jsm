@@ -9,20 +9,11 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+var EXPORTED_SYMBOLS = [ "FormSubmitObserver" ];
 
-var HTMLInputElement = Ci.nsIDOMHTMLInputElement;
-var HTMLTextAreaElement = Ci.nsIDOMHTMLTextAreaElement;
-var HTMLSelectElement = Ci.nsIDOMHTMLSelectElement;
-var HTMLButtonElement = Ci.nsIDOMHTMLButtonElement;
-
-this.EXPORTED_SYMBOLS = [ "FormSubmitObserver" ];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm");
 
 function FormSubmitObserver(aWindow, aTabChildGlobal) {
   this.init(aWindow, aTabChildGlobal);
@@ -110,10 +101,10 @@ FormSubmitObserver.prototype =
         return;
       }
 
-      if (!(element instanceof HTMLInputElement ||
-            element instanceof HTMLTextAreaElement ||
-            element instanceof HTMLSelectElement ||
-            element instanceof HTMLButtonElement)) {
+      if (!(ChromeUtils.getClassName(element) === "HTMLInputElement" ||
+            ChromeUtils.getClassName(element) === "HTMLTextAreaElement" ||
+            ChromeUtils.getClassName(element) === "HTMLSelectElement" ||
+            ChromeUtils.getClassName(element) === "HTMLButtonElement")) {
         continue;
       }
 
@@ -236,5 +227,5 @@ FormSubmitObserver.prototype =
             (target.ownerDocument && target.ownerDocument == this._content.document));
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIFormSubmitObserver])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIFormSubmitObserver])
 };

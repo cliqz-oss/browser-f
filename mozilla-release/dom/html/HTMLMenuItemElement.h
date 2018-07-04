@@ -8,7 +8,6 @@
 #define mozilla_dom_HTMLMenuItemElement_h
 
 #include "mozilla/Attributes.h"
-#include "nsIDOMHTMLMenuItemElement.h"
 #include "nsGenericHTMLElement.h"
 
 namespace mozilla {
@@ -19,8 +18,7 @@ namespace dom {
 
 class Visitor;
 
-class HTMLMenuItemElement final : public nsGenericHTMLElement,
-                                  public nsIDOMHTMLMenuItemElement
+class HTMLMenuItemElement final : public nsGenericHTMLElement
 {
 public:
   using mozilla::dom::Element::GetText;
@@ -28,16 +26,13 @@ public:
   HTMLMenuItemElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
                       mozilla::dom::FromParser aFromParser);
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLMenuItemElement, menuitem)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLMenuItemElement, menuitem)
 
   // nsISupports
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLMenuItemElement,
+                                       nsGenericHTMLElement)
 
-  // nsIDOMHTMLMenuItemElement
-  NS_DECL_NSIDOMHTMLMENUITEMELEMENT
-
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(
                      EventChainPostVisitor& aVisitor) override;
 
@@ -46,8 +41,9 @@ public:
                               bool aCompileEventHandlers) override;
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
 
   virtual void DoneCreatingElement() override;
@@ -67,22 +63,32 @@ public:
 
   // WebIDL
 
-  // The XPCOM GetType is OK for us
+  void GetType(DOMString& aValue);
   void SetType(const nsAString& aType, ErrorResult& aError)
   {
     SetHTMLAttr(nsGkAtoms::type, aType, aError);
   }
 
-  // The XPCOM GetLabel is OK for us
+  // nsAString needed for HTMLMenuElement
+  void GetLabel(nsAString& aValue)
+  {
+    if (!GetAttr(kNameSpaceID_None, nsGkAtoms::label, aValue)) {
+      GetText(aValue);
+    }
+  }
   void SetLabel(const nsAString& aLabel, ErrorResult& aError)
   {
-    SetAttrHelper(nsGkAtoms::label, aLabel);
+    SetHTMLAttr(nsGkAtoms::label, aLabel, aError);
   }
 
-  // The XPCOM GetIcon is OK for us
+  // nsAString needed for HTMLMenuElement
+  void GetIcon(nsAString& aValue)
+  {
+    GetURIAttr(nsGkAtoms::icon, nullptr, aValue);
+  }
   void SetIcon(const nsAString& aIcon, ErrorResult& aError)
   {
-    SetAttrHelper(nsGkAtoms::icon, aIcon);
+    SetHTMLAttr(nsGkAtoms::icon, aIcon, aError);
   }
 
   bool Disabled() const
@@ -98,12 +104,12 @@ public:
   {
     return mChecked;
   }
-  void SetChecked(bool aChecked, ErrorResult& aError)
-  {
-    aError = SetChecked(aChecked);
-  }
+  void SetChecked(bool aChecked);
 
-  // The XPCOM GetRadiogroup is OK for us
+  void GetRadiogroup(DOMString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::radiogroup, aValue);
+  }
   void SetRadiogroup(const nsAString& aRadiogroup, ErrorResult& aError)
   {
     SetHTMLAttr(nsGkAtoms::radiogroup, aRadiogroup, aError);
@@ -125,9 +131,10 @@ protected:
 
 
 protected:
-  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
 
   void WalkRadioGroup(Visitor* aVisitor);

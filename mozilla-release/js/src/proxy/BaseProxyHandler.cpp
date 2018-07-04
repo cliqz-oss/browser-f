@@ -7,8 +7,8 @@
 #include "js/Proxy.h"
 #include "vm/ProxyObject.h"
 
-#include "jscntxtinlines.h"
-#include "jsobjinlines.h"
+#include "vm/JSContext-inl.h"
+#include "vm/JSObject-inl.h"
 
 using namespace js;
 
@@ -195,12 +195,8 @@ js::SetPropertyIgnoringNamedGetter(JSContext* cx, HandleObject obj, HandleId id,
         RootedObject receiverObj(cx, &receiver.toObject());
 
         // Nonstandard SpiderMonkey special case: setter ops.
-        SetterOp setter = ownDesc.setter();
-        MOZ_ASSERT(setter != JS_StrictPropertyStub);
-        if (setter && setter != JS_StrictPropertyStub) {
-            RootedValue valCopy(cx, v);
-            return CallJSSetterOp(cx, setter, receiverObj, id, &valCopy, result);
-        }
+        if (SetterOp setter = ownDesc.setter())
+            return CallJSSetterOp(cx, setter, receiverObj, id, v, result);
 
         // Steps 5.c-d.
         Rooted<PropertyDescriptor> existingDescriptor(cx);
@@ -225,13 +221,7 @@ js::SetPropertyIgnoringNamedGetter(JSContext* cx, HandleObject obj, HandleId id,
             ? JSPROP_IGNORE_ENUMERATE | JSPROP_IGNORE_READONLY | JSPROP_IGNORE_PERMANENT
             : JSPROP_ENUMERATE;
 
-        // A very old nonstandard SpiderMonkey extension: default to the Class
-        // getter and setter ops.
-        const Class* clasp = receiverObj->getClass();
-        MOZ_ASSERT(clasp->getGetProperty() != JS_PropertyStub);
-        MOZ_ASSERT(clasp->getSetProperty() != JS_StrictPropertyStub);
-        return DefineProperty(cx, receiverObj, id, v,
-                              clasp->getGetProperty(), clasp->getSetProperty(), attrs, result);
+        return DefineDataProperty(cx, receiverObj, id, v, attrs, result);
     }
 
     // Step 6.
@@ -294,7 +284,7 @@ BaseProxyHandler::enumerate(JSContext* cx, HandleObject proxy) const
     if (!GetPropertyKeys(cx, proxy, 0, &props))
         return nullptr;
 
-    return EnumeratedIdVectorToIterator(cx, proxy, 0, props);
+    return EnumeratedIdVectorToIterator(cx, proxy, props);
 }
 
 bool
@@ -381,9 +371,10 @@ BaseProxyHandler::finalize(JSFreeOp* fop, JSObject* proxy) const
 {
 }
 
-void
-BaseProxyHandler::objectMoved(JSObject* proxy, const JSObject* old) const
+size_t
+BaseProxyHandler::objectMoved(JSObject* proxy, JSObject* old) const
 {
+    return 0;
 }
 
 JSObject*
@@ -414,20 +405,6 @@ bool
 BaseProxyHandler::setImmutablePrototype(JSContext* cx, HandleObject proxy, bool* succeeded) const
 {
     *succeeded = false;
-    return true;
-}
-
-bool
-BaseProxyHandler::watch(JSContext* cx, HandleObject proxy, HandleId id, HandleObject callable) const
-{
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_CANT_WATCH,
-                              proxy->getClass()->name);
-    return false;
-}
-
-bool
-BaseProxyHandler::unwatch(JSContext* cx, HandleObject proxy, HandleId id) const
-{
     return true;
 }
 

@@ -14,6 +14,8 @@ XPCOMUtils.defineLazyGetter(this, 'BASE_URL', function() {
   return "http://localhost:" + srv.identity.primaryPort + "/";
 });
 
+Cu.importGlobalProperties(["DOMParser"]);
+
 function run_test()
 {
   createTestDirectory();
@@ -93,8 +95,7 @@ function hiddenDataCheck(bytes, uri, path)
 {
   var data = String.fromCharCode.apply(null, bytes);
 
-  var parser = Cc["@mozilla.org/xmlextras/domparser;1"]
-                 .createInstance(Ci.nsIDOMParser);
+  var parser = new DOMParser();
 
   // Note: the index format isn't XML -- it's actually HTML -- but we require
   //       the index format also be valid XML, albeit XML without namespaces,
@@ -108,26 +109,20 @@ function hiddenDataCheck(bytes, uri, path)
     do_throw("document failed to parse as XML");
   }
 
-  // See all the .QueryInterface()s and .item()s happening here?  That's because
-  // xpcshell sucks and doesn't have classinfo, so no automatic interface
-  // flattening or array-style access to items in NodeLists.  Suck.
-
   var body = doc.documentElement.getElementsByTagName("body");
-  do_check_eq(body.length, 1);
-  body = body.item(0);
+  Assert.equal(body.length, 1);
+  body = body[0];
 
   // header
-  var header = body.QueryInterface(Ci.nsIDOMElement)
-                   .getElementsByTagName("h1");
-  do_check_eq(header.length, 1);
+  var header = body.getElementsByTagName("h1");
+  Assert.equal(header.length, 1);
 
-  do_check_eq(header.item(0).QueryInterface(Ci.nsIDOMNode).textContent, path);
+  Assert.equal(header[0].textContent, path);
 
   // files
   var lst = body.getElementsByTagName("ol");
-  do_check_eq(lst.length, 1);
-  var items = lst.item(0).QueryInterface(Ci.nsIDOMElement)
-                         .getElementsByTagName("li");
+  Assert.equal(lst.length, 1);
+  var items = lst[0].getElementsByTagName("li");
 
   var ios = Cc["@mozilla.org/network/io-service;1"]
               .getService(Ci.nsIIOService);
@@ -140,19 +135,15 @@ function hiddenDataCheck(bytes, uri, path)
 
   for (var i = 0; i < items.length; i++)
   {
-    var link = items.item(i)
-                    .childNodes
-                    .item(0)
-                    .QueryInterface(Ci.nsIDOMNode)
-                    .QueryInterface(Ci.nsIDOMElement);
+    var link = items[i].childNodes[0];
     var f = dirEntries[i];
 
     var sep = f.isDirectory ? "/" : "";
 
-    do_check_eq(link.textContent, f.name + sep);
+    Assert.equal(link.textContent, f.name + sep);
 
     uri = ios.newURI(link.getAttribute("href"), null, top);
-    do_check_eq(decodeURIComponent(uri.path), path + f.name + sep);
+    Assert.equal(decodeURIComponent(uri.pathQueryRef), path + f.name + sep);
   }
 }
 
@@ -177,8 +168,7 @@ function dataCheck(bytes, uri, path, dirEntries)
 {
   var data = String.fromCharCode.apply(null, bytes);
 
-  var parser = Cc["@mozilla.org/xmlextras/domparser;1"]
-                 .createInstance(Ci.nsIDOMParser);
+  var parser = new DOMParser();
 
   // Note: the index format isn't XML -- it's actually HTML -- but we require
   //       the index format also be valid XML, albeit XML without namespaces,
@@ -192,26 +182,20 @@ function dataCheck(bytes, uri, path, dirEntries)
     do_throw("document failed to parse as XML");
   }
 
-  // See all the .QueryInterface()s and .item()s happening here?  That's because
-  // xpcshell sucks and doesn't have classinfo, so no automatic interface
-  // flattening or array-style access to items in NodeLists.  Suck.
-
   var body = doc.documentElement.getElementsByTagName("body");
-  do_check_eq(body.length, 1);
-  body = body.item(0);
+  Assert.equal(body.length, 1);
+  body = body[0];
 
   // header
-  var header = body.QueryInterface(Ci.nsIDOMElement)
-                   .getElementsByTagName("h1");
-  do_check_eq(header.length, 1);
+  var header = body.getElementsByTagName("h1");
+  Assert.equal(header.length, 1);
 
-  do_check_eq(header.item(0).QueryInterface(Ci.nsIDOMNode).textContent, path);
+  Assert.equal(header[0].textContent, path);
 
   // files
   var lst = body.getElementsByTagName("ol");
-  do_check_eq(lst.length, 1);
-  var items = lst.item(0).QueryInterface(Ci.nsIDOMElement)
-                         .getElementsByTagName("li");
+  Assert.equal(lst.length, 1);
+  var items = lst[0].getElementsByTagName("li");
 
   var ios = Cc["@mozilla.org/network/io-service;1"]
               .getService(Ci.nsIIOService);
@@ -220,19 +204,15 @@ function dataCheck(bytes, uri, path, dirEntries)
 
   for (var i = 0; i < items.length; i++)
   {
-    var link = items.item(i)
-                    .childNodes
-                    .item(0)
-                    .QueryInterface(Ci.nsIDOMNode)
-                    .QueryInterface(Ci.nsIDOMElement);
+    var link = items[i].childNodes[0];
     var f = dirEntries[i];
 
     var sep = f.isDirectory ? "/" : "";
 
-    do_check_eq(link.textContent, f.name + sep);
+    Assert.equal(link.textContent, f.name + sep);
 
     uri = ios.newURI(link.getAttribute("href"), null, top);
-    do_check_eq(decodeURIComponent(uri.path), path + f.name + sep);
+    Assert.equal(decodeURIComponent(uri.pathQueryRef), path + f.name + sep);
   }
 }
 
@@ -270,7 +250,7 @@ XPCOMUtils.defineLazyGetter(this, "tests", function() {
 // check top-level directory listing
 function start(ch)
 {
-  do_check_eq(ch.getResponseHeader("Content-Type"), "text/html;charset=utf-8");
+  Assert.equal(ch.getResponseHeader("Content-Type"), "text/html;charset=utf-8");
 }
 function stopRootDirectory(ch, cx, status, data)
 {

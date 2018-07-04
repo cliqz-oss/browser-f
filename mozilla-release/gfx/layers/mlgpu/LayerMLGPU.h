@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef mozilla_gfx_layers_mlgpu_LayerMLGPU_h
 #define mozilla_gfx_layers_mlgpu_LayerMLGPU_h
@@ -74,11 +75,18 @@ public:
   // blend modes or opacity), false otherwise.
   virtual bool IsContentOpaque();
 
-  // This is a wrapper around SetShadowVisibleRegion. Some layers have visible
-  // regions that extend beyond what is actually drawn. When performing CPU-
-  // based occlusion culling we must clamp the visible region to the actual
-  // area.
-  virtual void SetRegionToRender(LayerIntRegion&& aRegion);
+  // Returns the region that this layer will draw pixels to. If the layer and
+  // its content are opaque, this is the layer's opaque region.
+  const LayerIntRegion& GetRenderRegion() const {
+    return mRenderRegion;
+  }
+
+  // Some layers have visible regions that extend beyond what is actually drawn.
+  // When performing CPU-based occlusion culling we must clamp the visible region
+  // to the actual area. Note that if a layer is opaque, it must not expand its
+  // visible region such that it might include non-opaque pixels, as may be the
+  // case for PaintedLayers with a restricted visible region.
+  virtual void SetRenderRegion(LayerIntRegion&& aRegion);
 
   virtual void AssignToView(FrameBuilder* aBuilder,
                             RenderViewMLGPU* aView,
@@ -122,6 +130,7 @@ protected:
   uint64_t mFrameKey;
   float mComputedOpacity;
   bool mPrepared;
+  LayerIntRegion mRenderRegion;
 };
 
 class RefLayerMLGPU final : public RefLayer
@@ -141,6 +150,8 @@ public:
   {
     DefaultComputeEffectiveTransforms(aTransformToSurface);
   }
+
+  const LayerIntRegion& GetShadowVisibleRegion() override;
 
   MOZ_LAYER_DECL_NAME("RefLayerMLGPU", TYPE_REF)
 };

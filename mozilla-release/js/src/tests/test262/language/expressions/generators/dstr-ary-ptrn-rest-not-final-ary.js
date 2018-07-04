@@ -6,10 +6,10 @@
 description: Rest element (array binding pattern) may not be followed by any element (generator function expression)
 esid: sec-generator-function-definitions-runtime-semantics-evaluation
 es6id: 14.4.14
-features: [destructuring-binding]
+features: [generators, destructuring-binding]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     GeneratorExpression : function * ( FormalParameters ) { GeneratorBody }
@@ -48,6 +48,7 @@ info: |
         [ BindingElementList[?Yield] ]
         [ BindingElementList[?Yield] , Elisionopt BindingRestElement[?Yield]opt ]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 var callCount = 0;
 var f;

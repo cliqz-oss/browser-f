@@ -2,23 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/KeyValueParser.jsm");
+Cu.importGlobalProperties(["File", "FormData", "XMLHttpRequest"]);
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/KeyValueParser.jsm");
-Cu.importGlobalProperties(["File"]);
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "CrashSubmit"
 ];
-
-const STATE_START = Ci.nsIWebProgressListener.STATE_START;
-const STATE_STOP = Ci.nsIWebProgressListener.STATE_STOP;
 
 const SUCCESS = "success";
 const FAILED  = "failed";
@@ -44,9 +39,7 @@ function parseINIStrings(path) {
 // Since we're basically re-implementing (with async) part of the crashreporter
 // client here, we'll just steal the strings we need from crashreporter.ini
 async function getL10nStrings() {
-  let dirSvc = Cc["@mozilla.org/file/directory_service;1"].
-               getService(Ci.nsIProperties);
-  let path = OS.Path.join(dirSvc.get("GreD", Ci.nsIFile).path,
+  let path = OS.Path.join(Services.dirsvc.get("GreD", Ci.nsIFile).path,
                           "crashreporter.ini");
   let pathExists = await OS.File.exists(path);
 
@@ -75,7 +68,7 @@ async function getL10nStrings() {
     "reporturl": crstrings.CrashDetailsURL
   };
 
-  path = OS.Path.join(dirSvc.get("XCurProcD", Ci.nsIFile).path,
+  path = OS.Path.join(Services.dirsvc.get("XCurProcD", Ci.nsIFile).path,
                       "crashreporter-override.ini");
   pathExists = await OS.File.exists(path);
 
@@ -83,11 +76,11 @@ async function getL10nStrings() {
     crstrings = parseINIStrings(path);
 
     if ("CrashID" in crstrings) {
-      strings["crashid"] = crstrings.CrashID;
+      strings.crashid = crstrings.CrashID;
     }
 
     if ("CrashDetailsURL" in crstrings) {
-      strings["reporturl"] = crstrings.CrashDetailsURL;
+      strings.reporturl = crstrings.CrashDetailsURL;
     }
   }
 
@@ -95,24 +88,8 @@ async function getL10nStrings() {
 }
 
 function getDir(name) {
-  let dirSvc = Cc["@mozilla.org/file/directory_service;1"].
-               getService(Ci.nsIProperties);
-  let uAppDataPath = dirSvc.get("UAppData", Ci.nsIFile).path;
+  let uAppDataPath = Services.dirsvc.get("UAppData", Ci.nsIFile).path;
   return OS.Path.join(uAppDataPath, "Crash Reports", name);
-}
-
-async function isDirAsync(path) {
-  try {
-    let dirInfo = await OS.File.stat(path);
-
-    if (!dirInfo.isDir) {
-      return false;
-    }
-  } catch (ex) {
-    return false;
-  }
-
-  return true;
 }
 
 async function writeFileAsync(dirName, fileName, data) {
@@ -129,14 +106,6 @@ function getPendingMinidump(id) {
   return [".dmp", ".extra", ".memory.json.gz"].map(suffix => {
     return OS.Path.join(pendingDir, `${id}${suffix}`);
   });
-}
-
-function addFormEntry(doc, form, name, value) {
-  let input = doc.createElement("input");
-  input.type = "hidden";
-  input.name = name;
-  input.value = value;
-  form.appendChild(input);
 }
 
 async function writeSubmittedReportAsync(crashID, viewURL) {
@@ -219,15 +188,14 @@ Submitter.prototype = {
       serverURL = envOverride;
     }
 
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
-              .createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = new XMLHttpRequest();
     xhr.open("POST", serverURL, true);
 
-    let formData = Cc["@mozilla.org/files/formdata;1"]
-                   .createInstance(Ci.nsIDOMFormData);
+    let formData = new FormData();
+
     // add the data
     for (let [name, value] of Object.entries(this.extraKeyVals)) {
-      if (name != "ServerURL") {
+      if (name != "ServerURL" && name != "StackTraces") {
         formData.append(name, value);
       }
     }
@@ -394,7 +362,7 @@ Submitter.prototype = {
 
 // ===================================
 // External API goes here
-this.CrashSubmit = {
+var CrashSubmit = {
   /**
    * Submit the crash report named id.dmp from the "pending" directory.
    *
@@ -491,12 +459,12 @@ this.CrashSubmit = {
     try {
       dirIter = new OS.File.DirectoryIterator(pendingDir);
     } catch (ex) {
-      if (ex.becauseNoSuchFile) {
-        return ids;
-      }
-
       Cu.reportError(ex);
       throw ex;
+    }
+
+    if (!(await dirIter.exists())) {
+      return ids;
     }
 
     try {

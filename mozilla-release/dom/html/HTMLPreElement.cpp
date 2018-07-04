@@ -22,17 +22,13 @@ HTMLPreElement::~HTMLPreElement()
 {
 }
 
-NS_IMPL_ISUPPORTS_INHERITED(HTMLPreElement, nsGenericHTMLElement,
-                            nsIDOMHTMLPreElement)
-
 NS_IMPL_ELEMENT_CLONE(HTMLPreElement)
-
-NS_IMPL_INT_ATTR(HTMLPreElement, Width, width)
 
 bool
 HTMLPreElement::ParseAttribute(int32_t aNamespaceID,
-                               nsIAtom* aAttribute,
+                               nsAtom* aAttribute,
                                const nsAString& aValue,
+                               nsIPrincipal* aMaybeScriptedPrincipal,
                                nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -42,26 +38,24 @@ HTMLPreElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 void
 HTMLPreElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
                                       GenericSpecifiedValues* aData)
 {
-  if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(Text))) {
-    if (!aData->PropertyIsSet(eCSSProperty_white_space)) {
-      // wrap: empty
-      if (aAttributes->GetAttr(nsGkAtoms::wrap))
-        aData->SetKeywordValue(eCSSProperty_white_space, StyleWhiteSpace::PreWrap);
-    }
+  if (!aData->PropertyIsSet(eCSSProperty_white_space)) {
+    // wrap: empty
+    if (aAttributes->GetAttr(nsGkAtoms::wrap))
+      aData->SetKeywordValue(eCSSProperty_white_space, StyleWhiteSpace::PreWrap);
   }
 
   nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aData);
 }
 
 NS_IMETHODIMP_(bool)
-HTMLPreElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+HTMLPreElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   if (!mNodeInfo->Equals(nsGkAtoms::pre)) {
     return nsGenericHTMLElement::IsAttributeMapped(aAttribute);

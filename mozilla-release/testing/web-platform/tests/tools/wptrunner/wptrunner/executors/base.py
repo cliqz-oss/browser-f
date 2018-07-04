@@ -1,13 +1,20 @@
 import hashlib
-import json
+import httplib
 import os
+import threading
 import traceback
+import socket
 import urlparse
 from abc import ABCMeta, abstractmethod
 
 from ..testrunner import Stop
+from protocol import Protocol, BaseProtocolPart
 
 here = os.path.split(__file__)[0]
+
+# Extra timeout to use after internal test timeout at which the harness
+# should force a timeout
+extra_timeout = 5  # seconds
 
 
 def executor_kwargs(test_type, server_config, cache_manager, **kwargs):
@@ -21,6 +28,11 @@ def executor_kwargs(test_type, server_config, cache_manager, **kwargs):
 
     if test_type == "reftest":
         executor_kwargs["screenshot_cache"] = cache_manager.dict()
+
+    if test_type == "wdspec":
+        executor_kwargs["binary"] = kwargs.get("binary")
+        executor_kwargs["webdriver_binary"] = kwargs.get("webdriver_binary")
+        executor_kwargs["webdriver_args"] = kwargs.get("webdriver_args")
 
     return executor_kwargs
 
@@ -56,8 +68,8 @@ class TestharnessResultConverter(object):
                                       (result_url, test.url))
         harness_result = test.result_cls(self.harness_codes[status], message)
         return (harness_result,
-                [test.subtest_result_cls(name, self.test_codes[status], message, stack)
-                 for name, status, message, stack in subtest_results])
+                [test.subtest_result_cls(st_name, self.test_codes[st_status], st_message, st_stack)
+                 for st_name, st_status, st_message, st_stack in subtest_results])
 
 
 testharness_result_converter = TestharnessResultConverter()
@@ -91,9 +103,10 @@ class TestExecutor(object):
 
     test_type = None
     convert_result = None
+    supports_testdriver = False
 
     def __init__(self, browser, server_config, timeout_multiplier=1,
-                 debug_info=None):
+                 debug_info=None, **kwargs):
         """Abstract Base class for object that actually executes the tests in a
         specific browser. Typically there will be a different TestExecutor
         subclass for each test type and method of executing tests.
@@ -101,7 +114,7 @@ class TestExecutor(object):
         :param browser: ExecutorBrowser instance providing properties of the
                         browser that will be tested.
         :param server_config: Dictionary of wptserve server configuration of the
-                              form stored in TestEnvironment.external_config
+                              form stored in TestEnvironment.config
         :param timeout_multiplier: Multiplier relative to base timeout to use
                                    when setting test timeout.
         """
@@ -112,7 +125,7 @@ class TestExecutor(object):
         self.debug_info = debug_info
         self.last_environment = {"protocol": "http",
                                  "prefs": {}}
-        self.protocol = None # This must be set in subclasses
+        self.protocol = None  # This must be set in subclasses
 
     @property
     def logger(self):
@@ -140,10 +153,10 @@ class TestExecutor(object):
         :param test: The test to run"""
         if test.environment != self.last_environment:
             self.on_environment_change(test.environment)
-
         try:
             result = self.do_test(test)
         except Exception as e:
+            self.logger.warning(traceback.format_exc(e))
             result = self.result_from_exception(test, e)
 
         if result is Stop:
@@ -159,7 +172,7 @@ class TestExecutor(object):
 
     def server_url(self, protocol):
         return "%s://%s:%s" % (protocol,
-                               self.server_config["host"],
+                               self.server_config["browser_host"],
                                self.server_config["ports"][protocol][0])
 
     def test_url(self, test):
@@ -180,12 +193,15 @@ class TestExecutor(object):
         if hasattr(e, "status") and e.status in test.result_cls.statuses:
             status = e.status
         else:
-            status = "ERROR"
+            status = "INTERNAL-ERROR"
         message = unicode(getattr(e, "message", ""))
         if message:
             message += "\n"
         message += traceback.format_exc(e)
         return test.result_cls(status, message), []
+
+    def wait(self):
+        self.protocol.base.wait()
 
 
 class TestharnessExecutor(TestExecutor):
@@ -196,7 +212,7 @@ class RefTestExecutor(TestExecutor):
     convert_result = reftest_result_converter
 
     def __init__(self, browser, server_config, timeout_multiplier=1, screenshot_cache=None,
-                 debug_info=None):
+                 debug_info=None, **kwargs):
         TestExecutor.__init__(self, browser, server_config,
                               timeout_multiplier=timeout_multiplier,
                               debug_info=debug_info)
@@ -310,22 +326,256 @@ class RefTestImplementation(object):
 
 class WdspecExecutor(TestExecutor):
     convert_result = pytest_result_converter
+    protocol_cls = None
 
+    def __init__(self, browser, server_config, webdriver_binary,
+                 webdriver_args, timeout_multiplier=1, capabilities=None,
+                 debug_info=None, **kwargs):
+        self.do_delayed_imports()
+        TestExecutor.__init__(self, browser, server_config,
+                              timeout_multiplier=timeout_multiplier,
+                              debug_info=debug_info)
+        self.webdriver_binary = webdriver_binary
+        self.webdriver_args = webdriver_args
+        self.timeout_multiplier = timeout_multiplier
+        self.capabilities = capabilities
+        self.protocol = self.protocol_cls(self, browser)
 
-class Protocol(object):
-    def __init__(self, executor, browser):
-        self.executor = executor
-        self.browser = browser
+    def is_alive(self):
+        return self.protocol.is_alive
 
-    @property
-    def logger(self):
-        return self.executor.logger
-
-    def setup(self, runner):
+    def on_environment_change(self, new_environment):
         pass
 
-    def teardown(self):
+    def do_test(self, test):
+        timeout = test.timeout * self.timeout_multiplier + extra_timeout
+
+        success, data = WdspecRun(self.do_wdspec,
+                                  self.protocol.session_config,
+                                  test.abs_path,
+                                  timeout).run()
+
+        if success:
+            return self.convert_result(test, data)
+
+        return (test.result_cls(*data), [])
+
+    def do_wdspec(self, session_config, path, timeout):
+        return pytestrunner.run(path,
+                                self.server_config,
+                                session_config,
+                                timeout=timeout)
+
+    def do_delayed_imports(self):
+        global pytestrunner
+        from . import pytestrunner
+
+
+class WdspecRun(object):
+    def __init__(self, func, session, path, timeout):
+        self.func = func
+        self.result = (None, None)
+        self.session = session
+        self.path = path
+        self.timeout = timeout
+        self.result_flag = threading.Event()
+
+    def run(self):
+        """Runs function in a thread and interrupts it if it exceeds the
+        given timeout.  Returns (True, (Result, [SubtestResult ...])) in
+        case of success, or (False, (status, extra information)) in the
+        event of failure.
+        """
+
+        executor = threading.Thread(target=self._run)
+        executor.start()
+
+        flag = self.result_flag.wait(self.timeout)
+        if self.result[1] is None:
+            self.result = False, ("EXTERNAL-TIMEOUT", None)
+
+        return self.result
+
+    def _run(self):
+        try:
+            self.result = True, self.func(self.session, self.path, self.timeout)
+        except (socket.timeout, IOError):
+            self.result = False, ("CRASH", None)
+        except Exception as e:
+            message = getattr(e, "message")
+            if message:
+                message += "\n"
+            message += traceback.format_exc(e)
+            self.result = False, ("INTERNAL-ERROR", message)
+        finally:
+            self.result_flag.set()
+
+
+class ConnectionlessBaseProtocolPart(BaseProtocolPart):
+    def execute_script(self, script, async=False):
+        pass
+
+    def set_timeout(self, timeout):
         pass
 
     def wait(self):
         pass
+
+    def set_window(self, handle):
+        pass
+
+
+class ConnectionlessProtocol(Protocol):
+    implements = [ConnectionlessBaseProtocolPart]
+
+    def connect(self):
+        pass
+
+    def after_connect(self):
+        pass
+
+
+class WebDriverProtocol(Protocol):
+    server_cls = None
+
+    implements = [ConnectionlessBaseProtocolPart]
+
+    def __init__(self, executor, browser):
+        Protocol.__init__(self, executor, browser)
+        self.webdriver_binary = executor.webdriver_binary
+        self.webdriver_args = executor.webdriver_args
+        self.capabilities = self.executor.capabilities
+        self.session_config = None
+        self.server = None
+
+    def connect(self):
+        """Connect to browser via the HTTP server."""
+        self.server = self.server_cls(
+            self.logger,
+            binary=self.webdriver_binary,
+            args=self.webdriver_args)
+        self.server.start(block=False)
+        self.logger.info(
+            "WebDriver HTTP server listening at %s" % self.server.url)
+        self.session_config = {"host": self.server.host,
+                               "port": self.server.port,
+                               "capabilities": self.capabilities}
+
+    def after_connect(self):
+        pass
+
+    def teardown(self):
+        if self.server is not None and self.server.is_alive:
+            self.server.stop()
+
+    @property
+    def is_alive(self):
+        """Test that the connection is still alive.
+
+        Because the remote communication happens over HTTP we need to
+        make an explicit request to the remote.  It is allowed for
+        WebDriver spec tests to not have a WebDriver session, since this
+        may be what is tested.
+
+        An HTTP request to an invalid path that results in a 404 is
+        proof enough to us that the server is alive and kicking.
+        """
+        conn = httplib.HTTPConnection(self.server.host, self.server.port)
+        conn.request("HEAD", self.server.base_path + "invalid")
+        res = conn.getresponse()
+        return res.status == 404
+
+
+class CallbackHandler(object):
+    """Handle callbacks from testdriver-using tests.
+
+    The default implementation here makes sense for things that are roughly like
+    WebDriver. Things that are more different to WebDriver may need to create a
+    fully custom implementation."""
+
+    def __init__(self, logger, protocol, test_window):
+        self.protocol = protocol
+        self.test_window = test_window
+        self.logger = logger
+        self.callbacks = {
+            "action": self.process_action,
+            "complete": self.process_complete
+        }
+
+        self.actions = {
+            "click": ClickAction(self.logger, self.protocol),
+            "send_keys": SendKeysAction(self.logger, self.protocol)
+        }
+
+    def __call__(self, result):
+        url, command, payload = result
+        self.logger.debug("Got async callback: %s" % result[1])
+        try:
+            callback = self.callbacks[command]
+        except KeyError:
+            raise ValueError("Unknown callback type %r" % result[1])
+        return callback(url, payload)
+
+    def process_complete(self, url, payload):
+        rv = [url] + payload
+        return True, rv
+
+    def process_action(self, url, payload):
+        parent = self.protocol.base.current_window
+        try:
+            self.protocol.base.set_window(self.test_window)
+            action = payload["action"]
+            self.logger.debug("Got action: %s" % action)
+            try:
+                action_handler = self.actions[action]
+            except KeyError:
+                raise ValueError("Unknown action %s" % action)
+            try:
+                action_handler(payload)
+            except Exception as e:
+                self.logger.warning("Action %s failed" % action)
+                self.logger.warning(traceback.format_exc())
+                self._send_message("complete", "failure")
+            else:
+                self.logger.debug("Action %s completed" % action)
+                self._send_message("complete", "success")
+        finally:
+            self.protocol.base.set_window(parent)
+
+        return False, None
+
+    def _send_message(self, message_type, status, message=None):
+        self.protocol.testdriver.send_message(message_type, status, message=message)
+
+
+class ClickAction(object):
+    def __init__(self, logger, protocol):
+        self.logger = logger
+        self.protocol = protocol
+
+    def __call__(self, payload):
+        selector = payload["selector"]
+        elements = self.protocol.select.elements_by_selector(selector)
+        if len(elements) == 0:
+            raise ValueError("Selector matches no elements")
+        elif len(elements) > 1:
+            raise ValueError("Selector matches multiple elements")
+        self.logger.debug("Clicking element: %s" % selector)
+        self.protocol.click.element(elements[0])
+
+
+class SendKeysAction(object):
+    def __init__(self, logger, protocol):
+        self.logger = logger
+        self.protocol = protocol
+
+    def __call__(self, payload):
+        selector = payload["selector"]
+        keys = payload["keys"]
+        elements = self.protocol.select.elements_by_selector(selector)
+        if len(elements) == 0:
+            raise ValueError("Selector matches no elements")
+        elif len(elements) > 1:
+            raise ValueError("Selector matches multiple elements")
+        self.logger.debug("Sending keys to element: %s" % selector)
+        self.protocol.send_keys.send_keys(elements[0], keys)

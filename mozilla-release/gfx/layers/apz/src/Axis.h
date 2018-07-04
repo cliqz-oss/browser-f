@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,11 +8,13 @@
 #define mozilla_layers_Axis_h
 
 #include <sys/types.h>                  // for int32_t
+
 #include "APZUtils.h"
 #include "AxisPhysicsMSDModel.h"
-#include "Units.h"
+#include "mozilla/gfx/Types.h"          // for Side
 #include "mozilla/TimeStamp.h"          // for TimeDuration
 #include "nsTArray.h"                   // for nsTArray
+#include "Units.h"
 
 namespace mozilla {
 namespace layers {
@@ -83,9 +85,9 @@ public:
    * to prevent the viewport from overscrolling the page rect), and axis locking
    * (which might prevent any displacement from happening). If overscroll
    * ocurred, its amount is written to |aOverscrollAmountOut|.
-   * The |aDisplacementOut| parameter is set to the adjusted
-   * displacement, and the function returns true iff internal overscroll amounts
-   * were changed.
+   * The |aDisplacementOut| parameter is set to the adjusted displacement, and
+   * the function returns true if and only if internal overscroll amounts were
+   * changed.
    */
   bool AdjustDisplacement(ParentLayerCoord aDisplacement,
                           /* ParentLayerCoord */ float& aDisplacementOut,
@@ -152,19 +154,6 @@ public:
    * StartTouch() and the supplied position.
    */
   ParentLayerCoord PanDistance(ParentLayerCoord aPos) const;
-
-  /**
-   * Applies friction during a fling, or cancels the fling if the velocity is
-   * too low. Returns true if the fling should continue to another frame, or
-   * false if it should end.
-   * |aDelta| is the amount of time that has passed since the last time
-   * friction was applied.
-   * |aFriction| is the amount of friction to apply.
-   * |aThreshold| is the velocity below which the fling is cancelled.
-   */
-  bool FlingApplyFrictionOrCancel(const TimeDuration& aDelta,
-                                  float aFriction,
-                                  float aThreshold);
 
   /**
    * Returns true if the page has room to be scrolled along this axis.
@@ -249,6 +238,9 @@ public:
 
   ParentLayerCoord GetPos() const { return mPos; }
 
+  bool OverscrollBehaviorAllowsHandoff() const;
+  bool OverscrollBehaviorAllowsOverscrollEffect() const;
+
   virtual ParentLayerCoord GetPointOffset(const ParentLayerPoint& aPoint) const = 0;
   virtual ParentLayerCoord GetRectLength(const ParentLayerRect& aRect) const = 0;
   virtual ParentLayerCoord GetRectOffset(const ParentLayerRect& aRect) const = 0;
@@ -286,6 +278,9 @@ protected:
   nsTArray<std::pair<uint32_t, float> > mVelocityQueue;
 
   const FrameMetrics& GetFrameMetrics() const;
+  const ScrollMetadata& GetScrollMetadata() const;
+
+  virtual OverscrollBehavior GetOverscrollBehavior() const = 0;
 
   // Adjust a requested overscroll amount for resistance, yielding a smaller
   // actual overscroll amount.
@@ -307,6 +302,9 @@ public:
   virtual CSSToParentLayerScale GetScaleForAxis(const CSSToParentLayerScale2D& aScale) const override;
   virtual ScreenPoint MakePoint(ScreenCoord aCoord) const override;
   virtual const char* Name() const override;
+  bool CanScrollTo(Side aSide) const;
+private:
+  virtual OverscrollBehavior GetOverscrollBehavior() const override;
 };
 
 class AxisY : public Axis {
@@ -318,6 +316,9 @@ public:
   virtual CSSToParentLayerScale GetScaleForAxis(const CSSToParentLayerScale2D& aScale) const override;
   virtual ScreenPoint MakePoint(ScreenCoord aCoord) const override;
   virtual const char* Name() const override;
+  bool CanScrollTo(Side aSide) const;
+private:
+  virtual OverscrollBehavior GetOverscrollBehavior() const override;
 };
 
 } // namespace layers

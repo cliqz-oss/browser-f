@@ -60,6 +60,9 @@ const OCSPHost sOCSPHosts[] =
   { "ocsp-stapling-must-staple-empty.example.com", ORTEmpty, nullptr, "must-staple-ee" },
   { "ocsp-stapling-must-staple-ee-with-must-staple-int.example.com", ORTGood, nullptr, "must-staple-ee-with-must-staple-int" },
   { "ocsp-stapling-plain-ee-with-must-staple-int.example.com", ORTGood, nullptr, "must-staple-missing-ee" },
+  { "ocsp-stapling-must-staple-expired.example.com", ORTExpired, nullptr, "must-staple-ee" },
+  { "ocsp-stapling-must-staple-try-later.example.com", ORTTryLater, nullptr, "must-staple-ee" },
+  { "ocsp-stapling-must-staple-invalid-signer.example.com", ORTGoodOtherCA, "other-test-ca", "must-staple-ee" },
   { "multi-tls-feature-good.example.com", ORTNone, nullptr, "multi-tls-feature-good-ee" },
   { "multi-tls-feature-bad.example.com", ORTNone, nullptr, "multi-tls-feature-bad-ee" },
   { nullptr, ORTNull, nullptr, nullptr }
@@ -102,7 +105,7 @@ DoSNISocketConfig(PRFileDesc *aFd, const SECItem *aSrvNameArr,
 
   // response is contained by the arena - freeing the arena will free it
   SECItemArray *response = GetOCSPResponseForType(host->mORT, cert, arena,
-                                                  host->mAdditionalCertName);
+                                                  host->mAdditionalCertName, 0);
   if (!response) {
     return SSL_SNI_SEND_ALERT;
   }

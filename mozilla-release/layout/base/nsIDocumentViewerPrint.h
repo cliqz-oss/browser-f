@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,10 +7,11 @@
 #define nsIDocumentViewerPrint_h___
 
 #include "nsISupports.h"
+#include "mozilla/UniquePtr.h"
 
 class nsIDocument;
 namespace mozilla {
-class StyleSetHandle;
+class ServoStyleSet;
 } // namespace mozilla
 class nsIPresShell;
 class nsPresContext;
@@ -22,7 +24,7 @@ class nsViewManager;
 
 /**
  * A DocumentViewerPrint is an INTERNAL Interface used for interaction
- * between the DocumentViewer and the PrintEngine
+ * between the DocumentViewer and nsPrintJob.
  */
 class nsIDocumentViewerPrint : public nsISupports
 {
@@ -38,11 +40,16 @@ public:
   // The style set returned by CreateStyleSet is in the middle of an
   // update batch so that the caller can add sheets to it if needed.
   // Callers should call EndUpdate() on it when ready to use.
-  virtual mozilla::StyleSetHandle CreateStyleSet(nsIDocument* aDocument) = 0;
+  virtual mozilla::UniquePtr<mozilla::ServoStyleSet>
+    CreateStyleSet(nsIDocument* aDocument) = 0;
 
-  virtual void IncrementDestroyRefCount() = 0;
-
-  virtual void ReturnToGalleyPresentation() = 0;
+  /**
+   * This is used by nsPagePrintTimer to make nsDocumentViewer::Destroy()
+   * a no-op until printing is finished.  That prevents the nsDocumentViewer
+   * and its document, presshell and prescontext from going away.
+   */
+  virtual void IncrementDestroyBlockedCount() = 0;
+  virtual void DecrementDestroyBlockedCount() = 0;
 
   virtual void OnDonePrinting() = 0;
 
@@ -73,9 +80,10 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsIDocumentViewerPrint,
   bool GetIsPrinting() override; \
   void SetIsPrintPreview(bool aIsPrintPreview) override; \
   bool GetIsPrintPreview() override; \
-  mozilla::StyleSetHandle CreateStyleSet(nsIDocument* aDocument) override; \
-  void IncrementDestroyRefCount() override; \
-  void ReturnToGalleyPresentation() override; \
+  mozilla::UniquePtr<mozilla::ServoStyleSet> \
+    CreateStyleSet(nsIDocument* aDocument) override; \
+  void IncrementDestroyBlockedCount() override; \
+  void DecrementDestroyBlockedCount() override; \
   void OnDonePrinting() override; \
   bool IsInitializedForPrintPreview() override; \
   void InitializeForPrintPreview() override; \

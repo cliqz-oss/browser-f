@@ -15,8 +15,9 @@ EXPORTS.mozilla.plugins += [
     'AStream.h',
     'BrowserStreamChild.h',
     'BrowserStreamParent.h',
-    'ChildAsyncCall.h',
     'ChildTimer.h',
+    'FunctionBrokerIPCUtils.h',
+    'IpdlTuple.h',
     'NPEventAndroid.h',
     'NPEventOSX.h',
     'NPEventUnix.h',
@@ -64,11 +65,16 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
 UNIFIED_SOURCES += [
     'BrowserStreamChild.cpp',
     'BrowserStreamParent.cpp',
-    'ChildAsyncCall.cpp',
     'ChildTimer.cpp',
+    'FunctionBroker.cpp',
+    'FunctionBrokerChild.cpp',
+    'FunctionBrokerIPCUtils.cpp',
+    'FunctionBrokerParent.cpp',
+    'FunctionHook.cpp',
     'PluginBackgroundDestroyer.cpp',
     'PluginInstanceParent.cpp',
     'PluginMessageUtils.cpp',
+    'PluginModuleChild.cpp',
     'PluginModuleParent.cpp',
     'PluginProcessChild.cpp',
     'PluginProcessParent.cpp',
@@ -79,7 +85,6 @@ UNIFIED_SOURCES += [
 
 SOURCES += [
     'PluginInstanceChild.cpp', # 'PluginThreadCallback' : ambiguous symbol
-    'PluginModuleChild.cpp',   # Redefinition of mozilla::WindowsDllInterceptor sUser32Intercept
 ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
@@ -104,6 +109,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
 
 IPDL_SOURCES += [
     'PBrowserStream.ipdl',
+    'PFunctionBroker.ipdl',
     'PluginTypes.ipdlh',
     'PPluginBackgroundDestroyer.ipdl',
     'PPluginInstance.ipdl',
@@ -119,6 +125,7 @@ FINAL_LIBRARY = 'xul'
 LOCAL_INCLUDES += [
     '../base',
     '/xpcom/base/',
+    '/xpcom/threads/',
 ]
 
 if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_ARCH'] == 'WINNT':
@@ -138,10 +145,10 @@ else:
 
 CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
 
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     # This is intended as a temporary hack to support building with VS2015.
     # conversion from 'X' to 'Y' requires a narrowing conversion
     CXXFLAGS += ['-wd4838']

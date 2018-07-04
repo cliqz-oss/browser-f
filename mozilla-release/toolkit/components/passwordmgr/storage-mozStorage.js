@@ -2,15 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 const DB_VERSION = 6; // The database schema version
 const PERMISSION_SAVE_LOGINS = "login-saving";
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
 
 /**
  * Object that manages a database transaction properly so consumers don't have
@@ -47,8 +46,8 @@ function LoginManagerStorage_mozStorage() { }
 LoginManagerStorage_mozStorage.prototype = {
 
   classID: Components.ID("{8c2023b9-175c-477e-9761-44ae7b549756}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsILoginManagerStorage,
-                                          Ci.nsIInterfaceRequestor]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsILoginManagerStorage,
+                                           Ci.nsIInterfaceRequestor]),
   getInterface(aIID) {
     if (aIID.equals(Ci.nsIVariant)) {
       // Allows unwrapping the JavaScript object for regression tests.
@@ -75,14 +74,6 @@ LoginManagerStorage_mozStorage.prototype = {
     if (!this.__profileDir)
       this.__profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile);
     return this.__profileDir;
-  },
-
-  __storageService: null, // Storage service for using mozStorage
-  get _storageService() {
-    if (!this.__storageService)
-      this.__storageService = Cc["@mozilla.org/storage/service;1"].
-                              getService(Ci.mozIStorageService);
-    return this.__storageService;
   },
 
   __uuidService: null,
@@ -204,11 +195,13 @@ LoginManagerStorage_mozStorage.prototype = {
   },
 
 
-  addLogin(login) {
+  addLogin(login, preEncrypted = false) {
     // Throws if there are bogus values.
     LoginHelper.checkLoginValues(login);
 
-    let [encUsername, encPassword, encType] = this._encryptLogin(login);
+    let [encUsername, encPassword, encType] = preEncrypted ?
+      [login.username, login.password, this._crypto.defaultEncType] :
+      this._encryptLogin(login);
 
     // Clone the login, so we don't modify the caller's object.
     let loginClone = login.clone();
@@ -467,7 +460,7 @@ LoginManagerStorage_mozStorage.prototype = {
               if (aOptions.schemeUpgrades && (valueURI = Services.io.newURI(value)) &&
                   valueURI.scheme == "https") {
                 condition += ` OR ${field} = :http${field}`;
-                params["http" + field] = "http://" + valueURI.hostPort;
+                params["http" + field] = "http://" + valueURI.displayHostPort;
               }
             } catch (ex) {
               // newURI will throw for some values (e.g. chrome://FirefoxAccounts)
@@ -711,21 +704,21 @@ LoginManagerStorage_mozStorage.prototype = {
       conditions.push("hostname isnull");
     } else if (hostname != "") {
       conditions.push("hostname = :hostname");
-      params["hostname"] = hostname;
+      params.hostname = hostname;
     }
 
     if (formSubmitURL == null) {
       conditions.push("formSubmitURL isnull");
     } else if (formSubmitURL != "") {
       conditions.push("formSubmitURL = :formSubmitURL OR formSubmitURL = ''");
-      params["formSubmitURL"] = formSubmitURL;
+      params.formSubmitURL = formSubmitURL;
     }
 
     if (httpRealm == null) {
       conditions.push("httpRealm isnull");
     } else if (httpRealm != "") {
       conditions.push("httpRealm = :httpRealm");
-      params["httpRealm"] = httpRealm;
+      params.httpRealm = httpRealm;
     }
 
     return [conditions, params];
@@ -832,7 +825,7 @@ LoginManagerStorage_mozStorage.prototype = {
     this.log("Initializing Database");
     let isFirstRun = false;
     try {
-      this._dbConnection = this._storageService.openDatabase(this._signonsFile);
+      this._dbConnection = Services.storage.openDatabase(this._signonsFile);
       // Get the version of the schema in the file. It will be 0 if the
       // database has not been created yet.
       let version = this._dbConnection.schemaVersion;
@@ -1227,7 +1220,7 @@ LoginManagerStorage_mozStorage.prototype = {
       try {
         this._dbConnection.close();
       } catch (e) {
-        Components.utils.reportError(e);
+        Cu.reportError(e);
       }
     }
     this._dbConnection = null;
@@ -1243,7 +1236,7 @@ LoginManagerStorage_mozStorage.prototype = {
     // Create backup file
     if (backup) {
       let backupFile = this._signonsFile.leafName + ".corrupt";
-      this._storageService.backupDatabaseFile(this._signonsFile, backupFile);
+      Services.storage.backupDatabaseFile(this._signonsFile, backupFile);
     }
 
     this._dbClose();

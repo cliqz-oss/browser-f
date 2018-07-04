@@ -8,19 +8,19 @@
 #define mozilla_dom_CDATASection_h
 
 #include "mozilla/Attributes.h"
-#include "nsIDOMCDATASection.h"
 #include "mozilla/dom/Text.h"
+#include "nsIDOMNode.h"
 
 namespace mozilla {
 namespace dom {
 
 class CDATASection final : public Text,
-                           public nsIDOMCDATASection
+                           public nsIDOMNode
 {
 private:
   void Init()
   {
-    MOZ_ASSERT(mNodeInfo->NodeType() == nsIDOMNode::CDATA_SECTION_NODE,
+    MOZ_ASSERT(mNodeInfo->NodeType() == CDATA_SECTION_NODE,
                "Bad NodeType in aNodeInfo");
   }
 
@@ -36,7 +36,7 @@ public:
   explicit CDATASection(nsNodeInfoManager* aNodeInfoManager)
     : Text(aNodeInfoManager->GetNodeInfo(nsGkAtoms::cdataTagName,
                                          nullptr, kNameSpaceID_None,
-                                         nsIDOMNode::CDATA_SECTION_NODE))
+                                         CDATA_SECTION_NODE))
   {
     Init();
   }
@@ -44,24 +44,12 @@ public:
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
-  // nsIDOMNode
-  NS_FORWARD_NSIDOMNODE_TO_NSINODE
-
-  // nsIDOMCharacterData
-  NS_FORWARD_NSIDOMCHARACTERDATA(nsGenericDOMDataNode::)
-  using nsGenericDOMDataNode::SetData; // Prevent hiding overloaded virtual function.
-
-  // nsIDOMText
-  NS_FORWARD_NSIDOMTEXT(nsGenericDOMDataNode::)
-
-  // nsIDOMCDATASection
-  // Empty interface
-
   // nsINode
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
 
-  virtual nsGenericDOMDataNode* CloneDataNode(mozilla::dom::NodeInfo *aNodeInfo,
-                                              bool aCloneText) const override;
+  virtual already_AddRefed<CharacterData>
+    CloneDataNode(mozilla::dom::NodeInfo *aNodeInfo,
+                  bool aCloneText) const override;
 
   virtual nsIDOMNode* AsDOMNode() override { return this; }
 #ifdef DEBUG

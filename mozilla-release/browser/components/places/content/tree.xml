@@ -4,6 +4,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<!-- import-globals-from controller.js -->
+<!-- import-globals-from treeView.js -->
+
 <bindings id="placesTreeBindings"
           xmlns="http://www.mozilla.org/xbl"
           xmlns:xbl="http://www.mozilla.org/xbl"
@@ -44,6 +47,11 @@
                 readonly="true"
                 onget="return this._controller"/>
 
+      <property name="disableUserActions"
+                onget="return this.getAttribute('disableUserActions') == 'true';"
+                onset="if (val) this.setAttribute('disableUserActions', 'true');
+                       else this.removeAttribute('disableUserActions'); return val;"/>
+
       <!-- overriding -->
       <property name="view">
         <getter><![CDATA[
@@ -75,8 +83,9 @@
           // We do not yet support searching into grouped queries or into
           // tag containers, so we must fall to the default case.
           if (PlacesUtils.nodeIsHistoryContainer(queryNode) ||
-              options.resultType == options.RESULTS_AS_TAG_QUERY ||
-              options.resultType == options.RESULTS_AS_TAG_CONTENTS)
+              PlacesUtils.nodeIsTagQuery(queryNode) ||
+              options.resultType == options.RESULTS_AS_TAGS_ROOT ||
+              options.resultType == options.RESULTS_AS_ROOTS_QUERY)
             options.resultType = options.RESULTS_AS_URI;
 
           var query = PlacesUtils.history.getNewQuery();
@@ -89,17 +98,16 @@
 
           options.includeHidden = !!includeHidden;
 
-          this.load([query], options);
+          this.load(query, options);
         ]]></body>
       </method>
 
       <method name="load">
-        <parameter name="queries"/>
+        <parameter name="query"/>
         <parameter name="options"/>
         <body><![CDATA[
           let result = PlacesUtils.history
-                                  .executeQueries(queries, queries.length,
-                                                  options);
+                                  .executeQuery(query, options);
           let callback;
           if (this.flatList) {
             let onOpenFlatContainer = this.onOpenFlatContainer;
@@ -109,6 +117,7 @@
 
           if (!this._controller) {
             this._controller = new PlacesController(this);
+            this._controller.disableUserActions = this.disableUserActions;
             this.controllers.appendController(this._controller);
           }
 
@@ -202,7 +211,7 @@
           }
 
           var container = this.result.root;
-          NS_ASSERT(container, "No result, cannot select place URI!");
+          console.assert(container, "No result, cannot select place URI!");
           if (!container)
             return;
 
@@ -242,7 +251,7 @@
             // opening each folder as we go.
             for (var i = parents.length - 1; i >= 0; --i) {
               let index = view.treeIndexForNode(parents[i]);
-              if (index != Ci.nsINavHistoryResultTreeViewer.INDEX_INVISIBLE &&
+              if (index != -1 &&
                   view.isContainer(index) && !view.isContainerOpen(index))
                 view.toggleOpenState(index);
             }
@@ -250,7 +259,7 @@
           }
 
           let index = view.treeIndexForNode(node);
-          if (index == Ci.nsINavHistoryResultTreeViewer.INDEX_INVISIBLE)
+          if (index == -1)
             return;
 
           view.selection.select(index);
@@ -278,16 +287,9 @@
         <setter><![CDATA[
           this.setAttribute("place", val);
 
-          var queriesRef = { };
-          var queryCountRef = { };
-          var optionsRef = { };
-          PlacesUtils.history.queryStringToQueries(val, queriesRef, queryCountRef, optionsRef);
-          if (queryCountRef.value == 0)
-            queriesRef.value = [PlacesUtils.history.getNewQuery()];
-          if (!optionsRef.value)
-            optionsRef.value = PlacesUtils.history.getNewQueryOptions();
-
-          this.load(queriesRef.value, optionsRef.value);
+          let query = {}, options = {};
+          PlacesUtils.history.queryStringToQuery(val, query, options);
+          this.load(query.value, options.value);
 
           return val;
         ]]></setter>
@@ -471,8 +473,8 @@
           var result = this.result;
           var resultview = this.view;
           var container = result.root;
-          var dropNearItemId = -1;
-          NS_ASSERT(container, "null container");
+          var dropNearNode = null;
+          console.assert(container, "null container");
           // When there's no selection, assume the container is the container
           // the view is populated from (i.e. the result's itemId).
           if (index != -1) {
@@ -500,7 +502,7 @@
 
               // Avoid the potentially expensive call to getChildIndex
               // if we know this container doesn't allow insertion
-              if (PlacesControllerDragHelper.disallowInsertion(container))
+              if (this.controller.disallowInsertion(container))
                 return null;
 
               var queryOptions = PlacesUtils.asQuery(result.root).queryOptions;
@@ -515,7 +517,7 @@
                 // We don't replace index here to avoid requests to the db,
                 // instead it will be calculated later by the controller.
                 index = -1;
-                dropNearItemId = lastSelected.itemId;
+                dropNearNode = lastSelected;
               } else {
                 var lsi = container.getChildIndex(lastSelected);
                 index = orientation == Ci.nsITreeView.DROP_BEFORE ? lsi : lsi + 1;
@@ -523,21 +525,17 @@
             }
           }
 
-          if (PlacesControllerDragHelper.disallowInsertion(container))
+          if (this.controller.disallowInsertion(container))
             return null;
 
-          // TODO (Bug 1160193): properly support dropping on a tag root.
-          let tagName = null;
-          if (PlacesUtils.nodeIsTagQuery(container)) {
-            tagName = container.title;
-            if (!tagName)
-              return null;
-          }
+          let tagName = PlacesUtils.nodeIsTagQuery(container) ?
+                          PlacesUtils.asQuery(container).query.tags[0] : null;
 
-          return new InsertionPoint(PlacesUtils.getConcreteItemId(container),
-                                    index, orientation,
-                                    tagName,
-                                    dropNearItemId);
+          return new PlacesInsertionPoint({
+            parentId: PlacesUtils.getConcreteItemId(container),
+            parentGuid: PlacesUtils.getConcreteItemGuid(container),
+            index, orientation, tagName, dropNearNode
+          });
         ]]></body>
       </method>
 
@@ -549,8 +547,10 @@
       </method>
 
       <!-- This method will select the first node in the tree that matches
-           each given item id. It will open any folder nodes that it needs
+           each given item guid. It will open any folder nodes that it needs
            to in order to show the selected items.
+           Note: An array of ids or guids (or a mixture) may be passed as aIDs.
+           Passing IDs should be considered deprecated.
       -->
       <method name="selectItems">
         <parameter name="aIDs"/>
@@ -597,6 +597,16 @@
                 node.type == Ci.nsINavHistoryResultNode.RESULT_TYPE_FOLDER_SHORTCUT)
               index = ids.indexOf(PlacesUtils.asQuery(node).folderItemId);
 
+            if (index == -1) {
+              index = ids.indexOf(node.bookmarkGuid);
+              if (index == -1) {
+                let concreteGuid = PlacesUtils.getConcreteItemGuid(node);
+                if (concreteGuid != node.bookmarkGuid) {
+                  index = ids.indexOf(concreteGuid);
+                }
+              }
+            }
+
             if (index != -1) {
               nodes.push(node);
               foundOne = true;
@@ -608,8 +618,12 @@
                 checkedGuidsSet.has(concreteGuid))
               return foundOne;
 
-            // Only follow a query if it has been been explicitly opened by the caller.
-            let shouldOpen = aOpenContainers && PlacesUtils.nodeIsFolder(node);
+            // Only follow a query if it has been been explicitly opened by the
+            // caller. We support the "AllBookmarks" case to allow callers to
+            // specify just the top-level bookmark folders.
+            let shouldOpen = aOpenContainers && (PlacesUtils.nodeIsFolder(node) ||
+              (PlacesUtils.nodeIsQuery(node) && node.bookmarkGuid == PlacesUIUtils.virtualAllBookmarksGuid));
+
             PlacesUtils.asContainer(node);
             if (!node.containerOpen && !shouldOpen)
               return foundOne;
@@ -639,7 +653,7 @@
           let result = this.result;
           let didSuppressNotifications = result.suppressNotifications;
           if (!didSuppressNotifications)
-            result.suppressNotifications = true
+            result.suppressNotifications = true;
           try {
             findNodes(this.result.root);
           } finally {
@@ -659,7 +673,7 @@
           }
           for (let i = 0; i < nodes.length; i++) {
             var index = resultview.treeIndexForNode(nodes[i]);
-            if (index == Ci.nsINavHistoryResultTreeViewer.INDEX_INVISIBLE)
+            if (index == -1)
               continue;
             selection.rangedSelect(index, index, true);
           }
@@ -719,6 +733,12 @@
         if (event.target.localName != "treechildren")
           return;
 
+        if (this.disableUserActions) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
         let nodes = this.selectedNodes;
         for (let i = 0; i < nodes.length; i++) {
           let node = nodes[i];
@@ -732,7 +752,7 @@
 
           // If this node is child of a readonly container (e.g. a livemark)
           // or cannot be moved, we must force a copy.
-          if (!PlacesControllerDragHelper.canMoveNode(node)) {
+          if (!this.controller.canMoveNode(node)) {
             event.dataTransfer.effectAllowed = "copyLink";
             break;
           }

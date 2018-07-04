@@ -45,7 +45,7 @@ add_task(async function test_nsNavHistory_invalidateFrecencies_somePages() {
 
 // nsNavHistory::invalidateFrecencies for all pages
 add_task(async function test_nsNavHistory_invalidateFrecencies_allPages() {
-  await Promise.all([onManyFrecenciesChanged(), PlacesTestUtils.clearHistory()]);
+  await Promise.all([onManyFrecenciesChanged(), PlacesUtils.history.clear()]);
 });
 
 // nsNavHistory::DecayFrecency and nsNavHistory::FixInvalidFrecencies
@@ -64,8 +64,8 @@ function onFrecencyChanged(expectedURI) {
     obs.onFrecencyChanged =
       (uri, newFrecency, guid, hidden, visitDate) => {
         PlacesUtils.history.removeObserver(obs);
-        do_check_true(!!uri);
-        do_check_true(uri.equals(expectedURI));
+        Assert.ok(!!uri);
+        Assert.ok(uri.equals(expectedURI));
         resolve();
       };
     PlacesUtils.history.addObserver(obs);
@@ -77,7 +77,7 @@ function onManyFrecenciesChanged() {
     let obs = new NavHistoryObserver();
     obs.onManyFrecenciesChanged = () => {
       PlacesUtils.history.removeObserver(obs);
-      do_check_true(true);
+      Assert.ok(true);
       resolve();
     };
     PlacesUtils.history.addObserver(obs);

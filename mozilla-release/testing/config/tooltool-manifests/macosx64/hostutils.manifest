@@ -1,10 +1,10 @@
 [
   {
-    "size": 121025970,
+    "size": 52350220,
     "visibility": "public",
-    "digest": "1374f461ad90fcdf1f6859df56379f000c7dbb0f8ea54c6652472c9e6f25052ec2386d00d6a41ed55579060e9300886674363f9689b1391e44518e500b9f2681",
+    "digest": "f8f86d8f2b8f754a79404dc38bf1d12419923d3d496cbd896a979658083b676f2eeda3bf03af21c5ea6389e8ec63459bf8e51bb093e99ef4d67b2a92a3160994",
     "algorithm": "sha512",
-    "filename": "host-utils-50.0a2.en-US.mac.tar.gz",
+    "filename": "host-utils-61.0a1.en-US.mac.tar.xz",
     "unpack": true
   }
 ]

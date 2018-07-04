@@ -31,8 +31,7 @@
 #include "vm/Time.h"
 #include "vm/TraceLogging.h"
 #include "vtune/VTuneWrapper.h"
-#include "wasm/WasmBuiltins.h"
-#include "wasm/WasmInstance.h"
+#include "wasm/WasmProcess.h"
 
 using JS::detail::InitState;
 using JS::detail::libraryInitState;
@@ -82,6 +81,8 @@ JS::detail::InitWithFailureDiagnostic(bool isDebugBuild)
     MOZ_ASSERT(!JSRuntime::hasLiveRuntimes(),
                "how do we have live runtimes before JS_Init?");
 
+    libraryInitState = InitState::Initializing;
+
     PRMJ_NowInit();
 
     // The first invocation of `ProcessCreation` creates a temporary thread
@@ -98,18 +99,17 @@ JS::detail::InitWithFailureDiagnostic(bool isDebugBuild)
 
 #if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
     RETURN_IF_FAIL(js::oom::InitThreadType());
-    js::oom::SetThreadType(js::oom::THREAD_TYPE_COOPERATING);
 #endif
 
-    RETURN_IF_FAIL(js::Mutex::Init());
+    js::InitMallocAllocator();
 
-    RETURN_IF_FAIL(js::wasm::InitInstanceStaticData());
+    RETURN_IF_FAIL(js::Mutex::Init());
 
     js::gc::InitMemorySubsystem(); // Ensure gc::SystemPageSize() works.
 
     RETURN_IF_FAIL(js::jit::InitProcessExecutableMemory());
 
-    MOZ_ALWAYS_TRUE(js::MemoryProtectionExceptionHandler::install());
+    RETURN_IF_FAIL(js::MemoryProtectionExceptionHandler::install());
 
     RETURN_IF_FAIL(js::jit::InitializeIon());
 
@@ -170,7 +170,7 @@ JS_ShutDown(void)
 
     js::MemoryProtectionExceptionHandler::uninstall();
 
-    js::wasm::ShutDownInstanceStaticData();
+    js::wasm::ShutDown();
 
     js::Mutex::ShutDown();
 
@@ -196,9 +196,11 @@ JS_ShutDown(void)
     js::FinishDateTimeState();
 
     if (!JSRuntime::hasLiveRuntimes()) {
-        js::wasm::ReleaseBuiltinThunks();
         js::jit::ReleaseProcessExecutableMemory();
+        MOZ_ASSERT(!js::LiveMappedBufferCount());
     }
+
+    js::ShutDownMallocAllocator();
 
     libraryInitState = InitState::ShutDown;
 }

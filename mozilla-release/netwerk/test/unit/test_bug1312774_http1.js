@@ -13,10 +13,8 @@
 // Note: if the urgent request handling is broken (the urgent-marked requests
 // get blocked by queuing) this test will time out
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-var Cc = Components.classes;
-var Ci = Components.interfaces;
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 var server = new HttpServer();
 server.start(-1);
 var baseURL = "http://localhost:" + server.identity.primaryPort + "/";
@@ -133,7 +131,7 @@ function setup_http_server()
     }
   });
 
-  do_register_cleanup(function() {
+  registerCleanupFunction(function() {
     server.stop(serverStopListener);
   });
 }

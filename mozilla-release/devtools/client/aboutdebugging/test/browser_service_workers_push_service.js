@@ -16,11 +16,11 @@ const FAKE_ENDPOINT = "https://fake/endpoint";
 const PushService = Cc["@mozilla.org/push/Service;1"]
   .getService(Ci.nsIPushService).wrappedJSObject;
 
-add_task(function* () {
+add_task(async function() {
   info("Turn on workers via mochitest http.");
-  yield enableServiceWorkerDebugging();
+  await enableServiceWorkerDebugging();
   // Enable the push service.
-  yield pushPref("dom.push.connection.enabled", true);
+  await pushPref("dom.push.connection.enabled", true);
 
   info("Mock the push service");
   PushService.service = {
@@ -52,55 +52,47 @@ add_task(function* () {
     },
   };
 
-  let { tab, document } = yield openAboutDebugging("workers");
+  let { tab, document } = await openAboutDebugging("workers");
 
   // Listen for mutations in the service-workers list.
   let serviceWorkersElement = document.getElementById("service-workers");
-  let onMutation = waitForMutation(serviceWorkersElement, { childList: true });
 
   // Open a tab that registers a push service worker.
-  let swTab = yield addTab(TAB_URL);
+  let swTab = await addTab(TAB_URL);
 
-  // Wait for the service-workers list to update.
-  yield onMutation;
+  info("Wait until the service worker appears in about:debugging");
+  await waitUntilServiceWorkerContainer(SERVICE_WORKER, document);
 
-  // Check that the service worker appears in the UI.
-  assertHasTarget(true, document, "service-workers", SERVICE_WORKER);
-
-  yield waitForServiceWorkerActivation(SERVICE_WORKER, document);
+  await waitForServiceWorkerActivation(SERVICE_WORKER, document);
 
   // Wait for the service worker details to update.
   let names = [...document.querySelectorAll("#service-workers .target-name")];
   let name = names.filter(element => element.textContent === SERVICE_WORKER)[0];
   ok(name, "Found the service worker in the list");
 
-  let targetContainer = name.parentNode.parentNode;
-  let targetDetailsElement = targetContainer.querySelector(".target-details");
+  let targetContainer = name.closest(".target-container");
 
   // Retrieve the push subscription endpoint URL, and verify it looks good.
-  let pushURL = targetContainer.querySelector(".service-worker-push-url");
-  if (!pushURL) {
-    yield waitForMutation(targetDetailsElement, { childList: true });
-    pushURL = targetContainer.querySelector(".service-worker-push-url");
-  }
+  info("Wait for the push URL");
+  let pushURL = await waitUntilElement(".service-worker-push-url", targetContainer);
 
-  ok(pushURL, "Found the push service URL in the service worker details");
+  info("Found the push service URL in the service worker details");
   is(pushURL.textContent, FAKE_ENDPOINT, "The push service URL looks correct");
 
   // Unsubscribe from the push service.
-  ContentTask.spawn(swTab.linkedBrowser, {}, function () {
+  ContentTask.spawn(swTab.linkedBrowser, {}, function() {
     let win = content.wrappedJSObject;
     return win.sub.unsubscribe();
   });
 
-  // Wait for the service worker details to update again.
-  yield waitForMutation(targetDetailsElement, { childList: true });
-  ok(!targetContainer.querySelector(".service-worker-push-url"),
-    "The push service URL should be removed");
+  // Wait for the service worker details to update again
+  info("Wait until the push URL is removed from the UI");
+  await waitUntil(() => !targetContainer.querySelector(".service-worker-push-url"), 100);
+  info("The push service URL should be removed");
 
   // Finally, unregister the service worker itself.
   try {
-    yield unregisterServiceWorker(swTab, serviceWorkersElement);
+    await unregisterServiceWorker(swTab, serviceWorkersElement);
     ok(true, "Service worker registration unregistered");
   } catch (e) {
     ok(false, "SW not unregistered; " + e);
@@ -109,6 +101,6 @@ add_task(function* () {
   info("Unmock the push service");
   PushService.service = null;
 
-  yield removeTab(swTab);
-  yield closeAboutDebugging(tab);
+  await removeTab(swTab);
+  await closeAboutDebugging(tab);
 });

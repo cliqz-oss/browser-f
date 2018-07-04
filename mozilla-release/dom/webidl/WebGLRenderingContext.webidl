@@ -217,6 +217,7 @@ interface WebGLRenderingContextBase {
     const GLenum SAMPLE_COVERAGE                = 0x80A0;
 
     /* ErrorCode */
+    [NeedsWindowsUndef]
     const GLenum NO_ERROR                       = 0;
     const GLenum INVALID_ENUM                   = 0x0500;
     const GLenum INVALID_VALUE                  = 0x0501;
@@ -802,7 +803,7 @@ WebGLRenderingContext implements WebGLRenderingContextBase;
 // Reference: https://wiki.whatwg.org/wiki/OffscreenCanvas
 [Exposed=(Window,Worker)]
 partial interface WebGLRenderingContext {
-    [Func="mozilla::dom::OffscreenCanvas::PrefEnabled"]
+    [Func="mozilla::dom::DOMPrefs::OffscreenCanvasEnabled"]
     void commit();
 };
 

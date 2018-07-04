@@ -10,17 +10,19 @@ use freetype::freetype::{FT_F26Dot6, FT_Face, FT_FaceRec};
 use freetype::freetype::{FT_Get_Char_Index, FT_Get_Postscript_Name};
 use freetype::freetype::{FT_Get_Kerning, FT_Get_Sfnt_Table, FT_Load_Sfnt_Table};
 use freetype::freetype::{FT_GlyphSlot, FT_Library, FT_Long, FT_ULong};
-use freetype::freetype::{FT_Int32, FT_Kerning_Mode, FT_STYLE_FLAG_BOLD, FT_STYLE_FLAG_ITALIC};
+use freetype::freetype::{FT_Int32, FT_Kerning_Mode, FT_STYLE_FLAG_ITALIC};
 use freetype::freetype::{FT_Load_Glyph, FT_Set_Char_Size};
 use freetype::freetype::{FT_SizeRec, FT_Size_Metrics, FT_UInt, FT_Vector};
 use freetype::freetype::FT_Sfnt_Tag;
 use freetype::tt_os2::TT_OS2;
 use platform::font_context::FontContextHandle;
 use platform::font_template::FontTemplateData;
+use servo_atoms::Atom;
 use std::{mem, ptr};
 use std::os::raw::{c_char, c_long};
 use std::sync::Arc;
-use style::computed_values::{font_stretch, font_weight};
+use style::computed_values::font_stretch::T as FontStretch;
+use style::computed_values::font_weight::T as FontWeight;
 use super::c_str_to_string;
 use text::glyph::GlyphId;
 use text::util::fixed_to_float;
@@ -49,6 +51,17 @@ impl FontTableMethods for FontTable {
     fn buffer(&self) -> &[u8] {
         &self.buffer
     }
+}
+
+/// Data from the OS/2 table of an OpenType font.
+/// See https://www.microsoft.com/typography/otspec/os2.htm
+#[derive(Debug)]
+struct OS2Table {
+    us_weight_class: u16,
+    us_width_class: u16,
+    y_strikeout_size: i16,
+    y_strikeout_position: i16,
+    sx_height: i16,
 }
 
 #[derive(Debug)]
@@ -112,14 +125,17 @@ impl FontHandleMethods for FontHandle {
             }
         }
     }
+
     fn template(&self) -> Arc<FontTemplateData> {
         self.font_data.clone()
     }
+
     fn family_name(&self) -> String {
         unsafe {
             c_str_to_string((*self.face).family_name as *const c_char)
         }
     }
+
     fn face_name(&self) -> Option<String> {
         unsafe {
             let name = FT_Get_Postscript_Name(self.face) as *const c_char;
@@ -131,35 +147,44 @@ impl FontHandleMethods for FontHandle {
             }
         }
     }
+
     fn is_italic(&self) -> bool {
         unsafe { (*self.face).style_flags & FT_STYLE_FLAG_ITALIC as c_long != 0 }
     }
-    fn boldness(&self) -> font_weight::T {
-        let default_weight = font_weight::T::normal();
-        if unsafe { (*self.face).style_flags & FT_STYLE_FLAG_BOLD as c_long == 0 } {
-            default_weight
-        } else {
-            unsafe {
-                let os2 = FT_Get_Sfnt_Table(self.face, FT_Sfnt_Tag::FT_SFNT_OS2) as *mut TT_OS2;
-                let valid = !os2.is_null() && (*os2).version != 0xffff;
-                if valid {
-                    let weight =(*os2).usWeightClass as i32;
-                    if weight < 10 {
-                        font_weight::T::from_int(weight * 100).unwrap()
-                    } else if weight >= 100 && weight < 1000 {
-                        font_weight::T::from_int(weight / 100 * 100).unwrap()
-                    } else {
-                        default_weight
-                    }
-                } else {
-                    default_weight
-                }
+
+    fn boldness(&self) -> FontWeight {
+        if let Some(os2) = self.os2_table() {
+            let weight = os2.us_weight_class as i32;
+
+            if weight < 10 {
+                FontWeight::from_int(weight * 100).unwrap()
+            } else if weight >= 100 && weight < 1000 {
+                FontWeight::from_int(weight / 100 * 100).unwrap()
+            } else {
+                FontWeight::normal()
             }
+        } else {
+            FontWeight::normal()
         }
     }
-    fn stretchiness(&self) -> font_stretch::T {
-        // TODO(pcwalton): Implement this.
-        font_stretch::T::normal
+
+    fn stretchiness(&self) -> FontStretch {
+        if let Some(os2) = self.os2_table() {
+            match os2.us_width_class {
+                1 => FontStretch::UltraCondensed,
+                2 => FontStretch::ExtraCondensed,
+                3 => FontStretch::Condensed,
+                4 => FontStretch::SemiCondensed,
+                5 => FontStretch::Normal,
+                6 => FontStretch::SemiExpanded,
+                7 => FontStretch::Expanded,
+                8 => FontStretch::ExtraExpanded,
+                9 => FontStretch::UltraExpanded,
+                _ => FontStretch::Normal
+            }
+        } else {
+            FontStretch::Normal
+        }
     }
 
     fn glyph_index(&self, codepoint: char) -> Option<GlyphId> {
@@ -235,14 +260,11 @@ impl FontHandleMethods for FontHandle {
         let mut strikeout_size = Au(0);
         let mut strikeout_offset = Au(0);
         let mut x_height = Au(0);
-        unsafe {
-            let os2 = FT_Get_Sfnt_Table(face, FT_Sfnt_Tag::FT_SFNT_OS2) as *mut TT_OS2;
-            let valid = !os2.is_null() && (*os2).version != 0xffff;
-            if valid {
-               strikeout_size = self.font_units_to_au((*os2).yStrikeoutSize as f64);
-               strikeout_offset = self.font_units_to_au((*os2).yStrikeoutPosition as f64);
-               x_height = self.font_units_to_au((*os2).sxHeight as f64);
-            }
+
+        if let Some(os2) = self.os2_table() {
+            strikeout_size = self.font_units_to_au(os2.y_strikeout_size as f64);
+            strikeout_offset = self.font_units_to_au(os2.y_strikeout_position as f64);
+            x_height = self.font_units_to_au(os2.sx_height as f64);
         }
 
         let average_advance = self.glyph_index('0')
@@ -285,6 +307,10 @@ impl FontHandleMethods for FontHandle {
             Some(FontTable { buffer: buf })
         }
     }
+
+    fn identifier(&self) -> Atom {
+        self.font_data.identifier.clone()
+    }
 }
 
 impl<'a> FontHandle {
@@ -321,8 +347,27 @@ impl<'a> FontHandle {
         let x_scale = (metrics.x_ppem as f64) / em_size as f64;
 
         // If this isn't true then we're scaling one of the axes wrong
-        assert!(metrics.x_ppem == metrics.y_ppem);
+        assert_eq!(metrics.x_ppem, metrics.y_ppem);
 
         Au::from_f64_px(value * x_scale)
+    }
+
+    fn os2_table(&self) -> Option<OS2Table> {
+        unsafe {
+            let os2 = FT_Get_Sfnt_Table(self.face_rec_mut(), FT_Sfnt_Tag::FT_SFNT_OS2) as *mut TT_OS2;
+            let valid = !os2.is_null() && (*os2).version != 0xffff;
+
+            if !valid {
+                return None
+            }
+
+            Some(OS2Table {
+                us_weight_class: (*os2).usWeightClass,
+                us_width_class: (*os2).usWidthClass,
+                y_strikeout_size: (*os2).yStrikeoutSize,
+                y_strikeout_position: (*os2).yStrikeoutPosition,
+                sx_height: (*os2).sxHeight,
+            })
+        }
     }
 }

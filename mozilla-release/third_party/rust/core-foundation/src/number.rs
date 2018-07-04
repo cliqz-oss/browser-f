@@ -9,42 +9,36 @@
 
 //! Immutable numbers.
 
-use core_foundation_sys::base::{CFRelease, kCFAllocatorDefault};
+use core_foundation_sys::base::kCFAllocatorDefault;
 pub use core_foundation_sys::number::*;
 use std::mem;
 
-use base::{TCFType};
+use base::TCFType;
 
-/// An immutable numeric value.
-pub struct CFNumber(CFNumberRef);
 
-impl Drop for CFNumber {
-    fn drop(&mut self) {
-        unsafe {
-            CFRelease(self.as_CFTypeRef())
-        }
-    }
+declare_TCFType!{
+    /// An immutable numeric value.
+    CFNumber, CFNumberRef
 }
-
 impl_TCFType!(CFNumber, CFNumberRef, CFNumberGetTypeID);
+impl_CFTypeDescription!(CFNumber);
+impl_CFComparison!(CFNumber, CFNumberCompare);
 
-// TODO(pcwalton): Floating point.
 impl CFNumber {
-    #[inline]
-    pub fn from_i32(value: i32) -> CFNumber {
-        unsafe {
-            let number_ref = CFNumberCreate(kCFAllocatorDefault,
-                                            kCFNumberSInt32Type,
-                                            mem::transmute(&value));
-            TCFType::wrap_under_create_rule(number_ref)
-        }
-    }
-
     #[inline]
     pub fn to_i64(&self) -> Option<i64> {
         unsafe {
             let mut value: i64 = 0;
             let ok = CFNumberGetValue(self.0, kCFNumberSInt64Type, mem::transmute(&mut value));
+            if ok { Some(value) } else { None }
+        }
+    }
+
+    #[inline]
+    pub fn to_f32(&self) -> Option<f32> {
+        unsafe {
+            let mut value: f32 = 0.0;
+            let ok = CFNumberGetValue(self.0, kCFNumberFloat32Type, mem::transmute(&mut value));
             if ok { Some(value) } else { None }
         }
     }
@@ -57,29 +51,60 @@ impl CFNumber {
             if ok { Some(value) } else { None }
         }
     }
+}
 
+impl From<i32> for CFNumber {
     #[inline]
-    pub fn from_i64(value: i64) -> CFNumber {
+    fn from(value: i32) -> Self {
         unsafe {
-            let number_ref = CFNumberCreate(kCFAllocatorDefault,
-                                            kCFNumberSInt64Type,
-                                            mem::transmute(&value));
-            TCFType::wrap_under_create_rule(number_ref)
-        }
-    }
-
-    #[inline]
-    pub fn from_f64(value: f64) -> CFNumber {
-        unsafe {
-            let number_ref = CFNumberCreate(kCFAllocatorDefault,
-                                            kCFNumberFloat64Type,
-                                            mem::transmute(&value));
+            let number_ref = CFNumberCreate(
+                kCFAllocatorDefault,
+                kCFNumberSInt32Type,
+                mem::transmute(&value),
+            );
             TCFType::wrap_under_create_rule(number_ref)
         }
     }
 }
 
-/// A convenience function to create CFNumbers.
-pub fn number(value: i64) -> CFNumber {
-    CFNumber::from_i64(value)
+impl From<i64> for CFNumber {
+    #[inline]
+    fn from(value: i64) -> Self {
+        unsafe {
+            let number_ref = CFNumberCreate(
+                kCFAllocatorDefault,
+                kCFNumberSInt64Type,
+                mem::transmute(&value),
+            );
+            TCFType::wrap_under_create_rule(number_ref)
+        }
+    }
+}
+
+impl From<f32> for CFNumber {
+    #[inline]
+    fn from(value: f32) -> Self {
+        unsafe {
+            let number_ref = CFNumberCreate(
+                kCFAllocatorDefault,
+                kCFNumberFloat32Type,
+                mem::transmute(&value),
+            );
+            TCFType::wrap_under_create_rule(number_ref)
+        }
+    }
+}
+
+impl From<f64> for CFNumber {
+    #[inline]
+    fn from(value: f64) -> Self {
+        unsafe {
+            let number_ref = CFNumberCreate(
+                kCFAllocatorDefault,
+                kCFNumberFloat64Type,
+                mem::transmute(&value),
+            );
+            TCFType::wrap_under_create_rule(number_ref)
+        }
+    }
 }

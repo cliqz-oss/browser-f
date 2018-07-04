@@ -4,16 +4,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "jsiter.h"
-#include "jswrapper.h"
-
+#include "gc/PublicIterators.h"
+#include "js/Wrapper.h"
 #include "proxy/DeadObjectProxy.h"
+#include "vm/Iteration.h"
 #include "vm/WrapperObject.h"
 
-#include "jscompartmentinlines.h"
-#include "jsobjinlines.h"
-
 #include "gc/Nursery-inl.h"
+#include "vm/JSCompartment-inl.h"
+#include "vm/JSObject-inl.h"
 
 using namespace js;
 
@@ -260,23 +259,21 @@ CrossCompartmentWrapper::getOwnEnumerablePropertyKeys(JSContext* cx, HandleObjec
 static bool
 CanReify(HandleObject obj)
 {
-    return obj->is<PropertyIteratorObject>() &&
-           (obj->as<PropertyIteratorObject>().getNativeIterator()->flags & JSITER_ENUMERATE);
+    return obj->is<PropertyIteratorObject>();
 }
 
 struct AutoCloseIterator
 {
-    AutoCloseIterator(JSContext* cx, PropertyIteratorObject* obj) : cx(cx), obj(cx, obj) {}
+    AutoCloseIterator(JSContext* cx, PropertyIteratorObject* obj) : obj(cx, obj) {}
 
     ~AutoCloseIterator() {
         if (obj)
-            MOZ_ALWAYS_TRUE(CloseIterator(cx, obj));
+            CloseIterator(obj);
     }
 
     void clear() { obj = nullptr; }
 
   private:
-    JSContext* cx;
     Rooted<PropertyIteratorObject*> obj;
 };
 
@@ -304,19 +301,21 @@ Reify(JSContext* cx, JSCompartment* origin, HandleObject objp)
         if (length > 0) {
             if (!keys.reserve(length))
                 return nullptr;
+            RootedId id(cx);
+            RootedValue v(cx);
             for (size_t i = 0; i < length; ++i) {
-                RootedId id(cx);
-                RootedValue v(cx, StringValue(ni->begin()[i]));
+                v.setString(ni->begin()[i]);
                 if (!ValueToId<CanGC>(cx, v, &id))
                     return nullptr;
+                cx->markId(id);
                 keys.infallibleAppend(id);
             }
         }
 
         close.clear();
-        MOZ_ALWAYS_TRUE(CloseIterator(cx, iterObj));
+        CloseIterator(iterObj);
 
-        obj = EnumeratedIdVectorToIterator(cx, obj, ni->flags, keys);
+        obj = EnumeratedIdVectorToIterator(cx, obj, keys);
     }
     return obj;
 }
@@ -611,6 +610,8 @@ js::RemapWrapper(JSContext* cx, JSObject* wobjArg, JSObject* newTargetArg)
     MOZ_ASSERT(!newTarget->is<CrossCompartmentWrapperObject>());
     JSObject* origTarget = Wrapper::wrappedObject(wobj);
     MOZ_ASSERT(origTarget);
+    MOZ_ASSERT(!JS_IsDeadWrapper(origTarget),
+               "We don't want a dead proxy in the wrapper map");
     Value origv = ObjectValue(*origTarget);
     JSCompartment* wcompartment = wobj->compartment();
 
@@ -705,7 +706,7 @@ js::RecomputeWrappers(JSContext* cx, const CompartmentFilter& sourceFilter,
             continue;
 
         if (!evictedNursery && c->hasNurseryAllocatedWrapperEntries(targetFilter)) {
-            EvictAllNurseries(cx->runtime());
+            cx->runtime()->gc.evictNursery();
             evictedNursery = true;
         }
 

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -20,9 +21,9 @@ using mozilla::WritingMode;
 //
 
 nsIFrame*
-NS_NewMathMLmmultiscriptsFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmmultiscriptsFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmmultiscriptsFrame(aContext);
+  return new (aPresShell) nsMathMLmmultiscriptsFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmmultiscriptsFrame)
@@ -112,10 +113,10 @@ nsMathMLmmultiscriptsFrame::Place(DrawTarget*          aDrawTarget,
   //
   nsAutoString value;
   if (!mContent->IsMathMLElement(nsGkAtoms::msup_)) {
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::subscriptshift_, value);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::subscriptshift_, value);
     if (!value.IsEmpty()) {
       ParseNumericValue(value, &subScriptShift, 0, PresContext(),
-                        mStyleContext, fontSizeInflation);
+                        mComputedStyle, fontSizeInflation);
     }
   }
   // superscriptshift
@@ -130,10 +131,10 @@ nsMathMLmmultiscriptsFrame::Place(DrawTarget*          aDrawTarget,
   // As a minimum, negative values can be ignored.
   //
   if (!mContent->IsMathMLElement(nsGkAtoms::msub_)) {
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::superscriptshift_, value);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::superscriptshift_, value);
     if (!value.IsEmpty()) {
       ParseNumericValue(value, &supScriptShift, 0, PresContext(),
-                        mStyleContext, fontSizeInflation);
+                        mComputedStyle, fontSizeInflation);
     }
   }
   return PlaceMultiScript(PresContext(), aDrawTarget, aPlaceOrigin,
@@ -153,7 +154,7 @@ nsMathMLmmultiscriptsFrame::PlaceMultiScript(nsPresContext*  aPresContext,
                                         nscoord              aUserSupScriptShift,
                                         float                aFontSizeInflation)
 {
-  nsIAtom* tag = aFrame->GetContent()->NodeInfo()->NameAtom();
+  nsAtom* tag = aFrame->GetContent()->NodeInfo()->NameAtom();
 
   // This function deals with both munderover etc. as well as msubsup etc.
   // As the former behaves identically to the later, we treat it as such
@@ -640,7 +641,7 @@ nsMathMLmmultiscriptsFrame::PlaceMultiScript(nsPresContext*  aPresContext,
         dx += bmBase.width;
       } else if (prescriptsFrame == childFrame) {
         // Clear reflow flags of prescripts frame.
-        prescriptsFrame->DidReflow(aPresContext, nullptr, nsDidReflowStatus::FINISHED);
+        prescriptsFrame->DidReflow(aPresContext, nullptr);
       } else {
         // process each sup/sub pair
         if (0 == count) {

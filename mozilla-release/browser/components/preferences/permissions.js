@@ -5,11 +5,11 @@
 // Imported via permissions.xul.
 /* import-globals-from ../../../toolkit/content/treeUtils.js */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
-const nsIPermissionManager = Components.interfaces.nsIPermissionManager;
-const nsICookiePermission = Components.interfaces.nsICookiePermission;
+const nsIPermissionManager = Ci.nsIPermissionManager;
+const nsICookiePermission = Ci.nsICookiePermission;
 
 const NOTIFICATION_FLUSH_PERMISSIONS = "flush-pending-permissions";
 
@@ -47,7 +47,6 @@ var gPermissionManager = {
     isContainer(aIndex) { return false; },
     setTree(aTree) {},
     getImageSrc(aRow, aColumn) {},
-    getProgressMode(aRow, aColumn) {},
     getCellValue(aRow, aColumn) {},
     cycleHeader(column) {},
     getRowProperties(row) { return ""; },
@@ -217,10 +216,8 @@ var gPermissionManager = {
     this._type = aParams.permissionType;
     this._manageCapability = aParams.manageCapability;
 
-    var permissionsText = document.getElementById("permissionsText");
-    while (permissionsText.hasChildNodes())
-      permissionsText.firstChild.remove();
-    permissionsText.appendChild(document.createTextNode(aParams.introText));
+    let permissionsText = document.getElementById("permissionsText");
+    permissionsText.textContent = aParams.introText;
 
     document.title = aParams.windowTitle;
 
@@ -275,7 +272,7 @@ var gPermissionManager = {
 
   observe(aSubject, aTopic, aData) {
     if (aTopic == "perm-changed") {
-      var permission = aSubject.QueryInterface(Components.interfaces.nsIPermission);
+      var permission = aSubject.QueryInterface(Ci.nsIPermission);
 
       // Ignore unrelated permission types.
       if (permission.type != this._type)
@@ -382,7 +379,7 @@ var gPermissionManager = {
     // load permissions into a table
     var enumerator = Services.perms.enumerator;
     while (enumerator.hasMoreElements()) {
-      var nextPermission = enumerator.getNext().QueryInterface(Components.interfaces.nsIPermission);
+      var nextPermission = enumerator.getNext().QueryInterface(Ci.nsIPermission);
       this._addPermissionToList(nextPermission);
     }
 

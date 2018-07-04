@@ -18,29 +18,17 @@
 using namespace mozilla;
 
 // standard font descriptors that we construct the first time they're needed
-CTFontDescriptorRef gfxCoreTextShaper::sDefaultFeaturesDescriptor = nullptr;
-CTFontDescriptorRef gfxCoreTextShaper::sDisableLigaturesDescriptor = nullptr;
-CTFontDescriptorRef gfxCoreTextShaper::sIndicFeaturesDescriptor = nullptr;
-CTFontDescriptorRef gfxCoreTextShaper::sIndicDisableLigaturesDescriptor = nullptr;
-
-static CFStringRef sCTWritingDirectionAttributeName = nullptr;
-
-// See CTStringAttributes.h
-enum {
-    kMyCTWritingDirectionEmbedding = (0 << 1),
-    kMyCTWritingDirectionOverride = (1 << 1)
-};
+CTFontDescriptorRef gfxCoreTextShaper::sFeaturesDescriptor[kMaxFontInstances];
 
 // Helper to create a CFDictionary with the right attributes for shaping our
 // text, including imposing the given directionality.
-// This will only be called if we're on 10.8 or later.
 CFDictionaryRef
 gfxCoreTextShaper::CreateAttrDict(bool aRightToLeft)
 {
     // Because we always shape unidirectional runs, and may have applied
     // directional overrides, we want to force a direction rather than
     // allowing CoreText to do its own unicode-based bidi processing.
-    SInt16 dirOverride = kMyCTWritingDirectionOverride |
+    SInt16 dirOverride = kCTWritingDirectionOverride |
                          (aRightToLeft ? kCTWritingDirectionRightToLeft
                                        : kCTWritingDirectionLeftToRight);
     CFNumberRef dirNumber =
@@ -51,8 +39,8 @@ gfxCoreTextShaper::CreateAttrDict(bool aRightToLeft)
                         (const void **) &dirNumber, 1,
                         &kCFTypeArrayCallBacks);
     ::CFRelease(dirNumber);
-    CFTypeRef attrs[] = { kCTFontAttributeName, sCTWritingDirectionAttributeName };
-    CFTypeRef values[] = { mCTFont, dirArray };
+    CFTypeRef attrs[] = { kCTFontAttributeName, kCTWritingDirectionAttributeName };
+    CFTypeRef values[] = { mCTFont[0], dirArray };
     CFDictionaryRef attrDict =
         ::CFDictionaryCreate(kCFAllocatorDefault,
                              attrs, values, ArrayLength(attrs),
@@ -62,37 +50,18 @@ gfxCoreTextShaper::CreateAttrDict(bool aRightToLeft)
     return attrDict;
 }
 
-CFDictionaryRef
-gfxCoreTextShaper::CreateAttrDictWithoutDirection()
-{
-    CFTypeRef attrs[] = { kCTFontAttributeName };
-    CFTypeRef values[] = { mCTFont };
-    CFDictionaryRef attrDict =
-        ::CFDictionaryCreate(kCFAllocatorDefault,
-                             attrs, values, ArrayLength(attrs),
-                             &kCFTypeDictionaryKeyCallBacks,
-                             &kCFTypeDictionaryValueCallBacks);
-    return attrDict;
-}
-
 gfxCoreTextShaper::gfxCoreTextShaper(gfxMacFont *aFont)
     : gfxFontShaper(aFont)
     , mAttributesDictLTR(nullptr)
     , mAttributesDictRTL(nullptr)
 {
-    static bool sInitialized = false;
-    if (!sInitialized) {
-        CFStringRef* pstr = (CFStringRef*)
-            dlsym(RTLD_DEFAULT, "kCTWritingDirectionAttributeName");
-        if (pstr) {
-            sCTWritingDirectionAttributeName = *pstr;
-        }
-        sInitialized = true;
+    for (size_t i = 0; i < kMaxFontInstances; i++) {
+        mCTFont[i] = nullptr;
     }
-
-    // Create our CTFontRef
-    mCTFont = CreateCTFontWithFeatures(aFont->GetAdjustedSize(),
-                                       GetDefaultFeaturesDescriptor());
+    // Create our default CTFontRef
+    mCTFont[0] =
+        CreateCTFontWithFeatures(aFont->GetAdjustedSize(),
+                                 GetFeaturesDescriptor(kDefaultFeatures));
 }
 
 gfxCoreTextShaper::~gfxCoreTextShaper()
@@ -103,8 +72,10 @@ gfxCoreTextShaper::~gfxCoreTextShaper()
     if (mAttributesDictRTL) {
         ::CFRelease(mAttributesDictRTL);
     }
-    if (mCTFont) {
-        ::CFRelease(mCTFont);
+    for (size_t i = 0; i < kMaxFontInstances; i++) {
+        if (mCTFont[i]) {
+            ::CFRelease(mCTFont[i]);
+        }
     }
 }
 
@@ -112,7 +83,9 @@ static bool
 IsBuggyIndicScript(unicode::Script aScript)
 {
     return aScript == unicode::Script::BENGALI ||
-           aScript == unicode::Script::KANNADA;
+           aScript == unicode::Script::KANNADA ||
+           aScript == unicode::Script::ORIYA ||
+           aScript == unicode::Script::KHMER;
 }
 
 bool
@@ -128,109 +101,73 @@ gfxCoreTextShaper::ShapeText(DrawTarget      *aDrawTarget,
     // Create a CFAttributedString with text and style info, so we can use CoreText to lay it out.
     bool isRightToLeft = aShapedText->IsRightToLeft();
     const UniChar* text = reinterpret_cast<const UniChar*>(aText);
-    uint32_t length = aLength;
 
-    uint32_t startOffset;
-    CFStringRef stringObj;
-    CFDictionaryRef attrObj;
+    CFStringRef stringObj =
+        ::CFStringCreateWithCharactersNoCopy(kCFAllocatorDefault,
+                                             text, aLength,
+                                             kCFAllocatorNull);
 
-    if (sCTWritingDirectionAttributeName) {
-        startOffset = 0;
-        stringObj = ::CFStringCreateWithCharactersNoCopy(kCFAllocatorDefault,
-                                                         text, length,
-                                                         kCFAllocatorNull);
-
-        // Get an attributes dictionary suitable for shaping text in the
-        // current direction, creating it if necessary.
-        attrObj = isRightToLeft ? mAttributesDictRTL : mAttributesDictLTR;
-        if (!attrObj) {
-            attrObj = CreateAttrDict(isRightToLeft);
-            (isRightToLeft ? mAttributesDictRTL : mAttributesDictLTR) = attrObj;
+    // Figure out whether we should try to set the AAT small-caps feature:
+    // examine OpenType tags for the requested style, and see if 'smcp' is
+    // among them.
+    const gfxFontStyle *style = mFont->GetStyle();
+    gfxFontEntry *entry = mFont->GetFontEntry();
+    auto handleFeatureTag = [](const uint32_t& aTag, uint32_t& aValue,
+                               void *aUserArg) -> void {
+        if (aTag == HB_TAG('s','m','c','p') && aValue) {
+            *static_cast<bool*>(aUserArg) = true;
         }
-    } else {
-        // OS is too old to support kCTWritingDirectionAttributeName:
-        // we need to bidi-wrap the text if the run is RTL,
-        // or if it is an LTR run but may contain (overridden) RTL chars
-        bool bidiWrap = isRightToLeft;
-        if (!bidiWrap && !aShapedText->TextIs8Bit()) {
-            uint32_t i;
-            for (i = 0; i < length; ++i) {
-                if (gfxFontUtils::PotentialRTLChar(aText[i])) {
-                    bidiWrap = true;
-                    break;
-                }
-            }
-        }
+    };
+    bool addSmallCaps = false;
+    MergeFontFeatures(style,
+                      entry->mFeatureSettings,
+                      false,
+                      entry->FamilyName(),
+                      false,
+                      handleFeatureTag,
+                      &addSmallCaps);
 
-        // If there's a possibility of any bidi, we wrap the text with
-        // direction overrides to ensure neutrals or characters that were
-        // bidi-overridden in HTML behave properly.
-        static const UniChar beginLTR[]    = { 0x202d, 0x20 };
-        static const UniChar beginRTL[]    = { 0x202e, 0x20 };
-        static const UniChar endBidiWrap[] = { 0x20, 0x2e, 0x202c };
-
-        if (bidiWrap) {
-            startOffset = isRightToLeft ? ArrayLength(beginRTL)
-                                        : ArrayLength(beginLTR);
-            CFMutableStringRef mutableString =
-                ::CFStringCreateMutable(kCFAllocatorDefault,
-                                        length + startOffset +
-                                            ArrayLength(endBidiWrap));
-            ::CFStringAppendCharacters(mutableString,
-                                       isRightToLeft ? beginRTL : beginLTR,
-                                       startOffset);
-            ::CFStringAppendCharacters(mutableString, text, length);
-            ::CFStringAppendCharacters(mutableString, endBidiWrap,
-                                       ArrayLength(endBidiWrap));
-            stringObj = mutableString;
-        } else {
-            startOffset = 0;
-            stringObj =
-                ::CFStringCreateWithCharactersNoCopy(kCFAllocatorDefault,
-                                                     text, length,
-                                                     kCFAllocatorNull);
-        }
-
-        // Get an attributes dictionary suitable for shaping text,
-        // creating it if necessary. (This dict is not LTR-specific,
-        // but we use that field to store it anyway.)
-        if (!mAttributesDictLTR) {
-            mAttributesDictLTR = CreateAttrDictWithoutDirection();
-        }
-        attrObj = mAttributesDictLTR;
+    // Get an attributes dictionary suitable for shaping text in the
+    // current direction, creating it if necessary.
+    CFDictionaryRef attrObj =
+        isRightToLeft ? mAttributesDictRTL : mAttributesDictLTR;
+    if (!attrObj) {
+        attrObj = CreateAttrDict(isRightToLeft);
+        (isRightToLeft ? mAttributesDictRTL : mAttributesDictLTR) = attrObj;
     }
 
-    CTFontRef tempCTFont = nullptr;
+    FeatureFlags featureFlags = kDefaultFeatures;
     if (IsBuggyIndicScript(aScript)) {
         // To work around buggy Indic AAT fonts shipped with OS X,
         // we re-enable the Line Initial Smart Swashes feature that is needed
         // for "split vowels" to work in at least Bengali and Kannada fonts.
         // Affected fonts include Bangla MN, Bangla Sangam MN, Kannada MN,
         // Kannada Sangam MN. See bugs 686225, 728557, 953231, 1145515.
-        tempCTFont =
-            CreateCTFontWithFeatures(::CTFontGetSize(mCTFont),
-                                     aShapedText->DisableLigatures()
-                                         ? GetIndicDisableLigaturesDescriptor()
-                                         : GetIndicFeaturesDescriptor());
-    } else if (aShapedText->DisableLigatures()) {
+        // Also applies to Oriya and Khmer, see bug 1370927 and bug 1403166.
+        featureFlags |= kIndicFeatures;
+    }
+    if (aShapedText->DisableLigatures()) {
         // For letterspacing (or maybe other situations) we need to make
         // a copy of the CTFont with the ligature feature disabled.
-        tempCTFont =
-            CreateCTFontWithFeatures(::CTFontGetSize(mCTFont),
-                                     GetDisableLigaturesDescriptor());
+        featureFlags |= kDisableLigatures;
+    }
+    if (addSmallCaps) {
+        featureFlags |= kAddSmallCaps;
     }
 
-    // For the disabled-ligature or buggy-indic-font case, we need to replace
-    // the standard CTFont in the attribute dictionary with a tweaked version.
+    // For the disabled-ligature, buggy-indic-font or small-caps case, replace
+    // the default CTFont in the attribute dictionary with a tweaked version.
     CFMutableDictionaryRef mutableAttr = nullptr;
-    if (tempCTFont) {
-        mutableAttr = ::CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 2,
-                                                      attrObj);
+    if (featureFlags != 0) {
+        if (!mCTFont[featureFlags]) {
+            mCTFont[featureFlags] =
+                CreateCTFontWithFeatures(mFont->GetAdjustedSize(),
+                                         GetFeaturesDescriptor(featureFlags));
+        }
+        mutableAttr =
+            ::CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 2, attrObj);
         ::CFDictionaryReplaceValue(mutableAttr,
-                                   kCTFontAttributeName, tempCTFont);
-        // Having created the dict, we're finished with our temporary
-        // Indic and/or ligature-disabled CTFontRef.
-        ::CFRelease(tempCTFont);
+                                   kCTFontAttributeName, mCTFont[featureFlags]);
         attrObj = mutableAttr;
     }
 
@@ -248,18 +185,11 @@ gfxCoreTextShaper::ShapeText(DrawTarget      *aDrawTarget,
     uint32_t numRuns = ::CFArrayGetCount(glyphRuns);
 
     // Iterate through the glyph runs.
-    // Note that this includes the bidi wrapper, so we have to be careful
-    // not to include the extra glyphs from there
     bool success = true;
     for (uint32_t runIndex = 0; runIndex < numRuns; runIndex++) {
         CTRunRef aCTRun =
             (CTRunRef)::CFArrayGetValueAtIndex(glyphRuns, runIndex);
-        // If the range is purely within bidi-wrapping text, ignore it.
         CFRange range = ::CTRunGetStringRange(aCTRun);
-        if (uint32_t(range.location + range.length) <= startOffset ||
-            range.location - startOffset >= aLength) {
-            continue;
-        }
         CFDictionaryRef runAttr = ::CTRunGetAttributes(aCTRun);
         if (runAttr != attrObj) {
             // If Core Text manufactured a new dictionary, this may indicate
@@ -274,7 +204,7 @@ gfxCoreTextShaper::ShapeText(DrawTarget      *aDrawTarget,
                 // selector or join control that is otherwise unsupported,
                 // we just ignore it.
                 if (range.length == 1) {
-                    char16_t ch = aText[range.location - startOffset];
+                    char16_t ch = aText[range.location];
                     if (gfxFontUtils::IsJoinControl(ch) ||
                         gfxFontUtils::IsVarSelector(ch)) {
                         continue;
@@ -285,8 +215,7 @@ gfxCoreTextShaper::ShapeText(DrawTarget      *aDrawTarget,
                 break;
             }
         }
-        if (SetGlyphsFromRun(aShapedText, aOffset, aLength, aCTRun,
-                             startOffset) != NS_OK) {
+        if (SetGlyphsFromRun(aShapedText, aOffset, aLength, aCTRun) != NS_OK) {
             success = false;
             break;
         }
@@ -308,12 +237,9 @@ nsresult
 gfxCoreTextShaper::SetGlyphsFromRun(gfxShapedText *aShapedText,
                                     uint32_t       aOffset,
                                     uint32_t       aLength,
-                                    CTRunRef       aCTRun,
-                                    int32_t        aStringOffset)
+                                    CTRunRef       aCTRun)
 {
-    // The word has been bidi-wrapped; aStringOffset is the number
-    // of chars at the beginning of the CTLine that we should skip.
-    // aCTRun is a glyph run from the CoreText layout process.
+    typedef gfxShapedText::CompressedGlyph CompressedGlyph;
 
     int32_t direction = aShapedText->IsRightToLeft() ? -1 : 1;
 
@@ -327,16 +253,13 @@ gfxCoreTextShaper::SetGlyphsFromRun(gfxShapedText *aShapedText,
     // character offsets get really confusing here, as we have to keep track of
     // (a) the text in the actual textRun we're constructing
     // (c) the string that was handed to CoreText, which contains the text of the font run
-    //     plus directional-override padding
     // (d) the CTRun currently being processed, which may be a sub-run of the CoreText line
-    //     (but may extend beyond the actual font run into the bidi wrapping text).
-    //     aStringOffset tells us how many initial characters of the line to ignore.
 
     // get the source string range within the CTLine's text
     CFRange stringRange = ::CTRunGetStringRange(aCTRun);
     // skip the run if it is entirely outside the actual range of the font run
-    if (stringRange.location - aStringOffset + stringRange.length <= 0 ||
-        stringRange.location - aStringOffset >= wordLength) {
+    if (stringRange.location + stringRange.length <= 0 ||
+        stringRange.location >= wordLength) {
         return NS_OK;
     }
 
@@ -393,8 +316,7 @@ gfxCoreTextShaper::SetGlyphsFromRun(gfxShapedText *aShapedText,
                                                   nullptr, nullptr, nullptr);
 
     AutoTArray<gfxShapedText::DetailedGlyph,1> detailedGlyphs;
-    gfxShapedText::CompressedGlyph *charGlyphs =
-        aShapedText->GetCharacterGlyphs() + aOffset;
+    CompressedGlyph* charGlyphs = aShapedText->GetCharacterGlyphs() + aOffset;
 
     // CoreText gives us the glyphindex-to-charindex mapping, which relates each glyph
     // to a source text character; we also need the charindex-to-glyphindex mapping to
@@ -553,14 +475,14 @@ gfxCoreTextShaper::SetGlyphsFromRun(gfxShapedText *aShapedText,
             while (charEnd >= 0 && charToGlyph[charEnd] == NO_GLYPH) {
                 charEnd--;
             }
-            baseCharIndex = charEnd + stringRange.location - aStringOffset + 1;
-            endCharIndex = charStart + stringRange.location - aStringOffset + 1;
+            baseCharIndex = charEnd + stringRange.location + 1;
+            endCharIndex = charStart + stringRange.location + 1;
         } else {
             while (charEnd < stringRange.length && charToGlyph[charEnd] == NO_GLYPH) {
                 charEnd++;
             }
-            baseCharIndex = charStart + stringRange.location - aStringOffset;
-            endCharIndex = charEnd + stringRange.location - aStringOffset;
+            baseCharIndex = charStart + stringRange.location;
+            endCharIndex = charEnd + stringRange.location;
         }
 
         // Then we check if the clump falls outside our actual string range; if so, just go to the next.
@@ -601,8 +523,7 @@ gfxCoreTextShaper::SetGlyphsFromRun(gfxShapedText *aShapedText,
             while (true) {
                 gfxTextRun::DetailedGlyph *details = detailedGlyphs.AppendElement();
                 details->mGlyphID = glyphs[glyphStart];
-                details->mXOffset = 0;
-                details->mYOffset = -positions[glyphStart].y * appUnitsPerDevUnit;
+                details->mOffset.y = -positions[glyphStart].y * appUnitsPerDevUnit;
                 details->mAdvance = advance;
                 if (++glyphStart >= glyphEnd) {
                    break;
@@ -615,10 +536,10 @@ gfxCoreTextShaper::SetGlyphsFromRun(gfxShapedText *aShapedText,
                 advance = int32_t(toNextGlyph * appUnitsPerDevUnit);
             }
 
-            gfxTextRun::CompressedGlyph textRunGlyph;
-            textRunGlyph.SetComplex(charGlyphs[baseCharIndex].IsClusterStart(),
-                                    true, detailedGlyphs.Length());
-            aShapedText->SetGlyphs(aOffset + baseCharIndex, textRunGlyph,
+            bool isClusterStart = charGlyphs[baseCharIndex].IsClusterStart();
+            aShapedText->SetGlyphs(aOffset + baseCharIndex,
+                                   CompressedGlyph::MakeComplex(isClusterStart, true,
+                                                                detailedGlyphs.Length()),
                                    detailedGlyphs.Elements());
 
             detailedGlyphs.Clear();
@@ -626,7 +547,7 @@ gfxCoreTextShaper::SetGlyphsFromRun(gfxShapedText *aShapedText,
 
         // the rest of the chars in the group are ligature continuations, no associated glyphs
         while (++baseCharIndex != endCharIndex && baseCharIndex < wordLength) {
-            gfxShapedText::CompressedGlyph &shapedTextGlyph = charGlyphs[baseCharIndex];
+            CompressedGlyph &shapedTextGlyph = charGlyphs[baseCharIndex];
             NS_ASSERTION(!shapedTextGlyph.IsSimpleGlyph(), "overwriting a simple glyph");
             shapedTextGlyph.SetComplex(inOrder && shapedTextGlyph.IsClusterStart(), false, 0);
         }
@@ -647,11 +568,11 @@ gfxCoreTextShaper::SetGlyphsFromRun(gfxShapedText *aShapedText,
 // We also cache feature descriptors for shaping with disabled ligatures, and
 // for buggy Indic AAT font workarounds, created on an as-needed basis.
 
-#define MAX_FEATURES  3 // max used by any of our Get*Descriptor functions
+#define MAX_FEATURES  5 // max used by any of our Get*Descriptor functions
 
 CTFontDescriptorRef
 gfxCoreTextShaper::CreateFontFeaturesDescriptor(
-    const std::pair<SInt16,SInt16> aFeatures[],
+    const std::pair<SInt16,SInt16>* aFeatures,
     size_t aCount)
 {
     MOZ_ASSERT(aCount <= MAX_FEATURES);
@@ -711,91 +632,55 @@ gfxCoreTextShaper::CreateFontFeaturesDescriptor(
 }
 
 CTFontDescriptorRef
-gfxCoreTextShaper::GetDefaultFeaturesDescriptor()
+gfxCoreTextShaper::GetFeaturesDescriptor(FeatureFlags aFeatureFlags)
 {
-    if (sDefaultFeaturesDescriptor == nullptr) {
-        const std::pair<SInt16,SInt16> kDefaultFeatures[] = {
-            { kSmartSwashType, kLineInitialSwashesOffSelector },
-            { kSmartSwashType, kLineFinalSwashesOffSelector }
-        };
-        sDefaultFeaturesDescriptor =
-            CreateFontFeaturesDescriptor(kDefaultFeatures,
-                                         ArrayLength(kDefaultFeatures));
+    MOZ_ASSERT(aFeatureFlags < kMaxFontInstances);
+    if (!sFeaturesDescriptor[aFeatureFlags]) {
+        typedef std::pair<SInt16,SInt16> FeatT;
+        AutoTArray<FeatT,MAX_FEATURES> features;
+        features.AppendElement(FeatT(kSmartSwashType,
+                                     kLineFinalSwashesOffSelector));
+        if ((aFeatureFlags & kIndicFeatures) == 0) {
+            features.AppendElement(FeatT(kSmartSwashType,
+                                         kLineInitialSwashesOffSelector));
+        }
+        if (aFeatureFlags & kAddSmallCaps) {
+            features.AppendElement(FeatT(kLetterCaseType,
+                                         kSmallCapsSelector));
+            features.AppendElement(FeatT(kLowerCaseType,
+                                         kLowerCaseSmallCapsSelector));
+        }
+        if (aFeatureFlags & kDisableLigatures) {
+            features.AppendElement(FeatT(kLigaturesType,
+                                         kCommonLigaturesOffSelector));
+        }
+        MOZ_ASSERT(features.Length() <= MAX_FEATURES);
+        sFeaturesDescriptor[aFeatureFlags] =
+            CreateFontFeaturesDescriptor(features.Elements(),
+                                         features.Length());
     }
-    return sDefaultFeaturesDescriptor;
-}
-
-CTFontDescriptorRef
-gfxCoreTextShaper::GetDisableLigaturesDescriptor()
-{
-    if (sDisableLigaturesDescriptor == nullptr) {
-        const std::pair<SInt16,SInt16> kDisableLigatures[] = {
-            { kSmartSwashType, kLineInitialSwashesOffSelector },
-            { kSmartSwashType, kLineFinalSwashesOffSelector },
-            { kLigaturesType, kCommonLigaturesOffSelector }
-        };
-        sDisableLigaturesDescriptor =
-            CreateFontFeaturesDescriptor(kDisableLigatures,
-                                         ArrayLength(kDisableLigatures));
-    }
-    return sDisableLigaturesDescriptor;
-}
-
-CTFontDescriptorRef
-gfxCoreTextShaper::GetIndicFeaturesDescriptor()
-{
-    if (sIndicFeaturesDescriptor == nullptr) {
-        const std::pair<SInt16,SInt16> kIndicFeatures[] = {
-            { kSmartSwashType, kLineFinalSwashesOffSelector }
-        };
-        sIndicFeaturesDescriptor =
-            CreateFontFeaturesDescriptor(kIndicFeatures,
-                                         ArrayLength(kIndicFeatures));
-    }
-    return sIndicFeaturesDescriptor;
-}
-
-CTFontDescriptorRef
-gfxCoreTextShaper::GetIndicDisableLigaturesDescriptor()
-{
-    if (sIndicDisableLigaturesDescriptor == nullptr) {
-        const std::pair<SInt16,SInt16> kIndicDisableLigatures[] = {
-            { kSmartSwashType, kLineFinalSwashesOffSelector },
-            { kLigaturesType, kCommonLigaturesOffSelector }
-        };
-        sIndicDisableLigaturesDescriptor =
-            CreateFontFeaturesDescriptor(kIndicDisableLigatures,
-                                         ArrayLength(kIndicDisableLigatures));
-    }
-    return sIndicDisableLigaturesDescriptor;
+    return sFeaturesDescriptor[aFeatureFlags];
 }
 
 CTFontRef
 gfxCoreTextShaper::CreateCTFontWithFeatures(CGFloat aSize,
                                             CTFontDescriptorRef aDescriptor)
 {
+    const gfxFontEntry* fe = mFont->GetFontEntry();
+    bool isInstalledFont = !fe->IsUserFont() || fe->IsLocalUserFont();
     CGFontRef cgFont = static_cast<gfxMacFont*>(mFont)->GetCGFontRef();
     return gfxMacFont::CreateCTFontFromCGFontWithVariations(cgFont, aSize,
+                                                            isInstalledFont,
                                                             aDescriptor);
 }
 
 void
 gfxCoreTextShaper::Shutdown() // [static]
 {
-    if (sIndicDisableLigaturesDescriptor != nullptr) {
-        ::CFRelease(sIndicDisableLigaturesDescriptor);
-        sIndicDisableLigaturesDescriptor = nullptr;
-    }
-    if (sIndicFeaturesDescriptor != nullptr) {
-        ::CFRelease(sIndicFeaturesDescriptor);
-        sIndicFeaturesDescriptor = nullptr;
-    }
-    if (sDisableLigaturesDescriptor != nullptr) {
-        ::CFRelease(sDisableLigaturesDescriptor);
-        sDisableLigaturesDescriptor = nullptr;
-    }
-    if (sDefaultFeaturesDescriptor != nullptr) {
-        ::CFRelease(sDefaultFeaturesDescriptor);
-        sDefaultFeaturesDescriptor = nullptr;
+    for (size_t i = 0; i < kMaxFontInstances; i++) {
+        if (sFeaturesDescriptor[i] != nullptr) {
+            ::CFRelease(sFeaturesDescriptor[i]);
+            sFeaturesDescriptor[i] = nullptr;
+        }
     }
 }

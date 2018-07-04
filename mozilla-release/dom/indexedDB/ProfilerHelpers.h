@@ -23,9 +23,9 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/Event.h"
 #include "nsDebug.h"
 #include "nsID.h"
-#include "nsIDOMEvent.h"
 #include "nsString.h"
 #include "mozilla/Logging.h"
 
@@ -37,7 +37,7 @@ namespace dom {
 namespace indexedDB {
 
 class MOZ_STACK_CLASS LoggingIdString final
-  : public nsAutoCString
+  : public nsAutoCStringN<NSID_LENGTH>
 {
 public:
   LoggingIdString()
@@ -61,9 +61,10 @@ public:
   LoggingIdString(const nsID& aID)
   {
     static_assert(NSID_LENGTH > 1, "NSID_LENGTH is set incorrectly!");
-    static_assert(NSID_LENGTH <= kDefaultStorageSize,
-                  "nID string won't fit in our storage!");
-    MOZ_ASSERT(Capacity() > NSID_LENGTH);
+    static_assert(NSID_LENGTH <= kStorageSize,
+                  "nsID string won't fit in our storage!");
+    // Capacity() excludes the null terminator; NSID_LENGTH includes it.
+    MOZ_ASSERT(Capacity() + 1 == NSID_LENGTH);
 
     if (IndexedDatabaseManager::GetLoggingMode() !=
           IndexedDatabaseManager::Logging_Disabled) {
@@ -259,15 +260,15 @@ public:
     }
   }
 
-  LoggingString(nsIDOMEvent* aEvent, const char16_t* aDefault)
+  LoggingString(Event* aEvent, const char16_t* aDefault)
     : nsAutoCString(kQuote)
   {
     MOZ_ASSERT(aDefault);
 
-    nsString eventType;
+    nsAutoString eventType;
 
     if (aEvent) {
-      MOZ_ALWAYS_SUCCEEDS(aEvent->GetType(eventType));
+      aEvent->GetType(eventType);
     } else {
       eventType = nsDependentString(aDefault);
     }
@@ -290,7 +291,12 @@ LoggingHelper(bool aUseProfiler, const char* aFmt, ...)
   static const mozilla::LogLevel logLevel = LogLevel::Warning;
 
   if (MOZ_LOG_TEST(logModule, logLevel) ||
-      (aUseProfiler && profiler_is_active())) {
+#ifdef MOZ_GECKO_PROFILER
+      (aUseProfiler && profiler_is_active())
+#else
+      false
+#endif
+     ) {
     nsAutoCString message;
 
     {
@@ -305,7 +311,7 @@ LoggingHelper(bool aUseProfiler, const char* aFmt, ...)
     MOZ_LOG(logModule, logLevel, ("%s", message.get()));
 
     if (aUseProfiler) {
-      profiler_add_marker(message.get());
+      PROFILER_ADD_MARKER(message.get());
     }
   }
 }

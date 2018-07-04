@@ -1,0 +1,44 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+basic-card-option {
+  grid-row-gap: 5px;
+  grid-column-gap: 10px;
+  grid-template-areas:
+    "cc-name  type"
+    "cc-number ...";
+}
+
+rich-select[open] > .rich-select-popup-box > basic-card-option {
+  grid-template-areas:
+    "cc-name   type"
+    "cc-number  cc-exp";
+}
+
+basic-card-option > .cc-number {
+  grid-area: cc-number;
+}
+
+basic-card-option > .cc-name {
+  grid-area: cc-name;
+}
+
+basic-card-option > .cc-exp {
+  grid-area: cc-exp;
+}
+
+basic-card-option > .type {
+  grid-area: type;
+}
+
+basic-card-option > .cc-number,
+basic-card-option > .cc-name,
+basic-card-option > .cc-exp,
+basic-card-option > .type {
+  white-space: nowrap;
+}
+
+rich-select > .rich-select-selected-clone > .cc-exp {
+  display: none;
+}

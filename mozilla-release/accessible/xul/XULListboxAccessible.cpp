@@ -17,10 +17,9 @@
 #include "nsIAutoCompletePopup.h"
 #include "nsIDOMXULMenuListElement.h"
 #include "nsIDOMXULMultSelectCntrlEl.h"
-#include "nsIDOMNodeList.h"
-#include "nsIDOMXULPopupElement.h"
 #include "nsIDOMXULSelectCntrlItemEl.h"
 #include "nsIMutableArray.h"
+#include "nsINodeList.h"
 #include "nsIPersistentProperties2.h"
 
 using namespace mozilla::a11y;
@@ -127,8 +126,8 @@ XULListboxAccessible::NativeState()
 
   // see if we are multiple select if so set ourselves as such
 
-  if (mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::seltype,
-                            nsGkAtoms::multiple, eCaseMatters)) {
+  if (mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::seltype,
+                                         nsGkAtoms::multiple, eCaseMatters)) {
       states |= states::MULTISELECTABLE | states::EXTSELECTABLE;
   }
 
@@ -157,9 +156,7 @@ XULListboxAccessible::NativeRole()
 {
   // A richlistbox is used with the new autocomplete URL bar, and has a parent
   // popup <panel>.
-  nsCOMPtr<nsIDOMXULPopupElement> xulPopup =
-    do_QueryInterface(mContent->GetParent());
-  if (xulPopup)
+  if (mContent->GetParent() && mContent->GetParent()->IsXULElement(nsGkAtoms::panel))
     return roles::COMBOBOX_LIST;
 
   return IsMulticolumn() ? roles::TABLE : roles::LISTBOX;
@@ -274,14 +271,12 @@ XULListboxAccessible::SelectedCellCount()
   NS_ASSERTION(control,
                "Doesn't implement nsIDOMXULMultiSelectControlElement.");
 
-  nsCOMPtr<nsIDOMNodeList> selectedItems;
+  nsCOMPtr<nsINodeList> selectedItems;
   control->GetSelectedItems(getter_AddRefs(selectedItems));
   if (!selectedItems)
     return 0;
 
-  uint32_t selectedItemsCount = 0;
-  nsresult rv = selectedItems->GetLength(&selectedItemsCount);
-  NS_ENSURE_SUCCESS(rv, 0);
+  uint32_t selectedItemsCount = selectedItems->Length();
 
   return selectedItemsCount * ColCount();
 }
@@ -325,19 +320,15 @@ XULListboxAccessible::SelectedCells(nsTArray<Accessible*>* aCells)
   NS_ASSERTION(control,
                "Doesn't implement nsIDOMXULMultiSelectControlElement.");
 
-  nsCOMPtr<nsIDOMNodeList> selectedItems;
+  nsCOMPtr<nsINodeList> selectedItems;
   control->GetSelectedItems(getter_AddRefs(selectedItems));
   if (!selectedItems)
     return;
 
-  uint32_t selectedItemsCount = 0;
-  DebugOnly<nsresult> rv = selectedItems->GetLength(&selectedItemsCount);
-  NS_ASSERTION(NS_SUCCEEDED(rv), "GetLength() Shouldn't fail!");
+  uint32_t selectedItemsCount = selectedItems->Length();
 
   for (uint32_t index = 0; index < selectedItemsCount; index++) {
-    nsCOMPtr<nsIDOMNode> itemNode;
-    selectedItems->Item(index, getter_AddRefs(itemNode));
-    nsCOMPtr<nsIContent> itemContent(do_QueryInterface(itemNode));
+    nsIContent* itemContent = selectedItems->Item(index);
     Accessible* item = mDoc->GetAccessible(itemContent);
 
     if (item) {
@@ -359,14 +350,12 @@ XULListboxAccessible::SelectedCellIndices(nsTArray<uint32_t>* aCells)
   NS_ASSERTION(control,
                "Doesn't implement nsIDOMXULMultiSelectControlElement.");
 
-  nsCOMPtr<nsIDOMNodeList> selectedItems;
+  nsCOMPtr<nsINodeList> selectedItems;
   control->GetSelectedItems(getter_AddRefs(selectedItems));
   if (!selectedItems)
     return;
 
-  uint32_t selectedItemsCount = 0;
-  DebugOnly<nsresult> rv = selectedItems->GetLength(&selectedItemsCount);
-  NS_ASSERTION(NS_SUCCEEDED(rv), "GetLength() Shouldn't fail!");
+  uint32_t selectedItemsCount = selectedItems->Length();
 
   uint32_t colCount = ColCount();
   aCells->SetCapacity(selectedItemsCount * colCount);
@@ -375,10 +364,9 @@ XULListboxAccessible::SelectedCellIndices(nsTArray<uint32_t>* aCells)
   for (uint32_t selItemsIdx = 0, cellsIdx = 0;
        selItemsIdx < selectedItemsCount; selItemsIdx++) {
 
-    nsCOMPtr<nsIDOMNode> itemNode;
-    selectedItems->Item(selItemsIdx, getter_AddRefs(itemNode));
+    nsIContent* itemContent = selectedItems->Item(selItemsIdx);
     nsCOMPtr<nsIDOMXULSelectControlItemElement> item =
-      do_QueryInterface(itemNode);
+      do_QueryInterface(itemContent);
 
     if (item) {
       int32_t itemIdx = -1;
@@ -408,14 +396,12 @@ XULListboxAccessible::SelectedRowIndices(nsTArray<uint32_t>* aRows)
   NS_ASSERTION(control,
                "Doesn't implement nsIDOMXULMultiSelectControlElement.");
 
-  nsCOMPtr<nsIDOMNodeList> selectedItems;
+  nsCOMPtr<nsINodeList> selectedItems;
   control->GetSelectedItems(getter_AddRefs(selectedItems));
   if (!selectedItems)
     return;
 
-  uint32_t rowCount = 0;
-  DebugOnly<nsresult> rv = selectedItems->GetLength(&rowCount);
-  NS_ASSERTION(NS_SUCCEEDED(rv), "GetLength() Shouldn't fail!");
+  uint32_t rowCount = selectedItems->Length();
 
   if (!rowCount)
     return;
@@ -424,10 +410,9 @@ XULListboxAccessible::SelectedRowIndices(nsTArray<uint32_t>* aRows)
   aRows->AppendElements(rowCount);
 
   for (uint32_t rowIdx = 0; rowIdx < rowCount; rowIdx++) {
-    nsCOMPtr<nsIDOMNode> itemNode;
-    selectedItems->Item(rowIdx, getter_AddRefs(itemNode));
+    nsIContent* itemContent = selectedItems->Item(rowIdx);
     nsCOMPtr<nsIDOMXULSelectControlItemElement> item =
-      do_QueryInterface(itemNode);
+      do_QueryInterface(itemContent);
 
     if (item) {
       int32_t itemIdx = -1;
@@ -539,10 +524,10 @@ XULListitemAccessible::
   XULListitemAccessible(nsIContent* aContent, DocAccessible* aDoc) :
   XULMenuitemAccessible(aContent, aDoc)
 {
-  mIsCheckbox = mContent->AttrValueIs(kNameSpaceID_None,
-                                      nsGkAtoms::type,
-                                      nsGkAtoms::checkbox,
-                                      eCaseMatters);
+  mIsCheckbox = mContent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                                   nsGkAtoms::type,
+                                                   nsGkAtoms::checkbox,
+                                                   eCaseMatters);
   mType = eXULListItemType;
 
   // Walk XBL anonymous children for list items. Overrides the flag value from
@@ -553,8 +538,6 @@ XULListitemAccessible::
 XULListitemAccessible::~XULListitemAccessible()
 {
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(XULListitemAccessible, Accessible)
 
 Accessible*
 XULListitemAccessible::GetListAccessible() const
@@ -600,7 +583,7 @@ XULListitemAccessible::NativeName(nsString& aName)
   if (childContent) {
     if (childContent->NodeInfo()->Equals(nsGkAtoms::listcell,
                                          kNameSpaceID_XUL)) {
-      childContent->GetAttr(kNameSpaceID_None, nsGkAtoms::label, aName);
+      childContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::label, aName);
       return eNameOK;
     }
   }
@@ -695,9 +678,6 @@ XULListCellAccessible::
 
 ////////////////////////////////////////////////////////////////////////////////
 // nsISupports
-
-NS_IMPL_ISUPPORTS_INHERITED0(XULListCellAccessible,
-                             HyperTextAccessible)
 
 ////////////////////////////////////////////////////////////////////////////////
 // XULListCellAccessible: TableCell

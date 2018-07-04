@@ -63,6 +63,12 @@
   MT("import_trailing_comma",
      "[keyword import] {[def foo], [def bar],} [keyword from] [string 'baz']")
 
+  MT("import_dynamic",
+     "[keyword import]([string 'baz']).[property then]")
+
+  MT("import_dynamic",
+     "[keyword const] [def t] [operator =] [keyword import]([string 'baz']).[property then]")
+
   MT("const",
      "[keyword function] [def f]() {",
      "  [keyword const] [[ [def a], [def b] ]] [operator =] [[ [number 1], [number 2] ]];",
@@ -70,6 +76,9 @@
 
   MT("for/of",
      "[keyword for]([keyword let] [def of] [keyword of] [variable something]) {}");
+
+  MT("for await",
+     "[keyword for] [keyword await]([keyword let] [def of] [keyword of] [variable something]) {}");
 
   MT("generator",
      "[keyword function*] [def repeat]([def n]) {",
@@ -230,11 +239,27 @@
      "[keyword const] [def async] [operator =] {[property a]: [number 1]};",
      "[keyword const] [def foo] [operator =] [string-2 `bar ${][variable async].[property a][string-2 }`];")
 
+  MT("async_comment",
+     "[keyword async] [comment /**/] [keyword function] [def foo]([def args]) { [keyword return] [atom true]; }");
+
   MT("indent_switch",
      "[keyword switch] ([variable x]) {",
      "  [keyword default]:",
      "    [keyword return] [number 2]",
      "}")
+
+  MT("regexp_corner_case",
+     "[operator +]{} [operator /] [atom undefined];",
+     "[[[meta ...][string-2 /\\//] ]];",
+     "[keyword void] [string-2 /\\//];",
+     "[keyword do] [string-2 /\\//]; [keyword while] ([number 0]);",
+     "[keyword if] ([number 0]) {} [keyword else] [string-2 /\\//];",
+     "[string-2 `${][variable async][operator ++][string-2 }//`];",
+     "[string-2 `${]{} [operator /] [string-2 /\\//}`];")
+
+  MT("return_eol",
+     "[keyword return]",
+     "{} [string-2 /5/]")
 
   var ts_mode = CodeMirror.getMode({indentUnit: 2}, "application/typescript")
   function TS(name) {
@@ -338,6 +363,53 @@
 
   TS("typescript_complex_type_casting",
      "[keyword const] [def giftpay] [operator =] [variable config].[property get]([string 'giftpay']) [keyword as] { [[ [variable platformUuid]: [type string] ]]: { [property version]: [type number]; [property apiCode]: [type string]; } };")
+
+  TS("typescript_keyof",
+     "[keyword function] [def x][operator <][type T] [keyword extends] [keyword keyof] [type X][operator >]([def a]: [type T]) {",
+     "  [keyword return]")
+
+  TS("typescript_new_typeargs",
+     "[keyword let] [def x] [operator =] [keyword new] [variable Map][operator <][type string], [type Date][operator >]([string-2 `foo${][variable bar][string-2 }`])")
+
+  TS("modifiers",
+     "[keyword class] [def Foo] {",
+     "  [keyword public] [keyword abstract] [property bar]() {}",
+     "  [property constructor]([keyword readonly] [keyword private] [def x]) {}",
+     "}")
+
+  TS("arrow prop",
+     "({[property a]: [def p] [operator =>] [variable-2 p]})")
+
+  TS("generic in function call",
+     "[keyword this].[property a][operator <][type Type][operator >]([variable foo]);",
+     "[keyword this].[property a][operator <][variable Type][operator >][variable foo];")
+
+  TS("type guard",
+     "[keyword class] [def Appler] {",
+     "  [keyword static] [property assertApple]([def fruit]: [type Fruit]): [variable-2 fruit] [keyword is] [type Apple] {",
+     "    [keyword if] ([operator !]([variable-2 fruit] [keyword instanceof] [variable Apple]))",
+     "      [keyword throw] [keyword new] [variable Error]();",
+     "  }",
+     "}")
+
+  TS("type as variable",
+     "[variable type] [operator =] [variable x] [keyword as] [type Bar];");
+
+  TS("enum body",
+     "[keyword export] [keyword const] [keyword enum] [def CodeInspectionResultType] {",
+     "  [def ERROR] [operator =] [string 'problem_type_error'],",
+     "  [def WARNING] [operator =] [string 'problem_type_warning'],",
+     "  [def META],",
+     "}")
+
+  TS("parenthesized type",
+     "[keyword class] [def Foo] {",
+     "  [property x] [operator =] [keyword new] [variable A][operator <][type B], [type string][operator |](() [operator =>] [type void])[operator >]();",
+     "  [keyword private] [property bar]();",
+     "}")
+
+  TS("abstract class",
+     "[keyword export] [keyword abstract] [keyword class] [def Foo] {}")
 
   var jsonld_mode = CodeMirror.getMode(
     {indentUnit: 2},

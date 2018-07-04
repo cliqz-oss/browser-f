@@ -10,8 +10,6 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "nsAutoPtr.h"
-#include "nsIIPCBackgroundChildCreateCallback.h"
-#include "nsIObserver.h"
 #include "nsTArray.h"
 #include "mozilla/RefPtr.h"
 
@@ -25,22 +23,14 @@ class PrincipalInfo;
 
 namespace dom {
 
-namespace workers {
-class WorkerHolder;
-} // namespace workers
-
 class BroadcastChannelChild;
 class BroadcastChannelMessage;
+class WorkerRef;
 
 class BroadcastChannel final
   : public DOMEventTargetHelper
-  , public nsIIPCBackgroundChildCreateCallback
-  , public nsIObserver
 {
   friend class BroadcastChannelChild;
-
-  NS_DECL_NSIIPCBACKGROUNDCHILDCREATECALLBACK
-  NS_DECL_NSIOBSERVER
 
   typedef mozilla::ipc::PrincipalInfo PrincipalInfo;
 
@@ -68,39 +58,28 @@ public:
   void Close();
 
   IMPL_EVENT_HANDLER(message)
+  IMPL_EVENT_HANDLER(messageerror)
 
   void Shutdown();
 
 private:
   BroadcastChannel(nsPIDOMWindowInner* aWindow,
-                   const PrincipalInfo& aPrincipalInfo,
-                   const nsACString& aOrigin,
                    const nsAString& aChannel);
 
   ~BroadcastChannel();
 
-  void PostMessageData(BroadcastChannelMessage* aData);
-
-  void PostMessageInternal(JSContext* aCx, JS::Handle<JS::Value> aMessage,
-                           ErrorResult& aRv);
-
   void RemoveDocFromBFCache();
 
+  void DisconnectFromOwner() override;
+
   RefPtr<BroadcastChannelChild> mActor;
-  nsTArray<RefPtr<BroadcastChannelMessage>> mPendingMessages;
 
-  nsAutoPtr<workers::WorkerHolder> mWorkerHolder;
+  RefPtr<WorkerRef> mWorkerRef;
 
-  nsAutoPtr<PrincipalInfo> mPrincipalInfo;
-
-  nsCString mOrigin;
   nsString mChannel;
-
-  uint64_t mInnerID;
 
   enum {
     StateActive,
-    StateClosing,
     StateClosed
   } mState;
 };

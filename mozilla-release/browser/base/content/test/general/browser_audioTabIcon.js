@@ -1,3 +1,4 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 const PAGE = "https://example.com/browser/browser/base/content/test/general/file_mediaPlayback.html";
 const TABATTR_REMOVAL_PREFNAME = "browser.tabs.delayHidingAudioPlayingIconMS";
 const INITIAL_TABATTR_REMOVAL_DELAY_MS = Services.prefs.getIntPref(TABATTR_REMOVAL_PREFNAME);
@@ -75,10 +76,23 @@ async function pause(tab, options) {
     ok(!tab.hasAttribute("soundplaying"), "The tab should not have the soundplaying attribute after the timeout has resolved");
   } finally {
     // Make sure other tests don't timeout if an exception gets thrown above.
-    // Need to use setIntPref instead of clearUserPref because prefs_general.js
-    // overrides the default value to help this and other tests run faster.
+    // Need to use setIntPref instead of clearUserPref because
+    // testing/profiles/common/user.js overrides the default value to help this and
+    // other tests run faster.
     Services.prefs.setIntPref(TABATTR_REMOVAL_PREFNAME, INITIAL_TABATTR_REMOVAL_DELAY_MS);
   }
+}
+
+async function hide_tab(tab) {
+  let tabHidden = BrowserTestUtils.waitForEvent(tab, "TabHide");
+  gBrowser.hideTab(tab);
+  return tabHidden;
+}
+
+async function show_tab(tab) {
+  let tabShown = BrowserTestUtils.waitForEvent(tab, "TabShow");
+  gBrowser.showTab(tab);
+  return tabShown;
 }
 
 function disable_non_test_mouse(disable) {
@@ -169,8 +183,7 @@ async function test_mute_tab(tab, icon, expectMuted) {
 }
 
 function get_tab_state(tab) {
-  const ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
-  return JSON.parse(ss.getTabState(tab));
+  return JSON.parse(SessionStore.getTabState(tab));
 }
 
 async function test_muting_using_menu(tab, expectMuted) {
@@ -257,6 +270,71 @@ async function test_playing_icon_on_tab(tab, browser, isPinned) {
   await test_muting_using_menu(tab, true);
 }
 
+async function test_playing_icon_on_hidden_tab(tab) {
+  let oldSelectedTab = gBrowser.selectedTab;
+  let otherTabs = [
+    await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE, true, true),
+    await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE, true, true),
+  ];
+  let tabContainer = tab.parentNode;
+  let alltabsButton = document.getElementById("alltabs-button");
+  let alltabsBadge = document.getAnonymousElementByAttribute(
+    alltabsButton, "class", "toolbarbutton-badge");
+
+  function assertIconShowing() {
+    is(getComputedStyle(alltabsBadge).backgroundImage,
+      'url("chrome://browser/skin/tabbrowser/badge-audio-playing.svg")',
+      "The audio playing icon is shown");
+    is(tabContainer.getAttribute("hiddensoundplaying"), "true", "There are hidden audio tabs");
+  }
+
+  function assertIconHidden() {
+    is(getComputedStyle(alltabsBadge).backgroundImage, "none", "The audio playing icon is hidden");
+    ok(!tabContainer.hasAttribute("hiddensoundplaying"), "There are no hidden audio tabs");
+  }
+
+  // Keep the passed in tab selected.
+  gBrowser.selectedTab = tab;
+
+  // Play sound in the other two (visible) tabs.
+  await play(otherTabs[0]);
+  await play(otherTabs[1]);
+  assertIconHidden();
+
+  // Hide one of the noisy tabs, we see the icon.
+  await hide_tab(otherTabs[0]);
+  assertIconShowing();
+
+  // Hiding the other tab keeps the icon.
+  await hide_tab(otherTabs[1]);
+  assertIconShowing();
+
+  // Pausing both tabs will hide the icon.
+  await pause(otherTabs[0]);
+  assertIconShowing();
+  await pause(otherTabs[1]);
+  assertIconHidden();
+
+  // The icon returns when audio starts again.
+  await play(otherTabs[0]);
+  await play(otherTabs[1]);
+  assertIconShowing();
+
+  // There is still an icon after hiding one tab.
+  await show_tab(otherTabs[0]);
+  assertIconShowing();
+
+  // The icon is hidden when both of the tabs are shown.
+  await show_tab(otherTabs[1]);
+  assertIconHidden();
+
+  await BrowserTestUtils.removeTab(otherTabs[0]);
+  await BrowserTestUtils.removeTab(otherTabs[1]);
+
+  // Make sure we didn't change the selected tab.
+  gBrowser.selectedTab = oldSelectedTab;
+}
+
 async function test_swapped_browser_while_playing(oldTab, newBrowser) {
   // The tab was muted so it won't have soundplaying attribute even it's playing.
   ok(oldTab.hasAttribute("muted"), "Expected the correct muted attribute on the old tab");
@@ -332,7 +410,7 @@ async function test_browser_swapping(tab, browser) {
     gBrowser,
     url: "about:blank",
   }, async function(newBrowser) {
-    await test_swapped_browser_while_playing(tab, newBrowser)
+    await test_swapped_browser_while_playing(tab, newBrowser);
 
     // Now, test swapping with a muted but not playing tab.
     // Note that the tab remains muted, so we only need to pause playback.
@@ -402,7 +480,7 @@ async function test_cross_process_load() {
     );
 
     // Go to a different process.
-    browser.loadURI("about:");
+    browser.loadURI("about:mozilla");
     await BrowserTestUtils.browserLoaded(browser);
 
     await soundPlayingStoppedPromise;
@@ -474,6 +552,9 @@ async function test_on_browser(browser) {
   await test_playing_icon_on_tab(tab, browser, true);
 
   gBrowser.unpinTab(tab);
+
+  // Test the sound playing icon for hidden tabs.
+  await test_playing_icon_on_hidden_tab(tab);
 
   // Retest with another browser in the foreground tab
   if (gBrowser.selectedBrowser.currentURI.spec == PAGE) {

@@ -3,14 +3,13 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+var {CrashStore, CrashManager} = ChromeUtils.import("resource://gre/modules/CrashManager.jsm", {});
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryEnvironment.jsm", this);
 
-var {CrashStore, CrashManager} = Cu.import("resource://gre/modules/CrashManager.jsm", {});
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/TelemetryEnvironment.jsm", this);
-
-Cu.import("resource://testing-common/CrashManagerTest.jsm", this);
-Cu.import("resource://testing-common/TelemetryArchiveTesting.jsm", this);
+ChromeUtils.import("resource://testing-common/CrashManagerTest.jsm", this);
+ChromeUtils.import("resource://testing-common/TelemetryArchiveTesting.jsm", this);
 
 const DUMMY_DATE = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 DUMMY_DATE.setMilliseconds(0);
@@ -487,6 +486,7 @@ add_task(async function test_child_process_crash_ping() {
       RemoteType: remoteType,
       StackTraces: stackTraces,
       MinidumpSha256Hash: sha256Hash,
+      ipc_channel_error: "ShutDownKill",
       ThisShouldNot: "end-up-in-the-ping"
     });
     await m._pingPromise;
@@ -508,6 +508,8 @@ add_task(async function test_child_process_crash_ping() {
                  "Non-whitelisted fields should be filtered out");
     Assert.equal(found.payload.metadata.RemoteType, remoteType,
                  "RemoteType should be whitelisted for content crashes");
+    Assert.equal(found.payload.metadata.ipc_channel_error, "ShutDownKill",
+                 "ipc_channel_error should be whitelisted for content crashes");
   }
 
   // Check that we don't generate a crash ping for invalid/unexpected process
@@ -600,7 +602,7 @@ add_task(async function test_setCrashClassifications() {
                    "main-crash", DUMMY_DATE);
   await m.setCrashClassifications("main-crash", ["a"]);
   let classifications = (await m.getCrashes())[0].classifications;
-  Assert.ok(classifications.indexOf("a") != -1);
+  Assert.ok(classifications.includes("a"));
 });
 
 add_task(async function test_setRemoteCrashID() {
@@ -611,3 +613,44 @@ add_task(async function test_setRemoteCrashID() {
   await m.setRemoteCrashID("main-crash", "bp-1");
   Assert.equal((await m.getCrashes())[0].remoteID, "bp-1");
 });
+
+add_task(async function test_telemetryHistogram() {
+  let Telemetry = Services.telemetry;
+  let h = Telemetry.getKeyedHistogramById("PROCESS_CRASH_SUBMIT_ATTEMPT");
+  h.clear();
+  Telemetry.clearScalars();
+
+  let m = await getManager();
+  let processTypes = [];
+  let crashTypes = [];
+
+  // Gather all process and crash types
+  for (let field in m) {
+    if (field.startsWith("PROCESS_TYPE_")) {
+      processTypes.push(m[field]);
+    } else if (field.startsWith("CRASH_TYPE_")) {
+      crashTypes.push(m[field]);
+    }
+  }
+
+  let keysCount = 0;
+  let keys = [];
+
+  for (let processType of processTypes) {
+    for (let crashType of crashTypes) {
+      let key = processType + "-" + crashType;
+
+      keys.push(key);
+      h.add(key, 1);
+      keysCount++;
+    }
+  }
+
+  // Check that we have the expected keys.
+  let snap = h.snapshot();
+  Assert.equal(Object.keys(snap).length, keysCount,
+    "Some crash types have not been recorded, see the list in Histograms.json");
+  Assert.deepEqual(Object.keys(snap).sort(), keys.sort(),
+    "Some crash types do not match");
+});
+

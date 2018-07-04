@@ -8,7 +8,6 @@
 #includesubst @BRANDPATH@
 #includesubst @STRINGSPATH@
 #includesubst @SYNCSTRINGSPATH@
-#includesubst @SEARCHSTRINGSPATH@
 
 <!-- C-style format strings. -->
 <!ENTITY formatI "&#037;I">
@@ -25,41 +24,29 @@
   <string name="moz_android_shared_fxaccount_type">@ANDROID_PACKAGE_NAME@_fxaccount</string>
   <string name="android_package_name_for_ui">@ANDROID_PACKAGE_NAME@</string>
 
-#include ../search/strings/search_strings.xml.in
-
 #include ../services/strings.xml.in
 
   <string name="firstrun_panel_title_welcome">&firstrun_panel_title_welcome;</string>
 
-  <string name="firstrun_urlbar_message">&firstrun_urlbar_message;</string>
-  <string name="firstrun_urlbar_subtext">&firstrun_urlbar_subtext;</string>
-  <string name="firstrun_bookmarks_title">&firstrun_bookmarks_title;</string>
-  <string name="firstrun_bookmarks_message">&firstrun_bookmarks_message;</string>
-  <string name="firstrun_bookmarks_subtext">&firstrun_bookmarks_subtext;</string>
-  <string name="firstrun_data_title">&firstrun_data_title;</string>
-  <string name="firstrun_data_message">&firstrun_data_message;</string>
-  <string name="firstrun_data_subtext">&firstrun_data_subtext2;</string>
+  <string name="firstrun_urlbar_message">&firstrun_urlbar_message2;</string>
+  <string name="firstrun_urlbar_subtext">&firstrun_urlbar_subtext2;</string>
+  <string name="firstrun_panel_title_privacy">&firstrun_panel_title_privacy;</string>
+  <string name="firstrun_privacy_message">&firstrun_privacy_message;</string>
+  <string name="firstrun_privacy_subtext">&firstrun_privacy_subtext;</string>
+  <string name="firstrun_panel_title_customize">&firstrun_panel_title_customize;</string>
+  <string name="firstrun_customize_message">&firstrun_customize_message;</string>
+  <string name="firstrun_customize_subtext">&firstrun_customize_subtext;</string>
   <string name="firstrun_sync_title">&firstrun_sync_title;</string>
-  <string name="firstrun_sync_message">&firstrun_sync_message;</string>
-  <string name="firstrun_sync_subtext">&firstrun_sync_subtext;</string>
-  <string name="firstrun_signin_message">&firstrun_signin_message;</string>
+  <string name="firstrun_sync_message">&firstrun_sync_message2;</string>
+  <string name="firstrun_sync_subtext">&firstrun_sync_subtext2;</string>
   <string name="firstrun_signin_button">&firstrun_signin_button;</string>
   <string name="firstrun_welcome_button_browser">&onboard_start_button_browser;</string>
-  <string name="firstrun_button_notnow">&firstrun_button_notnow;</string>
   <string name="firstrun_button_next">&firstrun_button_next;</string>
 
-  <string name="firstrun_tabqueue_title">&firstrun_tabqueue_title;</string>
   <string name="firstrun_tabqueue_message_off">&firstrun_tabqueue_message_off;</string>
   <string name="firstrun_tabqueue_subtext_off">&firstrun_tabqueue_subtext_off;</string>
   <string name="firstrun_tabqueue_message_on">&firstrun_tabqueue_message_on;</string>
   <string name="firstrun_tabqueue_subtext_on">&firstrun_tabqueue_subtext_on;</string>
-
-  <string name="firstrun_readerview_title">&firstrun_readerview_title;</string>
-  <string name="firstrun_readerview_message">&firstrun_readerview_message;</string>
-  <string name="firstrun_readerview_subtext">&firstrun_readerview_subtext;</string>
-
-  <string name="firstrun_account_title">&firstrun_account_title;</string>
-  <string name="firstrun_account_message">&firstrun_account_message;</string>
 
   <string name="firstrun_welcome_restricted">&onboard_start_restricted1;</string>
 
@@ -103,6 +90,7 @@
   <string name="readinglist_smartfolder_label_in_bookmarks">&readinglist_smartfolder_label_in_bookmarks;</string>
   <string name="bookmark_folder_items">&bookmark_folder_items;</string>
   <string name="bookmark_folder_one_item">&bookmark_folder_one_item;</string>
+  <string name="bookmark_folder_updated">&bookmark_folder_updated;</string>
   <string name="bookmark_parent_folder">&bookmark_parent_folder;</string>
   <string name="bookmark_add_folder">&bookmark_add_folder;</string>
 
@@ -119,6 +107,7 @@
   <string name="share_image_failed">&share_image_failed;</string>
   <string name="save_as_pdf">&save_as_pdf;</string>
   <string name="print">&print;</string>
+  <string name="view_page_source">&view_page_source;</string>
   <string name="find_in_page">&find_in_page;</string>
   <string name="desktop_mode">&desktop_mode;</string>
   <string name="page">&page;</string>
@@ -179,8 +168,6 @@
 
   <string name="pref_category_notifications">&pref_category_notifications;</string>
   <string name="pref_category_notifications_summary">&pref_category_notifications_summary;</string>
-  <string name="pref_content_notifications">&pref_content_notifications;</string>
-  <string name="pref_content_notifications_summary">&pref_content_notifications_summary2;</string>
 
   <string name="pref_category_home">&pref_category_home;</string>
   <string name="pref_category_home_summary">&pref_category_home_summary;</string>
@@ -228,7 +215,6 @@
   <string name="pref_show_web_fonts_summary">&pref_show_web_fonts_summary2;</string>
 
   <string name="pref_tracking_protection_title">&pref_tracking_protection_title2;</string>
-  <string name="pref_tracking_protection_summary">&pref_tracking_protection_summary3;</string>
   <string name="pref_donottrack_title">&pref_donottrack_title;</string>
   <string name="pref_donottrack_summary">&pref_donottrack_summary;</string>
 
@@ -239,19 +225,17 @@
   <string name="pref_whats_new_notification">&pref_whats_new_notification;</string>
   <string name="pref_whats_new_notification_summary">&pref_whats_new_notification_summary;</string>
 
+  <string name="pref_feature_tips_notification">&pref_feature_tips_notification;</string>
+  <string name="pref_feature_tips_notification_summary">&pref_feature_tips_notification_summary;</string>
+
   <string name="pref_category_experimental">&pref_category_experimental;</string>
 
-  <string name="pref_custom_tabs">&pref_custom_tabs;</string>
-  <string name="pref_custom_tabs_summary">&pref_custom_tabs_summary3;</string>
+  <string name="pref_custom_tabs">&pref_custom_tabs2;</string>
+  <string name="pref_custom_tabs_summary">&pref_custom_tabs_summary4;</string>
+
   <string name="custom_tabs_menu_item_open_in">&custom_tabs_menu_item_open_in;</string>
   <string name="custom_tabs_menu_footer">&custom_tabs_menu_footer;</string>
   <string name="custom_tabs_hint_url_copy">&custom_tabs_hint_url_copy;</string>
-
-  <string name="pref_pwa">&pref_pwa;</string>
-  <string name="pref_pwa_summary">&pref_pwa_summary;</string>
-
-  <string name="pref_activity_stream">&pref_activity_stream;</string>
-  <string name="pref_activity_stream_summary">&pref_activity_stream_summary;</string>
 
   <string name="pref_char_encoding">&pref_char_encoding;</string>
   <string name="pref_char_encoding_on">&pref_char_encoding_on;</string>
@@ -274,6 +258,7 @@
   <string name="pref_restore">&pref_restore_tabs;</string>
   <string name="pref_restore_always">&pref_restore_always;</string>
   <string name="pref_restore_quit">&pref_restore_quit;</string>
+  <string name="pref_sync_default_title">&pref_sync_default_title;</string>
   <string name="pref_sync">&pref_sync2;</string>
   <string name="pref_sync_summary">&pref_sync_summary2;</string>
   <string name="pref_search_suggestions">&pref_search_suggestions;</string>
@@ -317,12 +302,6 @@
   <string name="tab_queue_notification_title">&tab_queue_notification_title;</string>
   <string name="tab_queue_notification_settings">&tab_queue_notification_settings;</string>
 
-  <string name="content_notification_summary">&content_notification_summary;</string>
-  <string name="content_notification_title_plural">&content_notification_title_plural;</string>
-  <string name="content_notification_action_settings">&content_notification_action_settings2;</string>
-  <string name="content_notification_action_read_now">&content_notification_action_read_now;</string>
-  <string name="content_notification_updated_on">&content_notification_updated_on;</string>
-
   <string name="pref_default_browser">&pref_default_browser;</string>
   <string name="pref_default_browser_mozilla_support_tablet">&pref_default_browser_mozilla_support_tablet;</string>
 
@@ -340,6 +319,10 @@
   <string name="pref_dialog_set_default">&pref_dialog_set_default;</string>
   <string name="pref_default">&pref_dialog_default;</string>
   <string name="pref_dialog_remove">&pref_dialog_remove;</string>
+  <string name="pref_dialog_activitystream_header_content">&pref_dialog_activitystream_header_content;</string>
+  <string name="pref_dialog_activitystream_recentBookmarks">&pref_dialog_activitystream_recentBookmarks;</string>
+  <string name="pref_dialog_activitystream_visited">&pref_dialog_activitystream_visited;</string>
+
 
   <string name="pref_search_last_toast">&pref_search_last_toast;</string>
 
@@ -358,7 +341,6 @@
   <string name="datareporting_telemetry_summary">&datareporting_telemetry_summary;</string>
   <string name="datareporting_fhr_title">&datareporting_fhr_title;</string>
   <string name="datareporting_fhr_summary2">&datareporting_fhr_summary2;</string>
-  <string name="datareporting_abouthr_title">&datareporting_abouthr_title;</string>
   <string name="datareporting_crashreporter_title_short">&datareporting_crashreporter_title_short;</string>
   <string name="datareporting_crashreporter_summary">&datareporting_crashreporter_summary;</string>
   <string name="datareporting_wifi_title">&datareporting_wifi_title2;</string>
@@ -399,7 +381,7 @@
   <string name="contextmenu_open_new_tab">&contextmenu_open_new_tab;</string>
   <string name="contextmenu_open_private_tab">&contextmenu_open_private_tab;</string>
   <string name="contextmenu_remove">&contextmenu_remove;</string>
-  <string name="contextmenu_add_to_launcher">&contextmenu_add_to_launcher;</string>
+  <string name="contextmenu_add_page_shortcut">&contextmenu_add_page_shortcut;</string>
   <string name="contextmenu_set_as_homepage">&contextmenu_set_as_homepage;</string>
   <string name="contextmenu_share">&contextmenu_share;</string>
   <string name="contextmenu_pasteandgo">&contextmenu_pasteandgo;</string>
@@ -411,7 +393,12 @@
   <string name="contextmenu_top_sites_edit">&contextmenu_top_sites_edit;</string>
   <string name="contextmenu_top_sites_pin">&contextmenu_top_sites_pin;</string>
   <string name="contextmenu_top_sites_unpin">&contextmenu_top_sites_unpin;</string>
+  <string name="contextmenu_pin_to_top_sites">&contextmenu_pin_to_top_sites;</string>
+  <string name="contextmenu_unpin_from_top_sites">&contextmenu_unpin_from_top_sites;</string>
   <string name="contextmenu_add_search_engine">&contextmenu_add_search_engine;</string>
+
+  <string name="pinned_page_to_top_sites">&pinned_page_to_top_sites;</string>
+  <string name="unpinned_page_from_top_sites">&unpinned_page_from_top_sites;</string>
 
   <string name="doorhanger_login_no_username">&doorhanger_login_no_username;</string>
   <string name="doorhanger_login_edit_title">&doorhanger_login_edit_title;</string>
@@ -430,6 +417,7 @@
   <string name="pref_compact_tabs_summary">&pref_compact_tabs_summary2;</string>
 
   <string name="page_removed">&page_removed;</string>
+  <string name="folder_removed">&folder_removed;</string>
 
   <string name="bookmark_edit_title">&bookmark_edit_title;</string>
   <string name="bookmark_edit_folder_title">&bookmark_edit_folder_title;</string>
@@ -613,6 +601,7 @@
   <string name="devtools_auth_scan_header">&devtools_auth_scan_header;</string>
 
   <string name="unsupported_sdk_version">&unsupported_sdk_version;</string>
+  <string name="corrupt_apk">&corrupt_apk;</string>
   <string name="eol_notification_title">&eol_notification_title2;</string>
   <string name="eol_notification_summary">&eol_notification_summary;</string>
   <!-- https://support.mozilla.org/1/mobile/%VERSION%/%OS%/%LOCALE%/honeycomb -->
@@ -622,9 +611,8 @@
   <string name="whatsnew_notification_summary">&whatsnew_notification_summary;</string>
   <!-- https://support.mozilla.org/1/mobile/%VERSION%/%OS%/%LOCALE%/new-android -->
   <string name="whatsnew_notification_url">https://support.mozilla.org/1/mobile/&formatS1;/&formatS2;/&formatS3;/new-android</string>
-  <string name="aurora_transition_notification_url">https://support.mozilla.org/1/mobile/&formatS1;/&formatS2;/&formatS3;/aurora-transition</string>
 
-  <string name="promotion_add_to_homescreen">&promotion_add_to_homescreen;</string>
+  <string name="promotion_add_page_shortcut">&promotion_add_page_shortcut;</string>
 
   <string name="helper_first_offline_bookmark_title">&helper_first_offline_bookmark_title;</string>
   <string name="helper_first_offline_bookmark_message">&helper_first_offline_bookmark_message;</string>
@@ -635,13 +623,27 @@
   <string name="helper_triple_readerview_open_button">&helper_triple_readerview_open_button;</string>
 
   <string name="activity_stream_topsites">&activity_stream_topsites;</string>
+  <string name="activity_stream_topstories">&activity_stream_topstories;</string>
   <string name="activity_stream_highlights">&activity_stream_highlights;</string>
+  <string name="activity_stream_link_more">&activity_stream_link_more1;</string>
+
   <string name="activity_stream_highlight_label_bookmarked">&activity_stream_highlight_label_bookmarked;</string>
   <string name="activity_stream_highlight_label_visited">&activity_stream_highlight_label_visited;</string>
-  <string name="activity_stream_dismiss">&activity_stream_dismiss;</string>
+  <string name="activity_stream_highlight_label_trending">&activity_stream_highlight_label_trending;</string>
+  <string name="activity_stream_remove">&activity_stream_remove;</string>
   <string name="activity_stream_delete_history">&activity_stream_delete_history;</string>
 
-  <string name="activity_stream_welcome_title">&activity_stream_welcome_title;</string>
-  <string name="activity_stream_welcome_content">&activity_stream_welcome_content1;</string>
+  <string name="activity_stream_highlights_empty">&activity_stream_highlights_empty;</string>
+
+  <string name="private_tab_panel_title">&private_tab_panel_title;</string>
+  <string name="private_tab_panel_description">&private_tab_panel_description;</string>
+  <string name="private_tab_panel_description2">&private_tab_panel_description2;</string>
+  <string name="private_tab_learn_more">&private_tab_learn_more;</string>
+
   <string name="fullscreen_warning">&fullscreen_warning;</string>
+
+  <string name="pwa_add_to_launcher_confirm">&pwa_add_to_launcher_confirm;</string>
+  <string name="pwa_add_to_launcher_badge">&pwa_add_to_launcher_badge2;</string>
+  <string name="pwa_onboarding_sumo">&pwa_onboarding_sumo;</string>
+  <string name="pwa_continue_to_website">&pwa_continue_to_website;</string>
 </resources>

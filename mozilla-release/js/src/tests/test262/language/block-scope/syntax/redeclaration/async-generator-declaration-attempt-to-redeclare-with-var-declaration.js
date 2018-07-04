@@ -1,4 +1,4 @@
-// |reftest| skip-if(release_or_beta) error:SyntaxError -- async-iteration is not released yet
+// |reftest| error:SyntaxError
 // This file was procedurally generated from the following sources:
 // - src/declarations/redeclare-with-var-declaration.case
 // - src/declarations/redeclare-allow-var/block-attempt-to-redeclare-async-generator-declaration.template
@@ -8,7 +8,7 @@ esid: sec-block-static-semantics-early-errors
 features: [async-iteration]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     Block : { StatementList }
@@ -18,5 +18,7 @@ info: |
 
 ---*/
 
+
+throw "Test262: This statement should not be evaluated.";
 
 { async function* f() {} var f; }

@@ -7,8 +7,10 @@
 #ifndef FennecJNINatives_h
 #define FennecJNINatives_h
 
+#ifndef MOZ_PREPROCESSOR
 #include "FennecJNIWrappers.h"
 #include "mozilla/jni/Natives.h"
+#endif
 
 namespace mozilla {
 namespace java {
@@ -34,6 +36,21 @@ const JNINativeMethod ANRReporter::Natives<Impl>::methods[] = {
     mozilla::jni::MakeNativeMethod<ANRReporter::RequestNativeStack_t>(
             mozilla::jni::NativeStub<ANRReporter::RequestNativeStack_t, Impl>
             ::template Wrap<&Impl::RequestNativeStack>)
+};
+
+template<class Impl>
+class BrowserLocaleManager::Natives : public mozilla::jni::NativeImpl<BrowserLocaleManager, Impl>
+{
+public:
+    static const JNINativeMethod methods[1];
+};
+
+template<class Impl>
+const JNINativeMethod BrowserLocaleManager::Natives<Impl>::methods[] = {
+
+    mozilla::jni::MakeNativeMethod<BrowserLocaleManager::RefreshLocales_t>(
+            mozilla::jni::NativeStub<BrowserLocaleManager::RefreshLocales_t, Impl>
+            ::template Wrap<&Impl::RefreshLocales>)
 };
 
 template<class Impl>
@@ -64,29 +81,6 @@ const JNINativeMethod MemoryMonitor::Natives<Impl>::methods[] = {
     mozilla::jni::MakeNativeMethod<MemoryMonitor::DispatchMemoryPressure_t>(
             mozilla::jni::NativeStub<MemoryMonitor::DispatchMemoryPressure_t, Impl>
             ::template Wrap<&Impl::DispatchMemoryPressure>)
-};
-
-template<class Impl>
-class PresentationMediaPlayerManager::Natives : public mozilla::jni::NativeImpl<PresentationMediaPlayerManager, Impl>
-{
-public:
-    static const JNINativeMethod methods[3];
-};
-
-template<class Impl>
-const JNINativeMethod PresentationMediaPlayerManager::Natives<Impl>::methods[] = {
-
-    mozilla::jni::MakeNativeMethod<PresentationMediaPlayerManager::AddPresentationSurface_t>(
-            mozilla::jni::NativeStub<PresentationMediaPlayerManager::AddPresentationSurface_t, Impl>
-            ::template Wrap<&Impl::AddPresentationSurface>),
-
-    mozilla::jni::MakeNativeMethod<PresentationMediaPlayerManager::InvalidateAndScheduleComposite_t>(
-            mozilla::jni::NativeStub<PresentationMediaPlayerManager::InvalidateAndScheduleComposite_t, Impl>
-            ::template Wrap<&Impl::InvalidateAndScheduleComposite>),
-
-    mozilla::jni::MakeNativeMethod<PresentationMediaPlayerManager::RemovePresentationSurface_t>(
-            mozilla::jni::NativeStub<PresentationMediaPlayerManager::RemovePresentationSurface_t, Impl>
-            ::template Wrap<&Impl::RemovePresentationSurface>)
 };
 
 template<class Impl>

@@ -22,14 +22,10 @@ const {
   setLabelDisplayAndRefresh,
 } = require("devtools/client/memory/actions/label-display");
 
-function run_test() {
-  run_next_test();
-}
-
-add_task(function* () {
+add_task(async function() {
   let front = new StubbedMemoryFront();
   let heapWorker = new HeapAnalysesClient();
-  yield front.attach();
+  await front.attach();
   let store = Store();
   let { getState, dispatch } = store;
 
@@ -37,7 +33,7 @@ add_task(function* () {
   dispatch(takeSnapshotAndCensus(front, heapWorker));
 
   // Wait for the dominator tree to finish being fetched.
-  yield waitUntilState(store, state =>
+  await waitUntilState(store, state =>
     state.snapshots[0] &&
     state.snapshots[0].dominatorTree &&
     state.snapshots[0].dominatorTree.state === dominatorTreeState.LOADED);
@@ -57,11 +53,11 @@ add_task(function* () {
   equal(getState().labelDisplay, labelDisplays.allocationStack,
         "Using labelDisplays.allocationStack now");
 
-  yield waitUntilState(store, state =>
+  await waitUntilState(store, state =>
     state.snapshots[0].dominatorTree.state === dominatorTreeState.FETCHING);
   ok(true, "We started re-fetching the dominator tree");
 
-  yield waitUntilState(store, state =>
+  await waitUntilState(store, state =>
     state.snapshots[0].dominatorTree.state === dominatorTreeState.LOADED);
   ok(true, "The dominator tree was loaded again");
 
@@ -71,5 +67,5 @@ add_task(function* () {
         "Focused node is the same as before");
 
   heapWorker.destroy();
-  yield front.detach();
+  await front.detach();
 });

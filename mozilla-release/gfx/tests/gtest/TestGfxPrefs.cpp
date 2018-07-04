@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -80,7 +81,6 @@ TEST(GfxPrefs, Set) {
   ASSERT_TRUE(gfxPrefs::APZMaxVelocity() == -1.0f);
 }
 
-#ifdef MOZ_CRASHREPORTER
 // Randomly test the function we use in nsExceptionHandler.cpp here:
 extern bool SimpleNoCLibDtoA(double aValue, char* aBuffer, int aBufferLength);
 TEST(GfxPrefs, StringUtility)
@@ -103,4 +103,3 @@ TEST(GfxPrefs, StringUtility)
   // It won't fit into 32:
   ASSERT_FALSE(SimpleNoCLibDtoA(testVal[4], testBuffer, sizeof(testBuffer)/2));
 }
-#endif

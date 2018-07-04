@@ -1,4 +1,4 @@
-let testURL = "http://example.com/browser/" +
+let testURL = "https://example.com/browser/" +
   "uriloader/exthandler/tests/mochitest/protocolHandler.html";
 
 add_task(async function() {
@@ -48,7 +48,7 @@ add_task(async function() {
   gBrowser.selectedTab = tab;
   is(gURLBar.value, expectedURL,
      "the expected URL is displayed in the location bar");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 
   // Shift-click the testprotocol link and check the new window.
   let newWindowPromise = BrowserTestUtils.waitForNewWindow();

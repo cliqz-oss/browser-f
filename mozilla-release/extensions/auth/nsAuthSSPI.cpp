@@ -14,9 +14,11 @@
 //
 
 #include "nsAuthSSPI.h"
+#include "nsDNSService2.h"
 #include "nsIServiceManager.h"
 #include "nsIDNSService.h"
 #include "nsIDNSRecord.h"
+#include "nsMemory.h"
 #include "nsNetCID.h"
 #include "nsCOMPtr.h"
 #include "nsICryptoHash.h"
@@ -92,8 +94,8 @@ InitSSPI()
 
 //-----------------------------------------------------------------------------
 
-static nsresult
-MakeSN(const char *principal, nsCString &result)
+nsresult
+nsAuthSSPI::MakeSN(const char *principal, nsCString &result)
 {
     nsresult rv;
 
@@ -106,9 +108,11 @@ MakeSN(const char *principal, nsCString &result)
     if (index == kNotFound)
         return NS_ERROR_UNEXPECTED;
 
-    nsCOMPtr<nsIDNSService> dns = do_GetService(NS_DNSSERVICE_CONTRACTID, &rv);
+    nsCOMPtr<nsIDNSService> dnsService = do_GetService(NS_DNSSERVICE_CONTRACTID, &rv);
     if (NS_FAILED(rv))
         return rv;
+
+    auto dns = static_cast<nsDNSService*>(dnsService.get());
 
     // This could be expensive if our DNS cache cannot satisfy the request.
     // However, we should have at least hit the OS resolver once prior to
@@ -120,10 +124,10 @@ MakeSN(const char *principal, nsCString &result)
     // its cache.  This is not an issue in versions of Windows up to WinXP.
     nsCOMPtr<nsIDNSRecord> record;
     mozilla::OriginAttributes attrs;
-    rv = dns->ResolveNative(Substring(buf, index + 1),
-                            nsIDNSService::RESOLVE_CANONICAL_NAME,
-                            attrs,
-                            getter_AddRefs(record));
+    rv = dns->DeprecatedSyncResolve(Substring(buf, index + 1),
+                                    nsIDNSService::RESOLVE_CANONICAL_NAME,
+                                    attrs,
+                                    getter_AddRefs(record));
     if (NS_FAILED(rv))
         return rv;
 

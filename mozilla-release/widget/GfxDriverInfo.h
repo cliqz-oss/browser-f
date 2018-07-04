@@ -58,6 +58,7 @@ enum class OperatingSystem {
   OSX10_10,
   OSX10_11,
   OSX10_12,
+  OSX10_13,
   Android,
   Ios
 };
@@ -85,6 +86,7 @@ enum DeviceFamily {
   IntelGMAX3000,
   IntelGMAX4500HD,
   IntelHDGraphicsToSandyBridge,
+  IntelHDGraphicsToHaswell,
   IntelHD3000,
   IntelMobileHDGraphics,
   NvidiaBlockD3D9Layers,
@@ -96,16 +98,19 @@ enum DeviceFamily {
   Bug1116812,
   Bug1155608,
   Bug1207665,
+  Bug1447141,
   DeviceFamilyMax
 };
 
 enum DeviceVendor {
-  VendorAll,
+  VendorAll, // There is an assumption that this is the first enum
   VendorIntel,
   VendorNVIDIA,
   VendorAMD,
   VendorATI,
   VendorMicrosoft,
+  VendorParallels,
+  VendorQualcomm,
   DeviceVendorMax
 };
 

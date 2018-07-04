@@ -3,6 +3,8 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY  connectionsDialog.title       "Verbindungs-Einstellungen">
+<!ENTITY  window.width                  "49em">
+<!ENTITY  window.macWidth               "44em">
 
 <!ENTITY  proxyTitle.label              "Proxies für den Zugriff auf das Internet konfigurieren">
 <!ENTITY  noProxyTypeRadio.label        "Kein Proxy">
@@ -38,3 +40,8 @@
 <!ENTITY  noproxyExplain.label          "Beispiel: .mozilla.org, .net.de, 192.168.1.0/24">
 <!ENTITY  shareproxy.label              "Für alle Protokolle diesen Proxy verwenden">
 <!ENTITY  shareproxy.accesskey          "x">
+<!ENTITY  autologinproxy.label          "Keine Authentifizierungsanfrage bei gespeichertem Passwort">
+<!ENTITY  autologinproxy.accesskey      "z">
+<!ENTITY  autologinproxy.tooltip        "Beim Aktivieren dieser Einstellung wird die Anmeldung an Proxies automatisch vorgenommen, falls deren Passwort gespeichert ist. Bei fehlgeschlagener Authentifizierung wird das Passwort vom Benutzer abgefragt.">
+<!ENTITY  socksRemoteDNS.label          "Bei Verwendung von SOCKS v5 den Proxy für DNS-Anfragen verwenden">
+<!ENTITY  socksRemoteDNS.accesskey      "D">

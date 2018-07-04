@@ -47,11 +47,13 @@ class RegExpObject;
 class SavedFrame;
 class Scope;
 class EnvironmentObject;
+class RequestedModuleObject;
 class ScriptSourceObject;
 class Shape;
 class SharedArrayBufferObject;
 class StructTypeDescr;
 class UnownedBaseShape;
+class WasmGlobalObject;
 class WasmFunctionScope;
 class WasmMemoryObject;
 namespace jit {
@@ -87,6 +89,7 @@ class JitCode;
     D(js::PropertyName*) \
     D(js::RegExpObject*) \
     D(js::RegExpShared*) \
+    D(js::RequestedModuleObject*) \
     D(js::SavedFrame*) \
     D(js::Scope*) \
     D(js::ScriptSourceObject*) \
@@ -98,6 +101,7 @@ class JitCode;
     D(js::WasmInstanceObject*) \
     D(js::WasmMemoryObject*) \
     D(js::WasmTableObject*) \
+    D(js::WasmGlobalObject*) \
     D(js::jit::JitCode*)
 
 // Expand the given macro D for each internal tagged GC pointer type.
@@ -118,11 +122,24 @@ template <typename T>
 struct InternalGCPointerPolicy {
     using Type = typename mozilla::RemovePointer<T>::Type;
     static T initial() { return nullptr; }
-    static void preBarrier(T v) { Type::writeBarrierPre(v); }
-    static void postBarrier(T* vp, T prev, T next) { Type::writeBarrierPost(vp, prev, next); }
-    static void readBarrier(T v) { Type::readBarrier(v); }
+    static void preBarrier(T v) {
+        if (v)
+            Type::writeBarrierPre(v);
+    }
+    static void postBarrier(T* vp, T prev, T next) {
+        if (*vp)
+            Type::writeBarrierPost(vp, prev, next);
+    }
+    static void readBarrier(T v) {
+        if (v)
+            Type::readBarrier(v);
+    }
     static void trace(JSTracer* trc, T* vp, const char* name) {
-        TraceManuallyBarrieredEdge(trc, vp, name);
+        if (*vp)
+            TraceManuallyBarrieredEdge(trc, vp, name);
+    }
+    static bool isValid(T v) {
+        return gc::IsCellPointerValidOrNull(v);
     }
 };
 

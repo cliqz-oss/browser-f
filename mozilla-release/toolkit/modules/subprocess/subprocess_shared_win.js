@@ -152,11 +152,11 @@ Object.assign(win32, {
   ]),
 
   OVERLAPPED: new ctypes.StructType("OVERLAPPED", [
-     {"Internal": win32.ULONG_PTR},
-     {"InternalHigh": win32.ULONG_PTR},
-     {"Offset": win32.DWORD},
-     {"OffsetHigh": win32.DWORD},
-     {"hEvent": win32.HANDLE},
+    {"Internal": win32.ULONG_PTR},
+    {"InternalHigh": win32.ULONG_PTR},
+    {"Offset": win32.DWORD},
+    {"OffsetHigh": win32.DWORD},
+    {"hEvent": win32.HANDLE},
   ]),
 
   PROCESS_INFORMATION: new ctypes.StructType("PROCESS_INFORMATION", [
@@ -470,7 +470,7 @@ win32.createPipe = function(secAttr, readFlags = 0, writeFlags = 0, size = 0) {
     win32.PIPE_TYPE_BYTE | win32.PIPE_WAIT,
     1, /* number of connections */
     size, /* output buffer size */
-    size,  /* input buffer size */
+    size, /* input buffer size */
     0, /* timeout */
     secAttr.address());
 

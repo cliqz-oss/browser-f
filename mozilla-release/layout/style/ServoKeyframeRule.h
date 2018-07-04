@@ -10,6 +10,8 @@
 #include "mozilla/dom/CSSKeyframeRule.h"
 #include "mozilla/ServoBindingTypes.h"
 
+class nsICSSDeclaration;
+
 namespace mozilla {
 
 class ServoDeclarationBlock;
@@ -18,8 +20,9 @@ class ServoKeyframeDeclaration;
 class ServoKeyframeRule final : public dom::CSSKeyframeRule
 {
 public:
-  explicit ServoKeyframeRule(already_AddRefed<RawServoKeyframe> aRaw)
-    : CSSKeyframeRule(0, 0)
+  ServoKeyframeRule(already_AddRefed<RawServoKeyframe> aRaw,
+                    uint32_t aLine, uint32_t aColumn)
+    : CSSKeyframeRule(aLine, aColumn)
     , mRaw(aRaw) {}
 
   NS_DECL_ISUPPORTS_INHERITED
@@ -30,16 +33,13 @@ public:
 #ifdef DEBUG
   void List(FILE* out = stdout, int32_t aIndent = 0) const final;
 #endif
-  already_AddRefed<mozilla::css::Rule> Clone() const final;
 
   RawServoKeyframe* Raw() const { return mRaw; }
 
-  // nsIDOMCSSKeyframeRule interface
-  NS_IMETHOD GetKeyText(nsAString& aKeyText) final;
-  NS_IMETHOD SetKeyText(const nsAString& aKeyText) final;
-
   // WebIDL interface
-  void GetCssTextImpl(nsAString& aCssText) const final;
+  void GetCssText(nsAString& aCssText) const final;
+  void GetKeyText(nsAString& aKeyText) final;
+  void SetKeyText(const nsAString& aKeyText) final;
   nsICSSDeclaration* Style() final;
 
   size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const final;

@@ -5,10 +5,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "jscompartment.h"
 #include "jsfriendapi.h"
 
 #include "jsapi-tests/tests.h"
+#include "vm/JSCompartment.h"
 
 using namespace js;
 
@@ -73,7 +73,7 @@ BEGIN_TEST(testTypedArrays)
 
 template<JSObject* Create(JSContext*, uint32_t),
          typename Element,
-         Element* GetData(JSObject*, bool* isShared, const JS::AutoCheckCannotGC&)>
+         Element* GetData(JSObject*, bool* isShared, const JS::AutoRequireNoGC&)>
 bool
 TestPlainTypedArray(JSContext* cx)
 {
@@ -111,7 +111,7 @@ template<JSObject* CreateWithBuffer(JSContext*, JS::HandleObject, uint32_t, int3
          JSObject* CreateFromArray(JSContext*, JS::HandleObject),
          typename Element,
          bool Shared,
-         Element* GetData(JSObject*, bool*, const JS::AutoCheckCannotGC&)>
+         Element* GetData(JSObject*, bool*, const JS::AutoRequireNoGC&)>
 bool
 TestArrayFromBuffer(JSContext* cx)
 {

@@ -303,8 +303,8 @@ private:
     }
 
     // Check that subject and issuer match nickname
-    nsXPIDLString subjectName;
-    nsXPIDLString issuerName;
+    nsAutoString subjectName;
+    nsAutoString issuerName;
     mCert->GetSubjectName(subjectName);
     mCert->GetIssuerName(issuerName);
     if (!subjectName.Equals(issuerName)) {
@@ -338,8 +338,6 @@ private:
     return NS_OK;
   }
 
-  virtual void ReleaseNSSResources() override {}
-
   virtual void CallCallback(nsresult rv) override
   {
     (void) mCallback->HandleCert(mCert, rv);
@@ -365,8 +363,6 @@ private:
   {
     return RemoveExisting();
   }
-
-  virtual void ReleaseNSSResources() override {}
 
   virtual void CallCallback(nsresult rv) override
   {

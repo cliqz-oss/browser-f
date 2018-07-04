@@ -17,7 +17,6 @@ const {
 } = require("devtools/shared/specs/worker");
 
 loader.lazyRequireGetter(this, "ChromeUtils");
-loader.lazyRequireGetter(this, "events", "sdk/event/core");
 
 XPCOMUtils.defineLazyServiceGetter(
   this, "swm",
@@ -243,7 +242,7 @@ let ServiceWorkerActor = protocol.ActorClassWithSpec(serviceWorkerSpec, {
   },
 });
 
-// Lazily load the service-worker-child.js process script only once.
+// Lazily load the service-worker-process.js process script only once.
 let _serviceWorkerProcessScriptLoaded = false;
 
 let ServiceWorkerRegistrationActor =
@@ -280,7 +279,7 @@ protocol.ActorClassWithSpec(serviceWorkerRegistrationSpec, {
     this._waitingWorker = new ServiceWorkerActor(this._conn, waitingWorker);
     this._activeWorker = new ServiceWorkerActor(this._conn, activeWorker);
 
-    events.emit(this, "registration-changed");
+    this.emit("registration-changed");
   },
 
   form(detail) {
@@ -344,7 +343,7 @@ protocol.ActorClassWithSpec(serviceWorkerRegistrationSpec, {
           this._pushSubscriptionActor.destroy();
           this._pushSubscriptionActor = null;
         }
-        events.emit(this, "push-subscription-modified");
+        this.emit("push-subscription-modified");
         break;
     }
   },
@@ -352,7 +351,7 @@ protocol.ActorClassWithSpec(serviceWorkerRegistrationSpec, {
   start() {
     if (!_serviceWorkerProcessScriptLoaded) {
       Services.ppmm.loadProcessScript(
-        "resource://devtools/server/service-worker-child.js", true);
+        "resource://devtools/server/actors/worker/service-worker-process.js", true);
       _serviceWorkerProcessScriptLoaded = true;
     }
 
@@ -377,8 +376,8 @@ protocol.ActorClassWithSpec(serviceWorkerRegistrationSpec, {
   unregister() {
     let { principal, scope } = this._registration;
     let unregisterCallback = {
-      unregisterSucceeded: function () {},
-      unregisterFailed: function () {
+      unregisterSucceeded: function() {},
+      unregisterFailed: function() {
         console.error("Failed to unregister the service worker for " + scope);
       },
       QueryInterface: XPCOMUtils.generateQI(

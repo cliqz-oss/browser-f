@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,7 +13,7 @@
 namespace mozilla {
 namespace layers {
 
-OverscrollHandoffChain::~OverscrollHandoffChain() {}
+OverscrollHandoffChain::~OverscrollHandoffChain() = default;
 
 void
 OverscrollHandoffChain::Add(AsyncPanZoomController* aApzc)
@@ -161,11 +161,23 @@ OverscrollHandoffChain::HasFastFlungApzc() const
 }
 
 RefPtr<AsyncPanZoomController>
-OverscrollHandoffChain::FindFirstScrollable(const InputData& aInput) const
+OverscrollHandoffChain::FindFirstScrollable(
+    const InputData& aInput,
+    ScrollDirections* aOutAllowedScrollDirections) const
 {
+  // Start by allowing scrolling in both directions. As we do handoff
+  // overscroll-behavior may restrict one or both of the directions.
+  *aOutAllowedScrollDirections += ScrollDirection::eVertical;
+  *aOutAllowedScrollDirections += ScrollDirection::eHorizontal;
+
   for (size_t i = 0; i < Length(); i++) {
     if (mChain[i]->CanScroll(aInput)) {
       return mChain[i];
+    }
+
+    *aOutAllowedScrollDirections &= mChain[i]->GetAllowedHandoffDirections();
+    if (aOutAllowedScrollDirections->isEmpty()) {
+      return nullptr;
     }
   }
   return nullptr;

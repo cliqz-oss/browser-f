@@ -189,7 +189,7 @@ add_task(async function() {
   });
 
   extension.onMessage("msg", (id, msg, ...args) => {
-    let {Management: {global: {tabTracker}}} = Cu.import("resource://gre/modules/Extension.jsm", {});
+    let {Management: {global: {tabTracker}}} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
 
     let resp;
     if (msg == "get-zoom") {
@@ -217,6 +217,6 @@ add_task(async function() {
 
   await extension.unload();
 
-  await BrowserTestUtils.removeTab(tab1);
-  await BrowserTestUtils.removeTab(tab2);
+  BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab2);
 });

@@ -2,18 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 const BASE_LIST_ID = "base";
 const CONTENT_LIST_ID = "content";
 const TRACK_SUFFIX = "-track-digest256";
 const TRACKING_TABLE_PREF = "urlclassifier.trackingTable";
 const LISTS_PREF_BRANCH = "browser.safebrowsing.provider.mozilla.lists.";
-const UPDATE_TIME_PREF = "browser.safebrowsing.provider.mozilla.nextupdatetime";
 
 var gBlocklistManager = {
   _type: "",
   _blockLists: [],
-  _brandShortName: null,
   _bundle: null,
   _tree: null,
 
@@ -38,7 +36,6 @@ var gBlocklistManager = {
     isContainer(index) { return false; },
     setTree(tree) {},
     getImageSrc(row, column) {},
-    getProgressMode(row, column) {},
     getCellValue(row, column) {
       if (column.id == "selectionCol")
         return gBlocklistManager._blockLists[row].selected;
@@ -77,15 +74,6 @@ var gBlocklistManager = {
     }
 
     this._type = "tracking";
-    this._brandShortName = params.brandShortName;
-
-    let blocklistsText = document.getElementById("blocklistsText");
-    while (blocklistsText.hasChildNodes()) {
-      blocklistsText.firstChild.remove();
-    }
-    blocklistsText.appendChild(document.createTextNode(params.introText));
-
-    document.title = params.windowTitle;
 
     this._loadBlockLists();
   },
@@ -112,37 +100,22 @@ var gBlocklistManager = {
     }
 
     if (activeList !== selected.id) {
-      const Cc = Components.classes, Ci = Components.interfaces;
-      let msg = this._bundle.getFormattedString("blocklistChangeRequiresRestart",
-                                                [this._brandShortName]);
-      let title = this._bundle.getFormattedString("shouldRestartTitle",
-                                                  [this._brandShortName]);
-      let shouldProceed = Services.prompt.confirm(window, title, msg);
-      if (shouldProceed) {
-        let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
-                           .createInstance(Ci.nsISupportsPRBool);
-        Services.obs.notifyObservers(cancelQuit, "quit-application-requested",
-                                     "restart");
-        shouldProceed = !cancelQuit.data;
-
-        if (shouldProceed) {
-          let trackingTable = Services.prefs.getCharPref(TRACKING_TABLE_PREF);
-          if (selected.id != CONTENT_LIST_ID) {
-            trackingTable = trackingTable.replace("," + CONTENT_LIST_ID + TRACK_SUFFIX, "");
-          } else {
-            trackingTable += "," + CONTENT_LIST_ID + TRACK_SUFFIX;
-          }
-          Services.prefs.setCharPref(TRACKING_TABLE_PREF, trackingTable);
-          Services.prefs.setCharPref(UPDATE_TIME_PREF, 42);
-
-          Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit |
-                                Ci.nsIAppStartup.eRestart);
-        }
+      let trackingTable = Services.prefs.getCharPref(TRACKING_TABLE_PREF);
+      if (selected.id != CONTENT_LIST_ID) {
+        trackingTable = trackingTable.replace("," + CONTENT_LIST_ID + TRACK_SUFFIX, "");
+      } else {
+        trackingTable += "," + CONTENT_LIST_ID + TRACK_SUFFIX;
       }
+      Services.prefs.setCharPref(TRACKING_TABLE_PREF, trackingTable);
 
-      // Don't close the dialog in case we didn't quit.
-      return;
+      // Force an update after changing the tracking protection table.
+      let listmanager = Cc["@mozilla.org/url-classifier/listmanager;1"]
+                        .getService(Ci.nsIUrlListManager);
+      if (listmanager) {
+        listmanager.forceUpdates(trackingTable);
+      }
     }
+
     window.close();
   },
 
@@ -196,7 +169,3 @@ var gBlocklistManager = {
     return trackingTable.includes(CONTENT_LIST_ID) ? CONTENT_LIST_ID : BASE_LIST_ID;
   }
 };
-
-function initWithParams(params) {
-  gBlocklistManager.init(params);
-}

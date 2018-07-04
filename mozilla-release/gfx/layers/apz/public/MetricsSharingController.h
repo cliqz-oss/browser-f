@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=4 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -23,7 +23,7 @@ public:
   virtual base::ProcessId RemotePid() = 0;
   virtual bool StartSharingMetrics(mozilla::ipc::SharedMemoryBasic::Handle aHandle,
                                    CrossProcessMutexHandle aMutexHandle,
-                                   uint64_t aLayersId,
+                                   LayersId aLayersId,
                                    uint32_t aApzcId) = 0;
   virtual bool StopSharingMetrics(FrameMetrics::ViewID aScrollId,
                                   uint32_t aApzcId) = 0;

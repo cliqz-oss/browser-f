@@ -22,7 +22,7 @@ function validateTheme(backgroundImage, accentColor, textColor, isLWT) {
   if (isLWT) {
     Assert.ok(docEl.hasAttribute("lwtheme"), "LWT attribute should be set");
     Assert.equal(docEl.getAttribute("lwthemetextcolor"), "bright",
-      "LWT text color attribute should be set");
+                 "LWT text color attribute should be set");
   }
 
   Assert.ok(style.backgroundImage.includes(backgroundImage), "Expected correct background image");
@@ -69,6 +69,8 @@ add_task(async function test_dynamic_theme_updates() {
   let defaultStyle = window.getComputedStyle(window.document.documentElement);
   await extension.startup();
 
+  let docEl = window.document.documentElement;
+  let transitionPromise = waitForTransition(docEl, "background-color");
   extension.sendMessage("update-theme", {
     "images": {
       "headerURL": "image1.png",
@@ -80,9 +82,11 @@ add_task(async function test_dynamic_theme_updates() {
   });
 
   await extension.awaitMessage("theme-updated");
+  await transitionPromise;
 
   validateTheme("image1.png", ACCENT_COLOR_1, TEXT_COLOR_1, true);
 
+  transitionPromise = waitForTransition(docEl, "background-color");
   extension.sendMessage("update-theme", {
     "images": {
       "headerURL": "image2.png",
@@ -94,6 +98,7 @@ add_task(async function test_dynamic_theme_updates() {
   });
 
   await extension.awaitMessage("theme-updated");
+  await transitionPromise;
 
   validateTheme("image2.png", ACCENT_COLOR_2, TEXT_COLOR_2, true);
 
@@ -106,6 +111,73 @@ add_task(async function test_dynamic_theme_updates() {
 
   await extension.unload();
 
+  Assert.ok(!docEl.hasAttribute("lwtheme"), "LWT attribute should not be set");
+});
+
+add_task(async function test_dynamic_theme_updates_with_data_url() {
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["theme"],
+    },
+    background() {
+      browser.test.onMessage.addListener((msg, details) => {
+        if (msg === "update-theme") {
+          browser.theme.update(details).then(() => {
+            browser.test.sendMessage("theme-updated");
+          });
+        } else {
+          browser.theme.reset().then(() => {
+            browser.test.sendMessage("theme-reset");
+          });
+        }
+      });
+    },
+  });
+
+  let defaultStyle = window.getComputedStyle(window.document.documentElement);
+  await extension.startup();
+
   let docEl = window.document.documentElement;
+  let transitionPromise = waitForTransition(docEl, "background-color");
+  extension.sendMessage("update-theme", {
+    "images": {
+      "headerURL": BACKGROUND_1,
+    },
+    "colors": {
+      "accentcolor": ACCENT_COLOR_1,
+      "textcolor": TEXT_COLOR_1,
+    },
+  });
+
+  await extension.awaitMessage("theme-updated");
+  await transitionPromise;
+
+  validateTheme(BACKGROUND_1, ACCENT_COLOR_1, TEXT_COLOR_1, true);
+
+  transitionPromise = waitForTransition(docEl, "background-color");
+  extension.sendMessage("update-theme", {
+    "images": {
+      "headerURL": BACKGROUND_2,
+    },
+    "colors": {
+      "accentcolor": ACCENT_COLOR_2,
+      "textcolor": TEXT_COLOR_2,
+    },
+  });
+
+  await extension.awaitMessage("theme-updated");
+  await transitionPromise;
+
+  validateTheme(BACKGROUND_2, ACCENT_COLOR_2, TEXT_COLOR_2, true);
+
+  extension.sendMessage("reset-theme");
+
+  await extension.awaitMessage("theme-reset");
+
+  let {backgroundImage, backgroundColor, color} = defaultStyle;
+  validateTheme(backgroundImage, backgroundColor, color, false);
+
+  await extension.unload();
+
   Assert.ok(!docEl.hasAttribute("lwtheme"), "LWT attribute should not be set");
 });

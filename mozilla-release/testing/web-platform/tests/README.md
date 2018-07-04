@@ -12,86 +12,113 @@ the promise of working across browsers and devices without needing extra
 layers of abstraction to paper over the gaps left by specification
 editors and implementors.
 
+Setting Up the Repo
+===================
+
+Clone or otherwise get https://github.com/w3c/web-platform-tests.
+
+Note: because of the frequent creation and deletion of branches in this
+repo, it is recommended to "prune" stale branches when fetching updates,
+i.e. use `git pull --prune` (or `git fetch -p && git merge`).
+
 Running the Tests
 =================
 
 The tests are designed to be run from your local computer. The test
 environment requires [Python 2.7+](http://www.python.org/downloads) (but not Python 3.x).
-You will also need a copy of OpenSSL.
 
 On Windows, be sure to add the Python directory (`c:\python2x`, by default) to
 your `%Path%` [Environment Variable](http://www.computerhope.com/issues/ch000549.htm),
 and read the [Windows Notes](#windows-notes) section below.
 
 To get the tests running, you need to set up the test domains in your
-[`hosts` file](http://en.wikipedia.org/wiki/Hosts_%28file%29%23Location_in_the_file_system). The
-following entries are required:
+[`hosts` file](http://en.wikipedia.org/wiki/Hosts_%28file%29%23Location_in_the_file_system).
 
+The necessary content can be generated with `./wpt make-hosts-file`; on
+Windows, you will need to preceed the prior command with `python` or
+the path to the Python binary (`python wpt make-hosts-file`).
+
+For example, on most UNIX-like systems, you can setup the hosts file with:
+
+```bash
+./wpt make-hosts-file | sudo tee -a /etc/hosts
 ```
-127.0.0.1   web-platform.test
-127.0.0.1   www.web-platform.test
-127.0.0.1   www1.web-platform.test
-127.0.0.1   www2.web-platform.test
-127.0.0.1   xn--n8j6ds53lwwkrqhv28a.web-platform.test
-127.0.0.1   xn--lve-6lad.web-platform.test
-0.0.0.0     nonexistent-origin.web-platform.test
+
+And on Windows (note this requires an Administrator privileged shell):
+
+```bash
+python wpt make-hosts-file >> %SystemRoot%\System32\drivers\etc\hosts
 ```
 
 If you are behind a proxy, you also need to make sure the domains above are
 excluded from your proxy lookups.
 
-The test environment can then be started using
 
-    ./serve
+Running Tests Manually
+======================
+
+The test server can be started using
+```
+./wpt serve
+```
+
+**On Windows**: You will need to preceed the prior command with
+`python` or the path to the python binary.
+```bash
+python wpt serve
+```
 
 This will start HTTP servers on two ports and a websockets server on
-one port. By default one web server starts on port 8000 and the other
+one port. By default the web servers start on ports 8000 and 8443 and the other
 ports are randomly-chosen free ports. Tests must be loaded from the
 *first* HTTP server in the output. To change the ports, copy the
 `config.default.json` file to `config.json` and edit the new file,
 replacing the part that reads:
 
 ```
-"http": [8000, "auto"]
+"http": [8000, "auto"],
+"https":[8443]
 ```
 
-to some port of your choice e.g.
+to some ports of your choice e.g.
 
 ```
-"http": [1234, "auto"]
+"http": [1234, "auto"],
+"https":[5678]
 ```
 
-If you installed OpenSSL in such a way that running `openssl` at a
-command line doesn't work, you also need to adjust the path to the
-OpenSSL binary. This can be done by adding a section to `config.json`
-like:
+After your `hosts` file is configured, the servers will be locally accessible at:
 
-```
-"ssl": {"openssl": {"binary": "/path/to/openssl"}}
-```
+http://web-platform.test:8000/<br>
+https://web-platform.test:8443/ *
+
+\**See [Trusting Root CA](#trusting-root-ca)*
 
 Running Tests Automatically
 ---------------------------
 
-Tests can be run automatically in a browser using the `wptrun` script
-in the root of the checkout. This requires the hosts file and OpenSSL
-setup documented above, but you must *not* have the test server
-already running when calling `wptrun`. The basic command line syntax
-is:
+Tests can be run automatically in a browser using the `run` command of
+the `wpt` script in the root of the checkout. This requires the hosts
+file setup documented above, but you must *not* have the
+test server already running when calling `wpt run`. The basic command
+line syntax is:
 
-```
-./wptrun product [tests]
+```bash
+./wpt run product [tests]
 ```
 
-**On Windows**: for technical reasons the above will not work and you
-must instead run `python tools/wptrun.py products [tests]`.
+**On Windows**: You will need to preceed the prior command with
+`python` or the path to the python binary.
+```bash
+python wpt run product [tests]
+```
 
 where `product` is currently `firefox` or `chrome` and `[tests]` is a
 list of paths to tests. This will attempt to automatically locate a
 browser instance and install required dependencies. The command is
-very configurable; for examaple to specify a particular binary use
-`wptrun --binary=path product`. The full range of options can be see
-with `wptrun --help` and `wptrun --wptrunner-help`.
+very configurable; for example to specify a particular binary use
+`wpt run --binary=path product`. The full range of options can be see
+with `wpt run --help` and `wpt run --wptrunner-help`.
 
 Not all dependencies can be automatically installed; in particular the
 `certutil` tool required to run https tests with Firefox must be
@@ -108,6 +135,29 @@ And on macOS with homebrew using:
 ```
 brew install nss
 ```
+
+On other platforms, download the firefox archive and common.tests.zip
+archive for your platform from
+[Mozilla CI](https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central/).
+
+Then extract `certutil[.exe]` from the tests.zip package and
+`libnss3[.so|.dll|.dynlib]` and put the former on your path and the latter on
+your library path.
+
+
+Command Line Tools
+==================
+
+The `wpt` command provides a frontend to a variety of tools for
+working with and running web-platform-tests. Some of the most useful
+commands are:
+
+* `wpt serve` - For starting the wpt http server
+* `wpt run` - For running tests in a browser
+* `wpt lint` - For running the lint against all tests
+* `wpt manifest` - For updating or generating a `MANIFEST.json` test manifest
+* `wpt install` - For installing the latest release of a browser or
+  webdriver server on the local machine.
 
 <span id="submodules">Submodules</span>
 =======================================
@@ -161,8 +211,42 @@ then remove the `tools` and `resources` directories, as above.
 <span id="windows-notes">Windows Notes</span>
 =============================================
 
-Running wptserve with SSL enabled on Windows typically requires
-installing an OpenSSL distribution.
+On Windows `wpt` commands must be prefixed with `python` or the path
+to the python binary (if `python` is not in your `%PATH%`).
+
+```bash
+python wpt [command]
+```
+
+Alternatively, you may also use
+[Bash on Ubuntu on Windows](https://msdn.microsoft.com/en-us/commandline/wsl/about)
+in the Windows 10 Anniversary Update build, then access your windows
+partition from there to launch `wpt` commands.
+
+Please make sure git and your text editor do not automatically convert
+line endings, as it will cause lint errors. For git, please set
+`git config core.autocrlf false` in your working tree.
+
+Certificates
+============
+
+By default pregenerated certificates for the web-platform.test domain
+are provided in [`tools/certs`](tools/certs). If you wish to generate new
+certificates for any reason it's possible to use OpenSSL when starting
+the server, or starting a test run, by providing the
+`--ssl-type=openssl` argument to the `wpt serve` or `wpt run`
+commands.
+
+If you installed OpenSSL in such a way that running `openssl` at a
+command line doesn't work, you also need to adjust the path to the
+OpenSSL binary. This can be done by adding a section to `config.json`
+like:
+
+```
+"ssl": {"openssl": {"binary": "/path/to/openssl"}}
+```
+
+On Windows using OpenSSL typically requires installing an OpenSSL distribution.
 [Shining Light](https://slproweb.com/products/Win32OpenSSL.html)
 provide a convenient installer that is known to work, but requires a
 little extra setup, i.e.:
@@ -184,10 +268,11 @@ Then edit the JSON so that the key `ssl/openssl/base_conf_path` has a
 value that is the path to the OpenSSL config file (typically this
 will be `C:\\OpenSSL-Win32\\bin\\openssl.cfg`).
 
-Alternatively, you may also use
-[Bash on Ubuntu on Windows](https://msdn.microsoft.com/en-us/commandline/wsl/about)
-in the Windows 10 Anniversary Update build, then access your windows
-partition from there to launch wptserve.
+### Trusting Root CA
+
+To prevent browser SSL warnings when running HTTPS tests locally, the
+web-platform-tests Root CA file `cacert.pem` in [tools/certs](tools/certs)
+must be added as a trusted certificate in your OS/browser.
 
 Publication
 ===========
@@ -262,7 +347,7 @@ can run it manually by starting the `lint` executable from the root of
 your local web-platform-tests working directory like this:
 
 ```
-./lint
+./wpt lint
 ```
 
 The lint tool is also run automatically for every submitted pull
@@ -325,6 +410,14 @@ been adequately reviewed "upstream" in another repository, it can be
 pushed here without any further review by supplying a link to the
 upstream review.
 
+Search filters to find things to review:
+
+* [Open PRs (excluding vendor exports)](https://github.com/w3c/web-platform-tests/pulls?utf8=%E2%9C%93&q=is%3Apr+is%3Aopen+-label%3A%22mozilla%3Agecko-sync%22+-label%3A%22chromium-export%22+-label%3A%22webkit-export%22+-label%3A%22servo-export%22)
+* [Reviewed but still open PRs (excluding vendor exports)](https://github.com/w3c/web-platform-tests/pulls?q=is%3Apr+is%3Aopen+-label%3Amozilla%3Agecko-sync+-label%3Achromium-export+-label%3Awebkit-export+-label%3Aservo-export+review%3Aapproved) (Merge? Something left to fix? Ping other reviewer?)
+* [Open PRs without owners](https://github.com/w3c/web-platform-tests/pulls?q=is%3Apr+is%3Aopen+label%3Astatus%3Aneeds-owners)
+* [Open PRs with label `infra` (excluding vendor exports)](https://github.com/w3c/web-platform-tests/pulls?utf8=%E2%9C%93&q=is%3Apr+is%3Aopen+label%3Ainfra+-label%3A%22mozilla%3Agecko-sync%22+-label%3A%22chromium-export%22+-label%3A%22webkit-export%22+-label%3A%22servo-export%22)
+* [Open PRs with label `docs` (excluding vendor exports)](https://github.com/w3c/web-platform-tests/pulls?utf8=%E2%9C%93&q=is%3Apr+is%3Aopen+label%3Adocs+-label%3A%22mozilla%3Agecko-sync%22+-label%3A%22chromium-export%22+-label%3A%22webkit-export%22+-label%3A%22servo-export%22)
+
 Getting Involved
 ================
 
@@ -338,7 +431,7 @@ is [archived][ircarchive].
 
 [contributing]: https://github.com/w3c/web-platform-tests/blob/master/CONTRIBUTING.md
 [ircw3org]: https://www.w3.org/wiki/IRC
-[ircarchive]: http://logs.glob.uno/?c=w3%23testing
+[ircarchive]: https://w3.logbot.info/testing
 [mailarchive]: https://lists.w3.org/Archives/Public/public-test-infra/
 
 Documentation

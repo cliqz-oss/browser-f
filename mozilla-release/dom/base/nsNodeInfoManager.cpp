@@ -11,12 +11,11 @@
 #include "nsNodeInfoManager.h"
 
 #include "mozilla/DebugOnly.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/dom/NodeInfo.h"
 #include "mozilla/dom/NodeInfoInlines.h"
 #include "nsCOMPtr.h"
 #include "nsString.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIDocument.h"
 #include "nsIPrincipal.h"
 #include "nsIURI.h"
@@ -30,6 +29,7 @@
 #include "nsCCUncollectableMarker.h"
 #include "nsNameSpaceManager.h"
 #include "nsDocument.h"
+#include "nsWindowSizes.h"
 #include "NullPrincipal.h"
 
 using namespace mozilla;
@@ -38,105 +38,29 @@ using mozilla::dom::NodeInfo;
 #include "mozilla/Logging.h"
 
 static LazyLogModule gNodeInfoManagerLeakPRLog("NodeInfoManagerLeak");
-
-PLHashNumber
-nsNodeInfoManager::GetNodeInfoInnerHashValue(const void *key)
-{
-  MOZ_ASSERT(key, "Null key passed to NodeInfo::GetHashValue!");
-
-  auto *node = const_cast<NodeInfo::NodeInfoInner*>
-    (reinterpret_cast<const NodeInfo::NodeInfoInner*>(key));
-  if (!node->mHashInitialized) {
-    node->mHash = node->mName ? node->mName->hash() : HashString(*(node->mNameString));
-    node->mHashInitialized = true;
-  }
-
-  return node->mHash;
-}
-
-
-int
-nsNodeInfoManager::NodeInfoInnerKeyCompare(const void *key1, const void *key2)
-{
-  MOZ_ASSERT(key1 && key2, "Null key passed to NodeInfoInnerKeyCompare!");
-
-  auto *node1 = reinterpret_cast<const NodeInfo::NodeInfoInner*>(key1);
-  auto *node2 = reinterpret_cast<const NodeInfo::NodeInfoInner*>(key2);
-
-  if (node1->mPrefix != node2->mPrefix ||
-      node1->mNamespaceID != node2->mNamespaceID ||
-      node1->mNodeType != node2->mNodeType ||
-      node1->mExtraName != node2->mExtraName) {
-    return 0;
-  }
-
-  if (node1->mName) {
-    if (node2->mName) {
-      return (node1->mName == node2->mName);
-    }
-    return (node1->mName->Equals(*(node2->mNameString)));
-  }
-  if (node2->mName) {
-    return (node2->mName->Equals(*(node1->mNameString)));
-  }
-  return (node1->mNameString->Equals(*(node2->mNameString)));
-}
-
-
-static void* PR_CALLBACK
-AllocTable(void* pool, size_t size)
-{
-  return malloc(size);
-}
-
-static void PR_CALLBACK
-FreeTable(void* pool, void* item)
-{
-  free(item);
-}
-
-static PLHashEntry* PR_CALLBACK
-AllocEntry(void* pool, const void* key)
-{
-  return (PLHashEntry*)malloc(sizeof(PLHashEntry));
-}
-
-static void PR_CALLBACK
-FreeEntry(void* pool, PLHashEntry* he, unsigned flag)
-{
-  if (flag == HT_FREE_ENTRY) {
-    free(he);
-  }
-}
-
-static PLHashAllocOps allocOps =
-  { AllocTable, FreeTable, AllocEntry, FreeEntry };
+static const uint32_t kInitialNodeInfoHashSize = 32;
 
 nsNodeInfoManager::nsNodeInfoManager()
-  : mDocument(nullptr),
+  : mNodeInfoHash(kInitialNodeInfoHashSize),
+    mDocument(nullptr),
     mNonDocumentNodeInfos(0),
     mTextNodeInfo(nullptr),
     mCommentNodeInfo(nullptr),
     mDocumentNodeInfo(nullptr),
-    mRecentlyUsedNodeInfos{}
+    mRecentlyUsedNodeInfos{},
+    mSVGEnabled(eTriUnset),
+    mMathMLEnabled(eTriUnset)
 {
   nsLayoutStatics::AddRef();
 
   if (gNodeInfoManagerLeakPRLog)
     MOZ_LOG(gNodeInfoManagerLeakPRLog, LogLevel::Debug,
            ("NODEINFOMANAGER %p created", this));
-
-  mNodeInfoHash = PL_NewHashTable(32, GetNodeInfoInnerHashValue,
-                                  NodeInfoInnerKeyCompare,
-                                  PL_CompareValues, &allocOps, nullptr);
 }
 
 
 nsNodeInfoManager::~nsNodeInfoManager()
 {
-  if (mNodeInfoHash)
-    PL_HashTableDestroy(mNodeInfoHash);
-
   // Note: mPrincipal may be null here if we never got inited correctly
   mPrincipal = nullptr;
 
@@ -183,12 +107,10 @@ NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 nsresult
 nsNodeInfoManager::Init(nsIDocument *aDocument)
 {
-  NS_ENSURE_TRUE(mNodeInfoHash, NS_ERROR_OUT_OF_MEMORY);
-
   NS_PRECONDITION(!mPrincipal,
                   "Being inited when we already have a principal?");
 
-  mPrincipal = NullPrincipal::Create();
+  mPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
 
   if (aDocument) {
     mBindingManager = new nsBindingManager(aDocument);
@@ -205,14 +127,6 @@ nsNodeInfoManager::Init(nsIDocument *aDocument)
   return NS_OK;
 }
 
-// static
-int
-nsNodeInfoManager::DropNodeInfoDocument(PLHashEntry *he, int hashIndex, void *arg)
-{
-  static_cast<mozilla::dom::NodeInfo*>(he->value)->mDocument = nullptr;
-  return HT_ENUMERATE_NEXT;
-}
-
 void
 nsNodeInfoManager::DropDocumentReference()
 {
@@ -221,7 +135,9 @@ nsNodeInfoManager::DropDocumentReference()
   }
 
   // This is probably not needed anymore.
-  PL_HashTableEnumerateEntries(mNodeInfoHash, DropNodeInfoDocument, nullptr);
+  for (auto iter = mNodeInfoHash.Iter(); !iter.Done(); iter.Next()) {
+    iter.Data()->mDocument = nullptr;
+  }
 
   NS_ASSERTION(!mNonDocumentNodeInfos, "Shouldn't have non-document nodeinfos!");
   mDocument = nullptr;
@@ -229,108 +145,86 @@ nsNodeInfoManager::DropDocumentReference()
 
 
 already_AddRefed<mozilla::dom::NodeInfo>
-nsNodeInfoManager::GetNodeInfo(nsIAtom *aName, nsIAtom *aPrefix,
+nsNodeInfoManager::GetNodeInfo(nsAtom *aName, nsAtom *aPrefix,
                                int32_t aNamespaceID, uint16_t aNodeType,
-                               nsIAtom* aExtraName /* = nullptr */)
+                               nsAtom* aExtraName /* = nullptr */)
 {
   CheckValidNodeInfo(aNodeType, aName, aNamespaceID, aExtraName);
 
   NodeInfo::NodeInfoInner tmpKey(aName, aPrefix, aNamespaceID, aNodeType,
                                  aExtraName);
 
-  uint32_t index =
-    GetNodeInfoInnerHashValue(&tmpKey) % RECENTLY_USED_NODEINFOS_SIZE;
+  uint32_t index = tmpKey.Hash() % RECENTLY_USED_NODEINFOS_SIZE;
   NodeInfo* ni = mRecentlyUsedNodeInfos[index];
-  if (ni && NodeInfoInnerKeyCompare(&(ni->mInner), &tmpKey)) {
+  if (ni && tmpKey == ni->mInner) {
     RefPtr<NodeInfo> nodeInfo = ni;
     return nodeInfo.forget();
   }
 
-  void *node = PL_HashTableLookup(mNodeInfoHash, &tmpKey);
+  // We don't use LookupForAdd here as that would end up storing the temporary
+  // key instead of using `mInner`.
+  RefPtr<NodeInfo> nodeInfo = mNodeInfoHash.Get(&tmpKey);
+  if (!nodeInfo) {
+    ++mNonDocumentNodeInfos;
+    if (mNonDocumentNodeInfos == 1) {
+      NS_IF_ADDREF(mDocument);
+    }
 
-  if (node) {
-    RefPtr<NodeInfo> nodeInfo = static_cast<NodeInfo*>(node);
-    mRecentlyUsedNodeInfos[index] = nodeInfo;
-    return nodeInfo.forget();
+    nodeInfo = new NodeInfo(aName, aPrefix, aNamespaceID, aNodeType, aExtraName, this);
+    mNodeInfoHash.Put(&nodeInfo->mInner, nodeInfo);
   }
-
-  RefPtr<NodeInfo> newNodeInfo =
-    new NodeInfo(aName, aPrefix, aNamespaceID, aNodeType, aExtraName, this);
-
-  DebugOnly<PLHashEntry*> he =
-    PL_HashTableAdd(mNodeInfoHash, &newNodeInfo->mInner, newNodeInfo);
-  MOZ_ASSERT(he, "PL_HashTableAdd() failed");
 
   // Have to do the swap thing, because already_AddRefed<nsNodeInfo>
   // doesn't cast to already_AddRefed<mozilla::dom::NodeInfo>
-  ++mNonDocumentNodeInfos;
-  if (mNonDocumentNodeInfos == 1) {
-    NS_IF_ADDREF(mDocument);
-  }
-
-  mRecentlyUsedNodeInfos[index] = newNodeInfo;
-  return newNodeInfo.forget();
+  mRecentlyUsedNodeInfos[index] = nodeInfo;
+  return nodeInfo.forget();
 }
 
 
 nsresult
-nsNodeInfoManager::GetNodeInfo(const nsAString& aName, nsIAtom *aPrefix,
+nsNodeInfoManager::GetNodeInfo(const nsAString& aName, nsAtom *aPrefix,
                                int32_t aNamespaceID, uint16_t aNodeType,
                                NodeInfo** aNodeInfo)
 {
+  // TODO(erahm): Combine this with the atom version.
 #ifdef DEBUG
   {
-    nsCOMPtr<nsIAtom> nameAtom = NS_Atomize(aName);
+    RefPtr<nsAtom> nameAtom = NS_Atomize(aName);
     CheckValidNodeInfo(aNodeType, nameAtom, aNamespaceID, nullptr);
   }
 #endif
 
   NodeInfo::NodeInfoInner tmpKey(aName, aPrefix, aNamespaceID, aNodeType);
 
-  uint32_t index =
-    GetNodeInfoInnerHashValue(&tmpKey) % RECENTLY_USED_NODEINFOS_SIZE;
+  uint32_t index = tmpKey.Hash() % RECENTLY_USED_NODEINFOS_SIZE;
   NodeInfo* ni = mRecentlyUsedNodeInfos[index];
-  if (ni && NodeInfoInnerKeyCompare(&(ni->mInner), &tmpKey)) {
+  if (ni && ni->mInner == tmpKey) {
     RefPtr<NodeInfo> nodeInfo = ni;
     nodeInfo.forget(aNodeInfo);
     return NS_OK;
   }
 
-  void *node = PL_HashTableLookup(mNodeInfoHash, &tmpKey);
+  RefPtr<NodeInfo> nodeInfo = mNodeInfoHash.Get(&tmpKey);
+  if (!nodeInfo) {
+    ++mNonDocumentNodeInfos;
+    if (mNonDocumentNodeInfos == 1) {
+      NS_IF_ADDREF(mDocument);
+    }
 
-  if (node) {
-    RefPtr<NodeInfo> nodeInfo = static_cast<NodeInfo*>(node);
-    mRecentlyUsedNodeInfos[index] = nodeInfo;
-    nodeInfo.forget(aNodeInfo);
-
-    return NS_OK;
+    RefPtr<nsAtom> nameAtom = NS_Atomize(aName);
+    nodeInfo = new NodeInfo(nameAtom, aPrefix, aNamespaceID, aNodeType, nullptr, this);
+    mNodeInfoHash.Put(&nodeInfo->mInner, nodeInfo);
   }
 
-  nsCOMPtr<nsIAtom> nameAtom = NS_Atomize(aName);
-  NS_ENSURE_TRUE(nameAtom, NS_ERROR_OUT_OF_MEMORY);
-
-  RefPtr<NodeInfo> newNodeInfo =
-    new NodeInfo(nameAtom, aPrefix, aNamespaceID, aNodeType, nullptr, this);
-  NS_ENSURE_TRUE(newNodeInfo, NS_ERROR_OUT_OF_MEMORY);
-
-  PLHashEntry *he;
-  he = PL_HashTableAdd(mNodeInfoHash, &newNodeInfo->mInner, newNodeInfo);
-  NS_ENSURE_TRUE(he, NS_ERROR_FAILURE);
-
-  ++mNonDocumentNodeInfos;
-  if (mNonDocumentNodeInfos == 1) {
-    NS_IF_ADDREF(mDocument);
-  }
-
-  mRecentlyUsedNodeInfos[index] = newNodeInfo;
-  newNodeInfo.forget(aNodeInfo);
+  mRecentlyUsedNodeInfos[index] = nodeInfo;
+  nodeInfo.forget(aNodeInfo);
 
   return NS_OK;
 }
 
 
 nsresult
-nsNodeInfoManager::GetNodeInfo(const nsAString& aName, nsIAtom *aPrefix,
+nsNodeInfoManager::GetNodeInfo(const nsAString& aName, nsAtom *aPrefix,
                                const nsAString& aNamespaceURI,
                                uint16_t aNodeType,
                                NodeInfo** aNodeInfo)
@@ -353,7 +247,7 @@ nsNodeInfoManager::GetTextNodeInfo()
 
   if (!mTextNodeInfo) {
     nodeInfo = GetNodeInfo(nsGkAtoms::textTagName, nullptr, kNameSpaceID_None,
-                           nsIDOMNode::TEXT_NODE, nullptr);
+                           nsINode::TEXT_NODE, nullptr);
     // Hold a weak ref; the nodeinfo will let us know when it goes away
     mTextNodeInfo = nodeInfo;
   } else {
@@ -370,7 +264,7 @@ nsNodeInfoManager::GetCommentNodeInfo()
 
   if (!mCommentNodeInfo) {
     nodeInfo = GetNodeInfo(nsGkAtoms::commentTagName, nullptr,
-                           kNameSpaceID_None, nsIDOMNode::COMMENT_NODE,
+                           kNameSpaceID_None, nsINode::COMMENT_NODE,
                            nullptr);
     // Hold a weak ref; the nodeinfo will let us know when it goes away
     mCommentNodeInfo = nodeInfo;
@@ -390,7 +284,7 @@ nsNodeInfoManager::GetDocumentNodeInfo()
   if (!mDocumentNodeInfo) {
     NS_ASSERTION(mDocument, "Should have mDocument!");
     nodeInfo = GetNodeInfo(nsGkAtoms::documentNodeName, nullptr,
-                           kNameSpaceID_None, nsIDOMNode::DOCUMENT_NODE,
+                           kNameSpaceID_None, nsINode::DOCUMENT_NODE,
                            nullptr);
     // Hold a weak ref; the nodeinfo will let us know when it goes away
     mDocumentNodeInfo = nodeInfo;
@@ -418,9 +312,6 @@ nsNodeInfoManager::SetDocumentPrincipal(nsIPrincipal *aPrincipal)
   NS_ASSERTION(aPrincipal, "Must have principal by this point!");
   MOZ_DIAGNOSTIC_ASSERT(!nsContentUtils::IsExpandedPrincipal(aPrincipal),
                         "Documents shouldn't have an expanded principal");
-  if (nsContentUtils::IsExpandedPrincipal(aPrincipal)) {
-    Telemetry::Accumulate(Telemetry::DOCUMENT_WITH_EXPANDED_PRINCIPAL, 1);
-  }
 
   mPrincipal = aPrincipal;
 }
@@ -450,16 +341,69 @@ nsNodeInfoManager::RemoveNodeInfo(NodeInfo *aNodeInfo)
     }
   }
 
-  uint32_t index =
-    GetNodeInfoInnerHashValue(&aNodeInfo->mInner) % RECENTLY_USED_NODEINFOS_SIZE;
+  uint32_t index = aNodeInfo->mInner.Hash() % RECENTLY_USED_NODEINFOS_SIZE;
   if (mRecentlyUsedNodeInfos[index] == aNodeInfo) {
     mRecentlyUsedNodeInfos[index] = nullptr;
   }
 
-#ifdef DEBUG
-  bool ret =
-#endif
-  PL_HashTableRemove(mNodeInfoHash, &aNodeInfo->mInner);
+  DebugOnly<bool> ret = mNodeInfoHash.Remove(&aNodeInfo->mInner);
+  MOZ_ASSERT(ret, "Can't find mozilla::dom::NodeInfo to remove!!!");
+}
 
-  NS_POSTCONDITION(ret, "Can't find mozilla::dom::NodeInfo to remove!!!");
+bool
+nsNodeInfoManager::InternalSVGEnabled()
+{
+  // If the svg.disabled pref. is true, convert all SVG nodes into
+  // disabled SVG nodes by swapping the namespace.
+  nsNameSpaceManager* nsmgr = nsNameSpaceManager::GetInstance();
+  nsCOMPtr<nsILoadInfo> loadInfo;
+  bool SVGEnabled = false;
+
+  if (nsmgr && !nsmgr->mSVGDisabled) {
+    SVGEnabled = true;
+  } else {
+    nsCOMPtr<nsIChannel> channel = mDocument->GetChannel();
+    // We don't have a channel for SVGs constructed inside a SVG script
+    if (channel) {
+      loadInfo = channel->GetLoadInfo();
+    }
+  }
+  bool conclusion =
+    (SVGEnabled || nsContentUtils::IsSystemPrincipal(mPrincipal) ||
+     (loadInfo &&
+      (loadInfo->GetExternalContentPolicyType() ==
+         nsIContentPolicy::TYPE_IMAGE ||
+       loadInfo->GetExternalContentPolicyType() ==
+         nsIContentPolicy::TYPE_OTHER) &&
+      (nsContentUtils::IsSystemPrincipal(loadInfo->LoadingPrincipal()) ||
+       nsContentUtils::IsSystemPrincipal(loadInfo->TriggeringPrincipal()))));
+  mSVGEnabled = conclusion ? eTriTrue : eTriFalse;
+  return conclusion;
+}
+
+bool
+nsNodeInfoManager::InternalMathMLEnabled()
+{
+  // If the mathml.disabled pref. is true, convert all MathML nodes into
+  // disabled MathML nodes by swapping the namespace.
+  nsNameSpaceManager* nsmgr = nsNameSpaceManager::GetInstance();
+  bool conclusion = ((nsmgr && !nsmgr->mMathMLDisabled) ||
+                     nsContentUtils::IsSystemPrincipal(mPrincipal));
+  mMathMLEnabled = conclusion ? eTriTrue : eTriFalse;
+  return conclusion;
+}
+
+void
+nsNodeInfoManager::AddSizeOfIncludingThis(nsWindowSizes& aSizes) const
+{
+  aSizes.mDOMOtherSize += aSizes.mState.mMallocSizeOf(this);
+
+  if (mBindingManager) {
+    aSizes.mBindingsSize +=
+      mBindingManager->SizeOfIncludingThis(aSizes.mState.mMallocSizeOf);
+  }
+
+  // Measurement of the following members may be added later if DMD finds it
+  // is worthwhile:
+  // - mNodeInfoHash
 }

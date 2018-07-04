@@ -178,4 +178,3 @@ add_task(async function test_send_all() {
     "Email": EMAIL,
   });
 });
-

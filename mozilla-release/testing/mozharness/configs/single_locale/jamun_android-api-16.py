@@ -7,7 +7,7 @@ EN_US_BINARY_URL = None     # No build has been uploaded to archive.m.o
 config = {
     "branch": BRANCH,
     "log_name": "single_locale",
-    "objdir": "obj-l10n",
+    "objdir": "obj-firefox",
     "is_automation": True,
     "buildbot_json_path": "buildprops.json",
     "force_clobber": True,
@@ -22,9 +22,6 @@ config = {
         "manifest": "mobile/android/config/tooltool-manifests/android/releng.manifest",
         "output_dir": "%(abs_work_dir)s/" + MOZILLA_DIR,
     },
-    "exes": {
-        'tooltool.py': '/builds/tooltool.py',
-    },
     "repos": [{
         "vcs": "hg",
         "repo": "https://hg.mozilla.org/build/tools",
@@ -36,7 +33,7 @@ config = {
         "revision": "%(revision)s",
         "dest": MOZILLA_DIR,
     }],
-    "hg_l10n_base": "https://hg.mozilla.org/releases/l10n/mozilla-beta",
+    "hg_l10n_base": "https://hg.mozilla.org/l10n-central",
     "hg_l10n_tag": "default",
     'vcs_share_base': "/builds/hg-shared",
 
@@ -44,20 +41,13 @@ config = {
     "repack_env": {
         # so ugly, bug 951238
         "LD_LIBRARY_PATH": "/lib:/tools/gcc-4.7.2-0moz1/lib:/tools/gcc-4.7.2-0moz1/lib64",
-        "MOZ_OBJDIR": "obj-l10n",
+        "MOZ_OBJDIR": "obj-firefox",
         "EN_US_BINARY_URL": os.environ.get("EN_US_BINARY_URL", EN_US_BINARY_URL),
-        "LOCALE_MERGEDIR": "%(abs_merge_dir)s/",
         "MOZ_UPDATE_CHANNEL": "nightly-jamun",
     },
     "upload_branch": "%s-android-api-16" % BRANCH,
-    "ssh_key_dir": "~/.ssh",
-    "merge_locales": True,
-    "mozilla_dir": MOZILLA_DIR,
-    "mozconfig": "%s/mobile/android/config/mozconfigs/android-api-16/l10n-nightly" % MOZILLA_DIR,
     "signature_verification_script": "tools/release/signing/verify-android-signature.sh",
-    "stage_product": "mobile",
     "platform": "android",
-    "build_type": "api-16-opt",
 
     # Balrog
     "build_target": "Android_arm-eabi-gcc3",
@@ -88,7 +78,6 @@ config = {
         ("/home/cltbld/.ssh", "/home/mock_mozilla/.ssh"),
         ('/home/cltbld/.hgrc', '/builds/.hgrc'),
         ('/builds/relengapi.tok', '/builds/relengapi.tok'),
-        ('/tools/tooltool.py', '/builds/tooltool.py'),
         ('/usr/local/lib/hgext', '/usr/local/lib/hgext'),
     ],
 }

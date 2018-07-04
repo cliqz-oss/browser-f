@@ -2,10 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from threading import Lock
 import codecs
 
-from ..structuredlog import log_levels
+from mozlog.structuredlog import log_levels
 
 
 class BaseHandler(object):

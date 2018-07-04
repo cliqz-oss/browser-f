@@ -6,10 +6,12 @@
 
 #include "mozilla/dom/KeyframeEffect.h"
 
+#include "mozilla/ComputedStyle.h"
 #include "mozilla/dom/KeyframeAnimationOptionsBinding.h"
   // For UnrestrictedDoubleOrKeyframeAnimationOptions
 #include "mozilla/dom/AnimationEffectTiming.h"
 #include "mozilla/dom/KeyframeEffectBinding.h"
+#include "nsDocument.h" // For nsDocument::IsWebAnimationsEnabled
 #include "nsDOMMutationObserver.h" // For nsAutoAnimationMutationBatch
 
 namespace mozilla {
@@ -108,9 +110,9 @@ KeyframeEffect::SetTarget(const Nullable<ElementOrCSSPseudoElement>& aTarget)
 
   if (mTarget) {
     UpdateTargetRegistration();
-    RefPtr<nsStyleContext> styleContext = GetTargetStyleContext();
-    if (styleContext) {
-      UpdateProperties(styleContext);
+    RefPtr<ComputedStyle> computedStyle = GetTargetComputedStyle();
+    if (computedStyle) {
+      UpdateProperties(computedStyle);
     }
 
     MaybeUpdateFrameForCompositor();
@@ -122,12 +124,6 @@ KeyframeEffect::SetTarget(const Nullable<ElementOrCSSPseudoElement>& aTarget)
       nsNodeUtils::AnimationAdded(mAnimation);
     }
   }
-
-  // If the new target frame is also oversized we should probably record that
-  // too so we have a more complete picture of the type of frame sizes we
-  // encounter, hence we reset the telemetry flag here.
-  mRecordedContentTooLarge = false;
-  mRecordedFrameSize = false;
 }
 
 void
@@ -137,7 +133,7 @@ KeyframeEffect::SetIterationComposite(
 {
   // Ignore iterationComposite if the Web Animations API is not enabled,
   // then the default value 'Replace' will be used.
-  if (!AnimationUtils::IsCoreAPIEnabledForCaller(aCallerType)) {
+  if (!nsDocument::IsWebAnimationsEnabled(aCallerType)) {
     return;
   }
 
@@ -167,9 +163,9 @@ KeyframeEffect::SetComposite(const CompositeOperation& aComposite)
   }
 
   if (mTarget) {
-    RefPtr<nsStyleContext> styleContext = GetTargetStyleContext();
-    if (styleContext) {
-      UpdateProperties(styleContext);
+    RefPtr<ComputedStyle> computedStyle = GetTargetComputedStyle();
+    if (computedStyle) {
+      UpdateProperties(computedStyle);
     }
   }
 }

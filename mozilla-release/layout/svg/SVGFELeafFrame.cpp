@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,7 +8,7 @@
 #include "nsContainerFrame.h"
 #include "nsFrame.h"
 #include "nsGkAtoms.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "nsSVGFilters.h"
 
 /*
@@ -17,10 +18,10 @@
 class SVGFELeafFrame final : public nsFrame
 {
   friend nsIFrame*
-  NS_NewSVGFELeafFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGFELeafFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 protected:
-  explicit SVGFELeafFrame(nsStyleContext* aContext)
-    : nsFrame(aContext, kClassID)
+  explicit SVGFELeafFrame(ComputedStyle* aStyle)
+    : nsFrame(aStyle, kClassID)
   {
     AddStateBits(NS_FRAME_SVG_LAYOUT | NS_FRAME_IS_NONDISPLAY);
   }
@@ -47,7 +48,7 @@ public:
 #endif
 
   virtual nsresult AttributeChanged(int32_t  aNameSpaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     int32_t  aModType) override;
 
   virtual bool ComputeCustomOverflow(nsOverflowAreas& aOverflowAreas) override {
@@ -57,9 +58,9 @@ public:
 };
 
 nsIFrame*
-NS_NewSVGFELeafFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGFELeafFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) SVGFELeafFrame(aContext);
+  return new (aPresShell) SVGFELeafFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(SVGFELeafFrame)
@@ -80,14 +81,14 @@ SVGFELeafFrame::Init(nsIContent*       aContent,
 
 nsresult
 SVGFELeafFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                 nsIAtom* aAttribute,
+                                 nsAtom* aAttribute,
                                  int32_t  aModType)
 {
-  nsSVGFE *element = static_cast<nsSVGFE*>(mContent);
+  nsSVGFE *element = static_cast<nsSVGFE*>(GetContent());
   if (element->AttributeAffectsRendering(aNameSpaceID, aAttribute)) {
     MOZ_ASSERT(GetParent()->IsSVGFilterFrame(),
                "Observers observe the filter, so that's what we must invalidate");
-    nsSVGEffects::InvalidateDirectRenderingObservers(GetParent());
+    SVGObserverUtils::InvalidateDirectRenderingObservers(GetParent());
   }
 
   return nsFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);

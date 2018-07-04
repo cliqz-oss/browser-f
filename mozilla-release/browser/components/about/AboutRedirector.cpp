@@ -21,8 +21,13 @@ namespace browser {
 
 NS_IMPL_ISUPPORTS(AboutRedirector, nsIAboutModule)
 
-bool AboutRedirector::sUseOldPreferences = false;
-bool AboutRedirector::sActivityStreamEnabled = false;
+bool AboutRedirector::sNewTabPageEnabled = false;
+
+static const uint32_t ACTIVITY_STREAM_FLAGS =
+  nsIAboutModule::ALLOW_SCRIPT |
+  nsIAboutModule::ENABLE_INDEXED_DB |
+  nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
+  nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT;
 
 struct RedirEntry {
   const char* id;
@@ -49,12 +54,6 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::URI_CAN_LOAD_IN_CHILD |
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "socialerror", "chrome://browser/content/aboutSocialError.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
-  { "providerdirectory", "chrome://browser/content/aboutProviderDirectory.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
   { "tabcrashed", "chrome://browser/content/aboutTabCrashed.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::ALLOW_SCRIPT |
@@ -64,6 +63,7 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
   { "privatebrowsing", "chrome://browser/content/aboutPrivateBrowsing.xhtml",
+    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
     nsIAboutModule::ALLOW_SCRIPT },
   { "rights",
@@ -78,39 +78,24 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
   { "sessionrestore", "chrome://browser/content/aboutSessionRestore.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
-  { "home", "about:cliqz",
-    nsIAboutModule::ALLOW_SCRIPT },
-#if 0
-# Replaced by Cliqz
-  // Linkable because of indexeddb use (bug 1228118)
-  { "home", "chrome://browser/content/abouthome/aboutHome.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
     nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::MAKE_LINKABLE |
-    nsIAboutModule::ENABLE_INDEXED_DB },
-#endif
-  // the newtab's actual URL will be determined when the channel is created
-  { "newtab", "about:blank",
-    nsIAboutModule::ALLOW_SCRIPT },
+    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
+  { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
+    nsIAboutModule::ALLOW_SCRIPT |
+    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
+  { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
+    nsIAboutModule::ALLOW_SCRIPT |
+    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
+  // Actual activity stream URL for home and newtab are set in channel creation
+  { "home", "about:blank", ACTIVITY_STREAM_FLAGS },
+  { "newtab", "about:blank", ACTIVITY_STREAM_FLAGS },
+  { "library", "chrome://browser/content/aboutLibrary.xhtml",
+    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
+    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT },
   { "preferences", "chrome://browser/content/preferences/in-content/preferences.xul",
     nsIAboutModule::ALLOW_SCRIPT },
   { "downloads", "chrome://browser/content/downloads/contentAreaDownloadsView.xul",
     nsIAboutModule::ALLOW_SCRIPT },
-#ifdef MOZ_SERVICES_HEALTHREPORT
-  { "healthreport", "chrome://browser/content/abouthealthreport/abouthealth.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
-#endif
-#if 0
-# Disabled in Cliqz
-  { "accounts", "chrome://browser/content/aboutaccounts/aboutaccounts.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
-#endif
   { "reader", "chrome://global/content/reader/aboutReader.html",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::ALLOW_SCRIPT |
@@ -122,7 +107,7 @@ static nsAutoCString
 GetAboutModuleName(nsIURI *aURI)
 {
   nsAutoCString path;
-  aURI->GetPath(path);
+  aURI->GetPathQueryRef(path);
 
   int32_t f = path.FindChar('#');
   if (f >= 0)
@@ -152,26 +137,26 @@ AboutRedirector::NewChannel(nsIURI* aURI,
   nsCOMPtr<nsIIOService> ioService = do_GetIOService(&rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  static bool sPrefCacheInited = false;
-  if (!sPrefCacheInited) {
-    Preferences::AddBoolVarCache(&sUseOldPreferences,
-                                 "browser.preferences.useOldOrganization");
-    sPrefCacheInited = true;
+  static bool sNTPEnabledCacheInited = false;
+  if (!sNTPEnabledCacheInited) {
+    Preferences::AddBoolVarCache(&AboutRedirector::sNewTabPageEnabled,
+                                 "browser.newtabpage.enabled");
+    sNTPEnabledCacheInited = true;
   }
 
   for (auto & redir : kRedirMap) {
     if (!strcmp(path.get(), redir.id)) {
       nsAutoCString url;
 
-      if (path.EqualsLiteral("newtab")) {
-        // let the aboutNewTabService decide where to redirect
+      // Let the aboutNewTabService decide where to redirect for about:home and
+      // enabled about:newtab. Disabled about:newtab page uses fallback.
+      if (path.EqualsLiteral("home") ||
+          (sNewTabPageEnabled && path.EqualsLiteral("newtab"))) {
         nsCOMPtr<nsIAboutNewTabService> aboutNewTabService =
           do_GetService("@mozilla.org/browser/aboutnewtab-service;1", &rv);
         NS_ENSURE_SUCCESS(rv, rv);
         rv = aboutNewTabService->GetDefaultURL(url);
         NS_ENSURE_SUCCESS(rv, rv);
-      } else if (path.EqualsLiteral("preferences") && !sUseOldPreferences) {
-        url.AssignASCII("chrome://browser/content/preferences/in-content-new/preferences.xul");
       }
       // fall back to the specified url in the map
       if (url.IsEmpty()) {
@@ -191,10 +176,11 @@ AboutRedirector::NewChannel(nsIURI* aURI,
       rv = NS_URIChainHasFlags(tempURI, nsIProtocolHandler::URI_IS_UI_RESOURCE,
                                &isUIResource);
       NS_ENSURE_SUCCESS(rv, rv);
-      // TODO: Instead of this, try to return URI_IS_UI_RESOURCE from extension
-      // about-handler |getURIFlags|.
+      // Cliqz: after FF 56 "isUIResource" flag need to set to false because of
+      // SetResultPrincipalURI, because our NewTab contain relative paths.
+      // Could be removed if path in extension will be changed to absolute.
       if (path.EqualsLiteral("home") || path.EqualsLiteral("newtab")) {
-        isUIResource = true;
+        isUIResource = false;
       }
 
       rv = NS_NewChannelInternal(getter_AddRefs(tempChannel),
@@ -222,29 +208,8 @@ AboutRedirector::GetURIFlags(nsIURI *aURI, uint32_t *result)
 
   nsAutoCString name = GetAboutModuleName(aURI);
 
-  static bool sASEnabledCacheInited = false;
-  if (!sASEnabledCacheInited) {
-    Preferences::AddBoolVarCache(&sActivityStreamEnabled,
-                                 "browser.newtabpage.activity-stream.enabled");
-    sASEnabledCacheInited = true;
-  }
-
   for (auto & redir : kRedirMap) {
     if (name.Equals(redir.id)) {
-
-      // Once ActivityStream is fully rolled out and we've removed Tiles,
-      // this special case can go away and the flag can just become part
-      // of the normal about:newtab entry in kRedirMap.
-      if (name.EqualsLiteral("newtab")) {
-        if (sActivityStreamEnabled) {
-          *result = redir.flags |
-            nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-            nsIAboutModule::ENABLE_INDEXED_DB |
-            nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT;
-          return NS_OK;
-        }
-      }
-
       *result = redir.flags;
       return NS_OK;
     }

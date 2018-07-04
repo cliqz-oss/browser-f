@@ -19,9 +19,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=668855
   <![CDATA[
   /** Test for Bug 668855 **/
 
-  let Cu = Components.utils;
-  let Ci = Components.interfaces;
-
   /* Create a weak reference, with a single-element weak map. */
   let make_weak_ref = function (obj) {
     let m = new WeakMap;
@@ -31,7 +28,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=668855
 
   /* Check to see if a weak reference is dead. */
   let weak_ref_dead = function (r) {
-    return ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(r).length == 0;
+    return ChromeUtils.nondeterministicGetWeakMapKeys(r).length == 0;
   }
 
   /* Deterministically grab an arbitrary DOM element. */
@@ -52,7 +49,13 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=668855
     let map = new WeakMap;
     let div = document.createElement("div");
     let key = {};
-    div.setUserData("entrain", {m:map, k:key}, null);
+    let obj = {m:map, k:key};
+    div.addEventListener("foo", function() {
+      // The code below doesn't matter (it won't run). Just pull a
+      // reference to obj.
+      obj.k = 1;
+      obj.m = "bar";
+    });
     //div.entrain = {m:map, k:key};  This is not sufficient to cause a leak in Fx9
     map.set(key, div);
     return make_weak_ref(map);
@@ -77,8 +80,15 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=668855
 
     // put the live/dead maps/keys into the appropriate DOM elements
     live_dom.basic_unit_tests = {m:live_map, k:live_key};
-    dead_dom.setUserData("hook", {m:dead_map, k:dead_key}, null);
+
+    let obj = {m:dead_map, k:dead_key};
     // dead_dom.hook = {m:dead_map, k:dead_key};
+    dead_dom.addEventListener("foo", function() {
+      // The code below doesn't matter (it won't run). Just pull a
+      // reference to obj.
+      obj.m = 1;
+      obj.k = "2";
+    });
 
     // Create a dead value, and a weak ref to it.
     // The loop keeps dead_dom alive unless the CC is smart enough to kill it.
@@ -118,7 +128,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=668855
       "Live key should have the same value in live map.");
     is(live_map.get(black_key).my_key, 'live_black',
       "Black key should have the same value in live map.");
-    is(ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(live_map).length, 2,
+    is(ChromeUtils.nondeterministicGetWeakMapKeys(live_map).length, 2,
       "Live map should have two entries.");
 
     // check the live black map
@@ -126,7 +136,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=668855
       "Live key should have the same value in black map.");
     is(black_map.get(black_key).my_key, 'black_black',
       "Black key should have the same value in black map.");
-    is(ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(black_map).length, 2,
+    is(ChromeUtils.nondeterministicGetWeakMapKeys(black_map).length, 2,
       "Black map should have two entries.");    
 
   };
@@ -230,16 +240,16 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=668855
 
     check_nested_cc_maps();
 
-    is(ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(garbage_map).length, 0, "Chained garbage weak map entries should not leak.");
+    is(ChromeUtils.nondeterministicGetWeakMapKeys(garbage_map).length, 0, "Chained garbage weak map entries should not leak.");
 
     check_basic_unit();
 
     // fixed by Bug 680937
-    is(ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(wn_garbage_map).length, 0,
+    is(ChromeUtils.nondeterministicGetWeakMapKeys(wn_garbage_map).length, 0,
        "Chained garbage WN weak map entries should not leak.");
 
     // fixed by Bug 680937
-    is(ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(wn_live_map).length, 1,
+    is(ChromeUtils.nondeterministicGetWeakMapKeys(wn_live_map).length, 1,
        "Live weak map wrapped native key should not be removed.");
 
     ok(wn_live_map.has(get_live_dom()), "Live map should have live dom.");

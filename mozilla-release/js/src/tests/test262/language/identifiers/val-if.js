@@ -7,8 +7,10 @@ es6id: 11.6
 description: >
     SyntaxError expected: reserved words used as Identifier
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 var if = 123;

@@ -6,6 +6,7 @@
 
 #include "nsTraceRefcnt.h"
 #include "mozilla/IntegerPrintfMacros.h"
+#include "mozilla/Path.h"
 #include "mozilla/StaticPtr.h"
 #include "nsXPCOMPrivate.h"
 #include "nscore.h"
@@ -34,6 +35,7 @@
 #include "mozilla/AutoRestore.h"
 #include "mozilla/BlockingResourceBase.h"
 #include "mozilla/PoisonIOInterposer.h"
+#include "mozilla/UniquePtr.h"
 
 #include <string>
 #include <vector>
@@ -83,6 +85,7 @@ static PLHashTable* gObjectsToLog;
 static PLHashTable* gSerialNumbers;
 static intptr_t gNextSerialNumber;
 static bool gDumpedStatistics = false;
+static bool gLogJSStacks = false;
 
 // By default, debug builds only do bloat logging. Bloat logging
 // only tries to record when an object is created or destroyed, so we
@@ -133,6 +136,27 @@ struct SerialNumberRecord
   // XPCOM equivalents do leak-checking, and if you try to leak-check while
   // leak-checking, you're gonna have a bad time.
   std::vector<void*> allocationStack;
+  mozilla::UniquePtr<char[]> jsStack;
+
+  void SaveJSStack() {
+    // If this thread isn't running JS, there's nothing to do.
+    if (!CycleCollectedJSContext::Get()) {
+      return;
+    }
+
+    JSContext* cx = nsContentUtils::GetCurrentJSContext();
+    if (!cx) {
+      return;
+    }
+
+    JS::UniqueChars chars = xpc_PrintJSStack(cx,
+                                             /*showArgs=*/ false,
+                                             /*showLocals=*/ false,
+                                             /*showThisProps=*/ false);
+    size_t len = strlen(chars.get());
+    jsStack = MakeUnique<char[]>(len + 1);
+    memcpy(jsStack.get(), chars.get(), len + 1);
+  }
 };
 
 struct nsTraceRefcntStats
@@ -166,7 +190,7 @@ AssertActivityIsLegal()
 {
   if (gActivityTLS == BAD_TLS_INDEX || PR_GetThreadPrivate(gActivityTLS)) {
     if (PR_GetEnv("MOZ_FATAL_STATIC_XPCOM_CTORS_DTORS")) {
-      NS_RUNTIMEABORT(kStaticCtorDtorWarning);
+      MOZ_CRASH_UNSAFE_OOL(kStaticCtorDtorWarning);
     } else {
       NS_WARNING(kStaticCtorDtorWarning);
     }
@@ -433,7 +457,8 @@ GetBloatEntry(const char* aTypeName, uint32_t aInstanceSize)
                  "The usual cause of this is having a templated class that uses "
                  "MOZ_COUNT_{C,D}TOR in the constructor or destructor, respectively. "
                  "As a workaround, the MOZ_COUNT_{C,D}TOR calls can be moved to a "
-                 "non-templated base class.");
+                 "non-templated base class. Another possible cause is a runnable with "
+                 "an mName that matches another refcounted class.");
     }
   }
   return entry;
@@ -471,6 +496,15 @@ DumpSerialNumbers(PLHashEntry* aHashEntry, int aIndex, void* aClosure)
       fprintf(outputFile, "%s\n", buf);
     }
   }
+
+  if (gLogJSStacks) {
+    if (record->jsStack) {
+      fprintf(outputFile, "JS allocation stack:\n%s\n", record->jsStack.get());
+    } else {
+      fprintf(outputFile, "There is no JS context on the stack.\n");
+    }
+  }
+
   return HT_ENUMERATE_NEXT;
 }
 
@@ -586,6 +620,9 @@ GetSerialNumber(void* aPtr, bool aCreate)
   WalkTheStackSavingLocations(record->allocationStack);
   PL_HashTableRawAdd(gSerialNumbers, hep, HashNumber(aPtr),
                      aPtr, static_cast<void*>(record));
+  if (gLogJSStacks) {
+    record->SaveJSStack();
+  }
   return gNextSerialNumber;
 }
 
@@ -628,30 +665,35 @@ LogThisObj(intptr_t aSerialNumber)
   return (bool)PL_HashTableLookup(gObjectsToLog, (const void*)aSerialNumber);
 }
 
-#ifdef XP_WIN
-#define FOPEN_NO_INHERIT "N"
-#else
-#define FOPEN_NO_INHERIT
-#endif
+using EnvCharType = mozilla::filesystem::Path::value_type;
 
 static bool
-InitLog(const char* aEnvVar, const char* aMsg, FILE** aResult)
+InitLog(const EnvCharType* aEnvVar, const char* aMsg, FILE** aResult)
 {
-  const char* value = getenv(aEnvVar);
+#ifdef XP_WIN
+  // This is gross, I know.
+  const wchar_t* envvar = reinterpret_cast<const wchar_t*>(aEnvVar);
+  const char16_t* value = reinterpret_cast<const char16_t*>(::_wgetenv(envvar));
+#define ENVVAR_PRINTF "%S"
+#else
+  const char* envvar = aEnvVar;
+  const char* value = ::getenv(aEnvVar);
+#define ENVVAR_PRINTF "%s"
+#endif
+
   if (value) {
-    if (nsCRT::strcmp(value, "1") == 0) {
+    nsTDependentString<EnvCharType> fname(value);
+    if (fname.EqualsLiteral("1")) {
       *aResult = stdout;
-      fprintf(stdout, "### %s defined -- logging %s to stdout\n",
-              aEnvVar, aMsg);
+      fprintf(stdout, "### " ENVVAR_PRINTF " defined -- logging %s to stdout\n",
+              envvar, aMsg);
       return true;
-    } else if (nsCRT::strcmp(value, "2") == 0) {
+    } else if (fname.EqualsLiteral("2")) {
       *aResult = stderr;
-      fprintf(stdout, "### %s defined -- logging %s to stderr\n",
-              aEnvVar, aMsg);
+      fprintf(stdout, "### " ENVVAR_PRINTF " defined -- logging %s to stderr\n",
+              envvar, aMsg);
       return true;
     } else {
-      FILE* stream;
-      nsAutoCString fname(value);
       if (!XRE_IsParentProcess()) {
         bool hasLogExtension =
           fname.RFind(".log", true, -1, 4) == kNotFound ? false : true;
@@ -659,24 +701,32 @@ InitLog(const char* aEnvVar, const char* aMsg, FILE** aResult)
           fname.Cut(fname.Length() - 4, 4);
         }
         fname.Append('_');
-        fname.Append((char*)XRE_ChildProcessTypeToString(XRE_GetProcessType()));
+        const char* processType = XRE_ChildProcessTypeToString(XRE_GetProcessType());
+        fname.AppendASCII(processType);
         fname.AppendLiteral("_pid");
         fname.AppendInt((uint32_t)getpid());
         if (hasLogExtension) {
           fname.AppendLiteral(".log");
         }
       }
-      stream = ::fopen(fname.get(), "w" FOPEN_NO_INHERIT);
+#ifdef XP_WIN
+      FILE* stream = ::_wfopen(fname.get(), L"wN");
+      const wchar_t* fp = (const wchar_t*)fname.get();
+#else
+      FILE* stream = ::fopen(fname.get(), "w");
+      const char* fp = fname.get();
+#endif
       if (stream) {
         MozillaRegisterDebugFD(fileno(stream));
         *aResult = stream;
-        fprintf(stderr, "### %s defined -- logging %s to %s\n",
-                aEnvVar, aMsg, fname.get());
+        fprintf(stderr, "### " ENVVAR_PRINTF " defined -- logging %s to " ENVVAR_PRINTF "\n",
+                envvar, aMsg, fp);
       } else {
-        fprintf(stderr, "### %s defined -- unable to log %s to %s\n",
-                aEnvVar, aMsg, fname.get());
+        fprintf(stderr, "### " ENVVAR_PRINTF " defined -- unable to log %s to " ENVVAR_PRINTF "\n",
+                envvar, aMsg, fp);
         MOZ_ASSERT(false, "Tried and failed to create an XPCOM log");
       }
+#undef ENVVAR_PRINTF
       return stream != nullptr;
     }
   }
@@ -700,14 +750,20 @@ maybeUnregisterAndCloseFile(FILE*& aFile)
 static void
 InitTraceLog()
 {
+#ifdef XP_WIN
+#define ENVVAR(x) u"" x
+#else
+#define ENVVAR(x) x
+#endif
+
   if (gInitialized) {
     return;
   }
   gInitialized = true;
 
-  bool defined = InitLog("XPCOM_MEM_BLOAT_LOG", "bloat/leaks", &gBloatLog);
+  bool defined = InitLog(ENVVAR("XPCOM_MEM_BLOAT_LOG"), "bloat/leaks", &gBloatLog);
   if (!defined) {
-    gLogLeaksOnly = InitLog("XPCOM_MEM_LEAK_LOG", "leaks", &gBloatLog);
+    gLogLeaksOnly = InitLog(ENVVAR("XPCOM_MEM_LEAK_LOG"), "leaks", &gBloatLog);
   }
   if (defined || gLogLeaksOnly) {
     RecreateBloatView();
@@ -718,15 +774,15 @@ InitTraceLog()
     }
   }
 
-  InitLog("XPCOM_MEM_REFCNT_LOG", "refcounts", &gRefcntsLog);
+  InitLog(ENVVAR("XPCOM_MEM_REFCNT_LOG"), "refcounts", &gRefcntsLog);
 
-  InitLog("XPCOM_MEM_ALLOC_LOG", "new/delete", &gAllocLog);
+  InitLog(ENVVAR("XPCOM_MEM_ALLOC_LOG"), "new/delete", &gAllocLog);
 
   const char* classes = getenv("XPCOM_MEM_LOG_CLASSES");
 
 #ifdef HAVE_CPP_DYNAMIC_CAST_TO_VOID_PTR
   if (classes) {
-    InitLog("XPCOM_MEM_COMPTR_LOG", "nsCOMPtr", &gCOMPtrLog);
+    InitLog(ENVVAR("XPCOM_MEM_COMPTR_LOG"), "nsCOMPtr", &gCOMPtrLog);
   } else {
     if (getenv("XPCOM_MEM_COMPTR_LOG")) {
       fprintf(stdout, "### XPCOM_MEM_COMPTR_LOG defined -- but XPCOM_MEM_LOG_CLASSES is not defined\n");
@@ -738,6 +794,8 @@ InitTraceLog()
     fprintf(stdout, "### XPCOM_MEM_COMPTR_LOG defined -- but it will not work without dynamic_cast\n");
   }
 #endif // HAVE_CPP_DYNAMIC_CAST_TO_VOID_PTR
+
+#undef ENVVAR
 
   if (classes) {
     // if XPCOM_MEM_LOG_CLASSES was set to some value, the value is interpreted
@@ -828,6 +886,10 @@ InitTraceLog()
     }
   }
 
+  if (getenv("XPCOM_MEM_LOG_JS_STACK")) {
+    fprintf(stdout, "### XPCOM_MEM_LOG_JS_STACK defined\n");
+    gLogJSStacks = true;
+  }
 
   if (gBloatLog) {
     gLogging = OnlyBloatLogging;
@@ -879,8 +941,7 @@ RecordStackFrame(uint32_t /*aFrameNumber*/, void* aPC, void* /*aSP*/,
 void
 nsTraceRefcnt::WalkTheStack(FILE* aStream)
 {
-  MozStackWalk(PrintStackFrame, /* skipFrames */ 2, /* maxFrames */ 0, aStream,
-               0, nullptr);
+  MozStackWalk(PrintStackFrame, /* skipFrames */ 2, /* maxFrames */ 0, aStream);
 }
 
 /**
@@ -898,7 +959,7 @@ WalkTheStackCached(FILE* aStream)
     gCodeAddressService = new WalkTheStackCodeAddressService();
   }
   MozStackWalk(PrintStackFrameCached, /* skipFrames */ 2, /* maxFrames */ 0,
-               aStream, 0, nullptr);
+               aStream);
 }
 
 static void
@@ -911,8 +972,7 @@ WalkTheStackSavingLocations(std::vector<void*>& aLocations)
     0 +                         // this frame gets inlined
     1 +                         // GetSerialNumber
     1;                          // NS_LogCtor
-  MozStackWalk(RecordStackFrame, kFramesToSkip, /* maxFrames */ 0,
-               &aLocations, 0, nullptr);
+  MozStackWalk(RecordStackFrame, kFramesToSkip, /* maxFrames */ 0, &aLocations);
 }
 
 //----------------------------------------------------------------------
@@ -923,7 +983,6 @@ NS_LogInit()
   NS_SetMainThread();
 
   // FIXME: This is called multiple times, we should probably not allow that.
-  StackWalkInitCriticalAddress();
   if (++gInitCount) {
     nsTraceRefcnt::SetActivityIsLegal(true);
   }

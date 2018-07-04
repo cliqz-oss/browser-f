@@ -1,3 +1,4 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 "use strict";
 
 // The purpose of this test is to test the urlbar popup's add-on iframe.  It has
@@ -41,7 +42,7 @@ add_task(async function() {
   let iframeURL = rootDirURL + IFRAME_BASENAME;
   let contentScriptURL = rootDirURL + CONTENT_SCRIPT_BASENAME;
 
-  let { Panel } = Cu.import(jsmURL, {});
+  let { Panel } = ChromeUtils.import(jsmURL, {});
   let panel = new Panel(gURLBar.popup, iframeURL);
   registerCleanupFunction(() => {
     panel.destroy();
@@ -121,10 +122,7 @@ add_task(async function() {
   // the message and adds its event listener before synthesizing the key.
   let keydownPromises = promiseEvent("keydown");
   await keydownPromises[0];
-  EventUtils.synthesizeKey("KEY_ArrowDown", {
-    type: "keydown",
-    code: "ArrowDown",
-  });
+  EventUtils.synthesizeKey("KEY_ArrowDown", {type: "keydown"});
   await keydownPromises[1];
 
   // urlbar.getPanelHeight

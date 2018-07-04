@@ -8,7 +8,7 @@
 
 var {classes: Cc, interfaces: Ci, utils: Cu} = Components
 
-Cu.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
 
 // The xpcshell test harness sets PYTHON so we can read it here.
 var gEnv = Cc["@mozilla.org/process/environment;1"]
@@ -61,7 +61,7 @@ function readFile(aFile) {
 
 function runProcess(aExeFile, aArgs) {
   let process = Cc["@mozilla.org/process/util;1"]
-                  .createInstance(Components.interfaces.nsIProcess);
+                  .createInstance(Ci.nsIProcess);
   process.init(aExeFile);
   process.run(/* blocking = */true, aArgs, aArgs.length);
   return process.exitValue;
@@ -136,7 +136,7 @@ function run_test() {
   // in-place (to fix stacks) when it runs dmd.py, and that's not safe to do
   // asynchronously.
 
-  gEnv.set(gEnv.get("DMD_PRELOAD_VAR"), gEnv.get("DMD_PRELOAD_VALUE"));
+  gEnv.set('DMD', '1');
 
   runProcess(gDmdTestFile, []);
 
@@ -165,8 +165,8 @@ function run_test() {
   jsonFile = FileUtils.getFile("CurWorkD", ["basic-scan.json"]);
   ok(scanTest(jsonFile.path), "Basic scan test");
 
-  let is64Bit = Components.classes["@mozilla.org/xre/app-info;1"]
-                          .getService(Components.interfaces.nsIXULRuntime).is64Bit;
+  let is64Bit = Cc["@mozilla.org/xre/app-info;1"]
+                  .getService(Ci.nsIXULRuntime).is64Bit;
   let basicScanFileName = "basic-scan-" + (is64Bit ? "64" : "32");
   test(basicScanFileName, ["--clamp-contents", jsonFile.path]);
   ok(scanTest(jsonFile.path, ["--clamp-contents"]), "Scan with address clamping");
@@ -187,7 +187,7 @@ function run_test() {
   // of the tested values.
   jsonFile = FileUtils.getFile("CurWorkD", ["script-max-frames.json"]);
   test("script-max-frames-8",
-       ["--max-frames=8", jsonFile.path]);
+       [jsonFile.path]);  // --max-frames=8 is the default
   test("script-max-frames-3",
        ["--max-frames=3", "--no-fix-stacks", jsonFile.path]);
   test("script-max-frames-1",

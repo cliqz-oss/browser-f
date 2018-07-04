@@ -11,6 +11,9 @@
 #include "WebGLObjectModel.h"
 
 namespace mozilla {
+namespace webgl {
+class AvailabilityRunnable;
+} // namespace webgl
 
 class WebGLSync final
     : public nsWrapperCache
@@ -18,6 +21,11 @@ class WebGLSync final
     , public LinkedListElement<WebGLSync>
 {
     friend class WebGL2Context;
+    friend class webgl::AvailabilityRunnable;
+
+    const GLsync mGLName;
+    const uint64_t mFenceId;
+    bool mCanBeAvailable = false;
 
 public:
     WebGLSync(WebGLContext* webgl, GLenum condition, GLbitfield flags);
@@ -30,10 +38,10 @@ public:
     NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WebGLSync)
     NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(WebGLSync)
 
+    void MarkSignaled() const;
+
 private:
     ~WebGLSync();
-
-    GLsync mGLName;
 };
 
 } // namespace mozilla

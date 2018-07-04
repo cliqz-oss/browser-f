@@ -10,10 +10,10 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/BorrowedAttrInfo.h"
 #include "mozilla/dom/FragmentOrElement.h"
-#include "nsIDOMDocumentFragment.h"
+#include "nsIDOMNode.h"
+#include "nsStringFwd.h"
 
-class nsIAtom;
-class nsAString;
+class nsAtom;
 class nsIDocument;
 class nsIContent;
 
@@ -23,12 +23,12 @@ namespace dom {
 class Element;
 
 class DocumentFragment : public FragmentOrElement,
-                         public nsIDOMDocumentFragment
+                         public nsIDOMNode
 {
 private:
   void Init()
   {
-    MOZ_ASSERT(mNodeInfo->NodeType() == nsIDOMNode::DOCUMENT_FRAGMENT_NODE &&
+    MOZ_ASSERT(mNodeInfo->NodeType() == DOCUMENT_FRAGMENT_NODE &&
                mNodeInfo->Equals(nsGkAtoms::documentFragmentNodeName,
                                  kNameSpaceID_None),
                "Bad NodeType in aNodeInfo");
@@ -43,12 +43,7 @@ public:
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
-
-  // interface nsIDOMNode
-  NS_FORWARD_NSIDOMNODE_TO_NSINODE
-
-  // interface nsIDOMDocumentFragment
-  NS_DECL_NSIDOMDOCUMENTFRAGMENT
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(DocumentFragment, FragmentOrElement)
 
   explicit DocumentFragment(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
     : FragmentOrElement(aNodeInfo), mHost(nullptr)
@@ -60,43 +55,13 @@ public:
     : FragmentOrElement(aNodeInfoManager->GetNodeInfo(
                                             nsGkAtoms::documentFragmentNodeName,
                                             nullptr, kNameSpaceID_None,
-                                            nsIDOMNode::DOCUMENT_FRAGMENT_NODE)),
+                                            DOCUMENT_FRAGMENT_NODE)),
       mHost(nullptr)
   {
     Init();
   }
 
   virtual JSObject* WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
-
-  // nsIContent
-  nsresult SetAttr(int32_t aNameSpaceID, nsIAtom* aName,
-                   const nsAString& aValue, bool aNotify)
-  {
-    return SetAttr(aNameSpaceID, aName, nullptr, aValue, aNotify);
-  }
-  virtual nsresult SetAttr(int32_t aNameSpaceID, nsIAtom* aName,
-                           nsIAtom* aPrefix, const nsAString& aValue,
-                           bool aNotify) override
-  {
-    return NS_OK;
-  }
-  virtual nsresult UnsetAttr(int32_t aNameSpaceID, nsIAtom* aAttribute,
-                             bool aNotify) override
-  {
-    return NS_OK;
-  }
-  virtual const nsAttrName* GetAttrNameAt(uint32_t aIndex) const override
-  {
-    return nullptr;
-  }
-  virtual BorrowedAttrInfo GetAttrInfoAt(uint32_t aIndex) const override
-  {
-    return BorrowedAttrInfo(nullptr, nullptr);
-  }
-  virtual uint32_t GetAttrCount() const override
-  {
-    return 0;
-  }
 
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
 
@@ -120,15 +85,9 @@ public:
     return nullptr;
   }
 
-  nsIContent* GetHost() const
-  {
-    return mHost;
-  }
+  Element* GetHost() const { return mHost; }
 
-  void SetHost(nsIContent* aHost)
-  {
-    mHost = aHost;
-  }
+  void SetHost(Element* aHost) { mHost = aHost; }
 
   static already_AddRefed<DocumentFragment>
   Constructor(const GlobalObject& aGlobal, ErrorResult& aRv);
@@ -145,11 +104,24 @@ protected:
 
   nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                  bool aPreallocateChildren) const override;
-  nsIContent* mHost; // Weak
+  RefPtr<Element> mHost;
 };
 
 } // namespace dom
 } // namespace mozilla
 
+inline mozilla::dom::DocumentFragment*
+nsINode::AsDocumentFragment()
+{
+  MOZ_ASSERT(IsDocumentFragment());
+  return static_cast<mozilla::dom::DocumentFragment*>(this);
+}
+
+inline const mozilla::dom::DocumentFragment*
+nsINode::AsDocumentFragment() const
+{
+  MOZ_ASSERT(IsDocumentFragment());
+  return static_cast<const mozilla::dom::DocumentFragment*>(this);
+}
 
 #endif // mozilla_dom_DocumentFragment_h__

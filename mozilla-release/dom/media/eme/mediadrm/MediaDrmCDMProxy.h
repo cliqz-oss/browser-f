@@ -77,7 +77,7 @@ public:
 
   void OnSessionMessage(const nsAString& aSessionId,
                         dom::MediaKeyMessageType aMessageType,
-                        nsTArray<uint8_t>& aMessage) override;
+                        const nsTArray<uint8_t>& aMessage) override;
 
   void OnExpirationChange(const nsAString& aSessionId,
                           UnixTime aExpiryTime) override;
@@ -108,12 +108,12 @@ public:
   // Threadsafe.
   const nsString& KeySystem() const override;
 
-  CDMCaps& Capabilites() override;
+  DataMutex<CDMCaps>& Capabilites() override;
 
   void OnKeyStatusesChange(const nsAString& aSessionId) override;
 
-  void GetSessionIdsForKeyId(const nsTArray<uint8_t>& aKeyId,
-                             nsTArray<nsCString>& aSessionIds) override;
+  void GetStatusForPolicy(PromiseId aPromiseId,
+                          const nsAString& aMinHdcpVersion) override;
 
 #ifdef DEBUG
   bool IsOnOwnerThread() override;

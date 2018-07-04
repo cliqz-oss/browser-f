@@ -1,6 +1,6 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * vim: sts=8 sw=2 ts=2 tw=99 et :
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -52,9 +52,9 @@ public:
   ~GPUProcessHost();
 
   // Launch the subprocess asynchronously. On failure, false is returned.
-  // Otherwise, true is returned, and the OnLaunchComplete listener callback
-  // will be invoked either when a connection has been established, or if a
-  // connection could not be established due to an asynchronous error.
+  // Otherwise, true is returned, and the OnProcessLaunchComplete listener
+  // callback will be invoked either when a connection has been established, or
+  // if a connection could not be established due to an asynchronous error.
   bool Launch();
 
   // If the process is being launched, block until it has launched and

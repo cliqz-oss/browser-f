@@ -8,46 +8,53 @@
 
 // Constants
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
 const MS_PER_DAY = 86400000; // 24 * 60 * 60 * 1000
 
 // Match type constants.
 // These indicate what type of search function we should be using.
-const MATCH_ANYWHERE = Ci.mozIPlacesAutoComplete.MATCH_ANYWHERE;
-const MATCH_BOUNDARY_ANYWHERE = Ci.mozIPlacesAutoComplete.MATCH_BOUNDARY_ANYWHERE;
-const MATCH_BOUNDARY = Ci.mozIPlacesAutoComplete.MATCH_BOUNDARY;
-const MATCH_BEGINNING = Ci.mozIPlacesAutoComplete.MATCH_BEGINNING;
-const MATCH_BEGINNING_CASE_SENSITIVE = Ci.mozIPlacesAutoComplete.MATCH_BEGINNING_CASE_SENSITIVE;
+const {
+  MATCH_ANYWHERE,
+  MATCH_BOUNDARY_ANYWHERE,
+  MATCH_BOUNDARY,
+  MATCH_BEGINNING,
+  MATCH_BEGINNING_CASE_SENSITIVE,
+} = Ci.mozIPlacesAutoComplete;
 
-const PREF_BRANCH = "browser.urlbar.";
+// Values for browser.urlbar.insertMethod
+const INSERTMETHOD = {
+  APPEND: 0, // Just append new results.
+  MERGE_RELATED: 1, // Merge previous and current results if search strings are related
+  MERGE: 2 // Always merge previous and current results
+};
 
 // Prefs are defined as [pref name, default value].
-const PREF_ENABLED =                [ "autocomplete.enabled",   true ];
-const PREF_AUTOFILL =               [ "autoFill",               true ];
-const PREF_AUTOFILL_TYPED =         [ "autoFill.typed",         true ];
-const PREF_AUTOFILL_SEARCHENGINES = [ "autoFill.searchEngines", false ];
-const PREF_RESTYLESEARCHES        = [ "restyleSearches",        false ];
-const PREF_DELAY =                  [ "delay",                  50 ];
-const PREF_BEHAVIOR =               [ "matchBehavior", MATCH_BOUNDARY_ANYWHERE ];
-const PREF_FILTER_JS =              [ "filter.javascript",      true ];
-const PREF_MAXRESULTS =             [ "maxRichResults",         25 ];
-
-const PREF_SUGGEST_HISTORY =        [ "suggest.history",        true ];
-const PREF_SUGGEST_BOOKMARK =       [ "suggest.bookmark",       true ];
-const PREF_SUGGEST_OPENPAGE =       [ "suggest.openpage",       true ];
-const PREF_SUGGEST_HISTORY_ONLYTYPED = [ "suggest.history.onlyTyped", false ];
-const PREF_SUGGEST_SEARCHES =       [ "suggest.searches",       false ];
-
-const PREF_MAX_CHARS_FOR_SUGGEST =  [ "maxCharsForSearchSuggestions", 20];
-const PREF_MAX_HISTORICAL_SUGGESTIONS =  [ "maxHistoricalSearchSuggestions", 0];
-
-const PREF_PRELOADED_SITES_ENABLED =  [ "usepreloadedtopurls.enabled",   true ];
-const PREF_PRELOADED_SITES_EXPIRE_DAYS = [ "usepreloadedtopurls.expire_days",  14 ];
-
-const PREF_MATCH_BUCKETS = [ "matchBuckets", "general:5,suggestion:Infinity" ];
-// Will default to matchBuckets if not defined.
-const PREF_MATCH_BUCKETS_SEARCH = [ "matchBucketsSearch", "" ];
+const PREF_URLBAR_BRANCH = "browser.urlbar.";
+const PREF_URLBAR_DEFAULTS = new Map([
+  ["autocomplete.enabled", true],
+  ["autoFill", true],
+  ["autoFill.typed", true],
+  ["autoFill.searchEngines", false],
+  ["restyleSearches", false],
+  ["delay", 50],
+  ["matchBehavior", MATCH_BOUNDARY_ANYWHERE],
+  ["filter.javascript", true],
+  ["maxRichResults", 10],
+  ["suggest.history", true],
+  ["suggest.bookmark", true],
+  ["suggest.openpage", true],
+  ["suggest.history.onlyTyped", false],
+  ["suggest.searches", false],
+  ["maxCharsForSearchSuggestions", 20],
+  ["maxHistoricalSearchSuggestions", 0],
+  ["usepreloadedtopurls.enabled", true],
+  ["usepreloadedtopurls.expire_days", 14],
+  ["matchBuckets", "suggestion:4,general:Infinity"],
+  ["matchBucketsSearch", ""],
+  ["insertMethod", INSERTMETHOD.MERGE_RELATED],
+]);
+const PREF_OTHER_DEFAULTS = new Map([
+  ["keyword.enabled", true],
+]);
 
 // AutoComplete query type constants.
 // Describes the various types of queries that we can process rows for.
@@ -73,7 +80,7 @@ const FRECENCY_DEFAULT = 1000;
 const MAXIMUM_ALLOWED_EXTENSION_MATCHES = 6;
 
 // After this time, we'll give up waiting for the extension to return matches.
-const MAXIMUM_ALLOWED_EXTENSION_TIME_MS = 5000;
+const MAXIMUM_ALLOWED_EXTENSION_TIME_MS = 3000;
 
 // A regex that matches "single word" hostnames for whitelisting purposes.
 // The hostname will already have been checked for general validity, so we
@@ -85,6 +92,9 @@ const REGEXP_USER_CONTEXT_ID = /(?:^| )user-context-id:(\d+)/;
 
 // Regex used to match one or more whitespace.
 const REGEXP_SPACES = /\s+/;
+
+// The result is notified on a delay, to avoid rebuilding the panel at every match.
+const NOTIFYRESULT_DELAY_MS = 16;
 
 // Sqlite result row index constants.
 const QUERYINDEX_QUERYTYPE     = 0;
@@ -127,7 +137,7 @@ const MATCHTYPE = {
 //   0: The match type of the acceptable entries.
 //   1: available number of slots in this bucket.
 // There are different matchBuckets definition for different contexts, currently
-// a general one (_matchBuckets) and a search one (_matchBucketsSearch).
+// a general one (matchBuckets) and a search one (matchBucketsSearch).
 //
 // First buckets. Anything with an Infinity frecency ends up here.
 const DEFAULT_BUCKETS_BEFORE = [
@@ -165,8 +175,8 @@ const SQL_BOOKMARK_TAGS_FRAGMENT =
 
 // TODO bug 412736: in case of a frecency tie, we might break it with h.typed
 // and h.visit_count.  That is slower though, so not doing it yet...
-// NB: as a slight performance optimization, we only evaluate the "btitle"
-// and "tags" queries for bookmarked entries.
+// NB: as a slight performance optimization, we only evaluate the "bookmarked"
+// condition once, and avoid evaluating "btitle" and "tags" when it is false.
 function defaultQuery(conditions = "") {
   let query =
     `SELECT :query_type, h.url, h.title, ${SQL_BOOKMARK_TAGS_FRAGMENT},
@@ -176,16 +186,20 @@ function defaultQuery(conditions = "") {
             ON t.url = h.url
            AND t.userContextId = :userContextId
      WHERE h.frecency <> 0
-       AND AUTOCOMPLETE_MATCH(:searchString, h.url,
-                              CASE WHEN bookmarked THEN
-                                IFNULL(btitle, h.title)
-                              ELSE h.title END,
-                              CASE WHEN bookmarked THEN
-                                tags
-                              ELSE '' END,
+       AND CASE WHEN bookmarked
+         THEN
+           AUTOCOMPLETE_MATCH(:searchString, h.url,
+                              IFNULL(btitle, h.title), tags,
                               h.visit_count, h.typed,
-                              bookmarked, t.open_count,
+                              1, t.open_count,
                               :matchBehavior, :searchBehavior)
+         ELSE
+           AUTOCOMPLETE_MATCH(:searchString, h.url,
+                              h.title, '',
+                              h.visit_count, h.typed,
+                              0, t.open_count,
+                              :matchBehavior, :searchBehavior)
+         END
        ${conditions}
      ORDER BY h.frecency DESC, h.id DESC
      LIMIT :maxResults`;
@@ -293,50 +307,30 @@ const SQL_BOOKMARKED_TYPED_URL_QUERY = urlQuery("AND bookmarked AND h.typed = 1"
 
 // Getters
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 Cu.importGlobalProperties(["fetch"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
-                                  "resource://gre/modules/TelemetryStopwatch.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
-                                  "resource://gre/modules/Preferences.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Sqlite",
-                                  "resource://gre/modules/Sqlite.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PromiseUtils",
-                                  "resource://gre/modules/PromiseUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionSearchHandler",
-                                  "resource://gre/modules/ExtensionSearchHandler.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesSearchAutocompleteProvider",
-                                  "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesRemoteTabsAutocompleteProvider",
-                                  "resource://gre/modules/PlacesRemoteTabsAutocompleteProvider.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
-                                  "resource://gre/modules/ProfileAge.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
+  TelemetryStopwatch: "resource://gre/modules/TelemetryStopwatch.jsm",
+  Sqlite: "resource://gre/modules/Sqlite.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  ExtensionSearchHandler: "resource://gre/modules/ExtensionSearchHandler.jsm",
+  PlacesSearchAutocompleteProvider: "resource://gre/modules/PlacesSearchAutocompleteProvider.jsm",
+  PlacesRemoteTabsAutocompleteProvider: "resource://gre/modules/PlacesRemoteTabsAutocompleteProvider.jsm",
+  BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
+  ProfileAge: "resource://gre/modules/ProfileAge.jsm",
+});
 
-XPCOMUtils.defineLazyServiceGetter(this, "textURIService",
-                                   "@mozilla.org/intl/texttosuburi;1",
-                                   "nsITextToSubURI");
+XPCOMUtils.defineLazyPreferenceGetter(this, "syncUsernamePref",
+                                      "services.sync.username");
 
 function setTimeout(callback, ms) {
   let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   timer.initWithCallback(callback, ms, timer.TYPE_ONE_SHOT);
-}
-
-function convertBucketsCharPrefToArray(str) {
-  return str.toLowerCase()
-            .split(",")
-            .map(v => {
-              let bucket = v.split(":");
-              return [ bucket[0].trim(), Number(bucket[1]) ];
-            });
+  return timer;
 }
 
 /**
@@ -354,6 +348,11 @@ XPCOMUtils.defineLazyGetter(this, "SwitchToTabStorage", () => Object.seal({
   _conn: null,
   // Temporary queue used while the database connection is not available.
   _queue: new Map(),
+  // Whether we are in the process of updating the temp table.
+  _updatingLevel: 0,
+  get updating() {
+    return this._updatingLevel > 0;
+  },
   async initDatabase(conn) {
     // To reduce IO use an in-memory table for switch-to-tab tracking.
     // Note: this should be kept up-to-date with the definition in
@@ -383,7 +382,7 @@ XPCOMUtils.defineLazyGetter(this, "SwitchToTabStorage", () => Object.seal({
     // Populate the table with the current cache contents...
     for (let [userContextId, uris] of this._queue) {
       for (let uri of uris) {
-        this.add(uri, userContextId);
+        this.add(uri, userContextId).catch(Cu.reportError);
       }
     }
 
@@ -391,7 +390,7 @@ XPCOMUtils.defineLazyGetter(this, "SwitchToTabStorage", () => Object.seal({
     this._queue.clear();
   },
 
-  add(uri, userContextId) {
+  async add(uri, userContextId) {
     if (!this._conn) {
       if (!this._queue.has(userContextId)) {
         this._queue.set(userContextId, new Set());
@@ -399,23 +398,27 @@ XPCOMUtils.defineLazyGetter(this, "SwitchToTabStorage", () => Object.seal({
       this._queue.get(userContextId).add(uri);
       return;
     }
-    this._conn.executeCached(
-      `INSERT OR REPLACE INTO moz_openpages_temp (url, userContextId, open_count)
-         VALUES ( :url,
-                  :userContextId,
-                  IFNULL( ( SELECT open_count + 1
-                            FROM moz_openpages_temp
-                            WHERE url = :url
-                            AND userContextId = :userContextId ),
-                          1
-                        )
-                )`
-    , { url: uri.spec, userContextId });
+    try {
+      this._updatingLevel++;
+      await this._conn.executeCached(
+        `INSERT OR REPLACE INTO moz_openpages_temp (url, userContextId, open_count)
+          VALUES ( :url,
+                    :userContextId,
+                    IFNULL( ( SELECT open_count + 1
+                              FROM moz_openpages_temp
+                              WHERE url = :url
+                              AND userContextId = :userContextId ),
+                            1
+                          )
+                  )
+        `, { url: uri.spec, userContextId });
+    } finally {
+      this._updatingLevel--;
+    }
   },
 
-  delete(uri, userContextId) {
+  async delete(uri, userContextId) {
     if (!this._conn) {
-      // This should not happen.
       if (!this._queue.has(userContextId)) {
         throw new Error("Unknown userContextId!");
       }
@@ -426,12 +429,17 @@ XPCOMUtils.defineLazyGetter(this, "SwitchToTabStorage", () => Object.seal({
       }
       return;
     }
-    this._conn.executeCached(
-      `UPDATE moz_openpages_temp
-       SET open_count = open_count - 1
-       WHERE url = :url
-       AND userContextId = :userContextId`
-    , { url: uri.spec, userContextId });
+    try {
+      this._updatingLevel++;
+      await this._conn.executeCached(
+        `UPDATE moz_openpages_temp
+         SET open_count = open_count - 1
+         WHERE url = :url
+           AND userContextId = :userContextId
+        `, { url: uri.spec, userContextId });
+    } finally {
+      this._updatingLevel--;
+    }
   },
 
   shutdown() {
@@ -441,159 +449,163 @@ XPCOMUtils.defineLazyGetter(this, "SwitchToTabStorage", () => Object.seal({
 }));
 
 /**
- * This helper keeps track of preferences and keeps their values up-to-date.
+ * This helper keeps track of preferences and their updates.
  */
 XPCOMUtils.defineLazyGetter(this, "Prefs", () => {
-  let prefs = new Preferences(PREF_BRANCH);
-  let types = ["History", "Bookmark", "Openpage", "Searches"];
+  let branch = Services.prefs.getBranch(PREF_URLBAR_BRANCH);
+  let types = ["history", "bookmark", "openpage", "searches"];
+  let prefTypes = new Map([["boolean", "Bool"], ["string", "Char"], ["number", "Int"]]);
 
-  function syncEnabledPref() {
-    loadSyncedPrefs();
+  function readPref(pref) {
+    let prefs = branch;
+    let def = PREF_URLBAR_DEFAULTS.get(pref);
+    if (def === undefined) {
+      prefs = Services.prefs;
+      def = PREF_OTHER_DEFAULTS.get(pref);
+    }
+    if (def === undefined)
+      throw new Error("Trying to access an unknown pref " + pref);
+    return prefs[`get${prefTypes.get(typeof def)}Pref`](pref, def);
+  }
 
-    let suggestPrefs = [
-      PREF_SUGGEST_HISTORY,
-      PREF_SUGGEST_BOOKMARK,
-      PREF_SUGGEST_OPENPAGE,
-      PREF_SUGGEST_SEARCHES,
-    ];
+  function getPrefValue(pref) {
+    switch (pref) {
+      case "matchBuckets": {
+        // Convert from pref char format to an array and add the default buckets.
+        let val = readPref(pref);
+        try {
+          val = PlacesUtils.convertMatchBucketsStringToArray(val);
+        } catch (ex) {
+          val = PlacesUtils.convertMatchBucketsStringToArray(PREF_URLBAR_DEFAULTS.get(pref));
+        }
+        return [ ...DEFAULT_BUCKETS_BEFORE,
+                ...val,
+                ...DEFAULT_BUCKETS_AFTER ];
+      }
+      case "matchBucketsSearch": {
+        // Convert from pref char format to an array and add the default buckets.
+        let val = readPref(pref);
+        if (val) {
+          // Convert from pref char format to an array and add the default buckets.
+          try {
+            val = PlacesUtils.convertMatchBucketsStringToArray(val);
+            return [ ...DEFAULT_BUCKETS_BEFORE,
+                    ...val,
+                    ...DEFAULT_BUCKETS_AFTER ];
+          } catch (ex) { /* invalid format, will just return matchBuckets */ }
+        }
+        return store.get("matchBuckets");
+      }
+      case "suggest.history.onlyTyped": {
+        // If history is not set, onlyTyped value should be ignored.
+        return store.get("suggest.history") && readPref(pref);
+      }
+      case "defaultBehavior": {
+        let val = 0;
+        for (let type of [...types, "history.onlyTyped"]) {
+          let behavior = type == "history.onlyTyped" ? "TYPED" : type.toUpperCase();
+          val |= store.get("suggest." + type) &&
+                      Ci.mozIPlacesAutoComplete["BEHAVIOR_" + behavior];
+        }
+        return val;
+      }
+      case "emptySearchDefaultBehavior": {
+        // Further restrictions to apply for "empty searches" (searching for "").
+        // The empty behavior is typed history, if history is enabled. Otherwise,
+        // it is bookmarks, if they are enabled. If both history and bookmarks are
+        // disabled, it defaults to open pages.
+        let val = Ci.mozIPlacesAutoComplete.BEHAVIOR_RESTRICT;
+        if (store.get("suggest.history")) {
+          val |= Ci.mozIPlacesAutoComplete.BEHAVIOR_HISTORY |
+                Ci.mozIPlacesAutoComplete.BEHAVIOR_TYPED;
+        } else if (store.get("suggest.bookmark")) {
+          val |= Ci.mozIPlacesAutoComplete.BEHAVIOR_BOOKMARK;
+        } else {
+          val |= Ci.mozIPlacesAutoComplete.BEHAVIOR_OPENPAGE;
+        }
+        return val;
+      }
+      case "matchBehavior": {
+        // Validate matchBehavior; default to MATCH_BOUNDARY_ANYWHERE.
+        let val = readPref(pref);
+        if (![MATCH_ANYWHERE, MATCH_BOUNDARY, MATCH_BEGINNING].includes(val)) {
+          val = MATCH_BOUNDARY_ANYWHERE;
+        }
+        return val;
+      }
+    }
+    return readPref(pref);
+  }
 
-    if (store.enabled) {
-      // If the autocomplete preference is active, set to default value all suggest
-      // preferences only if all of them are false.
-      if (types.every(type => store["suggest" + type] == false)) {
-        for (let type of suggestPrefs) {
-          prefs.set(...type);
+  // Used to keep some pref values linked.
+  // TODO: remove autocomplete.enabled and rely only on suggest.* prefs once we
+  // can drop legacy add-ons compatibility.
+  let linkingPrefs = false;
+  function updateLinkedPrefs(changedPref = "") {
+    // Avoid re-entrance.
+    if (linkingPrefs)
+      return;
+    linkingPrefs = true;
+    try {
+      if (changedPref.startsWith("suggest.")) {
+        // A suggest pref changed, fix autocomplete.enabled.
+        branch.setBoolPref("autocomplete.enabled",
+                          types.some(type => store.get("suggest." + type)));
+      } else if (store.get("autocomplete.enabled")) {
+        // If autocomplete is enabled and all of the suggest.* prefs are disabled,
+        // reset the suggest.* prefs to their default value.
+        if (types.every(type => !store.get("suggest." + type))) {
+          for (let type of types) {
+            let def = PREF_URLBAR_DEFAULTS.get("suggest." + type);
+            branch.setBoolPref("suggest." + type, def);
+          }
+        }
+      } else {
+        // If autocomplete is disabled, deactivate all suggest preferences.
+        for (let type of types) {
+          branch.setBoolPref("suggest." + type, false);
         }
       }
-    } else {
-      // If the preference was deactivated, deactivate all suggest preferences.
-      for (let type of suggestPrefs) {
-        prefs.set(type[0], false);
-      }
+    } finally {
+      linkingPrefs = false;
     }
-  }
-
-  function loadSyncedPrefs() {
-    store.enabled = prefs.get(...PREF_ENABLED);
-    store.suggestHistory = prefs.get(...PREF_SUGGEST_HISTORY);
-    store.suggestBookmark = prefs.get(...PREF_SUGGEST_BOOKMARK);
-    store.suggestOpenpage = prefs.get(...PREF_SUGGEST_OPENPAGE);
-    store.suggestTyped = prefs.get(...PREF_SUGGEST_HISTORY_ONLYTYPED);
-    store.suggestSearches = prefs.get(...PREF_SUGGEST_SEARCHES);
-  }
-
-  function loadPrefs(subject, topic, data) {
-    if (data) {
-      // Synchronize suggest.* prefs with autocomplete.enabled.
-      if (data == PREF_BRANCH + PREF_ENABLED[0]) {
-        syncEnabledPref();
-      } else if (data.startsWith(PREF_BRANCH + "suggest.")) {
-        loadSyncedPrefs();
-        prefs.set(PREF_ENABLED[0], types.some(type => store["suggest" + type]));
-      }
-    }
-
-    store.enabled = prefs.get(...PREF_ENABLED);
-    store.autofill = prefs.get(...PREF_AUTOFILL);
-    store.autofillTyped = prefs.get(...PREF_AUTOFILL_TYPED);
-    store.autofillSearchEngines = prefs.get(...PREF_AUTOFILL_SEARCHENGINES);
-    store.restyleSearches = prefs.get(...PREF_RESTYLESEARCHES);
-    store.delay = prefs.get(...PREF_DELAY);
-    store.matchBehavior = prefs.get(...PREF_BEHAVIOR);
-    store.filterJavaScript = prefs.get(...PREF_FILTER_JS);
-    store.maxRichResults = prefs.get(...PREF_MAXRESULTS);
-    store.suggestHistory = prefs.get(...PREF_SUGGEST_HISTORY);
-    store.suggestBookmark = prefs.get(...PREF_SUGGEST_BOOKMARK);
-    store.suggestOpenpage = prefs.get(...PREF_SUGGEST_OPENPAGE);
-    store.suggestTyped = prefs.get(...PREF_SUGGEST_HISTORY_ONLYTYPED);
-    store.suggestSearches = prefs.get(...PREF_SUGGEST_SEARCHES);
-    store.maxCharsForSearchSuggestions = prefs.get(...PREF_MAX_CHARS_FOR_SUGGEST);
-    store.maxHistoricalSearchSuggestions = prefs.get(...PREF_MAX_HISTORICAL_SUGGESTIONS);
-    store.preloadedSitesEnabled = prefs.get(...PREF_PRELOADED_SITES_ENABLED);
-    store.preloadedSitesExpireDays = prefs.get(...PREF_PRELOADED_SITES_EXPIRE_DAYS);
-    store.matchBuckets = prefs.get(...PREF_MATCH_BUCKETS);
-    // Convert from pref char format to an array and add the default buckets.
-    try {
-      store.matchBuckets = convertBucketsCharPrefToArray(store.matchBuckets);
-    } catch (ex) {
-      store.matchBuckets = convertBucketsCharPrefToArray(PREF_MATCH_BUCKETS[1]);
-    }
-    store.matchBuckets = [ ...DEFAULT_BUCKETS_BEFORE,
-                           ...store.matchBuckets,
-                           ...DEFAULT_BUCKETS_AFTER ];
-    store.matchBucketsSearch = prefs.get(...PREF_MATCH_BUCKETS_SEARCH);
-    // Default to matchBuckets if not defined.
-    if (!store.matchBucketsSearch) {
-      store.matchBucketsSearch = store.matchBuckets;
-    } else {
-      // Convert from pref char format to an array and add the default buckets.
-      try {
-        store.matchBucketsSearch = convertBucketsCharPrefToArray(store.matchBucketsSearch);
-        store.matchBucketsSearch = [ ...DEFAULT_BUCKETS_BEFORE,
-                                     ...store.matchBucketsSearch,
-                                     ...DEFAULT_BUCKETS_AFTER ];
-      } catch (ex) {
-        store.matchBucketsSearch = store.matchBuckets;
-      }
-    }
-    store.keywordEnabled = Services.prefs.getBoolPref("keyword.enabled", true);
-
-    // If history is not set, onlyTyped value should be ignored.
-    if (!store.suggestHistory) {
-      store.suggestTyped = false;
-    }
-    store.defaultBehavior = [...types, "Typed"].reduce((memo, type) => {
-      let prefValue = store["suggest" + type];
-      return memo | (prefValue &&
-                     Ci.mozIPlacesAutoComplete["BEHAVIOR_" + type.toUpperCase()]);
-    }, 0);
-
-    // Further restrictions to apply for "empty searches" (i.e. searches for "").
-    // The empty behavior is typed history, if history is enabled. Otherwise,
-    // it is bookmarks, if they are enabled. If both history and bookmarks are disabled,
-    // it defaults to open pages.
-    store.emptySearchDefaultBehavior = Ci.mozIPlacesAutoComplete.BEHAVIOR_RESTRICT;
-    if (store.suggestHistory) {
-      store.emptySearchDefaultBehavior |= Ci.mozIPlacesAutoComplete.BEHAVIOR_HISTORY |
-                                          Ci.mozIPlacesAutoComplete.BEHAVIOR_TYPED;
-    } else if (store.suggestBookmark) {
-      store.emptySearchDefaultBehavior |= Ci.mozIPlacesAutoComplete.BEHAVIOR_BOOKMARK;
-    } else {
-      store.emptySearchDefaultBehavior |= Ci.mozIPlacesAutoComplete.BEHAVIOR_OPENPAGE;
-    }
-
-    // Validate matchBehavior; default to MATCH_BOUNDARY_ANYWHERE.
-    if (store.matchBehavior != MATCH_ANYWHERE &&
-        store.matchBehavior != MATCH_BOUNDARY &&
-        store.matchBehavior != MATCH_BEGINNING) {
-      store.matchBehavior = MATCH_BOUNDARY_ANYWHERE;
-    }
-
   }
 
   let store = {
-    _ignoreNotifications: false,
-    observe(subject, topic, data) {
-      // Avoid re-entrancy when flipping linked preferences.
-      if (this._ignoreNotifications)
-        return;
-      this._ignoreNotifications = true;
-      loadPrefs(subject, topic, data);
-      this._ignoreNotifications = false;
+    _map: new Map(),
+    get(pref) {
+      if (!this._map.has(pref))
+        this._map.set(pref, getPrefValue(pref));
+      return this._map.get(pref);
     },
-    QueryInterface: XPCOMUtils.generateQI([
+    observe(subject, topic, data) {
+      let pref = data.replace(PREF_URLBAR_BRANCH, "");
+      if (!PREF_URLBAR_DEFAULTS.has(pref) && !PREF_OTHER_DEFAULTS.has(pref))
+        return;
+      this._map.delete(pref);
+      // Some prefs may influence others.
+      if (pref == "matchBuckets") {
+        this._map.delete("matchBucketsSearch");
+      } else if (pref == "suggest.history") {
+        this._map.delete("suggest.history.onlyTyped");
+      }
+      if (pref == "autocomplete.enabled" || pref.startsWith("suggest.")) {
+        this._map.delete("defaultBehavior");
+        this._map.delete("emptySearchDefaultBehavior");
+        updateLinkedPrefs(pref);
+      }
+    },
+    QueryInterface: ChromeUtils.generateQI([
       Ci.nsIObserver,
-      Ci.nsISupportsWeakReference ])
+      Ci.nsISupportsWeakReference
+    ])
   };
-
-  // Synchronize suggest.* prefs with autocomplete.enabled at initialization
-  syncEnabledPref();
-
-  loadPrefs();
-  Services.prefs.addObserver(PREF_BRANCH, store);
+  Services.prefs.addObserver(PREF_URLBAR_BRANCH, store, true);
   Services.prefs.addObserver("keyword.enabled", store, true);
 
-  return Object.seal(store);
+  // On startup we must check that some prefs are linked.
+  updateLinkedPrefs();
+  return store;
 });
 
 // Preloaded Sites related
@@ -701,40 +713,18 @@ function stripHttpAndTrim(spec, trimSlash = true) {
  * and return a key based on the wrapped URL.
  */
 function makeKeyForURL(match) {
-  let actionUrl = match.value;
-
+  let url = match.value;
+  let action = PlacesUtils.parseActionUrl(url);
   // At this stage we only consider moz-action URLs.
-  if (!actionUrl.startsWith("moz-action:")) {
+  if (!action || !("url" in action.params)) {
     // For autofill entries, we need to have a key based on the comment rather
     // than the value field, because the latter may have been trimmed.
     if (match.hasOwnProperty("style") && match.style.includes("autofill")) {
-      return stripHttpAndTrim(match.comment);
+      url = match.comment;
     }
-    return stripHttpAndTrim(actionUrl);
+    return [stripHttpAndTrim(url), null];
   }
-  let [, type, params] = actionUrl.match(/^moz-action:([^,]+),(.*)$/);
-  try {
-    params = JSON.parse(params);
-  } catch (ex) {
-    // This is unexpected in this context, so just return the input.
-    return stripHttpAndTrim(actionUrl);
-  }
-  // For now we only handle these 2 action types and treat them as the same.
-  switch (type) {
-    case "remotetab":
-    case "switchtab":
-      if (params.url) {
-        return "moz-action:tab:" + stripHttpAndTrim(params.url);
-      }
-      break;
-      // TODO (bug 1222435) - "switchtab" should be handled as an "autofill"
-      // entry.
-    default:
-      // do nothing.
-      // TODO (bug 1222436) - extend this method so it can be used instead of
-      // the |placeId| that's also used to remove duplicate entries.
-  }
-  return stripHttpAndTrim(actionUrl);
+  return [stripHttpAndTrim(action.params.url), action];
 }
 
 /**
@@ -769,22 +759,22 @@ function looksLikeUrl(str, ignoreAlphanumericHosts = false) {
  *        * user-context-id: The userContextId of the selected tab.
  * @param autocompleteListener
  *        An nsIAutoCompleteObserver.
- * @param resultListener
- *        An nsIAutoCompleteSimpleResultListener.
  * @param autocompleteSearch
  *        An nsIAutoCompleteSearch.
  * @param prohibitSearchSuggestions
  *        Whether search suggestions are allowed for this search.
+ * @param [optional] previousResult
+ *        The result object from the previous search. if available.
  */
 function Search(searchString, searchParam, autocompleteListener,
-                resultListener, autocompleteSearch, prohibitSearchSuggestions) {
+                autocompleteSearch, prohibitSearchSuggestions, previousResult) {
   // We want to store the original string for case sensitive searches.
   this._originalSearchString = searchString;
   this._trimmedOriginalSearchString = searchString.trim();
   let strippedOriginalSearchString =
     stripPrefix(this._trimmedOriginalSearchString.toLowerCase());
   this._searchString =
-    textURIService.unEscapeURIForUI("UTF-8", strippedOriginalSearchString);
+    Services.textToSubURI.unEscapeURIForUI("UTF-8", strippedOriginalSearchString);
 
   // The protocol and the host are lowercased by nsIURI, so it's fine to
   // lowercase the typed prefix, to add it back to the results later.
@@ -792,10 +782,10 @@ function Search(searchString, searchParam, autocompleteListener,
     0, this._trimmedOriginalSearchString.length - strippedOriginalSearchString.length
   ).toLowerCase();
 
-  this._matchBehavior = Prefs.matchBehavior;
+  this._matchBehavior = Prefs.get("matchBehavior");
   // Set the default behavior for this search.
-  this._behavior = this._searchString ? Prefs.defaultBehavior
-                                      : Prefs.emptySearchDefaultBehavior;
+  this._behavior = this._searchString ? Prefs.get("defaultBehavior")
+                                      : Prefs.get("emptySearchDefaultBehavior");
 
   let params = new Set(searchParam.split(" "));
   this._enableActions = params.has("enable-actions");
@@ -818,20 +808,46 @@ function Search(searchString, searchParam, autocompleteListener,
 
   // Create a new result to add eventual matches.  Note we need a result
   // regardless having matches.
-  let result = Cc["@mozilla.org/autocomplete/simple-result;1"]
+  let result = previousResult ||
+               Cc["@mozilla.org/autocomplete/simple-result;1"]
                  .createInstance(Ci.nsIAutoCompleteSimpleResult);
   result.setSearchString(searchString);
-  result.setListener(resultListener);
+  result.setListener({
+    onValueRemoved(result, spec, removeFromDB) {
+      if (removeFromDB) {
+        PlacesUtils.history.remove(spec).catch(Cu.reportError);
+      }
+    },
+    QueryInterface: ChromeUtils.generateQI([
+      Ci.nsIAutoCompleteSimpleResultListener
+    ])
+  });
   // Will be set later, if needed.
   result.setDefaultIndex(-1);
   this._result = result;
 
-  // These are used to avoid adding duplicate entries to the results.
-  this._usedURLs = new Set();
-  this._usedPlaceIds = new Set();
+  this._previousSearchMatchTypes = [];
+  for (let i = 0; previousResult && i < previousResult.matchCount; ++i) {
+    let style = previousResult.getStyleAt(i);
+    if (style.includes("heuristic")) {
+      this._previousSearchMatchTypes.push(MATCHTYPE.HEURISTIC);
+    } else if (style.includes("suggestion")) {
+      this._previousSearchMatchTypes.push(MATCHTYPE.SUGGESTION);
+    } else if (style.includes("extension")) {
+      this._previousSearchMatchTypes.push(MATCHTYPE.EXTENSION);
+    } else {
+      this._previousSearchMatchTypes.push(MATCHTYPE.GENERAL);
+    }
+  }
 
-  // Resolved when all the matches providers have been fetched.
-  this._allMatchesPromises = [];
+  // This is a replacement for this._result.matchCount, to be used when you need
+  // to check how many "current" matches have been inserted.
+  // Indeed this._result.matchCount may include matches from the previous search.
+  this._currentMatchCount = 0;
+
+  // These are used to avoid adding duplicate entries to the results.
+  this._usedURLs = [];
+  this._usedPlaceIds = new Set();
 
   // Counters for the number of matches per MATCHTYPE.
   this._counts = Object.values(MATCHTYPE)
@@ -886,16 +902,17 @@ Search.prototype = {
    * Used to delay the most complex queries, to save IO while the user is
    * typing.
    */
-  _sleepDeferred: null,
+  _sleepResolve: null,
   _sleep(aTimeMs) {
     // Reuse a single instance to try shaving off some usless work before
     // the first query.
     if (!this._sleepTimer)
       this._sleepTimer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
-    this._sleepDeferred = PromiseUtils.defer();
-    this._sleepTimer.initWithCallback(() => this._sleepDeferred.resolve(),
-                                      aTimeMs, Ci.nsITimer.TYPE_ONE_SHOT);
-    return this._sleepDeferred.promise;
+    return new Promise(resolve => {
+      this._sleepResolve = resolve;
+      this._sleepTimer.initWithCallback(resolve, aTimeMs,
+                                        Ci.nsITimer.TYPE_ONE_SHOT);
+    });
   },
 
   /**
@@ -930,7 +947,7 @@ Search.prototype = {
     // Set the right JavaScript behavior based on our preference.  Note that the
     // preference is whether or not we should filter JavaScript, and the
     // behavior is if we should search it or not.
-    if (!Prefs.filterJavaScript) {
+    if (!Prefs.get("filter.javascript")) {
       this.setBehavior("javascript");
     }
 
@@ -943,15 +960,24 @@ Search.prototype = {
    * and no new matches may be added to the current result.
    */
   stop() {
+    // Avoid multiple calls or re-entrance.
+    if (!this.pending)
+      return;
+    if (this._notifyTimer)
+      this._notifyTimer.cancel();
+    this._notifyDelaysCount = 0;
     if (this._sleepTimer)
       this._sleepTimer.cancel();
-    if (this._sleepDeferred) {
-      this._sleepDeferred.resolve();
-      this._sleepDeferred = null;
+    if (this._sleepResolve) {
+      this._sleepResolve();
+      this._sleepResolve = null;
     }
     if (this._searchSuggestionController) {
       this._searchSuggestionController.stop();
       this._searchSuggestionController = null;
+    }
+    if (typeof this.interrupt == "function") {
+      this.interrupt();
     }
     this.pending = false;
   },
@@ -971,9 +997,16 @@ Search.prototype = {
     if (!this.pending)
       return;
 
+    // Used by stop() to interrupt an eventual running statement.
+    this.interrupt = () => {
+      // Interrupt any ongoing statement to run the search sooner.
+      if (!SwitchToTabStorage.updating) {
+        conn.interrupt();
+      }
+    };
+
     TelemetryStopwatch.start(TELEMETRY_1ST_RESULT, this);
-    if (this._searchString)
-      TelemetryStopwatch.start(TELEMETRY_6_FIRST_RESULTS, this);
+    TelemetryStopwatch.start(TELEMETRY_6_FIRST_RESULTS, this);
 
     // Since we call the synchronous parseSubmissionURL function later, we must
     // wait for the initialization of PlacesSearchAutocompleteProvider first.
@@ -1005,8 +1038,7 @@ Search.prototype = {
     // are not enabled).
 
     // Get the final query, based on the tokens found in the search string.
-    let queries = [ this._adaptiveQuery ];
-
+    let queries = [];
     // "openpage" behavior is supported by the default query.
     // _switchToTabQuery instead returns only pages not supported by history.
     if (this.hasBehavior("openpage")) {
@@ -1023,6 +1055,7 @@ Search.prototype = {
     this._addingHeuristicFirstMatch = true;
     let hasHeuristic = await this._matchFirstHeuristicResult(conn);
     this._addingHeuristicFirstMatch = false;
+    this._cleanUpNonCurrentMatches(MATCHTYPE.HEURISTIC);
     if (!this.pending)
       return;
 
@@ -1032,45 +1065,80 @@ Search.prototype = {
     // Though, if there's no heuristic result, we start searching immediately,
     // since autocomplete may be waiting for us.
     if (hasHeuristic) {
-      await this._sleep(Prefs.delay);
+      await this._sleep(Prefs.get("delay"));
       if (!this.pending)
         return;
     }
 
     // Only add extension suggestions if the first token is a registered keyword
     // and the search string has characters after the first token.
-    if (ExtensionSearchHandler.isKeywordRegistered(this._searchTokens[0]) &&
+    let extensionsCompletePromise = Promise.resolve();
+    if (this._searchTokens.length > 0 &&
+        ExtensionSearchHandler.isKeywordRegistered(this._searchTokens[0]) &&
         this._originalSearchString.length > this._searchTokens[0].length) {
-      await this._matchExtensionSuggestions();
-      if (!this.pending)
-        return;
+      // Do not await on this, since extensions cannot notify when they are done
+      // adding results, it may take too long.
+      extensionsCompletePromise = this._matchExtensionSuggestions();
     } else if (ExtensionSearchHandler.hasActiveInputSession()) {
       ExtensionSearchHandler.handleInputCancelled();
     }
 
+    let searchSuggestionsCompletePromise = Promise.resolve();
     if (this._enableActions && this._searchTokens.length > 0) {
-      await this._matchSearchSuggestions();
-      if (!this.pending)
-        return;
+      // Limit the string sent for search suggestions to a maximum length.
+      let searchString = this._searchTokens.join(" ")
+                             .substr(0, Prefs.get("maxCharsForSearchSuggestions"));
+      // Avoid fetching suggestions if they are not required, private browsing
+      // mode is enabled, or the search string may expose sensitive information.
+      if (this.hasBehavior("searches") && !this._inPrivateWindow &&
+          !this._prohibitSearchSuggestionsFor(searchString)) {
+        searchSuggestionsCompletePromise = this._matchSearchSuggestions(searchString);
+        if (this.hasBehavior("restrict")) {
+          // Wait for the suggestions to be added.
+          await searchSuggestionsCompletePromise;
+          this._cleanUpNonCurrentMatches(MATCHTYPE.SUGGESTION);
+          // We're done if we're restricting to search suggestions.
+          // Notify the result completion then stop the search.
+          this._autocompleteSearch.finishSearch(true);
+          return;
+        }
+      }
     }
+    // In any case, clear previous suggestions.
+    searchSuggestionsCompletePromise.then(() => {
+      this._cleanUpNonCurrentMatches(MATCHTYPE.SUGGESTION);
+    });
 
-    for (let [query, params] of queries) {
-      await conn.executeCached(query, params, this._onResultRow.bind(this));
-      if (!this.pending)
-        return;
-    }
+    // Run the adaptive query first.
+    await conn.executeCached(this._adaptiveQuery[0], this._adaptiveQuery[1],
+                             this._onResultRow.bind(this));
+    if (!this.pending)
+      return;
 
+    // Then fetch remote tabs.
     if (this._enableActions && this.hasBehavior("openpage")) {
       await this._matchRemoteTabs();
       if (!this.pending)
         return;
     }
 
+    // Finally run all the other queries.
+    for (let [query, params] of queries) {
+      await conn.executeCached(query, params, this._onResultRow.bind(this));
+      if (!this.pending)
+        return;
+    }
+
+    // Ideally we should wait until MATCH_BOUNDARY_ANYWHERE, but that query
+    // may be really slow and we may end up showing old results for too long.
+    this._cleanUpNonCurrentMatches(MATCHTYPE.GENERAL);
+
     // If we do not have enough results, and our match type is
     // MATCH_BOUNDARY_ANYWHERE, search again with MATCH_ANYWHERE to get more
     // results.
+    let count = this._counts[MATCHTYPE.GENERAL] + this._counts[MATCHTYPE.HEURISTIC];
     if (this._matchBehavior == MATCH_BOUNDARY_ANYWHERE &&
-        this._counts[MATCHTYPE.GENERAL] < Prefs.maxRichResults) {
+        count < Prefs.get("maxRichResults")) {
       this._matchBehavior = MATCH_ANYWHERE;
       for (let [query, params] of [ this._adaptiveQuery,
                                     this._searchQuery ]) {
@@ -1082,23 +1150,22 @@ Search.prototype = {
 
     this._matchPreloadedSites();
 
-    // Ensure to fill any remaining space. Suggestions which come from extensions are
-    // inserted at the beginning, so any suggestions
-    await Promise.all(this._allMatchesPromises);
+    // Ensure to fill any remaining space.
+    await searchSuggestionsCompletePromise;
+    await extensionsCompletePromise;
   },
 
-
   async _checkPreloadedSitesExpiry() {
-    if (!Prefs.preloadedSitesEnabled)
+    if (!Prefs.get("usepreloadedtopurls.enabled"))
       return;
     let profileCreationDate = await ProfileAgeCreatedPromise;
     let daysSinceProfileCreation = (Date.now() - profileCreationDate) / MS_PER_DAY;
-    if (daysSinceProfileCreation > Prefs.preloadedSitesExpireDays)
+    if (daysSinceProfileCreation > Prefs.get("usepreloadedtopurls.expire_days"))
       Services.prefs.setBoolPref("browser.urlbar.usepreloadedtopurls.enabled", false);
   },
 
   _matchPreloadedSites() {
-    if (!Prefs.preloadedSitesEnabled)
+    if (!Prefs.get("usepreloadedtopurls.enabled"))
       return;
 
     // In case user typed just "https://" or "www." or "https://www."
@@ -1137,7 +1204,7 @@ Search.prototype = {
   },
 
   _matchPreloadedSiteForAutofill() {
-    if (!Prefs.preloadedSitesEnabled)
+    if (!Prefs.get("usepreloadedtopurls.enabled"))
       return false;
 
     if (!(this._searchStringScheme === "" ||
@@ -1161,7 +1228,7 @@ Search.prototype = {
       return site.uri.host.startsWith(this._searchStringFromWWW)
              && matchScheme(site, this);
     }
-    let site = PreloadedSiteStorage.sites.find(matchStrict, this)
+    let site = PreloadedSiteStorage.sites.find(matchStrict, this);
     if (site) {
       let match = {
         // We keep showing prefix that user typed, then what we match on
@@ -1271,7 +1338,7 @@ Search.prototype = {
         try {
           new URL(this._originalSearchString);
         } catch (ex) {
-          if (Prefs.keywordEnabled && !looksLikeUrl(this._originalSearchString, true)) {
+          if (Prefs.get("keyword.enabled") && !looksLikeUrl(this._originalSearchString, true)) {
             this._addingHeuristicFirstMatch = false;
             await this._matchCurrentSearchEngine();
             this._addingHeuristicFirstMatch = true;
@@ -1293,55 +1360,36 @@ Search.prototype = {
     return false;
   },
 
-  async _matchSearchSuggestions() {
-    // Limit the string sent for search suggestions to a maximum length.
-    let searchString = this._searchTokens.join(" ")
-                           .substr(0, Prefs.maxCharsForSearchSuggestions);
-    // Avoid fetching suggestions if they are not required, private browsing
-    // mode is enabled, or the search string may expose sensitive information.
-    if (!this.hasBehavior("searches") || this._inPrivateWindow ||
-        this._prohibitSearchSuggestionsFor(searchString)) {
-      return;
-    }
-
+  _matchSearchSuggestions(searchString) {
     this._searchSuggestionController =
       PlacesSearchAutocompleteProvider.getSuggestionController(
         searchString,
         this._inPrivateWindow,
-        Prefs.maxHistoricalSearchSuggestions,
-        Prefs.maxRichResults - Prefs.maxHistoricalSearchSuggestions,
+        Prefs.get("maxHistoricalSearchSuggestions"),
+        Prefs.get("maxRichResults") - Prefs.get("maxHistoricalSearchSuggestions"),
         this._userContextId
       );
-    let promise = this._searchSuggestionController.fetchCompletePromise
-      .then(() => {
-        // The search has been canceled already.
-        if (!this._searchSuggestionController)
-          return;
-        if (this._searchSuggestionController.resultsCount >= 0 &&
-            this._searchSuggestionController.resultsCount < 2) {
-          // The original string is used to properly compare with the next search.
-          this._lastLowResultsSearchSuggestion = this._originalSearchString;
+    return this._searchSuggestionController.fetchCompletePromise.then(() => {
+      // The search has been canceled already.
+      if (!this._searchSuggestionController)
+        return;
+      if (this._searchSuggestionController.resultsCount >= 0 &&
+          this._searchSuggestionController.resultsCount < 2) {
+        // The original string is used to properly compare with the next search.
+        this._lastLowResultsSearchSuggestion = this._originalSearchString;
+      }
+      while (this.pending) {
+        let result = this._searchSuggestionController.consume();
+        if (!result)
+          break;
+        let { match, suggestion, historical } = result;
+        if (!looksLikeUrl(suggestion)) {
+          // Don't include the restrict token, if present.
+          let searchString = this._searchTokens.join(" ");
+          this._addSearchEngineMatch(match, searchString, suggestion, historical);
         }
-        while (this.pending) {
-          let result = this._searchSuggestionController.consume();
-          if (!result)
-            break;
-          let { match, suggestion, historical } = result;
-          if (!looksLikeUrl(suggestion)) {
-            // Don't include the restrict token, if present.
-            let searchString = this._searchTokens.join(" ");
-            this._addSearchEngineMatch(match, searchString, suggestion, historical);
-          }
-        }
-      });
-
-    if (this.hasBehavior("restrict")) {
-      // We're done if we're restricting to search suggestions.
-      await promise;
-      this.stop();
-    } else {
-      this._allMatchesPromises.push(promise);
-    }
+      }
+    }).catch(Cu.reportError);
   },
 
   _prohibitSearchSuggestionsFor(searchString) {
@@ -1385,9 +1433,9 @@ Search.prototype = {
         // like a URL, then we'll probably have a result.
         let gotResult = false;
         let [ query, params ] = this._urlQuery;
-        await conn.executeCached(query, params, row => {
+        await conn.executeCached(query, params, (row, cancel) => {
           gotResult = true;
-          this._onResultRow(row);
+          this._onResultRow(row, cancel);
         });
         return gotResult;
       }
@@ -1396,9 +1444,9 @@ Search.prototype = {
 
     let gotResult = false;
     let [ query, params ] = this._hostQuery;
-    await conn.executeCached(query, params, row => {
+    await conn.executeCached(query, params, (row, cancel) => {
       gotResult = true;
-      this._onResultRow(row);
+      this._onResultRow(row, cancel);
     });
     return gotResult;
   },
@@ -1440,7 +1488,7 @@ Search.prototype = {
       value = PlacesUtils.mozActionURI("keyword", {
         url,
         input: this._originalSearchString,
-        postData,
+        postData
       });
     }
     // The title will end up being "host: queryString"
@@ -1459,7 +1507,7 @@ Search.prototype = {
   },
 
   async _matchSearchEngineUrl() {
-    if (!Prefs.autofillSearchEngines)
+    if (!Prefs.get("autoFill.searchEngines"))
       return false;
 
     let match = await PlacesSearchAutocompleteProvider.findMatchByToken(
@@ -1493,8 +1541,8 @@ Search.prototype = {
     // match the search string.  If this happens there is some case we
     // are not handling properly yet.
     if (!value.startsWith(this._originalSearchString)) {
-      Components.utils.reportError(`Trying to inline complete in-the-middle
-                                    ${this._originalSearchString} to ${value}`);
+      Cu.reportError(`Trying to inline complete in-the-middle
+                      ${this._originalSearchString} to ${value}`);
       return false;
     }
 
@@ -1574,8 +1622,10 @@ Search.prototype = {
       style: "action searchengine",
       frecency: FRECENCY_DEFAULT
     };
-    if (suggestion)
+    if (suggestion) {
+      match.style += " suggestion";
       match.type = MATCHTYPE.SUGGESTION;
+    }
 
     this._addMatch(match);
   },
@@ -1589,16 +1639,25 @@ Search.prototype = {
         }
       }
     );
+    // Remove previous search matches sooner than the maximum timeout, otherwise
+    // matches may appear stale for a long time.
+    // This is necessary because WebExtensions don't have a method to notify
+    // that they are done providing results, so they could be pending forever.
+    setTimeout(() => this._cleanUpNonCurrentMatches(MATCHTYPE.EXTENSION), 100);
+
     // Since the extension has no way to signale when it's done pushing
     // results, we add a timeout racing with the addition.
-    let timeoutPromise = new Promise((resolve, reject) => {
-      setTimeout(() => reject(new Error("timeout waiting for the extension to add its results to the location bar")),
-                 MAXIMUM_ALLOWED_EXTENSION_TIME_MS);
+    let timeoutPromise = new Promise(resolve => {
+      setTimeout(resolve, MAXIMUM_ALLOWED_EXTENSION_TIME_MS);
     });
-    this._allMatchesPromises.push(Promise.race([timeoutPromise, promise]).catch(Cu.reportError));
+    return Promise.race([timeoutPromise, promise]).catch(Cu.reportError);
   },
 
   async _matchRemoteTabs() {
+    // Bail out early for non-sync users.
+    if (!syncUsernamePref) {
+      return;
+    }
     let matches = await PlacesRemoteTabsAutocompleteProvider.getMatches(this._originalSearchString);
     for (let {url, title, icon, deviceName} of matches) {
       // It's rare that Sync supplies the icon for the page (but if it does, it
@@ -1620,7 +1679,7 @@ Search.prototype = {
         // by "remote" matches.
         frecency: FRECENCY_DEFAULT + 1,
         icon,
-      }
+      };
       this._addMatch(match);
     }
   },
@@ -1635,7 +1694,7 @@ Search.prototype = {
       fixupInfo = Services.uriFixup.getFixupURIInfo(this._originalSearchString,
                                                     flags);
     } catch (e) {
-      if (e.result == Cr.NS_ERROR_MALFORMED_URI && !Prefs.keywordEnabled) {
+      if (e.result == Cr.NS_ERROR_MALFORMED_URI && !Prefs.get("keyword.enabled")) {
         let value = PlacesUtils.mozActionURI("visiturl", {
           url: this._originalSearchString,
           input: this._originalSearchString,
@@ -1674,8 +1733,8 @@ Search.prototype = {
     // pass the pretty, unescaped URL as the match comment, since it's likely
     // to be displayed to the user, and in any case the front-end should not
     // rely on it being canonical.
-    let escapedURL = uri.spec;
-    let displayURL = textURIService.unEscapeURIForUI("UTF-8", uri.spec);
+    let escapedURL = uri.displaySpec;
+    let displayURL = Services.textToSubURI.unEscapeURIForUI("UTF-8", escapedURL);
 
     let value = PlacesUtils.mozActionURI("visiturl", {
       url: escapedURL,
@@ -1696,7 +1755,7 @@ Search.prototype = {
     // By default we won't provide an icon, but for the subset of urls with a
     // host we'll check for a typed slash and set favicon for the host part.
     if (hostExpected &&
-        (this._trimmedOriginalSearchString.endsWith("/") || uri.path.length > 1)) {
+        (this._trimmedOriginalSearchString.endsWith("/") || uri.pathQueryRef.length > 1)) {
       match.icon = `page-icon:${uri.prePath}/`;
     }
 
@@ -1704,10 +1763,7 @@ Search.prototype = {
     return true;
   },
 
-  _onResultRow(row) {
-    if (this._counts[MATCHTYPE.GENERAL] == 0) {
-      TelemetryStopwatch.finish(TELEMETRY_1ST_RESULT, this);
-    }
+  _onResultRow(row, cancel) {
     let queryType = row.getResultByIndex(QUERYINDEX_QUERYTYPE);
     let match;
     switch (queryType) {
@@ -1726,8 +1782,9 @@ Search.prototype = {
     this._addMatch(match);
     // If the search has been canceled by the user or by _addMatch, or we
     // fetched enough results, we can stop the underlying Sqlite query.
-    if (!this.pending || this._counts[MATCHTYPE.GENERAL] == Prefs.maxRichResults)
-      throw StopIteration;
+    let count = this._counts[MATCHTYPE.GENERAL] + this._counts[MATCHTYPE.HEURISTIC];
+    if (!this.pending || count >= Prefs.get("maxRichResults"))
+      cancel();
   },
 
   _maybeRestyleSearchMatch(match) {
@@ -1787,27 +1844,10 @@ Search.prototype = {
                                        !this._searchString.includes("/"));
     }
 
-    // Must check both id and url, cause keywords dynamically modify the url.
-    let urlMapKey = makeKeyForURL(match);
-    if ((match.placeId && this._usedPlaceIds.has(match.placeId)) ||
-        this._usedURLs.has(urlMapKey)) {
-      return;
-    }
-
-    // Add this to our internal tracker to ensure duplicates do not end up in
-    // the result.
-    // Not all entries have a place id, thus we fallback to the url for them.
-    // We cannot use only the url since keywords entries are modified to
-    // include the search string, and would be returned multiple times.  Ids
-    // are faster too.
-    if (match.placeId)
-      this._usedPlaceIds.add(match.placeId);
-    this._usedURLs.add(urlMapKey);
-
     match.style = match.style || "favicon";
 
     // Restyle past searches, unless they are bookmarks or special results.
-    if (Prefs.restyleSearches && match.style == "favicon") {
+    if (Prefs.get("restyleSearches") && match.style == "favicon") {
       this._maybeRestyleSearchMatch(match);
     }
 
@@ -1818,33 +1858,117 @@ Search.prototype = {
     match.icon = match.icon || "";
     match.finalCompleteValue = match.finalCompleteValue || "";
 
-    this._result.insertMatchAt(this._getInsertIndexForMatch(match),
+    let {index, replace} = this._getInsertIndexForMatch(match);
+    if (index == -1)
+      return;
+    if (replace) { // Replacing an existing match from the previous search.
+      this._result.removeMatchAt(index);
+    }
+    this._result.insertMatchAt(index,
                                match.value,
                                match.comment,
                                match.icon,
                                match.style,
                                match.finalCompleteValue);
+    this._currentMatchCount++;
     this._counts[match.type]++;
 
-    if (this._result.matchCount == 6)
+    if (this._currentMatchCount == 1)
+      TelemetryStopwatch.finish(TELEMETRY_1ST_RESULT, this);
+    if (this._currentMatchCount == 6)
       TelemetryStopwatch.finish(TELEMETRY_6_FIRST_RESULTS, this);
-
-    this.notifyResults(true);
+    this.notifyResult(true, match.type == MATCHTYPE.HEURISTIC);
   },
 
   _getInsertIndexForMatch(match) {
+    // Check for duplicates and either discard (by returning -1) the duplicate
+    // or suggest to replace the original match, in case the new one is more
+    // specific (for example a Remote Tab wins over History, and a Switch to Tab
+    // wins over a Remote Tab).
+    // Must check both id and url, cause keywords dynamically modify the url.
+    // Note: this partially fixes Bug 1222435,  but not if the urls differ more
+    // than just by "http://". We should still evaluate www and other schemes
+    // equivalences.
+    let [urlMapKey, action] = makeKeyForURL(match);
+    if ((match.placeId && this._usedPlaceIds.has(match.placeId)) ||
+        this._usedURLs.map(e => e.key).includes(urlMapKey)) {
+      let isDupe = true;
+      if (action && ["switchtab", "remotetab"].includes(action.type)) {
+        // The new entry is a switch/remote tab entry, look for the duplicate
+        // among current matches.
+        for (let i = 0; i < this._usedURLs.length; ++i) {
+          let {key: matchKey, action: matchAction, type: matchType} = this._usedURLs[i];
+          if (matchKey == urlMapKey) {
+            isDupe = true;
+            // Don't replace the match if the existing one is heuristic and the
+            // new one is a switchtab, instead also add the switchtab match.
+            if (matchType == MATCHTYPE.HEURISTIC && action.type == "switchtab") {
+              isDupe = false;
+              // Since we allow to insert a dupe in this case, we must continue
+              // checking the next matches to be sure we won't insert more than
+              // one dupe. For this same reason we must reset isDupe = true for
+              // each found dupe.
+              continue;
+            }
+            if (!matchAction || action.type == "switchtab") {
+              this._usedURLs[i] = {key: urlMapKey, action, type: match.type};
+              return { index:  i, replace: true };
+            }
+            break; // Found the duplicate, no reason to continue.
+          }
+        }
+      }
+      if (isDupe) {
+        return { index: -1, replace: false };
+      }
+    }
+
+    // Add this to our internal tracker to ensure duplicates do not end up in
+    // the result.
+    // Not all entries have a place id, thus we fallback to the url for them.
+    // We cannot use only the url since keywords entries are modified to
+    // include the search string, and would be returned multiple times.  Ids
+    // are faster too.
+    if (match.placeId)
+      this._usedPlaceIds.add(match.placeId);
+
     let index = 0;
     // The buckets change depending on the context, that is currently decided by
     // the first added match (the heuristic one).
     if (!this._buckets) {
       // Convert the buckets to readable objects with a count property.
-      let buckets = match.style.includes("searchengine") ? Prefs.matchBucketsSearch
-                                                         : Prefs.matchBuckets;
+      let buckets = match.type == MATCHTYPE.HEURISTIC &&
+                    match.style.includes("searchengine") ? Prefs.get("matchBucketsSearch")
+                                                         : Prefs.get("matchBuckets");
+      // - available is the number of available slots in the bucket
+      // - insertIndex is the index of the first available slot in the bucket
+      // - count is the number of matches in the bucket, note that it also
+      //   account for matches from the previous search, while available and
+      //   insertIndex don't.
       this._buckets = buckets.map(([type, available]) => ({ type,
                                                             available,
-                                                            count: 0,
+                                                            insertIndex: 0,
+                                                            count: 0
                                                           }));
+
+      // If we have matches from the previous search, we want to replace them
+      // in-place to reduce flickering.
+      // This requires walking the previous matches and marking their existence
+      // into the current buckets, so that, when we'll add the new matches to
+      // the buckets, we can either append or replace a match.
+      if (this._previousSearchMatchTypes.length > 0) {
+        for (let type of this._previousSearchMatchTypes) {
+          for (let bucket of this._buckets) {
+            if (type == bucket.type && bucket.count < bucket.available) {
+              bucket.count++;
+              break;
+            }
+          }
+        }
+      }
     }
+
+    let replace = 0;
     for (let bucket of this._buckets) {
       // Move to the next bucket if the match type is incompatible, or if there
       // is no available space or if the frecency is below the threshold.
@@ -1853,12 +1977,74 @@ Search.prototype = {
         continue;
       }
 
-      index += bucket.count;
+      index += bucket.insertIndex;
       bucket.available--;
-      bucket.count++;
+      if (bucket.insertIndex < bucket.count) {
+        replace = true;
+      } else {
+        bucket.count++;
+      }
+      bucket.insertIndex++;
       break;
     }
-    return index;
+    this._usedURLs[index] = {key: urlMapKey, action, type: match.type};
+    return { index, replace };
+  },
+
+  /**
+   * Removes matches from a previous search, that are no more returned by the
+   * current search
+   * @param type
+   *        The MATCHTYPE to clean up.
+   * @param [optional] notify
+   *        Whether to notify a result change.
+   */
+  _cleanUpNonCurrentMatches(type, notify = true) {
+    if (this._previousSearchMatchTypes.length == 0 || !this.pending)
+      return;
+
+    let index = 0;
+    let changed = false;
+    if (!this._buckets) {
+      // No match arrived yet, so any match of the given type should be removed
+      // from the top.
+      while (this._previousSearchMatchTypes[0] == type) {
+        this._previousSearchMatchTypes.shift();
+        this._result.removeMatchAt(0);
+        changed = true;
+      }
+    } else {
+      for (let bucket of this._buckets) {
+        if (bucket.type != type) {
+          index += bucket.count;
+          continue;
+        }
+        index += bucket.insertIndex;
+
+        while (bucket.count > bucket.insertIndex) {
+          this._result.removeMatchAt(index);
+          changed = true;
+          bucket.count--;
+        }
+      }
+    }
+    if (changed && notify) {
+      this.notifyResult(true);
+    }
+  },
+
+  /**
+   * If in restrict mode, cleanups non current matches for all the empty types.
+   */
+  cleanUpRestrictNonCurrentMatches() {
+    if (this.hasBehavior("restrict") && this._previousSearchMatchTypes.length > 0) {
+      for (let type of new Set(this._previousSearchMatchTypes)) {
+        if (this._counts[type] == 0) {
+          // Don't notify, since we are about to notify completion.
+          this._cleanUpNonCurrentMatches(type, false);
+        }
+      }
+    }
   },
 
   _processHostRow(row) {
@@ -2046,7 +2232,7 @@ Search.prototype = {
         userContextId: this._userContextId,
         // Limit the query to the the maximum number of desired results.
         // This way we can avoid doing more work than needed.
-        maxResults: Prefs.maxRichResults
+        maxResults: Prefs.get("maxRichResults")
       }
     ];
   },
@@ -2068,7 +2254,7 @@ Search.prototype = {
         // original search string.
         searchString: this._searchTokens.join(" "),
         userContextId: this._userContextId,
-        maxResults: Prefs.maxRichResults
+        maxResults: Prefs.get("maxRichResults")
       }
     ];
   },
@@ -2098,7 +2284,7 @@ Search.prototype = {
    */
   get _shouldAutofill() {
     // First of all, check for the autoFill pref.
-    if (!Prefs.autofill)
+    if (!Prefs.get("autoFill"))
       return false;
 
     if (this._searchTokens.length != 1)
@@ -2136,7 +2322,7 @@ Search.prototype = {
    *         database with and an object containing the params to bound.
    */
   get _hostQuery() {
-    let typed = Prefs.autofillTyped || this.hasBehavior("typed");
+    let typed = Prefs.get("autoFill.typed") || this.hasBehavior("typed");
     let bookmarked = this.hasBehavior("bookmark") && !this.hasBehavior("history");
 
     let query = [];
@@ -2177,7 +2363,7 @@ Search.prototype = {
       this._trimmedOriginalSearchString.slice(pathIndex)
     );
 
-    let typed = Prefs.autofillTyped || this.hasBehavior("typed");
+    let typed = Prefs.get("autoFill.typed") || this.hasBehavior("typed");
     let bookmarked = this.hasBehavior("bookmark") && !this.hasBehavior("history");
 
     let query = [];
@@ -2198,22 +2384,52 @@ Search.prototype = {
     return query;
   },
 
- /**
-   * Notifies the listener about results.
+  // The result is notified to the search listener on a timer, to chunk multiple
+  // match updates together and avoid rebuilding the popup at every new match.
+  _notifyTimer: null,
+
+  /**
+   * Notifies the current result to the listener.
    *
    * @param searchOngoing
-   *        Indicates whether the search is ongoing.
+   *        Indicates whether the search result should be marked as ongoing.
+   * @param skipDelay
+   *        Whether to notify immediately.
    */
-  notifyResults(searchOngoing) {
-    let result = this._result;
-    let resultCode = result.matchCount ? "RESULT_SUCCESS" : "RESULT_NOMATCH";
-    if (searchOngoing) {
-      resultCode += "_ONGOING";
+  _notifyDelaysCount: 0,
+  notifyResult(searchOngoing, skipDelay = false) {
+    let notify = () => {
+      if (!this.pending)
+        return;
+      this._notifyDelaysCount = 0;
+      let resultCode = this._currentMatchCount ? "RESULT_SUCCESS" : "RESULT_NOMATCH";
+      if (searchOngoing) {
+        resultCode += "_ONGOING";
+      }
+      let result = this._result;
+      result.setSearchResult(Ci.nsIAutoCompleteResult[resultCode]);
+      this._listener.onSearchResult(this._autocompleteSearch, result);
+      if (!searchOngoing) {
+        // Break possible cycles.
+        this._listener = null;
+        this._autocompleteSearch = null;
+        this.stop();
+      }
+    };
+    if (this._notifyTimer) {
+      this._notifyTimer.cancel();
     }
-    result.setSearchResult(Ci.nsIAutoCompleteResult[resultCode]);
-    this._listener.onSearchResult(this._autocompleteSearch, result);
+    // In the worst case, we may get evenly spaced matches that would end up
+    // delaying the UI by N_MATCHES * NOTIFYRESULT_DELAY_MS. Thus, we clamp the
+    // number of times we may delay matches.
+    if (skipDelay || this._notifyDelaysCount > 3) {
+      notify();
+    } else {
+      this._notifyDelaysCount++;
+      this._notifyTimer = setTimeout(notify, NOTIFYRESULT_DELAY_MS);
+    }
   },
-}
+};
 
 // UnifiedComplete class
 // component @mozilla.org/autocomplete/search;1?name=unifiedcomplete
@@ -2225,7 +2441,7 @@ function UnifiedComplete() {
   // open pages should be set to false.
   Prefs;
 
-  if (Prefs.preloadedSitesEnabled) {
+  if (Prefs.get("usepreloadedtopurls.enabled")) {
     // force initializing the profile age check
     // to ensure the off-main-thread-IO happens ASAP
     // and we don't have to wait for it when doing an autocomplete lookup
@@ -2255,8 +2471,8 @@ UnifiedComplete.prototype = {
    * @rejects javascript exception.
    */
   getDatabaseHandle() {
-    if (Prefs.enabled && !this._promiseDatabase) {
-      this._promiseDatabase = (async function() {
+    if (Prefs.get("autocomplete.enabled") && !this._promiseDatabase) {
+      this._promiseDatabase = (async () => {
         let conn = await Sqlite.cloneStorageConnection({
           connection: PlacesUtils.history.DBConnection,
           readOnly: true
@@ -2264,7 +2480,11 @@ UnifiedComplete.prototype = {
 
         try {
            Sqlite.shutdown.addBlocker("Places UnifiedComplete.js clone closing",
-                                      async function() {
+                                      async () => {
+                                        // Break a possible cycle through the
+                                        // previous result, the controller and
+                                        // ourselves.
+                                        this._currentSearch = null;
                                         SwitchToTabStorage.shutdown();
                                         await conn.close();
                                       });
@@ -2294,11 +2514,11 @@ UnifiedComplete.prototype = {
   // mozIPlacesAutoComplete
 
   registerOpenPage(uri, userContextId) {
-    SwitchToTabStorage.add(uri, userContextId);
+    SwitchToTabStorage.add(uri, userContextId).catch(Cu.reportError);
   },
 
   unregisterOpenPage(uri, userContextId) {
-    SwitchToTabStorage.delete(uri, userContextId);
+    SwitchToTabStorage.delete(uri, userContextId).catch(Cu.reportError);
   },
 
   populatePreloadedSiteStorage(json) {
@@ -2307,28 +2527,58 @@ UnifiedComplete.prototype = {
 
   // nsIAutoCompleteSearch
 
-  startSearch(searchString, searchParam, previousResult, listener) {
+  startSearch(searchString, searchParam, acPreviousResult, listener) {
     // Stop the search in case the controller has not taken care of it.
     if (this._currentSearch) {
       this.stopSearch();
     }
 
-    // Note: We don't use previousResult to make sure ordering of results are
-    //       consistent.  See bug 412730 for more details.
-
     // If the previous search didn't fetch enough search suggestions, it's
     // unlikely a longer text would do.
     let prohibitSearchSuggestions =
-      this._lastLowResultsSearchSuggestion &&
+      !!this._lastLowResultsSearchSuggestion &&
       searchString.length > this._lastLowResultsSearchSuggestion.length &&
       searchString.startsWith(this._lastLowResultsSearchSuggestion);
 
+    // We don't directly reuse the controller provided previousResult because:
+    //  * it is only populated when the new searchString is an extension of the
+    //    previous one. We want to handle the backspace case too.
+    //  * Bookmarks may be titled differently than history and we want to show
+    //    the right title.  For example a "foo" titled page could be bookmarked
+    //    as "foox", typing "foo" followed by "x" would show the history result
+    //    from the previous search (See bug 412730).
+    //  * Adaptive History means a result may appear even if the previous string
+    //    didn't match it.
+    // What we can do is reuse the previous result along with the bucketing
+    // system to avoid flickering. Since we know where a new match should be
+    // positioned, we  wait for a new match to arrive before replacing the
+    // previous one. This may leave stale matches from the previous search that
+    // would not be returned by the current one, thus once the current search is
+    // complete, we remove those stale matches with _cleanUpNonCurrentMatches().
+    let previousResult = null;
+    let insertMethod = Prefs.get("insertMethod");
+    if (this._currentSearch && insertMethod != INSERTMETHOD.APPEND) {
+      let result = this._currentSearch._result;
+      // Only reuse the previous result when one of the search strings is an
+      // extension of the other one.  We could expand this to any case, but
+      // that may leave exposed unrelated matches for a longer time.
+      let previousSearchString = result.searchString;
+      let stringsRelated = previousSearchString.length > 0 &&
+                           searchString.length > 0 &&
+                           (previousSearchString.includes(searchString) ||
+                            searchString.includes(previousSearchString));
+      if (insertMethod == INSERTMETHOD.MERGE || stringsRelated) {
+        previousResult = result;
+      }
+    }
+
     this._currentSearch = new Search(searchString, searchParam, listener,
-                                     this, this, prohibitSearchSuggestions);
+                                     this, prohibitSearchSuggestions,
+                                     previousResult);
 
     // If we are not enabled, we need to return now.  Notice we need an empty
     // result regardless, so we still create the Search object.
-    if (!Prefs.enabled) {
+    if (!Prefs.get("autocomplete.enabled")) {
       this.finishSearch(true);
       return;
     }
@@ -2370,10 +2620,14 @@ UnifiedComplete.prototype = {
     if (!search)
       return;
     this._lastLowResultsSearchSuggestion = search._lastLowResultsSearchSuggestion;
-    delete this._currentSearch;
 
-    if (!notify)
+    if (!notify || !search.pending)
       return;
+
+    // If we are in restrict mode and we reused the previous search results,
+    // it's possible we didn't go through all the cleanup methods due to early
+    // bailouts. Thus we could still have nonmatching results to remove.
+    search.cleanUpRestrictNonCurrentMatches();
 
     // There is a possible race condition here.
     // When a search completes it calls finishSearch that notifies results
@@ -2381,18 +2635,10 @@ UnifiedComplete.prototype = {
     // onSearchComplete.
     // If onSearchComplete immediately starts a new search it will set a new
     // _currentSearch, and on return the execution will continue here, after
-    // notifyResults.
-    // Thus, ensure that notifyResults is the last call in this method,
+    // notifyResult.
+    // Thus, ensure that notifyResult is the last call in this method,
     // otherwise you might be touching the wrong search.
-    search.notifyResults(false);
-  },
-
-  // nsIAutoCompleteSimpleResultListener
-
-  onValueRemoved(result, spec, removeFromDB) {
-    if (removeFromDB) {
-      PlacesUtils.history.remove(spec).catch(Cu.reportError);
-    }
+    search.notifyResult(false);
   },
 
   // nsIAutoCompleteSearchDescriptor
@@ -2411,9 +2657,8 @@ UnifiedComplete.prototype = {
 
   _xpcom_factory: XPCOMUtils.generateSingletonFactory(UnifiedComplete),
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIAutoCompleteSearch,
-    Ci.nsIAutoCompleteSimpleResultListener,
     Ci.nsIAutoCompleteSearchDescriptor,
     Ci.mozIPlacesAutoComplete,
     Ci.nsIObserver,

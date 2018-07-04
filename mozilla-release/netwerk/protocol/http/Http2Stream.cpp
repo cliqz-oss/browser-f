@@ -38,7 +38,8 @@ namespace net {
 
 Http2Stream::Http2Stream(nsAHttpTransaction *httpTransaction,
                          Http2Session *session,
-                         int32_t priority)
+                         int32_t priority,
+                         uint64_t windowId)
   : mStreamID(0)
   , mSession(session)
   , mSegmentReader(nullptr)
@@ -72,6 +73,8 @@ Http2Stream::Http2Stream(nsAHttpTransaction *httpTransaction,
   , mTotalRead(0)
   , mPushSource(nullptr)
   , mAttempting0RTT(false)
+  , mCurrentForegroundTabOuterContentWindowId(windowId)
+  , mTransactionTabId(0)
   , mIsTunnel(false)
   , mPlainTextTunnel(false)
 {
@@ -100,14 +103,29 @@ Http2Stream::Http2Stream(nsAHttpTransaction *httpTransaction,
   }
   MOZ_ASSERT(httpPriority >= 0);
   SetPriority(static_cast<uint32_t>(httpPriority));
+
+  nsHttpTransaction *trans = mTransaction->QueryHttpTransaction();
+  if (trans) {
+    mTransactionTabId = trans->TopLevelOuterContentWindowId();
+  }
 }
 
 Http2Stream::~Http2Stream()
 {
+  ClearPushSource();
   ClearTransactionsBlockedOnTunnel();
   mStreamID = Http2Session::kDeadStreamID;
 
   LOG3(("Http2Stream::~Http2Stream %p", this));
+}
+
+void
+Http2Stream::ClearPushSource()
+{
+  if (mPushSource) {
+    mPushSource->SetConsumerStream(nullptr);
+    mPushSource = nullptr;
+  }
 }
 
 // ReadSegments() is used to write data down the socket. Generally, HTTP
@@ -325,7 +343,7 @@ Http2Stream::WriteSegments(nsAHttpSegmentWriter *writer,
 }
 
 nsresult
-Http2Stream::MakeOriginURL(const nsACString &origin, RefPtr<nsStandardURL> &url)
+Http2Stream::MakeOriginURL(const nsACString &origin, nsCOMPtr<nsIURI> &url)
 {
   nsAutoCString scheme;
   nsresult rv = net_ExtractURLScheme(origin, scheme);
@@ -335,15 +353,15 @@ Http2Stream::MakeOriginURL(const nsACString &origin, RefPtr<nsStandardURL> &url)
 
 nsresult
 Http2Stream::MakeOriginURL(const nsACString &scheme, const nsACString &origin,
-                           RefPtr<nsStandardURL> &url)
+                           nsCOMPtr<nsIURI> &url)
 {
-  url = new nsStandardURL();
-  nsresult rv = url->Init(nsIStandardURL::URLTYPE_AUTHORITY,
-                          scheme.EqualsLiteral("http") ?
-                              NS_HTTP_DEFAULT_PORT :
-                              NS_HTTPS_DEFAULT_PORT,
-                          origin, nullptr, nullptr);
-  return rv;
+  return NS_MutateURI(new nsStandardURL::Mutator())
+    .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                            nsIStandardURL::URLTYPE_AUTHORITY,
+                            scheme.EqualsLiteral("http") ? NS_HTTP_DEFAULT_PORT
+                                                         : NS_HTTPS_DEFAULT_PORT,
+                            nsCString(origin), nullptr, nullptr, nullptr))
+    .Finalize(url);
 }
 
 void
@@ -359,7 +377,7 @@ Http2Stream::CreatePushHashKey(const nsCString &scheme,
   fullOrigin.AppendLiteral("://");
   fullOrigin.Append(hostHeader);
 
-  RefPtr<nsStandardURL> origin;
+  nsCOMPtr<nsIURI> origin;
   nsresult rv = Http2Stream::MakeOriginURL(scheme, fullOrigin, origin);
 
   if (NS_SUCCEEDED(rv)) {
@@ -1005,6 +1023,8 @@ Http2Stream::ConvertResponseHeaders(Http2Decompressor *decompressor,
                                     int32_t &httpResponseCode)
 {
   aHeadersOut.Truncate();
+  // Add in some space to hopefully not have to reallocate while decompressing
+  // the headers. 512 bytes seems like a good enough number.
   aHeadersOut.SetCapacity(aHeadersIn.Length() + 512);
 
   nsresult rv =
@@ -1044,6 +1064,8 @@ Http2Stream::ConvertResponseHeaders(Http2Decompressor *decompressor,
     if ((httpResponseCode / 100) != 2) {
       MapStreamToPlainText();
     }
+    MapStreamToHttpConnection();
+    ClearTransactionsBlockedOnTunnel();
   }
 
   if (httpResponseCode == 101) {
@@ -1067,8 +1089,8 @@ Http2Stream::ConvertResponseHeaders(Http2Decompressor *decompressor,
   // The decoding went ok. Now we can customize and clean up.
 
   aHeadersIn.Truncate();
-  aHeadersOut.Append("X-Firefox-Spdy: h2");
-  aHeadersOut.Append("\r\n\r\n");
+  aHeadersOut.AppendLiteral("X-Firefox-Spdy: h2");
+  aHeadersOut.AppendLiteral("\r\n\r\n");
   LOG (("decoded response headers are:\n%s", aHeadersOut.BeginReading()));
   if (mIsTunnel && !mPlainTextTunnel) {
     aHeadersOut.Truncate();
@@ -1086,6 +1108,8 @@ Http2Stream::ConvertPushHeaders(Http2Decompressor *decompressor,
                                 nsACString &aHeadersOut)
 {
   aHeadersOut.Truncate();
+  // Add in some space to hopefully not have to reallocate while decompressing
+  // the headers. 512 bytes seems like a good enough number.
   aHeadersOut.SetCapacity(aHeadersIn.Length() + 512);
   nsresult rv =
     decompressor->DecodeHeaderBlock(reinterpret_cast<const uint8_t *>(aHeadersIn.BeginReading()),
@@ -1122,9 +1146,42 @@ Http2Stream::ConvertPushHeaders(Http2Decompressor *decompressor,
   return NS_OK;
 }
 
+nsresult
+Http2Stream::ConvertResponseTrailers(Http2Decompressor *decompressor,
+                                     nsACString &aTrailersIn)
+{
+  LOG3(("Http2Stream::ConvertResponseTrailers %p", this));
+  nsAutoCString flatTrailers;
+  // Add in some space to hopefully not have to reallocate while decompressing
+  // the headers. 512 bytes seems like a good enough number.
+  flatTrailers.SetCapacity(aTrailersIn.Length() + 512);
+
+  nsresult rv =
+    decompressor->DecodeHeaderBlock(reinterpret_cast<const uint8_t *>(aTrailersIn.BeginReading()),
+                                    aTrailersIn.Length(),
+                                    flatTrailers, false);
+  if (NS_FAILED(rv)) {
+    LOG3(("Http2Stream::ConvertResponseTrailers %p decode Error", this));
+    return rv;
+  }
+
+  nsHttpTransaction *trans = mTransaction->QueryHttpTransaction();
+  if (trans) {
+    trans->SetHttpTrailers(flatTrailers);
+  } else {
+    LOG3(("Http2Stream::ConvertResponseTrailers %p no trans", this));
+  }
+
+  return NS_OK;
+}
+
 void
 Http2Stream::Close(nsresult reason)
 {
+  // In case we are connected to a push, make sure the push knows we are closed,
+  // so it doesn't try to give us any more DATA that comes on it after our close.
+  ClearPushSource();
+
   mTransaction->Close(reason);
 }
 
@@ -1153,10 +1210,6 @@ Http2Stream::SetAllHeadersReceived()
   }
 
   mAllHeadersReceived = 1;
-  if (mIsTunnel) {
-    MapStreamToHttpConnection();
-    ClearTransactionsBlockedOnTunnel();
-  }
 }
 
 bool
@@ -1202,6 +1255,40 @@ Http2Stream::SetPriorityDependency(uint32_t newDependency, uint8_t newWeight,
         exclusive));
 }
 
+static uint32_t
+GetPriorityDependencyFromTransaction(nsHttpTransaction *trans)
+{
+  MOZ_ASSERT(trans);
+
+  uint32_t classFlags = trans->ClassOfService();
+
+  if (classFlags & nsIClassOfService::UrgentStart) {
+    return Http2Session::kUrgentStartGroupID;
+  }
+
+  if (classFlags & nsIClassOfService::Leader) {
+    return Http2Session::kLeaderGroupID;
+  }
+
+  if (classFlags & nsIClassOfService::Follower) {
+    return Http2Session::kFollowerGroupID;
+  }
+
+  if (classFlags & nsIClassOfService::Speculative) {
+    return Http2Session::kSpeculativeGroupID;
+  }
+
+  if (classFlags & nsIClassOfService::Background) {
+    return Http2Session::kBackgroundGroupID;
+  }
+
+  if (classFlags & nsIClassOfService::Unblocked) {
+    return Http2Session::kOtherGroupID;
+  }
+
+  return Http2Session::kFollowerGroupID; // unmarked followers
+}
+
 void
 Http2Stream::UpdatePriorityDependency()
 {
@@ -1230,27 +1317,63 @@ Http2Stream::UpdatePriorityDependency()
   // spculative bg streams depend on 9
   // urgent-start streams depend on d
 
-  uint32_t classFlags = trans->ClassOfService();
+  mPriorityDependency = GetPriorityDependencyFromTransaction(trans);
 
-  if (classFlags & nsIClassOfService::Leader) {
-    mPriorityDependency = Http2Session::kLeaderGroupID;
-  } else if (classFlags & nsIClassOfService::Follower) {
-    mPriorityDependency = Http2Session::kFollowerGroupID;
-  } else if (classFlags & nsIClassOfService::Speculative) {
-    mPriorityDependency = Http2Session::kSpeculativeGroupID;
-  } else if (classFlags & nsIClassOfService::Background) {
+  if (gHttpHandler->ActiveTabPriority() &&
+      mTransactionTabId != mCurrentForegroundTabOuterContentWindowId &&
+      mPriorityDependency != Http2Session::kUrgentStartGroupID) {
+    LOG3(("Http2Stream::UpdatePriorityDependency %p "
+          " depends on background group for trans %p\n",
+          this, trans));
     mPriorityDependency = Http2Session::kBackgroundGroupID;
-  } else if (classFlags & nsIClassOfService::Unblocked) {
-    mPriorityDependency = Http2Session::kOtherGroupID;
-  } else if (classFlags & nsIClassOfService::UrgentStart) {
-    mPriorityDependency = Http2Session::kUrgentStartGroupID;
-  } else {
-    mPriorityDependency = Http2Session::kFollowerGroupID; // unmarked followers
+
+    nsHttp::NotifyActiveTabLoadOptimization();
   }
 
   LOG3(("Http2Stream::UpdatePriorityDependency %p "
-        "classFlags %X depends on stream 0x%X\n",
-        this, classFlags, mPriorityDependency));
+        "depends on stream 0x%X\n",
+        this, mPriorityDependency));
+}
+
+void
+Http2Stream::TopLevelOuterContentWindowIdChanged(uint64_t windowId)
+{
+  MOZ_ASSERT(gHttpHandler->ActiveTabPriority());
+
+  LOG3(("Http2Stream::TopLevelOuterContentWindowIdChanged "
+        "%p windowId=%" PRIx64 "\n",
+        this, windowId));
+
+  mCurrentForegroundTabOuterContentWindowId = windowId;
+
+  if (!mSession->UseH2Deps()) {
+    return;
+  }
+
+  // Urgent start takes an absolute precedence, so don't
+  // change mPriorityDependency here.
+  if (mPriorityDependency == Http2Session::kUrgentStartGroupID) {
+    return;
+  }
+
+  if (mTransactionTabId != mCurrentForegroundTabOuterContentWindowId) {
+    mPriorityDependency = Http2Session::kBackgroundGroupID;
+    LOG3(("Http2Stream::TopLevelOuterContentWindowIdChanged %p "
+          "move into background group.\n", this));
+
+    nsHttp::NotifyActiveTabLoadOptimization();
+  } else {
+    nsHttpTransaction *trans = mTransaction->QueryHttpTransaction();
+    if (!trans) {
+      return;
+    }
+
+    mPriorityDependency = GetPriorityDependencyFromTransaction(trans);
+    LOG3(("Http2Stream::TopLevelOuterContentWindowIdChanged %p "
+          "depends on stream 0x%X\n", this, mPriorityDependency));
+  }
+
+  mSession->SendPriorityFrame(mStreamID, mPriorityDependency, mPriorityWeight);
 }
 
 void

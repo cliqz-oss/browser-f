@@ -14,6 +14,7 @@
 #include "nsComponentManagerUtils.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
+#include "nsIThreadManager.h"
 #ifdef XP_WIN
 #include "ThreadPoolCOMListener.h"
 #endif
@@ -46,6 +47,19 @@ SharedThreadPoolShutdownObserver::Observe(nsISupports* aSubject, const char *aTo
                                           const char16_t *aData)
 {
   MOZ_RELEASE_ASSERT(!strcmp(aTopic, "xpcom-shutdown-threads"));
+#ifdef EARLY_BETA_OR_EARLIER
+  {
+    ReentrantMonitorAutoEnter mon(*sMonitor);
+    if (!sPools->Iter().Done()) {
+      nsAutoCString str;
+      for (auto i = sPools->Iter(); !i.Done(); i.Next()) {
+        str.AppendPrintf("\"%s\" ", nsAutoCString(i.Key()).get());
+      }
+      printf_stderr("SharedThreadPool in xpcom-shutdown-threads. Waiting for "
+                    "pools %s\n", str.get());
+    }
+  }
+#endif
   SharedThreadPool::SpinUntilEmpty();
   sMonitor = nullptr;
   sPools = nullptr;
@@ -220,7 +234,7 @@ CreateThreadPool(const nsCString& aName)
   rv = pool->SetName(aName);
   NS_ENSURE_SUCCESS(rv, nullptr);
 
-  rv = pool->SetThreadStackSize(SharedThreadPool::kStackSize);
+  rv = pool->SetThreadStackSize(nsIThreadManager::kThreadPoolStackSize);
   NS_ENSURE_SUCCESS(rv, nullptr);
 
 #ifdef XP_WIN

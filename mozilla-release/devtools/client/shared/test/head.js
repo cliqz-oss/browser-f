@@ -2,21 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 /* eslint no-unused-vars: [2, {"vars": "local", "args": "none"}] */
-/* import-globals-from ../../framework/test/shared-head.js */
+/* import-globals-from shared-head.js */
+/* import-globals-from telemetry-test-helpers.js */
 
 "use strict";
 
 // shared-head.js handles imports, constants, and utility functions
-Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/client/framework/test/shared-head.js", this);
+Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js", this);
 
-const {DOMHelpers} = Cu.import("resource://devtools/client/shared/DOMHelpers.jsm", {});
+const {DOMHelpers} = ChromeUtils.import("resource://devtools/client/shared/DOMHelpers.jsm", {});
 const {Hosts} = require("devtools/client/framework/toolbox-hosts");
 
 const TEST_URI_ROOT = "http://example.com/browser/devtools/client/shared/test/";
 const OPTIONS_VIEW_URL = TEST_URI_ROOT + "doc_options-view.xul";
 
 function catchFail(func) {
-  return function () {
+  return function() {
     try {
       return func.apply(null, arguments);
     } catch (ex) {
@@ -93,7 +94,7 @@ function waitForValue(options) {
 
 function oneTimeObserve(name, callback) {
   return new Promise((resolve) => {
-    let func = function () {
+    let func = function() {
       Services.obs.removeObserver(func, name);
       if (callback) {
         callback();
@@ -105,48 +106,18 @@ function oneTimeObserve(name, callback) {
 }
 
 let createHost =
-Task.async(function* (type = "bottom", src = CHROME_URL_ROOT + "dummy.html") {
+async function(type = "bottom", src = CHROME_URL_ROOT + "dummy.html") {
   let host = new Hosts[type](gBrowser.selectedTab);
-  let iframe = yield host.create();
+  let iframe = await host.create();
 
-  yield new Promise(resolve => {
+  await new Promise(resolve => {
     let domHelper = new DOMHelpers(iframe.contentWindow);
     iframe.setAttribute("src", src);
     domHelper.onceDOMReady(resolve);
   });
 
   return [host, iframe.contentWindow, iframe.contentDocument];
-});
-
-/**
- * Check the correctness of the data recorded in Telemetry after
- * loadTelemetryAndRecordLogs was called.
- */
-function checkTelemetryResults(Telemetry) {
-  let result = Telemetry.prototype.telemetryInfo;
-
-  for (let histId in result) {
-    let value = result[histId];
-
-    if (histId.endsWith("OPENED_COUNT")) {
-      ok(value.length > 1, histId + " has more than one entry");
-
-      let okay = value.every(function (element) {
-        return element === true;
-      });
-
-      ok(okay, "All " + histId + " entries are === true");
-    } else if (histId.endsWith("TIME_ACTIVE_SECONDS")) {
-      ok(value.length > 1, histId + " has more than one entry");
-
-      let okay = value.every(function (element) {
-        return element > 0;
-      });
-
-      ok(okay, "All " + histId + " entries have time > 0");
-    }
-  }
-}
+};
 
 /**
  * Open and close the toolbox in the current browser tab, several times, waiting
@@ -155,17 +126,17 @@ function checkTelemetryResults(Telemetry) {
  * @param {Number} usageTime in milliseconds
  * @param {String} toolId
  */
-function* openAndCloseToolbox(nbOfTimes, usageTime, toolId) {
+async function openAndCloseToolbox(nbOfTimes, usageTime, toolId) {
   for (let i = 0; i < nbOfTimes; i++) {
     info("Opening toolbox " + (i + 1));
     let target = TargetFactory.forTab(gBrowser.selectedTab);
-    yield gDevTools.showToolbox(target, toolId);
+    await gDevTools.showToolbox(target, toolId);
 
     // We use a timeout to check the toolbox's active time
-    yield new Promise(resolve => setTimeout(resolve, usageTime));
+    await new Promise(resolve => setTimeout(resolve, usageTime));
 
     info("Closing toolbox " + (i + 1));
-    yield gDevTools.closeToolbox(target);
+    await gDevTools.closeToolbox(target);
   }
 }
 
@@ -200,7 +171,7 @@ function waitUntil(predicate, interval = 10) {
     return Promise.resolve(true);
   }
   return new Promise(resolve => {
-    setTimeout(function () {
+    setTimeout(function() {
       waitUntil(predicate).then(() => resolve(true));
     }, interval);
   });
@@ -225,12 +196,12 @@ function showFilterPopupPresets(widget) {
  * @return {Promise}
  */
 let showFilterPopupPresetsAndCreatePreset =
-Task.async(function* (widget, name, value) {
-  yield showFilterPopupPresets(widget);
+async function(widget, name, value) {
+  await showFilterPopupPresets(widget);
 
   let onRender = widget.once("render");
   widget.setCssValue(value);
-  yield onRender;
+  await onRender;
 
   let footer = widget.el.querySelector(".presets-list .footer");
   footer.querySelector("input").value = name;
@@ -240,107 +211,5 @@ Task.async(function* (widget, name, value) {
     preventDefault: () => {}
   });
 
-  yield onRender;
-});
-
-/**
- * Utility function for testing CSS code samples that have been
- * syntax-highlighted.
- *
- * The CSS syntax highlighter emits a collection of DOM nodes that have
- * CSS classes applied to them. This function checks that those nodes
- * are what we expect.
- *
- * @param {array} expectedNodes
- * A representation of the nodes we expect to see.
- * Each node is an object containing two properties:
- * - type: a string which can be one of:
- *   - text, comment, property-name, property-value
- * - text: the textContent of the node
- *
- * For example, given a string like this:
- * "<comment> The part we want   </comment>\n this: is-the-part-we-want;"
- *
- * we would represent the expected output like this:
- * [{type: "comment",        text: "<comment> The part we want   </comment>"},
- *  {type: "text",           text: "\n"},
- *  {type: "property-name",  text: "this"},
- *  {type: "text",           text: ":"},
- *  {type: "text",           text: " "},
- *  {type: "property-value", text: "is-the-part-we-want"},
- *  {type: "text",           text: ";"}];
- *
- * @param {Node} parent
- * The DOM node whose children are the output of the syntax highlighter.
- */
-function checkCssSyntaxHighlighterOutput(expectedNodes, parent) {
-  /**
-   * The classes applied to the output nodes by the syntax highlighter.
-   * These must be same as the definitions in MdnDocsWidget.js.
-   */
-  const PROPERTY_NAME_COLOR = "theme-fg-color5";
-  const PROPERTY_VALUE_COLOR = "theme-fg-color1";
-  const COMMENT_COLOR = "theme-comment";
-
-  /**
-   * Check the type and content of a single node.
-   */
-  function checkNode(expected, actual) {
-    ok(actual.textContent == expected.text,
-       "Check that node has the expected textContent");
-    info("Expected text content: [" + expected.text + "]");
-    info("Actual text content: [" + actual.textContent + "]");
-
-    info("Check that node has the expected type");
-    if (expected.type == "text") {
-      ok(actual.nodeType == 3, "Check that node is a text node");
-    } else {
-      ok(actual.tagName.toUpperCase() == "SPAN", "Check that node is a SPAN");
-    }
-
-    info("Check that node has the expected className");
-
-    let expectedClassName = null;
-    let actualClassName = null;
-
-    switch (expected.type) {
-      case "property-name":
-        expectedClassName = PROPERTY_NAME_COLOR;
-        break;
-      case "property-value":
-        expectedClassName = PROPERTY_VALUE_COLOR;
-        break;
-      case "comment":
-        expectedClassName = COMMENT_COLOR;
-        break;
-      default:
-        ok(!actual.classList, "No className expected");
-        return;
-    }
-
-    ok(actual.classList.length == 1, "One className expected");
-    actualClassName = actual.classList[0];
-
-    ok(expectedClassName == actualClassName, "Check className value");
-    info("Expected className: " + expectedClassName);
-    info("Actual className: " + actualClassName);
-  }
-
-  info("Logging the actual nodes we have:");
-  for (let j = 0; j < parent.childNodes.length; j++) {
-    let n = parent.childNodes[j];
-    info(j + " / " +
-         "nodeType: " + n.nodeType + " / " +
-         "textContent: " + n.textContent);
-  }
-
-  ok(parent.childNodes.length == parent.childNodes.length,
-    "Check we have the expected number of nodes");
-  info("Expected node count " + expectedNodes.length);
-  info("Actual node count " + expectedNodes.length);
-
-  for (let i = 0; i < expectedNodes.length; i++) {
-    info("Check node " + i);
-    checkNode(expectedNodes[i], parent.childNodes[i]);
-  }
-}
+  await onRender;
+};

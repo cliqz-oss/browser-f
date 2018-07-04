@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,7 +16,7 @@
 #include "nsCOMPtr.h"
 #include "nsGkAtoms.h"
 #include "nsPresContext.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsIContent.h"
 #include "nsNameSpaceManager.h"
 #include "nsBoxLayoutState.h"
@@ -33,21 +34,12 @@ using namespace mozilla;
 // Creates a new Toolbar frame and returns it
 //
 nsIFrame*
-NS_NewLeafBoxFrame (nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewLeafBoxFrame (nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsLeafBoxFrame(aContext);
+  return new (aPresShell) nsLeafBoxFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsLeafBoxFrame)
-
-#ifdef DEBUG_LAYOUT
-void
-nsLeafBoxFrame::GetBoxName(nsAutoString& aName)
-{
-   GetFrameName(aName);
-}
-#endif
-
 
 /**
  * Initialize us. This is a good time to get the alignment of the box
@@ -68,7 +60,7 @@ nsLeafBoxFrame::Init(nsIContent*       aContent,
 
 nsresult
 nsLeafBoxFrame::AttributeChanged(int32_t aNameSpaceID,
-                                 nsIAtom* aAttribute,
+                                 nsAtom* aAttribute,
                                  int32_t aModType)
 {
   nsresult rv = nsLeafFrame::AttributeChanged(aNameSpaceID, aAttribute,
@@ -82,26 +74,23 @@ nsLeafBoxFrame::AttributeChanged(int32_t aNameSpaceID,
 
 void nsLeafBoxFrame::UpdateMouseThrough()
 {
-  if (mContent) {
-    static nsIContent::AttrValuesArray strings[] =
-      {&nsGkAtoms::never, &nsGkAtoms::always, nullptr};
-    switch (mContent->FindAttrValueIn(kNameSpaceID_None,
-                                      nsGkAtoms::mousethrough,
-                                      strings, eCaseMatters)) {
-      case 0: AddStateBits(NS_FRAME_MOUSE_THROUGH_NEVER); break;
-      case 1: AddStateBits(NS_FRAME_MOUSE_THROUGH_ALWAYS); break;
-      case 2: {
-          RemoveStateBits(NS_FRAME_MOUSE_THROUGH_ALWAYS);
-          RemoveStateBits(NS_FRAME_MOUSE_THROUGH_NEVER);
-          break;
-      }
+  static Element::AttrValuesArray strings[] =
+    {&nsGkAtoms::never, &nsGkAtoms::always, nullptr};
+  switch (mContent->AsElement()->FindAttrValueIn(kNameSpaceID_None,
+                                                 nsGkAtoms::mousethrough,
+                                                 strings, eCaseMatters)) {
+    case 0: AddStateBits(NS_FRAME_MOUSE_THROUGH_NEVER); break;
+    case 1: AddStateBits(NS_FRAME_MOUSE_THROUGH_ALWAYS); break;
+    case 2: {
+        RemoveStateBits(NS_FRAME_MOUSE_THROUGH_ALWAYS);
+        RemoveStateBits(NS_FRAME_MOUSE_THROUGH_NEVER);
+        break;
     }
   }
 }
 
 void
 nsLeafBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                 const nsRect&           aDirtyRect,
                                  const nsDisplayListSet& aLists)
 {
   // REVIEW: GetFrameForPoint used to not report events for the background
@@ -114,8 +103,8 @@ nsLeafBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   if (!aBuilder->IsForEventDelivery() || !IsVisibleForPainting(aBuilder))
     return;
 
-  aLists.Content()->AppendNewToTop(new (aBuilder)
-    nsDisplayEventReceiver(aBuilder, this));
+  aLists.Content()->AppendToTop(
+    MakeDisplayItem<nsDisplayEventReceiver>(aBuilder, this));
 }
 
 /* virtual */ nscoord
@@ -199,6 +188,7 @@ nsLeafBoxFrame::Reflow(nsPresContext*   aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsLeafBoxFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   NS_ASSERTION(aReflowInput.ComputedWidth() >=0 &&
                aReflowInput.ComputedHeight() >= 0, "Computed Size < 0");
@@ -229,8 +219,6 @@ nsLeafBoxFrame::Reflow(nsPresContext*   aPresContext,
   printf(" *\n");
 
 #endif
-
-  aStatus.Reset();
 
   // create the layout state
   nsBoxLayoutState state(aPresContext, aReflowInput.mRenderingContext);
@@ -329,7 +317,7 @@ nsLeafBoxFrame::GetFrameName(nsAString& aResult) const
 #endif
 
 nsresult
-nsLeafBoxFrame::CharacterDataChanged(CharacterDataChangeInfo* aInfo)
+nsLeafBoxFrame::CharacterDataChanged(const CharacterDataChangeInfo& aInfo)
 {
   MarkIntrinsicISizesDirty();
   return nsLeafFrame::CharacterDataChanged(aInfo);

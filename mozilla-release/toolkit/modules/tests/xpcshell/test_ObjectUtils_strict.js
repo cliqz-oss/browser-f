@@ -1,7 +1,7 @@
 "use strict";
 
-var {ObjectUtils} = Components.utils.import("resource://gre/modules/ObjectUtils.jsm", {});
-var {PromiseTestUtils} = Components.utils.import("resource://testing-common/PromiseTestUtils.jsm", {});
+var {ObjectUtils} = ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm", {});
+var {PromiseTestUtils} = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", {});
 
 add_task(async function test_strict() {
   let loose = { a: 1 };
@@ -23,7 +23,3 @@ add_task(async function test_strict() {
   loose.c = 3;
   strict.c; // Should not throw.
 });
-
-function run_test() {
-  run_next_test();
-}

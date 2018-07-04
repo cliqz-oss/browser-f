@@ -4,16 +4,12 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SessionHistory"];
+var EXPORTED_SYMBOLS = ["SessionHistory"];
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/sessionstore/Utils.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "uuidGenerator",
   "@mozilla.org/uuid-generator;1", "nsIUUIDGenerator");
@@ -25,7 +21,7 @@ function debug(msg) {
 /**
  * The external API exported by this module.
  */
-this.SessionHistory = Object.freeze({
+var SessionHistory = Object.freeze({
   isEmpty(docShell) {
     return SessionHistoryInternal.isEmpty(docShell);
   },
@@ -76,8 +72,7 @@ var SessionHistoryInternal = {
   collect(docShell, aFromIdx = -1) {
     let loadContext = docShell.QueryInterface(Ci.nsILoadContext);
     let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
-    let history = webNavigation.sessionHistory.QueryInterface(Ci.nsISHistoryInternal);
-    let ihistory = history.QueryInterface(Ci.nsISHistory);
+    let history = webNavigation.sessionHistory;
 
     let data = {entries: [], userContextId: loadContext.originAttributes.userContextId };
     // We want to keep track how many entries we *could* have collected and
@@ -88,7 +83,8 @@ var SessionHistoryInternal = {
     if (history && history.count > 0) {
       // Loop over the transaction linked list directly so we can get the
       // persist property for each transaction.
-      for (let txn = history.rootTransaction; txn; entryCount++, txn = txn.next) {
+      for (let txn = history.legacySHistory.QueryInterface(Ci.nsISHistoryInternal).rootTransaction;
+           txn; entryCount++, txn = txn.next) {
         if (entryCount <= aFromIdx) {
           skippedCount++;
           continue;
@@ -106,7 +102,7 @@ var SessionHistoryInternal = {
     // valid entries, make sure we at least include the current page,
     // unless of course we just skipped all entries because aFromIdx was big enough.
     if (data.entries.length == 0 && (skippedCount != entryCount || aFromIdx < 0)) {
-      let uri = webNavigation.currentURI.spec;
+      let uri = webNavigation.currentURI.displaySpec;
       let body = webNavigation.document.body;
       // We landed here because the history is inaccessible or there are no
       // history entries. In that case we should at least record the docShell's
@@ -123,17 +119,7 @@ var SessionHistoryInternal = {
       }
     }
 
-    // Transform the entries from local to global index space.
-    data.index += ihistory.globalIndexOffset;
-    data.fromIdx = aFromIdx + ihistory.globalIndexOffset;
-
-    // If we are not the most recent partialSHistory in our groupedSHistory, we
-    // need to make certain that we don't replace the entries from the following
-    // SHistories - so we replace only the number of entries which our SHistory
-    // takes up.
-    if (ihistory.globalIndexOffset + ihistory.count < ihistory.globalCount) {
-      data.toIdx = data.fromIdx + ihistory.count;
-    }
+    data.fromIdx = aFromIdx;
 
     return data;
   },
@@ -146,21 +132,13 @@ var SessionHistoryInternal = {
    * @return object
    */
   serializeEntry(shEntry) {
-    let entry = { url: shEntry.URI.spec, title: shEntry.title };
+    let entry = { url: shEntry.URI.displaySpec, title: shEntry.title };
 
     if (shEntry.isSubFrame) {
       entry.subframe = true;
     }
 
-    entry.charset = shEntry.URI.originCharset;
-
-    let cacheKey = shEntry.cacheKey;
-    if (cacheKey && cacheKey instanceof Ci.nsISupportsPRUint32 &&
-        cacheKey.data != 0) {
-      // XXXbz would be better to have cache keys implement
-      // nsISerializable or something.
-      entry.cacheKey = cacheKey.data;
-    }
+    entry.cacheKey = shEntry.cacheKey;
     entry.ID = shEntry.ID;
     entry.docshellUUID = shEntry.docshellID.toString();
 
@@ -236,25 +214,11 @@ var SessionHistoryInternal = {
 
     // Collect triggeringPrincipal data for the current history entry.
     if (shEntry.principalToInherit) {
-      try {
-        let principalToInherit = Utils.serializePrincipal(shEntry.principalToInherit);
-        if (principalToInherit) {
-          entry.principalToInherit_base64 = principalToInherit;
-        }
-      } catch (e) {
-        debug(e);
-      }
+      entry.principalToInherit_base64 = Utils.serializePrincipal(shEntry.principalToInherit);
     }
 
     if (shEntry.triggeringPrincipal) {
-      try {
-        let triggeringPrincipal = Utils.serializePrincipal(shEntry.triggeringPrincipal);
-        if (triggeringPrincipal) {
-          entry.triggeringPrincipal_base64 = triggeringPrincipal;
-        }
-      } catch (e) {
-        debug(e);
-      }
+      entry.triggeringPrincipal_base64 = Utils.serializePrincipal(shEntry.triggeringPrincipal);
     }
 
     entry.docIdentifier = shEntry.BFCacheEntry.ID;
@@ -335,7 +299,7 @@ var SessionHistoryInternal = {
   restore(docShell, tabData) {
     docShell.usePrivateBrowsing = !!tabData.isPrivate;  // Cliqz. DB-866
     let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
-    let history = webNavigation.sessionHistory;
+    let history = webNavigation.sessionHistory.legacySHistory;
     if (history.count > 0) {
       history.PurgeHistory(history.count);
     }
@@ -376,7 +340,7 @@ var SessionHistoryInternal = {
     var shEntry = Cc["@mozilla.org/browser/session-history-entry;1"].
                   createInstance(Ci.nsISHEntry);
 
-    shEntry.setURI(Utils.makeURI(entry.url, entry.charset));
+    shEntry.setURI(Utils.makeURI(entry.url));
     shEntry.setTitle(entry.title || entry.url);
     if (entry.subframe)
       shEntry.setIsSubFrame(entry.subframe || false);
@@ -408,10 +372,7 @@ var SessionHistoryInternal = {
       shEntry.baseURI = Utils.makeURI(entry.baseURI);
 
     if (entry.cacheKey) {
-      var cacheKey = Cc["@mozilla.org/supports-PRUint32;1"].
-                     createInstance(Ci.nsISupportsPRUint32);
-      cacheKey.data = entry.cacheKey;
-      shEntry.cacheKey = cacheKey;
+      shEntry.cacheKey = entry.cacheKey;
     }
 
     if (entry.ID) {
@@ -486,6 +447,12 @@ var SessionHistoryInternal = {
 
     if (entry.triggeringPrincipal_base64) {
       shEntry.triggeringPrincipal = Utils.deserializePrincipal(entry.triggeringPrincipal_base64);
+    }
+    // Ensure that we have a null principal if we couldn't deserialize it.
+    // This won't always work however is safe to use.
+    if (!shEntry.triggeringPrincipal) {
+      debug("Couldn't deserialize the triggeringPrincipal, falling back to NullPrincipal");
+      shEntry.triggeringPrincipal = Services.scriptSecurityManager.createNullPrincipal({});
     }
     if (entry.principalToInherit_base64) {
       shEntry.principalToInherit = Utils.deserializePrincipal(entry.principalToInherit_base64);

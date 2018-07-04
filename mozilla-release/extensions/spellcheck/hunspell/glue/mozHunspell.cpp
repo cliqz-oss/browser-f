@@ -59,7 +59,7 @@
 
 #include "mozHunspell.h"
 #include "nsReadableUtils.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "nsIObserverService.h"
 #include "nsISimpleEnumerator.h"
 #include "nsIDirectoryEnumerator.h"
@@ -74,6 +74,7 @@
 #include <stdlib.h>
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
+#include "nsNetUtil.h"
 #include "mozilla/dom/ContentParent.h"
 
 using mozilla::dom::ContentParent;
@@ -158,18 +159,13 @@ NS_IMETHODIMP mozHunspell::SetDictionary(const char16_t *aDictionary)
     return NS_OK;
   }
 
-  nsIFile* affFile = mDictionaries.GetWeak(nsDependentString(aDictionary));
+  nsIURI* affFile = mDictionaries.GetWeak(nsDependentString(aDictionary));
   if (!affFile)
     return NS_ERROR_FILE_NOT_FOUND;
 
   nsAutoCString dictFileName, affFileName;
 
-  // XXX This isn't really good. nsIFile->NativePath isn't safe for all
-  // character sets on Windows.
-  // A better way would be to QI to nsIFile, and get a filehandle
-  // from there. Only problem is that hunspell wants a path
-
-  nsresult rv = affFile->GetNativePath(affFileName);
+  nsresult rv = affFile->GetSpec(affFileName);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (mAffixFileName.Equals(affFileName.get()))
@@ -191,7 +187,7 @@ NS_IMETHODIMP mozHunspell::SetDictionary(const char16_t *aDictionary)
   mAffixFileName = affFileName;
 
   mHunspell = new Hunspell(affFileName.get(),
-                         dictFileName.get());
+                           dictFileName.get());
   if (!mHunspell)
     return NS_ERROR_OUT_OF_MEMORY;
 
@@ -314,8 +310,8 @@ mozHunspell::LoadDictionaryList(bool aNotifyChildProcesses)
   // check preferences first
   nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
   if (prefs) {
-    nsCString extDictPath;
-    rv = prefs->GetCharPref("spellchecker.dictionary_path", getter_Copies(extDictPath));
+    nsAutoCString extDictPath;
+    rv = prefs->GetCharPref("spellchecker.dictionary_path", extDictPath);
     if (NS_SUCCEEDED(rv)) {
       // set the spellchecker.dictionary_path
       rv = NS_NewNativeLocalFile(extDictPath, true, getter_AddRefs(dictDir));
@@ -395,6 +391,16 @@ mozHunspell::LoadDictionaryList(bool aNotifyChildProcesses)
     LoadDictionariesFromDir(mDynamicDirectories[i]);
   }
 
+  for (auto iter = mDynamicDictionaries.Iter(); !iter.Done(); iter.Next()) {
+    mDictionaries.Put(iter.Key(), iter.Data());
+  }
+
+  DictionariesChanged(aNotifyChildProcesses);
+}
+
+void
+mozHunspell::DictionariesChanged(bool aNotifyChildProcesses)
+{
   // Now we have finished updating the list of dictionaries, update the current
   // dictionary and any editors which may use it.
   mozInlineSpellChecker::UpdateCanEnableInlineSpellChecking();
@@ -406,7 +412,7 @@ mozHunspell::LoadDictionaryList(bool aNotifyChildProcesses)
   // Check if the current dictionary is still available.
   // If not, try to replace it with another dictionary of the same language.
   if (!mDictionary.IsEmpty()) {
-    rv = SetDictionary(mDictionary.get());
+    nsresult rv = SetDictionary(mDictionary.get());
     if (NS_SUCCEEDED(rv))
       return;
   }
@@ -466,7 +472,11 @@ mozHunspell::LoadDictionariesFromDir(nsIFile* aDir)
     // Replace '_' separator with '-'
     dict.ReplaceChar("_", '-');
 
-    mDictionaries.Put(dict, file);
+    nsCOMPtr<nsIURI> uri;
+    rv = NS_NewFileURI(getter_AddRefs(uri), file);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    mDictionaries.Put(dict, uri);
   }
 
   return NS_OK;
@@ -642,5 +652,28 @@ NS_IMETHODIMP mozHunspell::RemoveDirectory(nsIFile *aDir)
                          nullptr);
   }
 #endif
+  return NS_OK;
+}
+
+NS_IMETHODIMP mozHunspell::AddDictionary(const nsAString& aLang, nsIURI *aFile)
+{
+  NS_ENSURE_TRUE(aFile, NS_ERROR_INVALID_ARG);
+
+  mDynamicDictionaries.Put(aLang, aFile);
+  mDictionaries.Put(aLang, aFile);
+  DictionariesChanged(true);
+  return NS_OK;
+}
+
+NS_IMETHODIMP mozHunspell::RemoveDictionary(const nsAString& aLang, nsIURI *aFile)
+{
+  NS_ENSURE_TRUE(aFile, NS_ERROR_INVALID_ARG);
+
+  nsCOMPtr<nsIURI> file = mDynamicDictionaries.Get(aLang);
+  bool equal;
+  if (file && NS_SUCCEEDED(file->Equals(aFile, &equal)) && equal) {
+    mDynamicDictionaries.Remove(aLang);
+    LoadDictionaryList(true);
+  }
   return NS_OK;
 }

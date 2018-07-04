@@ -1,11 +1,14 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "PaintedLayerMLGPU.h"
 #include "LayerManagerMLGPU.h"
 #include "mozilla/layers/LayersHelpers.h"
+#include "mozilla/layers/TiledContentHost.h"
+#include "UnitTransforms.h"
 
 namespace mozilla {
 
@@ -30,16 +33,26 @@ PaintedLayerMLGPU::~PaintedLayerMLGPU()
 bool
 PaintedLayerMLGPU::OnPrepareToRender(FrameBuilder* aBuilder)
 {
-  if (!mHost) {
-    return false;
-  }
+  // Reset our cached texture pointers. The next call to AssignToView will
+  // populate them again.
+  mTexture = nullptr;
+  mTextureOnWhite = nullptr;
+  return !!mHost;
+}
 
-  mTexture = mHost->AcquireTextureSource();
-  if (!mTexture) {
-    return false;
-  }
-  mTextureOnWhite = mHost->AcquireTextureSourceOnWhite();
+void
+PaintedLayerMLGPU::SetRenderRegion(LayerIntRegion&& aRegion)
+{
+  mRenderRegion = Move(aRegion);
 
+  LayerIntRect bounds(mRenderRegion.GetBounds().TopLeft(),
+                      ViewAs<LayerPixel>(mTexture->GetSize()));
+  mRenderRegion.AndWith(bounds);
+}
+
+const LayerIntRegion&
+PaintedLayerMLGPU::GetDrawRects()
+{
 #ifndef MOZ_IGNORE_PAINT_WILL_RESAMPLE
   // Note: we don't set PaintWillResample on our ContentTextureHost. The old
   // compositor must do this since ContentHost is responsible for issuing
@@ -49,21 +62,21 @@ PaintedLayerMLGPU::OnPrepareToRender(FrameBuilder* aBuilder)
   // behavior), we might break up the visible region again. If that turns
   // out to be a problem, we can factor this into ForEachDrawRect instead.
   if (MayResample()) {
-    LayerIntRegion visible = Move(GetShadowVisibleRegion());
-    visible = visible.GetBounds();
-    SetShadowVisibleRegion(Move(visible));
+    mDrawRects = mRenderRegion.GetBounds();
+    return mDrawRects;
   }
 #endif
-  return true;
+  return mRenderRegion;
 }
 
 bool
 PaintedLayerMLGPU::SetCompositableHost(CompositableHost* aHost)
 {
   switch (aHost->GetType()) {
+    case CompositableType::CONTENT_TILED:
     case CompositableType::CONTENT_SINGLE:
     case CompositableType::CONTENT_DOUBLE:
-      mHost = static_cast<ContentHostBase*>(aHost)->AsContentHostTexture();
+      mHost = aHost->AsContentHost();
       if (!mHost) {
         gfxWarning() << "ContentHostBase is not a ContentHostTexture";
       }
@@ -77,6 +90,123 @@ CompositableHost*
 PaintedLayerMLGPU::GetCompositableHost()
 {
   return mHost;
+}
+
+gfx::Point
+PaintedLayerMLGPU::GetDestOrigin() const
+{
+  return mDestOrigin;
+}
+
+void
+PaintedLayerMLGPU::AssignToView(FrameBuilder* aBuilder,
+                                RenderViewMLGPU* aView,
+                                Maybe<Polygon>&& aGeometry)
+{
+  if (TiledContentHost* tiles = mHost->AsTiledContentHost()) {
+    // Note: we do not support the low-res buffer yet.
+    MOZ_ASSERT(tiles->GetLowResBuffer().GetTileCount() == 0);
+    AssignHighResTilesToView(aBuilder, aView, tiles, aGeometry);
+    return;
+  }
+
+  // If we don't have a texture yet, acquire one from the ContentHost now.
+  if (!mTexture) {
+    ContentHostTexture* single = mHost->AsContentHostTexture();
+    if (!single) {
+      return;
+    }
+
+    mTexture = single->AcquireTextureSource();
+    if (!mTexture) {
+      return;
+    }
+    mTextureOnWhite = single->AcquireTextureSourceOnWhite();
+    mDestOrigin = single->GetOriginOffset();
+  }
+
+  // Fall through to the single texture case.
+  LayerMLGPU::AssignToView(aBuilder, aView, Move(aGeometry));
+}
+
+void
+PaintedLayerMLGPU::AssignHighResTilesToView(FrameBuilder* aBuilder,
+                                            RenderViewMLGPU* aView,
+                                            TiledContentHost* aTileHost,
+                                            const Maybe<Polygon>& aGeometry)
+{
+  TiledLayerBufferComposite& tiles = aTileHost->GetHighResBuffer();
+
+  LayerIntRegion compositeRegion = ViewAs<LayerPixel>(tiles.GetValidRegion());
+  compositeRegion.AndWith(GetShadowVisibleRegion());
+  if (compositeRegion.IsEmpty()) {
+    return;
+  }
+
+  AssignTileBufferToView(aBuilder, aView, tiles, compositeRegion, aGeometry);
+}
+
+void
+PaintedLayerMLGPU::AssignTileBufferToView(FrameBuilder* aBuilder,
+                                          RenderViewMLGPU* aView,
+                                          TiledLayerBufferComposite& aTiles,
+                                          const LayerIntRegion& aCompositeRegion,
+                                          const Maybe<Polygon>& aGeometry)
+{
+  float resolution = aTiles.GetResolution();
+
+  // Save these so they can be restored at the end.
+  float baseOpacity = mComputedOpacity;
+  LayerIntRegion visible = GetShadowVisibleRegion();
+
+  for (size_t i = 0; i < aTiles.GetTileCount(); i++) {
+    TileHost& tile = aTiles.GetTile(i);
+    if (tile.IsPlaceholderTile()) {
+      continue;
+    }
+
+    TileIntPoint pos =  aTiles.GetPlacement().TilePosition(i);
+    // A sanity check that catches a lot of mistakes.
+    MOZ_ASSERT(pos.x == tile.mTilePosition.x && pos.y == tile.mTilePosition.y);
+
+    IntPoint offset = aTiles.GetTileOffset(pos);
+
+    // Use LayerIntRect here so we don't have to keep re-allocating the region
+    // to change the unit type.
+    LayerIntRect tileRect(ViewAs<LayerPixel>(offset),
+                          ViewAs<LayerPixel>(aTiles.GetScaledTileSize()));
+    LayerIntRegion tileDrawRegion = tileRect;
+    tileDrawRegion.AndWith(aCompositeRegion);
+    if (tileDrawRegion.IsEmpty()) {
+      continue;
+    }
+    tileDrawRegion.ScaleRoundOut(resolution, resolution);
+
+    // Update layer state for this tile - that includes the texture, visible
+    // region, and opacity.
+    mTexture = tile.AcquireTextureSource();
+    if (!mTexture) {
+      continue;
+    }
+
+    mTextureOnWhite = tile.AcquireTextureSourceOnWhite();
+
+    SetShadowVisibleRegion(tileDrawRegion);
+    mComputedOpacity = tile.GetFadeInOpacity(baseOpacity);
+    mDestOrigin = offset;
+
+    // Yes, it's a bit weird that we're assigning the same layer to the same
+    // view multiple times. Note that each time, the texture, computed
+    // opacity, origin, and visible region are updated to match the current
+    // tile, and we restore these properties after we've finished processing
+    // all tiles.
+    Maybe<Polygon> geometry = aGeometry;
+    LayerMLGPU::AssignToView(aBuilder, aView, Move(geometry));
+  }
+
+  // Restore the computed opacity and visible region.
+  mComputedOpacity = baseOpacity;
+  SetShadowVisibleRegion(Move(visible));
 }
 
 void

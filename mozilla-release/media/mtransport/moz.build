@@ -14,3 +14,14 @@ DIRS += [
     '/media/mtransport/build',
     '/media/mtransport/ipc',
 ]
+
+if CONFIG['FUZZING']:
+    if CONFIG['LIBFUZZER']:
+        # Add trace-pc coverage for LibFuzzer
+        CFLAGS += ['-fsanitize-coverage=trace-pc-guard']
+        CXXFLAGS += ['-fsanitize-coverage=trace-pc-guard']
+
+    if CONFIG['FUZZING_INTERFACES']:
+        TEST_DIRS += [
+            'fuzztest'
+        ]

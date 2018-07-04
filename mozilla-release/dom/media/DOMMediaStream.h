@@ -16,6 +16,7 @@
 #include "nsIPrincipal.h"
 #include "MediaTrackConstraints.h"
 #include "mozilla/DOMEventTargetHelper.h"
+#include "mozilla/RelativeTimeline.h"
 #include "PrincipalChangeObserver.h"
 
 // X11 has a #define for CurrentTime. Unbelievable :-(.
@@ -31,7 +32,6 @@ class DOMLocalMediaStream;
 class DOMMediaStream;
 class MediaStream;
 class MediaInputPort;
-class DirectMediaStreamListener;
 class MediaStreamGraph;
 class ProcessedMediaStream;
 
@@ -203,7 +203,8 @@ protected:
  *                                                     (pointing to t2 in A')
  */
 class DOMMediaStream : public DOMEventTargetHelper,
-                       public dom::PrincipalChangeObserver<dom::MediaStreamTrack>
+                       public dom::PrincipalChangeObserver<dom::MediaStreamTrack>,
+                       public RelativeTimeline
 {
   friend class DOMLocalMediaStream;
   friend class dom::MediaStreamTrack;
@@ -332,7 +333,6 @@ public:
                  MediaStreamTrackSourceGetter* aTrackSourceGetter);
 
   NS_DECL_ISUPPORTS_INHERITED
-  NS_REALLY_FORWARD_NSIDOMEVENTTARGET(DOMEventTargetHelper)
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(DOMMediaStream,
                                            DOMEventTargetHelper)
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_DOMMEDIASTREAM_IID)
@@ -361,6 +361,9 @@ public:
 
   double CurrentTime();
 
+  static already_AddRefed<dom::Promise>
+  CountUnderlyingStreams(const dom::GlobalObject& aGlobal, ErrorResult& aRv);
+
   void GetId(nsAString& aID) const;
 
   void GetAudioTracks(nsTArray<RefPtr<AudioStreamTrack> >& aTracks) const;
@@ -376,6 +379,7 @@ public:
   bool Active() const;
 
   IMPL_EVENT_HANDLER(addtrack)
+  IMPL_EVENT_HANDLER(removetrack)
 
   // NON-WebIDL
 
@@ -448,13 +452,6 @@ public:
   virtual MediaStream* GetCameraStream() const { return nullptr; }
 
   /**
-   * Allows users to get access to media data without going through graph
-   * queuing. Returns a bool to let us know if direct data will be delivered.
-   */
-  bool AddDirectListener(DirectMediaStreamListener *aListener);
-  void RemoveDirectListener(DirectMediaStreamListener *aListener);
-
-  /**
    * Legacy method that returns true when the playback stream has finished.
    */
   bool IsFinished() const;
@@ -463,6 +460,8 @@ public:
    * Becomes inactive only when the playback stream has finished.
    */
   void SetInactiveOnFinish();
+
+  TrackRate GraphRate();
 
   /**
    * Returns a principal indicating who may access this stream. The stream contents

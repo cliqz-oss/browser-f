@@ -16,7 +16,7 @@ function do_check_permission_prefs(preferences) {
   // Check preferences were emptied
   for (let pref of preferences) {
     try {
-      do_check_eq(Services.prefs.getCharPref(pref), "");
+      Assert.equal(Services.prefs.getCharPref(pref), "");
     } catch (e) {
       // Successfully emptied
     }
@@ -24,7 +24,7 @@ function do_check_permission_prefs(preferences) {
 }
 
 function clear_imported_preferences_cache() {
-  let scope = Components.utils.import("resource://gre/modules/PermissionsUtils.jsm", {});
+  let scope = ChromeUtils.import("resource://gre/modules/PermissionsUtils.jsm", {});
   scope.gImportedPrefBranches.clear();
 }
 
@@ -50,7 +50,7 @@ function run_test() {
   do_check_permission_prefs(preferences);
 
 
-  // Import can also be triggerred by an observer notification by any other area
+  // Import can also be triggered by an observer notification by any other area
   // of code, such as a permissions management UI.
 
   // First, request to flush all permissions
@@ -69,5 +69,5 @@ function run_test() {
   clear_imported_preferences_cache();
   Services.prefs.setCharPref("xpinstall.whitelist.add.TEST4", "https://whitelist4.example.com");
   Services.obs.notifyObservers(null, "flush-pending-permissions", "lolcats");
-  do_check_eq(Services.prefs.getCharPref("xpinstall.whitelist.add.TEST4"), "https://whitelist4.example.com");
+  Assert.equal(Services.prefs.getCharPref("xpinstall.whitelist.add.TEST4"), "https://whitelist4.example.com");
 }

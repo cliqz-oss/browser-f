@@ -1,5 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 var tabState = {
   entries: [{
@@ -23,14 +24,14 @@ function test() {
 
   promiseTabState(tab, tabState).then(() => {
     let sessionHistory = browser.sessionHistory;
-    let entry = sessionHistory.getEntryAtIndex(0, false);
+    let entry = sessionHistory.legacySHistory.getEntryAtIndex(0, false);
     entry.QueryInterface(Ci.nsISHContainer);
 
     whenChildCount(entry, 1, function() {
       whenChildCount(entry, 2, function() {
         promiseBrowserLoaded(browser).then(() => {
           let newSessionHistory = browser.sessionHistory;
-          let newEntry = newSessionHistory.getEntryAtIndex(0, false);
+          let newEntry = newSessionHistory.legacySHistory.getEntryAtIndex(0, false);
 
           whenChildCount(newEntry, 0, function() {
             // Make sure that we reset the state.
@@ -40,11 +41,11 @@ function test() {
           });
         });
 
-        // reload the browser to deprecate the subframes
-        browser.reload();
+        // Force reload the browser to deprecate the subframes.
+        browser.reloadWithFlags(Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE);
       });
 
-      // create a dynamic subframe
+      // Create a dynamic subframe.
       let doc = browser.contentDocument;
       let iframe = doc.createElement("iframe");
       doc.body.appendChild(iframe);

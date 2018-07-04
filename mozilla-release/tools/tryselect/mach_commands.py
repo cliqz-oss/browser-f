@@ -5,13 +5,14 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 import argparse
+import importlib
 import os
 import sys
 
 from mach.decorators import (
-    CommandArgument,
     CommandProvider,
     Command,
+    SettingsProvider,
     SubCommand,
 )
 
@@ -27,20 +28,33 @@ and try again.
 '''.lstrip()
 
 
-def syntax_parser():
-    from tryselect.selectors.syntax import arg_parser
-    parser = arg_parser()
-    # The --no-artifact flag is only interpreted locally by |mach try|; it's not
-    # like the --artifact flag, which is interpreted remotely by the try server.
-    #
-    # We need a tri-state where set is different than the default value, so we
-    # use a different variable than --artifact.
-    parser.add_argument('--no-artifact',
-                        dest='no_artifact',
-                        action='store_true',
-                        help='Force compiled (non-artifact) builds even when '
-                             '--enable-artifact-builds is set.')
+class get_parser(object):
+    def __init__(self, selector):
+        self.selector = selector
+
+    def __call__(self):
+        mod = importlib.import_module('tryselect.selectors.{}'.format(self.selector))
+        return getattr(mod, '{}Parser'.format(self.selector.capitalize()))()
+
+
+def generic_parser():
+    from tryselect.cli import BaseTryParser
+    parser = BaseTryParser()
+    parser.add_argument('argv', nargs=argparse.REMAINDER)
     return parser
+
+
+@SettingsProvider
+class TryConfig(object):
+
+    @classmethod
+    def config_settings(cls):
+        from mach.registrar import Registrar
+
+        desc = "The default selector to use when running `mach try` without a subcommand."
+        choices = Registrar.command_handlers['try'].subcommand_handlers.keys()
+
+        return [('try.default', 'string', desc, 'syntax', {'choices': choices})]
 
 
 @CommandProvider
@@ -48,9 +62,9 @@ class TrySelect(MachCommandBase):
 
     @Command('try',
              category='ci',
-             description='Push selected tasks to the try server')
-    @CommandArgument('args', nargs=argparse.REMAINDER)
-    def try_default(self, args):
+             description='Push selected tasks to the try server',
+             parser=generic_parser)
+    def try_default(self, argv, **kwargs):
         """Push selected tests to the try server.
 
         The |mach try| command is a frontend for scheduling tasks to
@@ -62,17 +76,26 @@ class TrySelect(MachCommandBase):
         default. Run |mach try syntax --help| for more information on
         scheduling with the `syntax` selector.
         """
-        parser = syntax_parser()
-        kwargs = vars(parser.parse_args(args))
+        from tryselect import preset
+        if kwargs['mod_presets']:
+            getattr(preset, kwargs['mod_presets'])()
+            return
+
+        # We do special handling of presets here so that `./mach try --preset foo`
+        # works no matter what subcommand 'foo' was saved with.
+        sub = self._mach_context.settings['try']['default']
+        if kwargs['preset']:
+            _, section = preset.load(kwargs['preset'])
+            sub = 'syntax' if section == 'try' else section
+
         return self._mach_context.commands.dispatch(
-            'try', subcommand='syntax', context=self._mach_context, **kwargs)
+            'try', subcommand=sub, context=self._mach_context, argv=argv, **kwargs)
 
     @SubCommand('try',
                 'fuzzy',
-                description='Select tasks on try using a fuzzy finder')
-    @CommandArgument('-u', '--update', action='store_true', default=False,
-                     help="Update fzf before running")
-    def try_fuzzy(self, update):
+                description='Select tasks on try using a fuzzy finder',
+                parser=get_parser('fuzzy'))
+    def try_fuzzy(self, **kwargs):
         """Select which tasks to use with fzf.
 
         This selector runs all task labels through a fuzzy finding interface.
@@ -116,12 +139,28 @@ class TrySelect(MachCommandBase):
           ^start 'exact | !ignore fuzzy end$
         """
         from tryselect.selectors.fuzzy import run_fuzzy_try
-        return run_fuzzy_try(update)
+        return run_fuzzy_try(**kwargs)
+
+    @SubCommand('try',
+                'empty',
+                description='Push to try without scheduling any tasks.',
+                parser=get_parser('empty'))
+    def try_empty(self, **kwargs):
+        """Push to try, running no builds or tests
+
+        This selector does not prompt you to run anything, it just pushes
+        your patches to try, running no builds or tests by default. After
+        the push finishes, you can manually add desired jobs to your push
+        via Treeherder's Add New Jobs feature, located in the per-push
+        menu.
+        """
+        from tryselect.selectors.empty import run_empty_try
+        return run_empty_try(**kwargs)
 
     @SubCommand('try',
                 'syntax',
                 description='Select tasks on try using try syntax',
-                parser=syntax_parser)
+                parser=get_parser('syntax'))
     def try_syntax(self, **kwargs):
         """Push the current tree to try, with the specified syntax.
 
@@ -160,7 +199,6 @@ class TrySelect(MachCommandBase):
         (available at https://github.com/glandium/git-cinnabar).
 
         """
-        from mozbuild.testing import TestResolver
         from tryselect.selectors.syntax import AutoTry
 
         try:
@@ -177,8 +215,5 @@ class TrySelect(MachCommandBase):
             print(CONFIG_ENVIRONMENT_NOT_FOUND)
             sys.exit(1)
 
-        def resolver_func():
-            return self._spawn(TestResolver)
-
-        at = AutoTry(self.topsrcdir, resolver_func, self._mach_context)
+        at = AutoTry(self.topsrcdir, self._mach_context)
         return at.run(**kwargs)

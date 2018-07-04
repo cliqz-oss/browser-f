@@ -4,10 +4,13 @@
 "use strict";
 
 const { Task } = require("devtools/shared/task");
-var { LocalizationHelper } = require("devtools/shared/l10n");
+const { LocalizationHelper } = require("devtools/shared/l10n");
+const { gDevTools } = require("devtools/client/framework/devtools");
+const { TargetFactory } = require("devtools/client/framework/target");
+const { Toolbox } = require("devtools/client/framework/toolbox");
 
 const DBG_STRINGS_URI = "devtools/client/locales/debugger.properties";
-var L10N = new LocalizationHelper(DBG_STRINGS_URI);
+const L10N = new LocalizationHelper(DBG_STRINGS_URI);
 
 function DebuggerPanel(iframeWindow, toolbox) {
   this.panelWin = iframeWindow;
@@ -30,7 +33,12 @@ DebuggerPanel.prototype = {
       threadClient: this.toolbox.threadClient,
       tabTarget: this.toolbox.target,
       debuggerClient: this.toolbox.target.client,
-      sourceMaps: this.toolbox.sourceMapService
+      sourceMaps: this.toolbox.sourceMapService,
+      toolboxActions: {
+        // Open a link in a new browser tab.
+        openLink: this.openLink.bind(this),
+        openWorkerToolbox: this.openWorkerToolbox.bind(this)
+      }
     });
 
     this._actions = actions;
@@ -54,6 +62,41 @@ DebuggerPanel.prototype = {
     return this._store.getState();
   },
 
+  openLink: function(url) {
+    const parentDoc = this.toolbox.doc;
+    if (!parentDoc) {
+      return;
+    }
+
+    const win = parentDoc.querySelector("window");
+    if (!win) {
+      return;
+    }
+
+    const top = win.ownerDocument.defaultView.top;
+    if (!top || typeof top.openWebLink !== "function") {
+      return;
+    }
+
+    top.openWebLinkIn(url, "tab", {
+      triggeringPrincipal: win.document.nodePrincipal
+    });
+  },
+
+  openWorkerToolbox: function(worker) {
+    this.toolbox.target.client.attachWorker(
+      worker.actor,
+      (response, workerClient) => {
+        const workerTarget = TargetFactory.forWorker(workerClient);
+        gDevTools
+          .showToolbox(workerTarget, "jsdebugger", Toolbox.HostType.WINDOW)
+          .then(toolbox => {
+            toolbox.once("destroy", () => workerClient.detach());
+          });
+      }
+    );
+  },
+
   getFrames: function() {
     let frames = this._selectors.getFrames(this._getState());
 
@@ -75,8 +118,16 @@ DebuggerPanel.prototype = {
     return { frames, selected };
   },
 
-  selectSource(sourceURL, sourceLine) {
-    this._actions.selectSourceURL(sourceURL, { line: sourceLine });
+  getMappedExpression(expression) {
+    return this._actions.getMappedExpression(expression);
+  },
+
+  isPaused() {
+    return this._selectors.isPaused(this._getState());
+  },
+
+  selectSource(url, line) {
+    this._actions.selectSourceURL(url, { location: { line } });
   },
 
   getSource(sourceURL) {

@@ -7,18 +7,10 @@
 #include <stdio.h>
 
 #include "pkixtestutil.h"
+#include "pkixtestnss.h"
 #include "TLSServer.h"
 #include "secder.h"
 #include "secerr.h"
-
-namespace mozilla { namespace pkix { namespace test {
-
-// Ownership of privateKey is transfered.
-TestKeyPair* CreateTestKeyPair(const TestPublicKeyAlgorithm publicKeyAlg,
-                               const SECKEYPublicKey& publicKey,
-                               SECKEYPrivateKey* privateKey);
-
-} } } // namespace mozilla::pkix::test
 
 using namespace mozilla;
 using namespace mozilla::pkix;
@@ -28,21 +20,21 @@ using namespace mozilla::test;
 static TestKeyPair*
 CreateTestKeyPairFromCert(const UniqueCERTCertificate& cert)
 {
-  UniqueSECKEYPrivateKey privateKey(PK11_FindKeyByAnyCert(cert.get(), nullptr));
+  ScopedSECKEYPrivateKey privateKey(PK11_FindKeyByAnyCert(cert.get(), nullptr));
   if (!privateKey) {
     return nullptr;
   }
-  UniqueSECKEYPublicKey publicKey(CERT_ExtractPublicKey(cert.get()));
+  ScopedSECKEYPublicKey publicKey(CERT_ExtractPublicKey(cert.get()));
   if (!publicKey) {
     return nullptr;
   }
-  return CreateTestKeyPair(RSA_PKCS1(), *publicKey.get(), privateKey.release());
+  return CreateTestKeyPair(RSA_PKCS1(), publicKey, privateKey);
 }
 
 SECItemArray*
 GetOCSPResponseForType(OCSPResponseType aORT, const UniqueCERTCertificate& aCert,
                        const UniquePLArenaPool& aArena,
-                       const char* aAdditionalCertName)
+                       const char* aAdditionalCertName, time_t aThisUpdateSkew)
 {
   MOZ_ASSERT(aArena);
   MOZ_ASSERT(aCert);
@@ -64,7 +56,7 @@ GetOCSPResponseForType(OCSPResponseType aORT, const UniqueCERTCertificate& aCert
     return arr;
   }
 
-  time_t now = time(nullptr);
+  time_t now = time(nullptr) + aThisUpdateSkew;
   time_t oldNow = now - (8 * Time::ONE_DAY_IN_SECONDS);
 
   mozilla::UniqueCERTCertificate cert(CERT_DupCertificate(aCert.get()));

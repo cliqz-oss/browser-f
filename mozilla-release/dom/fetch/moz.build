@@ -11,11 +11,10 @@ EXPORTS.mozilla.dom += [
     'BodyExtractor.h',
     'ChannelInfo.h',
     'Fetch.h',
-    'FetchController.h',
     'FetchDriver.h',
     'FetchIPCTypes.h',
     'FetchObserver.h',
-    'FetchSignal.h',
+    'FetchStreamReader.h',
     'FetchUtil.h',
     'Headers.h',
     'InternalHeaders.h',
@@ -30,10 +29,10 @@ UNIFIED_SOURCES += [
     'ChannelInfo.cpp',
     'Fetch.cpp',
     'FetchConsumer.cpp',
-    'FetchController.cpp',
     'FetchDriver.cpp',
     'FetchObserver.cpp',
-    'FetchSignal.cpp',
+    'FetchStream.cpp',
+    'FetchStreamReader.cpp',
     'FetchUtil.cpp',
     'Headers.cpp',
     'InternalHeaders.cpp',
@@ -49,7 +48,8 @@ IPDL_SOURCES += [
 ]
 
 LOCAL_INCLUDES += [
-    '../workers',
+    # For nsDOMSerializer
+    '/dom/base',
     # For HttpBaseChannel.h dependencies
     '/netwerk/base',
     # For nsDataHandler.h

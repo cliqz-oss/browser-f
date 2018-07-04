@@ -13,15 +13,17 @@ const TEST_URL =
 function containsFocus(aDoc, aElm) {
   let elm = aDoc.activeElement;
   while (elm) {
-    if (elm === aElm) { return true; }
+    if (elm === aElm) {
+      return true;
+    }
     elm = elm.parentNode;
   }
   return false;
 }
 
-add_task(function* () {
+add_task(async function() {
   info("Create a test tab and open the toolbox");
-  let toolbox = yield openNewTabAndToolbox(TEST_URL, "webconsole");
+  let toolbox = await openNewTabAndToolbox(TEST_URL, "webconsole");
   let doc = toolbox.doc;
 
   let toolbar = doc.querySelector(".devtools-tabbar");
@@ -35,47 +37,90 @@ add_task(function* () {
   ok(containsFocus(doc, toolbar), "Focus is within the toolbar");
 
   // Move the focus away from toolbar to a next focusable element.
-  EventUtils.synthesizeKey("VK_TAB", {});
+  EventUtils.synthesizeKey("KEY_Tab");
   ok(!containsFocus(doc, toolbar), "Focus is outside of the toolbar");
 
   // Move the focus back to the toolbar.
-  EventUtils.synthesizeKey("VK_TAB", { shiftKey: true });
+  EventUtils.synthesizeKey("KEY_Tab", {shiftKey: true});
   ok(containsFocus(doc, toolbar), "Focus is within the toolbar again");
 
   // Move through the toolbar forward using the right arrow key.
   for (let i = 0; i < toolbarControls.length; ++i) {
     is(doc.activeElement.id, toolbarControls[i].id, "New control is focused");
     if (i < toolbarControls.length - 1) {
-      EventUtils.synthesizeKey("VK_RIGHT", {});
+      EventUtils.synthesizeKey("KEY_ArrowRight");
     }
   }
 
   // Move the focus away from toolbar to a next focusable element.
-  EventUtils.synthesizeKey("VK_TAB", {});
+  EventUtils.synthesizeKey("KEY_Tab");
   ok(!containsFocus(doc, toolbar), "Focus is outside of the toolbar");
 
   // Move the focus back to the toolbar.
-  EventUtils.synthesizeKey("VK_TAB", { shiftKey: true });
+  EventUtils.synthesizeKey("KEY_Tab", {shiftKey: true});
   ok(containsFocus(doc, toolbar), "Focus is within the toolbar again");
 
   // Move through the toolbar backward using the left arrow key.
   for (let i = toolbarControls.length - 1; i >= 0; --i) {
     is(doc.activeElement.id, toolbarControls[i].id, "New control is focused");
-    if (i > 0) { EventUtils.synthesizeKey("VK_LEFT", {}); }
+    if (i > 0) {
+      EventUtils.synthesizeKey("KEY_ArrowLeft");
+    }
   }
 
   // Move focus to the 3rd (non-first) toolbar control.
   let expectedFocusedControl = toolbarControls[2];
-  EventUtils.synthesizeKey("VK_RIGHT", {});
-  EventUtils.synthesizeKey("VK_RIGHT", {});
+  EventUtils.synthesizeKey("KEY_ArrowRight");
+  EventUtils.synthesizeKey("KEY_ArrowRight");
   is(doc.activeElement.id, expectedFocusedControl.id, "New control is focused");
 
   // Move the focus away from toolbar to a next focusable element.
-  EventUtils.synthesizeKey("VK_TAB", {});
+  EventUtils.synthesizeKey("KEY_Tab");
   ok(!containsFocus(doc, toolbar), "Focus is outside of the toolbar");
 
   // Move the focus back to the toolbar, ensure we land on the last active
   // descendant control.
-  EventUtils.synthesizeKey("VK_TAB", { shiftKey: true });
+  EventUtils.synthesizeKey("KEY_Tab", {shiftKey: true});
   is(doc.activeElement.id, expectedFocusedControl.id, "New control is focused");
+});
+
+// Test that moving the focus of tab button and selecting it.
+add_task(async function() {
+  info("Create a test tab and open the toolbox");
+  let toolbox = await openNewTabAndToolbox(TEST_URL, "inspector");
+  let doc = toolbox.doc;
+
+  let toolbar = doc.querySelector(".toolbox-tabs");
+  let tabButtons = toolbar.querySelectorAll(".devtools-tab, button");
+  let win = tabButtons[0].ownerDocument.defaultView;
+
+  // Put the keyboard focus onto the first tab button.
+  tabButtons[0].focus();
+  ok(containsFocus(doc, toolbar), "Focus is within the toolbox");
+  is(doc.activeElement.id, tabButtons[0].id, "First tab button is focused.");
+
+  // Move the focused tab and select it by using enter key.
+  let onKeyEvent = once(win, "keydown");
+  EventUtils.synthesizeKey("KEY_ArrowRight");
+  await onKeyEvent;
+
+  let onceSelected = toolbox.once("webconsole-selected");
+  EventUtils.synthesizeKey("Enter");
+  await onceSelected;
+  ok(doc.activeElement.id, tabButtons[1].id, "Changed tab button is focused.");
+
+  // Webconsole steal the focus from button after sending "webconsole-selected"
+  // event.
+  tabButtons[1].focus();
+
+  // Return the focused tab with space key.
+  onKeyEvent = once(win, "keydown");
+  EventUtils.synthesizeKey("KEY_ArrowLeft");
+  await onKeyEvent;
+
+  onceSelected = toolbox.once("inspector-selected");
+  EventUtils.synthesizeKey(" ");
+  await onceSelected;
+
+  ok(doc.activeElement.id, tabButtons[0].id, "Changed tab button is focused.");
 });

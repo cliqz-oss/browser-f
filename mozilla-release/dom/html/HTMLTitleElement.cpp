@@ -54,37 +54,27 @@ HTMLTitleElement::SetText(const nsAString& aText, ErrorResult& aError)
 }
 
 void
-HTMLTitleElement::CharacterDataChanged(nsIDocument *aDocument,
-                                       nsIContent *aContent,
-                                       CharacterDataChangeInfo *aInfo)
+HTMLTitleElement::CharacterDataChanged(nsIContent* aContent,
+                                       const CharacterDataChangeInfo&)
 {
   SendTitleChangeEvent(false);
 }
 
 void
-HTMLTitleElement::ContentAppended(nsIDocument *aDocument,
-                                  nsIContent *aContainer,
-                                  nsIContent *aFirstNewContent,
-                                  int32_t aNewIndexInContainer)
+HTMLTitleElement::ContentAppended(nsIContent* aFirstNewContent)
 {
   SendTitleChangeEvent(false);
 }
 
 void
-HTMLTitleElement::ContentInserted(nsIDocument *aDocument,
-                                  nsIContent *aContainer,
-                                  nsIContent *aChild,
-                                  int32_t aIndexInContainer)
+HTMLTitleElement::ContentInserted(nsIContent* aChild)
 {
   SendTitleChangeEvent(false);
 }
 
 void
-HTMLTitleElement::ContentRemoved(nsIDocument *aDocument,
-                                 nsIContent *aContainer,
-                                 nsIContent *aChild,
-                                 int32_t aIndexInContainer,
-                                 nsIContent *aPreviousSibling)
+HTMLTitleElement::ContentRemoved(nsIContent* aChild,
+                                 nsIContent* aPreviousSibling)
 {
   SendTitleChangeEvent(false);
 }

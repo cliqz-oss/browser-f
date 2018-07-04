@@ -19,6 +19,13 @@ class nsMenuBarX;
 class nsMenuX;
 class nsIWidget;
 class nsIContent;
+class nsIDocument;
+
+namespace mozilla {
+namespace dom {
+class Element;
+}
+}
 
 // ApplicationMenuDelegate is used to receive Cocoa notifications.
 @interface ApplicationMenuDelegate : NSObject<NSMenuDelegate>
@@ -36,7 +43,8 @@ public:
 
   nsNativeMenuServiceX() {}
 
-  NS_IMETHOD CreateNativeMenuBar(nsIWidget* aParent, nsIContent* aMenuBarNode) override;
+  NS_IMETHOD CreateNativeMenuBar(nsIWidget* aParent,
+                                 mozilla::dom::Element* aMenuBarNode) override;
 
 protected:
   virtual ~nsNativeMenuServiceX() {}
@@ -106,7 +114,7 @@ public:
   nsMenuObjectTypeX MenuObjectType() override {return eMenuBarObjectType;}
 
   // nsMenuBarX
-  nsresult          Create(nsIWidget* aParent, nsIContent* aContent);
+  nsresult          Create(nsIWidget* aParent, mozilla::dom::Element* aElement);
   void              SetParent(nsIWidget* aParent);
   uint32_t          GetMenuCount();
   bool              MenuContainsAppMenu();
@@ -127,7 +135,7 @@ protected:
   void              ConstructFallbackNativeMenus();
   nsresult          InsertMenuAtIndex(nsMenuX* aMenu, uint32_t aIndex);
   void              RemoveMenuAtIndex(uint32_t aIndex);
-  void              HideItem(nsIDOMDocument* inDoc, const nsAString & inID, nsIContent** outHiddenNode);
+  void              HideItem(nsIDocument* inDoc, const nsAString & inID, nsIContent** outHiddenNode);
   void              AquifyMenuBar();
   NSMenuItem*       CreateNativeAppMenuItem(nsMenuX* inMenu, const nsAString& nodeID, SEL action,
                                             int tag, NativeMenuItemTarget* target);

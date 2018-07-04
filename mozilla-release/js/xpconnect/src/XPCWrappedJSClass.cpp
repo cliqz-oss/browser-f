@@ -7,17 +7,20 @@
 /* Sharable code and data for wrapper around JSObjects. */
 
 #include "xpcprivate.h"
-#include "jsprf.h"
+#include "js/Printf.h"
 #include "nsArrayEnumerator.h"
-#include "nsContentUtils.h"
+#include "nsINamed.h"
 #include "nsIScriptError.h"
 #include "nsWrapperCache.h"
 #include "AccessCheck.h"
 #include "nsJSUtils.h"
+#include "nsPrintfCString.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMExceptionBinding.h"
+#include "mozilla/dom/DOMPrefs.h"
+#include "mozilla/dom/MozQueryInterface.h"
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
 
 #include "jsapi.h"
@@ -111,8 +114,7 @@ nsXPCWrappedJSClass::GetNewOrUsed(JSContext* cx, REFNSIID aIID, bool allowNonScr
     RefPtr<nsXPCWrappedJSClass> clasp = map->Find(aIID);
 
     if (!clasp) {
-        nsCOMPtr<nsIInterfaceInfo> info;
-        nsXPConnect::XPConnect()->GetInfoForIID(&aIID, getter_AddRefs(info));
+        const nsXPTInterfaceInfo* info = nsXPTInterfaceInfo::ByIID(aIID);
         if (info) {
             bool canScript, isBuiltin;
             if (NS_SUCCEEDED(info->IsScriptable(&canScript)) && (canScript || allowNonScriptable) &&
@@ -129,7 +131,7 @@ nsXPCWrappedJSClass::GetNewOrUsed(JSContext* cx, REFNSIID aIID, bool allowNonScr
 }
 
 nsXPCWrappedJSClass::nsXPCWrappedJSClass(JSContext* cx, REFNSIID aIID,
-                                         nsIInterfaceInfo* aInfo)
+                                         const nsXPTInterfaceInfo* aInfo)
     : mRuntime(nsXPConnect::GetRuntimeInstance()),
       mInfo(aInfo),
       mName(nullptr),
@@ -223,18 +225,22 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
     if (!aIID.Equals(NS_GET_IID(nsISupports))) {
         bool allowNonScriptable = mozilla::jsipc::IsWrappedCPOW(jsobj);
 
-        nsCOMPtr<nsIInterfaceInfo> info;
-        nsXPConnect::XPConnect()->GetInfoForIID(&aIID, getter_AddRefs(info));
-        if (!info)
+        const nsXPTInterfaceInfo* info = nsXPTInterfaceInfo::ByIID(aIID);
+        if (!info || info->IsBuiltinClass() ||
+            (!info->IsScriptable() && !allowNonScriptable))
+        {
             return nullptr;
-        bool canScript, isBuiltin;
-        if (NS_FAILED(info->IsScriptable(&canScript)) || (!canScript && !allowNonScriptable) ||
-            NS_FAILED(info->IsBuiltinClass(&isBuiltin)) || isBuiltin)
-            return nullptr;
+        }
     }
 
-    id = xpc_NewIDObject(cx, jsobj, aIID);
-    if (id) {
+    dom::MozQueryInterface* mozQI = nullptr;
+    if (NS_SUCCEEDED(UNWRAP_OBJECT(MozQueryInterface, &fun, mozQI))) {
+        if (mozQI->QueriesTo(aIID))
+            return jsobj.get();
+        return nullptr;
+    }
+
+    if ((id = xpc_NewIDObject(cx, jsobj, aIID))) {
         // Throwing NS_NOINTERFACE is the prescribed way to fail QI from JS. It
         // is not an exception that is ever worth reporting, but we don't want
         // to eat all exceptions either.
@@ -248,7 +254,6 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
             RootedValue jsexception(cx, NullValue());
 
             if (JS_GetPendingException(cx, &jsexception)) {
-                nsresult rv;
                 if (jsexception.isObject()) {
                     // XPConnect may have constructed an object to represent a
                     // C++ QI failure. See if that is the case.
@@ -256,12 +261,11 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
                     Exception* e = nullptr;
                     UNWRAP_OBJECT(Exception, &exceptionObj, e);
 
-                    if (e &&
-                        NS_SUCCEEDED(e->GetResult(&rv)) &&
-                        rv == NS_NOINTERFACE) {
+                    if (e && e->GetResult() == NS_NOINTERFACE) {
                         JS_ClearPendingException(cx);
                     }
                 } else if (jsexception.isNumber()) {
+                    nsresult rv;
                     // JS often throws an nsresult.
                     if (jsexception.isDouble())
                         // Visual Studio 9 doesn't allow casting directly from
@@ -278,10 +282,10 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
         } else if (!success) {
             NS_WARNING("QI hook ran OOMed - this is probably a bug!");
         }
-    }
 
-    if (success)
-        success = JS_ValueToObject(cx, retval, &retObj);
+        if (success)
+            success = JS_ValueToObject(cx, retval, &retObj);
+    }
 
     return success ? retObj.get() : nullptr;
 }
@@ -295,7 +299,7 @@ GetNamedPropertyAsVariantRaw(XPCCallContext& ccx,
                              nsIVariant** aResult,
                              nsresult* pErr)
 {
-    nsXPTType type = nsXPTType((uint8_t)TD_INTERFACE_TYPE);
+    nsXPTType type = { TD_INTERFACE_TYPE };
     RootedValue val(ccx);
 
     return JS_GetPropertyById(ccx, aJSObj, aName, &val) &&
@@ -416,49 +420,97 @@ NS_IMETHODIMP xpcProperty::GetValue(nsIVariant * *aValue)
 }
 
 /***************************************************************************/
-// This 'WrappedJSIdentity' class and singleton allow us to figure out if
-// any given nsISupports* is implemented by a WrappedJS object. This is done
-// using a QueryInterface call on the interface pointer with our ID. If
-// that call returns NS_OK and the pointer is to our singleton, then the
-// interface must be implemented by a WrappedJS object. NOTE: the
-// 'WrappedJSIdentity' object is not a real XPCOM object and should not be
-// used for anything else (hence it is declared in this implementation file).
 
-// {5C5C3BB0-A9BA-11d2-BA64-00805F8A5DD7}
-#define NS_IXPCONNECT_WRAPPED_JS_IDENTITY_CLASS_IID                           \
-{ 0x5c5c3bb0, 0xa9ba, 0x11d2,                                                 \
-  { 0xba, 0x64, 0x0, 0x80, 0x5f, 0x8a, 0x5d, 0xd7 } }
+namespace {
 
-class WrappedJSIdentity
+class WrappedJSNamed final : public nsINamed
 {
-    // no instance methods...
-public:
-    NS_DECLARE_STATIC_IID_ACCESSOR(NS_IXPCONNECT_WRAPPED_JS_IDENTITY_CLASS_IID)
+    nsCString mName;
 
-    static void* GetSingleton()
+    ~WrappedJSNamed() {}
+
+public:
+    NS_DECL_ISUPPORTS
+
+    explicit WrappedJSNamed(const nsACString& aName) : mName(aName) {}
+
+    NS_IMETHOD GetName(nsACString& aName) override
     {
-        static WrappedJSIdentity* singleton = nullptr;
-        if (!singleton)
-            singleton = new WrappedJSIdentity();
-        return (void*) singleton;
+        aName = mName;
+        aName.AppendLiteral(":JS");
+        return NS_OK;
     }
 };
 
-NS_DEFINE_STATIC_IID_ACCESSOR(WrappedJSIdentity,
-                              NS_IXPCONNECT_WRAPPED_JS_IDENTITY_CLASS_IID)
+NS_IMPL_ISUPPORTS(WrappedJSNamed, nsINamed)
+
+nsCString
+GetFunctionName(JSContext* cx, HandleObject obj)
+{
+    RootedObject inner(cx, js::UncheckedUnwrap(obj));
+    JSAutoCompartment ac(cx, inner);
+
+    RootedFunction fun(cx, JS_GetObjectFunction(inner));
+    if (!fun) {
+        // If the object isn't a function, it's likely that it has a single
+        // function property (for things like nsITimerCallback). In this case,
+        // return the name of that function property.
+
+        Rooted<IdVector> idArray(cx, IdVector(cx));
+        if (!JS_Enumerate(cx, inner, &idArray)) {
+            JS_ClearPendingException(cx);
+            return nsCString("error");
+        }
+
+        if (idArray.length() != 1)
+            return nsCString("nonfunction");
+
+        RootedId id(cx, idArray[0]);
+        RootedValue v(cx);
+        if (!JS_GetPropertyById(cx, inner, id, &v)) {
+            JS_ClearPendingException(cx);
+            return nsCString("nonfunction");
+        }
+
+        if (!v.isObject())
+            return nsCString("nonfunction");
+
+        RootedObject vobj(cx, &v.toObject());
+        return GetFunctionName(cx, vobj);
+    }
+
+    RootedString funName(cx, JS_GetFunctionDisplayId(fun));
+    RootedScript script(cx, JS_GetFunctionScript(cx, fun));
+    const char* filename = script ? JS_GetScriptFilename(script) : "anonymous";
+    const char* filenameSuffix = strrchr(filename, '/');
+
+    if (filenameSuffix) {
+        filenameSuffix++;
+    } else {
+        filenameSuffix = filename;
+    }
+
+    nsCString displayName("anonymous");
+    if (funName) {
+        nsCString* displayNamePtr = &displayName;
+        RootedValue funNameVal(cx, StringValue(funName));
+        if (!XPCConvert::JSData2Native(&displayNamePtr, funNameVal, { nsXPTType::T_UTF8STRING },
+                                       nullptr, nullptr))
+        {
+            JS_ClearPendingException(cx);
+            return nsCString("anonymous");
+        }
+    }
+
+    displayName.Append('[');
+    displayName.Append(filenameSuffix, strlen(filenameSuffix));
+    displayName.Append(']');
+    return displayName;
+}
+
+} // anonymous namespace
 
 /***************************************************************************/
-
-// static
-bool
-nsXPCWrappedJSClass::IsWrappedJS(nsISupports* aPtr)
-{
-    void* result;
-    NS_PRECONDITION(aPtr, "null pointer");
-    return aPtr &&
-           NS_OK == aPtr->QueryInterface(NS_GET_IID(WrappedJSIdentity), &result) &&
-           result == WrappedJSIdentity::GetSingleton();
-}
 
 NS_IMETHODIMP
 nsXPCWrappedJSClass::DelegatedQueryInterface(nsXPCWrappedJS* self,
@@ -468,14 +520,6 @@ nsXPCWrappedJSClass::DelegatedQueryInterface(nsXPCWrappedJS* self,
     if (aIID.Equals(NS_GET_IID(nsIXPConnectJSObjectHolder))) {
         NS_ADDREF(self);
         *aInstancePtr = (void*) static_cast<nsIXPConnectJSObjectHolder*>(self);
-        return NS_OK;
-    }
-
-    // Objects internal to xpconnect are the only objects that even know *how*
-    // to ask for this iid. And none of them bother refcounting the thing.
-    if (aIID.Equals(NS_GET_IID(WrappedJSIdentity))) {
-        // asking to find out if this is a wrapper object
-        *aInstancePtr = WrappedJSIdentity::GetSingleton();
         return NS_OK;
     }
 
@@ -547,10 +591,8 @@ nsXPCWrappedJSClass::DelegatedQueryInterface(nsXPCWrappedJS* self,
     // Check if the desired interface is a function interface. If so, we don't
     // want to QI, because the function almost certainly doesn't have a QueryInterface
     // property, and doesn't need one.
-    bool isFunc = false;
-    nsCOMPtr<nsIInterfaceInfo> info;
-    nsXPConnect::XPConnect()->GetInfoForIID(&aIID, getter_AddRefs(info));
-    if (info && NS_SUCCEEDED(info->IsFunction(&isFunc)) && isFunc) {
+    const nsXPTInterfaceInfo* info = nsXPTInterfaceInfo::ByIID(aIID);
+    if (info && info->IsFunction()) {
         RefPtr<nsXPCWrappedJS> wrapper;
         RootedObject obj(RootingCx(), self->GetJSObject());
         nsresult rv = nsXPCWrappedJS::GetNewOrUsed(obj, aIID, getter_AddRefs(wrapper));
@@ -590,6 +632,16 @@ nsXPCWrappedJSClass::DelegatedQueryInterface(nsXPCWrappedJS* self,
         }
     }
 
+    // If we're asked to QI to nsINamed, we pretend that this is possible. We'll
+    // try to return a name that makes sense for the wrapped JS value.
+    if (aIID.Equals(NS_GET_IID(nsINamed))) {
+        RootedObject obj(RootingCx(), self->GetJSObject());
+        nsCString name = GetFunctionName(ccx, obj);
+        RefPtr<WrappedJSNamed> named = new WrappedJSNamed(name);
+        *aInstancePtr = named.forget().take();
+        return NS_OK;
+    }
+
     // else...
     // no can do
     *aInstancePtr = nullptr;
@@ -612,7 +664,7 @@ nsXPCWrappedJSClass::GetRootJSObject(JSContext* cx, JSObject* aJSObjArg)
 
 bool
 nsXPCWrappedJSClass::GetArraySizeFromParam(JSContext* cx,
-                                           const XPTMethodDescriptor* method,
+                                           const nsXPTMethodInfo* method,
                                            const nsXPTParamInfo& param,
                                            uint16_t methodIndex,
                                            uint8_t paramIndex,
@@ -626,7 +678,7 @@ nsXPCWrappedJSClass::GetArraySizeFromParam(JSContext* cx,
     if (NS_FAILED(rv))
         return false;
 
-    const nsXPTParamInfo& arg_param = method->params[argnum];
+    const nsXPTParamInfo& arg_param = method->GetParam(argnum);
 
     // This should be enforced by the xpidl compiler, but it's not.
     // See bug 695235.
@@ -643,7 +695,7 @@ nsXPCWrappedJSClass::GetArraySizeFromParam(JSContext* cx,
 
 bool
 nsXPCWrappedJSClass::GetInterfaceTypeFromParam(JSContext* cx,
-                                               const XPTMethodDescriptor* method,
+                                               const nsXPTMethodInfo* method,
                                                const nsXPTParamInfo& param,
                                                uint16_t methodIndex,
                                                const nsXPTType& type,
@@ -665,7 +717,7 @@ nsXPCWrappedJSClass::GetInterfaceTypeFromParam(JSContext* cx,
         if (NS_FAILED(rv))
             return false;
 
-        const nsXPTParamInfo& arg_param = method->params[argnum];
+        const nsXPTParamInfo& arg_param = method->GetParam(argnum);
         const nsXPTType& arg_type = arg_param.GetType();
 
         if (arg_type.TagPart() == nsXPTType::T_IID) {
@@ -727,7 +779,7 @@ nsXPCWrappedJSClass::CleanupOutparams(JSContext* cx, uint16_t methodIndex,
 {
     // clean up any 'out' params handed in
     for (uint8_t i = 0; i < n; i++) {
-        const nsXPTParamInfo& param = info->params[i];
+        const nsXPTParamInfo& param = info->GetParam(i);
         if (!param.IsOut())
             continue;
 
@@ -775,11 +827,11 @@ nsXPCWrappedJSClass::CheckForException(XPCCallContext & ccx,
                                        AutoEntryScript& aes,
                                        const char * aPropertyName,
                                        const char * anInterfaceName,
-                                       nsIException* aSyntheticException)
+                                       Exception* aSyntheticException)
 {
     JSContext * cx = ccx.GetJSContext();
     MOZ_ASSERT(cx == aes.cx());
-    nsCOMPtr<nsIException> xpc_exception = aSyntheticException;
+    RefPtr<Exception> xpc_exception = aSyntheticException;
     /* this one would be set by our error reporter */
 
     XPCJSContext* xpccx = ccx.GetContext();
@@ -810,118 +862,110 @@ nsXPCWrappedJSClass::CheckForException(XPCCallContext & ccx,
     aes.ClearException();
 
     if (xpc_exception) {
-        nsresult e_result;
-        if (NS_SUCCEEDED(xpc_exception->GetResult(&e_result))) {
-            // Figure out whether or not we should report this exception.
-            bool reportable = xpc_IsReportableErrorCode(e_result);
-            if (reportable) {
-                // Ugly special case for GetInterface. It's "special" in the
-                // same way as QueryInterface in that a failure is not
-                // exceptional and shouldn't be reported. We have to do this
-                // check here instead of in xpcwrappedjs (like we do for QI) to
-                // avoid adding extra code to all xpcwrappedjs objects.
-                if (e_result == NS_ERROR_NO_INTERFACE &&
-                    !strcmp(anInterfaceName, "nsIInterfaceRequestor") &&
-                    !strcmp(aPropertyName, "getInterface")) {
-                    reportable = false;
-                }
-
-                // More special case, see bug 877760.
-                if (e_result == NS_ERROR_XPC_JSOBJECT_HAS_NO_FUNCTION_NAMED) {
-                    reportable = false;
-                }
-            }
-
-            // Try to use the error reporter set on the context to handle this
-            // error if it came from a JS exception.
-            if (reportable && is_js_exception)
-            {
-                // Note that we cleared the exception above, so we need to set it again,
-                // just so that we can tell the JS engine to pass it back to us via the
-                // error reporting callback. This is all very dumb.
-                JS_SetPendingException(cx, js_exception);
-                aes.ReportException();
+        nsresult e_result = xpc_exception->GetResult();
+        // Figure out whether or not we should report this exception.
+        bool reportable = xpc_IsReportableErrorCode(e_result);
+        if (reportable) {
+            // Ugly special case for GetInterface. It's "special" in the
+            // same way as QueryInterface in that a failure is not
+            // exceptional and shouldn't be reported. We have to do this
+            // check here instead of in xpcwrappedjs (like we do for QI) to
+            // avoid adding extra code to all xpcwrappedjs objects.
+            if (e_result == NS_ERROR_NO_INTERFACE &&
+                !strcmp(anInterfaceName, "nsIInterfaceRequestor") &&
+                !strcmp(aPropertyName, "getInterface")) {
                 reportable = false;
             }
 
-            if (reportable) {
-                if (nsContentUtils::DOMWindowDumpEnabled()) {
-                    static const char line[] =
-                        "************************************************************\n";
-                    static const char preamble[] =
-                        "* Call to xpconnect wrapped JSObject produced this error:  *\n";
-                    static const char cant_get_text[] =
-                        "FAILED TO GET TEXT FROM EXCEPTION\n";
+            // More special case, see bug 877760.
+            if (e_result == NS_ERROR_XPC_JSOBJECT_HAS_NO_FUNCTION_NAMED) {
+                reportable = false;
+            }
+        }
 
-                    fputs(line, stdout);
-                    fputs(preamble, stdout);
-                    nsCString text;
-                    if (NS_SUCCEEDED(xpc_exception->ToString(cx, text)) &&
-                        !text.IsEmpty()) {
-                        fputs(text.get(), stdout);
-                        fputs("\n", stdout);
-                    } else
-                        fputs(cant_get_text, stdout);
-                    fputs(line, stdout);
-                }
+        // Try to use the error reporter set on the context to handle this
+        // error if it came from a JS exception.
+        if (reportable && is_js_exception)
+        {
+            // Note that we cleared the exception above, so we need to set it again,
+            // just so that we can tell the JS engine to pass it back to us via the
+            // error reporting callback. This is all very dumb.
+            JS_SetPendingException(cx, js_exception);
+            aes.ReportException();
+            reportable = false;
+        }
 
-                // Log the exception to the JS Console, so that users can do
-                // something with it.
-                nsCOMPtr<nsIConsoleService> consoleService
-                    (do_GetService(XPC_CONSOLE_CONTRACTID));
-                if (nullptr != consoleService) {
-                    nsresult rv;
-                    nsCOMPtr<nsIScriptError> scriptError;
-                    nsCOMPtr<nsISupports> errorData;
-                    rv = xpc_exception->GetData(getter_AddRefs(errorData));
-                    if (NS_SUCCEEDED(rv))
-                        scriptError = do_QueryInterface(errorData);
+        if (reportable) {
+            if (DOMPrefs::DumpEnabled()) {
+                static const char line[] =
+                    "************************************************************\n";
+                static const char preamble[] =
+                    "* Call to xpconnect wrapped JSObject produced this error:  *\n";
+                static const char cant_get_text[] =
+                    "FAILED TO GET TEXT FROM EXCEPTION\n";
 
-                    if (nullptr == scriptError) {
-                        // No luck getting one from the exception, so
-                        // try to cook one up.
-                        scriptError = do_CreateInstance(XPC_SCRIPT_ERROR_CONTRACTID);
-                        if (nullptr != scriptError) {
-                            nsCString newMessage;
-                            rv = xpc_exception->ToString(cx, newMessage);
-                            if (NS_SUCCEEDED(rv)) {
-                                // try to get filename, lineno from the first
-                                // stack frame location.
-                                int32_t lineNumber = 0;
-                                nsString sourceName;
+                fputs(line, stdout);
+                fputs(preamble, stdout);
+                nsCString text;
+                xpc_exception->ToString(cx, text);
+                if (!text.IsEmpty()) {
+                    fputs(text.get(), stdout);
+                    fputs("\n", stdout);
+                } else
+                    fputs(cant_get_text, stdout);
+                fputs(line, stdout);
+            }
 
-                                nsCOMPtr<nsIStackFrame> location;
-                                xpc_exception->
-                                    GetLocation(getter_AddRefs(location));
-                                if (location) {
-                                    // Get line number w/o checking; 0 is ok.
-                                    location->GetLineNumber(cx, &lineNumber);
+            // Log the exception to the JS Console, so that users can do
+            // something with it.
+            nsCOMPtr<nsIConsoleService> consoleService
+                (do_GetService(XPC_CONSOLE_CONTRACTID));
+            if (nullptr != consoleService) {
+                nsCOMPtr<nsIScriptError> scriptError =
+                    do_QueryInterface(xpc_exception->GetData());
 
-                                    // get a filename.
-                                    rv = location->GetFilename(cx, sourceName);
-                                }
+                if (nullptr == scriptError) {
+                    // No luck getting one from the exception, so
+                    // try to cook one up.
+                    scriptError = do_CreateInstance(XPC_SCRIPT_ERROR_CONTRACTID);
+                    if (nullptr != scriptError) {
+                        nsCString newMessage;
+                        xpc_exception->ToString(cx, newMessage);
+                        // try to get filename, lineno from the first
+                        // stack frame location.
+                        int32_t lineNumber = 0;
+                        nsString sourceName;
 
-                                rv = scriptError->InitWithWindowID(NS_ConvertUTF8toUTF16(newMessage),
-                                                                   sourceName,
-                                                                   EmptyString(),
-                                                                   lineNumber, 0, 0,
-                                                                   "XPConnect JavaScript",
-                                                                   nsJSUtils::GetCurrentlyRunningCodeInnerWindowID(cx));
-                                if (NS_FAILED(rv))
-                                    scriptError = nullptr;
-                            }
+                        nsCOMPtr<nsIStackFrame> location =
+                            xpc_exception->GetLocation();
+                        if (location) {
+                            // Get line number.
+                            lineNumber = location->GetLineNumber(cx);
+
+                            // get a filename.
+                            location->GetFilename(cx, sourceName);
                         }
+
+                        nsresult rv =
+                            scriptError->InitWithWindowID(NS_ConvertUTF8toUTF16(newMessage),
+                                                          sourceName,
+                                                          EmptyString(),
+                                                          lineNumber, 0, 0,
+                                                          "XPConnect JavaScript",
+                                                          nsJSUtils::GetCurrentlyRunningCodeInnerWindowID(cx));
+                        if (NS_FAILED(rv))
+                            scriptError = nullptr;
                     }
-                    if (nullptr != scriptError)
-                        consoleService->LogMessage(scriptError);
                 }
+                if (nullptr != scriptError)
+                    consoleService->LogMessage(scriptError);
             }
-            // Whether or not it passes the 'reportable' test, it might
-            // still be an error and we have to do the right thing here...
-            if (NS_FAILED(e_result)) {
-                xpccx->SetPendingException(xpc_exception);
-                return e_result;
-            }
+        }
+        // Whether or not it passes the 'reportable' test, it might
+        // still be an error and we have to do the right thing here...
+        if (NS_FAILED(e_result)) {
+            xpccx->SetPendingException(xpc_exception);
+            return e_result;
         }
     } else {
         // see if JS code signaled failure result without throwing exception
@@ -934,7 +978,7 @@ nsXPCWrappedJSClass::CheckForException(XPCCallContext & ccx,
 
 NS_IMETHODIMP
 nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
-                                const XPTMethodDescriptor* info_,
+                                const nsXPTMethodInfo* info,
                                 nsXPTCMiniVariant* nativeParams)
 {
     Value* sp = nullptr;
@@ -944,15 +988,9 @@ nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
     bool success;
     bool readyToDoTheCall = false;
     nsID  param_iid;
-    const nsXPTMethodInfo* info = static_cast<const nsXPTMethodInfo*>(info_);
-    const char* name = info->name;
+    const char* name = info->GetName();
     bool foundDependentParam;
 
-    // Make sure not to set the callee on ccx until after we've gone through
-    // the whole nsIXPCFunctionThisTranslator bit.  That code uses ccx to
-    // convert natives to JSObjects, but we do NOT plan to pass those JSObjects
-    // to our real callee.
-    //
     // We're about to call into script via an XPCWrappedJS, so we need an
     // AutoEntryScript. This is probably Gecko-specific at this point, and
     // definitely will be when we turn off XPConnect for the web.
@@ -993,9 +1031,11 @@ nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
     AutoSavePendingResult apr(xpccx);
 
     // XXX ASSUMES that retval is last arg. The xpidl compiler ensures this.
-    uint8_t paramCount = info->num_args;
-    uint8_t argc = paramCount -
-        (paramCount && XPT_PD_IS_RETVAL(info->params[paramCount-1].flags) ? 1 : 0);
+    uint8_t paramCount = info->GetParamCount();
+    uint8_t argc = paramCount;
+    if (info->HasRetval()) {
+        argc -= 1;
+    }
 
     if (!scriptEval.StartEvaluating(obj))
         goto pre_call_clean_up;
@@ -1008,7 +1048,7 @@ nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
     // setup stack
 
     // if this isn't a function call then we don't need to push extra stuff
-    if (!(XPT_MD_IS_SETTER(info->flags) || XPT_MD_IS_GETTER(info->flags))) {
+    if (!(info->IsSetter() || info->IsGetter())) {
         // We get fval before allocating the stack to avoid gc badness that can
         // happen if the GetProperty call leaves our request and the gc runs
         // while the stack we allocate contains garbage.
@@ -1032,50 +1072,7 @@ nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
         // pass this along to the caller as an exception/result code.
 
         fval = ObjectValue(*obj);
-        if (isFunction &&
-            JS_TypeOfValue(ccx, fval) == JSTYPE_FUNCTION) {
-
-            // We may need to translate the 'this' for the function object.
-
-            if (paramCount) {
-                const nsXPTParamInfo& firstParam = info->params[0];
-                if (firstParam.IsIn()) {
-                    const nsXPTType& firstType = firstParam.GetType();
-
-                    if (firstType.IsInterfacePointer()) {
-                        nsIXPCFunctionThisTranslator* translator;
-
-                        IID2ThisTranslatorMap* map =
-                            mRuntime->GetThisTranslatorMap();
-
-                        translator = map->Find(mIID);
-
-                        if (translator) {
-                            nsCOMPtr<nsISupports> newThis;
-                            if (NS_FAILED(translator->
-                                          TranslateThis((nsISupports*)nativeParams[0].val.p,
-                                                        getter_AddRefs(newThis)))) {
-                                goto pre_call_clean_up;
-                            }
-                            if (newThis) {
-                                RootedValue v(cx);
-                                xpcObjectHelper helper(newThis);
-                                bool ok =
-                                  XPCConvert::NativeInterface2JSObject(
-                                      &v, nullptr, helper, nullptr,
-                                      false, nullptr);
-                                if (!ok) {
-                                    goto pre_call_clean_up;
-                                }
-                                thisObj = v.toObjectOrNull();
-                                if (!JS_WrapObject(cx, &thisObj))
-                                    goto pre_call_clean_up;
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
+        if (!isFunction || JS_TypeOfValue(ccx, fval) != JSTYPE_FUNCTION) {
             if (!JS_GetProperty(cx, obj, name, &fval))
                 goto pre_call_clean_up;
             // XXX We really want to factor out the error reporting better and
@@ -1103,7 +1100,7 @@ nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
     // we're trusting the JS engine to come up with a good global to use for
     // our object (whatever it was).
     for (i = 0; i < argc; i++) {
-        const nsXPTParamInfo& param = info->params[i];
+        const nsXPTParamInfo& param = info->GetParam(i);
         const nsXPTType& type = param.GetType();
         nsXPTType datum_type;
         uint32_t array_count;
@@ -1203,11 +1200,11 @@ pre_call_clean_up:
 
     MOZ_ASSERT(!aes.HasException());
 
-    nsCOMPtr<nsIException> syntheticException;
+    RefPtr<Exception> syntheticException;
     RootedValue rval(cx);
-    if (XPT_MD_IS_GETTER(info->flags)) {
+    if (info->IsGetter()) {
         success = JS_GetProperty(cx, obj, name, &rval);
-    } else if (XPT_MD_IS_SETTER(info->flags)) {
+    } else if (info->IsSetter()) {
         rval = *argv;
         success = JS_SetProperty(cx, obj, name, rval);
     } else {
@@ -1248,7 +1245,7 @@ pre_call_clean_up:
 
     foundDependentParam = false;
     for (i = 0; i < paramCount; i++) {
-        const nsXPTParamInfo& param = info->params[i];
+        const nsXPTParamInfo& param = info->GetParam(i);
         MOZ_ASSERT(!param.IsShared(), "[shared] implies [noscript]!");
         if (!param.IsOut() && !param.IsDipper())
             continue;
@@ -1268,7 +1265,7 @@ pre_call_clean_up:
         else
             pv = (nsXPTCMiniVariant*) nativeParams[i].val.p;
 
-        if (param.IsRetval())
+        if (&param == info->GetRetval())
             val = rval;
         else if (argv[i].isPrimitive())
             break;
@@ -1297,7 +1294,7 @@ pre_call_clean_up:
     // if any params were dependent, then we must iterate again to convert them.
     if (foundDependentParam && i == paramCount) {
         for (i = 0; i < paramCount; i++) {
-            const nsXPTParamInfo& param = info->params[i];
+            const nsXPTParamInfo& param = info->GetParam(i);
             if (!param.IsOut())
                 continue;
 
@@ -1317,7 +1314,7 @@ pre_call_clean_up:
 
             pv = (nsXPTCMiniVariant*) nativeParams[i].val.p;
 
-            if (param.IsRetval())
+            if (&param == info->GetRetval())
                 val = rval;
             else {
                 RootedObject obj(cx, &argv[i].toObject());
@@ -1424,14 +1421,14 @@ nsXPCWrappedJSClass::DebugDump(int16_t depth)
         XPC_LOG_ALWAYS(("IID number is %s", iid ? iid : "invalid"));
         if (iid)
             free(iid);
-        XPC_LOG_ALWAYS(("InterfaceInfo @ %p", mInfo.get()));
+        XPC_LOG_ALWAYS(("InterfaceInfo @ %p", mInfo));
         uint16_t methodCount = 0;
         if (depth) {
             uint16_t i;
-            nsCOMPtr<nsIInterfaceInfo> parent;
+            const nsXPTInterfaceInfo* parent;
             XPC_LOG_INDENT();
-            mInfo->GetParent(getter_AddRefs(parent));
-            XPC_LOG_ALWAYS(("parent @ %p", parent.get()));
+            mInfo->GetParent(&parent);
+            XPC_LOG_ALWAYS(("parent @ %p", parent));
             mInfo->GetMethodCount(&methodCount);
             XPC_LOG_ALWAYS(("MethodCount = %d", methodCount));
             mInfo->GetConstantCount(&i);

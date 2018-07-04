@@ -10,6 +10,7 @@
 
 #include "mozilla/PodOperations.h"
 #include "mozilla/SyncRunnable.h"
+#include "VideoUtils.h"
 
 #undef LOG
 #define LOG(type, msg) MOZ_LOG(sPDMLog, type, msg)
@@ -74,12 +75,17 @@ VorbisDataDecoder::Init()
   if (!XiphExtradataToHeaders(headers, headerLens,
                               mInfo.mCodecSpecificConfig->Elements(),
                               mInfo.mCodecSpecificConfig->Length())) {
-    return InitPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+    return InitPromise::CreateAndReject(
+      MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                  RESULT_DETAIL("Could not get vorbis header.")),
+      __func__);
   }
   for (size_t i = 0; i < headers.Length(); i++) {
     if (NS_FAILED(DecodeHeader(headers[i], headerLens[i]))) {
-      return InitPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR,
-                                          __func__);
+      return InitPromise::CreateAndReject(
+        MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                    RESULT_DETAIL("Could not decode vorbis header.")),
+        __func__);
     }
   }
 
@@ -87,12 +93,18 @@ VorbisDataDecoder::Init()
 
   int r = vorbis_synthesis_init(&mVorbisDsp, &mVorbisInfo);
   if (r) {
-    return InitPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+    return InitPromise::CreateAndReject(
+      MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                  RESULT_DETAIL("Systhesis init fail.")),
+      __func__);
   }
 
   r = vorbis_block_init(&mVorbisDsp, &mVorbisBlock);
   if (r) {
-    return InitPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+    return InitPromise::CreateAndReject(
+      MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                  RESULT_DETAIL("Block init fail.")),
+      __func__);
   }
 
   if (mInfo.mRate != (uint32_t)mVorbisDsp.vi->rate) {
@@ -106,7 +118,10 @@ VorbisDataDecoder::Init()
 
   AudioConfig::ChannelLayout layout(mVorbisDsp.vi->channels);
   if (!layout.IsValid()) {
-    return InitPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+    return InitPromise::CreateAndReject(
+      MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                  RESULT_DETAIL("Invalid audio layout.")),
+      __func__);
   }
 
   return InitPromise::CreateAndResolve(TrackInfo::kAudioTrack, __func__);
@@ -141,8 +156,6 @@ VorbisDataDecoder::ProcessDecode(MediaRawData* aSample)
   const unsigned char* aData = aSample->Data();
   size_t aLength = aSample->Size();
   int64_t aOffset = aSample->mOffset;
-  auto aTstampUsecs = aSample->mTime;
-  int64_t aTotalFrames = 0;
 
   MOZ_ASSERT(mPacketCount >= 3);
 
@@ -210,35 +223,36 @@ VorbisDataDecoder::ProcessDecode(MediaRawData* aSample)
         __func__);
     }
 
-    auto time = total_duration + aTstampUsecs;
+    auto time = total_duration + aSample->mTime;
     if (!time.IsValid()) {
       return DecodePromise::CreateAndReject(
         MediaResult(
           NS_ERROR_DOM_MEDIA_OVERFLOW_ERR,
-          RESULT_DETAIL("Overflow adding total_duration and aTstampUsecs")),
+          RESULT_DETAIL("Overflow adding total_duration and aSample->mTime")),
         __func__);
     };
 
     if (!mAudioConverter) {
-      AudioConfig in(
-        AudioConfig::ChannelLayout(channels, VorbisLayout(channels)), rate);
-      AudioConfig out(channels, rate);
-      if (!in.IsValid() || !out.IsValid()) {
-        return DecodePromise::CreateAndReject(
-          MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
-                      RESULT_DETAIL("Invalid channel layout:%u", channels)),
-          __func__);
-      }
+      const AudioConfig::ChannelLayout layout =
+        AudioConfig::ChannelLayout(channels, VorbisLayout(channels));
+      AudioConfig in(layout, channels, rate);
+      AudioConfig out(
+        AudioConfig::ChannelLayout::SMPTEDefault(layout), channels, rate);
       mAudioConverter = MakeUnique<AudioConverter>(in, out);
     }
     MOZ_ASSERT(mAudioConverter->CanWorkInPlace());
     AudioSampleBuffer data(Move(buffer));
     data = mAudioConverter->Process(Move(data));
 
-    aTotalFrames += frames;
-
-    results.AppendElement(new AudioData(aOffset, time, duration,
-                                        frames, data.Forget(), channels, rate));
+    results.AppendElement(
+      new AudioData(aOffset,
+                    time,
+                    duration,
+                    frames,
+                    data.Forget(),
+                    channels,
+                    rate,
+                    mAudioConverter->OutputConfig().Layout().Map()));
     mFrames += frames;
     err = vorbis_synthesis_read(&mVorbisDsp, frames);
     if (err) {
@@ -265,12 +279,12 @@ RefPtr<MediaDataDecoder::FlushPromise>
 VorbisDataDecoder::Flush()
 {
   RefPtr<VorbisDataDecoder> self = this;
-  return InvokeAsync(mTaskQueue, __func__, [self, this]() {
+  return InvokeAsync(mTaskQueue, __func__, [self]() {
     // Ignore failed results from vorbis_synthesis_restart. They
     // aren't fatal and it fails when ResetDecode is called at a
     // time when no vorbis data has been read.
-    vorbis_synthesis_restart(&mVorbisDsp);
-    mLastFrameTime.reset();
+    vorbis_synthesis_restart(&self->mVorbisDsp);
+    self->mLastFrameTime.reset();
     return FlushPromise::CreateAndResolve(true, __func__);
   });
 }
@@ -292,42 +306,72 @@ VorbisDataDecoder::VorbisLayout(uint32_t aChannels)
   switch (aChannels) {
     case 1: // the stream is monophonic
     {
-      static const Channel config[] = { AudioConfig::CHANNEL_MONO };
+      static const Channel config[] = { AudioConfig::CHANNEL_FRONT_CENTER };
       return config;
     }
     case 2: // the stream is stereo. channel order: left, right
     {
-      static const Channel config[] = { AudioConfig::CHANNEL_LEFT, AudioConfig::CHANNEL_RIGHT };
+      static const Channel config[] = { AudioConfig::CHANNEL_FRONT_LEFT,
+                                        AudioConfig::CHANNEL_FRONT_RIGHT };
       return config;
     }
-    case 3: // the stream is a 1d-surround encoding. channel order: left, center, right
+    case 3: // the stream is a 1d-surround encoding. channel order: left,
+            // center, right
     {
-      static const Channel config[] = { AudioConfig::CHANNEL_LEFT, AudioConfig::CHANNEL_CENTER, AudioConfig::CHANNEL_RIGHT };
+      static const Channel config[] = { AudioConfig::CHANNEL_FRONT_LEFT,
+                                        AudioConfig::CHANNEL_FRONT_CENTER,
+                                        AudioConfig::CHANNEL_FRONT_RIGHT };
       return config;
     }
-    case 4: // the stream is quadraphonic surround. channel order: front left, front right, rear left, rear right
+    case 4: // the stream is quadraphonic surround. channel order: front left,
+            // front right, rear left, rear right
     {
-      static const Channel config[] = { AudioConfig::CHANNEL_LEFT, AudioConfig::CHANNEL_RIGHT, AudioConfig::CHANNEL_LS, AudioConfig::CHANNEL_RS };
+      static const Channel config[] = { AudioConfig::CHANNEL_FRONT_LEFT,
+                                        AudioConfig::CHANNEL_FRONT_RIGHT,
+                                        AudioConfig::CHANNEL_BACK_LEFT,
+                                        AudioConfig::CHANNEL_BACK_RIGHT };
       return config;
     }
-    case 5: // the stream is five-channel surround. channel order: front left, center, front right, rear left, rear right
+    case 5: // the stream is five-channel surround. channel order: front left,
+            // center, front right, rear left, rear right
     {
-      static const Channel config[] = { AudioConfig::CHANNEL_LEFT, AudioConfig::CHANNEL_CENTER, AudioConfig::CHANNEL_RIGHT, AudioConfig::CHANNEL_LS, AudioConfig::CHANNEL_RS };
+      static const Channel config[] = { AudioConfig::CHANNEL_FRONT_LEFT,
+                                        AudioConfig::CHANNEL_FRONT_CENTER,
+                                        AudioConfig::CHANNEL_FRONT_RIGHT,
+                                        AudioConfig::CHANNEL_BACK_LEFT,
+                                        AudioConfig::CHANNEL_BACK_RIGHT };
       return config;
     }
-    case 6: // the stream is 5.1 surround. channel order: front left, center, front right, rear left, rear right, LFE
+    case 6: // the stream is 5.1 surround. channel order: front left, center,
+            // front right, rear left, rear right, LFE
     {
-      static const Channel config[] = { AudioConfig::CHANNEL_LEFT, AudioConfig::CHANNEL_CENTER, AudioConfig::CHANNEL_RIGHT, AudioConfig::CHANNEL_LS, AudioConfig::CHANNEL_RS, AudioConfig::CHANNEL_LFE };
+      static const Channel config[] = {
+        AudioConfig::CHANNEL_FRONT_LEFT,  AudioConfig::CHANNEL_FRONT_CENTER,
+        AudioConfig::CHANNEL_FRONT_RIGHT, AudioConfig::CHANNEL_BACK_LEFT,
+        AudioConfig::CHANNEL_BACK_RIGHT,  AudioConfig::CHANNEL_LFE
+      };
       return config;
     }
-    case 7: // surround. channel order: front left, center, front right, side left, side right, rear center, LFE
+    case 7: // surround. channel order: front left, center, front right, side
+            // left, side right, rear center, LFE
     {
-      static const Channel config[] = { AudioConfig::CHANNEL_LEFT, AudioConfig::CHANNEL_CENTER, AudioConfig::CHANNEL_RIGHT, AudioConfig::CHANNEL_LS, AudioConfig::CHANNEL_RS, AudioConfig::CHANNEL_RCENTER, AudioConfig::CHANNEL_LFE };
+      static const Channel config[] = {
+        AudioConfig::CHANNEL_FRONT_LEFT,  AudioConfig::CHANNEL_FRONT_CENTER,
+        AudioConfig::CHANNEL_FRONT_RIGHT, AudioConfig::CHANNEL_SIDE_LEFT,
+        AudioConfig::CHANNEL_SIDE_RIGHT,  AudioConfig::CHANNEL_BACK_CENTER,
+        AudioConfig::CHANNEL_LFE
+      };
       return config;
     }
-    case 8: // the stream is 7.1 surround. channel order: front left, center, front right, side left, side right, rear left, rear right, LFE
+    case 8: // the stream is 7.1 surround. channel order: front left, center,
+            // front right, side left, side right, rear left, rear right, LFE
     {
-      static const Channel config[] = { AudioConfig::CHANNEL_LEFT, AudioConfig::CHANNEL_CENTER, AudioConfig::CHANNEL_RIGHT, AudioConfig::CHANNEL_LS, AudioConfig::CHANNEL_RS, AudioConfig::CHANNEL_RLS, AudioConfig::CHANNEL_RRS, AudioConfig::CHANNEL_LFE };
+      static const Channel config[] = {
+        AudioConfig::CHANNEL_FRONT_LEFT,  AudioConfig::CHANNEL_FRONT_CENTER,
+        AudioConfig::CHANNEL_FRONT_RIGHT, AudioConfig::CHANNEL_SIDE_LEFT,
+        AudioConfig::CHANNEL_SIDE_RIGHT,  AudioConfig::CHANNEL_BACK_LEFT,
+        AudioConfig::CHANNEL_BACK_RIGHT,  AudioConfig::CHANNEL_LFE
+      };
       return config;
     }
     default:

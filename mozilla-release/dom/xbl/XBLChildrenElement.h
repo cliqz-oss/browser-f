@@ -7,7 +7,7 @@
 #ifndef nsXBLChildrenElement_h___
 #define nsXBLChildrenElement_h___
 
-#include "nsIDOMElement.h"
+#include "nsIDOMNode.h"
 #include "nsINodeList.h"
 #include "nsBindingManager.h"
 #include "mozilla/dom/nsXMLElement.h"
@@ -38,24 +38,24 @@ public:
 
   virtual nsIDOMNode* AsDOMNode() override { return this; }
 
-  void AppendInsertedChild(nsIContent* aChild)
+  void AppendInsertedChild(nsIContent* aChild, bool aNotify)
   {
-    mInsertedChildren.AppendElement(aChild);
-    aChild->SetXBLInsertionParent(GetParent());
-
     // Appending an inserted child causes the inserted
     // children to be projected instead of default content.
-    MaybeRemoveDefaultContent();
+    MaybeRemoveDefaultContent(aNotify);
+
+    mInsertedChildren.AppendElement(aChild);
+    aChild->SetXBLInsertionPoint(this);
   }
 
   void InsertInsertedChildAt(nsIContent* aChild, uint32_t aIndex)
   {
-    mInsertedChildren.InsertElementAt(aIndex, aChild);
-    aChild->SetXBLInsertionParent(GetParent());
-
     // Inserting an inserted child causes the inserted
     // children to be projected instead of default content.
-    MaybeRemoveDefaultContent();
+    MaybeRemoveDefaultContent(true);
+
+    mInsertedChildren.InsertElementAt(aIndex, aChild);
+    aChild->SetXBLInsertionPoint(this);
   }
 
   void RemoveInsertedChild(nsIContent* aChild)
@@ -68,18 +68,24 @@ public:
 
     // After removing the inserted child, default content
     // may be projected into this insertion point.
+    //
+    // FIXME: Layout should be told about this before clearing
+    // mInsertedChildren, this leaves stale styles and frames in the frame tree.
     MaybeSetupDefaultContent();
   }
 
   void ClearInsertedChildren()
   {
-    for (uint32_t c = 0; c < mInsertedChildren.Length(); ++c) {
-      mInsertedChildren[c]->SetXBLInsertionParent(nullptr);
+    for (auto* child : mInsertedChildren) {
+      child->SetXBLInsertionPoint(nullptr);
     }
     mInsertedChildren.Clear();
 
     // After clearing inserted children, default content
     // will be projected into this insertion point.
+    //
+    // FIXME: Layout should be told about this before clearing
+    // mInsertedChildren, this leaves stale styles and frames in the frame tree.
     MaybeSetupDefaultContent();
   }
 
@@ -89,19 +95,15 @@ public:
       for (nsIContent* child = static_cast<nsINode*>(this)->GetFirstChild();
            child;
            child = child->GetNextSibling()) {
-        child->SetXBLInsertionParent(GetParent());
+        child->SetXBLInsertionPoint(this);
       }
     }
   }
 
-  void MaybeRemoveDefaultContent()
+  void MaybeRemoveDefaultContent(bool aNotify)
   {
-    if (!HasInsertedChildren()) {
-      for (nsIContent* child = static_cast<nsINode*>(this)->GetFirstChild();
-           child;
-           child = child->GetNextSibling()) {
-        child->SetXBLInsertionParent(nullptr);
-      }
+    if (!HasInsertedChildren() && HasChildren()) {
+      DoRemoveDefaultContent(aNotify);
     }
   }
 
@@ -139,19 +141,21 @@ public:
 
 protected:
   ~XBLChildrenElement();
-  virtual nsresult BeforeSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                  const nsAttrValueOrString* aValue,
                                  bool aNotify) override;
 
+  void DoRemoveDefaultContent(bool aNotify);
+
 private:
   nsTArray<nsIContent*> mInsertedChildren; // WEAK
-  nsTArray<nsCOMPtr<nsIAtom> > mIncludes;
+  nsTArray<RefPtr<nsAtom> > mIncludes;
 };
 
 } // namespace dom
 } // namespace mozilla
 
-class nsAnonymousContentList : public nsINodeList
+class nsAnonymousContentList final : public nsINodeList
 {
 public:
   explicit nsAnonymousContentList(nsIContent* aParent)
@@ -161,13 +165,12 @@ public:
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(nsAnonymousContentList)
-  // nsIDOMNodeList interface
-  NS_DECL_NSIDOMNODELIST
 
   // nsINodeList interface
   virtual int32_t IndexOf(nsIContent* aContent) override;
   virtual nsINode* GetParentObject() override { return mParent; }
   virtual nsIContent* Item(uint32_t aIndex) override;
+  uint32_t Length() override;
 
   virtual JSObject* WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
 

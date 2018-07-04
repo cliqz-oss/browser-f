@@ -8,8 +8,8 @@
 
 const TESTCASE_URI = TEST_BASE + "missing.html";
 
-add_task(function* () {
-  let { ui, toolbox, panel } = yield openStyleEditorForURL(TESTCASE_URI);
+add_task(async function() {
+  let { ui, toolbox, panel } = await openStyleEditorForURL(TESTCASE_URI);
 
   // Note that we're not testing for a specific number of stylesheet editors
   // below because the test-page is loaded with chrome:// URL and, right now,
@@ -23,8 +23,8 @@ add_task(function* () {
   let notifBox = toolbox.getNotificationBox();
   let notif = notifBox.getCurrentNotification();
   ok(notif, "The notification box contains a message");
-  ok(notif.label.indexOf("Style sheet could not be loaded") !== -1,
+  ok(notif.label.includes("Style sheet could not be loaded"),
     "The error message is the correct one");
-  ok(notif.label.indexOf("missing-stylesheet.css") !== -1,
+  ok(notif.label.includes("missing-stylesheet.css"),
     "The error message contains the missing stylesheet's URL");
 });

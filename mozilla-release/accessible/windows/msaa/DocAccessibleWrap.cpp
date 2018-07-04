@@ -56,7 +56,7 @@ DocAccessibleWrap::get_accParent(
 
   // Emulated window proxy is only set for the top level content document when
   // emulation is enabled.
-  IAccessible* dispParent = ipcDoc->GetEmulatedWindowIAccessible();
+  RefPtr<IDispatch> dispParent = ipcDoc->GetEmulatedWindowIAccessible();
   if (!dispParent) {
     dispParent = ipcDoc->GetParentIAccessible();
   }
@@ -65,8 +65,7 @@ DocAccessibleWrap::get_accParent(
     return S_FALSE;
   }
 
-  dispParent->AddRef();
-  *ppdispParent = static_cast<IDispatch*>(dispParent);
+  dispParent.forget(ppdispParent);
   return S_OK;
 }
 
@@ -155,8 +154,8 @@ DocAccessibleWrap::DoInitialUpdate()
       if (Compatibility::IsDolphin()) {
         rect = Bounds();
         nsIntRect rootRect = rootDocument->Bounds();
-        rect.x = rootRect.x - rect.x;
-        rect.y -= rootRect.y;
+        rect.MoveToX(rootRect.X() - rect.X());
+        rect.MoveByY(-rootRect.Y());
 
         nsCOMPtr<nsISupports> container = mDocumentNode->GetContainer();
         nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(container);
@@ -170,8 +169,8 @@ DocAccessibleWrap::DoInitialUpdate()
 
       HWND parentWnd = reinterpret_cast<HWND>(rootDocument->GetNativeWindow());
       mHWND = nsWinUtils::CreateNativeWindow(kClassNameTabContent, parentWnd,
-                                             rect.x, rect.y,
-                                             rect.width, rect.height, isActive,
+                                             rect.X(), rect.Y(),
+                                             rect.Width(), rect.Height(), isActive,
                                              &onCreate);
     } else {
       DocAccessible* parentDocument = ParentDocument();

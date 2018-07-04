@@ -8,15 +8,18 @@
 #define nsIContentSerializer_h
 
 #include "nsISupports.h"
+#include "nsStringFwd.h"
 
 class nsIContent;
 class nsIDocument;
-class nsAString;
 
 namespace mozilla {
 class Encoding;
 namespace dom {
+class Comment;
+class DocumentType;
 class Element;
+class ProcessingInstruction;
 } // namespace dom
 } // namespace mozilla
 
@@ -43,15 +46,16 @@ class nsIContentSerializer : public nsISupports {
                                 int32_t aStartOffset, int32_t aEndOffset,
                                 nsAString& aStr) = 0;
 
-  NS_IMETHOD AppendProcessingInstruction(nsIContent* aPI,
+  NS_IMETHOD AppendProcessingInstruction(mozilla::dom::ProcessingInstruction* aPI,
                                          int32_t aStartOffset,
                                          int32_t aEndOffset,
                                          nsAString& aStr) = 0;
 
-  NS_IMETHOD AppendComment(nsIContent* aComment, int32_t aStartOffset,
+  NS_IMETHOD AppendComment(mozilla::dom::Comment* aComment,
+                           int32_t aStartOffset,
                            int32_t aEndOffset, nsAString& aStr) = 0;
 
-  NS_IMETHOD AppendDoctype(nsIContent *aDoctype,
+  NS_IMETHOD AppendDoctype(mozilla::dom::DocumentType* aDoctype,
                            nsAString& aStr) = 0;
 
   NS_IMETHOD AppendElementStart(mozilla::dom::Element* aElement,

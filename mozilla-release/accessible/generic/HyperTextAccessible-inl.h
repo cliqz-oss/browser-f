@@ -13,8 +13,9 @@
 #include "nsIClipboard.h"
 #include "nsIEditor.h"
 #include "nsIPersistentProperties2.h"
-#include "nsIPlaintextEditor.h"
 #include "nsFrameSelection.h"
+
+#include "mozilla/TextEditor.h"
 
 namespace mozilla {
 namespace a11y {
@@ -60,67 +61,70 @@ HyperTextAccessible::ReplaceText(const nsAString& aText)
   // DeleteText().
   DeleteText(0, CharacterCount());
 
-  nsCOMPtr<nsIEditor> editor = GetEditor();
-  nsCOMPtr<nsIPlaintextEditor> plaintextEditor(do_QueryInterface(editor));
-  if (!plaintextEditor) {
+  RefPtr<TextEditor> textEditor = GetEditor();
+  if (!textEditor) {
     return;
   }
 
   // DeleteText() may cause inserting <br> element in some cases. Let's
   // select all again and replace whole contents.
-  editor->SelectAll();
+  textEditor->SelectAll();
 
-  plaintextEditor->InsertText(aText);
+  DebugOnly<nsresult> rv = textEditor->InsertTextAsAction(aText);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to insert the new text");
 }
 
 inline void
 HyperTextAccessible::InsertText(const nsAString& aText, int32_t aPosition)
 {
-  nsCOMPtr<nsIEditor> editor = GetEditor();
-  nsCOMPtr<nsIPlaintextEditor> peditor(do_QueryInterface(editor));
-  if (peditor) {
+  RefPtr<TextEditor> textEditor = GetEditor();
+  if (textEditor) {
     SetSelectionRange(aPosition, aPosition);
-    peditor->InsertText(aText);
+    DebugOnly<nsresult> rv = textEditor->InsertTextAsAction(aText);
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to insert the text");
   }
 }
 
 inline void
 HyperTextAccessible::CopyText(int32_t aStartPos, int32_t aEndPos)
   {
-    nsCOMPtr<nsIEditor> editor = GetEditor();
-    if (editor) {
+    RefPtr<TextEditor> textEditor = GetEditor();
+    if (textEditor) {
       SetSelectionRange(aStartPos, aEndPos);
-      editor->Copy();
+      textEditor->Copy();
     }
   }
 
 inline void
 HyperTextAccessible::CutText(int32_t aStartPos, int32_t aEndPos)
   {
-    nsCOMPtr<nsIEditor> editor = GetEditor();
-    if (editor) {
+    RefPtr<TextEditor> textEditor = GetEditor();
+    if (textEditor) {
       SetSelectionRange(aStartPos, aEndPos);
-      editor->Cut();
+      textEditor->Cut();
     }
   }
 
 inline void
 HyperTextAccessible::DeleteText(int32_t aStartPos, int32_t aEndPos)
 {
-  nsCOMPtr<nsIEditor> editor = GetEditor();
-  if (editor) {
-    SetSelectionRange(aStartPos, aEndPos);
-    editor->DeleteSelection(nsIEditor::eNone, nsIEditor::eStrip);
+  RefPtr<TextEditor> textEditor = GetEditor();
+  if (!textEditor) {
+    return;
   }
+  SetSelectionRange(aStartPos, aEndPos);
+  DebugOnly<nsresult> rv =
+    textEditor->DeleteSelectionAsAction(nsIEditor::eNone, nsIEditor::eStrip);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to delete text");
 }
 
 inline void
 HyperTextAccessible::PasteText(int32_t aPosition)
 {
-  nsCOMPtr<nsIEditor> editor = GetEditor();
-  if (editor) {
+  RefPtr<TextEditor> textEditor = GetEditor();
+  if (textEditor) {
     SetSelectionRange(aPosition, aPosition);
-    editor->Paste(nsIClipboard::kGlobalClipboard);
+    textEditor->Paste(nsIClipboard::kGlobalClipboard);
   }
 }
 

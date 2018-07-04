@@ -106,38 +106,22 @@ macro_rules! make_url_getter(
 );
 
 #[macro_export]
-macro_rules! make_url_or_base_getter(
+macro_rules! make_form_action_getter(
     ( $attr:ident, $htmlname:tt ) => (
         fn $attr(&self) -> DOMString {
             use dom::bindings::inheritance::Castable;
             use dom::element::Element;
             let element = self.upcast::<Element>();
-            let url = element.get_url_attribute(&local_name!($htmlname));
-            if url.is_empty() {
-                let window = window_from_node(self);
-                DOMString::from(window.get_url().into_string())
-            } else {
-                url
-            }
-        }
-    );
-);
-
-#[macro_export]
-macro_rules! make_string_or_document_url_getter(
-    ( $attr:ident, $htmlname:tt ) => (
-        fn $attr(&self) -> DOMString {
-            use dom::bindings::inheritance::Castable;
-            use dom::element::Element;
-            use dom::node::document_from_node;
-            let element = self.upcast::<Element>();
-            let val = element.get_string_attribute(&local_name!($htmlname));
-
-            if val.is_empty() {
-                let doc = document_from_node(self);
-                DOMString::from(doc.url().into_string())
-            } else {
-                val
+            let doc = ::dom::node::document_from_node(self);
+            let attr = element.get_attribute(&ns!(), &local_name!($htmlname));
+            let value = attr.as_ref().map(|attr| attr.value());
+            let value = match value {
+                Some(ref value) if !value.is_empty() => &***value,
+                _ => return doc.url().into_string().into(),
+            };
+            match doc.base_url().join(value) {
+                Ok(parsed) => parsed.into_string().into(),
+                Err(_) => value.to_owned().into(),
             }
         }
     );
@@ -149,7 +133,6 @@ macro_rules! make_enumerated_getter(
         fn $attr(&self) -> DOMString {
             use dom::bindings::inheritance::Castable;
             use dom::element::Element;
-            use std::ascii::AsciiExt;
             let element = self.upcast::<Element>();
             let mut val = element.get_string_attribute(&local_name!($htmlname));
             val.make_ascii_lowercase();
@@ -194,11 +177,8 @@ macro_rules! make_url_setter(
         fn $attr(&self, value: DOMString) {
             use dom::bindings::inheritance::Castable;
             use dom::element::Element;
-            use dom::node::document_from_node;
-            let value = AttrValue::from_url(document_from_node(self).url(),
-                                            value.into());
             let element = self.upcast::<Element>();
-            element.set_attribute(&local_name!($htmlname), value);
+            element.set_url_attribute(&local_name!($htmlname), value);
         }
     );
 );
@@ -334,7 +314,7 @@ macro_rules! jsmanaged_array(
 
 /// These are used to generate a event handler which has no special case.
 macro_rules! define_event_handler(
-    ($handler: ident, $event_type: ident, $getter: ident, $setter: ident, $setter_fn: ident) => (
+    ($handler: ty, $event_type: ident, $getter: ident, $setter: ident, $setter_fn: ident) => (
         fn $getter(&self) -> Option<::std::rc::Rc<$handler>> {
             use dom::bindings::inheritance::Castable;
             use dom::eventtarget::EventTarget;
@@ -352,7 +332,7 @@ macro_rules! define_event_handler(
 );
 
 macro_rules! define_window_owned_event_handler(
-    ($handler: ident, $event_type: ident, $getter: ident, $setter: ident) => (
+    ($handler: ty, $event_type: ident, $getter: ident, $setter: ident) => (
         fn $getter(&self) -> Option<::std::rc::Rc<$handler>> {
             let document = document_from_node(self);
             if document.has_browsing_context() {
@@ -373,36 +353,59 @@ macro_rules! define_window_owned_event_handler(
 
 macro_rules! event_handler(
     ($event_type: ident, $getter: ident, $setter: ident) => (
-        define_event_handler!(EventHandlerNonNull, $event_type, $getter, $setter,
-                              set_event_handler_common);
+        define_event_handler!(
+            ::dom::bindings::codegen::Bindings::EventHandlerBinding::EventHandlerNonNull,
+            $event_type,
+            $getter,
+            $setter,
+            set_event_handler_common
+        );
     )
 );
 
 macro_rules! error_event_handler(
     ($event_type: ident, $getter: ident, $setter: ident) => (
-        define_event_handler!(OnErrorEventHandlerNonNull, $event_type, $getter, $setter,
-                              set_error_event_handler);
+        define_event_handler!(
+            ::dom::bindings::codegen::Bindings::EventHandlerBinding::OnErrorEventHandlerNonNull,
+            $event_type,
+            $getter,
+            $setter,
+            set_error_event_handler
+        );
     )
 );
 
 macro_rules! beforeunload_event_handler(
     ($event_type: ident, $getter: ident, $setter: ident) => (
-        define_event_handler!(OnBeforeUnloadEventHandlerNonNull, $event_type,
-                              $getter, $setter, set_beforeunload_event_handler);
+        define_event_handler!(
+            ::dom::bindings::codegen::Bindings::EventHandlerBinding::OnBeforeUnloadEventHandlerNonNull,
+            $event_type,
+            $getter,
+            $setter,
+            set_beforeunload_event_handler
+        );
     )
 );
 
 macro_rules! window_owned_event_handler(
     ($event_type: ident, $getter: ident, $setter: ident) => (
-        define_window_owned_event_handler!(EventHandlerNonNull,
-                                           $event_type, $getter, $setter);
+        define_window_owned_event_handler!(
+            ::dom::bindings::codegen::Bindings::EventHandlerBinding::EventHandlerNonNull,
+            $event_type,
+            $getter,
+            $setter
+        );
     )
 );
 
 macro_rules! window_owned_beforeunload_event_handler(
     ($event_type: ident, $getter: ident, $setter: ident) => (
-        define_window_owned_event_handler!(OnBeforeUnloadEventHandlerNonNull,
-                                           $event_type, $getter, $setter);
+        define_window_owned_event_handler!(
+            ::dom::bindings::codegen::Bindings::EventHandlerBinding::OnBeforeUnloadEventHandlerNonNull,
+            $event_type,
+            $getter,
+            $setter
+        );
     )
 );
 
@@ -571,4 +574,58 @@ macro_rules! rooted_vec {
         let mut root = $crate::dom::bindings::trace::RootableVec::new_unrooted();
         let mut $name = $crate::dom::bindings::trace::RootedVec::from_iter(&mut root, $iter);
     }
+}
+
+/// DOM struct implementation for simple interfaces inheriting from PerformanceEntry.
+macro_rules! impl_performance_entry_struct(
+    ($binding:ident, $struct:ident, $type:expr) => (
+        use dom::bindings::codegen::Bindings::$binding;
+        use dom::bindings::reflector::reflect_dom_object;
+        use dom::bindings::root::DomRoot;
+        use dom::bindings::str::DOMString;
+        use dom::globalscope::GlobalScope;
+        use dom::performanceentry::PerformanceEntry;
+        use dom_struct::dom_struct;
+
+        #[dom_struct]
+        pub struct $struct {
+            entry: PerformanceEntry,
+        }
+
+        impl $struct {
+            fn new_inherited(name: DOMString, start_time: f64, duration: f64)
+                -> $struct {
+                $struct {
+                    entry: PerformanceEntry::new_inherited(name,
+                                                           DOMString::from($type),
+                                                           start_time,
+                                                           duration)
+                }
+            }
+
+            #[allow(unrooted_must_root)]
+            pub fn new(global: &GlobalScope,
+                       name: DOMString,
+                       start_time: f64,
+                       duration: f64) -> DomRoot<$struct> {
+                let entry = $struct::new_inherited(name, start_time, duration);
+                reflect_dom_object(Box::new(entry), global, $binding::Wrap)
+            }
+        }
+    );
+);
+
+macro_rules! handle_potential_webgl_error {
+    ($context:expr, $call:expr, $return_on_error:expr) => {
+        match $call {
+            Ok(ret) => ret,
+            Err(error) => {
+                $context.webgl_error(error);
+                $return_on_error
+            }
+        }
+    };
+    ($context:expr, $call:expr) => {
+        handle_potential_webgl_error!($context, $call, ());
+    };
 }

@@ -8,6 +8,7 @@
 #include "mozilla/widget/CompositorWidgetVsyncObserver.h"
 #include "nsBaseWidget.h"
 #include "VsyncDispatcher.h"
+#include "gfxPlatform.h"
 
 namespace mozilla {
 namespace widget {
@@ -18,6 +19,7 @@ CompositorWidgetChild::CompositorWidgetChild(RefPtr<CompositorVsyncDispatcher> a
    mVsyncObserver(aVsyncObserver)
 {
   MOZ_ASSERT(XRE_IsParentProcess());
+  MOZ_ASSERT(!gfxPlatform::IsHeadless());
 }
 
 CompositorWidgetChild::~CompositorWidgetChild()
@@ -44,7 +46,7 @@ CompositorWidgetChild::OnDestroyWindow()
 void
 CompositorWidgetChild::UpdateTransparency(nsTransparencyMode aMode)
 {
-  Unused << SendUpdateTransparency(static_cast<int32_t>(aMode));
+  Unused << SendUpdateTransparency(aMode);
 }
 
 void

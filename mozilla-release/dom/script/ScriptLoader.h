@@ -242,7 +242,7 @@ public:
                             ScriptLoadRequest* aRequest,
                             nsresult aChannelStatus,
                             nsresult aSRIStatus,
-                            mozilla::dom::SRICheckDataVerifier* aSRIDataVerifier);
+                            SRICheckDataVerifier* aSRIDataVerifier);
 
   /**
    * Returns wether any request is queued, and not executed yet.
@@ -296,11 +296,15 @@ public:
    * @param aIntegrity The expect hash url, if avail, of the request
    * @param aScriptFromHead Whether or not the script was a child of head
    */
-  virtual void PreloadURI(nsIURI* aURI, const nsAString& aCharset,
+  virtual void PreloadURI(nsIURI* aURI,
+                          const nsAString& aCharset,
                           const nsAString& aType,
                           const nsAString& aCrossOrigin,
                           const nsAString& aIntegrity,
-                          bool aScriptFromHead, bool aAsync, bool aDefer,
+                          bool aScriptFromHead,
+                          bool aAsync,
+                          bool aDefer,
+                          bool aNoModule,
                           const mozilla::net::ReferrerPolicy aReferrerPolicy);
 
   /**
@@ -326,14 +330,25 @@ public:
    */
   void LoadEventFired();
 
+  /**
+   * Destroy and prevent the ScriptLoader or the ScriptLoadRequests from owning
+   * any references to the JSScript or to the Request which might be used for
+   * caching the encoded bytecode.
+   */
+  void Destroy()
+  {
+    GiveUpBytecodeEncoding();
+  }
+
 private:
   virtual ~ScriptLoader();
 
   ScriptLoadRequest* CreateLoadRequest(ScriptKind aKind,
+                                       nsIURI* aURI,
                                        nsIScriptElement* aElement,
-                                       uint32_t aVersion,
                                        mozilla::CORSMode aCORSMode,
-                                       const mozilla::dom::SRIMetadata& aIntegrity);
+                                       const SRIMetadata& aIntegrity,
+                                       mozilla::net::ReferrerPolicy aReferrerPolicy);
 
   /**
    * Unblocks the creator parser of the parser-blocking scripts.
@@ -345,6 +360,20 @@ private:
    */
   void ContinueParserAsync(ScriptLoadRequest* aParserBlockingRequest);
 
+
+  bool ProcessExternalScript(nsIScriptElement* aElement,
+                             ScriptKind aScriptKind,
+                             nsAutoString aTypeAttr,
+                             nsIContent* aScriptContent);
+
+  bool ProcessInlineScript(nsIScriptElement* aElement,
+                           ScriptKind aScriptKind);
+
+  ScriptLoadRequest* LookupPreloadRequest(nsIScriptElement* aElement,
+                                          ScriptKind aScriptKind);
+
+  void GetSRIMetadata(const nsAString& aIntegrityAttr,
+                      SRIMetadata *aMetadataOut);
 
   /**
    * Helper function to check the content policy for a given request.
@@ -366,6 +395,8 @@ private:
    * success, as this error code is used to abort the input stream.
    */
   nsresult RestartLoad(ScriptLoadRequest* aRequest);
+
+  void HandleLoadError(ScriptLoadRequest *aRequest, nsresult aResult);
 
   /**
    * Process any pending requests asynchronously (i.e. off an event) if there
@@ -400,6 +431,16 @@ private:
   {
     return mEnabled && !mBlockerCount;
   }
+
+  nsresult VerifySRI(ScriptLoadRequest *aRequest,
+                     nsIIncrementalStreamLoader* aLoader,
+                     nsresult aSRIStatus,
+                     SRICheckDataVerifier* aSRIDataVerifier) const;
+
+  nsresult SaveSRIHash(ScriptLoadRequest *aRequest,
+                       SRICheckDataVerifier* aSRIDataVerifier) const;
+
+  void ReportErrorToConsole(ScriptLoadRequest *aRequest, nsresult aResult) const;
 
   nsresult AttemptAsyncScriptCompile(ScriptLoadRequest* aRequest);
   nsresult ProcessRequest(ScriptLoadRequest* aRequest);
@@ -446,6 +487,7 @@ private:
                                 nsresult aStatus);
 
   void AddDeferRequest(ScriptLoadRequest* aRequest);
+  void AddAsyncRequest(ScriptLoadRequest* aRequest);
   bool MaybeRemovedDeferRequests();
 
   void MaybeMoveToLoadedList(ScriptLoadRequest* aRequest);
@@ -453,16 +495,14 @@ private:
   JS::SourceBufferHolder GetScriptSource(ScriptLoadRequest* aRequest,
                                          nsAutoString& inlineData);
 
-  bool ModuleScriptsEnabled();
-
   void SetModuleFetchStarted(ModuleLoadRequest *aRequest);
   void SetModuleFetchFinishedAndResumeWaitingRequests(ModuleLoadRequest* aRequest,
                                                       nsresult aResult);
 
   bool IsFetchingModule(ModuleLoadRequest* aRequest) const;
 
-  bool ModuleMapContainsModule(ModuleLoadRequest* aRequest) const;
-  RefPtr<mozilla::GenericPromise> WaitForModuleFetch(ModuleLoadRequest* aRequest);
+  bool ModuleMapContainsURL(nsIURI* aURL) const;
+  RefPtr<mozilla::GenericPromise> WaitForModuleFetch(nsIURI* aURL);
   ModuleScript* GetFetchedModule(nsIURI* aURL) const;
 
   friend bool
@@ -475,12 +515,14 @@ private:
 
   nsresult CreateModuleScript(ModuleLoadRequest* aRequest);
   nsresult ProcessFetchedModuleSource(ModuleLoadRequest* aRequest);
+  void CheckModuleDependenciesLoaded(ModuleLoadRequest* aRequest);
   void ProcessLoadedModuleTree(ModuleLoadRequest* aRequest);
   bool InstantiateModuleTree(ModuleLoadRequest* aRequest);
+  JS::Value FindFirstParseError(ModuleLoadRequest* aRequest);
   void StartFetchingModuleDependencies(ModuleLoadRequest* aRequest);
 
   RefPtr<mozilla::GenericPromise>
-  StartFetchingModuleAndDependencies(ModuleLoadRequest* aRequest, nsIURI* aURI);
+  StartFetchingModuleAndDependencies(ModuleLoadRequest* aParent, nsIURI* aURI);
 
   nsIDocument* mDocument;                   // [WEAK]
   nsCOMArray<nsIScriptLoaderObserver> mObservers;
@@ -535,6 +577,7 @@ private:
   bool mDocumentParsingDone;
   bool mBlockingDOMContentLoaded;
   bool mLoadEventFired;
+  bool mGiveUpEncoding;
 
   // Module map
   nsRefPtrHashtable<nsURIHashKey, mozilla::GenericPromise::Private> mFetchingModules;

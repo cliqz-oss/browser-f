@@ -5,7 +5,7 @@
 
 <!-- LOCALIZATION NOTE (update.*):
 # These strings are also used in the update pane of preferences.
-# See about:preferences#advanced.
+# See about:preferences#general.
 -->
 <!-- LOCALIZATION NOTE (update.checkForUpdatesButton.*, update.updateButton.*):
 # Only one button is present at a time.
@@ -20,15 +20,13 @@
 
 <!-- LOCALIZATION NOTE (warningDesc.version): This is a warning about the experimental nature of Nightly and Aurora builds. It is only shown in those versions. -->
 <!ENTITY warningDesc.version        "&brandShortName; is experimental and may be unstable.">
-<!-- LOCALIZATION NOTE (warningDesc.telemetryDesc): This is a notification that Nightly/Aurora builds automatically send Telemetry data back to Mozilla. It is only shown in those versions. "It" refers to brandShortName. -->
-<!ENTITY warningDesc.telemetryDesc  "It automatically sends information about performance, hardware, usage and customizations back to &vendorShortName; to help make &brandShortName; better.">
 
 <!-- LOCALIZATION NOTE (community.exp.*) This paragraph is shown in "experimental" builds, i.e. Nightly and Aurora builds, instead of the other "community.*" strings below. -->
 <!ENTITY community.exp.start        "">
 <!-- LOCALIZATION NOTE (community.exp.mozillaLink): This is a link title that links to http://www.mozilla.org/. -->
 <!ENTITY community.exp.mozillaLink  "&vendorShortName;">
 <!ENTITY community.exp.middle       " is a ">
-<!-- LOCALIZATION NOTE (community.exp.creditslink): This is a link title that links to about:credits. -->
+<!-- LOCALIZATION NOTE (community.exp.creditsLink): This is a link title that links to about:credits. -->
 <!ENTITY community.exp.creditsLink  "global community">
 <!ENTITY community.exp.end          " working together to keep the Web open, public and accessible to all.">
 
@@ -41,7 +39,7 @@
 <!ENTITY community.end3             " working together to keep the Web open, public and accessible to all.">
 
 <!ENTITY helpus.start               "Want to help? ">
-<!-- LOCALIZATION NOTE (helpus.donateLink): This is a link title that links to https://sendto.mozilla.org/page/contribute/Give-Now?source=mozillaorg_default_footer&ref=firefox_about&utm_campaign=firefox_about&utm_source=firefox&utm_medium=referral&utm_content=20140929_FireFoxAbout. -->
+<!-- LOCALIZATION NOTE (helpus.donateLink): This is a link title that links to https://donate.mozilla.org/?utm_source=firefox&utm_medium=referral&utm_campaign=firefox_about&utm_content=firefox_about. -->
 <!ENTITY helpus.donateLink          "Make a donation">
 <!ENTITY helpus.middle              " or ">
 <!-- LOCALIZATION NOTE (helpus.getInvolvedLink): This is a link title that links to http://www.mozilla.org/contribute/. -->
@@ -117,6 +115,8 @@
 <!ENTITY cliqz.headline             "We Redesign the Internet">
 <!ENTITY cliqz.desc1.text           "The protection of your data has priority for us. As a company based in Germany we are bound by strict data security regulations and also by our own high standards and policies. Our primary principle: Cliqz does not store any data on our servers that could be used to identify you or your equipment. Want to know all the details? Read about our">
 <!ENTITY cliqz.desc1.privacy        "privacy standards">
+<!ENTITY cliqz.desc1.check          ", check our">
+<!ENTITY cliqz.desc1.policy         "privacy policy">
 <!ENTITY cliqz.desc1.or             "or">
 <!ENTITY cliqz.desc1.contact        "get in contact">
 

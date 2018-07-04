@@ -10,8 +10,6 @@
 #include "mozilla/Attributes.h"
 #include "nsGenericHTMLElement.h"
 #include "nsImageLoadingContent.h"
-#include "nsIDOMHTMLImageElement.h"
-#include "imgRequestProxy.h"
 #include "Units.h"
 #include "nsCycleCollectionParticipant.h"
 
@@ -23,8 +21,7 @@ class ImageLoadTask;
 
 class ResponsiveImageSelector;
 class HTMLImageElement final : public nsGenericHTMLElement,
-                               public nsImageLoadingContent,
-                               public nsIDOMHTMLImageElement
+                               public nsImageLoadingContent
 {
   friend class HTMLSourceElement;
   friend class HTMLPictureElement;
@@ -52,26 +49,23 @@ public:
   // EventTarget
   virtual void AsyncEventRunning(AsyncEventDispatcher* aEvent) override;
 
-  // nsIDOMHTMLImageElement
-  NS_DECL_NSIDOMHTMLIMAGEELEMENT
-
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLImageElement, img)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLImageElement, img)
 
   // override from nsImageLoadingContent
   CORSMode GetCORSMode() override;
 
   // nsIContent
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
-  virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
+  virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const override;
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
 
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
   bool IsHTMLFocusable(bool aWithMouse, bool *aIsFocusable, int32_t *aTabIndex) override;
 
@@ -90,6 +84,11 @@ public:
 
   void MaybeLoadImage(bool aAlwaysForceLoad);
 
+  // Overrides for nsImageLoadingContent's GetNaturalHeight/Width, since we
+  // handle responsive scaling in the element's version of these methods.
+  NS_IMETHOD GetNaturalHeight(uint32_t* aNaturalHeight) override;
+  NS_IMETHOD GetNaturalWidth(uint32_t* aNaturalWidth) override;
+
   bool IsMap()
   {
     return GetBoolAttr(nsGkAtoms::ismap);
@@ -98,7 +97,7 @@ public:
   {
     SetHTMLBoolAttr(nsGkAtoms::ismap, aIsMap, aError);
   }
-  uint32_t Width()
+  MOZ_CAN_RUN_SCRIPT uint32_t Width()
   {
     return GetWidthHeightForImage(mCurrentRequest).width;
   }
@@ -106,7 +105,7 @@ public:
   {
     SetUnsignedIntAttr(nsGkAtoms::width, aWidth, 0, aError);
   }
-  uint32_t Height()
+  MOZ_CAN_RUN_SCRIPT uint32_t Height()
   {
     return GetWidthHeightForImage(mCurrentRequest).height;
   }
@@ -150,13 +149,17 @@ public:
   {
     SetHTMLAttr(nsGkAtoms::src, aSrc, aError);
   }
+  void SetSrc(const nsAString& aSrc, nsIPrincipal* aTriggeringPrincipal, ErrorResult& aError)
+  {
+    SetHTMLAttr(nsGkAtoms::src, aSrc, aTriggeringPrincipal, aError);
+  }
   void GetSrcset(nsAString& aSrcset)
   {
     GetHTMLAttr(nsGkAtoms::srcset, aSrcset);
   }
-  void SetSrcset(const nsAString& aSrcset, ErrorResult& aError)
+  void SetSrcset(const nsAString& aSrcset, nsIPrincipal* aTriggeringPrincipal, ErrorResult& aError)
   {
-    SetHTMLAttr(nsGkAtoms::srcset, aSrcset, aError);
+    SetHTMLAttr(nsGkAtoms::srcset, aSrcset, aTriggeringPrincipal, aError);
   }
   void GetCrossOrigin(nsAString& aResult)
   {
@@ -233,8 +236,8 @@ public:
     return GetReferrerPolicyAsEnum();
   }
 
-  int32_t X();
-  int32_t Y();
+  MOZ_CAN_RUN_SCRIPT int32_t X();
+  MOZ_CAN_RUN_SCRIPT int32_t Y();
   void GetLowsrc(nsAString& aLowsrc)
   {
     GetURIAttr(nsGkAtoms::lowsrc, nullptr, aLowsrc);
@@ -245,9 +248,9 @@ public:
   }
 
 #ifdef DEBUG
-  nsIDOMHTMLFormElement* GetForm() const;
+  HTMLFormElement* GetForm() const;
 #endif
-  void SetForm(nsIDOMHTMLFormElement* aForm);
+  void SetForm(HTMLFormElement* aForm);
   void ClearForm(bool aRemoveFromForm);
 
   virtual void DestroyContent() override;
@@ -366,28 +369,27 @@ protected:
   // If the node's srcset/sizes make for an invalid selector, returns
   // false. This does not guarantee the resulting selector matches an image,
   // only that it is valid.
-  bool TryCreateResponsiveSelector(nsIContent *aSourceNode);
+  bool TryCreateResponsiveSelector(Element* aSourceElement);
 
-  CSSIntPoint GetXY();
+  MOZ_CAN_RUN_SCRIPT CSSIntPoint GetXY();
   virtual JSObject* WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
   void UpdateFormOwner();
 
-  virtual nsresult BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                  const nsAttrValueOrString* aValue,
                                  bool aNotify) override;
 
-  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 bool aNotify) override;
-  virtual nsresult OnAttrSetButNotChanged(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult OnAttrSetButNotChanged(int32_t aNamespaceID, nsAtom* aName,
                                           const nsAttrValueOrString& aValue,
                                           bool aNotify) override;
 
   // Override for nsImageLoadingContent.
   nsIContent* AsContent() override { return this; }
-  NS_IMETHOD GetNaturalWidth(uint32_t* aNaturalWidth) override;
-  NS_IMETHOD GetNaturalHeight(uint32_t* aNaturalHeight) override;
 
   // This is a weak reference that this element and the HTMLFormElement
   // cooperate in maintaining.
@@ -397,7 +399,7 @@ protected:
   RefPtr<ResponsiveImageSelector> mResponsiveSelector;
 
 private:
-  bool SourceElementMatches(nsIContent* aSourceNode);
+  bool SourceElementMatches(Element* aSourceElement);
 
   static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
                                     GenericSpecifiedValues* aGenericData);
@@ -417,13 +419,16 @@ private:
    *        OnAttrSetButNotChanged to indicate that the value was not changed.
    * @param aNotify Whether we plan to notify document observers.
    */
-  void AfterMaybeChangeAttr(int32_t aNamespaceID, nsIAtom* aName,
+  void AfterMaybeChangeAttr(int32_t aNamespaceID, nsAtom* aName,
                             const nsAttrValueOrString& aValue,
                             const nsAttrValue* aOldValue,
+                            nsIPrincipal* aMaybeScriptedPrincipal,
                             bool aValueMaybeChanged, bool aNotify);
 
   bool mInDocResponsiveContent;
   RefPtr<ImageLoadTask> mPendingImageLoadTask;
+  nsCOMPtr<nsIPrincipal> mSrcTriggeringPrincipal;
+  nsCOMPtr<nsIPrincipal> mSrcsetTriggeringPrincipal;
 
   // Last URL that was attempted to load by this element.
   nsCOMPtr<nsIURI> mLastSelectedSource;

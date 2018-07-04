@@ -34,7 +34,7 @@
 #define DEFAULT_CHUNK_SIZE (4096 * 16)  // bytes
 #define DEFAULT_INTERVAL    60          // seconds
 
-#define UPDATE_PROGRESS_INTERVAL PRTime(500 * PR_USEC_PER_MSEC) // 500ms
+#define UPDATE_PROGRESS_INTERVAL PRTime(100 * PR_USEC_PER_MSEC) // 100ms
 
 // Number of times to retry a failed byte-range request.
 #define MAX_RETRY_COUNT 20
@@ -112,7 +112,7 @@ public:
   nsIncrementalDownload();
 
 private:
-  ~nsIncrementalDownload() {}
+  ~nsIncrementalDownload() = default;
   nsresult FlushChunk();
   void     UpdateProgress();
   nsresult CallOnStartRequest();
@@ -226,12 +226,9 @@ nsIncrementalDownload::CallOnStopRequest()
 nsresult
 nsIncrementalDownload::StartTimer(int32_t interval)
 {
-  nsresult rv;
-  mTimer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
-  if (NS_FAILED(rv))
-    return rv;
-
-  return mTimer->Init(this, interval * 1000, nsITimer::TYPE_ONE_SHOT);
+  return NS_NewTimerWithObserver(getter_AddRefs(mTimer),
+                                 this, interval * 1000,
+                                 nsITimer::TYPE_ONE_SHOT);
 }
 
 nsresult
@@ -253,6 +250,7 @@ nsIncrementalDownload::ProcessTimeout()
                               nsContentUtils::GetSystemPrincipal(),
                               nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
                               nsIContentPolicy::TYPE_OTHER,
+                              nullptr,   // PerformanceStorage
                               nullptr,   // loadGroup
                               this,      // aCallbacks
                               mLoadFlags);

@@ -22,7 +22,7 @@ public:
   {
   }
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLLegendElement, legend)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLLegendElement, legend)
 
   using nsGenericHTMLElement::Focus;
   virtual void Focus(ErrorResult& aError) override;
@@ -37,10 +37,11 @@ public:
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
-  virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
+  virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const override;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult,

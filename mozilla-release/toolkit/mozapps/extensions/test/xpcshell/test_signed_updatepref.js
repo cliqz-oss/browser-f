@@ -5,7 +5,7 @@ gUseRealCertChecks = true;
 const DATA = "data/signing_checks/";
 const ID = "test@tests.mozilla.org";
 
-Components.utils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
 var gServer = new HttpServer();
 gServer.start();
 
@@ -32,11 +32,11 @@ function verifySignatures() {
     let observer = (subject, topic, data) => {
       Services.obs.removeObserver(observer, "xpi-signature-changed");
       resolve(JSON.parse(data));
-    }
+    };
     Services.obs.addObserver(observer, "xpi-signature-changed");
 
-    do_print("Verifying signatures");
-    let XPIscope = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+    info("Verifying signatures");
+    let XPIscope = ChromeUtils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
     XPIscope.XPIProvider.verifySignatures();
   });
 }
@@ -62,10 +62,10 @@ add_task(async function() {
   await promiseInstallAllFiles([do_get_file(DATA + "unsigned_bootstrap_2.xpi")]);
 
   let addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
+  Assert.notEqual(addon, null);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
 
   await promiseShutdownManager();
 
@@ -74,29 +74,29 @@ add_task(async function() {
   startupManager();
 
   addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
+  Assert.notEqual(addon, null);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
 
   // Update checks shouldn't affect the add-on
   await AddonManagerInternal.backgroundUpdateCheck();
   addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
+  Assert.notEqual(addon, null);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
 
   let changes = await verifySignatures();
 
-  do_check_eq(changes.disabled.length, 1);
-  do_check_eq(changes.disabled[0], ID);
+  Assert.equal(changes.disabled.length, 1);
+  Assert.equal(changes.disabled[0], ID);
 
   addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
-  do_check_true(addon.appDisabled);
-  do_check_false(addon.isActive);
-  do_check_eq(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
+  Assert.notEqual(addon, null);
+  Assert.ok(addon.appDisabled);
+  Assert.ok(!addon.isActive);
+  Assert.equal(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
 
   addon.uninstall();
 
@@ -113,22 +113,22 @@ add_task(async function() {
   await promiseInstallAllFiles([do_get_file(DATA + "unsigned_bootstrap_2.xpi")]);
 
   let addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
+  Assert.notEqual(addon, null);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
 
   await promiseShutdownManager();
 
   Services.prefs.setBoolPref(PREF_XPI_SIGNATURES_REQUIRED, true);
-  gAppInfo.version = 5.0
+  gAppInfo.version = 5.0;
   startupManager(true);
 
   addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
-  do_check_true(addon.appDisabled);
-  do_check_false(addon.isActive);
-  do_check_eq(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
+  Assert.notEqual(addon, null);
+  Assert.ok(addon.appDisabled);
+  Assert.ok(!addon.isActive);
+  Assert.equal(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
 
   addon.uninstall();
 

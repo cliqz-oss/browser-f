@@ -62,9 +62,9 @@ add_task(async function test_onlyBookmarked() {
   // You can use this to compare the data in the array with the result set,
   // if the array's isInQuery: true items are sorted the same way as the result
   // set.
-  do_print("begin first test");
+  info("begin first test");
   compareArrayToResult(testData, root);
-  do_print("end first test");
+  info("end first test");
 
   // Test live-update
   var liveUpdateTestData = [
@@ -92,31 +92,10 @@ add_task(async function test_onlyBookmarked() {
   testData.push(liveUpdateTestData[1]);
 
   // re-query and test
-  do_print("begin live-update test");
+  info("begin live-update test");
   compareArrayToResult(testData, root);
-  do_print("end live-update test");
-/*
-  // we are actually not updating during a batch.
-  // see bug 432706 for details.
+  info("end live-update test");
 
-  // Here's a batch update
-  var updateBatch = {
-    runBatched: function (aUserData) {
-      liveUpdateTestData[0].uri = "http://bookmarked3.com";
-      liveUpdateTestData[1].uri = "http://bookmarked-elsewhere3.com";
-      populateDB(liveUpdateTestData);
-      testData.push(liveUpdateTestData[0]);
-      testData.push(liveUpdateTestData[1]);
-    }
-  };
-
-  PlacesUtils.history.runInBatchMode(updateBatch, null);
-
-  // re-query and test
-  do_print("begin batched test");
-  compareArrayToResult(testData, root);
-  do_print("end batched test");
-*/
   // Close the container when finished
   root.containerOpen = false;
 });

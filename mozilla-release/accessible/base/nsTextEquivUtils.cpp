@@ -11,7 +11,9 @@
 #include "AccIterator.h"
 #include "nsCoreUtils.h"
 #include "nsIDOMXULLabeledControlEl.h"
+#include "mozilla/dom/Text.h"
 
+using namespace mozilla;
 using namespace mozilla::a11y;
 
 /**
@@ -52,7 +54,7 @@ nsTextEquivUtils::GetNameFromSubtree(Accessible* aAccessible,
 
 nsresult
 nsTextEquivUtils::GetTextEquivFromIDRefs(Accessible* aAccessible,
-                                         nsIAtom *aIDRefsAttr,
+                                         nsAtom *aIDRefsAttr,
                                          nsAString& aTextEquiv)
 {
   aTextEquiv.Truncate();
@@ -115,7 +117,7 @@ nsresult
 nsTextEquivUtils::AppendTextEquivFromTextContent(nsIContent *aContent,
                                                  nsAString *aString)
 {
-  if (aContent->IsNodeOfType(nsINode::eTEXT)) {
+  if (aContent->IsText()) {
     bool isHTMLBlock = false;
 
     nsIContent *parentContent = aContent->GetFlattenedTreeParent();
@@ -145,7 +147,7 @@ nsTextEquivUtils::AppendTextEquivFromTextContent(nsIContent *aContent,
         aString->Append(text.mString);
       } else {
         // If aContent is an object that is display: none, we have no a frame.
-        aContent->AppendTextTo(*aString);
+        aContent->GetAsText()->AppendTextTo(*aString);
       }
       if (isHTMLBlock && !aString->IsEmpty()) {
         aString->Append(char16_t(' '));
@@ -313,12 +315,12 @@ nsTextEquivUtils::AppendFromDOMNode(nsIContent *aContent, nsAString *aString)
     } else {
       if (aContent->NodeInfo()->Equals(nsGkAtoms::label,
                                        kNameSpaceID_XUL))
-        aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::value,
-                          textEquivalent);
+        aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::value,
+                                       textEquivalent);
 
       if (textEquivalent.IsEmpty())
-        aContent->GetAttr(kNameSpaceID_None,
-                          nsGkAtoms::tooltiptext, textEquivalent);
+        aContent->AsElement()->GetAttr(kNameSpaceID_None,
+                                       nsGkAtoms::tooltiptext, textEquivalent);
     }
 
     AppendString(aString, textEquivalent);

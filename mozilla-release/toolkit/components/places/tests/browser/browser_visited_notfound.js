@@ -6,8 +6,8 @@ add_task(async function test() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
   registerCleanupFunction(async function() {
     Services.prefs.clearUserPref("places.frecency.decayRate");
-    await BrowserTestUtils.removeTab(tab);
-    await PlacesTestUtils.clearHistory();
+    BrowserTestUtils.removeTab(tab);
+    await PlacesUtils.history.clear();
   });
 
   // First add a visit to the page, this will ensure that later we skip
@@ -22,9 +22,10 @@ add_task(async function test() {
   let promiseVisit = new Promise(resolve => {
     let historyObserver = {
       __proto__: NavHistoryObserver.prototype,
-      onVisit(uri) {
+      onVisits(visits) {
         PlacesUtils.history.removeObserver(historyObserver);
-        is(uri.spec, TEST_URL, "Check visited url");
+        is(visits.length, 1, "Right number of visits");
+        is(visits[0].uri.spec, TEST_URL, "Check visited url");
         resolve();
       }
     };

@@ -5,14 +5,14 @@
 /* globals AppConstants, FileUtils */
 /* exported getSubprocessCount, setupHosts, waitForSubprocessExit */
 
-XPCOMUtils.defineLazyModuleGetter(this, "MockRegistry",
-                                  "resource://testing-common/MockRegistry.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
-                                  "resource://gre/modules/Timer.jsm");
+ChromeUtils.defineModuleGetter(this, "MockRegistry",
+                               "resource://testing-common/MockRegistry.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "setTimeout",
+                               "resource://gre/modules/Timer.jsm");
 
-let {Subprocess, SubprocessImpl} = Cu.import("resource://gre/modules/Subprocess.jsm", {});
+let {Subprocess, SubprocessImpl} = ChromeUtils.import("resource://gre/modules/Subprocess.jsm", {});
 
 
 // It's important that we use a space in this directory name to make sure we
@@ -20,16 +20,18 @@ let {Subprocess, SubprocessImpl} = Cu.import("resource://gre/modules/Subprocess.
 let tmpDir = FileUtils.getDir("TmpD", ["Native Messaging"]);
 tmpDir.createUnique(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 
-do_register_cleanup(() => {
+const TYPE_SLUG = AppConstants.platform === "linux" ? "native-messaging-hosts" : "NativeMessagingHosts";
+OS.File.makeDir(OS.Path.join(tmpDir.path, TYPE_SLUG));
+
+registerCleanupFunction(() => {
   tmpDir.remove(true);
 });
 
 function getPath(filename) {
-  return OS.Path.join(tmpDir.path, filename);
+  return OS.Path.join(tmpDir.path, TYPE_SLUG, filename);
 }
 
 const ID = "native@tests.mozilla.org";
-
 
 async function setupHosts(scripts) {
   const PERMS = {unixMode: 0o755};
@@ -62,9 +64,9 @@ async function setupHosts(scripts) {
     case "linux":
       let dirProvider = {
         getFile(property) {
-          if (property == "XREUserNativeMessaging") {
+          if (property == "XREUserNativeManifests") {
             return tmpDir.clone();
-          } else if (property == "XRESysNativeMessaging") {
+          } else if (property == "XRESysNativeManifests") {
             return tmpDir.clone();
           }
           return null;
@@ -72,7 +74,7 @@ async function setupHosts(scripts) {
       };
 
       Services.dirsvc.registerProvider(dirProvider);
-      do_register_cleanup(() => {
+      registerCleanupFunction(() => {
         Services.dirsvc.unregisterProvider(dirProvider);
       });
 
@@ -87,7 +89,7 @@ async function setupHosts(scripts) {
       const REGKEY = String.raw`Software\Mozilla\NativeMessagingHosts`;
 
       let registry = new MockRegistry();
-      do_register_cleanup(() => {
+      registerCleanupFunction(() => {
         registry.shutdown();
       });
 

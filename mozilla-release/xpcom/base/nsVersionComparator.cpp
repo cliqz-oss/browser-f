@@ -11,7 +11,7 @@
 #include <stdint.h>
 #if defined(XP_WIN) && !defined(UPDATER_NO_STRING_GLUE_STL)
 #include <wchar.h>
-#include "nsStringGlue.h"
+#include "nsString.h"
 #endif
 
 struct VersionPart
@@ -138,8 +138,10 @@ ParseVP(wchar_t* aPart, VersionPartW& aResult)
   }
 
   if (aPart[0] == '*' && aPart[1] == '\0') {
+    static wchar_t kEmpty[] = L"";
+
     aResult.numA = INT32_MAX;
-    aResult.strB = L"";
+    aResult.strB = kEmpty;
   } else {
     aResult.numA = wcstol(aPart, const_cast<wchar_t**>(&aResult.strB), 10);
   }

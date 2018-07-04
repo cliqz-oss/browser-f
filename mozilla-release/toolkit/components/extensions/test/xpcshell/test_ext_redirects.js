@@ -1,15 +1,11 @@
 "use strict";
 
 // Tests whether we can redirect to a moz-extension: url.
-XPCOMUtils.defineLazyModuleGetter(this, "TestUtils",
-                                  "resource://testing-common/TestUtils.jsm");
-const XMLHttpRequest = Components.Constructor("@mozilla.org/xmlextras/xmlhttprequest;1", "nsIXMLHttpRequest");
+ChromeUtils.defineModuleGetter(this, "TestUtils",
+                               "resource://testing-common/TestUtils.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
-// nsIWebRequestListener is a nsIThreadRetargetableStreamListener that handles
-// forwarding of nsIRequestObserver for JS consumers.  It does nothing more
-// than that.
-let WebRequestListener = Components.Constructor("@mozilla.org/webextensions/webRequestListener;1",
-                                                "nsIWebRequestListener", "init");
+PromiseTestUtils.whitelistRejectionsGlobally(/Message manager disconnected/);
 
 const server = createHttpServer();
 const gServerUrl = `http://localhost:${server.identity.primaryPort}`;
@@ -18,6 +14,7 @@ server.registerPathHandler("/redirect", (request, response) => {
   let params = new URLSearchParams(request.queryString);
   response.setStatusLine(request.httpVersion, 302, "Moved Temporarily");
   response.setHeader("Location", params.get("redirect_uri"));
+  response.write("redirecting");
 });
 
 server.registerPathHandler("/dummy", (request, response) => {
@@ -27,20 +24,25 @@ server.registerPathHandler("/dummy", (request, response) => {
 
 function onStopListener(channel) {
   return new Promise(resolve => {
-    new WebRequestListener({
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIRequestObserver,
-                                             Ci.nsIStreamListener]),
+    let orig = channel.QueryInterface(Ci.nsITraceableChannel).setNewListener({
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIRequestObserver,
+                                              Ci.nsIStreamListener]),
       getFinalURI(request) {
         let {loadInfo} = request;
         return (loadInfo && loadInfo.resultPrincipalURI) || request.originalURI;
       },
+      onDataAvailable(...args) {
+        orig.onDataAvailable(...args);
+      },
       onStartRequest(request, context) {
+        orig.onStartRequest(request, context);
       },
       onStopRequest(request, context, statusCode) {
+        orig.onStopRequest(request, context, statusCode);
         let URI = this.getFinalURI(request.QueryInterface(Ci.nsIChannel));
         resolve(URI && URI.spec);
       },
-    }, channel);
+    });
   });
 }
 
@@ -57,14 +59,16 @@ async function onModifyListener(originUrl, redirectToUrl) {
   });
 }
 
-function getExtension(accessible = false, background = undefined) {
+function getExtension(accessible = false, background = undefined, blocking = true) {
   let manifest = {
     "permissions": [
       "webRequest",
-      "webRequestBlocking",
       "<all_urls>",
     ],
   };
+  if (blocking) {
+    manifest.permissions.push("webRequestBlocking");
+  }
   if (accessible) {
     manifest.web_accessible_resources = ["finished.html"];
   }
@@ -148,7 +152,7 @@ add_task(async function test_content_redirect_to_non_accessible_resource() {
   let watcher = onModifyListener(url).then(channel => {
     return onStopListener(channel);
   });
-  let contentPage = await ExtensionTestUtils.loadContentPage(url, undefined, "about:blank");
+  let contentPage = await ExtensionTestUtils.loadContentPage(url, {redirectUrl: "about:blank"});
   equal(contentPage.browser.documentURI.spec, "about:blank", `expected no redirect`);
   equal(await watcher, url, "expected no redirect");
   await contentPage.close();
@@ -161,7 +165,7 @@ add_task(async function test_content_302_redirect_to_extension() {
   await extension.startup();
   let redirectUrl = await extension.awaitMessage("redirectURI");
   let url = `${gServerUrl}/redirect?redirect_uri=${redirectUrl}`;
-  let contentPage = await ExtensionTestUtils.loadContentPage(url, undefined, redirectUrl);
+  let contentPage = await ExtensionTestUtils.loadContentPage(url, {redirectUrl});
   equal(contentPage.browser.documentURI.spec, redirectUrl, `expected redirect`);
   await contentPage.close();
   await extension.unload();
@@ -175,8 +179,151 @@ add_task(async function test_content_channel_redirect_to_extension() {
   let redirectUrl = await extension.awaitMessage("redirectURI");
   let url = `${gServerUrl}/dummy?r=${Math.random()}`;
   onModifyListener(url, redirectUrl);
-  let contentPage = await ExtensionTestUtils.loadContentPage(url, undefined, redirectUrl);
+  let contentPage = await ExtensionTestUtils.loadContentPage(url, {redirectUrl});
   equal(contentPage.browser.documentURI.spec, redirectUrl, `expected redirect`);
+  await contentPage.close();
+  await extension.unload();
+});
+
+// This test makes a request against a server and tests redirect to another server page.
+add_task(async function test_extension_302_redirect_web() {
+  function background(serverUrl) {
+    let expectedUrls = ["/redirect", "/dummy"];
+    let expected = ["onBeforeRequest", "onHeadersReceived", "onBeforeRedirect",
+                    "onBeforeRequest", "onHeadersReceived", "onResponseStarted", "onCompleted"];
+    browser.webRequest.onBeforeRequest.addListener(details => {
+      browser.test.assertTrue(details.url.includes(expectedUrls.shift()), "onBeforeRequest url matches");
+      browser.test.assertEq(expected.shift(), "onBeforeRequest", "onBeforeRequest matches");
+    }, {urls: [serverUrl]});
+    browser.webRequest.onHeadersReceived.addListener(details => {
+      browser.test.assertEq(expected.shift(), "onHeadersReceived", "onHeadersReceived matches");
+    }, {urls: [serverUrl]});
+    browser.webRequest.onResponseStarted.addListener(details => {
+      browser.test.assertEq(expected.shift(), "onResponseStarted", "onResponseStarted matches");
+    }, {urls: [serverUrl]});
+    browser.webRequest.onBeforeRedirect.addListener(details => {
+      browser.test.assertTrue(details.redirectUrl.includes("/dummy"), "onBeforeRedirect matches redirectUrl");
+      browser.test.assertEq(expected.shift(), "onBeforeRedirect", "onBeforeRedirect matches");
+    }, {urls: [serverUrl]});
+    browser.webRequest.onCompleted.addListener(details => {
+      browser.test.assertTrue(details.url.includes("/dummy"), "onCompleted expected url received");
+      browser.test.assertEq(expected.shift(), "onCompleted", "onCompleted matches");
+      browser.test.notifyPass("requestCompleted");
+    }, {urls: [serverUrl]});
+    browser.webRequest.onErrorOccurred.addListener(details => {
+      browser.test.log(`onErrorOccurred ${JSON.stringify(details)}`);
+      browser.test.notifyFail("requestCompleted");
+    }, {urls: [serverUrl]});
+  }
+  let extension = getExtension(false, `(${background})("*://${server.identity.primaryHost}/*")`, false);
+  await extension.startup();
+  let redirectUrl = `${gServerUrl}/dummy`;
+  let completed = extension.awaitFinish("requestCompleted");
+  let url = `${gServerUrl}/redirect?r=${Math.random()}&redirect_uri=${redirectUrl}`;
+  let contentPage = await ExtensionTestUtils.loadContentPage(url, {redirectUrl});
+  equal(contentPage.browser.documentURI.spec, redirectUrl, `expected content redirect`);
+  await completed;
+  await contentPage.close();
+  await extension.unload();
+});
+
+// This test makes a request against a server and tests redirect to another server page, without
+// onBeforeRedirect.  Bug 1448599
+add_task(async function test_extension_302_redirect_opening() {
+  let redirectUrl = `${gServerUrl}/dummy`;
+  let expectData = [
+    {
+      event: "onBeforeRequest",
+      url: `${gServerUrl}/redirect`,
+    },
+    {
+      event: "onBeforeRequest",
+      url: redirectUrl,
+    },
+  ];
+  function background(serverUrl, expected) {
+    browser.webRequest.onBeforeRequest.addListener(details => {
+      let expect = expected.shift();
+      browser.test.assertEq(expect.event, "onBeforeRequest", "onBeforeRequest event matches");
+      browser.test.assertTrue(details.url.startsWith(expect.url), "onBeforeRequest url matches");
+      if (expected.length === 0) {
+        browser.test.notifyPass("requestCompleted");
+      }
+    }, {urls: [serverUrl]});
+  }
+  let extension = getExtension(false, `(${background})("*://${server.identity.primaryHost}/*", ${JSON.stringify(expectData)})`, false);
+  await extension.startup();
+  let completed = extension.awaitFinish("requestCompleted");
+  let url = `${gServerUrl}/redirect?r=${Math.random()}&redirect_uri=${redirectUrl}`;
+  let contentPage = await ExtensionTestUtils.loadContentPage(url, {redirectUrl});
+  equal(contentPage.browser.documentURI.spec, redirectUrl, `expected content redirect`);
+  await completed;
+  await contentPage.close();
+  await extension.unload();
+});
+
+// This test makes a request against a server and tests redirect to another server page, without
+// onBeforeRedirect.  Bug 1448599
+add_task(async function test_extension_302_redirect_modify() {
+  let redirectUrl = `${gServerUrl}/dummy`;
+  let expectData = [
+    {
+      event: "onHeadersReceived",
+      url: `${gServerUrl}/redirect`,
+    },
+    {
+      event: "onHeadersReceived",
+      url: redirectUrl,
+    },
+  ];
+  function background(serverUrl, expected) {
+    browser.webRequest.onHeadersReceived.addListener(details => {
+      let expect = expected.shift();
+      browser.test.assertEq(expect.event, "onHeadersReceived", "onHeadersReceived event matches");
+      browser.test.assertTrue(details.url.startsWith(expect.url), "onHeadersReceived url matches");
+      if (expected.length === 0) {
+        browser.test.notifyPass("requestCompleted");
+      }
+    }, {urls: ["<all_urls>"]});
+  }
+  let extension = getExtension(false, `(${background})("*://${server.identity.primaryHost}/*", ${JSON.stringify(expectData)})`, false);
+  await extension.startup();
+  let completed = extension.awaitFinish("requestCompleted");
+  let url = `${gServerUrl}/redirect?r=${Math.random()}&redirect_uri=${redirectUrl}`;
+  let contentPage = await ExtensionTestUtils.loadContentPage(url, {redirectUrl});
+  equal(contentPage.browser.documentURI.spec, redirectUrl, `expected content redirect`);
+  await completed;
+  await contentPage.close();
+  await extension.unload();
+});
+
+// This test makes a request against a server and tests redirect to another server page, without
+// onBeforeRedirect.  Bug 1448599
+add_task(async function test_extension_302_redirect_tracing() {
+  let redirectUrl = `${gServerUrl}/dummy`;
+  let expectData = [
+    {
+      event: "onCompleted",
+      url: redirectUrl,
+    },
+  ];
+  function background(serverUrl, expected) {
+    browser.webRequest.onCompleted.addListener(details => {
+      let expect = expected.shift();
+      browser.test.assertEq(expect.event, "onCompleted", "onCompleted event matches");
+      browser.test.assertTrue(details.url.startsWith(expect.url), "onCompleted url matches");
+      if (expected.length === 0) {
+        browser.test.notifyPass("requestCompleted");
+      }
+    }, {urls: [serverUrl]});
+  }
+  let extension = getExtension(false, `(${background})("*://${server.identity.primaryHost}/*", ${JSON.stringify(expectData)})`, false);
+  await extension.startup();
+  let completed = extension.awaitFinish("requestCompleted");
+  let url = `${gServerUrl}/redirect?r=${Math.random()}&redirect_uri=${redirectUrl}`;
+  let contentPage = await ExtensionTestUtils.loadContentPage(url, {redirectUrl});
+  equal(contentPage.browser.documentURI.spec, redirectUrl, `expected content redirect`);
+  await completed;
   await contentPage.close();
   await extension.unload();
 });
@@ -205,7 +352,7 @@ add_task(async function test_extension_302_redirect() {
   let redirectUrl = await extension.awaitMessage("redirectURI");
   let completed = extension.awaitFinish("requestCompleted");
   let url = `${gServerUrl}/redirect?r=${Math.random()}&redirect_uri=${redirectUrl}`;
-  let contentPage = await ExtensionTestUtils.loadContentPage(url, undefined, redirectUrl);
+  let contentPage = await ExtensionTestUtils.loadContentPage(url, {redirectUrl});
   equal(contentPage.browser.documentURI.spec, redirectUrl, `expected content redirect`);
   await completed;
   await contentPage.close();
@@ -239,7 +386,7 @@ add_task(async function test_extension_redirect() {
   let redirectUrl = await extension.awaitMessage("redirectURI");
   let completed = extension.awaitFinish("requestCompleted");
   let url = `${gServerUrl}/dummy?r=${Math.random()}`;
-  let contentPage = await ExtensionTestUtils.loadContentPage(url, undefined, redirectUrl);
+  let contentPage = await ExtensionTestUtils.loadContentPage(url, {redirectUrl});
   equal(contentPage.browser.documentURI.spec, redirectUrl, `expected redirect`);
   await completed;
   await contentPage.close();

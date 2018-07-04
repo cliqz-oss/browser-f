@@ -1,29 +1,32 @@
 /* globals Services */
 "use strict";
 
+/* istanbul ignore if */
+if (typeof ChromeUtils !== "undefined") {
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
+}
+
 let usablePerfObj;
 
-let Cu;
-const isRunningInChrome = typeof Window === "undefined";
-
 /* istanbul ignore if */
-if (isRunningInChrome) {
-  Cu = Components.utils;
-} else {
-  Cu = {import() {}};
-}
-
-Cu.import("resource://gre/modules/Services.jsm");
-
-/* istanbul ignore if */
-if (isRunningInChrome) {
+/* istanbul ignore else */
+if (typeof Services !== "undefined") {
   // Borrow the high-resolution timer from the hidden window....
   usablePerfObj = Services.appShell.hiddenDOMWindow.performance;
-} else { // we must be running in content space
+} else if (typeof performance !== "undefined") {
+  // we must be running in content space
+  // eslint-disable-next-line no-undef
   usablePerfObj = performance;
+} else {
+  // This is a dummy object so this file doesn't crash in the node prerendering
+  // task.
+  usablePerfObj = {
+    now() {},
+    mark() {}
+  };
 }
 
-this._PerfService = function _PerfService(options) {
+function _PerfService(options) {
   // For testing, so that we can use a fake Window.performance object with
   // known state.
   if (options && options.performanceObj) {
@@ -31,7 +34,7 @@ this._PerfService = function _PerfService(options) {
   } else {
     this._perf = usablePerfObj;
   }
-};
+}
 
 _PerfService.prototype = {
   /**
@@ -63,6 +66,14 @@ _PerfService.prototype = {
    * Used to ensure that timestamps from the add-on code and the content code
    * are comparable.
    *
+   * @note If this is called from a context without a window
+   * (eg a JSM in chrome), it will return the timeOrigin of the XUL hidden
+   * window, which appears to be the first created window (and thus
+   * timeOrigin) in the browser.  Note also, however, there is also a private
+   * hidden window, presumably for private browsing, which appears to be
+   * created dynamically later.  Exactly how/when that shows up needs to be
+   * investigated.
+   *
    * @return {Number} A double of milliseconds with a precision of 0.5us.
    */
   get timeOrigin() {
@@ -71,7 +82,8 @@ _PerfService.prototype = {
 
   /**
    * Returns the "absolute" version of performance.now(), i.e. one that
-   * based on the timeOrigin of the XUL hiddenwindow.
+   * should ([bug 1401406](https://bugzilla.mozilla.org/show_bug.cgi?id=1401406)
+   * be comparable across both chrome and content.
    *
    * @return {Number}
    */
@@ -110,4 +122,4 @@ _PerfService.prototype = {
 };
 
 this.perfService = new _PerfService();
-this.EXPORTED_SYMBOLS = ["_PerfService", "perfService"];
+const EXPORTED_SYMBOLS = ["_PerfService", "perfService"];

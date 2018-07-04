@@ -17,10 +17,10 @@ behave when 'eval' is called with no scripted frames active at all.
 <script>
 "use strict";
 
-Components.utils.import("resource://gre/modules/jsdebugger.jsm");
+ChromeUtils.import("resource://gre/modules/jsdebugger.jsm");
 addDebuggerToGlobal(this);
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
 
   let dbg, iframeDO, doc, script2DO;

@@ -3,18 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "FxAccountsStorageManagerCanStoreField",
   "FxAccountsStorageManager",
 ];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
 
 // A helper function so code can check what fields are able to be stored by
 // the storage manager without having a reference to a manager instance.
@@ -25,15 +23,14 @@ function FxAccountsStorageManagerCanStoreField(fieldName) {
 }
 
 // The storage manager object.
-this.FxAccountsStorageManager = function(options = {}) {
+var FxAccountsStorageManager = function(options = {}) {
   this.options = {
     filename: options.filename || DEFAULT_STORAGE_FILENAME,
     baseDir: options.baseDir || OS.Constants.Path.profileDir,
-  }
+  };
   this.plainStorage = new JSONStorage(this.options);
-  // On b2g we have no loginManager for secure storage, and tests may want
-  // to pretend secure storage isn't available.
-  let useSecure = "useSecure" in options ? options.useSecure : haveLoginManager;
+  // Tests may want to pretend secure storage isn't available.
+  let useSecure = "useSecure" in options ? options.useSecure : true;
   if (useSecure) {
     this.secureStorage = new LoginManagerStorage();
   } else {
@@ -44,7 +41,7 @@ this.FxAccountsStorageManager = function(options = {}) {
   this._promiseInitialized = Promise.reject("initialize not called");
   // A promise to avoid storage races - see _queueStorageOperation
   this._promiseStorageComplete = Promise.resolve();
-}
+};
 
 this.FxAccountsStorageManager.prototype = {
   _initialized: false,
@@ -113,7 +110,7 @@ this.FxAccountsStorageManager.prototype = {
       this._promiseInitialized = null;
       this._clearCachedData();
       log.trace("StorageManager finalized");
-    })
+    });
   },
 
   // We want to make sure we don't end up doing multiple storage requests
@@ -194,7 +191,7 @@ this.FxAccountsStorageManager.prototype = {
           result[fieldName] = this.cachedSecure[fieldName];
         }
       } else {
-        throw new Error("unexpected field '" + name + "'");
+        throw new Error("unexpected field '" + fieldName + "'");
       }
     }
     return result;
@@ -209,30 +206,24 @@ this.FxAccountsStorageManager.prototype = {
       // update fields.
       throw new Error("No user is logged in");
     }
-    if (!newFields || "uid" in newFields || "email" in newFields) {
-      // Once we support
-      // user changing email address this may need to change, but it's not
-      // clear how we would be told of such a change anyway...
-      throw new Error("Can't change uid or email address");
+    if (!newFields || "uid" in newFields) {
+      throw new Error("Can't change uid");
     }
     log.debug("_updateAccountData with items", Object.keys(newFields));
     // work out what bucket.
     for (let [name, value] of Object.entries(newFields)) {
-      if (FXA_PWDMGR_MEMORY_FIELDS.has(name)) {
-        if (value == null) {
-          delete this.cachedMemory[name];
-        } else {
-          this.cachedMemory[name] = value;
-        }
+      if (value == null) {
+        delete this.cachedMemory[name];
+        delete this.cachedPlain[name];
+        // no need to do the "delete on null" thing for this.cachedSecure -
+        // we need to keep it until we have managed to read so we can nuke
+        // it on write.
+        this.cachedSecure[name] = null;
+      } else if (FXA_PWDMGR_MEMORY_FIELDS.has(name)) {
+        this.cachedMemory[name] = value;
       } else if (FXA_PWDMGR_PLAINTEXT_FIELDS.has(name)) {
-        if (value == null) {
-          delete this.cachedPlain[name];
-        } else {
-          this.cachedPlain[name] = value;
-        }
+        this.cachedPlain[name] = value;
       } else if (FXA_PWDMGR_SECURE_FIELDS.has(name)) {
-        // don't do the "delete on null" thing here - we need to keep it until
-        // we have managed to read so we can nuke it on write.
         this.cachedSecure[name] = value;
       } else {
         // Throwing seems reasonable here as some client code has explicitly
@@ -292,7 +283,7 @@ this.FxAccountsStorageManager.prototype = {
     // XXX - this would be a good use-case for a RuntimeAssert or similar, as
     // being added in bug 1080457.
     if (Object.keys(this.cachedPlain).length != 0) {
-      throw new Error("should be impossible to have cached data already.")
+      throw new Error("should be impossible to have cached data already.");
     }
     for (let [name, value] of Object.entries(got.accountData)) {
       this.cachedPlain[name] = value;
@@ -343,7 +334,7 @@ this.FxAccountsStorageManager.prototype = {
           }
         }
         if (needWrite) {
-          log.debug("successfully read secure data; writing updated data back")
+          log.debug("successfully read secure data; writing updated data back");
           await this._doWriteSecure();
         }
       }
@@ -371,7 +362,7 @@ this.FxAccountsStorageManager.prototype = {
     let toWritePlain = {
       version: DATA_FORMAT_VERSION,
       accountData: this.cachedPlain,
-    }
+    };
     await this.plainStorage.set(toWritePlain);
 
     // If we have no secure storage manager we are done.
@@ -399,7 +390,7 @@ this.FxAccountsStorageManager.prototype = {
     let toWriteSecure = {
       version: DATA_FORMAT_VERSION,
       accountData: this.cachedSecure,
-    }
+    };
     try {
       await this.secureStorage.set(this.cachedPlain.uid, toWriteSecure);
     } catch (ex) {
@@ -428,7 +419,7 @@ this.FxAccountsStorageManager.prototype = {
     this._clearCachedData();
     log.debug("account data reset");
   },
-}
+};
 
 /**
  * JSONStorage constructor that creates instances that may set/get
@@ -600,10 +591,4 @@ LoginManagerStorage.prototype = {
     }
     return null;
   },
-}
-
-// A global variable to indicate if the login manager is available - it doesn't
-// exist on b2g. Defined here as the use of preprocessor directives skews line
-// numbers in the runtime, meaning stack-traces etc end up off by a few lines.
-// Doing it at the end of the file makes that less of a pita.
-var haveLoginManager = !AppConstants.MOZ_B2G;
+};

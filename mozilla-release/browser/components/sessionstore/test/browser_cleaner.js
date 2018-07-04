@@ -9,8 +9,8 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
 
 const LONG_TIME_AGO = 1;
 
@@ -69,8 +69,8 @@ add_task(async function test_open_and_close() {
 
   // Now close stuff, this should add closeAt
   await BrowserTestUtils.closeWindow(newWin);
-  await promiseRemoveTab(newTab1);
-  await promiseRemoveTab(newTab2);
+  await promiseRemoveTabAndSessionState(newTab1);
+  await promiseRemoveTabAndSessionState(newTab2);
 
   state = CLOSED_STATE = JSON.parse(ss.getBrowserState());
 

@@ -8,7 +8,7 @@
 #define nsStringStream_h__
 
 #include "nsIStringStream.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsMemory.h"
 
 /**
@@ -59,5 +59,8 @@ NS_NewByteInputStream(nsIInputStream** aStreamResult,
 extern nsresult
 NS_NewCStringInputStream(nsIInputStream** aStreamResult,
                          const nsACString& aStringToRead);
+extern nsresult
+NS_NewCStringInputStream(nsIInputStream** aStreamResult,
+                         nsCString&& aStringToRead);
 
 #endif // nsStringStream_h__

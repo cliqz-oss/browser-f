@@ -1,11 +1,9 @@
 /*
  * Bug 1267910 - Add test cases for the backward compatiability and originAttributes
- *               of nsICookieManager2.
+ *               of nsICookieManager.
  */
 
-var {utils: Cu, interfaces: Ci, classes: Cc} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const BASE_URL = "http://example.org/";
 

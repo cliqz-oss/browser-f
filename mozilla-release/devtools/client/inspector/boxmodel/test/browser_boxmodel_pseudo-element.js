@@ -53,7 +53,7 @@ const res1 = [
   },
   {
     selector: ".boxmodel-margin.boxmodel-left > span",
-    value: 0
+    value: 4 // (100 - (10 * 2) - (20 * 2) - 32) / 2
   },
   {
     selector: ".boxmodel-margin.boxmodel-bottom > span",
@@ -61,7 +61,7 @@ const res1 = [
   },
   {
     selector: ".boxmodel-margin.boxmodel-right > span",
-    value: 0
+    value: 4 // (100 - (10 * 2) - (20 * 2) - 32) / 2
   },
   {
     selector: ".boxmodel-padding.boxmodel-top > span",
@@ -97,23 +97,23 @@ const res1 = [
   },
 ];
 
-add_task(function* () {
-  yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  let {inspector, view} = yield openBoxModelView();
-  let node = yield getNodeFront("div", inspector);
-  let children = yield inspector.markup.walker.children(node);
+add_task(async function() {
+  await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
+  let {inspector, boxmodel} = await openLayoutView();
+  let node = await getNodeFront("div", inspector);
+  let children = await inspector.markup.walker.children(node);
   let beforeElement = children.nodes[0];
 
-  yield selectNode(beforeElement, inspector);
-  yield testInitialValues(inspector, view);
+  await selectNode(beforeElement, inspector);
+  await testInitialValues(inspector, boxmodel);
 });
 
-function* testInitialValues(inspector, view) {
+function testInitialValues(inspector, boxmodel) {
   info("Test that the initial values of the box model are correct");
-  let viewdoc = view.document;
+  let doc = boxmodel.document;
 
   for (let i = 0; i < res1.length; i++) {
-    let elt = viewdoc.querySelector(res1[i].selector);
+    let elt = doc.querySelector(res1[i].selector);
     is(elt.textContent, res1[i].value,
        res1[i].selector + " has the right value.");
   }

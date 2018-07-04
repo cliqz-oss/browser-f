@@ -1,9 +1,11 @@
+// |jit-test| test-also-no-wasm-baseline
 // Tests that wasm module scripts have special URLs.
 
-if (!wasmIsSupported())
+if (!wasmDebuggingIsSupported())
   quit();
 
 var g = newGlobal();
+var dbg = new Debugger(g);
 g.eval(`
 function initWasm(s) { return new WebAssembly.Instance(new WebAssembly.Module(wasmTextToBinary(s))); }
 o1 = initWasm('(module (func) (export "" 0))');
@@ -18,7 +20,6 @@ function isValidWasmURL(url) {
    return /^wasm:(?:[^:]*:)*?[0-9a-f]{16}$/.test(url);
 }
 
-var dbg = new Debugger(g);
 var foundScripts = dbg.findScripts().filter(isWasm);
 assertEq(foundScripts.length, 2);
 assertEq(isValidWasmURL(foundScripts[0].source.url), true);

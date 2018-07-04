@@ -13,8 +13,10 @@ description: >
     No parameter named "eval"
 
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [onlyStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 var af = eval => 1;

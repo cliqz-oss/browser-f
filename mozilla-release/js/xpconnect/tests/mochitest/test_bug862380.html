@@ -20,10 +20,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=862380
 
 function checkNotEnumerable(obj, isWindow) {
     try {
-      const expectedWindow = ["0", "window", "location", "top", "close",
-                              "focus", "blur", "postMessage", "self", "closed",
-                              "frames", "length", "opener", "parent"];
-      const expectedLocation = ["replace", "href"];
+      const expectedWindow = ["0"];
+      const expectedLocation = [];
       const expected = isWindow ? expectedWindow : expectedLocation;
       is(Object.keys(obj).length, expected.length,
          "Object.keys gives right array length");

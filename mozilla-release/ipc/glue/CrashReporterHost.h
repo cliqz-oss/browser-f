@@ -12,10 +12,8 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/ipc/Shmem.h"
 #include "base/process.h"
-#ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
-#endif
-#include "nsIThread.h"
+#include "nsThreadUtils.h"
 
 namespace mozilla {
 namespace ipc {
@@ -30,13 +28,8 @@ class GeckoChildProcessHost;
 class CrashReporterHost
 {
   typedef mozilla::ipc::Shmem Shmem;
-#ifdef MOZ_CRASHREPORTER
   typedef CrashReporter::AnnotationTable AnnotationTable;
   typedef CrashReporter::ThreadId ThreadId;
-#else
-  // unused in this case
-  typedef int32_t ThreadId;
-#endif
 
 public:
 
@@ -48,7 +41,7 @@ public:
       mCallback = Move(aCallback);
       mAsync = aAsync;
       if (IsAsync()) {
-        // Don't call do_GetCurrentThread() is this is called synchronously
+        // Don't call do_GetCurrentThread() if this is called synchronously
         // because 1. it's unnecessary, and 2. more importantly, it might create
         // one if called from a native thread, and the thread will be leaked.
         mTargetThread = do_GetCurrentThread();
@@ -99,7 +92,6 @@ public:
                     const Shmem& aShmem,
                     ThreadId aThreadId);
 
-#ifdef MOZ_CRASHREPORTER
   // Helper function for generating a crash report for a process that probably
   // crashed (i.e., had an AbnormalShutdown in ActorDestroy). Returns true if
   // the process has a minidump attached and we were able to generate a report.
@@ -149,7 +141,6 @@ public:
     MOZ_ASSERT(HasMinidump());
     return mDumpID;
   }
-#endif
 
 private:
   static void AsyncAddCrash(int32_t aProcessType, int32_t aCrashType,
@@ -161,9 +152,7 @@ private:
   Shmem mShmem;
   ThreadId mThreadId;
   time_t mStartTime;
-#ifdef MOZ_CRASHREPORTER
   AnnotationTable mExtraNotes;
-#endif
   nsString mDumpID;
   bool mFinalized;
   nsCOMPtr<nsIFile> mTargetDump;

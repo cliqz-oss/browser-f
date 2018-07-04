@@ -1,17 +1,17 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/main.js");
-Cu.import("resource://services-sync/engines/tabs.js");
-Cu.import("resource://services-sync/engines/history.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/status.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/engines/tabs.js");
+ChromeUtils.import("resource://services-sync/engines/history.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/status.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 add_task(async function test_locally_changed_keys() {
   enableValidationPrefs();
@@ -43,11 +43,13 @@ add_task(async function test_locally_changed_keys() {
     Service.clusterURL = Service.identity._token.endpoint;
 
     await Service.engineManager.register(HistoryEngine);
-    Service.engineManager.unregister("addons");
+    await Service.engineManager.unregister("addons");
 
-    function corrupt_local_keys() {
-      Service.collectionKeys._default.keyPair = [Weave.Crypto.generateRandomKey(),
-                                                 Weave.Crypto.generateRandomKey()];
+    async function corrupt_local_keys() {
+      Service.collectionKeys._default.keyPair = [
+        await Weave.Crypto.generateRandomKey(),
+        await Weave.Crypto.generateRandomKey()
+      ];
     }
 
     _("Setting meta.");
@@ -61,21 +63,21 @@ add_task(async function test_locally_changed_keys() {
     _("New meta/global: " + JSON.stringify(johndoe.collection("meta").wbo("global")));
 
     // Upload keys.
-    generateNewKeys(Service.collectionKeys);
+    await generateNewKeys(Service.collectionKeys);
     let serverKeys = Service.collectionKeys.asWBO("crypto", "keys");
-    serverKeys.encrypt(Service.identity.syncKeyBundle);
-    do_check_true((await serverKeys.upload(Service.resource(Service.cryptoKeysURL))).success);
+    await serverKeys.encrypt(Service.identity.syncKeyBundle);
+    Assert.ok((await serverKeys.upload(Service.resource(Service.cryptoKeysURL))).success);
 
     // Check that login works.
-    do_check_true((await Service.login()));
-    do_check_true(Service.isLoggedIn);
+    Assert.ok((await Service.login()));
+    Assert.ok(Service.isLoggedIn);
 
     // Sync should upload records.
     await sync_and_validate_telem();
 
     // Tabs exist.
     _("Tabs modified: " + johndoe.modified("tabs"));
-    do_check_true(johndoe.modified("tabs") > 0);
+    Assert.ok(johndoe.modified("tabs") > 0);
 
     // Let's create some server side history records.
     let liveKeys = Service.collectionKeys.keyForCollection("history");
@@ -94,7 +96,7 @@ add_task(async function test_locally_changed_keys() {
         sortindex: i,
         visits: [{date: (modified - 5) * 1000000, type: visitType}],
         deleted: false};
-      w.encrypt(liveKeys);
+      await w.encrypt(liveKeys);
 
       let payload = {ciphertext: w.ciphertext,
                      IV:         w.IV,
@@ -110,31 +112,31 @@ add_task(async function test_locally_changed_keys() {
     let rec = new CryptoWrapper("history", "record-no--0");
     await rec.fetch(Service.resource(Service.storageURL + "history/record-no--0"));
     _(JSON.stringify(rec));
-    do_check_true(!!rec.decrypt(liveKeys));
+    Assert.ok(!!await rec.decrypt(liveKeys));
 
-    do_check_eq(hmacErrorCount, 0);
+    Assert.equal(hmacErrorCount, 0);
 
     // Fill local key cache with bad data.
-    corrupt_local_keys();
+    await corrupt_local_keys();
     _("Keys now: " + Service.collectionKeys.keyForCollection("history").keyPair);
 
-    do_check_eq(hmacErrorCount, 0);
+    Assert.equal(hmacErrorCount, 0);
 
     _("HMAC error count: " + hmacErrorCount);
     // Now syncing should succeed, after one HMAC error.
     let ping = await wait_for_ping(() => Service.sync(), true);
     equal(ping.engines.find(e => e.name == "history").incoming.applied, 5);
 
-    do_check_eq(hmacErrorCount, 1);
+    Assert.equal(hmacErrorCount, 1);
     _("Keys now: " + Service.collectionKeys.keyForCollection("history").keyPair);
 
     // And look! We downloaded history!
-    do_check_true(await promiseIsURIVisited("http://foo/bar?record-no--0"));
-    do_check_true(await promiseIsURIVisited("http://foo/bar?record-no--1"));
-    do_check_true(await promiseIsURIVisited("http://foo/bar?record-no--2"));
-    do_check_true(await promiseIsURIVisited("http://foo/bar?record-no--3"));
-    do_check_true(await promiseIsURIVisited("http://foo/bar?record-no--4"));
-    do_check_eq(hmacErrorCount, 1);
+    Assert.ok(await PlacesUtils.history.hasVisits("http://foo/bar?record-no--0"));
+    Assert.ok(await PlacesUtils.history.hasVisits("http://foo/bar?record-no--1"));
+    Assert.ok(await PlacesUtils.history.hasVisits("http://foo/bar?record-no--2"));
+    Assert.ok(await PlacesUtils.history.hasVisits("http://foo/bar?record-no--3"));
+    Assert.ok(await PlacesUtils.history.hasVisits("http://foo/bar?record-no--4"));
+    Assert.equal(hmacErrorCount, 1);
 
     _("Busting some new server values.");
     // Now what happens if we corrupt the HMAC on the server?
@@ -150,7 +152,7 @@ add_task(async function test_locally_changed_keys() {
         sortindex: i,
         visits: [{date: (modified - 5 ) * 1000000, type: visitType}],
         deleted: false};
-      w.encrypt(Service.collectionKeys.keyForCollection("history"));
+      await w.encrypt(Service.collectionKeys.keyForCollection("history"));
       w.hmac = w.hmac.toUpperCase();
 
       let payload = {ciphertext: w.ciphertext,
@@ -161,7 +163,7 @@ add_task(async function test_locally_changed_keys() {
     history.timestamp = Date.now() / 1000;
 
     _("Server key time hasn't changed.");
-    do_check_eq(johndoe.modified("crypto"), old_key_time);
+    Assert.equal(johndoe.modified("crypto"), old_key_time);
 
     _("Resetting HMAC error timer.");
     Service.lastHMACEvent = 0;
@@ -169,16 +171,16 @@ add_task(async function test_locally_changed_keys() {
     _("Syncing...");
     ping = await sync_and_validate_telem(true);
 
-    do_check_eq(ping.engines.find(e => e.name == "history").incoming.failed, 5);
+    Assert.equal(ping.engines.find(e => e.name == "history").incoming.failed, 5);
     _("Keys now: " + Service.collectionKeys.keyForCollection("history").keyPair);
     _("Server keys have been updated, and we skipped over 5 more HMAC errors without adjusting history.");
-    do_check_true(johndoe.modified("crypto") > old_key_time);
-    do_check_eq(hmacErrorCount, 6);
-    do_check_false(await promiseIsURIVisited("http://foo/bar?record-no--5"));
-    do_check_false(await promiseIsURIVisited("http://foo/bar?record-no--6"));
-    do_check_false(await promiseIsURIVisited("http://foo/bar?record-no--7"));
-    do_check_false(await promiseIsURIVisited("http://foo/bar?record-no--8"));
-    do_check_false(await promiseIsURIVisited("http://foo/bar?record-no--9"));
+    Assert.ok(johndoe.modified("crypto") > old_key_time);
+    Assert.equal(hmacErrorCount, 6);
+    Assert.equal(false, await PlacesUtils.history.hasVisits("http://foo/bar?record-no--5"));
+    Assert.equal(false, await PlacesUtils.history.hasVisits("http://foo/bar?record-no--6"));
+    Assert.equal(false, await PlacesUtils.history.hasVisits("http://foo/bar?record-no--7"));
+    Assert.equal(false, await PlacesUtils.history.hasVisits("http://foo/bar?record-no--8"));
+    Assert.equal(false, await PlacesUtils.history.hasVisits("http://foo/bar?record-no--9"));
   } finally {
     Svc.Prefs.resetBranch("");
     await promiseStopServer(server);
@@ -190,19 +192,4 @@ function run_test() {
   validate_all_future_pings();
 
   run_next_test();
-}
-
-/**
- * Asynchronously check a url is visited.
- * @param url the url
- * @return {Promise}
- * @resolves When the check has been added successfully.
- * @rejects JavaScript exception.
- */
-function promiseIsURIVisited(url) {
-  return new Promise(resolve => {
-    PlacesUtils.asyncHistory.isURIVisited(Utils.makeURI(url), function(aURI, aIsVisited) {
-      resolve(aIsVisited);
-    });
-  });
 }

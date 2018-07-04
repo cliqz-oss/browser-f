@@ -3,19 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use base64;
-use canvas_traits::{CanvasMsg, FromScriptMsg};
+use canvas_traits::canvas::{CanvasMsg, CanvasId, FromScriptMsg};
+use canvas_traits::webgl::WebGLVersion;
 use dom::attr::Attr;
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::CanvasRenderingContext2DBinding::CanvasRenderingContext2DMethods;
 use dom::bindings::codegen::Bindings::HTMLCanvasElementBinding;
-use dom::bindings::codegen::Bindings::HTMLCanvasElementBinding::HTMLCanvasElementMethods;
+use dom::bindings::codegen::Bindings::HTMLCanvasElementBinding::{HTMLCanvasElementMethods, RenderingContext};
 use dom::bindings::codegen::Bindings::WebGLRenderingContextBinding::WebGLContextAttributes;
-use dom::bindings::codegen::UnionTypes::CanvasRenderingContext2DOrWebGLRenderingContext;
 use dom::bindings::conversions::ConversionResult;
 use dom::bindings::error::{Error, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{JS, LayoutJS, Root};
 use dom::bindings::num::Finite;
+use dom::bindings::reflector::DomObject;
+use dom::bindings::root::{Dom, DomRoot, LayoutDom};
 use dom::bindings::str::DOMString;
 use dom::canvasrenderingcontext2d::{CanvasRenderingContext2D, LayoutCanvasRenderingContext2DHelpers};
 use dom::document::Document;
@@ -24,17 +25,20 @@ use dom::globalscope::GlobalScope;
 use dom::htmlelement::HTMLElement;
 use dom::node::{Node, window_from_node};
 use dom::virtualmethods::VirtualMethods;
+use dom::webgl2renderingcontext::WebGL2RenderingContext;
 use dom::webglrenderingcontext::{LayoutCanvasWebGLRenderingContextHelpers, WebGLRenderingContext};
 use dom_struct::dom_struct;
 use euclid::Size2D;
 use html5ever::{LocalName, Prefix};
 use image::ColorType;
 use image::png::PNGEncoder;
-use ipc_channel::ipc::{self, IpcSender};
 use js::error::throw_type_error;
-use js::jsapi::{HandleValue, JSContext};
+use js::jsapi::JSContext;
+use js::rust::HandleValue;
 use offscreen_gl_context::GLContextAttributes;
-use script_layout_interface::HTMLCanvasData;
+use profile_traits::ipc;
+use script_layout_interface::{HTMLCanvasData, HTMLCanvasDataSource};
+use servo_config::prefs::PREFS;
 use std::iter::repeat;
 use style::attr::{AttrValue, LengthOrPercentageOrAuto};
 
@@ -42,16 +46,17 @@ const DEFAULT_WIDTH: u32 = 300;
 const DEFAULT_HEIGHT: u32 = 150;
 
 #[must_root]
-#[derive(JSTraceable, Clone, HeapSizeOf)]
+#[derive(Clone, JSTraceable, MallocSizeOf)]
 pub enum CanvasContext {
-    Context2d(JS<CanvasRenderingContext2D>),
-    WebGL(JS<WebGLRenderingContext>),
+    Context2d(Dom<CanvasRenderingContext2D>),
+    WebGL(Dom<WebGLRenderingContext>),
+    WebGL2(Dom<WebGL2RenderingContext>),
 }
 
 #[dom_struct]
 pub struct HTMLCanvasElement {
     htmlelement: HTMLElement,
-    context: DOMRefCell<Option<CanvasContext>>,
+    context: DomRefCell<Option<CanvasContext>>,
 }
 
 impl HTMLCanvasElement {
@@ -60,15 +65,15 @@ impl HTMLCanvasElement {
                      document: &Document) -> HTMLCanvasElement {
         HTMLCanvasElement {
             htmlelement: HTMLElement::new_inherited(local_name, prefix, document),
-            context: DOMRefCell::new(None),
+            context: DomRefCell::new(None),
         }
     }
 
     #[allow(unrooted_must_root)]
     pub fn new(local_name: LocalName,
                prefix: Option<Prefix>,
-               document: &Document) -> Root<HTMLCanvasElement> {
-        Node::reflect_node(box HTMLCanvasElement::new_inherited(local_name, prefix, document),
+               document: &Document) -> DomRoot<HTMLCanvasElement> {
+        Node::reflect_node(Box::new(HTMLCanvasElement::new_inherited(local_name, prefix, document)),
                            document,
                            HTMLCanvasElementBinding::Wrap)
     }
@@ -79,6 +84,7 @@ impl HTMLCanvasElement {
             match *context {
                 CanvasContext::Context2d(ref context) => context.set_bitmap_dimensions(size),
                 CanvasContext::WebGL(ref context) => context.recreate(size),
+                CanvasContext::WebGL2(ref context) => context.recreate(size),
             }
         }
     }
@@ -99,30 +105,36 @@ pub trait LayoutHTMLCanvasElementHelpers {
     fn data(&self) -> HTMLCanvasData;
     fn get_width(&self) -> LengthOrPercentageOrAuto;
     fn get_height(&self) -> LengthOrPercentageOrAuto;
+    fn get_canvas_id_for_layout(&self) -> CanvasId;
 }
 
-impl LayoutHTMLCanvasElementHelpers for LayoutJS<HTMLCanvasElement> {
+impl LayoutHTMLCanvasElementHelpers for LayoutDom<HTMLCanvasElement> {
     #[allow(unsafe_code)]
     fn data(&self) -> HTMLCanvasData {
         unsafe {
             let canvas = &*self.unsafe_get();
-            let ipc_renderer = canvas.context.borrow_for_layout().as_ref().map(|context| {
-                match *context {
-                    CanvasContext::Context2d(ref context) => {
-                        context.to_layout().get_ipc_renderer()
-                    },
-                    CanvasContext::WebGL(ref context) => {
-                        context.to_layout().get_ipc_renderer()
-                    },
+            let source = match canvas.context.borrow_for_layout().as_ref() {
+                Some(&CanvasContext::Context2d(ref context)) => {
+                    HTMLCanvasDataSource::Image(Some(context.to_layout().get_ipc_renderer()))
+                },
+                Some(&CanvasContext::WebGL(ref context)) => {
+                    context.to_layout().canvas_data_source()
+                },
+                Some(&CanvasContext::WebGL2(ref context)) => {
+                    context.to_layout().canvas_data_source()
+                },
+                None => {
+                    HTMLCanvasDataSource::Image(None)
                 }
-            });
+            };
 
             let width_attr = canvas.upcast::<Element>().get_attr_for_layout(&ns!(), &local_name!("width"));
             let height_attr = canvas.upcast::<Element>().get_attr_for_layout(&ns!(), &local_name!("height"));
             HTMLCanvasData {
-                ipc_renderer: ipc_renderer,
+                source: source,
                 width: width_attr.map_or(DEFAULT_WIDTH, |val| val.as_uint()),
                 height: height_attr.map_or(DEFAULT_HEIGHT, |val| val.as_uint()),
+                canvas_id: self.get_canvas_id_for_layout(),
             }
         }
     }
@@ -146,67 +158,106 @@ impl LayoutHTMLCanvasElementHelpers for LayoutJS<HTMLCanvasElement> {
                 .unwrap_or(LengthOrPercentageOrAuto::Auto)
         }
     }
+
+    #[allow(unsafe_code)]
+    fn get_canvas_id_for_layout(&self) -> CanvasId {
+        unsafe {
+            let canvas = &*self.unsafe_get();
+            if let &Some(CanvasContext::Context2d(ref context)) = canvas.context.borrow_for_layout() {
+                context.to_layout().get_canvas_id()
+            } else {
+                CanvasId(0)
+            }
+        }
+    }
 }
 
 
 impl HTMLCanvasElement {
-    pub fn ipc_renderer(&self) -> Option<IpcSender<CanvasMsg>> {
-        self.context.borrow().as_ref().map(|context| {
-            match *context {
-                CanvasContext::Context2d(ref context) => context.ipc_renderer(),
-                CanvasContext::WebGL(ref context) => context.ipc_renderer(),
-            }
-        })
-    }
-
-    pub fn get_or_init_2d_context(&self) -> Option<Root<CanvasRenderingContext2D>> {
+    pub fn get_or_init_2d_context(&self) -> Option<DomRoot<CanvasRenderingContext2D>> {
         if self.context.borrow().is_none() {
             let window = window_from_node(self);
             let size = self.get_size();
             let context = CanvasRenderingContext2D::new(window.upcast::<GlobalScope>(), self, size);
-            *self.context.borrow_mut() = Some(CanvasContext::Context2d(JS::from_ref(&*context)));
+            *self.context.borrow_mut() = Some(CanvasContext::Context2d(Dom::from_ref(&*context)));
         }
 
         match *self.context.borrow().as_ref().unwrap() {
-            CanvasContext::Context2d(ref context) => Some(Root::from_ref(&*context)),
+            CanvasContext::Context2d(ref context) => Some(DomRoot::from_ref(&*context)),
             _   => None,
         }
     }
 
-    #[allow(unsafe_code)]
-    pub fn get_or_init_webgl_context(&self,
-                                 cx: *mut JSContext,
-                                 attrs: Option<HandleValue>) -> Option<Root<WebGLRenderingContext>> {
+    pub fn get_or_init_webgl_context(
+        &self,
+        cx: *mut JSContext,
+        attrs: Option<HandleValue>
+    ) -> Option<DomRoot<WebGLRenderingContext>> {
         if self.context.borrow().is_none() {
             let window = window_from_node(self);
             let size = self.get_size();
+            let attrs = Self::get_gl_attributes(cx, attrs)?;
+            let maybe_ctx = WebGLRenderingContext::new(&window, self, WebGLVersion::WebGL1, size, attrs);
 
-            let attrs = if let Some(webgl_attributes) = attrs {
-                match unsafe {
-                    WebGLContextAttributes::new(cx, webgl_attributes) } {
-                    Ok(ConversionResult::Success(ref attrs)) => From::from(attrs),
-                    Ok(ConversionResult::Failure(ref error)) => {
-                        unsafe { throw_type_error(cx, &error); }
-                        return None;
-                    }
-                    _ => {
-                        debug!("Unexpected error on conversion of WebGLContextAttributes");
-                        return None;
-                    }
-                }
-            } else {
-                GLContextAttributes::default()
-            };
-
-            let maybe_ctx = WebGLRenderingContext::new(&window, self, size, attrs);
-
-            *self.context.borrow_mut() = maybe_ctx.map( |ctx| CanvasContext::WebGL(JS::from_ref(&*ctx)));
+            *self.context.borrow_mut() = maybe_ctx.map( |ctx| CanvasContext::WebGL(Dom::from_ref(&*ctx)));
         }
 
         if let Some(CanvasContext::WebGL(ref context)) = *self.context.borrow() {
-            Some(Root::from_ref(&*context))
+            Some(DomRoot::from_ref(&*context))
         } else {
             None
+        }
+    }
+
+    pub fn get_or_init_webgl2_context(
+        &self,
+        cx: *mut JSContext,
+        attrs: Option<HandleValue>
+    ) -> Option<DomRoot<WebGL2RenderingContext>> {
+        if !PREFS.is_webgl2_enabled() {
+            return None
+        }
+        if self.context.borrow().is_none() {
+            let window = window_from_node(self);
+            let size = self.get_size();
+            let attrs = Self::get_gl_attributes(cx, attrs)?;
+            let maybe_ctx = WebGL2RenderingContext::new(&window, self, size, attrs);
+
+            *self.context.borrow_mut() = maybe_ctx.map( |ctx| CanvasContext::WebGL2(Dom::from_ref(&*ctx)));
+        }
+
+        if let Some(CanvasContext::WebGL2(ref context)) = *self.context.borrow() {
+            Some(DomRoot::from_ref(&*context))
+        } else {
+            None
+        }
+    }
+
+    /// Gets the base WebGLRenderingContext for WebGL or WebGL 2, if exists.
+    pub fn get_base_webgl_context(&self) -> Option<DomRoot<WebGLRenderingContext>> {
+        match *self.context.borrow() {
+            Some(CanvasContext::WebGL(ref context)) => Some(DomRoot::from_ref(&*context)),
+            Some(CanvasContext::WebGL2(ref context)) => Some(context.base_context()),
+            _ => None
+        }
+    }
+
+    #[allow(unsafe_code)]
+    fn get_gl_attributes(cx: *mut JSContext, attrs: Option<HandleValue>) -> Option<GLContextAttributes> {
+        let webgl_attributes = match attrs {
+            Some(attrs) => attrs,
+            None => return Some(GLContextAttributes::default()),
+        };
+        match unsafe { WebGLContextAttributes::new(cx, webgl_attributes) } {
+            Ok(ConversionResult::Success(ref attrs)) => Some(From::from(attrs)),
+            Ok(ConversionResult::Failure(ref error)) => {
+                unsafe { throw_type_error(cx, &error); }
+                None
+            }
+            _ => {
+                debug!("Unexpected error on conversion of WebGLContextAttributes");
+                None
+            }
         }
     }
 
@@ -221,22 +272,25 @@ impl HTMLCanvasElement {
             return None
         }
 
-        let data = if let Some(renderer) = self.ipc_renderer() {
-            let (sender, receiver) = ipc::channel().unwrap();
-            let msg = CanvasMsg::FromScript(FromScriptMsg::SendPixels(sender));
-            renderer.send(msg).unwrap();
+        let data = match self.context.borrow().as_ref() {
+            Some(&CanvasContext::Context2d(ref context)) => {
+                let (sender, receiver) = ipc::channel(self.global().time_profiler_chan().clone()).unwrap();
+                let msg = CanvasMsg::FromScript(FromScriptMsg::SendPixels(sender), context.get_canvas_id());
+                context.get_ipc_renderer().send(msg).unwrap();
 
-            match receiver.recv().unwrap() {
-                Some(pixels) => pixels,
-                None => {
-                    // TODO(emilio, #14109): Not sure if WebGL canvas is
-                    // required for 2d spec, but I think it's not, if so, make
-                    // this return a readback from the GL context.
-                    return None;
-                }
+                receiver.recv().unwrap()?.into()
+            },
+            Some(&CanvasContext::WebGL(_)) => {
+                // TODO: add a method in WebGLRenderingContext to get the pixels.
+                return None;
+            },
+            Some(&CanvasContext::WebGL2(_)) => {
+                // TODO: add a method in WebGL2RenderingContext to get the pixels.
+                return None;
+            },
+            None => {
+                repeat(0xffu8).take((size.height as usize) * (size.width as usize) * 4).collect()
             }
-        } else {
-            repeat(0xffu8).take((size.height as usize) * (size.width as usize) * 4).collect()
         };
 
         Some((data, size))
@@ -262,15 +316,19 @@ impl HTMLCanvasElementMethods for HTMLCanvasElement {
                   cx: *mut JSContext,
                   id: DOMString,
                   attributes: Vec<HandleValue>)
-        -> Option<CanvasRenderingContext2DOrWebGLRenderingContext> {
+        -> Option<RenderingContext> {
         match &*id {
             "2d" => {
                 self.get_or_init_2d_context()
-                    .map(CanvasRenderingContext2DOrWebGLRenderingContext::CanvasRenderingContext2D)
+                    .map(RenderingContext::CanvasRenderingContext2D)
             }
             "webgl" | "experimental-webgl" => {
                 self.get_or_init_webgl_context(cx, attributes.get(0).cloned())
-                    .map(CanvasRenderingContext2DOrWebGLRenderingContext::WebGLRenderingContext)
+                    .map(RenderingContext::WebGLRenderingContext)
+            }
+            "webgl2" | "experimental-webgl2" => {
+                self.get_or_init_webgl2_context(cx, attributes.get(0).cloned())
+                    .map(RenderingContext::WebGL2RenderingContext)
             }
             _ => None
         }
@@ -302,11 +360,22 @@ impl HTMLCanvasElementMethods for HTMLCanvasElement {
                                                            Finite::wrap(self.Height() as f64))?;
                 image_data.get_data_array()
             }
+            Some(CanvasContext::WebGL(ref context)) => {
+                match context.get_image_data(self.Width(), self.Height()) {
+                    Some(data) => data,
+                    None => return Ok("data:,".into()),
+                }
+            }
+            Some(CanvasContext::WebGL2(ref context)) => {
+                match context.base_context().get_image_data(self.Width(), self.Height()) {
+                    Some(data) => data,
+                    None => return Ok("data:,".into()),
+                }
+            }
             None => {
                 // Each pixel is fully-transparent black.
                 vec![0; (self.Width() * self.Height() * 4) as usize]
             }
-            _ => return Err(Error::NotSupported) // WebGL
         };
 
         // Only handle image/png for now.

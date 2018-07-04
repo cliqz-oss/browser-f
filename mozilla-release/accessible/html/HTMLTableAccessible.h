@@ -11,6 +11,7 @@
 #include "TableCellAccessible.h"
 
 class nsITableCellLayout;
+class nsTableCellFrame;
 
 namespace mozilla {
 namespace a11y {
@@ -25,7 +26,8 @@ public:
   HTMLTableCellAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // nsISupports
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLTableCellAccessible,
+                                       HyperTextAccessibleWrap)
 
   // Accessible
   virtual TableCellAccessible* AsTableCell() override { return this; }
@@ -52,6 +54,11 @@ protected:
    * Return nsITableCellLayout of the table cell frame.
    */
   nsITableCellLayout* GetCellLayout() const;
+
+  /**
+   * Return the table cell frame.
+   */
+  nsTableCellFrame* GetCellFrame() const;
 
   /**
    * Return row and column indices of the cell.
@@ -86,7 +93,7 @@ public:
     mGenericTypes |= eTableRow;
   }
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLTableRowAccessible, AccessibleWrap)
 
   // Accessible
   virtual a11y::role NativeRole() override;
@@ -117,7 +124,7 @@ public:
     mGenericTypes |= eTable;
   }
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLTableAccessible, AccessibleWrap)
 
   // TableAccessible
   virtual Accessible* Caption() const override;

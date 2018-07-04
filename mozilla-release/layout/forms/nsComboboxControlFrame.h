@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -31,11 +32,11 @@
 #include "nsIStatefulFrame.h"
 #include "nsThreadUtils.h"
 
-class nsStyleContext;
 class nsIListControlFrame;
 class nsComboboxDisplayFrame;
 class nsIDOMEventListener;
 class nsIScrollableFrame;
+class nsTextNode;
 
 namespace mozilla {
 namespace gfx {
@@ -55,11 +56,11 @@ class nsComboboxControlFrame final : public nsBlockFrame,
 
 public:
   friend nsComboboxControlFrame* NS_NewComboboxControlFrame(nsIPresShell* aPresShell,
-                                                            nsStyleContext* aContext,
+                                                            ComputedStyle* aStyle,
                                                             nsFrameState aFlags);
   friend class nsComboboxDisplayFrame;
 
-  explicit nsComboboxControlFrame(nsStyleContext* aContext);
+  explicit nsComboboxControlFrame(ComputedStyle* aStyle);
   ~nsComboboxControlFrame();
 
   NS_DECL_QUERYFRAME
@@ -70,7 +71,7 @@ public:
   virtual void AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
                                         uint32_t aFilter) override;
 
-  nsIContent* GetDisplayNode() { return mDisplayContent; }
+  nsIContent* GetDisplayNode() const;
   nsIFrame* CreateFrameForDisplayNode();
 
 #ifdef ACCESSIBILITY
@@ -91,7 +92,6 @@ public:
                                nsEventStatus* aEventStatus) override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   void PaintFocus(DrawTarget& aDrawTarget, nsPoint aPt);
@@ -109,7 +109,7 @@ public:
 #ifdef DEBUG_FRAME_DUMP
   virtual nsresult GetFrameName(nsAString& aResult) const override;
 #endif
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
   virtual void SetInitialChildList(ChildListID     aListID,
                                    nsFrameList&    aChildList) override;
   virtual const nsFrameList& GetChildList(ChildListID aListID) const override;
@@ -121,7 +121,7 @@ public:
   void AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult) override;
 
   // nsIFormControlFrame
-  virtual nsresult SetFormProperty(nsIAtom* aName, const nsAString& aValue) override;
+  virtual nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) override;
   /**
    * Inform the control that it got (or lost) focus.
    * If it lost focus, the dropdown menu will be rolled up if needed,
@@ -174,12 +174,6 @@ public:
     mIsOpenInParentProcess = aVal;
   }
 
-  void GetPreviewText(nsAString& aValue) override
-  {
-    aValue = mPreviewText;
-  }
-  void SetPreviewText(const nsAString& aValue) override;
-
   // nsISelectControlFrame
   NS_IMETHOD AddOption(int32_t index) override;
   NS_IMETHOD RemoveOption(int32_t index) override;
@@ -219,8 +213,8 @@ public:
   virtual nsIWidget* GetRollupWidget() override;
 
   //nsIStatefulFrame
-  NS_IMETHOD SaveState(nsPresState** aState) override;
-  NS_IMETHOD RestoreState(nsPresState* aState) override;
+  mozilla::UniquePtr<mozilla::PresState> SaveState() override;
+  NS_IMETHOD RestoreState(mozilla::PresState* aState) override;
   NS_IMETHOD GenerateStateKey(nsIContent* aContent,
                               nsIDocument* aDocument,
                               nsACString& aKey) override;
@@ -235,6 +229,9 @@ protected:
   // Utilities
   void ReflowDropdown(nsPresContext*          aPresContext,
                       const ReflowInput& aReflowInput);
+
+  // Return true if we should render a dropdown button.
+  bool HasDropDownButton() const;
 
   enum DropDownPositionState {
     // can't show the dropdown at its current position
@@ -289,8 +286,8 @@ private:
 
 protected:
   nsFrameList              mPopupFrames;             // additional named child list
-  nsCOMPtr<nsIContent>     mDisplayContent;          // Anonymous content used to display the current selection
-  nsCOMPtr<nsIContent>     mButtonContent;           // Anonymous content for the button
+  RefPtr<nsTextNode>       mDisplayContent;          // Anonymous content used to display the current selection
+  RefPtr<Element>     mButtonContent;                // Anonymous content for the button
   nsContainerFrame*        mDisplayFrame;            // frame to display selection
   nsIFrame*                mButtonFrame;             // button frame
   nsIFrame*                mDropdownFrame;           // dropdown list frame
@@ -305,7 +302,6 @@ protected:
   int32_t               mRecentSelectedIndex;
   int32_t               mDisplayedIndex;
   nsString              mDisplayedOptionTextOrPreview;
-  nsString              mPreviewText;
 
   // make someone to listen to the button. If its programmatically pressed by someone like Accessibility
   // then open or close the combo box.

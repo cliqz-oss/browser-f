@@ -11,6 +11,7 @@ LOCAL_INCLUDES += [
 
 XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
+MOCHITEST_CHROME_MANIFESTS += ['test/chrome.ini']
 
 JAR_MANIFESTS += ['jar.mn']
 
@@ -48,12 +49,8 @@ elif 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
 if SOURCES:
     FINAL_LIBRARY = 'browsercomps'
 
-EXTRA_COMPONENTS += [
-    'nsSetDefaultBrowser.js',
-    'nsSetDefaultBrowser.manifest',
-]
-
 EXTRA_JS_MODULES += [
+    'HeadlessShell.jsm',
     'ShellService.jsm',
 ]
 

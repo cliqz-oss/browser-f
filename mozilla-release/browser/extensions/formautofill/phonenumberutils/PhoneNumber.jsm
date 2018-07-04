@@ -7,21 +7,18 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["PhoneNumber"];
+var EXPORTED_SYMBOLS = ["PhoneNumber"];
 
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PHONE_NUMBER_META_DATA",
-                                  "resource://formautofill/phonenumberutils/PhoneNumberMetaData.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PhoneNumberNormalizer",
-                                  "resource://formautofill/phonenumberutils/PhoneNumberNormalizer.jsm");
-this.PhoneNumber = (function(dataBase) {
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PHONE_NUMBER_META_DATA",
+                               "resource://formautofill/phonenumberutils/PhoneNumberMetaData.jsm");
+ChromeUtils.defineModuleGetter(this, "PhoneNumberNormalizer",
+                               "resource://formautofill/phonenumberutils/PhoneNumberNormalizer.jsm");
+var PhoneNumber = (function(dataBase) {
   const MAX_PHONE_NUMBER_LENGTH = 50;
   const NON_ALPHA_CHARS = /[^a-zA-Z]/g;
   const NON_DIALABLE_CHARS = /[^,#+\*\d]/g;
   const NON_DIALABLE_CHARS_ONCE = new RegExp(NON_DIALABLE_CHARS.source);
-  const BACKSLASH = /\\/g;
   const SPLIT_FIRST_GROUP = /^(\d+)(.*)$/;
   const LEADING_PLUS_CHARS_PATTERN = /^[+\uFF0B]+/g;
 
@@ -71,8 +68,7 @@ this.PhoneNumber = (function(dataBase) {
   // Parse string encoded meta data into a convenient object
   // representation.
   function ParseMetaData(countryCode, md) {
-    /* eslint-disable no-eval */
-    let array = eval(md.replace(BACKSLASH, "\\\\"));
+    let array = JSON.parse(md);
     md = ParseArray(array,
                     META_DATA_ENCODING,
                     {countryCode});

@@ -16,11 +16,11 @@
 #include "nsCOMPtr.h"
 #include "nsDataHashtable.h"
 #include "nsIDocShell.h"
-#include "nsIDOMHTMLInputElement.h"
 #include "nsILoginManager.h"
 #include "nsIMutationObserver.h"
 #include "nsTArray.h"
 #include "nsCycleCollectionParticipant.h"
+#include "nsILoginReputation.h"
 
 // X.h defines KeyPress
 #ifdef KeyPress
@@ -30,6 +30,12 @@
 class nsFormHistory;
 class nsINode;
 class nsPIDOMWindowOuter;
+
+namespace mozilla {
+namespace dom {
+class HTMLInputElement;
+} // namespace dom
+} // namespace mozilla
 
 class nsFormFillController final : public nsIFormFillController,
                                    public nsIAutoCompleteInput,
@@ -49,9 +55,9 @@ public:
 
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsFormFillController, nsIFormFillController)
 
-  nsresult Focus(nsIDOMEvent* aEvent);
-  nsresult KeyPress(nsIDOMEvent* aKeyEvent);
-  nsresult MouseDown(nsIDOMEvent* aMouseEvent);
+  nsresult Focus(mozilla::dom::Event* aEvent);
+  nsresult KeyPress(mozilla::dom::Event* aKeyEvent);
+  nsresult MouseDown(mozilla::dom::Event* aMouseEvent);
 
   nsFormFillController();
 
@@ -64,13 +70,13 @@ protected:
   void AddKeyListener(nsINode* aInput);
   void RemoveKeyListener();
 
-  void StartControllingInput(nsIDOMHTMLInputElement *aInput);
+  void StartControllingInput(mozilla::dom::HTMLInputElement *aInput);
   void StopControllingInput();
   /**
    * Checks that aElement is a type of element we want to fill, then calls
    * StartControllingInput on it.
    */
-  void MaybeStartControllingInput(nsIDOMHTMLInputElement* aElement);
+  void MaybeStartControllingInput(mozilla::dom::HTMLInputElement* aElement);
 
   nsresult PerformInputListAutoComplete(const nsAString& aSearch,
                                         nsIAutoCompleteResult** aResult);
@@ -78,23 +84,24 @@ protected:
   void RevalidateDataList();
   bool RowMatch(nsFormHistory *aHistory, uint32_t aIndex, const nsAString &aInputName, const nsAString &aInputValue);
 
-  inline nsIDocShell *GetDocShellForInput(nsIDOMHTMLInputElement *aInput);
+  inline nsIDocShell *GetDocShellForInput(mozilla::dom::HTMLInputElement *aInput);
   inline nsPIDOMWindowOuter *GetWindowForDocShell(nsIDocShell *aDocShell);
   inline int32_t GetIndexOfDocShell(nsIDocShell *aDocShell);
 
   void MaybeRemoveMutationObserver(nsINode* aNode);
 
   void RemoveForDocument(nsIDocument* aDoc);
-  bool IsEventTrusted(nsIDOMEvent *aEvent);
 
   bool IsTextControl(nsINode* aNode);
+
+  nsresult StartQueryLoginReputation(mozilla::dom::HTMLInputElement *aInput);
 
   // members //////////////////////////////////////////
 
   nsCOMPtr<nsIAutoCompleteController> mController;
   nsCOMPtr<nsILoginManager> mLoginManager;
-  nsIDOMHTMLInputElement* mFocusedInput;
-  nsINode* mFocusedInputNode;
+  nsCOMPtr<nsILoginReputationService> mLoginReputationService;
+  mozilla::dom::HTMLInputElement* mFocusedInput;
 
   // mListNode is a <datalist> element which, is set, has the form fill controller
   // as a mutation observer for it.

@@ -24,6 +24,7 @@
 #endif
 #endif
 
+#include "nsStringFwd.h"
 #include "nsXULAppAPI.h"
 
 // This directory service key is a lot like NS_APP_LOCALSTORE_50_FILE,
@@ -38,7 +39,6 @@ class nsIFile;
 class nsIProfileLock;
 class nsIProfileUnlocker;
 class nsIFactory;
-class nsString;
 
 extern nsXREDirProvider* gDirServiceProvider;
 
@@ -116,6 +116,8 @@ WinLaunchChild(const wchar_t *exePath, int argc,
 
 namespace mozilla {
 namespace startup {
+Result<nsCOMPtr<nsIFile>, nsresult> GetIncompleteStartupFile(nsIFile* aProfLD);
+
 extern GeckoProcessType sChildProcessType;
 } // namespace startup
 
@@ -128,16 +130,5 @@ const char* PlatformBuildID();
  * and the JIT debugger on Windows, and install unix signal handlers.
  */
 void SetupErrorHandling(const char* progname);
-
-/**
- * A numeric value indicating whether multiprocess might be blocked.
- * Possible values can be found at nsAppRunner.cpp. A value of 0
- * represents not blocking.
- */
-uint32_t MultiprocessBlockPolicy();
-
-#ifdef MOZ_WIDGET_GTK
-const char* DetectDisplay();
-#endif
 
 #endif // nsAppRunner_h__

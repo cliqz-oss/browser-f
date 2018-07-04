@@ -2,9 +2,9 @@
 
 const global = this;
 
-Cu.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-Cu.import("resource://gre/modules/ExtensionCommon.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 
 var {
   BaseContext,
@@ -20,6 +20,10 @@ class StubContext extends BaseContext {
 
   get cloneScope() {
     return this.sandbox;
+  }
+
+  get principal() {
+    return Cu.getObjectPrincipal(this.sandbox);
   }
 }
 
@@ -61,11 +65,15 @@ add_task(async function test_post_unload_listeners() {
   let context = new StubContext();
 
   let fire;
-  let manager = new EventManager(context, "EventManager", _fire => {
-    fire = () => {
-      _fire.async();
-    };
-    return () => {};
+  let manager = new EventManager({
+    context,
+    name: "EventManager",
+    register: _fire => {
+      fire = () => {
+        _fire.async();
+      };
+      return () => {};
+    },
   });
 
   let fail = event => {

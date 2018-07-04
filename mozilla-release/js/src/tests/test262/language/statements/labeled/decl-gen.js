@@ -6,8 +6,11 @@ description: Generator declaration not allowed in statement position
 esid: sec-labelled-statements
 es6id: 13.13
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
+features: [generators]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 label: function* g() {}

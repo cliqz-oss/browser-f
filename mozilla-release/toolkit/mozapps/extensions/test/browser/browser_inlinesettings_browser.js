@@ -1,12 +1,13 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 /* globals TestUtils */
 
-var {Extension} = Components.utils.import("resource://gre/modules/Extension.jsm", {});
+let {ExtensionTestCommon} = ChromeUtils.import("resource://testing-common/ExtensionTestCommon.jsm", {});
 
-Components.utils.import("resource://testing-common/ContentTask.jsm", {});
+ChromeUtils.import("resource://testing-common/ContentTask.jsm", {});
 
 var gAddon;
 var gOtherAddon;
@@ -20,7 +21,7 @@ function installAddon(details) {
     details.manifest = {};
   }
   details.manifest.applications = {gecko: {id}};
-  let xpi = Extension.generateXPI(details);
+  let xpi = ExtensionTestCommon.generateXPI(details);
 
   return AddonManager.installTemporaryAddon(xpi).then(addon => {
     SimpleTest.registerCleanupFunction(function() {
@@ -95,17 +96,19 @@ async function openDetailsBrowser(addonId) {
      "Current view should scroll to preferences");
 
   var browser = gManagerWindow.document.querySelector(
-    "#detail-grid > rows > .inline-options-browser");
-  var rows = browser.parentNode;
+    "#detail-grid > rows > stack > .inline-options-browser");
+  var rows = browser.parentNode.parentNode;
 
   let url = await ContentTask.spawn(browser, {}, () => content.location.href);
 
-  ok(browser, "Grid should have a browser child");
-  is(browser.localName, "browser", "Grid should have a browser child");
-  is(url, addon.mAddon.optionsURL, "Browser has the expected options URL loaded")
+  ok(browser, "Grid should have a browser descendant");
+  is(browser.localName, "browser", "Grid should have a browser descendant");
+  is(url, addon.mAddon.optionsURL, "Browser has the expected options URL loaded");
 
+  is(browser.clientWidth, browser.parentNode.clientWidth,
+     "Browser should be the same width as its direct parent");
   is(browser.clientWidth, rows.clientWidth,
-     "Browser should be the same width as its parent node");
+     "Browser should be the same width as its rows ancestor");
 
   button = gManagerWindow.document.getElementById("detail-prefs-btn");
   is_element_hidden(button, "Preferences button should not be visible");

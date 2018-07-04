@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "StreamBlobImpl.h"
+#include "StringBlobImpl.h"
 #include "nsStringStream.h"
 
 namespace mozilla {
@@ -44,7 +44,7 @@ StringBlobImpl::CreateSlice(uint64_t aStart, uint64_t aLength,
 }
 
 void
-StringBlobImpl::GetInternalStream(nsIInputStream** aStream, ErrorResult& aRv)
+StringBlobImpl::CreateInputStream(nsIInputStream** aStream, ErrorResult& aRv)
 {
   aRv = NS_NewCStringInputStream(aStream, mData);
 }

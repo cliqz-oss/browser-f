@@ -27,7 +27,6 @@ namespace mozilla {
 namespace dom {
 
 class AnyCallback;
-class DOMError;
 class MediaStreamError;
 class PromiseInit;
 class PromiseNativeHandler;
@@ -95,23 +94,15 @@ public:
 
   // DO NOT USE MaybeRejectBrokenly with in new code.  Promises should be
   // rejected with Error instances.
-  // Note: MaybeRejectBrokenly is a template so we can use it with DOMError
-  // without instantiating the DOMError specialization of MaybeSomething in
+  // Note: MaybeRejectBrokenly is a template so we can use it with DOMException
+  // without instantiating the DOMException specialization of MaybeSomething in
   // every translation unit that includes this header, because that would
-  // require use to include DOMError.h either here or in all those translation
-  // units.
+  // require use to include DOMException.h either here or in all those
+  // translation units.
   template<typename T>
   void MaybeRejectBrokenly(const T& aArg); // Not implemented by default; see
                                            // specializations in the .cpp for
                                            // the T values we support.
-
-  // Called by DOM to let us execute our callbacks.  May be called recursively.
-  // Returns true if at least one microtask was processed.
-  static bool PerformMicroTaskCheckpoint();
-
-  static void PerformWorkerMicroTaskCheckpoint();
-
-  static void PerformWorkerDebuggerMicroTaskCheckpoint();
 
   // WebIDL
 
@@ -120,23 +111,26 @@ public:
     return mGlobal;
   }
 
-  // Do the equivalent of Promise.resolve in the current compartment of aCx.
-  // Errorrs are reported on the ErrorResult; if aRv comes back !Failed(), this
-  // function MUST return a non-null value.
+  // Do the equivalent of Promise.resolve in the compartment of aGlobal.  The
+  // compartment of aCx is ignored.  Errors are reported on the ErrorResult; if
+  // aRv comes back !Failed(), this function MUST return a non-null value.
   static already_AddRefed<Promise>
   Resolve(nsIGlobalObject* aGlobal, JSContext* aCx,
           JS::Handle<JS::Value> aValue, ErrorResult& aRv);
 
-  // Do the equivalent of Promise.reject in the current compartment of aCx.
-  // Errorrs are reported on the ErrorResult; if aRv comes back !Failed(), this
-  // function MUST return a non-null value.
+  // Do the equivalent of Promise.reject in the compartment of aGlobal.  The
+  // compartment of aCx is ignored.  Errors are reported on the ErrorResult; if
+  // aRv comes back !Failed(), this function MUST return a non-null value.
   static already_AddRefed<Promise>
   Reject(nsIGlobalObject* aGlobal, JSContext* aCx,
          JS::Handle<JS::Value> aValue, ErrorResult& aRv);
 
+  // Do the equivalent of Promise.all in the current compartment of aCx.  Errors
+  // are reported on the ErrorResult; if aRv comes back !Failed(), this function
+  // MUST return a non-null value.
   static already_AddRefed<Promise>
-  All(const GlobalObject& aGlobal,
-      const nsTArray<RefPtr<Promise>>& aPromiseList, ErrorResult& aRv);
+  All(JSContext* aCx, const nsTArray<RefPtr<Promise>>& aPromiseList,
+      ErrorResult& aRv);
 
   void
   Then(JSContext* aCx,

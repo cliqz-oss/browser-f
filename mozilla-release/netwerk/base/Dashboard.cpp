@@ -50,9 +50,7 @@ public:
     nsIEventTarget *mEventTarget;
 
 private:
-    virtual ~SocketData()
-    {
-    }
+    virtual ~SocketData() = default;
 };
 
 static void GetErrorString(nsresult rv, nsAString& errorString);
@@ -63,9 +61,7 @@ NS_IMPL_ISUPPORTS0(SocketData)
 class HttpData
     : public nsISupports
 {
-    virtual ~HttpData()
-    {
-    }
+    virtual ~HttpData() = default;
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -86,9 +82,7 @@ NS_IMPL_ISUPPORTS0(HttpData)
 class WebSocketRequest
     : public nsISupports
 {
-    virtual ~WebSocketRequest()
-    {
-    }
+    virtual ~WebSocketRequest() = default;
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -108,9 +102,7 @@ NS_IMPL_ISUPPORTS0(WebSocketRequest)
 class DnsData
     : public nsISupports
 {
-    virtual ~DnsData()
-    {
-    }
+    virtual ~DnsData() = default;
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -182,9 +174,7 @@ NS_IMPL_ISUPPORTS(ConnectionData, nsITransportEventSink, nsITimerCallback, nsINa
 class RcwnData
     : public nsISupports
 {
-    virtual ~RcwnData()
-    {
-    }
+    virtual ~RcwnData() = default;
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -243,7 +233,7 @@ void
 ConnectionData::StartTimer(uint32_t aTimeout)
 {
     if (!mTimer) {
-        mTimer = do_CreateInstance("@mozilla.org/timer;1");
+        mTimer = NS_NewTimer();
     }
 
     mTimer->InitWithCallback(this, aTimeout * 1000,
@@ -265,9 +255,7 @@ class LookupHelper;
 class LookupArgument
     : public nsISupports
 {
-    virtual ~LookupArgument()
-    {
-    }
+    virtual ~LookupArgument() = default;
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -285,7 +273,7 @@ public:
 NS_IMPL_ISUPPORTS0(LookupArgument)
 
 
-class LookupHelper
+class LookupHelper final
     : public nsIDNSListener
 {
     virtual ~LookupHelper()
@@ -299,8 +287,7 @@ public:
     NS_DECL_THREADSAFE_ISUPPORTS
     NS_DECL_NSIDNSLISTENER
 
-    LookupHelper() {
-    }
+    LookupHelper() = default;
 
     nsresult ConstructAnswer(LookupArgument *aArgument);
 public:
@@ -375,10 +362,6 @@ NS_IMPL_ISUPPORTS(Dashboard, nsIDashboard, nsIDashboardEventNotifier)
 Dashboard::Dashboard()
 {
     mEnableLogging = false;
-}
-
-Dashboard::~Dashboard()
-{
 }
 
 NS_IMETHODIMP
@@ -756,6 +739,7 @@ Dashboard::GetDNSCacheEntries(DnsData *dnsData)
 
         CopyASCIItoUTF16(dnsData->mData[i].hostname, entry.mHostname);
         entry.mExpiration = dnsData->mData[i].expiration;
+        entry.mTrr = dnsData->mData[i].TRR;
 
         for (uint32_t j = 0; j < dnsData->mData[i].hostaddr.Length(); j++) {
             nsString* addr = addrs.AppendElement(fallible);
@@ -767,9 +751,9 @@ Dashboard::GetDNSCacheEntries(DnsData *dnsData)
         }
 
         if (dnsData->mData[i].family == PR_AF_INET6) {
-            CopyASCIItoUTF16("ipv6", entry.mFamily);
+            entry.mFamily.AssignLiteral(u"ipv6");
         } else {
-            CopyASCIItoUTF16("ipv4", entry.mFamily);
+            entry.mFamily.AssignLiteral(u"ipv4");
         }
     }
 
@@ -888,8 +872,8 @@ HttpConnInfo::SetHTTP1ProtocolVersion(uint8_t pv)
 void
 HttpConnInfo::SetHTTP2ProtocolVersion(uint8_t pv)
 {
-    MOZ_ASSERT (pv == HTTP_VERSION_2);
-    protocolVersion.Assign(u"h2");
+    MOZ_ASSERT(pv == HTTP_VERSION_2);
+    protocolVersion.AssignLiteral(u"h2");
 }
 
 NS_IMETHODIMP
@@ -1020,9 +1004,9 @@ ErrorEntry socketTransportStatuses[] = {
 static void
 GetErrorString(nsresult rv, nsAString& errorString)
 {
-    for (size_t i = 0; i < ArrayLength(socketTransportStatuses); ++i) {
-        if (socketTransportStatuses[i].key == rv) {
-            errorString.AssignASCII(socketTransportStatuses[i].error);
+    for (auto& socketTransportStatus : socketTransportStatuses) {
+        if (socketTransportStatus.key == rv) {
+            errorString.AssignASCII(socketTransportStatus.error);
             return;
         }
     }

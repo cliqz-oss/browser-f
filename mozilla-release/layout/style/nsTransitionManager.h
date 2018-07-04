@@ -1,4 +1,5 @@
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,25 +10,21 @@
 #define nsTransitionManager_h_
 
 #include "mozilla/ComputedTiming.h"
-#include "mozilla/ContentEvents.h"
 #include "mozilla/EffectCompositor.h" // For EffectCompositor::CascadeLevel
-#include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/Animation.h"
 #include "mozilla/dom/KeyframeEffectReadOnly.h"
 #include "AnimationCommon.h"
-#include "nsCSSProps.h"
+#include "nsISupportsImpl.h"
 
 class nsIGlobalObject;
-class nsStyleContext;
 class nsPresContext;
 class nsCSSPropertyIDSet;
 
 namespace mozilla {
+class ComputedStyle;
 enum class CSSPseudoElementType : uint8_t;
-class GeckoStyleContext;
 struct Keyframe;
 struct StyleTransition;
-class ServoStyleContext;
 } // namespace mozilla
 
 /*****************************************************************************
@@ -138,8 +135,9 @@ public:
   void GetTransitionProperty(nsString& aRetVal) const;
 
   // Animation interface overrides
-  virtual AnimationPlayState PlayStateFromJS() const override;
-  virtual void PlayFromJS(ErrorResult& aRv) override;
+  AnimationPlayState PlayStateFromJS() const override;
+  bool PendingFromJS() const override;
+  void PlayFromJS(ErrorResult& aRv) override;
 
   // A variant of Play() that avoids posting style updates since this method
   // is expected to be called whilst already updating style.
@@ -216,7 +214,7 @@ public:
       const TimeDuration& aStartTime,
       double aPlaybackRate);
 
-  void MaybeQueueCancelEvent(StickyTimeDuration aActiveTime) override {
+  void MaybeQueueCancelEvent(const StickyTimeDuration& aActiveTime) override {
     QueueEvents(aActiveTime);
   }
 
@@ -231,7 +229,7 @@ protected:
   void UpdateTiming(SeekFlag aSeekFlag,
                     SyncNotifyFlag aSyncNotifyFlag) override;
 
-  void QueueEvents(StickyTimeDuration activeTime = StickyTimeDuration());
+  void QueueEvents(const StickyTimeDuration& activeTime = StickyTimeDuration());
 
 
   enum class TransitionPhase;
@@ -285,55 +283,17 @@ protected:
 template <>
 struct AnimationTypeTraits<dom::CSSTransition>
 {
-  static nsIAtom* ElementPropertyAtom()
+  static nsAtom* ElementPropertyAtom()
   {
     return nsGkAtoms::transitionsProperty;
   }
-  static nsIAtom* BeforePropertyAtom()
+  static nsAtom* BeforePropertyAtom()
   {
     return nsGkAtoms::transitionsOfBeforeProperty;
   }
-  static nsIAtom* AfterPropertyAtom()
+  static nsAtom* AfterPropertyAtom()
   {
     return nsGkAtoms::transitionsOfAfterProperty;
-  }
-};
-
-struct TransitionEventInfo {
-  RefPtr<dom::Element> mElement;
-  RefPtr<dom::Animation> mAnimation;
-  InternalTransitionEvent mEvent;
-  TimeStamp mTimeStamp;
-
-  TransitionEventInfo(dom::Element* aElement,
-                      CSSPseudoElementType aPseudoType,
-                      EventMessage aMessage,
-                      nsCSSPropertyID aProperty,
-                      StickyTimeDuration aDuration,
-                      const TimeStamp& aTimeStamp,
-                      dom::Animation* aAnimation)
-    : mElement(aElement)
-    , mAnimation(aAnimation)
-    , mEvent(true, aMessage)
-    , mTimeStamp(aTimeStamp)
-  {
-    // XXX Looks like nobody initialize WidgetEvent::time
-    mEvent.mPropertyName =
-      NS_ConvertUTF8toUTF16(nsCSSProps::GetStringValue(aProperty));
-    mEvent.mElapsedTime = aDuration.ToSeconds();
-    mEvent.mPseudoElement =
-      AnimationCollection<dom::CSSTransition>::PseudoTypeAsString(aPseudoType);
-  }
-
-  // InternalTransitionEvent doesn't support copy-construction, so we need
-  // to ourselves in order to work with nsTArray
-  TransitionEventInfo(const TransitionEventInfo& aOther)
-    : mElement(aOther.mElement)
-    , mAnimation(aOther.mAnimation)
-    , mEvent(aOther.mEvent)
-    , mTimeStamp(aOther.mTimeStamp)
-  {
-    mEvent.AssignTransitionEventData(aOther.mEvent, false);
   }
 };
 
@@ -345,33 +305,13 @@ class nsTransitionManager final
 public:
   explicit nsTransitionManager(nsPresContext *aPresContext)
     : mozilla::CommonAnimationManager<mozilla::dom::CSSTransition>(aPresContext)
-    , mInAnimationOnlyStyleUpdate(false)
   {
   }
 
-  NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(nsTransitionManager)
-  NS_DECL_CYCLE_COLLECTION_NATIVE_CLASS(nsTransitionManager)
+  ~nsTransitionManager() final = default;
 
   typedef mozilla::AnimationCollection<mozilla::dom::CSSTransition>
     CSSTransitionCollection;
-
-  /**
-   * StyleContextChanged
-   *
-   * To be called from RestyleManager::TryInitiatingTransition when the
-   * style of an element has changed, to initiate transitions from
-   * that style change.  For style contexts with :before and :after
-   * pseudos, aElement is expected to be the generated before/after
-   * element.
-   *
-   * It may modify the new style context (by replacing
-   * *aNewStyleContext) to cover up some of the changes for the duration
-   * of the restyling of descendants.  If it does, this function will
-   * take care of causing the necessary restyle afterwards.
-   */
-  void StyleContextChanged(mozilla::dom::Element *aElement,
-                           mozilla::GeckoStyleContext* aOldStyleContext,
-                           RefPtr<mozilla::GeckoStyleContext>* aNewStyleContext /* inout */);
 
   /**
    * Update transitions for stylo.
@@ -379,45 +319,10 @@ public:
   bool UpdateTransitions(
     mozilla::dom::Element *aElement,
     mozilla::CSSPseudoElementType aPseudoType,
-    const mozilla::ServoStyleContext* aOldStyle,
-    const mozilla::ServoStyleContext* aNewStyle);
-
-  /**
-   * When we're resolving style for an element that previously didn't have
-   * style, we might have some old finished transitions for it, if,
-   * say, it was display:none for a while, but previously displayed.
-   *
-   * This method removes any finished transitions that don't match the
-   * new style.
-   */
-  void PruneCompletedTransitions(mozilla::dom::Element* aElement,
-                                 mozilla::CSSPseudoElementType aPseudoType,
-                                 mozilla::GeckoStyleContext* aNewStyleContext);
-
-  void SetInAnimationOnlyStyleUpdate(bool aInAnimationOnlyUpdate) {
-    mInAnimationOnlyStyleUpdate = aInAnimationOnlyUpdate;
-  }
-
-  bool InAnimationOnlyStyleUpdate() const {
-    return mInAnimationOnlyStyleUpdate;
-  }
-
-  void QueueEvent(mozilla::TransitionEventInfo&& aEventInfo)
-  {
-    mEventDispatcher.QueueEvent(
-      mozilla::Forward<mozilla::TransitionEventInfo>(aEventInfo));
-  }
-
-  void DispatchEvents()
-  {
-    RefPtr<nsTransitionManager> kungFuDeathGrip(this);
-    mEventDispatcher.DispatchEvents(mPresContext);
-  }
-  void SortEvents()      { mEventDispatcher.SortEvents(); }
-  void ClearEventQueue() { mEventDispatcher.ClearEventQueue(); }
+    const mozilla::ComputedStyle& aOldStyle,
+    const mozilla::ComputedStyle& aNewStyle);
 
 protected:
-  virtual ~nsTransitionManager() {}
 
   typedef nsTArray<RefPtr<mozilla::dom::CSSTransition>>
     OwningCSSTransitionPtrArray;
@@ -427,29 +332,24 @@ protected:
   // as needed. aDisp and aElement must be non-null.
   // aElementTransitions is the collection of current transitions, and it
   // could be a nullptr if we don't have any transitions.
-  template<typename StyleType> bool
-  DoUpdateTransitions(const nsStyleDisplay* aDisp,
-                      mozilla::dom::Element* aElement,
-                      mozilla::CSSPseudoElementType aPseudoType,
-                      CSSTransitionCollection*& aElementTransitions,
-                      StyleType aOldStyle,
-                      StyleType aNewStyle);
+  bool DoUpdateTransitions(const nsStyleDisplay& aDisp,
+                           mozilla::dom::Element* aElement,
+                           mozilla::CSSPseudoElementType aPseudoType,
+                           CSSTransitionCollection*& aElementTransitions,
+                           const mozilla::ComputedStyle& aOldStyle,
+                           const mozilla::ComputedStyle& aNewStyle);
 
-  template<typename StyleType> void
-  ConsiderInitiatingTransition(nsCSSPropertyID aProperty,
-                               const mozilla::StyleTransition& aTransition,
-                               mozilla::dom::Element* aElement,
-                               mozilla::CSSPseudoElementType aPseudoType,
-                               CSSTransitionCollection*& aElementTransitions,
-                               StyleType aOldStyle,
-                               StyleType aNewStyle,
-                               bool* aStartedAny,
-                               nsCSSPropertyIDSet* aWhichStarted);
+  void ConsiderInitiatingTransition(nsCSSPropertyID aProperty,
+                                    const nsStyleDisplay& aStyleDisplay,
+                                    uint32_t transitionIdx,
+                                    mozilla::dom::Element* aElement,
+                                    mozilla::CSSPseudoElementType aPseudoType,
+                                    CSSTransitionCollection*& aElementTransitions,
+                                    const mozilla::ComputedStyle& aOldStyle,
+                                    const mozilla::ComputedStyle& aNewStyle,
+                                    bool* aStartedAny,
+                                    nsCSSPropertyIDSet* aWhichStarted);
 
-  bool mInAnimationOnlyStyleUpdate;
-
-  mozilla::DelayedEventDispatcher<mozilla::TransitionEventInfo>
-      mEventDispatcher;
 };
 
 #endif /* !defined(nsTransitionManager_h_) */

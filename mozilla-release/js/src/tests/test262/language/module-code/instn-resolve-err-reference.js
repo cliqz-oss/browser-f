@@ -12,9 +12,11 @@ info: |
        b. Let requiredModule be ? HostResolveImportedModule(module, required).
     [...]
 negative:
-  phase: early
+  phase: resolution
   type: ReferenceError
 flags: [module]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 import './instn-resolve-err-reference_FIXTURE.js';

@@ -59,12 +59,9 @@ use args::SubCommand;
 /// [`App::get_matches`]: ./struct.App.html#method.get_matches
 #[derive(Debug, Clone)]
 pub struct ArgMatches<'a> {
-    #[doc(hidden)]
-    pub args: HashMap<&'a str, MatchedArg>,
-    #[doc(hidden)]
-    pub subcommand: Option<Box<SubCommand<'a>>>,
-    #[doc(hidden)]
-    pub usage: Option<String>,
+    #[doc(hidden)] pub args: HashMap<&'a str, MatchedArg>,
+    #[doc(hidden)] pub subcommand: Option<Box<SubCommand<'a>>>,
+    #[doc(hidden)] pub usage: Option<String>,
 }
 
 impl<'a> Default for ArgMatches<'a> {
@@ -79,7 +76,11 @@ impl<'a> Default for ArgMatches<'a> {
 
 impl<'a> ArgMatches<'a> {
     #[doc(hidden)]
-    pub fn new() -> Self { ArgMatches { ..Default::default() } }
+    pub fn new() -> Self {
+        ArgMatches {
+            ..Default::default()
+        }
+    }
 
     /// Gets the value of a specific [option] or [positional] argument (i.e. an argument that takes
     /// an additional value at runtime). If the option wasn't present at runtime
@@ -126,8 +127,8 @@ impl<'a> ArgMatches<'a> {
     ///
     /// # Examples
     ///
-    #[cfg_attr(not(unix), doc=" ```ignore")]
-    #[cfg_attr(    unix , doc=" ```")]
+    #[cfg_attr(not(unix), doc = " ```ignore")]
+    #[cfg_attr(unix, doc = " ```")]
     /// # use clap::{App, Arg};
     /// use std::ffi::OsString;
     /// use std::os::unix::ffi::{OsStrExt,OsStringExt};
@@ -161,8 +162,8 @@ impl<'a> ArgMatches<'a> {
     ///
     /// # Examples
     ///
-    #[cfg_attr(not(unix), doc=" ```ignore")]
-    #[cfg_attr(    unix , doc=" ```")]
+    #[cfg_attr(not(unix), doc = " ```ignore")]
+    #[cfg_attr(unix, doc = " ```")]
     /// # use clap::{App, Arg};
     /// use std::ffi::OsString;
     /// use std::os::unix::ffi::{OsStrExt,OsStringExt};
@@ -179,7 +180,7 @@ impl<'a> ArgMatches<'a> {
     pub fn value_of_os<S: AsRef<str>>(&self, name: S) -> Option<&OsStr> {
         self.args
             .get(name.as_ref())
-            .map_or(None, |arg| arg.vals.get(0).map(|v| v.as_os_str()))
+            .and_then(|arg| arg.vals.get(0).map(|v| v.as_os_str()))
     }
 
     /// Gets a [`Values`] struct which implements [`Iterator`] for values of a specific argument
@@ -211,7 +212,9 @@ impl<'a> ArgMatches<'a> {
         if let Some(arg) = self.args.get(name.as_ref()) {
             fn to_str_slice(o: &OsString) -> &str { o.to_str().expect(INVALID_UTF8) }
             let to_str_slice: fn(&OsString) -> &str = to_str_slice; // coerce to fn pointer
-            return Some(Values { iter: arg.vals.iter().map(to_str_slice) });
+            return Some(Values {
+                iter: arg.vals.iter().map(to_str_slice),
+            });
         }
         None
     }
@@ -222,8 +225,8 @@ impl<'a> ArgMatches<'a> {
     ///
     /// # Examples
     ///
-    #[cfg_attr(not(unix), doc=" ```ignore")]
-    #[cfg_attr(    unix , doc=" ```")]
+    #[cfg_attr(not(unix), doc = " ```ignore")]
+    #[cfg_attr(unix, doc = " ```")]
     /// # use clap::{App, Arg};
     /// use std::ffi::OsString;
     /// use std::os::unix::ffi::OsStringExt;
@@ -242,10 +245,12 @@ impl<'a> ArgMatches<'a> {
     /// ```
     pub fn values_of_lossy<S: AsRef<str>>(&'a self, name: S) -> Option<Vec<String>> {
         if let Some(arg) = self.args.get(name.as_ref()) {
-            return Some(arg.vals
-                .iter()
-                .map(|v| v.to_string_lossy().into_owned())
-                .collect());
+            return Some(
+                arg.vals
+                    .iter()
+                    .map(|v| v.to_string_lossy().into_owned())
+                    .collect(),
+            );
         }
         None
     }
@@ -258,8 +263,8 @@ impl<'a> ArgMatches<'a> {
     ///
     /// # Examples
     ///
-    #[cfg_attr(not(unix), doc=" ```ignore")]
-    #[cfg_attr(    unix , doc=" ```")]
+    #[cfg_attr(not(unix), doc = " ```ignore")]
+    #[cfg_attr(unix, doc = " ```")]
     /// # use clap::{App, Arg};
     /// use std::ffi::{OsStr,OsString};
     /// use std::os::unix::ffi::{OsStrExt,OsStringExt};
@@ -285,7 +290,9 @@ impl<'a> ArgMatches<'a> {
         fn to_str_slice(o: &OsString) -> &OsStr { &*o }
         let to_str_slice: fn(&'a OsString) -> &'a OsStr = to_str_slice; // coerce to fn pointer
         if let Some(arg) = self.args.get(name.as_ref()) {
-            return Some(OsValues { iter: arg.vals.iter().map(to_str_slice) });
+            return Some(OsValues {
+                iter: arg.vals.iter().map(to_str_slice),
+            });
         }
         None
     }
@@ -507,7 +514,9 @@ impl<'a> ArgMatches<'a> {
     /// [`ArgMatches::subcommand_matches`]: ./struct.ArgMatches.html#method.subcommand_matches
     /// [`ArgMatches::subcommand_name`]: ./struct.ArgMatches.html#method.subcommand_name
     pub fn subcommand(&self) -> (&str, Option<&ArgMatches<'a>>) {
-        self.subcommand.as_ref().map_or(("", None), |sc| (&sc.name[..], Some(&sc.matches)))
+        self.subcommand
+            .as_ref()
+            .map_or(("", None), |sc| (&sc.name[..], Some(&sc.matches)))
     }
 
     /// Returns a string slice of the usage statement for the [`App`] or [`SubCommand`]
@@ -568,12 +577,14 @@ impl<'a> DoubleEndedIterator for Values<'a> {
 impl<'a> ExactSizeIterator for Values<'a> {}
 
 /// Creates an empty iterator.
-impl Default for Values<'static> {
+impl<'a> Default for Values<'a> {
     fn default() -> Self {
         static EMPTY: [OsString; 0] = [];
         // This is never called because the iterator is empty:
         fn to_str_slice(_: &OsString) -> &str { unreachable!() };
-        Values { iter: EMPTY[..].iter().map(to_str_slice) }
+        Values {
+            iter: EMPTY[..].iter().map(to_str_slice),
+        }
     }
 }
 
@@ -583,14 +594,21 @@ fn test_default_values() {
     assert_eq!(values.next(), None);
 }
 
+#[test]
+fn test_default_values_with_shorter_lifetime() {
+    let matches = ArgMatches::new();
+    let mut values = matches.values_of("").unwrap_or_default();
+    assert_eq!(values.next(), None);
+}
+
 /// An iterator for getting multiple values out of an argument via the [`ArgMatches::values_of_os`]
 /// method. Usage of this iterator allows values which contain invalid UTF-8 code points unlike
 /// [`Values`].
 ///
 /// # Examples
 ///
-#[cfg_attr(not(unix), doc=" ```ignore")]
-#[cfg_attr(    unix , doc=" ```")]
+#[cfg_attr(not(unix), doc = " ```ignore")]
+#[cfg_attr(unix, doc = " ```")]
 /// # use clap::{App, Arg};
 /// use std::ffi::OsString;
 /// use std::os::unix::ffi::{OsStrExt,OsStringExt};
@@ -622,17 +640,26 @@ impl<'a> DoubleEndedIterator for OsValues<'a> {
 }
 
 /// Creates an empty iterator.
-impl Default for OsValues<'static> {
+impl<'a> Default for OsValues<'a> {
     fn default() -> Self {
         static EMPTY: [OsString; 0] = [];
         // This is never called because the iterator is empty:
         fn to_str_slice(_: &OsString) -> &OsStr { unreachable!() };
-        OsValues { iter: EMPTY[..].iter().map(to_str_slice) }
+        OsValues {
+            iter: EMPTY[..].iter().map(to_str_slice),
+        }
     }
 }
 
 #[test]
 fn test_default_osvalues() {
     let mut values: OsValues = OsValues::default();
+    assert_eq!(values.next(), None);
+}
+
+#[test]
+fn test_default_osvalues_with_shorter_lifetime() {
+    let matches = ArgMatches::new();
+    let mut values = matches.values_of_os("").unwrap_or_default();
     assert_eq!(values.next(), None);
 }

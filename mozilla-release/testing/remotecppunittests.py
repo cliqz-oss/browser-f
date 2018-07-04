@@ -13,9 +13,8 @@ import mozcrash
 import mozfile
 import mozinfo
 import mozlog
-import StringIO
 import posixpath
-from mozdevice import devicemanagerADB
+from mozdevice import ADBAndroid, ADBProcessError
 
 try:
     from mozbuild.base import MozbuildObject
@@ -26,11 +25,13 @@ except ImportError:
 
 class RemoteCPPUnitTests(cppunittests.CPPUnitTests):
 
-    def __init__(self, devmgr, options, progs):
+    def __init__(self, options, progs):
         cppunittests.CPPUnitTests.__init__(self)
         self.options = options
-        self.device = devmgr
-        self.remote_test_root = self.device.deviceRoot + "/cppunittests"
+        self.device = ADBAndroid(adb=options.adb_path or 'adb',
+                                 device=options.device_serial,
+                                 test_root=options.remote_test_root)
+        self.remote_test_root = posixpath.join(self.device.test_root, "cppunittests")
         self.remote_bin_dir = posixpath.join(self.remote_test_root, "b")
         self.remote_tmp_dir = posixpath.join(self.remote_test_root, "tmp")
         self.remote_home_dir = posixpath.join(self.remote_test_root, "h")
@@ -38,20 +39,12 @@ class RemoteCPPUnitTests(cppunittests.CPPUnitTests):
             self.setup_bin(progs)
 
     def setup_bin(self, progs):
-        if not self.device.dirExists(self.remote_test_root):
-            self.device.mkDir(self.remote_test_root)
-        if self.device.dirExists(self.remote_tmp_dir):
-            self.device.removeDir(self.remote_tmp_dir)
-        self.device.mkDir(self.remote_tmp_dir)
-        if self.device.dirExists(self.remote_bin_dir):
-            self.device.removeDir(self.remote_bin_dir)
-        self.device.mkDir(self.remote_bin_dir)
-        if self.device.dirExists(self.remote_home_dir):
-            self.device.removeDir(self.remote_home_dir)
-        self.device.mkDir(self.remote_home_dir)
+        self.device.rm(self.remote_test_root, force=True, recursive=True)
+        self.device.mkdir(self.remote_home_dir, parents=True)
+        self.device.mkdir(self.remote_tmp_dir)
         self.push_libs()
         self.push_progs(progs)
-        self.device.chmodDir(self.remote_bin_dir)
+        self.device.chmod(self.remote_bin_dir, recursive=True, root=True)
 
     def push_libs(self):
         if self.options.local_apk:
@@ -73,7 +66,7 @@ class RemoteCPPUnitTests(cppunittests.CPPUnitTests):
                                 subprocess.check_output(cmd)
                                 # xz strips the ".so" file suffix.
                                 os.rename(local_file[:-3], local_file)
-                        self.device.pushFile(local_file, remote_file)
+                        self.device.push(local_file, remote_file)
 
         elif self.options.local_lib:
             for file in os.listdir(self.options.local_lib):
@@ -81,7 +74,7 @@ class RemoteCPPUnitTests(cppunittests.CPPUnitTests):
                     print >> sys.stderr, "Pushing %s.." % file
                     remote_file = posixpath.join(self.remote_bin_dir, file)
                     local_file = os.path.join(self.options.local_lib, file)
-                    self.device.pushFile(local_file, remote_file)
+                    self.device.push(local_file, remote_file)
             # Additional libraries may be found in a sub-directory such as
             # "lib/armeabi-v7a"
             for subdir in ["assets", "lib"]:
@@ -94,20 +87,19 @@ class RemoteCPPUnitTests(cppunittests.CPPUnitTests):
                                 remote_file = posixpath.join(
                                     self.remote_bin_dir, file)
                                 local_file = os.path.join(root, file)
-                                self.device.pushFile(local_file, remote_file)
+                                self.device.push(local_file, remote_file)
 
     def push_progs(self, progs):
         for local_file in progs:
             remote_file = posixpath.join(
                 self.remote_bin_dir, os.path.basename(local_file))
-            self.device.pushFile(local_file, remote_file)
+            self.device.push(local_file, remote_file)
 
     def build_environment(self):
         env = self.build_core_environment()
         env['LD_LIBRARY_PATH'] = self.remote_bin_dir
         env["TMPDIR"] = self.remote_tmp_dir
         env["HOME"] = self.remote_home_dir
-        env["MOZILLA_FIVE_HOME"] = self.remote_home_dir
         env["MOZ_XRE_DIR"] = self.remote_bin_dir
         if self.options.add_env:
             for envdef in self.options.add_env:
@@ -139,16 +131,22 @@ class RemoteCPPUnitTests(cppunittests.CPPUnitTests):
         basename = os.path.basename(prog)
         remote_bin = posixpath.join(self.remote_bin_dir, basename)
         self.log.test_start(basename)
-        buf = StringIO.StringIO()
         test_timeout = cppunittests.CPPUnitTests.TEST_PROC_TIMEOUT * \
             timeout_factor
-        returncode = self.device.shell(
-            [remote_bin], buf, env=env, cwd=self.remote_home_dir,
-            timeout=test_timeout)
-        self.log.process_output(basename, "\n%s" % buf.getvalue(),
+
+        try:
+            output = self.device.shell_output(remote_bin, env=env,
+                                              cwd=self.remote_home_dir,
+                                              timeout=test_timeout)
+            returncode = 0
+        except ADBProcessError as e:
+            output = e.adb_process.stdout
+            returncode = e.adb_process.exitcode
+
+        self.log.process_output(basename, "\n%s" % output,
                                 command=[remote_bin])
         with mozfile.TemporaryDirectory() as tempdir:
-            self.device.getDirectory(self.remote_home_dir, tempdir)
+            self.device.pull(self.remote_home_dir, tempdir)
             if mozcrash.check_for_crashes(tempdir, symbols_path,
                                           test_name=basename):
                 self.log.test_end(basename, status='CRASH', expected='PASS')
@@ -169,19 +167,20 @@ class RemoteCPPUnittestOptions(cppunittests.CPPUnittestOptions):
         cppunittests.CPPUnittestOptions.__init__(self)
         defaults = {}
 
-        self.add_option("--deviceIP", action="store",
-                        type="string", dest="device_ip",
-                        help="ip address of remote device to test")
-        defaults["device_ip"] = None
+        self.add_option("--deviceSerial", action="store",
+                        type="string", dest="device_serial",
+                        help="serial ID of device")
+        defaults["device_serial"] = None
 
-        self.add_option("--devicePort", action="store",
-                        type="string", dest="device_port",
-                        help="port of remote device to test")
-        defaults["device_port"] = 20701
+        self.add_option("--adbPath", action="store",
+                        type="string", dest="adb_path",
+                        help="Path to adb")
+        defaults["adb_path"] = None
 
         self.add_option("--noSetup", action="store_false",
                         dest="setup",
-                        help="do not copy any files to device (to be used only if device is already setup)")
+                        help="do not copy any files to device (to be used only if "
+                        "device is already setup)")
         defaults["setup"] = True
 
         self.add_option("--localLib", action="store",
@@ -207,58 +206,23 @@ class RemoteCPPUnittestOptions(cppunittests.CPPUnittestOptions):
         # on binaries on /mnt/sdcard
         defaults["remote_test_root"] = "/data/local/tests"
 
-        self.add_option("--with-b2g-emulator", action="store",
-                        type="string", dest="with_b2g_emulator",
-                        help="Start B2G Emulator (specify path to b2g home)")
-        self.add_option("--emulator", default="arm", choices=["x86", "arm"],
-                        help="Architecture of emulator to use: x86 or arm")
         self.add_option("--addEnv", action="append",
                         type="string", dest="add_env",
-                        help="additional remote environment variable definitions (eg. --addEnv \"somevar=something\")")
+                        help="additional remote environment variable definitions "
+                        "(eg. --addEnv \"somevar=something\")")
         defaults["add_env"] = None
 
         self.set_defaults(**defaults)
 
 
 def run_test_harness(options, args):
-    if options.with_b2g_emulator:
-        from mozrunner import B2GEmulatorRunner
-        runner = B2GEmulatorRunner(
-            arch=options.emulator, b2g_home=options.with_b2g_emulator)
-        runner.start()
-        # because we just started the emulator, we need more than the
-        # default number of retries here.
-        retryLimit = 50
-    else:
-        retryLimit = 5
-    try:
-        dm_args = {'deviceRoot': options.remote_test_root}
-        dm_args['retryLimit'] = retryLimit
-        if options.device_ip:
-            dm_args['host'] = options.device_ip
-            dm_args['port'] = options.device_port
-        if options.log_tbpl_level == 'debug' or options.log_mach_level == 'debug':
-            dm_args['logLevel'] = logging.DEBUG
-        dm = devicemanagerADB.DeviceManagerADB(**dm_args)
-    except:
-        if options.with_b2g_emulator:
-            runner.cleanup()
-            runner.wait()
-        raise
-
     options.xre_path = os.path.abspath(options.xre_path)
     cppunittests.update_mozinfo()
     progs = cppunittests.extract_unittests_from_args(args,
                                                      mozinfo.info,
                                                      options.manifest_path)
-    tester = RemoteCPPUnitTests(dm, options, [item[0] for item in progs])
-    try:
-        result = tester.run_tests(
-            progs, options.xre_path, options.symbols_path)
-    finally:
-        if options.with_b2g_emulator:
-            runner.cleanup()
-            runner.wait()
+    tester = RemoteCPPUnitTests(options, [item[0] for item in progs])
+    result = tester.run_tests(progs, options.xre_path, options.symbols_path)
     return result
 
 

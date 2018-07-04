@@ -3,7 +3,7 @@ Measuring elapsed time
 ======================
 
 To make it easier to measure how long operations take, we have helpers for both JavaScript and C++.
-These helpers record the elapsed time into histograms, so you have to create suitable histograms for them first.
+These helpers record the elapsed time into histograms, so you have to create suitable :doc:`histograms` for them first.
 
 From JavaScript
 ===============
@@ -18,7 +18,7 @@ API:
     TelemetryStopwatch = {
       // Start, check if running, cancel & finish recording elapsed time into a
       // histogram.
-      // |aObject| is optional. If specificied, the timer is associated with this
+      // |aObject| is optional. If specified, the timer is associated with this
       // object, so multiple time measurements can be done concurrently.
       start(histogramId, aObject);
       running(histogramId, aObject);
@@ -26,7 +26,7 @@ API:
       finish(histogramId, aObject);
       // Start, check if running, cancel & finish recording elapsed time into a
       // keyed histogram.
-      // |key| specificies the key to record into.
+      // |key| specifies the key to record into.
       // |aObject| is optional and used as above.
       startKeyed(histogramId, key, aObject);
       runningKeyed(histogramId, key, aObject);
@@ -58,7 +58,7 @@ Example:
     // TelemetryStopwatch that's already been canceled or
     // finished. Normally, that throws a warning to the
     // console. If the TelemetryStopwatch being possibly
-    // cancelled or finished is expected behaviour, the
+    // canceled or finished is expected behaviour, the
     // warning can be suppressed by passing the optional
     // aCanceledOkay argument.
 
@@ -75,7 +75,7 @@ API:
 .. code-block:: cpp
 
     // This helper class is the preferred way to record elapsed time.
-    template<ID id, TimerResolution res = MilliSecond>
+    template<HistogramID id>
     class AutoTimer {
       // Record into a plain histogram.
       explicit AutoTimer(TimeStamp aStart = TimeStamp::Now());
@@ -84,7 +84,19 @@ API:
                          TimeStamp aStart = TimeStamp::Now());
     };
 
-    void AccumulateTimeDelta(ID id, TimeStamp start, TimeStamp end = TimeStamp::Now());
+    // If the Histogram id is not known at compile time:
+    class RuntimeAutoTimer {
+      // Record into a plain histogram.
+      explicit RuntimeAutoTimer(Telemetry::HistogramID aId,
+                            TimeStamp aStart = TimeStamp::Now());
+      // Record into a keyed histogram, with key |aKey|.
+      explicit RuntimeAutoTimer(Telemetry::HistogramID aId,
+                            const nsCString& aKey,
+                            TimeStamp aStart = TimeStamp::Now());
+    };
+
+    void AccumulateTimeDelta(HistogramID id, TimeStamp start, TimeStamp end = TimeStamp::Now());
+    void AccumulateTimeDelta(HistogramID id, const nsCString& key, TimeStamp start, TimeStamp end = TimeStamp::Now());
 
 Example:
 
@@ -92,6 +104,13 @@ Example:
 
     {
       Telemetry::AutoTimer<Telemetry::FIND_PLUGINS> telemetry;
+      // ... scan disk for plugins.
+    }
+    // When leaving the scope, AutoTimers destructor will record the time that passed.
+
+    // If the histogram id is not known at compile time.
+    {
+      Telemetry::RuntimeAutoTimer telemetry(Telemetry::FIND_PLUGINS);
       // ... scan disk for plugins.
     }
     // When leaving the scope, AutoTimers destructor will record the time that passed.

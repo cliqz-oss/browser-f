@@ -5,8 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
 const DBG_STRINGS_URI = "devtools/client/locales/debugger.properties";
 const NEW_SOURCE_IGNORED_URLS = ["debugger eval code", "XStringBundle"];
 const NEW_SOURCE_DISPLAY_DELAY = 200; // ms
@@ -96,7 +94,7 @@ const FRAME_TYPE = {
   PUBLIC_CLIENT_EVAL: 3
 };
 
-const { BrowserLoader } = Cu.import("resource://devtools/client/shared/browser-loader.js", {});
+const { BrowserLoader } = ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
 const { require } = BrowserLoader({
   baseURI: "resource://devtools/client/debugger/",
   window,
@@ -109,9 +107,14 @@ const { SideMenuWidget } = require("resource://devtools/client/shared/widgets/Si
 const { VariablesView } = require("resource://devtools/client/shared/widgets/VariablesView.jsm");
 const { VariablesViewController, StackFrameUtils } = require("resource://devtools/client/shared/widgets/VariablesViewController.jsm");
 const EventEmitter = require("devtools/shared/event-emitter");
+const { extend } = require("devtools/shared/extend");
 const { gDevTools } = require("devtools/client/framework/devtools");
-const { ViewHelpers, Heritage, WidgetMethods, setNamedTimeout,
+const { ViewHelpers, WidgetMethods, setNamedTimeout,
         clearNamedTimeout } = require("devtools/client/shared/widgets/view-helpers");
+
+// Use privileged promise in panel documents to prevent having them to freeze
+// during toolbox destruction. See bug 1402779.
+const Promise = require("Promise");
 
 // React
 const React = require("devtools/client/shared/vendor/react");
@@ -152,10 +155,10 @@ var {Task} = require("devtools/shared/task");
 
 XPCOMUtils.defineConstant(this, "EVENTS", EVENTS);
 
-XPCOMUtils.defineLazyModuleGetter(this, "Parser",
+ChromeUtils.defineModuleGetter(this, "Parser",
   "resource://devtools/shared/Parser.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ShortcutUtils",
+ChromeUtils.defineModuleGetter(this, "ShortcutUtils",
   "resource://gre/modules/ShortcutUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "clipboardHelper",
@@ -206,7 +209,7 @@ var DebuggerController = {
     let store = createStore((state, action) => {
       if (action.seqId &&
          (action.status === "done" || action.status === "error") &&
-         state && state.asyncRequests.indexOf(action.seqId) === -1) {
+         state && !state.asyncRequests.includes(action.seqId)) {
         return state;
       }
       return reducer(state, action);
@@ -447,7 +450,7 @@ var DebuggerController = {
 
   waitForSourceShown: function (name) {
     const deferred = promise.defer();
-    window.on(EVENTS.SOURCE_SHOWN, function onShown(_, source) {
+    window.on(EVENTS.SOURCE_SHOWN, function onShown(source) {
       if (source.url.includes(name)) {
         window.off(EVENTS.SOURCE_SHOWN, onShown);
         deferred.resolve();
@@ -962,9 +965,9 @@ StackFrames.prototype = {
   /**
    * Evaluate an expression in the context of the selected frame.
    *
-   * @param string aExpression
+   * @param string expression
    *        The expression to evaluate.
-   * @param object aOptions [optional]
+   * @param object options [optional]
    *        Additional options for this client evaluation:
    *          - depth: the frame depth used for evaluation, 0 being the topmost.
    *          - meta: some meta-description for what this evaluation represents.
@@ -973,29 +976,31 @@ StackFrames.prototype = {
    *         or rejected if there was no stack frame available or some
    *         other error occurred.
    */
-  evaluate: function (aExpression, aOptions = {}) {
-    let depth = "depth" in aOptions ? aOptions.depth : this.currentFrameDepth;
+  evaluate: async function (expression, options = {}) {
+    let depth = "depth" in options
+      ? options.depth
+      : this.currentFrameDepth;
     let frame = this.activeThread.cachedFrames[depth];
     if (frame == null) {
-      return promise.reject(new Error("No stack frame available."));
+      throw new Error("No stack frame available.");
     }
 
-    let deferred = promise.defer();
+    const onThreadPaused = this.activeThread.addOneTimeListener("paused");
 
-    this.activeThread.addOneTimeListener("paused", (aEvent, aPacket) => {
-      let { type, frameFinished } = aPacket.why;
-      if (type == "clientEvaluated") {
-        deferred.resolve(frameFinished);
-      } else {
-        deferred.reject(new Error("Active thread paused unexpectedly."));
-      }
-    });
-
-    let meta = "meta" in aOptions ? aOptions.meta : FRAME_TYPE.PUBLIC_CLIENT_EVAL;
+    let meta = "meta" in options
+      ? options.meta
+      : FRAME_TYPE.PUBLIC_CLIENT_EVAL;
     this._currentFrameDescription = meta;
-    this.activeThread.eval(frame.actor, aExpression);
+    this.activeThread.eval(frame.actor, expression);
 
-    return deferred.promise;
+    const packet = await onThreadPaused;
+
+    let { type, frameFinished } = packet.why;
+    if (type !== "clientEvaluated") {
+      throw new Error("Active thread paused unexpectedly.");
+    }
+
+    return frameFinished;
   },
 
   /**
@@ -1166,7 +1171,28 @@ StackFrames.prototype = {
         Parser.reflectionAPI.parse(aString);
         return aString; // Watch expression can be executed safely.
       } catch (e) {
-        return "\"" + e.name + ": " + e.message + "\""; // Syntax error.
+        function safelyEscape(aString) {
+          // Convert `str`, a string, to JSON -- that is, to a string beginning
+          // and ending with double-quotes, followed by string contents escaped
+          // such that the overall string contents are a JSON string literal.
+          let str = JSON.stringify(aString);
+
+          // Remove the leading and trailing double-quotes.
+          str = str.substring(1, str.length - 1);
+
+          // JSON string literals are not a subset of JS string literals in this
+          // one weird case: JSON string literals can directly contain U+2028
+          // LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR.  Replace these code
+          // points with escaped forms.
+          str = str.replace(/\u2028/g, "\\u2028");
+          str = str.replace(/\u2029/g, "\\u2029");
+
+          return str;
+        }
+        return "\"" +
+               safelyEscape(e.name) + ": " +
+               safelyEscape(e.message) +
+               "\""; // Syntax error.
       }
     });
 

@@ -12,8 +12,10 @@ info: |
     Term[U] ::
          [~U] ExtendedAtom
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 /{/u;

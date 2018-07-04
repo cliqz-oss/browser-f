@@ -1,12 +1,13 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef GFX_FRAMEMETRICS_H
 #define GFX_FRAMEMETRICS_H
 
-#include <stdint.h>                     // for uint32_t, uint64_t
+#include <stdint.h>                     // for uint8_t, uint32_t, uint64_t
 #include "Units.h"                      // for CSSRect, CSSPixel, etc
 #include "mozilla/DefineEnum.h"         // for MOZ_DEFINE_ENUM
 #include "mozilla/HashFunctions.h"      // for HashGeneric
@@ -15,10 +16,12 @@
 #include "mozilla/gfx/Rect.h"           // for RoundedIn
 #include "mozilla/gfx/ScaleFactor.h"    // for ScaleFactor
 #include "mozilla/gfx/Logging.h"        // for Log
+#include "mozilla/layers/LayersTypes.h" // for ScrollDirection
 #include "mozilla/StaticPtr.h"          // for StaticAutoPtr
 #include "mozilla/TimeStamp.h"          // for TimeStamp
 #include "nsString.h"
 #include "nsStyleCoord.h"               // for nsStyleCoord
+#include "PLDHashTable.h"               // for PLDHashNumber
 
 namespace IPC {
 template <typename T> struct ParamTraits;
@@ -170,16 +173,16 @@ public:
   {
     CSSRect scrollableRect = mScrollableRect;
     CSSSize compSize = CalculateCompositedSizeInCssPixels();
-    if (scrollableRect.width < compSize.width) {
-      scrollableRect.x = std::max(0.f,
-                                  scrollableRect.x - (compSize.width - scrollableRect.width));
-      scrollableRect.width = compSize.width;
+    if (scrollableRect.Width() < compSize.width) {
+      scrollableRect.SetRectX(std::max(0.f,
+                                       scrollableRect.X() - (compSize.width - scrollableRect.Width())),
+                              compSize.width);
     }
 
-    if (scrollableRect.height < compSize.height) {
-      scrollableRect.y = std::max(0.f,
-                                  scrollableRect.y - (compSize.height - scrollableRect.height));
-      scrollableRect.height = compSize.height;
+    if (scrollableRect.Height() < compSize.height) {
+      scrollableRect.SetRectY(std::max(0.f,
+                                       scrollableRect.Y() - (compSize.height - scrollableRect.Height())),
+                              compSize.height);
     }
 
     return scrollableRect;
@@ -213,8 +216,8 @@ public:
   {
     CSSSize scrollPortSize = CalculateCompositedSizeInCssPixels();
     CSSRect scrollRange = mScrollableRect;
-    scrollRange.width = std::max(scrollRange.width - scrollPortSize.width, 0.0f);
-    scrollRange.height = std::max(scrollRange.height - scrollPortSize.height, 0.0f);
+    scrollRange.SetWidth(std::max(scrollRange.Width() - scrollPortSize.width, 0.0f));
+    scrollRange.SetHeight(std::max(scrollRange.Height() - scrollPortSize.height, 0.0f));
     return scrollRange;
   }
 
@@ -484,6 +487,17 @@ public:
     mScrollableRect = aScrollableRect;
   }
 
+  // If the frame is in vertical-RTL writing mode(E.g. "writing-mode:
+  // vertical-rl" in CSS), or if it's in horizontal-RTL writing-mode(E.g.
+  // "writing-mode: horizontal-tb; direction: rtl;" in CSS), then this function
+  // returns true. From the representation perspective, frames whose horizontal
+  // contents start at rightside also cause their horizontal scrollbars, if any,
+  // initially start at rightside. So we can also learn about the initial side
+  // of the horizontal scrollbar for the frame by calling this function.
+  bool IsHorizontalContentRightToLeft() {
+    return mScrollableRect.x < 0;
+  }
+
   void SetPaintRequestTime(const TimeStamp& aTime) {
     mPaintRequestTime = aTime;
   }
@@ -720,6 +734,32 @@ struct ScrollSnapInfo {
   nsTArray<nsPoint> mScrollSnapCoordinates;
 };
 
+MOZ_DEFINE_ENUM_CLASS_WITH_BASE(
+  OverscrollBehavior, uint8_t, (
+    Auto,
+    Contain,
+    None
+));
+
+struct OverscrollBehaviorInfo {
+  OverscrollBehaviorInfo()
+    : mBehaviorX(OverscrollBehavior::Auto)
+    , mBehaviorY(OverscrollBehavior::Auto)
+  {}
+
+  // Construct from StyleOverscrollBehavior values.
+  static OverscrollBehaviorInfo FromStyleConstants(StyleOverscrollBehavior aBehaviorX,
+                                                   StyleOverscrollBehavior aBehaviorY);
+
+  bool operator==(const OverscrollBehaviorInfo& aOther) const {
+    return mBehaviorX == aOther.mBehaviorX &&
+           mBehaviorY == aOther.mBehaviorY;
+  }
+
+  OverscrollBehavior mBehaviorX;
+  OverscrollBehavior mBehaviorY;
+};
+
 /**
  * A clip that applies to a layer, that may be scrolled by some of the
  * scroll frames associated with the layer.
@@ -792,10 +832,11 @@ public:
     , mPageScrollAmount(0, 0)
     , mScrollClip()
     , mHasScrollgrab(false)
-    , mAllowVerticalScrollWithWheel(false)
     , mIsLayersIdRoot(false)
+    , mIsAutoDirRootContentRTL(false)
     , mUsesContainerScrolling(false)
     , mForceDisableApz(false)
+    , mOverscrollBehavior()
   {}
 
   bool operator==(const ScrollMetadata& aOther) const
@@ -809,10 +850,12 @@ public:
            mPageScrollAmount == aOther.mPageScrollAmount &&
            mScrollClip == aOther.mScrollClip &&
            mHasScrollgrab == aOther.mHasScrollgrab &&
-           mAllowVerticalScrollWithWheel == aOther.mAllowVerticalScrollWithWheel &&
            mIsLayersIdRoot == aOther.mIsLayersIdRoot &&
+           mIsAutoDirRootContentRTL == aOther.mIsAutoDirRootContentRTL &&
            mUsesContainerScrolling == aOther.mUsesContainerScrolling &&
-           mForceDisableApz == aOther.mForceDisableApz;
+           mForceDisableApz == aOther.mForceDisableApz &&
+           mDisregardedDirection == aOther.mDisregardedDirection &&
+           mOverscrollBehavior == aOther.mOverscrollBehavior;
   }
 
   bool operator!=(const ScrollMetadata& aOther) const
@@ -897,17 +940,17 @@ public:
   bool GetHasScrollgrab() const {
     return mHasScrollgrab;
   }
-  bool AllowVerticalScrollWithWheel() const {
-    return mAllowVerticalScrollWithWheel;
-  }
-  void SetAllowVerticalScrollWithWheel(bool aValue) {
-    mAllowVerticalScrollWithWheel = aValue;
-  }
   void SetIsLayersIdRoot(bool aValue) {
     mIsLayersIdRoot = aValue;
   }
   bool IsLayersIdRoot() const {
     return mIsLayersIdRoot;
+  }
+  void SetIsAutoDirRootContentRTL(bool aValue) {
+    mIsAutoDirRootContentRTL = aValue;
+  }
+  bool IsAutoDirRootContentRTL() const {
+    return mIsAutoDirRootContentRTL;
   }
   // Implemented out of line because the implementation needs gfxPrefs.h
   // and we don't want to include that from FrameMetrics.h.
@@ -920,6 +963,23 @@ public:
   }
   bool IsApzForceDisabled() const {
     return mForceDisableApz;
+  }
+
+  // For more details about the concept of a disregarded direction, refer to the
+  // code which defines mDisregardedDirection.
+  Maybe<ScrollDirection> GetDisregardedDirection() const {
+    return mDisregardedDirection;
+  }
+  void
+  SetDisregardedDirection(const Maybe<ScrollDirection>& aValue) {
+    mDisregardedDirection = aValue;
+  }
+
+  void SetOverscrollBehavior(const OverscrollBehaviorInfo& aOverscrollBehavior) {
+    mOverscrollBehavior = aOverscrollBehavior;
+  }
+  const OverscrollBehaviorInfo& GetOverscrollBehavior() const {
+    return mOverscrollBehavior;
   }
 
 private:
@@ -956,12 +1016,20 @@ private:
   // Whether or not this frame is for an element marked 'scrollgrab'.
   bool mHasScrollgrab:1;
 
-  // Whether or not the frame can be vertically scrolled with a mouse wheel.
-  bool mAllowVerticalScrollWithWheel:1;
-
   // Whether these framemetrics are for the root scroll frame (root element if
   // we don't have a root scroll frame) for its layers id.
   bool mIsLayersIdRoot:1;
+
+  // The AutoDirRootContent is the <body> element in an HTML document, or the
+  // root scrollframe if there is no body. This member variable indicates
+  // whether this element's content in the horizontal direction starts from
+  // right to left (e.g. it's true either if "writing-mode: vertical-rl", or
+  // "writing-mode: horizontal-tb; direction: rtl" in CSS).
+  // When we do auto-dir scrolling (@see mozilla::WheelDeltaAdjustmentStrategy
+  // or refer to bug 1358017 for details), setting a pref can make the code use
+  // the writing mode of this root element instead of the target scrollframe,
+  // and so we need to know if the writing mode is RTL or not.
+  bool mIsAutoDirRootContentRTL:1;
 
   // True if scrolling using containers, false otherwise. This can be removed
   // when containerful scrolling is eliminated.
@@ -971,13 +1039,24 @@ private:
   // scrollframe.
   bool mForceDisableApz:1;
 
+  // The disregarded direction means the direction which is disregarded anyway,
+  // even if the scroll frame overflows in that direction and the direction is
+  // specified as scrollable. This could happen in some scenarios, for instance,
+  // a single-line text control frame should disregard wheel scroll in
+  // its block-flow direction even if it overflows in that direction.
+  Maybe<ScrollDirection> mDisregardedDirection;
+
+  // The overscroll behavior for this scroll frame.
+  OverscrollBehaviorInfo mOverscrollBehavior;
+
   // WARNING!!!!
   //
   // When adding new fields to ScrollMetadata, the following places should be
   // updated to include them (as needed):
-  //    ScrollMetadata::operator ==
-  //    AsyncPanZoomController::NotifyLayersUpdated
-  //    The ParamTraits specialization in GfxMessageUtils.h
+  //    1. ScrollMetadata::operator ==
+  //    2. AsyncPanZoomController::NotifyLayersUpdated
+  //    3. The ParamTraits specialization in GfxMessageUtils.h and/or
+  //       LayersMessageUtils.h
   //
   // Please add new fields above this comment.
 };
@@ -991,18 +1070,18 @@ private:
  * mScrollId corresponds to the actual frame that is scrollable.
  */
 struct ScrollableLayerGuid {
-  uint64_t mLayersId;
+  LayersId mLayersId;
   uint32_t mPresShellId;
   FrameMetrics::ViewID mScrollId;
 
   ScrollableLayerGuid()
-    : mLayersId(0)
+    : mLayersId{0}
     , mPresShellId(0)
     , mScrollId(0)
   {
   }
 
-  ScrollableLayerGuid(uint64_t aLayersId, uint32_t aPresShellId,
+  ScrollableLayerGuid(LayersId aLayersId, uint32_t aPresShellId,
                       FrameMetrics::ViewID aScrollId)
     : mLayersId(aLayersId)
     , mPresShellId(aPresShellId)
@@ -1010,7 +1089,7 @@ struct ScrollableLayerGuid {
   {
   }
 
-  ScrollableLayerGuid(uint64_t aLayersId, const FrameMetrics& aMetrics)
+  ScrollableLayerGuid(LayersId aLayersId, const FrameMetrics& aMetrics)
     : mLayersId(aLayersId)
     , mPresShellId(aMetrics.GetPresShellId())
     , mScrollId(aMetrics.GetScrollId())
@@ -1056,15 +1135,47 @@ struct ScrollableLayerGuid {
     return false;
   }
 
-  PLDHashNumber Hash() const
+  // Helper structs to use as hash/equality functions in std::unordered_map. e.g.
+  // std::unordered_map<ScrollableLayerGuid,
+  //                    ValueType,
+  //                    ScrollableLayerGuid::HashFn> myMap;
+  // std::unordered_map<ScrollableLayerGuid,
+  //                    ValueType,
+  //                    ScrollableLayerGuid::HashIgnoringPresShellFn,
+  //                    ScrollableLayerGuid::EqualIgnoringPresShellFn> myMap;
+
+  struct HashFn
   {
-    return HashGeneric(mLayersId, mPresShellId, mScrollId);
-  }
+    std::size_t operator()(const ScrollableLayerGuid& aGuid) const
+    {
+      return HashGeneric(uint64_t(aGuid.mLayersId),
+                         aGuid.mPresShellId,
+                         aGuid.mScrollId);
+    }
+  };
+
+  struct HashIgnoringPresShellFn
+  {
+    std::size_t operator()(const ScrollableLayerGuid& aGuid) const
+    {
+      return HashGeneric(uint64_t(aGuid.mLayersId),
+                         aGuid.mScrollId);
+    }
+  };
+
+  struct EqualIgnoringPresShellFn
+  {
+    bool operator()(const ScrollableLayerGuid& lhs, const ScrollableLayerGuid& rhs) const
+    {
+      return lhs.mLayersId == rhs.mLayersId
+          && lhs.mScrollId == rhs.mScrollId;
+    }
+  };
 };
 
 template <int LogLevel>
 gfx::Log<LogLevel>& operator<<(gfx::Log<LogLevel>& log, const ScrollableLayerGuid& aGuid) {
-  return log << '(' << aGuid.mLayersId << ',' << aGuid.mPresShellId << ',' << aGuid.mScrollId << ')';
+  return log << '(' << uint64_t(aGuid.mLayersId) << ',' << aGuid.mPresShellId << ',' << aGuid.mScrollId << ')';
 }
 
 struct ZoomConstraints {
@@ -1117,14 +1228,6 @@ struct ZoomConstraints {
   bool operator!=(const ZoomConstraints& other) const
   {
     return !(*this == other);
-  }
-};
-
-struct ScrollableLayerGuidHash
-{
-  std::size_t operator()(const ScrollableLayerGuid& Guid) const
-  {
-    return Guid.Hash();
   }
 };
 

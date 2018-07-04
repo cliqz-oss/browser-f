@@ -35,19 +35,6 @@ class MultiLocaleBuild(LocalesMixin, MercurialScript):
          "help": "Specify the locale(s) to repack"
          }
     ], [
-        ["--merge-locales"],
-        {"action": "store_true",
-         "dest": "merge_locales",
-         "default": False,
-         "help": "Use default [en-US] if there are missing strings"
-         }
-    ], [
-        ["--no-merge-locales"],
-        {"action": "store_false",
-         "dest": "merge_locales",
-         "help": "Do not allow missing strings"
-         }
-    ], [
         ["--objdir"],
         {"action": "store",
          "dest": "objdir",
@@ -96,14 +83,19 @@ class MultiLocaleBuild(LocalesMixin, MercurialScript):
     def __init__(self, require_config_file=True):
         LocalesMixin.__init__(self)
         MercurialScript.__init__(self, config_options=self.config_options,
-                                 all_actions=['clobber', 'pull-build-source',
+                                 all_actions=['clobber',
+                                              'pull-build-source',
                                               'pull-locale-source',
-                                              'build', 'package-en-US',
+                                              'build',
+                                              'package-en-US',
                                               'upload-en-US',
                                               'backup-objdir',
                                               'restore-objdir',
-                                              'add-locales', 'package-multi',
-                                              'upload-multi', 'summary'],
+                                              'add-locales',
+                                              'android-assemble-app',
+                                              'package-multi',
+                                              'upload-multi',
+                                              'summary'],
                                  require_config_file=require_config_file)
 
     def query_l10n_env(self):
@@ -140,12 +132,23 @@ class MultiLocaleBuild(LocalesMixin, MercurialScript):
         self.copyfile(os.path.join(dirs['abs_work_dir'], c['mozconfig']),
                       os.path.join(dirs['abs_mozilla_dir'], 'mozconfig'),
                       error_level=FATAL)
-        command = "make -f client.mk build"
+
+        mach = os.path.join(dirs['abs_mozilla_dir'], 'mach')
         env = self.query_env()
-        if self._process_command(command=command,
+        if self._process_command(command=[sys.executable, mach, 'build'],
                                  cwd=dirs['abs_mozilla_dir'],
                                  env=env, error_list=MakefileErrorList):
             self.fatal("Erroring out after the build failed.")
+
+    def android_assemble_app(self):
+        dirs = self.query_abs_dirs()
+
+        command = 'make -C mobile/android/base android_apks'
+        env = self.query_env()
+        if self._process_command(command=command,
+                                 cwd=dirs['abs_objdir'],
+                                 env=env, error_list=MakefileErrorList):
+            self.fatal("Erroring out after assembling Android APKs failed.")
 
     def add_locales(self):
         c = self.config
@@ -153,10 +156,7 @@ class MultiLocaleBuild(LocalesMixin, MercurialScript):
         locales = self.query_locales()
 
         for locale in locales:
-            self.run_compare_locales(locale, halt_on_failure=True)
             command = 'make chrome-%s L10NBASEDIR=%s' % (locale, dirs['abs_l10n_dir'])
-            if c['merge_locales']:
-                command += " LOCALE_MERGEDIR=%s" % dirs['abs_merge_dir'].replace(os.sep, '/')
             status = self._process_command(command=command,
                                            cwd=dirs['abs_locales_dir'],
                                            error_list=MakefileErrorList)

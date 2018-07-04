@@ -1,3 +1,4 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 // The order of the tests here matters!
 
 const SUGGEST_ALL_PREF = "browser.search.suggest.enabled";
@@ -8,7 +9,8 @@ const TEST_ENGINE_BASENAME = "searchSuggestionEngine.xml";
 const ONEOFF_PREF = "browser.urlbar.oneOffSearches";
 
 add_task(async function prepare() {
-  let engine = await promiseNewSearchEngine(TEST_ENGINE_BASENAME);
+  let engine = await SearchTestUtils.promiseNewSearchEngine(
+    getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME);
   let oldCurrentEngine = Services.search.currentEngine;
   Services.search.currentEngine = engine;
   let suggestionsEnabled = Services.prefs.getBoolPref(SUGGEST_URLBAR_PREF);
@@ -38,17 +40,15 @@ add_task(async function focus() {
   setupVisibleHint();
   gURLBar.blur();
   let popupPromise = promisePopupShown(gURLBar.popup);
-  gURLBar.focus();
+  focusAndSelectUrlBar(true);
   await popupPromise;
   Assert.ok(gURLBar.popup.popupOpen, "popup should be open");
   assertVisible(true);
   assertFooterVisible(false);
-  Assert.equal(gURLBar.popup._matchCount, 0, "popup should have no results");
+  Assert.equal(gURLBar.popup.matchCount, 0, "popup should have no results");
 
   // Start searching.
-  EventUtils.synthesizeKey("r", {});
-  EventUtils.synthesizeKey("n", {});
-  EventUtils.synthesizeKey("d", {});
+  EventUtils.sendString("rnd");
   await promiseSearchComplete();
   Assert.ok(suggestionsPresent());
   assertVisible(true);
@@ -64,21 +64,39 @@ add_task(async function focus() {
   await BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "about:blank");
 });
 
-add_task(async function new_tab() {
-  // Opening a new tab when the urlbar is unfocused, should focusing it and thus
-  // open the popup in order to show the notification.
+add_task(async function click_on_focused() {
+  // Even if the location bar is already focused, we should still show the popup
+  // and the notification on click.
   setupVisibleHint();
   gURLBar.blur();
+  // Won't show the hint since it's not user initiated.
+  gURLBar.focus();
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  Assert.ok(!gURLBar.popup.popupOpen, "popup should be closed");
+  Assert.ok(gURLBar.focused, "The input field should be focused");
+
   let popupPromise = promisePopupShown(gURLBar.popup);
-  // openNewForegroundTab doesn't focus the urlbar.
-  await BrowserTestUtils.synthesizeKey("t", { accelKey: true }, gBrowser.selectedBrowser);
+  EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
   await popupPromise;
+
   Assert.ok(gURLBar.popup.popupOpen, "popup should be open");
   assertVisible(true);
   assertFooterVisible(false);
-  Assert.equal(gURLBar.popup._matchCount, 0, "popup should have no results");
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  Assert.equal(gURLBar.popup.matchCount, 0, "popup should have no results");
+  gURLBar.blur();
   Assert.ok(!gURLBar.popup.popupOpen, "popup should be closed");
+});
+
+add_task(async function new_tab() {
+  // Opening a new tab when the urlbar is unfocused, should focus it but not
+  // open the popup.
+  setupVisibleHint();
+  gURLBar.blur();
+  // openNewForegroundTab doesn't focus the urlbar.
+  await BrowserTestUtils.synthesizeKey("t", { accelKey: true }, gBrowser.selectedBrowser);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  Assert.ok(!gURLBar.popup.popupOpen, "popup should be closed");
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function privateWindow() {
@@ -118,23 +136,6 @@ function setupVisibleHint() {
   // Toggle to reset the whichNotification cache.
   Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, false);
   Services.prefs.setBoolPref(SUGGEST_URLBAR_PREF, true);
-}
-
-function suggestionsPresent() {
-  let controller = gURLBar.popup.input.controller;
-  let matchCount = controller.matchCount;
-  for (let i = 0; i < matchCount; i++) {
-    let url = controller.getValueAt(i);
-    let mozActionMatch = url.match(/^moz-action:([^,]+),(.*)$/);
-    if (mozActionMatch) {
-      let [, type, paramStr] = mozActionMatch;
-      let params = JSON.parse(paramStr);
-      if (type == "searchengine" && "searchSuggestion" in params) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 function assertVisible(visible, win = window) {

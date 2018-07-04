@@ -10,9 +10,11 @@ description: >
     The SV of EscapeSequence :: HexEscapeSequence is the SV of the
     HexEscapeSequence.
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [onlyStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 `${'\07'}`;

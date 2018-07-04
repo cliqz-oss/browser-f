@@ -6,23 +6,21 @@
 
 'use strict';
 
-this.EXPORTED_SYMBOLS = ['MulticastDNS'];
+var EXPORTED_SYMBOLS = ['MulticastDNS'];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import('resource://gre/modules/Services.jsm');
+ChromeUtils.import('resource://gre/modules/Timer.jsm');
+ChromeUtils.import('resource://gre/modules/XPCOMUtils.jsm');
 
-Cu.import('resource://gre/modules/Services.jsm');
-Cu.import('resource://gre/modules/Timer.jsm');
-Cu.import('resource://gre/modules/XPCOMUtils.jsm');
-
-Cu.import('resource://gre/modules/DNSPacket.jsm');
-Cu.import('resource://gre/modules/DNSRecord.jsm');
-Cu.import('resource://gre/modules/DNSResourceRecord.jsm');
-Cu.import('resource://gre/modules/DNSTypes.jsm');
+ChromeUtils.import('resource://gre/modules/DNSPacket.jsm');
+ChromeUtils.import('resource://gre/modules/DNSRecord.jsm');
+ChromeUtils.import('resource://gre/modules/DNSResourceRecord.jsm');
+ChromeUtils.import('resource://gre/modules/DNSTypes.jsm');
 
 const NS_NETWORK_LINK_TOPIC = 'network:link-status-changed';
 
 let observerService     = Cc["@mozilla.org/observer-service;1"]
-                            .getService(Components.interfaces.nsIObserverService);
+                            .getService(Ci.nsIObserverService);
 let networkInfoService  = Cc['@mozilla.org/network-info-service;1']
                             .createInstance(Ci.nsINetworkInfoService);
 
@@ -765,8 +763,8 @@ function getAddresses() {
     networkInfoService.listNetworkAddresses({
       onListedNetworkAddresses(aAddressArray) {
         _addresses = aAddressArray.filter((address) => {
-          return address.indexOf('%p2p') === -1 &&  // No WiFi Direct interfaces
-                 address.indexOf(':')    === -1 &&  // XXX: No IPv6 for now
+          return !address.includes('%p2p') &&  // No WiFi Direct interfaces
+                 !address.includes(':') &&  // XXX: No IPv6 for now
                  address != "127.0.0.1"             // No ipv4 loopback addresses.
         });
 

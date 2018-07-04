@@ -1,11 +1,13 @@
+// |reftest| skip-if(!this.hasOwnProperty('Atomics')) -- Atomics is not enabled unconditionally
 // Copyright (C) 2015 André Bargull. All rights reserved.
 // Copyright (C) 2017 Mozilla Corporation. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
+esid: sec-atomics.compareexchange
 description: >
   Atomics.compareExchange.length is 4.
-info: >
+info: |
   Atomics.compareExchange ( ia, index, expect, replace )
 
   17 ECMAScript Standard Built-in Objects:
@@ -20,6 +22,7 @@ info: >
     object has the attributes { [[Writable]]: false, [[Enumerable]]: false,
     [[Configurable]]: true }.
 includes: [propertyHelper.js]
+features: [Atomics]
 ---*/
 
 assert.sameValue(Atomics.compareExchange.length, 4);

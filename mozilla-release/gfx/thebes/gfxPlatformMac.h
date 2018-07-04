@@ -26,12 +26,12 @@ public:
         return (gfxPlatformMac*) gfxPlatform::GetPlatform();
     }
 
+    bool UsesTiling() const override;
+    bool ContentUsesTiling() const override;
+
     virtual already_AddRefed<gfxASurface>
       CreateOffscreenSurface(const IntSize& aSize,
                              gfxImageFormat aFormat) override;
-
-    already_AddRefed<mozilla::gfx::ScaledFont>
-      GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont) override;
 
     gfxFontGroup*
     CreateFontGroup(const mozilla::FontFamilyList& aFontFamilyList,
@@ -43,8 +43,8 @@ public:
     virtual gfxPlatformFontList* CreatePlatformFontList() override;
 
     void
-    GetSystemFontFamilyList(InfallibleTArray<mozilla::dom::FontFamilyListEntry>*
-                            aFontFamilies) override;
+    ReadSystemFontList(InfallibleTArray<mozilla::dom::SystemFontListEntry>*
+                       aFontList) override;
 
     bool IsFontFormatSupported(uint32_t aFormatFlags) override;
 
@@ -59,10 +59,6 @@ public:
                      nsAString& aSystemFontName,
                      gfxFontStyle &aFontStyle,
                      float aDevPixPerCSSPixel);
-
-    virtual bool CanRenderContentToDataSurface() const override {
-      return true;
-    }
 
     virtual bool SupportsApzWheelInput() const override {
       return true;
@@ -87,6 +83,10 @@ public:
 
 protected:
     bool AccelerateLayersByDefault() override;
+
+    BackendPrefsData GetBackendPrefs() const override;
+
+    bool CheckVariationFontSupport() override;
 
 private:
     virtual void GetPlatformCMSOutputProfile(void* &mem, size_t &size) override;

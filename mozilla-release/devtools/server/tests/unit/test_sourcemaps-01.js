@@ -17,9 +17,9 @@ function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-source-map");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-source-map",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_simple_source_map();
                            });
@@ -35,12 +35,12 @@ function test_simple_source_map() {
                                  "http://example.com/www/js/c.js"]);
 
   gThreadClient.addListener("newSource", function _onNewSource(event, packet) {
-    do_check_eq(event, "newSource");
-    do_check_eq(packet.type, "newSource");
-    do_check_true(!!packet.source);
+    Assert.equal(event, "newSource");
+    Assert.equal(packet.type, "newSource");
+    Assert.ok(!!packet.source);
 
-    do_check_true(expectedSources.has(packet.source.url),
-                  "The source url should be one of our original sources.");
+    Assert.ok(expectedSources.has(packet.source.url),
+              "The source url should be one of our original sources.");
     expectedSources.delete(packet.source.url);
 
     if (expectedSources.size === 0) {
@@ -60,6 +60,6 @@ function test_simple_source_map() {
 
   code += "//# sourceMappingURL=data:text/json;base64," + btoa(map.toString());
 
-  Components.utils.evalInSandbox(code, gDebuggee, "1.8",
-                                 "http://example.com/www/js/abc.js", 1);
+  Cu.evalInSandbox(code, gDebuggee, "1.8",
+                   "http://example.com/www/js/abc.js", 1);
 }

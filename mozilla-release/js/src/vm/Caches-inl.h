@@ -9,13 +9,12 @@
 
 #include "vm/Caches.h"
 
-#include "jscompartment.h"
-
 #include "gc/Allocator.h"
 #include "gc/GCTrace.h"
+#include "vm/JSCompartment.h"
 #include "vm/Probes.h"
 
-#include "jsobjinlines.h"
+#include "vm/JSObject-inl.h"
 
 namespace js {
 
@@ -54,13 +53,17 @@ NewObjectCache::newObjectFromHit(JSContext* cx, EntryIndex entryIndex, gc::Initi
 
     MOZ_ASSERT(!group->hasUnanalyzedPreliminaryObjects());
 
-    if (group->shouldPreTenure())
-        heap = gc::TenuredHeap;
+    {
+        AutoSweepObjectGroup sweepGroup(group);
+        if (group->shouldPreTenure(sweepGroup))
+            heap = gc::TenuredHeap;
+    }
 
     if (cx->runtime()->gc.upcomingZealousGC())
         return nullptr;
 
-    NativeObject* obj = static_cast<NativeObject*>(Allocate<JSObject, NoGC>(cx, entry->kind, 0,
+    NativeObject* obj = static_cast<NativeObject*>(Allocate<JSObject, NoGC>(cx, entry->kind,
+                                                                            /* nDynamicSlots = */ 0,
                                                                             heap, group->clasp()));
     if (!obj)
         return nullptr;

@@ -8,7 +8,7 @@ description: redeclaration with FunctionDeclaration (FunctionDeclaration in Bloc
 esid: sec-block-static-semantics-early-errors
 flags: [generated, onlyStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     Block : { StatementList }
@@ -18,5 +18,7 @@ info: |
 
 ---*/
 
+
+throw "Test262: This statement should not be evaluated.";
 
 { function f() {} function f() {} }

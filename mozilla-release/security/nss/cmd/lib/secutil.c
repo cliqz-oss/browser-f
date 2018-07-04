@@ -54,6 +54,10 @@ static char consoleName[] = {
 
 static PRBool utf8DisplayEnabled = PR_FALSE;
 
+/* The minimum password/pin length (in Unicode characters) in FIPS mode,
+ * defined in lib/softoken/pkcs11i.h. */
+#define FIPS_MIN_PIN 7
+
 void
 SECU_EnableUtf8Display(PRBool enable)
 {
@@ -236,7 +240,8 @@ SECU_GetModulePassword(PK11SlotInfo *slot, PRBool retry, void *arg)
             sprintf(prompt,
                     "Press Enter, then enter PIN for \"%s\" on external device.\n",
                     PK11_GetTokenName(slot));
-            (void)SECU_GetPasswordString(NULL, prompt);
+            char *pw = SECU_GetPasswordString(NULL, prompt);
+            PORT_Free(pw);
         /* Fall Through */
         case PW_PLAINTEXT:
             return PL_strdup(pwdata->data);
@@ -276,10 +281,25 @@ secu_InitSlotPassword(PK11SlotInfo *slot, PRBool retry, void *arg)
     }
 
     /* we have no password, so initialize database with one */
-    PR_fprintf(PR_STDERR,
-               "Enter a password which will be used to encrypt your keys.\n"
-               "The password should be at least 8 characters long,\n"
-               "and should contain at least one non-alphabetic character.\n\n");
+    if (PK11_IsFIPS()) {
+        PR_fprintf(PR_STDERR,
+                   "Enter a password which will be used to encrypt your keys.\n"
+                   "The password should be at least %d characters long,\n"
+                   "and should consist of at least three character classes.\n"
+                   "The available character classes are: digits (0-9), ASCII\n"
+                   "lowercase letters, ASCII uppercase letters, ASCII\n"
+                   "non-alphanumeric characters, and non-ASCII characters.\n\n"
+                   "If an ASCII uppercase letter appears at the beginning of\n"
+                   "the password, it is not counted toward its character class.\n"
+                   "Similarly, if a digit appears at the end of the password,\n"
+                   "it is not counted toward its character class.\n\n",
+                   FIPS_MIN_PIN);
+    } else {
+        PR_fprintf(PR_STDERR,
+                   "Enter a password which will be used to encrypt your keys.\n"
+                   "The password should be at least 8 characters long,\n"
+                   "and should contain at least one non-alphabetic character.\n\n");
+    }
 
     output = fopen(consoleName, "w");
     if (output == NULL) {
@@ -463,48 +483,6 @@ SECU_ConfigDirectory(const char *base)
 
     initted = PR_TRUE;
     return buf;
-}
-
-/*Turn off SSL for now */
-/* This gets called by SSL when server wants our cert & key */
-int
-SECU_GetClientAuthData(void *arg, PRFileDesc *fd,
-                       struct CERTDistNamesStr *caNames,
-                       struct CERTCertificateStr **pRetCert,
-                       struct SECKEYPrivateKeyStr **pRetKey)
-{
-    SECKEYPrivateKey *key;
-    CERTCertificate *cert;
-    int errsave;
-
-    if (arg == NULL) {
-        fprintf(stderr, "no key/cert name specified for client auth\n");
-        return -1;
-    }
-    cert = PK11_FindCertFromNickname(arg, NULL);
-    errsave = PORT_GetError();
-    if (!cert) {
-        if (errsave == SEC_ERROR_BAD_PASSWORD)
-            fprintf(stderr, "Bad password\n");
-        else if (errsave > 0)
-            fprintf(stderr, "Unable to read cert (error %d)\n", errsave);
-        else if (errsave == SEC_ERROR_BAD_DATABASE)
-            fprintf(stderr, "Unable to get cert from database (%d)\n", errsave);
-        else
-            fprintf(stderr, "SECKEY_FindKeyByName: internal error %d\n", errsave);
-        return -1;
-    }
-
-    key = PK11_FindKeyByAnyCert(arg, NULL);
-    if (!key) {
-        fprintf(stderr, "Unable to get key (%d)\n", PORT_GetError());
-        return -1;
-    }
-
-    *pRetCert = cert;
-    *pRetKey = key;
-
-    return 0;
 }
 
 SECStatus
@@ -991,7 +969,7 @@ secu_PrintUniversalString(FILE *out, const SECItem *i, const char *m, int level)
     for (s = my.data, d = tmp.data; len > 0; len--) {
         PRUint32 bmpChar = (s[0] << 24) | (s[1] << 16) | (s[2] << 8) | s[3];
         s += 4;
-        if (!isprint(bmpChar))
+        if (!isprint(bmpChar & 0xFF))
             goto loser;
         *d++ = (unsigned char)bmpChar;
     }
@@ -1215,7 +1193,7 @@ secu_PrintRSAPSSParams(FILE *out, SECItem *value, char *m, int level)
             SECU_Indent(out, level + 1);
             fprintf(out, "Salt length: default, %i (0x%2X)\n", 20, 20);
         } else {
-            SECU_PrintInteger(out, &param.saltLength, "Salt Length", level + 1);
+            SECU_PrintInteger(out, &param.saltLength, "Salt length", level + 1);
         }
     } else {
         SECU_Indent(out, level + 1);
@@ -1335,15 +1313,12 @@ SECU_PrintAlgorithmID(FILE *out, SECAlgorithmID *a, char *m, int level)
         return;
     }
 
-    if (algtag == SEC_OID_PKCS1_RSA_PSS_SIGNATURE) {
-        secu_PrintRSAPSSParams(out, &a->parameters, "Parameters", level + 1);
-        return;
-    }
-
     if (a->parameters.len == 0 ||
         (a->parameters.len == 2 &&
          PORT_Memcmp(a->parameters.data, "\005\000", 2) == 0)) {
         /* No arguments or NULL argument */
+    } else if (algtag == SEC_OID_PKCS1_RSA_PSS_SIGNATURE) {
+        secu_PrintRSAPSSParams(out, &a->parameters, "Parameters", level + 1);
     } else {
         /* Print args to algorithm */
         SECU_PrintAsHex(out, &a->parameters, "Args", level + 1);
@@ -1390,7 +1365,6 @@ secu_PrintAttribute(FILE *out, SEC_PKCS7Attribute *attr, char *m, int level)
     }
 }
 
-#ifndef NSS_DISABLE_ECC
 static void
 secu_PrintECPublicKey(FILE *out, SECKEYPublicKey *pk, char *m, int level)
 {
@@ -1409,7 +1383,6 @@ secu_PrintECPublicKey(FILE *out, SECKEYPublicKey *pk, char *m, int level)
         SECU_PrintObjectID(out, &curveOID, "Curve", level + 1);
     }
 }
-#endif /* NSS_DISABLE_ECC */
 
 void
 SECU_PrintRSAPublicKey(FILE *out, SECKEYPublicKey *pk, char *m, int level)
@@ -1457,11 +1430,9 @@ secu_PrintSubjectPublicKeyInfo(FILE *out, PLArenaPool *arena,
                 SECU_PrintDSAPublicKey(out, pk, "DSA Public Key", level + 1);
                 break;
 
-#ifndef NSS_DISABLE_ECC
             case ecKey:
                 secu_PrintECPublicKey(out, pk, "EC Public Key", level + 1);
                 break;
-#endif
 
             case dhKey:
             case fortezzaKey:
@@ -1557,9 +1528,9 @@ SECU_PrintDumpDerIssuerAndSerial(FILE *out, SECItem *der, char *m,
         unsigned int i;
         for (i = 0; i < c->serialNumber.len; ++i) {
             unsigned char *chardata = (unsigned char *)(c->serialNumber.data);
-            unsigned char c = *(chardata + i);
+            unsigned char ch = *(chardata + i);
 
-            fprintf(out, "\\x%02x", c);
+            fprintf(out, "\\x%02x", ch);
         }
         fprintf(out, "\" }\n");
     }
@@ -3166,7 +3137,7 @@ typedef enum {
 static int
 secu_PrintSignedDataSigOpt(FILE *out, SECItem *der, const char *m,
                            int level, SECU_PPFunc inner,
-                           SignatureOptionType withSignature)
+                           SignatureOptionType signatureOption)
 {
     PLArenaPool *arena = PORT_NewArena(DER_DEFAULT_CHUNKSIZE);
     CERTSignedData *sd;
@@ -3193,7 +3164,7 @@ secu_PrintSignedDataSigOpt(FILE *out, SECItem *der, const char *m,
     }
     rv = (*inner)(out, &sd->data, "Data", level + 1);
 
-    if (withSignature) {
+    if (signatureOption == withSignature) {
         SECU_PrintAlgorithmID(out, &sd->signatureAlgorithm, "Signature Algorithm",
                               level + 1);
         DER_ConvertBitString(&sd->signature);
@@ -3614,44 +3585,6 @@ loser:
     return rv;
 }
 
-#if 0
-
-/* we need access to the private function cert_FindExtension for this code to work */
-
-CERTAuthKeyID *
-SECU_FindCRLAuthKeyIDExten (PLArenaPool *arena, CERTSignedCrl *scrl)
-{
-    SECItem encodedExtenValue;
-    SECStatus rv;
-    CERTAuthKeyID *ret;
-    CERTCrl* crl;
-
-    if (!scrl) {
-        PORT_SetError(SEC_ERROR_INVALID_ARGS);
-        return NULL;
-    }
-
-    crl = &scrl->crl;
-
-    encodedExtenValue.data = NULL;
-    encodedExtenValue.len = 0;
-
-    rv = cert_FindExtension(crl->extensions, SEC_OID_X509_AUTH_KEY_ID,
-                            &encodedExtenValue);
-    if ( rv != SECSuccess ) {
-        return (NULL);
-    }
-
-    ret = CERT_DecodeAuthKeyID (arena, &encodedExtenValue);
-
-    PORT_Free(encodedExtenValue.data);
-    encodedExtenValue.data = NULL;
-
-    return(ret);
-}
-
-#endif
-
 /*
  * Find the issuer of a Crl.  Use the authorityKeyID if it exists.
  */
@@ -3725,7 +3658,7 @@ SECU_FindCertByNicknameOrFilename(CERTCertDBHandle *handle,
                                   void *pwarg)
 {
     CERTCertificate *the_cert;
-    the_cert = CERT_FindCertByNicknameOrEmailAddr(handle, name);
+    the_cert = CERT_FindCertByNicknameOrEmailAddrCX(handle, name, pwarg);
     if (the_cert) {
         return the_cert;
     }

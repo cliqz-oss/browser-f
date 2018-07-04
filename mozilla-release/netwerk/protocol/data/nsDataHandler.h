@@ -12,7 +12,7 @@
 class nsDataHandler : public nsIProtocolHandler
                     , public nsSupportsWeakReference
 {
-    virtual ~nsDataHandler();
+    virtual ~nsDataHandler() = default;
 
 public:
     NS_DECL_ISUPPORTS
@@ -21,7 +21,7 @@ public:
     NS_DECL_NSIPROTOCOLHANDLER
 
     // nsDataHandler methods:
-    nsDataHandler();
+    nsDataHandler() = default;
 
     // Define a Create method to be used with a factory:
     static MOZ_MUST_USE nsresult
@@ -36,6 +36,23 @@ public:
                                           nsCString* contentCharset,
                                           bool& isBase64,
                                           nsCString* dataBuffer);
+
+    // Parse the path portion of a data: URI and return the individual parts.
+    //
+    // Note: The path is assumed *not* to have a ref portion.
+    //
+    // @arg aPath The path portion of the spec. Must not have ref portion.
+    // @arg aContentType Out param, will hold the parsed content type.
+    // @arg aContentCharset Optional, will hold the charset if specified.
+    // @arg aIsBase64 Out param, indicates if the data is base64 encoded.
+    // @arg aDataBuffer Optional, will reference the substring in |aPath| that
+    //  contains the data portion of the path. No copy is made.
+    static MOZ_MUST_USE nsresult ParsePathWithoutRef(
+        const nsACString& aPath,
+        nsCString& aContentType,
+        nsCString* aContentCharset,
+        bool& aIsBase64,
+        nsDependentCSubstring* aDataBuffer);
 };
 
 #endif /* nsDataHandler_h___ */

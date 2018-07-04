@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -174,13 +175,13 @@ ContentHostTexture::Composite(Compositor* aCompositor,
             tileRegionRect = regionRect.Intersect(currentTileRect);
             tileRegionRect.MoveBy(-currentTileRect.TopLeft());
           }
-          gfx::Rect rect(tileScreenRect.x, tileScreenRect.y,
-                         tileScreenRect.width, tileScreenRect.height);
+          gfx::Rect rect(tileScreenRect.X(), tileScreenRect.Y(),
+                         tileScreenRect.Width(), tileScreenRect.Height());
 
-          effect->mTextureCoords = Rect(Float(tileRegionRect.x) / texRect.width,
-                                        Float(tileRegionRect.y) / texRect.height,
-                                        Float(tileRegionRect.width) / texRect.width,
-                                        Float(tileRegionRect.height) / texRect.height);
+          effect->mTextureCoords = Rect(Float(tileRegionRect.X()) / texRect.Width(),
+                                        Float(tileRegionRect.Y()) / texRect.Height(),
+                                        Float(tileRegionRect.Width()) / texRect.Width(),
+                                        Float(tileRegionRect.Height()) / texRect.Height());
 
           aCompositor->DrawGeometry(rect, aClipRect, aEffectChain,
                                     aOpacity, aTransform, aGeometry);
@@ -359,8 +360,8 @@ ContentHostSingleBuffered::UpdateThebes(const ThebesBufferData& aData,
   destRegion.MoveBy(-aData.rect().TopLeft());
 
   if (!aData.rect().Contains(aUpdated.GetBounds()) ||
-      aData.rotation().x > aData.rect().width ||
-      aData.rotation().y > aData.rect().height) {
+      aData.rotation().x > aData.rect().Width() ||
+      aData.rotation().y > aData.rect().Height()) {
     NS_ERROR("Invalid update data");
     return false;
   }
@@ -381,11 +382,11 @@ ContentHostSingleBuffered::UpdateThebes(const ThebesBufferData& aData,
 
   // For each of the overlap areas (right, bottom-right, bottom), select those
   // pixels and wrap them around to the opposite edge of the buffer rect.
-  AddWrappedRegion(destRegion, finalRegion, bufferSize, nsIntPoint(aData.rect().width, 0));
-  AddWrappedRegion(destRegion, finalRegion, bufferSize, nsIntPoint(aData.rect().width, aData.rect().height));
-  AddWrappedRegion(destRegion, finalRegion, bufferSize, nsIntPoint(0, aData.rect().height));
+  AddWrappedRegion(destRegion, finalRegion, bufferSize, nsIntPoint(aData.rect().Width(), 0));
+  AddWrappedRegion(destRegion, finalRegion, bufferSize, nsIntPoint(aData.rect().Width(), aData.rect().Height()));
+  AddWrappedRegion(destRegion, finalRegion, bufferSize, nsIntPoint(0, aData.rect().Height()));
 
-  MOZ_ASSERT(IntRect(0, 0, aData.rect().width, aData.rect().height).Contains(finalRegion.GetBounds()));
+  MOZ_ASSERT(IntRect(0, 0, aData.rect().Width(), aData.rect().Height()).Contains(finalRegion.GetBounds()));
 
   mTextureHost->Updated(&finalRegion);
   if (mTextureHostOnWhite) {

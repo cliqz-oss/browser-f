@@ -8,28 +8,29 @@
  */
 
 add_task(async function() {
-  let folder = PlacesUtils.bookmarks
-                          .createFolder(PlacesUtils.unfiledBookmarksFolderId,
-                                        "Folder",
-                                        PlacesUtils.bookmarks.DEFAULT_INDEX);
-  let bookmark = PlacesUtils.bookmarks
-                            .insertBookmark(folder, NetUtil.newURI("http://example.com/"),
-                                            PlacesUtils.bookmarks.DEFAULT_INDEX,
-                                            "Bookmark");
-
-  let library = await promiseLibrary("AllBookmarks");
-  registerCleanupFunction(function() {
-    library.close();
-    PlacesUtils.bookmarks.removeFolderChildren(PlacesUtils.unfiledBookmarksFolderId);
+  let bookmarks = await PlacesUtils.bookmarks.insertTree({
+    guid: PlacesUtils.bookmarks.unfiledGuid,
+    children: [{
+      title: "Folder",
+      type: PlacesUtils.bookmarks.TYPE_FOLDER,
+      children: [{
+        title: "Bookmark",
+        url: "http://example.com",
+      }],
+    }],
   });
 
-  // Select unfiled later, to ensure it's closed.
-  library.PlacesOrganizer.selectLeftPaneQuery("UnfiledBookmarks");
-  ok(!library.PlacesOrganizer._places.selectedNode.containerOpen,
-     "Unfiled container is closed");
+  let library = await promiseLibrary("UnfiledBookmarks");
+  registerCleanupFunction(async function() {
+    await promiseLibraryClosed(library);
+    await PlacesUtils.bookmarks.eraseEverything();
+  });
+
+  // Ensure the container is closed.
+  library.PlacesOrganizer._places.selectedNode.containerOpen = false;
 
   let folderNode = library.ContentTree.view.view.nodeForTreeIndex(0);
-  is(folderNode.itemId, folder,
+  is(folderNode.bookmarkGuid, bookmarks[0].guid,
      "Found the expected folder in the right pane");
   // Select the folder node in the right pane.
   library.ContentTree.view.selectNode(folderNode);
@@ -37,6 +38,6 @@ add_task(async function() {
   synthesizeClickOnSelectedTreeCell(library.ContentTree.view,
                                     { clickCount: 2 });
 
-  is(library.ContentTree.view.view.nodeForTreeIndex(0).itemId, bookmark,
+  is(library.ContentTree.view.view.nodeForTreeIndex(0).bookmarkGuid, bookmarks[1].guid,
      "Found the expected bookmark in the right pane");
 });

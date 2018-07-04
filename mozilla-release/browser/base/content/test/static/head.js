@@ -3,15 +3,13 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
 /* Shorthand constructors to construct an nsI(Local)File and zip reader: */
 const LocalFile = new Components.Constructor("@mozilla.org/file/local;1", Ci.nsIFile, "initWithPath");
 const ZipReader = new Components.Constructor("@mozilla.org/libjar/zip-reader;1", "nsIZipReader", "open");
 
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 
 /**
@@ -147,4 +145,21 @@ function fetchFile(uri) {
     };
     xhr.send(null);
   });
+}
+
+async function throttledMapPromises(iterable, task, limit = 64) {
+  let promises = new Set();
+  for (let data of iterable) {
+    while (promises.size >= limit) {
+      await Promise.race(promises);
+    }
+
+    let promise = task(data);
+    if (promise) {
+      promise.finally(() => promises.delete(promise));
+      promises.add(promise);
+    }
+  }
+
+  await Promise.all(promises);
 }

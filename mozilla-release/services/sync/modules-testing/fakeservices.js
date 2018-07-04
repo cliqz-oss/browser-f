@@ -4,20 +4,18 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "FakeCryptoService",
   "FakeFilesystemService",
   "FakeGUIDService",
   "fakeSHA256HMAC",
 ];
 
-var {utils: Cu} = Components;
+ChromeUtils.import("resource://services-sync/main.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
-Cu.import("resource://services-sync/main.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/util.js");
-
-this.FakeFilesystemService = function FakeFilesystemService(contents) {
+function FakeFilesystemService(contents) {
   this.fakeContents = contents;
   let self = this;
 
@@ -60,9 +58,9 @@ this.FakeFilesystemService = function FakeFilesystemService(contents) {
     delete self.fakeContents["weave/" + filePath + ".json"];
     return Promise.resolve();
   };
-};
+}
 
-this.fakeSHA256HMAC = function fakeSHA256HMAC(message) {
+function fakeSHA256HMAC(message) {
    message = message.substr(0, 64);
    while (message.length < 64) {
      message += " ";
@@ -70,7 +68,7 @@ this.fakeSHA256HMAC = function fakeSHA256HMAC(message) {
    return message;
 }
 
-this.FakeGUIDService = function FakeGUIDService() {
+function FakeGUIDService() {
   let latestGUID = 0;
 
   Utils.makeGUID = function makeGUID() {
@@ -84,10 +82,10 @@ this.FakeGUIDService = function FakeGUIDService() {
  * Mock implementation of WeaveCrypto. It does not encrypt or
  * decrypt, merely returning the input verbatim.
  */
-this.FakeCryptoService = function FakeCryptoService() {
+function FakeCryptoService() {
   this.counter = 0;
 
-  delete Weave.Crypto;  // get rid of the getter first
+  delete Weave.Crypto; // get rid of the getter first
   Weave.Crypto = this;
 
   CryptoWrapper.prototype.ciphertextHMAC = function ciphertextHMAC(keyBundle) {
@@ -96,15 +94,15 @@ this.FakeCryptoService = function FakeCryptoService() {
 }
 FakeCryptoService.prototype = {
 
-  encrypt: function encrypt(clearText, symmetricKey, iv) {
+  async encrypt(clearText, symmetricKey, iv) {
     return clearText;
   },
 
-  decrypt: function decrypt(cipherText, symmetricKey, iv) {
+  async decrypt(cipherText, symmetricKey, iv) {
     return cipherText;
   },
 
-  generateRandomKey: function generateRandomKey() {
+  async generateRandomKey() {
     return btoa("fake-symmetric-key-" + this.counter++);
   },
 

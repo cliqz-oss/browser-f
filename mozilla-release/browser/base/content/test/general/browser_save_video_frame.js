@@ -8,9 +8,7 @@ const VIDEO_URL = "http://mochi.test:8888/browser/browser/base/content/test/gene
  * the "Save File" dialog.
  */
 /* import-globals-from ../../../../../toolkit/content/tests/browser/common/mockTransfer.js */
-Cc["@mozilla.org/moz/jssubscript-loader;1"]
-  .getService(Ci.mozIJSSubScriptLoader)
-  .loadSubScript("chrome://mochitests/content/browser/toolkit/content/tests/browser/common/mockTransfer.js",
+Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/toolkit/content/tests/browser/common/mockTransfer.js",
                  this);
 
 /**
@@ -20,9 +18,7 @@ Cc["@mozilla.org/moz/jssubscript-loader;1"]
  * @return nsIFile
  */
 function createTemporarySaveDirectory() {
-  let saveDir = Cc["@mozilla.org/file/directory_service;1"]
-                  .getService(Ci.nsIProperties)
-                  .get("TmpD", Ci.nsIFile);
+  let saveDir = Services.dirsvc.get("TmpD", Ci.nsIFile);
   saveDir.append("testsavedir");
   if (!saveDir.exists())
     saveDir.create(Ci.nsIFile.DIRECTORY_TYPE, 0o755);
@@ -38,7 +34,7 @@ function waitForTransferComplete() {
     mockTransferCallback = () => {
       ok(true, "Transfer completed");
       resolve();
-    }
+    };
   });
 }
 
@@ -48,7 +44,6 @@ function waitForTransferComplete() {
  */
 function rightClickVideo(browser) {
   let frame_script = () => {
-    const Ci = Components.interfaces;
     let utils = content.QueryInterface(Ci.nsIInterfaceRequestor)
                        .getInterface(Ci.nsIDOMWindowUtils);
 
@@ -63,7 +58,7 @@ function rightClickVideo(browser) {
     utils.sendMouseEvent("contextmenu", left, top,
                          2, /* aButton */
                          1, /* aClickCount */
-                         0  /* aModifiers */);
+                         0 /* aModifiers */);
   };
   let mm = browser.messageManager;
   mm.loadFrameScript("data:,(" + frame_script.toString() + ")();", true);
@@ -115,7 +110,7 @@ add_task(async function() {
   info("Popup fired popupshown");
 
   let saveSnapshotCommand = document.getElementById("context-video-saveimage");
-  let promiseTransfer = waitForTransferComplete()
+  let promiseTransfer = waitForTransferComplete();
   info("Firing save snapshot command");
   saveSnapshotCommand.doCommand();
   context.hidePopup();

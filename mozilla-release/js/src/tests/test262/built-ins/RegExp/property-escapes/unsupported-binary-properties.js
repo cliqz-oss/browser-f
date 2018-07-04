@@ -1,3 +1,4 @@
+// |reftest| skip -- regexp-unicode-property-escapes is not supported
 // Copyright 2017 Mathias Bynens. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -20,6 +21,8 @@ assert.throws.early(SyntaxError, "/\\p{Expands_On_NFKC}/u");
 assert.throws.early(SyntaxError, "/\\P{Expands_On_NFKC}/u");
 assert.throws.early(SyntaxError, "/\\p{Expands_On_NFKD}/u");
 assert.throws.early(SyntaxError, "/\\P{Expands_On_NFKD}/u");
+assert.throws.early(SyntaxError, "/\\p{Extended_Pictographic}/u");
+assert.throws.early(SyntaxError, "/\\P{Extended_Pictographic}/u");
 assert.throws.early(SyntaxError, "/\\p{FC_NFKC_Closure}/u");
 assert.throws.early(SyntaxError, "/\\P{FC_NFKC_Closure}/u");
 assert.throws.early(SyntaxError, "/\\p{Full_Composition_Exclusion}/u");

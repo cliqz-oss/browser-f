@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,8 +11,8 @@
 #include <unordered_set>    // for std::unordered_set
 
 #include "FrameMetrics.h"   // for FrameMetrics::ViewID
-
 #include "mozilla/layers/FocusTarget.h" // for FocusTarget
+#include "mozilla/Mutex.h"  // for Mutex
 
 namespace mozilla {
 namespace layers {
@@ -76,14 +77,7 @@ public:
    * will never be zero as that is used to catch uninitialized focus sequence
    * numbers on input events.
    */
-  uint64_t LastAPZProcessedEvent() const { return mLastAPZProcessedEvent; }
-
-  /**
-   * Whether the current focus state is known to be current or else if an event
-   * has been processed that could change the focus but we have not received an
-   * update with a new confirmed target.
-   */
-  bool IsCurrent() const;
+  uint64_t LastAPZProcessedEvent() const;
 
   /**
    * Notify focus state of a potentially focus changing event. This will
@@ -101,19 +95,14 @@ public:
    * @param aOriginatingLayersId the layer tree ID that this focus target
                                  belongs to
    */
-  void Update(uint64_t aRootLayerTreeId,
-              uint64_t aOriginatingLayersId,
+  void Update(LayersId aRootLayerTreeId,
+              LayersId aOriginatingLayersId,
               const FocusTarget& aTarget);
-
-  /**
-   * Collects a set of the layer tree IDs that we have a focus target for.
-   */
-  std::unordered_set<uint64_t> GetFocusTargetLayerIds() const;
 
   /**
    * Removes a focus target by its layer tree ID.
    */
-  void RemoveFocusTarget(uint64_t aLayersId);
+  void RemoveFocusTarget(LayersId aLayersId);
 
   /**
    * Gets the scrollable layer that should be horizontally scrolled for a key
@@ -135,14 +124,27 @@ public:
    * Gets whether it is safe to not increment the focus sequence number for an
    * unmatched keyboard event.
    */
-  bool CanIgnoreKeyboardShortcutMisses() const
-  {
-    return IsCurrent() && !mFocusHasKeyEventListeners;
-  }
+  bool CanIgnoreKeyboardShortcutMisses() const;
 
 private:
+  /**
+   * Whether the current focus state is known to be current or else if an event
+   * has been processed that could change the focus but we have not received an
+   * update with a new confirmed target.
+   * This can only be called by methods that have already acquired mMutex; they
+   * have to pass their lock as compile-time proof.
+   */
+  bool IsCurrent(const MutexAutoLock& aLock) const;
+
+private:
+  // All methods should hold this lock, since this class is accessed via both
+  // the updater and controller threads.
+  mutable Mutex mMutex;
+
   // The set of focus targets received indexed by their layer tree ID
-  std::unordered_map<uint64_t, FocusTarget> mFocusTree;
+  std::unordered_map<LayersId,
+                     FocusTarget,
+                     LayersId::HashFn> mFocusTree;
 
   // The focus sequence number of the last potentially focus changing event
   // processed by APZ. This number starts at one and increases monotonically.
@@ -157,9 +159,11 @@ private:
   // A flag whether there is a key listener on the event target chain for the
   // focused element
   bool mFocusHasKeyEventListeners;
+  // A flag that is false until the first call to Update().
+  bool mReceivedUpdate;
 
   // The layer tree ID which contains the scrollable frame of the focused element
-  uint64_t mFocusLayersId;
+  LayersId mFocusLayersId;
   // The scrollable layer corresponding to the scrollable frame that is used to
   // scroll the focused element. This depends on the direction the user is
   // scrolling.

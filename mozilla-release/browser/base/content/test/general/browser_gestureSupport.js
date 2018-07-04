@@ -18,8 +18,8 @@ function test() {
   // Disable the default gestures support during the test
   gGestureSupport.init(false);
 
-  test_utils = window.QueryInterface(Components.interfaces.nsIInterfaceRequestor).
-    getInterface(Components.interfaces.nsIDOMWindowUtils);
+  test_utils = window.QueryInterface(Ci.nsIInterfaceRequestor).
+    getInterface(Ci.nsIDOMWindowUtils);
 
   // Run the tests of "simple gesture" events generally
   test_EnsureConstantsAreDisjoint();
@@ -65,13 +65,13 @@ function test_gestureListener(evt) {
   is(evt.delta, test_expectedDelta,
      "evt.delta (" + evt.delta + ") does not match expected value");
 
-  is(evt.shiftKey, (test_expectedModifiers & Components.interfaces.nsIDOMEvent.SHIFT_MASK) != 0,
+  is(evt.shiftKey, (test_expectedModifiers & Event.SHIFT_MASK) != 0,
      "evt.shiftKey did not match expected value");
-  is(evt.ctrlKey, (test_expectedModifiers & Components.interfaces.nsIDOMEvent.CONTROL_MASK) != 0,
+  is(evt.ctrlKey, (test_expectedModifiers & Event.CONTROL_MASK) != 0,
      "evt.ctrlKey did not match expected value");
-  is(evt.altKey, (test_expectedModifiers & Components.interfaces.nsIDOMEvent.ALT_MASK) != 0,
+  is(evt.altKey, (test_expectedModifiers & Event.ALT_MASK) != 0,
      "evt.altKey did not match expected value");
-  is(evt.metaKey, (test_expectedModifiers & Components.interfaces.nsIDOMEvent.META_MASK) != 0,
+  is(evt.metaKey, (test_expectedModifiers & Event.META_MASK) != 0,
      "evt.metaKey did not match expected value");
 
   if (evt.type == "MozTapGesture") {
@@ -115,7 +115,7 @@ function test_clicks(type, clicks) {
 }
 
 function test_TestEventListeners() {
-  let e = test_helper1;  // easier to type this name
+  let e = test_helper1; // easier to type this name
 
   // Swipe gesture animation events
   e("MozSwipeGestureStart", 0, -0.7, 0);
@@ -163,19 +163,19 @@ function test_TestEventListeners() {
   e("MozEdgeUICompleted", 0, 0, 0);
 
   // event.shiftKey
-  let modifier = Components.interfaces.nsIDOMEvent.SHIFT_MASK;
+  let modifier = Event.SHIFT_MASK;
   e("MozSwipeGesture", SimpleGestureEvent.DIRECTION_RIGHT, 0, modifier);
 
   // event.metaKey
-  modifier = Components.interfaces.nsIDOMEvent.META_MASK;
+  modifier = Event.META_MASK;
   e("MozSwipeGesture", SimpleGestureEvent.DIRECTION_RIGHT, 0, modifier);
 
   // event.altKey
-  modifier = Components.interfaces.nsIDOMEvent.ALT_MASK;
+  modifier = Event.ALT_MASK;
   e("MozSwipeGesture", SimpleGestureEvent.DIRECTION_RIGHT, 0, modifier);
 
   // event.ctrlKey
-  modifier = Components.interfaces.nsIDOMEvent.CONTROL_MASK;
+  modifier = Event.CONTROL_MASK;
   e("MozSwipeGesture", SimpleGestureEvent.DIRECTION_RIGHT, 0, modifier);
 }
 
@@ -342,14 +342,14 @@ function test_addCommand(prefName, id) {
   cmd.setAttribute("oncommand", "this.callCount++;");
 
   cmd.origPrefName = prefName;
-  cmd.origPrefValue = gPrefService.getCharPref(prefName);
-  gPrefService.setCharPref(prefName, id);
+  cmd.origPrefValue = Services.prefs.getCharPref(prefName);
+  Services.prefs.setCharPref(prefName, id);
 
   return cmd;
 }
 
 function test_removeCommand(cmd) {
-  gPrefService.setCharPref(cmd.origPrefName, cmd.origPrefValue);
+  Services.prefs.setCharPref(cmd.origPrefName, cmd.origPrefValue);
   test_commandset.removeChild(cmd);
 }
 
@@ -358,8 +358,8 @@ function test_latchedGesture(gesture, inc, dec, eventPrefix) {
   let branch = test_prefBranch + gesture + ".";
 
   // Put the gesture into latched mode.
-  let oldLatchedValue = gPrefService.getBoolPref(branch + "latched");
-  gPrefService.setBoolPref(branch + "latched", true);
+  let oldLatchedValue = Services.prefs.getBoolPref(branch + "latched");
+  Services.prefs.setBoolPref(branch + "latched", true);
 
   // Install the test commands for increasing and decreasing motion.
   let cmd = {
@@ -372,7 +372,7 @@ function test_latchedGesture(gesture, inc, dec, eventPrefix) {
   test_emitLatchedEvents(eventPrefix, -500, cmd);
 
   // Restore the gesture to its original configuration.
-  gPrefService.setBoolPref(branch + "latched", oldLatchedValue);
+  Services.prefs.setBoolPref(branch + "latched", oldLatchedValue);
   for (let dir in cmd)
     test_removeCommand(cmd[dir]);
 }
@@ -382,12 +382,12 @@ function test_thresholdGesture(gesture, inc, dec, eventPrefix) {
   let branch = test_prefBranch + gesture + ".";
 
   // Disable latched mode for this gesture.
-  let oldLatchedValue = gPrefService.getBoolPref(branch + "latched");
-  gPrefService.setBoolPref(branch + "latched", false);
+  let oldLatchedValue = Services.prefs.getBoolPref(branch + "latched");
+  Services.prefs.setBoolPref(branch + "latched", false);
 
   // Set the triggering threshold value to 50.
-  let oldThresholdValue = gPrefService.getIntPref(branch + "threshold");
-  gPrefService.setIntPref(branch + "threshold", 50);
+  let oldThresholdValue = Services.prefs.getIntPref(branch + "threshold");
+  Services.prefs.setIntPref(branch + "threshold", 50);
 
   // Install the test commands for increasing and decreasing motion.
   let cmdInc = test_addCommand(branch + inc, "test:incMotion");
@@ -425,8 +425,8 @@ function test_thresholdGesture(gesture, inc, dec, eventPrefix) {
   ok(cmdDec.callCount == 0, "Decreasing command was triggered");
 
   // Restore the gesture to its original configuration.
-  gPrefService.setBoolPref(branch + "latched", oldLatchedValue);
-  gPrefService.setIntPref(branch + "threshold", oldThresholdValue);
+  Services.prefs.setBoolPref(branch + "latched", oldLatchedValue);
+  Services.prefs.setIntPref(branch + "threshold", oldThresholdValue);
   test_removeCommand(cmdInc);
   test_removeCommand(cmdDec);
 }
@@ -611,7 +611,7 @@ function test_rotateGesturesOnTab() {
     if (rotation < 0)
       rotation += 360;
     return rotation;
-  }
+  };
 
   for (var initRot = 0; initRot < 360; initRot += 90) {
     // Test each case: at each 90 degree snap; cl/ccl;

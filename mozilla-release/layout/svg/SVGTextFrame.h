@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -33,7 +34,7 @@ class TextRenderedRunIterator;
 
 namespace dom {
 class SVGIRect;
-class SVGPathElement;
+class SVGGeometryElement;
 } // namespace dom
 
 /**
@@ -179,7 +180,7 @@ private:
 class SVGTextFrame final : public nsSVGDisplayContainerFrame
 {
   friend nsIFrame*
-  NS_NewSVGTextFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGTextFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
   friend class mozilla::CharIterator;
   friend class mozilla::GlyphMetricsUpdater;
@@ -196,14 +197,15 @@ class SVGTextFrame final : public nsSVGDisplayContainerFrame
   typedef mozilla::gfx::Point Point;
 
 protected:
-  explicit SVGTextFrame(nsStyleContext* aContext)
-    : nsSVGDisplayContainerFrame(aContext, kClassID)
+  explicit SVGTextFrame(ComputedStyle* aStyle)
+    : nsSVGDisplayContainerFrame(aStyle, kClassID)
     , mTrailingUndisplayedCharacters(0)
     , mFontSizeScaleFactor(1.0f)
     , mLastContextScale(1.0f)
     , mLengthAdjustScaleFactor(1.0f)
   {
-    AddStateBits(NS_STATE_SVG_POSITIONING_DIRTY);
+    AddStateBits(NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY |
+                 NS_STATE_SVG_POSITIONING_DIRTY);
   }
 
   ~SVGTextFrame() {}
@@ -218,7 +220,7 @@ public:
                     nsIFrame*         aPrevInFlow) override;
 
   virtual nsresult AttributeChanged(int32_t aNamespaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     int32_t aModType) override;
 
   virtual nsContainerFrame* GetContentInsertionFrame() override
@@ -227,7 +229,6 @@ public:
   }
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
 #ifdef DEBUG_FRAME_DUMP
@@ -237,13 +238,13 @@ public:
   }
 #endif
 
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   /**
    * Finds the nsTextFrame for the closest rendered run to the specified point.
    */
-  virtual void FindCloserFrameForSelection(nsPoint aPoint,
-                                          FrameWithDistance* aCurrentBestFrame) override;
+  virtual void FindCloserFrameForSelection(const nsPoint& aPoint,
+                                           FrameWithDistance* aCurrentBestFrame) override;
 
 
 
@@ -257,9 +258,6 @@ public:
   virtual void ReflowSVG() override;
   virtual SVGBBox GetBBoxContribution(const Matrix& aToBBoxUserspace,
                                       uint32_t aFlags) override;
-
-  // nsSVGContainerFrame methods:
-  virtual gfxMatrix GetCanvasTM() override;
 
   // SVG DOM text methods:
   uint32_t GetNumberOfChars(nsIContent* aContent);
@@ -286,7 +284,7 @@ public:
    */
   void HandleAttributeChangeInDescendant(mozilla::dom::Element* aElement,
                                          int32_t aNameSpaceID,
-                                         nsIAtom* aAttribute);
+                                         nsAtom* aAttribute);
 
   /**
    * Schedules mPositions to be recomputed and the covered region to be
@@ -394,6 +392,11 @@ private:
   };
 
   /**
+   * Resolves Bidi for the anonymous block child if it needs it.
+   */
+  void MaybeResolveBidiForAnonymousBlockChild();
+
+  /**
    * Reflows the anonymous block child if it is dirty or has dirty
    * children, or if the SVGTextFrame itself is dirty.
    */
@@ -415,6 +418,18 @@ private:
    * within the <text>.
    */
   void DoGlyphPositioning();
+
+  /**
+   * This fallback version of GetSubStringLength that flushes layout and takes
+   * into account glyph positioning.  As per the SVG 2 spec, typically glyph
+   * positioning does not affect the results of getSubStringLength, but one
+   * exception is text in a textPath where we need to ignore characters that
+   * fall off the end of the textPath path.
+   */
+  nsresult GetSubStringLengthSlowFallback(nsIContent* aContent,
+                                          uint32_t charnum,
+                                          uint32_t nchars,
+                                          float* aResult);
 
   /**
    * Converts the specified index into mPositions to an addressable
@@ -523,8 +538,8 @@ private:
   bool ShouldRenderAsPath(nsTextFrame* aFrame, bool& aShouldPaintSVGGlyphs);
 
   // Methods to get information for a <textPath> frame.
-  mozilla::dom::SVGPathElement*
-  GetTextPathPathElement(nsIFrame* aTextPathFrame);
+  mozilla::dom::SVGGeometryElement*
+  GetTextPathGeometryElement(nsIFrame* aTextPathFrame);
   already_AddRefed<Path> GetTextPath(nsIFrame* aTextPathFrame);
   gfxFloat GetOffsetScale(nsIFrame* aTextPathFrame);
   gfxFloat GetStartOffset(nsIFrame* aTextPathFrame);
@@ -533,11 +548,6 @@ private:
    * The MutationObserver we have registered for the <text> element subtree.
    */
   RefPtr<MutationObserver> mMutationObserver;
-
-  /**
-   * Cached canvasTM value.
-   */
-  nsAutoPtr<gfxMatrix> mCanvasTM;
 
   /**
    * The number of characters in the DOM after the final nsTextFrame.  For

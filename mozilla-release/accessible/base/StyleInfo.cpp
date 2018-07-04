@@ -14,11 +14,11 @@
 using namespace mozilla;
 using namespace mozilla::a11y;
 
-StyleInfo::StyleInfo(dom::Element* aElement, nsIPresShell* aPresShell) :
+StyleInfo::StyleInfo(dom::Element* aElement) :
   mElement(aElement)
 {
-  mStyleContext =
-    nsComputedDOMStyle::GetStyleContextNoFlush(aElement, nullptr, aPresShell);
+  mComputedStyle =
+    nsComputedDOMStyle::GetComputedStyleNoFlush(aElement, nullptr);
 }
 
 void
@@ -26,7 +26,7 @@ StyleInfo::Display(nsAString& aValue)
 {
   aValue.Truncate();
   AppendASCIItoUTF16(
-    nsCSSProps::ValueToKeyword(mStyleContext->StyleDisplay()->mDisplay,
+    nsCSSProps::ValueToKeyword(mComputedStyle->StyleDisplay()->mDisplay,
                                nsCSSProps::kDisplayKTable), aValue);
 }
 
@@ -35,7 +35,7 @@ StyleInfo::TextAlign(nsAString& aValue)
 {
   aValue.Truncate();
   AppendASCIItoUTF16(
-    nsCSSProps::ValueToKeyword(mStyleContext->StyleText()->mTextAlign,
+    nsCSSProps::ValueToKeyword(mComputedStyle->StyleText()->mTextAlign,
                                nsCSSProps::kTextAlignKTable), aValue);
 }
 
@@ -45,7 +45,7 @@ StyleInfo::TextIndent(nsAString& aValue)
   aValue.Truncate();
 
   const nsStyleCoord& styleCoord =
-    mStyleContext->StyleText()->mTextIndent;
+    mComputedStyle->StyleText()->mTextIndent;
 
   nscoord coordVal = 0;
   switch (styleCoord.GetUnit()) {
@@ -100,14 +100,6 @@ StyleInfo::FormatColor(const nscolor& aValue, nsString& aFormattedValue)
   aFormattedValue.AppendLiteral(", ");
   aFormattedValue.AppendInt(NS_GET_B(aValue));
   aFormattedValue.Append(')');
-}
-
-void
-StyleInfo::FormatFontStyle(const nscoord& aValue, nsAString& aFormattedValue)
-{
-  nsCSSKeyword keyword =
-    nsCSSProps::ValueToKeywordEnum(aValue, nsCSSProps::kFontStyleKTable);
-  AppendUTF8toUTF16(nsCSSKeywords::GetStringValue(keyword), aFormattedValue);
 }
 
 void

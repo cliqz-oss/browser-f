@@ -15,7 +15,7 @@
 </body>
 <script class="testbody" type="application/javascript">
 <![CDATA[
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 
 SimpleTest.waitForExplicitFinish();
 SimpleTest.expectChildProcessCrash();
@@ -23,6 +23,8 @@ SimpleTest.expectChildProcessCrash();
 var success = false;
 
 var observerFired = false;
+var observerDeferred = PromiseUtils.defer();
+var eventListenerDeferred = PromiseUtils.defer();
 
 var testObserver = {
   observe: function(subject, topic, data) {
@@ -30,15 +32,15 @@ var testObserver = {
     ok(true, "Observer fired");
     is(topic, "plugin-crashed", "Checking correct topic");
     is(data,  null, "Checking null data");
-    ok((subject instanceof Components.interfaces.nsIPropertyBag2), "got Propbag");
-    ok((subject instanceof Components.interfaces.nsIWritablePropertyBag2), "got writable Propbag");
+    ok((subject instanceof Ci.nsIPropertyBag2), "got Propbag");
+    ok((subject instanceof Ci.nsIWritablePropertyBag2), "got writable Propbag");
 
     var id = subject.getPropertyAsAString("pluginDumpID");
     isnot(id, "", "got a non-empty crash id");
     let directoryService =
-      Components.classes["@mozilla.org/file/directory_service;1"].
-      getService(Components.interfaces.nsIProperties);
-    let profD = directoryService.get("ProfD", Components.interfaces.nsIFile);
+      Cc["@mozilla.org/file/directory_service;1"].
+      getService(Ci.nsIProperties);
+    let profD = directoryService.get("ProfD", Ci.nsIFile);
     profD.append("minidumps");
     let dumpFile = profD.clone();
     dumpFile.append(id + ".dmp");
@@ -46,14 +48,16 @@ var testObserver = {
     let extraFile = profD.clone();
     extraFile.append(id + ".extra");
     ok(extraFile.exists(), "extra file exists");
+
+    observerDeferred.resolve();
   },
 
   QueryInterface: function(iid) {
-    if (iid.equals(Components.interfaces.nsIObserver) ||
-        iid.equals(Components.interfaces.nsISupportsWeakReference) ||
-        iid.equals(Components.interfaces.nsISupports))
+    if (iid.equals(Ci.nsIObserver) ||
+        iid.equals(Ci.nsISupportsWeakReference) ||
+        iid.equals(Ci.nsISupports))
       return this;
-    throw Components.results.NS_NOINTERFACE;
+    throw Cr.NS_NOINTERFACE;
   }
 };
 
@@ -80,18 +84,16 @@ function onPluginCrashed(aEvent) {
   ok("submittedCrashReport" in aEvent, "submittedCrashReport is a property of event");
   is(typeof aEvent.submittedCrashReport, "boolean", "submittedCrashReport is correct type");
 
-  var os = Components.classes["@mozilla.org/observer-service;1"].
-           getService(Components.interfaces.nsIObserverService);
+  var os = Cc["@mozilla.org/observer-service;1"].
+           getService(Ci.nsIObserverService);
   os.removeObserver(testObserver, "plugin-crashed");
 
-  Services.crashmanager.ensureCrashIsPresent(aEvent.pluginDumpID).then(() => {
-    SimpleTest.finish();
-  });
+  eventListenerDeferred.resolve();
 }
 
 function runTests() {
-  var os = Components.classes["@mozilla.org/observer-service;1"].
-           getService(Components.interfaces.nsIObserverService);
+  var os = Cc["@mozilla.org/observer-service;1"].
+           getService(Ci.nsIObserverService);
   os.addObserver(testObserver, "plugin-crashed", true);
 
   document.addEventListener("PluginCrashed", onPluginCrashed, false);
@@ -101,6 +103,13 @@ function runTests() {
     pluginElement.crash();
   } catch (e) {
   }
+
+  Promise.all([
+    observerDeferred.promise,
+    eventListenerDeferred.promise
+  ]).then(() => {
+    SimpleTest.finish();
+  });
 }
 ]]>
 </script>

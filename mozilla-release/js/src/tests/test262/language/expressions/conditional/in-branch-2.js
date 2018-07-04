@@ -14,8 +14,10 @@ info: |
     LogicalORExpression[?In, ?Yield]
     LogicalORExpression[?In, ?Yield] ? AssignmentExpression[+In, ?Yield] : AssignmentExpression[?In, ?Yield]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 for (true ? 0 : 0 in {}; false; ) ;

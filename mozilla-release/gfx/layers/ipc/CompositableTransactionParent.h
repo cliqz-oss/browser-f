@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -25,7 +24,6 @@ namespace layers {
 class CompositableParentManager : public HostIPCAllocator
 {
 public:
-  typedef InfallibleTArray<ReadLockInit> ReadLockArray;
 
   CompositableParentManager() {}
 
@@ -41,11 +39,9 @@ public:
 
   RefPtr<CompositableHost> AddCompositable(
     const CompositableHandle& aHandle,
-    const TextureInfo& aInfo);
+    const TextureInfo& aInfo,
+    bool aUseWebRender);
   RefPtr<CompositableHost> FindCompositable(const CompositableHandle& aHandle);
-
-  bool AddReadLocks(ReadLockArray&& aReadLocks);
-  TextureReadLock* FindReadLock(const ReadLockHandle& aLockHandle);
 
 protected:
   /**
@@ -61,22 +57,7 @@ protected:
    * Mapping form IDs to CompositableHosts.
    */
   std::map<uint64_t, RefPtr<CompositableHost>> mCompositables;
-  std::map<uint64_t, RefPtr<TextureReadLock>> mReadLocks;
 
-};
-
-struct AutoClearReadLocks {
-  explicit AutoClearReadLocks(std::map<uint64_t, RefPtr<TextureReadLock>>& aReadLocks)
-    : mReadLocks(aReadLocks)
-
-  {}
-
-  ~AutoClearReadLocks()
-  {
-    mReadLocks.clear();
-  }
-
-  std::map<uint64_t, RefPtr<TextureReadLock>>& mReadLocks;
 };
 
 } // namespace layers

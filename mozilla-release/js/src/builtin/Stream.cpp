@@ -8,13 +8,11 @@
 
 #include "js/Stream.h"
 
-#include "jscntxt.h"
-
 #include "gc/Heap.h"
+#include "vm/JSContext.h"
 #include "vm/SelfHosting.h"
 
-#include "jsobjinlines.h"
-
+#include "vm/List-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -318,51 +316,11 @@ RejectNonGenericMethod(JSContext* cx, const CallArgs& args,
 inline static MOZ_MUST_USE NativeObject*
 SetNewList(JSContext* cx, HandleNativeObject container, uint32_t slot)
 {
-    NativeObject* list = NewObjectWithNullTaggedProto<PlainObject>(cx);
+    NativeObject* list = NewList(cx);
     if (!list)
         return nullptr;
     container->setFixedSlot(slot, ObjectValue(*list));
     return list;
-}
-
-inline static MOZ_MUST_USE bool
-AppendToList(JSContext* cx, HandleNativeObject list, HandleValue value)
-{
-    uint32_t length = list->getDenseInitializedLength();
-
-    if (!list->ensureElements(cx, length + 1))
-        return false;
-
-    list->ensureDenseInitializedLength(cx, length, 1);
-    list->setDenseElement(length, value);
-
-    return true;
-}
-
-template<class T>
-inline static MOZ_MUST_USE T*
-PeekList(NativeObject* list)
-{
-    MOZ_ASSERT(list->getDenseInitializedLength() > 0);
-    return &list->getDenseElement(0).toObject().as<T>();
-}
-
-template<class T>
-inline static MOZ_MUST_USE T*
-ShiftFromList(JSContext* cx, HandleNativeObject list)
-{
-    uint32_t length = list->getDenseInitializedLength();
-    MOZ_ASSERT(length > 0);
-
-    Rooted<T*> entry(cx, &list->getDenseElement(0).toObject().as<T>());
-    if (!list->tryShiftDenseElements(1)) {
-        list->moveDenseElements(0, 1, length - 1);
-        list->shrinkElements(cx, length - 1);
-    }
-
-    list->setDenseInitializedLength(length - 1);
-
-    return entry;
 }
 
 class ByteStreamChunk : public NativeObject
@@ -3451,8 +3409,6 @@ ReadableByteStreamControllerFinalize(FreeOp* fop, JSObject* obj)
 static const ClassOps ReadableByteStreamControllerClassOps = {
     nullptr,        /* addProperty */
     nullptr,        /* delProperty */
-    nullptr,        /* getProperty */
-    nullptr,        /* setProperty */
     nullptr,        /* enumerate */
     nullptr,        /* newEnumerate */
     nullptr,        /* resolve */
@@ -3676,7 +3632,7 @@ ReadableStreamBYOBRequest::constructor(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
-    RootedArrayBufferObject view(cx, &viewVal.toObject().as<ArrayBufferObject>());
+    Rooted<ArrayBufferViewObject*> view(cx, &viewVal.toObject().as<ArrayBufferViewObject>());
 
     RootedObject request(cx, CreateReadableStreamBYOBRequest(cx, controller, view));
     if (!request)
@@ -3974,7 +3930,8 @@ ReadableByteStreamControllerConvertPullIntoDescriptor(JSContext* cx,
     //                            bytesFilled / elementSize).
     RootedObject ctor(cx, pullIntoDescriptor->ctor());
     if (!ctor) {
-        if (!GetBuiltinConstructor(cx, JSProto_Uint8Array, &ctor))
+        ctor = GlobalObject::getOrCreateConstructor(cx, JSProto_Uint8Array);
+        if (!ctor)
             return nullptr;
     }
     RootedObject buffer(cx, pullIntoDescriptor->buffer());
@@ -4473,12 +4430,14 @@ ReadableByteStreamControllerPullInto(JSContext* cx,
         JSProtoKey protoKey = StandardProtoKeyOrNull(view);
         MOZ_ASSERT(protoKey);
 
-        if (!GetBuiltinConstructor(cx, protoKey, &ctor))
+        ctor = GlobalObject::getOrCreateConstructor(cx, protoKey);
+        if (!ctor)
             return nullptr;
         elementSize = 1 << TypedArrayShift(view->as<TypedArrayObject>().type());
     } else {
         // Step 3: Let ctor be %DataView% (reordered).
-        if (!GetBuiltinConstructor(cx, JSProto_DataView, &ctor))
+        ctor = GlobalObject::getOrCreateConstructor(cx, JSProto_DataView);
+        if (!ctor)
             return nullptr;
     }
 
@@ -5493,4 +5452,12 @@ ReadableStream::getReader(JSContext* cx, Handle<ReadableStream*> stream,
     if (mode == JS::ReadableStreamReaderMode::Default)
         return CreateReadableStreamDefaultReader(cx, stream);
     return CreateReadableStreamBYOBReader(cx, stream);
+}
+
+JS_FRIEND_API(JSObject*)
+js::UnwrapReadableStream(JSObject* obj)
+{
+    if (JSObject* unwrapped = CheckedUnwrap(obj))
+        return unwrapped->is<ReadableStream>() ? unwrapped : nullptr;
+    return nullptr;
 }

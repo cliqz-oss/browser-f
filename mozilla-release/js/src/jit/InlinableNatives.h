@@ -29,10 +29,11 @@
                                     \
     _(Boolean)                      \
                                     \
-    _(IntlIsCollator)               \
-    _(IntlIsDateTimeFormat)         \
-    _(IntlIsNumberFormat)           \
-    _(IntlIsPluralRules)            \
+    _(IntlGuardToCollator)          \
+    _(IntlGuardToDateTimeFormat)    \
+    _(IntlGuardToNumberFormat)      \
+    _(IntlGuardToPluralRules)       \
+    _(IntlGuardToRelativeTimeFormat) \
                                     \
     _(MathAbs)                      \
     _(MathFloor)                    \
@@ -85,11 +86,15 @@
     _(StringFromCharCode)           \
     _(StringFromCodePoint)          \
     _(StringCharAt)                 \
+    _(StringToLowerCase)            \
+    _(StringToUpperCase)            \
                                     \
     _(IntrinsicStringReplaceString) \
     _(IntrinsicStringSplitString)   \
                                     \
+    _(Object)                       \
     _(ObjectCreate)                 \
+    _(ObjectIs)                     \
     _(ObjectToString)               \
                                     \
     _(SimdInt32x4)                  \
@@ -127,22 +132,25 @@
     _(IntrinsicFinishBoundFunctionInit) \
     _(IntrinsicIsPackedArray)       \
                                     \
-    _(IntrinsicIsArrayIterator)     \
-    _(IntrinsicIsMapIterator)       \
-    _(IntrinsicIsSetIterator)       \
-    _(IntrinsicIsStringIterator)    \
+    _(IntrinsicGuardToArrayIterator) \
+    _(IntrinsicGuardToMapIterator)  \
+    _(IntrinsicGuardToSetIterator)  \
+    _(IntrinsicGuardToStringIterator) \
                                     \
-    _(IntrinsicIsMapObject)         \
+    _(IntrinsicGuardToMapObject)    \
     _(IntrinsicGetNextMapEntryForIterator) \
                                     \
-    _(IntrinsicIsSetObject)         \
+    _(IntrinsicGuardToSetObject)    \
     _(IntrinsicGetNextSetEntryForIterator) \
                                     \
     _(IntrinsicNewArrayIterator)    \
     _(IntrinsicNewStringIterator)   \
                                     \
+    _(IntrinsicGuardToArrayBuffer)  \
     _(IntrinsicArrayBufferByteLength) \
     _(IntrinsicPossiblyWrappedArrayBufferByteLength) \
+                                    \
+    _(IntrinsicGuardToSharedArrayBuffer) \
                                     \
     _(TypedArrayConstructor)        \
     _(IntrinsicIsTypedArray)        \

@@ -9,6 +9,7 @@
 #include "nsFileChannel.h"
 #include "nsStandardURL.h"
 #include "nsURLHelper.h"
+#include "nsIURIMutator.h"
 
 #include "nsNetUtil.h"
 
@@ -31,10 +32,6 @@
 #endif
 
 //-----------------------------------------------------------------------------
-
-nsFileProtocolHandler::nsFileProtocolHandler()
-{
-}
 
 nsresult
 nsFileProtocolHandler::Init()
@@ -163,26 +160,24 @@ nsFileProtocolHandler::GetProtocolFlags(uint32_t *result)
 NS_IMETHODIMP
 nsFileProtocolHandler::NewURI(const nsACString &spec,
                               const char *charset,
-                              nsIURI *baseURI,
+                              nsIURI *aBaseURI,
                               nsIURI **result)
 {
-    nsCOMPtr<nsIStandardURL> url = new nsStandardURL(true);
-    if (!url)
-        return NS_ERROR_OUT_OF_MEMORY;
-
-    const nsACString *specPtr = &spec;
-
+    nsAutoCString buf(spec);
 #if defined(XP_WIN)
-    nsAutoCString buf;
-    if (net_NormalizeFileURL(spec, buf))
-        specPtr = &buf;
+    buf.Truncate();
+    if (!net_NormalizeFileURL(spec, buf)) {
+        buf = spec;
+    }
 #endif
 
-    nsresult rv = url->Init(nsIStandardURL::URLTYPE_NO_AUTHORITY, -1,
-                            *specPtr, charset, baseURI);
-    if (NS_FAILED(rv)) return rv;
-
-    return CallQueryInterface(url, result);
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    return NS_MutateURI(new nsStandardURL::Mutator())
+      .Apply(NS_MutatorMethod(&nsIFileURLMutator::MarkFileURL))
+      .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                              nsIStandardURL::URLTYPE_NO_AUTHORITY,
+                              -1, buf, charset, base, nullptr))
+      .Finalize(result);
 }
 
 NS_IMETHODIMP
@@ -239,21 +234,39 @@ nsFileProtocolHandler::AllowPort(int32_t port, const char *scheme, bool *result)
 // nsIFileProtocolHandler methods:
 
 NS_IMETHODIMP
-nsFileProtocolHandler::NewFileURI(nsIFile *file, nsIURI **result)
+nsFileProtocolHandler::NewFileURI(nsIFile *aFile, nsIURI **aResult)
 {
-    NS_ENSURE_ARG_POINTER(file);
+    NS_ENSURE_ARG_POINTER(aFile);
+
+    RefPtr<nsIFile> file(aFile);
+    // NOTE: the origin charset is assigned the value of the platform
+    // charset by the SetFile method.
+    return NS_MutateURI(new nsStandardURL::Mutator())
+             .Apply(NS_MutatorMethod(&nsIFileURLMutator::SetFile, file))
+             .Finalize(aResult);
+}
+
+NS_IMETHODIMP
+nsFileProtocolHandler::NewFileURIMutator(nsIFile *aFile, nsIURIMutator **aResult)
+{
+    NS_ENSURE_ARG_POINTER(aFile);
     nsresult rv;
 
-    nsCOMPtr<nsIFileURL> url = new nsStandardURL(true);
-    if (!url)
-        return NS_ERROR_OUT_OF_MEMORY;
+    nsCOMPtr<nsIURIMutator> mutator = new nsStandardURL::Mutator();
+    nsCOMPtr<nsIFileURLMutator> fileMutator = do_QueryInterface(mutator, &rv);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
 
     // NOTE: the origin charset is assigned the value of the platform
     // charset by the SetFile method.
-    rv = url->SetFile(file);
-    if (NS_FAILED(rv)) return rv;
+    rv = fileMutator->SetFile(aFile);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
 
-    return CallQueryInterface(url, result);
+    mutator.forget(aResult);
+    return NS_OK;
 }
 
 NS_IMETHODIMP

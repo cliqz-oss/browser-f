@@ -7,24 +7,16 @@
 #ifndef MOZILLA_SOURCEBUFFERRESOURCE_H_
 #define MOZILLA_SOURCEBUFFERRESOURCE_H_
 
-#include "MediaCache.h"
-#include "MediaResource.h"
-#include "ResourceQueue.h"
-#include "mozilla/Attributes.h"
-#include "nsCOMPtr.h"
-#include "nsError.h"
-#include "nsIPrincipal.h"
-#include "nsTArray.h"
-#include "nscore.h"
+#include "mozilla/AbstractThread.h"
 #include "mozilla/Logging.h"
+#include "MediaResource.h"
+#include "nsIPrincipal.h"
+#include "ResourceQueue.h"
 
 #define UNIMPLEMENTED() { /* Logging this is too spammy to do by default */ }
 
-class nsIStreamListener;
-
 namespace mozilla {
 
-class MediaDecoder;
 class MediaByteBuffer;
 class TaskQueue;
 
@@ -34,39 +26,24 @@ class SourceBuffer;
 
 } // namespace dom
 
+DDLoggedTypeDeclNameAndBase(SourceBufferResource, MediaResource);
+
 // SourceBufferResource is not thread safe.
-class SourceBufferResource final : public MediaResource
+class SourceBufferResource final
+  : public MediaResource
+  , public DecoderDoctorLifeLogger<SourceBufferResource>
 {
 public:
   SourceBufferResource();
   nsresult Close() override;
-  void Suspend(bool aCloseImmediately) override { UNIMPLEMENTED(); }
-  void Resume() override { UNIMPLEMENTED(); }
-  already_AddRefed<nsIPrincipal> GetCurrentPrincipal() override
-  {
-    UNIMPLEMENTED();
-    return nullptr;
-  }
-  void SetReadMode(MediaCacheStream::ReadMode aMode) override
-  {
-    UNIMPLEMENTED();
-  }
-  void SetPlaybackRate(uint32_t aBytesPerSecond) override { UNIMPLEMENTED(); }
   nsresult ReadAt(int64_t aOffset,
                   char* aBuffer,
                   uint32_t aCount,
                   uint32_t* aBytes) override;
   // Memory-based and no locks, caching discouraged.
   bool ShouldCacheReads() override { return false; }
-  int64_t Tell() override { return mOffset; }
   void Pin() override { UNIMPLEMENTED(); }
   void Unpin() override { UNIMPLEMENTED(); }
-  double GetDownloadRate(bool* aIsReliable) override
-  {
-    UNIMPLEMENTED();
-    *aIsReliable = false;
-    return 0;
-  }
   int64_t GetLength() override { return mInputBuffer.GetLength(); }
   int64_t GetNextCachedData(int64_t aOffset) override
   {
@@ -91,29 +68,9 @@ public:
     return GetLength();
   }
   bool IsDataCachedToEndOfResource(int64_t aOffset) override { return false; }
-  bool IsSuspendedByCache() override
-  {
-    UNIMPLEMENTED();
-    return false;
-  }
-  bool IsSuspended() override
-  {
-    UNIMPLEMENTED();
-    return false;
-  }
   nsresult ReadFromCache(char* aBuffer,
                          int64_t aOffset,
                          uint32_t aCount) override;
-  bool IsTransportSeekable() override
-  {
-    UNIMPLEMENTED();
-    return true;
-  }
-  nsresult Open(nsIStreamListener** aStreamListener) override
-  {
-    UNIMPLEMENTED();
-    return NS_ERROR_FAILURE;
-  }
 
   nsresult GetCachedRanges(MediaByteRangeSet& aRanges) override
   {
@@ -125,24 +82,15 @@ public:
     return NS_OK;
   }
 
-  size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override
+  size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
   {
     MOZ_ASSERT(OnTaskQueue());
-
-    size_t size = MediaResource::SizeOfExcludingThis(aMallocSizeOf);
-    size += mInputBuffer.SizeOfExcludingThis(aMallocSizeOf);
-
-    return size;
+    return mInputBuffer.SizeOfExcludingThis(aMallocSizeOf);
   }
 
-  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override
+  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
   {
     return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
-  }
-
-  bool IsExpectingMoreData() override
-  {
-    return false;
   }
 
   // Used by SourceBuffer.
@@ -195,9 +143,8 @@ private:
   // The buffer holding resource data.
   ResourceQueue mInputBuffer;
 
-  uint64_t mOffset;
-  bool mClosed;
-  bool mEnded;
+  bool mClosed = false;
+  bool mEnded = false;
 };
 
 } // namespace mozilla

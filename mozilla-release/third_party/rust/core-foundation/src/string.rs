@@ -13,33 +13,18 @@ pub use core_foundation_sys::string::*;
 
 use base::{CFIndexConvertible, TCFType};
 
-use core_foundation_sys::base::{Boolean, CFIndex, CFRange, CFRelease};
+use core_foundation_sys::base::{Boolean, CFIndex, CFRange};
 use core_foundation_sys::base::{kCFAllocatorDefault, kCFAllocatorNull};
 use std::fmt;
 use std::str::{self, FromStr};
 use std::ptr;
 use std::ffi::CStr;
 
-/// An immutable string in one of a variety of encodings.
-pub struct CFString(CFStringRef);
 
-impl Clone for CFString {
-    #[inline]
-    fn clone(&self) -> CFString {
-        unsafe {
-            TCFType::wrap_under_get_rule(self.0)
-        }
-    }
+declare_TCFType!{
+    /// An immutable string in one of a variety of encodings.
+    CFString, CFStringRef
 }
-
-impl Drop for CFString {
-    fn drop(&mut self) {
-        unsafe {
-            CFRelease(self.as_CFTypeRef())
-        }
-    }
-}
-
 impl_TCFType!(CFString, CFStringRef, CFStringGetTypeID);
 
 impl FromStr for CFString {
@@ -49,6 +34,13 @@ impl FromStr for CFString {
     #[inline]
     fn from_str(string: &str) -> Result<CFString, ()> {
         Ok(CFString::new(string))
+    }
+}
+
+impl<'a> From<&'a str> for CFString {
+    #[inline]
+    fn from(string: &'a str) -> CFString {
+        CFString::new(string)
     }
 }
 
@@ -113,8 +105,7 @@ impl CFString {
                                                      string.as_ptr(),
                                                      string.len().to_CFIndex(),
                                                      kCFStringEncodingUTF8,
-                                                     false as Boolean,
-                                                     kCFAllocatorNull);
+                                                     false as Boolean);
             CFString::wrap_under_create_rule(string_ref)
         }
     }

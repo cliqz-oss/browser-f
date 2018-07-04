@@ -22,8 +22,7 @@ SVGTitleElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 // nsISupports methods
 
 NS_IMPL_ISUPPORTS_INHERITED(SVGTitleElement, SVGTitleElementBase,
-                            nsIDOMNode, nsIDOMElement,
-                            nsIDOMSVGElement,
+                            nsIDOMNode,
                             nsIMutationObserver)
 
 //----------------------------------------------------------------------
@@ -40,37 +39,27 @@ SVGTitleElement::~SVGTitleElement()
 }
 
 void
-SVGTitleElement::CharacterDataChanged(nsIDocument *aDocument,
-                                      nsIContent *aContent,
-                                      CharacterDataChangeInfo *aInfo)
+SVGTitleElement::CharacterDataChanged(nsIContent* aContent,
+                                      const CharacterDataChangeInfo&)
 {
   SendTitleChangeEvent(false);
 }
 
 void
-SVGTitleElement::ContentAppended(nsIDocument *aDocument,
-                                 nsIContent *aContainer,
-                                 nsIContent *aFirstNewContent,
-                                 int32_t aNewIndexInContainer)
+SVGTitleElement::ContentAppended(nsIContent* aFirstNewContent)
 {
   SendTitleChangeEvent(false);
 }
 
 void
-SVGTitleElement::ContentInserted(nsIDocument *aDocument,
-                                 nsIContent *aContainer,
-                                 nsIContent *aChild,
-                                 int32_t aIndexInContainer)
+SVGTitleElement::ContentInserted(nsIContent* aChild)
 {
   SendTitleChangeEvent(false);
 }
 
 void
-SVGTitleElement::ContentRemoved(nsIDocument *aDocument,
-                                nsIContent *aContainer,
-                                nsIContent *aChild,
-                                int32_t aIndexInContainer,
-                                nsIContent *aPreviousSibling)
+SVGTitleElement::ContentRemoved(nsIContent* aChild,
+                                nsIContent* aPreviousSibling)
 {
   SendTitleChangeEvent(false);
 }

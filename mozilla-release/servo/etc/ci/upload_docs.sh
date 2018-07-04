@@ -14,7 +14,10 @@ set -o pipefail
 
 cd "$(dirname ${0})/../.."
 
-./mach doc
+# Clean up any traces of previous doc builds.
+./etc/ci/clean_build_artifacts.sh
+
+env CC=gcc-5 CXX=g++-5 ./mach doc
 # etc/doc.servo.org/index.html overwrites $(mach rust-root)/doc/index.html
 # Use recursive copy here to avoid `cp` returning an error code
 # when it encounters directories.
@@ -30,10 +33,18 @@ python components/style/properties/build.py servo html regular
 cd components/script
 cmake .
 cmake --build . --target supported-apis
+echo "Copying apis.html."
 cp apis.html ../../target/doc/servo/
+echo "Copied apis.html."
 cd ../..
 
+echo "Starting ghp-import."
 ghp-import -n target/doc
+echo "Finished ghp-import."
 git push -qf \
     "https://${TOKEN}@github.com/servo/doc.servo.org.git" gh-pages \
-    >/dev/null 2>&1
+    &>/dev/null
+echo "Finished git push."
+
+# Clean up the traces of the current doc build.
+./etc/ci/clean_build_artifacts.sh

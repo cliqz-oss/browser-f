@@ -6,6 +6,7 @@
 
 #include "vm/RegExpStatics.h"
 
+#include "gc/FreeOp.h"
 #include "vm/RegExpStaticsObject.h"
 
 #include "vm/NativeObject-inl.h"
@@ -22,7 +23,7 @@ using namespace js;
 static void
 resc_finalize(FreeOp* fop, JSObject* obj)
 {
-    MOZ_ASSERT(fop->onActiveCooperatingThread());
+    MOZ_ASSERT(fop->onMainThread());
     RegExpStatics* res = static_cast<RegExpStatics*>(obj->as<RegExpStaticsObject>().getPrivate());
     fop->delete_(res);
 }
@@ -38,8 +39,6 @@ resc_trace(JSTracer* trc, JSObject* obj)
 static const ClassOps RegExpStaticsObjectClassOps = {
     nullptr, /* addProperty */
     nullptr, /* delProperty */
-    nullptr, /* getProperty */
-    nullptr, /* setProperty */
     nullptr, /* enumerate */
     nullptr, /* newEnumerate */
     nullptr, /* resolve */
@@ -59,7 +58,7 @@ const Class RegExpStaticsObject::class_ = {
 };
 
 RegExpStaticsObject*
-RegExpStatics::create(JSContext* cx, Handle<GlobalObject*> parent)
+RegExpStatics::create(JSContext* cx)
 {
     RegExpStaticsObject* obj = NewObjectWithGivenProto<RegExpStaticsObject>(cx, nullptr);
     if (!obj)

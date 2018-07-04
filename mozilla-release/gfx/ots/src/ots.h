@@ -5,8 +5,9 @@
 #ifndef OTS_H_
 #define OTS_H_
 
-// Not needed in the gecko build
-// #include "config.h"
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 
 #include <stddef.h>
 #include <cstdarg>
@@ -111,7 +112,7 @@ class Buffer {
       return OTS_FAILURE();
     }
     std::memcpy(value, buffer_ + offset_, sizeof(uint16_t));
-    *value = ntohs(*value);
+    *value = ots_ntohs(*value);
     offset_ += 2;
     return true;
   }
@@ -136,7 +137,7 @@ class Buffer {
       return OTS_FAILURE();
     }
     std::memcpy(value, buffer_ + offset_, sizeof(uint32_t));
-    *value = ntohl(*value);
+    *value = ots_ntohl(*value);
     offset_ += 4;
     return true;
   }
@@ -183,14 +184,20 @@ template<typename T> T Round2(T value) {
   return (value + 1) & ~1;
 }
 
+// Check that a tag consists entirely of printable ASCII characters
+bool CheckTag(uint32_t tag_value);
+
 bool IsValidVersionTag(uint32_t tag);
 
 #define OTS_TAG_CFF  OTS_TAG('C','F','F',' ')
 #define OTS_TAG_CMAP OTS_TAG('c','m','a','p')
 #define OTS_TAG_CVT  OTS_TAG('c','v','t',' ')
+#define OTS_TAG_FEAT OTS_TAG('F','e','a','t')
 #define OTS_TAG_FPGM OTS_TAG('f','p','g','m')
 #define OTS_TAG_GASP OTS_TAG('g','a','s','p')
 #define OTS_TAG_GDEF OTS_TAG('G','D','E','F')
+#define OTS_TAG_GLAT OTS_TAG('G','l','a','t')
+#define OTS_TAG_GLOC OTS_TAG('G','l','o','c')
 #define OTS_TAG_GLYF OTS_TAG('g','l','y','f')
 #define OTS_TAG_GPOS OTS_TAG('G','P','O','S')
 #define OTS_TAG_GSUB OTS_TAG('G','S','U','B')
@@ -207,10 +214,22 @@ bool IsValidVersionTag(uint32_t tag);
 #define OTS_TAG_OS2  OTS_TAG('O','S','/','2')
 #define OTS_TAG_POST OTS_TAG('p','o','s','t')
 #define OTS_TAG_PREP OTS_TAG('p','r','e','p')
+#define OTS_TAG_SILE OTS_TAG('S','i','l','e')
+#define OTS_TAG_SILF OTS_TAG('S','i','l','f')
+#define OTS_TAG_SILL OTS_TAG('S','i','l','l')
 #define OTS_TAG_VDMX OTS_TAG('V','D','M','X')
 #define OTS_TAG_VHEA OTS_TAG('v','h','e','a')
 #define OTS_TAG_VMTX OTS_TAG('v','m','t','x')
 #define OTS_TAG_VORG OTS_TAG('V','O','R','G')
+
+#define OTS_TAG_AVAR OTS_TAG('a','v','a','r')
+#define OTS_TAG_CVAR OTS_TAG('c','v','a','r')
+#define OTS_TAG_FVAR OTS_TAG('f','v','a','r')
+#define OTS_TAG_GVAR OTS_TAG('g','v','a','r')
+#define OTS_TAG_HVAR OTS_TAG('H','V','A','R')
+#define OTS_TAG_MVAR OTS_TAG('M','V','A','R')
+#define OTS_TAG_VVAR OTS_TAG('V','V','A','R')
+#define OTS_TAG_STAT OTS_TAG('S','T','A','T')
 
 struct Font;
 struct FontFile;
@@ -244,6 +263,8 @@ class Table {
   bool Error(const char *format, ...);
   bool Warning(const char *format, ...);
   bool Drop(const char *format, ...);
+  bool DropGraphite(const char *format, ...);
+  bool DropVariations(const char *format, ...);
 
  private:
   void Message(int level, const char *format, va_list va);
@@ -277,7 +298,9 @@ struct Font {
         num_tables(0),
         search_range(0),
         entry_selector(0),
-        range_shift(0) {
+        range_shift(0),
+        dropped_graphite(false),
+        dropped_variations(false) {
   }
 
   bool ParseTable(const TableEntry& tableinfo, const uint8_t* data,
@@ -289,6 +312,12 @@ struct Font {
   // if not (i.e. if the table was treated as Passthru), it will return NULL.
   Table* GetTypedTable(uint32_t tag) const;
 
+  // Drop all Graphite tables and don't parse new ones.
+  void DropGraphite();
+
+  // Drop all Variations tables and don't parse new ones.
+  void DropVariations();
+
   FontFile *file;
 
   uint32_t version;
@@ -296,6 +325,8 @@ struct Font {
   uint16_t search_range;
   uint16_t entry_selector;
   uint16_t range_shift;
+  bool dropped_graphite;
+  bool dropped_variations;
 
  private:
   std::map<uint32_t, Table*> m_tables;

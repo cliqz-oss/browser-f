@@ -15,8 +15,10 @@ info: |
     ObjectLiteral nor an ArrayLiteral and IsValidSimpleAssignmentTarget of
     LeftHandSideExpression is false.
 negative:
-  phase: early
+  phase: parse
   type: ReferenceError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 42 = 42;

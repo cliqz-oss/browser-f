@@ -2,11 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
 // Enables logging and shorter save intervals.
 const debugMode = false;
 
@@ -18,10 +13,10 @@ const XULSTORE_CONTRACTID = "@mozilla.org/xul/xulstore;1";
 const XULSTORE_CID = Components.ID("{6f46b6f4-c8b1-4bd4-a4fa-9ebbed0753ea}");
 const STOREDB_FILENAME = "xulstore.json";
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
 
 function XULStore() {
   if (!Services.appinfo.inSafeMode)
@@ -34,8 +29,8 @@ XULStore.prototype = {
                                     contractID: XULSTORE_CONTRACTID,
                                     classDescription: "XULStore",
                                     interfaces: [Ci.nsIXULStore]}),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsIXULStore,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver, Ci.nsIXULStore,
+                                          Ci.nsISupportsWeakReference]),
   _xpcom_factory: XPCOMUtils.generateSingletonFactory(XULStore),
 
   /* ---------- private members ---------- */
@@ -61,7 +56,15 @@ XULStore.prototype = {
   load() {
     Services.obs.addObserver(this, "profile-before-change", true);
 
-    this._storeFile = Services.dirsvc.get("ProfD", Ci.nsIFile);
+    try {
+      this._storeFile = Services.dirsvc.get("ProfD", Ci.nsIFile);
+    } catch (ex) {
+      try {
+        this._storeFile = Services.dirsvc.get("ProfDS", Ci.nsIFile);
+      } catch (ex) {
+        throw new Error("Can't find profile directory.");
+      }
+    }
     this._storeFile.append(STOREDB_FILENAME);
 
     this.readFile();
@@ -85,21 +88,12 @@ XULStore.prototype = {
   },
 
   readFile() {
-    const MODE_RDONLY = 0x01;
-    const FILE_PERMS  = 0o600;
-
-    let stream = Cc["@mozilla.org/network/file-input-stream;1"].
-                 createInstance(Ci.nsIFileInputStream);
-    let json = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
     try {
-      stream.init(this._storeFile, MODE_RDONLY, FILE_PERMS, 0);
-      this._data = json.decodeFromStream(stream, stream.available());
+      this._data = JSON.parse(Cu.readUTF8File(this._storeFile));
     } catch (e) {
       this.log("Error reading JSON: " + e);
       // This exception could mean that the file didn't exist.
       // We'll just ignore the error and start with a blank slate.
-    } finally {
-      stream.close();
     }
   },
 
@@ -149,7 +143,7 @@ XULStore.prototype = {
     }
 
     if (value.length > 4096) {
-      Services.console.logStringMessage("XULStore: Warning, truncating long attribute value")
+      Services.console.logStringMessage("XULStore: Warning, truncating long attribute value");
       value = value.substr(0, 4096);
     }
 
@@ -227,6 +221,20 @@ XULStore.prototype = {
     }
   },
 
+  removeDocument(docURI) {
+    this.log("remove store values for doc=" + docURI);
+
+    if (!this._saveAllowed) {
+      Services.console.logStringMessage("XULStore: Changes after profile-before-change are ignored!");
+      return;
+    }
+
+    if (this._data[docURI]) {
+      delete this._data[docURI];
+      this.markAsChanged();
+    }
+  },
+
   getIDsEnumerator(docURI) {
     this.log("Getting ID enumerator for doc=" + docURI);
 
@@ -264,7 +272,7 @@ function nsStringEnumerator(items) {
 }
 
 nsStringEnumerator.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIStringEnumerator]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIStringEnumerator]),
   _nextIndex: 0,
   hasMore() {
     return this._nextIndex < this._items.length;

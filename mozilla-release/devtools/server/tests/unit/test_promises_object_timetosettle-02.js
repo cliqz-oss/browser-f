@@ -9,46 +9,46 @@
 "use strict";
 
 const { PromisesFront } = require("devtools/shared/fronts/promises");
-const { setTimeout } = require("sdk/timers");
+const { setTimeout } = ChromeUtils.import("resource://gre/modules/Timer.jsm", {});
 
-var events = require("sdk/event/core");
+var EventEmitter = require("devtools/shared/event-emitter");
 
-add_task(function* () {
-  let client = yield startTestDebuggerServer("test-promises-timetosettle");
-  let chromeActors = yield getChromeActors(client);
-  yield attachTab(client, chromeActors);
+add_task(async function() {
+  let client = await startTestDebuggerServer("test-promises-timetosettle");
+  let chromeActors = await getChromeActors(client);
+  await attachTab(client, chromeActors);
 
   ok(Promise.toString().includes("native code"), "Expect native DOM Promise.");
 
   // We have to attach the chrome TabActor before playing with the PromiseActor
-  yield attachTab(client, chromeActors);
-  yield testGetTimeToSettle(client, chromeActors,
+  await attachTab(client, chromeActors);
+  await testGetTimeToSettle(client, chromeActors,
     v => new Promise(resolve => setTimeout(() => resolve(v), 100)));
 
-  let response = yield listTabs(client);
+  let response = await listTabs(client);
   let targetTab = findTab(response.tabs, "test-promises-timetosettle");
   ok(targetTab, "Found our target tab.");
-  yield attachTab(client, targetTab);
+  await attachTab(client, targetTab);
 
-  yield testGetTimeToSettle(client, targetTab, v => {
+  await testGetTimeToSettle(client, targetTab, v => {
     const debuggee =
       DebuggerServer.getTestGlobal("test-promises-timetosettle");
     return new debuggee.Promise(resolve => setTimeout(() => resolve(v), 100));
   });
 
-  yield close(client);
+  await close(client);
 });
 
-function* testGetTimeToSettle(client, form, makePromise) {
+async function testGetTimeToSettle(client, form, makePromise) {
   let front = PromisesFront(client, form);
   let resolution = "MyLittleSecret" + Math.random();
   let found = false;
 
-  yield front.attach();
-  yield front.listPromises();
+  await front.attach();
+  await front.listPromises();
 
   let onNewPromise = new Promise(resolve => {
-    events.on(front, "promises-settled", promises => {
+    EventEmitter.on(front, "promises-settled", promises => {
       for (let p of promises) {
         if (p.promiseState.state === "fulfilled" &&
             p.promiseState.value === resolution) {
@@ -67,9 +67,9 @@ function* testGetTimeToSettle(client, form, makePromise) {
 
   let promise = makePromise(resolution);
 
-  yield onNewPromise;
+  await onNewPromise;
   ok(found, "Found our new promise.");
-  yield front.detach();
+  await front.detach();
   // Appease eslint
   void promise;
 }

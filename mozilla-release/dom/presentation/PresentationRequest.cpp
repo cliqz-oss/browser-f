@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -37,7 +37,7 @@ using namespace mozilla::dom;
 NS_IMPL_ADDREF_INHERITED(PresentationRequest, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(PresentationRequest, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(PresentationRequest)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PresentationRequest)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 static nsresult
@@ -140,7 +140,7 @@ PresentationRequest::WrapObject(JSContext* aCx,
 already_AddRefed<Promise>
 PresentationRequest::Start(ErrorResult& aRv)
 {
-  return StartWithDevice(NullString(), aRv);
+  return StartWithDevice(VoidString(), aRv);
 }
 
 already_AddRefed<Promise>
@@ -172,6 +172,11 @@ PresentationRequest::StartWithDevice(const nsAString& aDeviceId,
     return nullptr;
   }
 
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    promise->MaybeReject(NS_ERROR_DOM_SECURITY_ERR);
+    return promise.forget();
+  }
+
   if (IsProhibitMixedSecurityContexts(doc) &&
       !IsAllURLAuthenticated()) {
     promise->MaybeReject(NS_ERROR_DOM_SECURITY_ERR);
@@ -183,7 +188,7 @@ PresentationRequest::StartWithDevice(const nsAString& aDeviceId,
     return promise.forget();
   }
 
-  RefPtr<Navigator> navigator = nsGlobalWindow::Cast(GetOwner())->Navigator();
+  RefPtr<Navigator> navigator = nsGlobalWindowInner::Cast(GetOwner())->Navigator();
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
@@ -226,8 +231,7 @@ PresentationRequest::StartWithDevice(const nsAString& aDeviceId,
   // process. If it's in child process, the corresponding xul:browser element
   // will be obtained at PresentationRequestParent::DoRequest in its parent
   // process.
-  nsCOMPtr<nsIDOMEventTarget> handler =
-    do_QueryInterface(GetOwner()->GetChromeEventHandler());
+  nsCOMPtr<EventTarget> handler = GetOwner()->GetChromeEventHandler();
   nsCOMPtr<nsIPrincipal> principal = doc->NodePrincipal();
   nsCOMPtr<nsIPresentationServiceCallback> callback =
     new PresentationRequesterCallback(this, id, promise);
@@ -269,6 +273,11 @@ PresentationRequest::Reconnect(const nsAString& aPresentationId,
   RefPtr<Promise> promise = Promise::Create(global, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
+  }
+
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    promise->MaybeReject(NS_ERROR_DOM_SECURITY_ERR);
+    return promise.forget();
   }
 
   if (IsProhibitMixedSecurityContexts(doc) &&
@@ -384,6 +393,11 @@ PresentationRequest::GetAvailability(ErrorResult& aRv)
     return nullptr;
   }
 
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    promise->MaybeReject(NS_ERROR_DOM_SECURITY_ERR);
+    return promise.forget();
+  }
+
   if (IsProhibitMixedSecurityContexts(doc) &&
       !IsAllURLAuthenticated()) {
     promise->MaybeReject(NS_ERROR_DOM_SECURITY_ERR);
@@ -443,6 +457,10 @@ PresentationRequest::FindOrCreatePresentationAvailability(RefPtr<Promise>& aProm
 nsresult
 PresentationRequest::DispatchConnectionAvailableEvent(PresentationConnection* aConnection)
 {
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    return NS_OK;
+  }
+
   PresentationConnectionAvailableEventInit init;
   init.mConnection = aConnection;
 
@@ -469,7 +487,7 @@ PresentationRequest::NotifyPromiseSettled()
     return;
   }
 
-  RefPtr<Navigator> navigator = nsGlobalWindow::Cast(GetOwner())->Navigator();
+  RefPtr<Navigator> navigator = nsGlobalWindowInner::Cast(GetOwner())->Navigator();
   if (!navigator) {
     return;
   }

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=78: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -38,7 +38,7 @@ bool
 nsIFrame::IsTableCaption() const
 {
   return StyleDisplay()->mDisplay == mozilla::StyleDisplay::TableCaption &&
-    GetParent()->StyleContext()->GetPseudo() == nsCSSAnonBoxes::tableWrapper;
+    GetParent()->Style()->GetPseudo() == nsCSSAnonBoxes::tableWrapper;
 }
 
 bool
@@ -170,7 +170,7 @@ nsIFrame::PropagateRootElementWritingMode(mozilla::WritingMode aRootElemWM)
 }
 
 nsContainerFrame*
-nsIFrame::GetInFlowParent()
+nsIFrame::GetInFlowParent() const
 {
   if (GetStateBits() & NS_FRAME_OUT_OF_FLOW) {
     nsIFrame* ph = FirstContinuation()->GetProperty(nsIFrame::PlaceholderFrameProperty());

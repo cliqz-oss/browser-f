@@ -8,7 +8,7 @@
 
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const EventEmitter = require("devtools/shared/event-emitter");
-const {LongStringClient} = require("devtools/shared/client/main");
+const LongStringClient = require("devtools/shared/client/long-string-client");
 
 /**
  * A WebConsoleClient is used as a front end for the WebConsoleActor that is
@@ -33,11 +33,13 @@ function WebConsoleClient(debuggerClient, response) {
   this.onNetworkEvent = this._onNetworkEvent.bind(this);
   this.onNetworkEventUpdate = this._onNetworkEventUpdate.bind(this);
   this.onInspectObject = this._onInspectObject.bind(this);
+  this.onDocEvent = this._onDocEvent.bind(this);
 
   this._client.addListener("evaluationResult", this.onEvaluationResult);
   this._client.addListener("networkEvent", this.onNetworkEvent);
   this._client.addListener("networkEventUpdate", this.onNetworkEventUpdate);
   this._client.addListener("inspectObject", this.onInspectObject);
+  this._client.addListener("documentEvent", this.onDocEvent);
   EventEmitter.decorate(this);
 }
 
@@ -85,7 +87,7 @@ WebConsoleClient.prototype = {
    * @param object packet
    *        The message received from the server.
    */
-  _onNetworkEvent: function (type, packet) {
+  _onNetworkEvent: function(type, packet) {
     if (packet.from == this._actor) {
       let actor = packet.eventActor;
       let networkInfo = {
@@ -126,7 +128,7 @@ WebConsoleClient.prototype = {
    * @param object packet
    *        The message received from the server.
    */
-  _onNetworkEventUpdate: function (type, packet) {
+  _onNetworkEventUpdate: function(type, packet) {
     let networkInfo = this.getNetworkRequest(packet.from);
     if (!networkInfo) {
       return;
@@ -165,6 +167,9 @@ WebConsoleClient.prototype = {
       case "securityInfo":
         networkInfo.securityInfo = packet.state;
         break;
+      case "responseCache":
+        networkInfo.response.responseCache = packet.responseCache;
+        break;
     }
 
     this.emit("networkEventUpdate", {
@@ -183,8 +188,22 @@ WebConsoleClient.prototype = {
    * @param object packet
    *        The message received from the server.
    */
-  _onInspectObject: function (type, packet) {
+  _onInspectObject: function(type, packet) {
     this.emit("inspectObject", packet);
+  },
+
+  /**
+   * The "docEvent" message type handler. We just re-emit it so that
+   * the tools can listen for them on the console client.
+   *
+   * @private
+   * @param string type
+   *        Message type.
+   * @param object packet
+   *        The message received from the server.
+   */
+  _onDocEvent: function(type, packet) {
+    this.emit("documentEvent", packet);
   },
 
   /**
@@ -199,7 +218,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getCachedMessages: function (types, onResponse) {
+  getCachedMessages: function(types, onResponse) {
     let packet = {
       to: this._actor,
       type: "getCachedMessages",
@@ -218,7 +237,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  inspectObjectProperties: function (actor, onResponse) {
+  inspectObjectProperties: function(actor, onResponse) {
     let packet = {
       to: actor,
       type: "inspectProperties",
@@ -265,7 +284,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  evaluateJS: function (string, onResponse, options = {}) {
+  evaluateJS: function(string, onResponse, options = {}) {
     let packet = {
       to: this._actor,
       type: "evaluateJS",
@@ -283,7 +302,7 @@ WebConsoleClient.prototype = {
    * Evaluate a JavaScript expression asynchronously.
    * See evaluateJS for parameter and response information.
    */
-  evaluateJSAsync: function (string, onResponse, options = {}) {
+  evaluateJSAsync: function(string, onResponse, options = {}) {
     // Pre-37 servers don't support async evaluation.
     if (!this.traits.evaluateJSAsync) {
       return this.evaluateJS(string, onResponse, options);
@@ -323,7 +342,7 @@ WebConsoleClient.prototype = {
   /**
    * Handler for the actors's unsolicited evaluationResult packet.
    */
-  onEvaluationResult: function (notification, packet) {
+  onEvaluationResult: function(notification, packet) {
     // The client on the main thread can receive notification packets from
     // multiple webconsole actors: the one on the main thread and the ones
     // on worker threads.  So make sure we should be handling this request.
@@ -359,7 +378,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  autocomplete: function (string, cursor, onResponse, frameActor) {
+  autocomplete: function(string, cursor, onResponse, frameActor) {
     let packet = {
       to: this._actor,
       type: "autocomplete",
@@ -376,7 +395,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  clearMessagesCache: function () {
+  clearMessagesCache: function() {
     let packet = {
       to: this._actor,
       type: "clearMessagesCache",
@@ -394,7 +413,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getPreferences: function (preferences, onResponse) {
+  getPreferences: function(preferences, onResponse) {
     let packet = {
       to: this._actor,
       type: "getPreferences",
@@ -413,7 +432,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  setPreferences: function (preferences, onResponse) {
+  setPreferences: function(preferences, onResponse) {
     let packet = {
       to: this._actor,
       type: "setPreferences",
@@ -432,7 +451,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getRequestHeaders: function (actor, onResponse) {
+  getRequestHeaders: function(actor, onResponse) {
     let packet = {
       to: actor,
       type: "getRequestHeaders",
@@ -450,7 +469,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getRequestCookies: function (actor, onResponse) {
+  getRequestCookies: function(actor, onResponse) {
     let packet = {
       to: actor,
       type: "getRequestCookies",
@@ -468,7 +487,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getRequestPostData: function (actor, onResponse) {
+  getRequestPostData: function(actor, onResponse) {
     let packet = {
       to: actor,
       type: "getRequestPostData",
@@ -486,7 +505,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getResponseHeaders: function (actor, onResponse) {
+  getResponseHeaders: function(actor, onResponse) {
     let packet = {
       to: actor,
       type: "getResponseHeaders",
@@ -504,7 +523,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getResponseCookies: function (actor, onResponse) {
+  getResponseCookies: function(actor, onResponse) {
     let packet = {
       to: actor,
       type: "getResponseCookies",
@@ -522,10 +541,28 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getResponseContent: function (actor, onResponse) {
+  getResponseContent: function(actor, onResponse) {
     let packet = {
       to: actor,
       type: "getResponseContent",
+    };
+    return this._client.request(packet, onResponse);
+  },
+
+  /**
+   * Retrieve the response cache from the given NetworkEventActor
+   *
+   * @param string actor
+   *        The NetworkEventActor ID.
+   * @param function onResponse
+   *        The function invoked when the response is received.
+   * @return request
+   *         Request object that implements both Promise and EventEmitter interfaces.
+   */
+  getResponseCache: function(actor, onResponse) {
+    let packet = {
+      to: actor,
+      type: "getResponseCache",
     };
     return this._client.request(packet, onResponse);
   },
@@ -540,7 +577,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getEventTimings: function (actor, onResponse) {
+  getEventTimings: function(actor, onResponse) {
     let packet = {
       to: actor,
       type: "getEventTimings",
@@ -558,10 +595,28 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  getSecurityInfo: function (actor, onResponse) {
+  getSecurityInfo: function(actor, onResponse) {
     let packet = {
       to: actor,
       type: "getSecurityInfo",
+    };
+    return this._client.request(packet, onResponse);
+  },
+
+  /**
+   * Retrieve the stack-trace information for the given NetworkEventActor.
+   *
+   * @param string actor
+   *        The NetworkEventActor ID.
+   * @param function onResponse
+   *        The function invoked when the stack-trace is received.
+   * @return request
+   *         Request object that implements both Promise and EventEmitter interfaces
+   */
+  getStackTrace: function(actor, onResponse) {
+    let packet = {
+      to: actor,
+      type: "getStackTrace",
     };
     return this._client.request(packet, onResponse);
   },
@@ -576,7 +631,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  sendHTTPRequest: function (data, onResponse) {
+  sendHTTPRequest: function(data, onResponse) {
     let packet = {
       to: this._actor,
       type: "sendHTTPRequest",
@@ -597,7 +652,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  startListeners: function (listeners, onResponse) {
+  startListeners: function(listeners, onResponse) {
     let packet = {
       to: this._actor,
       type: "startListeners",
@@ -618,7 +673,7 @@ WebConsoleClient.prototype = {
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  stopListeners: function (listeners, onResponse) {
+  stopListeners: function(listeners, onResponse) {
     let packet = {
       to: this._actor,
       type: "stopListeners",
@@ -635,7 +690,7 @@ WebConsoleClient.prototype = {
    * @return object
    *         The LongStringClient for the given long string grip.
    */
-  longString: function (grip) {
+  longString: function(grip) {
     if (grip.actor in this._longStrings) {
       return this._longStrings[grip.actor];
     }
@@ -652,12 +707,13 @@ WebConsoleClient.prototype = {
    * @param function onResponse
    *        Function to invoke when the server response is received.
    */
-  detach: function (onResponse) {
+  detach: function(onResponse) {
     this._client.removeListener("evaluationResult", this.onEvaluationResult);
     this._client.removeListener("networkEvent", this.onNetworkEvent);
     this._client.removeListener("networkEventUpdate",
                                 this.onNetworkEventUpdate);
     this._client.removeListener("inspectObject", this.onInspectObject);
+    this._client.removeListener("documentEvent", this.onDocEvent);
     this.stopListeners(null, onResponse);
     this._longStrings = null;
     this._client = null;
@@ -667,7 +723,7 @@ WebConsoleClient.prototype = {
     this._networkRequests = null;
   },
 
-  clearNetworkRequests: function () {
+  clearNetworkRequests: function() {
     this._networkRequests.clear();
   },
 
@@ -682,7 +738,7 @@ WebConsoleClient.prototype = {
    *         A promise that is resolved when the full string contents
    *         are available, or rejected if something goes wrong.
    */
-  getString: function (stringGrip) {
+  getString: function(stringGrip) {
     // Make sure this is a long string.
     if (typeof stringGrip !== "object" || stringGrip.type !== "longString") {
       // Go home string, you're drunk.

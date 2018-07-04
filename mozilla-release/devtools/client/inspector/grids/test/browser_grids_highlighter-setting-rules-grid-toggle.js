@@ -20,9 +20,9 @@ const TEST_URI = `
 
 const SHOW_INFINITE_LINES_PREF = "devtools.gridinspector.showInfiniteLines";
 
-add_task(function* () {
-  yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  let { inspector, gridInspector } = yield openLayoutView();
+add_task(async function() {
+  await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
+  let { inspector, gridInspector } = await openLayoutView();
   let { document: doc } = gridInspector;
   let { store } = inspector;
 
@@ -35,20 +35,20 @@ add_task(function* () {
   let onCheckboxChange = waitUntilState(store, state =>
     state.highlighterSettings.showInfiniteLines);
   checkbox.click();
-  yield onCheckboxChange;
+  await onCheckboxChange;
 
   info("Selecting the rule view.");
   let ruleView = selectRuleView(inspector);
   let highlighters = ruleView.highlighters;
 
-  yield selectNode("#grid", inspector);
+  await selectNode("#grid", inspector);
 
   let container = getRuleViewProperty(ruleView, "#grid", "display").valueSpan;
   let gridToggle = container.querySelector(".ruleview-grid");
 
   info("Toggling ON the CSS grid highlighter from the rule-view.");
   let onHighlighterShown = highlighters.once("grid-highlighter-shown",
-    (event, nodeFront, options) => {
+    (nodeFront, options) => {
       info("Checking the grid highlighter display settings.");
       let {
         color,
@@ -57,14 +57,14 @@ add_task(function* () {
         showInfiniteLines,
       } = options;
 
-      is(color, "#4B0082", "CSS grid highlighter color is correct.");
+      is(color, "#9400FF", "CSS grid highlighter color is correct.");
       ok(!showGridAreasOverlay, "Show grid areas overlay option is off.");
       ok(!showGridLineNumbers, "Show grid line numbers option is off.");
       ok(showInfiniteLines, "Show infinite lines option is on.");
     }
   );
   gridToggle.click();
-  yield onHighlighterShown;
+  await onHighlighterShown;
 
   Services.prefs.clearUserPref(SHOW_INFINITE_LINES_PREF);
 });

@@ -17,7 +17,11 @@
 
 namespace mozilla {
 
-class VPXDecoder : public MediaDataDecoder
+DDLoggedTypeDeclNameAndBase(VPXDecoder, MediaDataDecoder);
+
+class VPXDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<VPXDecoder>
 {
 public:
   explicit VPXDecoder(const CreateDecoderParams& aParams);
@@ -27,9 +31,9 @@ public:
   RefPtr<DecodePromise> Drain() override;
   RefPtr<FlushPromise> Flush() override;
   RefPtr<ShutdownPromise> Shutdown() override;
-  const char* GetDescriptionName() const override
+  nsCString GetDescriptionName() const override
   {
-    return "libvpx video decoder";
+    return NS_LITERAL_CSTRING("libvpx video decoder");
   }
 
   enum Codec: uint8_t
@@ -50,7 +54,7 @@ public:
   static bool IsKeyframe(Span<const uint8_t> aBuffer, Codec aCodec);
 
   // Return the frame dimensions for a sample for the specified codec.
-  static nsIntSize GetFrameSize(Span<const uint8_t> aBuffer, Codec aCodec);
+  static gfx::IntSize GetFrameSize(Span<const uint8_t> aBuffer, Codec aCodec);
 
 private:
   ~VPXDecoder();

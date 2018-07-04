@@ -15,8 +15,8 @@ var gUpdateHistory = {
     this._view = document.getElementById("historyItems");
 
     var um =
-        Components.classes["@mozilla.org/updates/update-manager;1"].
-        getService(Components.interfaces.nsIUpdateManager);
+        Cc["@mozilla.org/updates/update-manager;1"].
+        getService(Ci.nsIUpdateManager);
     var uc = um.updateCount;
     if (uc) {
       while (this._view.hasChildNodes())
@@ -26,6 +26,7 @@ var gUpdateHistory = {
 
       for (var i = 0; i < uc; ++i) {
         var update = um.getUpdateAt(i);
+
         if (!update || !update.name)
           continue;
 
@@ -34,11 +35,11 @@ var gUpdateHistory = {
         if (!update.statusText)
           continue;
 
-        var element = document.createElementNS(NS_XUL, "update");
+        var element = document.createElementNS(NS_XUL, "richlistitem");
+        element.className = "update";
         this._view.appendChild(element);
         element.name = bundle.getFormattedString("updateFullName",
           [update.name, update.buildID]);
-        element.type = bundle.getString("updateType_" + update.type);
         element.installDate = this._formatDate(update.installDate);
         if (update.detailsURL)
           element.detailsURL = update.detailsURL;

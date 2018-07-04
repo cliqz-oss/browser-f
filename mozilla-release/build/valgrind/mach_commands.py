@@ -5,6 +5,7 @@
 from __future__ import absolute_import, unicode_literals
 
 import logging
+import mozinfo
 import os
 import subprocess
 
@@ -42,7 +43,6 @@ class MachCommands(MachCommandBase):
             '--suppression multiple times to specify multiple suppression '
             'files.')
     def valgrind_test(self, suppressions):
-        import json
         import sys
         import tempfile
 
@@ -53,6 +53,7 @@ class MachCommands(MachCommandBase):
         from mozprofile.permissions import ServerLocations
         from mozrunner import FirefoxRunner
         from mozrunner.utils import findInPath
+        from six import string_types
         from valgrind.output_handler import OutputHandler
 
         build_dir = os.path.join(self.topsrcdir, 'build')
@@ -64,14 +65,16 @@ class MachCommands(MachCommandBase):
 
         with TemporaryDirectory() as profilePath:
             #TODO: refactor this into mozprofile
-            prefpath = os.path.join(self.topsrcdir, 'testing', 'profiles', 'prefs_general.js')
+            prefpath = os.path.join(self.topsrcdir, 'testing', 'profiles', 'common', 'user.js')
             prefs = {}
             prefs.update(Preferences.read_prefs(prefpath))
-            interpolation = { 'server': '%s:%d' % httpd.httpd.server_address,
-                              'OOP': 'false'}
-            prefs = json.loads(json.dumps(prefs) % interpolation)
-            for pref in prefs:
-                prefs[pref] = Preferences.cast(prefs[pref])
+            interpolation = {
+                'server': '%s:%d' % httpd.httpd.server_address,
+            }
+            for k, v in prefs.items():
+                if isinstance(v, string_types):
+                    v = v.format(**interpolation)
+                prefs[k] = Preferences.cast(v)
 
             quitter = os.path.join(self.topsrcdir, 'tools', 'quitter', 'quitter@mozilla.org.xpi')
 
@@ -116,6 +119,11 @@ class MachCommands(MachCommandBase):
                 # Avoid excessive delays in the presence of spinlocks.
                 # See bug 1309851.
                 '--fair-sched=yes',
+                # Keep debuginfo after library unmap.  See bug 1382280.
+                '--keep-debuginfo=yes',
+                # Reduce noise level on rustc and/or LLVM compiled code.
+                # See bug 1365915
+                '--expensive-definedness-checks=yes',
             ]
 
             for s in suppressions:
@@ -125,12 +133,15 @@ class MachCommands(MachCommandBase):
             supps_file1 = os.path.join(supps_dir, 'cross-architecture.sup')
             valgrind_args.append('--suppressions=' + supps_file1)
 
-            # MACHTYPE is an odd bash-only environment variable that doesn't
-            # show up in os.environ, so we have to get it another way.
-            machtype = subprocess.check_output(['bash', '-c', 'echo $MACHTYPE']).rstrip()
-            supps_file2 = os.path.join(supps_dir, machtype + '.sup')
-            if os.path.isfile(supps_file2):
-                valgrind_args.append('--suppressions=' + supps_file2)
+            if mozinfo.os == 'linux':
+                machtype = {
+                    'x86_64': 'x86_64-pc-linux-gnu',
+                    'x86': 'i386-pc-linux-gnu',
+                }.get(mozinfo.processor)
+                if machtype:
+                    supps_file2 = os.path.join(supps_dir, machtype + '.sup')
+                    if os.path.isfile(supps_file2):
+                        valgrind_args.append('--suppressions=' + supps_file2)
 
             exitcode = None
             timeout = 1800

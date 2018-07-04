@@ -35,31 +35,21 @@ UNIFIED_SOURCES += [
 if os_win:
     SOURCES += [
         'src/base/condition_variable_win.cc',
-        'src/base/cpu.cc',
         'src/base/file_util_win.cc',
         'src/base/lock_impl_win.cc',
         'src/base/message_pump_win.cc',
         'src/base/object_watcher.cc',
-        'src/base/platform_file_win.cc',
         'src/base/platform_thread_win.cc',
         'src/base/process_util_win.cc',
-        'src/base/process_win.cc',
         'src/base/rand_util_win.cc',
         'src/base/shared_memory_win.cc',
-        'src/base/sys_info_win.cc',
         'src/base/sys_string_conversions_win.cc',
-        'src/base/thread_local_storage_win.cc',
         'src/base/thread_local_win.cc',
         'src/base/time_win.cc',
         'src/base/waitable_event_win.cc',
         'src/base/win_util.cc',
         'src/chrome/common/ipc_channel_win.cc',
         'src/chrome/common/process_watcher_win.cc',
-        'src/chrome/common/transport_dib_win.cc',
-    ]
-
-    EXPORTS.base += [
-        'src/base/child_privileges.h',
     ]
 
 elif not CONFIG['MOZ_SYSTEM_LIBEVENT']:
@@ -72,16 +62,12 @@ if os_posix:
         'src/base/file_util_posix.cc',
         'src/base/lock_impl_posix.cc',
         'src/base/message_pump_libevent.cc',
-        'src/base/platform_file_posix.cc',
         'src/base/platform_thread_posix.cc',
-        'src/base/process_posix.cc',
         'src/base/process_util_posix.cc',
         'src/base/rand_util_posix.cc',
         'src/base/shared_memory_posix.cc',
         'src/base/string16.cc',
-        'src/base/sys_info_posix.cc',
         'src/base/thread_local_posix.cc',
-        'src/base/thread_local_storage_posix.cc',
         'src/base/waitable_event_posix.cc',
         'src/chrome/common/file_descriptor_set_posix.cc',
         'src/chrome/common/ipc_channel_posix.cc',
@@ -96,12 +82,10 @@ if os_macosx:
         'src/base/message_pump_mac.mm',
         'src/base/process_util_mac.mm',
         'src/base/scoped_nsautorelease_pool.mm',
-        'src/base/sys_info_mac.cc',
         'src/base/sys_string_conversions_mac.mm',
         'src/base/time_mac.cc',
         'src/chrome/common/mach_ipc_mac.mm',
         'src/chrome/common/mach_message_source_mac.cc',
-        'src/chrome/common/transport_dib_mac.cc',
     ]
     SOURCES += [
         # This file cannot be built in unified mode because of the redefinition
@@ -142,6 +126,13 @@ if os_bsd or os_linux:
             'src/base/message_pump_glib.cc',
         ]
 
+if os_solaris:
+    SOURCES += [
+        'src/base/atomicops_internals_x86_gcc.cc',
+        'src/base/process_util_linux.cc',
+        'src/base/time_posix.cc',
+    ]
+
 ost = CONFIG['OS_TEST']
 if '86' not in ost and 'arm' not in ost and 'aarch64' != ost and 'mips' not in ost:
     SOURCES += [
@@ -158,5 +149,5 @@ DIRS += [
     'atomics',
 ]
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

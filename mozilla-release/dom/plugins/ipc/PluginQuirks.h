@@ -7,6 +7,8 @@
 #ifndef dom_plugins_PluginQuirks_h
 #define dom_plugins_PluginQuirks_h
 
+#include "nsString.h"
+
 namespace mozilla {
 namespace plugins {
 
@@ -47,6 +49,8 @@ enum PluginQuirks {
   QUIRK_FLASH_HOOK_GETKEYSTATE                    = 1 << 13,
   // Win: Hook PrintDlgW to show print settings dialog on sandbox process
   QUIRK_FLASH_HOOK_PRINTDLGW                      = 1 << 14,
+  // Win: Broker Win32 SSL operations
+  QUIRK_FLASH_HOOK_SSL                            = 1 << 15,
 };
 
 int GetQuirksFromMimeTypeAndFilename(const nsCString& aMimeType,

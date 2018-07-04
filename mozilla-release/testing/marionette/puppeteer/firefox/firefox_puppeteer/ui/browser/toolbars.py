@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from marionette_driver import By, keys, Wait
 
 from firefox_puppeteer.ui.base import UIBaseLib
@@ -350,7 +352,7 @@ class AutocompleteResults(UIBaseLib):
 
         :returns: The list of visible results.
         """
-        match_count = self.element.get_property('_matchCount')
+        match_count = self.element.get_property('matchCount')
 
         return self.marionette.execute_script("""
           let rv = [];
@@ -498,7 +500,7 @@ class IdentityPopupView(UIBaseLib):
 
         :return: `True` if the view is selected.
         """
-        return self.element.get_attribute('current') == 'true'
+        return self.element.get_attribute('visible') == 'true'
 
 
 class IdentityPopupMainView(IdentityPopupView):

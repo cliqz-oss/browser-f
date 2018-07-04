@@ -10,13 +10,13 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/Variant.h"
 
-#include "jsobj.h"
-#include "jsopcode.h"
-
+#include "gc/DeletePolicy.h"
 #include "gc/Heap.h"
 #include "gc/Policy.h"
 #include "js/UbiNode.h"
 #include "js/UniquePtr.h"
+#include "vm/BytecodeUtil.h"
+#include "vm/JSObject.h"
 #include "vm/Xdr.h"
 
 namespace js {
@@ -72,6 +72,9 @@ enum class ScopeKind : uint8_t
 
     // ModuleScope
     Module,
+
+    // WasmInstanceScope
+    WasmInstance,
 
     // WasmFunctionScope
     WasmFunction
@@ -220,7 +223,14 @@ class Scope : public js::gc::TenuredCell
     friend class GCMarker;
 
     // The kind determines data_.
-    ScopeKind kind_;
+    //
+    // The memory here must be fully initialized, since otherwise the magic_
+    // value for gc::RelocationOverlay will land in the padding and may be
+    // stale.
+    union {
+        ScopeKind kind_;
+        uintptr_t paddedKind_;
+    };
 
     // The enclosing scope or nullptr.
     GCPtrScope enclosing_;
@@ -233,11 +243,13 @@ class Scope : public js::gc::TenuredCell
     uintptr_t data_;
 
     Scope(ScopeKind kind, Scope* enclosing, Shape* environmentShape)
-      : kind_(kind),
-        enclosing_(enclosing),
+      : enclosing_(enclosing),
         environmentShape_(environmentShape),
         data_(0)
-    { }
+    {
+        paddedKind_ = 0;
+        kind_ = kind;
+    }
 
     static Scope* create(JSContext* cx, ScopeKind kind, HandleScope enclosing,
                          HandleShape envShape);
@@ -247,8 +259,8 @@ class Scope : public js::gc::TenuredCell
                          HandleShape envShape, mozilla::UniquePtr<T, D> data);
 
     template <typename ConcreteScope, XDRMode mode>
-    static bool XDRSizedBindingNames(XDRState<mode>* xdr, Handle<ConcreteScope*> scope,
-                                     MutableHandle<typename ConcreteScope::Data*> data);
+    static XDRResult XDRSizedBindingNames(XDRState<mode>* xdr, Handle<ConcreteScope*> scope,
+                                          MutableHandle<typename ConcreteScope::Data*> data);
 
     Shape* maybeCloneEnvironmentShape(JSContext* cx);
 
@@ -394,7 +406,7 @@ class LexicalScope : public Scope
                                 uint32_t firstFrameSlot, HandleScope enclosing);
 
     template <XDRMode mode>
-    static bool XDR(XDRState<mode>* xdr, ScopeKind kind, HandleScope enclosing,
+    static XDRResult XDR(XDRState<mode>* xdr, ScopeKind kind, HandleScope enclosing,
                     MutableHandleScope scope);
 
   private:
@@ -521,7 +533,7 @@ class FunctionScope : public Scope
                                 HandleScope enclosing);
 
     template <XDRMode mode>
-    static bool XDR(XDRState<mode>* xdr, HandleFunction fun, HandleScope enclosing,
+    static XDRResult XDR(XDRState<mode>* xdr, HandleFunction fun, HandleScope enclosing,
                     MutableHandleScope scope);
 
   private:
@@ -619,7 +631,7 @@ class VarScope : public Scope
                             HandleScope enclosing);
 
     template <XDRMode mode>
-    static bool XDR(XDRState<mode>* xdr, ScopeKind kind, HandleScope enclosing,
+    static XDRResult XDR(XDRState<mode>* xdr, ScopeKind kind, HandleScope enclosing,
                     MutableHandleScope scope);
 
   private:
@@ -717,7 +729,7 @@ class GlobalScope : public Scope
     static GlobalScope* clone(JSContext* cx, Handle<GlobalScope*> scope, ScopeKind kind);
 
     template <XDRMode mode>
-    static bool XDR(XDRState<mode>* xdr, ScopeKind kind, MutableHandleScope scope);
+    static XDRResult XDR(XDRState<mode>* xdr, ScopeKind kind, MutableHandleScope scope);
 
   private:
     static GlobalScope* createWithData(JSContext* cx, ScopeKind kind,
@@ -817,7 +829,7 @@ class EvalScope : public Scope
                              HandleScope enclosing);
 
     template <XDRMode mode>
-    static bool XDR(XDRState<mode>* xdr, ScopeKind kind, HandleScope enclosing,
+    static XDRResult XDR(XDRState<mode>* xdr, ScopeKind kind, HandleScope enclosing,
                     MutableHandleScope scope);
 
   private:
@@ -949,21 +961,19 @@ class ModuleScope : public Scope
     static Shape* getEmptyEnvironmentShape(JSContext* cx);
 };
 
-// Scope corresponding to the wasm function. A WasmFunctionScope is used by
-// Debugger only, and not for wasm execution.
-//
-class WasmFunctionScope : public Scope
+class WasmInstanceScope : public Scope
 {
     friend class BindingIter;
     friend class Scope;
-    static const ScopeKind classScopeKind_ = ScopeKind::WasmFunction;
+    static const ScopeKind classScopeKind_ = ScopeKind::WasmInstance;
 
   public:
     struct Data
     {
+        uint32_t memoriesStart;
+        uint32_t globalsStart;
         uint32_t length;
         uint32_t nextFrameSlot;
-        uint32_t funcIndex;
 
         // The wasm instance of the scope.
         GCPtr<WasmInstanceObject*> instance;
@@ -973,7 +983,7 @@ class WasmFunctionScope : public Scope
         void trace(JSTracer* trc);
     };
 
-    static WasmFunctionScope* create(JSContext* cx, WasmInstanceObject* instance, uint32_t funcIndex);
+    static WasmInstanceScope* create(JSContext* cx, WasmInstanceObject* instance);
 
     static size_t sizeOfData(uint32_t length) {
         return sizeof(Data) + (length ? length - 1 : 0) * sizeof(BindingName);
@@ -993,6 +1003,58 @@ class WasmFunctionScope : public Scope
         return data().instance;
     }
 
+    uint32_t memoriesStart() const {
+        return data().memoriesStart;
+    }
+
+    uint32_t globalsStart() const {
+        return data().globalsStart;
+    }
+
+    uint32_t namesCount() const {
+        return data().length;
+    }
+
+    static Shape* getEmptyEnvironmentShape(JSContext* cx);
+};
+
+// Scope corresponding to the wasm function. A WasmFunctionScope is used by
+// Debugger only, and not for wasm execution.
+//
+class WasmFunctionScope : public Scope
+{
+    friend class BindingIter;
+    friend class Scope;
+    static const ScopeKind classScopeKind_ = ScopeKind::WasmFunction;
+
+  public:
+    struct Data
+    {
+        uint32_t length;
+        uint32_t nextFrameSlot;
+        uint32_t funcIndex;
+
+        BindingName names[1];
+
+        void trace(JSTracer* trc);
+    };
+
+    static WasmFunctionScope* create(JSContext* cx, HandleScope enclosing, uint32_t funcIndex);
+
+    static size_t sizeOfData(uint32_t length) {
+        return sizeof(Data) + (length ? length - 1 : 0) * sizeof(BindingName);
+    }
+
+  private:
+    Data& data() {
+        return *reinterpret_cast<Data*>(data_);
+    }
+
+    const Data& data() const {
+        return *reinterpret_cast<Data*>(data_);
+    }
+
+  public:
     uint32_t funcIndex() const {
         return data().funcIndex;
     }
@@ -1047,15 +1109,15 @@ class BindingIter
     //               vars - environment slot or name
     //               lets - environment slot or name
     //             consts - environment slot or name
-    uint32_t positionalFormalStart_;
-    uint32_t nonPositionalFormalStart_;
-    uint32_t topLevelFunctionStart_;
-    uint32_t varStart_;
-    uint32_t letStart_;
-    uint32_t constStart_;
-    uint32_t length_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t positionalFormalStart_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t nonPositionalFormalStart_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t topLevelFunctionStart_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t varStart_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t letStart_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t constStart_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t length_;
 
-    uint32_t index_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t index_;
 
     enum Flags : uint8_t {
         CannotHaveSlots = 0,
@@ -1073,12 +1135,12 @@ class BindingIter
 
     static const uint8_t CanHaveSlotsMask = 0x7;
 
-    uint8_t flags_;
-    uint16_t argumentSlot_;
-    uint32_t frameSlot_;
-    uint32_t environmentSlot_;
+    MOZ_INIT_OUTSIDE_CTOR uint8_t flags_;
+    MOZ_INIT_OUTSIDE_CTOR uint16_t argumentSlot_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t frameSlot_;
+    MOZ_INIT_OUTSIDE_CTOR uint32_t environmentSlot_;
 
-    BindingName* names_;
+    MOZ_INIT_OUTSIDE_CTOR BindingName* names_;
 
     void init(uint32_t positionalFormalStart, uint32_t nonPositionalFormalStart,
               uint32_t topLevelFunctionStart, uint32_t varStart,
@@ -1109,6 +1171,7 @@ class BindingIter
     void init(GlobalScope::Data& data);
     void init(EvalScope::Data& data, bool strict);
     void init(ModuleScope::Data& data);
+    void init(WasmInstanceScope::Data& data);
     void init(WasmFunctionScope::Data& data);
 
     bool hasFormalParameterExprs() const {
@@ -1463,17 +1526,7 @@ struct GCPolicy<js::ScopeKind> : public IgnoreGCPolicy<js::ScopeKind>
 { };
 
 template <typename T>
-struct ScopeDataGCPolicy
-{
-    static T initial() {
-        return nullptr;
-    }
-
-    static void trace(JSTracer* trc, T* vp, const char* name) {
-        if (*vp)
-            (*vp)->trace(trc);
-    }
-};
+struct ScopeDataGCPolicy : public NonGCPointerPolicy<T> {};
 
 #define DEFINE_SCOPE_DATA_GCPOLICY(Data)                        \
     template <>                                                 \
@@ -1493,6 +1546,23 @@ DEFINE_SCOPE_DATA_GCPOLICY(js::ModuleScope::Data);
 DEFINE_SCOPE_DATA_GCPOLICY(js::WasmFunctionScope::Data);
 
 #undef DEFINE_SCOPE_DATA_GCPOLICY
+
+// Scope data that contain GCPtrs must use the correct DeletePolicy.
+
+template <>
+struct DeletePolicy<js::FunctionScope::Data>
+  : public js::GCManagedDeletePolicy<js::FunctionScope::Data>
+{};
+
+template <>
+struct DeletePolicy<js::ModuleScope::Data>
+  : public js::GCManagedDeletePolicy<js::ModuleScope::Data>
+{};
+
+template <>
+struct DeletePolicy<js::WasmInstanceScope::Data>
+  : public js::GCManagedDeletePolicy<js::WasmInstanceScope::Data>
+{ };
 
 namespace ubi {
 

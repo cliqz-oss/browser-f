@@ -7,7 +7,9 @@
 #ifndef FennecJNIWrappers_h
 #define FennecJNIWrappers_h
 
+#ifndef MOZ_PREPROCESSOR
 #include "mozilla/jni/Refs.h"
+#endif
 
 namespace mozilla {
 namespace java {
@@ -69,6 +71,55 @@ public:
                 mozilla::jni::CallingThread::ANY;
         static const mozilla::jni::DispatchTarget dispatchTarget =
                 mozilla::jni::DispatchTarget::CURRENT;
+    };
+
+    static const mozilla::jni::CallingThread callingThread =
+            mozilla::jni::CallingThread::ANY;
+
+    template<class Impl> class Natives;
+};
+
+class BrowserLocaleManager : public mozilla::jni::ObjectBase<BrowserLocaleManager>
+{
+public:
+    static const char name[];
+
+    explicit BrowserLocaleManager(const Context& ctx) : ObjectBase<BrowserLocaleManager>(ctx) {}
+
+    struct GetLocale_t {
+        typedef BrowserLocaleManager Owner;
+        typedef mozilla::jni::String::LocalRef ReturnType;
+        typedef mozilla::jni::String::Param SetterType;
+        typedef mozilla::jni::Args<> Args;
+        static constexpr char name[] = "getLocale";
+        static constexpr char signature[] =
+                "()Ljava/lang/String;";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::ANY;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::CURRENT;
+    };
+
+    static auto GetLocale() -> mozilla::jni::String::LocalRef;
+
+    struct RefreshLocales_t {
+        typedef BrowserLocaleManager Owner;
+        typedef void ReturnType;
+        typedef void SetterType;
+        typedef mozilla::jni::Args<> Args;
+        static constexpr char name[] = "refreshLocales";
+        static constexpr char signature[] =
+                "()V";
+        static const bool isStatic = true;
+        static const mozilla::jni::ExceptionMode exceptionMode =
+                mozilla::jni::ExceptionMode::ABORT;
+        static const mozilla::jni::CallingThread callingThread =
+                mozilla::jni::CallingThread::ANY;
+        static const mozilla::jni::DispatchTarget dispatchTarget =
+                mozilla::jni::DispatchTarget::GECKO;
     };
 
     static const mozilla::jni::CallingThread callingThread =
@@ -450,73 +501,6 @@ public:
         typedef void SetterType;
         typedef mozilla::jni::Args<> Args;
         static constexpr char name[] = "dispatchMemoryPressure";
-        static constexpr char signature[] =
-                "()V";
-        static const bool isStatic = true;
-        static const mozilla::jni::ExceptionMode exceptionMode =
-                mozilla::jni::ExceptionMode::ABORT;
-        static const mozilla::jni::CallingThread callingThread =
-                mozilla::jni::CallingThread::UI;
-        static const mozilla::jni::DispatchTarget dispatchTarget =
-                mozilla::jni::DispatchTarget::CURRENT;
-    };
-
-    static const mozilla::jni::CallingThread callingThread =
-            mozilla::jni::CallingThread::UI;
-
-    template<class Impl> class Natives;
-};
-
-class PresentationMediaPlayerManager : public mozilla::jni::ObjectBase<PresentationMediaPlayerManager>
-{
-public:
-    static const char name[];
-
-    explicit PresentationMediaPlayerManager(const Context& ctx) : ObjectBase<PresentationMediaPlayerManager>(ctx) {}
-
-    struct AddPresentationSurface_t {
-        typedef PresentationMediaPlayerManager Owner;
-        typedef void ReturnType;
-        typedef void SetterType;
-        typedef mozilla::jni::Args<
-                mozilla::jni::Object::Param,
-                mozilla::jni::Object::Param> Args;
-        static constexpr char name[] = "addPresentationSurface";
-        static constexpr char signature[] =
-                "(Lorg/mozilla/gecko/GeckoView;Landroid/view/Surface;)V";
-        static const bool isStatic = true;
-        static const mozilla::jni::ExceptionMode exceptionMode =
-                mozilla::jni::ExceptionMode::ABORT;
-        static const mozilla::jni::CallingThread callingThread =
-                mozilla::jni::CallingThread::UI;
-        static const mozilla::jni::DispatchTarget dispatchTarget =
-                mozilla::jni::DispatchTarget::CURRENT;
-    };
-
-    struct InvalidateAndScheduleComposite_t {
-        typedef PresentationMediaPlayerManager Owner;
-        typedef void ReturnType;
-        typedef void SetterType;
-        typedef mozilla::jni::Args<
-                mozilla::jni::Object::Param> Args;
-        static constexpr char name[] = "invalidateAndScheduleComposite";
-        static constexpr char signature[] =
-                "(Lorg/mozilla/gecko/GeckoView;)V";
-        static const bool isStatic = true;
-        static const mozilla::jni::ExceptionMode exceptionMode =
-                mozilla::jni::ExceptionMode::ABORT;
-        static const mozilla::jni::CallingThread callingThread =
-                mozilla::jni::CallingThread::UI;
-        static const mozilla::jni::DispatchTarget dispatchTarget =
-                mozilla::jni::DispatchTarget::CURRENT;
-    };
-
-    struct RemovePresentationSurface_t {
-        typedef PresentationMediaPlayerManager Owner;
-        typedef void ReturnType;
-        typedef void SetterType;
-        typedef mozilla::jni::Args<> Args;
-        static constexpr char name[] = "removePresentationSurface";
         static constexpr char signature[] =
                 "()V";
         static const bool isStatic = true;

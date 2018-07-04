@@ -8,8 +8,6 @@
 
 #include "AccessibleWrap.h"
 
-#include "nsIDOMElement.h"
-
 namespace mozilla {
 namespace a11y {
 
@@ -43,16 +41,16 @@ protected:
   /**
    * Return anonymous slider element.
    */
-  nsIContent* GetSliderElement() const;
+  dom::Element* GetSliderElement() const;
 
-  nsresult GetSliderAttr(nsIAtom *aName, nsAString& aValue) const;
-  nsresult SetSliderAttr(nsIAtom *aName, const nsAString& aValue);
+  nsresult GetSliderAttr(nsAtom *aName, nsAString& aValue) const;
+  nsresult SetSliderAttr(nsAtom *aName, const nsAString& aValue);
 
-  double GetSliderAttr(nsIAtom *aName) const;
-  bool SetSliderAttr(nsIAtom *aName, double aValue);
+  double GetSliderAttr(nsAtom *aName) const;
+  bool SetSliderAttr(nsAtom *aName, double aValue);
 
 private:
-  mutable nsCOMPtr<nsIContent> mSliderNode;
+  mutable RefPtr<dom::Element> mSliderElement;
 };
 
 

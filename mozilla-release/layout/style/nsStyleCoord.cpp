@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -194,6 +195,30 @@ nsStyleCoord::GetAngleValueInRadians() const
   default:
     NS_NOTREACHED("unrecognized angular unit");
     return 0.0;
+  }
+}
+
+nscoord
+nsStyleCoord::ComputeComputedCalc(nscoord aPercentageBasis) const
+{
+  Calc* calc = GetCalcValue();
+  return calc->mLength +
+         NSToCoordFloorClamped(aPercentageBasis * calc->mPercent);
+}
+
+nscoord
+nsStyleCoord::ComputeCoordPercentCalc(nscoord aPercentageBasis) const
+{
+  switch (GetUnit()) {
+    case eStyleUnit_Coord:
+      return GetCoordValue();
+    case eStyleUnit_Percent:
+      return NSToCoordFloorClamped(aPercentageBasis * GetPercentValue());
+    case eStyleUnit_Calc:
+      return ComputeComputedCalc(aPercentageBasis);
+    default:
+      MOZ_ASSERT_UNREACHABLE("Unexpected unit!");
+      return 0;
   }
 }
 

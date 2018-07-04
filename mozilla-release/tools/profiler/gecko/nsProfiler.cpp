@@ -155,13 +155,7 @@ NS_IMETHODIMP
 nsProfiler::GetProfile(double aSinceTime, char** aProfile)
 {
   mozilla::UniquePtr<char[]> profile = profiler_get_profile(aSinceTime);
-  if (profile) {
-    size_t len = strlen(profile.get());
-    char *profileStr = static_cast<char *>
-                         (nsMemory::Clone(profile.get(), (len + 1) * sizeof(char)));
-    profileStr[len] = '\0';
-    *aProfile = profileStr;
-  }
+  *aProfile = profile.release();
   return NS_OK;
 }
 
@@ -171,7 +165,7 @@ namespace {
     nsAString& mBuffer; // This struct must not outlive this buffer
     explicit StringWriteFunc(nsAString& buffer) : mBuffer(buffer) {}
 
-    void Write(const char* aStr)
+    void Write(const char* aStr) override
     {
       mBuffer.Append(NS_ConvertUTF8toUTF16(aStr));
     }
@@ -352,7 +346,8 @@ nsProfiler::GetProfileDataAsArrayBuffer(double aSinceTime, JSContext* aCx,
 
 NS_IMETHODIMP
 nsProfiler::DumpProfileToFileAsync(const nsACString& aFilename,
-                                   double aSinceTime)
+                                   double aSinceTime, JSContext* aCx,
+                                   nsISupports** aPromise)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -360,11 +355,28 @@ nsProfiler::DumpProfileToFileAsync(const nsACString& aFilename,
     return NS_ERROR_FAILURE;
   }
 
+  if (NS_WARN_IF(!aCx)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsIGlobalObject* globalObject =
+    xpc::NativeGlobal(JS::CurrentGlobalOrNull(aCx));
+
+  if (NS_WARN_IF(!globalObject)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  ErrorResult result;
+  RefPtr<Promise> promise = Promise::Create(globalObject, result);
+  if (NS_WARN_IF(result.Failed())) {
+    return result.StealNSResult();
+  }
+
   nsCString filename(aFilename);
 
   StartGathering(aSinceTime)->Then(
     GetMainThreadSerialEventTarget(), __func__,
-    [filename](const nsCString& aResult) {
+    [filename, promise](const nsCString& aResult) {
       nsCOMPtr<nsIFile> file = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID);
       nsresult rv = file->InitWithNativePath(filename);
       if (NS_FAILED(rv)) {
@@ -376,9 +388,14 @@ nsProfiler::DumpProfileToFileAsync(const nsACString& aFilename,
       uint32_t sz;
       of->Write(aResult.get(), aResult.Length(), &sz);
       of->Close();
-    },
-    [](nsresult aRv) { });
 
+      promise->MaybeResolveWithUndefined();
+    },
+    [promise](nsresult aRv) {
+      promise->MaybeReject(aRv);
+    });
+
+  promise.forget(aPromise);
   return NS_OK;
 }
 
@@ -416,9 +433,7 @@ GetArrayOfStringsForFeatures(uint32_t aFeatures,
 
   #define DUP_IF_SET(n_, str_, Name_) \
     if (ProfilerFeature::Has##Name_(aFeatures)) { \
-      size_t strLen = strlen(str_); \
-      featureList[i] = static_cast<char*>( \
-        nsMemory::Clone(str_, (strLen + 1) * sizeof(char))); \
+      featureList[i] = moz_xstrdup(str_); \
       i++; \
     }
 
@@ -479,7 +494,16 @@ nsProfiler::GetBufferInfo(uint32_t* aCurrentPosition, uint32_t* aTotalSize,
   MOZ_ASSERT(aCurrentPosition);
   MOZ_ASSERT(aTotalSize);
   MOZ_ASSERT(aGeneration);
-  profiler_get_buffer_info(aCurrentPosition, aTotalSize, aGeneration);
+  Maybe<ProfilerBufferInfo> info = profiler_get_buffer_info();
+  if (info) {
+    *aCurrentPosition = info->mRangeEnd % info->mEntryCount;
+    *aTotalSize = info->mEntryCount;
+    *aGeneration = info->mRangeEnd / info->mEntryCount;
+  } else {
+    *aCurrentPosition = 0;
+    *aTotalSize = 0;
+    *aGeneration = 0;
+  }
   return NS_OK;
 }
 
@@ -515,30 +539,25 @@ nsProfiler::GatheredOOPProfile(const nsACString& aProfile)
   }
 }
 
-// When a subprocess exits before we've gathered profiles, we'll store profiles
-// for those processes until gathering starts. We'll only store up to
-// MAX_SUBPROCESS_EXIT_PROFILES. The buffer is circular, so as soon as we
-// receive another exit profile, we'll bump the oldest one out of the buffer.
-static const uint32_t MAX_SUBPROCESS_EXIT_PROFILES = 5;
-
 void
 nsProfiler::ReceiveShutdownProfile(const nsCString& aProfile)
 {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
-  if (!profiler_is_active()) {
+  Maybe<ProfilerBufferInfo> bufferInfo = profiler_get_buffer_info();
+  if (!bufferInfo) {
+    // The profiler is not running. Discard the profile.
     return;
   }
 
-  // Append the exit profile to mExitProfiles so that it can be picked up the
-  // next time a profile is requested. If we're currently gathering a profile,
-  // do not add this exit profile to it; chances are that we already have a
-  // profile from the exiting process and we don't want another one.
-  // We only keep around at most MAX_SUBPROCESS_EXIT_PROFILES exit profiles.
-  if (mExitProfiles.Length() >= MAX_SUBPROCESS_EXIT_PROFILES) {
-    mExitProfiles.RemoveElementAt(0);
-  }
-  mExitProfiles.AppendElement(ExitProfile{ aProfile, TimeStamp::Now() });
+  // Append the exit profile to mExitProfiles so that it can be picked up when
+  // a profile is requested.
+  uint64_t bufferPosition = bufferInfo->mRangeEnd;
+  mExitProfiles.AppendElement(ExitProfile{ aProfile, bufferPosition });
+
+  // This is a good time to clear out exit profiles whose time ranges have no
+  // overlap with this process's profile buffer contents any more.
+  ClearExpiredExitProfiles();
 }
 
 RefPtr<nsProfiler::GatheringPromise>
@@ -565,13 +584,10 @@ nsProfiler::StartGathering(double aSinceTime)
 
   mWriter.emplace();
 
-  TimeStamp thisProcessFirstSampleTime;
-
   // Start building up the JSON result and grab the profile from this process.
-  mWriter->Start(SpliceableJSONWriter::SingleLineStyle);
+  mWriter->Start();
   if (!profiler_stream_json_for_this_process(*mWriter, aSinceTime,
-                                             /* aIsShuttingDown */ true,
-                                             &thisProcessFirstSampleTime)) {
+                                             /* aIsShuttingDown */ false)) {
     // The profiler is inactive. This either means that it was inactive even
     // at the time that ProfileGatherer::Start() was called, or that it was
     // stopped on a different thread since that call. Either way, we need to
@@ -581,20 +597,14 @@ nsProfiler::StartGathering(double aSinceTime)
 
   mWriter->StartArrayProperty("processes");
 
-  // If we have any process exit profiles, add them immediately, and clear
-  // mExitProfiles.
+  ClearExpiredExitProfiles();
+
+  // If we have any process exit profiles, add them immediately.
   for (auto& exitProfile : mExitProfiles) {
-    if (thisProcessFirstSampleTime &&
-        exitProfile.mGatherTime < thisProcessFirstSampleTime) {
-      // Don't include exit profiles that have no overlap with the profile
-      // from our own process.
-      continue;
-    }
     if (!exitProfile.mJSON.IsEmpty()) {
       mWriter->Splice(exitProfile.mJSON.get());
     }
   }
-  mExitProfiles.Clear();
 
   mPromiseHolder.emplace();
   RefPtr<GatheringPromise> promise = mPromiseHolder->Ensure(__func__);
@@ -611,7 +621,7 @@ nsProfiler::StartGathering(double aSinceTime)
       [self](const nsCString& aResult) {
         self->GatheredOOPProfile(aResult);
       },
-      [self](ipc::PromiseRejectReason aReason) {
+      [self](ipc::ResponseRejectReason aReason) {
         self->GatheredOOPProfile(NS_LITERAL_CSTRING(""));
       });
   }
@@ -651,3 +661,14 @@ nsProfiler::ResetGathering()
   mWriter.reset();
 }
 
+void
+nsProfiler::ClearExpiredExitProfiles()
+{
+  Maybe<ProfilerBufferInfo> bufferInfo = profiler_get_buffer_info();
+  MOZ_RELEASE_ASSERT(bufferInfo, "the profiler should be running at the moment");
+  uint64_t bufferRangeStart = bufferInfo->mRangeStart;
+  // Discard any exit profiles that were gathered before bufferRangeStart.
+  mExitProfiles.RemoveElementsBy([bufferRangeStart](ExitProfile& aExitProfile){
+    return aExitProfile.mBufferPositionAtGatherTime < bufferRangeStart;
+  });
+}

@@ -9,9 +9,11 @@ description: >
 flags: [module]
 features: [let, const]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 let x;
 const x;

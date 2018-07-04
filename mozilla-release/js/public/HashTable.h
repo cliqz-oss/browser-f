@@ -56,7 +56,7 @@ using Generation = mozilla::Opaque<uint64_t>;
 // HashPolicy requirements:
 //  - see Hash Policy section below
 // AllocPolicy:
-//  - see jsalloc.h
+//  - see AllocPolicy.h
 //
 // Note:
 // - HashMap is not reentrant: Key/Value/HashPolicy/AllocPolicy members
@@ -318,7 +318,7 @@ class HashMap
 // HashPolicy requirements:
 //  - see Hash Policy section below
 // AllocPolicy:
-//  - see jsalloc.h
+//  - see AllocPolicy.h
 //
 // Note:
 // - HashSet is not reentrant: T/HashPolicy/AllocPolicy members called by
@@ -1772,9 +1772,10 @@ class HashTable : private AllocPolicy
         if (!EnsureHash<HashPolicy>(l))
             return AddPtr();
         HashNumber keyHash = prepareHash(l);
-        Entry& entry = lookup(l, keyHash, sCollisionBit);
-        AddPtr p(entry, *this, keyHash);
-        return p;
+        // Directly call the constructor in the return statement to avoid
+        // excess copying when building with Visual Studio 2017.
+        // See bug 1385181.
+        return AddPtr(lookup(l, keyHash, sCollisionBit), *this, keyHash);
     }
 
     template <typename... Args>
@@ -1791,7 +1792,9 @@ class HashTable : private AllocPolicy
             return false;
 
         MOZ_ASSERT(p.generation == generation());
+#ifdef JS_DEBUG
         MOZ_ASSERT(p.mutationCount == mutationCount);
+#endif
 
         // Changing an entry from removed to live does not affect whether we
         // are overloaded and can be handled separately.

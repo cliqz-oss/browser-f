@@ -3,16 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {actionTypes: at} = Components.utils.import("resource://activity-stream/common/Actions.jsm", {});
+const {actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
+const {Dedupe} = ChromeUtils.import("resource://activity-stream/common/Dedupe.jsm", {});
+
+const TOP_SITES_DEFAULT_ROWS = 1;
+const TOP_SITES_MAX_SITES_PER_ROW = 8;
+
+const dedupe = new Dedupe(site => site && site.url);
 
 const INITIAL_STATE = {
   App: {
     // Have we received real data from the app yet?
     initialized: false,
-    // The locale of the browser
-    locale: "",
-    // Localized strings with defaults
-    strings: {},
     // The version of the system-addon
     version: null
   },
@@ -21,12 +23,15 @@ const INITIAL_STATE = {
     // Have we received real data from history yet?
     initialized: false,
     // The history (and possibly default) links
-    rows: []
+    rows: [],
+    // Used in content only to dispatch action to TopSiteForm.
+    editForm: null
   },
   Prefs: {
     initialized: false,
     values: {}
   },
+  Theme: {className: ""},
   Dialog: {
     visible: false,
     data: {}
@@ -38,16 +43,6 @@ function App(prevState = INITIAL_STATE.App, action) {
   switch (action.type) {
     case at.INIT:
       return Object.assign({}, prevState, action.data || {}, {initialized: true});
-    case at.LOCALE_UPDATED: {
-      if (!action.data) {
-        return prevState;
-      }
-      let {locale, strings} = action.data;
-      return Object.assign({}, prevState, {
-        locale,
-        strings
-      });
-    }
     default:
       return prevState;
   }
@@ -67,7 +62,6 @@ function insertPinned(links, pinned) {
   newLinks = newLinks.map(link => {
     if (link && link.isPinned) {
       delete link.isPinned;
-      delete link.pinTitle;
       delete link.pinIndex;
     }
     return link;
@@ -76,7 +70,7 @@ function insertPinned(links, pinned) {
   // Then insert them in their specified location
   pinned.forEach((val, index) => {
     if (!val) { return; }
-    let link = Object.assign({}, val, {isPinned: true, pinIndex: index, pinTitle: val.title});
+    let link = Object.assign({}, val, {isPinned: true, pinIndex: index});
     if (index > newLinks.length) {
       newLinks[index] = link;
     } else {
@@ -90,13 +84,55 @@ function insertPinned(links, pinned) {
 function TopSites(prevState = INITIAL_STATE.TopSites, action) {
   let hasMatch;
   let newRows;
-  let pinned;
   switch (action.type) {
     case at.TOP_SITES_UPDATED:
-      if (!action.data) {
+      if (!action.data || !action.data.links) {
         return prevState;
       }
-      return Object.assign({}, prevState, {initialized: true, rows: action.data});
+      return Object.assign({}, prevState, {initialized: true, rows: action.data.links}, action.data.pref ? {pref: action.data.pref} : {});
+    case at.TOP_SITES_PREFS_UPDATED:
+      return Object.assign({}, prevState, {pref: action.data.pref});
+    case at.TOP_SITES_EDIT:
+      return Object.assign({}, prevState, {
+        editForm: {
+          index: action.data.index,
+          previewResponse: null
+        }
+      });
+    case at.TOP_SITES_CANCEL_EDIT:
+      return Object.assign({}, prevState, {editForm: null});
+    case at.PREVIEW_RESPONSE:
+      if (!prevState.editForm || action.data.url !== prevState.editForm.previewUrl) {
+        return prevState;
+      }
+      return Object.assign({}, prevState, {
+        editForm: {
+          index: prevState.editForm.index,
+          previewResponse: action.data.preview,
+          previewUrl: action.data.url
+        }
+      });
+    case at.PREVIEW_REQUEST:
+      if (!prevState.editForm) {
+        return prevState;
+      }
+      return Object.assign({}, prevState, {
+        editForm: {
+          index: prevState.editForm.index,
+          previewResponse: null,
+          previewUrl: action.data.url
+        }
+      });
+    case at.PREVIEW_REQUEST_CANCEL:
+      if (!prevState.editForm) {
+        return prevState;
+      }
+      return Object.assign({}, prevState, {
+        editForm: {
+          index: prevState.editForm.index,
+          previewResponse: null
+        }
+      });
     case at.SCREENSHOT_UPDATED:
       newRows = prevState.rows.map(row => {
         if (row && row.url === action.data.url) {
@@ -112,8 +148,8 @@ function TopSites(prevState = INITIAL_STATE.TopSites, action) {
       }
       newRows = prevState.rows.map(site => {
         if (site && site.url === action.data.url) {
-          const {bookmarkGuid, bookmarkTitle, lastModified} = action.data;
-          return Object.assign({}, site, {bookmarkGuid, bookmarkTitle, bookmarkDateCreated: lastModified});
+          const {bookmarkGuid, bookmarkTitle, dateAdded} = action.data;
+          return Object.assign({}, site, {bookmarkGuid, bookmarkTitle, bookmarkDateCreated: dateAdded});
         }
         return site;
       });
@@ -134,12 +170,10 @@ function TopSites(prevState = INITIAL_STATE.TopSites, action) {
       });
       return Object.assign({}, prevState, {rows: newRows});
     case at.PLACES_LINK_DELETED:
-    case at.PLACES_LINK_BLOCKED:
-      newRows = prevState.rows.filter(val => val && val.url !== action.data.url);
-      return Object.assign({}, prevState, {rows: newRows});
-    case at.PINNED_SITES_UPDATED:
-      pinned = action.data;
-      newRows = insertPinned(prevState.rows, pinned);
+      if (!action.data) {
+        return prevState;
+      }
+      newRows = prevState.rows.filter(site => action.data.url !== site.url);
       return Object.assign({}, prevState, {rows: newRows});
     default:
       return prevState;
@@ -188,17 +222,68 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
         }
         return section;
       });
-      // If section doesn't exist in prevState, create a new section object and
-      // append it to the sections state
+      // Otherwise, append it
       if (!hasMatch) {
-        const initialized = action.data.rows && action.data.rows.length > 0;
-        newState.push(Object.assign({title: "", initialized, rows: []}, action.data));
+        const initialized = !!(action.data.rows && action.data.rows.length > 0);
+        const section = Object.assign({title: "", rows: [], enabled: false}, action.data, {initialized});
+        newState.push(section);
       }
       return newState;
-    case at.SECTION_ROWS_UPDATE:
-      return prevState.map(section => {
+    case at.SECTION_UPDATE:
+      newState = prevState.map(section => {
         if (section && section.id === action.data.id) {
-          return Object.assign({}, section, action.data);
+          // If the action is updating rows, we should consider initialized to be true.
+          // This can be overridden if initialized is defined in the action.data
+          const initialized = action.data.rows ? {initialized: true} : {};
+
+          // Make sure pinned cards stay at their current position when rows are updated.
+          // Disabling a section (SECTION_UPDATE with empty rows) does not retain pinned cards.
+          if (action.data.rows && action.data.rows.length > 0 && section.rows.find(card => card.pinned)) {
+            const rows = Array.from(action.data.rows);
+            section.rows.forEach((card, index) => {
+              if (card.pinned) {
+                rows.splice(index, 0, card);
+              }
+            });
+            return Object.assign({}, section, initialized, Object.assign({}, action.data, {rows}));
+          }
+
+          return Object.assign({}, section, initialized, action.data);
+        }
+        return section;
+      });
+
+      if (!action.data.dedupeConfigurations) {
+        return newState;
+      }
+
+      action.data.dedupeConfigurations.forEach(dedupeConf => {
+        newState = newState.map(section => {
+          if (section.id === dedupeConf.id) {
+            const dedupedRows = dedupeConf.dedupeFrom.reduce((rows, dedupeSectionId) => {
+              const dedupeSection = newState.find(s => s.id === dedupeSectionId);
+              const [, newRows] = dedupe.group(dedupeSection.rows, rows);
+              return newRows;
+            }, section.rows);
+
+            return Object.assign({}, section, {rows: dedupedRows});
+          }
+
+          return section;
+        });
+      });
+
+      return newState;
+    case at.SECTION_UPDATE_CARD:
+      return prevState.map(section => {
+        if (section && section.id === action.data.id && section.rows) {
+          const newRows = section.rows.map(card => {
+            if (card.url === action.data.url) {
+              return Object.assign({}, card, action.data.options);
+            }
+            return card;
+          });
+          return Object.assign({}, section, {rows: newRows});
         }
         return section;
       });
@@ -210,8 +295,30 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
         rows: section.rows.map(item => {
           // find the item within the rows that is attempted to be bookmarked
           if (item.url === action.data.url) {
-            const {bookmarkGuid, bookmarkTitle, lastModified} = action.data;
-            Object.assign(item, {bookmarkGuid, bookmarkTitle, bookmarkDateCreated: lastModified});
+            const {bookmarkGuid, bookmarkTitle, dateAdded} = action.data;
+            return Object.assign({}, item, {
+              bookmarkGuid,
+              bookmarkTitle,
+              bookmarkDateCreated: dateAdded,
+              type: "bookmark"
+            });
+          }
+          return item;
+        })
+      }));
+    case at.PLACES_SAVED_TO_POCKET:
+      if (!action.data) {
+        return prevState;
+      }
+      return prevState.map(section => Object.assign({}, section, {
+        rows: section.rows.map(item => {
+          if (item.url === action.data.url) {
+            return Object.assign({}, item, {
+              open_url: action.data.open_url,
+              pocket_id: action.data.pocket_id,
+              title: action.data.title,
+              type: "pocket"
+            });
           }
           return item;
         })
@@ -228,6 +335,9 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
             delete newSite.bookmarkGuid;
             delete newSite.bookmarkTitle;
             delete newSite.bookmarkDateCreated;
+            if (!newSite.type || newSite.type === "bookmark") {
+              newSite.type = "history";
+            }
             return newSite;
           }
           return item;
@@ -235,8 +345,15 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
       }));
     case at.PLACES_LINK_DELETED:
     case at.PLACES_LINK_BLOCKED:
+      if (!action.data) {
+        return prevState;
+      }
       return prevState.map(section =>
         Object.assign({}, section, {rows: section.rows.filter(site => site.url !== action.data.url)}));
+    case at.DELETE_FROM_POCKET:
+    case at.ARCHIVE_FROM_POCKET:
+      return prevState.map(section =>
+        Object.assign({}, section, {rows: section.rows.filter(site => site.pocket_id !== action.data.pocket_id)}));
     default:
       return prevState;
   }
@@ -246,6 +363,10 @@ function Snippets(prevState = INITIAL_STATE.Snippets, action) {
   switch (action.type) {
     case at.SNIPPETS_DATA:
       return Object.assign({}, prevState, {initialized: true}, action.data);
+    case at.SNIPPET_BLOCKED:
+      return Object.assign({}, prevState, {blockList: prevState.blockList.concat(action.data)});
+    case at.SNIPPETS_BLOCKLIST_CLEARED:
+      return Object.assign({}, prevState, {blockList: []});
     case at.SNIPPETS_RESET:
       return INITIAL_STATE.Snippets;
     default:
@@ -253,9 +374,19 @@ function Snippets(prevState = INITIAL_STATE.Snippets, action) {
   }
 }
 
+function Theme(prevState = INITIAL_STATE.Theme, action) {
+  switch (action.type) {
+    case at.THEME_UPDATE:
+      return Object.assign({}, prevState, action.data);
+    default:
+      return prevState;
+  }
+}
+
 this.INITIAL_STATE = INITIAL_STATE;
+this.TOP_SITES_DEFAULT_ROWS = TOP_SITES_DEFAULT_ROWS;
+this.TOP_SITES_MAX_SITES_PER_ROW = TOP_SITES_MAX_SITES_PER_ROW;
 
-this.reducers = {TopSites, App, Snippets, Prefs, Dialog, Sections};
-this.insertPinned = insertPinned;
+this.reducers = {TopSites, App, Snippets, Prefs, Dialog, Sections, Theme};
 
-this.EXPORTED_SYMBOLS = ["reducers", "INITIAL_STATE", "insertPinned"];
+const EXPORTED_SYMBOLS = ["reducers", "INITIAL_STATE", "insertPinned", "TOP_SITES_DEFAULT_ROWS", "TOP_SITES_MAX_SITES_PER_ROW"];

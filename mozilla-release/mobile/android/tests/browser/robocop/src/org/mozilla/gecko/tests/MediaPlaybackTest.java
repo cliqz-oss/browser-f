@@ -4,7 +4,6 @@
 
 package org.mozilla.gecko.tests;
 
-import org.mozilla.gecko.Actions;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.Tab;
 import org.mozilla.gecko.Tabs;
@@ -18,20 +17,19 @@ import android.content.Context;
 
 import android.app.Notification;
 import android.app.NotificationManager;
-import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.service.notification.StatusBarNotification;
 
 import com.robotium.solo.Condition;
 
-abstract class MediaPlaybackTest extends BaseTest {
+abstract class MediaPlaybackTest extends OldBaseTest {
     private Context mContext;
     private int mPrevIcon = 0;
     protected String mPrevURL = "";
     private JavascriptBridge mJs;
 
     private static final int UI_CHANGED_WAIT_MS = 6000;
-    private static final int MEDIA_PLAYBACK_CHANGED_WAIT_MS = 15000;
+    private static final int MEDIA_PLAYBACK_CHANGED_WAIT_MS = 30000;
 
     protected final void info(String msg) {
         mAsserter.dumpLog(msg);
@@ -215,7 +213,7 @@ abstract class MediaPlaybackTest extends BaseTest {
 
         Notification notification = sbns[0].getNotification();
         mAsserter.is(notification.icon,
-                     R.drawable.flat_icon,
+                     R.drawable.ic_status_logo,
                      "Notification shows correct small icon.");
         mAsserter.is(notification.extras.get(Notification.EXTRA_TITLE),
                      tab.getTitle(),
@@ -277,7 +275,7 @@ abstract class MediaPlaybackTest extends BaseTest {
     }
 
     protected final void requestAudioFocus() {
-        getAudioFocusAgent().notifyStartedPlaying();
+        AudioFocusAgent.notifyStartedPlaying();
         if (getAudioFocusAgent().getAudioFocusState() == State.OWN_FOCUS) {
             return;
         }
@@ -286,7 +284,7 @@ abstract class MediaPlaybackTest extends BaseTest {
         waitForCondition(new Condition() {
             @Override
             public boolean isSatisfied() {
-                getAudioFocusAgent().notifyStartedPlaying();
+                AudioFocusAgent.notifyStartedPlaying();
                 return getAudioFocusAgent().getAudioFocusState() == State.OWN_FOCUS;
             }
         }, MAX_WAIT_MS);

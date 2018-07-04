@@ -5,16 +5,14 @@
 add_task(async function test() {
   await new Promise(resolve => {
 
-  let pwmgr = Cc["@mozilla.org/login-manager;1"].
-                getService(Ci.nsILoginManager);
-  pwmgr.removeAllLogins();
+  Services.logins.removeAllLogins();
 
   // add login data
   let nsLoginInfo = new Components.Constructor("@mozilla.org/login-manager/loginInfo;1",
                                                  Ci.nsILoginInfo, "init");
   let login = new nsLoginInfo("http://example.com/", "http://example.com/", null,
                               "user", "password", "u1", "p1");
-  pwmgr.addLogin(login);
+  Services.logins.addLogin(login);
 
   // Open the password manager dialog
   const PWMGR_DLG = "chrome://passwordmgr/content/passwordManager.xul";
@@ -49,12 +47,12 @@ add_task(async function test() {
        "Last Changed column is displayed");
 
     // cleanup
-    Services.ww.registerNotification(function(aSubject, aTopic, aData) {
+    Services.ww.registerNotification(function notification(aSubject, aTopic, aData) {
       if (aSubject.location == pwmgrdlg.location && aTopic == "domwindowclosed") {
         // unregister ourself
-        Services.ww.unregisterNotification(arguments.callee);
+        Services.ww.unregisterNotification(notification);
 
-        pwmgr.removeAllLogins();
+        Services.logins.removeAllLogins();
 
         resolve();
       }

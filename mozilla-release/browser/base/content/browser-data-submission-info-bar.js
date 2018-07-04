@@ -21,7 +21,7 @@ var gDataNotificationInfoBar = {
   },
 
   get _log() {
-    let Log = Cu.import("resource://gre/modules/Log.jsm", {}).Log;
+    let Log = ChromeUtils.import("resource://gre/modules/Log.jsm", {}).Log;
     delete this._log;
     return this._log = Log.repository.getLoggerWithMessagePrefix(LOGGER_NAME, LOGGER_PREFIX);
   },
@@ -63,13 +63,7 @@ var gDataNotificationInfoBar = {
       popup: null,
       callback: () => {
         this._actionTaken = true;
-        // The advanced subpanes are only supported in the old organization, which will
-        // be removed by bug 1349689.
-        if (Services.prefs.getBoolPref("browser.preferences.useOldOrganization")) {
-          window.openAdvancedPreferences("dataChoicesTab", {origin: "dataReporting"});
-        } else {
-          window.openPreferences("privacy-reports", {origin: "dataReporting"});
-        }
+        window.openPreferences("privacy-reports", {origin: "dataReporting"});
       },
     }];
 
@@ -124,7 +118,7 @@ var gDataNotificationInfoBar = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIObserver,
     Ci.nsISupportsWeakReference,
   ]),

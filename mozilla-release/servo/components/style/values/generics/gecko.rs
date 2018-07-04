@@ -6,13 +6,15 @@
 //! unshipped at some point in the future.
 
 /// A generic value for scroll snap points.
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue, ToCss)]
+#[cfg_attr(feature = "gecko", derive(MallocSizeOf))]
+#[derive(Clone, Copy, Debug, PartialEq, SpecifiedValueInfo, ToComputedValue,
+         ToCss)]
 pub enum ScrollSnapPoint<LengthOrPercentage> {
     /// `none`
     None,
     /// `repeat(<length-or-percentage>)`
     #[css(function)]
-    Repeat(LengthOrPercentage)
+    Repeat(LengthOrPercentage),
 }
 
 impl<L> ScrollSnapPoint<L> {

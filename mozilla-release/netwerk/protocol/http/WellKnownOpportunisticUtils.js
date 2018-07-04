@@ -5,9 +5,7 @@
 
 'use strict';
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const WELLKNOWNOPPORTUNISTICUTILS_CONTRACTID = "@mozilla.org/network/well-known-opportunistic-utils;1";
 const WELLKNOWNOPPORTUNISTICUTILS_CID = Components.ID("{b4f96c89-5238-450c-8bda-e12c26f1d150}");
@@ -22,13 +20,13 @@ WellKnownOpportunisticUtils.prototype = {
   classID: WELLKNOWNOPPORTUNISTICUTILS_CID,
   contractID: WELLKNOWNOPPORTUNISTICUTILS_CONTRACTID,
   classDescription: "Well-Known Opportunistic Utils",
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWellKnownOpportunisticUtils]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWellKnownOpportunisticUtils]),
 
     verify: function(aJSON, aOrigin, aAlternatePort) {
 	try {
 	  let obj = JSON.parse(aJSON.toLowerCase());
 	  let ports = obj[aOrigin.toLowerCase()]['tls-ports'];
-	  if (ports.indexOf(aAlternatePort) == -1) {
+	  if (!ports.includes(aAlternatePort)) {
 	    throw "invalid port";
 	  }
 	  this.lifetime = obj[aOrigin.toLowerCase()]['lifetime'];

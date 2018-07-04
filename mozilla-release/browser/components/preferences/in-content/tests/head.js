@@ -1,58 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Components.utils.import("resource://gre/modules/Promise.jsm");
-
-// Tests within /browser/components/preferences/in-content/tests/
-// test the "old" preferences organization, before it was reorganized.
-// Thus, all of these tests should revert back to the "oldOrganization"
-// before running.
-Services.prefs.setBoolPref("browser.preferences.useOldOrganization", true);
-registerCleanupFunction(function() {
-  Services.prefs.clearUserPref("browser.preferences.useOldOrganization");
-});
+ChromeUtils.import("resource://gre/modules/Promise.jsm", this);
 
 const kDefaultWait = 2000;
-const REMOVE_DIALOG_URL = "chrome://browser/content/preferences/siteDataRemoveSelected.xul";
-const { SiteDataManager } = Cu.import("resource:///modules/SiteDataManager.jsm", {});
-const mockSiteDataManager = {
-
-  _originalGetQuotaUsage: null,
-  _originalRemoveQuotaUsage: null,
-
-  _getQuotaUsage() {
-    let results = [];
-    this.fakeSites.forEach(site => {
-      results.push({
-        origin: site.principal.origin,
-        usage: site.usage,
-        persisted: site.persisted
-      });
-    });
-    SiteDataManager._getQuotaUsagePromise = Promise.resolve(results);
-    return SiteDataManager._getQuotaUsagePromise;
-  },
-
-  _removeQuotaUsage(site) {
-    var target = site.principals[0].URI.host;
-    this.fakeSites = this.fakeSites.filter(fakeSite => {
-      return fakeSite.principal.URI.host != target;
-    });
-  },
-
-  register() {
-    this._originalGetQuotaUsage = SiteDataManager._getQuotaUsage;
-    SiteDataManager._getQuotaUsage = this._getQuotaUsage.bind(this);
-    this._originalRemoveQuotaUsage = SiteDataManager._removeQuotaUsage;
-    SiteDataManager._removeQuotaUsage = this._removeQuotaUsage.bind(this);
-    this.fakeSites = null;
-  },
-
-  unregister() {
-    SiteDataManager._getQuotaUsage = this._originalGetQuotaUsage;
-    SiteDataManager._removeQuotaUsage = this._originalRemoveQuotaUsage;
-  }
-};
 
 function is_hidden(aElement) {
   var style = aElement.ownerGlobal.getComputedStyle(aElement);
@@ -83,7 +34,7 @@ function open_preferences(aCallback) {
   let newTabBrowser = gBrowser.getBrowserForTab(gBrowser.selectedTab);
   newTabBrowser.addEventListener("Initialized", function() {
     aCallback(gBrowser.contentWindow);
-  }, {capture: true, once: true});
+  }, { capture: true, once: true });
 }
 
 function openAndLoadSubDialog(aURL, aFeatures = null, aParams = null, aClosingCallback = null) {
@@ -100,7 +51,7 @@ function promiseLoadSubDialog(aURL) {
       content.gSubDialog._dialogStack.removeEventListener("dialogopen", dialogopen);
 
       is(aEvent.detail.dialog._frame.contentWindow.location.toString(), aURL,
-         "Check the proper URL is loaded");
+        "Check the proper URL is loaded");
 
       // Check visibility
       is_element_visible(aEvent.detail.dialog._overlay, "Overlay is visible");
@@ -116,7 +67,9 @@ function promiseLoadSubDialog(aURL) {
       }
       is(expectedStyleSheetURLs.length, 0, "All expectedStyleSheetURLs should have been found");
 
-      resolve(aEvent.detail.dialog._frame.contentWindow);
+      // Wait for the next event tick to make sure the remaining part of the
+      // testcase runs after the dialog gets ready for input.
+      executeSoon(() => resolve(aEvent.detail.dialog._frame.contentWindow));
     });
   });
 }
@@ -152,7 +105,7 @@ function waitForEvent(aSubject, aEventName, aTimeoutMs, aTarget) {
 
   var listener = function(aEvent) {
     if (aTarget && aTarget !== aEvent.target)
-        return;
+      return;
 
     // stop the timeout clock and resume
     clearTimeout(timerID);
@@ -168,113 +121,46 @@ function waitForEvent(aSubject, aEventName, aTimeoutMs, aTarget) {
   return eventDeferred.promise.then(cleanup, cleanup);
 }
 
-function openPreferencesViaOpenPreferencesAPI(aPane, aAdvancedTab, aOptions) {
+function openPreferencesViaOpenPreferencesAPI(aPane, aOptions) {
   return new Promise(resolve => {
+    let finalPrefPaneLoaded = TestUtils.topicObserved("sync-pane-loaded", () => true);
     gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank");
-    openPreferences(aPane, aAdvancedTab ? {advancedTab: aAdvancedTab} : undefined);
+    openPreferences(aPane);
     let newTabBrowser = gBrowser.selectedBrowser;
 
     newTabBrowser.addEventListener("Initialized", function() {
-      newTabBrowser.contentWindow.addEventListener("load", function() {
+      newTabBrowser.contentWindow.addEventListener("load", async function() {
         let win = gBrowser.contentWindow;
         let selectedPane = win.history.state;
-        let doc = win.document;
-        let selectedAdvancedTab = aAdvancedTab && doc.getElementById("advancedPrefs").selectedTab.id;
+        await finalPrefPaneLoaded;
         if (!aOptions || !aOptions.leaveOpen)
           gBrowser.removeCurrentTab();
-        resolve({selectedPane, selectedAdvancedTab});
-      }, {once: true});
-    }, {capture: true, once: true});
+        resolve({ selectedPane });
+      }, { once: true });
+    }, { capture: true, once: true });
 
   });
 }
 
-function waitForCondition(aConditionFn, aMaxTries = 50, aCheckInterval = 100) {
-  return new Promise((resolve, reject) => {
-    function tryNow() {
-      tries++;
-      let rv = aConditionFn();
-      if (rv) {
-        resolve(rv);
-      } else if (tries < aMaxTries) {
-        tryAgain();
-      } else {
-        reject("Condition timed out: " + aConditionFn.toSource());
-      }
+async function evaluateSearchResults(keyword, searchReults) {
+  searchReults = Array.isArray(searchReults) ? searchReults : [searchReults];
+  searchReults.push("header-searchResults");
+
+  let searchInput = gBrowser.contentDocument.getElementById("searchInput");
+  searchInput.focus();
+  let searchCompletedPromise = BrowserTestUtils.waitForEvent(
+    gBrowser.contentWindow, "PreferencesSearchCompleted", evt => evt.detail == keyword);
+  EventUtils.sendString(keyword);
+  await searchCompletedPromise;
+
+  let mainPrefTag = gBrowser.contentDocument.getElementById("mainPrefPane");
+  for (let i = 0; i < mainPrefTag.childElementCount; i++) {
+    let child = mainPrefTag.children[i];
+    if (searchReults.includes(child.id)) {
+      is_element_visible(child, "Should be in search results");
+    } else if (child.id) {
+      is_element_hidden(child, "Should not be in search results");
     }
-    function tryAgain() {
-      setTimeout(tryNow, aCheckInterval);
-    }
-    let tries = 0;
-    tryAgain();
-  });
+  }
 }
 
-function promiseWindowDialogOpen(buttonAction, url) {
-  return new Promise(resolve => {
-    Services.ww.registerNotification(function onOpen(subj, topic, data) {
-      if (topic == "domwindowopened" && subj instanceof Ci.nsIDOMWindow) {
-        subj.addEventListener("load", function onLoad() {
-          if (subj.document.documentURI == url) {
-            Services.ww.unregisterNotification(onOpen);
-            let doc = subj.document.documentElement;
-            doc.getButton(buttonAction).click();
-            resolve();
-          }
-        }, {once: true});
-      }
-    });
-  });
-}
-
-function promiseAlertDialogOpen(buttonAction) {
-  return promiseWindowDialogOpen(buttonAction, "chrome://global/content/commonDialog.xul");
-}
-
-function openSettingsDialog() {
-  let win = gBrowser.selectedBrowser.contentWindow;
-  let doc = gBrowser.selectedBrowser.contentDocument;
-  let settingsBtn = doc.getElementById("siteDataSettings");
-  let dialogOverlay = win.gSubDialog._preloadDialog._overlay;
-  let dialogLoadPromise = promiseLoadSubDialog("chrome://browser/content/preferences/siteDataSettings.xul");
-  let dialogInitPromise = TestUtils.topicObserved("sitedata-settings-init", () => true);
-  let fullyLoadPromise = Promise.all([ dialogLoadPromise, dialogInitPromise ]).then(() => {
-    is(dialogOverlay.style.visibility, "visible", "The Settings dialog should be visible");
-  });
-  settingsBtn.doCommand();
-  return fullyLoadPromise;
-}
-
-function assertSitesListed(doc, hosts) {
-  let win = gBrowser.selectedBrowser.contentWindow;
-  let frameDoc = win.gSubDialog._topDialog._frame.contentDocument;
-  let removeBtn = frameDoc.getElementById("removeSelected");
-  let removeAllBtn = frameDoc.getElementById("removeAll");
-  let sitesList = frameDoc.getElementById("sitesList");
-  let totalSitesNumber = sitesList.getElementsByTagName("richlistitem").length;
-  is(totalSitesNumber, hosts.length, "Should list the right sites number");
-  hosts.forEach(host => {
-    let site = sitesList.querySelector(`richlistitem[host="${host}"]`);
-    ok(site, `Should list the site of ${host}`);
-  });
-  is(removeBtn.disabled, false, "Should enable the removeSelected button");
-  is(removeAllBtn.disabled, false, "Should enable the removeAllBtn button");
-}
-
-function promiseSitesUpdated() {
-  return TestUtils.topicObserved("sitedatamanager:sites-updated", () => true);
-}
-
-function promiseSettingsDialogClose() {
-  return new Promise(resolve => {
-    let win = gBrowser.selectedBrowser.contentWindow;
-    let dialogOverlay = win.gSubDialog._topDialog._overlay;
-    let dialogWin = win.gSubDialog._topDialog._frame.contentWindow;
-    dialogWin.addEventListener("unload", function unload() {
-      if (dialogWin.document.documentURI === "chrome://browser/content/preferences/siteDataSettings.xul") {
-        isnot(dialogOverlay.style.visibility, "visible", "The Settings dialog should be hidden");
-        resolve();
-      }
-    }, { once: true });
-  });
-}

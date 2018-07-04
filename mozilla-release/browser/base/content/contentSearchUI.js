@@ -9,6 +9,7 @@ this.ContentSearchUIController = (function() {
 const MAX_DISPLAYED_SUGGESTIONS = 6;
 const SUGGESTION_ID_PREFIX = "searchSuggestion";
 const ONE_OFF_ID_PREFIX = "oneOff";
+const DEFAULT_INPUT_ICON = "chrome://browser/skin/search-glass.svg";
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -50,7 +51,7 @@ function ContentSearchUIController(inputElement, tableParent, healthReportKey,
   this.input.setAttribute("aria-controls", tableID);
   tableParent.appendChild(this._makeTable(tableID));
 
-  this.input.addEventListener("keypress", this);
+  this.input.addEventListener("keydown", this);
   this.input.addEventListener("input", this);
   this.input.addEventListener("focus", this);
   this.input.addEventListener("blur", this);
@@ -91,6 +92,7 @@ ContentSearchUIController.prototype = {
       icon,
     };
     this._updateDefaultEngineHeader();
+    this._updateDefaultEngineIcon();
 
     if (engine && document.activeElement == this.input) {
       this._speculativeConnect();
@@ -246,7 +248,8 @@ ContentSearchUIController.prototype = {
     let searchText = this.input;
     let searchTerms;
     if (this._table.hidden ||
-        aEvent.originalTarget.id == "contentSearchDefaultEngineHeader" ||
+        (aEvent.originalTarget &&
+          aEvent.originalTarget.id == "contentSearchDefaultEngineHeader") ||
         aEvent instanceof KeyboardEvent) {
       searchTerms = searchText.value;
     } else {
@@ -298,7 +301,7 @@ ContentSearchUIController.prototype = {
     this._updateSearchWithHeader();
   },
 
-  _onKeypress(event) {
+  _onKeydown(event) {
     let selectedIndexDelta = 0;
     let selectedSuggestionDelta = 0;
     let selectedOneOffDelta = 0;
@@ -477,6 +480,8 @@ ContentSearchUIController.prototype = {
   _onMousemove(event) {
     let idx = this._indexOfTableItem(event.target);
     if (idx >= this.numSuggestions) {
+      // Deselect any search suggestion that has been selected.
+      this.selectedIndex = -1;
       this.selectedButtonIndex = idx - this.numSuggestions;
       return;
     }
@@ -606,6 +611,14 @@ ContentSearchUIController.prototype = {
       this._strings.searchSettings;
   },
 
+  _updateDefaultEngineIcon() {
+    let eng = this._engines.find(engine => engine.name === this.defaultEngine.name);
+    // We only show the engines icon for default engines, otherwise show
+    // a default; default engines have an identifier
+    let icon = eng.identifier ? this.defaultEngine.icon : DEFAULT_INPUT_ICON;
+    document.body.style.setProperty("--newtab-search-icon", "url(" + icon + ")");
+  },
+
   _updateDefaultEngineHeader() {
     let header = document.getElementById("contentSearchDefaultEngineHeader");
     header.firstChild.setAttribute("src", this.defaultEngine.icon);
@@ -624,12 +637,18 @@ ContentSearchUIController.prototype = {
       return;
     }
     let searchWithHeader = document.getElementById("contentSearchSearchWithHeader");
+    let labels = searchWithHeader.querySelectorAll("label");
     if (this.input.value) {
-      // eslint-disable-next-line no-unsanitized/property
-      searchWithHeader.innerHTML = this._strings.searchForSomethingWith;
-      searchWithHeader.querySelector(".contentSearchSearchWithHeaderSearchText").textContent = this.input.value;
+      let header = this._strings.searchForSomethingWith2;
+      // Translators can use both %S and %1$S.
+      header = header.replace("%1$S", "%S").split("%S");
+      labels[0].textContent = header[0];
+      labels[1].textContent = this.input.value;
+      labels[2].textContent = header[1];
     } else {
-      searchWithHeader.textContent = this._strings.searchWithHeader;
+      labels[0].textContent = this._strings.searchWithHeader;
+      labels[1].textContent = "";
+      labels[2].textContent = "";
     }
   },
 
@@ -787,6 +806,13 @@ ContentSearchUIController.prototype = {
     header.setAttribute("class", "contentSearchHeader");
     headerRow.appendChild(header);
     header.id = "contentSearchSearchWithHeader";
+    let start = document.createElement("label");
+    let inputLabel = document.createElement("label");
+    inputLabel.setAttribute("class", "contentSearchSearchWithHeaderSearchText");
+    let end = document.createElement("label");
+    header.appendChild(start);
+    header.appendChild(inputLabel);
+    header.appendChild(end);
     this._oneOffsTable.appendChild(headerRow);
 
     let button = document.createElementNS(HTML_NS, "button");

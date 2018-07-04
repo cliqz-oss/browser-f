@@ -2,23 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cr = Components.results;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 
 do_get_profile();
-var dirSvc = Cc["@mozilla.org/file/directory_service;1"].
-             getService(Ci.nsIProperties);
-
 var gDBConn = null;
 
 function getTestDB() {
-  var db = dirSvc.get("ProfD", Ci.nsIFile);
+  var db = Services.dirsvc.get("ProfD", Ci.nsIFile);
   db.append("test_storage.sqlite");
   return db;
 }
@@ -82,10 +75,6 @@ function asyncCleanup() {
   deleteTestDB();
 }
 
-function getService() {
-  return Cc["@mozilla.org/storage/service;1"].getService(Ci.mozIStorageService);
-}
-
 /**
  * Get a connection to the test database.  Creates and caches the connection
  * if necessary, otherwise reuses the existing cached connection. This
@@ -95,7 +84,7 @@ function getService() {
  */
 function getOpenedDatabase() {
   if (!gDBConn) {
-    gDBConn = getService().openDatabase(getTestDB());
+    gDBConn = Services.storage.openDatabase(getTestDB());
   }
   return gDBConn;
 }
@@ -109,7 +98,7 @@ function getOpenedDatabase() {
  */
 function getOpenedUnsharedDatabase() {
   if (!gDBConn) {
-    gDBConn = getService().openUnsharedDatabase(getTestDB());
+    gDBConn = Services.storage.openUnsharedDatabase(getTestDB());
   }
   return gDBConn;
 }
@@ -122,7 +111,7 @@ function getOpenedUnsharedDatabase() {
  * @returns the mozIStorageConnection for the file.
  */
 function getDatabase(aFile) {
-  return getService().openDatabase(aFile);
+  return Services.storage.openDatabase(aFile);
 }
 
 function createStatement(aSQL) {
@@ -183,7 +172,7 @@ function verifyQuery(aSQLString, aBind, aResults) {
   let stmt = getOpenedDatabase().createStatement(aSQLString);
   stmt.bindByIndex(0, aBind);
   try {
-    do_check_true(stmt.executeStep());
+    Assert.ok(stmt.executeStep());
     let nCols = stmt.numEntries;
     if (aResults.length != nCols)
       do_throw("Expected " + aResults.length + " columns in result but " +
@@ -192,26 +181,26 @@ function verifyQuery(aSQLString, aBind, aResults) {
       let expectedVal = aResults[iCol];
       let valType = stmt.getTypeOfIndex(iCol);
       if (expectedVal === null) {
-        do_check_eq(stmt.VALUE_TYPE_NULL, valType);
-        do_check_true(stmt.getIsNull(iCol));
+        Assert.equal(stmt.VALUE_TYPE_NULL, valType);
+        Assert.ok(stmt.getIsNull(iCol));
       } else if (typeof expectedVal == "number") {
         if (Math.floor(expectedVal) == expectedVal) {
-          do_check_eq(stmt.VALUE_TYPE_INTEGER, valType);
-          do_check_eq(expectedVal, stmt.getInt32(iCol));
+          Assert.equal(stmt.VALUE_TYPE_INTEGER, valType);
+          Assert.equal(expectedVal, stmt.getInt32(iCol));
         } else {
-          do_check_eq(stmt.VALUE_TYPE_FLOAT, valType);
-          do_check_eq(expectedVal, stmt.getDouble(iCol));
+          Assert.equal(stmt.VALUE_TYPE_FLOAT, valType);
+          Assert.equal(expectedVal, stmt.getDouble(iCol));
         }
       } else if (typeof expectedVal == "string") {
-        do_check_eq(stmt.VALUE_TYPE_TEXT, valType);
-        do_check_eq(expectedVal, stmt.getUTF8String(iCol));
+        Assert.equal(stmt.VALUE_TYPE_TEXT, valType);
+        Assert.equal(expectedVal, stmt.getUTF8String(iCol));
       } else { // blob
-        do_check_eq(stmt.VALUE_TYPE_BLOB, valType);
+        Assert.equal(stmt.VALUE_TYPE_BLOB, valType);
         let count = { value: 0 }, blob = { value: null };
         stmt.getBlob(iCol, count, blob);
-        do_check_eq(count.value, expectedVal.length);
+        Assert.equal(count.value, expectedVal.length);
         for (let i = 0; i < count.value; i++) {
-          do_check_eq(expectedVal[i], blob.value[i]);
+          Assert.equal(expectedVal[i], blob.value[i]);
         }
       }
     }
@@ -234,7 +223,7 @@ function getTableRowCount(aTableName) {
     "SELECT COUNT(1) AS count FROM " + aTableName
   );
   try {
-    do_check_true(countStmt.executeStep());
+    Assert.ok(countStmt.executeStep());
     currentRows = countStmt.row.count;
   } finally {
     countStmt.finalize();
@@ -278,7 +267,7 @@ function openAsyncDatabase(file, options) {
         properties.setProperty(k, options[k]);
       }
     }
-    getService().openAsyncDatabase(file, properties, function(status, db) {
+    Services.storage.openAsyncDatabase(file, properties, function(status, db) {
       if (Components.isSuccessCode(status)) {
         resolve(db.QueryInterface(Ci.mozIStorageAsyncConnection));
       } else {

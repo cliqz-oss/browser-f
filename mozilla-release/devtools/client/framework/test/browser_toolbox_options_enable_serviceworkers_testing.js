@@ -6,8 +6,6 @@
 // Test that enabling Service Workers testing option enables the
 // mServiceWorkersTestingEnabled attribute added to nsPIDOMWindow.
 
-const COMMON_FRAME_SCRIPT_URL =
-  "chrome://devtools/content/shared/frame-script-utils.js";
 const ROOT_TEST_DIR =
   getRootDirectory(gTestPath);
 const FRAME_SCRIPT_URL =
@@ -35,7 +33,7 @@ function init() {
     let target = TargetFactory.forTab(tab);
     let linkedBrowser = tab.linkedBrowser;
 
-    linkedBrowser.messageManager.loadFrameScript(COMMON_FRAME_SCRIPT_URL, false);
+    loadFrameScriptUtils(linkedBrowser);
     linkedBrowser.messageManager.loadFrameScript(FRAME_SCRIPT_URL, false);
 
     gDevTools.showToolbox(target).then(testSelectTool);
@@ -83,15 +81,10 @@ function toggleServiceWorkersTestingCheckbox() {
 }
 
 function reload() {
-  let deferred = defer();
-
-  gBrowser.selectedBrowser.addEventListener("load", function onLoad(evt) {
-    gBrowser.selectedBrowser.removeEventListener(evt.type, onLoad, true);
-    deferred.resolve();
-  }, true);
+  let promise = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   executeInContent("devtools:test:reload", {}, {}, false);
-  return deferred.promise;
+  return promise;
 }
 
 function testRegisterSuccesses(data) {
@@ -114,7 +107,7 @@ function start() {
     .then(reload)
     .then(register)
     .then(testRegisterFails)
-    .catch(function (e) {
+    .catch(function(e) {
       ok(false, "Some test failed with error " + e);
     }).then(finishUp);
 }

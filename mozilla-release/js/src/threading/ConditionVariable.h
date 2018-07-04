@@ -22,6 +22,8 @@
 
 namespace js {
 
+template <class T> class ExclusiveData;
+
 enum class CVStatus {
   NoTimeout,
   Timeout
@@ -96,7 +98,7 @@ public:
   // encounter substantially longer delays, depending on system load.
   CVStatus wait_for(UniqueLock<Mutex>& lock,
                     const mozilla::TimeDuration& rel_time) {
-    return impl_.wait_for(lock.lock, rel_time) == mozilla::detail::CVStatus::Timeout
+    return impl_.wait_for(lock.lock, rel_time) == mozilla::CVStatus::Timeout
       ? CVStatus::Timeout : CVStatus::NoTimeout;
   }
 
@@ -115,6 +117,7 @@ public:
 private:
   ConditionVariable(const ConditionVariable&) = delete;
   ConditionVariable& operator=(const ConditionVariable&) = delete;
+  template <class T> friend class ExclusiveWaitableData;
 
   mozilla::detail::ConditionVariableImpl impl_;
 };

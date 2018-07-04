@@ -8,7 +8,6 @@
 #include "nsParserCIID.h"
 #include "CParserContext.h"
 #include "nsIExpatSink.h"
-#include "nsIExtendedExpatSink.h"
 #include "nsIContentSink.h"
 #include "nsParserMsgUtils.h"
 #include "nsIURL.h"
@@ -183,60 +182,6 @@ Driver_HandleExternalEntityRef(void *aExternalEntityRefHandler,
                                          aPublicId);
 }
 
-static void
-Driver_HandleStartNamespaceDecl(void *aUserData,
-                                const XML_Char *aPrefix,
-                                const XML_Char *aUri)
-{
-  NS_ASSERTION(aUserData, "expat driver should exist");
-  if (aUserData) {
-    static_cast<nsExpatDriver*>(aUserData)->
-      HandleStartNamespaceDecl(aPrefix, aUri);
-  }
-}
-
-static void
-Driver_HandleEndNamespaceDecl(void *aUserData,
-                              const XML_Char *aPrefix)
-{
-  NS_ASSERTION(aUserData, "expat driver should exist");
-  if (aUserData) {
-    static_cast<nsExpatDriver*>(aUserData)->
-      HandleEndNamespaceDecl(aPrefix);
-  }
-}
-
-static void
-Driver_HandleNotationDecl(void *aUserData,
-                          const XML_Char *aNotationName,
-                          const XML_Char *aBase,
-                          const XML_Char *aSysid,
-                          const XML_Char *aPubid)
-{
-  NS_ASSERTION(aUserData, "expat driver should exist");
-  if (aUserData) {
-    static_cast<nsExpatDriver*>(aUserData)->
-      HandleNotationDecl(aNotationName, aBase, aSysid, aPubid);
-  }
-}
-
-static void
-Driver_HandleUnparsedEntityDecl(void *aUserData,
-                                const XML_Char *aEntityName,
-                                const XML_Char *aBase,
-                                const XML_Char *aSysid,
-                                const XML_Char *aPubid,
-                                const XML_Char *aNotationName)
-{
-  NS_ASSERTION(aUserData, "expat driver should exist");
-  if (aUserData) {
-    static_cast<nsExpatDriver*>(aUserData)->
-      HandleUnparsedEntityDecl(aEntityName, aBase, aSysid, aPubid,
-                               aNotationName);
-  }
-}
-
-
 /***************************** END CALL BACKS ********************************/
 
 /***************************** CATALOG UTILS *********************************/
@@ -334,7 +279,7 @@ NS_INTERFACE_MAP_END
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsExpatDriver)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsExpatDriver)
 
-NS_IMPL_CYCLE_COLLECTION(nsExpatDriver, mSink, mExtendedSink)
+NS_IMPL_CYCLE_COLLECTION(nsExpatDriver, mSink)
 
 nsExpatDriver::nsExpatDriver()
   : mExpatParser(nullptr),
@@ -534,58 +479,6 @@ nsExpatDriver::HandleEndCdataSection()
 }
 
 nsresult
-nsExpatDriver::HandleStartNamespaceDecl(const char16_t* aPrefix,
-                                        const char16_t* aUri)
-{
-  if (mExtendedSink) {
-    nsresult rv = mExtendedSink->HandleStartNamespaceDecl(aPrefix, aUri);
-    MaybeStopParser(rv);
-  }
-  return NS_OK;
-}
-
-nsresult
-nsExpatDriver::HandleEndNamespaceDecl(const char16_t* aPrefix)
-{
-  if (mExtendedSink && mInternalState != NS_ERROR_HTMLPARSER_STOPPARSING) {
-    nsresult rv = mExtendedSink->HandleEndNamespaceDecl(aPrefix);
-    MaybeStopParser(rv);
-  }
-  return NS_OK;
-}
-
-nsresult
-nsExpatDriver::HandleNotationDecl(const char16_t* aNotationName,
-                                  const char16_t* aBase,
-                                  const char16_t* aSysid,
-                                  const char16_t* aPubid)
-{
-  if (mExtendedSink) {
-    nsresult rv = mExtendedSink->HandleNotationDecl(aNotationName, aSysid,
-                                                    aPubid);
-    MaybeStopParser(rv);
-  }
-  return NS_OK;
-}
-
-nsresult
-nsExpatDriver::HandleUnparsedEntityDecl(const char16_t* aEntityName,
-                                        const char16_t* aBase,
-                                        const char16_t* aSysid,
-                                        const char16_t* aPubid,
-                                        const char16_t* aNotationName)
-{
-  if (mExtendedSink) {
-    nsresult rv = mExtendedSink->HandleUnparsedEntityDecl(aEntityName,
-                                                          aSysid,
-                                                          aPubid,
-                                                          aNotationName);
-    MaybeStopParser(rv);
-  }
-  return NS_OK;
-}
-
-nsresult
 nsExpatDriver::HandleStartDoctypeDecl(const char16_t* aDoctypeName,
                                       const char16_t* aSysid,
                                       const char16_t* aPubid,
@@ -594,11 +487,6 @@ nsExpatDriver::HandleStartDoctypeDecl(const char16_t* aDoctypeName,
   mDoctypeName = aDoctypeName;
   mSystemID = aSysid;
   mPublicID = aPubid;
-
-  if (mExtendedSink) {
-    nsresult rv = mExtendedSink->HandleStartDTD(aDoctypeName, aSysid, aPubid);
-    MaybeStopParser(rv);
-  }
 
   if (aHasInternalSubset) {
     // Consuming a huge internal subset translates to numerous
@@ -791,7 +679,7 @@ nsExpatDriver::OpenInputStreamFromExternalDTD(const char16_t* aFPIStr,
       }
     }
     if (!loadingPrincipal) {
-      loadingPrincipal = NullPrincipal::Create();
+      loadingPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
     }
     rv = NS_NewChannel(getter_AddRefs(channel),
                        uri,
@@ -827,16 +715,8 @@ CreateErrorText(const char16_t* aDescription,
   NS_ENSURE_SUCCESS(rv, rv);
 
   // XML Parsing Error: %1$S\nLocation: %2$S\nLine Number %3$u, Column %4$u:
-  char16_t *message = nsTextFormatter::smprintf(msg.get(), aDescription,
-                                                 aSourceURL, aLineNumber,
-                                                 aColNumber);
-  if (!message) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  aErrorString.Assign(message);
-  free(message);
-
+  nsTextFormatter::ssprintf(aErrorString, msg.get(), aDescription,
+                            aSourceURL, aLineNumber, aColNumber);
   return NS_OK;
 }
 
@@ -919,14 +799,9 @@ nsExpatDriver::HandleError()
                                                "Expected", msg);
 
     // . Expected: </%S>.
-    char16_t *message = nsTextFormatter::smprintf(msg.get(), tagName.get());
-    if (!message) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-
+    nsAutoString message;
+    nsTextFormatter::ssprintf(message, msg.get(), tagName.get());
     description.Append(message);
-
-    free(message);
   }
 
   // Adjust the column number so that it is one based rather than zero based.
@@ -1287,19 +1162,6 @@ nsExpatDriver::WillBuildModel(const CParserContext& aParserContext,
   XML_SetDoctypeDeclHandler(mExpatParser, Driver_HandleStartDoctypeDecl,
                             Driver_HandleEndDoctypeDecl);
 
-  // If the sink is an nsIExtendedExpatSink,
-  // register some addtional handlers.
-  mExtendedSink = do_QueryInterface(mSink);
-  if (mExtendedSink) {
-    XML_SetNamespaceDeclHandler(mExpatParser,
-                                Driver_HandleStartNamespaceDecl,
-                                Driver_HandleEndNamespaceDecl);
-    XML_SetUnparsedEntityDeclHandler(mExpatParser,
-                                     Driver_HandleUnparsedEntityDecl);
-    XML_SetNotationDeclHandler(mExpatParser,
-                               Driver_HandleNotationDecl);
-  }
-
   // Set up the user data.
   XML_SetUserData(mExpatParser, this);
 
@@ -1317,7 +1179,6 @@ nsExpatDriver::DidBuildModel(nsresult anErrorCode)
 {
   mOriginalSink = nullptr;
   mSink = nullptr;
-  mExtendedSink = nullptr;
   return NS_OK;
 }
 

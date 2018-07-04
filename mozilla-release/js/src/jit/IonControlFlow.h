@@ -9,8 +9,6 @@
 
 #include "mozilla/Array.h"
 
-#include "jsbytecode.h"
-
 #include "jit/BytecodeAnalysis.h"
 #include "jit/FixedList.h"
 #include "jit/JitAllocPolicy.h"
@@ -192,13 +190,13 @@ class CFGAryControlInstruction : public CFGControlInstruction
     mozilla::Array<CFGBlock*, Successors> successors_;
 
   public:
-    size_t numSuccessors() const final override {
+    size_t numSuccessors() const final {
         return Successors;
     }
-    CFGBlock* getSuccessor(size_t i) const final override {
+    CFGBlock* getSuccessor(size_t i) const final {
         return successors_[i];
     }
-    void replaceSuccessor(size_t i, CFGBlock* succ) final override {
+    void replaceSuccessor(size_t i, CFGBlock* succ) final {
         successors_[i] = succ;
     }
 };
@@ -225,14 +223,14 @@ class CFGTry : public CFGControlInstruction
         return new(alloc) CFGTry(tryBlock, old->catchStartPc(), merge);
     }
 
-    size_t numSuccessors() const final override {
+    size_t numSuccessors() const final {
         return 2;
     }
-    CFGBlock* getSuccessor(size_t i) const final override {
+    CFGBlock* getSuccessor(size_t i) const final {
         MOZ_ASSERT(i < numSuccessors());
         return (i == 0) ? tryBlock_ : mergePoint_;
     }
-    void replaceSuccessor(size_t i, CFGBlock* succ) final override {
+    void replaceSuccessor(size_t i, CFGBlock* succ) final {
         MOZ_ASSERT(i < numSuccessors());
         if (i == 0)
             tryBlock_ = succ;
@@ -272,14 +270,14 @@ class CFGTableSwitch : public CFGControlInstruction
         return new(alloc) CFGTableSwitch(alloc, low, high);
     }
 
-    size_t numSuccessors() const final override {
+    size_t numSuccessors() const final {
         return successors_.length();
     }
-    CFGBlock* getSuccessor(size_t i) const final override {
+    CFGBlock* getSuccessor(size_t i) const final {
         MOZ_ASSERT(i < numSuccessors());
         return successors_[i];
     }
-    void replaceSuccessor(size_t i, CFGBlock* succ) final override {
+    void replaceSuccessor(size_t i, CFGBlock* succ) final {
         MOZ_ASSERT(i < numSuccessors());
         successors_[i] = succ;
     }
@@ -552,19 +550,23 @@ class CFGBackEdge : public CFGUnaryControlInstruction
 class CFGLoopEntry : public CFGUnaryControlInstruction
 {
     bool canOsr_;
+    bool isForIn_;
     size_t stackPhiCount_;
     jsbytecode* loopStopPc_;
 
     CFGLoopEntry(CFGBlock* block, size_t stackPhiCount)
       : CFGUnaryControlInstruction(block),
         canOsr_(false),
+        isForIn_(false),
         stackPhiCount_(stackPhiCount),
         loopStopPc_(nullptr)
     {}
 
-    CFGLoopEntry(CFGBlock* block, bool canOsr, size_t stackPhiCount, jsbytecode* loopStopPc)
+    CFGLoopEntry(CFGBlock* block, bool canOsr, bool isForIn, size_t stackPhiCount,
+                 jsbytecode* loopStopPc)
       : CFGUnaryControlInstruction(block),
         canOsr_(canOsr),
+        isForIn_(isForIn),
         stackPhiCount_(stackPhiCount),
         loopStopPc_(loopStopPc)
     {}
@@ -576,8 +578,8 @@ class CFGLoopEntry : public CFGUnaryControlInstruction
     static CFGLoopEntry* CopyWithNewTargets(TempAllocator& alloc, CFGLoopEntry* old,
                                             CFGBlock* loopEntry)
     {
-        return new(alloc) CFGLoopEntry(loopEntry, old->canOsr(), old->stackPhiCount(),
-                                       old->loopStopPc());
+        return new(alloc) CFGLoopEntry(loopEntry, old->canOsr(), old->isForIn(),
+                                       old->stackPhiCount(), old->loopStopPc());
     }
 
     void setCanOsr() {
@@ -586,6 +588,13 @@ class CFGLoopEntry : public CFGUnaryControlInstruction
 
     bool canOsr() const {
         return canOsr_;
+    }
+
+    void setIsForIn() {
+        isForIn_ = true;
+    }
+    bool isForIn() const {
+        return isForIn_;
     }
 
     size_t stackPhiCount() const {
@@ -836,7 +845,7 @@ class ControlFlowGenerator
     ControlStatus processIfEnd(CFGState& state);
     ControlStatus processIfElseTrueEnd(CFGState& state);
     ControlStatus processIfElseFalseEnd(CFGState& state);
-    ControlStatus processDoWhileLoop(JSOp op, jssrcnote* sn);
+    ControlStatus processDoWhileLoop(jssrcnote* sn);
     ControlStatus processDoWhileBodyEnd(CFGState& state);
     ControlStatus processDoWhileCondEnd(CFGState& state);
     ControlStatus processWhileCondEnd(CFGState& state);

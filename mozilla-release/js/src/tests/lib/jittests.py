@@ -7,10 +7,10 @@
 # jit_test.py -- Python harness for JavaScript trace tests.
 
 from __future__ import print_function
-import os, posixpath, sys, tempfile, traceback, time
+import os, posixpath, sys, traceback
 import subprocess
 from collections import namedtuple
-import StringIO
+from datetime import datetime
 
 if sys.platform.startswith('linux') or sys.platform.startswith('darwin'):
     from tasks_unix import run_all_tests
@@ -19,6 +19,7 @@ else:
 
 from progressbar import ProgressBar, NullProgressBar
 from results import TestOutput
+from structuredlog import TestLogger
 
 TESTS_LIB_DIR = os.path.dirname(os.path.abspath(__file__))
 JS_DIR = os.path.dirname(os.path.dirname(TESTS_LIB_DIR))
@@ -123,7 +124,6 @@ class JitTest:
         self.expect_status = 0 # Exit status to expect from shell
         self.expect_crash = False # Exit status or error output.
         self.is_module = False
-        self.need_for_each = False # Enable for-each syntax
         self.test_reflect_stringify = None  # Reflect.stringify implementation to test
 
         # Expected by the test runner. Always true for jit-tests.
@@ -149,7 +149,6 @@ class JitTest:
         t.test_reflect_stringify = self.test_reflect_stringify
         t.enable = True
         t.is_module = self.is_module
-        t.need_for_each = self.need_for_each
         return t
 
     def copy_and_extend_jitflags(self, variant):
@@ -251,12 +250,15 @@ class JitTest:
                     elif name == 'test-also-noasmjs':
                         if options.asmjs_enabled:
                             test.test_also.append(['--no-asmjs'])
-                    elif name == 'test-also-wasm-baseline':
+                    elif name == 'test-also-no-wasm-baseline':
                         if options.wasm_enabled:
-                            test.test_also.append(['--wasm-always-baseline'])
-                    elif name == 'test-also-wasm-check-bce':
+                            test.test_also.append(['--no-wasm-baseline'])
+                    elif name == 'test-also-no-wasm-ion':
                         if options.wasm_enabled:
-                            test.test_also.append(['--wasm-check-bce'])
+                            test.test_also.append(['--no-wasm-ion'])
+                    elif name == 'test-also-wasm-tiering':
+                        if options.wasm_enabled:
+                            test.test_also.append(['--test-wasm-await-tier2'])
                     elif name.startswith('test-also='):
                         test.test_also.append([name[len('test-also='):]])
                     elif name.startswith('test-join='):
@@ -268,8 +270,6 @@ class JitTest:
                     elif name.startswith('--'):
                         # // |jit-test| --ion-gvn=off; --no-sse4
                         test.jitflags.append(name)
-                    elif name == 'need-for-each':
-                        test.need_for_each = True
                     else:
                         print('{}: warning: unrecognized |jit-test| attribute'
                               ' {}'.format(path, part))
@@ -307,9 +307,6 @@ class JitTest:
                  "const libdir={}".format(js_quote(quotechar, libdir)),
                  "const scriptdir={}".format(js_quote(quotechar, scriptdir_var))];
 
-        if self.need_for_each:
-            exprs += ["enableForEach()"]
-
         # We may have specified '-a' or '-d' twice: once via --jitflags, once
         # via the "|jit-test|" line.  Remove dups because they are toggles.
         cmd = prefix + ['--js-cache', JitTest.CacheDir]
@@ -328,6 +325,10 @@ class JitTest:
 
         if self.valgrind:
             cmd = self.VALGRIND_CMD + cmd
+
+        if self.allow_unhandlable_oom or self.expect_crash:
+            cmd += ['--suppress-minidump']
+
         return cmd
 
     # The test runner expects this to be set to give to get_command.
@@ -356,6 +357,8 @@ def find_tests(substring=None):
     return ans
 
 def run_test_remote(test, device, prefix, options):
+    from mozdevice import ADBDevice, ADBProcessError
+
     if options.test_reflect_stringify:
         raise ValueError("can't run Reflect.stringify tests remotely")
     cmd = test.command(prefix,
@@ -371,18 +374,28 @@ def run_test_remote(test, device, prefix, options):
 
     env['LD_LIBRARY_PATH'] = options.remote_test_root
 
-    buf = StringIO.StringIO()
-    returncode = device.shell(cmd, buf, env=env, cwd=options.remote_test_root,
-                              timeout=int(options.timeout))
+    cmd = ADBDevice._escape_command_line(cmd)
+    start = datetime.now()
+    try:
+        out = device.shell_output(cmd, env=env,
+                                  cwd=options.remote_test_root,
+                                  timeout=int(options.timeout))
+        returncode = 0
+    except ADBProcessError as e:
+        out = e.adb_process.stdout
+        print("exception output: %s" % str(out))
+        returncode = e.adb_process.exitcode
 
-    out = buf.getvalue()
+    elapsed = (datetime.now() - start).total_seconds()
+
     # We can't distinguish between stdout and stderr so we pass
     # the same buffer to both.
-    return TestOutput(test, cmd, out, out, returncode, None, False)
+    return TestOutput(test, cmd, out, out, returncode, elapsed, False)
 
 def check_output(out, err, rc, timed_out, test, options):
     if timed_out:
-        if test.relpath_tests in options.ignore_timeouts:
+        if os.path.normpath(test.relpath_tests).replace(os.sep, '/') \
+                in options.ignore_timeouts:
             return True
 
         # The shell sometimes hangs on shutdown on Windows 7 and Windows
@@ -463,7 +476,7 @@ def check_output(out, err, rc, timed_out, test, options):
 
     return True
 
-def print_automation_format(ok, res):
+def print_automation_format(ok, res, slog):
     # Output test failures in a parsable format suitable for automation, eg:
     # TEST-RESULT | filename.js | Failure description (code N, args "--foobar")
     #
@@ -480,8 +493,16 @@ def print_automation_format(ok, res):
     result = "TEST-PASS" if ok else "TEST-UNEXPECTED-FAIL"
     message = "Success" if ok else res.describe_failure()
     jitflags = " ".join(res.test.jitflags)
-    print("{} | {} | {} (code {}, args \"{}\")".format(
-        result, res.test.relpath_top, message, res.rc, jitflags))
+    print("{} | {} | {} (code {}, args \"{}\") [{:.1f} s]".format(
+        result, res.test.relpath_top, message, res.rc, jitflags, res.dt))
+
+    details = {
+        'message': message,
+        'extra': {
+            'jitflags': jitflags,
+        }
+    }
+    slog.test(res.test.relpath_tests, 'PASS' if ok else 'FAIL', res.dt, **details)
 
     # For failed tests, print as much information as we have, to aid debugging.
     if ok:
@@ -521,7 +542,7 @@ def print_test_summary(num_tests, failures, complete, doing, options):
             if options.show_failed:
                 print('    ' + subprocess.list2cmdline(res.cmd))
             else:
-                print('    ' + ' '.join(res.test.jitflags + [res.test.path]))
+                print('    ' + ' '.join(res.test.jitflags + [res.test.relpath_tests]))
 
         print('FAILURES:')
         for res in failures:
@@ -557,7 +578,7 @@ def create_progressbar(num_tests, options):
         return ProgressBar(num_tests, fmt)
     return NullProgressBar()
 
-def process_test_results(results, num_tests, pb, options):
+def process_test_results(results, num_tests, pb, options, slog):
     failures = []
     timeouts = 0
     complete = False
@@ -606,7 +627,7 @@ def process_test_results(results, num_tests, pb, options):
                     pb.message("FAIL - {}".format(res.test.relpath_tests))
 
             if options.format == 'automation':
-                print_automation_format(ok, res)
+                print_automation_format(ok, res, slog)
 
             n = i + 1
             pb.update(n, {
@@ -623,7 +644,23 @@ def process_test_results(results, num_tests, pb, options):
     pb.finish(True)
     return print_test_summary(num_tests, failures, complete, doing, options)
 
-def run_tests(tests, num_tests, prefix, options):
+def run_tests(tests, num_tests, prefix, options, remote=False):
+    slog = None
+    if options.format == 'automation':
+        slog = TestLogger("jittests")
+        slog.suite_start()
+
+    if remote:
+        ok = run_tests_remote(tests, num_tests, prefix, options, slog)
+    else:
+        ok = run_tests_local(tests, num_tests, prefix, options, slog)
+
+    if slog:
+        slog.suite_end()
+
+    return ok
+
+def run_tests_local(tests, num_tests, prefix, options, slog):
     # The jstests tasks runner requires the following options. The names are
     # taken from the jstests options processing code, which are frequently
     # subtly different from the options jit-tests expects. As such, we wrap
@@ -639,18 +676,16 @@ def run_tests(tests, num_tests, prefix, options):
 
     pb = create_progressbar(num_tests, options)
     gen = run_all_tests(tests, prefix, pb, shim_options)
-    ok = process_test_results(gen, num_tests, pb, options)
+    ok = process_test_results(gen, num_tests, pb, options, slog)
     return ok
 
 def get_remote_results(tests, device, prefix, options):
-    from mozdevice import devicemanager
-
     try:
         for i in xrange(0, options.repeat):
             for test in tests:
                 yield run_test_remote(test, device, prefix, options)
-    except devicemanager.DMError as e:
-        # After a devicemanager error, the device is typically in a
+    except Exception as e:
+        # After a device error, the device is typically in a
         # state where all further tests will fail so there is no point in
         # continuing here.
         sys.stderr.write("Error running remote tests: {}".format(e.message))
@@ -664,56 +699,56 @@ def push_libs(options, device):
     for file in os.listdir(options.local_lib):
         if file in required_libs:
             remote_file = posixpath.join(options.remote_test_root, file)
-            device.pushFile(os.path.join(options.local_lib, file), remote_file)
+            device.push(os.path.join(options.local_lib, file), remote_file)
+            device.chmod(remote_file, root=True)
 
 def push_progs(options, device, progs):
     for local_file in progs:
         remote_file = posixpath.join(options.remote_test_root,
                                      os.path.basename(local_file))
-        device.pushFile(local_file, remote_file)
+        device.push(local_file, remote_file)
+        device.chmod(remote_file, root=True)
 
-def run_tests_remote(tests, num_tests, prefix, options):
+def init_remote_dir(device, path, root=True):
+    device.rm(path, recursive=True, force=True, root=root)
+    device.mkdir(path, parents=True, root=root)
+    device.chmod(path, recursive=True, root=root)
+
+def run_tests_remote(tests, num_tests, prefix, options, slog):
     # Setup device with everything needed to run our tests.
-    from mozdevice import devicemanagerADB
+    from mozdevice import ADBAndroid
+    device = ADBAndroid(device=options.device_serial,
+                        test_root=options.remote_test_root)
 
-    if options.device_ip:
-        dm = devicemanagerADB.DeviceManagerADB(
-            options.device_ip, options.device_port,
-            deviceSerial=options.device_serial,
-            packageName=None,
-            deviceRoot=options.remote_test_root)
-    else:
-        dm = devicemanagerADB.DeviceManagerADB(
-            deviceSerial=options.device_serial,
-            packageName=None,
-            deviceRoot=options.remote_test_root)
+    init_remote_dir(device, options.remote_test_root)
 
     # Update the test root to point to our test directory.
     jit_tests_dir = posixpath.join(options.remote_test_root, 'jit-tests')
     options.remote_test_root = posixpath.join(jit_tests_dir, 'jit-tests')
 
     # Push js shell and libraries.
-    if dm.dirExists(jit_tests_dir):
-        dm.removeDir(jit_tests_dir)
-    dm.mkDirs(options.remote_test_root)
-    push_libs(options, dm)
-    push_progs(options, dm, [prefix[0]])
-    dm.chmodDir(options.remote_test_root)
+    init_remote_dir(device, jit_tests_dir)
+    push_libs(options, device)
+    push_progs(options, device, [prefix[0]])
+    device.chmod(options.remote_test_root, recursive=True, root=True)
 
     JitTest.CacheDir = posixpath.join(options.remote_test_root, '.js-cache')
-    dm.mkDir(JitTest.CacheDir)
+    init_remote_dir(device, JitTest.CacheDir)
 
-    dm.pushDir(JS_TESTS_DIR, posixpath.join(jit_tests_dir, 'tests'),
-               timeout=600)
+    jtd_tests = posixpath.join(jit_tests_dir, 'tests')
+    init_remote_dir(device, jtd_tests)
+    device.push(JS_TESTS_DIR, jtd_tests, timeout=600)
+    device.chmod(jtd_tests, recursive=True, root=True)
 
-    dm.pushDir(os.path.dirname(TEST_DIR), options.remote_test_root,
-               timeout=600)
+    device.push(os.path.dirname(TEST_DIR), options.remote_test_root,
+                timeout=600)
+    device.chmod(options.remote_test_root, recursive=True, root=True)
     prefix[0] = os.path.join(options.remote_test_root, 'js')
 
     # Run all tests.
     pb = create_progressbar(num_tests, options)
-    gen = get_remote_results(tests, dm, prefix, options)
-    ok = process_test_results(gen, num_tests, pb, options)
+    gen = get_remote_results(tests, device, prefix, options)
+    ok = process_test_results(gen, num_tests, pb, options, slog)
     return ok
 
 def platform_might_be_android():

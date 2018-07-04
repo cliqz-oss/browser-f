@@ -6,9 +6,11 @@ es6id: 13.1
 description: >
     Redeclaration error within strict mode function inside non-strict code.
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [noStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 (function() { 'use strict'; { let f; var f; } })
 

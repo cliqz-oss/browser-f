@@ -45,11 +45,18 @@ StructuredCloneFile::operator==(const StructuredCloneFile& aOther) const
 }
 
 inline
-StructuredCloneReadInfo::StructuredCloneReadInfo()
-  : mDatabase(nullptr)
+StructuredCloneReadInfo::StructuredCloneReadInfo(JS::StructuredCloneScope aScope)
+  : mData(aScope)
+  , mDatabase(nullptr)
   , mHasPreprocessInfo(false)
 {
   MOZ_COUNT_CTOR(StructuredCloneReadInfo);
+}
+
+inline
+StructuredCloneReadInfo::StructuredCloneReadInfo()
+ : StructuredCloneReadInfo(JS::StructuredCloneScope::DifferentProcessForIndexedDB)
+{
 }
 
 inline
@@ -97,6 +104,20 @@ StructuredCloneReadInfo::operator=(StructuredCloneReadInfo&& aCloneReadInfo)
   mHasPreprocessInfo = aCloneReadInfo.mHasPreprocessInfo;
   aCloneReadInfo.mHasPreprocessInfo = false;
   return *this;
+}
+
+inline size_t
+StructuredCloneReadInfo::Size() const
+{
+  size_t size = mData.Size();
+
+  for (uint32_t i = 0, count = mFiles.Length(); i < count; ++i) {
+    // We don't want to calculate the size of files and so on, because are mainly
+    // file descriptors.
+    size += sizeof(uint64_t);
+  }
+
+  return size;
 }
 
 } // namespace indexedDB

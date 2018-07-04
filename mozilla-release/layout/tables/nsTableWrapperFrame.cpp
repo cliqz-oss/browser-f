@@ -8,7 +8,7 @@
 #include "nsFrameManager.h"
 #include "nsTableFrame.h"
 #include "nsTableCellFrame.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsStyleConsts.h"
 #include "nsPresContext.h"
 #include "nsCSSRendering.h"
@@ -42,8 +42,8 @@ nsTableWrapperFrame::GetLogicalBaseline(WritingMode aWritingMode) const
          kid->BStart(aWritingMode, mRect.Size());
 }
 
-nsTableWrapperFrame::nsTableWrapperFrame(nsStyleContext* aContext, ClassID aID)
-  : nsContainerFrame(aContext, aID)
+nsTableWrapperFrame::nsTableWrapperFrame(ComputedStyle* aStyle, ClassID aID)
+  : nsContainerFrame(aStyle, aID)
 {
 }
 
@@ -64,11 +64,11 @@ nsTableWrapperFrame::AccessibleType()
 #endif
 
 void
-nsTableWrapperFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsTableWrapperFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  DestroyAbsoluteFrames(aDestructRoot);
-  mCaptionFrames.DestroyFramesFrom(aDestructRoot);
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  DestroyAbsoluteFrames(aDestructRoot, aPostDestroyData);
+  mCaptionFrames.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 const nsFrameList&
@@ -121,8 +121,12 @@ nsTableWrapperFrame::AppendFrames(ChildListID     aListID,
 
   // Reflow the new caption frame. It's already marked dirty, so
   // just tell the pres shell.
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
+  // The presence of caption frames makes us sort our display
+  // list differently, so mark us as changed for the new
+  // ordering.
+  MarkNeedsDisplayItemRebuild();
 }
 
 void
@@ -140,8 +144,9 @@ nsTableWrapperFrame::InsertFrames(ChildListID     aListID,
 
   // Reflow the new caption frame. It's already marked dirty, so
   // just tell the pres shell.
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
+  MarkNeedsDisplayItemRebuild();
 }
 
 void
@@ -161,14 +166,13 @@ nsTableWrapperFrame::RemoveFrame(ChildListID  aListID,
   // Remove the frame and destroy it
   mCaptionFrames.DestroyFrame(aOldFrame);
 
-  PresContext()->PresShell()->
-    FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                     NS_FRAME_HAS_DIRTY_CHILDREN); // also means child removed
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
+  MarkNeedsDisplayItemRebuild();
 }
 
 void
 nsTableWrapperFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                      const nsRect&           aDirtyRect,
                                       const nsDisplayListSet& aLists)
 {
   // No border, background or outline are painted because they all belong
@@ -177,20 +181,22 @@ nsTableWrapperFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   // If there's no caption, take a short cut to avoid having to create
   // the special display list set and then sort it.
   if (mCaptionFrames.IsEmpty()) {
-    BuildDisplayListForInnerTable(aBuilder, aDirtyRect, aLists);
+    BuildDisplayListForInnerTable(aBuilder, aLists);
     return;
   }
 
-  nsDisplayListCollection set;
-  BuildDisplayListForInnerTable(aBuilder, aDirtyRect, set);
+  nsDisplayListCollection set(aBuilder);
+  BuildDisplayListForInnerTable(aBuilder, set);
 
   nsDisplayListSet captionSet(set, set.BlockBorderBackgrounds());
-  BuildDisplayListForChild(aBuilder, mCaptionFrames.FirstChild(),
-                           aDirtyRect, captionSet);
+  BuildDisplayListForChild(aBuilder, mCaptionFrames.FirstChild(), captionSet);
 
   // Now we have to sort everything by content order, since the caption
-  // may be somewhere inside the table
-  set.BlockBorderBackgrounds()->SortByContentOrder(GetContent());
+  // may be somewhere inside the table.
+  // We don't sort BlockBorderBackgrounds and BorderBackgrounds because the
+  // display items in those lists should stay out of content order in order to
+  // follow the rules in https://www.w3.org/TR/CSS21/zindex.html#painting-order
+  // and paint the caption background after all of the rest.
   set.Floats()->SortByContentOrder(GetContent());
   set.Content()->SortByContentOrder(GetContent());
   set.PositionedDescendants()->SortByContentOrder(GetContent());
@@ -200,7 +206,6 @@ nsTableWrapperFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
 void
 nsTableWrapperFrame::BuildDisplayListForInnerTable(nsDisplayListBuilder*   aBuilder,
-                                                   const nsRect&           aDirtyRect,
                                                    const nsDisplayListSet& aLists)
 {
   // Just paint the regular children, but the children's background is our
@@ -208,25 +213,25 @@ nsTableWrapperFrame::BuildDisplayListForInnerTable(nsDisplayListBuilder*   aBuil
   nsIFrame* kid = mFrames.FirstChild();
   // The children should be in content order
   while (kid) {
-    BuildDisplayListForChild(aBuilder, kid, aDirtyRect, aLists);
+    BuildDisplayListForChild(aBuilder, kid, aLists);
     kid = kid->GetNextSibling();
   }
 }
 
-nsStyleContext*
-nsTableWrapperFrame::GetParentStyleContext(nsIFrame** aProviderFrame) const
+ComputedStyle*
+nsTableWrapperFrame::GetParentComputedStyle(nsIFrame** aProviderFrame) const
 {
   // The table wrapper frame and the (inner) table frame split the style
-  // data by giving the table frame the style context associated with
-  // the table content node and creating a style context for the wrapper
-  // frame that is a *child* of the table frame's style context,
+  // data by giving the table frame the ComputedStyle associated with
+  // the table content node and creating a ComputedStyle for the wrapper
+  // frame that is a *child* of the table frame's ComputedStyle,
   // matching the ::-moz-table-wrapper pseudo-element. html.css has a
   // rule that causes that pseudo-element (and thus the wrapper table)
   // to inherit *some* style properties from the table frame.  The
   // children of the table inherit directly from the inner table, and
-  // the table wrapper's style context is a leaf.
+  // the table wrapper's ComputedStyle is a leaf.
 
-  return (*aProviderFrame = InnerTableFrame())->StyleContext();
+  return (*aProviderFrame = InnerTableFrame())->Style();
 }
 
 // INCREMENTAL REFLOW HELPER FUNCTIONS
@@ -411,8 +416,8 @@ nsTableWrapperFrame::ChildShrinkWrapISize(gfxContext*         aRenderingContext,
   if (MOZ_UNLIKELY(isGridItem) &&
       !StyleMargin()->HasInlineAxisAuto(aWM)) {
     auto inlineAxisAlignment = aWM.IsOrthogonalTo(parent->GetWritingMode()) ?
-                     StylePosition()->UsedAlignSelf(parent->StyleContext()) :
-                     StylePosition()->UsedJustifySelf(parent->StyleContext());
+                     StylePosition()->UsedAlignSelf(parent->Style()) :
+                     StylePosition()->UsedJustifySelf(parent->Style());
     if (inlineAxisAlignment == NS_STYLE_ALIGN_NORMAL ||
         inlineAxisAlignment == NS_STYLE_ALIGN_STRETCH) {
       flags = nsIFrame::ComputeSizeFlags::eDefault;
@@ -861,10 +866,10 @@ nsTableWrapperFrame::Reflow(nsPresContext*           aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsTableWrapperFrame");
   DISPLAY_REFLOW(aPresContext, this, aOuterRI, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   // Initialize out parameters
   aDesiredSize.ClearSize();
-  aStatus.Reset();
 
   if (!HasAnyStateBits(NS_FRAME_FIRST_REFLOW)) {
     // Set up our kids.  They're already present, on an overflow list,
@@ -875,10 +880,6 @@ nsTableWrapperFrame::Reflow(nsPresContext*           aPresContext,
   Maybe<ReflowInput> captionRI;
   Maybe<ReflowInput> innerRI;
 
-  nsRect origInnerRect = InnerTableFrame()->GetRect();
-  nsRect origInnerVisualOverflow = InnerTableFrame()->GetVisualOverflowRect();
-  bool innerFirstReflow =
-    InnerTableFrame()->HasAnyStateBits(NS_FRAME_FIRST_REFLOW);
   nsRect origCaptionRect;
   nsRect origCaptionVisualOverflow;
   bool captionFirstReflow = false;
@@ -1042,12 +1043,6 @@ nsTableWrapperFrame::Reflow(nsPresContext*           aPresContext,
                     wm, innerOrigin, containerSize, 0);
   innerRI.reset();
 
-  if (InnerTableFrame()->IsBorderCollapse()) {
-    nsTableFrame::InvalidateTableFrame(InnerTableFrame(), origInnerRect,
-                                       origInnerVisualOverflow,
-                                       innerFirstReflow);
-  }
-
   if (mCaptionFrames.NotEmpty()) {
     nsTableFrame::InvalidateTableFrame(mCaptionFrames.FirstChild(),
                                        origCaptionRect,
@@ -1090,9 +1085,9 @@ nsTableWrapperFrame::GetCellAt(uint32_t aRowIdx, uint32_t aColIdx) const
 
 
 nsTableWrapperFrame*
-NS_NewTableWrapperFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewTableWrapperFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsTableWrapperFrame(aContext);
+  return new (aPresShell) nsTableWrapperFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsTableWrapperFrame)

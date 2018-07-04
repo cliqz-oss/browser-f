@@ -38,13 +38,13 @@ with Files('tests/xpcshell/test_JSONFile.js'):
     BUG_COMPONENT = ('Toolkit', 'Form Manager')
 
 with Files('tests/xpcshell/test_Match*.js'):
-    BUG_COMPONENT = ('Toolkit', 'WebExtentions: General')
+    BUG_COMPONENT = ('Toolkit', 'WebExtensions: General')
 
 with Files('tests/xpcshell/test_NewTabUtils.js'):
     BUG_COMPONENT = ('Firefox', 'New Tab Page')
 
 with Files('tests/xpcshell/test_UpdateUtils*.js'):
-    BUG_COMPONENT = ('Toolkit', 'General')
+    BUG_COMPONENT = ('Toolkit', 'Application Update')
 
 with Files('tests/xpcshell/test_client_id.js'):
     BUG_COMPONENT = ('Toolkit', 'Telemetry')
@@ -70,6 +70,9 @@ with Files('DateTimePickerHelper.jsm'):
 with Files('DeferredTask.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Async Tooling')
 
+with Files("E10SUtils.jsm"):
+    BUG_COMPONENT = ("Core", "Security: Process Sandboxing")
+
 with Files('Finder*.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Find Toolbar')
 
@@ -77,7 +80,7 @@ with Files('FormLikeFactory.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Password Manager')
 
 with Files('IndexedDB.jsm'):
-    BUG_COMPONENT = ('Toolkit', 'Web Extensions: General')
+    BUG_COMPONENT = ('Toolkit', 'WebExtensions: General')
 
 with Files('InlineSpellChecker*.jsm'):
     BUG_COMPONENT = ('Core', 'Spell Checker')
@@ -91,12 +94,6 @@ with Files('JSONFile.jsm'):
 with Files('LightweightThemeConsumer.jsm'):
     BUG_COMPONENT = ('Firefox', 'Toolbars and Customization')
 
-with Files('LoadContextInfo.jsm'):
-    BUG_COMPONENT = ('Core', 'Networking: Cache')
-
-with Files('Locale.jsm'):
-    BUG_COMPONENT = ('Core', 'Internationalization')
-
 with Files('Memory.jsm'):
     BUG_COMPONENT = ('Core', 'DOM: Content Processes')
 
@@ -108,6 +105,9 @@ with Files('NewTabUtils.jsm'):
 
 with Files('ObjectUtils.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Telemetry')
+
+with Files("offlineAppCache.jsm"):
+    BUG_COMPONENT = ("Toolkit", "Preferences")
 
 with Files('PageMenu.jsm'):
     BUG_COMPONENT = ('Firefox', 'Menus')
@@ -124,7 +124,7 @@ with Files('PrivateBrowsingUtils.jsm'):
 with Files('Promise*.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Async Tooling')
 
-with Files('RemoteController.jsm'):
+with Files('RemoteController.js'):
     BUG_COMPONENT = ('Core', 'Widget')
 
 with Files('RemoteFinder.jsm'):
@@ -146,7 +146,7 @@ with Files('Sqlite.jsm'):
     BUG_COMPONENT = ('Toolkit', 'Storage')
 
 with Files('UpdateUtils.jsm'):
-    BUG_COMPONENT = ('Toolkit', 'Add-ons Manager')
+    BUG_COMPONENT = ('Toolkit', 'Application Update')
 
 with Files('WindowsRegistry.jsm'):
     BUG_COMPONENT = ('Toolkit', 'General')
@@ -157,6 +157,7 @@ BROWSER_CHROME_MANIFESTS += ['tests/browser/browser.ini']
 MOCHITEST_CHROME_MANIFESTS += ['tests/chrome/chrome.ini']
 
 TESTING_JS_MODULES += [
+    'HiddenFrame.jsm',
     'tests/modules/MockDocument.jsm',
     'tests/modules/PromiseTestUtils.jsm',
     'tests/xpcshell/TestIntegration.jsm',
@@ -164,8 +165,11 @@ TESTING_JS_MODULES += [
 
 SPHINX_TREES['toolkit_modules'] = 'docs'
 
+with Files('docs/**'):
+    SCHEDULES.exclusive = ['docs']
+
 EXTRA_JS_MODULES += [
-    'addons/MatchPattern.jsm',
+    'addons/MatchURLFilters.jsm',
     'addons/WebNavigation.jsm',
     'addons/WebNavigationContent.js',
     'addons/WebNavigationFrames.jsm',
@@ -189,9 +193,9 @@ EXTRA_JS_MODULES += [
     'Console.jsm',
     'css-selector.js',
     'DateTimePickerHelper.jsm',
-    'debug.js',
     'DeferredTask.jsm',
     'Deprecated.jsm',
+    'E10SUtils.jsm',
     'EventEmitter.jsm',
     'FileUtils.jsm',
     'Finder.jsm',
@@ -202,20 +206,18 @@ EXTRA_JS_MODULES += [
     'GMPExtractorWorker.js',
     'GMPInstallManager.jsm',
     'GMPUtils.jsm',
-    'HiddenFrame.jsm',
     'Http.jsm',
     'IndexedDB.jsm',
     'InlineSpellChecker.jsm',
     'InlineSpellCheckerContent.jsm',
     'Integration.jsm',
     'JSONFile.jsm',
-    'LoadContextInfo.jsm',
-    'Locale.jsm',
     'Log.jsm',
     'Memory.jsm',
     'NewTabUtils.jsm',
     'NLP.jsm',
     'ObjectUtils.jsm',
+    'offlineAppCache.jsm',
     'PageMenu.jsm',
     'PageMetadata.jsm',
     'PermissionsUtils.jsm',
@@ -227,7 +229,7 @@ EXTRA_JS_MODULES += [
     'Promise.jsm',
     'PromiseMessage.jsm',
     'PromiseUtils.jsm',
-    'RemoteController.jsm',
+    'RemoteController.js',
     'RemoteFinder.jsm',
     'RemotePageManager.jsm',
     'RemoteSecurityUI.jsm',
@@ -260,19 +262,16 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
 
 EXTRA_JS_MODULES.third_party.jsesc += ['third_party/jsesc/jsesc.js']
 EXTRA_JS_MODULES.sessionstore += [
+    'sessionstore/PrivacyFilter.jsm',
     'sessionstore/PrivacyLevel.jsm',
     'sessionstore/SessionHistory.jsm',
     'sessionstore/Utils.jsm',
 ]
 
-DEFINES['INSTALL_COMPACT_THEMES'] = 1
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'cocoa'):
-    DEFINES['CAN_DRAW_IN_TITLEBAR'] = 1
-
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk2', 'gtk3'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3'):
     DEFINES['MENUBAR_CAN_AUTOHIDE'] = 1
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk2', 'gtk3', 'cocoa'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('windows', 'gtk3', 'cocoa'):
     DEFINES['HAVE_SHELL_SERVICE'] = 1
 
 EXTRA_PP_JS_MODULES += [

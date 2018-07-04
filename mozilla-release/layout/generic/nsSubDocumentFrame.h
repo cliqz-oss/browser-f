@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -22,7 +23,7 @@ class nsSubDocumentFrame final
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsSubDocumentFrame)
 
-  explicit nsSubDocumentFrame(nsStyleContext* aContext);
+  explicit nsSubDocumentFrame(ComputedStyle* aStyle);
 
 #ifdef DEBUG_FRAME_DUMP
   void List(FILE* out = stderr, const char* aPrefix = "", uint32_t aFlags = 0) const override;
@@ -43,7 +44,7 @@ public:
             nsContainerFrame* aParent,
             nsIFrame*         aPrevInFlow) override;
 
-  void DestroyFrom(nsIFrame* aDestructRoot) override;
+  void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   nscoord GetMinISize(gfxContext *aRenderingContext) override;
   nscoord GetPrefISize(gfxContext *aRenderingContext) override;
@@ -77,11 +78,10 @@ public:
               nsReflowStatus&    aStatus) override;
 
   void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                        const nsRect&           aDirtyRect,
                         const nsDisplayListSet& aLists) override;
 
   nsresult AttributeChanged(int32_t aNameSpaceID,
-                            nsIAtom* aAttribute,
+                            nsAtom* aAttribute,
                             int32_t aModType) override;
 
   // if the content is "visibility:hidden", then just hide the view
@@ -94,7 +94,7 @@ public:
   mozilla::a11y::AccType AccessibleType() override;
 #endif
 
-  nsresult GetDocShell(nsIDocShell **aDocShell);
+  nsIDocShell* GetDocShell();
   nsresult BeginSwapDocShells(nsIFrame* aOther);
   void EndSwapDocShells(nsIFrame* aOther);
   nsView* EnsureInnerView();
@@ -172,6 +172,7 @@ protected:
   bool mPostedReflowCallback;
   bool mDidCreateDoc;
   bool mCallingShow;
+  WeakFrame mPreviousCaret;
 };
 
 #endif /* NSSUBDOCUMENTFRAME_H_ */

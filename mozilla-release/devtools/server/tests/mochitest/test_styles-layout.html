@@ -9,7 +9,7 @@
 <script type="application/javascript">
 "use strict";
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
   runNextTest();
 };
@@ -17,9 +17,9 @@ window.onload = function () {
 let gWalker = null;
 let gStyles = null;
 
-addTest(function () {
+addTest(function() {
   let url = document.getElementById("inspectorContent").href;
-  attachURL(url, function (err, client, tab, doc) {
+  attachURL(url, function(err, client, tab, doc) {
     let {InspectorFront} = require("devtools/shared/fronts/inspector");
     let inspector = InspectorFront(client, tab);
     promiseDone(inspector.getWalker().then(walker => {
@@ -32,14 +32,14 @@ addTest(function () {
   });
 });
 
-addTest(function () {
+addTest(function() {
   ok(gStyles.getLayout, "The PageStyleActor has a getLayout method");
   runNextTest();
 });
 
-addAsyncTest(function* () {
-  let node = yield gWalker.querySelector(gWalker.rootNode, "#layout-element");
-  let layout = yield gStyles.getLayout(node, {});
+addAsyncTest(async function() {
+  let node = await gWalker.querySelector(gWalker.rootNode, "#layout-element");
+  let layout = await gStyles.getLayout(node, {});
 
   let properties = ["width", "height",
                     "margin-top", "margin-right", "margin-bottom",
@@ -55,9 +55,9 @@ addAsyncTest(function* () {
   runNextTest();
 });
 
-addAsyncTest(function* () {
-  let node = yield gWalker.querySelector(gWalker.rootNode, "#layout-element");
-  let layout = yield gStyles.getLayout(node, {});
+addAsyncTest(async function() {
+  let node = await gWalker.querySelector(gWalker.rootNode, "#layout-element");
+  let layout = await gStyles.getLayout(node, {});
 
   let expected = {
     "box-sizing": "border-box",
@@ -79,15 +79,15 @@ addAsyncTest(function* () {
   runNextTest();
 });
 
-addAsyncTest(function* () {
-  let node = yield gWalker.querySelector(gWalker.rootNode,
+addAsyncTest(async function() {
+  let node = await gWalker.querySelector(gWalker.rootNode,
                                          "#layout-auto-margin-element");
 
-  let layout = yield gStyles.getLayout(node, {});
+  let layout = await gStyles.getLayout(node, {});
   ok(!("autoMargins" in layout),
      "By default, getLayout doesn't return auto margins");
 
-  layout = yield gStyles.getLayout(node, {autoMargins: true});
+  layout = await gStyles.getLayout(node, {autoMargins: true});
   ok(("autoMargins" in layout),
      "getLayout does return auto margins when asked to");
   is(layout.autoMargins.left, "auto", "The left margin is auto");
@@ -98,7 +98,7 @@ addAsyncTest(function* () {
   runNextTest();
 });
 
-addTest(function () {
+addTest(function() {
   gStyles = gWalker = null;
   runNextTest();
 });

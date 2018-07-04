@@ -5,17 +5,20 @@
 
 #include "Decoder.h"
 
-#include "mozilla/gfx/2D.h"
 #include "DecodePool.h"
 #include "GeckoProfiler.h"
 #include "IDecodingTask.h"
 #include "ISurfaceProvider.h"
+#include "mozilla/gfx/2D.h"
+#include "mozilla/gfx/Point.h"
+#include "mozilla/Telemetry.h"
+#include "nsComponentManagerUtils.h"
 #include "nsProxyRelease.h"
 #include "nsServiceManagerUtils.h"
-#include "nsComponentManagerUtils.h"
-#include "mozilla/Telemetry.h"
 
+using mozilla::gfx::IntPoint;
 using mozilla::gfx::IntSize;
+using mozilla::gfx::IntRect;
 using mozilla::gfx::SurfaceFormat;
 
 namespace mozilla {
@@ -60,6 +63,7 @@ Decoder::Decoder(RasterImage* aImage)
   , mHaveExplicitOutputSize(false)
   , mInFrame(false)
   , mFinishedNewFrame(false)
+  , mHasFrameToTake(false)
   , mReachedTerminalState(false)
   , mDecodeDone(false)
   , mError(false)
@@ -290,6 +294,8 @@ Decoder::AllocateFrame(uint32_t aFrameNum,
                                         mCurrentFrame.get());
 
   if (mCurrentFrame) {
+    mHasFrameToTake = true;
+
     // Gather the raw pointers the decoders will use.
     mCurrentFrame->GetImageData(&mImageData, &mImageDataLength);
     mCurrentFrame->GetPaletteData(&mColormap, &mColormapSize);
@@ -327,12 +333,12 @@ Decoder::AllocateFrameInternal(uint32_t aFrameNum,
   }
 
   if (aOutputSize.width <= 0 || aOutputSize.height <= 0 ||
-      aFrameRect.width <= 0 || aFrameRect.height <= 0) {
+      aFrameRect.Width() <= 0 || aFrameRect.Height() <= 0) {
     NS_WARNING("Trying to add frame with zero or negative size");
     return RawAccessFrameRef();
   }
 
-  NotNull<RefPtr<imgFrame>> frame = WrapNotNull(new imgFrame());
+  auto frame = MakeNotNull<RefPtr<imgFrame>>();
   bool nonPremult = bool(mSurfaceFlags & SurfaceFlags::NO_PREMULTIPLY_ALPHA);
   if (NS_FAILED(frame->InitForDecoder(aOutputSize, aFrameRect, aFormat,
                                       aPaletteDepth, nonPremult,
@@ -529,6 +535,7 @@ Decoder::PostError()
     mCurrentFrame->Abort();
     mInFrame = false;
     --mFrameCount;
+    mHasFrameToTake = false;
   }
 }
 

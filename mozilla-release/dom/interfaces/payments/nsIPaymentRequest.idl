@@ -5,6 +5,7 @@
 
 #include "nsISupports.idl"
 #include "nsIVariant.idl"
+#include "nsIPrincipal.idl"
 
 interface nsIArray;
 
@@ -29,6 +30,7 @@ interface nsIPaymentItem : nsISupports
   readonly attribute AString label;
   readonly attribute nsIPaymentCurrencyAmount amount;
   readonly attribute boolean pending;
+  readonly attribute AString type;
 };
 
 [scriptable, builtinclass, uuid(74259861-c318-40e8-b3d5-518e701bed80)]
@@ -60,7 +62,7 @@ interface nsIPaymentDetails : nsISupports
   readonly attribute nsIArray modifiers;
   readonly attribute AString error;
 
-  void update(in nsIPaymentDetails aDetails);
+  void update(in nsIPaymentDetails aDetails, in boolean aRequestShipping);
 };
 
 [scriptable, builtinclass, uuid(d53f9f20-138e-47cc-9fd5-db16a3f6d301)]
@@ -77,10 +79,15 @@ interface nsIPaymentOptions : nsISupports
 interface nsIPaymentRequest : nsISupports
 {
   readonly attribute uint64_t tabId;
+  readonly attribute nsIPrincipal topLevelPrincipal;
   readonly attribute AString requestId;
+  readonly attribute AString completeStatus;
   readonly attribute nsIArray paymentMethods;
   readonly attribute nsIPaymentDetails paymentDetails;
   readonly attribute nsIPaymentOptions paymentOptions;
+  readonly attribute AString shippingOption;
 
-  void updatePaymentDetails(in nsIPaymentDetails aDetails);
+  [noscript] void setCompleteStatus(in AString aCompleteStatus);
+  void updatePaymentDetails(in nsIPaymentDetails aDetails,
+                            in AString aShippingOption);
 };

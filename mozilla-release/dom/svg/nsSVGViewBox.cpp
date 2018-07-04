@@ -40,9 +40,8 @@ nsSVGViewBoxRect::FromString(const nsAString& aStr, nsSVGViewBoxRect *aViewBox)
     return NS_OK;
   }
 
-  nsCharSeparatedTokenizerTemplate<IsSVGWhitespace>
-  tokenizer(aStr, ',',
-            nsCharSeparatedTokenizer::SEPARATOR_OPTIONAL);
+  nsCharSeparatedTokenizerTemplate<nsContentUtils::IsHTMLWhitespace>
+    tokenizer(aStr, ',', nsCharSeparatedTokenizer::SEPARATOR_OPTIONAL);
   float vals[NUM_VIEWBOX_COMPONENTS];
   uint32_t i;
   for (i = 0; i < NUM_VIEWBOX_COMPONENTS && tokenizer.hasMoreTokens(); ++i) {
@@ -206,12 +205,10 @@ nsSVGViewBox::GetBaseValueString(nsAString& aValue) const
     aValue.AssignLiteral("none");
     return;
   }
-  char16_t buf[200];
-  nsTextFormatter::snprintf(buf, sizeof(buf)/sizeof(char16_t),
+  nsTextFormatter::ssprintf(aValue,
                             u"%g %g %g %g",
                             (double)mBaseVal.x, (double)mBaseVal.y,
                             (double)mBaseVal.width, (double)mBaseVal.height);
-  aValue.Assign(buf);
 }
 
 

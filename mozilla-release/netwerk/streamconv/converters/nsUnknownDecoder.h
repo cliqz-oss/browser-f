@@ -65,7 +65,7 @@ protected:
     NS_DECL_NSISTREAMLISTENER
 
   private:
-    virtual ~ConvertedStreamListener();
+    virtual ~ConvertedStreamListener() = default;
     static nsresult AppendDataToString(nsIInputStream* inputStream,
                                        void* closure,
                                        const char* rawSegment,
@@ -162,11 +162,10 @@ protected:
 class nsBinaryDetector : public nsUnknownDecoder
 {
 protected:
-  virtual void DetermineContentType(nsIRequest* aRequest);
+  virtual void DetermineContentType(nsIRequest* aRequest) override;
 };
 
 #define NS_BINARYDETECTOR_CATEGORYENTRY \
   { NS_CONTENT_SNIFFER_CATEGORY, "Binary Detector", NS_BINARYDETECTOR_CONTRACTID }
 
 #endif /* nsUnknownDecoder_h__ */
-

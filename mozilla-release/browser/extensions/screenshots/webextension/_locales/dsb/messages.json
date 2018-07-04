@@ -29,6 +29,27 @@
   "downloadScreenshot": {
     "message": "Ześěgnuś"
   },
+  "downloadOnlyNotice": {
+    "message": "Tuchylu sćo w modusu „Jano ześěgnuś“."
+  },
+  "downloadOnlyDetails": {
+    "message": "Firefox Screenshots w slědujucych situacijach awtomatiski do modusa „Jano ześěgnuś“ pśešaltujo:"
+  },
+  "downloadOnlyDetailsPrivate": {
+    "message": "W priwatnem woknje."
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "Cookieje tśeśich póbitowarjow su znjemóžnjone."
+  },
+  "downloadOnlyDetailsNeverRemember": {
+    "message": "„Se historiju nigda njespomnjeś“ jo zmóžnjone."
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "Wužywaśo Firefox ESR."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "Nagraśa su znjemóžnjone."
+  },
   "notificationLinkCopiedTitle": {
     "message": "Wótkaz kopěrowany"
   },
@@ -36,6 +57,28 @@
     "message": "Wótkaz k wašomu fotoju wobrazowki jo se do mjazywótkłada kopěrował. Tłocćo $META_KEY$-V, aby jen zasajźił.",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyScreenshot": {
+    "message": "Kopěrowaś"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "Foto kopěrowane"
+  },
+  "notificationImageCopiedDetails": {
+    "message": "Wašo foto jo se do mjezywótkłada kopěrowało. Tłocćo $META_KEY$-V, aby jo zasajźił.",
+    "placeholders": {
+      "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "imageCroppedWarning": {
+    "message": "Toś ten wobraz jo se na $PIXELS$px pśirězał.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -79,25 +122,31 @@
   "genericErrorDetails": {
     "message": "Njejsmy se wěste, což jo se stało. Cośo hyšći raz wopytaś abo cośo drugi bok fotografěrowaś?"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Gótujśo, składujśo a źělśo fota wobrazowki mimo až Firefox spušćaśo."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "Nowa wašnja składowanja"
+  },
+  "tourBodyPageAction": {
+    "message": "Wócyńśo meni akcijow boka w adresowem pólu kuždy raz, gaž cośo foto worazowki gótowaś."
+  },
+  "tourHeaderClickAndDrag": {
     "message": "Fotografěrujśo jadnorje, což cośo"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "Klikniśo a ześěgniśo, aby źěl boka fotografěrował. Móžośo teke špěrku myški nad nim gibaś, aby swój wuběr wuzwignuł."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "Wokna abo cełe boki składowaś"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "Wubjeŕśo tłocašk górjejce napšawo, aby widobny wobcerk we woknje abo ceły bok fotografěrowaś."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "Tak, kaž se wam spódoba"
   },
-  "tourBodyFour": {
+  "tourBodyDownloadUpload": {
     "message": "Składujśo swóje pśirězane fota wobrazowki w interneśe, aby je lažcej źělił, abo ześěgniśo je na swójo licadło. Móžośo teke na tłocašk „Móje fota wobrazowki“ kliknuś, abye wšě fota wobrazowki namakał, kótarež sćo gótował."
   },
   "tourSkip": {
@@ -112,8 +161,8 @@
   "tourDone": {
     "message": "Gótowo"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Pśez wužywanje Firefox ScreenShots, zwolijośo do $TERMSANDPRIVACYNOTICETERMSLINK$ a $TERMSANDPRIVACYNOTICEPRIVACYLINK$ Firefox Cloud Services.",
+  "termsAndPrivacyNotice2": {
+    "message": "Pśez wužywanje Firefox ScreenShots, zwolijośo do našych $TERMSANDPRIVACYNOTICETERMSLINK$ a $TERMSANDPRIVACYNOTICEPRIVACYLINK$ Firefox Screenshots.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +177,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "Powěźeńka priwatnosći"
+  },
+  "libraryLabel": {
+    "message": "Fota wobrazowki"
   }
 }

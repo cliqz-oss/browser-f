@@ -6,26 +6,15 @@
 .theme-dark,
 .theme-light {
   --number-color: var(--theme-highlight-green);
-  --string-color: var(--theme-highlight-orange);
+  --string-color: var(--theme-highlight-red);
   --null-color: var(--theme-comment);
-  --object-color: var(--theme-body-color);
+  --object-color: var(--theme-highlight-blue);
   --caption-color: var(--theme-highlight-blue);
-  --location-color: var(--theme-content-color1);
+  --location-color: var(--theme-comment);
   --source-link-color: var(--theme-highlight-blue);
-  --node-color: var(--theme-highlight-bluegrey);
-  --reference-color: var(--theme-highlight-purple);
-}
-
-.theme-firebug {
-  --number-color: #000088;
-  --string-color: #FF0000;
-  --null-color: #787878;
-  --object-color: DarkGreen;
-  --caption-color: #444444;
-  --location-color: #555555;
-  --source-link-color: blue;
-  --node-color: rgb(0, 0, 136);
-  --reference-color: rgb(102, 102, 255);
+  --node-color: var(--theme-highlight-purple);
+  --reference-color: var(--theme-highlight-blue);
+  --comment-node-color: var(--theme-comment);
 }
 
 /******************************************************************************/
@@ -63,22 +52,68 @@
   color: var(--string-color);
 }
 
+.objectBox-string a, .objectBox-string a:visited {
+  color: currentColor;
+  text-decoration: none;
+  font-style: italic;
+  cursor: pointer;
+}
+
+.objectBox-string a:hover {
+  text-decoration: underline;
+}
+
 .objectBox-function,
-.objectBox-stackTrace,
 .objectBox-profile {
   color: var(--object-color);
 }
 
-.objectBox-Location {
-  font-style: italic;
+.objectBox-stackTrace {
+  color: var(--error-color);
+}
+
+.objectBox-stackTrace-grid {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  margin-top: 3px;
+}
+
+.objectBox-stackTrace-fn {
+  color: var(--console-output-color);
+  padding-inline-start: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-inline-end: 5px;
+}
+
+.objectBox-stackTrace-location {
+  color: var(--frame-link-source, currentColor);
+  direction: rtl;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: end;
+}
+
+.objectBox-stackTrace-location:hover {
+  text-decoration: underline;
+}
+
+.objectBox-stackTrace-location {
+  cursor: pointer;
+}
+
+.objectBox-Location,
+.location {
   color: var(--location-color);
 }
 
 .objectBox-null,
 .objectBox-undefined,
 .objectBox-hint,
+.objectBox-nan,
 .logRowHint {
-  font-style: italic;
   color: var(--null-color);
 }
 
@@ -105,25 +140,49 @@
 .objectBox-event,
 .objectBox-eventLog,
 .objectBox-regexp,
-.objectBox-object,
-.objectBox-Date {
-  font-weight: bold;
+.objectBox-object {
   color: var(--object-color);
+  white-space: pre-wrap;
+}
+
+.objectBox .Date {
+  color: var(--string-color);
   white-space: pre-wrap;
 }
 
 /******************************************************************************/
 
-.objectBox-object .nodeName,
-.objectBox-NamedNodeMap .nodeName,
-.objectBox-NamedNodeMap .objectEqual,
-.objectBox-Attr .attrEqual,
-.objectBox-Attr .attrTitle {
+.objectBox.theme-comment {
+  color: var(--comment-node-color);
+}
+
+.tag-name {
+  color: var(--object-color);
+}
+
+.attrName {
+  color: var(--string-color);
+}
+
+.attrEqual,
+.objectEqual {
+  color: var(--comment-node-color);
+}
+
+.attrValue,
+.attrValue.objectBox-string {
   color: var(--node-color);
 }
 
-.objectBox-object .nodeName {
-  font-weight: normal;
+.angleBracket {
+  color: var(--theme-body-color);
+}
+
+/******************************************************************************/
+/* Length bubble for arraylikes and maplikes */
+
+.objectLengthBubble {
+  color: var(--null-color);
 }
 
 /******************************************************************************/
@@ -132,25 +191,23 @@
 .objectRightBrace,
 .arrayLeftBracket,
 .arrayRightBracket {
-  color: var(--theme-highlight-blue);
+  color: var(--object-color);
 }
 
 /******************************************************************************/
-/* Cycle reference*/
+/* Cycle reference */
 
 .objectBox-Reference {
   font-weight: bold;
   color: var(--reference-color);
 }
 
-[class*="objectBox-"] > .objectTitle {
-  color: var(--theme-highlight-blue);
-  font-style: italic;
+[class*="objectBox"] > .objectTitle {
+  color: var(--object-color);
 }
 
 .caption {
-  font-weight: bold;
-  color:  var(--caption-color);
+  color: var(--caption-color);
 }
 
 /******************************************************************************/
@@ -177,25 +234,41 @@
 /******************************************************************************/
 /* Open DOMNode in inspector button */
 
-.open-inspector svg {
-  fill: rgb(215, 215, 215);
+button.open-inspector {
+  mask: url("chrome://devtools/skin/images/devtools-reps/open-inspector.svg") no-repeat;
+  display: inline-block;
+  background-color: var(--comment-node-color);
   height: 16px;
-  width: 16px;
   margin-left: .25em;
-  cursor: pointer;
   vertical-align: middle;
 }
 
-.objectBox-node:hover .open-inspector svg,
-.objectBox-textNode:hover .open-inspector svg,
-.open-inspector svg:hover {
-  fill: rgb(65, 175, 230);
+.objectBox-node:hover .open-inspector,
+.objectBox-textNode:hover .open-inspector,
+.open-inspector:hover {
+  background-color: var(--theme-highlight-blue);
+}
+
+/******************************************************************************/
+/* Jump to definition button */
+
+button.jump-definition {
+  mask: url("chrome://devtools/skin/images/devtools-reps/jump-definition.svg") no-repeat;
+  display: inline-block;
+  background-color: var(--comment-node-color);
+  height: 16px;
+  margin-left: .25em;
+  vertical-align: middle;
+}
+
+.jump-definition:hover {
+  background-color: var(--theme-highlight-blue);
 }
 
 /******************************************************************************/
 /* "more…" ellipsis */
 .more-ellipsis {
-  color: var(--theme-comment);
+  color: var(--comment-node-color);
 }
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -203,6 +276,9 @@
 
 .tree {
   overflow: auto;
+}
+
+.tree.inline {
   display: inline-block;
 }
 
@@ -218,44 +294,115 @@
   user-select: none;
 }
 
-.tree button {
-  display: block;
+.tree .tree-node {
+  display: flex;
 }
 
-.tree .node {
-  padding: 0 0.25em;
-  position: relative;
-  cursor: pointer;
+.tree .tree-node:not(.focused):hover {
+  background-color: var(--theme-selection-background-hover);
 }
 
-.tree .node.focused {
-  color: white;
-  background-color: var(--theme-selection-background);
+.tree-indent {
+  display: inline-block;
+  width: 12px;
+  margin-inline-start: 5px;
+  border-inline-start: 1px solid #A2D1FF;
+  flex-shrink: 0;
 }
 
-.arrow svg {
-  fill: var(--theme-splitter-color);
-  transition: transform 0.125s ease;
-  width: 10px;
-  margin-inline-end: 5px;
+/* Align with expandables siblings (where we have the arrow) */
+.tree-node[data-expandable="false"] .tree-indent:last-of-type {
+  margin-inline-end: 15px;
+}
+
+/* For non expandable root nodes, we don't have .tree-indent elements, so we declare
+   the margin on the start of the node */
+.tree-node[data-expandable="false"][aria-level="1"] {
+  padding-inline-start: 15px
+}
+
+.tree .tree-node[data-expandable="true"] {
+  cursor: default;
+}
+
+.tree-node img.arrow {
+  mask: url("chrome://devtools/skin/images/devtools-components/arrow.svg") no-repeat;
+  mask-size: 100%;
+  width: 9px;
+  height: 9px;
+  margin-inline-start: 1px;
+  margin-inline-end: 4px;
+  background-color: var(--theme-splitter-color, #9B9B9B);
   transform: rotate(-90deg);
+  transition: transform 0.125s ease;
+  align-self: center;
 }
 
-html[dir="rtl"] .arrow svg,
-.arrow svg:dir(rtl),
-.arrow svg:-moz-locale-dir(rtl) {
+html[dir="rtl"] .tree-node img.arrow {
   transform: rotate(90deg);
 }
 
-.arrow.expanded.expanded svg {
+.tree-node img.arrow.expanded.expanded {
   transform: rotate(0deg);
+ }
+
+.tree .tree-node.focused {
+  color: white;
+  background-color: var(--theme-selection-background, #0a84ff);
 }
 
-.object-label {
+.tree-node.focused img.arrow {
+  background-color: currentColor;
+}
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.tree.object-inspector .node.object-node {
+  display: inline-block;
+}
+
+.tree.object-inspector .object-label,
+.tree.object-inspector .object-label * {
   color: var(--theme-highlight-blue);
 }
 
-.lessen {
-  opacity: 0.6;
+.tree.object-inspector .node .unavailable {
+  color: var(--theme-comment);
 }
 
+.tree.object-inspector .lessen,
+.tree.object-inspector .lessen *,
+.tree.object-inspector .lessen .object-label,
+.tree.object-inspector .lessen .object-label * {
+  color: var(--theme-comment);
+}
+
+.tree.object-inspector .block .object-label,
+.tree.object-inspector .block .object-label * {
+  color: var(--theme-body-color);
+}
+
+.tree.object-inspector .block .object-label:before {
+  content: "\2632   ";
+  font-size: 1.1em;
+}
+
+.object-inspector .object-delimiter {
+  color: var(--theme-comment);
+}
+
+.object-inspector .tree-node img.arrow {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Focused styles */
+.tree.object-inspector .tree-node.focused * {
+  color: inherit;
+}
+
+.tree-node.focused button.jump-definition,
+.tree-node.focused button.open-inspector {
+  background-color: currentColor;
+}

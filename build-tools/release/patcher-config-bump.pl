@@ -32,6 +32,8 @@ sub ProcessArgs {
         "ftp-server|f=s", "bouncer-server|d=s",
         "use-beta-channel|u", "shipped-locales|l=s", "releasenotes-url|n=s",
         "platform=s@", "marname=s", "oldmarname=s", "schema|s=s",
+        "stage-product=s",
+        "bouncer-product=s",
         "help|h"
     );
 
@@ -39,8 +41,12 @@ sub ProcessArgs {
         print <<__USAGE__;
 Usage: patcher-config-bump.pl [options]
 This script depends on the MozBuild::Util and Bootstrap::Util modules.
-Options: 
+Options:
   -p The product name (eg. firefox, thunderbird, seamonkey, etc.)
+  --stage-product The product name used in the stage prefix.
+     If not specified, the product name is assumed.
+  --bouncer-product The product name used in Bouncer.
+     If not specified, the product name is assumed.
   -r The brand name (eg. Firefox, Thunderbird, SeaMonkey, etc.)
      If not specified, a first-letter-uppercased product name is assumed.
   -v The current version of the product (eg. 3.1a1, 3.0rc1)
@@ -104,6 +110,12 @@ __USAGE__
     }
 
     # set sane defaults
+    if (! defined $config{'stage-product'}) {
+        $config{'stage-product'} = $config{'product'};
+    }
+    if (! defined $config{'bouncer-product'}) {
+        $config{'bouncer-product'} = $config{'product'};
+    }
     if (! defined $config{'brand'}) {
         $config{'brand'} = ucfirst($config{'product'});
     }
@@ -125,10 +137,11 @@ __USAGE__
     if (! defined $config{'schema'}) {
         $config{'schema'} = 2;
     }
-}    
+}
 
 sub BumpPatcherConfig {
     my $product = $config{'product'};
+    my $stage_product = $config{'stage-product'};
     my $brand = $config{'brand'};
     my $version = $config{'version'};
     my $oldVersion = $config{'old-version'};
@@ -145,6 +158,7 @@ sub BumpPatcherConfig {
     my $patcherConfig = $config{'patcher-config'};
     my $ftpServer = $config{'ftp-server'};
     my $bouncerServer = $config{'bouncer-server'};
+    my $bouncer_product = $config{'bouncer-product'};
     my $useBetaChannel = $config{'use-beta-channel'};
     my $configBumpDir = '.';
     my $releaseNotesUrl = $config{'releasenotes-url'};
@@ -268,7 +282,7 @@ sub BumpPatcherConfig {
     my $buildStr = 'build' . $build;
     my @oldPartialVersions = keys(%{$currentUpdateObj->{'partials'}});
     my $oldPaths;
-    if ($#oldPartialVersions > 0) {
+    if ($#oldPartialVersions >= 0) {
         $oldPaths = $currentUpdateObj->{'partials'}->{$oldPartialVersions[0]};
     } else {
         print "WARNING: No old partials, using default values\n";
@@ -280,7 +294,7 @@ sub BumpPatcherConfig {
     for my $partialVersion (@partialVersions) {
         my $partialUpdate = {};
         $partialUpdate->{'url'} = 'http://' . $bouncerServer . '/?product=' .
-                                $product. '-' . $version . '-partial-' .
+                                $bouncer_product. '-' . $version . '-partial-' .
                                 $partialVersion .
                                 '&os=%bouncer-platform%&lang=%locale%';
 
@@ -292,7 +306,7 @@ sub BumpPatcherConfig {
           version => $version,
           oldVersion => $partialVersion
         );
-        $partialUpdate->{'path'} = catfile($product, 'nightly', $version .
+        $partialUpdate->{'path'} = catfile($stage_product, 'nightly', $version .
                                 '-candidates', $buildStr, $pPath);
 
         my $pBetatestPath = BumpFilePath(
@@ -304,7 +318,7 @@ sub BumpPatcherConfig {
           oldVersion => $partialVersion
         );
         $partialUpdate->{'betatest-url'} =
-        'http://' . $ftpServer. '/pub/mozilla.org/' . $product .
+        'http://' . $ftpServer. '/pub/' . $stage_product .
         '/nightly/' .  $version . '-candidates/' . $buildStr . '/' .
         $pBetatestPath;
         $partialUpdate->{'esrtest-url'} = $partialUpdate->{'betatest-url'};
@@ -332,7 +346,7 @@ sub BumpPatcherConfig {
             );
         }
         $partialUpdate->{'beta-url'} =
-        'http://' . $ftpServer . '/pub/mozilla.org/' . $product. '/nightly/' .
+        'http://' . $ftpServer . '/pub/' . $stage_product. '/nightly/' .
             $version . '-candidates/' . $buildStr . '/' . 
             $pBetaPath;
         }
@@ -342,7 +356,7 @@ sub BumpPatcherConfig {
     # Now the same thing, only complete update
     my $completeUpdate = {};
     $completeUpdate->{'url'} = 'http://' . $bouncerServer . '/?product=' .
-     $product . '-' . $version . 
+     $bouncer_product . '-' . $version . 
      '-complete&os=%bouncer-platform%&lang=%locale%';
 
     my $cPath = BumpFilePath(
@@ -353,7 +367,7 @@ sub BumpPatcherConfig {
       version => $version,
       oldVersion => $oldVersion
     );
-    $completeUpdate->{'path'} = catfile($product, 'nightly', $version . 
+    $completeUpdate->{'path'} = catfile($stage_product, 'nightly', $version . 
      '-candidates', $buildStr, $cPath);
 
     my $cBetatestPath = BumpFilePath(
@@ -365,7 +379,7 @@ sub BumpPatcherConfig {
       oldVersion => $oldVersion
     );
     $completeUpdate->{'betatest-url'} = 
-     'http://' . $ftpServer . '/pub/mozilla.org/' . $product .
+     'http://' . $ftpServer . '/pub/' . $stage_product .
      '/nightly/' .  $version . '-candidates/' . $buildStr . '/' .
      $cBetatestPath;
     $completeUpdate->{'esrtest-url'} = $completeUpdate->{'betatest-url'};
@@ -393,7 +407,7 @@ sub BumpPatcherConfig {
          );
        }
        $completeUpdate->{'beta-url'} = 
-        'http://' . $ftpServer . '/pub/mozilla.org/' . $product. '/nightly/' .
+        'http://' . $ftpServer . '/pub/' . $stage_product. '/nightly/' .
         $version . '-candidates/' . $buildStr .  '/' . $cBetaPath;
     }
     $currentUpdateObj->{'complete'} = $completeUpdate;
@@ -405,6 +419,7 @@ sub BumpPatcherConfig {
         appVersion => $appVersion,
         prettyVersion => $prettyVersion,
         product => $product,
+        stage_product => $stage_product,
         buildstr => $buildStr,
         ftpServer => $ftpServer,
         localeInfo => $localeInfo,

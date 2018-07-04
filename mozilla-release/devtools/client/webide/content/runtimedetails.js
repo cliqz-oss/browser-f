@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Cu = Components.utils;
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const Services = require("Services");
 const {AppManager} = require("devtools/client/webide/modules/app-manager");
 const {Connection} = require("devtools/shared/client/connection-manager");
@@ -12,11 +11,11 @@ const Strings = Services.strings.createBundle("chrome://devtools/locale/webide.p
 
 const UNRESTRICTED_HELP_URL = "https://developer.mozilla.org/docs/Tools/WebIDE/Running_and_debugging_apps#Unrestricted_app_debugging_%28including_certified_apps_main_process_etc.%29";
 
-window.addEventListener("load", function () {
+window.addEventListener("load", function() {
   document.querySelector("#close").onclick = CloseUI;
   document.querySelector("#devtools-check button").onclick = EnableCertApps;
   document.querySelector("#adb-check button").onclick = RootADB;
-  document.querySelector("#unrestricted-privileges").onclick = function () {
+  document.querySelector("#unrestricted-privileges").onclick = function() {
     window.parent.UI.openInBrowser(UNRESTRICTED_HELP_URL);
   };
   AppManager.on("app-manager-update", OnAppManagerUpdate);
@@ -24,7 +23,7 @@ window.addEventListener("load", function () {
   CheckLockState();
 }, {capture: true, once: true});
 
-window.addEventListener("unload", function () {
+window.addEventListener("unload", function() {
   AppManager.off("app-manager-update", OnAppManagerUpdate);
 }, {once: true});
 
@@ -32,7 +31,7 @@ function CloseUI() {
   window.parent.UI.openProject();
 }
 
-function OnAppManagerUpdate(event, what) {
+function OnAppManagerUpdate(what) {
   if (what == "connection" || what == "runtime-global-actors") {
     BuildUI();
     CheckLockState();
@@ -53,7 +52,9 @@ function generateFields(json) {
   }
 }
 
-var getDescriptionPromise; // Used by tests
+// Used by tests
+/* exported getDescriptionPromise */
+var getDescriptionPromise;
 function BuildUI() {
   let table = document.querySelector("table");
   table.innerHTML = "";
@@ -71,7 +72,6 @@ function CheckLockState() {
   let adbCheckResult = document.querySelector("#adb-check > .yesno");
   let devtoolsCheckResult = document.querySelector("#devtools-check > .yesno");
   let flipCertPerfButton = document.querySelector("#devtools-check button");
-  let adbRootButton = document.querySelector("#adb-check button");
   let flipCertPerfAction = document.querySelector("#devtools-check > .action");
   let adbRootAction = document.querySelector("#adb-check > .action");
 
@@ -89,7 +89,6 @@ function CheckLockState() {
 
   if (AppManager.connection &&
       AppManager.connection.status == Connection.Status.CONNECTED) {
-
     // ADB check
     if (AppManager.selectedRuntime.type === RuntimeTypes.USB) {
       let device = AppManager.selectedRuntime.device;
@@ -102,7 +101,7 @@ function CheckLockState() {
             adbCheckResult.textContent = sNo;
             adbRootAction.removeAttribute("hidden");
           }
-        }, e => console.error(e));
+        }, console.error);
       } else {
         adbCheckResult.textContent = sUnknown;
       }
@@ -120,15 +119,13 @@ function CheckLockState() {
         } else {
           devtoolsCheckResult.textContent = sYes;
         }
-      }, e => console.error(e));
+      }, console.error);
     } catch (e) {
       // Exception. pref actor is only accessible if forbird-certified-apps is false
       devtoolsCheckResult.textContent = sNo;
       flipCertPerfAction.removeAttribute("hidden");
     }
-
   }
-
 }
 
 function EnableCertApps() {
@@ -140,12 +137,12 @@ function EnableCertApps() {
     "echo 'user_pref(\"devtools.debugger.forbid-certified-apps\", false);' >> prefs.js && " +
     "echo 'user_pref(\"dom.apps.developer_mode\", true);' >> prefs.js && " +
     "echo 'user_pref(\"network.disable.ipc.security\", true);' >> prefs.js && " +
-    "echo 'user_pref(\"dom.webcomponents.enabled\", true);' >> prefs.js && " +
+    "echo 'user_pref(\"dom.webcomponents.shadowdom.enabled\", true);' >> prefs.js && " +
     "start b2g"
   );
 }
 
 function RootADB() {
   let device = AppManager.selectedRuntime.device;
-  device.summonRoot().then(CheckLockState, (e) => console.error(e));
+  device.summonRoot().then(CheckLockState, console.error);
 }

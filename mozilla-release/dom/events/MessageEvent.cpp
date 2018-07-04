@@ -8,7 +8,7 @@
 #include "mozilla/dom/MessageEventBinding.h"
 #include "mozilla/dom/MessagePort.h"
 #include "mozilla/dom/MessagePortBinding.h"
-#include "mozilla/dom/workers/bindings/ServiceWorker.h"
+#include "mozilla/dom/ServiceWorker.h"
 
 #include "mozilla/HoldDropJSObjects.h"
 #include "jsapi.h"
@@ -38,7 +38,7 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(MessageEvent, Event)
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mData)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(MessageEvent)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(MessageEvent)
 NS_INTERFACE_MAP_END_INHERITING(Event)
 
 NS_IMPL_ADDREF_INHERITED(MessageEvent, Event)

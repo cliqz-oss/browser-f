@@ -9,6 +9,7 @@
 
 #include "nsAutoPtr.h"
 #include "nsCOMPtr.h"
+#include "mozilla/Atomics.h"
 #include "mozilla/Mutex.h"
 #include "nsProxyRelease.h"
 #include "nsThreadUtils.h"
@@ -277,6 +278,7 @@ public:
 private:
   ~Connection();
   nsresult initializeInternal();
+  void initializeFailed();
 
   /**
    * Sets the database into a closed state so no further actions can be
@@ -374,10 +376,25 @@ private:
   bool mConnectionClosed;
 
   /**
+   * Stores the default behavior for all transactions run on this connection.
+   */
+  mozilla::Atomic<int32_t> mDefaultTransactionType;
+
+  /**
    * Tracks if we have a transaction in progress or not.  Access protected by
    * sharedDBMutex.
    */
   bool mTransactionInProgress;
+
+  /**
+   * Used to trigger cleanup logic only the first time our refcount hits 1.  We
+   * may trigger a failsafe Close() that invokes SpinningSynchronousClose()
+   * which invokes AsyncClose() which may bump our refcount back up to 2 (and
+   * which will then fall back down to 1 again).  It's also possible that the
+   * Service may bump our refcount back above 1 if getConnections() runs before
+   * we invoke unregisterConnection().
+   */
+  mozilla::Atomic<bool> mDestroying;
 
   /**
    * Stores the mapping of a given function by name to its instance.  Access is

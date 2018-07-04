@@ -1,22 +1,10 @@
 # Manifest entries for imported test suites whose individual test cases
 # we don't want to change.
 
-skip script ecma_6/String/normalize-generateddata-input.js # input data for other test
+# Skip the folder with tests for the scripts
+skip include test/jstests.list
 
-# Skip intl402 tests when Intl isn't available.
-skip-if(!this.hasOwnProperty('Intl')) include test262/intl402/jstests.list
-
-# Skip Intl.PluralRules tests when the addIntlExtras helper isn't available.
-skip-if(!this.hasOwnProperty('addIntlExtras')) include test262/intl402/PluralRules/jstests.list
-
-# Skip built-ins/Simd tests when SIMD isn't available.
-skip-if(!this.hasOwnProperty('SIMD')) include test262/built-ins/Simd/jstests.list
-
-# Skip built-in/Atomics when Atomics isn't available
-skip-if(!this.hasOwnProperty('Atomics')) include test262/built-ins/Atomics/jstests.list
-
-# Skip built-in/SharedArrayBuffer
-skip-if(!this.hasOwnProperty('SharedArrayBuffer')) include test262/built-ins/SharedArrayBuffer/jstests.list
+skip script non262/String/normalize-generateddata-input.js # input data for other test
 
 # Times out on arm and cgc builds.
 slow script test262/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js
@@ -41,15 +29,26 @@ skip-if(!Array.prototype.values) script test262/built-ins/Array/prototype/Symbol
 skip-if(!Array.prototype.values) include test262/built-ins/Array/prototype/values/jstests.list
 skip-if(!String.prototype.normalize) include test262/built-ins/String/prototype/normalize/jstests.list
 
-# Async generator is non-release-or-beta only.
-skip-if(release_or_beta) include test262/language/expressions/async-generators/jstests.list
-skip-if(release_or_beta) include test262/language/statements/async-generator/jstests.list
-
 # Requires ICU to detect Final_Sigma case mapping context
 skip-if(!this.hasOwnProperty("Intl")) script test262/built-ins/String/prototype/toLowerCase/Final_Sigma_U180E.js
 skip-if(!this.hasOwnProperty("Intl")) script test262/built-ins/String/prototype/toLowerCase/special_casing_conditional.js
 skip-if(!this.hasOwnProperty("Intl")) script test262/built-ins/String/prototype/toLocaleLowerCase/Final_Sigma_U180E.js
 skip-if(!this.hasOwnProperty("Intl")) script test262/built-ins/String/prototype/toLocaleLowerCase/special_casing_conditional.js
+
+# Skip intl402 tests when Intl isn't available.
+skip-if(!this.hasOwnProperty("Intl")) include test262/intl402/jstests.list
+
+# Skip built-ins/Simd tests when SIMD isn't available.
+skip-if(!this.hasOwnProperty("SIMD")) include test262/built-ins/Simd/jstests.list
+
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1415303
+skip-if(!this.hasOwnProperty("SharedArrayBuffer")) script non262/SIMD/load-sab-buffer-compat.js
+skip-if(!this.hasOwnProperty("Atomics")) include test262/built-ins/Atomics/jstests.list
+skip-if(!this.hasOwnProperty("SharedArrayBuffer")) include test262/built-ins/SharedArrayBuffer/jstests.list
+
+# flatMap and flatten are Nightly-only
+skip-if(!Array.prototype.flatMap) include test262/built-ins/Array/prototype/flatMap/jstests.list
+skip-if(!Array.prototype.flatten) include test262/built-ins/Array/prototype/flatten/jstests.list
 
 
 #####################################
@@ -85,17 +84,6 @@ skip-if(!xulRuntime.shell) script test262/language/global-code/script-decl-func-
 skip-if(!xulRuntime.shell) script test262/language/global-code/script-decl-lex.js
 skip-if(!xulRuntime.shell) script test262/language/global-code/script-decl-var-err.js
 
-# Defines a restricted property on the WindowProxy object.
-skip-if(!xulRuntime.shell) script test262/built-ins/Object/defineProperty/15.2.3.6-4-354-13.js
-skip-if(!xulRuntime.shell) script test262/built-ins/Object/defineProperty/15.2.3.6-4-360-7.js
-skip-if(!xulRuntime.shell) script test262/built-ins/Object/defineProperty/15.2.3.6-4-531-13.js
-skip-if(!xulRuntime.shell) script test262/built-ins/Object/defineProperty/15.2.3.6-4-531-17.js
-skip-if(!xulRuntime.shell) script test262/built-ins/Object/defineProperty/15.2.3.6-4-538-7.js
-
-# Fails because window has a "name" property on WindowProxy.
-skip-if(!xulRuntime.shell) script test262/language/expressions/object/method-definition/generator-name-prop-symbol.js
-skip-if(!xulRuntime.shell) script test262/language/expressions/object/method-definition/name-name-prop-symbol.js
-
 
 ##################################################
 # Test262 tests skipped due to SpiderMonkey bugs #
@@ -124,36 +112,38 @@ skip script test262/built-ins/TypedArray/prototype/map/callbackfn-detachbuffer.j
 skip script test262/built-ins/TypedArray/prototype/reduceRight/callbackfn-detachbuffer.js
 skip script test262/built-ins/TypedArray/prototype/reduce/callbackfn-detachbuffer.js
 skip script test262/built-ins/TypedArray/prototype/some/callbackfn-detachbuffer.js
-skip script test262/built-ins/TypedArrays/internals/DefineOwnProperty/detached-buffer-realm.js
-skip script test262/built-ins/TypedArrays/internals/DefineOwnProperty/detached-buffer.js
-skip script test262/built-ins/TypedArrays/internals/Get/detached-buffer-realm.js
-skip script test262/built-ins/TypedArrays/internals/Get/detached-buffer.js
-skip script test262/built-ins/TypedArrays/internals/GetOwnProperty/detached-buffer-realm.js
-skip script test262/built-ins/TypedArrays/internals/GetOwnProperty/detached-buffer.js
-skip script test262/built-ins/TypedArrays/internals/HasProperty/detached-buffer-realm.js
-skip script test262/built-ins/TypedArrays/internals/HasProperty/detached-buffer.js
-skip script test262/built-ins/TypedArrays/internals/Set/detached-buffer-realm.js
-skip script test262/built-ins/TypedArrays/internals/Set/detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/detached-buffer-realm.js
+skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/tonumber-value-detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Get/detached-buffer-realm.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Get/detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Get/infinity-detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/GetOwnProperty/detached-buffer-realm.js
+skip script test262/built-ins/TypedArrayConstructors/internals/GetOwnProperty/detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/GetOwnProperty/enumerate-detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/HasProperty/detached-buffer-realm.js
+skip script test262/built-ins/TypedArrayConstructors/internals/HasProperty/detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/HasProperty/infinity-with-detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Set/detached-buffer-realm.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Set/detached-buffer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-detached-buffer.js
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1129202
-skip script test262/built-ins/TypedArrays/internals/DefineOwnProperty/key-is-greater-than-last-index.js
-skip script test262/built-ins/TypedArrays/internals/DefineOwnProperty/key-is-lower-than-zero.js
-skip script test262/built-ins/TypedArrays/internals/DefineOwnProperty/key-is-minus-zero.js
-skip script test262/built-ins/TypedArrays/internals/DefineOwnProperty/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrays/internals/DefineOwnProperty/key-is-not-integer.js
-skip script test262/built-ins/TypedArrays/internals/Get/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrays/internals/Get/key-is-not-integer.js
-skip script test262/built-ins/TypedArrays/internals/GetOwnProperty/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrays/internals/HasProperty/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrays/internals/HasProperty/key-is-not-integer.js
-skip script test262/built-ins/TypedArrays/internals/Set/key-is-minus-zero.js
-skip script test262/built-ins/TypedArrays/internals/Set/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrays/internals/Set/key-is-not-integer.js
-skip script test262/built-ins/TypedArrays/internals/Set/key-is-out-of-bounds.js
-skip script test262/built-ins/TypedArrays/internals/Set/tonumber-value-throws.js
-
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1140152
-skip script test262/built-ins/TypedArray/prototype/slice/bit-precision.js
+skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/key-is-greater-than-last-index.js
+skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/key-is-lower-than-zero.js
+skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/key-is-minus-zero.js
+skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/key-is-not-canonical-index.js
+skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/key-is-not-integer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Get/key-is-not-canonical-index.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Get/key-is-not-integer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/GetOwnProperty/key-is-not-canonical-index.js
+skip script test262/built-ins/TypedArrayConstructors/internals/HasProperty/key-is-not-canonical-index.js
+skip script test262/built-ins/TypedArrayConstructors/internals/HasProperty/key-is-not-integer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Set/key-is-minus-zero.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Set/key-is-not-canonical-index.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Set/key-is-not-integer.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds.js
+skip script test262/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-throws.js
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1317405
 skip script test262/language/computed-property-names/class/static/method-number.js
@@ -238,7 +228,6 @@ skip script test262/built-ins/Proxy/apply/arguments-realm.js
 skip script test262/built-ins/Proxy/apply/trap-is-not-callable-realm.js
 skip script test262/built-ins/Proxy/construct/arguments-realm.js
 skip script test262/built-ins/Proxy/construct/trap-is-not-callable-realm.js
-skip script test262/built-ins/Proxy/construct/trap-is-undefined-proto-from-ctor-realm.js
 skip script test262/built-ins/Proxy/defineProperty/desc-realm.js
 skip script test262/built-ins/Proxy/defineProperty/null-handler-realm.js
 skip script test262/built-ins/Proxy/defineProperty/targetdesc-configurable-desc-not-configurable-realm.js
@@ -261,7 +250,6 @@ skip script test262/built-ins/Proxy/set/trap-is-not-callable-realm.js
 skip script test262/built-ins/Proxy/setPrototypeOf/trap-is-not-callable-realm.js
 
 # Erros thrown from wrong realm, similar to 1225839, 1288457, and 1297179.
-skip script test262/language/expressions/new/non-ctor-err-realm.js
 skip script test262/built-ins/Array/length/define-own-prop-length-overflow-realm.js
 skip script test262/built-ins/Function/internals/Construct/derived-return-val-realm.js
 skip script test262/built-ins/Function/internals/Construct/derived-this-uninitialized-realm.js
@@ -272,6 +260,7 @@ skip script test262/built-ins/Array/proto-from-ctor-realm.js
 skip script test262/built-ins/ArrayBuffer/proto-from-ctor-realm.js
 skip script test262/built-ins/Boolean/proto-from-ctor-realm.js
 skip script test262/built-ins/DataView/proto-from-ctor-realm.js
+skip script test262/built-ins/DataView/proto-from-ctor-realm-sab.js
 skip script test262/built-ins/Date/proto-from-ctor-realm-one.js
 skip script test262/built-ins/Date/proto-from-ctor-realm-two.js
 skip script test262/built-ins/Date/proto-from-ctor-realm-zero.js
@@ -285,14 +274,16 @@ skip script test262/built-ins/Object/proto-from-ctor.js
 skip script test262/built-ins/Promise/proto-from-ctor-realm.js
 skip script test262/built-ins/RegExp/proto-from-ctor-realm.js
 skip script test262/built-ins/Set/proto-from-ctor-realm.js
+skip script test262/built-ins/SharedArrayBuffer/proto-from-ctor-realm.js
 skip script test262/built-ins/String/proto-from-ctor-realm.js
-skip script test262/built-ins/TypedArrays/buffer-arg-proto-from-ctor-realm.js
-skip script test262/built-ins/TypedArrays/length-arg-proto-from-ctor-realm.js
-skip script test262/built-ins/TypedArrays/no-args-proto-from-ctor-realm.js
-skip script test262/built-ins/TypedArrays/object-arg-proto-from-ctor-realm.js
-skip script test262/built-ins/TypedArrays/typedarray-arg-other-ctor-buffer-ctor-custom-species-proto-from-ctor-realm.js
-skip script test262/built-ins/TypedArrays/typedarray-arg-proto-from-ctor-realm.js
-skip script test262/built-ins/TypedArrays/typedarray-arg-same-ctor-buffer-ctor-species-custom-proto-from-ctor-realm.js
+skip script test262/built-ins/TypedArrayConstructors/ctors/buffer-arg/proto-from-ctor-realm.js
+skip script test262/built-ins/TypedArrayConstructors/ctors/buffer-arg/proto-from-ctor-realm-sab.js
+skip script test262/built-ins/TypedArrayConstructors/ctors/length-arg/proto-from-ctor-realm.js
+skip script test262/built-ins/TypedArrayConstructors/ctors/no-args/proto-from-ctor-realm.js
+skip script test262/built-ins/TypedArrayConstructors/ctors/object-arg/proto-from-ctor-realm.js
+skip script test262/built-ins/TypedArrayConstructors/ctors/typedarray-arg/other-ctor-buffer-ctor-custom-species-proto-from-ctor-realm.js
+skip script test262/built-ins/TypedArrayConstructors/ctors/typedarray-arg/proto-from-ctor-realm.js
+skip script test262/built-ins/TypedArrayConstructors/ctors/typedarray-arg/same-ctor-buffer-ctor-species-custom-proto-from-ctor-realm.js
 skip script test262/built-ins/WeakMap/proto-from-ctor-realm.js
 skip script test262/built-ins/WeakSet/proto-from-ctor-realm.js
 
@@ -300,19 +291,8 @@ skip script test262/built-ins/WeakSet/proto-from-ctor-realm.js
 skip script test262/built-ins/ArrayBuffer/prototype/byteLength/detached-buffer.js
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1317394
-skip script test262/built-ins/DataView/prototype/byteOffset/detached-buffer.js
-skip script test262/built-ins/DataView/prototype/byteLength/detached-buffer.js
-
-# We're still waiting for a final decision on https://github.com/tc39/ecma402/pull/84.
-skip script test262/intl402/Collator/10.1.1_1.js
-skip script test262/intl402/NumberFormat/11.1.1_1.js
-skip script test262/intl402/DateTimeFormat/12.1.1_1.js
-
-# Waiting on https://github.com/tc39/ecma402/issues/122
-skip script test262/intl402/DateTimeFormat/prototype/12.3_a.js
-skip script test262/intl402/Collator/prototype/10.3_a.js
-skip script test262/intl402/NumberFormat/prototype/11.3_a.js
-skip script test262/intl402/PluralRules/prototype/prototype.js
+skip-if(release_or_beta) script test262/built-ins/DataView/prototype/byteOffset/detached-buffer.js
+skip-if(release_or_beta) script test262/built-ins/DataView/prototype/byteLength/detached-buffer.js
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1317378
 skip script test262/language/statements/do-while/cptn-abrupt-empty.js
@@ -364,13 +344,6 @@ skip script test262/language/statements/while/cptn-no-iter.js
 skip script test262/language/statements/with/cptn-abrupt-empty.js
 skip script test262/language/statements/with/cptn-nrml.js
 
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1289882
-skip script test262/intl402/NumberFormat/prototype/formatToParts/formatToParts.js
-skip script test262/intl402/NumberFormat/prototype/formatToParts/length.js
-skip script test262/intl402/NumberFormat/prototype/formatToParts/main.js
-skip script test262/intl402/NumberFormat/prototype/formatToParts/name.js
-skip script test262/intl402/NumberFormat/prototype/formatToParts/return-abrupt-tonumber.js
-
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1296234
 skip script test262/intl402/Collator/prototype/compare/compare-function-name.js
 skip script test262/intl402/DateTimeFormat/prototype/format/format-function-name.js
@@ -406,14 +379,6 @@ skip script test262/built-ins/Simd/swizzle.js
 skip script test262/built-ins/Simd/float_operators.js
 skip script test262/built-ins/Simd/all_true.js
 skip script test262/built-ins/Simd/any_true.js
-
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1340147
-skip script test262/language/module-code/eval-export-dflt-cls-anon.js
-skip script test262/language/module-code/eval-export-dflt-expr-cls-anon.js
-skip script test262/language/module-code/eval-export-dflt-expr-fn-anon.js
-skip script test262/language/module-code/eval-export-dflt-expr-gen-anon.js
-skip script test262/language/module-code/instn-named-bndng-dflt-fun-anon.js
-skip script test262/language/module-code/instn-named-bndng-dflt-gen-anon.js
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1340307
 skip script test262/language/module-code/instn-resolve-empty-export.js
@@ -458,77 +423,49 @@ skip-if(!xulRuntime.shell) script test262/built-ins/Atomics/wake/wake-in-order.j
 skip-if(!xulRuntime.shell) script test262/built-ins/Atomics/wake/wake-one.js
 skip-if(!xulRuntime.shell) script test262/built-ins/Atomics/wake/wake-all-on-loc.js
 
-# SharedArrayBuffer API pedantry
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1346071
-skip script test262/built-ins/TypedArrays/buffer-arg-proto-from-ctor-realm-sab.js
-skip script test262/built-ins/SharedArrayBuffer/proto-from-ctor-realm.js
-skip script test262/built-ins/DataView/proto-from-ctor-realm-sab.js
-
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1346081
-skip script test262/intl402/NumberFormat/prototype/format/11.3.2_TRP.js
-skip script test262/intl402/NumberFormat/prototype/format/11.3.2_TRF.js
-
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1346080
-skip script test262/intl402/PluralRules/prototype/select/tainting.js
-
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1340304
-skip-if(!xulRuntime.shell) script test262/language/module-code/instn-iee-err-circular.js
-skip-if(!xulRuntime.shell) script test262/language/module-code/instn-iee-err-circular-as.js
-
-# RegExp s (dotAll) flag
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1361856
-skip script test262/annexB/built-ins/RegExp/prototype/flags/order-after-compile.js
-skip include test262/built-ins/RegExp/dotall/jstests.list
-skip include test262/built-ins/RegExp/prototype/dotAll/jstests.list
-skip script test262/built-ins/RegExp/prototype/flags/order.js
-skip script test262/built-ins/RegExp/prototype/flags/s.js
+skip script test262/intl402/NumberFormat/prototype/format/format-fraction-digits.js
+skip script test262/intl402/NumberFormat/prototype/format/format-significant-digits.js
 
 # Hoisted block-level function named "arguments" not initialized with undefined per B.3.3.1
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1339123
 skip script test262/annexB/language/function-code/block-decl-func-skip-arguments.js
 
-# RegExp Unicode Property Escapes
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1361876
-skip include test262/built-ins/RegExp/property-escapes/jstests.list
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1407587
+skip script test262/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order.js
+skip script test262/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js
 
-# RegExp lookBehind
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1225665
-skip include test262/built-ins/RegExp/lookBehind/jstests.list
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1321616
+skip script test262/annexB/built-ins/Function/createdynfn-html-close-comment-params.js
 
-# RegExp named groups
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1362154
-skip include test262/built-ins/RegExp/named-groups/jstests.list
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1334813
+skip script test262/built-ins/DataView/length.js
 
-# Stash rval in AsyncIteratorClose
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1364608
-skip script test262/language/statements/for-await-of/async-func-dstr-const-ary-ptrn-elision-step-err.js
-skip script test262/language/statements/for-await-of/async-func-dstr-const-ary-ptrn-rest-id-iter-step-err.js
-skip script test262/language/statements/for-await-of/async-func-dstr-let-ary-ptrn-elision-step-err.js
-skip script test262/language/statements/for-await-of/async-func-dstr-let-ary-ptrn-rest-id-iter-step-err.js
-skip script test262/language/statements/for-await-of/async-func-dstr-var-ary-ptrn-elision-step-err.js
-skip script test262/language/statements/for-await-of/async-func-dstr-var-ary-ptrn-rest-id-iter-step-err.js
-skip script test262/language/statements/for-await-of/async-gen-dstr-const-ary-ptrn-elision-step-err.js
-skip script test262/language/statements/for-await-of/async-gen-dstr-const-ary-ptrn-rest-id-iter-step-err.js
-skip script test262/language/statements/for-await-of/async-gen-dstr-let-ary-ptrn-elision-step-err.js
-skip script test262/language/statements/for-await-of/async-gen-dstr-let-ary-ptrn-rest-id-iter-step-err.js
-skip script test262/language/statements/for-await-of/async-gen-dstr-var-ary-ptrn-elision-step-err.js
-skip script test262/language/statements/for-await-of/async-gen-dstr-var-ary-ptrn-rest-id-iter-step-err.js
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1440468
+skip script test262/built-ins/Function/prototype/toString/proxy.js
 
-# Missing expression statement restriction for "async function"
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1361143
-skip script test262/language/statements/for/decl-async-fun.js
-skip script test262/language/statements/for/decl-async-gen.js
-skip script test262/language/statements/for-in/decl-async-fun.js
-skip script test262/language/statements/for-in/decl-async-gen.js
-skip script test262/language/statements/for-of/decl-async-fun.js
-skip script test262/language/statements/for-of/decl-async-gen.js
-skip script test262/language/statements/labeled/decl-async-function.js
-skip script test262/language/statements/labeled/decl-async-generator.js
-skip script test262/language/statements/while/decl-async-fun.js
-skip script test262/language/statements/while/decl-async-gen.js
-skip script test262/language/statements/with/decl-async-fun.js
-skip script test262/language/statements/with/decl-async-gen.js
+
+###########################################################
+# Tests disabled due to issues in test262 importer script #
+###########################################################
+
+# test262 importer merges all includes in a per directory shell.js file, breaking this harness test case.
+skip script test262/harness/detachArrayBuffer.js
+
 
 ####################################################
 # Tests disabled due to invalid test expectations  #
 ####################################################
+
+# https://github.com/tc39/test262/pull/972
+skip script test262/language/expressions/tagged-template/cache-identical-source-new-function.js
+skip script test262/language/expressions/tagged-template/cache-differing-expressions-new-function.js
+skip script test262/language/expressions/tagged-template/cache-differing-expressions.js
+skip script test262/language/expressions/tagged-template/cache-identical-source.js
+skip script test262/language/expressions/tagged-template/cache-differing-expressions-eval.js
+skip script test262/language/expressions/tagged-template/cache-identical-source-eval.js
+
+# https://github.com/tc39/test262/issues/1566
+random script test262/built-ins/Atomics/wake/wake-all-on-loc.js
+random script test262/built-ins/Atomics/wake/wake-all.js
+random script test262/built-ins/Atomics/wake/wake-in-order.js

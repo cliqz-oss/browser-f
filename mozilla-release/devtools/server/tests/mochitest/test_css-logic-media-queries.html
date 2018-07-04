@@ -27,19 +27,15 @@ Test that css-logic handles media-queries correctly
   <script type="application/javascript">
   "use strict";
 
-  window.onload = function () {
-    const { classes: Cc, utils: Cu, interfaces: Ci } = Components;
-    const DOMUtils = Cc["@mozilla.org/inspector/dom-utils;1"]
-      .getService(Ci.inIDOMUtils);
-
-    const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+  window.onload = function() {
+    const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
     const Services = require("Services");
-    const {CssLogic} = require("devtools/server/css-logic");
+    const {CssLogic} = require("devtools/server/actors/inspector/css-logic");
 
     SimpleTest.waitForExplicitFinish();
 
     let div = document.querySelector("div");
-    let cssLogic = new CssLogic(DOMUtils.isInheritedProperty);
+    let cssLogic = new CssLogic(InspectorUtils.isInheritedProperty);
     cssLogic.highlight(div);
     cssLogic.processMatchedSelectors();
 

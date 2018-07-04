@@ -1,22 +1,21 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://gre/modules/PlacesDBUtils.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines/history.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/PlacesDBUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-sync/engines.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines/history.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 let engine;
 let tracker;
 
 add_task(async function setup() {
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Tracker.History").level = Log.Level.Trace;
 
-  Service.engineManager.clear();
+  await Service.engineManager.clear();
   await Service.engineManager.register(HistoryEngine);
   engine = Service.engineManager.get("history");
   tracker = engine._tracker;
@@ -48,29 +47,21 @@ async function verifyTrackedItems(tracked) {
     JSON.stringify(Array.from(trackedIDs))}`);
 }
 
-async function startTracking() {
-  Svc.Obs.notify("weave:engine:start-tracking");
-}
-
-async function stopTracking() {
-  Svc.Obs.notify("weave:engine:stop-tracking");
-}
-
 async function resetTracker() {
-  tracker.clearChangedIDs();
+  await tracker.clearChangedIDs();
   tracker.resetScore();
 }
 
 async function cleanup() {
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   await resetTracker();
-  await stopTracking();
+  await tracker.stop();
 }
 
 add_task(async function test_empty() {
   _("Verify we've got an empty, disabled tracker to work with.");
   await verifyTrackerEmpty();
-  do_check_false(tracker._isTracking);
+  Assert.ok(!tracker._isTracking);
 
   await cleanup();
 });
@@ -103,14 +94,14 @@ add_task(async function test_start_tracking() {
   });
 
   _("Tell the tracker to start tracking changes.");
-  await startTracking();
+  tracker.start();
   let scorePromise = promiseOneObserver("weave:engine:score:updated");
   await addVisit("start_tracking");
   await scorePromise;
 
   _("Score updated in test_start_tracking.");
   await verifyTrackedCount(1);
-  do_check_eq(tracker.score, SCORE_INCREMENT_SMALL);
+  Assert.equal(tracker.score, SCORE_INCREMENT_SMALL);
 
   await savePromise;
 
@@ -120,20 +111,20 @@ add_task(async function test_start_tracking() {
 
 add_task(async function test_start_tracking_twice() {
   _("Verifying preconditions.");
-  await startTracking();
+  tracker.start();
   await addVisit("start_tracking_twice1");
   await verifyTrackedCount(1);
-  do_check_eq(tracker.score, SCORE_INCREMENT_SMALL);
+  Assert.equal(tracker.score, SCORE_INCREMENT_SMALL);
 
   _("Notifying twice won't do any harm.");
-  await startTracking();
+  tracker.start();
   let scorePromise = promiseOneObserver("weave:engine:score:updated");
   await addVisit("start_tracking_twice2");
   await scorePromise;
 
   _("Score updated in test_start_tracking_twice.");
   await verifyTrackedCount(2);
-  do_check_eq(tracker.score, 2 * SCORE_INCREMENT_SMALL);
+  Assert.equal(tracker.score, 2 * SCORE_INCREMENT_SMALL);
 
   await cleanup();
 });
@@ -143,18 +134,18 @@ add_task(async function test_track_delete() {
 
   // This isn't present because we weren't tracking when it was visited.
   await addVisit("track_delete");
-  let uri = Utils.makeURI("http://getfirefox.com/track_delete");
+  let uri = CommonUtils.makeURI("http://getfirefox.com/track_delete");
   let guid = await engine._store.GUIDForUri(uri.spec);
   await verifyTrackerEmpty();
 
-  await startTracking();
+  tracker.start();
   let visitRemovedPromise = promiseVisit("removed", uri);
   let scorePromise = promiseOneObserver("weave:engine:score:updated");
   await PlacesUtils.history.remove(uri);
   await Promise.all([scorePromise, visitRemovedPromise]);
 
   await verifyTrackedItems([guid]);
-  do_check_eq(tracker.score, SCORE_INCREMENT_XLARGE);
+  Assert.equal(tracker.score, SCORE_INCREMENT_XLARGE);
 
   await cleanup();
 });
@@ -167,7 +158,7 @@ add_task(async function test_dont_track_expiration() {
   await resetTracker();
   await verifyTrackerEmpty();
 
-  await startTracking();
+  tracker.start();
   let visitRemovedPromise = promiseVisit("removed", uriToRemove);
   let scorePromise = promiseOneObserver("weave:engine:score:updated");
 
@@ -192,7 +183,7 @@ add_task(async function test_dont_track_expiration() {
 
 add_task(async function test_stop_tracking() {
   _("Let's stop tracking again.");
-  await stopTracking();
+  await tracker.stop();
   await addVisit("stop_tracking");
   await verifyTrackerEmpty();
 
@@ -200,19 +191,36 @@ add_task(async function test_stop_tracking() {
 });
 
 add_task(async function test_stop_tracking_twice() {
-  await stopTracking();
+  await tracker.stop();
   await addVisit("stop_tracking_twice1");
 
   _("Notifying twice won't do any harm.");
-  await stopTracking();
+  await tracker.stop();
   await addVisit("stop_tracking_twice2");
   await verifyTrackerEmpty();
 
   await cleanup();
 });
 
+add_task(async function test_filter_file_uris() {
+  tracker.start();
+
+  let uri = CommonUtils.makeURI("file:///Users/eoger/tps/config.json");
+  let visitAddedPromise = promiseVisit("added", uri);
+  await PlacesTestUtils.addVisits({
+    uri,
+    visitDate: Date.now() * 1000,
+    transition: PlacesUtils.history.TRANSITION_LINK
+  });
+  await visitAddedPromise;
+
+  await verifyTrackerEmpty();
+  await tracker.stop();
+  await cleanup();
+});
+
 add_task(async function test_filter_hidden() {
-  await startTracking();
+  tracker.start();
 
   _("Add visit; should be hidden by the redirect");
   let hiddenURI = await addVisit("hidden");

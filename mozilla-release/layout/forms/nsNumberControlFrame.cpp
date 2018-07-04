@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,7 +12,7 @@
 #include "nsIPresShell.h"
 #include "nsFocusManager.h"
 #include "nsFontMetrics.h"
-#include "nsFormControlFrame.h"
+#include "nsCheckboxRadioFrame.h"
 #include "nsGkAtoms.h"
 #include "nsNameSpaceManager.h"
 #include "nsThemeConstants.h"
@@ -19,14 +20,10 @@
 #include "mozilla/EventStates.h"
 #include "nsContentUtils.h"
 #include "nsContentCreatorFunctions.h"
-#include "nsContentList.h"
 #include "nsCSSPseudoElements.h"
-#include "nsStyleSet.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsThreadUtils.h"
 #include "mozilla/FloatingPoint.h"
+#include "mozilla/dom/MutationEventBinding.h"
 
 #ifdef ACCESSIBILITY
 #include "mozilla/a11y/AccTypes.h"
@@ -36,9 +33,9 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 nsIFrame*
-NS_NewNumberControlFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewNumberControlFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsNumberControlFrame(aContext);
+  return new (aPresShell) nsNumberControlFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsNumberControlFrame)
@@ -49,21 +46,21 @@ NS_QUERYFRAME_HEAD(nsNumberControlFrame)
   NS_QUERYFRAME_ENTRY(nsIFormControlFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsContainerFrame)
 
-nsNumberControlFrame::nsNumberControlFrame(nsStyleContext* aContext)
-  : nsContainerFrame(aContext, kClassID)
+nsNumberControlFrame::nsNumberControlFrame(ComputedStyle* aStyle)
+  : nsContainerFrame(aStyle, kClassID)
   , mHandlingInputEvent(false)
 {
 }
 
 void
-nsNumberControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsNumberControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   NS_ASSERTION(!GetPrevContinuation() && !GetNextContinuation(),
                "nsNumberControlFrame should not have continuations; if it does we "
                "need to call RegUnregAccessKey only for the first");
-  nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
-  nsContentUtils::DestroyAnonymousContent(&mOuterWrapper);
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+  aPostDestroyData.AddAnonymousContent(mOuterWrapper.forget());
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 nscoord
@@ -111,6 +108,7 @@ nsNumberControlFrame::Reflow(nsPresContext* aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsNumberControlFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   NS_ASSERTION(mOuterWrapper, "Outer wrapper div must exist!");
 
@@ -123,7 +121,7 @@ nsNumberControlFrame::Reflow(nsPresContext* aPresContext,
                "We expect at most one direct child frame");
 
   if (mState & NS_FRAME_FIRST_REFLOW) {
-    nsFormControlFrame::RegUnRegAccessKey(this, true);
+    nsCheckboxRadioFrame::RegUnRegAccessKey(this, true);
   }
 
   const WritingMode myWM = aReflowInput.GetWritingMode();
@@ -242,7 +240,7 @@ nsNumberControlFrame::Reflow(nsPresContext* aPresContext,
 
   FinishAndStoreOverflow(&aDesiredSize);
 
-  aStatus.Reset();
+  MOZ_ASSERT(aStatus.IsEmpty(), "This type of frame can't be split.");
 
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
@@ -261,7 +259,7 @@ nsNumberControlFrame::SyncDisabledState()
 
 nsresult
 nsNumberControlFrame::AttributeChanged(int32_t  aNameSpaceID,
-                                       nsIAtom* aAttribute,
+                                       nsAtom* aAttribute,
                                        int32_t  aModType)
 {
   // nsGkAtoms::disabled is handled by SyncDisabledState
@@ -269,13 +267,13 @@ nsNumberControlFrame::AttributeChanged(int32_t  aNameSpaceID,
     if (aAttribute == nsGkAtoms::placeholder ||
         aAttribute == nsGkAtoms::readonly ||
         aAttribute == nsGkAtoms::tabindex) {
-      if (aModType == nsIDOMMutationEvent::REMOVAL) {
+      if (aModType == MutationEventBinding::REMOVAL) {
         mTextField->UnsetAttr(aNameSpaceID, aAttribute, true);
       } else {
-        MOZ_ASSERT(aModType == nsIDOMMutationEvent::ADDITION ||
-                   aModType == nsIDOMMutationEvent::MODIFICATION);
+        MOZ_ASSERT(aModType == MutationEventBinding::ADDITION ||
+                   aModType == MutationEventBinding::MODIFICATION);
         nsAutoString value;
-        mContent->GetAttr(aNameSpaceID, aAttribute, value);
+        mContent->AsElement()->GetAttr(aNameSpaceID, aAttribute, value);
         mTextField->SetAttr(aNameSpaceID, aAttribute, value, true);
       }
     }
@@ -311,8 +309,7 @@ public:
   NS_IMETHOD Run() override
   {
     if (mNumber->AsElement()->State().HasState(NS_EVENT_STATE_FOCUS)) {
-      IgnoredErrorResult ignored;
-      HTMLInputElement::FromContent(mTextField)->Focus(ignored);
+      HTMLInputElement::FromNode(mTextField)->Focus(IgnoreErrors());
     }
 
     return NS_OK;
@@ -326,7 +323,7 @@ private:
 nsresult
 nsNumberControlFrame::MakeAnonymousElement(Element** aResult,
                                            nsTArray<ContentInfo>& aElements,
-                                           nsIAtom* aTagName,
+                                           nsAtom* aTagName,
                                            CSSPseudoElementType aPseudoType)
 {
   // Get the NodeInfoManager and tag necessary to create the anonymous divs.
@@ -387,8 +384,8 @@ nsNumberControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
   mTextField->SetAttr(kNameSpaceID_None, nsGkAtoms::type,
                       NS_LITERAL_STRING("text"), PR_FALSE);
 
-  HTMLInputElement* content = HTMLInputElement::FromContent(mContent);
-  HTMLInputElement* textField = HTMLInputElement::FromContent(mTextField);
+  HTMLInputElement* content = HTMLInputElement::FromNode(mContent);
+  HTMLInputElement* textField = HTMLInputElement::FromNode(mTextField);
 
   // Initialize the text field value:
   nsAutoString value;
@@ -397,17 +394,18 @@ nsNumberControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 
   // If we're readonly, make sure our anonymous text control is too:
   nsAutoString readonly;
-  if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::readonly, readonly)) {
+  if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::readonly,
+                                     readonly)) {
     mTextField->SetAttr(kNameSpaceID_None, nsGkAtoms::readonly, readonly, false);
   }
 
   // Propogate our tabindex:
-  IgnoredErrorResult ignored;
-  textField->SetTabIndex(content->TabIndex(), ignored);
+  textField->SetTabIndex(content->TabIndex(), IgnoreErrors());
 
   // Initialize the text field's placeholder, if ours is set:
   nsAutoString placeholder;
-  if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::placeholder, placeholder)) {
+  if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::placeholder,
+                                     placeholder)) {
     mTextField->SetAttr(kNameSpaceID_None, nsGkAtoms::placeholder, placeholder, false);
   }
 
@@ -457,7 +455,7 @@ nsNumberControlFrame::SetFocus(bool aOn, bool aRepaint)
 }
 
 nsresult
-nsNumberControlFrame::SetFormProperty(nsIAtom* aName, const nsAString& aValue)
+nsNumberControlFrame::SetFormProperty(nsAtom* aName, const nsAString& aValue)
 {
   return GetTextFieldFrame()->SetFormProperty(aName, aValue);
 }
@@ -465,7 +463,7 @@ nsNumberControlFrame::SetFormProperty(nsIAtom* aName, const nsAString& aValue)
 HTMLInputElement*
 nsNumberControlFrame::GetAnonTextControl()
 {
-  return mTextField ? HTMLInputElement::FromContent(mTextField) : nullptr;
+  return HTMLInputElement::FromNode(mTextField);
 }
 
 /* static */ nsNumberControlFrame*
@@ -481,8 +479,10 @@ nsNumberControlFrame::GetNumberControlFrameForTextField(nsIFrame* aFrame)
       content->GetParent() && content->GetParent()->GetParent()) {
     nsIContent* grandparent = content->GetParent()->GetParent();
     if (grandparent->IsHTMLElement(nsGkAtoms::input) &&
-        grandparent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
-                                 nsGkAtoms::number, eCaseMatters)) {
+        grandparent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                              nsGkAtoms::type,
+                                              nsGkAtoms::number,
+                                              eCaseMatters)) {
       return do_QueryFrame(grandparent->GetPrimaryFrame());
     }
   }
@@ -503,8 +503,10 @@ nsNumberControlFrame::GetNumberControlFrameForSpinButton(nsIFrame* aFrame)
       content->GetParent()->GetParent()->GetParent()) {
     nsIContent* greatgrandparent = content->GetParent()->GetParent()->GetParent();
     if (greatgrandparent->IsHTMLElement(nsGkAtoms::input) &&
-        greatgrandparent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
-                                      nsGkAtoms::number, eCaseMatters)) {
+        greatgrandparent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                                   nsGkAtoms::type,
+                                                   nsGkAtoms::number,
+                                                   eCaseMatters)) {
       return do_QueryFrame(greatgrandparent->GetPrimaryFrame());
     }
   }
@@ -565,14 +567,14 @@ nsNumberControlFrame::SpinnerStateChanged() const
 bool
 nsNumberControlFrame::SpinnerUpButtonIsDepressed() const
 {
-  return HTMLInputElement::FromContent(mContent)->
+  return HTMLInputElement::FromNode(mContent)->
            NumberSpinnerUpButtonIsDepressed();
 }
 
 bool
 nsNumberControlFrame::SpinnerDownButtonIsDepressed() const
 {
-  return HTMLInputElement::FromContent(mContent)->
+  return HTMLInputElement::FromNode(mContent)->
            NumberSpinnerDownButtonIsDepressed();
 }
 
@@ -591,15 +593,16 @@ nsNumberControlFrame::HandleFocusEvent(WidgetEvent* aEvent)
 {
   if (aEvent->mOriginalTarget != mTextField) {
     // Move focus to our text field
-    IgnoredErrorResult ignored;
-    HTMLInputElement::FromContent(mTextField)->Focus(ignored);
+    RefPtr<HTMLInputElement> textField = HTMLInputElement::FromNode(mTextField);
+    textField->Focus(IgnoreErrors());
   }
 }
 
 void
 nsNumberControlFrame::HandleSelectCall()
 {
-  HTMLInputElement::FromContent(mTextField)->Select();
+  RefPtr<HTMLInputElement> textField = HTMLInputElement::FromNode(mTextField);
+  textField->Select();
 }
 
 #define STYLES_DISABLING_NATIVE_THEMING \
@@ -657,14 +660,12 @@ nsNumberControlFrame::SetValueOfAnonTextControl(const nsAString& aValue)
   // state will be set to invalid) or if aValue can't be localized:
   nsAutoString localizedValue(aValue);
 
-#ifdef ENABLE_INTL_API
   // Try and localize the value we will set:
   Decimal val = HTMLInputElement::StringToDecimal(aValue);
   if (val.isFinite()) {
     ICUUtils::LanguageTagIterForContent langTagIter(mContent);
     ICUUtils::LocalizeNumber(val.toDouble(), langTagIter, localizedValue);
   }
-#endif
 
   // We need to update the value of our anonymous text control here. Note that
   // this must be its value, and not its 'value' attribute (the default value),
@@ -674,10 +675,9 @@ nsNumberControlFrame::SetValueOfAnonTextControl(const nsAString& aValue)
   // Pass NonSystem as the caller type; this should work fine for actual number
   // inputs, and be safe in case our input has a type we don't expect for some
   // reason.
-  IgnoredErrorResult rv;
-  HTMLInputElement::FromContent(mTextField)->SetValue(localizedValue,
-                                                      CallerType::NonSystem,
-                                                      rv);
+  HTMLInputElement::FromNode(mTextField)->SetValue(localizedValue,
+                                                   CallerType::NonSystem,
+                                                   IgnoreErrors());
 }
 
 void
@@ -688,9 +688,8 @@ nsNumberControlFrame::GetValueOfAnonTextControl(nsAString& aValue)
     return;
   }
 
-  HTMLInputElement::FromContent(mTextField)->GetValue(aValue, CallerType::System);
+  HTMLInputElement::FromNode(mTextField)->GetValue(aValue, CallerType::System);
 
-#ifdef ENABLE_INTL_API
   // Here we need to de-localize any number typed in by the user. That is, we
   // need to convert it from the number format of the user's language, region,
   // etc. to the format that the HTML 5 spec defines to be a "valid
@@ -731,7 +730,6 @@ nsNumberControlFrame::GetValueOfAnonTextControl(nsAString& aValue)
   // as 12.345, but HTMLInputElement::StringToDecimal would parse it to NaN.
   aValue.Truncate();
   aValue.AppendFloat(value);
-#endif
 }
 
 bool
@@ -741,7 +739,7 @@ nsNumberControlFrame::AnonTextControlIsEmpty()
     return true;
   }
   nsAutoString value;
-  HTMLInputElement::FromContent(mTextField)->GetValue(value, CallerType::System);
+  HTMLInputElement::FromNode(mTextField)->GetValue(value, CallerType::System);
   return value.IsEmpty();
 }
 

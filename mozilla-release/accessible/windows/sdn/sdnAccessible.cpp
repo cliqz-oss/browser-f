@@ -12,8 +12,7 @@
 #include "nsAttrName.h"
 #include "nsCoreUtils.h"
 #include "nsIAccessibleTypes.h"
-#include "nsIDOMHTMLElement.h"
-#include "nsIDOMCSSStyleDeclaration.h"
+#include "nsICSSDeclaration.h"
 #include "nsNameSpaceManager.h"
 #include "nsServiceManagerUtils.h"
 #include "nsWinUtils.h"
@@ -21,6 +20,7 @@
 
 #include "mozilla/dom/BorrowedAttrInfo.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/ErrorResult.h"
 
 using namespace mozilla;
 using namespace mozilla::a11y;
@@ -90,24 +90,20 @@ sdnAccessible::get_nodeInfo(BSTR __RPC_FAR* aNodeName,
   if (IsDefunct())
     return CO_E_OBJNOTCONNECTED;
 
-  nsCOMPtr<nsIDOMNode> DOMNode(do_QueryInterface(mNode));
-
-  uint16_t nodeType = 0;
-  DOMNode->GetNodeType(&nodeType);
+  uint16_t nodeType = mNode->NodeType();
   *aNodeType = static_cast<unsigned short>(nodeType);
 
   if (*aNodeType !=  NODETYPE_TEXT) {
-    nsAutoString nodeName;
-    DOMNode->GetNodeName(nodeName);
-    *aNodeName = ::SysAllocString(nodeName.get());
+    *aNodeName = ::SysAllocString(mNode->NodeName().get());
   }
 
   nsAutoString nodeValue;
-  DOMNode->GetNodeValue(nodeValue);
+  mNode->GetNodeValue(nodeValue);
   *aNodeValue = ::SysAllocString(nodeValue.get());
 
-  *aNameSpaceID = mNode->IsNodeOfType(nsINode::eCONTENT) ?
-    static_cast<short>(mNode->AsContent()->GetNameSpaceID()) : 0;
+  *aNameSpaceID = mNode->IsContent()
+    ? static_cast<short>(mNode->AsContent()->GetNameSpaceID())
+    : 0;
 
   // This is a unique ID for every content node. The 3rd party accessibility
   // application can compare this to the childID we return for events such as
@@ -227,15 +223,14 @@ sdnAccessible::get_computedStyle(unsigned short aMaxStyleProperties,
 
   *aNumStyleProperties = 0;
 
-  if (mNode->IsNodeOfType(nsINode::eDOCUMENT))
+  if (mNode->IsDocument())
     return S_FALSE;
 
-  nsCOMPtr<nsIDOMCSSStyleDeclaration> cssDecl =
+  nsCOMPtr<nsICSSDeclaration> cssDecl =
     nsWinUtils::GetComputedStyleDeclaration(mNode->AsContent());
   NS_ENSURE_TRUE(cssDecl, E_FAIL);
 
-  uint32_t length = 0;
-  cssDecl->GetLength(&length);
+  uint32_t length = cssDecl->Length();
 
   uint32_t index = 0, realIndex = 0;
   for (index = realIndex = 0; index < length && realIndex < aMaxStyleProperties;
@@ -243,7 +238,8 @@ sdnAccessible::get_computedStyle(unsigned short aMaxStyleProperties,
     nsAutoString property, value;
 
     // Ignore -moz-* properties.
-    if (NS_SUCCEEDED(cssDecl->Item(index, property)) && property.CharAt(0) != '-')
+    cssDecl->Item(index, property);
+    if (property.CharAt(0) != '-')
       cssDecl->GetPropertyValue(property, value);  // Get property value
 
     if (!value.IsEmpty()) {
@@ -270,10 +266,10 @@ sdnAccessible::get_computedStyleForProperties(unsigned short aNumStyleProperties
   if (IsDefunct())
     return CO_E_OBJNOTCONNECTED;
 
-  if (mNode->IsNodeOfType(nsINode::eDOCUMENT))
+  if (mNode->IsDocument())
     return S_FALSE;
 
-  nsCOMPtr<nsIDOMCSSStyleDeclaration> cssDecl =
+  nsCOMPtr<nsICSSDeclaration> cssDecl =
     nsWinUtils::GetComputedStyleDeclaration(mNode->AsContent());
   NS_ENSURE_TRUE(cssDecl, E_FAIL);
 
@@ -412,7 +408,7 @@ sdnAccessible::get_childAt(unsigned aChildIndex,
   if (IsDefunct())
     return CO_E_OBJNOTCONNECTED;
 
-  nsINode* resultNode = mNode->GetChildAt(aChildIndex);
+  nsINode* resultNode = mNode->GetChildAt_Deprecated(aChildIndex);
   if (resultNode) {
     *aNode = static_cast<ISimpleDOMNode*>(new sdnAccessible(resultNode));
     (*aNode)->AddRef();
@@ -436,7 +432,7 @@ sdnAccessible::get_innerHTML(BSTR __RPC_FAR* aInnerHTML)
     return S_FALSE;
 
   nsAutoString innerHTML;
-  mNode->AsElement()->GetInnerHTML(innerHTML);
+  mNode->AsElement()->GetInnerHTML(innerHTML, IgnoreErrors());
   if (innerHTML.IsEmpty())
     return S_FALSE;
 

@@ -7,14 +7,13 @@
 
 // Test that VariablesView._doSearch() works even without an attached
 // VariablesViewController (bug 1196341).
-
-var Cu = Components.utils;
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-const DOMParser = Cc["@mozilla.org/xmlextras/domparser;1"]
-                    .createInstance(Ci.nsIDOMParser);
 const { VariablesView } =
-  Cu.import("resource://devtools/client/shared/widgets/VariablesView.jsm", {});
+  ChromeUtils.import("resource://devtools/client/shared/widgets/VariablesView.jsm", {});
+const { require } =
+  ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const { globals } = require("devtools/shared/builtin-modules");
+
+const DOMParser = new globals.DOMParser();
 
 function run_test() {
   let doc = DOMParser.parseFromString("<div>", "text/html");
@@ -26,7 +25,7 @@ function run_test() {
   let item1 = scope.addItem("a", { value: "1" });
   let item2 = scope.addItem("b", { value: "2" });
 
-  do_print("Performing a search without a controller.");
+  info("Performing a search without a controller.");
   vv._doSearch("a");
 
   equal(item1.target.hasAttribute("unmatched"), false,

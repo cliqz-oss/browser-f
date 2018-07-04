@@ -4,35 +4,33 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["TabState"];
+var EXPORTED_SYMBOLS = ["TabState"];
 
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "PrivacyFilter",
-  "resource:///modules/sessionstore/PrivacyFilter.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TabStateCache",
+ChromeUtils.defineModuleGetter(this, "PrivacyFilter",
+  "resource://gre/modules/sessionstore/PrivacyFilter.jsm");
+ChromeUtils.defineModuleGetter(this, "TabStateCache",
   "resource:///modules/sessionstore/TabStateCache.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TabAttributes",
+ChromeUtils.defineModuleGetter(this, "TabAttributes",
   "resource:///modules/sessionstore/TabAttributes.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/sessionstore/Utils.jsm");
 
 /**
  * Module that contains tab state collection methods.
  */
-this.TabState = Object.freeze({
+var TabState = Object.freeze({
   update(browser, data) {
     TabStateInternal.update(browser, data);
   },
 
-  collect(tab) {
-    return TabStateInternal.collect(tab);
+  collect(tab, extData) {
+    return TabStateInternal.collect(tab, extData);
   },
 
-  clone(tab) {
-    return TabStateInternal.clone(tab);
+  clone(tab, extData) {
+    return TabStateInternal.clone(tab, extData);
   },
 
   copyFromCache(browser, tabData, options) {
@@ -53,13 +51,15 @@ var TabStateInternal = {
    *
    * @param tab
    *        tabbrowser tab
+   * @param [extData]
+   *        optional dictionary object, containing custom tab values.
    *
    * @returns {TabData} An object with the data for this tab.  If the
    * tab has not been invalidated since the last call to
    * collect(aTab), the same object is returned.
    */
-  collect(tab) {
-    return this._collectBaseTabData(tab);
+  collect(tab, extData) {
+    return this._collectBaseTabData(tab, {extData});
   },
 
   /**
@@ -68,13 +68,15 @@ var TabStateInternal = {
    *
    * @param tab
    *        tabbrowser tab
+   * @param [extData]
+   *        optional dictionary object, containing custom tab values.
    *
    * @returns {object} An object with the data for this tab. This data is never
    *                   cached, it will always be read from the tab and thus be
    *                   up-to-date.
    */
-  clone(tab) {
-    return this._collectBaseTabData(tab, {includePrivateData: true});
+  clone(tab, extData) {
+    return this._collectBaseTabData(tab, {extData, includePrivateData: true});
   },
 
   /**
@@ -83,6 +85,7 @@ var TabStateInternal = {
    * @param tab
    *        tabbrowser tab
    * @param options (object)
+   *        {extData: object} optional dictionary object, containing custom tab values
    *        {includePrivateData: true} to always include private data
    *
    * @returns {object} An object with the basic data for this tab.
@@ -107,8 +110,8 @@ var TabStateInternal = {
     // Save tab attributes.
     tabData.attributes = TabAttributes.get(tab);
 
-    if (tab.__SS_extdata) {
-      tabData.extData = tab.__SS_extdata;
+    if (options.extData) {
+      tabData.extData = options.extData;
     }
 
     // Copy data from the tab state cache only if the tab has fully finished

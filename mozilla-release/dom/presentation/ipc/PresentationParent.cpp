@@ -1,5 +1,5 @@
-/* -*- Mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 40 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -407,12 +407,12 @@ PresentationRequestParent::DoRequest(const StartSessionRequest& aRequest)
 
   mSessionId = aRequest.sessionId();
 
-  nsCOMPtr<nsIDOMEventTarget> eventTarget;
+  RefPtr<EventTarget> eventTarget;
   ContentProcessManager* cpm = ContentProcessManager::GetSingleton();
   RefPtr<TabParent> tp =
     cpm->GetTopLevelTabParentByProcessAndTabId(mChildId, aRequest.tabId());
   if (tp) {
-    eventTarget = do_QueryInterface(tp->GetOwnerElement());
+    eventTarget = tp->GetOwnerElement();
   }
 
   RefPtr<PresentationParent> parent = static_cast<PresentationParent*>(Manager());

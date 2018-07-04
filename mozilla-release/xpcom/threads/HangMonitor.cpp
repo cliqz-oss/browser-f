@@ -14,16 +14,13 @@
 #include "mozilla/Telemetry.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/UniquePtr.h"
+#include "nsExceptionHandler.h"
 #include "nsReadableUtils.h"
 #include "nsThreadUtils.h"
 #include "mozilla/StackWalk.h"
 #include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
 #include "GeckoProfiler.h"
-
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
 
 #ifdef XP_WIN
 #include <windows.h>
@@ -110,14 +107,13 @@ Crash()
   }
 #endif
 
-#ifdef MOZ_CRASHREPORTER
   // If you change this, you must also deal with the threadsafety of AnnotateCrashReport in
   // non-chrome processes!
   if (GeckoProcessType_Default == XRE_GetProcessType()) {
     CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("Hang"),
                                        NS_LITERAL_CSTRING("1"));
+    CrashReporter::SetMinidumpAnalysisAllThreads();
   }
-#endif
 
   MOZ_CRASH("HangMonitor triggered");
 }
@@ -163,17 +159,16 @@ GetChromeHangReport(Telemetry::ProcessedStack& aStack,
   }
 
   if (!suspended) {
-    if (ret != -1) {
+    if (ret != (DWORD)-1) {
       MOZ_ALWAYS_TRUE(::ResumeThread(winMainThreadHandle) != DWORD(-1));
     }
     return;
   }
 
-  MozStackWalk(ChromeStackWalker, /* skipFrames */ 0, /* maxFrames */ 0,
-               reinterpret_cast<void*>(&rawStack),
-               reinterpret_cast<uintptr_t>(winMainThreadHandle), nullptr);
+  MozStackWalkThread(ChromeStackWalker, /* skipFrames */ 0, /* maxFrames */ 0,
+                     &rawStack, winMainThreadHandle, nullptr);
   ret = ::ResumeThread(winMainThreadHandle);
-  if (ret == -1) {
+  if (ret == (DWORD)-1) {
     return;
   }
   aStack = Telemetry::GetStackAndModules(rawStack);
@@ -197,7 +192,7 @@ GetChromeHangReport(Telemetry::ProcessedStack& aStack,
 void
 ThreadMain(void*)
 {
-  AutoProfilerRegisterThread registerThread("Hang Monitor");
+  AUTO_PROFILER_REGISTER_THREAD("Hang Monitor");
   NS_SetCurrentThreadName("Hang Monitor");
 
   MonitorAutoLock lock(*gMonitor);
@@ -212,7 +207,7 @@ ThreadMain(void*)
   Telemetry::ProcessedStack stack;
   int32_t systemUptime = -1;
   int32_t firefoxUptime = -1;
-  UniquePtr<HangAnnotations> annotations;
+  HangAnnotations annotations;
 #endif
 
   while (true) {
@@ -267,11 +262,11 @@ ThreadMain(void*)
       waitCount = 0;
     }
 
-    PRIntervalTime timeout;
+    TimeDuration timeout;
     if (gTimeout <= 0) {
-      timeout = PR_INTERVAL_NO_TIMEOUT;
+      timeout = TimeDuration::Forever();
     } else {
-      timeout = PR_MillisecondsToInterval(gTimeout * 500);
+      timeout = TimeDuration::FromMilliseconds(gTimeout * 500);
     }
     lock.Wait(timeout);
   }

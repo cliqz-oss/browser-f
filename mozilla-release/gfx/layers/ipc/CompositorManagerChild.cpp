@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -24,37 +25,48 @@ using gfx::GPUProcessManager;
 StaticRefPtr<CompositorManagerChild> CompositorManagerChild::sInstance;
 
 /* static */ bool
-CompositorManagerChild::IsInitialized(base::ProcessId aGPUPid)
+CompositorManagerChild::IsInitialized(uint64_t aProcessToken)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  return sInstance && sInstance->CanSend() && sInstance->OtherPid() == aGPUPid;
+  return sInstance && sInstance->CanSend() &&
+         sInstance->mProcessToken == aProcessToken;
 }
 
-/* static */ bool
-CompositorManagerChild::InitSameProcess(uint32_t aNamespace)
+/* static */ void
+CompositorManagerChild::InitSameProcess(uint32_t aNamespace,
+                                        uint64_t aProcessToken)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  if (NS_WARN_IF(IsInitialized(base::GetCurrentProcId()))) {
+  if (NS_WARN_IF(IsInitialized(aProcessToken))) {
     MOZ_ASSERT_UNREACHABLE("Already initialized same process");
-    return false;
+    return;
   }
 
   RefPtr<CompositorManagerParent> parent =
     CompositorManagerParent::CreateSameProcess();
-  sInstance = new CompositorManagerChild(parent, aNamespace);
-  return true;
+  RefPtr<CompositorManagerChild> child =
+    new CompositorManagerChild(parent, aProcessToken, aNamespace);
+  if (NS_WARN_IF(!child->CanSend())) {
+    MOZ_DIAGNOSTIC_ASSERT(false, "Failed to open same process protocol");
+    return;
+  }
+
+  parent->BindComplete();
+  sInstance = child.forget();
 }
 
 /* static */ bool
 CompositorManagerChild::Init(Endpoint<PCompositorManagerChild>&& aEndpoint,
-                             uint32_t aNamespace)
+                             uint32_t aNamespace,
+                             uint64_t aProcessToken /* = 0 */)
 {
   MOZ_ASSERT(NS_IsMainThread());
   if (sInstance) {
     MOZ_ASSERT(sInstance->mNamespace != aNamespace);
   }
 
-  sInstance = new CompositorManagerChild(Move(aEndpoint), aNamespace);
+  sInstance = new CompositorManagerChild(Move(aEndpoint), aProcessToken,
+                                         aNamespace);
   return sInstance->CanSend();
 }
 
@@ -73,14 +85,14 @@ CompositorManagerChild::Shutdown()
 }
 
 /* static */ void
-CompositorManagerChild::OnGPUProcessLost()
+CompositorManagerChild::OnGPUProcessLost(uint64_t aProcessToken)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
   // Since GPUChild and CompositorManagerChild will race on ActorDestroy, we
   // cannot know if the CompositorManagerChild is about to be released but has
   // yet to be. As such, we want to pre-emptively set mCanSend to false.
-  if (sInstance) {
+  if (sInstance && sInstance->mProcessToken == aProcessToken) {
     sInstance->mCanSend = false;
   }
 }
@@ -97,7 +109,7 @@ CompositorManagerChild::CreateContentCompositorBridge(uint32_t aNamespace)
   PCompositorBridgeChild* pbridge =
     sInstance->SendPCompositorBridgeConstructor(options);
   if (NS_WARN_IF(!pbridge)) {
-    return true;
+    return false;
   }
 
   auto bridge = static_cast<CompositorBridgeChild*>(pbridge);
@@ -162,10 +174,12 @@ CompositorManagerChild::CreateSameProcessWidgetCompositorBridge(LayerManager* aL
 }
 
 CompositorManagerChild::CompositorManagerChild(CompositorManagerParent* aParent,
+                                               uint64_t aProcessToken,
                                                uint32_t aNamespace)
-  : mCanSend(false)
+  : mProcessToken(aProcessToken)
   , mNamespace(aNamespace)
   , mResourceId(0)
+  , mCanSend(false)
 {
   MOZ_ASSERT(aParent);
 
@@ -182,10 +196,12 @@ CompositorManagerChild::CompositorManagerChild(CompositorManagerParent* aParent,
 }
 
 CompositorManagerChild::CompositorManagerChild(Endpoint<PCompositorManagerChild>&& aEndpoint,
+                                               uint64_t aProcessToken,
                                                uint32_t aNamespace)
-  : mCanSend(false)
+  : mProcessToken(aProcessToken)
   , mNamespace(aNamespace)
   , mResourceId(0)
+  , mCanSend(false)
 {
   if (NS_WARN_IF(!aEndpoint.Bind(this))) {
     return;
@@ -228,9 +244,9 @@ CompositorManagerChild::DeallocPCompositorBridgeChild(PCompositorBridgeChild* aA
 }
 
 void
-CompositorManagerChild::HandleFatalError(const char* aName, const char* aMsg) const
+CompositorManagerChild::HandleFatalError(const char* aMsg) const
 {
-  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aName, aMsg, OtherPid());
+  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherPid());
 }
 
 void
@@ -244,22 +260,26 @@ CompositorManagerChild::ProcessingError(Result aCode, const char* aReason)
 already_AddRefed<nsIEventTarget>
 CompositorManagerChild::GetSpecificMessageEventTarget(const Message& aMsg)
 {
-  if (aMsg.type() != PCompositorBridge::Msg_DidComposite__ID) {
-    return nullptr;
+  if (aMsg.type() == PCompositorBridge::Msg_DidComposite__ID) {
+    LayersId layersId;
+    PickleIterator iter(aMsg);
+    if (!IPC::ReadParam(&aMsg, &iter, &layersId)) {
+      return nullptr;
+    }
+
+    TabChild* tabChild = TabChild::GetFrom(layersId);
+    if (!tabChild) {
+      return nullptr;
+    }
+
+    return do_AddRef(tabChild->TabGroup()->EventTargetFor(TaskCategory::Other));
   }
 
-  uint64_t layersId;
-  PickleIterator iter(aMsg);
-  if (!IPC::ReadParam(&aMsg, &iter, &layersId)) {
-    return nullptr;
+  if (aMsg.type() == PCompositorBridge::Msg_ParentAsyncMessages__ID) {
+    return do_AddRef(SystemGroup::EventTargetFor(TaskCategory::Other));
   }
 
-  TabChild* tabChild = TabChild::GetFrom(layersId);
-  if (!tabChild) {
-    return nullptr;
-  }
-
-  return do_AddRef(tabChild->TabGroup()->EventTargetFor(TaskCategory::Other));
+  return nullptr;
 }
 
 void
@@ -267,10 +287,8 @@ CompositorManagerChild::SetReplyTimeout()
 {
 #ifndef DEBUG
   // Add a timeout for release builds to kill GPU process when it hangs.
-  // Don't apply timeout when using web render as it tend to timeout frequently.
   if (XRE_IsParentProcess() &&
-      GPUProcessManager::Get()->GetGPUChild() &&
-      !gfx::gfxVars::UseWebRender()) {
+      GPUProcessManager::Get()->GetGPUChild()) {
     int32_t timeout = gfxPrefs::GPUProcessIPCReplyTimeoutMs();
     SetReplyTimeoutMs(timeout);
   }

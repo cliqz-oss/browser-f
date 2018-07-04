@@ -28,13 +28,17 @@
 
 !define FileMainEXE           "@MOZ_APP_NAME@.exe"
 !define WindowClass           "CLIQZMessageWindow"
+!define MainWindowClass       "CliqzWindowClass"
+!define DialogWindowClass     "CliqzDialogClass"
 !define DDEApplication        "CLIQZ"
 !define AppRegName            "CLIQZ"
 
 !ifndef DEV_EDITION
 !define BrandShortName        "@MOZ_APP_DISPLAYNAME@"
 !endif
+!ifndef BrandFullName
 !define BrandFullName         "${BrandFullNameInternal}"
+!endif
 
 !define CERTIFICATE_NAME      "Cliqz GmbH"
 !define CERTIFICATE_ISSUER    "DigiCert SHA2 Assured ID Code Signing CA"
@@ -96,6 +100,12 @@
 !define MOZ_MAINTENANCE_SERVICE
 #endif
 
+!if "@AB_CD@" == "en-US"
+!define MOZ_OPTIONAL_EXTENSIONS
+!else if "@AB_CD@" == "zh-CN"
+!define MOZ_OPTIONAL_EXTENSIONS
+!endif
+
 # File details shared by both the installer and uninstaller
 VIProductVersion "1.0.0.0"
 VIAddVersionKey "ProductName"     "${BrandShortName}"
@@ -118,17 +128,11 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 
 # Control positions in Dialog Units so they are placed correctly with
 # non-default DPI settings
-!define OPTIONS_ITEM_EDGE_DU 90u
-!define OPTIONS_ITEM_WIDTH_DU 356u
-!define OPTIONS_SUBITEM_EDGE_DU 119u
-!define OPTIONS_SUBITEM_WIDTH_DU 327u
-!define INSTALL_BLURB_IMAGE_TOP_DU 23u
-!define INSTALL_BLURB_HEAD_TOP_DU 92u
-!define INSTALL_BLURB_TEXT_TOP_DU 108u
-!define APPNAME_BMP_EDGE_DU 23u
-!define APPNAME_BMP_TOP_DU 19u
-!define NOW_INSTALLING_TOP_DU 70u
-!define INSTALL_BLURB_TOP_DU 137u
-!define INSTALL_FOOTER_TOP_DU -48u
-!define INSTALL_FOOTER_WIDTH_DU 250u
-!define PROGRESS_BAR_TOP_DU 112u
+!define PROFILE_CLEANUP_LABEL_TOP_DU 64u
+!define NOW_INSTALLING_TOP_DU 221u
+!define INSTALL_BLURB1_TOP_DU 60u
+!define INSTALL_BLURB2_TOP_DU 100u
+!define INSTALL_BLURB3_TOP_DU 128u
+!define INSTALL_FOOTER_TOP_DU 19u
+!define INSTALL_FOOTER_WIDTH_DU 400u
+!define PROGRESS_BAR_TOP_DU 210u

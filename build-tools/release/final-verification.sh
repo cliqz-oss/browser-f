@@ -152,13 +152,27 @@ then
     exit 68
 fi
 
-log "Checking specified config files all exist relative to directory '$(pwd)':"
+log "Checking specified config files (and downloading them if necessary):"
 log ''
+configs=()
 for file in "${@}"
 do
-    if [ -f "${file}" ]
+    if [[ ${file} == http* ]]
+    then
+        log "  Downloading config file '${file}'"
+        cfg=$(mktemp)
+        curl -fL "${file}" > "$cfg"
+        if [ "$?" != 0 ]; then
+            log "Error downloading config file '${file}'"
+            BAD_FILE=1
+        else
+            log "  * '${file}' ok, downloaded to '${cfg}'"
+            configs+=($cfg)
+        fi
+    elif [ -f "${file}" ]
     then
         log "  * '${file}' ok"
+        configs+=(${file})
     else
         log "  * '${file}' missing"
         BAD_FILE=1
@@ -169,7 +183,7 @@ log ''
 # invalid config specified
 if [ "${BAD_FILE}" == 1 ]
 then
-    log "ERROR: Specified config file(s) missing relative to '$(pwd)' directory - see above."
+    log "ERROR: Unable to download config file(s) or config files are missing from repo - see above"
     exit 67
 fi
 
@@ -247,8 +261,8 @@ update_xml_urls="$(mktemp -t update_xml_urls.XXXXXXXXXX)"
 
 # generate full list of update.xml urls, followed by patch types,
 # as defined in the specified config files - and write into "${update_xml_urls}" file
-aus_server="https://aus4.mozilla.org"
-for cfg_file in "${@}"
+aus_server="https://aus5.mozilla.org"
+for cfg_file in "${configs}"
 do
     line_no=0
     sed -e 's/localtest/cdntest/' "${cfg_file}" | while read config_line

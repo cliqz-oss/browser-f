@@ -20,12 +20,14 @@ locales = [
     "bs",
     "ca",
     "cak",
+    "crh",
     "cs",
     "cy",
     "da",
     "de",
     "dsb",
     "el",
+    "en-CA",
     "en-GB",
     "en-ZA",
     "eo",
@@ -51,6 +53,7 @@ locales = [
     "hsb",
     "hu",
     "hy-AM",
+    "ia",
     "id",
     "is",
     "it",
@@ -77,6 +80,7 @@ locales = [
     "ne-NP",
     "nl",
     "nn-NO",
+    "oc",
     "or",
     "pa-IN",
     "pl",
@@ -101,6 +105,7 @@ locales = [
     "ur",
     "uz",
     "vi",
+    "wo",
     "xh",
     "zh-CN",
     "zh-TW",
@@ -117,6 +122,10 @@ locales = [
 [[paths]]
     reference = "browser/branding/official/locales/en-US/**"
     l10n = "{l}browser/branding/official/**"
+
+[[paths]]
+    reference = "browser/extensions/formautofill/locales/en-US/**"
+    l10n = "{l}browser/extensions/formautofill/**"
 
 [[paths]]
     reference = "browser/extensions/onboarding/locales/en-US/**"
@@ -136,6 +145,15 @@ locales = [
 
 [[includes]]
     path = "devtools/client/locales/l10n.toml"
+
+[[paths]]
+    reference = "devtools/startup/locales/en-US/**"
+    l10n = "{l}devtools/startup/**"
+
+# for Firefox 60 and older and cross-channel
+[[paths]]
+    reference = "devtools/shim/locales/en-US/**"
+    l10n = "{l}devtools/shim/**"
 
 # Filters
 # The filters below are evaluated one after the other, in the given order.

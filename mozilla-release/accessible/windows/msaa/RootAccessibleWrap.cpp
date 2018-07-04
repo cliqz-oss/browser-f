@@ -6,6 +6,7 @@
 #include "RootAccessibleWrap.h"
 
 #include "Compatibility.h"
+#include "mozilla/WindowsVersion.h"
 #include "nsCoreUtils.h"
 #include "nsWinUtils.h"
 
@@ -87,6 +88,8 @@ RootAccessibleWrap::GetInternalUnknown()
 void
 RootAccessibleWrap::DocumentActivated(DocAccessible* aDocument)
 {
+  // This check will never work with e10s enabled, in other words, as of
+  // Firefox 57.
   if (Compatibility::IsDolphin() &&
       nsCoreUtils::IsTabDocument(aDocument->DocumentNode())) {
     uint32_t count = mChildDocuments.Length();
@@ -99,4 +102,103 @@ RootAccessibleWrap::DocumentActivated(DocAccessible* aDocument)
         nsWinUtils::ShowNativeWindow(childDocHWND);
     }
   }
+}
+
+STDMETHODIMP
+RootAccessibleWrap::accNavigate(
+      /* [in] */ long navDir,
+      /* [optional][in] */ VARIANT varStart,
+      /* [retval][out] */ VARIANT __RPC_FAR *pvarEndUpAt)
+{
+  // Special handling for NAVRELATION_EMBEDS.
+  // When we only have a single process, this can be handled the same way as
+  // any other relation.
+  // However, for multi process, the normal relation mechanism doesn't work
+  // because it can't handle remote objects.
+  if (navDir != NAVRELATION_EMBEDS ||
+      varStart.vt != VT_I4  || varStart.lVal != CHILDID_SELF) {
+    // We only handle EMBEDS on the root here.
+    // Forward to the base implementation.
+    return DocAccessibleWrap::accNavigate(navDir, varStart, pvarEndUpAt);
+  }
+
+  if (!pvarEndUpAt) {
+    return E_INVALIDARG;
+  }
+  if (IsDefunct()) {
+    return CO_E_OBJNOTCONNECTED;
+  }
+
+  Accessible* target = nullptr;
+  // Get the document in the active tab.
+  ProxyAccessible* docProxy = GetPrimaryRemoteTopLevelContentDoc();
+  if (docProxy) {
+    target = WrapperFor(docProxy);
+  } else {
+    // The base implementation could handle this, but we may as well
+    // just handle it here.
+    Relation rel = RelationByType(RelationType::EMBEDS);
+    target = rel.Next();
+  }
+
+  if (!target) {
+    return E_FAIL;
+  }
+
+  VariantInit(pvarEndUpAt);
+  pvarEndUpAt->pdispVal = NativeAccessible(target);
+  pvarEndUpAt->vt = VT_DISPATCH;
+  return S_OK;
+}
+
+STDMETHODIMP
+RootAccessibleWrap::get_accFocus(
+      /* [retval][out] */ VARIANT __RPC_FAR *pvarChild)
+{
+  HRESULT hr = DocAccessibleWrap::get_accFocus(pvarChild);
+  if (FAILED(hr) || pvarChild->vt != VT_EMPTY || !IsWin8OrLater()) {
+    // 1. We got a definite result (either failure or an accessible); or
+    // 2. This is Windows 7, where we don't want to retrieve the focus from a
+    // remote document because this causes mysterious intermittent crashes
+    // when we're called by UIA clients; see bug 1424505.
+    return hr;
+  }
+
+  // The base implementation reported no focus.
+  // Focus might be in a remote document.
+  // (The base implementation can't handle this.)
+  // Get the document in the active tab.
+  ProxyAccessible* docProxy = GetPrimaryRemoteTopLevelContentDoc();
+  if (!docProxy) {
+    return hr;
+  }
+  Accessible* docAcc = WrapperFor(docProxy);
+  if (!docAcc) {
+    return E_FAIL;
+  }
+  RefPtr<IDispatch> docDisp = NativeAccessible(docAcc);
+  if (!docDisp) {
+    return E_FAIL;
+  }
+  RefPtr<IAccessible> docIa;
+  hr = docDisp->QueryInterface(IID_IAccessible, (void**)getter_AddRefs(docIa));
+  MOZ_ASSERT(SUCCEEDED(hr));
+  MOZ_ASSERT(docIa);
+
+  // Ask this document for its focused descendant.
+  // We return this as is to the client except for CHILDID_SELF (see below).
+  hr = docIa->get_accFocus(pvarChild);
+  if (FAILED(hr)) {
+    return hr;
+  }
+
+  if (pvarChild->vt == VT_I4 && pvarChild->lVal == CHILDID_SELF) {
+    // The document itself has focus.
+    // We're handling a call to accFocus on the root accessible,
+    // so replace CHILDID_SELF with the document accessible.
+    pvarChild->vt = VT_DISPATCH;
+    docDisp.forget(&pvarChild->pdispVal);
+  }
+
+  return S_OK;
 }

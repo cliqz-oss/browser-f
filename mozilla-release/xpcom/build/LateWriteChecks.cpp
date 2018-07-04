@@ -13,15 +13,16 @@
 #include "mozilla/Scoped.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/Unused.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsDirectoryServiceUtils.h"
+#include "nsLocalFile.h"
 #include "nsPrintfCString.h"
 #include "mozilla/StackWalk.h"
 #include "plstr.h"
 #include "prio.h"
 
 #ifdef XP_WIN
-#define NS_T(str) L ## str
 #define NS_SLASH "\\"
 #include <fcntl.h>
 #include <io.h>
@@ -59,7 +60,7 @@ public:
     str.AppendPrintf(aFormat, list);
     va_end(list);
     mSHA1.update(str.get(), str.Length());
-    fwrite(str.get(), 1, str.Length(), mFile);
+    Unused << fwrite(str.get(), 1, str.Length(), mFile);
   }
   void Finish(SHA1Sum::Hash& aHash)
   {
@@ -91,20 +92,22 @@ RecordStackWalker(uint32_t aFrameNumber, void* aPC, void* aSP, void* aClosure)
  */
 class LateWriteObserver final : public IOInterposeObserver
 {
+  using char_type = filesystem::Path::value_type;
 public:
-  explicit LateWriteObserver(const char* aProfileDirectory)
-    : mProfileDirectory(PL_strdup(aProfileDirectory))
+  explicit LateWriteObserver(const char_type* aProfileDirectory)
+    : mProfileDirectory(NS_strdup(aProfileDirectory))
   {
   }
   ~LateWriteObserver()
   {
-    PL_strfree(mProfileDirectory);
+    free(mProfileDirectory);
     mProfileDirectory = nullptr;
   }
 
-  void Observe(IOInterposeObserver::Observation& aObservation);
+  void Observe(IOInterposeObserver::Observation& aObservation) override;
+
 private:
-  char* mProfileDirectory;
+  char_type* mProfileDirectory;
 };
 
 void
@@ -125,12 +128,12 @@ LateWriteObserver::Observe(IOInterposeObserver::Observation& aOb)
   std::vector<uintptr_t> rawStack;
 
   MozStackWalk(RecordStackWalker, /* skipFrames */ 0, /* maxFrames */ 0,
-               reinterpret_cast<void*>(&rawStack), 0, nullptr);
+               &rawStack);
   Telemetry::ProcessedStack stack = Telemetry::GetStackAndModules(rawStack);
 
-  nsPrintfCString nameAux("%s%s%s", mProfileDirectory,
-                          NS_SLASH, "Telemetry.LateWriteTmpXXXXXX");
-  char* name;
+  nsTAutoString<char_type> nameAux(mProfileDirectory);
+  nameAux.AppendLiteral(NS_SLASH "Telemetry.LateWriteTmpXXXXXX");
+  char_type* name;
   nameAux.GetMutableData(&name);
 
   // We want the sha1 of the entire file, so please don't write to fd
@@ -140,9 +143,9 @@ LateWriteObserver::Observe(IOInterposeObserver::Observation& aOb)
   HANDLE hFile;
   do {
     // mkstemp isn't supported so keep trying until we get a file
-    int result = _mktemp_s(name, strlen(name) + 1);
-    hFile = CreateFileA(name, GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-                        FILE_ATTRIBUTE_NORMAL, nullptr);
+    _wmktemp_s(char16ptr_t(name), NS_strlen(name) + 1);
+    hFile = CreateFileW(char16ptr_t(name), GENERIC_WRITE, 0, nullptr,
+                        CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
   } while (GetLastError() == ERROR_FILE_EXISTS);
 
   if (hFile == INVALID_HANDLE_VALUE) {
@@ -200,13 +203,12 @@ LateWriteObserver::Observe(IOInterposeObserver::Observation& aOb)
 
   // We append the sha1 of the contents to the file name. This provides a simple
   // client side deduplication.
-  nsPrintfCString finalName("%s%s", mProfileDirectory,
-                            "/Telemetry.LateWriteFinal-");
+  nsAutoString finalName(NS_LITERAL_STRING("Telemetry.LateWriteFinal-"));
   for (int i = 0; i < 20; ++i) {
     finalName.AppendPrintf("%02x", sha1[i]);
   }
-  PR_Delete(finalName.get());
-  PR_Rename(name, finalName.get());
+  RefPtr<nsLocalFile> file = new nsLocalFile(nameAux);
+  file->RenameTo(nullptr, finalName);
 }
 
 /******************************* Setup/Teardown *******************************/
@@ -221,9 +223,8 @@ InitLateWriteChecks()
   nsCOMPtr<nsIFile> mozFile;
   NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR, getter_AddRefs(mozFile));
   if (mozFile) {
-    nsAutoCString nativePath;
-    nsresult rv = mozFile->GetNativePath(nativePath);
-    if (NS_SUCCEEDED(rv) && nativePath.get()) {
+    PathString nativePath = mozFile->NativePath();
+    if (nativePath.get()) {
       sLateWriteObserver = new LateWriteObserver(nativePath.get());
     }
   }

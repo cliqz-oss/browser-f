@@ -19,33 +19,80 @@ include protocol PBackground;
 namespace mozilla {
 namespace dom {
 
-struct WebAuthnScopedCredentialDescriptor {
+struct WebAuthnAuthenticatorSelection {
+  bool requireResidentKey;
+  bool requireUserVerification;
+  bool requirePlatformAttachment;
+};
+
+struct WebAuthnScopedCredential {
   uint8_t[] id;
+  uint8_t transports;
 };
 
-struct WebAuthnExtension {
-  /* TODO Fill in with predefined extensions */
+struct WebAuthnExtensionAppId {
+  uint8_t[] AppId;
 };
 
-struct WebAuthnTransactionInfo {
+union WebAuthnExtension {
+  WebAuthnExtensionAppId;
+};
+
+struct WebAuthnExtensionResultAppId {
+  bool AppId;
+};
+
+union WebAuthnExtensionResult {
+  WebAuthnExtensionResultAppId;
+};
+
+struct WebAuthnMakeCredentialInfo {
+  nsString Origin;
   uint8_t[] RpIdHash;
   uint8_t[] ClientDataHash;
   uint32_t TimeoutMS;
-  WebAuthnScopedCredentialDescriptor[] Descriptors;
+  WebAuthnScopedCredential[] ExcludeList;
   WebAuthnExtension[] Extensions;
+  WebAuthnAuthenticatorSelection AuthenticatorSelection;
+  bool RequestDirectAttestation;
+};
+
+struct WebAuthnMakeCredentialResult {
+  uint8_t[] RegBuffer;
+  bool DirectAttestationPermitted;
+};
+
+struct WebAuthnGetAssertionInfo {
+  nsString Origin;
+  uint8_t[] RpIdHash;
+  uint8_t[] ClientDataHash;
+  uint32_t TimeoutMS;
+  WebAuthnScopedCredential[] AllowList;
+  bool RequireUserVerification;
+  WebAuthnExtension[] Extensions;
+};
+
+struct WebAuthnGetAssertionResult {
+  uint8_t[] RpIdHash;
+  uint8_t[] CredentialID;
+  uint8_t[] SigBuffer;
+  WebAuthnExtensionResult[] Extensions;
 };
 
 async protocol PWebAuthnTransaction {
   manager PBackground;
+
   parent:
-    async __delete__();
-    async RequestRegister(WebAuthnTransactionInfo aTransactionInfo);
-    async RequestSign(WebAuthnTransactionInfo aTransactionInfo);
-    async RequestCancel();
+    async RequestRegister(uint64_t aTransactionId, WebAuthnMakeCredentialInfo aTransactionInfo);
+    async RequestSign(uint64_t aTransactionId, WebAuthnGetAssertionInfo aTransactionInfo);
+    async RequestCancel(uint64_t aTransactionId);
+    async DestroyMe();
+
   child:
-    async ConfirmRegister(uint8_t[] RegBuffer);
-    async ConfirmSign(uint8_t[] CredentialID, uint8_t[] ReplyBuffer);
-    async Cancel(nsresult Error);
+    async __delete__();
+    async ConfirmRegister(uint64_t aTransactionId, WebAuthnMakeCredentialResult aResult);
+    async ConfirmSign(uint64_t aTransactionId, WebAuthnGetAssertionResult aResult);
+    async Abort(uint64_t aTransactionId, nsresult Error);
 };
 
 }

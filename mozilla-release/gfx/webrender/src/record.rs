@@ -2,15 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use bincode::{Infinite, serialize};
-use std::fmt::Debug;
-use std::mem;
+use api::{ApiMsg, FrameMsg, SceneMsg};
+use bincode::serialize;
+use byteorder::{LittleEndian, WriteBytesExt};
 use std::any::TypeId;
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::Write;
+use std::mem;
 use std::path::PathBuf;
-use api::ApiMsg;
-use byteorder::{LittleEndian, WriteBytesExt};
 
 pub static WEBRENDER_RECORDING_HEADER: u64 = 0xbeefbeefbeefbe01u64;
 
@@ -33,12 +33,11 @@ impl BinaryRecorder {
             assert!(mem::size_of::<TypeId>() == mem::size_of::<u64>());
             mem::transmute::<TypeId, u64>(TypeId::of::<ApiMsg>())
         };
-        file.write_u64::<LittleEndian>(WEBRENDER_RECORDING_HEADER).ok();
+        file.write_u64::<LittleEndian>(WEBRENDER_RECORDING_HEADER)
+            .ok();
         file.write_u64::<LittleEndian>(apimsg_type_id).ok();
 
-        BinaryRecorder {
-            file,
-        }
+        BinaryRecorder { file }
     }
 
     fn write_length_and_data(&mut self, data: &[u8]) {
@@ -50,7 +49,7 @@ impl BinaryRecorder {
 impl ApiRecordingReceiver for BinaryRecorder {
     fn write_msg(&mut self, _: u32, msg: &ApiMsg) {
         if should_record_msg(msg) {
-            let buf = serialize(msg, Infinite).unwrap();
+            let buf = serialize(msg).unwrap();
             self.write_length_and_data(&buf);
         }
     }
@@ -64,20 +63,32 @@ impl ApiRecordingReceiver for BinaryRecorder {
 
 pub fn should_record_msg(msg: &ApiMsg) -> bool {
     match *msg {
-        ApiMsg::AddRawFont(..) |
-        ApiMsg::AddNativeFont(..) |
-        ApiMsg::DeleteFont(..) |
-        ApiMsg::AddImage(..) |
-        ApiMsg::GenerateFrame(..) |
-        ApiMsg::UpdateImage(..) |
-        ApiMsg::DeleteImage(..) |
-        ApiMsg::SetDisplayList(..) |
-        ApiMsg::SetRootPipeline(..) |
-        ApiMsg::Scroll(..) |
-        ApiMsg::TickScrollingBounce |
-        ApiMsg::WebGLCommand(..) |
-        ApiMsg::SetWindowParameters(..) =>
-            true,
-        _ => false
+        ApiMsg::UpdateResources(..) |
+        ApiMsg::AddDocument { .. } |
+        ApiMsg::DeleteDocument(..) => true,
+        ApiMsg::UpdateDocument(_, ref msgs) => {
+            if msgs.generate_frame {
+                return true;
+            }
+
+            for msg in &msgs.scene_ops {
+                match *msg {
+                    SceneMsg::SetDisplayList { .. } |
+                    SceneMsg::SetRootPipeline { .. } => return true,
+                    _ => {}
+                }
+            }
+
+            for msg in &msgs.frame_ops {
+                match *msg {
+                    FrameMsg::GetScrollNodeState(..) |
+                    FrameMsg::HitTest(..) => {}
+                    _ => return true,
+                }
+            }
+
+            false
+        }
+        _ => false,
     }
 }

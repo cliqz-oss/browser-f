@@ -40,6 +40,7 @@
 #include "nsIRunnable.h"
 #include "nsISocketTransportService.h"
 #include "nsIURI.h"
+#include "nsIURIMutator.h"
 #include "nsILoadInfo.h"
 #include "NullPrincipal.h"
 #include "nsIAuthPrompt2.h"
@@ -746,7 +747,8 @@ nsFtpState::S_user() {
         // XXX Is UTF-8 the best choice?
         AppendUTF16toUTF8(mUsername, usernameStr);
     }
-    usernameStr.Append(CRLF);
+
+    usernameStr.AppendLiteral(CRLF);
 
     return SendFTPCommand(usernameStr);
 }
@@ -784,7 +786,7 @@ nsFtpState::S_pass() {
             // XXX Is UTF-8 the best choice?
             AppendUTF16toUTF8(mPassword, passwordStr);
         } else {
-            nsXPIDLCString anonPassword;
+            nsAutoCString anonPassword;
             bool useRealEmail = false;
             nsCOMPtr<nsIPrefBranch> prefs =
                     do_GetService(NS_PREFSERVICE_CONTRACTID);
@@ -792,11 +794,11 @@ nsFtpState::S_pass() {
                 rv = prefs->GetBoolPref("advanced.mailftp", &useRealEmail);
                 if (NS_SUCCEEDED(rv) && useRealEmail) {
                     prefs->GetCharPref("network.ftp.anonymous_password",
-                                       getter_Copies(anonPassword));
+                                       anonPassword);
                 }
             }
             if (!anonPassword.IsEmpty()) {
-                passwordStr.AppendASCII(anonPassword);
+                passwordStr.AppendASCII(anonPassword.get());
             } else {
                 // We need to default to a valid email address - bug 101027
                 // example.com is reserved (rfc2606), so use that
@@ -838,7 +840,8 @@ nsFtpState::S_pass() {
         // XXX Is UTF-8 the best choice?
         AppendUTF16toUTF8(mPassword, passwordStr);
     }
-    passwordStr.Append(CRLF);
+
+    passwordStr.AppendLiteral(CRLF);
 
     return SendFTPCommand(passwordStr);
 }
@@ -943,10 +946,10 @@ nsFtpState::R_syst() {
             char16_t* ucs2Response = ToNewUnicode(mResponseMsg);
             const char16_t *formatStrings[1] = { ucs2Response };
 
-            nsXPIDLString formattedString;
+            nsAutoString formattedString;
             rv = bundle->FormatStringFromName("UnsupportedFTPServer",
                                               formatStrings, 1,
-                                              getter_Copies(formattedString));
+                                              formattedString);
             free(ucs2Response);
             if (NS_FAILED(rv))
                 return FTP_ERROR;
@@ -1015,8 +1018,8 @@ nsFtpState::S_cwd() {
         cwdStr.Insert(mPwd,0);
     if (mServerType == FTP_VMS_TYPE)
         ConvertDirspecToVMS(cwdStr);
-    cwdStr.Insert("CWD ",0);
-    cwdStr.Append(CRLF);
+    cwdStr.InsertLiteral("CWD ", 0);
+    cwdStr.AppendLiteral(CRLF);
 
     return SendFTPCommand(cwdStr);
 }
@@ -1040,8 +1043,8 @@ nsFtpState::S_size() {
         sizeBuf.Insert(mPwd,0);
     if (mServerType == FTP_VMS_TYPE)
         ConvertFilespecToVMS(sizeBuf);
-    sizeBuf.Insert("SIZE ",0);
-    sizeBuf.Append(CRLF);
+    sizeBuf.InsertLiteral("SIZE ", 0);
+    sizeBuf.AppendLiteral(CRLF);
 
     return SendFTPCommand(sizeBuf);
 }
@@ -1064,8 +1067,8 @@ nsFtpState::S_mdtm() {
         mdtmBuf.Insert(mPwd,0);
     if (mServerType == FTP_VMS_TYPE)
         ConvertFilespecToVMS(mdtmBuf);
-    mdtmBuf.Insert("MDTM ",0);
-    mdtmBuf.Append(CRLF);
+    mdtmBuf.InsertLiteral("MDTM ", 0);
+    mdtmBuf.AppendLiteral(CRLF);
 
     return SendFTPCommand(mdtmBuf);
 }
@@ -1144,7 +1147,12 @@ nsFtpState::SetContentType()
         nsAutoCString filePath;
         if(NS_SUCCEEDED(url->GetFilePath(filePath))) {
             filePath.Append('/');
-            url->SetFilePath(filePath);
+            nsresult rv = NS_MutateURI(url)
+                            .SetFilePath(filePath)
+                            .Finalize(url);
+            if (NS_SUCCEEDED(rv)) {
+                mChannel->UpdateURI(url);
+            }
         }
     }
     return mChannel->SetContentType(
@@ -1207,8 +1215,9 @@ nsFtpState::S_retr() {
         retrStr.Insert(mPwd,0);
     if (mServerType == FTP_VMS_TYPE)
         ConvertFilespecToVMS(retrStr);
-    retrStr.Insert("RETR ",0);
-    retrStr.Append(CRLF);
+    retrStr.InsertLiteral("RETR ", 0);
+    retrStr.AppendLiteral(CRLF);
+
     return SendFTPCommand(retrStr);
 }
 
@@ -1239,14 +1248,12 @@ nsFtpState::R_retr() {
     return FTP_S_CWD;
 }
 
-
 nsresult
 nsFtpState::S_rest() {
-
     nsAutoCString restString("REST ");
     // The int64_t cast is needed to avoid ambiguity
     restString.AppendInt(int64_t(mChannel->StartPos()), 10);
-    restString.Append(CRLF);
+    restString.AppendLiteral(CRLF);
 
     return SendFTPCommand(restString);
 }
@@ -1287,8 +1294,8 @@ nsFtpState::S_stor() {
         ConvertFilespecToVMS(storStr);
 
     NS_UnescapeURL(storStr);
-    storStr.Insert("STOR ",0);
-    storStr.Append(CRLF);
+    storStr.InsertLiteral("STOR ", 0);
+    storStr.AppendLiteral(CRLF);
 
     return SendFTPCommand(storStr);
 }
@@ -1527,13 +1534,14 @@ nsFtpState::R_pasv() {
             if (!stEventTarget)
                 return FTP_ERROR;
 
-            nsCOMPtr<nsIAsyncStreamCopier> copier;
-            rv = NS_NewAsyncStreamCopier(getter_AddRefs(copier),
-                                         mChannel->UploadStream(),
-                                         output,
-                                         stEventTarget,
-                                         true,   // upload stream is buffered
-                                         false); // output is NOT buffered
+            nsCOMPtr<nsIAsyncStreamCopier> copier =
+                do_CreateInstance(NS_ASYNCSTREAMCOPIER_CONTRACTID, &rv);
+            if (NS_SUCCEEDED(rv)) {
+                rv = copier->Init(mChannel->UploadStream(), output,
+                                  stEventTarget, true,
+                                  false /* output is NOT buffered */,
+                                  0, true, true);
+            }
             if (NS_FAILED(rv))
                 return FTP_ERROR;
 
@@ -1636,18 +1644,26 @@ nsFtpState::Init(nsFtpChannel *channel)
     if (url) {
         rv = url->GetFilePath(path);
     } else {
-        rv = mChannel->URI()->GetPath(path);
+        rv = mChannel->URI()->GetPathQueryRef(path);
     }
     if (NS_FAILED(rv))
         return rv;
 
     removeParamsFromPath(path);
 
+    nsCOMPtr<nsIURI> outURI;
     // FTP parameters such as type=i are ignored
     if (url) {
-        url->SetFilePath(path);
+        rv = NS_MutateURI(url)
+               .SetFilePath(path)
+               .Finalize(outURI);
     } else {
-        mChannel->URI()->SetPath(path);
+        rv = NS_MutateURI(mChannel->URI())
+               .SetPathQueryRef(path)
+               .Finalize(outURI);
+    }
+    if (NS_SUCCEEDED(rv)) {
+        mChannel->UpdateURI(outURI);
     }
 
     // Skip leading slash
@@ -1783,13 +1799,11 @@ public:
   nsFtpAsyncAlert(nsIPrompt* aPrompter, nsString aResponseMsg)
     : mozilla::Runnable("nsFtpAsyncAlert")
     , mPrompter(aPrompter)
-    , mResponseMsg(aResponseMsg)
+    , mResponseMsg(std::move(aResponseMsg))
   {
     }
 protected:
-    virtual ~nsFtpAsyncAlert()
-    {
-    }
+    virtual ~nsFtpAsyncAlert() = default;
 public:
     NS_IMETHOD Run() override
     {
@@ -2193,4 +2207,3 @@ nsFtpState::OnCallbackPending()
         mDataStream->AsyncWait(this, 0, 0, CallbackTarget());
     }
 }
-

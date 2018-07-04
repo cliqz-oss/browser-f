@@ -5,17 +5,18 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var contentSecManager = Cc["@mozilla.org/contentsecuritymanager;1"]
                           .getService(Ci.nsIContentSecurityManager);
 
 function ProtocolHandler() {
-  this.uri = Cc["@mozilla.org/network/simple-uri;1"].
-               createInstance(Ci.nsIURI);
-  this.uri.spec = this.scheme + ":dummy";
+  this.uri = Cc["@mozilla.org/network/simple-uri-mutator;1"]
+               .createInstance(Ci.nsIURIMutator)
+               .setSpec(this.scheme + ":dummy")
+               .finalize();
   this.uri.QueryInterface(Ci.nsIMutable).mutable = false;
 }
 
@@ -81,7 +82,7 @@ ProtocolHandler.prototype = {
   },
   open: function() {
     var file = do_get_file("test_bug894586.js", false);
-    do_check_true(file.exists());
+    Assert.ok(file.exists());
     var url = Services.io.newFileURI(file);
     return NetUtil.newChannel({uri: url, loadUsingSystemPrincipal: true}).open2();
   },
@@ -133,10 +134,10 @@ ProtocolHandler.prototype = {
   lockFactory: function() {},
 
   /** nsISupports */
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIProtocolHandler,
-                                         Ci.nsIRequest,
-                                         Ci.nsIChannel,
-                                         Ci.nsIFactory]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIProtocolHandler,
+                                          Ci.nsIRequest,
+                                          Ci.nsIChannel,
+                                          Ci.nsIFactory]),
   classID: Components.ID("{accbaf4a-2fd9-47e7-8aad-8c19fc5265b5}")
 };
 

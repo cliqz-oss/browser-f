@@ -4,7 +4,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  * The origin of this IDL file is
- * https://w3c.github.io/web-animations/#the-keyframeeffect-interfaces
+ * https://drafts.csswg.org/web-animations/#the-keyframeeffect-interfaces
  *
  * Copyright © 2015 W3C® (MIT, ERCIM, Keio), All Rights Reserved. W3C
  * liability, trademark and document use rules apply.
@@ -20,7 +20,10 @@ dictionary KeyframeEffectOptions : AnimationEffectTimingProperties {
   CompositeOperation          composite = "replace";
 };
 
+// KeyframeEffectReadOnly should run in the caller's compartment to do custom
+// processing on the `keyframes` object.
 [Func="nsDocument::IsWebAnimationsEnabled",
+ RunConstructorInCallerCompartment,
  Constructor ((Element or CSSPseudoElement)? target,
               object? keyframes,
               optional (unrestricted double or KeyframeEffectOptions) options),
@@ -54,7 +57,10 @@ partial interface KeyframeEffectReadOnly {
   [ChromeOnly, Throws] sequence<AnimationPropertyDetails> getProperties();
 };
 
+// KeyframeEffect should run in the caller's compartment to do custom
+// processing on the `keyframes` object.
 [Func="nsDocument::IsWebAnimationsEnabled",
+ RunConstructorInCallerCompartment,
  Constructor ((Element or CSSPseudoElement)? target,
               object? keyframes,
               optional (unrestricted double or KeyframeEffectOptions) options),

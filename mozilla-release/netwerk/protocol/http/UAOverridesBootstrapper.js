@@ -4,12 +4,9 @@
 
 "use strict";
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/UserAgentOverrides.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/UserAgentOverrides.jsm");
 
 function UAOverridesBootstrapper() {
   this.init();
@@ -28,7 +25,7 @@ UAOverridesBootstrapper.prototype = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
   classID: Components.ID("{965b0ca8-155b-11e7-93ae-92361f002671}")
 };
 

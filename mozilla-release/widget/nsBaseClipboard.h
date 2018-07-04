@@ -8,6 +8,7 @@
 
 #include "nsIClipboard.h"
 #include "nsITransferable.h"
+#include "nsCOMPtr.h"
 
 class nsITransferable;
 class nsIClipboardOwner;
@@ -39,7 +40,6 @@ protected:
   bool                mIgnoreEmptyNotification;
   nsCOMPtr<nsIClipboardOwner> mClipboardOwner;
   nsCOMPtr<nsITransferable>   mTransferable;
-
 };
 
 #endif // nsBaseClipboard_h__

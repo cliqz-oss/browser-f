@@ -7,9 +7,9 @@
 #ifndef mozilla_dom_Console_h
 #define mozilla_dom_Console_h
 
-#include "mozilla/dom/BindingDeclarations.h"
-#include "mozilla/ErrorResult.h"
+#include "mozilla/dom/ConsoleBinding.h"
 #include "mozilla/JSObjectHolder.h"
+#include "mozilla/TimeStamp.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsDataHashtable.h"
 #include "nsHashKeys.h"
@@ -20,17 +20,18 @@
 
 class nsIConsoleAPIStorage;
 class nsIPrincipal;
+class nsIStackFrame;
 
 namespace mozilla {
 namespace dom {
 
 class AnyCallback;
 class ConsoleCallData;
+class ConsoleInstance;
+class ConsoleInstanceDumpCallback;
 class ConsoleRunnable;
 class ConsoleCallDataRunnable;
 class ConsoleProfileRunnable;
-struct ConsoleTimerError;
-struct ConsoleStackEntry;
 
 class Console final : public nsIObserver
                     , public nsSupportsWeakReference
@@ -41,7 +42,11 @@ public:
   NS_DECL_NSIOBSERVER
 
   static already_AddRefed<Console>
-  Create(nsPIDOMWindowInner* aWindow, ErrorResult& aRv);
+  Create(JSContext* aCx, nsPIDOMWindowInner* aWindow, ErrorResult& aRv);
+
+  static already_AddRefed<Console>
+  CreateForWorklet(JSContext* aCx, uint64_t aOuterWindowID,
+                   uint64_t aInnerWindowID, ErrorResult& aRv);
 
   // WebIDL methods
   nsPIDOMWindowInner* GetParentObject() const
@@ -113,6 +118,10 @@ public:
   static void
   Clear(const GlobalObject& aGlobal);
 
+  static already_AddRefed<ConsoleInstance>
+  CreateInstance(const GlobalObject& aGlobal,
+                 const ConsoleInstanceOptions& aOptions);
+
   void
   ClearStorage();
 
@@ -124,7 +133,8 @@ public:
   SetConsoleEventHandler(AnyCallback* aHandler);
 
 private:
-  explicit Console(nsPIDOMWindowInner* aWindow);
+  Console(JSContext* aCx, nsPIDOMWindowInner* aWindow,
+          uint64_t aOuterWindowID, uint64_t aInnerWIndowID);
   ~Console();
 
   void
@@ -153,21 +163,24 @@ private:
     MethodTimeStamp,
     MethodAssert,
     MethodCount,
-    MethodClear
+    MethodClear,
+    MethodProfile,
+    MethodProfileEnd,
   };
 
   static already_AddRefed<Console>
   GetConsole(const GlobalObject& aGlobal);
 
-  static Console*
+  static already_AddRefed<Console>
   GetConsoleInternal(const GlobalObject& aGlobal, ErrorResult &aRv);
 
   static void
-  ProfileMethod(const GlobalObject& aGlobal, const nsAString& aAction,
-                const Sequence<JS::Value>& aData);
+  ProfileMethod(const GlobalObject& aGlobal, MethodName aName,
+                const nsAString& aAction, const Sequence<JS::Value>& aData);
 
   void
-  ProfileMethodInternal(JSContext* aCx, const nsAString& aAction,
+  ProfileMethodInternal(JSContext* aCx, MethodName aName,
+                        const nsAString& aAction,
                         const Sequence<JS::Value>& aData);
 
   static void
@@ -181,6 +194,10 @@ private:
   static void
   StringMethod(const GlobalObject& aGlobal, const nsAString& aLabel,
                MethodName aMethodName, const nsAString& aMethodString);
+
+  void
+  StringMethodInternal(JSContext* aCx, const nsAString& aLabel,
+                       MethodName aMethodName, const nsAString& aMethodString);
 
   // This method must receive aCx and aArguments in the same JSCompartment.
   void
@@ -370,6 +387,37 @@ private:
   bool
   IsShuttingDown() const;
 
+  bool
+  MonotonicTimer(JSContext* aCx, MethodName aMethodName,
+                 const Sequence<JS::Value>& aData,
+                 DOMHighResTimeStamp* aTimeStamp);
+
+  void
+  MaybeExecuteDumpFunction(JSContext* aCx, const nsAString& aMethodName,
+                           const Sequence<JS::Value>& aData,
+                           nsIStackFrame* aStack);
+
+  void
+  MaybeExecuteDumpFunctionForTime(JSContext* aCx, MethodName aMethodName,
+                                  const nsAString& aMethodString,
+                                  uint64_t aMonotonicTimer,
+                                  const JS::Value& aData);
+
+  void
+  ExecuteDumpFunction(const nsAString& aMessage);
+
+  bool
+  IsEnabled(JSContext* aCx) const;
+
+  bool
+  ShouldProceed(MethodName aName) const;
+
+  uint32_t
+  WebIDLLogLevelToInteger(ConsoleLogLevel aLevel) const;
+
+  uint32_t
+  InternalLogLevelToInteger(MethodName aName) const;
+
   // All these nsCOMPtr are touched on main thread only.
   nsCOMPtr<nsPIDOMWindowInner> mWindow;
   nsCOMPtr<nsIConsoleAPIStorage> mStorage;
@@ -400,16 +448,32 @@ private:
   uint64_t mOuterID;
   uint64_t mInnerID;
 
+  // Set only by ConsoleInstance:
+  nsString mConsoleID;
+  nsString mPassedInnerID;
+  RefPtr<ConsoleInstanceDumpCallback> mDumpFunction;
+  bool mDumpToStdout;
+  nsString mPrefix;
+  bool mChromeInstance;
+  ConsoleLogLevel mMaxLogLevel;
+
   enum {
     eUnknown,
     eInitialized,
     eShuttingDown
   } mStatus;
 
+  // This is used when Console is created and it's used only for JSM custom
+  // console instance.
+  mozilla::TimeStamp mCreationTimeStamp;
+
   friend class ConsoleCallData;
+  friend class ConsoleCallDataWorkletRunnable;
+  friend class ConsoleInstance;
+  friend class ConsoleProfileWorkerRunnable;
+  friend class ConsoleProfileWorkletRunnable;
   friend class ConsoleRunnable;
-  friend class ConsoleCallDataRunnable;
-  friend class ConsoleProfileRunnable;
+  friend class ConsoleWorkerRunnable;
 };
 
 } // namespace dom

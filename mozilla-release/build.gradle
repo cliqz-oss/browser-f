@@ -1,5 +1,3 @@
-import java.util.regex.Pattern
-
 def tryInt = { string ->
     if (string == null) {
         return string
@@ -18,7 +16,6 @@ allprojects {
         topobjdir = gradle.mozconfig.topobjdir
 
         compileSdkVersion = tryInt(mozconfig.substs.ANDROID_COMPILE_SDK_VERSION)
-        buildToolsVersion = tryInt(mozconfig.substs.ANDROID_BUILD_TOOLS_VERSION)
         targetSdkVersion = tryInt(mozconfig.substs.ANDROID_TARGET_SDK)
         minSdkVersion = tryInt(mozconfig.substs.MOZ_ANDROID_MIN_SDK_VERSION)
         manifestPlaceholders = [
@@ -47,59 +44,78 @@ buildscript {
                 url repository
             }
         }
-        // For dexcount-gradle-plugin and other in tree plugins.
+        // For in tree plugins.
         maven {
             url "file://${gradle.mozconfig.topsrcdir}/mobile/android/gradle/m2repo"
         }
     }
 
+    ext.kotlin_version = '1.2.41'
+    ext.support_library_version = '23.4.0'
+
+    if (gradle.mozconfig.substs.MOZ_ANDROID_GOOGLE_PLAY_SERVICES) {
+        ext.google_play_services_version = '8.4.0'
+    }
+
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.1.3'
-        classpath('com.stanfy.spoon:spoon-gradle-plugin:1.0.4') {
-            // Without these, we get errors linting.
-            exclude module: 'guava'
-        }
-        // Provided in tree.
-        classpath 'com.getkeepsafe.dexcount:dexcount-gradle-plugin:0.6.1'
+        classpath 'com.android.tools.build:gradle:3.0.1'
+        classpath 'com.getkeepsafe.dexcount:dexcount-gradle-plugin:0.8.2'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
-task generateCodeAndResources(type:Exec) {
-    workingDir "${topobjdir}"
+if ('multi' == System.env.AB_CD) {
+    // Multi-l10n builds set `AB_CD=multi`, which isn't a valid locale.  This
+    // causes the
+    //
+    // |mach build| > |mach gradle| > |make gradle-targets| > AndroidManifest.xml > strings.xml > multi/brand.dtd
+    //
+    // dependency chain to fail, since multi isn't a real locale.  To avoid
+    // this, if Gradle is invoked with AB_CD=multi, we don't invoke Make at all.
+    task generateCodeAndResources()
+} else if (System.env.IS_LANGUAGE_REPACK == '1') {
+    // Single-locale l10n repacks set `IS_LANGUAGE_REPACK=1` and handle resource
+    // and code generation themselves.
+    task generateCodeAndResources()
+} else {
+    task generateCodeAndResources(type:Exec) {
+        workingDir "${topobjdir}"
 
-    commandLine mozconfig.substs.GMAKE
-    args '-C'
-    args "${topobjdir}/mobile/android/base"
-    args 'gradle-targets'
+        commandLine mozconfig.substs.GMAKE
+        args '-C'
+        args "${topobjdir}/mobile/android/base"
+        args 'gradle-targets'
 
-    // Only show the output if something went wrong.
-    ignoreExitValue = true
-    standardOutput = new ByteArrayOutputStream()
-    errorOutput = standardOutput
-    doLast {
-        if (execResult.exitValue != 0) {
-            throw new GradleException("Process '${commandLine}' finished with non-zero exit value ${execResult.exitValue}:\n\n${standardOutput.toString()}")
+        // Only show the output if something went wrong.
+        ignoreExitValue = true
+        standardOutput = new ByteArrayOutputStream()
+        errorOutput = standardOutput
+        doLast {
+            if (execResult.exitValue != 0) {
+                throw new GradleException("Process '${commandLine}' finished with non-zero exit value ${execResult.exitValue}:\n\n${standardOutput.toString()}")
+            }
         }
     }
-}
-
-// Skip unit test for all build variants, unless if it was specifically requested by user.
-// The enabled property for the unit test tasks is reset based on the command line task names just before the task execution.
-// I bet there is a easier/cleaner way to do this, but this gets the job done for now.
-Pattern pattern = Pattern.compile('.*test(.+UnitTest)?.*')
-boolean startTasksIncludeTest = gradle.startParameter.taskNames.any {
-    taskName ->
-        taskName.matches(pattern)
-}
-gradle.taskGraph.beforeTask {
-    Task task ->
-        if (task.name.matches(pattern)) {
-            task.enabled = startTasksIncludeTest
-        }
 }
 
 afterEvaluate {
-    subprojects {
+    subprojects { project ->
+        if (project.name != 'thirdparty') {
+            tasks.withType(JavaCompile) {
+                // Add compiler args for all code except third-party code.
+                options.compilerArgs += [
+                    // Turn on all warnings, except...
+                    "-Xlint:all",
+                    // Deprecation, because we do use deprecated API for compatibility.
+                    "-Xlint:-deprecation",
+                    // Serial, because we don't use Java serialization.
+                    "-Xlint:-serial",
+                    // Turn all remaining warnings into errors,
+                    // unless marked by @SuppressWarnings.
+                    "-Werror"]
+            }
+        }
+
         if (!hasProperty('android')) {
             return
         }

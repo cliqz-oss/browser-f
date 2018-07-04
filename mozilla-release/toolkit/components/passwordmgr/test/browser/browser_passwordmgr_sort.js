@@ -4,10 +4,7 @@
 
 add_task(async function test() {
   await new Promise(resolve => {
-
-    let pwmgr = Cc["@mozilla.org/login-manager;1"].
-                getService(Ci.nsILoginManager);
-    pwmgr.removeAllLogins();
+    Services.logins.removeAllLogins();
 
     // Add some initial logins
     let urls = [
@@ -49,8 +46,8 @@ add_task(async function test() {
     let nsLoginInfo = new Components.Constructor("@mozilla.org/login-manager/loginInfo;1",
                                                  Ci.nsILoginInfo, "init");
     for (let i = 0; i < 10; i++)
-        pwmgr.addLogin(new nsLoginInfo(urls[i], urls[i], null, users[i], pwds[i],
-                                       "u" + (i + 1), "p" + (i + 1)));
+      Services.logins.addLogin(new nsLoginInfo(urls[i], urls[i], null, users[i], pwds[i],
+                                               "u" + (i + 1), "p" + (i + 1)));
 
     // Open the password manager dialog
     const PWMGR_DLG = "chrome://passwordmgr/content/passwordManager.xul";
@@ -74,11 +71,11 @@ add_task(async function test() {
 
             // only watch for a confirmation dialog every other time being called
             if (showMode) {
-                Services.ww.registerNotification(function(aSubject, aTopic, aData) {
+                Services.ww.registerNotification(function notification(aSubject, aTopic, aData) {
                     if (aTopic == "domwindowclosed")
-                        Services.ww.unregisterNotification(arguments.callee);
+                        Services.ww.unregisterNotification(notification);
                     else if (aTopic == "domwindowopened") {
-                        let targetWin = aSubject.QueryInterface(Ci.nsIDOMEventTarget);
+                        let targetWin = aSubject;
                         SimpleTest.waitForFocus(function() {
                             EventUtils.sendKey("RETURN", targetWin);
                         }, targetWin);
@@ -86,9 +83,9 @@ add_task(async function test() {
                 });
             }
 
-            Services.obs.addObserver(function(aSubject, aTopic, aData) {
+            Services.obs.addObserver(function observer(aSubject, aTopic, aData) {
                 if (aTopic == "passwordmgr-password-toggle-complete") {
-                    Services.obs.removeObserver(arguments.callee, aTopic);
+                    Services.obs.removeObserver(observer, aTopic);
                     func();
                 }
             }, "passwordmgr-password-toggle-complete");
@@ -191,11 +188,11 @@ add_task(async function test() {
                 checkColumnEntries(2, expectedValues);
                 checkSortDirection(passwordCol, true);
                 // cleanup
-                Services.ww.registerNotification(function(aSubject, aTopic, aData) {
+                Services.ww.registerNotification(function notification(aSubject, aTopic, aData) {
                     // unregister ourself
-                    Services.ww.unregisterNotification(arguments.callee);
+                    Services.ww.unregisterNotification(notification);
 
-                    pwmgr.removeAllLogins();
+                    Services.logins.removeAllLogins();
                     resolve();
                 });
                 pwmgrdlg.close();

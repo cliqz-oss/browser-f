@@ -7,14 +7,12 @@
 EXPORTS += [
     'HLSDecoder.h',
     'HLSDemuxer.h',
-    'HLSResource.h',
     'HLSUtils.h',
 ]
 
 UNIFIED_SOURCES += [
     'HLSDecoder.cpp',
     'HLSDemuxer.cpp',
-    'HLSResource.cpp',
     'HLSUtils.cpp',
 ]
 
@@ -22,5 +20,5 @@ include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

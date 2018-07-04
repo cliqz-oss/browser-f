@@ -67,7 +67,7 @@ function doTest() {
   info("Running test: " + gCurrTest.name);
 
   waitForLoad(function() {
-    let loadedText = gBrowser.contentDocument.body.textContent;
+    let loadedText = gBrowser.contentDocumentAsCPOW.body.textContent;
     ok(loadedText, "search page loaded");
     let needle = "searchterms=" + gCurrTest.expectText;
     is(loadedText, needle, "The query POST data should be returned in the response");
@@ -77,18 +77,17 @@ function doTest() {
   // Simulate a user entering search terms
   gURLBar.value = gCurrTest.testText;
   gURLBar.focus();
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
 }
 
 
 function waitForLoad(cb) {
   let browser = gBrowser.selectedBrowser;
-  browser.addEventListener("load", function listener() {
-    if (browser.currentURI.spec == "about:blank")
-      return;
+  function wantLoad(url) {
+    return url != "about:blank";
+  }
+  BrowserTestUtils.browserLoaded(browser, false, wantLoad).then(() => {
     info("Page loaded: " + browser.currentURI.spec);
-    browser.removeEventListener("load", listener, true);
-
     cb();
   }, true);
 }

@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef MOZILLA_LAYERS_EFFECTS_H
 #define MOZILLA_LAYERS_EFFECTS_H
@@ -69,9 +70,9 @@ struct TexturedEffect : public Effect
      , mSamplingFilter(aSamplingFilter)
   {}
 
-  virtual TexturedEffect* AsTexturedEffect() { return this; }
+  virtual TexturedEffect* AsTexturedEffect() override { return this; }
   virtual const char* Name() = 0;
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix);
+  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 
   gfx::Rect mTextureCoords;
   TextureSource* mTexture;
@@ -91,7 +92,7 @@ struct EffectMask : public Effect
     , mMaskTransform(aMaskTransform)
   {}
 
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix);
+  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 
   TextureSource* mMaskTexture;
   gfx::IntSize mSize;
@@ -106,7 +107,7 @@ struct EffectBlendMode : public Effect
   { }
 
   virtual const char* Name() { return "EffectBlendMode"; }
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix);
+  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 
   gfx::CompositionOp mBlendMode;
 };
@@ -120,8 +121,8 @@ struct EffectRenderTarget : public TexturedEffect
     , mRenderTarget(aRenderTarget)
   {}
 
-  virtual const char* Name() { return "EffectRenderTarget"; }
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix);
+  virtual const char* Name() override { return "EffectRenderTarget"; }
+  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 
   RefPtr<CompositingRenderTarget> mRenderTarget;
 
@@ -142,7 +143,7 @@ struct EffectColorMatrix : public Effect
   {}
 
   virtual const char* Name() { return "EffectColorMatrix"; }
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix);
+  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
   const gfx::Matrix5x4 mColorMatrix;
 };
 
@@ -156,19 +157,21 @@ struct EffectRGB : public TexturedEffect
     : TexturedEffect(EffectTypes::RGB, aTexture, aPremultiplied, aSamplingFilter)
   {}
 
-  virtual const char* Name() { return "EffectRGB"; }
+  virtual const char* Name() override { return "EffectRGB"; }
 };
 
 struct EffectYCbCr : public TexturedEffect
 {
-  EffectYCbCr(TextureSource *aSource, YUVColorSpace aYUVColorSpace, gfx::SamplingFilter aSamplingFilter)
+  EffectYCbCr(TextureSource *aSource, YUVColorSpace aYUVColorSpace, uint32_t aBitDepth, gfx::SamplingFilter aSamplingFilter)
     : TexturedEffect(EffectTypes::YCBCR, aSource, false, aSamplingFilter)
     , mYUVColorSpace(aYUVColorSpace)
+    , mBitDepth(aBitDepth)
   {}
 
-  virtual const char* Name() { return "EffectYCbCr"; }
+  virtual const char* Name() override { return "EffectYCbCr"; }
 
   YUVColorSpace mYUVColorSpace;
+  uint32_t mBitDepth;
 };
 
 struct EffectNV12 : public TexturedEffect
@@ -177,7 +180,7 @@ struct EffectNV12 : public TexturedEffect
     : TexturedEffect(EffectTypes::NV12, aSource, false, aSamplingFilter)
   {}
 
-  virtual const char* Name() { return "EffectNV12"; }
+  virtual const char* Name() override { return "EffectNV12"; }
 };
 
 struct EffectComponentAlpha : public TexturedEffect
@@ -190,7 +193,7 @@ struct EffectComponentAlpha : public TexturedEffect
     , mOnWhite(aOnWhite)
   {}
 
-  virtual const char* Name() { return "EffectComponentAlpha"; }
+  virtual const char* Name() override { return "EffectComponentAlpha"; }
 
   TextureSource* mOnBlack;
   TextureSource* mOnWhite;
@@ -203,7 +206,7 @@ struct EffectSolidColor : public Effect
     , mColor(aColor)
   {}
 
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix);
+  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
 
   gfx::Color mColor;
 };
@@ -270,7 +273,8 @@ CreateTexturedEffect(TextureHost* aHost,
   RefPtr<TexturedEffect> result;
   if (aHost->GetReadFormat() == gfx::SurfaceFormat::YUV) {
     MOZ_ASSERT(aHost->GetYUVColorSpace() != YUVColorSpace::UNKNOWN);
-    result = new EffectYCbCr(aSource, aHost->GetYUVColorSpace(), aSamplingFilter);
+    result = new EffectYCbCr(
+      aSource, aHost->GetYUVColorSpace(), aHost->GetBitDepth(), aSamplingFilter);
   } else {
     result = CreateTexturedEffect(aHost->GetReadFormat(),
                                   aSource,

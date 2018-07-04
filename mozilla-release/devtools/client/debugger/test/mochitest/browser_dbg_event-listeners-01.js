@@ -13,10 +13,8 @@ var gClient;
 var gTab;
 
 function test() {
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
-  }
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
 
   let transport = DebuggerServer.connectPipe();
   gClient = new DebuggerClient(transport);
@@ -92,7 +90,7 @@ function testEventListeners(aThreadClient) {
         ok(node, "There is a node property.");
         ok(node.object, "There is a node object property.");
         ok(node.selector == "window" ||
-          content.document.querySelectorAll(node.selector).length == 1,
+          gBrowser.contentDocumentAsCPOW.querySelectorAll(node.selector).length == 1,
           "The node property is a unique CSS selector.");
 
         let func = l.function;
@@ -131,9 +129,9 @@ function testEventListeners(aThreadClient) {
         }
       }
 
-      ok(types.indexOf("click") != -1, "Found the click handler.");
-      ok(types.indexOf("change") != -1, "Found the change handler.");
-      ok(types.indexOf("keyup") != -1, "Found the keyup handler.");
+      ok(types.includes("click"), "Found the click handler.");
+      ok(types.includes("change"), "Found the change handler.");
+      ok(types.includes("keyup"), "Found the keyup handler.");
 
       aThreadClient.resume(deferred.resolve);
     });

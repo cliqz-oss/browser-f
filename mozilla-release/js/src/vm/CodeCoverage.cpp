@@ -8,20 +8,20 @@
 
 #include "mozilla/Atomics.h"
 #include "mozilla/IntegerPrintfMacros.h"
+#include "mozilla/Move.h"
 
 #include <stdio.h>
 #ifdef XP_WIN
-#include <process.h>
-#define getpid _getpid
+# include <process.h>
+# define getpid _getpid
 #else
-#include <unistd.h>
+# include <unistd.h>
 #endif
 
-#include "jscompartment.h"
-#include "jsopcode.h"
-#include "jsprf.h"
-#include "jsscript.h"
-
+#include "util/Text.h"
+#include "vm/BytecodeUtil.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSScript.h"
 #include "vm/Runtime.h"
 #include "vm/Time.h"
 
@@ -72,9 +72,9 @@ LCovSource::LCovSource(LifoAlloc* alloc, const char* name)
     outBRDA_(alloc),
     numBranchesFound_(0),
     numBranchesHit_(0),
-    outDA_(alloc),
     numLinesInstrumented_(0),
     numLinesHit_(0),
+    maxLineHit_(0),
     hasTopLevelScript_(false)
 {
 }
@@ -88,9 +88,10 @@ LCovSource::LCovSource(LCovSource&& src)
     outBRDA_(src.outBRDA_),
     numBranchesFound_(src.numBranchesFound_),
     numBranchesHit_(src.numBranchesHit_),
-    outDA_(src.outDA_),
+    linesHit_(Move(src.linesHit_)),
     numLinesInstrumented_(src.numLinesInstrumented_),
     numLinesHit_(src.numLinesHit_),
+    maxLineHit_(src.maxLineHit_),
     hasTopLevelScript_(src.hasTopLevelScript_)
 {
     src.name_ = nullptr;
@@ -119,7 +120,13 @@ LCovSource::exportInto(GenericPrinter& out) const
     out.printf("BRF:%zu\n", numBranchesFound_);
     out.printf("BRH:%zu\n", numBranchesHit_);
 
-    outDA_.exportInto(out);
+    if (linesHit_.initialized()) {
+        for (size_t lineno = 1; lineno <= maxLineHit_; ++lineno) {
+            if (auto p = linesHit_.lookup(lineno))
+                out.printf("DA:%zu,%" PRIu64 "\n", lineno, p->value());
+        }
+    }
+
     out.printf("LF:%zu\n", numLinesInstrumented_);
     out.printf("LH:%zu\n", numLinesHit_);
 
@@ -139,6 +146,9 @@ LCovSource::writeScriptName(LSprinter& out, JSScript* script)
 bool
 LCovSource::writeScript(JSScript* script)
 {
+    if (!linesHit_.initialized() && !linesHit_.init())
+        return false;
+
     numFunctionsFound_++;
     outFN_.printf("FN:%zu,", script->lineno());
     if (!writeScriptName(outFN_, script))
@@ -170,6 +180,7 @@ LCovSource::writeScript(JSScript* script)
     jsbytecode* end = script->codeEnd();
     size_t branchId = 0;
     size_t tableswitchExitOffset = 0;
+    bool firstLineHasBeenWritten = false;
     for (jsbytecode* pc = script->code(); pc != end; pc = GetNextPc(pc)) {
         MOZ_ASSERT(script->code() <= pc && pc < end);
         JSOp op = JSOp(*pc);
@@ -186,7 +197,7 @@ LCovSource::writeScript(JSScript* script)
 
         // If we have additional source notes, walk all the source notes of the
         // current pc.
-        if (snpc <= pc) {
+        if (snpc <= pc || !firstLineHasBeenWritten) {
             size_t oldLine = lineno;
             while (!SN_IS_TERMINATOR(sn) && snpc <= pc) {
                 SrcNoteType type = SN_TYPE(sn);
@@ -201,13 +212,25 @@ LCovSource::writeScript(JSScript* script)
                 snpc += SN_DELTA(sn);
             }
 
-            if (oldLine != lineno && fallsthrough) {
-                outDA_.printf("DA:%zu,%" PRIu64 "\n", lineno, hits);
+            if ((oldLine != lineno || !firstLineHasBeenWritten) &&
+                pc >= script->main() &&
+                fallsthrough)
+            {
+                auto p = linesHit_.lookupForAdd(lineno);
+                if (!p) {
+                    if (!linesHit_.add(p, lineno, hits))
+                        return false;
+                    numLinesInstrumented_++;
+                    if (hits != 0)
+                        numLinesHit_++;
+                    maxLineHit_ = std::max(lineno, maxLineHit_);
+                } else {
+                    if (p->value() == 0 && hits != 0)
+                        numLinesHit_++;
+                    p->value() += hits;
+                }
 
-                // Count the number of lines instrumented & hit.
-                numLinesInstrumented_++;
-                if (hits)
-                    numLinesHit_++;
+                firstLineHasBeenWritten = true;
             }
         }
 
@@ -232,13 +255,13 @@ LCovSource::writeScript(JSScript* script)
 
             uint64_t taken = hits - fallthroughHits;
             outBRDA_.printf("BRDA:%zu,%zu,0,", lineno, branchId);
-            if (taken)
+            if (hits)
                 outBRDA_.printf("%" PRIu64 "\n", taken);
             else
                 outBRDA_.put("-\n", 2);
 
             outBRDA_.printf("BRDA:%zu,%zu,1,", lineno, branchId);
-            if (fallthroughHits)
+            if (hits)
                 outBRDA_.printf("%" PRIu64 "\n", fallthroughHits);
             else
                 outBRDA_.put("-\n", 2);
@@ -336,7 +359,7 @@ LCovSource::writeScript(JSScript* script)
 
                     outBRDA_.printf("BRDA:%zu,%zu,%zu,",
                                     lineno, branchId, caseId);
-                    if (caseHits)
+                    if (hits)
                         outBRDA_.printf("%" PRIu64 "\n", caseHits);
                     else
                         outBRDA_.put("-\n", 2);
@@ -401,7 +424,7 @@ LCovSource::writeScript(JSScript* script)
             if (defaultHasOwnClause) {
                 outBRDA_.printf("BRDA:%zu,%zu,%zu,",
                                 lineno, branchId, caseId);
-                if (defaultHits)
+                if (hits)
                     outBRDA_.printf("%" PRIu64 "\n", defaultHits);
                 else
                     outBRDA_.put("-\n", 2);
@@ -418,8 +441,7 @@ LCovSource::writeScript(JSScript* script)
     // Report any new OOM.
     if (outFN_.hadOutOfMemory() ||
         outFNDA_.hadOutOfMemory() ||
-        outBRDA_.hadOutOfMemory() ||
-        outDA_.hadOutOfMemory())
+        outBRDA_.hadOutOfMemory())
     {
         return false;
     }

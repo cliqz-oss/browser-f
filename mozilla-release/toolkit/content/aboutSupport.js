@@ -4,18 +4,16 @@
 
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Troubleshoot.jsm");
+ChromeUtils.import("resource://gre/modules/ResetProfile.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Troubleshoot.jsm");
-Cu.import("resource://gre/modules/ResetProfile.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
-                                  "resource://gre/modules/PluralForm.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesDBUtils",
-                                  "resource://gre/modules/PlacesDBUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PluralForm",
+                               "resource://gre/modules/PluralForm.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesDBUtils",
+                               "resource://gre/modules/PlacesDBUtils.jsm");
 
 window.addEventListener("load", function onload(event) {
   try {
@@ -49,6 +47,7 @@ var snapshotFormatters = {
     $("buildid-box").textContent = data.buildID;
     if (data.updateChannel)
       $("updatechannel-box").textContent = data.updateChannel;
+    $("profile-dir-box").textContent = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
 
     let statusText = strings.GetStringFromName("multiProcessStatus.unknown");
 
@@ -80,21 +79,25 @@ var snapshotFormatters = {
       $("contentprocesses-row").hidden = true;
     }
 
-    let styloReason;
-    if (!data.styloBuild) {
-      styloReason = strings.GetStringFromName("disabledByBuild");
-    } else if (data.styloResult != data.styloDefault) {
-      if (data.styloResult) {
-        styloReason = strings.GetStringFromName("enabledByUser");
-      } else {
-        styloReason = strings.GetStringFromName("disabledByUser");
+    if (Services.policies) {
+      let policiesText = "";
+      switch (data.policiesStatus) {
+        case Services.policies.INACTIVE:
+          policiesText = strings.GetStringFromName("policies.inactive");
+          break;
+
+        case Services.policies.ACTIVE:
+          policiesText = strings.GetStringFromName("policies.active");
+          break;
+
+        default:
+          policiesText = strings.GetStringFromName("policies.error");
+          break;
       }
-    } else if (data.styloDefault) {
-      styloReason = strings.GetStringFromName("enabledByDefault");
+      $("policies-status").textContent = policiesText;
     } else {
-      styloReason = strings.GetStringFromName("disabledByDefault");
+      $("policies-status-row").hidden = true;
     }
-    $("stylo-box").textContent = `${data.styloResult} (${styloReason})`;
 
     let keyGoogleFound = data.keyGoogleFound ? "found" : "missing";
     $("key-google-box").textContent = strings.GetStringFromName(keyGoogleFound);
@@ -176,28 +179,24 @@ var snapshotFormatters = {
     }));
   },
 
+  securitySoftware: function securitySoftware(data) {
+    if (!AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
+      $("security-software-title").hidden = true;
+      $("security-software-table").hidden = true;
+      return;
+    }
+
+    $("security-software-antivirus").textContent = data.registeredAntiVirus;
+    $("security-software-antispyware").textContent = data.registeredAntiSpyware;
+    $("security-software-firewall").textContent = data.registeredFirewall;
+  },
+
   features: function features(data) {
     $.append($("features-tbody"), data.map(function(feature) {
       return $.new("tr", [
         $.new("td", feature.name),
         $.new("td", feature.version),
         $.new("td", feature.id),
-      ]);
-    }));
-  },
-
-  experiments: function experiments(data) {
-    $.append($("experiments-tbody"), data.map(function(experiment) {
-      return $.new("tr", [
-        $.new("td", experiment.name),
-        $.new("td", experiment.id),
-        $.new("td", experiment.description),
-        $.new("td", experiment.active),
-        $.new("td", experiment.endDate),
-        $.new("td", [
-          $.new("a", experiment.detailURL, null, {href: experiment.detailURL, })
-        ]),
-        $.new("td", experiment.branch),
       ]);
     }));
   },
@@ -258,7 +257,7 @@ var snapshotFormatters = {
     let apzInfo = [];
     let formatApzInfo = function(info) {
       let out = [];
-      for (let type of ["Wheel", "Touch", "Drag", "Keyboard"]) {
+      for (let type of ["Wheel", "Touch", "Drag", "Keyboard", "Autoscroll"]) {
         let key = "Apz" + type + "Input";
 
         if (!(key in info))
@@ -450,6 +449,10 @@ var snapshotFormatters = {
     addRowFromKey("features", "webgl2Extensions");
     addRowFromKey("features", "supportsHardwareH264", "hardwareH264");
     addRowFromKey("features", "direct2DEnabled", "#Direct2D");
+    addRowFromKey("features", "usesTiling");
+    addRowFromKey("features", "contentUsesTiling");
+    addRowFromKey("features", "offMainThreadPaintEnabled");
+    addRowFromKey("features", "offMainThreadPaintWorkerCount");
 
     if ("directWriteEnabled" in data) {
       let message = data.directWriteEnabled;
@@ -605,6 +608,7 @@ var snapshotFormatters = {
         let th = $.new("th", strings.GetStringFromName(key), "column");
         let td = $.new("td", value);
         td.style["white-space"] = "pre-wrap";
+        td.colSpan = 8;
         return $.new("tr", [th, td]);
       }
       $.append($("media-info-tbody"), [createRow(key, value)]);
@@ -692,7 +696,6 @@ var snapshotFormatters = {
     // Basic information
     insertBasicInfo("audioBackend", data.currentAudioBackend);
     insertBasicInfo("maxAudioChannels", data.currentMaxAudioChannels);
-    insertBasicInfo("channelLayout", data.currentPreferredChannelLayout);
     insertBasicInfo("sampleRate", data.currentPreferredSampleRate);
 
     // Output devices information
@@ -709,9 +712,15 @@ var snapshotFormatters = {
   accessibility: function accessibility(data) {
     $("a11y-activated").textContent = data.isActive;
     $("a11y-force-disabled").textContent = data.forceDisabled || 0;
+
     let a11yHandlerUsed = $("a11y-handler-used");
     if (a11yHandlerUsed) {
       a11yHandlerUsed.textContent = data.handlerUsed;
+    }
+
+    let a11yInstantiator = $("a11y-instantiator");
+    if (a11yInstantiator) {
+      a11yInstantiator.textContent = data.instantiator;
     }
   },
 
@@ -756,7 +765,7 @@ var snapshotFormatters = {
     for (let key in data) {
       // Simplify the display a little in the common case.
       if (key === "hasPrivilegedUserNamespaces" &&
-          data[key] === data["hasUserNamespaces"]) {
+          data[key] === data.hasUserNamespaces) {
         continue;
       }
       if (key === "syscallLog") {
@@ -792,6 +801,24 @@ var snapshotFormatters = {
       }
     }
   },
+
+  intl: function intl(data) {
+    $("intl-locale-requested").textContent =
+      JSON.stringify(data.localeService.requested);
+    $("intl-locale-available").textContent =
+      JSON.stringify(data.localeService.available);
+    $("intl-locale-supported").textContent =
+      JSON.stringify(data.localeService.supported);
+    $("intl-locale-regionalprefs").textContent =
+      JSON.stringify(data.localeService.regionalPrefs);
+    $("intl-locale-default").textContent =
+      JSON.stringify(data.localeService.defaultLocale);
+
+    $("intl-osprefs-systemlocales").textContent =
+      JSON.stringify(data.osPrefs.systemLocales);
+    $("intl-osprefs-regionalprefs").textContent =
+      JSON.stringify(data.osPrefs.regionalPrefsLocales);
+  }
 };
 
 var $ = document.getElementById.bind(document);
@@ -868,17 +895,12 @@ function copyRawDataToClipboard(button) {
       transferable.init(getLoadContext());
       transferable.addDataFlavor("text/unicode");
       transferable.setTransferData("text/unicode", str, str.data.length * 2);
-      Cc["@mozilla.org/widget/clipboard;1"].
-        getService(Ci.nsIClipboard).
-        setData(transferable, null, Ci.nsIClipboard.kGlobalClipboard);
+      Services.clipboard.setData(transferable, null, Ci.nsIClipboard.kGlobalClipboard);
       if (AppConstants.platform == "android") {
-        // Present a toast notification.
-        let message = {
-          type: "Toast:Show",
-          message: stringBundle().GetStringFromName("rawDataCopied"),
-          duration: "short"
-        };
-        Services.androidBridge.handleGeckoMessage(message);
+        // Present a snackbar notification.
+        ChromeUtils.import("resource://gre/modules/Snackbars.jsm");
+        Snackbars.show(stringBundle().GetStringFromName("rawDataCopied"),
+                       Snackbars.LENGTH_SHORT);
       }
     });
   } catch (err) {
@@ -920,18 +942,13 @@ function copyContentsToClipboard() {
   transferable.setTransferData("text/unicode", ssText, dataText.length * 2);
 
   // Store the data into the clipboard.
-  let clipboard = Cc["@mozilla.org/widget/clipboard;1"]
-                    .getService(Ci.nsIClipboard);
-  clipboard.setData(transferable, null, clipboard.kGlobalClipboard);
+  Services.clipboard.setData(transferable, null, Services.clipboard.kGlobalClipboard);
 
   if (AppConstants.platform == "android") {
-    // Present a toast notification.
-    let message = {
-      type: "Toast:Show",
-      message: stringBundle().GetStringFromName("textCopied"),
-      duration: "short"
-    };
-    Services.androidBridge.handleGeckoMessage(message);
+    // Present a snackbar notification.
+    ChromeUtils.import("resource://gre/modules/Snackbars.jsm");
+    Snackbars.show(stringBundle().GetStringFromName("textCopied"),
+                   Snackbars.LENGTH_SHORT);
   }
 }
 
@@ -1130,7 +1147,7 @@ function openProfileDirectory() {
 
   // Show the profile directory.
   let nsLocalFile = Components.Constructor("@mozilla.org/file/local;1",
-                                           "nsILocalFile", "initWithPath");
+                                           "nsIFile", "initWithPath");
   new nsLocalFile(profileDir).reveal();
 }
 
@@ -1145,6 +1162,10 @@ function populateActionBox() {
   if (!Services.appinfo.inSafeMode && AppConstants.platform !== "android") {
     $("safe-mode-box").style.display = "block";
     $("action-box").style.display = "block";
+
+    if (Services.policies && !Services.policies.isAllowed("safeMode")) {
+      $("restart-in-safe-mode-button").setAttribute("disabled", "true");
+    }
   }
 }
 
@@ -1179,10 +1200,15 @@ function setupEventListeners() {
     });
     $("verify-place-integrity-button").addEventListener("click", function(event) {
       PlacesDBUtils.checkAndFixDatabase().then((tasksStatusMap) => {
-        let msg = PlacesDBUtils.getLegacyLog(tasksStatusMap).join("\n");
+        let logs = [];
+        for (let [key, value] of tasksStatusMap) {
+          logs.push(`> Task: ${key}`);
+          let prefix = value.succeeded ? "+ " : "- ";
+          logs = logs.concat(value.logs.map(m => `${prefix}${m}`));
+        }
         $("verify-place-result").style.display = "block";
         $("verify-place-result").classList.remove("no-copy");
-        $("verify-place-result").textContent = msg;
+        $("verify-place-result").textContent = logs.join("\n");
       });
     });
   }

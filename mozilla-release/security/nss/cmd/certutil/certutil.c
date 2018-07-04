@@ -194,6 +194,8 @@ CertReq(SECKEYPrivateKey *privk, SECKEYPublicKey *pubk, KeyType keyType,
     PLArenaPool *arena;
     void *extHandle;
     SECItem signedReq = { siBuffer, NULL, 0 };
+    SECAlgorithmID signAlg;
+    SECItem *params = NULL;
 
     arena = PORT_NewArena(DER_DEFAULT_CHUNKSIZE);
     if (!arena) {
@@ -211,11 +213,26 @@ CertReq(SECKEYPrivateKey *privk, SECKEYPublicKey *pubk, KeyType keyType,
 
     /* Change cert type to RSA-PSS, if desired. */
     if (pssCertificate) {
+        params = SEC_CreateSignatureAlgorithmParameters(arena,
+                                                        NULL,
+                                                        SEC_OID_PKCS1_RSA_PSS_SIGNATURE,
+                                                        hashAlgTag,
+                                                        NULL,
+                                                        privk);
+        if (!params) {
+            PORT_FreeArena(arena, PR_FALSE);
+            SECKEY_DestroySubjectPublicKeyInfo(spki);
+            SECU_PrintError(progName, "unable to create RSA-PSS parameters");
+            return SECFailure;
+        }
+
         spki->algorithm.parameters.data = NULL;
         rv = SECOID_SetAlgorithmID(arena, &spki->algorithm,
-                                   SEC_OID_PKCS1_RSA_PSS_SIGNATURE, 0);
+                                   SEC_OID_PKCS1_RSA_PSS_SIGNATURE,
+                                   hashAlgTag == SEC_OID_UNKNOWN ? NULL : params);
         if (rv != SECSuccess) {
             PORT_FreeArena(arena, PR_FALSE);
+            SECKEY_DestroySubjectPublicKeyInfo(spki);
             SECU_PrintError(progName, "unable to set algorithm ID");
             return SECFailure;
         }
@@ -256,16 +273,34 @@ CertReq(SECKEYPrivateKey *privk, SECKEYPublicKey *pubk, KeyType keyType,
         return SECFailure;
     }
 
-    /* Sign the request */
-    signAlgTag = SEC_GetSignatureAlgorithmOidTag(keyType, hashAlgTag);
-    if (signAlgTag == SEC_OID_UNKNOWN) {
-        PORT_FreeArena(arena, PR_FALSE);
-        SECU_PrintError(progName, "unknown Key or Hash type");
-        return SECFailure;
+    PORT_Memset(&signAlg, 0, sizeof(signAlg));
+    if (pssCertificate) {
+        rv = SECOID_SetAlgorithmID(arena, &signAlg,
+                                   SEC_OID_PKCS1_RSA_PSS_SIGNATURE, params);
+        if (rv != SECSuccess) {
+            PORT_FreeArena(arena, PR_FALSE);
+            SECU_PrintError(progName, "unable to set algorithm ID");
+            return SECFailure;
+        }
+    } else {
+        signAlgTag = SEC_GetSignatureAlgorithmOidTag(keyType, hashAlgTag);
+        if (signAlgTag == SEC_OID_UNKNOWN) {
+            PORT_FreeArena(arena, PR_FALSE);
+            SECU_PrintError(progName, "unknown Key or Hash type");
+            return SECFailure;
+        }
+        rv = SECOID_SetAlgorithmID(arena, &signAlg, signAlgTag, 0);
+        if (rv != SECSuccess) {
+            PORT_FreeArena(arena, PR_FALSE);
+            SECU_PrintError(progName, "unable to set algorithm ID");
+            return SECFailure;
+        }
     }
 
-    rv = SEC_DerSignData(arena, &signedReq, encoding->data, encoding->len,
-                         privk, signAlgTag);
+    /* Sign the request */
+    rv = SEC_DerSignDataWithAlgorithmID(arena, &signedReq,
+                                        encoding->data, encoding->len,
+                                        privk, &signAlg);
     if (rv) {
         PORT_FreeArena(arena, PR_FALSE);
         SECU_PrintError(progName, "signing of data failed");
@@ -365,7 +400,7 @@ ChangeTrustAttributes(CERTCertDBHandle *handle, PK11SlotInfo *slot,
     CERTCertificate *cert;
     CERTCertTrust *trust;
 
-    cert = CERT_FindCertByNicknameOrEmailAddr(handle, name);
+    cert = CERT_FindCertByNicknameOrEmailAddrCX(handle, name, pwdata);
     if (!cert) {
         SECU_PrintError(progName, "could not find certificate named \"%s\"",
                         name);
@@ -591,6 +626,10 @@ ListCerts(CERTCertDBHandle *handle, char *nickname, char *email,
 {
     SECStatus rv;
 
+    if (slot && PK11_NeedUserInit(slot)) {
+        printf("\nDatabase needs user init\n");
+    }
+
     if (!ascii && !raw && !nickname && !email) {
         PR_fprintf(outfile, "\n%-60s %-5s\n%-60s %-5s\n\n",
                    "Certificate Nickname", "Trust Attributes", "",
@@ -614,12 +653,12 @@ ListCerts(CERTCertDBHandle *handle, char *nickname, char *email,
 }
 
 static SECStatus
-DeleteCert(CERTCertDBHandle *handle, char *name)
+DeleteCert(CERTCertDBHandle *handle, char *name, void *pwdata)
 {
     SECStatus rv;
     CERTCertificate *cert;
 
-    cert = CERT_FindCertByNicknameOrEmailAddr(handle, name);
+    cert = CERT_FindCertByNicknameOrEmailAddrCX(handle, name, pwdata);
     if (!cert) {
         SECU_PrintError(progName, "could not find certificate named \"%s\"",
                         name);
@@ -635,12 +674,12 @@ DeleteCert(CERTCertDBHandle *handle, char *name)
 }
 
 static SECStatus
-RenameCert(CERTCertDBHandle *handle, char *name, char *newName)
+RenameCert(CERTCertDBHandle *handle, char *name, char *newName, void *pwdata)
 {
     SECStatus rv;
     CERTCertificate *cert;
 
-    cert = CERT_FindCertByNicknameOrEmailAddr(handle, name);
+    cert = CERT_FindCertByNicknameOrEmailAddrCX(handle, name, pwdata);
     if (!cert) {
         SECU_PrintError(progName, "could not find certificate named \"%s\"",
                         name);
@@ -743,17 +782,17 @@ ValidateCert(CERTCertDBHandle *handle, char *name, char *date,
                 fprintf(stdout, "%s: certificate is valid\n", progName);
                 GEN_BREAK(SECSuccess)
             } else {
-                char *name;
+                char *nick;
                 CERTVerifyLogNode *node;
 
                 node = log->head;
                 while (node) {
                     if (node->cert->nickname != NULL) {
-                        name = node->cert->nickname;
+                        nick = node->cert->nickname;
                     } else {
-                        name = node->cert->subjectName;
+                        nick = node->cert->subjectName;
                     }
-                    fprintf(stderr, "%s : %s\n", name,
+                    fprintf(stderr, "%s : %s\n", nick,
                             SECU_Strerror(node->error));
                     CERT_DestroyCertificate(node->cert);
                     node = node->next;
@@ -806,7 +845,7 @@ SECItemToHex(const SECItem *item, char *dst)
 }
 
 static const char *const keyTypeName[] = {
-    "null", "rsa", "dsa", "fortezza", "dh", "kea", "ec"
+    "null", "rsa", "dsa", "fortezza", "dh", "kea", "ec", "rsaPss"
 };
 
 #define MAX_CKA_ID_BIN_LEN 20
@@ -960,7 +999,7 @@ DeleteKey(char *nickname, secuPWData *pwdata)
 
     slot = PK11_GetInternalKeySlot();
     if (PK11_NeedLogin(slot)) {
-        SECStatus rv = PK11_Authenticate(slot, PR_TRUE, pwdata);
+        rv = PK11_Authenticate(slot, PR_TRUE, pwdata);
         if (rv != SECSuccess) {
             SECU_PrintError(progName, "could not authenticate to token %s.",
                             PK11_GetTokenName(slot));
@@ -1015,7 +1054,19 @@ ListModules(void)
 }
 
 static void
-PrintSyntax(char *progName)
+PrintBuildFlags()
+{
+#ifdef NSS_FIPS_DISABLED
+    PR_fprintf(PR_STDOUT, "NSS_FIPS_DISABLED\n");
+#endif
+#ifdef NSS_NO_INIT_SUPPORT
+    PR_fprintf(PR_STDOUT, "NSS_NO_INIT_SUPPORT\n");
+#endif
+    exit(0);
+}
+
+static void
+PrintSyntax()
 {
 #define FPS fprintf(stderr,
     FPS "Type %s -H for more detailed descriptions\n", progName);
@@ -1044,15 +1095,10 @@ PrintSyntax(char *progName)
         "\t\t [-f pwfile] [-z noisefile] [-d certdir] [-P dbprefix]\n", progName);
     FPS "\t%s -G [-h token-name] -k dsa [-q pqgfile -g key-size] [-f pwfile]\n"
         "\t\t [-z noisefile] [-d certdir] [-P dbprefix]\n", progName);
-#ifndef NSS_DISABLE_ECC
     FPS "\t%s -G [-h token-name] -k ec -q curve [-f pwfile]\n"
         "\t\t [-z noisefile] [-d certdir] [-P dbprefix]\n", progName);
     FPS "\t%s -K [-n key-name] [-h token-name] [-k dsa|ec|rsa|all]\n",
         progName);
-#else
-    FPS "\t%s -K [-n key-name] [-h token-name] [-k dsa|rsa|all]\n",
-        progName);
-#endif /* NSS_DISABLE_ECC */
     FPS "\t\t [-f pwfile] [-X] [-d certdir] [-P dbprefix]\n");
     FPS "\t%s --upgrade-merge --source-dir upgradeDir --upgrade-id uniqueID\n",
         progName);
@@ -1066,6 +1112,7 @@ PrintSyntax(char *progName)
     FPS "\t%s -L [-n cert-name] [-h token-name] [--email email-address]\n",
         progName);
     FPS "\t\t [-X] [-r] [-a] [--dump-ext-val OID] [-d certdir] [-P dbprefix]\n");
+    FPS "\t%s --build-flags\n", progName);
     FPS "\t%s -M -n cert-name -t trustargs [-d certdir] [-P dbprefix]\n",
         progName);
     FPS "\t%s -O -n cert-name [-X] [-d certdir] [-a] [-P dbprefix]\n", progName);
@@ -1184,6 +1231,8 @@ luC(enum usage_level ul, const char *command)
         "   -o output-cert");
     FPS "%-20s Self sign\n",
         "   -x");
+    FPS "%-20s Sign the certificate with RSA-PSS (the issuer key must be rsa)\n",
+        "   --pss-sign");
     FPS "%-20s Cert serial number\n",
         "   -m serial-number");
     FPS "%-20s Time Warp\n",
@@ -1244,17 +1293,10 @@ luG(enum usage_level ul, const char *command)
         return;
     FPS "%-20s Name of token in which to generate key (default is internal)\n",
         "   -h token-name");
-#ifndef NSS_DISABLE_ECC
     FPS "%-20s Type of key pair to generate (\"dsa\", \"ec\", \"rsa\" (default))\n",
         "   -k key-type");
     FPS "%-20s Key size in bits, (min %d, max %d, default %d) (not for ec)\n",
         "   -g key-size", MIN_KEY_BITS, MAX_KEY_BITS, DEFAULT_KEY_BITS);
-#else
-    FPS "%-20s Type of key pair to generate (\"dsa\", \"rsa\" (default))\n",
-        "   -k key-type");
-    FPS "%-20s Key size in bits, (min %d, max %d, default %d)\n",
-        "   -g key-size", MIN_KEY_BITS, MAX_KEY_BITS, DEFAULT_KEY_BITS);
-#endif /* NSS_DISABLE_ECC */
     FPS "%-20s Set the public exponent value (3, 17, 65537) (rsa only)\n",
         "   -y exp");
     FPS "%-20s Specify the password file\n",
@@ -1263,7 +1305,6 @@ luG(enum usage_level ul, const char *command)
         "   -z noisefile");
     FPS "%-20s read PQG value from pqgfile (dsa only)\n",
         "   -q pqgfile");
-#ifndef NSS_DISABLE_ECC
     FPS "%-20s Elliptic curve name (ec only)\n",
         "   -q curve-name");
     FPS "%-20s One of nistp256, nistp384, nistp521, curve25519.\n", "");
@@ -1285,7 +1326,6 @@ luG(enum usage_level ul, const char *command)
     FPS "%-20s c2tnb359w1, c2pnb368w1, c2tnb431r1, secp112r1, \n", "");
     FPS "%-20s secp112r2, secp128r1, secp128r2, sect113r1, sect113r2\n", "");
     FPS "%-20s sect131r1, sect131r2\n", "");
-#endif
     FPS "%-20s Key database directory (default is ~/.netscape)\n",
         "   -d keydir");
     FPS "%-20s Cert & Key database prefix\n",
@@ -1331,7 +1371,7 @@ luF(enum usage_level ul, const char *command)
 {
     int is_my_command = (command && 0 == strcmp(command, "F"));
     if (ul == usage_all || !command || is_my_command)
-    FPS "%-15s Delete a key from the database\n",
+    FPS "%-15s Delete a key and associated certificate from the database\n",
         "-F");
     if (ul == usage_selected && !is_my_command)
         return;
@@ -1375,9 +1415,7 @@ luK(enum usage_level ul, const char *command)
         "   -h token-name ");
 
     FPS "%-20s Key type (\"all\" (default), \"dsa\","
-#ifndef NSS_DISABLE_ECC
                                                     " \"ec\","
-#endif
                                                     " \"rsa\")\n",
         "   -k key-type");
     FPS "%-20s The nickname of the key or associated certificate\n",
@@ -1520,11 +1558,7 @@ luR(enum usage_level ul, const char *command)
         "   -s subject");
     FPS "%-20s Output the cert request to this file\n",
         "   -o output-req");
-#ifndef NSS_DISABLE_ECC
     FPS "%-20s Type of key pair to generate (\"dsa\", \"ec\", \"rsa\" (default))\n",
-#else
-    FPS "%-20s Type of key pair to generate (\"dsa\", \"rsa\" (default))\n",
-#endif /* NSS_DISABLE_ECC */
         "   -k key-type-or-id");
     FPS "%-20s or nickname of the cert key to use \n",
         "");
@@ -1532,14 +1566,14 @@ luR(enum usage_level ul, const char *command)
         "   -h token-name");
     FPS "%-20s Key size in bits, RSA keys only (min %d, max %d, default %d)\n",
         "   -g key-size", MIN_KEY_BITS, MAX_KEY_BITS, DEFAULT_KEY_BITS);
+    FPS "%-20s Create a certificate request restricted to RSA-PSS (rsa only)\n",
+        "   --pss");
     FPS "%-20s Name of file containing PQG parameters (dsa only)\n",
         "   -q pqgfile");
-#ifndef NSS_DISABLE_ECC
     FPS "%-20s Elliptic curve name (ec only)\n",
         "   -q curve-name");
     FPS "%-20s See the \"-G\" option for a full list of supported names.\n",
         "");
-#endif /* NSS_DISABLE_ECC */
     FPS "%-20s Specify the password file\n",
         "   -f pwfile");
     FPS "%-20s Key database directory (default is ~/.netscape)\n",
@@ -1705,26 +1739,24 @@ luS(enum usage_level ul, const char *command)
         "   -c issuer-name");
     FPS "%-20s Set the certificate trust attributes (see -A above)\n",
         "   -t trustargs");
-#ifndef NSS_DISABLE_ECC
     FPS "%-20s Type of key pair to generate (\"dsa\", \"ec\", \"rsa\" (default))\n",
-#else
-    FPS "%-20s Type of key pair to generate (\"dsa\", \"rsa\" (default))\n",
-#endif /* NSS_DISABLE_ECC */
         "   -k key-type-or-id");
     FPS "%-20s Name of token in which to generate key (default is internal)\n",
         "   -h token-name");
     FPS "%-20s Key size in bits, RSA keys only (min %d, max %d, default %d)\n",
         "   -g key-size", MIN_KEY_BITS, MAX_KEY_BITS, DEFAULT_KEY_BITS);
+    FPS "%-20s Create a certificate restricted to RSA-PSS (rsa only)\n",
+        "   --pss");
     FPS "%-20s Name of file containing PQG parameters (dsa only)\n",
         "   -q pqgfile");
-#ifndef NSS_DISABLE_ECC
     FPS "%-20s Elliptic curve name (ec only)\n",
         "   -q curve-name");
     FPS "%-20s See the \"-G\" option for a full list of supported names.\n",
         "");
-#endif /* NSS_DISABLE_ECC */
     FPS "%-20s Self sign\n",
         "   -x");
+    FPS "%-20s Sign the certificate with RSA-PSS (the issuer key must be rsa)\n",
+        "   --pss-sign");
     FPS "%-20s Cert serial number\n",
         "   -m serial-number");
     FPS "%-20s Time Warp\n",
@@ -1794,7 +1826,19 @@ luS(enum usage_level ul, const char *command)
 }
 
 static void
-LongUsage(char *progName, enum usage_level ul, const char *command)
+luBuildFlags(enum usage_level ul, const char *command)
+{
+    int is_my_command = (command && 0 == strcmp(command, "build-flags"));
+    if (ul == usage_all || !command || is_my_command)
+    FPS "%-15s Print enabled build flags relevant for NSS test execution\n",
+        "--build-flags");
+    if (ul == usage_selected && !is_my_command)
+        return;
+    FPS "\n");
+}
+
+static void
+LongUsage(enum usage_level ul, const char *command)
 {
     luA(ul, command);
     luB(ul, command);
@@ -1807,6 +1851,7 @@ LongUsage(char *progName, enum usage_level ul, const char *command)
     luU(ul, command);
     luK(ul, command);
     luL(ul, command);
+    luBuildFlags(ul, command);
     luM(ul, command);
     luN(ul, command);
     luT(ul, command);
@@ -1821,14 +1866,14 @@ LongUsage(char *progName, enum usage_level ul, const char *command)
 }
 
 static void
-Usage(char *progName)
+Usage()
 {
     PR_fprintf(PR_STDERR,
                "%s - Utility to manipulate NSS certificate databases\n\n"
                "Usage:  %s <command> -d <database-directory> <options>\n\n"
                "Valid commands:\n",
                progName, progName);
-    LongUsage(progName, usage_selected, NULL);
+    LongUsage(usage_selected, NULL);
     PR_fprintf(PR_STDERR, "\n"
                           "%s -H <command> : Print available options for the given command\n"
                           "%s -H : Print complete help output of all commands and options\n"
@@ -1889,46 +1934,119 @@ MakeV1Cert(CERTCertDBHandle *handle,
 }
 
 static SECStatus
+SetSignatureAlgorithm(PLArenaPool *arena,
+                      SECAlgorithmID *signAlg,
+                      SECAlgorithmID *spkiAlg,
+                      SECOidTag hashAlgTag,
+                      SECKEYPrivateKey *privKey,
+                      PRBool pssSign)
+{
+    SECStatus rv;
+
+    if (pssSign ||
+        SECOID_GetAlgorithmTag(spkiAlg) == SEC_OID_PKCS1_RSA_PSS_SIGNATURE) {
+        SECItem *srcParams;
+        SECItem *params;
+
+        if (SECOID_GetAlgorithmTag(spkiAlg) == SEC_OID_PKCS1_RSA_PSS_SIGNATURE) {
+            srcParams = &spkiAlg->parameters;
+        } else {
+            /* If the issuer's public key is RSA, the parameter field
+             * of the SPKI should be NULL, which can't be used as a
+             * basis of RSA-PSS parameters. */
+            srcParams = NULL;
+        }
+        params = SEC_CreateSignatureAlgorithmParameters(arena,
+                                                        NULL,
+                                                        SEC_OID_PKCS1_RSA_PSS_SIGNATURE,
+                                                        hashAlgTag,
+                                                        srcParams,
+                                                        privKey);
+        if (!params) {
+            SECU_PrintError(progName, "Could not create RSA-PSS parameters");
+            return SECFailure;
+        }
+        rv = SECOID_SetAlgorithmID(arena, signAlg,
+                                   SEC_OID_PKCS1_RSA_PSS_SIGNATURE,
+                                   params);
+        if (rv != SECSuccess) {
+            SECU_PrintError(progName, "Could not set signature algorithm id.");
+            return rv;
+        }
+    } else {
+        KeyType keyType = SECKEY_GetPrivateKeyType(privKey);
+        SECOidTag algID;
+
+        algID = SEC_GetSignatureAlgorithmOidTag(keyType, hashAlgTag);
+        if (algID == SEC_OID_UNKNOWN) {
+            SECU_PrintError(progName, "Unknown key or hash type for issuer.");
+            return SECFailure;
+        }
+        rv = SECOID_SetAlgorithmID(arena, signAlg, algID, 0);
+        if (rv != SECSuccess) {
+            SECU_PrintError(progName, "Could not set signature algorithm id.");
+            return rv;
+        }
+    }
+    return SECSuccess;
+}
+
+static SECStatus
 SignCert(CERTCertDBHandle *handle, CERTCertificate *cert, PRBool selfsign,
          SECOidTag hashAlgTag,
          SECKEYPrivateKey *privKey, char *issuerNickName,
-         int certVersion, void *pwarg)
+         int certVersion, PRBool pssSign, void *pwarg)
 {
     SECItem der;
     SECKEYPrivateKey *caPrivateKey = NULL;
     SECStatus rv;
     PLArenaPool *arena;
-    SECOidTag algID;
+    CERTCertificate *issuer;
     void *dummy;
-
-    if (!selfsign) {
-        CERTCertificate *issuer = PK11_FindCertFromNickname(issuerNickName, pwarg);
-        if ((CERTCertificate *)NULL == issuer) {
-            SECU_PrintError(progName, "unable to find issuer with nickname %s",
-                            issuerNickName);
-            return SECFailure;
-        }
-
-        privKey = caPrivateKey = PK11_FindKeyByAnyCert(issuer, pwarg);
-        CERT_DestroyCertificate(issuer);
-        if (caPrivateKey == NULL) {
-            SECU_PrintError(progName, "unable to retrieve key %s", issuerNickName);
-            return SECFailure;
-        }
-    }
 
     arena = cert->arena;
 
-    algID = SEC_GetSignatureAlgorithmOidTag(privKey->keyType, hashAlgTag);
-    if (algID == SEC_OID_UNKNOWN) {
-        fprintf(stderr, "Unknown key or hash type for issuer.");
+    if (selfsign) {
+        issuer = cert;
+    } else {
+        issuer = PK11_FindCertFromNickname(issuerNickName, pwarg);
+        if ((CERTCertificate *)NULL == issuer) {
+            SECU_PrintError(progName, "unable to find issuer with nickname %s",
+                            issuerNickName);
+            rv = SECFailure;
+            goto done;
+        }
+        privKey = caPrivateKey = PK11_FindKeyByAnyCert(issuer, pwarg);
+        if (caPrivateKey == NULL) {
+            SECU_PrintError(progName, "unable to retrieve key %s", issuerNickName);
+            rv = SECFailure;
+            CERT_DestroyCertificate(issuer);
+            goto done;
+        }
+    }
+
+    if (pssSign &&
+        (SECKEY_GetPrivateKeyType(privKey) != rsaKey &&
+         SECKEY_GetPrivateKeyType(privKey) != rsaPssKey)) {
+        SECU_PrintError(progName, "unable to create RSA-PSS signature with key %s",
+                        issuerNickName);
         rv = SECFailure;
+        if (!selfsign) {
+            CERT_DestroyCertificate(issuer);
+        }
         goto done;
     }
 
-    rv = SECOID_SetAlgorithmID(arena, &cert->signature, algID, 0);
+    rv = SetSignatureAlgorithm(arena,
+                               &cert->signature,
+                               &issuer->subjectPublicKeyInfo.algorithm,
+                               hashAlgTag,
+                               privKey,
+                               pssSign);
+    if (!selfsign) {
+        CERT_DestroyCertificate(issuer);
+    }
     if (rv != SECSuccess) {
-        fprintf(stderr, "Could not set signature algorithm id.");
         goto done;
     }
 
@@ -1947,7 +2065,8 @@ SignCert(CERTCertDBHandle *handle, CERTCertificate *cert, PRBool selfsign,
             break;
         default:
             PORT_SetError(SEC_ERROR_INVALID_ARGS);
-            return SECFailure;
+            rv = SECFailure;
+            goto done;
     }
 
     der.len = 0;
@@ -1960,7 +2079,8 @@ SignCert(CERTCertDBHandle *handle, CERTCertificate *cert, PRBool selfsign,
         goto done;
     }
 
-    rv = SEC_DerSignData(arena, &cert->derCert, der.data, der.len, privKey, algID);
+    rv = SEC_DerSignDataWithAlgorithmID(arena, &cert->derCert, der.data, der.len,
+                                        privKey, &cert->signature);
     if (rv != SECSuccess) {
         fprintf(stderr, "Could not sign encoded certificate data.\n");
         /* result allocated out of the arena, it will be freed
@@ -1993,6 +2113,7 @@ CreateCert(
     certutilExtnList extnList,
     const char *extGeneric,
     int certVersion,
+    PRBool pssSign,
     SECItem *certDER)
 {
     void *extHandle = NULL;
@@ -2053,7 +2174,7 @@ CreateCert(
 
         rv = SignCert(handle, subjectCert, selfsign, hashAlgTag,
                       *selfsignprivkey, issuerNickName,
-                      certVersion, pwarg);
+                      certVersion, pssSign, pwarg);
         if (rv != SECSuccess)
             break;
 
@@ -2148,10 +2269,10 @@ flagArray opFlagsArray[] =
       { NAME_SIZE(verify_recover), CKF_VERIFY_RECOVER },
       { NAME_SIZE(wrap), CKF_WRAP },
       { NAME_SIZE(unwrap), CKF_UNWRAP },
-      { NAME_SIZE(derive), CKF_DERIVE },
+      { NAME_SIZE(derive), CKF_DERIVE }
     };
 
-int opFlagsCount = sizeof(opFlagsArray) / sizeof(flagArray);
+int opFlagsCount = PR_ARRAY_SIZE(opFlagsArray);
 
 flagArray attrFlagsArray[] =
     {
@@ -2165,14 +2286,13 @@ flagArray attrFlagsArray[] =
       { NAME_SIZE(insensitive), PK11_ATTR_INSENSITIVE },
       { NAME_SIZE(extractable), PK11_ATTR_EXTRACTABLE },
       { NAME_SIZE(unextractable), PK11_ATTR_UNEXTRACTABLE }
-
     };
 
-int attrFlagsCount = sizeof(attrFlagsArray) / sizeof(flagArray);
+int attrFlagsCount = PR_ARRAY_SIZE(attrFlagsArray);
 
 #define MAX_STRING 30
 CK_ULONG
-GetFlags(char *flagsString, flagArray *flagArray, int count)
+GetFlags(char *flagsString, flagArray *flags, int count)
 {
     CK_ULONG flagsValue = strtol(flagsString, NULL, 0);
     int i;
@@ -2182,10 +2302,10 @@ GetFlags(char *flagsString, flagArray *flagArray, int count)
     }
     while (*flagsString) {
         for (i = 0; i < count; i++) {
-            if (strncmp(flagsString, flagArray[i].name, flagArray[i].nameSize) ==
+            if (strncmp(flagsString, flags[i].name, flags[i].nameSize) ==
                 0) {
-                flagsValue |= flagArray[i].value;
-                flagsString += flagArray[i].nameSize;
+                flagsValue |= flags[i].value;
+                flagsString += flags[i].nameSize;
                 if (*flagsString != 0) {
                     flagsString++;
                 }
@@ -2306,6 +2426,7 @@ enum {
     cmd_Merge,
     cmd_UpgradeMerge, /* test only */
     cmd_Rename,
+    cmd_BuildFlags,
     max_cmd
 };
 
@@ -2376,6 +2497,7 @@ enum certutilOpts {
     opt_GenericExtensions,
     opt_NewNickname,
     opt_Pss,
+    opt_PssSign,
     opt_Help
 };
 
@@ -2407,7 +2529,9 @@ static const secuCommandFlag commands_init[] =
       { /* cmd_UpgradeMerge        */ 0, PR_FALSE, 0, PR_FALSE,
         "upgrade-merge" },
       { /* cmd_Rename              */ 0, PR_FALSE, 0, PR_FALSE,
-        "rename" }
+        "rename" },
+      { /* cmd_BuildFlags          */ 0, PR_FALSE, 0, PR_FALSE,
+        "build-flags" }
     };
 #define NUM_COMMANDS ((sizeof commands_init) / (sizeof commands_init[0]))
 
@@ -2496,6 +2620,8 @@ static const secuCommandFlag options_init[] =
         "new-n" },
       { /* opt_Pss                 */ 0, PR_FALSE, 0, PR_FALSE,
         "pss" },
+      { /* opt_PssSign             */ 0, PR_FALSE, 0, PR_FALSE,
+        "pss-sign" },
     };
 #define NUM_OPTIONS ((sizeof options_init) / (sizeof options_init[0]))
 
@@ -2564,14 +2690,13 @@ certutil_main(int argc, char **argv, PRBool initialize)
     rv = SECU_ParseCommandLine(argc, argv, progName, &certutil);
 
     if (rv != SECSuccess)
-        Usage(progName);
+        Usage();
 
     if (certutil.commands[cmd_PrintSyntax].activated) {
-        PrintSyntax(progName);
+        PrintSyntax();
     }
 
     if (certutil.commands[cmd_PrintHelp].activated) {
-        int i;
         char buf[2];
         const char *command = NULL;
         for (i = 0; i < max_cmd; i++) {
@@ -2588,8 +2713,12 @@ certutil_main(int argc, char **argv, PRBool initialize)
                 break;
             }
         }
-        LongUsage(progName, (command ? usage_selected : usage_all), command);
+        LongUsage((command ? usage_selected : usage_all), command);
         exit(1);
+    }
+
+    if (certutil.commands[cmd_BuildFlags].activated) {
+        PrintBuildFlags();
     }
 
     if (certutil.options[opt_PasswordFile].arg) {
@@ -2621,12 +2750,10 @@ certutil_main(int argc, char **argv, PRBool initialize)
                        progName, MIN_KEY_BITS, MAX_KEY_BITS);
             return 255;
         }
-#ifndef NSS_DISABLE_ECC
         if (keytype == ecKey) {
             PR_fprintf(PR_STDERR, "%s -g:  Not for ec keys.\n", progName);
             return 255;
         }
-#endif /* NSS_DISABLE_ECC */
     }
 
     /*  -h specify token name  */
@@ -2655,10 +2782,8 @@ certutil_main(int argc, char **argv, PRBool initialize)
             keytype = rsaKey;
         } else if (PL_strcmp(arg, "dsa") == 0) {
             keytype = dsaKey;
-#ifndef NSS_DISABLE_ECC
         } else if (PL_strcmp(arg, "ec") == 0) {
             keytype = ecKey;
-#endif /* NSS_DISABLE_ECC */
         } else if (PL_strcmp(arg, "all") == 0) {
             keytype = nullKey;
         } else {
@@ -2696,7 +2821,7 @@ certutil_main(int argc, char **argv, PRBool initialize)
         if (certutil.options[opt_DBPrefix].arg) {
             certPrefix = certutil.options[opt_DBPrefix].arg;
         } else {
-            Usage(progName);
+            Usage();
         }
     }
 
@@ -2705,22 +2830,16 @@ certutil_main(int argc, char **argv, PRBool initialize)
         if (certutil.options[opt_SourcePrefix].arg) {
             srcCertPrefix = certutil.options[opt_SourcePrefix].arg;
         } else {
-            Usage(progName);
+            Usage();
         }
     }
 
     /*  -q PQG file or curve name */
     if (certutil.options[opt_PQGFile].activated) {
-#ifndef NSS_DISABLE_ECC
         if ((keytype != dsaKey) && (keytype != ecKey)) {
             PR_fprintf(PR_STDERR, "%s -q: specifies a PQG file for DSA keys"
                                   " (-k dsa) or a named curve for EC keys (-k ec)\n)",
                        progName);
-#else  /* } */
-        if (keytype != dsaKey) {
-            PR_fprintf(PR_STDERR, "%s -q: PQG file is for DSA key (-k dsa).\n)",
-                       progName);
-#endif /* NSS_DISABLE_ECC */
             return 255;
         }
     }
@@ -2795,7 +2914,7 @@ certutil_main(int argc, char **argv, PRBool initialize)
         return 255;
     }
     if (commandsEntered == 0) {
-        Usage(progName);
+        Usage();
     }
 
     if (certutil.commands[cmd_ListCerts].activated ||
@@ -3032,11 +3151,43 @@ certutil_main(int argc, char **argv, PRBool initialize)
 
     /*  If creating new database, initialize the password.  */
     if (certutil.commands[cmd_NewDBs].activated) {
-        if (certutil.options[opt_EmptyPassword].activated && (PK11_NeedUserInit(slot)))
-            PK11_InitPin(slot, (char *)NULL, "");
-        else
-            SECU_ChangePW2(slot, 0, 0, certutil.options[opt_PasswordFile].arg,
-                           certutil.options[opt_NewPasswordFile].arg);
+        if (certutil.options[opt_EmptyPassword].activated && (PK11_NeedUserInit(slot))) {
+            rv = PK11_InitPin(slot, (char *)NULL, "");
+        } else {
+            rv = SECU_ChangePW2(slot, 0, 0, certutil.options[opt_PasswordFile].arg,
+                                certutil.options[opt_NewPasswordFile].arg);
+        }
+        if (rv != SECSuccess) {
+            SECU_PrintError(progName, "Could not set password for the slot");
+            goto shutdown;
+        }
+    }
+
+    /* if we are going to modify the cert database,
+     * make sure it's initialized */
+    if (certutil.commands[cmd_ModifyCertTrust].activated ||
+        certutil.commands[cmd_CreateAndAddCert].activated ||
+        certutil.commands[cmd_AddCert].activated ||
+        certutil.commands[cmd_AddEmailCert].activated) {
+        if (PK11_NeedLogin(slot) && PK11_NeedUserInit(slot)) {
+            char *password = NULL;
+            /* fetch the password from the command line or the file
+             * if no password is supplied, initialize the password to NULL */
+            if (pwdata.source == PW_FROMFILE) {
+                password = SECU_FilePasswd(slot, PR_FALSE, pwdata.data);
+            } else if (pwdata.source == PW_PLAINTEXT) {
+                password = PL_strdup(pwdata.data);
+            }
+            rv = PK11_InitPin(slot, (char *)NULL, password ? password : "");
+            if (password) {
+                PORT_Memset(password, 0, PL_strlen(password));
+                PORT_Free(password);
+            }
+            if (rv != SECSuccess) {
+                SECU_PrintError(progName, "Could not set password for the slot");
+                goto shutdown;
+            }
+        }
     }
 
     /* walk through the upgrade merge if necessary.
@@ -3214,12 +3365,12 @@ certutil_main(int argc, char **argv, PRBool initialize)
     }
     /*  Delete cert (-D)  */
     if (certutil.commands[cmd_DeleteCert].activated) {
-        rv = DeleteCert(certHandle, name);
+        rv = DeleteCert(certHandle, name, &pwdata);
         goto shutdown;
     }
     /*  Rename cert (--rename)  */
     if (certutil.commands[cmd_Rename].activated) {
-        rv = RenameCert(certHandle, name, newName);
+        rv = RenameCert(certHandle, name, newName, &pwdata);
         goto shutdown;
     }
     /*  Delete key (-F)  */
@@ -3237,7 +3388,10 @@ certutil_main(int argc, char **argv, PRBool initialize)
     if (certutil.commands[cmd_ChangePassword].activated) {
         rv = SECU_ChangePW2(slot, 0, 0, certutil.options[opt_PasswordFile].arg,
                             certutil.options[opt_NewPasswordFile].arg);
-        goto shutdown;
+        if (rv != SECSuccess) {
+            SECU_PrintError(progName, "Could not set password for the slot");
+            goto shutdown;
+        }
     }
     /*  Reset the a token */
     if (certutil.commands[cmd_TokenReset].activated) {
@@ -3357,6 +3511,25 @@ certutil_main(int argc, char **argv, PRBool initialize)
         if (keytype != rsaKey) {
             PR_fprintf(PR_STDERR,
                        "%s -%c: --pss only works with RSA keys.\n",
+                       progName, commandToRun);
+            return 255;
+        }
+    }
+
+    /* --pss-sign is to sign a certificate with RSA-PSS, even if the
+     * issuer's key is an RSA key.  If the key is an RSA-PSS key, the
+     * generated signature is always RSA-PSS. */
+    if (certutil.options[opt_PssSign].activated) {
+        if (!certutil.commands[cmd_CreateNewCert].activated &&
+            !certutil.commands[cmd_CreateAndAddCert].activated) {
+            PR_fprintf(PR_STDERR,
+                       "%s -%c: --pss-sign only works with -C or -S.\n",
+                       progName, commandToRun);
+            return 255;
+        }
+        if (keytype != rsaKey) {
+            PR_fprintf(PR_STDERR,
+                       "%s -%c: --pss-sign only works with RSA keys.\n",
                        progName, commandToRun);
             return 255;
         }
@@ -3499,6 +3672,7 @@ certutil_main(int argc, char **argv, PRBool initialize)
                         (certutil.options[opt_GenericExtensions].activated ? certutil.options[opt_GenericExtensions].arg
                                                                            : NULL),
                         certVersion,
+                        certutil.options[opt_PssSign].activated,
                         &certDER);
         if (rv)
             goto shutdown;

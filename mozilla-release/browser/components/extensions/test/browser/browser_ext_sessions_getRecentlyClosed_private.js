@@ -30,7 +30,7 @@ add_task(async function test_sessions_get_recently_closed_private() {
 
   await extension.startup();
 
-  let {Management: {global: {windowTracker}}} = Cu.import("resource://gre/modules/Extension.jsm", {});
+  let {Management: {global: {windowTracker}}} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
   let privateWinId = windowTracker.getId(privateWin);
 
   extension.sendMessage("check-sessions");
@@ -39,10 +39,12 @@ add_task(async function test_sessions_get_recently_closed_private() {
 
   // Open and close two tabs in the private window
   let tab = await BrowserTestUtils.openNewForegroundTab(privateWin.gBrowser, "http://example.com");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 
   tab = await BrowserTestUtils.openNewForegroundTab(privateWin.gBrowser, "http://example.com");
-  await BrowserTestUtils.removeTab(tab);
+  let sessionPromise = BrowserTestUtils.waitForSessionStoreUpdate(tab);
+  BrowserTestUtils.removeTab(tab);
+  await sessionPromise;
 
   extension.sendMessage("check-sessions");
   recentlyClosed = await extension.awaitMessage("recentlyClosed");

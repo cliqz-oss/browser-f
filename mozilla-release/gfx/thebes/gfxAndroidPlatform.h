@@ -32,9 +32,6 @@ public:
                            gfxImageFormat aFormat) override;
     
     virtual gfxImageFormat GetOffscreenFormat() override { return mOffscreenFormat; }
-    
-    already_AddRefed<mozilla::gfx::ScaledFont>
-      GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont) override;
 
     // to support IPC font list (sharing between chrome and content)
     void GetSystemFontList(InfallibleTArray<FontListEntry>* retValue);
@@ -58,15 +55,17 @@ public:
 
     FT_Library GetFTLibrary() override;
 
-    virtual bool CanRenderContentToDataSurface() const override {
-      return true;
-    }
-
     virtual already_AddRefed<mozilla::gfx::VsyncSource> CreateHardwareVsyncSource() override;
 
 protected:
     bool AccelerateLayersByDefault() override {
       return true;
+    }
+
+    bool CheckVariationFontSupport() override {
+        // We build with in-tree FreeType, so we know it is a new enough
+        // version to support variations.
+        return true;
     }
 
 private:

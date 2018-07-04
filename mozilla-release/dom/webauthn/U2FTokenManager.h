@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,7 +7,9 @@
 #ifndef mozilla_dom_U2FTokenManager_h
 #define mozilla_dom_U2FTokenManager_h
 
+#include "nsIU2FTokenManager.h"
 #include "mozilla/dom/U2FTokenTransport.h"
+#include "mozilla/dom/PWebAuthnTransaction.h"
 
 /*
  * Parent process manager for U2F and WebAuthn API transactions. Handles process
@@ -25,46 +27,59 @@ namespace dom {
 class U2FSoftTokenManager;
 class WebAuthnTransactionParent;
 
-class U2FTokenManager final
+class U2FTokenManager final : public nsIU2FTokenManager
 {
 public:
-  enum TransactionType
-  {
-    RegisterTransaction = 0,
-    SignTransaction,
-    NumTransactionTypes
-  };
-  NS_INLINE_DECL_REFCOUNTING(U2FTokenManager)
+  NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_NSIU2FTOKENMANAGER
+
   static U2FTokenManager* Get();
-  void Register(WebAuthnTransactionParent* aTransactionParent,
-                const WebAuthnTransactionInfo& aTransactionInfo);
-  void Sign(WebAuthnTransactionParent* aTransactionParent,
-            const WebAuthnTransactionInfo& aTransactionInfo);
-  void Cancel(WebAuthnTransactionParent* aTransactionParent);
-  void MaybeClearTransaction(WebAuthnTransactionParent* aParent);
+  void Register(PWebAuthnTransactionParent* aTransactionParent,
+                const uint64_t& aTransactionId,
+                const WebAuthnMakeCredentialInfo& aTransactionInfo);
+  void Sign(PWebAuthnTransactionParent* aTransactionParent,
+            const uint64_t& aTransactionId,
+            const WebAuthnGetAssertionInfo& aTransactionInfo);
+  void Cancel(PWebAuthnTransactionParent* aTransactionParent,
+              const uint64_t& aTransactionId);
+  void MaybeClearTransaction(PWebAuthnTransactionParent* aParent);
   static void Initialize();
 private:
   U2FTokenManager();
-  ~U2FTokenManager();
+  ~U2FTokenManager() { }
   RefPtr<U2FTokenTransport> GetTokenManagerImpl();
-  void AbortTransaction(const nsresult& aError);
+  void AbortTransaction(const uint64_t& aTransactionId, const nsresult& aError);
   void ClearTransaction();
-  void MaybeConfirmRegister(uint64_t aTransactionId,
-                            U2FRegisterResult& aResult);
-  void MaybeAbortRegister(uint64_t aTransactionId, const nsresult& aError);
-  void MaybeConfirmSign(uint64_t aTransactionId, U2FSignResult& aResult);
-  void MaybeAbortSign(uint64_t aTransactionId, const nsresult& aError);
+  // Step two of "Register", kicking off the actual transaction.
+  void DoRegister(const WebAuthnMakeCredentialInfo& aInfo);
+  void MaybeConfirmRegister(const uint64_t& aTransactionId,
+                            const WebAuthnMakeCredentialResult& aResult);
+  void MaybeAbortRegister(const uint64_t& aTransactionId, const nsresult& aError);
+  void MaybeConfirmSign(const uint64_t& aTransactionId,
+                        const WebAuthnGetAssertionResult& aResult);
+  void MaybeAbortSign(const uint64_t& aTransactionId, const nsresult& aError);
+  // The main thread runnable function for "nsIU2FTokenManager.ResumeRegister".
+  void RunResumeRegister(uint64_t aTransactionId, bool aPermitDirectAttestation);
+  // The main thread runnable function for "nsIU2FTokenManager.Cancel".
+  void RunCancel(uint64_t aTransactionId);
+  // Sends a "webauthn-prompt" observer notification with the given data.
+  template<typename ...T>
+  void SendPromptNotification(const char16_t* aFormat, T... aArgs);
+  // The main thread runnable function for "SendPromptNotification".
+  void RunSendPromptNotification(nsString aJSON);
   // Using a raw pointer here, as the lifetime of the IPC object is managed by
   // the PBackground protocol code. This means we cannot be left holding an
   // invalid IPC protocol object after the transaction is finished.
-  WebAuthnTransactionParent* mTransactionParent;
+  PWebAuthnTransactionParent* mTransactionParent;
   RefPtr<U2FTokenTransport> mTokenManagerImpl;
   MozPromiseRequestHolder<U2FRegisterPromise> mRegisterPromise;
   MozPromiseRequestHolder<U2FSignPromise> mSignPromise;
-  // Guards the asynchronous promise resolution of token manager impls.
-  // We don't need to protect this with a lock as it will only be modified
-  // and checked on the PBackground thread in the parent process.
-  uint64_t mTransactionId;
+  // The last transaction id, non-zero if there's an active transaction. This
+  // guards any cancel messages to ensure we don't cancel newer transactions
+  // due to a stale message.
+  uint64_t mLastTransactionId;
+  // Pending registration info while we wait for user input.
+  Maybe<WebAuthnMakeCredentialInfo> mPendingRegisterInfo;
 };
 
 } // namespace dom

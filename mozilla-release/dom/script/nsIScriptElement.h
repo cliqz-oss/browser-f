@@ -13,10 +13,11 @@
 #include "nsIScriptLoaderObserver.h"
 #include "nsWeakPtr.h"
 #include "nsIParser.h"
+#include "nsIContent.h"
 #include "nsContentCreatorFunctions.h"
-#include "nsIDOMHTMLScriptElement.h"
 #include "mozilla/CORSMode.h"
 
+// Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
 #define NS_ISCRIPTELEMENT_IID \
 { 0xe60fca9b, 0x1b96, 0x4e4e, \
  { 0xa9, 0xb4, 0xdc, 0x98, 0x4f, 0x88, 0x3f, 0x9c } }
@@ -38,6 +39,7 @@ public:
       mForceAsync(aFromParser == mozilla::dom::NOT_FROM_PARSER ||
                   aFromParser == mozilla::dom::FROM_PARSER_FRAGMENT),
       mFrozen(false),
+      mIsModule(false),
       mDefer(false),
       mAsync(false),
       mExternal(false),
@@ -66,6 +68,12 @@ public:
     return mUri;
   }
 
+  nsIPrincipal* GetScriptURITriggeringPrincipal()
+  {
+    NS_PRECONDITION(mFrozen, "Not ready for this call yet!");
+    return mSrcTriggeringPrincipal;
+  }
+
   /**
    * Script source text for inline script elements.
    */
@@ -74,11 +82,24 @@ public:
   virtual void GetScriptCharset(nsAString& charset) = 0;
 
   /**
-   * Freezes the return values of GetScriptDeferred(), GetScriptAsync() and
-   * GetScriptURI() so that subsequent modifications to the attributes don't
-   * change execution behavior.
+   * Freezes the return values of the following methods so that subsequent
+   * modifications to the attributes don't change execution behavior:
+   *  - GetScriptIsModule()
+   *  - GetScriptDeferred()
+   *  - GetScriptAsync()
+   *  - GetScriptURI()
+   *  - GetScriptExternal()
    */
-  virtual void FreezeUriAsyncDefer() = 0;
+  virtual void FreezeExecutionAttrs(nsIDocument* aOwnerDoc) = 0;
+
+  /**
+   * Is the script a module script. Currently only supported by HTML scripts.
+   */
+  bool GetScriptIsModule()
+  {
+    NS_PRECONDITION(mFrozen, "Not ready for this call yet!");
+    return mIsModule;
+  }
 
   /**
    * Is the script deferred. Currently only supported by HTML scripts.
@@ -142,16 +163,17 @@ public:
 
   void LoseParserInsertedness()
   {
-    mFrozen = false;
     mUri = nullptr;
     mCreatorParser = nullptr;
     mParserCreated = mozilla::dom::NOT_FROM_PARSER;
-    bool async = false;
-    nsCOMPtr<nsIDOMHTMLScriptElement> htmlScript = do_QueryInterface(this);
-    if (htmlScript) {
-      htmlScript->GetAsync(&async);
-    }
-    mForceAsync = !async;
+    mForceAsync = !GetAsyncState();
+
+    // Reset state set by FreezeExecutionAttrs().
+    mFrozen = false;
+    mIsModule = false;
+    mExternal = false;
+    mAsync = false;
+    mDefer = false;
   }
 
   void SetCreatorParser(nsIParser* aParser)
@@ -265,6 +287,12 @@ protected:
   virtual bool MaybeProcessScript() = 0;
 
   /**
+   * Since we've removed the XPCOM interface to HTML elements, we need a way to
+   * retreive async state from script elements without bringing the type in.
+   */
+  virtual bool GetAsyncState() = 0;
+
+  /**
    * The start line number of the script.
    */
   uint32_t mLineNumber;
@@ -296,6 +324,11 @@ protected:
   bool mFrozen;
 
   /**
+   * The effective moduleness.
+   */
+  bool mIsModule;
+
+  /**
    * The effective deferredness.
    */
   bool mDefer;
@@ -320,6 +353,11 @@ protected:
    * The effective src (or null if no src).
    */
   nsCOMPtr<nsIURI> mUri;
+
+  /**
+   * The triggering principal for the src URL.
+   */
+  nsCOMPtr<nsIPrincipal> mSrcTriggeringPrincipal;
 
   /**
    * The creator parser of a non-defer, non-async parser-inserted script.

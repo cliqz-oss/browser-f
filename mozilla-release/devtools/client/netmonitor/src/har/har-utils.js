@@ -9,23 +9,9 @@
 const Services = require("Services");
 const { Ci, Cc, CC } = require("chrome");
 const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
-const { gDevTools } = require("devtools/client/framework/devtools");
 
-XPCOMUtils.defineLazyGetter(this, "dirService", function () {
-  return Cc["@mozilla.org/file/directory_service;1"]
-    .getService(Ci.nsIProperties);
-});
-
-XPCOMUtils.defineLazyGetter(this, "ZipWriter", function () {
+XPCOMUtils.defineLazyGetter(this, "ZipWriter", function() {
   return CC("@mozilla.org/zipwriter;1", "nsIZipWriter");
-});
-
-XPCOMUtils.defineLazyGetter(this, "LocalFile", function () {
-  return new CC("@mozilla.org/file/local;1", "nsILocalFile", "initWithPath");
-});
-
-XPCOMUtils.defineLazyGetter(this, "getMostRecentBrowserWindow", function () {
-  return Services.wm.getMostRecentWindow(gDevTools.chromeWindowType);
 });
 
 const OPEN_FLAGS = {
@@ -52,7 +38,7 @@ function formatDate(date) {
  * Helper API for HAR export features.
  */
 var HarUtils = {
-  getHarFileName: function (defaultFileName, jsonp, compress) {
+  getHarFileName: function(defaultFileName, jsonp, compress) {
     let extension = jsonp ? ".harp" : ".har";
 
     let now = new Date();
@@ -79,7 +65,7 @@ var HarUtils = {
    * @param {String} jsonString HAR data (JSON or JSONP)
    * @param {Boolean} compress The result file is zipped if set to true.
    */
-  saveToFile: function (file, jsonString, compress) {
+  saveToFile: function(file, jsonString, compress) {
     let openFlags = OPEN_FLAGS.WRONLY | OPEN_FLAGS.CREATE_FILE |
       OPEN_FLAGS.TRUNCATE;
 
@@ -127,7 +113,7 @@ var HarUtils = {
 
       // Create compressed file with the original file path name.
       let zipFile = Cc["@mozilla.org/file/local;1"]
-        .createInstance(Ci.nsILocalFile);
+        .createInstance(Ci.nsIFile);
       zipFile.initWithPath(originalFilePath);
 
       // The file within the zipped file doesn't use .zip extension.
@@ -155,15 +141,15 @@ var HarUtils = {
     return false;
   },
 
-  getLocalDirectory: function (path) {
+  getLocalDirectory: function(path) {
     let dir;
 
     if (!path) {
-      dir = dirService.get("ProfD", Ci.nsILocalFile);
+      dir = Services.dirsvc.get("ProfD", Ci.nsIFile);
       dir.append("har");
       dir.append("logs");
     } else {
-      dir = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
+      dir = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
       dir.initWithPath(path);
     }
 

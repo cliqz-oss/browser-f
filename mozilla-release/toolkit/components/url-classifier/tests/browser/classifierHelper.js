@@ -17,9 +17,9 @@ if (typeof(classifierHelper) == "undefined") {
 const HASHLEN = 32;
 
 const PREFS = {
-  PROVIDER_LISTS : "browser.safebrowsing.provider.mozilla.lists",
-  DISALLOW_COMPLETIONS : "urlclassifier.disallow_completions",
-  PROVIDER_GETHASHURL : "browser.safebrowsing.provider.mozilla.gethashURL"
+  PROVIDER_LISTS: "browser.safebrowsing.provider.mozilla.lists",
+  DISALLOW_COMPLETIONS: "urlclassifier.disallow_completions",
+  PROVIDER_GETHASHURL: "browser.safebrowsing.provider.mozilla.gethashURL"
 };
 
 classifierHelper._curAddChunkNum = 1;
@@ -34,35 +34,26 @@ classifierHelper._updatesToCleanup = [];
 // after the event had already been notified, we lookup entries to see if
 // they are already added to database.
 classifierHelper.waitForInit = function() {
-  let observerService = Cc["@mozilla.org/observer-service;1"]
-                        .getService(Ci.nsIObserverService);
-  let secMan = Cc["@mozilla.org/scriptsecuritymanager;1"]
-               .getService(Ci.nsIScriptSecurityManager);
-  let iosvc = Cc["@mozilla.org/network/io-service;1"]
-              .getService(Ci.nsIIOService);
-
   // This url must sync with the table, url in SafeBrowsing.jsm addMozEntries
   const table = "test-phish-simple";
   const url = "http://itisatrap.org/firefox/its-a-trap.html";
-  let principal = secMan.createCodebasePrincipal(
-    iosvc.newURI(url), {});
+  let principal = Services.scriptSecurityManager.createCodebasePrincipal(
+    Services.io.newURI(url), {});
 
   return new Promise(function(resolve, reject) {
-    observerService.addObserver(function() {
+    Services.obs.addObserver(function() {
       resolve();
     }, "mozentries-update-finished");
 
     let listener = {
-      QueryInterface: function(iid)
-      {
+      QueryInterface(iid) {
         if (iid.equals(Ci.nsISupports) ||
           iid.equals(Ci.nsIUrlClassifierUpdateObserver))
           return this;
         throw Cr.NS_ERROR_NO_INTERFACE;
       },
 
-      handleEvent: function(value)
-      {
+      handleEvent(value) {
         if (value === table) {
           resolve();
         }
@@ -70,7 +61,7 @@ classifierHelper.waitForInit = function() {
     };
     dbService.lookup(principal, table, listener);
   });
-}
+};
 
 // This function is used to allow completion for specific "list",
 // some lists like "test-malware-simple" is default disabled to ask for complete.
@@ -91,7 +82,7 @@ classifierHelper.allowCompletion = function(lists, url) {
 
   // Set get hash url
   Services.prefs.setCharPref(PREFS.PROVIDER_GETHASHURL, url);
-}
+};
 
 // Pass { url: ..., db: ... } to add url to database,
 // Returns a Promise.
@@ -116,7 +107,7 @@ classifierHelper.addUrlToDB = function(updateData) {
   }
 
   return classifierHelper._update(testUpdate);
-}
+};
 
 // This API is used to expire all add/sub chunks we have updated
 // by using addUrlToDB.
@@ -135,7 +126,7 @@ classifierHelper.resetDatabase = function() {
 
 classifierHelper.reloadDatabase = function() {
   dbService.reloadDatabase();
-}
+};
 
 classifierHelper._update = function(update) {
   return (async function() {
@@ -146,20 +137,19 @@ classifierHelper._update = function(update) {
       try {
         await new Promise((resolve, reject) => {
           let listener = {
-            QueryInterface: function(iid)
-            {
+            QueryInterface(iid) {
               if (iid.equals(Ci.nsISupports) ||
                   iid.equals(Ci.nsIUrlClassifierUpdateObserver))
                 return this;
 
               throw Cr.NS_ERROR_NO_INTERFACE;
             },
-            updateUrlRequested: function(url) { },
-            streamFinished: function(status) { },
-            updateError: function(errorCode) {
+            updateUrlRequested(url) { },
+            streamFinished(status) { },
+            updateError(errorCode) {
               reject(errorCode);
             },
-            updateSuccess: function(requestedTimeout) {
+            updateSuccess(requestedTimeout) {
               resolve();
             }
           };
@@ -170,7 +160,7 @@ classifierHelper._update = function(update) {
           dbService.finishUpdate();
         });
         success = true;
-      } catch(e) {
+      } catch (e) {
         // Wait 1 second before trying again.
         await new Promise(resolve => setTimeout(resolve, 1000));
       }

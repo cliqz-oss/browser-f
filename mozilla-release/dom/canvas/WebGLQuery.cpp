@@ -13,31 +13,11 @@
 
 namespace mozilla {
 
-class AvailableRunnable final : public Runnable
-{
-    const RefPtr<WebGLQuery> mQuery;
-
-public:
-  explicit AvailableRunnable(WebGLQuery* query)
-    : Runnable("AvailableRunnable")
-    , mQuery(query)
-  {
-  }
-
-  NS_IMETHOD Run() override
-  {
-    mQuery->mCanBeAvailable = true;
-    return NS_OK;
-    }
-};
-
 ////
 
 static GLuint
 GenQuery(gl::GLContext* gl)
 {
-    gl->MakeCurrent();
-
     GLuint ret = 0;
     gl->fGenQueries(1, &ret);
     return ret;
@@ -48,7 +28,6 @@ WebGLQuery::WebGLQuery(WebGLContext* webgl)
     , mGLName(GenQuery(mContext->gl))
     , mTarget(0)
     , mActiveSlot(nullptr)
-    , mCanBeAvailable(false)
 {
     mContext->mQueries.insertBack(this);
 }
@@ -56,7 +35,6 @@ WebGLQuery::WebGLQuery(WebGLContext* webgl)
 void
 WebGLQuery::Delete()
 {
-    mContext->MakeContextCurrent();
     mContext->gl->fDeleteQueries(1, &mGLName);
     LinkedListElement<WebGLQuery>::removeFrom(mContext->mQueries);
 }
@@ -103,7 +81,6 @@ WebGLQuery::BeginQuery(GLenum target, WebGLRefPtr<WebGLQuery>& slot)
     ////
 
     const auto& gl = mContext->gl;
-    gl->MakeCurrent();
 
     const auto driverTarget = TargetForDriver(gl, mTarget);
     gl->fBeginQuery(driverTarget, mGLName);
@@ -119,14 +96,14 @@ WebGLQuery::EndQuery()
     ////
 
     const auto& gl = mContext->gl;
-    gl->MakeCurrent();
 
     const auto driverTarget = TargetForDriver(gl, mTarget);
     gl->fEndQuery(driverTarget);
 
     ////
 
-    NS_DispatchToCurrentThread(new AvailableRunnable(this));
+    const auto& availRunnable = mContext->EnsureAvailabilityRunnable();
+    availRunnable->mQueries.push_back(this);
 }
 
 void
@@ -165,7 +142,6 @@ WebGLQuery::GetQueryParameter(GLenum pname, JS::MutableHandleValue retval) const
     }
 
     const auto& gl = mContext->gl;
-    gl->MakeCurrent();
 
     uint64_t val = 0;
     switch (pname) {
@@ -192,9 +168,6 @@ WebGLQuery::GetQueryParameter(GLenum pname, JS::MutableHandleValue retval) const
         switch (mTarget) {
         case LOCAL_GL_ANY_SAMPLES_PASSED:
         case LOCAL_GL_ANY_SAMPLES_PASSED_CONSERVATIVE:
-            retval.set(JS::BooleanValue(bool(val)));
-            break;
-
         case LOCAL_GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN:
         case LOCAL_GL_TIME_ELAPSED_EXT:
         case LOCAL_GL_TIMESTAMP_EXT:
@@ -251,10 +224,10 @@ WebGLQuery::QueryCounter(const char* funcName, GLenum target)
     mCanBeAvailable = false;
 
     const auto& gl = mContext->gl;
-    gl->MakeCurrent();
     gl->fQueryCounter(mGLName, mTarget);
 
-    NS_DispatchToCurrentThread(new AvailableRunnable(this));
+    const auto& availRunnable = mContext->EnsureAvailabilityRunnable();
+    availRunnable->mQueries.push_back(this);
 }
 
 ////

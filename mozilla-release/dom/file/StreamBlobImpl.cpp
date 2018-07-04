@@ -6,6 +6,7 @@
 
 #include "StreamBlobImpl.h"
 #include "nsStringStream.h"
+#include "nsICloneableInputStream.h"
 
 namespace mozilla {
 namespace dom {
@@ -48,17 +49,6 @@ StreamBlobImpl::StreamBlobImpl(nsIInputStream* aInputStream,
   mImmutable = true;
 }
 
-StreamBlobImpl::StreamBlobImpl(StreamBlobImpl* aOther,
-                               const nsAString& aContentType,
-                               uint64_t aStart, uint64_t aLength)
-  : BaseBlobImpl(aContentType, aOther->mStart + aStart, aLength)
-  , mInputStream(new SlicedInputStream(aOther->mInputStream, aStart, aLength))
-  , mIsDirectory(false)
-  , mFileId(-1)
-{
-  mImmutable = true;
-}
-
 StreamBlobImpl::StreamBlobImpl(nsIInputStream* aInputStream,
                                const nsAString& aName,
                                const nsAString& aContentType,
@@ -78,7 +68,7 @@ StreamBlobImpl::~StreamBlobImpl()
 }
 
 void
-StreamBlobImpl::GetInternalStream(nsIInputStream** aStream, ErrorResult& aRv)
+StreamBlobImpl::CreateInputStream(nsIInputStream** aStream, ErrorResult& aRv)
 {
   nsCOMPtr<nsIInputStream> clonedStream;
   nsCOMPtr<nsIInputStream> replacementStream;
@@ -105,8 +95,29 @@ StreamBlobImpl::CreateSlice(uint64_t aStart, uint64_t aLength,
     return impl.forget();
   }
 
+  nsCOMPtr<nsIInputStream> clonedStream;
+
+  nsCOMPtr<nsICloneableInputStreamWithRange> stream =
+    do_QueryInterface(mInputStream);
+  if (stream) {
+    aRv = stream->CloneWithRange(aStart, aLength, getter_AddRefs(clonedStream));
+    if (NS_WARN_IF(aRv.Failed())) {
+      return nullptr;
+    }
+  } else {
+    CreateInputStream(getter_AddRefs(clonedStream), aRv);
+    if (NS_WARN_IF(aRv.Failed())) {
+      return nullptr;
+    }
+
+    clonedStream =
+      new SlicedInputStream(clonedStream.forget(), aStart, aLength);
+  }
+
+  MOZ_ASSERT(clonedStream);
+
   RefPtr<BlobImpl> impl =
-    new StreamBlobImpl(this, aContentType, aStart, aLength);
+    new StreamBlobImpl(clonedStream, aContentType, aLength);
   return impl.forget();
 }
 
@@ -139,6 +150,18 @@ StreamBlobImpl::CollectReports(nsIHandleReportCallback* aHandleReport,
     "Memory used to back a File/Blob based on an input stream.");
 
   return NS_OK;
+}
+
+size_t
+StreamBlobImpl::GetAllocationSize() const
+{
+  nsCOMPtr<nsIStringInputStream> stringInputStream =
+    do_QueryInterface(mInputStream);
+  if (!stringInputStream) {
+    return 0;
+  }
+
+  return stringInputStream->SizeOfIncludingThis(MallocSizeOf);
 }
 
 } // namespace dom

@@ -7,13 +7,13 @@
 use app_units::Au;
 use cssparser::Parser;
 use parser::ParserContext;
-use properties::animated_properties::Animatable;
 use style_traits::ParseError;
-use values::animated::ToAnimatedZero;
+use values::animated::{Animate, Procedure, ToAnimatedZero};
+use values::distance::{ComputeSquaredDistance, SquaredDistance};
 
 /// A generic value for the `initial-letter` property.
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue, ToCss)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
 pub enum InitialLetter<Number, Integer> {
     /// `normal`
     Normal,
@@ -30,8 +30,8 @@ impl<N, I> InitialLetter<N, I> {
 }
 
 /// A generic spacing value for the `letter-spacing` and `word-spacing` properties.
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue, ToCss)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo,
+         ToComputedValue, ToCss)]
 pub enum Spacing<Value> {
     /// `normal`
     Normal,
@@ -51,9 +51,10 @@ impl<Value> Spacing<Value> {
     pub fn parse_with<'i, 't, F>(
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
-        parse: F)
-        -> Result<Self, ParseError<'i>>
-        where F: FnOnce(&ParserContext, &mut Parser<'i, 't>) -> Result<Value, ParseError<'i>>
+        parse: F,
+    ) -> Result<Self, ParseError<'i>>
+    where
+        F: FnOnce(&ParserContext, &mut Parser<'i, 't>) -> Result<Value, ParseError<'i>>,
     {
         if input.try(|i| i.expect_ident_matching("normal")).is_ok() {
             return Ok(Spacing::Normal);
@@ -71,26 +72,32 @@ impl<Value> Spacing<Value> {
     }
 }
 
-impl<Value> Animatable for Spacing<Value>
-    where Value: Animatable + From<Au>,
+impl<Value> Animate for Spacing<Value>
+where
+    Value: Animate + From<Au>,
 {
     #[inline]
-    fn add_weighted(&self, other: &Self, self_portion: f64, other_portion: f64) -> Result<Self, ()> {
+    fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
         if let (&Spacing::Normal, &Spacing::Normal) = (self, other) {
             return Ok(Spacing::Normal);
         }
         let zero = Value::from(Au(0));
         let this = self.value().unwrap_or(&zero);
         let other = other.value().unwrap_or(&zero);
-        this.add_weighted(other, self_portion, other_portion).map(Spacing::Value)
+        Ok(Spacing::Value(this.animate(other, procedure)?))
     }
+}
 
+impl<V> ComputeSquaredDistance for Spacing<V>
+where
+    V: ComputeSquaredDistance + From<Au>,
+{
     #[inline]
-    fn compute_distance(&self, other: &Self) -> Result<f64, ()> {
-        let zero = Value::from(Au(0));
+    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
+        let zero = V::from(Au(0));
         let this = self.value().unwrap_or(&zero);
         let other = other.value().unwrap_or(&zero);
-        this.compute_distance(other)
+        this.compute_squared_distance(other)
     }
 }
 
@@ -99,12 +106,14 @@ where
     V: From<Au>,
 {
     #[inline]
-    fn to_animated_zero(&self) -> Result<Self, ()> { Err(()) }
+    fn to_animated_zero(&self) -> Result<Self, ()> {
+        Err(())
+    }
 }
 
 /// A generic value for the `line-height` property.
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToCss)]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf,
+         PartialEq, SpecifiedValueInfo, ToAnimatedValue, ToCss)]
 pub enum LineHeight<Number, LengthOrPercentage> {
     /// `normal`
     Normal,
@@ -117,10 +126,28 @@ pub enum LineHeight<Number, LengthOrPercentage> {
     Length(LengthOrPercentage),
 }
 
+impl<N, L> ToAnimatedZero for LineHeight<N, L> {
+    #[inline]
+    fn to_animated_zero(&self) -> Result<Self, ()> {
+        Err(())
+    }
+}
+
 impl<N, L> LineHeight<N, L> {
     /// Returns `normal`.
     #[inline]
     pub fn normal() -> Self {
         LineHeight::Normal
     }
+}
+
+/// A generic value for the `-moz-tab-size` property.
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf,
+         PartialEq, SpecifiedValueInfo, ToAnimatedValue, ToAnimatedZero,
+         ToComputedValue, ToCss)]
+pub enum MozTabSize<Number, Length> {
+    /// A number.
+    Number(Number),
+    /// A length.
+    Length(Length),
 }

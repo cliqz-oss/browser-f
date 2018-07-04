@@ -5,9 +5,13 @@
 "use strict";
 
 add_task(async function() {
-  await SpecialPowers.pushPrefEnv({set: [["browser.photon.structure.enabled", false]]});
   info("Check new window button existence and functionality");
-  await PanelUI.show();
+  CustomizableUI.addWidgetToArea("new-window-button", CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
+  registerCleanupFunction(() => CustomizableUI.reset());
+
+  await waitForOverflowButtonShown();
+
+  await document.getElementById("nav-bar").overflowable.show();
   info("Menu panel was opened");
 
   let windowWasHandled = false;
@@ -16,7 +20,7 @@ add_task(async function() {
   let observerWindowOpened = {
     observe(aSubject, aTopic, aData) {
       if (aTopic == "domwindowopened") {
-        newWindow = aSubject.QueryInterface(Components.interfaces.nsIDOMWindow);
+        newWindow = aSubject.QueryInterface(Ci.nsIDOMWindow);
         newWindow.addEventListener("load", function() {
           is(newWindow.location.href, "chrome://browser/content/browser.xul",
              "A new browser window was opened");
@@ -25,7 +29,7 @@ add_task(async function() {
         }, {once: true});
       }
     }
-  }
+  };
 
   Services.ww.registerNotification(observerWindowOpened);
 

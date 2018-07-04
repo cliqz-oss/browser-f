@@ -99,6 +99,15 @@ protected:
   virtual bool
   DeallocPIPCBlobInputStreamParent(PIPCBlobInputStreamParent* aActor) override;
 
+  virtual PTemporaryIPCBlobParent*
+  AllocPTemporaryIPCBlobParent() override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvPTemporaryIPCBlobConstructor(PTemporaryIPCBlobParent* actor) override;
+
+  virtual bool
+  DeallocPTemporaryIPCBlobParent(PTemporaryIPCBlobParent* aActor) override;
+
   virtual PFileDescriptorSetParent*
   AllocPFileDescriptorSetParent(const FileDescriptor& aFileDescriptor)
                                 override;
@@ -253,6 +262,31 @@ protected:
                                         const uint64_t& aChannelId) override;
   virtual bool
   DeallocPHttpBackgroundChannelParent(PHttpBackgroundChannelParent *aActor) override;
+
+  virtual PClientManagerParent*
+  AllocPClientManagerParent() override;
+
+  virtual bool
+  DeallocPClientManagerParent(PClientManagerParent* aActor) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvPClientManagerConstructor(PClientManagerParent* aActor) override;
+
+  virtual PMIDIPortParent*
+  AllocPMIDIPortParent(const MIDIPortInfo& aPortInfo,
+                       const bool& aSysexEnabled) override;
+
+  virtual bool
+  DeallocPMIDIPortParent(PMIDIPortParent* aActor) override;
+
+  virtual PMIDIManagerParent*
+  AllocPMIDIManagerParent() override;
+
+  virtual bool
+  DeallocPMIDIManagerParent(PMIDIManagerParent* aActor) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvStorageActivity(const PrincipalInfo& aPrincipalInfo) override;
 };
 
 } // namespace ipc

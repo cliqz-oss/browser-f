@@ -2,14 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Cr = Components.results;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Messaging.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 
 function ContentDispatchChooser() {}
 
@@ -17,7 +12,7 @@ ContentDispatchChooser.prototype =
 {
   classID: Components.ID("5a072a22-1e66-4100-afc1-07aed8b62fc5"),
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentDispatchChooser]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIContentDispatchChooser]),
 
   get protoSvc() {
     if (!this._protoSvc) {
@@ -31,6 +26,15 @@ ContentDispatchChooser.prototype =
       return Services.wm.getMostRecentWindow("navigator:browser");
     } catch (e) {
       throw Cr.NS_ERROR_FAILURE;
+    }
+  },
+
+  _closeBlankWindow: function(aWindow) {
+    if (!aWindow || aWindow.history.length) {
+      return;
+    }
+    if (!aWindow.location.href || aWindow.location.href === "about:blank") {
+      aWindow.close();
     }
   },
 
@@ -49,6 +53,8 @@ ContentDispatchChooser.prototype =
     // If we have more than one option, let the OS handle showing a list (if needed).
     if (aHandler.possibleApplicationHandlers.length > 1) {
       aHandler.launchWithURI(aURI, aWindowContext);
+      this._closeBlankWindow(window);
+
     } else {
       // xpcshell tests do not have an Android Bridge but we require Android
       // Bridge when using Messaging so we guard against this case. xpcshell
@@ -65,15 +71,24 @@ ContentDispatchChooser.prototype =
 
       EventDispatcher.instance.sendRequestForResult(msg).then(() => {
         // Java opens an app on success: take no action.
-      }, (uri) => {
+        this._closeBlankWindow(window);
+
+      }, (data) => {
+        if (data.isFallback) {
+          // We always want to open a fallback url
+          window.location.href = data.uri;
+          return;
+        }
+
         // We couldn't open this. If this was from a click, it's likely that we just
         // want this to fail silently. If the user entered this on the address bar, though,
         // we want to show the neterror page.
-
         let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
         let millis = dwu.millisSinceLastUserInput;
-        if (millis > 0 && millis >= 1000) {
-          window.location.href = uri;
+        if (millis < 0 || millis >= 1000) {
+          window.document.docShell.displayLoadError(Cr.NS_ERROR_UNKNOWN_PROTOCOL, aURI, null);
+        } else {
+          this._closeBlankWindow(window);
         }
       });
     }

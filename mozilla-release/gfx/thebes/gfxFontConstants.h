@@ -21,15 +21,15 @@
 #define NS_FONT_WEIGHT_BOLD             700
 #define NS_FONT_WEIGHT_THIN             100
 
-#define NS_FONT_STRETCH_ULTRA_CONDENSED (-4)
-#define NS_FONT_STRETCH_EXTRA_CONDENSED (-3)
-#define NS_FONT_STRETCH_CONDENSED       (-2)
-#define NS_FONT_STRETCH_SEMI_CONDENSED  (-1)
-#define NS_FONT_STRETCH_NORMAL          0
-#define NS_FONT_STRETCH_SEMI_EXPANDED   1
-#define NS_FONT_STRETCH_EXPANDED        2
-#define NS_FONT_STRETCH_EXTRA_EXPANDED  3
-#define NS_FONT_STRETCH_ULTRA_EXPANDED  4
+#define NS_FONT_STRETCH_ULTRA_CONDENSED 50
+#define NS_FONT_STRETCH_EXTRA_CONDENSED 62
+#define NS_FONT_STRETCH_CONDENSED       75
+#define NS_FONT_STRETCH_SEMI_CONDENSED  87
+#define NS_FONT_STRETCH_NORMAL          100
+#define NS_FONT_STRETCH_SEMI_EXPANDED   112
+#define NS_FONT_STRETCH_EXPANDED        125
+#define NS_FONT_STRETCH_EXTRA_EXPANDED  150
+#define NS_FONT_STRETCH_ULTRA_EXPANDED  200
 
 #define NS_FONT_SMOOTHING_AUTO          0
 #define NS_FONT_SMOOTHING_GRAYSCALE     1
@@ -46,6 +46,9 @@
 #define NS_FONT_DISPLAY_SWAP            2
 #define NS_FONT_DISPLAY_FALLBACK        3
 #define NS_FONT_DISPLAY_OPTIONAL        4
+
+#define NS_FONT_OPTICAL_SIZING_AUTO     0
+#define NS_FONT_OPTICAL_SIZING_NONE     1
 
 #define NS_FONT_VARIANT_ALTERNATES_NORMAL             0
 // alternates - simple enumerated values
@@ -184,6 +187,7 @@ enum eFontPrefLang {
     #undef FONT_PREF_LANG
 
     , eFontPrefLang_CJKSet  // special code for CJK set
+    , eFontPrefLang_Emoji   // special code for emoji presentation
     , eFontPrefLang_First = eFontPrefLang_Western
     , eFontPrefLang_Last = eFontPrefLang_Others
     , eFontPrefLang_Count = (eFontPrefLang_Last - eFontPrefLang_First + 1)

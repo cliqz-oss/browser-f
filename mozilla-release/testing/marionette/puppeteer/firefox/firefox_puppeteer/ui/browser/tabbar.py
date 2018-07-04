@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from marionette_driver import (
     By, Wait
 )
@@ -35,23 +37,6 @@ class TabBar(UIBaseLib):
         :returns: Reference to the new tab button.
         """
         return self.toolbar.find_element(By.ANON_ATTRIBUTE, {'anonid': 'tabs-newtab-button'})
-
-    @property
-    def restore_tabs_button(self):
-        """The DOM element which represents the restore tabs button.
-
-        :returns: Reference to the restore tabs button.
-        """
-        return self.toolbar.find_element(By.ANON_ATTRIBUTE, {'anonid': 'restore-tabs-button'})
-
-    @property
-    def restore_tabs_button_wrapper(self):
-        """The DOM element which represents the restore tabs button wrapper.
-
-        :returns: Reference to the restore tabs button wrapper.
-        """
-        return self.toolbar.find_element(
-            By.ANON_ATTRIBUTE, {'anonid': 'restore-tabs-button-wrapper'})
 
     @property
     def tabs(self):

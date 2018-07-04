@@ -8,19 +8,14 @@ const TEST_URL = "http://adapt.mozilla.org/";
 const SEARCH_STRING = "adapt";
 const SUGGEST_TYPES = ["history", "bookmark", "openpage"];
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-var os = Cc["@mozilla.org/observer-service;1"].
-         getService(Ci.nsIObserverService);
-var ps = Cc["@mozilla.org/preferences-service;1"].
-         getService(Ci.nsIPrefBranch);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const PLACES_AUTOCOMPLETE_FEEDBACK_UPDATED_TOPIC =
   "places-autocomplete-feedback-updated";
 
 function cleanup() {
   for (let type of SUGGEST_TYPES) {
-    ps.clearUserPref("browser.urlbar.suggest." + type);
+    Services.prefs.clearUserPref("browser.urlbar.suggest." + type);
   }
 }
 
@@ -58,7 +53,7 @@ AutoCompleteInput.prototype = {
           iid.equals(Ci.nsIAutoCompletePopup))
         return this;
 
-      throw Components.results.NS_ERROR_NO_INTERFACE;
+      throw Cr.NS_ERROR_NO_INTERFACE;
     }
   },
 
@@ -69,9 +64,9 @@ AutoCompleteInput.prototype = {
         iid.equals(Ci.nsIAutoCompleteInput))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
-}
+};
 
 
 function check_results() {
@@ -82,9 +77,9 @@ function check_results() {
     controller.input = input;
 
     input.onSearchComplete = function() {
-      do_check_eq(controller.searchStatus,
-                  Ci.nsIAutoCompleteController.STATUS_COMPLETE_NO_MATCH);
-      do_check_eq(controller.matchCount, 0);
+      Assert.equal(controller.searchStatus,
+                   Ci.nsIAutoCompleteController.STATUS_COMPLETE_NO_MATCH);
+      Assert.equal(controller.matchCount, 0);
 
       PlacesUtils.bookmarks.eraseEverything().then(() => {
         cleanup();
@@ -101,16 +96,16 @@ function addAdaptiveFeedback(aUrl, aSearch) {
   return new Promise(resolve => {
     let observer = {
       observe(aSubject, aTopic, aData) {
-        os.removeObserver(observer, PLACES_AUTOCOMPLETE_FEEDBACK_UPDATED_TOPIC);
+        Services.obs.removeObserver(observer, PLACES_AUTOCOMPLETE_FEEDBACK_UPDATED_TOPIC);
         do_timeout(0, resolve);
       }
     };
-    os.addObserver(observer, PLACES_AUTOCOMPLETE_FEEDBACK_UPDATED_TOPIC);
+    Services.obs.addObserver(observer, PLACES_AUTOCOMPLETE_FEEDBACK_UPDATED_TOPIC);
 
     let thing = {
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompleteInput,
-                                             Ci.nsIAutoCompletePopup,
-                                             Ci.nsIAutoCompleteController]),
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompleteInput,
+                                              Ci.nsIAutoCompletePopup,
+                                              Ci.nsIAutoCompleteController]),
       get popup() { return thing; },
       get controller() { return thing; },
       popupOpen: true,
@@ -119,7 +114,7 @@ function addAdaptiveFeedback(aUrl, aSearch) {
       searchString: aSearch
     };
 
-    os.notifyObservers(thing, "autocomplete-will-enter-text");
+    Services.obs.notifyObservers(thing, "autocomplete-will-enter-text");
   });
 }
 
@@ -134,8 +129,8 @@ add_task(async function test_adaptive_search_specific() {
 
   // We want to search only history.
   for (let type of SUGGEST_TYPES) {
-    type == "history" ? ps.setBoolPref("browser.urlbar.suggest." + type, true)
-                      : ps.setBoolPref("browser.urlbar.suggest." + type, false);
+    type == "history" ? Services.prefs.setBoolPref("browser.urlbar.suggest." + type, true)
+                      : Services.prefs.setBoolPref("browser.urlbar.suggest." + type, false);
   }
 
   // Add an adaptive entry.

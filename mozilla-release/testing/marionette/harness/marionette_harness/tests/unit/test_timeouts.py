@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from marionette_driver.by import By
 from marionette_driver.errors import (
     MarionetteException,
@@ -96,15 +98,3 @@ class TestTimeouts(MarionetteTestCase):
              var callback = arguments[arguments.length - 1];
              setTimeout(function() { callback(true); }, 500);
              """))
-
-    def test_deprecated_set_search_timeout(self):
-        self.marionette.set_search_timeout(1000)
-        self.assertEqual(1, self.marionette.timeout.implicit)
-
-    def test_deprecated_set_script_timeout(self):
-        self.marionette.set_script_timeout(2000)
-        self.assertEqual(2, self.marionette.timeout.script)
-
-    def test_deprecated_set_page_load_timeout(self):
-        self.marionette.set_page_load_timeout(3000)
-        self.assertEqual(3, self.marionette.timeout.page_load)

@@ -1,32 +1,26 @@
 this.Dedupe = class Dedupe {
-  constructor(createKey, compare) {
+  constructor(createKey) {
     this.createKey = createKey || this.defaultCreateKey;
-    this.compare = compare || this.defaultCompare;
   }
 
   defaultCreateKey(item) {
     return item;
   }
 
-  defaultCompare() {
-    return false;
-  }
-
   /**
-   * Dedupe an array containing groups of elements.
-   * Duplicate removal favors earlier groups.
+   * Dedupe any number of grouped elements favoring those from earlier groups.
    *
    * @param {Array} groups Contains an arbitrary number of arrays of elements.
-   * @returns {Array}
+   * @returns {Array} A matching array of each provided group deduped.
    */
-  group(groups) {
+  group(...groups) {
     const globalKeys = new Set();
     const result = [];
     for (const values of groups) {
       const valueMap = new Map();
       for (const value of values) {
         const key = this.createKey(value);
-        if (!globalKeys.has(key) && (!valueMap.has(key) || this.compare(valueMap.get(key), value))) {
+        if (!globalKeys.has(key) && !valueMap.has(key)) {
           valueMap.set(key, value);
         }
       }
@@ -37,4 +31,4 @@ this.Dedupe = class Dedupe {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["Dedupe"];
+const EXPORTED_SYMBOLS = ["Dedupe"];

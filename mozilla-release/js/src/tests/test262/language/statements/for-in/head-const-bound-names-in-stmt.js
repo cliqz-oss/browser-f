@@ -4,7 +4,7 @@
 /*---
 description: The body may not re-declare variables declared in the head
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     It is a Syntax Error if any element of the BoundNames of ForDeclaration
@@ -12,6 +12,8 @@ info: |
 esid: sec-for-in-and-for-of-statements
 es6id: 13.7.5
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 for (const x in {}) {
   var x;

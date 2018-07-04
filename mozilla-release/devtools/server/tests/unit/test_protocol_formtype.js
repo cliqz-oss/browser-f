@@ -29,7 +29,7 @@ var ChildActor = protocol.ActorClassWithSpec(childSpec, {
     };
   },
 
-  getChild: function () {
+  getChild: function() {
     return this;
   }
 });
@@ -110,19 +110,19 @@ var RootActor = protocol.ActorClassWithSpec(rootSpec, {
     };
   },
 
-  getDefault: function () {
+  getDefault: function() {
     return this;
   },
 
-  getDetail1: function () {
+  getDetail1: function() {
     return this;
   },
 
-  getDetail2: function () {
+  getDetail2: function() {
     return this;
   },
 
-  getUnknownDetail: function () {
+  getUnknownDetail: function() {
     return this;
   }
 });
@@ -141,7 +141,7 @@ var RootFront = protocol.FrontClassWithSpec(rootSpec, {
   }
 });
 
-const run_test = Test(function* () {
+const run_test = Test(async function() {
   DebuggerServer.createRootActor = (conn => {
     return RootActor(conn);
   });
@@ -151,30 +151,30 @@ const run_test = Test(function* () {
   const conn = new DebuggerClient(connection);
   const client = Async(conn);
 
-  yield client.connect();
+  await client.connect();
 
   let rootFront = RootFront(conn);
 
   // Trigger some methods that return forms.
-  let retval = yield rootFront.getDefault();
-  do_check_true(retval instanceof RootFront);
-  do_check_true(rootFront.lastForm.childActor instanceof ChildFront);
+  let retval = await rootFront.getDefault();
+  Assert.ok(retval instanceof RootFront);
+  Assert.ok(rootFront.lastForm.childActor instanceof ChildFront);
 
-  retval = yield rootFront.getDetail1();
-  do_check_true(retval instanceof RootFront);
-  do_check_true(rootFront.lastForm.detailItem instanceof ChildFront);
+  retval = await rootFront.getDetail1();
+  Assert.ok(retval instanceof RootFront);
+  Assert.ok(rootFront.lastForm.detailItem instanceof ChildFront);
 
-  retval = yield rootFront.getDetail2();
-  do_check_true(retval instanceof RootFront);
-  do_check_true(typeof (rootFront.lastForm) === "string");
+  retval = await rootFront.getDetail2();
+  Assert.ok(retval instanceof RootFront);
+  Assert.ok(typeof (rootFront.lastForm) === "string");
 
   // getUnknownDetail should fail, since no typeName is specified.
   try {
-    yield rootFront.getUnknownDetail();
-    do_check_true(false);
+    await rootFront.getUnknownDetail();
+    Assert.ok(false);
   } catch (ex) {
     // empty
   }
 
-  yield client.close();
+  await client.close();
 });

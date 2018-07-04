@@ -2,7 +2,7 @@
  * Test for Bug 446171 - Name field of bookmarks saved via 'Bookmark All Tabs'
  * has '(null)' value if history is disabled or just in private browsing mode
  */
-"use strict"
+"use strict";
 
 add_task(async function() {
   const BASE_URL = "http://example.org/browser/browser/components/places/tests/browser/";
@@ -32,6 +32,8 @@ add_task(async function() {
   ], "Correct titles are returned");
 
   registerCleanupFunction(async function() {
-    await Promise.all(tabs.map(BrowserTestUtils.removeTab));
+    for (let tab of tabs) {
+      BrowserTestUtils.removeTab(tab);
+    }
   });
 });

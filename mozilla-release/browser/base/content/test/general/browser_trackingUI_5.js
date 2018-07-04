@@ -8,7 +8,7 @@ const PB_PREF = "privacy.trackingprotection.pbmode.enabled";
 const TRACKING_PAGE = "http://tracking.example.org/browser/browser/base/content/test/general/trackingPage.html";
 var TrackingProtection = null;
 var browser = null;
-var {UrlClassifierTestUtils} = Cu.import("resource://testing-common/UrlClassifierTestUtils.jsm", {});
+var {UrlClassifierTestUtils} = ChromeUtils.import("resource://testing-common/UrlClassifierTestUtils.jsm", {});
 
 registerCleanupFunction(function() {
   TrackingProtection = browser = null;
@@ -75,7 +75,7 @@ add_task(async function testExceptionAddition() {
   await UrlClassifierTestUtils.addTestTrackers();
   let privateWin = await promiseOpenAndLoadWindow({private: true}, true);
   browser = privateWin.gBrowser;
-  let tab = browser.selectedTab = browser.addTab();
+  let tab = await BrowserTestUtils.openNewForegroundTab({ gBrowser: browser, waitForLoad: true, waitForStateStop: true });
 
   TrackingProtection = browser.ownerGlobal.TrackingProtection;
   await pushPrefs([PB_PREF, true]);
@@ -109,7 +109,7 @@ add_task(async function testExceptionPersistence() {
   info("Open another private browsing window");
   let privateWin = await promiseOpenAndLoadWindow({private: true}, true);
   browser = privateWin.gBrowser;
-  let tab = browser.selectedTab = browser.addTab();
+  let tab = await BrowserTestUtils.openNewForegroundTab({ gBrowser: browser, waitForLoad: true, waitForStateStop: true });
 
   TrackingProtection = browser.ownerGlobal.TrackingProtection;
   ok(TrackingProtection.enabled, "TP is still enabled");

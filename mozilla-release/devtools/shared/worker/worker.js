@@ -6,26 +6,25 @@
 
 /* global ChromeWorker */
 
-(function (factory) {
-  if (this.module && module.id.indexOf("worker") >= 0) {
+(function(factory) {
+  if (this.module && module.id.includes("worker")) {
     // require
     const { Cc, Ci, Cu, ChromeWorker } = require("chrome");
     const dumpn = require("devtools/shared/DevToolsUtils").dumpn;
     factory.call(this, require, exports, module, { Cc, Ci, Cu }, ChromeWorker, dumpn);
   } else {
     // Cu.import
-    const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-    const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+    const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
     this.isWorker = false;
-    this.Promise = Cu.import("resource://gre/modules/Promise.jsm", {}).Promise;
-    this.console = Cu.import("resource://gre/modules/Console.jsm", {}).console;
+    this.Promise = require("resource://gre/modules/Promise.jsm").Promise;
+    this.console = console;
     factory.call(
       this, require, this, { exports: this },
       { Cc, Ci, Cu }, ChromeWorker, null
     );
     this.EXPORTED_SYMBOLS = ["DevToolsWorker"];
   }
-}).call(this, function (require, exports, module, { Ci, Cc }, ChromeWorker, dumpn) {
+}).call(this, function(require, exports, module, { Ci, Cc }, ChromeWorker, dumpn) {
   let MESSAGE_COUNTER = 0;
 
   /**
@@ -63,7 +62,7 @@
    *        Data to be passed into the task implemented by the worker.
    * @return {Promise}
    */
-  DevToolsWorker.prototype.performTask = function (task, data) {
+  DevToolsWorker.prototype.performTask = function(task, data) {
     if (this._destroyed) {
       return Promise.reject("Cannot call performTask on a destroyed DevToolsWorker");
     }
@@ -106,13 +105,13 @@
   /**
    * Terminates the underlying worker. Use when no longer needing the worker.
    */
-  DevToolsWorker.prototype.destroy = function () {
+  DevToolsWorker.prototype.destroy = function() {
     this._worker.terminate();
     this._worker = null;
     this._destroyed = true;
   };
 
-  DevToolsWorker.prototype.onError = function ({ message, filename, lineno }) {
+  DevToolsWorker.prototype.onError = function({ message, filename, lineno }) {
     dump(new Error(message + " @ " + filename + ":" + lineno) + "\n");
   };
 
@@ -149,7 +148,7 @@
 
     let wrapperFn = data => worker.performTask("workerifiedTask", data);
 
-    wrapperFn.destroy = function () {
+    wrapperFn.destroy = function() {
       URL.revokeObjectURL(url);
       worker.destroy();
     };

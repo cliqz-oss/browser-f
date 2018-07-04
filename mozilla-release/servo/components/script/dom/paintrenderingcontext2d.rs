@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use canvas_traits::CanvasData;
-use canvas_traits::CanvasMsg;
-use canvas_traits::FromLayoutMsg;
+use canvas_traits::canvas::CanvasImageData;
+use canvas_traits::canvas::CanvasMsg;
+use canvas_traits::canvas::FromLayoutMsg;
 use dom::bindings::codegen::Bindings::CanvasRenderingContext2DBinding::CanvasFillRule;
 use dom::bindings::codegen::Bindings::CanvasRenderingContext2DBinding::CanvasLineCap;
 use dom::bindings::codegen::Bindings::CanvasRenderingContext2DBinding::CanvasLineJoin;
@@ -16,9 +16,9 @@ use dom::bindings::codegen::UnionTypes::StringOrCanvasGradientOrCanvasPattern;
 use dom::bindings::error::ErrorResult;
 use dom::bindings::error::Fallible;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
 use dom::bindings::num::Finite;
 use dom::bindings::reflector::reflect_dom_object;
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::canvasgradient::CanvasGradient;
 use dom::canvaspattern::CanvasPattern;
@@ -26,8 +26,8 @@ use dom::canvasrenderingcontext2d::CanvasRenderingContext2D;
 use dom::paintworkletglobalscope::PaintWorkletGlobalScope;
 use dom::workletglobalscope::WorkletGlobalScope;
 use dom_struct::dom_struct;
-use euclid::ScaleFactor;
 use euclid::Size2D;
+use euclid::TypedScale;
 use euclid::TypedSize2D;
 use ipc_channel::ipc::IpcSender;
 use servo_url::ServoUrl;
@@ -38,7 +38,7 @@ use style_traits::DevicePixel;
 #[dom_struct]
 pub struct PaintRenderingContext2D {
     context: CanvasRenderingContext2D,
-    device_pixel_ratio: Cell<ScaleFactor<f32, CSSPixel, DevicePixel>>,
+    device_pixel_ratio: Cell<TypedScale<f32, CSSPixel, DevicePixel>>,
 }
 
 impl PaintRenderingContext2D {
@@ -48,19 +48,19 @@ impl PaintRenderingContext2D {
         let base_url = global.upcast::<WorkletGlobalScope>().base_url();
         PaintRenderingContext2D {
             context: CanvasRenderingContext2D::new_inherited(global.upcast(), None, image_cache, base_url, size),
-            device_pixel_ratio: Cell::new(ScaleFactor::new(1.0)),
+            device_pixel_ratio: Cell::new(TypedScale::new(1.0)),
         }
     }
 
-    pub fn new(global: &PaintWorkletGlobalScope) -> Root<PaintRenderingContext2D> {
-        reflect_dom_object(box PaintRenderingContext2D::new_inherited(global),
+    pub fn new(global: &PaintWorkletGlobalScope) -> DomRoot<PaintRenderingContext2D> {
+        reflect_dom_object(Box::new(PaintRenderingContext2D::new_inherited(global)),
                            global,
                            PaintRenderingContext2DBinding::Wrap)
     }
 
-    pub fn send_data(&self, sender: IpcSender<CanvasData>) {
-        let msg = CanvasMsg::FromLayout(FromLayoutMsg::SendData(sender));
-        let _ = self.context.ipc_renderer().send(msg);
+    pub fn send_data(&self, sender: IpcSender<CanvasImageData>) {
+        let msg = CanvasMsg::FromLayout(FromLayoutMsg::SendData(sender), self.context.get_canvas_id());
+        let _ = self.context.get_ipc_renderer().send(msg);
     }
 
     pub fn take_missing_image_urls(&self) -> Vec<ServoUrl> {
@@ -69,7 +69,7 @@ impl PaintRenderingContext2D {
 
     pub fn set_bitmap_dimensions(&self,
                                  size: TypedSize2D<f32, CSSPixel>,
-                                 device_pixel_ratio: ScaleFactor<f32, CSSPixel, DevicePixel>)
+                                 device_pixel_ratio: TypedScale<f32, CSSPixel, DevicePixel>)
     {
         let size = size * device_pixel_ratio;
         self.device_pixel_ratio.set(device_pixel_ratio);
@@ -263,6 +263,11 @@ impl PaintRenderingContext2DMethods for PaintRenderingContext2D {
         self.context.ArcTo(cp1x, cp1y, cp2x, cp2y, r)
     }
 
+    // https://html.spec.whatwg.org/multipage/#dom-context-2d-ellipse
+    fn Ellipse(&self, x: f64, y: f64, rx: f64, ry: f64, rotation: f64, start: f64, end: f64, ccw: bool) -> ErrorResult {
+        self.context.Ellipse(x, y, rx, ry, rotation, start, end, ccw)
+    }
+
     // https://html.spec.whatwg.org/multipage/#dom-context-2d-imagesmoothingenabled
     fn ImageSmoothingEnabled(&self) -> bool {
         self.context.ImageSmoothingEnabled()
@@ -299,7 +304,7 @@ impl PaintRenderingContext2DMethods for PaintRenderingContext2D {
                             y0: Finite<f64>,
                             x1: Finite<f64>,
                             y1: Finite<f64>)
-                            -> Root<CanvasGradient> {
+                            -> DomRoot<CanvasGradient> {
         self.context.CreateLinearGradient(x0, y0, x1, y1)
     }
 
@@ -311,7 +316,7 @@ impl PaintRenderingContext2DMethods for PaintRenderingContext2D {
                             x1: Finite<f64>,
                             y1: Finite<f64>,
                             r1: Finite<f64>)
-                            -> Fallible<Root<CanvasGradient>> {
+                            -> Fallible<DomRoot<CanvasGradient>> {
         self.context.CreateRadialGradient(x0, y0, r0, x1, y1, r1)
     }
 
@@ -319,7 +324,7 @@ impl PaintRenderingContext2DMethods for PaintRenderingContext2D {
     fn CreatePattern(&self,
                      image: HTMLImageElementOrHTMLCanvasElementOrCanvasRenderingContext2DOrCSSStyleValue,
                      repetition: DOMString)
-                     -> Fallible<Root<CanvasPattern>> {
+                     -> Fallible<DomRoot<CanvasPattern>> {
         self.context.CreatePattern(image, repetition)
     }
 

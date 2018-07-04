@@ -77,6 +77,28 @@ nsSSLStatus::GetCipherName(nsACString& aCipherName)
 }
 
 NS_IMETHODIMP
+nsSSLStatus::GetKeaGroupName(nsACString& aKeaGroup)
+{
+  if (!mHaveCipherSuiteAndProtocol) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  aKeaGroup.Assign(mKeaGroup);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSSLStatus::GetSignatureSchemeName(nsACString& aSignatureScheme)
+{
+  if (!mHaveCipherSuiteAndProtocol) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  aSignatureScheme.Assign(mSignatureSchemeName);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsSSLStatus::GetProtocolVersion(uint16_t* aProtocolVersion)
 {
   NS_ENSURE_ARG_POINTER(aProtocolVersion);
@@ -194,6 +216,32 @@ nsSSLStatus::Read(nsIObjectInputStream* aStream)
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
+  // Added in version 2 (see bug 1304923).
+  if (streamFormatVersion >= 2) {
+    rv = aStream->ReadCString(mKeaGroup);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = aStream->ReadCString(mSignatureSchemeName);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  // Added in version 3 (see bug 1406856).
+  if (streamFormatVersion >= 3) {
+    nsCOMPtr<nsISupports> succeededCertChainSupports;
+    rv = NS_ReadOptionalObject(aStream, true, getter_AddRefs(succeededCertChainSupports));
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    mSucceededCertChain = do_QueryInterface(succeededCertChainSupports);
+
+    nsCOMPtr<nsISupports> failedCertChainSupports;
+    rv = NS_ReadOptionalObject(aStream, true, getter_AddRefs(failedCertChainSupports));
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    mFailedCertChain = do_QueryInterface(failedCertChainSupports);
+  }
+
   return NS_OK;
 }
 
@@ -201,7 +249,7 @@ NS_IMETHODIMP
 nsSSLStatus::Write(nsIObjectOutputStream* aStream)
 {
   // The current version of the binary stream format.
-  const uint8_t STREAM_FORMAT_VERSION = 1;
+  const uint8_t STREAM_FORMAT_VERSION = 3;
 
   nsresult rv = aStream->WriteCompoundObject(mServerCert,
                                              NS_GET_IID(nsIX509Cert),
@@ -237,6 +285,30 @@ nsSSLStatus::Write(nsIObjectOutputStream* aStream)
   rv = aStream->Write16(mCertificateTransparencyStatus);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  // Added in version 2.
+  rv = aStream->WriteStringZ(mKeaGroup.get());
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = aStream->WriteStringZ(mSignatureSchemeName.get());
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // Added in version 3.
+  rv = NS_WriteOptionalCompoundObject(aStream,
+                                      mSucceededCertChain,
+                                      NS_GET_IID(nsIX509CertList),
+                                      true);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  rv = NS_WriteOptionalCompoundObject(aStream,
+                                      mFailedCertChain,
+                                      NS_GET_IID(nsIX509CertList),
+                                      true);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
   return NS_OK;
 }
 
@@ -256,16 +328,16 @@ nsSSLStatus::GetScriptableHelper(nsIXPCScriptable** aHelper)
 }
 
 NS_IMETHODIMP
-nsSSLStatus::GetContractID(char** aContractID)
+nsSSLStatus::GetContractID(nsACString& aContractID)
 {
-  *aContractID = nullptr;
+  aContractID.SetIsVoid(true);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsSSLStatus::GetClassDescription(char** aClassDescription)
+nsSSLStatus::GetClassDescription(nsACString& aClassDescription)
 {
-  *aClassDescription = nullptr;
+  aClassDescription.SetIsVoid(true);
   return NS_OK;
 }
 
@@ -300,6 +372,8 @@ nsSSLStatus::nsSSLStatus()
 , mProtocolVersion(0)
 , mCertificateTransparencyStatus(nsISSLStatus::
     CERTIFICATE_TRANSPARENCY_NOT_APPLICABLE)
+, mKeaGroup()
+, mSignatureSchemeName()
 , mIsDomainMismatch(false)
 , mIsNotValidAtThisTime(false)
 , mIsUntrusted(false)
@@ -312,10 +386,6 @@ nsSSLStatus::nsSSLStatus()
 
 NS_IMPL_ISUPPORTS(nsSSLStatus, nsISSLStatus, nsISerializable, nsIClassInfo)
 
-nsSSLStatus::~nsSSLStatus()
-{
-}
-
 void
 nsSSLStatus::SetServerCert(nsNSSCertificate* aServerCert, EVStatus aEVStatus)
 {
@@ -324,6 +394,43 @@ nsSSLStatus::SetServerCert(nsNSSCertificate* aServerCert, EVStatus aEVStatus)
   mServerCert = aServerCert;
   mIsEV = (aEVStatus == EVStatus::EV);
   mHasIsEVStatus = true;
+}
+
+nsresult
+nsSSLStatus::SetSucceededCertChain(UniqueCERTCertList aCertList)
+{
+  // nsNSSCertList takes ownership of certList
+  mSucceededCertChain = new nsNSSCertList(Move(aCertList));
+
+  return NS_OK;
+}
+
+void
+nsSSLStatus::SetFailedCertChain(nsIX509CertList* aX509CertList)
+{
+  mFailedCertChain = aX509CertList;
+}
+
+NS_IMETHODIMP
+nsSSLStatus::GetSucceededCertChain(nsIX509CertList** _result)
+{
+  NS_ENSURE_ARG_POINTER(_result);
+
+  nsCOMPtr<nsIX509CertList> tmpList = mSucceededCertChain;
+  tmpList.forget(_result);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSSLStatus::GetFailedCertChain(nsIX509CertList** _result)
+{
+  NS_ENSURE_ARG_POINTER(_result);
+
+  nsCOMPtr<nsIX509CertList> tmpList = mFailedCertChain;
+  tmpList.forget(_result);
+
+  return NS_OK;
 }
 
 void

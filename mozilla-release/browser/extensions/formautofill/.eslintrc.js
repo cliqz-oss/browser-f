@@ -5,7 +5,6 @@ module.exports = {
     // Rules from the mozilla plugin
     "mozilla/balanced-listeners": "error",
     "mozilla/no-aArgs": "error",
-    "mozilla/no-cpows-in-tests": "error",
     "mozilla/var-only-at-top-level": "error",
 
     "valid-jsdoc": ["error", {
@@ -35,11 +34,8 @@ module.exports = {
     // Require braces around blocks that start a new line
     "curly": ["error", "all"],
 
-    // Require function* name()
-    "generator-star-spacing": ["error", {"before": false, "after": true}],
-
     // Two space indent
-    "indent": ["error", 2, {"SwitchCase": 1}],
+    "indent-legacy": ["error", 2, {"SwitchCase": 1}],
 
     // Always require parenthesis for new calls
     "new-parens": "error",
@@ -48,13 +44,12 @@ module.exports = {
     "no-unused-expressions": "error",
 
     // No declaring variables that are never used
-    "no-unused-vars": ["error", {"args": "none", "varsIgnorePattern": "^(Cc|Ci|Cr|Cu|EXPORTED_SYMBOLS)$"}],
+    "no-unused-vars": ["error", {
+      "args": "none", "vars": "all"
+    }],
 
     // No using variables before defined
     "no-use-before-define": "error",
-
-    // Always require semicolon at end of statement
-    "semi": ["error", "always"],
 
     // Disallow using variables outside the blocks they are defined (especially
     // since only let and const are used, see "no-var").
@@ -65,13 +60,10 @@ module.exports = {
     "comma-dangle": ["error", "always-multiline"],
 
     // Warn about cyclomatic complexity in functions.
-    "complexity": ["error", {"max": 20}],
+    "complexity": ["error", {"max": 26}],
 
     // Enforce dots on the next line with property name.
     "dot-location": ["error", "property"],
-
-    // Encourage the use of dot notation whenever possible.
-    "dot-notation": "error",
 
     // Maximum length of a line.
     // This should be 100 but too many lines were longer than that so set a
@@ -81,9 +73,6 @@ module.exports = {
     // Maximum depth callbacks can be nested.
     "max-nested-callbacks": ["error", 4],
 
-    // Disallow use of arguments.caller or arguments.callee.
-    "no-caller": "error",
-
     // Disallow using the console API.
     "no-console": "error",
 
@@ -91,10 +80,10 @@ module.exports = {
     "no-fallthrough": "error",
 
     // Disallow use of multiline strings (use template strings instead).
-    "no-multi-str": "warn",
+    "no-multi-str": "error",
 
     // Disallow multiple empty lines.
-    "no-multiple-empty-lines": ["warn", {"max": 2}],
+    "no-multiple-empty-lines": ["error", {"max": 2}],
 
     // Disallow usage of __proto__ property.
     "no-proto": "error",
@@ -108,7 +97,7 @@ module.exports = {
     "no-throw-literal": "error",
 
     // Disallow padding within blocks.
-    "padded-blocks": ["warn", "never"],
+    "padded-blocks": ["error", "never"],
 
     // Require use of the second argument for parseInt().
     "radix": "error",
@@ -124,8 +113,5 @@ module.exports = {
 
     // Disallow function or variable declarations in nested blocks
     "no-inner-declarations": "error",
-
-    // Disallow creating new instances of String, Number, and Boolean
-    "no-new-wrappers": "error",
   },
 };

@@ -1,7 +1,4 @@
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-
-const NS_ERROR_ILLEGAL_VALUE = Components.results.NS_ERROR_ILLEGAL_VALUE;
+const NS_ERROR_ILLEGAL_VALUE = Cr.NS_ERROR_ILLEGAL_VALUE;
 
 var BIS, BOS, _Pipe, COS, FIS, _SS, CIS;
 
@@ -70,7 +67,7 @@ function test_utf8_1()
   {
     var pipe = Pipe();
     var conv = new COS(pipe.outputStream, "UTF-8");
-    do_check_true(conv.writeString(UNICODE_STRINGS[i]));
+    Assert.ok(conv.writeString(UNICODE_STRINGS[i]));
     conv.close();
 
     if (!equalStreams(new UTF8(pipe.inputStream),

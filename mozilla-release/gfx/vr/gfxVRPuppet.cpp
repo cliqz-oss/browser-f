@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -7,12 +8,17 @@
 #include "CompositorD3D11.h"
 #include "TextureD3D11.h"
 #include "mozilla/gfx/DeviceManagerDx.h"
-#endif // XP_WIN
+#elif defined(XP_MACOSX)
+#include "mozilla/gfx/MacIOSurface.h"
+#endif
 
 #include "mozilla/Base64.h"
 #include "mozilla/gfx/DataSurfaceHelpers.h"
+#include "gfxPrefs.h"
 #include "gfxUtils.h"
 #include "gfxVRPuppet.h"
+#include "VRManager.h"
+#include "VRThread.h"
 
 #include "mozilla/dom/GamepadEventTypes.h"
 #include "mozilla/dom/GamepadBinding.h"
@@ -38,69 +44,62 @@ static const uint64_t kPuppetButtonMask[] = {
   4,
   8
 };
-
 static const uint32_t kNumPuppetButtonMask = sizeof(kPuppetButtonMask) /
                                              sizeof(uint64_t);
-
-static const uint32_t kPuppetAxes[] = {
-  0,
-  1,
-  2
-};
-
-static const uint32_t kNumPuppetAxis = sizeof(kPuppetAxes) /
-                                       sizeof(uint32_t);
-
+static const uint32_t kNumPuppetAxis = 3;
 static const uint32_t kNumPuppetHaptcs = 1;
 
 VRDisplayPuppet::VRDisplayPuppet()
  : VRDisplayHost(VRDeviceType::Puppet)
  , mIsPresenting(false)
+ , mSensorState{}
 {
   MOZ_COUNT_CTOR_INHERITED(VRDisplayPuppet, VRDisplayHost);
 
-  mDisplayInfo.mDisplayName.AssignLiteral("Puppet HMD");
-  mDisplayInfo.mIsConnected = true;
-  mDisplayInfo.mIsMounted = false;
-  mDisplayInfo.mCapabilityFlags = VRDisplayCapabilityFlags::Cap_None |
-                                  VRDisplayCapabilityFlags::Cap_Orientation |
-                                  VRDisplayCapabilityFlags::Cap_Position |
-                                  VRDisplayCapabilityFlags::Cap_External |
-                                  VRDisplayCapabilityFlags::Cap_Present |
-                                  VRDisplayCapabilityFlags::Cap_StageParameters;
-  mDisplayInfo.mEyeResolution.width = 1836; // 1080 * 1.7
-  mDisplayInfo.mEyeResolution.height = 2040; // 1200 * 1.7
+  VRDisplayState& state = mDisplayInfo.mDisplayState;
+  strncpy(state.mDisplayName, "Puppet HMD", kVRDisplayNameMaxLen);
+  state.mIsConnected = true;
+  state.mIsMounted = false;
+  state.mCapabilityFlags = VRDisplayCapabilityFlags::Cap_None |
+                           VRDisplayCapabilityFlags::Cap_Orientation |
+                           VRDisplayCapabilityFlags::Cap_Position |
+                           VRDisplayCapabilityFlags::Cap_External |
+                           VRDisplayCapabilityFlags::Cap_Present |
+                           VRDisplayCapabilityFlags::Cap_StageParameters;
+  state.mEyeResolution.width = 1836; // 1080 * 1.7
+  state.mEyeResolution.height = 2040; // 1200 * 1.7
 
   // SteamVR gives the application a single FOV to use; it's not configurable as with Oculus
   for (uint32_t eye = 0; eye < 2; ++eye) {
-    mDisplayInfo.mEyeTranslation[eye].x = 0.0f;
-    mDisplayInfo.mEyeTranslation[eye].y = 0.0f;
-    mDisplayInfo.mEyeTranslation[eye].z = 0.0f;
-    mDisplayInfo.mEyeFOV[eye] = VRFieldOfView(45.0, 45.0, 45.0, 45.0);
+    state.mEyeTranslation[eye].x = 0.0f;
+    state.mEyeTranslation[eye].y = 0.0f;
+    state.mEyeTranslation[eye].z = 0.0f;
+    state.mEyeFOV[eye] = VRFieldOfView(45.0, 45.0, 45.0, 45.0);
   }
 
   // default: 1m x 1m space, 0.75m high in seated position
-  mDisplayInfo.mStageSize.width = 1.0f;
-  mDisplayInfo.mStageSize.height = 1.0f;
+  state.mStageSize.width = 1.0f;
+  state.mStageSize.height = 1.0f;
 
-  mDisplayInfo.mSittingToStandingTransform._11 = 1.0f;
-  mDisplayInfo.mSittingToStandingTransform._12 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._13 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._14 = 0.0f;
+  state.mSittingToStandingTransform[0] = 1.0f;
+  state.mSittingToStandingTransform[1] = 0.0f;
+  state.mSittingToStandingTransform[2] = 0.0f;
+  state.mSittingToStandingTransform[3] = 0.0f;
 
-  mDisplayInfo.mSittingToStandingTransform._21 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._22 = 1.0f;
-  mDisplayInfo.mSittingToStandingTransform._23 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._24 = 0.0f;
+  state.mSittingToStandingTransform[4] = 0.0f;
+  state.mSittingToStandingTransform[5] = 1.0f;
+  state.mSittingToStandingTransform[6] = 0.0f;
+  state.mSittingToStandingTransform[7] = 0.0f;
 
-  mDisplayInfo.mSittingToStandingTransform._31 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._32 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._33 = 1.0f;
-  mDisplayInfo.mSittingToStandingTransform._34 = 0.0f;
+  state.mSittingToStandingTransform[8] = 0.0f;
+  state.mSittingToStandingTransform[9] = 0.0f;
+  state.mSittingToStandingTransform[10] = 1.0f;
+  state.mSittingToStandingTransform[11] = 0.0f;
 
-  mDisplayInfo.mSittingToStandingTransform._41 = 0.0f;
-  mDisplayInfo.mSittingToStandingTransform._42 = 0.75f;
-  mDisplayInfo.mSittingToStandingTransform._43 = 0.0f;
+  state.mSittingToStandingTransform[12] = 0.0f;
+  state.mSittingToStandingTransform[13] = 0.75f;
+  state.mSittingToStandingTransform[14] = 0.0f;
+  state.mSittingToStandingTransform[15] = 1.0f;
 
   gfx::Quaternion rot;
 
@@ -131,12 +130,13 @@ void
 VRDisplayPuppet::SetDisplayInfo(const VRDisplayInfo& aDisplayInfo)
 {
   // We are only interested in the eye and mount info of the display info.
-  mDisplayInfo.mEyeResolution = aDisplayInfo.mEyeResolution;
-  mDisplayInfo.mIsMounted = aDisplayInfo.mIsMounted;
-  memcpy(&mDisplayInfo.mEyeFOV, &aDisplayInfo.mEyeFOV,
-         sizeof(mDisplayInfo.mEyeFOV[0]) * VRDisplayInfo::NumEyes);
-  memcpy(&mDisplayInfo.mEyeTranslation, &aDisplayInfo.mEyeTranslation,
-         sizeof(mDisplayInfo.mEyeTranslation[0]) * VRDisplayInfo::NumEyes);
+  VRDisplayState& state = mDisplayInfo.mDisplayState;
+  state.mEyeResolution = aDisplayInfo.mDisplayState.mEyeResolution;
+  state.mIsMounted = aDisplayInfo.mDisplayState.mIsMounted;
+  memcpy(&state.mEyeFOV, &aDisplayInfo.mDisplayState.mEyeFOV,
+         sizeof(state.mEyeFOV[0]) * VRDisplayState::NumEyes);
+  memcpy(&state.mEyeTranslation, &aDisplayInfo.mDisplayState.mEyeTranslation,
+         sizeof(state.mEyeTranslation[0]) * VRDisplayState::NumEyes);
 }
 
 void
@@ -154,6 +154,13 @@ VRHMDSensorState
 VRDisplayPuppet::GetSensorState()
 {
   mSensorState.inputFrameID = mDisplayInfo.mFrameId;
+
+  Matrix4x4 matHeadToEye[2];
+  for (uint32_t eye = 0; eye < 2; ++eye) {
+    matHeadToEye[eye].PreTranslate(mDisplayInfo.GetEyeTranslation(eye));
+  }
+  mSensorState.CalcViewMatrices(matHeadToEye);
+
   return mSensorState;
 }
 
@@ -172,17 +179,7 @@ VRDisplayPuppet::StartPresentation()
   mIsPresenting = true;
 
 #if defined(XP_WIN)
-  if (!mDevice) {
-    mDevice = gfx::DeviceManagerDx::Get()->GetCompositorDevice();
-    if (!mDevice) {
-      NS_WARNING("Failed to get a D3D11Device for Puppet");
-      return;
-    }
-  }
-
-  mDevice->GetImmediateContext(getter_AddRefs(mContext));
-  if (!mContext) {
-    NS_WARNING("Failed to get immediate context for Puppet");
+  if (!CreateD3DObjects()) {
     return;
   }
 
@@ -290,12 +287,21 @@ VRDisplayPuppet::UpdateConstantBuffers()
 }
 
 bool
-VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
+VRDisplayPuppet::SubmitFrame(ID3D11Texture2D* aSource,
                              const IntSize& aSize,
                              const gfx::Rect& aLeftEyeRect,
                              const gfx::Rect& aRightEyeRect)
 {
+  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
   if (!mIsPresenting) {
+    return false;
+  }
+
+  if (!CreateD3DObjects()) {
+    return false;
+  }
+  AutoRestoreRenderState restoreState(this);
+  if (!restoreState.IsSuccess()) {
     return false;
   }
 
@@ -311,14 +317,13 @@ VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
       // The frames are submitted to VR compositor are decoded
       // into a base64Image and dispatched to the DOM side.
       D3D11_TEXTURE2D_DESC desc;
-      ID3D11Texture2D* texture = aSource->GetD3D11Texture();
-      texture->GetDesc(&desc);
+      aSource->GetDesc(&desc);
       MOZ_ASSERT(desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM,
                  "Only support B8G8R8A8_UNORM format.");
       // Map the staging resource
       ID3D11Texture2D* mappedTexture = nullptr;
       D3D11_MAPPED_SUBRESOURCE mapInfo;
-      HRESULT hr = mContext->Map(texture,
+      HRESULT hr = mContext->Map(aSource,
                                  0,  // Subsource
                                  D3D11_MAP_READ,
                                  0,  // MapFlags
@@ -346,7 +351,7 @@ VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
             return false;
           }
           // Copy the texture to a staging resource
-          mContext->CopyResource(stagingTexture, texture);
+          mContext->CopyResource(stagingTexture, aSource);
           // Map the staging resource
           hr = mContext->Map(stagingTexture,
                              0,  // Subsource
@@ -362,31 +367,38 @@ VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
           return false;
         }
       } else {
-        mappedTexture = texture;
+        mappedTexture = aSource;
       }
       // Ideally, we should convert the srcData to a PNG image and decode it
       // to a Base64 string here, but the GPU process does not have the privilege to
       // access the image library. So, we have to convert the RAW image data
       // to a base64 string and forward it to let the content process to
       // do the image conversion.
-      char* srcData = static_cast<char*>(mapInfo.pData);
+      const char* srcData = static_cast<const char*>(mapInfo.pData);
       VRSubmitFrameResultInfo result;
       result.mFormat = SurfaceFormat::B8G8R8A8;
-      // If the original texture size is not pow of 2, CopyResource() will add padding,
-      // so the size is adjusted. We have to get the correct size by (mapInfo.RowPitch /
-      // the format size).
-      result.mWidth = mapInfo.RowPitch / 4;
+      result.mWidth = desc.Width;
       result.mHeight = desc.Height;
       result.mFrameNum = mDisplayInfo.mFrameId;
-      nsCString rawString(Substring((char*)srcData, mapInfo.RowPitch * desc.Height));
+      // If the original texture size is not pow of 2, the data will not be tightly strided.
+      // We have to copy the pixels by rows.
+      nsCString rawString;
+      for (uint32_t i = 0; i < desc.Height; i++) {
+        rawString += Substring(srcData + i * mapInfo.RowPitch,
+                               desc.Width * 4);
+      }
+      mContext->Unmap(mappedTexture, 0);
 
       if (Base64Encode(rawString, result.mBase64Image) != NS_OK) {
         MOZ_ASSERT(false, "Failed to encode base64 images.");
       }
-      mContext->Unmap(mappedTexture, 0);
       // Dispatch the base64 encoded string to the DOM side. Then, it will be decoded
       // and convert to a PNG image there.
-      vm->DispatchSubmitFrameResult(mDisplayInfo.mDisplayID, result);
+      MessageLoop* loop = VRListenerThreadHolder::Loop();
+      loop->PostTask(NewRunnableMethod<const uint32_t, VRSubmitFrameResultInfo>(
+        "VRManager::DispatchSubmitFrameResult",
+        vm, &VRManager::DispatchSubmitFrameResult, mDisplayInfo.mDisplayID, result
+      ));
       break;
     }
     case 2:
@@ -437,12 +449,15 @@ VRDisplayPuppet::SubmitFrame(TextureSourceD3D11* aSource,
       mContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
       mContext->VSSetShader(mQuadVS, nullptr, 0);
       mContext->PSSetShader(mQuadPS, nullptr, 0);
-      ID3D11ShaderResourceView* srView = aSource->GetShaderResourceView();
-      if (!srView) {
-        NS_WARNING("Failed to get SRV for Puppet");
+
+      RefPtr<ID3D11ShaderResourceView> srView;
+      HRESULT hr = mDevice->CreateShaderResourceView(aSource, nullptr, getter_AddRefs(srView));
+      if (FAILED(hr) || !srView) {
+        gfxWarning() << "Could not create shader resource view for Puppet: " << hexa(hr);
         return false;
       }
-      mContext->PSSetShaderResources(0 /* 0 == TexSlot::RGB */, 1, &srView);
+      ID3D11ShaderResourceView* viewPtr = srView.get();
+      mContext->PSSetShaderResources(0 /* 0 == TexSlot::RGB */, 1, &viewPtr);
       // XXX Use Constant from TexSlot in CompositorD3D11.cpp?
 
       ID3D11SamplerState *sampler = mLinearSamplerState;
@@ -474,25 +489,93 @@ VRDisplayPuppet::SubmitFrame(MacIOSurface* aMacIOSurface,
                              const gfx::Rect& aLeftEyeRect,
                              const gfx::Rect& aRightEyeRect)
 {
-  if (!mIsPresenting) {
+  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
+  if (!mIsPresenting || !aMacIOSurface) {
     return false;
   }
 
-  // TODO: Bug 1343730, Need to block until the next simulated
-  // vblank interval and capture frames for use in reftests.
+  VRManager* vm = VRManager::Get();
+  MOZ_ASSERT(vm);
 
+  switch (gfxPrefs::VRPuppetSubmitFrame()) {
+    case 0:
+      // The VR frame is not displayed.
+      break;
+    case 1:
+    {
+      // The frames are submitted to VR compositor are decoded
+      // into a base64Image and dispatched to the DOM side.
+      RefPtr<SourceSurface> surf = aMacIOSurface->GetAsSurface();
+      RefPtr<DataSourceSurface> dataSurf = surf ? surf->GetDataSurface() :
+                                           nullptr;
+      if (dataSurf) {
+        // Ideally, we should convert the srcData to a PNG image and decode it
+        // to a Base64 string here, but the GPU process does not have the privilege to
+        // access the image library. So, we have to convert the RAW image data
+        // to a base64 string and forward it to let the content process to
+        // do the image conversion.
+        DataSourceSurface::MappedSurface map;
+        if (!dataSurf->Map(gfx::DataSourceSurface::MapType::READ, &map)) {
+          MOZ_ASSERT(false, "Read DataSourceSurface fail.");
+          return false;
+        }
+        const uint8_t* srcData = map.mData;
+        const auto& surfSize = dataSurf->GetSize();
+        VRSubmitFrameResultInfo result;
+        result.mFormat = SurfaceFormat::B8G8R8A8;
+        result.mWidth = surfSize.width;
+        result.mHeight = surfSize.height;
+        result.mFrameNum = mDisplayInfo.mFrameId;
+        // If the original texture size is not pow of 2, the data will not be tightly strided.
+        // We have to copy the pixels by rows.
+        nsCString rawString;
+        for (int32_t i = 0; i < surfSize.height; i++) {
+          rawString += Substring((const char*)(srcData) + i * map.mStride,
+                                  surfSize.width * 4);
+        }
+        dataSurf->Unmap();
+
+        if (Base64Encode(rawString, result.mBase64Image) != NS_OK) {
+          MOZ_ASSERT(false, "Failed to encode base64 images.");
+        }
+        // Dispatch the base64 encoded string to the DOM side. Then, it will be decoded
+        // and convert to a PNG image there.
+        MessageLoop* loop = VRListenerThreadHolder::Loop();
+        loop->PostTask(NewRunnableMethod<const uint32_t, VRSubmitFrameResultInfo>(
+          "VRManager::DispatchSubmitFrameResult",
+          vm, &VRManager::DispatchSubmitFrameResult, mDisplayInfo.mDisplayID, result
+        ));
+      }
+      break;
+    }
+    case 2:
+    {
+      MOZ_ASSERT(false, "No support for showing VR frames on MacOSX yet.");
+      break;
+    }
+  }
+
+  return false;
+}
+
+#elif defined(MOZ_ANDROID_GOOGLE_VR)
+
+bool
+VRDisplayPuppet::SubmitFrame(const mozilla::layers::EGLImageDescriptor* aDescriptor,
+                           const gfx::Rect& aLeftEyeRect,
+                           const gfx::Rect& aRightEyeRect)
+{
+  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
   return false;
 }
 
 #endif
 
 void
-VRDisplayPuppet::NotifyVSync()
+VRDisplayPuppet::Refresh()
 {
-  // We update mIsConneced once per frame.
-  mDisplayInfo.mIsConnected = true;
-
-  VRDisplayHost::NotifyVSync();
+  // We update mIsConneced once per refresh.
+  mDisplayInfo.mDisplayState.mIsConnected = true;
 }
 
 VRControllerPuppet::VRControllerPuppet(dom::GamepadHand aHand, uint32_t aDisplayID)
@@ -501,10 +584,11 @@ VRControllerPuppet::VRControllerPuppet(dom::GamepadHand aHand, uint32_t aDisplay
   , mButtonTouchState(0)
 {
   MOZ_COUNT_CTOR_INHERITED(VRControllerPuppet, VRControllerHost);
-  mControllerInfo.mControllerName.AssignLiteral("Puppet Gamepad");
-  mControllerInfo.mNumButtons = kNumPuppetButtonMask;
-  mControllerInfo.mNumAxes = kNumPuppetAxis;
-  mControllerInfo.mNumHaptics = kNumPuppetHaptcs;
+  VRControllerState& state = mControllerInfo.mControllerState;
+  strncpy(state.mControllerName, "Puppet Gamepad", kVRControllerNameMaxLen);
+  state.mNumButtons = kNumPuppetButtonMask;
+  state.mNumAxes = kNumPuppetAxis;
+  state.mNumHaptics = kNumPuppetHaptcs;
 }
 
 VRControllerPuppet::~VRControllerPuppet()
@@ -588,16 +672,19 @@ VRControllerPuppet::GetPoseMoveState()
 float
 VRControllerPuppet::GetAxisMove(uint32_t aAxis)
 {
-  return mAxisMove[aAxis];
+  return mControllerInfo.mControllerState.mAxisValue[aAxis];
 }
 
 void
 VRControllerPuppet::SetAxisMove(uint32_t aAxis, float aValue)
 {
-  mAxisMove[aAxis] = aValue;
+  mControllerInfo.mControllerState.mAxisValue[aAxis] = aValue;
 }
 
 VRSystemManagerPuppet::VRSystemManagerPuppet()
+  : mPuppetDisplayCount(0)
+  , mPuppetDisplayInfo{}
+  , mPuppetDisplaySensorState{}
 {
 }
 
@@ -621,27 +708,119 @@ VRSystemManagerPuppet::Destroy()
 void
 VRSystemManagerPuppet::Shutdown()
 {
-  mPuppetHMD = nullptr;
+  mPuppetHMDs.Clear();
 }
 
-bool
+void
+VRSystemManagerPuppet::NotifyVSync()
+{
+  VRSystemManager::NotifyVSync();
+
+  for (const auto& display: mPuppetHMDs) {
+    display->Refresh();
+  }
+}
+
+uint32_t
+VRSystemManagerPuppet::CreateTestDisplay()
+{
+  if (mPuppetDisplayCount >= kMaxPuppetDisplays) {
+    MOZ_ASSERT(false);
+    return mPuppetDisplayCount;
+  }
+  return mPuppetDisplayCount++;
+}
+
+void
+VRSystemManagerPuppet::ClearTestDisplays()
+{
+  mPuppetDisplayCount = 0;
+}
+
+void
+VRSystemManagerPuppet::Enumerate()
+{
+  while (mPuppetHMDs.Length() < mPuppetDisplayCount) {
+    VRDisplayPuppet* puppetDisplay = new VRDisplayPuppet();
+    uint32_t deviceID = mPuppetHMDs.Length();
+    puppetDisplay->SetDisplayInfo(mPuppetDisplayInfo[deviceID]);
+    puppetDisplay->SetSensorState(mPuppetDisplaySensorState[deviceID]);
+    mPuppetHMDs.AppendElement(puppetDisplay);
+  }
+  while (mPuppetHMDs.Length() > mPuppetDisplayCount) {
+    mPuppetHMDs.RemoveLastElement();
+  }
+}
+
+void
+VRSystemManagerPuppet::SetPuppetDisplayInfo(const uint32_t& aDeviceID,
+                                            const VRDisplayInfo& aDisplayInfo)
+{
+  if (aDeviceID >= mPuppetDisplayCount) {
+    MOZ_ASSERT(false);
+    return;
+  }
+  /**
+   * Even if mPuppetHMDs.Length() <= aDeviceID, we need to
+   * update mPuppetDisplayInfo[aDeviceID].  In the case that
+   * a puppet display is added and SetPuppetDisplayInfo is
+   * immediately called, mPuppetHMDs may not be populated yet.
+   * VRSystemManagerPuppet::Enumerate() will initialize
+   * the VRDisplayPuppet later using mPuppetDisplayInfo.
+   */
+  mPuppetDisplayInfo[aDeviceID] = aDisplayInfo;
+  if (mPuppetHMDs.Length() > aDeviceID) {
+    /**
+     * In the event that the VRDisplayPuppet has already been
+     * created, we update it directly.
+     */
+    mPuppetHMDs[aDeviceID]->SetDisplayInfo(aDisplayInfo);
+  }
+}
+
+void
+VRSystemManagerPuppet::SetPuppetDisplaySensorState(const uint32_t& aDeviceID,
+                                                   const VRHMDSensorState& aSensorState)
+{
+  if (aDeviceID >= mPuppetDisplayCount) {
+    MOZ_ASSERT(false);
+    return;
+  }
+  /**
+   * Even if mPuppetHMDs.Length() <= aDeviceID, we need to
+   * update mPuppetDisplaySensorState[aDeviceID].  In the case that
+   * a puppet display is added and SetPuppetDisplaySensorState is
+   * immediately called, mPuppetHMDs may not be populated yet.
+   * VRSystemManagerPuppet::Enumerate() will initialize
+   * the VRDisplayPuppet later using mPuppetDisplaySensorState.
+   */
+  mPuppetDisplaySensorState[aDeviceID] = aSensorState;
+  if (mPuppetHMDs.Length() > aDeviceID) {
+    /**
+     * In the event that the VRDisplayPuppet has already been
+     * created, we update it directly.
+     */
+    mPuppetHMDs[aDeviceID]->SetSensorState(aSensorState);
+  }
+}
+
+void
 VRSystemManagerPuppet::GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult)
 {
-  if (mPuppetHMD == nullptr) {
-    mPuppetHMD = new VRDisplayPuppet();
+  for (auto display: mPuppetHMDs) {
+    aHMDResult.AppendElement(display);
   }
-  aHMDResult.AppendElement(mPuppetHMD);
-  return true;
 }
 
 bool
 VRSystemManagerPuppet::GetIsPresenting()
 {
-  if (mPuppetHMD) {
-    VRDisplayInfo displayInfo(mPuppetHMD->GetDisplayInfo());
-    return displayInfo.GetPresentingGroups() != kVRGroupNone;
+  for (const auto& display: mPuppetHMDs) {
+    const VRDisplayInfo& displayInfo(display->GetDisplayInfo());
+    if (displayInfo.GetPresentingGroups() != kVRGroupNone) {
+      return true;
+    }
   }
-
   return false;
 }
 
@@ -707,7 +886,7 @@ VRSystemManagerPuppet::HandleAxisMove(uint32_t aControllerIdx, uint32_t aAxis,
 
 void
 VRSystemManagerPuppet::HandlePoseTracking(uint32_t aControllerIdx,
-                                          const GamepadPoseState& aPose,
+                                          const dom::GamepadPoseState& aPose,
                                           VRControllerHost* aController)
 {
   MOZ_ASSERT(aController);
@@ -722,7 +901,7 @@ VRSystemManagerPuppet::VibrateHaptic(uint32_t aControllerIdx,
                                      uint32_t aHapticIndex,
                                      double aIntensity,
                                      double aDuration,
-                                     uint32_t aPromiseID)
+                                     const VRManagerPromise& aPromise)
 {
 }
 
@@ -743,28 +922,27 @@ VRSystemManagerPuppet::GetControllers(nsTArray<RefPtr<VRControllerHost>>& aContr
 void
 VRSystemManagerPuppet::ScanForControllers()
 {
-  // mPuppetHMD is available after VRDisplay is created
-  // at GetHMDs().
-  if (!mPuppetHMD) {
-    return;
-  }
-  // We make VRSystemManagerPuppet has two controllers always.
-  const uint32_t newControllerCount = 2;
+  // We make sure VRSystemManagerPuppet has two controllers
+  // for each display
+  const uint32_t newControllerCount = mPuppetHMDs.Length() * 2;
 
   if (newControllerCount != mControllerCount) {
     RemoveControllers();
 
     // Re-adding controllers to VRControllerManager.
-    for (uint32_t i = 0; i < newControllerCount; ++i) {
-      dom::GamepadHand hand = (i % 2) ? dom::GamepadHand::Right :
-                                        dom::GamepadHand::Left;
-      RefPtr<VRControllerPuppet> puppetController = new VRControllerPuppet(hand,
-                                                      mPuppetHMD->GetDisplayInfo().GetDisplayID());
-      mPuppetController.AppendElement(puppetController);
+    for (const auto& display: mPuppetHMDs) {
+      uint32_t displayID = display->GetDisplayInfo().GetDisplayID();
+      for (uint32_t i = 0; i < 2; i++) {
+        dom::GamepadHand hand = (i % 2) ? dom::GamepadHand::Right :
+                                          dom::GamepadHand::Left;
+        RefPtr<VRControllerPuppet> puppetController;
+        puppetController = new VRControllerPuppet(hand, displayID);
+        mPuppetController.AppendElement(puppetController);
 
-      // Not already present, add it.
-      AddGamepad(puppetController->GetControllerInfo());
-      ++mControllerCount;
+        // Not already present, add it.
+        AddGamepad(puppetController->GetControllerInfo());
+        ++mControllerCount;
+      }
     }
   }
 }

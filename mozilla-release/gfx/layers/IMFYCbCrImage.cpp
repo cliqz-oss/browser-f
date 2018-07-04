@@ -1,14 +1,16 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "IMFYCbCrImage.h"
+#include "mozilla/gfx/DeviceManagerDx.h"
+#include "mozilla/gfx/gfxVars.h"
+#include "mozilla/gfx/Types.h"
 #include "mozilla/layers/TextureD3D11.h"
 #include "mozilla/layers/CompositableClient.h"
 #include "mozilla/layers/CompositableForwarder.h"
-#include "mozilla/gfx/DeviceManagerDx.h"
-#include "mozilla/gfx/Types.h"
 #include "mozilla/layers/TextureClient.h"
 #include "d3d9.h"
 
@@ -134,7 +136,9 @@ IMFYCbCrImage::GetD3D11TextureData(Data aData, gfx::IntSize aSize)
   CD3D11_TEXTURE2D_DESC newDesc(DXGI_FORMAT_R8_UNORM,
                                 aData.mYSize.width, aData.mYSize.height, 1, 1);
 
-  if (device == gfx::DeviceManagerDx::Get()->GetCompositorDevice()) {
+  // WebRender requests keyed mutex
+  if (device == gfx::DeviceManagerDx::Get()->GetCompositorDevice() &&
+      !gfxVars::UseWebRender()) {
     newDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
   } else {
     newDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
@@ -186,7 +190,8 @@ IMFYCbCrImage::GetD3D11TextureData(Data aData, gfx::IntSize aSize)
   }
 
   return DXGIYCbCrTextureData::Create(textureY, textureCb, textureCr,
-                                      aSize, aData.mYSize, aData.mCbCrSize);
+                                      aSize, aData.mYSize, aData.mCbCrSize,
+                                      aData.mYUVColorSpace);
 }
 
 TextureClient*
@@ -220,8 +225,7 @@ IMFYCbCrImage::GetTextureClient(KnowsCompositor* aForwarder)
       gfx::DeviceManagerDx::Get()->GetCompositorDevice();
   }
 
-  LayersBackend backend = aForwarder->GetCompositorBackendType();
-  if (!device || backend != LayersBackend::LAYERS_D3D11) {
+  if (!device || !aForwarder->SupportsD3D11()) {
     return nullptr;
   }
   return GetD3D11TextureClient(aForwarder);

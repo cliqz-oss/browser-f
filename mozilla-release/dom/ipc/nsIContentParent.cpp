@@ -8,6 +8,7 @@
 
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/File.h"
+#include "mozilla/dom/ChromeMessageSender.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentBridgeParent.h"
 #include "mozilla/dom/ContentProcessManager.h"
@@ -24,7 +25,6 @@
 #include "mozilla/ipc/IPCStreamSource.h"
 #include "mozilla/Unused.h"
 
-#include "nsFrameMessageManager.h"
 #include "nsIWebBrowserChrome.h"
 #include "nsPrintfCString.h"
 #include "xpcpublic.h"
@@ -206,6 +206,25 @@ nsIContentParent::DeallocPBrowserParent(PBrowserParent* aFrame)
   return true;
 }
 
+mozilla::ipc::IPCResult
+nsIContentParent::RecvPBrowserConstructor(PBrowserParent* actor,
+                                          const TabId& tabId,
+                                          const TabId& sameTabGroupAs,
+                                          const IPCTabContext& context,
+                                          const uint32_t& chromeFlags,
+                                          const ContentParentId& cpId,
+                                          const bool& isForBrowser)
+{
+  TabParent* parent = TabParent::GetFrom(actor);
+  // When enabling input event prioritization, input events may preempt other
+  // normal priority IPC messages. To prevent the input events preempt
+  // PBrowserConstructor, we use an IPC 'RemoteIsReadyToHandleInputEvents' to
+  // notify parent that TabChild is created. In this case, PBrowser is initiated
+  // from content so that we can set TabParent as ready to handle input events.
+  parent->SetReadyToHandleInputEvents();
+  return IPC_OK();
+}
+
 PIPCBlobInputStreamParent*
 nsIContentParent::AllocPIPCBlobInputStreamParent(const nsID& aID,
                                                  const uint64_t& aSize)
@@ -228,9 +247,8 @@ nsIContentParent::RecvSyncMessage(const nsString& aMsg,
                                   const IPC::Principal& aPrincipal,
                                   nsTArray<ipc::StructuredCloneData>* aRetvals)
 {
-  NS_LossyConvertUTF16toASCII messageNameCStr(aMsg);
-  AUTO_PROFILER_LABEL_DYNAMIC("nsIContentParent::RecvSyncMessage", EVENTS,
-                              messageNameCStr.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
+    "nsIContentParent::RecvSyncMessage", EVENTS, aMsg);
 
   CrossProcessCpowHolder cpows(this, aCpows);
   RefPtr<nsFrameMessageManager> ppm = mMessageManager;
@@ -238,8 +256,8 @@ nsIContentParent::RecvSyncMessage(const nsString& aMsg,
     ipc::StructuredCloneData data;
     ipc::UnpackClonedMessageDataForParent(aData, data);
 
-    ppm->ReceiveMessage(static_cast<nsIContentFrameMessageManager*>(ppm.get()), nullptr,
-                        aMsg, true, &data, &cpows, aPrincipal, aRetvals);
+    ppm->ReceiveMessage(ppm, nullptr, aMsg, true, &data, &cpows, aPrincipal, aRetvals,
+                        IgnoreErrors());
   }
   return IPC_OK();
 }
@@ -251,9 +269,8 @@ nsIContentParent::RecvRpcMessage(const nsString& aMsg,
                                  const IPC::Principal& aPrincipal,
                                  nsTArray<ipc::StructuredCloneData>* aRetvals)
 {
-  NS_LossyConvertUTF16toASCII messageNameCStr(aMsg);
-  AUTO_PROFILER_LABEL_DYNAMIC("nsIContentParent::RecvRpcMessage", EVENTS,
-                              messageNameCStr.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
+    "nsIContentParent::RecvRpcMessage", EVENTS, aMsg);
 
   CrossProcessCpowHolder cpows(this, aCpows);
   RefPtr<nsFrameMessageManager> ppm = mMessageManager;
@@ -261,8 +278,8 @@ nsIContentParent::RecvRpcMessage(const nsString& aMsg,
     ipc::StructuredCloneData data;
     ipc::UnpackClonedMessageDataForParent(aData, data);
 
-    ppm->ReceiveMessage(static_cast<nsIContentFrameMessageManager*>(ppm.get()), nullptr,
-                        aMsg, true, &data, &cpows, aPrincipal, aRetvals);
+    ppm->ReceiveMessage(ppm, nullptr, aMsg, true, &data, &cpows, aPrincipal, aRetvals,
+                        IgnoreErrors());
   }
   return IPC_OK();
 }
@@ -312,9 +329,8 @@ nsIContentParent::RecvAsyncMessage(const nsString& aMsg,
                                    const IPC::Principal& aPrincipal,
                                    const ClonedMessageData& aData)
 {
-  NS_LossyConvertUTF16toASCII messageNameCStr(aMsg);
-  AUTO_PROFILER_LABEL_DYNAMIC("nsIContentParent::RecvAsyncMessage", EVENTS,
-                              messageNameCStr.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
+    "nsIContentParent::RecvAsyncMessage", EVENTS, aMsg);
 
   CrossProcessCpowHolder cpows(this, aCpows);
   RefPtr<nsFrameMessageManager> ppm = mMessageManager;
@@ -322,8 +338,8 @@ nsIContentParent::RecvAsyncMessage(const nsString& aMsg,
     ipc::StructuredCloneData data;
     ipc::UnpackClonedMessageDataForParent(aData, data);
 
-    ppm->ReceiveMessage(static_cast<nsIContentFrameMessageManager*>(ppm.get()), nullptr,
-                        aMsg, false, &data, &cpows, aPrincipal, nullptr);
+    ppm->ReceiveMessage(ppm, nullptr, aMsg, false, &data, &cpows, aPrincipal, nullptr,
+                        IgnoreErrors());
   }
   return IPC_OK();
 }

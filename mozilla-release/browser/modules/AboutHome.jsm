@@ -4,23 +4,17 @@
 
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+var EXPORTED_SYMBOLS = [ "AboutHomeUtils", "AboutHome" ];
 
-this.EXPORTED_SYMBOLS = [ "AboutHomeUtils", "AboutHome" ];
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
+ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AutoMigrate",
+ChromeUtils.defineModuleGetter(this, "AutoMigrate",
   "resource:///modules/AutoMigrate.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
-  "resource://gre/modules/FxAccounts.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-  "resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "SessionStore",
+  "resource:///modules/sessionstore/SessionStore.jsm");
 
 // Url to fetch snippets, in the urlFormatter service format.
 const SNIPPETS_URL_PREF = "browser.aboutHomeSnippets.updateUrl";
@@ -28,7 +22,7 @@ const SNIPPETS_URL_PREF = "browser.aboutHomeSnippets.updateUrl";
 // Should be bumped up if the snippets content format changes.
 const STARTPAGE_VERSION = 4;
 
-this.AboutHomeUtils = {
+var AboutHomeUtils = {
   get snippetsVersion() {
     return STARTPAGE_VERSION;
   },
@@ -112,10 +106,8 @@ var AboutHome = {
 
     switch (aMessage.name) {
       case "AboutHome:RestorePreviousSession":
-        let ss = Cc["@mozilla.org/browser/sessionstore;1"].
-                 getService(Ci.nsISessionStore);
-        if (ss.canRestoreLastSession) {
-          ss.restoreLastSession();
+        if (SessionStore.canRestoreLastSession) {
+          SessionStore.restoreLastSession();
         }
         break;
 
@@ -160,14 +152,9 @@ var AboutHome = {
   // Send all the chrome-privileged data needed by about:home. This
   // gets re-sent when the search engine changes.
   sendAboutHomeData(target) {
-    let wrapper = {};
-    Components.utils.import("resource:///modules/sessionstore/SessionStore.jsm",
-      wrapper);
-    let ss = wrapper.SessionStore;
-
-    ss.promiseInitialized.then(function() {
+    SessionStore.promiseInitialized.then(function() {
       let data = {
-        showRestoreLastSession: ss.canRestoreLastSession,
+        showRestoreLastSession: SessionStore.canRestoreLastSession,
         snippetsURL: AboutHomeUtils.snippetsURL,
         showKnowYourRights: AboutHomeUtils.showKnowYourRights,
         snippetsVersion: AboutHomeUtils.snippetsVersion,
@@ -182,8 +169,7 @@ var AboutHome = {
       if (target && target.messageManager) {
         target.messageManager.sendAsyncMessage("AboutHome:Update", data);
       } else {
-        let mm = Cc["@mozilla.org/globalmessagemanager;1"].getService(Ci.nsIMessageListenerManager);
-        mm.broadcastAsyncMessage("AboutHome:Update", data);
+        Services.mm.broadcastAsyncMessage("AboutHome:Update", data);
       }
     }).catch(function onError(x) {
       Cu.reportError("Error in AboutHome.sendAboutHomeData: " + x);

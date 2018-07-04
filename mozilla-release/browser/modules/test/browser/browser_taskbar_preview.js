@@ -14,12 +14,12 @@ function test() {
   const ENABLE_PREF_NAME = "browser.taskbar.previews.enable";
 
   let temp = {};
-  Cu.import("resource:///modules/WindowsPreviewPerTab.jsm", temp);
+  ChromeUtils.import("resource:///modules/WindowsPreviewPerTab.jsm", temp);
   let AeroPeek = temp.AeroPeek;
 
   waitForExplicitFinish();
 
-  gPrefService.setBoolPref(ENABLE_PREF_NAME, true);
+  Services.prefs.setBoolPref(ENABLE_PREF_NAME, true);
 
   is(1, AeroPeek.windows.length, "Got the expected number of windows");
 
@@ -34,10 +34,10 @@ function test() {
   for (let preview of AeroPeek.previews)
     ok(preview.visible, "Preview is shown as expected");
 
-  gPrefService.setBoolPref(ENABLE_PREF_NAME, false);
+  Services.prefs.setBoolPref(ENABLE_PREF_NAME, false);
   is(0, AeroPeek.previews.length, "Should have 0 previews when disabled");
 
-  gPrefService.setBoolPref(ENABLE_PREF_NAME, true);
+  Services.prefs.setBoolPref(ENABLE_PREF_NAME, true);
   checkPreviews(4, "Previews are back when re-enabling");
   for (let preview of AeroPeek.previews)
     ok(preview.visible, "Preview is shown as expected after re-enabling");
@@ -78,8 +78,8 @@ function test() {
   getPreviewForTab(gBrowser.tabs[1]).controller.onClose();
   checkPreviews(1);
 
-  if (gPrefService.prefHasUserValue(ENABLE_PREF_NAME))
-    gPrefService.setBoolPref(ENABLE_PREF_NAME, !gPrefService.getBoolPref(ENABLE_PREF_NAME));
+  if (Services.prefs.prefHasUserValue(ENABLE_PREF_NAME))
+    Services.prefs.setBoolPref(ENABLE_PREF_NAME, !Services.prefs.getBoolPref(ENABLE_PREF_NAME));
 
   finish();
 

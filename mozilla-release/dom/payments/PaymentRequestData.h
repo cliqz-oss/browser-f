@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -65,13 +65,15 @@ public:
 private:
   PaymentItem(const nsAString& aLabel,
               nsIPaymentCurrencyAmount* aAmount,
-              const bool aPending);
+              const bool aPending,
+              const nsAString& aType);
 
   ~PaymentItem() = default;
 
   nsString mLabel;
   nsCOMPtr<nsIPaymentCurrencyAmount> mAmount;
   bool mPending;
+  nsString mType;
 };
 
 class PaymentDetailsModifier final : public nsIPaymentDetailsModifier
@@ -179,18 +181,23 @@ public:
 
   PaymentRequest(const uint64_t aTabId,
                  const nsAString& aRequestId,
+                 nsIPrincipal* aPrincipal,
                  nsIArray* aPaymentMethods,
                  nsIPaymentDetails* aPaymentDetails,
-                 nsIPaymentOptions* aPaymentOptions);
+                 nsIPaymentOptions* aPaymentOptions,
+		 const nsAString& aShippingOption);
 
 private:
   ~PaymentRequest() = default;
 
   uint64_t mTabId;
   nsString mRequestId;
+  nsString mCompleteStatus;
+  nsCOMPtr<nsIPrincipal> mTopLevelPrincipal;
   nsCOMPtr<nsIArray> mPaymentMethods;
   nsCOMPtr<nsIPaymentDetails> mPaymentDetails;
   nsCOMPtr<nsIPaymentOptions> mPaymentOptions;
+  nsString mShippingOption;
 };
 
 class PaymentAddress final : public nsIPaymentAddress

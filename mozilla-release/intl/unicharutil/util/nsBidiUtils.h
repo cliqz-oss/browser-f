@@ -6,7 +6,15 @@
 #ifndef nsBidiUtils_h__
 #define nsBidiUtils_h__
 
-#include "nsStringGlue.h"
+#include "nsString.h"
+
+extern "C" {
+
+bool
+encoding_mem_is_utf16_bidi(char16_t const* buffer,
+                           size_t len);
+
+}
 
    /**
     *  Read ftp://ftp.unicode.org/Public/UNIDATA/ReadMe-Latest.txt
@@ -125,12 +133,12 @@ typedef enum nsCharType nsCharType;
 #define PDI_CHAR 0x2069
 
 #define ALM_CHAR 0x061C
-   inline bool IsBidiControl(uint32_t aChar) {
-     return ((LRE_CHAR <= aChar && aChar <= RLO_CHAR) ||
-             (LRI_CHAR <= aChar && aChar <= PDI_CHAR) ||
-             (aChar == ALM_CHAR) ||
-             (aChar & 0xfffffe) == LRM_CHAR);
-   }
+  inline bool IsBidiControl(uint32_t aChar) {
+    return ((LRE_CHAR <= aChar && aChar <= RLO_CHAR) ||
+            (LRI_CHAR <= aChar && aChar <= PDI_CHAR) ||
+            (aChar == ALM_CHAR) ||
+            (aChar & 0xfffffe) == LRM_CHAR);
+  }
 
   /**
    * Give a UTF-32 codepoint
@@ -138,26 +146,23 @@ typedef enum nsCharType nsCharType;
    * in RTL directionality and therefore needs to trigger bidi resolution;
    * return false otherwise.
    */
-   inline bool IsBidiControlRTL(uint32_t aChar) {
-     return aChar == RLM_CHAR ||
-            aChar == RLE_CHAR ||
-            aChar == RLO_CHAR ||
-            aChar == RLI_CHAR ||
-            aChar == ALM_CHAR;
-   }
+  inline bool IsBidiControlRTL(uint32_t aChar) {
+    return aChar == RLM_CHAR ||
+           aChar == RLE_CHAR ||
+           aChar == RLO_CHAR ||
+           aChar == RLI_CHAR ||
+           aChar == ALM_CHAR;
+  }
 
   /**
-   * Give a 16-bit (UTF-16) text buffer and length
+   * Give a 16-bit (UTF-16) text buffer
    * @return true if the string contains right-to-left characters
    */
-   bool HasRTLChars(const char16_t* aText, uint32_t aLength);
-
-  /**
-   * Convenience function to call the above on an nsAString.
-   */
-   inline bool HasRTLChars(const nsAString& aString) {
-     return HasRTLChars(aString.BeginReading(), aString.Length());
-   }
+  inline bool HasRTLChars(mozilla::Span<const char16_t> aBuffer) {
+    // Span ensures we never pass a nullptr to Rust--even if the
+    // length of the buffer is zero.
+    return encoding_mem_is_utf16_bidi(aBuffer.Elements(), aBuffer.Length());
+  }
 
 // These values are shared with Preferences dialog
 //  ------------------
@@ -263,9 +268,17 @@ typedef enum nsCharType nsCharType;
                                      ((0xfe70 <= (c)) && ((c) <= 0xfefc)))
 #define IS_IN_SMP_RTL_BLOCK(c) (((0x10800 <= (c)) && ((c) <= 0x10fff)) || \
                                 ((0x1e800 <= (c)) && ((c) <= 0x1eFFF)))
-#define UCS2_CHAR_IS_BIDI(c) ((IS_IN_BMP_RTL_BLOCK(c)) || \
-                              (IS_RTL_PRESENTATION_FORM(c)) || \
-                              (c) == 0xD802 || (c) == 0xD803)
+// Due to the supplementary-plane RTL blocks being identifiable from the
+// high surrogate without examining the low surrogate, it is correct to
+// use this by-code-unit check on potentially astral text without doing
+// the math to decode surrogate pairs into code points. However, unpaired
+// high surrogates that are RTL high surrogates then count as RTL even
+// though, if replaced by the REPLACEMENT CHARACTER, it would not be
+// RTL.
+#define UTF16_CODE_UNIT_IS_BIDI(c) ((IS_IN_BMP_RTL_BLOCK(c)) || \
+                                    (IS_RTL_PRESENTATION_FORM(c)) || \
+                                    (c) == 0xD802 || (c) == 0xD803 || \
+                                    (c) == 0xD83A || (c) == 0xD83B)
 #define UTF32_CHAR_IS_BIDI(c)  ((IS_IN_BMP_RTL_BLOCK(c)) || \
                                (IS_RTL_PRESENTATION_FORM(c)) || \
                                (IS_IN_SMP_RTL_BLOCK(c)))

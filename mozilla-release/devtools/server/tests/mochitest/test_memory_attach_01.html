@@ -15,17 +15,17 @@ Bug 960671 - Test attaching and detaching from a memory actor.
 <script>
 "use strict";
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
 
-  Task.spawn(function* () {
-    let { memory, client } = yield startServerAndGetSelectedTabMemory();
-    yield memory.attach();
+  (async function() {
+    let { memory, client } = await startServerAndGetSelectedTabMemory();
+    await memory.attach();
     ok(true, "Shouldn't have gotten an error attaching.");
-    yield memory.detach();
+    await memory.detach();
     ok(true, "Shouldn't have gotten an error detaching.");
     destroyServerAndFinish(client);
-  });
+  })();
 };
 </script>
 </pre>

@@ -20,6 +20,17 @@ nsTArray<gfxPrefs::Pref*>* gfxPrefs::sGfxPrefList = nullptr;
 gfxPrefs* gfxPrefs::sInstance = nullptr;
 bool gfxPrefs::sInstanceHasBeenDestroyed = false;
 
+gfxPrefs&
+gfxPrefs::CreateAndInitializeSingleton() {
+  MOZ_ASSERT(!sInstanceHasBeenDestroyed,
+             "Should never recreate a gfxPrefs instance!");
+  sGfxPrefList = new nsTArray<Pref*>();
+  sInstance = new gfxPrefs;
+  sInstance->Init();
+  MOZ_ASSERT(SingletonExists());
+  return *sInstance;
+}
+
 void
 gfxPrefs::DestroySingleton()
 {
@@ -169,6 +180,30 @@ void gfxPrefs::PrefAddVarCache(std::string* aVariable,
   Preferences::SetCString(aPref, aVariable->c_str());
 }
 
+void gfxPrefs::PrefAddVarCache(AtomicBool* aVariable,
+                               const char* aPref,
+                               bool aDefault)
+{
+  MOZ_ASSERT(IsPrefsServiceAvailable());
+  Preferences::AddAtomicBoolVarCache(aVariable, aPref, aDefault);
+}
+
+void gfxPrefs::PrefAddVarCache(AtomicInt32* aVariable,
+                               const char* aPref,
+                               int32_t aDefault)
+{
+  MOZ_ASSERT(IsPrefsServiceAvailable());
+  Preferences::AddAtomicIntVarCache(aVariable, aPref, aDefault);
+}
+
+void gfxPrefs::PrefAddVarCache(AtomicUint32* aVariable,
+                               const char* aPref,
+                               uint32_t aDefault)
+{
+  MOZ_ASSERT(IsPrefsServiceAvailable());
+  Preferences::AddAtomicUintVarCache(aVariable, aPref, aDefault);
+}
+
 bool gfxPrefs::PrefGet(const char* aPref, bool aDefault)
 {
   MOZ_ASSERT(IsPrefsServiceAvailable());
@@ -310,9 +345,4 @@ void gfxPrefs::CopyPrefValue(const GfxPrefValue* aValue, std::string* aOutValue)
 bool gfxPrefs::OverrideBase_WebRender()
 {
   return gfx::gfxVars::UseWebRender();
-}
-
-bool gfxPrefs::OverrideBase_WebRendest()
-{
-  return gfx::gfxVars::UseWebRender() && gfxPrefs::WebRendestEnabled();
 }

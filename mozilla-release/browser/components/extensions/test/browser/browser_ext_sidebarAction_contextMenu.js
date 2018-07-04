@@ -36,6 +36,9 @@ let extData = {
       id: "clickme-page",
       title: "Click me!",
       contexts: ["all"],
+      onclick(info, tab) {
+        browser.test.sendMessage("menu-click", tab);
+      },
     });
   },
 };
@@ -47,8 +50,8 @@ let contextMenuItems = {
   "context-viewinfo": "",
   "inspect-separator": "hidden",
   "context-inspect": "hidden",
+  "context-inspect-a11y": "hidden",
   "context-bookmarkpage": "hidden",
-  "context-sharepage": "hidden",
 };
 
 add_task(async function sidebar_contextmenu() {
@@ -60,7 +63,11 @@ add_task(async function sidebar_contextmenu() {
   let contentAreaContextMenu = await openContextMenuInSidebar();
   let item = contentAreaContextMenu.getElementsByAttribute("label", "Click me!");
   is(item.length, 1, "contextMenu item for page was found");
+
+  item[0].click();
   await closeContextMenu(contentAreaContextMenu);
+  let tab = await extension.awaitMessage("menu-click");
+  is(tab, null, "tab argument is optional, and missing in clicks from sidebars");
 
   await extension.unload();
 });

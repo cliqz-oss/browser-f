@@ -55,7 +55,7 @@ public:
     NS_DECL_NSIASYNCINPUTSTREAM
 
     explicit nsSocketInputStream(nsSocketTransport *);
-    virtual ~nsSocketInputStream();
+    virtual ~nsSocketInputStream() = default;
 
     bool     IsReferenced() { return mReaderRefCnt > 0; }
     nsresult Condition()    { return mCondition; }
@@ -85,7 +85,7 @@ public:
     NS_DECL_NSIASYNCOUTPUTSTREAM
 
     explicit nsSocketOutputStream(nsSocketTransport *);
-    virtual ~nsSocketOutputStream();
+    virtual ~nsSocketOutputStream() = default;
 
     bool     IsReferenced() { return mWriterRefCnt > 0; }
     nsresult Condition()    { return mCondition; }
@@ -134,15 +134,6 @@ public:
                   const nsACString &hostRoute, uint16_t portRoute,
                   nsIProxyInfo *proxyInfo);
 
-    // Alternative Init method for when the IP-address of the host
-    // has been pre-resolved using a alternative means (e.g. FlyWeb service
-    // info).
-    nsresult InitPreResolved(const char **socketTypes, uint32_t typeCount,
-                             const nsACString &host, uint16_t port,
-                             const nsACString &hostRoute, uint16_t portRoute,
-                             nsIProxyInfo *proxyInfo,
-                             const mozilla::net::NetAddr* addr);
-
     // this method instructs the socket transport to use an already connected
     // socket with the given address.
     nsresult InitWithConnectedSocket(PRFileDesc *socketFD,
@@ -154,16 +145,18 @@ public:
                                      const NetAddr* aAddr,
                                      nsISupports* aSecInfo);
 
+#ifdef XP_UNIX
     // This method instructs the socket transport to open a socket
     // connected to the given Unix domain address. We can only create
     // unlayered, simple, stream sockets.
     nsresult InitWithFilename(const char *filename);
+#endif
 
     // nsASocketHandler methods:
     void OnSocketReady(PRFileDesc *, int16_t outFlags) override;
     void OnSocketDetached(PRFileDesc *) override;
     void IsLocal(bool *aIsLocal) override;
-    void OnKeepaliveEnabledPrefChange(bool aEnabled) override final;
+    void OnKeepaliveEnabledPrefChange(bool aEnabled) final;
 
     // called when a socket event is handled
     void OnSocketEvent(uint32_t type, nsresult status, nsISupports *param);
@@ -262,7 +255,7 @@ private:
       {
         MOZ_ASSERT(aSocketTransport);
       }
-      ~LockedPRFileDesc() {}
+      ~LockedPRFileDesc() = default;
       bool IsInitialized() {
         return mFd;
       }
@@ -308,6 +301,10 @@ private:
     bool mProxyTransparentResolvesHost;
     bool mHttpsProxy;
     uint32_t     mConnectionFlags;
+    // When we fail to connect using a prefered IP family, we tell the consumer to reset
+    // the IP family preference on the connection entry.
+    bool         mResetFamilyPreference;
+    uint32_t     mTlsFlags;
     bool mReuseAddrPort;
 
     // The origin attributes are used to create sockets.  The first party domain
@@ -349,7 +346,6 @@ private:
     NetAddr                 mSelfAddr; // getsockname()
     Atomic<bool, Relaxed>   mNetAddrIsSet;
     Atomic<bool, Relaxed>   mSelfAddrIsSet;
-    Atomic<bool, Relaxed>   mNetAddrPreResolved;
 
     nsAutoPtr<NetAddr>      mBindAddr;
 
@@ -477,6 +473,8 @@ private:
     // A Fast Open callback.
     TCPFastOpen *mFastOpenCallback;
     bool mFastOpenLayerHasBufferedData;
+    uint8_t mFastOpenStatus;
+    nsresult mFirstRetryError;
 
     bool mDoNotRetryToConnect;
 };

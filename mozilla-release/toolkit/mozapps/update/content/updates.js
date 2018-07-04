@@ -7,14 +7,10 @@
 
 /* import-globals-from ../../../content/contentAreaUtils.js */
 
-// Firefox's macBrowserOverlay.xul includes scripts that define Cc, Ci, and Cr
-// so we have to use different names.
-const {classes: CoC, interfaces: CoI, results: CoR, utils: CoU} = Components;
-
 /* globals DownloadUtils, Services, AUSTLMY */
-CoU.import("resource://gre/modules/DownloadUtils.jsm", this);
-CoU.import("resource://gre/modules/Services.jsm", this);
-CoU.import("resource://gre/modules/UpdateTelemetry.jsm", this);
+ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/UpdateTelemetry.jsm", this);
 
 const XMLNS_XUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
@@ -24,10 +20,7 @@ const PREF_APP_UPDATE_ELEVATE_NEVER       = "app.update.elevate.never";
 const PREF_APP_UPDATE_ENABLED             = "app.update.enabled";
 const PREF_APP_UPDATE_LOG                 = "app.update.log";
 const PREF_APP_UPDATE_NOTIFIEDUNSUPPORTED = "app.update.notifiedUnsupported";
-const PREF_APP_UPDATE_TEST_LOOP           = "app.update.test.loop";
 const PREF_APP_UPDATE_URL_MANUAL          = "app.update.url.manual";
-
-const UPDATE_TEST_LOOP_INTERVAL = 2000;
 
 const URI_UPDATES_PROPERTIES  = "chrome://mozapps/locale/update/updates.properties";
 
@@ -83,27 +76,6 @@ function openUpdateURL(event) {
 }
 
 /**
- * Gets a preference value, handling the case where there is no default.
- * @param   func
- *          The name of the preference function to call, on nsIPrefBranch
- * @param   preference
- *          The name of the preference
- * @param   defaultValue
- *          The default value to return in the event the preference has
- *          no setting
- * @returns The value of the preference, or undefined if there was no
- *          user or default value.
- */
-function getPref(func, preference, defaultValue) {
-  try {
-    return Services.prefs[func](preference);
-  } catch (e) {
-    LOG("General", "getPref - failed to get preference: " + preference);
-  }
-  return defaultValue;
-}
-
-/**
  * A set of shared data and control functions for the wizard as a whole.
  */
 var gUpdates = {
@@ -150,7 +122,7 @@ var gUpdates = {
   _setButton(button, string) {
     if (string) {
       var label = this.getAUSString(string);
-      if (label.indexOf("%S") != -1)
+      if (label.includes("%S"))
         label = label.replace(/%S/, this.brandName);
       button.label = label;
       button.setAttribute("accesskey",
@@ -232,8 +204,8 @@ var gUpdates = {
     // If the user clicks "No Thanks", we should not prompt them to update to
     // this version again unless they manually select "Check for Updates..."
     // which will clear app.update.elevate.never preference.
-    let aus = CoC["@mozilla.org/updates/update-service;1"].
-              getService(CoI.nsIApplicationUpdateService);
+    let aus = Cc["@mozilla.org/updates/update-service;1"].
+              getService(Ci.nsIApplicationUpdateService);
     if (aus.elevationRequired) {
       Services.prefs.setCharPref(PREF_APP_UPDATE_ELEVATE_NEVER,
                                  this.update.appVersion);
@@ -311,7 +283,7 @@ var gUpdates = {
   onLoad() {
     this.wiz = document.documentElement;
 
-    gLogEnabled = getPref("getBoolPref", PREF_APP_UPDATE_LOG, false);
+    gLogEnabled = Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG, false);
 
     this.strings = document.getElementById("updateStrings");
     var brandStrings = document.getElementById("brandStrings");
@@ -370,7 +342,7 @@ var gUpdates = {
   getStartPageID(aCallback) {
     if ("arguments" in window && window.arguments[0]) {
       var arg0 = window.arguments[0];
-      if (arg0 instanceof CoI.nsIUpdate) {
+      if (arg0 instanceof Ci.nsIUpdate) {
         // If the first argument is a nsIUpdate object, we are notifying the
         // user that the background checking found an update that requires
         // their permission to install, and it's ready for download.
@@ -429,8 +401,8 @@ var gUpdates = {
           }
         }
 
-        let aus = CoC["@mozilla.org/updates/update-service;1"].
-                  getService(CoI.nsIApplicationUpdateService);
+        let aus = Cc["@mozilla.org/updates/update-service;1"].
+                  getService(Ci.nsIApplicationUpdateService);
         if (!aus.canApplyUpdates) {
           aCallback("manualUpdate");
           return;
@@ -440,8 +412,8 @@ var gUpdates = {
         return;
       }
     } else {
-      var um = CoC["@mozilla.org/updates/update-manager;1"].
-               getService(CoI.nsIUpdateManager);
+      var um = Cc["@mozilla.org/updates/update-manager;1"].
+               getService(Ci.nsIUpdateManager);
       if (um.activeUpdate) {
         this.setUpdate(um.activeUpdate);
         aCallback("downloading");
@@ -469,7 +441,7 @@ var gUpdates = {
   setUpdate(update) {
     this.update = update;
     if (this.update)
-      this.update.QueryInterface(CoI.nsIWritablePropertyBag);
+      this.update.QueryInterface(Ci.nsIWritablePropertyBag);
   }
 };
 
@@ -510,8 +482,8 @@ var gCheckingPage = {
       Services.prefs.clearUserPref(PREF_APP_UPDATE_NOTIFIEDUNSUPPORTED);
     }
 
-    this._checker = CoC["@mozilla.org/updates/update-checker;1"].
-                    createInstance(CoI.nsIUpdateChecker);
+    this._checker = Cc["@mozilla.org/updates/update-checker;1"].
+                    createInstance(Ci.nsIUpdateChecker);
     this._checker.checkForUpdates(this.updateListener, true);
   },
 
@@ -520,7 +492,7 @@ var gCheckingPage = {
    * Manager control, so stop checking for updates.
    */
   onWizardCancel() {
-    this._checker.stopChecking(CoI.nsIUpdateChecker.CURRENT_CHECK);
+    this._checker.stopChecking(Ci.nsIUpdateChecker.CURRENT_CHECK);
   },
 
   /**
@@ -532,8 +504,8 @@ var gCheckingPage = {
      * See nsIUpdateCheckListener
      */
     onCheckComplete(request, updates, updateCount) {
-      var aus = CoC["@mozilla.org/updates/update-service;1"].
-                getService(CoI.nsIApplicationUpdateService);
+      var aus = Cc["@mozilla.org/updates/update-service;1"].
+                getService(Ci.nsIApplicationUpdateService);
       gUpdates.setUpdate(aus.selectUpdate(updates, updates.length));
       if (gUpdates.update) {
         LOG("gCheckingPage", "onCheckComplete - update found");
@@ -575,12 +547,7 @@ var gCheckingPage = {
     /**
      * See nsISupports.idl
      */
-    QueryInterface(aIID) {
-      if (!aIID.equals(CoI.nsIUpdateCheckListener) &&
-          !aIID.equals(CoI.nsISupports))
-        throw CoR.NS_ERROR_NO_INTERFACE;
-      return this;
-    }
+    QueryInterface: ChromeUtils.generateQI(["nsIUpdateCheckListener"]),
   }
 };
 
@@ -595,7 +562,7 @@ var gNoUpdatesPage = {
     LOG("gNoUpdatesPage", "onPageShow - could not select an appropriate " +
         "update. Either there were no updates or |selectUpdate| failed");
 
-    if (getPref("getBoolPref", PREF_APP_UPDATE_ENABLED, true))
+    if (Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED, true))
       document.getElementById("noUpdatesAutoEnabled").hidden = false;
     else
       document.getElementById("noUpdatesAutoDisabled").hidden = false;
@@ -738,11 +705,11 @@ var gDownloadingPage = {
     this._pauseButton.focus();
     this._pauseButton.disabled = true;
 
-    var aus = CoC["@mozilla.org/updates/update-service;1"].
-              getService(CoI.nsIApplicationUpdateService);
+    var aus = Cc["@mozilla.org/updates/update-service;1"].
+              getService(Ci.nsIApplicationUpdateService);
 
-    var um = CoC["@mozilla.org/updates/update-manager;1"].
-             getService(CoI.nsIUpdateManager);
+    var um = Cc["@mozilla.org/updates/update-manager;1"].
+             getService(Ci.nsIUpdateManager);
     var activeUpdate = um.activeUpdate;
     if (activeUpdate) {
       gUpdates.setUpdate(activeUpdate);
@@ -776,7 +743,7 @@ var gDownloadingPage = {
     try {
       // Say that this was a foreground download, not a background download,
       // since the user cared enough to look in on this process.
-      gUpdates.update.QueryInterface(CoI.nsIWritablePropertyBag);
+      gUpdates.update.QueryInterface(Ci.nsIWritablePropertyBag);
       gUpdates.update.setProperty("foregroundDownload", "true");
 
       // Pause any active background download and restart it as a foreground
@@ -855,7 +822,7 @@ var gDownloadingPage = {
       this._pauseButton.setAttribute("tooltiptext",
                                      gUpdates.getAUSString("pauseButtonResume"));
       this._pauseButton.setAttribute("paused", "true");
-      var p = u.selectedPatch.QueryInterface(CoI.nsIPropertyBag);
+      var p = u.selectedPatch.QueryInterface(Ci.nsIPropertyBag);
       var status = p.getProperty("status");
       if (status) {
         let pausedStatus = gUpdates.getAUSString("downloadPausedStatus", [status]);
@@ -888,8 +855,8 @@ var gDownloadingPage = {
    * Clean up the listener and observer registered for the wizard.
    */
   cleanUp() {
-    var aus = CoC["@mozilla.org/updates/update-service;1"].
-              getService(CoI.nsIApplicationUpdateService);
+    var aus = Cc["@mozilla.org/updates/update-service;1"].
+              getService(Ci.nsIApplicationUpdateService);
     aus.removeDownloadListener(this);
 
     if (this._updateApplyingObserver) {
@@ -902,13 +869,13 @@ var gDownloadingPage = {
    * When the user clicks the Pause/Resume button
    */
   onPause() {
-    var aus = CoC["@mozilla.org/updates/update-service;1"].
-              getService(CoI.nsIApplicationUpdateService);
+    var aus = Cc["@mozilla.org/updates/update-service;1"].
+              getService(Ci.nsIApplicationUpdateService);
     if (this._paused)
       aus.downloadUpdate(gUpdates.update, false);
     else {
       var patch = gUpdates.update.selectedPatch;
-      patch.QueryInterface(CoI.nsIWritablePropertyBag);
+      patch.QueryInterface(Ci.nsIWritablePropertyBag);
       patch.setProperty("status", this._pausedStatus);
       aus.pauseDownload();
     }
@@ -942,10 +909,10 @@ var gDownloadingPage = {
     // gone away.
     this.cleanUp();
 
-    var aus = CoC["@mozilla.org/updates/update-service;1"].
-              getService(CoI.nsIApplicationUpdateService);
-    var um = CoC["@mozilla.org/updates/update-manager;1"].
-             getService(CoI.nsIUpdateManager);
+    var aus = Cc["@mozilla.org/updates/update-service;1"].
+              getService(Ci.nsIApplicationUpdateService);
+    var um = Cc["@mozilla.org/updates/update-manager;1"].
+             getService(Ci.nsIUpdateManager);
     um.activeUpdate = gUpdates.update;
 
     // If the download was paused by the user, ask the user if they want to
@@ -964,7 +931,7 @@ var gDownloadingPage = {
       window.focus();
       var rv = ps.confirmEx(window, title, message, flags, null, null, null,
                             null, { });
-      if (rv == CoI.nsIPromptService.BUTTON_POS_0)
+      if (rv == Ci.nsIPromptService.BUTTON_POS_0)
         downloadInBackground = false;
     }
     if (downloadInBackground) {
@@ -1010,7 +977,7 @@ var gDownloadingPage = {
     var currentProgress = Math.round(100 * (progress / maxProgress));
 
     var p = gUpdates.update.selectedPatch;
-    p.QueryInterface(CoI.nsIWritablePropertyBag);
+    p.QueryInterface(Ci.nsIWritablePropertyBag);
     p.setProperty("progress", currentProgress);
     p.setProperty("status", status);
 
@@ -1069,8 +1036,8 @@ var gDownloadingPage = {
 
     var u = gUpdates.update;
     switch (status) {
-      case CoR.NS_ERROR_CORRUPTED_CONTENT:
-      case CoR.NS_ERROR_UNEXPECTED:
+      case Cr.NS_ERROR_CORRUPTED_CONTENT:
+      case Cr.NS_ERROR_UNEXPECTED:
         if (u.selectedPatch.state == STATE_DOWNLOAD_FAILED &&
             (u.isCompleteUpdate || u.patchCount != 2)) {
           // Verification error of complete patch, informational text is held in
@@ -1085,19 +1052,18 @@ var gDownloadingPage = {
         // Reset the progress meter to "undertermined" mode so that we don't
         // show old progress for the new download of the "complete" patch.
         this._downloadProgress.mode = "undetermined";
-        this._pauseButton.disabled = true;
         document.getElementById("verificationFailed").hidden = false;
         break;
-      case CoR.NS_BINDING_ABORTED:
+      case Cr.NS_BINDING_ABORTED:
         LOG("gDownloadingPage", "onStopRequest - pausing download");
         // Do not remove UI listener since the user may resume downloading again.
         break;
-      case CoR.NS_OK:
+      case Cr.NS_OK:
         LOG("gDownloadingPage", "onStopRequest - patch verification succeeded");
         // If the background update pref is set, we should wait until the update
         // is actually staged in the background.
-        let aus = CoC["@mozilla.org/updates/update-service;1"].
-                  getService(CoI.nsIApplicationUpdateService);
+        let aus = Cc["@mozilla.org/updates/update-service;1"].
+                  getService(Ci.nsIApplicationUpdateService);
         if (aus.canStageUpdates) {
           this._setUpdateApplying();
         } else {
@@ -1144,11 +1110,11 @@ var gDownloadingPage = {
    * See nsISupports.idl
    */
   QueryInterface(iid) {
-    if (!iid.equals(CoI.nsIRequestObserver) &&
-        !iid.equals(CoI.nsIProgressEventSink) &&
-        !iid.equals(CoI.nsIObserver) &&
-        !iid.equals(CoI.nsISupports))
-      throw CoR.NS_ERROR_NO_INTERFACE;
+    if (!iid.equals(Ci.nsIRequestObserver) &&
+        !iid.equals(Ci.nsIProgressEventSink) &&
+        !iid.equals(Ci.nsIObserver) &&
+        !iid.equals(Ci.nsISupports))
+      throw Cr.NS_ERROR_NO_INTERFACE;
     return this;
   }
 };
@@ -1219,8 +1185,8 @@ var gErrorPatchingPage = {
         break;
       case STATE_PENDING:
       case STATE_PENDING_SERVICE:
-        let aus = CoC["@mozilla.org/updates/update-service;1"].
-                  getService(CoI.nsIApplicationUpdateService);
+        let aus = Cc["@mozilla.org/updates/update-service;1"].
+                  getService(Ci.nsIApplicationUpdateService);
         if (!aus.canStageUpdates) {
           gUpdates.wiz.goTo("finished");
           break;
@@ -1245,8 +1211,8 @@ var gFinishedPage = {
    * Initialize
    */
   onPageShow() {
-    let aus = CoC["@mozilla.org/updates/update-service;1"].
-              getService(CoI.nsIApplicationUpdateService);
+    let aus = Cc["@mozilla.org/updates/update-service;1"].
+              getService(Ci.nsIApplicationUpdateService);
     if (aus.elevationRequired) {
       LOG("gFinishedPage", "elevationRequired");
       gUpdates.setButtons("restartLaterButton", "noThanksButton",
@@ -1276,8 +1242,8 @@ var gFinishedPage = {
     } else {
       link.hidden = true;
     }
-    let aus = CoC["@mozilla.org/updates/update-service;1"].
-              getService(CoI.nsIApplicationUpdateService);
+    let aus = Cc["@mozilla.org/updates/update-service;1"].
+              getService(Ci.nsIApplicationUpdateService);
     if (aus.elevationRequired) {
       let more = document.getElementById("finishedBackgroundMore");
       more.setAttribute("hidden", "true");
@@ -1294,11 +1260,6 @@ var gFinishedPage = {
       moreElevatedLinkLabel.setAttribute("url", manualURL);
       moreElevatedLinkLabel.setAttribute("hidden", "false");
     }
-
-    if (getPref("getBoolPref", PREF_APP_UPDATE_TEST_LOOP, false)) {
-      setTimeout(function() { gUpdates.wiz.getButton("finish").click(); },
-                 UPDATE_TEST_LOOP_INTERVAL);
-    }
   },
 
   /**
@@ -1309,11 +1270,11 @@ var gFinishedPage = {
     // Do the restart
     LOG("gFinishedPage", "onWizardFinish - restarting the application");
 
-    let aus = CoC["@mozilla.org/updates/update-service;1"].
-              getService(CoI.nsIApplicationUpdateService);
+    let aus = Cc["@mozilla.org/updates/update-service;1"].
+              getService(Ci.nsIApplicationUpdateService);
     if (aus.elevationRequired) {
-      let um = CoC["@mozilla.org/updates/update-manager;1"].
-               getService(CoI.nsIUpdateManager);
+      let um = Cc["@mozilla.org/updates/update-manager;1"].
+               getService(Ci.nsIUpdateManager);
       if (um) {
         um.elevationOptedIn();
       }
@@ -1332,8 +1293,8 @@ var gFinishedPage = {
     gUpdates.wiz.getButton("extra1").disabled = true;
 
     // Notify all windows that an application quit has been requested.
-    var cancelQuit = CoC["@mozilla.org/supports-PRBool;1"].
-                     createInstance(CoI.nsISupportsPRBool);
+    var cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].
+                     createInstance(Ci.nsISupportsPRBool);
     Services.obs.notifyObservers(cancelQuit, "quit-application-requested",
                                  "restart");
 
@@ -1343,14 +1304,13 @@ var gFinishedPage = {
 
     // If already in safe mode restart in safe mode (bug 327119)
     if (Services.appinfo.inSafeMode) {
-      let env = CoC["@mozilla.org/process/environment;1"].
-                getService(CoI.nsIEnvironment);
+      let env = Cc["@mozilla.org/process/environment;1"].
+                getService(Ci.nsIEnvironment);
       env.set("MOZ_SAFE_MODE_RESTART", "1");
     }
 
     // Restart the application
-    CoC["@mozilla.org/toolkit/app-startup;1"].getService(CoI.nsIAppStartup).
-    quit(CoI.nsIAppStartup.eAttemptQuit | CoI.nsIAppStartup.eRestart);
+    Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
   },
 
   /**
@@ -1366,8 +1326,8 @@ var gFinishedPage = {
    */
   async onExtra2() {
     Services.obs.notifyObservers(null, "update-canceled");
-    let um = CoC["@mozilla.org/updates/update-manager;1"].
-               getService(CoI.nsIUpdateManager);
+    let um = Cc["@mozilla.org/updates/update-manager;1"].
+             getService(Ci.nsIUpdateManager);
     um.cleanupActiveUpdate();
     gUpdates.never();
     gUpdates.wiz.cancel();

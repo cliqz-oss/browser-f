@@ -80,7 +80,7 @@ function reinitializeRegistry() {
 
     registry = {
         spectest: {
-            print: console.log.bind(console),
+            print: console.log,
             global: 666,
             table: new WebAssembly.Table({initial: 10, maximum: 20, element: 'anyfunc'}),
             memory: new WebAssembly.Memory({initial: 1, maximum: 2})
@@ -221,6 +221,15 @@ function get(instance, name) {
 
     if (instance.isError())
         return instance;
+
+    // Experimental API change.  We try to export WebAssembly.Global instances,
+    // not primitive values.  In that case the Number() cast is necessary here
+    // to convert the Global to a value: the harness examines types carefully
+    // and will not trigger the @@toPrimitive hook on Global, unlike most user
+    // code.
+
+    if (typeof WebAssembly.Global === "function")
+	return ValueResult(Number(instance.value.exports[name]));
 
     return ValueResult(instance.value.exports[name]);
 }

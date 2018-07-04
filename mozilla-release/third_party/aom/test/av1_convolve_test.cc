@@ -145,11 +145,11 @@ class Av1ConvolveTest : public ::testing::TestWithParam<ConvolveParam> {
 };
 
 int bsize_ls[] = { 1, 2, 4, 8, 16, 32, 64, 3, 7, 15, 31, 63 };
-int bsize_num = sizeof(bsize_ls) / sizeof(bsize_ls[0]);
+int bsize_num = NELEMENTS(bsize_ls);
 
 TEST_P(Av1ConvolveTest, av1_convolve_vert) {
   const int y_step_q4 = 16;
-  ConvolveParams conv_params = get_conv_params(0, 0);
+  ConvolveParams conv_params = get_conv_params(0, 0, 0);
 
   int in_stride, out_stride, ref_out_stride, avg_out_stride, ref_avg_out_stride;
   uint8_t *in = add_input(MAX_SB_SIZE, MAX_SB_SIZE, &in_stride);
@@ -172,6 +172,7 @@ TEST_P(Av1ConvolveTest, av1_convolve_vert) {
                               ref_out, ref_out_stride, w, h);
 
         conv_params.ref = 0;
+        conv_params.do_average = 0;
         cfs_->vf_(in, in_stride, out, out_stride, w, h, param_vert, subpel_y_q4,
                   y_step_q4, &conv_params);
         EXPECT_EQ(match(out, out_stride, ref_out, ref_out_stride, w, h), 1)
@@ -186,6 +187,7 @@ TEST_P(Av1ConvolveTest, av1_convolve_vert) {
           }
         }
         conv_params.ref = 1;
+        conv_params.do_average = 1;
         cfs_->vf_(in, in_stride, avg_out, avg_out_stride, w, h, param_vert,
                   subpel_y_q4, y_step_q4, &conv_params);
         EXPECT_EQ(match(avg_out, avg_out_stride, ref_avg_out,
@@ -200,7 +202,7 @@ TEST_P(Av1ConvolveTest, av1_convolve_vert) {
 
 TEST_P(Av1ConvolveTest, av1_convolve_horiz) {
   const int x_step_q4 = 16;
-  ConvolveParams conv_params = get_conv_params(0, 0);
+  ConvolveParams conv_params = get_conv_params(0, 0, 0);
 
   int in_stride, out_stride, ref_out_stride, avg_out_stride, ref_avg_out_stride;
   uint8_t *in = add_input(MAX_SB_SIZE, MAX_SB_SIZE, &in_stride);
@@ -223,6 +225,7 @@ TEST_P(Av1ConvolveTest, av1_convolve_horiz) {
                                ref_out, ref_out_stride, w, h);
 
         conv_params.ref = 0;
+        conv_params.do_average = 0;
         cfs_->hf_(in, in_stride, out, out_stride, w, h, param_horiz,
                   subpel_x_q4, x_step_q4, &conv_params);
         EXPECT_EQ(match(out, out_stride, ref_out, ref_out_stride, w, h), 1)
@@ -237,6 +240,7 @@ TEST_P(Av1ConvolveTest, av1_convolve_horiz) {
           }
         }
         conv_params.ref = 1;
+        conv_params.do_average = 1;
         cfs_->hf_(in, in_stride, avg_out, avg_out_stride, w, h, param_horiz,
                   subpel_x_q4, x_step_q4, &conv_params);
         EXPECT_EQ(match(avg_out, avg_out_stride, ref_avg_out,
@@ -265,16 +269,9 @@ INSTANTIATE_TEST_CASE_P(
 #ifndef __clang_analyzer__
 TEST(AV1ConvolveTest, av1_highbd_convolve) {
   ACMRandom rnd(ACMRandom::DeterministicSeed());
-#if CONFIG_DUAL_FILTER
-  InterpFilter interp_filter[4] = { EIGHTTAP_REGULAR, EIGHTTAP_REGULAR,
-                                    EIGHTTAP_REGULAR, EIGHTTAP_REGULAR };
+  InterpFilters interp_filters = av1_broadcast_interp_filter(EIGHTTAP_REGULAR);
   InterpFilterParams filter_params =
-      av1_get_interp_filter_params(interp_filter[0]);
-#else
-  InterpFilter interp_filter = EIGHTTAP_REGULAR;
-  InterpFilterParams filter_params =
-      av1_get_interp_filter_params(interp_filter);
-#endif
+      av1_get_interp_filter_params(EIGHTTAP_REGULAR);
   int filter_size = filter_params.taps;
   int filter_center = filter_size / 2 - 1;
   uint16_t src[12 * 12];
@@ -299,7 +296,7 @@ TEST(AV1ConvolveTest, av1_highbd_convolve) {
     for (subpel_y_q4 = 0; subpel_y_q4 < SUBPEL_SHIFTS; subpel_y_q4++) {
       av1_highbd_convolve(
           CONVERT_TO_BYTEPTR(src + src_stride * filter_center + filter_center),
-          src_stride, CONVERT_TO_BYTEPTR(dst), dst_stride, w, h, interp_filter,
+          src_stride, CONVERT_TO_BYTEPTR(dst), dst_stride, w, h, interp_filters,
           subpel_x_q4, x_step_q4, subpel_y_q4, y_step_q4, avg, bd);
 
       const int16_t *x_filter =
@@ -327,16 +324,9 @@ TEST(AV1ConvolveTest, av1_highbd_convolve) {
 
 TEST(AV1ConvolveTest, av1_highbd_convolve_avg) {
   ACMRandom rnd(ACMRandom::DeterministicSeed());
-#if CONFIG_DUAL_FILTER
-  InterpFilter interp_filter[4] = { EIGHTTAP_REGULAR, EIGHTTAP_REGULAR,
-                                    EIGHTTAP_REGULAR, EIGHTTAP_REGULAR };
+  InterpFilters interp_filters = av1_broadcast_interp_filter(EIGHTTAP_REGULAR);
   InterpFilterParams filter_params =
-      av1_get_interp_filter_params(interp_filter[0]);
-#else
-  InterpFilter interp_filter = EIGHTTAP_REGULAR;
-  InterpFilterParams filter_params =
-      av1_get_interp_filter_params(interp_filter);
-#endif
+      av1_get_interp_filter_params(EIGHTTAP_REGULAR);
   int filter_size = filter_params.taps;
   int filter_center = filter_size / 2 - 1;
   uint16_t src0[12 * 12];
@@ -369,23 +359,23 @@ TEST(AV1ConvolveTest, av1_highbd_convolve_avg) {
       avg = 0;
       av1_highbd_convolve(CONVERT_TO_BYTEPTR(src0 + offset), src_stride,
                           CONVERT_TO_BYTEPTR(dst0), dst_stride, w, h,
-                          interp_filter, subpel_x_q4, x_step_q4, subpel_y_q4,
+                          interp_filters, subpel_x_q4, x_step_q4, subpel_y_q4,
                           y_step_q4, avg, bd);
       avg = 0;
       av1_highbd_convolve(CONVERT_TO_BYTEPTR(src1 + offset), src_stride,
                           CONVERT_TO_BYTEPTR(dst1), dst_stride, w, h,
-                          interp_filter, subpel_x_q4, x_step_q4, subpel_y_q4,
+                          interp_filters, subpel_x_q4, x_step_q4, subpel_y_q4,
                           y_step_q4, avg, bd);
 
       avg = 0;
       av1_highbd_convolve(CONVERT_TO_BYTEPTR(src0 + offset), src_stride,
                           CONVERT_TO_BYTEPTR(dst), dst_stride, w, h,
-                          interp_filter, subpel_x_q4, x_step_q4, subpel_y_q4,
+                          interp_filters, subpel_x_q4, x_step_q4, subpel_y_q4,
                           y_step_q4, avg, bd);
       avg = 1;
       av1_highbd_convolve(CONVERT_TO_BYTEPTR(src1 + offset), src_stride,
                           CONVERT_TO_BYTEPTR(dst), dst_stride, w, h,
-                          interp_filter, subpel_x_q4, x_step_q4, subpel_y_q4,
+                          interp_filters, subpel_x_q4, x_step_q4, subpel_y_q4,
                           y_step_q4, avg, bd);
 
       EXPECT_EQ(dst[0], ROUND_POWER_OF_TWO(dst0[0] + dst1[0], 1));

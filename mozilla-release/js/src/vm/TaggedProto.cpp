@@ -6,13 +6,9 @@
 
 #include "vm/TaggedProto.h"
 
-#include "jsfun.h"
-#include "jsobj.h"
-
 #include "gc/Barrier.h"
-#include "gc/Zone.h"
-
-#include "vm/Caches-inl.h"
+#include "vm/JSFunction.h"
+#include "vm/JSObject.h"
 
 namespace js {
 

@@ -4,6 +4,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+with Files("**"):
+    BUG_COMPONENT = ("Firefox", "General")
+
+with Files("distribution.js"):
+    BUG_COMPONENT = ("Firefox", "Distributions")
+
 with Files("tests/**"):
     BUG_COMPONENT = ("Firefox", "General")
 
@@ -32,8 +38,10 @@ DIRS += [
     'customizableui',
     'dirprovider',
     'downloads',
+    'enterprisepolicies',
     'extensions',
     'feeds',
+    'library',
     'migration',
     'newtab',
     'originattributes',
@@ -44,7 +52,6 @@ DIRS += [
     'search',
     'sessionstore',
     'shell',
-    'selfsupport',
     'syncedtabs',
     'uitour',
     'translation',
@@ -52,8 +59,10 @@ DIRS += [
 
 DIRS += ['build']
 
+if CONFIG['NIGHTLY_BUILD']:
+    DIRS += ['payments']
+
 XPIDL_SOURCES += [
-    'nsIBrowserGlue.idl',
     'nsIBrowserHandler.idl',
 ]
 

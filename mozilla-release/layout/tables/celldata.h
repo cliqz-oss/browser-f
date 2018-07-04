@@ -144,6 +144,7 @@ enum BCBorderOwner
   eAjaCellOwner      = 10  // cell to the top or to the left
 };
 
+// BCPixelSize is in device pixels.
 typedef uint16_t BCPixelSize;
 
 // These are the max sizes that are stored. If they are exceeded, then the max is stored and
@@ -193,14 +194,25 @@ public:
                  mozilla::LogicalSide aOwner,
                  bool                 aBevel);
 
-  bool IsIStartStart() const;
+  inline bool IsIStartStart() const
+  {
+    return (bool)mIStartStart;
+  }
 
-  void SetIStartStart(bool aValue);
+  inline void SetIStartStart(bool aValue)
+  {
+    mIStartStart = aValue;
+  }
 
-  bool IsBStartStart() const;
+  inline bool IsBStartStart() const
+  {
+    return (bool)mBStartStart;
+  }
 
-  void SetBStartStart(bool aValue);
-
+  inline void SetBStartStart(bool aValue)
+  {
+    mBStartStart = aValue;
+  }
 
 protected:
   BCPixelSize mIStartSize;    // size in pixels of iStart border
@@ -370,7 +382,8 @@ inline void CellData::SetOverlap(bool aOverlap)
 inline BCData::BCData()
 {
   mIStartOwner = mBStartOwner = eCellOwner;
-  mIStartStart = mBStartStart = 1;
+  SetBStartStart(true);
+  SetIStartStart(true);
   mIStartSize = mCornerSubSize = mBStartSize = 0;
   mCornerSide = mozilla::eLogicalSideBStart;
   mCornerBevel = false;
@@ -384,7 +397,7 @@ inline nscoord BCData::GetIStartEdge(BCBorderOwner& aOwner,
                                      bool&          aStart) const
 {
   aOwner = (BCBorderOwner)mIStartOwner;
-  aStart = (bool)mIStartStart;
+  aStart = IsIStartStart();
 
   return (nscoord)mIStartSize;
 }
@@ -395,14 +408,14 @@ inline void BCData::SetIStartEdge(BCBorderOwner  aOwner,
 {
   mIStartOwner = aOwner;
   mIStartSize  = (aSize > MAX_BORDER_WIDTH) ? MAX_BORDER_WIDTH : aSize;
-  mIStartStart = aStart;
+  SetIStartStart(aStart);
 }
 
 inline nscoord BCData::GetBStartEdge(BCBorderOwner& aOwner,
                                      bool&          aStart) const
 {
   aOwner = (BCBorderOwner)mBStartOwner;
-  aStart = (bool)mBStartStart;
+  aStart = IsBStartStart();
 
   return (nscoord)mBStartSize;
 }
@@ -413,7 +426,7 @@ inline void BCData::SetBStartEdge(BCBorderOwner  aOwner,
 {
   mBStartOwner = aOwner;
   mBStartSize  = (aSize > MAX_BORDER_WIDTH) ? MAX_BORDER_WIDTH : aSize;
-  mBStartStart = aStart;
+  SetBStartStart(aStart);
 }
 
 inline BCPixelSize BCData::GetCorner(mozilla::LogicalSide& aOwnerSide,
@@ -431,26 +444,6 @@ inline void BCData::SetCorner(BCPixelSize          aSubSize,
   mCornerSubSize = aSubSize;
   mCornerSide    = aOwnerSide;
   mCornerBevel   = aBevel;
-}
-
-inline bool BCData::IsIStartStart() const
-{
-  return (bool)mIStartStart;
-}
-
-inline void BCData::SetIStartStart(bool aValue)
-{
-  mIStartStart = aValue;
-}
-
-inline bool BCData::IsBStartStart() const
-{
-  return (bool)mBStartStart;
-}
-
-inline void BCData::SetBStartStart(bool aValue)
-{
-  mBStartStart = aValue;
 }
 
 #endif

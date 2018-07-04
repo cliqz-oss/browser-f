@@ -2,21 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::URLBinding::{self, URLMethods};
 use dom::bindings::error::{Error, ErrorResult, Fallible};
-use dom::bindings::js::{MutNullableJS, Root};
 use dom::bindings::reflector::{DomObject, Reflector, reflect_dom_object};
+use dom::bindings::root::{DomRoot, MutNullableDom};
 use dom::bindings::str::{DOMString, USVString};
 use dom::blob::Blob;
 use dom::globalscope::GlobalScope;
 use dom::urlhelper::UrlHelper;
 use dom::urlsearchparams::URLSearchParams;
 use dom_struct::dom_struct;
-use ipc_channel::ipc;
 use net_traits::{CoreResourceMsg, IpcSend};
 use net_traits::blob_url_store::{get_blob_origin, parse_blob_url};
 use net_traits::filemanager_thread::FileManagerThreadMsg;
+use profile_traits::ipc;
 use servo_url::ServoUrl;
 use std::default::Default;
 use uuid::Uuid;
@@ -27,23 +27,23 @@ pub struct URL {
     reflector_: Reflector,
 
     // https://url.spec.whatwg.org/#concept-url-url
-    url: DOMRefCell<ServoUrl>,
+    url: DomRefCell<ServoUrl>,
 
     // https://url.spec.whatwg.org/#dom-url-searchparams
-    search_params: MutNullableJS<URLSearchParams>,
+    search_params: MutNullableDom<URLSearchParams>,
 }
 
 impl URL {
     fn new_inherited(url: ServoUrl) -> URL {
         URL {
             reflector_: Reflector::new(),
-            url: DOMRefCell::new(url),
+            url: DomRefCell::new(url),
             search_params: Default::default(),
         }
     }
 
-    pub fn new(global: &GlobalScope, url: ServoUrl) -> Root<URL> {
-        reflect_dom_object(box URL::new_inherited(url),
+    pub fn new(global: &GlobalScope, url: ServoUrl) -> DomRoot<URL> {
+        reflect_dom_object(Box::new(URL::new_inherited(url)),
                            global, URLBinding::Wrap)
     }
 
@@ -61,7 +61,7 @@ impl URL {
     // https://url.spec.whatwg.org/#constructors
     pub fn Constructor(global: &GlobalScope, url: USVString,
                        base: Option<USVString>)
-                       -> Fallible<Root<URL>> {
+                       -> Fallible<DomRoot<URL>> {
         let parsed_base = match base {
             None => {
                 // Step 1.
@@ -96,8 +96,8 @@ impl URL {
 
     // https://w3c.github.io/FileAPI/#dfn-createObjectURL
     pub fn CreateObjectURL(global: &GlobalScope, blob: &Blob) -> DOMString {
-        /// XXX: Second field is an unicode-serialized Origin, it is a temporary workaround
-        ///      and should not be trusted. See issue https://github.com/servo/servo/issues/11722
+        // XXX: Second field is an unicode-serialized Origin, it is a temporary workaround
+        //      and should not be trusted. See issue https://github.com/servo/servo/issues/11722
         let origin = get_blob_origin(&global.get_url());
 
         let id = blob.get_blob_url_id();
@@ -118,7 +118,7 @@ impl URL {
         if let Ok(url) = ServoUrl::parse(&url) {
              if let Ok((id, _)) = parse_blob_url(&url) {
                 let resource_threads = global.resource_threads();
-                let (tx, rx) = ipc::channel().unwrap();
+                let (tx, rx) = ipc::channel(global.time_profiler_chan().clone()).unwrap();
                 let msg = FileManagerThreadMsg::RevokeBlobURL(id, origin, tx);
                 let _ = resource_threads.send(CoreResourceMsg::ToFileManager(msg));
 
@@ -254,7 +254,7 @@ impl URLMethods for URL {
     }
 
     // https://url.spec.whatwg.org/#dom-url-searchparams
-    fn SearchParams(&self) -> Root<URLSearchParams> {
+    fn SearchParams(&self) -> DomRoot<URLSearchParams> {
         self.search_params.or_init(|| {
             URLSearchParams::new(&self.global(), Some(self))
         })

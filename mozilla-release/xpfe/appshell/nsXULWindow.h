@@ -93,6 +93,8 @@ protected:
    NS_IMETHOD ForceRoundedDimensions();
    NS_IMETHOD GetAvailScreenSize(int32_t* aAvailWidth, int32_t* aAvailHeight);
 
+   void ApplyChromeFlags();
+   void SizeShell();
    void OnChromeLoaded();
    void StaggerPosition(int32_t &aRequestedX, int32_t &aRequestedY,
                         int32_t aSpecWidth, int32_t aSpecHeight);
@@ -155,6 +157,7 @@ protected:
    bool                    mContinueModalLoop;
    bool                    mDebuting;       // being made visible right now
    bool                    mChromeLoaded; // True when chrome has loaded
+   bool                    mSizingShellFromXUL; // true when in SizeShell()
    bool                    mShowAfterLoad;
    bool                    mIntrinsicallySized;
    bool                    mCenterAfterLoad;
@@ -177,7 +180,10 @@ protected:
 
    nsCOMPtr<nsITabParent> mPrimaryTabParent;
 private:
-   nsresult GetPrimaryTabParentSize(int32_t* aWidth, int32_t* aHeight);
+   // GetPrimaryTabParentSize is called from xpidl methods and we don't have a
+   // good way to annotate those with MOZ_CAN_RUN_SCRIPT yet.  It takes no
+   // refcounted args other than "this", and the "this" uses seem ok.
+   MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult GetPrimaryTabParentSize(int32_t* aWidth, int32_t* aHeight);
    nsresult GetPrimaryContentShellSize(int32_t* aWidth, int32_t* aHeight);
    nsresult SetPrimaryTabParentSize(int32_t aWidth, int32_t aHeight);
 };

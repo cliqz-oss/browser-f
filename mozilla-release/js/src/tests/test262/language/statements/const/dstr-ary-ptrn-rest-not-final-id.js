@@ -9,7 +9,7 @@ es6id: 13.3.1.4
 features: [destructuring-binding]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     LexicalBinding : BindingPattern Initializer
@@ -27,6 +27,7 @@ info: |
         [ BindingElementList[?Yield] ]
         [ BindingElementList[?Yield] , Elisionopt BindingRestElement[?Yield]opt ]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 const [...x, y] = [1, 2, 3];
 

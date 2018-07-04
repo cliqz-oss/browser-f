@@ -12,13 +12,23 @@
 # SUBDIRECTORY: Reftests for paginated flex containers
 include pagination/reftest.list
 
+# XXXdholbert These tests should move to w3c-css/submitted once we've closed
+# out bug 1207698 and updated these tests' expectations & alignment keyword
+# usage accordingly:
+== flexbox-align-content-horizrev-001.xhtml flexbox-align-content-horizrev-001-ref.xhtml
+== flexbox-align-content-vertrev-001.xhtml flexbox-align-content-vertrev-001-ref.xhtml
+== flexbox-justify-content-horizrev-001.xhtml flexbox-justify-content-horizrev-001-ref.xhtml
+== flexbox-justify-content-vertrev-001.xhtml flexbox-justify-content-vertrev-001-ref.xhtml
+
 # Tests for cross-axis alignment (align-self / align-items properties)
-fails-if(!styloVsGecko) == flexbox-align-self-baseline-horiz-2.xhtml  flexbox-align-self-baseline-horiz-2-ref.xhtml # bug 793456, and possibly others
+fails == flexbox-align-self-baseline-horiz-2.xhtml  flexbox-align-self-baseline-horiz-2-ref.xhtml # bug 793456, and possibly others
 # This one fails on windows R (but not Ru, strangely) and GTK.
 # On Windows R and GTK, the single-line <label> flex item has a different
 # background size in test vs. ref
 fuzzy-if(cocoaWidget,1,2) random-if(winWidget||gtkWidget) skip-if(Android) == flexbox-align-self-baseline-horiz-3.xhtml  flexbox-align-self-baseline-horiz-3-ref.xhtml # XXXdholbert investigate the random-if. The skip-if(Android) is because checkbox/radio appearance:none doesn't work as expected.
 == flexbox-align-self-baseline-horiz-4.xhtml flexbox-align-self-baseline-horiz-4-ref.xhtml
+== flexbox-item-align-self-dynamic-pos-001.html flexbox-item-align-self-dynamic-pos-001-ref.html
+== flexbox-item-align-self-dynamic-pos-002.html flexbox-item-align-self-dynamic-pos-002-ref.html
 
 # Tests for box-sizing on flex containers and flex items.
 == flexbox-box-sizing-on-container-horiz-1.html flexbox-box-sizing-on-container-horiz-1-ref.html
@@ -43,11 +53,11 @@ fuzzy-if(cocoaWidget,1,2) random-if(winWidget||gtkWidget) skip-if(Android) == fl
 # inserted adjacent to that existing content.)
 fuzzy-if(skiaContent,3,10) == flexbox-dyn-insertAroundDiv-1.xhtml flexbox-dyn-insertAroundDiv-1-ref.xhtml
 == flexbox-dyn-insertAroundDiv-2.xhtml flexbox-dyn-insertAroundDiv-2-ref.xhtml
-fuzzy-if(skiaContent,3,10) fails-if(gtkWidget&&styloVsGecko) == flexbox-dyn-insertAroundDiv-3.xhtml flexbox-dyn-insertAroundDiv-3-ref.xhtml
+fuzzy-if(skiaContent,3,10) == flexbox-dyn-insertAroundDiv-3.xhtml flexbox-dyn-insertAroundDiv-3-ref.xhtml
 
 fuzzy-if(skiaContent,3,10) == flexbox-dyn-insertAroundSpan-1.xhtml flexbox-dyn-insertAroundDiv-1-ref.xhtml
 == flexbox-dyn-insertAroundSpan-2.xhtml flexbox-dyn-insertAroundDiv-2-ref.xhtml
-fuzzy-if(skiaContent,3,10) fails-if(gtkWidget&&styloVsGecko) == flexbox-dyn-insertAroundSpan-3.xhtml flexbox-dyn-insertAroundDiv-3-ref.xhtml
+fuzzy-if(skiaContent,3,10) == flexbox-dyn-insertAroundSpan-3.xhtml flexbox-dyn-insertAroundDiv-3-ref.xhtml
 
 == flexbox-dyn-insertAroundText-1.xhtml flexbox-dyn-insertAroundText-1-ref.xhtml
 == flexbox-dyn-insertAroundText-2.xhtml flexbox-dyn-insertAroundText-2-ref.xhtml
@@ -69,9 +79,6 @@ fuzzy-if(skiaContent,3,10) fails-if(gtkWidget&&styloVsGecko) == flexbox-dyn-inse
 == flexbox-float-2a.xhtml  flexbox-float-2-ref.xhtml
 == flexbox-float-2b.xhtml  flexbox-float-2-ref.xhtml
 
-# Tests for the order in which we paint flex items
-fails-if(!styloVsGecko) == flexbox-paint-ordering-3.html  flexbox-paint-ordering-3-ref.html # bug 874718
-
 # Tests for handling of absolutely/fixed/relatively-positioned flex items.
 == flexbox-position-absolute-1.xhtml  flexbox-position-absolute-1-ref.xhtml
 == flexbox-position-absolute-2.xhtml  flexbox-position-absolute-2-ref.xhtml
@@ -84,8 +91,8 @@ fuzzy-if(Android,16,400) == flexbox-position-fixed-2.xhtml     flexbox-position-
 == flexbox-position-fixed-4.xhtml     flexbox-position-fixed-4-ref.xhtml
 
 # Tests for inline content in a flexbox that gets wrapped in an anonymous block
-fails-if(!styloVsGecko) == flexbox-inlinecontent-horiz-1a.xhtml flexbox-inlinecontent-horiz-1-ref.xhtml # reference case rendering is incorrect; bug 858333
-fails-if(!styloVsGecko) == flexbox-inlinecontent-horiz-1b.xhtml flexbox-inlinecontent-horiz-1-ref.xhtml # reference case rendering is incorrect; bug 858333
+fails == flexbox-inlinecontent-horiz-1a.xhtml flexbox-inlinecontent-horiz-1-ref.xhtml # reference case rendering is incorrect; bug 858333
+fails == flexbox-inlinecontent-horiz-1b.xhtml flexbox-inlinecontent-horiz-1-ref.xhtml # reference case rendering is incorrect; bug 858333
 == flexbox-inlinecontent-horiz-2.xhtml  flexbox-inlinecontent-horiz-2-ref.xhtml
 == flexbox-inlinecontent-horiz-3a.xhtml flexbox-inlinecontent-horiz-3-ref.xhtml
 == flexbox-inlinecontent-horiz-3b.xhtml flexbox-inlinecontent-horiz-3-ref.xhtml
@@ -103,7 +110,8 @@ fails-if(!styloVsGecko) == flexbox-inlinecontent-horiz-1b.xhtml flexbox-inlineco
 == flexbox-invalidation-1.html flexbox-invalidation-1-ref.html
 
 # Tests for flexbox in an iframe that gets resized.
-fuzzy-if(skiaContent,1,5) == flexbox-resizeviewport-1.xhtml flexbox-resizeviewport-1-ref.xhtml
+fuzzy-if(/^Windows\x20NT\x2010\.0/.test(http.oscpu),1,16) fuzzy-if(skiaContent,1,5) == flexbox-resizeviewport-1.xhtml flexbox-resizeviewport-1-ref.xhtml
+fuzzy-if(skiaContent,1,5) == flexbox-resizeviewport-2.xhtml flexbox-resizeviewport-2-ref.xhtml
 
 # Tests for flexbox styling on things that don't support it
 == flexbox-styling-on-svg-1.svg flexbox-styling-on-svg-1-ref.svg
@@ -116,3 +124,7 @@ fuzzy-if(gtkWidget,1,31) == flexbox-widget-flex-items-4.html flexbox-widget-flex
 
 # Tests for table flex items
 == flexbox-table-flex-items-1.html flexbox-table-flex-items-1-ref.html
+== flexbox-table-flex-items-2.html flexbox-table-flex-items-2-ref.html
+== flexbox-table-flex-items-3.html flexbox-table-flex-items-3-ref.html
+== flexbox-table-flex-items-4.html flexbox-table-flex-items-4-ref.html
+== flexbox-table-flex-items-5.html flexbox-table-flex-items-5-ref.html

@@ -1,13 +1,19 @@
 /* eslint-env mozilla/frame-script */
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
+ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
   "resource://testing-common/PlacesTestUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
+ChromeUtils.defineModuleGetter(this, "Preferences",
   "resource://gre/modules/Preferences.jsm");
+ChromeUtils.defineModuleGetter(this, "HttpServer",
+  "resource://testing-common/httpd.js");
+ChromeUtils.defineModuleGetter(this, "SearchTestUtils",
+  "resource://testing-common/SearchTestUtils.jsm");
+
+SearchTestUtils.init(Assert, registerCleanupFunction);
 
 /**
  * Waits for the next top-level document load in the current browser.  The URI
@@ -27,8 +33,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
  */
 function waitForDocLoadAndStopIt(aExpectedURL, aBrowser = gBrowser.selectedBrowser, aStopFromProgressListener = true) {
   function content_script(contentStopFromProgressListener) {
-    let { interfaces: Ci, utils: Cu } = Components;
-    Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+    ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
     let wp = docShell.QueryInterface(Ci.nsIWebProgress);
 
     function stopContent(now, uri) {
@@ -57,7 +62,7 @@ function waitForDocLoadAndStopIt(aExpectedURL, aBrowser = gBrowser.selectedBrows
           stopContent(contentStopFromProgressListener, chan.originalURI.spec);
         }
       },
-      QueryInterface: XPCOMUtils.generateQI(["nsISupportsWeakReference"])
+      QueryInterface: ChromeUtils.generateQI(["nsISupportsWeakReference"])
     };
     wp.addProgressListener(progressListener, wp.NOTIFY_STATE_WINDOW);
 
@@ -94,7 +99,7 @@ function is_hidden(element) {
   if (style.visibility != "visible")
     return true;
   if (style.display == "-moz-popup")
-    return ["hiding", "closed"].indexOf(element.state) != -1;
+    return ["hiding", "closed"].includes(element.state);
 
   // Hiding a parent element will hide all its children
   if (element.parentNode != element.ownerDocument)
@@ -129,6 +134,19 @@ function is_element_hidden(element, msg) {
   ok(is_hidden(element), msg || "Element should be hidden");
 }
 
+function runHttpServer(scheme, host, port = -1) {
+  let httpserver = new HttpServer();
+  try {
+    httpserver.start(port);
+    port = httpserver.identity.primaryPort;
+    httpserver.identity.setPrimary(scheme, host, port);
+  } catch (ex) {
+    info("We can't launch our http server successfully.");
+  }
+  is(httpserver.identity.has(scheme, host, port), true, `${scheme}://${host}:${port} is listening.`);
+  return httpserver;
+}
+
 function promisePopupEvent(popup, eventSuffix) {
   let endState = {shown: "open", hidden: "closed"}[eventSuffix];
 
@@ -152,11 +170,16 @@ function promisePopupHidden(popup) {
   return promisePopupEvent(popup, "hidden");
 }
 
-function promiseSearchComplete(win = window) {
+function promiseSearchComplete(win = window, dontAnimate = false) {
   return promisePopupShown(win.gURLBar.popup).then(() => {
     function searchIsComplete() {
-      return win.gURLBar.controller.searchStatus >=
-        Ci.nsIAutoCompleteController.STATUS_COMPLETE_NO_MATCH;
+      let isComplete = win.gURLBar.controller.searchStatus >=
+                       Ci.nsIAutoCompleteController.STATUS_COMPLETE_NO_MATCH;
+      if (isComplete) {
+        info(`Restore popup dontAnimate value to ${dontAnimate}`);
+        win.gURLBar.popup.setAttribute("dontanimate", dontAnimate);
+      }
+      return isComplete;
     }
 
     // Wait until there are at least two matches.
@@ -167,7 +190,10 @@ function promiseSearchComplete(win = window) {
 function promiseAutocompleteResultPopup(inputText,
                                         win = window,
                                         fireInputEvent = false) {
+  let dontAnimate = !!win.gURLBar.popup.getAttribute("dontanimate");
   waitForFocus(() => {
+    info(`Disable popup animation. Change dontAnimate value from ${dontAnimate} to true.`);
+    win.gURLBar.popup.setAttribute("dontanimate", "true");
     win.gURLBar.focus();
     win.gURLBar.value = inputText;
     if (fireInputEvent) {
@@ -179,70 +205,167 @@ function promiseAutocompleteResultPopup(inputText,
     win.gURLBar.controller.startSearch(inputText);
   }, win);
 
-  return promiseSearchComplete(win);
+  return promiseSearchComplete(win, dontAnimate);
 }
 
-function promiseNewSearchEngine(basename) {
-  return new Promise((resolve, reject) => {
-    info("Waiting for engine to be added: " + basename);
-    let url = getRootDirectory(gTestPath) + basename;
-    Services.search.addEngine(url, null, "", false, {
-      onSuccess(engine) {
-        info("Search engine added: " + basename);
-        registerCleanupFunction(() => Services.search.removeEngine(engine));
-        resolve(engine);
-      },
-      onError(errCode) {
-        Assert.ok(false, "addEngine failed with error code " + errCode);
-        reject();
-      },
-    });
+function promisePageActionPanelOpen() {
+  let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                  .getInterface(Ci.nsIDOMWindowUtils);
+  return BrowserTestUtils.waitForCondition(() => {
+    // Wait for the main page action button to become visible.  It's hidden for
+    // some URIs, so depending on when this is called, it may not yet be quite
+    // visible.  It's up to the caller to make sure it will be visible.
+    info("Waiting for main page action button to have non-0 size");
+    let bounds = dwu.getBoundsWithoutFlushing(BrowserPageActions.mainButtonNode);
+    return bounds.width > 0 && bounds.height > 0;
+  }).then(() => {
+    // Wait for the panel to become open, by clicking the button if necessary.
+    info("Waiting for main page action panel to be open");
+    if (BrowserPageActions.panelNode.state == "open") {
+      return Promise.resolve();
+    }
+    let shownPromise = promisePageActionPanelShown();
+    EventUtils.synthesizeMouseAtCenter(BrowserPageActions.mainButtonNode, {});
+    return shownPromise;
+  }).then(() => {
+    // Wait for items in the panel to become visible.
+    return promisePageActionViewChildrenVisible(BrowserPageActions.mainViewNode);
   });
 }
 
-let gPageActionPanel = document.getElementById("pageActionPanel");
-
-function promisePageActionPanelOpen() {
-  let button = document.getElementById("pageActionButton");
-  let shownPromise = promisePageActionPanelShown();
-  EventUtils.synthesizeMouseAtCenter(button, {});
-  return shownPromise;
+async function waitForActivatedActionPanel() {
+  if (!BrowserPageActions.activatedActionPanelNode) {
+    info("Waiting for activated-action panel to be added to mainPopupSet");
+    await new Promise(resolve => {
+      let observer = new MutationObserver(mutations => {
+        if (BrowserPageActions.activatedActionPanelNode) {
+          observer.disconnect();
+          resolve();
+        }
+      });
+      let popupSet = document.getElementById("mainPopupSet");
+      observer.observe(popupSet, { childList: true });
+    });
+    info("Activated-action panel added to mainPopupSet");
+  }
+  if (!BrowserPageActions.activatedActionPanelNode.state == "open") {
+    info("Waiting for activated-action panel popupshown");
+    await promisePanelShown(BrowserPageActions.activatedActionPanelNode);
+    info("Got activated-action panel popupshown");
+  }
+  let panelView =
+    BrowserPageActions.activatedActionPanelNode.querySelector("panelview");
+  if (panelView) {
+    await BrowserTestUtils.waitForEvent(
+      BrowserPageActions.activatedActionPanelNode,
+      "ViewShown"
+    );
+    await promisePageActionViewChildrenVisible(panelView);
+  }
+  return panelView;
 }
 
 function promisePageActionPanelShown() {
-  return promisePageActionPanelEvent("popupshown");
+  return promisePanelShown(BrowserPageActions.panelNode);
 }
 
 function promisePageActionPanelHidden() {
-  return promisePageActionPanelEvent("popuphidden");
+  return promisePanelHidden(BrowserPageActions.panelNode);
 }
 
-function promisePageActionPanelEvent(name) {
+function promisePanelShown(panelIDOrNode) {
+  return promisePanelEvent(panelIDOrNode, "popupshown");
+}
+
+function promisePanelHidden(panelIDOrNode) {
+  return promisePanelEvent(panelIDOrNode, "popuphidden");
+}
+
+function promisePanelEvent(panelIDOrNode, eventType) {
   return new Promise(resolve => {
-    gPageActionPanel.addEventListener(name, () => {
+    let panel = panelIDOrNode;
+    if (typeof panel == "string") {
+      panel = document.getElementById(panelIDOrNode);
+      if (!panel) {
+        throw new Error(`Panel with ID "${panelIDOrNode}" does not exist.`);
+      }
+    }
+    if ((eventType == "popupshown" && panel.state == "open") ||
+        (eventType == "popuphidden" && panel.state == "closed")) {
+      executeSoon(resolve);
+      return;
+    }
+    panel.addEventListener(eventType, () => {
       executeSoon(resolve);
     }, { once: true });
   });
 }
 
 function promisePageActionViewShown() {
-  return new Promise(resolve => {
-    gPageActionPanel.addEventListener("ViewShown", (event) => {
-      let target = event.originalTarget;
-      window.setTimeout(() => {
-        resolve(target);
-      }, 5000);
-    }, { once: true });
+  info("promisePageActionViewShown waiting for ViewShown");
+  return BrowserTestUtils.waitForEvent(BrowserPageActions.panelNode, "ViewShown").then(async event => {
+    let panelViewNode = event.originalTarget;
+    await promisePageActionViewChildrenVisible(panelViewNode);
+    return panelViewNode;
+  });
+}
+
+function promisePageActionViewChildrenVisible(panelViewNode) {
+  return promiseNodeVisible(panelViewNode.firstChild.firstChild);
+}
+
+function promiseNodeVisible(node) {
+  info(`promiseNodeVisible waiting, node.id=${node.id} node.localeName=${node.localName}\n`);
+  let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                  .getInterface(Ci.nsIDOMWindowUtils);
+  return BrowserTestUtils.waitForCondition(() => {
+    let bounds = dwu.getBoundsWithoutFlushing(node);
+    if (bounds.width > 0 && bounds.height > 0) {
+      info(`promiseNodeVisible OK, node.id=${node.id} node.localeName=${node.localName}\n`);
+      return true;
+    }
+    return false;
   });
 }
 
 function promiseSpeculativeConnection(httpserver) {
   return BrowserTestUtils.waitForCondition(() => {
     if (httpserver) {
-      is(httpserver.connectionNumber, 1,
-         `${httpserver.connectionNumber} speculative connection has been setup.`)
       return httpserver.connectionNumber == 1;
     }
     return false;
   }, "Waiting for connection setup");
+}
+
+async function waitForAutocompleteResultAt(index) {
+  let searchString = gURLBar.controller.searchString;
+  await BrowserTestUtils.waitForCondition(
+    () => gURLBar.popup.richlistbox.children.length > index &&
+          gURLBar.popup.richlistbox.children[index].getAttribute("ac-text") == searchString,
+    `Waiting for the autocomplete result for "${searchString}" at [${index}] to appear`);
+  // Ensure the addition is complete, for proper mouse events on the entries.
+  await new Promise(resolve => window.requestIdleCallback(resolve, {timeout: 1000}));
+  return gURLBar.popup.richlistbox.children[index];
+}
+
+function promiseSuggestionsPresent(msg = "") {
+  return TestUtils.waitForCondition(suggestionsPresent,
+                                    msg || "Waiting for suggestions");
+}
+
+function suggestionsPresent() {
+  let controller = gURLBar.popup.input.controller;
+  let matchCount = controller.matchCount;
+  for (let i = 0; i < matchCount; i++) {
+    let url = controller.getValueAt(i);
+    let mozActionMatch = url.match(/^moz-action:([^,]+),(.*)$/);
+    if (mozActionMatch) {
+      let [, type, paramStr] = mozActionMatch;
+      let params = JSON.parse(paramStr);
+      if (type == "searchengine" && "searchSuggestion" in params) {
+        return true;
+      }
+    }
+  }
+  return false;
 }

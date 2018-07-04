@@ -27,7 +27,7 @@
 #include "nsIPresShell.h"
 #include "nsPresContext.h"
 #include "nsViewManager.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsGkAtoms.h"
 #include "nsNetCID.h"
 #include "nsIOfflineCacheUpdate.h"
@@ -48,10 +48,12 @@
 #include "nsHTMLDNSPrefetch.h"
 #include "nsIObserverService.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/ServiceWorkerDescriptor.h"
 #include "mozilla/dom/ScriptLoader.h"
 #include "nsParserConstants.h"
 #include "nsSandboxFlags.h"
 #include "Link.h"
+#include "HTMLLinkElement.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -79,6 +81,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsContentSink)
   }
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocument)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mParser)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocShell)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mCSSLoader)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mNodeInfoManager)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mScriptLoader)
@@ -86,6 +89,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsContentSink)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDocument)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mParser)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDocShell)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCSSLoader)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mNodeInfoManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mScriptLoader)
@@ -104,6 +108,7 @@ nsContentSink::nsContentSink()
   , mDeferredFlushTags(0)
   , mIsDocumentObserver(0)
   , mRunsToCompletion(0)
+  , mIsBlockingOnload(false)
   , mDeflectedCount(0)
   , mHasPendingEvent(false)
   , mCurrentParseEndTime(0)
@@ -230,12 +235,12 @@ nsContentSink::Init(nsIDocument* aDoc,
 
 NS_IMETHODIMP
 nsContentSink::StyleSheetLoaded(StyleSheet* aSheet,
-                                bool aWasAlternate,
+                                bool aWasDeferred,
                                 nsresult aStatus)
 {
-  NS_ASSERTION(!mRunsToCompletion, "How come a fragment parser observed sheets?");
-  if (!aWasAlternate) {
-    NS_ASSERTION(mPendingSheetCount > 0, "How'd that happen?");
+  MOZ_ASSERT(!mRunsToCompletion, "How come a fragment parser observed sheets?");
+  if (!aWasDeferred) {
+    MOZ_ASSERT(mPendingSheetCount > 0, "How'd that happen?");
     --mPendingSheetCount;
 
     if (mPendingSheetCount == 0 &&
@@ -300,7 +305,7 @@ nsContentSink::ProcessHTTPHeaders(nsIChannel* aChannel)
 }
 
 nsresult
-nsContentSink::ProcessHeaderData(nsIAtom* aHeader, const nsAString& aValue,
+nsContentSink::ProcessHeaderData(nsAtom* aHeader, const nsAString& aValue,
                                  nsIContent* aContent)
 {
   nsresult rv = NS_OK;
@@ -458,6 +463,7 @@ nsContentSink::ProcessLinkHeader(const nsAString& aLinkData)
   nsAutoString media;
   nsAutoString anchor;
   nsAutoString crossOrigin;
+  nsAutoString referrerPolicy;
   nsAutoString as;
 
   crossOrigin.SetIsVoid(true);
@@ -646,6 +652,15 @@ nsContentSink::ProcessLinkHeader(const nsAString& aLinkData)
               as = value;
               as.CompressWhitespace();
             }
+          } else if (attr.LowerCaseEqualsLiteral("referrerpolicy")) {
+            // https://html.spec.whatwg.org/multipage/urls-and-fetching.html#referrer-policy-attribute
+            // Specs says referrer policy attribute is an enumerated attribute,
+            // case insensitive and includes the empty string
+            // We will parse the value with AttributeReferrerPolicyFromString
+            // later, which will handle parsing it as an enumerated attribute.
+            if (referrerPolicy.IsEmpty()) {
+              referrerPolicy = value;
+            }
           }
         }
       }
@@ -656,10 +671,10 @@ nsContentSink::ProcessLinkHeader(const nsAString& aLinkData)
 
       href.Trim(" \t\n\r\f"); // trim HTML5 whitespace
       if (!href.IsEmpty() && !rel.IsEmpty()) {
-        rv = ProcessLink(anchor, href, rel,
-                         // prefer RFC 5987 variant over non-I18zed version
-                         titleStar.IsEmpty() ? title : titleStar,
-                         type, media, crossOrigin, as);
+        rv = ProcessLinkFromHeader(anchor, href, rel,
+                                   // prefer RFC 5987 variant over non-I18zed version
+                                   titleStar.IsEmpty() ? title : titleStar,
+                                   type, media, crossOrigin, referrerPolicy, as);
       }
 
       href.Truncate();
@@ -668,7 +683,9 @@ nsContentSink::ProcessLinkHeader(const nsAString& aLinkData)
       type.Truncate();
       media.Truncate();
       anchor.Truncate();
+      referrerPolicy.Truncate();
       crossOrigin.SetIsVoid(true);
+      as.Truncate();
 
       seenParameters = false;
     }
@@ -678,10 +695,10 @@ nsContentSink::ProcessLinkHeader(const nsAString& aLinkData)
 
   href.Trim(" \t\n\r\f"); // trim HTML5 whitespace
   if (!href.IsEmpty() && !rel.IsEmpty()) {
-    rv = ProcessLink(anchor, href, rel,
-                     // prefer RFC 5987 variant over non-I18zed version
-                     titleStar.IsEmpty() ? title : titleStar,
-                     type, media, crossOrigin, as);
+    rv = ProcessLinkFromHeader(anchor, href, rel,
+                               // prefer RFC 5987 variant over non-I18zed version
+                               titleStar.IsEmpty() ? title : titleStar,
+                               type, media, crossOrigin, referrerPolicy, as);
   }
 
   return rv;
@@ -689,11 +706,12 @@ nsContentSink::ProcessLinkHeader(const nsAString& aLinkData)
 
 
 nsresult
-nsContentSink::ProcessLink(const nsAString& aAnchor, const nsAString& aHref,
-                           const nsAString& aRel, const nsAString& aTitle,
-                           const nsAString& aType, const nsAString& aMedia,
-                           const nsAString& aCrossOrigin,
-                           const nsAString& aAs)
+nsContentSink::ProcessLinkFromHeader(const nsAString& aAnchor, const nsAString& aHref,
+                                     const nsAString& aRel, const nsAString& aTitle,
+                                     const nsAString& aType, const nsAString& aMedia,
+                                     const nsAString& aCrossOrigin,
+                                     const nsAString& aReferrerPolicy,
+                                     const nsAString& aAs)
 {
   uint32_t linkTypes =
     nsStyleLinkElement::ParseLinkTypes(aRel);
@@ -706,31 +724,21 @@ nsContentSink::ProcessLink(const nsAString& aAnchor, const nsAString& aHref,
     return NS_OK;
   }
 
-  if (!nsContentUtils::PrefetchPreloadEnabled(mDocShell)) {
-    return NS_OK;
-  }
-
-  // prefetch href if relation is "next" or "prefetch"
-  if ((linkTypes & nsStyleLinkElement::eNEXT) ||
-      (linkTypes & nsStyleLinkElement::ePREFETCH) ||
-      (linkTypes & nsStyleLinkElement::ePRELOAD)) {
-    PrefetchPreloadHref(aHref, mDocument, linkTypes, aAs, aType, aMedia);
-  }
-
-  if (linkTypes & nsStyleLinkElement::ePRERENDER) {
-    nsCOMPtr<nsIURI> href;
-    nsresult rv = NS_NewURI(getter_AddRefs(href), aHref);
-    if (NS_SUCCEEDED(rv)) {
-      mDocument->PrerenderHref(href);
+  if (nsContentUtils::PrefetchPreloadEnabled(mDocShell)) {
+    // prefetch href if relation is "next" or "prefetch"
+    if ((linkTypes & nsStyleLinkElement::eNEXT) ||
+        (linkTypes & nsStyleLinkElement::ePREFETCH) ||
+        (linkTypes & nsStyleLinkElement::ePRELOAD)) {
+      PrefetchPreloadHref(aHref, mDocument, linkTypes, aAs, aType, aMedia);
     }
-  }
 
-  if (!aHref.IsEmpty() && (linkTypes & nsStyleLinkElement::eDNS_PREFETCH)) {
-    PrefetchDNS(aHref);
-  }
+    if (!aHref.IsEmpty() && (linkTypes & nsStyleLinkElement::eDNS_PREFETCH)) {
+      PrefetchDNS(aHref);
+    }
 
-  if (!aHref.IsEmpty() && (linkTypes & nsStyleLinkElement::ePRECONNECT)) {
-    Preconnect(aHref, aCrossOrigin);
+    if (!aHref.IsEmpty() && (linkTypes & nsStyleLinkElement::ePRECONNECT)) {
+      Preconnect(aHref, aCrossOrigin);
+    }
   }
 
   // is it a stylesheet link?
@@ -739,17 +747,17 @@ nsContentSink::ProcessLink(const nsAString& aAnchor, const nsAString& aHref,
   }
 
   bool isAlternate = linkTypes & nsStyleLinkElement::eALTERNATE;
-  return ProcessStyleLink(nullptr, aHref, isAlternate, aTitle, aType,
-                          aMedia);
+  return ProcessStyleLinkFromHeader(aHref, isAlternate, aTitle, aType,
+                                    aMedia, aReferrerPolicy);
 }
 
 nsresult
-nsContentSink::ProcessStyleLink(nsIContent* aElement,
-                                const nsAString& aHref,
-                                bool aAlternate,
-                                const nsAString& aTitle,
-                                const nsAString& aType,
-                                const nsAString& aMedia)
+nsContentSink::ProcessStyleLinkFromHeader(const nsAString& aHref,
+                                          bool aAlternate,
+                                          const nsAString& aTitle,
+                                          const nsAString& aType,
+                                          const nsAString& aMedia,
+                                          const nsAString& aReferrerPolicy)
 {
   if (aAlternate && aTitle.IsEmpty()) {
     // alternates must have title return without error, for now
@@ -775,30 +783,23 @@ nsContentSink::ProcessStyleLink(nsIContent* aElement,
     return NS_OK;
   }
 
-  NS_ASSERTION(!aElement ||
-               aElement->NodeType() == nsIDOMNode::PROCESSING_INSTRUCTION_NODE,
-               "We only expect processing instructions here");
-
-  nsAutoString integrity;
-  if (aElement) {
-    aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::integrity, integrity);
+  mozilla::net::ReferrerPolicy referrerPolicy =
+    mozilla::net::AttributeReferrerPolicyFromString(aReferrerPolicy);
+  if (referrerPolicy == net::RP_Unset) {
+    referrerPolicy = mDocument->GetReferrerPolicy();
   }
-  if (!integrity.IsEmpty()) {
-    MOZ_LOG(dom::SRILogHelper::GetSriLog(), mozilla::LogLevel::Debug,
-            ("nsContentSink::ProcessStyleLink, integrity=%s",
-             NS_ConvertUTF16toUTF8(integrity).get()));
-  }
-
   // If this is a fragment parser, we don't want to observe.
   // We don't support CORS for processing instructions
-  bool isAlternate;
-  rv = mCSSLoader->LoadStyleLink(aElement, url, aTitle, aMedia, aAlternate,
-                                 CORS_NONE, mDocument->GetReferrerPolicy(),
-                                 integrity, mRunsToCompletion ? nullptr : this,
-                                 &isAlternate);
-  NS_ENSURE_SUCCESS(rv, rv);
+  auto loadResultOrErr =
+    mCSSLoader->LoadStyleLink(nullptr, url, nullptr, aTitle, aMedia, aAlternate,
+                              CORS_NONE, referrerPolicy,
+                              /* integrity = */ EmptyString(),
+                              mRunsToCompletion ? nullptr : this);
+  if (loadResultOrErr.isErr()) {
+    return loadResultOrErr.unwrapErr();
+  }
 
-  if (!isAlternate && !mRunsToCompletion) {
+  if (loadResultOrErr.unwrap().ShouldBlock() && !mRunsToCompletion) {
     ++mPendingSheetCount;
     mScriptLoader->AddParserBlockingScriptExecutionBlocker();
   }
@@ -811,12 +812,15 @@ nsresult
 nsContentSink::ProcessMETATag(nsIContent* aContent)
 {
   NS_ASSERTION(aContent, "missing meta-element");
+  MOZ_ASSERT(aContent->IsElement());
+
+  Element* element = aContent->AsElement();
 
   nsresult rv = NS_OK;
 
   // set any HTTP-EQUIV data into document's header data as well as url
   nsAutoString header;
-  aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::httpEquiv, header);
+  element->GetAttr(kNameSpaceID_None, nsGkAtoms::httpEquiv, header);
   if (!header.IsEmpty()) {
     // Ignore META REFRESH when document is sandboxed from automatic features.
     nsContentUtils::ASCIIToLower(header);
@@ -825,19 +829,25 @@ nsContentSink::ProcessMETATag(nsIContent* aContent)
       return NS_OK;
     }
 
+    // Don't allow setting cookies in <meta http-equiv> in cookie averse
+    // documents.
+    if (nsGkAtoms::setcookie->Equals(header) && mDocument->IsCookieAverse()) {
+      return NS_OK;
+    }
+
     nsAutoString result;
-    aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::content, result);
+    element->GetAttr(kNameSpaceID_None, nsGkAtoms::content, result);
     if (!result.IsEmpty()) {
-      nsCOMPtr<nsIAtom> fieldAtom(NS_Atomize(header));
-      rv = ProcessHeaderData(fieldAtom, result, aContent);
+      RefPtr<nsAtom> fieldAtom(NS_Atomize(header));
+      rv = ProcessHeaderData(fieldAtom, result, element);
     }
   }
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (aContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::name,
-                            nsGkAtoms::handheldFriendly, eIgnoreCase)) {
+  if (element->AttrValueIs(kNameSpaceID_None, nsGkAtoms::name,
+                           nsGkAtoms::handheldFriendly, eIgnoreCase)) {
     nsAutoString result;
-    aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::content, result);
+    element->GetAttr(kNameSpaceID_None, nsGkAtoms::content, result);
     if (!result.IsEmpty()) {
       nsContentUtils::ASCIIToLower(result);
       mDocument->SetHeaderData(nsGkAtoms::handheldFriendly, result);
@@ -878,8 +888,8 @@ nsContentSink::PrefetchPreloadHref(const nsAString &aHref,
         nsAutoString mimeType;
         nsAutoString notUsed;
         nsContentUtils::SplitMimeType(aType, mimeType, notUsed);
-        if (!nsStyleLinkElement::CheckPreloadAttrs(asAttr, mimeType,
-                                                   aMedia,mDocument)) {
+        if (!HTMLLinkElement::CheckPreloadAttrs(asAttr, mimeType,
+                                                aMedia,mDocument)) {
           policyType = nsIContentPolicy::TYPE_INVALID;
         }
 
@@ -1067,7 +1077,7 @@ nsContentSink::ProcessOfflineManifest(nsIContent *aElement)
 
   // Check for a manifest= attribute.
   nsAutoString manifestSpec;
-  aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::manifest, manifestSpec);
+  aElement->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::manifest, manifestSpec);
   ProcessOfflineManifest(manifestSpec);
 }
 
@@ -1082,7 +1092,7 @@ nsContentSink::ProcessOfflineManifest(const nsAString& aManifestSpec)
 
   // If this document has been interecepted, let's skip the processing of the
   // manifest.
-  if (nsContentUtils::IsControlledByServiceWorker(mDocument)) {
+  if (mDocument->GetController().isSome()) {
     return;
   }
 
@@ -1257,9 +1267,7 @@ nsContentSink::StartLayout(bool aIgnorePendingSheets)
   // docshell in the iframe, and the content sink's call to OpenBody().
   // (Bug 153815)
   if (shell && !shell->DidInitialize()) {
-    nsRect r = shell->GetPresContext()->GetVisibleArea();
-    nsCOMPtr<nsIPresShell> shellGrip = shell;
-    nsresult rv = shell->Initialize(r.width, r.height);
+    nsresult rv = shell->Initialize();
     if (NS_FAILED(rv)) {
       return;
     }
@@ -1286,8 +1294,7 @@ nsContentSink::NotifyAppend(nsIContent* aContainer, uint32_t aStartIndex)
     // Scope so we call EndUpdate before we decrease mInNotification
     MOZ_AUTO_DOC_UPDATE(mDocument, UPDATE_CONTENT_MODEL, !mBeganUpdate);
     nsNodeUtils::ContentAppended(aContainer,
-                                 aContainer->GetChildAt(aStartIndex),
-                                 aStartIndex);
+                                 aContainer->GetChildAt_Deprecated(aStartIndex));
     mLastNotificationTime = PR_Now();
   }
 
@@ -1379,20 +1386,14 @@ nsContentSink::WillInterruptImpl()
         // Convert to milliseconds
         delay /= PR_USEC_PER_MSEC;
 
-        mNotificationTimer = do_CreateInstance("@mozilla.org/timer;1",
-                                               &result);
-        if (NS_SUCCEEDED(result)) {
+        NS_NewTimerWithCallback(getter_AddRefs(mNotificationTimer),
+                                this, delay,
+                                nsITimer::TYPE_ONE_SHOT);
+        if (mNotificationTimer) {
           SINK_TRACE(static_cast<LogModule*>(gContentSinkLogModuleInfo),
                      SINK_TRACE_REFLOW,
                      ("nsContentSink::WillInterrupt: setting up timer with "
                       "delay %d", delay));
-
-          result =
-            mNotificationTimer->InitWithCallback(this, delay,
-                                                 nsITimer::TYPE_ONE_SHOT);
-          if (NS_FAILED(result)) {
-            mNotificationTimer = nullptr;
-          }
         }
       }
     }
@@ -1566,8 +1567,14 @@ nsContentSink::DropParserAndPerfHint(void)
     FavorPerformanceHint(true, 0);
   }
 
-  if (!mRunsToCompletion) {
+  // Call UnblockOnload only if mRunsToComletion is false and if
+  // we have already started loading because it's possible that this function
+  // is called (i.e. the parser is terminated) before we start loading due to
+  // destroying the window inside unload event callbacks for the previous
+  // document.
+  if (!mRunsToCompletion && mIsBlockingOnload) {
     mDocument->UnblockOnload(true);
+    mIsBlockingOnload = false;
   }
 }
 
@@ -1622,6 +1629,7 @@ nsContentSink::WillBuildModelImpl()
 {
   if (!mRunsToCompletion) {
     mDocument->BlockOnload();
+    mIsBlockingOnload = true;
 
     mBeginLoadTime = PR_IntervalToMicroseconds(PR_IntervalNow());
   }
@@ -1639,6 +1647,8 @@ nsContentSink::WillBuildModelImpl()
 void
 nsContentSink::NotifyDocElementCreated(nsIDocument* aDoc)
 {
+  MOZ_ASSERT(nsContentUtils::IsSafeToRunScript());
+
   nsCOMPtr<nsIObserverService> observerService =
     mozilla::services::GetObserverService();
   if (observerService) {

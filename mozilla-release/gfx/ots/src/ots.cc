@@ -14,10 +14,10 @@
 #include <map>
 #include <vector>
 
-#include "woff2_dec.h"
+#include <woff2/decode.h>
 
 // The OpenType Font File
-// http://www.microsoft.com/typography/otspec/cmap.htm
+// http://www.microsoft.com/typography/otspec/otff.htm
 
 #include "cff.h"
 #include "cmap.h"
@@ -47,6 +47,27 @@
 #include "vmtx.h"
 #include "vorg.h"
 
+// Graphite tables
+#ifdef OTS_GRAPHITE
+#include "feat.h"
+#include "glat.h"
+#include "gloc.h"
+#include "sile.h"
+#include "silf.h"
+#include "sill.h"
+#endif
+
+#ifdef OTS_VARIATIONS
+#include "avar.h"
+#include "cvar.h"
+#include "fvar.h"
+#include "gvar.h"
+#include "hvar.h"
+#include "mvar.h"
+#include "stat.h"
+#include "vvar.h"
+#endif
+
 namespace ots {
 
 struct Arena {
@@ -68,6 +89,17 @@ struct Arena {
   std::vector<uint8_t*> hunks_;
 };
 
+bool CheckTag(uint32_t tag_value) {
+  for (unsigned i = 0; i < 4; ++i) {
+    const uint32_t check = tag_value & 0xff;
+    if (check < 32 || check > 126) {
+      return false;  // non-ASCII character found.
+    }
+    tag_value >>= 8;
+  }
+  return true;
+}
+
 }; // namespace ots
 
 namespace {
@@ -80,17 +112,6 @@ namespace {
 #define OTS_FAILURE_MSG_HDR(...)       OTS_FAILURE_MSG_(header, __VA_ARGS__)
 #define OTS_WARNING_MSG_HDR(...)       OTS_WARNING_MSG_(header, __VA_ARGS__)
 
-
-bool CheckTag(uint32_t tag_value) {
-  for (unsigned i = 0; i < 4; ++i) {
-    const uint32_t check = tag_value & 0xff;
-    if (check < 32 || check > 126) {
-      return false;  // non-ASCII character found.
-    }
-    tag_value >>= 8;
-  }
-  return true;
-}
 
 const struct {
   uint32_t tag;
@@ -116,6 +137,18 @@ const struct {
   { OTS_TAG_LTSH, false },
   { OTS_TAG_VORG, false },
   { OTS_TAG_KERN, false },
+  // We need to parse fvar table before other tables that may need to know
+  // the number of variation axes (if any)
+#ifdef OTS_VARIATIONS
+  { OTS_TAG_FVAR, false },
+  { OTS_TAG_AVAR, false },
+  { OTS_TAG_CVAR, false },
+  { OTS_TAG_GVAR, false },
+  { OTS_TAG_HVAR, false },
+  { OTS_TAG_MVAR, false },
+  { OTS_TAG_STAT, false },
+  { OTS_TAG_VVAR, false },
+#endif
   // We need to parse GDEF table in advance of parsing GSUB/GPOS tables
   // because they could refer GDEF table.
   { OTS_TAG_GDEF, false },
@@ -124,6 +157,15 @@ const struct {
   { OTS_TAG_VHEA, false },
   { OTS_TAG_VMTX, false },
   { OTS_TAG_MATH, false },
+  // Graphite tables
+#ifdef OTS_GRAPHITE
+  { OTS_TAG_GLOC, false },
+  { OTS_TAG_GLAT, false },
+  { OTS_TAG_FEAT, false },
+  { OTS_TAG_SILF, false },
+  { OTS_TAG_SILE, false },
+  { OTS_TAG_SILL, false },
+#endif
   { 0, false },
 };
 
@@ -561,7 +603,7 @@ bool ProcessGeneric(ots::FontFile *header,
     }
 
     // all tag names must be built from printable ASCII characters
-    if (!CheckTag(tables[i].tag)) {
+    if (!ots::CheckTag(tables[i].tag)) {
       OTS_WARNING_MSG_HDR("Invalid table tag: 0x%X", tables[i].tag);
     }
 
@@ -667,7 +709,7 @@ bool ProcessGeneric(ots::FontFile *header,
     }
   }
 
-  if (font->GetTable(OTS_TAG_CFF)) {
+  if (font->GetTable(OTS_TAG_CFF) || font->GetTable(OTS_TAG('C', 'F', 'F', '2'))) {
     // font with PostScript glyph
     if (font->version != OTS_TAG('O','T','T','O')) {
       return OTS_FAILURE_MSG_HDR("wrong font version for PostScript glyph data");
@@ -869,6 +911,25 @@ bool Font::ParseTable(const TableEntry& table_entry, const uint8_t* data,
       case OTS_TAG_VORG: table = new OpenTypeVORG(this, tag); break;
       case OTS_TAG_VHEA: table = new OpenTypeVHEA(this, tag); break;
       case OTS_TAG_VMTX: table = new OpenTypeVMTX(this, tag); break;
+      // Graphite tables
+#ifdef OTS_GRAPHITE
+      case OTS_TAG_FEAT: table = new OpenTypeFEAT(this, tag); break;
+      case OTS_TAG_GLAT: table = new OpenTypeGLAT(this, tag); break;
+      case OTS_TAG_GLOC: table = new OpenTypeGLOC(this, tag); break;
+      case OTS_TAG_SILE: table = new OpenTypeSILE(this, tag); break;
+      case OTS_TAG_SILF: table = new OpenTypeSILF(this, tag); break;
+      case OTS_TAG_SILL: table = new OpenTypeSILL(this, tag); break;
+#endif
+#ifdef OTS_VARIATIONS
+      case OTS_TAG_AVAR: table = new OpenTypeAVAR(this, tag); break;
+      case OTS_TAG_CVAR: table = new OpenTypeCVAR(this, tag); break;
+      case OTS_TAG_FVAR: table = new OpenTypeFVAR(this, tag); break;
+      case OTS_TAG_GVAR: table = new OpenTypeGVAR(this, tag); break;
+      case OTS_TAG_HVAR: table = new OpenTypeHVAR(this, tag); break;
+      case OTS_TAG_MVAR: table = new OpenTypeMVAR(this, tag); break;
+      case OTS_TAG_STAT: table = new OpenTypeSTAT(this, tag); break;
+      case OTS_TAG_VVAR: table = new OpenTypeVVAR(this, tag); break;
+#endif
       default: break;
     }
   }
@@ -910,6 +971,38 @@ Table* Font::GetTypedTable(uint32_t tag) const {
   return NULL;
 }
 
+void Font::DropGraphite() {
+  file->context->Message(0, "Dropping all Graphite tables");
+  for (const std::pair<uint32_t, Table*> entry : m_tables) {
+    if (entry.first == OTS_TAG_FEAT ||
+        entry.first == OTS_TAG_GLAT ||
+        entry.first == OTS_TAG_GLOC ||
+        entry.first == OTS_TAG_SILE ||
+        entry.first == OTS_TAG_SILF ||
+        entry.first == OTS_TAG_SILL) {
+      entry.second->Drop("Discarding Graphite table");
+    }
+  }
+  dropped_graphite = true;
+}
+
+void Font::DropVariations() {
+  file->context->Message(0, "Dropping all Variation tables");
+  for (const std::pair<uint32_t, Table*> entry : m_tables) {
+    if (entry.first == OTS_TAG_AVAR ||
+        entry.first == OTS_TAG_CVAR ||
+        entry.first == OTS_TAG_FVAR ||
+        entry.first == OTS_TAG_GVAR ||
+        entry.first == OTS_TAG_HVAR ||
+        entry.first == OTS_TAG_MVAR ||
+        entry.first == OTS_TAG_STAT ||
+        entry.first == OTS_TAG_VVAR) {
+      entry.second->Drop("Discarding Variations table");
+    }
+  }
+  dropped_variations = true;
+}
+
 bool Table::ShouldSerialize() {
   return m_shouldSerialize;
 }
@@ -947,6 +1040,26 @@ bool Table::Drop(const char *format, ...) {
   m_font->file->context->Message(0, "Table discarded");
   va_end(va);
 
+  return true;
+}
+
+bool Table::DropGraphite(const char *format, ...) {
+  va_list va;
+  va_start(va, format);
+  Message(0, format, va);
+  va_end(va);
+
+  m_font->DropGraphite();
+  return true;
+}
+
+bool Table::DropVariations(const char *format, ...) {
+  va_list va;
+  va_start(va, format);
+  Message(0, format, va);
+  va_end(va);
+
+  m_font->DropVariations();
   return true;
 }
 

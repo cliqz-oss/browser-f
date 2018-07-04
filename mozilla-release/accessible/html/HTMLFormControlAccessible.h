@@ -10,6 +10,7 @@
 #include "HyperTextAccessibleWrap.h"
 
 namespace mozilla {
+class TextEditor;
 namespace a11y {
 
 /**
@@ -113,10 +114,11 @@ public:
 
   HTMLTextFieldAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLTextFieldAccessible,
+                                       HyperTextAccessibleWrap)
 
   // HyperTextAccessible
-  virtual already_AddRefed<nsIEditor> GetEditor() const override;
+  virtual already_AddRefed<TextEditor> GetEditor() const override;
 
   // Accessible
   virtual void Value(nsString& aValue) override;

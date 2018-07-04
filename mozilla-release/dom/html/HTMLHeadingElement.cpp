@@ -32,8 +32,9 @@ HTMLHeadingElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 
 bool
 HTMLHeadingElement::ParseAttribute(int32_t aNamespaceID,
-                                   nsIAtom* aAttribute,
+                                   nsAtom* aAttribute,
                                    const nsAString& aValue,
+                                   nsIPrincipal* aMaybeScriptedPrincipal,
                                    nsAttrValue& aResult)
 {
   if (aAttribute == nsGkAtoms::align && aNamespaceID == kNameSpaceID_None) {
@@ -41,7 +42,7 @@ HTMLHeadingElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 void
@@ -53,7 +54,7 @@ HTMLHeadingElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
 }
 
 NS_IMETHODIMP_(bool)
-HTMLHeadingElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+HTMLHeadingElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry* const map[] = {
     sDivAlignAttributeMap,

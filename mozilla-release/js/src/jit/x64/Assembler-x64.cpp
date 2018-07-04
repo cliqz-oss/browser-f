@@ -172,18 +172,25 @@ Assembler::PatchableJumpAddress(JitCode* code, size_t index)
 
 /* static */
 void
-Assembler::PatchJumpEntry(uint8_t* entry, uint8_t* target, ReprotectCode reprotect)
+Assembler::PatchJumpEntry(uint8_t* entry, uint8_t* target)
 {
     uint8_t** index = (uint8_t**) (entry + SizeOfExtendedJump - sizeof(void*));
-    MaybeAutoWritableJitCode awjc(index, sizeof(void*), reprotect);
     *index = target;
 }
 
 void
 Assembler::finish()
 {
-    if (!jumps_.length() || oom())
+    if (oom())
         return;
+
+    if (!jumps_.length()) {
+        // Since we may be folowed by non-executable data, eagerly insert an
+        // undefined instruction byte to prevent processors from decoding
+        // gibberish into their pipelines. See Intel performance guides.
+        masm.ud2();
+        return;
+    }
 
     // Emit the jump table.
     masm.haltingAlign(SizeOfJumpTableEntry);

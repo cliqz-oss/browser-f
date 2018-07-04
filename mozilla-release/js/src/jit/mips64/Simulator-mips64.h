@@ -35,11 +35,15 @@
 #include "mozilla/Atomics.h"
 
 #include "jit/IonTypes.h"
+#include "js/ProfilingFrameIterator.h"
 #include "threading/Thread.h"
 #include "vm/MutexIDs.h"
 
 namespace js {
+
 namespace jit {
+
+class JitActivation;
 
 class Simulator;
 class Redirection;
@@ -71,6 +75,7 @@ const int kNumFPURegisters = 32;
 const int kFCSRRegister = 31;
 const int kInvalidFPUControlRegister = -1;
 const uint32_t kFPUInvalidResult = static_cast<uint32_t>(1 << 31) - 1;
+const uint64_t kFPUInvalidResult64 = static_cast<uint64_t>(1ULL << 63) - 1;
 
 // FCSR constants.
 const uint32_t kFCSRInexactFlagBit = 2;
@@ -78,6 +83,12 @@ const uint32_t kFCSRUnderflowFlagBit = 3;
 const uint32_t kFCSROverflowFlagBit = 4;
 const uint32_t kFCSRDivideByZeroFlagBit = 5;
 const uint32_t kFCSRInvalidOpFlagBit = 6;
+
+const uint32_t kFCSRInexactCauseBit = 12;
+const uint32_t kFCSRUnderflowCauseBit = 13;
+const uint32_t kFCSROverflowCauseBit = 14;
+const uint32_t kFCSRDivideByZeroCauseBit = 15;
+const uint32_t kFCSRInvalidOpCauseBit = 16;
 
 const uint32_t kFCSRInexactFlagMask = 1 << kFCSRInexactFlagBit;
 const uint32_t kFCSRUnderflowFlagMask = 1 << kFCSRUnderflowFlagBit;
@@ -103,6 +114,7 @@ const uint32_t kFCSRExceptionFlagMask = kFCSRFlagMask ^ kFCSRInexactFlagMask;
 //   debugger.
 const uint32_t kMaxWatchpointCode = 31;
 const uint32_t kMaxStopCode = 127;
+const uint32_t kWasmTrapCode = 6;
 
 // -----------------------------------------------------------------------------
 // Utility functions
@@ -156,6 +168,8 @@ class Simulator {
     Simulator();
     ~Simulator();
 
+    static bool supportsAtomics() { return true; }
+
     // The currently executing Simulator instance. Potentially there can be one
     // for each native thread.
     static Simulator* Current();
@@ -184,6 +198,7 @@ class Simulator {
     double getFpuRegisterDouble(int fpureg) const;
     void setFCSRBit(uint32_t cc, bool value);
     bool testFCSRBit(uint32_t cc);
+    template <typename T>
     bool setFCSRRoundError(double original, double rounded);
 
     // Special case of set_register and get_register to access the raw PC value.
@@ -192,10 +207,6 @@ class Simulator {
 
     template <typename T>
     T get_pc_as() const { return reinterpret_cast<T>(get_pc()); }
-
-    void set_resume_pc(void* value) {
-        resume_pc_ = int64_t(value);
-     }
 
     void enable_single_stepping(SingleStepCallback cb, void* arg);
     void disable_single_stepping();
@@ -269,6 +280,12 @@ class Simulator {
     inline double readD(uint64_t addr, SimInstruction* instr);
     inline void writeD(uint64_t addr, double value, SimInstruction* instr);
 
+    inline int32_t loadLinkedW(uint64_t addr, SimInstruction* instr);
+    inline int storeConditionalW(uint64_t addr, int32_t value, SimInstruction* instr);
+
+    inline int64_t loadLinkedD(uint64_t addr, SimInstruction* instr);
+    inline int storeConditionalD(uint64_t addr, int64_t value, SimInstruction* instr);
+
     // Helper function for decodeTypeRegister.
     void configureTypeRegister(SimInstruction* instr,
                                int64_t& alu_out,
@@ -297,6 +314,11 @@ class Simulator {
     void increaseStopCounter(uint32_t code);
     void printStopInfo(uint32_t code);
 
+    JS::ProfilingFrameIterator::RegisterState registerState();
+
+    // Handle any wasm faults, returning true if the fault was handled.
+    bool handleWasmFault(uint64_t addr, unsigned numBytes);
+    bool handleWasmTrapFault();
 
     // Executes one instruction.
     void instructionDecode(SimInstruction* instr);
@@ -338,14 +360,16 @@ class Simulator {
     // FPU control register.
     uint32_t FCSR_;
 
+    bool LLBit_;
+    uintptr_t LLAddr_;
+    int64_t lastLLValue_;
+
     // Simulator support.
     char* stack_;
     uintptr_t stackLimit_;
     bool pc_modified_;
     int64_t icount_;
     int64_t break_count_;
-
-    int64_t resume_pc_;
 
     // Debugger input.
     char* lastDebuggerInput_;
@@ -398,12 +422,6 @@ class SimulatorProcess
 
     static mozilla::Atomic<size_t, mozilla::ReleaseAcquire> ICacheCheckingDisableCount;
     static void FlushICache(void* start, size_t size);
-
-    // Jitcode may be rewritten from a signal handler, but is prevented from
-    // calling FlushICache() because the signal may arrive within the critical
-    // area of an AutoLockSimulatorCache. This flag instructs the Simulator
-    // to remove all cache entries the next time it checks, avoiding false negatives.
-    static mozilla::Atomic<bool, mozilla::ReleaseAcquire> cacheInvalidatedBySignalHandler_;
 
     static void checkICacheLocked(SimInstruction* instr);
 

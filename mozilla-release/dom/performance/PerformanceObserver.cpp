@@ -10,17 +10,16 @@
 #include "mozilla/dom/PerformanceBinding.h"
 #include "mozilla/dom/PerformanceEntryBinding.h"
 #include "mozilla/dom/PerformanceObserverBinding.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerScope.h"
 #include "nsPIDOMWindow.h"
 #include "nsQueryObject.h"
 #include "nsString.h"
 #include "PerformanceEntry.h"
 #include "PerformanceObserverEntryList.h"
-#include "WorkerPrivate.h"
-#include "WorkerScope.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
-using namespace mozilla::dom::workers;
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(PerformanceObserver)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(PerformanceObserver)
@@ -82,7 +81,6 @@ PerformanceObserver::Constructor(const GlobalObject& aGlobal,
       aRv.Throw(NS_ERROR_FAILURE);
       return nullptr;
     }
-    MOZ_ASSERT(ownerWindow->IsInnerWindow());
 
     RefPtr<PerformanceObserver> observer =
       new PerformanceObserver(ownerWindow, aCb);
@@ -113,12 +111,13 @@ PerformanceObserver::Notify()
   RefPtr<PerformanceObserverEntryList> list =
     new PerformanceObserverEntryList(this, mQueuedEntries);
 
+  mQueuedEntries.Clear();
+
   ErrorResult rv;
   mCallback->Call(this, *list, *this, rv);
   if (NS_WARN_IF(rv.Failed())) {
     rv.SuppressException();
   }
-  mQueuedEntries.Clear();
 }
 
 void
@@ -169,6 +168,17 @@ PerformanceObserver::Observe(const PerformanceObserverInit& aOptions,
   mEntryTypes.SwapElements(validEntryTypes);
 
   mPerformance->AddObserver(this);
+
+  if (aOptions.mBuffered) {
+    for (auto entryType : mEntryTypes) {
+      nsTArray<RefPtr<PerformanceEntry>> existingEntries;
+      mPerformance->GetEntriesByType(entryType, existingEntries);
+      if (!existingEntries.IsEmpty()) {
+        mQueuedEntries.AppendElements(existingEntries);
+      }
+    }
+  }
+
   mConnected = true;
 }
 
@@ -180,4 +190,11 @@ PerformanceObserver::Disconnect()
     mPerformance->RemoveObserver(this);
     mConnected = false;
   }
+}
+
+void
+PerformanceObserver::TakeRecords(nsTArray<RefPtr<PerformanceEntry>>& aRetval)
+{
+  MOZ_ASSERT(aRetval.IsEmpty());
+  aRetval.SwapElements(mQueuedEntries);
 }

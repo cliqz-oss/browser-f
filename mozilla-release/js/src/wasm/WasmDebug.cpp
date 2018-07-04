@@ -21,11 +21,14 @@
 #include "mozilla/BinarySearch.h"
 
 #include "ds/Sort.h"
+#include "gc/FreeOp.h"
 #include "jit/ExecutableAllocator.h"
 #include "jit/MacroAssembler.h"
+#include "util/StringBuffer.h"
+#include "util/Text.h"
 #include "vm/Debugger.h"
-#include "vm/StringBuffer.h"
 #include "wasm/WasmBinaryToText.h"
+#include "wasm/WasmInstance.h"
 #include "wasm/WasmValidate.h"
 
 using namespace js;
@@ -392,9 +395,9 @@ DebugState::toggleBreakpointTrap(JSRuntime* rt, uint32_t offset, bool enabled)
         return;
     size_t debugTrapOffset = callSite->returnAddressOffset();
 
-    const CodeSegment& codeSegment = code_->segment(Tier::Debug);
-    const CodeRange* codeRange = code_->lookupRange(codeSegment.base() + debugTrapOffset);
-    MOZ_ASSERT(codeRange && codeRange->isFunction());
+    const ModuleSegment& codeSegment = code_->segment(Tier::Debug);
+    const CodeRange* codeRange = code_->lookupFuncRange(codeSegment.base() + debugTrapOffset);
+    MOZ_ASSERT(codeRange);
 
     if (stepModeCounters_.initialized() && stepModeCounters_.lookup(codeRange->funcIndex()))
         return; // no need to toggle when step mode is enabled
@@ -416,7 +419,7 @@ DebugState::getOrCreateBreakpointSite(JSContext* cx, uint32_t offset)
 
     WasmBreakpointSiteMap::AddPtr p = breakpointSites_.lookupForAdd(offset);
     if (!p) {
-        site = cx->runtime()->new_<WasmBreakpointSite>(this, offset);
+        site = cx->zone()->new_<WasmBreakpointSite>(this, offset);
         if (!site || !breakpointSites_.add(p, offset, site)) {
             js_delete(site);
             ReportOutOfMemory(cx);
@@ -511,7 +514,7 @@ DebugState::adjustEnterAndLeaveFrameTrapsState(JSContext* cx, bool enabled)
     if (wasEnabled == stillEnabled)
         return;
 
-    const CodeSegment& codeSegment = code_->segment(Tier::Debug);
+    const ModuleSegment& codeSegment = code_->segment(Tier::Debug);
     AutoWritableJitCode awjc(cx->runtime(), codeSegment.base(), codeSegment.length());
     AutoFlushICache afc("Code::adjustEnterAndLeaveFrameTrapsState");
     AutoFlushICache::setRange(uintptr_t(codeSegment.base()), codeSegment.length());
@@ -539,7 +542,7 @@ DebugState::debugGetLocalTypes(uint32_t funcIndex, ValTypeVector* locals, size_t
     size_t offsetInModule = range.funcLineOrBytecode();
     Decoder d(maybeBytecode_->begin() + offsetInModule,  maybeBytecode_->end(),
               offsetInModule, /* error = */ nullptr);
-    return DecodeLocalEntries(d, metadata().kind, locals);
+    return DecodeLocalEntries(d, metadata().kind, metadata().temporaryHasGcTypes, locals);
 }
 
 ExprType
@@ -549,6 +552,63 @@ DebugState::debugGetResultType(uint32_t funcIndex)
     return metadata().debugFuncReturnTypes[funcIndex];
 }
 
+bool
+DebugState::getGlobal(Instance& instance, uint32_t globalIndex, MutableHandleValue vp)
+{
+    const GlobalDesc& global = metadata().globals[globalIndex];
+
+    if (global.isConstant()) {
+        Val value = global.constantValue();
+        switch (value.type()) {
+          case ValType::I32:
+            vp.set(Int32Value(value.i32()));
+            break;
+          case ValType::I64:
+          // Just display as a Number; it's ok if we lose some precision
+            vp.set(NumberValue((double)value.i64()));
+            break;
+          case ValType::F32:
+            vp.set(NumberValue(JS::CanonicalizeNaN(value.f32())));
+            break;
+          case ValType::F64:
+            vp.set(NumberValue(JS::CanonicalizeNaN(value.f64())));
+            break;
+          default:
+            MOZ_CRASH("Global constant type");
+        }
+        return true;
+    }
+
+    uint8_t* globalData = instance.globalData();
+    void* dataPtr = globalData + global.offset();
+    if (global.isIndirect())
+        dataPtr = *static_cast<void**>(dataPtr);
+    switch (global.type()) {
+      case ValType::I32: {
+        vp.set(Int32Value(*static_cast<int32_t*>(dataPtr)));
+        break;
+      }
+      case ValType::I64: {
+        // Just display as a Number; it's ok if we lose some precision
+        vp.set(NumberValue((double)*static_cast<int64_t*>(dataPtr)));
+        break;
+      }
+      case ValType::F32: {
+        vp.set(NumberValue(JS::CanonicalizeNaN(*static_cast<float*>(dataPtr))));
+        break;
+      }
+      case ValType::F64: {
+        vp.set(NumberValue(JS::CanonicalizeNaN(*static_cast<double*>(dataPtr))));
+        break;
+      }
+      default:
+        MOZ_CRASH("Global variable type");
+        break;
+    }
+    return true;
+}
+
+
 JSString*
 DebugState::debugDisplayURL(JSContext* cx) const
 {
@@ -556,9 +616,11 @@ DebugState::debugDisplayURL(JSContext* cx) const
     // - "wasm:" as protocol;
     // - URI encoded filename from metadata (if can be encoded), plus ":";
     // - 64-bit hash of the module bytes (as hex dump).
+
     js::StringBuffer result(cx);
     if (!result.append("wasm:"))
         return nullptr;
+
     if (const char* filename = metadata().filename.get()) {
         js::StringBuffer filenamePrefix(cx);
         // EncodeURI returns false due to invalid chars or OOM -- fail only
@@ -567,19 +629,25 @@ DebugState::debugDisplayURL(JSContext* cx) const
             if (!cx->isExceptionPending())
                 return nullptr;
             cx->clearPendingException(); // ignore invalid URI
-        } else if (!result.append(filenamePrefix.finishString()) || !result.append(":")) {
+        } else if (!result.append(filenamePrefix.finishString())) {
             return nullptr;
         }
     }
 
-    const ModuleHash& hash = metadata().hash;
-    for (size_t i = 0; i < sizeof(ModuleHash); i++) {
-        char digit1 = hash[i] / 16, digit2 = hash[i] % 16;
-        if (!result.append((char)(digit1 < 10 ? digit1 + '0' : digit1 + 'a' - 10)))
+    if (metadata().debugEnabled) {
+        if (!result.append(":"))
             return nullptr;
-        if (!result.append((char)(digit2 < 10 ? digit2 + '0' : digit2 + 'a' - 10)))
-            return nullptr;
+
+        const ModuleHash& hash = metadata().debugHash;
+        for (size_t i = 0; i < sizeof(ModuleHash); i++) {
+            char digit1 = hash[i] / 16, digit2 = hash[i] % 16;
+            if (!result.append((char)(digit1 < 10 ? digit1 + '0' : digit1 + 'a' - 10)))
+                return nullptr;
+            if (!result.append((char)(digit2 < 10 ? digit2 + '0' : digit2 + 'a' - 10)))
+                return nullptr;
+        }
     }
+
     return result.finishString();
 }
 
@@ -616,7 +684,17 @@ DebugState::getSourceMappingURL(JSContext* cx, MutableHandleString result) const
         if (!str)
             return false;
         result.set(str);
-        break;
+        return true;
+    }
+
+    // Check presence of "SourceMap:" HTTP response header.
+    char* sourceMapURL = metadata().sourceMapURL.get();
+    if (sourceMapURL && strlen(sourceMapURL)) {
+        UTF8Chars utf8Chars(sourceMapURL, strlen(sourceMapURL));
+        JSString* str = JS_NewStringCopyUTF8N(cx, utf8Chars);
+        if (!str)
+            return false;
+        result.set(str);
     }
     return true;
 }

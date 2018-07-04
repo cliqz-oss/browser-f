@@ -9,7 +9,7 @@
 
 #include "mozilla/TypedEnumBits.h"
 
-#define STYLE_STRUCT(name_, checkdata_cb_) struct nsStyle##name_;
+#define STYLE_STRUCT(name_) struct nsStyle##name_;
 #include "nsStyleStructList.h"
 #undef STYLE_STRUCT
 
@@ -18,8 +18,11 @@
  * so don't add significant include dependencies to this file.
  */
 
+class nsWindowSizes;
 struct ServoNodeData;
 namespace mozilla {
+
+class SizeOfState;
 
 /*
  * Replaced types. These get mapped to associated Servo types in bindgen.
@@ -56,24 +59,24 @@ enum class ServoTraversalFlags : uint32_t {
   AnimationOnly = 1 << 0,
   // Traverses as normal mode but tries to update all CSS animations.
   ForCSSRuleChanges = 1 << 1,
-  // Traverse only unstyled children of the root (and their descendants).
-  UnstyledChildrenOnly = 1 << 2,
   // A forgetful traversal ignores the previous state of the frame tree, and
   // thus does not compute damage or maintain other state describing the styles
   // pre-traversal. A forgetful traversal is usually the right thing if you
   // aren't going to do a post-traversal.
   Forgetful = 1 << 3,
-  // Actively seeks out and clears change hints that may have been posted into
-  // the tree. Nonsensical without also passing Forgetful.
-  AggressivelyForgetful = 1 << 4,
-  // Clears the dirty descendants bit in the subtree.
-  ClearDirtyDescendants = 1 << 5,
-  // Clears the animation-only dirty descendants bit in the subtree.
+  // Clears all the dirty bits (dirty descendants, animation-only dirty-descendants,
+  // needs frame, descendants need frames) on the elements traversed.
+  // in the subtree.
+  ClearDirtyBits = 1 << 5,
+  // Clears only the animation-only dirty descendants bit in the subtree.
   ClearAnimationOnlyDirtyDescendants = 1 << 6,
+  // Allows the traversal to run in parallel if there are sufficient cores on
+  // the machine.
+  ParallelTraversal = 1 << 7,
   // Flush throttled animations. By default, we only update throttled animations
   // when we have other non-throttled work to do. With this flag, we
   // unconditionally tick and process them.
-  FlushThrottledAnimations = 1 << 7,
+  FlushThrottledAnimations = 1 << 8,
 };
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(ServoTraversalFlags)
@@ -89,10 +92,11 @@ enum class StyleRuleInclusion {
 
 // Represents which tasks are performed in a SequentialTask of UpdateAnimations.
 enum class UpdateAnimationsTasks : uint8_t {
-  CSSAnimations    = 1 << 0,
-  CSSTransitions   = 1 << 1,
-  EffectProperties = 1 << 2,
-  CascadeResults   = 1 << 3,
+  CSSAnimations          = 1 << 0,
+  CSSTransitions         = 1 << 1,
+  EffectProperties       = 1 << 2,
+  CascadeResults         = 1 << 3,
+  DisplayChangedFromNone = 1 << 4,
 };
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(UpdateAnimationsTasks)
@@ -129,33 +133,6 @@ struct ServoWritingMode {
   uint8_t mBits;
 };
 
-// Don't attempt to read from this
-// (see comment on ServoFontComputationData
-enum ServoKeywordSize {
-  Empty, // when the Option is None
-  XXSmall,
-  XSmall,
-  Small,
-  Medium,
-  Large,
-  XLarge,
-  XXLarge,
-  XXXLarge,
-};
-
-// Don't attempt to read from this. We can't
-// always guarantee that the interior representation
-// of this is correct (the mKeyword field may have a different padding),
-// but the entire struct should
-// have the same size and alignment as the Rust version.
-// Ensure layout tests get run if touching either side.
-struct ServoFontComputationData {
-  ServoKeywordSize mKeyword;
-  float/*32_t*/ mRatio;
-
-  static_assert(sizeof(float) == 4, "float should be 32 bit");
-};
-
 struct ServoCustomPropertiesMap {
   uintptr_t mPtr;
 };
@@ -165,14 +142,14 @@ struct ServoRuleNode {
 };
 
 
-class ServoStyleContext;
+class ComputedStyle;
 
 struct ServoVisitedStyle {
   // This is actually a strong reference
   // but ServoComputedData's destructor is
   // managed by the Rust code so we just use a
   // regular pointer
-  ServoStyleContext* mPtr;
+  ComputedStyle* mPtr;
 };
 
 template <typename T>
@@ -183,14 +160,34 @@ struct ServoRawOffsetArc {
 };
 
 struct ServoComputedValueFlags {
-  uint8_t mFlags;
+  uint16_t mFlags;
 };
 
-#define STYLE_STRUCT(name_, checkdata_cb_) struct Gecko##name_;
-#define STYLE_STRUCT_LIST_IGNORE_VARIABLES
+#define STYLE_STRUCT(name_) struct Gecko##name_;
 #include "nsStyleStructList.h"
 #undef STYLE_STRUCT
-#undef STYLE_STRUCT_LIST_IGNORE_VARIABLES
+
+// These measurements are obtained for both the UA cache and the Stylist, but
+// not all the fields are used in both cases.
+class ServoStyleSetSizes
+{
+public:
+  size_t mRuleTree;                // Stylist-only
+  size_t mPrecomputedPseudos;      // UA cache-only
+  size_t mElementAndPseudosMaps;   // Used for both
+  size_t mInvalidationMap;         // Used for both
+  size_t mRevalidationSelectors;   // Used for both
+  size_t mOther;                   // Used for both
+
+  ServoStyleSetSizes()
+    : mRuleTree(0)
+    , mPrecomputedPseudos(0)
+    , mElementAndPseudosMaps(0)
+    , mInvalidationMap(0)
+    , mRevalidationSelectors(0)
+    , mOther(0)
+  {}
+};
 
 } // namespace mozilla
 
@@ -211,20 +208,19 @@ struct ServoComputedDataForgotten
  */
 class ServoComputedData
 {
-  friend class mozilla::ServoStyleContext;
+  friend class mozilla::ComputedStyle;
 
 public:
   // Constructs via memcpy.  Will not move out of aValue.
   explicit ServoComputedData(const ServoComputedDataForgotten aValue);
 
-#define STYLE_STRUCT(name_, checkdata_cb_)                 \
+#define STYLE_STRUCT(name_)                                \
   mozilla::ServoRawOffsetArc<mozilla::Gecko##name_> name_; \
   inline const nsStyle##name_* GetStyle##name_() const;
-  #define STYLE_STRUCT_LIST_IGNORE_VARIABLES
 #include "nsStyleStructList.h"
 #undef STYLE_STRUCT
-#undef STYLE_STRUCT_LIST_IGNORE_VARIABLES
-  const nsStyleVariables* GetStyleVariables() const;
+
+  void AddSizeOfExcludingThis(nsWindowSizes& aSizes) const;
 
 private:
   mozilla::ServoCustomPropertiesMap custom_properties;
@@ -238,14 +234,6 @@ private:
   /// relevant link for this element. A element's "relevant link" is the
   /// element being matched if it is a link or the nearest ancestor link.
   mozilla::ServoVisitedStyle visited_style;
-
-  // this is the last member because most of the other members
-  // are pointer sized. This makes it easier to deal with the
-  // alignment of the fields when replacing things via bindgen
-  //
-  // This is opaque, please don't read from it from C++
-  // (see comment on ServoFontComputationData)
-  mozilla::ServoFontComputationData font_computation_data;
 
   // C++ just sees this struct as a bucket of bits, and will
   // do the wrong thing if we let it use the default copy ctor/assignment

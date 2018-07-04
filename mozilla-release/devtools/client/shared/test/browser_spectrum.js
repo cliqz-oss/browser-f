@@ -10,16 +10,16 @@ const {Spectrum} = require("devtools/client/shared/widgets/Spectrum");
 
 const TEST_URI = CHROME_URL_ROOT + "doc_spectrum.html";
 
-add_task(function* () {
-  let [host,, doc] = yield createHost("bottom", TEST_URI);
+add_task(async function() {
+  let [host,, doc] = await createHost("bottom", TEST_URI);
 
   let container = doc.getElementById("spectrum-container");
 
-  yield testCreateAndDestroyShouldAppendAndRemoveElements(container);
-  yield testPassingAColorAtInitShouldSetThatColor(container);
-  yield testSettingAndGettingANewColor(container);
-  yield testChangingColorShouldEmitEvents(container);
-  yield testSettingColorShoudUpdateTheUI(container);
+  await testCreateAndDestroyShouldAppendAndRemoveElements(container);
+  await testPassingAColorAtInitShouldSetThatColor(container);
+  await testSettingAndGettingANewColor(container);
+  await testChangingColorShouldEmitEvents(container);
+  await testSettingColorShoudUpdateTheUI(container);
 
   host.destroy();
 });
@@ -73,7 +73,7 @@ function testChangingColorShouldEmitEvents(container) {
     let s = new Spectrum(container, [255, 255, 255, 1]);
     s.show();
 
-    s.once("changed", (event, rgba, color) => {
+    s.once("changed", (rgba, color) => {
       ok(true, "Changed event was emitted on color change");
       is(rgba[0], 128, "New color is correct");
       is(rgba[1], 64, "New color is correct");

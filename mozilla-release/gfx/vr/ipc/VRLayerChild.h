@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -10,7 +11,6 @@
 
 #include "mozilla/RefPtr.h"
 #include "mozilla/gfx/PVRLayerChild.h"
-#include "GLContext.h"
 #include "gfxVR.h"
 
 class nsICanvasRenderingContextInternal;
@@ -35,7 +35,8 @@ public:
   static PVRLayerChild* CreateIPDLActor();
   static bool DestroyIPDLActor(PVRLayerChild* actor);
 
-  void Initialize(dom::HTMLCanvasElement* aCanvasElement);
+  void Initialize(dom::HTMLCanvasElement* aCanvasElement,
+                  const gfx::Rect& aLeftEyeRect, const gfx::Rect& aRightEyeRect);
   void SubmitFrame(uint64_t aFrameId);
   bool IsIPCOpen();
 
@@ -46,8 +47,6 @@ private:
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   RefPtr<dom::HTMLCanvasElement> mCanvasElement;
-  RefPtr<layers::SharedSurfaceTextureClient> mShSurfClient;
-  RefPtr<layers::TextureClient> mFront;
   bool mIPCOpen;
 
   // AddIPDLReference and ReleaseIPDLReference are only to be called by CreateIPDLActor
@@ -56,6 +55,14 @@ private:
   // actor goes down: mIPCOpen is then set to false.
   void AddIPDLReference();
   void ReleaseIPDLReference();
+
+  gfx::Rect mLeftEyeRect;
+  gfx::Rect mRightEyeRect;
+
+  RefPtr<layers::SharedSurfaceTextureClient> mThisFrameTexture;
+  RefPtr<layers::SharedSurfaceTextureClient> mLastFrameTexture;
+
+  uint64_t mLastSubmittedFrameId;
 };
 
 } // namespace gfx

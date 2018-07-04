@@ -248,6 +248,8 @@ add_task(async function testTabEventsSize() {
 
 add_task(async function testTabRemovalEvent() {
   async function background() {
+    let events = [];
+
     function awaitLoad(tabId) {
       return new Promise(resolve => {
         browser.tabs.onUpdated.addListener(function listener(tabId_, changed, tab) {
@@ -260,12 +262,13 @@ add_task(async function testTabRemovalEvent() {
     }
 
     chrome.tabs.onRemoved.addListener((tabId, info) => {
+      browser.test.assertEq(0, events.length, "No events recorded before onRemoved.");
+      events.push("onRemoved");
       browser.test.log("Make sure the removed tab is not available in the tabs.query callback.");
       chrome.tabs.query({}, tabs => {
         for (let tab of tabs) {
           browser.test.assertTrue(tab.id != tabId, "Tab query should not include removed tabId");
         }
-        browser.test.notifyPass("tabs-events");
       });
     });
 
@@ -273,6 +276,13 @@ add_task(async function testTabRemovalEvent() {
       let url = "http://example.com/browser/browser/components/extensions/test/browser/context.html";
       let tab = await browser.tabs.create({url: url});
       await awaitLoad(tab.id);
+
+      chrome.tabs.onActivated.addListener(info => {
+        browser.test.assertEq(1, events.length, "One event recorded before onActivated.");
+        events.push("onActivated");
+        browser.test.assertEq("onRemoved", events[0], "onRemoved fired before onActivated.");
+        browser.test.notifyPass("tabs-events");
+      });
 
       await browser.tabs.remove(tab.id);
     } catch (e) {
@@ -292,4 +302,56 @@ add_task(async function testTabRemovalEvent() {
   await extension.startup();
   await extension.awaitFinish("tabs-events");
   await extension.unload();
+});
+
+add_task(async function testTabCreateRelated() {
+  await SpecialPowers.pushPrefEnv({set: [
+    ["browser.tabs.opentabfor.middleclick", true],
+    ["browser.tabs.insertRelatedAfterCurrent", true],
+  ]});
+
+  async function background() {
+    let created;
+    browser.tabs.onCreated.addListener(tab => {
+      browser.test.log(`tabs.onCreated, index=${tab.index}`);
+      browser.test.assertEq(1, tab.index, "expecting tab index of 1");
+      created = tab.id;
+    });
+    browser.tabs.onMoved.addListener((id, info) => {
+      browser.test.log(`tabs.onMoved, from ${info.fromIndex} to ${info.toIndex}`);
+      browser.test.fail("tabMoved was received");
+    });
+    browser.tabs.onRemoved.addListener((tabId, info) => {
+      browser.test.assertEq(created, tabId, "removed id same as created");
+      browser.test.sendMessage("tabRemoved");
+    });
+  }
+
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      "permissions": ["tabs"],
+    },
+
+    background,
+  });
+
+  // Create a *opener* tab page which has a link to "example.com".
+  let pageURL = "http://example.com/browser/browser/components/extensions/test/browser/file_dummy.html";
+  let openerTab = await BrowserTestUtils.openNewForegroundTab(gBrowser, pageURL);
+  gBrowser.moveTabTo(openerTab, 0);
+
+  await extension.startup();
+
+  let newTabPromise = BrowserTestUtils.waitForNewTab(gBrowser, "http://example.com/#linkclick", true);
+  await BrowserTestUtils.synthesizeMouseAtCenter("#link_to_example_com",
+                                                 {button: 1}, gBrowser.selectedBrowser);
+  let openTab = await newTabPromise;
+  is(openTab.linkedBrowser.currentURI.spec, "http://example.com/#linkclick",
+     "Middle click should open site to correct url.");
+  BrowserTestUtils.removeTab(openTab);
+
+  await extension.awaitMessage("tabRemoved");
+  await extension.unload();
+
+  BrowserTestUtils.removeTab(openerTab);
 });

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -325,10 +326,9 @@ DataTransferItem::GetAsEntry(nsIPrincipal& aSubjectPrincipal,
   if (target) {
     global = target->GetOwnerGlobal();
   } else {
-    nsCOMPtr<nsIDOMEvent> event =
-      do_QueryInterface(mDataTransfer->GetParentObject());
+    RefPtr<Event> event = do_QueryObject(mDataTransfer->GetParentObject());
     if (event) {
-      global = event->InternalDOMEvent()->GetParentObject();
+      global = event->GetParentObject();
     }
   }
 
@@ -388,7 +388,7 @@ DataTransferItem::CreateFileFromInputStream(nsIInputStream* aStream)
     key = "GenericFileName";
   }
 
-  nsXPIDLString fileName;
+  nsAutoString fileName;
   nsresult rv = nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                                    key, fileName);
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -396,13 +396,8 @@ DataTransferItem::CreateFileFromInputStream(nsIInputStream* aStream)
   }
 
   uint64_t available;
-  rv = aStream->Available(&available);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return nullptr;
-  }
-
   void* data = nullptr;
-  rv = NS_ReadInputStreamToBuffer(aStream, &data, available);
+  rv = NS_ReadInputStreamToBuffer(aStream, &data, -1, &available);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return nullptr;
   }
@@ -473,8 +468,8 @@ DataTransferItem::GetAsString(FunctionStringCallback* aCallback,
   if (parent && !global) {
     if (nsCOMPtr<dom::EventTarget> target = do_QueryInterface(parent)) {
       global = target->GetOwnerGlobal();
-    } else if (nsCOMPtr<nsIDOMEvent> event = do_QueryInterface(parent)) {
-      global = event->InternalDOMEvent()->GetParentObject();
+    } else if (RefPtr<Event> event = do_QueryObject(parent)) {
+      global = event->GetParentObject();
     }
   }
   if (global) {
@@ -503,13 +498,19 @@ DataTransferItem::Data(nsIPrincipal* aPrincipal, ErrorResult& aRv)
 {
   MOZ_ASSERT(aPrincipal);
 
-  nsCOMPtr<nsIVariant> variant = DataNoSecurityCheck();
-
   // If the inbound principal is system, we can skip the below checks, as
   // they will trivially succeed.
   if (nsContentUtils::IsSystemPrincipal(aPrincipal)) {
-    return variant.forget();
+    return DataNoSecurityCheck();
   }
+
+  // We should not allow raw data to be accessed from a Protected DataTransfer.
+  // We don't prevent this access if the accessing document is Chrome.
+  if (mDataTransfer->IsProtected()) {
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIVariant> variant = DataNoSecurityCheck();
 
   MOZ_ASSERT(!ChromeOnly(), "Non-chrome code shouldn't see a ChromeOnly DataTransferItem");
   if (ChromeOnly()) {
@@ -546,12 +547,7 @@ DataTransferItem::Data(nsIPrincipal* aPrincipal, ErrorResult& aRv)
   if (NS_SUCCEEDED(rv) && data) {
     nsCOMPtr<EventTarget> pt = do_QueryInterface(data);
     if (pt) {
-      nsIScriptContext* c = pt->GetContextForEventHandlers(&rv);
-      if (NS_WARN_IF(NS_FAILED(rv) || !c)) {
-        return nullptr;
-      }
-
-      nsIGlobalObject* go = c->GetGlobalObject();
+      nsIGlobalObject* go = pt->GetOwnerGlobal();
       if (NS_WARN_IF(!go)) {
         return nullptr;
       }

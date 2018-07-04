@@ -5,7 +5,11 @@
 
 #include "InputData.h"
 
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/Touch.h"
+#include "mozilla/dom/WheelEventBinding.h"
+#include "mozilla/TextEvents.h"
+#include "nsContentUtils.h"
 #include "nsDebug.h"
 #include "nsThreadUtils.h"
 #include "mozilla/MouseEvents.h"
@@ -130,10 +134,10 @@ MultiTouchInput::MultiTouchInput(const WidgetTouchEvent& aTouchEvent)
 
     // Extract data from weird interfaces.
     int32_t identifier = domTouch->Identifier();
-    int32_t radiusX = domTouch->RadiusX();
-    int32_t radiusY = domTouch->RadiusY();
-    float rotationAngle = domTouch->RotationAngle();
-    float force = domTouch->Force();
+    int32_t radiusX = domTouch->RadiusX(CallerType::System);
+    int32_t radiusY = domTouch->RadiusY(CallerType::System);
+    float rotationAngle = domTouch->RotationAngle(CallerType::System);
+    float force = domTouch->Force(CallerType::System);
 
     SingleTouchData data(identifier,
                          ViewAs<ScreenPixel>(domTouch->mRefPoint,
@@ -269,7 +273,7 @@ MultiTouchInput::ToWidgetMouseEvent(nsIWidget* aWidget) const
 
   event.mTime = mTime;
   event.button = WidgetMouseEvent::eLeftButton;
-  event.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+  event.inputSource = MouseEventBinding::MOZ_SOURCE_TOUCH;
   event.mModifiers = modifiers;
   event.mFlags.mHandledByAPZ = mHandledByAPZ;
   event.mFocusSequenceNumber = mFocusSequenceNumber;
@@ -377,6 +381,9 @@ MouseInput::MouseInput(const WidgetMouseEventBase& aMouseEvent)
     case eMouseExitFromWidget:
       mType = MOUSE_WIDGET_EXIT;
       break;
+    case eMouseHitTest:
+      mType = MOUSE_HITTEST;
+      break;
     default:
       MOZ_ASSERT_UNREACHABLE("Mouse event type not supported");
       break;
@@ -437,6 +444,9 @@ MouseInput::ToWidgetMouseEvent(nsIWidget* aWidget) const
     case MOUSE_WIDGET_EXIT:
       msg = eMouseExitFromWidget;
       break;
+    case MOUSE_HITTEST:
+      msg = eMouseHitTest;
+      break;
     default:
       MOZ_ASSERT_UNREACHABLE("Did not assign a type to WidgetMouseEvent in MouseInput");
       break;
@@ -488,6 +498,7 @@ PanGestureInput::PanGestureInput()
   , mHandledByAPZ(false)
   , mFollowedByMomentum(false)
   , mRequiresContentResponseIfCannotScrollHorizontallyInStartDirection(false)
+  , mOverscrollBehaviorAllowsSwipe(false)
 {
 }
 
@@ -507,6 +518,7 @@ PanGestureInput::PanGestureInput(PanGestureType aType, uint32_t aTime,
   , mHandledByAPZ(false)
   , mFollowedByMomentum(false)
   , mRequiresContentResponseIfCannotScrollHorizontallyInStartDirection(false)
+  , mOverscrollBehaviorAllowsSwipe(false)
 {
 }
 
@@ -534,7 +546,7 @@ PanGestureInput::ToWidgetWheelEvent(nsIWidget* aWidget) const
     RoundedToInt(ViewAs<LayoutDevicePixel>(mPanStartPoint,
       PixelCastJustification::LayoutDeviceIsScreenForUntransformedEvent));
   wheelEvent.buttons = 0;
-  wheelEvent.mDeltaMode = nsIDOMWheelEvent::DOM_DELTA_PIXEL;
+  wheelEvent.mDeltaMode = WheelEventBinding::DOM_DELTA_PIXEL;
   wheelEvent.mMayHaveMomentum = true; // pan inputs may have momentum
   wheelEvent.mIsMomentum = IsMomentum();
   wheelEvent.mLineOrPageDeltaX = mLineOrPageDeltaX;
@@ -584,6 +596,20 @@ PinchGestureInput::PinchGestureInput()
 
 PinchGestureInput::PinchGestureInput(PinchGestureType aType, uint32_t aTime,
                                      TimeStamp aTimeStamp,
+                                     const ScreenPoint& aFocusPoint,
+                                     ParentLayerCoord aCurrentSpan,
+                                     ParentLayerCoord aPreviousSpan,
+                                     Modifiers aModifiers)
+  : InputData(PINCHGESTURE_INPUT, aTime, aTimeStamp, aModifiers)
+  , mType(aType)
+  , mFocusPoint(aFocusPoint)
+  , mCurrentSpan(aCurrentSpan)
+  , mPreviousSpan(aPreviousSpan)
+{
+}
+
+PinchGestureInput::PinchGestureInput(PinchGestureType aType, uint32_t aTime,
+                                     TimeStamp aTimeStamp,
                                      const ParentLayerPoint& aLocalFocusPoint,
                                      ParentLayerCoord aCurrentSpan,
                                      ParentLayerCoord aPreviousSpan,
@@ -598,7 +624,12 @@ PinchGestureInput::PinchGestureInput(PinchGestureType aType, uint32_t aTime,
 
 bool
 PinchGestureInput::TransformToLocal(const ScreenToParentLayerMatrix4x4& aTransform)
-{ 
+{
+  if (mFocusPoint == BothFingersLifted<ScreenPixel>()) {
+    // Special value, no transform required.
+    mLocalFocusPoint = BothFingersLifted();
+    return true;
+  }
   Maybe<ParentLayerPoint> point = UntransformBy(aTransform, mFocusPoint);
   if (!point) {
     return false;
@@ -653,6 +684,7 @@ ScrollWheelInput::ScrollWheelInput()
   , mUserDeltaMultiplierY(1.0)
   , mMayHaveMomentum(false)
   , mIsMomentum(false)
+  , mAPZAction(APZWheelAction::Scroll)
 {
 }
 
@@ -661,7 +693,9 @@ ScrollWheelInput::ScrollWheelInput(uint32_t aTime, TimeStamp aTimeStamp,
                                    ScrollDeltaType aDeltaType,
                                    const ScreenPoint& aOrigin, double aDeltaX,
                                    double aDeltaY,
-                                   bool aAllowToOverrideSystemScrollSpeed)
+                                   bool aAllowToOverrideSystemScrollSpeed,
+                                   WheelDeltaAdjustmentStrategy
+                                     aWheelDeltaAdjustmentStrategy)
   : InputData(SCROLLWHEEL_INPUT, aTime, aTimeStamp, aModifiers)
   , mDeltaType(aDeltaType)
   , mScrollMode(aScrollMode)
@@ -677,6 +711,8 @@ ScrollWheelInput::ScrollWheelInput(uint32_t aTime, TimeStamp aTimeStamp,
   , mMayHaveMomentum(false)
   , mIsMomentum(false)
   , mAllowToOverrideSystemScrollSpeed(aAllowToOverrideSystemScrollSpeed)
+  , mWheelDeltaAdjustmentStrategy(aWheelDeltaAdjustmentStrategy)
+  , mAPZAction(APZWheelAction::Scroll)
 {
 }
 
@@ -697,6 +733,8 @@ ScrollWheelInput::ScrollWheelInput(const WidgetWheelEvent& aWheelEvent)
   , mIsMomentum(aWheelEvent.mIsMomentum)
   , mAllowToOverrideSystemScrollSpeed(
       aWheelEvent.mAllowToOverrideSystemScrollSpeed)
+  , mWheelDeltaAdjustmentStrategy(WheelDeltaAdjustmentStrategy::eNone)
+  , mAPZAction(APZWheelAction::Scroll)
 {
   mOrigin =
     ScreenPoint(ViewAs<ScreenPixel>(aWheelEvent.mRefPoint,
@@ -707,11 +745,11 @@ ScrollWheelInput::ScrollDeltaType
 ScrollWheelInput::DeltaTypeForDeltaMode(uint32_t aDeltaMode)
 {
   switch (aDeltaMode) {
-  case nsIDOMWheelEvent::DOM_DELTA_LINE:
+  case WheelEventBinding::DOM_DELTA_LINE:
     return SCROLLDELTA_LINE;
-  case nsIDOMWheelEvent::DOM_DELTA_PAGE:
+  case WheelEventBinding::DOM_DELTA_PAGE:
     return SCROLLDELTA_PAGE;
-  case nsIDOMWheelEvent::DOM_DELTA_PIXEL:
+  case WheelEventBinding::DOM_DELTA_PIXEL:
     return SCROLLDELTA_PIXEL;
   default:
     MOZ_CRASH();
@@ -724,12 +762,12 @@ ScrollWheelInput::DeltaModeForDeltaType(ScrollDeltaType aDeltaType)
 {
   switch (aDeltaType) {
   case ScrollWheelInput::SCROLLDELTA_LINE:
-    return nsIDOMWheelEvent::DOM_DELTA_LINE;
+    return WheelEventBinding::DOM_DELTA_LINE;
   case ScrollWheelInput::SCROLLDELTA_PAGE:
-    return nsIDOMWheelEvent::DOM_DELTA_PAGE;
+    return WheelEventBinding::DOM_DELTA_PAGE;
   case ScrollWheelInput::SCROLLDELTA_PIXEL:
   default:
-    return nsIDOMWheelEvent::DOM_DELTA_PIXEL;
+    return WheelEventBinding::DOM_DELTA_PIXEL;
   }
 }
 

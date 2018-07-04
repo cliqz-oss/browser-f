@@ -6,11 +6,14 @@
 
 #include "vm/ProxyObject.h"
 
-#include "jscompartment.h"
-
+#include "gc/Allocator.h"
+#include "gc/GCTrace.h"
 #include "proxy/DeadObjectProxy.h"
+#include "vm/JSCompartment.h"
 
-#include "jsobjinlines.h"
+#include "gc/ObjectKind-inl.h"
+#include "vm/JSObject-inl.h"
+#include "vm/TypeInference-inl.h"
 
 using namespace js;
 
@@ -51,6 +54,7 @@ ProxyObject::New(JSContext* cx, const BaseProxyHandler* handler, HandleValue pri
     MOZ_ASSERT(clasp->shouldDelayMetadataBuilder());
     MOZ_ASSERT_IF(proto.isObject(), cx->compartment() == proto.toObject()->compartment());
     MOZ_ASSERT(clasp->hasFinalize());
+    MOZ_ASSERT_IF(priv.isGCThing(), !JS::GCThingIsMarkedGray(JS::GCCellPtr(priv)));
 
     /*
      * Eagerly mark properties unknown for proxies, so we don't try to track
@@ -114,28 +118,33 @@ ProxyObject::allocKindForTenure() const
 void
 ProxyObject::setCrossCompartmentPrivate(const Value& priv)
 {
-    *slotOfPrivate() = priv;
+    setPrivate(priv);
 }
 
 void
 ProxyObject::setSameCompartmentPrivate(const Value& priv)
 {
     MOZ_ASSERT(IsObjectValueInCompartment(priv, compartment()));
+    setPrivate(priv);
+}
+
+inline void
+ProxyObject::setPrivate(const Value& priv)
+{
+    MOZ_ASSERT_IF(IsMarkedBlack(this) && priv.isGCThing(),
+                  !JS::GCThingIsMarkedGray(JS::GCCellPtr(priv)));
     *slotOfPrivate() = priv;
 }
 
 void
 ProxyObject::nuke()
 {
-    // Select a dead proxy handler based on the properties of this wrapper.
-    // Do this before clearing the target.
-    const BaseProxyHandler* handler = SelectDeadProxyHandler(this);
-
-    // Clear the target reference.
-    setSameCompartmentPrivate(NullValue());
+    // Clear the target reference and replaced it with a value that encodes
+    // various information about the original target.
+    setSameCompartmentPrivate(DeadProxyTargetValue(this));
 
     // Update the handler to make this a DeadObjectProxy.
-    setHandler(handler);
+    setHandler(&DeadObjectProxy::singleton);
 
     // The proxy's reserved slots are not cleared and will continue to be
     // traced. This avoids the possibility of triggering write barriers while
@@ -171,12 +180,12 @@ ProxyObject::create(JSContext* cx, const Class* clasp, Handle<TaggedProto> proto
     gc::InitialHeap heap = GetInitialHeap(newKind, clasp);
     debugCheckNewObject(group, shape, allocKind, heap);
 
-    JSObject* obj = js::Allocate<JSObject>(cx, allocKind, /* numDynamicSlots = */ 0, heap, clasp);
+    JSObject* obj = js::Allocate<JSObject>(cx, allocKind, /* nDynamicSlots = */ 0, heap, clasp);
     if (!obj)
         return cx->alreadyReportedOOM();
 
     ProxyObject* pobj = static_cast<ProxyObject*>(obj);
-    pobj->group_.init(group);
+    pobj->initGroup(group);
     pobj->initShape(shape);
 
     MOZ_ASSERT(clasp->shouldDelayMetadataBuilder());
@@ -195,7 +204,7 @@ ProxyObject::create(JSContext* cx, const Class* clasp, Handle<TaggedProto> proto
 }
 
 JS_FRIEND_API(void)
-js::SetValueInProxy(Value* slot, const Value& value)
+js::detail::SetValueInProxy(Value* slot, const Value& value)
 {
     // Slots in proxies are not GCPtrValues, so do a cast whenever assigning
     // values to them which might trigger a barrier.

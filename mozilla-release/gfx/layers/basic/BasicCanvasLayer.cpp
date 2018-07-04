@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -7,6 +8,7 @@
 #include "AsyncCanvasRenderer.h"
 #include "basic/BasicLayers.h"          // for BasicLayerManager
 #include "basic/BasicLayersImpl.h"      // for GetEffectiveOperator
+#include "CopyableCanvasRenderer.h"
 #include "mozilla/mozalloc.h"           // for operator new
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsISupportsImpl.h"            // for Layer::AddRef, etc
@@ -25,61 +27,6 @@ using namespace mozilla::gl;
 namespace mozilla {
 namespace layers {
 
-already_AddRefed<SourceSurface>
-BasicCanvasLayer::UpdateSurface()
-{
-  if (mAsyncRenderer) {
-    MOZ_ASSERT(!mBufferProvider);
-    MOZ_ASSERT(!mGLContext);
-    return mAsyncRenderer->GetSurface();
-  }
-
-  if (!mGLContext) {
-    return nullptr;
-  }
-
-  SharedSurface* frontbuffer = nullptr;
-  if (mGLFrontbuffer) {
-    frontbuffer = mGLFrontbuffer.get();
-  } else {
-    GLScreenBuffer* screen = mGLContext->Screen();
-    const auto& front = screen->Front();
-    if (front) {
-      frontbuffer = front->Surf();
-    }
-  }
-
-  if (!frontbuffer) {
-    NS_WARNING("Null frame received.");
-    return nullptr;
-  }
-
-  IntSize readSize(frontbuffer->mSize);
-  SurfaceFormat format = (GetContentFlags() & CONTENT_OPAQUE)
-                          ? SurfaceFormat::B8G8R8X8
-                          : SurfaceFormat::B8G8R8A8;
-  bool needsPremult = frontbuffer->mHasAlpha && !mIsAlphaPremultiplied;
-
-  RefPtr<DataSourceSurface> resultSurf = GetTempSurface(readSize, format);
-  // There will already be a warning from inside of GetTempSurface, but
-  // it doesn't hurt to complain:
-  if (NS_WARN_IF(!resultSurf)) {
-    return nullptr;
-  }
-
-  // Readback handles Flush/MarkDirty.
-  if (!mGLContext->Readback(frontbuffer, resultSurf)) {
-    NS_WARNING("Failed to read back canvas surface.");
-    return nullptr;
-  }
-  if (needsPremult) {
-    gfxUtils::PremultiplyDataSurface(resultSurf, resultSurf);
-  }
-  MOZ_ASSERT(resultSurf);
-
-  return resultSurf.forget();
-}
-
 void
 BasicCanvasLayer::Paint(DrawTarget* aDT,
                         const Point& aDeviceOffset,
@@ -89,17 +36,18 @@ BasicCanvasLayer::Paint(DrawTarget* aDT,
     return;
 
   RefPtr<SourceSurface> surface;
+  CopyableCanvasRenderer* canvasRenderer = mCanvasRenderer->AsCopyableCanvasRenderer();
+  MOZ_ASSERT(canvasRenderer);
   if (IsDirty()) {
     Painted();
 
-    FirePreTransactionCallback();
-    surface = UpdateSurface();
-    FireDidTransactionCallback();
+    surface = canvasRenderer->ReadbackSurface();
   }
 
   bool bufferPoviderSnapshot = false;
-  if (!surface && mBufferProvider) {
-    surface = mBufferProvider->BorrowSnapshot();
+  PersistentBufferProvider* bufferProvider = canvasRenderer->GetBufferProvider();
+  if (!surface && bufferProvider) {
+    surface = bufferProvider->BorrowSnapshot();
     bufferPoviderSnapshot = !!surface;
   }
 
@@ -107,29 +55,33 @@ BasicCanvasLayer::Paint(DrawTarget* aDT,
     return;
   }
 
-  const bool needsYFlip = (mOriginPos == gl::OriginPos::BottomLeft);
-
   Matrix oldTM;
-  if (needsYFlip) {
+  if (canvasRenderer->NeedsYFlip()) {
     oldTM = aDT->GetTransform();
     aDT->SetTransform(Matrix(oldTM).
-                        PreTranslate(0.0f, mBounds.height).
+                      PreTranslate(0.0f, mBounds.Height()).
                         PreScale(1.0f, -1.0f));
   }
 
   FillRectWithMask(aDT, aDeviceOffset,
-                   Rect(0, 0, mBounds.width, mBounds.height),
+                   Rect(0, 0, mBounds.Width(), mBounds.Height()),
                    surface, mSamplingFilter,
                    DrawOptions(GetEffectiveOpacity(), GetEffectiveOperator(this)),
                    aMaskLayer);
 
-  if (needsYFlip) {
+  if (canvasRenderer->NeedsYFlip()) {
     aDT->SetTransform(oldTM);
   }
 
   if (bufferPoviderSnapshot) {
-    mBufferProvider->ReturnSnapshot(surface.forget());
+    bufferProvider->ReturnSnapshot(surface.forget());
   }
+}
+
+CanvasRenderer*
+BasicCanvasLayer::CreateCanvasRendererInternal()
+{
+  return new CopyableCanvasRenderer();
 }
 
 already_AddRefed<CanvasLayer>

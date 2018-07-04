@@ -39,7 +39,7 @@ struct CYCLIC_REFRESH {
   // RD mult. parameters for segment 1.
   int rdmult;
   // Cyclic refresh map.
-  signed char *map;
+  int8_t *map;
   // Map of the last q a block was coded at.
   uint8_t *last_coded_q_map;
   // Thresholds applied to the projected rate/distortion of the coding block,
@@ -352,10 +352,7 @@ void av1_cyclic_refresh_check_golden_update(AV1_COMP *const cpi) {
   // For video conference clips, if the background has high motion in current
   // frame because of the camera movement, set this frame as the golden frame.
   // Use 70% and 5% as the thresholds for golden frame refreshing.
-  // Also, force this frame as a golden update frame if this frame will change
-  // the resolution (av1_resize_pending != 0).
-  if (av1_resize_pending(cpi) ||
-      (cnt1 * 10 > (70 * rows * cols) && cnt2 * 20 < cnt1)) {
+  if (cnt1 * 10 > (70 * rows * cols) && cnt2 * 20 < cnt1) {
     av1_cyclic_refresh_set_golden_update(cpi);
     rc->frames_till_gf_update_due = rc->baseline_gf_interval;
 
@@ -400,6 +397,7 @@ static void cyclic_refresh_update_map(AV1_COMP *const cpi) {
   // Set the segmentation map: cycle through the superblocks, starting at
   // cr->mb_index, and stopping when either block_count blocks have been found
   // to be refreshed, or we have passed through whole frame.
+  if (cr->sb_index >= sbs_in_frame) cr->sb_index = 0;
   assert(cr->sb_index < sbs_in_frame);
   i = cr->sb_index;
   cr->target_num_seg_blocks = 0;

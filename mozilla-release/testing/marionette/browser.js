@@ -5,21 +5,59 @@
 "use strict";
 /* global frame */
 
-const {utils: Cu} = Components;
-
-Cu.import("chrome://marionette/content/element.js");
+const {WebElementEventTarget} = ChromeUtils.import("chrome://marionette/content/dom.js", {});
+ChromeUtils.import("chrome://marionette/content/element.js");
 const {
   NoSuchWindowError,
   UnsupportedOperationError,
-} = Cu.import("chrome://marionette/content/error.js", {});
-Cu.import("chrome://marionette/content/frame.js");
+} = ChromeUtils.import("chrome://marionette/content/error.js", {});
+const {
+  MessageManagerDestroyedPromise,
+} = ChromeUtils.import("chrome://marionette/content/sync.js", {});
 
-this.EXPORTED_SYMBOLS = ["browser"];
+this.EXPORTED_SYMBOLS = ["browser", "Context", "WindowState"];
 
 /** @namespace */
 this.browser = {};
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+/**
+ * Variations of Marionette contexts.
+ *
+ * Choosing a context through the <tt>Marionette:SetContext</tt>
+ * command directs all subsequent browsing context scoped commands
+ * to that context.
+ */
+class Context {
+  /**
+   * Gets the correct context from a string.
+   *
+   * @param {string} s
+   *     Context string serialisation.
+   *
+   * @return {Context}
+   *     Context.
+   *
+   * @throws {TypeError}
+   *     If <var>s</var> is not a context.
+   */
+  static fromString(s) {
+    switch (s) {
+      case "chrome":
+        return Context.Chrome;
+
+      case "content":
+        return Context.Content;
+
+      default:
+        throw new TypeError(`Unknown context: ${s}`);
+    }
+  }
+}
+Context.Chrome = "chrome";
+Context.Content = "content";
+this.Context = Context;
 
 /**
  * Get the <code>&lt;xul:browser&gt;</code> for the specified tab.
@@ -46,20 +84,20 @@ browser.getBrowserForTab = function(tab) {
 /**
  * Return the tab browser for the specified chrome window.
  *
- * @param {nsIDOMWindow} win
- *     The window whose tabbrowser needs to be accessed.
+ * @param {ChromeWindow} win
+ *     Window whose <code>tabbrowser</code> needs to be accessed.
  *
  * @return {Tab}
  *     Tab browser or null if it's not a browser window.
  */
-browser.getTabBrowser = function(win) {
+browser.getTabBrowser = function(window) {
   // Fennec
-  if ("BrowserApp" in win) {
-    return win.BrowserApp;
+  if ("BrowserApp" in window) {
+    return window.BrowserApp;
 
   // Firefox
-  } else if ("gBrowser" in win) {
-    return win.gBrowser;
+  } else if ("gBrowser" in window) {
+    return window.gBrowser;
   }
 
   return null;
@@ -70,11 +108,6 @@ browser.getTabBrowser = function(win) {
  *
  * Browsing contexts handle interactions with the browser, according to
  * the current environment (Firefox, Fennec).
- *
- * @param {nsIDOMWindow} win
- *     The window whose browser needs to be accessed.
- * @param {GeckoDriver} driver
- *     Reference to the driver the browser is attached to.
  */
 browser.Context = class {
 
@@ -84,13 +117,13 @@ browser.Context = class {
    * @param {GeckoDriver} driver
    *     Reference to driver instance.
    */
-  constructor(win, driver) {
-    this.window = win;
+  constructor(window, driver) {
+    this.window = window;
     this.driver = driver;
 
     // In Firefox this is <xul:tabbrowser> (not <xul:browser>!)
     // and BrowserApp in Fennec
-    this.tabBrowser = browser.getTabBrowser(win);
+    this.tabBrowser = browser.getTabBrowser(this.window);
 
     this.knownFrames = [];
 
@@ -116,13 +149,8 @@ browser.Context = class {
     this.pendingCommands = [];
     this._needsFlushPendingCommands = false;
 
-    // We should have one frame.Manager per browser.Context so that we
-    // can handle modals in each <xul:browser>.
-    this.frameManager = new frame.Manager(driver);
     this.frameRegsPending = 0;
 
-    // register all message listeners
-    this.frameManager.addMessageManagerListeners(driver.mm);
     this.getIdForBrowser = driver.getIdForBrowser.bind(driver);
     this.updateIdForBrowser = driver.updateIdForBrowser.bind(driver);
   }
@@ -140,6 +168,28 @@ browser.Context = class {
     }
 
     return null;
+  }
+
+  get messageManager() {
+    if (this.contentBrowser) {
+      return this.contentBrowser.messageManager;
+    }
+
+    return null;
+  }
+
+  /**
+   * Checks if the browsing context has been discarded.
+   *
+   * The browsing context will have been discarded if the content
+   * browser, represented by the <code>&lt;xul:browser&gt;</code>,
+   * has been detached.
+   *
+   * @return {boolean}
+   *     True if browsing context has been discarded, false otherwise.
+   */
+  get closed() {
+    return this.contentBrowser === null;
   }
 
   /**
@@ -205,6 +255,7 @@ browser.Context = class {
       y: this.window.screenY,
       width: this.window.outerWidth,
       height: this.window.outerHeight,
+      state: WindowState.from(this.window.windowState),
     };
   }
 
@@ -233,7 +284,12 @@ browser.Context = class {
    */
   closeWindow() {
     return new Promise(resolve => {
-      this.window.addEventListener("unload", ev => {
+      // Wait for the window message manager to be destroyed
+      let destroyed = new MessageManagerDestroyedPromise(
+          this.window.messageManager);
+
+      this.window.addEventListener("unload", async () => {
+        await destroyed;
         resolve();
       }, {once: true});
       this.window.close();
@@ -260,18 +316,22 @@ browser.Context = class {
     }
 
     return new Promise((resolve, reject) => {
+      // Wait for the browser message manager to be destroyed
+      let browserDetached = async () => {
+        await new MessageManagerDestroyedPromise(this.messageManager);
+        resolve();
+      };
+
       if (this.tabBrowser.closeTab) {
         // Fennec
-        this.tabBrowser.deck.addEventListener("TabClose", ev => {
-          resolve();
-        }, {once: true});
+        this.tabBrowser.deck.addEventListener(
+            "TabClose", browserDetached, {once: true});
         this.tabBrowser.closeTab(this.tab);
 
       } else if (this.tabBrowser.removeTab) {
         // Firefox
-        this.tab.addEventListener("TabClose", ev => {
-          resolve();
-        }, {once: true});
+        this.tab.addEventListener(
+            "TabClose", browserDetached, {once: true});
         this.tabBrowser.removeTab(this.tab);
 
       } else {
@@ -297,7 +357,7 @@ browser.Context = class {
    * @param {number=} index
    *     Tab index to switch to. If the parameter is undefined,
    *     the currently selected tab will be used.
-   * @param {nsIDOMWindow=} win
+   * @param {ChromeWindow=} window
    *     Switch to this window before selecting the tab.
    * @param {boolean=} focus
    *      A boolean value which determins whether to focus
@@ -306,10 +366,10 @@ browser.Context = class {
    * @throws UnsupportedOperationError
    *     If tab handling for the current application isn't supported.
    */
-  switchToTab(index, win, focus = true) {
-    if (win) {
-      this.window = win;
-      this.tabBrowser = browser.getTabBrowser(win);
+  switchToTab(index, window = undefined, focus = true) {
+    if (window) {
+      this.window = window;
+      this.tabBrowser = browser.getTabBrowser(this.window);
     }
 
     if (!this.tabBrowser) {
@@ -335,6 +395,10 @@ browser.Context = class {
         }
       }
     }
+
+    // TODO(ato): Currently tied to curBrowser, but should be moved to
+    // WebElement when introduced by https://bugzil.la/1400256.
+    this.eventObserver = new WebElementEventTarget(this.messageManager);
   }
 
   /**
@@ -452,3 +516,47 @@ browser.Windows = class extends Map {
   }
 
 };
+
+/**
+ * Marionette representation of the {@link ChromeWindow} window state.
+ *
+ * @enum {string}
+ */
+const WindowState = {
+  Maximized: "maximized",
+  Minimized: "minimized",
+  Normal: "normal",
+  Fullscreen: "fullscreen",
+
+  /**
+   * Converts {@link nsIDOMChromeWindow.windowState} to WindowState.
+   *
+   * @param {number} windowState
+   *     Attribute from {@link nsIDOMChromeWindow.windowState}.
+   *
+   * @return {WindowState}
+   *     JSON representation.
+   *
+   * @throws {TypeError}
+   *     If <var>windowState</var> was unknown.
+   */
+  from(windowState) {
+    switch (windowState) {
+      case 1:
+        return WindowState.Maximized;
+
+      case 2:
+        return WindowState.Minimized;
+
+      case 3:
+        return WindowState.Normal;
+
+      case 4:
+        return WindowState.Fullscreen;
+
+      default:
+        throw new TypeError(`Unknown window state: ${windowState}`);
+    }
+  },
+};
+this.WindowState = WindowState;

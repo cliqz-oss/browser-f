@@ -7,8 +7,10 @@ es6id: 15.2.3
 description: The default export may not be a VariableStatement
 flags: [module]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 export default var x;

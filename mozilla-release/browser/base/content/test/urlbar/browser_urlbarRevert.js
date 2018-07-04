@@ -11,7 +11,7 @@ function test() {
         executeSoon(checkURLBarRevert);
       }
     }
-  }
+  };
 
   gBrowser.addProgressListener(pageLoaded);
   tab = BrowserTestUtils.addTab(gBrowser, "http://example.com");
@@ -28,7 +28,7 @@ function checkURLBarRevert() {
 
   gURLBar.focus();
 
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
 
   is(gURLBar.value, originalValue, "ESC reverted the location bar value");
 

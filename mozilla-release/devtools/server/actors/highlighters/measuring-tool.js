@@ -4,7 +4,7 @@
 
 "use strict";
 
-const events = require("sdk/event/core");
+const EventEmitter = require("devtools/shared/event-emitter");
 const { getCurrentZoom, getWindowDimensions,
   setIgnoreLayoutChanges } = require("devtools/shared/layout/utils");
 const {
@@ -212,7 +212,7 @@ MeasuringToolHighlighter.prototype = {
 
     this.markup.destroy();
 
-    events.emit(this, "destroy");
+    EventEmitter.emit(this, "destroy");
   },
 
   show() {
@@ -519,8 +519,8 @@ MeasuringToolHighlighter.prototype = {
 
         let { coords } = this;
 
-        x = Math.min(innerWidth + scrollX - 1, Math.max(0 + scrollX, x));
-        y = Math.min(innerHeight + scrollY, Math.max(1 + scrollY, y));
+        x = Math.min(innerWidth + scrollX, Math.max(scrollX, x));
+        y = Math.min(innerHeight + scrollY, Math.max(scrollY, y));
 
         this.setSize(x - coords.x, y - coords.y);
 

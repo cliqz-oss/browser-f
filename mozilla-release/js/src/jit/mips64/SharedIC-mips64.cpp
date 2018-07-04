@@ -4,15 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "jsiter.h"
-
 #include "jit/BaselineCompiler.h"
 #include "jit/BaselineIC.h"
 #include "jit/BaselineJIT.h"
 #include "jit/Linker.h"
 #include "jit/SharedICHelpers.h"
+#include "vm/Iteration.h"
 
-#include "jsboolinlines.h"
+#include "builtin/Boolean-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -135,7 +134,7 @@ ICBinaryArith_Int32::Compiler::generateStubCode(MacroAssembler& masm)
 
             masm.bind(&toUint);
             masm.convertUInt32ToDouble(scratchReg, FloatReg1);
-            masm.boxDouble(FloatReg1, R0);
+            masm.boxDouble(FloatReg1, R0, ScratchDoubleReg);
         } else {
             masm.ma_b(scratchReg, Imm32(0), &failure, Assembler::LessThan, ShortJump);
             // Move result for return.
@@ -154,38 +153,6 @@ ICBinaryArith_Int32::Compiler::generateStubCode(MacroAssembler& masm)
 
     return true;
 }
-
-bool
-ICUnaryArith_Int32::Compiler::generateStubCode(MacroAssembler& masm)
-{
-    Label failure;
-    masm.branchTestInt32(Assembler::NotEqual, R0, &failure);
-
-    switch (op) {
-      case JSOP_BITNOT:
-        masm.not32(R0.valueReg());
-        masm.tagValue(JSVAL_TYPE_INT32, R0.valueReg(), R0);
-        break;
-      case JSOP_NEG:
-        masm.unboxInt32(R0, ExtractTemp0);
-        // Guard against 0 and MIN_INT, both result in a double.
-        masm.branchTest32(Assembler::Zero, ExtractTemp0, Imm32(INT32_MAX), &failure);
-
-        masm.neg32(ExtractTemp0);
-        masm.tagValue(JSVAL_TYPE_INT32, ExtractTemp0, R0);
-        break;
-      default:
-        MOZ_CRASH("Unexpected op");
-        return false;
-    }
-
-    EmitReturnFromIC(masm);
-
-    masm.bind(&failure);
-    EmitStubGuardFailure(masm);
-    return true;
-}
-
 
 } // namespace jit
 } // namespace js

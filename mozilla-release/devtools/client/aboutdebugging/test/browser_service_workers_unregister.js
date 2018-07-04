@@ -14,29 +14,22 @@ const SCOPE = URL_ROOT + "service-workers/";
 const SERVICE_WORKER = SCOPE + "empty-sw.js";
 const TAB_URL = SCOPE + "empty-sw.html";
 
-add_task(function* () {
-  yield enableServiceWorkerDebugging();
+add_task(async function() {
+  await enableServiceWorkerDebugging();
 
-  let { tab, document } = yield openAboutDebugging("workers");
-
-  // Listen for mutations in the service-workers list.
-  let serviceWorkersElement = getServiceWorkerList(document);
-  let onMutation = waitForMutation(serviceWorkersElement, { childList: true });
+  let { tab, document } = await openAboutDebugging("workers");
 
   // Open a tab that registers an empty service worker.
-  let swTab = yield addTab(TAB_URL);
+  let swTab = await addTab(TAB_URL);
 
-  // Wait for the service workers-list to update.
-  yield onMutation;
+  info("Wait until the service worker appears in about:debugging");
+  await waitUntilServiceWorkerContainer(SERVICE_WORKER, document);
 
-  // Check that the service worker appears in the UI.
-  assertHasTarget(true, document, "service-workers", SERVICE_WORKER);
-
-  yield waitForServiceWorkerActivation(SERVICE_WORKER, document);
+  await waitForServiceWorkerActivation(SERVICE_WORKER, document);
 
   info("Ensure that the registration resolved before trying to interact with " +
     "the service worker.");
-  yield waitForServiceWorkerRegistered(swTab);
+  await waitForServiceWorkerRegistered(swTab);
   ok(true, "Service worker registration resolved");
 
   let targets = document.querySelectorAll("#service-workers .target");
@@ -55,13 +48,13 @@ add_task(function* () {
   let unregisterLink = target.querySelector(".unregister-link");
   ok(unregisterLink, "Found the unregister link");
 
-  onMutation = waitForMutation(serviceWorkersElement, { childList: true });
   unregisterLink.click();
-  yield onMutation;
 
-  is(document.querySelector("#service-workers .target"), null,
-   "No service worker displayed anymore.");
+  info("Wait until the service worker disappears");
+  await waitUntil(() => {
+    return !document.querySelector("#service-workers .target");
+  });
 
-  yield removeTab(swTab);
-  yield closeAboutDebugging(tab);
+  await removeTab(swTab);
+  await closeAboutDebugging(tab);
 });

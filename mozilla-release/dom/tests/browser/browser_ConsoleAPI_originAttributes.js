@@ -4,13 +4,13 @@
 const ConsoleAPIStorage = Cc["@mozilla.org/consoleAPI-storage;1"]
       .getService(Ci.nsIConsoleAPIStorage);
 
-const {WebExtensionPolicy} = Cu.import("resource://gre/modules/Services.jsm", {});
+const {WebExtensionPolicy} = Cu.getGlobalForObject(ChromeUtils.import("resource://gre/modules/Services.jsm", {}));
 
 const FAKE_ADDON_ID = "test-webext-addon@mozilla.org";
 const EXPECTED_CONSOLE_ID = `addon/${FAKE_ADDON_ID}`;
 const EXPECTED_CONSOLE_MESSAGE_CONTENT = "fake-webext-addon-test-log-message";
 const ConsoleObserver = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   init() {
     Services.obs.addObserver(this, "console-api-log-event");

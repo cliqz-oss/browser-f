@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,7 +11,7 @@
 #include <stdio.h>                      // for FILE
 #include "mozilla-config.h"             // for MOZ_DUMP_PAINTING
 #include "CompositableHost.h"           // for CompositableHost, etc
-#include "RotatedBuffer.h"              // for RotatedContentBuffer, etc
+#include "RotatedBuffer.h"              // for RotatedBuffer, etc
 #include "mozilla/Attributes.h"         // for override
 #include "mozilla/RefPtr.h"             // for RefPtr
 #include "mozilla/gfx/BasePoint.h"      // for BasePoint
@@ -20,6 +21,7 @@
 #include "mozilla/gfx/Rect.h"           // for Rect
 #include "mozilla/gfx/Types.h"          // for SamplingFilter
 #include "mozilla/layers/CompositorTypes.h"  // for TextureInfo, etc
+#include "mozilla/layers/ContentClient.h"  // for ContentClient
 #include "mozilla/layers/ISurfaceAllocator.h"  // for ISurfaceAllocator
 #include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor
 #include "mozilla/layers/LayersTypes.h"  // for etc
@@ -27,7 +29,6 @@
 #include "mozilla/mozalloc.h"           // for operator delete
 #include "mozilla/UniquePtr.h"          // for UniquePtr
 #include "nsCOMPtr.h"                   // for already_AddRefed
-#include "nsDebug.h"                    // for NS_RUNTIMEABORT
 #include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "nsPoint.h"                    // for nsIntPoint
 #include "nsRect.h"                     // for mozilla::gfx::IntRect
@@ -54,7 +55,7 @@ class ContentHost : public CompositableHost
 public:
   virtual bool UpdateThebes(const ThebesBufferData& aData,
                             const nsIntRegion& aUpdated,
-                            const nsIntRegion& aOldValidRegionBack) = 0;
+                            const nsIntRegion& aOldValidRegionBack) override = 0;
 
   virtual void SetPaintWillResample(bool aResample) { mPaintWillResample = aResample; }
   bool PaintWillResample() { return mPaintWillResample; }
@@ -67,6 +68,8 @@ public:
     MOZ_ASSERT_UNREACHABLE("Must be implemented in derived class");
     return gfx::IntRect();
   }
+
+  virtual ContentHost* AsContentHost() override { return this; }
 
 protected:
   explicit ContentHost(const TextureInfo& aTextureInfo)
@@ -91,8 +94,8 @@ protected:
 class ContentHostBase : public ContentHost
 {
 public:
-  typedef RotatedContentBuffer::ContentType ContentType;
-  typedef RotatedContentBuffer::PaintState PaintState;
+  typedef ContentClient::ContentType ContentType;
+  typedef ContentClient::PaintState PaintState;
 
   explicit ContentHostBase(const TextureInfo& aTextureInfo);
   virtual ~ContentHostBase();
@@ -211,11 +214,11 @@ public:
 
   virtual ~ContentHostDoubleBuffered() {}
 
-  virtual CompositableType GetType() { return CompositableType::CONTENT_DOUBLE; }
+  virtual CompositableType GetType() override { return CompositableType::CONTENT_DOUBLE; }
 
   virtual bool UpdateThebes(const ThebesBufferData& aData,
                             const nsIntRegion& aUpdated,
-                            const nsIntRegion& aOldValidRegionBack);
+                            const nsIntRegion& aOldValidRegionBack) override;
 
 protected:
   nsIntRegion mValidRegionForNextBackBuffer;
@@ -233,11 +236,11 @@ public:
   {}
   virtual ~ContentHostSingleBuffered() {}
 
-  virtual CompositableType GetType() { return CompositableType::CONTENT_SINGLE; }
+  virtual CompositableType GetType() override { return CompositableType::CONTENT_SINGLE; }
 
   virtual bool UpdateThebes(const ThebesBufferData& aData,
                             const nsIntRegion& aUpdated,
-                            const nsIntRegion& aOldValidRegionBack);
+                            const nsIntRegion& aOldValidRegionBack) override;
 };
 
 } // namespace layers

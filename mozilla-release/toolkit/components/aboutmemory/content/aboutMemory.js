@@ -18,9 +18,6 @@
 
 // ---------------------------------------------------------------------------
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
 var CC = Components.Constructor;
 
 const KIND_NONHEAP           = Ci.nsIMemoryReporter.KIND_NONHEAP;
@@ -32,12 +29,12 @@ const UNITS_COUNT            = Ci.nsIMemoryReporter.UNITS_COUNT;
 const UNITS_COUNT_CUMULATIVE = Ci.nsIMemoryReporter.UNITS_COUNT_CUMULATIVE;
 const UNITS_PERCENTAGE       = Ci.nsIMemoryReporter.UNITS_PERCENTAGE;
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "Downloads",
  "resource://gre/modules/Downloads.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
+ChromeUtils.defineModuleGetter(this, "FileUtils",
  "resource://gre/modules/FileUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "nsBinaryStream",
@@ -68,7 +65,7 @@ var gIsDiff = false;
 // undone are prefixed with "unsafe"; the rest are prefixed with "safe".
 function flipBackslashes(aUnsafeStr) {
   // Save memory by only doing the replacement if it's necessary.
-  return (aUnsafeStr.indexOf("\\") === -1)
+  return (!aUnsafeStr.includes("\\"))
          ? aUnsafeStr
          : aUnsafeStr.replace(/\\/g, "/");
 }
@@ -79,7 +76,7 @@ const gAssertionFailureMsgPrefix = "aboutMemory.js assertion failed: ";
 // this file if they do.
 function assert(aCond, aMsg) {
   if (!aCond) {
-    reportAssertionFailure(aMsg)
+    reportAssertionFailure(aMsg);
     throw new Error(gAssertionFailureMsgPrefix + aMsg);
   }
 }
@@ -163,7 +160,7 @@ function updateTitleMainAndFooter(aTitleNote, aMsg, aShowTimestamp,
 
   let msgElement;
   if (aMsg) {
-    let className = "section"
+    let className = "section";
     if (aClassName) {
       className = className + " " + aClassName;
     }
@@ -249,7 +246,7 @@ function appendButton(aP, aTitle, aOnClick, aText, aId) {
 function appendHiddenFileInput(aP, aId, aChangeListener) {
   let input = appendElementWithText(aP, "input", "hidden", "");
   input.type = "file";
-  input.id = aId;      // used in testing
+  input.id = aId; // used in testing
   input.addEventListener("change", aChangeListener);
   return input;
 }
@@ -325,7 +322,7 @@ function onLoad() {
   let label1 = appendElementWithText(labelDiv1, "label", "");
   gVerbose = appendElement(label1, "input", "");
   gVerbose.type = "checkbox";
-  gVerbose.id = "verbose";   // used for testing
+  gVerbose.id = "verbose"; // used for testing
   appendTextNode(label1, "verbose");
 
   const kEllipsis = "\u2026";
@@ -512,17 +509,17 @@ function updateAboutMemoryFromReporters() {
                                   aAmount, aDescription) {
         aHandleReport(aProcess, aUnsafePath, aKind, aUnits, aAmount,
                       aDescription, /* presence = */ undefined);
-      }
+      };
 
       let displayReportsAndFooter = function() {
         updateTitleMainAndFooter("live measurement", "", NO_TIMESTAMP,
                                  SHOW_FOOTER);
         aDisplayReports();
-      }
+      };
 
       gMgr.getReports(handleReport, null, displayReportsAndFooter, null,
                       gAnonymize.checked);
-    }
+    };
 
     // Process the reports from the live memory reporters.
     appendAboutMemoryMain(processLiveMemoryReports,
@@ -580,7 +577,7 @@ function updateAboutMemoryFromJSONObject(aObj) {
                       r.description, r._presence);
       }
       aDisplayReports();
-    }
+    };
     appendAboutMemoryMain(processMemoryReportsFromFile,
                           aObj.hasMozMallocUsableSize);
   } catch (ex) {
@@ -859,7 +856,7 @@ function diffDReportMaps(aDReportMap1, aDReportMap2) {
       r2_amount = r2._amount;
       r2_nMerged = r2._nMerged;
       delete aDReportMap2[processPath];
-      presence = undefined;   // represents that it's present in both
+      presence = undefined; // represents that it's present in both
     } else {
       r2_amount = 0;
       r2_nMerged = 0;
@@ -1029,8 +1026,8 @@ function appendAboutMemoryMain(aProcessReports, aHasMozMallocUsableSize) {
       }
 
       // Then sort by resident size.
-      let nodeA = pcollsByProcess[aProcessA]._degenerates["resident"];
-      let nodeB = pcollsByProcess[aProcessB]._degenerates["resident"];
+      let nodeA = pcollsByProcess[aProcessA]._degenerates.resident;
+      let nodeB = pcollsByProcess[aProcessB]._degenerates.resident;
       let residentA = nodeA ? nodeA._amount : -1;
       let residentB = nodeB ? nodeB._amount : -1;
 
@@ -1200,7 +1197,7 @@ function fillInTree(aRoot) {
       aT._amount = kidBytes;
       aT._description = kid._description;
       if (kid._nMerged !== undefined) {
-        aT._nMerged = kid._nMerged
+        aT._nMerged = kid._nMerged;
       }
       assert(!aT._hideKids && !kid._hideKids, "_hideKids set when merging");
 
@@ -1228,7 +1225,7 @@ function fillInTree(aRoot) {
         delete aT._presence;
       } else {
         assert(aT._amount === undefined,
-               "_amount already set for non-leaf node")
+               "_amount already set for non-leaf node");
         aT._amount = kidsBytes;
       }
       aT._description = "The sum of all entries below this one.";
@@ -1400,7 +1397,7 @@ function appendWarningElements(aP, aHasKnownHeapAllocated,
     appendElementWithText(div, "p", "",
       "This indicates a defect in one or more memory reporters.  The " +
       "invalid values are highlighted.\n\n");
-    gUnsafePathsWithInvalidValuesForThisProcess = [];  // reset for the next process
+    gUnsafePathsWithInvalidValuesForThisProcess = []; // reset for the next process
   }
 }
 
@@ -1444,7 +1441,7 @@ function appendProcessAboutMemoryElements(aP, aN, aProcess, aTrees,
 
     // This gives nice spacing when we copy and paste.
     appendElementWithText(aP, "span", "", "\n");
-  }
+  };
 
   appendElementWithText(aP, "h1", "", aProcess);
   appendLink("start", "end", kDownwardsArrow);
@@ -1475,7 +1472,7 @@ function appendProcessAboutMemoryElements(aP, aN, aProcess, aTrees,
       appendTreeElements(pre, t, aProcess, "");
       delete aTrees[treeName];
     }
-    appendTextNode(aP, "\n");  // gives nice spacing when we copy and paste
+    appendTextNode(aP, "\n"); // gives nice spacing when we copy and paste
   }
 
   // Fill in and sort all the non-degenerate other trees.
@@ -1509,14 +1506,14 @@ function appendProcessAboutMemoryElements(aP, aN, aProcess, aTrees,
   for (let i = 0; i < otherTrees.length; i++) {
     let t = otherTrees[i];
     appendTreeElements(pre, t, aProcess, "");
-    appendTextNode(pre, "\n");  // blank lines after non-degenerate trees
+    appendTextNode(pre, "\n"); // blank lines after non-degenerate trees
   }
   for (let i = 0; i < otherDegenerates.length; i++) {
     let t = otherDegenerates[i];
     let padText = pad("", maxStringLength - t.toString().length, " ");
     appendTreeElements(pre, t, aProcess, padText);
   }
-  appendTextNode(aP, "\n");  // gives nice spacing when we copy and paste
+  appendTextNode(aP, "\n"); // gives nice spacing when we copy and paste
 
   // Add any warnings about inaccuracies in the "explicit" tree due to platform
   // limitations.  These must be computed after generating all the text.  The
@@ -1539,8 +1536,8 @@ function appendProcessAboutMemoryElements(aP, aN, aProcess, aTrees,
  * @return A boolean.
  */
 function hasNegativeSign(aN) {
-  if (aN === 0) {                   // this succeeds for 0 and -0
-    return 1 / aN === -Infinity;    // this succeeds for -0
+  if (aN === 0) { // this succeeds for 0 and -0
+    return 1 / aN === -Infinity; // this succeeds for -0
   }
   return aN < 0;
 }
@@ -1773,14 +1770,14 @@ function expandPathToThisElement(aElement) {
   if (aElement.classList.contains("kids")) {
     // Unhide the kids.
     aElement.classList.remove("hidden");
-    expandPathToThisElement(aElement.previousSibling);  // hasKids
+    expandPathToThisElement(aElement.previousSibling); // hasKids
 
   } else if (aElement.classList.contains("hasKids")) {
     // Change the separator to '--'.
     let sepSpan = aElement.childNodes[2];
     assertClassListContains(sepSpan, "mrSep");
     sepSpan.textContent = kShowKidsSep;
-    expandPathToThisElement(aElement.parentNode);       // kids or pre.entries
+    expandPathToThisElement(aElement.parentNode); // kids or pre.entries
 
   } else {
     assertClassListContains(aElement, "entries");
@@ -1879,7 +1876,7 @@ function appendTreeElements(aP, aRoot, aProcess, aPadText) {
       d.onclick = toggle;
       sep = showSubtrees ? kShowKidsSep : kHideKidsSep;
     } else {
-      assert(!aT._hideKids, "leaf node with _hideKids set")
+      assert(!aT._hideKids, "leaf node with _hideKids set");
       sep = kNoKidsSep;
       d = aP;
     }
@@ -1965,10 +1962,10 @@ function saveReportsToFile() {
     let finishDumping = () => {
       updateMainAndFooter("Saved memory reports to " + file.path,
                           SHOW_TIMESTAMP, HIDE_FOOTER);
-    }
+    };
     dumper.dumpMemoryReportsToNamedFile(file.path, finishDumping, null,
                                         gAnonymize.checked);
-  }
+  };
 
   let fpCallback = function(aResult) {
     if (aResult == Ci.nsIFilePicker.returnOK ||

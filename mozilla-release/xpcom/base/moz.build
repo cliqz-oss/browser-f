@@ -14,14 +14,13 @@ XPIDL_SOURCES += [
     'nsIException.idl',
     'nsIGZFileWriter.idl',
     'nsIInterfaceRequestor.idl',
+    'nsILoadURIDelegate.idl',
     'nsIMemory.idl',
     'nsIMemoryInfoDumper.idl',
     'nsIMemoryReporter.idl',
     'nsIMessageLoop.idl',
     'nsIMutable.idl',
-    'nsIProgrammingLanguage.idl',
     'nsISecurityConsoleMessage.idl',
-    'nsIStatusReporter.idl',
     'nsISupports.idl',
     'nsIUUIDGenerator.idl',
     'nsIVersionComparator.idl',
@@ -35,9 +34,11 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     ]
     EXPORTS.mozilla += [
         'MacHelpers.h',
+        'MacStringHelpers.h',
     ]
     UNIFIED_SOURCES += [
         'MacHelpers.mm',
+        'MacStringHelpers.mm',
     ]
 
 XPIDL_MODULE = 'xpcom_base'
@@ -78,6 +79,7 @@ EXPORTS += [
     'nsMemory.h',
     'nsObjCExceptions.h',
     'nsQueryObject.h',
+    'nsSystemInfo.h',
     'nsTraceRefcnt.h',
     'nsTWeakRef.h',
     'nsVersionComparator.h',
@@ -89,6 +91,10 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     EXPORTS += [
         'nsWindowsHelpers.h',
     ]
+    if CONFIG['CC_TYPE'] != 'gcc':
+        OS_LIBS += [
+            'wscapi',
+        ]
 
 EXPORTS.mozilla += [
     'AutoRestore.h',
@@ -105,7 +111,6 @@ EXPORTS.mozilla += [
     'HoldDropJSObjects.h',
     'IntentionalCrash.h',
     'JSObjectHolder.h',
-    'LinuxUtils.h',
     'Logging.h',
     'MemoryReportingProcess.h',
     'nsMemoryInfoDumper.h',
@@ -114,7 +119,6 @@ EXPORTS.mozilla += [
     'SizeOfState.h',
     'StaticMutex.h',
     'StaticPtr.h',
-    'SystemMemoryReporter.h',
 ]
 
 # nsDebugImpl isn't unified because we disable PGO so that NS_ABORT_OOM isn't
@@ -135,6 +139,7 @@ UNIFIED_SOURCES += [
     'ErrorNames.cpp',
     'HoldDropJSObjects.cpp',
     'JSObjectHolder.cpp',
+    'LogCommandLineHandler.cpp',
     'Logging.cpp',
     'LogModulePrefWatcher.cpp',
     'nsClassInfoImpl.cpp',
@@ -160,7 +165,6 @@ UNIFIED_SOURCES += [
     'nsMessageLoop.cpp',
     'NSPRLogModulesParser.cpp',
     'nsSecurityConsoleMessage.cpp',
-    'nsStatusReporterManager.cpp',
     'nsSystemInfo.cpp',
     'nsTraceRefcnt.cpp',
     'nsUUIDGenerator.cpp',
@@ -179,12 +183,6 @@ GENERATED_FILES["ErrorList.h"].script = "ErrorList.py:error_list_h"
 GENERATED_FILES["ErrorNamesInternal.h"].script = "ErrorList.py:error_names_internal_h"
 GENERATED_FILES["error_list.rs"].script = "ErrorList.py:error_list_rs"
 
-if CONFIG['OS_ARCH'] == 'Linux':
-    SOURCES += [
-        'LinuxUtils.cpp',
-        'SystemMemoryReporter.cpp',
-    ]
-
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     SOURCES += [
         'nsMacUtilsImpl.cpp',
@@ -200,6 +198,7 @@ FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
     '../build',
+    '/dom/base',
     '/xpcom/ds',
 ]
 

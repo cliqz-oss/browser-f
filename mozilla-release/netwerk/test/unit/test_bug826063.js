@@ -6,8 +6,8 @@
  * result for various combinations of .setPrivate() and nsILoadContexts
  */
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 
 var URIs = [
@@ -29,8 +29,8 @@ function* getChannels() {
 }
 
 function checkPrivate(channel, shouldBePrivate) {
-  do_check_eq(channel.QueryInterface(Ci.nsIPrivateBrowsingChannel).isChannelPrivate,
-              shouldBePrivate);
+  Assert.equal(channel.QueryInterface(Ci.nsIPrivateBrowsingChannel).isChannelPrivate,
+               shouldBePrivate);
 }
 
 /**

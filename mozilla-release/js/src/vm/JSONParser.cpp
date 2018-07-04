@@ -9,20 +9,21 @@
 #include "mozilla/Range.h"
 #include "mozilla/RangedPtr.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/TextUtils.h"
 
 #include <ctype.h>
 
-#include "jsarray.h"
-#include "jscompartment.h"
 #include "jsnum.h"
-#include "jsprf.h"
 
-#include "vm/StringBuffer.h"
+#include "builtin/Array.h"
+#include "util/StringBuffer.h"
+#include "vm/JSCompartment.h"
 
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
 
+using mozilla::IsAsciiDigit;
 using mozilla::RangedPtr;
 
 JSONParserBase::~JSONParserBase()
@@ -246,7 +247,7 @@ JSONParserBase::Token
 JSONParser<CharT>::readNumber()
 {
     MOZ_ASSERT(current < end);
-    MOZ_ASSERT(JS7_ISDEC(*current) || *current == '-');
+    MOZ_ASSERT(IsAsciiDigit(*current) || *current == '-');
 
     /*
      * JSONNumber:
@@ -264,13 +265,13 @@ JSONParser<CharT>::readNumber()
     const CharPtr digitStart = current;
 
     /* 0|[1-9][0-9]+ */
-    if (!JS7_ISDEC(*current)) {
+    if (!IsAsciiDigit(*current)) {
         error("unexpected non-digit");
         return token(Error);
     }
     if (*current++ != '0') {
         for (; current < end; current++) {
-            if (!JS7_ISDEC(*current))
+            if (!IsAsciiDigit(*current))
                 break;
         }
     }
@@ -301,12 +302,12 @@ JSONParser<CharT>::readNumber()
             error("missing digits after decimal point");
             return token(Error);
         }
-        if (!JS7_ISDEC(*current)) {
+        if (!IsAsciiDigit(*current)) {
             error("unterminated fractional number");
             return token(Error);
         }
         while (++current < end) {
-            if (!JS7_ISDEC(*current))
+            if (!IsAsciiDigit(*current))
                 break;
         }
     }
@@ -323,12 +324,12 @@ JSONParser<CharT>::readNumber()
                 return token(Error);
             }
         }
-        if (!JS7_ISDEC(*current)) {
+        if (!IsAsciiDigit(*current)) {
             error("exponent part is missing a number");
             return token(Error);
         }
         while (++current < end) {
-            if (!JS7_ISDEC(*current))
+            if (!IsAsciiDigit(*current))
                 break;
         }
     }
@@ -479,7 +480,7 @@ AssertPastValue(const RangedPtr<const CharT> current)
                current[-1] == '}' ||
                current[-1] == ']' ||
                current[-1] == '"' ||
-               JS7_ISDEC(current[-1]));
+               IsAsciiDigit(current[-1]));
 }
 
 template <typename CharT>
@@ -606,8 +607,8 @@ JSONParserBase::finishArray(MutableHandleValue vp, ElementVector& elements)
 {
     MOZ_ASSERT(&elements == &stack.back().elements());
 
-    JSObject* obj = ObjectGroup::newArrayObject(cx, elements.begin(), elements.length(),
-                                                GenericObject);
+    ArrayObject* obj = ObjectGroup::newArrayObject(cx, elements.begin(), elements.length(),
+                                                   GenericObject);
     if (!obj)
         return false;
 

@@ -63,17 +63,19 @@ public:
     MOZ_ASSERT(mChannels && mFrames && mSampleRate, "Mix not called for this cycle?");
     for (MixerCallback* cb = mCallbacks.getFirst();
          cb != nullptr; cb = cb->getNext()) {
-      cb->mReceiver->MixerCallback(mMixedAudio.Elements(),
-                                   AudioSampleTypeToFormat<AudioDataValue>::Format,
-                                   mChannels,
-                                   mFrames,
-                                   mSampleRate);
+      MixerCallbackReceiver* receiver = cb->mReceiver;
+      receiver->MixerCallback(mMixedAudio.Elements(),
+                              AudioSampleTypeToFormat<AudioDataValue>::Format,
+                              mChannels,
+                              mFrames,
+                              mSampleRate);
     }
     PodZero(mMixedAudio.Elements(), mMixedAudio.Length());
     mSampleRate = mChannels = mFrames = 0;
   }
 
-  /* Add a buffer to the mix. */
+  /* Add a buffer to the mix. The buffer can be null if there's nothing to mix
+   * but the callback is still needed. */
   void Mix(AudioDataValue* aSamples,
            uint32_t aChannels,
            uint32_t aFrames,
@@ -88,6 +90,10 @@ public:
     MOZ_ASSERT(aFrames == mFrames);
     MOZ_ASSERT(aChannels == mChannels);
     MOZ_ASSERT(aSampleRate == mSampleRate);
+
+    if (!aSamples) {
+      return;
+    }
 
     for (uint32_t i = 0; i < aFrames * aChannels; i++) {
       mMixedAudio[i] += aSamples[i];

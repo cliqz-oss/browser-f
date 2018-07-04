@@ -6,11 +6,13 @@
 
 package org.mozilla.gecko.telemetry;
 
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.support.annotation.Nullable;
 import android.support.annotation.WorkerThread;
 import android.util.Log;
+import android.view.accessibility.AccessibilityManager;
 import org.mozilla.gecko.BrowserApp;
 import org.mozilla.gecko.GeckoApp;
 import org.mozilla.gecko.GeckoProfile;
@@ -31,6 +33,7 @@ import org.mozilla.gecko.util.StringUtils;
 import org.mozilla.gecko.util.ThreadUtils;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * An activity-lifecycle delegate for uploading the core ping.
@@ -39,6 +42,9 @@ public class TelemetryCorePingDelegate extends BrowserAppDelegateWithReference
         implements SearchEngineManager.SearchEngineCallback, AttributionHelperListener {
     private static final String LOGTAG = StringUtils.safeSubstring(
             "Gecko" + TelemetryCorePingDelegate.class.getSimpleName(), 0, 23);
+
+    private static final String TELEMETRY_EXTRA_ONRESUME_ALREADY_CALLED = "onResumeAlreadyCalled";
+    private static final String TELEMETRY_EXTRA_ONPAUSE_CALLED_BEFORE_ONRESUME = "onPauseCalledBeforeOnResume";
 
     private boolean isOnResumeCalled = false;
     private TelemetryDispatcher telemetryDispatcher; // lazy
@@ -86,6 +92,10 @@ public class TelemetryCorePingDelegate extends BrowserAppDelegateWithReference
 
     @Override
     public void onResume(BrowserApp browserApp) {
+        if (isOnResumeCalled) {
+            Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.SYSTEM, TELEMETRY_EXTRA_ONRESUME_ALREADY_CALLED);
+            return;
+        }
         isOnResumeCalled = true;
         sessionMeasurements.recordSessionStart();
     }
@@ -93,7 +103,7 @@ public class TelemetryCorePingDelegate extends BrowserAppDelegateWithReference
     @Override
     public void onPause(BrowserApp browserApp) {
         if (!isOnResumeCalled) {
-            Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.SYSTEM, "onPauseCalledBeforeOnResume");
+            Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.SYSTEM, TELEMETRY_EXTRA_ONPAUSE_CALLED_BEFORE_ONRESUME);
             return;
         }
         isOnResumeCalled = false;
@@ -185,6 +195,16 @@ public class TelemetryCorePingDelegate extends BrowserAppDelegateWithReference
         final String campaignId = CampaignIdMeasurements.getCampaignIdFromPrefs(context);
         if (campaignId != null) {
             pingBuilder.setOptCampaignId(campaignId);
+        }
+
+        final AccessibilityManager accessibilityManager = (AccessibilityManager)
+            context.getSystemService(Context.ACCESSIBILITY_SERVICE);
+        if (accessibilityManager != null) {
+            final List<AccessibilityServiceInfo> enabledServices =
+                accessibilityManager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+            if (enabledServices.size() > 0) {
+                pingBuilder.setOptAccessibility(enabledServices);
+            }
         }
     }
 

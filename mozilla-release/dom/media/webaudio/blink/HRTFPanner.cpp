@@ -55,7 +55,7 @@ HRTFPanner::HRTFPanner(float sampleRate, already_AddRefed<HRTFDatabaseLoader> da
     , m_convolverR1(m_convolverL1.fftSize())
     , m_convolverL2(m_convolverL1.fftSize())
     , m_convolverR2(m_convolverL1.fftSize())
-    , m_delayLine(MaxDelayTimeSeconds * sampleRate, 1.0)
+    , m_delayLine(MaxDelayTimeSeconds * sampleRate)
 {
     MOZ_ASSERT(m_databaseLoader);
     MOZ_COUNT_CTOR(HRTFPanner);
@@ -102,10 +102,7 @@ int HRTFPanner::calculateDesiredAzimuthIndexAndBlend(double azimuth, double& azi
     if (azimuth < 0)
         azimuth += 360.0;
 
-    HRTFDatabase* database = m_databaseLoader->database();
-    MOZ_ASSERT(database);
-
-    int numberOfAzimuths = database->numberOfAzimuths();
+    int numberOfAzimuths = HRTFDatabase::numberOfAzimuths();
     const double angleBetweenAzimuths = 360.0 / numberOfAzimuths;
 
     // Calculate the azimuth index and the blend (0 -> 1) for interpolation.

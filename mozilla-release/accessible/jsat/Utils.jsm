@@ -4,41 +4,38 @@
 
 /* exported Utils, Logger, PivotContext, PrefCache */
 
-'use strict';
+"use strict";
 
-const {classes: Cc, utils: Cu, interfaces: Ci} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Services", // jshint ignore:line
+  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "Rect", // jshint ignore:line
+  "resource://gre/modules/Geometry.jsm");
+ChromeUtils.defineModuleGetter(this, "Roles", // jshint ignore:line
+  "resource://gre/modules/accessibility/Constants.jsm");
+ChromeUtils.defineModuleGetter(this, "Events", // jshint ignore:line
+  "resource://gre/modules/accessibility/Constants.jsm");
+ChromeUtils.defineModuleGetter(this, "Relations", // jshint ignore:line
+  "resource://gre/modules/accessibility/Constants.jsm");
+ChromeUtils.defineModuleGetter(this, "States", // jshint ignore:line
+  "resource://gre/modules/accessibility/Constants.jsm");
+ChromeUtils.defineModuleGetter(this, "PluralForm", // jshint ignore:line
+  "resource://gre/modules/PluralForm.jsm");
 
-Cu.import('resource://gre/modules/XPCOMUtils.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Services', // jshint ignore:line
-  'resource://gre/modules/Services.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Rect', // jshint ignore:line
-  'resource://gre/modules/Geometry.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Roles', // jshint ignore:line
-  'resource://gre/modules/accessibility/Constants.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Events', // jshint ignore:line
-  'resource://gre/modules/accessibility/Constants.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Relations', // jshint ignore:line
-  'resource://gre/modules/accessibility/Constants.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'States', // jshint ignore:line
-  'resource://gre/modules/accessibility/Constants.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'PluralForm', // jshint ignore:line
-  'resource://gre/modules/PluralForm.jsm');
+var EXPORTED_SYMBOLS = ["Utils", "Logger", "PivotContext", "PrefCache"]; // jshint ignore:line
 
-this.EXPORTED_SYMBOLS = ['Utils', 'Logger', 'PivotContext', 'PrefCache']; // jshint ignore:line
-
-this.Utils = { // jshint ignore:line
+var Utils = { // jshint ignore:line
   _buildAppMap: {
-    '{3c2e2abc-06d4-11e1-ac3b-374f68613e61}': 'b2g',
-    '{d1bfe7d9-c01e-4237-998b-7b5f960a4314}': 'graphene',
-    '{ec8030f7-c20a-464f-9b0e-13a3a9e97384}': 'browser',
-    '{aa3c5121-dab2-40e2-81ca-7ea25febc110}': 'mobile/android',
-    '{a23983c0-fd0e-11dc-95ff-0800200c9a66}': 'mobile/xul'
+    "{3c2e2abc-06d4-11e1-ac3b-374f68613e61}": "b2g",
+    "{d1bfe7d9-c01e-4237-998b-7b5f960a4314}": "graphene",
+    "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}": "browser",
+    "{aa3c5121-dab2-40e2-81ca-7ea25febc110}": "mobile/android"
   },
 
   init: function Utils_init(aWindow) {
     if (this._win) {
       // XXX: only supports attaching to one window now.
-      throw new Error('Only one top-level window could used with AccessFu');
+      throw new Error("Only one top-level window could used with AccessFu");
     }
     this._win = Cu.getWeakReference(aWindow);
   },
@@ -68,7 +65,7 @@ this.Utils = { // jshint ignore:line
 
   get AccService() {
     if (!this._AccService) {
-      this._AccService = Cc['@mozilla.org/accessibilityService;1'].
+      this._AccService = Cc["@mozilla.org/accessibilityService;1"].
         getService(Ci.nsIAccessibilityService);
     }
 
@@ -103,16 +100,16 @@ this.Utils = { // jshint ignore:line
   get ScriptName() {
     if (!this._ScriptName) {
       this._ScriptName =
-        (Services.appinfo.processType == 2) ? 'AccessFuContent' : 'AccessFu';
+        (Services.appinfo.processType == 2) ? "AccessFuContent" : "AccessFu";
     }
     return this._ScriptName;
   },
 
   get AndroidSdkVersion() {
     if (!this._AndroidSdkVersion) {
-      if (Services.appinfo.OS == 'Android') {
+      if (Services.appinfo.OS == "Android") {
         this._AndroidSdkVersion = Services.sysinfo.getPropertyAsInt32(
-          'version');
+          "version");
       } else {
         // Most useful in desktop debugging.
         this._AndroidSdkVersion = 16;
@@ -131,11 +128,11 @@ this.Utils = { // jshint ignore:line
       return null;
     }
     switch (this.MozBuildApp) {
-      case 'mobile/android':
+      case "mobile/android":
         return this.win.BrowserApp;
-      case 'browser':
+      case "browser":
         return this.win.gBrowser;
-      case 'b2g':
+      case "b2g":
         return this.win.shell;
       default:
         return null;
@@ -144,9 +141,10 @@ this.Utils = { // jshint ignore:line
 
   get CurrentBrowser() {
     if (!this.BrowserApp) {
-      return null;
+      // Get the first content browser element when no 'BrowserApp' exists.
+      return this.win.document.querySelector("browser[type=content]");
     }
-    if (this.MozBuildApp == 'b2g') {
+    if (this.MozBuildApp == "b2g") {
       return this.BrowserApp.contentBrowser;
     }
     return this.BrowserApp.selectedBrowser;
@@ -164,7 +162,7 @@ this.Utils = { // jshint ignore:line
       for (let i = 0; i < mm.childCount; i++) {
         let childMM = mm.getChildAt(i);
 
-        if ('sendAsyncMessage' in childMM) {
+        if ("sendAsyncMessage" in childMM) {
           messageManagers.add(childMM);
         } else {
           collectLeafMessageManagers(childMM);
@@ -177,14 +175,14 @@ this.Utils = { // jshint ignore:line
     let document = this.CurrentContentDoc;
 
     if (document) {
-      if (document.location.host === 'b2g') {
+      if (document.location.host === "b2g") {
         // The document is a b2g app chrome (ie. Mulet).
         let contentBrowser = this.win.content.shell.contentBrowser;
         messageManagers.add(this.getMessageManager(contentBrowser));
         document = contentBrowser.contentDocument;
       }
 
-      let remoteframes = document.querySelectorAll('iframe');
+      let remoteframes = document.querySelectorAll("iframe");
 
       for (let i = 0; i < remoteframes.length; ++i) {
         let mm = this.getMessageManager(remoteframes[i]);
@@ -217,13 +215,13 @@ this.Utils = { // jshint ignore:line
   get stringBundle() {
     delete this.stringBundle;
     let bundle = Services.strings.createBundle(
-      'chrome://global/locale/AccessFu.properties');
+      "chrome://global/locale/AccessFu.properties");
     this.stringBundle = {
       get: function stringBundle_get(aDetails = {}) {
-        if (!aDetails || typeof aDetails === 'string') {
+        if (!aDetails || typeof aDetails === "string") {
           return aDetails;
         }
-        let str = '';
+        let str = "";
         let string = aDetails.string;
         if (!string) {
           return str;
@@ -238,10 +236,10 @@ this.Utils = { // jshint ignore:line
           }
           if (count) {
             str = PluralForm.get(count, str);
-            str = str.replace('#1', count);
+            str = str.replace("#1", count);
           }
         } catch (e) {
-          Logger.debug('Failed to get a string from a bundle for', string);
+          Logger.debug("Failed to get a string from a bundle for", string);
         } finally {
           return str;
         }
@@ -252,8 +250,7 @@ this.Utils = { // jshint ignore:line
 
   getMessageManager: function getMessageManager(aBrowser) {
     try {
-      return aBrowser.QueryInterface(Ci.nsIFrameLoaderOwner).
-         frameLoader.messageManager;
+      return aBrowser.frameLoader.messageManager;
     } catch (x) {
       return null;
     }
@@ -264,12 +261,12 @@ this.Utils = { // jshint ignore:line
       return new State(
         aAccessibleOrEvent.isExtraState ? 0 : aAccessibleOrEvent.state,
         aAccessibleOrEvent.isExtraState ? aAccessibleOrEvent.state : 0);
-    } else {
+    }
       let state = {};
       let extState = {};
       aAccessibleOrEvent.getState(state, extState);
       return new State(state.value, extState.value);
-    }
+
   },
 
   getAttributes: function getAttributes(aAccessible) {
@@ -305,15 +302,11 @@ this.Utils = { // jshint ignore:line
     return res.value;
   },
 
-  getBounds: function getBounds(aAccessible, aPreserveContentScale) {
+  getBounds: function getBounds(aAccessible) {
     let objX = {}, objY = {}, objW = {}, objH = {};
     aAccessible.getBounds(objX, objY, objW, objH);
 
-    let scale = aPreserveContentScale ? 1 :
-      this.getContentResolution(aAccessible);
-
-    return new Rect(objX.value, objY.value, objW.value, objH.value).scale(
-      scale, scale);
+    return new Rect(objX.value, objY.value, objW.value, objH.value);
   },
 
   getTextBounds: function getTextBounds(aAccessible, aStart, aEnd,
@@ -323,11 +316,7 @@ this.Utils = { // jshint ignore:line
     accText.getRangeExtents(aStart, aEnd, objX, objY, objW, objH,
       Ci.nsIAccessibleCoordinateType.COORDTYPE_SCREEN_RELATIVE);
 
-    let scale = aPreserveContentScale ? 1 :
-      this.getContentResolution(aAccessible);
-
-    return new Rect(objX.value, objY.value, objW.value, objH.value).scale(
-      scale, scale);
+    return new Rect(objX.value, objY.value, objW.value, objH.value);
   },
 
   /**
@@ -364,7 +353,7 @@ this.Utils = { // jshint ignore:line
       try {
         acc = acc.parent;
       } catch (x) {
-        Logger.debug('Failed to get parent:', x);
+        Logger.debug("Failed to get parent:", x);
         acc = null;
       }
     }
@@ -376,7 +365,7 @@ this.Utils = { // jshint ignore:line
     // Need to account for aria-hidden, so can't just check for INVISIBLE
     // state.
     let hidden = Utils.getAttributes(aAccessible).hidden;
-    return hidden && hidden === 'true';
+    return hidden && hidden === "true";
   },
 
   visibleChildCount: function visibleChildCount(aAccessible) {
@@ -390,7 +379,7 @@ this.Utils = { // jshint ignore:line
   },
 
   inHiddenSubtree: function inHiddenSubtree(aAccessible) {
-    for (let acc=aAccessible; acc; acc=acc.parent) {
+    for (let acc = aAccessible; acc; acc = acc.parent) {
       if (this.isHidden(acc)) {
         return true;
       }
@@ -418,7 +407,7 @@ this.Utils = { // jshint ignore:line
   },
 
   matchAttributeValue: function matchAttributeValue(aAttributeValue, values) {
-    let attrSet = new Set(aAttributeValue.split(' '));
+    let attrSet = new Set(aAttributeValue.split(" "));
     for (let value of values) {
       if (attrSet.has(value)) {
         return value;
@@ -428,34 +417,34 @@ this.Utils = { // jshint ignore:line
 
   getLandmarkName: function getLandmarkName(aAccessible) {
     return this.matchRoles(aAccessible, [
-      'banner',
-      'complementary',
-      'contentinfo',
-      'main',
-      'navigation',
-      'search'
+      "banner",
+      "complementary",
+      "contentinfo",
+      "main",
+      "navigation",
+      "search"
     ]);
   },
 
   getMathRole: function getMathRole(aAccessible) {
     return this.matchRoles(aAccessible, [
-      'base',
-      'close-fence',
-      'denominator',
-      'numerator',
-      'open-fence',
-      'overscript',
-      'presubscript',
-      'presuperscript',
-      'root-index',
-      'subscript',
-      'superscript',
-      'underscript'
+      "base",
+      "close-fence",
+      "denominator",
+      "numerator",
+      "open-fence",
+      "overscript",
+      "presubscript",
+      "presuperscript",
+      "root-index",
+      "subscript",
+      "superscript",
+      "underscript"
     ]);
   },
 
   matchRoles: function matchRoles(aAccessible, aRoles) {
-    let roles = this.getAttributes(aAccessible)['xml-roles'];
+    let roles = this.getAttributes(aAccessible)["xml-roles"];
     if (!roles) {
       return;
     }
@@ -481,7 +470,7 @@ this.Utils = { // jshint ignore:line
   isListItemDecorator: function isListItemDecorator(aStaticText,
                                                     aExcludeOrdered) {
     let parent = aStaticText.parent;
-    if (aExcludeOrdered && parent.parent.DOMNode.nodeName === 'OL') {
+    if (aExcludeOrdered && parent.parent.DOMNode.nodeName === "OL") {
       return false;
     }
 
@@ -493,7 +482,7 @@ this.Utils = { // jshint ignore:line
     let details = {
       type: aType,
       details: JSON.stringify(
-        typeof aDetails === 'string' ? { eventType: aDetails } : aDetails)
+        typeof aDetails === "string" ? { eventType: aDetails } : aDetails)
     };
     let window = this.win;
     let shell = window.shell || window.content.shell;
@@ -516,7 +505,7 @@ this.Utils = { // jshint ignore:line
     if (aAccessible.role === Roles.KEY) {
       return true;
     }
-    let quick_activate = this.getAttributes(aAccessible)['moz-quick-activate'];
+    let quick_activate = this.getAttributes(aAccessible)["moz-quick-activate"];
     return quick_activate && JSON.parse(quick_activate);
   }
 };
@@ -542,17 +531,17 @@ State.prototype = {
     for (let i = 0; i < statesArray.length; i++) {
       statesArray[i] = stateStrings.item(i);
     }
-    return '[' + statesArray.join(', ') + ']';
+    return "[" + statesArray.join(", ") + "]";
   }
 };
 
-this.Logger = { // jshint ignore:line
+var Logger = { // jshint ignore:line
   GESTURE: -1,
   DEBUG: 0,
   INFO: 1,
   WARNING: 2,
   ERROR: 3,
-  _LEVEL_NAMES: ['GESTURE', 'DEBUG', 'INFO', 'WARNING', 'ERROR'],
+  _LEVEL_NAMES: ["GESTURE", "DEBUG", "INFO", "WARNING", "ERROR"],
 
   logLevel: 1, // INFO;
 
@@ -564,9 +553,9 @@ this.Logger = { // jshint ignore:line
     }
 
     let args = Array.prototype.slice.call(arguments, 1);
-    let message = (typeof(args[0]) === 'function' ? args[0]() : args).join(' ');
-    message = '[' + Utils.ScriptName + '] ' + this._LEVEL_NAMES[aLogLevel + 1] +
-      ' ' + message + '\n';
+    let message = (typeof(args[0]) === "function" ? args[0]() : args).join(" ");
+    message = "[" + Utils.ScriptName + "] " + this._LEVEL_NAMES[aLogLevel + 1] +
+      " " + message + "\n";
     dump(message);
     // Note: used for testing purposes. If |this.test| is true, also log to
     // the console service.
@@ -605,26 +594,26 @@ this.Logger = { // jshint ignore:line
   },
 
   logException: function logException(
-    aException, aErrorMessage = 'An exception has occured') {
+    aException, aErrorMessage = "An exception has occured") {
     try {
-      let stackMessage = '';
+      let stackMessage = "";
       if (aException.stack) {
-        stackMessage = '  ' + aException.stack.replace(/\n/g, '\n  ');
+        stackMessage = "  " + aException.stack.replace(/\n/g, "\n  ");
       } else if (aException.location) {
         let frame = aException.location;
         let stackLines = [];
         while (frame && frame.lineNumber) {
           stackLines.push(
-            '  ' + frame.name + '@' + frame.filename + ':' + frame.lineNumber);
+            "  " + frame.name + "@" + frame.filename + ":" + frame.lineNumber);
           frame = frame.caller;
         }
-        stackMessage = stackLines.join('\n');
+        stackMessage = stackLines.join("\n");
       } else {
         stackMessage =
-          '(' + aException.fileName + ':' + aException.lineNumber + ')';
+          "(" + aException.fileName + ":" + aException.lineNumber + ")";
       }
-      this.error(aErrorMessage + ':\n ' +
-                 aException.message + '\n' +
+      this.error(aErrorMessage + ":\n " +
+                 aException.message + "\n" +
                  stackMessage);
     } catch (x) {
       this.error(x);
@@ -633,14 +622,14 @@ this.Logger = { // jshint ignore:line
 
   accessibleToString: function accessibleToString(aAccessible) {
     if (!aAccessible) {
-      return '[ null ]';
+      return "[ null ]";
     }
 
     try {
-      return '[ ' + Utils.AccService.getStringRole(aAccessible.role) +
-        ' | ' + aAccessible.name + ' ]';
+      return "[ " + Utils.AccService.getStringRole(aAccessible.role) +
+        " | " + aAccessible.name + " ]";
     } catch (x) {
-      return '[ defunct ]';
+      return "[ defunct ]";
     }
   },
 
@@ -651,7 +640,7 @@ this.Logger = { // jshint ignore:line
       let stateStrings = event.isExtraState ?
         Utils.AccService.getStringStates(0, event.state) :
         Utils.AccService.getStringStates(event.state, 0);
-      str += ' (' + stateStrings.item(0) + ')';
+      str += " (" + stateStrings.item(0) + ")";
     }
 
     if (aEvent.eventType == Events.VIRTUALCURSOR_CHANGED) {
@@ -659,8 +648,8 @@ this.Logger = { // jshint ignore:line
         Ci.nsIAccessibleVirtualCursorChangeEvent);
       let pivot = aEvent.accessible.QueryInterface(
         Ci.nsIAccessibleDocument).virtualCursor;
-      str += ' (' + this.accessibleToString(event.oldAccessible) + ' -> ' +
-        this.accessibleToString(pivot.position) + ')';
+      str += " (" + this.accessibleToString(event.oldAccessible) + " -> " +
+        this.accessibleToString(pivot.position) + ")";
     }
 
     return str;
@@ -680,13 +669,13 @@ this.Logger = { // jshint ignore:line
 
   _dumpTreeInternal:
     function _dumpTreeInternal(aLogLevel, aAccessible, aIndent) {
-      let indentStr = '';
+      let indentStr = "";
       for (let i = 0; i < aIndent; i++) {
-        indentStr += ' ';
+        indentStr += " ";
       }
       this.log(aLogLevel, indentStr,
                this.accessibleToString(aAccessible),
-               '(' + this.statesToString(aAccessible) + ')');
+               "(" + this.statesToString(aAccessible) + ")");
       for (let i = 0; i < aAccessible.childCount; i++) {
         this._dumpTreeInternal(aLogLevel, aAccessible.getChildAt(i),
           aIndent + 1);
@@ -704,7 +693,7 @@ this.Logger = { // jshint ignore:line
  * label. In this case the |accessible| field would be the embedded control,
  * and the |accessibleForBounds| field would be the label.
  */
-this.PivotContext = function PivotContext(aAccessible, aOldAccessible, // jshint ignore:line
+function PivotContext(aAccessible, aOldAccessible, // jshint ignore:line
   aStartOffset, aEndOffset, aIgnoreAncestry = false,
   aIncludeInvisible = false) {
   this._accessible = aAccessible;
@@ -715,7 +704,7 @@ this.PivotContext = function PivotContext(aAccessible, aOldAccessible, // jshint
   this.endOffset = aEndOffset;
   this._ignoreAncestry = aIgnoreAncestry;
   this._includeInvisible = aIncludeInvisible;
-};
+}
 
 PivotContext.prototype = {
   get accessible() {
@@ -754,7 +743,7 @@ PivotContext.prototype = {
       // affect the offsets of links yet to be processed.
       for (let i = hypertextAcc.linkCount - 1; i >= 0; i--) {
         let link = hypertextAcc.getLinkAt(i);
-        let linkText = '';
+        let linkText = "";
         if (link instanceof Ci.nsIAccessibleText) {
           linkText = link.QueryInterface(Ci.nsIAccessibleText).
                           getText(0,
@@ -763,7 +752,7 @@ PivotContext.prototype = {
 
         let start = link.startIndex;
         let end = link.endIndex;
-        for (let offset of ['startOffset', 'endOffset']) {
+        for (let offset of ["startOffset", "endOffset"]) {
           if (this[offset] >= end) {
             result[offset] += linkText.length - (end - start);
           }
@@ -792,7 +781,7 @@ PivotContext.prototype = {
       }
     } catch (x) {
       // A defunct accessible will raise an exception geting parent.
-      Logger.debug('Failed to get parent:', x);
+      Logger.debug("Failed to get parent:", x);
     }
     return ancestry.reverse();
   },
@@ -879,13 +868,13 @@ PivotContext.prototype = {
   get interactionHints() {
     let hints = [];
     this.newAncestry.concat(this.accessible).reverse().forEach(aAccessible => {
-      let hint = Utils.getAttributes(aAccessible)['moz-hint'];
+      let hint = Utils.getAttributes(aAccessible)["moz-hint"];
       if (hint) {
         hints.push(hint);
       } else if (aAccessible.actionCount > 0) {
         hints.push({
           string: Utils.AccService.getStringRole(
-            aAccessible.role).replace(/\s/g, '') + '-hint'
+            aAccessible.role).replace(/\s/g, "") + "-hint"
         });
       }
     });
@@ -920,12 +909,12 @@ PivotContext.prototype = {
       if (!aAccessible) {
         return null;
       }
-      if ([
+      if (![
             Roles.CELL,
             Roles.COLUMNHEADER,
             Roles.ROWHEADER,
             Roles.MATHML_CELL
-          ].indexOf(aAccessible.role) < 0) {
+          ].includes(aAccessible.role)) {
           return null;
       }
       try {
@@ -946,7 +935,7 @@ PivotContext.prototype = {
 
     if (!cellInfo.current) {
       Logger.warning(aAccessible,
-        'does not support nsIAccessibleTableCell interface.');
+        "does not support nsIAccessibleTableCell interface.");
       this._cells.set(domNode, null);
       return null;
     }
@@ -1016,7 +1005,7 @@ PivotContext.prototype = {
   }
 };
 
-this.PrefCache = function PrefCache(aName, aCallback, aRunCallbackNow) { // jshint ignore:line
+function PrefCache(aName, aCallback, aRunCallbackNow) { // jshint ignore:line
   this.name = aName;
   this.callback = aCallback;
 
@@ -1032,7 +1021,7 @@ this.PrefCache = function PrefCache(aName, aCallback, aRunCallbackNow) { // jshi
   }
 
   branch.addObserver(aName, this, true);
-};
+}
 
 PrefCache.prototype = {
   _getValue: function _getValue(aBranch) {
@@ -1058,7 +1047,7 @@ PrefCache.prototype = {
 
   observe: function observe(aSubject) {
     this.value = this._getValue(aSubject.QueryInterface(Ci.nsIPrefBranch));
-    Logger.info('pref changed', this.name, this.value);
+    Logger.info("pref changed", this.name, this.value);
     if (this.callback) {
       try {
         this.callback(this.name, this.value, false);
@@ -1068,6 +1057,6 @@ PrefCache.prototype = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                          Ci.nsISupportsWeakReference])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                           Ci.nsISupportsWeakReference])
 };

@@ -38,7 +38,7 @@ private:
 class AccIterator : public AccIterable
 {
 public:
-  AccIterator(Accessible* aRoot, filters::FilterFuncPtr aFilterFunc);
+  AccIterator(const Accessible* aRoot, filters::FilterFuncPtr aFilterFunc);
   virtual ~AccIterator();
 
   /**
@@ -54,9 +54,9 @@ private:
 
   struct IteratorState
   {
-    explicit IteratorState(Accessible* aParent, IteratorState* mParentState = nullptr);
+    explicit IteratorState(const Accessible* aParent, IteratorState* mParentState = nullptr);
 
-    Accessible* mParent;
+    const Accessible* mParent;
     int32_t mIndex;
     IteratorState* mParentState;
   };
@@ -84,7 +84,7 @@ public:
    *                           pointed by
    */
   RelatedAccIterator(DocAccessible* aDocument, nsIContent* aDependentContent,
-                     nsIAtom* aRelAttr);
+                     nsAtom* aRelAttr);
 
   virtual ~RelatedAccIterator() { }
 
@@ -99,7 +99,7 @@ private:
   RelatedAccIterator& operator = (const RelatedAccIterator&);
 
   DocAccessible* mDocument;
-  nsIAtom* mRelAttr;
+  nsAtom* mRelAttr;
   DocAccessible::AttrRelProviderArray* mProviders;
   nsIContent* mBindingParent;
   uint32_t mIndex;
@@ -219,7 +219,7 @@ class IDRefsIterator : public AccIterable
 {
 public:
   IDRefsIterator(DocAccessible* aDoc, nsIContent* aContent,
-                 nsIAtom* aIDRefsAttr);
+                 nsAtom* aIDRefsAttr);
   virtual ~IDRefsIterator() { }
 
   /**

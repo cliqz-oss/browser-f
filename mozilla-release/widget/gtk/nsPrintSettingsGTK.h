@@ -16,7 +16,7 @@ extern "C" {
 
 #define NS_PRINTSETTINGSGTK_IID \
 { 0x758df520, 0xc7c3, 0x11dc, { 0x95, 0xff, 0x08, 0x00, 0x20, 0x0c, 0x9a, 0x66 } }
- 
+
 
 //*****************************************************************************
 //***    nsPrintSettingsGTK
@@ -68,13 +68,13 @@ public:
   NS_IMETHOD GetOrientation(int32_t *aOrientation) override;
   NS_IMETHOD SetOrientation(int32_t aOrientation) override;
 
-  NS_IMETHOD GetToFileName(char16_t * *aToFileName) override;
-  NS_IMETHOD SetToFileName(const char16_t * aToFileName) override;
+  NS_IMETHOD GetToFileName(nsAString& aToFileName) override;
+  NS_IMETHOD SetToFileName(const nsAString& aToFileName) override;
 
   // Gets/Sets the printer name in the GtkPrintSettings. If no printer name is specified there,
   // you will get back the name of the current internal GtkPrinter.
-  NS_IMETHOD GetPrinterName(char16_t * *aPrinter) override;
-  NS_IMETHOD SetPrinterName(const char16_t * aPrinter) override;
+  NS_IMETHOD GetPrinterName(nsAString& Printer) override;
+  NS_IMETHOD SetPrinterName(const nsAString& aPrinter) override;
 
   // Number of copies is stored/gotten from the GtkPrintSettings.
   NS_IMETHOD GetNumCopies(int32_t *aNumCopies) override;
@@ -84,8 +84,8 @@ public:
   NS_IMETHOD SetScaling(double aScaling) override;
 
   // A name recognised by GTK is strongly advised here, as this is used to create a GtkPaperSize.
-  NS_IMETHOD GetPaperName(char16_t * *aPaperName) override;
-  NS_IMETHOD SetPaperName(const char16_t * aPaperName) override;
+  NS_IMETHOD GetPaperName(nsAString& aPaperName) override;
+  NS_IMETHOD SetPaperName(const nsAString& aPaperName) override;
 
   NS_IMETHOD SetUnwriteableMarginInTwips(nsIntMargin& aUnwriteableMargin) override;
   NS_IMETHOD SetUnwriteableMarginTop(double aUnwriteableMarginTop) override;

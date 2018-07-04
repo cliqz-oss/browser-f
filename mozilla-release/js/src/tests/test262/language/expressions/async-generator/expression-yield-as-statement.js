@@ -1,10 +1,9 @@
-// |reftest| skip-if(release_or_beta) -- async-iteration is not released yet
 // Copyright 2017 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
 author: Caitlin Potter <caitp@igalia.com>
-esid: 14.4
+esid: sec-generator-function-definitions
 description: >
   `yield` is a valid statement within async generator function bodies.
 flags: [async]

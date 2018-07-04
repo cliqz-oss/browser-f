@@ -22,19 +22,28 @@ class ProfilerMarker
 
 public:
   explicit ProfilerMarker(const char* aMarkerName,
+                          int aThreadId,
                           mozilla::UniquePtr<ProfilerMarkerPayload>
                             aPayload = nullptr,
                           double aTime = 0)
     : mMarkerName(strdup(aMarkerName))
     , mPayload(Move(aPayload))
+    , mNext{nullptr}
     , mTime(aTime)
-  {}
+    , mPositionInBuffer{0}
+    , mThreadId{aThreadId}
+    {}
 
-  void SetGeneration(uint32_t aGenID) { mGenID = aGenID; }
+  void SetPositionInBuffer(uint64_t aPosition) { mPositionInBuffer = aPosition; }
 
-  bool HasExpired(uint32_t aGenID) const { return mGenID + 2 <= aGenID; }
+  bool HasExpired(uint64_t aBufferRangeStart) const
+  {
+    return mPositionInBuffer < aBufferRangeStart;
+  }
 
   double GetTime() const { return mTime; }
+
+  int GetThreadId() const { return mThreadId; }
 
   void StreamJSON(SpliceableJSONWriter& aWriter,
                   const mozilla::TimeStamp& aProcessStartTime,
@@ -45,13 +54,13 @@ public:
 
     aWriter.StartArrayElement();
     {
-      aUniqueStacks.mUniqueStrings.WriteElement(aWriter, mMarkerName.get());
+      aUniqueStacks.mUniqueStrings->WriteElement(aWriter, mMarkerName.get());
       aWriter.DoubleElement(mTime);
       // TODO: Store the callsite for this marker if available:
       // if have location data
       //   b.NameValue(marker, "location", ...);
       if (mPayload) {
-        aWriter.StartObjectElement();
+        aWriter.StartObjectElement(SpliceableJSONWriter::SingleLineStyle);
         {
           mPayload->StreamPayload(aWriter, aProcessStartTime, aUniqueStacks);
         }
@@ -66,7 +75,8 @@ private:
   mozilla::UniquePtr<ProfilerMarkerPayload> mPayload;
   ProfilerMarker* mNext;
   double mTime;
-  uint32_t mGenID;
+  uint64_t mPositionInBuffer;
+  int mThreadId;
 };
 
 template<typename T>

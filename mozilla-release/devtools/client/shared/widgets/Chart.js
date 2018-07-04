@@ -119,37 +119,37 @@ function createPieTableChart(document,
 
   let proxy = new PieTableChart(container, pie, table);
 
-  pie.on("click", (event, item) => {
-    proxy.emit(event, item);
+  pie.on("click", (item) => {
+    proxy.emit("click", item);
   });
 
-  table.on("click", (event, item) => {
-    proxy.emit(event, item);
+  table.on("click", (item) => {
+    proxy.emit("click", item);
   });
 
-  pie.on("mouseover", (event, item) => {
-    proxy.emit(event, item);
+  pie.on("mouseover", (item) => {
+    proxy.emit("mouseover", item);
     if (table.rows.has(item)) {
       table.rows.get(item).setAttribute("focused", "");
     }
   });
 
-  pie.on("mouseout", (event, item) => {
-    proxy.emit(event, item);
+  pie.on("mouseout", (item) => {
+    proxy.emit("mouseout", item);
     if (table.rows.has(item)) {
       table.rows.get(item).removeAttribute("focused");
     }
   });
 
-  table.on("mouseover", (event, item) => {
-    proxy.emit(event, item);
+  table.on("mouseover", (item) => {
+    proxy.emit("mouseover", item);
     if (pie.slices.has(item)) {
       pie.slices.get(item).setAttribute("focused", "");
     }
   });
 
-  table.on("mouseout", (event, item) => {
-    proxy.emit(event, item);
+  table.on("mouseout", (item) => {
+    proxy.emit("mouseout", item);
     if (pie.slices.has(item)) {
       pie.slices.get(item).removeAttribute("focused");
     }
@@ -322,6 +322,12 @@ function createPieChart(document, { data, width, height, centerX, centerY, radiu
  *                      label1: total => l10n.getFormatStr("...", total),  // 5
  *                      label2: total => l10n.getFormatStr("...", total),  // 9
  *                    }
+ *          - header: an object specifying strings to use for table column
+ *                    headers
+ *                    e.g. {
+ *                      label1: l10n.getStr(...),
+ *                      label2: l10n.getStr(...),
+ *                    }
  * @return TableChart
  *         A table chart proxy instance, which emits the following events:
  *           - "mouseover", when the mouse enters a row
@@ -331,6 +337,7 @@ function createPieChart(document, { data, width, height, centerX, centerY, radiu
 function createTableChart(document, { title, data, strings, totals, header }) {
   strings = strings || {};
   totals = totals || {};
+  header = header || {};
   let isPlaceholder = false;
 
   // If there's no data available, display an empty placeholder.

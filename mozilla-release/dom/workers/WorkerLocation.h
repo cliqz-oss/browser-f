@@ -7,7 +7,7 @@
 #ifndef mozilla_dom_location_h__
 #define mozilla_dom_location_h__
 
-#include "Workers.h"
+#include "WorkerCommon.h"
 #include "WorkerPrivate.h"
 #include "nsWrapperCache.h"
 
@@ -59,7 +59,7 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(WorkerLocation)
 
   static already_AddRefed<WorkerLocation>
-  Create(workers::WorkerPrivate::LocationInfo& aInfo);
+  Create(WorkerPrivate::LocationInfo& aInfo);
 
   virtual JSObject*
   WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;

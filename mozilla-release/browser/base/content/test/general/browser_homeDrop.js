@@ -9,10 +9,8 @@ add_task(async function() {
   homepageStr.data = "about:mozilla";
   await pushPrefs([HOMEPAGE_PREF, homepageStr, Ci.nsISupportsString]);
 
-  let scriptLoader = Cc["@mozilla.org/moz/jssubscript-loader;1"].
-                     getService(Ci.mozIJSSubScriptLoader);
   let EventUtils = {};
-  scriptLoader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
+  Services.scriptloader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
 
   // Since synthesizeDrop triggers the srcElement, need to use another button.
   let dragSrcElement = document.getElementById("downloads-button");
@@ -31,7 +29,7 @@ add_task(async function() {
 
     let setHomepagePromise = new Promise(function(resolve) {
       let observer = {
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+        QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
         observe(subject, topic, data) {
           is(topic, "nsPref:changed", "observed correct topic");
           is(data, HOMEPAGE_PREF, "observed correct data");

@@ -6,13 +6,12 @@
 #include "base/message_loop.h"
 
 #include "nsBaseAppShell.h"
-#if defined(MOZ_CRASHREPORTER)
 #include "nsExceptionHandler.h"
-#endif
 #include "nsThreadUtils.h"
 #include "nsIObserverService.h"
 #include "nsServiceManagerUtils.h"
 #include "mozilla/Services.h"
+#include "nsXULAppAPI.h"
 
 // When processing the next thread event, the appshell may process native
 // events (if not in performance mode), which can result in suppressing the
@@ -46,11 +45,13 @@ nsBaseAppShell::Init()
 {
   // Configure ourselves as an observer for the current thread:
 
-  nsCOMPtr<nsIThreadInternal> threadInt =
+  if (XRE_UseNativeEventProcessing()) {
+    nsCOMPtr<nsIThreadInternal> threadInt =
       do_QueryInterface(NS_GetCurrentThread());
-  NS_ENSURE_STATE(threadInt);
+    NS_ENSURE_STATE(threadInt);
 
-  threadInt->SetObserver(this);
+    threadInt->SetObserver(this);
+  }
 
   nsCOMPtr<nsIObserverService> obsSvc =
     mozilla::services::GetObserverService();
@@ -317,18 +318,14 @@ void
 nsBaseAppShell::IncrementEventloopNestingLevel()
 {
   ++mEventloopNestingLevel;
-#if defined(MOZ_CRASHREPORTER)
   CrashReporter::SetEventloopNestingLevel(mEventloopNestingLevel);
-#endif
 }
 
 void
 nsBaseAppShell::DecrementEventloopNestingLevel()
 {
   --mEventloopNestingLevel;
-#if defined(MOZ_CRASHREPORTER)
   CrashReporter::SetEventloopNestingLevel(mEventloopNestingLevel);
-#endif
 }
 
 // Called from the main thread

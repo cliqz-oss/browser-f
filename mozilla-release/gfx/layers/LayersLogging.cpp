@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -65,7 +64,7 @@ AppendToString(std::stringstream& aStream, const nsRect& r,
   aStream << pfx;
   aStream << nsPrintfCString(
     "(x=%d, y=%d, w=%d, h=%d)",
-    r.x, r.y, r.width, r.height).get();
+    r.X(), r.Y(), r.Width(), r.Height()).get();
   aStream << sfx;
 }
 
@@ -99,6 +98,27 @@ AppendToString(std::stringstream& aStream, const wr::LayoutSize& s,
   aStream << nsPrintfCString(
     "(w=%f, h=%f)",
     s.width, s.height).get();
+  aStream << sfx;
+}
+
+void
+AppendToString(std::stringstream& aStream, const nsSize& sz,
+               const char* pfx, const char* sfx)
+{
+  aStream << pfx;
+  aStream << nsPrintfCString(
+    "(w=%d, h=%d)",
+    sz.width, sz.height).get();
+  aStream << sfx;
+}
+
+void
+AppendToString(std::stringstream& aStream, const wr::StickyOffsetBounds& s,
+               const char* pfx, const char* sfx)
+{
+  aStream << pfx;
+  aStream << nsPrintfCString("(min=%f max=%f)",
+      s.min, s.max).get();
   aStream << sfx;
 }
 
@@ -158,6 +178,28 @@ AppendToString(std::stringstream& aStream, const EventRegions& e,
 }
 
 void
+AppendToString(std::stringstream& aStream, OverscrollBehavior aBehavior,
+               const char* pfx, const char* sfx)
+{
+  aStream << pfx;
+  switch (aBehavior) {
+  case OverscrollBehavior::Auto: {
+    aStream << "auto";
+    break;
+  }
+  case OverscrollBehavior::Contain: {
+    aStream << "contain";
+    break;
+  }
+  case OverscrollBehavior::None: {
+    aStream << "none";
+    break;
+  }
+  }
+  aStream << sfx;
+}
+
+void
 AppendToString(std::stringstream& aStream, const ScrollMetadata& m,
                const char* pfx, const char* sfx)
 {
@@ -172,6 +214,18 @@ AppendToString(std::stringstream& aStream, const ScrollMetadata& m,
   }
   if (m.HasMaskLayer()) {
     AppendToString(aStream, m.ScrollClip().GetMaskLayerIndex().value(), "] [mask=");
+  }
+  OverscrollBehavior overscrollX = m.GetOverscrollBehavior().mBehaviorX;
+  OverscrollBehavior overscrollY = m.GetOverscrollBehavior().mBehaviorY;
+  if (overscrollX == overscrollY && overscrollX != OverscrollBehavior::Auto) {
+    AppendToString(aStream, overscrollX, "] [overscroll=");
+  } else {
+    if (overscrollX != OverscrollBehavior::Auto) {
+      AppendToString(aStream, overscrollX, "] [overscroll-x=");
+    }
+    if (overscrollY != OverscrollBehavior::Auto) {
+      AppendToString(aStream, overscrollY, "] [overscroll-y=");
+    }
   }
   aStream << "] }" << sfx;
 }
@@ -220,7 +274,7 @@ AppendToString(std::stringstream& aStream, const ScrollableLayerGuid& s,
                const char* pfx, const char* sfx)
 {
   aStream << pfx
-          << nsPrintfCString("{ l=%" PRIu64 ", p=%u, v=%" PRIu64 " }", s.mLayersId, s.mPresShellId, s.mScrollId).get()
+          << nsPrintfCString("{ l=0x%" PRIx64 ", p=%u, v=%" PRIu64 " }", uint64_t(s.mLayersId), s.mPresShellId, s.mScrollId).get()
           << sfx;
 }
 
@@ -390,8 +444,6 @@ AppendToString(std::stringstream& aStream, ImageFormat format,
     aStream << "ImageFormat::MAC_IOSURFACE"; break;
   case ImageFormat::SURFACE_TEXTURE:
     aStream << "ImageFormat::SURFACE_TEXTURE"; break;
-  case ImageFormat::EGLIMAGE:
-    aStream << "ImageFormat::EGLIMAGE"; break;
   case ImageFormat::D3D9_RGB32_TEXTURE:
     aStream << "ImageFormat::D3D9_RBG32_TEXTURE"; break;
   case ImageFormat::OVERLAY_IMAGE:

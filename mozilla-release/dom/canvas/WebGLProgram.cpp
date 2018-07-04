@@ -12,11 +12,13 @@
 #include "mozilla/RefPtr.h"
 #include "nsPrintfCString.h"
 #include "WebGLActiveInfo.h"
+#include "WebGLBuffer.h"
 #include "WebGLContext.h"
 #include "WebGLShader.h"
 #include "WebGLTransformFeedback.h"
 #include "WebGLUniformLocation.h"
 #include "WebGLValidateStrings.h"
+#include "WebGLVertexArray.h"
 
 namespace mozilla {
 
@@ -264,6 +266,10 @@ QueryProgramInfo(WebGLProgram* prog, gl::GLContext* gl)
         const GLenum baseType = AttribBaseType(elemType);
         const webgl::AttribInfo attrib = {activeInfo, loc, baseType};
         info->attribs.push_back(attrib);
+
+        if (loc == 0) {
+            info->attrib0Active = true;
+        }
     }
 
     // Uniforms (can be basically anything)
@@ -443,6 +449,7 @@ QueryProgramInfo(WebGLProgram* prog, gl::GLContext* gl)
 webgl::LinkedProgramInfo::LinkedProgramInfo(WebGLProgram* prog)
     : prog(prog)
     , transformFeedbackBufferMode(prog->mNextLink_TransformFeedbackBufferMode)
+    , attrib0Active(false)
 { }
 
 webgl::LinkedProgramInfo::~LinkedProgramInfo()
@@ -455,19 +462,107 @@ webgl::LinkedProgramInfo::~LinkedProgramInfo()
     }
 }
 
+const webgl::CachedDrawFetchLimits*
+webgl::LinkedProgramInfo::GetDrawFetchLimits(const char* const funcName) const
+{
+    const auto& webgl = prog->mContext;
+    const auto& vao = webgl->mBoundVertexArray;
+
+    const auto found = mDrawFetchCache.Find(vao);
+    if (found)
+        return found;
+
+    std::vector<const CacheMapInvalidator*> cacheDeps;
+    cacheDeps.push_back(vao.get());
+    cacheDeps.push_back(&webgl->mGenericVertexAttribTypeInvalidator);
+
+    {
+        // We have to ensure that every enabled attrib array (not just the active ones)
+        // has a non-null buffer.
+        uint32_t i = 0;
+        for (const auto& cur : vao->mAttribs) {
+            if (cur.mEnabled && !cur.mBuf) {
+                webgl->ErrorInvalidOperation("%s: Vertex attrib array %u is enabled but"
+                                             " has no buffer bound.",
+                                             funcName, i);
+                return nullptr;
+            }
+        }
+    }
+
+    bool hasActiveAttrib = false;
+    bool hasActiveDivisor0 = false;
+    webgl::CachedDrawFetchLimits fetchLimits = { UINT64_MAX, UINT64_MAX };
+
+    for (const auto& progAttrib : this->attribs) {
+        const auto& loc = progAttrib.mLoc;
+        if (loc == -1)
+            continue;
+        hasActiveAttrib |= true;
+
+        const auto& attribData = vao->mAttribs[loc];
+        hasActiveDivisor0 |= (attribData.mDivisor == 0);
+
+        GLenum attribDataBaseType;
+        if (attribData.mEnabled) {
+            MOZ_ASSERT(attribData.mBuf);
+            if (attribData.mBuf->IsBoundForTF()) {
+                webgl->ErrorInvalidOperation("%s: Vertex attrib %u's buffer is bound for"
+                                             " transform feedback.",
+                                              funcName, loc);
+                return nullptr;
+            }
+            cacheDeps.push_back(&attribData.mBuf->mFetchInvalidator);
+
+            attribDataBaseType = attribData.BaseType();
+
+            const size_t availBytes = attribData.mBuf->ByteLength();
+            const auto availElems = AvailGroups(availBytes, attribData.ByteOffset(),
+                                                attribData.BytesPerVertex(),
+                                                attribData.ExplicitStride());
+            if (attribData.mDivisor) {
+                const auto availInstances = CheckedInt<uint64_t>(availElems) * attribData.mDivisor;
+                if (availInstances.isValid()) {
+                    fetchLimits.maxInstances = std::min(fetchLimits.maxInstances,
+                                                        availInstances.value());
+                } // If not valid, it overflowed too large, so we're super safe.
+            } else {
+                fetchLimits.maxVerts = std::min(fetchLimits.maxVerts, availElems);
+            }
+        } else {
+            attribDataBaseType = webgl->mGenericVertexAttribTypes[loc];
+        }
+
+        if (attribDataBaseType != progAttrib.mBaseType) {
+            nsCString progType, dataType;
+            WebGLContext::EnumName(progAttrib.mBaseType, &progType);
+            WebGLContext::EnumName(attribDataBaseType, &dataType);
+            webgl->ErrorInvalidOperation("%s: Vertex attrib %u requires data of type %s,"
+                                         " but is being supplied with type %s.",
+                                         funcName, loc, progType.BeginReading(),
+                                         dataType.BeginReading());
+            return nullptr;
+        }
+    }
+
+    if (hasActiveAttrib && !hasActiveDivisor0) {
+        webgl->ErrorInvalidOperation("%s: One active vertex attrib (if any are active)"
+                                     " must have a divisor of 0.",
+                                     funcName);
+        return nullptr;
+    }
+
+    // --
+
+    return mDrawFetchCache.Insert(vao.get(), Move(fetchLimits), Move(cacheDeps));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // WebGLProgram
 
-static GLuint
-CreateProgram(gl::GLContext* gl)
-{
-    gl->MakeCurrent();
-    return gl->fCreateProgram();
-}
-
 WebGLProgram::WebGLProgram(WebGLContext* webgl)
     : WebGLRefCountedObject(webgl)
-    , mGLName(CreateProgram(webgl->GL()))
+    , mGLName(webgl->gl->fCreateProgram())
     , mNumActiveTFOs(0)
     , mNextLink_TransformFeedbackBufferMode(LOCAL_GL_INTERLEAVED_ATTRIBS)
 {
@@ -483,8 +578,6 @@ void
 WebGLProgram::Delete()
 {
     gl::GLContext* gl = mContext->GL();
-
-    gl->MakeCurrent();
     gl->fDeleteProgram(mGLName);
 
     mVertShader = nullptr;
@@ -526,7 +619,6 @@ WebGLProgram::AttachShader(WebGLShader* shader)
 
     *shaderSlot = shader;
 
-    mContext->MakeContextCurrent();
     mContext->gl->fAttachShader(mGLName, shader->mGLName);
 }
 
@@ -584,7 +676,6 @@ WebGLProgram::DetachShader(const WebGLShader* shader)
 
     *shaderSlot = nullptr;
 
-    mContext->MakeContextCurrent();
     mContext->gl->fDetachShader(mGLName, shader->mGLName);
 }
 
@@ -683,12 +774,9 @@ WebGLProgram::GetFragDataLocation(const nsAString& userName_wide) const
         return -1;
     }
 
-
-    const auto& gl = mContext->gl;
-    gl->MakeCurrent();
-
     const NS_LossyConvertUTF16toASCII userName(userName_wide);
 #ifdef XP_MACOSX
+    const auto& gl = mContext->gl;
     if (gl->WorkAroundDriverBugs()) {
         // OSX doesn't return locs for indexed names, just the base names.
         // Indicated by failure in: conformance2/programs/gl-get-frag-data-location.html
@@ -698,7 +786,7 @@ WebGLProgram::GetFragDataLocation(const nsAString& userName_wide) const
         if (!ParseName(userName, &baseUserName, &isArray, &arrayIndex))
             return -1;
 
-        if (arrayIndex >= mContext->mImplMaxDrawBuffers)
+        if (arrayIndex >= mContext->mGLMaxDrawBuffers)
             return -1;
 
         const auto baseLoc = GetFragDataByUserName(this, baseUserName);
@@ -727,7 +815,6 @@ JS::Value
 WebGLProgram::GetProgramParameter(GLenum pname) const
 {
     gl::GLContext* gl = mContext->gl;
-    gl->MakeCurrent();
 
     if (mContext->IsWebGL2()) {
         switch (pname) {
@@ -810,7 +897,6 @@ WebGLProgram::GetUniformBlockIndex(const nsAString& userName_wide) const
     const auto& mappedName = info->mMappedName;
 
     gl::GLContext* gl = mContext->GL();
-    gl->MakeCurrent();
     return gl->fGetUniformBlockIndex(mGLName, mappedName.BeginReading());
 }
 
@@ -932,7 +1018,6 @@ WebGLProgram::GetUniformLocation(const nsAString& userName_wide) const
         return nullptr;
 
     gl::GLContext* gl = mContext->GL();
-    gl->MakeCurrent();
 
     GLint loc = gl->fGetUniformLocation(mGLName, mappedName.BeginReading());
     if (loc == -1)
@@ -957,7 +1042,6 @@ WebGLProgram::GetUniformIndices(const dom::Sequence<nsString>& uniformNames,
     nsTArray<GLuint>& arr = retval.SetValue();
 
     gl::GLContext* gl = mContext->GL();
-    gl->MakeCurrent();
 
     for (size_t i = 0; i < count; i++) {
         const NS_LossyConvertUTF16toASCII userName(uniformNames[i]);
@@ -1006,7 +1090,6 @@ WebGLProgram::UniformBlockBinding(GLuint uniformBlockIndex,
     ////
 
     gl::GLContext* gl = mContext->GL();
-    gl->MakeCurrent();
     gl->fUniformBlockBinding(mGLName, uniformBlockIndex, uniformBlockBinding);
 
     ////
@@ -1068,8 +1151,6 @@ WebGLProgram::LinkProgram()
         return;
     }
 
-    mContext->MakeContextCurrent();
-    mContext->InvalidateBufferFetching(); // we do it early in this function
     // as some of the validation changes program state
 
     mLinkLog.Truncate();
@@ -1263,7 +1344,7 @@ WebGLProgram::ValidateAfterTentativeLink(nsCString* const out_linkLog) const
     // * Unrecognized varying name
     // * Duplicate varying name
     // * Too many components for specified buffer mode
-    if (mNextLink_TransformFeedbackVaryings.size()) {
+    if (!mNextLink_TransformFeedbackVaryings.empty()) {
         GLuint maxComponentsPerIndex = 0;
         switch (mNextLink_TransformFeedbackBufferMode) {
         case LOCAL_GL_INTERLEAVED_ATTRIBS:
@@ -1283,7 +1364,7 @@ WebGLProgram::ValidateAfterTentativeLink(nsCString* const out_linkLog) const
         std::vector<size_t> componentsPerVert;
         std::set<const WebGLActiveInfo*> alreadyUsed;
         for (const auto& wideUserName : mNextLink_TransformFeedbackVaryings) {
-            if (!componentsPerVert.size() ||
+            if (componentsPerVert.empty() ||
                 mNextLink_TransformFeedbackBufferMode == LOCAL_GL_SEPARATE_ATTRIBS)
             {
                 componentsPerVert.push_back(0);
@@ -1363,10 +1444,6 @@ WebGLProgram::UseProgram() const
         return false;
     }
 
-    mContext->MakeContextCurrent();
-
-    mContext->InvalidateBufferFetching();
-
     mContext->gl->fUseProgram(mGLName);
     return true;
 }
@@ -1374,7 +1451,6 @@ WebGLProgram::UseProgram() const
 void
 WebGLProgram::ValidateProgram() const
 {
-    mContext->MakeContextCurrent();
     gl::GLContext* gl = mContext->gl;
 
 #ifdef XP_MACOSX
@@ -1463,7 +1539,6 @@ WebGLProgram::TransformFeedbackVaryings(const dom::Sequence<nsString>& varyings,
     const char funcName[] = "transformFeedbackVaryings";
 
     const auto& gl = mContext->gl;
-    gl->MakeCurrent();
 
     switch (bufferMode) {
     case LOCAL_GL_INTERLEAVED_ATTRIBS:
@@ -1608,7 +1683,7 @@ webgl::LinkedProgramInfo::MapFragDataName(const nsCString& userName,
 {
     // FS outputs can be arrays, but not structures.
 
-    if (!fragDataMap.size()) {
+    if (fragDataMap.empty()) {
         // No mappings map from validation, so just forward it.
         *out_mappedName = userName;
         return true;

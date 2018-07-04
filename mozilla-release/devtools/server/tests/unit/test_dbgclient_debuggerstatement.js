@@ -14,8 +14,8 @@ function run_test() {
 
   let transport = DebuggerServer.connectPipe();
   gClient = new DebuggerClient(transport);
-  gClient.connect().then(function ([type, traits]) {
-    attachTestTab(gClient, "test-1", function (reply, tabClient) {
+  gClient.connect().then(function([type, traits]) {
+    attachTestTab(gClient, "test-1", function(reply, tabClient) {
       gTabClient = tabClient;
       test_threadAttach(reply.threadActor);
     });
@@ -24,27 +24,27 @@ function run_test() {
 }
 
 function test_threadAttach(threadActorID) {
-  do_print("Trying to attach to thread " + threadActorID);
-  gTabClient.attachThread({}, function (response, threadClient) {
-    do_check_eq(threadClient.state, "paused");
-    do_check_eq(threadClient.actor, threadActorID);
-    threadClient.resume(function () {
-      do_check_eq(threadClient.state, "attached");
+  info("Trying to attach to thread " + threadActorID);
+  gTabClient.attachThread({}, function(response, threadClient) {
+    Assert.equal(threadClient.state, "paused");
+    Assert.equal(threadClient.actor, threadActorID);
+    threadClient.resume(function() {
+      Assert.equal(threadClient.state, "attached");
       test_debugger_statement(threadClient);
     });
   });
 }
 
 function test_debugger_statement(threadClient) {
-  threadClient.addListener("paused", function (event, packet) {
-    do_check_eq(threadClient.state, "paused");
+  threadClient.addListener("paused", function(event, packet) {
+    Assert.equal(threadClient.state, "paused");
     // Reach around the protocol to check that the debuggee is in the state
     // we expect.
-    do_check_true(gDebuggee.a);
-    do_check_false(gDebuggee.b);
+    Assert.ok(gDebuggee.a);
+    Assert.ok(!gDebuggee.b);
 
     let xpcInspector = Cc["@mozilla.org/jsinspector;1"].getService(Ci.nsIJSInspector);
-    do_check_eq(xpcInspector.eventLoopNestLevel, 1);
+    Assert.equal(xpcInspector.eventLoopNestLevel, 1);
 
     threadClient.resume(cleanup);
   });
@@ -52,17 +52,17 @@ function test_debugger_statement(threadClient) {
   Cu.evalInSandbox("var a = true; var b = false; debugger; var b = true;", gDebuggee);
 
   // Now make sure that we've run the code after the debugger statement...
-  do_check_true(gDebuggee.b);
+  Assert.ok(gDebuggee.b);
 }
 
 function cleanup() {
-  gClient.addListener("closed", function (event) {
+  gClient.addListener("closed", function(event) {
     do_test_finished();
   });
 
   try {
     let xpcInspector = Cc["@mozilla.org/jsinspector;1"].getService(Ci.nsIJSInspector);
-    do_check_eq(xpcInspector.eventLoopNestLevel, 0);
+    Assert.equal(xpcInspector.eventLoopNestLevel, 0);
   } catch (e) {
     dump(e);
   }

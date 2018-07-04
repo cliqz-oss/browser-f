@@ -15,7 +15,7 @@
 #include "PLDHashTable.h"
 #include <new>
 
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsCRTGlue.h"
 #include "nsUnicharUtils.h"
 #include "nsPointerHashKeys.h"
@@ -552,7 +552,7 @@ public:
   ~nsUnicharPtrHashKey()
   {
     if (mKey) {
-      NS_Free(const_cast<char16_t*>(mKey));
+      free(const_cast<char16_t*>(mKey));
     }
   }
 

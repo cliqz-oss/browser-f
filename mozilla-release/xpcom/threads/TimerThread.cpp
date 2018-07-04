@@ -145,7 +145,9 @@ public:
     return NS_OK;
   }
 
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   NS_IMETHOD GetName(nsACString& aName) override;
+#endif
 
   nsTimerEvent()
     : mozilla::CancelableRunnable("nsTimerEvent")
@@ -263,6 +265,7 @@ nsTimerEvent::DeleteAllocatorIfNeeded()
   }
 }
 
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
 NS_IMETHODIMP
 nsTimerEvent::GetName(nsACString& aName)
 {
@@ -272,6 +275,7 @@ nsTimerEvent::GetName(nsACString& aName)
   mTimer->GetName(aName);
   return NS_OK;
 }
+#endif
 
 NS_IMETHODIMP
 nsTimerEvent::Run()
@@ -331,7 +335,7 @@ TimerThread::Shutdown()
     return NS_ERROR_NOT_INITIALIZED;
   }
 
-  nsTArray<UniquePtr<Entry>> timers;
+  nsTArray<RefPtr<nsTimerImpl>> timers;
   {
     // lock scope
     MonitorAutoLock lock(mMonitor);
@@ -350,12 +354,14 @@ TimerThread::Shutdown()
     // might potentially call some code reentering the same lock
     // that leads to unexpected behavior or deadlock.
     // See bug 422472.
-    mTimers.SwapElements(timers);
+    for (const UniquePtr<Entry>& entry : mTimers) {
+      timers.AppendElement(entry->Take());
+    }
+
+    mTimers.Clear();
   }
 
-  uint32_t timersCount = timers.Length();
-  for (uint32_t i = 0; i < timersCount; i++) {
-    RefPtr<nsTimerImpl> timer = timers[i]->Take();
+  for (const RefPtr<nsTimerImpl>& timer : timers) {
     if (timer) {
       timer->Cancel();
     }
@@ -415,7 +421,7 @@ TimerThread::Run()
 
   while (!mShutdown) {
     // Have to use PRIntervalTime here, since PR_WaitCondVar takes it
-    PRIntervalTime waitFor;
+    TimeDuration waitFor;
     bool forceRunThisTimer = forceRunNextTimer;
     forceRunNextTimer = false;
 
@@ -425,9 +431,9 @@ TimerThread::Run()
       if (ChaosMode::isActive(ChaosFeature::TimerScheduling)) {
         milliseconds = ChaosMode::randomUint32LessThan(200);
       }
-      waitFor = PR_MillisecondsToInterval(milliseconds);
+      waitFor = TimeDuration::FromMilliseconds(milliseconds);
     } else {
-      waitFor = PR_INTERVAL_NO_TIMEOUT;
+      waitFor = TimeDuration::Forever();
       TimeStamp now = TimeStamp::Now();
 
       RemoveLeadingCanceledTimersInternal();
@@ -514,20 +520,20 @@ TimerThread::Run()
           forceRunNextTimer = false;
           goto next; // round down; execute event now
         }
-        waitFor = PR_MicrosecondsToInterval(
-          static_cast<uint32_t>(microseconds)); // Floor is accurate enough.
-        if (waitFor == 0) {
-          waitFor = 1;  // round up, wait the minimum time we can wait
+        waitFor = TimeDuration::FromMicroseconds(microseconds);
+        if (waitFor.IsZero()) {
+          // round up, wait the minimum time we can wait
+          waitFor = TimeDuration::FromMicroseconds(1);
         }
       }
 
       if (MOZ_LOG_TEST(GetTimerLog(), LogLevel::Debug)) {
-        if (waitFor == PR_INTERVAL_NO_TIMEOUT)
+        if (waitFor == TimeDuration::Forever())
           MOZ_LOG(GetTimerLog(), LogLevel::Debug,
-                 ("waiting for PR_INTERVAL_NO_TIMEOUT\n"));
+                 ("waiting forever\n"));
         else
           MOZ_LOG(GetTimerLog(), LogLevel::Debug,
-                 ("waiting for %u\n", PR_IntervalToMilliseconds(waitFor)));
+                 ("waiting for %f\n", waitFor.ToMilliseconds()));
       }
     }
 
@@ -737,7 +743,7 @@ TimerThread::RemoveFirstTimerInternal()
   mMonitor.AssertCurrentThreadOwns();
   MOZ_ASSERT(!mTimers.IsEmpty());
   std::pop_heap(mTimers.begin(), mTimers.end(), Entry::UniquePtrLessThan);
-  mTimers.RemoveElementAt(mTimers.Length() - 1);
+  mTimers.RemoveLastElement();
 }
 
 already_AddRefed<nsTimerImpl>

@@ -45,11 +45,10 @@ RemoveStyleSheet(EditorBase& aEditor, StyleSheet* aSheet)
  ******************************************************************************/
 
 AddStyleSheetTransaction::AddStyleSheetTransaction(EditorBase& aEditorBase,
-                                                   StyleSheet* aSheet)
+                                                   StyleSheet& aStyleSheet)
   : mEditorBase(&aEditorBase)
-  , mSheet(aSheet)
+  , mSheet(&aStyleSheet)
 {
-  MOZ_ASSERT(aSheet);
 }
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(AddStyleSheetTransaction,
@@ -80,24 +79,16 @@ AddStyleSheetTransaction::UndoTransaction()
   return NS_OK;
 }
 
-NS_IMETHODIMP
-AddStyleSheetTransaction::GetTxnDescription(nsAString& aString)
-{
-  aString.AssignLiteral("AddStyleSheetTransaction");
-  return NS_OK;
-}
-
 /******************************************************************************
  * RemoveStyleSheetTransaction
  ******************************************************************************/
 
 RemoveStyleSheetTransaction::RemoveStyleSheetTransaction(
                                EditorBase& aEditorBase,
-                               StyleSheet* aSheet)
+                               StyleSheet& aStyleSheet)
   : mEditorBase(&aEditorBase)
-  , mSheet(aSheet)
+  , mSheet(&aStyleSheet)
 {
-  MOZ_ASSERT(aSheet);
 }
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(RemoveStyleSheetTransaction,
@@ -125,13 +116,6 @@ RemoveStyleSheetTransaction::UndoTransaction()
     return NS_ERROR_NOT_INITIALIZED;
   }
   AddStyleSheet(*mEditorBase, mSheet);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-RemoveStyleSheetTransaction::GetTxnDescription(nsAString& aString)
-{
-  aString.AssignLiteral("RemoveStyleSheetTransaction");
   return NS_OK;
 }
 

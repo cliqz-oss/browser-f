@@ -3,7 +3,7 @@
 
 "use strict";
 
-Components.utils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 function run_test() {
   do_test_pending();
@@ -19,24 +19,24 @@ add_task(async function test_compress_lz4() {
   }
   let arrayAsString = Array.prototype.join.call(array);
 
-  do_print("Writing data with lz4 compression");
+  info("Writing data with lz4 compression");
   let bytes = await OS.File.writeAtomic(path, array, { compression: "lz4" });
-  do_print("Compressed " + length + " bytes into " + bytes);
+  info("Compressed " + length + " bytes into " + bytes);
 
-  do_print("Reading back with lz4 decompression");
+  info("Reading back with lz4 decompression");
   let decompressed = await OS.File.read(path, { compression: "lz4" });
-  do_print("Decompressed into " + decompressed.byteLength + " bytes");
-  do_check_eq(arrayAsString, Array.prototype.join.call(decompressed));
+  info("Decompressed into " + decompressed.byteLength + " bytes");
+  Assert.equal(arrayAsString, Array.prototype.join.call(decompressed));
 });
 
 add_task(async function test_uncompressed() {
-  do_print("Writing data without compression");
+  info("Writing data without compression");
   let path = OS.Path.join(OS.Constants.Path.tmpDir, "no_compression.tmp");
   let array = new Uint8Array(1024);
   for (let i = 0; i < array.byteLength; ++i) {
     array[i] = i;
   }
-  let bytes = await OS.File.writeAtomic(path, array); // No compression
+  await OS.File.writeAtomic(path, array); // No compression
 
   let exn;
   // Force decompression, reading should fail
@@ -45,18 +45,18 @@ add_task(async function test_uncompressed() {
   } catch (ex) {
     exn = ex;
   }
-  do_check_true(!!exn);
+  Assert.ok(!!exn);
   // Check the exception message (and that it contains the file name)
-  do_check_true(exn.message.indexOf(`Invalid header (no magic number) - Data: ${ path }`) != -1);
+  Assert.ok(exn.message.includes(`Invalid header (no magic number) - Data: ${ path }`));
 });
 
 add_task(async function test_no_header() {
   let path = OS.Path.join(OS.Constants.Path.tmpDir, "no_header.tmp");
-  let array = new Uint8Array(8).fill(0,0);  // Small array with no header
+  let array = new Uint8Array(8).fill(0, 0); // Small array with no header
 
-  do_print("Writing data with no header");
+  info("Writing data with no header");
 
-  let bytes = await OS.File.writeAtomic(path, array); // No compression
+  await OS.File.writeAtomic(path, array); // No compression
   let exn;
   // Force decompression, reading should fail
   try {
@@ -64,23 +64,23 @@ add_task(async function test_no_header() {
   } catch (ex) {
     exn = ex;
   }
-  do_check_true(!!exn);
+  Assert.ok(!!exn);
   // Check the exception message (and that it contains the file name)
-  do_check_true(exn.message.indexOf(`Buffer is too short (no header) - Data: ${ path }`) != -1);
+  Assert.ok(exn.message.includes(`Buffer is too short (no header) - Data: ${ path }`));
 });
 
 add_task(async function test_invalid_content() {
   let path = OS.Path.join(OS.Constants.Path.tmpDir, "invalid_content.tmp");
   let arr1 = new Uint8Array([109, 111, 122, 76, 122, 52, 48, 0]);
-  let arr2 = new Uint8Array(248).fill(1,0);
+  let arr2 = new Uint8Array(248).fill(1, 0);
 
   let array = new Uint8Array(arr1.length + arr2.length);
   array.set(arr1);
   array.set(arr2, arr1.length);
 
-  do_print("Writing invalid data (with a valid header and only ones after that)");
+  info("Writing invalid data (with a valid header and only ones after that)");
 
-  let bytes = await OS.File.writeAtomic(path, array); // No compression
+  await OS.File.writeAtomic(path, array); // No compression
   let exn;
   // Force decompression, reading should fail
   try {
@@ -88,9 +88,9 @@ add_task(async function test_invalid_content() {
   } catch (ex) {
     exn = ex;
   }
-  do_check_true(!!exn);
+  Assert.ok(!!exn);
   // Check the exception message (and that it contains the file name)
-  do_check_true(exn.message.indexOf(`Invalid content: Decompression stopped at 0 - Data: ${ path }`) != -1);
+  Assert.ok(exn.message.includes(`Invalid content: Decompression stopped at 0 - Data: ${ path }`));
 });
 
 add_task(function() {

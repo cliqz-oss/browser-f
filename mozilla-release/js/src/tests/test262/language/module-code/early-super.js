@@ -7,8 +7,10 @@ description: >
     It is a Syntax Error if ModuleItemList Contains super.
 flags: [module]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 super;

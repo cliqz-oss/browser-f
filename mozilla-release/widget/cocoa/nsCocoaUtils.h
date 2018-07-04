@@ -192,10 +192,10 @@ public:
   DevPixelsToCocoaPoints(const LayoutDeviceIntRect& aRect,
                          CGFloat aBackingScale)
   {
-    return NSMakeRect((CGFloat)aRect.x / aBackingScale,
-                      (CGFloat)aRect.y / aBackingScale,
-                      (CGFloat)aRect.width / aBackingScale,
-                      (CGFloat)aRect.height / aBackingScale);
+    return NSMakeRect((CGFloat)aRect.X() / aBackingScale,
+                      (CGFloat)aRect.Y() / aBackingScale,
+                      (CGFloat)aRect.Width() / aBackingScale,
+                      (CGFloat)aRect.Height() / aBackingScale);
   }
 
   // Returns the given y coordinate, which must be in screen coordinates,
@@ -271,10 +271,14 @@ public:
       The caller owns the <code>CGImageRef</code>. 
       @param aFrame the frame to convert
       @param aResult the resulting CGImageRef
+      @param aIsEntirelyBlack an outparam that, if non-null, will be set to a
+                              bool that indicates whether the RGB values on all
+                              pixels are zero
       @return NS_OK if the conversion worked, NS_ERROR_FAILURE otherwise
    */
   static nsresult CreateCGImageFromSurface(SourceSurface* aSurface,
-                                           CGImageRef* aResult);
+                                           CGImageRef* aResult,
+                                           bool* aIsEntirelyBlack = nullptr);
   
   /** Creates a Cocoa <code>NSImage</code> from a <code>CGImageRef</code>.
       Copies the pixel data from the <code>CGImageRef</code> into a new <code>NSImage</code>.
@@ -326,6 +330,14 @@ public:
    */
   static NSEvent* MakeNewCocoaEventWithType(NSEventType aEventType,
                                             NSEvent *aEvent);
+
+  /**
+   * Makes a cocoa event from a widget keyboard event.
+   */
+  static NSEvent* MakeNewCococaEventFromWidgetEvent(
+                    const mozilla::WidgetKeyboardEvent& aKeyEvent,
+                    NSInteger aWindowNumber,
+                    NSGraphicsContext* aContext);
 
   /**
    * Initializes aNPCocoaEvent.

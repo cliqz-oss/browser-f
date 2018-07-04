@@ -134,6 +134,12 @@ DynamicImage::GetNativeSizes(nsTArray<IntSize>& aNativeSizes) const
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+size_t
+DynamicImage::GetNativeSizesLength() const
+{
+  return 0;
+}
+
 NS_IMETHODIMP
 DynamicImage::GetIntrinsicSize(nsSize* aSize)
 {
@@ -199,7 +205,7 @@ DynamicImage::GetFrameAtSize(const IntSize& aSize,
                      aWhichFrame, SamplingFilter::POINT, Nothing(), aFlags,
                      1.0);
 
-  return result == DrawResult::SUCCESS ? dt->Snapshot() : nullptr;
+  return result == ImgDrawResult::SUCCESS ? dt->Snapshot() : nullptr;
 }
 
 NS_IMETHODIMP_(bool)
@@ -220,7 +226,24 @@ DynamicImage::GetImageContainer(LayerManager* aManager, uint32_t aFlags)
   return nullptr;
 }
 
-NS_IMETHODIMP_(DrawResult)
+NS_IMETHODIMP_(bool)
+DynamicImage::IsImageContainerAvailableAtSize(LayerManager* aManager,
+                                              const IntSize& aSize,
+                                              uint32_t aFlags)
+{
+  return false;
+}
+
+NS_IMETHODIMP_(already_AddRefed<ImageContainer>)
+DynamicImage::GetImageContainerAtSize(LayerManager* aManager,
+                                      const IntSize& aSize,
+                                      const Maybe<SVGImageContext>& aSVGContext,
+                                      uint32_t aFlags)
+{
+  return nullptr;
+}
+
+NS_IMETHODIMP_(ImgDrawResult)
 DynamicImage::Draw(gfxContext* aContext,
                    const nsIntSize& aSize,
                    const ImageRegion& aRegion,
@@ -238,7 +261,7 @@ DynamicImage::Draw(gfxContext* aContext,
     gfxUtils::DrawPixelSnapped(aContext, mDrawable, SizeDouble(drawableSize), aRegion,
                                SurfaceFormat::B8G8R8A8, aSamplingFilter,
                                aOpacity);
-    return DrawResult::SUCCESS;
+    return ImgDrawResult::SUCCESS;
   }
 
   gfxSize scale(double(aSize.width) / drawableSize.width,
@@ -253,7 +276,7 @@ DynamicImage::Draw(gfxContext* aContext,
   gfxUtils::DrawPixelSnapped(aContext, mDrawable, SizeDouble(drawableSize), region,
                              SurfaceFormat::B8G8R8A8, aSamplingFilter,
                              aOpacity);
-  return DrawResult::SUCCESS;
+  return ImgDrawResult::SUCCESS;
 }
 
 NS_IMETHODIMP

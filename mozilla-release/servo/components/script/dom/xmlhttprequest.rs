@@ -3,9 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use document_loader::DocumentLoader;
-use dom::bindings::cell::DOMRefCell;
+use dom::bindings::cell::DomRefCell;
 use dom::bindings::codegen::Bindings::BlobBinding::BlobBinding::BlobMethods;
-use dom::bindings::codegen::Bindings::EventHandlerBinding::EventHandlerNonNull;
 use dom::bindings::codegen::Bindings::WindowBinding::WindowMethods;
 use dom::bindings::codegen::Bindings::XMLHttpRequestBinding;
 use dom::bindings::codegen::Bindings::XMLHttpRequestBinding::BodyInit;
@@ -15,9 +14,9 @@ use dom::bindings::codegen::UnionTypes::DocumentOrBodyInit;
 use dom::bindings::conversions::ToJSValConvertible;
 use dom::bindings::error::{Error, ErrorResult, Fallible};
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::{JS, MutNullableJS, Root};
 use dom::bindings::refcounted::Trusted;
 use dom::bindings::reflector::{DomObject, reflect_dom_object};
+use dom::bindings::root::{Dom, DomRoot, MutNullableDom};
 use dom::bindings::str::{ByteString, DOMString, USVString, is_token};
 use dom::blob::{Blob, BlobImpl};
 use dom::document::{Document, HasBrowsingContext, IsHTMLDocument};
@@ -37,10 +36,9 @@ use dom::workerglobalscope::WorkerGlobalScope;
 use dom::xmlhttprequesteventtarget::XMLHttpRequestEventTarget;
 use dom::xmlhttprequestupload::XMLHttpRequestUpload;
 use dom_struct::dom_struct;
-use encoding::all::UTF_8;
-use encoding::label::encoding_from_whatwg_label;
-use encoding::types::{DecoderTrap, EncoderTrap, Encoding, EncodingRef};
+use encoding_rs::{Encoding, UTF_8};
 use euclid::Length;
+use fetch::FetchCanceller;
 use html5ever::serialize;
 use html5ever::serialize::SerializeOpts;
 use hyper::header::{ContentLength, ContentType, ContentEncoding};
@@ -50,10 +48,12 @@ use hyper::mime::{self, Attr as MimeAttr, Mime, Value as MimeValue};
 use hyper_serde::Serde;
 use ipc_channel::ipc;
 use ipc_channel::router::ROUTER;
-use js::jsapi::{Heap, JSContext, JS_ParseJSON};
+use js::jsapi::{Heap, JSContext, JSObject};
 use js::jsapi::JS_ClearPendingException;
 use js::jsval::{JSVal, NullValue, UndefinedValue};
-use net_traits::{FetchMetadata, FilteredMetadata};
+use js::rust::wrappers::JS_ParseJSON;
+use js::typedarray::{ArrayBuffer, CreateWith};
+use net_traits::{FetchChannels, FetchMetadata, FilteredMetadata};
 use net_traits::{FetchResponseListener, NetworkError, ReferrerPolicy};
 use net_traits::CoreResourceMsg::Fetch;
 use net_traits::request::{CredentialsMode, Destination, RequestInit, RequestMode};
@@ -61,12 +61,13 @@ use net_traits::trim_http_whitespace;
 use network_listener::{NetworkListener, PreInvoke};
 use script_traits::DocumentActivity;
 use servo_atoms::Atom;
-use servo_config::prefs::PREFS;
 use servo_url::ServoUrl;
-use std::ascii::AsciiExt;
 use std::borrow::ToOwned;
 use std::cell::Cell;
 use std::default::Default;
+use std::ptr;
+use std::ptr::NonNull;
+use std::slice;
 use std::str;
 use std::sync::{Arc, Mutex};
 use task_source::networking::NetworkingTaskSource;
@@ -74,7 +75,7 @@ use time;
 use timers::{OneshotTimerCallback, OneshotTimerHandle};
 use url::Position;
 
-#[derive(JSTraceable, PartialEq, Copy, Clone, HeapSizeOf)]
+#[derive(Clone, Copy, Debug, JSTraceable, MallocSizeOf, PartialEq)]
 enum XMLHttpRequestState {
     Unsent = 0,
     Opened = 1,
@@ -83,7 +84,7 @@ enum XMLHttpRequestState {
     Done = 4,
 }
 
-#[derive(JSTraceable, PartialEq, Clone, Copy, HeapSizeOf)]
+#[derive(Clone, Copy, JSTraceable, MallocSizeOf, PartialEq)]
 pub struct GenerationId(u32);
 
 /// Closure of required data for each async network event that comprises the
@@ -91,8 +92,8 @@ pub struct GenerationId(u32);
 struct XHRContext {
     xhr: TrustedXHRAddress,
     gen_id: GenerationId,
-    buf: DOMRefCell<Vec<u8>>,
-    sync_status: DOMRefCell<Option<ErrorResult>>,
+    buf: DomRefCell<Vec<u8>>,
+    sync_status: DomRefCell<Option<ErrorResult>>,
 }
 
 #[derive(Clone)]
@@ -124,40 +125,41 @@ pub struct XMLHttpRequest {
     ready_state: Cell<XMLHttpRequestState>,
     timeout: Cell<u32>,
     with_credentials: Cell<bool>,
-    upload: JS<XMLHttpRequestUpload>,
-    response_url: DOMRefCell<String>,
+    upload: Dom<XMLHttpRequestUpload>,
+    response_url: DomRefCell<String>,
     status: Cell<u16>,
-    status_text: DOMRefCell<ByteString>,
-    response: DOMRefCell<ByteString>,
+    status_text: DomRefCell<ByteString>,
+    response: DomRefCell<ByteString>,
     response_type: Cell<XMLHttpRequestResponseType>,
-    response_xml: MutNullableJS<Document>,
-    response_blob: MutNullableJS<Blob>,
-    #[ignore_heap_size_of = "Defined in rust-mozjs"]
+    response_xml: MutNullableDom<Document>,
+    response_blob: MutNullableDom<Blob>,
+    response_arraybuffer: Heap<*mut JSObject>,
+    #[ignore_malloc_size_of = "Defined in rust-mozjs"]
     response_json: Heap<JSVal>,
-    #[ignore_heap_size_of = "Defined in hyper"]
-    response_headers: DOMRefCell<Headers>,
-    #[ignore_heap_size_of = "Defined in hyper"]
-    override_mime_type: DOMRefCell<Option<Mime>>,
-    #[ignore_heap_size_of = "Defined in rust-encoding"]
-    override_charset: DOMRefCell<Option<EncodingRef>>,
+    #[ignore_malloc_size_of = "Defined in hyper"]
+    response_headers: DomRefCell<Headers>,
+    #[ignore_malloc_size_of = "Defined in hyper"]
+    override_mime_type: DomRefCell<Option<Mime>>,
+    override_charset: DomRefCell<Option<&'static Encoding>>,
 
     // Associated concepts
-    #[ignore_heap_size_of = "Defined in hyper"]
-    request_method: DOMRefCell<Method>,
-    request_url: DOMRefCell<Option<ServoUrl>>,
-    #[ignore_heap_size_of = "Defined in hyper"]
-    request_headers: DOMRefCell<Headers>,
+    #[ignore_malloc_size_of = "Defined in hyper"]
+    request_method: DomRefCell<Method>,
+    request_url: DomRefCell<Option<ServoUrl>>,
+    #[ignore_malloc_size_of = "Defined in hyper"]
+    request_headers: DomRefCell<Headers>,
     request_body_len: Cell<usize>,
     sync: Cell<bool>,
     upload_complete: Cell<bool>,
     send_flag: Cell<bool>,
 
-    timeout_cancel: DOMRefCell<Option<OneshotTimerHandle>>,
+    timeout_cancel: DomRefCell<Option<OneshotTimerHandle>>,
     fetch_time: Cell<i64>,
     generation_id: Cell<GenerationId>,
     response_status: Cell<Result<(), ()>>,
     referrer_url: Option<ServoUrl>,
     referrer_policy: Option<ReferrerPolicy>,
+    canceller: DomRefCell<FetchCanceller>,
 }
 
 impl XMLHttpRequest {
@@ -175,43 +177,45 @@ impl XMLHttpRequest {
             ready_state: Cell::new(XMLHttpRequestState::Unsent),
             timeout: Cell::new(0u32),
             with_credentials: Cell::new(false),
-            upload: JS::from_ref(&*XMLHttpRequestUpload::new(global)),
-            response_url: DOMRefCell::new(String::new()),
+            upload: Dom::from_ref(&*XMLHttpRequestUpload::new(global)),
+            response_url: DomRefCell::new(String::new()),
             status: Cell::new(0),
-            status_text: DOMRefCell::new(ByteString::new(vec!())),
-            response: DOMRefCell::new(ByteString::new(vec!())),
+            status_text: DomRefCell::new(ByteString::new(vec!())),
+            response: DomRefCell::new(ByteString::new(vec!())),
             response_type: Cell::new(XMLHttpRequestResponseType::_empty),
             response_xml: Default::default(),
             response_blob: Default::default(),
+            response_arraybuffer: Heap::default(),
             response_json: Heap::default(),
-            response_headers: DOMRefCell::new(Headers::new()),
-            override_mime_type: DOMRefCell::new(None),
-            override_charset: DOMRefCell::new(None),
+            response_headers: DomRefCell::new(Headers::new()),
+            override_mime_type: DomRefCell::new(None),
+            override_charset: DomRefCell::new(None),
 
-            request_method: DOMRefCell::new(Method::Get),
-            request_url: DOMRefCell::new(None),
-            request_headers: DOMRefCell::new(Headers::new()),
+            request_method: DomRefCell::new(Method::Get),
+            request_url: DomRefCell::new(None),
+            request_headers: DomRefCell::new(Headers::new()),
             request_body_len: Cell::new(0),
             sync: Cell::new(false),
             upload_complete: Cell::new(false),
             send_flag: Cell::new(false),
 
-            timeout_cancel: DOMRefCell::new(None),
+            timeout_cancel: DomRefCell::new(None),
             fetch_time: Cell::new(0),
             generation_id: Cell::new(GenerationId(0)),
             response_status: Cell::new(Ok(())),
             referrer_url: referrer_url,
             referrer_policy: referrer_policy,
+            canceller: DomRefCell::new(Default::default()),
         }
     }
-    pub fn new(global: &GlobalScope) -> Root<XMLHttpRequest> {
-        reflect_dom_object(box XMLHttpRequest::new_inherited(global),
+    pub fn new(global: &GlobalScope) -> DomRoot<XMLHttpRequest> {
+        reflect_dom_object(Box::new(XMLHttpRequest::new_inherited(global)),
                            global,
                            XMLHttpRequestBinding::Wrap)
     }
 
     // https://xhr.spec.whatwg.org/#constructors
-    pub fn Constructor(global: &GlobalScope) -> Fallible<Root<XMLHttpRequest>> {
+    pub fn Constructor(global: &GlobalScope) -> Fallible<DomRoot<XMLHttpRequest>> {
         Ok(XMLHttpRequest::new(global))
     }
 
@@ -222,7 +226,8 @@ impl XMLHttpRequest {
     fn initiate_async_xhr(context: Arc<Mutex<XHRContext>>,
                           task_source: NetworkingTaskSource,
                           global: &GlobalScope,
-                          init: RequestInit) {
+                          init: RequestInit,
+                          cancellation_chan: ipc::IpcReceiver<()>) {
         impl FetchResponseListener for XHRContext {
             fn process_request_body(&mut self) {
                 // todo
@@ -259,15 +264,17 @@ impl XMLHttpRequest {
         }
 
         let (action_sender, action_receiver) = ipc::channel().unwrap();
+
         let listener = NetworkListener {
             context: context,
             task_source: task_source,
-            wrapper: Some(global.get_runnable_wrapper())
+            canceller: Some(global.task_canceller())
         };
-        ROUTER.add_route(action_receiver.to_opaque(), box move |message| {
+        ROUTER.add_route(action_receiver.to_opaque(), Box::new(move |message| {
             listener.notify_fetch(message.to().unwrap());
-        });
-        global.core_resource_thread().send(Fetch(init, action_sender)).unwrap();
+        }));
+        global.core_resource_thread().send(
+            Fetch(init, FetchChannels::ResponseMsg(action_sender, Some(cancellation_chan)))).unwrap();
     }
 }
 
@@ -290,7 +297,7 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
     fn Open_(&self, method: ByteString, url: USVString, async: bool,
              username: Option<USVString>, password: Option<USVString>) -> ErrorResult {
         // Step 1
-        if let Some(window) = Root::downcast::<Window>(self.global()) {
+        if let Some(window) = DomRoot::downcast::<Window>(self.global()) {
             if !window.Document().is_fully_active() {
                 return Err(Error::InvalidState);
             }
@@ -482,8 +489,8 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
     }
 
     // https://xhr.spec.whatwg.org/#the-upload-attribute
-    fn Upload(&self) -> Root<XMLHttpRequestUpload> {
-        Root::from_ref(&*self.upload)
+    fn Upload(&self) -> DomRoot<XMLHttpRequestUpload> {
+        DomRoot::from_ref(&*self.upload)
     }
 
     // https://xhr.spec.whatwg.org/#the-send()-method
@@ -513,6 +520,8 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
             Some(DocumentOrBodyInit::FormData(ref formdata)) => Some(formdata.extract()),
             Some(DocumentOrBodyInit::String(ref str)) => Some(str.extract()),
             Some(DocumentOrBodyInit::URLSearchParams(ref urlsp)) => Some(urlsp.extract()),
+            Some(DocumentOrBodyInit::ArrayBuffer(ref typedarray)) => Some((typedarray.to_vec(), None)),
+            Some(DocumentOrBodyInit::ArrayBufferView(ref typedarray)) => Some((typedarray.to_vec(), None)),
             None => None,
         };
 
@@ -565,20 +574,6 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
             unreachable!()
         };
 
-        let bypass_cross_origin_check = {
-            // We want to be able to do cross-origin requests in browser.html.
-            // If the XHR happens in a top level window and the mozbrowser
-            // preference is enabled, we allow bypassing the CORS check.
-            // This is a temporary measure until we figure out Servo privilege
-            // story. See https://github.com/servo/servo/issues/9582
-            if let Some(win) = Root::downcast::<Window>(self.global()) {
-                let is_root_pipeline = win.parent_info().is_none();
-                is_root_pipeline && PREFS.is_mozbrowser_enabled()
-            } else {
-                false
-            }
-        };
-
         let mut request = RequestInit {
             method: self.request_method.borrow().clone(),
             url: self.request_url.borrow().clone().unwrap(),
@@ -600,10 +595,6 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
             pipeline_id: Some(self.global().pipeline_id()),
             .. RequestInit::default()
         };
-
-        if bypass_cross_origin_check {
-            request.mode = RequestMode::Navigate;
-        }
 
         // step 4 (second half)
         match extracted_or_serialized {
@@ -627,7 +618,7 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
 
                 if !content_type_set {
                     let ct = request.headers.get_mut::<ContentType>();
-                    if let Some(mut ct) = ct {
+                    if let Some(ct) = ct {
                         if let Some(encoding) = encoding {
                             for param in &mut (ct.0).2 {
                                 if param.0 == MimeAttr::Charset {
@@ -726,7 +717,7 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
         // Step 4
         let value = override_mime.get_param(mime::Attr::Charset);
         *self.override_charset.borrow_mut() = value.and_then(|value| {
-            encoding_from_whatwg_label(value)
+            Encoding::for_label(value.as_bytes())
         });
         Ok(())
     }
@@ -787,9 +778,11 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
             XMLHttpRequestResponseType::Blob => {
                 self.blob_response().to_jsval(cx, rval.handle_mut());
             },
-            _ => {
-                // XXXManishearth handle other response types
-                self.response.borrow().to_jsval(cx, rval.handle_mut());
+            XMLHttpRequestResponseType::Arraybuffer => {
+                match self.arraybuffer_response(cx) {
+                    Some(js_object) => js_object.to_jsval(cx, rval.handle_mut()),
+                    None => return NullValue(),
+                }
             }
         }
         rval.get()
@@ -812,7 +805,7 @@ impl XMLHttpRequestMethods for XMLHttpRequest {
     }
 
     // https://xhr.spec.whatwg.org/#the-responsexml-attribute
-    fn GetResponseXML(&self) -> Fallible<Option<Root<Document>>> {
+    fn GetResponseXML(&self) -> Fallible<Option<DomRoot<Document>>> {
         // TODO(#2823): Until [Exposed] is implemented, this attribute needs to return null
         //              explicitly in the worker scope.
         if self.global().is::<WorkerGlobalScope>() {
@@ -840,7 +833,7 @@ pub type TrustedXHRAddress = Trusted<XMLHttpRequest>;
 
 impl XMLHttpRequest {
     fn change_ready_state(&self, rs: XMLHttpRequestState) {
-        assert!(self.ready_state.get() != rs);
+        assert_ne!(self.ready_state.get(), rs);
         self.ready_state.set(rs);
         let event = Event::new(&self.global(),
                                atom!("readystatechange"),
@@ -976,6 +969,7 @@ impl XMLHttpRequest {
                         self.sync.get());
 
                 self.cancel_timeout();
+                self.canceller.borrow_mut().ignore();
 
                 // Part of step 11, send() (processing response end of file)
                 // XXXManishearth handle errors, if any (substep 2)
@@ -992,6 +986,7 @@ impl XMLHttpRequest {
             },
             XHRProgress::Errored(_, e) => {
                 self.cancel_timeout();
+                self.canceller.borrow_mut().ignore();
 
                 self.discard_subsequent_responses();
                 self.send_flag.set(false);
@@ -1021,6 +1016,7 @@ impl XMLHttpRequest {
     }
 
     fn terminate_ongoing_fetch(&self) {
+        self.canceller.borrow_mut().cancel();
         let GenerationId(prev_id) = self.generation_id.get();
         self.generation_id.set(GenerationId(prev_id + 1));
         self.response_status.set(Ok(()));
@@ -1085,11 +1081,13 @@ impl XMLHttpRequest {
         // According to Simon, decode() should never return an error, so unwrap()ing
         // the result should be fine. XXXManishearth have a closer look at this later
         // Step 1, 2, 6
-        charset.decode(&self.response.borrow(), DecoderTrap::Replace).unwrap()
+        let response = self.response.borrow();
+        let (text, _, _) = charset.decode(&response);
+        text.into_owned()
     }
 
     // https://xhr.spec.whatwg.org/#blob-response
-    fn blob_response(&self) -> Root<Blob> {
+    fn blob_response(&self) -> DomRoot<Blob> {
         // Step 1
         if let Some(response) = self.response_blob.get() {
             return response;
@@ -1104,8 +1102,26 @@ impl XMLHttpRequest {
         blob
     }
 
+    // https://xhr.spec.whatwg.org/#arraybuffer-response
+    #[allow(unsafe_code)]
+    unsafe fn arraybuffer_response(&self, cx: *mut JSContext) -> Option<NonNull<JSObject>> {
+        // Step 1
+        let created = self.response_arraybuffer.get();
+        if let Some(nonnull) = NonNull::new(created) {
+            return Some(nonnull)
+        }
+
+        // Step 2
+        let bytes = self.response.borrow();
+        rooted!(in(cx) let mut array_buffer = ptr::null_mut::<JSObject>());
+        ArrayBuffer::create(cx, CreateWith::Slice(&bytes), array_buffer.handle_mut()).ok().and_then(|()| {
+            self.response_arraybuffer.set(array_buffer.get());
+            Some(NonNull::new_unchecked(array_buffer.get()))
+        })
+    }
+
     // https://xhr.spec.whatwg.org/#document-response
-    fn document_response(&self) -> Option<Root<Document>> {
+    fn document_response(&self) -> Option<DomRoot<Document>> {
         // Step 1
         let response = self.response_xml.get();
         if response.is_some() {
@@ -1115,7 +1131,7 @@ impl XMLHttpRequest {
         let mime_type = self.final_mime_type();
         // TODO: prescan the response to determine encoding if final charset is null
         let charset = self.final_charset().unwrap_or(UTF_8);
-        let temp_doc: Root<Document>;
+        let temp_doc: DomRoot<Document>;
         match mime_type {
             Some(Mime(mime::TopLevel::Text, mime::SubLevel::Html, _)) => {
                 // Step 5
@@ -1164,8 +1180,27 @@ impl XMLHttpRequest {
             return NullValue();
         }
         // Step 4
-        let json_text = UTF_8.decode(&bytes, DecoderTrap::Replace).unwrap();
-        let json_text: Vec<u16> = json_text.encode_utf16().collect();
+        fn decode_to_utf16_with_bom_removal(bytes: &[u8], encoding: &'static Encoding) -> Vec<u16> {
+            let mut decoder = encoding.new_decoder_with_bom_removal();
+            let capacity = decoder.max_utf16_buffer_length(bytes.len()).expect("Overflow");
+            let mut utf16 = Vec::with_capacity(capacity);
+            let extra = unsafe {
+                slice::from_raw_parts_mut(utf16.as_mut_ptr(), capacity)
+            };
+            let last = true;
+            let (_, read, written, _) = decoder.decode_to_utf16(bytes, extra, last);
+            assert_eq!(read, bytes.len());
+            unsafe {
+                utf16.set_len(written)
+            }
+            utf16
+        }
+        // https://xhr.spec.whatwg.org/#json-response refers to
+        // https://infra.spec.whatwg.org/#parse-json-from-bytes which refers to
+        // https://encoding.spec.whatwg.org/#utf-8-decode which means
+        // that the encoding is always UTF-8 and the UTF-8 BOM is removed,
+        // if present, but UTF-16BE/LE BOM must not be honored.
+        let json_text = decode_to_utf16_with_bom_removal(&bytes, UTF_8);
         // Step 5
         rooted!(in(cx) let mut rval = UndefinedValue());
         unsafe {
@@ -1182,10 +1217,11 @@ impl XMLHttpRequest {
         self.response_json.get()
     }
 
-    fn document_text_html(&self) -> Root<Document> {
+    fn document_text_html(&self) -> DomRoot<Document> {
         let charset = self.final_charset().unwrap_or(UTF_8);
         let wr = self.global();
-        let decoded = charset.decode(&self.response.borrow(), DecoderTrap::Replace).unwrap();
+        let response = self.response.borrow();
+        let (decoded, _, _) = charset.decode(&response);
         let document = self.new_doc(IsHTMLDocument::HTMLDocument);
         // TODO: Disable scripting while parsing
         ServoParser::parse_html_document(
@@ -1195,10 +1231,11 @@ impl XMLHttpRequest {
         document
     }
 
-    fn handle_xml(&self) -> Root<Document> {
+    fn handle_xml(&self) -> DomRoot<Document> {
         let charset = self.final_charset().unwrap_or(UTF_8);
         let wr = self.global();
-        let decoded = charset.decode(&self.response.borrow(), DecoderTrap::Replace).unwrap();
+        let response = self.response.borrow();
+        let (decoded, _, _) = charset.decode(&response);
         let document = self.new_doc(IsHTMLDocument::NonHTMLDocument);
         // TODO: Disable scripting while parsing
         ServoParser::parse_xml_document(
@@ -1208,7 +1245,7 @@ impl XMLHttpRequest {
         document
     }
 
-    fn new_doc(&self, is_html_document: IsHTMLDocument) -> Root<Document> {
+    fn new_doc(&self, is_html_document: IsHTMLDocument) -> DomRoot<Document> {
         let wr = self.global();
         let win = wr.as_window();
         let doc = win.Document();
@@ -1218,10 +1255,7 @@ impl XMLHttpRequest {
             Ok(parsed) => Some(parsed),
             Err(_) => None // Step 7
         };
-        let mime_type = self.final_mime_type();
-        let content_type = mime_type.map(|mime|{
-            DOMString::from(format!("{}", mime))
-        });
+        let content_type = self.final_mime_type();
         Document::new(win,
                       HasBrowsingContext::No,
                       parsed_url,
@@ -1233,7 +1267,8 @@ impl XMLHttpRequest {
                       DocumentSource::FromParser,
                       docloader,
                       None,
-                      None)
+                      None,
+                      Default::default())
     }
 
     fn filter_response_headers(&self) -> Headers {
@@ -1244,7 +1279,7 @@ impl XMLHttpRequest {
         use std::fmt;
 
         // a dummy header so we can use headers.remove::<SetCookie2>()
-        #[derive(Clone, Debug, HeapSizeOf)]
+        #[derive(Clone, Debug, MallocSizeOf)]
         struct SetCookie2;
         impl Header for SetCookie2 {
             fn header_name() -> &'static str {
@@ -1280,19 +1315,21 @@ impl XMLHttpRequest {
         let context = Arc::new(Mutex::new(XHRContext {
             xhr: xhr,
             gen_id: self.generation_id.get(),
-            buf: DOMRefCell::new(vec!()),
-            sync_status: DOMRefCell::new(None),
+            buf: DomRefCell::new(vec!()),
+            sync_status: DomRefCell::new(None),
         }));
 
         let (task_source, script_port) = if self.sync.get() {
             let (tx, rx) = global.new_script_pair();
-            (NetworkingTaskSource(tx), Some(rx))
+            (NetworkingTaskSource(tx, global.pipeline_id()), Some(rx))
         } else {
             (global.networking_task_source(), None)
         };
 
+        let cancel_receiver = self.canceller.borrow_mut().initialize();
+
         XMLHttpRequest::initiate_async_xhr(context.clone(), task_source,
-                                           global, init);
+                                           global, init, cancel_receiver);
 
         if let Some(script_port) = script_port {
             loop {
@@ -1307,7 +1344,7 @@ impl XMLHttpRequest {
         Ok(())
     }
 
-    fn final_charset(&self) -> Option<EncodingRef> {
+    fn final_charset(&self) -> Option<&'static Encoding> {
         if self.override_charset.borrow().is_some() {
             self.override_charset.borrow().clone()
         } else {
@@ -1315,7 +1352,7 @@ impl XMLHttpRequest {
                 Some(&ContentType(ref mime)) => {
                     let value = mime.get_param(mime::Attr::Charset);
                     value.and_then(|value|{
-                        encoding_from_whatwg_label(value)
+                        Encoding::for_label(value.as_bytes())
                     })
                 }
                 None => { None }
@@ -1335,9 +1372,9 @@ impl XMLHttpRequest {
     }
 }
 
-#[derive(JSTraceable, HeapSizeOf)]
+#[derive(JSTraceable, MallocSizeOf)]
 pub struct XHRTimeoutCallback {
-    #[ignore_heap_size_of = "Because it is non-owning"]
+    #[ignore_malloc_size_of = "Because it is non-owning"]
     xhr: Trusted<XMLHttpRequest>,
     generation_id: GenerationId,
 }
@@ -1370,7 +1407,7 @@ impl Extractable for Blob {
 
 impl Extractable for DOMString {
     fn extract(&self) -> (Vec<u8>, Option<DOMString>) {
-        (UTF_8.encode(self, EncoderTrap::Replace).unwrap(),
+        (self.as_bytes().to_owned(),
             Some(DOMString::from("text/plain;charset=UTF-8")))
     }
 }
@@ -1378,16 +1415,14 @@ impl Extractable for DOMString {
 impl Extractable for FormData {
     fn extract(&self) -> (Vec<u8>, Option<DOMString>) {
         let boundary = generate_boundary();
-        let bytes = encode_multipart_form_data(&mut self.datums(), boundary.clone(),
-                                               UTF_8 as EncodingRef);
+        let bytes = encode_multipart_form_data(&mut self.datums(), boundary.clone(), UTF_8);
         (bytes, Some(DOMString::from(format!("multipart/form-data;boundary={}", boundary))))
     }
 }
 
 impl Extractable for URLSearchParams {
     fn extract(&self) -> (Vec<u8>, Option<DOMString>) {
-        // Default encoding is UTF-8.
-        (self.serialize(None).into_bytes(),
+        (self.serialize_utf8().into_bytes(),
             Some(DOMString::from("application/x-www-form-urlencoded;charset=UTF-8")))
     }
 }
@@ -1408,6 +1443,8 @@ impl Extractable for BodyInit {
             BodyInit::URLSearchParams(ref usp) => usp.extract(),
             BodyInit::Blob(ref b) => b.extract(),
             BodyInit::FormData(ref formdata) => formdata.extract(),
+            BodyInit::ArrayBuffer(ref typedarray) => ((typedarray.to_vec(), None)),
+            BodyInit::ArrayBufferView(ref typedarray) => ((typedarray.to_vec(), None)),
         }
     }
 }

@@ -10,7 +10,7 @@ es6id: 13.7.5.11
 features: [destructuring-binding]
 flags: [generated, onlyStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     IterationStatement :
@@ -30,5 +30,6 @@ info: |
           lhs using AssignmentPattern as the goal symbol.
     [...]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 for ([...{ x = yield }] in [[{}]]) ;

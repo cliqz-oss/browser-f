@@ -23,7 +23,7 @@ The ``wptrunner`` command  takes multiple options, of which the
 following are most significant:
 
 ``--product`` (defaults to `firefox`)
-  The product to test against: `b2g`, `chrome`, `firefox`, or `servo`.
+  The product to test against: `chrome`, `firefox`, or `servo`.
 
 ``--binary`` (required if product is `firefox` or `servo`)
   The path to a binary file for the product (browser) to test against.
@@ -146,8 +146,6 @@ An example of an expectation file is::
   example_default_key: example_value
 
   [filename.html]
-    type: testharness
-
     [subtest1]
       expected: FAIL
 
@@ -158,7 +156,6 @@ An example of an expectation file is::
         FAIL
 
   [filename.html?query=something]
-    type: testharness
     disabled: bug12345
 
 The file consists of two elements, key-value pairs and
@@ -182,7 +179,7 @@ Simple key-value pairs are of the form::
 
   key: value
 
-Note that unlike ini files, only `:` is a valid seperator; `=` will
+Note that unlike ini files, only `:` is a valid separator; `=` will
 not work as expected. Key-value pairs may also have conditional
 values of the form::
 
@@ -200,7 +197,7 @@ language e.g.::
 
   if debug and (platform == "linux" or platform == "osx"): FAIL
 
-For test expectations the avaliable variables are those in the
+For test expectations the available variables are those in the
 `run_info` which for desktop are `version`, `os`, `bits`, `processor`,
 `debug` and `product`.
 
@@ -229,9 +226,6 @@ The web-platform-test harness knows about several keys:
 
 `disabled`
   Any value indicates that the test is disabled.
-
-`type`
-  The test type e.g. `testharness`, `reftest`, or `wdspec`.
 
 `reftype`
   The type of comparison for reftests; either `==` or `!=`.

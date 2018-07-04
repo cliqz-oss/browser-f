@@ -17,7 +17,7 @@ namespace dom {
 class FileBlobImpl : public BaseBlobImpl
 {
 public:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(FileBlobImpl, BaseBlobImpl)
 
   // Create as a file
   explicit FileBlobImpl(nsIFile* aFile);
@@ -41,7 +41,7 @@ public:
   virtual void SetLastModified(int64_t aLastModified) override;
   virtual void GetMozFullPathInternal(nsAString& aFullPath,
                                       ErrorResult& aRv) const override;
-  virtual void GetInternalStream(nsIInputStream** aInputStream,
+  virtual void CreateInputStream(nsIInputStream** aInputStream,
                                  ErrorResult& aRv) override;
 
   virtual bool IsDirectory() const override;
@@ -73,7 +73,6 @@ public:
 protected:
   virtual ~FileBlobImpl() = default;
 
-private:
   // Create slice
   FileBlobImpl(const FileBlobImpl* aOther, uint64_t aStart,
                uint64_t aLength, const nsAString& aContentType);

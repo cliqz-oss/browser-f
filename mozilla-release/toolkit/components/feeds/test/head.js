@@ -1,12 +1,7 @@
 "use strict";
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 function readTestData(testFile) {
   var testcase = {};
@@ -52,13 +47,13 @@ function readTestData(testFile) {
 }
 
 function iterateDir(dir, recurse, callback) {
-  do_print("Iterate " + dir.leafName);
+  info("Iterate " + dir.leafName);
   let entries = dir.directoryEntries;
 
   // Loop over everything in this dir. If its a dir
   while (entries.hasMoreElements()) {
     let entry = entries.getNext();
-    entry.QueryInterface(Ci.nsILocalFile);
+    entry.QueryInterface(Ci.nsIFile);
 
     if (entry.isDirectory()) {
       if (recurse) {

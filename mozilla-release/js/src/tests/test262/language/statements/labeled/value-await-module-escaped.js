@@ -12,9 +12,11 @@ info: |
   It is a Syntax Error if the goal symbol of the syntactic grammar is Module and
   the StringValue of IdentifierName is "await".
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [module]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 aw\u0061it: 1;

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -114,12 +115,23 @@ public:
     MOZ_ASSERT(mMapCount == 0);
   }
 
+  bool Init(const IntSize &aSize,
+            SurfaceFormat aFormat,
+            bool aClearMem,
+            uint8_t aClearValue,
+            int32_t aStride = 0);
+
   virtual uint8_t* GetData() override { return mArray; }
   virtual int32_t Stride() override { return mStride; }
 
   virtual SurfaceType GetType() const override { return SurfaceType::DATA; }
   virtual IntSize GetSize() const override { return mSize; }
   virtual SurfaceFormat GetFormat() const override { return mFormat; }
+
+  void AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
+                              size_t& aHeapSizeOut,
+                              size_t& aNonHeapSizeOut,
+                              size_t& aExtHandlesOut) const override;
 
   virtual bool Map(MapType, MappedSurface *aMappedSurface) override
   {
@@ -140,12 +152,6 @@ public:
 
 private:
   friend class Factory;
-
-  bool Init(const IntSize &aSize,
-            SurfaceFormat aFormat,
-            bool aClearMem,
-            uint8_t aClearValue,
-            int32_t aStride = 0);
 
   AlignedArray<uint8_t> mArray;
   int32_t mStride;

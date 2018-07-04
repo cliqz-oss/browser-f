@@ -7,12 +7,17 @@
  * Makes sure Pie Charts have the right internal structure.
  */
 
-add_task(function* () {
-  let { monitor } = yield initNetMonitor(SIMPLE_URL);
+add_task(async function() {
+  let { monitor, tab } = await initNetMonitor(SIMPLE_URL);
+
   info("Starting test... ");
 
   let { document, windowRequire } = monitor.panelWin;
   let { Chart } = windowRequire("devtools/client/shared/widgets/Chart");
+
+  let wait = waitForNetworkEvents(monitor, 1);
+  tab.linkedBrowser.loadURI(SIMPLE_URL);
+  await wait;
 
   let pie = Chart.Pie(document, {
     width: 100,
@@ -70,5 +75,5 @@ add_task(function* () {
   is(labels[2].textContent, "foo",
     "The first label's text is correct.");
 
-  yield teardown(monitor);
+  await teardown(monitor);
 });

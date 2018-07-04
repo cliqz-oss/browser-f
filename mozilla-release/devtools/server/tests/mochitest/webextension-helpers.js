@@ -5,9 +5,8 @@
 
 "use strict";
 
-const Cu = Components.utils;
-const {require, loader} = Cu.import("resource://devtools/shared/Loader.jsm", {});
-const {DebuggerClient} = require("devtools/shared/client/main");
+const {require, loader} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const {DebuggerClient} = require("devtools/shared/client/debugger-client");
 const {DebuggerServer} = require("devtools/server/main");
 const {TargetFactory} = require("devtools/client/framework/target");
 
@@ -22,13 +21,13 @@ loader.lazyImporter(this, "OS", "resource://gre/modules/osfile.jsm");
 // Initialize a minimal DebuggerServer and connect to the webextension addon actor.
 if (!DebuggerServer.initialized) {
   DebuggerServer.init();
-  DebuggerServer.addBrowserActors();
-  SimpleTest.registerCleanupFunction(function () {
+  DebuggerServer.registerAllActors();
+  SimpleTest.registerCleanupFunction(function() {
     DebuggerServer.destroy();
   });
 }
 
-SimpleTest.registerCleanupFunction(function () {
+SimpleTest.registerCleanupFunction(function() {
   const {hiddenXULWindow} = ExtensionParent.DebugUtils;
   const debugBrowserMapSize = ExtensionParent.DebugUtils.debugBrowserPromises.size;
 
@@ -84,7 +83,7 @@ function collectFrameUpdates({client}, matchFn) {
     return collected;
   };
 
-  SimpleTest.registerCleanupFunction(function () {
+  SimpleTest.registerCleanupFunction(function() {
     if (unsubscribe) {
       unsubscribe();
     }

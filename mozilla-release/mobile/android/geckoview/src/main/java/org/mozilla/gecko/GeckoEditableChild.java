@@ -21,10 +21,12 @@ import android.view.KeyEvent;
  * process has an instance of GeckoEditableChild, which communicates with the
  * GeckoEditableParent instance in the main process.
  */
-final class GeckoEditableChild extends JNIObject implements IGeckoEditableChild {
+public final class GeckoEditableChild extends JNIObject implements IGeckoEditableChild {
 
     private static final boolean DEBUG = false;
     private static final String LOGTAG = "GeckoEditableChild";
+
+    private static final int NOTIFY_IME_TO_CANCEL_COMPOSITION = 9;
 
     private final class RemoteChild extends IGeckoEditableChild.Stub {
         @Override // IGeckoEditableChild
@@ -74,7 +76,7 @@ final class GeckoEditableChild extends JNIObject implements IGeckoEditableChild 
     private int mCurrentTextLength; // Used by Gecko thread
 
     @WrapForJNI(calledFrom = "gecko")
-    /* package */ GeckoEditableChild(final IGeckoEditableParent editableParent) {
+    public GeckoEditableChild(final IGeckoEditableParent editableParent) {
         mEditableParent = editableParent;
 
         final IBinder binder = editableParent.asBinder();
@@ -131,16 +133,9 @@ final class GeckoEditableChild extends JNIObject implements IGeckoEditableChild 
     private void notifyIME(final int type) {
         if (DEBUG) {
             ThreadUtils.assertOnGeckoThread();
-            Log.d(LOGTAG, "notifyIME(" + GeckoEditable.getConstantName(
-                          GeckoEditableListener.class, "NOTIFY_IME_", type) + ")");
+            Log.d(LOGTAG, "notifyIME(" + type + ")");
         }
-        if (type == GeckoEditableListener.NOTIFY_IME_TO_COMMIT_COMPOSITION) {
-            // Gecko already committed its composition. However, Android keyboards
-            // have trouble dealing with us removing the composition manually on
-            // the Java side. Therefore, we keep the composition intact on the Java
-            // side. The text content should still be in-sync on both sides.
-            return;
-        } else if (type == GeckoEditableListener.NOTIFY_IME_TO_CANCEL_COMPOSITION) {
+        if (type == NOTIFY_IME_TO_CANCEL_COMPOSITION) {
             // Composition should have been canceled on the parent side through text
             // update notifications. We cannot verify that here because we don't
             // keep track of spans on the child side, but it's simple to add the
@@ -158,16 +153,17 @@ final class GeckoEditableChild extends JNIObject implements IGeckoEditableChild 
 
     @WrapForJNI(calledFrom = "gecko")
     private void notifyIMEContext(final int state, final String typeHint,
-                                  final String modeHint, final String actionHint) {
+                                  final String modeHint, final String actionHint,
+                                  final int flags) {
         if (DEBUG) {
             ThreadUtils.assertOnGeckoThread();
-            Log.d(LOGTAG, "notifyIMEContext(" + GeckoEditable.getConstantName(
-                          GeckoEditableListener.class, "IME_STATE_", state) + ", \"" +
-                          typeHint + "\", \"" + modeHint + "\", \"" + actionHint + "\")");
+            Log.d(LOGTAG, "notifyIMEContext(" + state + ", \"" +
+                          typeHint + "\", \"" + modeHint + "\", \"" + actionHint +
+                          "\", 0x" + Integer.toHexString(flags) + ")");
         }
 
         try {
-            mEditableParent.notifyIMEContext(state, typeHint, modeHint, actionHint);
+            mEditableParent.notifyIMEContext(state, typeHint, modeHint, actionHint, flags);
         } catch (final RemoteException e) {
             Log.e(LOGTAG, "Remote call failed", e);
         }
@@ -196,12 +192,8 @@ final class GeckoEditableChild extends JNIObject implements IGeckoEditableChild 
             throws RemoteException {
         if (DEBUG) {
             ThreadUtils.assertOnGeckoThread();
-            StringBuilder sb = new StringBuilder("onTextChange(");
-            GeckoEditable.debugAppend(sb, text);
-            sb.append(", ").append(start).append(", ")
-                .append(unboundedOldEnd).append(", ")
-                .append(unboundedNewEnd).append(")");
-            Log.d(LOGTAG, sb.toString());
+            Log.d(LOGTAG, "onTextChange(" + text + ", " + start + ", " +
+                          unboundedOldEnd + ", " + unboundedNewEnd + ")");
         }
 
         if (start < 0 || start > unboundedOldEnd) {

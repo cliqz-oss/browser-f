@@ -25,15 +25,9 @@
 namespace mozilla {
 namespace gl {
 
-struct GLContextSymbols
+struct GLContextSymbols final
 {
-    GLContextSymbols() {
-        Zero();
-    }
-
-    void Zero() {
-        memset(this, 0, sizeof(GLContextSymbols));
-    }
+    GLContextSymbols() = delete; // Initialize with {}.
 
     void (GLAPIENTRY * fActiveTexture)(GLenum);
     void (GLAPIENTRY * fAttachShader)(GLuint, GLuint);
@@ -111,7 +105,7 @@ struct GLContextSymbols
     void (GLAPIENTRY * fGetUniformfv)(GLuint, GLint, GLfloat*);
     void (GLAPIENTRY * fGetUniformiv)(GLuint, GLint, GLint*);
     void (GLAPIENTRY * fGetUniformuiv)(GLuint, GLint, GLuint*);
-    GLint (GLAPIENTRY * fGetUniformLocation)(GLint, const GLchar*);
+    GLint (GLAPIENTRY * fGetUniformLocation)(GLuint, const GLchar*);
     void (GLAPIENTRY * fGetVertexAttribfv)(GLuint, GLenum, GLfloat*);
     void (GLAPIENTRY * fGetVertexAttribiv)(GLuint, GLenum, GLint*);
     void (GLAPIENTRY * fGetVertexAttribPointerv)(GLuint, GLenum, GLvoid**);

@@ -3,15 +3,17 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-info: >
+info: |
     Arguments : (ArgumentList : ArgumentList,, AssignmentExpression) is a bad
     syntax
 es5id: 11.2.4_A1.3_T1
 description: incorrect syntax
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 function f_arg() {
 }

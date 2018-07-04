@@ -16,9 +16,9 @@ function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-conditional-breakpoint");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-conditional-breakpoint",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_simple_breakpoint();
                            });
@@ -27,20 +27,20 @@ function run_test() {
 }
 
 function test_simple_breakpoint() {
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
     let source = gThreadClient.source(packet.frame.where.source);
     source.setBreakpoint({
       line: 3,
       condition: "a === 2"
-    }, function (response, bpClient) {
-      gThreadClient.addOneTimeListener("paused", function (event, packet) {
+    }, function(response, bpClient) {
+      gThreadClient.addOneTimeListener("paused", function(event, packet) {
         // Check the return value.
-        do_check_eq(packet.why.type, "debuggerStatement");
-        do_check_eq(packet.frame.where.line, 4);
+        Assert.equal(packet.why.type, "debuggerStatement");
+        Assert.equal(packet.frame.where.line, 4);
 
         // Remove the breakpoint.
-        bpClient.remove(function (response) {
-          gThreadClient.resume(function () {
+        bpClient.remove(function(response) {
+          gThreadClient.resume(function() {
             finishClient(gClient);
           });
         });
@@ -51,13 +51,13 @@ function test_simple_breakpoint() {
   });
 
   /* eslint-disable */
-  Components.utils.evalInSandbox("debugger;\n" +   // 1
-                                 "var a = 1;\n" +  // 2
-                                 "var b = 2;\n" +  // 3
-                                 "debugger;",      // 4
-                                 gDebuggee,
-                                 "1.8",
-                                 "test.js",
-                                 1);
+  Cu.evalInSandbox("debugger;\n" +   // 1
+                   "var a = 1;\n" +  // 2
+                   "var b = 2;\n" +  // 3
+                   "debugger;",      // 4
+                   gDebuggee,
+                   "1.8",
+                   "test.js",
+                   1);
   /* eslint-enable */
 }

@@ -48,6 +48,7 @@ NS_IMPL_ISUPPORTS(CacheEntryHandle, nsICacheEntry)
 
 CacheEntryHandle::CacheEntryHandle(CacheEntry* aEntry)
 : mEntry(aEntry)
+, mClosed(false)
 {
 #ifdef DEBUG
   if (!mEntry->HandlesCount()) {
@@ -63,10 +64,25 @@ CacheEntryHandle::CacheEntryHandle(CacheEntry* aEntry)
   LOG(("New CacheEntryHandle %p for entry %p", this, aEntry));
 }
 
+NS_IMETHODIMP CacheEntryHandle::Dismiss()
+{
+  LOG(("CacheEntryHandle::Dismiss %p", this));
+
+  if (mClosed.compareExchange(false, true)) {
+    mEntry->OnHandleClosed(this);
+    return NS_OK;
+  }
+
+  LOG(("  already dropped"));
+  return NS_ERROR_UNEXPECTED;
+}
+
 CacheEntryHandle::~CacheEntryHandle()
 {
   mEntry->ReleaseHandleRef();
-  mEntry->OnHandleClosed(this);
+  Dismiss();
+
+  LOG(("CacheEntryHandle::~CacheEntryHandle %p", this));
 }
 
 // CacheEntry::Callback
@@ -187,9 +203,15 @@ nsresult CacheEntry::Callback::OnAvailThread(bool *aOnAvailThread) const
 // CacheEntry
 
 NS_IMPL_ISUPPORTS(CacheEntry,
-                  nsICacheEntry,
                   nsIRunnable,
                   CacheFileListener)
+
+/* static */
+uint64_t CacheEntry::GetNextId()
+{
+  static Atomic<uint64_t, Relaxed> id(0);
+  return ++id;
+}
 
 CacheEntry::CacheEntry(const nsACString& aStorageID,
                        const nsACString& aURI,
@@ -215,8 +237,8 @@ CacheEntry::CacheEntry(const nsACString& aStorageID,
 , mState(NOTLOADED)
 , mRegistration(NEVERREGISTERED)
 , mWriter(nullptr)
-, mPredictedDataSize(0)
 , mUseCount(0)
+, mCacheEntryId(GetNextId())
 {
   LOG(("CacheEntry::CacheEntry [this=%p]", this));
 
@@ -747,8 +769,10 @@ bool CacheEntry::InvokeCallback(Callback & aCallback)
           // mayhemer: TODO check and solve any potential races of concurent OnCacheEntryCheck
           mozilla::MutexAutoUnlock unlock(mLock);
 
+          RefPtr<CacheEntryHandle> handle = NewHandle();
+
           nsresult rv = aCallback.mCallback->OnCacheEntryCheck(
-            this, nullptr, &checkResult);
+            handle, nullptr, &checkResult);
           LOG(("  OnCacheEntryCheck: rv=0x%08" PRIx32 ", result=%" PRId32,
                static_cast<uint32_t>(rv), static_cast<uint32_t>(checkResult)));
 
@@ -1033,7 +1057,7 @@ uint32_t CacheEntry::GetMetadataMemoryConsumption()
 
 // nsICacheEntry
 
-NS_IMETHODIMP CacheEntry::GetPersistent(bool *aPersistToDisk)
+nsresult CacheEntry::GetPersistent(bool *aPersistToDisk)
 {
   // No need to sync when only reading.
   // When consumer needs to be consistent with state of the memory storage entries
@@ -1042,34 +1066,40 @@ NS_IMETHODIMP CacheEntry::GetPersistent(bool *aPersistToDisk)
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::GetKey(nsACString & aKey)
+nsresult CacheEntry::GetKey(nsACString & aKey)
 {
   aKey.Assign(mURI);
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::GetFetchCount(int32_t *aFetchCount)
+nsresult CacheEntry::GetCacheEntryId(uint64_t *aCacheEntryId)
+{
+  *aCacheEntryId = mCacheEntryId;
+  return NS_OK;
+}
+
+nsresult CacheEntry::GetFetchCount(int32_t *aFetchCount)
 {
   NS_ENSURE_SUCCESS(mFileStatus, NS_ERROR_NOT_AVAILABLE);
 
   return mFile->GetFetchCount(reinterpret_cast<uint32_t*>(aFetchCount));
 }
 
-NS_IMETHODIMP CacheEntry::GetLastFetched(uint32_t *aLastFetched)
+nsresult CacheEntry::GetLastFetched(uint32_t *aLastFetched)
 {
   NS_ENSURE_SUCCESS(mFileStatus, NS_ERROR_NOT_AVAILABLE);
 
   return mFile->GetLastFetched(aLastFetched);
 }
 
-NS_IMETHODIMP CacheEntry::GetLastModified(uint32_t *aLastModified)
+nsresult CacheEntry::GetLastModified(uint32_t *aLastModified)
 {
   NS_ENSURE_SUCCESS(mFileStatus, NS_ERROR_NOT_AVAILABLE);
 
   return mFile->GetLastModified(aLastModified);
 }
 
-NS_IMETHODIMP CacheEntry::GetExpirationTime(uint32_t *aExpirationTime)
+nsresult CacheEntry::GetExpirationTime(uint32_t *aExpirationTime)
 {
   NS_ENSURE_SUCCESS(mFileStatus, NS_ERROR_NOT_AVAILABLE);
 
@@ -1096,7 +1126,7 @@ nsresult CacheEntry::SetNetworkTimes(uint64_t aOnStartTime, uint64_t aOnStopTime
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-NS_IMETHODIMP CacheEntry::GetIsForcedValid(bool *aIsForcedValid)
+nsresult CacheEntry::GetIsForcedValid(bool *aIsForcedValid)
 {
   NS_ENSURE_ARG(aIsForcedValid);
 
@@ -1119,7 +1149,7 @@ NS_IMETHODIMP CacheEntry::GetIsForcedValid(bool *aIsForcedValid)
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::ForceValidFor(uint32_t aSecondsToTheFuture)
+nsresult CacheEntry::ForceValidFor(uint32_t aSecondsToTheFuture)
 {
   LOG(("CacheEntry::ForceValidFor [this=%p, aSecondsToTheFuture=%d]", this, aSecondsToTheFuture));
 
@@ -1134,7 +1164,7 @@ NS_IMETHODIMP CacheEntry::ForceValidFor(uint32_t aSecondsToTheFuture)
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::SetExpirationTime(uint32_t aExpirationTime)
+nsresult CacheEntry::SetExpirationTime(uint32_t aExpirationTime)
 {
   NS_ENSURE_SUCCESS(mFileStatus, NS_ERROR_NOT_AVAILABLE);
 
@@ -1146,13 +1176,13 @@ NS_IMETHODIMP CacheEntry::SetExpirationTime(uint32_t aExpirationTime)
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::OpenInputStream(int64_t offset, nsIInputStream * *_retval)
+nsresult CacheEntry::OpenInputStream(int64_t offset, nsIInputStream * *_retval)
 {
   LOG(("CacheEntry::OpenInputStream [this=%p]", this));
   return OpenInputStreamInternal(offset, nullptr, _retval);
 }
 
-NS_IMETHODIMP CacheEntry::OpenAlternativeInputStream(const nsACString & type, nsIInputStream * *_retval)
+nsresult CacheEntry::OpenAlternativeInputStream(const nsACString & type, nsIInputStream * *_retval)
 {
   LOG(("CacheEntry::OpenAlternativeInputStream [this=%p, type=%s]", this,
        PromiseFlatCString(type).get()));
@@ -1204,7 +1234,7 @@ nsresult CacheEntry::OpenInputStreamInternal(int64_t offset, const char *aAltDat
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::OpenOutputStream(int64_t offset, nsIOutputStream * *_retval)
+nsresult CacheEntry::OpenOutputStream(int64_t offset, int64_t predictedSize, nsIOutputStream * *_retval)
 {
   LOG(("CacheEntry::OpenOutputStream [this=%p]", this));
 
@@ -1213,6 +1243,11 @@ NS_IMETHODIMP CacheEntry::OpenOutputStream(int64_t offset, nsIOutputStream * *_r
   mozilla::MutexAutoLock lock(mLock);
 
   MOZ_ASSERT(mState > EMPTY);
+
+  if (mFile->EntryWouldExceedLimit(0, predictedSize, false)) {
+    LOG(("  entry would exceed size limit"));
+    return NS_ERROR_FILE_TOO_BIG;
+  }
 
   if (mOutputStream && !mIsDoomed) {
     LOG(("  giving phantom output stream"));
@@ -1233,7 +1268,7 @@ NS_IMETHODIMP CacheEntry::OpenOutputStream(int64_t offset, nsIOutputStream * *_r
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::OpenAlternativeOutputStream(const nsACString & type, nsIOutputStream * *_retval)
+nsresult CacheEntry::OpenAlternativeOutputStream(const nsACString & type, int64_t predictedSize, nsIOutputStream * *_retval)
 {
   LOG(("CacheEntry::OpenAlternativeOutputStream [this=%p, type=%s]", this,
        PromiseFlatCString(type).get()));
@@ -1245,6 +1280,11 @@ NS_IMETHODIMP CacheEntry::OpenAlternativeOutputStream(const nsACString & type, n
   if (!mHasData || mState < READY || mOutputStream || mIsDoomed) {
     LOG(("  entry not in state to write alt-data"));
     return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  if (mFile->EntryWouldExceedLimit(0, predictedSize, true)) {
+    LOG(("  entry would exceed size limit"));
+    return NS_ERROR_FILE_TOO_BIG;
   }
 
   nsCOMPtr<nsIOutputStream> stream;
@@ -1302,26 +1342,7 @@ nsresult CacheEntry::OpenOutputStreamInternal(int64_t offset, nsIOutputStream * 
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::GetPredictedDataSize(int64_t *aPredictedDataSize)
-{
-  *aPredictedDataSize = mPredictedDataSize;
-  return NS_OK;
-}
-NS_IMETHODIMP CacheEntry::SetPredictedDataSize(int64_t aPredictedDataSize)
-{
-  mPredictedDataSize = aPredictedDataSize;
-
-  if (!mSkipSizeCheck && CacheObserver::EntryIsTooBig(mPredictedDataSize, mUseDisk)) {
-    LOG(("CacheEntry::SetPredictedDataSize [this=%p] too big, dooming", this));
-    AsyncDoom(nullptr);
-
-    return NS_ERROR_FILE_TOO_BIG;
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP CacheEntry::GetSecurityInfo(nsISupports * *aSecurityInfo)
+nsresult CacheEntry::GetSecurityInfo(nsISupports * *aSecurityInfo)
 {
   {
     mozilla::MutexAutoLock lock(mLock);
@@ -1333,14 +1354,14 @@ NS_IMETHODIMP CacheEntry::GetSecurityInfo(nsISupports * *aSecurityInfo)
 
   NS_ENSURE_SUCCESS(mFileStatus, NS_ERROR_NOT_AVAILABLE);
 
-  nsXPIDLCString info;
+  nsCString info;
   nsCOMPtr<nsISupports> secInfo;
   nsresult rv;
 
   rv = mFile->GetElement("security-info", getter_Copies(info));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (info) {
+  if (!info.IsVoid()) {
     rv = NS_DeserializeObject(info, getter_AddRefs(secInfo));
     NS_ENSURE_SUCCESS(rv, rv);
   }
@@ -1356,7 +1377,7 @@ NS_IMETHODIMP CacheEntry::GetSecurityInfo(nsISupports * *aSecurityInfo)
 
   return NS_OK;
 }
-NS_IMETHODIMP CacheEntry::SetSecurityInfo(nsISupports *aSecurityInfo)
+nsresult CacheEntry::SetSecurityInfo(nsISupports *aSecurityInfo)
 {
   nsresult rv;
 
@@ -1386,7 +1407,7 @@ NS_IMETHODIMP CacheEntry::SetSecurityInfo(nsISupports *aSecurityInfo)
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::GetStorageDataSize(uint32_t *aStorageDataSize)
+nsresult CacheEntry::GetStorageDataSize(uint32_t *aStorageDataSize)
 {
   NS_ENSURE_ARG(aStorageDataSize);
 
@@ -1400,7 +1421,7 @@ NS_IMETHODIMP CacheEntry::GetStorageDataSize(uint32_t *aStorageDataSize)
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::AsyncDoom(nsICacheEntryDoomCallback *aCallback)
+nsresult CacheEntry::AsyncDoom(nsICacheEntryDoomCallback *aCallback)
 {
   LOG(("CacheEntry::AsyncDoom [this=%p]", this));
 
@@ -1426,28 +1447,28 @@ NS_IMETHODIMP CacheEntry::AsyncDoom(nsICacheEntryDoomCallback *aCallback)
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::GetMetaDataElement(const char * aKey, char * *aRetval)
+nsresult CacheEntry::GetMetaDataElement(const char * aKey, char * *aRetval)
 {
   NS_ENSURE_SUCCESS(mFileStatus, NS_ERROR_NOT_AVAILABLE);
 
   return mFile->GetElement(aKey, aRetval);
 }
 
-NS_IMETHODIMP CacheEntry::SetMetaDataElement(const char * aKey, const char * aValue)
+nsresult CacheEntry::SetMetaDataElement(const char * aKey, const char * aValue)
 {
   NS_ENSURE_SUCCESS(mFileStatus, NS_ERROR_NOT_AVAILABLE);
 
   return mFile->SetElement(aKey, aValue);
 }
 
-NS_IMETHODIMP CacheEntry::VisitMetaData(nsICacheEntryMetaDataVisitor *aVisitor)
+nsresult CacheEntry::VisitMetaData(nsICacheEntryMetaDataVisitor *aVisitor)
 {
   NS_ENSURE_SUCCESS(mFileStatus, NS_ERROR_NOT_AVAILABLE);
 
   return mFile->VisitMetaData(aVisitor);
 }
 
-NS_IMETHODIMP CacheEntry::MetaDataReady()
+nsresult CacheEntry::MetaDataReady()
 {
   mozilla::MutexAutoLock lock(mLock);
 
@@ -1463,7 +1484,7 @@ NS_IMETHODIMP CacheEntry::MetaDataReady()
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::SetValid()
+nsresult CacheEntry::SetValid()
 {
   LOG(("CacheEntry::SetValid [this=%p, state=%s]", this, StateString(mState)));
 
@@ -1490,7 +1511,7 @@ NS_IMETHODIMP CacheEntry::SetValid()
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::Recreate(bool aMemoryOnly,
+nsresult CacheEntry::Recreate(bool aMemoryOnly,
                                    nsICacheEntry **_retval)
 {
   LOG(("CacheEntry::Recreate [this=%p, state=%s]", this, StateString(mState)));
@@ -1507,7 +1528,7 @@ NS_IMETHODIMP CacheEntry::Recreate(bool aMemoryOnly,
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-NS_IMETHODIMP CacheEntry::GetDataSize(int64_t *aDataSize)
+nsresult CacheEntry::GetDataSize(int64_t *aDataSize)
 {
   LOG(("CacheEntry::GetDataSize [this=%p]", this));
   *aDataSize = 0;
@@ -1534,7 +1555,7 @@ NS_IMETHODIMP CacheEntry::GetDataSize(int64_t *aDataSize)
 }
 
 
-NS_IMETHODIMP CacheEntry::GetAltDataSize(int64_t *aDataSize)
+nsresult CacheEntry::GetAltDataSize(int64_t *aDataSize)
 {
   LOG(("CacheEntry::GetAltDataSize [this=%p]", this));
   if (NS_FAILED(mFileStatus)) {
@@ -1544,31 +1565,31 @@ NS_IMETHODIMP CacheEntry::GetAltDataSize(int64_t *aDataSize)
 }
 
 
-NS_IMETHODIMP CacheEntry::MarkValid()
+nsresult CacheEntry::MarkValid()
 {
   // NOT IMPLEMENTED ACTUALLY
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::MaybeMarkValid()
+nsresult CacheEntry::MaybeMarkValid()
 {
   // NOT IMPLEMENTED ACTUALLY
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::HasWriteAccess(bool aWriteAllowed, bool *aWriteAccess)
+nsresult CacheEntry::HasWriteAccess(bool aWriteAllowed, bool *aWriteAccess)
 {
   *aWriteAccess = aWriteAllowed;
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::Close()
+nsresult CacheEntry::Close()
 {
   // NOT IMPLEMENTED ACTUALLY
   return NS_OK;
 }
 
-NS_IMETHODIMP CacheEntry::GetDiskStorageSizeInKB(uint32_t *aDiskStorageSize)
+nsresult CacheEntry::GetDiskStorageSizeInKB(uint32_t *aDiskStorageSize)
 {
   if (NS_FAILED(mFileStatus)) {
     return NS_ERROR_NOT_AVAILABLE;
@@ -1577,7 +1598,7 @@ NS_IMETHODIMP CacheEntry::GetDiskStorageSizeInKB(uint32_t *aDiskStorageSize)
   return mFile->GetDiskStorageSizeInKB(aDiskStorageSize);
 }
 
-NS_IMETHODIMP CacheEntry::GetLoadContextInfo(nsILoadContextInfo** aInfo)
+nsresult CacheEntry::GetLoadContextInfo(nsILoadContextInfo** aInfo)
 {
   nsCOMPtr<nsILoadContextInfo> info = CacheFileUtils::ParseKey(mStorageID);
   if (!info) {
@@ -1901,10 +1922,6 @@ void CacheEntry::StoreFrecency(double aFrecency)
 CacheOutputCloseListener::CacheOutputCloseListener(CacheEntry* aEntry)
   : Runnable("net::CacheOutputCloseListener")
   , mEntry(aEntry)
-{
-}
-
-CacheOutputCloseListener::~CacheOutputCloseListener()
 {
 }
 

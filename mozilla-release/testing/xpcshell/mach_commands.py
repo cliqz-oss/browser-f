@@ -6,7 +6,6 @@
 
 from __future__ import absolute_import, unicode_literals, print_function
 
-import argparse
 import errno
 import os
 import sys
@@ -134,7 +133,7 @@ class XPCShellRunner(MozbuildObject):
 
             filtered_args[k] = v
 
-        result = xpcshell.runTests(**filtered_args)
+        result = xpcshell.runTests(filtered_args)
 
         self.log_manager.disable_unstructured()
 
@@ -145,16 +144,6 @@ class XPCShellRunner(MozbuildObject):
 
 
 class AndroidXPCShellRunner(MozbuildObject):
-    """Get specified DeviceManager"""
-    def get_devicemanager(self, ip, port, remote_test_root):
-        import mozdevice
-        dm = None
-        if ip:
-            dm = mozdevice.DroidADB(ip, port, packageName=None, deviceRoot=remote_test_root)
-        else:
-            dm = mozdevice.DroidADB(packageName=None, deviceRoot=remote_test_root)
-        return dm
-
     """Run Android xpcshell tests."""
     def run_test(self, **kwargs):
         # TODO Bug 794506 remove once mach integrates with virtualenv.
@@ -163,9 +152,6 @@ class AndroidXPCShellRunner(MozbuildObject):
             sys.path.append(build_path)
 
         import remotexpcshelltests
-
-        dm = self.get_devicemanager(kwargs["deviceIP"], kwargs["devicePort"],
-                                    kwargs["remoteTestRoot"])
 
         log = kwargs.pop("log")
         self.log_manager.enable_unstructured()
@@ -206,12 +192,10 @@ class AndroidXPCShellRunner(MozbuildObject):
         if not kwargs["sequential"]:
             kwargs["sequential"] = True
 
-        options = argparse.Namespace(**kwargs)
-        xpcshell = remotexpcshelltests.XPCShellRemote(dm, options, log)
+        xpcshell = remotexpcshelltests.XPCShellRemote(kwargs, log)
 
-        result = xpcshell.runTests(testClass=remotexpcshelltests.RemoteXPCShellTestThread,
-                                   mobileArgs=xpcshell.mobileArgs,
-                                   **vars(options))
+        result = xpcshell.runTests(kwargs, testClass=remotexpcshelltests.RemoteXPCShellTestThread,
+                                   mobileArgs=xpcshell.mobileArgs)
 
         self.log_manager.disable_unstructured()
 
@@ -249,17 +233,24 @@ class MachCommands(MachCommandBase):
         # case the tree wasn't built with mach).
         self._ensure_state_subdir_exists('.')
 
-        params['log'] = structured.commandline.setup_logging("XPCShellTests",
-                                                             params,
-                                                             {"mach": sys.stdout},
-                                                             {"verbose": True})
+        if not params.get('log'):
+            log_defaults = {self._mach_context.settings['test']['format']: sys.stdout}
+            fmt_defaults = {
+                "level": self._mach_context.settings['test']['level'],
+                "verbose": True
+            }
+            params['log'] = structured.commandline.setup_logging(
+                "XPCShellTests", params, log_defaults, fmt_defaults)
 
         if not params['threadCount']:
             params['threadCount'] = int((cpu_count() * 3) / 2)
 
         if conditions.is_android(self):
-            from mozrunner.devices.android_device import verify_android_device
-            verify_android_device(self)
+            from mozrunner.devices.android_device import verify_android_device, get_adb_path
+            device_serial = params.get('deviceSerial')
+            verify_android_device(self, device_serial=device_serial)
+            if not params['adbPath']:
+                params['adbPath'] = get_adb_path(self)
             xpcshell = self._spawn(AndroidXPCShellRunner)
         else:
             xpcshell = self._spawn(XPCShellRunner)

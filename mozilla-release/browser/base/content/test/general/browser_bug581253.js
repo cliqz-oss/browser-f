@@ -12,8 +12,8 @@ add_task(async function test_remove_bookmark_with_tag_via_edit_bookmark() {
 
   registerCleanupFunction(async function() {
     await PlacesUtils.bookmarks.eraseEverything();
-    await BrowserTestUtils.removeTab(tab);
-    await PlacesTestUtils.clearHistory();
+    BrowserTestUtils.removeTab(tab);
+    await PlacesUtils.history.clear();
   });
 
   await PlacesUtils.bookmarks.insert({
@@ -24,7 +24,7 @@ add_task(async function test_remove_bookmark_with_tag_via_edit_bookmark() {
 
   Assert.ok(await PlacesUtils.bookmarks.fetch({url: testURL}), "the test url is bookmarked");
 
-  content.location = testURL;
+  gBrowser.loadURI(testURL);
 
   await BrowserTestUtils.waitForCondition(
     () => BookmarkingUI.status == BookmarkingUI.STATUS_STARRED,

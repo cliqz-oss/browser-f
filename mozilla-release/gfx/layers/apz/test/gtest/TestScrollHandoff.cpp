@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -23,8 +23,8 @@ protected:
     SetScrollableFrameMetrics(root, FrameMetrics::START_SCROLL_ID, CSSRect(0, 0, 200, 200));
     SetScrollableFrameMetrics(layers[1], FrameMetrics::START_SCROLL_ID + 1, CSSRect(0, 0, 100, 100));
     SetScrollHandoff(layers[1], root);
-    registration = MakeUnique<ScopedLayerTreeRegistration>(manager, 0, root, mcc);
-    manager->UpdateHitTestingTree(0, root, false, 0, 0);
+    registration = MakeUnique<ScopedLayerTreeRegistration>(manager, LayersId{0}, root, mcc);
+    manager->UpdateHitTestingTree(LayersId{0}, root, false, LayersId{0}, 0);
     rootApzc = ApzcOf(root);
     rootApzc->GetFrameMetrics().SetIsRootContent(true);  // make root APZC zoomable
   }
@@ -45,7 +45,7 @@ protected:
     // No ScopedLayerTreeRegistration as that just needs to be done once per test
     // and this is the second layer tree for a particular test.
     MOZ_ASSERT(registration);
-    manager->UpdateHitTestingTree(0, root, false, 0, 0);
+    manager->UpdateHitTestingTree(LayersId{0}, root, false, LayersId{0}, 0);
     rootApzc = ApzcOf(root);
   }
 
@@ -68,8 +68,8 @@ protected:
     SetScrollHandoff(layers[3], layers[0]);
     SetScrollHandoff(layers[2], layers[1]);
     SetScrollHandoff(layers[4], layers[3]);
-    registration = MakeUnique<ScopedLayerTreeRegistration>(manager, 0, root, mcc);
-    manager->UpdateHitTestingTree(0, root, false, 0, 0);
+    registration = MakeUnique<ScopedLayerTreeRegistration>(manager, LayersId{0}, root, mcc);
+    manager->UpdateHitTestingTree(LayersId{0}, root, false, LayersId{0}, 0);
   }
 
   // Creates a layer tree with a parent layer that is only scrollable
@@ -84,8 +84,8 @@ protected:
     SetScrollableFrameMetrics(root, FrameMetrics::START_SCROLL_ID, CSSRect(0, 0, 200, 100));
     SetScrollableFrameMetrics(layers[1], FrameMetrics::START_SCROLL_ID + 1, CSSRect(0, 0, 100, 200));
     SetScrollHandoff(layers[1], root);
-    registration = MakeUnique<ScopedLayerTreeRegistration>(manager, 0, root, mcc);
-    manager->UpdateHitTestingTree(0, root, false, 0, 0);
+    registration = MakeUnique<ScopedLayerTreeRegistration>(manager, LayersId{0}, root, mcc);
+    manager->UpdateHitTestingTree(LayersId{0}, root, false, LayersId{0}, 0);
     rootApzc = ApzcOf(root);
   }
 
@@ -100,8 +100,8 @@ protected:
     SetScrollableFrameMetrics(root, FrameMetrics::START_SCROLL_ID, CSSRect(0, 0, 100, parentHeight));
     SetScrollableFrameMetrics(layers[1], FrameMetrics::START_SCROLL_ID + 1, CSSRect(0, 0, 100, 200));
     SetScrollHandoff(layers[1], root);
-    registration = MakeUnique<ScopedLayerTreeRegistration>(manager, 0, root, mcc);
-    manager->UpdateHitTestingTree(0, root, false, 0, 0);
+    registration = MakeUnique<ScopedLayerTreeRegistration>(manager, LayersId{0}, root, mcc);
+    manager->UpdateHitTestingTree(LayersId{0}, root, false, LayersId{0}, 0);
     rootApzc = ApzcOf(root);
     rootApzc->GetScrollMetadata().SetHasScrollgrab(true);
   }
@@ -153,7 +153,7 @@ protected:
     Pan(childApzc, ScreenIntPoint(10, 60), ScreenIntPoint(15, 90),
         PanOptions::KeepFingerDown | PanOptions::ExactCoordinates);
 
-    childApzc->AssertAxisLocked(ScrollDirection::VERTICAL);
+    childApzc->AssertAxisLocked(ScrollDirection::eVertical);
   }
 };
 
@@ -240,6 +240,7 @@ TEST_F(APZScrollHandoffTester, StuckInOverscroll_Bug1073250) {
   // Enable overscrolling.
   SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
   SCOPED_GFX_PREF(APZFlingMinVelocityThreshold, float, 0.0f);
+  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
 
   CreateScrollHandoffLayerTree1();
 
@@ -278,6 +279,7 @@ TEST_F(APZScrollHandoffTester, StuckInOverscroll_Bug1231228) {
   // Enable overscrolling.
   SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
   SCOPED_GFX_PREF(APZFlingMinVelocityThreshold, float, 0.0f);
+  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
 
   CreateScrollHandoffLayerTree1();
 
@@ -345,6 +347,7 @@ TEST_F(APZScrollHandoffTester, StuckInOverscroll_Bug1240202a) {
 TEST_F(APZScrollHandoffTester, StuckInOverscroll_Bug1240202b) {
   // Enable overscrolling.
   SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
+  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
 
   CreateScrollHandoffLayerTree1();
 
@@ -408,6 +411,8 @@ TEST_F(APZScrollHandoffTester, OpposingConstrainedAxes_Bug1201098) {
 // handed off to the parent, while the original APZC continues flinging in the
 // other direction.
 TEST_F(APZScrollHandoffTester, PartialFlingHandoff) {
+  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+
   CreateScrollHandoffLayerTree1();
 
   // Fling up and to the left. The child APZC has room to scroll up, but not
@@ -494,12 +499,14 @@ TEST_F(APZScrollHandoffTester, ScrollgrabFling) {
 
 TEST_F(APZScrollHandoffTester, ScrollgrabFlingAcceleration1) {
   SCOPED_GFX_PREF(APZFlingMinVelocityThreshold, float, 0.0f);
+  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
   CreateScrollgrabLayerTree(true /* make parent scrollable */);
   TestFlingAcceleration();
 }
 
 TEST_F(APZScrollHandoffTester, ScrollgrabFlingAcceleration2) {
   SCOPED_GFX_PREF(APZFlingMinVelocityThreshold, float, 0.0f);
+  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
   CreateScrollgrabLayerTree(false /* do not make parent scrollable */);
   TestFlingAcceleration();
 }

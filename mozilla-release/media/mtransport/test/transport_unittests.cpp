@@ -481,6 +481,7 @@ class TransportTestPeer : public sigslot::has_slots<> {
       flow_ = nullptr;
     }
     ice_ctx_ = nullptr;
+    streams_.clear();
   }
 
   void DisconnectDestroyFlow() {
@@ -614,8 +615,8 @@ class TransportTestPeer : public sigslot::has_slots<> {
         connect(this, &TransportTestPeer::GotCandidate);
 
     // Create the transport layer
-    ice_ = new TransportLayerIce(name);
-    ice_->SetParameters(ice_ctx_->ctx(), stream, 1);
+    ice_ = new TransportLayerIce();
+    ice_->SetParameters(stream, 1);
 
     // Assemble the stack
     nsAutoPtr<std::queue<mozilla::TransportLayer *> > layers(
@@ -830,6 +831,8 @@ class TransportTest : public MtransportTest {
   TransportTest() {
     fds_[0] = nullptr;
     fds_[1] = nullptr;
+    p1_ = nullptr;
+    p2_ = nullptr;
   }
 
   void TearDown() override {
@@ -858,6 +861,12 @@ class TransportTest : public MtransportTest {
   }
 
   void Reset() {
+    if (p1_) {
+      delete p1_;
+    }
+    if (p2_) {
+      delete p2_;
+    }
     p1_ = new TransportTestPeer(target_, "P1", test_utils_);
     p2_ = new TransportTestPeer(target_, "P2", test_utils_);
   }

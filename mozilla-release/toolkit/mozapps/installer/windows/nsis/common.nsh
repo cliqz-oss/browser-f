@@ -3629,6 +3629,16 @@
             ${EndIf}
           ${EndIf}
         ${Loop}
+        ; There might also be a shortcut with a different name created by a
+        ; previous version of the installer.
+        ${If} ${FileExists} "$SMPROGRAMS\${BrandFullName}.lnk"
+          ShellLink::GetShortCutTarget "$SMPROGRAMS\${BrandFullName}.lnk"
+          Pop $R5
+          ${${_MOZFUNC_UN}GetLongPath} "$R5" $R5
+          ${If} "$INSTDIR\${FileMainEXE}" == "$R5"
+            Delete "$SMPROGRAMS\${BrandFullName}.lnk"
+          ${EndIf}
+        ${EndIf}
 
         ; Delete Quick Launch shortcuts for this application
         StrCpy $R4 -1
@@ -3649,6 +3659,16 @@
             ${EndIf}
           ${EndIf}
         ${Loop}
+        ; There might also be a shortcut with a different name created by a
+        ; previous version of the installer.
+        ${If} ${FileExists} "$QUICKLAUNCH\${BrandFullName}.lnk"
+          ShellLink::GetShortCutTarget "$QUICKLAUNCH\${BrandFullName}.lnk"
+          Pop $R5
+          ${${_MOZFUNC_UN}GetLongPath} "$R5" $R5
+          ${If} "$INSTDIR\${FileMainEXE}" == "$R5"
+            Delete "$QUICKLAUNCH\${BrandFullName}.lnk"
+          ${EndIf}
+        ${EndIf}
 
         ; Delete Desktop shortcuts for this application
         StrCpy $R4 -1
@@ -3669,6 +3689,16 @@
             ${EndIf}
           ${EndIf}
         ${Loop}
+        ; There might also be a shortcut with a different name created by a
+        ; previous version of the installer.
+        ${If} ${FileExists} "$DESKTOP\${BrandFullName}.lnk"
+          ShellLink::GetShortCutTarget "$DESKTOP\${BrandFullName}.lnk"
+          Pop $R5
+          ${${_MOZFUNC_UN}GetLongPath} "$R5" $R5
+          ${If} "$INSTDIR\${FileMainEXE}" == "$R5"
+            Delete "$DESKTOP\${BrandFullName}.lnk"
+          ${EndIf}
+        ${EndIf}
 
         ${${_MOZFUNC_UN}GetLongPath} "$SMPROGRAMS" $R6
 
@@ -5068,6 +5098,15 @@
               ; Installing the service always requires elevation.
               ${ElevateUAC}
             ${EndIf}
+
+            !ifdef MOZ_OPTIONAL_EXTENSIONS
+              ReadINIStr $R8 $R7 "Install" "OptionalExtensions"
+              ${If} $R8 == "false"
+                StrCpy $InstallOptionalExtensions "0"
+              ${Else}
+                StrCpy $InstallOptionalExtensions "1"
+              ${EndIf}
+            !endif
 
             !ifndef NO_STARTMENU_DIR
               ReadINIStr $R8 $R7 "Install" "StartMenuDirectoryName"
@@ -7411,10 +7450,66 @@
   Push $1
   Push $2
   Push $R0
-
   StrCpy $R0 ${CONTROL} ; in case ${CONTROL} is $0
   StrCpy $1 ""
   StrCpy $2 ""
+  System::Call '*(i, i, i, i) i.s'
+  Pop $0
+  ${If} $0 <> 0
+    System::Call 'user32::GetClientRect(i R0, i r0)'
+    System::Call '*$0(i, i, i .s, i .s)'
+    System::Free $0
+    Pop $1
+    Pop $2
+  ${EndIf}
+  System::Call 'user32::LoadImageW(i 0, t s, i ${IMAGE_BITMAP}, i r1, i r2, \
+                                   i ${MOZ_LOADTRANSPARENT}) i .s' "${IMAGE}"
+  Pop $0
+  SendMessage $R0 ${STM_SETIMAGE} ${IMAGE_BITMAP} $0
+  SetCtlColors $R0 "" transparent
+  ${NSD_AddExStyle} $R0 ${WS_EX_TRANSPARENT}|${WS_EX_TOPMOST}
+  Pop $R0
+  Pop $2
+  Pop $1
+  Exch $0
+  Pop ${HANDLE}
+!macroend
+!define SetStretchedTransparentImage "!insertmacro __SetStretchedTransparentImage"
+
+/**
+ * Draws an image file (BMP, GIF, or JPG) onto a bitmap control, with scaling.
+ * Adapted from https://stackoverflow.com/a/13405711/1508094
+ *
+ * @param CONTROL bitmap control created by NSD_CreateBitmap
+ * @param IMAGE path to image file to draw to the bitmap
+ * @param HANDLE output bitmap handle which must be freed via NSD_FreeImage
+ *               after nsDialogs::Show has been called
+ */
+!macro __SetStretchedImageOLE CONTROL IMAGE HANDLE
+  !ifndef IID_IPicture
+    !define IID_IPicture {7BF80980-BF32-101A-8BBB-00AA00300CAB}
+  !endif
+  !ifndef SRCCOPY
+    !define SRCCOPY 0xCC0020
+  !endif
+  !ifndef HALFTONE
+    !define HALFTONE 4
+  !endif
+
+  Push $0 ; HANDLE
+  Push $1 ; memory DC
+  Push $2 ; IPicture created from IMAGE
+  Push $3 ; HBITMAP obtained from $2
+  Push $4 ; BITMAPINFO obtained from $3
+  Push $5 ; width of IMAGE
+  Push $6 ; height of IMAGE
+  Push $7 ; width of CONTROL
+  Push $8 ; height of CONTROL
+  Push $R0 ; CONTROL
+
+  StrCpy $R0 ${CONTROL} ; in case ${CONTROL} is $0
+  StrCpy $7 ""
+  StrCpy $8 ""
 
   System::Call '*(i, i, i, i) i.s'
   Pop $0
@@ -7423,25 +7518,140 @@
     System::Call 'user32::GetClientRect(i R0, i r0)'
     System::Call '*$0(i, i, i .s, i .s)'
     System::Free $0
-    Pop $1
-    Pop $2
+    Pop $7
+    Pop $8
   ${EndIf}
 
-  System::Call 'user32::LoadImageW(i 0, t s, i ${IMAGE_BITMAP}, i r1, i r2, \
-                                   i ${MOZ_LOADTRANSPARENT}) i .s' "${IMAGE}"
-  Pop $0
-  SendMessage $R0 ${STM_SETIMAGE} ${IMAGE_BITMAP} $0
-
-  SetCtlColors $R0 "" transparent
-  ${NSD_AddExStyle} $R0 ${WS_EX_TRANSPARENT}|${WS_EX_TOPMOST}
+  ${If} $7 > 0
+  ${AndIf} $8 > 0
+    System::Call 'oleaut32::OleLoadPicturePath(w"${IMAGE}",i0,i0,i0,g"${IID_IPicture}",*i.r2)i.r1'
+    ${If} $1 = 0
+      System::Call 'user32::GetDC(i0)i.s'
+      System::Call 'gdi32::CreateCompatibleDC(iss)i.r1'
+      System::Call 'gdi32::CreateCompatibleBitmap(iss,ir7,ir8)i.r0'
+      System::Call 'user32::ReleaseDC(i0,is)'
+      System::Call '$2->3(*i.r3)i.r4' ; IPicture->get_Handle
+      ${If} $4 = 0
+        System::Call 'gdi32::SetStretchBltMode(ir1,i${HALFTONE})'
+        System::Call '*(&i40,&i1024)i.r4' ; BITMAP / BITMAPINFO
+        System::Call 'gdi32::GetObject(ir3,i24,ir4)'
+        System::Call 'gdi32::SelectObject(ir1,ir0)i.s'
+        System::Call '*$4(i40,i.r5,i.r6,i0,i,i.s)' ; Grab size and bits-ptr AND init as BITMAPINFOHEADER
+        System::Call 'gdi32::GetDIBits(ir1,ir3,i0,i0,i0,ir4,i0)' ; init BITMAPINFOHEADER
+        System::Call 'gdi32::GetDIBits(ir1,ir3,i0,i0,i0,ir4,i0)' ; init BITMAPINFO
+        System::Call 'gdi32::StretchDIBits(ir1,i0,i0,ir7,ir8,i0,i0,ir5,ir6,is,ir4,i0,i${SRCCOPY})'
+        System::Call 'gdi32::SelectObject(ir1,is)'
+        System::Free $4
+        SendMessage $R0 ${STM_SETIMAGE} ${IMAGE_BITMAP} $0
+      ${EndIf}
+      System::Call 'gdi32::DeleteDC(ir1)'
+      System::Call '$2->2()' ; IPicture->release()
+    ${EndIf}
+  ${EndIf}
 
   Pop $R0
+  Pop $8
+  Pop $7
+  Pop $6
+  Pop $5
+  Pop $4
+  Pop $3
   Pop $2
   Pop $1
   Exch $0
   Pop ${HANDLE}
 !macroend
-!define SetStretchedTransparentImage "!insertmacro __SetStretchedTransparentImage"
+!define SetStretchedImageOLE "!insertmacro __SetStretchedImageOLE"
+
+/**
+ * Display a task dialog box with custom strings and button labels.
+ *
+ * The task dialog is highly customizable. The specific style being used here
+ * is similar to a MessageBox except that the button text is customizable.
+ * MessageBox-style buttons are used instead of command link buttons; this can
+ * be made configurable if command buttons are needed.
+ *
+ * See https://msdn.microsoft.com/en-us/library/windows/desktop/bb760544.aspx
+ * for the TaskDialogIndirect function's documentation, and links to definitions
+ * of the TASKDIALOGCONFIG and TASKDIALOG_BUTTON structures it uses.
+ *
+ * @param INSTRUCTION  Dialog header string; use empty string if unneeded
+ * @param CONTENT      Secondary message string; use empty string if unneeded
+ * @param BUTTON1      Text for the first button, the one selected by default
+ * @param BUTTON2      Text for the second button
+ *
+ * @return One of the following values will be left on the stack:
+ *         1001 if the first button was clicked
+ *         1002 if the second button was clicked
+ *         2 (IDCANCEL) if the dialog was closed
+ *         0 on error
+ */
+!macro _ShowTaskDialog INSTRUCTION CONTENT BUTTON1 BUTTON2
+  !ifndef SIZEOF_TASKDIALOGCONFIG_32BIT
+    !define SIZEOF_TASKDIALOGCONFIG_32BIT 96
+  !endif
+  !ifndef TDF_ALLOW_DIALOG_CANCELLATION
+    !define TDF_ALLOW_DIALOG_CANCELLATION 0x0008
+  !endif
+  !ifndef TDF_RTL_LAYOUT
+    !define TDF_RTL_LAYOUT 0x02000
+  !endif
+  !ifndef TD_WARNING_ICON
+    !define TD_WARNING_ICON 0x0FFFF
+  !endif
+
+  Push $0 ; return value
+  Push $1 ; TASKDIALOGCONFIG struct
+  Push $2 ; TASKDIALOG_BUTTON array
+  Push $3 ; dwFlags member of the TASKDIALOGCONFIG
+
+  StrCpy $3 ${TDF_ALLOW_DIALOG_CANCELLATION}
+  !ifdef ${AB_CD}_rtl
+    IntOp $3 $3 | ${TDF_RTL_LAYOUT}
+  !endif
+
+  ; Build an array of two TASKDIALOG_BUTTON structs
+  System::Call "*(i 1001, \
+                  w '${BUTTON1}', \
+                  i 1002, \
+                  w '${BUTTON2}' \
+                  ) p.r2"
+  ; Build a TASKDIALOGCONFIG struct
+  System::Call "*(i ${SIZEOF_TASKDIALOGCONFIG_32BIT}, \
+                  p $HWNDPARENT, \
+                  p 0, \
+                  i $3, \
+                  i 0, \
+                  w '$(INSTALLER_WIN_CAPTION)', \
+                  p ${TD_WARNING_ICON}, \
+                  w '${INSTRUCTION}', \
+                  w '${CONTENT}', \
+                  i 2, \
+                  p r2, \
+                  i 1001, \
+                  i 0, \
+                  p 0, \
+                  i 0, \
+                  p 0, \
+                  p 0, \
+                  p 0, \
+                  p 0, \
+                  p 0, \
+                  p 0, \
+                  p 0, \
+                  p 0, \
+                  i 0 \
+                  ) p.r1"
+  System::Call "comctl32::TaskDialogIndirect(p r1, *i 0 r0, p 0, p 0)"
+  System::Free $1
+  System::Free $2
+
+  Pop $3
+  Pop $2
+  Pop $1
+  Exch $0
+!macroend
+!define ShowTaskDialog "!insertmacro _ShowTaskDialog"
 
 /**
  * Removes a single style from a control.
@@ -7607,6 +7817,46 @@
   Pop $2
   Pop $1
   Exch $0 ; pixels from the beginning of the dialog to the end of the control
+!macroend
+
+/**
+ * Gets the number of dialog units from the top of a dialog to the bottom of a
+ * control
+ *
+ * _DIALOG the handle of the dialog
+ * _CONTROL the handle of the control
+ * _RES_DU return value - dialog units from the top of the dialog to the bottom
+ *         of the control
+ */
+!macro GetDlgItemBottomDUCall _DIALOG _CONTROL _RES_DU
+  Push "${_DIALOG}"
+  Push "${_CONTROL}"
+  ${CallArtificialFunction} GetDlgItemBottomDU_
+  Pop ${_RES_DU}
+!macroend
+
+!define GetDlgItemBottomDU "!insertmacro GetDlgItemBottomDUCall"
+!define un.GetDlgItemBottomDU "!insertmacro GetDlgItemBottomDUCall"
+
+!macro GetDlgItemBottomDU_
+  Exch $0 ; handle of the control
+  Exch $1 ; handle of the dialog
+  Push $2
+  Push $3
+
+  ; #32770 is the dialog class
+  FindWindow $2 "#32770" "" $HWNDPARENT
+  System::Call '*(i, i, i, i) i .r3'
+  System::Call 'user32::GetWindowRect(i r0, i r3)'
+  System::Call 'user32::MapWindowPoints(i 0, i r2, i r3, i 2)'
+  System::Call 'user32::MapDialogRect(i r1, i r3)'
+  System::Call '*$3(i, i, i, i .r0)'
+  System::Free $3
+
+  Pop $3
+  Pop $2
+  Pop $1
+  Exch $0 ; pixels from the top of the dialog to the bottom of the control
 !macroend
 
 /**

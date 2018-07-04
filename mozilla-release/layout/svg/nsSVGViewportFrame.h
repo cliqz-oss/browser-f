@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -20,15 +21,15 @@ class nsSVGViewportFrame
   , public nsISVGSVGFrame
 {
 protected:
-  nsSVGViewportFrame(nsStyleContext* aContext, nsIFrame::ClassID aID)
-    : nsSVGDisplayContainerFrame(aContext, aID)
+  nsSVGViewportFrame(ComputedStyle* aStyle, nsIFrame::ClassID aID)
+    : nsSVGDisplayContainerFrame(aStyle, aID)
   {
   }
 public:
   NS_DECL_ABSTRACT_FRAME(nsSVGViewportFrame)
 
   virtual nsresult  AttributeChanged(int32_t         aNameSpaceID,
-                                     nsIAtom*        aAttribute,
+                                     nsAtom*        aAttribute,
                                      int32_t         aModType) override;
 
   // nsSVGDisplayableFrame interface:
@@ -43,16 +44,10 @@ public:
   virtual nsIFrame* GetFrameForPoint(const gfxPoint& aPoint) override;
 
   // nsSVGContainerFrame methods:
-  virtual gfxMatrix GetCanvasTM() override;
-
   virtual bool HasChildrenOnlyTransform(Matrix *aTransform) const override;
 
   // nsISVGSVGFrame interface:
   virtual void NotifyViewportOrTransformChanged(uint32_t aFlags) override;
-
-protected:
-
-  nsAutoPtr<gfxMatrix> mCanvasTM;
 };
 
 #endif // __NS_SVGVIEWPORTFRAME_H__

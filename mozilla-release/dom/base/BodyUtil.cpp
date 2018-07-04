@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -44,7 +46,7 @@ PushOverLine(nsACString::const_iterator& aStart,
 }
 
 class MOZ_STACK_CLASS FillFormIterator final
-  : public URLSearchParams::ForEachIterator
+  : public URLParams::ForEachIterator
 {
 public:
   explicit FillFormIterator(FormData* aFormData)
@@ -53,8 +55,8 @@ public:
     MOZ_ASSERT(aFormData);
   }
 
-  bool URLParamsIterator(const nsString& aName,
-                         const nsString& aValue) override
+  bool URLParamsIterator(const nsAString& aName,
+                         const nsAString& aValue) override
   {
     ErrorResult rv;
     mFormData->Append(aName, aValue, rv);
@@ -467,12 +469,9 @@ BodyUtil::ConsumeFormData(nsIGlobalObject* aParent, const nsCString& aMimeType,
   }
 
   if (isValidUrlEncodedMimeType) {
-    URLParams params;
-    params.ParseInput(aStr);
-
     RefPtr<FormData> fd = new FormData(aParent);
     FillFormIterator iterator(fd);
-    DebugOnly<bool> status = params.ForEach(iterator);
+    DebugOnly<bool> status = URLParams::Parse(aStr, iterator);
     MOZ_ASSERT(status);
 
     return fd.forget();

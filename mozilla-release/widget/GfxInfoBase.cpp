@@ -9,7 +9,6 @@
 
 #include "GfxInfoBase.h"
 
-#include "GfxInfoWebGL.h"
 #include "GfxDriverInfo.h"
 #include "nsCOMPtr.h"
 #include "nsCOMArray.h"
@@ -20,10 +19,7 @@
 #include "mozilla/Observer.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMHTMLCollection.h"
 #include "nsIDOMNode.h"
-#include "nsIDOMNodeList.h"
 #include "nsTArray.h"
 #include "nsXULAppAPI.h"
 #include "nsIXULAppInfo.h"
@@ -33,15 +29,11 @@
 #include "mozilla/gfx/GPUProcessManager.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/gfxVars.h"
-#include "MediaPrefs.h"
+#include "mozilla/layers/PaintThread.h"
 #include "gfxPrefs.h"
 #include "gfxPlatform.h"
 #include "gfxConfig.h"
 #include "DriverCrashGuard.h"
-
-#if defined(MOZ_CRASHREPORTER)
-#include "nsExceptionHandler.h"
-#endif
 
 using namespace mozilla::widget;
 using namespace mozilla;
@@ -73,11 +65,15 @@ public:
     delete GfxInfoBase::mFeatureStatus;
     GfxInfoBase::mFeatureStatus = nullptr;
 
-    for (uint32_t i = 0; i < DeviceFamilyMax; i++)
+    for (uint32_t i = 0; i < DeviceFamilyMax; i++) {
       delete GfxDriverInfo::mDeviceFamilies[i];
+      GfxDriverInfo::mDeviceFamilies[i] = nullptr;
+    }
 
-    for (uint32_t i = 0; i < DeviceVendorMax; i++)
+    for (uint32_t i = 0; i < DeviceVendorMax; i++) {
       delete GfxDriverInfo::mDeviceVendors[i];
+      GfxDriverInfo::mDeviceVendors[i] = nullptr;
+    }
 
     GfxInfoBase::mShutdownOccurred = true;
 
@@ -167,6 +163,12 @@ GetPrefNameForFeature(int32_t aFeature)
     case nsIGfxInfo::FEATURE_CANVAS2D_ACCELERATION:
       name = BLACKLIST_PREF_BRANCH "canvas2d.acceleration";
       break;
+    case nsIGfxInfo::FEATURE_DX_INTEROP2:
+      name = BLACKLIST_PREF_BRANCH "dx.interop2";
+      break;
+    case nsIGfxInfo::FEATURE_GPU_PROCESS:
+      name = BLACKLIST_PREF_BRANCH "gpu.process";
+      break;
     case nsIGfxInfo::FEATURE_WEBGL2:
       name = BLACKLIST_PREF_BRANCH "webgl2";
       break;
@@ -176,11 +178,16 @@ GetPrefNameForFeature(int32_t aFeature)
     case nsIGfxInfo::FEATURE_D3D11_KEYED_MUTEX:
       name = BLACKLIST_PREF_BRANCH "d3d11.keyed.mutex";
       break;
+    case nsIGfxInfo::FEATURE_WEBRENDER:
+      name = BLACKLIST_PREF_BRANCH "webrender";
+      break;
+    case nsIGfxInfo::FEATURE_DX_NV12:
+      name = BLACKLIST_PREF_BRANCH "dx.nv12";
+      break;
     case nsIGfxInfo::FEATURE_VP8_HW_DECODE:
     case nsIGfxInfo::FEATURE_VP9_HW_DECODE:
-    case nsIGfxInfo::FEATURE_DX_INTEROP2:
-    case nsIGfxInfo::FEATURE_GPU_PROCESS:
-      // We don't provide prefs for these features.
+      // We don't provide prefs for these features as these are
+      // not handling downloadable blocklist.
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unexpected nsIGfxInfo feature?!");
@@ -291,6 +298,8 @@ BlacklistOSToOperatingSystem(const nsAString& os)
     return OperatingSystem::OSX10_11;
   else if (os.EqualsLiteral("Darwin 16"))
     return OperatingSystem::OSX10_12;
+  else if (os.EqualsLiteral("Darwin 17"))
+    return OperatingSystem::OSX10_13;
   else if (os.EqualsLiteral("Android"))
     return OperatingSystem::Android;
   // For historical reasons, "All" in blocklist means "All Windows"
@@ -355,12 +364,22 @@ BlacklistFeatureToGfxFeature(const nsAString& aFeature)
     return nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION;
   else if (aFeature.EqualsLiteral("CANVAS2D_ACCELERATION"))
       return nsIGfxInfo::FEATURE_CANVAS2D_ACCELERATION;
+  else if (aFeature.EqualsLiteral("DX_INTEROP2"))
+    return nsIGfxInfo::FEATURE_DX_INTEROP2;
+  else if (aFeature.EqualsLiteral("GPU_PROCESS"))
+    return nsIGfxInfo::FEATURE_GPU_PROCESS;
   else if (aFeature.EqualsLiteral("WEBGL2"))
     return nsIGfxInfo::FEATURE_WEBGL2;
   else if (aFeature.EqualsLiteral("ADVANCED_LAYERS"))
     return nsIGfxInfo::FEATURE_ADVANCED_LAYERS;
   else if (aFeature.EqualsLiteral("D3D11_KEYED_MUTEX"))
     return nsIGfxInfo::FEATURE_D3D11_KEYED_MUTEX;
+  else if (aFeature.EqualsLiteral("WEBRENDER"))
+    return nsIGfxInfo::FEATURE_WEBRENDER;
+  else if (aFeature.EqualsLiteral("DX_NV12"))
+    return nsIGfxInfo::FEATURE_DX_NV12;
+  // We do not support FEATURE_VP8_HW_DECODE and FEATURE_VP9_HW_DECODE
+  // in downloadable blocklist.
 
   // If we don't recognize the feature, it may be new, and something
   // this version doesn't understand.  So, nothing to do.  This is
@@ -590,7 +609,6 @@ GfxInfoBase::Init()
 {
   InitGfxDriverInfoShutdownObserver();
   gfxPrefs::GetSingleton();
-  MediaPrefs::GetSingleton();
 
   nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
   if (os) {
@@ -962,14 +980,6 @@ GfxInfoBase::GetFeatureSuggestedDriverVersion(int32_t aFeature,
   return GetFeatureStatusImpl(aFeature, &status, aVersion, driverInfo, discardFailureId);
 }
 
-
-NS_IMETHODIMP
-GfxInfoBase::GetWebGLParameter(const nsAString& aParam,
-                               nsAString& aResult)
-{
-  return GfxInfoWebGL::GetWebGLParameter(aParam, aResult);
-}
-
 void
 GfxInfoBase::EvaluateDownloadedBlacklist(nsTArray<GfxDriverInfo>& aDriverInfo)
 {
@@ -990,9 +1000,15 @@ GfxInfoBase::EvaluateDownloadedBlacklist(nsTArray<GfxDriverInfo>& aDriverInfo)
     nsIGfxInfo::FEATURE_STAGEFRIGHT,
     nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION,
     nsIGfxInfo::FEATURE_CANVAS2D_ACCELERATION,
+    nsIGfxInfo::FEATURE_VP8_HW_DECODE,
+    nsIGfxInfo::FEATURE_VP9_HW_DECODE,
+    nsIGfxInfo::FEATURE_DX_INTEROP2,
+    nsIGfxInfo::FEATURE_GPU_PROCESS,
     nsIGfxInfo::FEATURE_WEBGL2,
     nsIGfxInfo::FEATURE_ADVANCED_LAYERS,
     nsIGfxInfo::FEATURE_D3D11_KEYED_MUTEX,
+    nsIGfxInfo::FEATURE_WEBRENDER,
+    nsIGfxInfo::FEATURE_DX_NV12,
     0
   };
 
@@ -1474,6 +1490,38 @@ GfxInfoBase::GetWebRenderEnabled(bool* aWebRenderEnabled)
 }
 
 NS_IMETHODIMP
+GfxInfoBase::GetUsesTiling(bool* aUsesTiling)
+{
+  *aUsesTiling = gfxPlatform::GetPlatform()->UsesTiling();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfoBase::GetContentUsesTiling(bool* aUsesTiling)
+{
+  *aUsesTiling = gfxPlatform::GetPlatform()->ContentUsesTiling();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfoBase::GetOffMainThreadPaintEnabled(bool* aOffMainThreadPaintEnabled)
+{
+  *aOffMainThreadPaintEnabled = gfxConfig::IsEnabled(Feature::OMTP);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfoBase::GetOffMainThreadPaintWorkerCount(int32_t* aOffMainThreadPaintWorkerCount)
+{
+  if (gfxConfig::IsEnabled(Feature::OMTP)) {
+    *aOffMainThreadPaintWorkerCount = layers::PaintThread::CalculatePaintWorkerCount();
+  } else {
+    *aOffMainThreadPaintWorkerCount = 0;
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 GfxInfoBase::GetIsHeadless(bool* aIsHeadless)
 {
   *aIsHeadless = gfxPlatform::IsHeadless();
@@ -1533,6 +1581,7 @@ GfxInfoBase::ControlGPUProcessForXPCShell(bool aEnable, bool *_retval)
     gpm->LaunchGPUProcess();
     gpm->EnsureGPUReady();
   } else {
+    gfxConfig::UserDisable(Feature::GPU_PROCESS, "xpcshell-test");
     gpm->KillProcess();
   }
 

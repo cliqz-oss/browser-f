@@ -12,13 +12,12 @@
 
 #include "nsXHTMLContentSerializer.h"
 
-#include "nsIDOMElement.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
+#include "nsElementTable.h"
 #include "nsNameSpaceManager.h"
 #include "nsString.h"
 #include "nsUnicharUtils.h"
-#include "nsXPIDLString.h"
 #include "nsIServiceManager.h"
 #include "nsIDocumentEncoder.h"
 #include "nsGkAtoms.h"
@@ -26,14 +25,14 @@
 #include "nsNetUtil.h"
 #include "nsEscape.h"
 #include "nsCRT.h"
-#include "nsIParserService.h"
 #include "nsContentUtils.h"
-#include "nsLWBrkCIID.h"
 #include "nsIScriptElement.h"
 #include "nsStubMutationObserver.h"
 #include "nsAttrName.h"
 #include "nsComputedDOMStyle.h"
 #include "mozilla/dom/Element.h"
+
+using namespace mozilla;
 
 static const int32_t kLongLineLen = 128;
 
@@ -60,7 +59,7 @@ nsXHTMLContentSerializer::~nsXHTMLContentSerializer()
 NS_IMETHODIMP
 nsXHTMLContentSerializer::Init(uint32_t aFlags,
                                uint32_t aWrapColumn,
-                               const mozilla::Encoding* aEncoding,
+                               const Encoding* aEncoding,
                                bool aIsCopying,
                                bool aRewriteEncodingDeclaration,
                                bool* aNeedsPreformatScanning)
@@ -86,10 +85,6 @@ nsXHTMLContentSerializer::Init(uint32_t aFlags,
   mBodyOnly = (mFlags & nsIDocumentEncoder::OutputBodyOnly) ? true
                                                             : false;
 
-  // set up entity converter if we are going to need it
-  if (mFlags & nsIDocumentEncoder::OutputEncodeW3CEntities) {
-    mEntityConverter = do_CreateInstance(NS_ENTITYCONVERTER_CONTRACTID);
-  }
   return NS_OK;
 }
 
@@ -161,11 +156,11 @@ nsXHTMLContentSerializer::AppendText(nsIContent* aText,
 }
 
 bool
-nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
-                                              nsIContent *aOriginalElement,
+nsXHTMLContentSerializer::SerializeAttributes(Element* aElement,
+                                              Element* aOriginalElement,
                                               nsAString& aTagPrefix,
                                               const nsAString& aTagNamespaceURI,
-                                              nsIAtom* aTagName,
+                                              nsAtom* aTagName,
                                               nsAString& aStr,
                                               uint32_t aSkipAttr,
                                               bool aAddNSAttr)
@@ -176,7 +171,7 @@ nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
   nsAutoString xmlnsStr;
   xmlnsStr.AssignLiteral(kXMLNS);
 
-  int32_t contentNamespaceID = aContent->GetNameSpaceID();
+  int32_t contentNamespaceID = aElement->GetNameSpaceID();
 
   // this method is not called by nsHTMLContentSerializer
   // so we don't have to check HTML element, just XHTML
@@ -190,7 +185,7 @@ nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
       // Store its start attribute value in olState->startVal.
       nsAutoString start;
       int32_t startAttrVal = 0;
-      aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::start, start);
+      aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::start, start);
       if (!start.IsEmpty()) {
         nsresult rv = NS_OK;
         startAttrVal = start.ToInteger(&rv);
@@ -209,7 +204,7 @@ nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
       mIsFirstChildOfOL = IsFirstChildOfOL(aOriginalElement);
       if (mIsFirstChildOfOL) {
         // If OL is parent of this LI, serialize attributes in different manner.
-        NS_ENSURE_TRUE(SerializeLIValueAttribute(aContent, aStr), false);
+        NS_ENSURE_TRUE(SerializeLIValueAttribute(aElement, aStr), false);
       }
     }
   }
@@ -233,7 +228,7 @@ nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
 
   NS_NAMED_LITERAL_STRING(_mozStr, "_moz");
 
-  count = aContent->GetAttrCount();
+  count = aElement->GetAttrCount();
 
   // Now serialize each of the attributes
   // XXX Unfortunately we need a namespace manager to get
@@ -244,12 +239,12 @@ nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
         continue;
     }
 
-    mozilla::dom::BorrowedAttrInfo info = aContent->GetAttrInfoAt(index);
+    dom::BorrowedAttrInfo info = aElement->GetAttrInfoAt(index);
     const nsAttrName* name = info.mName;
 
     int32_t namespaceID = name->NamespaceID();
-    nsIAtom* attrName = name->LocalName();
-    nsIAtom* attrPrefix = name->GetPrefix();
+    nsAtom* attrName = name->LocalName();
+    nsAtom* attrPrefix = name->GetPrefix();
 
     // Filter out any attribute starting with [-|_]moz
     nsDependentAtomString attrNameStr(attrName);
@@ -292,7 +287,7 @@ nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
         continue;
       }
 
-      isJS = IsJavaScript(aContent, attrName, namespaceID, valueStr);
+      isJS = IsJavaScript(aElement, attrName, namespaceID, valueStr);
 
       if (namespaceID == kNameSpaceID_None &&
           ((attrName == nsGkAtoms::href) ||
@@ -303,7 +298,7 @@ nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
           // but that gets more complicated since we have to
           // search the tag list for CODEBASE as well.
           // For now, just leave them relative.
-          nsCOMPtr<nsIURI> uri = aContent->GetBaseURI();
+          nsCOMPtr<nsIURI> uri = aElement->GetBaseURI();
           if (uri) {
             nsAutoString absURI;
             rv = NS_MakeAbsoluteURI(absURI, valueStr, uri);
@@ -319,7 +314,7 @@ nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
         // If we're serializing a <meta http-equiv="content-type">,
         // use the proper value, rather than what's in the document.
         nsAutoString header;
-        aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::httpEquiv, header);
+        aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::httpEquiv, header);
         if (header.LowerCaseEqualsLiteral("content-type")) {
           valueStr = NS_LITERAL_STRING("text/html; charset=") +
             NS_ConvertASCIItoUTF16(mCharset);
@@ -332,7 +327,7 @@ nsXHTMLContentSerializer::SerializeAttributes(nsIContent* aContent,
       }
     }
     else {
-      isJS = IsJavaScript(aContent, attrName, namespaceID, valueStr);
+      isJS = IsJavaScript(aElement, attrName, namespaceID, valueStr);
     }
 
     NS_ENSURE_TRUE(SerializeAttr(prefixStr, nameStr, valueStr, aStr, !isJS), false);
@@ -364,9 +359,9 @@ nsXHTMLContentSerializer::AfterElementStart(nsIContent* aContent,
          child;
          child = child->GetNextSibling()) {
       if (child->IsHTMLElement(nsGkAtoms::meta) &&
-          child->HasAttr(kNameSpaceID_None, nsGkAtoms::content)) {
+          child->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::content)) {
         nsAutoString header;
-        child->GetAttr(kNameSpaceID_None, nsGkAtoms::httpEquiv, header);
+        child->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::httpEquiv, header);
 
         if (header.LowerCaseEqualsLiteral("content-type")) {
           hasMeta = true;
@@ -419,8 +414,8 @@ nsXHTMLContentSerializer::AppendDocumentStart(nsIDocument *aDocument,
 }
 
 bool
-nsXHTMLContentSerializer::CheckElementStart(nsIContent * aContent,
-                                            bool & aForceFormat,
+nsXHTMLContentSerializer::CheckElementStart(Element* aElement,
+                                            bool& aForceFormat,
                                             nsAString& aStr,
                                             nsresult& aResult)
 {
@@ -430,16 +425,16 @@ nsXHTMLContentSerializer::CheckElementStart(nsIContent * aContent,
   // indicate that this element should be pretty printed
   // even if we're not in pretty printing mode
   aForceFormat = !(mFlags & nsIDocumentEncoder::OutputIgnoreMozDirty) &&
-                 aContent->HasAttr(kNameSpaceID_None, nsGkAtoms::mozdirty);
+                 aElement->HasAttr(kNameSpaceID_None, nsGkAtoms::mozdirty);
 
-  if (aContent->IsHTMLElement(nsGkAtoms::br) &&
+  if (aElement->IsHTMLElement(nsGkAtoms::br) &&
       (mFlags & nsIDocumentEncoder::OutputNoFormattingInPre) &&
       PreLevel() > 0) {
     aResult = AppendNewLineToString(aStr) ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
     return false;
   }
 
-  if (aContent->IsHTMLElement(nsGkAtoms::body)) {
+  if (aElement->IsHTMLElement(nsGkAtoms::body)) {
     ++mInBody;
   }
 
@@ -447,7 +442,7 @@ nsXHTMLContentSerializer::CheckElementStart(nsIContent * aContent,
 }
 
 bool
-nsXHTMLContentSerializer::CheckElementEnd(mozilla::dom::Element* aElement,
+nsXHTMLContentSerializer::CheckElementEnd(dom::Element* aElement,
                                           bool& aForceFormat,
                                           nsAString& aStr)
 {
@@ -461,7 +456,7 @@ nsXHTMLContentSerializer::CheckElementEnd(mozilla::dom::Element* aElement,
     /* Though at this point we must always have an state to be deleted as all
        the OL opening tags are supposed to push an olState object to the stack*/
     if (!mOLStateStack.IsEmpty()) {
-        mOLStateStack.RemoveElementAt(mOLStateStack.Length() -1);
+      mOLStateStack.RemoveLastElement();
     }
   }
 
@@ -478,15 +473,15 @@ nsXHTMLContentSerializer::AppendAndTranslateEntities(const nsAString& aStr,
   }
 
   if (mDisableEntityEncoding) {
-    return aOutputStr.Append(aStr, mozilla::fallible);
+    return aOutputStr.Append(aStr, fallible);
   }
 
   return nsXMLContentSerializer::AppendAndTranslateEntities(aStr, aOutputStr);
 }
 
 bool
-nsXHTMLContentSerializer::IsShorthandAttr(const nsIAtom* aAttrName,
-                                          const nsIAtom* aElementName)
+nsXHTMLContentSerializer::IsShorthandAttr(const nsAtom* aAttrName,
+                                          const nsAtom* aElementName)
 {
   // checked
   if ((aAttrName == nsGkAtoms::checked) &&
@@ -583,7 +578,7 @@ nsXHTMLContentSerializer::IsShorthandAttr(const nsIAtom* aAttrName,
 }
 
 bool
-nsXHTMLContentSerializer::LineBreakBeforeOpen(int32_t aNamespaceID, nsIAtom* aName)
+nsXHTMLContentSerializer::LineBreakBeforeOpen(int32_t aNamespaceID, nsAtom* aName)
 {
 
   if (aNamespaceID != kNameSpaceID_XHTML) {
@@ -600,22 +595,12 @@ nsXHTMLContentSerializer::LineBreakBeforeOpen(int32_t aNamespaceID, nsIAtom* aNa
       aName == nsGkAtoms::html) {
     return true;
   }
-  else {
-    nsIParserService* parserService = nsContentUtils::GetParserService();
 
-    if (parserService) {
-      bool res;
-      parserService->
-        IsBlock(parserService->HTMLCaseSensitiveAtomTagToId(aName), res);
-      return res;
-    }
-  }
-
-  return mAddSpace;
+  return nsHTMLElement::IsBlock(nsHTMLTags::CaseSensitiveAtomTagToId(aName));
 }
 
 bool
-nsXHTMLContentSerializer::LineBreakAfterOpen(int32_t aNamespaceID, nsIAtom* aName)
+nsXHTMLContentSerializer::LineBreakAfterOpen(int32_t aNamespaceID, nsAtom* aName)
 {
 
   if (aNamespaceID != kNameSpaceID_XHTML) {
@@ -646,7 +631,7 @@ nsXHTMLContentSerializer::LineBreakAfterOpen(int32_t aNamespaceID, nsIAtom* aNam
 }
 
 bool
-nsXHTMLContentSerializer::LineBreakBeforeClose(int32_t aNamespaceID, nsIAtom* aName)
+nsXHTMLContentSerializer::LineBreakBeforeClose(int32_t aNamespaceID, nsAtom* aName)
 {
 
   if (aNamespaceID != kNameSpaceID_XHTML) {
@@ -668,7 +653,7 @@ nsXHTMLContentSerializer::LineBreakBeforeClose(int32_t aNamespaceID, nsIAtom* aN
 }
 
 bool
-nsXHTMLContentSerializer::LineBreakAfterClose(int32_t aNamespaceID, nsIAtom* aName)
+nsXHTMLContentSerializer::LineBreakAfterClose(int32_t aNamespaceID, nsAtom* aName)
 {
 
   if (aNamespaceID != kNameSpaceID_XHTML) {
@@ -681,31 +666,16 @@ nsXHTMLContentSerializer::LineBreakAfterClose(int32_t aNamespaceID, nsIAtom* aNa
       (aName == nsGkAtoms::tr) ||
       (aName == nsGkAtoms::th) ||
       (aName == nsGkAtoms::td) ||
-      (aName == nsGkAtoms::pre) ||
       (aName == nsGkAtoms::title) ||
-      (aName == nsGkAtoms::li) ||
       (aName == nsGkAtoms::dt) ||
       (aName == nsGkAtoms::dd) ||
-      (aName == nsGkAtoms::blockquote) ||
       (aName == nsGkAtoms::select) ||
       (aName == nsGkAtoms::option) ||
-      (aName == nsGkAtoms::p) ||
-      (aName == nsGkAtoms::map) ||
-      (aName == nsGkAtoms::div)) {
+      (aName == nsGkAtoms::map)) {
     return true;
   }
-  else {
-    nsIParserService* parserService = nsContentUtils::GetParserService();
 
-    if (parserService) {
-      bool res;
-      parserService->
-        IsBlock(parserService->HTMLCaseSensitiveAtomTagToId(aName), res);
-      return res;
-    }
-  }
-
-  return false;
+  return nsHTMLElement::IsBlock(nsHTMLTags::CaseSensitiveAtomTagToId(aName));
 }
 
 
@@ -751,11 +721,10 @@ nsXHTMLContentSerializer::IsElementPreformatted(nsIContent* aNode)
   if (!aNode->IsElement()) {
     return false;
   }
-  RefPtr<nsStyleContext> styleContext =
-    nsComputedDOMStyle::GetStyleContextNoFlush(aNode->AsElement(),
-                                               nullptr, nullptr);
-  if (styleContext) {
-    const nsStyleText* textStyle = styleContext->StyleText();
+  RefPtr<ComputedStyle> computedStyle =
+    nsComputedDOMStyle::GetComputedStyleNoFlush(aNode->AsElement(), nullptr);
+  if (computedStyle) {
+    const nsStyleText* textStyle = computedStyle->StyleText();
     return textStyle->WhiteSpaceOrNewlineIsSignificant();
   }
   return false;
@@ -769,7 +738,6 @@ nsXHTMLContentSerializer::SerializeLIValueAttribute(nsIContent* aElement,
   // It may not be the first LI child of OL but it's first in the selected range.
   // Note that we get into this condition only once per a OL.
   bool found = false;
-  nsCOMPtr<nsIDOMNode> currNode = do_QueryInterface(aElement);
   nsAutoString valueStr;
 
   olState state (0, false);
@@ -786,27 +754,21 @@ nsXHTMLContentSerializer::SerializeLIValueAttribute(nsIContent* aElement,
   int32_t offset = 0;
 
   // Traverse previous siblings until we find one with "value" attribute.
-  // offset keeps track of how many previous siblings we had tocurrNode traverse.
+  // offset keeps track of how many previous siblings we had to traverse.
+  nsIContent* currNode = aElement;
   while (currNode && !found) {
-    nsCOMPtr<nsIDOMElement> currElement = do_QueryInterface(currNode);
-    // currElement may be null if it were a text node.
-    if (currElement) {
-      nsAutoString tagName;
-      currElement->GetTagName(tagName);
-      if (tagName.LowerCaseEqualsLiteral("li")) {
-        currElement->GetAttribute(NS_LITERAL_STRING("value"), valueStr);
-        if (valueStr.IsEmpty())
-          offset++;
-        else {
-          found = true;
-          nsresult rv = NS_OK;
-          startVal = valueStr.ToInteger(&rv);
-        }
+    if (currNode->IsHTMLElement(nsGkAtoms::li)) {
+      currNode->AsElement()->GetAttr(kNameSpaceID_None,
+                                     nsGkAtoms::value, valueStr);
+      if (valueStr.IsEmpty()) {
+        offset++;
+      } else {
+        found = true;
+        nsresult rv = NS_OK;
+        startVal = valueStr.ToInteger(&rv);
       }
     }
-    nsCOMPtr<nsIDOMNode> tmp;
-    currNode->GetPreviousSibling(getter_AddRefs(tmp));
-    currNode.swap(tmp);
+    currNode = currNode->GetPreviousSibling();
   }
   // If LI was not having "value", Set the "value" attribute for it.
   // Note that We are at the first LI in the selected range of OL.
@@ -839,38 +801,26 @@ nsXHTMLContentSerializer::SerializeLIValueAttribute(nsIContent* aElement,
 bool
 nsXHTMLContentSerializer::IsFirstChildOfOL(nsIContent* aElement)
 {
-  nsCOMPtr<nsIDOMNode> node = do_QueryInterface(aElement);
-  nsAutoString parentName;
-
-  nsCOMPtr<nsIDOMNode> parentNode;
-  node->GetParentNode(getter_AddRefs(parentNode));
-  if (parentNode)
-    parentNode->GetNodeName(parentName);
-  else
-    return false;
-
-  if (parentName.LowerCaseEqualsLiteral("ol")) {
-
+  nsIContent* parent = aElement->GetParent();
+  if (parent && parent->NodeName().LowerCaseEqualsLiteral("ol")) {
     if (!mOLStateStack.IsEmpty()) {
       olState state = mOLStateStack[mOLStateStack.Length()-1];
       if (state.isFirstListItem)
         return true;
     }
-
-    return false;
   }
-  else
-    return false;
+
+  return false;
 }
 
 bool
-nsXHTMLContentSerializer::HasNoChildren(nsIContent * aContent) {
+nsXHTMLContentSerializer::HasNoChildren(nsIContent* aContent) {
 
   for (nsIContent* child = aContent->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
 
-    if (!child->IsNodeOfType(nsINode::eTEXT))
+    if (!child->IsText())
       return false;
 
     if (child->TextLength())

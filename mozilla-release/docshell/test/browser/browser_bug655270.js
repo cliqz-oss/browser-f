@@ -48,12 +48,12 @@ function test() {
 
     onBeginUpdateBatch: function() { },
     onEndUpdateBatch: function() { },
-    onVisit: function() { },
+    onVisits: function() { },
     onTitleChanged: function() { },
     onDeleteURI: function() { },
     onClearHistory: function() { },
     onDeleteVisits: function() { },
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsINavHistoryObserver])
+    QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver])
   };
 
   PlacesUtils.history.addObserver(observer);

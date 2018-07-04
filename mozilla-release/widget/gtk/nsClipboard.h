@@ -10,20 +10,38 @@
 
 #include "nsIClipboard.h"
 #include "nsIObserver.h"
+#include "nsIBinaryOutputStream.h"
 #include <gtk/gtk.h>
+
+class nsRetrievalContext {
+public:
+    // Get actual clipboard content (GetClipboardData/GetClipboardText)
+    // which has to be released by ReleaseClipboardData().
+    virtual const char* GetClipboardData(const char* aMimeType,
+                                         int32_t aWhichClipboard,
+                                         uint32_t* aContentLength) = 0;
+    virtual const char* GetClipboardText(int32_t aWhichClipboard) = 0;
+    virtual void ReleaseClipboardData(const char* aClipboardData) = 0;
+
+    // Get data mime types which can be obtained from clipboard.
+    // The returned array has to be released by g_free().
+    virtual GdkAtom* GetTargets(int32_t aWhichClipboard,
+                                int* aTargetNum) = 0;
+
+    virtual bool HasSelectionSupport(void) = 0;
+
+    virtual ~nsRetrievalContext() {};
+};
 
 class nsClipboard : public nsIClipboard,
                     public nsIObserver
 {
 public:
     nsClipboard();
-    
-    NS_DECL_ISUPPORTS
-    
-    NS_DECL_NSICLIPBOARD
-    NS_DECL_NSIOBSERVER
 
-    static already_AddRefed<nsIClipboard> GetInstance();
+    NS_DECL_ISUPPORTS
+    NS_DECL_NSIOBSERVER
+    NS_DECL_NSICLIPBOARD
 
     // Make sure we are initialized, called from the factory
     // constructor
@@ -37,24 +55,30 @@ public:
 private:
     virtual ~nsClipboard();
 
-    // Utility methods
-    static GdkAtom               GetSelectionAtom (int32_t aWhichClipboard);
-    static GtkSelectionData     *GetTargets       (GdkAtom aWhichClipboard);
-
     // Save global clipboard content to gtk
-    nsresult                     Store            (void);
+    nsresult         Store            (void);
 
     // Get our hands on the correct transferable, given a specific
     // clipboard
-    nsITransferable             *GetTransferable  (int32_t aWhichClipboard);
+    nsITransferable *GetTransferable  (int32_t aWhichClipboard);
+
+    // Send clipboard data by nsITransferable
+    void             SetTransferableData(nsITransferable* aTransferable,
+                                         nsCString& aFlavor,
+                                         const char* aClipboardData,
+                                         uint32_t aClipboardDataLength);
 
     // Hang on to our owners and transferables so we can transfer data
     // when asked.
-    nsCOMPtr<nsIClipboardOwner>  mSelectionOwner;
-    nsCOMPtr<nsIClipboardOwner>  mGlobalOwner;
-    nsCOMPtr<nsITransferable>    mSelectionTransferable;
-    nsCOMPtr<nsITransferable>    mGlobalTransferable;
-
+    nsCOMPtr<nsIClipboardOwner>    mSelectionOwner;
+    nsCOMPtr<nsIClipboardOwner>    mGlobalOwner;
+    nsCOMPtr<nsITransferable>      mSelectionTransferable;
+    nsCOMPtr<nsITransferable>      mGlobalTransferable;
+    nsAutoPtr<nsRetrievalContext>  mContext;
 };
+
+extern const int kClipboardTimeout;
+
+GdkAtom GetSelectionAtom(int32_t aWhichClipboard);
 
 #endif /* __nsClipboard_h_ */

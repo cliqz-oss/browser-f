@@ -36,8 +36,8 @@ GtkPaperSize* moz_gtk_paper_size_copy_to_new_custom(GtkPaperSize* oldPaperSize)
                                    GTK_UNIT_INCH);
 }
 
-NS_IMPL_ISUPPORTS_INHERITED(nsPrintSettingsGTK, 
-                            nsPrintSettings, 
+NS_IMPL_ISUPPORTS_INHERITED(nsPrintSettingsGTK,
+                            nsPrintSettings,
                             nsPrintSettingsGTK)
 
 /** ---------------------------------------------------
@@ -94,7 +94,7 @@ nsPrintSettingsGTK& nsPrintSettingsGTK::operator=(const nsPrintSettingsGTK& rhs)
   if (this == &rhs) {
     return *this;
   }
-  
+
   nsPrintSettings::operator=(rhs);
 
   if (mPageSetup)
@@ -123,7 +123,7 @@ nsresult nsPrintSettingsGTK::_Clone(nsIPrintSettings **_retval)
 {
   NS_ENSURE_ARG_POINTER(_retval);
   *_retval = nullptr;
-  
+
   nsPrintSettingsGTK *newSettings = new nsPrintSettingsGTK(*this);
   if (!newSettings)
     return NS_ERROR_FAILURE;
@@ -152,7 +152,7 @@ nsPrintSettingsGTK::SetGtkPageSetup(GtkPageSetup *aPageSetup)
 {
   if (mPageSetup)
     g_object_unref(mPageSetup);
-  
+
   mPageSetup = (GtkPageSetup*) g_object_ref(aPageSetup);
   InitUnwriteableMargin();
 
@@ -176,7 +176,7 @@ nsPrintSettingsGTK::SetGtkPrintSettings(GtkPrintSettings *aPrintSettings)
 {
   if (mPrintSettings)
     g_object_unref(mPrintSettings);
-  
+
   mPrintSettings = (GtkPrintSettings*) g_object_ref(aPrintSettings);
 
   GtkPaperSize* paperSize = gtk_print_settings_get_paper_size(aPrintSettings);
@@ -214,27 +214,12 @@ NS_IMETHODIMP nsPrintSettingsGTK::GetOutputFormat(int16_t *aOutputFormat)
     return rv;
   }
 
-  if (format == nsIPrintSettings::kOutputFormatNative) {
-    const gchar* fmtGTK =
-      gtk_print_settings_get(mPrintSettings,
-                             GTK_PRINT_SETTINGS_OUTPUT_FILE_FORMAT);
-    if (fmtGTK) {
-      if (nsDependentCString(fmtGTK).EqualsIgnoreCase("pdf")) {
-        format = nsIPrintSettings::kOutputFormatPDF;
-      } else {
-        format = nsIPrintSettings::kOutputFormatPS;
-      }
-    } else if (GTK_IS_PRINTER(mGTKPrinter)) {
-      // Prior to gtk 2.24, gtk_printer_accepts_pdf() and
-      // gtk_printer_accepts_ps() always returned true regardless of the
-      // printer's capability.
-      bool shouldTrustGTK =
-        (gtk_major_version > 2 ||
-         (gtk_major_version == 2 && gtk_minor_version >= 24));
-      bool acceptsPDF = shouldTrustGTK && gtk_printer_accepts_pdf(mGTKPrinter);
-
-      format = acceptsPDF ? nsIPrintSettings::kOutputFormatPDF
-                          : nsIPrintSettings::kOutputFormatPS;
+  if (format == nsIPrintSettings::kOutputFormatNative &&
+      GTK_IS_PRINTER(mGTKPrinter)) {
+    if (gtk_printer_accepts_pdf(mGTKPrinter)) {
+      format = nsIPrintSettings::kOutputFormatPDF;
+    } else {
+      format = nsIPrintSettings::kOutputFormatPS;
     }
   }
 
@@ -409,12 +394,12 @@ nsPrintSettingsGTK::SetOrientation(int32_t aOrientation)
 }
 
 NS_IMETHODIMP
-nsPrintSettingsGTK::GetToFileName(char16_t * *aToFileName)
+nsPrintSettingsGTK::GetToFileName(nsAString& aToFileName)
 {
   // Get the gtk output filename
   const char* gtk_output_uri = gtk_print_settings_get(mPrintSettings, GTK_PRINT_SETTINGS_OUTPUT_URI);
   if (!gtk_output_uri) {
-    *aToFileName = ToNewUnicode(mToFileName);
+    aToFileName = mToFileName;
     return NS_OK;
   }
 
@@ -426,33 +411,23 @@ nsPrintSettingsGTK::GetToFileName(char16_t * *aToFileName)
     return rv;
 
   // Extract the path
-  nsAutoString path;
-  rv = file->GetPath(path);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  *aToFileName = ToNewUnicode(path);
-  return NS_OK;
+  return file->GetPath(aToFileName);
 }
 
 NS_IMETHODIMP
-nsPrintSettingsGTK::SetToFileName(const char16_t * aToFileName)
+nsPrintSettingsGTK::SetToFileName(const nsAString& aToFileName)
 {
-  if (aToFileName[0] == 0) {
+  if (aToFileName.IsEmpty()) {
     mToFileName.SetLength(0);
     gtk_print_settings_set(mPrintSettings, GTK_PRINT_SETTINGS_OUTPUT_URI,
                            nullptr);
     return NS_OK;
   }
 
-  if (StringEndsWith(nsDependentString(aToFileName), NS_LITERAL_STRING(".ps"))) {
-    gtk_print_settings_set(mPrintSettings, GTK_PRINT_SETTINGS_OUTPUT_FILE_FORMAT, "ps");
-  } else {
-    gtk_print_settings_set(mPrintSettings, GTK_PRINT_SETTINGS_OUTPUT_FILE_FORMAT, "pdf");
-  }
+  gtk_print_settings_set(mPrintSettings, GTK_PRINT_SETTINGS_OUTPUT_FILE_FORMAT, "pdf");
 
   nsCOMPtr<nsIFile> file;
-  nsresult rv = NS_NewLocalFile(nsDependentString(aToFileName), true,
-                                getter_AddRefs(file));
+  nsresult rv = NS_NewLocalFile(aToFileName, true, getter_AddRefs(file));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Convert the nsIFile to a URL
@@ -467,7 +442,7 @@ nsPrintSettingsGTK::SetToFileName(const char16_t * aToFileName)
 }
 
 NS_IMETHODIMP
-nsPrintSettingsGTK::GetPrinterName(char16_t * *aPrinter)
+nsPrintSettingsGTK::GetPrinterName(nsAString& aPrinter)
 {
   const char* gtkPrintName = gtk_print_settings_get_printer(mPrintSettings);
   if (!gtkPrintName) {
@@ -475,17 +450,16 @@ nsPrintSettingsGTK::GetPrinterName(char16_t * *aPrinter)
       gtkPrintName = gtk_printer_get_name(mGTKPrinter);
     } else {
       // This mimics what nsPrintSettingsImpl does when we try to Get before we Set
-      nsXPIDLString nullPrintName;
-      *aPrinter = ToNewUnicode(nullPrintName);
+      aPrinter.Truncate();
       return NS_OK;
     }
   }
-  *aPrinter = UTF8ToNewUnicode(nsDependentCString(gtkPrintName));
+  aPrinter = NS_ConvertUTF8toUTF16(gtkPrintName);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsPrintSettingsGTK::SetPrinterName(const char16_t * aPrinter)
+nsPrintSettingsGTK::SetPrinterName(const nsAString& aPrinter)
 {
   NS_ConvertUTF16toUTF8 gtkPrinter(aPrinter);
 
@@ -537,16 +511,15 @@ nsPrintSettingsGTK::SetScaling(double aScaling)
 }
 
 NS_IMETHODIMP
-nsPrintSettingsGTK::GetPaperName(char16_t * *aPaperName)
+nsPrintSettingsGTK::GetPaperName(nsAString& aPaperName)
 {
-  NS_ENSURE_ARG_POINTER(aPaperName);
   const gchar* name =
     gtk_paper_size_get_name(gtk_page_setup_get_paper_size(mPageSetup));
-  *aPaperName = ToNewUnicode(NS_ConvertUTF8toUTF16(name));
+  aPaperName = NS_ConvertUTF8toUTF16(name);
   return NS_OK;
 }
 NS_IMETHODIMP
-nsPrintSettingsGTK::SetPaperName(const char16_t * aPaperName)
+nsPrintSettingsGTK::SetPaperName(const nsAString& aPaperName)
 {
   NS_ConvertUTF16toUTF8 gtkPaperName(aPaperName);
 
@@ -607,13 +580,13 @@ nsPrintSettingsGTK::InitUnwriteableMargin()
  * down to our GTKPageSetup object.  (This is needed in order for us
  * to give the correct default values in nsPrintDialogGTK.)
  *
- * It's important that the following functions pass 
+ * It's important that the following functions pass
  * mUnwriteableMargin values rather than aUnwriteableMargin values
  * to gtk_page_setup_set_[blank]_margin, because the two may not be
  * the same.  (Specifically, negative values of aUnwriteableMargin
  * are ignored by the nsPrintSettings::SetUnwriteableMargin functions.)
  */
-NS_IMETHODIMP 
+NS_IMETHODIMP
 nsPrintSettingsGTK::SetUnwriteableMarginInTwips(nsIntMargin& aUnwriteableMargin)
 {
   nsPrintSettings::SetUnwriteableMarginInTwips(aUnwriteableMargin);

@@ -17,15 +17,17 @@ use std::fmt;
 use std::fs::File;
 use std::io::{Read, Error as IoError};
 use std::ops::Deref;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use webrender_api::NativeFontHandle;
 
 /// Platform specific font representation for mac.
 /// The identifier is a PostScript font name. The
 /// CTFont object is cached here for use by the
 /// paint functions that create CGFont references.
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize)]
 pub struct FontTemplateData {
+    // If you add members here, review the Debug impl below
+
     /// The `CTFont` object, if present. This is cached here so that we don't have to keep creating
     /// `CTFont` instances over and over. It can always be recreated from the `identifier` and/or
     /// `font_data` fields.
@@ -36,7 +38,22 @@ pub struct FontTemplateData {
     ctfont: CachedCTFont,
 
     pub identifier: Atom,
-    pub font_data: Option<Vec<u8>>
+    pub font_data: Option<Arc<Vec<u8>>>
+}
+
+impl fmt::Debug for FontTemplateData {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("FontTemplateData")
+           .field("ctfont", &self.ctfont)
+           .field("identifier", &self.identifier)
+           .field(
+               "font_data",
+               &self.font_data
+                    .as_ref()
+                    .map(|bytes| format!("[{} bytes]", bytes.len()))
+            )
+           .finish()
+    }
 }
 
 unsafe impl Send for FontTemplateData {}
@@ -47,7 +64,7 @@ impl FontTemplateData {
         Ok(FontTemplateData {
             ctfont: CachedCTFont(Mutex::new(HashMap::new())),
             identifier: identifier.to_owned(),
-            font_data: font_data
+            font_data: font_data.map(Arc::new)
         })
     }
 
@@ -61,7 +78,7 @@ impl FontTemplateData {
             let clamped_pt_size = pt_size.max(0.01);
             let ctfont = match self.font_data {
                 Some(ref bytes) => {
-                    let fontprov = CGDataProvider::from_buffer(bytes);
+                    let fontprov = CGDataProvider::from_buffer(bytes.clone());
                     let cgfont_result = CGFont::from_data_provider(fontprov);
                     match cgfont_result {
                         Ok(cgfont) => {
@@ -103,7 +120,7 @@ impl FontTemplateData {
     /// Returns a clone of the bytes in this font if they are in memory. This function never
     /// performs disk I/O.
     pub fn bytes_if_in_memory(&self) -> Option<Vec<u8>> {
-        self.font_data.clone()
+        self.font_data.as_ref().map(|bytes| (**bytes).clone())
     }
 
     /// Returns the native font that underlies this font template, if applicable.

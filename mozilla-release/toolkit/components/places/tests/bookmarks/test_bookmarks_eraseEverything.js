@@ -6,7 +6,7 @@ function promiseManyFrecenciesChanged() {
     let obs = new NavHistoryObserver();
     obs.onManyFrecenciesChanged = () => {
       Assert.ok(true, "onManyFrecenciesChanged is triggered.");
-      PlacesUtils.history.removeObserver(obs)
+      PlacesUtils.history.removeObserver(obs);
       resolve();
     };
 
@@ -83,13 +83,9 @@ add_task(async function test_eraseEverything() {
   // Check there are no orphan annotations.
   let conn = await PlacesUtils.promiseDBConnection();
   let annoAttrs = await conn.execute(`SELECT id, name FROM moz_anno_attributes`);
-  // Bug 1306445 will eventually remove the mobile root anno.
-  Assert.equal(annoAttrs.length, 1);
-  Assert.equal(annoAttrs[0].getResultByName("name"), PlacesUtils.MOBILE_ROOT_ANNO);
+  Assert.equal(annoAttrs.length, 0);
   let annos = await conn.execute(`SELECT item_id, anno_attribute_id FROM moz_items_annos`);
-  Assert.equal(annos.length, 1);
-  Assert.equal(annos[0].getResultByName("item_id"), PlacesUtils.mobileFolderId);
-  Assert.equal(annos[0].getResultByName("anno_attribute_id"), annoAttrs[0].getResultByName("id"));
+  Assert.equal(annos.length, 0);
 });
 
 add_task(async function test_eraseEverything_roots() {
@@ -131,4 +127,51 @@ add_task(async function test_eraseEverything_reparented() {
     await Assert.rejects(PlacesUtils.promiseItemId(guid),
                          /no item found for the given GUID/);
   }
+});
+
+add_task(async function test_notifications() {
+  let bms = await PlacesUtils.bookmarks.insertTree({
+    guid: PlacesUtils.bookmarks.unfiledGuid,
+    children: [{
+      title: "test",
+      url: "http://example.com",
+    }, {
+      title: "folder",
+      type: PlacesUtils.bookmarks.TYPE_FOLDER,
+      children: [{
+        title: "test2",
+        url: "http://example.com/2",
+      }]
+    }]
+  });
+
+  let skipDescendantsObserver = expectNotifications(true);
+  let receiveAllObserver = expectNotifications(false);
+
+  await PlacesUtils.bookmarks.eraseEverything();
+
+  let expectedNotifications = [{
+    name: "onItemRemoved",
+    arguments: {
+      guid: bms[1].guid,
+    },
+  }, {
+    name: "onItemRemoved",
+    arguments: {
+      guid: bms[0].guid,
+    },
+  }];
+
+  // If we're skipping descendents, we'll only be notified of the folder.
+  skipDescendantsObserver.check(expectedNotifications);
+
+  // Note: Items of folders get notified first.
+  expectedNotifications.unshift({
+    name: "onItemRemoved",
+    arguments: {
+      guid: bms[2].guid,
+    },
+  });
+
+  receiveAllObserver.check(expectedNotifications);
 });

@@ -59,7 +59,7 @@ public:
 
 #ifdef MOZILLA_INTERNAL_API
   static void Record(Event ev) {
-    profiler_add_marker(Describe(ev));
+    PROFILER_ADD_MARKER(Describe(ev));
     Record(ev, TimeStamp::Now());
   }
 
@@ -67,10 +67,7 @@ public:
     sStartupTimeline[ev] = when;
   }
 
-  static void RecordOnce(Event ev) {
-    if (!HasRecord(ev))
-      Record(ev);
-  }
+  static void RecordOnce(Event ev);
 #endif
 
   static bool HasRecord(Event ev) {

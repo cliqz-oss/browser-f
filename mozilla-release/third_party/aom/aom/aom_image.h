@@ -69,15 +69,26 @@ typedef enum aom_img_fmt {
 
 /*!\brief List of supported color spaces */
 typedef enum aom_color_space {
-  AOM_CS_UNKNOWN = 0,   /**< Unknown */
-  AOM_CS_BT_601 = 1,    /**< BT.601 */
-  AOM_CS_BT_709 = 2,    /**< BT.709 */
-  AOM_CS_SMPTE_170 = 3, /**< SMPTE.170 */
-  AOM_CS_SMPTE_240 = 4, /**< SMPTE.240 */
-  AOM_CS_BT_2020 = 5,   /**< BT.2020 */
-  AOM_CS_RESERVED = 6,  /**< Reserved */
-  AOM_CS_SRGB = 7       /**< sRGB */
-} aom_color_space_t;    /**< alias for enum aom_color_space */
+  AOM_CS_UNKNOWN = 0,     /**< Unknown */
+  AOM_CS_BT_601 = 1,      /**< BT.601 */
+  AOM_CS_BT_709 = 2,      /**< BT.709 */
+  AOM_CS_SMPTE_170 = 3,   /**< SMPTE.170 */
+  AOM_CS_SMPTE_240 = 4,   /**< SMPTE.240 */
+  AOM_CS_BT_2020_NCL = 5, /**< BT.2020 non-constant luminance (BT.2100) */
+  AOM_CS_BT_2020_CL = 6,  /**< BT.2020 constant luminance */
+  AOM_CS_SRGB = 7,        /**< sRGB */
+  AOM_CS_ICTCP = 8,       /**< ICtCp, ITU-R BT.2100 */
+  AOM_CS_RESERVED = 9     /**< Values 9..31 are reserved */
+} aom_color_space_t;      /**< alias for enum aom_color_space */
+
+/*!\brief List of supported transfer functions */
+typedef enum aom_transfer_function {
+  AOM_TF_UNKNOWN = 0,      /**< Unknown */
+  AOM_TF_BT_709 = 1,       /**< BT.709 */
+  AOM_TF_PQ = 2,           /**< PQ TF BT.2100 / ST.2084 */
+  AOM_TF_HLG = 3,          /**< Hybrid Log-Gamma */
+  AOM_TF_RESERVED = 4      /**< Values 4..31 are reserved */
+} aom_transfer_function_t; /**< alias for enum aom_transfer_function */
 
 /*!\brief List of supported color range */
 typedef enum aom_color_range {
@@ -85,11 +96,22 @@ typedef enum aom_color_range {
   AOM_CR_FULL_RANGE = 1    /**< YUV/RGB [0..255] */
 } aom_color_range_t;       /**< alias for enum aom_color_range */
 
+/*!\brief List of chroma sample positions */
+typedef enum aom_chroma_sample_position {
+  AOM_CSP_UNKNOWN = 0,          /**< Unknown */
+  AOM_CSP_VERTICAL = 1,         /**< Horizontally co-located with luma(0, 0)*/
+                                /**< sample, between two vertical samples */
+  AOM_CSP_COLOCATED = 2,        /**< Co-located with luma(0, 0) sample */
+  AOM_CSP_RESERVED = 3          /**< Reserved value */
+} aom_chroma_sample_position_t; /**< alias for enum aom_transfer_function */
+
 /**\brief Image Descriptor */
 typedef struct aom_image {
-  aom_img_fmt_t fmt;       /**< Image Format */
-  aom_color_space_t cs;    /**< Color Space */
-  aom_color_range_t range; /**< Color Range */
+  aom_img_fmt_t fmt;                /**< Image Format */
+  aom_color_space_t cs;             /**< Color Space */
+  aom_transfer_function_t tf;       /**< transfer function */
+  aom_chroma_sample_position_t csp; /**< chroma sample position */
+  aom_color_range_t range;          /**< Color Range */
 
   /* Image storage dimensions */
   unsigned int w;         /**< Stored image width */
@@ -217,6 +239,24 @@ void aom_img_flip(aom_image_t *img);
  * \param[in]    img       Image descriptor
  */
 void aom_img_free(aom_image_t *img);
+
+/*!\brief Get the width of a plane
+ *
+ * Get the width of a plane of an image
+ *
+ * \param[in]    img       Image descriptor
+ * \param[in]    plane     Plane index
+ */
+int aom_img_plane_width(const aom_image_t *img, int plane);
+
+/*!\brief Get the height of a plane
+ *
+ * Get the height of a plane of an image
+ *
+ * \param[in]    img       Image descriptor
+ * \param[in]    plane     Plane index
+ */
+int aom_img_plane_height(const aom_image_t *img, int plane);
 
 #ifdef __cplusplus
 }  // extern "C"

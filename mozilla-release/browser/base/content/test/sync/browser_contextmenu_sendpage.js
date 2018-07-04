@@ -7,6 +7,9 @@ const remoteClientsFixture = [ { id: 1, name: "Foo"}, { id: 2, name: "Bar"} ];
 
 add_task(async function setup() {
   await promiseSyncReady();
+  // gSync.init() is called in a requestIdleCallback. Force its initialization.
+  gSync.init();
+  sinon.stub(Weave.Service.clientsEngine, "getClientType").returns("desktop");
   await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:mozilla");
 });
 
@@ -28,7 +31,7 @@ add_task(async function test_page_contextmenu() {
   sandbox.restore();
 });
 
-add_task(async function test_page_contextmenu_sendtab_no_remote_clients() {
+add_task(async function test_page_contextmenu_no_remote_clients() {
   const sandbox = setupSendTabMocks({ syncReady: true, clientsSynced: true, remoteClients: [],
                                       state: UIState.STATUS_SIGNED_IN, isSendableURI: true });
 
@@ -38,6 +41,7 @@ add_task(async function test_page_contextmenu_sendtab_no_remote_clients() {
   checkPopup([
     { label: "No Devices Connected", disabled: true },
     "----",
+    { label: "Connect Another Device..." },
     { label: "Learn About Sending Tabs..." }
   ]);
   await hideContentContextMenu();
@@ -45,7 +49,7 @@ add_task(async function test_page_contextmenu_sendtab_no_remote_clients() {
   sandbox.restore();
 });
 
-add_task(async function test_page_contextmenu_sendtab_one_remote_client() {
+add_task(async function test_page_contextmenu_one_remote_client() {
   const sandbox = setupSendTabMocks({ syncReady: true, clientsSynced: true, remoteClients: [{ id: 1, name: "Foo"}],
                                       state: UIState.STATUS_SIGNED_IN, isSendableURI: true });
 
@@ -126,6 +130,7 @@ add_task(async function test_page_contextmenu_unconfigured() {
   checkPopup([
     { label: "Not Connected to Sync", disabled: true },
     "----",
+    { label: "Sign in to Sync..." },
     { label: "Learn About Sending Tabs..." }
   ]);
 
@@ -173,11 +178,23 @@ add_task(async function test_page_contextmenu_login_failed() {
   isSendableURI.restore();
 });
 
+add_task(async function test_page_contextmenu_fxa_disabled() {
+  const getter = sinon.stub(gSync, "SYNC_ENABLED").get(() => false);
+  gSync.onSyncDisabled(); // Would have been called on gSync initialization if SYNC_ENABLED had been set.
+  await openContentContextMenu("#moztext");
+  is(document.getElementById("context-sendpagetodevice").hidden, true, "Send tab to device is hidden");
+  is(document.getElementById("context-sep-sendpagetodevice").hidden, true, "Separator is also hidden");
+  await hideContentContextMenu();
+  getter.restore();
+  [...document.querySelectorAll(".sync-ui-item")].forEach(e => e.hidden = false);
+});
+
 // We are not going to bother testing the visibility of context-sendlinktodevice
 // since it uses the exact same code.
 // However, browser_contextmenu.js contains tests that verify its presence.
 
 add_task(async function teardown() {
+  Weave.Service.clientsEngine.getClientType.restore();
   gBrowser.removeCurrentTab();
 });
 
@@ -220,7 +237,7 @@ async function openContentContextMenu(selector, openSubmenuId = null) {
   if (openSubmenuId) {
     const menuPopup = document.getElementById(openSubmenuId).menupopup;
     const menuPopupPromise = BrowserTestUtils.waitForEvent(menuPopup, "popupshown");
-    menuPopup.showPopup();
+    menuPopup.openPopup();
     await menuPopupPromise;
   }
 }

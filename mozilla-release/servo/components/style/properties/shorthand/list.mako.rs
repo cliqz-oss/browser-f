@@ -9,10 +9,12 @@
                     derive_serialize="True"
                     spec="https://drafts.csswg.org/css-lists/#propdef-list-style">
     use properties::longhands::{list_style_image, list_style_position, list_style_type};
-    use values::{Either, None_};
+    use values::specified::url::ImageUrlOrNone;
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         // `none` is ambiguous until we've finished parsing the shorthands, so we count the number
         // of times we see it.
         let mut nones = 0u8;
@@ -21,7 +23,7 @@
             if input.try(|input| input.expect_ident_matching("none")).is_ok() {
                 nones = nones + 1;
                 if nones > 2 {
-                    return Err(SelectorParseError::UnexpectedIdent("none".into()).into())
+                    return Err(input.new_custom_error(SelectorParseErrorKind::UnexpectedIdent("none".into())))
                 }
                 any = true;
                 continue
@@ -60,7 +62,7 @@
 
         fn list_style_type_none() -> list_style_type::SpecifiedValue {
             % if product == "servo":
-            list_style_type::SpecifiedValue::none
+            list_style_type::SpecifiedValue::None
             % else:
             use values::generics::CounterStyleOrNone;
             list_style_type::SpecifiedValue::CounterStyle(CounterStyleOrNone::None)
@@ -74,7 +76,7 @@
             (true, 2, None, None) => {
                 Ok(expanded! {
                     list_style_position: position,
-                    list_style_image: list_style_image::SpecifiedValue(Either::Second(None_)),
+                    list_style_image: ImageUrlOrNone::none(),
                     list_style_type: list_style_type_none(),
                 })
             }
@@ -88,14 +90,14 @@
             (true, 1, Some(list_style_type), None) => {
                 Ok(expanded! {
                     list_style_position: position,
-                    list_style_image: list_style_image::SpecifiedValue(Either::Second(None_)),
+                    list_style_image: ImageUrlOrNone::none(),
                     list_style_type: list_style_type,
                 })
             }
             (true, 1, None, None) => {
                 Ok(expanded! {
                     list_style_position: position,
-                    list_style_image: list_style_image::SpecifiedValue(Either::Second(None_)),
+                    list_style_image: ImageUrlOrNone::none(),
                     list_style_type: list_style_type_none(),
                 })
             }
@@ -106,7 +108,7 @@
                     list_style_type: unwrap_or_initial!(list_style_type),
                 })
             }
-            _ => Err(StyleParseError::UnspecifiedError.into()),
+            _ => Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError)),
         }
     }
 </%helpers:shorthand>

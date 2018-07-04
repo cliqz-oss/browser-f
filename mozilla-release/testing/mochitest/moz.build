@@ -19,41 +19,29 @@ USE_EXTENSION_MANIFEST = True
 
 FINAL_TARGET_PP_FILES += ['install.rdf']
 
-if CONFIG['OS_TARGET'] != 'Android':
-    DEFINES['MOCHITEST_BOOTSTRAP'] = True
-    FINAL_TARGET_FILES += ['bootstrap.js']
+FINAL_TARGET_FILES += ['bootstrap.js']
 
 MOCHITEST_MANIFESTS += [
     'tests/MochiKit-1.4.2/tests/mochitest.ini',
 ]
 MOCHITEST_CHROME_MANIFESTS += ['chrome/chrome.ini']
 
-GENERATED_FILES += [
-    'automation.py',
-]
-
 TEST_HARNESS_FILES.testing.mochitest += [
-    '!automation.py',
     '/build/mobile/remoteautomation.py',
     '/build/pgo/server-locations.txt',
     '/build/sanitizers/lsan_suppressions.txt',
     '/build/sanitizers/ubsan_suppressions.txt',
     '/build/valgrind/cross-architecture.sup',
-    '/build/valgrind/i386-redhat-linux-gnu.sup',
-    '/build/valgrind/x86_64-redhat-linux-gnu.sup',
+    '/build/valgrind/i386-pc-linux-gnu.sup',
+    '/build/valgrind/x86_64-pc-linux-gnu.sup',
     '/netwerk/test/httpserver/httpd.js',
     'bisection.py',
     'browser-harness.xul',
-    'browser-test-overlay.xul',
     'browser-test.js',
     'chrome-harness.js',
     'chunkifyTests.js',
     'gen_template.pl',
     'harness.xul',
-    'jetpack-addon-harness.js',
-    'jetpack-addon-overlay.xul',
-    'jetpack-package-harness.js',
-    'jetpack-package-overlay.xul',
     'leaks.py',
     'mach_test_package_commands.py',
     'manifest.webapp',
@@ -63,6 +51,7 @@ TEST_HARNESS_FILES.testing.mochitest += [
     'pywebsocket_wrapper.py',
     'redirect.html',
     'rungeckoview.py',
+    'runjunit.py',
     'runrobocop.py',
     'runtests.py',
     'runtestsremote.py',
@@ -169,21 +158,7 @@ TEST_HARNESS_FILES.testing.mochitest.websocketprocessbridge += [
 
 with Files("**"):
     BUG_COMPONENT = ("Testing", "Mochitest")
+    SCHEDULES.exclusive = ['mochitest', 'robocop']
 
 with Files("*remote*"):
     BUG_COMPONENT = ("Firefox for Android", "Testing")
-
-with Files("chrome/**"):
-    BUG_COMPONENT = ("Testing", "Mochitest Chrome")
-
-with Files("chrome-harness.js"):
-    BUG_COMPONENT = ("Testing", "Mochitest Chrome")
-
-with Files("BrowserTestUtils/**"):
-    BUG_COMPONENT = ("Testing", "BrowserTest")
-
-with Files("browser*"):
-    BUG_COMPONENT = ("Testing", "BrowserTest")
-
-with Files("tests/browser/**"):
-    BUG_COMPONENT = ("Testing", "BrowserTest")

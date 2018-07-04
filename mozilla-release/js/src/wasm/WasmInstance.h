@@ -20,41 +20,15 @@
 #define wasm_instance_h
 
 #include "gc/Barrier.h"
+#include "jit/shared/Assembler-shared.h"
+#include "vm/SharedMem.h"
 #include "wasm/WasmCode.h"
 #include "wasm/WasmDebug.h"
+#include "wasm/WasmProcess.h"
 #include "wasm/WasmTable.h"
 
 namespace js {
 namespace wasm {
-
-// A wasm GlobalSegment owns the allocated global data for a wasm module.  A
-// module may be compiled multiple times (at multiple tiers) but the compiled
-// representations share the same GlobalSegment.
-
-class GlobalSegment
-{
-    uint32_t globalDataLength_;
-    TlsData* tlsData_;
-
-    GlobalSegment(const GlobalSegment&) = delete;
-    GlobalSegment(GlobalSegment&&) = delete;
-    void operator=(const GlobalSegment&) = delete;
-    void operator=(GlobalSegment&&) = delete;
-
-  public:
-    static UniquePtr<GlobalSegment> create(uint32_t globalDataLength);
-
-    GlobalSegment() { PodZero(this); }
-    ~GlobalSegment();
-
-    TlsData* tlsData() const { return tlsData_; }
-    uint8_t* globalData() const { return (uint8_t*)&tlsData_->globalArea; }
-    uint32_t globalDataLength() const { return globalDataLength_; }
-
-    size_t sizeOfMisc(MallocSizeOf mallocSizeOf) const;
-};
-
-typedef UniquePtr<GlobalSegment> UniqueGlobalSegment;
 
 // Instance represents a wasm instance and provides all the support for runtime
 // execution of code in the instance. Instances share various immutable data
@@ -71,9 +45,11 @@ class Instance
 {
     JSCompartment* const            compartment_;
     ReadBarrieredWasmInstanceObject object_;
+    jit::TrampolinePtr              jsJitArgsRectifier_;
+    jit::TrampolinePtr              jsJitExceptionHandler_;
     const SharedCode                code_;
     const UniqueDebugState          debug_;
-    const UniqueGlobalSegment       globals_;
+    const UniqueTlsData             tlsData_;
     GCPtrWasmMemoryObject           memory_;
     SharedTableVector               tables_;
     bool                            enterFrameTrapsEnabled_;
@@ -95,31 +71,43 @@ class Instance
              HandleWasmInstanceObject object,
              SharedCode code,
              UniqueDebugState debug,
-             UniqueGlobalSegment globals,
+             UniqueTlsData tlsData,
              HandleWasmMemoryObject memory,
              SharedTableVector&& tables,
              Handle<FunctionVector> funcImports,
-             const ValVector& globalImports);
+             const ValVector& globalImportValues,
+             const WasmGlobalObjectVector& globalObjs);
     ~Instance();
     bool init(JSContext* cx);
     void trace(JSTracer* trc);
 
     JSCompartment* compartment() const { return compartment_; }
     const Code& code() const { return *code_; }
+    const CodeTier& code(Tier t) const { return code_->codeTier(t); }
     DebugState& debug() { return *debug_; }
     const DebugState& debug() const { return *debug_; }
-    const CodeSegment& codeSegment(Tier t) const { return code_->segment(t); }
-    const GlobalSegment& globalSegment() const { return *globals_; }
+    const ModuleSegment& moduleSegment(Tier t) const { return code_->segment(t); }
+    TlsData* tlsData() const { return tlsData_.get(); }
+    uint8_t* globalData() const { return (uint8_t*)&tlsData_->globalArea; }
     uint8_t* codeBase(Tier t) const { return code_->segment(t).base(); }
     const MetadataTier& metadata(Tier t) const { return code_->metadata(t); }
     const Metadata& metadata() const { return code_->metadata(); }
     bool isAsmJS() const { return metadata().isAsmJS(); }
     const SharedTableVector& tables() const { return tables_; }
     SharedMem<uint8_t*> memoryBase() const;
-    size_t memoryLength() const;
+    WasmMemoryObject* memory() const;
     size_t memoryMappedSize() const;
+    SharedArrayRawBuffer* sharedMemoryBuffer() const; // never null
+#ifdef JS_SIMULATOR
     bool memoryAccessInGuardRegion(uint8_t* addr, unsigned numBytes) const;
-    TlsData* tlsData() const { return globals_->tlsData(); }
+#endif
+
+    static constexpr size_t offsetOfJSJitArgsRectifier() {
+        return offsetof(Instance, jsJitArgsRectifier_);
+    }
+    static constexpr size_t offsetOfJSJitExceptionHandler() {
+        return offsetof(Instance, jsJitExceptionHandler_);
+    }
 
     // This method returns a pointer to the GC object that owns this Instance.
     // Instances may be reached via weak edges (e.g., Compartment::instances_)
@@ -149,11 +137,6 @@ class Instance
 
     void deoptimizeImportExit(uint32_t funcImportIndex);
 
-    // Called by simulators to check whether accessing 'numBytes' starting at
-    // 'addr' would trigger a fault and be safely handled by signal handlers.
-
-    bool memoryAccessWouldFault(uint8_t* addr, unsigned numBytes);
-
     // Called by Wasm(Memory|Table)Object when a moving resize occurs:
 
     void onMovingGrowMemory(uint8_t* prevMemoryBase);
@@ -181,14 +164,15 @@ class Instance
     static int32_t callImport_i32(Instance*, int32_t, int32_t, uint64_t*);
     static int32_t callImport_i64(Instance*, int32_t, int32_t, uint64_t*);
     static int32_t callImport_f64(Instance*, int32_t, int32_t, uint64_t*);
+    static int32_t callImport_ref(Instance*, int32_t, int32_t, uint64_t*);
     static uint32_t growMemory_i32(Instance* instance, uint32_t delta);
     static uint32_t currentMemory_i32(Instance* instance);
+    static int32_t wait_i32(Instance* instance, uint32_t byteOffset, int32_t value, int64_t timeout);
+    static int32_t wait_i64(Instance* instance, uint32_t byteOffset, int64_t value, int64_t timeout);
+    static int32_t wake(Instance* instance, uint32_t byteOffset, int32_t count);
 };
 
 typedef UniquePtr<Instance> UniqueInstance;
-
-bool InitInstanceStaticData();
-void ShutDownInstanceStaticData();
 
 } // namespace wasm
 } // namespace js

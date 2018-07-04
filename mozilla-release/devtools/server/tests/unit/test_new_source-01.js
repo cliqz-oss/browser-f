@@ -15,9 +15,9 @@ function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-stack");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-stack",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_simple_new_source();
                            });
@@ -26,16 +26,16 @@ function run_test() {
 }
 
 function test_simple_new_source() {
-  gThreadClient.addOneTimeListener("newSource", function (event, packet) {
-    do_check_eq(event, "newSource");
-    do_check_eq(packet.type, "newSource");
-    do_check_true(!!packet.source);
-    do_check_true(!!packet.source.url.match(/test_new_source-01.js$/));
+  gThreadClient.addOneTimeListener("newSource", function(event, packet) {
+    Assert.equal(event, "newSource");
+    Assert.equal(packet.type, "newSource");
+    Assert.ok(!!packet.source);
+    Assert.ok(!!packet.source.url.match(/test_new_source-01.js$/));
 
     finishClient(gClient);
   });
 
-  Components.utils.evalInSandbox(function inc(n) {
+  Cu.evalInSandbox(function inc(n) {
     return n + 1;
   }.toString(), gDebuggee);
 }

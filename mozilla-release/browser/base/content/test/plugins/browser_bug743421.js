@@ -29,9 +29,6 @@ add_task(async function() {
   // Prime the blocklist service, the remote service doesn't launch on startup.
   await promiseTabLoadEvent(gBrowser.selectedTab, "data:text/html,<html></html>");
 
-  let exmsg = await promiseInitContentBlocklistSvc(gBrowser.selectedBrowser);
-  ok(!exmsg, "exception: " + exmsg);
-
   await asyncSetAndUpdateBlocklist(gTestRoot + "blockNoPlugins.xml", gTestBrowser);
 });
 
@@ -61,7 +58,7 @@ add_task(async function() {
 
   await promiseForNotificationShown(notification);
 
-  PopupNotifications.panel.firstChild._primaryButton.click();
+  PopupNotifications.panel.firstChild.button.click();
 
   await ContentTask.spawn(gTestBrowser, {}, async function() {
     let plugin = content.document.getElementsByTagName("embed")[0];

@@ -14,10 +14,9 @@
 #include "js/CallArgs.h"
 #include "js/CharacterEncoding.h"
 #include "vm/GlobalObject.h"
-#include "vm/String.h"
+#include "vm/StringType.h"
 
-#include "jsobjinlines.h"
-
+#include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/SavedStacks-inl.h"
 #include "vm/Shape-inl.h"
@@ -150,7 +149,7 @@ js::ErrorObject::getOrCreateErrorReport(JSContext* cx)
     if (!message->ensureFlat(cx))
         return nullptr;
 
-    UniquePtr<char[], JS::FreePolicy> utf8 = StringToNewUTF8CharsZ(cx, *message);
+    UniqueChars utf8 = StringToNewUTF8CharsZ(cx, *message);
     if (!utf8)
         return nullptr;
     report.initOwnedMessage(utf8.release());
@@ -279,5 +278,5 @@ js::ErrorObject::setStack_impl(JSContext* cx, const CallArgs& args)
         return false;
     RootedValue val(cx, args[0]);
 
-    return DefineProperty(cx, thisObj, cx->names().stack, val);
+    return DefineDataProperty(cx, thisObj, cx->names().stack, val);
 }

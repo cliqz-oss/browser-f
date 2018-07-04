@@ -11,10 +11,7 @@
  * is an eight-bit character.
  */
 
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 const beBOM="%FE%FF";
 const leBOM="%FF%FE";
@@ -78,7 +75,7 @@ function testCase(withBOM, charset, charsetDec, decoder, bufferLength)
   }
 
   // escape the strings before comparing for better readability
-  do_check_eq(escape(outStr), escape(expected));
+  Assert.equal(escape(outStr), escape(expected));
 }
 
 function run_test()

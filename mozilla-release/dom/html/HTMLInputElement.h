@@ -10,7 +10,6 @@
 #include "mozilla/Attributes.h"
 #include "nsGenericHTMLElement.h"
 #include "nsImageLoadingContent.h"
-#include "nsIDOMHTMLInputElement.h"
 #include "nsITextControlElement.h"
 #include "nsITimer.h"
 #include "nsIDOMNSEditableElement.h"
@@ -125,7 +124,6 @@ public:
 
 class HTMLInputElement final : public nsGenericHTMLFormElementWithState,
                                public nsImageLoadingContent,
-                               public nsIDOMHTMLInputElement,
                                public nsITextControlElement,
                                public nsIDOMNSEditableElement,
                                public nsIConstraintValidation
@@ -145,7 +143,7 @@ public:
                    mozilla::dom::FromParser aFromParser,
                    FromClone aFromClone = FromClone::no);
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLInputElement, input)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLInputElement, input)
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -166,9 +164,6 @@ public:
   // EventTarget
   virtual void AsyncEventRunning(AsyncEventDispatcher* aEvent) override;
 
-  // nsIDOMHTMLInputElement
-  NS_DECL_NSIDOMHTMLINPUTELEMENT
-
   // nsIDOMNSEditableElement
   NS_IMETHOD GetEditor(nsIEditor** aEditor) override
   {
@@ -183,7 +178,7 @@ public:
   NS_IMETHOD Reset() override;
   NS_IMETHOD SubmitNamesValues(HTMLFormSubmission* aFormSubmission) override;
   NS_IMETHOD SaveState() override;
-  virtual bool RestoreState(nsPresState* aState) override;
+  virtual bool RestoreState(PresState* aState) override;
   virtual bool AllowDrop() override;
   virtual bool IsDisabledForEvents(EventMessage aMessage) override;
 
@@ -193,16 +188,16 @@ public:
   virtual bool IsHTMLFocusable(bool aWithMouse, bool *aIsFocusable, int32_t *aTabIndex) override;
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
-  virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
+  virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
                                               int32_t aModType) const override;
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
 
-  virtual nsresult GetEventTargetParent(
-                     EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   virtual nsresult PreHandleEvent(EventChainVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(
                      EventChainPostVisitor& aVisitor) override;
@@ -233,7 +228,6 @@ public:
   NS_IMETHOD SetValueChanged(bool aValueChanged) override;
   NS_IMETHOD_(bool) IsSingleLineTextControl() const override;
   NS_IMETHOD_(bool) IsTextArea() const override;
-  NS_IMETHOD_(bool) IsPlainTextControl() const override;
   NS_IMETHOD_(bool) IsPasswordTextControl() const override;
   NS_IMETHOD_(int32_t) GetCols() override;
   NS_IMETHOD_(int32_t) GetWrapCols() override;
@@ -247,11 +241,6 @@ public:
   NS_IMETHOD BindToFrame(nsTextControlFrame* aFrame) override;
   NS_IMETHOD_(void) UnbindFromFrame(nsTextControlFrame* aFrame) override;
   NS_IMETHOD CreateEditor() override;
-  NS_IMETHOD_(Element*) GetRootEditorNode() override;
-  NS_IMETHOD_(Element*) CreatePlaceholderNode() override;
-  NS_IMETHOD_(Element*) GetPlaceholderNode() override;
-  NS_IMETHOD_(Element*) CreatePreviewNode() override;
-  NS_IMETHOD_(Element*) GetPreviewNode() override;
   NS_IMETHOD_(void) UpdateOverlayTextVisibility(bool aNotify) override;
   NS_IMETHOD_(void) SetPreviewValue(const nsAString& aValue) override;
   NS_IMETHOD_(void) GetPreviewValue(nsAString& aValue) override;
@@ -276,7 +265,7 @@ public:
 
   void SetFilesOrDirectories(const nsTArray<OwningFileOrDirectory>& aFilesOrDirectories,
                              bool aSetValueChanged);
-  void SetFiles(nsIDOMFileList* aFiles, bool aSetValueChanged);
+  void SetFiles(FileList* aFiles, bool aSetValueChanged);
 
   // This method is used for test only. Onces the data is set, a 'change' event
   // is dispatched.
@@ -299,7 +288,7 @@ public:
    *
    * @return the selected button (or null).
    */
-  already_AddRefed<nsIDOMHTMLInputElement> GetSelectedRadioButton() const;
+  HTMLInputElement* GetSelectedRadioButton() const;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;
@@ -339,6 +328,11 @@ public:
     return mSelectionProperties;
   }
 
+  bool HasPatternAttribute() const
+  {
+    return mHasPatternAttribute;
+  }
+
   // nsIConstraintValidation
   bool     IsTooLong();
   bool     IsTooShort();
@@ -358,7 +352,14 @@ public:
   void     UpdateRangeUnderflowValidityState();
   void     UpdateStepMismatchValidityState();
   void     UpdateBadInputValidityState();
+  // Update all our validity states and then update our element state
+  // as needed.  aNotify controls whether the element state update
+  // needs to notify.
   void     UpdateAllValidityStates(bool aNotify);
+  // Update all our validity states without updating element state.
+  // This should be called instead of UpdateAllValidityStates any time
+  // we're guaranteed that element state will be updated anyway.
+  void     UpdateAllValidityStatesButNotElementState();
   void     UpdateBarredFromConstraintValidation();
   nsresult GetValidationMessage(nsAString& aValidationMessage,
                                 ValidityStateType aType) override;
@@ -466,7 +467,7 @@ public:
     SetHTMLAttr(nsGkAtoms::alt, aValue, aRv);
   }
 
-  // XPCOM GetAutocomplete() is OK
+  void GetAutocomplete(nsAString& aValue);
   void SetAutocomplete(const nsAString& aValue, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::autocomplete, aValue, aRv);
@@ -498,7 +499,7 @@ public:
   {
     return mChecked;
   }
-  // XPCOM SetChecked() is OK
+  void SetChecked(bool aChecked);
 
   bool Disabled() const
   {
@@ -510,11 +511,9 @@ public:
     SetHTMLBoolAttr(nsGkAtoms::disabled, aValue, aRv);
   }
 
-  // XPCOM GetForm() is OK
-
   FileList* GetFiles();
+  void SetFiles(FileList* aFiles);
 
-  // XPCOM GetFormAction() is OK
   void SetFormAction(const nsAString& aValue, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::formaction, aValue, aRv);
@@ -551,7 +550,7 @@ public:
     SetHTMLAttr(nsGkAtoms::formtarget, aValue, aRv);
   }
 
-  uint32_t Height();
+  MOZ_CAN_RUN_SCRIPT uint32_t Height();
 
   void SetHeight(uint32_t aValue, ErrorResult& aRv)
   {
@@ -562,7 +561,12 @@ public:
   {
     return mIndeterminate;
   }
-  // XPCOM SetIndeterminate() is OK
+
+  bool IsDraggingRange() const
+  {
+    return mIsDraggingRange;
+  }
+  void SetIndeterminate(bool aValue);
 
   void GetInputMode(nsAString& aValue);
   void SetInputMode(const nsAString& aValue, ErrorResult& aRv)
@@ -632,7 +636,10 @@ public:
     SetHTMLBoolAttr(nsGkAtoms::multiple, aValue, aRv);
   }
 
-  // XPCOM GetName() is OK
+  void GetName(nsAString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::name, aValue);
+  }
   void SetName(const nsAString& aValue, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::name, aValue, aRv);
@@ -695,9 +702,9 @@ public:
   {
     GetURIAttr(nsGkAtoms::src, nullptr, aValue);
   }
-  void SetSrc(const nsAString& aValue, ErrorResult& aRv)
+  void SetSrc(const nsAString& aValue, nsIPrincipal* aTriggeringPrincipal, ErrorResult& aRv)
   {
-    SetHTMLAttr(nsGkAtoms::src, aValue, aRv);
+    SetHTMLAttr(nsGkAtoms::src, aValue, aTriggeringPrincipal, aRv);
   }
 
   void GetStep(nsAString& aValue)
@@ -740,7 +747,7 @@ public:
 
   void SetValueAsNumber(double aValue, ErrorResult& aRv);
 
-  uint32_t Width();
+  MOZ_CAN_RUN_SCRIPT uint32_t Width();
 
   void SetWidth(uint32_t aValue, ErrorResult& aRv)
   {
@@ -837,6 +844,8 @@ public:
   }
 
   nsIControllers* GetControllers(ErrorResult& aRv);
+  // XPCOM adapter function widely used throughout code, leaving it as is.
+  nsresult GetControllers(nsIControllers** aResult);
 
   int32_t InputTextLength(CallerType aCallerType);
 
@@ -845,12 +854,6 @@ public:
   void MozSetFileNameArray(const Sequence< nsString >& aFileNames, ErrorResult& aRv);
   void MozSetFileArray(const Sequence<OwningNonNull<File>>& aFiles);
   void MozSetDirectory(const nsAString& aDirectoryPath, ErrorResult& aRv);
-
-  bool MozInputRangeIgnorePreventDefault() const
-  {
-    return (IsInChromeDocument() || IsInNativeAnonymousSubtree()) &&
-      GetBoolAttr(nsGkAtoms::mozinputrangeignorepreventdefault);
-  }
 
   /*
    * The following functions are called from datetime picker to let input box
@@ -941,6 +944,22 @@ public:
 
   static void Shutdown();
 
+  /**
+   * Returns if the required attribute applies for the current type.
+   */
+  bool DoesRequiredApply() const;
+
+  /**
+   * Returns the current required state of the element. This function differs
+   * from Required() in that this function only returns true for input types
+   * that @required attribute applies and the attribute is set; in contrast,
+   * Required() returns true whenever @required attribute is set.
+   */
+  bool IsRequired() const
+  {
+    return State().HasState(NS_EVENT_STATE_REQUIRED);
+  }
+
 protected:
   virtual ~HTMLInputElement();
 
@@ -1026,6 +1045,11 @@ protected:
    */
   bool IsValueEmpty() const;
 
+  /**
+   * Returns whether the current placeholder value should be shown.
+   */
+  bool ShouldShowPlaceholder() const;
+
   void ClearFiles(bool aSetValueChanged);
 
   void SetIndeterminateInternal(bool aValue,
@@ -1034,15 +1058,16 @@ protected:
   /**
    * Called when an attribute is about to be changed
    */
-  virtual nsresult BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                  const nsAttrValueOrString* aValue,
                                  bool aNotify) override;
   /**
    * Called when an attribute has just been changed
    */
-  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
 
   virtual void BeforeSetForm(bool aBindToTree) override;
@@ -1131,16 +1156,6 @@ protected:
    * See: http://dev.w3.org/html5/spec/forms.html#concept-input-mutable
    */
   bool IsMutable() const;
-
-  /**
-   * Returns if the readonly attribute applies for the current type.
-   */
-  bool DoesReadOnlyApply() const;
-
-  /**
-   * Returns if the required attribute applies for the current type.
-   */
-  bool DoesRequiredApply() const;
 
   /**
    * Returns if the min and max attributes apply for the current type.
@@ -1589,6 +1604,11 @@ protected:
    */
   nsTextEditorState::SelectionProperties mSelectionProperties;
 
+  /**
+   * The triggering principal for the src attribute.
+   */
+  nsCOMPtr<nsIPrincipal> mSrcTriggeringPrincipal;
+
   /*
    * InputType object created based on input type.
    */
@@ -1655,6 +1675,7 @@ protected:
   bool                     mPickerRunning : 1;
   bool                     mSelectionCached : 1;
   bool                     mIsPreviewEnabled : 1;
+  bool                     mHasPatternAttribute : 1;
 
 private:
   static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
@@ -1693,13 +1714,6 @@ private:
   IsDateTimeTypeSupported(uint8_t aDateTimeInputType);
 
   /**
-   * Checks preference "dom.webkitBlink.dirPicker.enabled" to determine if
-   * webkitdirectory should be supported.
-   */
-  static bool
-  IsWebkitDirPickerEnabled();
-
-  /**
    * Checks preference "dom.webkitBlink.filesystem.enabled" to determine if
    * webkitEntries should be supported.
    */
@@ -1733,13 +1747,6 @@ private:
    */
   static bool
   IsInputDateTimeOthersEnabled();
-
-  /**
-   * Checks preference "dom.forms.number" to determine if input type=number
-   * should be supported.
-   */
-  static bool
-  IsInputNumberEnabled();
 
   /**
    * Checks preference "dom.forms.color" to determine if date/time related

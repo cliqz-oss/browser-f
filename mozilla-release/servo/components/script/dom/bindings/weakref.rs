@@ -11,17 +11,17 @@
 //! slot. When all associated `WeakRef` values are dropped, the
 //! `WeakBox` itself is dropped too.
 
-use core::nonzero::NonZero;
-use dom::bindings::js::Root;
 use dom::bindings::reflector::DomObject;
+use dom::bindings::root::DomRoot;
 use dom::bindings::trace::JSTraceable;
-use heapsize::HeapSizeOf;
 use js::jsapi::{JSTracer, JS_GetReservedSlot, JS_SetReservedSlot};
 use js::jsval::PrivateValue;
 use libc::c_void;
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use std::cell::{Cell, UnsafeCell};
 use std::mem;
 use std::ops::{Deref, DerefMut, Drop};
+use std::ptr;
 
 /// The index of the slot wherein a pointer to the weak holder cell is
 /// stored for weak-referenceable bindings. We use slot 1 for holding it,
@@ -30,9 +30,10 @@ use std::ops::{Deref, DerefMut, Drop};
 pub const DOM_WEAK_SLOT: u32 = 1;
 
 /// A weak reference to a JS-managed DOM object.
+#[allow(unrooted_must_root)]
 #[allow_unrooted_interior]
 pub struct WeakRef<T: WeakReferenceable> {
-    ptr: NonZero<*mut WeakBox<T>>,
+    ptr: ptr::NonNull<WeakBox<T>>,
 }
 
 /// The inner box of weak references, public for the finalization in codegen.
@@ -42,7 +43,7 @@ pub struct WeakBox<T: WeakReferenceable> {
     /// have already been set to `None`. The pointee contributes one to the count.
     pub count: Cell<usize>,
     /// The pointer to the JS-managed object, set to None when it is collected.
-    pub value: Cell<Option<NonZero<*const T>>>,
+    pub value: Cell<Option<ptr::NonNull<T>>>,
 }
 
 /// Trait implemented by weak-referenceable interfaces.
@@ -56,10 +57,10 @@ pub trait WeakReferenceable: DomObject + Sized {
                               .to_private() as *mut WeakBox<Self>;
             if ptr.is_null() {
                 trace!("Creating new WeakBox holder for {:p}.", self);
-                ptr = Box::into_raw(box WeakBox {
+                ptr = Box::into_raw(Box::new(WeakBox {
                     count: Cell::new(1),
-                    value: Cell::new(Some(NonZero::new_unchecked(self))),
-                });
+                    value: Cell::new(Some(ptr::NonNull::from(self))),
+                }));
                 JS_SetReservedSlot(object, DOM_WEAK_SLOT, PrivateValue(ptr as *const c_void));
             }
             let box_ = &*ptr;
@@ -70,7 +71,7 @@ pub trait WeakReferenceable: DomObject + Sized {
                    new_count);
             box_.count.set(new_count);
             WeakRef {
-                ptr: NonZero::new_unchecked(ptr),
+                ptr: ptr::NonNull::new_unchecked(ptr),
             }
         }
     }
@@ -84,21 +85,23 @@ impl<T: WeakReferenceable> WeakRef<T> {
         value.downgrade()
     }
 
-    /// Root a weak reference. Returns `None` if the object was already collected.
-    pub fn root(&self) -> Option<Root<T>> {
-        unsafe { &*self.ptr.get() }.value.get().map(Root::new)
+    /// DomRoot a weak reference. Returns `None` if the object was already collected.
+    pub fn root(&self) -> Option<DomRoot<T>> {
+        unsafe { &*self.ptr.as_ptr() }.value.get().map(|ptr| unsafe {
+            DomRoot::from_ref(&*ptr.as_ptr())
+        })
     }
 
     /// Return whether the weakly-referenced object is still alive.
     pub fn is_alive(&self) -> bool {
-        unsafe { &*self.ptr.get() }.value.get().is_some()
+        unsafe { &*self.ptr.as_ptr() }.value.get().is_some()
     }
 }
 
 impl<T: WeakReferenceable> Clone for WeakRef<T> {
     fn clone(&self) -> WeakRef<T> {
         unsafe {
-            let box_ = &*self.ptr.get();
+            let box_ = &*self.ptr.as_ptr();
             let new_count = box_.count.get() + 1;
             box_.count.set(new_count);
             WeakRef {
@@ -108,8 +111,8 @@ impl<T: WeakReferenceable> Clone for WeakRef<T> {
     }
 }
 
-impl<T: WeakReferenceable> HeapSizeOf for WeakRef<T> {
-    fn heap_size_of_children(&self) -> usize {
+impl<T: WeakReferenceable> MallocSizeOf for WeakRef<T> {
+    fn size_of(&self, _ops: &mut MallocSizeOfOps) -> usize {
         0
     }
 }
@@ -117,7 +120,8 @@ impl<T: WeakReferenceable> HeapSizeOf for WeakRef<T> {
 impl<T: WeakReferenceable> PartialEq for WeakRef<T> {
    fn eq(&self, other: &Self) -> bool {
         unsafe {
-            (*self.ptr.get()).value.get() == (*other.ptr.get()).value.get()
+            (*self.ptr.as_ptr()).value.get().map(ptr::NonNull::as_ptr) ==
+            (*other.ptr.as_ptr()).value.get().map(ptr::NonNull::as_ptr)
         }
     }
 }
@@ -125,8 +129,8 @@ impl<T: WeakReferenceable> PartialEq for WeakRef<T> {
 impl<T: WeakReferenceable> PartialEq<T> for WeakRef<T> {
     fn eq(&self, other: &T) -> bool {
         unsafe {
-            match (*self.ptr.get()).value.get() {
-                Some(ptr) => ptr.get() == other,
+            match self.ptr.as_ref().value.get() {
+                Some(ptr) => ptr::eq(ptr.as_ptr(), other),
                 None => false,
             }
         }
@@ -143,7 +147,7 @@ impl<T: WeakReferenceable> Drop for WeakRef<T> {
     fn drop(&mut self) {
         unsafe {
             let (count, value) = {
-                let weak_box = &*self.ptr.get();
+                let weak_box = &*self.ptr.as_ptr();
                 assert!(weak_box.count.get() > 0);
                 let count = weak_box.count.get() - 1;
                 weak_box.count.set(count);
@@ -151,7 +155,7 @@ impl<T: WeakReferenceable> Drop for WeakRef<T> {
             };
             if count == 0 {
                 assert!(value.is_none());
-                mem::drop(Box::from_raw(self.ptr.get()));
+                mem::drop(Box::from_raw(self.ptr.as_ptr()));
             }
         }
     }
@@ -179,15 +183,15 @@ impl<T: WeakReferenceable> MutableWeakRef<T> {
         }
     }
 
-    /// Root a mutable weak reference. Returns `None` if the object
+    /// DomRoot a mutable weak reference. Returns `None` if the object
     /// was already collected.
-    pub fn root(&self) -> Option<Root<T>> {
+    pub fn root(&self) -> Option<DomRoot<T>> {
         unsafe { &*self.cell.get() }.as_ref().and_then(WeakRef::root)
     }
 }
 
-impl<T: WeakReferenceable> HeapSizeOf for MutableWeakRef<T> {
-    fn heap_size_of_children(&self) -> usize {
+impl<T: WeakReferenceable> MallocSizeOf for MutableWeakRef<T> {
+    fn size_of(&self, _ops: &mut MallocSizeOfOps) -> usize {
         0
     }
 }
@@ -208,7 +212,7 @@ unsafe impl<T: WeakReferenceable> JSTraceable for MutableWeakRef<T> {
 /// A vector of weak references. On tracing, the vector retains
 /// only references which still point to live objects.
 #[allow_unrooted_interior]
-#[derive(HeapSizeOf)]
+#[derive(MallocSizeOf)]
 pub struct WeakRefVec<T: WeakReferenceable> {
     vec: Vec<WeakRef<T>>,
 }

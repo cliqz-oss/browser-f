@@ -8,7 +8,6 @@
 
 #include "HTMLLinkAccessible.h"
 #include "ImageAccessibleWrap.h"
-#include "nsIDOMHTMLMapElement.h"
 
 namespace mozilla {
 namespace a11y {
@@ -22,7 +21,8 @@ public:
   HTMLImageMapAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
   // nsISupports and cycle collector
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLImageMapAccessible,
+                                       ImageAccessibleWrap)
 
   // Accessible
   virtual a11y::role NativeRole() override;

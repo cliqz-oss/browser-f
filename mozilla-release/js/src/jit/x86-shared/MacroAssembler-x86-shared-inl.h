@@ -596,22 +596,6 @@ MacroAssembler::branchPtrImpl(Condition cond, const T& lhs, const S& rhs, L labe
     j(cond, label);
 }
 
-template <typename T>
-CodeOffsetJump
-MacroAssembler::branchPtrWithPatch(Condition cond, Register lhs, T rhs, RepatchLabel* label)
-{
-    cmpPtr(lhs, rhs);
-    return jumpWithPatch(label, cond);
-}
-
-template <typename T>
-CodeOffsetJump
-MacroAssembler::branchPtrWithPatch(Condition cond, Address lhs, T rhs, RepatchLabel* label)
-{
-    cmpPtr(lhs, rhs);
-    return jumpWithPatch(label, cond);
-}
-
 void
 MacroAssembler::branchFloat(DoubleCondition cond, FloatRegister lhs, FloatRegister rhs,
                             Label* label)
@@ -659,9 +643,9 @@ MacroAssembler::branchDouble(DoubleCondition cond, FloatRegister lhs, FloatRegis
     j(ConditionFromDoubleCondition(cond), label);
 }
 
-template <typename T, typename L>
+template <typename T>
 void
-MacroAssembler::branchAdd32(Condition cond, T src, Register dest, L label)
+MacroAssembler::branchAdd32(Condition cond, T src, Register dest, Label* label)
 {
     addl(src, dest);
     j(cond, label);
@@ -899,6 +883,12 @@ MacroAssembler::branchTestString(Condition cond, Register tag, Label* label)
 }
 
 void
+MacroAssembler::branchTestString(Condition cond, const Address& address, Label* label)
+{
+    branchTestStringImpl(cond, address, label);
+}
+
+void
 MacroAssembler::branchTestString(Condition cond, const BaseIndex& address, Label* label)
 {
     branchTestStringImpl(cond, address, label);
@@ -1086,6 +1076,30 @@ MacroAssembler::branchTestMagicImpl(Condition cond, const T& t, L label)
 {
     cond = testMagic(cond, t);
     j(cond, label);
+}
+
+void
+MacroAssembler::cmp32Move32(Condition cond, Register lhs, Register rhs, Register src,
+                            Register dest)
+{
+    cmp32(lhs, rhs);
+    cmovCCl(cond, src, dest);
+}
+
+void
+MacroAssembler::cmp32Move32(Condition cond, Register lhs, const Address& rhs, Register src,
+                            Register dest)
+{
+    cmp32(lhs, Operand(rhs));
+    cmovCCl(cond, src, dest);
+}
+
+void
+MacroAssembler::spectreZeroRegister(Condition cond, Register scratch, Register dest)
+{
+    // Note: use movl instead of move32/xorl to ensure flags are not clobbered.
+    movl(Imm32(0), scratch);
+    spectreMovePtr(cond, scratch, dest);
 }
 
 // ========================================================================

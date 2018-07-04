@@ -7,8 +7,8 @@
  * Tests if JSON responses containing null values are properly displayed.
  */
 
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(JSON_BASIC_URL + "?name=null");
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(JSON_BASIC_URL + "?name=null");
   info("Starting test... ");
 
   let { document, store, windowRequire } = monitor.panelWin;
@@ -17,18 +17,20 @@ add_task(function* () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, 1);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests();
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 1);
 
-  yield openResponsePanel();
+  let onReponsePanelReady = waitForDOM(document, "#response-panel .CodeMirror-code");
+  store.dispatch(Actions.toggleNetworkDetails());
+  EventUtils.sendMouseEvent({ type: "click" },
+    document.querySelector("#response-tab"));
+  await onReponsePanelReady;
+
   checkResponsePanelDisplaysJSON();
 
   let tabpanel = document.querySelector("#response-panel");
-  is(tabpanel.querySelectorAll(".tree-section").length, 1,
-    "There should be 1 tree sections displayed in this tabpanel.");
+  is(tabpanel.querySelectorAll(".tree-section").length, 2,
+    "There should be 2 tree sections displayed in this tabpanel.");
   is(tabpanel.querySelectorAll(".treeRow:not(.tree-section)").length, 1,
     "There should be 1 json properties displayed in this tabpanel.");
   is(tabpanel.querySelectorAll(".empty-notice").length, 0,
@@ -42,7 +44,7 @@ add_task(function* () {
   is(labels[0].textContent, "greeting", "The first json property name was incorrect.");
   is(values[0].textContent, "null", "The first json property value was incorrect.");
 
-  yield teardown(monitor);
+  await teardown(monitor);
 
   /**
    * Helper to assert that the response panel found in the provided document is currently
@@ -55,22 +57,9 @@ add_task(function* () {
     let jsonView = panel.querySelector(".tree-section .treeLabel") || {};
     is(jsonView.textContent === L10N.getStr("jsonScopeName"), true,
       "The response json view has the intended visibility.");
-    is(panel.querySelector(".CodeMirror-code") === null, true,
-      "The response editor doesn't have the intended visibility.");
+    is(panel.querySelector(".CodeMirror-code") === null, false,
+      "The response editor has the intended visibility.");
     is(panel.querySelector(".response-image-box") === null, true,
       "The response image box doesn't have the intended visibility.");
-  }
-
-  /**
-   * Open the netmonitor details panel and switch to the response tab.
-   * Returns a promise that will resolve when the response panel DOM element is available.
-   */
-  function openResponsePanel() {
-    let onReponsePanelReady = waitForDOM(document, "#response-panel");
-    EventUtils.sendMouseEvent({ type: "click" },
-      document.querySelector(".network-details-panel-toggle"));
-    EventUtils.sendMouseEvent({ type: "click" },
-      document.querySelector("#response-tab"));
-    return onReponsePanelReady;
   }
 });

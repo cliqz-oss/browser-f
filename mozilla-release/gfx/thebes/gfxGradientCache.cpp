@@ -9,7 +9,6 @@
 #include "nsExpirationTracker.h"
 #include "nsClassHashtable.h"
 #include "mozilla/SystemGroup.h"
-#include "mozilla/Telemetry.h"
 #include "gfxGradientCache.h"
 #include <time.h>
 
@@ -33,6 +32,8 @@ struct GradientCacheKey : public PLDHashEntryHdr {
   explicit GradientCacheKey(const GradientCacheKey* aOther)
     : mStops(aOther->mStops), mExtend(aOther->mExtend), mBackendType(aOther->mBackendType)
   { }
+
+  GradientCacheKey(GradientCacheKey&& aOther) = default;
 
   union FloatUint32
   {
@@ -86,15 +87,12 @@ struct GradientCacheKey : public PLDHashEntryHdr {
  * to the cache entry to be able to be tracked by the nsExpirationTracker.
  * */
 struct GradientCacheData {
-  GradientCacheData(GradientStops* aStops, const GradientCacheKey& aKey)
+  GradientCacheData(GradientStops* aStops, GradientCacheKey&& aKey)
     : mStops(aStops),
-      mKey(aKey)
+      mKey(Move(aKey))
   {}
 
-  GradientCacheData(const GradientCacheData& aOther)
-    : mStops(aOther.mStops),
-      mKey(aOther.mKey)
-  { }
+  GradientCacheData(GradientCacheData&& aOther) = default;
 
   nsExpirationState *GetExpirationState() {
     return &mExpirationState;
@@ -128,11 +126,9 @@ class GradientCache final : public nsExpirationTracker<GradientCacheData,4>
                                                  SystemGroup::EventTargetFor(TaskCategory::Other))
     {
       srand(time(nullptr));
-      mTimerPeriod = rand() % MAX_GENERATION_MS + 1;
-      Telemetry::Accumulate(Telemetry::GRADIENT_RETENTION_TIME, mTimerPeriod);
     }
 
-    virtual void NotifyExpired(GradientCacheData* aObject)
+    virtual void NotifyExpired(GradientCacheData* aObject) override
     {
       // This will free the gfxPattern.
       RemoveObject(aObject);
@@ -169,7 +165,6 @@ class GradientCache final : public nsExpirationTracker<GradientCacheData,4>
     }
 
   protected:
-    uint32_t mTimerPeriod;
     static const uint32_t MAX_GENERATION_MS = 10000;
     /**
      * FIXME use nsTHashtable to avoid duplicating the GradientCacheKey.

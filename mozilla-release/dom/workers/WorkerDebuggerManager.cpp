@@ -9,10 +9,13 @@
 #include "nsISimpleEnumerator.h"
 
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/StaticPtr.h"
 
+#include "WorkerDebugger.h"
 #include "WorkerPrivate.h"
 
-USING_WORKERS_NAMESPACE
+namespace mozilla {
+namespace dom {
 
 namespace {
 
@@ -69,12 +72,9 @@ private:
   }
 };
 
-// Does not hold an owning reference.
-static WorkerDebuggerManager* gWorkerDebuggerManager;
+static StaticRefPtr<WorkerDebuggerManager> gWorkerDebuggerManager;
 
 } /* anonymous namespace */
-
-BEGIN_WORKERS_NAMESPACE
 
 class WorkerDebuggerEnumerator final : public nsISimpleEnumerator
 {
@@ -143,10 +143,11 @@ WorkerDebuggerManager::GetOrCreate()
   if (!gWorkerDebuggerManager) {
     // The observer service now owns us until shutdown.
     gWorkerDebuggerManager = new WorkerDebuggerManager();
-    if (NS_FAILED(gWorkerDebuggerManager->Init())) {
+    if (NS_SUCCEEDED(gWorkerDebuggerManager->Init())) {
+      ClearOnShutdown(&gWorkerDebuggerManager);
+    } else {
       NS_WARNING("Failed to initialize worker debugger manager!");
       gWorkerDebuggerManager = nullptr;
-      return nullptr;
     }
   }
 
@@ -360,4 +361,17 @@ WorkerDebuggerManager::UnregisterDebuggerMainThread(
   aWorkerPrivate->SetIsDebuggerRegistered(false);
 }
 
-END_WORKERS_NAMESPACE
+uint32_t
+WorkerDebuggerManager::GetDebuggersLength() const
+{
+  return mDebuggers.Length();
+}
+
+WorkerDebugger*
+WorkerDebuggerManager::GetDebuggerAt(uint32_t aIndex) const
+{
+  return mDebuggers.SafeElementAt(aIndex, nullptr);
+}
+
+} // dom namespace
+} // mozilla namespace

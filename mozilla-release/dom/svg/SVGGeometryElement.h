@@ -51,20 +51,22 @@ protected:
 public:
   explicit SVGGeometryElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
-  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
+  bool IsNodeOfType(uint32_t aFlags) const override;
 
   /**
    * Causes this element to discard any Path object that GetOrBuildPath may
    * have cached.
    */
-  virtual void ClearAnyCachedPath() override final {
+  void ClearAnyCachedPath() final {
     mCachedPath = nullptr;
   }
 
-  virtual bool AttributeDefinesGeometry(const nsIAtom *aName);
+  virtual bool AttributeDefinesGeometry(const nsAtom *aName);
 
   /**
    * Returns true if this element's geometry depends on the width or height of its
@@ -173,7 +175,7 @@ public:
    * this element. May return nullptr if there is no [valid] path. The path
    * that is created may be cached and returned on subsequent calls.
    */
-  virtual already_AddRefed<Path> GetOrBuildPath(const DrawTarget& aDrawTarget,
+  virtual already_AddRefed<Path> GetOrBuildPath(const DrawTarget* aDrawTarget,
                                                 FillRule fillRule);
 
   /**
@@ -205,6 +207,18 @@ public:
    * this element.
    */
   FillRule GetFillRule();
+
+  enum PathLengthScaleForType {
+    eForTextPath,
+    eForStroking
+  };
+
+  /**
+   * Gets the ratio of the actual element's length to the content author's
+   * estimated length (as provided by the element's 'pathLength' attribute).
+   * This is used to scale stroke dashing, and to scale offsets along a textPath.
+   */
+  float GetPathLengthScale(PathLengthScaleForType aFor);
 
   // WebIDL
   already_AddRefed<SVGAnimatedNumber> PathLength();

@@ -7,7 +7,7 @@
 #define nsIOService_h__
 
 #include "nsStringFwd.h"
-#include "nsIIOService2.h"
+#include "nsIIOService.h"
 #include "nsTArray.h"
 #include "nsCOMPtr.h"
 #include "nsWeakPtr.h"
@@ -32,13 +32,16 @@
 #define NS_IPC_IOSERVICE_SET_CONNECTIVITY_TOPIC "ipc:network:set-connectivity"
 
 static const char gScheme[][sizeof("moz-safe-about")] =
-    {"chrome", "file", "http", "https", "jar", "data", "about", "moz-safe-about", "resource"};
+    {"chrome", "file", "http", "https", "jar", "data", "about", "moz-safe-about", "resource",
+     "moz-extension", "page-icon", "blob"};
+
+static const char gForcedExternalSchemes[][sizeof("moz-nullprincipal")] =
+    {"place", "fake-favicon-uri", "favicon", "moz-nullprincipal"};
 
 class nsINetworkLinkService;
 class nsIPrefBranch;
 class nsIProtocolProxyService2;
 class nsIProxyInfo;
-class nsPIDNSService;
 class nsPISocketTransportService;
 
 namespace mozilla {
@@ -46,7 +49,7 @@ namespace net {
 class NeckoChild;
 class nsAsyncRedirectVerifyHelper;
 
-class nsIOService final : public nsIIOService2
+class nsIOService final : public nsIIOService
                         , public nsIObserver
                         , public nsINetUtil
                         , public nsISpeculativeConnect
@@ -56,7 +59,6 @@ class nsIOService final : public nsIIOService2
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
     NS_DECL_NSIIOSERVICE
-    NS_DECL_NSIIOSERVICE2
     NS_DECL_NSIOBSERVER
     NS_DECL_NSINETUTIL
     NS_DECL_NSISPECULATIVECONNECT
@@ -64,8 +66,7 @@ public:
 
     // Gets the singleton instance of the IO Service, creating it as needed
     // Returns nullptr on out of memory or failure to initialize.
-    // Returns an addrefed pointer.
-    static nsIOService* GetInstance();
+    static already_AddRefed<nsIOService> GetInstance();
 
     nsresult Init();
     nsresult NewURI(const char* aSpec, nsIURI* aBaseURI,
@@ -97,6 +98,8 @@ public:
 
     static bool IsDataURIUniqueOpaqueOrigin();
     static bool BlockToplevelDataUriNavigations();
+
+    static bool BlockFTPSubresources();
 
     // Used to count the total number of HTTP requests made
     void IncrementRequestNumber() { mTotalRequests++; }
@@ -136,10 +139,23 @@ private:
 
     nsresult InitializeSocketTransportService();
     nsresult InitializeNetworkLinkService();
+    nsresult InitializeProtocolProxyService();
 
     // consolidated helper function
     void LookupProxyInfo(nsIURI *aURI, nsIURI *aProxyURI, uint32_t aProxyFlags,
                          nsCString *aScheme, nsIProxyInfo **outPI);
+
+    nsresult NewChannelFromURIWithProxyFlagsInternal(nsIURI* aURI,
+                                                    nsIURI* aProxyURI,
+                                                    uint32_t aProxyFlags,
+                                                    nsIDOMNode* aLoadingNode,
+                                                    nsIPrincipal* aLoadingPrincipal,
+                                                    nsIPrincipal* aTriggeringPrincipal,
+                                                    const mozilla::Maybe<mozilla::dom::ClientInfo>& aLoadingClientInfo,
+                                                    const mozilla::Maybe<mozilla::dom::ServiceWorkerDescriptor>& aController,
+                                                    uint32_t aSecurityFlags,
+                                                    uint32_t aContentPolicyType,
+                                                    nsIChannel** result);
 
     nsresult NewChannelFromURIWithProxyFlagsInternal(nsIURI* aURI,
                                                      nsIURI* aProxyURI,
@@ -170,8 +186,6 @@ private:
     mozilla::Atomic<bool, mozilla::Relaxed> mHttpHandlerAlreadyShutingDown;
 
     nsCOMPtr<nsPISocketTransportService> mSocketTransportService;
-    nsCOMPtr<nsPIDNSService>             mDNSService;
-    nsCOMPtr<nsIProtocolProxyService2>   mProxyService;
     nsCOMPtr<nsICaptivePortalService>    mCaptivePortalService;
     nsCOMPtr<nsINetworkLinkService>      mNetworkLinkService;
     bool                                 mNetworkLinkServiceInitialized;
@@ -188,6 +202,8 @@ private:
 
     static bool                          sIsDataURIUniqueOpaqueOrigin;
     static bool                          sBlockToplevelDataUriNavigations;
+
+    static bool                          sBlockFTPSubresources;
 
     uint32_t mTotalRequests;
     uint32_t mCacheWon;

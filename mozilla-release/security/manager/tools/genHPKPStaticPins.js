@@ -19,11 +19,11 @@ if (arguments.length != 3) {
                   "<absolute path to StaticHPKPins.h>");
 }
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+var { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", {});
+var { FileUtils } = ChromeUtils.import("resource://gre/modules/FileUtils.jsm", {});
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
-var { NetUtil } = Cu.import("resource://gre/modules/NetUtil.jsm", {});
-var { FileUtils } = Cu.import("resource://gre/modules/FileUtils.jsm", {});
-var { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 var gCertDB = Cc["@mozilla.org/security/x509certdb;1"]
                 .getService(Ci.nsIX509CertDB);
@@ -69,7 +69,7 @@ var gStaticPins = parseJson(arguments[0]);
 // arguments[1] is ignored for now. See bug 1205406.
 
 // Open the output file.
-var file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
+var file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
 file.initWithPath(arguments[2]);
 var gFileOutputStream = FileUtils.openSafeFileOutputStream(file);
 
@@ -78,7 +78,7 @@ function writeString(string) {
 }
 
 function readFileToString(filename) {
-  let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
+  let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
   file.initWithPath(filename);
   let stream = Cc["@mozilla.org/network/file-input-stream;1"]
                  .createInstance(Ci.nsIFileInputStream);
@@ -101,8 +101,7 @@ function stripComments(buf) {
 }
 
 function download(filename) {
-  let req = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
-              .createInstance(Ci.nsIXMLHttpRequest);
+  let req = new XMLHttpRequest();
   req.open("GET", filename, false); // doing the request synchronously
   try {
     req.send();
@@ -353,11 +352,11 @@ function downloadAndParseChromePins(filename,
     entry.name = entry.name.trim();
 
     let isProductionDomain =
-      (cData.production_domains.indexOf(entry.name) != -1);
+      (cData.production_domains.includes(entry.name));
     let isProductionPinset =
-      (cData.production_pinsets.indexOf(pinsetName) != -1);
+      (cData.production_pinsets.includes(pinsetName));
     let excludeDomain =
-      (cData.exclude_domains.indexOf(entry.name) != -1);
+      (cData.exclude_domains.includes(entry.name));
     let isTestMode = !isProductionPinset && !isProductionDomain;
     if (entry.pins && !excludeDomain && chromeImportedPinsets[entry.pins]) {
       chromeImportedEntries.push({
@@ -483,7 +482,7 @@ function writeEntry(entry) {
   } else {
     printVal += "false, ";
   }
-  if (entry.is_moz || (entry.pins.indexOf("mozilla") != -1 &&
+  if (entry.is_moz || (entry.pins.includes("mozilla") &&
                        entry.pins != "mozilla_test")) {
     printVal += "true, ";
   } else {

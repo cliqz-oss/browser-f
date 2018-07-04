@@ -18,9 +18,9 @@ function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-source-map");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-source-map",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_source_content();
                            });
@@ -37,11 +37,11 @@ function test_source_content() {
     }
     gThreadClient.removeListener("newSource", _onNewSource);
 
-    gThreadClient.getSources(function (response) {
-      do_check_true(!response.error, "Should not get an error");
+    gThreadClient.getSources(function(response) {
+      Assert.ok(!response.error, "Should not get an error");
 
       testContents(response.sources, 0, (timesCalled) => {
-        do_check_eq(timesCalled, 3);
+        Assert.equal(timesCalled, 3);
         finishClient(gClient);
       });
     });
@@ -63,8 +63,8 @@ function test_source_content() {
 
   code += "//# sourceMappingURL=data:text/json;base64," + btoa(map.toString());
 
-  Components.utils.evalInSandbox(code, gDebuggee, "1.8",
-                                 "http://example.com/www/js/abc.js", 1);
+  Cu.evalInSandbox(code, gDebuggee, "1.8",
+                   "http://example.com/www/js/abc.js", 1);
 }
 
 function testContents(sources, timesCalled, callback) {
@@ -78,12 +78,12 @@ function testContents(sources, timesCalled, callback) {
 
   if (sourceClient.url) {
     sourceClient.source((response) => {
-      do_check_true(!response.error,
-                    "Should not get an error loading the source from sourcesContent");
+      Assert.ok(!response.error,
+                "Should not get an error loading the source from sourcesContent");
 
-      let expectedContent = "content for " + source.url;
-      do_check_eq(response.source, expectedContent,
-                  "Should have the expected source content");
+      let expectedContent = "content for " + source.url.replace(/^.*\//, "");
+      Assert.equal(response.source, expectedContent,
+                   "Should have the expected source content");
 
       testContents(sources.slice(1), timesCalled + 1, callback);
     });

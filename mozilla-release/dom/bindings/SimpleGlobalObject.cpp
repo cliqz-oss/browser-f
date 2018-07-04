@@ -46,21 +46,24 @@ SimpleGlobal_finalize(js::FreeOp *fop, JSObject *obj)
 {
   SimpleGlobalObject* globalObject =
     static_cast<SimpleGlobalObject*>(JS_GetPrivate(obj));
-  globalObject->ClearWrapper(obj);
-  NS_RELEASE(globalObject);
+  if (globalObject) {
+    globalObject->ClearWrapper(obj);
+    NS_RELEASE(globalObject);
+  }
 }
 
-static void
-SimpleGlobal_moved(JSObject *obj, const JSObject *old)
+static size_t
+SimpleGlobal_moved(JSObject *obj, JSObject *old)
 {
   SimpleGlobalObject* globalObject =
     static_cast<SimpleGlobalObject*>(JS_GetPrivate(obj));
-  globalObject->UpdateWrapper(obj, old);
+  if (globalObject) {
+    globalObject->UpdateWrapper(obj, old);
+  }
+  return 0;
 }
 
 static const js::ClassOps SimpleGlobalClassOps = {
-    nullptr,
-    nullptr,
     nullptr,
     nullptr,
     nullptr,
@@ -115,7 +118,7 @@ SimpleGlobalObject::Create(GlobalType globalType, JS::Handle<JS::Value> proto)
            .setSystemZone();
 
     if (NS_IsMainThread()) {
-      nsCOMPtr<nsIPrincipal> principal = NullPrincipal::Create();
+      nsCOMPtr<nsIPrincipal> principal = NullPrincipal::CreateWithoutOriginAttributes();
       options.creationOptions().setTrace(xpc::TraceXPCGlobal);
       global = xpc::CreateGlobalObject(cx, js::Jsvalify(&SimpleGlobalClass),
                                        nsJSPrincipals::get(principal),

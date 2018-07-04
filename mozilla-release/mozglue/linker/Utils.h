@@ -11,6 +11,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include "mozilla/Assertions.h"
+#include "mozilla/Atomics.h"
 #include "mozilla/Scoped.h"
 
 /**
@@ -53,7 +54,7 @@ public:
   }
 
   le_to_cpu() { }
-  le_to_cpu(const Type &v)
+  explicit le_to_cpu(const Type &v)
   {
     operator =(v);
   }
@@ -102,12 +103,18 @@ struct AutoCloseFILETraits
 };
 typedef mozilla::Scoped<AutoCloseFILETraits> AutoCloseFILE;
 
+extern mozilla::Atomic<size_t, mozilla::ReleaseAcquire> gPageSize;
+
 /**
  * Page alignment helpers
  */
-static inline size_t PageSize()
+static size_t PageSize()
 {
-  return 4096;
+  if (!gPageSize) {
+    gPageSize = sysconf(_SC_PAGESIZE);
+  }
+
+  return gPageSize;
 }
 
 static inline uintptr_t AlignedPtr(uintptr_t ptr, size_t alignment)
@@ -272,7 +279,7 @@ class GenericMappedPtr: public MemoryRange
 {
 public:
   GenericMappedPtr(void *buf, size_t length): MemoryRange(buf, length) { }
-  GenericMappedPtr(const MemoryRange& other): MemoryRange(other) { }
+  explicit GenericMappedPtr(const MemoryRange& other): MemoryRange(other) { }
   GenericMappedPtr(): MemoryRange(MAP_FAILED, 0) { }
 
   void Assign(void *b, size_t len) {
@@ -301,7 +308,7 @@ struct MappedPtr: public GenericMappedPtr<MappedPtr>
 {
   MappedPtr(void *buf, size_t length)
   : GenericMappedPtr<MappedPtr>(buf, length) { }
-  MappedPtr(const MemoryRange& other)
+  MOZ_IMPLICIT MappedPtr(const MemoryRange& other)
   : GenericMappedPtr<MappedPtr>(other) { }
   MappedPtr(): GenericMappedPtr<MappedPtr>() { }
 
@@ -337,7 +344,7 @@ public:
    * Constructors and Initializers
    */
   UnsizedArray(): contents(nullptr) { }
-  UnsizedArray(const void *buf): contents(reinterpret_cast<const T *>(buf)) { }
+  explicit UnsizedArray(const void *buf): contents(reinterpret_cast<const T *>(buf)) { }
 
   void Init(const void *buf)
   {
@@ -361,7 +368,7 @@ public:
   /**
    * Returns whether the array points somewhere
    */
-  operator bool() const
+  explicit operator bool() const
   {
     return contents != nullptr;
   }
@@ -453,7 +460,7 @@ public:
   /**
    * Returns whether the array points somewhere and has at least one element.
    */
-  operator bool() const
+  explicit operator bool() const
   {
     return (length > 0) && UnsizedArray<T>::operator bool();
   }
@@ -494,7 +501,7 @@ public:
     }
   protected:
     friend class Array<T>;
-    iterator(const T &item): item(&item) { }
+    explicit iterator(const T &item): item(&item) { }
 
   private:
     const T *item;
@@ -556,7 +563,7 @@ public:
     }
   protected:
     friend class Array<T>;
-    reverse_iterator(const T &item): item(&item) { }
+    explicit reverse_iterator(const T &item): item(&item) { }
 
   private:
     const T *item;
@@ -600,7 +607,7 @@ void *FunctionPtr(T func)
 
 class AutoLock {
 public:
-  AutoLock(pthread_mutex_t *mutex): mutex(mutex)
+  explicit AutoLock(pthread_mutex_t *mutex): mutex(mutex)
   {
     if (pthread_mutex_lock(mutex))
       MOZ_CRASH("pthread_mutex_lock failed");

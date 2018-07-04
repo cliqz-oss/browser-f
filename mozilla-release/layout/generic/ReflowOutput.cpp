@@ -1,4 +1,5 @@
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -38,13 +39,13 @@ nsOverflowAreas::SetAllTo(const nsRect& aRect)
 
 namespace mozilla {
 
-ReflowOutput::ReflowOutput(const ReflowInput& aState,
+ReflowOutput::ReflowOutput(const ReflowInput& aReflowInput,
                                          uint32_t aFlags)
   : mISize(0)
   , mBSize(0)
   , mBlockStartAscent(ASK_FOR_BASELINE)
   , mFlags(aFlags)
-  , mWritingMode(aState.GetWritingMode())
+  , mWritingMode(aReflowInput.GetWritingMode())
 {
 }
 

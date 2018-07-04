@@ -4,29 +4,27 @@
 
 "use strict";
 
-const { addons, createClass, createFactory, DOM: dom, PropTypes } =
-  require("devtools/client/shared/vendor/react");
+const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
+const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const { getStr } = require("devtools/client/inspector/layout/utils/l10n");
 
 const GridItem = createFactory(require("./GridItem"));
 
 const Types = require("../types");
-const { getStr } = require("../utils/l10n");
 
-module.exports = createClass({
-
-  displayName: "GridList",
-
-  propTypes: {
-    getSwatchColorPickerTooltip: PropTypes.func.isRequired,
-    grids: PropTypes.arrayOf(PropTypes.shape(Types.grid)).isRequired,
-    setSelectedNode: PropTypes.func.isRequired,
-    onHideBoxModelHighlighter: PropTypes.func.isRequired,
-    onSetGridOverlayColor: PropTypes.func.isRequired,
-    onShowBoxModelHighlighterForNode: PropTypes.func.isRequired,
-    onToggleGridHighlighter: PropTypes.func.isRequired,
-  },
-
-  mixins: [ addons.PureRenderMixin ],
+class GridList extends PureComponent {
+  static get propTypes() {
+    return {
+      getSwatchColorPickerTooltip: PropTypes.func.isRequired,
+      grids: PropTypes.arrayOf(PropTypes.shape(Types.grid)).isRequired,
+      setSelectedNode: PropTypes.func.isRequired,
+      onHideBoxModelHighlighter: PropTypes.func.isRequired,
+      onSetGridOverlayColor: PropTypes.func.isRequired,
+      onShowBoxModelHighlighterForNode: PropTypes.func.isRequired,
+      onToggleGridHighlighter: PropTypes.func.isRequired,
+    };
+  }
 
   render() {
     let {
@@ -50,6 +48,7 @@ module.exports = createClass({
       dom.ul(
         {
           id: "grid-list",
+          className: "devtools-monospace",
         },
         grids.map(grid => GridItem({
           key: grid.id,
@@ -63,6 +62,7 @@ module.exports = createClass({
         }))
       )
     );
-  },
+  }
+}
 
-});
+module.exports = GridList;

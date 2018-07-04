@@ -2,14 +2,6 @@
 //       unprivileged code.
 // - Please make sure that any changes apply cleanly to all use cases.
 
-if (typeof(TalosContentProfiler) == "undefined") {
-  try {
-    netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-  } catch (e) {}
-  Components.utils.import("resource://gre/modules/Services.jsm");
-  Services.scriptloader.loadSubScript("chrome://talos-powers-content/content/TalosContentProfiler.js");
-}
-
 function testScroll(target, stepSize, opt_reportFunc, opt_numSteps) {
   var win;
   if (target == "content") {
@@ -80,7 +72,7 @@ function testScroll(target, stepSize, opt_reportFunc, opt_numSteps) {
         report = function(duration, start, name) {
           var msg = { time: duration, startTime: start, testName: name };
           sendAsyncMessage("PageLoader:RecordTime", msg);
-        }
+        };
         resolve();
         return;
       }
@@ -113,7 +105,7 @@ function testScroll(target, stepSize, opt_reportFunc, opt_numSteps) {
   }
 
   function rAF(fn) {
-    return content.requestAnimationFrame(fn);
+    return win.requestAnimationFrame(fn);
   }
 
   function P_rAF() {
@@ -125,7 +117,7 @@ function testScroll(target, stepSize, opt_reportFunc, opt_numSteps) {
   function myNow() {
     return (win.performance && win.performance.now) ?
             win.performance.now() :
-            Date.now();  // eslint-disable-line mozilla/avoid-Date-timing
+            Date.now(); // eslint-disable-line mozilla/avoid-Date-timing
   }
 
   var isWindow = target.self === target;

@@ -8,17 +8,16 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import json
 import os
-import inspect
 import re
-from mozbuild.util import memoize
+import yaml
+from slugid import nice as slugid
 from types import FunctionType
 from collections import namedtuple
-from taskgraph.util.docker import docker_image
+from taskgraph import create, GECKO
+from taskgraph.config import load_graph_config
+from taskgraph.util import taskcluster
 from taskgraph.parameters import Parameters
-from . import util
 
-
-GECKO = os.path.realpath(os.path.join(__file__, '..', '..', '..'))
 
 actions = []
 callbacks = {}
@@ -167,96 +166,73 @@ def register_callback_action(name, title, symbol, description, order=10000,
     def register_callback(cb):
         assert isinstance(cb, FunctionType), 'callback must be a function'
         assert isinstance(symbol, basestring), 'symbol must be a string'
-        assert 1 <= len(symbol) <= 25, 'symbol must be between 1 and 25 characters'
+        # Allow for json-e > 25 chars in the symbol.
+        if '$' not in symbol:
+            assert 1 <= len(symbol) <= 25, 'symbol must be between 1 and 25 characters'
         assert not mem['registered'], 'register_callback_action must be used as decorator'
         assert cb.__name__ not in callbacks, 'callback name {} is not unique'.format(cb.__name__)
-        source_path = os.path.relpath(inspect.stack()[1][1], GECKO)
 
         @register_task_action(name, title, description, order, context, schema)
-        def build_callback_action_task(parameters):
+        def build_callback_action_task(parameters, graph_config):
             if not available(parameters):
                 return None
 
-            match = re.match(r'https://(hg.mozilla.org)/(.*?)/?$', parameters['head_repository'])
+            repo_param = '{}head_repository'.format(graph_config['project-repo-param-prefix'])
+            revision = parameters['{}head_rev'.format(graph_config['project-repo-param-prefix'])]
+            match = re.match(r'https://(hg.mozilla.org)/(.*?)/?$', parameters[repo_param])
             if not match:
-                raise Exception('Unrecognized head_repository')
-            repo_scope = 'assume:repo:{}/{}:*'.format(
+                raise Exception('Unrecognized {}'.format(repo_param))
+            repo_scope = 'assume:repo:{}/{}:branch:default'.format(
                 match.group(1), match.group(2))
 
-            return {
-                'created': {'$fromNow': ''},
-                'deadline': {'$fromNow': '12 hours'},
-                'expires': {'$fromNow': '14 days'},
-                'metadata': {
-                    'owner': 'mozilla-taskcluster-maintenance@mozilla.com',
-                    'source': '{}raw-file/{}/{}'.format(
-                        parameters['head_repository'], parameters['head_rev'], source_path,
-                    ),
-                    'name': 'Action: {}'.format(title),
-                    'description': 'Task executing callback for action.\n\n---\n' + description,
-                },
-                'workerType': 'gecko-decision',
-                'provisionerId': 'aws-provisioner-v1',
-                'scopes': [
-                    repo_scope,
-                ],
-                'tags': {
-                    'createdForUser': parameters['owner'],
-                    'kind': 'action-callback',
-                },
-                'routes': [
-                    'tc-treeherder.v2.{}.{}.{}'.format(
-                        parameters['project'], parameters['head_rev'], parameters['pushlog_id']),
-                    'tc-treeherder-stage.v2.{}.{}.{}'.format(
-                        parameters['project'], parameters['head_rev'], parameters['pushlog_id']),
-                ],
-                'payload': {
-                    'env': {
-                        'GECKO_BASE_REPOSITORY': 'https://hg.mozilla.org/mozilla-unified',
-                        'GECKO_HEAD_REPOSITORY': parameters['head_repository'],
-                        'GECKO_HEAD_REF': parameters['head_ref'],
-                        'GECKO_HEAD_REV': parameters['head_rev'],
-                        'HG_STORE_PATH': '/home/worker/checkouts/hg-store',
-                        'ACTION_TASK_GROUP_ID': {'$eval': 'taskGroupId'},
-                        'ACTION_TASK_ID': {'$json': {'$eval': 'taskId'}},
-                        'ACTION_TASK': {'$json': {'$eval': 'task'}},
-                        'ACTION_INPUT': {'$json': {'$eval': 'input'}},
-                        'ACTION_CALLBACK': cb.__name__,
-                        'ACTION_PARAMETERS': {'$json': {'$eval': 'parameters'}},
+            task_group_id = os.environ.get('TASK_ID', slugid())
+
+            # FIXME: https://bugzilla.mozilla.org/show_bug.cgi?id=1454034
+            # trust-domain works, but isn't semantically correct here.
+            if graph_config['trust-domain'] == 'comm':
+                template = os.path.join(GECKO, 'comm', '.taskcluster.yml')
+            else:
+                template = os.path.join(GECKO, '.taskcluster.yml')
+
+            with open(template, 'r') as f:
+                taskcluster_yml = yaml.safe_load(f)
+                if taskcluster_yml['version'] != 1:
+                    raise Exception('actions.json must be updated to work with .taskcluster.yml')
+                if not isinstance(taskcluster_yml['tasks'], list):
+                    raise Exception('.taskcluster.yml "tasks" must be a list for action tasks')
+
+                return {
+                    '$let': {
+                        'tasks_for': 'action',
+                        'repository': {
+                            'url': parameters[repo_param],
+                            'project': parameters['project'],
+                            'level': parameters['level'],
+                        },
+                        'push': {
+                            'owner': 'mozilla-taskcluster-maintenance@mozilla.com',
+                            'pushlog_id': parameters['pushlog_id'],
+                            'revision': revision,
+                        },
+                        'action': {
+                            'name': name,
+                            'title': title,
+                            'description': description,
+                            'taskGroupId': task_group_id,
+                            'repo_scope': repo_scope,
+                            'cb_name': cb.__name__,
+                            'symbol': symbol,
+                        },
                     },
-                    'cache': {
-                        'level-{}-checkouts'.format(parameters['level']):
-                            '/home/worker/checkouts',
-                    },
-                    'features': {
-                        'taskclusterProxy': True,
-                        'chainOfTrust': True,
-                    },
-                    'image': docker_image('decision'),
-                    'maxRunTime': 1800,
-                    'command': [
-                        '/home/worker/bin/run-task', '--vcs-checkout=/home/worker/checkouts/gecko',
-                        '--', 'bash', '-cx',
-                        """\
-cd /home/worker/checkouts/gecko &&
-ln -s /home/worker/artifacts artifacts &&
-./mach --log-no-times taskgraph action-callback""",
-                    ],
-                },
-                'extra': {
-                    'treeherder': {
-                        'groupName': 'action-callback',
-                        'groupSymbol': 'AC',
-                        'symbol': symbol,
-                    },
-                },
-            }
+                    'in': taskcluster_yml['tasks'][0]
+                }
+
         mem['registered'] = True
         callbacks[cb.__name__] = cb
     return register_callback
 
 
-def render_actions_json(parameters):
+def render_actions_json(parameters, graph_config):
     """
     Render JSON object for the ``public/actions.json`` artifact.
 
@@ -272,8 +248,8 @@ def render_actions_json(parameters):
     """
     assert isinstance(parameters, Parameters), 'requires instance of Parameters'
     result = []
-    for action in sorted(get_actions(), key=lambda action: action.order):
-        task = action.task_template_builder(parameters)
+    for action in sorted(_get_actions(graph_config), key=lambda action: action.order):
+        task = action.task_template_builder(parameters, graph_config)
         if task:
             assert is_json(task), 'task must be a JSON compatible object'
             res = {
@@ -297,36 +273,43 @@ def render_actions_json(parameters):
     }
 
 
-def trigger_action_callback(task_group_id, task_id, task, input, callback, parameters,
+def trigger_action_callback(task_group_id, task_id, task, input, callback, parameters, root,
                             test=False):
     """
     Trigger action callback with the given inputs. If `test` is true, then run
     the action callback in testing mode, without actually creating tasks.
     """
-    cb = get_callbacks().get(callback, None)
+    graph_config = load_graph_config(root)
+    callbacks = _get_callbacks(graph_config)
+    cb = callbacks.get(callback, None)
     if not cb:
         raise Exception('Unknown callback: {}. Known callbacks: {}'.format(
-            callback, get_callbacks().keys()))
+            callback, callbacks))
 
     if test:
-        util.testing = True
+        create.testing = True
+        taskcluster.testing = True
 
-    cb(Parameters(**parameters), input, task_group_id, task_id, task)
+    cb(Parameters(**parameters), graph_config, input, task_group_id, task_id, task)
 
 
-@memoize
-def _load():
+def _load(graph_config):
     # Load all modules from this folder, relying on the side-effects of register_
     # functions to populate the action registry.
-    for f in os.listdir(os.path.dirname(__file__)):
+    actions_dir = os.path.dirname(__file__)
+    for f in os.listdir(actions_dir):
         if f.endswith('.py') and f not in ('__init__.py', 'registry.py', 'util.py'):
             __import__('taskgraph.actions.' + f[:-3])
+        if f.endswith('.yml'):
+            with open(os.path.join(actions_dir, f), 'r') as d:
+                frontmatter, template = yaml.safe_load_all(d)
+                register_task_action(**frontmatter)(lambda _p, _g: template)
     return callbacks, actions
 
 
-def get_callbacks():
-    return _load()[0]
+def _get_callbacks(graph_config):
+    return _load(graph_config)[0]
 
 
-def get_actions():
-    return _load()[1]
+def _get_actions(graph_config):
+    return _load(graph_config)[1]

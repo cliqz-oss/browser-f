@@ -1115,3 +1115,21 @@ PK11_GetTokenURI;
 ;+    local:
 ;+       *;
 ;+};
+;+NSS_3.33 { 	# NSS 3.33 release
+;+    global:
+CERT_FindCertByIssuerAndSNCX;
+CERT_FindCertByNicknameOrEmailAddrCX;
+CERT_FindCertByNicknameOrEmailAddrForUsageCX;
+;+    local:
+;+       *;
+;+};
+;+NSS_3.34 { 	# NSS 3.34 release
+;+    global:
+PK11_CreateManagedGenericObject;
+SGN_NewContextWithAlgorithmID;
+SEC_SignDataWithAlgorithmID;
+SEC_DerSignDataWithAlgorithmID;
+SEC_CreateSignatureAlgorithmParameters;
+;+    local:
+;+       *;
+;+};

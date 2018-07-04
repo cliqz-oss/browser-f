@@ -53,7 +53,6 @@ static constexpr FloatRegister ScratchDoubleReg = FloatRegister(X86Encoding::xmm
 static constexpr FloatRegister ScratchSimd128Reg = FloatRegister(X86Encoding::xmm7, FloatRegisters::Simd128);
 
 // Avoid ebp, which is the FramePointer, which is unavailable in some modes.
-static constexpr Register ArgumentsRectifierReg = esi;
 static constexpr Register CallTempReg0 = edi;
 static constexpr Register CallTempReg1 = eax;
 static constexpr Register CallTempReg2 = ebx;
@@ -78,17 +77,27 @@ class ABIArgGenerator
     ABIArg next(MIRType argType);
     ABIArg& current() { return current_; }
     uint32_t stackBytesConsumedSoFar() const { return stackOffset_; }
-
 };
 
+// These registers may be volatile or nonvolatile.
 static constexpr Register ABINonArgReg0 = eax;
 static constexpr Register ABINonArgReg1 = ebx;
 static constexpr Register ABINonArgReg2 = ecx;
 
+// This register may be volatile or nonvolatile. Avoid xmm7 which is the
+// ScratchDoubleReg.
+static constexpr FloatRegister ABINonArgDoubleReg = FloatRegister(X86Encoding::xmm0, FloatRegisters::Double);
+
+// These registers may be volatile or nonvolatile.
 // Note: these three registers are all guaranteed to be different
 static constexpr Register ABINonArgReturnReg0 = ecx;
 static constexpr Register ABINonArgReturnReg1 = edx;
 static constexpr Register ABINonVolatileReg = ebx;
+
+// This register is guaranteed to be clobberable during the prologue and
+// epilogue of an ABI call which must preserve both ABI argument, return
+// and non-volatile registers.
+static constexpr Register ABINonArgReturnVolatileReg = ecx;
 
 // TLS pointer argument register for WebAssembly functions. This must not alias
 // any other register used for passing function arguments or return values.
@@ -104,19 +113,6 @@ static constexpr Register WasmTableCallIndexReg = ABINonArgReg2;
 static constexpr Register OsrFrameReg = edx;
 static constexpr Register PreBarrierReg = edx;
 
-// Registers used in the GenerateFFIIonExit Enable Activation block.
-static constexpr Register WasmIonExitRegCallee = ecx;
-static constexpr Register WasmIonExitRegE0 = edi;
-static constexpr Register WasmIonExitRegE1 = eax;
-
-// Registers used in the GenerateFFIIonExit Disable Activation block.
-static constexpr Register WasmIonExitRegReturnData = edx;
-static constexpr Register WasmIonExitRegReturnType = ecx;
-static constexpr Register WasmIonExitTlsReg = esi;
-static constexpr Register WasmIonExitRegD0 = edi;
-static constexpr Register WasmIonExitRegD1 = eax;
-static constexpr Register WasmIonExitRegD2 = ebx;
-
 // Registerd used in RegExpMatcher instruction (do not use JSReturnOperand).
 static constexpr Register RegExpMatcherRegExpReg = CallTempReg0;
 static constexpr Register RegExpMatcherStringReg = CallTempReg1;
@@ -129,7 +125,7 @@ static constexpr Register RegExpTesterLastIndexReg = CallTempReg3;
 
 // GCC stack is aligned on 16 bytes. Ion does not maintain this for internal
 // calls. wasm code does.
-#if defined(__GNUC__)
+#if defined(__GNUC__) && !defined(__MINGW32__)
 static constexpr uint32_t ABIStackAlignment = 16;
 #else
 static constexpr uint32_t ABIStackAlignment = 4;
@@ -158,6 +154,7 @@ static_assert(JitStackAlignment % SimdMemoryAlignment == 0,
   "spilled values.  Thus it should be larger than the alignment for SIMD accesses.");
 
 static const uint32_t WasmStackAlignment = SimdMemoryAlignment;
+static const uint32_t WasmTrapInstructionLength = 2;
 
 struct ImmTag : public Imm32
 {
@@ -184,7 +181,7 @@ namespace js {
 namespace jit {
 
 static inline void
-PatchJump(CodeLocationJump jump, CodeLocationLabel label, ReprotectCode reprotect = DontReprotect)
+PatchJump(CodeLocationJump jump, CodeLocationLabel label)
 {
 #ifdef DEBUG
     // Assert that we're overwriting a jump instruction, either:
@@ -194,17 +191,29 @@ PatchJump(CodeLocationJump jump, CodeLocationLabel label, ReprotectCode reprotec
     MOZ_ASSERT(((*x >= 0x80 && *x <= 0x8F) && *(x - 1) == 0x0F) ||
                (*x == 0xE9));
 #endif
-    MaybeAutoWritableJitCode awjc(jump.raw() - 8, 8, reprotect);
     X86Encoding::SetRel32(jump.raw(), label.raw());
 }
-static inline void
-PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitZoneGroup::BackedgeTarget target)
-{
-    PatchJump(jump_, label);
+
+static inline Operand
+LowWord(const Operand& op) {
+    switch (op.kind()) {
+      case Operand::MEM_REG_DISP: return Operand(LowWord(op.toAddress()));
+      case Operand::MEM_SCALE:    return Operand(LowWord(op.toBaseIndex()));
+      default:                    MOZ_CRASH("Invalid operand type");
+    }
+}
+
+static inline Operand
+HighWord(const Operand& op) {
+    switch (op.kind()) {
+      case Operand::MEM_REG_DISP: return Operand(HighWord(op.toAddress()));
+      case Operand::MEM_SCALE:    return Operand(HighWord(op.toBaseIndex()));
+      default:                    MOZ_CRASH("Invalid operand type");
+    }
 }
 
 // Return operand from a JS -> JS call.
-static const ValueOperand JSReturnOperand = ValueOperand(JSReturnReg_Type, JSReturnReg_Data);
+static constexpr ValueOperand JSReturnOperand{JSReturnReg_Type, JSReturnReg_Data};
 
 class Assembler : public AssemblerX86Shared
 {
@@ -323,10 +332,10 @@ class Assembler : public AssemblerX86Shared
     void mov(Imm32 imm, const Operand& dest) {
         movl(imm, dest);
     }
-    void mov(CodeOffset* label, Register dest) {
+    void mov(CodeLabel* label, Register dest) {
         // Put a placeholder value in the instruction stream.
         masm.movl_i32r(0, dest.encoding());
-        label->bind(masm.size());
+        label->patchAt()->bind(masm.size());
     }
     void mov(Register src, Register dest) {
         movl(src, dest);
@@ -397,12 +406,36 @@ class Assembler : public AssemblerX86Shared
     void adcl(Register src, Register dest) {
         masm.adcl_rr(src.encoding(), dest.encoding());
     }
+    void adcl(Operand src, Register dest) {
+        switch (src.kind()) {
+          case Operand::MEM_REG_DISP:
+            masm.adcl_mr(src.disp(), src.base(), dest.encoding());
+            break;
+          case Operand::MEM_SCALE:
+            masm.adcl_mr(src.disp(), src.base(), src.index(), src.scale(), dest.encoding());
+            break;
+          default:
+            MOZ_CRASH("unexpected operand kind");
+        }
+    }
 
     void sbbl(Imm32 imm, Register dest) {
         masm.sbbl_ir(imm.value, dest.encoding());
     }
     void sbbl(Register src, Register dest) {
         masm.sbbl_rr(src.encoding(), dest.encoding());
+    }
+    void sbbl(Operand src, Register dest) {
+        switch (src.kind()) {
+          case Operand::MEM_REG_DISP:
+            masm.sbbl_mr(src.disp(), src.base(), dest.encoding());
+            break;
+          case Operand::MEM_SCALE:
+            masm.sbbl_mr(src.disp(), src.base(), src.index(), src.scale(), dest.encoding());
+            break;
+          default:
+            MOZ_CRASH("unexpected operand kind");
+        }
     }
 
     void mull(Register multiplier) {
@@ -763,9 +796,7 @@ class Assembler : public AssemblerX86Shared
     CodeOffset movlWithPatchLow(Register regLow, const Operand& dest) {
         switch (dest.kind()) {
           case Operand::MEM_REG_DISP: {
-            Address addr = dest.toAddress();
-            Operand low(addr.base, addr.offset + INT64LOW_OFFSET);
-            return movlWithPatch(regLow, low);
+            return movlWithPatch(regLow, LowWord(dest));
           }
           case Operand::MEM_ADDRESS32: {
             Operand low(PatchedAbsoluteAddress(uint32_t(dest.address()) + INT64LOW_OFFSET));
@@ -778,9 +809,7 @@ class Assembler : public AssemblerX86Shared
     CodeOffset movlWithPatchHigh(Register regHigh, const Operand& dest) {
         switch (dest.kind()) {
           case Operand::MEM_REG_DISP: {
-            Address addr = dest.toAddress();
-            Operand high(addr.base, addr.offset + INT64HIGH_OFFSET);
-            return movlWithPatch(regHigh, high);
+            return movlWithPatch(regHigh, HighWord(dest));
           }
           case Operand::MEM_ADDRESS32: {
             Operand high(PatchedAbsoluteAddress(uint32_t(dest.address()) + INT64HIGH_OFFSET));

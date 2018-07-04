@@ -24,8 +24,6 @@ XPIDL_MODULE = 'widget_android'
 
 EXPORTS += [
     'AndroidBridge.h',
-    'AndroidJavaWrappers.h',
-    'AndroidJNIWrapper.h',
     'GeneratedJNINatives.h',
     'GeneratedJNIWrappers.h',
 ]
@@ -40,9 +38,6 @@ UNIFIED_SOURCES += [
     'AndroidBridge.cpp',
     'AndroidCompositorWidget.cpp',
     'AndroidContentController.cpp',
-    'AndroidJavaWrappers.cpp',
-    'AndroidJNI.cpp',
-    'AndroidJNIWrapper.cpp',
     'AndroidUiThread.cpp',
     'ANRReporter.cpp',
     'EventDispatcher.cpp',
@@ -55,7 +50,8 @@ UNIFIED_SOURCES += [
     'nsDeviceContextAndroid.cpp',
     'nsIdleServiceAndroid.cpp',
     'nsLookAndFeel.cpp',
-    'nsPrintOptionsAndroid.cpp',
+    'nsNativeThemeAndroid.cpp',
+    'nsPrintSettingsServiceAndroid.cpp',
     'nsScreenManagerAndroid.cpp',
     'nsWidgetFactory.cpp',
     'nsWindow.cpp',
@@ -69,6 +65,9 @@ LOCAL_INCLUDES += [
     '/docshell/base',
     '/dom/base',
     '/dom/system/android',
+    '/gfx/2d',
+    '/gfx/vr',
+    '/layout/painting',
     '/netwerk/base',
     '/netwerk/cache',
     '/widget',
@@ -79,5 +78,7 @@ CXXFLAGS += ['-Wno-error=shadow']
 
 OS_LIBS += ['android']
 
-#DEFINES['DEBUG_WIDGETS'] = True
+if CONFIG['MOZ_NATIVE_DEVICES']:
+    DEFINES['MOZ_NATIVE_DEVICES'] = True
 
+#DEFINES['DEBUG_WIDGETS'] = True

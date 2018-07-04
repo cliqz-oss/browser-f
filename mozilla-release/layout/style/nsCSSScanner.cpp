@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -351,7 +352,6 @@ nsCSSScanner::nsCSSScanner(const nsAString& aBuffer, uint32_t aLineNumber)
   , mTokenOffset(0)
   , mRecordStartOffset(0)
   , mEOFCharacters(eEOFCharacters_None)
-  , mReporter(nullptr)
   , mRecording(false)
   , mSeenBadToken(false)
   , mSeenVariableReference(false)
@@ -543,27 +543,64 @@ nsCSSScanner::SkipWhitespace()
 }
 
 /**
+ * If the given text appears at the current offset in the buffer,
+ * advance over the text and return true.  Otherwise, return false.
+ * mLength is the number of characters in mDirective.
+ */
+bool
+nsCSSScanner::CheckCommentDirective(const nsAString& aDirective)
+{
+  nsDependentSubstring text(&mBuffer[mOffset], &mBuffer[mCount]);
+
+  if (StringBeginsWith(text, aDirective)) {
+    Advance(aDirective.Length());
+    return true;
+  }
+  return false;
+}
+
+/**
  * Skip over one CSS comment starting at the current read position.
  */
 void
 nsCSSScanner::SkipComment()
 {
+  // Note that these do not start with "#" or "@" -- that is handled
+  // separately, below.
+  static NS_NAMED_LITERAL_STRING(kSourceMappingURLDirective, " sourceMappingURL=");
+  static NS_NAMED_LITERAL_STRING(kSourceURLDirective, " sourceURL=");
+
   MOZ_ASSERT(Peek() == '/' && Peek(1) == '*', "should not have been called");
   Advance(2);
+
+  // If we saw one of the directives, this will be non-NULL and will
+  // point to the string into which the URL will be written.
+  nsString* directive = nullptr;
+  if (Peek() == '#' || Peek() == '@') {
+    // Check for the comment directives.
+    Advance();
+    if (CheckCommentDirective(kSourceMappingURLDirective)) {
+      mSourceMapURL.Truncate();
+      directive = &mSourceMapURL;
+    } else if (CheckCommentDirective(kSourceURLDirective)) {
+      mSourceURL.Truncate();
+      directive = &mSourceURL;
+    }
+  }
+
   for (;;) {
     int32_t ch = Peek();
     if (ch < 0) {
-      if (mReporter)
-        mReporter->ReportUnexpectedEOF("PECommentEOF");
       SetEOFCharacters(eEOFCharacters_Asterisk | eEOFCharacters_Slash);
       return;
     }
+
     if (ch == '*') {
       Advance();
       ch = Peek();
       if (ch < 0) {
-        if (mReporter)
-          mReporter->ReportUnexpectedEOF("PECommentEOF");
+        // In this case, even if we saw a source map directive, leave
+        // the "*" out of it.
         SetEOFCharacters(eEOFCharacters_Slash);
         return;
       }
@@ -571,9 +608,21 @@ nsCSSScanner::SkipComment()
         Advance();
         return;
       }
+      if (directive != nullptr) {
+        directive->Append('*');
+      }
     } else if (IsVertSpace(ch)) {
       AdvanceLine();
+      // Done with the directive, so stop copying.
+      directive = nullptr;
+    } else if (IsWhitespace(ch)) {
+      Advance();
+      // Done with the directive, so stop copying.
+      directive = nullptr;
     } else {
+      if (directive != nullptr) {
+        directive->Append(ch);
+      }
       Advance();
     }
   }
@@ -992,8 +1041,6 @@ nsCSSScanner::ScanString(nsCSSToken& aToken)
 
     mSeenBadToken = true;
     aToken.mType = eCSSToken_Bad_String;
-    if (mReporter)
-      mReporter->ReportUnexpected("SEUnterminatedString", aToken);
     break;
   }
   return true;

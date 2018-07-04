@@ -27,7 +27,7 @@ static bool CompareFDTime(const FileData& fd1, const FileData& fd2)
   return fd1.timestamp > fd2.timestamp;
 }
 
-void UIPruneSavedDumps(const std::string& directory)
+void UIPruneSavedDumps(const string& directory)
 {
   DIR *dirfd = opendir(directory.c_str());
   if (!dirfd)
@@ -55,6 +55,8 @@ void UIPruneSavedDumps(const std::string& directory)
     dumpfiles.push_back(fd);
   }
 
+  closedir(dirfd);
+
   sort(dumpfiles.begin(), dumpfiles.end(), CompareFDTime);
 
   while (dumpfiles.size() > kSaveCount) {
@@ -70,9 +72,7 @@ void UIPruneSavedDumps(const std::string& directory)
   }
 }
 
-bool UIRunProgram(const std::string& exename,
-                  const std::vector<std::string>& args,
-                  bool wait)
+bool UIRunProgram(const string& exename, const vector<string>& args, bool wait)
 {
   pid_t pid = fork();
 
@@ -81,7 +81,7 @@ bool UIRunProgram(const std::string& exename,
   } else if (pid == 0) {
     // Child
     size_t argvLen = args.size() + 2;
-    char** argv = new char*[argvLen];
+    vector<char*> argv(argvLen);
 
     argv[0] = const_cast<char*>(exename.c_str());
 
@@ -92,8 +92,7 @@ bool UIRunProgram(const std::string& exename,
     argv[argvLen - 1] = nullptr;
 
     // Run the program
-    int rv = execv(exename.c_str(), argv);
-    delete[] argv;
+    int rv = execv(exename.c_str(), argv.data());
 
     if (rv == -1) {
       exit(EXIT_FAILURE);
@@ -161,7 +160,7 @@ std::ofstream* UIOpenWrite(const string& filename,
   return new std::ofstream(filename.c_str(), mode);
 }
 
-string UIGetEnv(const string name)
+string UIGetEnv(const string& name)
 {
   const char *var = getenv(name.c_str());
   if (var && *var) {

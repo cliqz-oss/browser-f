@@ -5,11 +5,7 @@
 
 const isMac = ("nsILocalFileMac" in Ci);
 
-const searchbar = document.getElementById("searchbar");
-const textbox = searchbar._textbox;
 const searchPopup = document.getElementById("PopupSearchAutoComplete");
-const searchIcon = document.getAnonymousElementByAttribute(searchbar, "anonid",
-                                                           "searchbar-search-button");
 
 const oneOffsContainer =
   document.getAnonymousElementByAttribute(searchPopup, "anonid",
@@ -42,21 +38,32 @@ function synthesizeNativeMouseMove(aElement) {
   let x = win.mozInnerScreenX + (rect.left + rect.right) / 2;
   let y = win.mozInnerScreenY + (rect.top + rect.bottom) / 2;
 
-  // Wait for the mouseup event to occur before continuing.
+  // Wait for the mousemove event to occur before continuing.
   return new Promise((resolve, reject) => {
     function eventOccurred(e) {
-      aElement.removeEventListener("mouseover", eventOccurred, true);
-      resolve();
+      aElement.removeEventListener("mousemove", eventOccurred, true);
+      SimpleTest.executeSoon(resolve);
     }
 
-    aElement.addEventListener("mouseover", eventOccurred, true);
+    aElement.addEventListener("mousemove", eventOccurred, true);
 
     utils.sendNativeMouseEvent(x * scale, y * scale, msg, 0, null);
   });
 }
 
+let searchbar;
+let searchIcon;
 
 add_task(async function init() {
+  await SpecialPowers.pushPrefEnv({ set: [
+    ["browser.search.widget.inNavBar", true],
+  ]});
+
+  searchbar = document.getElementById("searchbar");
+  searchIcon = document.getAnonymousElementByAttribute(
+    searchbar, "anonid", "searchbar-search-button"
+  );
+
   await promiseNewEngine("testEngine.xml");
 });
 
@@ -87,14 +94,14 @@ add_task(async function test_notext() {
 
   promise = promiseEvent(searchPopup, "popuphidden");
   info("Closing search panel");
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
   await promise;
 });
 
 add_task(async function test_text() {
-  textbox.value = "foo";
+  searchbar._textbox.value = "foo";
   registerCleanupFunction(() => {
-    textbox.value = "";
+    searchbar._textbox.value = "";
   });
 
   let promise = promiseEvent(searchPopup, "popupshown");
@@ -133,7 +140,8 @@ add_task(async function test_text() {
     EventUtils.synthesizeMouseAtCenter(searchbarEngine, {});
   });
 
-  let url = Services.search.currentEngine.getSubmission(textbox.value).uri.spec;
+  let url = Services.search.currentEngine
+                           .getSubmission(searchbar._textbox.value).uri.spec;
   await promiseTabLoadEvent(gBrowser.selectedTab, url);
 
   // Move the cursor out of the panel area to avoid messing with other tests.

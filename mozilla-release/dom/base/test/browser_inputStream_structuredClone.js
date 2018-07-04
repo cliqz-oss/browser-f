@@ -1,7 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const { classes: Cc, interfaces: Ci } = Components;
 const URIs = [
   "about:about",
   "http://example.com/browser/dom/base/test/empty.html"
@@ -40,7 +39,7 @@ async function runTest(input, url) {
   ok(data.inputStream instanceof Ci.nsIInputStream, "The original object was an inputStream");
   ok(dataBack.inputStream instanceof Ci.nsIInputStream, "We have an inputStream back from the content.");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 add_task(async function test() {

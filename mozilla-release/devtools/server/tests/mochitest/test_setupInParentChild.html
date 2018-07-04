@@ -14,16 +14,12 @@ Bug 1181100 - Test DebuggerServerConnection.setupInParent and DebuggerServer.set
 <script type="application/javascript">
 "use strict";
 
-let Cu = Components.utils;
-let Cc = Components.classes;
-let Ci = Components.interfaces;
-
-let {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
-let {DebuggerClient} = require("devtools/shared/client/main");
+let {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+let {DebuggerClient} = require("devtools/shared/client/debugger-client");
 let {DebuggerServer} = require("devtools/server/main");
 let Services = require("Services");
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
 
   SpecialPowers.pushPrefEnv({
@@ -42,11 +38,9 @@ function runTests() {
   document.body.appendChild(iframe);
 
   // Instantiate a minimal server
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-  }
+  DebuggerServer.init();
   if (!DebuggerServer.createRootActor) {
-    DebuggerServer.addBrowserActors();
+    DebuggerServer.registerAllActors();
   }
 
   // Fake a connection to an iframe
@@ -55,10 +49,8 @@ function runTests() {
   let client = new DebuggerClient(transport);
 
   // Wait for a response from setupInChild
-  const ppmm = Cc["@mozilla.org/parentprocessmessagemanager;1"]
-                 .getService(Ci.nsIMessageListenerManager);
   let onChild = msg => {
-    ppmm.removeMessageListener("test:setupChild", onChild);
+    Services.ppmm.removeMessageListener("test:setupChild", onChild);
     let args = msg.json;
 
     is(args[0], 1, "Got first numeric argument");
@@ -71,7 +63,7 @@ function runTests() {
       setupChild: "callParent"
     });
   };
-  ppmm.addMessageListener("test:setupChild", onChild);
+  Services.ppmm.addMessageListener("test:setupChild", onChild);
 
   // Wait also for a reponse from setupInParent called from setup-in-child.js
   let onParent = (_, topic, args) => {
@@ -86,7 +78,7 @@ function runTests() {
   Services.obs.addObserver(onParent, "test:setupParent");
 
   // Instanciate e10s machinery and call setupInChild
-  DebuggerServer.connectToChild(conn, iframe).then(actor => {
+  DebuggerServer.connectToFrame(conn, iframe).then(actor => {
     DebuggerServer.setupInChild({
       module: "chrome://mochitests/content/chrome/devtools/server/tests/mochitest/setup-in-child.js",
       setupChild: "setupChild",
@@ -95,7 +87,7 @@ function runTests() {
   });
 
   function cleanup() {
-    client.close().then(function () {
+    client.close().then(function() {
       DebuggerServer.destroy();
       iframe.remove();
       SimpleTest.finish();

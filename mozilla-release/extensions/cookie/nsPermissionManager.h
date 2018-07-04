@@ -16,6 +16,7 @@
 #include "nsTArray.h"
 #include "nsString.h"
 #include "nsPermission.h"
+#include "nsIPrefBranch.h"
 #include "nsHashKeys.h"
 #include "nsCOMArray.h"
 #include "nsDataHashtable.h"
@@ -112,9 +113,9 @@ public:
       : nsRefPtrHashKey<PermissionKey>(aPermissionKey)
     {}
 
-    PermissionHashKey(const PermissionHashKey& toCopy)
-      : nsRefPtrHashKey<PermissionKey>(toCopy)
-      , mPermissions(toCopy.mPermissions)
+    PermissionHashKey(PermissionHashKey&& toCopy)
+      : nsRefPtrHashKey<PermissionKey>(mozilla::Move(toCopy))
+      , mPermissions(mozilla::Move(toCopy.mPermissions))
     {}
 
     bool KeyEquals(const PermissionKey* aKey) const
@@ -166,7 +167,7 @@ public:
   NS_DECL_NSIOBSERVER
 
   nsPermissionManager();
-  static nsIPermissionManager* GetXPCOMSingleton();
+  static already_AddRefed<nsIPermissionManager> GetXPCOMSingleton();
   nsresult Init();
 
   // enums for AddInternal()
@@ -275,7 +276,7 @@ public:
    * produce at least one key.
    *
    * Unlike GetKeyForPrincipal, this method also gets the keys for base domains
-   * of the given principal. All keys returned by this method must be avaliable
+   * of the given principal. All keys returned by this method must be available
    * in the content process for a given URL to successfully have its permissions
    * checked in the `aExactHostMatch = false` situation.
    *
@@ -362,12 +363,12 @@ private:
 
   /**
    * Returns false if this permission manager wouldn't have the permission
-   * requested avaliable.
+   * requested available.
    *
    * If aType is nullptr, checks that the permission manager would have all
-   * permissions avaliable for the given principal.
+   * permissions available for the given principal.
    */
-  bool PermissionAvaliable(nsIPrincipal* aPrincipal, const char* aType);
+  bool PermissionAvailable(nsIPrincipal* aPrincipal, const char* aType);
 
   nsRefPtrHashtable<nsCStringHashKey, mozilla::GenericPromise::Private> mPermissionKeyPromiseMap;
 
@@ -388,6 +389,8 @@ private:
   // Initially, |false|. Set to |true| once shutdown has started, to avoid
   // reopening the database.
   bool mIsShuttingDown;
+
+  nsCOMPtr<nsIPrefBranch> mDefaultPrefBranch;
 
   friend class DeleteFromMozHostListener;
   friend class CloseDatabaseListener;

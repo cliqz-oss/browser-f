@@ -1,3 +1,4 @@
+// |reftest| skip -- regexp-named-groups is not supported
 // Copyright 2017 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -5,7 +6,7 @@
 description: Named substitutions are found by getting the property from the groups object
 esid: sec-getsubstitution
 features: [regexp-named-groups]
-info: >
+info: |
   Runtime Semantics: GetSubstitution( matched, str, position, captures, namedCaptures, replacement )
 
   Table: Replacement Text Symbol Substitutions

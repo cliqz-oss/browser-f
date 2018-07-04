@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -41,6 +42,7 @@ void
 Diagnostics::RecordPaintTimes(const PaintTiming& aPaintTimes)
 {
   mDlbMs.Add(aPaintTimes.dlMs());
+  mDlb2Ms.Add(aPaintTimes.dl2Ms());
   mFlbMs.Add(aPaintTimes.flbMs());
   mRasterMs.Add(aPaintTimes.rasterMs());
   mSerializeMs.Add(aPaintTimes.serializeMs());
@@ -87,10 +89,19 @@ Diagnostics::GetFrameOverlayString(const GPUStats& aStats)
     gpuTimeString.c_str(),
     pixelFillRatio,
     screenFillRatio);
-  nsPrintfCString line3("[Content] DL: %0.1fms FLB: %0.1fms Raster: %0.1fms",
+  nsCString line3;
+  if (mDlb2Ms.Average() != 0.0f) {
+    line3 += nsPrintfCString("[Content] DL: %0.1f/%0.1fms FLB: %0.1fms Raster: %0.1fms",
+    mDlb2Ms.Average(),
     mDlbMs.Average(),
     mFlbMs.Average(),
     mRasterMs.Average());
+  } else {
+    line3 += nsPrintfCString("[Content] DL: %0.1fms FLB: %0.1fms Raster: %0.1fms",
+    mDlbMs.Average(),
+    mFlbMs.Average(),
+    mRasterMs.Average());
+  }
   nsPrintfCString line4("[IPDL] Build: %0.1fms Send: %0.1fms Update: %0.1fms",
     mSerializeMs.Average(),
     mSendMs.Average(),

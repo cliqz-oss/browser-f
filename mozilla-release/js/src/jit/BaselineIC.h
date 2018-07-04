@@ -9,11 +9,6 @@
 
 #include "mozilla/Assertions.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-#include "jsgc.h"
-#include "jsopcode.h"
-
 #include "builtin/TypedObject.h"
 #include "gc/Barrier.h"
 #include "jit/BaselineICList.h"
@@ -22,6 +17,9 @@
 #include "jit/SharedICRegisters.h"
 #include "js/GCVector.h"
 #include "vm/ArrayObject.h"
+#include "vm/BytecodeUtil.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "vm/UnboxedObject.h"
 
 namespace js {
@@ -42,14 +40,14 @@ class ICWarmUpCounter_Fallback : public ICFallbackStub
     // Compiler for this stub kind.
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::WarmUpCounter_Fallback, Engine::Baseline)
         { }
 
-        ICWarmUpCounter_Fallback* getStub(ICStubSpace* space) {
+        ICWarmUpCounter_Fallback* getStub(ICStubSpace* space) override {
             return newStub<ICWarmUpCounter_Fallback>(space, getStubCode());
         }
     };
@@ -74,14 +72,14 @@ class ICTypeUpdate_Fallback : public ICStub
     // Compiler for this stub kind.
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::TypeUpdate_Fallback, Engine::Baseline)
         { }
 
-        ICTypeUpdate_Fallback* getStub(ICStubSpace* space) {
+        ICTypeUpdate_Fallback* getStub(ICStubSpace* space) override {
             return newStub<ICTypeUpdate_Fallback>(space, getStubCode());
         }
     };
@@ -98,7 +96,7 @@ class ICTypeUpdate_PrimitiveSet : public TypeCheckPrimitiveSetStub
   public:
     class Compiler : public TypeCheckPrimitiveSetStub::Compiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, ICTypeUpdate_PrimitiveSet* existingStub, JSValueType type)
@@ -114,7 +112,7 @@ class ICTypeUpdate_PrimitiveSet : public TypeCheckPrimitiveSetStub
             return stub->toUpdateStub();
         }
 
-        ICTypeUpdate_PrimitiveSet* getStub(ICStubSpace* space) {
+        ICTypeUpdate_PrimitiveSet* getStub(ICStubSpace* space) override {
             MOZ_ASSERT(!existingStub_);
             return newStub<ICTypeUpdate_PrimitiveSet>(space, getStubCode(), flags_);
         }
@@ -142,7 +140,7 @@ class ICTypeUpdate_SingleObject : public ICStub
     class Compiler : public ICStubCompiler {
       protected:
         HandleObject obj_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, HandleObject obj)
@@ -150,7 +148,7 @@ class ICTypeUpdate_SingleObject : public ICStub
             obj_(obj)
         { }
 
-        ICTypeUpdate_SingleObject* getStub(ICStubSpace* space) {
+        ICTypeUpdate_SingleObject* getStub(ICStubSpace* space) override {
             return newStub<ICTypeUpdate_SingleObject>(space, getStubCode(), obj_);
         }
     };
@@ -177,7 +175,7 @@ class ICTypeUpdate_ObjectGroup : public ICStub
     class Compiler : public ICStubCompiler {
       protected:
         HandleObjectGroup group_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, HandleObjectGroup group)
@@ -185,7 +183,7 @@ class ICTypeUpdate_ObjectGroup : public ICStub
             group_(group)
         { }
 
-        ICTypeUpdate_ObjectGroup* getStub(ICStubSpace* space) {
+        ICTypeUpdate_ObjectGroup* getStub(ICStubSpace* space) override {
             return newStub<ICTypeUpdate_ObjectGroup>(space, getStubCode(), group_);
         }
     };
@@ -202,14 +200,14 @@ class ICTypeUpdate_AnyValue : public ICStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, TypeUpdate_AnyValue, Engine::Baseline)
         {}
 
-        ICTypeUpdate_AnyValue* getStub(ICStubSpace* space) {
+        ICTypeUpdate_AnyValue* getStub(ICStubSpace* space) override {
             return newStub<ICTypeUpdate_AnyValue>(space, getStubCode());
         }
     };
@@ -231,129 +229,14 @@ class ICToBool_Fallback : public ICFallbackStub
     // Compiler for this stub kind.
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::ToBool_Fallback, Engine::Baseline) {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICToBool_Fallback>(space, getStubCode());
-        }
-    };
-};
-
-class ICToBool_Int32 : public ICStub
-{
-    friend class ICStubSpace;
-
-    explicit ICToBool_Int32(JitCode* stubCode)
-      : ICStub(ICStub::ToBool_Int32, stubCode) {}
-
-  public:
-    // Compiler for this stub kind.
-    class Compiler : public ICStubCompiler {
-      protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-      public:
-        explicit Compiler(JSContext* cx)
-          : ICStubCompiler(cx, ICStub::ToBool_Int32, Engine::Baseline) {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICToBool_Int32>(space, getStubCode());
-        }
-    };
-};
-
-class ICToBool_String : public ICStub
-{
-    friend class ICStubSpace;
-
-    explicit ICToBool_String(JitCode* stubCode)
-      : ICStub(ICStub::ToBool_String, stubCode) {}
-
-  public:
-    // Compiler for this stub kind.
-    class Compiler : public ICStubCompiler {
-      protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-      public:
-        explicit Compiler(JSContext* cx)
-          : ICStubCompiler(cx, ICStub::ToBool_String, Engine::Baseline) {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICToBool_String>(space, getStubCode());
-        }
-    };
-};
-
-class ICToBool_NullUndefined : public ICStub
-{
-    friend class ICStubSpace;
-
-    explicit ICToBool_NullUndefined(JitCode* stubCode)
-      : ICStub(ICStub::ToBool_NullUndefined, stubCode) {}
-
-  public:
-    // Compiler for this stub kind.
-    class Compiler : public ICStubCompiler {
-      protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-      public:
-        explicit Compiler(JSContext* cx)
-          : ICStubCompiler(cx, ICStub::ToBool_NullUndefined, Engine::Baseline) {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICToBool_NullUndefined>(space, getStubCode());
-        }
-    };
-};
-
-class ICToBool_Double : public ICStub
-{
-    friend class ICStubSpace;
-
-    explicit ICToBool_Double(JitCode* stubCode)
-      : ICStub(ICStub::ToBool_Double, stubCode) {}
-
-  public:
-    // Compiler for this stub kind.
-    class Compiler : public ICStubCompiler {
-      protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-      public:
-        explicit Compiler(JSContext* cx)
-          : ICStubCompiler(cx, ICStub::ToBool_Double, Engine::Baseline) {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICToBool_Double>(space, getStubCode());
-        }
-    };
-};
-
-class ICToBool_Object : public ICStub
-{
-    friend class ICStubSpace;
-
-    explicit ICToBool_Object(JitCode* stubCode)
-      : ICStub(ICStub::ToBool_Object, stubCode) {}
-
-  public:
-    // Compiler for this stub kind.
-    class Compiler : public ICStubCompiler {
-      protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-      public:
-        explicit Compiler(JSContext* cx)
-          : ICStubCompiler(cx, ICStub::ToBool_Object, Engine::Baseline) {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICToBool_Object>(space, getStubCode());
         }
     };
 };
@@ -372,13 +255,13 @@ class ICToNumber_Fallback : public ICFallbackStub
     // Compiler for this stub kind.
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::ToNumber_Fallback, Engine::Baseline) {}
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICToNumber_Fallback>(space, getStubCode());
         }
     };
@@ -417,9 +300,9 @@ class ICGetElem_Fallback : public ICMonitoredFallbackStub
     class Compiler : public ICStubCompiler {
       protected:
         bool hasReceiver_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(hasReceiver_) << 17);
@@ -431,13 +314,8 @@ class ICGetElem_Fallback : public ICMonitoredFallbackStub
             hasReceiver_(hasReceiver)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
-            ICGetElem_Fallback* stub = newStub<ICGetElem_Fallback>(space, getStubCode());
-            if (!stub)
-                return nullptr;
-            if (!stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
+        ICStub* getStub(ICStubSpace* space) override {
+            return newStub<ICGetElem_Fallback>(space, getStubCode());
         }
     };
 };
@@ -467,14 +345,14 @@ class ICSetElem_Fallback : public ICFallbackStub
     // Compiler for this stub kind.
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::SetElem_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICSetElem_Fallback>(space, getStubCode());
         }
     };
@@ -493,14 +371,14 @@ class ICIn_Fallback : public ICFallbackStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::In_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICIn_Fallback>(space, getStubCode());
         }
     };
@@ -519,14 +397,14 @@ class ICHasOwn_Fallback : public ICFallbackStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::HasOwn_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICHasOwn_Fallback>(space, getStubCode());
         }
     };
@@ -555,18 +433,15 @@ class ICGetName_Fallback : public ICMonitoredFallbackStub
 
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::GetName_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
-            ICGetName_Fallback* stub = newStub<ICGetName_Fallback>(space, getStubCode());
-            if (!stub || !stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
+        ICStub* getStub(ICStubSpace* space) override {
+            return newStub<ICGetName_Fallback>(space, getStubCode());
         }
     };
 };
@@ -584,14 +459,14 @@ class ICBindName_Fallback : public ICFallbackStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::BindName_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICBindName_Fallback>(space, getStubCode());
         }
     };
@@ -610,54 +485,15 @@ class ICGetIntrinsic_Fallback : public ICMonitoredFallbackStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::GetIntrinsic_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
-            ICGetIntrinsic_Fallback* stub =
-                newStub<ICGetIntrinsic_Fallback>(space, getStubCode());
-            if (!stub || !stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
-        }
-    };
-};
-
-// Stub that loads the constant result of a GETINTRINSIC operation.
-class ICGetIntrinsic_Constant : public ICStub
-{
-    friend class ICStubSpace;
-
-    GCPtrValue value_;
-
-    ICGetIntrinsic_Constant(JitCode* stubCode, const Value& value);
-    ~ICGetIntrinsic_Constant();
-
-  public:
-    GCPtrValue& value() {
-        return value_;
-    }
-    static size_t offsetOfValue() {
-        return offsetof(ICGetIntrinsic_Constant, value_);
-    }
-
-    class Compiler : public ICStubCompiler {
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-        HandleValue value_;
-
-      public:
-        Compiler(JSContext* cx, HandleValue value)
-          : ICStubCompiler(cx, ICStub::GetIntrinsic_Constant, Engine::Baseline),
-            value_(value)
-        {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICGetIntrinsic_Constant>(space, getStubCode(), value_);
+        ICStub* getStub(ICStubSpace* space) override {
+            return newStub<ICGetIntrinsic_Fallback>(space, getStubCode());
         }
     };
 };
@@ -688,15 +524,15 @@ class ICSetProp_Fallback : public ICFallbackStub
     class Compiler : public ICStubCompiler {
       protected:
         CodeOffset bailoutReturnOffset_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-        void postGenerateStubCode(MacroAssembler& masm, Handle<JitCode*> code);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
+        void postGenerateStubCode(MacroAssembler& masm, Handle<JitCode*> code) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::SetProp_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICSetProp_Fallback>(space, getStubCode());
         }
     };
@@ -731,7 +567,7 @@ class ICCallStubCompiler : public ICStubCompiler
     void guardSpreadCall(MacroAssembler& masm, Register argcReg, Label* failure,
                          bool isConstructing);
     Register guardFunApply(MacroAssembler& masm, AllocatableGeneralRegisterSet regs,
-                           Register argcReg, bool checkNative, FunApplyThing applyThing,
+                           Register argcReg, FunApplyThing applyThing,
                            Label* failure);
     void pushCallerArguments(MacroAssembler& masm, AllocatableGeneralRegisterSet regs);
     void pushArrayArguments(MacroAssembler& masm, Address arrayVal,
@@ -745,8 +581,6 @@ class ICCall_Fallback : public ICMonitoredFallbackStub
     static const unsigned UNOPTIMIZABLE_CALL_FLAG = 0x1;
 
     static const uint32_t MAX_OPTIMIZED_STUBS = 16;
-    static const uint32_t MAX_SCRIPTED_STUBS = 7;
-    static const uint32_t MAX_NATIVE_STUBS = 7;
 
   private:
     explicit ICCall_Fallback(JitCode* stubCode)
@@ -761,15 +595,8 @@ class ICCall_Fallback : public ICMonitoredFallbackStub
         return extra_ & UNOPTIMIZABLE_CALL_FLAG;
     }
 
-    unsigned scriptedStubCount() const {
-        return numStubsWithKind(Call_Scripted);
-    }
     bool scriptedStubsAreGeneralized() const {
         return hasStub(Call_AnyScripted);
-    }
-
-    unsigned nativeStubCount() const {
-        return numStubsWithKind(Call_Native);
     }
     bool nativeStubsAreGeneralized() const {
         // Return hasStub(Call_AnyNative) after Call_AnyNative stub is added.
@@ -782,10 +609,10 @@ class ICCall_Fallback : public ICMonitoredFallbackStub
         bool isConstructing_;
         bool isSpread_;
         CodeOffset bailoutReturnOffset_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-        void postGenerateStubCode(MacroAssembler& masm, Handle<JitCode*> code);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
+        void postGenerateStubCode(MacroAssembler& masm, Handle<JitCode*> code) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(isSpread_) << 17) |
@@ -799,11 +626,8 @@ class ICCall_Fallback : public ICMonitoredFallbackStub
             isSpread_(isSpread)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
-            ICCall_Fallback* stub = newStub<ICCall_Fallback>(space, getStubCode());
-            if (!stub || !stub->initMonitoringChain(cx, space))
-                return nullptr;
-            return stub;
+        ICStub* getStub(ICStubSpace* space) override {
+            return newStub<ICCall_Fallback>(space, getStubCode());
         }
     };
 };
@@ -875,9 +699,9 @@ class ICCallScriptedCompiler : public ICCallStubCompiler {
     RootedFunction callee_;
     RootedObject templateObject_;
     uint32_t pcOffset_;
-    MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+    MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-    virtual int32_t getKey() const {
+    virtual int32_t getKey() const override {
         return static_cast<int32_t>(engine_) |
               (static_cast<int32_t>(kind) << 1) |
               (static_cast<int32_t>(isConstructing_) << 17) |
@@ -908,7 +732,7 @@ class ICCallScriptedCompiler : public ICCallStubCompiler {
         pcOffset_(pcOffset)
     { }
 
-    ICStub* getStub(ICStubSpace* space) {
+    ICStub* getStub(ICStubSpace* space) override {
         if (callee_) {
             return newStub<ICCall_Scripted>(space, getStubCode(), firstMonitorStub_, callee_,
                                             templateObject_, pcOffset_);
@@ -927,7 +751,7 @@ class ICCall_Native : public ICMonitoredStub
     uint32_t pcOffset_;
 
 #ifdef JS_SIMULATOR
-    void *native_;
+    void* native_;
 #endif
 
     ICCall_Native(JitCode* stubCode, ICStub* firstMonitorStub,
@@ -968,9 +792,9 @@ class ICCall_Native : public ICMonitoredStub
         RootedFunction callee_;
         RootedObject templateObject_;
         uint32_t pcOffset_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(isSpread_) << 17) |
@@ -992,7 +816,7 @@ class ICCall_Native : public ICMonitoredStub
             pcOffset_(pcOffset)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCall_Native>(space, getStubCode(), firstMonitorStub_, callee_,
                                           templateObject_, pcOffset_);
         }
@@ -1046,9 +870,9 @@ class ICCall_ClassHook : public ICMonitoredStub
         Native native_;
         RootedObject templateObject_;
         uint32_t pcOffset_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1) |
                   (static_cast<int32_t>(isConstructing_) << 17);
@@ -1068,7 +892,7 @@ class ICCall_ClassHook : public ICMonitoredStub
             pcOffset_(pcOffset)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCall_ClassHook>(space, getStubCode(), firstMonitorStub_, clasp_,
                                              native_, templateObject_, pcOffset_);
         }
@@ -1107,9 +931,9 @@ class ICCall_ScriptedApplyArray : public ICMonitoredStub
       protected:
         ICStub* firstMonitorStub_;
         uint32_t pcOffset_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1);
         }
@@ -1121,7 +945,7 @@ class ICCall_ScriptedApplyArray : public ICMonitoredStub
             pcOffset_(pcOffset)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCall_ScriptedApplyArray>(space, getStubCode(), firstMonitorStub_,
                                                       pcOffset_);
         }
@@ -1155,9 +979,9 @@ class ICCall_ScriptedApplyArguments : public ICMonitoredStub
       protected:
         ICStub* firstMonitorStub_;
         uint32_t pcOffset_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1);
         }
@@ -1169,7 +993,7 @@ class ICCall_ScriptedApplyArguments : public ICMonitoredStub
             pcOffset_(pcOffset)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCall_ScriptedApplyArguments>(space, getStubCode(), firstMonitorStub_,
                                                           pcOffset_);
         }
@@ -1202,9 +1026,9 @@ class ICCall_ScriptedFunCall : public ICMonitoredStub
       protected:
         ICStub* firstMonitorStub_;
         uint32_t pcOffset_;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1);
         }
@@ -1216,7 +1040,7 @@ class ICCall_ScriptedFunCall : public ICMonitoredStub
             pcOffset_(pcOffset)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCall_ScriptedFunCall>(space, getStubCode(), firstMonitorStub_,
                                                    pcOffset_);
         }
@@ -1231,10 +1055,10 @@ class ICCall_ConstStringSplit : public ICMonitoredStub
     uint32_t pcOffset_;
     GCPtrString expectedStr_;
     GCPtrString expectedSep_;
-    GCPtrObject templateObject_;
+    GCPtrArrayObject templateObject_;
 
     ICCall_ConstStringSplit(JitCode* stubCode, ICStub* firstMonitorStub, uint32_t pcOffset,
-                            JSString* str, JSString* sep, JSObject* templateObject)
+                            JSString* str, JSString* sep, ArrayObject* templateObject)
       : ICMonitoredStub(ICStub::Call_ConstStringSplit, stubCode, firstMonitorStub),
         pcOffset_(pcOffset), expectedStr_(str), expectedSep_(sep),
         templateObject_(templateObject)
@@ -1261,7 +1085,7 @@ class ICCall_ConstStringSplit : public ICMonitoredStub
         return expectedSep_;
     }
 
-    GCPtrObject& templateObject() {
+    GCPtrArrayObject& templateObject() {
         return templateObject_;
     }
 
@@ -1271,27 +1095,27 @@ class ICCall_ConstStringSplit : public ICMonitoredStub
         uint32_t pcOffset_;
         RootedString expectedStr_;
         RootedString expectedSep_;
-        RootedObject templateObject_;
+        RootedArrayObject templateObject_;
 
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
-        virtual int32_t getKey() const {
+        virtual int32_t getKey() const override {
             return static_cast<int32_t>(engine_) |
                   (static_cast<int32_t>(kind) << 1);
         }
 
       public:
         Compiler(JSContext* cx, ICStub* firstMonitorStub, uint32_t pcOffset, HandleString str,
-                 HandleString sep, HandleValue templateObject)
+                 HandleString sep, HandleArrayObject templateObject)
           : ICCallStubCompiler(cx, ICStub::Call_ConstStringSplit),
             firstMonitorStub_(firstMonitorStub),
             pcOffset_(pcOffset),
             expectedStr_(cx, str),
             expectedSep_(cx, sep),
-            templateObject_(cx, &templateObject.toObject())
+            templateObject_(cx, templateObject)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICCall_ConstStringSplit>(space, getStubCode(), firstMonitorStub_,
                                                     pcOffset_, expectedStr_, expectedSep_,
                                                     templateObject_);
@@ -1299,26 +1123,26 @@ class ICCall_ConstStringSplit : public ICMonitoredStub
    };
 };
 
-class ICCall_IsSuspendedStarGenerator : public ICStub
+class ICCall_IsSuspendedGenerator : public ICStub
 {
     friend class ICStubSpace;
 
   protected:
-    explicit ICCall_IsSuspendedStarGenerator(JitCode* stubCode)
-      : ICStub(ICStub::Call_IsSuspendedStarGenerator, stubCode)
+    explicit ICCall_IsSuspendedGenerator(JitCode* stubCode)
+      : ICStub(ICStub::Call_IsSuspendedGenerator, stubCode)
     {}
 
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
-          : ICStubCompiler(cx, ICStub::Call_IsSuspendedStarGenerator, Engine::Baseline)
+          : ICStubCompiler(cx, ICStub::Call_IsSuspendedGenerator, Engine::Baseline)
         {}
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICCall_IsSuspendedStarGenerator>(space, getStubCode());
+        ICStub* getStub(ICStubSpace* space) override {
+            return newStub<ICCall_IsSuspendedGenerator>(space, getStubCode());
         }
    };
 };
@@ -1345,7 +1169,7 @@ class ICTableSwitch : public ICStub
     void fixupJumpTable(JSScript* script, BaselineScript* baseline);
 
     class Compiler : public ICStubCompiler {
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
         jsbytecode* pc_;
 
@@ -1354,7 +1178,7 @@ class ICTableSwitch : public ICStub
           : ICStubCompiler(cx, ICStub::TableSwitch, Engine::Baseline), pc_(pc)
         {}
 
-        ICStub* getStub(ICStubSpace* space);
+        ICStub* getStub(ICStubSpace* space) override;
     };
 };
 
@@ -1370,14 +1194,14 @@ class ICGetIterator_Fallback : public ICFallbackStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::GetIterator_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICGetIterator_Fallback>(space, getStubCode());
         }
     };
@@ -1403,14 +1227,14 @@ class ICIteratorMore_Fallback : public ICFallbackStub
 
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::IteratorMore_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICIteratorMore_Fallback>(space, getStubCode());
         }
     };
@@ -1428,14 +1252,14 @@ class ICIteratorMore_Native : public ICStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::IteratorMore_Native, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICIteratorMore_Native>(space, getStubCode());
         }
     };
@@ -1453,14 +1277,14 @@ class ICIteratorClose_Fallback : public ICFallbackStub
   public:
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::IteratorClose_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICIteratorClose_Fallback>(space, getStubCode());
         }
     };
@@ -1479,7 +1303,6 @@ class ICInstanceOf_Fallback : public ICFallbackStub
     static const uint16_t UNOPTIMIZABLE_ACCESS_BIT = 0x1;
 
   public:
-    static const uint32_t MAX_OPTIMIZED_STUBS = 4;
 
     void noteUnoptimizableAccess() {
         extra_ |= UNOPTIMIZABLE_ACCESS_BIT;
@@ -1490,68 +1313,15 @@ class ICInstanceOf_Fallback : public ICFallbackStub
 
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::InstanceOf_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICInstanceOf_Fallback>(space, getStubCode());
-        }
-    };
-};
-
-class ICInstanceOf_Function : public ICStub
-{
-    friend class ICStubSpace;
-
-    GCPtrShape shape_;
-    GCPtrObject prototypeObj_;
-    uint32_t slot_;
-
-    ICInstanceOf_Function(JitCode* stubCode, Shape* shape, JSObject* prototypeObj, uint32_t slot);
-
-  public:
-    GCPtrShape& shape() {
-        return shape_;
-    }
-    GCPtrObject& prototypeObject() {
-        return prototypeObj_;
-    }
-    uint32_t slot() const {
-        return slot_;
-    }
-    static size_t offsetOfShape() {
-        return offsetof(ICInstanceOf_Function, shape_);
-    }
-    static size_t offsetOfPrototypeObject() {
-        return offsetof(ICInstanceOf_Function, prototypeObj_);
-    }
-    static size_t offsetOfSlot() {
-        return offsetof(ICInstanceOf_Function, slot_);
-    }
-
-    class Compiler : public ICStubCompiler {
-        RootedShape shape_;
-        RootedObject prototypeObj_;
-        uint32_t slot_;
-
-      protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
-
-      public:
-        Compiler(JSContext* cx, Shape* shape, JSObject* prototypeObj, uint32_t slot)
-          : ICStubCompiler(cx, ICStub::InstanceOf_Function, Engine::Baseline),
-            shape_(cx, shape),
-            prototypeObj_(cx, prototypeObj),
-            slot_(slot)
-        {}
-
-        ICStub* getStub(ICStubSpace* space) {
-            return newStub<ICInstanceOf_Function>(space, getStubCode(), shape_, prototypeObj_,
-                                                  slot_);
         }
     };
 };
@@ -1572,14 +1342,14 @@ class ICTypeOf_Fallback : public ICFallbackStub
 
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::TypeOf_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICTypeOf_Fallback>(space, getStubCode());
         }
     };
@@ -1605,7 +1375,7 @@ class ICRest_Fallback : public ICFallbackStub
     class Compiler : public ICStubCompiler {
       protected:
         RootedArrayObject templateObject;
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, ArrayObject* templateObject)
@@ -1613,7 +1383,7 @@ class ICRest_Fallback : public ICFallbackStub
             templateObject(cx, templateObject)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICRest_Fallback>(space, getStubCode(), templateObject);
         }
     };
@@ -1633,14 +1403,14 @@ class ICRetSub_Fallback : public ICFallbackStub
 
     class Compiler : public ICStubCompiler {
       protected:
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         explicit Compiler(JSContext* cx)
           : ICStubCompiler(cx, ICStub::RetSub_Fallback, Engine::Baseline)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICRetSub_Fallback>(space, getStubCode());
         }
     };
@@ -1674,7 +1444,7 @@ class ICRetSub_Resume : public ICStub
         uint32_t pcOffset_;
         uint8_t* addr_;
 
-        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm);
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
 
       public:
         Compiler(JSContext* cx, uint32_t pcOffset, uint8_t* addr)
@@ -1683,8 +1453,46 @@ class ICRetSub_Resume : public ICStub
             addr_(addr)
         { }
 
-        ICStub* getStub(ICStubSpace* space) {
+        ICStub* getStub(ICStubSpace* space) override {
             return newStub<ICRetSub_Resume>(space, getStubCode(), pcOffset_, addr_);
+        }
+    };
+};
+
+// UnaryArith
+//     JSOP_BITNOT
+//     JSOP_NEG
+
+class ICUnaryArith_Fallback : public ICFallbackStub
+{
+    friend class ICStubSpace;
+
+    explicit ICUnaryArith_Fallback(JitCode* stubCode)
+      : ICFallbackStub(UnaryArith_Fallback, stubCode)
+    {
+        extra_ = 0;
+    }
+
+  public:
+    bool sawDoubleResult() {
+        return extra_;
+    }
+    void setSawDoubleResult() {
+        extra_ = 1;
+    }
+
+    // Compiler for this stub kind.
+    class Compiler : public ICStubCompiler {
+      protected:
+        MOZ_MUST_USE bool generateStubCode(MacroAssembler& masm) override;
+
+      public:
+        explicit Compiler(JSContext* cx)
+          : ICStubCompiler(cx, ICStub::UnaryArith_Fallback, Engine::Baseline)
+        {}
+
+        ICStub* getStub(ICStubSpace* space) override {
+            return newStub<ICUnaryArith_Fallback>(space, getStubCode());
         }
     };
 };

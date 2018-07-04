@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -45,6 +46,7 @@ class ThebesBufferData;
 class TiledContentHost;
 class CompositableParentManager;
 class WebRenderImageHost;
+class ContentHost;
 class ContentHostTexture;
 struct EffectChain;
 
@@ -89,7 +91,7 @@ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CompositableHost)
   explicit CompositableHost(const TextureInfo& aTextureInfo);
 
-  static already_AddRefed<CompositableHost> Create(const TextureInfo& aTextureInfo);
+  static already_AddRefed<CompositableHost> Create(const TextureInfo& aTextureInfo, bool aUseWebRender);
 
   virtual CompositableType GetType() = 0;
 
@@ -148,6 +150,7 @@ public:
   Layer* GetLayer() const { return mLayer; }
   void SetLayer(Layer* aLayer) { mLayer = aLayer; }
 
+  virtual ContentHost* AsContentHost() { return nullptr; }
   virtual ContentHostTexture* AsContentHostTexture() { return nullptr; }
   virtual ImageHost* AsImageHost() { return nullptr; }
   virtual TiledContentHost* AsTiledContentHost() { return nullptr; }

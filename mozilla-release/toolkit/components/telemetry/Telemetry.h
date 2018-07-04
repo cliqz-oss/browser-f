@@ -10,7 +10,7 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/StartupTimeline.h"
 #include "nsTArray.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsXULAppAPI.h"
 
 #include "mozilla/TelemetryHistogramEnums.h"
@@ -34,16 +34,11 @@ namespace HangMonitor {
 } // namespace HangMonitor
 namespace Telemetry {
 
-struct Accumulation;
-struct KeyedAccumulation;
+struct HistogramAccumulation;
+struct KeyedHistogramAccumulation;
 struct ScalarAction;
 struct KeyedScalarAction;
 struct ChildEventData;
-
-enum TimerResolution {
-  Millisecond,
-  Microsecond
-};
 
 /**
  * Initialize the Telemetry service on the main thread at startup.
@@ -59,6 +54,13 @@ void Init();
 void Accumulate(HistogramID id, uint32_t sample);
 
 /**
+ * Adds an array of samples to a histogram defined in TelemetryHistograms.h
+ * @param id - histogram id
+ * @param samples - values to record.
+ */
+void Accumulate(HistogramID id, const nsTArray<uint32_t>& samples);
+
+/**
  * Adds sample to a keyed histogram defined in TelemetryHistogramEnums.h
  *
  * @param id - keyed histogram id
@@ -66,6 +68,14 @@ void Accumulate(HistogramID id, uint32_t sample);
  * @param sample - (optional) value to record, defaults to 1.
  */
 void Accumulate(HistogramID id, const nsCString& key, uint32_t sample = 1);
+
+/**
+ * Adds an array of samples to a histogram defined in TelemetryHistograms.h
+ * @param id - histogram id
+ * @param samples - values to record.
+ * @param key - the string key
+ */
+void Accumulate(HistogramID id, const nsCString& key, const nsTArray<uint32_t>& samples);
 
 /**
  * Adds a sample to a histogram defined in TelemetryHistogramEnums.h.
@@ -106,6 +116,30 @@ void AccumulateCategorical(E enumValue) {
 };
 
 /**
+ * Adds an array of samples to categorical histograms defined in TelemetryHistogramEnums.h
+ * This is the typesafe - and preferred - way to use the categorical histograms
+ * by passing values from the corresponding Telemetry::LABELS_* enums.
+ *
+ * @param enumValues - Array of labels from Telemetry::LABELS_* enums.
+ */
+template<class E>
+void
+AccumulateCategorical(const nsTArray<E>& enumValues)
+{
+  static_assert(IsCategoricalLabelEnum<E>::value,
+                "Only categorical label enum types are supported.");
+  nsTArray<uint32_t> intSamples(enumValues.Length());
+
+  for (E aValue: enumValues){
+    intSamples.AppendElement(static_cast<uint32_t>(aValue));
+  }
+
+  HistogramID categoricalId = static_cast<HistogramID>(CategoricalLabelId<E>::value);
+
+  Accumulate(categoricalId, intSamples);
+}
+
+/**
  * Adds sample to a keyed categorical histogram defined in TelemetryHistogramEnums.h
  * This is the typesafe - and preferred - way to use the keyed categorical histograms
  * by passing values from the corresponding Telemetry::LABELS_* enum.
@@ -123,6 +157,29 @@ void AccumulateCategoricalKeyed(const nsCString& key, E enumValue) {
 };
 
 /**
+ * Adds an array of samples to a keyed categorical histogram defined in TelemetryHistogramEnums.h.
+ * This is the typesafe - and preferred - way to use the keyed categorical histograms
+ * by passing values from the corresponding Telemetry::LABELS_*enum.
+ *
+ * @param key - the string key
+ * @param enumValue - Label value from one of the Telemetry::LABELS_* enums.
+ */
+template<class E>
+void AccumulateCategoricalKeyed(const nsCString& key, const nsTArray<E>& enumValues) {
+    static_assert(IsCategoricalLabelEnum<E>::value,
+                  "Only categorical label enum types are supported.");
+    nsTArray<uint32_t> intSamples(enumValues.Length());
+
+    for (E aValue: enumValues){
+      intSamples.AppendElement(static_cast<uint32_t>(aValue));
+    }
+
+    Accumulate(static_cast<HistogramID>(CategoricalLabelId<E>::value),
+               key,
+               intSamples);
+};
+
+/**
  * Adds sample to a categorical histogram defined in TelemetryHistogramEnums.h
  * This string will be matched against the labels defined in Histograms.json.
  * If the string does not match a label defined for the histogram, nothing will
@@ -134,6 +191,14 @@ void AccumulateCategoricalKeyed(const nsCString& key, E enumValue) {
 void AccumulateCategorical(HistogramID id, const nsCString& label);
 
 /**
+ * Adds an array of samples to a categorical histogram defined in Histograms.json
+ *
+ * @param id - The histogram id
+ * @param labels - The array of labels to accumulate
+ */
+void AccumulateCategorical(HistogramID id, const nsTArray<nsCString>& labels);
+
+/**
  * Adds time delta in milliseconds to a histogram defined in TelemetryHistogramEnums.h
  *
  * @param id - histogram id
@@ -143,9 +208,24 @@ void AccumulateCategorical(HistogramID id, const nsCString& label);
 void AccumulateTimeDelta(HistogramID id, TimeStamp start, TimeStamp end = TimeStamp::Now());
 
 /**
+ * Adds time delta in milliseconds to a keyed histogram defined in
+ * TelemetryHistogramEnums.h
+ *
+ * @param id - histogram id
+ * @param key - the string key
+ * @param start - start time
+ * @param end - end time
+ */
+void
+AccumulateTimeDelta(HistogramID id,
+                    const nsCString& key,
+                    TimeStamp start,
+                    TimeStamp end = TimeStamp::Now());
+
+/**
  * Enable/disable recording for this histogram in this process at runtime.
- * Recording is enabled by default, unless listed at kRecordingInitiallyDisabledIDs[].
- * id must be a valid telemetry enum, otherwise an assertion is triggered.
+ * Recording is enabled by default, unless listed at
+ * kRecordingInitiallyDisabledIDs[]. id must be a valid telemetry enum,
  *
  * @param id - histogram id
  * @param enabled - whether or not to enable recording from now on.
@@ -154,42 +234,48 @@ void SetHistogramRecordingEnabled(HistogramID id, bool enabled);
 
 const char* GetHistogramName(HistogramID id);
 
-/**
- * Those wrappers are needed because the VS versions we use do not support free
- * functions with default template arguments.
- */
-template<TimerResolution res>
-struct AccumulateDelta_impl
+class MOZ_RAII RuntimeAutoTimer
 {
-  static void compute(HistogramID id, TimeStamp start, TimeStamp end = TimeStamp::Now());
-  static void compute(HistogramID id, const nsCString& key, TimeStamp start, TimeStamp end = TimeStamp::Now());
+public:
+  explicit RuntimeAutoTimer(Telemetry::HistogramID aId,
+                            TimeStamp aStart = TimeStamp::Now()
+                            MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+    : id(aId)
+    , start(aStart)
+  {
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+  }
+  explicit RuntimeAutoTimer(Telemetry::HistogramID aId,
+                            const nsCString& aKey,
+                            TimeStamp aStart = TimeStamp::Now()
+                            MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+    : id(aId)
+    , key(aKey)
+    , start(aStart)
+  {
+    MOZ_ASSERT(!aKey.IsEmpty(), "The key must not be empty.");
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+  }
+
+  ~RuntimeAutoTimer()
+  {
+    if (key.IsEmpty()) {
+      AccumulateTimeDelta(id, start);
+    } else {
+      AccumulateTimeDelta(id, key, start);
+    }
+  }
+
+private:
+  Telemetry::HistogramID id;
+  const nsCString key;
+  const TimeStamp start;
+  MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
-template<>
-struct AccumulateDelta_impl<Millisecond>
+template<HistogramID id>
+class MOZ_RAII AutoTimer
 {
-  static void compute(HistogramID id, TimeStamp start, TimeStamp end = TimeStamp::Now()) {
-    Accumulate(id, static_cast<uint32_t>((end - start).ToMilliseconds()));
-  }
-  static void compute(HistogramID id, const nsCString& key, TimeStamp start, TimeStamp end = TimeStamp::Now()) {
-    Accumulate(id, key, static_cast<uint32_t>((end - start).ToMilliseconds()));
-  }
-};
-
-template<>
-struct AccumulateDelta_impl<Microsecond>
-{
-  static void compute(HistogramID id, TimeStamp start, TimeStamp end = TimeStamp::Now()) {
-    Accumulate(id, static_cast<uint32_t>((end - start).ToMicroseconds()));
-  }
-  static void compute(HistogramID id, const nsCString& key, TimeStamp start, TimeStamp end = TimeStamp::Now()) {
-    Accumulate(id, key, static_cast<uint32_t>((end - start).ToMicroseconds()));
-  }
-};
-
-
-template<HistogramID id, TimerResolution res = Millisecond>
-class MOZ_RAII AutoTimer {
 public:
   explicit AutoTimer(TimeStamp aStart = TimeStamp::Now() MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
      : start(aStart)
@@ -207,15 +293,64 @@ public:
 
   ~AutoTimer() {
     if (key.IsEmpty()) {
-      AccumulateDelta_impl<res>::compute(id, start);
+      AccumulateTimeDelta(id, start);
     } else {
-      AccumulateDelta_impl<res>::compute(id, key, start);
+      AccumulateTimeDelta(id, key, start);
     }
   }
 
 private:
   const TimeStamp start;
   const nsCString key;
+  MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+};
+
+class MOZ_RAII RuntimeAutoCounter
+{
+public:
+  explicit RuntimeAutoCounter(
+    HistogramID aId,
+    uint32_t counterStart = 0 MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+    : id(aId)
+    , counter(counterStart)
+  {
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+  }
+
+  ~RuntimeAutoCounter()
+  {
+    Accumulate(id, counter);
+  }
+
+  // Prefix increment only, to encourage good habits.
+  void operator++()
+  {
+    if (NS_WARN_IF(counter == std::numeric_limits<uint32_t>::max())) {
+      return;
+    }
+    ++counter;
+  }
+
+  // Chaining doesn't make any sense, don't return anything.
+  void operator+=(int increment)
+  {
+    if (NS_WARN_IF(increment > 0 &&
+                   static_cast<uint32_t>(increment) >
+                     (std::numeric_limits<uint32_t>::max() - counter))) {
+      counter = std::numeric_limits<uint32_t>::max();
+      return;
+    }
+    if (NS_WARN_IF(increment < 0 &&
+                   static_cast<uint32_t>(-increment) > counter)) {
+      counter = std::numeric_limits<uint32_t>::min();
+      return;
+    }
+    counter += increment;
+  }
+
+private:
+  HistogramID id;
+  uint32_t counter;
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
@@ -233,12 +368,28 @@ public:
   }
 
   // Prefix increment only, to encourage good habits.
-  void operator++() {
+  void operator++()
+  {
+    if (NS_WARN_IF(counter == std::numeric_limits<uint32_t>::max())) {
+      return;
+    }
     ++counter;
   }
 
   // Chaining doesn't make any sense, don't return anything.
-  void operator+=(int increment) {
+  void operator+=(int increment)
+  {
+    if (NS_WARN_IF(increment > 0 &&
+                   static_cast<uint32_t>(increment) >
+                     (std::numeric_limits<uint32_t>::max() - counter))) {
+      counter = std::numeric_limits<uint32_t>::max();
+      return;
+    }
+    if (NS_WARN_IF(increment < 0 &&
+                   static_cast<uint32_t>(-increment) > counter)) {
+      counter = std::numeric_limits<uint32_t>::min();
+      return;
+    }
     counter += increment;
   }
 
@@ -257,6 +408,21 @@ bool CanRecordBase();
  * to guard calls to Accumulate when the statistic being recorded is expensive to compute.
  */
 bool CanRecordExtended();
+
+/**
+ * Indicates whether Telemetry release data recording is turned on. Usually true.
+ *
+ * @see nsITelemetry.canRecordReleaseData
+ */
+bool CanRecordReleaseData();
+
+/**
+ * Indicates whether Telemetry pre-release data recording is turned on. Tends
+ * to be true on pre-release channels.
+ *
+ * @see nsITelemetry.canRecordPrereleaseData
+ */
+bool CanRecordPrereleaseData();
 
 /**
  * Records slow SQL statements for Telemetry reporting.
@@ -326,8 +492,7 @@ void RecordChromeHang(uint32_t aDuration,
                       ProcessedStack &aStack,
                       int32_t aSystemUptime,
                       int32_t aFirefoxUptime,
-                      mozilla::UniquePtr<mozilla::HangMonitor::HangAnnotations>
-                              aAnnotations);
+                      mozilla::HangMonitor::HangAnnotations&& aAnnotations);
 
 /**
  * Record the current thread's call stack on demand. Note that, the stack is
@@ -340,20 +505,6 @@ void RecordChromeHang(uint32_t aDuration,
  */
 void CaptureStack(const nsCString& aKey);
 #endif
-
-class ThreadHangStats;
-
-/**
- * Move a ThreadHangStats to Telemetry storage. Normally Telemetry queries
- * for active ThreadHangStats through BackgroundHangMonitor, but once a
- * thread exits, the thread's copy of ThreadHangStats needs to be moved to
- * inside Telemetry using this function.
- *
- * @param aStats ThreadHangStats to save; the data inside aStats
- *               will be moved and aStats should be treated as
- *               invalid after this function returns
- */
-void RecordThreadHangStats(ThreadHangStats&& aStats);
 
 /**
  * Record a failed attempt at locking the user's profile.

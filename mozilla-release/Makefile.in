@@ -31,7 +31,12 @@ DIST_GARBAGE = config.cache config.log config.status* config-defs.h \
    .mozconfig.mk
 
 ifndef MOZ_PROFILE_USE
+# Automation builds should always have a new buildid, but for the sake of not
+# re-linking libxul on every incremental build we do not enforce this for
+# developer builds.
+ifneq (,$(MOZ_AUTOMATION)$(MOZ_BUILD_DATE))
 buildid.h source-repo.h: FORCE
+endif
 endif
 
 ifdef JS_STANDALONE
@@ -47,7 +52,7 @@ ifndef MOZ_PROFILE_USE
 # We need to explicitly put BUILD_BACKEND_FILES here otherwise the rule in
 # rules.mk doesn't run early enough.
 $(TIERS) binaries:: CLOBBER $(configure_dir)/configure config.status $(BUILD_BACKEND_FILES)
-ifndef JS_STANDALONE
+ifdef MOZ_WIDGET_TOOLKIT
 ifdef COMPILE_ENVIRONMENT
 $(TIERS) binaries:: $(topsrcdir)/js/src/configure js/src/config.status
 endif
@@ -61,8 +66,7 @@ CLOBBER:
 else
 CLOBBER: $(topsrcdir)/CLOBBER
 	@echo 'STOP!  The CLOBBER file has changed.'
-	@echo 'Please run the build through a sanctioned build wrapper, such as'
-	@echo '"mach build" or client.mk.'
+	@echo 'Please run the build through "mach build".'
 	@exit 1
 endif
 
@@ -105,7 +109,7 @@ default:: $(BUILD_BACKEND_FILES)
 endif
 
 install_manifests := \
-  $(addprefix dist/,branding idl include public private sdk xpi-stage) \
+  $(addprefix dist/,branding idl include public private xpi-stage) \
   _tests \
   $(NULL)
 # Skip the dist/bin install manifest when using the hybrid
@@ -122,7 +126,7 @@ install_manifest_depends = \
   $(BUILD_BACKEND_FILES) \
   $(NULL)
 
-ifndef JS_STANDALONE
+ifdef MOZ_WIDGET_TOOLKIT
 ifdef COMPILE_ENVIRONMENT
 install_manifest_depends += \
   $(topsrcdir)/js/src/configure \
@@ -145,37 +149,7 @@ faster: install-dist/idl
 	$(MAKE) -C faster FASTER_RECURSIVE_MAKE=1
 endif
 
-.PHONY: tup
-tup:
-	$(call BUILDSTATUS,TIERS $(if $(MOZ_ARTIFACT_BUILDS),artifact )make tup)
-ifdef MOZ_ARTIFACT_BUILDS
-	$(call BUILDSTATUS,TIER_START artifact)
-	$(MAKE) recurse_artifact
-	$(call BUILDSTATUS,TIER_FINISH artifact)
-endif
-	$(call BUILDSTATUS,TIER_START make)
-	$(MAKE) buildid.h source-repo.h
-	$(call BUILDSTATUS,TIER_FINISH make)
-	$(call BUILDSTATUS,TIER_START tup)
-	@$(TUP) $(if $(findstring s,$(filter-out --%,$(MAKEFLAGS))),,--verbose)
-	$(call BUILDSTATUS,TIER_FINISH tup)
-
-# process_install_manifest needs to be invoked with --no-remove when building
-# js as standalone because automated builds are building nspr separately and
-# that would remove the resulting files.
-# Eventually, a standalone js build would just be able to build nspr itself,
-# removing the need for the former.
-ifdef JS_STANDALONE
-NO_REMOVE=1
-endif
-
-# For an artifact build, _tests will already be partly populated, so run
-# this install manifest with NO_REMOVE set in this case.
-ifdef MOZ_ARTIFACT_BUILDS
-install-_tests: NO_REMOVE=1
-endif
-
-.PHONY: $(addprefix install-,$(subst /,_,$(install_manifests)))
+.PHONY: $(addprefix install-,$(install_manifests))
 $(addprefix install-,$(install_manifests)): install-%: $(install_manifest_depends)
 ifneq (,$(filter FasterMake+RecursiveMake,$(BUILD_BACKENDS)))
 	@# If we're using the hybrid FasterMake/RecursiveMake backend, we want
@@ -183,7 +157,7 @@ ifneq (,$(filter FasterMake+RecursiveMake,$(BUILD_BACKENDS)))
 	@# same directory, because that would blow up
 	$(if $(wildcard _build_manifests/install/$(subst /,_,$*)),$(if $(wildcard faster/install_$(subst /,_,$*)*),$(error FasterMake and RecursiveMake ends of the hybrid build system want to handle $*)))
 endif
-	$(addprefix $(call py_action,process_install_manifest,$(if $(NO_REMOVE),--no-remove )$*) ,$(wildcard _build_manifests/install/$(subst /,_,$*)))
+	$(addprefix $(call py_action,process_install_manifest,--track install_$(subst /,_,$*).track $*) ,$(wildcard _build_manifests/install/$(subst /,_,$*)))
 
 # Dummy wrapper rule to allow the faster backend to piggy back
 $(addprefix install-,$(subst /,_,$(filter dist/%,$(install_manifests)))): install-dist_%: install-dist/% ;
@@ -191,10 +165,9 @@ $(addprefix install-,$(subst /,_,$(filter dist/%,$(install_manifests)))): instal
 .PHONY: install-tests
 install-tests: install-test-files
 
-# Force --no-remove, because $objdir/_tests is handled by multiple manifests.
 .PHONY: install-test-files
 install-test-files:
-	$(call py_action,process_install_manifest,--no-remove _tests _build_manifests/install/_test_files)
+	$(call py_action,process_install_manifest,--track install__test_files.track _tests _build_manifests/install/_test_files)
 
 include $(topsrcdir)/build/moz-automation.mk
 
@@ -203,6 +176,9 @@ include $(topsrcdir)/build/moz-automation.mk
 ifneq ($(filter-out maybe_clobber_profiledbuild,$(MAKECMDGOALS)),)
 GARBAGE_DIRS += dist _tests
 endif
+
+# Dummy rule for the cases below where we don't depend on dist/include
+recurse_pre-export::
 
 # Windows PGO builds don't perform a clean before the 2nd pass. So, we want
 # to preserve content for the 2nd pass on Windows. Everywhere else, we always
@@ -214,23 +190,19 @@ ifndef NO_PROFILE_GUIDED_OPTIMIZE
 ifneq ($(OS_ARCH)_$(GNU_CC), WINNT_)
 recurse_pre-export:: install-manifests
 binaries::
-	@$(MAKE) install-manifests NO_REMOVE=1 install_manifests=dist/include
+	@$(MAKE) install-manifests install_manifests=dist/include
 endif
 endif
 else # !MOZ_PROFILE_USE (normal build)
 recurse_pre-export:: install-manifests
 binaries::
-	@$(MAKE) install-manifests NO_REMOVE=1 install_manifests=dist/include
+	@$(MAKE) install-manifests install_manifests=dist/include
 endif
-
-# For historical reasons that are unknown, $(DIST)/sdk is always blown away
-# with no regard for PGO passes. This decision could probably be revisited.
-recurse_pre-export:: install-dist/sdk
 
 recurse_artifact:
 	$(topsrcdir)/mach --log-no-times artifact install
 
-ifndef JS_STANDALONE
+ifdef MOZ_WIDGET_TOOLKIT
 ifdef ENABLE_TESTS
 # Additional makefile targets to call automated test suites
 include $(topsrcdir)/testing/testsuite-targets.mk
@@ -239,6 +211,31 @@ endif
 
 default all::
 	$(call BUILDSTATUS,TIERS $(TIERS) $(if $(MOZ_AUTOMATION),$(MOZ_AUTOMATION_TIERS)))
+
+# PGO build target.
+profiledbuild::
+	$(call BUILDSTATUS,TIERS pgo_profile_generate pgo_package pgo_profile pgo_clobber pgo_profile_use)
+	$(call BUILDSTATUS,TIER_START pgo_profile_generate)
+	$(MAKE) default MOZ_PROFILE_GENERATE=1 MOZ_PGO_INSTRUMENTED=1
+	$(call BUILDSTATUS,TIER_FINISH pgo_profile_generate)
+	$(call BUILDSTATUS,TIER_START pgo_package)
+	$(MAKE) package MOZ_PGO_INSTRUMENTED=1 MOZ_INTERNAL_SIGNING_FORMAT= MOZ_EXTERNAL_SIGNING_FORMAT=
+	rm -f jarlog/en-US.log
+	$(call BUILDSTATUS,TIER_FINISH pgo_package)
+	$(call BUILDSTATUS,TIER_START pgo_profile)
+	MOZ_PGO_INSTRUMENTED=1 JARLOG_FILE=jarlog/en-US.log $(PYTHON) $(topsrcdir)/build/pgo/profileserver.py 10
+	$(call BUILDSTATUS,TIER_FINISH pgo_profile)
+	$(call BUILDSTATUS,TIER_START pgo_clobber)
+	$(MAKE) maybe_clobber_profiledbuild
+	$(call BUILDSTATUS,TIER_FINISH pgo_clobber)
+	$(call BUILDSTATUS,TIER_START pgo_profile_use)
+	$(MAKE) default MOZ_PROFILE_USE=1
+	$(call BUILDSTATUS,TIER_FINISH pgo_profile_use)
+
+# Change default target to PGO build if PGO is enabled.
+ifdef MOZ_PGO
+OVERRIDE_DEFAULT_GOAL := profiledbuild
+endif
 
 include $(topsrcdir)/config/rules.mk
 
@@ -296,14 +293,16 @@ endif
 
 uploadsymbols:
 ifdef MOZ_CRASHREPORTER
-ifdef SOCORRO_SYMBOL_UPLOAD_TOKEN_FILE
 	$(PYTHON) -u $(topsrcdir)/toolkit/crashreporter/tools/upload_symbols.py '$(DIST)/$(PKG_PATH)$(SYMBOL_FULL_ARCHIVE_BASENAME).zip'
-endif
 endif
 
 .PHONY: update-packaging
 update-packaging:
 	$(MAKE) -C tools/update-packaging
+
+.PHONY: package-generated-sources
+package-generated-sources:
+	$(call py_action,package_generated_sources,'$(DIST)/$(PKG_PATH)$(GENERATED_SOURCE_FILE_PACKAGE)')
 
 #XXX: this is a hack, since we don't want to clobber for MSVC
 # PGO support, but we can't do this test in client.mk

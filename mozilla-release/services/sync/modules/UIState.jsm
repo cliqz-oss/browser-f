@@ -14,14 +14,12 @@
  * @property {boolean} [syncing] Whether or not we are currently syncing.
  */
 
-this.EXPORTED_SYMBOLS = ["UIState"];
+var EXPORTED_SYMBOLS = ["UIState"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Weave",
-                                  "resource://services-sync/main.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Weave",
+                               "resource://services-sync/main.js");
 
 const TOPICS = [
   "weave:service:login:change",
@@ -30,13 +28,14 @@ const TOPICS = [
   "weave:service:sync:start",
   "weave:service:sync:finish",
   "weave:service:sync:error",
+  "weave:service:start-over:finish",
   "fxaccounts:onverified",
   "fxaccounts:onlogin", // Defined in FxAccountsCommon, pulling it is expensive.
   "fxaccounts:onlogout",
   "fxaccounts:profilechange",
 ];
 
-const ON_UPDATE = "sync-ui-state:update"
+const ON_UPDATE = "sync-ui-state:update";
 
 const STATUS_NOT_CONFIGURED = "not_configured";
 const STATUS_LOGIN_FAILED = "login_failed";
@@ -130,7 +129,7 @@ const UIStateInternal = {
 
   async _refreshFxAState(newState) {
     let userData = await this._getUserData();
-    this._populateWithUserData(newState, userData);
+    await this._populateWithUserData(newState, userData);
     if (newState.status != STATUS_SIGNED_IN) {
       return;
     }
@@ -141,12 +140,23 @@ const UIStateInternal = {
     this._populateWithProfile(newState, profile);
   },
 
-  _populateWithUserData(state, userData) {
+  async _populateWithUserData(state, userData) {
     let status;
     if (!userData) {
-      status = STATUS_NOT_CONFIGURED;
+      // If Sync thinks it is configured but there's no FxA user, then we
+      // want to enter the "login failed" state so the user can get
+      // reconfigured.
+      let syncUserName = Services.prefs.getStringPref("services.sync.username", "");
+      if (syncUserName) {
+        state.email = syncUserName;
+        status = STATUS_LOGIN_FAILED;
+      } else {
+        // everyone agrees nothing is configured.
+        status = STATUS_NOT_CONFIGURED;
+      }
     } else {
-      if (this._loginFailed()) {
+      let loginFailed = await this._loginFailed();
+      if (loginFailed) {
         status = STATUS_LOGIN_FAILED;
       } else if (!userData.verified) {
         status = STATUS_NOT_VERIFIED;
@@ -161,9 +171,6 @@ const UIStateInternal = {
   _populateWithProfile(state, profile) {
     state.displayName = profile.displayName;
     state.avatarURL = profile.avatar;
-    // A hack to handle that the user's email address may have changed.
-    // This can probably be removed as part of bug 1383663.
-    state.email = profile.email;
   },
 
   async _getUserData() {
@@ -190,15 +197,21 @@ const UIStateInternal = {
 
   _setLastSyncTime(state) {
     if (state.status == UIState.STATUS_SIGNED_IN) {
-      try {
-        state.lastSync = new Date(Services.prefs.getCharPref("services.sync.lastSync", null));
-      } catch (_) {
-        state.lastSync = null;
-      }
+      const lastSync = Services.prefs.getCharPref("services.sync.lastSync", null);
+      state.lastSync = lastSync ? new Date(lastSync) : null;
     }
   },
 
-  _loginFailed() {
+  async _loginFailed() {
+    // First ask FxA if it thinks the user needs re-authentication. In practice,
+    // this check is probably canonical (ie, we probably don't really need
+    // the check below at all as we drop local session info on the first sign
+    // of a problem) - but we keep it for now to keep the risk down.
+    let hasLocalSession = await this.fxAccounts.hasLocalSession();
+    if (!hasLocalSession) {
+      return true;
+    }
+
     // Referencing Weave.Service will implicitly initialize sync, and we don't
     // want to force that - so first check if it is ready.
     let service = Cc["@mozilla.org/weave/service;1"]
@@ -219,14 +232,14 @@ const UIStateInternal = {
   }
 };
 
-XPCOMUtils.defineLazyModuleGetter(UIStateInternal, "fxAccounts",
-                                  "resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.defineModuleGetter(UIStateInternal, "fxAccounts",
+                               "resource://gre/modules/FxAccounts.jsm");
 
 for (let topic of TOPICS) {
   Services.obs.addObserver(UIStateInternal, topic);
 }
 
-this.UIState = {
+var UIState = {
   _internal: UIStateInternal,
 
   ON_UPDATE,

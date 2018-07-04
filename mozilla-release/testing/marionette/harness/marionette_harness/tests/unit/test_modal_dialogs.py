@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from marionette_driver.by import By
 from marionette_driver.expected import element_present
 from marionette_driver import errors
@@ -39,8 +41,6 @@ class TestTabModalAlerts(BaseAlertTestCase):
         self.marionette.navigate(self.marionette.absolute_url("test_tab_modal_dialogs.html"))
 
     def tearDown(self):
-        self.marionette.execute_script("window.onbeforeunload = null;")
-
         # Ensure to close a possible remaining tab modal dialog
         try:
             alert = self.marionette.switch_to_alert()
@@ -171,48 +171,32 @@ class TestTabModalAlerts(BaseAlertTestCase):
         self.wait_for_condition(
             lambda mn: mn.find_element(By.ID, "prompt-result").text == "null")
 
-    def test_onbeforeunload_dismiss(self):
-        start_url = self.marionette.get_url()
-        self.marionette.find_element(By.ID, "onbeforeunload-handler").click()
-        self.wait_for_condition(
-            lambda mn: mn.execute_script("""
-              return window.onbeforeunload !== null;
-            """))
-        self.marionette.navigate("about:blank")
-        self.wait_for_alert()
-        alert = self.marionette.switch_to_alert()
-        self.assertTrue(alert.text.startswith("This page is asking you to confirm"))
-        alert.dismiss()
-        self.assertTrue(self.marionette.get_url().startswith(start_url))
-
-    def test_onbeforeunload_accept(self):
-        self.marionette.find_element(By.ID, "onbeforeunload-handler").click()
-        self.wait_for_condition(
-            lambda mn: mn.execute_script("""
-              return window.onbeforeunload !== null;
-            """))
-        self.marionette.navigate("about:blank")
-        self.wait_for_alert()
-        alert = self.marionette.switch_to_alert()
-        self.assertTrue(alert.text.startswith("This page is asking you to confirm"))
-        alert.accept()
-        self.wait_for_condition(lambda mn: mn.get_url() == "about:blank")
-
     def test_unrelated_command_when_alert_present(self):
         self.marionette.find_element(By.ID, "tab-modal-alert").click()
         self.wait_for_alert()
         with self.assertRaises(errors.UnexpectedAlertOpen):
             self.marionette.find_element(By.ID, "click-result")
 
+    def test_modal_is_dismissed_after_unexpected_alert(self):
+        self.marionette.find_element(By.ID, "tab-modal-alert").click()
+        self.wait_for_alert()
+        with self.assertRaises(errors.UnexpectedAlertOpen):
+            self.marionette.find_element(By.ID, "click-result")
+
+        assert not self.alert_present()
+
 
 class TestModalAlerts(BaseAlertTestCase):
 
     def setUp(self):
         super(TestModalAlerts, self).setUp()
+        self.marionette.set_pref("network.auth.non-web-content-triggered-resources-http-auth-allow",
+                                 True)
 
     def tearDown(self):
         # Ensure to close a possible remaining modal dialog
         self.close_all_windows()
+        self.marionette.clear_pref("network.auth.non-web-content-triggered-resources-http-auth-allow")
 
         super(TestModalAlerts, self).tearDown()
 

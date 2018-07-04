@@ -3,19 +3,19 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/FxAccounts.jsm");
-Cu.import("resource://gre/modules/FxAccountsClient.jsm");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/FxAccountsOAuthGrantClient.jsm");
-Cu.import("resource://services-common/utils.js");
-var {AccountState} = Cu.import("resource://gre/modules/FxAccounts.jsm", {});
+ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsClient.jsm");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/FxAccountsOAuthGrantClient.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+var {AccountState} = ChromeUtils.import("resource://gre/modules/FxAccounts.jsm", {});
 
 function promiseNotification(topic) {
   return new Promise(resolve => {
     let observe = () => {
       Services.obs.removeObserver(observe, topic);
       resolve();
-    }
+    };
     Services.obs.addObserver(observe, topic);
   });
 }
@@ -54,7 +54,7 @@ MockStorageManager.prototype = {
     this.accountData = null;
     return Promise.resolve();
   }
-}
+};
 
 function MockFxAccountsClient() {
   this._email = "nobody@example.com";
@@ -75,7 +75,7 @@ function MockFxAccountsClient() {
 
 MockFxAccountsClient.prototype = {
   __proto__: FxAccountsClient.prototype
-}
+};
 
 function MockFxAccounts(mockGrantClient) {
   return new FxAccounts({
@@ -115,8 +115,10 @@ async function createMockFxA(mockGrantClient) {
     uid: "1234@lcip.org",
     assertion: "foobar",
     sessionToken: "dead",
-    kA: "beef",
-    kB: "cafe",
+    kSync: "beef",
+    kXCS: "cafe",
+    kExtSync: "bacon",
+    kExtKbHash: "cheese",
     verified: true
   };
 
@@ -125,9 +127,6 @@ async function createMockFxA(mockGrantClient) {
 }
 
 // The tests.
-function run_test() {
-  run_next_test();
-}
 
 function MockFxAccountsOAuthGrantClient() {
   this.activeTokens = new Set();
@@ -150,7 +149,7 @@ MockFxAccountsOAuthGrantClient.prototype = {
   // and some stuff used only for tests.
   numTokenFetches: 0,
   activeTokens: null,
-}
+};
 
 add_task(async function testRevoke() {
   let client = new MockFxAccountsOAuthGrantClient();

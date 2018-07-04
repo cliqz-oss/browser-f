@@ -5,27 +5,20 @@
 //! Generic types for CSS values related to backgrounds.
 
 /// A generic value for the `background-size` property.
-#[derive(Clone, Copy, Debug, HasViewportPercentage, PartialEq, ToComputedValue, ToCss)]
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[derive(Animate, Clone, ComputeSquaredDistance, Copy, Debug, MallocSizeOf,
+         PartialEq, SpecifiedValueInfo, ToComputedValue, ToCss)]
 pub enum BackgroundSize<LengthOrPercentageOrAuto> {
     /// `<width> <height>`
     Explicit {
         /// Explicit width.
         width: LengthOrPercentageOrAuto,
         /// Explicit height.
-        height: LengthOrPercentageOrAuto
+        height: LengthOrPercentageOrAuto,
     },
     /// `cover`
+    #[animation(error)]
     Cover,
     /// `contain`
+    #[animation(error)]
     Contain,
-}
-
-impl<L> From<L> for BackgroundSize<L>
-    where L: Clone,
-{
-    #[inline]
-    fn from(value: L) -> Self {
-        BackgroundSize::Explicit { width: value.clone(), height: value }
-    }
 }

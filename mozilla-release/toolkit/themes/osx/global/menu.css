@@ -8,6 +8,7 @@ menu,
 menuitem,
 menucaption {
   -moz-appearance: menuitem;
+  -moz-font-smoothing-background-color: -moz-mac-menuitem;
   -moz-box-align: center;
   color: MenuText;
   font: -moz-pull-down-menu;
@@ -20,6 +21,7 @@ menu[disabled="true"], menuitem[disabled="true"],
 menu[_moz-menuactive="true"][disabled="true"],
 menuitem[_moz-menuactive="true"][disabled="true"] {
   color: -moz-mac-menutextdisable;
+  -moz-font-smoothing-background-color: -moz-mac-menuitem;
 }
 
 /* ..... internal content .... */
@@ -37,15 +39,8 @@ menuitem[_moz-menuactive="true"][disabled="true"] {
   color: inherit;
 }
 
-menucaption > .menu-text,
 menucaption > .menu-iconic-text {
   font-weight: bold;
-}
-
-.menu-description {
-  font-style: italic;
-  color: -moz-mac-menutextdisable;
-  margin-inline-start: 1ex !important;
 }
 
 .menu-iconic-icon {
@@ -106,6 +101,7 @@ menubar > menu[_moz-menuactive="true"] {
 
 menubar > menu[_moz-menuactive="true"][open="true"] {
   -moz-appearance: menuitem;
+  -moz-font-smoothing-background-color: -moz-mac-active-menuitem;
   color: -moz-mac-menutextselect;
 }
 
@@ -131,6 +127,7 @@ menupopup > menucaption {
 
 menu[_moz-menuactive="true"],
 menuitem[_moz-menuactive="true"] {
+  -moz-font-smoothing-background-color: -moz-mac-active-menuitem;
   color: -moz-mac-menutextselect;
   background-color: Highlight;
 }

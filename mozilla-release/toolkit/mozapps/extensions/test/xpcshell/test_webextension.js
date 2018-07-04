@@ -2,11 +2,9 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 const ID = "webextension1@tests.mozilla.org";
-
-const PREF_SELECTED_LOCALE = "general.useragent.locale";
 
 const profileDir = gProfD.clone();
 profileDir.append("extensions");
@@ -14,7 +12,7 @@ profileDir.append("extensions");
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
 startupManager();
 
-const { GlobalManager } = Components.utils.import("resource://gre/modules/Extension.jsm", {});
+const { GlobalManager } = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
 
 add_task(async function() {
   equal(GlobalManager.extensionMap.size, 0);
@@ -27,8 +25,8 @@ add_task(async function() {
   equal(GlobalManager.extensionMap.size, 1);
   ok(GlobalManager.extensionMap.has(ID));
 
-  let chromeReg = AM_Cc["@mozilla.org/chrome/chrome-registry;1"].
-                  getService(AM_Ci.nsIChromeRegistry);
+  let chromeReg = Cc["@mozilla.org/chrome/chrome-registry;1"].
+                  getService(Ci.nsIChromeRegistry);
   try {
     chromeReg.convertChromeURL(NetUtil.newURI("chrome://webex/content/webex.xul"));
     do_throw("Chrome manifest should not have been registered");
@@ -37,21 +35,21 @@ add_task(async function() {
   }
 
   let addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Web Extension Name");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_false(addon.isSystem);
-  do_check_eq(addon.type, "extension");
-  do_check_true(addon.isWebExtension);
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Web Extension Name");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.ok(!addon.isSystem);
+  Assert.equal(addon.type, "extension");
+  Assert.ok(addon.isWebExtension);
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
   let uri = do_get_addon_root_uri(profileDir, ID);
 
-  do_check_eq(addon.iconURL, uri + "icon48.png");
-  do_check_eq(addon.icon64URL, uri + "icon64.png");
+  Assert.equal(addon.iconURL, uri + "icon48.png");
+  Assert.equal(addon.icon64URL, uri + "icon64.png");
 
   // Should persist through a restart
   await promiseShutdownManager();
@@ -65,23 +63,23 @@ add_task(async function() {
   ok(GlobalManager.extensionMap.has(ID));
 
   addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Web Extension Name");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_false(addon.isSystem);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Web Extension Name");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.ok(!addon.isSystem);
+  Assert.equal(addon.type, "extension");
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
   let file = getFileForAddon(profileDir, ID);
-  do_check_true(file.exists());
+  Assert.ok(file.exists());
 
   uri = do_get_addon_root_uri(profileDir, ID);
 
-  do_check_eq(addon.iconURL, uri + "icon48.png");
-  do_check_eq(addon.icon64URL, uri + "icon64.png");
+  Assert.equal(addon.iconURL, uri + "icon48.png");
+  Assert.equal(addon.icon64URL, uri + "icon64.png");
 
   addon.userDisabled = true;
 
@@ -96,7 +94,7 @@ add_task(async function() {
   addon.uninstall();
 
   equal(GlobalManager.extensionMap.size, 0);
-  do_check_false(GlobalManager.extensionMap.has(ID));
+  Assert.ok(!GlobalManager.extensionMap.has(ID));
 
   await promiseShutdownManager();
 });
@@ -118,18 +116,18 @@ add_task(async function() {
   await promiseWebExtensionStartup();
 
   let addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Web Extension Name");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_false(addon.isSystem);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Web Extension Name");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.ok(!addon.isSystem);
+  Assert.equal(addon.type, "extension");
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
   let file = getFileForAddon(profileDir, ID);
-  do_check_true(file.exists());
+  Assert.ok(file.exists());
 
   addon.uninstall();
 
@@ -148,7 +146,7 @@ add_task(async function test_manifest_localization() {
   equal(addon.name, "Web Extensiøn foo ☹");
   equal(addon.description, "Descriptïon bar ☹ of add-on");
 
-  Services.prefs.setCharPref(PREF_SELECTED_LOCALE, "fr-FR");
+  Services.locale.setRequestedLocales(["fr-FR"]);
   await promiseRestartManager();
 
   addon = await promiseAddonByID(extensionId);
@@ -156,7 +154,7 @@ add_task(async function test_manifest_localization() {
   equal(addon.name, "Web Extensiøn le foo ☺");
   equal(addon.description, "Descriptïon le bar ☺ of add-on");
 
-  Services.prefs.setCharPref(PREF_SELECTED_LOCALE, "de");
+  Services.locale.setRequestedLocales(["de"]);
   await promiseRestartManager();
 
   addon = await promiseAddonByID(extensionId);
@@ -182,10 +180,10 @@ add_task(async function() {
   await promiseRestartManager();
 
   let addon = await promiseAddonByID(ID);
-  do_check_eq(addon, null);
+  Assert.equal(addon, null);
 
   let file = getFileForAddon(profileDir, ID);
-  do_check_false(file.exists());
+  Assert.ok(!file.exists());
 
   await promiseRestartManager();
 });
@@ -206,33 +204,10 @@ add_task(async function() {
   await promiseRestartManager();
 
   let addon = await promiseAddonByID(ID);
-  do_check_eq(addon, null);
+  Assert.equal(addon, null);
 
   let file = getFileForAddon(profileDir, ID);
-  do_check_false(file.exists());
-
-  await promiseRestartManager();
-});
-
-// install.rdf should be read before manifest.json
-add_task(async function() {
-
-  await Promise.all([
-    promiseInstallAllFiles([do_get_addon("webextension_2")], true)
-  ]);
-
-  await promiseRestartManager();
-
-  let installrdf_id = "first-webextension2@tests.mozilla.org";
-  let first_addon = await promiseAddonByID(installrdf_id);
-  do_check_neq(first_addon, null);
-  do_check_false(first_addon.appDisabled);
-  do_check_true(first_addon.isActive);
-  do_check_false(first_addon.isSystem);
-
-  let manifestjson_id = "last-webextension2@tests.mozilla.org";
-  let last_addon = await promiseAddonByID(manifestjson_id);
-  do_check_eq(last_addon, null);
+  Assert.ok(!file.exists());
 
   await promiseRestartManager();
 });
@@ -298,29 +273,6 @@ add_task(async function test_experiments_dependencies() {
             "Addon should have the expected dependencies");
 
   equal(addon.appDisabled, true, "Add-on should be app disabled due to missing dependencies");
-
-  addon.uninstall();
-});
-
-// Test that experiments API extensions install correctly.
-add_task(async function test_experiments_api() {
-  const extensionId = "meh@experiments.addons.mozilla.org";
-
-  let addonFile = createTempXPIFile({
-    id: extensionId,
-    type: 256,
-    version: "0.1",
-    name: "Meh API",
-  });
-
-  await promiseInstallAllFiles([addonFile]);
-
-  let addons = await AddonManager.getAddonsByTypes(["extension"]);
-  let addon = addons.pop();
-  equal(addon.id, extensionId, "Add-on should be installed as an API extension");
-
-  addons = await AddonManager.getAddonsByTypes(["extension"]);
-  equal(addons.pop().id, extensionId, "Add-on type should be aliased to extension");
 
   addon.uninstall();
 });
@@ -403,18 +355,18 @@ add_task(async function testThemeExtension() {
   });
 
   addon = await promiseAddonByID(addon.id);
-  do_check_neq(addon, null);
-  do_check_eq(addon.creator, "Some author");
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Web Extension Name");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_false(addon.isActive);
-  do_check_true(addon.userDisabled);
-  do_check_false(addon.isSystem);
-  do_check_eq(addon.type, "theme");
-  do_check_true(addon.isWebExtension);
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.creator, "Some author");
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Web Extension Name");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(!addon.isActive);
+  Assert.ok(addon.userDisabled);
+  Assert.ok(!addon.isSystem);
+  Assert.equal(addon.type, "theme");
+  Assert.ok(addon.isWebExtension);
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
   addon.uninstall();
 
@@ -430,8 +382,75 @@ add_task(async function testThemeExtension() {
   });
 
   addon = await promiseAddonByID(addon.id);
-  do_check_eq(addon.type, "extension");
-  do_check_true(addon.isWebExtension);
+  Assert.equal(addon.type, "extension");
+  Assert.ok(addon.isWebExtension);
 
   addon.uninstall();
+});
+
+// Test that we can update from a webextension to a webextension-theme
+add_task(async function test_theme_upgrade() {
+  // First install a regular webextension
+  let webext = createTempWebExtensionFile({
+    manifest: {
+      version: "1.0",
+      name: "Test WebExtension 1 (temporary)",
+      applications: {
+        gecko: {
+          id: ID
+        }
+      }
+    }
+  });
+
+  await Promise.all([
+    AddonManager.installTemporaryAddon(webext),
+    promiseWebExtensionStartup(),
+  ]);
+  let addon = await promiseAddonByID(ID);
+
+  // temporary add-on is installed and started
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Test WebExtension 1 (temporary)");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+
+  // Create a webextension theme with the same ID
+  let webext2 = createTempWebExtensionFile({
+    manifest: {
+      version: "2.0",
+      name: "Test WebExtension 1 (temporary)",
+      applications: {
+        gecko: {
+          id: ID
+        }
+      },
+      theme: { images: { headerURL: "example.png" } }
+    }
+  });
+
+  await Promise.all([
+    AddonManager.installTemporaryAddon(webext2),
+    promiseWebExtensionStartup(),
+  ]);
+  addon = await promiseAddonByID(ID);
+
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "2.0");
+  Assert.equal(addon.name, "Test WebExtension 1 (temporary)");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  // This is what we're really interested in:
+  Assert.equal(addon.type, "theme");
+  Assert.ok(addon.isWebExtension);
+
+  addon.uninstall();
+
+  addon = await promiseAddonByID(ID);
+  Assert.equal(addon, null);
 });

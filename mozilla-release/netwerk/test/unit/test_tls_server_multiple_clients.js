@@ -8,9 +8,9 @@ do_get_profile();
 // Ensure PSM is initialized
 Cc["@mozilla.org/psm;1"].getService(Ci.nsISupports);
 
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
-const { NetUtil } = Cu.import("resource://gre/modules/NetUtil.jsm", {});
-const { PromiseUtils } = Cu.import("resource://gre/modules/PromiseUtils.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", {});
+const { PromiseUtils } = ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm", {});
 const certService = Cc["@mozilla.org/security/local-cert-service;1"]
                     .getService(Ci.nsILocalCertService);
 const certOverrideService = Cc["@mozilla.org/security/certoverride;1"]
@@ -47,7 +47,7 @@ function startServer(cert) {
 
   let listener = {
     onSocketAccepted: function(socket, transport) {
-      do_print("Accept TLS client connection");
+      info("Accept TLS client connection");
       let connectionInfo = transport.securityInfo
                            .QueryInterface(Ci.nsITLSServerConnectionInfo);
       connectionInfo.setSecurityObserver(listener);
@@ -55,7 +55,7 @@ function startServer(cert) {
       output = transport.openOutputStream(0, 0, 0);
     },
     onHandshakeDone: function(socket, status) {
-      do_print("TLS handshake done");
+      info("TLS handshake done");
 
       input.asyncWait({
         onInputStreamReady: function(input) {
@@ -113,7 +113,7 @@ function startClient(port) {
     onOutputStreamReady: function(output) {
       try {
         output.write("HELLO", 5);
-        do_print("Output to server written");
+        info("Output to server written");
         outputDeferred.resolve();
         input = transport.openInputStream(0, 0, 0);
         input.asyncWait(handler, 0, 0, Services.tm.currentThread);

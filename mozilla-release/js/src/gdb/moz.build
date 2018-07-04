@@ -6,8 +6,13 @@
 
 GeckoProgram('gdb-tests', linkage=None)
 
+SOURCES += [
+    # This file must not be unified with any of the test files, or the use()
+    # and breakpoint() functions might get optimized out.
+    'gdb-tests.cpp'
+]
+
 UNIFIED_SOURCES += [
-    'gdb-tests.cpp',
     'tests/test-asmjs.cpp',
     'tests/test-ExecutableAllocator.cpp',
     'tests/test-GCCellPtr.cpp',
@@ -34,18 +39,13 @@ USE_LIBS += [
     'static:js',
 ]
 
-if CONFIG['ENABLE_INTL_API'] and CONFIG['MOZ_ICU_DATA_ARCHIVE']:
-    # The ICU libraries linked into libmozjs will not include the ICU data,
-    # so link it directly.
-    USE_LIBS += ['icudata']
-
 OS_LIBS += CONFIG['MOZ_ZLIB_LIBS']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-shadow', '-fno-strict-aliasing']
 
 # This is intended as a temporary workaround to enable VS2015.
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     CXXFLAGS += ['-wd4312']
 
 DEFINES['topsrcdir'] = '%s/js/src' % TOPSRCDIR

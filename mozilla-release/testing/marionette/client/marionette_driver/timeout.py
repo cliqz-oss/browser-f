@@ -2,8 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
 
-import errors
+from . import errors
 
 
 DEFAULT_SCRIPT_TIMEOUT = 30
@@ -29,10 +30,10 @@ class Timeouts(object):
 
     def _set(self, name, sec):
         ms = sec * 1000
-        self._marionette._send_message("setTimeouts", {name: ms})
+        self._marionette._send_message("WebDriver:SetTimeouts", {name: ms})
 
     def _get(self, name):
-        ts = self._marionette._send_message("getTimeouts")
+        ts = self._marionette._send_message("WebDriver:GetTimeouts")
         if name not in ts:
             raise KeyError()
         ms = ts[name]

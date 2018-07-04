@@ -6,9 +6,9 @@
 #include "nsISupports.idl"
 
 %{C++
+#include "nsStringFwd.h"
 #include "nsTArrayForwardDeclare.h"
 template<class T> class nsCOMArray;
-class nsCString;
 %}
 [ptr] native StringArray(nsTArray<nsCString>);
 [ref] native StringArrayRef(const nsTArray<nsCString>);
@@ -216,14 +216,20 @@ interface nsIHttpChannelInternal : nsISupports
      */
     [must_use] attribute boolean beConservative;
 
-    [must_use] readonly attribute PRTime lastModifiedTime;
+    /**
+     * True if channel is used by the internal trusted recursive resolver
+     * This flag places data for the request in a cache segment specific to TRR
+     */
+    [noscript, must_use] attribute boolean trr;
 
     /**
-     * Force a channel that has not been AsyncOpen'ed to skip any check for possible
-     * interception and proceed immediately to open a previously-synthesized cache
-     * entry using the provided ID.
+     * An opaque flags for non-standard behavior of the TLS system.
+     * It is unlikely this will need to be set outside of telemetry studies
+     * relating to the TLS implementation.
      */
-    [must_use] void forceIntercepted(in uint64_t aInterceptionID);
+    [must_use] attribute unsigned long tlsFlags;
+
+    [must_use] readonly attribute PRTime lastModifiedTime;
 
     [must_use] readonly attribute boolean responseSynthesized;
 
@@ -295,6 +301,9 @@ interface nsIHttpChannelInternal : nsISupports
      */
     [noscript, notxpcom, nostdcall]
     void setCorsPreflightParameters(in StringArrayRef unsafeHeaders);
+
+    [noscript, notxpcom, nostdcall]
+    void setAltDataForChild(in boolean aIsForChild);
 
     /**
      * When set to true, the channel will not pop any authentication prompts up

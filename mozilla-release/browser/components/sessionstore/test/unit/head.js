@@ -1,16 +1,12 @@
-var Cu = Components.utils;
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-
-Components.utils.import("resource://gre/modules/Services.jsm");
-const {OS} = Cu.import("resource://gre/modules/osfile.jsm", {});
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+const {OS} = ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
 
 // Call a function once initialization of SessionStartup is complete
 function afterSessionStartupInitialization(cb) {
-  do_print("Waiting for session startup initialization");
+  info("Waiting for session startup initialization");
   let observer = function() {
     try {
-      do_print("Session startup initialization observed");
+      info("Session startup initialization observed");
       Services.obs.removeObserver(observer, "sessionstore-state-finalized");
       cb();
     } catch (ex) {
@@ -20,7 +16,7 @@ function afterSessionStartupInitialization(cb) {
 
   // We need the Crash Monitor initialized for sessionstartup to run
   // successfully.
-  Components.utils.import("resource://gre/modules/CrashMonitor.jsm");
+  ChromeUtils.import("resource://gre/modules/CrashMonitor.jsm");
   CrashMonitor.init();
 
   // Start sessionstartup initialization.

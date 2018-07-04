@@ -6,13 +6,13 @@ package org.mozilla.gecko.media;
 
 import android.util.Log;
 
-import org.mozilla.gecko.AppConstants;
+import org.mozilla.geckoview.BuildConfig;
 import org.mozilla.gecko.annotation.WrapForJNI;
 import org.mozilla.gecko.mozglue.JNIObject;
 
 public class GeckoHLSResourceWrapper {
     private static final String LOGTAG = "GeckoHLSResourceWrapper";
-    private static final boolean DEBUG = AppConstants.NIGHTLY_BUILD || AppConstants.DEBUG_BUILD;
+    private static final boolean DEBUG = !BuildConfig.MOZILLA_OFFICIAL;
     private BaseHlsPlayer mPlayer = null;
     private boolean mDestroy = false;
 
@@ -22,11 +22,11 @@ public class GeckoHLSResourceWrapper {
         Callbacks() {}
 
         @Override
-        @WrapForJNI(dispatchTo = "gecko")
+        @WrapForJNI
         public native void onDataArrived();
 
         @Override
-        @WrapForJNI(dispatchTo = "gecko")
+        @WrapForJNI
         public native void onError(int errorCode);
 
         @Override // JNIObject

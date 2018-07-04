@@ -8,7 +8,8 @@
 #define nsXBLPrototypeHandler_h__
 
 #include "mozilla/EventForwards.h"
-#include "nsIAtom.h"
+#include "mozilla/MemoryReporting.h"
+#include "nsAtom.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
 #include "nsIController.h"
@@ -18,11 +19,7 @@
 #include "nsCycleCollectionParticipant.h"
 #include "js/TypeDecls.h"
 
-class nsIDOMEvent;
 class nsIContent;
-class nsIDOMUIEvent;
-class nsIDOMKeyEvent;
-class nsIDOMMouseEvent;
 class nsIObjectInputStream;
 class nsIObjectOutputStream;
 class nsXBLPrototypeBinding;
@@ -33,7 +30,11 @@ struct IgnoreModifierState;
 
 namespace dom {
 class AutoJSAPI;
+class Event;
 class EventTarget;
+class KeyboardEvent;
+class MouseEvent;
+class UIEvent;
 } // namespace dom
 
 namespace layers {
@@ -50,10 +51,26 @@ class KeyboardShortcut;
 #define NS_HANDLER_TYPE_SYSTEM              (1 << 6)
 #define NS_HANDLER_TYPE_PREVENTDEFAULT      (1 << 7)
 
-// XXX Use nsIDOMEvent:: codes?
+// XXX Use EventBinding:: codes?
 #define NS_PHASE_CAPTURING          1
 #define NS_PHASE_TARGET             2
 #define NS_PHASE_BUBBLING           3
+
+// Values of the reserved attribute. When unset, the default value depends on
+// the permissions.default.shortcuts preference.
+enum XBLReservedKey : uint8_t
+{
+  XBLReservedKey_False = 0,
+  XBLReservedKey_True = 1,
+  XBLReservedKey_Unset = 2,
+};
+
+namespace mozilla {
+namespace dom {
+class Element;
+class Event;
+}
+}
 
 class nsXBLPrototypeHandler
 {
@@ -74,7 +91,7 @@ public:
                         uint32_t aLineNumber);
 
   // This constructor is used only by XUL key handlers (e.g., <key>)
-  explicit nsXBLPrototypeHandler(nsIContent* aKeyElement, bool aReserved);
+  explicit nsXBLPrototypeHandler(mozilla::dom::Element* aKeyElement, XBLReservedKey aReserved);
 
   // This constructor is used for handlers loaded from the cache
   explicit nsXBLPrototypeHandler(nsXBLPrototypeBinding* aBinding);
@@ -92,41 +109,34 @@ public:
   bool TryConvertToKeyboardShortcut(
           KeyboardShortcut* aOut) const;
 
-  bool EventTypeEquals(nsIAtom* aEventType) const
+  bool EventTypeEquals(nsAtom* aEventType) const
   {
     return mEventName == aEventType;
   }
 
   // if aCharCode is not zero, it is used instead of the charCode of aKeyEvent.
-  bool KeyEventMatched(nsIDOMKeyEvent* aKeyEvent,
+  bool KeyEventMatched(mozilla::dom::KeyboardEvent* aKeyEvent,
                        uint32_t aCharCode,
                        const IgnoreModifierState& aIgnoreModifierState);
 
-  bool MouseEventMatched(nsIDOMMouseEvent* aMouseEvent);
-  inline bool MouseEventMatched(nsIAtom* aEventType,
-                                  nsIDOMMouseEvent* aEvent)
-  {
-    if (!EventTypeEquals(aEventType)) {
-      return false;
-    }
-    return MouseEventMatched(aEvent);
-  }
+  bool MouseEventMatched(mozilla::dom::MouseEvent* aMouseEvent);
 
-  already_AddRefed<nsIContent> GetHandlerElement();
+  already_AddRefed<mozilla::dom::Element> GetHandlerElement();
 
   void AppendHandlerText(const nsAString& aText);
 
   uint8_t GetPhase() { return mPhase; }
   uint8_t GetType() { return mType; }
-  bool GetIsReserved() { return mReserved; }
+  XBLReservedKey GetIsReserved() { return mReserved; }
 
   nsXBLPrototypeHandler* GetNextHandler() { return mNextHandler; }
   void SetNextHandler(nsXBLPrototypeHandler* aHandler) { mNextHandler = aHandler; }
 
-  nsresult ExecuteHandler(mozilla::dom::EventTarget* aTarget, nsIDOMEvent* aEvent);
+  nsresult ExecuteHandler(mozilla::dom::EventTarget* aTarget,
+                          mozilla::dom::Event* aEvent);
 
-  already_AddRefed<nsIAtom> GetEventName();
-  void SetEventName(nsIAtom* aName) { mEventName = aName; }
+  already_AddRefed<nsAtom> GetEventName();
+  void SetEventName(nsAtom* aName) { mEventName = aName; }
 
   nsXBLEventHandler* GetEventHandler()
   {
@@ -157,6 +167,8 @@ public:
   nsresult Read(nsIObjectInputStream* aStream);
   nsresult Write(nsIObjectOutputStream* aStream);
 
+  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
+
 public:
   static uint32_t gRefCnt;
 
@@ -171,7 +183,7 @@ protected:
   already_AddRefed<nsIController> GetController(mozilla::dom::EventTarget* aTarget);
 
   inline int32_t GetMatchingKeyCode(const nsAString& aKeyName);
-  void ConstructPrototype(nsIContent* aKeyElement,
+  void ConstructPrototype(mozilla::dom::Element* aKeyElement,
                           const char16_t* aEvent=nullptr, const char16_t* aPhase=nullptr,
                           const char16_t* aAction=nullptr, const char16_t* aCommand=nullptr,
                           const char16_t* aKeyCode=nullptr, const char16_t* aCharCode=nullptr,
@@ -180,13 +192,14 @@ protected:
                           const char16_t* aPreventDefault=nullptr,
                           const char16_t* aAllowUntrusted=nullptr);
 
-  void ReportKeyConflict(const char16_t* aKey, const char16_t* aModifiers, nsIContent* aElement, const char *aMessageName);
+  void ReportKeyConflict(const char16_t* aKey, const char16_t* aModifiers, mozilla::dom::Element* aElement, const char *aMessageName);
   void GetEventType(nsAString& type);
-  bool ModifiersMatchMask(nsIDOMUIEvent* aEvent,
+  bool ModifiersMatchMask(mozilla::dom::UIEvent* aEvent,
                           const IgnoreModifierState& aIgnoreModifierState);
-  nsresult DispatchXBLCommand(mozilla::dom::EventTarget* aTarget, nsIDOMEvent* aEvent);
-  nsresult DispatchXULKeyCommand(nsIDOMEvent* aEvent);
-  nsresult EnsureEventHandler(mozilla::dom::AutoJSAPI& jsapi, nsIAtom* aName,
+  nsresult DispatchXBLCommand(mozilla::dom::EventTarget* aTarget,
+                              mozilla::dom::Event* aEvent);
+  nsresult DispatchXULKeyCommand(mozilla::dom::Event* aEvent);
+  nsresult EnsureEventHandler(mozilla::dom::AutoJSAPI& jsapi, nsAtom* aName,
                               JS::MutableHandle<JSObject*> aHandler);
 
   Modifiers GetModifiers() const;
@@ -233,7 +246,7 @@ protected:
                              // stores whether or not we're a key code or char code.
                              // For mouse events, stores the clickCount.
 
-  bool mReserved;            // <key> is reserved for chrome. Not used by handlers.
+  XBLReservedKey mReserved;  // <key> is reserved for chrome. Not used by handlers.
 
   int32_t mKeyMask;          // Which modifier keys this event handler expects to have down
                              // in order to be matched.
@@ -244,7 +257,7 @@ protected:
 
   // Prototype handlers are chained. We own the next handler in the chain.
   nsXBLPrototypeHandler* mNextHandler;
-  nsCOMPtr<nsIAtom> mEventName; // The type of the event, e.g., "keypress"
+  RefPtr<nsAtom> mEventName; // The type of the event, e.g., "keypress"
   RefPtr<nsXBLEventHandler> mHandler;
   nsXBLPrototypeBinding* mPrototypeBinding; // the binding owns us
 };

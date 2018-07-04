@@ -32,8 +32,7 @@ nsSVGElement::StringInfo SVGScriptElement::sStringInfo[2] =
 // nsISupports methods
 
 NS_IMPL_ISUPPORTS_INHERITED(SVGScriptElement, SVGScriptElementBase,
-                            nsIDOMNode, nsIDOMElement,
-                            nsIDOMSVGElement,
+                            nsIDOMNode,
                             nsIScriptLoaderObserver,
                             nsIScriptElement, nsIMutationObserver)
 
@@ -139,7 +138,7 @@ SVGScriptElement::GetScriptCharset(nsAString& charset)
 }
 
 void
-SVGScriptElement::FreezeUriAsyncDefer()
+SVGScriptElement::FreezeExecutionAttrs(nsIDocument* aOwnerDoc)
 {
   if (mFrozen) {
     return;
@@ -148,7 +147,7 @@ SVGScriptElement::FreezeUriAsyncDefer()
   if (mStringAttributes[HREF].IsExplicitlySet() ||
       mStringAttributes[XLINK_HREF].IsExplicitlySet()) {
     // variation of this code in nsHTMLScriptElement - check if changes
-    // need to be transfered when modifying
+    // need to be transferred when modifying
     bool isHref = false;
     nsAutoString src;
     if (mStringAttributes[HREF].IsExplicitlySet()) {
@@ -232,9 +231,11 @@ SVGScriptElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 }
 
 nsresult
-SVGScriptElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+SVGScriptElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                const nsAttrValue* aValue,
-                               const nsAttrValue* aOldValue, bool aNotify)
+                               const nsAttrValue* aOldValue,
+                               nsIPrincipal* aSubjectPrincipal,
+                               bool aNotify)
 {
   if ((aNamespaceID == kNameSpaceID_XLink ||
        aNamespaceID == kNameSpaceID_None) &&
@@ -242,13 +243,15 @@ SVGScriptElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
     MaybeProcessScript();
   }
   return SVGScriptElementBase::AfterSetAttr(aNamespaceID, aName,
-                                            aValue, aOldValue, aNotify);
+                                            aValue, aOldValue,
+                                            aSubjectPrincipal, aNotify);
 }
 
 bool
 SVGScriptElement::ParseAttribute(int32_t aNamespaceID,
-                                 nsIAtom* aAttribute,
+                                 nsAtom* aAttribute,
                                  const nsAString& aValue,
+                                 nsIPrincipal* aMaybeScriptedPrincipal,
                                  nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None &&
@@ -258,7 +261,9 @@ SVGScriptElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return SVGScriptElementBase::ParseAttribute(aNamespaceID, aAttribute,
-                                              aValue, aResult);
+                                              aValue,
+                                              aMaybeScriptedPrincipal,
+                                              aResult);
 }
 
 CORSMode

@@ -4,12 +4,10 @@
 
 "use strict";
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 const POSITION_UNAVAILABLE = Ci.nsIDOMGeoPositionError.POSITION_UNAVAILABLE;
 
@@ -213,7 +211,7 @@ function WifiGeoCoordsObject(lat, lon, acc, alt, altacc) {
 }
 
 WifiGeoCoordsObject.prototype = {
-  QueryInterface:  XPCOMUtils.generateQI([Ci.nsIDOMGeoPositionCoords])
+  QueryInterface:  ChromeUtils.generateQI([Ci.nsIDOMGeoPositionCoords])
 };
 
 function WifiGeoPositionObject(lat, lng, acc) {
@@ -223,7 +221,7 @@ function WifiGeoPositionObject(lat, lng, acc) {
 }
 
 WifiGeoPositionObject.prototype = {
-  QueryInterface:   XPCOMUtils.generateQI([Ci.nsIDOMGeoPosition])
+  QueryInterface:   ChromeUtils.generateQI([Ci.nsIDOMGeoPosition])
 };
 
 function WifiGeoPositionProvider() {
@@ -246,10 +244,10 @@ function WifiGeoPositionProvider() {
 
 WifiGeoPositionProvider.prototype = {
   classID:          Components.ID("{77DA64D3-7458-4920-9491-86CC9914F904}"),
-  QueryInterface:   XPCOMUtils.generateQI([Ci.nsIGeolocationProvider,
-                                           Ci.nsIWifiListener,
-                                           Ci.nsITimerCallback,
-                                           Ci.nsIObserver]),
+  QueryInterface:   ChromeUtils.generateQI([Ci.nsIGeolocationProvider,
+                                            Ci.nsIWifiListener,
+                                            Ci.nsITimerCallback,
+                                            Ci.nsIObserver]),
   listener: null,
 
   resetTimer: function() {
@@ -374,9 +372,7 @@ WifiGeoPositionProvider.prototype = {
     let url = Services.urlFormatter.formatURLPref("geo.wifi.uri");
     LOG("Sending request");
 
-    let xhr = Components.classes["@mozilla.org/xmlextras/xmlhttprequest;1"]
-                        .createInstance(Ci.nsIXMLHttpRequest);
-
+    let xhr = new XMLHttpRequest();
     try {
       xhr.open("POST", url, true);
       xhr.channel.loadFlags = Ci.nsIChannel.LOAD_ANONYMOUS;

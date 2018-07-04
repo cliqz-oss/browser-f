@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "xptcprivate.h"
-#include "xptiprivate.h"
 
 #if (_MIPS_SIM != _ABIN32) && (_MIPS_SIM != _ABI64)
 #error "This code is for MIPS n32/n64 only"
@@ -125,10 +124,12 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex, uint64_t* args,
              break;
 
         case nsXPTType::T_FLOAT:
+              // the float data formate must not be converted!
+              // Just only copy without conversion.
               if (iCount < PARAM_FPR_COUNT)
-                  dp->val.f  = (double)fprData[iCount++];
+                  dp->val.f  = *(float*)&fprData[iCount++];
               else
-                  dp->val.f  = *((double*)ap++);
+                  dp->val.f  = *((float*)ap++);
               break;
 
         case nsXPTType::T_DOUBLE:

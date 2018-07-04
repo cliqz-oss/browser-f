@@ -5,30 +5,30 @@
 
 /* global ADDON_ENABLE:false, ADDON_DISABLE:false, APP_SHUTDOWN: false */
 
-const {classes: Cc, interfaces: Ci, utils: Cu, manager: Cm} = Components;
+const Cm = Components.manager;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
-                                  "resource:///modules/RecentWindow.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-                                  "resource:///modules/CustomizableUI.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManagerPrivate",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
-                                  "resource://gre/modules/ReaderMode.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Pocket",
-                                  "chrome://pocket/content/Pocket.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AboutPocket",
-                                  "chrome://pocket/content/AboutPocket.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.defineModuleGetter(this, "AboutPocket",
+                               "chrome://pocket/content/AboutPocket.jsm");
+ChromeUtils.defineModuleGetter(this, "AddonManagerPrivate",
+                               "resource://gre/modules/AddonManager.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
+                               "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PageActions",
+                               "resource:///modules/PageActions.jsm");
+ChromeUtils.defineModuleGetter(this, "Pocket",
+                               "chrome://pocket/content/Pocket.jsm");
+ChromeUtils.defineModuleGetter(this, "ReaderMode",
+                               "resource://gre/modules/ReaderMode.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyGetter(this, "gPocketBundle", function() {
   return Services.strings.createBundle("chrome://pocket/locale/pocket.properties");
 });
 XPCOMUtils.defineLazyGetter(this, "gPocketStyleURI", function() {
-  return Services.io.newURI("chrome://pocket/skin/pocket.css");
+  return Services.io.newURI("chrome://pocket-shared/skin/pocket.css");
 });
 
 // Due to bug 1051238 frame scripts are cached forever, so we can't update them
@@ -68,87 +68,180 @@ function createElementWithAttrs(document, type, attrs) {
   let element = document.createElement(type);
   Object.keys(attrs).forEach(function(attr) {
     element.setAttribute(attr, attrs[attr]);
-  })
+  });
   return element;
 }
 
-function CreatePocketWidget(reason) {
-  let id = "pocket-button"
-  let widget = CustomizableUI.getWidget(id);
-  // The widget is only null if we've created then destroyed the widget.
-  // Once we've actually called createWidget the provider will be set to
-  // PROVIDER_API.
-  if (widget && widget.provider == CustomizableUI.PROVIDER_API)
-    return;
-  // if upgrading from builtin version and the button was placed in ui,
-  // seenWidget will not be null
-  let seenWidget = CustomizableUI.getPlacementOfWidget("pocket-button", false, true);
-  let pocketButton = {
-    id: "pocket-button",
-    defaultArea: CustomizableUI.AREA_NAVBAR,
-    introducedInVersion: "pref",
-    type: "view",
-    tabSpecific: true,
-    viewId: "PanelUI-pocketView",
-    label: gPocketBundle.GetStringFromName("pocket-button.label"),
-    tooltiptext: gPocketBundle.GetStringFromName("pocket-button.tooltiptext"),
-    // Use forwarding functions here to avoid loading Pocket.jsm on startup:
-    onBeforeCommand() {
-      // We need to use onBeforeCommand to calculate the height
-      // of the pocket-button before it is opened since we need
-      // the height of the button to perform the animation that is
-      // triggered off of [open="true"].
-      return Pocket.onBeforeCommand.apply(this, arguments);
-    },
-    onViewShowing() {
-      return Pocket.onPanelViewShowing.apply(this, arguments);
-    },
-    onViewHiding() {
-      return Pocket.onPanelViewHiding.apply(this, arguments);
-    },
-    onBeforeCreated(doc) {
-      // Bug 1223127,CUI should make this easier to do.
-      if (doc.getElementById("PanelUI-pocketView"))
-        return;
-      let view = doc.createElement("panelview");
-      view.id = "PanelUI-pocketView";
-      let panel = doc.createElement("vbox");
-      panel.setAttribute("class", "panel-subview-body");
-      view.appendChild(panel);
-      doc.getElementById("PanelUI-multiView").appendChild(view);
-    },
-    onCreated(node) {
-      if (Services.prefs.getBoolPref("toolkit.cosmeticAnimations.enabled") &&
-          AppConstants.MOZ_PHOTON_ANIMATIONS) {
-        let doc = node.ownerDocument;
-        let box = doc.createElement("box");
-        box.classList.add("toolbarbutton-animatable-box");
-        let image = doc.createElement("image");
-        image.classList.add("toolbarbutton-animatable-image");
-        box.appendChild(image);
-        node.appendChild(box);
-        node.setAttribute("animationsenabled", "true");
-      }
-    },
-  };
 
-  CustomizableUI.createWidget(pocketButton);
-  CustomizableUI.addListener(pocketButton);
-  // placed is null if location is palette
-  let placed = CustomizableUI.getPlacementOfWidget("pocket-button");
-
-  // a first time install will always have placed the button somewhere, and will
-  // not have a placement prior to creating the widget. Thus, !seenWidget &&
-  // placed.
-  if (reason == ADDON_ENABLE && !seenWidget && placed) {
-    // initially place the button after the bookmarks button if it is in the UI
-    let widgets = CustomizableUI.getWidgetIdsInArea(CustomizableUI.AREA_NAVBAR);
-    let bmbtn = widgets.indexOf("bookmarks-menu-button");
-    if (bmbtn > -1) {
-      CustomizableUI.moveWidgetWithinArea("pocket-button", bmbtn + 1);
-    }
-  }
+function isPocketEnabled() {
+  return PocketPageAction.enabled;
 }
+
+var PocketPageAction = {
+  pageAction: null,
+  urlbarNode: null,
+
+  get enabled() {
+    return !!this.pageAction;
+  },
+
+  init() {
+    let id = "pocket";
+    this.pageAction = PageActions.actionForID(id);
+    if (!this.pageAction) {
+      this.pageAction = PageActions.addAction(new PageActions.Action({
+        id,
+        title: gPocketBundle.GetStringFromName("saveToPocketCmd.label"),
+        pinnedToUrlbar: true,
+        wantsIframe: true,
+        urlbarIDOverride: "pocket-button-box",
+        anchorIDOverride: "pocket-button",
+        _insertBeforeActionID: PageActions.ACTION_ID_BOOKMARK_SEPARATOR,
+        _urlbarNodeInMarkup: true,
+        onBeforePlacedInWindow(window) {
+          let doc = window.document;
+
+          if (doc.getElementById("pocket-button-box")) {
+            return;
+          }
+
+          let wrapper = doc.createElement("hbox");
+          wrapper.id = "pocket-button-box";
+          wrapper.classList.add("urlbar-icon-wrapper", "urlbar-page-action");
+          let animatableBox = doc.createElement("hbox");
+          animatableBox.id = "pocket-animatable-box";
+          let animatableImage = doc.createElement("image");
+          animatableImage.id = "pocket-animatable-image";
+          animatableImage.setAttribute("role", "presentation");
+          let tooltip =
+            gPocketBundle.GetStringFromName("pocket-button.tooltiptext");
+          animatableImage.setAttribute("tooltiptext", tooltip);
+          let pocketButton = doc.createElement("image");
+          pocketButton.id = "pocket-button";
+          pocketButton.classList.add("urlbar-icon");
+          pocketButton.setAttribute("role", "button");
+          pocketButton.setAttribute("tooltiptext", tooltip);
+
+          wrapper.appendChild(pocketButton);
+          wrapper.appendChild(animatableBox);
+          animatableBox.appendChild(animatableImage);
+          let iconBox = doc.getElementById("page-action-buttons");
+          iconBox.appendChild(wrapper);
+          wrapper.hidden = true;
+
+          wrapper.addEventListener("click", event => {
+            let {BrowserPageActions} = wrapper.ownerGlobal;
+            BrowserPageActions.doCommandForAction(this, event, wrapper);
+          });
+        },
+        onIframeShowing(iframe, panel) {
+          Pocket.onShownInPhotonPageActionPanel(panel, iframe);
+
+          let doc = panel.ownerDocument;
+          let urlbarNode = doc.getElementById("pocket-button-box");
+          if (!urlbarNode || urlbarNode.hidden) {
+            return;
+          }
+
+          BrowserUtils.setToolbarButtonHeightProperty(urlbarNode);
+
+          PocketPageAction.urlbarNode = urlbarNode;
+          PocketPageAction.urlbarNode.setAttribute("open", "true");
+          if (Services.prefs.getBoolPref("toolkit.cosmeticAnimations.enabled")) {
+            PocketPageAction.urlbarNode.setAttribute("animate", "true");
+          }
+
+          let browser = panel.ownerGlobal.gBrowser.selectedBrowser;
+          PocketPageAction.pocketedBrowser = browser;
+          PocketPageAction.pocketedBrowserInnerWindowID = browser.innerWindowID;
+        },
+        onIframeHidden(iframe, panel) {
+          if (iframe.getAttribute("itemAdded") == "true") {
+            iframe.ownerGlobal.LibraryUI.triggerLibraryAnimation("pocket");
+          }
+
+          if (!PocketPageAction.urlbarNode) {
+            return;
+          }
+          PocketPageAction.urlbarNode.removeAttribute("animate");
+          PocketPageAction.urlbarNode.removeAttribute("open");
+          delete PocketPageAction.urlbarNode;
+
+          if (iframe.getAttribute("itemAdded") == "true") {
+            PocketPageAction.innerWindowIDsByBrowser.set(
+              PocketPageAction.pocketedBrowser,
+              PocketPageAction.pocketedBrowserInnerWindowID
+            );
+          } else {
+            PocketPageAction.innerWindowIDsByBrowser.delete(
+              PocketPageAction.pocketedBrowser
+            );
+          }
+          PocketPageAction.updateUrlbarNodeState(panel.ownerGlobal);
+          delete PocketPageAction.pocketedBrowser;
+          delete PocketPageAction.pocketedBrowserInnerWindowID;
+        },
+        onLocationChange(browserWindow) {
+          PocketPageAction.updateUrlbarNodeState(browserWindow);
+        },
+      }));
+    }
+    Pocket.pageAction = this.pageAction;
+  },
+
+  // For pocketed inner windows, this maps their <browser>s to those inner
+  // window IDs.  If a browser's inner window changes, then the mapped ID will
+  // be out of date, meaning that the new inner window has not been pocketed.
+  // If a browser goes away, then it'll be gone from this map too since it's
+  // weak.  To tell whether a window has been pocketed then, look up its browser
+  // in this map and compare the mapped inner window ID to the ID of the current
+  // inner window.
+  get innerWindowIDsByBrowser() {
+    delete this.innerWindowIDsByBrowser;
+    return this.innerWindowIDsByBrowser = new WeakMap();
+  },
+
+  // Sets or removes the "pocketed" attribute on the Pocket urlbar button as
+  // necessary.
+  updateUrlbarNodeState(browserWindow) {
+    if (!this.pageAction) {
+      return;
+    }
+    let {BrowserPageActions} = browserWindow;
+    let urlbarNode = browserWindow.document.getElementById(
+      BrowserPageActions.urlbarButtonNodeIDForActionID(this.pageAction.id)
+    );
+    if (!urlbarNode) {
+      return;
+    }
+    let browser = browserWindow.gBrowser.selectedBrowser;
+    let pocketedInnerWindowID = this.innerWindowIDsByBrowser.get(browser);
+    if (pocketedInnerWindowID == browser.innerWindowID) {
+      // The current window in this browser is pocketed.
+      urlbarNode.setAttribute("pocketed", "true");
+    } else {
+      // The window isn't pocketed.
+      urlbarNode.removeAttribute("pocketed");
+    }
+  },
+
+  shutdown() {
+    if (!this.pageAction) {
+      return;
+    }
+
+    for (let win of browserWindows()) {
+      let doc = win.document;
+      let pocketButtonBox = doc.getElementById("pocket-button-box");
+      if (pocketButtonBox) {
+        pocketButtonBox.remove();
+      }
+    }
+
+    this.pageAction.remove();
+    this.pageAction = null;
+  },
+};
 
 // PocketContextMenu
 // When the context menu is opened check if we need to build and enable pocket UI.
@@ -160,7 +253,7 @@ var PocketContextMenu = {
     Services.obs.removeObserver(this, "on-build-contextmenu");
     // loop through windows and remove context menus
     // iterate through all windows and add pocket to them
-    for (let win of CustomizableUI.windows) {
+    for (let win of browserWindows()) {
       let document = win.document;
       for (let id of ["context-pocket", "context-savelinktopocket"]) {
         let element = document.getElementById(id);
@@ -172,7 +265,7 @@ var PocketContextMenu = {
   observe(aSubject, aTopic, aData) {
     let subject = aSubject.wrappedJSObject;
     let document = subject.menu.ownerDocument;
-    let pocketEnabled = CustomizableUI.getPlacementOfWidget("pocket-button");
+    let pocketEnabled = isPocketEnabled();
 
     let showSaveCurrentPageToPocket = !(subject.onTextInput || subject.onLink ||
                                         subject.isContentSelected || subject.onImage ||
@@ -219,7 +312,7 @@ var PocketContextMenu = {
     }
     menu.hidden = !showSaveLinkToPocket;
   }
-}
+};
 
 // PocketReader
 // Listen for reader mode setup and add our button to the reader toolbar
@@ -271,25 +364,14 @@ var PocketReader = {
         break;
       }
       case "Reader:Clicked-pocket-button": {
-        let doc = message.target.ownerDocument;
-        let pocketWidget = doc.getElementById("pocket-button");
-        let placement = CustomizableUI.getPlacementOfWidget("pocket-button");
-        if (placement) {
-          if (placement.area == CustomizableUI.AREA_PANEL) {
-            doc.defaultView.PanelUI.show().then(function() {
-              // The DOM node might not exist yet if the panel wasn't opened before.
-              pocketWidget = doc.getElementById("pocket-button");
-              pocketWidget.doCommand();
-            });
-          } else {
-            pocketWidget.doCommand();
-          }
+        if (PocketPageAction.pageAction) {
+          PocketPageAction.pageAction.doCommand(message.target.ownerGlobal);
         }
         break;
       }
     }
   }
-}
+};
 
 
 function pktUIGetter(prop, window) {
@@ -315,31 +397,29 @@ var PocketOverlay = {
     this._cachedSheet = styleSheetService.preloadSheet(gPocketStyleURI,
                                                        this._sheetType);
     Services.ppmm.loadProcessScript(PROCESS_SCRIPT, true);
+    Services.obs.addObserver(this, "browser-delayed-startup-finished");
     PocketReader.startup();
-    CustomizableUI.addListener(this);
-    CreatePocketWidget(reason);
+    PocketPageAction.init();
     PocketContextMenu.init();
-
-    for (let win of CustomizableUI.windows) {
+    for (let win of browserWindows()) {
       this.onWindowOpened(win);
     }
   },
   shutdown(reason) {
-    let ppmm = Cc["@mozilla.org/parentprocessmessagemanager;1"]
-                 .getService(Ci.nsIMessageBroadcaster);
-    ppmm.broadcastAsyncMessage("PocketShuttingDown");
+    Services.ppmm.broadcastAsyncMessage("PocketShuttingDown");
+    Services.obs.removeObserver(this, "browser-delayed-startup-finished");
     // Although the ppmm loads the scripts into the chrome process as well,
     // we need to manually unregister here anyway to ensure these aren't part
     // of the chrome process and avoid errors.
     AboutPocket.aboutSaved.unregister();
     AboutPocket.aboutSignup.unregister();
 
-    CustomizableUI.removeListener(this);
-    for (let window of CustomizableUI.windows) {
-      for (let id of ["panelMenu_pocket", "menu_pocket", "BMB_pocket",
-                      "panelMenu_pocketSeparator", "menu_pocketSeparator",
-                      "BMB_pocketSeparator", "appMenu-library-pocket-button"]) {
-        let element = window.document.getElementById(id);
+    PocketPageAction.shutdown();
+
+    for (let window of browserWindows()) {
+      for (let id of ["appMenu-library-pocket-button"]) {
+        let element = window.document.getElementById(id) ||
+                      window.gNavToolbox.palette.querySelector("#" + id);
         if (element)
           element.remove();
       }
@@ -350,9 +430,14 @@ var PocketOverlay = {
       delete window.pktUI;
       delete window.pktUIMessaging;
     }
-    CustomizableUI.destroyWidget("pocket-button");
+
     PocketContextMenu.shutdown();
     PocketReader.shutdown();
+  },
+  observe(subject, topic, detail) {
+    if (topic == "browser-delayed-startup-finished") {
+      this.onWindowOpened(subject);
+    }
   },
   onWindowOpened(window) {
     if (window.hasOwnProperty("pktUI"))
@@ -362,8 +447,8 @@ var PocketOverlay = {
     this.updateWindow(window);
   },
   setWindowScripts(window) {
-    XPCOMUtils.defineLazyModuleGetter(window, "Pocket",
-                                      "chrome://pocket/content/Pocket.jsm");
+    ChromeUtils.defineModuleGetter(window, "Pocket",
+                                   "chrome://pocket/content/Pocket.jsm");
     // Can't use XPCOMUtils for these because the scripts try to define the variables
     // on window, and so the defineProperty inside defineLazyGetter fails.
     Object.defineProperty(window, "pktApi", pktUIGetter("pktApi", window));
@@ -374,100 +459,21 @@ var PocketOverlay = {
   updateWindow(window) {
     // insert our three menu items
     let document = window.document;
-    let hidden = !CustomizableUI.getPlacementOfWidget("pocket-button");
-
-    // add to bookmarksMenu
-    let sib = document.getElementById("menu_bookmarkThisPage");
-    if (sib && !document.getElementById("menu_pocket")) {
-      let menu = createElementWithAttrs(document, "menuitem", {
-        "id": "menu_pocket",
-        "label": gPocketBundle.GetStringFromName("pocketMenuitem.label"),
-        "class": "menuitem-iconic", // OSX only
-        "oncommand": "openUILink(Pocket.listURL, event);",
-        "hidden": hidden
-      });
-      let sep = createElementWithAttrs(document, "menuseparator", {
-        "id": "menu_pocketSeparator",
-        "hidden": hidden
-      });
-      sib.parentNode.insertBefore(menu, sib);
-      sib.parentNode.insertBefore(sep, sib);
-    }
-
-    // add to bookmarks-menu-button
-    sib = document.getElementById("BMB_bookmarksToolbar");
-    if (sib && !document.getElementById("BMB_pocket")) {
-      let menu = createElementWithAttrs(document, "menuitem", {
-        "id": "BMB_pocket",
-        "label": gPocketBundle.GetStringFromName("pocketMenuitem.label"),
-        "class": "menuitem-iconic bookmark-item subviewbutton",
-        "oncommand": "openUILink(Pocket.listURL, event);",
-        "hidden": hidden
-      });
-      let sep = createElementWithAttrs(document, "menuseparator", {
-        "id": "BMB_pocketSeparator",
-        "hidden": hidden
-      });
-      sib.parentNode.insertBefore(menu, sib);
-      sib.parentNode.insertBefore(sep, sib);
-    }
-
-    // add to PanelUI-bookmarks
-    sib = document.getElementById("panelMenuBookmarkThisPage");
-    if (sib && !document.getElementById("panelMenu_pocket")) {
-      let menu = createElementWithAttrs(document, "toolbarbutton", {
-        "id": "panelMenu_pocket",
-        "label": gPocketBundle.GetStringFromName("pocketMenuitem.label"),
-        "class": "subviewbutton cui-withicon",
-        "oncommand": "openUILink(Pocket.listURL, event);",
-        "hidden": hidden
-      });
-      let sep = createElementWithAttrs(document, "toolbarseparator", {
-        "id": "panelMenu_pocketSeparator",
-        "hidden": hidden
-      });
-      // nextSibling is no-id toolbarseparator
-      // insert separator first then button
-      sib = sib.nextSibling;
-      sib.parentNode.insertBefore(sep, sib);
-      sib.parentNode.insertBefore(menu, sib);
-    }
+    let hidden = !isPocketEnabled();
 
     // Add to library panel
-    sib = document.getElementById("appMenu-library-history-button");
+    let sib = document.getElementById("appMenu-library-history-button");
     if (sib && !document.getElementById("appMenu-library-pocket-button")) {
       let menu = createElementWithAttrs(document, "toolbarbutton", {
         "id": "appMenu-library-pocket-button",
         "label": gPocketBundle.GetStringFromName("pocketMenuitem.label"),
         "class": "subviewbutton subviewbutton-iconic",
-        "oncommand": "openUILink(Pocket.listURL, event);",
+        "oncommand": "Pocket.openList(event)",
         "hidden": hidden
       });
       sib.parentNode.insertBefore(menu, sib);
     }
-  },
-  onWidgetAfterDOMChange(aWidgetNode) {
-    if (aWidgetNode.id != "pocket-button") {
-      return;
-    }
-    let doc = aWidgetNode.ownerDocument;
-    let hidden = !CustomizableUI.getPlacementOfWidget("pocket-button");
-    let elementIds = [
-      "panelMenu_pocket",
-      "menu_pocket",
-      "BMB_pocket",
-      "appMenu-library-pocket-button",
-    ];
-    for (let elementId of elementIds) {
-      let element = doc.getElementById(elementId);
-      if (element) {
-        element.hidden = hidden;
-        let sep = doc.getElementById(elementId + "Separator");
-        if (sep) {
-          sep.hidden = hidden;
-        }
-      }
-    }
+
     // enable or disable reader button
     PocketReader.hidden = hidden;
   },
@@ -482,7 +488,7 @@ var PocketOverlay = {
     utils.removeSheet(gPocketStyleURI, this._sheetType);
   }
 
-}
+};
 
 // use enabled pref as a way for tests (e.g. test_contextmenu.html) to disable
 // the addon when running.
@@ -524,4 +530,11 @@ function install() {
 }
 
 function uninstall() {
+}
+
+function* browserWindows() {
+  let windows = Services.wm.getEnumerator("navigator:browser");
+  while (windows.hasMoreElements()) {
+    yield windows.getNext();
+  }
 }

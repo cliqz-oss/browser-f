@@ -44,7 +44,7 @@ nsViewSourceChannel::Init(nsIURI* uri)
     mOriginalURI = uri;
 
     nsAutoCString path;
-    nsresult rv = uri->GetPath(path);
+    nsresult rv = uri->GetPathQueryRef(path);
     if (NS_FAILED(rv))
       return rv;
 
@@ -57,7 +57,7 @@ nsViewSourceChannel::Init(nsIURI* uri)
       return rv;
 
     // prevent viewing source of javascript URIs (see bug 204779)
-    if (scheme.LowerCaseEqualsLiteral("javascript")) {
+    if (scheme.EqualsLiteral("javascript")) {
       NS_WARNING("blocking view-source:javascript:");
       return NS_ERROR_INVALID_ARG;
     }
@@ -67,7 +67,7 @@ nsViewSourceChannel::Init(nsIURI* uri)
     // Until then we follow the principal of least privilege and use
     // nullPrincipal as the loadingPrincipal and the least permissive
     // securityflag.
-    nsCOMPtr<nsIPrincipal> nullPrincipal = NullPrincipal::Create();
+    nsCOMPtr<nsIPrincipal> nullPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
 
     rv = pService->NewChannel2(path,
                                nullptr, // aOriginCharset
@@ -129,10 +129,85 @@ nsViewSourceChannel::InitSrcdoc(nsIURI* aURI,
     mApplicationCacheChannel = do_QueryInterface(mChannel);
     mUploadChannel = do_QueryInterface(mChannel);
 
+    rv = UpdateLoadInfoResultPrincipalURI();
+    NS_ENSURE_SUCCESS(rv, rv);
+
     nsCOMPtr<nsIInputStreamChannel> isc = do_QueryInterface(mChannel);
     MOZ_ASSERT(isc);
     isc->SetBaseURI(aBaseURI);
     return NS_OK;
+}
+
+nsresult
+nsViewSourceChannel::UpdateLoadInfoResultPrincipalURI()
+{
+    nsresult rv;
+
+    MOZ_ASSERT(mChannel);
+
+    nsCOMPtr<nsILoadInfo> channelLoadInfo = mChannel->GetLoadInfo();
+    if (!channelLoadInfo) {
+        return NS_OK;
+    }
+
+    nsCOMPtr<nsIURI> channelResultPrincipalURI;
+    rv = channelLoadInfo->GetResultPrincipalURI(getter_AddRefs(channelResultPrincipalURI));
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+
+    if (!channelResultPrincipalURI) {
+        mChannel->GetOriginalURI(getter_AddRefs(channelResultPrincipalURI));
+        return NS_OK;
+    }
+
+    if (!channelResultPrincipalURI) {
+        return NS_ERROR_UNEXPECTED;
+    }
+
+    bool alreadyViewSource;
+    if (NS_SUCCEEDED(channelResultPrincipalURI->SchemeIs("view-source", &alreadyViewSource)) &&
+        alreadyViewSource) {
+        return NS_OK;
+    }
+
+    nsCOMPtr<nsIURI> updatedResultPrincipalURI;
+    rv = BuildViewSourceURI(channelResultPrincipalURI,
+                            getter_AddRefs(updatedResultPrincipalURI));
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+
+    rv = channelLoadInfo->SetResultPrincipalURI(updatedResultPrincipalURI);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+
+    return NS_OK;
+}
+
+nsresult
+nsViewSourceChannel::BuildViewSourceURI(nsIURI * aURI, nsIURI ** aResult)
+{
+    nsresult rv;
+
+    // protect ourselves against broken channel implementations
+    if (!aURI) {
+        NS_ERROR("no URI to build view-source uri!");
+        return NS_ERROR_UNEXPECTED;
+    }
+
+    nsAutoCString spec;
+    rv = aURI->GetSpec(spec);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+
+    return NS_NewURI(aResult,
+                     /* XXX Gross hack -- NS_NewURI goes into an infinite loop on
+                     non-flat specs.  See bug 136980 */
+                     nsAutoCString(NS_LITERAL_CSTRING("view-source:") + spec),
+                     nullptr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -229,24 +304,11 @@ nsViewSourceChannel::GetURI(nsIURI* *aURI)
 
     nsCOMPtr<nsIURI> uri;
     nsresult rv = mChannel->GetURI(getter_AddRefs(uri));
-    if (NS_FAILED(rv))
-      return rv;
-
-    // protect ourselves against broken channel implementations
-    if (!uri) {
-      NS_ERROR("inner channel returned NS_OK and a null URI");
-      return NS_ERROR_UNEXPECTED;
-    }
-
-    nsAutoCString spec;
-    rv = uri->GetSpec(spec);
     if (NS_FAILED(rv)) {
       return rv;
     }
 
-    /* XXX Gross hack -- NS_NewURI goes into an infinite loop on
-       non-flat specs.  See bug 136980 */
-    return NS_NewURI(aURI, nsAutoCString(NS_LITERAL_CSTRING("view-source:")+spec), nullptr);
+    return BuildViewSourceURI(uri, aURI);
 }
 
 NS_IMETHODIMP
@@ -420,7 +482,7 @@ nsViewSourceChannel::GetContentType(nsACString &aContentType)
         // content decoder will then kick in automatically, and it
         // will call our SetOriginalContentType method instead of our
         // SetContentType method to set the type it determines.
-        if (!contentType.Equals(UNKNOWN_CONTENT_TYPE)) {
+        if (!contentType.EqualsLiteral(UNKNOWN_CONTENT_TYPE)) {
           contentType = VIEWSOURCE_CONTENT_TYPE;
         }
 
@@ -670,6 +732,11 @@ nsViewSourceChannel::OnStartRequest(nsIRequest *aRequest, nsISupports *aContext)
     mCachingChannel = do_QueryInterface(aRequest);
     mCacheInfoChannel = do_QueryInterface(mChannel);
     mUploadChannel = do_QueryInterface(aRequest);
+
+    nsresult rv = UpdateLoadInfoResultPrincipalURI();
+    if (NS_FAILED(rv)) {
+        Cancel(rv);
+    }
 
     return mListener->OnStartRequest(static_cast<nsIViewSourceChannel*>
                                                 (this),
@@ -1011,6 +1078,13 @@ nsViewSourceChannel::RedirectTo(nsIURI *uri)
 }
 
 NS_IMETHODIMP
+nsViewSourceChannel::UpgradeToSecure()
+{
+    return !mHttpChannel ? NS_ERROR_NULL_POINTER :
+        mHttpChannel->UpgradeToSecure();
+}
+
+NS_IMETHODIMP
 nsViewSourceChannel::GetRequestContextID(uint64_t *_retval)
 {
     return !mHttpChannel ? NS_ERROR_NULL_POINTER :
@@ -1043,6 +1117,12 @@ void
 nsViewSourceChannel::SetCorsPreflightParameters(const nsTArray<nsCString>& aUnsafeHeaders)
 {
   mHttpChannelInternal->SetCorsPreflightParameters(aUnsafeHeaders);
+}
+
+void
+nsViewSourceChannel::SetAltDataForChild(bool aIsForChild)
+{
+    mHttpChannelInternal->SetAltDataForChild(aIsForChild);
 }
 
 NS_IMETHODIMP

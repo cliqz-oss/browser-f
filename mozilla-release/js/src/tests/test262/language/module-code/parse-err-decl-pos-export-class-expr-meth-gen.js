@@ -5,9 +5,12 @@
 description: Expression cannot contain an `export` declaration
 esid: sec-modules
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [module]
+features: [generators]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 (class { *method() { export default null; } });

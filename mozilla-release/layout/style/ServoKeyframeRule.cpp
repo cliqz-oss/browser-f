@@ -6,6 +6,8 @@
 
 #include "mozilla/ServoKeyframeRule.h"
 
+#include "mozilla/DeclarationBlockInlines.h"
+#include "mozilla/ServoDeclarationBlock.h"
 #include "nsDOMCSSDeclaration.h"
 #include "mozAutoDocUpdate.h"
 
@@ -29,13 +31,12 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(
     ServoKeyframeDeclaration, nsICSSDeclaration)
 
-  NS_IMETHOD GetParentRule(nsIDOMCSSRule** aParent) final
-  {
-    *aParent = mRule;
-    return NS_OK;
-  }
+  css::Rule* GetParentRule() final { return mRule; }
 
-  void DropReference() { mRule = nullptr; }
+  void DropReference() {
+    mRule = nullptr;
+    mDecls->SetOwningRule(nullptr);
+  }
 
   DeclarationBlock* GetCSSDeclaration(Operation aOperation) final
   {
@@ -56,13 +57,8 @@ public:
     });
     return NS_OK;
   }
-  void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv) final
-  {
-    MOZ_ASSERT_UNREACHABLE("GetCSSParsingEnvironment "
-                           "shouldn't be calling for a Servo rule");
-    GetCSSParsingEnvironmentForRule(mRule, aCSSParseEnv);
-  }
-  ServoCSSParsingEnvironment GetServoCSSParsingEnvironment() const final
+  ServoCSSParsingEnvironment GetServoCSSParsingEnvironment(
+      nsIPrincipal* aSubjectPrincipal) const final
   {
     return GetServoCSSParsingEnvironmentForRule(mRule);
   }
@@ -81,7 +77,9 @@ public:
   }
 
 private:
-  virtual ~ServoKeyframeDeclaration() {}
+  virtual ~ServoKeyframeDeclaration() {
+    MOZ_ASSERT(!mRule, "Backpointer should have been cleared");
+  }
 
   ServoKeyframeRule* mRule;
   RefPtr<ServoDeclarationBlock> mDecls;
@@ -102,13 +100,16 @@ NS_INTERFACE_MAP_END_INHERITING(nsDOMCSSDeclaration)
 
 ServoKeyframeRule::~ServoKeyframeRule()
 {
+  if (mDeclaration) {
+    mDeclaration->DropReference();
+  }
 }
 
 NS_IMPL_ADDREF_INHERITED(ServoKeyframeRule, dom::CSSKeyframeRule)
 NS_IMPL_RELEASE_INHERITED(ServoKeyframeRule, dom::CSSKeyframeRule)
 
 // QueryInterface implementation for nsCSSKeyframeRule
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(ServoKeyframeRule)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ServoKeyframeRule)
 NS_INTERFACE_MAP_END_INHERITING(dom::CSSKeyframeRule)
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(ServoKeyframeRule)
@@ -129,16 +130,6 @@ bool
 ServoKeyframeRule::IsCCLeaf() const
 {
   return Rule::IsCCLeaf() && !mDeclaration;
-}
-
-/* virtual */ already_AddRefed<css::Rule>
-ServoKeyframeRule::Clone() const
-{
-  // Rule::Clone is only used when CSSStyleSheetInner is cloned in
-  // preparation of being mutated. However, ServoStyleSheet never clones
-  // anything, so this method should never be called.
-  MOZ_ASSERT_UNREACHABLE("Shouldn't be cloning ServoKeyframeRule");
-  return nullptr;
 }
 
 #ifdef DEBUG
@@ -164,32 +155,27 @@ ServoKeyframeRule::UpdateRule(Func aCallback)
   aCallback();
 
   if (StyleSheet* sheet = GetStyleSheet()) {
-    // FIXME sheet->AsGecko()->SetModifiedByChildRule();
-    if (doc) {
-      doc->StyleRuleChanged(sheet, this);
-    }
+    sheet->RuleChanged(this);
   }
 }
 
-NS_IMETHODIMP
+void
 ServoKeyframeRule::GetKeyText(nsAString& aKeyText)
 {
   Servo_Keyframe_GetKeyText(mRaw, &aKeyText);
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 ServoKeyframeRule::SetKeyText(const nsAString& aKeyText)
 {
   NS_ConvertUTF16toUTF8 keyText(aKeyText);
   UpdateRule([this, &keyText]() {
     Servo_Keyframe_SetKeyText(mRaw, &keyText);
   });
-  return NS_OK;
 }
 
 void
-ServoKeyframeRule::GetCssTextImpl(nsAString& aCssText) const
+ServoKeyframeRule::GetCssText(nsAString& aCssText) const
 {
   Servo_Keyframe_GetCssText(mRaw, &aCssText);
 }

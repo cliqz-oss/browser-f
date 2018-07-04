@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,7 +10,6 @@
 
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/ServoBindings.h"
-#include "nsCSSParser.h"
 #include "nsGlobalWindow.h"
 #include "nsIDocument.h"
 #include "nsIURI.h"
@@ -24,14 +24,13 @@ struct SupportsParsingInfo
   nsIURI* mDocURI;
   nsIURI* mBaseURI;
   nsIPrincipal* mPrincipal;
-  StyleBackendType mStyleBackendType;
 };
 
 static nsresult
 GetParsingInfo(const GlobalObject& aGlobal,
                SupportsParsingInfo& aInfo)
 {
-  nsGlobalWindow* win = xpc::WindowOrNull(aGlobal.Get());
+  nsGlobalWindowInner* win = xpc::WindowOrNull(aGlobal.Get());
   if (!win) {
     return NS_ERROR_FAILURE;
   }
@@ -44,7 +43,6 @@ GetParsingInfo(const GlobalObject& aGlobal,
   aInfo.mDocURI = nsCOMPtr<nsIURI>(doc->GetDocumentURI()).get();
   aInfo.mBaseURI = nsCOMPtr<nsIURI>(doc->GetBaseURI()).get();
   aInfo.mPrincipal = win->GetPrincipal();
-  aInfo.mStyleBackendType = doc->GetStyleBackendType();
   return NS_OK;
 }
 
@@ -62,15 +60,9 @@ CSS::Supports(const GlobalObject& aGlobal,
     return false;
   }
 
-  if (info.mStyleBackendType == StyleBackendType::Servo) {
-    NS_ConvertUTF16toUTF8 property(aProperty);
-    NS_ConvertUTF16toUTF8 value(aValue);
-    return Servo_CSSSupports2(&property, &value);
-  }
-
-  nsCSSParser parser;
-  return parser.EvaluateSupportsDeclaration(aProperty, aValue, info.mDocURI,
-                                            info.mBaseURI, info.mPrincipal);
+  NS_ConvertUTF16toUTF8 property(aProperty);
+  NS_ConvertUTF16toUTF8 value(aValue);
+  return Servo_CSSSupports2(&property, &value);
 }
 
 /* static */ bool
@@ -86,15 +78,8 @@ CSS::Supports(const GlobalObject& aGlobal,
     return false;
   }
 
-  if (info.mStyleBackendType == StyleBackendType::Servo) {
-    NS_ConvertUTF16toUTF8 cond(aCondition);
-    return Servo_CSSSupports(&cond);
-  }
-
-  nsCSSParser parser;
-  return parser.EvaluateSupportsCondition(aCondition, info.mDocURI,
-                                          info.mBaseURI, info.mPrincipal,
-                                          css::SupportsParsingSettings::ImpliedParentheses);
+  NS_ConvertUTF16toUTF8 cond(aCondition);
+  return Servo_CSSSupports(&cond);
 }
 
 /* static */ void

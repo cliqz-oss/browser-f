@@ -16,12 +16,12 @@ EXTRA_COMPONENTS += [
 EXTRA_JS_MODULES['services-common'] += [
     'async.js',
     'blocklist-clients.js',
-    'blocklist-updater.js',
     'kinto-http-client.js',
     'kinto-offline-client.js',
     'kinto-storage-adapter.js',
     'logmanager.js',
     'observers.js',
+    'remote-settings.js',
     'rest.js',
     'uptake-telemetry.js',
     'utils.js',
@@ -34,16 +34,12 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':
         'tokenserverclient.js',
     ]
 
-    TESTING_JS_MODULES.services.common += [
-        'modules-testing/storageserver.js',
-    ]
-
 TESTING_JS_MODULES.services.common += [
     'modules-testing/logging.js',
-    'modules-testing/utils.js',
 ]
 
 JS_PREFERENCE_FILES += [
     'services-common.js',
 ]
 
+SPHINX_TREES['services'] = 'docs'

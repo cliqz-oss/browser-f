@@ -26,13 +26,10 @@ EXTRA_JS_MODULES += [
   'FxAccountsClient.jsm',
   'FxAccountsCommon.js',
   'FxAccountsConfig.jsm',
+  'FxAccountsMessages.js',
   'FxAccountsOAuthGrantClient.jsm',
   'FxAccountsProfile.jsm',
   'FxAccountsProfileClient.jsm',
   'FxAccountsStorage.jsm',
   'FxAccountsWebChannel.jsm',
 ]
-
-# For now, we will only be using the FxA manager in B2G.
-if CONFIG['MOZ_B2G']:
-  EXTRA_JS_MODULES += ['FxAccountsManager.jsm']

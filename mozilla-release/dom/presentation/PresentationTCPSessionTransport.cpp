@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -61,7 +61,7 @@ CopierCallbacks::OnStopRequest(nsIRequest* aRequest, nsISupports* aContext, nsre
 NS_IMPL_CYCLE_COLLECTION(PresentationTCPSessionTransport, mTransport,
                          mSocketInputStream, mSocketOutputStream,
                          mInputStreamPump, mInputStreamScriptable,
-                         mMultiplexStream, mMultiplexStreamCopier, mCallback)
+                         mCallback)
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(PresentationTCPSessionTransport)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(PresentationTCPSessionTransport)
@@ -236,35 +236,6 @@ PresentationTCPSessionTransport::CreateStream()
     return rv;
   }
 
-  mMultiplexStream = do_CreateInstance("@mozilla.org/io/multiplex-input-stream;1", &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  mMultiplexStreamCopier = do_CreateInstance("@mozilla.org/network/async-stream-copier;1", &rv);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  nsCOMPtr<nsISocketTransportService> sts =
-    do_GetService(NS_SOCKETTRANSPORTSERVICE_CONTRACTID);
-  if (NS_WARN_IF(!sts)) {
-    return NS_ERROR_NOT_AVAILABLE;
-  }
-
-  nsCOMPtr<nsIEventTarget> target = do_QueryInterface(sts);
-  rv = mMultiplexStreamCopier->Init(mMultiplexStream,
-                                    mSocketOutputStream,
-                                    target,
-                                    true, /* source buffered */
-                                    false, /* sink buffered */
-                                    BUFFER_SIZE,
-                                    false, /* close source */
-                                    false); /* close sink */
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
   return NS_OK;
 }
 
@@ -281,7 +252,7 @@ PresentationTCPSessionTransport::CreateInputStreamPump()
     return rv;
   }
 
-  rv = mInputStreamPump->Init(mSocketInputStream, -1, -1, 0, 0, false, nullptr);
+  rv = mInputStreamPump->Init(mSocketInputStream, 0, 0, false, nullptr);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -346,23 +317,59 @@ PresentationTCPSessionTransport::GetSelfAddress(nsINetAddr** aSelfAddress)
   return mTransport->GetScriptableSelfAddr(aSelfAddress);
 }
 
-void
+nsresult
 PresentationTCPSessionTransport::EnsureCopying()
 {
   if (mAsyncCopierActive) {
-    return;
+    return NS_OK;
   }
 
   mAsyncCopierActive = true;
+
+  nsresult rv;
+
+  nsCOMPtr<nsIMultiplexInputStream> multiplexStream =
+    do_CreateInstance("@mozilla.org/io/multiplex-input-stream;1", &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<nsIInputStream> stream = do_QueryInterface(multiplexStream);
+
+  while (!mPendingData.IsEmpty()) {
+    nsCOMPtr<nsIInputStream> stream = mPendingData[0];
+    multiplexStream->AppendStream(stream);
+    mPendingData.RemoveElementAt(0);
+  }
+
+  nsCOMPtr<nsIAsyncStreamCopier> copier =
+    do_CreateInstance("@mozilla.org/network/async-stream-copier;1", &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<nsISocketTransportService> sts =
+      do_GetService("@mozilla.org/network/socket-transport-service;1");
+
+  nsCOMPtr<nsIEventTarget> target = do_QueryInterface(sts);
+  rv = copier->Init(stream,
+                    mSocketOutputStream,
+                    target,
+                    true, /* source buffered */
+                    false, /* sink buffered */
+                    BUFFER_SIZE,
+                    false, /* close source */
+                    false); /* close sink */
+  NS_ENSURE_SUCCESS(rv, rv);
+
   RefPtr<CopierCallbacks> callbacks = new CopierCallbacks(this);
-  Unused << NS_WARN_IF(NS_FAILED(mMultiplexStreamCopier->AsyncCopy(callbacks, nullptr)));
+  rv = copier->AsyncCopy(callbacks, nullptr);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return NS_OK;
 }
 
 void
 PresentationTCPSessionTransport::NotifyCopyComplete(nsresult aStatus)
 {
   mAsyncCopierActive = false;
-  mMultiplexStream->RemoveStream(0);
+
   if (NS_WARN_IF(NS_FAILED(aStatus))) {
     if (mReadyState != ReadyState::CLOSED) {
       mCloseStatus = aStatus;
@@ -371,13 +378,7 @@ PresentationTCPSessionTransport::NotifyCopyComplete(nsresult aStatus)
     return;
   }
 
-  uint32_t count;
-  nsresult rv = mMultiplexStream->GetCount(&count);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return;
-  }
-
-  if (count) {
+  if (!mPendingData.IsEmpty()) {
     EnsureCopying();
     return;
   }
@@ -409,7 +410,7 @@ PresentationTCPSessionTransport::Send(const nsAString& aData)
     return NS_ERROR_DOM_INVALID_STATE_ERR;
   }
 
-  mMultiplexStream->AppendStream(stream);
+  mPendingData.AppendElement(stream);
 
   EnsureCopying();
 
@@ -440,9 +441,8 @@ PresentationTCPSessionTransport::Close(nsresult aReason)
   mCloseStatus = aReason;
   SetReadyState(ReadyState::CLOSING);
 
-  uint32_t count = 0;
-  mMultiplexStream->GetCount(&count);
-  if (!count) {
+  if (!mAsyncCopierActive) {
+    mPendingData.Clear();
     mSocketOutputStream->Close();
   }
 
@@ -539,15 +539,9 @@ PresentationTCPSessionTransport::OnStopRequest(nsIRequest* aRequest,
 
   MOZ_ASSERT(NS_IsMainThread());
 
-  uint32_t count;
-  nsresult rv = mMultiplexStream->GetCount(&count);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
   mInputStreamPump = nullptr;
 
-  if (count != 0 && NS_SUCCEEDED(aStatusCode)) {
+  if (mAsyncCopierActive && NS_SUCCEEDED(aStatusCode)) {
     // If we have some buffered output still, and status is not an error, the
     // other side has done a half-close, but we don't want to be in the close
     // state until we are done sending everything that was buffered. We also

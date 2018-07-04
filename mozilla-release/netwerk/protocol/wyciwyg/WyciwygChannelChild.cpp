@@ -157,8 +157,11 @@ public:
   , mSource(source)
   , mCharset(charset)
   , mSecurityInfo(securityInfo) {}
-  void Run() { mChild->OnStartRequest(mStatusCode, mContentLength, mSource,
-                                     mCharset, mSecurityInfo); }
+
+  void Run() override { mChild->OnStartRequest(mStatusCode, mContentLength,
+                                               mSource, mCharset,
+                                               mSecurityInfo); }
+
 private:
   nsresult mStatusCode;
   int64_t mContentLength;
@@ -191,7 +194,9 @@ WyciwygChannelChild::OnStartRequest(const nsresult& statusCode,
 
   mState = WCC_ONSTART;
 
-  mStatus = statusCode;
+  if (!mCanceled && NS_SUCCEEDED(mStatus)) {
+    mStatus = statusCode;
+  }
   mContentLength = contentLength;
   mCharsetSource = source;
   mCharset = charset;
@@ -217,7 +222,9 @@ public:
   : NeckoTargetChannelEvent<WyciwygChannelChild>(child)
   , mData(data)
   , mOffset(offset) {}
-  void Run() { mChild->OnDataAvailable(mData, mOffset); }
+
+  void Run() override { mChild->OnDataAvailable(mData, mOffset); }
+
 private:
   nsCString mData;
   uint64_t mOffset;
@@ -278,7 +285,9 @@ public:
                           const nsresult& statusCode)
   : NeckoTargetChannelEvent<WyciwygChannelChild>(child)
   , mStatusCode(statusCode) {}
-  void Run() { mChild->OnStopRequest(mStatusCode); }
+
+  void Run() override { mChild->OnStopRequest(mStatusCode); }
+
 private:
   nsresult mStatusCode;
 };
@@ -330,7 +339,8 @@ class WyciwygCancelEvent : public NeckoTargetChannelEvent<WyciwygChannelChild>
   : NeckoTargetChannelEvent<WyciwygChannelChild>(child)
   , mStatus(status) {}
 
-  void Run() { mChild->CancelEarly(mStatus); }
+  void Run() override { mChild->CancelEarly(mStatus); }
+
  private:
   nsresult mStatus;
 };

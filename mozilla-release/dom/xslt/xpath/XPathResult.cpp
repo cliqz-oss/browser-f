@@ -9,7 +9,6 @@
 #include "nsError.h"
 #include "mozilla/dom/Attr.h"
 #include "mozilla/dom/Element.h"
-#include "nsDOMClassInfoID.h"
 #include "nsIDOMNode.h"
 #include "nsIDOMDocument.h"
 #include "nsDOMString.h"
@@ -118,23 +117,20 @@ XPathResult::NodeWillBeDestroyed(const nsINode* aNode)
     nsCOMPtr<nsIMutationObserver> kungFuDeathGrip(this);
     // Set to null to avoid unregistring unnecessarily
     mDocument = nullptr;
-    Invalidate(aNode->IsNodeOfType(nsINode::eCONTENT) ?
-               static_cast<const nsIContent*>(aNode) : nullptr);
+    Invalidate(aNode->IsContent() ? aNode->AsContent() : nullptr);
 }
 
 void
-XPathResult::CharacterDataChanged(nsIDocument* aDocument,
-                                  nsIContent *aContent,
-                                  CharacterDataChangeInfo* aInfo)
+XPathResult::CharacterDataChanged(nsIContent* aContent,
+                                  const CharacterDataChangeInfo&)
 {
     Invalidate(aContent);
 }
 
 void
-XPathResult::AttributeChanged(nsIDocument* aDocument,
-                              Element* aElement,
+XPathResult::AttributeChanged(Element* aElement,
                               int32_t aNameSpaceID,
-                              nsIAtom* aAttribute,
+                              nsAtom* aAttribute,
                               int32_t aModType,
                               const nsAttrValue* aOldValue)
 {
@@ -142,31 +138,21 @@ XPathResult::AttributeChanged(nsIDocument* aDocument,
 }
 
 void
-XPathResult::ContentAppended(nsIDocument* aDocument,
-                             nsIContent* aContainer,
-                             nsIContent* aFirstNewContent,
-                             int32_t aNewIndexInContainer)
+XPathResult::ContentAppended(nsIContent* aFirstNewContent)
 {
-    Invalidate(aContainer);
+    Invalidate(aFirstNewContent->GetParent());
 }
 
 void
-XPathResult::ContentInserted(nsIDocument* aDocument,
-                             nsIContent* aContainer,
-                             nsIContent* aChild,
-                             int32_t aIndexInContainer)
+XPathResult::ContentInserted(nsIContent* aChild)
 {
-    Invalidate(aContainer);
+    Invalidate(aChild->GetParent());
 }
 
 void
-XPathResult::ContentRemoved(nsIDocument* aDocument,
-                            nsIContent* aContainer,
-                            nsIContent* aChild,
-                            int32_t aIndexInContainer,
-                            nsIContent* aPreviousSibling)
+XPathResult::ContentRemoved(nsIContent* aChild, nsIContent* aPreviousSibling)
 {
-    Invalidate(aContainer);
+    Invalidate(aChild->GetParent());
 }
 
 nsresult
@@ -260,14 +246,11 @@ XPathResult::Invalidate(const nsIContent* aChangeRoot)
         // the changes are happening in a different anonymous trees, no
         // invalidation should happen.
         nsIContent* ctxBindingParent = nullptr;
-        if (contextNode->IsNodeOfType(nsINode::eCONTENT)) {
+        if (contextNode->IsContent()) {
             ctxBindingParent =
-                static_cast<nsIContent*>(contextNode.get())
-                    ->GetBindingParent();
-        } else if (contextNode->IsNodeOfType(nsINode::eATTRIBUTE)) {
-            Element* parent =
-              static_cast<Attr*>(contextNode.get())->GetElement();
-            if (parent) {
+              contextNode->AsContent()->GetBindingParent();
+        } else if (auto* attr = Attr::FromNode(contextNode)) {
+            if (Element* parent = attr->GetElement()) {
                 ctxBindingParent = parent->GetBindingParent();
             }
         }

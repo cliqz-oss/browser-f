@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "TimeoutManager.h"
+#include "nsContentUtils.h"
 #include "nsGlobalWindow.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Telemetry.h"
@@ -19,10 +20,6 @@
 #include "TimeoutBudgetManager.h"
 #include "mozilla/net/WebSocketEventService.h"
 #include "mozilla/MediaManager.h"
-
-#ifdef MOZ_WEBRTC
-#include "IPeerConnection.h"
-#endif // MOZ_WEBRTC
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -93,6 +90,20 @@ GetMaxBudget(bool aIsBackground)
   return maxBudget > 0 ? TimeDuration::FromMilliseconds(maxBudget)
                        : TimeDuration::Forever();
 }
+
+TimeDuration
+GetMinBudget(bool aIsBackground)
+{
+  // The minimum budget is computed by looking up the maximum allowed
+  // delay and computing how long time it would take to regenerate
+  // that budget using the regeneration factor. This number is
+  // expected to be negative.
+  return TimeDuration::FromMilliseconds(
+    - gBudgetThrottlingMaxDelay /
+    std::max(aIsBackground ? gBackgroundBudgetRegenerationFactor
+                           : gForegroundBudgetRegenerationFactor,
+             1));
+}
 } // namespace
 
 //
@@ -145,7 +156,7 @@ TimeoutManager::DestroyFiringId(uint32_t aFiringId)
 {
   MOZ_DIAGNOSTIC_ASSERT(!mFiringIdStack.IsEmpty());
   MOZ_DIAGNOSTIC_ASSERT(mFiringIdStack.LastElement() == aFiringId);
-  mFiringIdStack.RemoveElementAt(mFiringIdStack.Length() - 1);
+  mFiringIdStack.RemoveLastElement();
 }
 
 bool
@@ -209,9 +220,7 @@ TimeoutManager::MinSchedulingDelay() const
       mExecutionBudget < TimeDuration()) {
     // Only throttle if execution budget is less than 0
     double factor = 1.0 / GetRegenerationFactor(mWindow.IsBackgroundInternal());
-    return TimeDuration::Min(
-      TimeDuration::FromMilliseconds(gBudgetThrottlingMaxDelay),
-      TimeDuration::Max(unthrottled, -mExecutionBudget.MultDouble(factor)));
+    return TimeDuration::Max(unthrottled, -mExecutionBudget.MultDouble(factor));
   }
   //
   return unthrottled;
@@ -337,10 +346,22 @@ TimeoutManager::UpdateBudget(const TimeStamp& aNow, const TimeDuration& aDuratio
   if (BudgetThrottlingEnabled(isBackground)) {
     double factor = GetRegenerationFactor(isBackground);
     TimeDuration regenerated = (aNow - mLastBudgetUpdate).MultDouble(factor);
-    // Clamp the budget to the maximum allowed budget.
-    mExecutionBudget = TimeDuration::Min(
-      GetMaxBudget(isBackground), mExecutionBudget - aDuration + regenerated);
+    // Clamp the budget to the range of minimum and maximum allowed budget.
+    mExecutionBudget = TimeDuration::Max(
+      GetMinBudget(isBackground),
+      TimeDuration::Min(GetMaxBudget(isBackground),
+                        mExecutionBudget - aDuration + regenerated));
+  } else {
+    // If budget throttling isn't enabled, reset the execution budget
+    // to the max budget specified in preferences. Always doing this
+    // will catch the case of BudgetThrottlingEnabled going from
+    // returning true to returning false. This prevent us from looping
+    // in RunTimeout, due to totalTimeLimit being set to zero and no
+    // timeouts being executed, even though budget throttling isn't
+    // active at the moment.
+    mExecutionBudget = GetMaxBudget(isBackground);
   }
+
   mLastBudgetUpdate = aNow;
 }
 
@@ -375,7 +396,7 @@ int32_t gDisableOpenClickDelay;
 
 } // anonymous namespace
 
-TimeoutManager::TimeoutManager(nsGlobalWindow& aWindow)
+TimeoutManager::TimeoutManager(nsGlobalWindowInner& aWindow)
   : mWindow(aWindow),
     mExecutor(new TimeoutExecutor(this)),
     mNormalTimeouts(*this),
@@ -390,8 +411,6 @@ TimeoutManager::TimeoutManager(nsGlobalWindow& aWindow)
     mThrottleTrackingTimeouts(false),
     mBudgetThrottleTimeouts(false)
 {
-  MOZ_DIAGNOSTIC_ASSERT(aWindow.IsInnerWindow());
-
   MOZ_LOG(gLog, LogLevel::Debug,
           ("TimeoutManager %p created, tracking bucketing %s\n",
            this, gAnnotateTrackingChannels ? "enabled" : "disabled"));
@@ -399,7 +418,7 @@ TimeoutManager::TimeoutManager(nsGlobalWindow& aWindow)
 
 TimeoutManager::~TimeoutManager()
 {
-  MOZ_DIAGNOSTIC_ASSERT(mWindow.AsInner()->InnerObjectsFreed());
+  MOZ_DIAGNOSTIC_ASSERT(mWindow.IsDying());
   MOZ_DIAGNOSTIC_ASSERT(!mThrottleTimeoutsTimer);
 
   mExecutor->Shutdown();
@@ -567,7 +586,7 @@ TimeoutManager::SetTimeout(nsITimeoutHandler* aHandler,
   }
 
   if (gRunningTimeoutDepth == 0 &&
-      mWindow.GetPopupControlState() < openAbused) {
+      nsContentUtils::GetPopupControlState() < openBlocked) {
     // This timeout is *not* set from another timeout and it's set
     // while popups are enabled. Propagate the state to the timeout if
     // its delay (interval) is equal to or less than what
@@ -577,7 +596,7 @@ TimeoutManager::SetTimeout(nsITimeoutHandler* aHandler,
     // because our lower bound for |realInterval| could be pretty high
     // in some cases.
     if (interval <= gDisableOpenClickDelay) {
-      timeout->mPopupState = mWindow.GetPopupControlState();
+      timeout->mPopupState = nsContentUtils::GetPopupControlState();
     }
   }
 
@@ -1174,10 +1193,9 @@ class ThrottleTimeoutsCallback final : public nsITimerCallback
                                      , public nsINamed
 {
 public:
-  explicit ThrottleTimeoutsCallback(nsGlobalWindow* aWindow)
+  explicit ThrottleTimeoutsCallback(nsGlobalWindowInner* aWindow)
     : mWindow(aWindow)
   {
-    MOZ_DIAGNOSTIC_ASSERT(aWindow->IsInnerWindow());
   }
 
   NS_DECL_ISUPPORTS
@@ -1195,7 +1213,7 @@ private:
 private:
   // The strong reference here keeps the Window and hence the TimeoutManager
   // object itself alive.
-  RefPtr<nsGlobalWindow> mWindow;
+  RefPtr<nsGlobalWindowInner> mWindow;
 };
 
 NS_IMPL_ISUPPORTS(ThrottleTimeoutsCallback, nsITimerCallback, nsINamed)
@@ -1215,7 +1233,6 @@ TimeoutManager::BudgetThrottlingEnabled(bool aIsBackground) const
 {
   // A window can be throttled using budget if
   // * It isn't active
-  // * If it isn't using user media
   // * If it isn't using WebRTC
   // * If it hasn't got open WebSockets
   // * If it hasn't got active IndexedDB databases
@@ -1237,37 +1254,12 @@ TimeoutManager::BudgetThrottlingEnabled(bool aIsBackground) const
     return false;
   }
 
-  // Check if we have active GetUserMedia
-  if (MediaManager::Exists() &&
-      MediaManager::Get()->IsWindowStillActive(mWindow.WindowID())) {
+  // Check if we have active PeerConnection
+  if (mWindow.AsInner()->HasActivePeerConnections()) {
     return false;
   }
 
-  bool active = false;
-#if 0
-  // Check if we have active PeerConnections This doesn't actually
-  // work, since we sometimes call IsActive from Resume, which in turn
-  // is sometimes called from nsGlobalWindow::LeaveModalState. The
-  // problem here is that LeaveModalState can be called with pending
-  // exeptions on the js context, and the following call to
-  // HasActivePeerConnection is a JS call, which will assert on that
-  // exception. Also, calling JS is expensive so we should try to fix
-  // this in some other way.
-  nsCOMPtr<IPeerConnectionManager> pcManager =
-    do_GetService(IPEERCONNECTION_MANAGER_CONTRACTID);
-
-  if (pcManager && NS_SUCCEEDED(pcManager->HasActivePeerConnection(
-                     mWindow.WindowID(), &active)) &&
-      active) {
-    return false;
-  }
-#endif // MOZ_WEBRTC
-
-  // Check if we have web sockets
-  RefPtr<WebSocketEventService> eventService = WebSocketEventService::Get();
-  if (eventService &&
-      NS_SUCCEEDED(eventService->HasListenerFor(mWindow.WindowID(), &active)) &&
-      active) {
+  if (mWindow.AsInner()->HasOpenWebSockets()) {
     return false;
   }
 
@@ -1305,7 +1297,7 @@ void
 TimeoutManager::MaybeStartThrottleTimeout()
 {
   if (gTimeoutThrottlingDelay <= 0 ||
-      mWindow.AsInner()->InnerObjectsFreed() || mWindow.IsSuspended()) {
+      mWindow.IsDying() || mWindow.IsSuspended()) {
     return;
   }
 
@@ -1315,19 +1307,12 @@ TimeoutManager::MaybeStartThrottleTimeout()
           ("TimeoutManager %p delaying tracking timeout throttling by %dms\n",
            this, gTimeoutThrottlingDelay));
 
-  mThrottleTimeoutsTimer =
-    do_CreateInstance("@mozilla.org/timer;1");
-  if (!mThrottleTimeoutsTimer) {
-    return;
-  }
-
   nsCOMPtr<nsITimerCallback> callback =
     new ThrottleTimeoutsCallback(&mWindow);
 
-  mThrottleTimeoutsTimer->SetTarget(EventTarget());
-
-  mThrottleTimeoutsTimer->InitWithCallback(
-    callback, gTimeoutThrottlingDelay, nsITimer::TYPE_ONE_SHOT);
+  NS_NewTimerWithCallback(getter_AddRefs(mThrottleTimeoutsTimer),
+                          callback, gTimeoutThrottlingDelay, nsITimer::TYPE_ONE_SHOT,
+                          EventTarget());
 }
 
 void

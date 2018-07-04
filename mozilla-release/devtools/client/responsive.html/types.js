@@ -4,11 +4,23 @@
 
 "use strict";
 
-const { PropTypes } = require("devtools/client/shared/vendor/react");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { createEnum } = require("devtools/client/shared/enum");
 
 // React PropTypes are used to describe the expected "shape" of various common
 // objects that get passed down as props to components.
+
+/* ENUMS */
+
+/**
+ * An enum containing the possible states for loadable things.
+ */
+exports.loadableState = createEnum([
+  "INITIALIZED",
+  "LOADING",
+  "LOADED",
+  "ERROR",
+]);
 
 /* GLOBAL */
 
@@ -16,6 +28,22 @@ const { createEnum } = require("devtools/client/shared/enum");
  * The location of the document displayed in the viewport(s).
  */
 exports.location = PropTypes.string;
+
+/**
+ * Whether to reload the page automatically when certain actions occur.
+ */
+exports.reloadConditions = {
+
+  // Whether to reload when touch simulation is toggled
+  touchSimulation: PropTypes.bool,
+
+  // Whether to reload when user agent is changed
+  userAgent: PropTypes.bool,
+
+  // Loaded state of these conditions
+  state: PropTypes.oneOf(Object.keys(exports.loadableState)),
+
+};
 
 /* DEVICE */
 
@@ -51,16 +79,6 @@ const device = {
 };
 
 /**
- * An enum containing the possible values for the device list state
- */
-exports.deviceListState = createEnum([
-  "INITIALIZED",
-  "LOADING",
-  "LOADED",
-  "ERROR",
-]);
-
-/**
  * A list of devices and their types that can be displayed in the viewport.
  */
 exports.devices = {
@@ -93,7 +111,7 @@ exports.devices = {
   modalOpenedFromViewport: PropTypes.number,
 
   // Device list state, possible values are exported above in an enum
-  listState: PropTypes.oneOf(Object.keys(exports.deviceListState)),
+  listState: PropTypes.oneOf(Object.keys(exports.loadableState)),
 
 };
 
@@ -152,7 +170,7 @@ exports.viewport = {
   // The height of the viewport
   height: PropTypes.number,
 
-  // The devicePixelRatio of the viewport
+  // The device pixel ratio of the viewport
   pixelRatio: PropTypes.shape(pixelRatio),
 
 };

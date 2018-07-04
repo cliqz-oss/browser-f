@@ -10,8 +10,6 @@
 #include "nsIBaseWindow.h"
 #include "nsIDocShellTreeOwner.h"
 #include "nsIDocument.h"
-#include "nsIDOMHTMLDocument.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsRange.h"
 #include "nsIBoxObject.h"
 #include "nsXULElement.h"
@@ -39,6 +37,8 @@
 #include "nsITreeColumns.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLLabelElement.h"
+#include "mozilla/dom/MouseEventBinding.h"
+#include "mozilla/dom/Selection.h"
 
 using namespace mozilla;
 
@@ -49,7 +49,7 @@ using namespace mozilla;
 bool
 nsCoreUtils::IsLabelWithControl(nsIContent* aContent)
 {
-  dom::HTMLLabelElement* label = dom::HTMLLabelElement::FromContent(aContent);
+  dom::HTMLLabelElement* label = dom::HTMLLabelElement::FromNode(aContent);
   if (label && label->GetControl())
     return true;
 
@@ -74,13 +74,12 @@ nsCoreUtils::DispatchClickEvent(nsITreeBoxObject *aTreeBoxObj,
                                 int32_t aRowIndex, nsITreeColumn *aColumn,
                                 const nsAString& aPseudoElt)
 {
-  nsCOMPtr<nsIDOMElement> tcElm;
+  RefPtr<dom::Element> tcElm;
   aTreeBoxObj->GetTreeBody(getter_AddRefs(tcElm));
   if (!tcElm)
     return;
 
-  nsCOMPtr<nsIContent> tcContent(do_QueryInterface(tcElm));
-  nsIDocument *document = tcContent->GetUncomposedDoc();
+  nsIDocument *document = tcElm->GetUncomposedDoc();
   if (!document)
     return;
 
@@ -100,9 +99,8 @@ nsCoreUtils::DispatchClickEvent(nsITreeBoxObject *aTreeBoxObj,
     return;
 
   nsCOMPtr<nsIContent> tcXULElm(do_QueryInterface(tcElm));
-  IgnoredErrorResult ignored;
   nsCOMPtr<nsIBoxObject> tcBoxObj =
-    nsXULElement::FromContent(tcXULElm)->GetBoxObject(ignored);
+    nsXULElement::FromNode(tcXULElm)->GetBoxObject(IgnoreErrors());
 
   int32_t tcX = 0;
   tcBoxObj->GetX(&tcX);
@@ -111,7 +109,7 @@ nsCoreUtils::DispatchClickEvent(nsITreeBoxObject *aTreeBoxObj,
   tcBoxObj->GetY(&tcY);
 
   // Dispatch mouse events.
-  AutoWeakFrame tcFrame = tcContent->GetPrimaryFrame();
+  AutoWeakFrame tcFrame = tcElm->GetPrimaryFrame();
   nsIFrame* rootFrame = presShell->GetRootFrame();
 
   nsPoint offset;
@@ -127,10 +125,10 @@ nsCoreUtils::DispatchClickEvent(nsITreeBoxObject *aTreeBoxObj,
 
   // XUL is just desktop, so there is no real reason for senfing touch events.
   DispatchMouseEvent(eMouseDown, cnvdX, cnvdY,
-                     tcContent, tcFrame, presShell, rootWidget);
+                     tcElm, tcFrame, presShell, rootWidget);
 
   DispatchMouseEvent(eMouseUp, cnvdX, cnvdY,
-                     tcContent, tcFrame, presShell, rootWidget);
+                     tcElm, tcFrame, presShell, rootWidget);
 }
 
 void
@@ -146,7 +144,7 @@ nsCoreUtils::DispatchMouseEvent(EventMessage aMessage, int32_t aX, int32_t aY,
   event.mClickCount = 1;
   event.button = WidgetMouseEvent::eLeftButton;
   event.mTime = PR_IntervalNow();
-  event.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
+  event.inputSource = dom::MouseEventBinding::MOZ_SOURCE_UNKNOWN;
 
   nsEventStatus status = nsEventStatus_eIgnore;
   aPresShell->HandleEventWithTarget(&event, aFrame, aContent, &status);
@@ -184,14 +182,11 @@ nsCoreUtils::GetAccessKeyFor(nsIContent* aContent)
   // Accesskeys are registered by @accesskey attribute only. At first check
   // whether it is presented on the given element to avoid the slow
   // EventStateManager::GetRegisteredAccessKey() method.
-  if (!aContent->HasAttr(kNameSpaceID_None, nsGkAtoms::accesskey))
+  if (!aContent->IsElement() ||
+      !aContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::accesskey))
     return 0;
 
-  nsIPresShell* presShell = aContent->OwnerDoc()->GetShell();
-  if (!presShell)
-    return 0;
-
-  nsPresContext *presContext = presShell->GetPresContext();
+  nsPresContext* presContext = aContent->OwnerDoc()->GetPresContext();
   if (!presContext)
     return 0;
 
@@ -199,7 +194,7 @@ nsCoreUtils::GetAccessKeyFor(nsIContent* aContent)
   if (!esm)
     return 0;
 
-  return esm->GetRegisteredAccessKey(aContent);
+  return esm->GetRegisteredAccessKey(aContent->AsElement());
 }
 
 nsIContent *
@@ -208,7 +203,7 @@ nsCoreUtils::GetDOMElementFor(nsIContent *aContent)
   if (aContent->IsElement())
     return aContent;
 
-  if (aContent->IsNodeOfType(nsINode::eTEXT))
+  if (aContent->IsText())
     return aContent->GetFlattenedTreeParent();
 
   return nullptr;
@@ -225,7 +220,7 @@ nsCoreUtils::GetDOMNodeFromDOMPoint(nsINode *aNode, uint32_t aOffset)
     // is placed immediately after the last child. In this case use the DOM node
     // from the given DOM point is used as result node.
     if (aOffset != childCount)
-      return aNode->GetChildAt(aOffset);
+      return aNode->GetChildAt_Deprecated(aOffset);
   }
 
   return aNode;
@@ -263,8 +258,9 @@ nsCoreUtils::ScrollSubstringTo(nsIFrame* aFrame, nsRange* aRange,
                                nsIPresShell::ScrollAxis aVertical,
                                nsIPresShell::ScrollAxis aHorizontal)
 {
-  if (!aFrame)
+  if (!aFrame || !aRange) {
     return NS_ERROR_FAILURE;
+  }
 
   nsPresContext *presContext = aFrame->PresContext();
 
@@ -272,13 +268,12 @@ nsCoreUtils::ScrollSubstringTo(nsIFrame* aFrame, nsRange* aRange,
   aFrame->GetSelectionController(presContext, getter_AddRefs(selCon));
   NS_ENSURE_TRUE(selCon, NS_ERROR_FAILURE);
 
-  nsCOMPtr<nsISelection> selection;
-  selCon->GetSelection(nsISelectionController::SELECTION_ACCESSIBILITY,
-                       getter_AddRefs(selection));
+  RefPtr<dom::Selection> selection =
+    selCon->GetDOMSelection(nsISelectionController::SELECTION_ACCESSIBILITY);
 
-  nsCOMPtr<nsISelectionPrivate> privSel(do_QueryInterface(selection));
-  selection->RemoveAllRanges();
-  selection->AddRange(aRange);
+  nsCOMPtr<nsISelectionPrivate> privSel(do_QueryObject(selection));
+  selection->RemoveAllRanges(IgnoreErrors());
+  selection->AddRange(*aRange, IgnoreErrors());
 
   privSel->ScrollIntoViewInternal(
     nsISelectionController::SELECTION_ANCHOR_REGION,
@@ -301,7 +296,7 @@ nsCoreUtils::ScrollFrameToPoint(nsIFrame *aScrollableFrame,
   nsPoint point =
     ToAppUnits(aPoint, aFrame->PresContext()->AppUnitsPerDevPixel());
   nsRect frameRect = aFrame->GetScreenRectInAppUnits();
-  nsPoint deltaPoint(point.x - frameRect.x, point.y - frameRect.y);
+  nsPoint deltaPoint = point - frameRect.TopLeft();
 
   nsPoint scrollPoint = scrollableFrame->GetScrollPosition();
   scrollPoint -= deltaPoint;
@@ -444,7 +439,7 @@ nsCoreUtils::IsErrorPage(nsIDocument *aDocument)
     return false;
 
   nsAutoCString path;
-  uri->GetPath(path);
+  uri->GetPathQueryRef(path);
 
   NS_NAMED_LITERAL_CSTRING(neterror, "neterror");
   NS_NAMED_LITERAL_CSTRING(certerror, "certerror");
@@ -455,14 +450,18 @@ nsCoreUtils::IsErrorPage(nsIDocument *aDocument)
 bool
 nsCoreUtils::GetID(nsIContent *aContent, nsAString& aID)
 {
-  return aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::id, aID);
+  return aContent->IsElement() &&
+    aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::id, aID);
 }
 
 bool
-nsCoreUtils::GetUIntAttr(nsIContent *aContent, nsIAtom *aAttr, int32_t *aUInt)
+nsCoreUtils::GetUIntAttr(nsIContent *aContent, nsAtom *aAttr, int32_t *aUInt)
 {
   nsAutoString value;
-  aContent->GetAttr(kNameSpaceID_None, aAttr, value);
+  if (!aContent->IsElement()) {
+    return false;
+  }
+  aContent->AsElement()->GetAttr(kNameSpaceID_None, aAttr, value);
   if (!value.IsEmpty()) {
     nsresult error = NS_OK;
     int32_t integer = value.ToInteger(&error);
@@ -483,22 +482,21 @@ nsCoreUtils::GetLanguageFor(nsIContent *aContent, nsIContent *aRootContent,
 
   nsIContent *walkUp = aContent;
   while (walkUp && walkUp != aRootContent &&
-         !walkUp->GetAttr(kNameSpaceID_None, nsGkAtoms::lang, aLanguage))
+         (!walkUp->IsElement() ||
+          !walkUp->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::lang, aLanguage)))
     walkUp = walkUp->GetParent();
 }
 
 already_AddRefed<nsIBoxObject>
 nsCoreUtils::GetTreeBodyBoxObject(nsITreeBoxObject *aTreeBoxObj)
 {
-  nsCOMPtr<nsIDOMElement> tcElm;
+  RefPtr<dom::Element> tcElm;
   aTreeBoxObj->GetTreeBody(getter_AddRefs(tcElm));
-  nsCOMPtr<nsIContent> tcContent(do_QueryInterface(tcElm));
-  RefPtr<nsXULElement> tcXULElm = nsXULElement::FromContentOrNull(tcContent);
+  RefPtr<nsXULElement> tcXULElm = nsXULElement::FromNodeOrNull(tcElm);
   if (!tcXULElm)
     return nullptr;
 
-  IgnoredErrorResult ignored;
-  return tcXULElm->GetBoxObject(ignored);
+  return tcXULElm->GetBoxObject(IgnoreErrors());
 }
 
 already_AddRefed<nsITreeBoxObject>
@@ -511,9 +509,8 @@ nsCoreUtils::GetTreeBoxObject(nsIContent *aContent)
                                            kNameSpaceID_XUL)) {
       // We will get the nsITreeBoxObject from the tree node
       RefPtr<nsXULElement> xulElement =
-        nsXULElement::FromContent(currentContent);
-      IgnoredErrorResult ignored;
-      nsCOMPtr<nsIBoxObject> box = xulElement->GetBoxObject(ignored);
+        nsXULElement::FromNode(currentContent);
+      nsCOMPtr<nsIBoxObject> box = xulElement->GetBoxObject(IgnoreErrors());
       nsCOMPtr<nsITreeBoxObject> treeBox(do_QueryInterface(box));
       if (treeBox)
         return treeBox.forget();
@@ -615,10 +612,9 @@ nsCoreUtils::GetPreviousSensibleColumn(nsITreeColumn *aColumn)
 bool
 nsCoreUtils::IsColumnHidden(nsITreeColumn *aColumn)
 {
-  nsCOMPtr<nsIDOMElement> element;
+  RefPtr<Element> element;
   aColumn->GetElement(getter_AddRefs(element));
-  nsCOMPtr<nsIContent> content = do_QueryInterface(element);
-  return content->AttrValueIs(kNameSpaceID_None, nsGkAtoms::hidden,
+  return element->AttrValueIs(kNameSpaceID_None, nsGkAtoms::hidden,
                               nsGkAtoms::_true, eCaseMatters);
 }
 
@@ -670,16 +666,4 @@ nsCoreUtils::DispatchAccEvent(RefPtr<nsIAccessibleEvent> event)
   NS_ENSURE_TRUE_VOID(obsService);
 
   obsService->NotifyObservers(event, NS_ACCESSIBLE_EVENT_TOPIC, nullptr);
-}
-
-void
-nsCoreUtils::XBLBindingRole(const nsIContent* aEl, nsAString& aRole)
-{
-  for (const nsXBLBinding* binding = aEl->GetXBLBinding(); binding;
-       binding = binding->GetBaseBinding()) {
-    nsIContent* bindingElm = binding->PrototypeBinding()->GetBindingElement();
-    bindingElm->GetAttr(kNameSpaceID_None, nsGkAtoms::role, aRole);
-    if (!aRole.IsEmpty())
-      break;
-  }
 }

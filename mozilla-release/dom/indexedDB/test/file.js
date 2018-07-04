@@ -20,7 +20,7 @@ function getRandomBuffer(size)
   let buffer = getBuffer(size);
   let view = new Uint8Array(buffer);
   for (let i = 0; i < size; i++) {
-    view[i] = parseInt(Math.random() * 255)
+    view[i] = parseInt(Math.random() * 255);
   }
   return buffer;
 }
@@ -37,7 +37,7 @@ function getRandomView(size)
 {
   let view = getView(size);
   for (let i = 0; i < size; i++) {
-    view[i] = parseInt(Math.random() * 255)
+    view[i] = parseInt(Math.random() * 255);
   }
   return view;
 }
@@ -109,6 +109,7 @@ function verifyBuffers(buffer1, buffer2)
 
 function verifyBlob(blob1, blob2, fileId, blobReadHandler)
 {
+  // eslint-disable-next-line mozilla/use-cc-etc
   is(blob1 instanceof Components.interfaces.nsIDOMBlob, true,
      "Instance of nsIDOMBlob");
   is(blob1 instanceof File, blob2 instanceof File,
@@ -145,7 +146,7 @@ function verifyBlob(blob1, blob2, fileId, blobReadHandler)
           testGenerator.next();
         }
       }
-    }
+    };
   }
 
   let reader = new FileReader();
@@ -161,7 +162,7 @@ function verifyBlob(blob1, blob2, fileId, blobReadHandler)
         testGenerator.next();
       }
     }
-  }
+  };
 }
 
 function verifyBlobArray(blobs1, blobs2, expectedFileIds)
@@ -206,17 +207,12 @@ function verifyView(view1, view2)
 
 function verifyWasmModule(module1, module2)
 {
-  let getGlobalForObject = SpecialPowers.Cu.getGlobalForObject;
-  let testingFunctions = SpecialPowers.Cu.getJSTestingFunctions();
-  let wasmExtractCode = SpecialPowers.unwrap(testingFunctions.wasmExtractCode);
-  let exp1 = wasmExtractCode(module1);
-  let exp2 = wasmExtractCode(module2);
-  let code1 = exp1.code;
-  let code2 = exp2.code;
-  ok(code1 instanceof getGlobalForObject(code1).Uint8Array, "Instance of Uint8Array");
-  ok(code2 instanceof getGlobalForObject(code1).Uint8Array, "Instance of Uint8Array");
-  ok(code1.length == code2.length, "Correct length");
-  verifyBuffers(code1, code2);
+  // We assume the given modules have no imports and export a single function
+  // named 'run'.
+  var instance1 = new WebAssembly.Instance(module1);
+  var instance2 = new WebAssembly.Instance(module2);
+  is(instance1.exports.run(), instance2.exports.run(), "same run() result");
+
   continueToNextStep();
 }
 

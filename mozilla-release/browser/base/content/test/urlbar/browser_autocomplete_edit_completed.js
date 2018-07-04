@@ -1,26 +1,26 @@
 add_task(async function() {
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
   await PlacesTestUtils.addVisits([
     { uri: makeURI("http://example.com/foo") },
     { uri: makeURI("http://example.com/foo/bar") },
   ]);
 
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
   registerCleanupFunction(async function() {
-    await PlacesTestUtils.clearHistory();
+    BrowserTestUtils.removeTab(tab);
+    await PlacesUtils.history.clear();
   });
 
-  gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank");
-  gURLBar.focus();
-
   await promiseAutocompleteResultPopup("http://example.com");
+  await waitForAutocompleteResultAt(1);
 
   let popup = gURLBar.popup;
   let list = popup.richlistbox;
   let initialIndex = list.selectedIndex;
 
   info("Key Down to select the next item.");
-  EventUtils.synthesizeKey("VK_DOWN", {});
+  EventUtils.synthesizeKey("KEY_ArrowDown");
 
   let nextIndex = initialIndex + 1;
   let nextValue = gURLBar.controller.getFinalCompleteValueAt(nextIndex);
@@ -28,7 +28,7 @@ add_task(async function() {
   is(gURLBar.value, nextValue, "The selected URL is completed.");
 
   info("Press backspace");
-  EventUtils.synthesizeKey("VK_BACK_SPACE", {});
+  EventUtils.synthesizeKey("KEY_Backspace");
   await promiseSearchComplete();
 
   let editedValue = gURLBar.textValue;
@@ -38,11 +38,10 @@ add_task(async function() {
   let docLoad = waitForDocLoadAndStopIt("http://" + editedValue);
 
   info("Press return to load edited URL.");
-  EventUtils.synthesizeKey("VK_RETURN", {});
+  EventUtils.synthesizeKey("KEY_Enter");
   await Promise.all([
     promisePopupHidden(gURLBar.popup),
     docLoad,
   ]);
 
-  gBrowser.removeTab(gBrowser.selectedTab);
 });

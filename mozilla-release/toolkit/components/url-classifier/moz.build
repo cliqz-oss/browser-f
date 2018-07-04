@@ -10,6 +10,7 @@ with Files('**'):
 TEST_DIRS += ['tests']
 
 XPIDL_SOURCES += [
+    'IUrlClassifierUITelemetry.idl',
     'nsIUrlClassifierDBService.idl',
     'nsIUrlClassifierHashCompleter.idl',
     'nsIUrlClassifierInfo.idl',
@@ -21,10 +22,11 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'url-classifier'
 
-# Disable RTTI in google protocol buffer
 DEFINES['GOOGLE_PROTOBUF_NO_RTTI'] = True
+DEFINES['GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER'] = True
 
 UNIFIED_SOURCES += [
+    'chromium/safebrowsing.pb.cc',
     'ChunkSet.cpp',
     'Classifier.cpp',
     'LookupCache.cpp',
@@ -34,9 +36,9 @@ UNIFIED_SOURCES += [
     'nsUrlClassifierInfo.cpp',
     'nsUrlClassifierProxies.cpp',
     'nsUrlClassifierUtils.cpp',
-    'protobuf/safebrowsing.pb.cc',
     'ProtocolParser.cpp',
     'RiceDeltaDecoder.cpp',
+    'UrlClassifierTelemetryUtils.cpp',
 ]
 
 # define conflicting LOG() macros
@@ -63,11 +65,11 @@ EXTRA_PP_JS_MODULES += [
 ]
 
 EXPORTS += [
+    'chromium/safebrowsing.pb.h',
     'Entries.h',
     'LookupCache.h',
     'LookupCacheV4.h',
     'nsUrlClassifierPrefixSet.h',
-    'protobuf/safebrowsing.pb.h',
     'VariableLengthPrefixSet.h',
 ]
 
@@ -75,16 +77,24 @@ FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
     '../build',
+    '/xpcom/io',
 ]
 
 CXXFLAGS += CONFIG['SQLITE_CFLAGS']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
+    # Suppress warnings in third-party code.
+    CXXFLAGS += [
+        '-Wno-maybe-uninitialized',
+    ]
 
 if CONFIG['NIGHTLY_BUILD'] or CONFIG['MOZ_DEBUG']:
     DEFINES['MOZ_SAFEBROWSING_DUMP_FAILED_UPDATES'] = True
 
 SPHINX_TREES['url-classifier'] = 'docs'
+
+with Files('docs/**'):
+    SCHEDULES.exclusive = ['docs']
 
 include('/ipc/chromium/chromium-config.mozbuild')

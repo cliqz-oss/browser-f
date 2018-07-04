@@ -8,7 +8,7 @@
 
 #include "nsITheme.h"
 #include "nsCOMPtr.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsIObserver.h"
 #include "nsNativeTheme.h"
 #include "nsThemeConstants.h"
@@ -30,6 +30,14 @@ public:
                                   const nsRect& aRect,
                                   const nsRect& aDirtyRect) override;
 
+  bool CreateWebRenderCommandsForWidget(mozilla::wr::DisplayListBuilder& aBuilder,
+                                        mozilla::wr::IpcResourceUpdateQueue& aResources,
+                                        const mozilla::layers::StackingContextHelper& aSc,
+                                        mozilla::layers::WebRenderLayerManager* aManager,
+                                        nsIFrame* aFrame,
+                                        uint8_t aWidgetType,
+                                        const nsRect& aRect) override;
+
   NS_IMETHOD GetWidgetBorder(nsDeviceContext* aContext, nsIFrame* aFrame,
                              uint8_t aWidgetType,
                              nsIntMargin* aResult) override;
@@ -49,8 +57,8 @@ public:
                                   mozilla::LayoutDeviceIntSize* aResult,
                                   bool* aIsOverridable) override;
 
-  NS_IMETHOD WidgetStateChanged(nsIFrame* aFrame, uint8_t aWidgetType, 
-                                nsIAtom* aAttribute,
+  NS_IMETHOD WidgetStateChanged(nsIFrame* aFrame, uint8_t aWidgetType,
+                                nsAtom* aAttribute,
                                 bool* aShouldRepaint,
                                 const nsAttrValue* aOldValue) override;
 
@@ -61,14 +69,13 @@ public:
                                         uint8_t aWidgetType) override;
 
   NS_IMETHOD_(bool) WidgetIsContainer(uint8_t aWidgetType) override;
-  
+
   NS_IMETHOD_(bool) ThemeDrawsFocusForWidget(uint8_t aWidgetType) override;
 
   virtual bool ThemeNeedsComboboxDropmarker() override;
 
   virtual Transparency GetWidgetTransparency(nsIFrame* aFrame,
                                              uint8_t aWidgetType) override;
-
   nsNativeThemeGTK();
 
 protected:

@@ -8,9 +8,9 @@ do_get_profile();
 // Ensure PSM is initialized
 Cc["@mozilla.org/psm;1"].getService(Ci.nsISupports);
 
-const { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
-const { NetUtil } = Cu.import("resource://gre/modules/NetUtil.jsm", {});
-const { PromiseUtils } = Cu.import("resource://gre/modules/PromiseUtils.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
+const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", {});
+const { PromiseUtils } = ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm", {});
 const certService = Cc["@mozilla.org/security/local-cert-service;1"]
                     .getService(Ci.nsILocalCertService);
 const certOverrideService = Cc["@mozilla.org/security/certoverride;1"]
@@ -51,7 +51,7 @@ function startServer(cert, expectingPeerCert, clientCertificateConfig,
 
   let listener = {
     onSocketAccepted: function(socket, transport) {
-      do_print("Accept TLS client connection");
+      info("Accept TLS client connection");
       let connectionInfo = transport.securityInfo
                            .QueryInterface(Ci.nsITLSServerConnectionInfo);
       connectionInfo.setSecurityObserver(listener);
@@ -59,7 +59,7 @@ function startServer(cert, expectingPeerCert, clientCertificateConfig,
       output = transport.openOutputStream(0, 0, 0);
     },
     onHandshakeDone: function(socket, status) {
-      do_print("TLS handshake done");
+      info("TLS handshake done");
       if (expectingPeerCert) {
         ok(!!status.peerCert, "Has peer cert");
         ok(status.peerCert.equals(cert), "Peer cert matches expected cert");
@@ -87,7 +87,7 @@ function startServer(cert, expectingPeerCert, clientCertificateConfig,
       }, 0, 0, Services.tm.currentThread);
     },
     onStopListening: function() {
-      do_print("onStopListening");
+      info("onStopListening");
       input.close();
       output.close();
     }
@@ -139,7 +139,7 @@ function startClient(port, cert, expectingBadCertAlert) {
       } catch (e) {
         let errorCode = -1 * (e.result & 0xFFFF);
         if (expectingBadCertAlert && errorCode == SSL_ERROR_BAD_CERT_ALERT) {
-          do_print("Got bad cert alert as expected");
+          info("Got bad cert alert as expected");
           input.close();
           output.close();
           inputDeferred.resolve();
@@ -159,14 +159,14 @@ function startClient(port, cert, expectingBadCertAlert) {
         }
 
         output.write("HELLO", 5);
-        do_print("Output to server written");
+        info("Output to server written");
         outputDeferred.resolve();
         input = transport.openInputStream(0, 0, 0);
         input.asyncWait(handler, 0, 0, Services.tm.currentThread);
       } catch (e) {
         let errorCode = -1 * (e.result & 0xFFFF);
         if (errorCode == SSL_ERROR_BAD_CERT_ALERT) {
-          do_print("Server doesn't like client cert");
+          info("Server doesn't like client cert");
         }
         outputDeferred.reject(e);
       }
@@ -240,6 +240,6 @@ add_task(async function() {
   }
 });
 
-do_register_cleanup(function() {
+registerCleanupFunction(function() {
   prefs.clearUserPref("security.tls.version.max");
 });

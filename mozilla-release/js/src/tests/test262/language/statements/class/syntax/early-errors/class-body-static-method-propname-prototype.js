@@ -9,9 +9,11 @@ description: >
     It is a Syntax Error if PropName of MethodDefinition is "prototype".
 
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 class A {
   static prototype() {}
 }

@@ -9,9 +9,9 @@
 // Ensures that HSTS (HTTP Strict Transport Security) and HPKP (HTTP Public key
 // pinning) are cleared when using "Forget About This Site".
 
-var { ForgetAboutSite } = Cu.import("resource://gre/modules/ForgetAboutSite.jsm", {});
+var { ForgetAboutSite } = ChromeUtils.import("resource://gre/modules/ForgetAboutSite.jsm", {});
 
-do_register_cleanup(() => {
+registerCleanupFunction(() => {
   Services.prefs.clearUserPref("security.cert_pinning.enforcement_level");
   Services.prefs.clearUserPref(
     "security.cert_pinning.process_headers_from_non_builtin_roots");

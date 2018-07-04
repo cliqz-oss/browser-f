@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -71,16 +72,45 @@ ComputeYCbCrBufferSize(const gfx::IntSize& aYSize, int32_t aYStride,
       !gfx::Factory::AllowedSurfaceSize(IntSize(aCbCrStride, aCbCrSize.height))) {
     return 0;
   }
+
   // Overflow checks are performed in AllowedSurfaceSize
   return GetAlignedStride<4>(aYSize.height, aYStride) +
          2 * GetAlignedStride<4>(aCbCrSize.height, aCbCrStride);
 }
 
-// Minimum required shmem size in bytes
 uint32_t
-ComputeYCbCrBufferSize(const gfx::IntSize& aYSize, const gfx::IntSize& aCbCrSize)
+ComputeYCbCrBufferSize(const gfx::IntSize& aYSize, int32_t aYStride,
+                       const gfx::IntSize& aCbCrSize, int32_t aCbCrStride,
+                       uint32_t aYOffset, uint32_t aCbOffset,
+                       uint32_t aCrOffset)
 {
-  return ComputeYCbCrBufferSize(aYSize, aYSize.width, aCbCrSize, aCbCrSize.width);
+  MOZ_ASSERT(aYSize.height >= 0 && aYSize.width >= 0);
+
+  if (aYSize.height < 0 || aYSize.width < 0 || aCbCrSize.height < 0 || aCbCrSize.width < 0 ||
+      !gfx::Factory::AllowedSurfaceSize(IntSize(aYStride, aYSize.height)) ||
+      !gfx::Factory::AllowedSurfaceSize(IntSize(aCbCrStride, aCbCrSize.height))) {
+    return 0;
+  }
+
+  uint32_t yLength = GetAlignedStride<4>(aYStride, aYSize.height);
+  uint32_t cbCrLength = GetAlignedStride<4>(aCbCrStride, aCbCrSize.height);
+  if (yLength == 0 || cbCrLength == 0) {
+    return 0;
+  }
+
+  CheckedInt<uint32_t> yEnd = aYOffset;
+  yEnd += yLength;
+  CheckedInt<uint32_t> cbEnd = aCbOffset;
+  cbEnd += cbCrLength;
+  CheckedInt<uint32_t> crEnd = aCrOffset;
+  crEnd += cbCrLength;
+
+  if (!yEnd.isValid() || !cbEnd.isValid() || !crEnd.isValid() ||
+      yEnd.value() > aCbOffset || cbEnd.value() > aCrOffset) {
+    return 0;
+  }
+
+  return crEnd.value();
 }
 
 uint32_t
@@ -137,16 +167,26 @@ Maybe<gfx::IntSize> CbCrSizeFromBufferDescriptor(const BufferDescriptor& aDescri
 
 Maybe<YUVColorSpace> YUVColorSpaceFromBufferDescriptor(const BufferDescriptor& aDescriptor)
 {
-{
   switch (aDescriptor.type()) {
     case BufferDescriptor::TRGBDescriptor:
       return Nothing();
     case BufferDescriptor::TYCbCrDescriptor:
       return Some(aDescriptor.get_YCbCrDescriptor().yUVColorSpace());
     default:
-      MOZ_CRASH("GFX:  CbCrSizeFromBufferDescriptor");
+      MOZ_CRASH("GFX:  YUVColorSpaceFromBufferDescriptor");
   }
 }
+
+Maybe<uint32_t> BitDepthFromBufferDescriptor(const BufferDescriptor& aDescriptor)
+{
+  switch (aDescriptor.type()) {
+    case BufferDescriptor::TRGBDescriptor:
+      return Nothing();
+    case BufferDescriptor::TYCbCrDescriptor:
+      return Some(aDescriptor.get_YCbCrDescriptor().bitDepth());
+    default:
+      MOZ_CRASH("GFX:  BitDepthFromBufferDescriptor");
+  }
 }
 
 Maybe<StereoMode> StereoModeFromBufferDescriptor(const BufferDescriptor& aDescriptor)
@@ -157,7 +197,7 @@ Maybe<StereoMode> StereoModeFromBufferDescriptor(const BufferDescriptor& aDescri
     case BufferDescriptor::TYCbCrDescriptor:
       return Some(aDescriptor.get_YCbCrDescriptor().stereoMode());
     default:
-      MOZ_CRASH("GFX:  CbCrSizeFromBufferDescriptor");
+      MOZ_CRASH("GFX:  StereoModeFromBufferDescriptor");
   }
 }
 
@@ -180,9 +220,6 @@ already_AddRefed<DataSourceSurface>
 DataSourceSurfaceFromYCbCrDescriptor(uint8_t* aBuffer, const YCbCrDescriptor& aDescriptor, gfx::DataSourceSurface* aSurface)
 {
   gfx::IntSize ySize = aDescriptor.ySize();
-  gfx::IntSize cbCrSize = aDescriptor.cbCrSize();
-  int32_t yStride = ySize.width;
-  int32_t cbCrStride = cbCrSize.width;
 
   RefPtr<DataSourceSurface> result;
   if (aSurface) {
@@ -209,14 +246,15 @@ DataSourceSurfaceFromYCbCrDescriptor(uint8_t* aBuffer, const YCbCrDescriptor& aD
 
   layers::PlanarYCbCrData ycbcrData;
   ycbcrData.mYChannel     = GetYChannel(aBuffer, aDescriptor);
-  ycbcrData.mYStride      = yStride;
+  ycbcrData.mYStride      = aDescriptor.yStride();
   ycbcrData.mYSize        = ySize;
   ycbcrData.mCbChannel    = GetCbChannel(aBuffer, aDescriptor);
   ycbcrData.mCrChannel    = GetCrChannel(aBuffer, aDescriptor);
-  ycbcrData.mCbCrStride   = cbCrStride;
-  ycbcrData.mCbCrSize     = cbCrSize;
+  ycbcrData.mCbCrStride   = aDescriptor.cbCrStride();
+  ycbcrData.mCbCrSize     = aDescriptor.cbCrSize();
   ycbcrData.mPicSize      = ySize;
   ycbcrData.mYUVColorSpace = aDescriptor.yUVColorSpace();
+  ycbcrData.mBitDepth     = aDescriptor.bitDepth();
 
   gfx::ConvertYCbCrToRGB(ycbcrData,
                          gfx::SurfaceFormat::B8G8R8X8,
@@ -237,21 +275,18 @@ ConvertAndScaleFromYCbCrDescriptor(uint8_t* aBuffer,
                                    int32_t aStride)
 {
   MOZ_ASSERT(aBuffer);
-  gfx::IntSize ySize = aDescriptor.ySize();
-  gfx::IntSize cbCrSize = aDescriptor.cbCrSize();
-  int32_t yStride = ySize.width;
-  int32_t cbCrStride = cbCrSize.width;
 
   layers::PlanarYCbCrData ycbcrData;
   ycbcrData.mYChannel     = GetYChannel(aBuffer, aDescriptor);
-  ycbcrData.mYStride      = yStride;
-  ycbcrData.mYSize        = ySize;
+  ycbcrData.mYStride      = aDescriptor.yStride();;
+  ycbcrData.mYSize        = aDescriptor.ySize();
   ycbcrData.mCbChannel    = GetCbChannel(aBuffer, aDescriptor);
   ycbcrData.mCrChannel    = GetCrChannel(aBuffer, aDescriptor);
-  ycbcrData.mCbCrStride   = cbCrStride;
-  ycbcrData.mCbCrSize     = cbCrSize;
-  ycbcrData.mPicSize      = ySize;
+  ycbcrData.mCbCrStride   = aDescriptor.cbCrStride();
+  ycbcrData.mCbCrSize     = aDescriptor.cbCrSize();
+  ycbcrData.mPicSize      = aDescriptor.ySize();
   ycbcrData.mYUVColorSpace = aDescriptor.yUVColorSpace();
+  ycbcrData.mBitDepth     = aDescriptor.bitDepth();
 
   gfx::ConvertYCbCrToRGB(ycbcrData, aDestFormat, aDestSize, aDestBuffer, aStride);
 }

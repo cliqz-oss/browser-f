@@ -3,45 +3,58 @@
 
 // Tests that the source tree works.
 
-function* waitForSourceCount(dbg, i) {
+async function waitForSourceCount(dbg, i) {
   // We are forced to wait until the DOM nodes appear because the
   // source tree batches its rendering.
-  yield waitUntil(() => {
+  await waitUntil(() => {
     return findAllElements(dbg, "sourceNodes").length === i;
   });
 }
 
-add_task(function*() {
-  const dbg = yield initDebugger("doc-sources.html");
+async function assertSourceCount(dbg, count) {
+  await waitForSourceCount(dbg, count);
+  is(findAllElements(dbg, "sourceNodes").length, count, `${count} sources`);
+}
+
+function getLabel(dbg, index) {
+  return findElement(dbg, "sourceNode", index)
+    .textContent.trim()
+    .replace(/^[\s\u200b]*/g, "");
+}
+
+add_task(async function() {
+  const dbg = await initDebugger("doc-sources.html");
   const { selectors: { getSelectedSource }, getState } = dbg;
 
-  yield waitForSources(dbg, "simple1", "simple2", "nested-source", "long.js");
+  await waitForSources(dbg, "simple1", "simple2", "nested-source", "long.js");
 
   // Expand nodes and make sure more sources appear.
-  is(findAllElements(dbg, "sourceNodes").length, 2);
+  await assertSourceCount(dbg, 2);
+  await clickElement(dbg, "sourceDirectoryLabel", 2);
 
-  clickElement(dbg, "sourceArrow", 2);
-  is(findAllElements(dbg, "sourceNodes").length, 7);
+  await assertSourceCount(dbg, 7);
+  await clickElement(dbg, "sourceDirectoryLabel", 3);
+  await assertSourceCount(dbg, 8);
 
-  clickElement(dbg, "sourceArrow", 3);
-  is(findAllElements(dbg, "sourceNodes").length, 8);
-
-  // Select a source.
-  ok(
-    !findElementWithSelector(dbg, ".sources-list .focused"),
-    "Source is not focused"
-  );
   const selected = waitForDispatch(dbg, "SELECT_SOURCE");
-  clickElement(dbg, "sourceNode", 4);
-  yield selected;
+  await clickElement(dbg, "sourceNode", 4);
+  await selected;
+  await waitForSelectedSource(dbg);
+
+  // Ensure the source file clicked is now focused
+  await waitForElementWithSelector(dbg, ".sources-list .focused");
+
+  const focusedNode = findElementWithSelector(dbg, ".sources-list .focused");
+  const fourthNode = findElement(dbg, "sourceNode", 4);
+  const selectedSource = getSelectedSource(getState()).get("url");
+
+  ok(fourthNode.classList.contains("focused"), "4th node is focused");
   ok(
-    findElementWithSelector(dbg, ".sources-list .focused"),
-    "Source is focused"
+    selectedSource.includes("nested-source.js"),
+    "nested-source is selected"
   );
-  ok(
-    getSelectedSource(getState()).get("url").includes("nested-source.js"),
-    "The right source is selected"
-  );
+
+  await waitForSelectedSource(dbg, "nested-source");
 
   // Make sure new sources appear in the list.
   ContentTask.spawn(gBrowser.selectedBrowser, null, function() {
@@ -50,40 +63,10 @@ add_task(function*() {
     content.document.body.appendChild(script);
   });
 
-  yield waitForSourceCount(dbg, 9);
+  await waitForSourceCount(dbg, 9);
   is(
-    findElement(dbg, "sourceNode", 7).textContent,
+    getLabel(dbg, 7),
     "math.min.js",
-    "The dynamic script exists"
-  );
-
-  // Make sure named eval sources appear in the list.
-});
-
-add_task(function*() {
-  const dbg = yield initDebugger("doc-sources.html");
-  const { selectors: { getSelectedSource }, getState } = dbg;
-
-  yield waitForSources(dbg, "simple1", "simple2", "nested-source", "long.js");
-
-  ContentTask.spawn(gBrowser.selectedBrowser, null, function() {
-    content.eval("window.evaledFunc = function() {} //# sourceURL=evaled.js");
-  });
-  yield waitForSourceCount(dbg, 3);
-  is(
-    findElement(dbg, "sourceNode", 3).textContent,
-    "(no domain)",
-    "the folder exists"
-  );
-
-  // work around: the folder is rendered at the bottom, so we close the
-  // root folder and open the (no domain) folder
-  clickElement(dbg, "sourceArrow", 3);
-  yield waitForSourceCount(dbg, 4);
-
-  is(
-    findElement(dbg, "sourceNode", 4).textContent,
-    "evaled.js",
-    "the eval script exists"
+    "math.min.js - The dynamic script exists"
   );
 });

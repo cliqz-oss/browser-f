@@ -25,7 +25,6 @@ class nsTableRowGroupFrame;
 class nsTableRowFrame;
 class nsTableColGroupFrame;
 class nsITableLayoutStrategy;
-class nsStyleContext;
 namespace mozilla {
 class WritingMode;
 class LogicalMargin;
@@ -34,6 +33,8 @@ namespace layers {
 class StackingContextHelper;
 }
 } // namespace mozilla
+
+using namespace mozilla;
 
 struct BCPropertyData;
 
@@ -57,12 +58,13 @@ public:
   // the table part frames, so allow this display element to blow out to our
   // overflow rect. This is also useful for row frames that have spanning
   // cells extending outside them.
-  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) override;
+  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder,
+                           bool* aSnap) const override;
 
   virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override;
   virtual void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
                                          const nsDisplayItemGeometry* aGeometry,
-                                         nsRegion *aInvalidRegion) override;
+                                         nsRegion *aInvalidRegion) const override;
 
   void UpdateForFrameBackground(nsIFrame* aFrame);
 
@@ -105,12 +107,6 @@ private:
 
 /* ============================================================================ */
 
-enum nsTableColGroupType {
-  eColGroupContent            = 0, // there is real col group content associated
-  eColGroupAnonymousCol       = 1, // the result of a col
-  eColGroupAnonymousCell      = 2  // the result of a cell alone
-};
-
 enum nsTableColType {
   eColContent            = 0, // there is real col content associated
   eColAnonymousCol       = 1, // the result of a span on a col
@@ -128,7 +124,7 @@ enum nsTableColType {
   */
 class nsTableFrame : public nsContainerFrame
 {
-  typedef mozilla::image::DrawResult DrawResult;
+  typedef mozilla::image::ImgDrawResult ImgDrawResult;
   typedef mozilla::WritingMode WritingMode;
   typedef mozilla::LogicalMargin LogicalMargin;
   typedef mozilla::TableReflowInput TableReflowInput;
@@ -148,7 +144,7 @@ public:
     * @return           the frame that was created
     */
   friend nsTableFrame* NS_NewTableFrame(nsIPresShell* aPresShell,
-                                        nsStyleContext* aContext);
+                                        ComputedStyle* aStyle);
 
   /** sets defaults for table-specific style.
     * @see nsIFrame::Init
@@ -186,18 +182,18 @@ public:
                                             nsIFrame* aDestructRoot);
 
   nsPoint GetFirstSectionOrigin(const ReflowInput& aReflowInput) const;
+
   /*
-   * Notification that aAttribute has changed for content inside a table (cell, row, etc)
+   * Notification that rowspan or colspan has changed for content inside a
+   * table cell
    */
-  void AttributeChangedFor(nsIFrame*       aFrame,
-                           nsIContent*     aContent,
-                           nsIAtom*        aAttribute);
+  void RowOrColSpanChanged(nsTableCellFrame* aCellFrame);
 
   /** @see nsIFrame::DestroyFrom */
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
-  /** @see nsIFrame::DidSetStyleContext */
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  /** @see nsIFrame::DidSetComputedStyle */
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   virtual void SetInitialChildList(ChildListID     aListID,
                                    nsFrameList&    aChildList) override;
@@ -229,9 +225,9 @@ public:
 
   typedef void (* DisplayGenericTablePartTraversal)
       (nsDisplayListBuilder* aBuilder, nsFrame* aFrame,
-       const nsRect& aDirtyRect, const nsDisplayListSet& aLists);
+       const nsDisplayListSet& aLists);
   static void GenericTraversal(nsDisplayListBuilder* aBuilder, nsFrame* aFrame,
-                               const nsRect& aDirtyRect, const nsDisplayListSet& aLists);
+                               const nsDisplayListSet& aLists);
 
   /**
    * Helper method to handle display common to table frames, rowgroup frames
@@ -246,7 +242,6 @@ public:
    */
   static void DisplayGenericTablePart(nsDisplayListBuilder* aBuilder,
                                       nsFrame* aFrame,
-                                      const nsRect& aDirtyRect,
                                       const nsDisplayListSet& aLists,
                                       DisplayGenericTablePartTraversal aTraversal = GenericTraversal);
 
@@ -266,7 +261,6 @@ public:
   virtual void GetChildLists(nsTArray<ChildList>* aLists) const override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   /** Get the outer half (i.e., the part outside the height and width of
@@ -302,20 +296,21 @@ public:
   friend class nsDelayedCalcBCBorders;
 
   void AddBCDamageArea(const mozilla::TableArea& aValue);
-  bool BCRecalcNeeded(nsStyleContext* aOldStyleContext,
-                        nsStyleContext* aNewStyleContext);
+  bool BCRecalcNeeded(ComputedStyle* aOldComputedStyle,
+                        ComputedStyle* aNewComputedStyle);
   void PaintBCBorders(DrawTarget& aDrawTarget, const nsRect& aDirtyRect);
   void CreateWebRenderCommandsForBCBorders(mozilla::wr::DisplayListBuilder& aBuilder,
                                            const mozilla::layers::StackingContextHelper& aSc,
-                                           nsTArray<mozilla::layers::WebRenderParentCommand>& aParentCommands,
-                                           const nsPoint& aPt);
+                                           const nsRect& aVisibleRect,
+                                           const nsPoint& aOffsetToReferenceFrame);
 
   virtual void MarkIntrinsicISizesDirty() override;
   // For border-collapse tables, the caller must not add padding and
   // border to the results of these functions.
   virtual nscoord GetMinISize(gfxContext *aRenderingContext) override;
   virtual nscoord GetPrefISize(gfxContext *aRenderingContext) override;
-  virtual IntrinsicISizeOffsetData IntrinsicISizeOffsets() override;
+  IntrinsicISizeOffsetData IntrinsicISizeOffsets(nscoord aPercentageBasis =
+                                                 NS_UNCONSTRAINEDSIZE) override;
 
   virtual mozilla::LogicalSize
   ComputeSize(gfxContext*                 aRenderingContext,
@@ -372,8 +367,8 @@ public:
 
   nsFrameList& GetColGroups();
 
-  virtual nsStyleContext*
-  GetParentStyleContext(nsIFrame** aProviderFrame) const override;
+  virtual ComputedStyle*
+  GetParentComputedStyle(nsIFrame** aProviderFrame) const override;
 
   virtual bool IsFrameOfType(uint32_t aFlags) const override
   {
@@ -506,13 +501,12 @@ public:
   void InsertCol(nsTableColFrame& aColFrame,
                  int32_t          aColIndex);
 
-  nsTableColGroupFrame* CreateAnonymousColGroupFrame(nsTableColGroupType aType);
+  nsTableColGroupFrame* CreateSyntheticColGroupFrame();
 
   int32_t DestroyAnonymousColFrames(int32_t aNumFrames);
 
   // Append aNumColsToAdd anonymous col frames of type eColAnonymousCell to our
-  // last eColGroupAnonymousCell colgroup.  If we have no such colgroup, then
-  // create one.
+  // last synthetic colgroup.  If we have no such colgroup, then create one.
   void AppendAnonymousColFrames(int32_t aNumColsToAdd);
 
   // Append aNumColsToAdd anonymous col frames of type aColType to
@@ -604,7 +598,7 @@ protected:
   /** protected constructor.
     * @see NewFrame
     */
-  explicit nsTableFrame(nsStyleContext* aContext, ClassID aID = kClassID);
+  explicit nsTableFrame(ComputedStyle* aStyle, ClassID aID = kClassID);
 
   /** destructor, responsible for mColumnLayoutData */
   virtual ~nsTableFrame();
@@ -1037,8 +1031,8 @@ inline void nsTableFrame::SetHasBCBorders(bool aValue)
 inline nscoord
 nsTableFrame::GetContinuousIStartBCBorderWidth() const
 {
-  int32_t aPixelsToTwips = nsPresContext::AppUnitsPerCSSPixel();
-  return BC_BORDER_END_HALF_COORD(aPixelsToTwips, mBits.mIStartContBCBorder);
+  int32_t d2a = PresContext()->AppUnitsPerDevPixel();
+  return BC_BORDER_END_HALF_COORD(d2a, mBits.mIStartContBCBorder);
 }
 
 inline void nsTableFrame::SetContinuousIStartBCBorderWidth(nscoord aValue)

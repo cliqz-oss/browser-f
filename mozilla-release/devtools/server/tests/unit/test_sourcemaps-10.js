@@ -17,18 +17,18 @@ function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-source-map");
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(
       gClient, "test-source-map",
-      function (response, tabClient, threadClient) {
+      function(response, tabClient, threadClient) {
         gThreadClient = threadClient;
-        promise.resolve(define_code())
+        Promise.resolve(define_code())
           .then(run_code)
           .then(test_frame_location)
           .catch(error => {
             dump(error + "\n");
             dump(error.stack);
-            do_check_true(false);
+            Assert.ok(false);
           })
           .then(() => {
             finishClient(gClient);
@@ -56,13 +56,13 @@ function define_code() {
 
   code += "//# sourceMappingURL=data:text/json," + map.toString();
 
-  Components.utils.evalInSandbox(code, gDebuggee, "1.8",
-                                 "http://example.com/www/js/abc.js", 1);
+  Cu.evalInSandbox(code, gDebuggee, "1.8",
+                   "http://example.com/www/js/abc.js", 1);
 }
 
 function run_code() {
-  const d = promise.defer();
-  gClient.addOneTimeListener("paused", function (event, packet) {
+  const d = defer();
+  gClient.addOneTimeListener("paused", function(event, packet) {
     d.resolve(packet);
     gThreadClient.resume();
   });
@@ -71,7 +71,7 @@ function run_code() {
 }
 
 function test_frame_location({ frame: { where: { source, line, column } } }) {
-  do_check_eq(source.url, "http://example.com/www/js/c.js");
-  do_check_eq(line, 2);
-  do_check_eq(column, 0);
+  Assert.equal(source.url, "http://example.com/www/js/c.js");
+  Assert.equal(line, 2);
+  Assert.equal(column, 0);
 }

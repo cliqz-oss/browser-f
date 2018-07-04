@@ -8,7 +8,8 @@
 interface nsITreeBoxObject;
 interface nsITreeSelection;
 interface nsITreeColumn;
-interface nsIDOMDataTransfer;
+
+webidl DataTransfer;
 
 [scriptable, uuid(091116f0-0bdc-4b32-b9c8-c8d5a37cb088)]
 interface nsITreeView : nsISupports
@@ -77,13 +78,13 @@ interface nsITreeView : nsISupports
    * items, such as the mailNews folder pane, always return false when
    * the orientation is not DROP_ON.
    */
-  boolean canDrop(in long index, in long orientation, in nsIDOMDataTransfer dataTransfer);
+  boolean canDrop(in long index, in long orientation, in DataTransfer dataTransfer);
 
   /**
    * Called when the user drops something on this view. The |orientation| param
    * specifies before/on/after the given |row|.
    */
-  void drop(in long row, in long orientation, in nsIDOMDataTransfer dataTransfer);
+  void drop(in long row, in long orientation, in DataTransfer dataTransfer);
 
   /**
    * Methods used by the tree to draw thread lines in the tree.
@@ -113,15 +114,6 @@ interface nsITreeView : nsISupports
    * will be used.
    */
   AString getImageSrc(in long row, in nsITreeColumn col);
-
-  /**
-   * The progress mode for a given cell. This method is only called for
-   * columns of type |progressmeter|.
-   */
-  const short PROGRESS_NORMAL = 1;
-  const short PROGRESS_UNDETERMINED = 2;
-  const short PROGRESS_NONE = 3;
-  long getProgressMode(in long row, in nsITreeColumn col);
 
   /**
    * The value for a given cell. This method is only called for columns
@@ -201,15 +193,4 @@ interface nsITreeView : nsISupports
    * A command API that can be used to invoke commands on a specific cell.
    */
   void performActionOnCell(in wstring action, in long row, in nsITreeColumn col);
-};
-
-/**
- * The following interface is not scriptable and MUST NEVER BE MADE scriptable.
- * Native treeviews implement it, and we use this to check whether a treeview
- * is native (and therefore suitable for use by untrusted content).
- */
-[uuid(46c90265-6553-41ae-8d39-7022e7d09145)]
-interface nsINativeTreeView : nsITreeView
-{
-  [noscript] void ensureNative();
 };

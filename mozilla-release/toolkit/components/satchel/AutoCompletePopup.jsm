@@ -4,12 +4,10 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+var EXPORTED_SYMBOLS = ["AutoCompletePopup"];
 
-this.EXPORTED_SYMBOLS = ["AutoCompletePopup"];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // AutoCompleteResultView is an abstraction around a list of results
 // we got back up from browser-content.js. It implements enough of
@@ -17,7 +15,7 @@ Cu.import("resource://gre/modules/Services.jsm");
 // richlistbox popup work.
 var AutoCompleteResultView = {
   // nsISupports
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIAutoCompleteController,
     Ci.nsIAutoCompleteInput,
   ]),
@@ -101,11 +99,24 @@ this.AutoCompletePopup = {
     for (let msg of this.MESSAGES) {
       Services.mm.addMessageListener(msg, this);
     }
+    Services.obs.addObserver(this, "message-manager-disconnect");
   },
 
   uninit() {
     for (let msg of this.MESSAGES) {
       Services.mm.removeMessageListener(msg, this);
+    }
+    Services.obs.removeObserver(this, "message-manager-disconnect");
+  },
+
+  observe(subject, topic, data) {
+    switch (topic) {
+      case "message-manager-disconnect": {
+        if (this.openedPopup) {
+          this.openedPopup.closePopup();
+        }
+        break;
+      }
     }
   },
 
@@ -146,7 +157,8 @@ this.AutoCompletePopup = {
 
     let window = browser.ownerGlobal;
     // Also check window top in case this is a sidebar.
-    if (Services.focus.activeWindow !== window.top) {
+    if (Services.focus.activeWindow !== window.top &&
+        Services.focus.focusedWindow.top !== window.top) {
       // We were sent a message from a window or tab that went into the
       // background, so we'll ignore it for now.
       return;
@@ -175,8 +187,6 @@ this.AutoCompletePopup = {
         this.openedPopup._normalMaxRows = this.openedPopup.maxRows;
         this.openedPopup.mInput.maxRows = 100;
       }
-      this.openedPopup.showCommentColumn = false;
-      this.openedPopup.showImageColumn = false;
       this.openedPopup.addEventListener("popuphidden", this);
       this.openedPopup.addEventListener("popupshowing", this);
       this.openedPopup.openPopupAtScreenRect("after_start", rect.left, rect.top,
@@ -312,8 +322,14 @@ this.AutoCompletePopup = {
     let browser = this.weakBrowser ?
       this.weakBrowser.get() :
       null;
-    if (browser) {
+    if (!browser) {
+      return;
+    }
+
+    if (browser.messageManager) {
       browser.messageManager.sendAsyncMessage(msgName, data);
+    } else {
+      Cu.reportError(`AutoCompletePopup: No messageManager for message "${msgName}"`);
     }
   },
 

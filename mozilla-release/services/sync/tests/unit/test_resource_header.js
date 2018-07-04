@@ -3,13 +3,8 @@
 
 "use strict";
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://services-sync/resource.js");
-
-function run_test() {
-  initTestLogging("Trace");
-  run_next_test();
-}
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://services-sync/resource.js");
 
 var httpServer = new HttpServer();
 httpServer.registerPathHandler("/content", contentHandler);
@@ -40,8 +35,7 @@ function triggerRedirect() {
                                    "PROXY localhost:" + HTTP_PORT + "';" +
                          "}";
 
-  let prefsService = Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefService);
-  let prefs = prefsService.getBranch("network.proxy.");
+  let prefs = Services.prefs.getBranch("network.proxy.");
   prefs.setIntPref("type", 2);
   prefs.setCharPref("autoconfig_url", "data:text/plain," + PROXY_FUNCTION);
 }
@@ -55,11 +49,11 @@ add_task(async function test_headers_copied() {
   resource.setHeader("X-Foo", "foofoo");
 
   let result = await resource.get(TEST_URL);
-  _("Result: " + result);
+  _("Result: " + result.data);
 
-  do_check_eq(result, BODY);
-  do_check_eq(auth, "Basic foobar");
-  do_check_eq(foo, "foofoo");
+  Assert.equal(result.data, BODY);
+  Assert.equal(auth, "Basic foobar");
+  Assert.equal(foo, "foofoo");
 
   await promiseStopServer(httpServer);
 });

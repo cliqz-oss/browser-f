@@ -11,6 +11,8 @@
 #include "nsIPrefService.h"
 #include "nsIProtocolProxyService.h"
 #include "nsNetCID.h"
+#include "mozilla/ClearOnShutdown.h"
+#include "mozilla/StaticPtr.h"
 #include "mozilla/SystemGroup.h"
 #include "mozilla/net/NeckoChild.h"
 #include "mozilla/net/DNSListenerProxy.h"
@@ -23,19 +25,19 @@ namespace net {
 // ChildDNSService
 //-----------------------------------------------------------------------------
 
-static ChildDNSService *gChildDNSService;
+static StaticRefPtr<ChildDNSService> gChildDNSService;
 static const char kPrefNameDisablePrefetch[] = "network.dns.disablePrefetch";
 
-ChildDNSService* ChildDNSService::GetSingleton()
+already_AddRefed<ChildDNSService> ChildDNSService::GetSingleton()
 {
   MOZ_ASSERT(IsNeckoChild());
 
   if (!gChildDNSService) {
     gChildDNSService = new ChildDNSService();
+    ClearOnShutdown(&gChildDNSService);
   }
 
-  NS_ADDREF(gChildDNSService);
-  return gChildDNSService;
+  return do_AddRef(gChildDNSService);
 }
 
 NS_IMPL_ISUPPORTS(ChildDNSService,
@@ -49,11 +51,6 @@ ChildDNSService::ChildDNSService()
   , mPendingRequestsLock("DNSPendingRequestsLock")
 {
   MOZ_ASSERT(IsNeckoChild());
-}
-
-ChildDNSService::~ChildDNSService()
-{
-
 }
 
 void
@@ -183,10 +180,10 @@ ChildDNSService::AsyncResolveExtendedNative(const nsACString        &hostname,
   }
 
   RefPtr<DNSRequestChild> childReq =
-    new DNSRequestChild(nsCString(hostname),
+    new DNSRequestChild(hostname,
                         aOriginAttributes,
                         flags,
-                        nsCString(aNetworkInterface),
+                        aNetworkInterface,
                         listener, target);
 
   {

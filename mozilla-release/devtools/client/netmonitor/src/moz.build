@@ -11,12 +11,12 @@ DIRS += [
     'reducers',
     'selectors',
     'utils',
+    'widgets',
 ]
 
 DevToolsModules(
+    'api.js',
+    'app.js',
     'constants.js',
-    'request-list-context-menu.js',
-    'request-list-header-context-menu.js',
-    'request-list-tooltip.js',
-    'waterfall-background.js',
+    'create-store.js',
 )

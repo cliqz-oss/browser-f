@@ -4,6 +4,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+with Files("**"):
+    BUG_COMPONENT = ("Core", "DOM: File")
+
 EXPORTS.mozilla.dom.ipc += [
     'IPCBlobInputStream.h',
     'IPCBlobInputStreamChild.h',
@@ -11,6 +14,8 @@ EXPORTS.mozilla.dom.ipc += [
     'IPCBlobInputStreamStorage.h',
     'PendingIPCBlobChild.h',
     'PendingIPCBlobParent.h',
+    'TemporaryIPCBlobChild.h',
+    'TemporaryIPCBlobParent.h',
 ]
 
 EXPORTS.mozilla.dom += [
@@ -26,6 +31,8 @@ UNIFIED_SOURCES += [
     'IPCBlobUtils.cpp',
     'PendingIPCBlobChild.cpp',
     'PendingIPCBlobParent.cpp',
+    'TemporaryIPCBlobChild.cpp',
+    'TemporaryIPCBlobParent.cpp',
 ]
 
 IPDL_SOURCES += [
@@ -33,12 +40,12 @@ IPDL_SOURCES += [
     'IPCBlob.ipdlh',
     'PIPCBlobInputStream.ipdl',
     'PPendingIPCBlob.ipdl',
+    'PTemporaryIPCBlob.ipdl',
 ]
 
 LOCAL_INCLUDES += [
     '/dom/file',
     '/dom/ipc',
-    '/dom/workers',
     '/xpcom/build',
 ]
 
@@ -48,7 +55,7 @@ FINAL_LIBRARY = 'xul'
 
 CXXFLAGS += CONFIG['TK_CFLAGS']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
 
 BROWSER_CHROME_MANIFESTS += ['tests/browser.ini']

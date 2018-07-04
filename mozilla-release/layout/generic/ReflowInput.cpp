@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -155,11 +156,6 @@ FontSizeInflationListMarginAdjustment(const nsIFrame* aFrame)
   return 0;
 }
 
-// NOTE: If we ever want to use SizeComputationInput for a flex item or a
-// grid item, we need to make it take the containing-block block-size as
-// well as the inline-size, since flex items and grid items resolve
-// block-direction percent margins and padding against the
-// containing-block block-size, rather than its inline-size.
 SizeComputationInput::SizeComputationInput(nsIFrame *aFrame,
                                    gfxContext *aRenderingContext,
                                    WritingMode aContainingBlockWritingMode,
@@ -168,16 +164,9 @@ SizeComputationInput::SizeComputationInput(nsIFrame *aFrame,
   , mRenderingContext(aRenderingContext)
   , mWritingMode(aFrame->GetWritingMode())
 {
-  MOZ_ASSERT(!aFrame->IsFlexOrGridItem(),
-             "We're about to resolve percent margin & padding "
-             "values against CB inline size, which is incorrect for "
-             "flex/grid items. "
-             "Additionally for grid items, this path doesn't handle baseline "
-             "padding contribution - see SizeComputationInput::InitOffsets");
-  LogicalSize cbSize(aContainingBlockWritingMode, aContainingBlockISize,
-                     aContainingBlockISize);
   ReflowInputFlags flags;
-  InitOffsets(aContainingBlockWritingMode, cbSize, mFrame->Type(), flags);
+  InitOffsets(aContainingBlockWritingMode, aContainingBlockISize,
+              mFrame->Type(), flags);
 }
 
 // Initialize a reflow state for a child frame's reflow. Some state
@@ -232,7 +221,7 @@ ReflowInput::ReflowInput(
     CheckNextInFlowParenthood(aFrame, aParentReflowInput.mFrame);
   mFlags.mAssumingHScrollbar = mFlags.mAssumingVScrollbar = false;
   mFlags.mIsColumnBalancing = false;
-  mFlags.mIsFlexContainerMeasuringHeight = false;
+  mFlags.mIsFlexContainerMeasuringBSize = false;
   mFlags.mDummyParentReflowInput = false;
   mFlags.mShrinkWrap = !!(aFlags & COMPUTE_SIZE_SHRINK_WRAP);
   mFlags.mUseAutoBSize = !!(aFlags & COMPUTE_SIZE_USE_AUTO_BSIZE);
@@ -663,8 +652,7 @@ ReflowInput::InitResizeFlags(nsPresContext* aPresContext,
       stack.AppendElement(mFrame);
 
       do {
-        nsIFrame *f = stack.ElementAt(stack.Length() - 1);
-        stack.RemoveElementAt(stack.Length() - 1);
+        nsIFrame *f = stack.PopLastElement();
 
         nsIFrame::ChildListIterator lists(f);
         for (; !lists.IsDone(); lists.Next()) {
@@ -790,8 +778,9 @@ ReflowInput::InitResizeFlags(nsPresContext* aPresContext,
         break;
       }
 
-      if (rs->mFrame->GetStateBits() & NS_FRAME_CONTAINS_RELATIVE_BSIZE)
+      if (rs->mFrame->GetStateBits() & NS_FRAME_CONTAINS_RELATIVE_BSIZE) {
         break; // no need to go further
+      }
       rs->mFrame->AddStateBits(NS_FRAME_CONTAINS_RELATIVE_BSIZE);
 
       // Keep track of whether we've hit the containing block, because
@@ -1092,6 +1081,14 @@ ReflowInput::ApplyRelativePositioning(nsIFrame* aFrame,
   }
 }
 
+// Returns true if aFrame is non-null, a XUL frame, and "XUL-collapsed" (which
+// only becomes a valid question to ask if we know it's a XUL frame).
+static bool
+IsXULCollapsedXULFrame(nsIFrame* aFrame)
+{
+  return aFrame && aFrame->IsXULBoxFrame() && aFrame->IsXULCollapsed();
+}
+
 nsIFrame*
 ReflowInput::GetHypotheticalBoxContainer(nsIFrame*    aFrame,
                                                nscoord&     aCBIStartEdge,
@@ -1103,32 +1100,47 @@ ReflowInput::GetHypotheticalBoxContainer(nsIFrame*    aFrame,
   /* Now aFrame is the containing block we want */
 
   /* Check whether the containing block is currently being reflowed.
-     If so, use the info from the reflow state. */
-  const ReflowInput* state;
+     If so, use the info from the reflow input. */
+  const ReflowInput* reflowInput;
   if (aFrame->GetStateBits() & NS_FRAME_IN_REFLOW) {
-    for (state = mParentReflowInput; state && state->mFrame != aFrame;
-         state = state->mParentReflowInput) {
+    for (reflowInput = mParentReflowInput;
+         reflowInput && reflowInput->mFrame != aFrame;
+         reflowInput = reflowInput->mParentReflowInput) {
       /* do nothing */
     }
   } else {
-    state = nullptr;
+    reflowInput = nullptr;
   }
 
-  if (state) {
-    WritingMode wm = state->GetWritingMode();
+  if (reflowInput) {
+    WritingMode wm = reflowInput->GetWritingMode();
     NS_ASSERTION(wm == aFrame->GetWritingMode(), "unexpected writing mode");
-    aCBIStartEdge = state->ComputedLogicalBorderPadding().IStart(wm);
-    aCBSize = state->ComputedSize(wm);
+    aCBIStartEdge = reflowInput->ComputedLogicalBorderPadding().IStart(wm);
+    aCBSize = reflowInput->ComputedSize(wm);
   } else {
-    /* Didn't find a reflow state for aFrame.  Just compute the information we
+    /* Didn't find a reflow reflowInput for aFrame.  Just compute the information we
        want, on the assumption that aFrame already knows its size.  This really
        ought to be true by now. */
     NS_ASSERTION(!(aFrame->GetStateBits() & NS_FRAME_IN_REFLOW),
                  "aFrame shouldn't be in reflow; we'll lie if it is");
     WritingMode wm = aFrame->GetWritingMode();
-    LogicalMargin borderPadding = aFrame->GetLogicalUsedBorderAndPadding(wm);
-    aCBIStartEdge = borderPadding.IStart(wm);
-    aCBSize = aFrame->GetLogicalSize(wm) - borderPadding.Size(wm);
+    // Compute CB's offset & content-box size by subtracting borderpadding from
+    // frame size.  Exception: if the CB is 0-sized, it *might* be a child of a
+    // XUL-collapsed frame and might have nonzero borderpadding that was simply
+    // discarded during its layout. (See the child-zero-sizing in
+    // nsSprocketLayout::XULLayout()).  In that case, we ignore the
+    // borderpadding here (just like we did when laying it out), or else we'd
+    // produce a bogus negative content-box size.
+    aCBIStartEdge = 0;
+    aCBSize = aFrame->GetLogicalSize(wm);
+    if (!aCBSize.IsAllZero() ||
+        (!IsXULCollapsedXULFrame(aFrame->GetParent()))) {
+      // aFrame is not XUL-collapsed (nor is it a child of a XUL-collapsed
+      // frame), so we can go ahead and subtract out border padding.
+      LogicalMargin borderPadding = aFrame->GetLogicalUsedBorderAndPadding(wm);
+      aCBIStartEdge += borderPadding.IStart(wm);
+      aCBSize -= borderPadding.Size(wm);
+    }
   }
 
   return aFrame;
@@ -1281,14 +1293,14 @@ AreAllEarlierInFlowFramesEmpty(nsIFrame* aFrame,
 // containing block. The writing-mode of the hypothetical box position will
 // have the same block direction as the absolute containing block, but may
 // differ in inline-bidi direction.
-// In the code below, |cbrs->frame| is the absolute containing block, while
+// In the code below, |aReflowInput->frame| is the absolute containing block, while
 // |containingBlock| is the nearest block container of the placeholder frame,
 // which may be different from the absolute containing block.
 void
 ReflowInput::CalculateHypotheticalPosition(
   nsPresContext* aPresContext,
   nsPlaceholderFrame* aPlaceholderFrame,
-  const ReflowInput* cbrs,
+  const ReflowInput* aReflowInput,
   nsHypotheticalPosition& aHypotheticalPos,
   LayoutFrameType aFrameType) const
 {
@@ -1300,7 +1312,7 @@ ReflowInput::CalculateHypotheticalPosition(
   nscoord blockIStartContentEdge;
   // Dummy writing mode for blockContentSize, will be changed as needed by
   // GetHypotheticalBoxContainer.
-  WritingMode cbwm = cbrs->GetWritingMode();
+  WritingMode cbwm = aReflowInput->GetWritingMode();
   LogicalSize blockContentSize(cbwm);
   nsIFrame* containingBlock =
     GetHypotheticalBoxContainer(aPlaceholderFrame, blockIStartContentEdge,
@@ -1374,10 +1386,11 @@ ReflowInput::CalculateHypotheticalPosition(
   // XXXbz the placeholder is not fully reflowed yet if our containing block is
   // relatively positioned...
   nsSize containerSize = containingBlock->GetStateBits() & NS_FRAME_IN_REFLOW
-    ? cbrs->ComputedSizeAsContainerIfConstrained()
+    ? aReflowInput->ComputedSizeAsContainerIfConstrained()
     : containingBlock->GetSize();
   LogicalPoint
-    placeholderOffset(wm, aPlaceholderFrame->GetOffsetTo(containingBlock),
+    placeholderOffset(wm,
+                      aPlaceholderFrame->GetOffsetToIgnoringScrolling(containingBlock),
                       containerSize);
 
   // First, determine the hypothetical box's mBStart.  We want to check the
@@ -1390,7 +1403,8 @@ ReflowInput::CalculateHypotheticalPosition(
     // Use a null containerSize to convert a LogicalPoint functioning as a
     // vector into a physical nsPoint vector.
     const nsSize nullContainerSize;
-    LogicalPoint blockOffset(wm, blockFrame->GetOffsetTo(containingBlock),
+    LogicalPoint blockOffset(wm,
+                             blockFrame->GetOffsetToIgnoringScrolling(containingBlock),
                              nullContainerSize);
     bool isValid;
     nsBlockInFlowLineIterator iter(blockFrame, aPlaceholderFrame, &isValid);
@@ -1487,44 +1501,12 @@ ReflowInput::CalculateHypotheticalPosition(
   }
 
   // The current coordinate space is that of the nearest block to the placeholder.
-  // Convert to the coordinate space of the absolute containing block
-  // One weird thing here is that for fixed-positioned elements we want to do
-  // the conversion incorrectly; specifically we want to ignore any scrolling
-  // that may have happened;
-  nsPoint cbOffset;
-  if (mStyleDisplay->mPosition == NS_STYLE_POSITION_FIXED &&
-      // Exclude cases inside -moz-transform where fixed is like absolute.
-      nsLayoutUtils::IsReallyFixedPos(mFrame)) {
-    // In this case, cbrs->frame will likely be an ancestor of
-    // containingBlock, so can just walk our way up the frame tree.
-    // Make sure to not add positions of frames whose parent is a
-    // scrollFrame, since we're doing fixed positioning, which assumes
-    // everything is scrolled to (0,0).
-    cbOffset.MoveTo(0, 0);
-    do {
-      cbOffset += containingBlock->GetPositionIgnoringScrolling();
-      nsContainerFrame* parent = containingBlock->GetParent();
-      if (!parent) {
-        // Oops, our absolute containing block isn't an ancestor of the
-        // placeholder's containing block. This can happen if the placeholder
-        // is pushed to a different page in a printing context.  'cbOffset' is
-        // currently relative to the root frame (containingBlock) - so just
-        // subtract the offset to the absolute containing block to make it
-        // relative to that.
-        cbOffset -= containingBlock->GetOffsetTo(cbrs->mFrame);
-        break;
-      }
-      containingBlock = parent;
-    } while (containingBlock != cbrs->mFrame);
-  } else {
-    // XXXldb We need to either ignore scrolling for the absolute
-    // positioning case too (and take the incompatibility) or figure out
-    // how to make these positioned elements actually *move* when we
-    // scroll, and thus avoid the resulting incremental reflow bugs.
-    cbOffset = containingBlock->GetOffsetTo(cbrs->mFrame);
-  }
-  nsSize cbrsSize = cbrs->ComputedSizeAsContainerIfConstrained();
-  LogicalPoint logCBOffs(wm, cbOffset, cbrsSize - containerSize);
+  // Convert to the coordinate space of the absolute containing block.
+  nsPoint cbOffset =
+    containingBlock->GetOffsetToIgnoringScrolling(aReflowInput->mFrame);
+
+  nsSize reflowSize = aReflowInput->ComputedSizeAsContainerIfConstrained();
+  LogicalPoint logCBOffs(wm, cbOffset, reflowSize - containerSize);
   aHypotheticalPos.mIStart += logCBOffs.I(wm);
   aHypotheticalPos.mBStart += logCBOffs.B(wm);
 
@@ -1532,8 +1514,9 @@ ReflowInput::CalculateHypotheticalPosition(
   // padding edge and our current values are relative to the border edge, so
   // translate.
   LogicalMargin border =
-    cbrs->ComputedLogicalBorderPadding() - cbrs->ComputedLogicalPadding();
-  border = border.ConvertTo(wm, cbrs->GetWritingMode());
+    aReflowInput->ComputedLogicalBorderPadding() -
+    aReflowInput->ComputedLogicalPadding();
+  border = border.ConvertTo(wm, aReflowInput->GetWritingMode());
   aHypotheticalPos.mIStart -= border.IStart(wm);
   aHypotheticalPos.mBStart -= border.BStart(wm);
 
@@ -1590,7 +1573,7 @@ ReflowInput::CalculateHypotheticalPosition(
 
     LogicalPoint origin(wm, aHypotheticalPos.mIStart,
                         aHypotheticalPos.mBStart);
-    origin = origin.ConvertTo(cbwm, wm, cbrsSize -
+    origin = origin.ConvertTo(cbwm, wm, reflowSize -
                               boxSize.GetPhysicalSize(wm));
 
     aHypotheticalPos.mIStart = origin.I(cbwm);
@@ -1603,12 +1586,12 @@ ReflowInput::CalculateHypotheticalPosition(
 
 void
 ReflowInput::InitAbsoluteConstraints(nsPresContext* aPresContext,
-                                     const ReflowInput* cbrs,
+                                     const ReflowInput* aReflowInput,
                                      const LogicalSize& aCBSize,
                                      LayoutFrameType aFrameType)
 {
   WritingMode wm = GetWritingMode();
-  WritingMode cbwm = cbrs->GetWritingMode();
+  WritingMode cbwm = aReflowInput->GetWritingMode();
   NS_PRECONDITION(aCBSize.BSize(cbwm) != NS_AUTOHEIGHT,
                   "containing block bsize must be constrained");
 
@@ -1650,8 +1633,8 @@ ReflowInput::InitAbsoluteConstraints(nsPresContext* aPresContext,
       hypotheticalPos.mIStart = nscoord(0);
       hypotheticalPos.mBStart = nscoord(0);
     } else {
-      CalculateHypotheticalPosition(aPresContext, placeholderFrame, cbrs,
-                                    hypotheticalPos, aFrameType);
+      CalculateHypotheticalPosition(aPresContext, placeholderFrame,
+                                    aReflowInput, hypotheticalPos, aFrameType);
     }
   }
 
@@ -1965,7 +1948,7 @@ ReflowInput::InitAbsoluteConstraints(nsPresContext* aPresContext,
 
 // This will not be converted to abstract coordinates because it's only
 // used in CalcQuirkContainingBlockHeight
-nscoord
+static nscoord
 GetBlockMarginBorderPadding(const ReflowInput* aReflowInput)
 {
   nscoord result = 0;
@@ -2007,9 +1990,9 @@ CalcQuirkContainingBlockHeight(const ReflowInput* aCBReflowInput)
   // don't alter this height especially if we are restricted to one level
   nscoord result = NS_AUTOHEIGHT;
 
-  const ReflowInput* rs = aCBReflowInput;
-  for (; rs; rs = rs->mParentReflowInput) {
-    LayoutFrameType frameType = rs->mFrame->Type();
+  const ReflowInput* ri = aCBReflowInput;
+  for (; ri; ri = ri->mParentReflowInput) {
+    LayoutFrameType frameType = ri->mFrame->Type();
     // if the ancestor is auto height then skip it and continue up if it
     // is the first block frame and possibly the body/html
     if (LayoutFrameType::Block == frameType ||
@@ -2019,14 +2002,14 @@ CalcQuirkContainingBlockHeight(const ReflowInput* aCBReflowInput)
         LayoutFrameType::Scroll == frameType) {
 
       secondAncestorRI = firstAncestorRI;
-      firstAncestorRI = rs;
+      firstAncestorRI = ri;
 
       // If the current frame we're looking at is positioned, we don't want to
       // go any further (see bug 221784).  The behavior we want here is: 1) If
       // not auto-height, use this as the percentage base.  2) If auto-height,
       // keep looking, unless the frame is positioned.
-      if (NS_AUTOHEIGHT == rs->ComputedHeight()) {
-        if (rs->mFrame->IsAbsolutelyPositioned(rs->mStyleDisplay)) {
+      if (NS_AUTOHEIGHT == ri->ComputedHeight()) {
+        if (ri->mFrame->IsAbsolutelyPositioned(ri->mStyleDisplay)) {
           break;
         } else {
           continue;
@@ -2035,7 +2018,7 @@ CalcQuirkContainingBlockHeight(const ReflowInput* aCBReflowInput)
     } else if (LayoutFrameType::Canvas == frameType) {
       // Always continue on to the height calculation
     } else if (LayoutFrameType::PageContent == frameType) {
-      nsIFrame* prevInFlow = rs->mFrame->GetPrevInFlow();
+      nsIFrame* prevInFlow = ri->mFrame->GetPrevInFlow();
       // only use the page content frame for a height basis if it is the first in flow
       if (prevInFlow)
         break;
@@ -2046,8 +2029,8 @@ CalcQuirkContainingBlockHeight(const ReflowInput* aCBReflowInput)
 
     // if the ancestor is the page content frame then the percent base is
     // the avail height, otherwise it is the computed height
-    result = (LayoutFrameType::PageContent == frameType) ? rs->AvailableHeight()
-                                                         : rs->ComputedHeight();
+    result = (LayoutFrameType::PageContent == frameType) ? ri->AvailableHeight()
+                                                         : ri->ComputedHeight();
     // if unconstrained - don't sutract borders - would result in huge height
     if (NS_AUTOHEIGHT == result) return result;
 
@@ -2079,8 +2062,8 @@ CalcQuirkContainingBlockHeight(const ReflowInput* aCBReflowInput)
 
     }
     // if we got to the html frame (a block child of the canvas) ...
-    else if (LayoutFrameType::Block == frameType && rs->mParentReflowInput &&
-             rs->mParentReflowInput->mFrame->IsCanvasFrame()) {
+    else if (LayoutFrameType::Block == frameType && ri->mParentReflowInput &&
+             ri->mParentReflowInput->mFrame->IsCanvasFrame()) {
       // ... then subtract out margin/border/padding for the BODY element
       result -= GetBlockMarginBorderPadding(secondAncestorRI);
     }
@@ -2182,27 +2165,6 @@ IsSideCaption(nsIFrame* aFrame, const nsStyleDisplay* aStyleDisplay,
          captionSide == NS_STYLE_CAPTION_SIDE_RIGHT;
 }
 
-// Flex/grid items resolve block-axis percentage margin & padding against the
-// containing block block-size (also for abs/fixed-pos child frames).
-// For everything else: the CSS21 spec requires that margin and padding
-// percentage values are calculated with respect to the inline-size of the
-// containing block, even for margin & padding in the block axis.
-static LogicalSize
-OffsetPercentBasis(const nsIFrame*    aFrame,
-                   WritingMode        aWM,
-                   const LogicalSize& aContainingBlockSize)
-{
-  LogicalSize offsetPercentBasis = aContainingBlockSize;
-  if (MOZ_LIKELY(!aFrame->GetParent() ||
-                 !aFrame->GetParent()->IsFlexOrGridContainer())) {
-    offsetPercentBasis.BSize(aWM) = offsetPercentBasis.ISize(aWM);
-  } else if (offsetPercentBasis.BSize(aWM) == NS_AUTOHEIGHT) {
-    offsetPercentBasis.BSize(aWM) = 0;
-  }
-
-  return offsetPercentBasis;
-}
-
 // XXX refactor this code to have methods for each set of properties
 // we are computing: width,height,line-height; margin; offsets
 
@@ -2223,7 +2185,7 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
   // height equal to the available space
   if (nullptr == mParentReflowInput || mFlags.mDummyParentReflowInput) {
     // XXXldb This doesn't mean what it used to!
-    InitOffsets(wm, OffsetPercentBasis(mFrame, wm, aContainingBlockSize),
+    InitOffsets(wm, aContainingBlockSize.ISize(wm),
                 aFrameType, mFlags, aBorder, aPadding, mStyleDisplay);
     // Override mComputedMargin since reflow roots start from the
     // frame's boundary, which is inside the margin.
@@ -2249,14 +2211,14 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
     ComputedMaxWidth() = ComputedMaxHeight() = NS_UNCONSTRAINEDSIZE;
   } else {
     // Get the containing block reflow state
-    const ReflowInput* cbrs = mCBReflowInput;
-    MOZ_ASSERT(cbrs, "no containing block");
+    const ReflowInput* cbri = mCBReflowInput;
+    MOZ_ASSERT(cbri, "no containing block");
     MOZ_ASSERT(mFrame->GetParent());
 
     // If we weren't given a containing block width and height, then
     // compute one
     LogicalSize cbSize = (aContainingBlockSize == LogicalSize(wm, -1, -1))
-      ? ComputeContainingBlockRectangle(aPresContext, cbrs)
+      ? ComputeContainingBlockRectangle(aPresContext, cbri)
       : aContainingBlockSize;
 
     // See if the containing block height is based on the size of its
@@ -2266,11 +2228,11 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
       // See if the containing block is a cell frame which needs
       // to use the mComputedHeight of the cell instead of what the cell block passed in.
       // XXX It seems like this could lead to bugs with min-height and friends
-      if (cbrs->mParentReflowInput) {
-        fType = cbrs->mFrame->Type();
+      if (cbri->mParentReflowInput) {
+        fType = cbri->mFrame->Type();
         if (IS_TABLE_CELL(fType)) {
           // use the cell's computed block size
-          cbSize.BSize(wm) = cbrs->ComputedSize(wm).BSize(wm);
+          cbSize.BSize(wm) = cbri->ComputedSize(wm).BSize(wm);
         }
       }
     }
@@ -2280,9 +2242,8 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
 
     // For calculating positioning offsets, margins, borders and
     // padding, we use the writing mode of the containing block
-    WritingMode cbwm = cbrs->GetWritingMode();
-    InitOffsets(cbwm, OffsetPercentBasis(mFrame, cbwm,
-                                         cbSize.ConvertTo(cbwm, wm)),
+    WritingMode cbwm = cbri->GetWritingMode();
+    InitOffsets(cbwm, cbSize.ConvertTo(cbwm, wm).ISize(cbwm),
                 aFrameType, mFlags, aBorder, aPadding, mStyleDisplay);
 
     // For calculating the size of this box, we use its own writing mode
@@ -2302,12 +2263,12 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
             NS_FRAME_REPLACED_CONTAINS_BLOCK(
                 NS_CSS_FRAME_TYPE_INLINE) == mFrameType) {
           // Get the containing block reflow state
-          NS_ASSERTION(nullptr != cbrs, "no containing block");
+          NS_ASSERTION(nullptr != cbri, "no containing block");
           // in quirks mode, get the cb height using the special quirk method
           if (!wm.IsVertical() &&
               eCompatibility_NavQuirks == aPresContext->CompatibilityMode()) {
             if (!IS_TABLE_CELL(fType)) {
-              cbSize.BSize(wm) = CalcQuirkContainingBlockHeight(cbrs);
+              cbSize.BSize(wm) = CalcQuirkContainingBlockHeight(cbri);
               if (cbSize.BSize(wm) == NS_AUTOHEIGHT) {
                 blockSizeUnit = eStyleUnit_Auto;
               }
@@ -2321,7 +2282,7 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
           // as per CSS2 spec.
           else
           {
-            nscoord computedBSize = cbrs->ComputedSize(wm).BSize(wm);
+            nscoord computedBSize = cbri->ComputedSize(wm).BSize(wm);
             if (NS_AUTOHEIGHT != computedBSize) {
               cbSize.BSize(wm) = computedBSize;
             }
@@ -2418,7 +2379,9 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
 
     } else if (NS_FRAME_GET_TYPE(mFrameType) == NS_CSS_FRAME_TYPE_ABSOLUTE) {
       // XXX not sure if this belongs here or somewhere else - cwk
-      InitAbsoluteConstraints(aPresContext, cbrs, cbSize.ConvertTo(cbrs->GetWritingMode(), wm), aFrameType);
+      InitAbsoluteConstraints(aPresContext, cbri,
+                              cbSize.ConvertTo(cbri->GetWritingMode(), wm),
+                              aFrameType);
     } else {
       AutoMaybeDisableFontInflation an(mFrame);
 
@@ -2459,8 +2422,8 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
         // in its inline axis.
         auto inlineAxisAlignment =
           wm.IsOrthogonalTo(cbwm)
-            ? mStylePosition->UsedAlignSelf(alignCB->StyleContext())
-            : mStylePosition->UsedJustifySelf(alignCB->StyleContext());
+            ? mStylePosition->UsedAlignSelf(alignCB->Style())
+            : mStylePosition->UsedJustifySelf(alignCB->Style());
         if ((inlineAxisAlignment != NS_STYLE_ALIGN_STRETCH &&
              inlineAxisAlignment != NS_STYLE_ALIGN_NORMAL) ||
             mStyleMargin->mMargin.GetIStartUnit(wm) == eStyleUnit_Auto ||
@@ -2474,7 +2437,7 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
         // Also shrink-wrap blocks that are orthogonal to their container.
         if (isBlock &&
             ((aFrameType == LayoutFrameType::Legend &&
-              mFrame->StyleContext()->GetPseudo() != nsCSSAnonBoxes::scrolledContent) ||
+              mFrame->Style()->GetPseudo() != nsCSSAnonBoxes::scrolledContent) ||
              (aFrameType == LayoutFrameType::Scroll &&
               mFrame->GetContentInsertionFrame()->IsLegendFrame()) ||
              (mCBReflowInput &&
@@ -2488,15 +2451,15 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
             ComputeSizeFlags(computeSizeFlags | ComputeSizeFlags::eShrinkWrap);
 
           // If we're inside of a flex container that needs to measure our
-          // auto height, pass that information along to ComputeSize().
-          if (mFlags.mIsFlexContainerMeasuringHeight) {
+          // auto BSize, pass that information along to ComputeSize().
+          if (mFlags.mIsFlexContainerMeasuringBSize) {
             computeSizeFlags =
               ComputeSizeFlags(computeSizeFlags | ComputeSizeFlags::eUseAutoBSize);
           }
         } else {
-          MOZ_ASSERT(!mFlags.mIsFlexContainerMeasuringHeight,
+          MOZ_ASSERT(!mFlags.mIsFlexContainerMeasuringBSize,
                      "We're not in a flex container, so the flag "
-                     "'mIsFlexContainerMeasuringHeight' shouldn't be set");
+                     "'mIsFlexContainerMeasuringBSize' shouldn't be set");
         }
       }
 
@@ -2538,7 +2501,7 @@ static void
 UpdateProp(nsIFrame* aFrame,
            const FramePropertyDescriptor<nsMargin>* aProperty,
            bool aNeeded,
-           nsMargin& aNewValue)
+           const nsMargin& aNewValue)
 {
   if (aNeeded) {
     nsMargin* propValue = aFrame->GetProperty(aProperty);
@@ -2554,7 +2517,7 @@ UpdateProp(nsIFrame* aFrame,
 
 void
 SizeComputationInput::InitOffsets(WritingMode aWM,
-                                  const LogicalSize& aPercentBasis,
+                                  nscoord aPercentBasis,
                                   LayoutFrameType aFrameType,
                                   ReflowInputFlags aFlags,
                                   const nsMargin* aBorder,
@@ -2573,10 +2536,10 @@ SizeComputationInput::InitOffsets(WritingMode aWM,
   // XXX fix to provide 0,0 for the top&bottom margins for
   // inline-non-replaced elements
   bool needMarginProp = ComputeMargin(aWM, aPercentBasis);
-  // XXX We need to include 'auto' horizontal margins in this too!
-  // ... but if we did that, we'd need to fix nsFrame::GetUsedMargin
-  // to use it even when the margins are all zero (since sometimes
-  // they get treated as auto)
+  // Note that ComputeMargin() simplistically resolves 'auto' margins to 0.
+  // In formatting contexts where this isn't correct, some later code will
+  // need to update the UsedMargin() property with the actual resolved value.
+  // One example of this is ::CalculateBlockSideMargins().
   ::UpdateProp(mFrame, nsIFrame::UsedMarginProperty(), needMarginProp,
                ComputedPhysicalMargin());
 
@@ -2760,28 +2723,28 @@ ReflowInput::CalculateBlockSideMargins(LayoutFrameType aFrameType)
     // 'direction' property of the parent to tell which margin to
     // ignore
     // First check if there is an HTML alignment that we should honor
-    const ReflowInput* prs = mParentReflowInput;
+    const ReflowInput* pri = mParentReflowInput;
     if (aFrameType == LayoutFrameType::Table) {
-      NS_ASSERTION(prs->mFrame->IsTableWrapperFrame(),
+      NS_ASSERTION(pri->mFrame->IsTableWrapperFrame(),
                    "table not inside table wrapper");
       // Center the table within the table wrapper based on the alignment
       // of the table wrapper's parent.
-      prs = prs->mParentReflowInput;
+      pri = pri->mParentReflowInput;
     }
-    if (prs &&
-        (prs->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_LEFT ||
-         prs->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_CENTER ||
-         prs->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_RIGHT)) {
-      if (prs->mWritingMode.IsBidiLTR()) {
+    if (pri &&
+        (pri->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_LEFT ||
+         pri->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_CENTER ||
+         pri->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_RIGHT)) {
+      if (pri->mWritingMode.IsBidiLTR()) {
         isAutoStartMargin =
-          prs->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_LEFT;
+          pri->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_LEFT;
         isAutoEndMargin =
-          prs->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_RIGHT;
+          pri->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_RIGHT;
       } else {
         isAutoStartMargin =
-          prs->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_RIGHT;
+          pri->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_RIGHT;
         isAutoEndMargin =
-          prs->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_LEFT;
+          pri->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_LEFT;
       }
     }
     // Otherwise apply the CSS rules, and ignore one margin by forcing
@@ -2807,7 +2770,16 @@ ReflowInput::CalculateBlockSideMargins(LayoutFrameType aFrameType)
   } else if (isAutoEndMargin) {
     margin.IEnd(cbWM) += availMarginSpace;
   }
-  SetComputedLogicalMargin(margin.ConvertTo(mWritingMode, cbWM));
+  LogicalMargin marginInOurWM = margin.ConvertTo(mWritingMode, cbWM);
+  SetComputedLogicalMargin(marginInOurWM);
+
+  if (isAutoStartMargin || isAutoEndMargin) {
+    // Update the UsedMargin property if we were tracking it already.
+    nsMargin* propValue = mFrame->GetProperty(nsIFrame::UsedMarginProperty());
+    if (propValue) {
+      *propValue = marginInOurWM.GetPhysicalMargin(mWritingMode);
+    }
+  }
 }
 
 #define NORMAL_LINE_HEIGHT_FACTOR 1.2f    // in term of emHeight
@@ -2847,11 +2819,12 @@ GetNormalLineHeight(nsFontMetrics* aFontMetrics)
 }
 
 static inline nscoord
-ComputeLineHeight(nsStyleContext* aStyleContext,
+ComputeLineHeight(ComputedStyle* aComputedStyle,
+                  nsPresContext* aPresContext,
                   nscoord aBlockBSize,
                   float aFontSizeInflation)
 {
-  const nsStyleCoord& lhCoord = aStyleContext->StyleText()->mLineHeight;
+  const nsStyleCoord& lhCoord = aComputedStyle->StyleText()->mLineHeight;
 
   if (lhCoord.GetUnit() == eStyleUnit_Coord) {
     nscoord result = lhCoord.GetCoordValue();
@@ -2866,7 +2839,7 @@ ComputeLineHeight(nsStyleContext* aStyleContext,
     // is found by multiplying the factor by the font's computed size
     // (adjusted for min-size prefs and text zoom).
     return NSToCoordRound(lhCoord.GetFactorValue() * aFontSizeInflation *
-                          aStyleContext->StyleFont()->mFont.size);
+                          aComputedStyle->StyleFont()->mFont.size);
 
   NS_ASSERTION(lhCoord.GetUnit() == eStyleUnit_Normal ||
                lhCoord.GetUnit() == eStyleUnit_Enumerated,
@@ -2881,7 +2854,7 @@ ComputeLineHeight(nsStyleContext* aStyleContext,
   }
 
   RefPtr<nsFontMetrics> fm = nsLayoutUtils::
-    GetFontMetricsForStyleContext(aStyleContext, aFontSizeInflation);
+    GetFontMetricsForComputedStyle(aComputedStyle, aPresContext, aFontSizeInflation);
   return GetNormalLineHeight(fm);
 }
 
@@ -2892,29 +2865,36 @@ ReflowInput::CalcLineHeight() const
     nsLayoutUtils::IsNonWrapperBlock(mFrame) ? ComputedBSize() :
     (mCBReflowInput ? mCBReflowInput->ComputedBSize() : NS_AUTOHEIGHT);
 
-  return CalcLineHeight(mFrame->GetContent(), mFrame->StyleContext(), blockBSize,
+  return CalcLineHeight(mFrame->GetContent(),
+                        mFrame->Style(),
+                        mFrame->PresContext(),
+                        blockBSize,
                         nsLayoutUtils::FontSizeInflationFor(mFrame));
 }
 
 /* static */ nscoord
 ReflowInput::CalcLineHeight(nsIContent* aContent,
-                                  nsStyleContext* aStyleContext,
-                                  nscoord aBlockBSize,
-                                  float aFontSizeInflation)
+                            ComputedStyle* aComputedStyle,
+                            nsPresContext* aPresContext,
+                            nscoord aBlockBSize,
+                            float aFontSizeInflation)
 {
-  NS_PRECONDITION(aStyleContext, "Must have a style context");
+  NS_PRECONDITION(aComputedStyle, "Must have a ComputedStyle");
 
   nscoord lineHeight =
-    ComputeLineHeight(aStyleContext, aBlockBSize, aFontSizeInflation);
+    ComputeLineHeight(aComputedStyle,
+                      aPresContext,
+                      aBlockBSize,
+                      aFontSizeInflation);
 
   NS_ASSERTION(lineHeight >= 0, "ComputeLineHeight screwed up");
 
-  HTMLInputElement* input = HTMLInputElement::FromContentOrNull(aContent);
+  HTMLInputElement* input = HTMLInputElement::FromNodeOrNull(aContent);
   if (input && input->IsSingleLineTextControl()) {
     // For Web-compatibility, single-line text input elements cannot
     // have a line-height smaller than one.
     nscoord lineHeightOne =
-      aFontSizeInflation * aStyleContext->StyleFont()->mFont.size;
+      aFontSizeInflation * aComputedStyle->StyleFont()->mFont.size;
     if (lineHeight < lineHeightOne) {
       lineHeight = lineHeightOne;
     }
@@ -2925,7 +2905,7 @@ ReflowInput::CalcLineHeight(nsIContent* aContent,
 
 bool
 SizeComputationInput::ComputeMargin(WritingMode aWM,
-                                const LogicalSize& aPercentBasis)
+                                    nscoord aPercentBasis)
 {
   // SVG text frames have no margin.
   if (nsSVGUtils::IsInSVGTextSubtree(mFrame)) {
@@ -2942,17 +2922,17 @@ SizeComputationInput::ComputeMargin(WritingMode aWM,
     // (http://dev.w3.org/csswg/css-writing-modes-3/#orthogonal-flows)
     LogicalMargin m(aWM);
     m.IStart(aWM) = nsLayoutUtils::
-      ComputeCBDependentValue(aPercentBasis.ISize(aWM),
+      ComputeCBDependentValue(aPercentBasis,
                               styleMargin->mMargin.GetIStart(aWM));
     m.IEnd(aWM) = nsLayoutUtils::
-      ComputeCBDependentValue(aPercentBasis.ISize(aWM),
+      ComputeCBDependentValue(aPercentBasis,
                               styleMargin->mMargin.GetIEnd(aWM));
 
     m.BStart(aWM) = nsLayoutUtils::
-      ComputeCBDependentValue(aPercentBasis.BSize(aWM),
+      ComputeCBDependentValue(aPercentBasis,
                               styleMargin->mMargin.GetBStart(aWM));
     m.BEnd(aWM) = nsLayoutUtils::
-      ComputeCBDependentValue(aPercentBasis.BSize(aWM),
+      ComputeCBDependentValue(aPercentBasis,
                               styleMargin->mMargin.GetBEnd(aWM));
 
     SetComputedLogicalMargin(aWM, m);
@@ -2973,7 +2953,7 @@ SizeComputationInput::ComputeMargin(WritingMode aWM,
 
 bool
 SizeComputationInput::ComputePadding(WritingMode aWM,
-                                     const LogicalSize& aPercentBasis,
+                                     nscoord aPercentBasis,
                                      LayoutFrameType aFrameType)
 {
   // If style can provide us the padding directly, then use it.
@@ -2994,17 +2974,17 @@ SizeComputationInput::ComputePadding(WritingMode aWM,
     // clamp negative calc() results to 0
     LogicalMargin p(aWM);
     p.IStart(aWM) = std::max(0, nsLayoutUtils::
-      ComputeCBDependentValue(aPercentBasis.ISize(aWM),
+      ComputeCBDependentValue(aPercentBasis,
                               stylePadding->mPadding.GetIStart(aWM)));
     p.IEnd(aWM) = std::max(0, nsLayoutUtils::
-      ComputeCBDependentValue(aPercentBasis.ISize(aWM),
+      ComputeCBDependentValue(aPercentBasis,
                               stylePadding->mPadding.GetIEnd(aWM)));
 
     p.BStart(aWM) = std::max(0, nsLayoutUtils::
-      ComputeCBDependentValue(aPercentBasis.BSize(aWM),
+      ComputeCBDependentValue(aPercentBasis,
                               stylePadding->mPadding.GetBStart(aWM)));
     p.BEnd(aWM) = std::max(0, nsLayoutUtils::
-      ComputeCBDependentValue(aPercentBasis.BSize(aWM),
+      ComputeCBDependentValue(aPercentBasis,
                               stylePadding->mPadding.GetBEnd(aWM)));
 
     SetComputedLogicalPadding(aWM, p);
@@ -3063,7 +3043,7 @@ ReflowInput::ComputeMinMaxValues(const LogicalSize&aCBSize)
        minBSize.HasPercent()) ||
       (mFrameType == NS_CSS_FRAME_TYPE_INTERNAL_TABLE &&
        minBSize.IsCalcUnit() && minBSize.CalcHasPercent()) ||
-      mFlags.mIsFlexContainerMeasuringHeight) {
+      mFlags.mIsFlexContainerMeasuringBSize) {
     ComputedMinBSize() = 0;
   } else {
     ComputedMinBSize() = ComputeBSizeValue(aCBSize.BSize(wm),
@@ -3085,7 +3065,7 @@ ReflowInput::ComputeMinMaxValues(const LogicalSize&aCBSize)
          maxBSize.HasPercent()) ||
         (mFrameType == NS_CSS_FRAME_TYPE_INTERNAL_TABLE &&
          maxBSize.IsCalcUnit() && maxBSize.CalcHasPercent()) ||
-        mFlags.mIsFlexContainerMeasuringHeight) {
+        mFlags.mIsFlexContainerMeasuringBSize) {
       ComputedMaxBSize() = NS_UNCONSTRAINEDSIZE;
     } else {
       ComputedMaxBSize() = ComputeBSizeValue(aCBSize.BSize(wm),

@@ -5,7 +5,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=744830
 -->
 <head>
   <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
   <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
 </head>
 <body>
@@ -17,7 +17,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=744830
     const initialPrefValue = SpecialPowers.getBoolPref("svg.disabled");
     SpecialPowers.setBoolPref("svg.disabled", true);
     const Cu = SpecialPowers.Components.utils;
-    const { ContentTaskUtils } = Cu.import("resource://testing-common/ContentTaskUtils.jsm", {});
+    const { ContentTaskUtils } = ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm", {});
     let t = document.getElementById('testnodes');
 
     let url = 'chrome://mochitests/content/chrome/layout/svg/tests/svg_example_test.html'

@@ -8,9 +8,7 @@ apt-get update -y
 
 # Install dependencies
 apt-get install -y --no-install-recommends \
-    curl \
-    tar \
-    jq \
+    socat \
     python \
     python-requests \
     python-requests-unixsocket
@@ -20,7 +18,9 @@ apt-get install -y --no-install-recommends \
 apt-get install -y python-pip
 
 # Install mercurial
+# shellcheck disable=SC1091
 . /setup/common.sh
+# shellcheck disable=SC1091
 . /setup/install-mercurial.sh
 
 # Install build-image.sh script
@@ -29,9 +29,10 @@ chmod +x /usr/local/bin/run-task
 chmod +x /usr/local/bin/download-and-compress
 
 # Create workspace
-mkdir -p /home/worker/workspace
+mkdir -p /builds/worker/workspace
 
 # Install python-zstandard.
+(
 cd /setup
 tooltool_fetch <<EOF
 [
@@ -44,7 +45,7 @@ tooltool_fetch <<EOF
   }
 ]
 EOF
-cd -
+)
 
 /usr/bin/pip -v install /setup/zstandard-0.8.0.tar.gz
 

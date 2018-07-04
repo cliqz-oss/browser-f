@@ -3,11 +3,8 @@
 
 "use strict";
 
-const Cu = Components.utils;
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
-const promise = require("promise");
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const defer = require("devtools/shared/defer");
 const { NetworkThrottleManager } =
       require("devtools/shared/webconsole/throttle");
 const nsIScriptableInputStream = Ci.nsIScriptableInputStream;
@@ -16,23 +13,23 @@ function TestStreamListener() {
   this.state = "initial";
 }
 TestStreamListener.prototype = {
-  onStartRequest: function () {
+  onStartRequest: function() {
     this.setState("start");
   },
 
-  onStopRequest: function () {
+  onStopRequest: function() {
     this.setState("stop");
   },
 
-  onDataAvailable: function (request, context, inputStream, offset, count) {
-    const sin = Components.classes["@mozilla.org/scriptableinputstream;1"]
+  onDataAvailable: function(request, context, inputStream, offset, count) {
+    const sin = Cc["@mozilla.org/scriptableinputstream;1"]
           .createInstance(nsIScriptableInputStream);
     sin.init(inputStream);
     this.data = sin.read(count);
     this.setState("data");
   },
 
-  setState: function (state) {
+  setState: function(state) {
     this.state = state;
     if (this._deferred) {
       this._deferred.resolve(state);
@@ -40,9 +37,9 @@ TestStreamListener.prototype = {
     }
   },
 
-  onStateChanged: function () {
+  onStateChanged: function() {
     if (!this._deferred) {
-      this._deferred = promise.defer();
+      this._deferred = defer();
     }
     return this._deferred.promise;
   }
@@ -54,7 +51,7 @@ function TestChannel() {
   this._throttleQueue = null;
 }
 TestChannel.prototype = {
-  QueryInterface: function () {
+  QueryInterface: function() {
     return this;
   },
 
@@ -67,14 +64,14 @@ TestChannel.prototype = {
     this.state = "throttled";
   },
 
-  setNewListener: function (listener) {
+  setNewListener: function(listener) {
     this.listener = listener;
     this.state = "listener";
     return this.testListener;
   },
 };
 
-add_task(function* () {
+add_task(async function() {
   let throttler = new NetworkThrottleManager({
     latencyMean: 1,
     latencyMax: 1,
@@ -132,13 +129,13 @@ add_task(function* () {
      "test listener should not have received data");
   equal(activitySeen, false, "activity not distributed yet");
 
-  let newState = yield testListener.onStateChanged();
+  let newState = await testListener.onStateChanged();
   equal(newState, "data", "test listener received data");
   equal(testListener.data, TEST_INPUT, "test listener received all the data");
   equal(activitySeen, true, "activity has been distributed");
 
   let onChange = testListener.onStateChanged();
   listener.onStopRequest(null, null, null);
-  newState = yield onChange;
+  newState = await onChange;
   equal(newState, "stop", "onStateChanged reported");
 });

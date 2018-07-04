@@ -8,7 +8,7 @@ esid: sec-switch-statement-static-semantics-early-errors
 features: [async-functions]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     SwitchStatement : switch ( Expression ) CaseBlock
@@ -18,5 +18,7 @@ info: |
 
 ---*/
 
+
+throw "Test262: This statement should not be evaluated.";
 
 switch (0) { case 1: class f {} default: async function f() {} }

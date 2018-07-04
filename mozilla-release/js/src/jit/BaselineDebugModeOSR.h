@@ -10,7 +10,7 @@
 #include "jit/BaselineFrame.h"
 #include "jit/BaselineIC.h"
 #include "jit/BaselineJIT.h"
-#include "jit/JitFrameIterator.h"
+#include "jit/JSJitFrameIter.h"
 
 #include "vm/Debugger.h"
 
@@ -82,29 +82,30 @@ class DebugModeOSRVolatileStub
 };
 
 //
-// A JitFrameIterator that updates itself in case of recompilation of an
-// on-stack baseline script.
+// A JitFrameIter that updates internal JSJitFrameIter in case of
+// recompilation of an on-stack baseline script.
 //
-class DebugModeOSRVolatileJitFrameIterator : public JitFrameIterator
+
+class DebugModeOSRVolatileJitFrameIter : public JitFrameIter
 {
-    DebugModeOSRVolatileJitFrameIterator** stack;
-    DebugModeOSRVolatileJitFrameIterator* prev;
+    DebugModeOSRVolatileJitFrameIter** stack;
+    DebugModeOSRVolatileJitFrameIter* prev;
 
   public:
-    explicit DebugModeOSRVolatileJitFrameIterator(JSContext* cx)
-      : JitFrameIterator(cx)
+    explicit DebugModeOSRVolatileJitFrameIter(JSContext* cx)
+      : JitFrameIter(cx->activation()->asJit(), /* mustUnwindActivation */ true)
     {
-        stack = &cx->liveVolatileJitFrameIterators_.ref();
+        stack = &cx->liveVolatileJitFrameIter_.ref();
         prev = *stack;
         *stack = this;
     }
 
-    ~DebugModeOSRVolatileJitFrameIterator() {
+    ~DebugModeOSRVolatileJitFrameIter() {
         MOZ_ASSERT(*stack == this);
         *stack = prev;
     }
 
-    static void forwardLiveIterators(const CooperatingContext& target,
+    static void forwardLiveIterators(JSContext* cx,
                                      uint8_t* oldAddr, uint8_t* newAddr);
 };
 

@@ -33,24 +33,24 @@ from mozbuild.android_version_code import android_version_code
 
 def _defines():
     CONFIG = defaultdict(lambda: None)
-    CONFIG.update(buildconfig.substs)
-    DEFINES = dict(buildconfig.defines)
+    CONFIG.update(buildconfig.substs.iteritems())
+    DEFINES = dict(buildconfig.defines.iteritems())
 
     for var in ('MOZ_ANDROID_ACTIVITY_STREAM'
                 'MOZ_ANDROID_ANR_REPORTER',
                 'MOZ_ANDROID_BEAM',
-                'MOZ_ANDROID_CUSTOM_TABS',
                 'MOZ_ANDROID_DOWNLOADS_INTEGRATION',
                 'MOZ_ANDROID_DOWNLOAD_CONTENT_SERVICE',
                 'MOZ_ANDROID_EXCLUDE_FONTS',
                 'MOZ_ANDROID_GCM',
+                'MOZ_ANDROID_GOOGLE_PLAY_SERVICES',
                 'MOZ_ANDROID_MLS_STUMBLER',
                 'MOZ_ANDROID_MMA',
                 'MOZ_ANDROID_MOZILLA_ONLINE',
+                'MOZ_ANDROID_POCKET',
                 'MOZ_ANDROID_PWA',
                 'MOZ_LEANPLUM_SDK_KEY',
                 'MOZ_LEANPLUM_SDK_CLIENTID',
-                'MOZ_ANDROID_SEARCH_ACTIVITY',
                 'MOZ_CRASHREPORTER',
                 'MOZ_DEBUG',
                 'MOZ_INSTALL_TRACKING',
@@ -60,6 +60,7 @@ def _defines():
             DEFINES[var] = 1
 
     for var in ('MOZ_ANDROID_GCM_SENDERID',
+                'MOZ_MMA_GCM_SENDERID',
                 'MOZ_ANDROID_MAX_SDK_VERSION',
                 'MOZ_ANDROID_MIN_SDK_VERSION',
                 'MOZ_PKG_SPECIAL',
@@ -74,7 +75,6 @@ def _defines():
                 'MOZ_ANDROID_SHARED_ID',
                 'MOZ_ANDROID_APPLICATION_CLASS',
                 'MOZ_ANDROID_BROWSER_INTENT_CLASS',
-                'MOZ_ANDROID_SEARCH_INTENT_CLASS',
                 'MOZ_APP_BASENAME',
                 'MOZ_APP_DISPLAYNAME',
                 'MOZ_APP_ID',
@@ -82,6 +82,7 @@ def _defines():
                 'MOZ_APP_UA_NAME',
                 'MOZ_APP_VENDOR',
                 'MOZ_APP_VERSION',
+                'MOZ_APP_VERSION_DISPLAY',
                 'MOZ_CHILD_PROCESS_NAME',
                 'MOZ_MOZILLA_API_KEY',
                 'MOZ_UPDATE_CHANNEL',
@@ -98,11 +99,6 @@ def _defines():
         DEFINES['MOZ_APP_ABI'] = 'arm-eabi-gcc3'
         DEFINES['TARGET_XPCOM_ABI'] = 'arm-eabi-gcc3'
 
-    if '-march=armv7' in CONFIG['OS_CFLAGS']:
-        DEFINES['MOZ_MIN_CPU_VERSION'] = 7
-    else:
-        DEFINES['MOZ_MIN_CPU_VERSION'] = 5
-
     # It's okay to use MOZ_ADJUST_SDK_KEY here because this doesn't
     # leak the value to build logs.
     if CONFIG['MOZ_INSTALL_TRACKING']:
@@ -111,6 +107,9 @@ def _defines():
     if CONFIG['MOZ_ANDROID_MMA']:
         DEFINES['MOZ_LEANPLUM_SDK_KEY'] = CONFIG['MOZ_LEANPLUM_SDK_KEY']
         DEFINES['MOZ_LEANPLUM_SDK_CLIENTID'] = CONFIG['MOZ_LEANPLUM_SDK_CLIENTID']
+
+    if CONFIG['MOZ_ANDROID_POCKET']:
+        DEFINES['MOZ_POCKET_API_KEY'] = CONFIG['MOZ_POCKET_API_KEY']
 
     DEFINES['MOZ_BUILDID'] = open(os.path.join(buildconfig.topobjdir, 'buildid.h')).readline().split()[2]
 

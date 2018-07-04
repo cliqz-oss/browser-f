@@ -5,10 +5,13 @@
 "use strict";
 
 add_task(async function() {
-  await SpecialPowers.pushPrefEnv({set: [["browser.photon.structure.enabled", false]]});
   info("Check private browsing button existence and functionality");
+  CustomizableUI.addWidgetToArea("privatebrowsing-button", CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
+  registerCleanupFunction(() => CustomizableUI.reset());
 
-  await PanelUI.show();
+  await waitForOverflowButtonShown();
+
+  await document.getElementById("nav-bar").overflowable.show();
   info("Menu panel was opened");
 
   let windowWasHandled = false;
@@ -17,7 +20,7 @@ add_task(async function() {
   let observerWindowOpened = {
     observe(aSubject, aTopic, aData) {
       if (aTopic == "domwindowopened") {
-        privateWindow = aSubject.QueryInterface(Components.interfaces.nsIDOMWindow);
+        privateWindow = aSubject.QueryInterface(Ci.nsIDOMWindow);
         privateWindow.addEventListener("load", function() {
           is(privateWindow.location.href, "chrome://browser/content/browser.xul",
              "A new browser window was opened");
@@ -26,7 +29,7 @@ add_task(async function() {
         }, {once: true});
       }
     }
-  }
+  };
 
   Services.ww.registerNotification(observerWindowOpened);
 

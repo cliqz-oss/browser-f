@@ -29,7 +29,7 @@ add_task(async function() {
     let readerButton = document.getElementById("reader-mode-button");
     readerButton.click();
     await pageShownPromise;
-    is(content.document.documentElement.scrollTop, 0, "scrollTop should be 0");
+    is(gBrowser.contentDocumentAsCPOW.documentElement.scrollTop, 0, "scrollTop should be 0");
     await BrowserTestUtils.synthesizeMouseAtCenter("#foo-anchor", {}, browser);
     await ContentTask.spawn(browser, null, async function() {
       let foo = content.document.getElementById("foo");

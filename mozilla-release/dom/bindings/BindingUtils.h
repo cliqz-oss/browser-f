@@ -8,7 +8,7 @@
 #define mozilla_dom_BindingUtils_h__
 
 #include "jsfriendapi.h"
-#include "jswrapper.h"
+#include "js/Wrapper.h"
 #include "js/Conversions.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Alignment.h"
@@ -23,6 +23,7 @@
 #include "mozilla/dom/Exceptions.h"
 #include "mozilla/dom/NonRefcountedDOMObject.h"
 #include "mozilla/dom/Nullable.h"
+#include "mozilla/dom/PrototypeList.h"
 #include "mozilla/dom/RootedDictionary.h"
 #include "mozilla/SegmentedVector.h"
 #include "mozilla/ErrorResult.h"
@@ -50,6 +51,7 @@ enum UseCounter : int16_t;
 
 namespace dom {
 class CustomElementReactionsStack;
+class MessageManagerGlobal;
 template<typename KeyType, typename ValueType> class Record;
 
 nsresult
@@ -76,29 +78,6 @@ UnwrapArg<nsPIDOMWindowOuter>(JSContext* cx, JS::Handle<JSObject*> src,
                               nsPIDOMWindowOuter** ppArg)
 {
   return UnwrapWindowProxyImpl(cx, src, ppArg);
-}
-
-nsresult
-UnwrapXPConnectImpl(JSContext* cx, JS::MutableHandle<JS::Value> src,
-                    const nsIID& iid, void** ppArg);
-
-/*
- * Convert a jsval being used as a Web IDL interface implementation to an XPCOM
- * pointer; this is only used for Web IDL interfaces that specify
- * hasXPConnectImpls.  This is not the same as UnwrapArg because caller _can_
- * assume that if unwrapping succeeds "val" will be updated so it's rooting the
- * XPCOM pointer.  Also, UnwrapXPConnect doesn't need to worry about doing
- * XPCWrappedJS things.
- *
- * val must be an ObjectValue.
- */
-template<class Interface>
-inline nsresult
-UnwrapXPConnect(JSContext* cx, JS::MutableHandle<JS::Value> val,
-                Interface** ppThis)
-{
-  return UnwrapXPConnectImpl(cx, val, NS_GET_TEMPLATE_IID(Interface),
-                             reinterpret_cast<void**>(ppThis));
 }
 
 bool
@@ -286,7 +265,7 @@ UnwrapObjectInternal(V& obj, U& value, prototypes::ID protoID,
   // something of type U might trigger GC (e.g. release the value currently
   // stored in there, with arbitrary consequences) and invalidate the
   // "unwrappedObj" pointer.
-  T* tempValue;
+  T* tempValue = nullptr;
   nsresult rv = UnwrapObjectInternal<T, false>(unwrappedObj, tempValue,
                                                protoID, protoDepth);
   if (NS_SUCCEEDED(rv)) {
@@ -479,7 +458,7 @@ class ProtoAndIfaceCache
   {
   public:
     PageTableCache() {
-      memset(&mPages, 0, sizeof(mPages));
+      memset(mPages.begin(), 0, sizeof(mPages));
     }
 
     ~PageTableCache() {
@@ -1025,7 +1004,9 @@ struct TypeNeedsOuterization
   // We only need to outerize Window objects, so anything inheriting from
   // nsGlobalWindow (which inherits from EventTarget itself).
   static const bool value =
-    IsBaseOf<nsGlobalWindow, T>::value || IsSame<EventTarget, T>::value;
+    IsBaseOf<nsGlobalWindowInner, T>::value ||
+    IsBaseOf<nsGlobalWindowOuter, T>::value ||
+    IsSame<EventTarget, T>::value;
 };
 
 #ifdef DEBUG
@@ -1089,7 +1070,8 @@ DoGetOrCreateDOMReflector(JSContext* cx, T* value,
 {
   MOZ_ASSERT(value);
   MOZ_ASSERT_IF(givenProto, js::IsObjectInContextCompartment(givenProto, cx));
-  // We can get rid of this when we remove support for hasXPConnectImpls.
+  // We can get rid of this when we remove support for
+  // nsWrapperCache::SetIsNotDOMBinding.
   bool couldBeDOMBinding = CouldBeDOMBinding(value);
   JSObject* obj = value->GetWrapper();
   if (obj) {
@@ -1918,9 +1900,9 @@ GetOrCreateDOMReflectorNoWrap(JSContext* cx, T& value,
 
 template <class T>
 inline JSObject*
-GetCallbackFromCallbackObject(T* aObj)
+GetCallbackFromCallbackObject(JSContext* aCx, T* aObj)
 {
-  return aObj->CallbackOrNull();
+  return aObj->Callback(aCx);
 }
 
 // Helper for getting the callback JSObject* of a smart ptr around a
@@ -1929,26 +1911,26 @@ GetCallbackFromCallbackObject(T* aObj)
 template <class T, bool isSmartPtr=IsSmartPtr<T>::value>
 struct GetCallbackFromCallbackObjectHelper
 {
-  static inline JSObject* Get(const T& aObj)
+  static inline JSObject* Get(JSContext* aCx, const T& aObj)
   {
-    return GetCallbackFromCallbackObject(aObj.get());
+    return GetCallbackFromCallbackObject(aCx, aObj.get());
   }
 };
 
 template <class T>
 struct GetCallbackFromCallbackObjectHelper<T, false>
 {
-  static inline JSObject* Get(T& aObj)
+  static inline JSObject* Get(JSContext* aCx, T& aObj)
   {
-    return GetCallbackFromCallbackObject(&aObj);
+    return GetCallbackFromCallbackObject(aCx, &aObj);
   }
 };
 
 template<class T>
 inline JSObject*
-GetCallbackFromCallbackObject(T& aObj)
+GetCallbackFromCallbackObject(JSContext* aCx, T& aObj)
 {
-  return GetCallbackFromCallbackObjectHelper<T>::Get(aObj);
+  return GetCallbackFromCallbackObjectHelper<T>::Get(aCx, aObj);
 }
 
 static inline bool
@@ -2615,6 +2597,20 @@ UseDOMXray(JSObject* obj)
          IsDOMIfaceAndProtoClass(clasp);
 }
 
+inline bool
+IsDOMConstructor(JSObject* obj)
+{
+  if (JS_IsNativeFunction(obj, dom::Constructor)) {
+    // NamedConstructor, like Image
+    return true;
+  }
+
+  const js::Class* clasp = js::GetObjectClass(obj);
+  // Check for a DOM interface object.
+  return dom::IsDOMIfaceAndProtoClass(clasp) &&
+         dom::DOMIfaceAndProtoJSClass::FromJSClass(clasp)->mType == dom::eInterface;
+}
+
 #ifdef DEBUG
 inline bool
 HasConstructor(JSObject* obj)
@@ -2697,8 +2693,8 @@ const nsAString& NonNullHelper(const binding_detail::FakeString& aArg)
 
 // Reparent the wrapper of aObj to whatever its native now thinks its
 // parent should be.
-nsresult
-ReparentWrapper(JSContext* aCx, JS::Handle<JSObject*> aObj);
+void
+ReparentWrapper(JSContext* aCx, JS::Handle<JSObject*> aObj, ErrorResult& aError);
 
 /**
  * Used to implement the Symbol.hasInstance property of an interface object.
@@ -2710,6 +2706,10 @@ bool
 InterfaceHasInstance(JSContext* cx, int prototypeID, int depth,
                      JS::Handle<JSObject*> instance,
                      bool* bp);
+
+// Used to implement the cross-context <Interface>.isInstance static method.
+bool
+InterfaceIsInstance(JSContext* cx, unsigned argc, JS::Value* vp);
 
 // Helper for lenient getters/setters to report to console.  If this
 // returns false, we couldn't even get a global.
@@ -2819,6 +2819,18 @@ ToSupportsIsOnPrimaryInheritanceChain(T* aObject, nsWrapperCache* aCache)
                                                                      aCache);
 }
 
+// Get the size of allocated memory to associate with a binding JSObject for a
+// native object. This is supplied to the JS engine to allow it to schedule GC
+// when necessary.
+//
+// This function supplies a default value and is overloaded for specific native
+// object types.
+inline size_t
+BindingJSObjectMallocBytes(void *aNativePtr)
+{
+  return 0;
+}
+
 // The BindingJSObjectCreator class is supposed to be used by a caller that
 // wants to create and initialise a binding JSObject. After initialisation has
 // been successfully completed it should call ForgetObject().
@@ -2861,6 +2873,10 @@ public:
       mNative = aNative;
       mReflector = aReflector;
     }
+
+    if (size_t mallocBytes = BindingJSObjectMallocBytes(aNative)) {
+      JS_updateMallocCounter(aCx, mallocBytes);
+    }
   }
 
   void
@@ -2873,6 +2889,10 @@ public:
       js::SetReservedSlot(aReflector, DOM_OBJECT_SLOT, JS::PrivateValue(aNative));
       mNative = aNative;
       mReflector = aReflector;
+    }
+
+    if (size_t mallocBytes = BindingJSObjectMallocBytes(aNative)) {
+      JS_updateMallocCounter(aCx, mallocBytes);
     }
   }
 
@@ -3059,11 +3079,9 @@ bool
 EnumerateGlobal(JSContext* aCx, JS::HandleObject aObj,
                 JS::AutoIdVector& aProperties, bool aEnumerableOnly);
 
-template <class T>
-struct CreateGlobalOptions
+
+struct CreateGlobalOptionsGeneric
 {
-  static constexpr ProtoAndIfaceCache::Kind ProtoAndIfaceCacheKind =
-    ProtoAndIfaceCache::NonWindowLike;
   static void TraceGlobal(JSTracer* aTrc, JSObject* aObj)
   {
     mozilla::dom::TraceProtoAndIfaceCache(aTrc, aObj);
@@ -3076,17 +3094,36 @@ struct CreateGlobalOptions
   }
 };
 
-template <>
-struct CreateGlobalOptions<nsGlobalWindow>
+struct CreateGlobalOptionsWithXPConnect
 {
-  static constexpr ProtoAndIfaceCache::Kind ProtoAndIfaceCacheKind =
-    ProtoAndIfaceCache::WindowLike;
   static void TraceGlobal(JSTracer* aTrc, JSObject* aObj);
   static bool PostCreateGlobal(JSContext* aCx, JS::Handle<JSObject*> aGlobal);
 };
 
-nsresult
-RegisterDOMNames();
+template <class T>
+using IsGlobalWithXPConnect =
+  IntegralConstant<bool,
+                   IsBaseOf<nsGlobalWindowInner, T>::value ||
+                   IsBaseOf<MessageManagerGlobal, T>::value>;
+
+template <class T>
+struct CreateGlobalOptions
+  : Conditional<IsGlobalWithXPConnect<T>::value,
+                CreateGlobalOptionsWithXPConnect,
+                CreateGlobalOptionsGeneric>::Type
+{
+  static constexpr ProtoAndIfaceCache::Kind ProtoAndIfaceCacheKind =
+    ProtoAndIfaceCache::NonWindowLike;
+};
+
+template <>
+struct CreateGlobalOptions<nsGlobalWindowInner>
+  : public CreateGlobalOptionsWithXPConnect
+{
+  static constexpr ProtoAndIfaceCache::Kind ProtoAndIfaceCacheKind =
+    ProtoAndIfaceCache::WindowLike;
+  static bool PostCreateGlobal(JSContext* aCx, JS::Handle<JSObject*> aGlobal);
+};
 
 // The return value is true if we created and successfully performed our part of
 // the setup for the global, false otherwise.
@@ -3162,7 +3199,7 @@ class PinnedStringId
   jsid id;
 
  public:
-  PinnedStringId() : id(JSID_VOID) {}
+  constexpr PinnedStringId() : id(JSID_VOID) {}
 
   bool init(JSContext *cx, const char *string) {
     JSString* str = JS_AtomizeAndPinString(cx, string);
@@ -3172,30 +3209,91 @@ class PinnedStringId
     return true;
   }
 
-  operator const jsid& () {
+  operator const jsid& () const {
     return id;
   }
 
-  operator JS::Handle<jsid> () {
+  operator JS::Handle<jsid> () const {
     /* This is safe because we have pinned the string. */
     return JS::Handle<jsid>::fromMarkedLocation(&id);
   }
 };
 
+namespace binding_detail {
+/**
+ * WebIDL getters have a "generic" JSNative that is responsible for the
+ * following things:
+ *
+ * 1) Determining the "this" pointer for the C++ call.
+ * 2) Extracting the "specialized" getter from the jitinfo on the JSFunction.
+ * 3) Calling the specialized getter.
+ * 4) Handling exceptions as needed.
+ *
+ * There are several variants of (1) depending on the interface involved and
+ * there are two variants of (4) depending on whether the return type is a
+ * Promise.  We handle this by templating our generic getter on a
+ * this-determination policy and an exception handling policy, then explicitly
+ * instantiating the relevant template specializations.
+ */
+template<typename ThisPolicy, typename ExceptionPolicy>
 bool
-GenericBindingGetter(JSContext* cx, unsigned argc, JS::Value* vp);
+GenericGetter(JSContext* cx, unsigned argc, JS::Value* vp);
 
+/**
+ * WebIDL setters have a "generic" JSNative that is responsible for the
+ * following things:
+ *
+ * 1) Determining the "this" pointer for the C++ call.
+ * 2) Extracting the "specialized" setter from the jitinfo on the JSFunction.
+ * 3) Calling the specialized setter.
+ *
+ * There are several variants of (1) depending on the interface
+ * involved.  We handle this by templating our generic setter on a
+ * this-determination policy, then explicitly instantiating the
+ * relevant template specializations.
+ */
+template<typename ThisPolicy>
 bool
-GenericPromiseReturningBindingGetter(JSContext* cx, unsigned argc, JS::Value* vp);
+GenericSetter(JSContext* cx, unsigned argc, JS::Value* vp);
 
+/**
+ * WebIDL methods have a "generic" JSNative that is responsible for the
+ * following things:
+ *
+ * 1) Determining the "this" pointer for the C++ call.
+ * 2) Extracting the "specialized" method from the jitinfo on the JSFunction.
+ * 3) Calling the specialized methodx.
+ * 4) Handling exceptions as needed.
+ *
+ * There are several variants of (1) depending on the interface involved and
+ * there are two variants of (4) depending on whether the return type is a
+ * Promise.  We handle this by templating our generic method on a
+ * this-determination policy and an exception handling policy, then explicitly
+ * instantiating the relevant template specializations.
+ */
+template<typename ThisPolicy, typename ExceptionPolicy>
 bool
-GenericBindingSetter(JSContext* cx, unsigned argc, JS::Value* vp);
+GenericMethod(JSContext* cx, unsigned argc, JS::Value* vp);
 
-bool
-GenericBindingMethod(JSContext* cx, unsigned argc, JS::Value* vp);
+// A this-extraction policy for normal getters/setters/methods.
+struct NormalThisPolicy;
 
-bool
-GenericPromiseReturningBindingMethod(JSContext* cx, unsigned argc, JS::Value* vp);
+// A this-extraction policy for getters/setters/methods on interfaces
+// that are on some global's proto chain.
+struct MaybeGlobalThisPolicy;
+
+// A this-extraction policy for lenient getters/setters.
+struct LenientThisPolicy;
+
+// A this-extraction policy for cross-origin getters/setters/methods.
+struct CrossOriginThisPolicy;
+
+// An exception-reporting policy for normal getters/setters/methods.
+struct ThrowExceptions;
+
+// An exception-handling policy for Promise-returning getters/methods.
+struct ConvertExceptionsToPromises;
+} // namespace binding_detail
 
 bool
 StaticMethodPromiseWrapper(JSContext* cx, unsigned argc, JS::Value* vp);
@@ -3206,11 +3304,8 @@ StaticMethodPromiseWrapper(JSContext* cx, unsigned argc, JS::Value* vp);
 // simply be propagated.  Otherwise this method will attempt to convert the
 // exception to a Promise rejected with the exception that it will store in
 // rval.
-//
-// promiseScope should be the scope in which the Promise should be created.
 bool
 ConvertExceptionToPromise(JSContext* cx,
-                          JSObject* promiseScope,
                           JS::MutableHandle<JS::Value> rval);
 
 #ifdef DEBUG
@@ -3218,21 +3313,6 @@ void
 AssertReturnTypeMatchesJitinfo(const JSJitInfo* aJitinfo,
                                JS::Handle<JS::Value> aValue);
 #endif
-
-// This function is called by the bindings layer for methods/getters/setters
-// that are not safe to be called in prerendering mode.  It checks to make sure
-// that the |this| object is not running in a global that is in prerendering
-// mode.  Otherwise, it aborts execution of timers and event handlers, and
-// returns false which gets converted to an uncatchable exception by the
-// bindings layer.
-bool
-EnforceNotInPrerendering(JSContext* aCx, JSObject* aObj);
-
-// Handles the violation of a blacklisted action in prerendering mode by
-// aborting the scripts, and preventing timers and event handlers from running
-// in the window in the future.
-void
-HandlePrerenderingViolation(nsPIDOMWindowInner* aWindow);
 
 bool
 CallerSubsumes(JSObject* aObject);
@@ -3290,7 +3370,7 @@ template<class T, class S>
 inline RefPtr<T>
 StrongOrRawPtr(already_AddRefed<S>&& aPtr)
 {
-  return aPtr.template downcast<T>();
+  return Move(aPtr);
 }
 
 template<class T,
@@ -3362,22 +3442,15 @@ bool
 GetDesiredProto(JSContext* aCx, const JS::CallArgs& aCallArgs,
                 JS::MutableHandle<JSObject*> aDesiredProto);
 
-// Get the CustomElementReactionsStack for the docgroup of the global
-// of the underlying object of aObj.  This can be null if aObj can't
-// be CheckUnwrapped, or if the global of the result has no docgroup
-// (e.g. because it's not a Window global).
-CustomElementReactionsStack*
-GetCustomElementReactionsStack(JS::Handle<JSObject*> aObj);
 // This function is expected to be called from the constructor function for an
-// HTML element interface; the global/callargs need to be whatever was passed to
-// that constructor function.
-already_AddRefed<nsGenericHTMLElement>
-CreateHTMLElement(const GlobalObject& aGlobal, const JS::CallArgs& aCallArgs,
-                  ErrorResult& aRv);
+// HTML or XUL element interface; the global/callargs need to be whatever was
+// passed to that constructor function.
+already_AddRefed<Element>
+CreateXULOrHTMLElement(const GlobalObject& aGlobal, const JS::CallArgs& aCallArgs,
+                       JS::Handle<JSObject*> aGivenProto, ErrorResult& aRv);
 
 void
-SetDocumentAndPageUseCounter(JSContext* aCx, JSObject* aObject,
-                             UseCounter aUseCounter);
+SetDocumentAndPageUseCounter(JSObject* aObject, UseCounter aUseCounter);
 
 // Warnings
 void
@@ -3410,6 +3483,13 @@ namespace binding_detail {
 // understanding of all the code that will run while we're using the return
 // value, including the SpiderMonkey parts.
 JSObject* UnprivilegedJunkScopeOrWorkerGlobal();
+
+// Implementation of the [HTMLConstructor] extended attribute.
+bool
+HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
+                constructors::id::ID aConstructorId,
+                prototypes::id::ID aProtoId,
+                CreateInterfaceObjectsMethod aCreator);
 } // namespace binding_detail
 
 } // namespace dom

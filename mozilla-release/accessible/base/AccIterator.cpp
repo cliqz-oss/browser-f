@@ -18,7 +18,7 @@ using namespace mozilla::a11y;
 // AccIterator
 ////////////////////////////////////////////////////////////////////////////////
 
-AccIterator::AccIterator(Accessible* aAccessible,
+AccIterator::AccIterator(const Accessible* aAccessible,
                          filters::FilterFuncPtr aFilterFunc) :
   mFilterFunc(aFilterFunc)
 {
@@ -63,7 +63,7 @@ AccIterator::Next()
 ////////////////////////////////////////////////////////////////////////////////
 // nsAccIterator::IteratorState
 
-AccIterator::IteratorState::IteratorState(Accessible* aParent,
+AccIterator::IteratorState::IteratorState(const Accessible* aParent,
                                           IteratorState *mParentState) :
   mParent(aParent), mIndex(0), mParentState(mParentState)
 {
@@ -76,16 +76,17 @@ AccIterator::IteratorState::IteratorState(Accessible* aParent,
 
 RelatedAccIterator::
   RelatedAccIterator(DocAccessible* aDocument, nsIContent* aDependentContent,
-                     nsIAtom* aRelAttr) :
+                     nsAtom* aRelAttr) :
   mDocument(aDocument), mRelAttr(aRelAttr), mProviders(nullptr),
   mBindingParent(nullptr), mIndex(0)
 {
   mBindingParent = aDependentContent->GetBindingParent();
-  nsIAtom* IDAttr = mBindingParent ?
+  nsAtom* IDAttr = mBindingParent ?
     nsGkAtoms::anonid : nsGkAtoms::id;
 
   nsAutoString id;
-  if (aDependentContent->GetAttr(kNameSpaceID_None, IDAttr, id))
+  if (aDependentContent->IsElement() &&
+      aDependentContent->AsElement()->GetAttr(kNameSpaceID_None, IDAttr, id))
     mProviders = mDocument->mDependentIDsHash.Get(id);
 }
 
@@ -138,7 +139,7 @@ bool
 HTMLLabelIterator::IsLabel(Accessible* aLabel)
 {
   dom::HTMLLabelElement* labelEl =
-    dom::HTMLLabelElement::FromContent(aLabel->GetContent());
+    dom::HTMLLabelElement::FromNode(aLabel->GetContent());
   return labelEl && labelEl->GetControl() == mAcc->GetContent();
 }
 
@@ -165,7 +166,7 @@ HTMLLabelIterator::Next()
   while (walkUp && !walkUp->IsDoc()) {
     nsIContent* walkUpEl = walkUp->GetContent();
     if (IsLabel(walkUp) &&
-        !walkUpEl->HasAttr(kNameSpaceID_None, nsGkAtoms::_for)) {
+        !walkUpEl->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::_for)) {
       mLabelFilter = eSkipAncestorLabel; // prevent infinite loop
       return walkUp;
     }
@@ -254,11 +255,11 @@ XULDescriptionIterator::Next()
 
 IDRefsIterator::
   IDRefsIterator(DocAccessible* aDoc, nsIContent* aContent,
-                 nsIAtom* aIDRefsAttr) :
+                 nsAtom* aIDRefsAttr) :
   mContent(aContent), mDoc(aDoc), mCurrIdx(0)
 {
-  if (mContent->IsInUncomposedDoc())
-    mContent->GetAttr(kNameSpaceID_None, aIDRefsAttr, mIDs);
+  if (mContent->IsInUncomposedDoc() && mContent->IsElement())
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, aIDRefsAttr, mIDs);
 }
 
 const nsDependentSubstring

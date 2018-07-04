@@ -37,7 +37,7 @@ add_task(async function setup() {
   // crashreporter/test/Makefile.in.  Assign its URL to MOZ_CRASHREPORTER_URL,
   // which CrashSubmit.jsm uses as a server override.
   let env = Cc["@mozilla.org/process/environment;1"].
-            getService(Components.interfaces.nsIEnvironment);
+            getService(Ci.nsIEnvironment);
   let noReport = env.get("MOZ_CRASHREPORTER_NO_REPORT");
   let serverURL = env.get("MOZ_CRASHREPORTER_URL");
   env.set("MOZ_CRASHREPORTER_NO_REPORT", "");
@@ -75,7 +75,7 @@ add_task(async function() {
     // Simulate clicking the "Allow Always" button.
     let notification = PopupNotifications.getNotification("click-to-play-plugins", browser);
     await promiseForNotificationShown(notification, browser);
-    PopupNotifications.panel.firstChild._primaryButton.click();
+    PopupNotifications.panel.firstChild.button.click();
 
     // Prepare a crash report topic observer that only returns when
     // the crash report has been successfully sent.
@@ -94,7 +94,7 @@ add_task(async function() {
       }, "Waited too long for plugin to activate.");
 
       try {
-        Components.utils.waiveXrays(plugin).crash();
+        Cu.waiveXrays(plugin).crash();
       } catch (e) {
       }
 
@@ -150,7 +150,7 @@ add_task(async function() {
 
     // Remove the submitted report file after ensuring it exists.
     let file = Cc["@mozilla.org/file/local;1"]
-                 .createInstance(Ci.nsILocalFile);
+                 .createInstance(Ci.nsIFile);
     file.initWithPath(Services.crashmanager._submittedDumpsDir);
     file.append(crashData.serverCrashID + ".txt");
     ok(file.exists(), "Submitted report file should exist");
@@ -197,7 +197,7 @@ add_task(async function() {
       }, "Waited too long for plugin to activate.");
 
       try {
-        Components.utils.waiveXrays(plugin).crash();
+        Cu.waiveXrays(plugin).crash();
       } catch (e) {}
     });
 
@@ -222,7 +222,7 @@ add_task(async function() {
 
     // Remove the submitted report file after ensuring it exists.
     let file = Cc["@mozilla.org/file/local;1"]
-                 .createInstance(Ci.nsILocalFile);
+                 .createInstance(Ci.nsIFile);
     file.initWithPath(Services.crashmanager._submittedDumpsDir);
     file.append(crashData.serverCrashID + ".txt");
     ok(file.exists(), "Submitted report file should exist");

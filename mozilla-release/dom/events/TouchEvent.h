@@ -13,9 +13,8 @@
 #include "mozilla/EventForwards.h"
 #include "mozilla/TouchEvents.h"
 #include "nsJSEnvironment.h"
+#include "nsStringFwd.h"
 #include "nsWrapperCache.h"
-
-class nsAString;
 
 namespace mozilla {
 namespace dom {
@@ -108,7 +107,7 @@ public:
   void InitTouchEvent(const nsAString& aType,
                       bool aCanBubble,
                       bool aCancelable,
-                      nsGlobalWindow* aView,
+                      nsGlobalWindowInner* aView,
                       int32_t aDetail,
                       bool aCtrlKey,
                       bool aAltKey,
@@ -121,10 +120,10 @@ public:
   static bool PrefEnabled(JSContext* aCx, JSObject* aGlobal);
   static bool PrefEnabled(nsIDocShell* aDocShell);
 
-  static already_AddRefed<Event> Constructor(const GlobalObject& aGlobal,
-                                             const nsAString& aType,
-                                             const TouchEventInit& aParam,
-                                             ErrorResult& aRv);
+  static already_AddRefed<TouchEvent> Constructor(const GlobalObject& aGlobal,
+                                                  const nsAString& aType,
+                                                  const TouchEventInit& aParam,
+                                                  ErrorResult& aRv);
 
 protected:
   ~TouchEvent() {}

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -22,7 +23,6 @@
 #include "mozilla/layers/TextureClientOGL.h"
 #include "nsDebug.h"                    // for printf_stderr, NS_ASSERTION
 #include "nsXULAppAPI.h"                // for XRE_GetProcessType, etc
-#include "ShareableCanvasLayer.h"
 #include "TextureClientSharedSurface.h"
 
 using namespace mozilla::gfx;
@@ -91,7 +91,7 @@ CanvasClient2D::UpdateFromTexture(TextureClient* aTexture)
 }
 
 void
-CanvasClient2D::Update(gfx::IntSize aSize, ShareableCanvasLayer* aLayer)
+CanvasClient2D::Update(gfx::IntSize aSize, ShareableCanvasRenderer* aCanvasRenderer)
 {
   mBufferProviderTexture = nullptr;
 
@@ -103,23 +103,21 @@ CanvasClient2D::Update(gfx::IntSize aSize, ShareableCanvasLayer* aLayer)
 
   bool bufferCreated = false;
   if (!mBackBuffer) {
-    bool isOpaque = (aLayer->GetContentFlags() & Layer::CONTENT_OPAQUE);
-    gfxContentType contentType = isOpaque
-                                                ? gfxContentType::COLOR
-                                                : gfxContentType::COLOR_ALPHA;
+    gfxContentType contentType =
+      aCanvasRenderer->IsOpaque() ? gfxContentType::COLOR : gfxContentType::COLOR_ALPHA;
     gfx::SurfaceFormat surfaceFormat
       = gfxPlatform::GetPlatform()->Optimal2DFormatForContent(contentType);
     TextureFlags flags = TextureFlags::DEFAULT;
     if (mTextureFlags & TextureFlags::ORIGIN_BOTTOM_LEFT) {
       flags |= TextureFlags::ORIGIN_BOTTOM_LEFT;
     }
+    flags |= TextureFlags::NON_BLOCKING_READ_LOCK;
 
-    mBackBuffer = CreateTextureClientForCanvas(surfaceFormat, aSize, flags, aLayer);
+    mBackBuffer = CreateTextureClientForCanvas(surfaceFormat, aSize, flags, aCanvasRenderer);
     if (!mBackBuffer) {
       NS_WARNING("Failed to allocate the TextureClient");
       return;
     }
-    mBackBuffer->EnableReadLock();
     MOZ_ASSERT(mBackBuffer->CanExposeDrawTarget());
 
     bufferCreated = true;
@@ -135,7 +133,7 @@ CanvasClient2D::Update(gfx::IntSize aSize, ShareableCanvasLayer* aLayer)
 
     RefPtr<DrawTarget> target = mBackBuffer->BorrowDrawTarget();
     if (target) {
-      if (!aLayer->UpdateTarget(target)) {
+      if (!aCanvasRenderer->UpdateTarget(target)) {
         NS_WARNING("Failed to copy the canvas into a TextureClient.");
         return;
       }
@@ -165,9 +163,9 @@ already_AddRefed<TextureClient>
 CanvasClient2D::CreateTextureClientForCanvas(gfx::SurfaceFormat aFormat,
                                              gfx::IntSize aSize,
                                              TextureFlags aFlags,
-                                             ShareableCanvasLayer* aLayer)
+                                             ShareableCanvasRenderer* aCanvasRenderer)
 {
-  if (aLayer->IsGLLayer()) {
+  if (aCanvasRenderer->HasGLContext()) {
     // We want a cairo backend here as we don't want to be copying into
     // an accelerated backend and we like LockBits to work. This is currently
     // the most effective way to make this work.
@@ -270,7 +268,7 @@ static already_AddRefed<TextureClient>
 TexClientFromReadback(SharedSurface* src, CompositableForwarder* allocator,
                       TextureFlags baseFlags, LayersBackend layersBackend)
 {
-  auto backendType = gfx::BackendType::CAIRO;
+  auto backendType = gfx::BackendType::SKIA;
   TexClientFactory factory(allocator, src->mHasAlpha, src->mSize, backendType,
                            baseFlags, layersBackend);
 
@@ -375,10 +373,10 @@ CloneSurface(gl::SharedSurface* src, gl::SurfaceFactory* factory)
 }
 
 void
-CanvasClientSharedSurface::Update(gfx::IntSize aSize, ShareableCanvasLayer* aLayer)
+CanvasClientSharedSurface::Update(gfx::IntSize aSize, ShareableCanvasRenderer* aCanvasRenderer)
 {
   Renderer renderer;
-  renderer.construct<ShareableCanvasLayer*>(aLayer);
+  renderer.construct<ShareableCanvasRenderer*>(aCanvasRenderer);
   UpdateRenderer(aSize, renderer);
 }
 
@@ -394,11 +392,11 @@ void
 CanvasClientSharedSurface::UpdateRenderer(gfx::IntSize aSize, Renderer& aRenderer)
 {
   GLContext* gl = nullptr;
-  ShareableCanvasLayer* layer = nullptr;
+  ShareableCanvasRenderer* canvasRenderer = nullptr;
   AsyncCanvasRenderer* asyncRenderer = nullptr;
-  if (aRenderer.constructed<ShareableCanvasLayer*>()) {
-    layer = aRenderer.ref<ShareableCanvasLayer*>();
-    gl = layer->mGLContext;
+  if (aRenderer.constructed<ShareableCanvasRenderer*>()) {
+    canvasRenderer = aRenderer.ref<ShareableCanvasRenderer*>();
+    gl = canvasRenderer->mGLContext;
   } else {
     asyncRenderer = aRenderer.ref<AsyncCanvasRenderer*>();
     gl = asyncRenderer->mGLContext;
@@ -407,28 +405,25 @@ CanvasClientSharedSurface::UpdateRenderer(gfx::IntSize aSize, Renderer& aRendere
 
   RefPtr<TextureClient> newFront;
 
-  if (layer && layer->mGLFrontbuffer) {
-    mShSurfClient = CloneSurface(layer->mGLFrontbuffer.get(), layer->mFactory.get());
+  mShSurfClient = nullptr;
+  if (canvasRenderer && canvasRenderer->mGLFrontbuffer) {
+    mShSurfClient = CloneSurface(canvasRenderer->mGLFrontbuffer.get(), canvasRenderer->mFactory.get());
     if (!mShSurfClient) {
       gfxCriticalError() << "Invalid canvas front buffer";
       return;
     }
-  } else if (layer && layer->mIsMirror) {
-    mShSurfClient = CloneSurface(gl->Screen()->Front()->Surf(), layer->mFactory.get());
-    if (!mShSurfClient) {
-      return;
-    }
-  } else {
+  } else if (gl->Screen()) {
     mShSurfClient = gl->Screen()->Front();
     if (mShSurfClient && mShSurfClient->GetAllocator() &&
         mShSurfClient->GetAllocator() != GetForwarder()->GetTextureForwarder()) {
       mShSurfClient = CloneSurface(mShSurfClient->Surf(), gl->Screen()->Factory());
     }
-    if (!mShSurfClient) {
-      return;
-    }
   }
-  MOZ_ASSERT(mShSurfClient);
+
+  if (!mShSurfClient) {
+    gfxCriticalError() << "Invalid canvas front buffer or screen";
+    return;
+  }
 
   newFront = mShSurfClient;
 
@@ -444,9 +439,9 @@ CanvasClientSharedSurface::UpdateRenderer(gfx::IntSize aSize, Renderer& aRendere
     TextureFlags flags = TextureFlags::IMMUTABLE;
 
     CompositableForwarder* shadowForwarder = nullptr;
-    if (layer) {
-      flags |= layer->Flags();
-      shadowForwarder = layer->GetForwarder();
+    if (canvasRenderer) {
+      flags |= canvasRenderer->Flags();
+      shadowForwarder = canvasRenderer->GetForwarder();
     } else {
       MOZ_ASSERT(asyncRenderer);
       flags |= mTextureFlags;

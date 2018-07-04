@@ -3,7 +3,7 @@
 // previous visit in the chain, not to the first visit in the chain.
 
 add_task(async function() {
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
   const BASE_URL = "http://example.com/tests/toolkit/components/places/tests/browser/";
   const TEST_URI = NetUtil.newURI(BASE_URL + "begin.html");
@@ -14,7 +14,7 @@ add_task(async function() {
     PlacesUtils.history.addObserver({
       __proto__: NavHistoryObserver.prototype,
       _notified: [],
-      onVisit(uri, id, time, sessionId, referrerId, transition) {
+      onVisit(uri, id, time, referrerId, transition) {
         info("Received onVisit: " + uri.spec);
         this._notified.push(uri);
 
@@ -44,6 +44,17 @@ add_task(async function() {
 
           resolve();
         })();
+      },
+      onVisits(visits) {
+        is(visits.length, 1, "Right number of visits notified");
+        let {
+          uri,
+          visitId,
+          time,
+          referrerId,
+          transitionType,
+        } = visits[0];
+        this.onVisit(uri, visitId, time, referrerId, transitionType);
       }
     });
   });
@@ -59,5 +70,5 @@ add_task(async function() {
     await promiseVisits;
   });
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });

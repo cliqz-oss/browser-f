@@ -12,6 +12,9 @@ MOZ_PKG_REMOVALS = $(srcdir)/removed-files.in
 MOZ_PKG_MANIFEST = $(srcdir)/package-manifest.in
 MOZ_PKG_DUPEFLAGS = -f $(srcdir)/allowed-dupes.mn
 
+DEFINES += -DPKG_LOCALE_MANIFEST=$(topobjdir)/browser/installer/locale-manifest.in
+MOZ_CHROME_LOCALE_ENTRIES=@RESPATH@/browser/chrome/ @RESPATH@/chrome/
+
 # Some files have been already bundled with xulrunner
 ifndef MOZ_MULET
 MOZ_PKG_FATAL_WARNINGS = 1
@@ -63,6 +66,10 @@ DEFINES += -DMOZ_D3DCOMPILER_VISTA_DLL=$(MOZ_D3DCOMPILER_VISTA_DLL)
 endif
 endif
 
+ifdef MOZ_ENABLE_SKIA_PDF
+DEFINES += -DMOZ_ENABLE_SKIA_PDF=$(MOZ_ENABLE_SKIA_PDF)
+endif
+
 DEFINES += -DMOZ_CHILD_PROCESS_NAME=$(MOZ_CHILD_PROCESS_NAME)
 
 # Set MSVC dlls version to package, if any.
@@ -92,9 +99,9 @@ DEFINES += -DHAVE_MAKENSISU=1
 endif
 
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
-MOZ_PKG_MAC_DSSTORE=branding/dsstore
-MOZ_PKG_MAC_BACKGROUND=branding/background.png
-MOZ_PKG_MAC_ICON=branding/disk.icns
+MOZ_PKG_MAC_DSSTORE=$(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)/dsstore
+MOZ_PKG_MAC_BACKGROUND=$(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)/background.png
+MOZ_PKG_MAC_ICON=$(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)/disk.icns
 MOZ_PKG_MAC_EXTRA=--symlink '/Applications:/ '
 endif
 
@@ -103,19 +110,19 @@ include $(topsrcdir)/toolkit/mozapps/installer/packager.mk
 
 ifeq (bundle, $(MOZ_FS_LAYOUT))
 BINPATH = $(_BINPATH)
-DEFINES += -DAPPNAME=$(_APPNAME)
+DEFINES += -DAPPNAME='$(_APPNAME)'
 else
 # Every other platform just winds up in dist/bin
 BINPATH = bin
 endif
-DEFINES += -DBINPATH=$(BINPATH)
+DEFINES += -DBINPATH='$(BINPATH)'
 
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 RESPATH = $(_APPNAME)/Contents/Resources
 else
 RESPATH = $(BINPATH)
 endif
-DEFINES += -DRESPATH=$(RESPATH)
+DEFINES += -DRESPATH='$(RESPATH)'
 
 LPROJ_ROOT = $(firstword $(subst -, ,$(AB_CD)))
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
@@ -125,15 +132,9 @@ endif
 endif
 DEFINES += -DLPROJ_ROOT=$(LPROJ_ROOT)
 
-DEFINES += -DMOZ_ICU_VERSION=$(MOZ_ICU_VERSION)
 ifdef MOZ_SYSTEM_ICU
 DEFINES += -DMOZ_SYSTEM_ICU
 endif
-ifdef MOZ_ICU_DATA_ARCHIVE
-DEFINES += -DMOZ_ICU_DATA_ARCHIVE
-endif
-DEFINES += -DMOZ_ICU_DBG_SUFFIX=$(MOZ_ICU_DBG_SUFFIX)
-DEFINES += -DICU_DATA_FILE=$(ICU_DATA_FILE)
 ifdef CLANG_CXX
 DEFINES += -DCLANG_CXX
 endif
@@ -146,6 +147,9 @@ DEFINES += -DLLVM_SYMBOLIZER=$(notdir $(LLVM_SYMBOLIZER))
 endif
 ifdef MOZ_CLANG_RT_ASAN_LIB_PATH
 DEFINES += -DMOZ_CLANG_RT_ASAN_LIB=$(notdir $(MOZ_CLANG_RT_ASAN_LIB_PATH))
+endif
+ifdef WIN_DIA_SDK_BIN_DIR
+DEFINES += -DWIN_DIA_SDK_BIN_DIR=1
 endif
 
 # Builds using the hybrid FasterMake/RecursiveMake backend will
@@ -167,15 +171,10 @@ FINDPATH=bin
 endif
 
 package-compare::
-	cd $(DIST); find $(PKGCOMP_FIND_OPTS) $(FINDPATH) -type f | sort > bin-list.txt
+	cd $(DIST); find $(PKGCOMP_FIND_OPTS) '$(FINDPATH)' -type f | sort > bin-list.txt
 	$(call py_action,preprocessor,$(DEFINES) $(ACDEFINES) $(MOZ_PKG_MANIFEST)) | grep '^$(BINPATH)' | sed -e 's/^\///' | sort > $(DIST)/pack-list.txt
 	-diff -u $(DIST)/pack-list.txt $(DIST)/bin-list.txt
 	rm -f $(DIST)/pack-list.txt $(DIST)/bin-list.txt
-
-installer::
-ifdef INSTALLER_DIR
-	$(MAKE) -C $(INSTALLER_DIR)
-endif
 
 ifdef ENABLE_MARIONETTE
 DEFINES += -DENABLE_MARIONETTE=1

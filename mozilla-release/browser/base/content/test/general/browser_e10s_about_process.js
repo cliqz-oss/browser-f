@@ -5,35 +5,35 @@ const CHROME = {
   id: "cb34538a-d9da-40f3-b61a-069f0b2cb9fb",
   path: "test-chrome",
   flags: 0,
-}
+};
 const CANREMOTE = {
   id: "2480d3e1-9ce4-4b84-8ae3-910b9a95cbb3",
   path: "test-allowremote",
   flags: Ci.nsIAboutModule.URI_CAN_LOAD_IN_CHILD,
-}
+};
 const MUSTREMOTE = {
   id: "f849cee5-e13e-44d2-981d-0fb3884aaead",
   path: "test-mustremote",
   flags: Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD,
-}
+};
 
 const TEST_MODULES = [
   CHROME,
   CANREMOTE,
   MUSTREMOTE
-]
+];
 
 function AboutModule() {
 }
 
 AboutModule.prototype = {
   newChannel(aURI, aLoadInfo) {
-    throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   },
 
   getURIFlags(aURI) {
     for (let module of TEST_MODULES) {
-      if (aURI.path.startsWith(module.path)) {
+      if (aURI.pathQueryRef.startsWith(module.path)) {
         return module.flags;
       }
     }
@@ -46,21 +46,21 @@ AboutModule.prototype = {
     return null;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutModule])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAboutModule])
 };
 
 var AboutModuleFactory = {
   createInstance(aOuter, aIID) {
     if (aOuter)
-      throw Components.results.NS_ERROR_NO_AGGREGATION;
+      throw Cr.NS_ERROR_NO_AGGREGATION;
     return new AboutModule().QueryInterface(aIID);
   },
 
   lockFactory(aLock) {
-    throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIFactory])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIFactory])
 };
 
 add_task(async function init() {

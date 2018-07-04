@@ -1,14 +1,16 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "Axis.h"
+
 #include <math.h>                       // for fabsf, pow, powf
 #include <algorithm>                    // for max
+
+#include "APZCTreeManager.h"            // for APZCTreeManager
 #include "AsyncPanZoomController.h"     // for AsyncPanZoomController
-#include "mozilla/layers/APZCTreeManager.h" // for APZCTreeManager
 #include "mozilla/layers/APZThreadUtils.h" // for AssertOnControllerThread
 #include "FrameMetrics.h"               // for FrameMetrics
 #include "mozilla/Attributes.h"         // for final
@@ -58,7 +60,7 @@ Axis::Axis(AsyncPanZoomController* aAsyncPanZoomController)
 }
 
 float Axis::ToLocalVelocity(float aVelocityInchesPerMs) const {
-  ScreenPoint velocity = MakePoint(aVelocityInchesPerMs * APZCTreeManager::GetDPI());
+  ScreenPoint velocity = MakePoint(aVelocityInchesPerMs * mAsyncPanZoomController->GetDPI());
   // Use ToScreenCoordinates() to convert a point rather than a vector by
   // treating the point as a vector, and using (0, 0) as the anchor.
   ScreenPoint panStart = mAsyncPanZoomController->ToScreenCoordinates(
@@ -370,23 +372,6 @@ bool Axis::CanScrollNow() const {
   return !mAxisLocked && CanScroll();
 }
 
-bool Axis::FlingApplyFrictionOrCancel(const TimeDuration& aDelta,
-                                      float aFriction,
-                                      float aThreshold) {
-  if (fabsf(mVelocity) <= aThreshold) {
-    // If the velocity is very low, just set it to 0 and stop the fling,
-    // otherwise we'll just asymptotically approach 0 and the user won't
-    // actually see any changes.
-    mVelocity = 0.0f;
-    return false;
-  } else {
-    mVelocity *= pow(1.0f - aFriction, float(aDelta.ToMilliseconds()));
-  }
-  AXIS_LOG("%p|%s reduced velocity to %f due to friction\n",
-    mAsyncPanZoomController, Name(), mVelocity);
-  return true;
-}
-
 ParentLayerCoord Axis::DisplacementWillOverscrollAmount(ParentLayerCoord aDisplacement) const {
   ParentLayerCoord newOrigin = GetOrigin() + aDisplacement;
   ParentLayerCoord newCompositionEnd = GetCompositionEnd() + aDisplacement;
@@ -491,6 +476,21 @@ const FrameMetrics& Axis::GetFrameMetrics() const {
   return mAsyncPanZoomController->GetFrameMetrics();
 }
 
+const ScrollMetadata& Axis::GetScrollMetadata() const {
+  return mAsyncPanZoomController->GetScrollMetadata();
+}
+
+bool Axis::OverscrollBehaviorAllowsHandoff() const {
+  // Scroll handoff is a "non-local" overscroll behavior, so it's allowed
+  // with "auto" and disallowed with "contain" and "none".
+  return GetOverscrollBehavior() == OverscrollBehavior::Auto;
+}
+
+bool Axis::OverscrollBehaviorAllowsOverscrollEffect() const {
+  // An overscroll effect is a "local" overscroll behavior, so it's allowed
+  // with "auto" and "contain" and disallowed with "none".
+  return GetOverscrollBehavior() != OverscrollBehavior::None;
+}
 
 AxisX::AxisX(AsyncPanZoomController* aAsyncPanZoomController)
   : Axis(aAsyncPanZoomController)
@@ -505,12 +505,12 @@ ParentLayerCoord AxisX::GetPointOffset(const ParentLayerPoint& aPoint) const
 
 ParentLayerCoord AxisX::GetRectLength(const ParentLayerRect& aRect) const
 {
-  return aRect.width;
+  return aRect.Width();
 }
 
 ParentLayerCoord AxisX::GetRectOffset(const ParentLayerRect& aRect) const
 {
-  return aRect.x;
+  return aRect.X();
 }
 
 CSSToParentLayerScale AxisX::GetScaleForAxis(const CSSToParentLayerScale2D& aScale) const
@@ -528,6 +528,24 @@ const char* AxisX::Name() const
   return "X";
 }
 
+bool AxisX::CanScrollTo(Side aSide) const
+{
+  switch (aSide) {
+    case eSideLeft:
+      return CanScroll(-COORDINATE_EPSILON * 2);
+    case eSideRight:
+      return CanScroll(COORDINATE_EPSILON * 2);
+    default:
+      MOZ_ASSERT_UNREACHABLE("aSide is out of valid values");
+      return false;
+  }
+}
+
+OverscrollBehavior AxisX::GetOverscrollBehavior() const
+{
+  return GetScrollMetadata().GetOverscrollBehavior().mBehaviorX;
+}
+
 AxisY::AxisY(AsyncPanZoomController* aAsyncPanZoomController)
   : Axis(aAsyncPanZoomController)
 {
@@ -541,12 +559,12 @@ ParentLayerCoord AxisY::GetPointOffset(const ParentLayerPoint& aPoint) const
 
 ParentLayerCoord AxisY::GetRectLength(const ParentLayerRect& aRect) const
 {
-  return aRect.height;
+  return aRect.Height();
 }
 
 ParentLayerCoord AxisY::GetRectOffset(const ParentLayerRect& aRect) const
 {
-  return aRect.y;
+  return aRect.Y();
 }
 
 CSSToParentLayerScale AxisY::GetScaleForAxis(const CSSToParentLayerScale2D& aScale) const
@@ -562,6 +580,24 @@ ScreenPoint AxisY::MakePoint(ScreenCoord aCoord) const
 const char* AxisY::Name() const
 {
   return "Y";
+}
+
+bool AxisY::CanScrollTo(Side aSide) const
+{
+  switch (aSide) {
+    case eSideTop:
+      return CanScroll(-COORDINATE_EPSILON * 2);
+    case eSideBottom:
+      return CanScroll(COORDINATE_EPSILON * 2);
+    default:
+      MOZ_ASSERT_UNREACHABLE("aSide is out of valid values");
+      return false;
+  }
+}
+
+OverscrollBehavior AxisY::GetOverscrollBehavior() const
+{
+  return GetScrollMetadata().GetOverscrollBehavior().mBehaviorY;
 }
 
 } // namespace layers

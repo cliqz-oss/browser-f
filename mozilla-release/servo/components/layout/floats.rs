@@ -4,33 +4,33 @@
 
 use app_units::{Au, MAX_AU};
 use block::FormattingContextType;
-use flow::{self, CLEARS_LEFT, CLEARS_RIGHT, Flow, ImmutableFlowUtils};
+use flow::{Flow, FlowFlags, GetBaseFlow, ImmutableFlowUtils};
 use persistent_list::PersistentList;
 use std::cmp::{max, min};
 use std::fmt;
-use style::computed_values::float;
+use style::computed_values::float::T as StyleFloat;
 use style::logical_geometry::{LogicalRect, LogicalSize, WritingMode};
 use style::values::computed::LengthOrPercentageOrAuto;
 
 /// The kind of float: left or right.
-#[derive(Clone, Serialize, Debug, Copy)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub enum FloatKind {
     Left,
     Right
 }
 
 impl FloatKind {
-    pub fn from_property(property: float::T) -> Option<FloatKind> {
+    pub fn from_property(property: StyleFloat) -> Option<FloatKind> {
         match property {
-            float::T::none => None,
-            float::T::left => Some(FloatKind::Left),
-            float::T::right => Some(FloatKind::Right),
+            StyleFloat::None => None,
+            StyleFloat::Left => Some(FloatKind::Left),
+            StyleFloat::Right => Some(FloatKind::Right),
         }
     }
 }
 
 /// The kind of clearance: left, right, or both.
-#[derive(Copy, Clone)]
+#[derive(Clone, Copy)]
 pub enum ClearType {
     Left,
     Right,
@@ -364,8 +364,8 @@ impl Floats {
                     }
                 }
                 Some(rect) => {
-                    assert!(rect.start.b + rect.size.block != float_b,
-                            "Non-terminating float placement");
+                    assert_ne!(rect.start.b + rect.size.block, float_b,
+                               "Non-terminating float placement");
 
                     // Place here if there is enough room
                     if rect.size.inline >= info.size.inline {
@@ -431,7 +431,7 @@ impl Floats {
 /// This is used for two purposes: (a) determining whether we can lay out blocks in parallel; (b)
 /// guessing the inline-sizes of block formatting contexts in an effort to lay them out in
 /// parallel.
-#[derive(Copy, Clone)]
+#[derive(Clone, Copy)]
 pub struct SpeculatedFloatPlacement {
     /// The estimated inline size (an upper bound) of the left floats flowing through this flow.
     pub left: Au,
@@ -458,11 +458,11 @@ impl SpeculatedFloatPlacement {
     /// Given the speculated inline size of the floats out for the inorder predecessor of this
     /// flow, computes the speculated inline size of the floats flowing in.
     pub fn compute_floats_in(&mut self, flow: &mut Flow) {
-        let base_flow = flow::base(flow);
-        if base_flow.flags.contains(CLEARS_LEFT) {
+        let base_flow = flow.base();
+        if base_flow.flags.contains(FlowFlags::CLEARS_LEFT) {
             self.left = Au(0)
         }
-        if base_flow.flags.contains(CLEARS_RIGHT) {
+        if base_flow.flags.contains(FlowFlags::CLEARS_RIGHT) {
             self.right = Au(0)
         }
     }
@@ -491,7 +491,7 @@ impl SpeculatedFloatPlacement {
             }
         }
 
-        let base_flow = flow::base(flow);
+        let base_flow = flow.base();
         if !base_flow.flags.is_float() {
             return
         }
@@ -513,16 +513,16 @@ impl SpeculatedFloatPlacement {
         }
 
         match base_flow.flags.float_kind() {
-            float::T::none => {}
-            float::T::left => self.left = self.left + float_inline_size,
-            float::T::right => self.right = self.right + float_inline_size,
+            StyleFloat::None => {}
+            StyleFloat::Left => self.left = self.left + float_inline_size,
+            StyleFloat::Right => self.right = self.right + float_inline_size,
         }
     }
 
     /// Given a flow, computes the speculated inline size of the floats in of its first child.
     pub fn compute_floats_in_for_first_child(parent_flow: &mut Flow) -> SpeculatedFloatPlacement {
         if !parent_flow.is_block_like() {
-            return flow::base(parent_flow).speculated_float_placement_in
+            return parent_flow.base().speculated_float_placement_in
         }
 
         let parent_block_flow = parent_flow.as_block();

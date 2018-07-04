@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,7 +11,7 @@
 #ifndef nsMenuFrame_h__
 #define nsMenuFrame_h__
 
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsCOMPtr.h"
 
 #include "nsBoxFrame.h"
@@ -23,10 +24,16 @@
 #include "nsITimer.h"
 #include "mozilla/Attributes.h"
 
-nsIFrame* NS_NewMenuFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
-nsIFrame* NS_NewMenuItemFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+nsIFrame* NS_NewMenuFrame(nsIPresShell* aPresShell, mozilla::ComputedStyle*);
+nsIFrame* NS_NewMenuItemFrame(nsIPresShell* aPresShell, mozilla::ComputedStyle*);
 
 class nsIContent;
+
+namespace mozilla {
+namespace dom {
+class Element;
+} // namespace dom
+} // namespace mozilla
 
 #define NS_STATE_ACCELTEXT_IS_DERIVED  NS_STATE_BOX_CHILD_RESERVED
 
@@ -79,7 +86,7 @@ class nsMenuFrame final : public nsBoxFrame
                         , public nsIReflowCallback
 {
 public:
-  explicit nsMenuFrame(nsStyleContext* aContext);
+  explicit nsMenuFrame(ComputedStyle* aStyle);
 
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsMenuFrame)
@@ -92,20 +99,15 @@ public:
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
 
-#ifdef DEBUG_LAYOUT
-  virtual nsresult SetXULDebug(nsBoxLayoutState& aState, bool aDebug) override;
-#endif
-
   // The following methods are all overridden so that the menupopup
   // can be stored in a separate list, so that it doesn't impact reflow of the
   // actual menu item at all.
   virtual const nsFrameList& GetChildList(ChildListID aList) const override;
   virtual void GetChildLists(nsTArray<ChildList>* aLists) const override;
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   // Overridden to prevent events from going to children of the menu.
   virtual void BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
-                                           const nsRect&           aDirtyRect,
                                            const nsDisplayListSet& aLists) override;
 
   // this method can destroy the frame
@@ -142,8 +144,8 @@ public:
 
   bool IsChecked() { return mChecked; }
 
-  NS_IMETHOD GetActiveChild(nsIDOMElement** aResult);
-  NS_IMETHOD SetActiveChild(nsIDOMElement* aChild);
+  NS_IMETHOD GetActiveChild(mozilla::dom::Element** aResult);
+  NS_IMETHOD SetActiveChild(mozilla::dom::Element* aChild);
 
   // called when the Enter key is pressed while the menuitem is the current
   // one in its parent popup. This will carry out the command attached to
@@ -254,7 +256,7 @@ protected:
 
   // This method can destroy the frame
   virtual nsresult AttributeChanged(int32_t aNameSpaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     int32_t aModType) override;
   virtual ~nsMenuFrame() { }
 
@@ -268,9 +270,6 @@ protected:
   void PassMenuCommandEventToPopupManager();
 
 protected:
-#ifdef DEBUG_LAYOUT
-  nsresult SetXULDebug(nsBoxLayoutState& aState, nsIFrame* aList, bool aDebug);
-#endif
   nsresult Notify(nsITimer* aTimer);
 
   bool mIsMenu; // Whether or not we can even have children or not.

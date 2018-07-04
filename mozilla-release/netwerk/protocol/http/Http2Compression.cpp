@@ -30,7 +30,7 @@ class HpackStaticTableReporter final : public nsIMemoryReporter
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
 
-  HpackStaticTableReporter() {}
+  HpackStaticTableReporter() = default;
 
   NS_IMETHOD
   CollectReports(nsIHandleReportCallback* aHandleReport, nsISupports* aData,
@@ -47,7 +47,7 @@ public:
 private:
   MOZ_DEFINE_MALLOC_SIZE_OF(MallocSizeOf)
 
-  ~HpackStaticTableReporter() {}
+  ~HpackStaticTableReporter() = default;
 };
 
 NS_IMPL_ISUPPORTS(HpackStaticTableReporter, nsIMemoryReporter)
@@ -77,7 +77,7 @@ public:
 private:
   MOZ_DEFINE_MALLOC_SIZE_OF(MallocSizeOf)
 
-  ~HpackDynamicTableReporter() {}
+  ~HpackDynamicTableReporter() = default;
 
   Http2BaseCompressor* mCompressor;
 
@@ -209,8 +209,8 @@ nvFIFO::~nvFIFO()
 void
 nvFIFO::AddElement(const nsCString &name, const nsCString &value)
 {
-  mByteCount += name.Length() + value.Length() + 32;
   nvPair *pair = new nvPair(name, value);
+  mByteCount += pair->Size();
   mTable.PushFront(pair);
 }
 

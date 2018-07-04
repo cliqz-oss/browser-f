@@ -3,13 +3,13 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-Components.utils.importGlobalProperties(["indexedDB"]);
+Cu.importGlobalProperties(["indexedDB"]);
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "GlobalObjectsModule"
 ];
 
-this.GlobalObjectsModule = function GlobalObjectsModule() {
+function GlobalObjectsModule() {
 }
 
 GlobalObjectsModule.prototype = {
@@ -26,11 +26,11 @@ GlobalObjectsModule.prototype = {
     request.onerror = function(event) {
       ok(false, "indexedDB error, '" + event.target.error.name + "'");
       finishTest();
-    }
+    };
     request.onsuccess = function(event) {
       let db = event.target.result;
       ok(db, "Got database");
       finishTest();
-    }
+    };
   }
-}
+};

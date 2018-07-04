@@ -20,9 +20,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
 
   /** Test for ES constructors on Xrayed globals. **/
   SimpleTest.waitForExplicitFinish();
-  const Cc = Components.classes;
-  const Ci = Components.interfaces;
-  const Cu = Components.utils;
   let global = Cu.getGlobalForObject.bind(Cu);
 
   function checkThrows(f, rgxp, msg) {
@@ -114,10 +111,10 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     ok(Cu.isXrayWrapper(foopyFunction), "Should be Xrays");
     is(foopyFunction.name, "namedFoopyFunction", ".name works over Xrays");
     is(foopyFunction.length, 3, ".length works over Xrays");
-    ok(Object.getOwnPropertyNames(foopyFunction).indexOf('length') >= 0, "Should list length");
-    ok(Object.getOwnPropertyNames(foopyFunction).indexOf('name') >= 0, "Should list name");
-    ok(Object.getOwnPropertyNames(foopyFunction).indexOf('prototype') == -1, "Should not list prototype");
-    ok(Object.getOwnPropertyNames(iwin.Array).indexOf('prototype') >= 0, "Should list prototype for standard constructor");
+    ok(Object.getOwnPropertyNames(foopyFunction).includes('length'), "Should list length");
+    ok(Object.getOwnPropertyNames(foopyFunction).includes('name'), "Should list name");
+    ok(!Object.getOwnPropertyNames(foopyFunction).includes('prototype'), "Should not list prototype");
+    ok(Object.getOwnPropertyNames(iwin.Array).includes('prototype'), "Should list prototype for standard constructor");
 
     // Test proxies.
     var targetObject = new iwin.Object();
@@ -182,14 +179,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     "setYear", "setFullYear", "setUTCFullYear", "setMonth", "setUTCMonth",
     "setDate", "setUTCDate", "setHours", "setUTCHours", "setMinutes",
     "setUTCMinutes", "setSeconds", "setUTCSeconds", "setMilliseconds",
-    "setUTCMilliseconds", "toUTCString", "toLocaleFormat", "toLocaleString",
+    "setUTCMilliseconds", "toUTCString", "toLocaleString",
     "toLocaleDateString", "toLocaleTimeString", "toDateString", "toTimeString",
     "toISOString", "toJSON", "toSource", "toString", "valueOf", "constructor",
     "toGMTString", Symbol.toPrimitive];
   gConstructorProperties['Date'] = constructorProps(["UTC", "parse", "now"]);
   gPrototypeProperties['Object'] =
-    ["constructor", "toSource", "toString", "toLocaleString", "valueOf", "watch",
-     "unwatch", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable",
+    ["constructor", "toSource", "toString", "toLocaleString", "valueOf",
+     "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable",
      "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
      "__proto__"];
   gConstructorProperties['Object'] =
@@ -204,9 +201,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
       "pop", "shift", "unshift", "splice", "concat", "slice", "lastIndexOf", "indexOf",
       "includes", "forEach", "map", "reduce", "reduceRight", "filter", "some", "every", "find",
       "findIndex", "copyWithin", "fill", Symbol.iterator, Symbol.unscopables, "entries", "keys",
-      "constructor"];
+      "values", "constructor"];
   if (isNightlyBuild) {
-    gPrototypeProperties['Array'].push("values");
+    gPrototypeProperties['Array'].push("flatten", "flatMap");
   }
   gConstructorProperties['Array'] =
     constructorProps(["join", "reverse", "sort", "push", "pop", "shift",
@@ -235,7 +232,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
 
   gPrototypeProperties['Function'] =
     ["constructor", "toSource", "toString", "apply", "call", "bind",
-     "isGenerator", "length", "name", "arguments", "caller", Symbol.hasInstance];
+     "length", "name", "arguments", "caller", Symbol.hasInstance];
   gConstructorProperties['Function'] = constructorProps([])
 
   gPrototypeProperties['RegExp'] =
@@ -249,7 +246,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
                       "$`", "$'", Symbol.species])
 
   gPrototypeProperties['Promise'] =
-    ["constructor", "catch", "then", Symbol.toStringTag];
+    ["constructor", "catch", "then", "finally", Symbol.toStringTag];
   gConstructorProperties['Promise'] =
     constructorProps(["resolve", "reject", "all", "race", Symbol.species]);
 
@@ -258,8 +255,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   gConstructorProperties['ArrayBuffer'] =
     constructorProps(["isView", Symbol.species]);
 
-  gPrototypeProperties['SharedArrayBuffer'] = ["constructor", "slice", "byteLength", Symbol.toStringTag];
-  gConstructorProperties['SharedArrayBuffer'] = constructorProps([Symbol.species]);
+  is(typeof SharedArrayBuffer, "undefined", "Enable tests!");
 
   gPrototypeProperties['Map'] =
     ["constructor", "size", Symbol.toStringTag, "get", "has", "set", "delete",
@@ -297,11 +293,11 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     sortProperties(gConstructorProperties[c]);
 
   function filterOut(array, props) {
-    return array.filter(p => props.indexOf(p) == -1);
+    return array.filter(p => !props.includes(p));
   }
 
   function isTypedArrayClass(classname) {
-    return typedArrayClasses.indexOf(classname) >= 0;
+    return typedArrayClasses.includes(classname);
   }
 
   function propertyIsGetter(obj, name, classname) {
@@ -918,7 +914,7 @@ for (var prop of props) {
   }
 
   function testArrayBuffer() {
-    let constructors = ['ArrayBuffer', 'SharedArrayBuffer'];
+    let constructors = ['ArrayBuffer'];
 
     for (const c of constructors) {
       testXray(c, new iwin[c](0), new iwin[c](12));

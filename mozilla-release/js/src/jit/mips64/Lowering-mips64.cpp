@@ -6,8 +6,8 @@
 
 #include "jit/mips64/Lowering-mips64.h"
 
+#include "jit/Lowering.h"
 #include "jit/mips64/Assembler-mips64.h"
-
 #include "jit/MIR.h"
 
 #include "jit/shared/Lowering-shared-inl.h"
@@ -82,7 +82,7 @@ LIRGeneratorMIPS64::lowerUModI64(MMod* mod)
 }
 
 void
-LIRGeneratorMIPS64::visitBox(MBox* box)
+LIRGenerator::visitBox(MBox* box)
 {
     MDefinition* opd = box->getOperand(0);
 
@@ -101,7 +101,7 @@ LIRGeneratorMIPS64::visitBox(MBox* box)
 }
 
 void
-LIRGeneratorMIPS64::visitUnbox(MUnbox* unbox)
+LIRGenerator::visitUnbox(MUnbox* unbox)
 {
     MDefinition* box = unbox->getOperand(0);
 
@@ -133,7 +133,7 @@ LIRGeneratorMIPS64::visitUnbox(MUnbox* unbox)
 }
 
 void
-LIRGeneratorMIPS64::visitReturn(MReturn* ret)
+LIRGenerator::visitReturn(MReturn* ret)
 {
     MDefinition* opd = ret->getOperand(0);
     MOZ_ASSERT(opd->type() == MIRType::Value);
@@ -177,8 +177,28 @@ LIRGeneratorMIPS64::lowerTruncateFToInt32(MTruncateToInt32* ins)
 }
 
 void
-LIRGeneratorMIPS64::visitRandom(MRandom* ins)
+LIRGenerator::visitRandom(MRandom* ins)
 {
     LRandom *lir = new(alloc()) LRandom(temp(), temp(), temp());
     defineFixed(lir, ins, LFloatReg(ReturnDoubleReg));
+}
+
+
+void
+LIRGenerator::visitWasmTruncateToInt64(MWasmTruncateToInt64* ins)
+{
+    MDefinition* opd = ins->input();
+    MOZ_ASSERT(opd->type() == MIRType::Double || opd->type() == MIRType::Float32);
+
+    defineInt64(new(alloc()) LWasmTruncateToInt64(useRegister(opd)), ins);
+}
+
+void
+LIRGenerator::visitInt64ToFloatingPoint(MInt64ToFloatingPoint* ins)
+{
+    MDefinition* opd = ins->input();
+    MOZ_ASSERT(opd->type() == MIRType::Int64);
+    MOZ_ASSERT(IsFloatingPointType(ins->type()));
+
+    define(new(alloc()) LInt64ToFloatingPoint(useInt64Register(opd)), ins);
 }

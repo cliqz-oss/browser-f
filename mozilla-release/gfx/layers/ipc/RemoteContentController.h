@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -74,7 +73,9 @@ public:
 
   virtual void NotifyAsyncScrollbarDragRejected(const FrameMetrics::ViewID& aScrollId) override;
 
-  virtual void NotifyAutoscrollHandledByAPZ(const FrameMetrics::ViewID& aScrollId) override;
+  virtual void NotifyAsyncAutoscrollRejected(const FrameMetrics::ViewID& aScrollId) override;
+
+  virtual void CancelAutoscroll(const ScrollableLayerGuid& aScrollId) override;
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
@@ -89,6 +90,18 @@ private:
                              Modifiers aModifiers,
                              ScrollableLayerGuid aGuid,
                              uint64_t aInputBlockId);
+  void HandleTapOnCompositorThread(TapType aType,
+                                   LayoutDevicePoint aPoint,
+                                   Modifiers aModifiers,
+                                   ScrollableLayerGuid aGuid,
+                                   uint64_t aInputBlockId);
+  void NotifyPinchGestureOnCompositorThread(PinchGestureInput::PinchGestureType aType,
+                                            const ScrollableLayerGuid& aGuid,
+                                            LayoutDeviceCoord aSpanChange,
+                                            Modifiers aModifiers);
+
+  void CancelAutoscrollInProcess(const ScrollableLayerGuid& aScrollId);
+  void CancelAutoscrollCrossProcess(const ScrollableLayerGuid& aScrollId);
 };
 
 } // namespace layers

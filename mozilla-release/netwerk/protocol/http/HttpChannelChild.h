@@ -39,6 +39,7 @@ using mozilla::Telemetry::LABELS_HTTP_CHILD_OMT_STATS;
 
 class nsIEventTarget;
 class nsInputStreamPump;
+class nsIInterceptedBodyCallback;
 
 namespace mozilla {
 namespace net {
@@ -46,6 +47,7 @@ namespace net {
 class HttpBackgroundChannelChild;
 class InterceptedChannelContent;
 class InterceptStreamListener;
+class SyntheticDiversionListener;
 
 class HttpChannelChild final : public PHttpChannelChild
                              , public HttpBaseChannel
@@ -95,10 +97,10 @@ public:
                               bool aMerge) override;
   NS_IMETHOD SetEmptyRequestHeader(const nsACString& aHeader) override;
   NS_IMETHOD RedirectTo(nsIURI *newURI) override;
+  NS_IMETHOD UpgradeToSecure() override;
   NS_IMETHOD GetProtocolVersion(nsACString& aProtocolVersion) override;
   // nsIHttpChannelInternal
   NS_IMETHOD SetupFallbackChannel(const char *aFallbackKey) override;
-  NS_IMETHOD ForceIntercepted(uint64_t aInterceptionID) override;
   // nsISupportsPriority
   NS_IMETHOD SetPriority(int32_t value) override;
   // nsIClassOfService
@@ -130,8 +132,10 @@ protected:
                                              const nsHttpResponseHead& responseHead,
                                              const bool& useResponseHead,
                                              const nsHttpHeaderArray& requestHeaders,
+                                             const ParentLoadInfoForwarderArgs& loadInfoForwarder,
                                              const bool& isFromCache,
                                              const bool& cacheEntryAvailable,
+                                             const uint64_t& cacheEntryId,
                                              const int32_t& cacheFetchCount,
                                              const uint32_t& cacheExpirationTime,
                                              const nsCString& cachedCharset,
@@ -141,11 +145,14 @@ protected:
                                              const int16_t& redirectCount,
                                              const uint32_t& cacheKey,
                                              const nsCString& altDataType,
-                                             const int64_t& altDataLen) override;
+                                             const int64_t& altDataLen,
+                                             const OptionalIPCServiceWorkerDescriptor& aController,
+                                             const bool& aApplyConversion) override;
   mozilla::ipc::IPCResult RecvFailedAsyncOpen(const nsresult& status) override;
   mozilla::ipc::IPCResult RecvRedirect1Begin(const uint32_t& registrarId,
                                              const URIParams& newURI,
                                              const uint32_t& redirectFlags,
+                                             const ParentLoadInfoForwarderArgs& loadInfoForwarder,
                                              const nsHttpResponseHead& responseHead,
                                              const nsCString& securityInfoSerialization,
                                              const uint64_t& channelId,
@@ -163,6 +170,10 @@ protected:
                                                       const bool& asError) override;
 
   mozilla::ipc::IPCResult RecvSetPriority(const int16_t& aPriority) override;
+
+  mozilla::ipc::IPCResult RecvAttachStreamFilter(Endpoint<extensions::PStreamFilterParent>&& aEndpoint) override;
+
+  mozilla::ipc::IPCResult RecvCancelDiversion() override;
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
@@ -185,7 +196,7 @@ protected:
 private:
   // this section is for main-thread-only object
   // all the references need to be proxy released on main thread.
-  nsCOMPtr<nsISupports> mCacheKey;
+  uint32_t mCacheKey;
   nsCOMPtr<nsIChildChannel> mRedirectChannelChild;
   RefPtr<InterceptStreamListener> mInterceptListener;
   // Needed to call AsyncOpen in FinishInterceptedRedirect
@@ -203,7 +214,9 @@ private:
                      HttpChannelChild* aNewChannel,
                      InterceptStreamListener* aListener,
                      nsIInputStream* aInput,
-                     nsAutoPtr<nsHttpResponseHead>& aHead);
+                     nsIInterceptedBodyCallback* aCallback,
+                     nsAutoPtr<nsHttpResponseHead>& aHead,
+                     nsICacheInfoChannel* aCacheInfo);
 
     NS_IMETHOD Run() override;
     void OverrideWithSynthesizedResponse();
@@ -212,7 +225,9 @@ private:
     RefPtr<HttpChannelChild> mNewChannel;
     RefPtr<InterceptStreamListener> mListener;
     nsCOMPtr<nsIInputStream> mInput;
+    nsCOMPtr<nsIInterceptedBodyCallback> mCallback;
     nsAutoPtr<nsHttpResponseHead> mHead;
+    nsCOMPtr<nsICacheInfoChannel> mSynthesizedCacheInfo;
   };
 
   // Sets the event target for future IPC messages. Messages will either be
@@ -234,7 +249,8 @@ private:
                                  const uint32_t& aCount,
                                  const nsCString& aData);
   void ProcessOnStopRequest(const nsresult& aStatusCode,
-                            const ResourceTimingStruct& aTiming);
+                            const ResourceTimingStruct& aTiming,
+                            const nsHttpHeaderArray& aResponseTrailers);
   void ProcessOnProgress(const int64_t& aProgress, const int64_t& aProgressMax);
   void ProcessOnStatus(const nsresult& aStatus);
   void ProcessFlushedForDiversion();
@@ -243,7 +259,7 @@ private:
   void ProcessNotifyTrackingResource();
   void ProcessSetClassifierMatchedInfo(const nsCString& aList,
                                        const nsCString& aProvider,
-                                       const nsCString& aPrefix);
+                                       const nsCString& aFullHash);
 
 
   void DoOnStartRequest(nsIRequest* aRequest, nsISupports* aContext);
@@ -263,9 +279,13 @@ private:
   // asynchronously read from the pump.
   void OverrideWithSynthesizedResponse(nsAutoPtr<nsHttpResponseHead>& aResponseHead,
                                        nsIInputStream* aSynthesizedInput,
-                                       InterceptStreamListener* aStreamListener);
+                                       nsIInterceptedBodyCallback* aSynthesizedCallback,
+                                       InterceptStreamListener* aStreamListener,
+                                       nsICacheInfoChannel* aCacheInfoChannel);
 
-  void ForceIntercepted(nsIInputStream* aSynthesizedInput);
+  void ForceIntercepted(nsIInputStream* aSynthesizedInput,
+                        nsIInterceptedBodyCallback* aSynthesizedCallback,
+                        nsICacheInfoChannel* aCacheInfo);
 
   // Try send DeletingChannel message to parent side. Dispatch an async task to
   // main thread if invoking on non-main thread.
@@ -275,17 +295,24 @@ private:
   // ensure Cacnel is processed before any other channel events.
   void CancelOnMainThread(nsresult aRv);
 
+  void
+  MaybeCallSynthesizedCallback();
+
   RequestHeaderTuples mClientSetRequestHeaders;
   RefPtr<nsInputStreamPump> mSynthesizedResponsePump;
   nsCOMPtr<nsIInputStream> mSynthesizedInput;
+  nsCOMPtr<nsIInterceptedBodyCallback> mSynthesizedCallback;
   int64_t mSynthesizedStreamLength;
 
   bool mIsFromCache;
   bool mCacheEntryAvailable;
+  uint64_t mCacheEntryId;
   bool mAltDataCacheEntryAvailable;
   int32_t      mCacheFetchCount;
   uint32_t     mCacheExpirationTime;
   nsCString    mCachedCharset;
+
+  nsCOMPtr<nsICacheInfoChannel> mSynthesizedCacheInfo;
 
   nsCString mProtocolVersion;
 
@@ -376,8 +403,10 @@ private:
                       const nsHttpResponseHead& responseHead,
                       const bool& useResponseHead,
                       const nsHttpHeaderArray& requestHeaders,
+                      const ParentLoadInfoForwarderArgs& loadInfoForwarder,
                       const bool& isFromCache,
                       const bool& cacheEntryAvailable,
+                      const uint64_t& cacheEntryId,
                       const int32_t& cacheFetchCount,
                       const uint32_t& cacheExpirationTime,
                       const nsCString& cachedCharset,
@@ -386,7 +415,9 @@ private:
                       const NetAddr& peerAddr,
                       const uint32_t& cacheKey,
                       const nsCString& altDataType,
-                      const int64_t& altDataLen);
+                      const int64_t& altDataLen,
+                      const Maybe<mozilla::dom::ServiceWorkerDescriptor>& aController,
+                      const bool& aApplyConversion);
   void MaybeDivertOnData(const nsCString& data,
                          const uint64_t& offset,
                          const uint32_t& count);
@@ -395,7 +426,9 @@ private:
                           const uint64_t& offset,
                           const uint32_t& count,
                           const nsCString& data);
-  void OnStopRequest(const nsresult& channelStatus, const ResourceTimingStruct& timing);
+  void OnStopRequest(const nsresult& channelStatus,
+                     const ResourceTimingStruct& timing,
+                     const nsHttpHeaderArray& aResponseTrailers);
   void MaybeDivertOnStop(const nsresult& aChannelStatus);
   void OnProgress(const int64_t& progress, const int64_t& progressMax);
   void OnStatus(const nsresult& status);
@@ -404,6 +437,7 @@ private:
   void Redirect1Begin(const uint32_t& registrarId,
                       const URIParams& newUri,
                       const uint32_t& redirectFlags,
+                      const ParentLoadInfoForwarderArgs& loadInfoForwarder,
                       const nsHttpResponseHead& responseHead,
                       const nsACString& securityInfoSerialization,
                       const uint64_t& channelId);
@@ -419,7 +453,8 @@ private:
 
   // Perform a redirection without communicating with the parent process at all.
   void BeginNonIPCRedirect(nsIURI* responseURI,
-                           const nsHttpResponseHead* responseHead);
+                           const nsHttpResponseHead* responseHead,
+                           bool responseRedirected);
 
   // Override the default security info pointer during a non-IPC redirection.
   void OverrideSecurityInfoForNonIPCRedirect(nsISupports* securityInfo);
@@ -448,6 +483,7 @@ private:
   friend class HttpAsyncAborter<HttpChannelChild>;
   friend class InterceptStreamListener;
   friend class InterceptedChannelContent;
+  friend class SyntheticDiversionListener;
   friend class HttpBackgroundChannelChild;
   friend class NeckoTargetChannelEvent<HttpChannelChild>;
 };
@@ -460,7 +496,7 @@ class InterceptStreamListener : public nsIStreamListener
 {
   RefPtr<HttpChannelChild> mOwner;
   nsCOMPtr<nsISupports> mContext;
-  virtual ~InterceptStreamListener() {}
+  virtual ~InterceptStreamListener() = default;
  public:
   InterceptStreamListener(HttpChannelChild* aOwner, nsISupports* aContext)
   : mOwner(aOwner)

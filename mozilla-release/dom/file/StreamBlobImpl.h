@@ -34,7 +34,7 @@ public:
          int64_t aLastModifiedDate,
          uint64_t aLength);
 
-  virtual void GetInternalStream(nsIInputStream** aStream,
+  virtual void CreateInputStream(nsIInputStream** aStream,
                                  ErrorResult& aRv) override;
 
   virtual already_AddRefed<BlobImpl>
@@ -77,6 +77,8 @@ public:
     return mIsDirectory;
   }
 
+  size_t GetAllocationSize() const override;
+
 private:
   StreamBlobImpl(nsIInputStream* aInputStream,
                  const nsAString& aContentType,
@@ -86,11 +88,6 @@ private:
                  const nsAString& aName,
                  const nsAString& aContentType,
                  int64_t aLastModifiedDate,
-                 uint64_t aLength);
-
-  StreamBlobImpl(StreamBlobImpl* aOther,
-                 const nsAString& aContentType,
-                 uint64_t aStart,
                  uint64_t aLength);
 
   ~StreamBlobImpl();

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,7 +9,6 @@
 
 #include "nsTArray.h"
 #include "nsIScreen.h"
-#include "nsIThread.h"
 #include "nsCOMPtr.h"
 #include "mozilla/RefPtr.h"
 
@@ -24,20 +24,22 @@ class MacIOSurface;
 #endif
 namespace mozilla {
 namespace gfx {
+class VRThread;
+
 namespace impl {
 
 class VRDisplayOpenVR : public VRDisplayHost
 {
 public:
-  virtual void NotifyVSync() override;
   void ZeroSensor() override;
+  bool GetIsHmdPresent();
 
 protected:
   virtual VRHMDSensorState GetSensorState() override;
   virtual void StartPresentation() override;
   virtual void StopPresentation() override;
 #if defined(XP_WIN)
-  virtual bool SubmitFrame(mozilla::layers::TextureSourceD3D11* aSource,
+  virtual bool SubmitFrame(ID3D11Texture2D* aSource,
                            const IntSize& aSize,
                            const gfx::Rect& aLeftEyeRect,
                            const gfx::Rect& aRightEyeRect) override;
@@ -52,7 +54,7 @@ public:
   explicit VRDisplayOpenVR(::vr::IVRSystem *aVRSystem,
                            ::vr::IVRChaperone *aVRChaperone,
                            ::vr::IVRCompositor *aVRCompositor);
-
+  void Refresh();
 protected:
   virtual ~VRDisplayOpenVR();
   void Destroy();
@@ -62,11 +64,12 @@ protected:
   ::vr::IVRChaperone *mVRChaperone;
   ::vr::IVRCompositor *mVRCompositor;
 
-  TimeStamp mPresentationStart;
+  VRTelemetry mTelemetry;
   bool mIsPresenting;
+  bool mIsHmdPresent;
 
   void UpdateStageParameters();
-  void PollEvents();
+  void UpdateEyeParameters(gfx::Matrix4x4* aHeadToEyeTransforms = nullptr);
   bool SubmitFrame(void* aTextureHandle,
                    ::vr::ETextureType aTextureType,
                    const IntSize& aSize,
@@ -91,8 +94,9 @@ public:
                      uint32_t aHapticIndex,
                      double aIntensity,
                      double aDuration,
-                     uint32_t aPromiseID);
+                     const VRManagerPromise& aPromise);
   void StopVibrateHaptic();
+  void ShutdownVibrateHapticThread();
 
 protected:
   virtual ~VRControllerOpenVR();
@@ -103,14 +107,12 @@ private:
                            double aIntensity,
                            double aDuration,
                            uint64_t aVibrateIndex,
-                           uint32_t aPromiseID);
-  void VibrateHapticComplete(uint32_t aPromiseID);
+                           const VRManagerPromise& aPromise);
+  void VibrateHapticComplete(const VRManagerPromise& aPromise);
 
   // The index of tracked devices from ::vr::IVRSystem.
   uint32_t mTrackedIndex;
-  nsTArray<float> mTrigger;
-  nsTArray<float> mAxisMove;
-  nsCOMPtr<nsIThread> mVibrateThread;
+  RefPtr<VRThread> mVibrateThread;
   Atomic<bool> mIsVibrateStopped;
 };
 
@@ -123,7 +125,10 @@ public:
 
   virtual void Destroy() override;
   virtual void Shutdown() override;
-  virtual bool GetHMDs(nsTArray<RefPtr<VRDisplayHost> >& aHMDResult) override;
+  virtual void NotifyVSync() override;
+  virtual void Enumerate() override;
+  virtual bool ShouldInhibitEnumeration() override;
+  virtual void GetHMDs(nsTArray<RefPtr<VRDisplayHost>>& aHMDResult) override;
   virtual bool GetIsPresenting() override;
   virtual void HandleInput() override;
   virtual void GetControllers(nsTArray<RefPtr<VRControllerHost>>&
@@ -134,7 +139,7 @@ public:
                              uint32_t aHapticIndex,
                              double aIntensity,
                              double aDuration,
-                             uint32_t aPromiseID) override;
+                             const VRManagerPromise& aPromise) override;
   virtual void StopVibrateHaptic(uint32_t aControllerIdx) override;
 
 protected:
@@ -165,6 +170,7 @@ private:
   RefPtr<impl::VRDisplayOpenVR> mOpenVRHMD;
   nsTArray<RefPtr<impl::VRControllerOpenVR>> mOpenVRController;
   ::vr::IVRSystem *mVRSystem;
+  bool mIsWindowsMR;
 };
 
 } // namespace gfx

@@ -12,6 +12,7 @@
 #include "mozilla/EndianUtils.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/SyncRunnable.h"
+#include "VideoUtils.h"
 
 #include <inttypes.h>  // For PRId64
 
@@ -20,8 +21,9 @@ extern "C" {
 #include "opus/opus_multistream.h"
 }
 
-#define OPUS_DEBUG(arg, ...) MOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, \
-    ("OpusDataDecoder(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
+#define OPUS_DEBUG(arg, ...)                                                   \
+  DDMOZ_LOG(                                                                   \
+    sPDMLog, mozilla::LogLevel::Debug, "::%s: " arg, __func__, ##__VA_ARGS__)
 
 namespace mozilla {
 
@@ -33,6 +35,7 @@ OpusDataDecoder::OpusDataDecoder(const CreateDecoderParams& aParams)
   , mDecodedHeader(false)
   , mPaddingDiscarded(false)
   , mFrames(0)
+  , mChannelMap(AudioConfig::ChannelLayout::UNKNOWN_MAP)
 {
 }
 
@@ -68,23 +71,41 @@ OpusDataDecoder::Init()
   uint8_t *p = mInfo.mCodecSpecificConfig->Elements();
   if (length < sizeof(uint64_t)) {
     OPUS_DEBUG("CodecSpecificConfig too short to read codecDelay!");
-    return InitPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+    return InitPromise::CreateAndReject(
+      MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                  RESULT_DETAIL("CodecSpecificConfig too short to read codecDelay!")),
+      __func__);
   }
   int64_t codecDelay = BigEndian::readUint64(p);
   length -= sizeof(uint64_t);
   p += sizeof(uint64_t);
   if (NS_FAILED(DecodeHeader(p, length))) {
     OPUS_DEBUG("Error decoding header!");
-    return InitPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+    return InitPromise::CreateAndReject(
+      MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                  RESULT_DETAIL("Error decoding header!")),
+      __func__);
   }
 
+  MOZ_ASSERT(mMappingTable.Length() >= uint32_t(mOpusParser->mChannels));
   int r;
   mOpusDecoder = opus_multistream_decoder_create(mOpusParser->mRate,
                                                  mOpusParser->mChannels,
                                                  mOpusParser->mStreams,
                                                  mOpusParser->mCoupledStreams,
-                                                 mMappingTable,
+                                                 mMappingTable.Elements(),
                                                  &r);
+
+  // Opus has a special feature for stereo coding where it represent wide
+  // stereo channels by 180-degree out of phase. This improves quality, but
+  // needs to be disabled when the output is downmixed to mono. Playback number
+  // of channels are set in AudioSink, using the same method
+  // `DecideAudioPlaybackChannels()`, and triggers downmix if needed.
+  if (IsDefaultPlaybackDeviceMono() ||
+      DecideAudioPlaybackChannels(mInfo) == 1) {
+    opus_multistream_decoder_ctl(mOpusDecoder, OPUS_SET_PHASE_INVERSION_DISABLED(1));
+  }
+
   mSkip = mOpusParser->mPreSkip;
   mPaddingDiscarded = false;
 
@@ -102,7 +123,10 @@ OpusDataDecoder::Init()
   }
 
   return r == OPUS_OK ? InitPromise::CreateAndResolve(TrackInfo::kAudioTrack, __func__)
-                      : InitPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+                      : InitPromise::CreateAndReject(
+                          MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                          RESULT_DETAIL("could not create opus multistream decoder!")),
+                          __func__);
 }
 
 nsresult
@@ -119,26 +143,32 @@ OpusDataDecoder::DecodeHeader(const unsigned char* aData, size_t aLength)
   }
   int channels = mOpusParser->mChannels;
 
-  AudioConfig::ChannelLayout layout(channels);
-  if (!layout.IsValid()) {
-    OPUS_DEBUG("Invalid channel mapping. Source is %d channels", channels);
-    return NS_ERROR_FAILURE;
-  }
-
+  mMappingTable.SetLength(channels);
   AudioConfig::ChannelLayout vorbisLayout(
     channels, VorbisDataDecoder::VorbisLayout(channels));
-  AudioConfig::ChannelLayout smpteLayout(channels);
-  static_assert(sizeof(mOpusParser->mMappingTable) / sizeof(mOpusParser->mMappingTable[0]) >= MAX_AUDIO_CHANNELS,
-                       "Invalid size set");
-  uint8_t map[sizeof(mOpusParser->mMappingTable) / sizeof(mOpusParser->mMappingTable[0])];
-  if (vorbisLayout.MappingTable(smpteLayout, map)) {
-    for (int i = 0; i < channels; i++) {
-      mMappingTable[i] = mOpusParser->mMappingTable[map[i]];
+  if (vorbisLayout.IsValid()) {
+    mChannelMap = vorbisLayout.Map();
+
+    AudioConfig::ChannelLayout smpteLayout(
+      AudioConfig::ChannelLayout::SMPTEDefault(vorbisLayout));
+
+    AutoTArray<uint8_t, 8> map;
+    map.SetLength(channels);
+    if (vorbisLayout.MappingTable(smpteLayout, &map)) {
+      for (int i = 0; i < channels; i++) {
+        mMappingTable[i] = mOpusParser->mMappingTable[map[i]];
+      }
+    } else {
+      // Should never get here as vorbis layout is always convertible to SMPTE
+      // default layout.
+      PodCopy(mMappingTable.Elements(), mOpusParser->mMappingTable, channels);
     }
   } else {
-    // Should never get here as vorbis layout is always convertible to SMPTE
-    // default layout.
-    PodCopy(mMappingTable, mOpusParser->mMappingTable, MAX_AUDIO_CHANNELS);
+    // Create a dummy mapping table so that channel ordering stay the same
+    // during decoding.
+    for (int i = 0; i < channels; i++) {
+      mMappingTable[i] = i;
+    }
   }
 
   return NS_OK;
@@ -307,9 +337,14 @@ OpusDataDecoder::ProcessDecode(MediaRawData* aSample)
   mFrames += frames;
 
   return DecodePromise::CreateAndResolve(
-    DecodedData{ new AudioData(aSample->mOffset, time, duration,
-                               frames, Move(buffer), mOpusParser->mChannels,
-                               mOpusParser->mRate) },
+    DecodedData{ new AudioData(aSample->mOffset,
+                               time,
+                               duration,
+                               frames,
+                               Move(buffer),
+                               mOpusParser->mChannels,
+                               mOpusParser->mRate,
+                               mChannelMap) },
     __func__);
 }
 

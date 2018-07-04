@@ -22,8 +22,10 @@ typedef void (*freeblDestroyFunc)(void *cx, PRBool freeit);
 
 SEC_BEGIN_PROTOS
 
+#ifndef NSS_FIPS_DISABLED
 SECStatus BL_FIPSEntryOK(PRBool freeblOnly);
 PRBool BL_POSTRan(PRBool freeblOnly);
+#endif
 
 #if defined(XP_UNIX) && !defined(NO_FORK_CHECK)
 
@@ -78,5 +80,11 @@ SECStatus generate_prime(mp_int *prime, int primeLen);
 PRBool aesni_support();
 PRBool clmul_support();
 PRBool avx_support();
+PRBool ssse3_support();
+PRBool arm_neon_support();
+PRBool arm_aes_support();
+PRBool arm_pmull_support();
+PRBool arm_sha1_support();
+PRBool arm_sha2_support();
 
 #endif /* _BLAPII_H_ */

@@ -4,9 +4,7 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const TELEMETRY_RESULT_ENUM = {
   RESTORED_DEFAULT: 0,
@@ -54,12 +52,22 @@ function doSearch() {
                   .rootTreeItem
                   .QueryInterface(Ci.nsIInterfaceRequestor)
                   .getInterface(Ci.nsIDOMWindow);
-  win.openUILinkIn(submission.uri.spec, "current", false, submission.postData);
+  win.openTrustedLinkIn(submission.uri.spec, "current", {
+    allowThirdPartyFixup: false,
+    postData: submission.postData,
+  });
 }
 
 function openingSettings() {
   record(TELEMETRY_RESULT_ENUM.OPENED_SETTINGS);
+  savePref("customized");
   window.removeEventListener("unload", recordPageClosed);
+}
+
+function savePref(value) {
+  const statusPref = "browser.search.reset.status";
+  if (Services.prefs.getCharPref(statusPref, "") == "pending")
+    Services.prefs.setCharPref(statusPref, value);
 }
 
 function record(result) {
@@ -71,6 +79,7 @@ function keepCurrentEngine() {
   // written for this engine, so that we don't prompt the user again.
   Services.search.currentEngine = Services.search.currentEngine;
   record(TELEMETRY_RESULT_ENUM.KEPT_CURRENT);
+  savePref("declined");
   doSearch();
 }
 
@@ -81,6 +90,7 @@ function changeSearchEngine() {
   Services.search.currentEngine = engine;
 
   record(TELEMETRY_RESULT_ENUM.RESTORED_DEFAULT);
+  savePref("accepted");
 
   doSearch();
 }

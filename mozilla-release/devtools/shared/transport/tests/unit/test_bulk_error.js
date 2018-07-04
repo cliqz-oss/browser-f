@@ -7,9 +7,9 @@ function run_test() {
   initTestDebuggerServer();
   add_test_bulk_actor();
 
-  add_task(function* () {
-    yield test_string_error(socket_transport, json_reply);
-    yield test_string_error(local_transport, json_reply);
+  add_task(async function() {
+    await test_string_error(socket_transport, json_reply);
+    await test_string_error(local_transport, json_reply);
     DebuggerServer.destroy();
   });
 
@@ -24,8 +24,8 @@ TestBulkActor.prototype = {
 
   actorPrefix: "testBulk",
 
-  jsonReply: function ({length, reader, reply, done}) {
-    do_check_eq(length, really_long().length);
+  jsonReply: function({length, reader, reply, done}) {
+    Assert.equal(length, really_long().length);
 
     return {
       allDone: true
@@ -44,12 +44,12 @@ function add_test_bulk_actor() {
 
 /** * Tests ***/
 
-var test_string_error = Task.async(function* (transportFactory, onReady) {
-  let transport = yield transportFactory();
+var test_string_error = async function(transportFactory, onReady) {
+  let transport = await transportFactory();
 
   let client = new DebuggerClient(transport);
   return client.connect().then(([app, traits]) => {
-    do_check_eq(traits.bulk, true);
+    Assert.equal(traits.bulk, true);
     return client.listTabs();
   }).then(response => {
     return onReady(client, response);
@@ -57,7 +57,7 @@ var test_string_error = Task.async(function* (transportFactory, onReady) {
     client.close();
     transport.close();
   });
-});
+};
 
 /** * Reply Types ***/
 
@@ -83,7 +83,7 @@ function json_reply(client, response) {
       });
       do_throw(new Error("Copying should fail, the stream is not async."));
     } catch (e) {
-      do_check_true(true);
+      Assert.ok(true);
       copyDeferred.resolve();
     }
   });

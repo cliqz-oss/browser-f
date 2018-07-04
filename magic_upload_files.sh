@@ -10,7 +10,7 @@ cd $SRC_BASE
 cd $OBJ_DIR
 
 echo '***** Generate MAR for DE, if needed *****'
-if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
+if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
   $MAKE -C ./tools/update-packaging full-update AB_CD=de \
     PACKAGE_BASE_DIR=`pwd`/dist/l10n-stage
 fi
@@ -27,10 +27,6 @@ if [ $CQZ_CERT_DB_PATH ]; then
   MAR_FILES=dist/update/*.mar
   for MAR_FILE in $MAR_FILES
   do
-    # repack from lzma back to bz2 (don't ask, Mozillian's trick)
-    export MAR=dist/host/bin/mar
-    ../mozilla-release/tools/update-packaging/change_mar_compression.pl -r $MAR_FILE
-
     # signmar is somehow dependent on its execution path. It refuses to work when
     # launched using relative paths, and gives unrelated error:
     # "Could not initialize NSS". BEWARE!
@@ -50,7 +46,7 @@ $MAKE upload
 echo '***** Genereting build_properties.json *****'
 $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
 
-if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
+if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
   # Rename build_properties so name wont collide with repack
   cp build_properties.json en_build_properties.json
 

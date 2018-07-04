@@ -1,18 +1,19 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 var secureURL = "https://example.com/browser/browser/base/content/test/general/browser_star_hsts.sjs";
 var unsecureURL = "http://example.com/browser/browser/base/content/test/general/browser_star_hsts.sjs";
 
 add_task(async function test_star_redirect() {
-  registerCleanupFunction(function() {
+  registerCleanupFunction(async () => {
     // Ensure to remove example.com from the HSTS list.
     let sss = Cc["@mozilla.org/ssservice;1"]
                 .getService(Ci.nsISiteSecurityService);
     sss.removeState(Ci.nsISiteSecurityService.HEADER_HSTS,
                     NetUtil.newURI("http://example.com/"), 0);
-    PlacesUtils.bookmarks.removeFolderChildren(PlacesUtils.unfiledBookmarksFolderId);
+    await PlacesUtils.bookmarks.eraseEverything();
     gBrowser.removeCurrentTab();
   });
 
@@ -65,19 +66,8 @@ function promiseStarState(aValue) {
 function promiseTabLoadEvent(aTab, aURL, aFinalURL) {
   if (!aFinalURL)
     aFinalURL = aURL;
-  return new Promise(resolve => {
-    info("Wait for load tab event");
-    aTab.linkedBrowser.addEventListener("load", function load(event) {
-      if (event.originalTarget != aTab.linkedBrowser.contentDocument ||
-          event.target.location.href == "about:blank" ||
-          event.target.location.href != aFinalURL) {
-        info("skipping spurious load event");
-        return;
-      }
-      aTab.linkedBrowser.removeEventListener("load", load, true);
-      info("Tab load event received");
-      resolve();
-    }, true, true);
-    aTab.linkedBrowser.loadURI(aURL);
-  });
+
+  info("Wait for load tab event");
+  aTab.linkedBrowser.loadURI(aURL);
+  return BrowserTestUtils.browserLoaded(aTab.linkedBrowser, false, aFinalURL);
 }

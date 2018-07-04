@@ -1,17 +1,17 @@
 //! Determining which types for which we can emit `#[derive(Debug)]`.
 
 use super::{ConstrainResult, MonotoneFramework, generate_dependencies};
-use std::collections::HashSet;
-use std::collections::HashMap;
+use ir::comp::CompKind;
+use ir::comp::Field;
+use ir::comp::FieldMethods;
 use ir::context::{BindgenContext, ItemId};
+use ir::derive::CanTriviallyDeriveDebug;
 use ir::item::IsOpaque;
 use ir::traversal::EdgeKind;
 use ir::ty::RUST_DERIVE_IN_ARRAY_LIMIT;
 use ir::ty::TypeKind;
-use ir::comp::Field;
-use ir::comp::FieldMethods;
-use ir::derive::CanTriviallyDeriveDebug;
-use ir::comp::CompKind;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// An analysis that finds for each IR item whether debug cannot be derived.
 ///
@@ -33,10 +33,8 @@ use ir::comp::CompKind;
 ///   derived debug if any of the template arguments or template definition
 ///   cannot derive debug.
 #[derive(Debug, Clone)]
-pub struct CannotDeriveDebug<'ctx, 'gen>
-    where 'gen: 'ctx
-{
-    ctx: &'ctx BindgenContext<'gen>,
+pub struct CannotDeriveDebug<'ctx> {
+    ctx: &'ctx BindgenContext,
 
     // The incremental result of this analysis's computation. Everything in this
     // set cannot derive debug.
@@ -52,7 +50,7 @@ pub struct CannotDeriveDebug<'ctx, 'gen>
     dependencies: HashMap<ItemId, Vec<ItemId>>,
 }
 
-impl<'ctx, 'gen> CannotDeriveDebug<'ctx, 'gen> {
+impl<'ctx> CannotDeriveDebug<'ctx> {
     fn consider_edge(kind: EdgeKind) -> bool {
         match kind {
             // These are the only edges that can affect whether a type can derive
@@ -76,7 +74,8 @@ impl<'ctx, 'gen> CannotDeriveDebug<'ctx, 'gen> {
         }
     }
 
-    fn insert(&mut self, id: ItemId) -> ConstrainResult {
+    fn insert<Id: Into<ItemId>>(&mut self, id: Id) -> ConstrainResult {
+        let id = id.into();
         trace!("inserting {:?} into the cannot_derive_debug set", id);
 
         let was_not_already_in_set = self.cannot_derive_debug.insert(id);
@@ -89,14 +88,22 @@ impl<'ctx, 'gen> CannotDeriveDebug<'ctx, 'gen> {
 
         ConstrainResult::Changed
     }
+
+    /// A type is not `Debug` if we've determined it is not debug, or if it is
+    /// blacklisted.
+    fn is_not_debug<Id: Into<ItemId>>(&self, id: Id) -> bool {
+        let id = id.into();
+        self.cannot_derive_debug.contains(&id) ||
+            !self.ctx.whitelisted_items().contains(&id)
+    }
 }
 
-impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
+impl<'ctx> MonotoneFramework for CannotDeriveDebug<'ctx> {
     type Node = ItemId;
-    type Extra = &'ctx BindgenContext<'gen>;
+    type Extra = &'ctx BindgenContext;
     type Output = HashSet<ItemId>;
 
-    fn new(ctx: &'ctx BindgenContext<'gen>) -> CannotDeriveDebug<'ctx, 'gen> {
+    fn new(ctx: &'ctx BindgenContext) -> CannotDeriveDebug<'ctx> {
         let cannot_derive_debug = HashSet::new();
         let dependencies = generate_dependencies(ctx, Self::consider_edge);
 
@@ -119,6 +126,15 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
             return ConstrainResult::Same;
         }
 
+        // If an item is reachable from the whitelisted items set, but isn't
+        // itself whitelisted, then it must be blacklisted. We assume that
+        // blacklisted items are not `Copy`, since they are presumably
+        // blacklisted because they are too complicated for us to understand.
+        if !self.ctx.whitelisted_items().contains(&id) {
+            trace!("    blacklisted items are assumed not to be Debug");
+            return ConstrainResult::Same;
+        }
+
         let item = self.ctx.resolve_item(id);
         let ty = match item.as_type() {
             Some(ty) => ty,
@@ -128,11 +144,13 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
             }
         };
 
-        if ty.is_opaque(self.ctx, item) {
+        if item.is_opaque(self.ctx, &()) {
             let layout_can_derive = ty.layout(self.ctx).map_or(true, |l| {
-                l.opaque().can_trivially_derive_debug(self.ctx, ())
+                l.opaque().can_trivially_derive_debug()
             });
-            return if layout_can_derive {
+            return if layout_can_derive &&
+                      !(ty.is_union() &&
+                        self.ctx.options().rust_features().untagged_union()) {
                 trace!("    we can trivially derive Debug for the layout");
                 ConstrainResult::Same
             } else {
@@ -141,7 +159,10 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
             };
         }
 
-        if ty.layout(self.ctx).map_or(false, |l| l.align > RUST_DERIVE_IN_ARRAY_LIMIT) {
+        if ty.layout(self.ctx).map_or(false, |l| {
+            l.align > RUST_DERIVE_IN_ARRAY_LIMIT
+        })
+        {
             // We have to be conservative: the struct *could* have enough
             // padding that we emit an array that is longer than
             // `RUST_DERIVE_IN_ARRAY_LIMIT`. If we moved padding calculations
@@ -162,7 +183,7 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
             TypeKind::Enum(..) |
             TypeKind::Reference(..) |
             TypeKind::BlockPointer |
-            TypeKind::Named |
+            TypeKind::TypeParam |
             TypeKind::UnresolvedTypeRef(..) |
             TypeKind::ObjCInterface(..) |
             TypeKind::ObjCId |
@@ -172,9 +193,11 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
             }
 
             TypeKind::Array(t, len) => {
-                if self.cannot_derive_debug.contains(&t) {
-                    trace!("    arrays of T for which we cannot derive Debug \
-                            also cannot derive Debug");
+                if self.is_not_debug(t) {
+                    trace!(
+                        "    arrays of T for which we cannot derive Debug \
+                            also cannot derive Debug"
+                    );
                     return self.insert(id);
                 }
 
@@ -190,13 +213,17 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
             TypeKind::ResolvedTypeRef(t) |
             TypeKind::TemplateAlias(t, _) |
             TypeKind::Alias(t) => {
-                if self.cannot_derive_debug.contains(&t) {
-                    trace!("    aliases and type refs to T which cannot derive \
-                            Debug also cannot derive Debug");
+                if self.is_not_debug(t) {
+                    trace!(
+                        "    aliases and type refs to T which cannot derive \
+                            Debug also cannot derive Debug"
+                    );
                     self.insert(id)
                 } else {
-                    trace!("    aliases and type refs to T which can derive \
-                            Debug can also derive Debug");
+                    trace!(
+                        "    aliases and type refs to T which can derive \
+                            Debug can also derive Debug"
+                    );
                     ConstrainResult::Same
                 }
             }
@@ -208,14 +235,15 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
                 );
 
                 if info.kind() == CompKind::Union {
-                    if self.ctx.options().unstable_rust {
+                    if self.ctx.options().rust_features().untagged_union() {
                         trace!("    cannot derive Debug for Rust unions");
                         return self.insert(id);
                     }
 
-                    if ty.layout(self.ctx)
-                        .map_or(true,
-                                |l| l.opaque().can_trivially_derive_debug(self.ctx, ())) {
+                    if ty.layout(self.ctx).map_or(true, |l| {
+                        l.opaque().can_trivially_derive_debug()
+                    })
+                    {
                         trace!("    union layout can trivially derive Debug");
                         return ConstrainResult::Same;
                     } else {
@@ -224,32 +252,41 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
                     }
                 }
 
-                let bases_cannot_derive = info.base_members()
-                    .iter()
-                    .any(|base| self.cannot_derive_debug.contains(&base.ty));
+                let bases_cannot_derive =
+                    info.base_members().iter().any(|base| {
+                        self.is_not_debug(base.ty)
+                    });
                 if bases_cannot_derive {
-                    trace!("    base members cannot derive Debug, so we can't \
-                            either");
+                    trace!(
+                        "    base members cannot derive Debug, so we can't \
+                            either"
+                    );
                     return self.insert(id);
                 }
 
-                let fields_cannot_derive = info.fields()
-                    .iter()
-                    .any(|f| {
-                        match *f {
-                            Field::DataMember(ref data) => {
-                                self.cannot_derive_debug.contains(&data.ty())
+                let fields_cannot_derive =
+                    info.fields().iter().any(|f| match *f {
+                        Field::DataMember(ref data) => {
+                            self.is_not_debug(data.ty())
+                        }
+                        Field::Bitfields(ref bfu) => {
+                            if bfu.layout().align > RUST_DERIVE_IN_ARRAY_LIMIT {
+                                trace!(
+                                    "   we cannot derive Debug for a bitfield larger then \
+                                        the limit"
+                                );
+                                return true;
                             }
-                            Field::Bitfields(ref bfu) => {
-                                bfu.bitfields()
-                                    .iter().any(|b| {
-                                        self.cannot_derive_debug.contains(&b.ty())
-                                    })
-                            }
+
+                            bfu.bitfields().iter().any(|b| {
+                                self.is_not_debug(b.ty())
+                            })
                         }
                     });
                 if fields_cannot_derive {
-                    trace!("    fields cannot derive Debug, so we can't either");
+                    trace!(
+                        "    fields cannot derive Debug, so we can't either"
+                    );
                     return self.insert(id);
                 }
 
@@ -258,10 +295,13 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
             }
 
             TypeKind::Pointer(inner) => {
-                let inner_type = self.ctx.resolve_type(inner).canonical_type(self.ctx);
+                let inner_type =
+                    self.ctx.resolve_type(inner).canonical_type(self.ctx);
                 if let TypeKind::Function(ref sig) = *inner_type.kind() {
-                    if !sig.can_trivially_derive_debug(&self.ctx, ()) {
-                        trace!("    function pointer that can't trivially derive Debug");
+                    if !sig.can_trivially_derive_debug() {
+                        trace!(
+                            "    function pointer that can't trivially derive Debug"
+                        );
                         return self.insert(id);
                     }
                 }
@@ -270,12 +310,15 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
             }
 
             TypeKind::TemplateInstantiation(ref template) => {
-                let args_cannot_derive = template.template_arguments()
-                    .iter()
-                    .any(|arg| self.cannot_derive_debug.contains(&arg));
+                let args_cannot_derive =
+                    template.template_arguments().iter().any(|arg| {
+                        self.is_not_debug(*arg)
+                    });
                 if args_cannot_derive {
-                    trace!("    template args cannot derive Debug, so \
-                            insantiation can't either");
+                    trace!(
+                        "    template args cannot derive Debug, so \
+                            insantiation can't either"
+                    );
                     return self.insert(id);
                 }
 
@@ -283,11 +326,14 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
                     !template.template_definition().is_opaque(self.ctx, &()),
                     "The early ty.is_opaque check should have handled this case"
                 );
-                let def_cannot_derive = self.cannot_derive_debug
-                    .contains(&template.template_definition());
+                let def_cannot_derive = self.is_not_debug(
+                    template.template_definition()
+                );
                 if def_cannot_derive {
-                    trace!("    template definition cannot derive Debug, so \
-                            insantiation can't either");
+                    trace!(
+                        "    template definition cannot derive Debug, so \
+                            insantiation can't either"
+                    );
                     return self.insert(id);
                 }
 
@@ -304,7 +350,8 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
     }
 
     fn each_depending_on<F>(&self, id: ItemId, mut f: F)
-        where F: FnMut(ItemId),
+    where
+        F: FnMut(ItemId),
     {
         if let Some(edges) = self.dependencies.get(&id) {
             for item in edges {
@@ -315,8 +362,8 @@ impl<'ctx, 'gen> MonotoneFramework for CannotDeriveDebug<'ctx, 'gen> {
     }
 }
 
-impl<'ctx, 'gen> From<CannotDeriveDebug<'ctx, 'gen>> for HashSet<ItemId> {
-    fn from(analysis: CannotDeriveDebug<'ctx, 'gen>) -> Self {
+impl<'ctx> From<CannotDeriveDebug<'ctx>> for HashSet<ItemId> {
+    fn from(analysis: CannotDeriveDebug<'ctx>) -> Self {
         analysis.cannot_derive_debug
     }
 }

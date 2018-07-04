@@ -3,11 +3,11 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/TelemetryModules.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/ctypes.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryModules.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/ctypes.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 const MAX_NAME_LENGTH = 64;
 
@@ -16,7 +16,7 @@ const MAX_NAME_LENGTH = 64;
 // instructions on how to build them.
 const libModules = ctypes.libraryName("modules-test");
 const libUnicode = ctypes.libraryName("modμles-test");
-const libLongName = "lorem_ipsum_dolor_sit_amet_consectetur_adipiscing_elit_Fusce_sit_amet_tellus_non_magna_euismod_vestibulum_Vivamus_turpis_duis.dll"
+const libLongName = "lorem_ipsum_dolor_sit_amet_consectetur_adipiscing_elit_Fusce_sit_amet_tellus_non_magna_euismod_vestibulum_Vivamus_turpis_duis.dll";
 const libUnicodePDB = Services.appinfo.is64Bit ? "testUnicodePDB64.dll" : "testUnicodePDB32.dll";
 const libNoPDB = Services.appinfo.is64Bit ? "testNoPDB64.dll" : "testNoPDB32.dll";
 const libxul = OS.Path.basename(OS.Constants.Path.libxul);
@@ -63,6 +63,14 @@ if (AppConstants.platform === "win") {
       name: libNoPDB,
       debugName: null,
       version: null,
+    },
+    {
+      // We choose this DLL because it's guaranteed to exist in our process and
+      // be signed on all Windows versions that we support.
+      name: "ntdll.dll",
+      // debugName changes depending on OS version and is irrelevant to this test
+      // version changes depending on OS version and is irrelevant to this test
+      certSubject: "Microsoft Windows",
     },
   ];
 } else if (AppConstants.platform === "android") {
@@ -113,14 +121,14 @@ add_task(async function setup() {
   // Force the timer to fire (using a small interval).
   Cc["@mozilla.org/updates/timer-manager;1"].getService(Ci.nsIObserver).observe(null, "utm-test-init", "");
   Preferences.set("toolkit.telemetry.modulesPing.interval", 0);
-  Preferences.set("app.update.url", "http:/localhost");
+  Preferences.set("app.update.url", "http://localhost");
 
   // Start the local ping server and setup Telemetry to use it during the tests.
   PingServer.start();
   Preferences.set(TelemetryUtils.Preferences.Server, "http://localhost:" + PingServer.port);
 });
 
-do_register_cleanup(function() {
+registerCleanupFunction(function() {
   if (libModulesHandle) {
     libModulesHandle.close();
   }
@@ -154,23 +162,47 @@ add_task({
   Assert.ok(!!found.clientId, "'modules' ping has a client ID.");
   Assert.ok(!!found.payload.modules, "Telemetry ping payload contains the 'modules' array.");
 
+  let nameComparator;
+  if (AppConstants.platform === "win") {
+    // Do case-insensitive checking of file/module names on Windows
+    nameComparator = function(a, b) {
+      if (typeof a === "string" && typeof b === "string") {
+        return a.toLowerCase() === b.toLowerCase();
+      }
+
+      return a === b;
+    };
+  } else {
+    nameComparator = function(a, b) {
+      return a === b;
+    };
+  }
+
   for (let lib of expectedLibs) {
-    let test_lib = found.payload.modules.find(module => module.name === lib.name);
+    let test_lib = found.payload.modules.find(module => nameComparator(module.name, lib.name));
 
     Assert.ok(!!test_lib, "There is a '" + lib.name + "' module.");
 
-    if (lib.version !== null) {
-      Assert.ok(test_lib.version.startsWith(lib.version), "The version of the " + lib.name + " module (" + test_lib.version + ") is correct (it starts with '" + lib.version + "').");
-    } else {
-      Assert.strictEqual(test_lib.version, null, "The version of the " + lib.name + " module is null.");
+    if ("version" in lib) {
+      if (lib.version !== null) {
+        Assert.ok(test_lib.version.startsWith(lib.version), "The version of the " + lib.name + " module (" + test_lib.version + ") is correct (it starts with '" + lib.version + "').");
+      } else {
+        Assert.strictEqual(test_lib.version, null, "The version of the " + lib.name + " module is null.");
+      }
     }
 
-    Assert.strictEqual(test_lib.debugName, lib.debugName, "The " + lib.name + " module has the correct debug name.");
+    if ("debugName" in lib) {
+      Assert.ok(nameComparator(test_lib.debugName, lib.debugName), "The " + lib.name + " module has the correct debug name.");
+    }
 
     if (lib.debugName === null) {
       Assert.strictEqual(test_lib.debugID, null, "The " + lib.name + " module doesn't have a debug ID.");
     } else {
       Assert.greater(test_lib.debugID.length, 0, "The " + lib.name + " module has a debug ID.");
+    }
+
+    if ("certSubject" in lib) {
+      Assert.strictEqual(test_lib.certSubject, lib.certSubject, "The " + lib.name + " module has the expected cert subject.");
     }
   }
 

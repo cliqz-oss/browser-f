@@ -9,12 +9,12 @@
 */
 var EXPORTED_SYMBOLS = ["goQuitApplication"];
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function canQuitApplication() {
   try {
-    var cancelQuit = Components.classes["@mozilla.org/supports-PRBool;1"]
-                     .createInstance(Components.interfaces.nsISupportsPRBool);
+    var cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
+                     .createInstance(Ci.nsISupportsPRBool);
     Services.obs.notifyObservers(cancelQuit, "quit-application-requested");
 
     // Something aborted the quit process.
@@ -36,14 +36,12 @@ function goQuitApplication() {
   var appService;
   var forceQuit;
 
-  if (kAppStartup in Components.classes) {
-    appService = Components.classes[kAppStartup]
-                 .getService(Components.interfaces.nsIAppStartup);
-    forceQuit  = Components.interfaces.nsIAppStartup.eForceQuit;
-  } else if (kAppShell in Components.classes) {
-    appService = Components.classes[kAppShell].
-      getService(Components.interfaces.nsIAppShellService);
-    forceQuit = Components.interfaces.nsIAppShellService.eForceQuit;
+  if (kAppStartup in Cc) {
+    appService = Services.startup;
+    forceQuit  = Ci.nsIAppStartup.eForceQuit;
+  } else if (kAppShell in Cc) {
+    appService = Services.appShell;
+    forceQuit = Ci.nsIAppShellService.eForceQuit;
   } else {
     throw new Error("goQuitApplication: no AppStartup/appShell");
   }
@@ -56,4 +54,3 @@ function goQuitApplication() {
 
   return true;
 }
-

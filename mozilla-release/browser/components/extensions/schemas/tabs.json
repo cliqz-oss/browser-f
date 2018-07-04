@@ -12,7 +12,8 @@
           "type": "string",
           "enum": [
             "activeTab",
-            "tabs"
+            "tabs",
+            "tabHide"
           ]
         }]
       }
@@ -53,13 +54,33 @@
         }
       },
       {
+        "id": "SharingState",
+        "type": "object",
+        "description": "Tab sharing state for screen, microphone and camera.",
+        "properties": {
+          "screen": {
+            "type": "string",
+            "optional": true,
+            "description": "If the tab is sharing the screen the value will be one of \"Screen\", \"Window\", or \"Application\", or undefined if not screen sharing."
+          },
+          "camera": {
+            "type": "boolean",
+            "description": "True if the tab is using the camera."
+          },
+          "microphone": {
+            "type": "boolean",
+            "description": "True if the tab is using the microphone."
+          }
+        }
+      },
+      {
         "id": "Tab",
         "type": "object",
         "properties": {
           "id": {"type": "integer", "minimum": -1, "optional": true, "description": "The ID of the tab. Tab IDs are unique within a browser session. Under some circumstances a Tab may not be assigned an ID, for example when querying foreign tabs using the $(ref:sessions) API, in which case a session ID may be present. Tab ID can also be set to $(ref:tabs.TAB_ID_NONE) for apps and devtools windows."},
           "index": {"type": "integer", "minimum": -1, "description": "The zero-based index of the tab within its window."},
           "windowId": {"type": "integer", "optional": true, "minimum": 0, "description": "The ID of the window the tab is contained within."},
-          "openerTabId": {"unsupported": true, "type": "integer", "minimum": 0, "optional": true, "description": "The ID of the tab that opened this tab, if any. This property is only present if the opener tab still exists."},
+          "openerTabId": {"type": "integer", "minimum": 0, "optional": true, "description": "The ID of the tab that opened this tab, if any. This property is only present if the opener tab still exists."},
           "selected": {"type": "boolean", "description": "Whether the tab is selected.", "deprecated": "Please use $(ref:tabs.Tab.highlighted).", "unsupported": true},
           "highlighted": {"type": "boolean", "description": "Whether the tab is highlighted. Works as an alias of active"},
           "active": {"type": "boolean", "description": "Whether the tab is active in its window. (Does not necessarily mean the window is focused.)"},
@@ -71,11 +92,16 @@
           "title": {"type": "string", "optional": true, "permissions": ["tabs"], "description": "The title of the tab. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission."},
           "favIconUrl": {"type": "string", "optional": true, "permissions": ["tabs"], "description": "The URL of the tab's favicon. This property is only present if the extension's manifest includes the <code>\"tabs\"</code> permission. It may also be an empty string if the tab is loading."},
           "status": {"type": "string", "optional": true, "description": "Either <em>loading</em> or <em>complete</em>."},
+          "discarded": {"type": "boolean", "optional": true, "description": "True while the tab is not loaded with content."},
           "incognito": {"type": "boolean", "description": "Whether the tab is in an incognito window."},
           "width": {"type": "integer", "optional": true, "description": "The width of the tab in pixels."},
           "height": {"type": "integer", "optional": true, "description": "The height of the tab in pixels."},
+          "hidden": {"type": "boolean", "optional": true, "description": "True if the tab is hidden."},
           "sessionId": {"type": "string", "optional": true, "description": "The session ID used to uniquely identify a Tab obtained from the $(ref:sessions) API."},
-          "cookieStoreId": {"type": "string", "optional": true, "description": "The CookieStoreId used for the tab."}
+          "cookieStoreId": {"type": "string", "optional": true, "description": "The CookieStoreId used for the tab."},
+          "isArticle": {"type": "boolean", "optional": true, "description": "Whether the document in the tab can be rendered in reader mode."},
+          "isInReaderMode": {"type": "boolean", "optional": true, "description": "Whether the document in the tab is being rendered in reader mode."},
+          "sharingState": {"$ref": "SharingState", "optional": true, "description": "Current tab sharing state for screen, microphone and camera."}
         }
       },
       {
@@ -139,6 +165,21 @@
         "type": "object",
         "description": "The page settings including: orientation, scale, background, margins, headers, footers.",
         "properties": {
+          "paperSizeUnit": {
+            "type": "integer",
+            "optional": true,
+            "description": "The page size unit: 0 = inches, 1 = millimeters. Default: 0."
+          },
+          "paperWidth": {
+            "type": "number",
+            "optional": true,
+            "description": "The paper width in paper size units. Default: 8.5."
+          },
+          "paperHeight": {
+            "type": "number",
+            "optional": true,
+            "description": "The paper height in paper size units. Default: 11.0."
+          },
           "orientation": {
             "type": "integer",
             "optional": true,
@@ -164,20 +205,45 @@
             "optional": true,
             "description": "Whether the page background images should be shown. Default: false."
           },
-          "paperSizeUnit": {
-            "type": "integer",
-            "optional": true,
-            "description": "The page size unit: 0 = inches, 1 = millimeters. Default: 0."
-          },
-          "paperWidth": {
+          "edgeLeft": {
             "type": "number",
             "optional": true,
-            "description": "The paper width in paper size units. Default: 8.5."
+            "description": "The spacing between the left header/footer and the left edge of the paper (inches). Default: 0."
           },
-          "paperHeight": {
+          "edgeRight": {
             "type": "number",
             "optional": true,
-            "description": "The paper height in paper size units. Default: 11.0."
+            "description": "The spacing between the right header/footer and the right edge of the paper (inches). Default: 0."
+          },
+          "edgeTop": {
+            "type": "number",
+            "optional": true,
+            "description": "The spacing between the top of the headers and the top edge of the paper (inches). Default: 0"
+          },
+          "edgeBottom": {
+            "type": "number",
+            "optional": true,
+            "description": "The spacing between the bottom of the footers and the bottom edge of the paper (inches). Default: 0."
+          },
+          "marginLeft": {
+            "type": "number",
+            "optional": true,
+            "description": "The margin between the page content and the left edge of the paper (inches). Default: 0.5."
+          },
+          "marginRight": {
+            "type": "number",
+            "optional": true,
+            "description": "The margin between the page content and the right edge of the paper (inches). Default: 0.5."
+          },
+          "marginTop": {
+            "type": "number",
+            "optional": true,
+            "description": "The margin between the page content and the top edge of the paper (inches). Default: 0.5."
+          },
+          "marginBottom": {
+            "type": "number",
+            "optional": true,
+            "description": "The margin between the page content and the bottom edge of the paper (inches). Default: 0.5."
           },
           "headerLeft": {
             "type": "string",
@@ -208,26 +274,6 @@
             "type": "string",
             "optional": true,
             "description": "The text for the page's right footer. Default: '&D'."
-          },
-          "marginLeft": {
-            "type": "number",
-            "optional": true,
-            "description": "The margin between the page content and the left edge of the paper (inches). Default: 0.5."
-          },
-          "marginRight": {
-            "type": "number",
-            "optional": true,
-            "description": "The margin between the page content and the right edge of the paper (inches). Default: 0.5."
-          },
-          "marginTop": {
-            "type": "number",
-            "optional": true,
-            "description": "The margin between the page content and the top edge of the paper (inches). Default: 0.5."
-          },
-          "marginBottom": {
-            "type": "number",
-            "optional": true,
-            "description": "The margin between the page content and the bottom edge of the paper (inches). Default: 0.5."
           }
         }
       },
@@ -242,6 +288,46 @@
         "type": "string",
         "enum": ["normal", "popup", "panel", "app", "devtools"],
         "description": "The type of window."
+      },
+      {
+        "id": "UpdatePropertyName",
+        "type": "string",
+        "enum": [
+          "audible",
+          "discarded",
+          "favIconUrl",
+          "hidden",
+          "isarticle",
+          "mutedInfo",
+          "pinned",
+          "sharingState",
+          "status",
+          "title"
+        ],
+        "description": "Event names supported in onUpdated."
+      },
+      {
+        "id": "UpdateFilter",
+        "type": "object",
+        "description": "An object describing filters to apply to tabs.onUpdated events.",
+        "properties": {
+          "urls": {
+            "type": "array",
+            "description": "A list of URLs or URL patterns. Events that cannot match any of the URLs will be filtered out.  Filtering with urls requires the <code>\"tabs\"</code> or  <code>\"activeTab\"</code> permission.",
+            "optional": true,
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "properties": {
+            "type": "array",
+            "optional": true,
+            "description": "A list of property names. Events that do not match any of the names will be filtered out.",
+            "items": { "$ref": "UpdatePropertyName" },
+            "minItems": 1
+          },
+          "tabId": { "type": "integer", "optional": true },
+          "windowId": { "type": "integer", "optional": true }
+        }
       }
     ],
     "properties": {
@@ -485,7 +571,6 @@
                 "description": "Whether the tab should be pinned. Defaults to <var>false</var>"
               },
               "openerTabId": {
-                "unsupported": true,
                 "type": "integer",
                 "minimum": 0,
                 "optional": true,
@@ -495,7 +580,10 @@
                 "type": "string",
                 "optional": true,
                 "description": "The CookieStoreId for the tab that opened this tab."
-              }
+              },
+              "openInReaderMode": {
+                "type": "boolean",
+                "optional": true, "description": "Whether the document in the tab should be opened in reader mode."}
             }
           },
           {
@@ -590,6 +678,16 @@
                 "optional": true,
                 "description": "Whether the tabs have completed loading."
               },
+              "discarded": {
+                "type": "boolean",
+                "optional": true,
+                "description": "True while the tabs are not loaded with content."
+              },
+              "hidden": {
+                "type": "boolean",
+                "optional": true,
+                "description": "True while the tabs are hidden."
+              },
               "title": {
                 "type": "string",
                 "optional": true,
@@ -624,6 +722,30 @@
                 "type": "string",
                 "optional": true,
                 "description": "The CookieStoreId used for the tab."
+              },
+              "openerTabId": {
+                "type": "integer",
+                "minimum": 0,
+                "optional": true,
+                "description": "The ID of the tab that opened this tab. If specified, the opener tab must be in the same window as this tab."
+              },
+              "screen": {
+                "choices": [
+                  {"type": "string", "enum": ["Screen", "Window", "Application"]},
+                  {"type": "boolean"}
+                ],
+                "optional": true,
+                "description": "True for any screen sharing, or a string to specify type of screen sharing."
+              },
+              "camera": {
+                "type": "boolean",
+                "optional": true,
+                "description": "True if the tab is using the camera."
+              },
+              "microphone": {
+                "type": "boolean",
+                "optional": true,
+                "description": "True if the tab is using the microphone."
               }
             }
           },
@@ -733,11 +855,15 @@
                 "description": "Whether the tab should be muted."
               },
               "openerTabId": {
-                "unsupported": true,
                 "type": "integer",
                 "minimum": 0,
                 "optional": true,
                 "description": "The ID of the tab that opened this tab. If specified, the opener tab must be in the same window as this tab."
+              },
+              "loadReplace": {
+                "type": "boolean",
+                "optional": true,
+                "description": "Whether the load should replace the current history entry for the tab."
               }
             }
           },
@@ -860,6 +986,22 @@
         ]
       },
       {
+        "name": "discard",
+        "type": "function",
+        "description": "discards one or more tabs.",
+        "async": true,
+        "parameters": [
+          {
+            "name": "tabIds",
+            "description": "The tab or list of tabs to discard.",
+            "choices": [
+              {"type": "integer", "minimum": 0},
+              {"type": "array", "items": {"type": "integer", "minimum": 0}}
+            ]
+          }
+        ]
+      },
+      {
         "name": "detectLanguage",
         "type": "function",
         "description": "Detects the primary language of the content in a tab.",
@@ -882,6 +1024,42 @@
                 "description": "An ISO language code such as <code>en</code> or <code>fr</code>. For a complete list of languages supported by this method, see <a href='http://src.chromium.org/viewvc/chrome/trunk/src/third_party/cld/languages/internal/languages.cc'>kLanguageInfoTable</a>. The 2nd to 4th columns will be checked and the first non-NULL value will be returned except for Simplified Chinese for which zh-CN will be returned. For an unknown language, <code>und</code> will be returned."
               }
             ]
+          }
+        ]
+      },
+      {
+        "name": "toggleReaderMode",
+        "type": "function",
+        "description": "Toggles reader mode for the document in the tab.",
+        "async": true,
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "tabId",
+            "minimum": 0,
+            "optional": true,
+            "description": "Defaults to the active tab of the $(topic:current-window)[current window]."
+          }
+        ]
+      },
+      {
+        "name": "captureTab",
+        "type": "function",
+        "description": "Captures the visible area of a specified tab. You must have $(topic:declare_permissions)[&lt;all_urls&gt;] permission to use this method.",
+        "permissions": ["<all_urls>"],
+        "async": true,
+        "parameters": [
+          {
+            "type": "integer",
+            "name": "tabId",
+            "minimum": 0,
+            "optional": true,
+            "description": "The tab to capture. Defaults to the active tab of the current window."
+          },
+          {
+            "$ref": "extensionTypes.ImageDetails",
+            "name": "options",
+            "optional": true
           }
         ]
       },
@@ -1160,6 +1338,40 @@
             ]
           }
         ]
+      },
+      {
+        "name": "show",
+        "type": "function",
+        "description": "Shows one or more tabs.",
+        "permissions": ["tabHide"],
+        "async": true,
+        "parameters": [
+          {
+            "name": "tabIds",
+            "description": "The TAB ID or list of TAB IDs to show.",
+            "choices": [
+              {"type": "integer", "minimum": 0},
+              {"type": "array", "items": {"type": "integer", "minimum": 0}}
+            ]
+          }
+        ]
+      },
+      {
+        "name": "hide",
+        "type": "function",
+        "description": "Hides one or more tabs. The <code>\"tabHide\"</code> permission is required to hide tabs.  Not all tabs are hidable.  Returns an array of hidden tabs.",
+        "permissions": ["tabHide"],
+        "async": true,
+        "parameters": [
+          {
+            "name": "tabIds",
+            "description": "The TAB ID or list of TAB IDs to hide.",
+            "choices": [
+              {"type": "integer", "minimum": 0},
+              {"type": "array", "items": {"type": "integer", "minimum": 0}}
+            ]
+          }
+        ]
       }
     ],
     "events": [
@@ -1190,6 +1402,11 @@
                 "type": "string",
                 "optional": true,
                 "description": "The status of the tab. Can be either <em>loading</em> or <em>complete</em>."
+              },
+              "discarded": {
+                "type": "boolean",
+                "optional": true,
+                "description": "True while the tab is not loaded with content."
               },
               "url": {
                 "type": "string",
@@ -1222,6 +1439,14 @@
             "$ref": "Tab",
             "name": "tab",
             "description": "Gives the state of the tab that was updated."
+          }
+        ],
+        "extraParameters": [
+          {
+            "$ref": "UpdateFilter",
+            "name": "filter",
+            "optional": true,
+            "description": "A set of filters that restricts the events that will be sent to this listener."
           }
         ]
       },

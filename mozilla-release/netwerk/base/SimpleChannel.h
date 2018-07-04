@@ -6,7 +6,7 @@
 #ifndef SimpleChannel_h
 #define SimpleChannel_h
 
-#include "mozilla/Result.h"
+#include "mozilla/ResultExtensions.h"
 #include "mozilla/UniquePtr.h"
 #include "nsCOMPtr.h"
 
@@ -33,7 +33,7 @@ public:
 
   virtual RequestOrReason StartAsyncRead(nsIStreamListener* stream, nsIChannel* channel) = 0;
 
-  virtual ~SimpleChannelCallbacks() {}
+  virtual ~SimpleChannelCallbacks() = default;
 };
 
 template <typename F1, typename F2, typename T>
@@ -46,7 +46,7 @@ public:
     , mContext(context)
   {}
 
-  virtual ~SimpleChannelCallbacksImpl() {}
+  virtual ~SimpleChannelCallbacksImpl() = default;
 
   virtual InputStreamOrReason OpenContentStream(bool async, nsIChannel* channel) override
   {

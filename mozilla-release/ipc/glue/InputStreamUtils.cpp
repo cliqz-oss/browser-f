@@ -12,6 +12,7 @@
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/ipc/IPCBlobInputStream.h"
 #include "mozilla/dom/ipc/IPCBlobInputStreamStorage.h"
+#include "mozilla/SlicedInputStream.h"
 #include "nsComponentManagerUtils.h"
 #include "nsDebug.h"
 #include "nsID.h"
@@ -20,9 +21,7 @@
 #include "nsMultiplexInputStream.h"
 #include "nsNetCID.h"
 #include "nsStringStream.h"
-#include "nsTemporaryFileInputStream.h"
 #include "nsXULAppAPI.h"
-#include "SlicedInputStream.h"
 
 using namespace mozilla::dom;
 
@@ -70,6 +69,8 @@ InputStreamHelper::DeserializeInputStream(const InputStreamParams& aParams,
   if (aParams.type() == InputStreamParams::TIPCBlobInputStreamParams) {
     MOZ_ASSERT(XRE_IsParentProcess());
     IPCBlobInputStreamStorage::Get()->GetStream(aParams.get_IPCBlobInputStreamParams().id(),
+                                                aParams.get_IPCBlobInputStreamParams().start(),
+                                                aParams.get_IPCBlobInputStreamParams().length(),
                                                 getter_AddRefs(stream));
     return stream.forget();
   }
@@ -81,10 +82,6 @@ InputStreamHelper::DeserializeInputStream(const InputStreamParams& aParams,
 
     case InputStreamParams::TFileInputStreamParams:
       serializable = do_CreateInstance(kFileInputStreamCID);
-      break;
-
-    case InputStreamParams::TTemporaryFileInputStreamParams:
-      serializable = new nsTemporaryFileInputStream();
       break;
 
     case InputStreamParams::TBufferedInputStreamParams:
@@ -100,7 +97,7 @@ InputStreamHelper::DeserializeInputStream(const InputStreamParams& aParams,
       break;
 
     case InputStreamParams::TSlicedInputStreamParams:
-      serializable = new SlicedInputStream();
+      serializable = new mozilla::SlicedInputStream();
       break;
 
     default:

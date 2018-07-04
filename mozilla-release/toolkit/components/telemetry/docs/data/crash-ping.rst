@@ -12,12 +12,17 @@ child processes crashes, which are sent right after the crash is detected,
 as well as for main process crashes, which are sent after Firefox restarts
 successfully. The crash reporter client sends crash pings only for main process
 crashes whether or not the user also reports the crash. The crash reporter
-client will not send the crash ping if telemetry has been disabled in Firefox
-though.
+client will not send the crash ping if telemetry has been disabled in Firefox.
 
 The environment block that is sent with this ping varies: if Firefox was running long enough to record the environment block before the crash, then the environment at the time of the crash will be recorded and ``hasCrashEnvironment`` will be true. If Firefox crashed before the environment was recorded, ``hasCrashEnvironment`` will be false and the recorded environment will be the environment at time of submission.
 
 The client ID is submitted with this ping.
+
+The metadata field holds a subset of the crash annotations, all field values
+are stored as strings but some may be interpreted either as numbers or
+boolean values. Numbers are integral unless stated otherwise in the
+description. Boolean values are set to "1" when true, "0" when false. If
+they're absent then they should be interpreted as false.
 
 Structure:
 
@@ -46,28 +51,30 @@ Structure:
           Version: <version number>,
           BuildID: "YYYYMMDDHHMMSS",
           AsyncShutdownTimeout: <json>, // Optional, present when a shutdown blocker failed to respond within a reasonable amount of time
-          AvailablePageFile: <size>, // Windows-only, available paging file
-          AvailablePhysicalMemory: <size>, // Windows-only, available physical memory
-          AvailableVirtualMemory: <size>, // Windows-only, available virtual memory
+          AvailablePageFile: <size>, // Windows-only, available paging file in bytes
+          AvailablePhysicalMemory: <size>, // Windows-only, available physical memory in bytes
+          AvailableVirtualMemory: <size>, // Windows-only, available virtual memory in bytes
           BlockedDllList: <list>, // Windows-only, see WindowsDllBlocklist.cpp for details
-          BlocklistInitFailed: 1, // Windows-only, present only if the DLL blocklist initialization failed
+          BlocklistInitFailed: "1", // Windows-only, present only if the DLL blocklist initialization failed
           CrashTime: <time>, // Seconds since the Epoch
-          ContainsMemoryReport: 1, // Optional
-          EventLoopNestingLevel: <levels>, // Optional, present only if >0
-          IsGarbageCollecting: 1, // Optional, present only if set to 1
+          ContainsMemoryReport: "1", // Optional, if set indicates that the crash had a memory report attached
+          EventLoopNestingLevel: <levels>, // Optional, present only if >0, indicates the nesting level of the event-loop
+          ipc_channel_error: <error string>, // Optional, contains the string processing error reason for an ipc-based content crash
+          IsGarbageCollecting: "1", // Optional, if set indicates that the crash occurred while the garbage collector was running
           MozCrashReason: <reason>, // Optional, contains the string passed to MOZ_CRASH()
           OOMAllocationSize: <size>, // Size of the allocation that caused an OOM
           RemoteType: <type>, // Optional, type of content process, see below for a list of types
           SecondsSinceLastCrash: <duration>, // Seconds elapsed since the last crash occurred
-          ShutdownProgress: <phase>, // Optional, contains the shutdown phase in which the crash occurred
+          ShutdownProgress: <phase>, // Optional, contains a string describing the shutdown phase in which the crash occurred
           SystemMemoryUsePercentage: <percentage>, // Windows-only, percent of memory in use
+          StartupCrash: "1", // Optional, if set indicates that Firefox crashed during startup
           TelemetrySessionId: <id>, // Active telemetry session ID when the crash was recorded
           TextureUsage: <usage>, // Optional, usage of texture memory in bytes
-          TotalPageFile: <size>, // Windows-only, paging file in use
-          TotalPhysicalMemory: <size>, // Windows-only, physical memory in use
-          TotalVirtualMemory: <size>, // Windows-only, virtual memory in use
-          UptimeTS: <duration>, // Seconds since Firefox was started
-          User32BeforeBlocklist: 1, // Windows-only, present only if user32.dll was loaded before the DLL blocklist has been initialized
+          TotalPageFile: <size>, // Windows-only, paging file in use expressed in bytes
+          TotalPhysicalMemory: <size>, // Windows-only, physical memory in use expressed in bytes
+          TotalVirtualMemory: <size>, // Windows-only, virtual memory in use expressed in bytes
+          UptimeTS: <duration>, // Seconds since Firefox was started, this can have a fractional component
+          User32BeforeBlocklist: "1", // Windows-only, present only if user32.dll was loaded before the DLL blocklist has been initialized
         },
         hasCrashEnvironment: bool
       }
@@ -76,7 +83,7 @@ Structure:
 .. note::
 
   For "crash" pings generated by the crashreporter we are deliberately truncating the ``creationDate``
-  to hours. See bug 1345108 for context.
+  to hours. See `bug 1345108 <https://bugzilla.mozilla.org/show_bug.cgi?id=1345108>`_ for context.
 
 Process Types
 -------------
@@ -94,6 +101,8 @@ are sent only for the ones below:
 +---------------+---------------------------------------------------+
 | gpu           | GPU process                                       |
 +---------------+---------------------------------------------------+
+
+.. _remote-process-types:
 
 Remote Process Types
 --------------------
@@ -199,3 +208,8 @@ The trust levels are (from least trusted to most trusted):
 The ``code_id`` field holds a unique ID used to distinguish between different
 versions and builds of the same module. See `breakpad <https://chromium.googlesource.com/breakpad/breakpad/+/24f5931c5e0120982c0cbf1896641e3ef2bdd52f/src/google_breakpad/processor/code_module.h#60>`__'s
 description for further information. This field is populated only on Windows.
+
+Version History
+===============
+
+- Firefox 58: Added ipc_channel_error (`bug 1410143 <https://bugzilla.mozilla.org/show_bug.cgi?id=1410143>`_).

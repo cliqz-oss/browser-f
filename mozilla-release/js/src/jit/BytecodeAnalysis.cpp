@@ -6,10 +6,11 @@
 
 #include "jit/BytecodeAnalysis.h"
 
-#include "jsopcode.h"
 #include "jit/JitSpewer.h"
-#include "jsopcodeinlines.h"
-#include "jsscriptinlines.h"
+#include "vm/BytecodeUtil.h"
+
+#include "vm/BytecodeUtil-inl.h"
+#include "vm/JSScript-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -78,8 +79,8 @@ BytecodeAnalysis::init(TempAllocator& alloc, GSNCache& gsn)
             MOZ_ASSERT(!infos_[script_->pcToOffset(chkpc)].initialized);
 #endif
 
-        unsigned nuses = GetUseCount(script_, offset);
-        unsigned ndefs = GetDefCount(script_, offset);
+        unsigned nuses = GetUseCount(pc);
+        unsigned ndefs = GetDefCount(pc);
 
         MOZ_ASSERT(stackDepth >= nuses);
         stackDepth -= nuses;
@@ -174,12 +175,14 @@ BytecodeAnalysis::init(TempAllocator& alloc, GSNCache& gsn)
           case JSOP_DEFVAR:
           case JSOP_PUSHLEXICALENV:
           case JSOP_POPLEXICALENV:
+          case JSOP_IMPLICITTHIS:
             usesEnvironmentChain_ = true;
             break;
 
           case JSOP_GETGNAME:
           case JSOP_SETGNAME:
           case JSOP_STRICTSETGNAME:
+          case JSOP_GIMPLICITTHIS:
             if (script_->hasNonSyntacticScope())
                 usesEnvironmentChain_ = true;
             break;

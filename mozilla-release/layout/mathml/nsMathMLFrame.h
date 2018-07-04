@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -103,14 +104,14 @@ public:
     return false;
   }
 
-  // helper to give a style context suitable for doing the stretching to the
-  // MathMLChar. Frame classes that use this should make the extra style contexts
-  // accessible to the Style System via Get/Set AdditionalStyleContext.
+  // helper to give a ComputedStyle suitable for doing the stretching to the
+  // MathMLChar. Frame classes that use this should make the extra ComputedStyle
+  // accessible to the Style System via Get/Set AdditionalmComputedStyle.
   static void
-  ResolveMathMLCharStyle(nsPresContext*  aPresContext,
-                         nsIContent*      aContent,
-                         nsStyleContext*  aParenStyleContext,
-                         nsMathMLChar*    aMathMLChar);
+  ResolveMathMLCharStyle(nsPresContext* aPresContext,
+                         nsIContent* aContent,
+                         mozilla::ComputedStyle* aParenComputedStyle,
+                         nsMathMLChar* aMathMLChar);
 
   // helper to get the mEmbellishData of a frame
   // The MathML REC precisely defines an "embellished operator" as:
@@ -142,16 +143,16 @@ public:
   // All values are stored in twips.
   // @pre  aLengthValue is the default length value of the attribute.
   // @post aLengthValue is the length value computed from the attribute.
-  static void ParseNumericValue(const nsString&   aString,
-                                nscoord*          aLengthValue,
-                                uint32_t          aFlags,
-                                nsPresContext*    aPresContext,
-                                nsStyleContext*   aStyleContext,
-                                float             aFontSizeInflation);
+  static void ParseNumericValue(const nsString& aString,
+                                nscoord* aLengthValue,
+                                uint32_t aFlags,
+                                nsPresContext* aPresContext,
+                                mozilla::ComputedStyle* aComputedStyle,
+                                float aFontSizeInflation);
 
   static nscoord
-  CalcLength(nsPresContext*   aPresContext,
-             nsStyleContext*   aStyleContext,
+  CalcLength(nsPresContext* aPresContext,
+             mozilla::ComputedStyle* aComputedStyle,
              const nsCSSValue& aCSSValue,
              float             aFontSizeInflation);
 
@@ -363,7 +364,8 @@ protected:
    */
   void DisplayBar(nsDisplayListBuilder* aBuilder,
                   nsIFrame* aFrame, const nsRect& aRect,
-                  const nsDisplayListSet& aLists);
+                  const nsDisplayListSet& aLists,
+                  uint32_t aIndex = 0);
 
   // information about the presentation policy of the frame
   nsPresentationData mPresentationData;

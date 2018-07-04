@@ -17,12 +17,17 @@
 #include "nsRefPtrHashtable.h"
 
 #include "nsBaseWidget.h"
+#include "CompositorWidget.h"
 #include <gdk/gdk.h>
 #include <gtk/gtk.h>
 
 #ifdef MOZ_X11
 #include <gdk/gdkx.h>
+#include "X11UndefineNone.h"
 #endif /* MOZ_X11 */
+#ifdef MOZ_WAYLAND
+#include <gdk/gdkwayland.h>
+#endif
 
 #include "mozilla/widget/WindowSurface.h"
 #include "mozilla/widget/WindowSurfaceProvider.h"
@@ -73,12 +78,14 @@ class nsWindow final : public nsBaseWidget
 public:
     typedef mozilla::gfx::DrawTarget DrawTarget;
     typedef mozilla::WidgetEventTime WidgetEventTime;
+    typedef mozilla::WidgetKeyboardEvent WidgetKeyboardEvent;
+    typedef mozilla::widget::PlatformCompositorWidgetDelegate PlatformCompositorWidgetDelegate;
 
     nsWindow();
 
     static void ReleaseGlobals();
 
-    NS_DECL_ISUPPORTS_INHERITED
+    NS_INLINE_DECL_REFCOUNTING_INHERITED(nsWindow, nsBaseWidget)
 
     void CommonCreate(nsIWidget *aParent, bool aListenForResizes);
 
@@ -170,11 +177,7 @@ public:
     GdkRectangle DevicePixelsToGdkRectRoundOut(LayoutDeviceIntRect aRect);
 
     // event callbacks
-#if (MOZ_WIDGET_GTK == 2)
-    gboolean           OnExposeEvent(GdkEventExpose *aEvent);
-#else
     gboolean           OnExposeEvent(cairo_t *cr);
-#endif
     gboolean           OnConfigureEvent(GtkWidget *aWidget,
                                         GdkEventConfigure *aEvent);
     void               OnContainerUnrealize();
@@ -226,6 +229,8 @@ public:
     virtual void       EndRemoteDrawingInRegion(mozilla::gfx::DrawTarget* aDrawTarget,
                                                 LayoutDeviceIntRegion& aInvalidRegion) override;
 
+    void               SetProgress(unsigned long progressPercent);
+
 private:
     void               UpdateAlpha(mozilla::gfx::SourceSurface* aSourceSurface, nsIntRect aBoundsRect);
 
@@ -243,6 +248,8 @@ private:
 
     void               UpdateClientOffset();
 
+    void               DispatchContextMenuEventFromMouseEvent(uint16_t domButton,
+                                                              GdkEventButton *aEvent);
 public:
     void               ThemeChanged(void);
     void               OnDPIChanged(void);
@@ -274,10 +281,32 @@ public:
                                          guint aTime);
     static void        UpdateDragStatus (GdkDragContext *aDragContext,
                                          nsIDragService *aDragService);
-    // If this dispatched the keydown event actually, this returns TRUE,
-    // otherwise, FALSE.
-    bool               DispatchKeyDownEvent(GdkEventKey *aEvent,
-                                            bool *aIsCancelled);
+    /**
+     * DispatchKeyDownOrKeyUpEvent() dispatches eKeyDown or eKeyUp event.
+     *
+     * @param aEvent            A native GDK_KEY_PRESS or GDK_KEY_RELEASE
+     *                          event.
+     * @param aProcessedByIME   true if the event is handled by IME.
+     * @param aIsCancelled      [Out] true if the default is prevented.
+     * @return                  true if eKeyDown event is actually dispatched.
+     *                          Otherwise, false.
+     */
+    bool DispatchKeyDownOrKeyUpEvent(GdkEventKey* aEvent,
+                                     bool aProcessedByIME,
+                                     bool* aIsCancelled);
+
+    /**
+     * DispatchKeyDownOrKeyUpEvent() dispatches eKeyDown or eKeyUp event.
+     *
+     * @param aEvent            An eKeyDown or eKeyUp event.  This will be
+     *                          dispatched as is.
+     * @param aIsCancelled      [Out] true if the default is prevented.
+     * @return                  true if eKeyDown event is actually dispatched.
+     *                          Otherwise, false.
+     */
+    bool DispatchKeyDownOrKeyUpEvent(WidgetKeyboardEvent& aEvent,
+                                     bool* aIsCancelled);
+
     WidgetEventTime    GetWidgetEventTime(guint32 aEventTime);
     mozilla::TimeStamp GetEventTimeStamp(guint32 aEventTime);
     mozilla::CurrentX11TimeGetter* GetCurrentTimeGetter();
@@ -311,10 +340,6 @@ public:
    nsresult            UpdateTranslucentWindowAlphaInternal(const nsIntRect& aRect,
                                                             uint8_t* aAlphas, int32_t aStride);
 
-#if (MOZ_WIDGET_GTK == 2)
-    static already_AddRefed<DrawTarget> GetDrawTargetForGdkDrawable(GdkDrawable* aDrawable,
-                                                                    const mozilla::gfx::IntSize& aSize);
-#endif
     virtual void       ReparentNativeWidget(nsIWidget* aNewParent) override;
 
     virtual nsresult SynthesizeNativeMouseEvent(LayoutDeviceIntPoint aPoint,
@@ -344,10 +369,19 @@ public:
                                                 nsIObserver* aObserver) override;
 #endif
 
+
 #ifdef MOZ_X11
     Display* XDisplay() { return mXDisplay; }
 #endif
+#ifdef MOZ_WAYLAND
+    wl_display* GetWaylandDisplay();
+    wl_surface* GetWaylandSurface();
+#endif
     virtual void GetCompositorWidgetInitData(mozilla::widget::CompositorWidgetInitData* aInitData) override;
+
+    virtual nsresult SetNonClientMargins(LayoutDeviceIntMargin& aMargins) override;
+    void SetDrawsInTitlebar(bool aState) override;
+    virtual void UpdateWindowDraggingRegion(const LayoutDeviceIntRegion& aRegion) override;
 
     // HiDPI scale conversion
     gint GdkScaleFactor();
@@ -365,6 +399,18 @@ public:
     LayoutDeviceIntRect GdkRectToDevicePixels(GdkRectangle rect);
 
     virtual bool WidgetTypeSupportsAcceleration() override;
+
+    typedef enum { CSD_SUPPORT_SYSTEM,    // CSD including shadows
+                   CSD_SUPPORT_CLIENT,    // CSD without shadows
+                   CSD_SUPPORT_NONE,      // WM does not support CSD at all
+                   CSD_SUPPORT_UNKNOWN
+    } CSDSupportLevel;
+    /**
+     * Get the support of Client Side Decoration by checking
+     * the XDG_CURRENT_DESKTOP environment variable.
+     */
+    static CSDSupportLevel GetSystemCSDSupportLevel();
+
 protected:
     virtual ~nsWindow();
 
@@ -414,9 +460,10 @@ private:
     nsWindow          *GetContainerWindow();
     void               SetUrgencyHint(GtkWidget *top_window, bool state);
     void               SetDefaultIcon(void);
+    void               SetWindowDecoration(nsBorderStyle aStyle);
     void               InitButtonEvent(mozilla::WidgetMouseEvent& aEvent,
                                        GdkEventButton* aGdkEvent);
-    bool               DispatchCommandEvent(nsIAtom* aCommand);
+    bool               DispatchCommandEvent(nsAtom* aCommand);
     bool               DispatchContentCommandEvent(mozilla::EventMessage aMsg);
     bool               CheckForRollup(gdouble aMouseX, gdouble aMouseY,
                                       bool aIsWheel, bool aAlwaysRollup);
@@ -432,10 +479,28 @@ private:
     nsIWidgetListener* GetListener();
     bool               IsComposited() const;
 
+    void               UpdateClientOffsetForCSDWindow();
+
+    nsWindow*          GetTransientForWindowIfPopup();
+    bool               IsHandlingTouchSequence(GdkEventSequence* aSequence);
+
+#ifdef MOZ_X11
+    typedef enum { GTK_WIDGET_COMPOSIDED_DEFAULT = 0,
+                   GTK_WIDGET_COMPOSIDED_DISABLED = 1,
+                   GTK_WIDGET_COMPOSIDED_ENABLED = 2
+    } WindowComposeRequest;
+
+    void                SetCompositorHint(WindowComposeRequest aState);
+#endif
+    nsCString           mGtkWindowTypeName;
+    nsCString           mGtkWindowRoleName;
+    void                RefreshWindowClass();
 
     GtkWidget          *mShell;
     MozContainer       *mContainer;
     GdkWindow          *mGdkWindow;
+    PlatformCompositorWidgetDelegate* mCompositorWidgetDelegate;
+
 
     uint32_t            mHasMappedToplevel : 1,
                         mIsFullyObscured : 1,
@@ -466,6 +531,14 @@ private:
     // Upper bound on pending ConfigureNotify events to be dispatched to the
     // window. See bug 1225044.
     unsigned int mPendingConfigures;
+
+    // Window titlebar rendering mode, CSD_SUPPORT_NONE if it's disabled
+    // for this window.
+    CSDSupportLevel    mCSDSupportLevel;
+    // If true, draw our own window titlebar.
+    bool               mDrawInTitlebar;
+    // Draggable titlebar region maintained by UpdateWindowDraggingRegion
+    LayoutDeviceIntRegion mDraggableRegion;
 
 #ifdef ACCESSIBILITY
     RefPtr<mozilla::a11y::Accessible> mRootAccessible;
@@ -541,6 +614,8 @@ private:
                                           LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
                                           LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
 
+    void SetCompositorWidgetDelegate(CompositorWidgetDelegate* delegate) override;
+
     void CleanLayerManagerRecursive();
 
     virtual int32_t RoundsWidgetCoordinatesTo() override;
@@ -561,6 +636,7 @@ private:
     RefPtr<mozilla::widget::IMContextWrapper> mIMContext;
 
     mozilla::UniquePtr<mozilla::CurrentX11TimeGetter> mCurrentTimeGetter;
+    static CSDSupportLevel sCSDSupportLevel;
 };
 
 #endif /* __nsWindow_h__ */

@@ -41,6 +41,9 @@ public:
   bool
   MaybeUpdateSize(int64_t aSize, bool aTruncate);
 
+  bool
+  IncreaseSize(int64_t aDelta);
+
   void
   DisableQuotaCheck();
 
@@ -53,6 +56,7 @@ private:
     , mPath(aPath)
     , mSize(aSize)
     , mQuotaCheckDisabled(false)
+    , mWritingDone(false)
   {
     MOZ_COUNT_CTOR(QuotaObject);
   }
@@ -73,6 +77,9 @@ private:
     return result.forget();
   }
 
+  bool
+  LockedMaybeUpdateSize(int64_t aSize, bool aTruncate);
+
   mozilla::ThreadSafeAutoRefCnt mRefCnt;
 
   OriginInfo* mOriginInfo;
@@ -80,6 +87,7 @@ private:
   int64_t mSize;
 
   bool mQuotaCheckDisabled;
+  bool mWritingDone;
 };
 
 END_QUOTA_NAMESPACE

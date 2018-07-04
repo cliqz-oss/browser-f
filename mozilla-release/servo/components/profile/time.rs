@@ -10,7 +10,7 @@ use influent::create_client;
 use influent::measurement::{Measurement, Value};
 use ipc_channel::ipc::{self, IpcReceiver};
 use profile_traits::energy::{energy_interval_ms, read_energy_uj};
-use profile_traits::time::{ProfilerCategory, ProfilerChan, ProfilerMsg, TimerMetadata};
+use profile_traits::time::{ProfilerCategory, ProfilerChan, ProfilerMsg, ProfilerData, TimerMetadata};
 use profile_traits::time::{TimerMetadataFrameType, TimerMetadataReflowType};
 use servo_config::opts::OutputOptions;
 use std::{f64, thread, u32, u64};
@@ -154,8 +154,11 @@ impl Formattable for ProfilerCategory {
             ProfilerCategory::ScriptExitFullscreen => "Script Exit Fullscreen",
             ProfilerCategory::ScriptWebVREvent => "Script WebVR Event",
             ProfilerCategory::ScriptWorkletEvent => "Script Worklet Event",
+            ProfilerCategory::ScriptPerformanceEvent => "Script Performance Event",
             ProfilerCategory::TimeToFirstPaint => "Time To First Paint",
             ProfilerCategory::TimeToFirstContentfulPaint => "Time To First Contentful Paint",
+            ProfilerCategory::TimeToInteractive => "Time to Interactive",
+            ProfilerCategory::IpcReceiver => "Blocked at IPC Receive",
             ProfilerCategory::ApplicationHeartbeat => "Application Heartbeat",
         };
         format!("{}{}", padding, name)
@@ -314,6 +317,13 @@ impl Profiler {
                 // only print if more data has arrived since the last printout
                 self.print_buckets();
             },
+            ProfilerMsg::Get(k, sender) => {
+                let vec_option = self.buckets.get(&k);
+                match vec_option {
+                    Some(vec_entry) => sender.send(ProfilerData::Record(vec_entry.to_vec())).unwrap(),
+                    None => sender.send(ProfilerData::NoRecords).unwrap(),
+                };
+            },
             ProfilerMsg::Exit(chan) => {
                 heartbeats::cleanup();
                 self.print_buckets();
@@ -328,7 +338,7 @@ impl Profiler {
     /// Get tuple (mean, median, min, max) for profiler statistics.
     pub fn get_statistics(data: &[f64]) -> (f64, f64, f64, f64) {
         data.iter().fold(-f64::INFINITY, |a, &b| {
-            debug_assert!(a < b, "Data must be sorted");
+            debug_assert!(a <= b, "Data must be sorted");
             b
         });
 
@@ -355,13 +365,7 @@ impl Profiler {
                 write!(file, "_category_\t_incremental?_\t_iframe?_\t_url_\t_mean (ms)_\t\
                     _median (ms)_\t_min (ms)_\t_max (ms)_\t_events_\n").unwrap();
                 for (&(ref category, ref meta), ref mut data) in &mut self.buckets {
-                    data.sort_by(|a, b| {
-                        if a < b {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
-                        }
-                    });
+                    data.sort_by(|a, b| a.partial_cmp(b).expect("No NaN values in profiles"));
                     let data_len = data.len();
                     if data_len > 0 {
                         let (mean, median, min, max) = Self::get_statistics(data);
@@ -380,13 +384,7 @@ impl Profiler {
                          "            _url_", "    _mean (ms)_", "  _median (ms)_",
                          "     _min (ms)_", "     _max (ms)_", "      _events_").unwrap();
                 for (&(ref category, ref meta), ref mut data) in &mut self.buckets {
-                    data.sort_by(|a, b| {
-                        if a < b {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
-                        }
-                    });
+                    data.sort_by(|a, b| a.partial_cmp(b).expect("No NaN values in profiles"));
                     let data_len = data.len();
                     if data_len > 0 {
                         let (mean, median, min, max) = Self::get_statistics(data);
@@ -418,13 +416,7 @@ impl Profiler {
                 let client = create_client(credentials, hosts);
 
                 for (&(ref category, ref meta), ref mut data) in &mut self.buckets {
-                    data.sort_by(|a, b| {
-                        if a < b {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
-                        }
-                    });
+                    data.sort_by(|a, b| a.partial_cmp(b).expect("No NaN values in profiles"));
                     let data_len = data.len();
                     if data_len > 0 {
                         let (mean, median, min, max) = Self::get_statistics(data);

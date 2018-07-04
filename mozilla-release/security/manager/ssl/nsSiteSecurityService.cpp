@@ -41,7 +41,7 @@
 // influence its HSTS status via include subdomains, however).
 // This prevents the preload list from overriding the site's current
 // desired HSTS status.
-#include "nsSTSPreloadList.inc"
+#include "nsSTSPreloadList.h"
 
 using namespace mozilla;
 using namespace mozilla::psm;
@@ -129,7 +129,6 @@ public:
       case SourceUnknown:
       case SourcePreload:
       case SourceOrganic:
-      case SourceHSTSPriming:
         break;
       default:
         return false;
@@ -495,6 +494,8 @@ nsSiteSecurityService::nsSiteSecurityService()
   : mMaxMaxAge(kSixtyDaysInSeconds)
   , mUsePreloadList(true)
   , mPreloadListTimeOffset(0)
+  , mProcessPKPHeadersFromNonBuiltInRoots(false)
+  , mDafsa(kDafsa)
 {
 }
 
@@ -673,21 +674,6 @@ nsSiteSecurityService::SetHSTSState(uint32_t aType,
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsSiteSecurityService::CacheNegativeHSTSResult(
-  nsIURI* aSourceURI,
-  uint64_t aMaxAge,
-  const OriginAttributes& aOriginAttributes)
-{
-  nsAutoCString hostname;
-  nsresult rv = GetHost(aSourceURI, hostname);
-  NS_ENSURE_SUCCESS(rv, rv);
-  // SecurityPropertyNegative results only come from HSTS priming
-  return SetHSTSState(nsISiteSecurityService::HEADER_HSTS, hostname.get(),
-                      aMaxAge, false, 0, SecurityPropertyNegative,
-                      SourceHSTSPriming, aOriginAttributes);
-}
-
 nsresult
 nsSiteSecurityService::RemoveStateInternal(
   uint32_t aType, nsIURI* aURI, uint32_t aFlags,
@@ -730,7 +716,7 @@ nsSiteSecurityService::RemoveStateInternal(
                                               mozilla::DataStorage_Persistent);
   RefPtr<SiteHSTSState> dynamicState =
     new SiteHSTSState(aHost, aOriginAttributes, value);
-  if (GetPreloadListEntry(aHost.get()) ||
+  if (GetPreloadStatus(aHost) ||
       dynamicState->mHSTSState != SecurityPropertyUnset) {
     SSSLOG(("SSS: storing knockout entry for %s", aHost.get()));
     RefPtr<SiteHSTSState> siteState = new SiteHSTSState(
@@ -839,7 +825,6 @@ nsSiteSecurityService::ProcessHeader(uint32_t aType,
     case SourceUnknown:
     case SourcePreload:
     case SourceOrganic:
-    case SourceHSTSPriming:
       break;
     default:
       return NS_ERROR_INVALID_ARG;
@@ -1124,6 +1109,7 @@ nsSiteSecurityService::ProcessPKPHeader(
   UniqueCERTCertificate nssCert(cert->GetCert());
   NS_ENSURE_TRUE(nssCert, NS_ERROR_FAILURE);
 
+  // This use of VerifySSLServerCert should be able to be removed in Bug #1406854
   mozilla::pkix::Time now(mozilla::pkix::Now());
   UniqueCERTCertList certList;
   RefPtr<SharedCertVerifier> certVerifier(GetDefaultCertVerifier());
@@ -1142,7 +1128,6 @@ nsSiteSecurityService::ProcessPKPHeader(
                                         now, nullptr, // pinarg
                                         host, // hostname
                                         certList,
-                                        nullptr, // no peerCertChain
                                         false, // don't store intermediates
                                         flags,
                                         aOriginAttributes)
@@ -1150,13 +1135,22 @@ nsSiteSecurityService::ProcessPKPHeader(
     return NS_ERROR_FAILURE;
   }
 
-  CERTCertListNode* rootNode = CERT_LIST_TAIL(certList);
-  if (CERT_LIST_END(rootNode, certList)) {
-    return NS_ERROR_FAILURE;
+  // This copy to produce an nsNSSCertList should also be removed in Bug #1406854
+  nsCOMPtr<nsIX509CertList> x509CertList = new nsNSSCertList(Move(certList));
+  if (!x509CertList) {
+    return rv;
   }
+
+  RefPtr<nsNSSCertList> nssCertList = x509CertList->GetCertList();
+  nsCOMPtr<nsIX509Cert> rootCert;
+  rv = nssCertList->GetRootCertificate(rootCert);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
   bool isBuiltIn = false;
-  mozilla::pkix::Result result = IsCertBuiltInRoot(rootNode->cert, isBuiltIn);
-  if (result != mozilla::pkix::Success) {
+  rv = rootCert->GetIsBuiltInRoot(&isBuiltIn);
+  if (NS_FAILED(rv)) {
     return NS_ERROR_FAILURE;
   }
 
@@ -1178,7 +1172,7 @@ nsSiteSecurityService::ProcessPKPHeader(
   }
 
   bool chainMatchesPinset;
-  rv = PublicKeyPinningService::ChainMatchesPinset(certList, sha256keys,
+  rv = PublicKeyPinningService::ChainMatchesPinset(nssCertList, sha256keys,
                                                    chainMatchesPinset);
   if (NS_FAILED(rv)) {
     return rv;
@@ -1199,7 +1193,7 @@ nsSiteSecurityService::ProcessPKPHeader(
   for (uint32_t i = 0; i < sha256keys.Length(); i++) {
     nsTArray<nsCString> singlePin;
     singlePin.AppendElement(sha256keys[i]);
-    rv = PublicKeyPinningService::ChainMatchesPinset(certList, singlePin,
+    rv = PublicKeyPinningService::ChainMatchesPinset(nssCertList, singlePin,
                                                      chainMatchesPinset);
     if (NS_FAILED(rv)) {
       return rv;
@@ -1370,29 +1364,31 @@ nsSiteSecurityService::IsSecureURI(uint32_t aType, nsIURI* aURI,
                       source, aResult);
 }
 
-int STSPreloadCompare(const void *key, const void *entry)
+// Checks if the given host is in the preload list.
+//
+// @param aHost The host to match. Only does exact host matching.
+// @param aIncludeSubdomains Out, optional. Indicates whether or not to include
+//        subdomains. Only set if the host is matched and this function returns
+//        true.
+//
+// @return True if the host is matched, false otherwise.
+bool
+nsSiteSecurityService::GetPreloadStatus(const nsACString& aHost,
+                                        bool* aIncludeSubdomains) const
 {
-  const char *keyStr = (const char *)key;
-  const nsSTSPreload *preloadEntry = (const nsSTSPreload *)entry;
-  return strcmp(keyStr, &kSTSHostTable[preloadEntry->mHostIndex]);
-}
+  const int kIncludeSubdomains = 1;
+  bool found = false;
 
-// Returns the preload list entry for the given host, if it exists.
-// Only does exact host matching - the user must decide how to use the returned
-// data. May return null.
-const nsSTSPreload *
-nsSiteSecurityService::GetPreloadListEntry(const char *aHost)
-{
   PRTime currentTime = PR_Now() + (mPreloadListTimeOffset * PR_USEC_PER_SEC);
   if (mUsePreloadList && currentTime < gPreloadListExpirationTime) {
-    return (const nsSTSPreload *) bsearch(aHost,
-                                          kSTSPreloadList,
-                                          mozilla::ArrayLength(kSTSPreloadList),
-                                          sizeof(nsSTSPreload),
-                                          STSPreloadCompare);
+    int result = mDafsa.Lookup(aHost);
+    found = (result != mozilla::Dafsa::kKeyNotFound);
+    if (found && aIncludeSubdomains) {
+      *aIncludeSubdomains = (result == kIncludeSubdomains);
+    }
   }
 
-  return nullptr;
+  return found;
 }
 
 // Allows us to determine if we have an HSTS entry for a given host (and, if
@@ -1476,7 +1472,7 @@ nsSiteSecurityService::HostHasHSTSEntry(
       if (dynamicState->mHSTSState == SecurityPropertyUnset) {
         SSSLOG(("No dynamic preload - checking for static preload"));
         // Now check the static preload list.
-        if (!GetPreloadListEntry(aHost.get())) {
+        if (!GetPreloadStatus(aHost)) {
           SSSLOG(("No static preload - removing expired entry"));
           mSiteStateStorage->Remove(storageKey, storageType);
         }
@@ -1520,7 +1516,7 @@ nsSiteSecurityService::HostHasHSTSEntry(
     } else {
       // if a dynamic preload has expired and is not in the static preload
       // list, we can remove it.
-      if (!GetPreloadListEntry(aHost.get())) {
+      if (!GetPreloadStatus(aHost)) {
         mPreloadStateStorage->Remove(preloadKey,
                                      mozilla::DataStorage_Persistent);
       }
@@ -1528,18 +1524,18 @@ nsSiteSecurityService::HostHasHSTSEntry(
     return false;
   }
 
-  const nsSTSPreload* preload = nullptr;
+  bool includeSubdomains = false;
 
   // Finally look in the static preload list.
   if (siteState->mHSTSState == SecurityPropertyUnset &&
       dynamicState->mHSTSState == SecurityPropertyUnset &&
-      (preload = GetPreloadListEntry(aHost.get())) != nullptr) {
+      GetPreloadStatus(aHost, &includeSubdomains)) {
     SSSLOG(("%s is a preloaded HSTS host", aHost.get()));
-    *aResult = aRequireIncludeSubdomains ? preload->mIncludeSubdomains
+    *aResult = aRequireIncludeSubdomains ? includeSubdomains
                                          : true;
     if (aCached) {
       // Only set cached if this includes subdomains
-      *aCached = aRequireIncludeSubdomains ? preload->mIncludeSubdomains
+      *aCached = aRequireIncludeSubdomains ? includeSubdomains
                                            : true;
     }
     if (aSource) {

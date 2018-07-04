@@ -36,7 +36,7 @@ add_task(async function testDuplicateTab() {
   await extension.unload();
 
   while (gBrowser.tabs[0].linkedBrowser.currentURI.spec === "http://example.net/") {
-    await BrowserTestUtils.removeTab(gBrowser.tabs[0]);
+    BrowserTestUtils.removeTab(gBrowser.tabs[0]);
   }
 });
 
@@ -94,7 +94,7 @@ add_task(async function testDuplicateTabLazily() {
   });
 
   extension.onMessage("duplicate-tab", tabId => {
-    let {Management: {global: {tabTracker}}} = Cu.import("resource://gre/modules/Extension.jsm", {});
+    let {Management: {global: {tabTracker}}} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
 
     let tab = tabTracker.getTab(tabId);
     // This is a bit of a hack to load a tab in the background.
@@ -141,6 +141,6 @@ add_task(async function testDuplicatePinnedTab() {
   await extension.unload();
 
   while (gBrowser.tabs[0].linkedBrowser.currentURI.spec === "http://example.net/") {
-    await BrowserTestUtils.removeTab(gBrowser.tabs[0]);
+    BrowserTestUtils.removeTab(gBrowser.tabs[0]);
   }
 });

@@ -7,23 +7,21 @@
 //! to depend on script.
 
 #![deny(unsafe_code)]
-#![feature(box_syntax)]
-#![feature(nonzero)]
+#![feature(associated_type_defaults)]
 
 extern crate app_units;
 extern crate atomic_refcell;
 extern crate canvas_traits;
-extern crate core;
 extern crate cssparser;
 extern crate euclid;
 extern crate gfx_traits;
-extern crate heapsize;
-#[macro_use] extern crate heapsize_derive;
 #[macro_use] extern crate html5ever;
 extern crate ipc_channel;
 extern crate libc;
 #[macro_use]
 extern crate log;
+extern crate malloc_size_of;
+#[macro_use] extern crate malloc_size_of_derive;
 extern crate metrics;
 extern crate msg;
 extern crate net_traits;
@@ -43,13 +41,13 @@ pub mod rpc;
 pub mod wrapper_traits;
 
 use atomic_refcell::AtomicRefCell;
-use canvas_traits::CanvasMsg;
-use core::nonzero::NonZero;
+use canvas_traits::canvas::{CanvasMsg, CanvasId};
 use ipc_channel::ipc::IpcSender;
 use libc::c_void;
 use net_traits::image_cache::PendingImageId;
 use script_traits::UntrustedNodeAddress;
 use servo_url::ServoUrl;
+use std::ptr::NonNull;
 use std::sync::atomic::AtomicIsize;
 use style::data::ElementData;
 
@@ -74,19 +72,19 @@ impl StyleData {
     }
 }
 
-#[derive(Copy, Clone, HeapSizeOf)]
+#[derive(Clone, Copy, MallocSizeOf)]
 pub struct OpaqueStyleAndLayoutData {
     // NB: We really store a `StyleAndLayoutData` here, so be careful!
-    #[ignore_heap_size_of = "TODO(#6910) Box value that should be counted but \
-                             the type lives in layout"]
-    pub ptr: NonZero<*mut StyleData>
+    #[ignore_malloc_size_of = "TODO(#6910) Box value that should be counted but \
+                               the type lives in layout"]
+    pub ptr: NonNull<StyleData>,
 }
 
 #[allow(unsafe_code)]
 unsafe impl Send for OpaqueStyleAndLayoutData {}
 
 /// Information that we need stored in each DOM node.
-#[derive(HeapSizeOf)]
+#[derive(MallocSizeOf)]
 pub struct DomParallelInfo {
     /// The number of children remaining to process during bottom-up traversal.
     pub children_to_process: AtomicIsize,
@@ -101,20 +99,22 @@ impl DomParallelInfo {
 }
 
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LayoutNodeType {
     Element(LayoutElementType),
     Text,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LayoutElementType {
     Element,
+    HTMLBRElement,
     HTMLCanvasElement,
     HTMLIFrameElement,
     HTMLImageElement,
     HTMLInputElement,
     HTMLObjectElement,
+    HTMLParagraphElement,
     HTMLTableCellElement,
     HTMLTableColElement,
     HTMLTableElement,
@@ -124,10 +124,16 @@ pub enum LayoutElementType {
     SVGSVGElement,
 }
 
+pub enum HTMLCanvasDataSource {
+    WebGL(webrender_api::ImageKey),
+    Image(Option<IpcSender<CanvasMsg>>)
+}
+
 pub struct HTMLCanvasData {
-    pub ipc_renderer: Option<IpcSender<CanvasMsg>>,
+    pub source: HTMLCanvasDataSource,
     pub width: u32,
     pub height: u32,
+    pub canvas_id: CanvasId,
 }
 
 pub struct SVGSVGData {
@@ -136,7 +142,7 @@ pub struct SVGSVGData {
 }
 
 /// The address of a node known to be valid. These are sent from script to layout.
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TrustedNodeAddress(pub *const c_void);
 
 #[allow(unsafe_code)]

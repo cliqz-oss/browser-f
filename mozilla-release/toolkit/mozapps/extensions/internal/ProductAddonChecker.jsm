@@ -6,8 +6,6 @@
 
 /* exported ProductAddonChecker */
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
 const LOCAL_EME_SOURCES = [{
   "id": "gmp-gmpopenh264",
   "src": "chrome://global/content/gmp-sources/openh264.json"
@@ -16,37 +14,35 @@ const LOCAL_EME_SOURCES = [{
   "src": "chrome://global/content/gmp-sources/widevinecdm.json"
 }];
 
-this.EXPORTED_SYMBOLS = [ "ProductAddonChecker" ];
+var EXPORTED_SYMBOLS = [ "ProductAddonChecker" ];
 
 Cu.importGlobalProperties(["XMLHttpRequest"]);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/CertUtils.jsm");
-/* globals checkCert, BadCertHandler*/
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/CertUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 /* globals GMPPrefs */
-XPCOMUtils.defineLazyModuleGetter(this, "GMPPrefs",
-                                  "resource://gre/modules/GMPUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "GMPPrefs",
+                               "resource://gre/modules/GMPUtils.jsm");
 
 /* globals OS */
 
-XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
-                                  "resource://gre/modules/UpdateUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+                               "resource://gre/modules/UpdateUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ServiceRequest",
-                                  "resource://gre/modules/ServiceRequest.jsm");
+ChromeUtils.defineModuleGetter(this, "ServiceRequest",
+                               "resource://gre/modules/ServiceRequest.jsm");
 
 // This exists so that tests can override the XHR behaviour for downloading
 // the addon update XML file.
 var CreateXHR = function() {
-  return Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].
-    createInstance(Ci.nsISupports);
-}
+  return new XMLHttpRequest();
+};
 
 var logger = Log.repository.getLogger("addons.productaddons");
 
@@ -106,7 +102,7 @@ function downloadXML(url, allowNonBuiltIn = false, allowedCerts = null) {
       request = request.wrappedJSObject;
     }
     request.open("GET", url, true);
-    request.channel.notificationCallbacks = new BadCertHandler(allowNonBuiltIn);
+    request.channel.notificationCallbacks = new CertUtils.BadCertHandler(allowNonBuiltIn);
     // Prevent the request from reading from the cache.
     request.channel.loadFlags |= Ci.nsIRequest.LOAD_BYPASS_CACHE;
     // Prevent the request from writing to the cache.
@@ -142,7 +138,7 @@ function downloadXML(url, allowNonBuiltIn = false, allowedCerts = null) {
       let request = event.target;
 
       try {
-        checkCert(request.channel, allowNonBuiltIn, allowedCerts);
+        CertUtils.checkCert(request.channel, allowNonBuiltIn, allowedCerts);
       } catch (ex) {
         logger.error("Request failed certificate checks: " + ex);
         ex.status = getRequestStatus(request);
@@ -455,4 +451,4 @@ const ProductAddonChecker = {
       throw e;
     }
   }
-}
+};

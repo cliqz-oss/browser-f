@@ -16,10 +16,18 @@
 #include "CustomElf.h"
 #include "Mappable.h"
 #include "Logging.h"
+#include "Utils.h"
 #include <inttypes.h>
+
+using namespace mozilla;
+
+// From Utils.h
+Atomic<size_t, ReleaseAcquire> gPageSize;
 
 #if defined(ANDROID)
 #include <sys/syscall.h>
+#include <sys/system_properties.h>
+#include <math.h>
 
 #include <android/api-level.h>
 #if __ANDROID_API__ < 8
@@ -40,11 +48,16 @@ extern "C" MOZ_EXPORT const void *
 __gnu_Unwind_Find_exidx(void *pc, int *pcount) __attribute__((weak));
 #endif
 
+/* Ideally we'd #include <link.h>, but that's a world of pain
+ * Moreover, not all versions of android support it, so we need a weak
+ * reference. */
+extern "C" MOZ_EXPORT int
+dl_iterate_phdr(dl_phdr_cb callback, void *data) __attribute__((weak));
+
 /* Pointer to the PT_DYNAMIC section of the executable or library
  * containing this code. */
 extern "C" Elf::Dyn _DYNAMIC[];
 
-using namespace mozilla;
 
 /**
  * dlfcn.h replacements functions
@@ -78,7 +91,11 @@ __wrap_dlsym(void *handle, const char *symbol)
     LibHandle *h = reinterpret_cast<LibHandle *>(handle);
     return h->GetSymbolPtr(symbol);
   }
-  return dlsym(handle, symbol);
+
+  void* sym = dlsym(handle, symbol);
+  ElfLoader::Singleton.lastError = dlerror();
+
+  return sym;
 }
 
 int
@@ -104,22 +121,36 @@ __wrap_dladdr(void *addr, Dl_info *info)
   return 1;
 }
 
-int
-__wrap_dl_iterate_phdr(dl_phdr_cb callback, void *data)
+class DlIteratePhdrHelper
 {
-  if (!ElfLoader::Singleton.dbg)
-    return -1;
+public:
+  DlIteratePhdrHelper()
+  {
+    int pipefd[2];
+    valid_pipe = (pipe(pipefd) == 0);
+    read_fd.reset(pipefd[0]);
+    write_fd.reset(pipefd[1]);
+  }
 
-  int pipefd[2];
-  bool valid_pipe = (pipe(pipefd) == 0);
-  AutoCloseFD read_fd(pipefd[0]);
-  AutoCloseFD write_fd(pipefd[1]);
+  int fill_and_call(dl_phdr_cb callback, const void* l_addr,
+                    const char* l_name, void* data);
 
-  for (ElfLoader::DebuggerHelper::iterator it = ElfLoader::Singleton.dbg.begin();
-       it < ElfLoader::Singleton.dbg.end(); ++it) {
+private:
+  bool valid_pipe;
+  AutoCloseFD read_fd;
+  AutoCloseFD write_fd;
+};
+
+// This function is called for each shared library iterated over by
+// dl_iterate_phdr, and is used to fill a dl_phdr_info which is then
+// sent through to the dl_iterate_phdr callback.
+int
+DlIteratePhdrHelper::fill_and_call(dl_phdr_cb callback, const void* l_addr,
+                                   const char* l_name, void *data)
+{
     dl_phdr_info info;
-    info.dlpi_addr = reinterpret_cast<Elf::Addr>(it->l_addr);
-    info.dlpi_name = it->l_name;
+    info.dlpi_addr = reinterpret_cast<Elf::Addr>(l_addr);
+    info.dlpi_name = l_name;
     info.dlpi_phdr = nullptr;
     info.dlpi_phnum = 0;
 
@@ -146,7 +177,7 @@ __wrap_dl_iterate_phdr(dl_phdr_cb callback, void *data)
       static_assert(sizeof(raw_ehdr) < PIPE_BUF, "PIPE_BUF is too small");
       do {
         // writes are atomic when smaller than PIPE_BUF, per POSIX.1-2008.
-        ret = write(write_fd, it->l_addr, sizeof(raw_ehdr));
+        ret = write(write_fd, l_addr, sizeof(raw_ehdr));
       } while (ret == -1 && errno == EINTR);
       if (ret != sizeof(raw_ehdr)) {
         if (ret == -1 && errno == EFAULT) {
@@ -171,7 +202,7 @@ __wrap_dl_iterate_phdr(dl_phdr_cb callback, void *data)
     }
 
     if (valid_pipe && can_read) {
-      const Elf::Ehdr *ehdr = Elf::Ehdr::validate(it->l_addr);
+      const Elf::Ehdr *ehdr = Elf::Ehdr::validate(l_addr);
       if (ehdr) {
         info.dlpi_phdr = reinterpret_cast<const Elf::Phdr *>(
                          reinterpret_cast<const char *>(ehdr) + ehdr->e_phoff);
@@ -179,7 +210,40 @@ __wrap_dl_iterate_phdr(dl_phdr_cb callback, void *data)
       }
     }
 
-    int ret = callback(&info, sizeof(dl_phdr_info), data);
+    return callback(&info, sizeof(dl_phdr_info), data);
+}
+
+int
+__wrap_dl_iterate_phdr(dl_phdr_cb callback, void *data)
+{
+  DlIteratePhdrHelper helper;
+  AutoLock lock(&ElfLoader::Singleton.handlesMutex);
+
+  if (dl_iterate_phdr) {
+    for (ElfLoader::LibHandleList::reverse_iterator it =
+	   ElfLoader::Singleton.handles.rbegin();
+	 it < ElfLoader::Singleton.handles.rend(); ++it) {
+      BaseElf* elf = (*it)->AsBaseElf();
+      if (!elf) {
+	continue;
+      }
+      int ret = helper.fill_and_call(callback, (*it)->GetBase(),
+				     (*it)->GetPath(), data);
+      if (ret)
+        return ret;
+    }
+    return dl_iterate_phdr(callback, data);
+  }
+
+  /* For versions of Android that don't support dl_iterate_phdr (< 5.0),
+   * we go through the debugger helper data, which is known to be racy, but
+   * there's not much we can do about this :( . */
+  if (!ElfLoader::Singleton.dbg)
+    return -1;
+
+  for (ElfLoader::DebuggerHelper::iterator it = ElfLoader::Singleton.dbg.begin();
+       it < ElfLoader::Singleton.dbg.end(); ++it) {
+    int ret = helper.fill_and_call(callback, it->l_addr, it->l_name, data);
     if (ret)
       return ret;
   }
@@ -248,6 +312,56 @@ LeafName(const char *path)
   return path;
 }
 
+#if defined(ANDROID)
+/**
+ * Return the current Android version, or 0 on failure.
+ */
+int
+GetAndroidSDKVersion() {
+  static int version = 0;
+  if (version) {
+    return version;
+  }
+
+  char version_string[PROP_VALUE_MAX] = {'\0'};
+  int len = __system_property_get("ro.build.version.sdk", version_string);
+  if (len) {
+    version = static_cast<int>(strtol(version_string, nullptr, 10));
+  }
+  return version;
+}
+#endif
+
+/**
+ * Run the given lambda while holding the internal lock of the system linker.
+ * To take the lock, we call the system dl_iterate_phdr and invoke the lambda
+ * from the callback, which is called while the lock is held. Return true on
+ * success.
+ */
+template<class Lambda>
+static bool
+RunWithSystemLinkerLock(Lambda&& aLambda) {
+  if (!dl_iterate_phdr) {
+    // No dl_iterate_phdr support.
+    return false;
+  }
+
+#if defined(ANDROID)
+  if (GetAndroidSDKVersion() < 23) {
+    // dl_iterate_phdr is _not_ protected by a lock on Android < 23.
+    // Also return false here if we failed to get the version.
+    return false;
+  }
+#endif
+
+  dl_iterate_phdr([] (dl_phdr_info*, size_t, void* lambda) -> int {
+    (*static_cast<Lambda*>(lambda))();
+    // Return 1 to stop iterating.
+    return 1;
+  }, &aLambda);
+  return true;
+}
+
 } /* Anonymous namespace */
 
 /**
@@ -302,6 +416,7 @@ SystemElf::Load(const char *path, int flags)
    * already loaded library, even when the full path doesn't exist */
   if (path && path[0] == '/' && (access(path, F_OK) == -1)){
     DEBUG_LOG("dlopen(\"%s\", 0x%x) = %p", path, flags, (void *)nullptr);
+    ElfLoader::Singleton.lastError = "Specified file does not exist";
     return nullptr;
   }
 
@@ -512,7 +627,9 @@ ElfLoader::Register(CustomElf *handle)
 {
   Register(static_cast<LibHandle *>(handle));
   if (dbg) {
-    dbg.Add(handle);
+    // We could race with the system linker when modifying the debug map, so
+    // only do so while holding the system linker's internal lock.
+    RunWithSystemLinkerLock([this, handle] { dbg.Add(handle); });
   }
 }
 
@@ -539,7 +656,9 @@ ElfLoader::Forget(CustomElf *handle)
 {
   Forget(static_cast<LibHandle *>(handle));
   if (dbg) {
-    dbg.Remove(handle);
+    // We could race with the system linker when modifying the debug map, so
+    // only do so while holding the system linker's internal lock.
+    RunWithSystemLinkerLock([this, handle] { dbg.Remove(handle); });
   }
 }
 
@@ -557,6 +676,9 @@ ElfLoader::Init()
   if (dladdr(FunctionPtr(syscall), &info) != 0) {
     libc = LoadedElf::Create(info.dli_fname, info.dli_fbase);
   }
+  if (dladdr(FunctionPtr<int (*)(double)>(isnan), &info) != 0) {
+    libm = LoadedElf::Create(info.dli_fname, info.dli_fbase);
+  }
 #endif
 }
 
@@ -572,6 +694,7 @@ ElfLoader::~ElfLoader()
   self_elf = nullptr;
 #if defined(ANDROID)
   libc = nullptr;
+  libm = nullptr;
 #endif
 
   AutoLock lock(&handlesMutex);
@@ -820,7 +943,7 @@ class EnsureWritable
 {
 public:
   template <typename T>
-  EnsureWritable(T *ptr, size_t length_ = sizeof(T))
+  explicit EnsureWritable(T *ptr, size_t length_ = sizeof(T))
   {
     MOZ_ASSERT(length_ < PageSize());
     prot = -1;
@@ -836,16 +959,28 @@ public:
     if (prot == -1 || (start + length) > end)
       MOZ_CRASH();
 
-    if (prot & PROT_WRITE)
+    if (prot & PROT_WRITE) {
+      success = true;
       return;
+    }
 
     page = firstPage;
-    mprotect(page, length, prot | PROT_WRITE);
+    int ret = mprotect(page, length, prot | PROT_WRITE);
+    success = ret == 0;
+    if (!success) {
+      ERROR("mprotect(%p, %zu, %d) = %d (errno=%d; %s)",
+            page, length, prot | PROT_WRITE, ret,
+            errno, strerror(errno));
+    }
+  }
+
+  bool IsWritable() const {
+    return success;
   }
 
   ~EnsureWritable()
   {
-    if (page != MAP_FAILED) {
+    if (success && page != MAP_FAILED) {
       mprotect(page, length, prot);
 }
   }
@@ -885,6 +1020,7 @@ private:
   int prot;
   void *page;
   size_t length;
+  bool success;
 };
 
 /**
@@ -908,18 +1044,28 @@ ElfLoader::DebuggerHelper::Add(ElfLoader::link_map *map)
 {
   if (!dbg->r_brk)
     return;
+
   dbg->r_state = r_debug::RT_ADD;
   dbg->r_brk();
-  map->l_prev = nullptr;
-  map->l_next = dbg->r_map;
+
   if (!firstAdded) {
-    firstAdded = map;
     /* When adding a library for the first time, r_map points to data
      * handled by the system linker, and that data may be read-only */
     EnsureWritable w(&dbg->r_map->l_prev);
+    if (!w.IsWritable()) {
+      dbg->r_state = r_debug::RT_CONSISTENT;
+      dbg->r_brk();
+      return;
+    }
+
+    firstAdded = map;
     dbg->r_map->l_prev = map;
   } else
     dbg->r_map->l_prev = map;
+
+  map->l_prev = nullptr;
+  map->l_next = dbg->r_map;
+
   dbg->r_map = map;
   dbg->r_state = r_debug::RT_CONSISTENT;
   dbg->r_brk();
@@ -930,21 +1076,30 @@ ElfLoader::DebuggerHelper::Remove(ElfLoader::link_map *map)
 {
   if (!dbg->r_brk)
     return;
+
   dbg->r_state = r_debug::RT_DELETE;
   dbg->r_brk();
+
+  if (map == firstAdded) {
+    /* When removing the first added library, its l_next is going to be
+     * data handled by the system linker, and that data may be read-only */
+    EnsureWritable w(&map->l_next->l_prev);
+    if (!w.IsWritable()) {
+      dbg->r_state = r_debug::RT_CONSISTENT;
+      dbg->r_brk();
+      return;
+    }
+
+    firstAdded = map->l_prev;
+    map->l_next->l_prev = map->l_prev;
+  } else if (map->l_next) {
+    map->l_next->l_prev = map->l_prev;
+  }
+
   if (dbg->r_map == map)
     dbg->r_map = map->l_next;
   else if (map->l_prev) {
     map->l_prev->l_next = map->l_next;
-  }
-  if (map == firstAdded) {
-    firstAdded = map->l_prev;
-    /* When removing the first added library, its l_next is going to be
-     * data handled by the system linker, and that data may be read-only */
-    EnsureWritable w(&map->l_next->l_prev);
-    map->l_next->l_prev = map->l_prev;
-  } else if (map->l_next) {
-    map->l_next->l_prev = map->l_prev;
   }
   dbg->r_state = r_debug::RT_CONSISTENT;
   dbg->r_brk();

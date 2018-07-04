@@ -9,22 +9,17 @@
 
 #include "mozilla/Attributes.h"
 #include "nsGenericHTMLElement.h"
-#include "nsIDOMHTMLMetaElement.h"
 
 namespace mozilla {
 namespace dom {
 
-class HTMLMetaElement final : public nsGenericHTMLElement,
-                              public nsIDOMHTMLMetaElement
+class HTMLMetaElement final : public nsGenericHTMLElement
 {
 public:
   explicit HTMLMetaElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
   // nsISupports
-  NS_DECL_ISUPPORTS_INHERITED
-
-  // nsIDOMHTMLMetaElement
-  NS_DECL_NSIDOMHTMLMETAELEMENT
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLMetaElement, nsGenericHTMLElement)
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent,
@@ -32,9 +27,10 @@ public:
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;
 
-  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
 
   void CreateAndDispatchEvent(nsIDocument* aDoc, const nsAString& aEventName);
@@ -42,22 +38,34 @@ public:
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;
 
-  // XPCOM GetName is fine.
+  void GetName(nsAString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::name, aValue);
+  }
   void SetName(const nsAString& aName, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::name, aName, aRv);
   }
-  // XPCOM GetHttpEquiv is fine.
+  void GetHttpEquiv(nsAString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::httpEquiv, aValue);
+  }
   void SetHttpEquiv(const nsAString& aHttpEquiv, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::httpEquiv, aHttpEquiv, aRv);
   }
-  // XPCOM GetContent is fine.
+  void GetContent(nsAString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::content, aValue);
+  }
   void SetContent(const nsAString& aContent, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::content, aContent, aRv);
   }
-  // XPCOM GetScheme is fine.
+  void GetScheme(nsAString& aValue)
+  {
+    GetHTMLAttr(nsGkAtoms::scheme, aValue);
+  }
   void SetScheme(const nsAString& aScheme, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::scheme, aScheme, aRv);
@@ -69,7 +77,7 @@ protected:
   virtual ~HTMLMetaElement();
 
 private:
-  nsresult SetMetaReferrer(nsIDocument* aDocument);
+  void SetMetaReferrer(nsIDocument* aDocument);
 };
 
 } // namespace dom

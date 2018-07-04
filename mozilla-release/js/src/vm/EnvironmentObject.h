@@ -7,15 +7,14 @@
 #ifndef vm_EnvironmentObject_h
 #define vm_EnvironmentObject_h
 
-#include "jscntxt.h"
-#include "jsobj.h"
-#include "jsweakmap.h"
-
 #include "builtin/ModuleObject.h"
 #include "frontend/NameAnalysisTypes.h"
 #include "gc/Barrier.h"
+#include "gc/WeakMap.h"
 #include "js/GCHashTable.h"
 #include "vm/ArgumentsObject.h"
+#include "vm/JSContext.h"
+#include "vm/JSObject.h"
 #include "vm/ProxyObject.h"
 #include "vm/Scope.h"
 
@@ -179,33 +178,51 @@ EnvironmentCoordinateFunctionScript(JSScript* script, jsbytecode* pc);
  *
  * A. Component loading
  *
- * Components may be loaded in "reuse loader global" mode, where to save on
- * memory, all JSMs and JS-implemented XPCOM modules are loaded into a single
- * global. Each individual JSMs are compiled as functions with their own
- * FakeBackstagePass. They have the following env chain:
+ * Components may be loaded in a shared global mode where most JSMs share a
+ * single global in order to save on memory and avoid CCWs. To support this, a
+ * NonSyntacticVariablesObject is used for each JSM to provide a basic form of
+ * isolation. They have the following env chain:
  *
  *   BackstagePass global
  *       |
- *   Global lexical scope
+ *   LexicalEnvironmentObject[this=global]
  *       |
- *   WithEnvironmentObject wrapping FakeBackstagePass
+ *   NonSyntacticVariablesObject
  *       |
- *   LexicalEnvironmentObject
+ *   LexicalEnvironmentObject[this=nsvo]
  *
- * B. Subscript loading
+ * B.1 Subscript loading
  *
- * Subscripts may be loaded into a target object. They have the following
- * env chain:
+ * Subscripts may be loaded into a target object and it's associated global.
+ * They have the following env chain:
  *
- *   Loader global
+ *   Target object's global
  *       |
- *   Global lexical scope
+ *   LexicalEnvironmentObject[this=global]
  *       |
  *   WithEnvironmentObject wrapping target
  *       |
- *   LexicalEnvironmentObject
+ *   LexicalEnvironmentObject[this=target]
  *
- * C. Frame scripts
+ * B.2 Subscript loading (Shared-global JSM)
+ *
+ * The target object of a subscript load may be in a JSM with a shared global,
+ * in which case we will also have the NonSyntacticVariablesObject on the
+ * chain.
+ *
+ *   Target object's global
+ *       |
+ *   LexicalEnvironmentObject[this=global]
+ *       |
+ *   NonSyntacticVariablesObject
+ *       |
+ *   LexicalEnvironmentObject[this=nsvo]
+ *       |
+ *   WithEnvironmentObject wrapping target
+ *       |
+ *   LexicalEnvironmentObject[this=target]
+ *
+ * D. Frame scripts
  *
  * XUL frame scripts are always loaded with a NonSyntacticVariablesObject as a
  * "polluting global". This is done exclusively in
@@ -213,23 +230,21 @@ EnvironmentCoordinateFunctionScript(JSScript* script, jsbytecode* pc);
  *
  *   Loader global
  *       |
- *   Global lexical scope
+ *   LexicalEnvironmentObject[this=global]
  *       |
  *   NonSyntacticVariablesObject
  *       |
- *   LexicalEnvironmentObject
+ *   LexicalEnvironmentObject[this=global]
  *
  * D. XBL and DOM event handlers
  *
  * XBL methods are compiled as functions with XUL elements on the env chain,
  * and DOM event handlers are compiled as functions with HTML elements on the
- * env chain. For a chain of elements e0,...,eN:
+ * env chain. For a chain of elements e0,e1,...:
  *
  *      ...
  *       |
- *   WithEnvironmentObject wrapping eN
- *       |
- *      ...
+ *   WithEnvironmentObject wrapping e1
  *       |
  *   WithEnvironmentObject wrapping e0
  *       |
@@ -427,6 +442,28 @@ typedef Rooted<ModuleEnvironmentObject*> RootedModuleEnvironmentObject;
 typedef Handle<ModuleEnvironmentObject*> HandleModuleEnvironmentObject;
 typedef MutableHandle<ModuleEnvironmentObject*> MutableHandleModuleEnvironmentObject;
 
+class WasmInstanceEnvironmentObject : public EnvironmentObject
+{
+    // Currently WasmInstanceScopes do not use their scopes in a
+    // meaningful way. However, it is an invariant of DebugEnvironments that
+    // environments kept in those maps have live scopes, thus this strong
+    // reference.
+    static const uint32_t SCOPE_SLOT = 1;
+
+  public:
+    static const Class class_;
+
+    static const uint32_t RESERVED_SLOTS = 2;
+
+    static WasmInstanceEnvironmentObject* createHollowForDebug(JSContext* cx,
+                                                               Handle<WasmInstanceScope*> scope);
+    WasmInstanceScope& scope() const {
+        Value v = getReservedSlot(SCOPE_SLOT);
+        MOZ_ASSERT(v.isPrivateGCThing());
+        return *static_cast<WasmInstanceScope*>(v.toGCThing());
+    }
+};
+
 class WasmFunctionCallObject : public EnvironmentObject
 {
     // Currently WasmFunctionCallObjects do not use their scopes in a
@@ -440,7 +477,7 @@ class WasmFunctionCallObject : public EnvironmentObject
 
     static const uint32_t RESERVED_SLOTS = 2;
 
-    static WasmFunctionCallObject* createHollowForDebug(JSContext* cx,
+    static WasmFunctionCallObject* createHollowForDebug(JSContext* cx, HandleObject enclosing,
                                                         Handle<WasmFunctionScope*> scope);
     WasmFunctionScope& scope() const {
         Value v = getReservedSlot(SCOPE_SLOT);
@@ -488,7 +525,8 @@ class LexicalEnvironmentObject : public EnvironmentObject
     static LexicalEnvironmentObject* create(JSContext* cx, Handle<LexicalScope*> scope,
                                             AbstractFramePtr frame);
     static LexicalEnvironmentObject* createGlobal(JSContext* cx, Handle<GlobalObject*> global);
-    static LexicalEnvironmentObject* createNonSyntactic(JSContext* cx, HandleObject enclosing);
+    static LexicalEnvironmentObject* createNonSyntactic(JSContext* cx, HandleObject enclosing,
+                                                        HandleObject thisv);
     static LexicalEnvironmentObject* createHollowForDebug(JSContext* cx,
                                                           Handle<LexicalScope*> scope);
 
@@ -885,6 +923,9 @@ class DebugEnvironmentProxy : public ProxyObject
     static DebugEnvironmentProxy* create(JSContext* cx, EnvironmentObject& env,
                                          HandleObject enclosing);
 
+    // NOTE: The environment may be a debug hollow with invalid
+    // enclosingEnvironment. Always use the enclosingEnvironment accessor on
+    // the DebugEnvironmentProxy in order to walk the environment chain.
     EnvironmentObject& environment() const;
     JSObject& enclosingEnvironment() const;
 
@@ -902,7 +943,7 @@ class DebugEnvironmentProxy : public ProxyObject
                                       HandleId id, MutableHandleValue vp);
 
     // Returns true iff this is a function environment with its own this-binding
-    // (all functions except arrow functions and generator expression lambdas).
+    // (all functions except arrow functions).
     bool isFunctionEnvironmentWithThis();
 
     // Does this debug environment not have a real counterpart or was never
@@ -926,7 +967,7 @@ class DebugEnvironments
     typedef HashMap<MissingEnvironmentKey,
                     ReadBarrieredDebugEnvironmentProxy,
                     MissingEnvironmentKey,
-                    RuntimeAllocPolicy> MissingEnvironmentMap;
+                    ZoneAllocPolicy> MissingEnvironmentMap;
     MissingEnvironmentMap missingEnvs;
 
     /*
@@ -940,7 +981,7 @@ class DebugEnvironments
     typedef GCHashMap<ReadBarriered<JSObject*>,
                       LiveEnvironmentVal,
                       MovableCellHasher<ReadBarriered<JSObject*>>,
-                      RuntimeAllocPolicy> LiveEnvironmentMap;
+                      ZoneAllocPolicy> LiveEnvironmentMap;
     LiveEnvironmentMap liveEnvs;
 
   public:
@@ -959,10 +1000,10 @@ class DebugEnvironments
 
   public:
     void trace(JSTracer* trc);
-    void sweep(JSRuntime* rt);
+    void sweep();
     void finish();
 #ifdef JS_GC_ZEAL
-    void checkHashTablesAfterMovingGC(JSRuntime* rt);
+    void checkHashTablesAfterMovingGC();
 #endif
 
     // If a live frame has a synthesized entry in missingEnvs, make sure it's not
@@ -1015,6 +1056,7 @@ JSObject::is<js::EnvironmentObject>() const
     return is<js::CallObject>() ||
            is<js::VarEnvironmentObject>() ||
            is<js::ModuleEnvironmentObject>() ||
+           is<js::WasmInstanceEnvironmentObject>() ||
            is<js::WasmFunctionCallObject>() ||
            is<js::LexicalEnvironmentObject>() ||
            is<js::WithEnvironmentObject>() ||
@@ -1058,6 +1100,14 @@ IsGlobalLexicalEnvironment(JSObject* env)
 {
     return env->is<LexicalEnvironmentObject>() &&
            env->as<LexicalEnvironmentObject>().isGlobal();
+}
+
+inline bool
+IsNSVOLexicalEnvironment(JSObject* env)
+{
+    return env->is<LexicalEnvironmentObject>() &&
+           env->as<LexicalEnvironmentObject>().enclosingEnvironment()
+                                              .is<NonSyntacticVariablesObject>();
 }
 
 inline JSObject*

@@ -19,7 +19,6 @@ XPIDL_SOURCES += [
     'nsIInputStreamTee.idl',
     'nsIIOUtil.idl',
     'nsILineInputStream.idl',
-    'nsILocalFile.idl',
     'nsILocalFileWin.idl',
     'nsIMultiplexInputStream.idl',
     'nsIObjectInputStream.idl',
@@ -79,12 +78,14 @@ EXPORTS += [
     'nsStringStream.h',
     'nsUnicharInputStream.h',
     'nsWildCard.h',
-    'SlicedInputStream.h',
     'SpecialSystemDirectory.h',
 ]
 
 EXPORTS.mozilla += [
     'Base64.h',
+    'FilePreferences.h',
+    'NonBlockingAsyncInputStream.h',
+    'SlicedInputStream.h',
     'SnappyCompressOutputStream.h',
     'SnappyFrameUtils.h',
     'SnappyUncompressInputStream.h',
@@ -94,10 +95,11 @@ UNIFIED_SOURCES += [
     'Base64.cpp',
     'crc32c.c',
     'FileDescriptorFile.cpp',
+    'FilePreferences.cpp',
+    'NonBlockingAsyncInputStream.cpp',
     'nsAnonymousTemporaryFile.cpp',
     'nsAppFileLocationProvider.cpp',
     'nsBinaryStream.cpp',
-    'nsDirectoryService.cpp',
     'nsEscape.cpp',
     'nsInputStreamTee.cpp',
     'nsIOUtil.cpp',
@@ -121,6 +123,13 @@ UNIFIED_SOURCES += [
     'SpecialSystemDirectory.cpp',
 ]
 
+SOURCES += [
+    'nsDirectoryService.cpp',
+]
+if CONFIG['CC_TYPE'] == 'msvc':
+    # Needed for gDirectoryAtoms.
+    SOURCES['nsDirectoryService.cpp'].flags += ['-Zc:externConstexpr']
+
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     SOURCES += [
         'CocoaFileUtils.mm',
@@ -133,9 +142,12 @@ FINAL_LIBRARY = 'xul'
 if CONFIG['OS_ARCH'] == 'Linux' and 'lib64' in CONFIG['libdir']:
     DEFINES['HAVE_USR_LIB64_DIR'] = True
 
-LOCAL_INCLUDES += ['!..']
+LOCAL_INCLUDES += [
+    '!..',
+    '../build',
+]
 
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     # This is intended as a temporary hack to support building with VS2015.
     # '_snwprintf' : format string '%s' requires an argument of type 'wchar_t *',
     # but variadic argument 3 has type 'char16ptr_t'

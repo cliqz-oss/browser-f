@@ -16,14 +16,17 @@ namespace mozilla {
 
 class OggTrackDemuxer;
 
-class OggDemuxer : public MediaDataDemuxer
+DDLoggedTypeDeclNameAndBase(OggDemuxer, MediaDataDemuxer);
+DDLoggedTypeNameAndBase(OggTrackDemuxer, MediaTrackDemuxer);
+
+class OggDemuxer
+  : public MediaDataDemuxer
+  , public DecoderDoctorLifeLogger<OggDemuxer>
 {
 public:
   explicit OggDemuxer(MediaResource* aResource);
 
   RefPtr<InitPromise> Init() override;
-
-  bool HasTrackType(TrackInfo::TrackType aType) const override;
 
   uint32_t GetNumberTracks(TrackInfo::TrackType aType) const override;
 
@@ -309,7 +312,7 @@ private:
 
   // The picture region inside Theora frame to be displayed, if we have
   // a Theora video track.
-  nsIntRect mPicture;
+  gfx::IntRect mPicture;
 
   // True if we are decoding a chained ogg.
   bool mIsChained;
@@ -331,7 +334,9 @@ private:
   friend class OggTrackDemuxer;
 };
 
-class OggTrackDemuxer : public MediaTrackDemuxer
+class OggTrackDemuxer
+  : public MediaTrackDemuxer
+  , public DecoderDoctorLifeLogger<OggTrackDemuxer>
 {
 public:
   OggTrackDemuxer(OggDemuxer* aParent,

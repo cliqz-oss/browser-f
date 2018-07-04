@@ -32,7 +32,7 @@ namespace mozilla { namespace net {
 
 extern LazyLogModule gHttpLog;
 
-class nsHttpConnectionInfo: public ARefBase
+class nsHttpConnectionInfo final : public ARefBase
 {
 public:
     nsHttpConnectionInfo(const nsACString &originHost,
@@ -122,6 +122,9 @@ public:
                                             { mHashKey.SetCharAt(aBeConservative ? 'C' : '.', 6); }
     bool          GetBeConservative() const { return mHashKey.CharAt(6) == 'C'; }
 
+    void          SetTlsFlags(uint32_t aTlsFlags);
+    uint32_t      GetTlsFlags() const { return mTlsFlags; }
+
     const nsCString &GetNetworkInterfaceId() const { return mNetworkInterfaceId; }
 
     const nsCString &GetNPNToken() { return mNPNToken; }
@@ -176,8 +179,10 @@ private:
     nsCString              mNPNToken;
     OriginAttributes       mOriginAttributes;
 
+    uint32_t               mTlsFlags;
+
 // for RefPtr
-    NS_INLINE_DECL_THREADSAFE_REFCOUNTING(nsHttpConnectionInfo)
+    NS_INLINE_DECL_THREADSAFE_REFCOUNTING(nsHttpConnectionInfo, override)
 };
 
 } // namespace net

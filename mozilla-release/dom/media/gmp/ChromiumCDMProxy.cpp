@@ -5,10 +5,15 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "ChromiumCDMProxy.h"
+#include "ChromiumCDMCallbackProxy.h"
+#include "MediaResult.h"
 #include "mozilla/dom/MediaKeySession.h"
 #include "GMPUtils.h"
 #include "nsPrintfCString.h"
 #include "GMPService.h"
+#include "content_decryption_module.h"
+
+#define NS_DispatchToMainThread(...) CompileError_UseAbstractMainThreadInstead
 
 namespace mozilla {
 
@@ -94,12 +99,15 @@ ChromiumCDMProxy::Init(PromiseId aPromiseId,
         thread,
         __func__,
         [self, aPromiseId](RefPtr<gmp::ChromiumCDMParent> cdm) {
-          if (!cdm->Init(self,
+          self->mCallback =
+            MakeUnique<ChromiumCDMCallbackProxy>(self, self->mMainThread);
+          nsCString failureReason;
+          if (!cdm->Init(self->mCallback.get(),
                          self->mDistinctiveIdentifierRequired,
-                         self->mPersistentStateRequired)) {
-            self->RejectPromise(aPromiseId,
-                                NS_ERROR_FAILURE,
-                                NS_LITERAL_CSTRING("GetCDM failed."));
+                         self->mPersistentStateRequired,
+                         self->mMainThread,
+                         failureReason)) {
+            self->RejectPromise(aPromiseId, NS_ERROR_FAILURE, failureReason);
             return;
           }
           {
@@ -108,9 +116,9 @@ ChromiumCDMProxy::Init(PromiseId aPromiseId,
           }
           self->OnCDMCreated(aPromiseId);
         },
-        [self, aPromiseId](nsresult rv) {
+        [self, aPromiseId](MediaResult rv) {
           self->RejectPromise(
-            aPromiseId, NS_ERROR_FAILURE, NS_LITERAL_CSTRING("GetCDM failed."));
+            aPromiseId, rv.Code(), rv.Description());
         });
     }));
 
@@ -380,15 +388,15 @@ ChromiumCDMProxy::RejectPromise(PromiseId aId,
                                 const nsCString& aReason)
 {
   if (!NS_IsMainThread()) {
-    nsCOMPtr<nsIRunnable> task;
-    task = NewRunnableMethod<PromiseId, nsresult, nsCString>(
-      "ChromiumCDMProxy::RejectPromise",
-      this,
-      &ChromiumCDMProxy::RejectPromise,
-      aId,
-      aCode,
-      aReason);
-    NS_DispatchToMainThread(task);
+    mMainThread->Dispatch(
+        NewRunnableMethod<PromiseId, nsresult, nsCString>(
+            "ChromiumCDMProxy::RejectPromise",
+            this,
+            &ChromiumCDMProxy::RejectPromise,
+            aId,
+            aCode,
+            aReason),
+        NS_DISPATCH_NORMAL);
     return;
   }
   EME_LOG("ChromiumCDMProxy::RejectPromise(pid=%u, code=0x%x, reason='%s')",
@@ -404,12 +412,12 @@ void
 ChromiumCDMProxy::ResolvePromise(PromiseId aId)
 {
   if (!NS_IsMainThread()) {
-    nsCOMPtr<nsIRunnable> task;
-    task = NewRunnableMethod<PromiseId>("ChromiumCDMProxy::ResolvePromise",
-                                        this,
-                                        &ChromiumCDMProxy::ResolvePromise,
-                                        aId);
-    NS_DispatchToMainThread(task);
+    mMainThread->Dispatch(
+        NewRunnableMethod<PromiseId>("ChromiumCDMProxy::ResolvePromise",
+                                     this,
+                                     &ChromiumCDMProxy::ResolvePromise,
+                                     aId),
+        NS_DISPATCH_NORMAL);
     return;
   }
 
@@ -458,9 +466,20 @@ ChromiumCDMProxy::OnResolveLoadSessionPromise(uint32_t aPromiseId,
 }
 
 void
+ChromiumCDMProxy::OnResolvePromiseWithKeyStatus(uint32_t aPromiseId,
+                                                dom::MediaKeyStatus aKeyStatus)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (mKeys.IsNull()) {
+    return;
+  }
+  mKeys->ResolvePromiseWithKeyStatus(aPromiseId, aKeyStatus);
+}
+
+void
 ChromiumCDMProxy::OnSessionMessage(const nsAString& aSessionId,
                                    dom::MediaKeyMessageType aMessageType,
-                                   nsTArray<uint8_t>& aMessage)
+                                   const nsTArray<uint8_t>& aMessage)
 {
   MOZ_ASSERT(NS_IsMainThread());
   if (mKeys.IsNull()) {
@@ -487,7 +506,7 @@ ChromiumCDMProxy::OnKeyStatusesChange(const nsAString& aSessionId)
 
 void
 ChromiumCDMProxy::OnExpirationChange(const nsAString& aSessionId,
-                                     GMPTimestamp aExpiryTime)
+                                     UnixTime aExpiryTime)
 {
   MOZ_ASSERT(NS_IsMainThread());
   if (mKeys.IsNull()) {
@@ -509,8 +528,8 @@ ChromiumCDMProxy::OnSessionClosed(const nsAString& aSessionId)
 
   bool keyStatusesChange = false;
   {
-    CDMCaps::AutoLock caps(Capabilites());
-    keyStatusesChange = caps.RemoveKeysForSession(nsString(aSessionId));
+    auto caps = Capabilites().Lock();
+    keyStatusesChange = caps->RemoveKeysForSession(nsString(aSessionId));
   }
   if (keyStatusesChange) {
     OnKeyStatusesChange(aSessionId);
@@ -563,7 +582,7 @@ ChromiumCDMProxy::KeySystem() const
   return mKeySystem;
 }
 
-CDMCaps&
+DataMutex<CDMCaps>&
 ChromiumCDMProxy::Capabilites()
 {
   return mCapabilites;
@@ -583,11 +602,28 @@ ChromiumCDMProxy::Decrypt(MediaRawData* aSample)
 }
 
 void
-ChromiumCDMProxy::GetSessionIdsForKeyId(const nsTArray<uint8_t>& aKeyId,
-                                        nsTArray<nsCString>& aSessionIds)
+ChromiumCDMProxy::GetStatusForPolicy(PromiseId aPromiseId,
+                                     const nsAString& aMinHdcpVersion)
 {
-  CDMCaps::AutoLock caps(Capabilites());
-  caps.GetSessionIdsForKeyId(aKeyId, aSessionIds);
+  MOZ_ASSERT(NS_IsMainThread());
+  EME_LOG("ChromiumCDMProxy::GetStatusForPolicy(pid=%u) minHdcpVersion=%s",
+          aPromiseId,
+          NS_ConvertUTF16toUTF8(aMinHdcpVersion).get());
+
+  RefPtr<gmp::ChromiumCDMParent> cdm = GetCDMParent();
+  if (!cdm) {
+    RejectPromise(aPromiseId,
+                  NS_ERROR_DOM_INVALID_STATE_ERR,
+                  NS_LITERAL_CSTRING("Null CDM in GetStatusForPolicy"));
+    return;
+  }
+
+  mGMPThread->Dispatch(NewRunnableMethod<uint32_t, nsCString>(
+    "gmp::ChromiumCDMParent::GetStatusForPolicy",
+    cdm,
+    &gmp::ChromiumCDMParent::GetStatusForPolicy,
+    aPromiseId,
+    NS_ConvertUTF16toUTF8(aMinHdcpVersion)));
 }
 
 void
@@ -607,3 +643,5 @@ ChromiumCDMProxy::GetCDMParent()
 }
 
 } // namespace mozilla
+
+#undef NS_DispatchToMainThread

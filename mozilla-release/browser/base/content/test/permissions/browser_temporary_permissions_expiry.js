@@ -1,10 +1,15 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 "use strict";
 
 const ORIGIN = "https://example.com";
 const PERMISSIONS_PAGE = getRootDirectory(gTestPath).replace("chrome://mochitests/content", ORIGIN) + "permissions.html";
+
+// Ignore promise rejection caused by clicking Deny button.
+const { PromiseTestUtils } = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", {});
+PromiseTestUtils.whitelistRejectionsGlobally(/The request is not allowed/);
 
 const EXPIRE_TIME_MS = 100;
 const TIMEOUT_MS = 500;

@@ -21,9 +21,8 @@ class BaselineCompilerShared
     JSContext* cx;
     JSScript* script;
     jsbytecode* pc;
-    MacroAssembler masm;
+    StackMacroAssembler masm;
     bool ionCompileable_;
-    bool ionOSRCompileable_;
     bool compileDebugInstrumentation_;
 
     TempAllocator& alloc_;

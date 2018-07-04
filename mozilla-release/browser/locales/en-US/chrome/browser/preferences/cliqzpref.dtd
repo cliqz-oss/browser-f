@@ -1,0 +1,78 @@
+<!ENTITY  paneConnect.title             "Connect">
+<!ENTITY  mozillaSupportHelp.label      "Visit Mozilla Support">
+
+<!-- In Cliqz browser use Mozilla Support for preferences page -->
+<!ENTITY  helpButton2.label        "Mozilla Support">
+
+<!ENTITY  trackingProtectionPrivate.label      "Only in forget mode">
+<!ENTITY  doNotTrackHeader.label        "Do Not Track">
+<!ENTITY  dontrememberDescription.label  "&brandShortName; will use the same settings as forget mode, and will not remember any history as you browse the Web.">
+<!ENTITY  privateBrowsingPermanent2.label "Always use forget mode">
+<!ENTITY  privateBrowsingPermanent2.accesskey "m">
+
+<!ENTITY  a11yPrivacy.checkbox.label     "Prevent accessibility services from accessing your browser">
+<!ENTITY  a11yPrivacy.checkbox.accesskey "a">
+<!ENTITY  a11yPrivacy.learnmore.label    "Learn more">
+<!ENTITY enableSafeBrowsingLearnMore.label "Learn more">
+
+<!-- Forget mode -->
+<!ENTITY  forgetMode.caption "Forget Mode">
+<!ENTITY  forgetMode.enableCheckboxLabel "Enable automatic forget mode">
+<!ENTITY  forgetMode.explanation1 "Automatic forget mode will automatically open websites with adult content inside a forget tab, so that these websites will not be saved in your history and temporary web files including cookies will not be stored.">
+<!ENTITY  forgetMode.explanation2 "Via the tab context menu, you can select whether a website should be opened in forget mode automatically or not. The tab context menu can be opened by right-clicking on the respective tab.">
+<!ENTITY  forgetMode.learnMore "Learn more">
+
+<!-- Cliqz addition -->
+<!ENTITY  cliqzFirefoxPrivacy.label "Parts of the Cliqz Browser are building upon the <label class='text-link' href='https://www.mozilla.org/en-US/'>Mozilla open source project</label>. The <label class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'>Firefox Privacy Notice</label> applies, unless otherwise stated in the Cliqz <label class='text-link' href='https://cliqz.com/en/privacy-browser'>Privacy Statement</label>.">
+
+<!ENTITY defaultSearchEngine.label             "Complementary search engine">
+<!ENTITY chooseYourDefaultSearchEngine2.label  "Choose your backup search engine. If you are not happy with &brandShortName;’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.">
+<!ENTITY showURLBarSuggestions2.label          "Show search suggestions in address bar results">
+<!ENTITY showURLBarSuggestions2.accesskey      "l">
+<!ENTITY oneClickSearchEngines.label           "Direct searches">
+<!ENTITY chooseWhichOneToDisplay2.label        "Put the key in front of your query to directly use a search engine, e.g. to find a specific location directly, type in #gm + your query and hit enter">
+<!ENTITY findMoreSearchEnginesDesc.label       "Cliqz supports most search engines of the official Mozilla Firefox repository.">
+<!ENTITY rememberLogins2.hint          "To enable this feature please make sure Cliqz will remember your <label class='text-link' id='jumpToHistory'>History</label>.">
+
+<!ENTITY  httpsEverywhere.label          "HTTPS Everywhere">
+<!ENTITY  httpsEverywhereEnable.label    "Enable HTTPS Everywhere">
+<!ENTITY  httpsEverywhere.accesskey      "H">
+<!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere is a third-party service provided by that automatically enables HTTPS encryption wherever possible. ">
+<!ENTITY  httpsEverywhereMore.label      "Learn more">
+
+<!ENTITY  passwordManager.title          "Password Managers">
+<!ENTITY  passwordManager.desc1          "Cliqz integrates with selected and verified third-party password manager applications.">
+<!ENTITY  passwordManager.desc2          "Note that Cliqz did not create these applications and has no control over what data they might access.">
+
+<!ENTITY  ghostery.title                 "Extended Privacy Control">
+<!ENTITY  ghostery.desc1                 "Ghostery detects hidden services that collect personal data and lets you decide which">
+<!ENTITY  ghostery.desc2                 "ones to block.">
+
+<!ENTITY startupUserHomePage.label "Show start page">
+
+<!-- LOCALIZATION NOTE (abouthome.defaultSnippet1.v1):
+     text in <a/> will be linked to the Cliqz features page on cliqz.com
+-->
+<!ENTITY abouthome.defaultSnippet1.v1 "Thanks for choosing Cliqz! To get the most out of your browser, learn more about the <a>latest features</a>.">
+<!-- LOCALIZATION NOTE (abouthome.defaultSnippet2.v1):
+     text in <a/> will be linked to the featured add-ons on addons.mozilla.org
+-->
+<!ENTITY abouthome.defaultSnippet2.v1 "It’s easy to customize your Cliqz exactly the way you want it. <a>Choose from thousands of add-ons</a>.">
+
+<!ENTITY healthReportIntro.label         "We care about your privacy. When Cliqz sends information to the Cliqz team, our  <label class='text-link' href='https://cliqz.com/en/privacy'>privacy policy</label> describes how we handle that information.">
+
+<!ENTITY enableHealthReport2.label       "Allow &brandShortName; to send technical and interaction data to Cliqz">
+<!ENTITY collectBrowserErrors.label          "Allow &brandShortName; to send browser error reports (including error messages) to Cliqz">
+
+<!ENTITY startupPage2.label        "When &brandShortName; starts">
+<!ENTITY startupPage2.accesskey    "s">
+<!ENTITY startupPrevSession.label  "Show your windows and tabs from last time">
+<!ENTITY startupUserHomePage.label "Show start page">
+
+<!ENTITY abouthome.pageTitle "&brandFullName; Start Page">
+<!ENTITY selectBookmark.title "Set Home Page">
+<!ENTITY selectBookmark.label "Choose a Bookmark to be your Home Page. If you choose a folder, the Bookmarks in that folder will be opened in Tabs.">
+
+<!ENTITY  doNotTrackHeader.label        "Do Not Track">
+<!ENTITY  doNotTrack.description        "Send websites a “Do Not Track” signal that you don’t want to be tracked">
+<!ENTITY  doNotTrack.learnMore.label    "Learn more">

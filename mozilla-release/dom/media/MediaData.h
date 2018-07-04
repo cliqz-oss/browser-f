@@ -6,6 +6,7 @@
 #if !defined(MediaData_h)
 #define MediaData_h
 
+#include "AudioConfig.h"
 #include "AudioSampleFormat.h"
 #include "ImageTypes.h"
 #include "SharedBuffer.h"
@@ -17,9 +18,7 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/gfx/Rect.h"
-#include "nsIMemoryReporter.h"
-#include "nsRect.h"
-#include "nsSize.h"
+#include "nsString.h"
 #include "nsTArray.h"
 
 namespace mozilla {
@@ -212,6 +211,13 @@ public:
     return AlignmentOffset() * 2;
   }
 
+  void PopFront(size_t aSize)
+  {
+    MOZ_ASSERT(mLength >= aSize);
+    PodMove(mData, mData + aSize, mLength - aSize);
+    mLength -= aSize;
+  }
+
 private:
   static size_t AlignmentOffset()
   {
@@ -389,9 +395,11 @@ public:
             uint32_t aFrames,
             AlignedAudioBuffer&& aData,
             uint32_t aChannels,
-            uint32_t aRate)
+            uint32_t aRate,
+            uint32_t aChannelMap = AudioConfig::ChannelLayout::UNKNOWN_MAP)
     : MediaData(sType, aOffset, aTime, aDuration, aFrames)
     , mChannels(aChannels)
+    , mChannelMap(aChannelMap)
     , mRate(aRate)
     , mAudioData(Move(aData))
   {
@@ -419,6 +427,11 @@ public:
   bool IsAudible() const;
 
   const uint32_t mChannels;
+  // The AudioConfig::ChannelLayout map. Channels are ordered as per SMPTE
+  // definition. A value of UNKNOWN_MAP indicates unknown layout.
+  // ChannelMap is an unsigned bitmap compatible with Windows' WAVE and FFmpeg
+  // channel map.
+  const AudioConfig::ChannelLayout::ChannelMap mChannelMap;
   const uint32_t mRate;
   // At least one of mAudioBuffer/mAudioData must be non-null.
   // mChannels channels, each with mFrames frames
@@ -468,6 +481,7 @@ public:
 
     Plane mPlanes[3];
     YUVColorSpace mYUVColorSpace = YUVColorSpace::BT601;
+    uint32_t mBitDepth = 8;
   };
 
   class Listener
@@ -509,16 +523,6 @@ public:
     const media::TimeUnit& aDuration,
     const YCbCrBuffer& aBuffer,
     const YCbCrBuffer::Plane& aAlphaPlane,
-    bool aKeyframe,
-    const media::TimeUnit& aTimecode,
-    const IntRect& aPicture);
-
-  static already_AddRefed<VideoData> CreateAndCopyIntoTextureClient(
-    const VideoInfo& aInfo,
-    int64_t aOffset,
-    const media::TimeUnit& aTime,
-    const media::TimeUnit& aDuration,
-    layers::TextureClient* aBuffer,
     bool aKeyframe,
     const media::TimeUnit& aTimecode,
     const IntRect& aPicture);
@@ -601,7 +605,6 @@ public:
   nsTArray<uint16_t> mPlainSizes;
   nsTArray<uint32_t> mEncryptedSizes;
   nsTArray<uint8_t> mIV;
-  nsTArray<nsCString> mSessionIds;
   nsTArray<nsTArray<uint8_t>> mInitDatas;
   nsString mInitDataType;
 };
@@ -642,18 +645,20 @@ public:
 
   // Set size of buffer, allocating memory as required.
   // If size is increased, new buffer area is filled with 0.
-  bool SetSize(size_t aSize);
+  MOZ_MUST_USE bool SetSize(size_t aSize);
   // Add aData at the beginning of buffer.
-  bool Prepend(const uint8_t* aData, size_t aSize);
+  MOZ_MUST_USE bool Prepend(const uint8_t* aData, size_t aSize);
   // Replace current content with aData.
-  bool Replace(const uint8_t* aData, size_t aSize);
+  MOZ_MUST_USE bool Replace(const uint8_t* aData, size_t aSize);
   // Clear the memory buffer. Will set target mData and mSize to 0.
   void Clear();
+  // Remove aSize bytes from the front of the sample.
+  void PopFront(size_t aSize);
 
 private:
   friend class MediaRawData;
   explicit MediaRawDataWriter(MediaRawData* aMediaRawData);
-  bool EnsureSize(size_t aSize);
+  MOZ_MUST_USE bool EnsureSize(size_t aSize);
   MediaRawData* mTarget;
 };
 
@@ -696,9 +701,9 @@ public:
 
   // Return a deep copy or nullptr if out of memory.
   virtual already_AddRefed<MediaRawData> Clone() const;
-  // Create a MediaRawDataWriter for this MediaRawData. The caller must
-  // delete the writer once done. The writer is not thread-safe.
-  virtual MediaRawDataWriter* CreateWriter();
+  // Create a MediaRawDataWriter for this MediaRawData. The writer is not
+  // thread-safe.
+  virtual UniquePtr<MediaRawDataWriter> CreateWriter();
   virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const;
 
 protected:

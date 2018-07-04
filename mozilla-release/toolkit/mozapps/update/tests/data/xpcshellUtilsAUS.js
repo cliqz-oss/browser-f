@@ -29,10 +29,10 @@
  */
 
 "use strict";
+
 /* eslint-disable no-undef */
 
-const { classes: Cc, interfaces: Ci, manager: Cm, results: Cr,
-        utils: Cu } = Components;
+const Cm = Components.manager;
 
 const URL_HTTP_UPDATE_SJS = "http://test_details/";
 
@@ -52,8 +52,7 @@ function getLogSuffix() {
   return "_linux";
 }
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/ctypes.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
 const DIR_MACOS = IS_MACOSX ? "Contents/MacOS/" : "";
 const DIR_RESOURCES = IS_MACOSX ? "Contents/Resources/" : "";
@@ -87,8 +86,6 @@ const FILE_WRONG_CHANNEL_MAR = "wrong_product_channel.mar";
 
 const PERFORMING_STAGED_UPDATE = "Performing a staged update";
 const CALL_QUIT = "calling QuitProgressUI";
-const REMOVE_OLD_DIST_DIR = "removing old distribution directory";
-const MOVE_OLD_DIST_DIR = "Moving old distribution directory to new location";
 const ERR_UPDATE_IN_PROGRESS = "Update already in progress! Exiting";
 const ERR_RENAME_FILE = "rename_file: failed to rename file";
 const ERR_ENSURE_COPY = "ensure_copy: failed to copy the file";
@@ -129,7 +126,7 @@ const FILE_IN_USE_TIMEOUT_MS = 1000;
 
 const PIPE_TO_NULL = IS_WIN ? ">nul" : "> /dev/null 2>&1";
 
-const LOG_FUNCTION = do_print;
+const LOG_FUNCTION = info;
 
 const gHTTPHandlerPath = "updates.xml";
 
@@ -140,7 +137,7 @@ var gTestID;
 
 var gTestserver;
 
-var gRegisteredServiceCleanup;
+var gIncrementalDownloadErrorType;
 
 var gCheckFunc;
 var gResponseBody;
@@ -190,9 +187,27 @@ var gASanOptions;
 // run_test function.
 var DEBUG_AUS_TEST = true;
 
+// Setting gDebugTestLog to true will create log files for the tests in
+// <objdir>/_tests/xpcshell/toolkit/mozapps/update/tests/<testdir>/ except for
+// the service tests since they run sequentially. This can help when debugging
+// failures for the tests that intermittently fail when they run in parallel.
+// Never set gDebugTestLog to true except when running tests locally.
+var gDebugTestLog = false;
+// An empty array for gTestsToLog will log most of the output of all of the
+// update tests except for the service tests. To only log specific tests add the
+// test file name without the file extension to the array below.
+var gTestsToLog = [];
+var gRealDump;
+var gFOS;
+
 const DATA_URI_SPEC = Services.io.newFileURI(do_get_file("../data", false)).spec;
 /* import-globals-from ../data/shared.js */
 Services.scriptloader.loadSubScript(DATA_URI_SPEC + "shared.js", this);
+
+ChromeUtils.defineModuleGetter(this, "ctypes",
+                               "resource://gre/modules/ctypes.jsm");
+ChromeUtils.defineModuleGetter(this, "MockRegistrar",
+                               "resource://testing-common/MockRegistrar.jsm");
 
 var gTestFiles = [];
 var gTestDirs = [];
@@ -749,16 +764,6 @@ var gTestDirsPartialSuccess = [
 // Concatenate the common files to the beginning of the array.
 gTestDirsPartialSuccess = gTestDirsCommon.concat(gTestDirsPartialSuccess);
 
-// This makes it possible to run most tests on xulrunner where the update
-// channel default preference is not set.
-if (MOZ_APP_NAME == "xulrunner") {
-  try {
-    gDefaultPrefBranch.getCharPref(PREF_APP_UPDATE_CHANNEL);
-  } catch (e) {
-    setUpdateChannel("test_channel");
-  }
-}
-
 /**
  * Helper function for setting up the test environment.
  */
@@ -772,21 +777,22 @@ function setupTestCommon() {
   let caller = Components.stack.caller;
   gTestID = caller.filename.toString().split("/").pop().split(".")[0];
 
-  createAppInfo("xpcshell@tests.mozilla.org", APP_INFO_NAME, "1.0", "2.0");
+  if (gDebugTestLog && !IS_SERVICE_TEST) {
+    if (gTestsToLog.length == 0 || gTestsToLog.includes(gTestID)) {
+      let logFile = do_get_file(gTestID + ".log", true);
+      if (!logFile.exists()) {
+        logFile.create(Ci.nsIFile.NORMAL_FILE_TYPE, PERMS_FILE);
+      }
+      gFOS = Cc["@mozilla.org/network/file-output-stream;1"].
+             createInstance(Ci.nsIFileOutputStream);
+      gFOS.init(logFile, MODE_WRONLY | MODE_APPEND, PERMS_FILE, 0);
 
-  // Tests that don't work with XULRunner.
-  const XUL_RUNNER_INCOMPATIBLE = ["marAppApplyUpdateAppBinInUseStageSuccess_win",
-                                   "marAppApplyUpdateStageSuccess",
-                                   "marAppApplyUpdateSuccess",
-                                   "marAppApplyUpdateAppBinInUseStageSuccessSvc_win",
-                                   "marAppApplyUpdateStageSuccessSvc",
-                                   "marAppApplyUpdateSuccessSvc"];
-  // Replace with Array.prototype.includes when it has stabilized.
-  if (MOZ_APP_NAME == "xulrunner" &&
-      XUL_RUNNER_INCOMPATIBLE.indexOf(gTestID) != -1) {
-    logTestInfo("Unable to run this test on xulrunner");
-    return false;
+      gRealDump = dump;
+      dump = dumpOverride;
+    }
   }
+
+  createAppInfo("xpcshell@tests.mozilla.org", APP_INFO_NAME, "1.0", "2.0");
 
   if (IS_SERVICE_TEST && !shouldRunServiceTest()) {
     return false;
@@ -846,7 +852,7 @@ function setupTestCommon() {
   }
   grePrefsFile.append("greprefs.js");
   if (!grePrefsFile.exists()) {
-    grePrefsFile.create(Ci.nsILocalFile.NORMAL_FILE_TYPE, PERMS_FILE);
+    grePrefsFile.create(Ci.nsIFile.NORMAL_FILE_TYPE, PERMS_FILE);
   }
 
   // Remove the updates directory on Windows and Mac OS X which is located
@@ -877,20 +883,16 @@ function setupTestCommon() {
 function cleanupTestCommon() {
   debugDump("start - general test cleanup");
 
-  // Force the update manager to reload the update data to prevent it from
-  // writing the old data to the files that have just been removed.
-  reloadUpdateManagerData();
-
   if (gChannel) {
     gPrefRoot.removeObserver(PREF_APP_UPDATE_CHANNEL, observer);
   }
 
-  // Call app update's observe method passing xpcom-shutdown to test that the
+  // Call app update's observe method passing quit-application to test that the
   // shutdown of app update runs without throwing or leaking. The observer
   // method is used directly instead of calling notifyObservers so components
   // outside of the scope of this test don't assert and thereby cause app update
   // tests to fail.
-  gAUS.observe(null, "xpcom-shutdown", "");
+  gAUS.observe(null, "quit-application", "");
 
   gTestserver = null;
 
@@ -980,6 +982,25 @@ function cleanupTestCommon() {
   resetEnvironment();
 
   debugDump("finish - general test cleanup");
+
+  if (gRealDump) {
+    dump = gRealDump;
+    gRealDump = null;
+  }
+
+  if (gFOS) {
+    gFOS.close();
+  }
+}
+
+/**
+ * Helper function to store the log output of calls to dump in a variable so the
+ * values can be written to a file for a parallel run of a test and printed to
+ * the log file when the test runs synchronously.
+ */
+function dumpOverride(aText) {
+  gFOS.write(aText, aText.length);
+  gRealDump(aText);
 }
 
 /**
@@ -995,7 +1016,93 @@ function doTestFinish() {
     Services.prefs.setBoolPref(PREF_APP_UPDATE_LOG, false);
     gAUS.observe(null, "nsPref:changed", PREF_APP_UPDATE_LOG);
   }
-  do_execute_soon(do_test_finished);
+  executeSoon(testFinishWaitForUpdateXMLFiles);
+}
+
+/**
+ * Waits until the update files don't exist and then calls do_test_finished to
+ * end the test. This is necessary due to the update xml files being written
+ * asynchronously by nsIUpdateManager. Uses do_timeout instead of
+ * do_execute_soon to lessen log spew.
+ */
+function testFinishWaitForUpdateXMLFiles() {
+  /**
+   * Waits until the update tmp files don't exist and then calls
+   * testFinishReloadUpdateXMLFiles.
+   */
+  function testFinishWaitForUpdateTmpXMLFiles() {
+    let tmpActiveUpdateXML = getUpdatesRootDir();
+    tmpActiveUpdateXML.append(FILE_ACTIVE_UPDATE_XML + ".tmp");
+    if (tmpActiveUpdateXML.exists()) {
+      // The xml files are written asynchronously so wait until it has been
+      // removed.
+      do_timeout(10, testFinishWaitForUpdateTmpXMLFiles);
+      return;
+    }
+
+    let tmpUpdatesXML = getUpdatesRootDir();
+    tmpUpdatesXML.append(FILE_UPDATES_XML + ".tmp");
+    if (tmpUpdatesXML.exists()) {
+      // The xml files are written asynchronously so wait until it has been
+      // removed.
+      do_timeout(10, testFinishWaitForUpdateTmpXMLFiles);
+      return;
+    }
+
+    do_timeout(10, testFinishReloadUpdateXMLFiles);
+  }
+
+  /**
+   * Creates empty update xml files, reloads / saves the update data, and then
+   * calls testFinishWaitForUpdateXMLFiles.
+   */
+  function testFinishReloadUpdateXMLFiles() {
+    try {
+      // Wrapped in a try catch since the file can be in the middle of a write.
+      writeUpdatesToXMLFile(getLocalUpdatesXMLString(""), true);
+    } catch (e) {
+      do_timeout(10, testFinishReloadUpdateXMLFiles);
+      return;
+    }
+    try {
+      // Wrapped in a try catch since the file can be in the middle of a write.
+      writeUpdatesToXMLFile(getLocalUpdatesXMLString(""), false);
+    } catch (e) {
+      do_timeout(10, testFinishReloadUpdateXMLFiles);
+      return;
+    }
+
+    reloadUpdateManagerData();
+    gUpdateManager.saveUpdates();
+    do_timeout(10, testFinishWaitForUpdateXMLFilesDelete);
+  }
+
+  /**
+   * Waits until the active-update.xml and updates.xml files don't exist and
+   * then calls do_test_finished to end the test. This is necessary due to the
+   * update xml files being written asynchronously by nsIUpdateManager.
+   */
+  function testFinishWaitForUpdateXMLFilesDelete() {
+    let activeUpdateXML = getUpdatesXMLFile(true);
+    if (activeUpdateXML.exists()) {
+      // Since the file is removed asynchronously wait until it has been
+      // removed. Uses do_timeout instead of do_execute_soon to lessen log spew.
+      do_timeout(10, testFinishWaitForUpdateXMLFilesDelete);
+      return;
+    }
+
+    let updatesXML = getUpdatesXMLFile(false);
+    if (updatesXML.exists()) {
+      // Since the file is removed asynchronously wait until it has been
+      // removed. Uses do_timeout instead of do_execute_soon to lessen log spew.
+      do_timeout(10, testFinishWaitForUpdateXMLFilesDelete);
+      return;
+    }
+
+    do_timeout(10, do_test_finished);
+  }
+
+  do_timeout(10, testFinishWaitForUpdateTmpXMLFiles);
 }
 
 /**
@@ -1010,8 +1117,6 @@ function setDefaultPrefs() {
     // Some apps set this preference to true by default
     Services.prefs.setBoolPref(PREF_APP_UPDATE_LOG, false);
   }
-  // In case telemetry is enabled for xpcshell tests.
-  Services.prefs.setBoolPref(PREF_TOOLKIT_TELEMETRY_ENABLED, false);
 }
 
 /**
@@ -1039,11 +1144,11 @@ function setTestFilesAndDirsForFailure() {
  */
 function preventDistributionFiles() {
   gTestFiles = gTestFiles.filter(function(aTestFile) {
-    return aTestFile.relPathDir.indexOf("distribution/") == -1;
+    return !aTestFile.relPathDir.includes("distribution/");
   });
 
   gTestDirs = gTestDirs.filter(function(aTestDir) {
-    return aTestDir.relPathDir.indexOf("distribution/") == -1;
+    return !aTestDir.relPathDir.includes("distribution/");
   });
 }
 
@@ -1077,6 +1182,128 @@ function checkAppBundleModTime() {
   Assert.ok(timeDiff < MAC_MAX_TIME_DIFFERENCE,
             "the last modified time on the apply to directory should " +
             "change after a successful update");
+}
+
+/**
+ * Performs Update Manager checks to verify that the update metadata is correct
+ * and that it is the same after the update xml files are reloaded.
+ *
+ * @param   aStatusFileState
+ *          The expected state of the status file.
+ * @param   aHasActiveUpdate
+ *          Should there be an active update.
+ * @param   aUpdateStatusState
+ *          The expected update's status state.
+ * @param   aUpdateErrCode
+ *          The expected update's error code.
+ * @param   aUpdateCount
+ *          The update history's update count.
+ */
+function checkUpdateManager(aStatusFileState, aHasActiveUpdate,
+                            aUpdateStatusState, aUpdateErrCode, aUpdateCount) {
+  Assert.equal(readStatusState(), aStatusFileState,
+               "the status file state" + MSG_SHOULD_EQUAL);
+  let msgTags = [" after startup ", " after a file reload "];
+  for (let i = 0; i < msgTags.length; ++i) {
+    logTestInfo("checking Update Manager updates" + msgTags[i]) +
+                "is performed";
+    if (aHasActiveUpdate) {
+      Assert.ok(!!gUpdateManager.activeUpdate, msgTags[i] +
+                "the active update should be defined");
+    } else {
+      Assert.ok(!gUpdateManager.activeUpdate, msgTags[i] +
+                "the active update should not be defined");
+    }
+    Assert.equal(gUpdateManager.updateCount, aUpdateCount, msgTags[i] +
+                 "the update manager updateCount attribute" + MSG_SHOULD_EQUAL);
+    if (aUpdateCount > 0) {
+      let update = gUpdateManager.getUpdateAt(0);
+      Assert.equal(update.state, aUpdateStatusState, msgTags[i] +
+                   "the first update state" + MSG_SHOULD_EQUAL);
+      Assert.equal(update.errorCode, aUpdateErrCode, msgTags[i] +
+                   "the first update errorCode" + MSG_SHOULD_EQUAL);
+    }
+    if (i != msgTags.length - 1) {
+      reloadUpdateManagerData();
+    }
+  }
+}
+
+/**
+ * Waits until the update files exist or not based on the parameters specified
+ * when calling this function or the default values if the parameters are not
+ * specified. After these conditions are met the waitForUpdateXMLFilesFinished
+ * function is called.  This is necessary due to the update xml files being
+ * written asynchronously by nsIUpdateManager. Uses do_timeout instead of
+ * do_execute_soon to lessen log spew.
+ *
+ * @param   aActiveUpdateExists (optional)
+ *          Whether the active-update.xml file should exist (default is false).
+ * @param   aUpdatesExists (optional)
+ *          Whether the updates.xml file should exist (default is true).
+ */
+function waitForUpdateXMLFiles(aActiveUpdateExists = false, aUpdatesExists = true) {
+  /**
+   * Waits until the update tmp files don't exist and then calls
+   * testFinishReloadUpdateXMLFiles.
+   *
+   * @param   aActiveUpdateExists (optional)
+   *          Whether the active-update.xml file should exist (default is false).
+   * @param   aUpdatesExists (optional)
+   *          Whether the updates.xml file should exist (default is true).
+   */
+  function waitForUpdateTmpXMLFiles(aActiveUpdateExists = false, aUpdatesExists = true) {
+    let tmpActiveUpdateXML = getUpdatesRootDir();
+    tmpActiveUpdateXML.append(FILE_ACTIVE_UPDATE_XML + ".tmp");
+    if (tmpActiveUpdateXML.exists()) {
+      // The xml files are written asynchronously so wait until it has been
+      // removed.
+      do_timeout(10, () => waitForUpdateTmpXMLFiles(aActiveUpdateExists, aUpdatesExists));
+      return;
+    }
+
+    let tmpUpdatesXML = getUpdatesRootDir();
+    tmpUpdatesXML.append(FILE_UPDATES_XML + ".tmp");
+    if (tmpUpdatesXML.exists()) {
+      // The xml files are written asynchronously so wait until it has been
+      // removed.
+      do_timeout(10, () => waitForUpdateTmpXMLFiles(aActiveUpdateExists, aUpdatesExists));
+      return;
+    }
+
+    do_timeout(10, () => waitForUpdateXMLFilesExist(aActiveUpdateExists, aUpdatesExists));
+  }
+
+  /**
+   * Waits until the update files exist or not based on the parameters specified
+   * when calling this function or the default values if the parameters are not
+   * specified. After these conditions are met the waitForUpdateXMLFilesFinished
+   * function is called.
+   *
+   * @param   aActiveUpdateExists (optional)
+   *          Whether the active-update.xml file should exist (default is false).
+   * @param   aUpdatesExists (optional)
+   *          Whether the updates.xml file should exist (default is true).
+   */
+  function waitForUpdateXMLFilesExist(aActiveUpdateExists = false, aUpdatesExists = true) {
+    let activeUpdateXML = getUpdatesXMLFile(true);
+    if (activeUpdateXML.exists() != aActiveUpdateExists) {
+      // Since the file is removed asynchronously wait until it has been removed.
+      do_timeout(10, () => waitForUpdateXMLFilesExist(aActiveUpdateExists, aUpdatesExists));
+      return;
+    }
+
+    let updatesXML = getUpdatesXMLFile(false);
+    if (updatesXML.exists() != aUpdatesExists) {
+      // Since the file is removed asynchronously wait until it has been removed.
+      do_timeout(10, () => waitForUpdateXMLFilesExist(aActiveUpdateExists, aUpdatesExists));
+      return;
+    }
+
+    do_timeout(10, waitForUpdateXMLFilesFinished);
+  }
+
+  do_timeout(10, () => waitForUpdateTmpXMLFiles(aActiveUpdateExists, aUpdatesExists));
 }
 
 /**
@@ -1286,12 +1513,12 @@ function getMaintSvcDir() {
 }
 
 /**
- * Get the nsILocalFile for a Windows special folder determined by the CSIDL
+ * Get the nsIFile for a Windows special folder determined by the CSIDL
  * passed.
  *
  * @param   aCSIDL
  *          The CSIDL for the Windows special folder.
- * @return  The nsILocalFile for the Windows special folder.
+ * @return  The nsIFile for the Windows special folder.
  * @throws  If called from a platform other than Windows.
  */
 function getSpecialFolderDir(aCSIDL) {
@@ -1317,7 +1544,7 @@ function getSpecialFolderDir(aCSIDL) {
     return null;
   }
   debugDump("SHGetSpecialFolderPath returned path: " + path);
-  let dir = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
+  let dir = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
   dir.initWithPath(path);
   return dir;
 }
@@ -1439,7 +1666,7 @@ function getMockUpdRootDWin() {
   }
 
   let updatesDir = Cc["@mozilla.org/file/local;1"].
-                   createInstance(Ci.nsILocalFile);
+                   createInstance(Ci.nsIFile);
   updatesDir.initWithPath(localAppDataDir.path + "\\" + relPathUpdates);
   return updatesDir;
 }
@@ -1449,7 +1676,7 @@ XPCOMUtils.defineLazyGetter(this, "gUpdatesRootDir", function test_gURD() {
     do_throw("Mac OS X only function called by a different platform!");
   }
 
-  let dir = Services.dirsvc.get("ULibDir", Ci.nsILocalFile);
+  let dir = Services.dirsvc.get("ULibDir", Ci.nsIFile);
   dir.append("Caches");
   if (MOZ_APP_VENDOR || MOZ_APP_BASENAME) {
     dir.append(MOZ_APP_VENDOR ? MOZ_APP_VENDOR : MOZ_APP_BASENAME);
@@ -1478,7 +1705,7 @@ function getMockUpdRootDMac() {
 
   let pathUpdates = gUpdatesRootDir.path + appDirPath;
   let updatesDir = Cc["@mozilla.org/file/local;1"].
-                   createInstance(Ci.nsILocalFile);
+                   createInstance(Ci.nsIFile);
   updatesDir.initWithPath(pathUpdates);
   return updatesDir;
 }
@@ -1779,7 +2006,7 @@ function runUpdate(aExpectedStatus, aSwitchApp, aExpectedExitValue, aCheckSvcLog
     }
   }
 
-  do_execute_soon(runUpdateFinished);
+  executeSoon(runUpdateFinished);
 }
 
 /**
@@ -1891,10 +2118,10 @@ const gUpdateStagedObserver = {
       resetEnvironment();
       // Use do_execute_soon to prevent any failures from propagating to the
       // update service.
-      do_execute_soon(checkUpdateStagedState.bind(null, aData));
+      executeSoon(checkUpdateStagedState.bind(null, aData));
     }
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver])
 };
 
 /**
@@ -1966,11 +2193,6 @@ function checkUpdateStagedState(aUpdateState) {
                  "the update state" + MSG_SHOULD_EQUAL);
   }
 
-  Assert.equal(gUpdateManager.updateCount, 1,
-               "the update manager updateCount attribute" + MSG_SHOULD_EQUAL);
-  Assert.equal(gUpdateManager.getUpdateAt(0).state, STATE_AFTER_STAGE,
-               "the update state" + MSG_SHOULD_EQUAL);
-
   let log = getUpdateLog(FILE_LAST_UPDATE_LOG);
   Assert.ok(log.exists(),
             MSG_SHOULD_EXIST + getMsgPath(log.path));
@@ -2003,7 +2225,7 @@ function checkUpdateStagedState(aUpdateState) {
                     "contain the successful launch string");
   }
 
-  do_execute_soon(stageUpdateFinished);
+  executeSoon(stageUpdateFinished);
 }
 
 /**
@@ -2109,11 +2331,11 @@ function setupAppFilesAsync() {
       do_throw("Exceeded MAX_TIMEOUT_RUNS while trying to setup application " +
                "files! Exception: " + e);
     }
-    do_execute_soon(setupAppFilesAsync);
+    executeSoon(setupAppFilesAsync);
     return;
   }
 
-  do_execute_soon(setupUpdaterTestFinished);
+  executeSoon(setupUpdaterTestFinished);
 }
 
 /**
@@ -2254,7 +2476,7 @@ function copyFileToTestAppDir(aFileRelPath, aInGreDir) {
       if (destFile.exists()) {
         destFile.remove(false);
       }
-      let ln = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
+      let ln = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
       ln.initWithPath("/bin/ln");
       let process = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
       process.init(ln);
@@ -2408,7 +2630,7 @@ function getLaunchBin() {
     launchBin.append("cmd.exe");
   } else {
     launchBin = Cc["@mozilla.org/file/local;1"].
-                createInstance(Ci.nsILocalFile);
+                createInstance(Ci.nsIFile);
     launchBin.initWithPath("/bin/sh");
   }
   Assert.ok(launchBin.exists(),
@@ -2481,7 +2703,7 @@ function runHelperFileInUse(aRelPath, aCopyTestHelper) {
   fileInUseProcess.init(fileInUseBin);
   fileInUseProcess.run(false, args, args.length);
 
-  do_execute_soon(waitForHelperSleep);
+  executeSoon(waitForHelperSleep);
 }
 
 /**
@@ -2513,7 +2735,7 @@ function runHelperPIDPersists(aRelPath, aCopyTestHelper) {
   gPIDPersistProcess.init(pidPersistsBin);
   gPIDPersistProcess.run(false, args, args.length);
 
-  do_execute_soon(waitForHelperSleep);
+  executeSoon(waitForHelperSleep);
 }
 
 /**
@@ -2543,7 +2765,7 @@ function runHelperLockFile(aTestFile) {
   helperProcess.init(helperBin);
   helperProcess.run(false, args, args.length);
 
-  do_execute_soon(waitForHelperSleep);
+  executeSoon(waitForHelperSleep);
 }
 
 /**
@@ -2615,10 +2837,10 @@ function waitForHelperFinishFileUnlock() {
   } catch (e) {
     // Give the lock file process time to unlock the file before deleting the
     // input and output files.
-    do_execute_soon(waitForHelperFinishFileUnlock);
+    executeSoon(waitForHelperFinishFileUnlock);
     return;
   }
-  do_execute_soon(waitForHelperExitFinished);
+  executeSoon(waitForHelperExitFinished);
 }
 
 /**
@@ -2890,12 +3112,6 @@ function checkUpdateLogContents(aCompareLogFile, aStaged = false,
   updateLogContents = updateLogContents.replace(/WORKING DIRECTORY.*/g, "");
   // Skip lines that log failed attempts to open the callback executable.
   updateLogContents = updateLogContents.replace(/NS_main: callback app file .*/g, "");
-
-  if (IS_MACOSX) {
-    // Skip lines that log moving the distribution directory for Mac v2 signing.
-    updateLogContents = updateLogContents.replace(/Moving old [^\n]*\nrename_file: .*/g, "");
-    updateLogContents = updateLogContents.replace(/New distribution directory .*/g, "");
-  }
 
   if (IS_WIN) {
     // The FindFile results when enumerating the filesystem on Windows is not
@@ -3332,7 +3548,7 @@ function checkPostUpdateAppLog() {
                  "process to create the post update log. Path: " +
                  postUpdateLog.path);
       }
-      do_execute_soon(checkPostUpdateAppLog);
+      executeSoon(checkPostUpdateAppLog);
       return;
     }
 
@@ -3348,13 +3564,13 @@ function checkPostUpdateAppLog() {
                  "process to create the expected contents in the post update log. Path: " +
                  postUpdateLog.path);
       }
-      do_execute_soon(checkPostUpdateAppLog);
+      executeSoon(checkPostUpdateAppLog);
       return;
     }
     Assert.ok(true, "the post update log contents" + MSG_SHOULD_EQUAL);
   }
 
-  do_execute_soon(checkPostUpdateAppLogFinished);
+  executeSoon(checkPostUpdateAppLogFinished);
 }
 
 /**
@@ -3476,7 +3692,7 @@ function checkFilesInDirRecursive(aDir, aCallback) {
  *          The callback to call if the update prompt component is called.
  */
 function overrideUpdatePrompt(aCallback) {
-  Cu.import("resource://testing-common/MockRegistrar.jsm");
+  ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
   MockRegistrar.register("@mozilla.org/updates/update-prompt;1", UpdatePrompt, [aCallback]);
 }
 
@@ -3511,7 +3727,7 @@ UpdatePrompt.prototype = {
     aCount.value = interfaces.length;
     return interfaces;
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIClassInfo, Ci.nsIUpdatePrompt])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIClassInfo, Ci.nsIUpdatePrompt])
 };
 
 /* Update check listener */
@@ -3527,7 +3743,7 @@ const updateCheckListener = {
               "request.status = " + aRequest.status + ", " +
               "updateCount = " + aUpdateCount);
     // Use a timeout to allow the XHR to complete
-    do_execute_soon(gCheckFunc);
+    executeSoon(gCheckFunc);
   },
 
   onError: function UCL_onError(aRequest, aUpdate) {
@@ -3541,10 +3757,10 @@ const updateCheckListener = {
               "request.status = " + gStatusCode + ", " +
               "update.statusText = " + gStatusText);
     // Use a timeout to allow the XHR to complete
-    do_execute_soon(gCheckFunc.bind(null, aRequest, aUpdate));
+    executeSoon(gCheckFunc.bind(null, aRequest, aUpdate));
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIUpdateCheckListener])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIUpdateCheckListener])
 };
 
 /* Update download listener - nsIRequestObserver */
@@ -3561,11 +3777,11 @@ const downloadListener = {
   onStopRequest: function DL_onStopRequest(aRequest, aContext, aStatus) {
     gStatusResult = aStatus;
     // Use a timeout to allow the request to complete
-    do_execute_soon(gCheckFunc);
+    executeSoon(downloadListenerStop);
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIRequestObserver,
-                                         Ci.nsIProgressEventSink])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIRequestObserver,
+                                          Ci.nsIProgressEventSink])
 };
 
 /**
@@ -3580,7 +3796,7 @@ function start_httpserver() {
              "registerDirectory! Path: " + dir.path);
   }
 
-  let { HttpServer } = Cu.import("resource://testing-common/httpd.js", {});
+  let { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js", {});
   gTestserver = new HttpServer();
   gTestserver.registerDirectory("/", dir);
   gTestserver.registerPathHandler("/" + gHTTPHandlerPath, pathHandler);
@@ -3698,7 +3914,7 @@ function getProcessArgs(aExtraArgs) {
   if (IS_UNIX) {
     let launchScript = getLaunchScript();
     // Precreate the script with executable permissions
-    launchScript.create(Ci.nsILocalFile.NORMAL_FILE_TYPE, PERMS_DIRECTORY);
+    launchScript.create(Ci.nsIFile.NORMAL_FILE_TYPE, PERMS_DIRECTORY);
 
     let scriptContents = "#! /bin/sh\n";
     scriptContents += appBinPath + " -no-remote -test-process-updates " +
@@ -3766,14 +3982,14 @@ function adjustGeneralPaths() {
       }
       return null;
     },
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIDirectoryServiceProvider])
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIDirectoryServiceProvider])
   };
   let ds = Services.dirsvc.QueryInterface(Ci.nsIDirectoryService);
   ds.QueryInterface(Ci.nsIProperties).undefine(NS_GRE_DIR);
   ds.QueryInterface(Ci.nsIProperties).undefine(NS_GRE_BIN_DIR);
   ds.QueryInterface(Ci.nsIProperties).undefine(XRE_EXECUTABLE_FILE);
   ds.registerProvider(dirProvider);
-  do_register_cleanup(function AGP_cleanup() {
+  registerCleanupFunction(function AGP_cleanup() {
     debugDump("start - unregistering directory provider");
 
     if (gAppTimer) {
@@ -3848,7 +4064,7 @@ const gAppTimerCallback = {
     }
     Assert.ok(false, "launch application timer expired");
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITimerCallback])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITimerCallback])
 };
 
 /**
@@ -3878,9 +4094,9 @@ function runUpdateUsingApp(aExpectedStatus) {
         waitForServiceStop(false);
       }
 
-      do_execute_soon(afterAppExits);
+      executeSoon(afterAppExits);
     },
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver])
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver])
   };
 
   function afterAppExits() {
@@ -3928,7 +4144,7 @@ function runUpdateUsingApp(aExpectedStatus) {
       }
     }
 
-    do_execute_soon(runUpdateFinished);
+    executeSoon(runUpdateFinished);
   }
 
   debugDump("start - launching application to apply update");
@@ -3951,6 +4167,128 @@ function runUpdateUsingApp(aExpectedStatus) {
 
   debugDump("finish - launching application to apply update");
 }
+
+/* This Mock incremental downloader is used to verify that connection interrupts
+ * work correctly in updater code. The implementation of the mock incremental
+ * downloader is very simple, it simply copies the file to the destination
+ * location.
+ */
+function initMockIncrementalDownload() {
+  const INC_CONTRACT_ID = "@mozilla.org/network/incremental-download;1";
+  let incrementalDownloadCID =
+    MockRegistrar.register(INC_CONTRACT_ID, IncrementalDownload);
+  registerCleanupFunction(() => {
+    MockRegistrar.unregister(incrementalDownloadCID);
+  });
+}
+
+function IncrementalDownload() {
+  this.wrappedJSObject = this;
+}
+
+IncrementalDownload.prototype = {
+  /* nsIIncrementalDownload */
+  init(uri, file, chunkSize, intervalInSeconds) {
+    this._destination = file;
+    this._URI = uri;
+    this._finalURI = uri;
+  },
+
+  start(observer, ctxt) {
+    // Do the actual operation async to give a chance for observers to add
+    // themselves.
+    Services.tm.dispatchToMainThread(() => {
+      this._observer = observer.QueryInterface(Ci.nsIRequestObserver);
+      this._ctxt = ctxt;
+      this._observer.onStartRequest(this, this._ctxt);
+      let mar = getTestDirFile(FILE_SIMPLE_MAR);
+      mar.copyTo(this._destination.parent, this._destination.leafName);
+      let status = Cr.NS_OK;
+      switch (gIncrementalDownloadErrorType++) {
+        case 0:
+          status = Cr.NS_ERROR_NET_RESET;
+          break;
+        case 1:
+          status = Cr.NS_ERROR_CONNECTION_REFUSED;
+          break;
+        case 2:
+          status = Cr.NS_ERROR_NET_RESET;
+          break;
+        case 3:
+          status = Cr.NS_OK;
+          break;
+        case 4:
+          status = Cr.NS_ERROR_OFFLINE;
+          // After we report offline, we want to eventually show offline
+          // status being changed to online.
+          Services.tm.dispatchToMainThread(function() {
+            Services.obs.notifyObservers(gAUS,
+                                         "network:offline-status-changed",
+                                         "online");
+          });
+          break;
+      }
+      this._observer.onStopRequest(this, this._ctxt, status);
+    });
+  },
+
+  get URI() {
+    return this._URI;
+  },
+
+  get currentSize() {
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+  },
+
+  get destination() {
+    return this._destination;
+  },
+
+  get finalURI() {
+    return this._finalURI;
+  },
+
+  get totalSize() {
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+  },
+
+  /* nsIRequest */
+  cancel(aStatus) {
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+  },
+  suspend() {
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+  },
+  isPending() {
+    throw Cr.NS_ERROR_NOT_IMPLEMENTED;
+  },
+  _loadFlags: 0,
+  get loadFlags() {
+    return this._loadFlags;
+  },
+  set loadFlags(val) {
+    this._loadFlags = val;
+  },
+
+  _loadGroup: null,
+  get loadGroup() {
+    return this._loadGroup;
+  },
+  set loadGroup(val) {
+    this._loadGroup = val;
+  },
+
+  _name: "",
+  get name() {
+    return this._name;
+  },
+
+  _status: 0,
+  get status() {
+    return this._status;
+  },
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIIncrementalDownload])
+};
 
 /**
  * Sets the environment that will be used by the application process when it is
@@ -3990,7 +4328,7 @@ function setEnvironment() {
   if (IS_UNIX) {
     let appGreBinDir = gGREBinDirOrig.clone();
     let envGreBinDir = Cc["@mozilla.org/file/local;1"].
-                       createInstance(Ci.nsILocalFile);
+                       createInstance(Ci.nsIFile);
     let shouldSetEnv = true;
     if (IS_MACOSX) {
       if (gEnv.exists("DYLD_LIBRARY_PATH")) {

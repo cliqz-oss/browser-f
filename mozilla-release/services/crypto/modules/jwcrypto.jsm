@@ -7,21 +7,16 @@
 "use strict";
 
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cr = Components.results;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this,
                                    "IdentityCryptoService",
                                    "@mozilla.org/identity/crypto-service;1",
                                    "nsIIdentityCryptoService");
 
-this.EXPORTED_SYMBOLS = ["jwcrypto"];
+var EXPORTED_SYMBOLS = ["jwcrypto"];
 
 const PREF_LOG_LEVEL = "services.crypto.jwcrypto.log.level";
 
@@ -192,5 +187,5 @@ jwcryptoClass.prototype = {
 
 };
 
-this.jwcrypto = new jwcryptoClass();
+var jwcrypto = new jwcryptoClass();
 this.jwcrypto.ALGORITHMS = ALGORITHMS;

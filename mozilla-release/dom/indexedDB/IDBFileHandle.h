@@ -203,7 +203,7 @@ public:
   ReadAsArrayBuffer(uint64_t aSize, ErrorResult& aRv)
   {
     AssertIsOnOwningThread();
-    return Read(aSize, false, NullString(), aRv);
+    return Read(aSize, false, VoidString(), aRv);
   }
 
   already_AddRefed<IDBFileRequest>
@@ -246,9 +246,8 @@ public:
   NS_DECL_NSIRUNNABLE
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(IDBFileHandle, DOMEventTargetHelper)
 
-  // nsIDOMEventTarget
-  virtual nsresult
-  GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+  // EventTarget
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
   // WrapperCache
   virtual JSObject*

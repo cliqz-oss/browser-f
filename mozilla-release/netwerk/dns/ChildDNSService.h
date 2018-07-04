@@ -32,13 +32,13 @@ public:
 
   ChildDNSService();
 
-  static ChildDNSService* GetSingleton();
+  static already_AddRefed<ChildDNSService> GetSingleton();
 
   void NotifyRequestDone(DNSRequestChild *aDnsRequest);
 
   bool GetOffline() const;
 private:
-  virtual ~ChildDNSService();
+  virtual ~ChildDNSService() = default;
 
   void MOZ_ALWAYS_INLINE GetDNSRecordHashKey(const nsACString &aHost,
                                              const OriginAttributes &aOriginAttributes,

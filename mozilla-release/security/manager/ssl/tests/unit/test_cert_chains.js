@@ -5,16 +5,6 @@
 
 "use strict";
 
-function build_cert_chain(certNames) {
-  let certList = Cc["@mozilla.org/security/x509certlist;1"]
-                   .createInstance(Ci.nsIX509CertList);
-  certNames.forEach(function(certName) {
-    let cert = constructCertFromFile("bad_certs/" + certName + ".pem");
-    certList.addCert(cert);
-  });
-  return certList;
-}
-
 function test_cert_equals() {
   let certA = constructCertFromFile("bad_certs/default-ee.pem");
   let certB = constructCertFromFile("bad_certs/default-ee.pem");
@@ -106,6 +96,24 @@ function run_test() {
                "failedCertChain should not be null for an overrideable" +
                " connection failure");
       let originalCertChain = build_cert_chain(["expired-ee", "test-ca"]);
+      ok(originalCertChain.equals(securityInfo.failedCertChain),
+         "failedCertChain should equal the original cert chain for an" +
+         " overrideable connection failure");
+    }
+  );
+
+  // Test overrideable connection failure (failedCertChain should be non-null)
+  add_connection_test(
+    "unknownissuer.example.com",
+    SEC_ERROR_UNKNOWN_ISSUER,
+    null,
+    function withSecurityInfo(securityInfo) {
+      securityInfo.QueryInterface(Ci.nsITransportSecurityInfo);
+      test_security_info_serialization(securityInfo, SEC_ERROR_UNKNOWN_ISSUER);
+      notEqual(securityInfo.failedCertChain, null,
+               "failedCertChain should not be null for an overrideable" +
+               " connection failure");
+      let originalCertChain = build_cert_chain(["unknownissuer"]);
       ok(originalCertChain.equals(securityInfo.failedCertChain),
          "failedCertChain should equal the original cert chain for an" +
          " overrideable connection failure");

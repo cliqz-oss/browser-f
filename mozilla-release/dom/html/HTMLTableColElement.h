@@ -27,8 +27,7 @@ public:
   }
   void SetSpan(uint32_t aSpan, ErrorResult& aError)
   {
-    uint32_t span = aSpan ? aSpan : 1;
-    SetUnsignedIntAttr(nsGkAtoms::span, span, 1, aError);
+    SetUnsignedIntAttr(nsGkAtoms::span, aSpan, 1, aError);
   }
 
   void GetAlign(DOMString& aAlign)
@@ -73,11 +72,12 @@ public:
   }
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
   nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;

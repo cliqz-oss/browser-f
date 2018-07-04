@@ -3,15 +3,16 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/AddonManager.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://services-common/async.js");
-Cu.import("resource://services-sync/addonsreconciler.js");
-Cu.import("resource://services-sync/engines/addons.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-common/async.js");
+ChromeUtils.import("resource://services-sync/addonsreconciler.js");
+ChromeUtils.import("resource://services-sync/engines/addons.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://testing-common/AddonTestUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Preferences", "resource://gre/modules/Preferences.jsm");
 
 const prefs = new Preferences();
 prefs.set("extensions.getAddons.get.url",
@@ -19,8 +20,54 @@ prefs.set("extensions.getAddons.get.url",
 prefs.set("extensions.install.requireSecureOrigin", false);
 
 let engine;
+let syncID;
 let reconciler;
 let tracker;
+
+AddonTestUtils.init(this);
+
+const ADDONS = {
+  test_install1: {
+    "install.rdf": {
+      id: "addon1@tests.mozilla.org",
+      version: "1.0",
+      name: "Test 1",
+      description: "Test Description",
+      bootstrap: true,
+
+      targetApplications: [{
+          id: "xpcshell@tests.mozilla.org",
+          minVersion: "1",
+          maxVersion: "1"}],
+    },
+    "icon.png": "Fake icon image",
+    "icon64.png": "Fake icon image",
+  },
+  test_bootstrap1_1: {
+    "install.rdf": {
+      id: "bootstrap1@tests.mozilla.org",
+      version: "1.0",
+      bootstrap: "true",
+      multiprocessCompatible: "true",
+      name: "Test Bootstrap 1",
+      description: "Test Description",
+
+      iconURL: "chrome://foo/skin/icon.png",
+      aboutURL: "chrome://foo/content/about.xul",
+      optionsURL: "chrome://foo/content/options.xul",
+
+      targetApplications: [{
+          id: "xpcshell@tests.mozilla.org",
+          minVersion: "1",
+          maxVersion: "1"}],
+    },
+  },
+};
+
+const XPIS = {};
+for (let [name, files] of Object.entries(ADDONS)) {
+  XPIS[name] = AddonTestUtils.createTempXPIFile(files);
+}
 
 async function resetReconciler() {
   reconciler._addons = {};
@@ -28,24 +75,17 @@ async function resetReconciler() {
 
   await reconciler.saveState();
 
-  tracker.clearChangedIDs();
+  await tracker.clearChangedIDs();
 }
 
 add_task(async function setup() {
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Engine.Addons").level =
-    Log.Level.Trace;
-  Log.repository.getLogger("Sync.Store.Addons").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.Tracker.Addons").level =
-    Log.Level.Trace;
-  Log.repository.getLogger("Sync.AddonsRepository").level =
-    Log.Level.Trace;
-
-  loadAddonTestFunctions();
-  startupManager();
+  AddonTestUtils.createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
+  AddonTestUtils.overrideCertDB();
+  await AddonTestUtils.promiseStartupManager();
 
   await Service.engineManager.register(AddonsEngine);
   engine = Service.engineManager.get("addons");
+  syncID = await engine.resetLocalSyncID();
   reconciler = engine._reconciler;
   tracker = engine._tracker;
 
@@ -63,10 +103,10 @@ add_task(async function setup() {
 add_task(async function test_addon_install() {
   _("Ensure basic add-on APIs work as expected.");
 
-  let install = getAddonInstall("test_bootstrap1_1");
-  do_check_neq(install, null);
-  do_check_eq(install.type, "extension");
-  do_check_eq(install.name, "Test Bootstrap 1");
+  let install = await AddonManager.getInstallForFile(XPIS.test_bootstrap1_1);
+  Assert.notEqual(install, null);
+  Assert.equal(install.type, "extension");
+  Assert.equal(install.name, "Test Bootstrap 1");
 
   await resetReconciler();
 });
@@ -78,7 +118,7 @@ add_task(async function test_find_dupe() {
   // test, so we do it manually.
   await engine._refreshReconcilerState();
 
-  let addon = installAddon("test_bootstrap1_1");
+  let addon = await installAddon(XPIS.test_bootstrap1_1, reconciler);
 
   let record = {
     id:            Utils.makeGUID(),
@@ -89,55 +129,62 @@ add_task(async function test_find_dupe() {
   };
 
   let dupe = await engine._findDupe(record);
-  do_check_eq(addon.syncGUID, dupe);
+  Assert.equal(addon.syncGUID, dupe);
 
   record.id = addon.syncGUID;
   dupe = await engine._findDupe(record);
-  do_check_eq(null, dupe);
+  Assert.equal(null, dupe);
 
-  uninstallAddon(addon);
+  await uninstallAddon(addon, reconciler);
   await resetReconciler();
 });
 
 add_task(async function test_get_changed_ids() {
+  let timerPrecision = Preferences.get("privacy.reduceTimerPrecision");
+  Preferences.set("privacy.reduceTimerPrecision", false);
+
+  registerCleanupFunction(function() {
+    Preferences.set("privacy.reduceTimerPrecision", timerPrecision);
+  });
+
   _("Ensure getChangedIDs() has the appropriate behavior.");
 
   _("Ensure getChangedIDs() returns an empty object by default.");
   let changes = await engine.getChangedIDs();
-  do_check_eq("object", typeof(changes));
-  do_check_eq(0, Object.keys(changes).length);
+  Assert.equal("object", typeof(changes));
+  Assert.equal(0, Object.keys(changes).length);
 
   _("Ensure tracker changes are populated.");
   let now = new Date();
   let changeTime = now.getTime() / 1000;
   let guid1 = Utils.makeGUID();
-  tracker.addChangedID(guid1, changeTime);
+  await tracker.addChangedID(guid1, changeTime);
 
   changes = await engine.getChangedIDs();
-  do_check_eq("object", typeof(changes));
-  do_check_eq(1, Object.keys(changes).length);
-  do_check_true(guid1 in changes);
-  do_check_eq(changeTime, changes[guid1]);
+  Assert.equal("object", typeof(changes));
+  Assert.equal(1, Object.keys(changes).length);
+  Assert.ok(guid1 in changes);
+  Assert.equal(changeTime, changes[guid1]);
 
-  tracker.clearChangedIDs();
+  await tracker.clearChangedIDs();
 
   _("Ensure reconciler changes are populated.");
-  let addon = installAddon("test_bootstrap1_1");
-  tracker.clearChangedIDs(); // Just in case.
+  let addon = await installAddon(XPIS.test_bootstrap1_1, reconciler);
+  await tracker.clearChangedIDs(); // Just in case.
   changes = await engine.getChangedIDs();
-  do_check_eq("object", typeof(changes));
-  do_check_eq(1, Object.keys(changes).length);
-  do_check_true(addon.syncGUID in changes);
+  Assert.equal("object", typeof(changes));
+  Assert.equal(1, Object.keys(changes).length);
+  Assert.ok(addon.syncGUID in changes);
   _("Change time: " + changeTime + ", addon change: " + changes[addon.syncGUID]);
-  do_check_true(changes[addon.syncGUID] >= changeTime);
+  Assert.ok(changes[addon.syncGUID] >= changeTime);
 
   let oldTime = changes[addon.syncGUID];
   let guid2 = addon.syncGUID;
-  uninstallAddon(addon);
+  await uninstallAddon(addon, reconciler);
   changes = await engine.getChangedIDs();
-  do_check_eq(1, Object.keys(changes).length);
-  do_check_true(guid2 in changes);
-  do_check_true(changes[guid2] > oldTime);
+  Assert.equal(1, Object.keys(changes).length);
+  Assert.ok(guid2 in changes);
+  Assert.ok(changes[guid2] > oldTime);
 
   _("Ensure non-syncable add-ons aren't picked up by reconciler changes.");
   reconciler._addons  = {};
@@ -152,12 +199,12 @@ add_task(async function test_get_changed_ids() {
     scope:          0,
     foreignInstall: false
   };
-  reconciler.addons["DUMMY"] = record;
-  reconciler._addChange(record.modified, CHANGE_INSTALLED, record);
+  reconciler.addons.DUMMY = record;
+  await reconciler._addChange(record.modified, CHANGE_INSTALLED, record);
 
   changes = await engine.getChangedIDs();
   _(JSON.stringify(changes));
-  do_check_eq(0, Object.keys(changes).length);
+  Assert.equal(0, Object.keys(changes).length);
 
   await resetReconciler();
 });
@@ -176,11 +223,10 @@ add_task(async function test_disabled_install_semantics() {
   server.start();
   await SyncTestingInfrastructure(server, USER, PASSWORD);
 
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
   let contents = {
-    meta: {global: {engines: {addons: {version: engine.version,
-                                      syncID:  engine.syncID}}}},
+    meta: {global: {engines: {addons: {version: engine.version, syncID}}}},
     crypto: {},
     addons: {}
   };
@@ -190,10 +236,9 @@ add_task(async function test_disabled_install_semantics() {
 
   let amoServer = new HttpServer();
   amoServer.registerFile("/search/guid:addon1%40tests.mozilla.org",
-                         do_get_file("addon1-search.xml"));
+                         do_get_file("addon1-search.json"));
 
-  let installXPI = ExtensionsTestPath("/addons/test_install1.xpi");
-  amoServer.registerFile("/addon1.xpi", do_get_file(installXPI));
+  amoServer.registerFile("/addon1.xpi", XPIS.test_install1);
   amoServer.start(8888);
 
   // Insert an existing record into the server.
@@ -221,24 +266,25 @@ add_task(async function test_disabled_install_semantics() {
 
   // We ensure the reconciler has recorded the proper ID and enabled state.
   let addon = reconciler.getAddonStateFromSyncGUID(id);
-  do_check_neq(null, addon);
-  do_check_eq(false, addon.enabled);
+  Assert.notEqual(null, addon);
+  Assert.equal(false, addon.enabled);
 
   // We fake an app restart and perform another sync, just to make sure things
   // are sane.
-  restartManager();
+  await AddonTestUtils.promiseRestartManager();
 
+  let collection = server.getCollection(USER, "addons");
+  engine.lastModified = collection.timestamp;
   await engine._sync();
 
   // The client should not upload a new record. The old record should be
   // retained and unmodified.
-  let collection = server.getCollection(USER, "addons");
-  do_check_eq(1, collection.count());
+  Assert.equal(1, collection.count());
 
   let payload = collection.payloads()[0];
-  do_check_neq(null, collection.wbo(id));
-  do_check_eq(ADDON_ID, payload.addonID);
-  do_check_false(payload.enabled);
+  Assert.notEqual(null, collection.wbo(id));
+  Assert.equal(ADDON_ID, payload.addonID);
+  Assert.ok(!payload.enabled);
 
   await promiseStopServer(server);
 });

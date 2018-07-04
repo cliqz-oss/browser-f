@@ -66,7 +66,6 @@ AACAudioSpecificConfigToUserData(uint8_t aAACProfileLevelIndication,
     // The AudioSpecificConfig is TTTTTFFF|FCCCCGGG
     // (T=ObjectType, F=Frequency, C=Channel, G=GASpecificConfig)
     // If frequency = 0xf, then the frequency is explicitly defined on 24 bits.
-    int8_t profile = (aAudioSpecConfig[0] & 0xF8) >> 3;
     int8_t frequency =
       (aAudioSpecConfig[0] & 0x7) << 1 | (aAudioSpecConfig[1] & 0x80) >> 7;
     int8_t channels = (aAudioSpecConfig[1] & 0x78) >> 3;
@@ -85,6 +84,7 @@ AACAudioSpecificConfigToUserData(uint8_t aAACProfileLevelIndication,
 WMFAudioMFTManager::WMFAudioMFTManager(
   const AudioInfo& aConfig)
   : mAudioChannels(aConfig.mChannels)
+  , mChannelsMap(AudioConfig::ChannelLayout::UNKNOWN_MAP)
   , mAudioRate(aConfig.mRate)
 {
   MOZ_COUNT_CTOR(WMFAudioMFTManager);
@@ -211,9 +211,13 @@ WMFAudioMFTManager::UpdateOutputType()
   hr = type->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &mAudioChannels);
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
-  AudioConfig::ChannelLayout layout(mAudioChannels);
-  if (!layout.IsValid()) {
-    return E_FAIL;
+  uint32_t channelsMap;
+  hr = type->GetUINT32(MF_MT_AUDIO_CHANNEL_MASK, &channelsMap);
+  if (SUCCEEDED(hr)) {
+    mChannelsMap = channelsMap;
+  } else {
+    LOG("Unable to retrieve channel layout. Ignoring");
+    mChannelsMap = AudioConfig::ChannelLayout::UNKNOWN_MAP;
   }
 
   return S_OK;
@@ -340,7 +344,8 @@ WMFAudioMFTManager::Output(int64_t aStreamOffset,
                            numFrames,
                            Move(audioData),
                            mAudioChannels,
-                           mAudioRate);
+                           mAudioRate,
+                           mChannelsMap);
 
   #ifdef LOG_SAMPLE_DECODE
   LOG("Decoded audio sample! timestamp=%lld duration=%lld currentLength=%u",

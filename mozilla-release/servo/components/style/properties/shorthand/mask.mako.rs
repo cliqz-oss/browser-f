@@ -14,31 +14,38 @@
     use values::specified::{Position, PositionComponent};
     use parser::Parse;
 
+    // FIXME(emilio): These two mask types should be the same!
     impl From<mask_origin::single_value::SpecifiedValue> for mask_clip::single_value::SpecifiedValue {
         fn from(origin: mask_origin::single_value::SpecifiedValue) -> mask_clip::single_value::SpecifiedValue {
             match origin {
-                mask_origin::single_value::SpecifiedValue::content_box =>
-                    mask_clip::single_value::SpecifiedValue::content_box,
-                mask_origin::single_value::SpecifiedValue::padding_box =>
-                    mask_clip::single_value::SpecifiedValue::padding_box,
-                mask_origin::single_value::SpecifiedValue::border_box =>
-                    mask_clip::single_value::SpecifiedValue::border_box,
+                mask_origin::single_value::SpecifiedValue::ContentBox =>
+                    mask_clip::single_value::SpecifiedValue::ContentBox,
+                mask_origin::single_value::SpecifiedValue::PaddingBox =>
+                    mask_clip::single_value::SpecifiedValue::PaddingBox ,
+                mask_origin::single_value::SpecifiedValue::BorderBox =>
+                    mask_clip::single_value::SpecifiedValue::BorderBox,
                 % if product == "gecko":
-                mask_origin::single_value::SpecifiedValue::fill_box =>
-                    mask_clip::single_value::SpecifiedValue::fill_box,
-                mask_origin::single_value::SpecifiedValue::stroke_box =>
-                    mask_clip::single_value::SpecifiedValue::stroke_box,
-                mask_origin::single_value::SpecifiedValue::view_box =>
-                    mask_clip::single_value::SpecifiedValue::view_box,
+                mask_origin::single_value::SpecifiedValue::FillBox =>
+                    mask_clip::single_value::SpecifiedValue::FillBox ,
+                mask_origin::single_value::SpecifiedValue::StrokeBox =>
+                    mask_clip::single_value::SpecifiedValue::StrokeBox,
+                mask_origin::single_value::SpecifiedValue::ViewBox=>
+                    mask_clip::single_value::SpecifiedValue::ViewBox,
                 % endif
             }
         }
     }
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         % for name in "image mode position_x position_y size repeat origin clip composite".split():
-            let mut mask_${name} = mask_${name}::SpecifiedValue(Vec::new());
+            // Vec grows from 0 to 4 by default on first push().  So allocate
+            // with capacity 1, so in the common case of only one item we don't
+            // way overallocate.  Note that we always push at least one item if
+            // parsing succeeds.
+            let mut mask_${name} = mask_${name}::SpecifiedValue(Vec::with_capacity(1));
         % endfor
 
         input.parse_comma_separated(|input| {
@@ -104,7 +111,7 @@
                 % endfor
                 Ok(())
             } else {
-                Err(StyleParseError::UnspecifiedError.into())
+                Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
             }
         })?;
 
@@ -116,7 +123,7 @@
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             use properties::longhands::mask_origin::single_value::computed_value::T as Origin;
             use properties::longhands::mask_clip::single_value::computed_value::T as Clip;
 
@@ -156,7 +163,7 @@
                 dest.write_str(" ")?;
                 repeat.to_css(dest)?;
 
-                if *origin != Origin::border_box || *clip != Clip::border_box {
+                if *origin != Origin::BorderBox || *clip != Clip::BorderBox {
                     dest.write_str(" ")?;
                     origin.to_css(dest)?;
                     if *clip != From::from(*origin) {
@@ -183,8 +190,12 @@
 
     pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
                                -> Result<Longhands, ParseError<'i>> {
-        let mut position_x = mask_position_x::SpecifiedValue(Vec::new());
-        let mut position_y = mask_position_y::SpecifiedValue(Vec::new());
+        // Vec grows from 0 to 4 by default on first push().  So allocate with
+        // capacity 1, so in the common case of only one item we don't way
+        // overallocate.  Note that we always push at least one item if parsing
+        // succeeds.
+        let mut position_x = mask_position_x::SpecifiedValue(Vec::with_capacity(1));
+        let mut position_y = mask_position_y::SpecifiedValue(Vec::with_capacity(1));
         let mut any = false;
 
         input.parse_comma_separated(|input| {
@@ -195,7 +206,7 @@
             Ok(())
         })?;
         if any == false {
-            return Err(StyleParseError::UnspecifiedError.into());
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
 
         Ok(expanded! {
@@ -205,7 +216,7 @@
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             let len = self.mask_position_x.0.len();
             if len == 0 || self.mask_position_y.0.len() != len {
                 return Ok(());

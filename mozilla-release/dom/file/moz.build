@@ -5,13 +5,12 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM")
+    BUG_COMPONENT = ("Core", "DOM: File")
 
 DIRS += ['ipc']
 
 XPIDL_SOURCES += [
     'nsIDOMBlob.idl',
-    'nsIDOMFileList.idl',
 ]
 
 XPIDL_MODULE = 'dom_file'
@@ -31,10 +30,12 @@ EXPORTS.mozilla.dom += [
     'FileCreatorHelper.h',
     'FileList.h',
     'FileReader.h',
+    'FileReaderSync.h',
     'MemoryBlobImpl.h',
     'MultipartBlobImpl.h',
     'MutableBlobStorage.h',
     'MutableBlobStreamListener.h',
+    'StreamBlobImpl.h',
 ]
 
 UNIFIED_SOURCES += [
@@ -48,6 +49,7 @@ UNIFIED_SOURCES += [
     'FileCreatorHelper.cpp',
     'FileList.cpp',
     'FileReader.cpp',
+    'FileReaderSync.cpp',
     'MemoryBlobImpl.cpp',
     'MultipartBlobImpl.cpp',
     'MutableBlobStorage.cpp',
@@ -56,11 +58,11 @@ UNIFIED_SOURCES += [
     'nsHostObjectURI.cpp',
     'StreamBlobImpl.cpp',
     'StringBlobImpl.cpp',
-    'TemporaryBlobImpl.cpp',
+    'TemporaryFileBlobImpl.cpp',
 ]
 
 LOCAL_INCLUDES += [
-    '/dom/workers',
+    '/dom/file/ipc',
 ]
 
 MOCHITEST_MANIFESTS += ['tests/mochitest.ini']

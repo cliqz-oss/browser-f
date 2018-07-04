@@ -7,7 +7,7 @@ description: redeclaration with const-LexicalDeclaration (LexicalDeclaration (co
 esid: sec-block-static-semantics-early-errors
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     Block : { StatementList }
@@ -17,5 +17,7 @@ info: |
 
 ---*/
 
+
+throw "Test262: This statement should not be evaluated.";
 
 { const f = 0; const f = 0; }

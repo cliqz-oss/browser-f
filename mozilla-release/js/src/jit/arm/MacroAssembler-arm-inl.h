@@ -52,6 +52,55 @@ MacroAssembler::move16SignExtend(Register src, Register dest)
     as_sxth(dest, src, 0);
 }
 
+void
+MacroAssembler::moveDoubleToGPR64(FloatRegister src, Register64 dest)
+{
+    ma_vxfer(src, dest.low, dest.high);
+}
+
+void
+MacroAssembler::moveGPR64ToDouble(Register64 src, FloatRegister dest)
+{
+    ma_vxfer(src.low, src.high, dest);
+}
+
+void
+MacroAssembler::move64To32(Register64 src, Register dest)
+{
+    if (src.low != dest)
+        move32(src.low, dest);
+}
+
+void
+MacroAssembler::move32To64ZeroExtend(Register src, Register64 dest)
+{
+    if (src != dest.low)
+        move32(src, dest.low);
+    move32(Imm32(0), dest.high);
+}
+
+void
+MacroAssembler::move8To64SignExtend(Register src, Register64 dest)
+{
+    as_sxtb(dest.low, src, 0);
+    ma_asr(Imm32(31), dest.low, dest.high);
+}
+
+void
+MacroAssembler::move16To64SignExtend(Register src, Register64 dest)
+{
+    as_sxth(dest.low, src, 0);
+    ma_asr(Imm32(31), dest.low, dest.high);
+}
+
+void
+MacroAssembler::move32To64SignExtend(Register src, Register64 dest)
+{
+    if (src != dest.low)
+        move32(src, dest.low);
+    ma_asr(Imm32(31), dest.low, dest.high);
+}
+
 // ===============================================================
 // Logical instructions
 
@@ -310,20 +359,21 @@ MacroAssembler::add64(Imm64 imm, Register64 dest)
 }
 
 CodeOffset
-MacroAssembler::add32ToPtrWithPatch(Register src, Register dest)
+MacroAssembler::sub32FromStackPtrWithPatch(Register dest)
 {
     ScratchRegisterScope scratch(*this);
     CodeOffset offs = CodeOffset(currentOffset());
     ma_movPatchable(Imm32(0), scratch, Always);
-    ma_add(src, scratch, dest);
+    ma_sub(getStackPointer(), scratch, dest);
     return offs;
 }
 
 void
-MacroAssembler::patchAdd32ToPtr(CodeOffset offset, Imm32 imm)
+MacroAssembler::patchSub32FromStackPtr(CodeOffset offset, Imm32 imm)
 {
     ScratchRegisterScope scratch(*this);
     BufferInstructionIterator iter(BufferOffset(offset.offset()), &m_buffer);
+    iter.maybeSkipAutomaticInstructions();
     ma_mov_patch(imm, scratch, Always, HasMOVWT() ? L_MOVWT : L_LDR, iter);
 }
 
@@ -1463,27 +1513,6 @@ MacroAssembler::branchPtr(Condition cond, const BaseIndex& lhs, ImmWord rhs, Lab
     branch32(cond, lhs, Imm32(rhs.value), label);
 }
 
-template <typename T>
-inline CodeOffsetJump
-MacroAssembler::branchPtrWithPatch(Condition cond, Register lhs, T rhs, RepatchLabel* label)
-{
-    cmpPtr(lhs, rhs);
-    return jumpWithPatch(label, cond);
-}
-
-template <typename T>
-inline CodeOffsetJump
-MacroAssembler::branchPtrWithPatch(Condition cond, Address lhs, T rhs, RepatchLabel* label)
-{
-    SecondScratchRegisterScope scratch2(*this);
-    {
-        ScratchRegisterScope scratch(*this);
-        ma_ldr(lhs, scratch2, scratch);
-    }
-    cmpPtr(scratch2, rhs);
-    return jumpWithPatch(label, cond);
-}
-
 void
 MacroAssembler::branchPrivatePtr(Condition cond, const Address& lhs, Register rhs, Label* label)
 {
@@ -1585,9 +1614,9 @@ MacroAssembler::branchTruncateDoubleToInt32(FloatRegister src, Register dest, La
     ma_b(fail, Assembler::Equal);
 }
 
-template <typename T, typename L>
+template <typename T>
 void
-MacroAssembler::branchAdd32(Condition cond, T src, Register dest, L label)
+MacroAssembler::branchAdd32(Condition cond, T src, Register dest, Label* label)
 {
     add32(src, dest);
     as_b(label, cond);
@@ -1675,7 +1704,7 @@ MacroAssembler::branchTest64(Condition cond, Register64 lhs, Register64 rhs, Reg
 {
     ScratchRegisterScope scratch(*this);
 
-    if (cond == Assembler::Zero) {
+    if (cond == Assembler::Zero || cond == Assembler::NonZero) {
         MOZ_ASSERT(lhs.low == rhs.low);
         MOZ_ASSERT(lhs.high == rhs.high);
         ma_orr(lhs.low, lhs.high, scratch);
@@ -1858,6 +1887,12 @@ void
 MacroAssembler::branchTestString(Condition cond, Register tag, Label* label)
 {
     branchTestStringImpl(cond, tag, label);
+}
+
+void
+MacroAssembler::branchTestString(Condition cond, const Address& address, Label* label)
+{
+    branchTestStringImpl(cond, address, label);
 }
 
 void
@@ -2080,6 +2115,90 @@ MacroAssembler::branchToComputedAddress(const BaseIndex& addr)
     breakpoint();
 }
 
+void
+MacroAssembler::cmp32Move32(Condition cond, Register lhs, Register rhs, Register src,
+                            Register dest)
+{
+    cmp32(lhs, rhs);
+    ma_mov(src, dest, LeaveCC, cond);
+}
+
+void
+MacroAssembler::cmp32MovePtr(Condition cond, Register lhs, Imm32 rhs, Register src,
+                             Register dest)
+{
+    cmp32(lhs, rhs);
+    ma_mov(src, dest, LeaveCC, cond);
+}
+
+void
+MacroAssembler::cmp32Move32(Condition cond, Register lhs, const Address& rhs, Register src,
+                            Register dest)
+{
+    ScratchRegisterScope scratch(*this);
+    SecondScratchRegisterScope scratch2(*this);
+    ma_ldr(rhs, scratch, scratch2);
+    cmp32Move32(cond, lhs, scratch, src, dest);
+}
+
+void
+MacroAssembler::test32LoadPtr(Condition cond, const Address& addr, Imm32 mask, const Address& src,
+                              Register dest)
+{
+    MOZ_ASSERT(cond == Assembler::Zero || cond == Assembler::NonZero);
+    test32(addr, mask);
+    ScratchRegisterScope scratch(*this);
+    ma_ldr(src, dest, scratch, Offset, cond);
+}
+
+void
+MacroAssembler::test32MovePtr(Condition cond, const Address& addr, Imm32 mask, Register src,
+                              Register dest)
+{
+    MOZ_ASSERT(cond == Assembler::Zero || cond == Assembler::NonZero);
+    test32(addr, mask);
+    ma_mov(src, dest, LeaveCC, cond);
+}
+
+void
+MacroAssembler::spectreMovePtr(Condition cond, Register src, Register dest)
+{
+    ma_mov(src, dest, LeaveCC, cond);
+}
+
+void
+MacroAssembler::spectreZeroRegister(Condition cond, Register, Register dest)
+{
+    ma_mov(Imm32(0), dest, cond);
+}
+
+void
+MacroAssembler::spectreBoundsCheck32(Register index, Register length, Register maybeScratch,
+                                     Label* failure)
+{
+    MOZ_ASSERT(length != maybeScratch);
+    MOZ_ASSERT(index != maybeScratch);
+
+    branch32(Assembler::BelowOrEqual, length, index, failure);
+
+    if (JitOptions.spectreIndexMasking)
+        ma_mov(Imm32(0), index, Assembler::BelowOrEqual);
+}
+
+void
+MacroAssembler::spectreBoundsCheck32(Register index, const Address& length, Register maybeScratch,
+                                     Label* failure)
+{
+    MOZ_ASSERT(index != length.base);
+    MOZ_ASSERT(length.base != maybeScratch);
+    MOZ_ASSERT(index != maybeScratch);
+
+    branch32(Assembler::BelowOrEqual, length, index, failure);
+
+    if (JitOptions.spectreIndexMasking)
+        ma_mov(Imm32(0), index, Assembler::BelowOrEqual);
+}
+
 // ========================================================================
 // Memory access primitives.
 void
@@ -2149,28 +2268,6 @@ MacroAssembler::clampIntToUint8(Register reg)
     as_mov(scratch, asr(reg, 8), SetCC);
     ma_mov(Imm32(0xff), reg, NotEqual);
     ma_mov(Imm32(0), reg, Signed);
-}
-
-// ========================================================================
-// wasm support
-
-template <class L>
-void
-MacroAssembler::wasmBoundsCheck(Condition cond, Register index, Register boundsCheckLimit, L label)
-{
-    as_cmp(index, O2Reg(boundsCheckLimit));
-    as_b(label, cond);
-}
-
-template <class L>
-void
-MacroAssembler::wasmBoundsCheck(Condition cond, Register index, Address boundsCheckLimit, L label)
-{
-    ScratchRegisterScope scratch(*this);
-    MOZ_ASSERT(boundsCheckLimit.offset == offsetof(wasm::TlsData, boundsCheckLimit));
-    ma_ldr(DTRAddr(boundsCheckLimit.base, DtrOffImm(boundsCheckLimit.offset)), scratch);
-    as_cmp(index, O2Reg(scratch));
-    as_b(label, cond);
 }
 
 //}}} check_macroassembler_style

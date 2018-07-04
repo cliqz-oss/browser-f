@@ -62,7 +62,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(CompositionEvent, UIEvent,
 NS_IMPL_ADDREF_INHERITED(CompositionEvent, UIEvent)
 NS_IMPL_RELEASE_INHERITED(CompositionEvent, UIEvent)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(CompositionEvent)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(CompositionEvent)
 NS_INTERFACE_MAP_END_INHERITING(UIEvent)
 
 void
@@ -81,7 +81,7 @@ void
 CompositionEvent::InitCompositionEvent(const nsAString& aType,
                                        bool aCanBubble,
                                        bool aCancelable,
-                                       nsGlobalWindow* aView,
+                                       nsGlobalWindowInner* aView,
                                        const nsAString& aData,
                                        const nsAString& aLocale)
 {

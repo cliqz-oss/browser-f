@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -12,6 +13,7 @@
 #include "mozilla/gfx/Point.h"
 #include "mozilla/layers/TextureHost.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "nsClassHashtable.h"
 
@@ -34,20 +36,21 @@ class AsyncImagePipelineManager final
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(AsyncImagePipelineManager)
 
-  explicit AsyncImagePipelineManager(wr::IdNamespace aIdNamespace);
+  explicit AsyncImagePipelineManager(already_AddRefed<wr::WebRenderAPI>&& aApi);
 
 protected:
   ~AsyncImagePipelineManager();
 
 public:
-  void Destroy(wr::WebRenderAPI* aApi);
-  bool HasKeysToDelete();
+  void Destroy();
 
   void AddPipeline(const wr::PipelineId& aPipelineId);
   void RemovePipeline(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch);
 
   void HoldExternalImage(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch, WebRenderTextureHost* aTexture);
-  void Update(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch);
+  void HoldExternalImage(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch, const wr::ExternalImageId& aImageId);
+  void PipelineRendered(const wr::PipelineId& aPipelineId, const wr::Epoch& aEpoch);
+  void PipelineRemoved(const wr::PipelineId& aPipelineId);
 
   TimeStamp GetCompositionTime() const {
     return mCompositionTime;
@@ -70,15 +73,15 @@ public:
   }
 
   void AddAsyncImagePipeline(const wr::PipelineId& aPipelineId, WebRenderImageHost* aImageHost);
-  void RemoveAsyncImagePipeline(wr::WebRenderAPI* aApi, const wr::PipelineId& aPipelineId);
+  void RemoveAsyncImagePipeline(const wr::PipelineId& aPipelineId, wr::TransactionBuilder& aTxn);
 
   void UpdateAsyncImagePipeline(const wr::PipelineId& aPipelineId,
-                                const LayerRect& aScBounds,
+                                const LayoutDeviceRect& aScBounds,
                                 const gfx::Matrix4x4& aScTransform,
                                 const gfx::MaybeIntSize& aScaleToSize,
                                 const wr::ImageRendering& aFilter,
                                 const wr::MixBlendMode& aMixBlendMode);
-  void ApplyAsyncImages(wr::WebRenderAPI* aApi);
+  void ApplyAsyncImages();
 
   void AppendImageCompositeNotification(const ImageCompositeNotificationInfo& aNotification)
   {
@@ -90,9 +93,12 @@ public:
     aNotifications->AppendElements(Move(mImageCompositeNotifications));
   }
 
-private:
-  void DeleteOldAsyncImages(wr::WebRenderAPI* aApi);
+  void SetWillGenerateFrame();
+  bool GetAndResetWillGenerateFrame();
 
+private:
+
+  wr::Epoch GetNextImageEpoch();
   uint32_t GetNextResourceId() { return ++mResourceId; }
   wr::IdNamespace GetNamespace() { return mIdNamespace; }
   wr::ImageKey GenerateImageKey()
@@ -102,7 +108,6 @@ private:
     key.mHandle = GetNextResourceId();
     return key;
   }
-  bool GenerateImageKeyForTextureHost(wr::WebRenderAPI* aApi, TextureHost* aTexture, nsTArray<wr::ImageKey>& aKeys);
 
   struct ForwardingTextureHost {
     ForwardingTextureHost(const wr::Epoch& aEpoch, TextureHost* aTexture)
@@ -113,19 +118,46 @@ private:
     CompositableTextureHostRef mTexture;
   };
 
+  struct ForwardingExternalImage {
+    ForwardingExternalImage(const wr::Epoch& aEpoch, const wr::ExternalImageId& aImageId)
+      : mEpoch(aEpoch)
+      , mImageId(aImageId)
+    {}
+    wr::Epoch mEpoch;
+    wr::ExternalImageId mImageId;
+  };
+
   struct PipelineTexturesHolder {
     // Holds forwarding WebRenderTextureHosts.
     std::queue<ForwardingTextureHost> mTextureHosts;
+    std::queue<ForwardingExternalImage> mExternalImages;
     Maybe<wr::Epoch> mDestroyedEpoch;
   };
 
   struct AsyncImagePipeline {
     AsyncImagePipeline();
+    void Update(const LayoutDeviceRect& aScBounds,
+                const gfx::Matrix4x4& aScTransform,
+                const gfx::MaybeIntSize& aScaleToSize,
+                const wr::ImageRendering& aFilter,
+                const wr::MixBlendMode& aMixBlendMode)
+    {
+      mIsChanged |= !mScBounds.IsEqualEdges(aScBounds) ||
+                    mScTransform != aScTransform ||
+                    mScaleToSize != aScaleToSize ||
+                    mFilter != aFilter ||
+                    mMixBlendMode != aMixBlendMode;
+      mScBounds = aScBounds;
+      mScTransform = aScTransform;
+      mScaleToSize = aScaleToSize;
+      mFilter = aFilter;
+      mMixBlendMode = aMixBlendMode;
+    }
 
     bool mInitialised;
     bool mIsChanged;
     bool mUseExternalImage;
-    LayerRect mScBounds;
+    LayoutDeviceRect mScBounds;
     gfx::Matrix4x4 mScTransform;
     gfx::MaybeIntSize mScaleToSize;
     wr::ImageRendering mFilter;
@@ -135,19 +167,24 @@ private:
     nsTArray<wr::ImageKey> mKeys;
   };
 
-  bool UpdateImageKeys(wr::WebRenderAPI* aApi,
-                       bool& aUseExternalImage,
-                       AsyncImagePipeline* aImageMgr,
-                       nsTArray<wr::ImageKey>& aKeys,
-                       nsTArray<wr::ImageKey>& aKeysToDelete);
+  Maybe<TextureHost::ResourceUpdateOp>
+  UpdateImageKeys(wr::TransactionBuilder& aResourceUpdates,
+                  AsyncImagePipeline* aPipeline,
+                  nsTArray<wr::ImageKey>& aKeys);
+  Maybe<TextureHost::ResourceUpdateOp>
+  UpdateWithoutExternalImage(wr::TransactionBuilder& aResources,
+                             TextureHost* aTexture,
+                             wr::ImageKey aKey,
+                             TextureHost::ResourceUpdateOp);
 
+  RefPtr<wr::WebRenderAPI> mApi;
   wr::IdNamespace mIdNamespace;
   uint32_t mResourceId;
 
   nsClassHashtable<nsUint64HashKey, PipelineTexturesHolder> mPipelineTexturesHolders;
   nsClassHashtable<nsUint64HashKey, AsyncImagePipeline> mAsyncImagePipelines;
-  uint32_t mAsyncImageEpoch;
-  nsTArray<wr::ImageKey> mKeysToDelete;
+  wr::Epoch mAsyncImageEpoch;
+  bool mWillGenerateFrame;
   bool mDestroyed;
 
   // Render time for the current composition.

@@ -13,31 +13,18 @@
 NS_IMPL_ISUPPORTS(nsX509CertValidity, nsIX509CertValidity)
 
 nsX509CertValidity::nsX509CertValidity(const mozilla::UniqueCERTCertificate& cert)
-  : mTimesInitialized(false)
+  : mNotBefore(0)
+  , mNotAfter(0)
+  , mTimesInitialized(false)
 {
   MOZ_ASSERT(cert);
   if (!cert) {
     return;
   }
 
-  nsNSSShutDownPreventionLock locker;
-  if (isAlreadyShutDown()) {
-    return;
-  }
-
   if (CERT_GetCertTimes(cert.get(), &mNotBefore, &mNotAfter) == SECSuccess) {
     mTimesInitialized = true;
   }
-}
-
-nsX509CertValidity::~nsX509CertValidity()
-{
-  nsNSSShutDownPreventionLock locker;
-  if (isAlreadyShutDown()) {
-    return;
-  }
-
-  shutdown(ShutdownCalledFrom::Object);
 }
 
 NS_IMETHODIMP

@@ -8,7 +8,6 @@
 #include "nsGlobalWindowCommands.h"
 
 #include "nsIComponentManager.h"
-#include "nsIDOMElement.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsCRT.h"
@@ -31,15 +30,11 @@
 #include "nsIClipboard.h"
 #include "ContentEventHandler.h"
 #include "nsContentUtils.h"
-#include "nsIWordBreaker.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/layers/KeyboardMap.h"
-
-#include "nsIClipboardDragDropHooks.h"
-#include "nsIClipboardDragDropHookList.h"
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -138,7 +133,7 @@ class nsSelectMoveScrollCommand : public nsSelectionCommandsBase
 {
 public:
 
-  NS_IMETHOD DoCommand(const char * aCommandName, nsISupports *aCommandContext);
+  NS_IMETHOD DoCommand(const char * aCommandName, nsISupports *aCommandContext) override;
 
   // no member variables, please, we're stateless!
 };
@@ -148,7 +143,7 @@ class nsPhysicalSelectMoveScrollCommand : public nsSelectionCommandsBase
 {
 public:
 
-  NS_IMETHOD DoCommand(const char * aCommandName, nsISupports *aCommandContext);
+  NS_IMETHOD DoCommand(const char * aCommandName, nsISupports *aCommandContext) override;
 
   // no member variables, please, we're stateless!
 };
@@ -158,7 +153,7 @@ class nsSelectCommand : public nsSelectionCommandsBase
 {
 public:
 
-  NS_IMETHOD DoCommand(const char * aCommandName, nsISupports *aCommandContext);
+  NS_IMETHOD DoCommand(const char * aCommandName, nsISupports *aCommandContext) override;
 
   // no member variables, please, we're stateless!
 };
@@ -168,7 +163,7 @@ class nsPhysicalSelectCommand : public nsSelectionCommandsBase
 {
 public:
 
-  NS_IMETHOD DoCommand(const char * aCommandName, nsISupports *aCommandContext);
+  NS_IMETHOD DoCommand(const char * aCommandName, nsISupports *aCommandContext) override;
 
   // no member variables, please, we're stateless!
 };
@@ -245,7 +240,7 @@ AdjustFocusAfterCaretMove(nsPIDOMWindowOuter* aWindow)
   // adjust the focus to the new caret position
   nsIFocusManager* fm = nsFocusManager::GetFocusManager();
   if (fm) {
-    nsCOMPtr<nsIDOMElement> result;
+    RefPtr<dom::Element> result;
     fm->MoveFocus(aWindow, nullptr, nsIFocusManager::MOVEFOCUS_CARET,
                   nsIFocusManager::FLAG_NOSCROLL, getter_AddRefs(result));
   }
@@ -570,10 +565,7 @@ nsClipboardCommand::DoCommand(const char *aCommandName, nsISupports *aContext)
     sel->CollapseToEnd();
   }
 
-  if (actionTaken) {
-    return NS_OK;
-  }
-  return NS_ERROR_FAILURE;
+  return actionTaken ? NS_OK : NS_SUCCESS_DOM_NO_OPERATION;
 }
 
 NS_IMETHODIMP
@@ -698,9 +690,11 @@ class _cmd : public nsSelectionCommand                                          
 protected:                                                                                  \
                                                                                             \
   virtual nsresult    IsClipboardCommandEnabled(const char* aCommandName,                   \
-                                  nsIContentViewerEdit* aEdit, bool *outCmdEnabled);        \
+                                                nsIContentViewerEdit* aEdit,                \
+                                                bool *outCmdEnabled) override;              \
   virtual nsresult    DoClipboardCommand(const char* aCommandName,                          \
-                                  nsIContentViewerEdit* aEdit, nsICommandParams* aParams);  \
+                                         nsIContentViewerEdit* aEdit,                       \
+                                         nsICommandParams* aParams) override;               \
   /* no member variables, please, we're stateless! */                                       \
 };
 
@@ -783,7 +777,7 @@ nsClipboardGetContentsCommand::DoClipboardCommand(const char *aCommandName, nsIC
 
   nsAutoCString mimeType("text/plain");
 
-  nsXPIDLCString format;    // nsICommandParams needs to use nsACString
+  nsCString format;    // nsICommandParams needs to use nsACString
   if (NS_SUCCEEDED(aParams->GetCStringValue("format", getter_Copies(format))))
     mimeType.Assign(format);
 
@@ -917,101 +911,6 @@ nsGoBackCommand::DoWebNavCommand(const char *aCommandName, nsIWebNavigation* aWe
 }
 #endif
 
-/*---------------------------------------------------------------------------
-
-  nsClipboardDragDropHookCommand
-      params        value type   possible values
-      "addhook"     isupports    nsIClipboardDragDropHooks as nsISupports
-      "removehook"  isupports    nsIClipboardDragDropHooks as nsISupports
-
-----------------------------------------------------------------------------*/
-
-class nsClipboardDragDropHookCommand final : public nsIControllerCommand
-{
-  ~nsClipboardDragDropHookCommand() {}
-
-public:
-
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSICONTROLLERCOMMAND
-
-protected:
-  // no member variables, please, we're stateless!
-};
-
-
-NS_IMPL_ISUPPORTS(nsClipboardDragDropHookCommand, nsIControllerCommand)
-
-NS_IMETHODIMP
-nsClipboardDragDropHookCommand::IsCommandEnabled(const char * aCommandName,
-                                                 nsISupports *aCommandContext,
-                                                 bool *outCmdEnabled)
-{
-  *outCmdEnabled = true;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsClipboardDragDropHookCommand::DoCommand(const char *aCommandName,
-                                          nsISupports *aCommandContext)
-{
-  return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-nsClipboardDragDropHookCommand::DoCommandParams(const char *aCommandName,
-                                                nsICommandParams *aParams,
-                                                nsISupports *aCommandContext)
-{
-  NS_ENSURE_ARG(aParams);
-
-  nsCOMPtr<nsPIDOMWindowOuter> window = do_QueryInterface(aCommandContext);
-  NS_ENSURE_TRUE(window, NS_ERROR_FAILURE);
-
-  nsIDocShell *docShell = window->GetDocShell();
-
-  nsCOMPtr<nsIClipboardDragDropHookList> obj = do_GetInterface(docShell);
-  if (!obj) return NS_ERROR_INVALID_ARG;
-
-  nsCOMPtr<nsISupports> isuppHook;
-
-  nsresult returnValue = NS_OK;
-  nsresult rv = aParams->GetISupportsValue("addhook", getter_AddRefs(isuppHook));
-  if (NS_SUCCEEDED(rv))
-  {
-    nsCOMPtr<nsIClipboardDragDropHooks> hook = do_QueryInterface(isuppHook);
-    if (hook)
-      returnValue = obj->AddClipboardDragDropHooks(hook);
-    else
-      returnValue = NS_ERROR_INVALID_ARG;
-  }
-
-  rv = aParams->GetISupportsValue("removehook", getter_AddRefs(isuppHook));
-  if (NS_SUCCEEDED(rv))
-  {
-    nsCOMPtr<nsIClipboardDragDropHooks> hook = do_QueryInterface(isuppHook);
-    if (hook)
-    {
-      rv = obj->RemoveClipboardDragDropHooks(hook);
-      if (NS_FAILED(rv) && NS_SUCCEEDED(returnValue))
-        returnValue = rv;
-    }
-    else
-      returnValue = NS_ERROR_INVALID_ARG;
-  }
-
-  return returnValue;
-}
-
-NS_IMETHODIMP
-nsClipboardDragDropHookCommand::GetCommandStateParams(const char *aCommandName,
-                                                      nsICommandParams *aParams,
-                                                      nsISupports *aCommandContext)
-{
-  NS_ENSURE_ARG_POINTER(aParams);
-  return aParams->SetBooleanValue("state_enabled", true);
-}
-
 class nsLookUpDictionaryCommand final : public nsIControllerCommand
 {
 public:
@@ -1129,12 +1028,12 @@ nsLookUpDictionaryCommand::DoCommandParams(const char* aCommandName,
 
   // XXX nsIWordBreaker doesn't use contextual breaker.
   // If OS provides it, widget should use it if contextual breaker is needed.
-  nsCOMPtr<nsIWordBreaker> wordBreaker = nsContentUtils::WordBreaker();
+  RefPtr<mozilla::intl::WordBreaker> wordBreaker = nsContentUtils::WordBreaker();
   if (NS_WARN_IF(!wordBreaker)) {
     return NS_ERROR_FAILURE;
   }
 
-  nsWordRange range =
+  mozilla::intl::WordRange range =
     wordBreaker->FindWord(textContent.mReply.mString.get(),
                           textContent.mReply.mString.Length(),
                           charAt.mReply.mOffset - offset);
@@ -1277,8 +1176,6 @@ nsWindowCommandRegistration::RegisterWindowCommands(
   NS_REGISTER_ONE_COMMAND(nsGoBackCommand, "cmd_browserBack");
   NS_REGISTER_ONE_COMMAND(nsGoForwardCommand, "cmd_browserForward");
 #endif
-
-  NS_REGISTER_ONE_COMMAND(nsClipboardDragDropHookCommand, "cmd_clipboardDragDropHook");
 
   NS_REGISTER_ONE_COMMAND(nsLookUpDictionaryCommand, "cmd_lookUpDictionary");
 

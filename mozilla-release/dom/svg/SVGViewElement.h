@@ -13,10 +13,6 @@
 #include "SVGAnimatedPreserveAspectRatio.h"
 #include "SVGStringList.h"
 
-static const unsigned short SVG_ZOOMANDPAN_UNKNOWN = 0;
-static const unsigned short SVG_ZOOMANDPAN_DISABLE = 1;
-static const unsigned short SVG_ZOOMANDPAN_MAGNIFY = 2;
-
 typedef nsSVGElement SVGViewElementBase;
 
 class nsSVGOuterSVGFrame;
@@ -51,7 +47,6 @@ public:
   void SetZoomAndPan(uint16_t aZoomAndPan, ErrorResult& rv);
   already_AddRefed<SVGAnimatedRect> ViewBox();
   already_AddRefed<DOMSVGAnimatedPreserveAspectRatio> PreserveAspectRatio();
-  already_AddRefed<DOMSVGStringList> ViewTarget();
 
 private:
 
@@ -69,12 +64,6 @@ private:
 
   nsSVGViewBox                   mViewBox;
   SVGAnimatedPreserveAspectRatio mPreserveAspectRatio;
-
-  virtual StringListAttributesInfo GetStringListInfo() override;
-
-  enum { VIEW_TARGET };
-  SVGStringList mStringListAttributes[1];
-  static StringListInfo sStringListInfo[1];
 };
 
 } // namespace dom

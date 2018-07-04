@@ -10,6 +10,7 @@ with Files("**"):
 EXPORTS.mozilla.dom += [
     'U2F.h',
     'U2FAuthenticator.h',
+    'U2FUtil.h',
 ]
 
 UNIFIED_SOURCES += [
@@ -23,9 +24,11 @@ FINAL_LIBRARY = 'xul'
 LOCAL_INCLUDES += [
     '/dom/base',
     '/dom/crypto',
+    '/dom/webauthn',
     '/security/manager/ssl',
     '/security/pkix/include',
     '/security/pkix/lib',
 ]
 
 MOCHITEST_MANIFESTS += ['tests/mochitest.ini']
+BROWSER_CHROME_MANIFESTS += ['tests/browser/browser.ini']

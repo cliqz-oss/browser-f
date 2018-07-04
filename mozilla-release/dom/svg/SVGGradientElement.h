@@ -14,11 +14,6 @@
 #include "nsSVGEnum.h"
 #include "nsSVGString.h"
 
-static const unsigned short SVG_SPREADMETHOD_UNKNOWN = 0;
-static const unsigned short SVG_SPREADMETHOD_PAD     = 1;
-static const unsigned short SVG_SPREADMETHOD_REFLECT = 2;
-static const unsigned short SVG_SPREADMETHOD_REPEAT  = 3;
-
 class nsSVGGradientFrame;
 class nsSVGLinearGradientFrame;
 class nsSVGRadialGradientFrame;
@@ -52,11 +47,11 @@ public:
                          bool aPreallocateChildren) const override = 0;
 
   // nsIContent
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
   virtual nsSVGAnimatedTransformList*
     GetAnimatedTransformList(uint32_t aFlags = 0) override;
-  virtual nsIAtom* GetTransformListAttrName() const override {
+  virtual nsAtom* GetTransformListAttrName() const override {
     return nsGkAtoms::gradientTransform;
   }
 

@@ -38,8 +38,8 @@ BaseWebSocketChannel::BaseWebSocketChannel()
   : mWasOpened(0)
   , mClientSetPingInterval(0)
   , mClientSetPingTimeout(0)
-  , mEncrypted(0)
-  , mPingForced(0)
+  , mEncrypted(false)
+  , mPingForced(false)
   , mIsServerSide(false)
   , mPingInterval(0)
   , mPingResponseTimeout(10000)
@@ -306,13 +306,13 @@ BaseWebSocketChannel::NewURI(const nsACString & aSpec, const char *aOriginCharse
   if (NS_FAILED(rv))
     return rv;
 
-  RefPtr<nsStandardURL> url = new nsStandardURL();
-  rv = url->Init(nsIStandardURL::URLTYPE_AUTHORITY, port, aSpec,
-                aOriginCharset, aBaseURI);
-  if (NS_FAILED(rv))
-    return rv;
-  url.forget(_retval);
-  return NS_OK;
+  nsCOMPtr<nsIURI> base(aBaseURI);
+  return NS_MutateURI(new nsStandardURL::Mutator())
+    .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                            nsIStandardURL::URLTYPE_AUTHORITY,
+                            port, nsCString(aSpec), aOriginCharset,
+                            base, nullptr))
+    .Finalize(_retval);
 }
 
 NS_IMETHODIMP
@@ -356,6 +356,19 @@ BaseWebSocketChannel::RetargetDeliveryTo(nsIEventTarget* aTargetThread)
 
   mTargetThread = do_QueryInterface(aTargetThread);
   MOZ_ASSERT(mTargetThread);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+BaseWebSocketChannel::GetDeliveryTarget(nsIEventTarget** aTargetThread)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  nsCOMPtr<nsIEventTarget> target = mTargetThread;
+  if (!target) {
+    target = GetCurrentThreadEventTarget();
+  }
+  target.forget(aTargetThread);
   return NS_OK;
 }
 

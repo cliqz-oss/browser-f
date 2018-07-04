@@ -1,5 +1,3 @@
-let { classes: Cc, interfaces: Ci } = Components;
-
 const BASE_ORIGIN = "http://example.com";
 const URI = BASE_ORIGIN +
   "/browser/browser/components/contextualidentity/test/browser/empty_file.html";
@@ -39,7 +37,7 @@ add_task(async function test() {
         content.window.bc.onmessage = function(e) {
           content.document.title += e.data;
           resolve();
-        }
+        };
       });
     }
   );

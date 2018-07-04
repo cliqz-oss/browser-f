@@ -8,7 +8,6 @@
 
 #include "GeckoProfiler.h"
 #include "nsRFPService.h"
-#include "ProfilerMarkerPayload.h"
 #include "PerformanceEntry.h"
 #include "PerformanceMainThread.h"
 #include "PerformanceMark.h"
@@ -22,72 +21,22 @@
 #include "mozilla/dom/PerformanceEntryEvent.h"
 #include "mozilla/dom/PerformanceNavigationBinding.h"
 #include "mozilla/dom/PerformanceObserverBinding.h"
+#include "mozilla/dom/PerformanceNavigationTiming.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Preferences.h"
-#include "WorkerPrivate.h"
-#include "WorkerRunnable.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
+
+#ifdef MOZ_GECKO_PROFILER
+#include "ProfilerMarkerPayload.h"
+#endif
 
 #define PERFLOG(msg, ...) printf_stderr(msg, ##__VA_ARGS__)
 
 namespace mozilla {
 namespace dom {
 
-using namespace workers;
-
-namespace {
-
-// Helper classes
-class MOZ_STACK_CLASS PerformanceEntryComparator final
-{
-public:
-  bool Equals(const PerformanceEntry* aElem1,
-              const PerformanceEntry* aElem2) const
-  {
-    MOZ_ASSERT(aElem1 && aElem2,
-               "Trying to compare null performance entries");
-    return aElem1->StartTime() == aElem2->StartTime();
-  }
-
-  bool LessThan(const PerformanceEntry* aElem1,
-                const PerformanceEntry* aElem2) const
-  {
-    MOZ_ASSERT(aElem1 && aElem2,
-               "Trying to compare null performance entries");
-    return aElem1->StartTime() < aElem2->StartTime();
-  }
-};
-
-class PrefEnabledRunnable final
-  : public WorkerCheckAPIExposureOnMainThreadRunnable
-{
-public:
-  PrefEnabledRunnable(WorkerPrivate* aWorkerPrivate,
-                      const nsCString& aPrefName)
-    : WorkerCheckAPIExposureOnMainThreadRunnable(aWorkerPrivate)
-    , mEnabled(false)
-    , mPrefName(aPrefName)
-  { }
-
-  bool MainThreadRun() override
-  {
-    MOZ_ASSERT(NS_IsMainThread());
-    mEnabled = Preferences::GetBool(mPrefName.get(), false);
-    return true;
-  }
-
-  bool IsEnabled() const
-  {
-    return mEnabled;
-  }
-
-private:
-  bool mEnabled;
-  nsCString mPrefName;
-};
-
-} // anonymous namespace
-
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(Performance)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(Performance)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(Performance,
@@ -100,6 +49,7 @@ NS_IMPL_RELEASE_INHERITED(Performance, DOMEventTargetHelper)
 
 /* static */ already_AddRefed<Performance>
 Performance::CreateForMainThread(nsPIDOMWindowInner* aWindow,
+                                 nsIPrincipal* aPrincipal,
                                  nsDOMNavigationTiming* aDOMTiming,
                                  nsITimedChannel* aChannel)
 {
@@ -107,16 +57,18 @@ Performance::CreateForMainThread(nsPIDOMWindowInner* aWindow,
 
   RefPtr<Performance> performance =
     new PerformanceMainThread(aWindow, aDOMTiming, aChannel);
+  performance->mSystemPrincipal = nsContentUtils::IsSystemPrincipal(aPrincipal);
   return performance.forget();
 }
 
 /* static */ already_AddRefed<Performance>
-Performance::CreateForWorker(workers::WorkerPrivate* aWorkerPrivate)
+Performance::CreateForWorker(WorkerPrivate* aWorkerPrivate)
 {
   MOZ_ASSERT(aWorkerPrivate);
   aWorkerPrivate->AssertIsOnWorkerThread();
 
   RefPtr<Performance> performance = new PerformanceWorker(aWorkerPrivate);
+  performance->mSystemPrincipal = aWorkerPrivate->UsesSystemPrincipal();
   return performance.forget();
 }
 
@@ -139,10 +91,23 @@ Performance::~Performance()
 {}
 
 DOMHighResTimeStamp
-Performance::Now() const
+Performance::Now()
+{
+  DOMHighResTimeStamp rawTime = NowUnclamped();
+  if (mSystemPrincipal) {
+    return rawTime;
+  }
+
+  const double maxResolutionMs = 0.020;
+  DOMHighResTimeStamp minimallyClamped = floor(rawTime / maxResolutionMs) * maxResolutionMs;
+  return nsRFPService::ReduceTimePrecisionAsMSecs(minimallyClamped, GetRandomTimelineSeed());
+}
+
+DOMHighResTimeStamp
+Performance::NowUnclamped() const
 {
   TimeDuration duration = TimeStamp::Now() - CreationTimeStamp();
-  return RoundTime(duration.ToMilliseconds());
+  return duration.ToMilliseconds();
 }
 
 DOMHighResTimeStamp
@@ -153,7 +118,13 @@ Performance::TimeOrigin()
   }
 
   MOZ_ASSERT(mPerformanceService);
-  return mPerformanceService->TimeOrigin(CreationTimeStamp());
+  DOMHighResTimeStamp rawTimeOrigin = mPerformanceService->TimeOrigin(CreationTimeStamp());
+  if (mSystemPrincipal) {
+    return rawTimeOrigin;
+  }
+
+  // Time Origin is an absolute timestamp, so we supply a 0 context mix-in
+  return nsRFPService::ReduceTimePrecisionAsMSecs(rawTimeOrigin, 0);
 }
 
 JSObject*
@@ -253,21 +224,8 @@ Performance::ClearUserEntries(const Optional<nsAString>& aEntryName,
 void
 Performance::ClearResourceTimings()
 {
-  MOZ_ASSERT(NS_IsMainThread());
   mResourceEntries.Clear();
 }
-
-DOMHighResTimeStamp
-Performance::RoundTime(double aTime) const
-{
-  // Round down to the nearest 5us, because if the timer is too accurate people
-  // can do nasty timing attacks with it.  See similar code in the worker
-  // Performance implementation.
-  const double maxResolutionMs = 0.005;
-  return nsRFPService::ReduceTimePrecisionAsMSecs(
-    floor(aTime / maxResolutionMs) * maxResolutionMs);
-}
-
 
 void
 Performance::Mark(const nsAString& aName, ErrorResult& aRv)
@@ -286,11 +244,13 @@ Performance::Mark(const nsAString& aName, ErrorResult& aRv)
     new PerformanceMark(GetParentObject(), aName, Now());
   InsertUserEntry(performanceMark);
 
+#ifdef MOZ_GECKO_PROFILER
   if (profiler_is_active()) {
     profiler_add_marker(
       "UserTiming",
       MakeUnique<UserTimingMarkerPayload>(aName, TimeStamp::Now()));
   }
+#endif
 }
 
 void
@@ -304,7 +264,6 @@ Performance::ResolveTimestampFromName(const nsAString& aName,
                                       ErrorResult& aRv)
 {
   AutoTArray<RefPtr<PerformanceEntry>, 1> arr;
-  DOMHighResTimeStamp ts;
   Optional<nsAString> typeParam;
   nsAutoString str;
   str.AssignLiteral("mark");
@@ -319,7 +278,7 @@ Performance::ResolveTimestampFromName(const nsAString& aName,
     return 0;
   }
 
-  ts = GetPerformanceTimingFromString(aName);
+  DOMHighResTimeStamp ts = GetPerformanceTimingFromString(aName);
   if (!ts) {
     aRv.Throw(NS_ERROR_DOM_INVALID_ACCESS_ERR);
     return 0;
@@ -341,11 +300,6 @@ Performance::Measure(const nsAString& aName,
 
   DOMHighResTimeStamp startTime;
   DOMHighResTimeStamp endTime;
-
-  if (IsPerformanceTimingAttribute(aName)) {
-    aRv.Throw(NS_ERROR_DOM_SYNTAX_ERR);
-    return;
-  }
 
   if (aStartMark.WasPassed()) {
     startTime = ResolveTimestampFromName(aStartMark.Value(), aRv);
@@ -372,15 +326,30 @@ Performance::Measure(const nsAString& aName,
     new PerformanceMeasure(GetParentObject(), aName, startTime, endTime);
   InsertUserEntry(performanceMeasure);
 
+#ifdef MOZ_GECKO_PROFILER
   if (profiler_is_active()) {
     TimeStamp startTimeStamp = CreationTimeStamp() +
                                TimeDuration::FromMilliseconds(startTime);
     TimeStamp endTimeStamp = CreationTimeStamp() +
                              TimeDuration::FromMilliseconds(endTime);
+
+    // Convert to Maybe values so that Optional types do not need to be used in
+    // the profiler.
+    Maybe<nsString> startMark;
+    if (aStartMark.WasPassed()) {
+      startMark.emplace(aStartMark.Value());
+    }
+    Maybe<nsString> endMark;
+    if (aEndMark.WasPassed()) {
+      endMark.emplace(aEndMark.Value());
+    }
+
     profiler_add_marker(
       "UserTiming",
-      MakeUnique<UserTimingMarkerPayload>(aName, startTimeStamp, endTimeStamp));
+      MakeUnique<UserTimingMarkerPayload>(aName, startMark, endMark,
+                                          startTimeStamp, endTimeStamp));
   }
+#endif
 }
 
 void
@@ -420,8 +389,7 @@ Performance::TimingNotification(PerformanceEntry* aEntry,
 
   nsCOMPtr<EventTarget> et = do_QueryInterface(GetOwner());
   if (et) {
-    bool dummy = false;
-    et->DispatchEvent(perfEntryEvent, &dummy);
+    et->DispatchEvent(*perfEntryEvent);
   }
 }
 
@@ -444,13 +412,13 @@ void
 Performance::InsertResourceEntry(PerformanceEntry* aEntry)
 {
   MOZ_ASSERT(aEntry);
-  MOZ_ASSERT(mResourceEntries.Length() < mResourceTimingBufferSize);
 
   // We won't add an entry when 'privacy.resistFingerprint' is true.
   if (nsContentUtils::ShouldResistFingerprinting()) {
     return;
   }
 
+  // Don't add the entry if the buffer is full
   if (mResourceEntries.Length() >= mResourceTimingBufferSize) {
     return;
   }
@@ -528,7 +496,12 @@ Performance::RunNotificationObserversTask()
 {
   mPendingNotificationObserversTask = true;
   nsCOMPtr<nsIRunnable> task = new NotifyObserversTask(this);
-  nsresult rv = NS_DispatchToCurrentThread(task);
+  nsresult rv;
+  if (GetOwnerGlobal()) {
+    rv = GetOwnerGlobal()->Dispatch(TaskCategory::Other, task.forget());
+  } else {
+    rv = NS_DispatchToCurrentThread(task);
+  }
   if (NS_WARN_IF(NS_FAILED(rv))) {
     mPendingNotificationObserversTask = false;
   }
@@ -547,24 +520,6 @@ Performance::QueueEntry(PerformanceEntry* aEntry)
   if (!mPendingNotificationObserversTask) {
     RunNotificationObserversTask();
   }
-}
-
-/* static */ bool
-Performance::IsObserverEnabled(JSContext* aCx, JSObject* aGlobal)
-{
-  if (NS_IsMainThread()) {
-    return Preferences::GetBool("dom.enable_performance_observer", false);
-  }
-
-  WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
-  MOZ_ASSERT(workerPrivate);
-  workerPrivate->AssertIsOnWorkerThread();
-
-  RefPtr<PrefEnabledRunnable> runnable =
-    new PrefEnabledRunnable(workerPrivate,
-                            NS_LITERAL_CSTRING("dom.enable_performance_observer"));
-
-  return runnable->Dispatch() && runnable->IsEnabled();
 }
 
 void

@@ -10,11 +10,12 @@
 
 #include <stdarg.h>
 
-#include "jscntxt.h"
 #include "jsexn.h"
 #include "jsfriendapi.h"
 
-#include "jscntxtinlines.h"
+#include "vm/JSContext.h"
+
+#include "vm/JSContext-inl.h"
 
 using mozilla::Move;
 
@@ -58,7 +59,7 @@ bool
 js::ReportCompileWarning(JSContext* cx, ErrorMetadata&& metadata, UniquePtr<JSErrorNotes> notes,
                          unsigned flags, unsigned errorNumber, va_list args)
 {
-    // On the active thread, report the error immediately. When compiling off
+    // On the main thread, report the error immediately. When compiling off
     // thread, save the error so that the thread finishing the parse can report
     // it later.
     CompileError tempErr;
@@ -94,7 +95,7 @@ void
 js::ReportCompileError(JSContext* cx, ErrorMetadata&& metadata, UniquePtr<JSErrorNotes> notes,
                        unsigned flags, unsigned errorNumber, va_list args)
 {
-    // On the active thread, report the error immediately. When compiling off
+    // On the main thread, report the error immediately. When compiling off
     // thread, save the error so that the thread finishing the parse can report
     // it later.
     CompileError tempErr;

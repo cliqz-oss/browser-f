@@ -39,7 +39,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_ADDREF_INHERITED(AudioNode, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(AudioNode, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(AudioNode)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(AudioNode)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
@@ -57,7 +57,6 @@ AudioNode::AudioNode(AudioContext* aContext,
   , mAbstractMainThread(aContext->GetOwnerGlobal()->AbstractMainThreadFor(TaskCategory::Other))
 {
   MOZ_ASSERT(aContext);
-  DOMEventTargetHelper::BindToOwner(aContext->GetParentObject());
   aContext->RegisterNode(this);
 }
 
@@ -91,7 +90,10 @@ AudioNode::Initialize(const AudioNodeOptions& aOptions, ErrorResult& aRv)
   }
 
   if (aOptions.mChannelInterpretation.WasPassed()) {
-    SetChannelInterpretationValue(aOptions.mChannelInterpretation.Value());
+    SetChannelInterpretationValue(aOptions.mChannelInterpretation.Value(), aRv);
+    if (NS_WARN_IF(aRv.Failed())) {
+      return;
+    }
   }
 }
 

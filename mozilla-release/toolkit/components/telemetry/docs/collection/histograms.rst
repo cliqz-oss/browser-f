@@ -2,11 +2,11 @@
 Histograms
 ==========
 
-If a user has opted into submitting performance data to Mozilla, the Telemetry system will collect various measures of Firefox performance, hardware, usage and customizations and submit it to Mozilla. The Telemetry data collected by a single client can be examined from the integrated ``about:telemetry`` browser page, while the aggregated reports across entire user populations are publicly available at `telemetry.mozilla.org <https://telemetry.mozilla.org>`_.
+In Firefox, the Telemetry system collects various measures of Firefox performance, hardware, usage and customizations and submits it to Mozilla. The Telemetry data collected by a single client can be examined from the integrated ``about:telemetry`` browser page, while the aggregated reports across entire user populations are publicly available at `telemetry.mozilla.org <https://telemetry.mozilla.org>`_.
 
 .. important::
 
-    Every new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for :bsmedberg or one of the other data peers. We try to reply within a business day.
+    Every new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for one of the data peers. We try to reply within a business day.
 
 The following sections explain how to add a new measurement to Telemetry.
 
@@ -18,13 +18,13 @@ They are collected through a common API and automatically submitted with the :do
 
 .. hint::
 
-    Before adding a new histogram,  you should consider using other collection mechanisms. For example, if the need is to track a single scalar value (e.g. number, boolean or string), you should use :doc:`scalars`.
+    Before adding a new histogram, you should consider using other collection mechanisms. For example, if the need is to track a single scalar value (e.g. number, boolean or string), you should use :doc:`scalars`.
 
 The histogram below is taken from Firefox's ``about:telemetry`` page. It shows a histogram used for tracking plugin shutdown times and the data collected over a single Firefox session. The timing data is grouped into buckets where the height of the blue bars represents the number of items in each bucket. The tallest bar, for example, indicates that there were 63 plugin shutdowns lasting between 129ms and 204ms.
 
 .. image:: sampleHistogram.png
 
-The histograms on the ``about:telemetry`` page only show the non-empty buckets in a histogram except for the bucket to the left of the first non-empty bucket and the bucket to the right of the last non-empty bucket.
+The histograms on the ``about:telemetry`` page only show the non-empty buckets in a histogram, except for the bucket to the left of the first non-empty bucket and the bucket to the right of the last non-empty bucket.
 
 .. _choosing-histogram-type:
 
@@ -100,13 +100,14 @@ Note that when you need to record for a small set of known keys, using separate 
 Declaring a Histogram
 =====================
 
-Histograms should be declared in the `Histograms.json <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/Histograms.json>`_ file. These declarations are checked for correctness at `compile time <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/gen-histogram-data.py>`_ and used to generate C++ code.
+Histograms should be declared in the `Histograms.json <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/Histograms.json>`_ file. These declarations are checked for correctness at `compile time <https://dxr.mozilla.org/mozilla-central/source/toolkit/components/telemetry/gen_histogram_data.py>`_ and used to generate C++ code.
 
 The following is a sample histogram declaration from ``Histograms.json`` for a histogram named ``MEMORY_RESIDENT`` which tracks the amount of resident memory used by a process:
 
 
 .. code-block:: json
 
+  {
     "MEMORY_RESIDENT": {
       "record_in_processes": ["main", "content"],
       "alert_emails": ["team@mozilla.xyz"],
@@ -117,7 +118,8 @@ The following is a sample histogram declaration from ``Histograms.json`` for a h
       "n_buckets": 50,
       "bug_numbers": [12345],
       "description": "Resident memory size (KB)"
-    },
+    }
+  }
 
 Histograms which track timings in milliseconds or microseconds should suffix their names with ``"_MS"`` and ``"_US"`` respectively. Flag-type histograms should have the suffix ``"_FLAG"`` in their name.
 
@@ -130,7 +132,7 @@ Required. This field is a list of processes this histogram can be recorded in. C
 - ``main``
 - ``content``
 - ``gpu``
-- ``all_child`` (record in all child processes)
+- ``all_childs`` (record in all child processes)
 - ``all`` (record in all processes)
 
 ``alert_emails``
@@ -139,7 +141,7 @@ Required. This field is a list of e-mail addresses that should be notified when 
 
 ``expires_in_version``
 ----------------------
-Required. The version number in which the histogram expires; e.g. a value of `"30"` will mean that the histogram stops recording from Firefox 30 on. A version number of type ``"N"`` and ``"N.0"`` is automatically converted to ``"N.0a1"`` in order to expire the histogram also in the development channels. For histograms that never expire the value ``"never"`` can be used as in the example above. Accumulating data into an expired histogram is effectively a non-op and will not record anything.
+Required. The version number in which the histogram expires; e.g. a value of `"30"` will mean that the histogram stops recording from Firefox 30 on. A version number of type ``"N"`` is automatically converted to ``"N.0a1"`` in order to expire the histogram also in the development channels. For histograms that never expire the value ``"never"`` can be used as in the example above. Accumulating data into an expired histogram is effectively a non-op and will not record anything.
 
 ``kind``
 --------
@@ -148,6 +150,10 @@ Required. One of the histogram types described in the previous section. Differen
 ``keyed``
 ---------
 Optional, boolean, defaults to ``false``. Determines whether this is a *keyed histogram*.
+
+``keys``
+---------
+Optional, list of strings. Only valid for *keyed histograms*. Defines a case sensitive list of allowed keys that can be used for this histogram. The list is limited to 30 keys with a maximum length of 20 characters. When using a key that is not in the list, the accumulation is discarded and a warning is printed to the browser console.
 
 ``low``
 -------
@@ -168,7 +174,7 @@ Required for enumerated histograms. Similar to n_buckets, it represent the numbe
 
 ``labels``
 ----------
-Required for categorical histograms. This is an array of strings which are the labels for different values in this histograms. The labels are restricted to a C++-friendly subset of characters (``^[a-z][a-z0-9_]+[a-z0-9]$``).
+Required for categorical histograms. This is an array of strings which are the labels for different values in this histograms. The labels are restricted to a C++-friendly subset of characters (``^[a-z][a-z0-9_]+[a-z0-9]$``). This field is limited to 100 strings, each with a maximum length of 20 characters.
 
 ``bug_numbers``
 ---------------
@@ -186,22 +192,33 @@ Optional. This field inserts an #ifdef directive around the histogram's C++ decl
 ----------------------------
 Optional. This is one of:
 
-* ``"opt-in"``: (default value) This histogram is submitted by default on pre-release channels; on the release channel only if the user opted into additional data collection
-* ``"opt-out"``: this histogram is submitted by default on release and pre-release channels, unless the user opted out.
+* ``"opt-in"``: (default value) This histogram is submitted by default on pre-release channels, unless the user opts out.
+* ``"opt-out"``: This histogram is submitted by default on release and pre-release channels, unless the user opts out.
 
 .. warning::
 
-    Because they are collected by default, opt-out probes need to meet a higher "user benefit" threshold than opt-in probes.
+    Because they are collected by default, opt-out probes need to meet a higher "user benefit" threshold than opt-in probes during data collection review.
 
 
-    **Every** new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for :bsmedberg or one of the other data peers.
+    **Every** new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for one of the data peers.
 
 Changing a histogram
 ====================
-Changing histogram declarations after the histogram has been released is tricky. The current recommended procedure is to change the name of the histogram.
+Changing histogram declarations after the histogram has been released is tricky. Many tools (like `the aggregator <https://github.com/mozilla/python_mozaggregator>`_) assume histograms don't change. The current recommended procedure is to change the name of the histogram.
 
 * When changing existing histograms, the recommended pattern is to use a versioned name (``PROBE``, ``PROBE_2``, ``PROBE_3``, ...).
 * For enum histograms, it's recommended to set "n_buckets" to a slightly larger value than needed since new elements may be added to the enum in the future.
+
+The one exception is categorical histograms which can only be changed by adding labels, and only until it reaches 50 labels.
+
+Histogram values
+================
+
+The values you can accumulate to Histograms are limited by their internal representation.
+
+Telemetry Histograms do not record negative values, instead clamping them to 0 before recording.
+
+Telemetry Histograms do not record values greater than 2^31, instead clamping them to INT_MAX before recording.
 
 Adding a JavaScript Probe
 =========================
@@ -216,7 +233,7 @@ A Telemetry probe is the code that measures and stores values in a histogram. Pr
   let keyed = Services.telemetry.getKeyedHistogramById("TAG_SEEN_COUNTS");
   keyed.add("blink");
 
-Note that ``nsITelemetry.getHistogramById()`` will throw an ``NS_ERROR_ILLEGAL_VALUE`` JavaScript exception if it is called with an invalid histogram ID. The ``add()`` function will not throw if it fails, instead it prints an error in the browser console.
+Note that ``nsITelemetry.getHistogramById()`` will throw an ``NS_ERROR_FAILURE`` JavaScript exception if it is called with an invalid histogram ID. The ``add()`` function will not throw if it fails, instead it prints an error in the browser console.
 
 .. warning::
 
@@ -247,7 +264,15 @@ Probes in native code can also use the `nsITelemetry <https://dxr.mozilla.org/mo
    * @param id - histogram id
    * @param sample - value to record.
    */
-  void Accumulate(ID id, uint32_t sample);
+  void Accumulate(HistogramID id, uint32_t sample);
+
+  /**
+   * Adds samples to a histogram defined in Histograms.json
+   *
+   * @param id - histogram id
+   * @param samples - values to record.
+   */
+  void Accumulate(HistogramID id, const nsTArray<uint32_t>& samples);
 
   /**
    * Adds sample to a keyed histogram defined in Histograms.h
@@ -256,16 +281,35 @@ Probes in native code can also use the `nsITelemetry <https://dxr.mozilla.org/mo
    * @param key - the string key
    * @param sample - (optional) value to record, defaults to 1.
    */
-  void Accumulate(ID id, const nsCString& key, uint32_t sample = 1);
+  void Accumulate(HistogramID id, const nsCString& key, uint32_t sample = 1);
 
   /**
    * Adds time delta in milliseconds to a histogram defined in Histograms.json
    *
    * @param id - histogram id
    * @param start - start time
-   * @param end - end time
+   * @param end - (optional) end time, defaults to TimeStamp::Now().
    */
-  void AccumulateTimeDelta(ID id, TimeStamp start, TimeStamp end = TimeStamp::Now());
+  void AccumulateTimeDelta(HistogramID id, TimeStamp start, TimeStamp end = TimeStamp::Now());
+
+  /**
+   * Adds time delta in milliseconds to a keyed histogram defined in Histograms.json
+   *
+   * @param id - histogram id
+   * @param key - the string key
+   * @param start - start time
+   * @param end - (optional) end time, defaults to TimeStamp::Now().
+   */
+  void AccumulateTimeDelta(HistogramID id, const cs TimeStamp start, TimeStamp end = TimeStamp::Now());
+
+  /** Adds time delta in milliseconds to a histogram defined in TelemetryHistogramEnums.h
+   *
+   * @param id - histogram id
+   * @param key - the string key
+   * @param start - start time
+   * @param end - (optional) end time, defaults to TimeStamp::Now().
+   */
+  void AccumulateTimeDelta(HistogramID id, const nsCString& key, TimeStamp start, TimeStamp end = TimeStamp::Now());
 
 The histogram names declared in ``Histograms.json`` are translated into constants in the ``mozilla::Telemetry`` namespace:
 
@@ -288,3 +332,27 @@ The ``Telemetry.h`` header also declares the helper classes ``AutoTimer`` and ``
     ...
     return NS_OK;
   }
+
+If the HistogramID is not known at compile time, one can use the ``RuntimeAutoTimer`` and ``RuntimeAutoCounter`` classes, which behave like the template parameterized ``AutoTimer`` and ``AutoCounter`` ones.
+
+.. code-block:: cpp
+
+  void
+  FunctionWithTiming(Telemetry::HistogramID aTelemetryID)
+  {
+    ...
+    Telemetry::RuntimeAutoTimer timer(aTelemetryID);
+    ...
+  }
+
+  int32_t
+  FunctionWithCounter(Telemetry::HistogramID aTelemetryID)
+  {
+    ...
+    Telemetry::RuntimeAutoCounter myCounter(aTelemetryID);
+    ++myCounter;
+    myCounter += 42;
+    ...
+  }
+
+Prefer using the template parameterized ``AutoTimer`` and ``AutoCounter`` on hot paths, if possible.

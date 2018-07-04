@@ -5,6 +5,6 @@
 
 <resources>
 
-    <integer name="search_assist_launch_res">@drawable/search_launcher</integer>
+    <integer name="assist_launch_icon_res">@drawable/icon</integer>
 
 </resources>

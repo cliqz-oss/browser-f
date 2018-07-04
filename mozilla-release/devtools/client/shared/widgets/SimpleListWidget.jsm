@@ -5,10 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const { ViewHelpers } = require("devtools/client/shared/widgets/view-helpers");
 
 this.EXPORTED_SYMBOLS = ["SimpleListWidget"];
@@ -52,7 +49,7 @@ SimpleListWidget.prototype = {
    * @return nsIDOMNode
    *         The element associated with the displayed item.
    */
-  insertItemAt: function (aIndex, aContents) {
+  insertItemAt: function(aIndex, aContents) {
     aContents.classList.add("simple-list-widget-item");
 
     let list = this._list;
@@ -67,7 +64,7 @@ SimpleListWidget.prototype = {
    * @return nsIDOMNode
    *         The element associated with the displayed item.
    */
-  getItemAtIndex: function (aIndex) {
+  getItemAtIndex: function(aIndex) {
     return this._list.childNodes[aIndex];
   },
 
@@ -77,7 +74,7 @@ SimpleListWidget.prototype = {
    * @param nsIDOMNode aChild
    *        The element associated with the displayed item.
    */
-  removeChild: function (aChild) {
+  removeChild: function(aChild) {
     this._list.removeChild(aChild);
 
     if (this._selectedItem == aChild) {
@@ -88,7 +85,7 @@ SimpleListWidget.prototype = {
   /**
    * Removes all of the child nodes from this container.
    */
-  removeAllItems: function () {
+  removeAllItems: function() {
     let list = this._list;
     let parent = this._parent;
 
@@ -137,7 +134,7 @@ SimpleListWidget.prototype = {
    * @param string aValue
    *        The desired attribute value.
    */
-  setAttribute: function (aName, aValue) {
+  setAttribute: function(aName, aValue) {
     this._parent.setAttribute(aName, aValue);
 
     if (aName == "emptyText") {
@@ -153,7 +150,7 @@ SimpleListWidget.prototype = {
    * @param string aName
    *        The name of the attribute.
    */
-  removeAttribute: function (aName) {
+  removeAttribute: function(aName) {
     this._parent.removeAttribute(aName);
 
     if (aName == "emptyText") {
@@ -167,7 +164,7 @@ SimpleListWidget.prototype = {
    * @param nsIDOMNode aElement
    *        The element to make visible.
    */
-  ensureElementIsVisible: function (aElement) {
+  ensureElementIsVisible: function(aElement) {
     if (!aElement) {
       return;
     }
@@ -205,7 +202,7 @@ SimpleListWidget.prototype = {
   /**
    * Creates and appends a label displayed as this container's header.
    */
-  _showHeaderText: function () {
+  _showHeaderText: function() {
     if (this._headerTextNode || !this._headerTextValue) {
       return;
     }
@@ -220,7 +217,7 @@ SimpleListWidget.prototype = {
   /**
    * Creates and appends a label signaling that this container is empty.
    */
-  _showEmptyText: function () {
+  _showEmptyText: function() {
     if (this._emptyTextNode || !this._emptyTextValue) {
       return;
     }
@@ -235,7 +232,7 @@ SimpleListWidget.prototype = {
   /**
    * Removes the label signaling that this container is empty.
    */
-  _removeEmptyText: function () {
+  _removeEmptyText: function() {
     if (!this._emptyTextNode) {
       return;
     }

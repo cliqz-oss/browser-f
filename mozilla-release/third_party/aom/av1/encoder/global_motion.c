@@ -131,8 +131,8 @@ int64_t refine_integerized_param(WarpedMotionParams *wm,
 #endif  // CONFIG_HIGHBITDEPTH
                                  uint8_t *ref, int r_width, int r_height,
                                  int r_stride, uint8_t *dst, int d_width,
-                                 int d_height, int d_stride,
-                                 int n_refinements) {
+                                 int d_height, int d_stride, int n_refinements,
+                                 int64_t best_frame_error) {
   static const int max_trans_model_params[TRANS_TYPES] = {
     0, 2, 4, 6, 8, 8, 8
   };
@@ -147,15 +147,16 @@ int64_t refine_integerized_param(WarpedMotionParams *wm,
   int32_t best_param;
 
   force_wmtype(wm, wmtype);
-  best_error = av1_warp_error(wm,
+  best_error = av1_warp_error(
+      wm,
 #if CONFIG_HIGHBITDEPTH
-                              use_hbd, bd,
+      use_hbd, bd,
 #endif  // CONFIG_HIGHBITDEPTH
-                              ref, r_width, r_height, r_stride,
-                              dst + border * d_stride + border, border, border,
-                              d_width - 2 * border, d_height - 2 * border,
-                              d_stride, 0, 0, 16, 16);
-  step = 1 << (n_refinements + 1);
+      ref, r_width, r_height, r_stride, dst + border * d_stride + border,
+      border, border, d_width - 2 * border, d_height - 2 * border, d_stride, 0,
+      0, SCALE_SUBPEL_SHIFTS, SCALE_SUBPEL_SHIFTS, best_frame_error);
+  best_error = AOMMIN(best_error, best_frame_error);
+  step = 1 << (n_refinements - 1);
   for (i = 0; i < n_refinements; i++, step >>= 1) {
     for (p = 0; p < n_params; ++p) {
       int step_dir = 0;
@@ -174,7 +175,7 @@ int64_t refine_integerized_param(WarpedMotionParams *wm,
 #endif  // CONFIG_HIGHBITDEPTH
           ref, r_width, r_height, r_stride, dst + border * d_stride + border,
           border, border, d_width - 2 * border, d_height - 2 * border, d_stride,
-          0, 0, 16, 16);
+          0, 0, SCALE_SUBPEL_SHIFTS, SCALE_SUBPEL_SHIFTS, best_error);
       if (step_error < best_error) {
         best_error = step_error;
         best_param = *param;
@@ -190,7 +191,7 @@ int64_t refine_integerized_param(WarpedMotionParams *wm,
 #endif  // CONFIG_HIGHBITDEPTH
           ref, r_width, r_height, r_stride, dst + border * d_stride + border,
           border, border, d_width - 2 * border, d_height - 2 * border, d_stride,
-          0, 0, 16, 16);
+          0, 0, SCALE_SUBPEL_SHIFTS, SCALE_SUBPEL_SHIFTS, best_error);
       if (step_error < best_error) {
         best_error = step_error;
         best_param = *param;
@@ -209,7 +210,8 @@ int64_t refine_integerized_param(WarpedMotionParams *wm,
 #endif  // CONFIG_HIGHBITDEPTH
             ref, r_width, r_height, r_stride, dst + border * d_stride + border,
             border, border, d_width - 2 * border, d_height - 2 * border,
-            d_stride, 0, 0, 16, 16);
+            d_stride, 0, 0, SCALE_SUBPEL_SHIFTS, SCALE_SUBPEL_SHIFTS,
+            best_error);
         if (step_error < best_error) {
           best_error = step_error;
           best_param = *param;
@@ -242,14 +244,18 @@ static unsigned char *downconvert_frame(YV12_BUFFER_CONFIG *frm,
                                         int bit_depth) {
   int i, j;
   uint16_t *orig_buf = CONVERT_TO_SHORTPTR(frm->y_buffer);
-  uint8_t *buf = malloc(frm->y_height * frm->y_stride * sizeof(*buf));
-
-  for (i = 0; i < frm->y_height; ++i)
-    for (j = 0; j < frm->y_width; ++j)
-      buf[i * frm->y_stride + j] =
-          orig_buf[i * frm->y_stride + j] >> (bit_depth - 8);
-
-  return buf;
+  uint8_t *buf_8bit = frm->y_buffer_8bit;
+  assert(buf_8bit);
+  if (!frm->buf_8bit_valid) {
+    for (i = 0; i < frm->y_height; ++i) {
+      for (j = 0; j < frm->y_width; ++j) {
+        buf_8bit[i * frm->y_stride + j] =
+            orig_buf[i * frm->y_stride + j] >> (bit_depth - 8);
+      }
+    }
+    frm->buf_8bit_valid = 1;
+  }
+  return buf_8bit;
 }
 #endif
 
@@ -272,16 +278,10 @@ int compute_global_motion_feature_based(
   if (frm->flags & YV12_FLAG_HIGHBITDEPTH) {
     // The frame buffer is 16-bit, so we need to convert to 8 bits for the
     // following code. We cache the result until the frame is released.
-    if (frm->y_buffer_8bit)
-      frm_buffer = frm->y_buffer_8bit;
-    else
-      frm_buffer = frm->y_buffer_8bit = downconvert_frame(frm, bit_depth);
+    frm_buffer = downconvert_frame(frm, bit_depth);
   }
   if (ref->flags & YV12_FLAG_HIGHBITDEPTH) {
-    if (ref->y_buffer_8bit)
-      ref_buffer = ref->y_buffer_8bit;
-    else
-      ref_buffer = ref->y_buffer_8bit = downconvert_frame(ref, bit_depth);
+    ref_buffer = downconvert_frame(ref, bit_depth);
   }
 #endif
 

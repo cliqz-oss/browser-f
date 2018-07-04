@@ -4,10 +4,10 @@
 
 SimpleTest.requestCompleteLog();
 
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
-                                  "resource:///modules/sessionstore/SessionStore.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TabStateFlusher",
-                                  "resource:///modules/sessionstore/TabStateFlusher.jsm");
+ChromeUtils.defineModuleGetter(this, "SessionStore",
+                               "resource:///modules/sessionstore/SessionStore.jsm");
+ChromeUtils.defineModuleGetter(this, "TabStateFlusher",
+                               "resource:///modules/sessionstore/TabStateFlusher.jsm");
 
 add_task(async function test_sessions_restore() {
   function background() {
@@ -55,7 +55,7 @@ add_task(async function test_sessions_restore() {
 
   await extension.startup();
 
-  let {Management: {global: {windowTracker, tabTracker}}} = Cu.import("resource://gre/modules/Extension.jsm", {});
+  let {Management: {global: {windowTracker, tabTracker}}} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
 
   function checkLocalTab(tab, expectedUrl) {
     let realTab = tabTracker.getTab(tab.id);
@@ -116,7 +116,7 @@ add_task(async function test_sessions_restore() {
   // Open and close a tab.
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:robots");
   await TabStateFlusher.flush(tab.linkedBrowser);
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await assertNotificationCount(6);
 
   // Restore the most recently closed item.
@@ -130,7 +130,7 @@ add_task(async function test_sessions_restore() {
 
   // Close the tab again.
   let realTab = tabTracker.getTab(tab.id);
-  await BrowserTestUtils.removeTab(realTab);
+  BrowserTestUtils.removeTab(realTab);
   await assertNotificationCount(8);
 
   // Restore the tab using the sessionId.
@@ -146,7 +146,7 @@ add_task(async function test_sessions_restore() {
 
   // Close the tab again.
   realTab = tabTracker.getTab(tab.id);
-  await BrowserTestUtils.removeTab(realTab);
+  BrowserTestUtils.removeTab(realTab);
   await assertNotificationCount(10);
 
   // Try to restore something with an invalid sessionId.

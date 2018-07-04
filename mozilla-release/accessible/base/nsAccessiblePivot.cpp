@@ -20,8 +20,9 @@ using namespace mozilla::a11y;
 class RuleCache
 {
 public:
-  explicit RuleCache(nsIAccessibleTraversalRule* aRule) : mRule(aRule),
-                                                          mAcceptRoles(nullptr) { }
+  explicit RuleCache(nsIAccessibleTraversalRule* aRule) :
+    mRule(aRule), mAcceptRoles(nullptr),
+    mAcceptRolesLength{0}, mPreFilter{0} { }
   ~RuleCache () {
     if (mAcceptRoles)
       free(mAcceptRoles);
@@ -316,6 +317,7 @@ nsAccessiblePivot::MoveNextByText(TextBoundaryType aBoundary,
   Accessible* tempPosition = mPosition;
   Accessible* root = GetActiveRoot();
   while (true) {
+    NS_ENSURE_TRUE(tempPosition, NS_ERROR_UNEXPECTED);
     Accessible* curPosition = tempPosition;
     HyperTextAccessible* text = nullptr;
     // Find the nearest text node using a preorder traversal starting from
@@ -435,6 +437,7 @@ nsAccessiblePivot::MovePreviousByText(TextBoundaryType aBoundary,
   Accessible* tempPosition = mPosition;
   Accessible* root = GetActiveRoot();
   while (true) {
+    NS_ENSURE_TRUE(tempPosition, NS_ERROR_UNEXPECTED);
     Accessible* curPosition = tempPosition;
     HyperTextAccessible* text;
     // Find the nearest text node using a reverse preorder traversal starting
@@ -585,8 +588,7 @@ nsAccessiblePivot::MoveToPoint(nsIAccessibleTraversalRule* aRule,
       nsIntRect childRect = child->Bounds();
       // Double-check child's bounds since the deepest child may have been out
       // of bounds. This assures we don't return a false positive.
-      if (aX >= childRect.x && aX < childRect.x + childRect.width &&
-          aY >= childRect.y && aY < childRect.y + childRect.height)
+      if (childRect.Contains(aX, aY))
         match = child;
     }
 

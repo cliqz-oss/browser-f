@@ -4,34 +4,31 @@
 
 /* exported TraversalRules, TraversalHelper */
 
-'use strict';
+"use strict";
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
+var EXPORTED_SYMBOLS = ["TraversalRules", "TraversalHelper"]; // jshint ignore:line
 
-this.EXPORTED_SYMBOLS = ['TraversalRules', 'TraversalHelper']; // jshint ignore:line
+ChromeUtils.import("resource://gre/modules/accessibility/Utils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Roles", // jshint ignore:line
+  "resource://gre/modules/accessibility/Constants.jsm");
+ChromeUtils.defineModuleGetter(this, "Filters", // jshint ignore:line
+  "resource://gre/modules/accessibility/Constants.jsm");
+ChromeUtils.defineModuleGetter(this, "States", // jshint ignore:line
+  "resource://gre/modules/accessibility/Constants.jsm");
+ChromeUtils.defineModuleGetter(this, "Prefilters", // jshint ignore:line
+  "resource://gre/modules/accessibility/Constants.jsm");
 
-Cu.import('resource://gre/modules/accessibility/Utils.jsm');
-Cu.import('resource://gre/modules/XPCOMUtils.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Roles',  // jshint ignore:line
-  'resource://gre/modules/accessibility/Constants.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Filters',  // jshint ignore:line
-  'resource://gre/modules/accessibility/Constants.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'States',  // jshint ignore:line
-  'resource://gre/modules/accessibility/Constants.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Prefilters',  // jshint ignore:line
-  'resource://gre/modules/accessibility/Constants.jsm');
-
-var gSkipEmptyImages = new PrefCache('accessibility.accessfu.skip_empty_images');
+var gSkipEmptyImages = new PrefCache("accessibility.accessfu.skip_empty_images");
 
 function BaseTraversalRule(aRoles, aMatchFunc, aPreFilter, aContainerRule) {
   this._explicitMatchRoles = new Set(aRoles);
   this._matchRoles = aRoles;
   if (aRoles.length) {
-    if (aRoles.indexOf(Roles.LABEL) < 0) {
+    if (!aRoles.includes(Roles.LABEL)) {
       this._matchRoles.push(Roles.LABEL);
     }
-    if (aRoles.indexOf(Roles.INTERNAL_FRAME) < 0) {
+    if (!aRoles.includes(Roles.INTERNAL_FRAME)) {
       // Used for traversing in to child OOP frames.
       this._matchRoles.push(Roles.INTERNAL_FRAME);
     }
@@ -47,12 +44,11 @@ BaseTraversalRule.prototype = {
       return aRoles.value.length;
     },
 
-    match: function BaseTraversalRule_match(aAccessible)
-    {
+    match: function BaseTraversalRule_match(aAccessible) {
       let role = aAccessible.role;
       if (role == Roles.INTERNAL_FRAME) {
         return (Utils.getMessageManager(aAccessible.DOMNode)) ?
-          Filters.MATCH  | Filters.IGNORE_SUBTREE : Filters.IGNORE;
+          Filters.MATCH | Filters.IGNORE_SUBTREE : Filters.IGNORE;
       }
 
       let matchResult =
@@ -71,7 +67,7 @@ BaseTraversalRule.prototype = {
       return matchResult;
     },
 
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIAccessibleTraversalRule])
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIAccessibleTraversalRule])
 };
 
 var gSimpleTraversalRoles =
@@ -123,7 +119,7 @@ var gSimpleMatchFunc = function gSimpleMatchFunc(aAccessible) {
     for (let child = acc.firstChild; child; child = child.nextSibling) {
       // text leafs inherit the actionCount of any ancestor that has a click
       // listener.
-      if ([Roles.TEXT_LEAF, Roles.STATICTEXT].indexOf(child.role) >= 0) {
+      if ([Roles.TEXT_LEAF, Roles.STATICTEXT].includes(child.role)) {
         continue;
       }
       if (Utils.visibleChildCount(child) > 0 || child.actionCount > 0) {
@@ -184,7 +180,7 @@ var gSimplePreFilter = Prefilters.DEFUNCT |
   Prefilters.ARIA_HIDDEN |
   Prefilters.TRANSPARENT;
 
-this.TraversalRules = { // jshint ignore:line
+var TraversalRules = { // jshint ignore:line
   Simple: new BaseTraversalRule(gSimpleTraversalRoles, gSimpleMatchFunc),
 
   SimpleOnScreen: new BaseTraversalRule(
@@ -194,14 +190,13 @@ this.TraversalRules = { // jshint ignore:line
 
   Anchor: new BaseTraversalRule(
     [Roles.LINK],
-    function Anchor_match(aAccessible)
-    {
+    function Anchor_match(aAccessible) {
       // We want to ignore links, only focus named anchors.
       if (Utils.getState(aAccessible).contains(States.LINKED)) {
         return Filters.IGNORE;
-      } else {
-        return Filters.MATCH;
       }
+      return Filters.MATCH;
+
     }),
 
   Button: new BaseTraversalRule(
@@ -232,13 +227,13 @@ this.TraversalRules = { // jshint ignore:line
       }
 
       let matchedRole = Utils.matchRoles(aAccessible, [
-        'banner',
-        'complementary',
-        'contentinfo',
-        'main',
-        'navigation',
-        'search',
-        'region'
+        "banner",
+        "complementary",
+        "contentinfo",
+        "main",
+        "navigation",
+        "search",
+        "region"
         ]);
 
       return matchedRole ? Filters.MATCH : Filters.IGNORE;
@@ -284,14 +279,13 @@ this.TraversalRules = { // jshint ignore:line
 
   Link: new BaseTraversalRule(
     [Roles.LINK],
-    function Link_match(aAccessible)
-    {
+    function Link_match(aAccessible) {
       // We want to ignore anchors, only focus real links.
       if (Utils.getState(aAccessible).contains(States.LINKED)) {
         return Filters.MATCH;
-      } else {
-        return Filters.IGNORE;
       }
+      return Filters.IGNORE;
+
     }),
 
   /* For TalkBack's "Control" granularity. Form conrols and links */
@@ -314,8 +308,7 @@ this.TraversalRules = { // jshint ignore:line
      Roles.SWITCH,
      Roles.LINK,
      Roles.MENUITEM],
-    function Control_match(aAccessible)
-    {
+    function Control_match(aAccessible) {
       // We want to ignore anchors, only focus real links.
       if (aAccessible.role == Roles.LINK &&
           !Utils.getState(aAccessible).contains(States.LINKED)) {
@@ -361,14 +354,14 @@ this.TraversalRules = { // jshint ignore:line
      Roles.SWITCH /* A type of checkbox that represents on/off values */]),
 
   _shouldSkipImage: function _shouldSkipImage(aAccessible) {
-    if (gSkipEmptyImages.value && aAccessible.name === '') {
+    if (gSkipEmptyImages.value && aAccessible.name === "") {
       return Filters.IGNORE;
     }
     return Filters.MATCH;
   }
 };
 
-this.TraversalHelper = {
+var TraversalHelper = {
   _helperPivotCache: null,
 
   get helperPivotCache() {
@@ -409,9 +402,9 @@ this.TraversalHelper = {
       }
 
       return moved;
-    } else {
-      return aVirtualCursor[aMethod](rule);
     }
+    return aVirtualCursor[aMethod](rule);
+
   }
 
 };

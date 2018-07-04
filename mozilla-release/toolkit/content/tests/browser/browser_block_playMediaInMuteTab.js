@@ -22,7 +22,7 @@ function check_audio_volume_and_mute(expectedMute) {
 
   let expectedVolume = expectedMute ? 0.0 : 1.0;
   is(expectedVolume, audio.computedVolume, "Audio's volume is correct!");
-  is(expectedMute, audio.computedMuted, "Audio's mute state is correct!")
+  is(expectedMute, audio.computedMuted, "Audio's mute state is correct!");
 }
 
 function check_audio_suspended(suspendedType) {
@@ -110,5 +110,5 @@ add_task(async function unblock_icon_should_disapear_after_resume_tab() {
   await waitForTabBlockEvent(tab, false);
 
   info("- remove tab -");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

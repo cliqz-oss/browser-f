@@ -4,15 +4,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsCacheService.h"
+
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/FileUtils.h"
 
 #include "necko-config.h"
 
 #include "nsCache.h"
-#include "nsCacheService.h"
 #include "nsCacheRequest.h"
 #include "nsCacheEntry.h"
 #include "nsCacheEntryDescriptor.h"
@@ -119,7 +121,7 @@ const int32_t PRE_GECKO_2_0_DEFAULT_CACHE_SIZE = 50 * 1024;
 
 class nsCacheProfilePrefObserver : public nsIObserver
 {
-    virtual ~nsCacheProfilePrefObserver() {}
+    virtual ~nsCacheProfilePrefObserver() = default;
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -205,7 +207,7 @@ NS_IMPL_ISUPPORTS(nsCacheProfilePrefObserver, nsIObserver)
 class nsSetDiskSmartSizeCallback final : public nsITimerCallback
                                        , public nsINamed
 {
-    ~nsSetDiskSmartSizeCallback() {}
+    ~nsSetDiskSmartSizeCallback() = default;
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -238,7 +240,7 @@ public:
   {
   }
 
-  NS_IMETHOD Run()
+  NS_IMETHOD Run() override
   {
     NS_ASSERTION(NS_IsMainThread(),
                  "Setting smart size data off the main thread");
@@ -326,8 +328,8 @@ nsCacheProfilePrefObserver::Install()
         return NS_ERROR_FAILURE;
 
     nsresult rv, rv2 = NS_OK;
-    for (unsigned int i=0; i<ArrayLength(observerList); i++) {
-        rv = observerService->AddObserver(this, observerList[i], false);
+    for (auto& observer : observerList) {
+        rv = observerService->AddObserver(this, observer, false);
         if (NS_FAILED(rv))
             rv2 = rv;
     }
@@ -336,8 +338,8 @@ nsCacheProfilePrefObserver::Install()
     nsCOMPtr<nsIPrefBranch> branch = do_GetService(NS_PREFSERVICE_CONTRACTID);
     if (!branch) return NS_ERROR_FAILURE;
 
-    for (unsigned int i=0; i<ArrayLength(prefList); i++) {
-        rv = branch->AddObserver(prefList[i], this, false);
+    for (auto& pref : prefList) {
+        rv = branch->AddObserver(pref, this, false);
         if (NS_FAILED(rv))
             rv2 = rv;
     }
@@ -369,8 +371,8 @@ nsCacheProfilePrefObserver::Remove()
     nsCOMPtr<nsIObserverService> obs =
         mozilla::services::GetObserverService();
     if (obs) {
-        for (unsigned int i=0; i<ArrayLength(observerList); i++) {
-            obs->RemoveObserver(this, observerList[i]);
+        for (auto& observer : observerList) {
+            obs->RemoveObserver(this, observer);
         }
     }
 
@@ -379,8 +381,8 @@ nsCacheProfilePrefObserver::Remove()
         do_GetService(NS_PREFSERVICE_CONTRACTID);
     if (!prefs)
         return;
-    for (unsigned int i=0; i<ArrayLength(prefList); i++)
-        prefs->RemoveObserver(prefList[i], this); // remove cache pref observers
+    for (auto& pref : prefList)
+        prefs->RemoveObserver(pref, this); // remove cache pref observers
 }
 
 void
@@ -1015,7 +1017,7 @@ public:
     }
 
 protected:
-    virtual ~nsProcessRequestEvent() {}
+    virtual ~nsProcessRequestEvent() = default;
 
 private:
     nsCacheRequest *mRequest;
@@ -1314,10 +1316,7 @@ nsCacheService::CreateSession(const char *          clientID,
 {
     *result = nullptr;
 
-    if (net::CacheObserver::UseNewCache())
-        return NS_ERROR_NOT_IMPLEMENTED;
-
-    return CreateSessionInternal(clientID, storagePolicy, streamBased, result);
+    return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 nsresult
@@ -1433,7 +1432,7 @@ nsCacheService::IsStorageEnabledForPolicy(nsCacheStoragePolicy  storagePolicy,
     if (gService == nullptr) return NS_ERROR_NOT_AVAILABLE;
     nsCacheServiceAutoLock lock(LOCK_TELEM(NSCACHESERVICE_ISSTORAGEENABLEDFORPOLICY));
 
-    *result = gService->IsStorageEnabledForPolicy_Locked(storagePolicy);
+    *result = nsCacheService::IsStorageEnabledForPolicy_Locked(storagePolicy);
     return NS_OK;
 }
 
@@ -1475,10 +1474,7 @@ nsCacheService::IsStorageEnabledForPolicy_Locked(nsCacheStoragePolicy  storagePo
 
 NS_IMETHODIMP nsCacheService::VisitEntries(nsICacheVisitor *visitor)
 {
-    if (net::CacheObserver::UseNewCache())
-        return NS_ERROR_NOT_IMPLEMENTED;
-
-    return VisitEntriesInternal(visitor);
+    return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 nsresult nsCacheService::VisitEntriesInternal(nsICacheVisitor *visitor)
@@ -1537,10 +1533,7 @@ void nsCacheService::FireClearNetworkCacheStoredAnywhereNotification()
 
 NS_IMETHODIMP nsCacheService::EvictEntries(nsCacheStoragePolicy storagePolicy)
 {
-    if (net::CacheObserver::UseNewCache())
-        return NS_ERROR_NOT_IMPLEMENTED;
-
-    return EvictEntriesInternal(storagePolicy);
+    return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 nsresult nsCacheService::EvictEntriesInternal(nsCacheStoragePolicy storagePolicy)
@@ -1641,17 +1634,12 @@ nsCacheService::CreateDiskDevice()
     // Disk device is usually created during the startup. Delay smart size
     // calculation to avoid possible massive IO caused by eviction of entries
     // in case the new smart size is smaller than current cache usage.
-    mSmartSizeTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-    if (NS_SUCCEEDED(rv)) {
-        rv = mSmartSizeTimer->InitWithCallback(new nsSetDiskSmartSizeCallback(),
-                                               1000*60*3,
-                                               nsITimer::TYPE_ONE_SHOT);
-        if (NS_FAILED(rv)) {
-            NS_WARNING("Failed to post smart size timer");
-            mSmartSizeTimer = nullptr;
-        }
-    } else {
-        NS_WARNING("Can't create smart size timer");
+    rv = NS_NewTimerWithCallback(getter_AddRefs(mSmartSizeTimer),
+                                 new nsSetDiskSmartSizeCallback(),
+                                 1000*60*3,
+                                 nsITimer::TYPE_ONE_SHOT);
+    if (NS_FAILED(rv)) {
+        NS_WARNING("Failed to post smart size timer");
     }
     // Ignore state of the timer and return success since the purpose of the
     // method (create the disk-device) has been fulfilled
@@ -1778,10 +1766,8 @@ nsCacheService::CreateCustomOfflineDevice(nsIFile *aProfileDir,
     NS_ENSURE_ARG(aProfileDir);
 
     if (MOZ_LOG_TEST(gCacheLog, LogLevel::Info)) {
-      nsAutoCString profilePath;
-      aProfileDir->GetNativePath(profilePath);
       CACHE_LOG_INFO(("Creating custom offline device, %s, %d",
-                        profilePath.BeginReading(), aQuota));
+                      aProfileDir->HumanReadablePath().get(), aQuota));
     }
 
     if (!mInitialized)         return NS_ERROR_NOT_AVAILABLE;
@@ -1950,11 +1936,11 @@ nsCacheService::ProcessRequest(nsCacheRequest *           request,
     nsCacheAccessMode  accessGranted = nsICache::ACCESS_NONE;
     if (result) *result = nullptr;
 
-    while(1) {  // Activate entry loop
+    while(true) {  // Activate entry loop
         rv = ActivateEntry(request, &entry, &doomedEntry);  // get the entry for this request
         if (NS_FAILED(rv))  break;
 
-        while(1) { // Request Access loop
+        while (true) { // Request Access loop
             NS_ASSERTION(entry, "no entry in Request Access loop!");
             // entry->RequestAccess queues request on entry
             rv = entry->RequestAccess(request, &accessGranted);
@@ -3078,8 +3064,11 @@ void nsCacheService::GetAppCacheDirectory(nsIFile ** result)
 void
 nsCacheService::LogCacheStatistics()
 {
-    uint32_t hitPercentage = (uint32_t)((((double)mCacheHits) /
-        ((double)(mCacheHits + mCacheMisses))) * 100);
+    uint32_t hitPercentage = 0;
+    double sum = (double)(mCacheHits + mCacheMisses);
+    if (sum != 0) {
+        hitPercentage = (uint32_t)((((double)mCacheHits) / sum) * 100);
+    }
     CACHE_LOG_INFO(("\nCache Service Statistics:\n\n"));
     CACHE_LOG_INFO(("    TotalEntries   = %d\n", mTotalEntries));
     CACHE_LOG_INFO(("    Cache Hits     = %d\n", mCacheHits));
@@ -3108,33 +3097,7 @@ nsCacheService::SetDiskSmartSize()
 nsresult
 nsCacheService::SetDiskSmartSize_Locked()
 {
-    nsresult rv;
-
-    if (mozilla::net::CacheObserver::UseNewCache()) {
-        return NS_ERROR_NOT_AVAILABLE;
-    }
-
-    if (!mObserver->DiskCacheParentDirectory())
-        return NS_ERROR_NOT_AVAILABLE;
-
-    if (!mDiskDevice)
-        return NS_ERROR_NOT_AVAILABLE;
-
-    if (!mObserver->SmartSizeEnabled())
-        return NS_ERROR_NOT_AVAILABLE;
-
-    nsAutoString cachePath;
-    rv = mObserver->DiskCacheParentDirectory()->GetPath(cachePath);
-    if (NS_SUCCEEDED(rv)) {
-        nsCOMPtr<nsIRunnable> event =
-            new nsGetSmartSizeEvent(cachePath, mDiskDevice->getCacheSize(),
-                                    mObserver->ShouldUseOldMaxSmartSize());
-        DispatchToCacheIOThread(event);
-    } else {
-        return NS_ERROR_FAILURE;
-    }
-
-    return NS_OK;
+    return NS_ERROR_NOT_AVAILABLE;
 }
 
 void
@@ -3165,10 +3128,7 @@ nsCacheService::MoveOrRemoveDiskCache(nsIFile *aOldCacheDir,
     if (NS_FAILED(rv))
         return;
 
-    nsAutoCString newPath;
-    rv = aNewCacheSubdir->GetNativePath(newPath);
-    if (NS_FAILED(rv))
-        return;
+    PathString newPath = aNewCacheSubdir->NativePath();
 
     if (NS_SUCCEEDED(aNewCacheSubdir->Exists(&exists)) && !exists) {
         // New cache directory does not exist, try to move the old one here
@@ -3177,12 +3137,15 @@ nsCacheService::MoveOrRemoveDiskCache(nsIFile *aOldCacheDir,
         // Make sure the parent of the target sub-dir exists
         rv = aNewCacheDir->Create(nsIFile::DIRECTORY_TYPE, 0777);
         if (NS_SUCCEEDED(rv) || NS_ERROR_FILE_ALREADY_EXISTS == rv) {
-            nsAutoCString oldPath;
-            rv = aOldCacheSubdir->GetNativePath(oldPath);
-            if (NS_FAILED(rv))
-                return;
+            PathString oldPath = aOldCacheSubdir->NativePath();
+#ifdef XP_WIN
+            if (MoveFileW(oldPath.get(), newPath.get()))
+#else
             if (rename(oldPath.get(), newPath.get()) == 0)
+#endif
+            {
                 return;
+            }
         }
     }
 

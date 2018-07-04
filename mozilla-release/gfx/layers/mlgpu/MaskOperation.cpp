@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "MaskOperation.h"
 #include "FrameBuilder.h"
@@ -54,17 +55,17 @@ MaskOperation::ComputeMaskRect(Layer* aLayer) const
 bool
 MaskTexture::operator <(const MaskTexture& aOther) const
 {
-  if (mRect.x != aOther.mRect.x) {
-    return mRect.x < aOther.mRect.x;
+  if (mRect.X() != aOther.mRect.X()) {
+    return mRect.X() < aOther.mRect.X();
   }
-  if (mRect.y != aOther.mRect.y) {
-    return mRect.y < aOther.mRect.y;
+  if (mRect.Y() != aOther.mRect.Y()) {
+    return mRect.Y() < aOther.mRect.Y();
   }
-  if (mRect.width != aOther.mRect.width) {
-    return mRect.width < aOther.mRect.width;
+  if (mRect.Width() != aOther.mRect.Width()) {
+    return mRect.Width() < aOther.mRect.Width();
   }
-  if (mRect.height != aOther.mRect.height) {
-    return mRect.height < aOther.mRect.height;
+  if (mRect.Height() != aOther.mRect.Height()) {
+    return mRect.Height() < aOther.mRect.Height();
   }
   return mSource < aOther.mSource;
 }

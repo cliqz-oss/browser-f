@@ -2,33 +2,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* exported AddressResult, CreditCardResult */
+
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["AddressResult", "CreditCardResult"]; /* exported AddressResult, CreditCardResult */
+var EXPORTED_SYMBOLS = ["AddressResult", "CreditCardResult"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://formautofill/FormAutofillUtils.jsm");
-
-XPCOMUtils.defineLazyGetter(this, "gBrandBundle", function() {
-  return Services.strings.createBundle("chrome://branding/locale/brand.properties");
-});
 XPCOMUtils.defineLazyPreferenceGetter(this, "insecureWarningEnabled", "security.insecure_field_warning.contextual.enabled");
 
 this.log = null;
-FormAutofillUtils.defineLazyLogGetter(this, this.EXPORTED_SYMBOLS[0]);
+FormAutofillUtils.defineLazyLogGetter(this, EXPORTED_SYMBOLS[0]);
 
 class ProfileAutoCompleteResult {
   constructor(searchString, focusedFieldName, allFieldNames, matchingProfiles, {
     resultCode = null,
     isSecure = true,
+    isInputAutofilled = false,
   }) {
     log.debug("Constructing new ProfileAutoCompleteResult:", [...arguments]);
 
     // nsISupports
-    this.QueryInterface = XPCOMUtils.generateQI([Ci.nsIAutoCompleteResult]);
+    this.QueryInterface = ChromeUtils.generateQI([Ci.nsIAutoCompleteResult]);
 
     // The user's query string
     this.searchString = searchString;
@@ -42,6 +40,8 @@ class ProfileAutoCompleteResult {
     this.errorDescription = "";
     // The value used to determine whether the form is secure or not.
     this._isSecure = isSecure;
+    // The value to indicate whether the focused input has been autofilled or not.
+    this._isInputAutofilled = isInputAutofilled;
     // All fillable field names in the form including the field name of the currently-focused input.
     this._allFieldNames = [...this._matchingProfiles.reduce((fieldSet, curProfile) => {
       for (let field of Object.keys(curProfile)) {
@@ -51,6 +51,11 @@ class ProfileAutoCompleteResult {
       return fieldSet;
     }, new Set())].filter(field => allFieldNames.includes(field));
 
+    // Force return success code if the focused field is auto-filled in order
+    // to show clear form button popup.
+    if (isInputAutofilled) {
+      resultCode = Ci.nsIAutoCompleteResult.RESULT_SUCCESS;
+    }
     // The result code of this result object.
     if (resultCode) {
       this.searchResult = resultCode;
@@ -94,18 +99,28 @@ class ProfileAutoCompleteResult {
   _generateLabels(focusedFieldName, allFieldNames, profiles) {}
 
   /**
-   * Retrieves a result
+   * Get the value of the result at the given index.
+   *
+   * Always return empty string for form autofill feature to suppress
+   * AutoCompleteController from autofilling, as we'll populate the
+   * fields on our own.
+   *
    * @param   {number} index The index of the result requested
    * @returns {string} The result at the specified index
    */
   getValueAt(index) {
     this._checkIndexBounds(index);
-    return this._popupLabels[index].primary;
+    return "";
   }
 
   getLabelAt(index) {
     this._checkIndexBounds(index);
-    return JSON.stringify(this._popupLabels[index]);
+
+    let label = this._popupLabels[index];
+    if (typeof label == "string") {
+      return label;
+    }
+    return JSON.stringify(label);
   }
 
   /**
@@ -128,6 +143,10 @@ class ProfileAutoCompleteResult {
     if (index == this.matchCount - 1) {
       return "autofill-footer";
     }
+    if (this._isInputAutofilled) {
+      return "autofill-clear-button";
+    }
+
     return "autofill-profile";
   }
 
@@ -238,6 +257,13 @@ class AddressResult extends ProfileAutoCompleteResult {
   }
 
   _generateLabels(focusedFieldName, allFieldNames, profiles) {
+    if (this._isInputAutofilled) {
+      return [
+        {primary: "", secondary: ""}, // Clear button
+        {primary: "", secondary: ""}, // Footer
+      ];
+    }
+
     // Skip results without a primary label.
     let labels = profiles.filter(profile => {
       return !!profile[focusedFieldName];
@@ -312,6 +338,10 @@ class CreditCardResult extends ProfileAutoCompleteResult {
         allFieldNames.includes(currentFieldName);
 
       if (matching) {
+        if (currentFieldName == "cc-number") {
+          let {affix, label} = FormAutofillUtils.fmtMaskedCreditCardLabel(profile[currentFieldName]);
+          return affix + label;
+        }
         return profile[currentFieldName];
       }
     }
@@ -324,17 +354,33 @@ class CreditCardResult extends ProfileAutoCompleteResult {
       if (!insecureWarningEnabled) {
         return [];
       }
-      let brandName = gBrandBundle.GetStringFromName("brandShortName");
+      let brandName = FormAutofillUtils.brandBundle.GetStringFromName("brandShortName");
 
       return [FormAutofillUtils.stringBundle.formatStringFromName("insecureFieldWarningDescription", [brandName], 1)];
+    }
+
+    if (this._isInputAutofilled) {
+      return [
+        {primary: "", secondary: ""}, // Clear button
+        {primary: "", secondary: ""}, // Footer
+      ];
     }
 
     // Skip results without a primary label.
     let labels = profiles.filter(profile => {
       return !!profile[focusedFieldName];
     }).map(profile => {
+      let primaryAffix;
+      let primary = profile[focusedFieldName];
+
+      if (focusedFieldName == "cc-number") {
+        let {affix, label} = FormAutofillUtils.fmtMaskedCreditCardLabel(primary);
+        primaryAffix = affix;
+        primary = label;
+      }
       return {
-        primary: profile[focusedFieldName],
+        primaryAffix,
+        primary,
         secondary: this._getSecondaryLabel(focusedFieldName,
                                            allFieldNames,
                                            profile),
@@ -346,34 +392,17 @@ class CreditCardResult extends ProfileAutoCompleteResult {
     return labels;
   }
 
-  // Always return empty string for credit card result. Since the decryption might
-  // be required of users' input, we have to suppress AutoCompleteController
-  // from filling encrypted data directly.
-  getValueAt(index) {
-    this._checkIndexBounds(index);
-    return "";
-  }
-
-  getLabelAt(index) {
-    this._checkIndexBounds(index);
-
-    let label = this._popupLabels[index];
-    if (typeof label == "string") {
-      return label;
-    }
-    return JSON.stringify(label);
-  }
-
   getStyleAt(index) {
     this._checkIndexBounds(index);
     if (!this._isSecure && insecureWarningEnabled) {
       return "autofill-insecureWarning";
     }
 
-    if (index == this.matchCount - 1) {
-      return "autofill-footer";
-    }
+    return super.getStyleAt(index);
+  }
 
-    return "autofill-profile";
+  getImageAt(index) {
+    this._checkIndexBounds(index);
+    return "chrome://formautofill/content/icon-credit-card-generic.svg";
   }
 }

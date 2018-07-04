@@ -17,10 +17,10 @@ element to which code is attached (if any), and how.
 <script>
 "use strict";
 
-Components.utils.import("resource://gre/modules/jsdebugger.jsm");
+ChromeUtils.import("resource://gre/modules/jsdebugger.jsm");
 addDebuggerToGlobal(this);
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
 
   let log = "";

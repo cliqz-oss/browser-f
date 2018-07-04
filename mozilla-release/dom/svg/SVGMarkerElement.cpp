@@ -11,6 +11,7 @@
 #include "SVGAnimatedPreserveAspectRatio.h"
 #include "nsError.h"
 #include "mozilla/dom/SVGAngle.h"
+#include "mozilla/dom/SVGLengthBinding.h"
 #include "mozilla/dom/SVGMarkerElement.h"
 #include "mozilla/dom/SVGMarkerElementBinding.h"
 #include "mozilla/Preferences.h"
@@ -19,11 +20,14 @@
 #include "SVGContentUtils.h"
 
 using namespace mozilla::gfx;
+using namespace mozilla::dom::SVGMarkerElementBinding;
 
 NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Marker)
 
 namespace mozilla {
 namespace dom {
+
+using namespace SVGAngleBinding;
 
 JSObject*
 SVGMarkerElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
@@ -33,10 +37,10 @@ SVGMarkerElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 
 nsSVGElement::LengthInfo SVGMarkerElement::sLengthInfo[4] =
 {
-  { &nsGkAtoms::refX, 0, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
-  { &nsGkAtoms::refY, 0, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
-  { &nsGkAtoms::markerWidth, 3, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
-  { &nsGkAtoms::markerHeight, 3, nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
+  { &nsGkAtoms::refX, 0, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
+  { &nsGkAtoms::refY, 0, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
+  { &nsGkAtoms::markerWidth, 3, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::X },
+  { &nsGkAtoms::markerHeight, 3, SVGLengthBinding::SVG_LENGTHTYPE_NUMBER, SVGContentUtils::Y },
 };
 
 nsSVGEnumMapping SVGMarkerElement::sUnitsMap[] = {
@@ -185,7 +189,7 @@ SVGMarkerElement::SetOrientToAngle(SVGAngle& angle, ErrorResult& rv)
 // nsIContent methods
 
 NS_IMETHODIMP_(bool)
-SVGMarkerElement::IsAttributeMapped(const nsIAtom* name) const
+SVGMarkerElement::IsAttributeMapped(const nsAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
     sFEFloodMap,
@@ -209,8 +213,9 @@ SVGMarkerElement::IsAttributeMapped(const nsIAtom* name) const
 // nsSVGElement methods
 
 bool
-SVGMarkerElement::ParseAttribute(int32_t aNameSpaceID, nsIAtom* aName,
+SVGMarkerElement::ParseAttribute(int32_t aNameSpaceID, nsAtom* aName,
                                  const nsAString& aValue,
+                                 nsIPrincipal* aMaybeScriptedPrincipal,
                                  nsAttrValue& aResult)
 {
   if (aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::orient) {
@@ -230,27 +235,34 @@ SVGMarkerElement::ParseAttribute(int32_t aNameSpaceID, nsIAtom* aName,
     mOrientType.SetBaseValue(SVG_MARKER_ORIENT_ANGLE);
   }
   return SVGMarkerElementBase::ParseAttribute(aNameSpaceID, aName,
-                                              aValue, aResult);
+                                              aValue,
+                                              aMaybeScriptedPrincipal,
+                                              aResult);
 }
 
 nsresult
-SVGMarkerElement::UnsetAttr(int32_t aNamespaceID, nsIAtom* aName,
-                            bool aNotify)
+SVGMarkerElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
+                                const nsAttrValue* aValue,
+                                const nsAttrValue* aOldValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
+                                bool aNotify)
 {
-  if (aNamespaceID == kNameSpaceID_None) {
-    if (aName == nsGkAtoms::orient) {
-      mOrientType.SetBaseValue(SVG_MARKER_ORIENT_ANGLE);
-    }
+  if (!aValue && aNamespaceID == kNameSpaceID_None &&
+      aName == nsGkAtoms::orient) {
+    mOrientType.SetBaseValue(SVG_MARKER_ORIENT_ANGLE);
   }
 
-  return nsSVGElement::UnsetAttr(aNamespaceID, aName, aNotify);
+  return SVGMarkerElementBase::AfterSetAttr(aNamespaceID, aName,
+                                            aValue, aOldValue,
+                                            aMaybeScriptedPrincipal,
+                                            aNotify);
 }
 
 //----------------------------------------------------------------------
 // nsSVGElement methods
 
 void
-SVGMarkerElement::SetParentCoordCtxProvider(SVGSVGElement *aContext)
+SVGMarkerElement::SetParentCoordCtxProvider(SVGViewportElement *aContext)
 {
   mCoordCtx = aContext;
   mViewBoxToViewportTransform = nullptr;

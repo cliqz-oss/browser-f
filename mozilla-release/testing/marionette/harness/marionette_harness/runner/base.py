@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import json
 import os
 import random
@@ -20,14 +22,17 @@ import mozinfo
 import moznetwork
 import mozprofile
 import mozversion
-import serve
 
 from manifestparser import TestManifest
 from manifestparser.filters import tags
 from marionette_driver.marionette import Marionette
 from moztest.adapters.unit import StructuredTestResult, StructuredTestRunner
 from moztest.results import TestResult, TestResultCollection, relevant_line
-from serve import iter_proc, iter_url
+
+from six import reraise
+
+from . import serve
+
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -239,11 +244,6 @@ class MarionetteTextTestRunner(StructuredTestRunner):
 
 
 class BaseMarionetteArguments(ArgumentParser):
-    # Bug 1336953 - Until we can remove the socket timeout parameter it has to be
-    # set a default value which is larger than the longest timeout as defined by the
-    # WebDriver spec. In that case its 300s for page load. Also add another minute
-    # so that slow builds have enough time to send the timeout error to the client.
-    socket_timeout_default = 360.0
 
     def __init__(self, **kwargs):
         ArgumentParser.__init__(self, **kwargs)
@@ -312,11 +312,16 @@ class BaseMarionetteArguments(ArgumentParser):
         self.add_argument('--symbols-path',
                           help='absolute path to directory containing breakpad symbols, or the '
                                'url of a zip file containing symbols')
+        self.add_argument('--socket-timeout',
+                          type=float,
+                          default=Marionette.DEFAULT_SOCKET_TIMEOUT,
+                          help='Set the global timeout for marionette socket operations.'
+                               ' Default: %(default)ss.')
         self.add_argument('--startup-timeout',
                           type=int,
-                          default=60,
+                          default=Marionette.DEFAULT_STARTUP_TIMEOUT,
                           help='the max number of seconds to wait for a Marionette connection '
-                               'after launching a binary')
+                               'after launching a binary. Default: %(default)ss.')
         self.add_argument('--shuffle',
                           action='store_true',
                           default=False,
@@ -351,21 +356,16 @@ class BaseMarionetteArguments(ArgumentParser):
         self.add_argument('--pydebugger',
                           help='Enable python post-mortem debugger when a test fails.'
                                ' Pass in the debugger you want to use, eg pdb or ipdb.')
-        self.add_argument('--socket-timeout',
-                          type=float,
-                          default=self.socket_timeout_default,
-                          help='Set the global timeout for marionette socket operations.'
-                               ' Default: %(default)ss.')
         self.add_argument('--disable-e10s',
                           action='store_false',
                           dest='e10s',
                           default=True,
                           help='Disable e10s when running marionette tests.')
-        self.add_argument('--headless',
-                          action='store_true',
-                          dest='headless',
-                          default=False,
-                          help='Enable headless mode when running marionette tests.')
+        self.add_argument("-z", "--headless",
+                          action="store_true",
+                          dest="headless",
+                          default=os.environ.get("MOZ_HEADLESS", False),
+                          help="Run tests in headless mode.")
         self.add_argument('--tag',
                           action='append', dest='test_tags',
                           default=None,
@@ -517,8 +517,9 @@ class BaseMarionetteTestRunner(object):
                  total_chunks=1,
                  server_root=None, gecko_log=None, result_callbacks=None,
                  prefs=None, test_tags=None,
-                 socket_timeout=BaseMarionetteArguments.socket_timeout_default,
-                 startup_timeout=None, addons=None, workspace=None,
+                 socket_timeout=None,
+                 startup_timeout=None,
+                 addons=None, workspace=None,
                  verbose=0, e10s=True, emulator=False, headless=False, **kwargs):
         self._appName = None
         self._capabilities = None
@@ -543,6 +544,7 @@ class BaseMarionetteTestRunner(object):
         self.run_until_failure = run_until_failure or False
         self.symbols_path = symbols_path
         self.socket_timeout = socket_timeout
+        self.startup_timeout = startup_timeout
         self.shuffle = shuffle
         self.shuffle_seed = shuffle_seed
         self.server_root = server_root
@@ -554,7 +556,6 @@ class BaseMarionetteTestRunner(object):
         self.result_callbacks = result_callbacks or []
         self.prefs = prefs or {}
         self.test_tags = test_tags
-        self.startup_timeout = startup_timeout
         self.workspace = workspace
         # If no workspace is set, default location for gecko.log is .
         # and default location for profile is TMP
@@ -571,7 +572,6 @@ class BaseMarionetteTestRunner(object):
             self.prefs.update({
                 'browser.tabs.remote.autostart': True,
                 'browser.tabs.remote.force-enable': True,
-                'extensions.e10sBlocksEnabling': False,
             })
 
         # If no repeat has been set, default to 30 extra runs
@@ -661,7 +661,7 @@ class BaseMarionetteTestRunner(object):
                 except ValueError as e:
                     exc, val, tb = sys.exc_info()
                     msg = "JSON file ({0}) is not properly formatted: {1}"
-                    raise exc, msg.format(os.path.abspath(path), e.message), tb
+                    reraise(exc, msg.format(os.path.abspath(path), e.message), tb)
         return data
 
     @property
@@ -772,7 +772,7 @@ class BaseMarionetteTestRunner(object):
                 except Exception as e:
                     exc, val, tb = sys.exc_info()
                     msg = "Connection attempt to {0}:{1} failed with error: {2}"
-                    raise exc, msg.format(host, port, e), tb
+                    reraise(exc, msg.format(host, port, e), tb)
         if self.workspace:
             kwargs['workspace'] = self.workspace_path
         if self.headless:
@@ -809,11 +809,26 @@ class BaseMarionetteTestRunner(object):
         filename = os.path.basename(filename)
         return self.filename_pattern.match(filename)
 
+    def _fix_test_path(self, path):
+        """Normalize a logged test path from the test package."""
+        test_path_prefixes = [
+            "tests{}".format(os.path.sep),
+        ]
+
+        for prefix in test_path_prefixes:
+            if path.startswith(prefix):
+                path = path[len(prefix):]
+                break
+        return path
+
     def _log_skipped_tests(self):
         for test in self.manifest_skipped_tests:
-            name = os.path.basename(test['path'])
-            self.logger.test_start(name)
-            self.logger.test_end(name,
+            rel_path = None
+            if os.path.exists(test['path']):
+                rel_path = self._fix_test_path(os.path.relpath(test['path']))
+
+            self.logger.test_start(rel_path)
+            self.logger.test_end(rel_path,
                                  'SKIP',
                                  message=test['disabled'])
             self.todo += 1
@@ -846,7 +861,7 @@ class BaseMarionetteTestRunner(object):
                 any(not server.is_alive for _, server in self.fixture_servers):
             self.logger.info("Starting fixture servers")
             self.fixture_servers = self.start_fixture_servers()
-            for url in iter_url(self.fixture_servers):
+            for url in serve.iter_url(self.fixture_servers):
                 self.logger.info("Fixture server listening on %s" % url)
 
             # backwards compatibility
@@ -857,7 +872,7 @@ class BaseMarionetteTestRunner(object):
         device_info = None
         if self.marionette.instance and self.emulator:
             try:
-                device_info = self.marionette.instance.runner.device.dm.getInfo()
+                device_info = self.marionette.instance.runner.device.device.get_info()
             except Exception:
                 self.logger.warning('Could not get device info', exc_info=True)
 
@@ -874,6 +889,7 @@ class BaseMarionetteTestRunner(object):
             tests_by_group[test['group']].append(test['filepath'])
 
         self.logger.suite_start(tests_by_group,
+                                name='marionette-test',
                                 version_info=self.version_info,
                                 device_info=device_info)
 
@@ -896,7 +912,7 @@ class BaseMarionetteTestRunner(object):
             # we want to display current test results.
             # so we keep the exception to raise it later.
             interrupted = sys.exc_info()
-        except:
+        except Exception:
             # For any other exception we return immediately and have to
             # cleanup running processes
             self.cleanup()
@@ -913,7 +929,7 @@ class BaseMarionetteTestRunner(object):
                 self.logger.info("Using shuffle seed: %d" % self.shuffle_seed)
 
             self.logger.suite_end()
-        except:
+        except Exception:
             # raise only the exception if we were not interrupted
             if not interrupted:
                 raise
@@ -922,7 +938,7 @@ class BaseMarionetteTestRunner(object):
 
             # reraise previous interruption now
             if interrupted:
-                raise interrupted[0], interrupted[1], interrupted[2]
+                reraise(interrupted[0], interrupted[1], interrupted[2])
 
     def _print_summary(self, tests):
         self.logger.info('\nSUMMARY\n-------')
@@ -1093,7 +1109,7 @@ class BaseMarionetteTestRunner(object):
         self.run_test_set(self.tests)
 
     def cleanup(self):
-        for proc in iter_proc(self.fixture_servers):
+        for proc in serve.iter_proc(self.fixture_servers):
             proc.stop()
             proc.kill()
         self.fixture_servers = {}

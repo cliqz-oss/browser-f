@@ -7,22 +7,23 @@ use dom::bindings::codegen::Bindings::PopStateEventBinding;
 use dom::bindings::codegen::Bindings::PopStateEventBinding::PopStateEventMethods;
 use dom::bindings::error::Fallible;
 use dom::bindings::inheritance::Castable;
-use dom::bindings::js::Root;
 use dom::bindings::reflector::reflect_dom_object;
+use dom::bindings::root::DomRoot;
 use dom::bindings::str::DOMString;
 use dom::bindings::trace::RootedTraceableBox;
 use dom::event::Event;
 use dom::window::Window;
 use dom_struct::dom_struct;
-use js::jsapi::{Heap, HandleValue, JSContext};
+use js::jsapi::{Heap, JSContext};
 use js::jsval::JSVal;
+use js::rust::HandleValue;
 use servo_atoms::Atom;
 
 // https://html.spec.whatwg.org/multipage/#the-popstateevent-interface
 #[dom_struct]
 pub struct PopStateEvent {
     event: Event,
-    #[ignore_heap_size_of = "Defined in rust-mozjs"]
+    #[ignore_malloc_size_of = "Defined in rust-mozjs"]
     state: Heap<JSVal>,
 }
 
@@ -34,8 +35,8 @@ impl PopStateEvent {
         }
     }
 
-    pub fn new_uninitialized(window: &Window) -> Root<PopStateEvent> {
-        reflect_dom_object(box PopStateEvent::new_inherited(),
+    pub fn new_uninitialized(window: &Window) -> DomRoot<PopStateEvent> {
+        reflect_dom_object(Box::new(PopStateEvent::new_inherited()),
                            window,
                            PopStateEventBinding::Wrap)
     }
@@ -45,7 +46,7 @@ impl PopStateEvent {
                bubbles: bool,
                cancelable: bool,
                state: HandleValue)
-               -> Root<PopStateEvent> {
+               -> DomRoot<PopStateEvent> {
         let ev = PopStateEvent::new_uninitialized(window);
         ev.state.set(state.get());
         {
@@ -58,7 +59,7 @@ impl PopStateEvent {
     pub fn Constructor(window: &Window,
                        type_: DOMString,
                        init: RootedTraceableBox<PopStateEventBinding::PopStateEventInit>)
-                       -> Fallible<Root<PopStateEvent>> {
+                       -> Fallible<DomRoot<PopStateEvent>> {
         Ok(PopStateEvent::new(window,
                               Atom::from(type_),
                               init.parent.bubbles,

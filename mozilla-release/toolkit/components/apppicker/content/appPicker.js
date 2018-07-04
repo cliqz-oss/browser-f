@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function AppPicker() {}
 
@@ -15,7 +16,7 @@ AppPicker.prototype =
     * Init the dialog and populate the application list
     */
     appPickerLoad: function appPickerLoad() {
-        const nsILocalHandlerApp = Components.interfaces.nsILocalHandlerApp;
+        const nsILocalHandlerApp = Ci.nsILocalHandlerApp;
 
         this._incomingParams = window.arguments[0];
         this._incomingParams.handlerApp = null;
@@ -96,14 +97,10 @@ AppPicker.prototype =
     * Retrieve the moz-icon for the app
     */
     getFileIconURL: function getFileIconURL(file) {
-      var ios = Components.classes["@mozilla.org/network/io-service;1"].
-                getService(Components.interfaces.nsIIOService);
-
-      if (!ios) return "";
       const nsIFileProtocolHandler =
-        Components.interfaces.nsIFileProtocolHandler;
+        Ci.nsIFileProtocolHandler;
 
-      var fph = ios.getProtocolHandler("file")
+      var fph = Services.io.getProtocolHandler("file")
                 .QueryInterface(nsIFileProtocolHandler);
       if (!fph) return "";
 
@@ -116,13 +113,13 @@ AppPicker.prototype =
     */
     getFileDisplayName: function getFileDisplayName(file) {
       if (AppConstants.platform == "win") {
-        if (file instanceof Components.interfaces.nsILocalFileWin) {
+        if (file instanceof Ci.nsILocalFileWin) {
           try {
             return file.getVersionInfoField("FileDescription");
           } catch (e) {}
         }
       } else if (AppConstants.platform == "macosx") {
-        if (file instanceof Components.interfaces.nsILocalFileMac) {
+        if (file instanceof Ci.nsILocalFileMac) {
           try {
             return file.bundleDisplayName;
           } catch (e) {}
@@ -173,15 +170,13 @@ AppPicker.prototype =
     * User browse for an app.
     */
     appPickerBrowse: function appPickerBrowse() {
-      var nsIFilePicker = Components.interfaces.nsIFilePicker;
-      var fp = Components.classes["@mozilla.org/filepicker;1"].
+      var nsIFilePicker = Ci.nsIFilePicker;
+      var fp = Cc["@mozilla.org/filepicker;1"].
                createInstance(nsIFilePicker);
 
       fp.init(window, this._incomingParams.title, nsIFilePicker.modeOpen);
       fp.appendFilters(nsIFilePicker.filterApps);
 
-      var fileLoc = Components.classes["@mozilla.org/file/directory_service;1"]
-                            .getService(Components.interfaces.nsIProperties);
       var startLocation;
       if (AppConstants.platform == "win") {
         startLocation = "ProgF"; // Program Files
@@ -191,13 +186,13 @@ AppPicker.prototype =
         startLocation = "Home";
       }
       fp.displayDirectory =
-        fileLoc.get(startLocation, Components.interfaces.nsILocalFile);
+        Services.dirsvc.get(startLocation, Ci.nsIFile);
 
       fp.open(rv => {
           if (rv == nsIFilePicker.returnOK && fp.file) {
               var localHandlerApp =
-                Components.classes["@mozilla.org/uriloader/local-handler-app;1"].
-                createInstance(Components.interfaces.nsILocalHandlerApp);
+                Cc["@mozilla.org/uriloader/local-handler-app;1"].
+                createInstance(Ci.nsILocalHandlerApp);
               localHandlerApp.executable = fp.file;
 
               this._incomingParams.handlerApp = localHandlerApp;
@@ -206,7 +201,7 @@ AppPicker.prototype =
       });
       return true;
     }
-}
+};
 
 // Global object
 var g_dialog = new AppPicker();

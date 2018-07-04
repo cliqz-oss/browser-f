@@ -1,8 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Components.utils.import("resource://gre/modules/PlacesUtils.jsm");
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 function test() {
   waitForExplicitFinish();
@@ -16,11 +16,7 @@ function test() {
   });
 
   SpecialPowers.pushPrefEnv({set: [
-    ["browser.cache.offline.enable", false],
-    ["browser.cache.disk.enable", false],
-    ["browser.cache.memory.enable", false],
-    ["browser.storageManager.enabled", true],
-    ["browser.preferences.offlineGroup.enabled", true]
+    ["privacy.userContext.ui.enabled", true]
   ]}).then(() => open_preferences(runTest));
 }
 
@@ -30,17 +26,14 @@ function runTest(win) {
   let tab = win.document;
   let elements = tab.getElementById("mainPrefPane").children;
 
-  // Test if advanced pane is opened correctly
-  win.gotoPref("paneAdvanced");
+  // Test if privacy pane is opened correctly
+  win.gotoPref("panePrivacy");
   for (let element of elements) {
-    if (element.nodeName == "preferences") {
-      continue;
-    }
     let attributeValue = element.getAttribute("data-category");
-    if (attributeValue == "paneAdvanced") {
-      is_element_visible(element, "Advanced elements should be visible");
+    if (attributeValue == "panePrivacy") {
+      is_element_visible(element, `Privacy element of id=${element.id} should be visible`);
     } else {
-      is_element_hidden(element, "Non-Advanced elements should be hidden");
+      is_element_hidden(element, `Non-Privacy element of id=${element.id} should be hidden`);
     }
   }
 

@@ -4,9 +4,8 @@
 
 "use strict";
 
-const { Ci } = require("chrome");
+const { Ci, Cu } = require("chrome");
 const Services = require("Services");
-const { Task } = require("devtools/shared/task");
 const { BrowserElementWebNavigation } = require("./web-navigation");
 const { getStack } = require("devtools/shared/platform/stack");
 
@@ -20,8 +19,7 @@ function debug(msg) {
 }
 
 /**
- * Properties swapped between browsers by browser.xml's `swapDocShells`.  See also the
- * list at /devtools/client/responsive.html/docs/browser-swap.md.
+ * Properties swapped between browsers by browser.xml's `swapDocShells`.
  */
 const SWAPPED_BROWSER_STATE = [
   "_remoteFinder",
@@ -37,6 +35,27 @@ const SWAPPED_BROWSER_STATE = [
   "_isSyntheticDocument",
   "_innerWindowID",
   "_manifestURI",
+];
+
+/**
+ * Various parts of the Firefox code base expect to access properties on the browser
+ * window in response to events (by reaching for the window via the event's target).
+ *
+ * When RDM is enabled, these bits of code instead reach the RDM tool's window instead of
+ * the browser window, which won't have the properties they are looking for. At the
+ * moment, we address this by exposing them from the browser window on RDM's window as
+ * needed.
+ */
+const PROPERTIES_FROM_BROWSER_WINDOW = [
+  // This is used by PermissionUI.jsm for permission doorhangers.
+  "PopupNotifications",
+  // These are used by ContentClick.jsm when opening links in ways other than just
+  // navigating the viewport, such as a new tab by pressing Cmd-Click.
+  "whereToOpenLink",
+  "openLinkIn",
+  // This is used by various event handlers, typically to call `getTabForBrowser` to map
+  // a browser back to a tab.
+  "gBrowser",
 ];
 
 /**
@@ -75,7 +94,7 @@ function tunnelToInnerBrowser(outer, inner) {
 
   return {
 
-    start: Task.async(function* () {
+    async start() {
       if (outer.isRemoteBrowser) {
         throw new Error("The outer browser must be non-remote.");
       }
@@ -145,6 +164,12 @@ function tunnelToInnerBrowser(outer, inner) {
       // even though it's not true.  Since the actions the browser UI performs are sent
       // down to the inner browser by this tunnel, the tab's remoteness effectively is the
       // remoteness of the inner browser.
+      // Setting this attribute changes the browser to the remote XBL binding via CSS.
+      // The XBL binding for remote browsers uses the message manager for many actions in
+      // the UI and that works well here, since it gives us one main thing we need to
+      // route to the inner browser (the messages), instead of having to tweak many
+      // different browser properties.  It is safe to alter a XBL binding dynamically.
+      // The content within is not reloaded.
       outer.setAttribute("remote", "true");
       outer.setAttribute("remoteType", inner.remoteType);
 
@@ -152,13 +177,6 @@ function tunnelToInnerBrowser(outer, inner) {
       // such as form fill controllers.  Otherwise they will remain in place and leak the
       // outer docshell.
       outer.destroy();
-      // The XBL binding for remote browsers uses the message manager for many actions in
-      // the UI and that works well here, since it gives us one main thing we need to
-      // route to the inner browser (the messages), instead of having to tweak many
-      // different browser properties.  It is safe to alter a XBL binding dynamically.
-      // The content within is not reloaded.
-      outer.style.MozBinding = "url(chrome://browser/content/tabbrowser.xml" +
-                               "#tabbrowser-remote-browser)";
 
       // The constructor of the new XBL binding is run asynchronously and there is no
       // event to signal its completion.  Spin an event loop to watch for properties that
@@ -166,6 +184,10 @@ function tunnelToInnerBrowser(outer, inner) {
       Services.tm.spinEventLoopUntil(() => {
         return outer._remoteWebNavigation;
       });
+      // Verify that we indeed have the correct binding.
+      if (!outer.isRemoteBrowser) {
+        throw new Error("Browser failed to switch to remote browser binding");
+      }
 
       // Replace the `webNavigation` object with our own version which tries to use
       // mozbrowser APIs where possible.  This replaces the webNavigation object that the
@@ -199,32 +221,22 @@ function tunnelToInnerBrowser(outer, inner) {
         outer[property] = inner[property];
       }
 
-      // Expose `PopupNotifications` on the content's owner global.
-      // This is used by PermissionUI.jsm for permission doorhangers.
-      // Note: This pollutes the responsive.html tool UI's global.
-      Object.defineProperty(inner.ownerGlobal, "PopupNotifications", {
-        get() {
-          return outer.ownerGlobal.PopupNotifications;
-        },
-        configurable: true,
-        enumerable: true,
-      });
-
-      // Expose `whereToOpenLink` on the content's owner global.
-      // This is used by ContentClick.jsm when opening links in ways other than just
-      // navigating the viewport.
-      // Note: This pollutes the responsive.html tool UI's global.
-      Object.defineProperty(inner.ownerGlobal, "whereToOpenLink", {
-        get() {
-          return outer.ownerGlobal.whereToOpenLink;
-        },
-        configurable: true,
-        enumerable: true,
-      });
+      // Expose various properties from the browser window on the RDM tool's global.  This
+      // aids various bits of code that expect to find a browser window, such as event
+      // handlers that reach for the window via the event's target.
+      for (let property of PROPERTIES_FROM_BROWSER_WINDOW) {
+        Object.defineProperty(inner.ownerGlobal, property, {
+          get() {
+            return outer.ownerGlobal[property];
+          },
+          configurable: true,
+          enumerable: true,
+        });
+      }
 
       // Add mozbrowser event handlers
       inner.addEventListener("mozbrowseropenwindow", this);
-    }),
+    },
 
     handleEvent(event) {
       if (event.type != "mozbrowseropenwindow") {
@@ -270,15 +282,15 @@ function tunnelToInnerBrowser(outer, inner) {
 
       // Reset the XBL binding back to the default.
       outer.destroy();
-      outer.style.MozBinding = "";
 
       // Reset @remote since this is now back to a regular, non-remote browser
       outer.setAttribute("remote", "false");
       outer.removeAttribute("remoteType");
 
       // Delete browser window properties exposed on content's owner global
-      delete inner.ownerGlobal.PopupNotifications;
-      delete inner.ownerGlobal.whereToOpenLink;
+      for (let property of PROPERTIES_FROM_BROWSER_WINDOW) {
+        delete inner.ownerGlobal[property];
+      }
 
       // Remove mozbrowser event handlers
       inner.removeEventListener("mozbrowseropenwindow", this);
@@ -316,8 +328,8 @@ function MessageManagerTunnel(outer, inner) {
   if (outer.isRemoteBrowser) {
     throw new Error("The outer browser must be non-remote.");
   }
-  this.outer = outer;
-  this.inner = inner;
+  this.outerRef = Cu.getWeakReference(outer);
+  this.innerRef = Cu.getWeakReference(inner);
   this.tunneledMessageNames = new Set();
   this.init();
 }
@@ -403,12 +415,12 @@ MessageManagerTunnel.prototype = {
     "Finder:",
     // Messages sent from InlineSpellChecker.jsm
     "InlineSpellChecker:",
+    // Messages sent from MessageChannel.jsm
+    "MessageChannel:",
     // Messages sent from pageinfo.js
     "PageInfo:",
     // Messages sent from printUtils.js
     "Printing:",
-    // Messages sent from browser-social.js
-    "Social:",
     "PageMetadata:",
     // Messages sent from viewSourceUtils.js
     "ViewSource:",
@@ -423,12 +435,12 @@ MessageManagerTunnel.prototype = {
     "Findbar:",
     // Messages sent to RemoteFinder.jsm
     "Finder:",
+    // Messages sent to MessageChannel.jsm
+    "MessageChannel:",
     // Messages sent to pageinfo.js
     "PageInfo:",
     // Messages sent to printUtils.js
     "Printing:",
-    // Messages sent to browser-social.js
-    "Social:",
     "PageMetadata:",
     // Messages sent to viewSourceUtils.js
     "ViewSource:",
@@ -436,8 +448,12 @@ MessageManagerTunnel.prototype = {
 
   OUTER_TO_INNER_FRAME_SCRIPTS: [
     // DevTools server for OOP frames
-    "resource://devtools/server/child.js"
+    "resource://devtools/server/startup/frame.js"
   ],
+
+  get outer() {
+    return this.outerRef.get();
+  },
 
   get outerParentMM() {
     if (!this.outer[FRAME_LOADER]) {
@@ -453,6 +469,10 @@ MessageManagerTunnel.prototype = {
     let docShell = this.outer[FRAME_LOADER].docShell;
     return docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                    .getInterface(Ci.nsIContentFrameMessageManager);
+  },
+
+  get inner() {
+    return this.innerRef.get();
   },
 
   get innerParentMM() {
@@ -535,6 +555,15 @@ MessageManagerTunnel.prototype = {
     }
   },
 
+  /**
+   * Expose the inner frame's value for `processMessageManager`.  This is done mainly to
+   * allow Browser Content Toolbox (which needs to find a tab's process) to work for RDM
+   * tabs.  (The property is quite rarely used in general.)
+   */
+  get processMessageManager() {
+    return this.innerParentMM.processMessageManager;
+  },
+
   loadFrameScript(url, ...args) {
     debug(`Calling loadFrameScript for ${url}`);
 
@@ -610,6 +639,10 @@ MessageManagerTunnel.prototype = {
   _shouldTunnelInnerToOuter(name) {
     return this.INNER_TO_OUTER_MESSAGES.includes(name) ||
            this.INNER_TO_OUTER_MESSAGE_PREFIXES.some(prefix => name.startsWith(prefix));
+  },
+
+  toString() {
+    return "[object MessageManagerTunnel]";
   },
 
 };

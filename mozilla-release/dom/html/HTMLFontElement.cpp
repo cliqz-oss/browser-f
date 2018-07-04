@@ -10,7 +10,6 @@
 #include "nsAttrValueInlines.h"
 #include "nsMappedAttributes.h"
 #include "nsContentUtils.h"
-#include "nsCSSParser.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(Font)
 
@@ -31,8 +30,9 @@ NS_IMPL_ELEMENT_CLONE(HTMLFontElement)
 
 bool
 HTMLFontElement::ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -50,42 +50,36 @@ HTMLFontElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 void
 HTMLFontElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
                                        GenericSpecifiedValues* aData)
 {
-  if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(Font))) {
-    // face: string list
-    if (!aData->PropertyIsSet(eCSSProperty_font_family)) {
-      const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::face);
-      if (value && value->Type() == nsAttrValue::eString &&
-          !value->IsEmptyString()) {
-        aData->SetFontFamily(value->GetStringValue());
-      }
-    }
-    // size: int
-    if (!aData->PropertyIsSet(eCSSProperty_font_size)) {
-      const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::size);
-      if (value && value->Type() == nsAttrValue::eInteger)
-        aData->SetKeywordValue(eCSSProperty_font_size, value->GetIntegerValue());
+  // face: string list
+  if (!aData->PropertyIsSet(eCSSProperty_font_family)) {
+    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::face);
+    if (value && value->Type() == nsAttrValue::eString &&
+        !value->IsEmptyString()) {
+      aData->SetFontFamily(value->GetStringValue());
     }
   }
-  if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(Color))) {
-    if (!aData->PropertyIsSet(eCSSProperty_color) &&
-        aData->PresContext()->UseDocumentColors()) {
-      // color: color
-      const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::color);
-      nscolor color;
-      if (value && value->GetColorValue(color)) {
-        aData->SetColorValue(eCSSProperty_color, color);
-      }
+  // size: int
+  if (!aData->PropertyIsSet(eCSSProperty_font_size)) {
+    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::size);
+    if (value && value->Type() == nsAttrValue::eInteger)
+      aData->SetKeywordValue(eCSSProperty_font_size, value->GetIntegerValue());
+  }
+  if (!aData->PropertyIsSet(eCSSProperty_color)) {
+    // color: color
+    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::color);
+    nscolor color;
+    if (value && value->GetColorValue(color)) {
+      aData->SetColorValue(eCSSProperty_color, color);
     }
   }
-  if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(TextReset)) &&
-      aData->PresContext()->CompatibilityMode() == eCompatibility_NavQuirks) {
+  if (aData->Document()->GetCompatibilityMode() == eCompatibility_NavQuirks) {
     // Make <a><font color="red">text</font></a> give the text a red underline
     // in quirks mode.  The NS_STYLE_TEXT_DECORATION_LINE_OVERRIDE_ALL flag only
     // affects quirks mode rendering.
@@ -100,7 +94,7 @@ HTMLFontElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
 }
 
 NS_IMETHODIMP_(bool)
-HTMLFontElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+HTMLFontElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
     { &nsGkAtoms::face },

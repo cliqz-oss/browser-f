@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,8 +9,9 @@
 
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
 #include "mozilla/RefPtr.h"             // for RefPtr, already_AddRefed, etc
+#include "mozilla/layers/KnowsCompositor.h"
 #include "mozilla/layers/LayersTypes.h"
-#include "mozilla/layers/ShadowLayers.h"
+#include "mozilla/RefCounted.h"
 #include "mozilla/gfx/Types.h"
 #include "mozilla/Vector.h"
 
@@ -23,6 +25,7 @@ namespace gfx {
 namespace layers {
 
 class CopyableCanvasLayer;
+class TextureClient;
 
 /**
  * A PersistentBufferProvider is for users which require the temporary use of
@@ -64,7 +67,7 @@ public:
 
   virtual void OnShutdown() {}
 
-  virtual bool SetForwarder(ShadowLayerForwarder* aFwd) { return true; }
+  virtual bool SetKnowsCompositor(KnowsCompositor* aKnowsCompositor) { return true; }
 
   virtual void ClearCachedResources() {}
 
@@ -99,6 +102,12 @@ public:
   virtual void ReturnSnapshot(already_AddRefed<gfx::SourceSurface> aSnapshot) override;
 
   virtual bool PreservesDrawingState() const override { return true; }
+
+  virtual void OnShutdown() override { Destroy(); }
+
+protected:
+  void Destroy();
+
 private:
   ~PersistentBufferProviderBasic();
 
@@ -119,9 +128,9 @@ public:
 
   static already_AddRefed<PersistentBufferProviderShared>
   Create(gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
-         ShadowLayerForwarder* aFwd);
+         KnowsCompositor* aKnowsCompositor);
 
-  virtual LayersBackend GetType() override { return LayersBackend::LAYERS_CLIENT; }
+  virtual LayersBackend GetType() override;
 
   virtual already_AddRefed<gfx::DrawTarget> BorrowDrawTarget(const gfx::IntRect& aPersistedRect) override;
 
@@ -137,14 +146,14 @@ public:
 
   virtual void OnShutdown() override { Destroy(); }
 
-  virtual bool SetForwarder(ShadowLayerForwarder* aFwd) override;
+  virtual bool SetKnowsCompositor(KnowsCompositor* aKnowsCompositor) override;
 
   virtual void ClearCachedResources() override;
 
   virtual bool PreservesDrawingState() const override { return false; }
 protected:
   PersistentBufferProviderShared(gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
-                                 ShadowLayerForwarder* aFwd,
+                                 KnowsCompositor* aKnowsCompositor,
                                  RefPtr<TextureClient>& aTexture);
 
   ~PersistentBufferProviderShared();
@@ -156,7 +165,7 @@ protected:
 
   gfx::IntSize mSize;
   gfx::SurfaceFormat mFormat;
-  RefPtr<ShadowLayerForwarder> mFwd;
+  RefPtr<KnowsCompositor> mKnowsCompositor;
   Vector<RefPtr<TextureClient>, 4> mTextures;
   // Offset of the texture in mTextures that the canvas uses.
   Maybe<uint32_t> mBack;

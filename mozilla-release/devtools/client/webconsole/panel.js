@@ -7,8 +7,9 @@
 "use strict";
 
 const promise = require("promise");
+const defer = require("devtools/shared/defer");
 
-loader.lazyGetter(this, "HUDService", () => require("devtools/client/webconsole/hudservice"));
+loader.lazyRequireGetter(this, "HUDService", "devtools/client/webconsole/hudservice", true);
 loader.lazyGetter(this, "EventEmitter", () => require("devtools/shared/event-emitter"));
 
 /**
@@ -30,7 +31,7 @@ WebConsolePanel.prototype = {
    * If the WebConsole is opened, check if the JSTerm's input line has focus.
    * If not, focus it.
    */
-  focusInput: function () {
+  focusInput: function() {
     this.hud.jsterm.focus();
   },
 
@@ -40,19 +41,19 @@ WebConsolePanel.prototype = {
    * @return object
    *         A promise that is resolved when the Web Console completes opening.
    */
-  open: function () {
+  open: function() {
     let parentDoc = this._toolbox.doc;
     let iframe = parentDoc.getElementById("toolbox-panel-iframe-webconsole");
 
     // Make sure the iframe content window is ready.
-    let deferredIframe = promise.defer();
+    let deferredIframe = defer();
     let win, doc;
     if ((win = iframe.contentWindow) &&
         (doc = win.document) &&
         doc.readyState == "complete") {
       deferredIframe.resolve(null);
     } else {
-      iframe.addEventListener("load", function () {
+      iframe.addEventListener("load", function() {
         deferredIframe.resolve(null);
       }, {capture: true, once: true});
     }
@@ -80,6 +81,11 @@ WebConsolePanel.prototype = {
       })
       .then((webConsole) => {
         this.hud = webConsole;
+        // Pipe 'reloaded' event from NewWebConsoleFrame to WebConsolePanel.
+        // These events are listened by the Toolbox.
+        this.hud.ui.on("reloaded", () => {
+          this.emit("reloaded");
+        });
         this._isReady = true;
         this.emit("ready");
         return this;
@@ -87,7 +93,7 @@ WebConsolePanel.prototype = {
         let msg = "WebConsolePanel open failed. " +
                   reason.error + ": " + reason.message;
         dump(msg + "\n");
-        console.error(msg);
+        console.error(msg, reason);
       });
   },
 
@@ -100,7 +106,7 @@ WebConsolePanel.prototype = {
     return this._isReady;
   },
 
-  destroy: function () {
+  destroy: function() {
     if (this._destroyer) {
       return this._destroyer;
     }

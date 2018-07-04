@@ -2,16 +2,15 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-function test()
-{
+function test() {
   waitForExplicitFinish();
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.selectedBrowser.addEventListener("load", function () {
+  BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(function() {
     openScratchpad(runTests);
-  }, {capture: true, once: true});
+  });
 
-  content.location = "data:text/html;charset=utf8,test Scratchpad eval function.";
+  gBrowser.loadURI("data:text/html;charset=utf8,test Scratchpad eval function.");
 }
 
 function reportErrorAndQuit(error) {
@@ -20,12 +19,13 @@ function reportErrorAndQuit(error) {
   finish();
 }
 
-function runTests(sw)
-{
+function runTests(sw) {
   const sp = sw.Scratchpad;
 
+  /* eslint-disable brace-style */
   let foo = "" + function main() { console.log(1); };
   let bar = "var bar = " + (() => { console.log(2); });
+  /* eslint-enable brace-style */
 
   const fullText =
     foo + "\n" +

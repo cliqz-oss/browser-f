@@ -39,18 +39,19 @@ class VendorRust(MozbuildObject):
 
     def check_cargo_vendor_version(self, cargo):
         '''
-        Ensure that cargo-vendor is new enough. cargo-vendor 0.1.11 and newer
-        strips out .orig and .rej files which we want.
+        Ensure that cargo-vendor is new enough. cargo-vendor 0.1.13 and newer
+        strips out .cargo-ok, .orig and .rej files, and deals with [patch]
+        replacements in Cargo.toml files which we want.
         '''
         for l in subprocess.check_output([cargo, 'install', '--list']).splitlines():
             # The line looks like one of the following:
-            #  cargo-vendor v0.1.11:
-            #  cargo-vendor v0.1.11 (file:///path/to/local/build/cargo-vendor):
+            #  cargo-vendor v0.1.12:
+            #  cargo-vendor v0.1.12 (file:///path/to/local/build/cargo-vendor):
             # and we want to extract the version part of it
             m = re.match('cargo-vendor v((\d+\.)*\d+)', l)
             if m:
                 version = m.group(1)
-                return LooseVersion(version) >= b'0.1.11'
+                return LooseVersion(version) >= b'0.1.13'
         return False
 
     def check_modified_files(self):
@@ -60,7 +61,7 @@ class VendorRust(MozbuildObject):
         on the user. Allow changes to Cargo.{toml,lock} since that's
         likely to be a common use case.
         '''
-        modified = [f for f in self.repository.get_modified_files() if os.path.basename(f) not in ('Cargo.toml', 'Cargo.lock')]
+        modified = [f for f in self.repository.get_changed_files('M') if os.path.basename(f) not in ('Cargo.toml', 'Cargo.lock')]
         if modified:
             self.log(logging.ERROR, 'modified_files', {},
                      '''You have uncommitted changes to the following files:
@@ -117,7 +118,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
             self.run_process(args=[cargo, 'install', 'cargo-vendor'],
                              append_env=env)
         elif not self.check_cargo_vendor_version(cargo):
-            self.log(logging.INFO, 'cargo_vendor', {}, 'cargo-vendor >= 0.1.11 required; force-reinstalling (this may take a few minutes)...')
+            self.log(logging.INFO, 'cargo_vendor', {}, 'cargo-vendor >= 0.1.12 required; force-reinstalling (this may take a few minutes)...')
             env = self.check_openssl()
             self.run_process(args=[cargo, 'install', '--force', 'cargo-vendor'],
                              append_env=env)
@@ -138,12 +139,14 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
         # It is insufficient to have additions to this whitelist reviewed
         # solely by a build peer; any additions must be checked by somebody
         # competent to review licensing minutiae.
-        LICENSE_WHITELIST = [
+
+        # Licenses for code used at runtime. Please see the above comment before
+        # adding anything to this list.
+        RUNTIME_LICENSE_WHITELIST = [
             'Apache-2.0',
             'Apache-2.0 / MIT',
             'Apache-2.0/MIT',
             'Apache-2 / MIT',
-            'BSD-3-Clause', # bindgen (only used at build time)
             'CC0-1.0',
             'ISC',
             'ISC/Apache-2.0',
@@ -155,6 +158,20 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
             'Unlicense/MIT',
         ]
 
+        # Licenses for code used at build time (e.g. code generators). Please see the above
+        # comments before adding anything to this list.
+        BUILDTIME_LICENSE_WHITELIST = {
+            'BSD-2-Clause': [
+                'Inflector',
+            ],
+            'BSD-3-Clause': [
+                'adler32',
+                'bindgen',
+                'fuchsia-zircon',
+                'fuchsia-zircon-sys',
+            ]
+        }
+
         # This whitelist should only be used for packages that use a
         # license-file and for which the license-file entry has been
         # reviewed.  The table is keyed by package names and maps to the
@@ -163,9 +180,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
         # As above, it is insufficient to have additions to this whitelist
         # reviewed solely by a build peer; any additions must be checked by
         # somebody competent to review licensing minutiae.
-        LICENSE_FILE_PACKAGE_WHITELIST = {
-            # Google BSD-like license; some directories have separate licenses
-            'gamma-lut': '1f04103e3a61b91343b3f9d2ed2cc8543062917e2cc7d52a739ffe6429ccaf61',
+        RUNTIME_LICENSE_FILE_PACKAGE_WHITELIST = {
             # MIT
             'deque': '6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb',
         }
@@ -208,20 +223,31 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                     self.log(logging.DEBUG, 'package_license', {},
                              'has license {}'.format(license))
 
-                    if license not in LICENSE_WHITELIST:
-                        self.log(logging.ERROR, 'package_license_error', {},
+                    if license not in RUNTIME_LICENSE_WHITELIST:
+                        if license not in BUILDTIME_LICENSE_WHITELIST:
+                            self.log(logging.ERROR, 'package_license_error', {},
                                  '''Package {} has a non-approved license: {}.
 
 Please request license review on the package's license.  If the package's license
 is approved, please add it to the whitelist of suitable licenses.
 '''.format(package, license))
-                        return False
+                            return False
+                        elif package not in BUILDTIME_LICENSE_WHITELIST[license]:
+                            self.log(logging.ERROR, 'package_license_error', {},
+                                 '''Package {} has a license that is approved for build-time dependencies: {}
+but the package itself is not whitelisted as being a build-time only package.
+
+If your package is build-time only, please add it to the whitelist of build-time
+only packages. Otherwise, you need to request license review on the package's license.
+If the package's license is approved, please add it to the whitelist of suitable licenses.
+'''.format(package, license))
+                            return False
                 else:
                     license_file = license_file_matches[0].group(1)
                     self.log(logging.DEBUG, 'package_license_file', {},
                              'has license-file {}'.format(license_file))
 
-                    if package not in LICENSE_FILE_PACKAGE_WHITELIST:
+                    if package not in RUNTIME_LICENSE_FILE_PACKAGE_WHITELIST:
                         self.log(logging.ERROR, 'package_license_file_unknown', {},
                                  '''Package {} has an unreviewed license file: {}.
 
@@ -263,27 +289,12 @@ license file's hash.
 
         relative_vendor_dir = 'third_party/rust'
         vendor_dir = mozpath.join(self.topsrcdir, relative_vendor_dir)
-        self.log(logging.INFO, 'rm_vendor_dir', {}, 'rm -rf %s' % vendor_dir)
-        mozfile.remove(vendor_dir)
-        # Once we require a new enough cargo to switch to workspaces, we can
-        # just do this once on the workspace root crate.
-        crates_and_roots = (
-            ('gkrust', 'toolkit/library/rust'),
-            ('gkrust-gtest', 'toolkit/library/gtest/rust'),
-            ('mozjs_sys', 'js/src'),
-            ('geckodriver', 'testing/geckodriver'),
-        )
 
-        lockfiles = []
-        for (lib, crate_root) in crates_and_roots:
-            path = mozpath.join(self.topsrcdir, crate_root)
-            # We use check_call instead of mozprocess to ensure errors are displayed.
-            # We do an |update -p| here to regenerate the Cargo.lock file with minimal changes. See bug 1324462
-            subprocess.check_call([cargo, 'update', '--manifest-path', mozpath.join(path, 'Cargo.toml'), '-p', lib], cwd=self.topsrcdir)
-            lockfiles.append('--sync')
-            lockfiles.append(mozpath.join(path, 'Cargo.lock'))
+        # We use check_call instead of mozprocess to ensure errors are displayed.
+        # We do an |update -p| here to regenerate the Cargo.lock file with minimal changes. See bug 1324462
+        subprocess.check_call([cargo, 'update', '-p', 'gkrust'], cwd=self.topsrcdir)
 
-        subprocess.check_call([cargo, 'vendor', '--quiet', '--no-delete'] + lockfiles + [vendor_dir], cwd=self.topsrcdir)
+        subprocess.check_call([cargo, 'vendor', '--quiet', '--sync', 'Cargo.lock'] + [vendor_dir], cwd=self.topsrcdir)
 
         if not self._check_licenses(vendor_dir):
             self.log(logging.ERROR, 'license_check_failed', {},
@@ -296,7 +307,7 @@ license file's hash.
         FILESIZE_LIMIT = 100 * 1024
         large_files = set()
         cumulative_added_size = 0
-        for f in self.repository.get_added_files():
+        for f in self.repository.get_changed_files('A'):
             path = mozpath.join(self.topsrcdir, f)
             size = os.stat(path).st_size
             cumulative_added_size += size

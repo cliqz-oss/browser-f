@@ -24,6 +24,7 @@
 #include "nsServiceManagerUtils.h"
 #include "nsSubDocumentFrame.h"
 #include "nsXULElement.h"
+#include "nsAttrValueOrString.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -48,16 +49,24 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsGenericHTMLFrameElement,
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mBrowserElementAPI)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_IMPL_ADDREF_INHERITED(nsGenericHTMLFrameElement, nsGenericHTMLElement)
-NS_IMPL_RELEASE_INHERITED(nsGenericHTMLFrameElement, nsGenericHTMLElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(nsGenericHTMLFrameElement,
+                                             nsGenericHTMLElement,
+                                             nsIFrameLoaderOwner,
+                                             nsIDOMMozBrowserFrame,
+                                             nsIMozBrowserFrame,
+                                             nsGenericHTMLFrameElement)
 
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(nsGenericHTMLFrameElement)
-  NS_INTERFACE_TABLE_INHERITED(nsGenericHTMLFrameElement,
-                               nsIFrameLoaderOwner,
-                               nsIDOMMozBrowserFrame,
-                               nsIMozBrowserFrame)
-NS_INTERFACE_TABLE_TAIL_INHERITING(nsGenericHTMLElement)
-NS_IMPL_BOOL_ATTR(nsGenericHTMLFrameElement, Mozbrowser, mozbrowser)
+NS_IMETHODIMP
+nsGenericHTMLFrameElement::GetMozbrowser(bool* aValue)
+{
+  *aValue = GetBoolAttr(nsGkAtoms::mozbrowser);
+  return NS_OK;
+}
+NS_IMETHODIMP
+nsGenericHTMLFrameElement::SetMozbrowser(bool aValue)
+{
+  return SetBoolAttr(nsGkAtoms::mozbrowser, aValue);
+}
 
 int32_t
 nsGenericHTMLFrameElement::TabIndexDefault()
@@ -111,15 +120,12 @@ nsGenericHTMLFrameElement::GetContentWindow()
     return nullptr;
   }
 
-  bool depthTooGreat = false;
-  mFrameLoader->GetDepthTooGreat(&depthTooGreat);
-  if (depthTooGreat) {
+  if (mFrameLoader->DepthTooGreat()) {
     // Claim to have no contentWindow
     return nullptr;
   }
 
-  nsCOMPtr<nsIDocShell> doc_shell;
-  mFrameLoader->GetDocShell(getter_AddRefs(doc_shell));
+  nsCOMPtr<nsIDocShell> doc_shell = mFrameLoader->GetDocShell(IgnoreErrors());
   if (!doc_shell) {
     return nullptr;
   }
@@ -129,9 +135,6 @@ nsGenericHTMLFrameElement::GetContentWindow()
   if (!win) {
     return nullptr;
   }
-
-  NS_ASSERTION(win->IsOuterWindow(),
-               "Uh, this window should always be an outer window!");
 
   return win.forget();
 }
@@ -149,9 +152,6 @@ nsGenericHTMLFrameElement::EnsureFrameLoader()
   mFrameLoader = nsFrameLoader::Create(this,
                                        nsPIDOMWindowOuter::From(mOpenerWindow),
                                        mNetworkCreated);
-  if (mIsPrerendered) {
-    mFrameLoader->SetIsPrerendered();
-  }
 }
 
 nsresult
@@ -172,13 +172,6 @@ nsGenericHTMLFrameElement::CreateRemoteFrameLoader(nsITabParent* aTabParent)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsGenericHTMLFrameElement::GetFrameLoaderXPCOM(nsIFrameLoader **aFrameLoader)
-{
-  NS_IF_ADDREF(*aFrameLoader = mFrameLoader);
-  return NS_OK;
-}
-
 NS_IMETHODIMP_(already_AddRefed<nsFrameLoader>)
 nsGenericHTMLFrameElement::GetFrameLoader()
 {
@@ -194,9 +187,9 @@ nsGenericHTMLFrameElement::PresetOpenerWindow(mozIDOMWindowProxy* aWindow, Error
 }
 
 void
-nsGenericHTMLFrameElement::InternalSetFrameLoader(nsIFrameLoader* aNewFrameLoader)
+nsGenericHTMLFrameElement::InternalSetFrameLoader(nsFrameLoader* aNewFrameLoader)
 {
-  mFrameLoader = static_cast<nsFrameLoader*>(aNewFrameLoader);
+  mFrameLoader = aNewFrameLoader;
 }
 
 void
@@ -232,31 +225,18 @@ nsGenericHTMLFrameElement::SwapFrameLoaders(nsIFrameLoaderOwner* aOtherLoaderOwn
   rv = loader->SwapWithOtherLoader(otherLoader, this, aOtherLoaderOwner);
 }
 
-NS_IMETHODIMP
-nsGenericHTMLFrameElement::SetIsPrerendered()
-{
-  MOZ_ASSERT(!mFrameLoader, "Please call SetIsPrerendered before frameLoader is created");
-  mIsPrerendered = true;
-  return NS_OK;
-}
-
-nsresult
+void
 nsGenericHTMLFrameElement::LoadSrc()
 {
   EnsureFrameLoader();
 
   if (!mFrameLoader) {
-    return NS_OK;
+    return;
   }
 
-  nsresult rv = mFrameLoader->LoadFrame();
-#ifdef DEBUG
-  if (NS_FAILED(rv)) {
-    NS_WARNING("failed to load URL");
-  }
-#endif
-
-  return rv;
+  bool origSrc = !mSrcLoadHappened;
+  mSrcLoadHappened = true;
+  mFrameLoader->LoadFrame(origSrc);
 }
 
 nsresult
@@ -331,15 +311,17 @@ PrincipalAllowsBrowserFrame(nsIPrincipal* aPrincipal)
 }
 
 /* virtual */ nsresult
-nsGenericHTMLFrameElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+nsGenericHTMLFrameElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                         const nsAttrValue* aValue,
-                                        const nsAttrValue* aOldValue, bool aNotify)
+                                        const nsAttrValue* aOldValue,
+                                        nsIPrincipal* aMaybeScriptedPrincipal,
+                                        bool aNotify)
 {
   if (aValue) {
     nsAttrValueOrString value(aValue);
-    AfterMaybeChangeAttr(aNameSpaceID, aName, &value, aNotify);
+    AfterMaybeChangeAttr(aNameSpaceID, aName, &value, aMaybeScriptedPrincipal, aNotify);
   } else {
-    AfterMaybeChangeAttr(aNameSpaceID, aName, nullptr, aNotify);
+    AfterMaybeChangeAttr(aNameSpaceID, aName, nullptr, aMaybeScriptedPrincipal, aNotify);
   }
 
   if (aNameSpaceID == kNameSpaceID_None) {
@@ -372,16 +354,16 @@ nsGenericHTMLFrameElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
   }
 
   return nsGenericHTMLElement::AfterSetAttr(aNameSpaceID, aName, aValue,
-                                            aOldValue, aNotify);
+                                            aOldValue, aMaybeScriptedPrincipal, aNotify);
 }
 
 nsresult
 nsGenericHTMLFrameElement::OnAttrSetButNotChanged(int32_t aNamespaceID,
-                                                  nsIAtom* aName,
+                                                  nsAtom* aName,
                                                   const nsAttrValueOrString& aValue,
                                                   bool aNotify)
 {
-  AfterMaybeChangeAttr(aNamespaceID, aName, &aValue, aNotify);
+  AfterMaybeChangeAttr(aNamespaceID, aName, &aValue, nullptr, aNotify);
 
   return nsGenericHTMLElement::OnAttrSetButNotChanged(aNamespaceID, aName,
                                                       aValue, aNotify);
@@ -389,12 +371,15 @@ nsGenericHTMLFrameElement::OnAttrSetButNotChanged(int32_t aNamespaceID,
 
 void
 nsGenericHTMLFrameElement::AfterMaybeChangeAttr(int32_t aNamespaceID,
-                                                nsIAtom* aName,
+                                                nsAtom* aName,
                                                 const nsAttrValueOrString* aValue,
+                                                nsIPrincipal* aMaybeScriptedPrincipal,
                                                 bool aNotify)
 {
   if (aNamespaceID == kNameSpaceID_None) {
     if (aName == nsGkAtoms::src) {
+      mSrcTriggeringPrincipal = nsContentUtils::GetAttrTriggeringPrincipal(
+          this, aValue ? aValue->String() : EmptyString(), aMaybeScriptedPrincipal);
       if (aValue && (!IsHTMLElement(nsGkAtoms::iframe) ||
           !HasAttr(kNameSpaceID_None, nsGkAtoms::srcdoc))) {
         // Don't propagate error here. The attribute was successfully set,
@@ -442,7 +427,7 @@ nsGenericHTMLFrameElement::CopyInnerTo(Element* aDest,
     nsFrameLoader* fl = nsFrameLoader::Create(dest, nullptr, false);
     NS_ENSURE_STATE(fl);
     dest->mFrameLoader = fl;
-    static_cast<nsFrameLoader*>(mFrameLoader.get())->CreateStaticClone(fl);
+    mFrameLoader->CreateStaticClone(fl);
   }
 
   return rv;

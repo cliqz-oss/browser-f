@@ -38,16 +38,6 @@
 #endif
 
 /*
- * Force-include Char16.h in order to define PRUnichar as char16_t everywhere.
- * Note that this should be the first #include to make sure that prtypes.h does
- * not attempt to define PRUnichar.  This includes the following hunspell-specific
- * includes.
- */
-#if !defined(__ASSEMBLER__)
-#include "mozilla/Char16.h"
-#endif
-
-/*
  * Force-include hunspell_alloc_hooks.h and hunspell_fopen_hooks.h for hunspell,
  * so that we don't need to modify them directly.
  *
@@ -67,6 +57,17 @@
  */
 #if defined(CHROMIUM_SANDBOX_BUILD) && defined(XP_WIN)
 #include "base/win/sdkdecls.h"
-#endif
+
+#ifdef __MINGW32__
+/*
+ * MinGW doesn't support __try / __except. There are a few mechanisms available
+ * to hack around it and pseudo-support it, but these are untested in Firefox.
+ * What is tested (and works) is replacing them with if(true) and else.
+ */
+#define __try if(true)
+#define __except(x) else
+
+#endif /* __MINGW32__ */
+#endif /* defined(CHROMIUM_SANDBOX_BUILD) && defined(XP_WIN) */
 
 #endif /* MOZILLA_CONFIG_H */

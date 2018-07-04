@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces, Cc = Components.classes, Cu = Components.utils, Cr = Components.results;
-Cu.import("resource://gre/modules/Messaging.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function init() {
   // Include the build date and a warning about Telemetry
@@ -30,7 +29,7 @@ function init() {
       distroIdField.textContent = distroId + " - " + distroVersion;
       distroIdField.hidden = false;
 
-      let distroAbout = Services.prefs.getComplexValue("distribution.about", Ci.nsISupportsString);
+      let distroAbout = Services.prefs.getStringPref("distribution.about");
       let distroField = document.getElementById("distributionAbout");
       distroField.textContent = distroAbout;
       distroField.hidden = false;

@@ -8,8 +8,10 @@ description: >
     SyntaxError expected: reserved words used as Identifier
     Names in UTF8: false
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 var fals\u{65} = 123;

@@ -18,18 +18,16 @@ exports.CSS_PROPERTIES = {
   "-moz-animation": {
     "isInherited": false,
     "subproperties": [
+      "animation-name",
       "animation-duration",
       "animation-timing-function",
       "animation-delay",
+      "animation-iteration-count",
       "animation-direction",
       "animation-fill-mode",
-      "animation-iteration-count",
-      "animation-play-state",
-      "animation-name"
+      "animation-play-state"
     ],
     "supports": [
-      7,
-      9,
       10
     ],
     "values": [
@@ -43,6 +41,7 @@ exports.CSS_PROPERTIES = {
       "ease-in-out",
       "ease-out",
       "forwards",
+      "frames",
       "infinite",
       "inherit",
       "initial",
@@ -63,9 +62,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "animation-delay"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -93,9 +90,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "animation-duration"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -123,9 +118,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "animation-iteration-count"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "infinite",
       "inherit",
@@ -174,6 +167,7 @@ exports.CSS_PROPERTIES = {
       "ease-in",
       "ease-in-out",
       "ease-out",
+      "frames",
       "inherit",
       "initial",
       "linear",
@@ -200,6 +194,8 @@ exports.CSS_PROPERTIES = {
       "-moz-mac-source-list-selection",
       "-moz-mac-vibrancy-dark",
       "-moz-mac-vibrancy-light",
+      "-moz-mac-vibrant-titlebar-dark",
+      "-moz-mac-vibrant-titlebar-light",
       "-moz-win-borderless-glass",
       "-moz-win-browsertabbar-toolbox",
       "-moz-win-communications-toolbox",
@@ -234,6 +230,7 @@ exports.CSS_PROPERTIES = {
       "groupbox",
       "inherit",
       "initial",
+      "inner-spin-button",
       "listbox",
       "listitem",
       "menuarrow",
@@ -337,9 +334,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-binding"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -348,34 +343,18 @@ exports.CSS_PROPERTIES = {
       "url"
     ]
   },
-  "-moz-border-bottom-colors": {
+  "-moz-border-end": {
     "isInherited": false,
     "subproperties": [
-      "-moz-border-bottom-colors"
+      "border-inline-end-color",
+      "border-inline-end-style",
+      "border-inline-end-width"
     ],
     "supports": [
       2
     ],
     "values": [
-      "inherit",
-      "initial",
-      "unset"
-    ]
-  },
-  "-moz-border-end": {
-    "isInherited": false,
-    "subproperties": [
-      "border-inline-end-width",
-      "border-inline-end-style",
-      "border-inline-end-color"
-    ],
-    "supports": [
-      2,
-      6
-    ],
-    "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -448,11 +427,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-inline-end-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -464,19 +440,14 @@ exports.CSS_PROPERTIES = {
   "-moz-border-image": {
     "isInherited": false,
     "subproperties": [
-      "border-image-source",
-      "border-image-slice",
-      "border-image-width",
       "border-image-outset",
-      "border-image-repeat"
+      "border-image-repeat",
+      "border-image-slice",
+      "border-image-source",
+      "border-image-width"
     ],
     "supports": [
-      4,
-      5,
-      6,
-      7,
-      8,
-      11
+      4
     ],
     "values": [
       "-moz-element",
@@ -485,6 +456,12 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
+      "auto",
       "fill",
       "inherit",
       "initial",
@@ -501,48 +478,18 @@ exports.CSS_PROPERTIES = {
       "url"
     ]
   },
-  "-moz-border-left-colors": {
-    "isInherited": false,
-    "subproperties": [
-      "-moz-border-left-colors"
-    ],
-    "supports": [
-      2
-    ],
-    "values": [
-      "inherit",
-      "initial",
-      "unset"
-    ]
-  },
-  "-moz-border-right-colors": {
-    "isInherited": false,
-    "subproperties": [
-      "-moz-border-right-colors"
-    ],
-    "supports": [
-      2
-    ],
-    "values": [
-      "inherit",
-      "initial",
-      "unset"
-    ]
-  },
   "-moz-border-start": {
     "isInherited": false,
     "subproperties": [
-      "border-inline-start-width",
+      "border-inline-start-color",
       "border-inline-start-style",
-      "border-inline-start-color"
+      "border-inline-start-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -615,30 +562,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-inline-start-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
       "thick",
       "thin",
-      "unset"
-    ]
-  },
-  "-moz-border-top-colors": {
-    "isInherited": false,
-    "subproperties": [
-      "-moz-border-top-colors"
-    ],
-    "supports": [
-      2
-    ],
-    "values": [
-      "inherit",
-      "initial",
       "unset"
     ]
   },
@@ -678,9 +608,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-box-flex"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -692,9 +620,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-box-ordinal-group"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -752,9 +678,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "column-count"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "auto",
       "inherit",
@@ -781,11 +705,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "column-gap"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "normal",
@@ -800,12 +721,10 @@ exports.CSS_PROPERTIES = {
       "column-rule-color"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -878,11 +797,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "column-rule-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -896,12 +812,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "column-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -910,16 +823,12 @@ exports.CSS_PROPERTIES = {
   "-moz-columns": {
     "isInherited": false,
     "subproperties": [
-      "column-count",
-      "column-width"
+      "column-width",
+      "column-count"
     ],
-    "supports": [
-      6,
-      7
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -934,6 +843,7 @@ exports.CSS_PROPERTIES = {
     "values": [
       "inherit",
       "initial",
+      "none",
       "unset"
     ]
   },
@@ -974,6 +884,7 @@ exports.CSS_PROPERTIES = {
     "values": [
       "inherit",
       "initial",
+      "normal",
       "unset"
     ]
   },
@@ -995,9 +906,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-force-broken-image-icon"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1026,8 +935,10 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "auto",
       "inherit",
       "initial",
+      "rect",
       "unset"
     ]
   },
@@ -1036,13 +947,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-inline-end"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -1053,13 +960,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-inline-start"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -1089,10 +992,7 @@ exports.CSS_PROPERTIES = {
       "-moz-outline-radius-bottomright",
       "-moz-outline-radius-bottomleft"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1104,10 +1004,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-outline-radius-bottomleft"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1119,10 +1016,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-outline-radius-bottomright"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1134,10 +1028,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-outline-radius-topleft"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1149,10 +1040,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-outline-radius-topright"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1164,12 +1052,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-inline-end"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -1180,12 +1064,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-inline-start"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -1196,9 +1076,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "perspective"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1211,10 +1089,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "perspective-origin"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -1247,12 +1122,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-tab-size"
     ],
-    "supports": [
-      6,
-      7
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -1279,8 +1150,32 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "accumulatematrix",
       "inherit",
       "initial",
+      "interpolatematrix",
+      "matrix",
+      "matrix3d",
+      "none",
+      "perspective",
+      "rotate",
+      "rotate3d",
+      "rotateX",
+      "rotateY",
+      "rotateZ",
+      "scale",
+      "scale3d",
+      "scaleX",
+      "scaleY",
+      "scaleZ",
+      "skew",
+      "skewX",
+      "skewY",
+      "translate",
+      "translate3d",
+      "translateX",
+      "translateY",
+      "translateZ",
       "unset"
     ]
   },
@@ -1289,10 +1184,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "transform-origin"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -1327,7 +1219,6 @@ exports.CSS_PROPERTIES = {
       "transition-delay"
     ],
     "supports": [
-      9,
       10
     ],
     "values": [
@@ -1337,6 +1228,7 @@ exports.CSS_PROPERTIES = {
       "ease-in",
       "ease-in-out",
       "ease-out",
+      "frames",
       "inherit",
       "initial",
       "linear",
@@ -1352,9 +1244,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "transition-delay"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1366,9 +1256,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "transition-duration"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1403,6 +1291,7 @@ exports.CSS_PROPERTIES = {
       "ease-in",
       "ease-in-out",
       "ease-out",
+      "frames",
       "inherit",
       "initial",
       "linear",
@@ -1440,8 +1329,6 @@ exports.CSS_PROPERTIES = {
     "supports": [],
     "values": [
       "auto",
-      "disabled",
-      "enabled",
       "inherit",
       "initial",
       "none",
@@ -1506,9 +1393,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-window-opacity"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1522,8 +1407,32 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "accumulatematrix",
       "inherit",
       "initial",
+      "interpolatematrix",
+      "matrix",
+      "matrix3d",
+      "none",
+      "perspective",
+      "rotate",
+      "rotate3d",
+      "rotateX",
+      "rotateY",
+      "rotateZ",
+      "scale",
+      "scale3d",
+      "scaleX",
+      "scaleY",
+      "scaleZ",
+      "skew",
+      "skewX",
+      "skewY",
+      "translate",
+      "translate3d",
+      "translateX",
+      "translateY",
+      "translateZ",
       "unset"
     ]
   },
@@ -1532,10 +1441,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-window-transform-origin"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -1557,19 +1463,20 @@ exports.CSS_PROPERTIES = {
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
       "last baseline",
-      "left",
       "normal",
-      "right",
+      "safe",
       "space-around",
       "space-between",
       "space-evenly",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -1583,18 +1490,19 @@ exports.CSS_PROPERTIES = {
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
       "last baseline",
-      "left",
       "normal",
-      "right",
+      "safe",
       "self-end",
       "self-start",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -1609,36 +1517,35 @@ exports.CSS_PROPERTIES = {
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
       "last baseline",
-      "left",
       "normal",
-      "right",
+      "safe",
       "self-end",
       "self-start",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
   "-webkit-animation": {
     "isInherited": false,
     "subproperties": [
+      "animation-name",
       "animation-duration",
       "animation-timing-function",
       "animation-delay",
+      "animation-iteration-count",
       "animation-direction",
       "animation-fill-mode",
-      "animation-iteration-count",
-      "animation-play-state",
-      "animation-name"
+      "animation-play-state"
     ],
     "supports": [
-      7,
-      9,
       10
     ],
     "values": [
@@ -1652,6 +1559,7 @@ exports.CSS_PROPERTIES = {
       "ease-in-out",
       "ease-out",
       "forwards",
+      "frames",
       "infinite",
       "inherit",
       "initial",
@@ -1672,9 +1580,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "animation-delay"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1702,9 +1608,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "animation-duration"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1732,9 +1636,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "animation-iteration-count"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "infinite",
       "inherit",
@@ -1783,6 +1685,7 @@ exports.CSS_PROPERTIES = {
       "ease-in",
       "ease-in-out",
       "ease-out",
+      "frames",
       "inherit",
       "initial",
       "linear",
@@ -1842,11 +1745,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "background-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
       "contain",
       "cover",
       "inherit",
@@ -1859,10 +1760,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-bottom-left-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1874,10 +1772,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-bottom-right-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1887,19 +1782,14 @@ exports.CSS_PROPERTIES = {
   "-webkit-border-image": {
     "isInherited": false,
     "subproperties": [
-      "border-image-source",
-      "border-image-slice",
-      "border-image-width",
       "border-image-outset",
-      "border-image-repeat"
+      "border-image-repeat",
+      "border-image-slice",
+      "border-image-source",
+      "border-image-width"
     ],
     "supports": [
-      4,
-      5,
-      6,
-      7,
-      8,
-      11
+      4
     ],
     "values": [
       "-moz-element",
@@ -1908,6 +1798,12 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
+      "auto",
       "fill",
       "inherit",
       "initial",
@@ -1932,10 +1828,7 @@ exports.CSS_PROPERTIES = {
       "border-bottom-right-radius",
       "border-bottom-left-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1947,10 +1840,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-top-left-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -1962,10 +1852,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-top-right-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -2008,9 +1895,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-box-flex"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -2022,9 +1907,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-moz-box-ordinal-group"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -2069,13 +1952,20 @@ exports.CSS_PROPERTIES = {
       "box-shadow"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
+      "COLOR",
+      "currentColor",
+      "hsl",
+      "hsla",
       "inherit",
       "initial",
       "inset",
+      "none",
+      "rgb",
+      "rgba",
+      "transparent",
       "unset"
     ]
   },
@@ -2098,13 +1988,23 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "filter"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
+      "blur",
+      "brightness",
+      "contrast",
+      "drop-shadow",
+      "grayscale",
+      "hue-rotate",
       "inherit",
       "initial",
-      "unset"
+      "invert",
+      "none",
+      "opacity",
+      "saturate",
+      "sepia",
+      "unset",
+      "url"
     ]
   },
   "-webkit-flex": {
@@ -2114,18 +2014,14 @@ exports.CSS_PROPERTIES = {
       "flex-shrink",
       "flex-basis"
     ],
-    "supports": [
-      6,
-      7,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
+      "content",
       "inherit",
       "initial",
       "unset"
@@ -2136,17 +2032,14 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "flex-basis"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
+      "content",
       "inherit",
       "initial",
       "unset"
@@ -2193,9 +2086,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "flex-grow"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -2207,9 +2098,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "flex-shrink"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -2238,44 +2127,40 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
-      "baseline",
       "center",
       "end",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
-      "last baseline",
       "left",
       "normal",
       "right",
+      "safe",
       "space-around",
       "space-between",
       "space-evenly",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
   "-webkit-mask": {
     "isInherited": false,
     "subproperties": [
-      "mask-image",
+      "mask-mode",
       "mask-repeat",
-      "mask-position-x",
-      "mask-position-y",
       "mask-clip",
       "mask-origin",
-      "mask-size",
       "mask-composite",
-      "mask-mode"
+      "mask-position-x",
+      "mask-position-y",
+      "mask-size",
+      "mask-image"
     ],
     "supports": [
-      4,
-      5,
-      6,
-      8,
-      11
+      4
     ],
     "values": [
       "-moz-element",
@@ -2284,8 +2169,14 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
       "add",
       "alpha",
+      "auto",
       "border-box",
       "bottom",
       "center",
@@ -2363,9 +2254,7 @@ exports.CSS_PROPERTIES = {
       "mask-image"
     ],
     "supports": [
-      4,
-      5,
-      11
+      4
     ],
     "values": [
       "-moz-element",
@@ -2374,6 +2263,11 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
       "inherit",
       "initial",
       "linear-gradient",
@@ -2409,10 +2303,7 @@ exports.CSS_PROPERTIES = {
       "mask-position-x",
       "mask-position-y"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -2429,18 +2320,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "mask-position-x"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "bottom",
       "center",
       "inherit",
       "initial",
       "left",
       "right",
-      "top",
       "unset"
     ]
   },
@@ -2449,17 +2335,12 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "mask-position-y"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
       "inherit",
       "initial",
-      "left",
-      "right",
       "top",
       "unset"
     ]
@@ -2487,11 +2368,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "mask-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
       "contain",
       "cover",
       "inherit",
@@ -2504,9 +2383,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "order"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -2518,9 +2395,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "perspective"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -2533,10 +2408,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "perspective-origin"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -2590,12 +2462,10 @@ exports.CSS_PROPERTIES = {
       "-webkit-text-stroke-color"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "hsl",
       "hsla",
@@ -2636,11 +2506,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "-webkit-text-stroke-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -2656,8 +2523,32 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "accumulatematrix",
       "inherit",
       "initial",
+      "interpolatematrix",
+      "matrix",
+      "matrix3d",
+      "none",
+      "perspective",
+      "rotate",
+      "rotate3d",
+      "rotateX",
+      "rotateY",
+      "rotateZ",
+      "scale",
+      "scale3d",
+      "scaleX",
+      "scaleY",
+      "scaleZ",
+      "skew",
+      "skewX",
+      "skewY",
+      "translate",
+      "translate3d",
+      "translateX",
+      "translateY",
+      "translateZ",
       "unset"
     ]
   },
@@ -2666,10 +2557,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "transform-origin"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -2704,7 +2592,6 @@ exports.CSS_PROPERTIES = {
       "transition-delay"
     ],
     "supports": [
-      9,
       10
     ],
     "values": [
@@ -2714,6 +2601,7 @@ exports.CSS_PROPERTIES = {
       "ease-in",
       "ease-in-out",
       "ease-out",
+      "frames",
       "inherit",
       "initial",
       "linear",
@@ -2729,9 +2617,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "transition-delay"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -2743,9 +2629,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "transition-duration"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -2780,6 +2664,7 @@ exports.CSS_PROPERTIES = {
       "ease-in",
       "ease-in-out",
       "ease-out",
+      "frames",
       "inherit",
       "initial",
       "linear",
@@ -2822,19 +2707,20 @@ exports.CSS_PROPERTIES = {
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
       "last baseline",
-      "left",
       "normal",
-      "right",
+      "safe",
       "space-around",
       "space-between",
       "space-evenly",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -2848,18 +2734,19 @@ exports.CSS_PROPERTIES = {
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
       "last baseline",
-      "left",
       "normal",
-      "right",
+      "safe",
       "self-end",
       "self-start",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -2874,917 +2761,358 @@ exports.CSS_PROPERTIES = {
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
       "last baseline",
-      "left",
       "normal",
-      "right",
+      "safe",
       "self-end",
       "self-start",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
   "all": {
     "isInherited": false,
     "subproperties": [
-      "align-content",
-      "align-items",
-      "align-self",
-      "animation-delay",
-      "animation-direction",
-      "animation-duration",
-      "animation-fill-mode",
-      "animation-iteration-count",
-      "animation-name",
-      "animation-play-state",
-      "animation-timing-function",
-      "-moz-appearance",
-      "backface-visibility",
-      "background-attachment",
-      "background-blend-mode",
-      "background-clip",
-      "background-color",
-      "background-image",
-      "background-origin",
-      "background-position-x",
-      "background-position-y",
-      "background-repeat",
-      "background-size",
-      "-moz-binding",
-      "block-size",
-      "border-block-end-color",
-      "border-block-end-style",
-      "border-block-end-width",
       "border-block-start-color",
       "border-block-start-style",
       "border-block-start-width",
-      "border-bottom-color",
-      "-moz-border-bottom-colors",
-      "border-bottom-left-radius",
-      "border-bottom-right-radius",
-      "border-bottom-style",
-      "border-bottom-width",
-      "border-collapse",
-      "border-image-outset",
-      "border-image-repeat",
-      "border-image-slice",
-      "border-image-source",
-      "border-image-width",
-      "border-inline-end-color",
-      "border-inline-end-style",
-      "border-inline-end-width",
+      "border-block-end-color",
+      "border-block-end-style",
+      "border-block-end-width",
       "border-inline-start-color",
       "border-inline-start-style",
       "border-inline-start-width",
-      "border-left-color",
-      "-moz-border-left-colors",
-      "border-left-style",
-      "border-left-width",
-      "border-right-color",
-      "-moz-border-right-colors",
-      "border-right-style",
-      "border-right-width",
-      "border-spacing",
+      "border-inline-end-color",
+      "border-inline-end-style",
+      "border-inline-end-width",
+      "margin-block-start",
+      "margin-block-end",
+      "margin-inline-start",
+      "margin-inline-end",
+      "padding-block-start",
+      "padding-block-end",
+      "padding-inline-start",
+      "padding-inline-end",
+      "offset-block-start",
+      "offset-block-end",
+      "offset-inline-start",
+      "offset-inline-end",
+      "block-size",
+      "min-block-size",
+      "max-block-size",
+      "inline-size",
+      "min-inline-size",
+      "max-inline-size",
+      "background-color",
+      "background-image",
+      "background-position-x",
+      "background-position-y",
+      "background-repeat",
+      "background-attachment",
+      "background-clip",
+      "background-origin",
+      "background-size",
+      "background-blend-mode",
       "border-top-color",
-      "-moz-border-top-colors",
-      "border-top-left-radius",
-      "border-top-right-radius",
       "border-top-style",
       "border-top-width",
-      "bottom",
-      "-moz-box-align",
+      "border-right-color",
+      "border-right-style",
+      "border-right-width",
+      "border-bottom-color",
+      "border-bottom-style",
+      "border-bottom-width",
+      "border-left-color",
+      "border-left-style",
+      "border-left-width",
+      "border-top-left-radius",
+      "border-top-right-radius",
+      "border-bottom-right-radius",
+      "border-bottom-left-radius",
       "box-decoration-break",
-      "-moz-box-direction",
-      "-moz-box-flex",
-      "-moz-box-ordinal-group",
-      "-moz-box-orient",
-      "-moz-box-pack",
-      "box-shadow",
-      "box-sizing",
-      "caption-side",
-      "caret-color",
+      "-moz-float-edge",
+      "border-image-source",
+      "border-image-outset",
+      "border-image-repeat",
+      "border-image-width",
+      "border-image-slice",
+      "display",
+      "position",
+      "float",
       "clear",
-      "clip",
-      "clip-path",
-      "clip-rule",
+      "vertical-align",
+      "overflow-clip-box-inline",
+      "overflow-clip-box-block",
+      "overflow-x",
+      "overflow-y",
+      "transition-duration",
+      "transition-timing-function",
+      "transition-property",
+      "transition-delay",
+      "animation-name",
+      "animation-duration",
+      "animation-timing-function",
+      "animation-iteration-count",
+      "animation-direction",
+      "animation-play-state",
+      "animation-fill-mode",
+      "animation-delay",
+      "scroll-snap-points-x",
+      "scroll-snap-points-y",
+      "scroll-snap-destination",
+      "scroll-snap-coordinate",
+      "transform",
+      "rotate",
+      "scale",
+      "translate",
+      "scroll-behavior",
+      "scroll-snap-type-x",
+      "scroll-snap-type-y",
+      "overscroll-behavior-x",
+      "overscroll-behavior-y",
+      "isolation",
+      "page-break-after",
+      "page-break-before",
+      "page-break-inside",
+      "resize",
+      "perspective",
+      "perspective-origin",
+      "backface-visibility",
+      "transform-box",
+      "transform-style",
+      "transform-origin",
+      "contain",
+      "-moz-appearance",
+      "-moz-binding",
+      "-moz-orient",
+      "will-change",
+      "shape-image-threshold",
+      "shape-margin",
+      "shape-outside",
+      "touch-action",
       "color",
-      "color-adjust",
-      "color-interpolation",
-      "color-interpolation-filters",
+      "column-width",
       "column-count",
       "column-fill",
-      "column-gap",
-      "column-rule-color",
-      "column-rule-style",
       "column-rule-width",
+      "column-rule-color",
       "column-span",
-      "column-width",
-      "contain",
+      "column-rule-style",
       "content",
-      "-moz-context-properties",
-      "-moz-control-character-visibility",
       "counter-increment",
       "counter-reset",
-      "cursor",
-      "display",
-      "dominant-baseline",
-      "empty-cells",
-      "fill",
-      "fill-opacity",
-      "fill-rule",
+      "opacity",
+      "box-shadow",
+      "clip",
       "filter",
-      "flex-basis",
-      "flex-direction",
-      "flex-grow",
-      "flex-shrink",
-      "flex-wrap",
-      "float",
-      "-moz-float-edge",
-      "flood-color",
-      "flood-opacity",
+      "mix-blend-mode",
       "font-family",
-      "font-feature-settings",
-      "font-kerning",
-      "font-language-override",
+      "font-style",
+      "font-variant-caps",
+      "font-weight",
       "font-size",
       "font-size-adjust",
-      "font-stretch",
-      "font-style",
       "font-synthesis",
+      "font-stretch",
+      "font-kerning",
       "font-variant-alternates",
-      "font-variant-caps",
       "font-variant-east-asian",
       "font-variant-ligatures",
       "font-variant-numeric",
       "font-variant-position",
+      "font-feature-settings",
       "font-variation-settings",
-      "font-weight",
-      "-moz-force-broken-image-icon",
-      "grid-auto-columns",
-      "grid-auto-flow",
-      "grid-auto-rows",
-      "grid-column-end",
-      "grid-column-gap",
-      "grid-column-start",
-      "grid-row-end",
-      "grid-row-gap",
-      "grid-row-start",
-      "grid-template-areas",
-      "grid-template-columns",
-      "grid-template-rows",
-      "height",
-      "hyphens",
-      "initial-letter",
-      "image-orientation",
-      "-moz-image-region",
-      "image-rendering",
-      "ime-mode",
-      "inline-size",
-      "isolation",
-      "justify-content",
-      "justify-items",
-      "justify-self",
-      "left",
-      "letter-spacing",
-      "lighting-color",
-      "line-height",
-      "list-style-image",
-      "list-style-position",
-      "list-style-type",
-      "margin-block-end",
-      "margin-block-start",
-      "margin-bottom",
-      "margin-inline-end",
-      "margin-inline-start",
-      "margin-left",
-      "margin-right",
-      "margin-top",
-      "marker-end",
-      "marker-mid",
-      "marker-start",
-      "mask-clip",
-      "mask-composite",
-      "mask-image",
-      "mask-mode",
-      "mask-origin",
-      "mask-position-x",
-      "mask-position-y",
-      "mask-repeat",
-      "mask-size",
-      "mask-type",
-      "max-block-size",
-      "max-height",
-      "max-inline-size",
-      "max-width",
-      "min-block-size",
-      "-moz-min-font-size-ratio",
-      "min-height",
-      "min-inline-size",
-      "min-width",
-      "mix-blend-mode",
-      "object-fit",
-      "object-position",
-      "offset-block-end",
-      "offset-block-start",
-      "offset-inline-end",
-      "offset-inline-start",
-      "opacity",
-      "order",
-      "-moz-orient",
+      "font-language-override",
+      "font-optical-sizing",
       "-moz-osx-font-smoothing",
-      "outline-color",
-      "outline-offset",
-      "-moz-outline-radius-bottomleft",
-      "-moz-outline-radius-bottomright",
-      "-moz-outline-radius-topleft",
-      "-moz-outline-radius-topright",
-      "outline-style",
-      "outline-width",
-      "overflow-clip-box",
-      "overflow-x",
-      "overflow-y",
-      "padding-block-end",
-      "padding-block-start",
-      "padding-bottom",
-      "padding-inline-end",
-      "padding-inline-start",
-      "padding-left",
-      "padding-right",
-      "padding-top",
-      "page-break-after",
-      "page-break-before",
-      "page-break-inside",
-      "paint-order",
-      "perspective",
-      "perspective-origin",
-      "pointer-events",
-      "position",
-      "quotes",
-      "resize",
-      "right",
+      "visibility",
+      "writing-mode",
+      "text-orientation",
+      "color-adjust",
+      "image-rendering",
+      "image-orientation",
+      "border-collapse",
+      "empty-cells",
+      "caption-side",
+      "border-spacing",
+      "line-height",
+      "text-transform",
+      "hyphens",
+      "-moz-text-size-adjust",
+      "text-indent",
+      "overflow-wrap",
+      "word-break",
+      "text-justify",
+      "text-align-last",
+      "text-align",
+      "letter-spacing",
+      "word-spacing",
+      "white-space",
+      "text-shadow",
+      "text-emphasis-style",
+      "text-emphasis-position",
+      "text-emphasis-color",
+      "-moz-tab-size",
+      "-webkit-text-fill-color",
+      "-webkit-text-stroke-color",
+      "-webkit-text-stroke-width",
       "ruby-align",
       "ruby-position",
-      "scroll-behavior",
-      "scroll-snap-coordinate",
-      "scroll-snap-destination",
-      "scroll-snap-points-x",
-      "scroll-snap-points-y",
-      "scroll-snap-type-x",
-      "scroll-snap-type-y",
-      "shape-outside",
+      "text-combine-upright",
+      "text-rendering",
+      "-moz-control-character-visibility",
+      "list-style-position",
+      "list-style-type",
+      "list-style-image",
+      "quotes",
+      "-moz-image-region",
+      "margin-top",
+      "margin-right",
+      "margin-bottom",
+      "margin-left",
+      "outline-color",
+      "outline-style",
+      "outline-width",
+      "-moz-outline-radius-topleft",
+      "-moz-outline-radius-topright",
+      "-moz-outline-radius-bottomright",
+      "-moz-outline-radius-bottomleft",
+      "outline-offset",
+      "padding-top",
+      "padding-right",
+      "padding-bottom",
+      "padding-left",
+      "cursor",
+      "pointer-events",
+      "-moz-user-input",
+      "-moz-user-modify",
+      "-moz-user-focus",
+      "caret-color",
+      "top",
+      "right",
+      "bottom",
+      "left",
+      "z-index",
+      "flex-direction",
+      "flex-wrap",
+      "justify-content",
+      "align-content",
+      "align-items",
+      "justify-items",
+      "flex-grow",
+      "flex-shrink",
+      "align-self",
+      "justify-self",
+      "order",
+      "flex-basis",
+      "width",
+      "min-width",
+      "max-width",
+      "height",
+      "min-height",
+      "max-height",
+      "box-sizing",
+      "object-fit",
+      "object-position",
+      "grid-row-start",
+      "grid-row-end",
+      "grid-auto-rows",
+      "grid-template-rows",
+      "grid-column-start",
+      "grid-column-end",
+      "grid-auto-columns",
+      "grid-template-columns",
+      "grid-auto-flow",
+      "grid-template-areas",
+      "column-gap",
+      "row-gap",
+      "table-layout",
+      "text-overflow",
+      "text-decoration-line",
+      "text-decoration-style",
+      "text-decoration-color",
+      "initial-letter",
+      "ime-mode",
+      "-moz-user-select",
+      "-moz-window-dragging",
+      "-moz-window-opacity",
+      "-moz-window-transform",
+      "-moz-window-transform-origin",
+      "-moz-force-broken-image-icon",
+      "text-anchor",
+      "color-interpolation",
+      "color-interpolation-filters",
+      "fill",
+      "fill-opacity",
+      "fill-rule",
       "shape-rendering",
-      "-moz-stack-sizing",
-      "stop-color",
-      "stop-opacity",
       "stroke",
-      "stroke-dasharray",
-      "stroke-dashoffset",
+      "stroke-width",
       "stroke-linecap",
       "stroke-linejoin",
       "stroke-miterlimit",
       "stroke-opacity",
-      "stroke-width",
-      "-x-system-font",
-      "-moz-tab-size",
-      "table-layout",
-      "text-align",
-      "text-align-last",
-      "text-anchor",
-      "text-combine-upright",
-      "text-decoration-color",
-      "text-decoration-line",
-      "text-decoration-style",
-      "text-emphasis-color",
-      "text-emphasis-position",
-      "text-emphasis-style",
-      "-webkit-text-fill-color",
-      "text-indent",
-      "text-justify",
-      "text-orientation",
-      "text-overflow",
-      "text-rendering",
-      "text-shadow",
-      "-moz-text-size-adjust",
-      "-webkit-text-stroke-color",
-      "-webkit-text-stroke-width",
-      "text-transform",
-      "top",
-      "-moz-top-layer",
-      "touch-action",
-      "transform",
-      "transform-box",
-      "transform-origin",
-      "transform-style",
-      "transition-delay",
-      "transition-duration",
-      "transition-property",
-      "transition-timing-function",
-      "-moz-user-focus",
-      "-moz-user-input",
-      "-moz-user-modify",
-      "-moz-user-select",
+      "stroke-dasharray",
+      "stroke-dashoffset",
+      "clip-rule",
+      "marker-start",
+      "marker-mid",
+      "marker-end",
+      "paint-order",
+      "-moz-context-properties",
+      "dominant-baseline",
       "vector-effect",
-      "vertical-align",
-      "visibility",
-      "white-space",
-      "width",
-      "will-change",
-      "-moz-window-dragging",
-      "-moz-window-shadow",
-      "-moz-window-opacity",
-      "-moz-window-transform",
-      "-moz-window-transform-origin",
-      "word-break",
-      "word-spacing",
-      "overflow-wrap",
-      "writing-mode",
-      "z-index"
+      "stop-color",
+      "stop-opacity",
+      "flood-color",
+      "flood-opacity",
+      "lighting-color",
+      "mask-type",
+      "clip-path",
+      "mask-mode",
+      "mask-repeat",
+      "mask-position-x",
+      "mask-position-y",
+      "mask-clip",
+      "mask-origin",
+      "mask-size",
+      "mask-composite",
+      "mask-image",
+      "-moz-box-align",
+      "-moz-box-direction",
+      "-moz-box-flex",
+      "-moz-box-orient",
+      "-moz-box-pack",
+      "-moz-stack-sizing",
+      "-moz-box-ordinal-group"
     ],
-    "supports": [
-      1,
-      2,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11
-    ],
+    "supports": [],
     "values": [
-      "COLOR",
-      "-moz-all",
-      "-moz-alt-content",
-      "-moz-available",
-      "-moz-block-height",
-      "-moz-box",
-      "-moz-button",
-      "-moz-center",
-      "-moz-crisp-edges",
-      "-moz-deck",
-      "-moz-desktop",
-      "-moz-dialog",
-      "-moz-document",
-      "-moz-element",
-      "-moz-field",
-      "-moz-fit-content",
-      "-moz-grid",
-      "-moz-grid-group",
-      "-moz-grid-line",
-      "-moz-groupbox",
-      "-moz-gtk-info-bar",
-      "-moz-hidden-unscrollable",
-      "-moz-image-rect",
-      "-moz-info",
-      "-moz-inline-box",
-      "-moz-inline-grid",
-      "-moz-inline-stack",
-      "-moz-left",
-      "-moz-linear-gradient",
-      "-moz-list",
-      "-moz-mac-active-source-list-selection",
-      "-moz-mac-disclosure-button-closed",
-      "-moz-mac-disclosure-button-open",
-      "-moz-mac-fullscreen-button",
-      "-moz-mac-help-button",
-      "-moz-mac-source-list",
-      "-moz-mac-source-list-selection",
-      "-moz-mac-vibrancy-dark",
-      "-moz-mac-vibrancy-light",
-      "-moz-max-content",
-      "-moz-middle-with-baseline",
-      "-moz-min-content",
-      "-moz-none",
-      "-moz-popup",
-      "-moz-pre-space",
-      "-moz-pull-down-menu",
-      "-moz-radial-gradient",
-      "-moz-repeating-linear-gradient",
-      "-moz-repeating-radial-gradient",
-      "-moz-right",
-      "-moz-stack",
-      "-moz-text",
-      "-moz-win-borderless-glass",
-      "-moz-win-browsertabbar-toolbox",
-      "-moz-win-communications-toolbox",
-      "-moz-win-exclude-glass",
-      "-moz-win-glass",
-      "-moz-win-media-toolbox",
-      "-moz-window",
-      "-moz-window-button-box",
-      "-moz-window-button-box-maximized",
-      "-moz-window-button-close",
-      "-moz-window-button-maximize",
-      "-moz-window-button-minimize",
-      "-moz-window-button-restore",
-      "-moz-window-frame-bottom",
-      "-moz-window-frame-left",
-      "-moz-window-frame-right",
-      "-moz-window-titlebar",
-      "-moz-window-titlebar-maximized",
-      "-moz-workspace",
-      "-webkit-box",
-      "-webkit-flex",
-      "-webkit-inline-box",
-      "-webkit-inline-flex",
-      "absolute",
-      "active",
-      "add",
-      "alias",
-      "all",
-      "all-petite-caps",
-      "all-scroll",
-      "all-small-caps",
-      "alpha",
-      "alphabetic",
-      "alternate",
-      "alternate-reverse",
-      "always",
-      "auto",
-      "avoid",
-      "backwards",
-      "balance",
-      "baseline",
-      "bevel",
-      "blink",
-      "block",
-      "block-axis",
-      "bold",
-      "bolder",
-      "border-box",
-      "both",
-      "bottom",
-      "bottom-outside",
-      "break-all",
-      "break-word",
-      "butt",
-      "button",
-      "button-arrow-down",
-      "button-arrow-next",
-      "button-arrow-previous",
-      "button-arrow-up",
-      "button-bevel",
-      "button-focus",
-      "calc",
-      "capitalize",
-      "caption",
-      "caret",
-      "cell",
-      "center",
-      "central",
-      "checkbox",
-      "checkbox-container",
-      "checkbox-label",
-      "checkmenuitem",
-      "clip",
-      "clone",
-      "close-quote",
-      "col-resize",
-      "collapse",
-      "color",
-      "color-burn",
-      "color-dodge",
-      "column",
-      "column-reverse",
-      "common-ligatures",
-      "condensed",
-      "contain",
-      "content-box",
-      "contents",
-      "context-fill",
-      "context-fill-opacity",
-      "context-menu",
-      "context-stroke",
-      "context-stroke-opacity",
-      "context-value",
-      "contextual",
-      "copy",
-      "cover",
-      "crispedges",
-      "crosshair",
-      "cubic-bezier",
-      "currentColor",
-      "darken",
-      "dashed",
-      "default",
-      "dense",
-      "diagonal-fractions",
-      "dialog",
-      "difference",
-      "digits",
-      "disabled",
-      "discretionary-ligatures",
-      "distribute",
-      "dotted",
-      "double",
-      "drag",
-      "dualbutton",
-      "e-resize",
-      "ease",
-      "ease-in",
-      "ease-in-out",
-      "ease-out",
-      "economy",
-      "element",
-      "elements",
-      "ellipsis",
-      "enabled",
-      "end",
-      "evenodd",
-      "ew-resize",
-      "exact",
-      "exclude",
-      "exclusion",
-      "expanded",
-      "extra-condensed",
-      "extra-expanded",
-      "fill",
-      "fill-box",
-      "fixed",
-      "flat",
-      "flex",
-      "flex-end",
-      "flex-start",
-      "flip",
-      "flow-root",
-      "forwards",
-      "from-image",
-      "full-width",
-      "geometricprecision",
-      "grab",
-      "grabbing",
-      "grayscale",
-      "grid",
-      "groove",
-      "groupbox",
-      "hanging",
-      "hard-light",
-      "help",
-      "hidden",
-      "hide",
-      "historical-forms",
-      "historical-ligatures",
-      "horizontal",
-      "horizontal-tb",
-      "hsl",
-      "hsla",
-      "hue",
-      "icon",
-      "ideographic",
-      "ignore",
-      "ignore-horizontal",
-      "ignore-vertical",
-      "inactive",
-      "infinite",
       "inherit",
       "initial",
-      "inline",
-      "inline-axis",
-      "inline-block",
-      "inline-end",
-      "inline-flex",
-      "inline-grid",
-      "inline-start",
-      "inline-table",
-      "inset",
-      "inside",
-      "inter-character",
-      "inter-word",
-      "intersect",
-      "isolate",
-      "italic",
-      "jis04",
-      "jis78",
-      "jis83",
-      "jis90",
-      "justify",
-      "keep-all",
-      "large",
-      "larger",
-      "last baseline",
-      "left",
-      "lighten",
-      "lighter",
-      "line-through",
-      "linear",
-      "linear-gradient",
-      "linearrgb",
-      "lining-nums",
-      "list-item",
-      "listbox",
-      "listitem",
-      "local",
-      "lowercase",
-      "lr",
-      "lr-tb",
-      "luminance",
-      "luminosity",
-      "mandatory",
-      "manipulation",
-      "manual",
-      "margin-box",
-      "match-source",
-      "mathematical",
-      "max-content",
-      "medium",
-      "menu",
-      "menuarrow",
-      "menubar",
-      "menucheckbox",
-      "menuimage",
-      "menuitem",
-      "menuitemtext",
-      "menulist",
-      "menulist-button",
-      "menulist-text",
-      "menulist-textfield",
-      "menupopup",
-      "menuradio",
-      "menuseparator",
-      "message-box",
-      "meterbar",
-      "meterchunk",
-      "middle",
-      "min-content",
-      "miter",
-      "mixed",
-      "move",
-      "multiply",
-      "n-resize",
-      "ne-resize",
-      "nesw-resize",
-      "no-change",
-      "no-clip",
-      "no-close-quote",
-      "no-common-ligatures",
-      "no-contextual",
-      "no-discretionary-ligatures",
-      "no-drag",
-      "no-drop",
-      "no-historical-ligatures",
-      "no-open-quote",
-      "no-repeat",
-      "non-scaling-stroke",
-      "none",
-      "nonzero",
-      "normal",
-      "not-allowed",
-      "nowrap",
-      "ns-resize",
-      "number-input",
-      "nw-resize",
-      "nwse-resize",
-      "oblique",
-      "oldstyle-nums",
-      "open-quote",
-      "optimizelegibility",
-      "optimizequality",
-      "optimizespeed",
-      "ordinal",
-      "outset",
-      "outside",
-      "over",
-      "overlay",
-      "overline",
-      "padding-box",
-      "painted",
-      "pan-x",
-      "pan-y",
-      "paused",
-      "petite-caps",
-      "pointer",
-      "pre",
-      "pre-line",
-      "pre-wrap",
-      "preserve-3d",
-      "progress",
-      "progressbar",
-      "progressbar-vertical",
-      "progresschunk",
-      "progresschunk-vertical",
-      "proportional-nums",
-      "proportional-width",
-      "proximity",
-      "radial-gradient",
-      "radio",
-      "radio-container",
-      "radio-label",
-      "radiomenuitem",
-      "range",
-      "range-thumb",
-      "read-only",
-      "read-write",
-      "relative",
-      "repeat",
-      "repeat-x",
-      "repeat-y",
-      "repeating-linear-gradient",
-      "repeating-radial-gradient",
-      "reset-size",
-      "resizer",
-      "resizerpanel",
-      "reverse",
-      "rgb",
-      "rgba",
-      "ridge",
-      "right",
-      "rl",
-      "rl-tb",
-      "round",
-      "row",
-      "row-resize",
-      "row-reverse",
-      "ruby",
-      "ruby-base",
-      "ruby-base-container",
-      "ruby-text",
-      "ruby-text-container",
-      "running",
-      "s-resize",
-      "saturation",
-      "scale-down",
-      "scale-horizontal",
-      "scale-vertical",
-      "scalethumb-horizontal",
-      "scalethumb-vertical",
-      "scalethumbend",
-      "scalethumbstart",
-      "scalethumbtick",
-      "screen",
-      "scroll",
-      "scrollbar",
-      "scrollbar-horizontal",
-      "scrollbar-small",
-      "scrollbar-vertical",
-      "scrollbarbutton-down",
-      "scrollbarbutton-left",
-      "scrollbarbutton-right",
-      "scrollbarbutton-up",
-      "scrollbarthumb-horizontal",
-      "scrollbarthumb-vertical",
-      "scrollbartrack-horizontal",
-      "scrollbartrack-vertical",
-      "se-resize",
-      "searchfield",
-      "select-after",
-      "select-all",
-      "select-before",
-      "select-menu",
-      "select-same",
-      "self-end",
-      "self-start",
-      "semi-condensed",
-      "semi-expanded",
-      "separate",
-      "separator",
-      "show",
-      "sideways",
-      "sideways-lr",
-      "sideways-right",
-      "sideways-rl",
-      "simplified",
-      "slashed-zero",
-      "slice",
-      "small",
-      "small-caps",
-      "small-caption",
-      "smaller",
-      "smooth",
-      "soft-light",
-      "solid",
-      "space",
-      "space-around",
-      "space-between",
-      "space-evenly",
-      "spinner",
-      "spinner-downbutton",
-      "spinner-textfield",
-      "spinner-upbutton",
-      "splitter",
-      "square",
-      "srgb",
-      "stacked-fractions",
-      "start",
-      "static",
-      "status-bar",
-      "statusbar",
-      "statusbarpanel",
-      "step-end",
-      "step-start",
-      "steps",
-      "sticky",
-      "stretch",
-      "stretch-to-fit",
-      "stroke",
-      "stroke-box",
-      "style",
-      "sub",
-      "subtract",
-      "super",
-      "sw-resize",
-      "tab",
-      "tab-scroll-arrow-back",
-      "tab-scroll-arrow-forward",
-      "table",
-      "table-caption",
-      "table-cell",
-      "table-column",
-      "table-column-group",
-      "table-footer-group",
-      "table-header-group",
-      "table-row",
-      "table-row-group",
-      "tabpanel",
-      "tabpanels",
-      "tabular-nums",
-      "tb",
-      "tb-rl",
-      "text",
-      "text-after-edge",
-      "text-before-edge",
-      "text-bottom",
-      "text-top",
-      "textfield",
-      "textfield-multiline",
-      "thick",
-      "thin",
-      "titling-caps",
-      "toggle",
-      "toolbar",
-      "toolbarbutton",
-      "toolbarbutton-dropdown",
-      "toolbargripper",
-      "toolbox",
-      "tooltip",
-      "top",
-      "top-outside",
-      "traditional",
-      "transparent",
-      "treeheader",
-      "treeheadercell",
-      "treeheadersortarrow",
-      "treeitem",
-      "treeline",
-      "treetwisty",
-      "treetwistyopen",
-      "treeview",
-      "tri-state",
-      "ultra-condensed",
-      "ultra-expanded",
-      "under",
-      "underline",
-      "unicase",
-      "unset",
-      "uppercase",
-      "upright",
-      "url",
-      "use-script",
-      "vertical",
-      "vertical-lr",
-      "vertical-rl",
-      "vertical-text",
-      "view-box",
-      "visible",
-      "visiblefill",
-      "visiblepainted",
-      "visiblestroke",
-      "w-resize",
-      "wait",
-      "wavy",
-      "weight",
-      "window",
-      "wrap",
-      "wrap-reverse",
-      "write-only",
-      "x-large",
-      "x-small",
-      "xx-large",
-      "xx-small",
-      "zoom-in",
-      "zoom-out"
+      "unset"
     ]
   },
   "animation": {
     "isInherited": false,
     "subproperties": [
+      "animation-name",
       "animation-duration",
       "animation-timing-function",
       "animation-delay",
+      "animation-iteration-count",
       "animation-direction",
       "animation-fill-mode",
-      "animation-iteration-count",
-      "animation-play-state",
-      "animation-name"
+      "animation-play-state"
     ],
     "supports": [
-      7,
-      9,
       10
     ],
     "values": [
@@ -3798,6 +3126,7 @@ exports.CSS_PROPERTIES = {
       "ease-in-out",
       "ease-out",
       "forwards",
+      "frames",
       "infinite",
       "inherit",
       "initial",
@@ -3818,9 +3147,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "animation-delay"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -3848,9 +3175,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "animation-duration"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -3878,9 +3203,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "animation-iteration-count"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "infinite",
       "inherit",
@@ -3929,6 +3252,7 @@ exports.CSS_PROPERTIES = {
       "ease-in",
       "ease-in-out",
       "ease-out",
+      "frames",
       "inherit",
       "initial",
       "linear",
@@ -3956,22 +3280,18 @@ exports.CSS_PROPERTIES = {
     "isInherited": false,
     "subproperties": [
       "background-color",
-      "background-image",
-      "background-repeat",
-      "background-attachment",
-      "background-clip",
-      "background-origin",
       "background-position-x",
       "background-position-y",
-      "background-size"
+      "background-repeat",
+      "background-attachment",
+      "background-image",
+      "background-size",
+      "background-origin",
+      "background-clip"
     ],
     "supports": [
       2,
-      4,
-      5,
-      6,
-      8,
-      11
+      4
     ],
     "values": [
       "COLOR",
@@ -3981,6 +3301,12 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
+      "auto",
       "border-box",
       "bottom",
       "center",
@@ -4104,9 +3430,7 @@ exports.CSS_PROPERTIES = {
       "background-image"
     ],
     "supports": [
-      4,
-      5,
-      11
+      4
     ],
     "values": [
       "-moz-element",
@@ -4115,6 +3439,11 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
       "inherit",
       "initial",
       "linear-gradient",
@@ -4147,10 +3476,7 @@ exports.CSS_PROPERTIES = {
       "background-position-x",
       "background-position-y"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -4167,18 +3493,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "background-position-x"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "bottom",
       "center",
       "inherit",
       "initial",
       "left",
       "right",
-      "top",
       "unset"
     ]
   },
@@ -4187,17 +3508,12 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "background-position-y"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
       "inherit",
       "initial",
-      "left",
-      "right",
       "top",
       "unset"
     ]
@@ -4225,11 +3541,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "background-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
       "contain",
       "cover",
       "inherit",
@@ -4242,13 +3556,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "block-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "-moz-available",
+      "-moz-fit-content",
+      "-moz-max-content",
+      "-moz-min-content",
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -4257,46 +3571,33 @@ exports.CSS_PROPERTIES = {
   "border": {
     "isInherited": false,
     "subproperties": [
-      "border-top-width",
-      "border-right-width",
-      "border-bottom-width",
-      "border-left-width",
-      "border-top-style",
-      "border-right-style",
-      "border-bottom-style",
-      "border-left-style",
       "border-top-color",
+      "border-top-style",
+      "border-top-width",
       "border-right-color",
+      "border-right-style",
+      "border-right-width",
       "border-bottom-color",
+      "border-bottom-style",
+      "border-bottom-width",
       "border-left-color",
-      "-moz-border-top-colors",
-      "-moz-border-right-colors",
-      "-moz-border-bottom-colors",
-      "-moz-border-left-colors",
-      "border-image-source",
-      "border-image-slice",
-      "border-image-width",
+      "border-left-style",
+      "border-left-width",
       "border-image-outset",
-      "border-image-repeat"
+      "border-image-repeat",
+      "border-image-slice",
+      "border-image-source",
+      "border-image-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "-moz-element",
-      "-moz-image-rect",
-      "-moz-linear-gradient",
-      "-moz-radial-gradient",
-      "-moz-repeating-linear-gradient",
-      "-moz-repeating-radial-gradient",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
       "double",
-      "fill",
       "groove",
       "hidden",
       "hsl",
@@ -4304,42 +3605,31 @@ exports.CSS_PROPERTIES = {
       "inherit",
       "initial",
       "inset",
-      "linear-gradient",
       "medium",
       "none",
       "outset",
-      "radial-gradient",
-      "repeat",
-      "repeating-linear-gradient",
-      "repeating-radial-gradient",
       "rgb",
       "rgba",
       "ridge",
-      "round",
       "solid",
-      "space",
-      "stretch",
       "thick",
       "thin",
       "transparent",
-      "unset",
-      "url"
+      "unset"
     ]
   },
   "border-block-end": {
     "isInherited": false,
     "subproperties": [
-      "border-block-end-width",
+      "border-block-end-color",
       "border-block-end-style",
-      "border-block-end-color"
+      "border-block-end-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -4412,11 +3702,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-block-end-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -4428,17 +3715,15 @@ exports.CSS_PROPERTIES = {
   "border-block-start": {
     "isInherited": false,
     "subproperties": [
-      "border-block-start-width",
+      "border-block-start-color",
       "border-block-start-style",
-      "border-block-start-color"
+      "border-block-start-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -4511,11 +3796,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-block-start-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -4527,17 +3809,15 @@ exports.CSS_PROPERTIES = {
   "border-bottom": {
     "isInherited": false,
     "subproperties": [
-      "border-bottom-width",
+      "border-bottom-color",
       "border-bottom-style",
-      "border-bottom-color"
+      "border-bottom-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -4588,10 +3868,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-bottom-left-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -4603,10 +3880,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-bottom-right-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -4640,11 +3914,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-bottom-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -4694,19 +3965,14 @@ exports.CSS_PROPERTIES = {
   "border-image": {
     "isInherited": false,
     "subproperties": [
-      "border-image-source",
-      "border-image-slice",
-      "border-image-width",
       "border-image-outset",
-      "border-image-repeat"
+      "border-image-repeat",
+      "border-image-slice",
+      "border-image-source",
+      "border-image-width"
     ],
     "supports": [
-      4,
-      5,
-      6,
-      7,
-      8,
-      11
+      4
     ],
     "values": [
       "-moz-element",
@@ -4715,6 +3981,12 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
+      "auto",
       "fill",
       "inherit",
       "initial",
@@ -4736,10 +4008,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-image-outset"
     ],
-    "supports": [
-      6,
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -4767,10 +4036,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-image-slice"
     ],
-    "supports": [
-      7,
-      8
-    ],
+    "supports": [],
     "values": [
       "fill",
       "inherit",
@@ -4784,9 +4050,7 @@ exports.CSS_PROPERTIES = {
       "border-image-source"
     ],
     "supports": [
-      4,
-      5,
-      11
+      4
     ],
     "values": [
       "-moz-element",
@@ -4795,6 +4059,11 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
       "inherit",
       "initial",
       "linear-gradient",
@@ -4811,12 +4080,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-image-width"
     ],
-    "supports": [
-      6,
-      7,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
       "inherit",
       "initial",
       "unset"
@@ -4825,17 +4091,15 @@ exports.CSS_PROPERTIES = {
   "border-inline-end": {
     "isInherited": false,
     "subproperties": [
-      "border-inline-end-width",
+      "border-inline-end-color",
       "border-inline-end-style",
-      "border-inline-end-color"
+      "border-inline-end-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -4908,11 +4172,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-inline-end-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -4924,17 +4185,15 @@ exports.CSS_PROPERTIES = {
   "border-inline-start": {
     "isInherited": false,
     "subproperties": [
-      "border-inline-start-width",
+      "border-inline-start-color",
       "border-inline-start-style",
-      "border-inline-start-color"
+      "border-inline-start-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -5007,11 +4266,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-inline-start-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -5023,17 +4279,15 @@ exports.CSS_PROPERTIES = {
   "border-left": {
     "isInherited": false,
     "subproperties": [
-      "border-left-width",
+      "border-left-color",
       "border-left-style",
-      "border-left-color"
+      "border-left-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -5106,11 +4360,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-left-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -5127,10 +4378,7 @@ exports.CSS_PROPERTIES = {
       "border-bottom-right-radius",
       "border-bottom-left-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -5140,17 +4388,15 @@ exports.CSS_PROPERTIES = {
   "border-right": {
     "isInherited": false,
     "subproperties": [
-      "border-right-width",
+      "border-right-color",
       "border-right-style",
-      "border-right-color"
+      "border-right-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -5223,11 +4469,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-right-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -5241,9 +4484,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-spacing"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -5278,17 +4519,15 @@ exports.CSS_PROPERTIES = {
   "border-top": {
     "isInherited": false,
     "subproperties": [
-      "border-top-width",
+      "border-top-color",
       "border-top-style",
-      "border-top-color"
+      "border-top-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -5339,10 +4578,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-top-left-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -5354,10 +4590,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-top-right-radius"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -5391,11 +4624,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "border-top-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -5412,11 +4642,8 @@ exports.CSS_PROPERTIES = {
       "border-bottom-width",
       "border-left-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -5430,13 +4657,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "bottom"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -5462,13 +4685,20 @@ exports.CSS_PROPERTIES = {
       "box-shadow"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
+      "COLOR",
+      "currentColor",
+      "hsl",
+      "hsla",
       "inherit",
       "initial",
       "inset",
+      "none",
+      "rgb",
+      "rgba",
+      "transparent",
       "unset"
     ]
   },
@@ -5551,8 +4781,10 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "auto",
       "inherit",
       "initial",
+      "rect",
       "unset"
     ]
   },
@@ -5561,13 +4793,24 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "clip-path"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
+      "border-box",
+      "circle",
+      "content-box",
+      "ellipse",
+      "fill-box",
       "inherit",
       "initial",
-      "unset"
+      "inset",
+      "margin-box",
+      "none",
+      "padding-box",
+      "polygon",
+      "stroke-box",
+      "unset",
+      "url",
+      "view-box"
     ]
   },
   "clip-rule": {
@@ -5654,9 +4897,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "column-count"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "auto",
       "inherit",
@@ -5683,11 +4924,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "column-gap"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "normal",
@@ -5702,12 +4940,10 @@ exports.CSS_PROPERTIES = {
       "column-rule-color"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
@@ -5780,11 +5016,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "column-rule-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -5798,12 +5031,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "column-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -5812,16 +5042,12 @@ exports.CSS_PROPERTIES = {
   "columns": {
     "isInherited": false,
     "subproperties": [
-      "column-count",
-      "column-width"
+      "column-width",
+      "column-count"
     ],
-    "supports": [
-      6,
-      7
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -5832,18 +5058,22 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "content"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
       "-moz-alt-content",
+      "attr",
       "close-quote",
+      "counter",
+      "counters",
       "inherit",
       "initial",
       "no-close-quote",
       "no-open-quote",
+      "none",
+      "normal",
       "open-quote",
-      "unset"
+      "unset",
+      "url"
     ]
   },
   "counter-increment": {
@@ -5855,6 +5085,7 @@ exports.CSS_PROPERTIES = {
     "values": [
       "inherit",
       "initial",
+      "none",
       "unset"
     ]
   },
@@ -5867,6 +5098,7 @@ exports.CSS_PROPERTIES = {
     "values": [
       "inherit",
       "initial",
+      "none",
       "unset"
     ]
   },
@@ -5875,10 +5107,12 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "cursor"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
+      "-moz-grab",
+      "-moz-grabbing",
+      "-moz-zoom-in",
+      "-moz-zoom-out",
       "alias",
       "all-scroll",
       "auto",
@@ -5913,6 +5147,7 @@ exports.CSS_PROPERTIES = {
       "sw-resize",
       "text",
       "unset",
+      "url",
       "vertical-text",
       "w-resize",
       "wait",
@@ -6031,15 +5266,23 @@ exports.CSS_PROPERTIES = {
       "fill"
     ],
     "supports": [
-      2,
-      11
+      2
     ],
     "values": [
+      "COLOR",
       "context-fill",
       "context-stroke",
+      "currentColor",
+      "hsl",
+      "hsla",
       "inherit",
       "initial",
-      "unset"
+      "none",
+      "rgb",
+      "rgba",
+      "transparent",
+      "unset",
+      "url"
     ]
   },
   "fill-opacity": {
@@ -6047,9 +5290,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "fill-opacity"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "context-fill-opacity",
       "context-stroke-opacity",
@@ -6077,13 +5318,23 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "filter"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
+      "blur",
+      "brightness",
+      "contrast",
+      "drop-shadow",
+      "grayscale",
+      "hue-rotate",
       "inherit",
       "initial",
-      "unset"
+      "invert",
+      "none",
+      "opacity",
+      "saturate",
+      "sepia",
+      "unset",
+      "url"
     ]
   },
   "flex": {
@@ -6093,18 +5344,14 @@ exports.CSS_PROPERTIES = {
       "flex-shrink",
       "flex-basis"
     ],
-    "supports": [
-      6,
-      7,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
+      "content",
       "inherit",
       "initial",
       "unset"
@@ -6115,17 +5362,14 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "flex-basis"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
+      "content",
       "inherit",
       "initial",
       "unset"
@@ -6172,9 +5416,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "flex-grow"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6186,9 +5428,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "flex-shrink"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6253,9 +5493,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "flood-opacity"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6265,31 +5503,27 @@ exports.CSS_PROPERTIES = {
   "font": {
     "isInherited": true,
     "subproperties": [
-      "font-family",
       "font-style",
+      "font-variant-caps",
       "font-weight",
+      "font-stretch",
       "font-size",
       "line-height",
+      "font-family",
       "font-size-adjust",
-      "font-stretch",
-      "-x-system-font",
-      "font-feature-settings",
-      "font-language-override",
       "font-kerning",
+      "font-optical-sizing",
       "font-variant-alternates",
-      "font-variant-caps",
       "font-variant-east-asian",
       "font-variant-ligatures",
       "font-variant-numeric",
-      "font-variant-position"
+      "font-variant-position",
+      "font-language-override",
+      "font-feature-settings",
+      "font-variation-settings"
     ],
-    "supports": [
-      6,
-      7,
-      8
-    ],
+    "supports": [],
     "values": [
-      "-moz-block-height",
       "-moz-button",
       "-moz-desktop",
       "-moz-dialog",
@@ -6302,65 +5536,34 @@ exports.CSS_PROPERTIES = {
       "-moz-workspace",
       "all-petite-caps",
       "all-small-caps",
-      "auto",
       "bold",
       "bolder",
-      "calc",
       "caption",
-      "common-ligatures",
       "condensed",
-      "contextual",
-      "diagonal-fractions",
-      "discretionary-ligatures",
       "expanded",
       "extra-condensed",
       "extra-expanded",
-      "full-width",
-      "historical-forms",
-      "historical-ligatures",
       "icon",
       "inherit",
       "initial",
       "italic",
-      "jis04",
-      "jis78",
-      "jis83",
-      "jis90",
       "large",
       "larger",
       "lighter",
-      "lining-nums",
       "medium",
       "menu",
       "message-box",
-      "no-common-ligatures",
-      "no-contextual",
-      "no-discretionary-ligatures",
-      "no-historical-ligatures",
-      "none",
       "normal",
       "oblique",
-      "oldstyle-nums",
-      "ordinal",
       "petite-caps",
-      "proportional-nums",
-      "proportional-width",
-      "ruby",
       "semi-condensed",
       "semi-expanded",
-      "simplified",
-      "slashed-zero",
       "small",
       "small-caps",
       "small-caption",
       "smaller",
-      "stacked-fractions",
       "status-bar",
-      "sub",
-      "super",
-      "tabular-nums",
       "titling-caps",
-      "traditional",
       "ultra-condensed",
       "ultra-expanded",
       "unicase",
@@ -6392,6 +5595,7 @@ exports.CSS_PROPERTIES = {
     "values": [
       "inherit",
       "initial",
+      "normal",
       "unset"
     ]
   },
@@ -6423,17 +5627,27 @@ exports.CSS_PROPERTIES = {
       "unset"
     ]
   },
+  "font-optical-sizing": {
+    "isInherited": true,
+    "subproperties": [
+      "font-optical-sizing"
+    ],
+    "supports": [],
+    "values": [
+      "auto",
+      "inherit",
+      "initial",
+      "none",
+      "unset"
+    ]
+  },
   "font-size": {
     "isInherited": true,
     "subproperties": [
       "font-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "large",
@@ -6453,9 +5667,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "font-size-adjust"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6516,8 +5728,8 @@ exports.CSS_PROPERTIES = {
   "font-variant": {
     "isInherited": true,
     "subproperties": [
-      "font-variant-alternates",
       "font-variant-caps",
+      "font-variant-alternates",
       "font-variant-east-asian",
       "font-variant-ligatures",
       "font-variant-numeric",
@@ -6527,6 +5739,8 @@ exports.CSS_PROPERTIES = {
     "values": [
       "all-petite-caps",
       "all-small-caps",
+      "annotation",
+      "character-variant",
       "common-ligatures",
       "contextual",
       "diagonal-fractions",
@@ -6545,9 +5759,11 @@ exports.CSS_PROPERTIES = {
       "no-contextual",
       "no-discretionary-ligatures",
       "no-historical-ligatures",
+      "none",
       "normal",
       "oldstyle-nums",
       "ordinal",
+      "ornaments",
       "petite-caps",
       "proportional-nums",
       "proportional-width",
@@ -6556,8 +5772,11 @@ exports.CSS_PROPERTIES = {
       "slashed-zero",
       "small-caps",
       "stacked-fractions",
+      "styleset",
+      "stylistic",
       "sub",
       "super",
+      "swash",
       "tabular-nums",
       "titling-caps",
       "traditional",
@@ -6572,9 +5791,16 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "annotation",
+      "character-variant",
       "historical-forms",
       "inherit",
       "initial",
+      "normal",
+      "ornaments",
+      "styleset",
+      "stylistic",
+      "swash",
       "unset"
     ]
   },
@@ -6611,6 +5837,7 @@ exports.CSS_PROPERTIES = {
       "jis78",
       "jis83",
       "jis90",
+      "normal",
       "proportional-width",
       "ruby",
       "simplified",
@@ -6635,6 +5862,8 @@ exports.CSS_PROPERTIES = {
       "no-contextual",
       "no-discretionary-ligatures",
       "no-historical-ligatures",
+      "none",
+      "normal",
       "unset"
     ]
   },
@@ -6649,6 +5878,7 @@ exports.CSS_PROPERTIES = {
       "inherit",
       "initial",
       "lining-nums",
+      "normal",
       "oldstyle-nums",
       "ordinal",
       "proportional-nums",
@@ -6673,14 +5903,25 @@ exports.CSS_PROPERTIES = {
       "unset"
     ]
   },
+  "font-variation-settings": {
+    "isInherited": true,
+    "subproperties": [
+      "font-variation-settings"
+    ],
+    "supports": [],
+    "values": [
+      "inherit",
+      "initial",
+      "normal",
+      "unset"
+    ]
+  },
   "font-weight": {
     "isInherited": true,
     "subproperties": [
       "font-weight"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "bold",
       "bolder",
@@ -6691,30 +5932,43 @@ exports.CSS_PROPERTIES = {
       "unset"
     ]
   },
+  "gap": {
+    "isInherited": false,
+    "subproperties": [
+      "row-gap",
+      "column-gap"
+    ],
+    "supports": [],
+    "values": [
+      "inherit",
+      "initial",
+      "normal",
+      "unset"
+    ]
+  },
   "grid": {
     "isInherited": false,
     "subproperties": [
-      "grid-template-areas",
       "grid-template-rows",
       "grid-template-columns",
-      "grid-auto-flow",
+      "grid-template-areas",
       "grid-auto-rows",
       "grid-auto-columns",
-      "grid-row-gap",
-      "grid-column-gap"
+      "grid-auto-flow"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
+      "auto",
       "column",
       "dense",
+      "fit-content",
       "inherit",
       "initial",
       "max-content",
       "min-content",
+      "minmax",
+      "none",
+      "repeat",
       "row",
       "unset"
     ]
@@ -6723,13 +5977,11 @@ exports.CSS_PROPERTIES = {
     "isInherited": false,
     "subproperties": [
       "grid-row-start",
-      "grid-column-start",
       "grid-row-end",
+      "grid-column-start",
       "grid-column-end"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6741,15 +5993,15 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "grid-auto-columns"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
+      "fit-content",
       "inherit",
       "initial",
       "max-content",
       "min-content",
+      "minmax",
       "unset"
     ]
   },
@@ -6773,15 +6025,15 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "grid-auto-rows"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
+      "fit-content",
       "inherit",
       "initial",
       "max-content",
       "min-content",
+      "minmax",
       "unset"
     ]
   },
@@ -6791,9 +6043,7 @@ exports.CSS_PROPERTIES = {
       "grid-column-start",
       "grid-column-end"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6805,9 +6055,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "grid-column-end"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6817,16 +6065,13 @@ exports.CSS_PROPERTIES = {
   "grid-column-gap": {
     "isInherited": false,
     "subproperties": [
-      "grid-column-gap"
+      "column-gap"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
+      "normal",
       "unset"
     ]
   },
@@ -6835,9 +6080,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "grid-column-start"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6847,17 +6090,14 @@ exports.CSS_PROPERTIES = {
   "grid-gap": {
     "isInherited": false,
     "subproperties": [
-      "grid-row-gap",
-      "grid-column-gap"
+      "row-gap",
+      "column-gap"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
+      "normal",
       "unset"
     ]
   },
@@ -6867,9 +6107,7 @@ exports.CSS_PROPERTIES = {
       "grid-row-start",
       "grid-row-end"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6881,9 +6119,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "grid-row-end"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6893,16 +6129,13 @@ exports.CSS_PROPERTIES = {
   "grid-row-gap": {
     "isInherited": false,
     "subproperties": [
-      "grid-row-gap"
+      "row-gap"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
+      "normal",
       "unset"
     ]
   },
@@ -6911,9 +6144,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "grid-row-start"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -6923,19 +6154,21 @@ exports.CSS_PROPERTIES = {
   "grid-template": {
     "isInherited": false,
     "subproperties": [
-      "grid-template-areas",
       "grid-template-rows",
-      "grid-template-columns"
+      "grid-template-columns",
+      "grid-template-areas"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
+      "fit-content",
       "inherit",
       "initial",
       "max-content",
       "min-content",
+      "minmax",
+      "none",
+      "repeat",
       "unset"
     ]
   },
@@ -6948,6 +6181,7 @@ exports.CSS_PROPERTIES = {
     "values": [
       "inherit",
       "initial",
+      "none",
       "unset"
     ]
   },
@@ -6956,15 +6190,17 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "grid-template-columns"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
+      "fit-content",
       "inherit",
       "initial",
       "max-content",
       "min-content",
+      "minmax",
+      "none",
+      "repeat",
       "unset"
     ]
   },
@@ -6973,15 +6209,17 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "grid-template-rows"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
+      "fit-content",
       "inherit",
       "initial",
       "max-content",
       "min-content",
+      "minmax",
+      "none",
+      "repeat",
       "unset"
     ]
   },
@@ -6990,17 +6228,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "height"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7026,9 +6260,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "image-orientation"
     ],
-    "supports": [
-      1
-    ],
+    "supports": [],
     "values": [
       "flip",
       "from-image",
@@ -7075,17 +6307,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "inline-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7112,22 +6340,22 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
-      "baseline",
       "center",
       "end",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
-      "last baseline",
       "left",
       "normal",
       "right",
+      "safe",
       "space-around",
       "space-between",
       "space-evenly",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -7138,22 +6366,25 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
-      "auto",
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
       "last baseline",
       "left",
+      "legacy",
       "normal",
       "right",
+      "safe",
       "self-end",
       "self-start",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -7168,6 +6399,7 @@ exports.CSS_PROPERTIES = {
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
@@ -7176,10 +6408,12 @@ exports.CSS_PROPERTIES = {
       "left",
       "normal",
       "right",
+      "safe",
       "self-end",
       "self-start",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -7188,13 +6422,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "left"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7205,11 +6435,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "letter-spacing"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "normal",
@@ -7242,14 +6469,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "line-height"
     ],
-    "supports": [
-      6,
-      7,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-block-height",
-      "calc",
       "inherit",
       "initial",
       "normal",
@@ -7259,20 +6481,74 @@ exports.CSS_PROPERTIES = {
   "list-style": {
     "isInherited": true,
     "subproperties": [
-      "list-style-type",
+      "list-style-position",
       "list-style-image",
-      "list-style-position"
+      "list-style-type"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
+      "arabic-indic",
+      "armenian",
+      "bengali",
+      "cambodian",
+      "circle",
+      "cjk-decimal",
+      "cjk-earthly-branch",
+      "cjk-heavenly-stem",
+      "cjk-ideographic",
+      "decimal",
+      "decimal-leading-zero",
+      "devanagari",
+      "disc",
+      "disclosure-closed",
+      "disclosure-open",
+      "ethiopic-numeric",
+      "georgian",
+      "gujarati",
+      "gurmukhi",
+      "hebrew",
+      "hiragana",
+      "hiragana-iroha",
       "inherit",
       "initial",
       "inside",
+      "japanese-formal",
+      "japanese-informal",
+      "kannada",
+      "katakana",
+      "katakana-iroha",
+      "khmer",
+      "korean-hangul-formal",
+      "korean-hanja-formal",
+      "korean-hanja-informal",
+      "lao",
+      "lower-alpha",
+      "lower-armenian",
+      "lower-greek",
+      "lower-latin",
+      "lower-roman",
+      "malayalam",
+      "mongolian",
+      "myanmar",
       "none",
+      "oriya",
       "outside",
+      "persian",
+      "simp-chinese-formal",
+      "simp-chinese-informal",
+      "square",
+      "symbols",
+      "tamil",
+      "telugu",
+      "thai",
+      "tibetan",
+      "trad-chinese-formal",
+      "trad-chinese-informal",
       "unset",
+      "upper-alpha",
+      "upper-armenian",
+      "upper-latin",
+      "upper-roman",
       "url"
     ]
   },
@@ -7281,9 +6557,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "list-style-image"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -7313,9 +6587,66 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "arabic-indic",
+      "armenian",
+      "bengali",
+      "cambodian",
+      "circle",
+      "cjk-decimal",
+      "cjk-earthly-branch",
+      "cjk-heavenly-stem",
+      "cjk-ideographic",
+      "decimal",
+      "decimal-leading-zero",
+      "devanagari",
+      "disc",
+      "disclosure-closed",
+      "disclosure-open",
+      "ethiopic-numeric",
+      "georgian",
+      "gujarati",
+      "gurmukhi",
+      "hebrew",
+      "hiragana",
+      "hiragana-iroha",
       "inherit",
       "initial",
-      "unset"
+      "japanese-formal",
+      "japanese-informal",
+      "kannada",
+      "katakana",
+      "katakana-iroha",
+      "khmer",
+      "korean-hangul-formal",
+      "korean-hanja-formal",
+      "korean-hanja-informal",
+      "lao",
+      "lower-alpha",
+      "lower-armenian",
+      "lower-greek",
+      "lower-latin",
+      "lower-roman",
+      "malayalam",
+      "mongolian",
+      "myanmar",
+      "none",
+      "oriya",
+      "persian",
+      "simp-chinese-formal",
+      "simp-chinese-informal",
+      "square",
+      "symbols",
+      "tamil",
+      "telugu",
+      "thai",
+      "tibetan",
+      "trad-chinese-formal",
+      "trad-chinese-informal",
+      "unset",
+      "upper-alpha",
+      "upper-armenian",
+      "upper-latin",
+      "upper-roman"
     ]
   },
   "margin": {
@@ -7326,13 +6657,9 @@ exports.CSS_PROPERTIES = {
       "margin-bottom",
       "margin-left"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7343,13 +6670,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-block-end"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7360,13 +6683,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-block-start"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7377,13 +6696,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-bottom"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7394,13 +6709,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-inline-end"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7411,13 +6722,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-inline-start"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7428,13 +6735,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-left"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7445,13 +6748,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-right"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7462,13 +6761,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "margin-top"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7478,12 +6773,10 @@ exports.CSS_PROPERTIES = {
     "isInherited": true,
     "subproperties": [
       "marker-start",
-      "marker-mid",
-      "marker-end"
+      "marker-end",
+      "marker-mid"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -7497,9 +6790,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "marker-end"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -7513,9 +6804,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "marker-mid"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -7529,9 +6818,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "marker-start"
     ],
-    "supports": [
-      11
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -7543,22 +6830,18 @@ exports.CSS_PROPERTIES = {
   "mask": {
     "isInherited": false,
     "subproperties": [
-      "mask-image",
+      "mask-mode",
       "mask-repeat",
-      "mask-position-x",
-      "mask-position-y",
       "mask-clip",
       "mask-origin",
-      "mask-size",
       "mask-composite",
-      "mask-mode"
+      "mask-position-x",
+      "mask-position-y",
+      "mask-size",
+      "mask-image"
     ],
     "supports": [
-      4,
-      5,
-      6,
-      8,
-      11
+      4
     ],
     "values": [
       "-moz-element",
@@ -7567,8 +6850,14 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
       "add",
       "alpha",
+      "auto",
       "border-box",
       "bottom",
       "center",
@@ -7646,9 +6935,7 @@ exports.CSS_PROPERTIES = {
       "mask-image"
     ],
     "supports": [
-      4,
-      5,
-      11
+      4
     ],
     "values": [
       "-moz-element",
@@ -7657,6 +6944,11 @@ exports.CSS_PROPERTIES = {
       "-moz-radial-gradient",
       "-moz-repeating-linear-gradient",
       "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
       "inherit",
       "initial",
       "linear-gradient",
@@ -7707,10 +6999,7 @@ exports.CSS_PROPERTIES = {
       "mask-position-x",
       "mask-position-y"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -7727,18 +7016,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "mask-position-x"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "bottom",
       "center",
       "inherit",
       "initial",
       "left",
       "right",
-      "top",
       "unset"
     ]
   },
@@ -7747,17 +7031,12 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "mask-position-y"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
       "inherit",
       "initial",
-      "left",
-      "right",
       "top",
       "unset"
     ]
@@ -7785,11 +7064,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "mask-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "auto",
       "contain",
       "cover",
       "inherit",
@@ -7816,12 +7093,12 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "max-block-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
+      "-moz-available",
+      "-moz-fit-content",
+      "-moz-max-content",
+      "-moz-min-content",
       "inherit",
       "initial",
       "none",
@@ -7833,16 +7110,12 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "max-height"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
-      "calc",
       "inherit",
       "initial",
       "none",
@@ -7854,16 +7127,12 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "max-inline-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
-      "calc",
       "inherit",
       "initial",
       "none",
@@ -7875,16 +7144,12 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "max-width"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
-      "calc",
       "inherit",
       "initial",
       "none",
@@ -7896,13 +7161,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "min-block-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
+      "-moz-available",
+      "-moz-fit-content",
+      "-moz-max-content",
+      "-moz-min-content",
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7913,17 +7178,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "min-height"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7934,17 +7195,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "min-inline-size"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -7955,17 +7212,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "min-width"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8021,10 +7274,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "object-position"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -8041,13 +7291,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "offset-block-end"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8058,13 +7304,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "offset-block-start"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8075,13 +7317,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "offset-inline-end"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8092,13 +7330,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "offset-inline-start"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8109,9 +7343,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "opacity"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -8123,9 +7355,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "order"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -8135,23 +7365,22 @@ exports.CSS_PROPERTIES = {
   "outline": {
     "isInherited": false,
     "subproperties": [
-      "outline-width",
+      "outline-color",
       "outline-style",
-      "outline-color"
+      "outline-width"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
       "COLOR",
       "auto",
-      "calc",
       "currentColor",
       "dashed",
       "dotted",
       "double",
       "groove",
+      "hidden",
       "hsl",
       "hsla",
       "inherit",
@@ -8196,11 +7425,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "outline-offset"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8218,6 +7444,7 @@ exports.CSS_PROPERTIES = {
       "dotted",
       "double",
       "groove",
+      "hidden",
       "inherit",
       "initial",
       "inset",
@@ -8233,11 +7460,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "outline-width"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "medium",
@@ -8312,6 +7536,52 @@ exports.CSS_PROPERTIES = {
       "visible"
     ]
   },
+  "overscroll-behavior": {
+    "isInherited": false,
+    "subproperties": [
+      "overscroll-behavior-x",
+      "overscroll-behavior-y"
+    ],
+    "supports": [],
+    "values": [
+      "auto",
+      "contain",
+      "inherit",
+      "initial",
+      "none",
+      "unset"
+    ]
+  },
+  "overscroll-behavior-x": {
+    "isInherited": false,
+    "subproperties": [
+      "overscroll-behavior-x"
+    ],
+    "supports": [],
+    "values": [
+      "auto",
+      "contain",
+      "inherit",
+      "initial",
+      "none",
+      "unset"
+    ]
+  },
+  "overscroll-behavior-y": {
+    "isInherited": false,
+    "subproperties": [
+      "overscroll-behavior-y"
+    ],
+    "supports": [],
+    "values": [
+      "auto",
+      "contain",
+      "inherit",
+      "initial",
+      "none",
+      "unset"
+    ]
+  },
   "padding": {
     "isInherited": false,
     "subproperties": [
@@ -8320,12 +7590,8 @@ exports.CSS_PROPERTIES = {
       "padding-bottom",
       "padding-left"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8336,12 +7602,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-block-end"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8352,12 +7614,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-block-start"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8368,12 +7626,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-bottom"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8384,12 +7638,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-inline-end"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8400,12 +7650,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-inline-start"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8416,12 +7662,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-left"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8432,12 +7674,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-right"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8448,12 +7686,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "padding-top"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -8524,9 +7758,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "perspective"
     ],
-    "supports": [
-      6
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -8539,10 +7771,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "perspective-origin"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -8565,6 +7794,7 @@ exports.CSS_PROPERTIES = {
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
@@ -8573,11 +7803,13 @@ exports.CSS_PROPERTIES = {
       "left",
       "normal",
       "right",
+      "safe",
       "space-around",
       "space-between",
       "space-evenly",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -8589,22 +7821,25 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
-      "auto",
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
       "initial",
       "last baseline",
       "left",
+      "legacy",
       "normal",
       "right",
+      "safe",
       "self-end",
       "self-start",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -8620,6 +7855,7 @@ exports.CSS_PROPERTIES = {
       "baseline",
       "center",
       "end",
+      "first baseline",
       "flex-end",
       "flex-start",
       "inherit",
@@ -8628,10 +7864,12 @@ exports.CSS_PROPERTIES = {
       "left",
       "normal",
       "right",
+      "safe",
       "self-end",
       "self-start",
       "start",
       "stretch",
+      "unsafe",
       "unset"
     ]
   },
@@ -8683,6 +7921,7 @@ exports.CSS_PROPERTIES = {
     "values": [
       "inherit",
       "initial",
+      "none",
       "unset"
     ]
   },
@@ -8707,15 +7946,24 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "right"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
+      "unset"
+    ]
+  },
+  "row-gap": {
+    "isInherited": false,
+    "subproperties": [
+      "row-gap"
+    ],
+    "supports": [],
+    "values": [
+      "inherit",
+      "initial",
+      "normal",
       "unset"
     ]
   },
@@ -8768,16 +8016,14 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "scroll-snap-coordinate"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
       "inherit",
       "initial",
       "left",
+      "none",
       "right",
       "top",
       "unset"
@@ -8788,10 +8034,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "scroll-snap-destination"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -8812,6 +8055,8 @@ exports.CSS_PROPERTIES = {
     "values": [
       "inherit",
       "initial",
+      "none",
+      "repeat",
       "unset"
     ]
   },
@@ -8824,6 +8069,8 @@ exports.CSS_PROPERTIES = {
     "values": [
       "inherit",
       "initial",
+      "none",
+      "repeat",
       "unset"
     ]
   },
@@ -8873,6 +8120,69 @@ exports.CSS_PROPERTIES = {
       "unset"
     ]
   },
+  "shape-image-threshold": {
+    "isInherited": false,
+    "subproperties": [
+      "shape-image-threshold"
+    ],
+    "supports": [],
+    "values": [
+      "inherit",
+      "initial",
+      "unset"
+    ]
+  },
+  "shape-margin": {
+    "isInherited": false,
+    "subproperties": [
+      "shape-margin"
+    ],
+    "supports": [],
+    "values": [
+      "inherit",
+      "initial",
+      "unset"
+    ]
+  },
+  "shape-outside": {
+    "isInherited": false,
+    "subproperties": [
+      "shape-outside"
+    ],
+    "supports": [
+      4
+    ],
+    "values": [
+      "-moz-element",
+      "-moz-image-rect",
+      "-moz-linear-gradient",
+      "-moz-radial-gradient",
+      "-moz-repeating-linear-gradient",
+      "-moz-repeating-radial-gradient",
+      "-webkit-gradient",
+      "-webkit-linear-gradient",
+      "-webkit-radial-gradient",
+      "-webkit-repeating-linear-gradient",
+      "-webkit-repeating-radial-gradient",
+      "border-box",
+      "circle",
+      "content-box",
+      "ellipse",
+      "inherit",
+      "initial",
+      "inset",
+      "linear-gradient",
+      "margin-box",
+      "none",
+      "padding-box",
+      "polygon",
+      "radial-gradient",
+      "repeating-linear-gradient",
+      "repeating-radial-gradient",
+      "unset",
+      "url"
+    ]
+  },
   "shape-rendering": {
     "isInherited": true,
     "subproperties": [
@@ -8915,9 +8225,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "stop-opacity"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -8930,15 +8238,23 @@ exports.CSS_PROPERTIES = {
       "stroke"
     ],
     "supports": [
-      2,
-      11
+      2
     ],
     "values": [
+      "COLOR",
       "context-fill",
       "context-stroke",
+      "currentColor",
+      "hsl",
+      "hsla",
       "inherit",
       "initial",
-      "unset"
+      "none",
+      "rgb",
+      "rgba",
+      "transparent",
+      "unset",
+      "url"
     ]
   },
   "stroke-dasharray": {
@@ -8946,15 +8262,12 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "stroke-dasharray"
     ],
-    "supports": [
-      6,
-      7,
-      8
-    ],
+    "supports": [],
     "values": [
       "context-value",
       "inherit",
       "initial",
+      "none",
       "unset"
     ]
   },
@@ -8963,11 +8276,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "stroke-dashoffset"
     ],
-    "supports": [
-      6,
-      7,
-      8
-    ],
+    "supports": [],
     "values": [
       "context-value",
       "inherit",
@@ -9010,9 +8319,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "stroke-miterlimit"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -9024,9 +8331,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "stroke-opacity"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "context-fill-opacity",
       "context-stroke-opacity",
@@ -9040,11 +8345,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "stroke-width"
     ],
-    "supports": [
-      6,
-      7,
-      8
-    ],
+    "supports": [],
     "values": [
       "context-value",
       "inherit",
@@ -9082,6 +8383,7 @@ exports.CSS_PROPERTIES = {
       "initial",
       "justify",
       "left",
+      "match-parent",
       "right",
       "start",
       "unset"
@@ -9129,7 +8431,6 @@ exports.CSS_PROPERTIES = {
     "supports": [],
     "values": [
       "all",
-      "digits",
       "inherit",
       "initial",
       "none",
@@ -9139,9 +8440,9 @@ exports.CSS_PROPERTIES = {
   "text-decoration": {
     "isInherited": false,
     "subproperties": [
-      "text-decoration-color",
       "text-decoration-line",
-      "text-decoration-style"
+      "text-decoration-style",
+      "text-decoration-color"
     ],
     "supports": [
       2
@@ -9237,14 +8538,22 @@ exports.CSS_PROPERTIES = {
     ],
     "values": [
       "COLOR",
+      "circle",
       "currentColor",
+      "dot",
+      "double-circle",
+      "filled",
       "hsl",
       "hsla",
       "inherit",
       "initial",
+      "none",
+      "open",
       "rgb",
       "rgba",
+      "sesame",
       "transparent",
+      "triangle",
       "unset"
     ]
   },
@@ -9292,8 +8601,16 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "circle",
+      "dot",
+      "double-circle",
+      "filled",
       "inherit",
       "initial",
+      "none",
+      "open",
+      "sesame",
+      "triangle",
       "unset"
     ]
   },
@@ -9302,12 +8619,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "text-indent"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -9382,12 +8695,19 @@ exports.CSS_PROPERTIES = {
       "text-shadow"
     ],
     "supports": [
-      2,
-      6
+      2
     ],
     "values": [
+      "COLOR",
+      "currentColor",
+      "hsl",
+      "hsla",
       "inherit",
       "initial",
+      "none",
+      "rgb",
+      "rgba",
+      "transparent",
       "unset"
     ]
   },
@@ -9413,13 +8733,9 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "top"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -9449,8 +8765,32 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "accumulatematrix",
       "inherit",
       "initial",
+      "interpolatematrix",
+      "matrix",
+      "matrix3d",
+      "none",
+      "perspective",
+      "rotate",
+      "rotate3d",
+      "rotateX",
+      "rotateY",
+      "rotateZ",
+      "scale",
+      "scale3d",
+      "scaleX",
+      "scaleY",
+      "scaleZ",
+      "skew",
+      "skewX",
+      "skewY",
+      "translate",
+      "translate3d",
+      "translateX",
+      "translateY",
+      "translateZ",
       "unset"
     ]
   },
@@ -9474,10 +8814,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "transform-origin"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "bottom",
       "center",
@@ -9512,7 +8849,6 @@ exports.CSS_PROPERTIES = {
       "transition-delay"
     ],
     "supports": [
-      9,
       10
     ],
     "values": [
@@ -9522,6 +8858,7 @@ exports.CSS_PROPERTIES = {
       "ease-in",
       "ease-in-out",
       "ease-out",
+      "frames",
       "inherit",
       "initial",
       "linear",
@@ -9537,9 +8874,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "transition-delay"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -9551,9 +8886,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "transition-duration"
     ],
-    "supports": [
-      9
-    ],
+    "supports": [],
     "values": [
       "inherit",
       "initial",
@@ -9588,6 +8921,7 @@ exports.CSS_PROPERTIES = {
       "ease-in",
       "ease-in-out",
       "ease-out",
+      "frames",
       "inherit",
       "initial",
       "linear",
@@ -9634,15 +8968,11 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "vertical-align"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-middle-with-baseline",
       "baseline",
       "bottom",
-      "calc",
       "inherit",
       "initial",
       "middle",
@@ -9692,17 +9022,13 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "width"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
       "-moz-available",
       "-moz-fit-content",
       "-moz-max-content",
       "-moz-min-content",
       "auto",
-      "calc",
       "inherit",
       "initial",
       "unset"
@@ -9715,6 +9041,7 @@ exports.CSS_PROPERTIES = {
     ],
     "supports": [],
     "values": [
+      "auto",
       "inherit",
       "initial",
       "unset"
@@ -9740,12 +9067,8 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "word-spacing"
     ],
-    "supports": [
-      6,
-      8
-    ],
+    "supports": [],
     "values": [
-      "calc",
       "inherit",
       "initial",
       "normal",
@@ -9794,9 +9117,7 @@ exports.CSS_PROPERTIES = {
     "subproperties": [
       "z-index"
     ],
-    "supports": [
-      7
-    ],
+    "supports": [],
     "values": [
       "auto",
       "inherit",
@@ -9821,7 +9142,6 @@ exports.PSEUDO_ELEMENTS = [
   ":-moz-focus-outer",
   ":-moz-list-bullet",
   ":-moz-list-number",
-  ":-moz-math-anonymous",
   ":-moz-progress-bar",
   ":-moz-range-track",
   ":-moz-range-progress",
@@ -9837,10 +9157,6 @@ exports.PSEUDO_ELEMENTS = [
  * exposed for testing purposes.
  */
 exports.PREFERENCES = [
-  [
-    "all",
-    "layout.css.all-shorthand.enabled"
-  ],
   [
     "background-blend-mode",
     "layout.css.background-blend-mode.enabled"
@@ -9862,88 +9178,20 @@ exports.PREFERENCES = [
     "layout.css.contain.enabled"
   ],
   [
+    "font-optical-sizing",
+    "layout.css.font-variations.enabled"
+  ],
+  [
     "font-variation-settings",
     "layout.css.font-variations.enabled"
   ],
   [
-    "grid",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-area",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-auto-columns",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-auto-flow",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-auto-rows",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-column",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-column-end",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-column-gap",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-column-start",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-gap",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-row",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-row-end",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-row-gap",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-row-start",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-template",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-template-areas",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-template-columns",
-    "layout.css.grid.enabled"
-  ],
-  [
-    "grid-template-rows",
-    "layout.css.grid.enabled"
+    "image-orientation",
+    "layout.css.image-orientation.enabled"
   ],
   [
     "initial-letter",
     "layout.css.initial-letter.enabled"
-  ],
-  [
-    "image-orientation",
-    "layout.css.image-orientation.enabled"
   ],
   [
     "isolation",
@@ -9958,12 +9206,28 @@ exports.PREFERENCES = [
     "layout.css.osx-font-smoothing.enabled"
   ],
   [
-    "overflow-clip-box",
+    "overflow-clip-box-block",
     "layout.css.overflow-clip-box.enabled"
   ],
   [
-    "paint-order",
-    "svg.paint-order.enabled"
+    "overflow-clip-box-inline",
+    "layout.css.overflow-clip-box.enabled"
+  ],
+  [
+    "overscroll-behavior-x",
+    "layout.css.overscroll-behavior.enabled"
+  ],
+  [
+    "overscroll-behavior-y",
+    "layout.css.overscroll-behavior.enabled"
+  ],
+  [
+    "rotate",
+    "layout.css.individual-transform.enabled"
+  ],
+  [
+    "scale",
+    "layout.css.individual-transform.enabled"
   ],
   [
     "scroll-behavior",
@@ -9986,10 +9250,6 @@ exports.PREFERENCES = [
     "layout.css.scroll-snap.enabled"
   ],
   [
-    "scroll-snap-type",
-    "layout.css.scroll-snap.enabled"
-  ],
-  [
     "scroll-snap-type-x",
     "layout.css.scroll-snap.enabled"
   ],
@@ -9998,12 +9258,16 @@ exports.PREFERENCES = [
     "layout.css.scroll-snap.enabled"
   ],
   [
-    "shape-outside",
+    "shape-image-threshold",
     "layout.css.shape-outside.enabled"
   ],
   [
-    "text-combine-upright",
-    "layout.css.text-combine-upright.enabled"
+    "shape-margin",
+    "layout.css.shape-outside.enabled"
+  ],
+  [
+    "shape-outside",
+    "layout.css.shape-outside.enabled"
   ],
   [
     "-webkit-text-fill-color",
@@ -10012,10 +9276,6 @@ exports.PREFERENCES = [
   [
     "text-justify",
     "layout.css.text-justify.enabled"
-  ],
-  [
-    "-webkit-text-stroke",
-    "layout.css.prefixes.webkit"
   ],
   [
     "-webkit-text-stroke-color",
@@ -10030,56 +9290,32 @@ exports.PREFERENCES = [
     "layout.css.touch_action.enabled"
   ],
   [
-    "-moz-transform",
-    "layout.css.prefixes.transforms"
-  ],
-  [
     "transform-box",
     "svg.transform-box.enabled"
   ],
   [
-    "-moz-transform-origin",
-    "layout.css.prefixes.transforms"
+    "translate",
+    "layout.css.individual-transform.enabled"
   ],
   [
-    "-moz-perspective-origin",
-    "layout.css.prefixes.transforms"
+    "all",
+    "layout.css.all-shorthand.enabled"
   ],
   [
-    "-moz-perspective",
-    "layout.css.prefixes.transforms"
+    "overflow-clip-box",
+    "layout.css.overflow-clip-box.enabled"
   ],
   [
-    "-moz-transform-style",
-    "layout.css.prefixes.transforms"
+    "overscroll-behavior",
+    "layout.css.overscroll-behavior.enabled"
   ],
   [
-    "-moz-backface-visibility",
-    "layout.css.prefixes.transforms"
+    "scroll-snap-type",
+    "layout.css.scroll-snap.enabled"
   ],
   [
-    "-moz-border-image",
-    "layout.css.prefixes.border-image"
-  ],
-  [
-    "-moz-transition",
-    "layout.css.prefixes.transitions"
-  ],
-  [
-    "-moz-transition-delay",
-    "layout.css.prefixes.transitions"
-  ],
-  [
-    "-moz-transition-duration",
-    "layout.css.prefixes.transitions"
-  ],
-  [
-    "-moz-transition-property",
-    "layout.css.prefixes.transitions"
-  ],
-  [
-    "-moz-transition-timing-function",
-    "layout.css.prefixes.transitions"
+    "-webkit-text-stroke",
+    "layout.css.prefixes.webkit"
   ],
   [
     "-moz-animation",
@@ -10118,8 +9354,20 @@ exports.PREFERENCES = [
     "layout.css.prefixes.animations"
   ],
   [
+    "-moz-backface-visibility",
+    "layout.css.prefixes.transforms"
+  ],
+  [
+    "-moz-border-image",
+    "layout.css.prefixes.border-image"
+  ],
+  [
     "-moz-box-sizing",
     "layout.css.prefixes.box-sizing"
+  ],
+  [
+    "-moz-column-span",
+    "layout.css.column-span.enabled"
   ],
   [
     "-moz-font-feature-settings",
@@ -10128,6 +9376,58 @@ exports.PREFERENCES = [
   [
     "-moz-font-language-override",
     "layout.css.prefixes.font-features"
+  ],
+  [
+    "-moz-perspective",
+    "layout.css.prefixes.transforms"
+  ],
+  [
+    "-moz-perspective-origin",
+    "layout.css.prefixes.transforms"
+  ],
+  [
+    "-moz-transform",
+    "layout.css.prefixes.transforms"
+  ],
+  [
+    "-moz-transform-origin",
+    "layout.css.prefixes.transforms"
+  ],
+  [
+    "-moz-transform-style",
+    "layout.css.prefixes.transforms"
+  ],
+  [
+    "-moz-transition",
+    "layout.css.prefixes.transitions"
+  ],
+  [
+    "-moz-transition-delay",
+    "layout.css.prefixes.transitions"
+  ],
+  [
+    "-moz-transition-duration",
+    "layout.css.prefixes.transitions"
+  ],
+  [
+    "-moz-transition-property",
+    "layout.css.prefixes.transitions"
+  ],
+  [
+    "-moz-transition-timing-function",
+    "layout.css.prefixes.transitions"
+  ],
+  [
+    "-webkit-align-content",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-align-items",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-align-self",
+    "layout.css.prefixes.webkit"
   ],
   [
     "-webkit-animation",
@@ -10166,75 +9466,7 @@ exports.PREFERENCES = [
     "layout.css.prefixes.webkit"
   ],
   [
-    "-webkit-filter",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-text-size-adjust",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-transform",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-transform-origin",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-transform-style",
-    "layout.css.prefixes.webkit"
-  ],
-  [
     "-webkit-backface-visibility",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-perspective",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-perspective-origin",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-transition",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-transition-delay",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-transition-duration",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-transition-property",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-transition-timing-function",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-border-radius",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-border-top-left-radius",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-border-top-right-radius",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-border-bottom-left-radius",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-border-bottom-right-radius",
     "layout.css.prefixes.webkit"
   ],
   [
@@ -10250,15 +9482,35 @@ exports.PREFERENCES = [
     "layout.css.prefixes.webkit"
   ],
   [
+    "-webkit-border-bottom-left-radius",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-border-bottom-right-radius",
+    "layout.css.prefixes.webkit"
+  ],
+  [
     "-webkit-border-image",
     "layout.css.prefixes.webkit"
   ],
   [
-    "-webkit-box-shadow",
+    "-webkit-border-radius",
     "layout.css.prefixes.webkit"
   ],
   [
-    "-webkit-box-sizing",
+    "-webkit-border-top-left-radius",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-border-top-right-radius",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-box-align",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-box-direction",
     "layout.css.prefixes.webkit"
   ],
   [
@@ -10274,15 +9526,27 @@ exports.PREFERENCES = [
     "layout.css.prefixes.webkit"
   ],
   [
-    "-webkit-box-direction",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-box-align",
-    "layout.css.prefixes.webkit"
-  ],
-  [
     "-webkit-box-pack",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-box-shadow",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-box-sizing",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-filter",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-flex",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-flex-basis",
     "layout.css.prefixes.webkit"
   ],
   [
@@ -10290,19 +9554,7 @@ exports.PREFERENCES = [
     "layout.css.prefixes.webkit"
   ],
   [
-    "-webkit-flex-wrap",
-    "layout.css.prefixes.webkit"
-  ],
-  [
     "-webkit-flex-flow",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-order",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-flex",
     "layout.css.prefixes.webkit"
   ],
   [
@@ -10314,27 +9566,11 @@ exports.PREFERENCES = [
     "layout.css.prefixes.webkit"
   ],
   [
-    "-webkit-flex-basis",
+    "-webkit-flex-wrap",
     "layout.css.prefixes.webkit"
   ],
   [
     "-webkit-justify-content",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-align-items",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-align-self",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-align-content",
-    "layout.css.prefixes.webkit"
-  ],
-  [
-    "-webkit-user-select",
     "layout.css.prefixes.webkit"
   ],
   [
@@ -10375,6 +9611,58 @@ exports.PREFERENCES = [
   ],
   [
     "-webkit-mask-size",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-order",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-perspective",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-perspective-origin",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-text-size-adjust",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-transform",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-transform-origin",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-transform-style",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-transition",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-transition-delay",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-transition-duration",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-transition-property",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-transition-timing-function",
+    "layout.css.prefixes.webkit"
+  ],
+  [
+    "-webkit-user-select",
     "layout.css.prefixes.webkit"
   ]
 ];

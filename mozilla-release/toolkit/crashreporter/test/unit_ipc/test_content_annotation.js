@@ -2,7 +2,7 @@
 load("../unit/head_crashreporter.js");
 
 function run_test() {
-  if (!("@mozilla.org/toolkit/crash-reporter;1" in Components.classes)) {
+  if (!("@mozilla.org/toolkit/crash-reporter;1" in Cc)) {
     dump("INFO | test_content_annotation.js | Can't test crashreporter in a non-libxul build.\n");
     return;
   }
@@ -14,9 +14,9 @@ function run_test() {
                      crashReporter.appendAppNotesToCrashReport("!!!foo!!!");
                    },
                    function(mdump, extra) {
-                     do_check_eq(extra.TestKey, "TestValue");
-                     do_check_true("StartupTime" in extra);
-                     do_check_true("ProcessType" in extra);
-                     do_check_neq(extra.Notes.indexOf("!!!foo!!!"), -1);
+                     Assert.equal(extra.TestKey, "TestValue");
+                     Assert.ok("StartupTime" in extra);
+                     Assert.ok("ProcessType" in extra);
+                     Assert.notEqual(extra.Notes.indexOf("!!!foo!!!"), -1);
                    });
 }

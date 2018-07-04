@@ -6,7 +6,7 @@ const ID = "webextension1@tests.mozilla.org";
 
 const profileDir = gProfD.clone();
 profileDir.append("extensions");
-profileDir.create(AM_Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+profileDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
 startupManager();
@@ -22,7 +22,7 @@ async function testSimpleIconsetParsing(manifest) {
   let uri = do_get_addon_root_uri(profileDir, ID);
 
   let addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
+  Assert.notEqual(addon, null);
 
   function check_icons(addon_copy) {
     deepEqual(addon_copy.icons, {
@@ -54,7 +54,7 @@ async function testSimpleIconsetParsing(manifest) {
   ]);
 
   addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
+  Assert.notEqual(addon, null);
 
   check_icons(addon);
 
@@ -70,7 +70,7 @@ async function testRetinaIconsetParsing(manifest) {
   ]);
 
   let addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
+  Assert.notEqual(addon, null);
 
   let uri = do_get_addon_root_uri(profileDir, ID);
 
@@ -99,7 +99,7 @@ async function testNoIconsParsing(manifest) {
   ]);
 
   let addon = await promiseAddonByID(ID);
-  do_check_neq(addon, null);
+  Assert.notEqual(addon, null);
 
   deepEqual(addon.icons, {});
 

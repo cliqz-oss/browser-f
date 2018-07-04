@@ -17,7 +17,7 @@ interface HTMLMediaElement : HTMLElement {
   readonly attribute MediaError? error;
 
   // network state
-  [CEReactions, SetterThrows]
+  [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, SetterThrows]
            attribute DOMString src;
   readonly attribute DOMString currentSrc;
 
@@ -107,24 +107,26 @@ partial interface HTMLMediaElement {
   [Func="HasDebuggerOrTabsPrivilege", NewObject]
   Promise<DOMString> mozRequestDebugInfo();
 
+  [Func="HasDebuggerOrTabsPrivilege", NewObject]
+  static void mozEnableDebugLog();
+  [Func="HasDebuggerOrTabsPrivilege", NewObject]
+  Promise<DOMString> mozRequestDebugLog();
+
   [Pref="media.test.dumpDebugInfo"]
-  void mozDumpDebugInfo();
+  Promise<void> mozDumpDebugInfo();
 
   attribute MediaStream? srcObject;
-  // TODO: remove prefixed version soon (1183495).
-  attribute MediaStream? mozSrcObject;
 
   attribute boolean mozPreservesPitch;
-  readonly attribute boolean mozAutoplayEnabled;
 
   // NB: for internal use with the video controls:
   [Func="IsChromeOrXBL"] attribute boolean mozAllowCasting;
   [Func="IsChromeOrXBL"] attribute boolean mozIsCasting;
 
   // Mozilla extension: stream capture
-  [Throws, UnsafeInPrerendering]
+  [Throws]
   MediaStream mozCaptureStream();
-  [Throws, UnsafeInPrerendering]
+  [Throws]
   MediaStream mozCaptureStreamUntilEnded();
   readonly attribute boolean mozAudioCaptured;
 

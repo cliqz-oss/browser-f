@@ -9,34 +9,15 @@
 #include "prlink.h"
 #include "fpdfview.h"
 
-//#define USE_EXTERNAL_PDFIUM
-
 /* include windows.h for the HDC definitions that we need. */
 #include <windows.h>
+#include "private/pprio.h"
+#include "mozilla/UniquePtr.h"
 
 namespace mozilla {
 namespace widget {
 
-typedef void (*FPDF_InitLibrary_Pfn)();
-typedef void (*FPDF_DestroyLibrary_Pfn)();
-
-typedef FPDF_DOCUMENT (*FPDF_LoadDocument_Pfn)(FPDF_STRING file_path,
-                                               FPDF_BYTESTRING password);
-
-typedef void(*FPDF_CloseDocument_Pfn)(FPDF_DOCUMENT aDocument);
-
-typedef int (*FPDF_GetPageCount_Pfn)(FPDF_DOCUMENT aDocument);
-
-typedef FPDF_PAGE (*FPDF_LoadPage_Pfn)(FPDF_DOCUMENT aDocument, int aPageIndex);
-typedef void (*FPDF_ClosePage_Pfn)(FPDF_PAGE aPage);
-typedef void (*FPDF_RenderPage_Pfn)(HDC aDC,
-                                    FPDF_PAGE aPage,
-                                    int aStartX,
-                                    int aStartY,
-                                    int aSizeX,
-                                    int aSizeY,
-                                    int aRotate,
-                                    int aFlags);
+struct PDFFunctionPointerTable;
 
 /**
  * This class exposes an interface to the PDFium library and
@@ -49,10 +30,14 @@ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(PDFiumEngineShim)
 
   static already_AddRefed<PDFiumEngineShim> GetInstanceOrNull();
-
-  bool Init();
+  // This function is used for testing purpose only, do not call it in regular
+  // code.
+  static already_AddRefed<PDFiumEngineShim>
+  GetInstanceOrNull(const nsString& aLibrary);
 
   FPDF_DOCUMENT LoadDocument(FPDF_STRING file_path,
+                             FPDF_BYTESTRING aPassword);
+  FPDF_DOCUMENT LoadDocument(PRFileDesc* aPrfile,
                              FPDF_BYTESTRING aPassword);
   void CloseDocument(FPDF_DOCUMENT aDocument);
   int GetPageCount(FPDF_DOCUMENT aDocument);
@@ -67,24 +52,14 @@ public:
                   int aRotate, int aFlags);
 
 private:
-
   PDFiumEngineShim();
   ~PDFiumEngineShim();
+  bool Init(const nsString& aLibrary);
 
+  UniquePtr<PDFFunctionPointerTable> mTable;
   bool        mInitialized ;
 
-  FPDF_InitLibrary_Pfn        mFPDF_InitLibrary;
-  FPDF_DestroyLibrary_Pfn     mFPDF_DestroyLibrary;
-  FPDF_LoadDocument_Pfn       mFPDF_LoadDocument;
-  FPDF_CloseDocument_Pfn      mFPDF_CloseDocument;
-  FPDF_GetPageCount_Pfn       mFPDF_GetPageCount;
-  FPDF_LoadPage_Pfn           mFPDF_LoadPage;
-  FPDF_ClosePage_Pfn          mFPDF_ClosePage;
-  FPDF_RenderPage_Pfn         mFPDF_RenderPage;
-
-#ifdef USE_EXTERNAL_PDFIUM
   PRLibrary*  mPRLibrary;
-#endif
 };
 
 } // namespace widget

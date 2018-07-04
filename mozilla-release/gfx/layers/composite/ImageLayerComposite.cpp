@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -131,12 +132,11 @@ ImageLayerComposite::ComputeEffectiveTransforms(const gfx::Matrix4x4& aTransform
       SnapTransform(local, sourceRect, nullptr) *
       SnapTransformTranslation(aTransformToSurface, nullptr);
 
-  if (mScaleMode != ScaleMode::SCALE_NONE &&
-      sourceRect.width != 0.0 && sourceRect.height != 0.0) {
+  if (mScaleMode != ScaleMode::SCALE_NONE && !sourceRect.IsZeroArea()) {
     NS_ASSERTION(mScaleMode == ScaleMode::STRETCH,
                  "No other scalemodes than stretch and none supported yet.");
-    local.PreScale(mScaleToSize.width / sourceRect.width,
-                   mScaleToSize.height / sourceRect.height, 1.0);
+    local.PreScale(mScaleToSize.width / sourceRect.Width(),
+                   mScaleToSize.height / sourceRect.Height(), 1.0);
 
     mEffectiveTransformForBuffer =
         SnapTransform(local, sourceRect, nullptr) *

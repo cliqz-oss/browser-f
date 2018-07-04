@@ -1,6 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: set ts=8 sts=2 et sw=2 tw=80:
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -38,26 +38,6 @@ void RecordingSourceSurfaceUserDataFunc(void *aUserData)
 }
 
 static void
-StoreSourceSurfaceRecording(DrawEventRecorderPrivate *aRecorder, SourceSurface *aSurface,
-                   DataSourceSurface *aDataSurf, const char *reason)
-{
-  if (!aDataSurf) {
-    gfxWarning() << "Recording failed to record SourceSurface for " << reason;
-    // Insert a bogus source surface.
-    int32_t stride = aSurface->GetSize().width * BytesPerPixel(aSurface->GetFormat());
-    UniquePtr<uint8_t[]> sourceData(new uint8_t[stride * aSurface->GetSize().height]());
-    aRecorder->RecordEvent(
-      RecordedSourceSurfaceCreation(aSurface, sourceData.get(), stride,
-                                    aSurface->GetSize(), aSurface->GetFormat()));
-  } else {
-    DataSourceSurface::ScopedMap map(aDataSurf, DataSourceSurface::READ);
-    aRecorder->RecordEvent(
-      RecordedSourceSurfaceCreation(aSurface, map.GetData(), map.GetStride(),
-                                    aDataSurf->GetSize(), aDataSurf->GetFormat()));
-  }
-}
-
-static void
 EnsureSurfaceStoredRecording(DrawEventRecorderPrivate *aRecorder, SourceSurface *aSurface,
                     const char *reason)
 {
@@ -65,8 +45,7 @@ EnsureSurfaceStoredRecording(DrawEventRecorderPrivate *aRecorder, SourceSurface 
     return;
   }
 
-  RefPtr<DataSourceSurface> dataSurf = aSurface->GetDataSurface();
-  StoreSourceSurfaceRecording(aRecorder, aSurface, dataSurf, reason);
+  aRecorder->StoreSourceSurfaceRecording(aSurface, reason);
   aRecorder->AddStoredObject(aSurface);
   aRecorder->AddSourceSurface(aSurface);
 
@@ -80,7 +59,8 @@ EnsureSurfaceStoredRecording(DrawEventRecorderPrivate *aRecorder, SourceSurface 
 class SourceSurfaceRecording : public SourceSurface
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(SourceSurfaceRecording)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(SourceSurfaceRecording, override)
+
   SourceSurfaceRecording(IntSize aSize, SurfaceFormat aFormat, DrawEventRecorderPrivate *aRecorder)
     : mSize(aSize), mFormat(aFormat), mRecorder(aRecorder)
   {
@@ -93,10 +73,10 @@ public:
     mRecorder->RecordEvent(RecordedSourceSurfaceDestruction(ReferencePtr(this)));
   }
 
-  virtual SurfaceType GetType() const { return SurfaceType::RECORDING; }
-  virtual IntSize GetSize() const { return mSize; }
-  virtual SurfaceFormat GetFormat() const { return mFormat; }
-  virtual already_AddRefed<DataSourceSurface> GetDataSurface() { return nullptr; }
+  virtual SurfaceType GetType() const override { return SurfaceType::RECORDING; }
+  virtual IntSize GetSize() const override { return mSize; }
+  virtual SurfaceFormat GetFormat() const override { return mFormat; }
+  virtual already_AddRefed<DataSourceSurface> GetDataSurface() override { return nullptr; }
 
   IntSize mSize;
   SurfaceFormat mFormat;
@@ -124,9 +104,9 @@ public:
   Init(uint8_t *aData, IntSize aSize, int32_t aStride, SurfaceFormat aFormat)
   {
     //XXX: do we need to ensure any alignment here?
-    auto data = MakeUnique<uint8_t[]>(aStride * aSize.height * BytesPerPixel(aFormat));
+    auto data = MakeUnique<uint8_t[]>(aStride * aSize.height);
     if (data) {
-      memcpy(data.get(), aData, aStride * aSize.height * BytesPerPixel(aFormat));
+      memcpy(data.get(), aData, aStride * aSize.height);
       RefPtr<DataSourceSurfaceRecording> surf = new DataSourceSurfaceRecording(Move(data), aSize, aStride, aFormat);
       return surf.forget();
     }
@@ -149,7 +129,8 @@ public:
 class GradientStopsRecording : public GradientStops
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(GradientStopsRecording)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(GradientStopsRecording, override)
+
   explicit GradientStopsRecording(DrawEventRecorderPrivate *aRecorder)
     : mRecorder(aRecorder)
   {
@@ -162,7 +143,7 @@ public:
     mRecorder->RecordEvent(RecordedGradientStopsDestruction(ReferencePtr(this)));
   }
 
-  virtual BackendType GetBackendType() const { return BackendType::RECORDING; }
+  virtual BackendType GetBackendType() const override { return BackendType::RECORDING; }
 
   RefPtr<DrawEventRecorderPrivate> mRecorder;
 };
@@ -249,9 +230,6 @@ DrawTargetRecording::DrawTargetRecording(const DrawTargetRecording *aDT,
   , mFinalDT(aDT->mFinalDT)
   , mSize(aSize)
 {
-  mRecorder->RecordEvent(RecordedCreateSimilarDrawTarget(this,
-                                                         aSize,
-                                                         aFormat));
   mFormat = aFormat;
 }
 
@@ -324,40 +302,42 @@ void
 DrawTargetRecording::FillGlyphs(ScaledFont *aFont,
                                 const GlyphBuffer &aBuffer,
                                 const Pattern &aPattern,
-                                const DrawOptions &aOptions,
-                                const GlyphRenderingOptions *aRenderingOptions)
+                                const DrawOptions &aOptions)
 {
   EnsurePatternDependenciesStored(aPattern);
 
   UserDataKey* userDataKey = reinterpret_cast<UserDataKey*>(mRecorder.get());
   if (!aFont->GetUserData(userDataKey)) {
     UnscaledFont* unscaledFont = aFont->GetUnscaledFont();
-    if (!mRecorder->HasStoredObject(unscaledFont)) {
-      RecordedFontData fontData(unscaledFont);
-      RecordedFontDetails fontDetails;
-      if (fontData.GetFontDetails(fontDetails)) {
-        // Try to serialise the whole font, just in case this is a web font that
-        // is not present on the system.
-        if (!mRecorder->HasStoredFontData(fontDetails.fontDataKey)) {
-          mRecorder->RecordEvent(fontData);
-          mRecorder->AddStoredFontData(fontDetails.fontDataKey);
-        }
-        mRecorder->RecordEvent(RecordedUnscaledFontCreation(unscaledFont, fontDetails));
-      } else {
-        // If that fails, record just the font description and try to load it from
-        // the system on the other side.
-        RecordedFontDescriptor fontDesc(unscaledFont);
-        if (fontDesc.IsValid()) {
-          mRecorder->RecordEvent(fontDesc);
-        } else {
-          gfxWarning() << "DrawTargetRecording::FillGlyphs failed to serialise UnscaledFont";
-        }
+    if (mRecorder->WantsExternalFonts()) {
+      size_t index = mRecorder->GetUnscaledFontIndex(unscaledFont);
+      mRecorder->RecordEvent(RecordedScaledFontCreationByIndex(aFont, index));
+    } else {
+      if (!mRecorder->HasStoredObject(unscaledFont)) {
+	RecordedFontData fontData(unscaledFont);
+	RecordedFontDetails fontDetails;
+	if (fontData.GetFontDetails(fontDetails)) {
+	  // Try to serialise the whole font, just in case this is a web font that
+	  // is not present on the system.
+	  if (!mRecorder->HasStoredFontData(fontDetails.fontDataKey)) {
+	    mRecorder->RecordEvent(fontData);
+	    mRecorder->AddStoredFontData(fontDetails.fontDataKey);
+	  }
+	  mRecorder->RecordEvent(RecordedUnscaledFontCreation(unscaledFont, fontDetails));
+	} else {
+	  // If that fails, record just the font description and try to load it from
+	  // the system on the other side.
+	  RecordedFontDescriptor fontDesc(unscaledFont);
+	  if (fontDesc.IsValid()) {
+	    mRecorder->RecordEvent(fontDesc);
+	  } else {
+	    gfxWarning() << "DrawTargetRecording::FillGlyphs failed to serialise UnscaledFont";
+	  }
+	}
+	mRecorder->AddStoredObject(unscaledFont);
       }
-      mRecorder->AddStoredObject(unscaledFont);
+      mRecorder->RecordEvent(RecordedScaledFontCreation(aFont, unscaledFont));
     }
-
-    mRecorder->RecordEvent(RecordedScaledFontCreation(aFont, unscaledFont));
-
     RecordingFontUserData *userData = new RecordingFontUserData;
     userData->refPtr = aFont;
     userData->recorder = mRecorder;
@@ -526,6 +506,23 @@ DrawTargetRecording::PushLayer(bool aOpaque, Float aOpacity,
 }
 
 void
+DrawTargetRecording::PushLayerWithBlend(bool aOpaque, Float aOpacity,
+                                        SourceSurface* aMask,
+                                        const Matrix& aMaskTransform,
+                                        const IntRect& aBounds,
+                                        bool aCopyBackground,
+                                        CompositionOp aCompositionOp)
+{
+  if (aMask) {
+    EnsureSurfaceStoredRecording(mRecorder, aMask, "PushLayer");
+  }
+
+  mRecorder->RecordEvent(RecordedPushLayerWithBlend(this, aOpaque, aOpacity, aMask,
+                                           aMaskTransform, aBounds,
+                                           aCopyBackground, aCompositionOp));
+}
+
+void
 DrawTargetRecording::PopLayer()
 {
   mRecorder->RecordEvent(RecordedPopLayer(static_cast<DrawTarget*>(this)));
@@ -564,7 +561,18 @@ already_AddRefed<DrawTarget>
 DrawTargetRecording::CreateSimilarDrawTarget(const IntSize &aSize, SurfaceFormat aFormat) const
 {
   RefPtr<DrawTarget> similarDT = new DrawTargetRecording(this, aSize, aFormat);
+  mRecorder->RecordEvent(RecordedCreateSimilarDrawTarget(similarDT.get(),
+                                                         aSize,
+                                                         aFormat));
   return similarDT.forget();
+}
+
+RefPtr<DrawTarget>
+DrawTargetRecording::CreateClippedDrawTarget(const IntSize& aMaxSize, const Matrix& aTransform, SurfaceFormat aFormat) const
+{
+  RefPtr<DrawTarget> similarDT = new DrawTargetRecording(this, aMaxSize, aFormat);
+  mRecorder->RecordEvent(RecordedCreateClippedDrawTarget(similarDT.get(), aMaxSize, aTransform, aFormat));
+  return similarDT;
 }
 
 already_AddRefed<PathBuilder>
@@ -617,6 +625,24 @@ DrawTargetRecording::EnsurePathStored(const Path *aPath)
   pathRecording->mStoredRecorders.push_back(mRecorder);
 
   return pathRecording.forget();
+}
+
+// This should only be called on the 'root' DrawTargetRecording.
+// Calling it on a child DrawTargetRecordings will cause confusion.
+void
+DrawTargetRecording::FlushItem(const IntRect &aBounds)
+{
+  mRecorder->FlushItem(aBounds);
+  // Reinitialize the recorder (FlushItem will write a new recording header)
+  // Tell the new recording about our draw target
+  // This code should match what happens in the DrawTargetRecording constructor.
+  mRecorder->RecordEvent(RecordedDrawTargetCreation(this,
+                                                    mFinalDT->GetBackendType(),
+                                                    mSize,
+                                                    mFinalDT->GetFormat(),
+                                                    false, nullptr));
+  // Add the current transform to the new recording
+  mRecorder->RecordEvent(RecordedSetTransform(this, DrawTarget::GetTransform()));
 }
 
 void

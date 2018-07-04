@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,10 +10,25 @@
 namespace mozilla {
 namespace dom {
 
-// Only needed for refcounted objects.
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(AuthenticatorResponse, mParent)
+NS_IMPL_CYCLE_COLLECTION_CLASS(AuthenticatorResponse)
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(AuthenticatorResponse)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mParent)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
+  tmp->mClientDataJSONCachedObj = nullptr;
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(AuthenticatorResponse)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_PRESERVED_WRAPPER
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mClientDataJSONCachedObj)
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(AuthenticatorResponse)
+   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mParent)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
 NS_IMPL_CYCLE_COLLECTING_ADDREF(AuthenticatorResponse)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(AuthenticatorResponse)
+
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(AuthenticatorResponse)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
   NS_INTERFACE_MAP_ENTRY(nsISupports)
@@ -21,10 +36,15 @@ NS_INTERFACE_MAP_END
 
 AuthenticatorResponse::AuthenticatorResponse(nsPIDOMWindowInner* aParent)
   : mParent(aParent)
-{}
+  , mClientDataJSONCachedObj(nullptr)
+{
+  mozilla::HoldJSObjects(this);
+}
 
 AuthenticatorResponse::~AuthenticatorResponse()
-{}
+{
+  mozilla::DropJSObjects(this);
+}
 
 JSObject*
 AuthenticatorResponse::WrapObject(JSContext* aCx,
@@ -35,9 +55,12 @@ AuthenticatorResponse::WrapObject(JSContext* aCx,
 
 void
 AuthenticatorResponse::GetClientDataJSON(JSContext* aCx,
-                                         JS::MutableHandle<JSObject*> aRetVal) const
+                                         JS::MutableHandle<JSObject*> aRetVal)
 {
-  aRetVal.set(mClientDataJSON.ToUint8Array(aCx));
+  if (!mClientDataJSONCachedObj) {
+    mClientDataJSONCachedObj = mClientDataJSON.ToArrayBuffer(aCx);
+  }
+  aRetVal.set(mClientDataJSONCachedObj);
 }
 
 nsresult

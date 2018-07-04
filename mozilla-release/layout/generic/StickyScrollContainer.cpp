@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,10 +10,11 @@
  */
 
 #include "StickyScrollContainer.h"
+
+#include "mozilla/OverflowChangedTracker.h"
 #include "nsIFrame.h"
 #include "nsIScrollableFrame.h"
 #include "nsLayoutUtils.h"
-#include "RestyleTracker.h"
 
 namespace mozilla {
 
@@ -45,7 +46,7 @@ StickyScrollContainer::GetStickyScrollContainerForFrame(nsIFrame* aFrame)
     // <html style="position: fixed">
     return nullptr;
   }
-  auto frame = static_cast<nsIFrame*>(do_QueryFrame(scrollFrame));
+  nsIFrame* frame = do_QueryFrame(scrollFrame);
   StickyScrollContainer* s =
     frame->GetProperty(StickyScrollContainerProperty());
   if (!s) {
@@ -150,6 +151,10 @@ StickyScrollContainer::ComputeStickyOffsets(nsIFrame* aFrame)
   }
 }
 
+static nscoord gUnboundedNegative = nscoord_MIN / 2;
+static nscoord gUnboundedExtent = nscoord_MAX;
+static nscoord gUnboundedPositive = gUnboundedNegative + gUnboundedExtent;
+
 void
 StickyScrollContainer::ComputeStickyLimits(nsIFrame* aFrame, nsRect* aStick,
                                            nsRect* aContain) const
@@ -157,8 +162,8 @@ StickyScrollContainer::ComputeStickyLimits(nsIFrame* aFrame, nsRect* aStick,
   NS_ASSERTION(nsLayoutUtils::IsFirstContinuationOrIBSplitSibling(aFrame),
                "Can't sticky position individual continuations");
 
-  aStick->SetRect(nscoord_MIN/2, nscoord_MIN/2, nscoord_MAX, nscoord_MAX);
-  aContain->SetRect(nscoord_MIN/2, nscoord_MIN/2, nscoord_MAX, nscoord_MAX);
+  aStick->SetRect(gUnboundedNegative, gUnboundedNegative, gUnboundedExtent, gUnboundedExtent);
+  aContain->SetRect(gUnboundedNegative, gUnboundedNegative, gUnboundedExtent, gUnboundedExtent);
 
   const nsMargin* computedOffsets =
     aFrame->GetProperty(nsIFrame::ComputedOffsetProperty());
@@ -176,6 +181,15 @@ StickyScrollContainer::ComputeStickyLimits(nsIFrame* aFrame, nsRect* aStick,
 
   nsRect rect =
     nsLayoutUtils::GetAllInFlowRectsUnion(aFrame, aFrame->GetParent());
+
+  // FIXME(bug 1421660): Table row groups aren't supposed to be containing
+  // blocks, but we treat them as such (maybe it's the right thing to do!).
+  // Anyway, not having this basically disables position: sticky on table cells,
+  // which would be really unfortunate, and doesn't match what other browsers
+  // do.
+  if (cbFrame != scrolledFrame && cbFrame->IsTableRowGroupFrame()) {
+    cbFrame = cbFrame->GetContainingBlock();
+  }
 
   // Containing block limits for the position of aFrame relative to its parent.
   // The margin box of the sticky element stays within the content box of the
@@ -266,8 +280,8 @@ StickyScrollContainer::ComputePosition(nsIFrame* aFrame) const
 }
 
 void
-StickyScrollContainer::GetScrollRanges(nsIFrame* aFrame, nsRect* aOuter,
-                                       nsRect* aInner) const
+StickyScrollContainer::GetScrollRanges(nsIFrame* aFrame, nsRectAbsolute* aOuter,
+                                       nsRectAbsolute* aInner) const
 {
   // We need to use the first in flow; continuation frames should not move
   // relative to each other and should get identical scroll ranges.
@@ -275,35 +289,38 @@ StickyScrollContainer::GetScrollRanges(nsIFrame* aFrame, nsRect* aOuter,
   nsIFrame *firstCont =
     nsLayoutUtils::FirstContinuationOrIBSplitSibling(aFrame);
 
-  nsRect stick;
-  nsRect contain;
-  ComputeStickyLimits(firstCont, &stick, &contain);
+  nsRect stickRect;
+  nsRect containRect;
+  ComputeStickyLimits(firstCont, &stickRect, &containRect);
 
-  aOuter->SetRect(nscoord_MIN/2, nscoord_MIN/2, nscoord_MAX, nscoord_MAX);
-  aInner->SetRect(nscoord_MIN/2, nscoord_MIN/2, nscoord_MAX, nscoord_MAX);
+  nsRectAbsolute stick = nsRectAbsolute::FromRect(stickRect);
+  nsRectAbsolute contain = nsRectAbsolute::FromRect(containRect);
+
+  aOuter->SetBox(gUnboundedNegative, gUnboundedNegative, gUnboundedPositive, gUnboundedPositive);
+  aInner->SetBox(gUnboundedNegative, gUnboundedNegative, gUnboundedPositive, gUnboundedPositive);
 
   const nsPoint normalPosition = firstCont->GetNormalPosition();
 
   // Bottom and top
-  if (stick.YMost() != nscoord_MAX/2) {
-    aOuter->SetTopEdge(contain.y - stick.YMost());
+  if (stick.YMost() != gUnboundedPositive) {
+    aOuter->SetTopEdge(contain.Y() - stick.YMost());
     aInner->SetTopEdge(normalPosition.y - stick.YMost());
   }
 
-  if (stick.y != nscoord_MIN/2) {
-    aInner->SetBottomEdge(normalPosition.y - stick.y);
-    aOuter->SetBottomEdge(contain.YMost() - stick.y);
+  if (stick.Y() != gUnboundedNegative) {
+    aInner->SetBottomEdge(normalPosition.y - stick.Y());
+    aOuter->SetBottomEdge(contain.YMost() - stick.Y());
   }
 
   // Right and left
-  if (stick.XMost() != nscoord_MAX/2) {
-    aOuter->SetLeftEdge(contain.x - stick.XMost());
+  if (stick.XMost() != gUnboundedPositive) {
+    aOuter->SetLeftEdge(contain.X() - stick.XMost());
     aInner->SetLeftEdge(normalPosition.x - stick.XMost());
   }
 
-  if (stick.x != nscoord_MIN/2) {
-    aInner->SetRightEdge(normalPosition.x - stick.x);
-    aOuter->SetRightEdge(contain.XMost() - stick.x);
+  if (stick.X() != gUnboundedNegative) {
+    aInner->SetRightEdge(normalPosition.x - stick.X());
+    aOuter->SetRightEdge(contain.XMost() - stick.X());
   }
 
   // Make sure |inner| does not extend outside of |outer|. (The consumers of

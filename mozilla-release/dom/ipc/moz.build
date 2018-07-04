@@ -19,13 +19,15 @@ EXPORTS.mozilla.dom.ipc += [
 ]
 
 EXPORTS.mozilla.dom += [
+    'CoalescedInputData.h',
+    'CoalescedMouseData.h',
     'CoalescedWheelData.h',
     'ContentBridgeChild.h',
     'ContentBridgeParent.h',
     'ContentChild.h',
     'ContentParent.h',
-    'ContentPrefs.h',
     'ContentProcess.h',
+    'ContentProcessHost.h',
     'ContentProcessManager.h',
     'CPOWManagerGetter.h',
     'FilePickerParent.h',
@@ -50,13 +52,14 @@ EXPORTS.mozilla += [
 ]
 
 UNIFIED_SOURCES += [
+    'CoalescedMouseData.cpp',
     'CoalescedWheelData.cpp',
     'ColorPickerParent.cpp',
     'ContentBridgeChild.cpp',
     'ContentBridgeParent.cpp',
     'ContentParent.cpp',
-    'ContentPrefs.cpp',
     'ContentProcess.cpp',
+    'ContentProcessHost.cpp',
     'ContentProcessManager.cpp',
     'FilePickerParent.cpp',
     'MemoryReportRequest.cpp',
@@ -91,8 +94,8 @@ IPDL_SOURCES += [
     'PContentPermission.ipdlh',
     'PContentPermissionRequest.ipdl',
     'PCycleCollectWithLogs.ipdl',
-    'PDocumentRenderer.ipdl',
     'PFilePicker.ipdl',
+    'PLoginReputation.ipdl',
     'PPluginWidget.ipdl',
     'PProcessHangMonitor.ipdl',
     'PTabContext.ipdlh',
@@ -121,12 +124,12 @@ LOCAL_INCLUDES += [
     '/chrome',
     '/docshell/base',
     '/dom/base',
+    '/dom/bindings',
     '/dom/events',
     '/dom/filesystem',
     '/dom/geolocation',
     '/dom/media/webspeech/synth/ipc',
     '/dom/security',
-    '/dom/workers',
     '/extensions/cookie',
     '/extensions/spellcheck/src',
     '/gfx/2d',
@@ -156,7 +159,7 @@ if CONFIG['OS_ARCH'] != 'WINNT':
 
 DEFINES['BIN_SUFFIX'] = '"%s"' % CONFIG['BIN_SUFFIX']
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk2'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
     DEFINES['MOZ_ENABLE_FREETYPE'] = True
 
 if CONFIG['MOZ_TOOLKIT_SEARCH']:
@@ -170,5 +173,5 @@ MOCHITEST_MANIFESTS += ['tests/mochitest.ini']
 
 CXXFLAGS += CONFIG['TK_CFLAGS']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

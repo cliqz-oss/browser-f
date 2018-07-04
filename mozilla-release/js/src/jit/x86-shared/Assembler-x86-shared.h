@@ -301,6 +301,7 @@ class AssemblerX86Shared : public AssemblerShared
         LessThan = X86Encoding::ConditionL,
         LessThanOrEqual = X86Encoding::ConditionLE,
         Overflow = X86Encoding::ConditionO,
+        NoOverflow = X86Encoding::ConditionNO,
         CarrySet = X86Encoding::ConditionC,
         CarryClear = X86Encoding::ConditionNC,
         Signed = X86Encoding::ConditionS,
@@ -394,14 +395,25 @@ class AssemblerX86Shared : public AssemblerShared
 
     static void TraceDataRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader);
 
-    // MacroAssemblers hold onto gcthings, so they are traced by the GC.
-    void trace(JSTracer* trc);
+    void assertNoGCThings() const {
+#ifdef DEBUG
+        MOZ_ASSERT(dataRelocations_.length() == 0);
+        for (auto& j : jumps_)
+            MOZ_ASSERT(j.kind == Relocation::HARDCODED);
+#endif
+    }
 
     bool oom() const {
         return AssemblerShared::oom() ||
                masm.oom() ||
                jumpRelocations_.oom() ||
                dataRelocations_.oom();
+    }
+    bool reserve(size_t size) {
+        return masm.reserve(size);
+    }
+    bool swapBuffer(wasm::Bytes& other) {
+        return masm.swapBuffer(other);
     }
 
     void setPrinter(Sprinter* sp) {
@@ -413,12 +425,6 @@ class AssemblerX86Shared : public AssemblerShared
     }
 
     void executableCopy(void* buffer);
-    bool asmMergeWith(const AssemblerX86Shared& other) {
-        MOZ_ASSERT(other.jumps_.length() == 0);
-        if (!AssemblerShared::asmMergeWith(masm.size(), other))
-            return false;
-        return masm.appendBuffer(other.masm);
-    }
     void processCodeLabels(uint8_t* rawCode);
     void copyJumpRelocationTable(uint8_t* dest);
     void copyDataRelocationTable(uint8_t* dest);
@@ -448,25 +454,36 @@ class AssemblerX86Shared : public AssemblerShared
     void nopAlign(int alignment) {
         masm.nopAlign(alignment);
     }
-    void writeCodePointer(CodeOffset* label) {
-        // A CodeOffset only has one use, bake in the "end of list" value.
-        masm.jumpTablePointer(LabelBase::INVALID_OFFSET);
-        label->bind(masm.size());
+    void writeCodePointer(CodeLabel* label) {
+        // Use -1 as dummy value. This will be patched after codegen.
+        masm.jumpTablePointer(-1);
+        label->patchAt()->bind(masm.size());
     }
-    void cmovz(const Operand& src, Register dest) {
+    void cmovCCl(Condition cond, const Operand& src, Register dest) {
+        X86Encoding::Condition cc = static_cast<X86Encoding::Condition>(cond);
         switch (src.kind()) {
           case Operand::REG:
-            masm.cmovz_rr(src.reg(), dest.encoding());
+            masm.cmovCCl_rr(cc, src.reg(), dest.encoding());
             break;
           case Operand::MEM_REG_DISP:
-            masm.cmovz_mr(src.disp(), src.base(), dest.encoding());
+            masm.cmovCCl_mr(cc, src.disp(), src.base(), dest.encoding());
             break;
           case Operand::MEM_SCALE:
-            masm.cmovz_mr(src.disp(), src.base(), src.index(), src.scale(), dest.encoding());
+            masm.cmovCCl_mr(cc, src.disp(), src.base(), src.index(), src.scale(), dest.encoding());
             break;
           default:
             MOZ_CRASH("unexpected operand kind");
         }
+    }
+    void cmovCCl(Condition cond, Register src, Register dest) {
+        X86Encoding::Condition cc = static_cast<X86Encoding::Condition>(cond);
+        masm.cmovCCl_rr(cc, src.encoding(), dest.encoding());
+    }
+    void cmovzl(const Operand& src, Register dest) {
+        cmovCCl(Condition::Zero, src, dest);
+    }
+    void cmovnzl(const Operand& src, Register dest) {
+        cmovCCl(Condition::NonZero, src, dest);
     }
     void movl(Imm32 imm32, Register dest) {
         masm.movl_i32r(imm32.value, dest.encoding());
@@ -853,7 +870,10 @@ class AssemblerX86Shared : public AssemblerShared
         } else {
             // Thread the jump list through the unpatched jump targets.
             JmpSrc j = masm.jCC(static_cast<X86Encoding::Condition>(cond));
-            JmpSrc prev = JmpSrc(label->use(j.offset()));
+            JmpSrc prev;
+            if (label->used())
+                prev = JmpSrc(label->offset());
+            label->use(j.offset());
             masm.setNextJump(j, prev);
         }
     }
@@ -864,7 +884,10 @@ class AssemblerX86Shared : public AssemblerShared
         } else {
             // Thread the jump list through the unpatched jump targets.
             JmpSrc j = masm.jmp();
-            JmpSrc prev = JmpSrc(label->use(j.offset()));
+            JmpSrc prev;
+            if (label->used())
+                prev = JmpSrc(label->offset());
+            label->use(j.offset());
             masm.setNextJump(j, prev);
         }
     }
@@ -877,7 +900,10 @@ class AssemblerX86Shared : public AssemblerShared
             masm.linkJump(j, JmpDst(label->offset()));
         } else {
             // Thread the jump list through the unpatched jump targets.
-            JmpSrc prev = JmpSrc(label->use(j.offset()));
+            JmpSrc prev;
+            if (label->used())
+                prev = JmpSrc(label->offset());
+            label->use(j.offset());
             masm.setNextJump(j, prev);
         }
         return j;
@@ -913,17 +939,6 @@ class AssemblerX86Shared : public AssemblerShared
     void j(Condition cond, RepatchLabel* label) { jSrc(cond, label); }
     void jmp(RepatchLabel* label) { jmpSrc(label); }
 
-    void j(Condition cond, wasm::TrapDesc target) {
-        Label l;
-        j(cond, &l);
-        bindLater(&l, target);
-    }
-    void jmp(wasm::TrapDesc target) {
-        Label l;
-        jmp(&l);
-        bindLater(&l, target);
-    }
-
     void jmp(const Operand& op) {
         switch (op.kind()) {
           case Operand::MEM_REG_DISP:
@@ -954,15 +969,6 @@ class AssemblerX86Shared : public AssemblerShared
         }
         label->bind(dst.offset());
     }
-    void bindLater(Label* label, wasm::TrapDesc target) {
-        if (label->used()) {
-            JmpSrc jmp(label->offset());
-            do {
-                append(wasm::TrapSite(target, jmp.offset()));
-            } while (masm.nextJump(jmp, &jmp));
-        }
-        label->reset();
-    }
     void bind(RepatchLabel* label) {
         JmpDst dst(masm.label());
         if (label->used()) {
@@ -971,8 +977,8 @@ class AssemblerX86Shared : public AssemblerShared
         }
         label->bind(dst.offset());
     }
-    void use(CodeOffset* label) {
-        label->bind(currentOffset());
+    void bind(CodeLabel* label) {
+        label->target()->bind(currentOffset());
     }
     uint32_t currentOffset() {
         return masm.label().offset();
@@ -992,7 +998,10 @@ class AssemblerX86Shared : public AssemblerShared
                 masm.linkJump(jmp, JmpDst(target->offset()));
             } else {
                 // Thread the jump list through the unpatched jump targets.
-                JmpSrc prev(target->use(jmp.offset()));
+                JmpSrc prev;
+                if (target->used())
+                    prev = JmpSrc(target->offset());
+                target->use(jmp.offset());
                 masm.setNextJump(jmp, prev);
             }
             jmp = JmpSrc(next.offset());
@@ -1000,16 +1009,12 @@ class AssemblerX86Shared : public AssemblerShared
         label->reset();
     }
 
-    static void Bind(uint8_t* raw, CodeOffset* label, const void* address) {
-        if (label->bound()) {
-            intptr_t offset = label->offset();
-            X86Encoding::SetPointer(raw + offset, address);
+    static void Bind(uint8_t* raw, const CodeLabel& label) {
+        if (label.patchAt().bound()) {
+            intptr_t offset = label.patchAt().offset();
+            intptr_t target = label.target().offset();
+            X86Encoding::SetPointer(raw + offset, raw + target);
         }
-    }
-
-    // See Bind and X86Encoding::setPointer.
-    size_t labelToPatchOffset(CodeOffset label) {
-        return label.offset() - sizeof(void*);
     }
 
     void ret() {
@@ -1020,11 +1025,14 @@ class AssemblerX86Shared : public AssemblerShared
         masm.ret_i(n.value - sizeof(void*));
     }
     CodeOffset call(Label* label) {
+        JmpSrc j = masm.call();
         if (label->bound()) {
-            masm.linkJump(masm.call(), JmpDst(label->offset()));
+            masm.linkJump(j, JmpDst(label->offset()));
         } else {
-            JmpSrc j = masm.call();
-            JmpSrc prev = JmpSrc(label->use(j.offset()));
+            JmpSrc prev;
+            if (label->used())
+                prev = JmpSrc(label->offset());
+            label->use(j.offset());
             masm.setNextJump(j, prev);
         }
         return CodeOffset(masm.currentOffset());
@@ -1061,24 +1069,11 @@ class AssemblerX86Shared : public AssemblerShared
         unsigned char* code = masm.data();
         X86Encoding::SetRel32(code + farJump.offset(), code + targetOffset);
     }
-    static void repatchFarJump(uint8_t* code, uint32_t farJumpOffset, uint32_t targetOffset) {
-        X86Encoding::SetRel32(code + farJumpOffset, code + targetOffset);
-    }
 
     // This is for patching during code generation, not after.
     void patchAddl(CodeOffset offset, int32_t n) {
         unsigned char* code = masm.data();
         X86Encoding::SetInt32(code + offset.offset(), n);
-    }
-
-    CodeOffset twoByteNop() {
-        return CodeOffset(masm.twoByteNop().offset());
-    }
-    static void patchTwoByteNopToJump(uint8_t* jump, uint8_t* target) {
-        X86Encoding::BaseAssembler::patchTwoByteNopToJump(jump, target);
-    }
-    static void patchJumpToTwoByteNop(uint8_t* jump) {
-        X86Encoding::BaseAssembler::patchJumpToTwoByteNop(jump);
     }
 
     static void patchFiveByteNopToCall(uint8_t* callsite, uint8_t* target) {
@@ -1090,6 +1085,11 @@ class AssemblerX86Shared : public AssemblerShared
 
     void breakpoint() {
         masm.int3();
+    }
+    CodeOffset ud2() {
+        CodeOffset off(masm.currentOffset());
+        masm.ud2();
+        return off;
     }
 
     static bool HasSSE2() { return CPUInfo::IsSSE2Present(); }
@@ -1316,6 +1316,9 @@ class AssemblerX86Shared : public AssemblerShared
           default:
             MOZ_CRASH("unexpected operand kind");
         }
+    }
+    void sbbl(Register src, Register dest) {
+        masm.sbbl_rr(src.encoding(), dest.encoding());
     }
     void subl(Register src, Register dest) {
         masm.subl_rr(src.encoding(), dest.encoding());
@@ -1603,6 +1606,9 @@ class AssemblerX86Shared : public AssemblerShared
             break;
           case Operand::MEM_REG_DISP:
             masm.andl_mr(src.disp(), src.base(), dest.encoding());
+            break;
+          case Operand::MEM_SCALE:
+            masm.andl_mr(src.disp(), src.base(), src.index(), src.scale(), dest.encoding());
             break;
           default:
             MOZ_CRASH("unexpected operand kind");
@@ -1994,6 +2000,21 @@ class AssemblerX86Shared : public AssemblerShared
             MOZ_CRASH("unexpected operand kind");
         }
     }
+    void lock_cmpxchg8b(Register srcHi, Register srcLo, Register newHi, Register newLo, const Operand& mem) {
+        masm.prefix_lock();
+        switch (mem.kind()) {
+          case Operand::MEM_REG_DISP:
+            masm.cmpxchg8b(srcHi.encoding(), srcLo.encoding(), newHi.encoding(), newLo.encoding(),
+                           mem.disp(), mem.base());
+            break;
+          case Operand::MEM_SCALE:
+            masm.cmpxchg8b(srcHi.encoding(), srcLo.encoding(), newHi.encoding(), newLo.encoding(),
+                           mem.disp(), mem.base(), mem.index(), mem.scale());
+            break;
+          default:
+            MOZ_CRASH("unexpected operand kind");
+        }
+    }
 
     void xchgb(Register src, const Operand& mem) {
         switch (mem.kind()) {
@@ -2072,6 +2093,9 @@ class AssemblerX86Shared : public AssemblerShared
             break;
           case Operand::MEM_REG_DISP:
             masm.push_m(src.disp(), src.base());
+            break;
+          case Operand::MEM_SCALE:
+            masm.push_m(src.disp(), src.base(), src.index(), src.scale());
             break;
           default:
             MOZ_CRASH("unexpected operand kind");
@@ -3633,16 +3657,12 @@ class AssemblerX86Shared : public AssemblerShared
     static void PatchDataWithValueCheck(CodeLocationLabel data, PatchedImmPtr newData,
                                         PatchedImmPtr expectedData) {
         // The pointer given is a pointer to *after* the data.
-        uintptr_t* ptr = ((uintptr_t*) data.raw()) - 1;
-        MOZ_ASSERT(*ptr == (uintptr_t)expectedData.value);
-        *ptr = (uintptr_t)newData.value;
+        uint8_t* ptr = data.raw() - sizeof(uintptr_t);
+        MOZ_ASSERT(mozilla::LittleEndian::readUintptr(ptr) == uintptr_t(expectedData.value));
+        mozilla::LittleEndian::writeUintptr(ptr, uintptr_t(newData.value));
     }
     static void PatchDataWithValueCheck(CodeLocationLabel data, ImmPtr newData, ImmPtr expectedData) {
         PatchDataWithValueCheck(data, PatchedImmPtr(newData.value), PatchedImmPtr(expectedData.value));
-    }
-
-    static void PatchInstructionImmediate(uint8_t* code, PatchedImmPtr imm) {
-        MOZ_CRASH("Unused.");
     }
 
     static uint32_t NopSize() {

@@ -7,7 +7,6 @@
 # Ensure symbol versions of shared library on Linux do not conflict
 # with those in libxul.
 ifeq (Linux,$(OS_TARGET))
-OS_LDFLAGS += -Wl,-version-script,symverscript
 
 symverscript: symverscript.in
 	$(call py_action,preprocessor, \
@@ -29,7 +28,7 @@ check-vanilla-allocations-aggressive:
 	$(PYTHON) $(topsrcdir)/config/check_vanilla_allocations.py --aggressive $(REAL_LIBRARY)
 
 ifeq ($(OS_ARCH),Linux)
-ifeq (,$(filter -flto,$(CFLAGS) $(CXXFLAGS) $(LDFLAGS)))
+ifeq (,$(filter -flto,$(COMPUTED_CFLAGS) $(COMPUTED_CXXFLAGS) $(COMPUTED_LDFLAGS)))
 check:: check-vanilla-allocations
 endif
 endif
@@ -70,7 +69,7 @@ install:: ../js-config.h
 #
 
 install::
-	$(call py_action,process_install_manifest,--no-remove --no-symlinks $(DESTDIR)$(includedir) $(DEPTH)/_build_manifests/install/dist_include)
+	$(call py_action,process_install_manifest,--track install_dist_include.track --no-symlinks $(DESTDIR)$(includedir) $(DEPTH)/_build_manifests/install/dist_include)
 
 #
 # END SpiderMonkey header installation
@@ -81,6 +80,8 @@ install:: js-config
 	cp $^ js$(MOZJS_MAJOR_VERSION)-config
 	$(SYSINSTALL) js$(MOZJS_MAJOR_VERSION)-config $(DESTDIR)$(bindir)
 
+# Use install_name_tool to set the install_name properly for standalone
+# installed libraries on macOS
 install:: $(REAL_LIBRARY) $(SHARED_LIBRARY) $(IMPORT_LIBRARY)
 ifneq (,$(REAL_LIBRARY))
 	$(SYSINSTALL) $(REAL_LIBRARY) $(DESTDIR)$(libdir)
@@ -88,7 +89,12 @@ ifneq (,$(REAL_LIBRARY))
 endif
 ifneq (,$(SHARED_LIBRARY))
 	$(SYSINSTALL) $(SHARED_LIBRARY) $(DESTDIR)$(libdir)
+ifeq ($(OS_ARCH),Darwin)
+	install_name_tool -id $(abspath $(libdir)/$(SHARED_LIBRARY)) $(DESTDIR)$(libdir)/$(SHARED_LIBRARY)
+endif
 endif
 ifneq (,$(IMPORT_LIBRARY))
+ifneq ($(IMPORT_LIBRARY),$(SHARED_LIBRARY))
 	$(SYSINSTALL) $(IMPORT_LIBRARY) $(DESTDIR)$(libdir)
+endif
 endif

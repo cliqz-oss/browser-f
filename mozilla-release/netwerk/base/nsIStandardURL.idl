@@ -6,6 +6,7 @@
 #include "nsIMutable.idl"
 
 interface nsIURI;
+interface nsIURIMutator;
 
 /**
  * nsIStandardURL defines the interface to an URL with the standard
@@ -13,7 +14,7 @@ interface nsIURI;
  * It supports initialization from a relative path and provides
  * some customization on how URLs are normalized.
  */
-[scriptable, uuid(babd6cca-ebe7-4329-967c-d6b9e33caa81)]
+[scriptable, builtinclass, uuid(babd6cca-ebe7-4329-967c-d6b9e33caa81)]
 interface nsIStandardURL : nsIMutable
 {
     /**
@@ -39,7 +40,11 @@ interface nsIStandardURL : nsIMutable
      * blah:///foo/bar => blah:///foo/bar
      */
     const unsigned long URLTYPE_NO_AUTHORITY    = 3;
+};
 
+[scriptable, builtinclass, uuid(fc894e98-23a1-43cd-a7fe-72876f8ea2ee)]
+interface nsIStandardURLMutator : nsISupports
+{
     /**
      * Initialize a standard URL.
      *
@@ -60,11 +65,11 @@ interface nsIStandardURL : nsIMutable
      *                         otherwise, aSpec will be resolved relative
      *                         to aBaseURI.
      */
-    void init(in unsigned long aUrlType,
-              in long aDefaultPort,
-              in AUTF8String aSpec,
-              in string aOriginCharset,
-              in nsIURI aBaseURI);
+    nsIURIMutator init(in unsigned long aUrlType,
+                       in long aDefaultPort,
+                       in AUTF8String aSpec,
+                       in string aOriginCharset,
+                       in nsIURI aBaseURI);
 
     /**
      * Set the default port.
@@ -76,5 +81,5 @@ interface nsIStandardURL : nsIMutable
      *                          matches this default, then we won't include a
      *                          port number in the canonical form of the URL.
      */
-    void setDefaultPort(in long aNewDefaultPort);
+    nsIURIMutator setDefaultPort(in long aNewDefaultPort);
 };

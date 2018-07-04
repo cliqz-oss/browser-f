@@ -34,10 +34,8 @@ const TEST_URL = "http://www.example.com/";
 const DIALOG_URL = "chrome://browser/content/places/bookmarkProperties.xul";
 const DIALOG_URL_MINIMAL_UI = "chrome://browser/content/places/bookmarkProperties2.xul";
 
-Cu.import("resource:///modules/RecentWindow.jsm");
-var win = RecentWindow.getMostRecentBrowserWindow();
-var ww = Cc["@mozilla.org/embedcomp/window-watcher;1"].
-         getService(Ci.nsIWindowWatcher);
+ChromeUtils.import("resource:///modules/BrowserWindowTracker.jsm");
+var win = BrowserWindowTracker.getTopWindow();
 
 function add_bookmark(url) {
   return PlacesUtils.bookmarks.insert({
@@ -60,7 +58,6 @@ gTests.push({
   itemType: null,
   window: null,
   _bookmark: null,
-  _itemId: null,
   _cleanShutdown: false,
 
   async setup() {
@@ -68,21 +65,18 @@ gTests.push({
     this._bookmark = await add_bookmark(TEST_URL);
     Assert.ok(this._bookmark, "Correctly added a bookmark");
 
-    this._itemId = await PlacesUtils.promiseItemId(this._bookmark.guid);
-    Assert.ok(this._itemId > 0, "Got an item id for the bookmark");
-
     // Add a tag to this bookmark.
-    PlacesUtils.tagging.tagURI(PlacesUtils._uri(TEST_URL),
+    PlacesUtils.tagging.tagURI(Services.io.newURI(TEST_URL),
                                ["testTag"]);
-    var tags = PlacesUtils.tagging.getTagsForURI(PlacesUtils._uri(TEST_URL));
+    var tags = PlacesUtils.tagging.getTagsForURI(Services.io.newURI(TEST_URL));
     Assert.equal(tags[0], "testTag", "Correctly added a tag");
   },
 
   selectNode(tree) {
-    tree.selectItems([PlacesUtils.unfiledBookmarksFolderId]);
+    tree.selectItems([PlacesUtils.bookmarks.unfiledGuid]);
     PlacesUtils.asContainer(tree.selectedNode).containerOpen = true;
-    tree.selectItems([this._itemId]);
-    Assert.equal(tree.selectedNode.itemId, this._itemId, "Bookmark has been selected");
+    tree.selectItems([this._bookmark.guid]);
+    Assert.equal(tree.selectedNode.bookmarkGuid, this._bookmark.guid, "Bookmark has been selected");
   },
 
   async run() {
@@ -110,21 +104,18 @@ gTests.push({
             self.window.document.documentElement.cancelDialog();
             break;
           case "popupshown":
-            (async function() {
-              tagsField.popup.removeEventListener("popupshown", this, true);
-              // In case this test fails the window will close, the test will fail
-              // since we didn't set _cleanShutdown.
-              var tree = tagsField.popup.tree;
-              // Focus and select first result.
-              Assert.notEqual(tree, null, "Autocomplete results tree exists");
-              Assert.equal(tree.view.rowCount, 1, "We have 1 autocomplete result");
-              tagsField.popup.selectedIndex = 0;
-              Assert.equal(tree.view.selection.count, 1,
-                 "We have selected a tag from the autocomplete popup");
-              info("About to focus the autocomplete results tree");
-              tree.focus();
-              EventUtils.synthesizeKey("VK_RETURN", {}, self.window);
-            })();
+            tagsField.popup.removeEventListener("popupshown", this, true);
+            // In case this test fails the window will close, the test will fail
+            // since we didn't set _cleanShutdown.
+            let richlistbox = tagsField.popup.richlistbox;
+            // Focus and select first result.
+            Assert.equal(richlistbox.itemCount, 1, "We have 1 autocomplete result");
+            tagsField.popup.selectedIndex = 0;
+            Assert.equal(richlistbox.selectedItems.length, 1,
+               "We have selected a tag from the autocomplete popup");
+            info("About to focus the autocomplete results");
+            richlistbox.focus();
+            EventUtils.synthesizeKey("VK_RETURN", {}, self.window);
             break;
           default:
             Assert.ok(false, "unknown event: " + aEvent.type);
@@ -150,11 +141,11 @@ gTests.push({
 
   async cleanup() {
     // Check tags have not changed.
-    var tags = PlacesUtils.tagging.getTagsForURI(PlacesUtils._uri(TEST_URL));
+    var tags = PlacesUtils.tagging.getTagsForURI(Services.io.newURI(TEST_URL));
     Assert.ok(tags[0], "testTag", "Tag on node has not changed");
 
     // Cleanup.
-    PlacesUtils.tagging.untagURI(PlacesUtils._uri(TEST_URL), ["testTag"]);
+    PlacesUtils.tagging.untagURI(Services.io.newURI(TEST_URL), ["testTag"]);
     await PlacesUtils.bookmarks.remove(this._bookmark);
     let bm = await PlacesUtils.bookmarks.fetch(this._bookmark.guid);
     Assert.ok(!bm, "should have been removed");
@@ -171,7 +162,6 @@ gTests.push({
   itemType: null,
   window: null,
   _bookmark: null,
-  _itemId: null,
   _cleanShutdown: false,
 
   async setup() {
@@ -179,21 +169,18 @@ gTests.push({
     this._bookmark = await add_bookmark(TEST_URL);
     Assert.ok(this._bookmark, "Correctly added a bookmark");
 
-    this._itemId = await PlacesUtils.promiseItemId(this._bookmark.guid);
-    Assert.ok(this._itemId > 0, "Got an item id for the bookmark");
-
     // Add a tag to this bookmark.
-    PlacesUtils.tagging.tagURI(PlacesUtils._uri(TEST_URL),
+    PlacesUtils.tagging.tagURI(Services.io.newURI(TEST_URL),
                                ["testTag"]);
-    var tags = PlacesUtils.tagging.getTagsForURI(PlacesUtils._uri(TEST_URL));
+    var tags = PlacesUtils.tagging.getTagsForURI(Services.io.newURI(TEST_URL));
     Assert.equal(tags[0], "testTag", "Correctly added a tag");
   },
 
   selectNode(tree) {
-    tree.selectItems([PlacesUtils.unfiledBookmarksFolderId]);
+    tree.selectItems([PlacesUtils.bookmarks.unfiledGuid]);
     PlacesUtils.asContainer(tree.selectedNode).containerOpen = true;
-    tree.selectItems([this._itemId]);
-    Assert.equal(tree.selectedNode.itemId, this._itemId, "Bookmark has been selected");
+    tree.selectItems([this._bookmark.guid]);
+    Assert.equal(tree.selectedNode.bookmarkGuid, this._bookmark.guid, "Bookmark has been selected");
   },
 
   async run() {
@@ -224,15 +211,14 @@ gTests.push({
             tagsField.popup.removeEventListener("popupshown", this, true);
             // In case this test fails the window will close, the test will fail
             // since we didn't set _cleanShutdown.
-            var tree = tagsField.popup.tree;
+            let richlistbox = tagsField.popup.richlistbox;
             // Focus and select first result.
-            Assert.notEqual(tree, null, "Autocomplete results tree exists");
-            Assert.ok(tree.view.rowCount, 1, "We have 1 autocomplete result");
+            Assert.equal(richlistbox.itemCount, 1, "We have 1 autocomplete result");
             tagsField.popup.selectedIndex = 0;
-            Assert.ok(tree.view.selection.count, 1,
+            Assert.equal(richlistbox.selectedItems.length, 1,
                "We have selected a tag from the autocomplete popup");
-            info("About to focus the autocomplete results tree");
-            tree.focus();
+            info("About to focus the autocomplete results");
+            richlistbox.focus();
             EventUtils.synthesizeKey("VK_ESCAPE", {}, self.window);
             break;
           default:
@@ -257,11 +243,11 @@ gTests.push({
 
   async cleanup() {
     // Check tags have not changed.
-    var tags = PlacesUtils.tagging.getTagsForURI(PlacesUtils._uri(TEST_URL));
+    var tags = PlacesUtils.tagging.getTagsForURI(Services.io.newURI(TEST_URL));
     Assert.equal(tags[0], "testTag", "Tag on node has not changed");
 
     // Cleanup.
-    PlacesUtils.tagging.untagURI(PlacesUtils._uri(TEST_URL),
+    PlacesUtils.tagging.untagURI(Services.io.newURI(TEST_URL),
                                  ["testTag"]);
     await PlacesUtils.bookmarks.remove(this._bookmark);
     let bm = await PlacesUtils.bookmarks.fetch(this._bookmark.guid);
@@ -311,7 +297,7 @@ gTests.push({
     folderTree.addEventListener("DOMAttrModified", function onDOMAttrModified(event) {
       if (event.attrName != "place")
         return;
-      folderTree.removeEventListener("DOMAttrModified", arguments.callee);
+      folderTree.removeEventListener("DOMAttrModified", onDOMAttrModified);
       executeSoon(async function() {
         await self._addObserver;
         let bookmark = await PlacesUtils.bookmarks.fetch({url: TEST_URL});
@@ -350,7 +336,7 @@ gTests.push({
     delete this._removeObserver;
     await PlacesTestUtils.promiseAsyncUpdates();
 
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
   }
 });
 
@@ -360,10 +346,6 @@ add_task(async function test_setup() {
   // This test can take some time, if we timeout too early it could run
   // in the middle of other tests, or hang them.
   requestLongerTimeout(2);
-
-  // Sanity checks.
-  Assert.ok(PlacesUtils, "PlacesUtils in context");
-  Assert.ok(PlacesUIUtils, "PlacesUIUtils in context");
 });
 
 add_task(async function test_run() {
@@ -425,7 +407,7 @@ function open_properties_dialog(test) {
     function windowObserver(aSubject, aTopic, aData) {
       if (aTopic != "domwindowopened")
         return;
-      ww.unregisterNotification(windowObserver);
+      Services.ww.unregisterNotification(windowObserver);
       let observerWindow = aSubject.QueryInterface(Ci.nsIDOMWindow);
       waitForFocus(async () => {
         // Ensure overlay is loaded
@@ -439,7 +421,7 @@ function open_properties_dialog(test) {
         }
       }, observerWindow);
     }
-    ww.registerNotification(windowObserver);
+    Services.ww.registerNotification(windowObserver);
 
     var command = null;
     switch (test.action) {

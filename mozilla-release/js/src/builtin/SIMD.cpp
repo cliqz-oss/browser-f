@@ -16,27 +16,27 @@
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/IntegerTypeTraits.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/TypeTraits.h"
 
 #include "jsapi.h"
 #include "jsfriendapi.h"
 #include "jsnum.h"
-#include "jsprf.h"
 
 #include "builtin/TypedObject.h"
 #include "jit/AtomicOperations.h"
 #include "jit/InlinableNatives.h"
-#include "js/GCAPI.h"
 #include "js/Value.h"
 
-#include "jsobjinlines.h"
+#include "vm/JSObject-inl.h"
 
 using namespace js;
 
-using mozilla::ArrayLength;
-using mozilla::IsFinite;
 using mozilla::IsNaN;
-using mozilla::FloorLog2;
-using mozilla::NumberIsInt32;
+using mozilla::EnableIf;
+using mozilla::IsIntegral;
+using mozilla::IsFloatingPoint;
+using mozilla::IsSigned;
+using mozilla::MakeUnsigned;
 
 ///////////////////////////////////////////////////////////////////////////
 // SIMD
@@ -266,8 +266,6 @@ TypedObjectMemory(HandleValue v, const JS::AutoRequireNoGC& nogc)
 static const ClassOps SimdTypeDescrClassOps = {
     nullptr, /* addProperty */
     nullptr, /* delProperty */
-    nullptr, /* getProperty */
-    nullptr, /* setProperty */
     nullptr, /* enumerate */
     nullptr, /* newEnumerate */
     nullptr, /* resolve */
@@ -531,8 +529,6 @@ SimdTypeDescr::call(JSContext* cx, unsigned argc, Value* vp)
 static const ClassOps SimdObjectClassOps = {
     nullptr, /* addProperty */
     nullptr, /* delProperty */
-    nullptr, /* getProperty */
-    nullptr, /* setProperty */
     nullptr, /* enumerate */
     nullptr, /* newEnumerate */
     SimdObject::resolve
@@ -565,11 +561,8 @@ GlobalObject::initSimdObject(JSContext* cx, Handle<GlobalObject*> global)
         return false;
 
     RootedValue globalSimdValue(cx, ObjectValue(*globalSimdObject));
-    if (!DefineProperty(cx, global, cx->names().SIMD, globalSimdValue, nullptr, nullptr,
-                        JSPROP_RESOLVING))
-    {
+    if (!DefineDataProperty(cx, global, cx->names().SIMD, globalSimdValue, JSPROP_RESOLVING))
         return false;
-    }
 
     global->setConstructor(JSProto_SIMD, globalSimdValue);
     return true;
@@ -625,8 +618,8 @@ CreateSimdType(JSContext* cx, Handle<GlobalObject*> global, HandlePropertyName s
 
     RootedValue typeValue(cx, ObjectValue(*typeDescr));
     if (!JS_DefineFunctions(cx, typeDescr, methods) ||
-        !DefineProperty(cx, globalSimdObject, stringRepr, typeValue, nullptr, nullptr,
-                        JSPROP_READONLY | JSPROP_PERMANENT | JSPROP_RESOLVING))
+        !DefineDataProperty(cx, globalSimdObject, stringRepr, typeValue,
+                            JSPROP_READONLY | JSPROP_PERMANENT | JSPROP_RESOLVING))
     {
         return false;
     }
@@ -695,9 +688,8 @@ SimdObject::resolve(JSContext* cx, JS::HandleObject obj, JS::HandleId id, bool* 
 }
 
 JSObject*
-js::InitSimdClass(JSContext* cx, HandleObject obj)
+js::InitSimdClass(JSContext* cx, Handle<GlobalObject*> global)
 {
-    Handle<GlobalObject*> global = obj.as<GlobalObject>();
     return GlobalObject::getOrCreateSimdGlobalObject(cx, global);
 }
 
@@ -730,6 +722,21 @@ FOR_EACH_SIMD(InstantiateCreateSimd_)
 #undef FOR_EACH_SIMD
 
 namespace js {
+
+namespace detail {
+
+template<typename T, typename Enable = void>
+struct MaybeMakeUnsigned {
+    using Type = T;
+};
+
+template<typename T>
+struct MaybeMakeUnsigned<T, typename EnableIf<IsIntegral<T>::value && IsSigned<T>::value>::Type> {
+    using Type = typename MakeUnsigned<T>::Type;
+};
+
+} // namespace detail
+
 // Unary SIMD operators
 template<typename T>
 struct Identity {
@@ -741,7 +748,16 @@ struct Abs {
 };
 template<typename T>
 struct Neg {
-    static T apply(T x) { return -1 * x; }
+    using MaybeUnsignedT = typename detail::MaybeMakeUnsigned<T>::Type;
+    static T apply(T x) {
+        // Prepend |1U| to force integral promotion through *unsigned* types.
+        // Otherwise when |T = uint16_t| and |int| is 32-bit, we could have
+        // |uint16_t(-1) * uint16_t(65535)| which would really be
+        // |int(65535) * int(65535)|, but as |4294836225 > 2147483647| would
+        // perform signed integer overflow.
+        // https://stackoverflow.com/questions/24795651/whats-the-best-c-way-to-multiply-unsigned-integers-modularly-safely
+        return static_cast<MaybeUnsignedT>(1U * MaybeUnsignedT(-1) * MaybeUnsignedT(x));
+    }
 };
 template<typename T>
 struct Not {
@@ -753,33 +769,40 @@ struct LogicalNot {
 };
 template<typename T>
 struct RecApprox {
+    static_assert(IsFloatingPoint<T>::value, "RecApprox only supported for floating points");
     static T apply(T x) { return 1 / x; }
 };
 template<typename T>
 struct RecSqrtApprox {
+    static_assert(IsFloatingPoint<T>::value, "RecSqrtApprox only supported for floating points");
     static T apply(T x) { return 1 / sqrt(x); }
 };
 template<typename T>
 struct Sqrt {
+    static_assert(IsFloatingPoint<T>::value, "Sqrt only supported for floating points");
     static T apply(T x) { return sqrt(x); }
 };
 
 // Binary SIMD operators
 template<typename T>
 struct Add {
-    static T apply(T l, T r) { return l + r; }
+    using MaybeUnsignedT = typename detail::MaybeMakeUnsigned<T>::Type;
+    static T apply(T l, T r) { return MaybeUnsignedT(l) + MaybeUnsignedT(r); }
 };
 template<typename T>
 struct Sub {
-    static T apply(T l, T r) { return l - r; }
+    using MaybeUnsignedT = typename detail::MaybeMakeUnsigned<T>::Type;
+    static T apply(T l, T r) { return MaybeUnsignedT(l) - MaybeUnsignedT(r); }
 };
 template<typename T>
 struct Div {
+    static_assert(IsFloatingPoint<T>::value, "Div only supported for floating points");
     static T apply(T l, T r) { return l / r; }
 };
 template<typename T>
 struct Mul {
-    static T apply(T l, T r) { return l * r; }
+    using MaybeUnsignedT = typename detail::MaybeMakeUnsigned<T>::Type;
+    static T apply(T l, T r) { return MaybeUnsignedT(l) * MaybeUnsignedT(r); }
 };
 template<typename T>
 struct Minimum {

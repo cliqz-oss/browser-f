@@ -12,10 +12,8 @@ const ACTORS_URL = CHROME_URL + "testactors.js";
 function test() {
   let gClient;
 
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-    DebuggerServer.addBrowserActors();
-  }
+  DebuggerServer.init();
+  DebuggerServer.registerAllActors();
 
   DebuggerServer.addActors(ACTORS_URL);
 
@@ -25,7 +23,7 @@ function test() {
     is(aType, "browser",
       "Root actor should identify itself as a browser.");
 
-    gClient.listTabs(aResponse => {
+    gClient.listTabs().then(aResponse => {
       let globalActor = aResponse.testGlobalActor1;
       ok(globalActor, "Found the test tab actor.");
       ok(globalActor.includes("test_one"),

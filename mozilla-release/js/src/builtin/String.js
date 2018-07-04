@@ -68,8 +68,7 @@ function String_generic_match(thisValue, regexp) {
  * A helper function implementing the logic for both String.prototype.padStart
  * and String.prototype.padEnd as described in ES7 Draft March 29, 2016
  */
-function String_pad(maxLength, fillString, padEnd = false) {
-
+function String_pad(maxLength, fillString, padEnd) {
     // Steps 1-2.
     RequireObjectCoercible(this);
     let str = ToString(this);
@@ -83,21 +82,28 @@ function String_pad(maxLength, fillString, padEnd = false) {
         return str;
 
     // Steps 6-7.
-    let filler = fillString === undefined ? " " : ToString(fillString);
+    assert(fillString !== undefined, "never called when fillString is undefined");
+    let filler = ToString(fillString);
 
     // Step 8.
     if (filler === "")
         return str;
 
+    // Throw an error if the final string length exceeds the maximum string
+    // length. Perform this check early so we can use int32 operations below.
+    if (intMaxLength > MAX_STRING_LENGTH)
+        ThrowRangeError(JSMSG_RESULTING_STRING_TOO_LARGE);
+
     // Step 9.
     let fillLen = intMaxLength - strLen;
 
     // Step 10.
+    // Perform an int32 division to ensure String_repeat is not called with a
+    // double to avoid repeated bailouts in ToInteger.
     let truncatedStringFiller = callFunction(String_repeat, filler,
-                                             fillLen / filler.length);
+                                             (fillLen / filler.length) | 0);
 
-    truncatedStringFiller += callFunction(String_substr, filler, 0,
-                                          fillLen % filler.length);
+    truncatedStringFiller += Substring(filler, 0, fillLen % filler.length);
 
     // Step 11.
     if (padEnd === true)
@@ -490,8 +496,6 @@ function String_codePointAt(pos) {
     return (first - 0xD800) * 0x400 + (second - 0xDC00) + 0x10000;
 }
 
-var collatorCache = new Record();
-
 /* ES6 20121122 draft 15.5.4.21. */
 function String_repeat(count) {
     // Steps 1-3.
@@ -505,11 +509,14 @@ function String_repeat(count) {
     if (n < 0)
         ThrowRangeError(JSMSG_NEGATIVE_REPETITION_COUNT);
 
-    if (!(n * S.length < (1 << 28)))
+    // Inverted condition to handle |Infinity * 0 = NaN| correctly.
+    if (!(n * S.length <= MAX_STRING_LENGTH))
         ThrowRangeError(JSMSG_RESULTING_STRING_TOO_LARGE);
 
     // Communicate |n|'s possible range to the compiler.
-    n = n & ((1 << 28) - 1);
+    assert((MAX_STRING_LENGTH & (MAX_STRING_LENGTH + 1)) === 0,
+           "MAX_STRING_LENGTH can be used as a bitmask");
+    n = n & MAX_STRING_LENGTH;
 
     // Steps 8-9.
     var T = "";
@@ -536,16 +543,17 @@ function String_iterator() {
 }
 
 function StringIteratorNext() {
-    if (!IsObject(this) || !IsStringIterator(this)) {
+    var obj;
+    if (!IsObject(this) || (obj = GuardToStringIterator(this)) === null) {
         return callFunction(CallStringIteratorMethodIfWrapped, this,
                             "StringIteratorNext");
     }
 
-    var S = UnsafeGetStringFromReservedSlot(this, ITERATOR_SLOT_TARGET);
+    var S = UnsafeGetStringFromReservedSlot(obj, ITERATOR_SLOT_TARGET);
     // We know that JSString::MAX_LENGTH <= INT32_MAX (and assert this in
     // SelfHostring.cpp) so our current index can never be anything other than
     // an Int32Value.
-    var index = UnsafeGetInt32FromReservedSlot(this, ITERATOR_SLOT_NEXT_INDEX);
+    var index = UnsafeGetInt32FromReservedSlot(obj, ITERATOR_SLOT_NEXT_INDEX);
     var size = S.length;
     var result = { value: undefined, done: false };
 
@@ -564,13 +572,15 @@ function StringIteratorNext() {
         }
     }
 
-    UnsafeSetReservedSlot(this, ITERATOR_SLOT_NEXT_INDEX, index + charCount);
+    UnsafeSetReservedSlot(obj, ITERATOR_SLOT_NEXT_INDEX, index + charCount);
 
     // Communicate |first|'s possible range to the compiler.
     result.value = callFunction(std_String_fromCodePoint, null, first & 0x1fffff);
 
     return result;
 }
+
+var collatorCache = new Record();
 
 /**
  * Compare this String against that String, using the locale and collation
@@ -593,8 +603,10 @@ function String_localeCompare(that) {
     if (locales === undefined && options === undefined) {
         // This cache only optimizes for the old ES5 localeCompare without
         // locales and options.
-        if (collatorCache.collator === undefined)
+        if (!IsRuntimeDefaultLocale(collatorCache.runtimeDefaultLocale)) {
             collatorCache.collator = intl_Collator(locales, options);
+            collatorCache.runtimeDefaultLocale = RuntimeDefaultLocale();
+        }
         collator = collatorCache.collator;
     } else {
         collator = intl_Collator(locales, options);
@@ -686,57 +698,53 @@ function String_toLocaleUpperCase() {
     return intl_toLocaleUpperCase(string, requestedLocale);
 }
 
-/* ES6 Draft May 22, 2014 21.1.2.4 */
-function String_static_raw(callSite, ...substitutions) {
-    // Step 1 (implicit).
-    // Step 2.
-    var numberOfSubstitutions = substitutions.length;
+// ES2018 draft rev 8fadde42cf6a9879b4ab0cb6142b31c4ee501667
+// 21.1.2.4 String.raw ( template, ...substitutions )
+function String_static_raw(callSite/*, ...substitutions*/) {
+    // Steps 1-2 (not applicable).
 
-    // Steps 3-4.
+    // Step 3.
     var cooked = ToObject(callSite);
 
-    // Steps 5-7.
+    // Step 4.
     var raw = ToObject(cooked.raw);
 
-    // Steps 8-10.
+    // Step 5.
     var literalSegments = ToLength(raw.length);
 
-    // Step 11.
-    if (literalSegments <= 0)
+    // Step 6.
+    if (literalSegments === 0)
         return "";
 
-    // Step 12.
-    var resultString = "";
+    // Special case for |String.raw `<literal>`| callers to avoid falling into
+    // the loop code below.
+    if (literalSegments === 1)
+        return ToString(raw[0]);
 
-    // Step 13.
-    var nextIndex = 0;
+    // Steps 7-9 were reordered to use the arguments object instead of a rest
+    // parameter, because the former is currently more optimized.
+    //
+    // String.raw intersperses the substitution elements between the literal
+    // segments, i.e. a substitution is added iff there are still pending
+    // literal segments. Furthermore by moving the access to |raw[0]| outside
+    // of the loop, we can use |nextIndex| to index into both, the |raw| array
+    // and the arguments object.
 
-    // Step 14.
-    while (true) {
-        // Steps a-d.
-        var nextSeg = ToString(raw[nextIndex]);
+    // Steps 7 (implicit) and 9.a-c.
+    var resultString = ToString(raw[0]);
 
-        // Step e.
-        resultString = resultString + nextSeg;
+    // Steps 8-9, 9.d, and 9.i.
+    for (var nextIndex = 1; nextIndex < literalSegments; nextIndex++) {
+        // Steps 9.e-h.
+        if (nextIndex < arguments.length)
+            resultString += ToString(arguments[nextIndex]);
 
-        // Step f.
-        if (nextIndex + 1 === literalSegments)
-            // Step f.i.
-            return resultString;
-
-        // Steps g-j.
-        var nextSub;
-        if (nextIndex < numberOfSubstitutions)
-            nextSub = ToString(substitutions[nextIndex]);
-        else
-            nextSub = "";
-
-        // Step k.
-        resultString = resultString + nextSub;
-
-        // Step l.
-        nextIndex++;
+        // Steps 9.a-c.
+        resultString += ToString(raw[nextIndex]);
     }
+
+    // Step 9.d.i.
+    return resultString;
 }
 
 /**
@@ -940,14 +948,14 @@ function String_static_trimLeft(string) {
     WarnDeprecatedStringMethod(STRING_GENERICS_TRIM_LEFT, "trimLeft");
     if (arguments.length < 1)
         ThrowTypeError(JSMSG_MISSING_FUN_ARG, 0, "String.trimLeft");
-    return callFunction(std_String_trimLeft, string);
+    return callFunction(std_String_trimStart, string);
 }
 
 function String_static_trimRight(string) {
     WarnDeprecatedStringMethod(STRING_GENERICS_TRIM_RIGHT, "trimRight");
     if (arguments.length < 1)
         ThrowTypeError(JSMSG_MISSING_FUN_ARG, 0, "String.trimRight");
-    return callFunction(std_String_trimRight, string);
+    return callFunction(std_String_trimEnd, string);
 }
 
 function String_static_toLocaleLowerCase(string) {

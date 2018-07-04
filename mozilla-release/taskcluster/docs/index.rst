@@ -22,12 +22,15 @@ check out the :doc:`how-to section <how-tos>`.
 .. toctree::
 
     taskgraph
+    mach
     loading
     transforms
     optimization
-    yaml-templates
     docker-images
     cron
+    try
     actions
+    release-promotion
+    versioncontrol
     how-tos
     reference

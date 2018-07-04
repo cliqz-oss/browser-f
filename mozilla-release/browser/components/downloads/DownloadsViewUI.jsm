@@ -9,24 +9,23 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "DownloadsViewUI",
 ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
+  Downloads: "resource://gre/modules/Downloads.jsm",
+  DownloadUtils: "resource://gre/modules/DownloadUtils.jsm",
+  DownloadsCommon: "resource:///modules/DownloadsCommon.jsm",
+  FileUtils: "resource://gre/modules/FileUtils.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm"
+});
 
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
-                                  "resource://gre/modules/Downloads.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadUtils",
-                                  "resource://gre/modules/DownloadUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadsCommon",
-                                  "resource:///modules/DownloadsCommon.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-
-this.DownloadsViewUI = {
+var DownloadsViewUI = {
   /**
    * Returns true if the given string is the name of a command that can be
    * handled by the Downloads user interface, including standard commands.
@@ -34,6 +33,23 @@ this.DownloadsViewUI = {
   isCommandName(name) {
     return name.startsWith("cmd_") || name.startsWith("downloadsCmd_");
   },
+};
+
+this.DownloadsViewUI.BaseView = class {
+  canClearDownloads(nodeContainer) {
+    // Downloads can be cleared if there's at least one removable download in
+    // the list (either a history download or a completed session download).
+    // Because history downloads are always removable and are listed after the
+    // session downloads, check from bottom to top.
+    for (let elt = nodeContainer.lastChild; elt; elt = elt.previousSibling) {
+      // Stopped, paused, and failed downloads with partial data are removed.
+      let download = elt._shell.download;
+      if (download.stopped && !(download.canceled && download.hasPartialData)) {
+        return true;
+      }
+    }
+    return false;
+  }
 };
 
 /**
@@ -49,7 +65,7 @@ this.DownloadsViewUI = {
  * HistoryDownloadElementShell and the DownloadsViewItem for the panel. The
  * history view may use a HistoryDownload object in place of a Download object.
  */
-this.DownloadsViewUI.DownloadElementShell = function() {}
+this.DownloadsViewUI.DownloadElementShell = function() {};
 
 this.DownloadsViewUI.DownloadElementShell.prototype = {
   /**
@@ -86,6 +102,32 @@ this.DownloadsViewUI.DownloadElementShell.prototype = {
       return this.download.source.url;
     }
     return OS.Path.basename(this.download.target.path);
+  },
+
+  /**
+   * The user-facing label for the size (if any) of the download. The return value
+   * is an object 'sizeStrings' with 2 strings:
+   *   1. stateLabel - The size with the units (e.g. "1.5 MB").
+   *   2. status - The status of the download (e.g. "Completed");
+   */
+  get sizeStrings() {
+    let s = DownloadsCommon.strings;
+    let sizeStrings = {};
+
+    if (this.download.target.size !== undefined) {
+      let [size, unit] = DownloadUtils.convertByteUnits(this.download.target.size);
+      sizeStrings.stateLabel = s.sizeWithUnits(size, unit);
+      sizeStrings.status = s.statusSeparator(s.stateCompleted, sizeStrings.stateLabel);
+    } else {
+      // History downloads may not have a size defined.
+      sizeStrings.stateLabel = s.sizeUnknown;
+      sizeStrings.status = s.stateCompleted;
+    }
+    return sizeStrings;
+  },
+
+  get browserWindow() {
+    return BrowserWindowTracker.getTopWindow();
   },
 
   /**
@@ -220,17 +262,10 @@ this.DownloadsViewUI.DownloadElementShell.prototype = {
         stateLabel = s.fileMovedOrMissing;
         hoverStatus = stateLabel;
       } else if (this.download.succeeded) {
-        // For completed downloads, show the file size (e.g. "1.5 MB").
-        if (this.download.target.size !== undefined) {
-          let [size, unit] =
-            DownloadUtils.convertByteUnits(this.download.target.size);
-          stateLabel = s.sizeWithUnits(size, unit);
-          status = s.statusSeparator(s.stateCompleted, stateLabel);
-        } else {
-          // History downloads may not have a size defined.
-          stateLabel = s.sizeUnknown;
-          status = s.stateCompleted;
-        }
+        // For completed downloads, show the file size
+        let sizeStrings = this.sizeStrings;
+        stateLabel = sizeStrings.stateLabel;
+        status = sizeStrings.status;
         hoverStatus = status;
       } else if (this.download.canceled) {
         stateLabel = s.stateCanceled;
@@ -364,8 +399,34 @@ this.DownloadsViewUI.DownloadElementShell.prototype = {
       case "downloadsCmd_unblock":
       case "downloadsCmd_unblockAndOpen":
         return this.download.hasBlockedData;
+      case "downloadsCmd_cancel":
+        return this.download.hasPartialData || !this.download.stopped;
+      case "downloadsCmd_open":
+        // This property is false if the download did not succeed.
+        return this.download.target.exists;
+      case "downloadsCmd_show":
+        // TODO: Bug 827010 - Handle part-file asynchronously.
+        if (this.download.target.partFilePath) {
+          let partFile = new FileUtils.File(this.download.target.partFilePath);
+          if (partFile.exists()) {
+            return true;
+          }
+        }
+
+        // This property is false if the download did not succeed.
+        return this.download.target.exists;
+      case "downloadsCmd_delete":
+      case "cmd_delete":
+        // We don't want in-progress downloads to be removed accidentally.
+        return this.download.stopped;
     }
-    return false;
+    return DownloadsViewUI.isCommandName(aCommand) && !!this[aCommand];
+  },
+
+  doCommand(aCommand) {
+    if (DownloadsViewUI.isCommandName(aCommand)) {
+      this[aCommand]();
+    }
   },
 
   downloadsCmd_cancel() {
@@ -374,9 +435,17 @@ this.DownloadsViewUI.DownloadElementShell.prototype = {
     this.download.removePartialData().catch(Cu.reportError);
   },
 
-  downloadsCmd_retry() {
-    // Errors when retrying are already reported as download failures.
-    this.download.start().catch(() => {});
+  downloadsCmd_confirmBlock() {
+    this.download.confirmBlock().catch(Cu.reportError);
+  },
+
+  downloadsCmd_open() {
+    let file = new FileUtils.File(this.download.target.path);
+    DownloadsCommon.openDownloadedFile(file, null, this.element.ownerGlobal);
+  },
+
+  downloadsCmd_openReferrer() {
+    this.element.ownerGlobal.openURL(this.download.source.referrer);
   },
 
   downloadsCmd_pauseResume() {
@@ -387,7 +456,47 @@ this.DownloadsViewUI.DownloadElementShell.prototype = {
     }
   },
 
-  downloadsCmd_confirmBlock() {
-    this.download.confirmBlock().catch(Cu.reportError);
+  downloadsCmd_show() {
+    let file = new FileUtils.File(this.download.target.path);
+    DownloadsCommon.showDownloadedFile(file);
+  },
+
+  downloadsCmd_retry() {
+    if (this.download.start) {
+      // Errors when retrying are already reported as download failures.
+      this.download.start().catch(() => {});
+      return;
+    }
+
+    let window = this.browserWindow || this.element.ownerGlobal;
+    let document = window.document;
+
+    // Do not suggest a file name if we don't know the original target.
+    let targetPath = this.download.target.path ?
+                     OS.Path.basename(this.download.target.path) : null;
+    window.DownloadURL(this.download.source.url, targetPath, document);
+  },
+
+  downloadsCmd_delete() {
+    // Alias for the 'cmd_delete' command, because it may clash with another
+    // controller which causes unexpected behavior as different codepaths claim
+    // ownership.
+    this.cmd_delete();
+  },
+
+  cmd_delete() {
+    (async () => {
+      // Remove the associated history element first, if any, so that the views
+      // that combine history and session downloads won't resurrect the history
+      // download into the view just before it is deleted permanently.
+      try {
+        await PlacesUtils.history.remove(this.download.source.url);
+      } catch (ex) {
+        Cu.reportError(ex);
+      }
+      let list = await Downloads.getList(Downloads.ALL);
+      await list.remove(this.download);
+      await this.download.finalize(true);
+    })().catch(Cu.reportError);
   },
 };

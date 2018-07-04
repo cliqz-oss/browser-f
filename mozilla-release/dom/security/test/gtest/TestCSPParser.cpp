@@ -9,32 +9,12 @@
 #include <string.h>
 #include <stdlib.h>
 
-#ifndef MOZILLA_INTERNAL_API
-// some of the includes make use of internal string types
-#define nsAString_h___
-#define nsString_h___
-#define nsStringFwd_h___
-#define nsReadableUtils_h___
-class nsACString;
-class nsAString;
-class nsString;
-class nsCString;
-class nsXPIDLString;
-template<class T> class nsReadingIterator;
-#endif
-
 #include "nsIContentSecurityPolicy.h"
 #include "nsNetUtil.h"
-#include "nsIScriptSecurityManager.h"
 #include "mozilla/dom/nsCSPContext.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
-
-#ifndef MOZILLA_INTERNAL_API
-#undef nsString_h___
-#undef nsAString_h___
-#undef nsReadableUtils_h___
-#endif
+#include "nsStringFwd.h"
 
 /*
  * Testing the parser is non trivial, especially since we can not call
@@ -92,9 +72,6 @@ nsresult runTest(uint32_t aExpectedPolicyCount, // this should be 0 for policies
                  const char* aExpectedResult) {
 
   nsresult rv;
-  nsCOMPtr<nsIScriptSecurityManager> secman =
-    do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
 
   // we init the csp with http://www.selfuri.com
   nsCOMPtr<nsIURI> selfURI;
@@ -102,10 +79,10 @@ nsresult runTest(uint32_t aExpectedPolicyCount, // this should be 0 for policies
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIPrincipal> selfURIPrincipal;
-  // Can't use BasePrincipal::CreateCodebasePrincipal here
-  // because the symbol is not visible here
-  rv = secman->GetCodebasePrincipal(selfURI, getter_AddRefs(selfURIPrincipal));
-  NS_ENSURE_SUCCESS(rv, rv);
+  mozilla::OriginAttributes attrs;
+  selfURIPrincipal =
+    mozilla::BasePrincipal::CreateCodebasePrincipal(selfURI, attrs);
+  NS_ENSURE_TRUE(selfURIPrincipal, NS_ERROR_FAILURE);
 
   // create a CSP object
   nsCOMPtr<nsIContentSecurityPolicy> csp =
@@ -242,6 +219,10 @@ TEST(CSPParser, Directives)
       "script-src 'nonce-foo' 'strict-dynamic' 'unsafe-inline' https:" },
     { "default-src 'sha256-siVR8' 'strict-dynamic' 'unsafe-inline' https:  ",
       "default-src 'sha256-siVR8' 'unsafe-inline' https:" },
+    { "worker-src https://example.com",
+      "worker-src https://example.com" },
+    { "worker-src http://worker.com; frame-src http://frame.com; child-src http://child.com",
+      "worker-src http://worker.com; frame-src http://frame.com; child-src http://child.com" },
   };
 
   uint32_t policyCount = sizeof(policies) / sizeof(PolicyTest);
@@ -821,6 +802,8 @@ TEST(CSPParser, GoodGeneratedPolicies)
       "frame-ancestors http://a.b.c.d.e.f.g.h.i.j.k.l.x.com" },
     { "frame-ancestors https://self.com:34",
       "frame-ancestors https://self.com:34" },
+    { "frame-ancestors http://sampleuser:samplepass@example.com",
+      "frame-ancestors 'none'" },
     { "default-src 'none'; frame-ancestors 'self'",
       "default-src 'none'; frame-ancestors http://www.selfuri.com" },
     { "frame-ancestors http://self:80",
@@ -1151,4 +1134,3 @@ TEST(CSPParser, FuzzyPoliciesIncDirLimASCII)
   }
 }
 #endif
-

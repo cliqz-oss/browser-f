@@ -7,10 +7,80 @@
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/dom/EventTargetBinding.h"
+#include "mozilla/dom/ConstructibleEventTarget.h"
+#include "nsIGlobalObject.h"
 #include "nsThreadUtils.h"
 
 namespace mozilla {
 namespace dom {
+
+/* static */
+already_AddRefed<EventTarget>
+EventTarget::Constructor(const GlobalObject& aGlobal, ErrorResult& aRv)
+{
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+  if (!global) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return nullptr;
+  }
+  RefPtr<EventTarget> target = new ConstructibleEventTarget(global);
+  return target.forget();
+}
+
+bool
+EventTarget::ComputeWantsUntrusted(const Nullable<bool>& aWantsUntrusted,
+                                   ErrorResult& aRv)
+{
+  if (!aWantsUntrusted.IsNull()) {
+    return aWantsUntrusted.Value();
+  }
+
+  bool defaultWantsUntrusted = ComputeDefaultWantsUntrusted(aRv);
+  if (aRv.Failed()) {
+    return false;
+  }
+
+  return defaultWantsUntrusted;
+}
+
+void
+EventTarget::AddEventListener(const nsAString& aType,
+                              EventListener* aCallback,
+                              const AddEventListenerOptionsOrBoolean& aOptions,
+                              const Nullable<bool>& aWantsUntrusted,
+                              ErrorResult& aRv)
+{
+  bool wantsUntrusted = ComputeWantsUntrusted(aWantsUntrusted, aRv);
+  if (aRv.Failed()) {
+    return;
+  }
+
+  EventListenerManager* elm = GetOrCreateListenerManager();
+  if (!elm) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return;
+  }
+
+  elm->AddEventListener(aType, aCallback, aOptions, wantsUntrusted);
+}
+
+nsresult
+EventTarget::AddEventListener(const nsAString& aType,
+                              nsIDOMEventListener* aListener,
+                              bool aUseCapture,
+                              const Nullable<bool>& aWantsUntrusted)
+{
+  ErrorResult rv;
+  bool wantsUntrusted = ComputeWantsUntrusted(aWantsUntrusted, rv);
+  if (rv.Failed()) {
+    return rv.StealNSResult();
+  }
+
+  EventListenerManager* elm = GetOrCreateListenerManager();
+  NS_ENSURE_STATE(elm);
+  elm->AddEventListener(aType, aListener, aUseCapture, wantsUntrusted);
+  return NS_OK;
+}
 
 void
 EventTarget::RemoveEventListener(const nsAString& aType,
@@ -24,8 +94,56 @@ EventTarget::RemoveEventListener(const nsAString& aType,
   }
 }
 
+void
+EventTarget::RemoveEventListener(const nsAString& aType,
+                                 nsIDOMEventListener* aListener,
+                                 bool aUseCapture)
+{
+  EventListenerManager* elm = GetExistingListenerManager();
+  if (elm) {
+    elm->RemoveEventListener(aType, aListener, aUseCapture);
+  }
+}
+
+nsresult
+EventTarget::AddSystemEventListener(const nsAString& aType,
+                                    nsIDOMEventListener* aListener,
+                                    bool aUseCapture,
+                                    const Nullable<bool>& aWantsUntrusted)
+{
+  ErrorResult rv;
+  bool wantsUntrusted = ComputeWantsUntrusted(aWantsUntrusted, rv);
+  if (rv.Failed()) {
+    return rv.StealNSResult();
+  }
+
+  EventListenerManager* elm = GetOrCreateListenerManager();
+  NS_ENSURE_STATE(elm);
+
+  EventListenerFlags flags;
+  flags.mInSystemGroup = true;
+  flags.mCapture = aUseCapture;
+  flags.mAllowUntrustedEvents = wantsUntrusted;
+  elm->AddEventListenerByType(aListener, aType, flags);
+  return NS_OK;
+}
+
+void
+EventTarget::RemoveSystemEventListener(const nsAString& aType,
+                                       nsIDOMEventListener *aListener,
+                                       bool aUseCapture)
+{
+  EventListenerManager* elm = GetExistingListenerManager();
+  if (elm) {
+    EventListenerFlags flags;
+    flags.mInSystemGroup = true;
+    flags.mCapture = aUseCapture;
+    elm->RemoveEventListenerByType(aListener, aType, flags);
+  }
+}
+
 EventHandlerNonNull*
-EventTarget::GetEventHandler(nsIAtom* aType, const nsAString& aTypeString)
+EventTarget::GetEventHandler(nsAtom* aType, const nsAString& aTypeString)
 {
   EventListenerManager* elm = GetExistingListenerManager();
   return elm ? elm->GetEventHandler(aType, aTypeString) : nullptr;
@@ -41,7 +159,7 @@ EventTarget::SetEventHandler(const nsAString& aType,
     return;
   }
   if (NS_IsMainThread()) {
-    nsCOMPtr<nsIAtom> type = NS_Atomize(aType);
+    RefPtr<nsAtom> type = NS_Atomize(aType);
     SetEventHandler(type, EmptyString(), aHandler);
     return;
   }
@@ -51,17 +169,24 @@ EventTarget::SetEventHandler(const nsAString& aType,
 }
 
 void
-EventTarget::SetEventHandler(nsIAtom* aType, const nsAString& aTypeString,
+EventTarget::SetEventHandler(nsAtom* aType, const nsAString& aTypeString,
                              EventHandlerNonNull* aHandler)
 {
   GetOrCreateListenerManager()->SetEventHandler(aType, aTypeString, aHandler);
 }
 
 bool
-EventTarget::HasUntrustedOrNonSystemGroupKeyEventListeners() const
+EventTarget::HasNonSystemGroupListenersForUntrustedKeyEvents() const
 {
   EventListenerManager* elm = GetExistingListenerManager();
-  return elm && elm->HasUntrustedOrNonSystemGroupKeyEventListeners();
+  return elm && elm->HasNonSystemGroupListenersForUntrustedKeyEvents();
+}
+
+bool
+EventTarget::HasNonPassiveNonSystemGroupListenersForUntrustedKeyEvents() const
+{
+  EventListenerManager* elm = GetExistingListenerManager();
+  return elm && elm->HasNonPassiveNonSystemGroupListenersForUntrustedKeyEvents();
 }
 
 bool
@@ -71,14 +196,20 @@ EventTarget::IsApzAware() const
   return elm && elm->HasApzAwareListeners();
 }
 
-bool
-EventTarget::DispatchEvent(Event& aEvent,
-                           CallerType aCallerType,
-                           ErrorResult& aRv)
+void
+EventTarget::DispatchEvent(Event& aEvent)
 {
-  bool result = false;
-  aRv = DispatchEvent(&aEvent, &result);
-  return !aEvent.DefaultPrevented(aCallerType);
+  // The caller type doesn't really matter if we don't care about the
+  // return value, but let's be safe and pass NonSystem.
+  Unused << DispatchEvent(aEvent, CallerType::NonSystem, IgnoreErrors());
+}
+
+void
+EventTarget::DispatchEvent(Event& aEvent, ErrorResult& aRv)
+{
+  // The caller type doesn't really matter if we don't care about the
+  // return value, but let's be safe and pass NonSystem.
+  Unused << DispatchEvent(aEvent, CallerType::NonSystem, IgnoreErrors());
 }
 
 } // namespace dom

@@ -16,15 +16,14 @@
 #else
 #include <unistd.h>
 #endif
-
 #include <stdarg.h>
 
-#include "jsfun.h"
-#include "jsobj.h"
-#include "jsscript.h"
+#include "vm/JSFunction.h"
+#include "vm/JSObject.h"
+#include "vm/JSScript.h"
 
-#include "jscompartmentinlines.h"
-#include "jsobjinlines.h"
+#include "vm/JSCompartment-inl.h"
+#include "vm/JSObject-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -56,14 +55,18 @@ CacheIRSpewer::~CacheIRSpewer()
 #endif
 
 bool
-CacheIRSpewer::init()
+CacheIRSpewer::init(const char* filename)
 {
     if (enabled())
         return true;
 
     char name[256];
     uint32_t pid = getpid();
-    SprintfLiteral(name, JIT_SPEW_DIR "/cacheir%" PRIu32 ".json", pid);
+    // Default to JIT_SPEW_DIR/cacheir${pid}.json
+    if (filename[0] == '1')
+        SprintfLiteral(name, JIT_SPEW_DIR "/cacheir%" PRIu32 ".json", pid);
+    else
+        SprintfLiteral(name, "%s%" PRIu32 ".json", filename, pid);
 
     if (!output.init(name))
         return false;
@@ -74,14 +77,14 @@ CacheIRSpewer::init()
 }
 
 void
-CacheIRSpewer::beginCache(LockGuard<Mutex>&, const IRGenerator& gen)
+CacheIRSpewer::beginCache(const IRGenerator& gen)
 {
     MOZ_ASSERT(enabled());
     JSONPrinter& j = json.ref();
-
+    const char* filename = gen.script_->filename();
     j.beginObject();
     j.property("name", CacheKindNames[uint8_t(gen.cacheKind_)]);
-    j.property("file", gen.script_->filename());
+    j.property("file", filename ? filename : "null");
     j.property("mode", int(gen.mode_));
     if (jsbytecode* pc = gen.pc_) {
         unsigned column;
@@ -122,7 +125,7 @@ QuoteString(GenericPrinter& out, JSLinearString* str)
 }
 
 void
-CacheIRSpewer::valueProperty(LockGuard<Mutex>&, const char* name, const Value& v)
+CacheIRSpewer::valueProperty(const char* name, const Value& v)
 {
     MOZ_ASSERT(enabled());
     JSONPrinter& j = json.ref();
@@ -154,14 +157,14 @@ CacheIRSpewer::valueProperty(LockGuard<Mutex>&, const char* name, const Value& v
 }
 
 void
-CacheIRSpewer::attached(LockGuard<Mutex>&, const char* name)
+CacheIRSpewer::attached(const char* name)
 {
     MOZ_ASSERT(enabled());
     json.ref().property("attached", name);
 }
 
 void
-CacheIRSpewer::endCache(LockGuard<Mutex>&)
+CacheIRSpewer::endCache()
 {
     MOZ_ASSERT(enabled());
     json.ref().endObject();

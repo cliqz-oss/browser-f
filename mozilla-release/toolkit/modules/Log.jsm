@@ -4,9 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Log"];
-
-const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
+var EXPORTED_SYMBOLS = ["Log"];
 
 const ONE_BYTE = 1;
 const ONE_KILOBYTE = 1024 * ONE_BYTE;
@@ -15,11 +13,13 @@ const ONE_MEGABYTE = 1024 * ONE_KILOBYTE;
 const STREAM_SEGMENT_SIZE = 4096;
 const PR_UINT32_MAX = 0xffffffff;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Task",
-                                  "resource://gre/modules/Task.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  AndroidLog: "resource://gre/modules/AndroidLog.jsm", // Only used on Android.
+  OS: "resource://gre/modules/osfile.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+  Task: "resource://gre/modules/Task.jsm",
+});
 const INTERNAL_FIELDS = new Set(["_level", "_message", "_time", "_namespace"]);
 
 
@@ -31,7 +31,7 @@ function dumpError(text) {
   Cu.reportError(text);
 }
 
-this.Log = {
+var Log = {
   Level: {
     Fatal:  70,
     Error:  60,
@@ -86,6 +86,7 @@ this.Log = {
   DumpAppender,
   ConsoleAppender,
   StorageStreamAppender,
+  AndroidAppender,
 
   FileAppender,
   BoundedFileAppender,
@@ -187,7 +188,7 @@ this.Log = {
         }
         frame = frame.caller;
       }
-      return "Stack trace: " + output.join(" < ");
+      return "Stack trace: " + output.join("\n");
     }
     // Standard JS exception
     if (e.stack) {
@@ -196,7 +197,7 @@ this.Log = {
       if (stack.includes("/Task.jsm:"))
         stack = Task.Debugging.generateReadableStack(stack);
       return "JS Stack trace: " + stack.trim()
-        .replace(/\n/g, " < ").replace(/@[^@]*?([^\/\.]+\.\w+:)/g, "@$1");
+        .replace(/@[^@]*?([^\/\.]+\.\w+:)/g, "@$1");
     }
 
     return "No traceback available";
@@ -244,7 +245,7 @@ LogMessage.prototype = {
     if (this.params) {
       msg += " " + JSON.stringify(this.params);
     }
-    return msg + "]"
+    return msg + "]";
   }
 };
 
@@ -263,12 +264,33 @@ function Logger(name, repository) {
   this._repository = repository;
 }
 Logger.prototype = {
+  _levelPrefName: null,
+  _levelPrefValue: null,
+
   get name() {
     return this._name;
   },
 
   _level: null,
   get level() {
+    if (this._levelPrefName) {
+      // We've been asked to use a preference to configure the logs. If the
+      // pref has a value we use it, otherwise we continue to use the parent.
+      const lpv = this._levelPrefValue;
+      if (lpv) {
+        const levelValue = Log.Level[lpv];
+        if (levelValue) {
+          // stash it in _level just in case a future value of the pref is
+          // invalid, in which case we end up continuing to use this value.
+          this._level = levelValue;
+          return levelValue;
+        }
+      } else {
+        // in case the pref has transitioned from a value to no value, we reset
+        // this._level and fall through to using the parent.
+        this._level = null;
+      }
+    }
     if (this._level != null)
       return this._level;
     if (this.parent)
@@ -277,6 +299,15 @@ Logger.prototype = {
     return Log.Level.All;
   },
   set level(level) {
+    if (this._levelPrefName) {
+      // I guess we could honor this by nuking this._levelPrefValue, but it
+      // almost certainly implies confusion, so we'll warn and ignore.
+      dumpError(`Log warning: The log '${this.name}' is configured to use ` +
+                `the preference '${this._levelPrefName}' - you must adjust ` +
+                `the level by setting this preference, not by using the ` +
+                `level setter`);
+      return;
+    }
     this._level = level;
   },
 
@@ -300,10 +331,25 @@ Logger.prototype = {
     this.updateAppenders();
   },
 
+  manageLevelFromPref(prefName) {
+    if (prefName == this._levelPrefName) {
+      // We've already configured this log with an observer for that pref.
+      return;
+    }
+    if (this._levelPrefName) {
+      dumpError(`The log '${this.name}' is already configured with the ` +
+                `preference '${this._levelPrefName}' - ignoring request to ` +
+                `also use the preference '${prefName}'`);
+      return;
+    }
+    this._levelPrefName = prefName;
+    XPCOMUtils.defineLazyPreferenceGetter(this, "_levelPrefValue", prefName);
+  },
+
   updateAppenders: function updateAppenders() {
     if (this._parent) {
       let notOwnAppenders = this._parent.appenders.filter(function(appender) {
-        return this.ownAppenders.indexOf(appender) == -1;
+        return !this.ownAppenders.includes(appender);
       }, this);
       this.appenders = notOwnAppenders.concat(this.ownAppenders);
     } else {
@@ -317,7 +363,7 @@ Logger.prototype = {
   },
 
   addAppender: function Logger_addAppender(appender) {
-    if (this.ownAppenders.indexOf(appender) != -1) {
+    if (this.ownAppenders.includes(appender)) {
       return;
     }
     this.ownAppenders.push(appender);
@@ -372,6 +418,36 @@ Logger.prototype = {
     this.log(level, params._message, params);
   },
 
+  _unpackTemplateLiteral(string, params) {
+    if (!Array.isArray(params)) {
+      // Regular log() call.
+      return [string, params];
+    }
+
+    if (!Array.isArray(string)) {
+      // Not using template literal. However params was packed into an array by
+      // the this.[level] call, so we need to unpack it here.
+      return [string, params[0]];
+    }
+
+    // We're using template literal format (logger.warn `foo ${bar}`). Turn the
+    // template strings into one string containing "${0}"..."${n}" tokens, and
+    // feed it to the basic formatter. The formatter will treat the numbers as
+    // indices into the params array, and convert the tokens to the params.
+
+    if (!params.length) {
+      // No params; we need to set params to undefined, so the formatter
+      // doesn't try to output the params array.
+      return [string[0], undefined];
+    }
+
+    let concat = string[0];
+    for (let i = 0; i < params.length; i++) {
+      concat += `\${${i}}${string[i + 1]}`;
+    }
+    return [concat, params];
+  },
+
   log(level, string, params) {
     if (this.level > level)
       return;
@@ -385,31 +461,32 @@ Logger.prototype = {
         continue;
       }
       if (!message) {
+        [string, params] = this._unpackTemplateLiteral(string, params);
         message = new LogMessage(this._name, level, string, params);
       }
       appender.append(message);
     }
   },
 
-  fatal(string, params) {
+  fatal(string, ...params) {
     this.log(Log.Level.Fatal, string, params);
   },
-  error(string, params) {
+  error(string, ...params) {
     this.log(Log.Level.Error, string, params);
   },
-  warn(string, params) {
+  warn(string, ...params) {
     this.log(Log.Level.Warn, string, params);
   },
-  info(string, params) {
+  info(string, ...params) {
     this.log(Log.Level.Info, string, params);
   },
-  config(string, params) {
+  config(string, ...params) {
     this.log(Log.Level.Config, string, params);
   },
-  debug(string, params) {
+  debug(string, ...params) {
     this.log(Log.Level.Debug, string, params);
   },
-  trace(string, params) {
+  trace(string, ...params) {
     this.log(Log.Level.Trace, string, params);
   }
 };
@@ -502,7 +579,16 @@ LoggerRepository.prototype = {
     let log = this.getLogger(name);
 
     let proxy = Object.create(log);
-    proxy.log = (level, string, params) => log.log(level, prefix + string, params);
+    proxy.log = (level, string, params) => {
+      if (Array.isArray(string) && Array.isArray(params)) {
+        // Template literal.
+        // We cannot change the original array, so create a new one.
+        string = [prefix + string[0]].concat(string.slice(1));
+      } else {
+        string = prefix + string; // Regular string.
+      }
+      return log.log(level, string, params);
+    };
     return proxy;
   },
 };
@@ -551,7 +637,7 @@ BasicFormatter.prototype = {
       // have we successfully substituted any parameters into the message?
       // in the log message
       let subDone = false;
-      let regex = /\$\{(\S*)\}/g;
+      let regex = /\$\{(\S*?)\}/g;
       let textParts = [];
       if (message.message) {
         textParts.push(message.message.replace(regex, (_, sub) => {
@@ -629,7 +715,22 @@ StructuredFormatter.prototype = {
 
     return JSON.stringify(output);
   }
+};
+
+/**
+ * A formatter that does not prepend time/name/level information to messages,
+ * because those fields are logged separately when using the Android logger.
+ */
+function AndroidFormatter() {
+  BasicFormatter.call(this);
 }
+AndroidFormatter.prototype = Object.freeze({
+  __proto__: BasicFormatter.prototype,
+
+  format(message) {
+    return this.formatText(message);
+  },
+});
 
 /**
  * Test an object to see if it is a Mozilla JS Error.
@@ -646,7 +747,7 @@ function isError(aObj) {
  */
 
 function ParameterFormatter() {
-  this._name = "ParameterFormatter"
+  this._name = "ParameterFormatter";
 }
 ParameterFormatter.prototype = {
   format(ob) {
@@ -685,10 +786,10 @@ ParameterFormatter.prototype = {
     try {
       return "" + ob;
     } catch (_) {
-      return "[object]"
+      return "[object]";
     }
   }
-}
+};
 
 /*
  * Appenders
@@ -757,8 +858,7 @@ ConsoleAppender.prototype = {
   },
 
   doAppend: function CApp_doAppend(formatted) {
-    Cc["@mozilla.org/consoleservice;1"].
-      getService(Ci.nsIConsoleService).logStringMessage(formatted);
+    Services.console.logStringMessage(formatted);
   }
 };
 
@@ -962,4 +1062,39 @@ BoundedFileAppender.prototype = {
       return OS.File.remove(this._path);
     });
   }
+};
+
+/*
+ * AndroidAppender
+ * Logs to Android logcat using AndroidLog.jsm
+ */
+function AndroidAppender(aFormatter) {
+  Appender.call(this, aFormatter || new AndroidFormatter());
+  this._name = "AndroidAppender";
+}
+AndroidAppender.prototype = {
+  __proto__: Appender.prototype,
+
+  // Map log level to AndroidLog.foo method.
+  _mapping: {
+    [Log.Level.Fatal]:  "e",
+    [Log.Level.Error]:  "e",
+    [Log.Level.Warn]:   "w",
+    [Log.Level.Info]:   "i",
+    [Log.Level.Config]: "d",
+    [Log.Level.Debug]:  "d",
+    [Log.Level.Trace]:  "v",
+  },
+
+  append(aMessage) {
+    if (!aMessage) {
+      return;
+    }
+
+    // AndroidLog.jsm always prepends "Gecko" to the tag, so we strip any
+    // leading "Gecko" here. Also strip dots to save space.
+    const tag = aMessage.loggerName.replace(/^Gecko|\./g, "");
+    const msg = this._formatter.format(aMessage);
+    AndroidLog[this._mapping[aMessage.level]](tag, msg);
+  },
 };

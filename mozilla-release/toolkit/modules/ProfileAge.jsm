@@ -4,20 +4,18 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ProfileAge"];
+var EXPORTED_SYMBOLS = ["ProfileAge"];
 
-const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/osfile.jsm")
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
 
 /**
  * Profile access to times.json (eg, creation/reset time).
  * This is separate from the provider to simplify testing and enable extraction
  * to a shared location in the future.
  */
-this.ProfileAge = function(profile, log) {
+var ProfileAge = function(profile, log) {
   this.profilePath = profile || OS.Constants.Path.profileDir;
   if (!this.profilePath) {
     throw new Error("No profile directory.");
@@ -26,7 +24,7 @@ this.ProfileAge = function(profile, log) {
     log = Log.repository.getLogger("Toolkit.ProfileAge");
   }
   this._log = log;
-}
+};
 this.ProfileAge.prototype = {
   /**
    * There are three ways we can get our creation time:
@@ -203,4 +201,4 @@ this.ProfileAge.prototype = {
       times => times.reset
     );
   },
-}
+};

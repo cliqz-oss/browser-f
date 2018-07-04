@@ -1,15 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-"use strict"
+"use strict";
 
-/*globals MessageLoop */
+/* globals MessageLoop */
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["DelayedInit"];
 
-this.EXPORTED_SYMBOLS = ["DelayedInit"];
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "MessageLoop",
                                    "@mozilla.org/message-loop;1",
@@ -49,8 +47,14 @@ XPCOMUtils.defineLazyServiceGetter(this, "MessageLoop",
  *   InitLater(() => Bar.init(), this, "Bar");
  */
 var DelayedInit = {
-  schedule: function (fn, object, name, maxWait) {
+  schedule: function(fn, object, name, maxWait) {
     return Impl.scheduleInit(fn, object, name, maxWait);
+  },
+
+  scheduleList: function(fns, maxWait) {
+    for (let fn of fns) {
+      Impl.scheduleInit(fn, null, null, maxWait);
+    }
   },
 };
 
@@ -61,7 +65,7 @@ const MAX_IDLE_RUN_MS = 50;
 var Impl = {
   pendingInits: [],
 
-  onIdle: function () {
+  onIdle: function() {
     let startTime = Cu.now();
     let time = startTime;
     let nextDue;
@@ -92,12 +96,12 @@ var Impl = {
     }
   },
 
-  addPendingInit: function (fn, wait) {
+  addPendingInit: function(fn, wait) {
     let init = {
       fn: fn,
       due: Cu.now() + wait,
       complete: false,
-      maybeInit: function () {
+      maybeInit: function() {
         if (this.complete) {
           return false;
         }
@@ -116,7 +120,7 @@ var Impl = {
     return init;
   },
 
-  scheduleInit: function (fn, object, name, wait) {
+  scheduleInit: function(fn, object, name, wait) {
     let init = this.addPendingInit(fn, wait);
 
     if (!object || !name) {
@@ -156,7 +160,7 @@ var Impl = {
         }
         return prop.value;
       },
-      set: function (newVal) {
+      set: function(newVal) {
         init.maybeInit();
 
         // Since our initializer already ran,

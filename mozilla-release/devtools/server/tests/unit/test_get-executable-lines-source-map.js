@@ -22,7 +22,7 @@ function run_test() {
     attachTestTabAndResume(
       gClient,
       "test-get-executable-lines",
-      function (response, tabClient, threadClient) {
+      function(response, tabClient, threadClient) {
         gThreadClient = threadClient;
         test_executable_lines();
       }
@@ -34,13 +34,13 @@ function run_test() {
 
 function test_executable_lines() {
   gThreadClient.addOneTimeListener("newSource", function _onNewSource(evt, packet) {
-    do_check_eq(evt, "newSource");
+    Assert.equal(evt, "newSource");
 
-    gThreadClient.getSources(function ({error, sources}) {
-      do_check_true(!error);
+    gThreadClient.getSources(function({error, sources}) {
+      Assert.ok(!error);
       let source = gThreadClient.source(sources[0]);
-      source.getExecutableLines(function (lines) {
-        do_check_true(arrays_equal([1, 2, 4, 6], lines));
+      source.getExecutableLines(function(lines) {
+        Assert.ok(arrays_equal([1, 2, 4, 6], lines));
         finishClient(gClient);
       });
     });
@@ -49,7 +49,7 @@ function test_executable_lines() {
   let code = readFile("sourcemapped.js") + "\n//# sourceMappingURL=" +
     getFileUrl("source-map-data/sourcemapped.map");
 
-  Components.utils.evalInSandbox(code, gDebuggee, "1.8",
+  Cu.evalInSandbox(code, gDebuggee, "1.8",
     SOURCE_MAPPED_FILE, 1);
 }
 

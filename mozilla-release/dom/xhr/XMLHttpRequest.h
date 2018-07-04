@@ -10,7 +10,6 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/XMLHttpRequestEventTarget.h"
 #include "mozilla/dom/XMLHttpRequestBinding.h"
-#include "nsIXMLHttpRequest.h"
 
 class nsIJSID;
 
@@ -77,32 +76,12 @@ public:
   GetUpload(ErrorResult& aRv) = 0;
 
   virtual void
-  Send(JSContext* aCx, ErrorResult& aRv) = 0;
-
-  virtual void
-  Send(JSContext* aCx, const ArrayBuffer& aArrayBuffer, ErrorResult& aRv) = 0;
-
-  virtual void
-  Send(JSContext* aCx, const ArrayBufferView& aArrayBufferView,
+  Send(JSContext* aCx,
+       const Nullable<DocumentOrBlobOrArrayBufferViewOrArrayBufferOrFormDataOrURLSearchParamsOrUSVString>& aData,
        ErrorResult& aRv) = 0;
 
   virtual void
-  Send(JSContext* aCx, Blob& aBlob, ErrorResult& aRv) = 0;
-
-  virtual void
-  Send(JSContext* aCx, URLSearchParams& aURLSearchParams, ErrorResult& aRv) = 0;
-
-  virtual void
-  Send(JSContext* aCx, nsIDocument& aDoc, ErrorResult& aRv) = 0;
-
-  virtual void
-  Send(JSContext* aCx, const nsAString& aString, ErrorResult& aRv) = 0;
-
-  virtual void
-  Send(JSContext* aCx, FormData& aFormData, ErrorResult& aRv) = 0;
-
-  virtual void
-  Send(JSContext* aCx, nsIInputStream* aStream, ErrorResult& aRv) = 0;
+  SendInputStream(nsIInputStream* aInputStream, ErrorResult& aRv) = 0;
 
   virtual void
   Abort(ErrorResult& aRv) = 0;

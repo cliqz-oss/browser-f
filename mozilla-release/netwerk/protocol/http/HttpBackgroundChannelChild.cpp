@@ -15,7 +15,6 @@
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Unused.h"
-#include "nsIIPCBackgroundChildCreateCallback.h"
 #include "nsSocketTransportService2.h"
 
 using mozilla::ipc::BackgroundChild;
@@ -24,74 +23,10 @@ using mozilla::ipc::IPCResult;
 namespace mozilla {
 namespace net {
 
-// Callbacks for PBackgroundChild creation
-class BackgroundChannelCreateCallback final
-  : public nsIIPCBackgroundChildCreateCallback
-{
-public:
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSIIPCBACKGROUNDCHILDCREATECALLBACK
-
-  explicit BackgroundChannelCreateCallback(HttpBackgroundChannelChild* aBgChild)
-    : mBgChild(aBgChild)
-  {
-    MOZ_ASSERT(OnSocketThread());
-    MOZ_ASSERT(aBgChild);
-  }
-
-private:
-  virtual ~BackgroundChannelCreateCallback() { }
-
-  RefPtr<HttpBackgroundChannelChild> mBgChild;
-};
-
-NS_IMPL_ISUPPORTS(BackgroundChannelCreateCallback,
-                  nsIIPCBackgroundChildCreateCallback)
-
-void
-BackgroundChannelCreateCallback::ActorCreated(PBackgroundChild* aActor)
-{
-  MOZ_ASSERT(OnSocketThread());
-  MOZ_ASSERT(aActor);
-  MOZ_ASSERT(mBgChild);
-
-  if (!mBgChild->mChannelChild) {
-    // HttpChannelChild is closed during PBackground creation,
-    // abort the rest of steps.
-    return;
-  }
-
-  const uint64_t channelId = mBgChild->mChannelChild->ChannelId();
-  if (!aActor->SendPHttpBackgroundChannelConstructor(mBgChild,
-                                                     channelId)) {
-    ActorFailed();
-    return;
-  }
-
-  // hold extra reference for IPDL
-  RefPtr<HttpBackgroundChannelChild> child = mBgChild;
-  Unused << child.forget().take();
-
-  mBgChild->mChannelChild->OnBackgroundChildReady(mBgChild);
-}
-
-void
-BackgroundChannelCreateCallback::ActorFailed()
-{
-  MOZ_ASSERT(OnSocketThread());
-  MOZ_ASSERT(mBgChild);
-
-  mBgChild->OnBackgroundChannelCreationFailed();
-}
-
 // HttpBackgroundChannelChild
-HttpBackgroundChannelChild::HttpBackgroundChannelChild()
-{
-}
+HttpBackgroundChannelChild::HttpBackgroundChannelChild() = default;
 
-HttpBackgroundChannelChild::~HttpBackgroundChannelChild()
-{
-}
+HttpBackgroundChannelChild::~HttpBackgroundChannelChild() = default;
 
 nsresult
 HttpBackgroundChannelChild::Init(HttpChannelChild* aChannelChild)
@@ -137,7 +72,7 @@ HttpBackgroundChannelChild::OnStartRequestReceived()
   nsTArray<nsCOMPtr<nsIRunnable>> runnables;
   runnables.SwapElements(mQueuedRunnables);
 
-  for (auto event : runnables) {
+  for (const auto& event : runnables) {
     // Note: these runnables call Recv* methods on HttpBackgroundChannelChild
     // but not the Process* methods on HttpChannelChild.
     event->Run();
@@ -147,29 +82,29 @@ HttpBackgroundChannelChild::OnStartRequestReceived()
   MOZ_ASSERT(mQueuedRunnables.IsEmpty());
 }
 
-void
-HttpBackgroundChannelChild::OnBackgroundChannelCreationFailed()
-{
-  LOG(("HttpBackgroundChannelChild::OnBackgroundChannelCreationFailed"
-       " [this=%p]\n", this));
-  MOZ_ASSERT(OnSocketThread());
-
-  if (mChannelChild) {
-    RefPtr<HttpChannelChild> channelChild = mChannelChild.forget();
-    channelChild->OnBackgroundChildDestroyed(this);
-  }
-}
-
 bool
 HttpBackgroundChannelChild::CreateBackgroundChannel()
 {
   LOG(("HttpBackgroundChannelChild::CreateBackgroundChannel [this=%p]\n", this));
   MOZ_ASSERT(OnSocketThread());
+  MOZ_ASSERT(mChannelChild);
 
-  RefPtr<BackgroundChannelCreateCallback> callback =
-    new BackgroundChannelCreateCallback(this);
+  PBackgroundChild* actorChild = BackgroundChild::GetOrCreateForCurrentThread();
+  if (NS_WARN_IF(!actorChild)) {
+    return false;
+  }
 
-  return BackgroundChild::GetOrCreateForCurrentThread(callback);
+  const uint64_t channelId = mChannelChild->ChannelId();
+  if (!actorChild->SendPHttpBackgroundChannelConstructor(this, channelId)) {
+    return false;
+  }
+
+  // hold extra reference for IPDL
+  RefPtr<HttpBackgroundChannelChild> self = this;
+  Unused << self.forget().take();
+
+  mChannelChild->OnBackgroundChildReady(this);
+  return true;
 }
 
 bool
@@ -240,11 +175,18 @@ HttpBackgroundChannelChild::RecvOnTransportAndData(
 
 IPCResult
 HttpBackgroundChannelChild::RecvOnStopRequest(
-                                            const nsresult& aChannelStatus,
-                                            const ResourceTimingStruct& aTiming)
+                                    const nsresult& aChannelStatus,
+                                    const ResourceTimingStruct& aTiming,
+                                    const TimeStamp& aLastActiveTabOptHit,
+                                    const nsHttpHeaderArray& aResponseTrailers)
 {
   LOG(("HttpBackgroundChannelChild::RecvOnStopRequest [this=%p]\n", this));
   MOZ_ASSERT(OnSocketThread());
+
+  // It's enough to set this from (just before) OnStopRequest notification, since
+  // we don't need this value sooner than a channel was done loading - everything
+  // this timestamp affects takes place only after a channel's OnStopRequest.
+  nsHttp::SetLastActiveTabLoadOptimizationHit(aLastActiveTabOptHit);
 
   if (NS_WARN_IF(!mChannelChild)) {
     return IPC_OK();
@@ -255,17 +197,22 @@ HttpBackgroundChannelChild::RecvOnStopRequest(
          static_cast<uint32_t>(aChannelStatus)));
 
     mQueuedRunnables.AppendElement(
-      NewRunnableMethod<const nsresult, const ResourceTimingStruct>(
+      NewRunnableMethod<const nsresult,
+                        const ResourceTimingStruct,
+                        const TimeStamp,
+                        const nsHttpHeaderArray>(
         "HttpBackgroundChannelChild::RecvOnStopRequest",
         this,
         &HttpBackgroundChannelChild::RecvOnStopRequest,
         aChannelStatus,
-        aTiming));
+        aTiming,
+        aLastActiveTabOptHit,
+        aResponseTrailers));
 
     return IPC_OK();
   }
 
-  mChannelChild->ProcessOnStopRequest(aChannelStatus, aTiming);
+  mChannelChild->ProcessOnStopRequest(aChannelStatus, aTiming, aResponseTrailers);
 
   return IPC_OK();
 }
@@ -429,7 +376,9 @@ HttpBackgroundChannelChild::RecvSetClassifierMatchedInfo(const ClassifierInfo& i
 
   // SetClassifierMatchedInfo has no order dependency to OnStartRequest.
   // It this be handled as soon as possible
-  mChannelChild->ProcessSetClassifierMatchedInfo(info.list(), info.provider(), info.prefix());
+  mChannelChild->ProcessSetClassifierMatchedInfo(info.list(),
+                                                 info.provider(),
+                                                 info.fullhash());
 
   return IPC_OK();
 }

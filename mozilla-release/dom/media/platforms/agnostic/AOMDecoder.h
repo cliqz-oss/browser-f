@@ -14,7 +14,11 @@
 
 namespace mozilla {
 
-class AOMDecoder : public MediaDataDecoder
+DDLoggedTypeDeclNameAndBase(AOMDecoder, MediaDataDecoder);
+
+class AOMDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<AOMDecoder>
 {
 public:
   explicit AOMDecoder(const CreateDecoderParams& aParams);
@@ -24,9 +28,9 @@ public:
   RefPtr<DecodePromise> Drain() override;
   RefPtr<FlushPromise> Flush() override;
   RefPtr<ShutdownPromise> Shutdown() override;
-  const char* GetDescriptionName() const override
+  nsCString GetDescriptionName() const override
   {
-    return "libaom (AV1) video decoder";
+    return NS_LITERAL_CSTRING("av1 libaom video decoder");
   }
 
   // Return true if aMimeType is a one of the strings used
@@ -40,7 +44,7 @@ public:
   static bool IsKeyframe(Span<const uint8_t> aBuffer);
 
   // Return the frame dimensions for a sample.
-  static nsIntSize GetFrameSize(Span<const uint8_t> aBuffer);
+  static gfx::IntSize GetFrameSize(Span<const uint8_t> aBuffer);
 
 private:
   ~AOMDecoder();

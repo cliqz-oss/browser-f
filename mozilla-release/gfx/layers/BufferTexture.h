@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-//  * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -30,9 +31,12 @@ public:
 
   static BufferTextureData* CreateForYCbCr(KnowsCompositor* aAllocator,
                                            gfx::IntSize aYSize,
+                                           uint32_t aYStride,
                                            gfx::IntSize aCbCrSize,
+                                           uint32_t aCbCrStride,
                                            StereoMode aStereoMode,
                                            YUVColorSpace aYUVColorSpace,
+                                           uint32_t aBitDepth,
                                            TextureFlags aTextureFlags);
 
   // It is generally better to use CreateForYCbCr instead.
@@ -41,6 +45,7 @@ public:
   static BufferTextureData* CreateForYCbCrWithBufferSize(KnowsCompositor* aAllocator,
                                                          int32_t aSize,
                                                          YUVColorSpace aYUVColorSpace,
+                                                         uint32_t aBitDepth,
                                                          TextureFlags aTextureFlags);
 
   virtual bool Lock(OpenMode aMode) override { return true; }
@@ -66,6 +71,8 @@ public:
   Maybe<gfx::IntSize> GetCbCrSize() const;
 
   Maybe<YUVColorSpace> GetYUVColorSpace() const;
+
+  Maybe<uint32_t> GetBitDepth() const;
 
   Maybe<StereoMode> GetStereoMode() const;
 

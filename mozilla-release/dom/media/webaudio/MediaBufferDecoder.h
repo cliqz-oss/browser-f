@@ -7,6 +7,7 @@
 #ifndef MediaBufferDecoder_h_
 #define MediaBufferDecoder_h_
 
+#include "AudioSegment.h"
 #include "nsWrapperCache.h"
 #include "nsCOMPtr.h"
 #include "nsString.h"
@@ -30,8 +31,7 @@ struct WebAudioDecodeJob final
 {
   // You may omit both the success and failure callback, or you must pass both.
   // The callbacks are only necessary for asynchronous operation.
-  WebAudioDecodeJob(const nsACString& aContentType,
-                    dom::AudioContext* aContext,
+  WebAudioDecodeJob(dom::AudioContext* aContext,
                     dom::Promise* aPromise,
                     dom::DecodeSuccessCallback* aSuccessCallback = nullptr,
                     dom::DecodeErrorCallback* aFailureCallback = nullptr);
@@ -55,14 +55,12 @@ struct WebAudioDecodeJob final
   size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
-  nsCString mContentType;
-  uint32_t mWriteIndex;
+  AudioChunk mBuffer;
   RefPtr<dom::AudioContext> mContext;
   RefPtr<dom::Promise> mPromise;
   RefPtr<dom::DecodeSuccessCallback> mSuccessCallback;
   RefPtr<dom::DecodeErrorCallback> mFailureCallback; // can be null
   RefPtr<dom::AudioBuffer> mOutput;
-  RefPtr<ThreadSharedFloatArrayBufferList> mBuffer;
 };
 
 void AsyncDecodeWebAudio(const char* aContentType, uint8_t* aBuffer,

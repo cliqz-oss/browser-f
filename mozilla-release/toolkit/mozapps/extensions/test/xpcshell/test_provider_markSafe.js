@@ -24,12 +24,8 @@ function mockAddonProvider(name) {
   return mockProvider;
 }
 
-function run_test() {
-  run_next_test();
-}
-
 add_task(async function testMarkSafe() {
-  do_print("Starting with provider normally");
+  info("Starting with provider normally");
   let provider = mockAddonProvider("Mock1");
   AddonManagerPrivate.registerProvider(provider);
   startupManager();
@@ -37,7 +33,7 @@ add_task(async function testMarkSafe() {
   AddonManagerPrivate.unregisterProvider(provider);
   await promiseShutdownManager();
 
-  do_print("Starting with provider that marks itself safe");
+  info("Starting with provider that marks itself safe");
   provider.apiAccessed = false;
   provider.markSafe = true;
   AddonManagerPrivate.registerProvider(provider);

@@ -3,27 +3,27 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 ifndef MOZ_PKG_FORMAT
-ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
-MOZ_PKG_FORMAT  = DMG
-else
-ifeq (,$(filter-out WINNT, $(OS_ARCH)))
-MOZ_PKG_FORMAT  = ZIP
-else
-ifeq (,$(filter-out SunOS, $(OS_ARCH)))
-   MOZ_PKG_FORMAT  = BZ2
-else
-   ifeq (,$(filter-out gtk2 gtk3 qt, $(MOZ_WIDGET_TOOLKIT)))
-      MOZ_PKG_FORMAT  = BZ2
-   else
-      ifeq (android,$(MOZ_WIDGET_TOOLKIT))
-          MOZ_PKG_FORMAT = APK
-      else
-          MOZ_PKG_FORMAT = TGZ
-      endif
-   endif
-endif
-endif
-endif
+    ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
+        MOZ_PKG_FORMAT  = DMG
+    else
+        ifeq (WINNT,$(OS_ARCH))
+            MOZ_PKG_FORMAT  = ZIP
+        else
+            ifeq (SunOS,$(OS_ARCH))
+                MOZ_PKG_FORMAT  = BZ2
+            else
+                ifeq (gtk3,$(MOZ_WIDGET_TOOLKIT))
+                    MOZ_PKG_FORMAT  = BZ2
+                else
+                    ifeq (android,$(MOZ_WIDGET_TOOLKIT))
+                        MOZ_PKG_FORMAT = APK
+                    else
+                        MOZ_PKG_FORMAT = TGZ
+                    endif
+                endif
+            endif
+        endif
+    endif
 endif # MOZ_PKG_FORMAT
 
 ifeq ($(OS_ARCH),WINNT)
@@ -78,6 +78,10 @@ endif
 
 ifdef LLVM_SYMBOLIZER
   JSSHELL_BINS += $(notdir $(LLVM_SYMBOLIZER))
+  # On Windows, llvm-symbolizer depends on the MS DIA library.
+  ifdef WIN_DIA_SDK_BIN_DIR
+    JSSHELL_BINS += msdia140.dll
+  endif
 endif
 ifdef MOZ_CLANG_RT_ASAN_LIB_PATH
   JSSHELL_BINS += $(notdir $(MOZ_CLANG_RT_ASAN_LIB_PATH))
@@ -152,6 +156,7 @@ ifeq ($(OS_ARCH), Linux)
 		$(PYTHON) -m mozbuild.action.preprocessor \
 			-DMOZ_APP_NAME=$(MOZ_APP_NAME) \
 			-DMOZ_APP_DISPLAYNAME='$(MOZ_APP_DISPLAYNAME)' \
+			-DMOZ_APP_REMOTINGNAME='$(MOZ_APP_REMOTINGNAME)' \
 			$(RPM_INCIDENTALS)/mozilla.desktop \
 			-o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
 		rm -rf $(ABS_DIST)/$(TARGET_CPU) && \
@@ -227,8 +232,15 @@ ifeq ($(MOZ_PKG_FORMAT),DMG)
 
   _ABS_MOZSRCDIR = $(shell cd $(MOZILLA_DIR) && pwd)
   PKG_DMG_SOURCE = $(MOZ_PKG_DIR)
-  INNER_MAKE_PACKAGE	= $(call py_action,make_dmg,'$(PKG_DMG_SOURCE)' '$(PACKAGE)')
-  INNER_UNMAKE_PACKAGE	= \
+  INNER_MAKE_PACKAGE = \
+    $(call py_action,make_dmg, \
+        $(if $(MOZ_PKG_MAC_DSSTORE),--dsstore '$(MOZ_PKG_MAC_DSSTORE)') \
+        $(if $(MOZ_PKG_MAC_BACKGROUND),--background '$(MOZ_PKG_MAC_BACKGROUND)') \
+        $(if $(MOZ_PKG_MAC_ICON),--icon '$(MOZ_PKG_MAC_ICON)') \
+        --volume-name '$(MOZ_APP_DISPLAYNAME)' \
+        '$(PKG_DMG_SOURCE)' '$(PACKAGE)' \
+        )
+  INNER_UNMAKE_PACKAGE = \
     $(call py_action,unpack_dmg, \
         $(if $(MOZ_PKG_MAC_DSSTORE),--dsstore '$(MOZ_PKG_MAC_DSSTORE)') \
         $(if $(MOZ_PKG_MAC_BACKGROUND),--background '$(MOZ_PKG_MAC_BACKGROUND)') \
@@ -251,7 +263,7 @@ endif
 
 ifdef MOZ_SIGN_PREPARED_PACKAGE_CMD
   ifeq (Darwin, $(OS_ARCH))
-    MAKE_PACKAGE    = cd ./$(PKG_DMG_SOURCE) && $(MOZ_SIGN_PREPARED_PACKAGE_CMD) $(MOZ_MACBUNDLE_NAME) \
+    MAKE_PACKAGE    = cd ./$(PKG_DMG_SOURCE) && $(MOZ_SIGN_PREPARED_PACKAGE_CMD) '$(MOZ_MACBUNDLE_NAME)' \
                       && cd $(PACKAGE_BASE_DIR) && $(INNER_MAKE_PACKAGE)
   else
     MAKE_PACKAGE    = $(MOZ_SIGN_PREPARED_PACKAGE_CMD) $(MOZ_PKG_DIR) \
@@ -290,6 +302,7 @@ NO_PKG_FILES += \
 	pk12util* \
 	BadCertServer* \
 	OCSPStaplingServer* \
+	SymantecSanctionsServer* \
 	GenerateOCSPResponse* \
 	chrome/chrome.rdf \
 	chrome/app-chrome.manifest \
@@ -331,25 +344,13 @@ GARBAGE		+= $(DIST)/$(PACKAGE) $(PACKAGE)
 
 PKG_ARG = , '$(pkg)'
 
-# MOZ_PKG_MANIFEST is the canonical way to define the package manifest (which
-# the packager will preprocess), but for a smooth transition, we derive it
-# from the now deprecated MOZ_PKG_MANIFEST_P when MOZ_PKG_MANIFEST is not
-# defined.
-ifndef MOZ_PKG_MANIFEST
-  ifdef MOZ_PKG_MANIFEST_P
-    MOZ_PKG_MANIFEST := $(MOZ_PKG_MANIFEST_P)
-  endif # MOZ_PKG_MANIFEST_P
-endif # MOZ_PKG_MANIFEST
-
 ifndef MOZ_PACKAGER_FORMAT
   MOZ_PACKAGER_FORMAT = $(error MOZ_PACKAGER_FORMAT is not set)
 endif
 
 ifneq (android,$(MOZ_WIDGET_TOOLKIT))
   OPTIMIZEJARS = 1
-  ifneq (gonk,$(MOZ_WIDGET_TOOLKIT))
-    DISABLE_JAR_COMPRESSION = 1
-  endif
+  JAR_COMPRESSION ?= none
 endif
 
 # A js binary is needed to perform verification of JavaScript minification.
@@ -403,42 +404,39 @@ UPLOAD_FILES= \
   $(call QUOTED_WILDCARD,$(DIST)/$(LANGPACK)) \
   $(call QUOTED_WILDCARD,$(wildcard $(DIST)/$(PARTIAL_MAR))) \
   $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MOZHARNESS_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(TEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(CPP_TEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(XPC_TEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MOCHITEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(TALOS_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(AWSY_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(REFTEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(WP_TEST_PACKAGE)) \
-  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(GTEST_PACKAGE)) \
   $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(SYMBOL_ARCHIVE_BASENAME).zip) \
+  $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(GENERATED_SOURCE_FILE_PACKAGE)) \
   $(call QUOTED_WILDCARD,$(MOZ_SOURCESTAMP_FILE)) \
   $(call QUOTED_WILDCARD,$(MOZ_BUILDINFO_FILE)) \
+  $(call QUOTED_WILDCARD,$(MOZ_BUILDHUB_JSON)) \
   $(call QUOTED_WILDCARD,$(MOZ_BUILDID_INFO_TXT_FILE)) \
   $(call QUOTED_WILDCARD,$(MOZ_MOZINFO_FILE)) \
   $(call QUOTED_WILDCARD,$(MOZ_TEST_PACKAGES_FILE)) \
   $(call QUOTED_WILDCARD,$(PKG_JSSHELL)) \
   $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(SYMBOL_FULL_ARCHIVE_BASENAME).zip) \
-  $(call QUOTED_WILDCARD,$(topobjdir)/browser/installer/windows/instgen/setup.exe) \
-  $(call QUOTED_WILDCARD,$(topobjdir)/browser/installer/windows/instgen/setup-stub.exe) \
+  $(call QUOTED_WILDCARD,$(topobjdir)/$(MOZ_BUILD_APP)/installer/windows/instgen/setup.exe) \
+  $(call QUOTED_WILDCARD,$(topobjdir)/$(MOZ_BUILD_APP)/installer/windows/instgen/setup-stub.exe) \
   $(call QUOTED_WILDCARD,$(topsrcdir)/toolchains.json) \
   $(if $(UPLOAD_EXTRA_FILES), $(foreach f, $(UPLOAD_EXTRA_FILES), $(wildcard $(DIST)/$(f))))
 
 ifneq ($(filter-out en-US x-test,$(AB_CD)),)
   UPLOAD_FILES += \
-    $(call QUOTED_WILDCARD,$(topobjdir)/browser/installer/windows/l10ngen/setup.exe) \
-    $(call QUOTED_WILDCARD,$(topobjdir)/browser/installer/windows/l10ngen/setup-stub.exe)
+    $(call QUOTED_WILDCARD,$(topobjdir)/$(MOZ_BUILD_APP)/installer/windows/l10ngen/setup.exe) \
+    $(call QUOTED_WILDCARD,$(topobjdir)/$(MOZ_BUILD_APP)/installer/windows/l10ngen/setup-stub.exe)
 endif
 
 
 ifdef MOZ_CODE_COVERAGE
   UPLOAD_FILES += \
-    $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(CODE_COVERAGE_ARCHIVE_BASENAME).zip)
+    $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(CODE_COVERAGE_ARCHIVE_BASENAME).zip) \
+    $(call QUOTED_WILDCARD,$(topobjdir)/chrome-map.json) \
+    $(NULL)
 endif
 
-ifdef MOZ_STYLO
-  UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(STYLO_BINDINGS_PACKAGE))
+
+ifdef ENABLE_MOZSEARCH_PLUGIN
+  UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MOZSEARCH_ARCHIVE_BASENAME).zip)
+  UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MOZSEARCH_RUST_ANALYSIS_BASENAME).zip)
 endif
 
 SIGN_CHECKSUM_CMD=

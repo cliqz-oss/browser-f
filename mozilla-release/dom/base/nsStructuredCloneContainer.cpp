@@ -137,7 +137,7 @@ nsStructuredCloneContainer::GetDataAsBase64(nsAString &aOut)
     return NS_ERROR_FAILURE;
   }
 
-  auto iter = Data().Iter();
+  auto iter = Data().Start();
   size_t size = Data().Size();
   nsAutoCString binaryData;
   binaryData.SetLength(size);
@@ -148,7 +148,10 @@ nsStructuredCloneContainer::GetDataAsBase64(nsAString &aOut)
     return rv;
   }
 
-  CopyASCIItoUTF16(base64Data, aOut);
+  if (!CopyASCIItoUTF16(base64Data, aOut, fallible)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
   return NS_OK;
 }
 

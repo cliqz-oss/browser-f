@@ -6,14 +6,15 @@
 
 <%helpers:shorthand name="columns"
                     sub_properties="column-width column-count"
-                    experimental="True"
+                    servo_pref="layout.columns.enabled",
                     derive_serialize="True"
                     extra_prefixes="moz" spec="https://drafts.csswg.org/css-multicol/#propdef-columns">
     use properties::longhands::{column_count, column_width};
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
-
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let mut column_count = None;
         let mut column_width = None;
         let mut autos = 0;
@@ -44,7 +45,7 @@
 
         let values = autos + column_count.iter().len() + column_width.iter().len();
         if values == 0 || values > 2 {
-            Err(StyleParseError::UnspecifiedError.into())
+            Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         } else {
             Ok(expanded! {
                 column_count: unwrap_or_initial!(column_count),
@@ -61,8 +62,10 @@
     use properties::longhands::{column_rule_width, column_rule_style};
     use properties::longhands::column_rule_color;
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         % for name in "width style color".split():
         let mut column_rule_${name} = None;
         % endfor
@@ -89,7 +92,7 @@
                 column_rule_color: unwrap_or_initial!(column_rule_color),
             })
         } else {
-            Err(StyleParseError::UnspecifiedError.into())
+            Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
         }
     }
 </%helpers:shorthand>

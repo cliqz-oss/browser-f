@@ -11,11 +11,10 @@
 
 #include "ds/LifoAlloc.h"
 
-#include "vm/Printer.h"
+#include "js/HashTable.h"
+#include "js/TypeDecls.h"
 
-struct JSCompartment;
-class JSScript;
-class JSObject;
+#include "vm/Printer.h"
 
 namespace js {
 
@@ -70,10 +69,14 @@ class LCovSource
     size_t numBranchesFound_;
     size_t numBranchesHit_;
 
-    // LifoAlloc string which hold lines statistics.
-    LSprinter outDA_;
+    // Holds lines statistics. When processing a line hit count, the hit count
+    // is added to any hit count already in the hash map so that we handle
+    // lines that belong to more than one JSScript or function in the same
+    // source file.
+    HashMap<size_t, uint64_t, DefaultHasher<size_t>, SystemAllocPolicy> linesHit_;
     size_t numLinesInstrumented_;
     size_t numLinesHit_;
+    size_t maxLineHit_;
 
     // Status flags.
     bool hasTopLevelScript_ : 1;

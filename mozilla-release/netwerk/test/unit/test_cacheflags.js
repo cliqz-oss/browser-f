@@ -1,6 +1,6 @@
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var httpserver = new HttpServer();
 httpserver.start(-1);
@@ -58,11 +58,11 @@ Test.prototype = {
   _isFromCache: false,
 
   QueryInterface: function(iid) {
-    if (iid.equals(Components.interfaces.nsIStreamListener) ||
-        iid.equals(Components.interfaces.nsIRequestObserver) ||
-        iid.equals(Components.interfaces.nsISupports))
+    if (iid.equals(Ci.nsIStreamListener) ||
+        iid.equals(Ci.nsIRequestObserver) ||
+        iid.equals(Ci.nsISupports))
       return this;
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   onStartRequest: function(request, context) {
@@ -75,9 +75,9 @@ Test.prototype = {
   },
 
   onStopRequest: function(request, context, status) {
-    do_check_eq(Components.isSuccessCode(status), this.expectSuccess);
-    do_check_eq(this._isFromCache, this.readFromCache);
-    do_check_eq(gHitServer, this.hitServer);
+    Assert.equal(Components.isSuccessCode(status), this.expectSuccess);
+    Assert.equal(this._isFromCache, this.readFromCache);
+    Assert.equal(gHitServer, this.hitServer);
 
     do_timeout(0, run_next_test);
   },

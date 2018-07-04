@@ -6,9 +6,11 @@ esid: sec-initializers-in-forin-statement-heads
 description: >
     for-in initializers with const are prohibited
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 throw NotEarlyError;
 for (const a = 0 in {});
 

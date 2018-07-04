@@ -63,7 +63,7 @@ mozilla::ipc::IPCResult
 PrintProgressDialogParent::RecvDocTitleChange(const nsString& newTitle)
 {
   if (mPrintProgressParams) {
-    mPrintProgressParams->SetDocTitle(newTitle.get());
+    mPrintProgressParams->SetDocTitle(newTitle);
   }
   return IPC_OK();
 }
@@ -72,7 +72,7 @@ mozilla::ipc::IPCResult
 PrintProgressDialogParent::RecvDocURLChange(const nsString& newURL)
 {
   if (mPrintProgressParams) {
-    mPrintProgressParams->SetDocURL(newURL.get());
+    mPrintProgressParams->SetDocURL(newURL);
   }
   return IPC_OK();
 }
@@ -80,6 +80,8 @@ PrintProgressDialogParent::RecvDocURLChange(const nsString& newURL)
 void
 PrintProgressDialogParent::ActorDestroy(ActorDestroyReason aWhy)
 {
+  // If IPC actor is destroyed, we can't send to child via IPC.
+  mActive = false;
 }
 
 mozilla::ipc::IPCResult
@@ -97,7 +99,25 @@ PrintProgressDialogParent::Observe(nsISupports *aSubject, const char *aTopic,
                                    const char16_t *aData)
 {
   if (mActive) {
-    Unused << SendDialogOpened();
+    if (aTopic) {
+      if (!strcmp(aTopic, "cancelled")) {
+        Unused << SendCancelledCurrentJob();
+        if (!mDialogOpenedSent) {
+          // We haven't already called SendDialogOpened, so call it now or it
+          // might never get sent and block the child from new printing requests.
+          // Also set mActive to false because we don't want to send it twice
+          // and our PrintProgressDialogChild will get deleted anyway.
+          Unused << SendDialogOpened();
+          mActive = false;
+        }
+      } else if (!strcmp(aTopic, "completed")) {
+        // Once printing is complete don't send any messages to the child.
+        mActive = false;
+      }
+    } else {
+      Unused << SendDialogOpened();
+      mDialogOpenedSent = true;
+    }
   } else {
     NS_WARNING("The print progress dialog finished opening, but communications "
                "with the child have been closed.");

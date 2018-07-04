@@ -1,8 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Components.utils.import("resource://services-sync/bookmark_validator.js");
-Components.utils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://services-sync/bookmark_validator.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 function run_test() {
   do_get_profile();
@@ -42,8 +42,8 @@ add_task(async function test_isr_cycles() {
   ])).problemData;
 
   equal(c.cycles.length, 1);
-  ok(c.cycles[0].indexOf("A") >= 0);
-  ok(c.cycles[0].indexOf("B") >= 0);
+  ok(c.cycles[0].includes("A"));
+  ok(c.cycles[0].includes("B"));
 });
 
 add_task(async function test_isr_orphansMultiParents() {
@@ -54,9 +54,9 @@ add_task(async function test_isr_orphansMultiParents() {
 
   ])).problemData;
   deepEqual(c.orphans, [{ id: "A", parent: "D" }]);
-  equal(c.multipleParents.length, 1)
-  ok(c.multipleParents[0].parents.indexOf("B") >= 0);
-  ok(c.multipleParents[0].parents.indexOf("C") >= 0);
+  equal(c.multipleParents.length, 1);
+  ok(c.multipleParents[0].parents.includes("B"));
+  ok(c.multipleParents[0].parents.includes("C"));
 });
 
 add_task(async function test_isr_orphansMultiParents2() {
@@ -72,7 +72,7 @@ add_task(async function test_isr_orphansMultiParents2() {
 add_task(async function test_isr_deletedParents() {
   let c = (await inspectServerRecords([
     { id: "A", type: "bookmark", parentid: "B" },
-    { id: "B", type: "folder", parentid: "places", children: ["A"]},
+    { id: "C", type: "folder", parentid: "places", children: ["A"]},
     { id: "B", type: "item", deleted: true},
   ])).problemData;
   deepEqual(c.deletedParents, ["A"]);
@@ -83,7 +83,7 @@ add_task(async function test_isr_badChildren() {
     { id: "A", type: "bookmark", parentid: "places", children: ["B", "C"] },
     { id: "C", type: "bookmark", parentid: "A" }
   ])).problemData;
-  deepEqual(c.childrenOnNonFolder, ["A"])
+  deepEqual(c.childrenOnNonFolder, ["A"]);
   deepEqual(c.missingChildren, [{parent: "A", child: "B"}]);
   deepEqual(c.parentNotFolder, ["C"]);
 });
@@ -280,32 +280,10 @@ add_task(async function test_cswc_serverUnexpected() {
     "guid": "dddddddddddd",
     "title": "",
     "id": 2000,
-    "annos": [{
-      "name": "places/excludeFromBackup",
-      "flags": 0,
-      "expires": 4,
-      "value": 1
-    }, {
-      "name": "PlacesOrganizer/OrganizerFolder",
-      "flags": 0,
-      "expires": 4,
-      "value": 7
-    }],
     "type": "text/x-moz-place-container",
     "children": [{
       "guid": "eeeeeeeeeeee",
       "title": "History",
-      "annos": [{
-        "name": "places/excludeFromBackup",
-        "flags": 0,
-        "expires": 4,
-        "value": 1
-      }, {
-        "name": "PlacesOrganizer/OrganizerQuery",
-        "flags": 0,
-        "expires": 4,
-        "value": "History"
-      }],
       "type": "text/x-moz-place",
       "uri": "place:type=3&sort=4"
     }]
@@ -434,7 +412,7 @@ add_task(async function test_telemetry_integration() {
   let bme = ping.engines.find(e => e.name === "bookmarks");
   ok(bme);
   ok(bme.validation);
-  ok(bme.validation.problems)
+  ok(bme.validation.problems);
   equal(bme.validation.checked, server.length);
   equal(bme.validation.took, duration);
   bme.validation.problems.sort((a, b) => String(a.name).localeCompare(b.name));

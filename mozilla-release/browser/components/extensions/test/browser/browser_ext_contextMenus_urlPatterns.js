@@ -3,7 +3,8 @@
 "use strict";
 
 add_task(async function() {
-  let tab1 = await BrowserTestUtils.openNewForegroundTab(gBrowser,
+  let tab1 = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
     "http://mochi.test:8888/browser/browser/components/extensions/test/browser/context.html");
 
   let extension = ExtensionTestUtils.loadExtension({
@@ -255,7 +256,7 @@ add_task(async function() {
   await confirmContextMenuItems(contextMenu, expected);
   await closeContextMenu();
 
-  contextMenu = await openContextMenuInFrame("frame");
+  contextMenu = await openContextMenuInFrame("#frame");
   expected = [
     ["documentUrlPatterns-patternMatches-contextAll", true],
     ["documentUrlPatterns-patternMatches-contextFrame", true],
@@ -264,5 +265,5 @@ add_task(async function() {
   await closeContextMenu();
 
   await extension.unload();
-  await BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab1);
 });

@@ -32,8 +32,6 @@ ARIAGridAccessible::
 {
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(ARIAGridAccessible, Accessible)
-
 ////////////////////////////////////////////////////////////////////////////////
 // Table
 
@@ -465,16 +463,18 @@ ARIAGridAccessible::SetARIASelected(Accessible* aAccessible,
   if (IsARIARole(nsGkAtoms::table))
     return NS_OK;
 
-  nsIContent *content = aAccessible->GetContent();
+  nsIContent* content = aAccessible->GetContent();
   NS_ENSURE_STATE(content);
 
   nsresult rv = NS_OK;
-  if (aIsSelected)
-    rv = content->SetAttr(kNameSpaceID_None, nsGkAtoms::aria_selected,
-                          NS_LITERAL_STRING("true"), aNotify);
-  else
-    rv = content->SetAttr(kNameSpaceID_None, nsGkAtoms::aria_selected,
-                          NS_LITERAL_STRING("false"), aNotify);
+  if (content->IsElement()) {
+    if (aIsSelected)
+      rv = content->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::aria_selected,
+                                         NS_LITERAL_STRING("true"), aNotify);
+    else
+      rv = content->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::aria_selected,
+                                         NS_LITERAL_STRING("false"), aNotify);
+  }
 
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -541,8 +541,6 @@ ARIARowAccessible::
   mGenericTypes |= eTableRow;
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(ARIARowAccessible, Accessible)
-
 GroupPos
 ARIARowAccessible::GroupPosition()
 {
@@ -572,8 +570,6 @@ ARIAGridCellAccessible::
 {
   mGenericTypes |= eTableCell;
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(ARIAGridCellAccessible, HyperTextAccessible)
 
 ////////////////////////////////////////////////////////////////////////////////
 // TableCell
@@ -639,11 +635,10 @@ ARIAGridCellAccessible::ApplyARIAState(uint64_t* aState) const
     return;
 
   nsIContent *rowContent = row->GetContent();
-  if (nsAccUtils::HasDefinedARIAToken(rowContent,
-                                      nsGkAtoms::aria_selected) &&
-      !rowContent->AttrValueIs(kNameSpaceID_None,
-                               nsGkAtoms::aria_selected,
-                               nsGkAtoms::_false, eCaseMatters))
+  if (nsAccUtils::HasDefinedARIAToken(rowContent, nsGkAtoms::aria_selected) &&
+      !rowContent->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                            nsGkAtoms::aria_selected,
+                                            nsGkAtoms::_false, eCaseMatters))
     *aState |= states::SELECTABLE | states::SELECTED;
 }
 

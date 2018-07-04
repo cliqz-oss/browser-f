@@ -22,7 +22,7 @@ var { helpers, assert } = (function () {
 
   var helpers = {};
 
-  var { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+  var { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
   var { TargetFactory } = require("devtools/client/framework/target");
   var { gDevToolsBrowser } = require("devtools/client/framework/devtools-browser");
   var Services = require("Services");
@@ -132,7 +132,7 @@ var { helpers, assert } = (function () {
     options.browser = tabbrowser.getBrowserForTab(options.tab);
     options.target = TargetFactory.forTab(options.tab);
 
-    var loaded = helpers.listenOnce(options.browser, "load", true).then(function (ev) {
+    var loaded = BrowserTestUtils.browserLoaded(options.browser).then(function () {
       var reply = callback.call(null, options);
 
       return Promise.resolve(reply).catch(function (error) {
@@ -149,7 +149,7 @@ var { helpers, assert } = (function () {
       });
     });
 
-    options.browser.contentWindow.location = url;
+    options.browser.loadURI(url);
     return loaded;
   };
 
@@ -223,7 +223,7 @@ var { helpers, assert } = (function () {
 /**
  * Navigate the current tab to a URL
  */
-  helpers.navigate = Task.async(function* (url, options) {
+  helpers.navigate = async function(url, options) {
     options = options || {};
     options.chromeWindow = options.chromeWindow || window;
     options.tab = options.tab || options.chromeWindow.gBrowser.selectedTab;
@@ -233,10 +233,10 @@ var { helpers, assert } = (function () {
 
     let onLoaded = BrowserTestUtils.browserLoaded(options.browser);
     options.browser.loadURI(url);
-    yield onLoaded;
+    await onLoaded;
 
     return options;
-  });
+  };
 
 /**
  * Undo the effects of |helpers.openToolbar|
@@ -419,15 +419,15 @@ var { helpers, assert } = (function () {
  * 7. Tear down all the setup
  */
   helpers.runTestModule = function (exports, name) {
-    return Task.spawn(function* () {
+    return (async function() {
       const uri = "data:text/html;charset=utf-8," +
                 "<style>div{color:red;}</style>" +
                 "<div id='gcli-root'>" + name + "</div>";
 
-      const options = yield helpers.openTab(uri);
+      const options = await helpers.openTab(uri);
       options.isRemote = true;
 
-      yield helpers.openToolbar(options);
+      await helpers.openToolbar(options);
 
       const system = options.requisition.system;
 
@@ -452,30 +452,30 @@ var { helpers, assert } = (function () {
       });
 
     // Send a message to add the commands to the content process
-      const front = yield GcliFront.create(options.target);
-      yield front._testOnlyAddItemsByModule(MOCK_COMMANDS_URI);
+      const front = await GcliFront.create(options.target);
+      await front._testOnlyAddItemsByModule(MOCK_COMMANDS_URI);
 
     // This will cause the local set of commands to be updated with the
     // command proxies, wait for that to complete.
-      yield addedDeferred.promise;
+      await addedDeferred.promise;
 
     // Now we need to add the converters to the local GCLI
       const converters = mockCommands.items.filter(item => item.item === "converter");
       system.addItems(converters);
 
     // Next run the tests
-      yield helpers.runTests(options, exports);
+      await helpers.runTests(options, exports);
 
     // Finally undo the mock commands and converters
       system.removeItems(converters);
       const removePromise = system.commands.onCommandsChange.once();
-      yield front._testOnlyRemoveItemsByModule(MOCK_COMMANDS_URI);
-      yield removedDeferred.promise;
+      await front._testOnlyRemoveItemsByModule(MOCK_COMMANDS_URI);
+      await removedDeferred.promise;
 
     // And close everything down
-      yield helpers.closeToolbar(options);
-      yield helpers.closeTab(options);
-    }).then(finish, helpers.handleError);
+      await helpers.closeToolbar(options);
+      await helpers.closeTab(options);
+    })().then(finish, helpers.handleError);
   };
 
 /**
@@ -754,7 +754,7 @@ var { helpers, assert } = (function () {
     var chunkLen = 1;
 
   // The easy case is a simple string without things like <TAB>
-    if (typed.indexOf("<") === -1) {
+    if (!typed.includes("<")) {
       inputPromise = automator.setInput(typed);
     }
     else {
@@ -1071,7 +1071,7 @@ var { helpers, assert } = (function () {
           }
 
           if (typeof expected.notinoutput === "string") {
-            assert.ok(textOutput.indexOf(expected.notinoutput) === -1,
+            assert.ok(!textOutput.includes(expected.notinoutput),
               `html output for "${name}" doesn't contain "${expected.notinoutput}"`);
           } else if (Array.isArray(expected.notinoutput)) {
             expected.notinoutput.forEach(function (match) {

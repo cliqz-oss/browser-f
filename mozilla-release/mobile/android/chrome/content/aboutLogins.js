@@ -2,12 +2,10 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this file,
 * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces, Cc = Components.classes, Cu = Components.utils;
-
-Cu.import("resource://services-common/utils.js"); /*global: CommonUtils */
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/TelemetryStopwatch.jsm");
+ChromeUtils.import("resource://services-common/utils.js"); /* global: CommonUtils */
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm");
 
 XPCOMUtils.defineLazyGetter(window, "gChromeWin", () =>
   window.QueryInterface(Ci.nsIInterfaceRequestor)
@@ -18,13 +16,13 @@ XPCOMUtils.defineLazyGetter(window, "gChromeWin", () =>
     .getInterface(Ci.nsIDOMWindow)
     .QueryInterface(Ci.nsIDOMChromeWindow));
 
-XPCOMUtils.defineLazyModuleGetter(this, "EventDispatcher",
-                                  "resource://gre/modules/Messaging.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Snackbars", "resource://gre/modules/Snackbars.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Prompt",
-                                  "resource://gre/modules/Prompt.jsm");
+ChromeUtils.defineModuleGetter(this, "EventDispatcher",
+                               "resource://gre/modules/Messaging.jsm");
+ChromeUtils.defineModuleGetter(this, "Snackbars", "resource://gre/modules/Snackbars.jsm");
+ChromeUtils.defineModuleGetter(this, "Prompt",
+                               "resource://gre/modules/Prompt.jsm");
 
-var debug = Cu.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.d.bind(null, "AboutLogins");
+var debug = ChromeUtils.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.d.bind(null, "AboutLogins");
 
 var gStringBundle = Services.strings.createBundle("chrome://browser/locale/aboutLogins.properties");
 
@@ -68,7 +66,7 @@ var Logins = {
       let logins = [];
       try {
         logins = Services.logins.getAllLogins();
-      } catch(e) {
+      } catch (e) {
         // It's likely that the Master Password was not entered; give
         // a hint to the next person.
         throw new Error("Possible Master Password permissions error: " + e.toString());
@@ -151,7 +149,7 @@ var Logins = {
     }
   },
 
-  init: function () {
+  init: function() {
     window.addEventListener("popstate", this);
 
     Services.obs.addObserver(this, "passwordmgr-storage-changed");
@@ -202,12 +200,12 @@ var Logins = {
     this._reloadList();
   },
 
-  uninit: function () {
+  uninit: function() {
     Services.obs.removeObserver(this, "passwordmgr-storage-changed");
     window.removeEventListener("popstate", this);
   },
 
-  _loadList: function (logins) {
+  _loadList: function(logins) {
     let list = document.getElementById("logins-list");
     let newList = list.cloneNode(false);
 
@@ -219,7 +217,7 @@ var Logins = {
     list.parentNode.replaceChild(newList, list);
   },
 
-  _showList: function () {
+  _showList: function() {
     let loginsListPage = document.getElementById("logins-list-page");
     loginsListPage.classList.remove("hidden");
 
@@ -232,7 +230,7 @@ var Logins = {
     }
   },
 
-  _onPopState: function (event) {
+  _onPopState: function(event) {
     // Called when back/forward is used to change the state of the page
     if (event.state) {
       this._showEditLoginDialog(event.state.id);
@@ -241,7 +239,7 @@ var Logins = {
       this._showList();
     }
   },
-  _showEditLoginDialog: function (login) {
+  _showEditLoginDialog: function(login) {
     let listPage = document.getElementById("logins-list-page");
     listPage.classList.add("hidden");
 
@@ -261,8 +259,7 @@ var Logins = {
     let headerText = document.getElementById("edit-login-header-text");
     if (login.hostname && (login.hostname != "")) {
       headerText.textContent = login.hostname;
-    }
-    else {
+    } else {
       headerText.textContent = gStringBundle.GetStringFromName("editLogin.fallbackTitle");
     }
 
@@ -318,11 +315,11 @@ var Logins = {
     this._showList();
   },
 
-  _onPasswordBtn: function () {
+  _onPasswordBtn: function() {
     this._updatePasswordBtn(this._isPasswordBtnInHideMode());
   },
 
-  _updatePasswordBtn: function (aShouldShow) {
+  _updatePasswordBtn: function(aShouldShow) {
     let passwordField = document.getElementById("password");
     let button = document.getElementById("password-btn");
     let show = gStringBundle.GetStringFromName("password-btn.show");
@@ -333,12 +330,12 @@ var Logins = {
       button.classList.remove("password-btn-hide");
     } else {
       passwordField.type = "text";
-      button.textContent= hide;
+      button.textContent = hide;
       button.classList.add("password-btn-hide");
     }
   },
 
-  _isPasswordBtnInHideMode: function () {
+  _isPasswordBtnInHideMode: function() {
     let button = document.getElementById("password-btn");
     return button.classList.contains("password-btn-hide");
   },
@@ -359,7 +356,7 @@ var Logins = {
      });
   },
 
-  _onLoginClick: function (event) {
+  _onLoginClick: function(event) {
     let loginItem = event.currentTarget;
     let login = loginItem.login;
     if (!login) {
@@ -409,20 +406,23 @@ var Logins = {
               case 0:
                 // Corresponds to "confirm" button.
                 Services.logins.removeLogin(login);
+
+                // Show a snackbar to notify the login record has been deleted.
+                Snackbars.show(gStringBundle.GetStringFromName("loginsDetails.deleted"), Snackbars.LENGTH_LONG);
             }
           });
       }
     });
   },
 
-  _loadFavicon: function (aImg, aHostname) {
+  _loadFavicon: function(aImg, aHostname) {
     // Load favicon from cache.
     EventDispatcher.instance.sendRequestForResult({
       type: "Favicon:Request",
       url: aHostname,
       skipNetwork: true
     }).then(function(faviconUrl) {
-      aImg.style.backgroundImage= "url('" + faviconUrl + "')";
+      aImg.style.backgroundImage = "url('" + faviconUrl + "')";
       aImg.style.visibility = "visible";
     }, function(data) {
       debug("Favicon cache failure : " + data);
@@ -430,13 +430,14 @@ var Logins = {
     });
   },
 
-  _createItemForLogin: function (login) {
+  _createItemForLogin: function(login) {
     let loginItem = document.createElement("div");
 
     loginItem.setAttribute("loginID", login.guid);
     loginItem.className = "login-item list-item";
 
     loginItem.addEventListener("click", this, true);
+    loginItem.addEventListener("contextmenu", this, true);
 
     // Create item icon.
     let img = document.createElement("div");
@@ -473,12 +474,13 @@ var Logins = {
     return loginItem;
   },
 
-  handleEvent: function (event) {
+  handleEvent: function(event) {
     switch (event.type) {
       case "popstate": {
         this._onPopState(event);
         break;
       }
+      case "contextmenu":
       case "click": {
         this._onLoginClick(event);
         break;
@@ -486,8 +488,8 @@ var Logins = {
     }
   },
 
-  observe: function (subject, topic, data) {
-    switch(topic) {
+  observe: function(subject, topic, data) {
+    switch (topic) {
       case "passwordmgr-storage-changed": {
         this._reloadList();
         break;
@@ -498,15 +500,15 @@ var Logins = {
   _filter: function(event) {
     let value = event.target.value.toLowerCase();
     let logins = this._logins.filter((login) => {
-      if (login.hostname.toLowerCase().indexOf(value) != -1) {
+      if (login.hostname.toLowerCase().includes(value)) {
         return true;
       }
       if (login.username &&
-          login.username.toLowerCase().indexOf(value) != -1) {
+          login.username.toLowerCase().includes(value)) {
         return true;
       }
       if (login.httpRealm &&
-          login.httpRealm.toLowerCase().indexOf(value) != -1) {
+          login.httpRealm.toLowerCase().includes(value)) {
         return true;
       }
       return false;

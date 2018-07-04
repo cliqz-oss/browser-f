@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,7 +17,6 @@ namespace mozilla {
 
 namespace layers {
 class StackingContextHelper;
-class WebRenderDisplayItemLayer;
 } // namespace layers
 
 namespace wr {
@@ -82,15 +82,32 @@ public:
    */
   void BuildWebRenderDisplayItems(wr::DisplayListBuilder& aBuilder,
                                   const layers::StackingContextHelper& aSc,
-                                  layers::WebRenderDisplayItemLayer* aLayer,
                                   const nsRect& aDest,
                                   const nsRect& aFill,
                                   const nsSize& aRepeatSize,
                                   const mozilla::CSSIntRect& aSrc,
+                                  bool aIsBackfaceVisible,
                                   float aOpacity = 1.0);
 
 private:
   nsCSSGradientRenderer() {}
+
+  /**
+   * Attempts to paint the tiles for a gradient by painting it once to an
+   * offscreen surface and then painting that offscreen surface with
+   * ExtendMode::Repeat to cover all tiles.
+   *
+   * Returns false if the optimization wasn't able to be used, in which case
+   * a fallback should be used.
+   */
+  bool TryPaintTilesWithExtendMode(gfxContext& aContext,
+                                   gfxPattern* aGradientPattern,
+                                   nscoord aXStart,
+                                   nscoord aYStart,
+                                   const gfxRect& aDirtyAreaToFill,
+                                   const nsRect& aDest,
+                                   const nsSize& aRepeatSize,
+                                   bool aForceRepeatToCoverTiles);
 
   nsPresContext* mPresContext;
   nsStyleGradient* mGradient;

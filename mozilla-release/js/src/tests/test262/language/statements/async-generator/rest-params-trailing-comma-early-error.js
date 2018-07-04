@@ -1,4 +1,4 @@
-// |reftest| skip-if(release_or_beta) error:SyntaxError -- async-iteration is not released yet
+// |reftest| error:SyntaxError
 // This file was procedurally generated from the following sources:
 // - src/function-forms/rest-params-trailing-comma-early-error.case
 // - src/function-forms/syntax/async-gen-func-decl.template
@@ -8,7 +8,7 @@ esid: sec-asyncgenerator-definitions-instantiatefunctionobject
 features: [async-iteration]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     AsyncGeneratorDeclaration : async [no LineTerminator here] function * BindingIdentifier
@@ -31,6 +31,7 @@ info: |
         FormalParameterList[?Yield, ?Await] ,
         FormalParameterList[?Yield, ?Await] , FunctionRestParameter[?Yield, ?Await]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 
 async function* f(...a,) {

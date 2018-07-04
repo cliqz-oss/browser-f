@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 /**
  Ensure that frameset history works properly when restoring a tab,
@@ -32,7 +33,7 @@ add_task(async function() {
   await promise;
 
   info("Close then un-close page, 4 loads should take place");
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
   let newTab = ss.undoCloseTab(window, 0);
   await waitForLoadsInBrowser(newTab.linkedBrowser, 4);
 
@@ -77,7 +78,7 @@ add_task(async function() {
   await promise;
 
   info("iframe: Close then un-close page, 5 loads should take place");
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
   let newTab = ss.undoCloseTab(window, 0);
   await waitForLoadsInBrowser(newTab.linkedBrowser, 5);
 
@@ -100,14 +101,14 @@ add_task(async function() {
 // Now, test that we don't record history if the iframe is added dynamically
 add_task(async function() {
   // Start with an empty history
-    let blankState = JSON.stringify({
-      windows: [{
-        tabs: [{ entries: [{ url: "about:blank", triggeringPrincipal_base64 }] }],
-        _closedTabs: []
-      }],
-      _closedWindows: []
-    });
-    ss.setBrowserState(blankState);
+  let blankState = JSON.stringify({
+    windows: [{
+      tabs: [{ entries: [{ url: "about:blank", triggeringPrincipal_base64 }] }],
+      _closedTabs: []
+    }],
+    _closedWindows: []
+  });
+  await setBrowserState(blankState);
 
   let testURL = getRootDirectory(gTestPath) + "browser_frame_history_index_blank.html";
   let tab = BrowserTestUtils.addTab(gBrowser, testURL);
@@ -150,13 +151,13 @@ add_task(async function() {
 function waitForLoadsInBrowser(aBrowser, aLoadCount) {
   return new Promise(resolve => {
     let loadCount = 0;
-    aBrowser.addEventListener("load", function(aEvent) {
+    aBrowser.addEventListener("load", function listener(aEvent) {
       if (++loadCount < aLoadCount) {
         info("Got " + loadCount + " loads, waiting until we have " + aLoadCount);
         return;
       }
 
-      aBrowser.removeEventListener("load", arguments.callee, true);
+      aBrowser.removeEventListener("load", listener, true);
       resolve();
     }, true);
   });

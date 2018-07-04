@@ -8,10 +8,10 @@
  * for raw payloads with attached content-type headers.
  */
 
-add_task(function* () {
+add_task(async function() {
   let { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
 
-  let { tab, monitor } = yield initNetMonitor(POST_RAW_URL);
+  let { tab, monitor } = await initNetMonitor(POST_RAW_URL);
   info("Starting test... ");
 
   let { document, store, windowRequire } = monitor.panelWin;
@@ -19,11 +19,8 @@ add_task(function* () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, 0, 1);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests();
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 1);
 
   // Wait for all tree view updated by react
   wait = waitForDOM(document, "#params-panel .tree-section");
@@ -31,7 +28,7 @@ add_task(function* () {
     document.querySelectorAll(".request-list-item")[0]);
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector("#params-tab"));
-  yield wait;
+  await wait;
 
   let tabpanel = document.querySelector("#params-panel");
 
@@ -54,10 +51,10 @@ add_task(function* () {
   let values = tabpanel
     .querySelectorAll("tr:not(.tree-section) .treeValueCell .objectBox");
 
-  is(labels[0].textContent, "foo", "The first query param name was incorrect.");
-  is(values[0].textContent, "bar", "The first query param value was incorrect.");
-  is(labels[1].textContent, "baz", "The second query param name was incorrect.");
-  is(values[1].textContent, "123", "The second query param value was incorrect.");
+  is(labels[0].textContent, "baz", "The first query param name was incorrect.");
+  is(values[0].textContent, "123", "The first query param value was incorrect.");
+  is(labels[1].textContent, "foo", "The second query param name was incorrect.");
+  is(values[1].textContent, "bar", "The second query param value was incorrect.");
 
   return teardown(monitor);
 });

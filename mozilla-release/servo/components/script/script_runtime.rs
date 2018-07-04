@@ -6,8 +6,10 @@
 //! script thread, the dom, and the worker threads.
 
 use dom::bindings::codegen::Bindings::PromiseBinding::PromiseJobCallback;
-use dom::bindings::js::{RootCollection, RootCollectionPtr, trace_roots};
+use dom::bindings::conversions::get_dom_class;
+use dom::bindings::conversions::private_from_object;
 use dom::bindings::refcounted::{LiveDOMReferences, trace_refcounted_objects};
+use dom::bindings::root::trace_roots;
 use dom::bindings::settings_stack;
 use dom::bindings::trace::{JSTraceable, trace_traceables};
 use dom::bindings::utils::DOM_CALLBACKS;
@@ -20,21 +22,24 @@ use js::jsapi::{JSGCMode, JSGCParamKey, JS_SetGCParameter, JS_SetGlobalJitCompil
 use js::jsapi::{JSJitCompilerOption, JS_SetOffthreadIonCompilationEnabled, JS_SetParallelParsingEnabled};
 use js::jsapi::{JSObject, RuntimeOptionsRef, SetPreserveWrapperCallback, SetEnqueuePromiseJobCallback};
 use js::panic::wrap_panic;
-use js::rust::Runtime;
+use js::rust::Runtime as RustRuntime;
+use malloc_size_of::MallocSizeOfOps;
 use microtask::{EnqueuedPromiseCallback, Microtask};
+use msg::constellation_msg::PipelineId;
 use profile_traits::mem::{Report, ReportKind, ReportsChan};
-use script_thread::{Runnable, STACK_ROOTS, trace_thread};
+use script_thread::trace_thread;
 use servo_config::opts;
 use servo_config::prefs::PREFS;
 use std::cell::Cell;
 use std::fmt;
 use std::io::{Write, stdout};
-use std::marker::PhantomData;
+use std::ops::Deref;
 use std::os;
 use std::os::raw::c_void;
 use std::panic::AssertUnwindSafe;
 use std::ptr;
-use style::thread_state;
+use style::thread_state::{self, ThreadState};
+use task::TaskBox;
 use time::{Tm, now};
 
 /// Common messages used to control the event loops in both the script and the worker
@@ -43,14 +48,16 @@ pub enum CommonScriptMsg {
     /// supplied channel.
     CollectReports(ReportsChan),
     /// Generic message that encapsulates event handling.
-    RunnableMsg(ScriptThreadEventCategory, Box<Runnable + Send>),
+    Task(ScriptThreadEventCategory, Box<TaskBox>, Option<PipelineId>),
 }
 
 impl fmt::Debug for CommonScriptMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             CommonScriptMsg::CollectReports(_) => write!(f, "CollectReports(...)"),
-            CommonScriptMsg::RunnableMsg(category, _) => write!(f, "RunnableMsg({:?}, ...)", category),
+            CommonScriptMsg::Task(ref category, ref task, _) => {
+                f.debug_tuple("Task").field(category).field(task).finish()
+            },
         }
     }
 }
@@ -88,7 +95,8 @@ pub enum ScriptThreadEventCategory {
     ServiceWorkerEvent,
     EnterFullscreen,
     ExitFullscreen,
-    WebVREvent
+    WebVREvent,
+    PerformanceTimelineTask,
 }
 
 /// An interface for receiving ScriptMsg values in an event loop. Used for synchronous DOM
@@ -96,23 +104,6 @@ pub enum ScriptThreadEventCategory {
 /// different Receiver interfaces.
 pub trait ScriptPort {
     fn recv(&self) -> Result<CommonScriptMsg, ()>;
-}
-
-pub struct StackRootTLS<'a>(PhantomData<&'a u32>);
-
-impl<'a> StackRootTLS<'a> {
-    pub fn new(roots: &'a RootCollection) -> StackRootTLS<'a> {
-        STACK_ROOTS.with(|ref r| {
-            r.set(Some(RootCollectionPtr(roots as *const _)))
-        });
-        StackRootTLS(PhantomData)
-    }
-}
-
-impl<'a> Drop for StackRootTLS<'a> {
-    fn drop(&mut self) {
-        STACK_ROOTS.with(|ref r| r.set(None));
-    }
 }
 
 /// SM callback for promise job resolution. Adds a promise callback to the current
@@ -134,13 +125,28 @@ unsafe extern "C" fn enqueue_job(cx: *mut JSContext,
     }), false)
 }
 
+#[derive(JSTraceable)]
+pub struct Runtime(RustRuntime);
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        THREAD_ACTIVE.with(|t| t.set(false));
+    }
+}
+
+impl Deref for Runtime {
+    type Target = RustRuntime;
+    fn deref(&self) -> &RustRuntime {
+        &self.0
+    }
+}
+
 #[allow(unsafe_code)]
 pub unsafe fn new_rt_and_cx() -> Runtime {
     LiveDOMReferences::initialize();
-    let runtime = Runtime::new().unwrap();
+    let runtime = RustRuntime::new().unwrap();
 
     JS_AddExtraGCRootsTracer(runtime.rt(), Some(trace_rust_roots), ptr::null_mut());
-    JS_AddExtraGCRootsTracer(runtime.rt(), Some(trace_refcounted_objects), ptr::null_mut());
 
     // Needed for debug assertions about whether GC is running.
     if cfg!(debug_assertions) {
@@ -257,7 +263,6 @@ pub unsafe fn new_rt_and_cx() -> Runtime {
     if let Some(val) = PREFS.get("js.mem.gc.dynamic_mark_slice.enabled").as_boolean() {
         JS_SetGCParameter(runtime.rt(), JSGCParamKey::JSGC_DYNAMIC_MARK_SLICE, val as u32);
     }
-    // TODO: handle js.mem.gc.refresh_frame_slices.enabled
     if let Some(val) = PREFS.get("js.mem.gc.dynamic_heap_growth.enabled").as_boolean() {
         JS_SetGCParameter(runtime.rt(), JSGCParamKey::JSGC_DYNAMIC_HEAP_GROWTH, val as u32);
     }
@@ -307,7 +312,25 @@ pub unsafe fn new_rt_and_cx() -> Runtime {
         }
     }
 
-    runtime
+    Runtime(runtime)
+}
+
+#[allow(unsafe_code)]
+unsafe extern "C" fn get_size(obj: *mut JSObject) -> usize {
+    match get_dom_class(obj) {
+        Ok(v) => {
+            let dom_object = private_from_object(obj) as *const c_void;
+
+            if dom_object.is_null() {
+                return 0;
+            }
+            let mut ops = MallocSizeOfOps::new(::servo_allocator::usable_size, None, None);
+            (v.malloc_size_of)(&mut ops, dom_object)
+        }
+        Err(_e) => {
+            return 0;
+        }
+    }
 }
 
 #[allow(unsafe_code)]
@@ -317,7 +340,7 @@ pub fn get_reports(cx: *mut JSContext, path_seg: String) -> Vec<Report> {
     unsafe {
         let rt = JS_GetRuntime(cx);
         let mut stats = ::std::mem::zeroed();
-        if CollectServoSizes(rt, &mut stats) {
+        if CollectServoSizes(rt, &mut stats, Some(get_size)) {
             let mut report = |mut path_suffix, kind, size| {
                 let mut path = path![path_seg, "js"];
                 path.append(&mut path_suffix);
@@ -408,17 +431,25 @@ unsafe extern "C" fn gc_slice_callback(_rt: *mut JSRuntime, progress: GCProgress
 #[allow(unsafe_code)]
 unsafe extern "C" fn debug_gc_callback(_rt: *mut JSRuntime, status: JSGCStatus, _data: *mut os::raw::c_void) {
     match status {
-        JSGCStatus::JSGC_BEGIN => thread_state::enter(thread_state::IN_GC),
-        JSGCStatus::JSGC_END   => thread_state::exit(thread_state::IN_GC),
+        JSGCStatus::JSGC_BEGIN => thread_state::enter(ThreadState::IN_GC),
+        JSGCStatus::JSGC_END   => thread_state::exit(ThreadState::IN_GC),
     }
 }
 
+thread_local!(
+    static THREAD_ACTIVE: Cell<bool> = Cell::new(true);
+);
+
 #[allow(unsafe_code)]
 unsafe extern fn trace_rust_roots(tr: *mut JSTracer, _data: *mut os::raw::c_void) {
+    if !THREAD_ACTIVE.with(|t| t.get()) {
+        return;
+    }
     debug!("starting custom root handler");
     trace_thread(tr);
     trace_traceables(tr);
     trace_roots(tr);
+    trace_refcounted_objects(tr);
     settings_stack::trace(tr);
     debug!("done custom root handler");
 }

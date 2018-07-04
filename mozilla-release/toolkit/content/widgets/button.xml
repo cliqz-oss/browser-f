@@ -9,7 +9,7 @@
    xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
    xmlns:xbl="http://www.mozilla.org/xbl">
 
-  <binding id="button-base" extends="chrome://global/content/bindings/general.xml#basetext" role="xul:button">
+  <binding id="button-base" extends="chrome://global/content/bindings/general.xml#basetext">
     <implementation implements="nsIDOMXULButtonElement">
       <property name="type"
                 onget="return this.getAttribute('type');"
@@ -39,9 +39,7 @@
 
       <property name="checked" onget="return this.hasAttribute('checked');">
         <setter><![CDATA[
-          if (this.type == "checkbox") {
-            this.checkState = val ? 1 : 0;
-          } else if (this.type == "radio" && val) {
+          if (this.type == "radio" && val) {
             var sibs = this.parentNode.getElementsByAttribute("group", this.group);
             for (var i = 0; i < sibs.length; ++i)
               sibs[i].removeAttribute("checked");
@@ -55,27 +53,6 @@
           return val;
         ]]></setter>
       </property>
-
-      <property name="checkState">
-        <getter><![CDATA[
-          var state = this.getAttribute("checkState");
-          if (state == "")
-            return this.checked ? 1 : 0;
-          if (state == "0")
-            return 0;
-          if (state == "2")
-            return 2;
-          return 1;
-        ]]></getter>
-        <setter><![CDATA[
-          this.setAttribute("checkState", val);
-          return val;
-        ]]></setter>
-      </property>
-
-      <property name="autoCheck"
-                onget="return this.getAttribute('autoCheck') == 'true';"
-                onset="this.setAttribute('autoCheck', val); return val;"/>
 
       <method name ="filterButtons">
         <parameter name="node"/>
@@ -123,9 +100,7 @@
       <method name="_handleClick">
         <body>
         <![CDATA[
-          if (!this.disabled &&
-              (this.autoCheck || !this.hasAttribute("autoCheck"))) {
-
+          if (!this.disabled) {
             if (this.type == "checkbox") {
               this.checked = !this.checked;
             } else if (this.type == "radio") {
@@ -184,7 +159,7 @@
 
         if (event.keyCode || event.charCode <= 32 || event.altKey ||
             event.ctrlKey || event.metaKey)
-          return;  // No printable char pressed, not a potential accesskey
+          return; // No printable char pressed, not a potential accesskey
 
         // Possible accesskey pressed
         var charPressedLower = String.fromCharCode(event.charCode).toLowerCase();
@@ -199,7 +174,7 @@
         // Get the buttons for the main document and all sub-frames
         for (var frameCount = -1; frameCount < window.top.frames.length; frameCount++) {
           var doc = (frameCount == -1) ? window.top.document :
-            window.top.frames[frameCount].document
+            window.top.frames[frameCount].document;
           if (this.fireAccessKeyButton(doc.documentElement, charPressedLower))
             return;
         }
@@ -225,11 +200,9 @@
       <children includes="observes|template|menupopup|panel|tooltip"/>
       <xul:hbox class="box-inherit button-box" xbl:inherits="align,dir,pack,orient"
                 align="center" pack="center" flex="1" anonid="button-box">
-        <children>
-          <xul:image class="button-icon" xbl:inherits="src=image"/>
-          <xul:label class="button-text" xbl:inherits="value=label,accesskey,crop,highlightable"/>
-          <xul:label class="button-highlightable-text" xbl:inherits="xbl:text=label,accesskey,crop,highlightable"/>
-        </children>
+        <xul:image class="button-icon" xbl:inherits="src=image"/>
+        <xul:label class="button-text" xbl:inherits="value=label,accesskey,crop,highlightable"/>
+        <xul:label class="button-highlightable-text" xbl:inherits="xbl:text=label,accesskey,crop,highlightable"/>
       </xul:hbox>
     </content>
   </binding>
@@ -240,14 +213,12 @@
       <children includes="observes|template|menupopup|panel|tooltip"/>
       <xul:hbox class="box-inherit button-box" xbl:inherits="align,dir,pack,orient"
                 align="center" pack="center" flex="1">
-        <children>
-          <xul:hbox class="box-inherit" xbl:inherits="align,dir,pack,orient"
-                    align="center" pack="center" flex="1">
-            <xul:image class="button-icon" xbl:inherits="src=image"/>
-            <xul:label class="button-text" xbl:inherits="value=label,accesskey,crop"/>
-          </xul:hbox>
-          <xul:dropmarker class="button-menu-dropmarker" xbl:inherits="open,disabled,label"/>
-        </children>
+        <xul:hbox class="box-inherit" xbl:inherits="align,dir,pack,orient"
+                  align="center" pack="center" flex="1">
+          <xul:image class="button-icon" xbl:inherits="src=image"/>
+          <xul:label class="button-text" xbl:inherits="value=label,accesskey,crop"/>
+        </xul:hbox>
+        <xul:dropmarker class="button-menu-dropmarker" xbl:inherits="open,disabled,label"/>
       </xul:hbox>
     </content>
 
@@ -265,7 +236,7 @@
 
   <binding id="menu-button-base"
            extends="chrome://global/content/bindings/button.xml#button-base">
-    <implementation implements="nsIDOMEventListener">
+    <implementation>
       <constructor>
         this.init();
       </constructor>
@@ -375,15 +346,5 @@
       <xul:dropmarker class="button-menubutton-dropmarker" xbl:inherits="open,disabled,label"/>
     </content>
   </binding>
-
-  <binding id="button-image" display="xul:button"
-           extends="chrome://global/content/bindings/button.xml#button">
-    <content>
-      <xul:image class="button-image-icon" xbl:inherits="src=image"/>
-    </content>
-  </binding>
-
-  <binding id="button-repeat" display="xul:autorepeatbutton"
-           extends="chrome://global/content/bindings/button.xml#button"/>
 
 </bindings>

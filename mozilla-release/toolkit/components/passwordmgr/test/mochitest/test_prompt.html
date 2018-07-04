@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>Test prompter.{prompt,promptPassword,promptUsernameAndPassword}</title>
   <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <script type="text/javascript" src="pwmgr_common.js"></script>
   <script type="text/javascript" src="prompt_common.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
@@ -27,11 +27,10 @@ var isOk;
 isTabModal = false;
 
 let prompterParent = runInParent(() => {
-  const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
   const promptFac = Cc["@mozilla.org/passwordmanager/authpromptfactory;1"].
                     getService(Ci.nsIPromptFactory);
 
-  Cu.import("resource://gre/modules/Services.jsm");
+  let {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
   let chromeWin = Services.wm.getMostRecentWindow("navigator:browser");
   let prompter1 = promptFac.getPrompt(chromeWin, Ci.nsIAuthPrompt);
 
@@ -51,11 +50,8 @@ const defaultTitle = "the title";
 const defaultMsg = "the message";
 
 function initLogins() {
-  const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+  const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
   var login1, login2A, login2B, login2C, login2D, login2E;
-  var pwmgr = Cc["@mozilla.org/login-manager;1"].
-              getService(Ci.nsILoginManager);
-
   login1  = Cc["@mozilla.org/login-manager/loginInfo;1"].
             createInstance(Ci.nsILoginInfo);
   login2A = Cc["@mozilla.org/login-manager/loginInfo;1"].
@@ -82,12 +78,12 @@ function initLogins() {
   login2E.init("http://example2.com", null, "http://example2.com",
                "100%beef", "user3pass", "", "");
 
-  pwmgr.addLogin(login1);
-  pwmgr.addLogin(login2A);
-  pwmgr.addLogin(login2B);
-  pwmgr.addLogin(login2C);
-  pwmgr.addLogin(login2D);
-  pwmgr.addLogin(login2E);
+  Services.logins.addLogin(login1);
+  Services.logins.addLogin(login2A);
+  Services.logins.addLogin(login2B);
+  Services.logins.addLogin(login2C);
+  Services.logins.addLogin(login2D);
+  Services.logins.addLogin(login2E);
 }
 
 add_task(async function setup() {

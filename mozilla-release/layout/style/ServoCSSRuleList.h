@@ -16,7 +16,7 @@
 namespace mozilla {
 
 class ServoStyleRule;
-class ServoStyleSheet;
+class StyleSheet;
 namespace css {
 class GroupRule;
 class Rule;
@@ -30,7 +30,7 @@ public:
   // is a top level CSSRuleList. If it's owned by a group rule, nullptr.
   // If this param is set, the caller doesn't need to call SetStyleSheet.
   ServoCSSRuleList(already_AddRefed<ServoCssRules> aRawRules,
-                   ServoStyleSheet* aDirectOwnerStyleSheet);
+                   StyleSheet* aDirectOwnerStyleSheet);
   css::GroupRule* GetParentRule() const { return mParentRule; }
   void SetParentRule(css::GroupRule* aParentRule);
   void SetStyleSheet(StyleSheet* aSheet);
@@ -38,7 +38,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(ServoCSSRuleList, dom::CSSRuleList)
 
-  ServoStyleSheet* GetParentObject() final { return mStyleSheet; }
+  StyleSheet* GetParentObject() final { return mStyleSheet; }
 
   css::Rule* IndexedGetter(uint32_t aIndex, bool& aFound) final;
   uint32_t Length() final { return mRules.Length(); }
@@ -49,7 +49,7 @@ public:
   nsresult InsertRule(const nsAString& aRule, uint32_t aIndex);
   nsresult DeleteRule(uint32_t aIndex);
 
-  uint16_t GetRuleType(uint32_t aIndex) const;
+  uint16_t GetDOMCSSRuleType(uint32_t aIndex) const;
 
 private:
   virtual ~ServoCSSRuleList();
@@ -72,7 +72,7 @@ private:
   void DropAllRules();
 
   // mStyleSheet may be nullptr when it drops the reference to us.
-  ServoStyleSheet* mStyleSheet = nullptr;
+  StyleSheet* mStyleSheet = nullptr;
   // mParentRule is nullptr if it isn't a nested rule list.
   css::GroupRule* mParentRule = nullptr;
   RefPtr<ServoCssRules> mRawRules;

@@ -29,6 +29,27 @@
   "downloadScreenshot": {
     "message": "دریافت"
   },
+  "downloadOnlyNotice": {
+    "message": "شما در حال حاضر در حالت فقط-دریافت هستید."
+  },
+  "downloadOnlyDetails": {
+    "message": "Firefox Screenshots در خصوص چنین موقعیتی به صورت خودکارحالت را به تنها دریافت تبدیل می‌کند:"
+  },
+  "downloadOnlyDetailsPrivate": {
+    "message": "در پنجره‌های مرور ناشناس."
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "کوکی‌های شخص ثالث غیرفعال شده باشند."
+  },
+  "downloadOnlyDetailsNeverRemember": {
+    "message": "امکان «هیچ‌وقت تاریخچه ذخیره نشود» فعال باشد."
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "شما از فایرفاکس ESR استفاده می‌کنید."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "بارگیری ها غیرفعال شده اند."
+  },
   "notificationLinkCopiedTitle": {
     "message": "پیوند کپی شد"
   },
@@ -36,6 +57,28 @@
     "message": "لینک عکس شما در کلیپ‌بورد رونوشت شد. $META_KEY$-V را برای جای‌گذاری فشار دهید.",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyScreenshot": {
+    "message": "رونوشت"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "رونوشت تصویر تهیه شد"
+  },
+  "notificationImageCopiedDetails": {
+    "message": "عکس شما در کلیپ‌بورد رونوشت شد. $META_KEY$-V را برای جای‌گذاری فشار دهید.",
+    "placeholders": {
+      "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "imageCroppedWarning": {
+    "message": "این تصویر برید شده است به $PIXELS$ پیکسل.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -79,25 +122,31 @@
   "genericErrorDetails": {
     "message": "مطمئن نیستیم چه اتفاقی افتاده است. می‌خواهید دوباره امتحان کنید یا از یک صفحهٔ دیگر عکس بگیرید؟"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "بدون خارج شدن از فایرفاکس، عکس بگیرید، ذخیره کنید و به اشتراک بگذارید."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "روش جدیدی برای ذخیره کردن"
+  },
+  "tourBodyPageAction": {
+    "message": "بازکردن صفحه اقدامات فهرست در آدرس بار هر زمانی که شما تمایل داشته باشید از صفحه عکس بگیرید."
+  },
+  "tourHeaderClickAndDrag": {
     "message": "ضبط آنچه شما می‌خواهید"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "کلیک کنید و بکشید تا فقط از قسمتی از صفحه عکس بگیرید. می‌توانید برای برجسته کردن روی ناحیه انتخاب شده حرکت کنید."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "ضبط پنجره یا کل صفحه‌ها"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "برای گرفتن عکس از ناحیه قابل مشاهده در پنجره یا تمام صفحه از دکمه‌های بالا سمت راست استفاده کنید."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "همانطور که می‌پسندید"
   },
-  "tourBodyFour": {
+  "tourBodyDownloadUpload": {
     "message": "عکس‌های بریده شده خود را برای به اشتراک‌گذاری راحت‌تر روی وب ذخیره کنید، یا آن‌ها را روی رایانه خود دریافت کنید. همچنین برای دیدن همهٔ عکس‌هایی که گرفتید می‌توانید روی دکمه «عکس‌های من» کلیک کنید."
   },
   "tourSkip": {
@@ -112,8 +161,8 @@
   "tourDone": {
     "message": "انجام شد"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "با استفاده از سرویس تصاویرِ صفحه فایرفاکس، شما با شرایط سرویس‌های ابری فایرفاکس $TERMSANDPRIVACYNOTICETERMSLINK$ و $TERMSANDPRIVACYNOTICEPRIVACYLINK$ موافقت می‌کنید.",
+  "termsAndPrivacyNotice2": {
+    "message": "با استفاده از سرویس تصاویر صفحه فایرفاکس، شما با $TERMSANDPRIVACYNOTICETERMSLINK$ ما و $TERMSANDPRIVACYNOTICEPRIVACYLINK$ موافقت می‌کنید.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +177,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "نکات حریم‌خصوصی"
+  },
+  "libraryLabel": {
+    "message": "تصاویر صفحه"
   }
 }

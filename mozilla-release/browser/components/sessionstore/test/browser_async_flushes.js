@@ -1,6 +1,8 @@
 "use strict";
 
-const URL = "data:text/html;charset=utf-8,<a href=%23>clickme</a>";
+const PATH = getRootDirectory(gTestPath)
+             .replace("chrome://mochitests/content/", "http://example.com/");
+const URL = PATH + "file_async_flushes.html";
 
 add_task(async function test_flush() {
   // Create new tab.
@@ -109,5 +111,8 @@ add_task(async function test_remove() {
   });
 
   // Request a flush and remove the tab. The flush should still complete.
-  await Promise.all([TabStateFlusher.flush(browser), promiseRemoveTab(tab)]);
-})
+  await Promise.all([
+    TabStateFlusher.flush(browser),
+    promiseRemoveTabAndSessionState(tab),
+  ]);
+});

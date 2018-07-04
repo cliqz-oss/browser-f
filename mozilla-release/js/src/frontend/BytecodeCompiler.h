@@ -12,7 +12,7 @@
 #include "NamespaceImports.h"
 
 #include "vm/Scope.h"
-#include "vm/String.h"
+#include "vm/StringType.h"
 #include "vm/TraceLogging.h"
 
 class JSLinearString;
@@ -26,7 +26,7 @@ class ScriptSourceObject;
 
 namespace frontend {
 
-class TokenStreamAnyChars;
+class ErrorReporter;
 class FunctionBox;
 class ParseNode;
 
@@ -35,6 +35,15 @@ CompileGlobalScript(JSContext* cx, LifoAlloc& alloc, ScopeKind scopeKind,
                     const ReadOnlyCompileOptions& options,
                     SourceBufferHolder& srcBuf,
                     ScriptSourceObject** sourceObjectOut = nullptr);
+
+#if defined(JS_BUILD_BINAST)
+
+JSScript*
+CompileGlobalBinASTScript(JSContext *cx, LifoAlloc& alloc,
+                          const ReadOnlyCompileOptions& options,
+                          const uint8_t* src, size_t len);
+
+#endif // JS_BUILD_BINAST
 
 JSScript*
 CompileEvalScript(JSContext* cx, LifoAlloc& alloc,
@@ -92,11 +101,6 @@ CompileStandaloneAsyncGenerator(JSContext* cx, MutableHandleFunction fun,
                                 JS::SourceBufferHolder& srcBuf,
                                 const mozilla::Maybe<uint32_t>& parameterListEnd);
 
-MOZ_MUST_USE bool
-CompileAsyncFunctionBody(JSContext* cx, MutableHandleFunction fun,
-                         const ReadOnlyCompileOptions& options,
-                         Handle<PropertyNameVector> formals, JS::SourceBufferHolder& srcBuf);
-
 ScriptSourceObject*
 CreateScriptSourceObject(JSContext* cx, const ReadOnlyCompileOptions& options,
                          const mozilla::Maybe<uint32_t>& parameterListEnd = mozilla::Nothing());
@@ -129,6 +133,14 @@ IsKeyword(JSLinearString* str);
 void
 TraceParser(JSTracer* trc, JS::AutoGCRooter* parser);
 
+#if defined(JS_BUILD_BINAST)
+
+/* Trace all GC things reachable from binjs parser. Defined in BinSource.cpp. */
+void
+TraceBinParser(JSTracer* trc, JS::AutoGCRooter* parser);
+
+#endif // defined(JS_BUILD_BINAST)
+
 class MOZ_STACK_CLASS AutoFrontendTraceLog
 {
 #ifdef JS_TRACE_LOGGING
@@ -140,16 +152,13 @@ class MOZ_STACK_CLASS AutoFrontendTraceLog
 
   public:
     AutoFrontendTraceLog(JSContext* cx, const TraceLoggerTextId id,
-                         const char* filename, size_t line, size_t column);
+                         const ErrorReporter& reporter);
 
     AutoFrontendTraceLog(JSContext* cx, const TraceLoggerTextId id,
-                         const TokenStreamAnyChars& tokenStream);
+                         const ErrorReporter& reporter, FunctionBox* funbox);
 
     AutoFrontendTraceLog(JSContext* cx, const TraceLoggerTextId id,
-                         const TokenStreamAnyChars& tokenStream, FunctionBox* funbox);
-
-    AutoFrontendTraceLog(JSContext* cx, const TraceLoggerTextId id,
-                         const TokenStreamAnyChars& tokenStream, ParseNode* pn);
+                         const ErrorReporter& reporter, ParseNode* pn);
 };
 
 } /* namespace frontend */

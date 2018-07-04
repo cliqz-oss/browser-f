@@ -6,25 +6,25 @@
 // for the popup blocker menu.
 add_task(async function test() {
   let testURI = "http://mochi.test:8888/browser/browser/components/privatebrowsing/test/browser/popup.html";
-  let oldPopupPolicy = gPrefService.getBoolPref("dom.disable_open_during_load");
-  gPrefService.setBoolPref("dom.disable_open_during_load", true);
+  let oldPopupPolicy = Services.prefs.getBoolPref("dom.disable_open_during_load");
+  Services.prefs.setBoolPref("dom.disable_open_during_load", true);
 
   registerCleanupFunction(() => {
-    gPrefService.setBoolPref("dom.disable_open_during_load", oldPopupPolicy);
+    Services.prefs.setBoolPref("dom.disable_open_during_load", oldPopupPolicy);
   });
 
   function testPopupBlockerMenuItem(aExpectedDisabled, aWindow, aCallback) {
 
-    aWindow.gBrowser.addEventListener("DOMUpdatePageReport", function() {
+    aWindow.gBrowser.addEventListener("DOMUpdateBlockedPopups", function() {
       executeSoon(function() {
         let notification = aWindow.gBrowser.getNotificationBox().getNotificationWithValue("popup-blocked");
         ok(notification, "The notification box should be displayed");
 
         function checkMenuItem(callback) {
           dump("CMI: in\n");
-          aWindow.document.addEventListener("popupshown", function(event) {
+          aWindow.document.addEventListener("popupshown", function listener(event) {
             dump("CMI: popupshown\n");
-            aWindow.document.removeEventListener("popupshown", arguments.callee);
+            aWindow.document.removeEventListener("popupshown", listener);
 
             if (aExpectedDisabled)
               is(aWindow.document.getElementById("blockedPopupAllowSite").getAttribute("disabled"), "true",

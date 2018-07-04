@@ -2,16 +2,75 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import json
-import sys
+import os
 from collections import defaultdict
 
+import mozunit
+import mozpack.path as mozpath
 import pytest
 
 from mozlint import ResultContainer
 from mozlint import formatters
+
+NORMALISED_PATHS = {
+    'abc': os.path.normpath('a/b/c.txt'),
+    'def': os.path.normpath('d/e/f.txt'),
+    'cwd': mozpath.normpath(os.getcwd()),
+}
+
+EXPECTED = {
+    'compact': {
+        'kwargs': {},
+        'format': """
+a/b/c.txt: line 1, Error - oh no foo (foo)
+a/b/c.txt: line 4, Error - oh no baz (baz)
+d/e/f.txt: line 4, col 2, Warning - oh no bar (bar-not-allowed)
+
+3 problems
+""".strip(),
+    },
+    'stylish': {
+        'kwargs': {
+            'disable_colors': True,
+        },
+        'format': """
+a/b/c.txt
+  1  error  oh no foo  (foo)
+  4  error  oh no baz  (baz)
+
+d/e/f.txt
+  4:2  warning  oh no bar  bar-not-allowed (bar)
+
+\u2716 3 problems (2 errors, 1 warning)
+""".strip(),
+    },
+    'treeherder': {
+        'kwargs': {},
+        'format': """
+TEST-UNEXPECTED-ERROR | a/b/c.txt:1 | oh no foo (foo)
+TEST-UNEXPECTED-ERROR | a/b/c.txt:4 | oh no baz (baz)
+TEST-UNEXPECTED-WARNING | d/e/f.txt:4:2 | oh no bar (bar-not-allowed)
+""".strip(),
+    },
+    'unix': {
+        'kwargs': {},
+        'format': """
+{abc}:1: foo error: oh no foo
+{abc}:4: baz error: oh no baz
+{def}:4:2: bar-not-allowed warning: oh no bar
+""".format(**NORMALISED_PATHS).strip(),
+    },
+    'summary': {
+        'kwargs': {},
+        'format': """
+{cwd}/a: 2
+{cwd}/d: 1
+""".format(**NORMALISED_PATHS).strip(),
+    },
+}
 
 
 @pytest.fixture
@@ -47,31 +106,11 @@ def results(scope='module'):
     return results
 
 
-def test_stylish_formatter(results):
-    expected = """
-a/b/c.txt
-  1  error  oh no foo  (foo)
-  4  error  oh no baz  (baz)
-
-d/e/f.txt
-  4:2  warning  oh no bar  bar-not-allowed (bar)
-
-\u2716 3 problems (2 errors, 1 warning)
-""".strip()
-
-    fmt = formatters.get('stylish', disable_colors=True)
-    assert expected == fmt(results)
-
-
-def test_treeherder_formatter(results):
-    expected = """
-TEST-UNEXPECTED-ERROR | a/b/c.txt:1 | oh no foo (foo)
-TEST-UNEXPECTED-ERROR | a/b/c.txt:4 | oh no baz (baz)
-TEST-UNEXPECTED-WARNING | d/e/f.txt:4:2 | oh no bar (bar-not-allowed)
-""".strip()
-
-    fmt = formatters.get('treeherder')
-    assert expected == fmt(results)
+@pytest.mark.parametrize("name", EXPECTED.keys())
+def test_formatters(results, name):
+    opts = EXPECTED[name]
+    fmt = formatters.get(name, **opts['kwargs'])
+    assert fmt(results) == opts['format']
 
 
 def test_json_formatter(results):
@@ -87,4 +126,4 @@ def test_json_formatter(results):
 
 
 if __name__ == '__main__':
-    sys.exit(pytest.main(['--verbose', __file__]))
+    mozunit.main()

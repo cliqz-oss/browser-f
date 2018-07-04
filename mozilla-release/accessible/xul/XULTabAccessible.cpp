@@ -52,7 +52,7 @@ XULTabAccessible::DoAction(uint8_t index)
 {
   if (index == eAction_Switch) {
     // XXXbz Could this just FromContent?
-    RefPtr<nsXULElement> tab = nsXULElement::FromContentOrNull(mContent);
+    RefPtr<nsXULElement> tab = nsXULElement::FromNodeOrNull(mContent);
     if (tab) {
       tab->Click(mozilla::dom::CallerType::System);
       return true;
@@ -85,8 +85,8 @@ XULTabAccessible::NativeState()
     if (NS_SUCCEEDED(tab->GetSelected(&selected)) && selected)
       state |= states::SELECTED;
 
-    if (mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::pinned,
-                              nsGkAtoms::_true, eCaseMatters))
+    if (mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::pinned,
+                                           nsGkAtoms::_true, eCaseMatters))
       state |= states::PINNED;
 
   }
@@ -114,7 +114,7 @@ XULTabAccessible::RelationByType(RelationType aType)
   if (!tabsElm)
     return rel;
 
-  nsCOMPtr<nsIDOMNode> domNode(DOMNode());
+  nsCOMPtr<nsIDOMNode> domNode(do_QueryInterface(GetNode()));
   nsCOMPtr<nsIDOMNode> tabpanelNode;
   tabsElm->GetRelatedElement(domNode, getter_AddRefs(tabpanelNode));
   if (!tabpanelNode)
@@ -201,7 +201,7 @@ XULTabpanelAccessible::RelationByType(RelationType aType)
   if (!tabpanelsElm)
     return rel;
 
-  nsCOMPtr<nsIDOMNode> domNode(DOMNode());
+  nsCOMPtr<nsIDOMNode> domNode(do_QueryInterface(GetNode()));
   nsCOMPtr<nsIDOMNode> tabNode;
   tabpanelsElm->GetRelatedElement(domNode, getter_AddRefs(tabNode));
   if (!tabNode)

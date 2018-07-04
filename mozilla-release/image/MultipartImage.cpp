@@ -93,11 +93,10 @@ public:
   }
 
   // Other notifications are ignored.
-  virtual void BlockOnload() override { }
-  virtual void UnblockOnload() override { }
   virtual void SetHasImage() override { }
   virtual bool NotificationsDeferred() const override { return false; }
-  virtual void SetNotificationsDeferred(bool) override { }
+  virtual void MarkPendingNotify() override { }
+  virtual void ClearPendingNotify() override { }
 
 private:
   virtual ~NextPartObserver() { }
@@ -124,7 +123,7 @@ private:
 
 MultipartImage::MultipartImage(Image* aFirstPart)
   : ImageWrapper(aFirstPart)
-  , mDeferNotifications(false)
+  , mPendingNotify(false)
 {
   mNextPartObserver = new NextPartObserver(this);
 }
@@ -177,7 +176,7 @@ FilterProgress(Progress aProgress)
   // onload for multipart images.
   // Filter out errors, since we don't want errors in one part to error out
   // the whole stream.
-  return aProgress & ~(FLAG_ONLOAD_BLOCKED | FLAG_ONLOAD_UNBLOCKED | FLAG_HAS_ERROR);
+  return aProgress & ~FLAG_HAS_ERROR;
 }
 
 void
@@ -335,13 +334,19 @@ MultipartImage::SetHasImage()
 bool
 MultipartImage::NotificationsDeferred() const
 {
-  return mDeferNotifications;
+  return mPendingNotify;
 }
 
 void
-MultipartImage::SetNotificationsDeferred(bool aDeferNotifications)
+MultipartImage::MarkPendingNotify()
 {
-  mDeferNotifications = aDeferNotifications;
+  mPendingNotify = true;
+}
+
+void
+MultipartImage::ClearPendingNotify()
+{
+  mPendingNotify = false;
 }
 
 } // namespace image

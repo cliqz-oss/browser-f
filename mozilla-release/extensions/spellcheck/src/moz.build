@@ -27,8 +27,9 @@ LOCAL_INCLUDES += [
     '/dom/base',
 ]
 EXPORTS.mozilla += [
+     'mozInlineSpellChecker.h',
      'mozSpellChecker.h',
 ]
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

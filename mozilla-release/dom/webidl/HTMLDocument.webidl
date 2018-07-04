@@ -13,27 +13,10 @@ interface HTMLDocument : Document {
   // DOM tree accessors
   [Throws]
   getter object (DOMString name);
-  [CEReactions, Pure, SetterThrows]
-           attribute HTMLElement? body;
-  [Pure]
-  readonly attribute HTMLHeadElement? head;
-  [Pure]
-  readonly attribute HTMLCollection images;
-  [Pure]
-  readonly attribute HTMLCollection embeds;
-  [Pure]
-  readonly attribute HTMLCollection plugins;
-  [Pure]
-  readonly attribute HTMLCollection links;
-  [Pure]
-  readonly attribute HTMLCollection forms;
-  [Pure]
-  readonly attribute HTMLCollection scripts;
-  NodeList getElementsByName(DOMString elementName);
 
   // dynamic markup insertion
   [CEReactions, Throws]
-  Document open(optional DOMString type = "text/html", optional DOMString replace = "");
+  Document open(optional DOMString type, optional DOMString replace = ""); // type is ignored
   [CEReactions, Throws]
   WindowProxy? open(DOMString url, DOMString name, DOMString features, optional boolean replace = false);
   [CEReactions, Throws]
@@ -43,7 +26,7 @@ interface HTMLDocument : Document {
   [CEReactions, Throws]
   void writeln(DOMString... text);
 
-  [CEReactions, SetterThrows, NeedsSubjectPrincipal]
+  [CEReactions, SetterThrows, SetterNeedsSubjectPrincipal]
            attribute DOMString designMode;
   [CEReactions, Throws, NeedsSubjectPrincipal]
   boolean execCommand(DOMString commandId, optional boolean showUI = false,
@@ -65,18 +48,9 @@ interface HTMLDocument : Document {
   [CEReactions, TreatNullAs=EmptyString] attribute DOMString alinkColor;
   [CEReactions, TreatNullAs=EmptyString] attribute DOMString bgColor;
 
-  [Pure]
-  readonly attribute HTMLCollection anchors;
-  [Pure]
-  readonly attribute HTMLCollection applets;
-
   void clear();
 
   readonly attribute HTMLAllCollection all;
-
-  // https://dvcs.w3.org/hg/editing/raw-file/tip/editing.html#selections
-  [Throws]
-  Selection? getSelection();
 
   // @deprecated These are old Netscape 4 methods. Do not use,
   //             the implementation is no-op.

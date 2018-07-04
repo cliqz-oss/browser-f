@@ -11,8 +11,6 @@
 #include "mozilla/dom/nsIContentParent.h"
 #include "mozilla/gfx/gfxVarReceiver.h"
 #include "mozilla/gfx/GPUProcessListener.h"
-#include "mozilla/ipc/CrashReporterHost.h"
-#include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/FileUtils.h"
 #include "mozilla/HalTypes.h"
@@ -22,10 +20,12 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
 
+#include "ContentProcessHost.h"
 #include "nsDataHashtable.h"
 #include "nsPluginTags.h"
 #include "nsFrameMessageManager.h"
 #include "nsHashKeys.h"
+#include "nsIInterfaceRequestor.h"
 #include "nsIObserver.h"
 #include "nsIThreadInternal.h"
 #include "nsIDOMGeoPositionCallback.h"
@@ -37,6 +37,9 @@
 #define CHILD_PROCESS_SHUTDOWN_MESSAGE NS_LITERAL_STRING("child-process-shutdown")
 
 // These must match the similar ones in E10SUtils.jsm.
+// Process names as reported by about:memory are defined in
+// ContentChild:RecvRemoteType.  Add your value there too or it will be called
+// "Web Content".
 #define DEFAULT_REMOTE_TYPE "web"
 #define FILE_REMOTE_TYPE "file"
 #define EXTENSION_REMOTE_TYPE "extension"
@@ -70,6 +73,7 @@ class PrintingParent;
 }
 
 namespace ipc {
+class CrashReporterHost;
 class OptionalURIParams;
 class PFileDescriptorSetParent;
 class URIParams;
@@ -104,12 +108,12 @@ class ContentParent final : public PContentParent
                           , public nsIObserver
                           , public nsIDOMGeoPositionCallback
                           , public nsIDOMGeoPositionErrorCallback
+                          , public nsIInterfaceRequestor
                           , public gfx::gfxVarReceiver
                           , public mozilla::LinkedListElement<ContentParent>
                           , public gfx::GPUProcessListener
                           , public mozilla::MemoryReportingProcess
 {
-  typedef mozilla::ipc::GeckoChildProcessHost GeckoChildProcessHost;
   typedef mozilla::ipc::OptionalURIParams OptionalURIParams;
   typedef mozilla::ipc::PFileDescriptorSetParent PFileDescriptorSetParent;
   typedef mozilla::ipc::TestShellParent TestShellParent;
@@ -117,6 +121,7 @@ class ContentParent final : public PContentParent
   typedef mozilla::ipc::PrincipalInfo PrincipalInfo;
   typedef mozilla::dom::ClonedMessageData ClonedMessageData;
 
+  friend class ContentProcessHost;
   friend class mozilla::PreallocatedProcessManagerImpl;
 
 public:
@@ -136,14 +141,6 @@ public:
 
   /** Shut down the content-process machinery. */
   static void ShutDown();
-
-  /**
-   * Ensure that all subprocesses are terminated and their OS
-   * resources have been reaped.  This is synchronous and can be
-   * very expensive in general.  It also bypasses the normal
-   * shutdown process.
-   */
-  static void JoinAllSubprocesses();
 
   static uint32_t GetPoolSize(const nsAString& aContentProcessType);
 
@@ -173,7 +170,8 @@ public:
   GetNewOrUsedBrowserProcess(const nsAString& aRemoteType,
                              hal::ProcessPriority aPriority =
                              hal::ProcessPriority::PROCESS_PRIORITY_FOREGROUND,
-                             ContentParent* aOpener = nullptr);
+                             ContentParent* aOpener = nullptr,
+                             bool aPreferUsed = false);
 
   /**
    * Get or create a content process for a JS plugin. aPluginID is the id of the JS plugin
@@ -200,6 +198,12 @@ public:
   static void GetAllEvenIfDead(nsTArray<ContentParent*>& aArray);
 
   const nsAString& GetRemoteType() const;
+
+  virtual nsresult DoGetRemoteType(nsAString& aRemoteType) const override
+  {
+    aRemoteType = GetRemoteType();
+    return NS_OK;
+  }
 
   enum CPIteratorPolicy {
     eLive,
@@ -265,6 +269,8 @@ public:
 
   static void NotifyUpdatedDictionaries();
 
+  static void NotifyUpdatedFonts();
+
 #if defined(XP_WIN)
   /**
    * Windows helper for firing off an update window request to a plugin
@@ -313,6 +319,7 @@ public:
   NS_DECL_NSIOBSERVER
   NS_DECL_NSIDOMGEOPOSITIONCALLBACK
   NS_DECL_NSIDOMGEOPOSITIONERRORCALLBACK
+  NS_DECL_NSIINTERFACEREQUESTOR
 
   /**
    * MessageManagerCallback methods that we override.
@@ -351,6 +358,8 @@ public:
 
   bool RequestRunToCompletion();
 
+  void UpdateCookieStatus(nsIChannel *aChannel);
+
   bool IsAvailable() const
   {
     return mIsAvailable;
@@ -366,7 +375,7 @@ public:
     return mJSPluginID != nsFakePluginTag::NOT_JSPLUGIN;
   }
 
-  GeckoChildProcessHost* Process() const
+  ContentProcessHost* Process() const
   {
     return mSubprocess;
   }
@@ -424,6 +433,11 @@ public:
    */
   already_AddRefed<embedding::PrintingParent> GetPrintingParent();
 #endif
+
+  virtual mozilla::ipc::IPCResult
+  RecvInitStreamFilter(const uint64_t& aChannelId,
+                       const nsString& aAddonId,
+                       InitStreamFilterResolver&& aResolver) override;
 
   virtual PChildToParentStreamParent* AllocPChildToParentStreamParent() override;
   virtual bool
@@ -503,6 +517,7 @@ public:
   virtual PContentPermissionRequestParent*
   AllocPContentPermissionRequestParent(const InfallibleTArray<PermissionRequest>& aRequests,
                                        const IPC::Principal& aPrincipal,
+                                       const bool& aIsTrusted,
                                        const TabId& aTabId) override;
 
   virtual bool
@@ -520,10 +535,12 @@ public:
                    const bool& aCalledFromJS,
                    const bool& aPositionSpecified,
                    const bool& aSizeSpecified,
+                   const OptionalURIParams& aURIToLoad,
                    const nsCString& aFeatures,
                    const nsCString& aBaseURI,
                    const float& aFullZoom,
                    const IPC::Principal& aTriggeringPrincipal,
+                   const uint32_t& aReferrerPolicy,
                    CreateWindowResolver&& aResolve) override;
 
   virtual mozilla::ipc::IPCResult RecvCreateWindowInDifferentProcess(
@@ -532,14 +549,15 @@ public:
     const bool& aCalledFromJS,
     const bool& aPositionSpecified,
     const bool& aSizeSpecified,
-    const URIParams& aURIToLoad,
+    const OptionalURIParams& aURIToLoad,
     const nsCString& aFeatures,
     const nsCString& aBaseURI,
     const float& aFullZoom,
     const nsString& aName,
-    const IPC::Principal& aTriggeringPrincipal) override;
+    const IPC::Principal& aTriggeringPrincipal,
+    const uint32_t& aReferrerPolicy) override;
 
-  static bool AllocateLayerTreeId(TabParent* aTabParent, uint64_t* aId);
+  static bool AllocateLayerTreeId(TabParent* aTabParent, layers::LayersId* aId);
 
   static void
   BroadcastBlobURLRegistration(const nsACString& aURI,
@@ -588,6 +606,16 @@ public:
                                      const URIParams& aURI,
                                      const nsCString& aTables) override;
 
+  virtual PLoginReputationParent*
+  AllocPLoginReputationParent(const URIParams& aURI) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvPLoginReputationConstructor(PLoginReputationParent* aActor,
+                                  const URIParams& aURI) override;
+
+  virtual bool
+  DeallocPLoginReputationParent(PLoginReputationParent* aActor) override;
+
   virtual bool SendActivate(PBrowserParent* aTab) override
   {
     return PContentParent::SendActivate(aTab);
@@ -596,12 +624,6 @@ public:
   virtual bool SendDeactivate(PBrowserParent* aTab) override
   {
     return PContentParent::SendDeactivate(aTab);
-  }
-
-  virtual bool SendParentActivated(PBrowserParent* aTab,
-                                   const bool& aActivated) override
-  {
-    return PContentParent::SendParentActivated(aTab, aActivated);
   }
 
   virtual bool
@@ -629,6 +651,23 @@ public:
 
   void OnCompositorDeviceReset() override;
 
+  virtual PClientOpenWindowOpParent*
+  AllocPClientOpenWindowOpParent(const ClientOpenWindowArgs& aArgs) override;
+
+  virtual bool
+  DeallocPClientOpenWindowOpParent(PClientOpenWindowOpParent* aActor) override;
+
+  static hal::ProcessPriority GetInitialProcessPriority(Element* aFrameElement);
+
+  // Control the priority of the IPC messages for input events.
+  void SetInputPriorityEventEnabled(bool aEnabled);
+  bool IsInputPriorityEventEnabled()
+  {
+    return mIsInputPriorityEventEnabled;
+  }
+
+  static bool IsInputEventQueueSupported();
+
 protected:
   void OnChannelConnected(int32_t pid) override;
 
@@ -653,11 +692,6 @@ private:
   static nsDataHashtable<nsUint32HashKey, ContentParent*> *sJSPluginContentParents;
   static StaticAutoPtr<LinkedList<ContentParent> > sContentParents;
 
-  static void JoinProcessesIOThread(const nsTArray<ContentParent*>* aProcesses,
-                                    Monitor* aMonitor, bool* aDone);
-
-  static hal::ProcessPriority GetInitialProcessPriority(Element* aFrameElement);
-
   static ContentBridgeParent* CreateContentBridgeParent(const TabContext& aContext,
                                                         const hal::ProcessPriority& aPriority,
                                                         const TabId& aOpenerTabId,
@@ -675,6 +709,9 @@ private:
       const bool& aIsForBrowser) override;
   using PContentParent::SendPTestShellConstructor;
 
+  // Set aLoadUri to true to load aURIToLoad and to false to only create the
+  // window. aURIToLoad should always be provided, if available, to ensure
+  // compatibility with GeckoView.
   mozilla::ipc::IPCResult
   CommonCreateWindow(PBrowserParent* aThisTab,
                      bool aSetOpener,
@@ -691,7 +728,9 @@ private:
                      nsresult& aResult,
                      nsCOMPtr<nsITabParent>& aNewTabParent,
                      bool* aWindowIsNew,
-                     nsIPrincipal* aTriggeringPrincipal);
+                     nsIPrincipal* aTriggeringPrincipal,
+                     uint32_t aReferrerPolicy,
+                     bool aLoadUri);
 
   FORWARD_SHMEM_ALLOCATOR_TO(PContentParent)
 
@@ -711,10 +750,8 @@ private:
   // Returns false if the process fails to start.
   bool LaunchSubprocess(hal::ProcessPriority aInitialPriority = hal::PROCESS_PRIORITY_FOREGROUND);
 
-  // Common initialization after sub process launch or adoption.
-  void InitInternal(ProcessPriority aPriority,
-                    bool aSetupOffMainThreadCompositing,
-                    bool aSendRegisteredChrome);
+  // Common initialization after sub process launch.
+  void InitInternal(ProcessPriority aPriority);
 
   virtual ~ContentParent();
 
@@ -800,7 +837,7 @@ private:
 
   static bool AllocateLayerTreeId(ContentParent* aContent,
                                   TabParent* aTopLevel, const TabId& aTabId,
-                                  uint64_t* aId);
+                                  layers::LayersId* aId);
 
   /**
    * Get or create the corresponding content parent array to |aContentProcessType|.
@@ -811,6 +848,7 @@ private:
 
   mozilla::ipc::IPCResult RecvAddMemoryReport(const MemoryReport& aReport) override;
   mozilla::ipc::IPCResult RecvFinishMemoryReport(const uint32_t& aGeneration) override;
+  mozilla::ipc::IPCResult RecvAddPerformanceMetrics(nsTArray<PerformanceInfo>&& aMetrics) override;
 
   virtual bool
   DeallocPJavaScriptParent(mozilla::jsipc::PJavaScriptParent*) override;
@@ -827,6 +865,15 @@ private:
 
   virtual bool DeallocPBrowserParent(PBrowserParent* frame) override;
 
+  virtual mozilla::ipc::IPCResult
+  RecvPBrowserConstructor(PBrowserParent* actor,
+                          const TabId& tabId,
+                          const TabId& sameTabGroupAs,
+                          const IPCTabContext& context,
+                          const uint32_t& chromeFlags,
+                          const ContentParentId& cpId,
+                          const bool& isForBrowser) override;
+
   virtual PIPCBlobInputStreamParent*
   SendPIPCBlobInputStreamConstructor(PIPCBlobInputStreamParent* aActor,
                                      const nsID& aID,
@@ -839,22 +886,6 @@ private:
   virtual bool
   DeallocPIPCBlobInputStreamParent(PIPCBlobInputStreamParent* aActor) override;
 
-  virtual mozilla::ipc::IPCResult RecvNSSU2FTokenIsCompatibleVersion(const nsString& aVersion,
-                                                                     bool* aIsCompatible) override;
-
-  virtual mozilla::ipc::IPCResult RecvNSSU2FTokenIsRegistered(nsTArray<uint8_t>&& aKeyHandle,
-                                                              nsTArray<uint8_t>&& aApplication,
-                                                              bool* aIsValidKeyHandle) override;
-
-  virtual mozilla::ipc::IPCResult RecvNSSU2FTokenRegister(nsTArray<uint8_t>&& aApplication,
-                                                          nsTArray<uint8_t>&& aChallenge,
-                                                          nsTArray<uint8_t>* aRegistration) override;
-
-  virtual mozilla::ipc::IPCResult RecvNSSU2FTokenSign(nsTArray<uint8_t>&& aApplication,
-                                                      nsTArray<uint8_t>&& aChallenge,
-                                                      nsTArray<uint8_t>&& aKeyHandle,
-                                                      nsTArray<uint8_t>* aSignature) override;
-
   virtual mozilla::ipc::IPCResult RecvIsSecureURI(const uint32_t& aType, const URIParams& aURI,
                                                   const uint32_t& aFlags,
                                                   const OriginAttributes& aOriginAttributes,
@@ -862,7 +893,6 @@ private:
 
   virtual mozilla::ipc::IPCResult RecvAccumulateMixedContentHSTS(const URIParams& aURI,
                                                                  const bool& aActive,
-                                                                 const bool& aHSTSPriming,
                                                                  const OriginAttributes& aOriginAttributes) override;
 
   virtual bool DeallocPHalParent(PHalParent*) override;
@@ -925,12 +955,6 @@ private:
 
   virtual mozilla::ipc::IPCResult RecvPPresentationConstructor(PPresentationParent* aActor) override;
 
-  virtual PFlyWebPublishedServerParent*
-    AllocPFlyWebPublishedServerParent(const nsString& name,
-                                      const FlyWebPublishOptions& params) override;
-
-  virtual bool DeallocPFlyWebPublishedServerParent(PFlyWebPublishedServerParent* aActor) override;
-
   virtual PSpeechSynthesisParent* AllocPSpeechSynthesisParent() override;
 
   virtual bool
@@ -953,6 +977,7 @@ private:
   virtual mozilla::ipc::IPCResult RecvSetClipboard(const IPCDataTransfer& aDataTransfer,
                                                    const bool& aIsPrivateData,
                                                    const IPC::Principal& aRequestingPrincipal,
+                                                   const uint32_t& aContentPolicyType,
                                                    const int32_t& aWhichClipboard) override;
 
   virtual mozilla::ipc::IPCResult RecvGetClipboard(nsTArray<nsCString>&& aTypes,
@@ -964,6 +989,10 @@ private:
   virtual mozilla::ipc::IPCResult RecvClipboardHasType(nsTArray<nsCString>&& aTypes,
                                                        const int32_t& aWhichClipboard,
                                                        bool* aHasType) override;
+
+  virtual mozilla::ipc::IPCResult RecvPlaySound(const URIParams& aURI) override;
+  virtual mozilla::ipc::IPCResult RecvBeep() override;
+  virtual mozilla::ipc::IPCResult RecvPlayEventSound(const uint32_t& aEventId) override;
 
   virtual mozilla::ipc::IPCResult RecvGetSystemColors(const uint32_t& colorsCount,
                                                       InfallibleTArray<uint32_t>* colors) override;
@@ -985,7 +1014,7 @@ private:
 
   bool HasNotificationPermission(const IPC::Principal& aPrincipal);
 
-  virtual mozilla::ipc::IPCResult RecvShowAlert(const AlertNotificationType& aAlert) override;
+  virtual mozilla::ipc::IPCResult RecvShowAlert(nsIAlertNotification* aAlert) override;
 
   virtual mozilla::ipc::IPCResult RecvCloseAlert(const nsString& aName,
                                                  const IPC::Principal& aPrincipal) override;
@@ -1029,8 +1058,31 @@ private:
                                                   const uint32_t& aLineNumber,
                                                   const uint32_t& aColNumber,
                                                   const uint32_t& aFlags,
-                                                  const nsCString& aCategory) override;
+                                                  const nsCString& aCategory,
+                                                  const bool& aIsFromPrivateWindow) override;
 
+  virtual mozilla::ipc::IPCResult RecvScriptErrorWithStack(const nsString& aMessage,
+                                                           const nsString& aSourceName,
+                                                           const nsString& aSourceLine,
+                                                           const uint32_t& aLineNumber,
+                                                           const uint32_t& aColNumber,
+                                                           const uint32_t& aFlags,
+                                                           const nsCString& aCategory,
+                                                           const bool& aIsFromPrivateWindow,
+                                                           const ClonedMessageData& aStack) override;
+
+private:
+  mozilla::ipc::IPCResult RecvScriptErrorInternal(const nsString& aMessage,
+                                                  const nsString& aSourceName,
+                                                  const nsString& aSourceLine,
+                                                  const uint32_t& aLineNumber,
+                                                  const uint32_t& aColNumber,
+                                                  const uint32_t& aFlags,
+                                                  const nsCString& aCategory,
+                                                  const bool& aIsFromPrivateWindow,
+                                                  const ClonedMessageData* aStack = nullptr);
+
+public:
   virtual mozilla::ipc::IPCResult RecvPrivateDocShellsExist(const bool& aExist) override;
 
   virtual mozilla::ipc::IPCResult RecvFirstIdle() override;
@@ -1039,7 +1091,7 @@ private:
 
   virtual mozilla::ipc::IPCResult RecvKeywordToURI(const nsCString& aKeyword,
                                                    nsString* aProviderName,
-                                                   OptionalIPCStream* aPostData,
+                                                   RefPtr<nsIInputStream>* aPostData,
                                                    OptionalURIParams* aURI) override;
 
   virtual mozilla::ipc::IPCResult RecvNotifyKeywordSearchLoading(const nsString &aProvider,
@@ -1054,10 +1106,10 @@ private:
 
   virtual mozilla::ipc::IPCResult RecvAllocateLayerTreeId(const ContentParentId& aCpId,
                                                           const TabId& aTabId,
-                                                          uint64_t* aId) override;
+                                                          layers::LayersId* aId) override;
 
   virtual mozilla::ipc::IPCResult RecvDeallocateLayerTreeId(const ContentParentId& aCpId,
-                                                            const uint64_t& aId) override;
+                                                            const layers::LayersId& aId) override;
 
   virtual mozilla::ipc::IPCResult RecvGraphicsError(const nsCString& aError) override;
 
@@ -1078,6 +1130,9 @@ private:
 
   virtual mozilla::ipc::IPCResult
   RecvRequestAnonymousTemporaryFile(const uint64_t& aID) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvCreateAudioIPCConnection(CreateAudioIPCConnectionResolver&& aResolver) override;
 
   virtual mozilla::ipc::IPCResult
   RecvKeygenProcessValue(const nsString& oldValue, const nsString& challenge,
@@ -1142,9 +1197,9 @@ private:
                           const bool& aIsFromNsIFile) override;
 
   virtual mozilla::ipc::IPCResult RecvAccumulateChildHistograms(
-    InfallibleTArray<Accumulation>&& aAccumulations) override;
+    InfallibleTArray<HistogramAccumulation>&& aAccumulations) override;
   virtual mozilla::ipc::IPCResult RecvAccumulateChildKeyedHistograms(
-    InfallibleTArray<KeyedAccumulation>&& aAccumulations) override;
+    InfallibleTArray<KeyedHistogramAccumulation>&& aAccumulations) override;
   virtual mozilla::ipc::IPCResult RecvUpdateChildScalars(
     InfallibleTArray<ScalarAction>&& aScalarActions) override;
   virtual mozilla::ipc::IPCResult RecvUpdateChildKeyedScalars(
@@ -1153,6 +1208,14 @@ private:
     nsTArray<ChildEventData>&& events) override;
   virtual mozilla::ipc::IPCResult RecvRecordDiscardedData(
     const DiscardedData& aDiscardedData) override;
+
+  virtual mozilla::ipc::IPCResult RecvBHRThreadHang(
+    const HangDetails& aHangDetails) override;
+
+  // Notify the ContentChild to enable the input event prioritization when
+  // initializing.
+  void MaybeEnableRemoteInputEventQueue();
+
 public:
   void SendGetFilesResponseAndForget(const nsID& aID,
                                      const GetFilesResponseResult& aResult);
@@ -1170,7 +1233,7 @@ private:
   // release these objects in ShutDownProcess.  See the comment there for more
   // details.
 
-  GeckoChildProcessHost* mSubprocess;
+  ContentProcessHost* mSubprocess;
   const TimeStamp mLaunchTS; // used to calculate time to start content process
   TimeStamp mActivateTS;
   ContentParent* mOpener;
@@ -1215,6 +1278,14 @@ private:
   bool mShutdownPending;
   bool mIPCOpen;
 
+  // True if the input event queue on the main thread of the content process is
+  // enabled.
+  bool mIsRemoteInputEventQueueEnabled;
+
+  // True if we send input events with input priority. Otherwise, we send input
+  // events with normal priority.
+  bool mIsInputPriorityEventEnabled;
+
   RefPtr<nsConsoleService>  mConsoleService;
   nsConsoleService* GetConsoleService();
   nsCOMPtr<nsIContentProcessInfo> mScriptableHelper;
@@ -1249,9 +1320,8 @@ private:
   nsTHashtable<nsCStringHashKey> mActivePermissionKeys;
 
   nsTArray<nsCString> mBlobURLs;
-#ifdef MOZ_CRASHREPORTER
+
   UniquePtr<mozilla::ipc::CrashReporterHost> mCrashReporter;
-#endif
 
   static uint64_t sNextTabParentId;
   static nsDataHashtable<nsUint64HashKey, TabParent*> sNextTabParents;

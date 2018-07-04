@@ -4,19 +4,14 @@
     "permissions": [],
     "types": [
       {
-        "id": "WebExtensionManifest",
+        "id": "ManifestBase",
         "type": "object",
-        "description": "Represents a WebExtension manifest.json file",
+        "description": "Common properties for all manifest.json files",
         "properties": {
           "manifest_version": {
             "type": "integer",
             "minimum": 2,
             "maximum": 2
-          },
-
-          "minimum_chrome_version":{
-            "type": "string",
-            "optional": true
           },
 
           "applications": {
@@ -76,6 +71,24 @@
             "format": "url",
             "optional": true,
             "preprocess": "localize"
+          }
+        }
+      },
+      {
+        "id": "WebExtensionManifest",
+        "type": "object",
+        "description": "Represents a WebExtension manifest.json file",
+
+        "$import": "ManifestBase",
+        "properties": {
+          "minimum_chrome_version":{
+            "type": "string",
+            "optional": true
+          },
+
+          "minimum_opera_version":{
+            "type": "string",
+            "optional": true
           },
 
           "icons": {
@@ -168,7 +181,7 @@
             "type": "array",
             "default": [],
             "items": {
-              "$ref": "Permission",
+              "$ref": "PermissionOrOrigin",
               "onError": "warn"
             },
             "optional": true
@@ -177,7 +190,7 @@
           "optional_permissions": {
             "type": "array",
             "items": {
-              "$ref": "OptionalPermission",
+              "$ref": "OptionalPermissionOrOrigin",
               "onError": "warn"
             },
             "optional": true,
@@ -212,6 +225,108 @@
         "additionalProperties": { "$ref": "UnrecognizedProperty" }
       },
       {
+        "id": "WebExtensionLangpackManifest",
+        "type": "object",
+        "description": "Represents a WebExtension language pack manifest.json file",
+
+        "$import": "ManifestBase",
+        "properties": {
+          "homepage_url": {
+            "type": "string",
+            "format": "url",
+            "optional": true,
+            "preprocess": "localize"
+          },
+
+          "langpack_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z-]+$"
+          },
+
+          "languages": {
+            "type": "object",
+            "patternProperties": {
+              "^[a-z]{2}[a-zA-Z-]*$": {
+                "type": "object",
+                "properties": {
+                  "chrome_resources": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^[a-zA-Z-.]+$": {
+                        "choices": [
+                          {
+                            "$ref": "ExtensionURL"
+                          },
+                          {
+                            "type": "object",
+                            "patternProperties": {
+                              "^[a-z]+$": {
+                                "$ref": "ExtensionURL"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "sources": {
+            "type": "object",
+            "optional": true,
+            "patternProperties": {
+              "^[a-z]+$": {
+                "type": "object",
+                "properties": {
+                  "base_path": {
+                    "$ref": "ExtensionURL"
+                  },
+                  "paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "strictRelativeUrl"
+                    },
+                    "optional": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "WebExtensionDictionaryManifest",
+        "type": "object",
+        "description": "Represents a WebExtension dictionary manifest.json file",
+
+        "$import": "ManifestBase",
+        "properties": {
+          "homepage_url": {
+            "type": "string",
+            "format": "url",
+            "optional": true,
+            "preprocess": "localize"
+          },
+
+          "dictionaries": {
+            "type": "object",
+            "patternProperties": {
+              "^[a-z]{2}[a-zA-Z-]*$": {
+                "type": "string",
+                "format": "strictRelativeUrl",
+                "pattern": "\\.dic$"
+              }
+            }
+          }
+        }
+      },
+      {
         "id": "ThemeIcons",
         "type": "object",
         "properties": {
@@ -242,7 +357,13 @@
               "idle",
               "notifications"
             ]
-          },
+          }
+        ]
+      },
+      {
+        "id": "OptionalPermissionOrOrigin",
+        "choices": [
+          { "$ref": "OptionalPermission" },
           { "$ref": "MatchPattern" }
         ]
       },
@@ -254,10 +375,18 @@
             "type": "string",
             "enum": [
               "alarms",
+              "mozillaAddons",
               "storage",
               "unlimitedStorage"
             ]
           }
+        ]
+      },
+      {
+        "id": "PermissionOrOrigin",
+        "choices": [
+          { "$ref": "Permission" },
+          { "$ref": "MatchPattern" }
         ]
       },
       {
@@ -270,6 +399,11 @@
         "id": "ExtensionURL",
         "type": "string",
         "format": "strictRelativeUrl"
+      },
+      {
+        "id": "ImageDataOrExtensionURL",
+        "type": "string",
+        "format": "imageDataOrStrictRelativeUrl"
       },
       {
         "id": "ExtensionID",
@@ -318,12 +452,34 @@
             "enum": ["<all_urls>"]
           },
           {
+            "$ref": "MatchPatternRestricted"
+          },
+          {
+            "$ref": "MatchPatternUnestricted"
+          }
+        ]
+      },
+      {
+        "id": "MatchPatternRestricted",
+        "description": "Same as MatchPattern above, but excludes <all_urls>",
+        "choices": [
+          {
             "type": "string",
             "pattern": "^(https?|wss?|file|ftp|\\*)://(\\*|\\*\\.[^*/]+|[^*/]+)/.*$"
           },
           {
             "type": "string",
             "pattern": "^file:///.*$"
+          }
+        ]
+      },
+      {
+        "id": "MatchPatternUnestricted",
+        "description": "Mostly unrestricted match patterns for privileged add-ons. This should technically be rejected for unprivileged add-ons, but, reasons. The MatchPattern class will still refuse privileged schemes for those extensions.",
+        "choices": [
+          {
+            "type": "string",
+            "pattern": "^resource://(\\*|\\*\\.[^*/]+|[^*/]+)/.*$|^about:"
           }
         ]
       },
@@ -382,7 +538,7 @@
           "js": {
             "type": "array",
             "optional": true,
-            "description": "The list of CSS files to inject",
+            "description": "The list of JS files to inject",
             "items": { "$ref": "ExtensionURL" }
           },
           "all_frames": {"type": "boolean", "optional": true, "description": "If allFrames is <code>true</code>, implies that the JavaScript or CSS should be injected into all frames of current page. By default, it's <code>false</code> and is only injected into the top frame."},

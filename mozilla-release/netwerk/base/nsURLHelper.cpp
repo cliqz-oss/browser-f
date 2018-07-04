@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/RangedPtr.h"
+#include "mozilla/TextUtils.h"
 
 #include <algorithm>
 #include <iterator>
@@ -19,6 +20,7 @@
 #include "mozilla/Preferences.h"
 #include "prnetdb.h"
 #include "mozilla/Tokenizer.h"
+#include "nsEscape.h"
 
 using namespace mozilla;
 
@@ -253,7 +255,7 @@ net_CoalesceDirs(netCoalesceFlags flags, char* path)
           to the user loging in. We remember the length of the marker */
         if (nsCRT::strncasecmp(path,"/%2F",4) == 0)
             special_ftp_len = 4;
-        else if (nsCRT::strncmp(path,"//",2) == 0 )
+        else if (strncmp(path, "//", 2) == 0 )
             special_ftp_len = 2;
     }
 
@@ -476,14 +478,10 @@ net_ResolveRelativePath(const nsACString &relativePath,
 // scheme fu
 //----------------------------------------------------------------------------
 
-static bool isAsciiAlpha(char c) {
-    return nsCRT::IsAsciiAlpha(c);
-}
-
 static bool
 net_IsValidSchemeChar(const char aChar)
 {
-    if (nsCRT::IsAsciiAlpha(aChar) || nsCRT::IsAsciiDigit(aChar) ||
+    if (IsAsciiAlpha(aChar) || IsAsciiDigit(aChar) ||
         aChar == '+' || aChar == '.' || aChar == '-') {
         return true;
     }
@@ -509,7 +507,7 @@ net_ExtractURLScheme(const nsACString &inURI,
 
     Tokenizer p(Substring(start, end), "\r\n\t");
     p.Record();
-    if (!p.CheckChar(isAsciiAlpha)) {
+    if (!p.CheckChar(IsAsciiAlpha)) {
         // First char must be alpha
         return NS_ERROR_MALFORMED_URI;
     }
@@ -524,6 +522,7 @@ net_ExtractURLScheme(const nsACString &inURI,
 
     p.Claim(scheme);
     scheme.StripTaggedASCII(ASCIIMask::MaskCRLFTab());
+    ToLowerCase(scheme);
     return NS_OK;
 }
 
@@ -531,13 +530,13 @@ bool
 net_IsValidScheme(const char *scheme, uint32_t schemeLen)
 {
     // first char must be alpha
-    if (!nsCRT::IsAsciiAlpha(*scheme))
+    if (!IsAsciiAlpha(*scheme))
         return false;
 
     // nsCStrings may have embedded nulls -- reject those too
     for (; schemeLen; ++scheme, --schemeLen) {
-        if (!(nsCRT::IsAsciiAlpha(*scheme) ||
-              nsCRT::IsAsciiDigit(*scheme) ||
+        if (!(IsAsciiAlpha(*scheme) ||
+              IsAsciiDigit(*scheme) ||
               *scheme == '+' ||
               *scheme == '.' ||
               *scheme == '-'))
@@ -565,7 +564,7 @@ net_IsAbsoluteURL(const nsACString& uri)
     Tokenizer p(Substring(start, end), "\r\n\t");
 
     // First char must be alpha
-    if (!p.CheckChar(isAsciiAlpha)) {
+    if (!p.CheckChar(IsAsciiAlpha)) {
         return false;
     }
 
@@ -628,6 +627,26 @@ net_FilterURIString(const nsACString& input, nsACString& result)
     }
 }
 
+nsresult
+net_FilterAndEscapeURI(const nsACString& aInput, uint32_t aFlags, nsACString& aResult)
+{
+    aResult.Truncate();
+
+    auto start = aInput.BeginReading();
+    auto end = aInput.EndReading();
+
+    // Trim off leading and trailing invalid chars.
+    auto charFilter = [](char c) { return static_cast<uint8_t>(c) > 0x20; };
+    auto newStart = std::find_if(start, end, charFilter);
+    auto newEnd = std::find_if(
+        std::reverse_iterator<decltype(end)>(end),
+        std::reverse_iterator<decltype(newStart)>(newStart),
+        charFilter).base();
+
+    const ASCIIMaskArray& mask = ASCIIMask::MaskCRLFTab();
+    return NS_EscapeAndFilterURL(Substring(newStart, newEnd), aFlags,
+                                 &mask, aResult, fallible);
+}
 
 #if defined(XP_WIN)
 bool

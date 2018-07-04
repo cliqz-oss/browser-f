@@ -8,44 +8,42 @@
  */
 add_task(async function test_saveBookmarksToJSONFile_and_create() {
   // Add a bookmark
-  let uri = NetUtil.newURI("http://getfirefox.com/");
-  let bookmarkId =
-    PlacesUtils.bookmarks.insertBookmark(
-      PlacesUtils.unfiledBookmarksFolderId, uri,
-      PlacesUtils.bookmarks.DEFAULT_INDEX, "Get Firefox!");
+  let bookmark = await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    title: "Get Firefox!",
+    url: "http://getfirefox.com/"
+  });
 
   // Test saveBookmarksToJSONFile()
-  let backupFile = FileUtils.getFile("TmpD", ["bookmarks.json"]);
-  backupFile.create(Ci.nsILocalFile.NORMAL_FILE_TYPE, parseInt("0600", 8));
+  let backupFile = OS.Path.join(OS.Constants.Path.tmpDir, "bookmarks.json");
 
   let nodeCount = await PlacesBackups.saveBookmarksToJSONFile(backupFile, true);
-  do_check_true(nodeCount > 0);
-  do_check_true(backupFile.exists());
-  do_check_eq(backupFile.leafName, "bookmarks.json");
+  Assert.ok(nodeCount > 0);
+  Assert.ok(await OS.File.exists(backupFile));
 
   // Ensure the backup would be copied to our backups folder when the original
   // backup is saved somewhere else.
   let recentBackup = await PlacesBackups.getMostRecentBackup();
   let matches = OS.Path.basename(recentBackup).match(PlacesBackups.filenamesRegex);
-  do_check_eq(matches[2], nodeCount);
-  do_check_eq(matches[3].length, 24);
+  Assert.equal(matches[2], nodeCount);
+  Assert.equal(matches[3].length, 24);
 
   // Clear all backups in our backups folder.
   await PlacesBackups.create(0);
-  do_check_eq((await PlacesBackups.getBackupFiles()).length, 0);
+  Assert.equal((await PlacesBackups.getBackupFiles()).length, 0);
 
   // Test create() which saves bookmarks with metadata on the filename.
   await PlacesBackups.create();
-  do_check_eq((await PlacesBackups.getBackupFiles()).length, 1);
+  Assert.equal((await PlacesBackups.getBackupFiles()).length, 1);
 
   let mostRecentBackupFile = await PlacesBackups.getMostRecentBackup();
-  do_check_neq(mostRecentBackupFile, null);
+  Assert.notEqual(mostRecentBackupFile, null);
   matches = OS.Path.basename(recentBackup).match(PlacesBackups.filenamesRegex);
-  do_check_eq(matches[2], nodeCount);
-  do_check_eq(matches[3].length, 24);
+  Assert.equal(matches[2], nodeCount);
+  Assert.equal(matches[3].length, 24);
 
   // Cleanup
-  backupFile.remove(false);
+  await OS.File.remove(backupFile);
   await PlacesBackups.create(0);
-  PlacesUtils.bookmarks.removeItem(bookmarkId);
+  await PlacesUtils.bookmarks.remove(bookmark);
 });

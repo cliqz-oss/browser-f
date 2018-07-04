@@ -6,19 +6,23 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://testing-common/ContentTaskUtils.jsm", this);
-Cu.import("resource://testing-common/MockRegistrar.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySession.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySend.jsm", this);
-Cu.import("resource://gre/modules/TelemetryStorage.jsm", this);
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryStorage.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryHealthPing",
+ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
+
+ChromeUtils.defineModuleGetter(this, "TelemetryHealthPing",
   "resource://gre/modules/TelemetryHealthPing.jsm");
+
+XPCOMUtils.defineLazyServiceGetter(Services, "cookies", "@mozilla.org/cookieService;1", "nsICookieService");
 
 const MS_IN_A_MINUTE = 60 * 1000;
 
@@ -82,8 +86,8 @@ add_task(async function test_setup() {
   do_get_profile(true);
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.HealthPingEnabled, true);
+  TelemetryStopwatch.setTestModeEnabled(true);
 });
 
 // Test the ping sending logic.
@@ -204,6 +208,8 @@ add_task(async function test_sendPendingPings() {
 
   await TelemetrySend.testWaitOnOutgoingPings();
   PingServer.resetPingHandler();
+  // Restore the default ping id generator.
+  fakeGeneratePingId(() => TelemetryUtils.generateUUID());
 });
 
 add_task(async function test_sendDateHeader() {
@@ -311,6 +317,9 @@ add_task(async function test_backoffTimeout() {
                "Should have recorded sending success in histograms.");
   Assert.equal(histogramValueCount(histSendTimeFail.snapshot()), sendAttempts,
                "Should have recorded send failure times in histograms.");
+
+  // Restore the default ping id generator.
+  fakeGeneratePingId(() => TelemetryUtils.generateUUID());
 });
 
 add_task(async function test_discardBigPings() {
@@ -343,19 +352,38 @@ add_task(async function test_discardBigPings() {
   // Submit an oversized ping and check that it gets discarded.
   TelemetryHealthPing.testReset();
   await TelemetryController.submitExternalPing(TEST_PING_TYPE, OVERSIZED_PAYLOAD);
+  await TelemetrySend.testWaitOnOutgoingPings();
   let ping = await PingServer.promiseNextPing();
+
+  Assert.equal(ping.type, TelemetryHealthPing.HEALTH_PING_TYPE, "Should have received a health ping.");
+  Assert.equal(ping.payload.reason, TelemetryHealthPing.Reason.IMMEDIATE, "Health ping should have the right reason.");
+  Assert.deepEqual(ping.payload[TelemetryHealthPing.FailureType.DISCARDED_FOR_SIZE],
+    {[TEST_PING_TYPE]: 1}, "Should have recorded correct type of oversized ping.");
+  Assert.deepEqual(ping.payload.os, TelemetryHealthPing.OsInfo, "Should have correct os info.");
 
   Assert.equal(histSizeExceeded.snapshot().sum, 1, "Telemetry must report 1 oversized ping submitted.");
   Assert.equal(histDiscardedSize.snapshot().counts[2], 1, "Telemetry must report a 2MB, oversized, ping submitted.");
+
   Assert.deepEqual(histSuccess.snapshot().counts, [0, 2, 0], "Should have recorded sending success.");
   Assert.equal(histogramValueCount(histSendTimeSuccess.snapshot()), 2, "Should have recorded send success time.");
   Assert.greaterOrEqual(histSendTimeSuccess.snapshot().sum, 0, "Should have recorded send success time.");
   Assert.equal(histogramValueCount(histSendTimeFail.snapshot()), 0, "Should not have recorded send failure time.");
+});
 
-  Assert.equal(ping.type, TelemetryHealthPing.HEALTH_PING_TYPE, "Should have received a health ping.");
-  Assert.deepEqual(ping.payload[TelemetryHealthPing.FailureType.DISCARDED_FOR_SIZE],
-    {[TEST_PING_TYPE]: 1}, "Should have recorded correct type of oversized ping.");
-  Assert.deepEqual(ping.payload["os"], TelemetryHealthPing.OsInfo, "Should have correct os info.")
+add_task(async function test_largeButWithinLimit() {
+  const TEST_PING_TYPE = "test-ping-type";
+
+  let histSuccess = Telemetry.getHistogramById("TELEMETRY_SUCCESS");
+  histSuccess.clear();
+
+  // Generate a 900KB string and a large payload that is still within the 1MB limit.
+  const LARGE_PAYLOAD = {"data": generateRandomString(900 * 1024)};
+
+  await TelemetryController.submitExternalPing(TEST_PING_TYPE, LARGE_PAYLOAD);
+  await TelemetrySend.testWaitOnOutgoingPings();
+  await PingServer.promiseNextPing();
+
+  Assert.deepEqual(histSuccess.snapshot().counts, [0, 1, 0], "Should have sent large ping.");
 });
 
 add_task(async function test_evictedOnServerErrors() {
@@ -408,6 +436,33 @@ add_task(async function test_evictedOnServerErrors() {
   Assert.equal(histogramValueCount(histSendTimeFail.snapshot()), 0);
 });
 
+add_task(async function test_tooLateToSend() {
+  Assert.ok(true, "TEST BEGIN");
+  const TEST_TYPE = "test-too-late-to-send";
+
+  await TelemetrySend.reset();
+  PingServer.start();
+  PingServer.registerPingHandler(() => Assert.ok(false, "Should not have received any pings now"));
+
+  Assert.equal(TelemetrySend.pendingPingCount, 0, "Should have no pending pings yet");
+
+  TelemetrySend.testTooLateToSend(true);
+
+  const id = await TelemetryController.submitExternalPing(TEST_TYPE, {});
+
+  // Triggering a shutdown should persist the pings
+  await TelemetrySend.shutdown();
+  const pendingPings = TelemetryStorage.getPendingPingList();
+  Assert.equal(pendingPings.length, 1, "Should have a pending ping in storage");
+  Assert.equal(pendingPings[0].id, id, "Should have pended our test's ping");
+
+  Assert.equal(Telemetry.getHistogramById("TELEMETRY_SEND_FAILURE_TYPE").snapshot().counts[7], 1,
+    "Should have registered the failed attempt to send");
+
+  await TelemetryStorage.reset();
+  Assert.equal(TelemetrySend.pendingPingCount, 0, "Should clean up after yourself");
+});
+
 // Test that the current, non-persisted pending pings are properly saved on shutdown.
 add_task(async function test_persistCurrentPingsOnShutdown() {
   const TEST_TYPE = "test-persistCurrentPingsOnShutdown";
@@ -432,6 +487,9 @@ add_task(async function test_persistCurrentPingsOnShutdown() {
   // After a restart the pings should have been found when scanning.
   await TelemetrySend.reset();
   Assert.equal(TelemetrySend.pendingPingCount, PING_COUNT, "Should have the correct pending ping count");
+
+  // Restore the default ping id generator.
+  fakeGeneratePingId(() => TelemetryUtils.generateUUID());
 });
 
 add_task(async function test_sendCheckOverride() {
@@ -472,6 +530,26 @@ add_task(async function test_sendCheckOverride() {
   // Restore the test mode and disable the override.
   TelemetrySend.setTestModeEnabled(true);
   Services.prefs.clearUserPref(TelemetryUtils.Preferences.OverrideOfficialCheck);
+});
+
+add_task(async function testCookies() {
+  const TEST_TYPE = "test-cookies";
+
+  await TelemetrySend.reset();
+  PingServer.clearRequests();
+
+  let uri = Services.io.newURI("http://localhost:" + PingServer.port);
+  Services.cookies.setCookieString(uri, null, "cookie-time=yes", null);
+
+  const id = await TelemetryController.submitExternalPing(TEST_TYPE, {});
+  let foundit = false;
+  while (!foundit) {
+    var request = await PingServer.promiseNextRequest();
+    var ping = decodeRequestPayload(request);
+    foundit = id === ping.id;
+  }
+  Assert.equal(id, ping.id, "We're testing the right ping's request, right?");
+  Assert.equal(false, request.hasHeader("Cookie"), "Request should not have Cookie header");
 });
 
 add_task(async function test_measurePingsSize() {
@@ -531,10 +609,14 @@ add_task(async function test_pref_observer() {
 
   await TelemetrySend.setup(true);
 
+  const IS_UNIFIED_TELEMETRY = Services.prefs.getBoolPref(TelemetryUtils.Preferences.Unified, false);
+
   let origTelemetryEnabled = Services.prefs.getBoolPref(TelemetryUtils.Preferences.TelemetryEnabled);
   let origFhrUploadEnabled = Services.prefs.getBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled);
 
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
+  if (!IS_UNIFIED_TELEMETRY) {
+    Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
+  }
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, true);
 
   function waitAnnotateCrashReport(expectedValue, trigger) {
@@ -542,7 +624,7 @@ add_task(async function test_pref_observer() {
       let keys = new Set(["TelemetryClientId", "TelemetryServerURL"]);
 
       let crs = {
-        QueryInterface: XPCOMUtils.generateQI([Ci.nsICrashReporter]),
+        QueryInterface: ChromeUtils.generateQI([Ci.nsICrashReporter]),
         annotateCrashReport(key, value) {
           if (!keys.delete(key)) {
             MockRegistrar.unregister(gMockCrs);
@@ -569,7 +651,7 @@ add_task(async function test_pref_observer() {
       };
 
       let gMockCrs = MockRegistrar.register("@mozilla.org/toolkit/crash-reporter;1", crs);
-      do_register_cleanup(function() {
+      registerCleanupFunction(function() {
         MockRegistrar.unregister(gMockCrs);
       });
 
@@ -577,17 +659,13 @@ add_task(async function test_pref_observer() {
     });
   }
 
-  const IS_UNIFIED_TELEMETRY = Services.prefs.getBoolPref(TelemetryUtils.Preferences.Unified, false);
-
-  await waitAnnotateCrashReport(IS_UNIFIED_TELEMETRY, () => Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, false));
-
-  await waitAnnotateCrashReport(true, () => Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true));
-
   await waitAnnotateCrashReport(!IS_UNIFIED_TELEMETRY, () => Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, false));
 
   await waitAnnotateCrashReport(true, () => Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, true));
 
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, origTelemetryEnabled);
+  if (!IS_UNIFIED_TELEMETRY) {
+    Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, origTelemetryEnabled);
+  }
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, origFhrUploadEnabled);
 });
 

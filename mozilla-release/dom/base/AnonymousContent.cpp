@@ -10,7 +10,6 @@
 #include "nsComputedDOMStyle.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsIDocument.h"
-#include "nsIDOMHTMLCollection.h"
 #include "nsIFrame.h"
 #include "nsStyledElement.h"
 #include "HTMLCanvasElement.h"
@@ -75,6 +74,7 @@ void
 AnonymousContent::SetAttributeForElement(const nsAString& aElementId,
                                          const nsAString& aName,
                                          const nsAString& aValue,
+                                         nsIPrincipal* aSubjectPrincipal,
                                          ErrorResult& aRv)
 {
   Element* element = GetElementById(aElementId);
@@ -83,7 +83,7 @@ AnonymousContent::SetAttributeForElement(const nsAString& aElementId,
     return;
   }
 
-  element->SetAttribute(aName, aValue, aRv);
+  element->SetAttribute(aName, aValue, aSubjectPrincipal, aRv);
 }
 
 void
@@ -187,13 +187,13 @@ Element*
 AnonymousContent::GetElementById(const nsAString& aElementId)
 {
   // This can be made faster in the future if needed.
-  nsCOMPtr<nsIAtom> elementId = NS_Atomize(aElementId);
+  RefPtr<nsAtom> elementId = NS_Atomize(aElementId);
   for (nsIContent* node = mContentNode; node;
        node = node->GetNextNode(mContentNode)) {
     if (!node->IsElement()) {
       continue;
     }
-    nsIAtom* id = node->AsElement()->GetID();
+    nsAtom* id = node->AsElement()->GetID();
     if (id && id == elementId) {
       return node->AsElement();
     }

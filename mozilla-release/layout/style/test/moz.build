@@ -35,7 +35,9 @@ BROWSER_CHROME_MANIFESTS += ['browser.ini']
 MOCHITEST_CHROME_MANIFESTS += ['chrome/chrome.ini']
 
 TEST_HARNESS_FILES.testing.mochitest.tests.layout.style.test.chrome += [
+    'chrome/display_mode_reflow_iframe.html',
     'chrome/moz_document_helper.html',
+    'media_queries_iframe.html',
 ]
 
 TEST_HARNESS_FILES.testing.mochitest.tests.layout.style.test['css-visited'] += [
@@ -60,6 +62,8 @@ TEST_HARNESS_FILES.testing.mochitest.tests.layout.style.test['css-visited'] += [
     '/layout/reftests/css-visited/color-on-visited-1-ref.html',
     '/layout/reftests/css-visited/color-on-visited-1.html',
     '/layout/reftests/css-visited/color-on-visited-before-1.html',
+    '/layout/reftests/css-visited/color-on-visited-text-1-ref.html',
+    '/layout/reftests/css-visited/color-on-visited-text-1.html',
     '/layout/reftests/css-visited/column-rule-1-notref.html',
     '/layout/reftests/css-visited/column-rule-1-ref.html',
     '/layout/reftests/css-visited/column-rule-1.html',
@@ -86,6 +90,8 @@ TEST_HARNESS_FILES.testing.mochitest.tests.layout.style.test['css-visited'] += [
     '/layout/reftests/css-visited/selector-adj-sibling-1.html',
     '/layout/reftests/css-visited/selector-adj-sibling-2-ref.html',
     '/layout/reftests/css-visited/selector-adj-sibling-2.html',
+    '/layout/reftests/css-visited/selector-adj-sibling-3-ref.xhtml',
+    '/layout/reftests/css-visited/selector-adj-sibling-3.xhtml',
     '/layout/reftests/css-visited/selector-any-sibling-1-ref.html',
     '/layout/reftests/css-visited/selector-any-sibling-1.html',
     '/layout/reftests/css-visited/selector-any-sibling-2-ref.html',
@@ -116,27 +122,20 @@ TEST_HARNESS_FILES.testing.mochitest.tests.layout.style.test['css-visited'] += [
     '/layout/reftests/css-visited/width-on-link-1.html',
     '/layout/reftests/css-visited/width-on-visited-1.html',
     '/layout/reftests/fonts/Ahem.ttf',
-    '/layout/reftests/svg/as-image/lime100x100.svg',
-    '/layout/reftests/svg/as-image/svg-image-visited-1-helper.svg',
-    '/layout/reftests/svg/as-image/svg-image-visited-2-helper.svg',
+    '/layout/reftests/svg/as-image/svg-image-visited-1-ref.html',
+    '/layout/reftests/svg/as-image/svg-image-visited-1a-helper.svg',
+    '/layout/reftests/svg/as-image/svg-image-visited-1a.html',
+    '/layout/reftests/svg/as-image/svg-image-visited-1b-helper.svg',
+    '/layout/reftests/svg/as-image/svg-image-visited-1b.html',
+    '/layout/reftests/svg/as-image/svg-image-visited-1c-helper.svg',
+    '/layout/reftests/svg/as-image/svg-image-visited-1c.html',
+    '/layout/reftests/svg/as-image/svg-image-visited-1d-helper.svg',
+    '/layout/reftests/svg/as-image/svg-image-visited-1d.html',
     '/layout/reftests/svg/pseudo-classes-02-ref.svg',
     '/layout/reftests/svg/pseudo-classes-02.svg',
 ]
 
-if CONFIG['MOZ_STYLO']:
-    TEST_HARNESS_FILES.testing.mochitest.tests.layout.style.test += [
-        'stylo-failures.md',
-    ]
-    TEST_HARNESS_FILES.testing.mochitest.chrome.layout.style.test += [
-        'stylo-failures.md',
-    ]
-    # TEST_HARNESS_FILES.testing.mochitest.browser.layout.style.test += [
-    #     'stylo-failures.md',
-    # ]
-
 DEFINES['MOZILLA_INTERNAL_API'] = True
-if CONFIG['MOZ_ENABLE_MASK_AS_SHORTHAND']:
-   HOST_DEFINES['MOZ_ENABLE_MASK_AS_SHORTHAND'] = True
 
 if CONFIG['COMPILE_ENVIRONMENT']:
     GENERATED_FILES += ['css_properties.js']

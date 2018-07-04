@@ -37,6 +37,7 @@ UNIFIED_SOURCES += [
 ]
 
 DIRS += [
+    'agnostic/bytestreams',
     'agnostic/eme',
     'agnostic/gmp',
     'omx'
@@ -69,6 +70,14 @@ if CONFIG['MOZ_AV1']:
         'agnostic/AOMDecoder.cpp',
     ]
 
+if CONFIG['MOZ_OMX']:
+    EXPORTS += [
+        'omx/OmxCoreLibLinker.h',
+    ]
+    UNIFIED_SOURCES += [
+        'omx/OmxCoreLibLinker.cpp',
+    ]
+
 if CONFIG['MOZ_APPLEMEDIA']:
   EXPORTS += [
       'apple/AppleDecoderModule.h',
@@ -98,5 +107,5 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
 
 FINAL_LIBRARY = 'xul'
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']

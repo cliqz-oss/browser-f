@@ -35,7 +35,7 @@ public:
   VideoEngine (){};
   NS_INLINE_DECL_REFCOUNTING(VideoEngine)
 
-  static RefPtr<VideoEngine> Create(UniquePtr<const webrtc::Config>&& aConfig);
+  static already_AddRefed<VideoEngine> Create(UniquePtr<const webrtc::Config>&& aConfig);
 #if defined(ANDROID)
   static int SetAndroidObjects(JavaVM* javaVM);
 #endif
@@ -59,18 +59,6 @@ public:
 
   const UniquePtr<const webrtc::Config>& GetConfiguration();
 
-  void Startup() {
-    mIsRunning = true;
-  }
-
-  void Shutdown() {
-    mIsRunning = false;
-  }
-
-  bool IsRunning() const {
-    return mIsRunning;
-  }
-
   class CaptureEntry {
   public:
     CaptureEntry(int32_t aCapnum,
@@ -88,12 +76,12 @@ public:
 
 private:
   explicit VideoEngine(UniquePtr<const webrtc::Config>&& aConfig);
-  bool mIsRunning;
   int32_t mId;
   webrtc::CaptureDeviceInfo mCaptureDevInfo;
   std::shared_ptr<webrtc::VideoCaptureModule::DeviceInfo> mDeviceInfo;
   UniquePtr<const webrtc::Config> mConfig;
   std::map<int32_t, CaptureEntry> mCaps;
+  std::map<int32_t, int32_t> mIdMap;
   // The validity period for non-camera capture device infos`
   int64_t mExpiryTimeInMs = 0;
   int32_t GenerateId();

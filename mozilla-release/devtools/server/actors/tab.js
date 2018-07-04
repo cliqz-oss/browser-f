@@ -15,7 +15,6 @@
 var { Ci, Cu, Cr, Cc } = require("chrome");
 var Services = require("Services");
 var { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
-var promise = require("promise");
 var {
   ActorPool, createExtraActors, appendExtraActors
 } = require("devtools/server/actors/common");
@@ -24,18 +23,18 @@ var DevToolsUtils = require("devtools/shared/DevToolsUtils");
 var { assert } = DevToolsUtils;
 var { TabSources } = require("./utils/TabSources");
 var makeDebugger = require("./utils/make-debugger");
+const EventEmitter = require("devtools/shared/event-emitter");
+const InspectorUtils = require("InspectorUtils");
 
-loader.lazyRequireGetter(this, "ThreadActor", "devtools/server/actors/script", true);
-loader.lazyRequireGetter(this, "unwrapDebuggerObjectGlobal", "devtools/server/actors/script", true);
+const EXTENSION_CONTENT_JSM = "resource://gre/modules/ExtensionContent.jsm";
+
+loader.lazyRequireGetter(this, "ThreadActor", "devtools/server/actors/thread", true);
+loader.lazyRequireGetter(this, "unwrapDebuggerObjectGlobal", "devtools/server/actors/thread", true);
 loader.lazyRequireGetter(this, "WorkerActorList", "devtools/server/actors/worker-list", true);
-loader.lazyImporter(this, "ExtensionContent", "resource://gre/modules/ExtensionContent.jsm");
-
-// Assumptions on events module:
-// events needs to be dispatched synchronously,
-// by calling the listeners in the order or registration.
-loader.lazyRequireGetter(this, "events", "sdk/event/core");
+loader.lazyImporter(this, "ExtensionContent", EXTENSION_CONTENT_JSM);
 
 loader.lazyRequireGetter(this, "StyleSheetActor", "devtools/server/actors/stylesheets", true);
+loader.lazyRequireGetter(this, "getSheetText", "devtools/server/actors/stylesheets", true);
 
 function getWindowID(window) {
   return window.QueryInterface(Ci.nsIInterfaceRequestor)
@@ -195,6 +194,10 @@ function getInnerId(window) {
  *        The conection to the client.
  */
 function TabActor(connection) {
+  // This usage of decorate should be removed in favor of using ES6 extends EventEmitter.
+  // See Bug 1394816.
+  EventEmitter.decorate(this);
+
   this.conn = connection;
   this._tabActorPool = null;
   // A map of actor names to actor instances provided by extensions.
@@ -227,17 +230,14 @@ function TabActor(connection) {
     // Do not require to send reconfigure request to reset the document state
     // to what it was before using the TabActor
     noTabReconfigureOnClose: true,
-    // Supports the logErrorInPage request.
-    logErrorInPage: true,
+    // Supports the logInPage request.
+    logInPage: true,
   };
 
   this._workerActorList = null;
   this._workerActorPool = null;
   this._onWorkerActorListChanged = this._onWorkerActorListChanged.bind(this);
 }
-
-// XXX (bug 710213): TabActor attach/detach/exit/destroy is a
-// *complete* mess, needs to be rethought asap.
 
 TabActor.prototype = {
   traits: null,
@@ -258,6 +258,17 @@ TabActor.prototype = {
 
   get attached() {
     return !!this._attached;
+  },
+
+  /**
+   * Try to locate the console actor if it exists.
+   */
+  get _consoleActor() {
+    if (this.exited) {
+      return null;
+    }
+    let form = this.form();
+    return this.conn._getOrCreateActor(form.consoleActor);
   },
 
   _tabPool: null,
@@ -336,8 +347,11 @@ TabActor.prototype = {
    * current tab content's DOM window.
    */
   get webextensionsContentScriptGlobals() {
-    // Ignore xpcshell runtime which spawn TabActors without a window.
-    if (this.window) {
+    // Ignore xpcshell runtime which spawn TabActors without a window
+    // and only retrieve the content scripts globals if the ExtensionContent JSM module
+    // has been already loaded (which is true if the WebExtensions internals have already
+    // been loaded in the same content process).
+    if (this.window && Cu.isModuleLoaded(EXTENSION_CONTENT_JSM)) {
       return ExtensionContent.getContentScriptGlobals(this.window);
     }
 
@@ -438,15 +452,6 @@ TabActor.prototype = {
     return this._sources;
   },
 
-  /**
-   * This is called by BrowserTabList.getList for existing tab actors prior to
-   * calling |form| below.  It can be used to do any async work that may be
-   * needed to assemble the form.
-   */
-  update() {
-    return promise.resolve(this);
-  },
-
   form() {
     assert(!this.exited,
                "form() shouldn't be called on exited browser actor.");
@@ -527,6 +532,7 @@ TabActor.prototype = {
       return true;
     }
 
+    // Otherwise, check if it is a WebExtension content script sandbox
     let global = unwrapDebuggerObjectGlobal(wrappedGlobal);
     if (!global) {
       return false;
@@ -605,7 +611,7 @@ TabActor.prototype = {
     }
   },
 
-  onSwitchToFrame(request) {
+  switchToFrame(request) {
     let windowId = request.windowId;
     let win;
 
@@ -627,12 +633,12 @@ TabActor.prototype = {
     return {};
   },
 
-  onListFrames(request) {
+  listFrames(request) {
     let windows = this._docShellsToWindows(this.docShells);
     return { frames: windows };
   },
 
-  onListWorkers(request) {
+  listWorkers(request) {
     if (!this.attached) {
       return { error: "wrongState" };
     }
@@ -663,14 +669,13 @@ TabActor.prototype = {
     });
   },
 
-  onLogErrorInPage(request) {
-    let {text, category} = request;
+  logInPage(request) {
+    let {text, category, flags} = request;
     let scriptErrorClass = Cc["@mozilla.org/scripterror;1"];
     let scriptError = scriptErrorClass.createInstance(Ci.nsIScriptError);
-    scriptError.initWithWindowID(text, null, null, 0, 0, 1,
+    scriptError.initWithWindowID(text, null, null, 0, 0, flags,
                                  category, getInnerId(this.window));
-    let console = Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService);
-    console.logMessage(scriptError);
+    Services.console.logMessage(scriptError);
     return {};
   },
 
@@ -934,7 +939,7 @@ TabActor.prototype = {
 
   // Protocol Request Handlers
 
-  onAttach(request) {
+  attach(request) {
     if (this.exited) {
       return { type: "exited" };
     }
@@ -950,7 +955,7 @@ TabActor.prototype = {
     };
   },
 
-  onDetach(request) {
+  detach(request) {
     if (!this._detach()) {
       return { error: "wrongState" };
     }
@@ -961,7 +966,7 @@ TabActor.prototype = {
   /**
    * Bring the tab's window to front.
    */
-  onFocus() {
+  focus() {
     if (this.window) {
       this.window.focus();
     }
@@ -971,7 +976,7 @@ TabActor.prototype = {
   /**
    * Reload the page in this tab.
    */
-  onReload(request) {
+  reload(request) {
     let force = request && request.options && request.options.force;
     // Wait a tick so that the response packet can be dispatched before the
     // subsequent navigation event packet.
@@ -984,26 +989,26 @@ TabActor.prototype = {
       this.webNavigation.reload(force ?
         Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE :
         Ci.nsIWebNavigation.LOAD_FLAGS_NONE);
-    }, "TabActor.prototype.onReload's delayed body"));
+    }, "TabActor.prototype.reload's delayed body"));
     return {};
   },
 
   /**
    * Navigate this tab to a new location
    */
-  onNavigateTo(request) {
+  navigateTo(request) {
     // Wait a tick so that the response packet can be dispatched before the
     // subsequent navigation event packet.
     Services.tm.dispatchToMainThread(DevToolsUtils.makeInfallible(() => {
       this.window.location = request.url;
-    }, "TabActor.prototype.onNavigateTo's delayed body"));
+    }, "TabActor.prototype.navigateTo's delayed body"));
     return {};
   },
 
   /**
    * Reconfigure options.
    */
-  onReconfigure(request) {
+  reconfigure(request) {
     let options = request.options || {};
 
     if (!this.docShell) {
@@ -1011,6 +1016,33 @@ TabActor.prototype = {
       return {};
     }
     this._toggleDevToolsSettings(options);
+
+    return {};
+  },
+
+  /**
+   * Ensure that CSS error reporting is enabled.
+   */
+  ensureCSSErrorReportingEnabled(request) {
+    for (let docShell of this.docShells) {
+      if (docShell.cssErrorReportingEnabled) {
+        continue;
+      }
+      try {
+        docShell.cssErrorReportingEnabled = true;
+      } catch (e) {
+        continue;
+      }
+      // We don't really want to reparse UA sheets and such, but want to do
+      // Shadow DOM / XBL.
+      let sheets =
+        InspectorUtils.getAllStyleSheets(docShell.document, /* documentOnly = */ true);
+      for (let sheet of sheets) {
+        getSheetText(sheet, this._consoleActor).then(text => {
+          InspectorUtils.parseStyleSheet(sheet, text, /* aUpdate = */ false);
+        });
+      }
+    }
 
     return {};
   },
@@ -1046,7 +1078,7 @@ TabActor.prototype = {
     let hasExplicitReloadFlag = "performReload" in options;
     if ((hasExplicitReloadFlag && options.performReload) ||
        (!hasExplicitReloadFlag && reload)) {
-      this.onReload();
+      this.reload();
     }
   },
 
@@ -1209,7 +1241,7 @@ TabActor.prototype = {
       enumerable: true,
       configurable: true
     });
-    events.emit(this, "changed-toplevel-document");
+    this.emit("changed-toplevel-document");
     this.conn.send({
       from: this.actorID,
       type: "frameUpdate",
@@ -1231,7 +1263,7 @@ TabActor.prototype = {
       this._updateChildDocShells();
     }
 
-    events.emit(this, "window-ready", {
+    this.emit("window-ready", {
       window: window,
       isTopLevel: isTopLevel,
       id: getWindowID(window)
@@ -1258,7 +1290,7 @@ TabActor.prototype = {
   },
 
   _windowDestroyed(window, id = null, isFrozen = false) {
-    events.emit(this, "window-destroyed", {
+    this.emit("window-destroyed", {
       window: window,
       isTopLevel: window == this.window,
       id: id || getWindowID(window),
@@ -1295,7 +1327,7 @@ TabActor.prototype = {
     // This event fires once navigation starts,
     // (all pending user prompts are dealt with),
     // but before the first request starts.
-    events.emit(this, "will-navigate", {
+    this.emit("will-navigate", {
       window: window,
       isTopLevel: isTopLevel,
       newURI: newURI,
@@ -1344,7 +1376,7 @@ TabActor.prototype = {
     // by calling the listeners in the order or registration.
     // This event is fired once the document is loaded,
     // after the load event, it's document ready-state is 'complete'.
-    events.emit(this, "navigate", {
+    this.emit("navigate", {
       window: window,
       isTopLevel: isTopLevel
     });
@@ -1412,7 +1444,7 @@ TabActor.prototype = {
     this._styleSheetActors.set(styleSheet, actor);
 
     this._tabPool.addActor(actor);
-    events.emit(this, "stylesheet-added", actor);
+    this.emit("stylesheet-added", actor);
 
     return actor;
   },
@@ -1432,16 +1464,17 @@ TabActor.prototype = {
  * The request types this actor can handle.
  */
 TabActor.prototype.requestTypes = {
-  "attach": TabActor.prototype.onAttach,
-  "detach": TabActor.prototype.onDetach,
-  "focus": TabActor.prototype.onFocus,
-  "reload": TabActor.prototype.onReload,
-  "navigateTo": TabActor.prototype.onNavigateTo,
-  "reconfigure": TabActor.prototype.onReconfigure,
-  "switchToFrame": TabActor.prototype.onSwitchToFrame,
-  "listFrames": TabActor.prototype.onListFrames,
-  "listWorkers": TabActor.prototype.onListWorkers,
-  "logErrorInPage": TabActor.prototype.onLogErrorInPage,
+  "attach": TabActor.prototype.attach,
+  "detach": TabActor.prototype.detach,
+  "focus": TabActor.prototype.focus,
+  "reload": TabActor.prototype.reload,
+  "navigateTo": TabActor.prototype.navigateTo,
+  "reconfigure": TabActor.prototype.reconfigure,
+  "ensureCSSErrorReportingEnabled": TabActor.prototype.ensureCSSErrorReportingEnabled,
+  "switchToFrame": TabActor.prototype.switchToFrame,
+  "listFrames": TabActor.prototype.listFrames,
+  "listWorkers": TabActor.prototype.listWorkers,
+  "logInPage": TabActor.prototype.logInPage,
 };
 
 exports.TabActor = TabActor;
@@ -1475,7 +1508,6 @@ DebuggerProgressListener.prototype = {
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIWebProgressListener,
     Ci.nsISupportsWeakReference,
-    Ci.nsISupports,
   ]),
 
   destroy() {
@@ -1544,8 +1576,14 @@ DebuggerProgressListener.prototype = {
     });
   },
 
-  onWindowCreated: DevToolsUtils.makeInfallible(function (evt) {
+  onWindowCreated: DevToolsUtils.makeInfallible(function(evt) {
     if (!this._tabActor.attached) {
+      return;
+    }
+
+    // If we're in a frame swap (which occurs when toggling RDM, for example), then we can
+    // ignore this event, as the window never really went anywhere for our purposes.
+    if (evt.inFrameSwap) {
       return;
     }
 
@@ -1568,8 +1606,14 @@ DebuggerProgressListener.prototype = {
     this._knownWindowIDs.set(innerID, window);
   }, "DebuggerProgressListener.prototype.onWindowCreated"),
 
-  onWindowHidden: DevToolsUtils.makeInfallible(function (evt) {
+  onWindowHidden: DevToolsUtils.makeInfallible(function(evt) {
     if (!this._tabActor.attached) {
+      return;
+    }
+
+    // If we're in a frame swap (which occurs when toggling RDM, for example), then we can
+    // ignore this event, as the window isn't really going anywhere for our purposes.
+    if (evt.inFrameSwap) {
       return;
     }
 
@@ -1586,7 +1630,7 @@ DebuggerProgressListener.prototype = {
     this._knownWindowIDs.delete(getWindowID(window));
   }, "DebuggerProgressListener.prototype.onWindowHidden"),
 
-  observe: DevToolsUtils.makeInfallible(function (subject, topic) {
+  observe: DevToolsUtils.makeInfallible(function(subject, topic) {
     if (!this._tabActor.attached) {
       return;
     }
@@ -1603,7 +1647,7 @@ DebuggerProgressListener.prototype = {
   }, "DebuggerProgressListener.prototype.observe"),
 
   onStateChange:
-  DevToolsUtils.makeInfallible(function (progress, request, flag, status) {
+  DevToolsUtils.makeInfallible(function(progress, request, flag, status) {
     if (!this._tabActor.attached) {
       return;
     }
@@ -1630,7 +1674,11 @@ DebuggerProgressListener.prototype = {
     if (isWindow && isStop) {
       // Don't dispatch "navigate" event just yet when there is a redirect to
       // about:neterror page.
-      if (request.status != Cr.NS_OK) {
+      // Navigating to about:neterror will make `status` be something else than NS_OK.
+      // But for some error like NS_BINDING_ABORTED we don't want to emit any `navigate`
+      // event as the page load has been cancelled and the related page document is going
+      // to be a dead wrapper.
+      if (request.status != Cr.NS_OK && request.status != Cr.NS_BINDING_ABORTED) {
         // Instead, listen for DOMContentLoaded as about:neterror is loaded
         // with LOAD_BACKGROUND flags and never dispatches load event.
         // That may be the same reason why there is no onStateChange event
@@ -1638,7 +1686,7 @@ DebuggerProgressListener.prototype = {
         let handler = getDocShellChromeEventHandler(progress);
         let onLoad = evt => {
           // Ignore events from iframes
-          if (evt.target == window.document) {
+          if (evt.target === window.document) {
             handler.removeEventListener("DOMContentLoaded", onLoad, true);
             this._tabActor._navigate(window);
           }

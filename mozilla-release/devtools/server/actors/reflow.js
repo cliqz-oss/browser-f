@@ -27,7 +27,6 @@
 const {Ci} = require("chrome");
 const {XPCOMUtils} = require("resource://gre/modules/XPCOMUtils.jsm");
 const protocol = require("devtools/shared/protocol");
-const events = require("sdk/event/core");
 const EventEmitter = require("devtools/shared/event-emitter");
 const {reflowSpec} = require("devtools/shared/specs/reflow");
 
@@ -35,7 +34,7 @@ const {reflowSpec} = require("devtools/shared/specs/reflow");
  * The reflow actor tracks reflows and emits events about them.
  */
 exports.ReflowActor = protocol.ActorClassWithSpec(reflowSpec, {
-  initialize: function (conn, tabActor) {
+  initialize: function(conn, tabActor) {
     protocol.Actor.prototype.initialize.call(this, conn);
 
     this.tabActor = tabActor;
@@ -44,7 +43,7 @@ exports.ReflowActor = protocol.ActorClassWithSpec(reflowSpec, {
     this._isStarted = false;
   },
 
-  destroy: function () {
+  destroy: function() {
     this.stop();
     releaseLayoutChangesObserver(this.tabActor);
     this.observer = null;
@@ -58,7 +57,7 @@ exports.ReflowActor = protocol.ActorClassWithSpec(reflowSpec, {
    * This is a oneway method, do not expect a response and it won't return a
    * promise.
    */
-  start: function () {
+  start: function() {
     if (!this._isStarted) {
       this.observer.on("reflows", this._onReflow);
       this._isStarted = true;
@@ -70,16 +69,16 @@ exports.ReflowActor = protocol.ActorClassWithSpec(reflowSpec, {
    * This is a oneway method, do not expect a response and it won't return a
    * promise.
    */
-  stop: function () {
+  stop: function() {
     if (this._isStarted) {
       this.observer.off("reflows", this._onReflow);
       this._isStarted = false;
     }
   },
 
-  _onReflow: function (event, reflows) {
+  _onReflow: function(reflows) {
     if (this._isStarted) {
-      events.emit(this, "reflows", reflows);
+      this.emit("reflows", reflows);
     }
   }
 });
@@ -97,8 +96,8 @@ function Observable(tabActor, callback) {
   this._onWindowReady = this._onWindowReady.bind(this);
   this._onWindowDestroyed = this._onWindowDestroyed.bind(this);
 
-  events.on(this.tabActor, "window-ready", this._onWindowReady);
-  events.on(this.tabActor, "window-destroyed", this._onWindowDestroyed);
+  this.tabActor.on("window-ready", this._onWindowReady);
+  this.tabActor.on("window-destroyed", this._onWindowDestroyed);
 }
 
 Observable.prototype = {
@@ -110,7 +109,7 @@ Observable.prototype = {
   /**
    * Stop observing and detroy this observer instance
    */
-  destroy: function () {
+  destroy: function() {
     if (this.isDestroyed) {
       return;
     }
@@ -118,8 +117,8 @@ Observable.prototype = {
 
     this.stop();
 
-    events.off(this.tabActor, "window-ready", this._onWindowReady);
-    events.off(this.tabActor, "window-destroyed", this._onWindowDestroyed);
+    this.tabActor.off("window-ready", this._onWindowReady);
+    this.tabActor.off("window-destroyed", this._onWindowDestroyed);
 
     this.callback = null;
     this.tabActor = null;
@@ -128,7 +127,7 @@ Observable.prototype = {
   /**
    * Start observing whatever it is this observer is supposed to observe
    */
-  start: function () {
+  start: function() {
     if (this.isObserving) {
       return;
     }
@@ -140,7 +139,7 @@ Observable.prototype = {
   /**
    * Stop observing
    */
-  stop: function () {
+  stop: function() {
     if (!this.isObserving) {
       return;
     }
@@ -152,30 +151,30 @@ Observable.prototype = {
     }
   },
 
-  _onWindowReady: function ({window}) {
+  _onWindowReady: function({window}) {
     if (this.isObserving) {
       this._startListeners([window]);
     }
   },
 
-  _onWindowDestroyed: function ({window}) {
+  _onWindowDestroyed: function({window}) {
     if (this.isObserving) {
       this._stopListeners([window]);
     }
   },
 
-  _startListeners: function (windows) {
+  _startListeners: function(windows) {
     // To be implemented by sub-classes.
   },
 
-  _stopListeners: function (windows) {
+  _stopListeners: function(windows) {
     // To be implemented by sub-classes.
   },
 
   /**
    * To be called by sub-classes when something has been observed
    */
-  notifyCallback: function (...args) {
+  notifyCallback: function(...args) {
     this.isObserving && this.callback && this.callback.apply(null, args);
   }
 };
@@ -195,7 +194,7 @@ Observable.prototype = {
  * @param {DOMNode} syncReflowNode The node to use to force a sync reflow
  */
 var gIgnoreLayoutChanges = false;
-exports.setIgnoreLayoutChanges = function (ignore, syncReflowNode) {
+exports.setIgnoreLayoutChanges = function(ignore, syncReflowNode) {
   if (syncReflowNode) {
     let forceSyncReflow = syncReflowNode.offsetWidth; // eslint-disable-line
   }
@@ -254,7 +253,7 @@ LayoutChangesObserver.prototype = {
    * Destroying this instance of LayoutChangesObserver will stop the batched
    * events from being sent.
    */
-  destroy: function () {
+  destroy: function() {
     this.isObserving = false;
 
     this.reflowObserver.destroy();
@@ -266,7 +265,7 @@ LayoutChangesObserver.prototype = {
     this.tabActor = null;
   },
 
-  start: function () {
+  start: function() {
     if (this.isObserving) {
       return;
     }
@@ -281,7 +280,7 @@ LayoutChangesObserver.prototype = {
     this.resizeObserver.start();
   },
 
-  stop: function () {
+  stop: function() {
     if (!this.isObserving) {
       return;
     }
@@ -301,7 +300,7 @@ LayoutChangesObserver.prototype = {
    * events to be sent as batched events
    * Calls itself in a loop.
    */
-  _startEventLoop: function () {
+  _startEventLoop: function() {
     // Avoid emitting events if the tabActor has been detached (may happen
     // during shutdown)
     if (!this.tabActor || !this.tabActor.attached) {
@@ -324,15 +323,15 @@ LayoutChangesObserver.prototype = {
       this.EVENT_BATCHING_DELAY);
   },
 
-  _stopEventLoop: function () {
+  _stopEventLoop: function() {
     this._clearTimeout(this.eventLoopTimer);
   },
 
   // Exposing set/clearTimeout here to let tests override them if needed
-  _setTimeout: function (cb, ms) {
+  _setTimeout: function(cb, ms) {
     return setTimeout(cb, ms);
   },
-  _clearTimeout: function (t) {
+  _clearTimeout: function(t) {
     return clearTimeout(t);
   },
 
@@ -344,7 +343,7 @@ LayoutChangesObserver.prototype = {
    * @param {Number} end When the reflow ended
    * @param {Boolean} isInterruptible
    */
-  _onReflow: function (start, end, isInterruptible) {
+  _onReflow: function(start, end, isInterruptible) {
     if (gIgnoreLayoutChanges) {
       return;
     }
@@ -363,7 +362,7 @@ LayoutChangesObserver.prototype = {
    * resize occured.
    * The EVENT_BATCHING_DELAY loop will take care of it later.
    */
-  _onResize: function () {
+  _onResize: function() {
     if (gIgnoreLayoutChanges) {
       return;
     }
@@ -382,7 +381,7 @@ var observedWindows = new Map();
 function getLayoutChangesObserver(tabActor) {
   let observerData = observedWindows.get(tabActor);
   if (observerData) {
-    observerData.refCounting ++;
+    observerData.refCounting++;
     return observerData.observer;
   }
 
@@ -410,7 +409,7 @@ function releaseLayoutChangesObserver(tabActor) {
     return;
   }
 
-  observerData.refCounting --;
+  observerData.refCounting--;
   if (!observerData.refCounting) {
     observerData.observer.destroy();
     observedWindows.delete(tabActor);
@@ -471,7 +470,6 @@ ReflowObserver.prototype.QueryInterface = XPCOMUtils
  * @param {Function} callback Executed everytime a resize occurs
  */
 class WindowResizeObserver extends Observable {
-
   constructor(tabActor, callback) {
     super(tabActor, callback);
     this.onResize = this.onResize.bind(this);

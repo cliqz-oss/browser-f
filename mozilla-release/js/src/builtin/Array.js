@@ -185,17 +185,24 @@ function ArrayStaticSome(list, callbackfn/*, thisArg*/) {
 // 22.1.3.25 Array.prototype.sort ( comparefn )
 function ArraySort(comparefn) {
     // Step 1.
-    assert(typeof comparefn === "function", "Only called when a comparator is present");
+    if (comparefn !== undefined) {
+        if (!IsCallable(comparefn))
+            ThrowTypeError(JSMSG_BAD_SORT_ARG);
+    }
 
     // Step 2.
-    assert(IsObject(this), "|this| should be an object");
-    var O = this;
+    var O = ToObject(this);
+
+    // First try to sort the array in native code, if that fails, indicated by
+    // returning |false| from ArrayNativeSort, sort it in self-hosted code.
+    if (callFunction(ArrayNativeSort, O, comparefn))
+        return O;
 
     // Step 3.
     var len = ToLength(O.length);
 
     if (len <= 1)
-      return this;
+      return O;
 
     /* 22.1.3.25.1 Runtime Semantics: SortCompare( x, y ) */
     var wrappedCompareFn = comparefn;
@@ -214,7 +221,7 @@ function ArraySort(comparefn) {
 
         /* Step 4.b-c. */
         return v !== v ? 0 : v;
-    }
+    };
 
     return MergeSort(O, len, comparefn);
 }
@@ -688,29 +695,27 @@ function ArrayIncludes(searchElement, fromIndex = 0) {
 }
 
 // ES6 draft specification, section 22.1.5.1, version 2013-09-05.
-function CreateArrayIteratorAt(obj, kind, n) {
+function CreateArrayIterator(obj, kind) {
     var iteratedObject = ToObject(obj);
     var iterator = NewArrayIterator();
     UnsafeSetReservedSlot(iterator, ITERATOR_SLOT_TARGET, iteratedObject);
-    UnsafeSetReservedSlot(iterator, ITERATOR_SLOT_NEXT_INDEX, n);
+    UnsafeSetReservedSlot(iterator, ITERATOR_SLOT_NEXT_INDEX, 0);
     UnsafeSetReservedSlot(iterator, ITERATOR_SLOT_ITEM_KIND, kind);
     return iterator;
-}
-function CreateArrayIterator(obj, kind) {
-    return CreateArrayIteratorAt(obj, kind, 0);
 }
 
 // ES6, 22.1.5.2.1
 // http://www.ecma-international.org/ecma-262/6.0/index.html#sec-%arrayiteratorprototype%.next
 function ArrayIteratorNext() {
     // Step 1-3.
-    if (!IsObject(this) || !IsArrayIterator(this)) {
+    var obj;
+    if (!IsObject(this) || (obj = GuardToArrayIterator(this)) === null) {
         return callFunction(CallArrayIteratorMethodIfWrapped, this,
                             "ArrayIteratorNext");
     }
 
     // Step 4.
-    var a = UnsafeGetReservedSlot(this, ITERATOR_SLOT_TARGET);
+    var a = UnsafeGetReservedSlot(obj, ITERATOR_SLOT_TARGET);
     var result = { value: undefined, done: false };
 
     // Step 5.
@@ -721,10 +726,10 @@ function ArrayIteratorNext() {
 
     // Step 6.
     // The index might not be an integer, so we have to do a generic get here.
-    var index = UnsafeGetReservedSlot(this, ITERATOR_SLOT_NEXT_INDEX);
+    var index = UnsafeGetReservedSlot(obj, ITERATOR_SLOT_NEXT_INDEX);
 
     // Step 7.
-    var itemKind = UnsafeGetInt32FromReservedSlot(this, ITERATOR_SLOT_ITEM_KIND);
+    var itemKind = UnsafeGetInt32FromReservedSlot(obj, ITERATOR_SLOT_ITEM_KIND);
 
     // Step 8-9.
     var len;
@@ -742,13 +747,13 @@ function ArrayIteratorNext() {
 
     // Step 10.
     if (index >= len) {
-        UnsafeSetReservedSlot(this, ITERATOR_SLOT_TARGET, null);
+        UnsafeSetReservedSlot(obj, ITERATOR_SLOT_TARGET, null);
         result.done = true;
         return result;
     }
 
     // Step 11.
-    UnsafeSetReservedSlot(this, ITERATOR_SLOT_NEXT_INDEX, index + 1);
+    UnsafeSetReservedSlot(obj, ITERATOR_SLOT_NEXT_INDEX, index + 1);
 
     // Step 16.
     if (itemKind === ITEM_KIND_VALUE) {
@@ -767,10 +772,6 @@ function ArrayIteratorNext() {
     assert(itemKind === ITEM_KIND_KEY, itemKind);
     result.value = index;
     return result;
-}
-
-function ArrayValuesAt(n) {
-    return CreateArrayIteratorAt(this, ITEM_KIND_VALUE, n);
 }
 
 function ArrayValues() {
@@ -798,21 +799,27 @@ function ArrayFrom(items, mapfn = undefined, thisArg = undefined) {
     var T = thisArg;
 
     // Step 4.
-    var usingIterator = GetMethod(items, std_iterator);
+    // Inlined: GetMethod, steps 1-2.
+    var usingIterator = items[std_iterator];
 
     // Step 5.
-    if (usingIterator !== undefined) {
-        // Steps 5.a-c.
+    // Inlined: GetMethod, step 3.
+    if (usingIterator !== undefined && usingIterator !== null) {
+        // Inlined: GetMethod, step 4.
+        if (!IsCallable(usingIterator))
+            ThrowTypeError(JSMSG_NOT_ITERABLE, DecompileArg(0, items));
+
+        // Steps 5.a-b.
         var A = IsConstructor(C) ? new C() : [];
+
+        // Step 5.c.
+        var iterator = MakeIteratorWrapper(items, usingIterator);
 
         // Step 5.d.
         var k = 0;
 
-        // Step 5.c, 5.e.
-        var iterator = GetIterator(items, usingIterator);
-
-        var iteratorWrapper = MakeIteratorWrapper(iterator);
-        for (var nextValue of allowContentIter(iteratorWrapper)) {
+        // Step 5.e
+        for (var nextValue of allowContentIter(iterator)) {
             // Step 5.e.i.
             // Disabled for performance reason.  We won't hit this case on
             // normal array, since _DefineDataProperty will throw before it.
@@ -835,8 +842,8 @@ function ArrayFrom(items, mapfn = undefined, thisArg = undefined) {
         return A;
     }
 
-    // Step 7.
-    assert(usingIterator === undefined, "`items` can't be an Iterable after step 6.g.iv");
+    // Step 7 is an assertion: items is not an Iterator. Testing this is
+    // literally the very last thing we did, so we don't assert here.
 
     // Steps 8-9.
     var arrayLike = ToObject(items);
@@ -866,7 +873,9 @@ function ArrayFrom(items, mapfn = undefined, thisArg = undefined) {
     return A;
 }
 
-function MakeIteratorWrapper(iterator) {
+function MakeIteratorWrapper(items, method) {
+    assert(IsCallable(method), "method argument is a function");
+
     // This function is not inlined in ArrayFrom, because function default
     // parameters combined with nested functions are currently not optimized
     // correctly.
@@ -874,7 +883,7 @@ function MakeIteratorWrapper(iterator) {
         // Use a named function expression instead of a method definition, so
         // we don't create an inferred name for this function at runtime.
         [std_iterator]: function IteratorMethod() {
-            return iterator;
+            return callContentFunction(method, items);
         }
     };
 }
@@ -1097,6 +1106,105 @@ function ArrayConcat(arg1) {
     return A;
 }
 
+// https://tc39.github.io/proposal-flatMap/
+// January 16, 2018
+function ArrayFlatMap(mapperFunction/*, thisArg*/) {
+    // Step 1.
+    var O = ToObject(this);
+
+    // Step 2.
+    var sourceLen = ToLength(O.length);
+
+    // Step 3.
+    if (!IsCallable(mapperFunction))
+        ThrowTypeError(JSMSG_NOT_FUNCTION, DecompileArg(0, mapperFunction));
+
+    // Step 4.
+    var T = arguments.length > 1 ? arguments[1] : undefined;
+
+    // Step 5.
+    var A = ArraySpeciesCreate(O, 0);
+
+    // Step 6.
+    FlattenIntoArray(A, O, sourceLen, 0, 1, mapperFunction, T);
+
+    // Step 7.
+    return A;
+}
+
+// https://tc39.github.io/proposal-flatMap/
+// January 16, 2018
+function ArrayFlatten(/* depth */) {
+     // Step 1.
+    var O = ToObject(this);
+
+    // Step 2.
+    var sourceLen = ToLength(O.length);
+
+    // Step 3.
+    var depthNum = 1;
+
+    // Step 4.
+    if (arguments.length > 0 && arguments[0] !== undefined)
+        depthNum = ToInteger(arguments[0]);
+
+    // Step 5.
+    var A = ArraySpeciesCreate(O, 0);
+
+    // Step 6.
+    FlattenIntoArray(A, O, sourceLen, 0, depthNum);
+
+    // Step 7.
+    return A;
+}
+
+function FlattenIntoArray(target, source, sourceLen, start, depth, mapperFunction, thisArg) {
+    // Step 1.
+    var targetIndex = start;
+
+    // Steps 2-3.
+    for (var sourceIndex = 0; sourceIndex < sourceLen; sourceIndex++) {
+        // Steps 3.a-c.
+        if (sourceIndex in source) {
+            // Step 3.c.i.
+            var element = source[sourceIndex];
+
+            if (mapperFunction) {
+                // Step 3.c.ii.1.
+                assert(arguments.length === 7, "thisArg is present");
+
+                // Step 3.c.ii.2.
+                element = callContentFunction(mapperFunction, thisArg, element, sourceIndex, source);
+            }
+
+            // Step 3.c.iii.
+            var flattenable = IsArray(element);
+
+            // Step 3.c.iv.
+            if (flattenable && depth > 0) {
+                // Step 3.c.iv.1.
+                var elementLen = ToLength(element.length);
+
+                // Step 3.c.iv.2.
+                targetIndex = FlattenIntoArray(target, element, elementLen, targetIndex, depth - 1);
+            } else {
+                // Step 3.c.v.1.
+                if (targetIndex >= MAX_NUMERIC_INDEX)
+                    ThrowTypeError(JSMSG_TOO_LONG_ARRAY);
+
+                // Step 3.c.v.2.
+                _DefineDataProperty(target, targetIndex, element);
+
+                // Step 3.c.v.3.
+                targetIndex++;
+            }
+        }
+    }
+
+    // Step 4.
+    return targetIndex;
+}
+
 function ArrayStaticConcat(arr, arg1) {
     if (arguments.length < 1)
         ThrowTypeError(JSMSG_MISSING_FUN_ARG, 0, "Array.concat");
@@ -1119,7 +1227,7 @@ function ArrayStaticReverse(arr) {
 function ArrayStaticSort(arr, comparefn) {
     if (arguments.length < 1)
         ThrowTypeError(JSMSG_MISSING_FUN_ARG, 0, "Array.sort");
-    return callFunction(std_Array_sort, arr, comparefn);
+    return callFunction(ArraySort, arr, comparefn);
 }
 
 function ArrayStaticPush(arr, arg1) {

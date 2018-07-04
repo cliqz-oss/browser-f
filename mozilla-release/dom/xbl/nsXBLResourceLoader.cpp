@@ -4,9 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsCSSFrameConstructor.h"
 #include "nsTArray.h"
 #include "nsString.h"
-#include "nsIStyleRuleProcessor.h"
 #include "nsIDocument.h"
 #include "nsIContent.h"
 #include "nsIPresShell.h"
@@ -17,18 +17,15 @@
 #include "nsIDocumentObserver.h"
 #include "imgILoader.h"
 #include "imgRequestProxy.h"
+#include "mozilla/ComputedStyle.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/css/Loader.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
 #include "nsGkAtoms.h"
-#include "nsFrameManager.h"
-#include "nsStyleContext.h"
 #include "nsXBLPrototypeBinding.h"
-#include "nsCSSRuleProcessor.h"
 #include "nsContentUtils.h"
-#include "nsStyleSet.h"
 #include "nsIScriptSecurityManager.h"
 
 using namespace mozilla;
@@ -46,10 +43,10 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsXBLResourceLoader)
 struct nsXBLResource
 {
   nsXBLResource* mNext;
-  nsIAtom* mType;
+  nsAtom* mType;
   nsString mSrc;
 
-  nsXBLResource(nsIAtom* aType, const nsAString& aSrc)
+  nsXBLResource(nsAtom* aType, const nsAString& aSrc)
   {
     MOZ_COUNT_CTOR(nsXBLResource);
     mNext = nullptr;
@@ -98,10 +95,7 @@ nsXBLResourceLoader::LoadResources(nsIContent* aBoundElement)
   mBoundDocument = aBoundElement->OwnerDoc();
 
   mozilla::css::Loader* cssLoader = doc->CSSLoader();
-  MOZ_ASSERT(cssLoader->GetDocument() &&
-             cssLoader->GetDocument()->GetStyleBackendType()
-               == mBoundDocument->GetStyleBackendType(),
-             "The style backends of the loader and bound document are mismatched!");
+  MOZ_ASSERT(cssLoader->GetDocument(), "Loader must have document");
 
   nsIURI *docURL = doc->GetDocumentURI();
   nsIPrincipal* docPrincipal = doc->NodePrincipal();
@@ -121,7 +115,7 @@ nsXBLResourceLoader::LoadResources(nsIContent* aBoundElement)
       // Passing nullptr for pretty much everything -- cause we don't care!
       // XXX: initialDocumentURI is nullptr!
       RefPtr<imgRequestProxy> req;
-      nsContentUtils::LoadImage(url, doc, doc, docPrincipal, docURL,
+      nsContentUtils::LoadImage(url, doc, doc, docPrincipal, 0, docURL,
                                 doc->GetReferrerPolicy(), nullptr,
                                 nsIRequest::LOAD_BACKGROUND, EmptyString(),
                                 getter_AddRefs(req));
@@ -151,7 +145,7 @@ nsXBLResourceLoader::LoadResources(nsIContent* aBoundElement)
       }
       else
       {
-        rv = cssLoader->LoadSheet(url, false, docPrincipal, EmptyCString(), this);
+        rv = cssLoader->LoadSheet(url, false, docPrincipal, nullptr, this);
         if (NS_SUCCEEDED(rv))
           ++mPendingSheets;
       }
@@ -170,7 +164,7 @@ nsXBLResourceLoader::LoadResources(nsIContent* aBoundElement)
 // nsICSSLoaderObserver
 NS_IMETHODIMP
 nsXBLResourceLoader::StyleSheetLoaded(StyleSheet* aSheet,
-                                      bool aWasAlternate,
+                                      bool aWasDeferred,
                                       nsresult aStatus)
 {
   if (!mResources) {
@@ -185,12 +179,8 @@ nsXBLResourceLoader::StyleSheetLoaded(StyleSheet* aSheet,
 
   if (mPendingSheets == 0) {
     // All stylesheets are loaded.
-    if (aSheet->IsGecko()) {
-      mResources->GatherRuleProcessor();
-    } else {
-      mResources->ComputeServoStyleSet(
-        mBoundDocument->GetShell()->GetPresContext());
-    }
+    mResources->ComputeServoStyles(
+      *mBoundDocument->GetShell()->StyleSet());
 
     // XXX Check for mPendingScripts when scripts also come online.
     if (!mInLoadResourcesFunc)
@@ -200,7 +190,7 @@ nsXBLResourceLoader::StyleSheetLoaded(StyleSheet* aSheet,
 }
 
 void
-nsXBLResourceLoader::AddResource(nsIAtom* aResourceType, const nsAString& aSrc)
+nsXBLResourceLoader::AddResource(nsAtom* aResourceType, const nsAString& aSrc)
 {
   nsXBLResource* res = new nsXBLResource(aResourceType, aSrc);
   if (!mResourceList)
@@ -216,6 +206,7 @@ nsXBLResourceLoader::AddResourceListener(nsIContent* aBoundElement)
 {
   if (aBoundElement) {
     mBoundElements.AppendObject(aBoundElement);
+    aBoundElement->OwnerDoc()->BlockOnload();
   }
 }
 
@@ -232,64 +223,26 @@ nsXBLResourceLoader::NotifyBoundElements()
   for (uint32_t j = 0; j < eltCount; j++) {
     nsCOMPtr<nsIContent> content = mBoundElements.ObjectAt(j);
     MOZ_ASSERT(content->IsElement());
+    content->OwnerDoc()->UnblockOnload(/* aFireSync = */ false);
 
     bool ready = false;
     xblService->BindingReady(content, bindingURI, &ready);
 
-    if (ready) {
-      // We need the document to flush out frame construction and
-      // such, so we want to use the current document.
-      nsIDocument* doc = content->GetUncomposedDoc();
-
-      if (doc) {
-        // Flush first to make sure we can get the frame for content
-        doc->FlushPendingNotifications(FlushType::Frames);
-
-        // If |content| is (in addition to having binding |mBinding|)
-        // also a descendant of another element with binding |mBinding|,
-        // then we might have just constructed it due to the
-        // notification of its parent.  (We can know about both if the
-        // binding loads were triggered from the DOM rather than frame
-        // construction.)  So we have to check both whether the element
-        // has a primary frame and whether it's in the undisplayed map
-        // before sending a ContentInserted notification, or bad things
-        // will happen.
-        nsIPresShell *shell = doc->GetShell();
-        if (shell) {
-          nsIFrame* childFrame = content->GetPrimaryFrame();
-          if (!childFrame) {
-            // Check to see if it's in the undisplayed content map, or the
-            // display: contents map.
-            nsStyleContext* sc =
-              shell->FrameManager()->GetUndisplayedContent(content);
-
-            if (!sc) {
-              sc = shell->FrameManager()->GetDisplayContentsStyleFor(content);
-            }
-
-            if (!sc) {
-              if (ServoStyleSet* servoSet = shell->StyleSet()->GetAsServo()) {
-                // Ensure the element has servo data so that
-                // nsChangeHint_ReconstructFrame posted by
-                // PostRecreateFramesFor() is recognized.
-                //
-                // Also check MayTraverseFrom to handle programatic XBL consumers.
-                // See bug 1370793.
-                Element* element = content->AsElement();
-                if (servoSet->MayTraverseFrom(element)) {
-                  servoSet->StyleNewlyBoundElement(element);
-                }
-              }
-              shell->PostRecreateFramesFor(content->AsElement());
-            }
-          }
-        }
-
-        // Flush again
-        // XXXbz why is this needed?
-        doc->FlushPendingNotifications(FlushType::ContentAndNotify);
-      }
+    if (!ready) {
+      continue;
     }
+
+    nsIDocument* doc = content->GetUncomposedDoc();
+    if (!doc) {
+      continue;
+    }
+
+    nsIPresShell* shell = doc->GetShell();
+    if (!shell) {
+      continue;
+    }
+
+    shell->PostRecreateFramesFor(content->AsElement());
   }
 
   // Clear out the whole array.

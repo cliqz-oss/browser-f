@@ -23,16 +23,16 @@
  *    actually get stored in the correct jar).
  */
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 
 XPCOMUtils.defineLazyGetter(this, "URL", function() {
   return "http://localhost:" + httpserver.identity.primaryPort;
 });
 
-XPCOMUtils.defineLazyModuleGetter(this, "SafeBrowsing",
+ChromeUtils.defineModuleGetter(this, "SafeBrowsing",
   "resource://gre/modules/SafeBrowsing.jsm");
 
 var setCookiePath = "/setcookie";
@@ -140,7 +140,7 @@ add_test(function test_safebrowsing_gethash() {
     },
 
     completionFinished(status) {
-      do_check_eq(status, Cr.NS_OK);
+      Assert.equal(status, Cr.NS_OK);
       run_next_test();
     },
   });
@@ -167,7 +167,7 @@ add_test(function test_non_safebrowsing_cookie() {
     var expectedCookie = cookieName + "=1";
     request.QueryInterface(Ci.nsIHttpChannel);
     var cookiesSeen = request.getResponseHeader("saw-cookies");
-    do_check_eq(cookiesSeen, expectedCookie);
+    Assert.equal(cookiesSeen, expectedCookie);
     run_next_test();
   }
 
@@ -203,7 +203,7 @@ add_test(function test_safebrowsing_cookie() {
     request.QueryInterface(Ci.nsIHttpChannel);
     var cookiesSeen = request.getResponseHeader("saw-cookies");
 
-    do_check_eq(cookiesSeen, expectedCookies);
+    Assert.equal(cookiesSeen, expectedCookies);
     httpserver.stop(do_test_finished);
   }
 

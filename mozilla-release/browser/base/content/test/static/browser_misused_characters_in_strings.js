@@ -9,10 +9,6 @@
  * the end of the test, there is an assertion that all items have been
  * removed from the whitelist, thus ensuring there are no stale entries. */
 let gWhitelist = [{
-    file: "search.properties",
-    key: "searchForSomethingWith",
-    type: "single-quote"
-  }, {
     file: "netError.dtd",
     key: "certerror.introPara",
     type: "single-quote"
@@ -30,19 +26,55 @@ let gWhitelist = [{
     type: "single-quote"
   }, {
     file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.palm.advisory.desc",
+    key: "safeb.palm.advisory.desc2",
     type: "single-quote"
   }, {
     file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.malwarePage.shortDesc",
+    key: "safeb.blocked.malwarePage.errorDesc.override",
     type: "single-quote"
   }, {
     file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.unwantedPage.shortDesc",
+    key: "safeb.blocked.malwarePage.errorDesc.noOverride",
     type: "single-quote"
   }, {
     file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.phishingPage.shortDesc2",
+    key: "safeb.blocked.malwarePage.learnMore",
+    type: "single-quote"
+  }, {
+    file: "phishing-afterload-warning-message.dtd",
+    key: "safeb.blocked.unwantedPage.errorDesc.override",
+    type: "single-quote"
+  }, {
+    file: "phishing-afterload-warning-message.dtd",
+    key: "safeb.blocked.unwantedPage.errorDesc.noOverride",
+    type: "single-quote"
+  }, {
+    file: "phishing-afterload-warning-message.dtd",
+    key: "safeb.blocked.unwantedPage.learnMore",
+    type: "single-quote"
+  }, {
+    file: "phishing-afterload-warning-message.dtd",
+    key: "safeb.blocked.phishingPage.errorDesc.override",
+    type: "single-quote"
+  }, {
+    file: "phishing-afterload-warning-message.dtd",
+    key: "safeb.blocked.phishingPage.errorDesc.noOverride",
+    type: "single-quote"
+  }, {
+    file: "phishing-afterload-warning-message.dtd",
+    key: "safeb.blocked.phishingPage.learnMore",
+    type: "single-quote"
+  }, {
+    file: "phishing-afterload-warning-message.dtd",
+    key: "safeb.blocked.harmfulPage.errorDesc.override",
+    type: "single-quote"
+  }, {
+    file: "phishing-afterload-warning-message.dtd",
+    key: "safeb.blocked.harmfulPage.errorDesc.noOverride",
+    type: "single-quote"
+  }, {
+    file: "phishing-afterload-warning-message.dtd",
+    key: "safeb.blocked.harmfulPage.learnMore",
     type: "single-quote"
   }, {
     file: "mathfont.properties",
@@ -77,14 +109,6 @@ let gWhitelist = [{
     key: "PatternAttributeCompileFailure",
     type: "single-quote"
   }, {
-    file: "pipnss.properties",
-    key: "certErrorMismatchSingle2",
-    type: "double-quote"
-  }, {
-    file: "pipnss.properties",
-    key: "certErrorCodePrefix2",
-    type: "double-quote"
-  }, {
     file: "aboutSupport.dtd",
     key: "aboutSupport.pageSubtitle",
     type: "single-quote"
@@ -109,9 +133,13 @@ let gWhitelist = [{
     key: "aboutNetworking.logTutorial",
     type: "single-quote"
   }, {
-    file: "preferences.properties",
-    key: "searchResults.needHelp2",
-    type: "double-quote"
+    file: "aboutdevtools.dtd",
+    key: "aboutDevtools.newsletter.privacy.label",
+    type: "single-quote"
+  }, {
+    file: "browser.dtd",
+    key: "addonPostInstallMessage.label",
+    type: "single-quote"
   }
 ];
 
@@ -163,7 +191,7 @@ async function getAllTheFiles(extension) {
   }
   let urisGreD = await generateURIsFromDirTree(appDirGreD, [extension]);
   let urisXCurProcD = await generateURIsFromDirTree(appDirXCurProcD, [extension]);
-  return Array.from(new Set(urisGreD.concat(appDirXCurProcD)));
+  return Array.from(new Set(urisGreD.concat(urisXCurProcD)));
 }
 
 add_task(async function checkAllTheProperties() {

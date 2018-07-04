@@ -15,11 +15,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "jsalloc.h"
-#include "jscntxt.h"
-#include "jsgc.h"
-
+#include "gc/GC.h"
+#include "js/AllocPolicy.h"
 #include "js/Vector.h"
+#include "vm/JSContext.h"
 
 /* Note: Aborts on OOM. */
 class JSAPITestString {
@@ -33,6 +32,7 @@ class JSAPITestString {
     const char* begin() const { return chars.begin(); }
     const char* end() const { return chars.end(); }
     size_t length() const { return chars.length(); }
+    void clear() { chars.clearAndFree(); }
 
     JSAPITestString& operator +=(const char* s) {
         if (!chars.append(s, strlen(s)))
@@ -154,10 +154,6 @@ class JSAPITest
         return jsvalToSource(val);
     }
 
-    JSAPITestString toSource(JSVersion v) {
-        return JSAPITestString(JS_VersionToString(v));
-    }
-
     // Note that in some still-supported GCC versions (we think anything before
     // GCC 4.6), this template does not work when the second argument is
     // nullptr. It infers type U = long int. Use CHECK_NULL instead.
@@ -257,7 +253,7 @@ class JSAPITest
         static const JSClassOps cOps = {
             nullptr, nullptr, nullptr, nullptr,
             nullptr, nullptr, nullptr, nullptr,
-            nullptr, nullptr, nullptr, nullptr,
+            nullptr, nullptr,
             JS_GlobalObjectTraceHook
         };
         static const JSClass c = {
@@ -445,6 +441,43 @@ class TestJSPrincipals : public JSPrincipals
     }
 };
 
+// A class that simulates refcounted data, for testing with array buffers.
+class RefCountedData {
+    char* contents_;
+    size_t len_;
+    size_t refcount_;
+
+  public:
+    explicit RefCountedData(const char* str) : contents_(strdup(str)),
+        len_(strlen(str) + 1), refcount_(1) { }
+
+    size_t len() const { return len_; }
+    void* contents() const { return contents_; }
+    char* asString() const { return contents_; }
+    size_t refcount() const { return refcount_; }
+
+    void incref() { refcount_++; }
+    void decref() {
+        refcount_--;
+        if (refcount_ == 0) {
+            free(contents_);
+            contents_ = nullptr;
+        }
+    }
+
+    static void incCallback(void* contents, void* userData) {
+        auto self = static_cast<RefCountedData*>(userData);
+        MOZ_ASSERT(self->contents() == contents);
+        self->incref();
+    }
+
+    static void decCallback(void* contents, void* userData) {
+        auto self = static_cast<RefCountedData*>(userData);
+        MOZ_ASSERT(self->contents() == contents);
+        self->decref();
+    }
+};
+
 #ifdef JS_GC_ZEAL
 /*
  * Temporarily disable the GC zeal setting. This is only useful in tests that
@@ -465,6 +498,7 @@ class AutoLeaveZeal
         JS::GCForReason(cx_, GC_SHRINK, JS::gcreason::DEBUG_GC);
     }
     ~AutoLeaveZeal() {
+        JS_SetGCZeal(cx_, 0, 0);
         for (size_t i = 0; i < sizeof(zealBits_) * 8; i++) {
             if (zealBits_ & (1 << i))
                 JS_SetGCZeal(cx_, i, frequency_);

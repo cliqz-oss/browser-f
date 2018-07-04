@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,6 +10,7 @@
 #include "nsIWeakReference.h"
 
 #include "mozilla/AutoRestore.h"
+#include "mozilla/RangeBoundary.h"
 #include "mozilla/TextRange.h"
 #include "mozilla/UniquePtr.h"
 #include "nsISelection.h"
@@ -24,9 +25,7 @@ struct CachedOffsetForFrame;
 class nsAutoScrollTimer;
 class nsIContentIterator;
 class nsIDocument;
-class nsIEditor;
 class nsIFrame;
-class nsIHTMLEditor;
 class nsFrameSelection;
 class nsPIDOMWindowOuter;
 struct SelectionDetails;
@@ -36,7 +35,11 @@ class nsHTMLCopyEncoder;
 
 namespace mozilla {
 class ErrorResult;
+class HTMLEditor;
 struct AutoPrepareFocusRange;
+namespace dom {
+class DocGroup;
+} // namespace dom
 } // namespace mozilla
 
 struct RangeData
@@ -57,8 +60,9 @@ struct RangeData
 namespace mozilla {
 namespace dom {
 
-class Selection final : public nsISelectionPrivate,
+class Selection final : public nsISelection,
                         public nsWrapperCache,
+                        public nsISelectionPrivate,
                         public nsSupportsWeakReference
 {
 protected:
@@ -69,15 +73,19 @@ public:
   explicit Selection(nsFrameSelection *aList);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(Selection, nsISelectionPrivate)
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(Selection, nsISelection)
   NS_DECL_NSISELECTION
   NS_DECL_NSISELECTIONPRIVATE
 
-  virtual Selection* AsSelection() override { return this; }
+  // match this up with EndbatchChanges. will stop ui updates while multiple
+  // selection methods are called
+  void StartBatchChanges();
 
-  nsresult EndBatchChangesInternal(int16_t aReason = nsISelectionListener::NO_REASON);
+  // match this up with StartBatchChanges
+  void EndBatchChanges(int16_t aReason = nsISelectionListener::NO_REASON);
 
   nsIDocument* GetParentObject() const;
+  DocGroup* GetDocGroup() const;
 
   // utility methods for scrolling the selection into view
   nsPresContext* GetPresContext() const;
@@ -129,7 +137,19 @@ public:
   nsresult      RemoveItem(nsRange* aRange);
   nsresult      RemoveCollapsedRanges();
   nsresult      Clear(nsPresContext* aPresContext);
-  nsresult      Collapse(nsINode* aContainer, int32_t aOffset);
+  nsresult      Collapse(nsINode* aContainer, int32_t aOffset)
+  {
+    if (!aContainer) {
+      return NS_ERROR_INVALID_ARG;
+    }
+    return Collapse(RawRangeBoundary(aContainer, aOffset));
+  }
+  nsresult      Collapse(const RawRangeBoundary& aPoint)
+  {
+    ErrorResult result;
+    Collapse(aPoint, result);
+    return result.StealNSResult();
+  }
   nsresult      Extend(nsINode* aContainer, int32_t aOffset);
   nsRange*      GetRangeAt(int32_t aIndex) const;
 
@@ -145,12 +165,9 @@ public:
   void         ReplaceAnchorFocusRange(nsRange *aRange);
   void         AdjustAnchorFocusForMultiRange(nsDirection aDirection);
 
-  //  NS_IMETHOD   GetPrimaryFrameForRangeEndpoint(nsIDOMNode* aContainer,
-  //                                               int32_t aOffset,
-  //                                               bool aIsEndNode,
-  //                                               nsIFrame** aResultFrame);
-  NS_IMETHOD   GetPrimaryFrameForAnchorNode(nsIFrame **aResultFrame);
-  NS_IMETHOD   GetPrimaryFrameForFocusNode(nsIFrame **aResultFrame, int32_t *aOffset, bool aVisual);
+  nsresult GetPrimaryFrameForAnchorNode(nsIFrame** aReturnFrame);
+  nsresult GetPrimaryFrameForFocusNode(nsIFrame** aReturnFrame,
+                                       int32_t* aOffset, bool aVisual);
 
   UniquePtr<SelectionDetails> LookUpSelection(
     nsIContent* aContent,
@@ -163,8 +180,8 @@ public:
   NS_IMETHOD   Repaint(nsPresContext* aPresContext);
 
   // Note: StartAutoScrollTimer might destroy arbitrary frames etc.
-  nsresult     StartAutoScrollTimer(nsIFrame *aFrame,
-                                    nsPoint& aPoint,
+  nsresult     StartAutoScrollTimer(nsIFrame* aFrame,
+                                    const nsPoint& aPoint,
                                     uint32_t aDelay);
 
   nsresult     StopAutoScrollTimer();
@@ -172,12 +189,57 @@ public:
   JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   // WebIDL methods
-  nsINode*     GetAnchorNode();
-  uint32_t     AnchorOffset();
-  nsINode*     GetFocusNode();
-  uint32_t     FocusOffset();
+  nsINode* GetAnchorNode()
+  {
+    const RangeBoundary& anchor = AnchorRef();
+    return anchor.IsSet() ? anchor.Container() : nullptr;
+  }
+  uint32_t AnchorOffset()
+  {
+    const RangeBoundary& anchor = AnchorRef();
+    return anchor.IsSet() ? anchor.Offset() : 0;
+  }
+  nsINode* GetFocusNode()
+  {
+    const RangeBoundary& focus = FocusRef();
+    return focus.IsSet() ? focus.Container() : nullptr;
+  }
+  uint32_t FocusOffset()
+  {
+    const RangeBoundary& focus = FocusRef();
+    return focus.IsSet() ? focus.Offset() : 0;
+  }
 
-  bool IsCollapsed() const;
+  nsIContent* GetChildAtAnchorOffset()
+  {
+    const RangeBoundary& anchor = AnchorRef();
+    return anchor.IsSet() ? anchor.GetChildAtOffset() : nullptr;
+  }
+  nsIContent* GetChildAtFocusOffset()
+  {
+    const RangeBoundary& focus = FocusRef();
+    return focus.IsSet() ? focus.GetChildAtOffset() : nullptr;
+  }
+
+  const RangeBoundary& AnchorRef();
+  const RangeBoundary& FocusRef();
+
+  /*
+   * IsCollapsed -- is the whole selection just one point, or unset?
+   */
+  bool IsCollapsed() const
+  {
+    uint32_t cnt = mRanges.Length();
+    if (cnt == 0) {
+      return true;
+    }
+
+    if (cnt != 1) {
+      return false;
+    }
+
+    return mRanges[0].mRange->Collapsed();
+  }
 
   // *JS() methods are mapped to Selection.*().
   // They may move focus only when the range represents normal selection.
@@ -198,10 +260,21 @@ public:
   {
     return mRanges.Length();
   }
+
+  void GetType(nsAString& aOutType) const;
+
   nsRange* GetRangeAt(uint32_t aIndex, mozilla::ErrorResult& aRv);
   void AddRangeJS(nsRange& aRange, mozilla::ErrorResult& aRv);
   void RemoveRange(nsRange& aRange, mozilla::ErrorResult& aRv);
   void RemoveAllRanges(mozilla::ErrorResult& aRv);
+
+  /**
+   * RemoveAllRangesTemporarily() is useful if the caller will add one or more
+   * ranges later.  This tries to cache a removing range if it's possible.
+   * If a range is not referred by anything else this selection, the range
+   * can be reused later.  Otherwise, this works as same as RemoveAllRanges().
+   */
+  nsresult RemoveAllRangesTemporarily();
 
   void Stringify(nsAString& aResult);
 
@@ -262,7 +335,11 @@ public:
   void ResetColors(mozilla::ErrorResult& aRv);
 
   // Non-JS callers should use the following methods.
-  void Collapse(nsINode& aContainer, uint32_t aOffset, ErrorResult& aRv);
+  void Collapse(nsINode& aContainer, uint32_t aOffset, ErrorResult& aRv)
+  {
+    Collapse(RawRangeBoundary(&aContainer, aOffset), aRv);
+  }
+  void Collapse(const RawRangeBoundary& aPoint, ErrorResult& aRv);
   void CollapseToStart(mozilla::ErrorResult& aRv);
   void CollapseToEnd(mozilla::ErrorResult& aRv);
   void Extend(nsINode& aContainer, uint32_t aOffset, ErrorResult& aRv);
@@ -275,17 +352,38 @@ public:
   void AddSelectionChangeBlocker();
   void RemoveSelectionChangeBlocker();
   bool IsBlockingSelectionChangeEvents() const;
+
+  /**
+   * Set the painting style for the range. The range must be a range in
+   * the selection. The textRangeStyle will be used by text frame
+   * when it is painting the selection.
+   */
+  nsresult SetTextRangeStyle(nsRange* aRange,
+                             const TextRangeStyle& aTextRangeStyle);
+
 private:
   friend class ::nsAutoScrollTimer;
 
   // Note: DoAutoScroll might destroy arbitrary frames etc.
-  nsresult DoAutoScroll(nsIFrame *aFrame, nsPoint& aPoint);
+  nsresult DoAutoScroll(nsIFrame* aFrame, nsPoint aPoint);
+
+  // We are not allowed to be in nodes whose root is not our document
+  bool HasSameRoot(nsINode& aNode);
 
   // XXX Please don't add additional uses of this method, it's only for
   // XXX supporting broken code (bug 1245883) in the following classes:
   friend class ::nsCopySupport;
   friend class ::nsHTMLCopyEncoder;
   void AddRangeInternal(nsRange& aRange, nsIDocument* aDocument, ErrorResult&);
+
+  // This is helper method for GetPrimaryFrameForFocusNode.
+  // If aVisual is true, this returns caret frame.
+  // If false, this returns primary frame.
+  nsresult GetPrimaryOrCaretFrameForNodeOffset(nsIContent* aContent,
+                                               uint32_t aOffset,
+                                               nsIFrame** aReturnFrame,
+                                               int32_t* aOffsetUsed,
+                                               bool aVisual) const;
 
 public:
   SelectionType GetType() const { return mSelectionType; }
@@ -389,7 +487,7 @@ private:
 
   nsIDocument* GetDocument() const;
   nsPIDOMWindowOuter* GetWindow() const;
-  nsIEditor* GetEditor() const;
+  HTMLEditor* GetHTMLEditor() const;
 
   /**
    * GetCommonEditingHostForAllRanges() returns common editing host of all
@@ -440,6 +538,12 @@ private:
   AutoTArray<RangeData, 1> mRanges;
 
   RefPtr<nsRange> mAnchorFocusRange;
+  // mCachedRange is set by RemoveAllRangesTemporarily() and used by
+  // Collapse() and SetBaseAndExtent().  If there is a range which will be
+  // released by Clear(), RemoveAllRangesTemporarily() stores it with this.
+  // If Collapse() is called without existing ranges, it'll reuse this range
+  // for saving the creation cost.
+  RefPtr<nsRange> mCachedRange;
   RefPtr<nsFrameSelection> mFrameSelection;
   RefPtr<nsAutoScrollTimer> mAutoScrollTimer;
   FallibleTArray<nsCOMPtr<nsISelectionListener>> mSelectionListeners;
@@ -484,7 +588,7 @@ public:
   ~SelectionBatcher()
   {
     if (mSelection) {
-      mSelection->EndBatchChangesInternal();
+      mSelection->EndBatchChanges();
     }
   }
 };
@@ -517,6 +621,50 @@ public:
 };
 
 } // namespace dom
+
+inline bool
+IsValidRawSelectionType(RawSelectionType aRawSelectionType)
+{
+  return aRawSelectionType >= nsISelectionController::SELECTION_NONE &&
+         aRawSelectionType <= nsISelectionController::SELECTION_URLSTRIKEOUT;
+}
+
+inline SelectionType
+ToSelectionType(RawSelectionType aRawSelectionType)
+{
+  if (!IsValidRawSelectionType(aRawSelectionType)) {
+    return SelectionType::eInvalid;
+  }
+  return static_cast<SelectionType>(aRawSelectionType);
+}
+
+inline RawSelectionType
+ToRawSelectionType(SelectionType aSelectionType)
+{
+  MOZ_ASSERT(aSelectionType != SelectionType::eInvalid);
+  return static_cast<RawSelectionType>(aSelectionType);
+}
+
+inline RawSelectionType
+ToRawSelectionType(TextRangeType aTextRangeType)
+{
+  return ToRawSelectionType(ToSelectionType(aTextRangeType));
+}
+
+inline SelectionTypeMask
+ToSelectionTypeMask(SelectionType aSelectionType)
+{
+  MOZ_ASSERT(aSelectionType != SelectionType::eInvalid);
+  return aSelectionType == SelectionType::eNone ? 0 :
+           (1 << (static_cast<uint8_t>(aSelectionType) - 1));
+}
+
 } // namespace mozilla
+
+inline mozilla::dom::Selection*
+nsISelection::AsSelection()
+{
+  return static_cast<mozilla::dom::Selection*>(this);
+}
 
 #endif // mozilla_Selection_h__

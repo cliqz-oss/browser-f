@@ -8,7 +8,7 @@
 #define nsXBLProtoImplMethod_h__
 
 #include "mozilla/Attributes.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsString.h"
 #include "nsString.h"
 #include "nsXBLMaybeCompiled.h"
@@ -138,7 +138,7 @@ public:
     nsXBLProtoImplMethod(aName)
   {}
 
-  nsresult Execute(nsIContent* aBoundElement, JSAddonId* aAddonId);
+  nsresult Execute(nsIContent* aBoundElement, const nsXBLPrototypeBinding&);
 
   // Override InstallMember; these methods never get installed as members on
   // binding instantiations (though they may hang out in mMembers on the

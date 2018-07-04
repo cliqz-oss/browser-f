@@ -25,7 +25,7 @@ lazy_static! {
     };
 }
 
-#[derive(PartialEq, Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum PrefValue {
     Boolean(bool),
     String(String),
@@ -184,7 +184,7 @@ pub fn add_user_prefs() {
             init_user_prefs(&mut path);
         }
         None => {
-            let mut path = default_config_dir().unwrap();
+            let mut path = default_config_dir();
             if path.join("prefs.json").exists() {
                 init_user_prefs(&mut path);
             }
@@ -228,10 +228,6 @@ impl Preferences {
         self.0.read().unwrap().clone()
     }
 
-    pub fn is_mozbrowser_enabled(&self) -> bool {
-        self.get("dom.mozbrowser.enabled").as_boolean().unwrap_or(false)
-    }
-
     pub fn set(&self, name: &str, value: PrefValue) {
         let mut prefs = self.0.write().unwrap();
         if let Some(pref) = prefs.get_mut(name) {
@@ -272,5 +268,13 @@ impl Preferences {
 
     pub fn is_webvr_enabled(&self) -> bool {
         self.get("dom.webvr.enabled").as_boolean().unwrap_or(false)
+    }
+
+    pub fn is_dom_to_texture_enabled(&self) -> bool {
+        self.get("dom.webgl.dom_to_texture.enabled").as_boolean().unwrap_or(false)
+    }
+
+    pub fn is_webgl2_enabled(&self) -> bool {
+        self.get("dom.webgl2.enabled").as_boolean().unwrap_or(false)
     }
 }

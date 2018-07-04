@@ -11,6 +11,7 @@
 #include "mozilla/Atomics.h"
 #include "nsCOMPtr.h"
 #include "nsIObserver.h"
+#include "nsStringFwd.h"
 
 class nsIRunnable;
 class nsITabChild;
@@ -47,15 +48,18 @@ class ProcessHangMonitor final
   static void ForcePaint(PProcessHangMonitorParent* aParent,
                          dom::TabParent* aTab,
                          uint64_t aLayerObserverEpoch);
-  static void ClearForcePaint();
+  static void ClearForcePaint(uint64_t aLayerObserverEpoch);
+  static void MaybeStartForcePaint();
 
   enum SlowScriptAction {
     Continue,
     Terminate,
-    StartDebugger
+    StartDebugger,
+    TerminateGlobal,
   };
   SlowScriptAction NotifySlowScript(nsITabChild* aTabChild,
-                                    const char* aFileName);
+                                    const char* aFileName,
+                                    const nsString& aAddonId);
 
   void NotifyPluginHang(uint32_t aPluginId);
 

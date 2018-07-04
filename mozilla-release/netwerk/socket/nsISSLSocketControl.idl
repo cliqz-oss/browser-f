@@ -10,8 +10,8 @@ interface nsIInterfaceRequestor;
 interface nsIX509Cert;
 
 %{C++
+#include "nsStringFwd.h"
 #include "nsTArrayForwardDeclare.h"
-class nsCString;
 %}
 [ref] native nsCStringTArrayRef(nsTArray<nsCString>);
 
@@ -102,6 +102,11 @@ interface nsISSLSocketControl : nsISupports {
      */
     readonly attribute uint32_t providerFlags;
 
+    /*
+     * The original TLS flags from the socket provider.
+     */
+    readonly attribute uint32_t providerTlsFlags;
+
     /* These values are defined by TLS. */
     const short SSL_VERSION_3   = 0x0300;
     const short TLS_VERSION_1   = 0x0301;
@@ -126,11 +131,23 @@ interface nsISSLSocketControl : nsISupports {
     [infallible] readonly attribute short MACAlgorithmUsed;
 
     /**
+     * If set to true before the server requests a client cert
+     * no cert will be sent.
+     */
+    [noscript] attribute boolean denyClientCert;
+
+    /**
      * If set before the server requests a client cert (assuming it does so at
      * all), then this cert will be presented to the server, instead of asking
      * the user or searching the set of rememebered user cert decisions.
      */
     attribute nsIX509Cert clientCert;
+
+    /**
+     * True iff a client cert has been sent to the server - i.e. this
+     * socket has been client-cert authenticated.
+     */
+    [infallible] readonly attribute boolean clientCertSent;
 
     /**
      * bypassAuthentication is true if the server certificate checks are

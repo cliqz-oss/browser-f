@@ -16,7 +16,6 @@
 #include "nsCOMPtr.h"
 #include "nsString.h"
 #include "nsWeakReference.h"
-#include "WorkerHolder.h"
 
 #define NS_PROGRESS_EVENT_INTERVAL 50
 
@@ -27,11 +26,9 @@ namespace mozilla {
 namespace dom {
 
 class Blob;
-class DOMError;
-
-namespace workers {
-class WorkerPrivate;
-}
+class DOMException;
+class StrongWorkerRef;
+class WeakWorkerRef;
 
 extern const uint64_t kUnknownSize;
 
@@ -42,14 +39,13 @@ class FileReader final : public DOMEventTargetHelper,
                          public nsSupportsWeakReference,
                          public nsIInputStreamCallback,
                          public nsITimerCallback,
-                         public nsINamed,
-                         public workers::WorkerHolder
+                         public nsINamed
 {
   friend class FileReaderDecreaseBusyCounter;
 
 public:
   FileReader(nsIGlobalObject* aGlobal,
-             workers::WorkerPrivate* aWorkerPrivate);
+             WeakWorkerRef* aWorkerRef);
 
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -72,9 +68,14 @@ public:
     ReadFileContent(aBlob, EmptyString(), FILE_AS_ARRAYBUFFER, aRv);
   }
 
-  void ReadAsText(Blob& aBlob, const nsAString& aLabel, ErrorResult& aRv)
+  void ReadAsText(Blob& aBlob, const Optional<nsAString>& aLabel,
+                  ErrorResult& aRv)
   {
-    ReadFileContent(aBlob, aLabel, FILE_AS_TEXT, aRv);
+    if (aLabel.WasPassed()) {
+      ReadFileContent(aBlob, aLabel.Value(), FILE_AS_TEXT, aRv);
+    } else {
+      ReadFileContent(aBlob, EmptyString(), FILE_AS_TEXT, aRv);
+    }
   }
 
   void ReadAsDataURL(Blob& aBlob, ErrorResult& aRv)
@@ -89,7 +90,7 @@ public:
     return static_cast<uint16_t>(mReadyState);
   }
 
-  DOMError* GetError() const
+  DOMException* GetError() const
   {
     return mError;
   }
@@ -108,9 +109,6 @@ public:
   {
     ReadFileContent(aBlob, EmptyString(), FILE_AS_BINARY, aRv);
   }
-
-  // WorkerHolder
-  bool Notify(workers::Status) override;
 
 private:
   virtual ~FileReader();
@@ -183,9 +181,8 @@ private:
   bool mTimerIsActive;
 
   nsCOMPtr<nsIAsyncInputStream> mAsyncStream;
-  nsCOMPtr<nsIInputStream> mBufferedStream;
 
-  RefPtr<DOMError> mError;
+  RefPtr<DOMException> mError;
 
   eReadyState mReadyState;
 
@@ -196,8 +193,14 @@ private:
 
   uint64_t mBusyCount;
 
-  // Kept alive with a WorkerHolder.
-  workers::WorkerPrivate* mWorkerPrivate;
+  // This is set if FileReader is created on workers, but it is null if the
+  // worker is shutting down. The null value is checked in ReadFileContent()
+  // before starting any reading.
+  RefPtr<WeakWorkerRef> mWeakWorkerRef;
+
+  // This value is set when the reading starts in order to keep the worker alive
+  // during the process.
+  RefPtr<StrongWorkerRef> mStrongWorkerRef;
 };
 
 } // dom namespace

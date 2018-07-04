@@ -9,23 +9,50 @@ from __future__ import print_function
 
 import re
 import yaml
+import sys
 
 # This is a list of flags that determine which process a measurement is allowed
 # to record from.
 KNOWN_PROCESS_FLAGS = {
     'all': 'All',
-    'all_childs': 'AllChilds',
+    'all_children': 'AllChildren',
     'main': 'Main',
     'content': 'Content',
     'gpu': 'Gpu',
+    # Historical Values
+    'all_childs': 'AllChildren',  # Supporting files from before bug 1363725
 }
 
 PROCESS_ENUM_PREFIX = "mozilla::Telemetry::Common::RecordedProcessType::"
 
 
-# This is thrown by the different probe parsers.
 class ParserError(Exception):
-    pass
+    """Thrown by different probe parsers. Errors are partitioned into
+    'immediately fatal' and 'eventually fatal' so that the parser can print
+    multiple error messages at a time. See bug 1401612 ."""
+
+    eventual_errors = []
+
+    def __init__(self, *args):
+        Exception.__init__(self, *args)
+
+    def handle_later(self):
+        ParserError.eventual_errors.append(self)
+
+    def handle_now(self):
+        ParserError.print_eventuals()
+        print(self.message, file=sys.stderr)
+        sys.exit(1)
+
+    @classmethod
+    def print_eventuals(cls):
+        while cls.eventual_errors:
+            print(cls.eventual_errors.pop(0).message, file=sys.stderr)
+
+    @classmethod
+    def exit_func(cls):
+        if cls.eventual_errors:
+            cls("Some errors occurred").handle_now()
 
 
 def is_valid_process_name(name):
@@ -121,13 +148,13 @@ def static_assert(output, expression, message):
 def validate_expiration_version(expiration):
     """ Makes sure the expiration version has the expected format.
 
-    Allowed examples: "1.0", "20", "300.0a1", "60.0a1", "30.5a1", "never"
-    Disallowed examples: "Never", "asd", "4000000", "60a1"
+    Allowed examples: "10", "20", "60", "never"
+    Disallowed examples: "Never", "asd", "4000000", "60a1", "30.5a1"
 
     :param expiration: the expiration version string.
     :return: True if the expiration validates correctly, False otherwise.
     """
-    if expiration != 'never' and not re.match(r'^\d{1,3}(\.\d|\.\da1)?$', expiration):
+    if expiration != 'never' and not re.match(r'^\d{1,3}$', expiration):
         return False
 
     return True

@@ -6,18 +6,14 @@
 /* global window, document, SimpleTest, requestAnimationFrame, is, ok */
 /* exported Cc, Ci, Cu, Cr, Assert, Task, TargetFactory, Toolbox, browserRequire,
    forceRender, setProps, dumpn, checkOptimizationHeader, checkOptimizationTree */
-let { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-let { require } = Cu.import("resource://gre/modules/devtools/shared/Loader.jsm", {});
+let { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 let { Assert } = require("resource://testing-common/Assert.jsm");
-let { BrowserLoader } = Cu.import("resource://devtools/client/shared/browser-loader.js", {});
+let { BrowserLoader } = ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
 let defer = require("devtools/shared/defer");
 let flags = require("devtools/shared/flags");
-let { Task } = require("devtools/shared/task");
 let { TargetFactory } = require("devtools/client/framework/target");
 let { Toolbox } = require("devtools/client/framework/toolbox");
 
-flags.testing = true;
 let { require: browserRequire } = BrowserLoader({
   baseURI: "resource://devtools/client/performance/",
   window

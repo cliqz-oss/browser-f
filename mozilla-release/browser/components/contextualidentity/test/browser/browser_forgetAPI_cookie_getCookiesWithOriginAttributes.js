@@ -2,7 +2,7 @@
  * Bug 1278037 - A Test case for checking whether forgetting APIs are working for cookies.
  */
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
 
 const TEST_HOST = "example.com";
 const TEST_URL = "http://" + TEST_HOST + "/browser/browser/components/contextualidentity/test/browser/";
@@ -57,7 +57,7 @@ add_task(async function test_cookie_getCookiesWithOriginAttributes() {
     tabs[userContextId] = await openTabInUserContext(TEST_URL + "file_reflect_cookie_into_title.html?" + value, userContextId);
 
     // Close this tab.
-    await BrowserTestUtils.removeTab(tabs[userContextId].tab);
+    BrowserTestUtils.removeTab(tabs[userContextId].tab);
   }
 
   // Check that cookies have been set properly.
@@ -66,8 +66,8 @@ add_task(async function test_cookie_getCookiesWithOriginAttributes() {
     ok(enumerator.hasMoreElements(), "Cookies available");
 
     let foundCookie = enumerator.getNext().QueryInterface(Ci.nsICookie2);
-    is(foundCookie["name"], cookieName, "Check cookie name");
-    is(foundCookie["value"], USER_CONTEXTS[userContextId], "Check cookie value");
+    is(foundCookie.name, cookieName, "Check cookie name");
+    is(foundCookie.value, USER_CONTEXTS[userContextId], "Check cookie value");
   }
 
   // Using getCookiesWithOriginAttributes() to get all cookies for a certain

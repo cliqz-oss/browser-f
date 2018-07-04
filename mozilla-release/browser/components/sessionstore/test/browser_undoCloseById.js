@@ -1,22 +1,23 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 "use strict";
 
 /**
  * This test is for the undoCloseById function.
  */
 
-Cu.import("resource:///modules/sessionstore/SessionStore.jsm");
+ChromeUtils.import("resource:///modules/sessionstore/SessionStore.jsm");
 
 async function openAndCloseTab(window, url) {
   let tab = window.gBrowser.addTab(url);
   await promiseBrowserLoaded(tab.linkedBrowser, true, url);
   await TabStateFlusher.flush(tab.linkedBrowser);
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
 }
 
 async function openWindow(url) {
   let win = await promiseNewWindowLoaded();
   let flags = Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY;
-  win.gBrowser.selectedBrowser.loadURIWithFlags(url, flags);
+  win.gBrowser.selectedBrowser.loadURI(url, { flags });
   await promiseBrowserLoaded(win.gBrowser.selectedBrowser, true, url);
   return win;
 }
@@ -46,11 +47,11 @@ add_task(async function test_undoCloseById() {
 
   // Open and close another window.
   let win2 = await openWindow("about:mozilla");
-  await closeWindow(win2);  // closedId == initialClosedId + 1
+  await closeWindow(win2); // closedId == initialClosedId + 1
   is(SessionStore.lastClosedObjectType, "window", "The last closed object is a window");
 
   // Open and close another tab in the first window.
-  await openAndCloseTab(win, "about:robots");  // closedId == initialClosedId + 2
+  await openAndCloseTab(win, "about:robots"); // closedId == initialClosedId + 2
   is(SessionStore.lastClosedObjectType, "tab", "The last closed object is a tab");
 
   // Undo closing the second tab.
@@ -70,9 +71,9 @@ add_task(async function test_undoCloseById() {
   is(tab2.linkedBrowser.currentURI.spec, "about:mozilla", "The expected tab was re-opened");
 
   // Close the two tabs we re-opened.
-  await promiseRemoveTab(tab); // closedId == initialClosedId + 3
+  await promiseRemoveTabAndSessionState(tab); // closedId == initialClosedId + 3
   is(SessionStore.lastClosedObjectType, "tab", "The last closed object is a tab");
-  await promiseRemoveTab(tab2); // closedId == initialClosedId + 4
+  await promiseRemoveTabAndSessionState(tab2); // closedId == initialClosedId + 4
   is(SessionStore.lastClosedObjectType, "tab", "The last closed object is a tab");
 
   // Open another new window.

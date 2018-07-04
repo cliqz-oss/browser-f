@@ -4,29 +4,28 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [ "LoginManagerContent",
-                          "LoginFormFactory",
-                          "UserAutoCompleteResult" ];
+var EXPORTED_SYMBOLS = [ "LoginManagerContent",
+                         "LoginFormFactory",
+                         "UserAutoCompleteResult" ];
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
 const PASSWORD_INPUT_ADDED_COALESCING_THRESHOLD_MS = 1;
 const AUTOCOMPLETE_AFTER_RIGHT_CLICK_THRESHOLD_MS = 400;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask", "resource://gre/modules/DeferredTask.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FormLikeFactory",
-                                  "resource://gre/modules/FormLikeFactory.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginRecipesContent",
-                                  "resource://gre/modules/LoginRecipes.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "InsecurePasswordUtils",
-                                  "resource://gre/modules/InsecurePasswordUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "DeferredTask", "resource://gre/modules/DeferredTask.jsm");
+ChromeUtils.defineModuleGetter(this, "FormLikeFactory",
+                               "resource://gre/modules/FormLikeFactory.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginRecipesContent",
+                               "resource://gre/modules/LoginRecipes.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "InsecurePasswordUtils",
+                               "resource://gre/modules/InsecurePasswordUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gNetUtil",
                                    "@mozilla.org/network/util;1",
@@ -37,16 +36,19 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
   return logger.log.bind(logger);
 });
 
+Services.cpmm.addMessageListener("clearRecipeCache", () => {
+  LoginRecipesContent._clearRecipeCache();
+});
+
 // These mirror signon.* prefs.
 var gEnabled, gAutofillForms, gStoreWhenAutocompleteOff;
 var gLastRightClickTimeStamp = Number.NEGATIVE_INFINITY;
 
 var observer = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                          Ci.nsIFormSubmitObserver,
-                                          Ci.nsIWebProgressListener,
-                                          Ci.nsIDOMEventListener,
-                                          Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                           Ci.nsIFormSubmitObserver,
+                                           Ci.nsIWebProgressListener,
+                                           Ci.nsISupportsWeakReference]),
 
   // nsIFormSubmitObserver
   notify(formElement, aWindow, actionURI) {
@@ -80,7 +82,7 @@ var observer = {
       return;
     }
 
-    log("onLocationChange handled:", aLocation.spec, aWebProgress.DOMWindow.document);
+    log("onLocationChange handled:", aLocation.displaySpec, aWebProgress.DOMWindow.document);
 
     LoginManagerContent._onNavigation(aWebProgress.DOMWindow.document);
   },
@@ -381,7 +383,7 @@ var LoginManagerContent = {
       return;
     }
 
-    let pwField = event.target;
+    let pwField = event.originalTarget;
     if (pwField.form) {
       // Fill is handled by onDOMFormHasPassword which is already throttled.
       return;
@@ -406,7 +408,7 @@ var LoginManagerContent = {
         log("Running deferred processing of onDOMInputPasswordAdded", formLike2);
         this._deferredPasswordAddedTasksByRootElement.delete(formLike2.rootElement);
         this._fetchLoginsFromParentAndFillForm(formLike2, window);
-      }, PASSWORD_INPUT_ADDED_COALESCING_THRESHOLD_MS);
+      }, PASSWORD_INPUT_ADDED_COALESCING_THRESHOLD_MS, 0);
 
       this._deferredPasswordAddedTasksByRootElement.set(formLike.rootElement, deferredTask);
     }
@@ -436,8 +438,14 @@ var LoginManagerContent = {
   _fetchLoginsFromParentAndFillForm(form, window) {
     this._detectInsecureFormLikes(window);
 
+    const isPrivateWindow = PrivateBrowsingUtils.isContentWindowPrivate(window);
+
     let messageManager = messageManagerFromWindow(window);
-    messageManager.sendAsyncMessage("LoginStats:LoginEncountered");
+    messageManager.sendAsyncMessage("LoginStats:LoginEncountered",
+                                    {
+                                      isPrivateWindow,
+                                      isPwmgrEnabled: gEnabled,
+                                    });
 
     if (!gEnabled) {
       return;
@@ -470,7 +478,7 @@ var LoginManagerContent = {
          * Keeps track of filled fields and values.
          */
         fillsByRootElement: new WeakMap(),
-        loginFormRootElements: new Set(),
+        loginFormRootElements: new WeakSet(),
       };
       this.loginFormStateByDocument.set(document, loginFormState);
     }
@@ -487,10 +495,10 @@ var LoginManagerContent = {
     // Returns true if this window or any subframes have insecure login forms.
     let hasInsecureLoginForms = (thisWindow) => {
       let doc = thisWindow.document;
-      let hasLoginForm = this.stateForDocument(doc).loginFormRootElements.size > 0;
-      // Ignores window.opener, because it's not relevant for indicating
-      // form security. See InsecurePasswordUtils docs for details.
-      return (hasLoginForm && !thisWindow.isSecureContextIfOpenerIgnored) ||
+      let rootElsWeakSet = this.stateForDocument(doc).loginFormRootElements;
+      let hasLoginForm = ChromeUtils.nondeterministicGetWeakSetKeys(rootElsWeakSet)
+                                    .filter(el => el.isConnected).length > 0;
+      return (hasLoginForm && !thisWindow.isSecureContext) ||
              Array.some(thisWindow.frames,
                         frame => hasInsecureLoginForms(frame));
     };
@@ -560,6 +568,9 @@ var LoginManagerContent = {
     let doc = form.ownerDocument;
     let autofillForm = gAutofillForms && !PrivateBrowsingUtils.isContentWindowPrivate(doc.defaultView);
 
+    let formOrigin = LoginUtils._getPasswordOrigin(doc.documentURI);
+    LoginRecipesContent.cacheRecipes(formOrigin, doc.defaultView, recipes);
+
     this._fillForm(form, loginsFound, recipes, {autofillForm});
   },
 
@@ -612,7 +623,7 @@ var LoginManagerContent = {
     var acInputField = event.target;
 
     // This is probably a bit over-conservatative.
-    if (!(acInputField.ownerDocument instanceof Ci.nsIDOMHTMLDocument))
+    if (ChromeUtils.getClassName(acInputField.ownerDocument) != "HTMLDocument")
       return;
 
     if (!LoginHelper.isUsernameFieldType(acInputField))
@@ -631,10 +642,8 @@ var LoginManagerContent = {
     log("onUsernameInput from", event.type);
 
     let doc = acForm.ownerDocument;
-    let messageManager = messageManagerFromWindow(doc.defaultView);
-    let recipes = messageManager.sendSyncMessage("RemoteLogins:findRecipes", {
-      formOrigin: LoginUtils._getPasswordOrigin(doc.documentURI),
-    })[0];
+    let formOrigin = LoginUtils._getPasswordOrigin(doc.documentURI);
+    let recipes = LoginRecipesContent.getRecipes(formOrigin, doc.defaultView);
 
     // Make sure the username field fillForm will use is the
     // same field as the autocomplete was activated on.
@@ -674,7 +683,7 @@ var LoginManagerContent = {
     let pwFields = [];
     for (let i = 0; i < form.elements.length; i++) {
       let element = form.elements[i];
-      if (!(element instanceof Ci.nsIDOMHTMLInputElement) ||
+      if (ChromeUtils.getClassName(element) !== "HTMLInputElement" ||
           element.type != "password") {
         continue;
       }
@@ -877,12 +886,18 @@ var LoginManagerContent = {
    */
   _onNavigation(aDocument) {
     let state = this.stateForDocument(aDocument);
-    let loginFormRootElements = state.loginFormRootElements;
-    log("_onNavigation: state:", state, "loginFormRootElements size:", loginFormRootElements.size,
+    let rootElsWeakSet = state.loginFormRootElements;
+    let weakLoginFormRootElements = ChromeUtils.nondeterministicGetWeakSetKeys(rootElsWeakSet);
+
+    log("_onNavigation: state:", state, "loginFormRootElements approx size:", weakLoginFormRootElements.length,
         "document:", aDocument);
 
-    for (let formRoot of state.loginFormRootElements) {
-      if (formRoot instanceof Ci.nsIDOMHTMLFormElement) {
+    for (let formRoot of weakLoginFormRootElements) {
+      if (!formRoot.isConnected) {
+        continue;
+      }
+
+      if (ChromeUtils.getClassName(formRoot) === "HTMLFormElement") {
         // For now only perform capture upon navigation for FormLike's without
         // a <form> to avoid capture from both an earlyformsubmit and
         // navigation for the same "form".
@@ -928,9 +943,7 @@ var LoginManagerContent = {
     let formSubmitURL = LoginUtils._getActionOrigin(form);
     let messageManager = messageManagerFromWindow(win);
 
-    let recipes = messageManager.sendSyncMessage("RemoteLogins:findRecipes", {
-      formOrigin: hostname,
-    })[0];
+    let recipes = LoginRecipesContent.getRecipes(hostname, win);
 
     // Get the appropriate fields from the form.
     var [usernameField, newPasswordField, oldPasswordField] =
@@ -1009,7 +1022,7 @@ var LoginManagerContent = {
     clobberPassword = false,
     userTriggered = false,
   } = {}) {
-    if (form instanceof Ci.nsIDOMHTMLFormElement) {
+    if (ChromeUtils.getClassName(form) === "HTMLFormElement") {
       throw new Error("_fillForm should only be called with FormLike objects");
     }
 
@@ -1337,7 +1350,7 @@ var LoginManagerContent = {
    */
   getFieldContext(aField) {
     // If the element is not a proper form field, return null.
-    if (!(aField instanceof Ci.nsIDOMHTMLInputElement) ||
+    if (ChromeUtils.getClassName(aField) !== "HTMLInputElement" ||
         (aField.type != "password" && !LoginHelper.isUsernameFieldType(aField)) ||
         !aField.ownerDocument) {
       return null;
@@ -1345,10 +1358,8 @@ var LoginManagerContent = {
     let form = LoginFormFactory.createFromField(aField);
 
     let doc = aField.ownerDocument;
-    let messageManager = messageManagerFromWindow(doc.defaultView);
-    let recipes = messageManager.sendSyncMessage("RemoteLogins:findRecipes", {
-      formOrigin: LoginUtils._getPasswordOrigin(doc.documentURI),
-    })[0];
+    let formOrigin = LoginUtils._getPasswordOrigin(doc.documentURI);
+    let recipes = LoginRecipesContent.getRecipes(formOrigin, doc.defaultView);
 
     let [usernameField, newPasswordField] =
           this._getFormFields(form, false, recipes);
@@ -1386,7 +1397,7 @@ var LoginUtils = {
         return "javascript:";
 
       // Build this manually instead of using prePath to avoid including the userPass portion.
-      realm = uri.scheme + "://" + uri.hostPort;
+      realm = uri.scheme + "://" + uri.displayHostPort;
     } catch (e) {
       // bug 159484 - disallow url types that don't support a hostPort.
       // (although we handle "javascript:..." as a special case above.)
@@ -1441,7 +1452,7 @@ function UserAutoCompleteResult(aSearchString, matchingLogins, {isSecure, messag
   this.matchCount = matchingLogins.length + this._showInsecureFieldWarning;
   this._messageManager = messageManager;
   this._stringBundle = Services.strings.createBundle("chrome://passwordmgr/locale/passwordmgr.properties");
-  this._dateAndTimeFormatter = Services.intl.createDateTimeFormat(undefined, { dateStyle: "medium" });
+  this._dateAndTimeFormatter = new Services.intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
   this._isPasswordField = isPasswordField;
 
@@ -1454,8 +1465,8 @@ function UserAutoCompleteResult(aSearchString, matchingLogins, {isSecure, messag
 }
 
 UserAutoCompleteResult.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompleteResult,
-                                          Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompleteResult,
+                                           Ci.nsISupportsWeakReference]),
 
   // private
   logins: null,
@@ -1611,7 +1622,7 @@ var LoginFormFactory = {
    * @throws Error if aField isn't a password or username field in a document
    */
   createFromField(aField) {
-    if (!(aField instanceof Ci.nsIDOMHTMLInputElement) ||
+    if (ChromeUtils.getClassName(aField) !== "HTMLInputElement" ||
         (aField.type != "password" && !LoginHelper.isUsernameFieldType(aField)) ||
         !aField.ownerDocument) {
       throw new Error("createFromField requires a password or username field in a document");

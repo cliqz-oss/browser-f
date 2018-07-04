@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:cindent:ts=2:et:sw=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -31,7 +31,6 @@ class GradientStops;
 } // namespace gfx
 namespace layers {
 class StackingContextHelper;
-class WebRenderDisplayItemLayer;
 } // namespace layers
 } // namespace mozilla
 
@@ -52,8 +51,6 @@ class WebRenderDisplayItemLayer;
  * borderRadii -- a RectCornerRadii struct describing the w/h for each rounded corner.
  *    If the corner doesn't have a border radius, 0,0 should be given for it.
  * borderColors -- one nscolor per side
- * compositeColors -- a pointer to an array of composite color structs, or
- *    nullptr if none.
  *
  * skipSides -- a bit mask specifying which sides, if any, to skip
  * backgroundColor -- the background color of the element.
@@ -100,14 +97,16 @@ public:
                       const Float* aBorderWidths,
                       RectCornerRadii& aBorderRadii,
                       const nscolor* aBorderColors,
-                      nsBorderColors* const* aCompositeColors,
-                      nscolor aBackgroundColor);
+                      nscolor aBackgroundColor,
+                      bool aBackfaceIsVisible,
+                      const mozilla::Maybe<Rect>& aClipRect);
 
   // draw the entire border
   void DrawBorders();
 
-  bool CanCreateWebRenderCommands();
-  void CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+  void CreateWebRenderCommands(nsDisplayItem* aItem,
+                               mozilla::wr::DisplayListBuilder& aBuilder,
+                               mozilla::wr::IpcResourceUpdateQueue& aResources,
                                const mozilla::layers::StackingContextHelper& aSc);
 
   // utility function used for background painting as well as borders
@@ -146,17 +145,20 @@ private:
   Float mBorderWidths[4];
   RectCornerRadii mBorderRadii;
 
-  // colors
+  // the colors for 'border-top-color' et. al.
   nscolor mBorderColors[4];
-  nsBorderColors* mCompositeColors[4];
 
   // the background color
   nscolor mBackgroundColor;
 
   // calculated values
+  bool mAllBordersSameStyle;
+  bool mAllBordersSameWidth;
   bool mOneUnitBorder;
   bool mNoBorderRadius;
   bool mAvoidStroke;
+  bool mBackfaceIsVisible;
+  mozilla::Maybe<Rect> mLocalClip;
 
   // For all the sides in the bitmask, would they be rendered
   // in an identical color and style?
@@ -229,9 +231,6 @@ private:
   // present in the bitmask
   void DrawBorderSides (int aSides);
 
-  // function used by the above to handle -moz-border-colors
-  void DrawBorderSidesCompositeColors(int aSides, const nsBorderColors *compositeColors);
-
   // Setup the stroke options for the given dashed/dotted side
   void SetupDashedOptions(StrokeOptions* aStrokeOptions,
                           Float aDash[2], mozilla::Side aSide,
@@ -265,18 +264,13 @@ private:
   // Analyze if all borders are 'solid' this also considers hidden or 'none'
   // borders because they can be considered 'solid' borders of 0 width and
   // with no color effect.
-  bool AllBordersSolid(bool *aHasCompositeColors);
+  bool AllBordersSolid();
 
   // Draw a solid color border that is uniformly the same width.
   void DrawSingleWidthSolidBorder();
 
-  // Draw any border which is solid on all sides and does not use
-  // CompositeColors.
-  void DrawNoCompositeColorSolidBorder();
-
-  // Draw a solid border that has no border radius (i.e. is rectangular) and
-  // uses CompositeColors.
-  void DrawRectangularCompositeColors();
+  // Draw any border which is solid on all sides.
+  void DrawSolidBorder();
 };
 
 class nsCSSBorderImageRenderer final
@@ -291,13 +285,21 @@ public:
                             const nsRect& aDirtyRect,
                             nsIFrame::Sides aSkipSides,
                             uint32_t aFlags,
-                            mozilla::image::DrawResult* aDrawResult);
+                            mozilla::image::ImgDrawResult* aDrawResult);
 
-  mozilla::image::DrawResult
+  mozilla::image::ImgDrawResult
   DrawBorderImage(nsPresContext* aPresContext,
                   gfxContext& aRenderingContext,
                   nsIFrame* aForFrame,
                   const nsRect& aDirtyRect);
+  void
+  CreateWebRenderCommands(nsDisplayItem* aItem,
+                          nsIFrame* aForFrame,
+                          mozilla::wr::DisplayListBuilder& aBuilder,
+                          mozilla::wr::IpcResourceUpdateQueue& aResources,
+                          const mozilla::layers::StackingContextHelper& aSc,
+                          mozilla::layers::WebRenderLayerManager* aManager,
+                          nsDisplayListBuilder* aDisplayListBuilder);
 
   nsCSSBorderImageRenderer(const nsCSSBorderImageRenderer& aRhs);
   nsCSSBorderImageRenderer& operator=(const nsCSSBorderImageRenderer& aRhs);
@@ -316,11 +318,12 @@ private:
   nsMargin mImageOutset;
   nsRect mArea;
   nsRect mClip;
-  uint8_t mRepeatModeHorizontal;
-  uint8_t mRepeatModeVertical;
+  mozilla::StyleBorderImageRepeat mRepeatModeHorizontal;
+  mozilla::StyleBorderImageRepeat mRepeatModeVertical;
   uint8_t mFill;
 
   friend class nsDisplayBorder;
+  friend struct nsCSSRendering;
 };
 
 namespace mozilla {

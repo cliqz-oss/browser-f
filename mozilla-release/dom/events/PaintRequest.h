@@ -7,10 +7,10 @@
 #ifndef mozilla_dom_PaintRequest_h_
 #define mozilla_dom_PaintRequest_h_
 
-#include "nsIDOMPaintRequest.h"
 #include "nsPresContext.h"
-#include "nsIDOMEvent.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/dom/Event.h"
 #include "nsWrapperCache.h"
 
 namespace mozilla {
@@ -18,22 +18,21 @@ namespace dom {
 
 class DOMRect;
 
-class PaintRequest final : public nsIDOMPaintRequest
+class PaintRequest final : public nsISupports
                          , public nsWrapperCache
 {
 public:
-  explicit PaintRequest(nsIDOMEvent* aParent)
+  explicit PaintRequest(Event* aParent)
     : mParent(aParent)
   {
   }
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(PaintRequest)
-  NS_DECL_NSIDOMPAINTREQUEST
 
   virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
-  nsIDOMEvent* GetParentObject() const
+  Event* GetParentObject() const
   {
     return mParent;
   }
@@ -50,7 +49,7 @@ public:
 private:
   ~PaintRequest() {}
 
-  nsCOMPtr<nsIDOMEvent> mParent;
+  RefPtr<Event> mParent;
   nsRect mRequest;
 };
 
@@ -58,7 +57,7 @@ class PaintRequestList final : public nsISupports,
                                public nsWrapperCache
 {
 public:
-  explicit PaintRequestList(nsIDOMEvent *aParent) : mParent(aParent)
+  explicit PaintRequestList(Event *aParent) : mParent(aParent)
   {
   }
 
@@ -98,7 +97,7 @@ private:
   ~PaintRequestList() {}
 
   nsTArray< RefPtr<PaintRequest> > mArray;
-  nsCOMPtr<nsIDOMEvent> mParent;
+  RefPtr<Event> mParent;
 };
 
 } // namespace dom

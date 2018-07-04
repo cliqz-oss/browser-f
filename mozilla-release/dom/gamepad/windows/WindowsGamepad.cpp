@@ -139,10 +139,10 @@ public:
           uint32_t aNumButtons,
           bool aHasDpad,
           GamepadType aType) :
+    type(aType),
     numAxes(aNumAxes),
     numButtons(aNumButtons),
     hasDpad(aHasDpad),
-    type(aType),
     present(true)
   {
     buttons.SetLength(numButtons);
@@ -159,8 +159,8 @@ typedef void (WINAPI *XInputEnable_func)(BOOL);
 class XInputLoader {
 public:
   XInputLoader() : module(nullptr),
-                   mXInputEnable(nullptr),
-                   mXInputGetState(nullptr) {
+                   mXInputGetState(nullptr),
+                   mXInputEnable(nullptr) {
     // xinput1_4.dll exists on Windows 8
     // xinput9_1_0.dll exists on Windows 7 and Vista
     // xinput1_3.dll shipped with the DirectX SDK
@@ -249,16 +249,16 @@ UnpackDpad(LONG dpad_value, const Gamepad* gamepad, nsTArray<bool>& buttons)
   // Value will be in the range 0-7. The value represents the
   // position of the d-pad around a circle, with 0 being straight up,
   // 2 being right, 4 being straight down, and 6 being left.
-  if (value < 2 || value > 6) {
+  if ((value < 2 || value > 6) && buttons.Length() > kUp) {
     buttons[kUp] = true;
   }
-  if (value > 2 && value < 6) {
+  if ((value > 2 && value < 6) && buttons.Length() > kDown) {
     buttons[kDown] = true;
   }
-  if (value > 4) {
+  if (value > 4 && buttons.Length() > kLeft) {
     buttons[kLeft] = true;
   }
-  if (value > 0 && value < 4) {
+  if ((value > 0 && value < 4) && buttons.Length() > kRight) {
     buttons[kRight] = true;
   }
 }
@@ -280,14 +280,14 @@ SupportedUsage(USHORT page, USHORT usage)
 
 class HIDLoader {
 public:
-  HIDLoader() : mModule(LoadLibraryW(L"hid.dll")),
-                mHidD_GetProductString(nullptr),
+  HIDLoader() : mHidD_GetProductString(nullptr),
                 mHidP_GetCaps(nullptr),
                 mHidP_GetButtonCaps(nullptr),
                 mHidP_GetValueCaps(nullptr),
                 mHidP_GetUsages(nullptr),
                 mHidP_GetUsageValue(nullptr),
-                mHidP_GetScaledUsageValue(nullptr)
+                mHidP_GetScaledUsageValue(nullptr),
+                mModule(LoadLibraryW(L"hid.dll"))
   {
     if (mModule) {
       mHidD_GetProductString = reinterpret_cast<decltype(HidD_GetProductString)*>(GetProcAddress(mModule, "HidD_GetProductString"));
@@ -354,9 +354,9 @@ class WindowsGamepadService
  public:
   WindowsGamepadService()
   {
-    mDirectInputTimer = do_CreateInstance("@mozilla.org/timer;1");
-    mXInputTimer = do_CreateInstance("@mozilla.org/timer;1");
-    mDeviceChangeTimer = do_CreateInstance("@mozilla.org/timer;1");
+    mDirectInputTimer = NS_NewTimer();
+    mXInputTimer = NS_NewTimer();
+    mDeviceChangeTimer = NS_NewTimer();
   }
   virtual ~WindowsGamepadService()
   {
@@ -388,7 +388,7 @@ class WindowsGamepadService
   void ScanForRawInputDevices();
   // Look for connected XInput devices.
   bool ScanForXInputDevices();
-  bool HaveXInputGamepad(int userIndex);
+  bool HaveXInputGamepad(unsigned int userIndex);
 
   bool mIsXInputMonitoring;
   void PollXInput();
@@ -462,7 +462,7 @@ WindowsGamepadService::DevicesChangeCallback(nsITimer *aTimer, void* aService)
 }
 
 bool
-WindowsGamepadService::HaveXInputGamepad(int userIndex)
+WindowsGamepadService::HaveXInputGamepad(unsigned int userIndex)
 {
   for (unsigned int i = 0; i < mGamepads.Length(); i++) {
     if (mGamepads[i].type == kXInputGamepad
@@ -486,7 +486,7 @@ WindowsGamepadService::ScanForXInputDevices()
     return found;
   }
 
-  for (int i = 0; i < XUSER_MAX_COUNT; i++) {
+  for (unsigned int i = 0; i < XUSER_MAX_COUNT; i++) {
     XINPUT_STATE state = {};
     if (mXInput.mXInputGetState(i, &state) != ERROR_SUCCESS) {
       continue;
@@ -860,7 +860,14 @@ WindowsGamepadService::HandleRawInput(HRAWINPUT handle)
   memset(buttons.Elements(), 0, gamepad->numButtons * sizeof(bool));
 
   for (unsigned i = 0; i < usageLength; i++) {
-    buttons[usages[i] - 1] = true;
+    // The button index in usages may be larger than what we detected when
+    // enumerating gamepads. If so, warn and continue.
+    //
+    // Usage ID of 0 is reserved, so it should always be 1 or higher.
+    if (NS_WARN_IF((usages[i] - 1u) >= buttons.Length())) {
+      continue;
+    }
+    buttons[usages[i] - 1u] = true;
   }
 
   if (gamepad->hasDpad) {

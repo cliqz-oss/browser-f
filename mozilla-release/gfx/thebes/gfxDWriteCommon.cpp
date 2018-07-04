@@ -10,8 +10,10 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/gfx/Logging.h"
 
+class gfxDWriteFontFileStream;
+
 static mozilla::Atomic<uint64_t> sNextFontFileKey;
-static std::unordered_map<uint64_t, IDWriteFontFileStream*> sFontFileStreams;
+static std::unordered_map<uint64_t, gfxDWriteFontFileStream*> sFontFileStreams;
 
 IDWriteFontFileLoader* gfxDWriteFontFileLoader::mInstance = nullptr;
 
@@ -26,7 +28,8 @@ public:
   *
   * @param aData Font data
   */
-  gfxDWriteFontFileStream(FallibleTArray<uint8_t> *aData,
+  gfxDWriteFontFileStream(const uint8_t* aData,
+                          uint32_t aLength,
                           uint64_t aFontFileKey);
   ~gfxDWriteFontFileStream();
 
@@ -76,17 +79,30 @@ public:
 
   virtual HRESULT STDMETHODCALLTYPE GetLastWriteTime(OUT UINT64* lastWriteTime);
 
+  size_t SizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const {
+    return mData.ShallowSizeOfExcludingThis(mallocSizeOf);
+  }
+
+  size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const {
+    return mallocSizeOf(this) + SizeOfExcludingThis(mallocSizeOf);
+  }
+
 private:
   FallibleTArray<uint8_t> mData;
   nsAutoRefCnt mRefCnt;
   uint64_t mFontFileKey;
 };
 
-gfxDWriteFontFileStream::gfxDWriteFontFileStream(FallibleTArray<uint8_t> *aData,
+gfxDWriteFontFileStream::gfxDWriteFontFileStream(const uint8_t* aData,
+                                                 uint32_t aLength,
                                                  uint64_t aFontFileKey)
   : mFontFileKey(aFontFileKey)
 {
-  mData.SwapElements(*aData);
+  // If this fails, mData will remain empty. That's OK: GetFileSize()
+  // will then return 0, etc., and the font just won't load.
+  if (!mData.AppendElements(aData, aLength, mozilla::fallible_t())) {
+    NS_WARNING("Failed to store data in gfxDWriteFontFileStream");
+  }
 }
 
 gfxDWriteFontFileStream::~gfxDWriteFontFileStream()
@@ -151,7 +167,8 @@ gfxDWriteFontFileLoader::CreateStreamFromKey(const void *fontFileReferenceKey,
 
 /* static */
 HRESULT
-gfxDWriteFontFileLoader::CreateCustomFontFile(FallibleTArray<uint8_t>& aFontData,
+gfxDWriteFontFileLoader::CreateCustomFontFile(const uint8_t* aFontData,
+                                              uint32_t aLength,
                                               IDWriteFontFile** aFontFile,
                                               IDWriteFontFileStream** aFontFileStream)
 {
@@ -165,7 +182,8 @@ gfxDWriteFontFileLoader::CreateCustomFontFile(FallibleTArray<uint8_t>& aFontData
   }
 
   uint64_t fontFileKey = sNextFontFileKey++;
-  RefPtr<IDWriteFontFileStream> ffsRef = new gfxDWriteFontFileStream(&aFontData, fontFileKey);
+  RefPtr<gfxDWriteFontFileStream> ffsRef =
+      new gfxDWriteFontFileStream(aFontData, aLength, fontFileKey);
   sFontFileStreams[fontFileKey] = ffsRef;
 
   RefPtr<IDWriteFontFile> fontFile;
@@ -179,4 +197,19 @@ gfxDWriteFontFileLoader::CreateCustomFontFile(FallibleTArray<uint8_t>& aFontData
   ffsRef.forget(aFontFileStream);
 
   return S_OK;
+}
+
+size_t
+gfxDWriteFontFileLoader::SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const
+{
+  size_t sizes = mallocSizeOf(this);
+
+  // We are a singleton type that is effective owner of sFontFileStreams.
+  MOZ_ASSERT(this == mInstance);
+  for (const auto& entry : sFontFileStreams) {
+    gfxDWriteFontFileStream* fileStream = entry.second;
+    sizes += fileStream->SizeOfIncludingThis(mallocSizeOf);
+  }
+
+  return sizes;
 }

@@ -7,18 +7,19 @@
  * Tests if copying a request's request/response headers works.
  */
 
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(SIMPLE_URL);
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(SIMPLE_URL);
   info("Starting test... ");
 
   let { document, store, windowRequire } = monitor.panelWin;
   let {
     getSortedRequests,
+    getSelectedRequest,
   } = windowRequire("devtools/client/netmonitor/src/selectors/index");
 
   let wait = waitForNetworkEvents(monitor, 1);
   tab.linkedBrowser.reload();
-  yield wait;
+  await wait;
 
   EventUtils.sendMouseEvent({ type: "mousedown" },
     document.querySelectorAll(".request-list-item")[0]);
@@ -28,6 +29,9 @@ add_task(function* () {
 
   EventUtils.sendMouseEvent({ type: "contextmenu" },
     document.querySelectorAll(".request-list-item")[0]);
+
+  let selectedRequest = getSelectedRequest(store.getState());
+  is(selectedRequest, requestItem, "Proper request is selected");
 
   const EXPECTED_REQUEST_HEADERS = [
     `${method} ${SIMPLE_URL} ${httpVersion}`,
@@ -42,7 +46,7 @@ add_task(function* () {
     "Cache-Control: no-cache"
   ].join("\n");
 
-  yield waitForClipboardPromise(function setup() {
+  await waitForClipboardPromise(function setup() {
     monitor.panelWin.parent.document
       .querySelector("#request-list-context-copy-request-headers").click();
   }, function validate(result) {
@@ -65,7 +69,7 @@ add_task(function* () {
   EventUtils.sendMouseEvent({ type: "contextmenu" },
     document.querySelectorAll(".request-list-item")[0]);
 
-  yield waitForClipboardPromise(function setup() {
+  await waitForClipboardPromise(function setup() {
     monitor.panelWin.parent.document
       .querySelector("#response-list-context-copy-response-headers").click();
   }, function validate(result) {
@@ -77,5 +81,5 @@ add_task(function* () {
   });
   info("Clipboard contains the currently selected item's response headers.");
 
-  yield teardown(monitor);
+  await teardown(monitor);
 });

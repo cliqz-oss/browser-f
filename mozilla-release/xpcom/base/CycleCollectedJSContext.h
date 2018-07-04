@@ -21,14 +21,19 @@
 #include "nsTArray.h"
 
 class nsCycleCollectionNoteRootCallback;
-class nsIException;
 class nsIRunnable;
 class nsThread;
 class nsWrapperCache;
 
 namespace mozilla {
+class AutoSlowOperation;
 
 class CycleCollectedJSRuntime;
+
+namespace dom {
+class Exception;
+class WorkletJSContext;
+} // namespace dom
 
 // Contains various stats about the cycle collection.
 struct CycleCollectorResults
@@ -66,6 +71,17 @@ struct CycleCollectorResults
   uint32_t mNumSlices;
 };
 
+class MicroTaskRunnable
+{
+public:
+  MicroTaskRunnable() {}
+  NS_INLINE_DECL_REFCOUNTING(MicroTaskRunnable)
+  virtual void Run(AutoSlowOperation& aAso) = 0;
+  virtual bool Suppressed() { return false; }
+protected:
+  virtual ~MicroTaskRunnable() {}
+};
+
 class CycleCollectedJSContext
   : public LinkedListElement<CycleCollectedJSContext>
 {
@@ -88,9 +104,6 @@ protected:
 
   size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
-  std::queue<nsCOMPtr<nsIRunnable>> mPromiseMicroTaskQueue;
-  std::queue<nsCOMPtr<nsIRunnable>> mDebuggerPromiseMicroTaskQueue;
-
 private:
   MOZ_IS_CLASS_INIT
   void InitializeCommon();
@@ -103,14 +116,14 @@ private:
                                         void* aData);
   static void PromiseRejectionTrackerCallback(JSContext* aCx,
                                               JS::HandleObject aPromise,
-                                              PromiseRejectionHandlingState state,
+                                              JS::PromiseRejectionHandlingState state,
                                               void* aData);
 
-  void AfterProcessMicrotask(uint32_t aRecursionDepth);
+  void AfterProcessMicrotasks();
 public:
   void ProcessStableStateQueue();
 private:
-  void ProcessMetastableStateQueue(uint32_t aRecursionDepth);
+  void CleanupIDBTransactions(uint32_t aRecursionDepth);
 
 public:
   enum DeferredFinalizeType {
@@ -118,17 +131,19 @@ public:
     FinalizeNow,
   };
 
+  virtual dom::WorkletJSContext* GetAsWorkletJSContext() { return nullptr; }
+
   CycleCollectedJSRuntime* Runtime() const
   {
     MOZ_ASSERT(mRuntime);
     return mRuntime;
   }
 
-  already_AddRefed<nsIException> GetPendingException() const;
-  void SetPendingException(nsIException* aException);
+  already_AddRefed<dom::Exception> GetPendingException() const;
+  void SetPendingException(dom::Exception* aException);
 
-  std::queue<nsCOMPtr<nsIRunnable>>& GetPromiseMicroTaskQueue();
-  std::queue<nsCOMPtr<nsIRunnable>>& GetDebuggerPromiseMicroTaskQueue();
+  std::queue<RefPtr<MicroTaskRunnable>>& GetMicroTaskQueue();
+  std::queue<RefPtr<MicroTaskRunnable>>& GetDebuggerMicroTaskQueue();
 
   JSContext* Context() const
   {
@@ -142,60 +157,73 @@ public:
     return JS::RootingContext::get(mJSContext);
   }
 
-  bool MicroTaskCheckpointDisabled() const
+  void SetTargetedMicroTaskRecursionDepth(uint32_t aDepth)
   {
-    return mDisableMicroTaskCheckpoint;
+    mTargetedMicroTaskRecursionDepth = aDepth;
   }
-
-  void DisableMicroTaskCheckpoint(bool aDisable)
-  {
-    mDisableMicroTaskCheckpoint = aDisable;
-  }
-
-  class MOZ_RAII AutoDisableMicroTaskCheckpoint
-  {
-    public:
-    AutoDisableMicroTaskCheckpoint()
-    : mCCJSCX(CycleCollectedJSContext::Get())
-    {
-      mOldValue = mCCJSCX->MicroTaskCheckpointDisabled();
-      mCCJSCX->DisableMicroTaskCheckpoint(true);
-    }
-
-    ~AutoDisableMicroTaskCheckpoint()
-    {
-      mCCJSCX->DisableMicroTaskCheckpoint(mOldValue);
-    }
-
-    CycleCollectedJSContext* mCCJSCX;
-    bool mOldValue;
-  };
 
 protected:
   JSContext* MaybeContext() const { return mJSContext; }
 
 public:
   // nsThread entrypoints
-  virtual void BeforeProcessTask(bool aMightBlock) { };
+  virtual void BeforeProcessTask(bool aMightBlock);
   virtual void AfterProcessTask(uint32_t aRecursionDepth);
 
-  // microtask processor entry point
-  void AfterProcessMicrotask();
+  // Check whether we need an idle GC task.
+  void IsIdleGCTaskNeeded();
 
   uint32_t RecursionDepth();
 
   // Run in stable state (call through nsContentUtils)
   void RunInStableState(already_AddRefed<nsIRunnable>&& aRunnable);
-  // This isn't in the spec at all yet, but this gets the behavior we want for IDB.
-  // Runs after the current microtask completes.
-  void RunInMetastableState(already_AddRefed<nsIRunnable>&& aRunnable);
+
+  void AddPendingIDBTransaction(already_AddRefed<nsIRunnable>&& aTransaction);
 
   // Get the current thread's CycleCollectedJSContext.  Returns null if there
   // isn't one.
   static CycleCollectedJSContext* Get();
 
   // Queue an async microtask to the current main or worker thread.
-  virtual void DispatchToMicroTask(already_AddRefed<nsIRunnable> aRunnable);
+  virtual void DispatchToMicroTask(already_AddRefed<MicroTaskRunnable> aRunnable);
+
+  // Call EnterMicroTask when you're entering JS execution.
+  // Usually the best way to do this is to use nsAutoMicroTask.
+  void EnterMicroTask()
+  {
+    ++mMicroTaskLevel;
+  }
+
+  void LeaveMicroTask()
+  {
+    if (--mMicroTaskLevel == 0) {
+      PerformMicroTaskCheckPoint();
+    }
+  }
+
+  bool IsInMicroTask()
+  {
+    return mMicroTaskLevel != 0;
+  }
+
+  uint32_t MicroTaskLevel()
+  {
+    return mMicroTaskLevel;
+  }
+
+  void SetMicroTaskLevel(uint32_t aLevel)
+  {
+    mMicroTaskLevel = aLevel;
+  }
+
+  bool PerformMicroTaskCheckPoint();
+
+  void PerformDebuggerMicroTaskCheckpoint();
+
+  bool IsInStableOrMetaStableState()
+  {
+    return mDoingStableStates;
+  }
 
   // Storage for watching rejected promises waiting for some client to
   // consume their rejection.
@@ -211,6 +239,8 @@ public:
   JS::PersistentRooted<JS::GCVector<JSObject*, 0, js::SystemAllocPolicy>> mConsumedRejections;
   nsTArray<nsCOMPtr<nsISupports /* UncaughtRejectionObserver */ >> mUncaughtRejectionObservers;
 
+  virtual bool IsSystemCaller() const = 0;
+
 private:
   // A primary context owns the mRuntime. Non-main-thread contexts should always
   // be primary. On the main thread, the primary context should be the first one
@@ -222,21 +252,49 @@ private:
 
   JSContext* mJSContext;
 
-  nsCOMPtr<nsIException> mPendingException;
+  nsCOMPtr<dom::Exception> mPendingException;
   nsThread* mOwningThread; // Manual refcounting to avoid include hell.
 
-  struct RunInMetastableStateData
+  struct PendingIDBTransactionData
   {
-    nsCOMPtr<nsIRunnable> mRunnable;
+    nsCOMPtr<nsIRunnable> mTransaction;
     uint32_t mRecursionDepth;
   };
 
   nsTArray<nsCOMPtr<nsIRunnable>> mStableStateEvents;
-  nsTArray<RunInMetastableStateData> mMetastableStateEvents;
+  nsTArray<PendingIDBTransactionData> mPendingIDBTransactions;
   uint32_t mBaseRecursionDepth;
   bool mDoingStableStates;
 
-  bool mDisableMicroTaskCheckpoint;
+  // If set to none 0, microtasks will be processed only when recursion depth
+  // is the set value.
+  uint32_t mTargetedMicroTaskRecursionDepth;
+
+  uint32_t mMicroTaskLevel;
+
+  std::queue<RefPtr<MicroTaskRunnable>> mPendingMicroTaskRunnables;
+  std::queue<RefPtr<MicroTaskRunnable>> mDebuggerMicroTaskQueue;
+
+  uint32_t mMicroTaskRecursionDepth;
+};
+
+class MOZ_STACK_CLASS nsAutoMicroTask
+{
+public:
+  nsAutoMicroTask()
+  {
+    CycleCollectedJSContext* ccjs = CycleCollectedJSContext::Get();
+    if (ccjs) {
+      ccjs->EnterMicroTask();
+    }
+  }
+  ~nsAutoMicroTask()
+  {
+    CycleCollectedJSContext* ccjs = CycleCollectedJSContext::Get();
+    if (ccjs) {
+      ccjs->LeaveMicroTask();
+    }
+  }
 };
 
 } // namespace mozilla

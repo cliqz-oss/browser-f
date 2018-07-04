@@ -6,7 +6,6 @@
 
 #include "mozilla/dom/HTMLLegendElement.h"
 #include "mozilla/dom/HTMLLegendElementBinding.h"
-#include "nsIDOMHTMLFormElement.h"
 #include "nsFocusManager.h"
 #include "nsIFrame.h"
 
@@ -36,8 +35,9 @@ HTMLLegendElement::GetFieldSet() const
 
 bool
 HTMLLegendElement::ParseAttribute(int32_t aNamespaceID,
-                                  nsIAtom* aAttribute,
+                                  nsAtom* aAttribute,
                                   const nsAString& aValue,
+                                  nsIPrincipal* aMaybeScriptedPrincipal,
                                   nsAttrValue& aResult)
 {
   // this contains center, because IE4 does
@@ -55,11 +55,11 @@ HTMLLegendElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 nsChangeHint
-HTMLLegendElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
+HTMLLegendElement::GetAttributeChangeHint(const nsAtom* aAttribute,
                                           int32_t aModType) const
 {
   nsChangeHint retval =
@@ -107,7 +107,7 @@ HTMLLegendElement::Focus(ErrorResult& aError)
     return;
   }
 
-  nsCOMPtr<nsIDOMElement> result;
+  RefPtr<Element> result;
   aError = fm->MoveFocus(nullptr, this, nsIFocusManager::MOVEFOCUS_FORWARD,
                          nsIFocusManager::FLAG_NOPARENTFRAME,
                          getter_AddRefs(result));

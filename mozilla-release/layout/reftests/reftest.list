@@ -208,6 +208,9 @@ include font-loading-api/reftest.list
 # font matching
 include font-matching/reftest.list
 
+# font variations
+include font-variations/reftest.list
+
 # forms
 include forms/reftest.list
 
@@ -296,11 +299,11 @@ include ../../dom/plugins/test/reftest/reftest.list
 include position-dynamic-changes/reftest.list
 
 # printing
-include printing/reftest.list
-include pagination/reftest.list
+# SkiaPDF is required for printing tests to control printing to PDF files.
+skip-if(!skiaPdf) include printing/reftest.list
 
-# <style scoped>
-include scoped-style/reftest.list
+# pagination
+include pagination/reftest.list
 
 # scrolling
 include scrolling/reftest.list
@@ -369,7 +372,8 @@ include ../../toolkit/themes/osx/reftests/reftest.list
 include ../../toolkit/content/tests/reftests/reftest.list
 
 # -moz-transform/
-include transform/reftest.list
+# skipping on non-e10s windows because of assertion in bug 1401228
+skip-if(winWidget&&!browserIsRemote) include transform/reftest.list
 
 # 3d transforms
 include transform-3d/reftest.list
@@ -438,6 +442,9 @@ include ../../dom/encoding/test/reftest/reftest.list
 
 # APZ/async positioning tests
 include ../../gfx/layers/apz/test/reftest/reftest.list
+
+# Display list building
+include display-list/reftest.list
 
 # Media
 include ../../dom/media/test/reftest/reftest.list

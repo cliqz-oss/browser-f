@@ -5,13 +5,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SharedPreferences"];
-
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["SharedPreferences"];
 
 // For adding observers.
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Messaging.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 
 var Scope = Object.freeze({
   APP:          "app",
@@ -123,7 +121,7 @@ SharedPreferencesImpl.prototype = Object.freeze({
       profileName: this._profileName,
       branch: this._branch,
     }, {
-      onSuccess: values => { result = values },
+      onSuccess: values => { result = values; },
       onError: msg => { throw new Error("Cannot get preference: " + msg); },
     });
 
@@ -230,7 +228,7 @@ SharedPreferencesImpl.prototype = Object.freeze({
 
     if (msg.scope !== this._scope ||
         ((this._scope === Scope.PROFILE) && (msg.profileName !== this._profileName)) ||
-        ((this._scope === Scope.GLOBAL)  && (msg.branch !== this._branch))) {
+        ((this._scope === Scope.GLOBAL) && (msg.branch !== this._branch))) {
       return;
     }
 

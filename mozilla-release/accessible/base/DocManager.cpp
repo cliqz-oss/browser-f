@@ -21,7 +21,7 @@
 #endif
 
 #include "mozilla/EventListenerManager.h"
-#include "mozilla/dom/Event.h" // for nsIDOMEvent::InternalDOMEvent()
+#include "mozilla/dom/Event.h" // for Event
 #include "nsCURILoader.h"
 #include "nsDocShellLoadTypes.h"
 #include "nsIChannel.h"
@@ -354,13 +354,12 @@ DocManager::OnSecurityChange(nsIWebProgress* aWebProgress,
 // nsIDOMEventListener
 
 NS_IMETHODIMP
-DocManager::HandleEvent(nsIDOMEvent* aEvent)
+DocManager::HandleEvent(Event* aEvent)
 {
   nsAutoString type;
   aEvent->GetType(type);
 
-  nsCOMPtr<nsIDocument> document =
-    do_QueryInterface(aEvent->InternalDOMEvent()->GetTarget());
+  nsCOMPtr<nsIDocument> document = do_QueryInterface(aEvent->GetTarget());
   NS_ASSERTION(document, "pagehide or DOMContentLoaded for non document!");
   if (!document)
     return NS_OK;
@@ -470,10 +469,13 @@ DocManager::RemoveListeners(nsIDocument* aDocument)
 DocAccessible*
 DocManager::CreateDocOrRootAccessible(nsIDocument* aDocument)
 {
-  // Ignore hiding, resource documents and documents without docshell.
+  // Ignore hidden documents, resource documents, static clone
+  // (printing) documents and documents without a docshell.
   if (!aDocument->IsVisibleConsideringAncestors() ||
-      aDocument->IsResourceDoc() || !aDocument->IsActive())
+      aDocument->IsResourceDoc() || aDocument->IsStaticDocument() ||
+      !aDocument->IsActive()) {
     return nullptr;
+  }
 
   // Ignore documents without presshell and not having root frame.
   nsIPresShell* presShell = aDocument->GetShell();

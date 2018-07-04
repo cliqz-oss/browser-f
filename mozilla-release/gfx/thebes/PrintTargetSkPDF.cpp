@@ -58,8 +58,7 @@ PrintTargetSkPDF::BeginPrinting(const nsAString& aTitle,
   metadata.fModified.fDateTime = now;
 
   // SkDocument stores a non-owning raw pointer to aStream
-  mPDFDoc = SkDocument::MakePDF(mOStream.get(), SK_ScalarDefaultRasterDPI,
-                                metadata, /*jpegEncoder*/ nullptr, true);
+  mPDFDoc = SkDocument::MakePDF(mOStream.get(), metadata);
 
   return mPDFDoc ? NS_OK : NS_ERROR_FAILURE;
 }
@@ -122,14 +121,12 @@ PrintTargetSkPDF::MakeDrawTarget(const IntSize& aSize,
 }
 
 already_AddRefed<DrawTarget>
-PrintTargetSkPDF::GetReferenceDrawTarget(DrawEventRecorder* aRecorder)
+PrintTargetSkPDF::GetReferenceDrawTarget()
 {
   if (!mRefDT) {
     SkDocument::PDFMetadata metadata;
     // SkDocument stores a non-owning raw pointer to aStream
-    mRefPDFDoc = SkDocument::MakePDF(&mRefOStream,
-                                     SK_ScalarDefaultRasterDPI,
-                                     metadata, nullptr, true);
+    mRefPDFDoc = SkDocument::MakePDF(&mRefOStream, metadata);
     if (!mRefPDFDoc) {
       return nullptr;
     }
@@ -143,27 +140,6 @@ PrintTargetSkPDF::GetReferenceDrawTarget(DrawEventRecorder* aRecorder)
       return nullptr;
     }
     mRefDT = dt.forget();
-  }
-
-  if (aRecorder) {
-    if (!mRecordingRefDT) {
-      RefPtr<DrawTarget> dt = CreateWrapAndRecordDrawTarget(aRecorder, mRefDT);
-      if (!dt || !dt->IsValid()) {
-        return nullptr;
-      }
-      mRecordingRefDT = dt.forget();
-#ifdef DEBUG
-      mRecorder = aRecorder;
-#endif
-    }
-#ifdef DEBUG
-    else {
-      MOZ_ASSERT(aRecorder == mRecorder,
-                 "Caching mRecordingRefDT assumes the aRecorder is an invariant");
-    }
-#endif
-
-    return do_AddRef(mRecordingRefDT);
   }
 
   return do_AddRef(mRefDT);

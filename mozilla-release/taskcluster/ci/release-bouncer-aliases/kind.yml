@@ -1,0 +1,91 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+loader: taskgraph.loader.transform:loader
+
+transforms:
+   - taskgraph.transforms.release_deps:transforms
+   - taskgraph.transforms.bouncer_aliases:transforms
+   - taskgraph.transforms.task:transforms
+
+kind-dependencies:
+   - release-bouncer-check
+
+job-defaults:
+   description: Update bouncer aliases job
+   worker-type:
+      by-project:
+         mozilla-beta: scriptworker-prov-v1/bouncer-v1
+         mozilla-release: scriptworker-prov-v1/bouncer-v1
+         mozilla-esr60: scriptworker-prov-v1/bouncer-v1
+         default: scriptworker-prov-v1/bouncer-dev
+   worker:
+      implementation: bouncer-aliases
+   scopes:
+      by-project:
+         mozilla-beta:
+            - project:releng:bouncer:action:aliases
+            - project:releng:bouncer:server:production
+         mozilla-release:
+            - project:releng:bouncer:action:aliases
+            - project:releng:bouncer:server:production
+         mozilla-esr60:
+            - project:releng:bouncer:action:aliases
+            - project:releng:bouncer:server:production
+         default:
+            - project:releng:bouncer:action:aliases
+            - project:releng:bouncer:server:staging
+   run-on-projects: []
+   shipping-phase: ship
+
+jobs:
+   devedition:
+      bouncer-products-per-alias:
+         firefox-devedition-latest-ssl: installer-ssl
+         firefox-devedition-latest: installer
+         firefox-devedition-stub: stub-installer
+      shipping-product: devedition
+
+   fennec:
+      bouncer-products-per-alias:
+         by-project:
+            mozilla-beta:
+               fennec-beta-latest: apk
+            mozilla-release:
+               fennec-latest: apk
+            birch:
+               fennec-latest: apk
+            maple:
+               fennec-beta-latest: apk
+            default: {}
+      shipping-product: fennec
+
+   firefox:
+      bouncer-products-per-alias:
+         by-project:
+            mozilla-beta:
+               firefox-beta-latest-ssl: installer-ssl
+               firefox-beta-latest: installer
+               firefox-beta-stub: stub-installer
+            mozilla-release:
+               firefox-latest-ssl: installer-ssl
+               firefox-latest: installer
+               firefox-stub: stub-installer
+            mozilla-esr60:
+               # convert to firefox-esr-latest when ESR52 stops
+               firefox-esr-next-latest-ssl: installer-ssl
+               firefox-esr-next-latest: installer
+            birch:
+               firefox-latest-ssl: installer-ssl
+               firefox-latest: installer
+               firefox-stub: stub-installer
+            jamun:
+               firefox-esr-next-latest-ssl: installer-ssl
+               firefox-esr-next-latest: installer
+            maple:
+               firefox-beta-latest-ssl: installer-ssl
+               firefox-beta-latest: installer
+               firefox-beta-stub: stub-installer
+            default: {}
+      shipping-product: firefox

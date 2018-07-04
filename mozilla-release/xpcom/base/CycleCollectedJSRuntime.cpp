@@ -73,7 +73,6 @@
 #include "mozilla/dom/PromiseBinding.h"
 #include "mozilla/dom/PromiseDebugging.h"
 #include "mozilla/dom/ScriptSettings.h"
-#include "jsprf.h"
 #include "js/Debug.h"
 #include "js/GCAPI.h"
 #include "nsContentUtils.h"
@@ -81,14 +80,14 @@
 #include "nsCycleCollectionParticipant.h"
 #include "nsCycleCollector.h"
 #include "nsDOMJSUtils.h"
+#include "nsExceptionHandler.h"
 #include "nsJSUtils.h"
 #include "nsWrapperCache.h"
 #include "nsStringBuffer.h"
 #include "GeckoProfiler.h"
-#include "ProfilerMarkerPayload.h"
 
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
+#ifdef MOZ_GECKO_PROFILER
+#include "ProfilerMarkerPayload.h"
 #endif
 
 #include "nsIException.h"
@@ -96,6 +95,11 @@
 #include "nsThread.h"
 #include "nsThreadUtils.h"
 #include "xpcpublic.h"
+
+#ifdef NIGHTLY_BUILD
+// For performance reasons, we make the JS Dev Error Interceptor a Nightly-only feature.
+#define MOZ_JS_DEV_ERROR_INTERCEPTOR = 1
+#endif // NIGHTLY_BUILD
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -139,6 +143,7 @@ struct NoteWeakMapChildrenTracer : public JS::CallbackTracer
     : JS::CallbackTracer(aRt), mCb(aCb), mTracedAny(false), mMap(nullptr),
       mKey(nullptr), mKeyDelegate(nullptr)
   {
+    setCanSkipJsids(true);
   }
   void onChild(const JS::GCCellPtr& aThing) override;
   nsCycleCollectionNoteRootCallback& mCb;
@@ -395,6 +400,7 @@ struct TraversalTracer : public JS::CallbackTracer
   TraversalTracer(JSRuntime* aRt, nsCycleCollectionTraversalCallback& aCb)
     : JS::CallbackTracer(aRt, DoNotTraceWeakMaps), mCb(aCb)
   {
+    setCanSkipJsids(true);
   }
   void onChild(const JS::GCCellPtr& aThing) override;
   nsCycleCollectionTraversalCallback& mCb;
@@ -403,6 +409,12 @@ struct TraversalTracer : public JS::CallbackTracer
 void
 TraversalTracer::onChild(const JS::GCCellPtr& aThing)
 {
+  // Checking strings and symbols for being gray is rather slow, and we don't
+  // need either of them for the cycle collector.
+  if (aThing.is<JSString>() || aThing.is<JS::Symbol>()) {
+    return;
+  }
+
   // Don't traverse non-gray objects, unless we want all traces.
   if (!JS::GCThingIsMarkedGray(aThing) && !mCb.WantAllTraces()) {
     return;
@@ -431,7 +443,7 @@ TraversalTracer::onChild(const JS::GCCellPtr& aThing)
     // due to information attached to the groups which can lead other groups to
     // be traced.
     JS_TraceObjectGroupCycleCollectorChildren(this, aThing);
-  } else if (!aThing.is<JSString>()) {
+  } else {
     JS::TraceChildren(this, aThing);
   }
 }
@@ -507,11 +519,15 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSContext* aCx)
   : mGCThingCycleCollectorGlobal(sGCThingCycleCollectorGlobal)
   , mJSZoneCycleCollectorGlobal(sJSZoneCycleCollectorGlobal)
   , mJSRuntime(JS_GetRuntime(aCx))
+  , mHasPendingIdleGCTask(false)
   , mPrevGCSliceCallback(nullptr)
   , mPrevGCNurseryCollectionCallback(nullptr)
   , mJSHolderMap(256)
   , mOutOfMemoryState(OOMState::OK)
   , mLargeAllocationFailureState(OOMState::OK)
+#ifdef DEBUG
+  , mShutdownCalled(false)
+#endif
 {
   MOZ_COUNT_CTOR(CycleCollectedJSRuntime);
   MOZ_ASSERT(aCx);
@@ -541,10 +557,9 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSContext* aCx)
   JS_SetExternalStringSizeofCallback(aCx, SizeofExternalStringCallback);
   JS::SetBuildIdOp(aCx, GetBuildId);
   JS::SetWarningReporter(aCx, MozCrashWarningReporter);
-#ifdef MOZ_CRASHREPORTER
-    js::AutoEnterOOMUnsafeRegion::setAnnotateOOMAllocationSizeCallback(
-            CrashReporter::AnnotateOOMAllocationSize);
-#endif
+
+  js::AutoEnterOOMUnsafeRegion::setAnnotateOOMAllocationSizeCallback(
+    CrashReporter::AnnotateOOMAllocationSize);
 
   static js::DOMCallbacks DOMcallbacks = {
     InstanceClassHasProtoAtDepth
@@ -553,19 +568,30 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSContext* aCx)
   js::SetScriptEnvironmentPreparer(aCx, &mEnvironmentPreparer);
 
   JS::dbg::SetDebuggerMallocSizeOf(aCx, moz_malloc_size_of);
+
+#ifdef MOZ_JS_DEV_ERROR_INTERCEPTOR
+  JS_SetErrorInterceptorCallback(mJSRuntime, &mErrorInterceptor);
+#endif // MOZ_JS_DEV_ERROR_INTERCEPTOR
 }
 
 void
 CycleCollectedJSRuntime::Shutdown(JSContext* cx)
 {
+#ifdef MOZ_JS_DEV_ERROR_INTERCEPTOR
+  mErrorInterceptor.Shutdown(mJSRuntime);
+#endif // MOZ_JS_DEV_ERROR_INTERCEPTOR
   JS_RemoveExtraGCRootsTracer(cx, TraceBlackJS, this);
   JS_RemoveExtraGCRootsTracer(cx, TraceGrayJS, this);
+#ifdef DEBUG
+  mShutdownCalled = true;
+#endif
 }
 
 CycleCollectedJSRuntime::~CycleCollectedJSRuntime()
 {
   MOZ_COUNT_DTOR(CycleCollectedJSRuntime);
   MOZ_ASSERT(!mDeferredFinalizerTable.Count());
+  MOZ_ASSERT(mShutdownCalled);
 }
 
 void
@@ -833,6 +859,7 @@ CycleCollectedJSRuntime::GCSliceCallback(JSContext* aContext,
   CycleCollectedJSRuntime* self = CycleCollectedJSRuntime::Get();
   MOZ_ASSERT(CycleCollectedJSContext::Get()->Context() == aContext);
 
+#ifdef MOZ_GECKO_PROFILER
   if (profiler_is_active()) {
     if (aProgress == JS::GC_CYCLE_END) {
       profiler_add_marker(
@@ -848,6 +875,7 @@ CycleCollectedJSRuntime::GCSliceCallback(JSContext* aContext,
                                          aDesc.sliceToJSON(aContext)));
     }
   }
+#endif
 
   if (aProgress == JS::GC_CYCLE_END &&
       JS::dbg::FireOnGarbageCollectionHookRequired(aContext)) {
@@ -930,8 +958,10 @@ CycleCollectedJSRuntime::GCNurseryCollectionCallback(JSContext* aContext,
 
   if (aProgress == JS::GCNurseryProgress::GC_NURSERY_COLLECTION_START) {
     self->mLatestNurseryCollectionStart = TimeStamp::Now();
-  } else if ((aProgress == JS::GCNurseryProgress::GC_NURSERY_COLLECTION_END) &&
-             profiler_is_active())
+  }
+#ifdef MOZ_GECKO_PROFILER
+  else if (aProgress == JS::GCNurseryProgress::GC_NURSERY_COLLECTION_END &&
+           profiler_is_active())
   {
     profiler_add_marker(
       "GCMinor",
@@ -939,6 +969,7 @@ CycleCollectedJSRuntime::GCNurseryCollectionCallback(JSContext* aContext,
                                        TimeStamp::Now(),
                                        JS::MinorGcToJSON(aContext)));
   }
+#endif
 
   if (self->mPrevGCNurseryCollectionCallback) {
     self->mPrevGCNurseryCollectionCallback(aContext, aProgress, aReason);
@@ -1047,15 +1078,16 @@ CycleCollectedJSRuntime::TraceNativeGrayRoots(JSTracer* aTracer)
 void
 CycleCollectedJSRuntime::AddJSHolder(void* aHolder, nsScriptObjectTracer* aTracer)
 {
-  JSHolderInfo* info = nullptr;
-  if (mJSHolderMap.Get(aHolder, &info)) {
+  auto entry = mJSHolderMap.LookupForAdd(aHolder);
+  if (entry) {
+    JSHolderInfo* info = entry.Data();
     MOZ_ASSERT(info->mHolder == aHolder);
     info->mTracer = aTracer;
     return;
   }
 
   mJSHolders.InfallibleAppend(JSHolderInfo {aHolder, aTracer});
-  mJSHolderMap.Put(aHolder, &mJSHolders.GetLast());
+  entry.OrInsert([&] {return &mJSHolders.GetLast();});
 }
 
 struct ClearJSHolder : public TraceCallbacks
@@ -1105,19 +1137,26 @@ struct ClearJSHolder : public TraceCallbacks
 void
 CycleCollectedJSRuntime::RemoveJSHolder(void* aHolder)
 {
-  JSHolderInfo* info = nullptr;
-  if (mJSHolderMap.Get(aHolder, &info)) {
+  auto entry = mJSHolderMap.Lookup(aHolder);
+  if (entry) {
+    JSHolderInfo* info = entry.Data();
     MOZ_ASSERT(info->mHolder == aHolder);
     info->mTracer->Trace(aHolder, ClearJSHolder(), nullptr);
 
     JSHolderInfo* lastInfo = &mJSHolders.GetLast();
-    if (info != lastInfo) {
+    bool updateLast = (info != lastInfo);
+    if (updateLast) {
       *info = *lastInfo;
-      mJSHolderMap.Put(info->mHolder, info);
     }
 
     mJSHolders.PopLast();
-    mJSHolderMap.Remove(aHolder);
+    entry.Remove();
+
+    if (updateLast) {
+      // We have to do this after removing the entry above to ensure that we
+      // don't trip over the hashtable generation number assertion.
+      mJSHolderMap.Put(info->mHolder, info);
+    }
   }
 }
 
@@ -1418,7 +1457,7 @@ CycleCollectedJSRuntime::FinalizeDeferredThings(CycleCollectedJSContext::Deferre
   MOZ_ASSERT(mDeferredFinalizerTable.Count() == 0);
 
   if (aType == CycleCollectedJSContext::FinalizeIncrementally) {
-    NS_DispatchToCurrentThread(mFinalizeRunnable);
+    NS_IdleDispatchToCurrentThread(do_AddRef(mFinalizeRunnable), 2500);
   } else {
     mFinalizeRunnable->ReleaseNow(false);
     MOZ_ASSERT(!mFinalizeRunnable);
@@ -1430,7 +1469,6 @@ CycleCollectedJSRuntime::AnnotateAndSetOutOfMemory(OOMState* aStatePtr,
                                                    OOMState aNewState)
 {
   *aStatePtr = aNewState;
-#ifdef MOZ_CRASHREPORTER
   CrashReporter::AnnotateCrashReport(aStatePtr == &mOutOfMemoryState
                                      ? NS_LITERAL_CSTRING("JSOutOfMemory")
                                      : NS_LITERAL_CSTRING("JSLargeAllocationFailure"),
@@ -1439,7 +1477,6 @@ CycleCollectedJSRuntime::AnnotateAndSetOutOfMemory(OOMState* aStatePtr,
                                      : aNewState == OOMState::Reported
                                      ? NS_LITERAL_CSTRING("Reported")
                                      : NS_LITERAL_CSTRING("Recovered"));
-#endif
 }
 
 void
@@ -1452,14 +1489,12 @@ CycleCollectedJSRuntime::OnGC(JSContext* aContext,
       mZonesWaitingForGC.Clear();
       break;
     case JSGC_END: {
-#ifdef MOZ_CRASHREPORTER
       if (mOutOfMemoryState == OOMState::Reported) {
         AnnotateAndSetOutOfMemory(&mOutOfMemoryState, OOMState::Recovered);
       }
       if (mLargeAllocationFailureState == OOMState::Reported) {
         AnnotateAndSetOutOfMemory(&mLargeAllocationFailureState, OOMState::Recovered);
       }
-#endif
 
       // Do any deferred finalization of native objects. Normally we do this
       // incrementally for an incremental GC, and immediately for a
@@ -1541,3 +1576,113 @@ CycleCollectedJSRuntime::Get()
   }
   return nullptr;
 }
+
+#ifdef MOZ_JS_DEV_ERROR_INTERCEPTOR
+
+namespace js {
+extern void DumpValue(const JS::Value& val);
+}
+
+void
+CycleCollectedJSRuntime::ErrorInterceptor::Shutdown(JSRuntime* rt)
+{
+  JS_SetErrorInterceptorCallback(rt, nullptr);
+  mThrownError.reset();
+}
+
+/* virtual */ void
+CycleCollectedJSRuntime::ErrorInterceptor::interceptError(JSContext* cx, const JS::Value& exn)
+{
+  if (mThrownError) {
+    // We already have an error, we don't need anything more.
+    return;
+  }
+
+  if (!nsContentUtils::ThreadsafeIsSystemCaller(cx)) {
+    // We are only interested in chrome code.
+    return;
+  }
+
+  const auto type = JS_GetErrorType(exn);
+  if (!type) {
+    // This is not one of the primitive error types.
+    return;
+  }
+
+  switch (*type) {
+    case JSExnType::JSEXN_REFERENCEERR:
+    case JSExnType::JSEXN_SYNTAXERR:
+    case JSExnType::JSEXN_TYPEERR:
+      break;
+    default:
+      // Not one of the errors we are interested in.
+      return;
+  }
+
+  // Now copy the details of the exception locally.
+  // While copying the details of an exception could be expensive, in most runs,
+  // this will be done at most once during the execution of the process, so the
+  // total cost should be reasonable.
+  JS::RootedValue value(cx, exn);
+
+  ErrorDetails details;
+  details.mType = *type;
+  // If `exn` isn't an exception object, `ExtractErrorValues` could end up calling
+  // `toString()`, which could in turn end up throwing an error. While this should
+  // work, we want to avoid that complex use case.
+  // Fortunately, we have already checked above that `exn` is an exception object,
+  // so nothing such should happen.
+  nsContentUtils::ExtractErrorValues(cx, value, details.mFilename, &details.mLine, &details.mColumn, details.mMessage);
+
+  nsAutoCString stack;
+  JS::UniqueChars buf = JS::FormatStackDump(cx, nullptr, /* showArgs = */ false, /* showLocals = */ false, /* showThisProps = */ false);
+  stack.Append(buf.get());
+  CopyUTF8toUTF16(buf.get(), details.mStack);
+
+  mThrownError.emplace(Move(details));
+}
+
+void
+CycleCollectedJSRuntime::ClearRecentDevError()
+{
+  mErrorInterceptor.mThrownError.reset();
+}
+
+bool
+CycleCollectedJSRuntime::GetRecentDevError(JSContext*cx, JS::MutableHandle<JS::Value> error)
+{
+  if (!mErrorInterceptor.mThrownError) {
+    return true;
+  }
+
+  // Create a copy of the exception.
+  JS::RootedObject obj(cx, JS_NewPlainObject(cx));
+  if (!obj) {
+    return false;
+  }
+
+  JS::RootedValue message(cx);
+  JS::RootedValue filename(cx);
+  JS::RootedValue stack(cx);
+  if (!ToJSValue(cx, mErrorInterceptor.mThrownError->mMessage, &message) ||
+      !ToJSValue(cx, mErrorInterceptor.mThrownError->mFilename, &filename) ||
+      !ToJSValue(cx, mErrorInterceptor.mThrownError->mStack, &stack)) {
+    return false;
+  }
+
+  // Build the object.
+  const auto FLAGS = JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT;
+  if (!JS_DefineProperty(cx, obj, "message", message, FLAGS) ||
+      !JS_DefineProperty(cx, obj, "fileName", filename, FLAGS) ||
+      !JS_DefineProperty(cx, obj, "lineNumber", mErrorInterceptor.mThrownError->mLine, FLAGS) ||
+      !JS_DefineProperty(cx, obj, "stack", stack, FLAGS)) {
+    return false;
+  }
+
+  // Pass the result.
+  error.setObject(*obj);
+  return true;
+}
+#endif // MOZ_JS_DEV_ERROR_INTERCEPTOR
+
+#undef MOZ_JS_DEV_ERROR_INTERCEPTOR

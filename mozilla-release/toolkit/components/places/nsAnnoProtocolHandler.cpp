@@ -23,6 +23,7 @@
 #include "nsIInputStream.h"
 #include "nsISupportsUtils.h"
 #include "nsIURI.h"
+#include "nsIURIMutator.h"
 #include "nsNetUtil.h"
 #include "nsIOutputStream.h"
 #include "nsInputStreamPump.h"
@@ -145,8 +146,8 @@ public:
       MOZ_ASSERT(NS_SUCCEEDED(rv));
       if (NS_SUCCEEDED(rv)) {
         RefPtr<nsInputStreamPump> pump;
-        rv = nsInputStreamPump::Create(getter_AddRefs(pump), stream, -1, -1, 0, 0,
-                                       true, target);
+        rv = nsInputStreamPump::Create(getter_AddRefs(pump), stream, 0, 0, true,
+                                       target);
         MOZ_ASSERT(NS_SUCCEEDED(rv));
         if (NS_SUCCEEDED(rv)) {
           return pump->AsyncRead(mListener, nullptr);
@@ -225,15 +226,10 @@ nsAnnoProtocolHandler::NewURI(const nsACString& aSpec,
                               const char *aOriginCharset,
                               nsIURI *aBaseURI, nsIURI **_retval)
 {
-  nsCOMPtr <nsIURI> uri = do_CreateInstance(NS_SIMPLEURI_CONTRACTID);
-  if (!uri)
-    return NS_ERROR_OUT_OF_MEMORY;
-  nsresult rv = uri->SetSpec(aSpec);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   *_retval = nullptr;
-  uri.swap(*_retval);
-  return NS_OK;
+  return NS_MutateURI(NS_SIMPLEURIMUTATOR_CONTRACTID)
+           .SetSpec(aSpec)
+           .Finalize(_retval);
 }
 
 
@@ -290,7 +286,7 @@ nsAnnoProtocolHandler::ParseAnnoURI(nsIURI* aURI,
 {
   nsresult rv;
   nsAutoCString path;
-  rv = aURI->GetPath(path);
+  rv = aURI->GetPathQueryRef(path);
   NS_ENSURE_SUCCESS(rv, rv);
 
   int32_t firstColon = path.FindChar(':');

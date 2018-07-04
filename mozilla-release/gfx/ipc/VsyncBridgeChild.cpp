@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=99: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -60,7 +60,7 @@ class NotifyVsyncTask : public Runnable
 public:
   NotifyVsyncTask(RefPtr<VsyncBridgeChild> aVsyncBridge,
                   TimeStamp aTimeStamp,
-                  const uint64_t& aLayersId)
+                  const layers::LayersId& aLayersId)
     : Runnable("gfx::NotifyVsyncTask")
     , mVsyncBridge(aVsyncBridge)
     , mTimeStamp(aTimeStamp)
@@ -75,7 +75,7 @@ public:
 private:
   RefPtr<VsyncBridgeChild> mVsyncBridge;
   TimeStamp mTimeStamp;
-  uint64_t mLayersId;
+  layers::LayersId mLayersId;
 };
 
 bool
@@ -85,7 +85,7 @@ VsyncBridgeChild::IsOnVsyncIOThread() const
 }
 
 void
-VsyncBridgeChild::NotifyVsync(TimeStamp aTimeStamp, const uint64_t& aLayersId)
+VsyncBridgeChild::NotifyVsync(TimeStamp aTimeStamp, const layers::LayersId& aLayersId)
 {
   // This should be on the Vsync thread (not the Vsync I/O thread).
   MOZ_ASSERT(!IsOnVsyncIOThread());
@@ -95,7 +95,7 @@ VsyncBridgeChild::NotifyVsync(TimeStamp aTimeStamp, const uint64_t& aLayersId)
 }
 
 void
-VsyncBridgeChild::NotifyVsyncImpl(TimeStamp aTimeStamp, const uint64_t& aLayersId)
+VsyncBridgeChild::NotifyVsyncImpl(TimeStamp aTimeStamp, const layers::LayersId& aLayersId)
 {
   // This should be on the Vsync I/O thread.
   MOZ_ASSERT(IsOnVsyncIOThread());
@@ -151,9 +151,9 @@ VsyncBridgeChild::ProcessingError(Result aCode, const char* aReason)
 }
 
 void
-VsyncBridgeChild::HandleFatalError(const char* aName, const char* aMsg) const
+VsyncBridgeChild::HandleFatalError(const char* aMsg) const
 {
-  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aName, aMsg, OtherPid());
+  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherPid());
 }
 
 } // namespace gfx

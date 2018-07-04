@@ -29,7 +29,6 @@
   position: absolute;
   white-space: pre;
   cursor: text;
-  -moz-transform-origin: 0% 0%;
   transform-origin: 0% 0%;
 }
 
@@ -57,8 +56,9 @@
   background-color: rgb(0, 100, 0);
 }
 
-.textLayer ::selection { background: rgb(0,0,255); }
 .textLayer ::-moz-selection { background: rgb(0,0,255); }
+
+.textLayer ::selection { background: rgb(0,0,255); }
 
 .textLayer .endOfContent {
   display: block;
@@ -70,6 +70,7 @@
   z-index: -1;
   cursor: default;
   -moz-user-select: none;
+       user-select: none;
 }
 
 .textLayer .endOfContent.active {
@@ -81,7 +82,8 @@
   position: absolute;
 }
 
-.annotationLayer .linkAnnotation > a {
+.annotationLayer .linkAnnotation > a,
+.annotationLayer .buttonWidgetAnnotation.pushButton > a {
   position: absolute;
   font-size: 1em;
   top: 0;
@@ -90,7 +92,8 @@
   height: 100%;
 }
 
-.annotationLayer .linkAnnotation > a:hover {
+.annotationLayer .linkAnnotation > a:hover,
+.annotationLayer .buttonWidgetAnnotation.pushButton > a:hover {
   opacity: 0.2;
   background: #ff0;
   box-shadow: 0px 2px 10px #ff0;
@@ -111,9 +114,18 @@
   box-sizing: border-box;
   font-size: 9px;
   height: 100%;
+  margin: 0;
   padding: 0 3px;
   vertical-align: top;
   width: 100%;
+}
+
+.annotationLayer .choiceWidgetAnnotation select option {
+  padding: 0;
+}
+
+.annotationLayer .buttonWidgetAnnotation.radioButton input {
+  border-radius: 50%;
 }
 
 .annotationLayer .textWidgetAnnotation textarea {
@@ -147,6 +159,38 @@
   border: 1px solid transparent;
 }
 
+.annotationLayer .buttonWidgetAnnotation.checkBox input:checked:before,
+.annotationLayer .buttonWidgetAnnotation.checkBox input:checked:after,
+.annotationLayer .buttonWidgetAnnotation.radioButton input:checked:before {
+  background-color: #000;
+  content: '';
+  display: block;
+  position: absolute;
+}
+
+.annotationLayer .buttonWidgetAnnotation.checkBox input:checked:before,
+.annotationLayer .buttonWidgetAnnotation.checkBox input:checked:after {
+  height: 80%;
+  left: 45%;
+  width: 1px;
+}
+
+.annotationLayer .buttonWidgetAnnotation.checkBox input:checked:before {
+  transform: rotate(45deg);
+}
+
+.annotationLayer .buttonWidgetAnnotation.checkBox input:checked:after {
+  transform: rotate(-45deg);
+}
+
+.annotationLayer .buttonWidgetAnnotation.radioButton input:checked:before {
+  border-radius: 50%;
+  height: 50%;
+  left: 30%;
+  top: 20%;
+  width: 50%;
+}
+
 .annotationLayer .textWidgetAnnotation input.comb {
   font-family: monospace;
   padding-left: 2px;
@@ -166,7 +210,8 @@
 .annotationLayer .buttonWidgetAnnotation.checkBox input,
 .annotationLayer .buttonWidgetAnnotation.radioButton input {
   -moz-appearance: none;
-  appearance: none;
+       appearance: none;
+  padding: 0;
 }
 
 .annotationLayer .popupWrapper {
@@ -184,16 +229,19 @@
   padding: 0.6em;
   margin-left: 5px;
   cursor: pointer;
+  font: message-box;
   word-wrap: break-word;
 }
 
 .annotationLayer .popup h1 {
   font-size: 1em;
   border-bottom: 1px solid #000000;
+  margin: 0;
   padding-bottom: 0.2em;
 }
 
 .annotationLayer .popup p {
+  margin: 0;
   padding-top: 0.2em;
 }
 
@@ -202,6 +250,11 @@
 .annotationLayer .squigglyAnnotation,
 .annotationLayer .strikeoutAnnotation,
 .annotationLayer .lineAnnotation svg line,
+.annotationLayer .squareAnnotation svg rect,
+.annotationLayer .circleAnnotation svg ellipse,
+.annotationLayer .polylineAnnotation svg polyline,
+.annotationLayer .polygonAnnotation svg polygon,
+.annotationLayer .stampAnnotation,
 .annotationLayer .fileAttachmentAnnotation {
   cursor: pointer;
 }
@@ -266,6 +319,10 @@
   border: 0;
 }
 
+:root {
+  --sidebar-width: 200px;
+}
+
 * {
   padding: 0;
   margin: 0;
@@ -309,6 +366,7 @@ select {
   overflow: hidden;
   cursor: none;
   -moz-user-select: none;
+       user-select: none;
 }
 
 #viewerContainer.pdfPresentationMode:fullscreen {
@@ -320,6 +378,7 @@ select {
   overflow: hidden;
   cursor: none;
   -moz-user-select: none;
+       user-select: none;
 }
 
 .pdfPresentationMode:-moz-full-screen a:not(.internalLink) {
@@ -351,31 +410,49 @@ select {
 
 #sidebarContainer {
   position: absolute;
-  top: 0;
+  top: 32px;
   bottom: 0;
-  width: 200px;
+  width: 200px; /* Here, and elsewhere below, keep the constant value for compatibility
+                   with older browsers that lack support for CSS variables. */
+  width: var(--sidebar-width);
   visibility: hidden;
+  z-index: 100;
+  border-top: 1px solid #333;
+
   transition-duration: 200ms;
   transition-timing-function: ease;
-
 }
 html[dir='ltr'] #sidebarContainer {
   transition-property: left;
   left: -200px;
+  left: calc(-1 * var(--sidebar-width));
 }
 html[dir='rtl'] #sidebarContainer {
   transition-property: right;
   right: -200px;
+  right: calc(-1 * var(--sidebar-width));
 }
 
-#outerContainer.sidebarMoving > #sidebarContainer,
-#outerContainer.sidebarOpen > #sidebarContainer {
+.loadingInProgress #sidebarContainer {
+  top: 36px;
+}
+
+#outerContainer.sidebarResizing #sidebarContainer {
+  /* Improve responsiveness and avoid visual glitches when the sidebar is resized. */
+  transition-duration: 0s;
+  /* Prevent e.g. the thumbnails being selected when the sidebar is resized. */
+  -moz-user-select: none;
+       user-select: none;
+}
+
+#outerContainer.sidebarMoving #sidebarContainer,
+#outerContainer.sidebarOpen #sidebarContainer {
   visibility: visible;
 }
-html[dir='ltr'] #outerContainer.sidebarOpen > #sidebarContainer {
+html[dir='ltr'] #outerContainer.sidebarOpen #sidebarContainer {
   left: 0px;
 }
-html[dir='rtl'] #outerContainer.sidebarOpen > #sidebarContainer {
+html[dir='rtl'] #outerContainer.sidebarOpen #sidebarContainer {
   right: 0px;
 }
 
@@ -386,16 +463,6 @@ html[dir='rtl'] #outerContainer.sidebarOpen > #sidebarContainer {
   bottom: 0;
   left: 0;
   min-width: 320px;
-  transition-duration: 200ms;
-  transition-timing-function: ease;
-}
-html[dir='ltr'] #outerContainer.sidebarOpen > #mainContainer {
-  transition-property: left;
-  left: 200px;
-}
-html[dir='rtl'] #outerContainer.sidebarOpen > #mainContainer {
-  transition-property: right;
-  right: 200px;
 }
 
 #sidebarContent {
@@ -403,7 +470,7 @@ html[dir='rtl'] #outerContainer.sidebarOpen > #mainContainer {
   bottom: 0;
   overflow: auto;
   position: absolute;
-  width: 200px;
+  width: 100%;
   background-color: hsla(0,0%,0%,.1);
 }
 html[dir='ltr'] #sidebarContent {
@@ -423,12 +490,31 @@ html[dir='rtl'] #sidebarContent {
   bottom: 0;
   left: 0;
   outline: none;
+
+  transition-duration: 200ms;
+  transition-timing-function: ease;
 }
 html[dir='ltr'] #viewerContainer {
   box-shadow: inset 1px 0 0 hsla(0,0%,100%,.05);
 }
 html[dir='rtl'] #viewerContainer {
   box-shadow: inset -1px 0 0 hsla(0,0%,100%,.05);
+}
+
+#outerContainer.sidebarResizing #viewerContainer {
+  /* Improve responsiveness and avoid visual glitches when the sidebar is resized. */
+  transition-duration: 0s;
+}
+
+html[dir='ltr'] #outerContainer.sidebarOpen #viewerContainer {
+  transition-property: left;
+  left: 200px;
+  left: var(--sidebar-width);
+}
+html[dir='rtl'] #outerContainer.sidebarOpen #viewerContainer {
+  transition-property: right;
+  right: 200px;
+  right: var(--sidebar-width);
 }
 
 .toolbar {
@@ -444,7 +530,7 @@ html[dir='rtl'] #viewerContainer {
 }
 
 #toolbarSidebar {
-  width: 200px;
+  width: 100%;
   height: 32px;
   background-color: #424242; /* fallback */
   background-image: url(images/texture.png),
@@ -463,6 +549,21 @@ html[dir='rtl'] #toolbarSidebar {
               0 0 1px hsla(0,0%,0%,.1);
 }
 
+#sidebarResizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 200;
+  cursor: ew-resize;
+}
+html[dir='ltr'] #sidebarResizer {
+  right: -6px;
+}
+html[dir='rtl'] #sidebarResizer {
+  left: -6px;
+}
+
 #toolbarContainer, .findbar, .secondaryToolbar {
   position: relative;
   height: 32px;
@@ -471,15 +572,13 @@ html[dir='rtl'] #toolbarSidebar {
                     linear-gradient(hsla(0,0%,32%,.99), hsla(0,0%,27%,.95));
 }
 html[dir='ltr'] #toolbarContainer, .findbar, .secondaryToolbar {
-  box-shadow: inset 1px 0 0 hsla(0,0%,100%,.08),
-              inset 0 1px 1px hsla(0,0%,0%,.15),
+  box-shadow: inset 0 1px 1px hsla(0,0%,0%,.15),
               inset 0 -1px 0 hsla(0,0%,100%,.05),
               0 1px 0 hsla(0,0%,0%,.15),
               0 1px 1px hsla(0,0%,0%,.1);
 }
 html[dir='rtl'] #toolbarContainer, .findbar, .secondaryToolbar {
-  box-shadow: inset -1px 0 0 hsla(0,0%,100%,.08),
-              inset 0 1px 1px hsla(0,0%,0%,.15),
+  box-shadow: inset 0 1px 1px hsla(0,0%,0%,.15),
               inset 0 -1px 0 hsla(0,0%,100%,.05),
               0 1px 0 hsla(0,0%,0%,.15),
               0 1px 1px hsla(0,0%,0%,.1);
@@ -569,13 +668,11 @@ html[dir='rtl'] .findbar {
 
 .findbar label {
   -moz-user-select: none;
+       user-select: none;
 }
 
 #findInput {
   width: 200px;
-}
-#findInput::-moz-placeholder {
-  font-style: italic;
 }
 #findInput::placeholder {
   font-style: italic;
@@ -838,6 +935,7 @@ html[dir='rtl'] .splitToolbarButtonSeparator {
   font-size: 12px;
   line-height: 14px;
   -moz-user-select: none;
+       user-select: none;
   /* Opera does not support user-select, use <... unselectable="on"> instead */
   cursor: default;
   transition-property: background-color, border-color, box-shadow;
@@ -1269,21 +1367,27 @@ html[dir='rtl'] .verticalToolbarSeparator {
   line-height: 14px;
   text-align: left;
   -moz-user-select: none;
+       user-select: none;
   cursor: default;
 }
 
 #thumbnailView {
   position: absolute;
-  width: 120px;
+  width: calc(100% - 60px);
   top: 0;
   bottom: 0;
-  padding: 10px 40px 0;
+  padding: 10px 30px 0;
   overflow: auto;
 }
 
 .thumbnail {
+  margin: 0 10px 5px 10px;
+}
+html[dir='ltr'] .thumbnail {
   float: left;
-  margin-bottom: 5px;
+}
+html[dir='rtl'] .thumbnail {
+  float: right;
 }
 
 #thumbnailView > a:last-of-type > .thumbnail {
@@ -1296,7 +1400,7 @@ html[dir='rtl'] .verticalToolbarSeparator {
 
 .thumbnail:not([data-loaded]) {
   border: 1px dashed rgba(255, 255, 255, 0.5);
-  margin: -1px -1px 4px -1px;
+  margin: -1px 9px 4px 9px;
 }
 
 .thumbnailImage {
@@ -1347,11 +1451,12 @@ a:focus > .thumbnail > .thumbnailSelectionRing,
 #outlineView,
 #attachmentsView {
   position: absolute;
-  width: 192px;
+  width: calc(100% - 8px);
   top: 0;
   bottom: 0;
   overflow: auto;
   -moz-user-select: none;
+       user-select: none;
 }
 
 #outlineView {
@@ -1385,6 +1490,7 @@ html[dir='rtl'] .outlineItem > .outlineItems {
   font-size: 13px;
   line-height: 15px;
   -moz-user-select: none;
+       user-select: none;
   white-space: normal;
 }
 
@@ -1479,8 +1585,8 @@ html[dir='rtl'] .outlineItemToggler::before {
 /* TODO: file FF bug to support ::-moz-selection:window-inactive
    so we can override the opaque grey background when the window is inactive;
    see https://bugzilla.mozilla.org/show_bug.cgi?id=706209 */
-::selection { background: rgba(0,0,255,0.3); }
 ::-moz-selection { background: rgba(0,0,255,0.3); }
+::selection { background: rgba(0,0,255,0.3); }
 
 #errorWrapper {
   background: none repeat scroll 0 0 #FF5555;
@@ -1983,28 +2089,6 @@ html[dir='rtl'] #documentPropertiesOverlay .row > * {
   display: none;
 }
 
-@media all and (max-width: 1040px) {
-  #outerContainer.sidebarMoving #toolbarViewerMiddle,
-  #outerContainer.sidebarOpen #toolbarViewerMiddle {
-    display: table;
-    margin: auto;
-    left: auto;
-    position: inherit;
-    transform: none;
-  }
-}
-
-@media all and (max-width: 980px) {
-  .sidebarMoving .hiddenLargeView,
-  .sidebarOpen .hiddenLargeView {
-    display: none;
-  }
-  .sidebarMoving .visibleLargeView,
-  .sidebarOpen .visibleLargeView {
-    display: inherit;
-  }
-}
-
 @media all and (max-width: 900px) {
   #toolbarViewerMiddle {
     display: table;
@@ -2013,33 +2097,17 @@ html[dir='rtl'] #documentPropertiesOverlay .row > * {
     position: inherit;
     transform: none;
   }
-  .sidebarMoving .hiddenMediumView,
-  .sidebarOpen .hiddenMediumView {
-    display: none;
-  }
-  .sidebarMoving .visibleMediumView,
-  .sidebarOpen .visibleMediumView {
-    display: inherit;
-  }
 }
 
 @media all and (max-width: 840px) {
-  #sidebarContainer {
-    top: 32px;
-    z-index: 100;
-  }
-  .loadingInProgress #sidebarContainer {
-    top: 37px;
-  }
   #sidebarContent {
-    top: 32px;
     background-color: hsla(0,0%,0%,.7);
   }
 
-  html[dir='ltr'] #outerContainer.sidebarOpen > #mainContainer {
+  html[dir='ltr'] #outerContainer.sidebarOpen #viewerContainer {
     left: 0px;
   }
-  html[dir='rtl'] #outerContainer.sidebarOpen > #mainContainer {
+  html[dir='rtl'] #outerContainer.sidebarOpen #viewerContainer {
     right: 0px;
   }
 

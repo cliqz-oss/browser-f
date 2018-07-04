@@ -4,21 +4,18 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-let log = Cu.import("resource://gre/modules/Log.jsm", {})
+let log = ChromeUtils.import("resource://gre/modules/Log.jsm", {})
             .Log.repository.getLogger("Sync.RemoteTabs");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
-  "resource:///modules/BrowserUITelemetry.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUIUtils",
-  "resource:///modules/PlacesUIUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-  "resource://gre/modules/Services.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  BrowserUITelemetry: "resource:///modules/BrowserUITelemetry.jsm",
+  OpenInTabsUtils: "resource:///modules/OpenInTabsUtils.jsm",
+});
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "TabListComponent"
 ];
 
@@ -116,12 +113,12 @@ TabListComponent.prototype = {
   },
 
   onOpenTab(url, where, params) {
-    this._window.openUILinkIn(url, where, params);
+    this._window.openTrustedLinkIn(url, where, params);
     BrowserUITelemetry.countSyncedTabEvent("open", "sidebar");
   },
 
   onOpenTabs(urls, where) {
-    if (!PlacesUIUtils.confirmOpenInTabs(urls.length, this._window)) {
+    if (!OpenInTabsUtils.confirmOpenInTabs(urls.length, this._window)) {
       return;
     }
     if (where == "window") {

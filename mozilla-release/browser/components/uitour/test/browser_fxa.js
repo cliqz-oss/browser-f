@@ -3,12 +3,10 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://services-sync/UIState.jsm");
 
-Cu.import("resource://services-sync/UIState.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
-                                  "resource://gre/modules/FxAccounts.jsm");
+ChromeUtils.defineModuleGetter(this, "fxAccounts",
+                               "resource://gre/modules/FxAccounts.jsm");
 
 var gTestTab;
 var gContentAPI;
@@ -26,8 +24,6 @@ registerCleanupFunction(async function() {
 
 var tests = [
   taskify(async function test_highlight_accountStatus_loggedOut() {
-    let userData = await fxAccounts.getSignedInUser();
-    is(userData, null, "Not logged in initially");
     await showMenuPromise("appMenu");
     await showHighlightPromise("accountStatus");
     let highlight = document.getElementById("UITourHighlightContainer");
@@ -35,37 +31,15 @@ var tests = [
   }),
 
   taskify(async function test_highlight_accountStatus_loggedIn() {
-    await setSignedInUser();
-    let userData = await fxAccounts.getSignedInUser();
-    isnot(userData, null, "Logged in now");
-    gSync.updateAllUI({ status: UIState.STATUS_SIGNED_IN, email: "foo@example.com" });
+    gSync.updateAllUI({ status: UIState.STATUS_SIGNED_IN, lastSync: new Date(), email: "foo@example.com" });
     await showMenuPromise("appMenu");
     await showHighlightPromise("accountStatus");
     let highlight = document.getElementById("UITourHighlightContainer");
-    let photon = Services.prefs.getBoolPref("browser.photon.structure.enabled");
-    let expectedTarget = photon ? "appMenu-fxa-avatar" : "PanelUI-fxa-avatar";
-    is(highlight.popupBoxObject.anchorNode.id, expectedTarget, "Anchored on avatar");
+    let expectedTarget = "appMenu-fxa-avatar";
+    is(highlight.anchorNode.id, expectedTarget, "Anchored on avatar");
     is(highlight.getAttribute("targetName"), "accountStatus", "Correct highlight target");
   }),
 ];
-
-// Helpers copied from browser_aboutAccounts.js
-// watch out - these will fire observers which if you aren't careful, may
-// interfere with the tests.
-function setSignedInUser(data) {
-  if (!data) {
-    data = {
-      email: "foo@example.com",
-      uid: "1234@lcip.org",
-      assertion: "foobar",
-      sessionToken: "dead",
-      kA: "beef",
-      kB: "cafe",
-      verified: true
-    };
-  }
- return fxAccounts.setSignedInUser(data);
-}
 
 function signOut() {
   // we always want a "localOnly" signout here...

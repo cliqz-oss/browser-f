@@ -17,7 +17,6 @@ interface nsIDocShellTreeItem;
 [scriptable, uuid(E8C414C4-DC38-4BA3-AB4E-EC4CBBE22907)]
 interface nsIWebBrowserChrome : nsISupports
 {
-    const unsigned long STATUS_SCRIPT         = 0x00000001;
     const unsigned long STATUS_LINK           = 0x00000003;
 
     /**
@@ -76,9 +75,6 @@ interface nsIWebBrowserChrome : nsISupports
     const unsigned long CHROME_PRIVATE_WINDOW         = 0x00010000;
     const unsigned long CHROME_NON_PRIVATE_WINDOW     = 0x00020000;
     const unsigned long CHROME_PRIVATE_LIFETIME       = 0x00040000;
-
-    // Whether this was opened by nsGlobalWindow::ShowModalDialog.
-    const unsigned long CHROME_MODAL_CONTENT_WINDOW   = 0x00080000;
 
     // Whether this window should use remote (out-of-process) tabs.
     const unsigned long CHROME_REMOTE_WINDOW          = 0x00100000;

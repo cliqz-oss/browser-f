@@ -110,13 +110,13 @@ nsNSSDialogs::ConfirmDownloadCACert(nsIInterfaceRequestor* ctx,
     return NS_ERROR_FAILURE;
   }
 
-  nsresult rv = argArray->AppendElement(cert, false);
+  nsresult rv = argArray->AppendElement(cert);
   if (NS_FAILED(rv)) {
     return rv;
   }
 
   nsCOMPtr<nsIWritablePropertyBag2> retVals = new nsHashPropertyBag();
-  rv = argArray->AppendElement(retVals, false);
+  rv = argArray->AppendElement(retVals);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -153,16 +153,9 @@ nsNSSDialogs::ConfirmDownloadCACert(nsIInterfaceRequestor* ctx,
   if (NS_FAILED(rv)) {
     return rv;
   }
-  bool trustForObjSign = false;
-  rv = retVals->GetPropertyAsBool(NS_LITERAL_STRING("trustForObjSign"),
-                                  &trustForObjSign);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
 
   *trust |= trustForSSL ? nsIX509CertDB::TRUSTED_SSL : 0;
   *trust |= trustForEmail ? nsIX509CertDB::TRUSTED_EMAIL : 0;
-  *trust |= trustForObjSign ? nsIX509CertDB::TRUSTED_OBJSIGN : 0;
 
   return NS_OK;
 }
@@ -194,7 +187,7 @@ nsNSSDialogs::ChooseCertificate(nsIInterfaceRequestor* ctx,
   if (NS_FAILED(rv)) {
     return rv;
   }
-  rv = argArray->AppendElement(hostnameVariant, false);
+  rv = argArray->AppendElement(hostnameVariant);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -204,7 +197,7 @@ nsNSSDialogs::ChooseCertificate(nsIInterfaceRequestor* ctx,
   if (NS_FAILED(rv)) {
     return rv;
   }
-  rv = argArray->AppendElement(organizationVariant, false);
+  rv = argArray->AppendElement(organizationVariant);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -214,7 +207,7 @@ nsNSSDialogs::ChooseCertificate(nsIInterfaceRequestor* ctx,
   if (NS_FAILED(rv)) {
     return rv;
   }
-  rv = argArray->AppendElement(issuerOrgVariant, false);
+  rv = argArray->AppendElement(issuerOrgVariant);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -224,18 +217,18 @@ nsNSSDialogs::ChooseCertificate(nsIInterfaceRequestor* ctx,
   if (NS_FAILED(rv)) {
     return rv;
   }
-  rv = argArray->AppendElement(portVariant, false);
+  rv = argArray->AppendElement(portVariant);
   if (NS_FAILED(rv)) {
     return rv;
   }
 
-  rv = argArray->AppendElement(certList, false);
+  rv = argArray->AppendElement(certList);
   if (NS_FAILED(rv)) {
     return rv;
   }
 
   nsCOMPtr<nsIWritablePropertyBag2> retVals = new nsHashPropertyBag();
-  rv = argArray->AppendElement(retVals, false);
+  rv = argArray->AppendElement(retVals);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -320,7 +313,7 @@ nsNSSDialogs::GetPKCS12FilePassword(nsIInterfaceRequestor* ctx,
 
   nsAutoString msg;
   nsresult rv = mPIPStringBundle->GetStringFromName(
-    "getPKCS12FilePasswordMessage", getter_Copies(msg));
+    "getPKCS12FilePasswordMessage", msg);
   if (NS_FAILED(rv)) {
     return rv;
   }

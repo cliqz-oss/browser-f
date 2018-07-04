@@ -10,6 +10,7 @@
 #include "base/debug/alias.h"
 #include "base/debug/profiler.h"
 #include "base/logging.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/threading/thread_id_name_manager.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/tracked_objects.h"
@@ -30,8 +31,14 @@ typedef struct tagTHREADNAME_INFO {
   DWORD dwFlags;  // Reserved for future use, must be zero.
 } THREADNAME_INFO;
 
+// The SetThreadDescription API was brought in version 1607 of Windows 10.
+typedef HRESULT(WINAPI* SetThreadDescription)(HANDLE hThread,
+                                              PCWSTR lpThreadDescription);
+
 // This function has try handling, so it is separated out of its caller.
 void SetNameInternal(PlatformThreadId thread_id, const char* name) {
+  //This function is only used for debugging purposes, as you can find by its caller
+#ifndef __MINGW32__
   THREADNAME_INFO info;
   info.dwType = 0x1000;
   info.szName = name;
@@ -43,6 +50,7 @@ void SetNameInternal(PlatformThreadId thread_id, const char* name) {
                    reinterpret_cast<DWORD_PTR*>(&info));
   } __except(EXCEPTION_CONTINUE_EXECUTION) {
   }
+#endif
 }
 
 struct ThreadParams {
@@ -172,6 +180,15 @@ void PlatformThread::SetName(const std::string& name) {
   if (name != "BrokerEvent")
     tracked_objects::ThreadData::InitializeThreadContext(name);
 
+  // The SetThreadDescription API works even if no debugger is attached.
+  auto set_thread_description_func =
+      reinterpret_cast<SetThreadDescription>(::GetProcAddress(
+          ::GetModuleHandle(L"Kernel32.dll"), "SetThreadDescription"));
+  if (set_thread_description_func) {
+    set_thread_description_func(::GetCurrentThread(),
+                                base::UTF8ToWide(name).c_str());
+  }
+
   // The debugger needs to be around to catch the name in the exception.  If
   // there isn't a debugger, we are just needlessly throwing an exception.
   // If this image file is instrumented, we raise the exception anyway
@@ -211,9 +228,6 @@ bool PlatformThread::CreateNonJoinableWithPriority(size_t stack_size,
 
 // static
 void PlatformThread::Join(PlatformThreadHandle thread_handle) {
-  // Record the event that this thread is blocking upon (for hang diagnosis).
-  base::debug::ScopedThreadJoinActivity thread_activity(&thread_handle);
-
   DCHECK(thread_handle.platform_handle());
   // TODO(willchan): Enable this check once I can get it to work for Windows
   // shutdown.
@@ -223,6 +237,19 @@ void PlatformThread::Join(PlatformThreadHandle thread_handle) {
 #if 0
   base::ThreadRestrictions::AssertIOAllowed();
 #endif
+
+  DWORD thread_id = 0;
+  thread_id = ::GetThreadId(thread_handle.platform_handle());
+  DWORD last_error = 0;
+  if (!thread_id)
+    last_error = ::GetLastError();
+
+  // Record information about the exiting thread in case joining hangs.
+  base::debug::Alias(&thread_id);
+  base::debug::Alias(&last_error);
+
+  // Record the event that this thread is blocking upon (for hang diagnosis).
+  base::debug::ScopedThreadJoinActivity thread_activity(&thread_handle);
 
   // Wait for the thread to exit.  It should already have terminated but make
   // sure this assumption is valid.

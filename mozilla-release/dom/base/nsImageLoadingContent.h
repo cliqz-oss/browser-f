@@ -14,7 +14,6 @@
 #define nsImageLoadingContent_h__
 
 #include "imgINotificationObserver.h"
-#include "imgIOnloadBlocker.h"
 #include "mozilla/CORSMode.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/TimeStamp.h"
@@ -41,8 +40,7 @@ class AsyncEventDispatcher;
 #undef LoadImage
 #endif
 
-class nsImageLoadingContent : public nsIImageLoadingContent,
-                              public imgIOnloadBlocker
+class nsImageLoadingContent : public nsIImageLoadingContent
 {
   template <typename T> using Maybe = mozilla::Maybe<T>;
   using Nothing = mozilla::Nothing;
@@ -56,30 +54,26 @@ public:
 
   NS_DECL_IMGINOTIFICATIONOBSERVER
   NS_DECL_NSIIMAGELOADINGCONTENT
-  NS_DECL_IMGIONLOADBLOCKER
 
   // Web IDL binding methods.
-  // Note that the XPCOM SetLoadingEnabled, AddObserver, RemoveObserver,
-  // ForceImageState methods are OK for Web IDL bindings to use as well,
-  // since none of them throw when called via the Web IDL bindings.
+  // Note that the XPCOM SetLoadingEnabled, ForceImageState methods are OK for
+  // Web IDL bindings to use as well, since none of them throw when called via
+  // the Web IDL bindings.
 
   bool LoadingEnabled() const { return mLoadingEnabled; }
   int16_t ImageBlockingStatus() const
   {
     return mImageBlockingStatus;
   }
+  void AddObserver(imgINotificationObserver* aObserver);
+  void RemoveObserver(imgINotificationObserver* aObserver);
   already_AddRefed<imgIRequest>
     GetRequest(int32_t aRequestType, mozilla::ErrorResult& aError);
   int32_t
     GetRequestType(imgIRequest* aRequest, mozilla::ErrorResult& aError);
   already_AddRefed<nsIURI> GetCurrentURI(mozilla::ErrorResult& aError);
-  void ForceReload(const mozilla::dom::Optional<bool>& aNotify,
-                   mozilla::ErrorResult& aError);
-
-  // XPCOM [optional] syntax helper
-  nsresult ForceReload(bool aNotify = true) {
-    return ForceReload(aNotify, 1);
-  }
+  already_AddRefed<nsIURI> GetCurrentRequestFinalURI();
+  void ForceReload(bool aNotify, mozilla::ErrorResult& aError);
 
 protected:
   enum ImageLoadType {
@@ -103,9 +97,12 @@ protected:
    * @param aNotify If true, nsIDocumentObserver state change notifications
    *                will be sent as needed.
    * @param aImageLoadType The ImageLoadType for this request
+   * @param aTriggeringPrincipal Optional parameter specifying the triggering
+   *        principal to use for the image load
    */
   nsresult LoadImage(const nsAString& aNewURI, bool aForce,
-                     bool aNotify, ImageLoadType aImageLoadType);
+                     bool aNotify, ImageLoadType aImageLoadType,
+                     nsIPrincipal* aTriggeringPrincipal = nullptr);
 
   /**
    * ImageState is called by subclasses that are computing their content state.
@@ -135,11 +132,23 @@ protected:
    *        This is purely a performance optimization.
    * @param aLoadFlags Optional parameter specifying load flags to use for
    *        the image load
+   * @param aTriggeringPrincipal Optional parameter specifying the triggering
+   *        principal to use for the image load
    */
   nsresult LoadImage(nsIURI* aNewURI, bool aForce, bool aNotify,
                      ImageLoadType aImageLoadType, bool aLoadStart = true,
                      nsIDocument* aDocument = nullptr,
-                     nsLoadFlags aLoadFlags = nsIRequest::LOAD_NORMAL);
+                     nsLoadFlags aLoadFlags = nsIRequest::LOAD_NORMAL,
+                     nsIPrincipal* aTriggeringPrincipal = nullptr);
+
+  nsresult LoadImage(nsIURI* aNewURI, bool aForce, bool aNotify,
+                     ImageLoadType aImageLoadType,
+                     nsIPrincipal* aTriggeringPrincipal)
+  {
+    return LoadImage(aNewURI, aForce, aNotify, aImageLoadType,
+                     true, nullptr, nsIRequest::LOAD_NORMAL,
+                     aTriggeringPrincipal);
+  }
 
   /**
    * helpers to get the document for this content (from the nodeinfo
@@ -406,8 +415,6 @@ protected:
   enum {
     // Set if the request needs ResetAnimation called on it.
     REQUEST_NEEDS_ANIMATION_RESET = 0x00000001U,
-    // Set if the request is blocking onload.
-    REQUEST_BLOCKS_ONLOAD = 0x00000002U,
     // Set if the request is currently tracked with the document.
     REQUEST_IS_TRACKED = 0x00000004U,
     // Set if this is an imageset request, such as from <img srcset> or

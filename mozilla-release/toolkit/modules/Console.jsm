@@ -20,14 +20,12 @@
  *   implementation isn't always required (or even well defined)
  */
 
-this.EXPORTED_SYMBOLS = [ "console", "ConsoleAPI" ];
+var EXPORTED_SYMBOLS = [ "console", "ConsoleAPI" ];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
 var gTimerRegistry = new Map();
 
@@ -142,7 +140,7 @@ function stringify(aThing, aAllowNewLines) {
 
   if (typeof aThing == "object") {
     let type = getCtorName(aThing);
-    if (aThing instanceof Components.interfaces.nsIDOMNode && aThing.tagName) {
+    if (aThing instanceof Ci.nsIDOMNode && aThing.tagName) {
       return debugElement(aThing);
     }
     type = (type == "Object" ? "" : type + " ");
@@ -170,7 +168,7 @@ function stringify(aThing, aAllowNewLines) {
 /**
  * Create a simple debug representation of a given element.
  *
- * @param {nsIDOMElement} aElement
+ * @param {Element} aElement
  *        The element to debug
  * @return {string}
  *        A simple single line representation of aElement
@@ -226,7 +224,7 @@ function log(aThing) {
           frame = frame.caller;
         }
       }
-    } else if (aThing instanceof Components.interfaces.nsIDOMNode && aThing.tagName) {
+    } else if (aThing instanceof Ci.nsIDOMNode && aThing.tagName) {
       reply += "  " + debugElement(aThing) + "\n";
     } else {
       let keys = Object.getOwnPropertyNames(aThing);
@@ -294,6 +292,7 @@ const LOG_LEVELS = {
   "trace": 3,
   "timeEnd": 3,
   "time": 3,
+  "assert": 3,
   "group": 3,
   "groupEnd": 3,
   "profile": 3,
@@ -645,6 +644,7 @@ ConsoleAPI.prototype = {
    */
   _maxLogLevel: null,
   debug: createMultiLineDumper("debug"),
+  assert: createDumper("assert"),
   log: createDumper("log"),
   info: createDumper("info"),
   warn: createDumper("warn"),
@@ -727,5 +727,4 @@ ConsoleAPI.prototype = {
   },
 };
 
-this.console = new ConsoleAPI();
-this.ConsoleAPI = ConsoleAPI;
+var console = new ConsoleAPI();

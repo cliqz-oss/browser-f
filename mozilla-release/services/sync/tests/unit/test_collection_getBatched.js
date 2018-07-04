@@ -1,19 +1,13 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-
-function run_test() {
-  initTestLogging("Trace");
-  Log.repository.getLogger("Sync.Collection").level = Log.Level.Trace;
-  run_next_test();
-}
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
 
 function recordRange(lim, offset, total) {
   let res = [];
   for (let i = offset; i < Math.min(lim + offset, total); ++i) {
-    res.push(JSON.stringify({ id: String(i), payload: "test:" + i }));
+    res.push({ id: String(i), payload: "test:" + i });
   }
   return res;
 }
@@ -177,7 +171,7 @@ add_task(async function test_get_throws() {
 });
 
 function checkRecordsOrder(records) {
-  ok(records.length > 0)
+  ok(records.length > 0);
   for (let i = 0; i < records.length; i++) {
     equal(records[i].id, String(i));
     equal(records[i].payload, "test:" + i);

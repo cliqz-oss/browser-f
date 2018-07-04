@@ -6,7 +6,7 @@
 // Test that a NodeListActor initialized with null nodelist doesn't cause
 // exceptions when calling NodeListActor.form.
 
-const { NodeListActor } = require("devtools/server/actors/inspector");
+const { NodeListActor } = require("devtools/server/actors/inspector/node");
 
 function run_test() {
   check_actor_for_list(null);
@@ -15,7 +15,7 @@ function run_test() {
 }
 
 function check_actor_for_list(nodelist) {
-  do_print("Checking NodeListActor with nodelist '" + nodelist + "' works.");
+  info("Checking NodeListActor with nodelist '" + nodelist + "' works.");
   let actor = new NodeListActor({}, nodelist);
   let form = actor.form();
 

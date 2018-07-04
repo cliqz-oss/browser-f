@@ -7,7 +7,8 @@ echo "running as" $(id)
 # Detect release version.
 . /etc/lsb-release
 if [ "${DISTRIB_RELEASE}" == "12.04" ]; then
-    UBUNTU_1204=1
+    echo "Ubuntu 12.04 not supported"
+    exit 1
 elif [ "${DISTRIB_RELEASE}" == "16.04" ]; then
     UBUNTU_1604=1
 fi
@@ -115,11 +116,6 @@ if [ ${MOZHARNESS_URL} ]; then
     MOZHARNESS_PATH=`pwd`/mozharness
 fi
 
-# pulseaudio daemon must be started before xvfb on Ubuntu 12.04.
-if [ "${UBUNTU_1204}" ]; then
-    maybe_start_pulse
-fi
-
 # run XVfb in the background, if necessary
 if $NEED_XVFB; then
     # note that this file is not available when run under native-worker
@@ -162,8 +158,7 @@ if [ "${UBUNTU_1604}" ]; then
 fi
 
 # For telemetry purposes, the build process wants information about the
-# source it is running; tc-vcs obscures this a little, but we can provide
-# it directly.
+# source it is running
 export MOZ_SOURCE_REPO="${GECKO_HEAD_REPOSITORY}"
 export MOZ_SOURCE_CHANGESET="${GECKO_HEAD_REV}"
 

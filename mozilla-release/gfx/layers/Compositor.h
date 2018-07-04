@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef MOZILLA_GFX_COMPOSITOR_H
 #define MOZILLA_GFX_COMPOSITOR_H
@@ -134,6 +135,7 @@ class CompositorD3D11;
 class BasicCompositor;
 class TextureReadLock;
 struct GPUStats;
+class AsyncReadbackBuffer;
 
 enum SurfaceInitMode
 {
@@ -262,6 +264,33 @@ public:
                                const gfx::IntPoint& aSourcePoint) = 0;
 
   /**
+   * Grab a snapshot of aSource and store it in aDest, so that the pixels can
+   * be read on the CPU by mapping aDest at some point in the future.
+   * aSource and aDest must have the same size.
+   * If this is a GPU compositor, this call must not block on the GPU.
+   * Returns whether the operation was successful.
+   */
+  virtual bool
+  ReadbackRenderTarget(CompositingRenderTarget* aSource,
+                       AsyncReadbackBuffer* aDest) { return false; }
+
+  /**
+   * Create an AsyncReadbackBuffer of the specified size. Can return null.
+   */
+  virtual already_AddRefed<AsyncReadbackBuffer>
+  CreateAsyncReadbackBuffer(const gfx::IntSize& aSize) { return nullptr; }
+
+  /**
+   * Draw a part of aSource into the current render target.
+   * Scaling is done with linear filtering.
+   * Returns whether the operation was successful.
+   */
+  virtual bool
+  BlitRenderTarget(CompositingRenderTarget* aSource,
+                   const gfx::IntSize& aSourceSize,
+                   const gfx::IntSize& aDestSize) { return false; }
+
+  /**
    * Sets the given surface as the target for subsequent calls to DrawQuad.
    * Passing null as aSurface sets the screen as the target.
    */
@@ -272,6 +301,14 @@ public:
    * rendering to the screen.
    */
   virtual CompositingRenderTarget* GetCurrentRenderTarget() const = 0;
+
+  /**
+   * Returns a render target which contains the entire window's drawing.
+   * On platforms where no such render target is used during compositing (e.g.
+   * with buffered BasicCompositor, where only the invalid area is drawn to a
+   * render target), this will return null.
+   */
+  virtual CompositingRenderTarget* GetWindowRenderTarget() const { return nullptr; }
 
   /**
    * Mostly the compositor will pull the size from a widget and this method will
@@ -466,6 +503,7 @@ public:
     return mLastCompositionEndTime;
   }
 
+  void UnlockAfterComposition(TextureHost* aTexture) override;
   bool NotifyNotUsedAfterComposition(TextureHost* aTextureHost) override;
 
   /**
@@ -494,12 +532,6 @@ public:
   virtual void FinishPendingComposite() {}
 
   widget::CompositorWidget* GetWidget() const { return mWidget; }
-
-  /**
-   * Debug-build assertion that can be called to ensure code is running on the
-   * compositor thread.
-   */
-  static void AssertOnCompositorThread();
 
   // Return statistics for the most recent frame we computed statistics for.
   virtual void GetFrameStats(GPUStats* aStats);
@@ -628,6 +660,22 @@ BlendOpIsMixBlendMode(gfx::CompositionOp aOp)
     return false;
   }
 }
+
+class AsyncReadbackBuffer
+{
+public:
+  NS_INLINE_DECL_REFCOUNTING(AsyncReadbackBuffer)
+
+  gfx::IntSize GetSize() const { return mSize; }
+  virtual bool MapAndCopyInto(gfx::DataSourceSurface* aSurface,
+                              const gfx::IntSize& aReadSize) const=0;
+
+protected:
+  explicit AsyncReadbackBuffer(const gfx::IntSize& aSize) : mSize(aSize) {}
+  virtual ~AsyncReadbackBuffer() {}
+
+  gfx::IntSize mSize;
+};
 
 struct TexturedVertex
 {

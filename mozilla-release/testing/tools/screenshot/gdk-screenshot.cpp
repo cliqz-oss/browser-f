@@ -36,9 +36,6 @@
  */
 #include <gdk/gdk.h>
 #include <gdk/gdkx.h>
-#ifdef HAVE_LIBXSS
-#include <X11/extensions/scrnsaver.h>
-#endif
 
 #include <errno.h>
 #include <stdio.h>
@@ -60,85 +57,11 @@ int main(int argc, char** argv)
 {
   gdk_init(&argc, &argv);
 
-#if defined(HAVE_LIBXSS) && defined(MOZ_WIDGET_GTK)
-  int event_base, error_base;
-  Bool have_xscreensaver =
-    XScreenSaverQueryExtension(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()),
-                               &event_base, &error_base);
-
-  if (!have_xscreensaver) {
-    fprintf(stderr, "No XScreenSaver extension on display\n");
-  } else {
-    XScreenSaverInfo* info = XScreenSaverAllocInfo();
-    if (!info) {
-      fprintf(stderr, "%s: Out of memory\n", argv[0]);
-      return 1;
-    }
-    XScreenSaverQueryInfo(GDK_DISPLAY_XDISPLAY(gdk_display_get_default()),
-                          GDK_ROOT_WINDOW(), info);
-
-    const char* state;
-    const char* til_or_since = nullptr;
-    switch (info->state) {
-    case ScreenSaverOff:
-      state = "Off";
-      til_or_since = "XScreenSaver will activate after another %lu seconds idle time\n";
-      break;
-    case ScreenSaverOn:
-      state = "On";
-      if (info->til_or_since) {
-        til_or_since = "XScreenSaver idle timer activated %lu seconds ago\n";
-      } else {
-        til_or_since = "XScreenSaver idle activation is disabled\n";
-      }
-      break;
-    case ScreenSaverDisabled:
-      state = "Disabled";
-      break;
-    default:
-      state = "unknown";
-    }
-
-    const char* kind;
-    switch (info->kind) {
-    case ScreenSaverBlanked:
-      kind = "Blanked";
-      break;
-    case ScreenSaverInternal:
-      state = "Internal";
-      break;
-    case ScreenSaverExternal:
-      state = "External";
-      break;
-    default:
-      state = "unknown";
-    }
-
-    fprintf(stderr, "XScreenSaver state: %s\n", state);
-
-    if (til_or_since) {
-      fprintf(stderr, "XScreenSaver kind: %s\n", kind);
-      fprintf(stderr, til_or_since, info->til_or_since / 1000);
-    }
-
-    fprintf(stderr, "User input has been idle for %lu seconds\n", info->idle / 1000);
-
-    XFree(info);
-  }
-#endif
-
   GdkPixbuf* screenshot = nullptr;
   GdkWindow* window = gdk_get_default_root_window();
-#if (MOZ_WIDGET_GTK == 2)
-  screenshot = gdk_pixbuf_get_from_drawable(nullptr, window, nullptr,
-                                            0, 0, 0, 0,
-                                            gdk_screen_width(),
-                                            gdk_screen_height());
-#else
   screenshot = gdk_pixbuf_get_from_window(window, 0, 0,
                                           gdk_window_get_width(window),
                                           gdk_window_get_height(window));
-#endif
   if (!screenshot) {
     fprintf(stderr, "%s: failed to create screenshot GdkPixbuf\n", argv[0]);
     return 1;

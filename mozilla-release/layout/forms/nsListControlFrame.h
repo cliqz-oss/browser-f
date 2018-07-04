@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -34,6 +35,7 @@ class nsListEventListener;
 
 namespace mozilla {
 namespace dom {
+class Event;
 class HTMLOptionElement;
 class HTMLOptionsCollection;
 } // namespace dom
@@ -52,7 +54,7 @@ public:
   typedef mozilla::dom::HTMLOptionElement HTMLOptionElement;
 
   friend nsContainerFrame* NS_NewListControlFrame(nsIPresShell* aPresShell,
-                                                  nsStyleContext* aContext);
+                                                  ComputedStyle* aStyle);
 
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsListControlFrame)
@@ -78,12 +80,10 @@ public:
                     nsIFrame*         aPrevInFlow) override;
 
   virtual void DidReflow(nsPresContext*            aPresContext,
-                         const ReflowInput*  aReflowInput,
-                         nsDidReflowStatus         aStatus) override;
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+                         const ReflowInput*  aReflowInput) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   virtual nsContainerFrame* GetContentInsertionFrame() override;
@@ -99,7 +99,7 @@ public:
 #endif
 
     // nsIFormControlFrame
-  virtual nsresult SetFormProperty(nsIAtom* aName, const nsAString& aValue) override;
+  virtual nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) override;
   virtual void SetFocus(bool aOn = true, bool aRepaint = false) override;
 
   virtual mozilla::ScrollbarStyles GetScrollbarStyles() const override;
@@ -161,12 +161,12 @@ public:
    * Mouse event listeners.
    * @note These methods might destroy the frame, pres shell and other objects.
    */
-  nsresult MouseDown(nsIDOMEvent* aMouseEvent);
-  nsresult MouseUp(nsIDOMEvent* aMouseEvent);
-  nsresult MouseMove(nsIDOMEvent* aMouseEvent);
-  nsresult DragMove(nsIDOMEvent* aMouseEvent);
-  nsresult KeyDown(nsIDOMEvent* aKeyEvent);
-  nsresult KeyPress(nsIDOMEvent* aKeyEvent);
+  nsresult MouseDown(mozilla::dom::Event* aMouseEvent);
+  nsresult MouseUp(mozilla::dom::Event* aMouseEvent);
+  nsresult MouseMove(mozilla::dom::Event* aMouseEvent);
+  nsresult DragMove(mozilla::dom::Event* aMouseEvent);
+  nsresult KeyDown(mozilla::dom::Event* aKeyEvent);
+  nsresult KeyPress(mozilla::dom::Event* aKeyEvent);
 
   /**
    * Returns the options collection for mContent, if any.
@@ -259,13 +259,13 @@ protected:
    * @note This method might destroy the frame, pres shell and other objects.
    * Returns false if calling it destroyed |this|.
    */
-  bool       UpdateSelection();
+  bool UpdateSelection();
 
   /**
    * Returns whether mContent supports multiple selection.
    */
-  bool       GetMultiple() const {
-    return mContent->HasAttr(kNameSpaceID_None, nsGkAtoms::multiple);
+  bool GetMultiple() const {
+    return mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::multiple);
   }
 
 
@@ -273,7 +273,7 @@ protected:
    * Toggles (show/hide) the combobox dropdown menu.
    * @note This method might destroy the frame, pres shell and other objects.
    */
-  void       DropDownToggleKey(nsIDOMEvent* aKeyEvent);
+  void DropDownToggleKey(mozilla::dom::Event* aKeyEvent);
 
   nsresult   IsOptionDisabled(int32_t anIndex, bool &aIsDisabled);
   /**
@@ -295,13 +295,13 @@ protected:
    *
    * @param aPoint relative to this frame
    */
-  bool       IgnoreMouseEventForSelection(nsIDOMEvent* aEvent);
+  bool       IgnoreMouseEventForSelection(mozilla::dom::Event* aEvent);
 
   /**
    * If the dropdown is showing and the mouse has moved below our
    * border-inner-edge, then set mItemSelectionStarted.
    */
-  void       UpdateInListState(nsIDOMEvent* aEvent);
+  void       UpdateInListState(mozilla::dom::Event* aEvent);
   void       AdjustIndexForDisabledOpt(int32_t aStartIndex, int32_t &anNewIndex,
                                        int32_t aNumOptions, int32_t aDoAdjustInc, int32_t aDoAdjustIncNext);
 
@@ -311,7 +311,7 @@ protected:
    */
   virtual void ResetList(bool aAllowScrolling);
 
-  explicit nsListControlFrame(nsStyleContext* aContext);
+  explicit nsListControlFrame(ComputedStyle* aStyle);
   virtual ~nsListControlFrame();
 
   /**
@@ -320,10 +320,11 @@ protected:
    * @param aPoint the event point, in listcontrolframe coordinates
    * @return NS_OK if it successfully found the selection
    */
-  nsresult GetIndexFromDOMEvent(nsIDOMEvent* aMouseEvent, int32_t& aCurIndex);
+  nsresult GetIndexFromDOMEvent(mozilla::dom::Event* aMouseEvent,
+                                int32_t& aCurIndex);
 
   bool     CheckIfAllFramesHere();
-  bool     IsLeftButton(nsIDOMEvent* aMouseEvent);
+  bool     IsLeftButton(mozilla::dom::Event* aMouseEvent);
 
   // guess at a row block size based on our own style.
   nscoord  CalcFallbackRowBSize(float aFontSizeInflation);
@@ -366,7 +367,8 @@ protected:
   /**
    * @note This method might destroy the frame, pres shell and other objects.
    */
-  bool     HandleListSelection(nsIDOMEvent * aDOMEvent, int32_t selectedIndex);
+  bool     HandleListSelection(mozilla::dom::Event * aDOMEvent,
+                               int32_t selectedIndex);
   void     InitSelectionRange(int32_t aClickedIndex);
   void     PostHandleKeyEvent(int32_t aNewIndex, uint32_t aCharCode,
                               bool aIsShift, bool aIsControlOrMeta);

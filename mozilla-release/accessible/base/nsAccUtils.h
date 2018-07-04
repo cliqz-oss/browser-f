@@ -7,6 +7,7 @@
 #define nsAccUtils_h_
 
 #include "mozilla/a11y/Accessible.h"
+#include "mozilla/a11y/DocManager.h"
 
 #include "nsAccessibilityService.h"
 #include "nsCoreUtils.h"
@@ -36,7 +37,7 @@ public:
    * @param aAttrValue - value of attribute
    */
   static void GetAccAttr(nsIPersistentProperties *aAttributes,
-                         nsIAtom *aAttrName,
+                         nsAtom *aAttrName,
                          nsAString& aAttrValue);
 
   /**
@@ -47,12 +48,12 @@ public:
    * @param aAttrValue - new value of attribute
    */
   static void SetAccAttr(nsIPersistentProperties *aAttributes,
-                         nsIAtom *aAttrName,
+                         nsAtom *aAttrName,
                          const nsAString& aAttrValue);
 
   static void SetAccAttr(nsIPersistentProperties *aAttributes,
-                         nsIAtom* aAttrName,
-                         nsIAtom* aAttrValue);
+                         nsAtom* aAttrName,
+                         nsAtom* aAttrValue);
 
   /**
    * Set group attributes ('level', 'setsize', 'posinset').
@@ -95,12 +96,12 @@ public:
    *
    * Return true if the ARIA property is defined, otherwise false
    */
-  static bool HasDefinedARIAToken(nsIContent *aContent, nsIAtom *aAtom);
+  static bool HasDefinedARIAToken(nsIContent *aContent, nsAtom *aAtom);
 
   /**
    * Return atomic value of ARIA attribute of boolean or NMTOKEN type.
    */
-  static nsIAtom* GetARIAToken(mozilla::dom::Element* aElement, nsIAtom* aAttr);
+  static nsAtom* GetARIAToken(mozilla::dom::Element* aElement, nsAtom* aAttr);
 
   /**
    * Return document accessible for the given DOM node.

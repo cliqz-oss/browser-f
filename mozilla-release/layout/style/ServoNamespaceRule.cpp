@@ -16,12 +16,6 @@ ServoNamespaceRule::~ServoNamespaceRule()
 {
 }
 
-NS_IMPL_ADDREF_INHERITED(ServoNamespaceRule, CSSNamespaceRule)
-NS_IMPL_RELEASE_INHERITED(ServoNamespaceRule, CSSNamespaceRule)
-
-NS_INTERFACE_MAP_BEGIN(ServoNamespaceRule)
-NS_INTERFACE_MAP_END_INHERITING(CSSNamespaceRule)
-
 #ifdef DEBUG
 void
 ServoNamespaceRule::List(FILE* out, int32_t aIndent) const
@@ -35,17 +29,7 @@ ServoNamespaceRule::List(FILE* out, int32_t aIndent) const
 }
 #endif
 
-already_AddRefed<css::Rule>
-ServoNamespaceRule::Clone() const
-{
-  // Rule::Clone is only used when CSSStyleSheetInner is cloned in
-  // preparation of being mutated. However, ServoStyleSheet never clones
-  // anything, so this method should never be called.
-  MOZ_ASSERT_UNREACHABLE("Shouldn't be cloning ServoNamespaceRule");
-  return nullptr;
-}
-
-nsIAtom*
+nsAtom*
 ServoNamespaceRule::GetPrefix() const
 {
   return Servo_NamespaceRule_GetPrefix(mRawRule);
@@ -54,12 +38,12 @@ ServoNamespaceRule::GetPrefix() const
 void
 ServoNamespaceRule::GetURLSpec(nsString& aURLSpec) const
 {
-  nsIAtom* atom = Servo_NamespaceRule_GetURI(mRawRule);
+  nsAtom* atom = Servo_NamespaceRule_GetURI(mRawRule);
   atom->ToString(aURLSpec);
 }
 
 void
-ServoNamespaceRule::GetCssTextImpl(nsAString& aCssText) const
+ServoNamespaceRule::GetCssText(nsAString& aCssText) const
 {
   Servo_NamespaceRule_GetCssText(mRawRule, &aCssText);
 }

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -49,9 +50,6 @@ public:
   NS_IMETHOD GetPrintRange(int32_t* aFromPage, int32_t* aToPage) = 0;
 
   NS_IMETHOD DoPageEnd() = 0;
-  NS_IMETHOD SetSelectionHeight(nscoord aYOffset, nscoord aHeight) = 0;
-
-  NS_IMETHOD SetTotalNumPages(int32_t aTotal) = 0;
 
   // For Shrink To Fit
   NS_IMETHOD GetSTFPercent(float& aSTFPercent) = 0;

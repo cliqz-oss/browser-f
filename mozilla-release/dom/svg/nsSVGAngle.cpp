@@ -19,8 +19,10 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
+using namespace mozilla::dom::SVGAngleBinding;
+using namespace mozilla::dom::SVGMarkerElementBinding;
 
-static nsIAtom** const unitMap[] =
+static nsStaticAtom** const unitMap[] =
 {
   nullptr, /* SVG_ANGLETYPE_UNKNOWN */
   nullptr, /* SVG_ANGLETYPE_UNSPECIFIED */
@@ -67,7 +69,7 @@ GetUnitTypeForString(const nsAString& unitStr)
   if (unitStr.IsEmpty())
     return SVG_ANGLETYPE_UNSPECIFIED;
 
-  nsIAtom *unitAtom = NS_GetStaticAtom(unitStr);
+  nsStaticAtom* unitAtom = NS_GetStaticAtom(unitStr);
 
   if (unitAtom) {
     for (uint32_t i = 0 ; i < ArrayLength(unitMap) ; i++) {
@@ -83,21 +85,17 @@ GetUnitTypeForString(const nsAString& unitStr)
 static void
 GetValueString(nsAString &aValueAsString, float aValue, uint16_t aUnitType)
 {
-  char16_t buf[24];
-  nsTextFormatter::snprintf(buf, sizeof(buf)/sizeof(char16_t),
-                            u"%g",
-                            (double)aValue);
-  aValueAsString.Assign(buf);
+  nsTextFormatter::ssprintf(aValueAsString, u"%g", (double)aValue);
 
   nsAutoString unitString;
   GetUnitString(unitString, aUnitType);
   aValueAsString.Append(unitString);
 }
 
-static bool
-GetValueFromString(const nsAString& aString,
-                   float& aValue,
-                   uint16_t* aUnitType)
+/* static */ bool
+nsSVGAngle::GetValueFromString(const nsAString& aString,
+                               float& aValue,
+                               uint16_t* aUnitType)
 {
   RangedPtr<const char16_t> iter =
     SVGContentUtils::GetStartRangedPtr(aString);

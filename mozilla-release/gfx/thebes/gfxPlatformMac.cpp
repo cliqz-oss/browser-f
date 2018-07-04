@@ -18,6 +18,8 @@
 #include "nsTArray.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/VsyncDispatcher.h"
+#include "nsCocoaFeatures.h"
+#include "nsUnicodeProperties.h"
 #include "qcms.h"
 #include "gfx2DGlue.h"
 
@@ -29,8 +31,9 @@
 
 using namespace mozilla;
 using namespace mozilla::gfx;
+using namespace mozilla::unicode;
 
-using mozilla::dom::FontFamilyListEntry;
+using mozilla::dom::SystemFontListEntry;
 
 // cribbed from CTFontManager.h
 enum {
@@ -76,10 +79,7 @@ gfxPlatformMac::gfxPlatformMac()
     DisableFontActivation();
     mFontAntiAliasingThreshold = ReadAntiAliasingThreshold();
 
-    uint32_t canvasMask = BackendTypeBit(BackendType::SKIA);
-    uint32_t contentMask = BackendTypeBit(BackendType::SKIA);
-    InitBackendPrefs(canvasMask, BackendType::SKIA,
-                     contentMask, BackendType::SKIA);
+    InitBackendPrefs(GetBackendPrefs());
 
     // XXX: Bug 1036682 - we run out of fds on Mac when using tiled layers because
     // with 256x256 tiles we can easily hit the soft limit of 800 when using double
@@ -101,6 +101,33 @@ gfxPlatformMac::~gfxPlatformMac()
     gfxCoreTextShaper::Shutdown();
 }
 
+BackendPrefsData
+gfxPlatformMac::GetBackendPrefs() const
+{
+  BackendPrefsData data;
+
+  data.mCanvasBitmask = BackendTypeBit(BackendType::SKIA);
+  data.mContentBitmask = BackendTypeBit(BackendType::SKIA);
+  data.mCanvasDefault = BackendType::SKIA;
+  data.mContentDefault = BackendType::SKIA;
+
+  return mozilla::Move(data);
+}
+
+bool
+gfxPlatformMac::UsesTiling() const
+{
+    // The non-tiling ContentClient requires CrossProcessSemaphore which
+    // isn't implemented for OSX.
+    return true;
+}
+
+bool
+gfxPlatformMac::ContentUsesTiling() const
+{
+    return UsesTiling();
+}
+
 gfxPlatformFontList*
 gfxPlatformMac::CreatePlatformFontList()
 {
@@ -113,11 +140,10 @@ gfxPlatformMac::CreatePlatformFontList()
 }
 
 void
-gfxPlatformMac::GetSystemFontFamilyList(
-    InfallibleTArray<FontFamilyListEntry>* aFontFamilies)
+gfxPlatformMac::ReadSystemFontList(
+    InfallibleTArray<SystemFontListEntry>* aFontList)
 {
-    gfxMacPlatformFontList::PlatformFontList()->
-        GetSystemFontFamilyList(aFontFamilies);
+    gfxMacPlatformFontList::PlatformFontList()->ReadSystemFontList(aFontList);
 }
 
 already_AddRefed<gfxASurface>
@@ -131,13 +157,6 @@ gfxPlatformMac::CreateOffscreenSurface(const IntSize& aSize,
     RefPtr<gfxASurface> newSurface =
       new gfxQuartzSurface(aSize, aFormat);
     return newSurface.forget();
-}
-
-already_AddRefed<ScaledFont>
-gfxPlatformMac::GetScaledFontForFont(DrawTarget* aTarget, gfxFont *aFont)
-{
-    gfxMacFont *font = static_cast<gfxMacFont*>(aFont);
-    return font->GetScaledFont(aTarget);
 }
 
 gfxFontGroup *
@@ -199,23 +218,24 @@ gfxPlatformMac::GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
                                        Script aRunScript,
                                        nsTArray<const char*>& aFontList)
 {
-    if (aNextCh == 0xfe0f) {
-        aFontList.AppendElement(kFontAppleColorEmoji);
+    EmojiPresentation emoji = GetEmojiPresentation(aCh);
+    if (emoji != EmojiPresentation::TextOnly) {
+        if (aNextCh == kVariationSelector16 ||
+           (aNextCh != kVariationSelector15 &&
+            emoji == EmojiPresentation::EmojiDefault)) {
+            // if char is followed by VS16, try for a color emoji glyph
+            aFontList.AppendElement(kFontAppleColorEmoji);
+        }
     }
 
     aFontList.AppendElement(kFontLucidaGrande);
 
     if (!IS_IN_BMP(aCh)) {
         uint32_t p = aCh >> 16;
-        uint32_t b = aCh >> 8;
         if (p == 1) {
-            if (b >= 0x1f0 && b < 0x1f7) {
-                aFontList.AppendElement(kFontAppleColorEmoji);
-            } else {
-                aFontList.AppendElement(kFontAppleSymbols);
-                aFontList.AppendElement(kFontSTIXGeneral);
-                aFontList.AppendElement(kFontGeneva);
-            }
+            aFontList.AppendElement(kFontAppleSymbols);
+            aFontList.AppendElement(kFontSTIXGeneral);
+            aFontList.AppendElement(kFontGeneva);
         } else if (p == 2) {
             // OSX installations with MS Office may have these fonts
             aFontList.AppendElement(kFontMingLiUExtB);
@@ -406,7 +426,7 @@ public:
       : mDisplayLink(nullptr)
     {
       MOZ_ASSERT(NS_IsMainThread());
-      mTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
+      mTimer = NS_NewTimer();
     }
 
     ~OSXDisplay() override
@@ -620,4 +640,14 @@ gfxPlatformMac::GetPlatformCMSOutputProfile(void* &mem, size_t &size)
     }
 
     ::CFRelease(iccp);
+}
+
+bool
+gfxPlatformMac::CheckVariationFontSupport()
+{
+    // We don't allow variation fonts to be enabled before 10.13,
+    // as although the Core Text APIs existed, they are known to be
+    // fairly buggy.
+    // (Note that Safari also requires 10.13 for variation-font support.)
+    return nsCocoaFeatures::OnHighSierraOrLater();
 }

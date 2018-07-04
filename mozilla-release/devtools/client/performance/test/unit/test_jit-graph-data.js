@@ -6,10 +6,6 @@
  * Unit test for `createTierGraphDataFromFrameNode` function.
  */
 
-function run_test() {
-  run_next_test();
-}
-
 const SAMPLE_COUNT = 1000;
 const RESOLUTION = 50;
 const TIME_PER_SAMPLE = 5;
@@ -132,7 +128,7 @@ function createSample(i, frames) {
   return sample;
 }
 
-var SAMPLES = (function () {
+var SAMPLES = (function() {
   let samples = [];
 
   for (let i = 0; i < SAMPLE_COUNT;) {

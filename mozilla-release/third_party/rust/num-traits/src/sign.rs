@@ -1,5 +1,6 @@
-use std::ops::Neg;
-use std::{f32, f64};
+use core::ops::Neg;
+use core::{f32, f64};
+use core::num::Wrapping;
 
 use Num;
 
@@ -73,22 +74,59 @@ macro_rules! signed_impl {
 
 signed_impl!(isize i8 i16 i32 i64);
 
+impl<T: Signed> Signed for Wrapping<T> where Wrapping<T>: Num + Neg<Output=Wrapping<T>>
+{
+    #[inline]
+    fn abs(&self) -> Self {
+        Wrapping(self.0.abs())
+    }
+
+    #[inline]
+    fn abs_sub(&self, other: &Self) -> Self {
+        Wrapping(self.0.abs_sub(&other.0))
+    }
+
+    #[inline]
+    fn signum(&self) -> Self {
+        Wrapping(self.0.signum())
+    }
+
+    #[inline]
+    fn is_positive(&self) -> bool { self.0.is_positive() }
+
+    #[inline]
+    fn is_negative(&self) -> bool { self.0.is_negative() }
+}
+
 macro_rules! signed_float_impl {
     ($t:ty, $nan:expr, $inf:expr, $neg_inf:expr) => {
         impl Signed for $t {
             /// Computes the absolute value. Returns `NAN` if the number is `NAN`.
             #[inline]
+            #[cfg(feature = "std")]
             fn abs(&self) -> $t {
-                <$t>::abs(*self)
+                (*self).abs()
+            }
+
+            /// Computes the absolute value. Returns `NAN` if the number is `NAN`.
+            #[inline]
+            #[cfg(not(feature = "std"))]
+            fn abs(&self) -> $t {
+                if self.is_positive() {
+                    *self
+                } else if self.is_negative() {
+                    -*self
+                } else {
+                    $nan
+                }
             }
 
             /// The positive difference of two numbers. Returns `0.0` if the number is
             /// less than or equal to `other`, otherwise the difference between`self`
             /// and `other` is returned.
             #[inline]
-            #[allow(deprecated)]
             fn abs_sub(&self, other: &$t) -> $t {
-                <$t>::abs_sub(*self, *other)
+                if *self <= *other { 0. } else { *self - *other }
             }
 
             /// # Returns
@@ -97,8 +135,27 @@ macro_rules! signed_float_impl {
             /// - `-1.0` if the number is negative, `-0.0` or `NEG_INFINITY`
             /// - `NAN` if the number is NaN
             #[inline]
+            #[cfg(feature = "std")]
             fn signum(&self) -> $t {
-                <$t>::signum(*self)
+                use Float;
+                Float::signum(*self)
+            }
+
+            /// # Returns
+            ///
+            /// - `1.0` if the number is positive, `+0.0` or `INFINITY`
+            /// - `-1.0` if the number is negative, `-0.0` or `NEG_INFINITY`
+            /// - `NAN` if the number is NaN
+            #[inline]
+            #[cfg(not(feature = "std"))]
+            fn signum(&self) -> $t {
+                if self.is_positive() {
+                    1.0
+                } else if self.is_negative() {
+                    -1.0
+                } else {
+                    $nan
+                }
             }
 
             /// Returns `true` if the number is positive, including `+0.0` and `INFINITY`
@@ -159,3 +216,21 @@ macro_rules! empty_trait_impl {
 }
 
 empty_trait_impl!(Unsigned for usize u8 u16 u32 u64);
+
+impl<T: Unsigned> Unsigned for Wrapping<T> where Wrapping<T>: Num {}
+
+#[test]
+fn unsigned_wrapping_is_unsigned() {
+    fn require_unsigned<T: Unsigned>(_: &T) {}
+    require_unsigned(&Wrapping(42_u32));
+}
+/*
+// Commenting this out since it doesn't compile on Rust 1.8,
+// because on this version Wrapping doesn't implement Neg and therefore can't
+// implement Signed.
+#[test]
+fn signed_wrapping_is_signed() {
+    fn require_signed<T: Signed>(_: &T) {}
+    require_signed(&Wrapping(-42));
+}
+*/

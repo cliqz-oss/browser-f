@@ -40,10 +40,10 @@ public:
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
-  /** @see nsIFrame::DidSetStyleContext */
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  /** @see nsIFrame::DidSetComputedStyle */
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   virtual void AppendFrames(ChildListID     aListID,
                             nsFrameList&    aFrameList) override;
@@ -59,7 +59,7 @@ public:
     * @return           the frame that was created
     */
   friend nsTableRowFrame* NS_NewTableRowFrame(nsIPresShell* aPresShell,
-                                              nsStyleContext* aContext);
+                                              ComputedStyle* aStyle);
 
   nsTableRowGroupFrame* GetTableRowGroupFrame() const
   {
@@ -78,10 +78,11 @@ public:
   virtual nsMargin GetUsedPadding() const override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
-  nsTableCellFrame* GetFirstCell() ;
+  // Implemented in nsTableCellFrame.h, because it needs to know about the
+  // nsTableCellFrame class, but we can't include nsTableCellFrame.h here.
+  inline nsTableCellFrame* GetFirstCell() const;
 
   /** calls Reflow for all of its child cells.
     * Cells with rowspan=1 are all set to the same height and stacked horizontally.
@@ -241,8 +242,8 @@ public:
     return nsContainerFrame::IsFrameOfType(aFlags & ~(nsIFrame::eTablePart));
   }
 
-  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0) override;
-  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0) override;
+  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
+  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
   virtual void InvalidateFrameForRemoval() override { InvalidateFrameSubtree(); }
 
 #ifdef ACCESSIBILITY
@@ -254,7 +255,7 @@ protected:
   /** protected constructor.
     * @see NewFrame
     */
-  explicit nsTableRowFrame(nsStyleContext* aContext, ClassID aID = kClassID);
+  explicit nsTableRowFrame(ComputedStyle* aStyle, ClassID aID = kClassID);
 
   void InitChildReflowInput(nsPresContext&              aPresContext,
                             const mozilla::LogicalSize& aAvailSize,
@@ -425,21 +426,22 @@ inline void nsTableRowFrame::SetHasUnpaginatedBSize(bool aValue)
 inline mozilla::LogicalMargin
 nsTableRowFrame::GetBCBorderWidth(mozilla::WritingMode aWM)
 {
+  nsPresContext* presContext = PresContext();
   return mozilla::LogicalMargin(
-    aWM, nsPresContext::CSSPixelsToAppUnits(mBStartBorderWidth), 0,
-    nsPresContext::CSSPixelsToAppUnits(mBEndBorderWidth), 0);
+    aWM, presContext->DevPixelsToAppUnits(mBStartBorderWidth), 0,
+    presContext->DevPixelsToAppUnits(mBEndBorderWidth), 0);
 }
 
 inline void
 nsTableRowFrame::GetContinuousBCBorderWidth(mozilla::WritingMode aWM,
                                             mozilla::LogicalMargin& aBorder)
 {
-  int32_t aPixelsToTwips = nsPresContext::AppUnitsPerCSSPixel();
-  aBorder.IEnd(aWM) = BC_BORDER_START_HALF_COORD(aPixelsToTwips,
+  int32_t d2a = PresContext()->AppUnitsPerDevPixel();
+  aBorder.IEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a,
                                                  mIStartContBorderWidth);
-  aBorder.BStart(aWM) = BC_BORDER_END_HALF_COORD(aPixelsToTwips,
+  aBorder.BStart(aWM) = BC_BORDER_END_HALF_COORD(d2a,
                                                  mBStartContBorderWidth);
-  aBorder.IStart(aWM) = BC_BORDER_END_HALF_COORD(aPixelsToTwips,
+  aBorder.IStart(aWM) = BC_BORDER_END_HALF_COORD(d2a,
                                                  mIEndContBorderWidth);
 }
 

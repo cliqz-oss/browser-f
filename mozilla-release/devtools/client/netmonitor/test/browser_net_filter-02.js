@@ -129,8 +129,8 @@ const EXPECTED_REQUESTS = [
   }
 ];
 
-add_task(function* () {
-  let { monitor } = yield initNetMonitor(FILTERING_URL);
+add_task(async function() {
+  let { monitor } = await initNetMonitor(FILTERING_URL);
   info("Starting test... ");
 
   // It seems that this test may be slow on Ubuntu builds running on ec2.
@@ -147,9 +147,9 @@ add_task(function* () {
   store.dispatch(Actions.batchEnable(false));
 
   let wait = waitForNetworkEvents(monitor, 9);
-  loadCommonFrameScript();
-  yield performRequestsInContent(REQUESTS_WITH_MEDIA_AND_FLASH_AND_WS);
-  yield wait;
+  loadFrameScriptUtils();
+  await performRequestsInContent(REQUESTS_WITH_MEDIA_AND_FLASH_AND_WS);
+  await wait;
 
   EventUtils.sendMouseEvent({ type: "mousedown" },
     document.querySelectorAll(".request-list-item")[0]);
@@ -162,41 +162,41 @@ add_task(function* () {
     "The network details panel should be visible after toggle button was pressed.");
 
   testFilterButtons(monitor, "all");
-  testContents([1, 1, 1, 1, 1, 1, 1, 1, 1]);
+  await testContents([1, 1, 1, 1, 1, 1, 1, 1, 1]);
 
   info("Testing html filtering.");
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector(".requests-list-filter-html-button"));
   testFilterButtons(monitor, "html");
-  testContents([1, 0, 0, 0, 0, 0, 0, 0, 0]);
+  await testContents([1, 0, 0, 0, 0, 0, 0, 0, 0]);
 
   info("Performing more requests.");
   wait = waitForNetworkEvents(monitor, 9);
-  yield performRequestsInContent(REQUESTS_WITH_MEDIA_AND_FLASH_AND_WS);
-  yield wait;
+  await performRequestsInContent(REQUESTS_WITH_MEDIA_AND_FLASH_AND_WS);
+  await wait;
 
   info("Testing html filtering again.");
   testFilterButtons(monitor, "html");
-  testContents([1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]);
+  await testContents([1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]);
 
   info("Performing more requests.");
   wait = waitForNetworkEvents(monitor, 9);
-  yield performRequestsInContent(REQUESTS_WITH_MEDIA_AND_FLASH_AND_WS);
-  yield wait;
+  await performRequestsInContent(REQUESTS_WITH_MEDIA_AND_FLASH_AND_WS);
+  await wait;
 
   info("Testing html filtering again.");
   testFilterButtons(monitor, "html");
-  testContents([1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
-                0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]);
+  await testContents([1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]);
 
   info("Resetting filters.");
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector(".requests-list-filter-all-button"));
   testFilterButtons(monitor, "all");
-  testContents([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+  await testContents([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
 
-  yield teardown(monitor);
+  await teardown(monitor);
 
   function getSelectedIndex(state) {
     if (!state.requests.selectedId) {
@@ -205,7 +205,15 @@ add_task(function* () {
     return getSortedRequests(state).findIndex(r => r.id === state.requests.selectedId);
   }
 
-  function testContents(visibility) {
+  async function testContents(visibility) {
+    let requestItems = document.querySelectorAll(".request-list-item");
+    for (let requestItem of requestItems) {
+      requestItem.scrollIntoView();
+      let requestsListStatus = requestItem.querySelector(".status-code");
+      EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
+      await waitUntil(() => requestsListStatus.title);
+    }
+
     isnot(getSelectedRequest(store.getState()), null,
       "There should still be a selected item after filtering.");
     is(getSelectedIndex(store.getState()), 0,

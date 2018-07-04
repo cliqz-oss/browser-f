@@ -71,10 +71,7 @@
 
 /* globals TESTS, runTest, finishTest */
 
-const { classes: Cc, interfaces: Ci, manager: Cm, results: Cr,
-        utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
 /* import-globals-from testConstants.js */
 Services.scriptloader.loadSubScript("chrome://mochitests/content/chrome/toolkit/mozapps/update/tests/chrome/testConstants.js", this);
@@ -84,18 +81,18 @@ const IS_WIN = ("@mozilla.org/windows-registry-key;1" in Cc);
 
 // The tests have to use the pageid instead of the pageIndex due to the
 // app update wizard's access method being random.
-const PAGEID_DUMMY            = "dummy";                 // Done
-const PAGEID_CHECKING         = "checking";              // Done
-const PAGEID_NO_UPDATES_FOUND = "noupdatesfound";        // Done
-const PAGEID_MANUAL_UPDATE    = "manualUpdate";          // Done
-const PAGEID_UNSUPPORTED      = "unsupported";           // Done
-const PAGEID_FOUND_BASIC      = "updatesfoundbasic";     // Done
-const PAGEID_DOWNLOADING      = "downloading";           // Done
-const PAGEID_ERRORS           = "errors";                // Done
-const PAGEID_ERROR_EXTRA      = "errorextra";            // Done
-const PAGEID_ERROR_PATCHING   = "errorpatching";         // Done
-const PAGEID_FINISHED         = "finished";              // Done
-const PAGEID_FINISHED_BKGRD   = "finishedBackground";    // Done
+const PAGEID_DUMMY            = "dummy";
+const PAGEID_CHECKING         = "checking";
+const PAGEID_NO_UPDATES_FOUND = "noupdatesfound";
+const PAGEID_MANUAL_UPDATE    = "manualUpdate";
+const PAGEID_UNSUPPORTED      = "unsupported";
+const PAGEID_FOUND_BASIC      = "updatesfoundbasic";
+const PAGEID_DOWNLOADING      = "downloading";
+const PAGEID_ERRORS           = "errors";
+const PAGEID_ERROR_EXTRA      = "errorextra";
+const PAGEID_ERROR_PATCHING   = "errorpatching";
+const PAGEID_FINISHED         = "finished";
+const PAGEID_FINISHED_BKGRD   = "finishedBackground";
 
 const UPDATE_WINDOW_NAME = "Update:Wizard";
 
@@ -129,10 +126,10 @@ var gCloseWindowTimeoutCounter = 0;
 
 // The following vars are for restoring previous preference values (if present)
 // when the test finishes.
-var gAppUpdateEnabled;            // app.update.enabled
-var gAppUpdateServiceEnabled;     // app.update.service.enabled
-var gAppUpdateStagingEnabled;     // app.update.staging.enabled
-var gAppUpdateURLDefault;         // app.update.url (default prefbranch)
+var gAppUpdateEnabled; // app.update.enabled
+var gAppUpdateServiceEnabled; // app.update.service.enabled
+var gAppUpdateStagingEnabled; // app.update.staging.enabled
+var gAppUpdateURLDefault; // app.update.url (default prefbranch)
 
 var gTestCounter = -1;
 var gWin;
@@ -171,7 +168,7 @@ this.__defineGetter__("gCallback", function() {
  */
 const gWindowObserver = {
   observe: function WO_observe(aSubject, aTopic, aData) {
-    let win = aSubject.QueryInterface(Ci.nsIDOMEventTarget);
+    let win = aSubject;
 
     if (aTopic == "domwindowclosed") {
       if (win.location != URI_UPDATE_PROMPT_DIALOG) {
@@ -259,7 +256,6 @@ function runTestDefaultWaitForWindowClosed() {
     setupPrefs();
     gEnv.set("MOZ_TEST_SKIP_UPDATE_STAGE", "1");
     removeUpdateDirsAndFiles();
-    reloadUpdateManagerData();
     setupTimer(gTestTimeout);
     SimpleTest.executeSoon(setupTestUpdater);
   }
@@ -477,12 +473,10 @@ function delayedDefaultCallback() {
  * Gets the continue file used to signal the mock http server to continue
  * downloading for slow download mar file tests without creating it.
  *
- * @return nsILocalFile for the continue file.
+ * @return nsIFile for the continue file.
  */
 function getContinueFile() {
-  let continueFile = Cc["@mozilla.org/file/directory_service;1"].
-                     getService(Ci.nsIProperties).
-                     get("CurWorkD", Ci.nsILocalFile);
+  let continueFile = Services.dirsvc.get("CurWorkD", Ci.nsIFile);
   let continuePath = REL_PATH_DATA + "continue";
   let continuePathParts = continuePath.split("/");
   for (let i = 0; i < continuePathParts.length; ++i) {
@@ -729,7 +723,7 @@ function copyTestUpdater() {
   try {
     // Copy the test updater
     let baseAppDir = getAppBaseDir();
-    let testUpdaterDir = Services.dirsvc.get("CurWorkD", Ci.nsILocalFile);
+    let testUpdaterDir = Services.dirsvc.get("CurWorkD", Ci.nsIFile);
     let relPath = REL_PATH_DATA;
     let pathParts = relPath.split("/");
     for (let i = 0; i < pathParts.length; ++i) {

@@ -41,17 +41,13 @@
  * buttons appear on the taskbar, so a magic pref-controlled number determines
  * when this threshold has been crossed.
  */
-this.EXPORTED_SYMBOLS = ["AeroPeek"];
+var EXPORTED_SYMBOLS = ["AeroPeek"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/PlacesUtils.jsm");
-Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 // Pref to enable/disable preview-per-tab
 const TOGGLE_PREF_NAME = "browser.taskbar.previews.enable";
@@ -66,8 +62,8 @@ const WINTASKBAR_CONTRACTID = "@mozilla.org/windows-taskbar;1";
 XPCOMUtils.defineLazyServiceGetter(this, "imgTools",
                                    "@mozilla.org/image/tools;1",
                                    "imgITools");
-XPCOMUtils.defineLazyModuleGetter(this, "PageThumbs",
-                                  "resource://gre/modules/PageThumbs.jsm");
+ChromeUtils.defineModuleGetter(this, "PageThumbs",
+                               "resource://gre/modules/PageThumbs.jsm");
 
 // nsIURI -> imgIContainer
 function _imageFromURI(uri, privateMode, callback) {
@@ -86,10 +82,27 @@ function _imageFromURI(uri, privateMode, callback) {
   NetUtil.asyncFetch(channel, function(inputStream, resultCode) {
     if (!Components.isSuccessCode(resultCode))
       return;
+
+    const decodeCallback = {
+      onImageReady(image, status) {
+        if (!image) {
+          // We failed, so use the default favicon (only if this wasn't the
+          // default favicon).
+          let defaultURI = PlacesUtils.favicons.defaultFavicon;
+          if (!defaultURI.equals(uri)) {
+            _imageFromURI(defaultURI, privateMode, callback);
+            return;
+          }
+        }
+
+        callback(image);
+      }
+    };
+
     try {
-      let out_img = { value: null };
-      imgTools.decodeImageData(inputStream, channel.contentType, out_img);
-      callback(out_img.value);
+      let threadManager = Cc["@mozilla.org/thread-manager;1"].getService();
+      imgTools.decodeImageAsync(inputStream, channel.contentType,
+                                decodeCallback, threadManager.currentThread);
     } catch (e) {
       // We failed, so use the default favicon (only if this wasn't the default
       // favicon).
@@ -107,19 +120,6 @@ function getFaviconAsImage(iconurl, privateMode, callback) {
   } else {
     _imageFromURI(PlacesUtils.favicons.defaultFavicon, privateMode, callback);
   }
-}
-
-// Snaps the given rectangle to be pixel-aligned at the given scale
-function snapRectAtScale(r, scale) {
-  let x = Math.floor(r.x * scale);
-  let y = Math.floor(r.y * scale);
-  let width = Math.ceil((r.x + r.width) * scale) - x;
-  let height = Math.ceil((r.y + r.height) * scale) - y;
-
-  r.x = x / scale;
-  r.y = y / scale;
-  r.width = width / scale;
-  r.height = height / scale;
 }
 
 // PreviewController
@@ -155,8 +155,7 @@ function PreviewController(win, tab) {
 }
 
 PreviewController.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITaskbarPreviewController,
-                                         Ci.nsIDOMEventListener]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITaskbarPreviewController]),
 
   destroy() {
     this.tab.removeEventListener("TabAttrModified", this);
@@ -333,7 +332,7 @@ PreviewController.prototype = {
     return true;
   },
 
-  // nsIDOMEventListener
+  // EventListener
   handleEvent(evt) {
     switch (evt.type) {
       case "TabAttrModified":
@@ -342,15 +341,6 @@ PreviewController.prototype = {
     }
   }
 };
-
-XPCOMUtils.defineLazyGetter(PreviewController.prototype, "canvasPreviewFlags",
-  function() {
- let canvasInterface = Ci.nsIDOMCanvasRenderingContext2D;
-                return canvasInterface.DRAWWINDOW_DRAW_VIEW
-                     | canvasInterface.DRAWWINDOW_DRAW_CARET
-                     | canvasInterface.DRAWWINDOW_ASYNC_DECODE_IMAGES
-                     | canvasInterface.DRAWWINDOW_DO_NOT_FLUSH;
-});
 
 // TabWindow
 
@@ -505,7 +495,7 @@ TabWindow.prototype = {
     }
   },
 
-  // nsIDOMEventListener
+  // EventListener
   handleEvent(evt) {
     let tab = evt.originalTarget;
     switch (evt.type) {
@@ -631,7 +621,7 @@ TabWindow.prototype = {
       }
     );
   }
-}
+};
 
 // AeroPeek
 
@@ -639,7 +629,7 @@ TabWindow.prototype = {
  * This object acts as global storage and external interface for this feature.
  * It maintains the values of the prefs.
  */
-this.AeroPeek = {
+var AeroPeek = {
   available: false,
   // Does the pref say we're enabled?
   __prefenabled: false,
@@ -826,7 +816,7 @@ this.AeroPeek = {
   /* nsINavHistoryObserver implementation */
   onBeginUpdateBatch() {},
   onEndUpdateBatch() {},
-  onVisit() {},
+  onVisits() {},
   onTitleChanged() {},
   onFrecencyChanged() {},
   onManyFrecenciesChanged() {},
@@ -845,7 +835,7 @@ this.AeroPeek = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsISupportsWeakReference,
     Ci.nsINavHistoryObserver,
     Ci.nsIObserver

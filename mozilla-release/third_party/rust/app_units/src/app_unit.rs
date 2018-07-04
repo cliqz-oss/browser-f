@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use heapsize::HeapSizeOf;
 use num_traits::Zero;
-use rustc_serialize::{Encodable, Encoder};
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 use std::default::Default;
@@ -23,10 +21,6 @@ pub const AU_PER_PX: i32 = 60;
 /// It is safe to construct invalid Au values, but it may lead to
 /// panics and overflows.
 pub struct Au(pub i32);
-
-impl HeapSizeOf for Au {
-    fn heap_size_of_children(&self) -> usize { 0 }
-}
 
 impl<'de> Deserialize<'de> for Au {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Au, D::Error> {
@@ -63,12 +57,6 @@ impl Zero for Au {
 // after the operation. Gecko uses the same min/max values
 pub const MAX_AU: Au = Au((1 << 30) - 1);
 pub const MIN_AU: Au = Au(- ((1 << 30) - 1));
-
-impl Encodable for Au {
-    fn encode<S: Encoder>(&self, e: &mut S) -> Result<(), S::Error> {
-        e.emit_f64(self.to_f64_px())
-    }
-}
 
 impl fmt::Debug for Au {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -189,19 +177,29 @@ impl Au {
 
     #[inline]
     fn clamp_self(&mut self) {
-        *self = self.clamp()
+        *self = Au::clamp(*self)
     }
 
     #[inline]
     pub fn scale_by(self, factor: f32) -> Au {
-        let new_float = ((self.0 as f32) * factor).round();
-        if new_float > MAX_AU.0 as f32 {
-            MAX_AU
-        } else if new_float < MIN_AU.0 as f32 {
-            MIN_AU
-        } else {
-            Au(new_float as i32)
-        }
+        let new_float = ((self.0 as f64) * factor as f64).round();
+        Au::from_f64_au(new_float)
+    }
+
+    #[inline]
+    /// Scale, but truncate (useful for viewport-relative units)
+    pub fn scale_by_trunc(self, factor: f32) -> Au {
+        let new_float = ((self.0 as f64) * factor as f64).trunc();
+        Au::from_f64_au(new_float)
+    }
+
+    #[inline]
+    pub fn from_f64_au(float: f64) -> Self {
+        // We *must* operate in f64. f32 isn't precise enough
+        // to handle MAX_AU
+        Au(float.min(MAX_AU.0 as f64)
+                .max(MIN_AU.0 as f64)
+            as i32)
     }
 
     #[inline]
@@ -244,25 +242,18 @@ impl Au {
     #[inline]
     pub fn from_f32_px(px: f32) -> Au {
         let float = (px * AU_PER_PX as f32).round();
-        if float > MAX_AU.0 as f32 {
-            MAX_AU
-        } else if float < MIN_AU.0 as f32 {
-            MIN_AU
-        } else {
-            Au(float as i32)
-        }
+        Au::from_f64_au(float as f64)
     }
 
     #[inline]
     pub fn from_f64_px(px: f64) -> Au {
         let float = (px * AU_PER_PX as f64).round();
-        if float > MAX_AU.0 as f64 {
-            MAX_AU
-        } else if float < MIN_AU.0 as f64 {
-            MIN_AU
-        } else {
-            Au(float as i32)
-        }
+        Au::from_f64_au(float)
+    }
+
+    #[inline]
+    pub fn abs(self) -> Self {
+        Au(self.0.abs())
     }
 }
 
@@ -307,6 +298,12 @@ fn scale() {
     assert_eq!(Au(12).scale_by(1.5), Au(18));
     assert_eq!(Au(12).scale_by(1.7), Au(20));
     assert_eq!(Au(12).scale_by(1.8), Au(22));
+    assert_eq!(Au(12).scale_by_trunc(1.8), Au(21));
+}
+
+#[test]
+fn abs() {
+    assert_eq!(Au(-10).abs(), Au(10));
 }
 
 #[test]
@@ -369,11 +366,4 @@ fn convert() {
     assert_eq!(Au::from_f64_px(6.), Au(360));
     assert_eq!(Au::from_f64_px(6.12), Au(367));
     assert_eq!(Au::from_f64_px(6.13), Au(368));
-}
-
-#[test]
-fn heapsize() {
-    use heapsize::HeapSizeOf;
-    fn f<T: HeapSizeOf>(_: T) {}
-    f(Au::new(0));
 }

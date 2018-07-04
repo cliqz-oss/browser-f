@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,13 +16,13 @@
 // <mo> -- operator, fence, or separator - implementation
 //
 
-// additional style context to be used by our MathMLChar.
+// additional ComputedStyle to be used by our MathMLChar.
 #define NS_MATHML_CHAR_STYLE_CONTEXT_INDEX   0
 
 nsIFrame*
-NS_NewMathMLmoFrame(nsIPresShell* aPresShell, nsStyleContext *aContext)
+NS_NewMathMLmoFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmoFrame(aContext);
+  return new (aPresShell) nsMathMLmoFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmoFrame)
@@ -70,14 +71,13 @@ nsMathMLmoFrame::UseMathMLChar()
 
 void
 nsMathMLmoFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                  const nsRect&           aDirtyRect,
                                   const nsDisplayListSet& aLists)
 {
   bool useMathMLChar = UseMathMLChar();
 
   if (!useMathMLChar) {
     // let the base class do everything
-    nsMathMLTokenFrame::BuildDisplayList(aBuilder, aDirtyRect, aLists);
+    nsMathMLTokenFrame::BuildDisplayList(aBuilder, aLists);
   } else {
     DisplayBorderBackgroundOutline(aBuilder, aLists);
 
@@ -126,7 +126,7 @@ nsMathMLmoFrame::ProcessTextData()
   if (mFrames.GetLength() != 1) {
     data.Truncate(); // empty data to reset the char
     mMathMLChar.SetData(data);
-    ResolveMathMLCharStyle(presContext, mContent, mStyleContext, &mMathMLChar);
+    ResolveMathMLCharStyle(presContext, mContent, mComputedStyle, &mMathMLChar);
     return;
   }
 
@@ -182,7 +182,7 @@ nsMathMLmoFrame::ProcessTextData()
   if (isMutable)
     mFlags |= NS_MATHML_OPERATOR_MUTABLE;
 
-  ResolveMathMLCharStyle(presContext, mContent, mStyleContext, &mMathMLChar);
+  ResolveMathMLCharStyle(presContext, mContent, mComputedStyle, &mMathMLChar);
 }
 
 // get our 'form' and lookup in the Operator Dictionary to fetch
@@ -249,14 +249,14 @@ nsMathMLmoFrame::ProcessOperatorData()
       mEmbellishData.flags |= NS_MATHML_EMBELLISH_MOVABLELIMITS;
 
     // see if the accent attribute is there
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::accent_, value);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::accent_, value);
     if (value.EqualsLiteral("true"))
       mEmbellishData.flags |= NS_MATHML_EMBELLISH_ACCENT;
     else if (value.EqualsLiteral("false"))
       mEmbellishData.flags &= ~NS_MATHML_EMBELLISH_ACCENT;
 
     // see if the movablelimits attribute is there
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::movablelimits_, value);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::movablelimits_, value);
     if (value.EqualsLiteral("true"))
       mEmbellishData.flags |= NS_MATHML_EMBELLISH_MOVABLELIMITS;
     else if (value.EqualsLiteral("false"))
@@ -321,7 +321,7 @@ nsMathMLmoFrame::ProcessOperatorData()
 
     // find our form
     form = NS_MATHML_OPERATOR_FORM_INFIX;
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::form, value);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::form, value);
     if (!value.IsEmpty()) {
       if (value.EqualsLiteral("prefix"))
         form = NS_MATHML_OPERATOR_FORM_PREFIX;
@@ -388,7 +388,7 @@ nsMathMLmoFrame::ProcessOperatorData()
   // which is not necessarily the default one.
   //
   nscoord leadingSpace = mEmbellishData.leadingSpace;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::lspace_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::lspace_, value);
   if (!value.IsEmpty()) {
     nsCSSValue cssValue;
     if (nsMathMLElement::ParseNumericValue(value, cssValue, 0,
@@ -396,7 +396,7 @@ nsMathMLmoFrame::ProcessOperatorData()
       if ((eCSSUnit_Number == cssValue.GetUnit()) && !cssValue.GetFloatValue())
         leadingSpace = 0;
       else if (cssValue.IsLengthUnit())
-        leadingSpace = CalcLength(presContext, mStyleContext, cssValue,
+        leadingSpace = CalcLength(presContext, mComputedStyle, cssValue,
                                   fontSizeInflation);
       mFlags |= NS_MATHML_OPERATOR_LSPACE_ATTR;
     }
@@ -415,7 +415,7 @@ nsMathMLmoFrame::ProcessOperatorData()
   // which is not necessarily the default one.
   //
   nscoord trailingSpace = mEmbellishData.trailingSpace;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::rspace_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::rspace_, value);
   if (!value.IsEmpty()) {
     nsCSSValue cssValue;
     if (nsMathMLElement::ParseNumericValue(value, cssValue, 0,
@@ -423,7 +423,7 @@ nsMathMLmoFrame::ProcessOperatorData()
       if ((eCSSUnit_Number == cssValue.GetUnit()) && !cssValue.GetFloatValue())
         trailingSpace = 0;
       else if (cssValue.IsLengthUnit())
-        trailingSpace = CalcLength(presContext, mStyleContext, cssValue,
+        trailingSpace = CalcLength(presContext, mComputedStyle, cssValue,
                                    fontSizeInflation);
       mFlags |= NS_MATHML_OPERATOR_RSPACE_ATTR;
     }
@@ -453,33 +453,33 @@ nsMathMLmoFrame::ProcessOperatorData()
   // special: accent and movablelimits are handled above,
   // don't process them here
 
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::stretchy_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::stretchy_, value);
   if (value.EqualsLiteral("false")) {
     mFlags &= ~NS_MATHML_OPERATOR_STRETCHY;
   } else if (value.EqualsLiteral("true")) {
     mFlags |= NS_MATHML_OPERATOR_STRETCHY;
   }
   if (NS_MATHML_OPERATOR_IS_FENCE(mFlags)) {
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::fence_, value);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::fence_, value);
     if (value.EqualsLiteral("false"))
       mFlags &= ~NS_MATHML_OPERATOR_FENCE;
     else
       mEmbellishData.flags |= NS_MATHML_EMBELLISH_FENCE;
   }
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::largeop_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::largeop_, value);
   if (value.EqualsLiteral("false")) {
     mFlags &= ~NS_MATHML_OPERATOR_LARGEOP;
   } else if (value.EqualsLiteral("true")) {
     mFlags |= NS_MATHML_OPERATOR_LARGEOP;
   }
   if (NS_MATHML_OPERATOR_IS_SEPARATOR(mFlags)) {
-    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::separator_, value);
+    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::separator_, value);
     if (value.EqualsLiteral("false"))
       mFlags &= ~NS_MATHML_OPERATOR_SEPARATOR;
     else
       mEmbellishData.flags |= NS_MATHML_EMBELLISH_SEPARATOR;
   }
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::symmetric_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::symmetric_, value);
   if (value.EqualsLiteral("false"))
     mFlags &= ~NS_MATHML_OPERATOR_SYMMETRIC;
   else if (value.EqualsLiteral("true"))
@@ -499,7 +499,7 @@ nsMathMLmoFrame::ProcessOperatorData()
   // normal size.
   //
   mMinSize = 0;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::minsize_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::minsize_, value);
   if (!value.IsEmpty()) {
     nsCSSValue cssValue;
     if (nsMathMLElement::ParseNumericValue(value, cssValue,
@@ -512,7 +512,7 @@ nsMathMLmoFrame::ProcessOperatorData()
       else if (eCSSUnit_Percent == unit)
         mMinSize = cssValue.GetPercentValue();
       else if (eCSSUnit_Null != unit) {
-        mMinSize = float(CalcLength(presContext, mStyleContext, cssValue,
+        mMinSize = float(CalcLength(presContext, mComputedStyle, cssValue,
                                     fontSizeInflation));
         mFlags |= NS_MATHML_OPERATOR_MINSIZE_ABSOLUTE;
       }
@@ -532,7 +532,7 @@ nsMathMLmoFrame::ProcessOperatorData()
   // normal size.
   //
   mMaxSize = NS_MATHML_OPERATOR_SIZE_INFINITY;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::maxsize_, value);
+  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::maxsize_, value);
   if (!value.IsEmpty()) {
     nsCSSValue cssValue;
     if (nsMathMLElement::ParseNumericValue(value, cssValue,
@@ -545,7 +545,7 @@ nsMathMLmoFrame::ProcessOperatorData()
       else if (eCSSUnit_Percent == unit)
         mMaxSize = cssValue.GetPercentValue();
       else if (eCSSUnit_Null != unit) {
-        mMaxSize = float(CalcLength(presContext, mStyleContext, cssValue,
+        mMaxSize = float(CalcLength(presContext, mComputedStyle, cssValue,
                                     fontSizeInflation));
         mFlags |= NS_MATHML_OPERATOR_MAXSIZE_ABSOLUTE;
       }
@@ -941,7 +941,9 @@ nsMathMLmoFrame::Reflow(nsPresContext*          aPresContext,
                         const ReflowInput& aReflowInput,
                         nsReflowStatus&          aStatus)
 {
-  // certain values use units that depend on our style context, so
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
+  // certain values use units that depend on our ComputedStyle, so
   // it is safer to just process the whole lot here
   ProcessOperatorData();
 
@@ -1063,7 +1065,7 @@ nsMathMLmoFrame::GetIntrinsicISizeMetrics(gfxContext* aRenderingContext,
 
 nsresult
 nsMathMLmoFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                  nsIAtom*        aAttribute,
+                                  nsAtom*        aAttribute,
                                   int32_t         aModType)
 {
   // check if this is an attribute that can affect the embellished hierarchy
@@ -1089,26 +1091,26 @@ nsMathMLmoFrame::AttributeChanged(int32_t         aNameSpaceID,
 }
 
 // ----------------------
-// No need to track the style context given to our MathML char.
-// the Style System will use these to pass the proper style context to our MathMLChar
-nsStyleContext*
-nsMathMLmoFrame::GetAdditionalStyleContext(int32_t aIndex) const
+// No need to track the ComputedStyle given to our MathML char.
+// the Style System will use these to pass the proper ComputedStyle to our MathMLChar
+ComputedStyle*
+nsMathMLmoFrame::GetAdditionalComputedStyle(int32_t aIndex) const
 {
   switch (aIndex) {
   case NS_MATHML_CHAR_STYLE_CONTEXT_INDEX:
-    return mMathMLChar.GetStyleContext();
+    return mMathMLChar.GetComputedStyle();
   default:
     return nullptr;
   }
 }
 
 void
-nsMathMLmoFrame::SetAdditionalStyleContext(int32_t          aIndex,
-                                           nsStyleContext*  aStyleContext)
+nsMathMLmoFrame::SetAdditionalComputedStyle(int32_t          aIndex,
+                                           ComputedStyle*  aComputedStyle)
 {
   switch (aIndex) {
   case NS_MATHML_CHAR_STYLE_CONTEXT_INDEX:
-    mMathMLChar.SetStyleContext(aStyleContext);
+    mMathMLChar.SetComputedStyle(aComputedStyle);
     break;
   }
 }

@@ -3,10 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
- const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 // Stop updating jumplists after some idle time.
 const IDLE_TIMEOUT_SECONDS = 5 * 60;
@@ -24,13 +22,13 @@ const PREF_TASKBAR_REFRESH   = "refreshInSeconds";
 const LIST_TYPE = {
   FREQUENT: 0,
   RECENT: 1
-}
+};
 
 /**
  * Exports
  */
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "WinTaskbarJumpList",
 ];
 
@@ -54,9 +52,9 @@ XPCOMUtils.defineLazyServiceGetter(this, "_taskbarService",
                                    "@mozilla.org/windows-taskbar;1",
                                    "nsIWinTaskbar");
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 /**
@@ -103,22 +101,22 @@ var tasksCfg = [
     close:            true, // No point, but we don't always update the list on
                             // shutdown. Thus true for consistency.
   },
-
-  // Open new private window
-  {
-    get title() { return _getString("taskbar.tasks.newPrivateWindow.label"); },
-    get description() { return _getString("taskbar.tasks.newPrivateWindow.description"); },
-    args:             "-private-window",
-    iconIndex:        4, // Private browsing mode icon
-    open:             true,
-    close:            true, // No point, but we don't always update the list on
-                            // shutdown. Thus true for consistency.
-  },
 ];
+
+// Open new private window
+let privateWindowTask = {
+  get title() { return _getString("taskbar.tasks.newPrivateWindow.label"); },
+  get description() { return _getString("taskbar.tasks.newPrivateWindow.description"); },
+  args:             "-private-window",
+  iconIndex:        4, // Private browsing mode icon
+  open:             true,
+  close:            true, // No point, but we don't always update the list on
+                          // shutdown. Thus true for consistency.
+};
 
 // Implementation
 
-this.WinTaskbarJumpList =
+var WinTaskbarJumpList =
 {
   _builder: null,
   _tasks: null,
@@ -135,6 +133,10 @@ this.WinTaskbarJumpList =
 
     // Store our task list config data
     this._tasks = tasksCfg;
+
+    if (PrivateBrowsingUtils.enabled) {
+      tasksCfg.push(privateWindowTask);
+    }
 
     // retrieve taskbar related prefs.
     this._refreshPrefs();
@@ -336,7 +338,7 @@ this.WinTaskbarJumpList =
 
         // Do not add items to recent that have already been added to frequent.
         if (this._frequentHashList &&
-            this._frequentHashList.indexOf(aResult.uri) != -1) {
+            this._frequentHashList.includes(aResult.uri)) {
           return;
         }
 
@@ -362,7 +364,7 @@ this.WinTaskbarJumpList =
   _getHandlerAppItem: function WTBJL__getHandlerAppItem(name, description,
                                                         args, iconIndex,
                                                         faviconPageUri) {
-    var file = Services.dirsvc.get("XREExeF", Ci.nsILocalFile);
+    var file = Services.dirsvc.get("XREExeF", Ci.nsIFile);
 
     var handlerApp = Cc["@mozilla.org/uriloader/local-handler-app;1"].
                      createInstance(Ci.nsILocalHandlerApp);
@@ -400,7 +402,7 @@ this.WinTaskbarJumpList =
 
     // Return the pending statement to the caller, to allow cancelation.
     return PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase)
-                              .asyncExecuteLegacyQueries([query], 1, options, {
+                              .asyncExecuteLegacyQuery(query, options, {
       handleResult(aResultSet) {
         for (let row; (row = aResultSet.getNextRow());) {
           try {
@@ -516,18 +518,18 @@ this.WinTaskbarJumpList =
   notify: function WTBJL_notify(aTimer) {
     // Add idle observer on the first notification so it doesn't hit startup.
     this._updateIdleObserver();
-    this.update();
+    Services.tm.idleDispatchToMainThread(() => { this.update(); });
   },
 
   observe: function WTBJL_observe(aSubject, aTopic, aData) {
     switch (aTopic) {
       case "nsPref:changed":
-        if (this._enabled == true && !_prefs.getBoolPref(PREF_TASKBAR_ENABLED))
+        if (this._enabled && !_prefs.getBoolPref(PREF_TASKBAR_ENABLED))
           this._deleteActiveJumpList();
         this._refreshPrefs();
         this._updateTimer();
         this._updateIdleObserver();
-        this.update();
+        Services.tm.idleDispatchToMainThread(() => { this.update(); });
       break;
 
       case "profile-before-change":

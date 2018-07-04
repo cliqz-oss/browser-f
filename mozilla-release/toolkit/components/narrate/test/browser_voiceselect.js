@@ -53,7 +53,7 @@ add_task(async function testVoiceselectLabelChange() {
     ok(NarrateTestUtils.isVisible($(NarrateTestUtils.POPUP)),
       "popup is toggled");
 
-    ok(NarrateTestUtils.selectVoice(content, "urn:moz-tts:fake-direct:lenny"),
+    ok(NarrateTestUtils.selectVoice(content, "urn:moz-tts:fake:lenny"),
       "voice selected");
 
     let selectedOption = $(NarrateTestUtils.VOICE_SELECTED);
@@ -85,26 +85,26 @@ add_task(async function testVoiceselectKeyboard() {
 
     $(NarrateTestUtils.VOICE_SELECT).focus();
 
-    eventUtils.sendKey("DOWN", content);
+    eventUtils.synthesizeKey("KEY_ArrowDown", {}, content);
 
     await ContentTaskUtils.waitForCondition(
       () => $(NarrateTestUtils.VOICE_SELECTED).dataset.value != firstValue,
-      "value changed after pressing DOWN key");
+      "value changed after pressing ArrowDown key");
 
-    eventUtils.sendKey("RETURN", content);
+    eventUtils.synthesizeKey("KEY_Enter", {}, content);
 
     ok(NarrateTestUtils.isVisible($(NarrateTestUtils.VOICE_OPTIONS)),
-      "voice options showing after pressing RETURN");
+      "voice options showing after pressing Enter");
 
-    eventUtils.sendKey("UP", content);
+    eventUtils.synthesizeKey("KEY_ArrowUp", {}, content);
 
-    eventUtils.sendKey("RETURN", content);
+    eventUtils.synthesizeKey("KEY_Enter", {}, content);
 
     ok(!NarrateTestUtils.isVisible($(NarrateTestUtils.VOICE_OPTIONS)),
-      "voice options hidden after pressing RETURN");
+      "voice options hidden after pressing Enter");
 
     await ContentTaskUtils.waitForCondition(
       () => $(NarrateTestUtils.VOICE_SELECTED).dataset.value == firstValue,
-      "value changed back to original after pressing RETURN");
+      "value changed back to original after pressing Enter");
   });
 });

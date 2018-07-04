@@ -8,13 +8,12 @@
 
 #include "js/StructuredClone.h"
 #include "js/Utility.h"
-#include "jswrapper.h"
-
-#include "xpcpublic.h"
-
+#include "js/Wrapper.h"
+#include "mozilla/dom/BlobImpl.h"
+#include "mozilla/dom/StructuredCloneTags.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/UniquePtr.h"
-#include "mozilla/dom/StructuredCloneTags.h"
+#include "xpcpublic.h"
 
 namespace mozilla {
 namespace dom {
@@ -135,10 +134,15 @@ StructuredCloneBlob::ReadStructuredCloneInternal(JSContext* aCx, JSStructuredClo
     return false;
   }
   if (blobCount) {
+#ifdef FUZZING
+    if (blobOffset >= aHolder->BlobImpls().Length()) {
+      return false;
+    }
+#endif
     BlobImpls().AppendElements(&aHolder->BlobImpls()[blobOffset], blobCount);
   }
 
-  JSStructuredCloneData data;
+  JSStructuredCloneData data(mStructuredCloneScope);
   while (length) {
     size_t size;
     char* buffer = data.AllocateBytes(length, &size);
@@ -169,15 +173,9 @@ StructuredCloneBlob::WriteStructuredClone(JSContext* aCx, JSStructuredCloneWrite
 
   aHolder->BlobImpls().AppendElements(BlobImpls());
 
-  auto iter = data.Iter();
-  while (!iter.Done()) {
-    if (!JS_WriteBytes(aWriter, iter.Data(), iter.RemainingInSegment())) {
-      return false;
-    }
-    iter.Advance(data, iter.RemainingInSegment());
-  }
-
-  return true;
+  return data.ForEachDataChunk([&](const char* aData, size_t aSize) {
+      return JS_WriteBytes(aWriter, aData, aSize);
+  });
 }
 
 bool

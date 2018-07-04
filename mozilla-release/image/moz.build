@@ -8,6 +8,9 @@ DIRS += ['build', 'decoders', 'encoders']
 if CONFIG['ENABLE_TESTS']:
     DIRS += ['test/gtest']
 
+if CONFIG['FUZZING_INTERFACES']:
+    DIRS += ['test/fuzzing']
+
 with Files('**'):
     BUG_COMPONENT = ('Core', 'ImageLib')
 
@@ -26,7 +29,6 @@ XPIDL_SOURCES += [
     'imgIEncoder.idl',
     'imgILoader.idl',
     'imgINotificationObserver.idl',
-    'imgIOnloadBlocker.idl',
     'imgIRequest.idl',
     'imgIScriptedNotificationObserver.idl',
     'imgITools.idl',
@@ -36,13 +38,13 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'imglib2'
 
 EXPORTS += [
-    'DrawResult.h',
     'FrameTimeout.h',
     'ImageCacheKey.h',
     'ImageLogging.h',
     'ImageMetadata.h',
     'ImageOps.h',
     'ImageRegion.h',
+    'ImgDrawResult.h',
     'imgLoader.h',
     'imgRequest.h',
     'imgRequestProxy.h',
@@ -52,6 +54,7 @@ EXPORTS += [
 ]
 
 UNIFIED_SOURCES += [
+    'AnimationFrameBuffer.cpp',
     'AnimationSurfaceProvider.cpp',
     'ClippedImage.cpp',
     'DecodedSurfaceProvider.cpp',
@@ -98,7 +101,7 @@ LOCAL_INCLUDES += [
     '/dom/svg',
     # We need to instantiate the decoders
     '/image/decoders',
-    # Because VectorImage.cpp includes nsSVGUtils.h and nsSVGEffects.h
+    # Because VectorImage.cpp includes nsSVGUtils.h and SVGObserverUtils.h
     '/layout/svg',
     # For URI-related functionality
     '/netwerk/base',
@@ -111,5 +114,11 @@ CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
 
 LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
+
+if CONFIG['FUZZING']:
+    if CONFIG['LIBFUZZER']:
+        # Add trace-pc coverage for libfuzzer
+        CFLAGS += ['-fsanitize-coverage=trace-pc-guard']
+        CXXFLAGS += ['-fsanitize-coverage=trace-pc-guard']

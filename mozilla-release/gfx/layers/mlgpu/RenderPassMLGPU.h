@@ -1,8 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef MOZILLA_GFX_RENDERPASSMLGPU_H
 #define MOZILLA_GFX_RENDERPASSMLGPU_H
@@ -292,6 +292,18 @@ public:
   explicit TexturedRenderPass(FrameBuilder* aBuilder, const ItemInfo& aItem);
 
 protected:
+  struct Info {
+    Info(const ItemInfo& aItem, PaintedLayerMLGPU* aLayer);
+    Info(const ItemInfo& aItem, TexturedLayerMLGPU* aLayer);
+    Info(const ItemInfo& aItem, ContainerLayerMLGPU* aLayer);
+
+    const ItemInfo& item;
+    gfx::IntSize textureSize;
+    gfx::Point destOrigin;
+    Maybe<gfx::Size> scale;
+    bool decomposeIntoNoRepeatRects;
+  };
+
   // Add a set of draw rects based on a visible region. The texture size and
   // scaling factor are used to compute uv-coordinates.
   //
@@ -302,17 +314,14 @@ protected:
   // surfaces, on the other hand, are relative to the target offset of the
   // layer. In all cases the visible region may be partially occluded, so
   // knowing the true origin is important.
+  template <typename RegionType>
   bool AddItems(Txn& aTxn,
-                const ItemInfo& aInfo,
-                const nsIntRegion& aDrawRects,
-                const gfx::IntPoint& aDestOrigin,
-                const gfx::IntSize& aTextureSize,
-                const Maybe<gfx::Size>& aScale = Nothing())
+                const Info& aInfo,
+                const RegionType& aDrawRegion)
   {
-    gfx::Point origin(aDestOrigin);
-    for (auto iter = aDrawRects.RectIter(); !iter.Done(); iter.Next()) {
-      gfx::Rect drawRect = gfx::Rect(iter.Get());
-      if (!AddItem(aTxn, aInfo, drawRect, origin, aTextureSize, aScale)) {
+    for (auto iter = aDrawRegion.RectIter(); !iter.Done(); iter.Next()) {
+      gfx::Rect drawRect = gfx::Rect(iter.Get().ToUnknownRect());
+      if (!AddItem(aTxn, aInfo, drawRect)) {
         return false;
       }
     }
@@ -324,21 +333,11 @@ private:
   // are built from the given texture size, optional scaling factor, and
   // texture origin relative to the draw rect. This will ultimately call
   // AddClippedItem, potentially clipping the draw rect if needed.
-  bool AddItem(Txn& aTxn,
-               const ItemInfo& aInfo,
-               const gfx::Rect& aDrawRect,
-               const gfx::Point& aDestOrigin,
-               const gfx::IntSize& aTextureSize,
-               const Maybe<gfx::Size>& aTextureScale = Nothing());
+  bool AddItem(Txn& aTxn, const Info& aInfo, const gfx::Rect& aDrawRect);
 
   // Add an item that has gone through any necessary clipping already. This
   // is the final destination for handling textured items.
-  bool AddClippedItem(Txn& aTxn,
-                      const ItemInfo& aInfo,
-                      const gfx::Rect& aDrawRect,
-                      const gfx::Point& aDestOrigin,
-                      const gfx::IntSize& aTextureSize,
-                      const Maybe<gfx::Size>& aScale);
+  bool AddClippedItem(Txn& aTxn, const Info& aInfo, const gfx::Rect& aDrawRect);
 
 protected:
   TextureFlags mTextureFlags;
@@ -403,7 +402,7 @@ private:
 
 private:
   RefPtr<TextureSource> mTexture;
-  gfx::SamplingFilter mFilter;
+  SamplerMode mSamplerMode;
   float mOpacity;
 };
 
@@ -425,7 +424,8 @@ private:
   }
 
 private:
-  PaintedLayerMLGPU* mAssignedLayer;
+  float mOpacity;
+  SamplerMode mSamplerMode;
   RefPtr<TextureSource> mTextureOnBlack;
   RefPtr<TextureSource> mTextureOnWhite;
 };
@@ -449,7 +449,7 @@ private:
 private:
   RefPtr<TextureHost> mHost;
   RefPtr<TextureSource> mTexture;
-  gfx::SamplingFilter mFilter;
+  SamplerMode mSamplerMode;
   float mOpacity;
 };
 
@@ -466,8 +466,10 @@ private:
   bool AddToPass(LayerMLGPU* aItem, ItemInfo& aInfo) override;
   void SetupPipeline() override;
   bool OnPrepareBuffers() override;
+  void ExecuteRendering() override;
   float GetOpacity() const override;
   bool PrepareBlendState();
+  void RenderWithBackdropCopy();
 
 private:
   ConstantBufferSection mBlendConstants;

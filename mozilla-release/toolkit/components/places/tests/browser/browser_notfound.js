@@ -11,8 +11,7 @@ add_task(async function() {
   // Create and add history observer.
   let visitedPromise = new Promise(resolve => {
     let historyObserver = {
-      onVisit(aURI, aVisitID, aTime, aSessionID, aReferringID,
-                        aTransitionType) {
+      onVisit(aURI, aVisitID, aTime, aReferringID, aTransitionType) {
         PlacesUtils.history.removeObserver(historyObserver);
         info("Received onVisit: " + aURI.spec);
         fieldForUrl(aURI, "frecency", function(aFrecency) {
@@ -26,6 +25,17 @@ add_task(async function() {
           });
         });
       },
+      onVisits(aVisits) {
+        is(aVisits.length, 1, "Right number of visits notified");
+        let {
+          uri,
+          visitId,
+          time,
+          referrerId,
+          transitionType,
+        } = aVisits[0];
+        this.onVisit(uri, visitId, time, referrerId, transitionType);
+      },
       onBeginUpdateBatch() {},
       onEndUpdateBatch() {},
       onTitleChanged() {},
@@ -33,7 +43,7 @@ add_task(async function() {
       onClearHistory() {},
       onPageChanged() {},
       onDeleteVisits() {},
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsINavHistoryObserver])
+      QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver])
     };
     PlacesUtils.history.addObserver(historyObserver);
   });
@@ -41,6 +51,6 @@ add_task(async function() {
   let newTabPromise = BrowserTestUtils.openNewForegroundTab(gBrowser, TEST_URL);
   await Promise.all([visitedPromise, newTabPromise]);
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   gBrowser.removeCurrentTab();
 });

@@ -1,13 +1,13 @@
 "use strict";
 
-Components.utils.import("resource://gre/modules/osfile.jsm");
-Components.utils.import("resource://gre/modules/AsyncShutdown.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
 // The following are used to compare against a well-tested reference
 // implementation of file I/O.
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
-Components.utils.import("resource://gre/modules/FileUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var myok = ok;
 var myis = is;
@@ -38,10 +38,10 @@ var maketest = function(prefix, test) {
     okpromise: function okpromise(t, m) {
       return t.then(
         function onSuccess() {
-          util.ok(true, m);
+          utils.ok(true, m);
         },
         function onFailure() {
-          util.ok(false, m);
+          utils.ok(false, m);
         }
       );
     }
@@ -116,14 +116,14 @@ var reference_dir_contents = function reference_dir_contents(path) {
   let result = [];
   let entries = new FileUtils.File(path).directoryEntries;
   while (entries.hasMoreElements()) {
-    let entry = entries.getNext().QueryInterface(Components.interfaces.nsILocalFile);
+    let entry = entries.getNext().QueryInterface(Ci.nsIFile);
     result.push(entry.path);
   }
   return result;
 };
 
 // Set/Unset OS.Shared.DEBUG, OS.Shared.TEST and a console listener.
-function toggleDebugTest (pref, consoleListener) {
+function toggleDebugTest(pref, consoleListener) {
   Services.prefs.setBoolPref("toolkit.osfile.log", pref);
   Services.prefs.setBoolPref("toolkit.osfile.log.redirect", pref);
   Services.console[pref ? "registerListener" : "unregisterListener"](
@@ -276,7 +276,7 @@ var test_iter = maketest("iter", function iter(test) {
     test.info("Double closing DirectoryIterator");
     iterator = new OS.File.DirectoryIterator(currentDir);
     await iterator.close();
-    await iterator.close(); //double closing |DirectoryIterator|
+    await iterator.close(); // double closing |DirectoryIterator|
     test.ok(true, "|DirectoryIterator| was closed twice successfully");
 
     let allFiles2 = [];
@@ -309,7 +309,7 @@ var test_iter = maketest("iter", function iter(test) {
     await iterator.forEach(function cb(entry, index, iterator) {
       if (index < BATCH_LENGTH) {
         test.is(entry.path, someFiles1[index].path, "Both runs return the same files (part 1)");
-      } else if (index < 2*BATCH_LENGTH) {
+      } else if (index < 2 * BATCH_LENGTH) {
         test.is(entry.path, someFiles2[index - BATCH_LENGTH].path, "Both runs return the same files (part 2)");
       } else if (index == 2 * BATCH_LENGTH) {
         test.info("Attempting to stop asynchronous forEach");
@@ -344,10 +344,14 @@ var test_iter = maketest("iter", function iter(test) {
       let exn = null;
       try {
         await iterator.next();
-      } catch (ex if ex instanceof OS.File.Error && ex.becauseNoSuchFile) {
-        exn = ex;
-        let exists = await iterator.exists();
-        test.ok(!exists, "After one iteration, iterator detects that the directory doesn't exist");
+      } catch (ex) {
+        if (ex instanceof OS.File.Error && ex.becauseNoSuchFile) {
+          exn = ex;
+          let exists = await iterator.exists();
+          test.ok(!exists, "After one iteration, iterator detects that the directory doesn't exist");
+        } else {
+          throw ex;
+        }
       }
       test.ok(exn, "Iterating through a directory that does not exist has failed with becauseNoSuchFile");
     } finally {
@@ -376,7 +380,7 @@ var test_exists = maketest("exists", function exists(test) {
  */
 var test_debug = maketest("debug", function debug(test) {
   return (async function() {
-    function testSetDebugPref (pref) {
+    function testSetDebugPref(pref) {
       try {
         Services.prefs.setBoolPref("toolkit.osfile.log", pref);
       } catch (x) {
@@ -403,12 +407,12 @@ var test_debug_test = maketest("debug_test", function debug_test(test) {
   return (async function() {
     // Create a console listener.
     let consoleListener = {
-      observe: function (aMessage) {
+      observe(aMessage) {
         // Ignore unexpected messages.
-        if (!(aMessage instanceof Components.interfaces.nsIConsoleMessage)) {
+        if (!(aMessage instanceof Ci.nsIConsoleMessage)) {
           return;
         }
-        if (aMessage.message.indexOf("TEST OS") < 0) {
+        if (!aMessage.message.includes("TEST OS")) {
           return;
         }
         test.ok(true, "DEBUG TEST messages are logged correctly.");
@@ -416,9 +420,7 @@ var test_debug_test = maketest("debug_test", function debug_test(test) {
     };
     toggleDebugTest(true, consoleListener);
     // Execution of OS.File.exist method will trigger OS.File.LOG several times.
-    let fileExists = await OS.File.exists(EXISTING_FILE);
+    await OS.File.exists(EXISTING_FILE);
     toggleDebugTest(false, consoleListener);
   })();
 });
-
-

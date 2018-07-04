@@ -1,6 +1,8 @@
 "use strict";
 
-const URL = "data:text/html;charset=utf-8,<a href=%23>clickme</a>";
+const PATH = getRootDirectory(gTestPath)
+             .replace("chrome://mochitests/content/", "http://example.com/");
+const URL = PATH + "file_async_duplicate_tab.html";
 
 add_task(async function test_duplicate() {
   // Create new tab.
@@ -36,8 +38,8 @@ add_task(async function test_duplicate() {
   is(entries.length, 2, "there are two shistory entries");
 
   // Cleanup.
-  await promiseRemoveTab(tab2);
-  await promiseRemoveTab(tab);
+  BrowserTestUtils.removeTab(tab2);
+  BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function test_duplicate_remove() {
@@ -66,7 +68,10 @@ add_task(async function test_duplicate_remove() {
   let tab2 = ss.duplicateTab(window, tab);
 
   // Before the duplication finished, remove the tab.
-  await Promise.all([promiseRemoveTab(tab), promiseTabRestored(tab2)]);
+  await Promise.all([
+    promiseRemoveTabAndSessionState(tab),
+    promiseTabRestored(tab2),
+  ]);
   await TabStateFlusher.flush(tab2.linkedBrowser);
 
   // There should be two history entries now.
@@ -74,5 +79,5 @@ add_task(async function test_duplicate_remove() {
   is(entries.length, 2, "there are two shistory entries");
 
   // Cleanup.
-  await promiseRemoveTab(tab2);
+  BrowserTestUtils.removeTab(tab2);
 });

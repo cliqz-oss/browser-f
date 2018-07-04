@@ -7,11 +7,11 @@
 #ifndef mozilla_dom_ipc_IPCBlobInputStream_h
 #define mozilla_dom_ipc_IPCBlobInputStream_h
 
+#include "mozilla/Mutex.h"
 #include "nsIAsyncInputStream.h"
 #include "nsICloneableInputStream.h"
 #include "nsIFileStreams.h"
 #include "nsIIPCSerializableInputStream.h"
-#include "nsISeekableStream.h"
 #include "nsCOMPtr.h"
 
 namespace mozilla {
@@ -21,10 +21,9 @@ class IPCBlobInputStreamChild;
 
 class IPCBlobInputStream final : public nsIAsyncInputStream
                                , public nsIInputStreamCallback
-                               , public nsICloneableInputStream
+                               , public nsICloneableInputStreamWithRange
                                , public nsIIPCSerializableInputStream
-                               , public nsISeekableStream
-                               , public nsIFileMetadata
+                               , public nsIAsyncFileMetadata
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -32,27 +31,25 @@ public:
   NS_DECL_NSIASYNCINPUTSTREAM
   NS_DECL_NSIINPUTSTREAMCALLBACK
   NS_DECL_NSICLONEABLEINPUTSTREAM
+  NS_DECL_NSICLONEABLEINPUTSTREAMWITHRANGE
   NS_DECL_NSIIPCSERIALIZABLEINPUTSTREAM
-  NS_DECL_NSISEEKABLESTREAM
   NS_DECL_NSIFILEMETADATA
+  NS_DECL_NSIASYNCFILEMETADATA
 
   explicit IPCBlobInputStream(IPCBlobInputStreamChild* aActor);
 
   void
-  StreamReady(nsIInputStream* aInputStream);
+  StreamReady(already_AddRefed<nsIInputStream> aInputStream);
 
 private:
   ~IPCBlobInputStream();
 
   nsresult
-  MaybeExecuteCallback(nsIInputStreamCallback* aCallback,
-                       nsIEventTarget* aEventTarget);
+  EnsureAsyncRemoteStream(const MutexAutoLock& aProofOfLock);
 
-  bool
-  IsSeekableStream() const;
-
-  bool
-  IsFileMetadata() const;
+  void
+  InitWithExistingRange(uint64_t aStart, uint64_t aLength,
+                        const MutexAutoLock& aProofOfLock);
 
   RefPtr<IPCBlobInputStreamChild> mActor;
 
@@ -77,11 +74,23 @@ private:
     eClosed,
   } mState;
 
+  uint64_t mStart;
+  uint64_t mLength;
+
   nsCOMPtr<nsIInputStream> mRemoteStream;
+  nsCOMPtr<nsIAsyncInputStream> mAsyncRemoteStream;
 
   // These 2 values are set only if mState is ePending.
-  nsCOMPtr<nsIInputStreamCallback> mCallback;
-  nsCOMPtr<nsIEventTarget> mCallbackEventTarget;
+  nsCOMPtr<nsIInputStreamCallback> mInputStreamCallback;
+  nsCOMPtr<nsIEventTarget> mInputStreamCallbackEventTarget;
+
+  // These 2 values are set only if mState is ePending.
+  nsCOMPtr<nsIFileMetadataCallback> mFileMetadataCallback;
+  nsCOMPtr<nsIEventTarget> mFileMetadataCallbackEventTarget;
+
+  // Any member of this class is protected by mutex because touched on
+  // multiple threads.
+  Mutex mMutex;
 };
 
 } // namespace dom

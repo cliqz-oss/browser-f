@@ -1,7 +1,4 @@
 function run_test() {
-  var Ci = Components.interfaces;
-  var Cc = Components.classes;
-
   // vectors by the html5security project (https://code.google.com/p/html5security/ & Creative Commons 3.0 BY), see CC-BY-LICENSE for the full license
   load("results.js");   // gives us a `vectors' array
 
@@ -16,6 +13,6 @@ function run_test() {
     var evil = vectors[item].data;
     var sanitized = vectors[item].sanitized;
     var out = ParserUtils.sanitize(evil, sanitizeFlags);
-    do_check_eq(sanitized, out);
+    Assert.equal(sanitized, out);
   }
 }

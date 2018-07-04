@@ -10,7 +10,7 @@
 #include "mozilla/dom/VRDisplayEventBinding.h"
 #include "nsISupportsImpl.h" // for NS_INLINE_DECL_REFCOUNTING
 
-class nsGlobalWindow;
+class nsGlobalWindowInner;
 
 namespace mozilla {
 namespace dom {
@@ -19,8 +19,9 @@ class VREventObserver final
 {
 public:
   NS_INLINE_DECL_REFCOUNTING(VREventObserver)
-  explicit VREventObserver(nsGlobalWindow* aGlobalWindow);
+  explicit VREventObserver(nsGlobalWindowInner* aGlobalWindow);
 
+  void NotifyAfterLoad();
   void NotifyVRDisplayMounted(uint32_t aDisplayID);
   void NotifyVRDisplayUnmounted(uint32_t aDisplayID);
   void NotifyVRDisplayNavigation(uint32_t aDisplayID);
@@ -30,16 +31,17 @@ public:
   void NotifyVRDisplayPresentChange(uint32_t aDisplayID);
 
   void DisconnectFromOwner();
+  void UpdateSpentTimeIn2DTelemetry(bool aUpdate);
 
 private:
   ~VREventObserver();
 
-  // Weak pointer, instance is owned by mWindow.
-  nsGlobalWindow* MOZ_NON_OWNING_REF mWindow;
+  RefPtr<nsGlobalWindowInner> mWindow;
   // For WebVR telemetry for tracking users who view content
   // in the 2D view.
   TimeStamp mSpendTimeIn2DView;
   bool mIs2DView;
+  bool mHasReset;
 };
 
 } // namespace dom

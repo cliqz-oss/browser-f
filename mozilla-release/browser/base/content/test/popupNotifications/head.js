@@ -1,6 +1,6 @@
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
 
 /**
@@ -123,13 +123,13 @@ function showNotification(notifyObj) {
 
 function dismissNotification(popup) {
   info("Dismissing notification " + popup.childNodes[0].id);
-  executeSoon(() => EventUtils.synthesizeKey("VK_ESCAPE", {}));
+  executeSoon(() => EventUtils.synthesizeKey("KEY_Escape"));
 }
 
 function BasicNotification(testId) {
   this.browser = gBrowser.selectedBrowser;
   this.id = "test-notification-" + testId;
-  this.message = "This is popup notification for " + testId;
+  this.message = testId + ": Will you allow <> to perform this action?";
   this.anchorID = null;
   this.mainAction = {
     label: "Main Action",
@@ -144,6 +144,7 @@ function BasicNotification(testId) {
     }
   ];
   this.options = {
+    name: "http://example.com",
     eventCallback: eventName => {
       switch (eventName) {
         case "dismissed":
@@ -203,7 +204,15 @@ function checkPopup(popup, notifyObj) {
     ok(popup.anchorNode.classList.contains("notification-anchor-icon"),
        "notification anchored to icon");
   }
-  is(notification.getAttribute("label"), notifyObj.message, "message matches");
+
+  let description = notifyObj.message.split("<>");
+  let text = {};
+  text.start = description[0];
+  text.end = description[1];
+  is(notification.getAttribute("label"), text.start, "message matches");
+  is(notification.getAttribute("name"), notifyObj.options.name, "message matches");
+  is(notification.getAttribute("endlabel"), text.end, "message matches");
+
   is(notification.id, notifyObj.id + "-notification", "id matches");
   if (notifyObj.mainAction) {
     is(notification.getAttribute("buttonlabel"), notifyObj.mainAction.label,
@@ -253,7 +262,7 @@ function onPopupEvent(eventName, callback, condition) {
     PopupNotifications.panel.removeEventListener(eventName, listener);
     gActiveListeners.delete(listener);
     executeSoon(() => callback.call(PopupNotifications.panel));
-  }
+  };
   gActiveListeners.set(listener, eventName);
   PopupNotifications.panel.addEventListener(eventName, listener);
 }
@@ -301,13 +310,13 @@ function triggerSecondaryCommand(popup, index) {
     // Press down until the desired command is selected. Decrease index by one
     // since the secondary action was handled above.
     for (let i = 0; i <= index - 1; i++) {
-      EventUtils.synthesizeKey("VK_DOWN", {});
+      EventUtils.synthesizeKey("KEY_ArrowDown");
     }
     // Activate
-    EventUtils.synthesizeKey("VK_RETURN", {});
+    EventUtils.synthesizeKey("KEY_Enter");
   }, {once: true});
 
   // One down event to open the popup
   info("Open the popup to trigger secondary command for notification " + notification.id);
-  EventUtils.synthesizeKey("VK_DOWN", { altKey: !navigator.platform.includes("Mac") });
+  EventUtils.synthesizeKey("KEY_ArrowDown", {altKey: !navigator.platform.includes("Mac")});
 }

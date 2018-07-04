@@ -21,15 +21,17 @@
 #include "mozilla/layers/DeviceAttachmentsD3D11.h"
 #include "mozilla/layers/MLGDeviceD3D11.h"
 #include "mozilla/layers/PaintThread.h"
-#include "nsIGfxInfo.h"
-#include "nsString.h"
-#include <d3d11.h>
-#include <ddraw.h>
-
-#ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
+#include "nsIGfxInfo.h"
 #include "nsPrintfCString.h"
-#endif
+#include "nsString.h"
+
+#undef NTDDI_VERSION
+#define NTDDI_VERSION NTDDI_WIN8
+
+#include <d3d11.h>
+#include <dcomp.h>
+#include <ddraw.h>
 
 namespace mozilla {
 namespace gfx {
@@ -43,6 +45,9 @@ StaticAutoPtr<DeviceManagerDx> DeviceManagerDx::sInstance;
 // since it doesn't include d3d11.h, so we use a static here. It should only
 // be used within InitializeD3D11.
 decltype(D3D11CreateDevice)* sD3D11CreateDeviceFn = nullptr;
+
+typedef HRESULT(WINAPI * PFN_DCOMPOSITION_CREATE_DEVICE)(IDXGIDevice * dxgiDevice, REFIID iid, void **dcompositionDevice);
+PFN_DCOMPOSITION_CREATE_DEVICE sDcompCreateDeviceFn = nullptr;
 
 // We don't have access to the DirectDrawCreateEx type in gfxWindowsPlatform.h,
 // since it doesn't include ddraw.h, so we use a static here. It should only
@@ -104,11 +109,41 @@ DeviceManagerDx::LoadD3D11()
   return true;
 }
 
+bool
+DeviceManagerDx::LoadDcomp()
+{
+  FeatureState& d3d11 = gfxConfig::GetFeature(Feature::D3D11_COMPOSITING);
+  MOZ_ASSERT(d3d11.IsEnabled());
+  MOZ_ASSERT(gfxVars::UseWebRender());
+  MOZ_ASSERT(gfxVars::UseWebRenderANGLE());
+  MOZ_ASSERT(gfxVars::UseWebRenderDCompWin());
+
+  if (sDcompCreateDeviceFn) {
+    return true;
+  }
+
+  nsModuleHandle module(LoadLibrarySystem32(L"dcomp.dll"));
+  if (!module) {
+    return false;
+  }
+
+  sDcompCreateDeviceFn =
+    reinterpret_cast<PFN_DCOMPOSITION_CREATE_DEVICE>(
+      ::GetProcAddress(module, "DCompositionCreateDevice"));
+  if (!sDcompCreateDeviceFn) {
+    return false;
+  }
+
+  mDcompModule.steal(module);
+  return true;
+}
+
 void
 DeviceManagerDx::ReleaseD3D11()
 {
   MOZ_ASSERT(!mCompositorDevice);
   MOZ_ASSERT(!mContentDevice);
+  MOZ_ASSERT(!mVRDevice);
   MOZ_ASSERT(!mDecoderDevice);
 
   mD3D11Module.reset();
@@ -167,6 +202,81 @@ DeviceManagerDx::CreateCompositorDevices()
 
   PreloadAttachmentsOnCompositorThread();
   return true;
+}
+
+bool
+DeviceManagerDx::CreateVRDevice()
+{
+  MOZ_ASSERT(ProcessOwnsCompositor());
+
+  if (mVRDevice) {
+    return true;
+  }
+
+  if (!gfxConfig::IsEnabled(Feature::D3D11_COMPOSITING)) {
+    NS_WARNING("Direct3D11 Compositing required for VR");
+    return false;
+  }
+
+  if (!LoadD3D11()) {
+    return false;
+  }
+
+  RefPtr<IDXGIAdapter1> adapter = GetDXGIAdapter();
+  if (!adapter) {
+    NS_WARNING("Failed to acquire a DXGI adapter for VR");
+    return false;
+  }
+
+  UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+
+  HRESULT hr;
+  if (!CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, flags, hr, mVRDevice)) {
+    gfxCriticalError() << "Crash during D3D11 device creation for VR";
+    return false;
+  }
+
+  if (FAILED(hr) || !mVRDevice) {
+    NS_WARNING("Failed to acquire a D3D11 device for VR");
+    return false;
+  }
+
+  return true;
+}
+
+void
+DeviceManagerDx::CreateDirectCompositionDevice()
+{
+  if (!gfxVars::UseWebRenderDCompWin()) {
+    return;
+  }
+
+  if (!mCompositorDevice) {
+    return;
+  }
+
+  if (!LoadDcomp()) {
+    return;
+  }
+
+  RefPtr<IDXGIDevice> dxgiDevice;
+  if (mCompositorDevice->QueryInterface(IID_PPV_ARGS((IDXGIDevice**)getter_AddRefs(dxgiDevice))) != S_OK) {
+    return;
+  }
+
+  HRESULT hr;
+  RefPtr<IDCompositionDevice> compositionDevice;
+  MOZ_SEH_TRY {
+    hr = sDcompCreateDeviceFn(dxgiDevice, IID_PPV_ARGS((IDCompositionDevice**)getter_AddRefs(compositionDevice)));
+  } MOZ_SEH_EXCEPT (EXCEPTION_EXECUTE_HANDLER) {
+    return;
+  }
+
+  if (!SUCCEEDED(hr)) {
+    return;
+  }
+
+  mDirectCompositionDevice = compositionDevice;
 }
 
 void
@@ -395,6 +505,7 @@ DeviceManagerDx::CreateCompositorDevice(FeatureState& d3d11)
   }
 
   uint32_t featureLevel = device->GetFeatureLevel();
+  bool useNV12 = D3D11Checks::DoesNV12Work(device);
   {
     MutexAutoLock lock(mDeviceLock);
     mCompositorDevice = device;
@@ -405,7 +516,8 @@ DeviceManagerDx::CreateCompositorDevice(FeatureState& d3d11)
       textureSharingWorks,
       featureLevel,
       DxgiAdapterDesc::From(desc),
-      sequenceNumber));
+      sequenceNumber,
+      useNV12));
   }
   mCompositorDevice->SetExceptionMode(0);
 }
@@ -501,6 +613,8 @@ DeviceManagerDx::CreateWARPCompositorDevice()
   PodZero(&nullAdapter);
 
   int featureLevel = device->GetFeatureLevel();
+
+  bool useNV12 = D3D11Checks::DoesNV12Work(device);
   {
     MutexAutoLock lock(mDeviceLock);
     mCompositorDevice = device;
@@ -511,7 +625,8 @@ DeviceManagerDx::CreateWARPCompositorDevice()
       textureSharingWorks,
       featureLevel,
       nullAdapter,
-      sequenceNumber));
+      sequenceNumber,
+      useNV12));
   }
   mCompositorDevice->SetExceptionMode(0);
 
@@ -684,7 +799,7 @@ DisableAdvancedLayers(FeatureStatus aStatus, const nsCString aMessage, const nsC
 
   FeatureFailure info(aStatus, aMessage, aFailureId);
   if (GPUParent* gpu = GPUParent::GetSingleton()) {
-    gpu->SendUpdateFeature(Feature::ADVANCED_LAYERS, info);
+    Unused << gpu->SendUpdateFeature(Feature::ADVANCED_LAYERS, info);
   }
 
   if (aFailureId.Length()) {
@@ -740,7 +855,9 @@ DeviceManagerDx::ResetDevices()
   // old and new objects together.
   if (PaintThread::Get()) {
     CompositorBridgeChild* cbc = CompositorBridgeChild::Get();
-    cbc->FlushAsyncPaints();
+    if (cbc) {
+      cbc->FlushAsyncPaints();
+    }
   }
 
   MutexAutoLock lock(mDeviceLock);
@@ -767,12 +884,10 @@ DeviceManagerDx::MaybeResetAndReacquireDevices()
     Telemetry::Accumulate(Telemetry::DEVICE_RESET_REASON, uint32_t(resetReason));
   }
 
-#ifdef MOZ_CRASHREPORTER
   nsPrintfCString reasonString("%d", int(resetReason));
   CrashReporter::AnnotateCrashReport(
     NS_LITERAL_CSTRING("DeviceResetReason"),
     reasonString);
-#endif
 
   bool createCompositorDevice = !!mCompositorDevice;
   bool createContentDevice = !!mContentDevice;
@@ -938,6 +1053,23 @@ DeviceManagerDx::GetContentDevice()
   return mContentDevice;
 }
 
+RefPtr<ID3D11Device>
+DeviceManagerDx::GetVRDevice()
+{
+  MutexAutoLock lock(mDeviceLock);
+  if (!mVRDevice) {
+    CreateVRDevice();
+  }
+  return mVRDevice;
+}
+
+RefPtr<IDCompositionDevice>
+DeviceManagerDx::GetDirectCompositionDevice()
+{
+  MutexAutoLock lock(mDeviceLock);
+  return mDirectCompositionDevice;
+}
+
 unsigned
 DeviceManagerDx::GetCompositorFeatureLevel() const
 {
@@ -999,6 +1131,23 @@ DeviceManagerDx::IsWARP()
     return false;
   }
   return mDeviceStatus->isWARP();
+}
+
+bool
+DeviceManagerDx::CanUseNV12()
+{
+  MutexAutoLock lock(mDeviceLock);
+  if (!mDeviceStatus) {
+    return false;
+  }
+  return mDeviceStatus->useNV12();
+}
+
+bool
+DeviceManagerDx::CanUseDComp()
+{
+  MutexAutoLock lock(mDeviceLock);
+  return !!mDirectCompositionDevice;
 }
 
 void

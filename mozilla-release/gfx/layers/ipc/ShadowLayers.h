@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -27,7 +26,6 @@
 #include "nsTArrayForwardDeclare.h"     // for InfallibleTArray
 #include "nsIWidget.h"
 #include <vector>
-#include "nsExpirationTracker.h"
 
 namespace mozilla {
 namespace layers {
@@ -45,37 +43,6 @@ class TextureClient;
 class ThebesBuffer;
 class ThebesBufferData;
 class Transaction;
-
-/**
- * See ActiveResourceTracker below.
- */
-class ActiveResource
-{
-public:
- virtual void NotifyInactive() = 0;
-  nsExpirationState* GetExpirationState() { return &mExpirationState; }
-  bool IsActivityTracked() { return mExpirationState.IsTracked(); }
-private:
-  nsExpirationState mExpirationState;
-};
-
-/**
- * A convenience class on top of nsExpirationTracker
- */
-class ActiveResourceTracker : public nsExpirationTracker<ActiveResource, 3>
-{
-public:
-  ActiveResourceTracker(uint32_t aExpirationCycle, const char* aName,
-                        nsIEventTarget* aEventTarget)
-  : nsExpirationTracker(aExpirationCycle, aName, aEventTarget)
-  {}
-
-  virtual void NotifyExpired(ActiveResource* aResource) override
-  {
-    RemoveObject(aResource);
-    aResource->NotifyInactive();
-  }
-};
 
 /**
  * We want to share layer trees across thread contexts and address
@@ -210,7 +177,6 @@ public:
   void CreatedColorLayer(ShadowableLayer* aColor);
   void CreatedCanvasLayer(ShadowableLayer* aCanvas);
   void CreatedRefLayer(ShadowableLayer* aRef);
-  void CreatedTextLayer(ShadowableLayer* aRef);
   void CreatedBorderLayer(ShadowableLayer* aRef);
 
   /**
@@ -280,7 +246,7 @@ public:
   /**
    * Used for debugging to tell the compositor how long this frame took to paint.
    */
-  void SendPaintTime(uint64_t aId, TimeDuration aPaintTime);
+  void SendPaintTime(TransactionId aId, TimeDuration aPaintTime);
 
   /**
    * End the current transaction and forward it to LayerManagerComposite.
@@ -288,7 +254,7 @@ public:
    * caller of EndTransaction().
    */
   bool EndTransaction(const nsIntRegion& aRegionToClear,
-                      uint64_t aId,
+                      TransactionId aId,
                       bool aScheduleComposite,
                       uint32_t aPaintSequenceNumber,
                       bool aIsRepeatTransaction,
@@ -312,7 +278,7 @@ public:
 
   void ClearCachedResources();
 
-  void Composite();
+  void ScheduleComposite();
 
   /**
    * True if this is forwarding to a LayerManagerComposite.
@@ -410,24 +376,20 @@ public:
   // Returns true if aSurface wraps a Shmem.
   static bool IsShmem(SurfaceDescriptor* aSurface);
 
-  /**
-   * Sends a synchronous ping to the compsoitor.
-   *
-   * This is bad for performance and should only be called as a last resort if the
-   * compositor may be blocked for a long period of time, to avoid that the content
-   * process accumulates resource allocations that the compositor is not consuming
-   * and releasing.
-   */
-  void SyncWithCompositor();
+  void SyncWithCompositor() override;
 
   TextureForwarder* GetTextureForwarder() override { return GetCompositorBridgeChild(); }
   LayersIPCActor* GetLayersIPCActor() override { return this; }
 
-  ActiveResourceTracker& GetActiveResourceTracker() { return *mActiveResourceTracker.get(); }
+  ActiveResourceTracker* GetActiveResourceTracker() override { return mActiveResourceTracker.get(); }
 
   CompositorBridgeChild* GetCompositorBridgeChild();
 
   nsIEventTarget* GetEventTarget() { return mEventTarget; };
+
+  virtual bool IsThreadSafe() const override { return false; }
+
+  virtual RefPtr<KnowsCompositor> GetForMedia() override;
 
 protected:
   virtual ~ShadowLayerForwarder();

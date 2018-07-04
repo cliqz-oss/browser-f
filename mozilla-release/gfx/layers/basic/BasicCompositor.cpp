@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "BasicCompositor.h"
 #include "BasicLayersImpl.h"            // for FillRectWithMask
@@ -258,9 +259,9 @@ BasicCompositor::GetTextureFactoryIdentifier()
 already_AddRefed<CompositingRenderTarget>
 BasicCompositor::CreateRenderTarget(const IntRect& aRect, SurfaceInitMode aInit)
 {
-  MOZ_ASSERT(aRect.width != 0 && aRect.height != 0, "Trying to create a render target of invalid size");
+  MOZ_ASSERT(!aRect.IsZeroArea(), "Trying to create a render target of invalid size");
 
-  if (aRect.width * aRect.height == 0) {
+  if (aRect.IsZeroArea()) {
     return nullptr;
   }
 
@@ -288,9 +289,9 @@ already_AddRefed<CompositingRenderTarget>
 BasicCompositor::CreateRenderTargetForWindow(const LayoutDeviceIntRect& aRect, const LayoutDeviceIntRect& aClearRect, BufferMode aBufferMode)
 {
   MOZ_ASSERT(mDrawTarget);
-  MOZ_ASSERT(aRect.width != 0 && aRect.height != 0, "Trying to create a render target of invalid size");
+  MOZ_ASSERT(!aRect.IsZeroArea(), "Trying to create a render target of invalid size");
 
-  if (aRect.width * aRect.height == 0) {
+  if (aRect.IsZeroArea()) {
     return nullptr;
   }
 
@@ -312,7 +313,7 @@ BasicCompositor::CreateRenderTargetForWindow(const LayoutDeviceIntRect& aRect, c
     }
     rt = new BasicCompositingRenderTarget(mDrawTarget, windowRect);
     if (!aClearRect.IsEmpty()) {
-      IntRect clearRect = aRect.ToUnknownRect();
+      IntRect clearRect = aClearRect.ToUnknownRect();
       mDrawTarget->ClearRect(Rect(clearRect - rt->GetOrigin()));
     }
   }
@@ -459,10 +460,10 @@ DrawSurfaceWithTextureCoords(gfx::DrawTarget* aDest,
   }
 
   // Convert aTextureCoords into aSource's coordinate space
-  gfxRect sourceRect(aTextureCoords.x * aSource->GetSize().width,
-                     aTextureCoords.y * aSource->GetSize().height,
-                     aTextureCoords.width * aSource->GetSize().width,
-                     aTextureCoords.height * aSource->GetSize().height);
+  gfxRect sourceRect(aTextureCoords.X() * aSource->GetSize().width,
+                     aTextureCoords.Y() * aSource->GetSize().height,
+                     aTextureCoords.Width() * aSource->GetSize().width,
+                     aTextureCoords.Height() * aSource->GetSize().height);
 
   // Floating point error can accumulate above and we know our visible region
   // is integer-aligned, so round it out.
@@ -471,8 +472,8 @@ DrawSurfaceWithTextureCoords(gfx::DrawTarget* aDest,
   // Compute a transform that maps sourceRect to aDestRect.
   Matrix matrix =
     gfxUtils::TransformRectToRect(sourceRect,
-                                  gfx::IntPoint::Truncate(aDestRect.x, aDestRect.y),
-                                  gfx::IntPoint::Truncate(aDestRect.XMost(), aDestRect.y),
+                                  gfx::IntPoint::Truncate(aDestRect.X(), aDestRect.Y()),
+                                  gfx::IntPoint::Truncate(aDestRect.XMost(), aDestRect.Y()),
                                   gfx::IntPoint::Truncate(aDestRect.XMost(), aDestRect.YMost()));
 
   // Only use REPEAT if aTextureCoords is outside (0, 0, 1, 1).
@@ -556,15 +557,15 @@ AttemptVideoScale(TextureSourceBasic* aSource, const SourceSurface* aSourceMask,
     RefPtr<DataSourceSurface> srcSource = aSource->GetSurface(aDest)->GetDataSurface();
     DataSourceSurface::ScopedMap mapSrc(srcSource, DataSourceSurface::READ);
 
-    ssse3_scale_data((uint32_t*)mapSrc.GetData(), srcSource->GetSize().width, srcSource->GetSize().height,
-                     mapSrc.GetStride()/4,
-                     ((uint32_t*)dstData) + fillRect.x + (dstStride / 4) * fillRect.y, dstRect.width, dstRect.height,
-                     dstStride / 4,
-                     offset.x, offset.y,
-                     fillRect.width, fillRect.height);
+    bool success = ssse3_scale_data((uint32_t*)mapSrc.GetData(), srcSource->GetSize().width, srcSource->GetSize().height,
+                                    mapSrc.GetStride()/4,
+                                    ((uint32_t*)dstData) + fillRect.X() + (dstStride / 4) * fillRect.Y(), dstRect.Width(), dstRect.Height(),
+                                    dstStride / 4,
+                                    offset.x, offset.y,
+                                    fillRect.Width(), fillRect.Height());
 
     aDest->ReleaseBits(dstData);
-    return true;
+    return success;
   } else
 #endif // MOZILLA_SSE_HAVE_CPUID_DETECTION
     return false;
@@ -623,7 +624,7 @@ AttemptVideoConvertAndScale(TextureSource* aSource, const SourceSurface* aSource
   if (aDest->LockBits(&dstData, &dstSize, &dstStride, &dstFormat)) {
     wrappingSource->ConvertAndScale(dstFormat,
                                     dstRect.Size(),
-                                    dstData + ptrdiff_t(dstRect.x) * BytesPerPixel(dstFormat) + ptrdiff_t(dstRect.y) * dstStride,
+                                    dstData + ptrdiff_t(dstRect.X()) * BytesPerPixel(dstFormat) + ptrdiff_t(dstRect.Y()) * dstStride,
                                     dstStride);
     aDest->ReleaseBits(dstData);
     return true;
@@ -691,7 +692,7 @@ BasicCompositor::DrawGeometry(const Geometry& aGeometry,
       return;
     }
 
-    dest->SetTransform(Matrix::Translation(-aRect.x, -aRect.y));
+    dest->SetTransform(Matrix::Translation(-aRect.X(), -aRect.Y()));
 
     // Get the bounds post-transform.
     transformBounds = aTransform.TransformAndClipBounds(aRect, Rect(offset.x, offset.y, buffer->GetSize().width, buffer->GetSize().height));
@@ -706,7 +707,7 @@ BasicCompositor::DrawGeometry(const Geometry& aGeometry,
     // When we apply the 3D transformation, we do it against a temporary
     // surface, so undo the coordinate offset.
     new3DTransform = aTransform;
-    new3DTransform.PreTranslate(aRect.x, aRect.y, 0);
+    new3DTransform.PreTranslate(aRect.X(), aRect.Y(), 0);
   }
 
   // XXX the transform is probably just an integer offset so this whole
@@ -842,9 +843,9 @@ BasicCompositor::DrawGeometry(const Geometry& aGeometry,
 
     if (sourceMask) {
       RefPtr<DrawTarget> transformDT =
-        dest->CreateSimilarDrawTarget(IntSize::Truncate(transformBounds.width, transformBounds.height),
+        dest->CreateSimilarDrawTarget(IntSize::Truncate(transformBounds.Width(), transformBounds.Height()),
                                       SurfaceFormat::B8G8R8A8);
-      new3DTransform.PostTranslate(-transformBounds.x, -transformBounds.y, 0);
+      new3DTransform.PostTranslate(-transformBounds.X(), -transformBounds.Y(), 0);
       if (transformDT &&
           transformDT->Draw3DTransformedSurface(destSnapshot, new3DTransform)) {
         RefPtr<SourceSurface> transformSnapshot = transformDT->Snapshot();
@@ -901,7 +902,7 @@ BasicCompositor::BeginFrame(const nsIntRegion& aInvalidRegion,
   }
 
   LayoutDeviceIntRect intRect(LayoutDeviceIntPoint(), mWidget->GetClientSize());
-  IntRect rect = IntRect(0, 0, intRect.width, intRect.height);
+  IntRect rect = IntRect(0, 0, intRect.Width(), intRect.Height());
 
   LayoutDeviceIntRegion invalidRegionSafe;
   // Sometimes the invalid region is larger than we want to draw.
@@ -1037,13 +1038,7 @@ BasicCompositor::TryToEndRemoteDrawing(bool aForceToEnd)
   if (mRenderTarget->mDrawTarget != mDrawTarget) {
     // Note: Most platforms require us to buffer drawing to the widget surface.
     // That's why we don't draw to mDrawTarget directly.
-    RefPtr<SourceSurface> source;
-    if (mRenderTarget->mDrawTarget != mDrawTarget) {
-      source = mWidget->EndBackBufferDrawing();
-    } else {
-      source = mRenderTarget->mDrawTarget->Snapshot();
-    }
-    RefPtr<DrawTarget> dest(mTarget ? mTarget : mDrawTarget);
+    RefPtr<SourceSurface> source = mWidget->EndBackBufferDrawing();
 
     nsIntPoint offset = mTarget ? mTargetBounds.TopLeft() : nsIntPoint();
 
@@ -1052,9 +1047,9 @@ BasicCompositor::TryToEndRemoteDrawing(bool aForceToEnd)
     // pixels.
     for (auto iter = mInvalidRegion.RectIter(); !iter.Done(); iter.Next()) {
       const LayoutDeviceIntRect& r = iter.Get();
-      dest->CopySurface(source,
-                        IntRect(r.x, r.y, r.width, r.height) - mRenderTarget->GetOrigin(),
-                        IntPoint(r.x, r.y) - offset);
+      mDrawTarget->CopySurface(source,
+                               r.ToUnknownRect() - mRenderTarget->GetOrigin(),
+                               r.TopLeft().ToUnknownPoint() - offset);
     }
   }
 

@@ -2,14 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
 
 /**
  * FxAccountsPushService manages Push notifications for Firefox Accounts in the browser
@@ -51,7 +47,7 @@ FxAccountsPushService.prototype = {
   /**
    * Register used interfaces in this service
    */
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
   /**
    * Initialize the service and register all the required observers.
    *
@@ -73,7 +69,7 @@ FxAccountsPushService.prototype = {
     if (options.fxAccounts) {
       this.fxAccounts = options.fxAccounts;
     } else {
-      XPCOMUtils.defineLazyModuleGetter(this, "fxAccounts",
+      ChromeUtils.defineModuleGetter(this, "fxAccounts",
         "resource://gre/modules/FxAccounts.jsm");
     }
 
@@ -162,6 +158,11 @@ FxAccountsPushService.prototype = {
       return;
     }
     let payload = message.data.json();
+    if (payload.topic) {
+      this.log.debug(`received messages tickle with topic ${payload.topic}`);
+      this.fxAccounts.messages.consumeRemoteMessages();
+      return;
+    }
     this.log.debug(`push command: ${payload.command}`);
     switch (payload.command) {
       case ON_DEVICE_CONNECTED_NOTIFICATION:
@@ -242,6 +243,27 @@ FxAccountsPushService.prototype = {
             this.log.warn("FxAccountsPushService failed to unsubscribe", result);
           }
           return resolve(ok);
+        });
+    });
+  },
+
+  /**
+   * Get our Push server subscription.
+   *
+   * Ref: https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIPushService#getSubscription()
+   *
+   * @returns {Promise}
+   */
+  getSubscription() {
+    return new Promise((resolve) => {
+      this.pushService.getSubscription(FXA_PUSH_SCOPE_ACCOUNT_UPDATE,
+        Services.scriptSecurityManager.getSystemPrincipal(),
+        (result, subscription) => {
+          if (!subscription) {
+            this.log.info("FxAccountsPushService no subscription found");
+            return resolve(null);
+          }
+          return resolve(subscription);
         });
     });
   },

@@ -78,8 +78,7 @@ static const gl::GLFeature kRequiredFeatures[] = {
     gl::GLFeature::query_objects,
     gl::GLFeature::renderbuffer_color_float,
     gl::GLFeature::renderbuffer_color_half_float,
-    gl::GLFeature::sRGB_framebuffer,
-    gl::GLFeature::sRGB_texture,
+    gl::GLFeature::sRGB,
     gl::GLFeature::sampler_objects,
     gl::GLFeature::standard_derivatives,
     gl::GLFeature::texture_3D,
@@ -138,7 +137,7 @@ WebGLContext::InitWebGL2(FailureReason* const out_failReason)
 
     ////
 
-    if (missingList.size()) {
+    if (!missingList.empty()) {
         nsAutoCString exts;
         for (auto itr = missingList.begin(); itr != missingList.end(); ++itr) {
             exts.AppendLiteral("\n  ");

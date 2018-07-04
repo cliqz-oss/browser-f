@@ -9,17 +9,17 @@
 #include "mozilla/DebugOnly.h"
 
 #include "jsnum.h"
-#include "jsprf.h"
-#include "jsscript.h"
 
+#include "gc/PublicIterators.h"
 #include "jit/BaselineFrame.h"
 #include "jit/BaselineJIT.h"
 #include "jit/JitcodeMap.h"
-#include "jit/JitFrameIterator.h"
 #include "jit/JitFrames.h"
-#include "vm/StringBuffer.h"
+#include "jit/JSJitFrameIter.h"
+#include "util/StringBuffer.h"
+#include "vm/JSScript.h"
 
-#include "jsgcinlines.h"
+#include "gc/Marking-inl.h"
 
 using namespace js;
 
@@ -62,33 +62,34 @@ GeckoProfilerRuntime::setEventMarker(void (*fn)(const char*))
     eventMarker_ = fn;
 }
 
-/* Get a pointer to the top-most profiling frame, given the exit frame pointer. */
+// Get a pointer to the top-most profiling frame, given the exit frame pointer.
 static void*
 GetTopProfilingJitFrame(Activation* act)
 {
     if (!act || !act->isJit())
         return nullptr;
 
-    // For null exitFrame, there is no previous exit frame, just return.
-    uint8_t* exitFP = act->asJit()->exitFP();
-    if (!exitFP)
+    jit::JitActivation* jitActivation = act->asJit();
+
+    // If there is no exit frame set, just return.
+    if (!jitActivation->hasExitFP())
         return nullptr;
 
-    jit::JitProfilingFrameIterator iter(exitFP);
-    MOZ_ASSERT(!iter.done());
-    return iter.fp();
+    // Skip wasm frames that might be in the way.
+    OnlyJSJitFrameIter iter(jitActivation);
+    if (iter.done())
+        return nullptr;
+
+    jit::JSJitProfilingFrameIterator jitIter((jit::CommonFrameLayout*) iter.frame().fp());
+    MOZ_ASSERT(!jitIter.done());
+    return jitIter.fp();
 }
 
 void
 GeckoProfilerRuntime::enable(bool enabled)
 {
-#ifdef DEBUG
-    // All cooperating contexts must have profile stacks installed before the
-    // profiler can be enabled. Cooperating threads created while the profiler
-    // is enabled must have stacks set before they execute any JS.
-    for (const CooperatingContext& target : rt->cooperatingContexts())
-        MOZ_ASSERT(target.context()->geckoProfiler().installed());
-#endif
+    JSContext* cx = rt->mainContextFromAnyThread();
+    MOZ_ASSERT(cx->geckoProfiler().installed());
 
     if (enabled_ == enabled)
         return;
@@ -101,19 +102,15 @@ GeckoProfilerRuntime::enable(bool enabled)
 
     // This function is called when the Gecko profiler makes a new Sampler
     // (and thus, a new circular buffer). Set all current entries in the
-    // JitcodeGlobalTable as expired and reset the buffer generation and lap
-    // count.
+    // JitcodeGlobalTable as expired and reset the buffer range start.
     if (rt->hasJitRuntime() && rt->jitRuntime()->hasJitcodeGlobalTable())
-        rt->jitRuntime()->getJitcodeGlobalTable()->setAllEntriesAsExpired(rt);
-    rt->resetProfilerSampleBufferGen();
-    rt->resetProfilerSampleBufferLapCount();
+        rt->jitRuntime()->getJitcodeGlobalTable()->setAllEntriesAsExpired();
+    rt->setProfilerSampleBufferRangeStart(0);
 
-    // Ensure that lastProfilingFrame is null for all threads before 'enabled' becomes true.
-    for (const CooperatingContext& target : rt->cooperatingContexts()) {
-        if (target.context()->jitActivation) {
-            target.context()->jitActivation->setLastProfilingFrame(nullptr);
-            target.context()->jitActivation->setLastProfilingCallSite(nullptr);
-        }
+    // Ensure that lastProfilingFrame is null for the main thread.
+    if (cx->jitActivation) {
+        cx->jitActivation->setLastProfilingFrame(nullptr);
+        cx->jitActivation->setLastProfilingCallSite(nullptr);
     }
 
     enabled_ = enabled;
@@ -128,28 +125,26 @@ GeckoProfilerRuntime::enable(bool enabled)
     /* Update lastProfilingFrame to point to the top-most JS jit-frame currently on
      * stack.
      */
-    for (const CooperatingContext& target : rt->cooperatingContexts()) {
-        if (target.context()->jitActivation) {
-            // Walk through all activations, and set their lastProfilingFrame appropriately.
-            if (enabled) {
-                Activation* act = target.context()->activation();
-                void* lastProfilingFrame = GetTopProfilingJitFrame(act);
+    if (cx->jitActivation) {
+        // Walk through all activations, and set their lastProfilingFrame appropriately.
+        if (enabled) {
+            Activation* act = cx->activation();
+            void* lastProfilingFrame = GetTopProfilingJitFrame(act);
 
-                jit::JitActivation* jitActivation = target.context()->jitActivation;
-                while (jitActivation) {
-                    jitActivation->setLastProfilingFrame(lastProfilingFrame);
-                    jitActivation->setLastProfilingCallSite(nullptr);
+            jit::JitActivation* jitActivation = cx->jitActivation;
+            while (jitActivation) {
+                jitActivation->setLastProfilingFrame(lastProfilingFrame);
+                jitActivation->setLastProfilingCallSite(nullptr);
 
-                    jitActivation = jitActivation->prevJitActivation();
-                    lastProfilingFrame = GetTopProfilingJitFrame(jitActivation);
-                }
-            } else {
-                jit::JitActivation* jitActivation = target.context()->jitActivation;
-                while (jitActivation) {
-                    jitActivation->setLastProfilingFrame(nullptr);
-                    jitActivation->setLastProfilingCallSite(nullptr);
-                    jitActivation = jitActivation->prevJitActivation();
-                }
+                jitActivation = jitActivation->prevJitActivation();
+                lastProfilingFrame = GetTopProfilingJitFrame(jitActivation);
+            }
+        } else {
+            jit::JitActivation* jitActivation = cx->jitActivation;
+            while (jitActivation) {
+                jitActivation->setLastProfilingFrame(nullptr);
+                jitActivation->setLastProfilingCallSite(nullptr);
+                jitActivation = jitActivation->prevJitActivation();
             }
         }
     }
@@ -220,7 +215,7 @@ GeckoProfilerThread::enter(JSContext* cx, JSScript* script, JSFunction* maybeFun
     // have a non-null pc. Only look at the top frames to avoid quadratic
     // behavior.
     uint32_t sp = pseudoStack_->stackPointer;
-    if (sp > 0 && sp - 1 < PseudoStack::MaxEntries) {
+    if (sp > 0 && sp - 1 < pseudoStack_->stackCapacity()) {
         size_t start = (sp > 4) ? sp - 4 : 0;
         for (size_t i = start; i < sp - 1; i++)
             MOZ_ASSERT_IF(pseudoStack_->entries[i].isJs(), pseudoStack_->entries[i].pc());
@@ -239,8 +234,8 @@ GeckoProfilerThread::exit(JSScript* script, JSFunction* maybeFun)
 #ifdef DEBUG
     /* Sanity check to make sure push/pop balanced */
     uint32_t sp = pseudoStack_->stackPointer;
-    if (sp < PseudoStack::MaxEntries) {
-        JSRuntime* rt = script->runtimeFromActiveCooperatingThread();
+    if (sp < pseudoStack_->stackCapacity()) {
+        JSRuntime* rt = script->runtimeFromMainThread();
         const char* dynamicString = rt->geckoProfiler().profileString(script, maybeFun);
         /* Can't fail lookup because we should already be in the set */
         MOZ_ASSERT(dynamicString);
@@ -251,7 +246,7 @@ GeckoProfilerThread::exit(JSScript* script, JSFunction* maybeFun)
             fprintf(stderr, " entries=%p size=%u/%u\n",
                             (void*) pseudoStack_->entries,
                             uint32_t(pseudoStack_->stackPointer),
-                            PseudoStack::MaxEntries);
+                            pseudoStack_->stackCapacity());
             for (int32_t i = sp; i >= 0; i--) {
                 ProfileEntry& entry = pseudoStack_->entries[i];
                 if (entry.isJs())
@@ -376,64 +371,6 @@ ProfileEntry::trace(JSTracer* trc)
     }
 }
 
-GeckoProfilerEntryMarker::GeckoProfilerEntryMarker(JSContext* cx,
-                                                   JSScript* script
-                                                   MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL)
-    : profiler(&cx->geckoProfiler())
-{
-    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    if (!profiler->installed()) {
-        profiler = nullptr;
-        return;
-    }
-    spBefore_ = profiler->stackPointer();
-
-    // We want to push a CPP frame so the profiler can correctly order JS and native stacks.
-    // Only the sp value is important.
-    profiler->pseudoStack_->pushCppFrame(
-        /* label = */ "", /* dynamicString = */ nullptr, /* sp = */ this, /* line = */ 0,
-        ProfileEntry::Kind::CPP_MARKER_FOR_JS, ProfileEntry::Category::OTHER);
-
-    profiler->pseudoStack_->pushJsFrame(
-        "js::RunScript", /* dynamicString = */ nullptr, script, script->code());
-}
-
-GeckoProfilerEntryMarker::~GeckoProfilerEntryMarker()
-{
-    if (profiler == nullptr)
-        return;
-
-    profiler->pseudoStack_->pop();    // the JS frame
-    profiler->pseudoStack_->pop();    // the BEGIN_PSEUDO_JS frame
-    MOZ_ASSERT(spBefore_ == profiler->stackPointer());
-}
-
-AutoGeckoProfilerEntry::AutoGeckoProfilerEntry(JSContext* cx, const char* label,
-                                               ProfileEntry::Category category
-                                               MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL)
-    : profiler_(&cx->geckoProfiler())
-{
-    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    if (!profiler_->installed()) {
-        profiler_ = nullptr;
-        return;
-    }
-    spBefore_ = profiler_->stackPointer();
-
-    profiler_->pseudoStack_->pushCppFrame(
-        label, /* dynamicString = */ nullptr, /* sp = */ this, /* line = */ 0,
-        ProfileEntry::Kind::CPP_NORMAL, category);
-}
-
-AutoGeckoProfilerEntry::~AutoGeckoProfilerEntry()
-{
-    if (!profiler_)
-        return;
-
-    profiler_->pseudoStack_->pop();
-    MOZ_ASSERT(spBefore_ == profiler_->stackPointer());
-}
-
 GeckoProfilerBaselineOSRMarker::GeckoProfilerBaselineOSRMarker(JSContext* cx, bool hasProfilerFrame
                                                                MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL)
     : profiler(&cx->geckoProfiler())
@@ -445,7 +382,7 @@ GeckoProfilerBaselineOSRMarker::GeckoProfilerBaselineOSRMarker(JSContext* cx, bo
     }
 
     uint32_t sp = profiler->pseudoStack_->stackPointer;
-    if (sp >= PseudoStack::MaxEntries) {
+    if (sp >= profiler->pseudoStack_->stackCapacity()) {
         profiler = nullptr;
         return;
     }
@@ -478,18 +415,14 @@ JS_PUBLIC_API(JSScript*)
 ProfileEntry::script() const
 {
     MOZ_ASSERT(isJs());
-    auto script = reinterpret_cast<JSScript*>(spOrScript);
+    auto script = reinterpret_cast<JSScript*>(spOrScript.operator void*());
     if (!script)
         return nullptr;
 
     // If profiling is supressed then we can't trust the script pointers to be
     // valid as they could be in the process of being moved by a compacting GC
     // (although it's still OK to get the runtime from them).
-    //
-    // We only need to check the active context here, as
-    // AutoSuppressProfilerSampling prohibits the runtime's active context from
-    // being changed while it exists.
-    JSContext* cx = script->runtimeFromAnyThread()->activeContext();
+    JSContext* cx = script->runtimeFromAnyThread()->mainContextFromAnyThread();
     if (!cx->isProfilerSamplingEnabled())
         return nullptr;
 
@@ -544,8 +477,7 @@ js::RegisterContextProfilingEventMarker(JSContext* cx, void (*fn)(const char*))
 AutoSuppressProfilerSampling::AutoSuppressProfilerSampling(JSContext* cx
                                                            MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL)
   : cx_(cx),
-    previouslyEnabled_(cx->isProfilerSamplingEnabled()),
-    prohibitContextChange_(cx->runtime())
+    previouslyEnabled_(cx->isProfilerSamplingEnabled())
 {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     if (previouslyEnabled_)

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,19 +14,18 @@
 #include "nsQueryFrame.h"
 #include "nsSVGContainerFrame.h"
 
-class nsIAtom;
+class nsAtom;
 class nsIFrame;
 class nsIPresShell;
-class nsStyleContext;
 
 class nsSVGGenericContainerFrame final : public nsSVGDisplayContainerFrame
 {
   friend nsIFrame*
-  NS_NewSVGGenericContainerFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  NS_NewSVGGenericContainerFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
 protected:
-  explicit nsSVGGenericContainerFrame(nsStyleContext* aContext)
-    : nsSVGDisplayContainerFrame(aContext, kClassID)
+  explicit nsSVGGenericContainerFrame(ComputedStyle* aStyle)
+    : nsSVGDisplayContainerFrame(aStyle, kClassID)
   {}
 
 public:
@@ -33,7 +33,7 @@ public:
 
   // nsIFrame:
   virtual nsresult  AttributeChanged(int32_t         aNameSpaceID,
-                                     nsIAtom*        aAttribute,
+                                     nsAtom*        aAttribute,
                                      int32_t         aModType) override;
 
 #ifdef DEBUG_FRAME_DUMP

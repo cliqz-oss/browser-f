@@ -1,5 +1,6 @@
 /.servo
-/.cargo
+/.cargo/*
+!/.cargo/config.*
 /.servobuild
 /target
 /ports/android/bin
@@ -8,6 +9,7 @@
 /ports/android/obj
 /python/_virtualenv
 /python/tidy/servo_tidy.egg-info
+/tests/wpt/sync
 *~
 *.pkl
 *.pyc
@@ -20,6 +22,7 @@
 Servo.app
 .config.mk.last
 /glfw
+capture_webrender/
 
 # Editors
 
@@ -35,3 +38,4 @@ Servo.app
 .vscode
 
 /unminified-js
+

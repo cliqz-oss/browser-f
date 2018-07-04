@@ -43,7 +43,7 @@ public:
                             const Maybe<SVGImageContext>& aSVGContext,
                             float aFrame,
                             uint32_t aFlags,
-                            DrawResult aDrawResult)
+                            ImgDrawResult aDrawResult)
     : mSurface(aSurface)
     , mSize(aSize)
     , mSVGContext(aSVGContext)
@@ -71,15 +71,15 @@ public:
     return surf.forget();
   }
 
-  DrawResult GetDrawResult() const
+  ImgDrawResult GetDrawResult() const
   {
     return mDrawResult;
   }
 
   bool NeedsRedraw() const
   {
-    return mDrawResult != DrawResult::SUCCESS &&
-           mDrawResult != DrawResult::BAD_IMAGE;
+    return mDrawResult != ImgDrawResult::SUCCESS &&
+           mDrawResult != ImgDrawResult::BAD_IMAGE;
   }
 
 private:
@@ -88,7 +88,7 @@ private:
   Maybe<SVGImageContext> mSVGContext;
   const float            mFrame;
   const uint32_t         mFlags;
-  const DrawResult       mDrawResult;
+  const ImgDrawResult    mDrawResult;
 };
 
 class DrawSingleTileCallback : public gfxDrawingCallback
@@ -105,7 +105,7 @@ public:
     , mSVGContext(aSVGContext)
     , mWhichFrame(aWhichFrame)
     , mFlags(aFlags)
-    , mDrawResult(DrawResult::NOT_READY)
+    , mDrawResult(ImgDrawResult::NOT_READY)
     , mOpacity(aOpacity)
   {
     MOZ_ASSERT(mImage, "Must have an image to clip");
@@ -114,7 +114,7 @@ public:
   virtual bool operator()(gfxContext* aContext,
                           const gfxRect& aFillRect,
                           const SamplingFilter aSamplingFilter,
-                          const gfxMatrix& aTransform)
+                          const gfxMatrix& aTransform) override
   {
     MOZ_ASSERT(aTransform.IsIdentity(),
                "Caller is probably CreateSamplingRestrictedDrawable, "
@@ -130,7 +130,7 @@ public:
     return true;
   }
 
-  DrawResult GetDrawResult() { return mDrawResult; }
+  ImgDrawResult GetDrawResult() { return mDrawResult; }
 
 private:
   RefPtr<ClippedImage>        mImage;
@@ -138,7 +138,7 @@ private:
   const Maybe<SVGImageContext>& mSVGContext;
   const uint32_t                mWhichFrame;
   const uint32_t                mFlags;
-  DrawResult                    mDrawResult;
+  ImgDrawResult                 mDrawResult;
   float                         mOpacity;
 };
 
@@ -210,8 +210,6 @@ ClippedImage::ShouldClip()
   return *mShouldClip;
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(ClippedImage, ImageWrapper)
-
 NS_IMETHODIMP
 ClippedImage::GetWidth(int32_t* aWidth)
 {
@@ -219,7 +217,7 @@ ClippedImage::GetWidth(int32_t* aWidth)
     return InnerImage()->GetWidth(aWidth);
   }
 
-  *aWidth = mClip.width;
+  *aWidth = mClip.Width();
   return NS_OK;
 }
 
@@ -230,7 +228,7 @@ ClippedImage::GetHeight(int32_t* aHeight)
     return InnerImage()->GetHeight(aHeight);
   }
 
-  *aHeight = mClip.height;
+  *aHeight = mClip.Height();
   return NS_OK;
 }
 
@@ -241,7 +239,7 @@ ClippedImage::GetIntrinsicSize(nsSize* aSize)
     return InnerImage()->GetIntrinsicSize(aSize);
   }
 
-  *aSize = nsSize(mClip.width, mClip.height);
+  *aSize = nsSize(mClip.Width(), mClip.Height());
   return NS_OK;
 }
 
@@ -252,7 +250,7 @@ ClippedImage::GetIntrinsicRatio(nsSize* aRatio)
     return InnerImage()->GetIntrinsicRatio(aRatio);
   }
 
-  *aRatio = nsSize(mClip.width, mClip.height);
+  *aRatio = nsSize(mClip.Width(), mClip.Height());
   return NS_OK;
 }
 
@@ -260,7 +258,7 @@ NS_IMETHODIMP_(already_AddRefed<SourceSurface>)
 ClippedImage::GetFrame(uint32_t aWhichFrame,
                        uint32_t aFlags)
 {
-  DrawResult result;
+  ImgDrawResult result;
   RefPtr<SourceSurface> surface;
   Tie(result, surface) = GetFrameInternal(mClip.Size(), Nothing(), aWhichFrame, aFlags, 1.0);
   return surface.forget();
@@ -276,7 +274,7 @@ ClippedImage::GetFrameAtSize(const IntSize& aSize,
   return GetFrame(aWhichFrame, aFlags);
 }
 
-Pair<DrawResult, RefPtr<SourceSurface>>
+Pair<ImgDrawResult, RefPtr<SourceSurface>>
 ClippedImage::GetFrameInternal(const nsIntSize& aSize,
                                const Maybe<SVGImageContext>& aSVGContext,
                                uint32_t aWhichFrame,
@@ -285,7 +283,7 @@ ClippedImage::GetFrameInternal(const nsIntSize& aSize,
 {
   if (!ShouldClip()) {
     RefPtr<SourceSurface> surface = InnerImage()->GetFrame(aWhichFrame, aFlags);
-    return MakePair(surface ? DrawResult::SUCCESS : DrawResult::NOT_READY,
+    return MakePair(surface ? ImgDrawResult::SUCCESS : ImgDrawResult::NOT_READY,
                     Move(surface));
   }
 
@@ -299,7 +297,7 @@ ClippedImage::GetFrameInternal(const nsIntSize& aSize,
                                        SurfaceFormat::B8G8R8A8);
     if (!target || !target->IsValid()) {
       NS_ERROR("Could not create a DrawTarget");
-      return MakePair(DrawResult::TEMPORARY_ERROR, RefPtr<SourceSurface>());
+      return MakePair(ImgDrawResult::TEMPORARY_ERROR, RefPtr<SourceSurface>());
     }
 
     RefPtr<gfxContext> ctx = gfxContext::CreateOrNull(target);
@@ -356,6 +354,37 @@ ClippedImage::GetImageContainer(LayerManager* aManager, uint32_t aFlags)
   return nullptr;
 }
 
+NS_IMETHODIMP_(bool)
+ClippedImage::IsImageContainerAvailableAtSize(LayerManager* aManager,
+                                              const IntSize& aSize,
+                                              uint32_t aFlags)
+{
+  if (!ShouldClip()) {
+    return InnerImage()->IsImageContainerAvailableAtSize(aManager, aSize, aFlags);
+  }
+  return false;
+}
+
+NS_IMETHODIMP_(already_AddRefed<ImageContainer>)
+ClippedImage::GetImageContainerAtSize(LayerManager* aManager,
+                                      const IntSize& aSize,
+                                      const Maybe<SVGImageContext>& aSVGContext,
+                                      uint32_t aFlags)
+{
+  // XXX(seth): We currently don't have a way of clipping the result of
+  // GetImageContainer. We work around this by always returning null, but if it
+  // ever turns out that ClippedImage is widely used on codepaths that can
+  // actually benefit from GetImageContainer, it would be a good idea to fix
+  // that method for performance reasons.
+
+  if (!ShouldClip()) {
+    return InnerImage()->GetImageContainerAtSize(aManager, aSize,
+                                                 aSVGContext, aFlags);
+  }
+
+  return nullptr;
+}
+
 static bool
 MustCreateSurface(gfxContext* aContext,
                   const nsIntSize& aSize,
@@ -370,7 +399,7 @@ MustCreateSurface(gfxContext* aContext,
   return willTile || willResample;
 }
 
-NS_IMETHODIMP_(DrawResult)
+NS_IMETHODIMP_(ImgDrawResult)
 ClippedImage::Draw(gfxContext* aContext,
                    const nsIntSize& aSize,
                    const ImageRegion& aRegion,
@@ -390,12 +419,12 @@ ClippedImage::Draw(gfxContext* aContext,
   if (MustCreateSurface(aContext, aSize, aRegion, aFlags)) {
     // Create a temporary surface containing a single tile of this image.
     // GetFrame will call DrawSingleTile internally.
-    DrawResult result;
+    ImgDrawResult result;
     RefPtr<SourceSurface> surface;
     Tie(result, surface) =
       GetFrameInternal(aSize, aSVGContext, aWhichFrame, aFlags, aOpacity);
     if (!surface) {
-      MOZ_ASSERT(result != DrawResult::SUCCESS);
+      MOZ_ASSERT(result != ImgDrawResult::SUCCESS);
       return result;
     }
 
@@ -415,7 +444,7 @@ ClippedImage::Draw(gfxContext* aContext,
                         aSamplingFilter, aSVGContext, aFlags, aOpacity);
 }
 
-DrawResult
+ImgDrawResult
 ClippedImage::DrawSingleTile(gfxContext* aContext,
                              const nsIntSize& aSize,
                              const ImageRegion& aRegion,
@@ -428,7 +457,7 @@ ClippedImage::DrawSingleTile(gfxContext* aContext,
   MOZ_ASSERT(!MustCreateSurface(aContext, aSize, aRegion, aFlags),
              "Shouldn't need to create a surface");
 
-  gfxRect clip(mClip.x, mClip.y, mClip.width, mClip.height);
+  gfxRect clip(mClip.X(), mClip.Y(), mClip.Width(), mClip.Height());
   nsIntSize size(aSize), innerSize(aSize);
   bool needScale = false;
   if (mSVGViewportSize && !mSVGViewportSize->IsEmpty()) {
@@ -443,8 +472,8 @@ ClippedImage::DrawSingleTile(gfxContext* aContext,
   }
 
   if (needScale) {
-    double scaleX = aSize.width / clip.width;
-    double scaleY = aSize.height / clip.height;
+    double scaleX = aSize.width / clip.Width();
+    double scaleY = aSize.height / clip.Height();
 
     // Map the clip and size to the scale requested by the caller.
     clip.Scale(scaleX, scaleY);
@@ -455,11 +484,11 @@ ClippedImage::DrawSingleTile(gfxContext* aContext,
   // We restrict our drawing to only the clipping region, and translate so that
   // the clipping region is placed at the position the caller expects.
   ImageRegion region(aRegion);
-  region.MoveBy(clip.x, clip.y);
+  region.MoveBy(clip.X(), clip.Y());
   region = region.Intersect(clip);
 
   gfxContextMatrixAutoSaveRestore saveMatrix(aContext);
-  aContext->Multiply(gfxMatrix::Translation(-clip.x, -clip.y));
+  aContext->Multiply(gfxMatrix::Translation(-clip.X(), -clip.Y()));
 
   auto unclipViewport = [&](const SVGImageContext& aOldContext) {
     // Map the viewport to the inner image. Note that we don't take the aSize
@@ -472,9 +501,9 @@ ClippedImage::DrawSingleTile(gfxContext* aContext,
     if (oldViewport) {
       CSSIntSize newViewport;
       newViewport.width =
-        ceil(oldViewport->width * double(innerSize.width) / mClip.width);
+        ceil(oldViewport->width * double(innerSize.width) / mClip.Width());
       newViewport.height =
-        ceil(oldViewport->height * double(innerSize.height) / mClip.height);
+        ceil(oldViewport->height * double(innerSize.height) / mClip.Height());
       context.SetViewportSize(Some(newViewport));
     }
     return context;
@@ -533,8 +562,8 @@ ClippedImage::OptimalImageSizeForDest(const gfxSize& aDest,
 
     // First, we select a scale that's good for ClippedImage. An integer
     // multiple of the size of the clipping region is always fine.
-    IntSize scale = IntSize::Ceil(aDest.width / mClip.width,
-                                  aDest.height / mClip.height);
+    IntSize scale = IntSize::Ceil(aDest.width / mClip.Width(),
+                                  aDest.height / mClip.Height());
 
     if (forceUniformScaling) {
       scale.width = scale.height = max(scale.height, scale.width);
@@ -570,7 +599,7 @@ ClippedImage::GetImageSpaceInvalidationRect(const nsIntRect& aRect)
 
   nsIntRect rect(InnerImage()->GetImageSpaceInvalidationRect(aRect));
   rect = rect.Intersect(mClip);
-  rect.MoveBy(-mClip.x, -mClip.y);
+  rect.MoveBy(-mClip.X(), -mClip.Y());
   return rect;
 }
 

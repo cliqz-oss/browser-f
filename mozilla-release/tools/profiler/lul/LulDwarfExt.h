@@ -1107,6 +1107,12 @@ class CallFrameInfo::Reporter {
   virtual void UnrecognizedAugmentation(uint64 offset,
                                         const std::string &augmentation);
 
+  // The FDE at OFFSET contains an invalid or otherwise unusable Dwarf4
+  // specific field (currently, only "address_size" or "segment_size").
+  // Parsing DWARF CFI with unexpected values here seems dubious at best,
+  // so we stop.  WHAT gives a little more information about what is wrong.
+  virtual void InvalidDwarf4Artefact(uint64 offset, const char* what);
+
   // The pointer encoding ENCODING, specified by the CIE at OFFSET, is not
   // a valid encoding.
   virtual void InvalidPointerEncoding(uint64 offset, uint8 encoding);
@@ -1210,6 +1216,12 @@ class DwarfCFIToModule: public CallFrameInfo::Handler {
 
     // ARM.
     static unsigned int ARM();
+
+    // AARCH64.
+    static unsigned int ARM64();
+
+    // MIPS.
+    static unsigned int MIPS();
   };
 
   // Create a handler for the dwarf2reader::CallFrameInfo parser that
@@ -1233,19 +1245,19 @@ class DwarfCFIToModule: public CallFrameInfo::Handler {
 
   virtual bool Entry(size_t offset, uint64 address, uint64 length,
                      uint8 version, const std::string &augmentation,
-                     unsigned return_address);
-  virtual bool UndefinedRule(uint64 address, int reg);
-  virtual bool SameValueRule(uint64 address, int reg);
+                     unsigned return_address) override;
+  virtual bool UndefinedRule(uint64 address, int reg) override;
+  virtual bool SameValueRule(uint64 address, int reg) override;
   virtual bool OffsetRule(uint64 address, int reg,
-                          int base_register, long offset);
+                          int base_register, long offset) override;
   virtual bool ValOffsetRule(uint64 address, int reg,
-                             int base_register, long offset);
-  virtual bool RegisterRule(uint64 address, int reg, int base_register);
+                             int base_register, long offset) override;
+  virtual bool RegisterRule(uint64 address, int reg, int base_register) override;
   virtual bool ExpressionRule(uint64 address, int reg,
-                              const std::string &expression);
+                              const std::string &expression) override;
   virtual bool ValExpressionRule(uint64 address, int reg,
-                                 const std::string &expression);
-  virtual bool End();
+                                 const std::string &expression) override;
+  virtual bool End() override;
 
  private:
   // Return the name to use for register I.

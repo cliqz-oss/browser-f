@@ -12,7 +12,14 @@
 #include "mozilla/gfx/2D.h"
 #include "Units.h"
 
+#include <gdk/gdk.h>
+#ifdef MOZ_WAYLAND
+#include <gdk/gdkwayland.h>
+#endif
 #include <X11/Xlib.h> // for Window, Display, Visual, etc.
+#include "X11UndefineNone.h"
+
+class nsWindow;
 
 namespace mozilla {
 namespace widget {
@@ -20,7 +27,7 @@ namespace widget {
 /*
  * Holds the logic for creating WindowSurface's for a GTK nsWindow.
  * The main purpose of this class is to allow sharing of logic between
- * nsWindow and X11CompositorWidget, for when OMTC is enabled or disabled.
+ * nsWindow and GtkCompositorWidget, for when OMTC is enabled or disabled.
  */
 class WindowSurfaceProvider final
 {
@@ -39,9 +46,13 @@ public:
       Visual* aVisual,
       int aDepth);
 
+#ifdef MOZ_WAYLAND
+   void Initialize(nsWindow *aWidget);
+#endif
+
   /**
    * Releases any surfaces created by this provider.
-   * This is used by X11CompositorWidget to get rid
+   * This is used by GtkCompositorWidget to get rid
    * of resources before we close the display connection.
    */
   void CleanupResources();
@@ -55,12 +66,16 @@ public:
 private:
   UniquePtr<WindowSurface> CreateWindowSurface();
 
-  Display*  mXDisplay;
-  Window    mXWindow;
-  Visual*   mXVisual;
-  int       mXDepth;
-
+  // Can we access X?
+  bool        mIsX11Display;
+  Display*    mXDisplay;
+  Window      mXWindow;
+  Visual*     mXVisual;
+  int         mXDepth;
   UniquePtr<WindowSurface> mWindowSurface;
+#ifdef MOZ_WAYLAND
+  nsWindow*   mWidget;
+#endif
 };
 
 }  // namespace widget

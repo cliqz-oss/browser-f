@@ -2,17 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-const { Services } = Cu.import('resource://gre/modules/Services.jsm', {});
+const { Services } = ChromeUtils.import('resource://gre/modules/Services.jsm', {});
 const osPrefs = Cc["@mozilla.org/intl/ospreferences;1"].
   getService(Ci.mozIOSPreferences);
 
 const localeService =
-  Components.classes["@mozilla.org/intl/localeservice;1"]
-  .getService(Components.interfaces.mozILocaleService);
+  Cc["@mozilla.org/intl/localeservice;1"]
+  .getService(Ci.mozILocaleService);
 
 /**
  * Make sure the locale service can be instantiated.
@@ -24,33 +20,37 @@ function run_test()
 
 add_test(function test_defaultLocale() {
   const defaultLocale = localeService.defaultLocale;
-  do_check_true(defaultLocale === "en-US", "Default locale is en-US");
+  Assert.ok(defaultLocale.length !== 0, "Default locale is not empty");
+  run_next_test();
+});
+
+add_test(function test_lastFallbackLocale() {
+  const lastFallbackLocale = localeService.lastFallbackLocale;
+  Assert.ok(lastFallbackLocale === "en-US", "Last fallback locale is en-US");
   run_next_test();
 });
 
 add_test(function test_getAppLocalesAsLangTags() {
   const appLocale = localeService.getAppLocaleAsLangTag();
-  do_check_true(appLocale != "", "appLocale is non-empty");
+  Assert.ok(appLocale != "", "appLocale is non-empty");
 
   const appLocales = localeService.getAppLocalesAsLangTags();
-  do_check_true(Array.isArray(appLocales), "appLocales returns an array");
+  Assert.ok(Array.isArray(appLocales), "appLocales returns an array");
 
-  do_check_true(appLocale == appLocales[0], "appLocale matches first entry in appLocales");
+  Assert.ok(appLocale == appLocales[0], "appLocale matches first entry in appLocales");
 
   const enUSLocales = appLocales.filter(loc => loc === "en-US");
-  do_check_true(enUSLocales.length == 1, "en-US is present exactly one time");
+  Assert.ok(enUSLocales.length == 1, "en-US is present exactly one time");
 
   run_next_test();
 });
 
-const PREF_MATCH_OS_LOCALE = "intl.locale.matchOS";
-const PREF_SELECTED_LOCALE = "general.useragent.locale";
-const PREF_OS_LOCALE       = "intl.locale.os";
+const PREF_REQUESTED_LOCALES = "intl.locale.requested";
 const REQ_LOC_CHANGE_EVENT = "intl:requested-locales-changed";
 
 add_test(function test_getRequestedLocales() {
   const requestedLocales = localeService.getRequestedLocales();
-  do_check_true(Array.isArray(requestedLocales), "requestedLocales returns an array");
+  Assert.ok(Array.isArray(requestedLocales), "requestedLocales returns an array");
 
   run_next_test();
 });
@@ -66,16 +66,14 @@ add_test(function test_getRequestedLocales() {
 add_test(function test_getRequestedLocales_matchOS() {
   do_test_pending();
 
-  Services.prefs.setBoolPref(PREF_MATCH_OS_LOCALE, false);
-  Services.prefs.setCharPref(PREF_SELECTED_LOCALE, "ar-IR");
-  Services.prefs.setCharPref(PREF_OS_LOCALE, "en-US");
+  Services.prefs.setCharPref(PREF_REQUESTED_LOCALES, "ar-IR");
 
   const observer = {
     observe: function (aSubject, aTopic, aData) {
       switch (aTopic) {
         case REQ_LOC_CHANGE_EVENT:
           const reqLocs = localeService.getRequestedLocales();
-          do_check_true(reqLocs[0] === osPrefs.systemLocale);
+          Assert.ok(reqLocs[0] === osPrefs.systemLocale);
           Services.obs.removeObserver(observer, REQ_LOC_CHANGE_EVENT);
           do_test_finished();
       }
@@ -83,7 +81,7 @@ add_test(function test_getRequestedLocales_matchOS() {
   };
 
   Services.obs.addObserver(observer, REQ_LOC_CHANGE_EVENT);
-  Services.prefs.setBoolPref(PREF_MATCH_OS_LOCALE, true);
+  Services.prefs.setCharPref(PREF_REQUESTED_LOCALES, "");
 
   run_next_test();
 });
@@ -93,18 +91,17 @@ add_test(function test_getRequestedLocales_matchOS() {
  * event for requested locales change, it will be fired when the
  * pref for browser UI locale changes.
  */
-add_test(function test_getRequestedLocales_matchOS() {
+add_test(function test_getRequestedLocales_onChange() {
   do_test_pending();
 
-  Services.prefs.setBoolPref(PREF_MATCH_OS_LOCALE, false);
-  Services.prefs.setCharPref(PREF_SELECTED_LOCALE, "ar-IR");
+  Services.prefs.setCharPref(PREF_REQUESTED_LOCALES, "ar-IR");
 
   const observer = {
     observe: function (aSubject, aTopic, aData) {
       switch (aTopic) {
         case REQ_LOC_CHANGE_EVENT:
           const reqLocs = localeService.getRequestedLocales();
-          do_check_true(reqLocs[0] === "sr-RU");
+          Assert.ok(reqLocs[0] === "sr-RU");
           Services.obs.removeObserver(observer, REQ_LOC_CHANGE_EVENT);
           do_test_finished();
       }
@@ -112,53 +109,105 @@ add_test(function test_getRequestedLocales_matchOS() {
   };
 
   Services.obs.addObserver(observer, REQ_LOC_CHANGE_EVENT);
-  Services.prefs.setCharPref(PREF_SELECTED_LOCALE, "sr-RU");
+  Services.prefs.setCharPref(PREF_REQUESTED_LOCALES, "sr-RU");
 
   run_next_test();
 });
 
 add_test(function test_getRequestedLocale() {
-  Services.prefs.setBoolPref(PREF_MATCH_OS_LOCALE, false);
-  Services.prefs.setCharPref(PREF_SELECTED_LOCALE, "tlh");
+  Services.prefs.setCharPref(PREF_REQUESTED_LOCALES, "tlh");
 
   let requestedLocale = localeService.getRequestedLocale();
-  do_check_true(requestedLocale === "tlh", "requestedLocale returns the right value");
+  Assert.ok(requestedLocale === "tlh", "requestedLocale returns the right value");
 
-  Services.prefs.setCharPref(PREF_SELECTED_LOCALE, "");
-
-  requestedLocale = localeService.getRequestedLocale();
-  do_check_true(requestedLocale === "", "requestedLocale returns empty value value");
-
-  Services.prefs.clearUserPref(PREF_MATCH_OS_LOCALE);
-  Services.prefs.clearUserPref(PREF_SELECTED_LOCALE);
+  Services.prefs.clearUserPref(PREF_REQUESTED_LOCALES);
 
   run_next_test();
 });
 
 add_test(function test_setRequestedLocales() {
-  localeService.setRequestedLocales([]);
+  localeService.setRequestedLocales(['de-AT', 'de-DE', 'de-CH']);
 
-  let matchOS = Services.prefs.getBoolPref(PREF_MATCH_OS_LOCALE);
-  do_check_true(matchOS === true);
-
-  localeService.setRequestedLocales(['de-AT']);
-
-  matchOS = Services.prefs.getBoolPref(PREF_MATCH_OS_LOCALE);
-  do_check_true(matchOS === false);
-  let locales = localeService.getRequestedLocales();;
-  do_check_true(locales[0] === 'de-AT');
+  let locales = localeService.getRequestedLocales();
+  Assert.ok(locales[0] === 'de-AT');
+  Assert.ok(locales[1] === 'de-DE');
+  Assert.ok(locales[2] === 'de-CH');
 
   run_next_test();
 });
 
 add_test(function test_isAppLocaleRTL() {
-  do_check_true(typeof localeService.isAppLocaleRTL === 'boolean');
+  Assert.ok(typeof localeService.isAppLocaleRTL === 'boolean');
 
   run_next_test();
 });
 
-do_register_cleanup(() => {
-  Services.prefs.clearUserPref(PREF_SELECTED_LOCALE);
-  Services.prefs.clearUserPref(PREF_MATCH_OS_LOCALE);
-  Services.prefs.clearUserPref(PREF_OS_LOCALE, "en-US");
+add_test(function test_getPackagedLocales() {
+  const locales = localeService.getPackagedLocales();
+  Assert.ok(locales.length !== 0, "Packaged locales are empty");
+  run_next_test();
+});
+
+add_test(function test_setAvailableLocales() {
+  const avLocales = localeService.getAvailableLocales();
+  localeService.setAvailableLocales(["und", "ar-IR"]);
+
+  let locales = localeService.getAvailableLocales();
+  Assert.ok(locales.length == 2);
+  Assert.ok(locales[0] === 'und');
+  Assert.ok(locales[1] === 'ar-IR');
+
+  localeService.setAvailableLocales(avLocales);
+
+  run_next_test();
+});
+
+/**
+ * This test verifies that all values coming from the pref are sanitized.
+ */
+add_test(function test_getRequestedLocales_sanitize() {
+  Services.prefs.setCharPref(PREF_REQUESTED_LOCALES, "de,2,#$@#,pl,ąó,!a2,DE-at,,;");
+
+  let locales = localeService.getRequestedLocales();
+  Assert.equal(locales[0], "de");
+  Assert.equal(locales[1], "pl");
+  Assert.equal(locales[2], "de-AT");
+  Assert.equal(locales[3], "und");
+  Assert.equal(locales[4], localeService.lastFallbackLocale);
+  Assert.equal(locales.length, 5);
+
+  Services.prefs.clearUserPref(PREF_REQUESTED_LOCALES);
+
+  run_next_test();
+});
+
+add_test(function test_handle_ja_JP_mac() {
+  const bkpAvLocales = localeService.getAvailableLocales();
+
+  localeService.setAvailableLocales(["ja-JP-mac", "en-US"]);
+
+  localeService.setRequestedLocales(['ja-JP-mac']);
+
+  let reqLocales = localeService.getRequestedLocales();
+  Assert.equal(reqLocales[0], 'ja-JP-macos');
+
+  let avLocales = localeService.getAvailableLocales();
+  Assert.equal(avLocales[0], 'ja-JP-macos');
+
+  let appLocales = localeService.getAppLocalesAsBCP47();
+  Assert.equal(appLocales[0], 'ja-JP-macos');
+
+  let appLocalesAsLT = localeService.getAppLocalesAsLangTags();
+  Assert.equal(appLocalesAsLT[0], 'ja-JP-mac');
+
+  Assert.equal(localeService.getAppLocaleAsLangTag(), "ja-JP-mac");
+
+  localeService.setAvailableLocales(bkpAvLocales);
+
+  run_next_test();
+});
+
+
+registerCleanupFunction(() => {
+  Services.prefs.clearUserPref(PREF_REQUESTED_LOCALES);
 });

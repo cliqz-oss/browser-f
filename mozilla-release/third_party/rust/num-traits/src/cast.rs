@@ -1,4 +1,6 @@
-use std::mem::size_of;
+use core::f64;
+use core::mem::size_of;
+use core::num::Wrapping;
 
 use identities::Zero;
 use bounds::Bounded;
@@ -225,8 +227,10 @@ macro_rules! impl_to_primitive_float_to_float {
             // Make sure the value is in range for the cast.
             // NaN and +-inf are cast as they are.
             let n = $slf as f64;
-            let max_value: $DstT = ::std::$DstT::MAX;
-            if !n.is_finite() || (-max_value as f64 <= n && n <= max_value as f64) {
+            let max_value: $DstT = ::core::$DstT::MAX;
+            if n != n || n == f64::INFINITY || n == f64::NEG_INFINITY
+                || (-max_value as f64 <= n && n <= max_value as f64)
+            {
                 Some($slf as $DstT)
             } else {
                 None
@@ -385,6 +389,17 @@ impl_from_primitive!(u64,   to_u64);
 impl_from_primitive!(f32,   to_f32);
 impl_from_primitive!(f64,   to_f64);
 
+
+impl<T: ToPrimitive> ToPrimitive for Wrapping<T> {
+    fn to_i64(&self) -> Option<i64> { self.0.to_i64() }
+    fn to_u64(&self) -> Option<u64> { self.0.to_u64() }
+}
+impl<T: FromPrimitive> FromPrimitive for Wrapping<T> {
+    fn from_u64(n: u64) -> Option<Self> { T::from_u64(n).map(Wrapping) }
+    fn from_i64(n: i64) -> Option<Self> { T::from_i64(n).map(Wrapping) }
+}
+
+
 /// Cast from one machine scalar to another.
 ///
 /// # Examples
@@ -434,11 +449,84 @@ impl_num_cast!(isize, to_isize);
 impl_num_cast!(f32,   to_f32);
 impl_num_cast!(f64,   to_f64);
 
+impl<T: NumCast> NumCast for Wrapping<T> {
+    fn from<U: ToPrimitive>(n: U) -> Option<Self> {
+        T::from(n).map(Wrapping)
+    }
+}
+
+/// A generic interface for casting between machine scalars with the
+/// `as` operator, which admits narrowing and precision loss.
+/// Implementers of this trait AsPrimitive should behave like a primitive
+/// numeric type (e.g. a newtype around another primitive), and the
+/// intended conversion must never fail.
+///
+/// # Examples
+///
+/// ```
+/// # use num_traits::AsPrimitive;
+/// let three: i32 = (3.14159265f32).as_();
+/// assert_eq!(three, 3);
+/// ```
+/// 
+/// # Safety
+/// 
+/// Currently, some uses of the `as` operator are not entirely safe.
+/// In particular, it is undefined behavior if:
+/// 
+/// - A truncated floating point value cannot fit in the target integer
+///   type ([#10184](https://github.com/rust-lang/rust/issues/10184));
+/// 
+/// ```ignore
+/// # use num_traits::AsPrimitive;
+/// let x: u8 = (1.04E+17).as_(); // UB
+/// ```
+/// 
+/// - Or a floating point value does not fit in another floating
+///   point type ([#15536](https://github.com/rust-lang/rust/issues/15536)).
+///
+/// ```ignore
+/// # use num_traits::AsPrimitive;
+/// let x: f32 = (1e300f64).as_(); // UB
+/// ```
+/// 
+pub trait AsPrimitive<T>: 'static + Copy
+where
+    T: 'static + Copy
+{
+    /// Convert a value to another, using the `as` operator.
+    fn as_(self) -> T;
+}
+
+macro_rules! impl_as_primitive {
+    ($T: ty => $( $U: ty ),* ) => {
+        $(
+        impl AsPrimitive<$U> for $T {
+            #[inline] fn as_(self) -> $U { self as $U }
+        }
+        )*
+    };
+}
+
+impl_as_primitive!(u8 => char, u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(i8 => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(u16 => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(i16 => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(u32 => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(i32 => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(u64 => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(i64 => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(usize => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(isize => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(f32 => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(f64 => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64, f32, f64);
+impl_as_primitive!(char => char, u8, i8, u16, i16, u32, i32, u64, isize, usize, i64);
+impl_as_primitive!(bool => u8, i8, u16, i16, u32, i32, u64, isize, usize, i64);
 
 #[test]
 fn to_primitive_float() {
-    use std::f32;
-    use std::f64;
+    use core::f32;
+    use core::f64;
 
     let f32_toolarge = 1e39f64;
     assert_eq!(f32_toolarge.to_f32(), None);
@@ -447,4 +535,60 @@ fn to_primitive_float() {
     assert_eq!(f64::INFINITY.to_f32(), Some(f32::INFINITY));
     assert_eq!((f64::NEG_INFINITY).to_f32(), Some(f32::NEG_INFINITY));
     assert!((f64::NAN).to_f32().map_or(false, |f| f.is_nan()));
+}
+
+#[test]
+fn wrapping_to_primitive() {
+    macro_rules! test_wrapping_to_primitive {
+        ($($t:ty)+) => {
+            $({
+                let i: $t = 0;
+                let w = Wrapping(i);
+                assert_eq!(i.to_u8(),    w.to_u8());
+                assert_eq!(i.to_u16(),   w.to_u16());
+                assert_eq!(i.to_u32(),   w.to_u32());
+                assert_eq!(i.to_u64(),   w.to_u64());
+                assert_eq!(i.to_usize(), w.to_usize());
+                assert_eq!(i.to_i8(),    w.to_i8());
+                assert_eq!(i.to_i16(),   w.to_i16());
+                assert_eq!(i.to_i32(),   w.to_i32());
+                assert_eq!(i.to_i64(),   w.to_i64());
+                assert_eq!(i.to_isize(), w.to_isize());
+                assert_eq!(i.to_f32(),   w.to_f32());
+                assert_eq!(i.to_f64(),   w.to_f64());
+            })+
+        };
+    }
+
+    test_wrapping_to_primitive!(usize u8 u16 u32 u64 isize i8 i16 i32 i64);
+}
+
+#[test]
+fn wrapping_is_toprimitive() {
+    fn require_toprimitive<T: ToPrimitive>(_: &T) {}
+    require_toprimitive(&Wrapping(42));
+}
+
+#[test]
+fn wrapping_is_fromprimitive() {
+    fn require_fromprimitive<T: FromPrimitive>(_: &T) {}
+    require_fromprimitive(&Wrapping(42));
+}
+
+#[test]
+fn wrapping_is_numcast() {
+    fn require_numcast<T: NumCast>(_: &T) {}
+    require_numcast(&Wrapping(42));
+}
+
+#[test]
+fn as_primitive() {
+    let x: f32 = (1.625f64).as_();
+    assert_eq!(x, 1.625f32);
+
+    let x: f32 = (3.14159265358979323846f64).as_();
+    assert_eq!(x, 3.1415927f32);
+
+    let x: u8 = (768i16).as_();
+    assert_eq!(x, 0);
 }

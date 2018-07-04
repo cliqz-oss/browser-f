@@ -189,17 +189,20 @@ impl Context {
     }
 
     pub fn get_server_info<CB>(&self, _: CB, userdata: *mut c_void) -> Result<Operation>
-        where CB: Fn(&Context, &ServerInfo, *mut c_void)
+        where CB: Fn(&Context, Option<&ServerInfo>, *mut c_void)
     {
         debug_assert_eq!(::std::mem::size_of::<CB>(), 0);
 
         // See: A note about `wrapped` functions
         unsafe extern "C" fn wrapped<F>(c: *mut ffi::pa_context, i: *const ffi::pa_server_info, userdata: *mut c_void)
-            where F: Fn(&Context, &ServerInfo, *mut c_void)
+            where F: Fn(&Context, Option<&ServerInfo>, *mut c_void)
         {
             use std::mem::{forget, uninitialized};
-            debug_assert_ne!(i, ptr::null_mut());
-            let info = &*i;
+            let info = if i.is_null() {
+                None
+            } else {
+                Some(&*i)
+            };
             let ctx = context::from_raw_ptr(c);
             let result = uninitialized::<F>()(&ctx, info, userdata);
             forget(ctx);
@@ -211,8 +214,10 @@ impl Context {
                    ffi::pa_context_get_server_info(self.raw_mut(), Some(wrapped::<CB>), userdata))
     }
 
-    pub fn get_sink_info_by_name<CB>(&self, name: &CStr, _: CB, userdata: *mut c_void) -> Result<Operation>
-        where CB: Fn(&Context, *const SinkInfo, i32, *mut c_void)
+    pub fn get_sink_info_by_name<'str, CS, CB>(&self, name: CS, _: CB, userdata: *mut c_void) -> Result<Operation>
+    where
+        CB: Fn(&Context, *const SinkInfo, i32, *mut c_void),
+        CS: Into<Option<&'str CStr>>,
     {
         debug_assert_eq!(::std::mem::size_of::<CB>(), 0);
 
@@ -232,7 +237,10 @@ impl Context {
         }
 
         op_or_err!(self,
-                   ffi::pa_context_get_sink_info_by_name(self.raw_mut(), name.as_ptr(), Some(wrapped::<CB>), userdata))
+                   ffi::pa_context_get_sink_info_by_name(self.raw_mut(),
+                                                        name.into().unwrap_cstr(),
+                                                        Some(wrapped::<CB>),
+                                                        userdata))
     }
 
     pub fn get_sink_info_list<CB>(&self, _: CB, userdata: *mut c_void) -> Result<Operation>

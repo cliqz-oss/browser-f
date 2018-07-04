@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -8,10 +9,12 @@
 
 #include "2D.h"
 #include "RecordedEvent.h"
-#include <ostream>
-#include <fstream>
+#include "RecordingTypes.h"
+#include "mozilla/FStream.h"
 
 #include <unordered_set>
+#include <unordered_map>
+#include <functional>
 
 namespace mozilla {
 namespace gfx {
@@ -21,10 +24,13 @@ class PathRecording;
 class DrawEventRecorderPrivate : public DrawEventRecorder
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DrawEventRecorderPrivate)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DrawEventRecorderPrivate, override)
+
   DrawEventRecorderPrivate();
   virtual ~DrawEventRecorderPrivate() { }
-  virtual void Finish() {
+  virtual bool Finish() override { ClearResources(); return true; }
+  virtual void FlushItem(IntRect) { }
+  void DetachResources() {
     // The iteration is a bit awkward here because our iterator will
     // be invalidated by the removal
     for (auto font = mStoredFonts.begin(); font != mStoredFonts.end(); ) {
@@ -35,11 +41,23 @@ public:
       auto oldSurface = surface++;
       (*oldSurface)->RemoveUserData(reinterpret_cast<UserDataKey*>(this));
     }
+    mStoredFonts.clear();
+    mStoredSurfaces.clear();
+  }
 
+  void ClearResources() {
+    mUnscaledFonts.clear();
+    mStoredObjects.clear();
+    mStoredFontData.clear();
+    mUnscaledFontMap.clear();
   }
 
   template<class S>
-  void WriteHeader(S &aStream);
+  void WriteHeader(S& aStream) {
+    WriteElement(aStream, kMagicInt);
+    WriteElement(aStream, kMajorRevision);
+    WriteElement(aStream, kMinorRevision);
+  }
 
   virtual void RecordEvent(const RecordedEvent &aEvent) = 0;
   void WritePath(const PathRecording *aPath);
@@ -80,20 +98,52 @@ public:
     return mStoredFontData.find(aFontDataKey) != mStoredFontData.end();
   }
 
+  // Returns the index of the UnscaledFont
+  size_t GetUnscaledFontIndex(UnscaledFont *aFont) {
+    auto i = mUnscaledFontMap.find(aFont);
+    size_t index;
+    if (i == mUnscaledFontMap.end()) {
+      mUnscaledFonts.push_back(aFont);
+      index = mUnscaledFonts.size() - 1;
+      mUnscaledFontMap.insert({{aFont, index}});
+    } else {
+      index = i->second;
+    }
+    return index;
+  }
+
+  bool WantsExternalFonts() const { return mExternalFonts; }
+
+  void TakeExternalSurfaces(std::vector<RefPtr<SourceSurface>>& aSurfaces)
+  {
+    aSurfaces = Move(mExternalSurfaces);
+  }
+
+  virtual void StoreSourceSurfaceRecording(SourceSurface *aSurface,
+                                           const char *aReason);
+
 protected:
+  void StoreExternalSurfaceRecording(SourceSurface* aSurface,
+                                     uint64_t aKey);
+
   virtual void Flush() = 0;
 
   std::unordered_set<const void*> mStoredObjects;
   std::unordered_set<uint64_t> mStoredFontData;
   std::unordered_set<ScaledFont*> mStoredFonts;
   std::unordered_set<SourceSurface*> mStoredSurfaces;
+  std::vector<RefPtr<UnscaledFont>> mUnscaledFonts;
+  std::unordered_map<UnscaledFont*, size_t> mUnscaledFontMap;
+  std::vector<RefPtr<SourceSurface>> mExternalSurfaces;
+  bool mExternalFonts;
 };
 
 class DrawEventRecorderFile : public DrawEventRecorderPrivate
 {
+  using char_type = filesystem::Path::value_type;
 public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DrawEventRecorderFile, override)
-  explicit DrawEventRecorderFile(const char *aFilename);
+  explicit DrawEventRecorderFile(const char_type* aFilename);
   ~DrawEventRecorderFile();
 
   void RecordEvent(const RecordedEvent &aEvent) override;
@@ -108,7 +158,7 @@ public:
    * objects it has recorded. This can be used with Close, so that a recording
    * can be processed in chunks. The file must not already be open.
    */
-  void OpenNew(const char *aFilename);
+  void OpenNew(const char_type* aFilename);
 
   /**
    * Closes the file so that it can be processed. The recorder does NOT forget
@@ -120,12 +170,14 @@ public:
 private:
   void Flush() override;
 
-  std::ofstream mOutputStream;
+  mozilla::OFStream mOutputStream;
 };
+
+typedef std::function<void(MemStream &aStream, std::vector<RefPtr<UnscaledFont>> &aUnscaledFonts)> SerializeResourcesFn;
 
 // WARNING: This should not be used in its existing state because
 // it is likely to OOM because of large continguous allocations.
-class DrawEventRecorderMemory final : public DrawEventRecorderPrivate
+class DrawEventRecorderMemory : public DrawEventRecorderPrivate
 {
 public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DrawEventRecorderMemory, override)
@@ -134,6 +186,7 @@ public:
    * Constructs a DrawEventRecorder that stores the recording in memory.
    */
   DrawEventRecorderMemory();
+  explicit DrawEventRecorderMemory(const SerializeResourcesFn &aSerialize);
 
   void RecordEvent(const RecordedEvent &aEvent) override;
 
@@ -148,10 +201,23 @@ public:
    * and processed in chunks, releasing memory as it goes.
    */
   void WipeRecording();
+  bool Finish() override;
+  void FlushItem(IntRect) override;
 
   MemStream mOutputStream;
-private:
+  /* The index stream is of the form:
+   * ItemIndex { size_t dataEnd; size_t extraDataEnd; }
+   * It gets concatenated to the end of mOutputStream in Finish()
+   * The last size_t in the stream is offset of the begining of the
+   * index.
+   */
+  MemStream mIndex;
+
+protected:
   ~DrawEventRecorderMemory() {};
+
+private:
+  SerializeResourcesFn mSerializeCallback;
 
   void Flush() override;
 };

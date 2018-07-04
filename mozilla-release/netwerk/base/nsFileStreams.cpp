@@ -47,6 +47,9 @@ nsFileStreamBase::nsFileStreamBase()
 
 nsFileStreamBase::~nsFileStreamBase()
 {
+    // We don't want to try to rewrind the stream when shutting down.
+    mBehaviorFlags &= ~nsIFileInputStream::REOPEN_ON_REWIND;
+
     Close();
 }
 
@@ -378,6 +381,9 @@ nsFileStreamBase::DoPendingOpen()
 
     case eOpened:
         MOZ_ASSERT(mFD);
+        if (NS_WARN_IF(!mFD)) {
+          return NS_ERROR_FAILURE;
+        }
         return NS_OK;
 
     case eClosed:
@@ -448,28 +454,8 @@ nsFileInputStream::Open(nsIFile* aFile, int32_t aIOFlags, int32_t aPerm)
     if (aPerm == -1)
         aPerm = 0;
 
-    rv = MaybeOpen(aFile, aIOFlags, aPerm,
-                   mBehaviorFlags & nsIFileInputStream::DEFER_OPEN);
-
-    if (NS_FAILED(rv)) return rv;
-
-    // if defer open is set, do not remove the file here.
-    // remove the file while Close() is called.
-    if ((mBehaviorFlags & DELETE_ON_CLOSE) &&
-        !(mBehaviorFlags & nsIFileInputStream::DEFER_OPEN)) {
-      // POSIX compatible filesystems allow a file to be unlinked while a
-      // file descriptor is still referencing the file.  since we've already
-      // opened the file descriptor, we'll try to remove the file.  if that
-      // fails, then we'll just remember the nsIFile and remove it after we
-      // close the file descriptor.
-      rv = aFile->Remove(false);
-      if (NS_SUCCEEDED(rv)) {
-        // No need to remove it later. Clear the flag.
-        mBehaviorFlags &= ~DELETE_ON_CLOSE;
-      }
-    }
-
-    return NS_OK;
+    return MaybeOpen(aFile, aIOFlags, aPerm,
+                     mBehaviorFlags & nsIFileInputStream::DEFER_OPEN);
 }
 
 NS_IMETHODIMP
@@ -503,17 +489,7 @@ nsFileInputStream::Close()
 
     // null out mLineBuffer in case Close() is called again after failing
     mLineBuffer = nullptr;
-    nsresult rv = nsFileStreamBase::Close();
-    if (NS_FAILED(rv)) return rv;
-    if (mFile && (mBehaviorFlags & DELETE_ON_CLOSE)) {
-        rv = mFile->Remove(false);
-        NS_ASSERTION(NS_SUCCEEDED(rv), "failed to delete file");
-        // If we don't need to save the file for reopening, free it up
-        if (!(mBehaviorFlags & REOPEN_ON_REWIND)) {
-          mFile = nullptr;
-        }
-    }
-    return rv;
+    return nsFileStreamBase::Close();
 }
 
 NS_IMETHODIMP
@@ -829,11 +805,18 @@ nsAtomicFileOutputStream::DoOpen()
     }
 
     if (NS_SUCCEEDED(rv) && mTargetFileExists) {
+        // Abort if |file| is not writable; it won't work as an output stream.
+        bool isWritable;
+        if (NS_SUCCEEDED(file->IsWritable(&isWritable)) && !isWritable) {
+            return NS_ERROR_FILE_ACCESS_DENIED;
+        }
+
         uint32_t origPerm;
         if (NS_FAILED(file->GetPermissions(&origPerm))) {
             NS_ERROR("Can't get permissions of target file");
             origPerm = mOpenParams.perm;
         }
+
         // XXX What if |perm| is more restrictive then |origPerm|?
         // This leaves the user supplied permissions as they were.
         rv = tempResult->CreateUnique(nsIFile::NORMAL_FILE_TYPE, origPerm);

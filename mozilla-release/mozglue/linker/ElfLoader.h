@@ -219,6 +219,7 @@ protected:
   friend class ElfLoader;
   friend class CustomElf;
   friend class SEGVHandler;
+  friend int __wrap_dl_iterate_phdr(dl_phdr_cb callback, void *data);
   virtual BaseElf *AsBaseElf() { return nullptr; }
   virtual SystemElf *AsSystemElf() { return nullptr; }
 
@@ -453,7 +454,7 @@ protected:
   const char *lastError;
 
 private:
-  ElfLoader() : expect_shutdown(true)
+  ElfLoader() : expect_shutdown(true), lastError(nullptr)
   {
     pthread_mutex_init(&handlesMutex, nullptr);
   }
@@ -473,6 +474,9 @@ private:
    * we wouldn't treat non-Android differently, but glibc uses versioned
    * symbols which this linker doesn't support. */
   RefPtr<LibHandle> libc;
+
+  /* And for libm. */
+  RefPtr<LibHandle> libm;
 #endif
 
   /* Bookkeeping */
@@ -605,7 +609,7 @@ private:
 
     void Init(AuxVector *auvx);
 
-    operator bool()
+    explicit operator bool()
     {
       return dbg;
     }
@@ -639,7 +643,7 @@ private:
       }
     protected:
       friend class DebuggerHelper;
-      iterator(const link_map *item): item(item) { }
+      explicit iterator(const link_map *item): item(item) { }
 
     private:
       const link_map *item;

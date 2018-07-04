@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,7 +17,7 @@ class ServoDeclarationBlock final : public DeclarationBlock
 public:
   explicit ServoDeclarationBlock(
     already_AddRefed<RawServoDeclarationBlock> aRaw)
-    : DeclarationBlock(StyleBackendType::Servo), mRaw(aRaw) {}
+    : DeclarationBlock(), mRaw(aRaw) {}
 
   ServoDeclarationBlock()
     : ServoDeclarationBlock(Servo_DeclarationBlock_CreateEmpty().Consume()) {}
@@ -64,13 +65,10 @@ public:
 
   void GetPropertyValue(const nsAString& aProperty, nsAString& aValue) const;
   void GetPropertyValueByID(nsCSSPropertyID aPropID, nsAString& aValue) const;
-  void GetAuthoredPropertyValue(const nsAString& aProperty,
-                                nsAString& aValue) const {
-    GetPropertyValue(aProperty, aValue);
-  }
   bool GetPropertyIsImportant(const nsAString& aProperty) const;
-  void RemoveProperty(const nsAString& aProperty);
-  void RemovePropertyByID(nsCSSPropertyID aPropID);
+  // The two functions blow return whether any property was removed.
+  bool RemoveProperty(const nsAString& aProperty);
+  bool RemovePropertyByID(nsCSSPropertyID aPropID);
 
 private:
   ~ServoDeclarationBlock() {}

@@ -64,9 +64,18 @@ class MachCommands(MachCommandBase):
             kwargs['perTabPause'] = 1
             kwargs['settleWaitTime'] = 1
 
+        if 'single_stylo_traversal' in kwargs and kwargs['single_stylo_traversal']:
+            os.environ['STYLO_THREADS'] = '1'
+        else:
+            os.environ['STYLO_THREADS'] = '4'
+
+        if 'enable_webrender' in kwargs and kwargs['enable_webrender']:
+            os.environ['MOZ_WEBRENDER'] = '1'
+            os.environ['MOZ_ACCELERATED'] = '1'
+
         runtime_testvars = {}
         for arg in ('webRootDir', 'pageManifest', 'resultsDir', 'entities', 'iterations',
-                    'perTabPause', 'settleWaitTime', 'maxTabs'):
+                    'perTabPause', 'settleWaitTime', 'maxTabs', 'dmd'):
             if kwargs[arg]:
                 runtime_testvars[arg] = kwargs[arg]
 
@@ -119,6 +128,21 @@ class MachCommands(MachCommandBase):
                 '-d',
                 page_load_test_dir]}
             self.run_process(**unzip_args)
+
+        # If '--preferences' was not specified supply our default set.
+        if not kwargs['prefs_files']:
+            kwargs['prefs_files'] = [os.path.join(awsy_source_dir, 'conf', 'prefs.json')]
+
+        # Setup DMD env vars if necessary.
+        if kwargs['dmd']:
+            bin_dir = os.path.dirname(binary)
+
+            if 'DMD' not in os.environ:
+                os.environ['DMD'] = '1'
+
+            # Also add the bin dir to the python path so we can use dmd.py
+            if bin_dir not in sys.path:
+                sys.path.append(bin_dir)
 
         for k, v in kwargs.iteritems():
             setattr(args, k, v)
@@ -178,6 +202,15 @@ class MachCommands(MachCommandBase):
                      dest='settleWaitTime',
                      help='Seconds to wait for things to settled down. '
                      'Defaults to %s.' % SETTLE_WAIT_TIME)
+    @CommandArgument('--single-stylo-traversal', group='AWSY', action='store_true',
+                     dest='single_stylo_traversal', default=False,
+                     help='Set STYLO_THREADS=1.')
+    @CommandArgument('--enable-webrender', group='AWSY', action='store_true',
+                     dest='enable_webrender', default=False,
+                     help='Enable WebRender.')
+    @CommandArgument('--dmd', group='AWSY', action='store_true',
+                     dest='dmd', default=False,
+                     help='Enable DMD during testing. Requires a DMD-enabled build.')
     def run_awsy_test(self, tests, **kwargs):
         """mach awsy-test runs the in-tree version of the Are We Slim Yet
         (AWSY) tests.

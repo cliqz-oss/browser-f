@@ -6,7 +6,7 @@
 
 use dom::bindings::codegen::Bindings::HTMLTemplateElementBinding::HTMLTemplateElementMethods;
 use dom::bindings::inheritance::{Castable, CharacterDataTypeId, NodeTypeId};
-use dom::bindings::js::{JS, Root};
+use dom::bindings::root::{Dom, DomRoot};
 use dom::bindings::trace::JSTraceable;
 use dom::characterdata::CharacterData;
 use dom::document::Document;
@@ -16,36 +16,38 @@ use dom::htmlscriptelement::HTMLScriptElement;
 use dom::htmltemplateelement::HTMLTemplateElement;
 use dom::node::Node;
 use dom::processinginstruction::ProcessingInstruction;
-use dom::servoparser::Sink;
+use dom::servoparser::{ParsingAlgorithm, Sink};
 use html5ever::QualName;
 use html5ever::buffer_queue::BufferQueue;
 use html5ever::serialize::{AttrRef, Serialize, Serializer};
 use html5ever::serialize::TraversalScope;
-use html5ever::serialize::TraversalScope::ChildrenOnly;
+use html5ever::serialize::TraversalScope::IncludeNode;
 use html5ever::tokenizer::{Tokenizer as HtmlTokenizer, TokenizerOpts, TokenizerResult};
 use html5ever::tree_builder::{Tracer as HtmlTracer, TreeBuilder, TreeBuilderOpts};
 use js::jsapi::JSTracer;
 use servo_url::ServoUrl;
 use std::io;
 
-#[derive(HeapSizeOf, JSTraceable)]
+#[derive(JSTraceable, MallocSizeOf)]
 #[must_root]
 pub struct Tokenizer {
-    #[ignore_heap_size_of = "Defined in html5ever"]
-    inner: HtmlTokenizer<TreeBuilder<JS<Node>, Sink>>,
+    #[ignore_malloc_size_of = "Defined in html5ever"]
+    inner: HtmlTokenizer<TreeBuilder<Dom<Node>, Sink>>,
 }
 
 impl Tokenizer {
     pub fn new(
             document: &Document,
             url: ServoUrl,
-            fragment_context: Option<super::FragmentContext>)
+            fragment_context: Option<super::FragmentContext>,
+            parsing_algorithm: ParsingAlgorithm)
             -> Self {
         let sink = Sink {
             base_url: url,
-            document: JS::from_ref(document),
+            document: Dom::from_ref(document),
             current_line: 1,
             script: Default::default(),
+            parsing_algorithm: parsing_algorithm,
         };
 
         let options = TreeBuilderOpts {
@@ -56,8 +58,8 @@ impl Tokenizer {
         let inner = if let Some(fc) = fragment_context {
             let tb = TreeBuilder::new_for_fragment(
                 sink,
-                JS::from_ref(fc.context_elem),
-                fc.form_elem.map(|n| JS::from_ref(n)),
+                Dom::from_ref(fc.context_elem),
+                fc.form_elem.map(|n| Dom::from_ref(n)),
                 options);
 
             let tok_options = TokenizerOpts {
@@ -75,10 +77,10 @@ impl Tokenizer {
         }
     }
 
-    pub fn feed(&mut self, input: &mut BufferQueue) -> Result<(), Root<HTMLScriptElement>> {
+    pub fn feed(&mut self, input: &mut BufferQueue) -> Result<(), DomRoot<HTMLScriptElement>> {
         match self.inner.feed(input) {
             TokenizerResult::Done => Ok(()),
-            TokenizerResult::Script(script) => Err(Root::from_ref(script.downcast().unwrap())),
+            TokenizerResult::Script(script) => Err(DomRoot::from_ref(script.downcast().unwrap())),
         }
     }
 
@@ -96,15 +98,15 @@ impl Tokenizer {
 }
 
 #[allow(unsafe_code)]
-unsafe impl JSTraceable for HtmlTokenizer<TreeBuilder<JS<Node>, Sink>> {
+unsafe impl JSTraceable for HtmlTokenizer<TreeBuilder<Dom<Node>, Sink>> {
     unsafe fn trace(&self, trc: *mut JSTracer) {
         struct Tracer(*mut JSTracer);
         let tracer = Tracer(trc);
 
         impl HtmlTracer for Tracer {
-            type Handle = JS<Node>;
+            type Handle = Dom<Node>;
             #[allow(unrooted_must_root)]
-            fn trace_handle(&self, node: &JS<Node>) {
+            fn trace_handle(&self, node: &Dom<Node>) {
                 unsafe { node.trace(self.0); }
             }
         }
@@ -140,16 +142,16 @@ fn end_element<S: Serializer>(node: &Element, serializer: &mut S) -> io::Result<
 
 
 enum SerializationCommand {
-    OpenElement(Root<Element>),
-    CloseElement(Root<Element>),
-    SerializeNonelement(Root<Node>),
+    OpenElement(DomRoot<Element>),
+    CloseElement(DomRoot<Element>),
+    SerializeNonelement(DomRoot<Node>),
 }
 
 struct SerializationIterator {
     stack: Vec<SerializationCommand>,
 }
 
-fn rev_children_iter(n: &Node) -> impl Iterator<Item=Root<Node>>{
+fn rev_children_iter(n: &Node) -> impl Iterator<Item=DomRoot<Node>>{
     match n.downcast::<HTMLTemplateElement>() {
         Some(t) => t.Content().upcast::<Node>().rev_children(),
         None => n.rev_children(),
@@ -173,8 +175,8 @@ impl SerializationIterator {
 
     fn push_node(&mut self, n: &Node) {
         match n.downcast::<Element>() {
-            Some(e) => self.stack.push(SerializationCommand::OpenElement(Root::from_ref(e))),
-            None => self.stack.push(SerializationCommand::SerializeNonelement(Root::from_ref(n))),
+            Some(e) => self.stack.push(SerializationCommand::OpenElement(DomRoot::from_ref(e))),
+            None => self.stack.push(SerializationCommand::SerializeNonelement(DomRoot::from_ref(n))),
         }
     }
 }
@@ -202,7 +204,7 @@ impl<'a> Serialize for &'a Node {
         let node = *self;
 
 
-        let iter = SerializationIterator::new(node, traversal_scope == ChildrenOnly);
+        let iter = SerializationIterator::new(node, traversal_scope != IncludeNode);
 
         for cmd in iter {
             match cmd {

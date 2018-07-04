@@ -10,6 +10,7 @@
 #include "mozilla/BasicEvents.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/dom/Element.h"
 #include "PluginInstanceParent.h"
 #include "BrowserStreamParent.h"
 #include "PluginBackgroundDestroyer.h"
@@ -25,7 +26,6 @@
 #include "nsNPAPIPluginInstance.h"
 #include "nsPluginInstanceOwner.h"
 #include "nsFocusManager.h"
-#include "nsIDOMElement.h"
 #ifdef MOZ_X11
 #include "gfxXlibSurface.h"
 #endif
@@ -613,17 +613,6 @@ PluginInstanceParent::RecvNPN_InvalidateRect(const NPRect& rect)
 {
     mNPNIface->invalidaterect(mNPP, const_cast<NPRect*>(&rect));
     return IPC_OK();
-}
-
-static inline NPRect
-IntRectToNPRect(const gfx::IntRect& rect)
-{
-    NPRect r;
-    r.left = rect.x;
-    r.top = rect.y;
-    r.right = rect.x + rect.width;
-    r.bottom = rect.y + rect.height;
-    return r;
 }
 
 mozilla::ipc::IPCResult
@@ -1344,10 +1333,10 @@ PluginInstanceParent::NPP_SetWindow(const NPWindow* aWindow)
 #if defined(XP_MACOSX) || defined(XP_WIN)
     double floatScaleFactor = 1.0;
     mNPNIface->getvalue(mNPP, NPNVcontentsScaleFactor, &floatScaleFactor);
-    int scaleFactor = ceil(floatScaleFactor);
     window.contentsScaleFactor = floatScaleFactor;
 #endif
 #if defined(XP_MACOSX)
+    int scaleFactor = ceil(floatScaleFactor);
     if (mShWidth != window.width * scaleFactor || mShHeight != window.height * scaleFactor) {
         if (mDrawingModel == NPDrawingModelCoreAnimation ||
             mDrawingModel == NPDrawingModelInvalidatingCoreAnimation) {
@@ -2232,7 +2221,7 @@ PluginInstanceParent::AnswerPluginFocusChange(const bool& gotFocus)
       nsPluginInstanceOwner* owner = GetOwner();
       if (owner) {
         nsIFocusManager* fm = nsFocusManager::GetFocusManager();
-        nsCOMPtr<nsIDOMElement> element;
+        RefPtr<dom::Element> element;
         owner->GetDOMElement(getter_AddRefs(element));
         if (fm && element) {
           fm->SetFocus(element, 0);

@@ -12,6 +12,7 @@
 #include "mozilla/dom/cache/Cache.h"
 #include "mozilla/dom/cache/CacheChild.h"
 #include "mozilla/dom/cache/CacheStreamControlChild.h"
+#include "mozilla/dom/cache/CacheWorkerHolder.h"
 
 namespace mozilla {
 namespace dom {
@@ -158,8 +159,8 @@ CacheOpChild::Recv__delete__(const ErrorResult& aRv,
     }
     case CacheOpResult::TStorageOpenResult:
     {
-      auto actor = static_cast<CacheChild*>(
-        aResult.get_StorageOpenResult().actorChild());
+      auto result = aResult.get_StorageOpenResult();
+      auto actor = static_cast<CacheChild*>(result.actorChild());
 
       // If we have a success status then we should have an actor.  Gracefully
       // reject instead of crashing, though, if we get a nullptr here.
@@ -176,7 +177,7 @@ CacheOpChild::Recv__delete__(const ErrorResult& aRv,
                                           CacheWorkerHolder::AllowIdleShutdownStart);
 
       actor->SetWorkerHolder(workerHolder);
-      RefPtr<Cache> cache = new Cache(mGlobal, actor);
+      RefPtr<Cache> cache = new Cache(mGlobal, actor, result.ns());
       mPromise->MaybeResolve(cache);
       break;
     }

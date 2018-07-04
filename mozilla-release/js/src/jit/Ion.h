@@ -10,11 +10,10 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Result.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-
 #include "jit/CompileWrappers.h"
 #include "jit/JitOptions.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 
 namespace js {
 namespace jit {
@@ -58,13 +57,11 @@ class JitContext
   public:
     JitContext(JSContext* cx, TempAllocator* temp);
     JitContext(CompileRuntime* rt, CompileCompartment* comp, TempAllocator* temp);
-    JitContext(CompileRuntime* rt, TempAllocator* temp);
-    explicit JitContext(CompileRuntime* rt);
     explicit JitContext(TempAllocator* temp);
     JitContext();
     ~JitContext();
 
-    // Running context when executing on the active thread. Not available during
+    // Running context when executing on the main thread. Not available during
     // compilation.
     JSContext* cx;
 
@@ -75,10 +72,6 @@ class JitContext
     // during compilation.
     CompileRuntime* runtime;
     CompileCompartment* compartment;
-
-    bool hasProfilingScripts() const {
-        return runtime && !!runtime->profilingScripts();
-    }
 
     int getNextAssemblerId() {
         return assemblerCount_++;
@@ -97,12 +90,12 @@ JitContext* MaybeGetJitContext();
 
 void SetJitContext(JitContext* ctx);
 
-bool CanIonCompileScript(JSContext* cx, JSScript* script, bool osr);
+bool CanIonCompileScript(JSContext* cx, JSScript* script);
+bool CanIonInlineScript(JSScript* script);
 
 MOZ_MUST_USE bool IonCompileScriptForBaseline(JSContext* cx, BaselineFrame* frame, jsbytecode* pc);
 
-MethodStatus CanEnter(JSContext* cx, RunState& state);
-MethodStatus CanEnterUsingFastInvoke(JSContext* cx, HandleScript script, uint32_t numActualArgs);
+MethodStatus CanEnterIon(JSContext* cx, RunState& state);
 
 MethodStatus
 Recompile(JSContext* cx, HandleScript script, BaselineFrame* osrFrame, jsbytecode* osrPc,
@@ -130,14 +123,6 @@ IsErrorStatus(JitExecStatus status)
 
 struct EnterJitData;
 
-MOZ_MUST_USE bool SetEnterJitData(JSContext* cx, EnterJitData& data, RunState& state,
-                                  MutableHandle<GCVector<Value>> vals);
-
-JitExecStatus IonCannon(JSContext* cx, RunState& state);
-
-// Used to enter Ion from C++ natives like Array.map. Called from FastInvokeGuard.
-JitExecStatus FastInvoke(JSContext* cx, HandleFunction fun, CallArgs& args);
-
 // Walk the stack and invalidate active Ion frames for the invalid scripts.
 void Invalidate(TypeZone& types, FreeOp* fop,
                 const RecompileInfoVector& invalid, bool resetUses = true,
@@ -151,19 +136,20 @@ class IonBuilder;
 class MIRGenerator;
 class LIRGraph;
 class CodeGenerator;
+class LazyLinkExitFrameLayout;
 
 MOZ_MUST_USE bool OptimizeMIR(MIRGenerator* mir);
 LIRGraph* GenerateLIR(MIRGenerator* mir);
 CodeGenerator* GenerateCode(MIRGenerator* mir, LIRGraph* lir);
 CodeGenerator* CompileBackEnd(MIRGenerator* mir);
 
-void AttachFinishedCompilations(ZoneGroup* group, JSContext* maybecx);
+void AttachFinishedCompilations(JSContext* cx);
 void FinishOffThreadBuilder(JSRuntime* runtime, IonBuilder* builder,
                             const AutoLockHelperThreadState& lock);
 void FreeIonBuilder(IonBuilder* builder);
 
 void LinkIonScript(JSContext* cx, HandleScript calleescript);
-uint8_t* LazyLinkTopActivation();
+uint8_t* LazyLinkTopActivation(JSContext* cx, LazyLinkExitFrameLayout* frame);
 
 static inline bool
 IsIonEnabled(JSContext* cx)

@@ -3,11 +3,11 @@
 
 "use strict";
 
-do_get_profile();   // so we can use FxAccounts
+do_get_profile(); // so we can use FxAccounts
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-crypto/utils.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-crypto/utils.js");
 const {
   CollectionKeyEncryptionRemoteTransformer,
   CryptoCollection,
@@ -15,10 +15,10 @@ const {
   idToKey,
   KeyRingEncryptionRemoteTransformer,
   keyToId,
-} = Cu.import("resource://gre/modules/ExtensionStorageSync.jsm", {});
-Cu.import("resource://services-sync/engines/extension-storage.js");
-Cu.import("resource://services-sync/keys.js");
-Cu.import("resource://services-sync/util.js");
+} = ChromeUtils.import("resource://gre/modules/ExtensionStorageSync.jsm", {});
+ChromeUtils.import("resource://services-sync/engines/extension-storage.js");
+ChromeUtils.import("resource://services-sync/keys.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 /* globals BulkKeyBundle, CommonUtils, EncryptionRemoteTransformer */
 /* globals Utils */
@@ -333,7 +333,7 @@ class KintoServer {
   }
 
   // Utility function to install a keyring at the start of a test.
-  installKeyRing(fxaService, keysData, salts, etag, properties) {
+  async installKeyRing(fxaService, keysData, salts, etag, properties) {
     const keysRecord = {
       "id": "keys",
       "keys": keysData,
@@ -342,7 +342,7 @@ class KintoServer {
     };
     this.etag = etag;
     const transformer = new KeyRingEncryptionRemoteTransformer(fxaService);
-    this.encryptAndAddRecord(transformer, Object.assign({}, properties, {
+    return this.encryptAndAddRecord(transformer, Object.assign({}, properties, {
       collectionId: "storage-sync-crypto",
       data: keysRecord,
     }));
@@ -517,10 +517,12 @@ const assertExtensionRecord = async function(fxaService, post, extension, key) {
 const defaultExtensionId = "{13bdde76-4dc7-11e6-9bdc-54ee758d6342}";
 const defaultExtension = {id: defaultExtensionId};
 
-const BORING_KB = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const kExtSync = "63f9057577c04bbbb9f0c3fd85b5d4032b60e13edc1f8dd309bf4305d66f2cc312dde16ce46021a496f713950d0a6c566ce181521a44726e7be97cf577b31b31";
+const KB_HASH = "2350cba8fced5a2fbae3b1f180baf860f78f6542bef7be709fda96cd3e3dc800";
 const loggedInUser = {
   uid: "0123456789abcdef0123456789abcdef",
-  kB: BORING_KB,
+  kExtSync,
+  kExtKbHash: KB_HASH,
   oauthTokens: {
     "sync:addon-storage": {
       token: "some-access-token",
@@ -571,6 +573,39 @@ add_task(async function test_extension_id_to_collection_id() {
 
     equal(await cryptoCollection.extensionIdToCollectionId(extensionId),
           "ext-0_QHA1P93_yJoj7ONisrR0lW6uN4PZ3Ii-rT-QOjtvo");
+  });
+});
+
+add_task(async function ensureCanSync_clearAll() {
+  const extensionId = uuid();
+  const extension = {id: extensionId};
+
+  await withContextAndServer(async function(context, server) {
+    await withSignedInUser(loggedInUser, async function(extensionStorageSync, fxaService) {
+      server.installCollection("storage-sync-crypto");
+      server.etag = 1000;
+
+      let newKeys = await extensionStorageSync.ensureCanSync([extensionId]);
+      ok(newKeys.hasKeysFor([extensionId]), `key isn't present for ${extensionId}`);
+
+      let posts = server.getPosts();
+      equal(posts.length, 1);
+      const post = posts[0];
+      assertPostedNewRecord(post);
+
+      // Set data for an extension and sync.
+      await extensionStorageSync.set(extension, {"my-key": 5}, context);
+      let keyValue = await extensionStorageSync.get(extension, ["my-key"], context);
+      equal(keyValue["my-key"], 5, "should get back the data we set");
+
+      // clear everything.
+      await extensionStorageSync.clearAll();
+
+      keyValue = await extensionStorageSync.get(extension, ["my-key"], context);
+      deepEqual(keyValue, {}, "should have lost the data");
+      // should have been no posts caused by the clear.
+      equal(posts.length, 1);
+    });
   });
 });
 
@@ -634,9 +669,9 @@ add_task(async function ensureCanSync_pulls_key() {
   const extensionOnlyKey = uuid();
   const extensionOnlySalt = uuid();
   const DEFAULT_KEY = new BulkKeyBundle("[default]");
-  DEFAULT_KEY.generateRandom();
+  await DEFAULT_KEY.generateRandom();
   const RANDOM_KEY = new BulkKeyBundle(extensionId);
-  RANDOM_KEY.generateRandom();
+  await RANDOM_KEY.generateRandom();
   await withContextAndServer(async function(context, server) {
     await withSignedInUser(loggedInUser, async function(extensionStorageSync, fxaService) {
       // FIXME: generating a random salt probably shouldn't require a CryptoCollection?
@@ -652,7 +687,7 @@ add_task(async function ensureCanSync_pulls_key() {
       const saltData = {
         [extensionId]: RANDOM_SALT,
       };
-      server.installKeyRing(fxaService, keysData, saltData, 950, {
+      await server.installKeyRing(fxaService, keysData, saltData, 950, {
         predicate: appearsAt(900),
       });
 
@@ -665,10 +700,10 @@ add_task(async function ensureCanSync_pulls_key() {
 
       // Another client generates a key for extensionId2
       const newKey = new BulkKeyBundle(extensionId2);
-      newKey.generateRandom();
+      await newKey.generateRandom();
       keysData.collections[extensionId2] = newKey.keyPairB64;
       saltData[extensionId2] = cryptoCollection.getNewSalt();
-      server.installKeyRing(fxaService, keysData, saltData, 1050, {
+      await server.installKeyRing(fxaService, keysData, saltData, 1050, {
         predicate: appearsAt(1000),
       });
 
@@ -682,9 +717,9 @@ add_task(async function ensureCanSync_pulls_key() {
 
       // Another client generates a key, but not a salt, for extensionOnlyKey
       const onlyKey = new BulkKeyBundle(extensionOnlyKey);
-      onlyKey.generateRandom();
+      await onlyKey.generateRandom();
       keysData.collections[extensionOnlyKey] = onlyKey.keyPairB64;
-      server.installKeyRing(fxaService, keysData, saltData, 1150, {
+      await server.installKeyRing(fxaService, keysData, saltData, 1150, {
         predicate: appearsAt(1100),
       });
 
@@ -705,7 +740,7 @@ add_task(async function ensureCanSync_pulls_key() {
       // Another client generates a key, but not a salt, for extensionOnlyKey
       const newSalt = cryptoCollection.getNewSalt();
       saltData[extensionOnlySalt] = newSalt;
-      server.installKeyRing(fxaService, keysData, saltData, 1250, {
+      await server.installKeyRing(fxaService, keysData, saltData, 1250, {
         predicate: appearsAt(1200),
       });
 
@@ -733,9 +768,9 @@ add_task(async function ensureCanSync_handles_conflicts() {
   // if this happens, we still behave sensibly (keep the remote key).
   const extensionId = uuid();
   const DEFAULT_KEY = new BulkKeyBundle("[default]");
-  DEFAULT_KEY.generateRandom();
+  await DEFAULT_KEY.generateRandom();
   const RANDOM_KEY = new BulkKeyBundle(extensionId);
-  RANDOM_KEY.generateRandom();
+  await RANDOM_KEY.generateRandom();
   await withContextAndServer(async function(context, server) {
     await withSignedInUser(loggedInUser, async function(extensionStorageSync, fxaService) {
       // FIXME: generating salts probably shouldn't rely on a CryptoCollection
@@ -750,7 +785,7 @@ add_task(async function ensureCanSync_handles_conflicts() {
       const saltData = {
         [extensionId]: RANDOM_SALT,
       };
-      server.installKeyRing(fxaService, keysData, saltData, 765, {conflict: true});
+      await server.installKeyRing(fxaService, keysData, saltData, 765, {conflict: true});
 
       await extensionStorageSync.cryptoCollection._clear();
 
@@ -827,9 +862,9 @@ add_task(async function ensureCanSync_handles_deleted_conflicts() {
 });
 
 add_task(async function ensureCanSync_handles_flushes() {
-  // One of the ways that bug 1359879 presents is as bug 1350088. This
-  // seems to be the symptom that results when the user had two
-  // devices, one of which was not syncing at the time the keyring was
+  // See Bug 1359879 and Bug 1350088. One of the ways that 1359879 presents is
+  // as 1350088. This seems to be the symptom that results when the user had
+  // two devices, one of which was not syncing at the time the keyring was
   // lost. Ensure we can recover for these users as well.
   const extensionId = uuid();
   const extensionId2 = uuid();
@@ -871,7 +906,7 @@ add_task(async function ensureCanSync_handles_flushes() {
 
 add_task(async function checkSyncKeyRing_reuploads_keys() {
   // Verify that when keys are present, they are reuploaded with the
-  // new kB when we call touchKeys().
+  // new kbHash when we call touchKeys().
   const extensionId = uuid();
   let extensionKey, extensionSalt;
   await withContextAndServer(async function(context, server) {
@@ -892,17 +927,18 @@ add_task(async function checkSyncKeyRing_reuploads_keys() {
       extensionSalt = body.salts[extensionId];
     });
 
-    // The user changes their password. This is their new kB, with
-    // the last f changed to an e.
-    const NOVEL_KB = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdee";
-    const newUser = Object.assign({}, loggedInUser, {kB: NOVEL_KB});
+    // The user changes their password. This is their new kbHash, with
+    // the last 0 changed to a 1.
+    const NEW_KB_HASH = "2350cba8fced5a2fbae3b1f180baf860f78f6542bef7be709fda96cd3e3dc801";
+    const NEW_KEXT = "63f9057577c04bbbb9f0c3fd85b5d4032b60e13edc1f8dd309bf4305d66f2cc312dde16ce46021a496f713950d0a6c566ce181521a44726e7be97cf577b31b30";
+    const newUser = Object.assign({}, loggedInUser, {kExtKbHash: NEW_KB_HASH, kExtSync: NEW_KEXT});
     let postedKeys;
     await withSignedInUser(newUser, async function(extensionStorageSync, fxaService) {
       await extensionStorageSync.checkSyncKeyRing();
 
       let posts = server.getPosts();
       equal(posts.length, 2,
-            "when kB changes, checkSyncKeyRing should post the keyring reencrypted with the new kB");
+            "when kBHash changes, checkSyncKeyRing should post the keyring reencrypted with the new kBHash");
       postedKeys = posts[1];
       assertPostedUpdatedRecord(postedKeys, 765);
 
@@ -913,7 +949,7 @@ add_task(async function checkSyncKeyRing_reuploads_keys() {
                 `the posted keyring should have the same salt for ${extensionId} as the old one`);
     });
 
-    // Verify that with the old kB, we can't decrypt the record.
+    // Verify that with the old kBHash, we can't decrypt the record.
     await withSignedInUser(loggedInUser, async function(extensionStorageSync, fxaService) {
       let error;
       try {
@@ -921,31 +957,32 @@ add_task(async function checkSyncKeyRing_reuploads_keys() {
       } catch (e) {
         error = e;
       }
-      ok(error, "decrypting the keyring with the old kB should fail");
+      ok(error, "decrypting the keyring with the old kBHash should fail");
       ok(Utils.isHMACMismatch(error) || KeyRingEncryptionRemoteTransformer.isOutdatedKB(error),
-         "decrypting the keyring with the old kB should throw an HMAC mismatch");
+         "decrypting the keyring with the old kBHash should throw an HMAC mismatch");
     });
   });
 });
 
 add_task(async function checkSyncKeyRing_overwrites_on_conflict() {
   // If there is already a record on the server that was encrypted
-  // with a different kB, we wipe the server, clear sync state, and
+  // with a different kbHash, we wipe the server, clear sync state, and
   // overwrite it with our keys.
   const extensionId = uuid();
   let extensionKey;
   await withSyncContext(async function(context) {
     await withServer(async function(server) {
-      // The old device has this kB, which is very similar to the
-      // current kB but with the last f changed to an e.
-      const NOVEL_KB = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdee";
-      const oldUser = Object.assign({}, loggedInUser, {kB: NOVEL_KB});
+      // The old device has this kbHash, which is very similar to the
+      // current kbHash but with the last 0 changed to a 1.
+      const NEW_KB_HASH = "2350cba8fced5a2fbae3b1f180baf860f78f6542bef7be709fda96cd3e3dc801";
+      const NEW_KEXT = "63f9057577c04bbbb9f0c3fd85b5d4032b60e13edc1f8dd309bf4305d66f2cc312dde16ce46021a496f713950d0a6c566ce181521a44726e7be97cf577b31b30";
+      const oldUser = Object.assign({}, loggedInUser, {kExtKbHash: NEW_KB_HASH, kExtSync: NEW_KEXT});
       server.installDeleteBucket();
       await withSignedInUser(oldUser, async function(extensionStorageSync, fxaService) {
         await server.installKeyRing(fxaService, {}, {}, 765);
       });
 
-      // Now we have this new user with a different kB.
+      // Now we have this new user with a different kbHash.
       await withSignedInUser(loggedInUser, async function(extensionStorageSync, fxaService) {
         await extensionStorageSync.cryptoCollection._clear();
 
@@ -962,7 +999,7 @@ add_task(async function checkSyncKeyRing_overwrites_on_conflict() {
 
         let posts = server.getPosts();
         equal(posts.length, 1,
-             "new keyring should have been uploaded");
+              "new keyring should have been uploaded");
         const postedKeys = posts[0];
         // The POST was to an empty server, so etag shouldn't be respected
         equal(postedKeys.headers.Authorization, "Bearer some-access-token",

@@ -10,33 +10,6 @@ const {
   generateActorSpec,
   types
 } = require("devtools/shared/protocol");
-const { nodeSpec } = require("devtools/shared/specs/node");
-require("devtools/shared/specs/styles");
-require("devtools/shared/specs/highlighters");
-require("devtools/shared/specs/layout");
-
-exports.nodeSpec = nodeSpec;
-
-/**
- * Returned from any call that might return a node that isn't connected to root
- * by nodes the child has seen, such as querySelector.
- */
-types.addDictType("disconnectedNode", {
-  // The actual node to return
-  node: "domnode",
-
-  // Nodes that are needed to connect the node to a node the client has already
-  // seen
-  newParents: "array:domnode"
-});
-
-types.addDictType("disconnectedNodeArray", {
-  // The actual node list to return
-  nodes: "array:domnode",
-
-  // Nodes that are needed to connect those nodes to the root.
-  newParents: "array:domnode"
-});
 
 types.addDictType("dommutation", {});
 
@@ -46,29 +19,6 @@ types.addDictType("searchresult", {
   // but it's json so it can be extended with extra data.
   metadata: "array:json"
 });
-
-const nodeListSpec = generateActorSpec({
-  typeName: "domnodelist",
-
-  methods: {
-    item: {
-      request: { item: Arg(0) },
-      response: RetVal("disconnectedNode")
-    },
-    items: {
-      request: {
-        start: Arg(0, "nullable:number"),
-        end: Arg(1, "nullable:number")
-      },
-      response: RetVal("disconnectedNodeArray")
-    },
-    release: {
-      release: true
-    }
-  }
-});
-
-exports.nodeListSpec = nodeListSpec;
 
 // Some common request/response templates for the dom walker
 
@@ -156,16 +106,6 @@ const walkerSpec = generateActorSpec({
       request: { node: Arg(0, "nullable:domnode") },
       response: { node: RetVal("domnode") },
     },
-    parents: {
-      request: {
-        node: Arg(0, "domnode"),
-        sameDocument: Option(1),
-        sameTypeRootTreeItem: Option(1)
-      },
-      response: {
-        nodes: RetVal("array:domnode")
-      },
-    },
     retainNode: {
       request: { node: Arg(0, "domnode") },
       response: {}
@@ -181,7 +121,6 @@ const walkerSpec = generateActorSpec({
       }
     },
     children: nodeArrayMethod,
-    siblings: nodeArrayMethod,
     nextSibling: traversalMethod,
     previousSibling: traversalMethod,
     findInspectingNode: {
@@ -352,6 +291,14 @@ const walkerSpec = generateActorSpec({
         nodeFront: RetVal("nullable:disconnectedNode")
       }
     },
+    getNodeActorFromWindowID: {
+      request: {
+        windowID: Arg(0, "string")
+      },
+      response: {
+        nodeFront: RetVal("nullable:disconnectedNode")
+      }
+    },
     getStyleSheetOwnerNode: {
       request: {
         styleSheetActorID: Arg(0, "string")
@@ -383,6 +330,14 @@ const walkerSpec = generateActorSpec({
         node: RetVal("nullable:domnode")
       }
     },
+    hasAccessibilityProperties: {
+      request: {
+        node: Arg(0, "nullable:domnode")
+      },
+      response: {
+        value: RetVal("boolean")
+      }
+    }
   }
 });
 

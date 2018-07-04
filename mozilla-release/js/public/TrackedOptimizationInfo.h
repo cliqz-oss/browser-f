@@ -24,9 +24,9 @@ namespace JS {
     _(GetProp_Unboxed)                                  \
     _(GetProp_CommonGetter)                             \
     _(GetProp_InlineAccess)                             \
+    _(GetProp_InlineProtoAccess)                        \
     _(GetProp_Innerize)                                 \
     _(GetProp_InlineCache)                              \
-    _(GetProp_SharedCache)                              \
     _(GetProp_ModuleNamespace)                          \
                                                         \
     _(SetProp_CommonSetter)                             \
@@ -37,8 +37,8 @@ namespace JS {
     _(SetProp_InlineCache)                              \
                                                         \
     _(GetElem_TypedObject)                              \
+    _(GetElem_CallSiteObject)                           \
     _(GetElem_Dense)                                    \
-    _(GetElem_TypedStatic)                              \
     _(GetElem_TypedArray)                               \
     _(GetElem_String)                                   \
     _(GetElem_Arguments)                                \
@@ -47,7 +47,6 @@ namespace JS {
     _(GetElem_InlineCache)                              \
                                                         \
     _(SetElem_TypedObject)                              \
-    _(SetElem_TypedStatic)                              \
     _(SetElem_TypedArray)                               \
     _(SetElem_Dense)                                    \
     _(SetElem_Arguments)                                \
@@ -123,8 +122,6 @@ namespace JS {
     _(OperandNotStringOrNumber)                                         \
     _(OperandNotSimpleArith)                                            \
     _(OperandNotEasilyCoercibleToString)                                \
-    _(StaticTypedArrayUint32)                                           \
-    _(StaticTypedArrayCantComputeMask)                                  \
     _(OutOfBounds)                                                      \
     _(GetElemStringNotCached)                                           \
     _(NonNativeReceiver)                                                \

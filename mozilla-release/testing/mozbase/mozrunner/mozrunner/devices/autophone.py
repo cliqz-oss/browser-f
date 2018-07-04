@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import, print_function
+
 import glob
 import json
 import logging
@@ -17,7 +19,7 @@ import BaseHTTPServer
 import SimpleHTTPServer
 
 from mozbuild.virtualenv import VirtualenvManager
-from mozdevice import DeviceManagerADB
+from mozdevice import ADBHost, ADBAndroid
 from mozprocess import ProcessHandler
 
 
@@ -65,7 +67,7 @@ class AutophoneRunner(object):
                 json.dump(self.config, f)
             if self.verbose:
                 print("saved configuration: %s" % self.config)
-        except:
+        except Exception:
             self.build_obj.log(logging.ERROR, "autophone", {},
                                "unable to save 'mach autophone' "
                                "configuration to %s" % self.CONFIG_FILE)
@@ -83,7 +85,7 @@ class AutophoneRunner(object):
                     self.config = json.load(f)
                 if self.verbose:
                     print("loaded configuration: %s" % self.config)
-            except:
+            except Exception:
                 self.build_obj.log(logging.ERROR, "autophone", {},
                                    "unable to load 'mach autophone' "
                                    "configuration from %s" % self.CONFIG_FILE)
@@ -179,7 +181,7 @@ class AutophoneRunner(object):
             try:
                 if os.path.exists(self.build_obj.substs["ADB"]):
                     adb_path = self.build_obj.substs["ADB"]
-            except:
+            except Exception:
                 if self.verbose:
                     self.build_obj.log(logging.ERROR, "autophone", {},
                                        str(sys.exc_info()[0]))
@@ -191,12 +193,13 @@ class AutophoneRunner(object):
                         "adb not found. Enter path to adb: ").strip()
             if self.verbose:
                 print("Using adb at %s" % adb_path)
-            dm = DeviceManagerADB(autoconnect=False, adbPath=adb_path, retryLimit=1)
+
+            adbhost = ADBHost(adb=adb_path, timeout=10)
             device_index = 1
             try:
                 with open(os.path.join(self.config['base-dir'], 'devices.ini'), 'w') as f:
-                    for device in dm.devices():
-                        serial = device[0]
+                    for device in adbhost.devices():
+                        serial = device['device_serial']
                         if self.verify_device(adb_path, serial):
                             f.write("[device-%d]\nserialno=%s\n" % (device_index, serial))
                             device_index += 1
@@ -206,7 +209,7 @@ class AutophoneRunner(object):
                         else:
                             self.build_obj.log(logging.WARNING, "autophone", {},
                                                "Device '%s' is not rooted - skipping" % serial)
-            except:
+            except Exception:
                 self.build_obj.log(logging.ERROR, "autophone", {},
                                    "Failed to get list of connected Android devices.")
                 if self.verbose:
@@ -312,7 +315,7 @@ log_level = DEBUG
 time_out = 300""" % (xre_path, xre_path))
             if self.verbose:
                 print("Created %s with host utilities path %s" % (defaults_path, xre_path))
-        except:
+        except Exception:
             self.build_obj.log(logging.ERROR, "autophone", {},
                                "Unable to create %s" % defaults_path)
             if self.verbose:
@@ -442,10 +445,10 @@ time_out = 300""" % (xre_path, xre_path))
            Check that the specified device is available and rooted.
         """
         try:
-            dm = DeviceManagerADB(adbPath=adb_path, retryLimit=1, deviceSerial=device)
-            if dm._haveSu or dm._haveRootShell:
+            device = ADBAndroid(adb=adb_path, device=device, timeout=10)
+            if device._have_su or device._have_android_su or device._have_root_shell:
                 return True
-        except:
+        except Exception:
             self.build_obj.log(
                 logging.WARN, "autophone", {},
                 "Unable to verify root on device.")
@@ -642,7 +645,7 @@ quit
             proc.wait()
             if proc.proc.returncode == 0:
                 proc_complete = True
-        except:
+        except Exception:
             if proc.poll() is None:
                 proc.kill(signal.SIGTERM)
         if not proc_complete:

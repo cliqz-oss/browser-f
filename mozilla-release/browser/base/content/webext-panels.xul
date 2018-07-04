@@ -7,8 +7,6 @@
 
 <?xml-stylesheet href="chrome://browser/skin/" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/content/usercontext/usercontext.css" type="text/css"?>
-<?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
-<?xul-overlay href="chrome://browser/content/places/placesOverlay.xul"?>
 
 <!DOCTYPE page [
 <!ENTITY % browserDTD SYSTEM "chrome://browser/locale/browser.dtd">
@@ -19,16 +17,28 @@
 
 <page id="webextpanels-window"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        onload="load()">
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
   <script type="application/javascript" src="chrome://global/content/contentAreaUtils.js"/>
   <script type="application/javascript" src="chrome://browser/content/browser.js"/>
   <script type="application/javascript" src="chrome://browser/content/browser-places.js"/>
   <script type="application/javascript" src="chrome://browser/content/webext-panels.js"/>
+  <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
+  <script type="application/javascript" src="chrome://browser/content/utilityOverlay.js"/>
+  <script type="application/javascript"><![CDATA[
+    ChromeUtils.defineModuleGetter(window,
+      "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
+    ChromeUtils.defineModuleGetter(window,
+      "PlacesUIUtils", "resource:///modules/PlacesUIUtils.jsm");
+    ChromeUtils.defineModuleGetter(window,
+      "PlacesTransactions", "resource://gre/modules/PlacesTransactions.jsm");
 
-  <stringbundleset id="stringbundleset">
-    <stringbundle id="bundle_browser" src="chrome://browser/locale/browser.properties"/>
-  </stringbundleset>
+    ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+    XPCOMUtils.defineLazyScriptGetter(window, "PlacesTreeView",
+      "chrome://browser/content/places/treeView.js");
+    XPCOMUtils.defineLazyScriptGetter(window,
+      ["PlacesInsertionPoint", "PlacesController", "PlacesControllerDragHelper"],
+       "chrome://browser/content/places/controller.js");
+  ]]></script>
 
   <broadcasterset id="mainBroadcasterSet">
     <broadcaster id="isFrameImage"/>
@@ -68,7 +78,21 @@
                               gContextMenu = null;">
 #include browser-context.inc
     </menupopup>
+
+    <!-- for select dropdowns. The menupopup is what shows the list of options,
+         and the popuponly menulist makes things like the menuactive attributes
+         work correctly on the menupopup. ContentSelectDropdown expects the
+         popuponly menulist to be its immediate parent. -->
+    <menulist popuponly="true" id="ContentSelectDropdown" hidden="true">
+      <menupopup rolluponmousewheel="true"
+                 activateontab="true" position="after_start"
+                 level="parent"
+#ifdef XP_WIN
+                 consumeoutsideclicks="false" ignorekeys="shortcuts"
+#endif
+        />
+    </menulist>
   </popupset>
 
-  <commandset id="editMenuCommands"/>
+#include ../../../toolkit/content/editMenuCommands.inc.xul
 </page>

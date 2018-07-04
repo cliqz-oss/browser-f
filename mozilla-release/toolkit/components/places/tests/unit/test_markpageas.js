@@ -19,13 +19,31 @@ add_task(async function test_execute() {
       _visitCount: 0,
       onVisit(aURI, aVisitID, aTime, aSessionID, aReferringID,
                         aTransitionType, aAdded) {
-        do_check_eq(aURI.spec, gVisits[this._visitCount].url);
-        do_check_eq(aTransitionType, gVisits[this._visitCount].transition);
+        Assert.equal(aURI.spec, gVisits[this._visitCount].url);
+        Assert.equal(aTransitionType, gVisits[this._visitCount].transition);
         this._visitCount++;
 
         if (this._visitCount == gVisits.length) {
           resolveCompletionPromise();
         }
+      },
+      onVisits(aVisits) {
+        Assert.equal(aVisits.length, 1, "Right number of visits notified");
+        let {
+          uri,
+          visitId,
+          time,
+          referrerId,
+          transitionType,
+          guid,
+          hidden,
+          visitCount,
+          typed,
+          lastKnownTitle,
+        } = aVisits[0];
+        this.onVisit(uri, visitId, time, 0, referrerId,
+                     transitionType, guid, hidden, visitCount,
+                     typed, lastKnownTitle);
       },
     };
   });
@@ -36,7 +54,7 @@ add_task(async function test_execute() {
     if (visit.transition == TRANSITION_TYPED)
       PlacesUtils.history.markPageAsTyped(uri(visit.url));
     else if (visit.transition == TRANSITION_BOOKMARK)
-      PlacesUtils.history.markPageAsFollowedBookmark(uri(visit.url))
+      PlacesUtils.history.markPageAsFollowedBookmark(uri(visit.url));
     else {
      // because it is a top level visit with no referrer,
      // it will result in TRANSITION_LINK

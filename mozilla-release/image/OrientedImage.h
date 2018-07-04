@@ -26,7 +26,7 @@ class OrientedImage : public ImageWrapper
   typedef gfx::SourceSurface SourceSurface;
 
 public:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(OrientedImage, ImageWrapper)
 
   NS_IMETHOD GetWidth(int32_t* aWidth) override;
   NS_IMETHOD GetHeight(int32_t* aHeight) override;
@@ -44,7 +44,16 @@ public:
   NS_IMETHOD_(already_AddRefed<layers::ImageContainer>)
     GetImageContainer(layers::LayerManager* aManager,
                       uint32_t aFlags) override;
-  NS_IMETHOD_(DrawResult) Draw(gfxContext* aContext,
+  NS_IMETHOD_(bool)
+    IsImageContainerAvailableAtSize(layers::LayerManager* aManager,
+                                    const gfx::IntSize& aSize,
+                                    uint32_t aFlags) override;
+  NS_IMETHOD_(already_AddRefed<layers::ImageContainer>)
+    GetImageContainerAtSize(layers::LayerManager* aManager,
+                            const gfx::IntSize& aSize,
+                            const Maybe<SVGImageContext>& aSVGContext,
+                            uint32_t aFlags) override;
+  NS_IMETHOD_(ImgDrawResult) Draw(gfxContext* aContext,
                                const nsIntSize& aSize,
                                const ImageRegion& aRegion,
                                uint32_t aWhichFrame,

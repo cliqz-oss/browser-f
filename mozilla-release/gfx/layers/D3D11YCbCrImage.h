@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -12,10 +13,14 @@
 #include "ImageContainer.h"
 
 namespace mozilla {
+namespace gl {
+class GLBlitHelper;
+}
 namespace layers {
 
 class ImageContainer;
 class DXGIYCbCrTextureClient;
+class DXGIYCbCrTextureData;
 
 class D3D11YCbCrRecycleAllocator : public TextureClientRecycleAllocator
 {
@@ -27,9 +32,8 @@ public:
   {
   }
 
-  ID3D11Device* GetDevice() { return mDevice; }
-  KnowsCompositor* GetAllocator() { return mSurfaceAllocator; }
-  void SetSizes(const gfx::IntSize& aYSize, const gfx::IntSize& aCbCrSize);
+  ID3D11Device* GetDevice() const { return mDevice; }
+  KnowsCompositor* GetAllocator() const { return mSurfaceAllocator; }
 
 protected:
   already_AddRefed<TextureClient>
@@ -40,12 +44,11 @@ protected:
            TextureAllocationFlags aAllocFlags) override;
 
   RefPtr<ID3D11Device> mDevice;
-  Maybe<gfx::IntSize> mYSize;
-  Maybe<gfx::IntSize> mCbCrSize;
 };
 
 class D3D11YCbCrImage : public Image
 {
+  friend class gl::GLBlitHelper;
 public:
   D3D11YCbCrImage();
   virtual ~D3D11YCbCrImage();
@@ -56,15 +59,17 @@ public:
                ImageContainer* aContainer,
                const PlanarYCbCrData& aData);
 
-  gfx::IntSize GetSize() override;
+  gfx::IntSize GetSize() const override;
 
   already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
 
   TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override;
 
-  gfx::IntRect GetPictureRect() override { return mPictureRect; }
+  gfx::IntRect GetPictureRect() const override { return mPictureRect; }
 
 private:
+  const DXGIYCbCrTextureData* GetData() const;
+
   gfx::IntSize mYSize;
   gfx::IntSize mCbCrSize;
   gfx::IntRect mPictureRect;

@@ -3,7 +3,7 @@
 
 "use strict";
 
-Cu.import("resource://services-sync/UIState.jsm");
+ChromeUtils.import("resource://services-sync/UIState.jsm");
 
 const UIStateInternal = UIState._internal;
 
@@ -53,8 +53,9 @@ add_task(async function test_refreshState_signedin() {
 
   UIStateInternal.fxAccounts = {
     getSignedInUser: () => Promise.resolve({ verified: true, email: "foo@bar.com" }),
-    getSignedInUserProfile: () => Promise.resolve({ displayName: "Foo Bar", avatar: "https://foo/bar", email: "foo@bar.com" })
-  }
+    getSignedInUserProfile: () => Promise.resolve({ displayName: "Foo Bar", avatar: "https://foo/bar" }),
+    hasLocalSession: () => Promise.resolve(true),
+  };
 
   let state = await UIState.refresh();
 
@@ -68,29 +69,32 @@ add_task(async function test_refreshState_signedin() {
   UIStateInternal.fxAccounts = fxAccountsOrig;
 });
 
-add_task(async function test_refreshState_preferProfileEmail() {
+add_task(async function test_refreshState_syncButNoFxA() {
   UIState.reset();
   const fxAccountsOrig = UIStateInternal.fxAccounts;
 
   const now = new Date().toString();
-  Services.prefs.setCharPref("services.sync.lastSync", now);
+  Services.prefs.setStringPref("services.sync.lastSync", now);
+  Services.prefs.setStringPref("services.sync.username", "test@test.com");
   UIStateInternal.syncing = false;
 
   UIStateInternal.fxAccounts = {
-    getSignedInUser: () => Promise.resolve({ verified: true, email: "foo@bar.com" }),
-    getSignedInUserProfile: () => Promise.resolve({ displayName: "Foo Bar", avatar: "https://foo/bar", email: "bar@foo.com" })
-  }
+    getSignedInUser: () => Promise.resolve(null),
+  };
 
   let state = await UIState.refresh();
 
-  equal(state.status, UIState.STATUS_SIGNED_IN);
-  equal(state.email, "bar@foo.com");
-  equal(state.displayName, "Foo Bar");
-  equal(state.avatarURL, "https://foo/bar");
-  equal(state.lastSync, now);
+  equal(state.status, UIState.STATUS_LOGIN_FAILED);
+  equal(state.email, "test@test.com");
+  equal(state.displayName, undefined);
+  equal(state.avatarURL, undefined);
+  equal(state.lastSync, undefined); // only set when STATUS_SIGNED_IN.
   equal(state.syncing, false);
 
   UIStateInternal.fxAccounts = fxAccountsOrig;
+  Services.prefs.clearUserPref("services.sync.lastSync");
+  Services.prefs.clearUserPref("services.sync.username");
+
 });
 
 add_task(async function test_refreshState_signedin_profile_unavailable() {
@@ -103,8 +107,9 @@ add_task(async function test_refreshState_signedin_profile_unavailable() {
 
   UIStateInternal.fxAccounts = {
     getSignedInUser: () => Promise.resolve({ verified: true, email: "foo@bar.com" }),
-    getSignedInUserProfile: () => Promise.reject(new Error("Profile unavailable"))
-  }
+    getSignedInUserProfile: () => Promise.reject(new Error("Profile unavailable")),
+    hasLocalSession: () => Promise.resolve(true),
+  };
 
   let state = await UIState.refresh();
 
@@ -126,7 +131,7 @@ add_task(async function test_refreshState_unconfigured() {
   UIStateInternal.fxAccounts = {
     getSignedInUser: () => Promise.resolve(null),
     getSignedInUserProfile
-  }
+  };
 
   let state = await UIState.refresh();
 
@@ -148,12 +153,38 @@ add_task(async function test_refreshState_unverified() {
   let getSignedInUserProfile = sinon.spy();
   UIStateInternal.fxAccounts = {
     getSignedInUser: () => Promise.resolve({ verified: false, email: "foo@bar.com" }),
-    getSignedInUserProfile
-  }
+    getSignedInUserProfile,
+    hasLocalSession: () => Promise.resolve(true),
+  };
 
   let state = await UIState.refresh();
 
   equal(state.status, UIState.STATUS_NOT_VERIFIED);
+  equal(state.email, "foo@bar.com");
+  equal(state.displayName, undefined);
+  equal(state.avatarURL, undefined);
+  equal(state.lastSync, undefined);
+
+  ok(!getSignedInUserProfile.called);
+
+  UIStateInternal.fxAccounts = fxAccountsOrig;
+});
+
+add_task(async function test_refreshState_unverified_nosession() {
+  UIState.reset();
+  const fxAccountsOrig = UIStateInternal.fxAccounts;
+
+  let getSignedInUserProfile = sinon.spy();
+  UIStateInternal.fxAccounts = {
+    getSignedInUser: () => Promise.resolve({ verified: false, email: "foo@bar.com" }),
+    getSignedInUserProfile,
+    hasLocalSession: () => Promise.resolve(false),
+  };
+
+  let state = await UIState.refresh();
+
+  // No session should "win" over the unverified state.
+  equal(state.status, UIState.STATUS_LOGIN_FAILED);
   equal(state.email, "foo@bar.com");
   equal(state.displayName, undefined);
   equal(state.avatarURL, undefined);
@@ -175,7 +206,7 @@ add_task(async function test_refreshState_loginFailed() {
   UIStateInternal.fxAccounts = {
     getSignedInUser: () => Promise.resolve({ verified: true, email: "foo@bar.com" }),
     getSignedInUserProfile
-  }
+  };
 
   let state = await UIState.refresh();
 
@@ -220,8 +251,9 @@ async function configureUIState(syncing, lastSync = new Date()) {
 
   UIStateInternal.fxAccounts = {
     getSignedInUser: () => Promise.resolve({ verified: true, email: "foo@bar.com" }),
-    getSignedInUserProfile: () => Promise.resolve({ displayName: "Foo Bar", avatar: "https://foo/bar" })
-  }
+    getSignedInUserProfile: () => Promise.resolve({ displayName: "Foo Bar", avatar: "https://foo/bar" }),
+    hasLocalSession: () => Promise.resolve(true),
+  };
   await UIState.refresh();
   UIStateInternal.fxAccounts = fxAccountsOrig;
 }
@@ -281,7 +313,7 @@ function observeUIUpdate() {
       Services.obs.removeObserver(obs, aTopic);
       const state = UIState.get();
       resolve(state);
-    }
+    };
     Services.obs.addObserver(obs, UIState.ON_UPDATE);
   });
 }

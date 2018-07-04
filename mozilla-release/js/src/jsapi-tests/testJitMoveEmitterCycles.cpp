@@ -60,7 +60,7 @@ linkAndAllocate(JSContext* cx, js::jit::MacroAssembler* masm)
     using namespace js::jit;
     AutoFlushICache afc("test");
     Linker l(*masm);
-    return l.newCode<CanGC>(cx, ION_CODE);
+    return l.newCode(cx, CodeKind::Ion);
 }
 
 #define TRY(x) if (!(x)) return false;
@@ -73,7 +73,7 @@ BEGIN_TEST(testJitMoveEmitterCycles_simple)
     TempAllocator alloc(&lifo);
     JitContext jc(cx, &alloc);
     cx->runtime()->getJitRuntime(cx);
-    MacroAssembler masm;
+    StackMacroAssembler masm;
     MoveEmitter mover(masm);
     MoveResolver mr;
     mr.setAllocator(alloc);
@@ -122,7 +122,7 @@ BEGIN_TEST(testJitMoveEmitterCycles_autogen)
     TempAllocator alloc(&lifo);
     JitContext jc(cx, &alloc);
     cx->runtime()->getJitRuntime(cx);
-    MacroAssembler masm;
+    StackMacroAssembler masm;
     MoveEmitter mover(masm);
     MoveResolver mr;
     mr.setAllocator(alloc);
@@ -249,7 +249,7 @@ BEGIN_TEST(testJitMoveEmitterCycles_autogen2)
     TempAllocator alloc(&lifo);
     JitContext jc(cx, &alloc);
     cx->runtime()->getJitRuntime(cx);
-    MacroAssembler masm;
+    StackMacroAssembler masm;
     MoveEmitter mover(masm);
     MoveResolver mr;
     mr.setAllocator(alloc);
@@ -394,7 +394,7 @@ BEGIN_TEST(testJitMoveEmitterCycles_autogen3)
     TempAllocator alloc(&lifo);
     JitContext jc(cx, &alloc);
     cx->runtime()->getJitRuntime(cx);
-    MacroAssembler masm;
+    StackMacroAssembler masm;
     MoveEmitter mover(masm);
     MoveResolver mr;
     mr.setAllocator(alloc);
@@ -537,7 +537,7 @@ BEGIN_TEST(testJitMoveEmitterCycles_bug1299147_1)
     TempAllocator alloc(&lifo);
     JitContext jc(cx, &alloc);
     cx->runtime()->getJitRuntime(cx);
-    MacroAssembler masm;
+    StackMacroAssembler masm;
     MoveEmitter mover(masm);
     MoveResolver mr;
     mr.setAllocator(alloc);
@@ -589,7 +589,7 @@ BEGIN_TEST(testJitMoveEmitterCycles_bug1299147)
     TempAllocator alloc(&lifo);
     JitContext jc(cx, &alloc);
     cx->runtime()->getJitRuntime(cx);
-    MacroAssembler masm;
+    StackMacroAssembler masm;
     MoveEmitter mover(masm);
     MoveResolver mr;
     mr.setAllocator(alloc);

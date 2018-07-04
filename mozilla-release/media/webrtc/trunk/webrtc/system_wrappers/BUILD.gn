@@ -82,7 +82,15 @@ rtc_static_library("system_wrappers") {
 
     defines += [ "WEBRTC_THREAD_RR" ]
 
-    deps += [ ":cpu_features_android" ]
+    if (!build_with_mozilla) {
+      deps += [ ":cpu_features_android" ]
+    } else {
+      include_dirs = [
+        "/config/external/nspr",
+        "/nsprpub/lib/ds",
+        "/nsprpub/pr/include",
+      ]
+    }
 
     libs += [ "log" ]
   }
@@ -97,7 +105,11 @@ rtc_static_library("system_wrappers") {
     libs += [ "rt" ]
   }
 
-  if (is_linux || is_android) {
+  if (is_bsd) {
+    defines += [ "WEBRTC_THREAD_RR" ]
+  }
+
+  if (is_linux || is_android || is_bsd) {
     sources += [ "source/atomic32_non_darwin_unix.cc" ]
   }
 
@@ -145,7 +157,7 @@ group("system_wrappers_default") {
   ]
 }
 
-if (is_android) {
+if (is_android && !build_with_mozilla) {
   rtc_static_library("cpu_features_android") {
     sources = [
       "source/cpu_features_android.c",

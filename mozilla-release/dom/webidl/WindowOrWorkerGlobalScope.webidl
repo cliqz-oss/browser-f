@@ -30,9 +30,9 @@ interface WindowOrWorkerGlobalScope {
   long setTimeout(DOMString handler, optional long timeout = 0, any... unused);
   void clearTimeout(optional long handle = 0);
   [Throws]
-  long setInterval(Function handler, optional long timeout, any... arguments);
+  long setInterval(Function handler, optional long timeout = 0, any... arguments);
   [Throws]
-  long setInterval(DOMString handler, optional long timeout, any... unused);
+  long setInterval(DOMString handler, optional long timeout = 0, any... unused);
   void clearInterval(optional long handle = 0);
 
   // ImageBitmap
@@ -62,7 +62,7 @@ partial interface WindowOrWorkerGlobalScope {
 
 // https://w3c.github.io/ServiceWorker/#self-caches
 partial interface WindowOrWorkerGlobalScope {
-  [Throws, Func="mozilla::dom::cache::CacheStorage::PrefEnabled", SameObject]
+  [Throws, Func="mozilla::dom::DOMPrefs::DOMCachesEnabled", SameObject]
   readonly attribute CacheStorage caches;
 };
 

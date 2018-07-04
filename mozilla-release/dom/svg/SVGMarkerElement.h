@@ -16,6 +16,7 @@
 #include "nsSVGElement.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/SVGAnimatedEnumeration.h"
+#include "mozilla/dom/SVGMarkerElementBinding.h"
 
 class nsSVGMarkerFrame;
 struct nsSVGMark;
@@ -26,23 +27,15 @@ nsresult NS_NewSVGMarkerElement(nsIContent **aResult,
 namespace mozilla {
 namespace dom {
 
-// Marker Unit Types
-static const unsigned short SVG_MARKERUNITS_UNKNOWN         = 0;
-static const unsigned short SVG_MARKERUNITS_USERSPACEONUSE = 1;
-static const unsigned short SVG_MARKERUNITS_STROKEWIDTH    = 2;
-
-// Marker Orientation Types
-static const unsigned short SVG_MARKER_ORIENT_UNKNOWN            = 0;
-static const unsigned short SVG_MARKER_ORIENT_AUTO               = 1;
-static const unsigned short SVG_MARKER_ORIENT_ANGLE              = 2;
-static const unsigned short SVG_MARKER_ORIENT_AUTO_START_REVERSE = 3;
+// Non-Exposed Marker Orientation Types
+static const uint16_t SVG_MARKER_ORIENT_AUTO_START_REVERSE = 3;
 
 class nsSVGOrientType
 {
 public:
   nsSVGOrientType()
-   : mAnimVal(SVG_MARKER_ORIENT_ANGLE),
-     mBaseVal(SVG_MARKER_ORIENT_ANGLE) {}
+   : mAnimVal(SVGMarkerElementBinding::SVG_MARKER_ORIENT_ANGLE),
+     mBaseVal(SVGMarkerElementBinding::SVG_MARKER_ORIENT_ANGLE) {}
 
   nsresult SetBaseValue(uint16_t aValue,
                         nsSVGElement *aSVGElement);
@@ -59,10 +52,10 @@ public:
   // Web content
   uint16_t GetBaseValue() const
     { return mAnimVal == SVG_MARKER_ORIENT_AUTO_START_REVERSE ?
-               SVG_MARKER_ORIENT_UNKNOWN : mBaseVal; }
+               SVGMarkerElementBinding::SVG_MARKER_ORIENT_UNKNOWN : mBaseVal; }
   uint16_t GetAnimValue() const
     { return mAnimVal == SVG_MARKER_ORIENT_AUTO_START_REVERSE ?
-               SVG_MARKER_ORIENT_UNKNOWN : mAnimVal; }
+               SVGMarkerElementBinding::SVG_MARKER_ORIENT_UNKNOWN : mAnimVal; }
   uint16_t GetAnimValueInternal() const
     { return mAnimVal; }
 
@@ -113,10 +106,13 @@ protected:
 
 public:
   // nsIContent interface
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* name) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* name) const override;
 
-  virtual nsresult UnsetAttr(int32_t aNameSpaceID, nsIAtom* aAttribute,
-                             bool aNotify) override;
+  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
+                                const nsAttrValue* aValue,
+                                const nsAttrValue* aOldValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
+                                bool aNotify) override;
 
   // nsSVGSVGElement methods:
   virtual bool HasValidDimensions() const override;
@@ -149,11 +145,12 @@ public:
 
 protected:
 
-  virtual bool ParseAttribute(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual bool ParseAttribute(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
 
-  void SetParentCoordCtxProvider(SVGSVGElement *aContext);
+  void SetParentCoordCtxProvider(SVGViewportElement *aContext);
 
   virtual LengthAttributesInfo GetLengthInfo() override;
   virtual AngleAttributesInfo GetAngleInfo() override;
@@ -180,7 +177,7 @@ protected:
   // derived properties (from 'orient') handled separately
   nsSVGOrientType                        mOrientType;
 
-  SVGSVGElement                         *mCoordCtx;
+  SVGViewportElement*                    mCoordCtx;
   nsAutoPtr<gfx::Matrix>                 mViewBoxToViewportTransform;
 };
 

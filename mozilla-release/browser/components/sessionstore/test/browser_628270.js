@@ -4,11 +4,11 @@
 function test() {
   let assertNumberOfTabs = function(num, msg) {
     is(gBrowser.tabs.length, num, msg);
-  }
+  };
 
   let assertNumberOfVisibleTabs = function(num, msg) {
     is(gBrowser.visibleTabs.length, num, msg);
-  }
+  };
 
   waitForExplicitFinish();
 
@@ -26,7 +26,7 @@ function test() {
     ok(tab.hidden, "newly created tab is now hidden");
 
     // close and restore hidden tab
-    promiseRemoveTab(tab).then(() => {
+    promiseRemoveTabAndSessionState(tab).then(() => {
       tab = ss.undoCloseTab(window, 0);
 
       // check that everything was restored correctly, clean up and finish

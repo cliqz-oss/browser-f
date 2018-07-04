@@ -2,12 +2,16 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
-                                  "resource://testing-common/PlacesTestUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionUtils",
-                                  "resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
+                               "resource://testing-common/PlacesTestUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionUtils",
+                               "resource://gre/modules/ExtensionUtils.jsm");
+
+ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm");
+
+PromiseTestUtils.whitelistRejectionsGlobally(/Message manager disconnected/);
 
 add_task(async function test_delete() {
   function background() {
@@ -57,7 +61,7 @@ add_task(async function test_delete() {
 
   await extension.startup();
   await extension.awaitMessage("ready");
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
   let historyClearedCount;
   let visits = [];
@@ -223,7 +227,7 @@ add_task(async function test_search() {
 
   await extension.startup();
   await extension.awaitMessage("ready");
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
   await PlacesUtils.history.insertMany(PAGE_INFOS);
 
@@ -250,7 +254,7 @@ add_task(async function test_search() {
 
   await extension.awaitFinish("search");
   await extension.unload();
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 add_task(async function test_add_url() {
@@ -305,8 +309,8 @@ add_task(async function test_add_url() {
     equal(results.result.title, results.details.title, "URL was added with the correct title");
     if (results.details.visitTime) {
       equal(results.result.lastVisitTime,
-         Number(ExtensionUtils.normalizeTime(results.details.visitTime)),
-         "URL was added with the correct date");
+            Number(ExtensionUtils.normalizeTime(results.details.visitTime)),
+            "URL was added with the correct date");
     }
   }
 
@@ -317,7 +321,7 @@ add_task(async function test_add_url() {
     background: `(${background})()`,
   });
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   await extension.startup();
   await extension.awaitMessage("ready");
 
@@ -393,10 +397,87 @@ add_task(async function test_get_visits() {
     background: `(${background})()`,
   });
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   await extension.startup();
 
   await extension.awaitFinish("get-visits");
+  await extension.unload();
+});
+
+add_task(async function test_transition_types() {
+  const VISIT_URL_PREFIX = "http://example.com/";
+  const TRANSITIONS = [
+    ["link", Ci.nsINavHistoryService.TRANSITION_LINK],
+    ["typed", Ci.nsINavHistoryService.TRANSITION_TYPED],
+    ["auto_bookmark", Ci.nsINavHistoryService.TRANSITION_BOOKMARK],
+    // Only session history contains TRANSITION_EMBED visits,
+    // So global history query cannot find them.
+    // ["auto_subframe", Ci.nsINavHistoryService.TRANSITION_EMBED],
+    // Redirects are not correctly tested here because History
+    // will not make redirect entries hidden.
+    ["link", Ci.nsINavHistoryService.TRANSITION_REDIRECT_PERMANENT],
+    ["link", Ci.nsINavHistoryService.TRANSITION_REDIRECT_TEMPORARY],
+    ["link", Ci.nsINavHistoryService.TRANSITION_DOWNLOAD],
+    ["manual_subframe", Ci.nsINavHistoryService.TRANSITION_FRAMED_LINK],
+    ["reload", Ci.nsINavHistoryService.TRANSITION_RELOAD],
+  ];
+
+  // pages/visits to add via History.insertMany
+  let pageInfos = [];
+  let visitDate = new Date(1999, 9, 9, 9, 9).getTime();
+  for (let [, transitionType] of TRANSITIONS) {
+    pageInfos.push({
+      url: VISIT_URL_PREFIX + transitionType + "/",
+      visits: [
+        {transition: transitionType, date: new Date(visitDate -= 1000)},
+      ],
+    });
+  }
+
+  function background() {
+    browser.test.onMessage.addListener(async (msg, url) => {
+      switch (msg) {
+        case "search": {
+          let results = await browser.history.search({text: "", startTime: new Date(0)});
+          browser.test.sendMessage("search-result", results);
+          break;
+        }
+        case "get-visits": {
+          let results = await browser.history.getVisits({url});
+          browser.test.sendMessage("get-visits-result", results);
+          break;
+        }
+      }
+    });
+
+    browser.test.sendMessage("ready");
+  }
+
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["history"],
+    },
+    background,
+  });
+
+  await PlacesUtils.history.clear();
+  await extension.startup();
+  await extension.awaitMessage("ready");
+
+  await PlacesUtils.history.insertMany(pageInfos);
+
+  extension.sendMessage("search");
+  let results = await extension.awaitMessage("search-result");
+  equal(results.length, pageInfos.length, "search returned expected length of results");
+  for (let i = 0; i < pageInfos.length; ++i) {
+    equal(results[i].url, pageInfos[i].url, "search returned the expected url");
+
+    extension.sendMessage("get-visits", pageInfos[i].url);
+    let visits = await extension.awaitMessage("get-visits-result");
+    equal(visits.length, 1, "getVisits returned expected length of visits");
+    equal(visits[0].transition, TRANSITIONS[i][0], "getVisits returned the expected transition");
+  }
+
   await extension.unload();
 });
 
@@ -459,7 +540,7 @@ add_task(async function test_on_visited() {
     background: `(${background})()`,
   });
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   await extension.startup();
   await extension.awaitMessage("ready");
 

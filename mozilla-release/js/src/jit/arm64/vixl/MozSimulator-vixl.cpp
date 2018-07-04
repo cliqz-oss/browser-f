@@ -32,15 +32,17 @@
 #include "js/Utility.h"
 #include "threading/LockGuard.h"
 #include "vm/Runtime.h"
-#include "wasm/WasmCode.h"
+#include "wasm/WasmInstance.h"
+#include "wasm/WasmProcess.h"
+#include "wasm/WasmSignalHandlers.h"
 
 js::jit::SimulatorProcess* js::jit::SimulatorProcess::singleton_ = nullptr;
 
 namespace vixl {
 
-
 using mozilla::DebugOnly;
 using js::jit::ABIFunctionType;
+using js::jit::JitActivation;
 using js::jit::SimulatorProcess;
 
 Simulator::Simulator(JSContext* cx, Decoder* decoder, FILE* stream)
@@ -84,7 +86,6 @@ void Simulator::ResetState() {
   // Reset registers to 0.
   pc_ = nullptr;
   pc_modified_ = false;
-  wasm_interrupt_ = false;
   for (unsigned i = 0; i < kNumberOfRegisters; i++) {
     set_xreg(i, 0xbadbeef);
   }
@@ -193,15 +194,6 @@ void Simulator::ExecuteInstruction() {
   VIXL_ASSERT(IsWordAligned(pc_));
   decoder_->Decode(pc_);
   increment_pc();
-
-  if (MOZ_UNLIKELY(wasm_interrupt_)) {
-    handle_wasm_interrupt();
-    // Just calling set_pc turns the pc_modified_ flag on, which means it doesn't
-    // auto-step after executing the next instruction.  Force that to off so it
-    // will auto-step after executing the first instruction of the handler.
-    pc_modified_ = false;
-    wasm_interrupt_ = false;
-  }
 }
 
 
@@ -217,48 +209,74 @@ uintptr_t* Simulator::addressOfStackLimit() {
 
 bool Simulator::overRecursed(uintptr_t newsp) const {
   if (newsp)
-    newsp = xreg(31, Reg31IsStackPointer);
+    newsp = get_sp();
   return newsp <= stackLimit();
 }
 
 
 bool Simulator::overRecursedWithExtra(uint32_t extra) const {
-  uintptr_t newsp = xreg(31, Reg31IsStackPointer) - extra;
+  uintptr_t newsp = get_sp() - extra;
   return newsp <= stackLimit();
 }
 
 
-void Simulator::trigger_wasm_interrupt() {
-  MOZ_ASSERT(!wasm_interrupt_);
-  wasm_interrupt_ = true;
+static inline JitActivation*
+GetJitActivation(JSContext* cx)
+{
+    if (!js::wasm::CodeExists)
+        return nullptr;
+    if (!cx->activation() || !cx->activation()->isJit())
+        return nullptr;
+    return cx->activation()->asJit();
 }
 
-
-// The signal handler only redirects the PC to the interrupt stub when the PC is
-// in function code. However, this guard is racy for the ARM simulator since the
-// signal handler samples PC in the middle of simulating an instruction and thus
-// the current PC may have advanced once since the signal handler's guard. So we
-// re-check here.
-void Simulator::handle_wasm_interrupt() {
-  void* pc = (void*)get_pc();
-  uint8_t* fp = (uint8_t*)xreg(30);
-
-  js::WasmActivation* activation = js::wasm::ActivationIfInnermost(cx_);
-  const js::wasm::CodeSegment* segment;
-  const js::wasm::Code* code = activation->compartment()->wasm.lookupCode(pc, &segment);
-  if (!code || !segment->containsFunctionPC(pc))
-    return;
-
+JS::ProfilingFrameIterator::RegisterState
+Simulator::registerState()
+{
   JS::ProfilingFrameIterator::RegisterState state;
-  state.pc = pc;
-  state.fp = fp;
-  state.lr = (uint8_t*) xreg(30);
-  state.sp = (uint8_t*) xreg(31);
-  activation->startInterrupt(state);
-
-  set_pc((Instruction*)segment->interruptCode());
+  state.pc = (uint8_t*) get_pc();
+  state.fp = (uint8_t*) get_fp();
+  state.lr = (uint8_t*) get_lr();
+  state.sp = (uint8_t*) get_sp();
+  return state;
 }
 
+bool
+Simulator::handle_wasm_seg_fault(uintptr_t addr, unsigned numBytes)
+{
+    JitActivation* act = GetJitActivation(cx_);
+    if (!act)
+        return false;
+
+    uint8_t* pc = (uint8_t*)get_pc();
+    uint8_t* fp = (uint8_t*)get_fp();
+
+    const js::wasm::CodeSegment* segment = js::wasm::LookupCodeSegment(pc);
+    if (!segment || !segment->isModule())
+        return false;
+    const js::wasm::ModuleSegment* moduleSegment = segment->asModule();
+
+    js::wasm::Instance* instance = js::wasm::LookupFaultingInstance(*moduleSegment, pc, fp);
+    if (!instance)
+	return false;
+
+    MOZ_RELEASE_ASSERT(&instance->code() == &moduleSegment->code());
+
+    if (!instance->memoryAccessInGuardRegion((uint8_t*)addr, numBytes))
+        return false;
+
+    js::wasm::Trap trap;
+    js::wasm::BytecodeOffset bytecode;
+    if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode)) {
+        act->startWasmTrap(js::wasm::Trap::OutOfBounds, 0, registerState());
+        set_pc((Instruction*)moduleSegment->outOfBoundsCode());
+        return true;
+    }
+
+    act->startWasmTrap(js::wasm::Trap::OutOfBounds, bytecode.offset(), registerState());
+    set_pc((Instruction*)moduleSegment->trapCode());
+    return true;
+}
 
 int64_t Simulator::call(uint8_t* entry, int argument_count, ...) {
   va_list parameters;
@@ -302,12 +320,12 @@ int64_t Simulator::call(uint8_t* entry, int argument_count, ...) {
   va_end(parameters);
 
   // Call must transition back to native code on exit.
-  VIXL_ASSERT(xreg(30) == int64_t(kEndOfSimAddress));
+  VIXL_ASSERT(get_lr() == int64_t(kEndOfSimAddress));
 
   // Execute the simulation.
-  DebugOnly<int64_t> entryStack = xreg(31, Reg31IsStackPointer);
+  DebugOnly<int64_t> entryStack = get_sp();
   RunFrom((Instruction*)entry);
-  DebugOnly<int64_t> exitStack = xreg(31, Reg31IsStackPointer);
+  DebugOnly<int64_t> exitStack = get_sp();
   VIXL_ASSERT(entryStack == exitStack);
 
   int64_t result = xreg(0);
@@ -402,6 +420,29 @@ void* Simulator::RedirectNativeFunction(void* nativeFunction, ABIFunctionType ty
   return redirection->addressOfSvcInstruction();
 }
 
+bool
+Simulator::handle_wasm_ill_fault()
+{
+    JitActivation* act = GetJitActivation(cx_);
+    if (!act)
+        return false;
+
+    uint8_t* pc = (uint8_t*)get_pc();
+
+    const js::wasm::CodeSegment* segment = js::wasm::LookupCodeSegment(pc);
+    if (!segment || !segment->isModule())
+        return false;
+    const js::wasm::ModuleSegment* moduleSegment = segment->asModule();
+
+    js::wasm::Trap trap;
+    js::wasm::BytecodeOffset bytecode;
+    if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode))
+        return false;
+
+    act->startWasmTrap(trap, bytecode.offset(), registerState());
+    set_pc((Instruction*)moduleSegment->trapCode());
+    return true;
+}
 
 void Simulator::VisitException(const Instruction* instr) {
   switch (instr->Mask(ExceptionMask)) {
@@ -414,7 +455,8 @@ void Simulator::VisitException(const Instruction* instr) {
     case HLT:
       switch (instr->ImmException()) {
         case kUnreachableOpcode:
-          DoUnreachable(instr);
+          if (!handle_wasm_ill_fault())
+              DoUnreachable(instr);
           return;
         case kTraceOpcode:
           DoTrace(instr);
@@ -438,12 +480,12 @@ void Simulator::VisitException(const Instruction* instr) {
           return;
         case kMarkStackPointer: {
           js::AutoEnterOOMUnsafeRegion oomUnsafe;
-          if (!spStack_.append(xreg(31, Reg31IsStackPointer)))
+          if (!spStack_.append(get_sp()))
             oomUnsafe.crash("tracking stack for ARM64 simulator");
           return;
         }
         case kCheckStackPointer: {
-          int64_t current = xreg(31, Reg31IsStackPointer);
+          int64_t current = get_sp();
           int64_t expected = spStack_.popCopy();
           VIXL_ASSERT(current == expected);
           return;
@@ -491,6 +533,10 @@ typedef int64_t (*Prototype_General7)(int64_t arg0, int64_t arg1, int64_t arg2, 
                                       int64_t arg4, int64_t arg5, int64_t arg6);
 typedef int64_t (*Prototype_General8)(int64_t arg0, int64_t arg1, int64_t arg2, int64_t arg3,
                                       int64_t arg4, int64_t arg5, int64_t arg6, int64_t arg7);
+typedef int64_t (*Prototype_GeneralGeneralGeneralInt64)(int64_t arg0, int32_t arg1, int32_t arg2,
+                                                        int64_t arg3);
+typedef int64_t (*Prototype_GeneralGeneralInt64Int64)(int64_t arg0, int32_t arg1, int64_t arg2,
+                                                      int64_t arg3);
 
 typedef int64_t (*Prototype_Int_Double)(double arg0);
 typedef int64_t (*Prototype_Int_IntDouble)(int32_t arg0, double arg1);
@@ -499,6 +545,7 @@ typedef int64_t (*Prototype_Int_IntDoubleIntInt)(uint64_t arg0, double arg1,
                                                  uint64_t arg2, uint64_t arg3);
 
 typedef float (*Prototype_Float32_Float32)(float arg0);
+typedef float (*Prototype_Float32_Float32Float32)(float arg0, float arg1);
 
 typedef double (*Prototype_Double_None)();
 typedef double (*Prototype_Double_Double)(double arg0);
@@ -537,7 +584,7 @@ Simulator::VisitCallRedirection(const Instruction* instr)
   DebugOnly<int64_t> x27 = xreg(27);
   DebugOnly<int64_t> x28 = xreg(28);
   DebugOnly<int64_t> x29 = xreg(29);
-  DebugOnly<int64_t> savedSP = xreg(31, Reg31IsStackPointer);
+  DebugOnly<int64_t> savedSP = get_sp();
 
   // Remember LR for returning from the "call".
   int64_t savedLR = xreg(30);
@@ -560,6 +607,7 @@ Simulator::VisitCallRedirection(const Instruction* instr)
   double d2 = dreg(2);
   double d3 = dreg(3);
   float s0 = sreg(0);
+  float s1 = sreg(1);
 
   // Dispatch the call and set the return value.
   switch (redir->type()) {
@@ -609,6 +657,16 @@ Simulator::VisitCallRedirection(const Instruction* instr)
       setGPR64Result(ret);
       break;
     }
+    case js::jit::Args_Int_GeneralGeneralGeneralInt64: {
+      int64_t ret = reinterpret_cast<Prototype_GeneralGeneralGeneralInt64>(nativeFn)(x0, x1, x2, x3);
+      setGPR64Result(ret);
+      break;
+    }
+    case js::jit::Args_Int_GeneralGeneralInt64Int64: {
+      int64_t ret = reinterpret_cast<Prototype_GeneralGeneralInt64Int64>(nativeFn)(x0, x1, x2, x3);
+      setGPR64Result(ret);
+      break;
+    }
 
     // Cases with GPR return type. This can be int32 or int64, but int64 is a safer assumption.
     case js::jit::Args_Int_Double: {
@@ -637,6 +695,11 @@ Simulator::VisitCallRedirection(const Instruction* instr)
     // Cases with float return type.
     case js::jit::Args_Float32_Float32: {
       float ret = reinterpret_cast<Prototype_Float32_Float32>(nativeFn)(s0);
+      setFP32Result(ret);
+      break;
+    }
+    case js::jit::Args_Float32_Float32Float32: {
+      float ret = reinterpret_cast<Prototype_Float32_Float32Float32>(nativeFn)(s0, s1);
       setFP32Result(ret);
       break;
     }
@@ -704,7 +767,7 @@ Simulator::VisitCallRedirection(const Instruction* instr)
   VIXL_ASSERT(xreg(29) == x29);
 
   // Assert that the stack is unchanged.
-  VIXL_ASSERT(savedSP == xreg(31, Reg31IsStackPointer));
+  VIXL_ASSERT(savedSP == get_sp());
 
   // Simulate a return.
   set_lr(savedLR);

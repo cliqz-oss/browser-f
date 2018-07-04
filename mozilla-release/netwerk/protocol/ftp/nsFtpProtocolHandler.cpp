@@ -1,21 +1,7 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- *
- * This Original Code has been modified by IBM Corporation.
- * Modifications made by IBM described herein are
- * Copyright (c) International Business Machines
- * Corporation, 2000
- *
- * Modifications to Mozilla code or documentation
- * identified per MPL Section 3.3
- *
- * Date         Modified by     Description of modification
- * 03/27/2000   IBM Corp.       Added PR_CALLBACK for Optlink
- *                               use in OS2
- */
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/net/NeckoChild.h"
 #include "mozilla/net/FTPChannelChild.h"
@@ -54,6 +40,7 @@ LazyLogModule gFTPLog("nsFtp");
 #define IDLE_TIMEOUT_PREF     "network.ftp.idleConnectionTimeout"
 #define IDLE_CONNECTION_LIMIT 8 /* TODO pref me */
 
+#define ENABLED_PREF          "network.ftp.enabled"
 #define QOS_DATA_PREF         "network.ftp.data.qos"
 #define QOS_CONTROL_PREF      "network.ftp.control.qos"
 
@@ -63,6 +50,7 @@ nsFtpProtocolHandler *gFtpHandler = nullptr;
 
 nsFtpProtocolHandler::nsFtpProtocolHandler()
     : mIdleTimeout(-1)
+    , mEnabled(true)
     , mSessionId(0)
     , mControlQoSBits(0x00)
     , mDataQoSBits(0x00)
@@ -105,20 +93,27 @@ nsFtpProtocolHandler::Init()
         rv = branch->AddObserver(IDLE_TIMEOUT_PREF, this, true);
         if (NS_FAILED(rv)) return rv;
 
-	int32_t val;
-	rv = branch->GetIntPref(QOS_DATA_PREF, &val);
-	if (NS_SUCCEEDED(rv))
-	    mDataQoSBits = (uint8_t) clamped(val, 0, 0xff);
+        rv = branch->GetBoolPref(ENABLED_PREF, &mEnabled);
+        if (NS_FAILED(rv))
+            mEnabled = true;
 
-	rv = branch->AddObserver(QOS_DATA_PREF, this, true);
-	if (NS_FAILED(rv)) return rv;
+        rv = branch->AddObserver(ENABLED_PREF, this, true);
+        if (NS_FAILED(rv)) return rv;
 
-	rv = branch->GetIntPref(QOS_CONTROL_PREF, &val);
-	if (NS_SUCCEEDED(rv))
-	    mControlQoSBits = (uint8_t) clamped(val, 0, 0xff);
+      	int32_t val;
+      	rv = branch->GetIntPref(QOS_DATA_PREF, &val);
+      	if (NS_SUCCEEDED(rv))
+      	    mDataQoSBits = (uint8_t) clamped(val, 0, 0xff);
 
-	rv = branch->AddObserver(QOS_CONTROL_PREF, this, true);
-	if (NS_FAILED(rv)) return rv;
+      	rv = branch->AddObserver(QOS_DATA_PREF, this, true);
+      	if (NS_FAILED(rv)) return rv;
+
+      	rv = branch->GetIntPref(QOS_CONTROL_PREF, &val);
+      	if (NS_SUCCEEDED(rv))
+      	    mControlQoSBits = (uint8_t) clamped(val, 0, 0xff);
+
+      	rv = branch->AddObserver(QOS_CONTROL_PREF, this, true);
+      	if (NS_FAILED(rv)) return rv;
     }
 
     nsCOMPtr<nsIObserverService> observerService =
@@ -168,6 +163,9 @@ nsFtpProtocolHandler::NewURI(const nsACString &aSpec,
                              nsIURI *aBaseURI,
                              nsIURI **result)
 {
+    if (!mEnabled) {
+        return NS_ERROR_UNKNOWN_PROTOCOL;
+    }
     nsAutoCString spec(aSpec);
     spec.Trim(" \t\n\r"); // Match NS_IsAsciiWhitespace instead of HTML5
 
@@ -185,14 +183,12 @@ nsFtpProtocolHandler::NewURI(const nsACString &aSpec,
     if (spec.FindCharInSet(CRLF) >= 0 || spec.FindChar('\0') >= 0)
         return NS_ERROR_MALFORMED_URI;
 
-    nsresult rv;
-    nsCOMPtr<nsIStandardURL> url = do_CreateInstance(NS_STANDARDURL_CONTRACTID, &rv);
-    if (NS_FAILED(rv)) return rv;
-
-    rv = url->Init(nsIStandardURL::URLTYPE_AUTHORITY, 21, aSpec, aCharset, aBaseURI);
-    if (NS_FAILED(rv)) return rv;
-
-    return CallQueryInterface(url, result);
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    return NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+      .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                              nsIStandardURL::URLTYPE_AUTHORITY,
+                              21, nsCString(aSpec), aCharset, base, nullptr))
+      .Finalize(result);
 }
 
 NS_IMETHODIMP
@@ -323,20 +319,17 @@ nsFtpProtocolHandler::InsertConnection(nsIURI *aKey, nsFtpControlConnection *aCo
 
     LOG(("FTP:inserting connection for %s\n", spec.get()));
 
-    nsresult rv;
-    nsCOMPtr<nsITimer> timer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-    if (NS_FAILED(rv)) return rv;
-
     timerStruct* ts = new timerStruct();
     if (!ts)
         return NS_ERROR_OUT_OF_MEMORY;
 
-    rv = timer->InitWithNamedFuncCallback(
-      nsFtpProtocolHandler::Timeout,
-      ts,
-      mIdleTimeout * 1000,
-      nsITimer::TYPE_REPEATING_SLACK,
-      "nsFtpProtocolHandler::InsertConnection");
+    nsCOMPtr<nsITimer> timer;
+    nsresult rv = NS_NewTimerWithFuncCallback(getter_AddRefs(timer),
+                                              nsFtpProtocolHandler::Timeout,
+                                              ts,
+                                              mIdleTimeout * 1000,
+                                              nsITimer::TYPE_REPEATING_SLACK,
+                                              "nsFtpProtocolHandler::InsertConnection");
     if (NS_FAILED(rv)) {
         delete ts;
         return rv;
@@ -398,6 +391,10 @@ nsFtpProtocolHandler::Observe(nsISupports *aSubject,
         nsresult rv = branch->GetIntPref(IDLE_TIMEOUT_PREF, &val);
         if (NS_SUCCEEDED(rv))
             mIdleTimeout = val;
+        bool enabled;
+        rv = branch->GetBoolPref(ENABLED_PREF, &enabled);
+        if (NS_SUCCEEDED(rv))
+            mEnabled = enabled;
 
 	rv = branch->GetIntPref(QOS_DATA_PREF, &val);
 	if (NS_SUCCEEDED(rv))

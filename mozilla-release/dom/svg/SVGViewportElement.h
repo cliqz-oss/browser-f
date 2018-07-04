@@ -59,7 +59,7 @@ protected:
 public:
 
   // nsIContent interface
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
   // nsSVGElement specializations:
   virtual gfxMatrix PrependLocalTransformsTo(
@@ -127,6 +127,15 @@ public:
 
   gfx::Matrix GetViewBoxTransform() const;
 
+  svgFloatSize GetViewportSize() const {
+    return svgFloatSize(mViewportWidth, mViewportHeight);
+  }
+
+  void SetViewportSize(const svgFloatSize& aSize) {
+    mViewportWidth  = aSize.width;
+    mViewportHeight = aSize.height;
+  }
+
   // WebIDL
   already_AddRefed<SVGAnimatedRect> ViewBox();
   already_AddRefed<DOMSVGAnimatedPreserveAspectRatio> PreserveAspectRatio();
@@ -138,7 +147,7 @@ protected:
 
   bool IsRoot() const {
     NS_ASSERTION((IsInUncomposedDoc() && !GetParent()) ==
-                 (OwnerDoc() && (OwnerDoc()->GetRootElement() == this)),
+                 (OwnerDoc()->GetRootElement() == this),
                  "Can't determine if we're root");
     return IsInUncomposedDoc() && !GetParent();
   }

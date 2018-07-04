@@ -24,6 +24,8 @@
 namespace js {
 namespace wasm {
 
+class WasmFrameIter;
+
 // A SymbolicAddress that NeedsBuiltinThunk() will call through a thunk to the
 // C++ function. This will be true for all normal calls from normal wasm
 // function code. Only calls to C++ from other exits/thunks do not need a thunk.
@@ -48,10 +50,13 @@ bool
 EnsureBuiltinThunksInitialized();
 
 void*
+HandleThrow(JSContext* cx, WasmFrameIter& iter);
+
+void*
 SymbolicAddressTarget(SymbolicAddress sym);
 
 void*
-MaybeGetBuiltinThunk(HandleFunction f, const Sig& sig, JSContext* cx);
+MaybeGetBuiltinThunk(HandleFunction f, const Sig& sig);
 
 void
 ReleaseBuiltinThunks();

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -7,6 +8,7 @@
 #include "DrawTargetD2D1.h"
 #include "FilterNodeSoftware.h"
 #include "GradientStopsD2D.h"
+#include "SourceSurfaceCapture.h"
 #include "SourceSurfaceD2D1.h"
 #include "SourceSurfaceDual.h"
 #include "RadialGradientEffectD2D1.h"
@@ -44,8 +46,9 @@ RefPtr<ID2D1Factory1> D2DFactory()
 
 DrawTargetD2D1::DrawTargetD2D1()
   : mPushedLayers(1)
+  , mSnapshotLock(make_shared<Mutex>("DrawTargetD2D1::mSnapshotLock"))
   , mUsedCommandListsSincePurge(0)
-  , mDidComplexBlendWithListInList(false)
+  , mComplexBlendsWithListInList(0)
   , mDeviceSeq(0)
 {
 }
@@ -55,6 +58,7 @@ DrawTargetD2D1::~DrawTargetD2D1()
   PopAllClips();
 
   if (mSnapshot) {
+    MutexAutoLock lock(*mSnapshotLock);
     // We may hold the only reference. MarkIndependent will clear mSnapshot;
     // keep the snapshot object alive so it doesn't get destroyed while
     // MarkIndependent is running.
@@ -72,22 +76,28 @@ DrawTargetD2D1::~DrawTargetD2D1()
     mDC->EndDraw();
   }
 
-  // Targets depending on us can break that dependency, since we're obviously not going to
-  // be modified in the future.
-  for (auto iter = mDependentTargets.begin();
-       iter != mDependentTargets.end(); iter++) {
-    (*iter)->mDependingOnTargets.erase(this);
-  }
-  // Our dependencies on other targets no longer matter.
-  for (TargetSet::iterator iter = mDependingOnTargets.begin();
-       iter != mDependingOnTargets.end(); iter++) {
-    (*iter)->mDependentTargets.erase(this);
+  {
+    // Until this point in the destructor it -must- still be valid for FlushInternal
+    // to be called on this.
+    StaticMutexAutoLock lock(Factory::mDTDependencyLock);
+    // Targets depending on us can break that dependency, since we're obviously not going to
+    // be modified in the future.
+    for (auto iter = mDependentTargets.begin();
+      iter != mDependentTargets.end(); iter++) {
+      (*iter)->mDependingOnTargets.erase(this);
+    }
+    // Our dependencies on other targets no longer matter.
+    for (TargetSet::iterator iter = mDependingOnTargets.begin();
+      iter != mDependingOnTargets.end(); iter++) {
+      (*iter)->mDependentTargets.erase(this);
+    }
   }
 }
 
 already_AddRefed<SourceSurface>
 DrawTargetD2D1::Snapshot()
 {
+  MutexAutoLock lock(*mSnapshotLock);
   if (mSnapshot) {
     RefPtr<SourceSurface> snapshot(mSnapshot);
     return snapshot.forget();
@@ -109,13 +119,20 @@ DrawTargetD2D1::EnsureLuminanceEffect()
     return true;
   }
 
-  HRESULT hr = mDC->CreateEffect(CLSID_D2D1LuminanceToAlpha,
+  HRESULT hr = mDC->CreateEffect(CLSID_D2D1ColorMatrix,
                                  getter_AddRefs(mLuminanceEffect));
   if (FAILED(hr)) {
     gfxCriticalError() << "Failed to create luminance effect. Code: " << hexa(hr);
     return false;
   }
 
+  D2D1_MATRIX_5X4_F matrix = D2D1::Matrix5x4F(0, 0, 0, 0.2125f,
+                                              0, 0, 0, 0.7154f,
+                                              0, 0, 0, 0.0721f,
+                                              0, 0, 0, 0,
+                                              0, 0, 0, 0);
+  mLuminanceEffect->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, matrix);
+  mLuminanceEffect->SetValue(D2D1_COLORMATRIX_PROP_ALPHA_MODE, D2D1_COLORMATRIX_ALPHA_MODE_STRAIGHT);
   return true;
 }
 
@@ -139,7 +156,7 @@ DrawTargetD2D1::IntoLuminanceSource(LuminanceType aLuminanceType, float aOpacity
   RefPtr<ID2D1Image> luminanceOutput;
   mLuminanceEffect->GetOutput(getter_AddRefs(luminanceOutput));
 
- return MakeAndAddRef<SourceSurfaceD2D1>(luminanceOutput, mDC, SurfaceFormat::A8, mSize);
+ return MakeAndAddRef<SourceSurfaceD2D1>(luminanceOutput, mDC, SurfaceFormat::B8G8R8A8, mSize);
 }
 
 // Command lists are kept around by device contexts until EndDraw is called,
@@ -151,28 +168,7 @@ static const uint32_t kPushedLayersBeforePurge = 25;
 void
 DrawTargetD2D1::Flush()
 {
-  if (IsDeviceContextValid()) {
-    if ((mUsedCommandListsSincePurge >= kPushedLayersBeforePurge) &&
-        mPushedLayers.size() == 1) {
-      // It's important to pop all clips as otherwise layers can forget about
-      // their clip when doing an EndDraw. When we have layers pushed we cannot
-      // easily pop all underlying clips to delay the purge until we have no
-      // layers pushed.
-      PopAllClips();
-      mUsedCommandListsSincePurge = 0;
-      mDC->EndDraw();
-      mDC->BeginDraw();
-    } else {
-      mDC->Flush();
-    }
-  }
-
-  // We no longer depend on any target.
-  for (TargetSet::iterator iter = mDependingOnTargets.begin();
-       iter != mDependingOnTargets.end(); iter++) {
-    (*iter)->mDependentTargets.erase(this);
-  }
-  mDependingOnTargets.clear();
+  FlushInternal();
 }
 
 void
@@ -192,15 +188,15 @@ DrawTargetD2D1::DrawSurface(SourceSurface *aSurface,
     samplingBounds = D2D1::RectF(0, 0, Float(aSurface->GetSize().width), Float(aSurface->GetSize().height));
   }
 
-  Float xScale = aDest.width / aSource.width;
-  Float yScale = aDest.height / aSource.height;
+  Float xScale = aDest.Width() / aSource.Width();
+  Float yScale = aDest.Height() / aSource.Height();
 
   RefPtr<ID2D1ImageBrush> brush;
 
   // Here we scale the source pattern up to the size and position where we want
   // it to be.
   Matrix transform;
-  transform.PreTranslate(aDest.x - aSource.x * xScale, aDest.y - aSource.y * yScale);
+  transform.PreTranslate(aDest.X() - aSource.X() * xScale, aDest.Y() - aSource.Y() * yScale);
   transform.PreScale(xScale, yScale);
 
   RefPtr<ID2D1Image> image = GetImageForSurface(aSurface, transform, ExtendMode::CLAMP);
@@ -353,7 +349,7 @@ DrawTargetD2D1::ClearRect(const Rect &aRect)
 
   RefPtr<ID2D1SolidColorBrush> brush;
   mDC->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), getter_AddRefs(brush));
-  mDC->PushAxisAlignedClip(D2D1::RectF(addClipRect.x, addClipRect.y, addClipRect.XMost(), addClipRect.YMost()), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+  mDC->PushAxisAlignedClip(D2D1::RectF(addClipRect.X(), addClipRect.Y(), addClipRect.XMost(), addClipRect.YMost()), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
   mDC->FillGeometry(geom, brush);
   mDC->PopAxisAlignedClip();
 
@@ -425,8 +421,8 @@ DrawTargetD2D1::MaskSurface(const Pattern &aSource,
     // we have to fixup our sizes here.
     size.width = bitmap->GetSize().width;
     size.height = bitmap->GetSize().height;
-    dest.width = size.width;
-    dest.height = size.height;
+    dest.SetWidth(size.width);
+    dest.SetHeight(size.height);
   }
 
   // FillOpacityMask only works if the antialias mode is MODE_ALIASED
@@ -453,7 +449,7 @@ DrawTargetD2D1::CopySurface(SourceSurface *aSurface,
   mDC->SetTransform(D2D1::IdentityMatrix());
   mTransformDirty = true;
 
-  Matrix mat = Matrix::Translation(aDestination.x - aSourceRect.x, aDestination.y - aSourceRect.y);
+  Matrix mat = Matrix::Translation(aDestination.x - aSourceRect.X(), aDestination.y - aSourceRect.Y());
   RefPtr<ID2D1Image> image = GetImageForSurface(aSurface, mat, ExtendMode::CLAMP, nullptr, false);
 
   if (!image) {
@@ -467,10 +463,8 @@ DrawTargetD2D1::CopySurface(SourceSurface *aSurface,
   }
 
   IntRect sourceRect = aSourceRect;
-  sourceRect.x += (aDestination.x - aSourceRect.x) - mat._31;
-  sourceRect.width -= (aDestination.x - aSourceRect.x) - mat._31;
-  sourceRect.y += (aDestination.y - aSourceRect.y) - mat._32;
-  sourceRect.height -= (aDestination.y - aSourceRect.y) - mat._32;
+  sourceRect.SetLeftEdge(sourceRect.X() + (aDestination.x - aSourceRect.X()) - mat._31);
+  sourceRect.SetTopEdge(sourceRect.Y() + (aDestination.y - aSourceRect.Y()) - mat._32);
 
   RefPtr<ID2D1Bitmap> bitmap;
   HRESULT hr = image->QueryInterface((ID2D1Bitmap**)getter_AddRefs(bitmap));
@@ -487,11 +481,11 @@ DrawTargetD2D1::CopySurface(SourceSurface *aSurface,
     return;
   }
 
-  Rect srcRect(Float(sourceRect.x), Float(sourceRect.y),
-               Float(aSourceRect.width), Float(aSourceRect.height));
+  Rect srcRect(Float(sourceRect.X()), Float(sourceRect.Y()),
+               Float(aSourceRect.Width()), Float(aSourceRect.Height()));
 
   Rect dstRect(Float(aDestination.x), Float(aDestination.y),
-               Float(aSourceRect.width), Float(aSourceRect.height));
+               Float(aSourceRect.Width()), Float(aSourceRect.Height()));
 
   if (SUCCEEDED(hr) && bitmap) {
     mDC->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
@@ -609,8 +603,7 @@ void
 DrawTargetD2D1::FillGlyphs(ScaledFont *aFont,
                            const GlyphBuffer &aBuffer,
                            const Pattern &aPattern,
-                           const DrawOptions &aOptions,
-                           const GlyphRenderingOptions*)
+                           const DrawOptions &aOptions)
 {
   if (aFont->GetType() != FontType::DWRITE) {
     gfxDebug() << *this << ": Ignoring drawing call for incompatible font.";
@@ -950,6 +943,8 @@ DrawTargetD2D1::PopLayer()
   DCCommandSink sink(mDC);
   list->Stream(&sink);
 
+  mComplexBlendsWithListInList = 0;
+
   mDC->PopLayer();
 }
 
@@ -1025,11 +1020,13 @@ DrawTargetD2D1::CreateGradientStops(GradientStop *rawStops, uint32_t aNumStops, 
     stops[i].color = D2DColor(rawStops[i].color);
   }
 
-  RefPtr<ID2D1GradientStopCollection> stopCollection;
+  RefPtr<ID2D1GradientStopCollection1> stopCollection;
 
   HRESULT hr =
     mDC->CreateGradientStopCollection(stops, aNumStops,
-                                      D2D1_GAMMA_2_2, D2DExtend(aExtendMode, Axis::BOTH),
+                                      D2D1_COLOR_SPACE_SRGB, D2D1_COLOR_SPACE_SRGB,
+                                      D2D1_BUFFER_PRECISION_8BPC_UNORM, D2DExtend(aExtendMode, Axis::BOTH),
+                                      D2D1_COLOR_INTERPOLATION_MODE_PREMULTIPLIED,
                                       getter_AddRefs(stopCollection));
   delete [] stops;
 
@@ -1268,9 +1265,45 @@ DrawTargetD2D1::CleanupD2D()
 }
 
 void
+DrawTargetD2D1::FlushInternal(bool aHasDependencyMutex /* = false */)
+{
+  if (IsDeviceContextValid()) {
+    if ((mUsedCommandListsSincePurge >= kPushedLayersBeforePurge) &&
+      mPushedLayers.size() == 1) {
+      // It's important to pop all clips as otherwise layers can forget about
+      // their clip when doing an EndDraw. When we have layers pushed we cannot
+      // easily pop all underlying clips to delay the purge until we have no
+      // layers pushed.
+      PopAllClips();
+      mUsedCommandListsSincePurge = 0;
+      mDC->EndDraw();
+      mDC->BeginDraw();
+    }
+    else {
+      mDC->Flush();
+    }
+  }
+
+  Maybe<StaticMutexAutoLock> lock;
+
+  if (!aHasDependencyMutex) {
+    lock.emplace(Factory::mDTDependencyLock);
+  }
+
+  Factory::mDTDependencyLock.AssertCurrentThreadOwns();
+  // We no longer depend on any target.
+  for (TargetSet::iterator iter = mDependingOnTargets.begin();
+    iter != mDependingOnTargets.end(); iter++) {
+    (*iter)->mDependentTargets.erase(this);
+  }
+  mDependingOnTargets.clear();
+}
+
+void
 DrawTargetD2D1::MarkChanged()
 {
   if (mSnapshot) {
+    MutexAutoLock lock(*mSnapshotLock);
     if (mSnapshot->hasOneRef()) {
       // Just destroy it, since no-one else knows about it.
       mSnapshot = nullptr;
@@ -1280,15 +1313,19 @@ DrawTargetD2D1::MarkChanged()
       MOZ_ASSERT(!mSnapshot);
     }
   }
-  if (mDependentTargets.size()) {
-    // Copy mDependentTargets since the Flush()es below will modify it.
-    TargetSet tmpTargets = mDependentTargets;
-    for (TargetSet::iterator iter = tmpTargets.begin();
-         iter != tmpTargets.end(); iter++) {
-      (*iter)->Flush();
+
+  {
+    StaticMutexAutoLock lock(Factory::mDTDependencyLock);
+    if (mDependentTargets.size()) {
+      // Copy mDependentTargets since the Flush()es below will modify it.
+      TargetSet tmpTargets = mDependentTargets;
+      for (TargetSet::iterator iter = tmpTargets.begin();
+        iter != tmpTargets.end(); iter++) {
+        (*iter)->FlushInternal(true);
+      }
+      // The Flush() should have broken all dependencies on this target.
+      MOZ_ASSERT(!mDependentTargets.size());
     }
-    // The Flush() should have broken all dependencies on this target.
-    MOZ_ASSERT(!mDependentTargets.size());
   }
 }
 
@@ -1420,12 +1457,7 @@ DrawTargetD2D1::FinalizeDrawing(CompositionOp aOp, const Pattern &aPattern)
 
     mDC->DrawImage(blendEffect, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY);
 
-    // This may seem a little counter intuitive. If this is false, we go through the regular
-    // codepaths and set it to true. When this was true, GetImageForLayerContent will return
-    // a bitmap for the current command list and we will no longer have a complex blend
-    // with a list for tmpImage. Therefore we can set it to false again.
-    mDidComplexBlendWithListInList = !mDidComplexBlendWithListInList;
-
+    mComplexBlendsWithListInList++;
     return;
   }
 
@@ -1464,9 +1496,18 @@ DrawTargetD2D1::FinalizeDrawing(CompositionOp aOp, const Pattern &aPattern)
 void
 DrawTargetD2D1::AddDependencyOnSource(SourceSurfaceD2D1* aSource)
 {
-  if (aSource->mDrawTarget && !mDependingOnTargets.count(aSource->mDrawTarget)) {
-    aSource->mDrawTarget->mDependentTargets.insert(this);
-    mDependingOnTargets.insert(aSource->mDrawTarget);
+  Maybe<MutexAutoLock> snapshotLock;
+  // We grab the SnapshotLock as well, this guaranteeds aSource->mDrawTarget
+  // cannot be cleared in between the if statement and the dereference.
+  if (aSource->mSnapshotLock) {
+    snapshotLock.emplace(*aSource->mSnapshotLock);
+  }
+  {
+    StaticMutexAutoLock lock(Factory::mDTDependencyLock);
+    if (aSource->mDrawTarget && !mDependingOnTargets.count(aSource->mDrawTarget)) {
+      aSource->mDrawTarget->mDependentTargets.insert(this);
+      mDependingOnTargets.insert(aSource->mDrawTarget);
+    }
   }
 }
 
@@ -1506,6 +1547,8 @@ DrawTargetD2D1::GetDeviceSpaceClipRect(D2D1_RECT_F& aClipRect, bool& aIsPixelAli
   return true;
 }
 
+static const uint32_t sComplexBlendsWithListAllowedInList = 4;
+
 already_AddRefed<ID2D1Image>
 DrawTargetD2D1::GetImageForLayerContent(bool aShouldPreserveContent)
 {
@@ -1535,7 +1578,7 @@ DrawTargetD2D1::GetImageForLayerContent(bool aShouldPreserveContent)
     list->Close();
 
     RefPtr<ID2D1Bitmap1> tmpBitmap;
-    if (mDidComplexBlendWithListInList) {
+    if (mComplexBlendsWithListInList >= sComplexBlendsWithListAllowedInList) {
       D2D1_BITMAP_PROPERTIES1 props =
         D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET,
                                 D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
@@ -1545,6 +1588,7 @@ DrawTargetD2D1::GetImageForLayerContent(bool aShouldPreserveContent)
       mDC->SetTarget(tmpBitmap);
       mDC->DrawImage(list, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY);
       mDC->SetTarget(CurrentTarget());
+      mComplexBlendsWithListInList = 0;
     }
 
     DCCommandSink sink(mDC);
@@ -1554,7 +1598,7 @@ DrawTargetD2D1::GetImageForLayerContent(bool aShouldPreserveContent)
       PushAllClips();
     }
 
-    if (mDidComplexBlendWithListInList) {
+    if (tmpBitmap) {
       return tmpBitmap.forget();
     }
 
@@ -1878,10 +1922,10 @@ DrawTargetD2D1::CreateBrushForPattern(const Pattern &aPattern, Float aAlpha)
                                    Float(pat->mSurface->GetSize().height));
     } else if (pat->mSurface->GetType() == SurfaceType::D2D1_1_IMAGE) {
       samplingBounds = D2DRect(pat->mSamplingRect);
-      mat.PreTranslate(pat->mSamplingRect.x, pat->mSamplingRect.y);
+      mat.PreTranslate(pat->mSamplingRect.X(), pat->mSamplingRect.Y());
     } else {
       // We will do a partial upload of the sampling restricted area from GetImageForSurface.
-      samplingBounds = D2D1::RectF(0, 0, pat->mSamplingRect.width, pat->mSamplingRect.height);
+      samplingBounds = D2D1::RectF(0, 0, pat->mSamplingRect.Width(), pat->mSamplingRect.Height());
     }
 
     D2D1_EXTEND_MODE xRepeat = D2DExtend(pat->mExtendMode, Axis::X_AXIS);
@@ -1914,6 +1958,17 @@ DrawTargetD2D1::GetImageForSurface(SourceSurface *aSurface, Matrix &aSourceTrans
 {
   RefPtr<ID2D1Image> image;
   switch (aSurface->GetType()) {
+  case SurfaceType::CAPTURE:
+    {
+      SourceSurfaceCapture* capture = static_cast<SourceSurfaceCapture*>(aSurface);
+      RefPtr<SourceSurface> resolved = capture->Resolve(GetBackendType());
+      if (!resolved) {
+        return nullptr;
+      }
+      MOZ_ASSERT(resolved->GetType() != SurfaceType::CAPTURE);
+      return GetImageForSurface(resolved, aSourceTransform, aExtendMode, aSourceRect, aUserSpace);
+    }
+    break;
   case SurfaceType::D2D1_1_IMAGE:
     {
       SourceSurfaceD2D1 *surf = static_cast<SourceSurfaceD2D1*>(aSurface);
@@ -1959,6 +2014,17 @@ DrawTargetD2D1::OptimizeSourceSurface(SourceSurface* aSurface) const
   if (aSurface->GetType() == SurfaceType::D2D1_1_IMAGE) {
     RefPtr<SourceSurface> surface(aSurface);
     return surface.forget();
+  }
+
+  // Special case captures so we don't resolve them to a data surface.
+  if (aSurface->GetType() == SurfaceType::CAPTURE) {
+    SourceSurfaceCapture* capture = static_cast<SourceSurfaceCapture*>(aSurface);
+    RefPtr<SourceSurface> resolved = capture->Resolve(GetBackendType());
+    if (!resolved) {
+      return nullptr;
+    }
+    MOZ_ASSERT(resolved->GetType() != SurfaceType::CAPTURE);
+    return OptimizeSourceSurface(resolved);
   }
 
   RefPtr<DataSourceSurface> data = aSurface->GetDataSurface();

@@ -8,33 +8,35 @@
 #define mozilla_dom_TimeRanges_h_
 
 #include "nsCOMPtr.h"
-#include "nsIDOMTimeRanges.h"
 #include "nsISupports.h"
 #include "nsTArray.h"
 #include "nsWrapperCache.h"
 #include "mozilla/ErrorResult.h"
+#include "TimeUnits.h"
 
 namespace mozilla {
+
 namespace dom {
-
 class TimeRanges;
-
 } // namespace dom
 
 namespace dom {
 
 // Implements media TimeRanges:
 // http://www.whatwg.org/specs/web-apps/current-work/multipage/video.html#timeranges
-class TimeRanges final : public nsIDOMTimeRanges,
+class TimeRanges final : public nsISupports,
                          public nsWrapperCache
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(TimeRanges)
-  NS_DECL_NSIDOMTIMERANGES
 
   TimeRanges();
   explicit TimeRanges(nsISupports* aParent);
+  explicit TimeRanges(const media::TimeIntervals& aTimeIntervals);
+  TimeRanges(nsISupports* aParent, const media::TimeIntervals& aTimeIntervals);
+
+  media::TimeIntervals ToTimeIntervals() const;
 
   void Add(double aStart, double aEnd);
 
@@ -53,7 +55,8 @@ public:
   // Mutate this TimeRange to be the intersection of this and aOtherRanges.
   void Intersection(const TimeRanges* aOtherRanges);
 
-  virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override;
 
   nsISupports* GetParentObject() const;
 
@@ -62,9 +65,19 @@ public:
     return mRanges.Length();
   }
 
-  virtual double Start(uint32_t aIndex, ErrorResult& aRv);
+  double Start(uint32_t aIndex, ErrorResult& aRv) const;
 
-  virtual double End(uint32_t aIndex, ErrorResult& aRv);
+  double End(uint32_t aIndex, ErrorResult& aRv) const;
+
+  double Start(uint32_t aIndex) const
+  {
+    return mRanges[aIndex].mStart;
+  }
+
+  double End(uint32_t aIndex) const
+  {
+    return mRanges[aIndex].mEnd;
+  }
 
   // Shift all values by aOffset seconds.
   void Shift(double aOffset);

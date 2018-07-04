@@ -208,7 +208,7 @@ MediaDocument::CreateSyntheticDocument()
   RefPtr<mozilla::dom::NodeInfo> nodeInfo;
   nodeInfo = mNodeInfoManager->GetNodeInfo(nsGkAtoms::html, nullptr,
                                            kNameSpaceID_XHTML,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
 
   RefPtr<nsGenericHTMLElement> root = NS_NewHTMLHtmlElement(nodeInfo.forget());
   NS_ENSURE_TRUE(root, NS_ERROR_OUT_OF_MEMORY);
@@ -219,7 +219,7 @@ MediaDocument::CreateSyntheticDocument()
 
   nodeInfo = mNodeInfoManager->GetNodeInfo(nsGkAtoms::head, nullptr,
                                            kNameSpaceID_XHTML,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
 
   // Create a <head> so our title has somewhere to live
   RefPtr<nsGenericHTMLElement> head = NS_NewHTMLHeadElement(nodeInfo.forget());
@@ -227,7 +227,7 @@ MediaDocument::CreateSyntheticDocument()
 
   nodeInfo = mNodeInfoManager->GetNodeInfo(nsGkAtoms::meta, nullptr,
                                            kNameSpaceID_XHTML,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
 
   RefPtr<nsGenericHTMLElement> metaContent = NS_NewHTMLMetaElement(nodeInfo.forget());
   NS_ENSURE_TRUE(metaContent, NS_ERROR_OUT_OF_MEMORY);
@@ -244,7 +244,7 @@ MediaDocument::CreateSyntheticDocument()
 
   nodeInfo = mNodeInfoManager->GetNodeInfo(nsGkAtoms::body, nullptr,
                                            kNameSpaceID_XHTML,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
 
   RefPtr<nsGenericHTMLElement> body = NS_NewHTMLBodyElement(nodeInfo.forget());
   NS_ENSURE_TRUE(body, NS_ERROR_OUT_OF_MEMORY);
@@ -262,8 +262,7 @@ MediaDocument::StartLayout()
   // Don't mess with the presshell if someone has already handled
   // its initial reflow.
   if (shell && !shell->DidInitialize()) {
-    nsRect visibleArea = shell->GetPresContext()->GetVisibleArea();
-    nsresult rv = shell->Initialize(visibleArea.width, visibleArea.height);
+    nsresult rv = shell->Initialize();
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -295,17 +294,12 @@ MediaDocument::GetFileName(nsAString& aResult, nsIChannel* aChannel)
   // the document viewer instead of a bogus value ("windows-1252" set in
   // |nsDocument|'s ctor), the priority is given to the current charset.
   // This is necessary to deal with a media document being opened in a new
-  // window or a new tab, in which case |originCharset| of |nsIURI| is not
-  // reliable.
+  // window or a new tab.
   if (mCharacterSetSource != kCharsetUninitialized) {
     mCharacterSet->Name(docCharset);
   } else {
-    // resort to |originCharset|
-    url->GetOriginCharset(docCharset);
-    auto encoding = Encoding::ForLabelNoReplacement(docCharset);
-    if (encoding) {
-      SetDocumentCharacterSet(WrapNotNull(encoding));
-    }
+    // resort to UTF-8
+    SetDocumentCharacterSet(UTF_8_ENCODING);
   }
 
   nsresult rv;
@@ -325,7 +319,7 @@ MediaDocument::LinkStylesheet(const nsAString& aStylesheet)
   RefPtr<mozilla::dom::NodeInfo> nodeInfo;
   nodeInfo = mNodeInfoManager->GetNodeInfo(nsGkAtoms::link, nullptr,
                                            kNameSpaceID_XHTML,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
 
   RefPtr<nsGenericHTMLElement> link = NS_NewHTMLLinkElement(nodeInfo.forget());
   NS_ENSURE_TRUE(link, NS_ERROR_OUT_OF_MEMORY);
@@ -345,7 +339,7 @@ MediaDocument::LinkScript(const nsAString& aScript)
   RefPtr<mozilla::dom::NodeInfo> nodeInfo;
   nodeInfo = mNodeInfoManager->GetNodeInfo(nsGkAtoms::script, nullptr,
                                            kNameSpaceID_XHTML,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
 
   RefPtr<nsGenericHTMLElement> script = NS_NewHTMLScriptElement(nodeInfo.forget());
   NS_ENSURE_TRUE(script, NS_ERROR_OUT_OF_MEMORY);
@@ -366,11 +360,11 @@ MediaDocument::UpdateTitleAndCharset(const nsACString& aTypeStr,
                                      int32_t aWidth, int32_t aHeight,
                                      const nsAString& aStatus)
 {
-  nsXPIDLString fileStr;
+  nsAutoString fileStr;
   GetFileName(fileStr, aChannel);
 
   NS_ConvertASCIItoUTF16 typeStr(aTypeStr);
-  nsXPIDLString title;
+  nsAutoString title;
 
   if (mStringBundle) {
     // if we got a valid size (not all media have a size)
@@ -384,15 +378,13 @@ MediaDocument::UpdateTitleAndCharset(const nsACString& aTypeStr,
         const char16_t *formatStrings[4]  = {fileStr.get(), typeStr.get(),
           widthStr.get(), heightStr.get()};
         mStringBundle->FormatStringFromName(aFormatNames[eWithDimAndFile],
-                                            formatStrings, 4,
-                                            getter_Copies(title));
+                                            formatStrings, 4, title);
       }
       else {
         const char16_t *formatStrings[3]  = {typeStr.get(), widthStr.get(),
           heightStr.get()};
         mStringBundle->FormatStringFromName(aFormatNames[eWithDim],
-                                            formatStrings, 3,
-                                            getter_Copies(title));
+                                            formatStrings, 3, title);
       }
     }
     else {
@@ -400,29 +392,29 @@ MediaDocument::UpdateTitleAndCharset(const nsACString& aTypeStr,
       if (!fileStr.IsEmpty()) {
         const char16_t *formatStrings[2] = {fileStr.get(), typeStr.get()};
         mStringBundle->FormatStringFromName(aFormatNames[eWithFile],
-                                            formatStrings, 2,
-                                            getter_Copies(title));
+                                            formatStrings, 2, title);
       }
       else {
         const char16_t *formatStrings[1] = {typeStr.get()};
         mStringBundle->FormatStringFromName(aFormatNames[eWithNoInfo],
-                                            formatStrings, 1,
-                                            getter_Copies(title));
+                                            formatStrings, 1, title);
       }
     }
   }
 
   // set it on the document
   if (aStatus.IsEmpty()) {
-    SetTitle(title);
+    IgnoredErrorResult ignored;
+    SetTitle(title, ignored);
   }
   else {
-    nsXPIDLString titleWithStatus;
+    nsAutoString titleWithStatus;
     const nsPromiseFlatString& status = PromiseFlatString(aStatus);
     const char16_t *formatStrings[2] = {title.get(), status.get()};
     mStringBundle->FormatStringFromName("TitleWithStatus", formatStrings,
-                                        2, getter_Copies(titleWithStatus));
-    SetTitle(titleWithStatus);
+                                        2, titleWithStatus);
+    IgnoredErrorResult ignored;
+    SetTitle(titleWithStatus, ignored);
   }
 }
 

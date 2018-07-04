@@ -1,4 +1,3 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-*/
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -29,9 +28,6 @@
 #include <algorithm>
 #include "DOMMediaStream.h"
 #include "GeckoProfiler.h"
-#ifdef MOZ_WEBRTC
-#include "AudioOutputObserver.h"
-#endif
 
 using namespace mozilla::layers;
 using namespace mozilla::dom;
@@ -72,6 +68,7 @@ TrackUnionStream::TrackUnionStream()
   }
   void TrackUnionStream::ProcessInput(GraphTime aFrom, GraphTime aTo, uint32_t aFlags)
   {
+    TRACE();
     if (IsFinishedOnGraphThread()) {
       return;
     }
@@ -174,7 +171,7 @@ TrackUnionStream::TrackUnionStream()
     TrackID id;
     if (IsTrackIDExplicit(id = aPort->GetDestinationTrackId())) {
       MOZ_ASSERT(id >= mNextAvailableTrackID &&
-                 mUsedTracks.BinaryIndexOf(id) == mUsedTracks.NoIndex,
+                 !mUsedTracks.ContainsSorted(id),
                  "Desired destination id taken. Only provide a destination ID "
                  "if you can assure its availability, or we may not be able "
                  "to bind to the correct DOM-side track.");
@@ -191,7 +188,7 @@ TrackUnionStream::TrackUnionStream()
       mUsedTracks.InsertElementSorted(id);
     } else if ((id = aTrack->GetID()) &&
                id > mNextAvailableTrackID &&
-               mUsedTracks.BinaryIndexOf(id) == mUsedTracks.NoIndex) {
+               !mUsedTracks.ContainsSorted(id)) {
       // Input id available. Mark it used in mUsedTracks.
       mUsedTracks.InsertElementSorted(id);
     } else {
@@ -311,6 +308,7 @@ TrackUnionStream::TrackUnionStream()
           aInputTrack->GetEnd() <= inputEnd) {
         inputTrackEndPoint = aInputTrack->GetEnd();
         *aOutputTrackFinished = true;
+        break;
       }
 
       if (interval.mStart >= interval.mEnd) {
@@ -322,7 +320,6 @@ TrackUnionStream::TrackUnionStream()
       StreamTime outputStart = outputTrack->GetEnd();
 
       if (interval.mInputIsBlocked) {
-        // Maybe the input track ended?
         segment->AppendNullData(ticks);
         STREAM_LOG(LogLevel::Verbose, ("TrackUnionStream %p appending %lld ticks of null data to track %d",
                    this, (long long)ticks, outputTrack->GetID()));
@@ -485,4 +482,24 @@ TrackUnionStream::RemoveDirectTrackListenerImpl(DirectMediaStreamTrackListener* 
     }
   }
 }
+
+void TrackUnionStream::RemoveAllDirectListenersImpl()
+{
+  for (TrackMapEntry& entry : mTrackMap) {
+    nsTArray<RefPtr<DirectMediaStreamTrackListener>>
+      listeners(entry.mOwnedDirectListeners);
+    for (const auto& listener : listeners) {
+      RemoveDirectTrackListenerImpl(listener, entry.mOutputTrackID);
+    }
+    MOZ_DIAGNOSTIC_ASSERT(entry.mOwnedDirectListeners.IsEmpty());
+  }
+
+  nsTArray<TrackBound<DirectMediaStreamTrackListener>>
+    boundListeners(mPendingDirectTrackListeners);
+  for (const auto& binding : boundListeners) {
+    RemoveDirectTrackListenerImpl(binding.mListener, binding.mTrackID);
+  }
+  MOZ_DIAGNOSTIC_ASSERT(mPendingDirectTrackListeners.IsEmpty());
+}
+
 } // namespace mozilla

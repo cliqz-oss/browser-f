@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,10 +14,13 @@
 #include "nsLayoutUtils.h"
 #include "nsError.h"
 #include "nsDisplayList.h"
+#include "nsIFrameInlines.h"
 #include "FrameLayerBuilder.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "imgIContainer.h"
 #include "Image.h"
+#include "GeckoProfiler.h"
+#include "mozilla/layers/WebRenderUserData.h"
 
 namespace mozilla {
 namespace css {
@@ -43,7 +48,8 @@ ImageLoader::DropDocumentReference()
 
 void
 ImageLoader::AssociateRequestToFrame(imgIRequest* aRequest,
-                                     nsIFrame* aFrame)
+                                     nsIFrame* aFrame,
+                                     FrameFlags aFlags)
 {
   nsCOMPtr<imgINotificationObserver> observer;
   aRequest->GetNotificationObserver(getter_AddRefs(observer));
@@ -55,47 +61,80 @@ ImageLoader::AssociateRequestToFrame(imgIRequest* aRequest,
 
   MOZ_ASSERT(observer == this);
 
-  FrameSet* frameSet = nullptr;
-  if (mRequestToFrameMap.Get(aRequest, &frameSet)) {
-    NS_ASSERTION(frameSet, "This should never be null!");
+  FrameSet* frameSet =
+    mRequestToFrameMap.LookupForAdd(aRequest).OrInsert([=]() {
+      nsPresContext* presContext = GetPresContext();
+      if (presContext) {
+        nsLayoutUtils::RegisterImageRequestIfAnimated(presContext,
+                                                      aRequest,
+                                                      nullptr);
+      }
+      return new FrameSet();
+    });
+
+  RequestSet* requestSet =
+    mFrameToRequestMap.LookupForAdd(aFrame).OrInsert([=]() {
+      aFrame->SetHasImageRequest(true);
+      return new RequestSet();
+    });
+
+  // Add frame to the frameSet, and handle any special processing the
+  // frame might require.
+  FrameWithFlags fwf(aFrame);
+  FrameWithFlags* fwfToModify(&fwf);
+
+  // See if the frameSet already has this frame.
+  uint32_t i = frameSet->IndexOfFirstElementGt(fwf, FrameOnlyComparator());
+  if (i > 0 && aFrame == frameSet->ElementAt(i-1).mFrame) {
+    // We're already tracking this frame, so prepare to modify the
+    // existing FrameWithFlags object.
+    fwfToModify = &frameSet->ElementAt(i-1);
   }
 
-  if (!frameSet) {
-    nsAutoPtr<FrameSet> newFrameSet(new FrameSet());
+  // Check if the frame requires special processing.
+  if (aFlags & REQUEST_REQUIRES_REFLOW) {
+    fwfToModify->mFlags |= REQUEST_REQUIRES_REFLOW;
 
-    mRequestToFrameMap.Put(aRequest, newFrameSet);
-    frameSet = newFrameSet.forget();
+    // If we weren't already blocking onload, do that now.
+    if ((fwfToModify->mFlags & REQUEST_HAS_BLOCKED_ONLOAD) == 0) {
+      fwfToModify->mFlags |= REQUEST_HAS_BLOCKED_ONLOAD;
 
-    nsPresContext* presContext = GetPresContext();
-    if (presContext) {
-      nsLayoutUtils::RegisterImageRequestIfAnimated(presContext,
-                                                    aRequest,
-                                                    nullptr);
+      // Block document onload until we either remove the frame in
+      // RemoveRequestToFrameMapping or onLoadComplete, or complete a reflow.
+      mDocument->BlockOnload();
+
+      // We need to stay blocked until we get a reflow. If the first frame
+      // is not yet decoded, we'll trigger that reflow from onFrameComplete.
+      // But if the first frame is already decoded, we need to trigger that
+      // reflow now, because we'll never get a call to onFrameComplete.
+      uint32_t status = 0;
+      if(NS_SUCCEEDED(aRequest->GetImageStatus(&status)) &&
+         status & imgIRequest::STATUS_FRAME_COMPLETE) {
+        RequestReflowOnFrame(fwfToModify, aRequest);
+      }
     }
   }
 
-  RequestSet* requestSet = nullptr;
-  if (mFrameToRequestMap.Get(aFrame, &requestSet)) {
-    NS_ASSERTION(requestSet, "This should never be null");
+  // Do some sanity checking to ensure that we only add to one mapping
+  // iff we also add to the other mapping.
+  DebugOnly<bool> didAddToFrameSet(false);
+  DebugOnly<bool> didAddToRequestSet(false);
+
+  // If we weren't already tracking this frame, add it to the frameSet.
+  if (i == 0 || aFrame != frameSet->ElementAt(i-1).mFrame) {
+    frameSet->InsertElementAt(i, fwf);
+    didAddToFrameSet = true;
   }
 
-  if (!requestSet) {
-    nsAutoPtr<RequestSet> newRequestSet(new RequestSet());
-
-    mFrameToRequestMap.Put(aFrame, newRequestSet);
-    requestSet = newRequestSet.forget();
-    aFrame->SetHasImageRequest(true);
-  }
-
-  // Add these to the sets, but only if they're not already there.
-  uint32_t i = frameSet->IndexOfFirstElementGt(aFrame);
-  if (i == 0 || aFrame != frameSet->ElementAt(i-1)) {
-    frameSet->InsertElementAt(i, aFrame);
-  }
+  // Add request to the request set if it wasn't already there.
   i = requestSet->IndexOfFirstElementGt(aRequest);
   if (i == 0 || aRequest != requestSet->ElementAt(i-1)) {
     requestSet->InsertElementAt(i, aRequest);
+    didAddToRequestSet = true;
   }
+
+  MOZ_ASSERT(didAddToFrameSet == didAddToRequestSet,
+             "We should only add to one map iff we also add to the other map.");
 }
 
 void
@@ -150,7 +189,21 @@ ImageLoader::RemoveRequestToFrameMapping(imgIRequest* aRequest,
   if (auto entry = mRequestToFrameMap.Lookup(aRequest)) {
     FrameSet* frameSet = entry.Data();
     MOZ_ASSERT(frameSet, "This should never be null");
-    frameSet->RemoveElementSorted(aFrame);
+
+    // Before we remove aFrame from the frameSet, unblock onload if needed.
+    uint32_t i = frameSet->IndexOfFirstElementGt(FrameWithFlags(aFrame),
+                                                 FrameOnlyComparator());
+
+    if (i > 0 && aFrame == frameSet->ElementAt(i-1).mFrame) {
+      FrameWithFlags& fwf = frameSet->ElementAt(i-1);
+      if (fwf.mFlags & REQUEST_HAS_BLOCKED_ONLOAD) {
+        mDocument->UnblockOnload(false);
+        // We're about to remove fwf from the frameSet, so we don't bother
+        // updating the flag.
+      }
+      frameSet->RemoveElementAt(i-1);
+    }
+
     if (frameSet->IsEmpty()) {
       nsPresContext* presContext = GetPresContext();
       if (presContext) {
@@ -245,8 +298,8 @@ ImageLoader::ClearFrames(nsPresContext* aPresContext)
 
     if (aPresContext) {
       nsLayoutUtils::DeregisterImageRequest(aPresContext,
-					    request,
-					    nullptr);
+                                            request,
+                                            nullptr);
     }
   }
 
@@ -256,7 +309,8 @@ ImageLoader::ClearFrames(nsPresContext* aPresContext)
 
 void
 ImageLoader::LoadImage(nsIURI* aURI, nsIPrincipal* aOriginPrincipal,
-                       nsIURI* aReferrer, ImageLoader::Image* aImage)
+                       nsIURI* aReferrer, ImageLoader::Image* aImage,
+                       CORSMode aCorsMode)
 {
   NS_ASSERTION(aImage->mRequests.Count() == 0, "Huh?");
 
@@ -266,11 +320,14 @@ ImageLoader::LoadImage(nsIURI* aURI, nsIPrincipal* aOriginPrincipal,
     return;
   }
 
+  int32_t loadFlags = nsIRequest::LOAD_NORMAL |
+                      nsContentUtils::CORSModeToLoadImageFlags(aCorsMode);
+
   RefPtr<imgRequestProxy> request;
   nsresult rv = nsContentUtils::LoadImage(aURI, mDocument, mDocument,
-                                          aOriginPrincipal, aReferrer,
+                                          aOriginPrincipal, 0, aReferrer,
                                           mDocument->GetReferrerPolicy(),
-                                          nullptr, nsIRequest::LOAD_NORMAL,
+                                          nullptr, loadFlags,
                                           NS_LITERAL_STRING("css"),
                                           getter_AddRefs(request));
 
@@ -314,30 +371,53 @@ ImageLoader::GetPresContext()
     return nullptr;
   }
 
-  nsIPresShell* shell = mDocument->GetShell();
-  if (!shell) {
-    return nullptr;
-  }
-
-  return shell->GetPresContext();
+  return mDocument->GetPresContext();
 }
 
-void InvalidateImagesCallback(nsIFrame* aFrame,
-                              DisplayItemData* aItem)
+static bool
+IsRenderNoImages(uint32_t aDisplayItemKey)
 {
-  nsDisplayItem::Type type = nsDisplayItem::GetDisplayItemTypeFromKey(aItem->GetDisplayItemKey());
-  uint8_t flags = nsDisplayItem::GetDisplayItemFlagsForType(type);
+  DisplayItemType type = GetDisplayItemTypeFromKey(aDisplayItemKey);
+  uint8_t flags = GetDisplayItemFlagsForType(type);
+  return flags & TYPE_RENDERS_NO_IMAGES;
+}
 
-  if (flags & nsDisplayItem::TYPE_RENDERS_NO_IMAGES) {
-    return;
+static void
+InvalidateImages(nsIFrame* aFrame)
+{
+  bool invalidateFrame = false;
+  const SmallPointerArray<DisplayItemData>& array = aFrame->DisplayItemData();
+  for (uint32_t i = 0; i < array.Length(); i++) {
+    DisplayItemData* data = DisplayItemData::AssertDisplayItemData(array.ElementAt(i));
+    uint32_t displayItemKey = data->GetDisplayItemKey();
+    if (displayItemKey != 0 && !IsRenderNoImages(displayItemKey)) {
+      if (nsLayoutUtils::InvalidationDebuggingIsEnabled()) {
+        DisplayItemType type = GetDisplayItemTypeFromKey(displayItemKey);
+        printf_stderr("Invalidating display item(type=%d) based on frame %p \
+                       because it might contain an invalidated image\n",
+                       static_cast<uint32_t>(type), aFrame);
+      }
+
+      data->Invalidate();
+      invalidateFrame = true;
+    }
+  }
+  if (auto userDataTable =
+       aFrame->GetProperty(layers::WebRenderUserDataProperty::Key())) {
+    for (auto iter = userDataTable->Iter(); !iter.Done(); iter.Next()) {
+      RefPtr<layers::WebRenderUserData> data = iter.UserData();
+      if (data->GetType() == layers::WebRenderAnimationData::UserDataType::eFallback &&
+          !IsRenderNoImages(data->GetDisplayItemKey())) {
+        static_cast<layers::WebRenderFallbackData*>(data.get())->SetInvalid(true);
+      }
+      //XXX: handle Blob data
+      invalidateFrame = true;
+    }
   }
 
-  if (nsLayoutUtils::InvalidationDebuggingIsEnabled()) {
-    printf_stderr("Invalidating display item(type=%d) based on frame %p \
-      because it might contain an invalidated image\n", type, aFrame);
+  if (invalidateFrame) {
+    aFrame->SchedulePaint();
   }
-  aItem->Invalidate();
-  aFrame->SchedulePaint();
 }
 
 void
@@ -346,10 +426,8 @@ ImageLoader::DoRedraw(FrameSet* aFrameSet, bool aForcePaint)
   NS_ASSERTION(aFrameSet, "Must have a frame set");
   NS_ASSERTION(mDocument, "Should have returned earlier!");
 
-  FrameSet::size_type length = aFrameSet->Length();
-  for (FrameSet::size_type i = 0; i < length; i++) {
-    nsIFrame* frame = aFrameSet->ElementAt(i);
-
+  for (FrameWithFlags& fwf : *aFrameSet) {
+    nsIFrame* frame = fwf.mFrame;
     if (frame->StyleVisibility()->IsVisible()) {
       if (frame->IsFrameOfType(nsIFrame::eTablePart)) {
         // Tables don't necessarily build border/background display items
@@ -357,12 +435,12 @@ ImageLoader::DoRedraw(FrameSet* aFrameSet, bool aForcePaint)
         // might not find the right display item.
         frame->InvalidateFrame();
       } else {
-        FrameLayerBuilder::IterateRetainedDataFor(frame, InvalidateImagesCallback);
+        InvalidateImages(frame);
 
         // Update ancestor rendering observers (-moz-element etc)
         nsIFrame *f = frame;
         while (f && !f->HasAnyStateBits(NS_FRAME_DESCENDANT_NEEDS_PAINT)) {
-          nsSVGEffects::InvalidateDirectRenderingObservers(f);
+          SVGObserverUtils::InvalidateDirectRenderingObservers(f);
           f = nsLayoutUtils::GetCrossDocParentFrame(f);
         }
 
@@ -374,17 +452,87 @@ ImageLoader::DoRedraw(FrameSet* aFrameSet, bool aForcePaint)
   }
 }
 
+void
+ImageLoader::UnblockOnloadIfNeeded(nsIFrame* aFrame, imgIRequest* aRequest)
+{
+  MOZ_ASSERT(aFrame);
+  MOZ_ASSERT(aRequest);
+
+  FrameSet* frameSet = mRequestToFrameMap.Get(aRequest);
+  if (!frameSet) {
+    return;
+  }
+
+  size_t i = frameSet->BinaryIndexOf(FrameWithFlags(aFrame),
+                                     FrameOnlyComparator());
+  if (i != FrameSet::NoIndex) {
+    FrameWithFlags& fwf = frameSet->ElementAt(i);
+    if (fwf.mFlags & REQUEST_HAS_BLOCKED_ONLOAD) {
+      mDocument->UnblockOnload(false);
+      fwf.mFlags &= ~REQUEST_HAS_BLOCKED_ONLOAD;
+    }
+  }
+}
+
+void
+ImageLoader::RequestReflowIfNeeded(FrameSet* aFrameSet, imgIRequest* aRequest)
+{
+  MOZ_ASSERT(aFrameSet);
+
+  for (FrameWithFlags& fwf : *aFrameSet) {
+    if (fwf.mFlags & REQUEST_REQUIRES_REFLOW) {
+      // Tell the container of the frame to reflow because the
+      // image request has finished decoding its first frame.
+      RequestReflowOnFrame(&fwf, aRequest);
+    }
+  }
+}
+
+void
+ImageLoader::RequestReflowOnFrame(FrameWithFlags* aFwf, imgIRequest* aRequest)
+{
+  // Set the flag indicating that we've requested reflow. This flag will never
+  // be unset.
+  aFwf->mFlags |= REQUEST_HAS_REQUESTED_REFLOW;
+
+  nsIFrame* frame = aFwf->mFrame;
+
+  // Actually request the reflow.
+  nsIFrame* parent = frame->GetInFlowParent();
+  parent->PresShell()->FrameNeedsReflow(parent, nsIPresShell::eStyleChange,
+                                        NS_FRAME_IS_DIRTY);
+
+  // We'll respond to the reflow events by unblocking onload, regardless
+  // of whether the reflow was completed or cancelled. The callback will
+  // also delete itself when it is called.
+  ImageReflowCallback* unblocker = new ImageReflowCallback(this, frame,
+                                                           aRequest);
+  parent->PresShell()->PostReflowCallback(unblocker);
+}
+
 NS_IMPL_ADDREF(ImageLoader)
 NS_IMPL_RELEASE(ImageLoader)
 
 NS_INTERFACE_MAP_BEGIN(ImageLoader)
   NS_INTERFACE_MAP_ENTRY(imgINotificationObserver)
-  NS_INTERFACE_MAP_ENTRY(imgIOnloadBlocker)
 NS_INTERFACE_MAP_END
 
 NS_IMETHODIMP
 ImageLoader::Notify(imgIRequest* aRequest, int32_t aType, const nsIntRect* aData)
 {
+#ifdef MOZ_GECKO_PROFILER
+  nsCString uriString;
+  if (profiler_is_active()) {
+    nsCOMPtr<nsIURI> uri;
+    aRequest->GetFinalURI(getter_AddRefs(uri));
+    if (uri) {
+      uri->GetSpec(uriString);
+    }
+  }
+
+  AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING("ImageLoader::Notify", OTHER, uriString);
+#endif
+
   if (aType == imgINotificationObserver::SIZE_AVAILABLE) {
     nsCOMPtr<imgIContainer> image;
     aRequest->GetImage(getter_AddRefs(image));
@@ -411,6 +559,10 @@ ImageLoader::Notify(imgIRequest* aRequest, int32_t aType, const nsIntRect* aData
     }
   }
 
+  if (aType == imgINotificationObserver::LOAD_COMPLETE) {
+    return OnLoadComplete(aRequest);
+  }
+
   return NS_OK;
 }
 
@@ -424,6 +576,18 @@ ImageLoader::OnSizeAvailable(imgIRequest* aRequest, imgIContainer* aImage)
 
   aImage->SetAnimationMode(presContext->ImageAnimationMode());
 
+  FrameSet* frameSet = mRequestToFrameMap.Get(aRequest);
+  if (!frameSet) {
+    return NS_OK;
+  }
+
+  for (FrameWithFlags& fwf : *frameSet) {
+    nsIFrame* frame = fwf.mFrame;
+    if (frame->StyleVisibility()->IsVisible()) {
+      frame->MarkNeedsDisplayItemRebuild();
+    }
+  }
+
   return NS_OK;
 }
 
@@ -434,8 +598,8 @@ ImageLoader::OnImageIsAnimated(imgIRequest* aRequest)
     return NS_OK;
   }
 
-  FrameSet* frameSet = nullptr;
-  if (!mRequestToFrameMap.Get(aRequest, &frameSet)) {
+  FrameSet* frameSet = mRequestToFrameMap.Get(aRequest);
+  if (!frameSet) {
     return NS_OK;
   }
 
@@ -458,12 +622,13 @@ ImageLoader::OnFrameComplete(imgIRequest* aRequest)
     return NS_OK;
   }
 
-  FrameSet* frameSet = nullptr;
-  if (!mRequestToFrameMap.Get(aRequest, &frameSet)) {
+  FrameSet* frameSet = mRequestToFrameMap.Get(aRequest);
+  if (!frameSet) {
     return NS_OK;
   }
 
-  NS_ASSERTION(frameSet, "This should never be null!");
+  // We may need reflow (for example if the image is from shape-outside).
+  RequestReflowIfNeeded(frameSet, aRequest);
 
   // Since we just finished decoding a frame, we always want to paint, in case
   // we're now able to paint an image that we couldn't paint before (and hence
@@ -480,38 +645,43 @@ ImageLoader::OnFrameUpdate(imgIRequest* aRequest)
     return NS_OK;
   }
 
-  FrameSet* frameSet = nullptr;
-  if (!mRequestToFrameMap.Get(aRequest, &frameSet)) {
+  FrameSet* frameSet = mRequestToFrameMap.Get(aRequest);
+  if (!frameSet) {
     return NS_OK;
   }
-
-  NS_ASSERTION(frameSet, "This should never be null!");
 
   DoRedraw(frameSet, /* aForcePaint = */ false);
 
   return NS_OK;
 }
 
-NS_IMETHODIMP
-ImageLoader::BlockOnload(imgIRequest* aRequest)
+nsresult
+ImageLoader::OnLoadComplete(imgIRequest* aRequest)
 {
-  if (!mDocument) {
+  if (!mDocument || mInClone) {
     return NS_OK;
   }
 
-  mDocument->BlockOnload();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-ImageLoader::UnblockOnload(imgIRequest* aRequest)
-{
-  if (!mDocument) {
+  FrameSet* frameSet = mRequestToFrameMap.Get(aRequest);
+  if (!frameSet) {
     return NS_OK;
   }
 
-  mDocument->UnblockOnload(false);
+  // This may be called for a request that never sent a complete frame.
+  // This is what happens in a CORS mode violation, and may happen during
+  // other network events. We check for any frames that have blocked
+  // onload but haven't requested reflow. In such a case, we unblock
+  // onload here, since onFrameComplete will not be called for this request.
+  FrameFlags flagsToCheck(REQUEST_HAS_BLOCKED_ONLOAD |
+                          REQUEST_HAS_REQUESTED_REFLOW);
+  for (FrameWithFlags& fwf : *frameSet) {
+    if ((fwf.mFlags & flagsToCheck) == REQUEST_HAS_BLOCKED_ONLOAD) {
+      // We've blocked onload but haven't requested reflow. Unblock onload
+      // and clear the flag.
+      mDocument->UnblockOnload(false);
+      fwf.mFlags &= ~REQUEST_HAS_BLOCKED_ONLOAD;
+    }
+  }
 
   return NS_OK;
 }
@@ -531,6 +701,37 @@ ImageLoader::FlushUseCounters()
       static_cast<image::Image*>(container.get())->ReportUseCounters();
     }
   }
+}
+
+bool
+ImageLoader::ImageReflowCallback::ReflowFinished()
+{
+  // Check that the frame is still valid. If it isn't, then onload was
+  // unblocked when the frame was removed from the FrameSet in
+  // RemoveRequestToFrameMapping.
+  if (mFrame.IsAlive()) {
+    mLoader->UnblockOnloadIfNeeded(mFrame, mRequest);
+  }
+
+  // Get rid of this callback object.
+  delete this;
+
+  // We don't need to trigger layout.
+  return false;
+}
+
+void
+ImageLoader::ImageReflowCallback::ReflowCallbackCanceled()
+{
+  // Check that the frame is still valid. If it isn't, then onload was
+  // unblocked when the frame was removed from the FrameSet in
+  // RemoveRequestToFrameMapping.
+  if (mFrame.IsAlive()) {
+    mLoader->UnblockOnloadIfNeeded(mFrame, mRequest);
+  }
+
+  // Get rid of this callback object.
+  delete this;
 }
 
 } // namespace css

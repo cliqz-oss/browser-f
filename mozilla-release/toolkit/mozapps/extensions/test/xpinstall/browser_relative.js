@@ -21,13 +21,8 @@ function test() {
   gBrowser.loadURI(TESTROOT + "installtrigger.html?" + triggers);
 }
 
-function confirm_install(window) {
-  var items = window.document.getElementById("itemList").childNodes;
-  is(items.length, 1, "Should only be 1 item listed in the confirmation dialog");
-  is(items[0].name, "XPI Test", "Should have seen the name");
-  is(items[0].url, TESTROOT + "amosigned.xpi", "Should have listed the correct url for the item");
-  is(items[0].icon, TESTROOT + "icon.png", "Should have listed the correct icon for the item");
-  is(items[0].signed, "false", "Should have listed the item as unsigned");
+function confirm_install(panel) {
+  is(panel.getAttribute("name"), "XPI Test", "Should have seen the name");
   return true;
 }
 
@@ -44,8 +39,8 @@ const finish_test = async function(count) {
     return {
       return: content.document.getElementById("return").textContent,
       status: content.document.getElementById("status").textContent,
-    }
-  })
+    };
+  });
 
   is(results.return, "true", "installTrigger should have claimed success");
   is(results.status, "0", "Callback should have seen a success");

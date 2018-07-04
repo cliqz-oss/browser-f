@@ -23,6 +23,8 @@ from mozpack.copier import (
     Jarrer,
 )
 from mozpack.errors import errors
+from mozpack.files import ExecutableFile
+from mozpack.mozjar import JAR_BROTLI
 import mozpack.path as mozpath
 import buildconfig
 from argparse import ArgumentParser
@@ -183,9 +185,6 @@ class NoPkgFilesRemover(object):
     def add_manifest(self, entry):
         self._formatter.add_manifest(entry)
 
-    def add_interfaces(self, path, content):
-        self._formatter.add_interfaces(path, content)
-
     def contains(self, path):
         return self._formatter.contains(path)
 
@@ -213,9 +212,9 @@ def main():
                         'access logs')
     parser.add_argument('--optimizejars', action='store_true', default=False,
                         help='Enable jar optimizations')
-    parser.add_argument('--disable-compression', action='store_false',
-                        dest='compress', default=True,
-                        help='Disable jar compression')
+    parser.add_argument('--compress', choices=('none', 'deflate', 'brotli'),
+                        default='deflate',
+                        help='Use given jar compression (default: deflate)')
     parser.add_argument('manifest', default=None, nargs='?',
                         help='Manifest file name')
     parser.add_argument('source', help='Source directory')
@@ -225,7 +224,7 @@ def main():
                         help='Extra files not to be considered as resources')
     args = parser.parse_args()
 
-    defines = dict(buildconfig.defines)
+    defines = dict(buildconfig.defines['ALLDEFINES'])
     if args.ignore_errors:
         errors.ignore_errors()
 
@@ -233,15 +232,21 @@ def main():
         for name, value in [split_define(d) for d in args.defines]:
             defines[name] = value
 
+    compress = {
+        'none': False,
+        'deflate': True,
+        'brotli': JAR_BROTLI,
+    }[args.compress]
+
     copier = FileCopier()
     if args.format == 'flat':
         formatter = FlatFormatter(copier)
     elif args.format == 'jar':
-        formatter = JarFormatter(copier, compress=args.compress, optimize=args.optimizejars)
+        formatter = JarFormatter(copier, compress=compress, optimize=args.optimizejars)
     elif args.format == 'omni':
         formatter = OmniJarFormatter(copier,
                                      buildconfig.substs['OMNIJAR_NAME'],
-                                     compress=args.compress,
+                                     compress=compress,
                                      optimize=args.optimizejars,
                                      non_resources=args.non_resource)
     else:
@@ -305,6 +310,14 @@ def main():
                     copier.add(libbase + '.chk',
                                LibSignFile(os.path.join(args.destination,
                                                         libname)))
+
+    # Include pdb files for llvm-symbolizer to resolve symbols.
+    if buildconfig.substs.get('LLVM_SYMBOLIZER') and mozinfo.isWin:
+        for p, f in copier:
+            if isinstance(f, ExecutableFile):
+                pdbname = os.path.splitext(f.inputs()[0])[0] + '.pdb'
+                if os.path.exists(pdbname):
+                    copier.add(os.path.basename(pdbname), File(pdbname))
 
     # Setup preloading
     if args.jarlog and os.path.exists(args.jarlog):

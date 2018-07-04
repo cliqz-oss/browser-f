@@ -1,8 +1,8 @@
 // Test the SyncedTabs counters in BrowserUITelemetry.
 "use strict";
 
-const { BrowserUITelemetry: BUIT } = Cu.import("resource:///modules/BrowserUITelemetry.jsm", {});
-const {SyncedTabs} = Cu.import("resource://services-sync/SyncedTabs.jsm", {});
+const { BrowserUITelemetry: BUIT } = ChromeUtils.import("resource:///modules/BrowserUITelemetry.jsm", {});
+const {SyncedTabs} = ChromeUtils.import("resource://services-sync/SyncedTabs.jsm", {});
 
 function mockSyncedTabs() {
   // Mock SyncedTabs.jsm
@@ -36,6 +36,7 @@ function mockSyncedTabs() {
   // configure our broadcasters so we are in the right state.
   document.getElementById("sync-reauth-state").hidden = true;
   document.getElementById("sync-setup-state").hidden = true;
+  document.getElementById("sync-unverified-state").hidden = true;
   document.getElementById("sync-syncnow-state").hidden = false;
 
   registerCleanupFunction(() => {
@@ -43,6 +44,7 @@ function mockSyncedTabs() {
 
     document.getElementById("sync-reauth-state").hidden = true;
     document.getElementById("sync-setup-state").hidden = false;
+    document.getElementById("sync-unverified-state").hidden = true;
     document.getElementById("sync-syncnow-state").hidden = true;
   });
 }
@@ -67,14 +69,19 @@ add_task(async function test_menu() {
   // check the button's functionality
   CustomizableUI.addWidgetToArea("sync-button", "nav-bar");
 
+  let remoteTabsView = document.getElementById("PanelUI-remotetabs");
+  let viewShown = BrowserTestUtils.waitForEvent(remoteTabsView, "ViewShown");
   let syncButton = document.getElementById("sync-button");
   syncButton.click();
+  await viewShown;
 
   await tabsUpdated;
   // Get our 1 tab and click on it.
+  let viewHidden = BrowserTestUtils.waitForEvent(remoteTabsView, "ViewHiding");
   let tabList = document.getElementById("PanelUI-remotetabs-tabslist");
   let tabEntry = tabList.firstChild.nextSibling;
   tabEntry.click();
+  await viewHidden;
 
   let counts = BUIT._countableEvents[BUIT.currentBucket];
   Assert.deepEqual(counts, {
@@ -92,7 +99,7 @@ add_task(async function test_sidebar() {
 
   let syncedTabsDeckComponent = SidebarUI.browser.contentWindow.syncedTabsDeckComponent;
 
-  syncedTabsDeckComponent._accountStatus = () => Promise.resolve(true);
+  syncedTabsDeckComponent._getSignedInUser = () => Promise.resolve({verified: true});
 
   // Once the tabs container has been selected (which here means "'selected'
   // added to the class list") we are ready to test.

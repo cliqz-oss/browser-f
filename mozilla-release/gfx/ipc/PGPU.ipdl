@@ -5,6 +5,8 @@
 
 include GraphicsMessages;
 include MemoryReportTypes;
+include HangTypes;
+include protocol PAPZInputBridge;
 include protocol PCompositorManager;
 include protocol PImageBridge;
 include protocol PProfiler;
@@ -15,14 +17,15 @@ include protocol PVideoDecoderManager;
 
 using base::ProcessId from "base/process.h";
 using mozilla::dom::NativeThreadId from "mozilla/dom/TabMessageUtils.h";
-using mozilla::Telemetry::Accumulation from "mozilla/TelemetryComms.h";
-using mozilla::Telemetry::KeyedAccumulation from "mozilla/TelemetryComms.h";
+using mozilla::Telemetry::HistogramAccumulation from "mozilla/TelemetryComms.h";
+using mozilla::Telemetry::KeyedHistogramAccumulation from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::ScalarAction from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::KeyedScalarAction from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::ChildEventData from "mozilla/TelemetryComms.h";
 using mozilla::Telemetry::DiscardedData from "mozilla/TelemetryComms.h";
 using mozilla::gfx::Feature from "gfxFeature.h";
 using mozilla::gfx::Fallback from "gfxFallback.h";
+using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
 
 namespace mozilla {
 namespace gfx {
@@ -41,13 +44,22 @@ struct GfxPrefSetting {
 };
 
 struct LayerTreeIdMapping {
-  uint64_t layersId;
+  LayersId layersId;
   ProcessId ownerId;
 };
 
+// This protocol allows the UI process to talk to the GPU process. There is one
+// instance of this protocol, with the GPUParent living on the main thread of
+// the GPU process and the GPUChild living on the main thread of the UI process.
 sync protocol PGPU
 {
+  manages PAPZInputBridge;
+
 parent:
+  // Sent from the UI process to initialize a new APZ input bridge when a new
+  // top-level compositor is created.
+  async PAPZInputBridge(LayersId aLayersId);
+
   // Sent by the UI process to initiate core settings.
   async Init(GfxPrefSetting[] prefs,
              GfxVarUpdate[] vars,
@@ -58,7 +70,7 @@ parent:
   async InitVsyncBridge(Endpoint<PVsyncBridgeParent> endpoint);
   async InitImageBridge(Endpoint<PImageBridgeParent> endpoint);
   async InitVRManager(Endpoint<PVRManagerParent> endpoint);
-  async InitUiCompositorController(uint64_t rootLayerTreeId, Endpoint<PUiCompositorControllerParent> endpoint);
+  async InitUiCompositorController(LayersId rootLayerTreeId, Endpoint<PUiCompositorControllerParent> endpoint);
   async InitProfiler(Endpoint<PProfilerChild> endpoint);
 
   // Called to update a gfx preference or variable.
@@ -78,6 +90,10 @@ parent:
   // Request the current DeviceStatus from the GPU process. This blocks until
   // one is available (i.e., Init has completed).
   sync GetDeviceStatus() returns (GPUDeviceData status);
+
+  // Request to simulate device reset and to get the updated DeviceStatus from
+  // the GPU process. This blocks until one is available (i.e., Init has completed).
+  sync SimulateDeviceReset() returns (GPUDeviceData status);
 
   // Have a message be broadcasted to the GPU process by the GPU process
   // observer service.
@@ -106,8 +122,8 @@ child:
   async NotifyUiObservers(nsCString aTopic);
 
   // Messages for reporting telemetry to the UI process.
-  async AccumulateChildHistograms(Accumulation[] accumulations);
-  async AccumulateChildKeyedHistograms(KeyedAccumulation[] accumulations);
+  async AccumulateChildHistograms(HistogramAccumulation[] accumulations);
+  async AccumulateChildKeyedHistograms(KeyedHistogramAccumulation[] accumulations);
   async UpdateChildScalars(ScalarAction[] actions);
   async UpdateChildKeyedScalars(KeyedScalarAction[] actions);
   async RecordChildEvents(ChildEventData[] events);
@@ -124,6 +140,8 @@ child:
 
   // Notify about:support/Telemetry that a fallback occurred.
   async UsedFallback(Fallback aFallback, nsCString message);
+
+  async BHRThreadHang(HangDetails aDetails);
 };
 
 } // namespace gfx

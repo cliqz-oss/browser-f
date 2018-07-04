@@ -18,7 +18,7 @@ class nsBaseURLParser : public nsIURLParser
 public:
     NS_DECL_NSIURLPARSER
 
-    nsBaseURLParser() { }
+    nsBaseURLParser() = default;
 
 protected:
     // implemented by subclasses
@@ -42,7 +42,7 @@ protected:
 
 class nsNoAuthURLParser final : public nsBaseURLParser
 {
-    ~nsNoAuthURLParser() {}
+    ~nsNoAuthURLParser() = default;
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -77,7 +77,7 @@ public:
 class nsAuthURLParser : public nsBaseURLParser
 {
 protected:
-    virtual ~nsAuthURLParser() {}
+    virtual ~nsAuthURLParser() = default;
 
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
@@ -113,12 +113,12 @@ public:
 
 class nsStdURLParser : public nsAuthURLParser
 {
-    virtual ~nsStdURLParser() {}
+    virtual ~nsStdURLParser() = default;
 
 public:
     void ParseAfterScheme(const char *spec, int32_t specLen,
                           uint32_t *authPos, int32_t *authLen,
-                          uint32_t *pathPos, int32_t *pathLen);
+                          uint32_t *pathPos, int32_t *pathLen) override;
 };
 
 #endif // nsURLParsers_h__

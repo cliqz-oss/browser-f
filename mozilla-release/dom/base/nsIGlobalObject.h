@@ -7,24 +7,44 @@
 #ifndef nsIGlobalObject_h__
 #define nsIGlobalObject_h__
 
+#include "mozilla/LinkedList.h"
+#include "mozilla/Maybe.h"
+#include "mozilla/dom/ClientInfo.h"
 #include "mozilla/dom/DispatcherTrait.h"
+#include "mozilla/dom/ServiceWorkerDescriptor.h"
+#include "nsHashKeys.h"
 #include "nsISupports.h"
+#include "nsStringFwd.h"
 #include "nsTArray.h"
+#include "nsTHashtable.h"
 #include "js/TypeDecls.h"
 
+// Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
 #define NS_IGLOBALOBJECT_IID \
 { 0x11afa8be, 0xd997, 0x4e07, \
 { 0xa6, 0xa3, 0x6f, 0x87, 0x2e, 0xc3, 0xee, 0x7f } }
 
-class nsACString;
-class nsCString;
 class nsCycleCollectionTraversalCallback;
 class nsIPrincipal;
+
+namespace mozilla {
+class DOMEventTargetHelper;
+namespace dom {
+class ServiceWorker;
+class ServiceWorkerRegistration;
+class ServiceWorkerRegistrationDescriptor;
+} // namespace dom
+} // namespace mozilla
 
 class nsIGlobalObject : public nsISupports,
                         public mozilla::dom::DispatcherTrait
 {
   nsTArray<nsCString> mHostObjectURIs;
+
+  // Raw pointers to bound DETH objects.  These are added by
+  // AddEventTargetObject().
+  mozilla::LinkedList<mozilla::DOMEventTargetHelper> mEventTargetObjects;
+
   bool mIsDying;
 
 protected:
@@ -75,6 +95,36 @@ public:
   void UnlinkHostObjectURIs();
   void TraverseHostObjectURIs(nsCycleCollectionTraversalCallback &aCb);
 
+  // DETH objects must register themselves on the global when they
+  // bind to it in order to get the DisconnectFromOwner() method
+  // called correctly.  RemoveEventTargetObject() must be called
+  // before the DETH object is destroyed.
+  void AddEventTargetObject(mozilla::DOMEventTargetHelper* aObject);
+  void RemoveEventTargetObject(mozilla::DOMEventTargetHelper* aObject);
+
+  // Iterate the registered DETH objects and call the given function
+  // for each one.
+  void
+  ForEachEventTargetObject(const std::function<void(mozilla::DOMEventTargetHelper*, bool* aDoneOut)>& aFunc) const;
+
+  virtual bool IsInSyncOperation() { return false; }
+
+  virtual mozilla::Maybe<mozilla::dom::ClientInfo>
+  GetClientInfo() const;
+
+  virtual mozilla::Maybe<mozilla::dom::ServiceWorkerDescriptor>
+  GetController() const;
+
+  // Get the DOM object for the given descriptor or attempt to create one.
+  // Creation can still fail and return nullptr during shutdown, etc.
+  virtual RefPtr<mozilla::dom::ServiceWorker>
+  GetOrCreateServiceWorker(const mozilla::dom::ServiceWorkerDescriptor& aDescriptor);
+
+  // Get the DOM object for the given descriptor or attempt to create one.
+  // Creation can still fail and return nullptr during shutdown, etc.
+  virtual RefPtr<mozilla::dom::ServiceWorkerRegistration>
+  GetOrCreateServiceWorkerRegistration(const mozilla::dom::ServiceWorkerRegistrationDescriptor& aDescriptor);
+
 protected:
   virtual ~nsIGlobalObject();
 
@@ -83,6 +133,12 @@ protected:
   {
     mIsDying = true;
   }
+
+  void
+  DisconnectEventTargetObjects();
+
+  size_t
+  ShallowSizeOfExcludingThis(mozilla::MallocSizeOf aSizeOf) const;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIGlobalObject,

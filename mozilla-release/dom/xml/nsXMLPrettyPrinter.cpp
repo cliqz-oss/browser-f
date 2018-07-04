@@ -6,16 +6,12 @@
 #include "nsXMLPrettyPrinter.h"
 #include "nsContentUtils.h"
 #include "nsICSSDeclaration.h"
-#include "nsIDOMDocumentXBL.h"
 #include "nsIObserver.h"
-#include "nsIXSLTProcessor.h"
 #include "nsSyncLoadService.h"
 #include "nsPIDOMWindow.h"
-#include "nsIDOMElement.h"
 #include "nsIServiceManager.h"
 #include "nsNetUtil.h"
 #include "mozilla/dom/Element.h"
-#include "nsIDOMDocumentFragment.h"
 #include "nsBindingManager.h"
 #include "nsXBLService.h"
 #include "nsIScriptSecurityManager.h"
@@ -23,6 +19,10 @@
 #include "nsIDocument.h"
 #include "nsVariant.h"
 #include "mozilla/dom/CustomEvent.h"
+#include "mozilla/dom/DocumentFragment.h"
+#include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/dom/ToJSValue.h"
+#include "mozilla/dom/txMozillaXSLTProcessor.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -48,7 +48,8 @@ nsXMLPrettyPrinter::PrettyPrint(nsIDocument* aDocument,
     *aDidPrettyPrint = false;
 
     // Check for iframe with display:none. Such iframes don't have presshells
-    if (!aDocument->GetShell()) {
+    nsCOMPtr<nsIPresShell> shell = aDocument->GetShell();
+    if (!shell) {
         return NS_OK;
     }
 
@@ -110,18 +111,19 @@ nsXMLPrettyPrinter::PrettyPrint(nsIDocument* aDocument,
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Transform the document
-    nsCOMPtr<nsIXSLTProcessor> transformer =
-        do_CreateInstance("@mozilla.org/document-transformer;1?type=xslt", &rv);
-    NS_ENSURE_SUCCESS(rv, rv);
+    RefPtr<txMozillaXSLTProcessor> transformer = new txMozillaXSLTProcessor();
+    ErrorResult err;
+    nsCOMPtr<nsIDocument> xslDoc = do_QueryInterface(xslDocument);
+    transformer->ImportStylesheet(*xslDoc, err);
+    if (NS_WARN_IF(err.Failed())) {
+        return err.StealNSResult();
+    }
 
-    rv = transformer->ImportStylesheet(xslDocument);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    nsCOMPtr<nsIDOMDocumentFragment> resultFragment;
-    nsCOMPtr<nsIDOMDocument> sourceDocument = do_QueryInterface(aDocument);
-    rv = transformer->TransformToFragment(sourceDocument, sourceDocument,
-                                          getter_AddRefs(resultFragment));
-    NS_ENSURE_SUCCESS(rv, rv);
+    RefPtr<DocumentFragment> resultFragment =
+        transformer->TransformToFragment(*aDocument, *aDocument, err);
+    if (NS_WARN_IF(err.Failed())) {
+        return err.StealNSResult();
+    }
 
     //
     // Apply the prettprint XBL binding.
@@ -143,36 +145,49 @@ nsXMLPrettyPrinter::PrettyPrint(nsIDocument* aDocument,
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Compute the bound element.
-    nsCOMPtr<nsIContent> rootCont = aDocument->GetRootElement();
-    NS_ENSURE_TRUE(rootCont, NS_ERROR_UNEXPECTED);
+    RefPtr<Element> rootElement = aDocument->GetRootElement();
+    NS_ENSURE_TRUE(rootElement, NS_ERROR_UNEXPECTED);
 
     // Grab the system principal.
     nsCOMPtr<nsIPrincipal> sysPrincipal;
     nsContentUtils::GetSecurityManager()->
         GetSystemPrincipal(getter_AddRefs(sysPrincipal));
 
+    // Destroy any existing frames before we unbind anonymous content.
+    // Note that the shell might be Destroy'ed by now (see bug 1415541).
+    if (!shell->IsDestroying()) {
+        shell->DestroyFramesForAndRestyle(rootElement);
+    }
+
     // Load the bindings.
     RefPtr<nsXBLBinding> unused;
     bool ignored;
-    rv = xblService->LoadBindings(rootCont, bindingUri, sysPrincipal,
+    rv = xblService->LoadBindings(rootElement, bindingUri, sysPrincipal,
                                   getter_AddRefs(unused), &ignored);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Fire an event at the bound element to pass it |resultFragment|.
     RefPtr<CustomEvent> event =
-      NS_NewDOMCustomEvent(rootCont, nullptr, nullptr);
+      NS_NewDOMCustomEvent(rootElement, nullptr, nullptr);
     MOZ_ASSERT(event);
-    nsCOMPtr<nsIWritableVariant> resultFragmentVariant = new nsVariant();
-    rv = resultFragmentVariant->SetAsISupports(resultFragment);
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
-    rv = event->InitCustomEvent(NS_LITERAL_STRING("prettyprint-dom-created"),
-                                /* bubbles = */ false, /* cancelable = */ false,
-                                /* detail = */ resultFragmentVariant);
-    NS_ENSURE_SUCCESS(rv, rv);
+    AutoJSAPI jsapi;
+    if (!jsapi.Init(event->GetParentObject())) {
+        return NS_ERROR_UNEXPECTED;
+    }
+    JSContext* cx = jsapi.cx();
+    JS::Rooted<JS::Value> detail(cx);
+    if (!ToJSValue(cx, resultFragment, &detail)) {
+        return NS_ERROR_UNEXPECTED;
+    }
+    event->InitCustomEvent(cx, NS_LITERAL_STRING("prettyprint-dom-created"),
+                           /* bubbles = */ false, /* cancelable = */ false,
+                           detail);
+
     event->SetTrusted(true);
-    bool dummy;
-    rv = rootCont->DispatchEvent(event, &dummy);
-    NS_ENSURE_SUCCESS(rv, rv);
+    rootElement->DispatchEvent(*event, err);
+    if (NS_WARN_IF(err.Failed())) {
+        return err.StealNSResult();
+    }
 
     // Observe the document so we know when to switch to "normal" view
     aDocument->AddObserver(this);
@@ -214,10 +229,9 @@ nsXMLPrettyPrinter::Unhook()
 }
 
 void
-nsXMLPrettyPrinter::AttributeChanged(nsIDocument* aDocument,
-                                     Element* aElement,
+nsXMLPrettyPrinter::AttributeChanged(Element* aElement,
                                      int32_t aNameSpaceID,
-                                     nsIAtom* aAttribute,
+                                     nsAtom* aAttribute,
                                      int32_t aModType,
                                      const nsAttrValue* aOldValue)
 {
@@ -225,31 +239,22 @@ nsXMLPrettyPrinter::AttributeChanged(nsIDocument* aDocument,
 }
 
 void
-nsXMLPrettyPrinter::ContentAppended(nsIDocument* aDocument,
-                                    nsIContent* aContainer,
-                                    nsIContent* aFirstNewContent,
-                                    int32_t aNewIndexInContainer)
+nsXMLPrettyPrinter::ContentAppended(nsIContent* aFirstNewContent)
 {
-    MaybeUnhook(aContainer);
+    MaybeUnhook(aFirstNewContent->GetParent());
 }
 
 void
-nsXMLPrettyPrinter::ContentInserted(nsIDocument* aDocument,
-                                    nsIContent* aContainer,
-                                    nsIContent* aChild,
-                                    int32_t aIndexInContainer)
+nsXMLPrettyPrinter::ContentInserted(nsIContent* aChild)
 {
-    MaybeUnhook(aContainer);
+    MaybeUnhook(aChild->GetParent());
 }
 
 void
-nsXMLPrettyPrinter::ContentRemoved(nsIDocument* aDocument,
-                                   nsIContent* aContainer,
-                                   nsIContent* aChild,
-                                   int32_t aIndexInContainer,
+nsXMLPrettyPrinter::ContentRemoved(nsIContent* aChild,
                                    nsIContent* aPreviousSibling)
 {
-    MaybeUnhook(aContainer);
+    MaybeUnhook(aChild->GetParent());
 }
 
 void

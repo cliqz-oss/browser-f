@@ -8,25 +8,24 @@
 
 #include "MediaResource.h"
 #include "nsISeekableStream.h"
-#include "nsIPrincipal.h"
 #include <algorithm>
 
 namespace mozilla {
+
+DDLoggedTypeDeclNameAndBase(BufferMediaResource, MediaResource);
 
 // A simple MediaResource based on an in memory buffer.  This class accepts
 // the address and the length of the buffer, and simulates a read/seek API
 // on top of it.  The Read implementation involves copying memory, which is
 // unfortunate, but the MediaResource interface mandates that.
-class BufferMediaResource : public MediaResource
+class BufferMediaResource
+  : public MediaResource
+  , public DecoderDoctorLifeLogger<BufferMediaResource>
 {
 public:
-  BufferMediaResource(const uint8_t* aBuffer,
-                      uint32_t aLength,
-                      nsIPrincipal* aPrincipal)
+  BufferMediaResource(const uint8_t* aBuffer, uint32_t aLength)
     : mBuffer(aBuffer)
     , mLength(aLength)
-    , mOffset(0)
-    , mPrincipal(aPrincipal)
   {
   }
 
@@ -36,19 +35,7 @@ protected:
   }
 
 private:
-  nsresult Close() override { return NS_OK; }
-  void Suspend(bool aCloseImmediately) override {}
-  void Resume() override {}
-  // Get the current principal for the channel
-  already_AddRefed<nsIPrincipal> GetCurrentPrincipal() override
-  {
-    nsCOMPtr<nsIPrincipal> principal = mPrincipal;
-    return principal.forget();
-  }
   // These methods are called off the main thread.
-  // The mode is initially MODE_PLAYBACK.
-  void SetReadMode(MediaCacheStream::ReadMode aMode) override {}
-  void SetPlaybackRate(uint32_t aBytesPerSecond) override {}
   nsresult ReadAt(int64_t aOffset, char* aBuffer,
                   uint32_t aCount, uint32_t* aBytes) override
   {
@@ -57,17 +44,13 @@ private:
     }
     *aBytes = std::min(mLength - static_cast<uint32_t>(aOffset), aCount);
     memcpy(aBuffer, mBuffer + aOffset, *aBytes);
-    mOffset = aOffset + *aBytes;
     return NS_OK;
   }
   // Memory-based and no locks, caching discouraged.
   bool ShouldCacheReads() override { return false; }
 
-  int64_t Tell() override { return mOffset; }
-
   void Pin() override {}
   void Unpin() override {}
-  double GetDownloadRate(bool* aIsReliable) override { *aIsReliable = false; return 0.; }
   int64_t GetLength() override { return mLength; }
   int64_t GetNextCachedData(int64_t aOffset) override { return aOffset; }
   int64_t GetCachedDataEnd(int64_t aOffset) override
@@ -75,8 +58,6 @@ private:
     return std::max(aOffset, int64_t(mLength));
   }
   bool IsDataCachedToEndOfResource(int64_t aOffset) override { return true; }
-  bool IsSuspendedByCache() override { return false; }
-  bool IsSuspended() override { return false; }
   nsresult ReadFromCache(char* aBuffer,
                          int64_t aOffset,
                          uint32_t aCount) override
@@ -90,38 +71,15 @@ private:
     return NS_OK;
   }
 
-  nsresult Open(nsIStreamListener** aStreamListener) override
-  {
-    return NS_ERROR_FAILURE;
-  }
-
   nsresult GetCachedRanges(MediaByteRangeSet& aRanges) override
   {
     aRanges += MediaByteRange(0, int64_t(mLength));
     return NS_OK;
   }
 
-  bool IsTransportSeekable() override { return true; }
-
-  size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override
-  {
-    // Not owned:
-    // - mBuffer
-    // - mPrincipal
-    size_t size = MediaResource::SizeOfExcludingThis(aMallocSizeOf);
-    return size;
-  }
-
-  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override
-  {
-    return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
-  }
-
 private:
   const uint8_t * mBuffer;
   uint32_t mLength;
-  uint32_t mOffset;
-  nsCOMPtr<nsIPrincipal> mPrincipal;
 };
 
 } // namespace mozilla

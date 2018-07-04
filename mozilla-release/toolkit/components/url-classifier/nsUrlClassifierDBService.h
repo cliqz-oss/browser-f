@@ -61,6 +61,7 @@
 #define DOWNLOAD_BLOCK_TABLE_PREF       "urlclassifier.downloadBlockTable"
 #define DOWNLOAD_ALLOW_TABLE_PREF       "urlclassifier.downloadAllowTable"
 #define DISALLOW_COMPLETION_TABLE_PREF  "urlclassifier.disallow_completions"
+#define PASSWORD_ALLOW_TABLE_PREF       "urlclassifier.passwordAllowTable"
 
 using namespace mozilla::safebrowsing;
 
@@ -138,6 +139,9 @@ private:
                      const nsACString& tables,
                      nsIUrlClassifierCallback* c,
                      bool forceCheck, bool *didCheck);
+
+  // Post an event to worker thread to release objects when receive 'quit-application'
+  nsresult PreShutdown();
 
   // Close db connection and join the background thread if it exists.
   nsresult Shutdown();
@@ -219,12 +223,17 @@ public:
   // Provide a way to forcibly close the db connection.
   nsresult GCC_MANGLING_WORKAROUND CloseDb();
 
+  nsresult GCC_MANGLING_WORKAROUND PreShutdown();
+
   nsresult CacheCompletions(CacheResultArray * aEntries);
 
   // Used to probe the state of the worker thread. When the update begins,
   // mUpdateObserver will be set. When the update finished, mUpdateObserver
   // will be nulled out in NotifyUpdateObserver.
   bool IsBusyUpdating() const { return !!mUpdateObserver; }
+
+  // Check the DB ready state of the worker thread
+  bool IsDBOpened() const { return !!mClassifier; }
 
   // Delegate Classifier to disable async update. If there is an
   // ongoing update on the update thread, we will be blocked until
@@ -265,9 +274,6 @@ private:
                                     TableUpdate* aUpdate);
 
   bool IsSameAsLastResults(CacheResultArray& aResult);
-
-  // Can only be used on the background thread
-  nsCOMPtr<nsICryptoHash> mCryptoHash;
 
   nsAutoPtr<mozilla::safebrowsing::Classifier> mClassifier;
   // The class that actually parses the update chunks.

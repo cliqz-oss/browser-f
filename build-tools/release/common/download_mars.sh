@@ -1,12 +1,10 @@
-pushd `dirname $0` &>/dev/null
-MY_DIR=$(pwd)
-popd &>/dev/null
-retry="$MY_DIR/../../buildfarm/utils/retry.py -s 1 -r 3"
-
 download_mars () {
     update_url="$1"
     only="$2"
     test_only="$3"
+    to_build_id="$4"
+    to_app_version="$5"
+    to_display_version="$6"
 
     max_tries=5
     try=1
@@ -30,6 +28,30 @@ download_mars () {
 
     echo; echo;  # padding
 
+    update_line=`fgrep "<update " update.xml`
+    grep_rv=$?
+    if [ 0 -ne $grep_rv ]; then
+        echo "FAIL: no <update/> found for $update_url"
+        return 1
+    fi
+    command=`echo $update_line | sed -e 's/^.*<update //' -e 's:>.*$::' -e 's:\&amp;:\&:g'`
+    eval "export $command"
+
+    if [ ! -z "$to_build_id" -a "$buildID" != "$to_build_id" ]; then
+        echo "FAIL: expected buildID $to_build_id does not match actual $buildID"
+        return 1
+    fi
+
+    if [ ! -z "$to_display_version" -a "$displayVersion" != "$to_display_version" ]; then
+        echo "FAIL: expected displayVersion $to_display_version does not match actual $displayVersion"
+        return 1
+    fi
+
+    if [ ! -z "$to_app_version" -a "$appVersion" != "$to_app_version" ]; then
+        echo "FAIL: expected appVersion $to_app_version does not match actual $appVersion"
+        return 1
+    fi
+
     mkdir -p update/
     if [ -z $only ]; then
       only="partial complete"
@@ -40,8 +62,8 @@ download_mars () {
       grep_rv=$?
 
       if [ 0 -ne $grep_rv ]; then
-	      echo "FAIL: no $patch_type update found for $update_url" 
-	      return 1
+        echo "FAIL: no $patch_type update found for $update_url"
+        return 1
       fi
 
       command=`echo $line | sed -e 's/^.*<patch //' -e 's:/>.*$::' -e 's:\&amp;:\&:g'`
@@ -61,19 +83,19 @@ download_mars () {
       fi
       actual_size=`perl -e "printf \"%d\n\", (stat(\"update/$patch_type.mar\"))[7]"`
       actual_hash=`openssl dgst -$hashFunction update/$patch_type.mar | sed -e 's/^.*= //'`
-      
+
       if [ $actual_size != $size ]; then
-	      echo "FAIL: $patch_type from $update_url wrong size"
-	      echo "FAIL: update.xml size: $size"
-	      echo "FAIL: actual size: $actual_size"
-	      return 1
+          echo "FAIL: $patch_type from $update_url wrong size"
+          echo "FAIL: update.xml size: $size"
+          echo "FAIL: actual size: $actual_size"
+          return 1
       fi
-      
+
       if [ $actual_hash != $hashValue ]; then
-	      echo "FAIL: $patch_type from $update_url wrong hash"
-	      echo "FAIL: update.xml hash: $hashValue"
-	      echo "FAIL: actual hash: $actual_hash"
-	      return 1
+          echo "FAIL: $patch_type from $update_url wrong hash"
+          echo "FAIL: update.xml hash: $hashValue"
+          echo "FAIL: actual hash: $actual_hash"
+          return 1
       fi
 
       cp update/$patch_type.mar update/update.mar

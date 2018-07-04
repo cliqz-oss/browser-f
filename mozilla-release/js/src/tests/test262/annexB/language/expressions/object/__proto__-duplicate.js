@@ -11,9 +11,11 @@ info: |
     were obtained from productions of the form
     PropertyDefinition : PropertyName : AssignmentExpression .
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 ({
   __proto__: null,

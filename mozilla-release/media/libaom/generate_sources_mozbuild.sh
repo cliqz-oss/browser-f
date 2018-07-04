@@ -29,24 +29,23 @@ function write_license {
 # The build does not support duplicate file names.
 function find_duplicates {
   local readonly duplicate_file_names=$(find \
-    $BASE_DIR/$LIBAOM_SRC_DIR/vp8 \
-    $BASE_DIR/$LIBAOM_SRC_DIR/vp9 \
-    $BASE_DIR/$LIBAOM_SRC_DIR/av1 \
     $BASE_DIR/$LIBAOM_SRC_DIR/aom \
     $BASE_DIR/$LIBAOM_SRC_DIR/aom_dsp \
-    -type f -name \*.c  | xargs -I {} basename {} | sort | uniq -d \
+    $BASE_DIR/$LIBAOM_SRC_DIR/av1 \
+    -type f -name \*.c -o -name \*.asm | \
+    xargs -I {} basename -s .c {} | \
+    xargs -I {} basename -s .asm {} | \
+    sort | uniq -d \
   )
 
   if [ -n "${duplicate_file_names}" ]; then
     echo "ERROR: DUPLICATE FILES FOUND"
     for file in  ${duplicate_file_names}; do
       find \
-        $BASE_DIR/$LIBAOM_SRC_DIR/vp8 \
-        $BASE_DIR/$LIBAOM_SRC_DIR/vp9 \
-        $BASE_DIR/$LIBAOM_SRC_DIR/av1 \
         $BASE_DIR/$LIBAOM_SRC_DIR/aom \
         $BASE_DIR/$LIBAOM_SRC_DIR/aom_dsp \
-        -name $file
+        $BASE_DIR/$LIBAOM_SRC_DIR/av1 \
+        -name $file\.*
     done
     exit 1
   fi
@@ -133,21 +132,21 @@ function gen_rtcd_header {
 
   $BASE_DIR/$LIBAOM_SRC_DIR/build/make/rtcd.pl \
     --arch=$2 \
-    --sym=aom_rtcd $DISABLE_AVX $3 \
+    --sym=aom_rtcd $3 \
     --config=$TEMP_DIR/libaom.config \
     $BASE_DIR/$LIBAOM_SRC_DIR/av1/common/av1_rtcd_defs.pl \
     > $BASE_DIR/$LIBAOM_CONFIG_DIR/$1/av1_rtcd.h
 
   $BASE_DIR/$LIBAOM_SRC_DIR/build/make/rtcd.pl \
     --arch=$2 \
-    --sym=aom_scale_rtcd $DISABLE_AVX $3 \
+    --sym=aom_scale_rtcd $3 \
     --config=$TEMP_DIR/libaom.config \
     $BASE_DIR/$LIBAOM_SRC_DIR/aom_scale/aom_scale_rtcd.pl \
     > $BASE_DIR/$LIBAOM_CONFIG_DIR/$1/aom_scale_rtcd.h
 
   $BASE_DIR/$LIBAOM_SRC_DIR/build/make/rtcd.pl \
     --arch=$2 \
-    --sym=aom_dsp_rtcd $DISABLE_AVX $3 \
+    --sym=aom_dsp_rtcd $3 \
     --config=$TEMP_DIR/libaom.config \
     $BASE_DIR/$LIBAOM_SRC_DIR/aom_dsp/aom_dsp_rtcd_defs.pl \
     > $BASE_DIR/$LIBAOM_CONFIG_DIR/$1/aom_dsp_rtcd.h
@@ -168,8 +167,8 @@ function gen_config_files {
   local ASM_CONV=ads2gas.pl
 
   # Generate aom_config.asm.
-  if [[ "$1" == *x64* ]] || [[ "$1" == *ia32* ]]; then
-    egrep "#define [A-Z0-9_]+ [01]" aom_config.h | awk '{print "%define " $2 " " $3}' > aom_config.asm
+  if [[ "$1" == *x64* ]] || [[ "$1" == *ia32* ]] || [[ "$1" == *mingw* ]]; then
+    egrep "#define [A-Z0-9_]+ [01]" aom_config.h | awk '{print $2 " equ " $3}' > aom_config.asm
   else
     egrep "#define [A-Z0-9_]+ [01]" aom_config.h | awk '{print $2 " EQU " $3}' | perl $BASE_DIR/$LIBAOM_SRC_DIR/build/make/$ASM_CONV > aom_config.asm
   fi
@@ -193,15 +192,25 @@ all_platforms="--enable-external-build --disable-examples --disable-docs --disab
 all_platforms="${all_platforms} --size-limit=8192x4608 --enable-pic"
 x86_platforms="--enable-postproc --as=yasm"
 arm_platforms="--enable-runtime-cpu-detect --enable-realtime-only"
+
 gen_config_files linux/x64 "--target=x86_64-linux-gcc ${all_platforms} ${x86_platforms}"
 gen_config_files linux/ia32 "--target=x86-linux-gcc ${all_platforms} ${x86_platforms}"
 gen_config_files mac/x64 "--target=x86_64-darwin9-gcc ${all_platforms} ${x86_platforms}"
 gen_config_files win/x64 "--target=x86_64-win64-vs14 ${all_platforms} ${x86_platforms}"
 gen_config_files win/ia32 "--target=x86-win32-vs14 ${all_platforms} ${x86_platforms}"
+gen_config_files win/mingw32 "--target=x86-win32-gcc ${all_platforms} ${x86_platforms}"
+gen_config_files win/mingw64 "--target=x86_64-win32-gcc ${all_platforms} ${x86_platforms}"
 
 gen_config_files linux/arm "--target=armv7-linux-gcc ${all_platforms} ${arm_platforms}"
 
 gen_config_files generic "--target=generic-gnu ${all_platforms}"
+
+# AOM doesn't know if mingw32 has winpthreads or not, and doesn't try to detect it.
+sed -i 's/HAVE_PTHREAD_H equ 0/HAVE_PTHREAD_H equ 1/' $BASE_DIR/$LIBAOM_CONFIG_DIR/win/mingw32/aom_config.asm
+sed -i 's/HAVE_PTHREAD_H equ 0/HAVE_PTHREAD_H equ 1/' $BASE_DIR/$LIBAOM_CONFIG_DIR/win/mingw64/aom_config.asm
+sed -i 's/HAVE_PTHREAD_H 0/HAVE_PTHREAD_H 1/' $BASE_DIR/$LIBAOM_CONFIG_DIR/win/mingw32/aom_config.h
+sed -i 's/HAVE_PTHREAD_H 0/HAVE_PTHREAD_H 1/' $BASE_DIR/$LIBAOM_CONFIG_DIR/win/mingw64/aom_config.h
+
 
 echo "Remove temporary directory."
 cd $BASE_DIR
@@ -218,6 +227,8 @@ gen_rtcd_header linux/ia32 x86
 gen_rtcd_header mac/x64 x86_64
 gen_rtcd_header win/x64 x86_64
 gen_rtcd_header win/ia32 x86
+gen_rtcd_header win/mingw32 x86
+gen_rtcd_header win/mingw64 x86_64
 
 gen_rtcd_header linux/arm armv7
 

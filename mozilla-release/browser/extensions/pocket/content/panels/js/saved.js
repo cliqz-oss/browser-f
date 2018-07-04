@@ -78,7 +78,7 @@ var PKT_SAVED_OVERLAY = function(options) {
                 }
             }
         });
-    }
+    };
     this.initAutoCloseEvents = function() {
         this.wrapper.on("mouseenter", function() {
             myself.mouseInside = true;
@@ -348,7 +348,7 @@ var PKT_SAVED_OVERLAY = function(options) {
 
         var inactivetags = $(".pkt_ext_suggestedtag_detail").find(".token_tag_inactive");
         inactivetags.each(function(index, element) {
-            if (activetokenstext.indexOf("|" + $(element).text() + "|") == -1) {
+            if (!activetokenstext.includes("|" + $(element).text() + "|")) {
                 $(element).removeClass("token_tag_inactive");
             }
         });
@@ -414,7 +414,7 @@ var PKT_SAVED_OVERLAY = function(options) {
         this.wrapper.addClass("pkt_ext_container_detailactive pkt_ext_container_finalstate pkt_ext_container_finalerrorstate");
         this.preventCloseTimerCancel = true;
         this.startCloseTimer(myself.autocloseTimingFinalState);
-    }
+    };
     this.getTranslations = function() {
         this.dictJSON = window.pocketStrings;
     };
@@ -531,7 +531,7 @@ PKT_SAVED.prototype = {
         });
 
     }
-}
+};
 
 $(function() {
     if (!window.thePKT_SAVED) {

@@ -34,15 +34,15 @@ const orientationTypes = new Set(['any', 'natural', 'landscape', 'portrait',
 ]);
 const textDirections = new Set(['ltr', 'rtl', 'auto']);
 
-Cu.import('resource://gre/modules/Console.jsm');
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import('resource://gre/modules/Console.jsm');
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 // ValueExtractor is used by the various processors to get values
 // from the manifest and to report errors.
-Cu.import('resource://gre/modules/ValueExtractor.jsm');
+ChromeUtils.import('resource://gre/modules/ValueExtractor.jsm');
 // ImageObjectProcessor is used to process things like icons and images
-Cu.import('resource://gre/modules/ImageObjectProcessor.jsm');
+ChromeUtils.import('resource://gre/modules/ImageObjectProcessor.jsm');
 
-this.ManifestProcessor = { // jshint ignore:line
+var ManifestProcessor = { // jshint ignore:line
   get defaultDisplayMode() {
     return 'browser';
   },
@@ -270,4 +270,4 @@ this.ManifestProcessor = { // jshint ignore:line
     }
   }
 };
-this.EXPORTED_SYMBOLS = ['ManifestProcessor']; // jshint ignore:line
+var EXPORTED_SYMBOLS = ['ManifestProcessor']; // jshint ignore:line

@@ -96,7 +96,7 @@ if (!build_with_chromium) {
       "../../system_wrappers",
     ]
 
-    if (is_linux) {
+    if (is_linux || is_bsd) {
       sources = [
         "linux/device_info_linux.cc",
         "linux/device_info_linux.h",
@@ -124,9 +124,18 @@ if (!build_with_chromium) {
 
       libs = [ "Strmiids.lib" ]
 
-      deps += [ "//third_party/winsdk_samples" ]
+      if (!build_with_mozilla) {
+        deps += [ "//third_party/winsdk_samples" ]
+      } else {
+        sources += [
+          "windows/BasePin.cpp",
+          "windows/BaseFilter.cpp",
+          "windows/BaseInputPin.cpp",
+          "windows/MediaType.cpp",
+        ]
+      }
     }
-    if (is_ios || is_mac) {
+    if (!build_with_mozilla && (is_ios || is_mac)) {
       sources = [
         "objc/device_info.h",
         "objc/device_info.mm",
@@ -145,6 +154,34 @@ if (!build_with_chromium) {
         # videoMaxFrameDuration properties in iOS 7.0.
         # See webrtc:3705 for more details.
         "-Wno-deprecated-declarations",
+      ]
+    }
+
+    if (build_with_mozilla && is_android) {
+      include_dirs = [
+        "/config/external/nspr",
+        "/nsprpub/lib/ds",
+        "/nsprpub/pr/include",
+      ]
+
+      sources = [
+        "android/device_info_android.cc",
+        "android/video_capture_android.cc",
+      ]
+    }
+
+    if (build_with_mozilla && is_mac) {
+      sources = [
+        "mac/avfoundation/video_capture_avfoundation.h",
+        "mac/avfoundation/video_capture_avfoundation.mm",
+        "mac/avfoundation/video_capture_avfoundation_info.h",
+        "mac/avfoundation/video_capture_avfoundation_info.mm",
+        "mac/avfoundation/video_capture_avfoundation_info_objc.h",
+        "mac/avfoundation/video_capture_avfoundation_info_objc.mm",
+        "mac/avfoundation/video_capture_avfoundation_objc.h",
+        "mac/avfoundation/video_capture_avfoundation_objc.mm",
+        "mac/avfoundation/video_capture_avfoundation_utility.h",
+        "mac/video_capture_mac.mm",
       ]
     }
 

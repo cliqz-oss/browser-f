@@ -73,21 +73,6 @@ VibrancyManager::VibrancyFillColorForType(VibrancyType aType)
   return [NSColor whiteColor];
 }
 
-@interface NSView(FontSmoothingBackgroundColor)
-- (NSColor*)fontSmoothingBackgroundColor;
-@end
-
-NSColor*
-VibrancyManager::VibrancyFontSmoothingBackgroundColorForType(VibrancyType aType)
-{
-  NSView* view = mVibrantRegions.LookupOrAdd(uint32_t(aType))->GetAnyView();
-
-  if (view && [view respondsToSelector:@selector(fontSmoothingBackgroundColor)]) {
-    return [view fontSmoothingBackgroundColor];
-  }
-  return [NSColor clearColor];
-}
-
 static void
 DrawRectNothing(id self, SEL _cmd, NSRect aRect)
 {
@@ -116,7 +101,7 @@ AllowsVibrancyYes(id self, SEL _cmd)
 }
 
 static Class
-CreateEffectViewClass(BOOL aForegroundVibrancy)
+CreateEffectViewClass(BOOL aForegroundVibrancy, BOOL aIsContainer)
 {
   // Create a class called EffectView that inherits from NSVisualEffectView
   // and overrides the methods -[NSVisualEffectView drawRect:] and
@@ -127,8 +112,10 @@ CreateEffectViewClass(BOOL aForegroundVibrancy)
   Class EffectViewClass = objc_allocateClassPair(NSVisualEffectViewClass, className, 0);
   class_addMethod(EffectViewClass, @selector(drawRect:), (IMP)DrawRectNothing,
                   "v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
-  class_addMethod(EffectViewClass, @selector(hitTest:), (IMP)HitTestNil,
-                  "@@:{CGPoint=dd}");
+  if (!aIsContainer) {
+    class_addMethod(EffectViewClass, @selector(hitTest:), (IMP)HitTestNil,
+                    "@@:{CGPoint=dd}");
+  }
   if (aForegroundVibrancy) {
     // Also override the -[NSView allowsVibrancy] method to return YES.
     class_addMethod(EffectViewClass, @selector(allowsVibrancy), (IMP)AllowsVibrancyYes, "I@:");
@@ -216,14 +203,15 @@ enum {
 - (void)setEmphasized:(BOOL)emphasized;
 @end
 
-NSView*
-VibrancyManager::CreateEffectView(VibrancyType aType)
+/* static */ NSView*
+VibrancyManager::CreateEffectView(VibrancyType aType, BOOL aIsContainer)
 {
-  static Class EffectViewClassWithoutForegroundVibrancy = CreateEffectViewClass(NO);
-  static Class EffectViewClassWithForegroundVibrancy = CreateEffectViewClass(YES);
+  static Class EffectViewClasses[2][2] = {
+    { CreateEffectViewClass(NO, NO), CreateEffectViewClass(NO, YES) },
+    { CreateEffectViewClass(YES, NO), CreateEffectViewClass(YES, YES) }
+  };
 
-  Class EffectViewClass = HasVibrantForeground(aType)
-    ? EffectViewClassWithForegroundVibrancy : EffectViewClassWithoutForegroundVibrancy;
+  Class EffectViewClass = EffectViewClasses[HasVibrantForeground(aType)][aIsContainer];
   NSView* effectView = [[EffectViewClass alloc] initWithFrame:NSZeroRect];
   [effectView performSelector:@selector(setAppearance:)
                    withObject:AppearanceForVibrancyType(aType)];

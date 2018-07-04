@@ -2,8 +2,8 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 _("Making sure a failing sync reports a useful error");
-Cu.import("resource://services-sync/engines/bookmarks.js");
-Cu.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/engines/bookmarks.js");
+ChromeUtils.import("resource://services-sync/service.js");
 
 add_task(async function run_test() {
   let engine = new BookmarksEngine(Service);
@@ -18,6 +18,6 @@ add_task(async function run_test() {
     do_throw("Should have failed sync!");
   } catch (ex) {
     _("Making sure what we threw ended up as the exception:", ex);
-    do_check_eq(ex.message, "FAIL!");
+    Assert.equal(ex.message, "FAIL!");
   }
 });

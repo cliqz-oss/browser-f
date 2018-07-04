@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -38,7 +39,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_ADDREF_INHERITED(TCPServerSocket, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(TCPServerSocket, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TCPServerSocket)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TCPServerSocket)
   NS_INTERFACE_MAP_ENTRY(nsIServerSocketListener)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
@@ -135,8 +136,7 @@ TCPServerSocket::FireEvent(const nsAString& aType, TCPSocket* aSocket)
   RefPtr<TCPServerSocketEvent> event =
       TCPServerSocketEvent::Constructor(this, aType, init);
   event->SetTrusted(true);
-  bool dummy;
-  DispatchEvent(event, &dummy);
+  DispatchEvent(*event);
 
   if (mServerBridgeParent) {
     mServerBridgeParent->OnConnect(event);
@@ -159,8 +159,7 @@ TCPServerSocket::OnStopListening(nsIServerSocket* aServer, nsresult aStatus)
     RefPtr<Event> event = new Event(GetOwner());
     event->InitEvent(NS_LITERAL_STRING("error"), false, false);
     event->SetTrusted(true);
-    bool dummy;
-    DispatchEvent(event, &dummy);
+    DispatchEvent(*event);
 
     NS_WARNING("Server socket was closed by unexpected reason.");
     return NS_ERROR_FAILURE;

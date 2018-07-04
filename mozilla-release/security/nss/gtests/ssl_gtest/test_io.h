@@ -33,8 +33,17 @@ class PacketFilter {
     CHANGE,  // change the packet to a different value
     DROP     // drop the packet
   };
-
+  PacketFilter(bool enabled = true) : enabled_(enabled) {}
   virtual ~PacketFilter() {}
+
+  virtual Action Process(const DataBuffer& input, DataBuffer* output) {
+    if (!enabled_) {
+      return KEEP;
+    }
+    return Filter(input, output);
+  }
+  void Enable() { enabled_ = true; }
+  void Disable() { enabled_ = false; }
 
   // The packet filter takes input and has the option of mutating it.
   //
@@ -43,17 +52,20 @@ class PacketFilter {
   // case the value in *output is ignored.  A Filter can return DROP, in which
   // case the packet is dropped (and *output is ignored).
   virtual Action Filter(const DataBuffer& input, DataBuffer* output) = 0;
+
+ private:
+  bool enabled_;
 };
 
 class DummyPrSocket : public DummyIOLayerMethods {
  public:
-  DummyPrSocket(const std::string& name, SSLProtocolVariant variant)
+  DummyPrSocket(const std::string& name, SSLProtocolVariant var)
       : name_(name),
-        variant_(variant),
+        variant_(var),
         peer_(),
         input_(),
         filter_(nullptr),
-        writeable_(true) {}
+        write_error_(0) {}
   virtual ~DummyPrSocket() {}
 
   // Create a file descriptor that will reference this object.  The fd must not
@@ -61,8 +73,10 @@ class DummyPrSocket : public DummyIOLayerMethods {
   ScopedPRFileDesc CreateFD();
 
   std::weak_ptr<DummyPrSocket>& peer() { return peer_; }
-  void SetPeer(const std::shared_ptr<DummyPrSocket>& peer) { peer_ = peer; }
-  void SetPacketFilter(std::shared_ptr<PacketFilter> filter);
+  void SetPeer(const std::shared_ptr<DummyPrSocket>& p) { peer_ = p; }
+  void SetPacketFilter(const std::shared_ptr<PacketFilter>& filter) {
+    filter_ = filter;
+  }
   // Drops peer, packet filter and any outstanding packets.
   void Reset();
 
@@ -71,7 +85,7 @@ class DummyPrSocket : public DummyIOLayerMethods {
   int32_t Recv(PRFileDesc* f, void* buf, int32_t buflen, int32_t flags,
                PRIntervalTime to) override;
   int32_t Write(PRFileDesc* f, const void* buf, int32_t length) override;
-  void CloseWrites() { writeable_ = false; }
+  void SetWriteError(PRErrorCode code) { write_error_ = code; }
 
   SSLProtocolVariant variant() const { return variant_; }
   bool readable() const { return !input_.empty(); }
@@ -98,7 +112,7 @@ class DummyPrSocket : public DummyIOLayerMethods {
   std::weak_ptr<DummyPrSocket> peer_;
   std::queue<Packet> input_;
   std::shared_ptr<PacketFilter> filter_;
-  bool writeable_;
+  PRErrorCode write_error_;
 };
 
 // Marker interface.
@@ -164,6 +178,6 @@ class Poller {
       timers_;
 };
 
-}  // end of namespace
+}  // namespace nss_test
 
 #endif

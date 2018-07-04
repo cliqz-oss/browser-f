@@ -270,8 +270,7 @@ xpcAccessibleHyperText::GetCharacterExtents(int32_t aOffset,
     rect = mIntl.AsProxy()->CharBounds(aOffset, aCoordType);
 #endif
   }
-  *aX = rect.x; *aY = rect.y;
-  *aWidth = rect.width; *aHeight = rect.height;
+  rect.GetRect(aX, aY, aWidth, aHeight);
   return NS_OK;
 }
 
@@ -300,8 +299,7 @@ xpcAccessibleHyperText::GetRangeExtents(int32_t aStartOffset, int32_t aEndOffset
     rect = mIntl.AsProxy()->TextBounds(aStartOffset, aEndOffset, aCoordType);
 #endif
   }
-  *aX = rect.x; *aY = rect.y;
-  *aWidth = rect.width; *aHeight = rect.height;
+  rect.GetRect(aX, aY, aWidth, aHeight);
   return NS_OK;
 }
 
@@ -540,8 +538,7 @@ xpcAccessibleHyperText::GetSelectionRanges(nsIArray** aRanges)
   Intl()->SelectionRanges(&ranges);
   uint32_t len = ranges.Length();
   for (uint32_t idx = 0; idx < len; idx++)
-    xpcRanges->AppendElement(new xpcAccessibleTextRange(Move(ranges[idx])),
-                             false);
+    xpcRanges->AppendElement(new xpcAccessibleTextRange(Move(ranges[idx])));
 
   xpcRanges.forget(aRanges);
   return NS_OK;
@@ -565,8 +562,7 @@ xpcAccessibleHyperText::GetVisibleRanges(nsIArray** aRanges)
   Intl()->VisibleRanges(&ranges);
   uint32_t len = ranges.Length();
   for (uint32_t idx = 0; idx < len; idx++)
-    xpcRanges->AppendElement(new xpcAccessibleTextRange(Move(ranges[idx])),
-                             false);
+    xpcRanges->AppendElement(new xpcAccessibleTextRange(Move(ranges[idx])));
 
   xpcRanges.forget(aRanges);
   return NS_OK;

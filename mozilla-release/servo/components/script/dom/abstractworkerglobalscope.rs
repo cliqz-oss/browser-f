@@ -12,7 +12,7 @@ use std::sync::mpsc::{Receiver, Sender};
 /// A ScriptChan that can be cloned freely and will silently send a TrustedWorkerAddress with
 /// common event loop messages. While this SendableWorkerScriptChan is alive, the associated
 /// Worker object will remain alive.
-#[derive(JSTraceable, Clone)]
+#[derive(Clone, JSTraceable)]
 pub struct SendableWorkerScriptChan<T: DomObject> {
     pub sender: Sender<(Trusted<T>, CommonScriptMsg)>,
     pub worker: Trusted<T>,
@@ -24,17 +24,17 @@ impl<T: JSTraceable + DomObject + 'static> ScriptChan for SendableWorkerScriptCh
     }
 
     fn clone(&self) -> Box<ScriptChan + Send> {
-        box SendableWorkerScriptChan {
+        Box::new(SendableWorkerScriptChan {
             sender: self.sender.clone(),
             worker: self.worker.clone(),
-        }
+        })
     }
 }
 
 /// A ScriptChan that can be cloned freely and will silently send a TrustedWorkerAddress with
 /// worker event loop messages. While this SendableWorkerScriptChan is alive, the associated
 /// Worker object will remain alive.
-#[derive(JSTraceable, Clone)]
+#[derive(Clone, JSTraceable)]
 pub struct WorkerThreadWorkerChan<T: DomObject> {
     pub sender: Sender<(Trusted<T>, WorkerScriptMsg)>,
     pub worker: Trusted<T>,
@@ -48,10 +48,10 @@ impl<T: JSTraceable + DomObject + 'static> ScriptChan for WorkerThreadWorkerChan
     }
 
     fn clone(&self) -> Box<ScriptChan + Send> {
-        box WorkerThreadWorkerChan {
+        Box::new(WorkerThreadWorkerChan {
             sender: self.sender.clone(),
             worker: self.worker.clone(),
-        }
+        })
     }
 }
 

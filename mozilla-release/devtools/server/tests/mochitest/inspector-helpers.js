@@ -4,34 +4,32 @@
    runNextTest */
 "use strict";
 
-var Cu = Components.utils;
-
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
-const {DebuggerClient} = require("devtools/shared/client/main");
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const {DebuggerClient} = require("devtools/shared/client/debugger-client");
 const {DebuggerServer} = require("devtools/server/main");
-const { Task } = require("devtools/shared/task");
 
 const Services = require("Services");
-const promise = require("promise");
-const {_documentWalker} = require("devtools/server/actors/inspector");
+// promise is still used in tests using this helper
+const defer = require("devtools/shared/defer");
+const {DocumentWalker: _documentWalker} = require("devtools/server/actors/inspector/document-walker");
 
 // Always log packets when running tests.
 Services.prefs.setBoolPref("devtools.debugger.log", true);
-SimpleTest.registerCleanupFunction(function () {
+SimpleTest.registerCleanupFunction(function() {
   Services.prefs.clearUserPref("devtools.debugger.log");
 });
 
 if (!DebuggerServer.initialized) {
   DebuggerServer.init();
-  DebuggerServer.addBrowserActors();
-  SimpleTest.registerCleanupFunction(function () {
+  DebuggerServer.registerAllActors();
+  SimpleTest.registerCleanupFunction(function() {
     DebuggerServer.destroy();
   });
 }
 
 var gAttachCleanups = [];
 
-SimpleTest.registerCleanupFunction(function () {
+SimpleTest.registerCleanupFunction(function() {
   for (let cleanup of gAttachCleanups) {
     cleanup();
   }
@@ -64,12 +62,12 @@ function attachURL(url, callback) {
     if (event.data === "ready") {
       client = new DebuggerClient(DebuggerServer.connectPipe());
       client.connect().then(([applicationType, traits]) => {
-        client.listTabs(response => {
+        client.listTabs().then(response => {
           for (let tab of response.tabs) {
             if (tab.url === url) {
               window.removeEventListener("message", loadListener);
               // eslint-disable-next-line max-nested-callbacks
-              client.attachTab(tab.actor, function (_response, _tabClient) {
+              client.attachTab(tab.actor, function(_response, _tabClient) {
                 try {
                   callback(null, client, tab, win.document);
                 } catch (ex) {
@@ -89,7 +87,7 @@ function attachURL(url, callback) {
 }
 
 function promiseOnce(target, event) {
-  let deferred = promise.defer();
+  let deferred = defer();
   target.on(event, (...args) => {
     if (args.length === 1) {
       deferred.resolve(args[0]);
@@ -173,11 +171,11 @@ function assertOwnershipTrees(walker) {
 
 // Verify that an actorID is inaccessible both from the client library and the server.
 function checkMissing(client, actorID) {
-  let deferred = promise.defer();
+  let deferred = defer();
   let front = client.getActor(actorID);
   ok(!front, "Front shouldn't be accessible from the client for actorID: " + actorID);
 
-  deferred = promise.defer();
+  deferred = defer();
   client.request({
     to: actorID,
     type: "request",
@@ -190,11 +188,11 @@ function checkMissing(client, actorID) {
 
 // Verify that an actorID is accessible both from the client library and the server.
 function checkAvailable(client, actorID) {
-  let deferred = promise.defer();
+  let deferred = defer();
   let front = client.getActor(actorID);
   ok(front, "Front should be accessible from the client for actorID: " + actorID);
 
-  deferred = promise.defer();
+  deferred = defer();
   client.request({
     to: actorID,
     type: "garbageAvailableTest",
@@ -277,7 +275,7 @@ function assertChildList(mutations) {
 // Load mutations aren't predictable, so keep accumulating mutations until
 // the one we're looking for shows up.
 function waitForMutation(walker, test, mutations = []) {
-  let deferred = promise.defer();
+  let deferred = defer();
   for (let change of mutations) {
     if (test(change)) {
       deferred.resolve(mutations);
@@ -299,7 +297,7 @@ function addTest(test) {
 }
 
 function addAsyncTest(generator) {
-  _tests.push(() => Task.spawn(generator).catch(ok.bind(null, false)));
+  _tests.push(() => (generator)().catch(ok.bind(null, false)));
 }
 
 function runNextTest() {

@@ -1,3 +1,4 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 let tempFile;
 add_task(async function setup() {
@@ -34,9 +35,7 @@ async function do_test(test) {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
 
   info("Moving mouse out of the way.");
-  await new Promise(resolve => {
-    EventUtils.synthesizeNativeMouseMove(tab.linkedBrowser, 300, 300, resolve);
-  });
+  await EventUtils.synthesizeAndWaitNativeMouseMove(tab.linkedBrowser, 300, 300);
 
   info("creating input field");
   await ContentTask.spawn(tab.linkedBrowser, test, async function(test) {
@@ -92,22 +91,18 @@ async function do_test(test) {
     }, {once: true});
   });
   info("Initial mouse move");
-  await new Promise(resolve => {
-    EventUtils.synthesizeNativeMouseMove(tab.linkedBrowser, 50, 5, resolve);
-  });
+  await EventUtils.synthesizeAndWaitNativeMouseMove(tab.linkedBrowser, 50, 5);
   info("Waiting");
   await new Promise(resolve => setTimeout(resolve, 400));
   info("Second mouse move");
-  await new Promise(resolve => {
-    EventUtils.synthesizeNativeMouseMove(tab.linkedBrowser, 70, 5, resolve);
-  });
+  await EventUtils.synthesizeAndWaitNativeMouseMove(tab.linkedBrowser, 70, 5);
   info("Waiting for tooltip to open");
   let tooltip = await awaitTooltipOpen;
 
   is(tooltip.getAttribute("label"), test.result, "tooltip label should match expectation");
 
   info("Closing tab");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }
 
 function createTempFile() {

@@ -4,14 +4,14 @@ from .. import metadata, products
 
 from base import Step, StepRunner
 
+
 class GetUpdatePropertyList(Step):
     provides = ["property_order", "boolean_properties"]
-
 
     def create(self, state):
         property_order, boolean_properties = products.load_product_update(
             state.config, state.product)
-        state.property_order = property_order
+        state.property_order = property_order + state.extra_properties
         state.boolean_properties = boolean_properties
 
 
@@ -33,7 +33,8 @@ class UpdateExpected(Step):
                                                      ignore_existing=state.ignore_existing,
                                                      sync_root=sync_root,
                                                      property_order=state.property_order,
-                                                     boolean_properties=state.boolean_properties)
+                                                     boolean_properties=state.boolean_properties,
+                                                     stability=state.stability)
 
 
 class CreateMetadataPatch(Step):

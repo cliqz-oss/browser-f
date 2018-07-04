@@ -23,11 +23,11 @@
 #include "nsIProcess.h"
 #include "nsServiceManagerUtils.h"
 #include "nsComponentManagerUtils.h"
-#include "nsIDOMHTMLImageElement.h"
 #include "nsIImageLoadingContent.h"
 #include "imgIRequest.h"
 #include "imgIContainer.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/dom/Element.h"
 #if defined(MOZ_WIDGET_GTK)
 #include "nsIImageToPixbuf.h"
 #endif
@@ -81,6 +81,12 @@ static const MimeTypeAssociation appTypes[] = {
 #define kDesktopOptionGSKey "picture-options"
 #define kDesktopDrawBGGSKey "draw-background"
 #define kDesktopColorGSKey "primary-color"
+
+static bool
+IsRunningAsASnap()
+{
+  return (PR_GetEnv("SNAP") != nullptr);
+}
 
 nsresult
 nsGNOMEShellService::Init()
@@ -207,6 +213,28 @@ nsGNOMEShellService::IsDefaultBrowser(bool aStartupCheck,
 {
   *aIsDefaultBrowser = false;
 
+  if (IsRunningAsASnap()) {
+    const gchar *argv[] = { "xdg-settings", "check", "default-web-browser",
+                            "firefox.desktop", nullptr };
+    GSpawnFlags flags = static_cast<GSpawnFlags>(G_SPAWN_SEARCH_PATH |
+                                                 G_SPAWN_STDERR_TO_DEV_NULL);
+    gchar *output = nullptr;
+    gint exit_status = 0;
+    if (!g_spawn_sync(nullptr, (gchar **) argv, nullptr, flags, nullptr,
+                      nullptr, &output, nullptr, &exit_status, nullptr)) {
+      return NS_OK;
+    }
+    if (exit_status != 0) {
+      g_free(output);
+      return NS_OK;
+    }
+    if (strcmp(output, "yes\n") == 0) {
+      *aIsDefaultBrowser = true;
+    }
+    g_free(output);
+    return NS_OK;
+  }
+
   nsCOMPtr<nsIGConfService> gconf = do_GetService(NS_GCONFSERVICE_CONTRACTID);
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
 
@@ -229,8 +257,10 @@ nsGNOMEShellService::IsDefaultBrowser(bool aStartupCheck,
 
     if (giovfs) {
       handler.Truncate();
+      nsCOMPtr<nsIHandlerApp> handlerApp;
       giovfs->GetAppForURIScheme(nsDependentCString(appProtocols[i].name),
-                                 getter_AddRefs(gioApp));
+                                 getter_AddRefs(handlerApp));
+      gioApp = do_QueryInterface(handlerApp);
       if (!gioApp)
         return NS_OK;
 
@@ -254,6 +284,17 @@ nsGNOMEShellService::SetDefaultBrowser(bool aClaimAllTypes,
   if (aForAllUsers)
     NS_WARNING("Setting the default browser for all users is not yet supported");
 #endif
+
+  if (IsRunningAsASnap()) {
+    const gchar *argv[] = { "xdg-settings", "set", "default-web-browser",
+                            "firefox.desktop", nullptr };
+    GSpawnFlags flags = static_cast<GSpawnFlags>(G_SPAWN_SEARCH_PATH |
+                                                 G_SPAWN_STDOUT_TO_DEV_NULL |
+                                                 G_SPAWN_STDERR_TO_DEV_NULL);
+    g_spawn_sync(nullptr, (gchar **) argv, nullptr, flags, nullptr, nullptr,
+                 nullptr, nullptr, nullptr, nullptr);
+    return NS_OK;
+  }
 
   nsCOMPtr<nsIGConfService> gconf = do_GetService(NS_GCONFSERVICE_CONTRACTID);
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
@@ -288,17 +329,21 @@ nsGNOMEShellService::SetDefaultBrowser(bool aClaimAllTypes,
     rv = bundleService->CreateBundle(BRAND_PROPERTIES, getter_AddRefs(brandBundle));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsString brandShortName;
-    brandBundle->GetStringFromName("brandShortName",
-                                   getter_Copies(brandShortName));
+    nsAutoString brandShortName;
+    brandBundle->GetStringFromName("brandShortName", brandShortName);
 
     // use brandShortName as the application id.
     NS_ConvertUTF16toUTF8 id(brandShortName);
     nsCOMPtr<nsIGIOMimeApp> appInfo;
-    rv = giovfs->CreateAppFromCommand(mAppPath,
-                                      id,
-                                      getter_AddRefs(appInfo));
-    NS_ENSURE_SUCCESS(rv, rv);
+    rv = giovfs->FindAppFromCommand(mAppPath, getter_AddRefs(appInfo));
+    if (NS_FAILED(rv)) {
+      // Application was not found in the list of installed applications provided
+      // by OS. Fallback to create appInfo from command and name.
+      rv = giovfs->CreateAppFromCommand(mAppPath,
+                                        id,
+                                        getter_AddRefs(appInfo));
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
 
     // set handler for the protocols
     for (unsigned int i = 0; i < ArrayLength(appProtocols); ++i) {
@@ -366,8 +411,9 @@ WriteImage(const nsCString& aPath, imgIContainer* aImage)
 }
 
 NS_IMETHODIMP
-nsGNOMEShellService::SetDesktopBackground(nsIDOMElement* aElement,
-                                          int32_t aPosition)
+nsGNOMEShellService::SetDesktopBackground(dom::Element* aElement,
+                                          int32_t aPosition,
+                                          const nsACString& aImageName)
 {
   nsresult rv;
   nsCOMPtr<nsIImageLoadingContent> imageContent = do_QueryInterface(aElement, &rv);
@@ -399,7 +445,7 @@ nsGNOMEShellService::SetDesktopBackground(nsIDOMElement* aElement,
   nsAutoCString filePath(PR_GetEnv("HOME"));
 
   // get the product brand name from localized strings
-  nsString brandName;
+  nsAutoString brandName;
   nsCID bundleCID = NS_STRINGBUNDLESERVICE_CID;
   nsCOMPtr<nsIStringBundleService> bundleService(do_GetService(bundleCID));
   if (bundleService) {
@@ -407,8 +453,7 @@ nsGNOMEShellService::SetDesktopBackground(nsIDOMElement* aElement,
     rv = bundleService->CreateBundle(BRAND_PROPERTIES,
                                      getter_AddRefs(brandBundle));
     if (NS_SUCCEEDED(rv) && brandBundle) {
-      rv = brandBundle->GetStringFromName("brandShortName",
-                                          getter_Copies(brandName));
+      rv = brandBundle->GetStringFromName("brandShortName", brandName);
       NS_ENSURE_SUCCESS(rv, rv);
     }
   }
@@ -567,10 +612,10 @@ nsGNOMEShellService::OpenApplication(int32_t aApplication)
 
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
   if (giovfs) {
-    nsCOMPtr<nsIGIOMimeApp> gioApp;
-    giovfs->GetAppForURIScheme(scheme, getter_AddRefs(gioApp));
-    if (gioApp)
-      return gioApp->Launch(EmptyCString());
+    nsCOMPtr<nsIHandlerApp> handlerApp;
+    giovfs->GetAppForURIScheme(scheme, getter_AddRefs(handlerApp));
+    if (handlerApp)
+      return handlerApp->LaunchWithURI(nullptr, nullptr);
   }
 
   nsCOMPtr<nsIGConfService> gconf = do_GetService(NS_GCONFSERVICE_CONTRACTID);

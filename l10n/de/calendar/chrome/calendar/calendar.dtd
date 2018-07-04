@@ -174,10 +174,47 @@
 <!ENTITY calendar.context.pasteevent.accesskey              "E">
 <!ENTITY calendar.context.button.label                      "Tagesplan">
 <!ENTITY calendar.context.button.accesskey                  "T">
+
 <!ENTITY calendar.context.attendance.menu.label             "Teilnahme" >
 <!ENTITY calendar.context.attendance.menu.accesskey         "n" >
 <!ENTITY calendar.context.attendance.occurrence.label       "Dieses Ereignis" >
 <!ENTITY calendar.context.attendance.all.label              "Alle Ereignisse" >
+
+<!ENTITY calendar.context.attendance.all2.label                 "Gesamte Terminreihe">
+<!ENTITY calendar.context.attendance.send.label                 "Benachrichtigung jetzt senden">
+<!ENTITY calendar.context.attendance.send.accesskey             "B">
+<!ENTITY calendar.context.attendance.dontsend.label             "Keine Benachrichtigung senden">
+<!ENTITY calendar.context.attendance.dontsend.accesskey         "K">
+
+<!ENTITY calendar.context.attendance.occ.accepted.accesskey     "Z">
+<!ENTITY calendar.context.attendance.occ.accepted.label         "Zugesagt">
+<!ENTITY calendar.context.attendance.occ.tentative.accesskey    "V">
+<!ENTITY calendar.context.attendance.occ.tentative.label        "Vorläufig zugesagt">
+<!ENTITY calendar.context.attendance.occ.declined.accesskey     "g">
+<!ENTITY calendar.context.attendance.occ.declined.label         "Abgelehnt">
+<!ENTITY calendar.context.attendance.occ.delegated.accesskey    "W">
+<!ENTITY calendar.context.attendance.occ.delegated.label        "Weitergeleitet">
+<!ENTITY calendar.context.attendance.occ.needsaction.accesskey  "E">
+<!ENTITY calendar.context.attendance.occ.needsaction.label      "Entscheidung erforderlich">
+<!ENTITY calendar.context.attendance.occ.inprogress.accesskey   "B">
+<!ENTITY calendar.context.attendance.occ.inprogress.label       "In Bearbeitung">
+<!ENTITY calendar.context.attendance.occ.completed.accesskey    "s">
+<!ENTITY calendar.context.attendance.occ.completed.label        "Abgeschlossen">
+
+<!ENTITY calendar.context.attendance.all.accepted.accesskey     "u">
+<!ENTITY calendar.context.attendance.all.accepted.label         "Zugesagt">
+<!ENTITY calendar.context.attendance.all.tentative.accesskey    "o">
+<!ENTITY calendar.context.attendance.all.tentative.label        "Vorläufig zugesagt">
+<!ENTITY calendar.context.attendance.all.declined.accesskey     "h">
+<!ENTITY calendar.context.attendance.all.declined.label         "Abgelehnt">
+<!ENTITY calendar.context.attendance.all.delegated.accesskey    "r">
+<!ENTITY calendar.context.attendance.all.delegated.label        "Weitergeleitet">
+<!ENTITY calendar.context.attendance.all.needsaction.accesskey  "k">
+<!ENTITY calendar.context.attendance.all.needsaction.label      "Aktion nötig">
+<!ENTITY calendar.context.attendance.all.inprogress.accesskey   "n">
+<!ENTITY calendar.context.attendance.all.inprogress.label       "In Arbeit">
+<!ENTITY calendar.context.attendance.all.completed.accesskey    "o">
+<!ENTITY calendar.context.attendance.all.completed.label        "Abgeschlossen">
 
 <!-- Task Context Menu -->
 <!ENTITY calendar.context.progress.label              "Fortschritt">

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,9 +13,11 @@
 
 #include "gfxContext.h"
 #include "gfxUtils.h"
+#include "mozilla/dom/ElementInlines.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/ServoStyleSetInlines.h"
+#include "nsCSSFrameConstructor.h"
 #include "nsDisplayList.h"
-#include "nsFrameManager.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 #include "nsIFrameInlines.h"
@@ -24,10 +27,10 @@ using namespace mozilla;
 using namespace mozilla::gfx;
 
 nsIFrame*
-NS_NewPlaceholderFrame(nsIPresShell* aPresShell, nsStyleContext* aContext,
-                       nsFrameState aTypeBit)
+NS_NewPlaceholderFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle,
+                       nsFrameState aTypeBits)
 {
-  return new (aPresShell) nsPlaceholderFrame(aContext, aTypeBit);
+  return new (aPresShell) nsPlaceholderFrame(aStyle, aTypeBits);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsPlaceholderFrame)
@@ -149,32 +152,53 @@ nsPlaceholderFrame::Reflow(nsPresContext*           aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsPlaceholderFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   aDesiredSize.ClearSize();
 
-  aStatus.Reset();
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
 
+static nsIFrame::ChildListID
+ChildListIDForOutOfFlow(nsFrameState aPlaceholderState, const nsIFrame* aChild)
+{
+  if (aPlaceholderState & PLACEHOLDER_FOR_FLOAT) {
+    return nsIFrame::kFloatList;
+  }
+  if (aPlaceholderState & PLACEHOLDER_FOR_POPUP) {
+    return nsIFrame::kPopupList;
+  }
+  if (aPlaceholderState & PLACEHOLDER_FOR_FIXEDPOS) {
+    return nsLayoutUtils::MayBeReallyFixedPos(aChild)
+      ? nsIFrame::kFixedList : nsIFrame::kAbsoluteList;
+  }
+  if (aPlaceholderState & PLACEHOLDER_FOR_ABSPOS) {
+    return nsIFrame::kAbsoluteList;
+  }
+  MOZ_DIAGNOSTIC_ASSERT(false, "unknown list");
+  return nsIFrame::kFloatList;
+}
+
 void
-nsPlaceholderFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsPlaceholderFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   nsIFrame* oof = mOutOfFlowFrame;
   if (oof) {
     mOutOfFlowFrame = nullptr;
     oof->DeleteProperty(nsIFrame::PlaceholderFrameProperty());
+
     // If aDestructRoot is not an ancestor of the out-of-flow frame,
     // then call RemoveFrame on it here.
     // Also destroy it here if it's a popup frame. (Bug 96291)
     if ((GetStateBits() & PLACEHOLDER_FOR_POPUP) ||
         !nsLayoutUtils::IsProperAncestorFrame(aDestructRoot, oof)) {
-      ChildListID listId = nsLayoutUtils::GetChildListNameFor(oof);
-      nsFrameManager* fm = PresContext()->GetPresShell()->FrameManager();
+      ChildListID listId = ChildListIDForOutOfFlow(GetStateBits(), oof);
+      nsFrameManager* fm = PresContext()->FrameConstructor();
       fm->RemoveFrame(listId, oof);
     }
     // else oof will be destroyed by its parent
   }
 
-  nsFrame::DestroyFrom(aDestructRoot);
+  nsFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 /* virtual */ bool
@@ -188,42 +212,34 @@ nsPlaceholderFrame::CanContinueTextRun() const
   return mOutOfFlowFrame->CanContinueTextRun();
 }
 
-nsStyleContext*
-nsPlaceholderFrame::GetParentStyleContextForOutOfFlow(nsIFrame** aProviderFrame) const
+ComputedStyle*
+nsPlaceholderFrame::GetParentComputedStyleForOutOfFlow(nsIFrame** aProviderFrame) const
 {
   NS_PRECONDITION(GetParent(), "How can we not have a parent here?");
 
-  nsIContent* parentContent = mContent ? mContent->GetFlattenedTreeParent() : nullptr;
-  if (parentContent) {
-    nsStyleContext* sc =
-      PresContext()->FrameManager()->GetDisplayContentsStyleFor(parentContent);
-    if (sc) {
-      *aProviderFrame = nullptr;
-      return sc;
-    }
+  Element* parentElement =
+    mContent ? mContent->GetFlattenedTreeParentElement() : nullptr;
+  if (parentElement && Servo_Element_IsDisplayContents(parentElement)) {
+    RefPtr<ComputedStyle> style =
+      PresShell()->StyleSet()->ResolveServoStyle(parentElement);
+    *aProviderFrame = nullptr;
+    // See the comment in GetParentComputedStyle to see why returning this as a
+    // weak ref is fine.
+    return style;
   }
 
-  nsIFrame* parentFrame = GetParent();
-  // Placeholder of backdrop frame is a child of the corresponding top
-  // layer frame, and its style context inherits from that frame. In
-  // case of table, the top layer frame is the table wrapper frame.
-  // However, it will be skipped in CorrectStyleParentFrame below, so
-  // we need to handle it specially here.
-  if ((GetStateBits() & PLACEHOLDER_FOR_TOPLAYER) &&
-      parentFrame->IsTableWrapperFrame()) {
-    MOZ_ASSERT(mOutOfFlowFrame->IsBackdropFrame(),
-               "Only placeholder of backdrop frame can be put inside "
-               "a table wrapper frame");
-    *aProviderFrame = parentFrame;
-    return parentFrame->StyleContext();
-  }
+  return GetLayoutParentStyleForOutOfFlow(aProviderFrame);
+}
 
+ComputedStyle*
+nsPlaceholderFrame::GetLayoutParentStyleForOutOfFlow(nsIFrame** aProviderFrame) const
+{
   // Lie about our pseudo so we can step out of all anon boxes and
   // pseudo-elements.  The other option would be to reimplement the
   // {ib} split gunk here.
-  *aProviderFrame = CorrectStyleParentFrame(parentFrame,
+  *aProviderFrame = CorrectStyleParentFrame(GetParent(),
                                             nsGkAtoms::placeholderFrame);
-  return *aProviderFrame ? (*aProviderFrame)->StyleContext() : nullptr;
+  return *aProviderFrame ? (*aProviderFrame)->Style() : nullptr;
 }
 
 
@@ -253,17 +269,16 @@ PaintDebugPlaceholder(nsIFrame* aFrame, DrawTarget* aDrawTarget,
 
 void
 nsPlaceholderFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                     const nsRect&           aDirtyRect,
                                      const nsDisplayListSet& aLists)
 {
   DO_GLOBAL_REFLOW_COUNT_DSP("nsPlaceholderFrame");
 
 #ifdef DEBUG
   if (GetShowFrameBorders()) {
-    aLists.Outlines()->AppendNewToTop(
-      new (aBuilder) nsDisplayGeneric(aBuilder, this, PaintDebugPlaceholder,
-                                      "DebugPlaceholder",
-                                      nsDisplayItem::TYPE_DEBUG_PLACEHOLDER));
+    aLists.Outlines()->AppendToTop(
+      MakeDisplayItem<nsDisplayGeneric>(aBuilder, this, PaintDebugPlaceholder,
+                                        "DebugPlaceholder",
+                                        DisplayItemType::TYPE_DEBUG_PLACEHOLDER));
   }
 #endif
 }

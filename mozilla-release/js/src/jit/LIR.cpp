@@ -6,13 +6,15 @@
 
 #include "jit/LIR.h"
 
-#include <ctype.h>
+#include "mozilla/ScopeExit.h"
 
-#include "jsprf.h"
+#include <ctype.h>
+#include <type_traits>
 
 #include "jit/JitSpewer.h"
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
+#include "js/Printf.h"
 
 using namespace js;
 using namespace js::jit;
@@ -56,6 +58,7 @@ LIRGraph::noteNeedsSafepoint(LInstruction* ins)
     return safepoints_.append(ins);
 }
 
+#ifdef JS_JITSPEW
 void
 LIRGraph::dump(GenericPrinter& out)
 {
@@ -72,6 +75,7 @@ LIRGraph::dump()
     dump(out);
     out.finish();
 }
+#endif
 
 LBlock::LBlock(MBasicBlock* from)
   : block_(from),
@@ -158,6 +162,7 @@ LBlock::getExitMoveGroup(TempAllocator& alloc)
     return exitMoveGroup_;
 }
 
+#ifdef JS_JITSPEW
 void
 LBlock::dump(GenericPrinter& out)
 {
@@ -179,6 +184,7 @@ LBlock::dump()
     dump(out);
     out.finish();
 }
+#endif
 
 static size_t
 TotalOperandCount(LRecoverInfo* recoverInfo)
@@ -209,8 +215,10 @@ LRecoverInfo::New(MIRGenerator* gen, MResumePoint* mir)
     return recoverInfo;
 }
 
+// de-virtualise MResumePoint::getOperand calls.
+template <typename Node>
 bool
-LRecoverInfo::appendOperands(MNode* ins)
+LRecoverInfo::appendOperands(Node* ins)
 {
     for (size_t i = 0, end = ins->numOperands(); i < end; i++) {
         MDefinition* def = ins->getOperand(i);
@@ -233,10 +241,18 @@ LRecoverInfo::appendDefinition(MDefinition* def)
 {
     MOZ_ASSERT(def->isRecoveredOnBailout());
     def->setInWorklist();
+    auto clearWorklistFlagOnFailure = mozilla::MakeScopeExit([&] {
+        def->setNotInWorklist();
+    });
 
     if (!appendOperands(def))
         return false;
-    return instructions_.append(def);
+
+    if (!instructions_.append(def))
+        return false;
+
+    clearWorklistFlagOnFailure.release();
+    return true;
 }
 
 bool
@@ -260,20 +276,22 @@ LRecoverInfo::appendResumePoint(MResumePoint* rp)
 bool
 LRecoverInfo::init(MResumePoint* rp)
 {
+    // Before exiting this function, remove temporary flags from all definitions
+    // added in the vector.
+    auto clearWorklistFlags = mozilla::MakeScopeExit([&] {
+        for (MNode** it = begin(); it != end(); it++) {
+            if (!(*it)->isDefinition())
+                continue;
+            (*it)->toDefinition()->setNotInWorklist();
+        }
+    });
+
     // Sort operations in the order in which we need to restore the stack. This
     // implies that outer frames, as well as operations needed to recover the
     // current frame, are located before the current frame. The inner-most
     // resume point should be the last element in the list.
     if (!appendResumePoint(rp))
         return false;
-
-    // Remove temporary flags from all definitions.
-    for (MNode** it = begin(); it != end(); it++) {
-        if (!(*it)->isDefinition())
-            continue;
-
-        (*it)->toDefinition()->setNotInWorklist();
-    }
 
     MOZ_ASSERT(mir() == rp);
     return true;
@@ -319,16 +337,17 @@ LSnapshot::rewriteRecoveredInput(LUse input)
     }
 }
 
+#ifdef JS_JITSPEW
 void
 LNode::printName(GenericPrinter& out, Opcode op)
 {
     static const char * const names[] =
     {
-#define LIROP(x) #x,
+# define LIROP(x) #x,
         LIR_OPCODE_LIST(LIROP)
-#undef LIROP
+# undef LIROP
     };
-    const char* name = names[op];
+    const char* name = names[uint32_t(op)];
     size_t len = strlen(name);
     for (size_t i = 0; i < len; i++)
         out.printf("%c", tolower(name[i]));
@@ -339,6 +358,7 @@ LNode::printName(GenericPrinter& out)
 {
     printName(out, op());
 }
+#endif
 
 bool
 LAllocation::aliases(const LAllocation& other) const
@@ -348,8 +368,9 @@ LAllocation::aliases(const LAllocation& other) const
     return *this == other;
 }
 
+#ifdef JS_JITSPEW
 static const char*
-typeName(LDefinition::Type type)
+DefTypeName(LDefinition::Type type)
 {
     switch (type) {
       case LDefinition::GENERAL: return "g";
@@ -380,7 +401,7 @@ LDefinition::toString() const
     if (isBogusTemp()) {
         buf = JS_smprintf("bogus");
     } else {
-        buf = JS_smprintf("v%u<%s>", virtualRegister(), typeName(type()));
+        buf = JS_smprintf("v%u<%s>", virtualRegister(), DefTypeName(type()));
         if (buf) {
             if (policy() == LDefinition::FIXED)
                 buf = JS_sprintf_append(Move(buf), ":%s", output()->toString().get());
@@ -467,15 +488,33 @@ LDefinition::dump() const
     fprintf(stderr, "%s\n", toString().get());
 }
 
-void
-LNode::printOperands(GenericPrinter& out)
+template <typename T>
+static void
+PrintOperands(GenericPrinter& out, T* node)
 {
-    for (size_t i = 0, e = numOperands(); i < e; i++) {
-        out.printf(" (%s)", getOperand(i)->toString().get());
-        if (i != numOperands() - 1)
+    size_t numOperands = node->numOperands();
+
+    for (size_t i = 0; i < numOperands; i++) {
+        out.printf(" (%s)", node->getOperand(i)->toString().get());
+        if (i != numOperands - 1)
             out.printf(",");
     }
 }
+
+void
+LNode::printOperands(GenericPrinter& out)
+{
+    if (isMoveGroup()) {
+        toMoveGroup()->printOperands(out);
+        return;
+    }
+
+    if (isPhi())
+        PrintOperands(out, toPhi());
+    else
+        PrintOperands(out, toInstruction());
+}
+#endif
 
 void
 LInstruction::assignSnapshot(LSnapshot* snapshot)
@@ -495,13 +534,67 @@ LInstruction::assignSnapshot(LSnapshot* snapshot)
 #endif
 }
 
+#ifdef JS_JITSPEW
+static size_t
+NumSuccessorsHelper(const LNode* ins)
+{
+    return 0;
+}
+
+template <size_t Succs, size_t Operands, size_t Temps>
+static size_t
+NumSuccessorsHelper(const LControlInstructionHelper<Succs, Operands, Temps>* ins)
+{
+    return Succs;
+}
+
+static size_t
+NumSuccessors(const LInstruction* ins)
+{
+    switch (ins->op()) {
+      default: MOZ_CRASH("Unexpected LIR op");
+# define LIROP(x) case LNode::Opcode::x: return NumSuccessorsHelper(ins->to##x());
+    LIR_OPCODE_LIST(LIROP)
+# undef LIROP
+    }
+}
+
+static MBasicBlock*
+GetSuccessorHelper(const LNode* ins, size_t i)
+{
+    MOZ_CRASH("Unexpected instruction with successors");
+}
+
+template <size_t Succs, size_t Operands, size_t Temps>
+static MBasicBlock*
+GetSuccessorHelper(const LControlInstructionHelper<Succs, Operands, Temps>* ins, size_t i)
+{
+    return ins->getSuccessor(i);
+}
+
+static MBasicBlock*
+GetSuccessor(const LInstruction* ins, size_t i)
+{
+    MOZ_ASSERT(i < NumSuccessors(ins));
+
+    switch (ins->op()) {
+      default: MOZ_CRASH("Unexpected LIR op");
+# define LIROP(x) case LNode::Opcode::x: return GetSuccessorHelper(ins->to##x(), i);
+    LIR_OPCODE_LIST(LIROP)
+# undef LIROP
+    }
+}
+#endif
+
+#ifdef JS_JITSPEW
 void
 LNode::dump(GenericPrinter& out)
 {
     if (numDefs() != 0) {
         out.printf("{");
         for (size_t i = 0; i < numDefs(); i++) {
-            out.printf("%s", getDef(i)->toString().get());
+            const LDefinition* def = isPhi() ? toPhi()->getDef(i) : toInstruction()->getDef(i);
+            out.printf("%s", def->toString().get());
             if (i != numDefs() - 1)
                 out.printf(", ");
         }
@@ -511,24 +604,32 @@ LNode::dump(GenericPrinter& out)
     printName(out);
     printOperands(out);
 
-    if (numTemps()) {
-        out.printf(" t=(");
-        for (size_t i = 0; i < numTemps(); i++) {
-            out.printf("%s", getTemp(i)->toString().get());
-            if (i != numTemps() - 1)
-                out.printf(", ");
+    if (isInstruction()) {
+        LInstruction* ins = toInstruction();
+        size_t numTemps = ins->numTemps();
+        if (numTemps > 0) {
+            out.printf(" t=(");
+            for (size_t i = 0; i < numTemps; i++) {
+                out.printf("%s", ins->getTemp(i)->toString().get());
+                if (i != numTemps - 1)
+                    out.printf(", ");
+            }
+            out.printf(")");
         }
-        out.printf(")");
-    }
 
-    if (numSuccessors()) {
-        out.printf(" s=(");
-        for (size_t i = 0; i < numSuccessors(); i++) {
-            out.printf("block%u", getSuccessor(i)->id());
-            if (i != numSuccessors() - 1)
-                out.printf(", ");
+#ifdef JS_JITSPEW
+        size_t numSuccessors = NumSuccessors(ins);
+        if (numSuccessors > 0) {
+            out.printf(" s=(");
+            for (size_t i = 0; i < numSuccessors; i++) {
+                MBasicBlock* succ = GetSuccessor(ins, i);
+                out.printf("block%u", succ->id());
+                if (i != numSuccessors - 1)
+                    out.printf(", ");
+            }
+            out.printf(")");
         }
-        out.printf(")");
+#endif
     }
 }
 
@@ -540,6 +641,18 @@ LNode::dump()
     out.printf("\n");
     out.finish();
 }
+
+const char*
+LNode::getExtraName() const
+{
+    switch (op()) {
+      default: MOZ_CRASH("Unexpected LIR op");
+# define LIROP(x) case LNode::Opcode::x: return to##x()->extraName();
+    LIR_OPCODE_LIST(LIROP)
+# undef LIROP
+    }
+}
+#endif
 
 void
 LInstruction::initSafepoint(TempAllocator& alloc)
@@ -605,17 +718,22 @@ LMoveGroup::addAfter(LAllocation from, LAllocation to, LDefinition::Type type)
     return add(from, to, type);
 }
 
+#ifdef JS_JITSPEW
 void
 LMoveGroup::printOperands(GenericPrinter& out)
 {
     for (size_t i = 0; i < numMoves(); i++) {
         const LMove& move = getMove(i);
         out.printf(" [%s -> %s", move.from().toString().get(), move.to().toString().get());
-#ifdef DEBUG
-        out.printf(", %s", typeName(move.type()));
-#endif
+        out.printf(", %s", DefTypeName(move.type()));
         out.printf("]");
         if (i != numMoves() - 1)
             out.printf(",");
     }
 }
+#endif
+
+#define LIROP(x) static_assert(!std::is_polymorphic<L##x>::value, \
+                               "LIR instructions should not have virtual methods");
+    LIR_OPCODE_LIST(LIROP)
+#undef LIROP

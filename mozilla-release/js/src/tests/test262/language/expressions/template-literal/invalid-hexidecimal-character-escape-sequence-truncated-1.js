@@ -5,8 +5,10 @@
 esid: sec-template-literal-lexical-components
 description: Invalid hexidecimal character escape sequence
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 `\x0`;

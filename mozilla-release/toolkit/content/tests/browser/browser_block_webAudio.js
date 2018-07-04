@@ -3,7 +3,7 @@ const PAGE = "https://example.com/browser/toolkit/content/tests/browser/file_web
 // The tab closing code leaves an uncaught rejection. This test has been
 // whitelisted until the issue is fixed.
 if (!gMultiProcessBrowser) {
-  Cu.import("resource://testing-common/PromiseTestUtils.jsm", this);
+  ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", this);
   PromiseTestUtils.expectUncaughtRejection(/is no longer, usable/);
 }
 
@@ -33,5 +33,5 @@ add_task(async function block_web_audio() {
   await waitForTabPlayingEvent(tab, true);
 
   info("- remove tab -");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

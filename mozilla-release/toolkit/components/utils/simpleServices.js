@@ -12,19 +12,14 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-
 /* globals WebExtensionPolicy */
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
-                                  "resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "Services",
+                               "resource://gre/modules/Services.jsm");
 
 /*
  * This class provides a stream filter for locale messages in CSS files served
@@ -38,7 +33,7 @@ function AddonLocalizationConverter() {
 
 AddonLocalizationConverter.prototype = {
   classID: Components.ID("{ded150e3-c92e-4077-a396-0dba9953e39f}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIStreamConverter]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIStreamConverter]),
 
   FROM_TYPE: "application/vnd.mozilla.webext.unlocalized",
   TO_TYPE: "text/css",

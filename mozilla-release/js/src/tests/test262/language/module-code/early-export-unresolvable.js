@@ -9,8 +9,10 @@ description: >
     ModuleItemList, or the LexicallyDeclaredNames of ModuleItemList.
 flags: [module]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 export { unresolvable };

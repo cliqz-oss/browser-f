@@ -5,13 +5,14 @@ Events
 ======
 
 Across the different Firefox initiatives, there is a common need for a mechanism for recording, storing, sending & analysing application usage in an event-oriented format.
-*Event Telemetry* specifies a common events dataformat, which allows for broader, shared usage of data processing tools.
+*Event Telemetry* specifies a common events data format, which allows for broader, shared usage of data processing tools.
+Adding events is supported in artifact builds and build faster workflows.
 
 For events recorded into Firefox Telemetry we also provide an API that opaquely handles storage and submission to our servers.
 
 .. important::
 
-    Every new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for :bsmedberg or one of the other data peers. We try to reply within a business day.
+    Every new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for one of the data peers. We try to reply within a business day.
 
 Serialization format
 ====================
@@ -40,10 +41,10 @@ Where the individual fields are:
 
 - ``timestamp``: ``Number``, positive integer. This is the time in ms when the event was recorded, relative to the main process start time.
 - ``category``: ``String``, identifier. The category is a group name for events and helps to avoid name conflicts.
-- ``method``: ``String``, identifier. This describes the type of event that occured, e.g. ``click``, ``keydown`` or ``focus``.
-- ``object``: ``String``, identifier. This is the object the event occured on, e.g. ``reload_button`` or ``urlbar``.
+- ``method``: ``String``, identifier. This describes the type of event that occurred, e.g. ``click``, ``keydown`` or ``focus``.
+- ``object``: ``String``, identifier. This is the object the event occurred on, e.g. ``reload_button`` or ``urlbar``.
 - ``value``: ``String``, optional, may be ``null``. This is a user defined value, providing context for the event.
-- ``extra``: ``Object``, optional, may be ``null``. This is an object of the form ``{"key": "value", ...}``, both keys and values need to be strings. This is used for events where additional richer context is needed.
+- ``extra``: ``Object``, optional, may be ``null``. This is an object of the form ``{"key": "value", ...}``, both keys and values need to be strings, keys are identifiers. This is used for events where additional richer context is needed.
 
 .. _eventlimits:
 
@@ -105,15 +106,14 @@ The following event properties are valid:
   - ``main``
   - ``content``
   - ``gpu``
-  - ``all_child`` (record in all the child processes)
+  - ``all_children`` (record in all the child processes)
   - ``all`` (record in all the processes).
 
-- ``bug_numbers`` *(required, list of numbers)*: A list of bugzilla bug numbers that are relevant to this event.
+- ``bug_numbers`` *(required, list of numbers)*: A list of Bugzilla bug numbers that are relevant to this event.
 - ``notification_emails`` *(required, list of strings)*: A list of emails of owners for this event. This is used for contact for data reviews and potentially to email alerts.
 - expiry: There are two properties that can specify expiry, at least one needs to be set:
 
-  - ``expiry_version`` *(string)*: The version number in which the event expires, e.g. ``"50"``, or ``"never"``. A version number of type "N" and "N.0" is automatically converted to "N.0a1" in order to expire the event also in the development channels. For events that never expire the value ``never`` can be used.
-  - ``expiry_date`` *(date)*: A date of the format ``2014-01-28``. If the local client clock reaches this date, the event will expire and not be recorded.
+  - ``expiry_version`` *(string)*: The version number in which the event expires, e.g. ``"50"``, or ``"never"``. A version number of type "N" is automatically converted to "N.0a1" in order to expire the event also in the development channels. For events that never expire the value ``never`` can be used.
 
 - ``extra_keys`` *(optional, object)*: An object that specifies valid keys for the ``extra`` argument and a description - see the example above.
 
@@ -132,11 +132,16 @@ Public JS API
 
 Record a registered event.
 
-* ``value``: Optional, may be ``null``. A string value, limitted to 80 bytes.
-* ``extra``: Optional. An object with string keys & values. Key strings are limitted to what was registered. Value strings are limitted to 80 bytes.
+* ``value``: Optional, may be ``null``. A string value, limited to 80 bytes.
+* ``extra``: Optional. An object with string keys & values. Key strings are limited to what was registered. Value strings are limited to 80 bytes.
 
 Throws if the combination of ``category``, ``method`` and ``object`` is unknown.
 Recording an expired event will not throw, but print a warning into the browser console.
+
+.. note::
+
+  Each ``recordEvent`` of a known non-expired combination of ``category``, ``method``, and
+  ``object``, will be :ref:`summarized <events.event-summary>`.
 
 .. warning::
 
@@ -162,7 +167,7 @@ Example:
 
   Services.telemetry.setEventRecordingEnabled(category, enabled);
 
-Event recording is currently disabled by default. Privileged addons and Firefox code can enable & disable recording events for specific categories using this function.
+Event recording is currently disabled by default. Privileged add-ons and Firefox code can enable & disable recording events for specific categories using this function.
 
 Example:
 
@@ -172,6 +177,11 @@ Example:
   // ... now events in the "ui" category will be recorded.
   Services.telemetry.setEventRecordingEnabled("ui", false);
   // ... now "ui" events will not be recorded anymore.
+
+.. note::
+
+  Even if your event category isn't enabled, counts of events that attempted to be recorded will
+  be :ref:`summarized <events.event-summary>`.
 
 ``registerEvents()``
 ~~~~~~~~~~~~~~~~~~~~
@@ -189,6 +199,7 @@ Register new events from add-ons.
   * ``objects`` - *(required, list of strings)* The valid event objects.
   * ``extra_keys`` - *(optional, list of strings)* The valid extra keys for the event.
   * ``record_on_release`` - *(optional, bool)*
+  * ``expired`` - *(optional, bool)* Whether this event entry is expired. This allows recording it without error, but it will be discarded. Defaults to false.
 
 For events recorded from add-ons, registration happens at runtime. Any new events must first be registered through this function before they can be recorded.
 The registered categories will automatically be enabled for recording.
@@ -196,6 +207,8 @@ The registered categories will automatically be enabled for recording.
 After registration, the events can be recorded through the ``recordEvent()`` function. They will be submitted in the main pings payload under ``processes.dynamic.events``.
 
 New events registered here are subject to the same limitations as the ones registered through ``Events.yaml``, although the naming was in parts updated to recent policy changes.
+
+When add-ons are updated, they may re-register all of their events. In that case, any changes to events that are already registered are ignored. The only exception is expiry; an event that is re-registered with ``expired: true`` will not be recorded anymore.
 
 Example:
 
@@ -220,6 +233,48 @@ Internal API
 
 These functions are only supposed to be used by Telemetry internally or in tests.
 
+.. _events.event-summary:
+
+Event Summary
+=============
+
+Calling ``recordEvent`` on any non-expired registered event will accumulate to a
+:doc:`Scalar <scalars>` for ease of analysing uptake and usage patterns. Even if the event category
+isn't enabled.
+
+The scalar is ``telemetry.event_counts`` for statically-registered events (the ones in
+``Events.yaml``) and ``telemetry.dynamic_event_counts`` for dynamically-registered events (the ones
+registered via ``registerEvents``). These are :ref:`keyed scalars <scalars.keyed-scalars>` where
+the keys are of the form ``category#method#object`` and the values are counts of the number of
+times ``recordEvent`` was called with that combination of ``category``, ``method``, and ``object``.
+
+These two scalars have a default maximum key limit of 500 per process. This limit is configurable
+via the ``toolkit.telemetry.maxEventSummaryKeys`` preference.
+
+Example:
+
+.. code-block:: js
+
+  // telemetry.event_counts summarizes in the same process the events were recorded
+
+  // Let us suppose in the parent process this happens:
+  Services.telemetry.recordEvent("interaction", "click", "document", "xuldoc");
+  Services.telemetry.recordEvent("interaction", "click", "document", "xuldoc-neighbour");
+
+  // And in each of child proccesses 1 through 4, this happens:
+  Services.telemetry.recordEvent("interaction", "click", "document", "htmldoc");
+
+In the case that ``interaction.click.document`` is statically-registered, this will result in the
+parent-process scalar ``telemetry.event_counts`` having a key ``interaction#click#document`` with
+value ``2`` and the content-process scalar ``telemetry.event_counts`` having a key
+``interaction#click#document`` with the value ``4``.
+
+All dynamically-registered events end up in the dynamic-process ``telemetry.dynamic_event_counts``
+(notice the different name) regardless of in which process the events were recorded. From the
+example above, if ``interaction.click.document`` was registered with ``registerEvents`` then
+the dynamic-process scalar ``telemetry.dynamic_event_counts`` would have a key
+``interaction#click#document`` with the value ``6``.
+
 Version History
 ===============
 
@@ -227,3 +282,11 @@ Version History
 - Firefox 53: Event recording disabled by default (`bug 1329139 <https://bugzilla.mozilla.org/show_bug.cgi?id=1329139>`_).
 - Firefox 54: Added child process events (`bug 1313326 <https://bugzilla.mozilla.org/show_bug.cgi?id=1313326>`_).
 - Firefox 56: Added support for recording new probes from add-ons (`bug 1302681 <bug https://bugzilla.mozilla.org/show_bug.cgi?id=1302681>`_).
+- Firefox 58:
+
+   - Ignore re-registering existing events for a category instead of failing (`bug 1408975 <https://bugzilla.mozilla.org/show_bug.cgi?id=1408975>`_).
+   - Removed support for the ``expiry_date`` property, as it was unused (`bug 1414638 <https://bugzilla.mozilla.org/show_bug.cgi?id=1414638>`_).
+- Firefox 61:
+
+   - Enabled support for adding events in artifact builds and build-faster workflows (`bug 1448945 <https://bugzilla.mozilla.org/show_bug.cgi?id=1448945>`_).
+   - Added summarization of events (`bug 1440673 <https://bugzilla.mozilla.org/show_bug.cgi?id=1440673>`_).

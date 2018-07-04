@@ -22,14 +22,7 @@
 #include "wasm/WasmJS.h"
 
 namespace js {
-
-class WasmActivation;
-
 namespace wasm {
-
-class Code;
-class CodeSegment;
-typedef Vector<Instance*, 0, SystemAllocPolicy> InstanceVector;
 
 // wasm::Compartment lives in JSCompartment and contains the wasm-related
 // per-compartment state. wasm::Compartment tracks every live instance in the
@@ -38,25 +31,11 @@ typedef Vector<Instance*, 0, SystemAllocPolicy> InstanceVector;
 
 class Compartment
 {
+    JSRuntime* runtime_;
     InstanceVector instances_;
-    volatile bool  mutatingInstances_;
-
-    friend class js::WasmActivation;
-
-    struct AutoMutateInstances {
-        Compartment &c;
-        explicit AutoMutateInstances(Compartment& c) : c(c) {
-            MOZ_ASSERT(!c.mutatingInstances_);
-            c.mutatingInstances_ = true;
-        }
-        ~AutoMutateInstances() {
-            MOZ_ASSERT(c.mutatingInstances_);
-            c.mutatingInstances_ = false;
-        }
-    };
 
   public:
-    explicit Compartment(Zone* zone);
+    explicit Compartment(JSRuntime* rt);
     ~Compartment();
 
     // Before a WasmInstanceObject can be considered fully constructed and
@@ -75,12 +54,6 @@ class Compartment
 
     const InstanceVector& instances() const { return instances_; }
 
-    // This methods returns the wasm::Code containing the given pc, if any
-    // exists in the compartment, and the segment for the tier in which the
-    // pc was found.
-
-    const Code* lookupCode(const void* pc, const CodeSegment** segment = nullptr) const;
-
     // Ensure all Instances in this JSCompartment have profiling labels created.
 
     void ensureProfilingLabels(bool profilingEnabled);
@@ -89,6 +62,19 @@ class Compartment
 
     void addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf, size_t* compartmentTables);
 };
+
+// Interrupt all running wasm Instances that have been registered with
+// wasm::Compartments in the given JSContext.
+
+extern void
+InterruptRunningCode(JSContext* cx);
+
+// After a wasm Instance sees an interrupt request and calls
+// CheckForInterrupt(), it should call RunningCodeInterrupted() to clear the
+// interrupt request for all wasm Instances to avoid spurious trapping.
+
+void
+ResetInterruptState(JSContext* cx);
 
 } // namespace wasm
 } // namespace js

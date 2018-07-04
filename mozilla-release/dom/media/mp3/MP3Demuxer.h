@@ -13,13 +13,17 @@ namespace mozilla {
 
 class MP3TrackDemuxer;
 
-class MP3Demuxer : public MediaDataDemuxer
+DDLoggedTypeDeclNameAndBase(MP3Demuxer, MediaDataDemuxer);
+DDLoggedTypeNameAndBase(MP3TrackDemuxer, MediaTrackDemuxer);
+
+class MP3Demuxer
+  : public MediaDataDemuxer
+  , public DecoderDoctorLifeLogger<MP3Demuxer>
 {
 public:
   // MediaDataDemuxer interface.
   explicit MP3Demuxer(MediaResource* aSource);
   RefPtr<InitPromise> Init() override;
-  bool HasTrackType(TrackInfo::TrackType aType) const override;
   uint32_t GetNumberTracks(TrackInfo::TrackType aType) const override;
   already_AddRefed<MediaTrackDemuxer> GetTrackDemuxer(
       TrackInfo::TrackType aType, uint32_t aTrackNumber) override;
@@ -37,7 +41,9 @@ private:
 
 // The MP3 demuxer used to extract MPEG frames and side information out of
 // MPEG streams.
-class MP3TrackDemuxer : public MediaTrackDemuxer
+class MP3TrackDemuxer
+  : public MediaTrackDemuxer
+  , public DecoderDoctorLifeLogger<MP3TrackDemuxer>
 {
 public:
   // Constructor, expecting a valid media resource.

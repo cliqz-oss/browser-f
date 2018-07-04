@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=99: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -37,6 +37,9 @@ public:
 
   bool EnsureGPUReady();
 
+  PAPZInputBridgeChild* AllocPAPZInputBridgeChild(const LayersId& aLayersId) override;
+  bool DeallocPAPZInputBridgeChild(PAPZInputBridgeChild* aActor) override;
+
   // gfxVarReceiver overrides.
   void OnVarChanged(const GfxVarUpdate& aVar) override;
 
@@ -45,8 +48,8 @@ public:
   mozilla::ipc::IPCResult RecvReportCheckerboard(const uint32_t& aSeverity, const nsCString& aLog) override;
   mozilla::ipc::IPCResult RecvInitCrashReporter(Shmem&& shmem, const NativeThreadId& aThreadId) override;
 
-  mozilla::ipc::IPCResult RecvAccumulateChildHistograms(InfallibleTArray<Accumulation>&& aAccumulations) override;
-  mozilla::ipc::IPCResult RecvAccumulateChildKeyedHistograms(InfallibleTArray<KeyedAccumulation>&& aAccumulations) override;
+  mozilla::ipc::IPCResult RecvAccumulateChildHistograms(InfallibleTArray<HistogramAccumulation>&& aAccumulations) override;
+  mozilla::ipc::IPCResult RecvAccumulateChildKeyedHistograms(InfallibleTArray<KeyedHistogramAccumulation>&& aAccumulations) override;
   mozilla::ipc::IPCResult RecvUpdateChildScalars(InfallibleTArray<ScalarAction>&& aScalarActions) override;
   mozilla::ipc::IPCResult RecvUpdateChildKeyedScalars(InfallibleTArray<KeyedScalarAction>&& aScalarActions) override;
   mozilla::ipc::IPCResult RecvRecordChildEvents(nsTArray<ChildEventData>&& events) override;
@@ -60,6 +63,7 @@ public:
   mozilla::ipc::IPCResult RecvFinishMemoryReport(const uint32_t& aGeneration) override;
   mozilla::ipc::IPCResult RecvUpdateFeature(const Feature& aFeature, const FeatureFailure& aChange) override;
   mozilla::ipc::IPCResult RecvUsedFallback(const Fallback& aFallback, const nsCString& aMessage) override;
+  mozilla::ipc::IPCResult RecvBHRThreadHang(const HangDetails& aDetails) override;
 
   bool SendRequestMemoryReport(const uint32_t& aGeneration,
                                const bool& aAnonymize,

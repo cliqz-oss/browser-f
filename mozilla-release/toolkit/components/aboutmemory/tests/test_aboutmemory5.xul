@@ -21,8 +21,6 @@
   <![CDATA[
   "use strict";
 
-  const Cc = Components.classes;
-  const Ci = Components.interfaces;
   let mgr = Cc["@mozilla.org/memory-reporter-manager;1"].
             getService(Ci.nsIMemoryReporterManager);
 
@@ -35,8 +33,7 @@
 
   let prefs = [
     ["dom.ipc.processCount", 3],            // Allow up to 3 child processes
-    ["memory.report_concurrency", 2],       // Cover more child handling cases
-    ["memory.system_memory_reporter", true] // Test SystemMemoryReporter
+    ["memory.report_concurrency", 2]        // Cover more child handling cases
   ];
 
   SpecialPowers.pushPrefEnv({"set": prefs}, function() {
@@ -68,8 +65,8 @@
 
     function getFilePath(aFilename) {
       let file = Cc["@mozilla.org/file/directory_service;1"]
-                 .getService(Components.interfaces.nsIProperties)
-                 .get("CurWorkD", Components.interfaces.nsIFile);
+                 .getService(Ci.nsIProperties)
+                 .get("CurWorkD", Ci.nsIFile);
       file.append("chrome");
       file.append("toolkit");
       file.append("components");

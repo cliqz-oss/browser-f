@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -7,7 +8,9 @@
 #define nsASCIIMask_h_
 
 #include <array>
-#include "mozilla/IndexSequence.h"
+#include <utility>
+
+#include "mozilla/Attributes.h"
 
 typedef std::array<bool, 128> ASCIIMaskArray;
 
@@ -53,7 +56,7 @@ public:
 namespace details
 {
 template<typename F, size_t... Indices>
-constexpr std::array<bool, 128> CreateASCIIMask(F fun, mozilla::IndexSequence<Indices...>)
+constexpr std::array<bool, 128> CreateASCIIMask(F fun, std::index_sequence<Indices...>)
 {
   return {{ fun(Indices)... }};
 }
@@ -62,7 +65,7 @@ constexpr std::array<bool, 128> CreateASCIIMask(F fun, mozilla::IndexSequence<In
 template<typename F>
 constexpr std::array<bool, 128> CreateASCIIMask(F fun)
 {
-  return details::CreateASCIIMask(fun, mozilla::MakeIndexSequence<128>::Type{});
+  return details::CreateASCIIMask(fun, std::make_index_sequence<128>{});
 }
 
 } // namespace mozilla

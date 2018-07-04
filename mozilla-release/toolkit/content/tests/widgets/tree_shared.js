@@ -19,7 +19,7 @@ var columns_hiertree =
 ];
 
 // XXXndeakin still to add some tests for:
-//   cycler columns, checkbox cells, progressmeter cells
+//   cycler columns, checkbox cells
 
 // this test function expects a tree to have 8 rows in it when it isn't
 // expanded. The tree should only display four rows at a time. If editable,
@@ -104,7 +104,7 @@ function testtag_tree(treeid, treerowinfoid, seltype, columnstype, testid) {
 
   tree.startEditing(1, ecolumn);
   var inputField = tree.inputField;
-  is(inputField instanceof Components.interfaces.nsIDOMXULTextBoxElement, true, testid + "inputField");
+  is(inputField.localName, "textbox", testid + "inputField");
   inputField.value = "Changed Value";
   tree.stopEditing(true);
   is(tree.view.getCellText(1, ecolumn), "Changed Value", testid + "edit cell accept");
@@ -208,7 +208,7 @@ function testtag_tree_TreeSelection(tree, testid, multiple) {
   testid += " selection ";
 
   var selection = tree.view.selection;
-  is(selection instanceof Components.interfaces.nsITreeSelection, true,
+  is(selection instanceof Ci.nsITreeSelection, true,
                 testid + "selection is a TreeSelection");
   is(selection.single, !multiple, testid + "single");
 
@@ -396,7 +396,7 @@ function testtag_tree_TreeSelection_UI(tree, testid, multiple) {
   for (let t = 0; t < 3; t++) {
     let testidmod = "";
     if (t == 2)
-      testidmod = " with accel"
+      testidmod = " with accel";
     else if (t == 1)
       testidmod = " rev";
     var keymod = (t == 2) ? { accelKey: true } : { };
@@ -644,7 +644,7 @@ function testtag_tree_UI_editing(tree, testid, rowInfo) {
     tree.view.selection.currentColumn = ecolumn;
     tree.currentIndex = rowIndex;
 
-    const isMac = (navigator.platform.indexOf("Mac") >= 0);
+    const isMac = (navigator.platform.includes("Mac"));
     const StartEditingKey = isMac ? "RETURN" : "F2";
     sendKey(StartEditingKey);
     is(tree.editingColumn, ecolumn, "Should be editing tree cell now");
@@ -673,7 +673,7 @@ function testtag_tree_UI_editing(tree, testid, rowInfo) {
     synthesizeKeyExpectEvent(key, {}, tree, "!select", "key " + key + " with editing");
     is(tree.editingRow == rowIndex && tree.editingColumn == ecolumn && tree.currentIndex == ci,
                   true, testid + "key " + key + " while editing");
-  }
+  };
 
   testKey("VK_DOWN");
   testKey("VK_UP");
@@ -873,7 +873,7 @@ function testtag_tree_TreeView(tree, testid, rowInfo) {
   var columns = tree.columns;
   var view = tree.view;
 
-  is(view instanceof Components.interfaces.nsITreeView, true, testid + "view is a TreeView");
+  is(view instanceof Ci.nsITreeView, true, testid + "view is a TreeView");
   is(view.rowCount, rowInfo.rows.length, testid + "rowCount");
 
   testtag_tree_TreeView_rows(tree, testid, rowInfo, 0);
@@ -895,25 +895,24 @@ function testtag_tree_TreeView_rows(tree, testid, rowInfo, startRow) {
   // methods to test along with the functions which determine the expected value
   var checkRowMethods =
   {
-    isContainer(row) { return row.container },
-    isContainerOpen(row) { return false },
-    isContainerEmpty(row) { return (row.children != null && row.children.rows.length == 0) },
-    isSeparator(row) { return row.separator },
-    getRowProperties(row) { return row.properties },
-    getLevel(row) { return row.level },
-    getParentIndex(row) { return row.parent },
+    isContainer(row) { return row.container; },
+    isContainerOpen(row) { return false; },
+    isContainerEmpty(row) { return (row.children != null && row.children.rows.length == 0); },
+    isSeparator(row) { return row.separator; },
+    getRowProperties(row) { return row.properties; },
+    getLevel(row) { return row.level; },
+    getParentIndex(row) { return row.parent; },
     hasNextSibling(row) { return r < startRow + length - 1; }
   };
 
   var checkCellMethods =
   {
-    getCellText(row, cell) { return cell.label },
-    getCellValue(row, cell) { return cell.value },
-    getCellProperties(row, cell) { return cell.properties },
-    isEditable(row, cell) { return cell.editable },
-    isSelectable(row, cell) { return cell.selectable },
-    getImageSrc(row, cell) { return cell.image },
-    getProgressMode(row, cell) { return cell.mode }
+    getCellText(row, cell) { return cell.label; },
+    getCellValue(row, cell) { return cell.value; },
+    getCellProperties(row, cell) { return cell.properties; },
+    isEditable(row, cell) { return cell.editable; },
+    isSelectable(row, cell) { return cell.selectable; },
+    getImageSrc(row, cell) { return cell.image; },
   };
 
   var failedMethods = { };
@@ -1300,7 +1299,7 @@ function mouseClickOnColumnHeader(aColumns, aColumnIndex, aButton, aClickCount) 
     // Target the middle of the column header.
     synthesizeMouse(columnHeader, columnWidth / 2, 3,
                     { button: aButton,
-                      clickCount: i }, null);
+                      clickCount: i });
   }
 }
 
@@ -1313,7 +1312,7 @@ function mouseDblClickOnCell(tree, row, column, testname) {
   // get cell coordinates
   var rect = tree.treeBoxObject.getCoordsForCellItem(row, column, "text");
 
-  synthesizeMouse(tree.body, rect.x, rect.y, { clickCount: 2 }, null);
+  synthesizeMouse(tree.body, rect.x, rect.y, { clickCount: 2 });
 }
 
 function compareArrays(arr1, arr2) {
@@ -1326,16 +1325,6 @@ function compareArrays(arr1, arr2) {
   }
 
   return true;
-}
-
-function convertProperties(arr) {
-  var results = [];
-  var count = arr.Count();
-  for (let i = 0; i < count; i++)
-    results.push(arr.GetElementAt(i).QueryInterface(Components.interfaces.nsIAtom).toString());
-
-  results.sort();
-  return results.join(" ");
 }
 
 function convertDOMtoTreeRowInfo(treechildren, level, rowidx) {

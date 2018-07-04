@@ -2,12 +2,6 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-// The no-cpows-in-tests check isn't very smart, simply warning if it finds
-// a variable named `content`. For Chrome compatibility, the Omnibox API uses
-// that name for setting the text of a suggestion, and that's all this test uses
-// it for, so we can disable it for this test.
-/* eslint-disable mozilla/no-cpows-in-tests */
-
 add_task(async function() {
   let keyword = "test";
 
@@ -76,85 +70,107 @@ add_task(async function() {
     let actual = await extension.awaitMessage(event);
     if (expected.text) {
       is(actual.text, expected.text,
-        `Expected "${event}" to have fired with text: "${expected.text}".`);
+         `Expected "${event}" to have fired with text: "${expected.text}".`);
     }
     if (expected.disposition) {
       is(actual.disposition, expected.disposition,
-        `Expected "${event}" to have fired with disposition: "${expected.disposition}".`);
+         `Expected "${event}" to have fired with disposition: "${expected.disposition}".`);
     }
   }
 
-  async function startInputSession() {
+  async function waitForAutocompleteResultAt(index) {
+    let searchString = gURLBar.controller.searchString;
+    await BrowserTestUtils.waitForCondition(
+      () => gURLBar.popup.richlistbox.children.length > index &&
+            gURLBar.popup.richlistbox.children[index].getAttribute("ac-text") == searchString,
+      `Waiting for the autocomplete result for "${searchString}" at [${index}] to appear`);
+    // Ensure the addition is complete, for proper mouse events on the entries.
+    await new Promise(resolve => window.requestIdleCallback(resolve, {timeout: 1000}));
+    return gURLBar.popup.richlistbox.children[index];
+  }
+
+  async function promiseClickOnItem(item, details) {
+    // The Address Bar panel is animated and updated on a timer, thus it may not
+    // yet be listening to events when we try to click on it.  This uses a
+    // polling strategy to repeat the click, if it doesn't go through.
+    let clicked = false;
+    item.addEventListener("mousedown", () => { clicked = true; }, {once: true});
+    while (!clicked) {
+      EventUtils.synthesizeMouseAtCenter(item, details);
+      await new Promise(r => window.requestIdleCallback(r, {timeout: 1000}));
+    }
+  }
+
+  let inputSessionSerial = 0;
+  async function startInputSession(indexToWaitFor) {
     gURLBar.focus();
     gURLBar.value = keyword;
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     await expectEvent("on-input-started-fired");
-    EventUtils.synthesizeKey("t", {});
-    await expectEvent("on-input-changed-fired", {text: "t"});
+    // Always use a different input at every invokation, so that
+    // waitForAutocompleteResultAt can distinguish different cases.
+    let char = ((inputSessionSerial++) % 10).toString();
+    EventUtils.sendString(char);
+
+    await expectEvent("on-input-changed-fired", {text: char});
     // Wait for the autocomplete search. Note that we cannot wait for the search
     // to be complete, since the add-on doesn't communicate when it's done, so
     // just check matches count.
-    await BrowserTestUtils.waitForCondition(() => gURLBar.controller.matchCount >= 2,
-                                            "waiting urlbar search to complete");
-    return "t";
+    await waitForAutocompleteResultAt(indexToWaitFor);
+
+    return char;
   }
 
   async function testInputEvents() {
     gURLBar.focus();
 
     // Start an input session by typing in <keyword><space>.
-    for (let letter of keyword) {
-      EventUtils.synthesizeKey(letter, {});
-    }
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(keyword + " ");
     await expectEvent("on-input-started-fired");
 
     // Test canceling the input before any changed events fire.
-    EventUtils.synthesizeKey("VK_BACK_SPACE", {});
+    EventUtils.synthesizeKey("KEY_Backspace");
     await expectEvent("on-input-cancelled-fired");
 
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     await expectEvent("on-input-started-fired");
 
     // Test submitting the input before any changed events fire.
-    EventUtils.synthesizeKey("VK_RETURN", {});
+    EventUtils.synthesizeKey("KEY_Enter");
     await expectEvent("on-input-entered-fired");
 
     gURLBar.focus();
 
     // Start an input session by typing in <keyword><space>.
-    for (let letter of keyword) {
-      EventUtils.synthesizeKey(letter, {});
-    }
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(keyword + " ");
     await expectEvent("on-input-started-fired");
 
     // We should expect input changed events now that the keyword is active.
-    EventUtils.synthesizeKey("b", {});
+    EventUtils.sendString("b");
     await expectEvent("on-input-changed-fired", {text: "b"});
 
-    EventUtils.synthesizeKey("c", {});
+    EventUtils.sendString("c");
     await expectEvent("on-input-changed-fired", {text: "bc"});
 
-    EventUtils.synthesizeKey("VK_BACK_SPACE", {});
+    EventUtils.synthesizeKey("KEY_Backspace");
     await expectEvent("on-input-changed-fired", {text: "b"});
 
     // Even though the input is <keyword><space> We should not expect an
     // input started event to fire since the keyword is active.
-    EventUtils.synthesizeKey("VK_BACK_SPACE", {});
+    EventUtils.synthesizeKey("KEY_Backspace");
     await expectEvent("on-input-changed-fired", {text: ""});
 
     // Make the keyword inactive by hitting backspace.
-    EventUtils.synthesizeKey("VK_BACK_SPACE", {});
+    EventUtils.synthesizeKey("KEY_Backspace");
     await expectEvent("on-input-cancelled-fired");
 
     // Activate the keyword by typing a space.
     // Expect onInputStarted to fire.
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     await expectEvent("on-input-started-fired");
 
     // onInputChanged should fire even if a space is entered.
-    EventUtils.synthesizeKey(" ", {});
+    EventUtils.sendString(" ");
     await expectEvent("on-input-changed-fired", {text: " "});
 
     // The active session should cancel if the input blurs.
@@ -172,45 +188,44 @@ add_task(async function() {
       await extension.awaitMessage("default-suggestion-set");
     }
 
-    let text = await startInputSession();
+    let text = await startInputSession(0);
 
     let item = gURLBar.popup.richlistbox.children[0];
 
     is(item.getAttribute("title"), expectedText,
-      `Expected heuristic result to have title: "${expectedText}".`);
+       `Expected heuristic result to have title: "${expectedText}".`);
 
     is(item.getAttribute("displayurl"), `${keyword} ${text}`,
-      `Expected heuristic result to have displayurl: "${keyword} ${text}".`);
+       `Expected heuristic result to have displayurl: "${keyword} ${text}".`);
 
-    EventUtils.synthesizeMouseAtCenter(item, {});
-
-    await expectEvent("on-input-entered-fired", {
+    let promiseEvent = expectEvent("on-input-entered-fired", {
       text,
       disposition: "currentTab",
     });
+    await promiseClickOnItem(item, {});
+    await promiseEvent;
   }
 
   async function testDisposition(suggestionIndex, expectedDisposition, expectedText) {
-    await startInputSession();
+    await startInputSession(suggestionIndex);
 
     // Select the suggestion.
-    for (let i = 0; i < suggestionIndex; i++) {
-      EventUtils.synthesizeKey("VK_DOWN", {});
-    }
+    EventUtils.synthesizeKey("KEY_ArrowDown", {repeat: suggestionIndex});
 
-    let item = gURLBar.popup.richlistbox.children[suggestionIndex];
-    if (expectedDisposition == "currentTab") {
-      EventUtils.synthesizeMouseAtCenter(item, {});
-    } else if (expectedDisposition == "newForegroundTab") {
-      EventUtils.synthesizeMouseAtCenter(item, {accelKey: true});
-    } else if (expectedDisposition == "newBackgroundTab") {
-      EventUtils.synthesizeMouseAtCenter(item, {shiftKey: true, accelKey: true});
-    }
-
-    await expectEvent("on-input-entered-fired", {
+    let promiseEvent = expectEvent("on-input-entered-fired", {
       text: expectedText,
       disposition: expectedDisposition,
     });
+
+    let item = gURLBar.popup.richlistbox.children[suggestionIndex];
+    if (expectedDisposition == "currentTab") {
+      await promiseClickOnItem(item, {});
+    } else if (expectedDisposition == "newForegroundTab") {
+      await promiseClickOnItem(item, {accelKey: true});
+    } else if (expectedDisposition == "newBackgroundTab") {
+      await promiseClickOnItem(item, {shiftKey: true, accelKey: true});
+    }
+    await promiseEvent;
   }
 
   async function testSuggestions(info) {
@@ -221,24 +236,25 @@ add_task(async function() {
 
       ok(!!item, "Expected item to exist");
       is(item.getAttribute("title"), description,
-        `Expected suggestion to have title: "${description}".`);
+         `Expected suggestion to have title: "${description}".`);
 
       is(item.getAttribute("displayurl"), `${keyword} ${content}`,
-        `Expected suggestion to have displayurl: "${keyword} ${content}".`);
+         `Expected suggestion to have displayurl: "${keyword} ${content}".`);
     }
 
-    let text = await startInputSession();
+    let text = await startInputSession(info.suggestions.length - 1);
 
     extension.sendMessage(info.test);
     await extension.awaitMessage("test-ready");
 
     info.suggestions.forEach(expectSuggestion);
 
-    EventUtils.synthesizeMouseAtCenter(gURLBar.popup.richlistbox.children[0], {});
-    await expectEvent("on-input-entered-fired", {
+    let promiseEvent = expectEvent("on-input-entered-fired", {
       text,
       disposition: "currentTab",
     });
+    await promiseClickOnItem(gURLBar.popup.richlistbox.children[0], {});
+    await promiseEvent;
   }
 
   await extension.startup();
@@ -272,12 +288,10 @@ add_task(async function() {
   // Test adding suggestions asynchronously.
   await testSuggestions({
     test: "test-multiple-suggest-calls",
-    skipHeuristic: true,
     suggestions,
   });
   await testSuggestions({
     test: "test-suggestions-after-delay",
-    skipHeuristic: true,
     suggestions,
   });
 

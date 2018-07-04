@@ -35,13 +35,6 @@ NotifyPaintEvent::NotifyPaintEvent(EventTarget* aOwner,
   mTimeStamp = aTimeStamp;
 }
 
-NS_INTERFACE_MAP_BEGIN(NotifyPaintEvent)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMNotifyPaintEvent)
-NS_INTERFACE_MAP_END_INHERITING(Event)
-
-NS_IMPL_ADDREF_INHERITED(NotifyPaintEvent, Event)
-NS_IMPL_RELEASE_INHERITED(NotifyPaintEvent, Event)
-
 nsRegion
 NotifyPaintEvent::GetRegion(SystemCallerGuarantee)
 {
@@ -96,7 +89,7 @@ NotifyPaintEvent::PaintRequests(SystemCallerGuarantee)
   return requests.forget();
 }
 
-NS_IMETHODIMP_(void)
+void
 NotifyPaintEvent::Serialize(IPC::Message* aMsg,
                             bool aSerializeInterfaceType)
 {
@@ -113,7 +106,7 @@ NotifyPaintEvent::Serialize(IPC::Message* aMsg,
   }
 }
 
-NS_IMETHODIMP_(bool)
+bool
 NotifyPaintEvent::Deserialize(const IPC::Message* aMsg, PickleIterator* aIter)
 {
   NS_ENSURE_TRUE(Event::Deserialize(aMsg, aIter), false);

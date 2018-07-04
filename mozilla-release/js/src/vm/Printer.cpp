@@ -13,10 +13,11 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include "jscntxt.h"
 #include "jsutil.h"
 
 #include "ds/LifoAlloc.h"
+#include "util/Windows.h"
+#include "vm/JSContext.h"
 
 using mozilla::PodCopy;
 
@@ -32,7 +33,7 @@ public:
     {
     }
 
-    bool append(const char* sp, size_t len) {
+    bool append(const char* sp, size_t len) override {
         return printer.put(sp, len);
     }
 
@@ -44,11 +45,6 @@ private:
 }
 
 namespace js {
-
-GenericPrinter::GenericPrinter()
-  : hadOOM_(false)
-{
-}
 
 void
 GenericPrinter::reportOutOfMemory()
@@ -396,15 +392,12 @@ Fprinter::Fprinter(FILE* fp)
     init(fp);
 }
 
-Fprinter::Fprinter()
-  : file_(nullptr),
-    init_(false)
-{ }
-
+#ifdef DEBUG
 Fprinter::~Fprinter()
 {
     MOZ_ASSERT_IF(init_, !file_);
 }
+#endif
 
 bool
 Fprinter::init(const char* path)
@@ -450,6 +443,18 @@ Fprinter::put(const char* s, size_t len)
         reportOutOfMemory();
         return false;
     }
+#ifdef XP_WIN32
+    if ((file_ == stderr) && (IsDebuggerPresent())) {
+        UniqueChars buf(static_cast<char*>(js_malloc(len + 1)));
+        if (!buf) {
+            reportOutOfMemory();
+            return false;
+        }
+        PodCopy(buf.get(), s, len);
+        buf[len] = '\0';
+        OutputDebugStringA(buf.get());
+    }
+#endif
     return true;
 }
 

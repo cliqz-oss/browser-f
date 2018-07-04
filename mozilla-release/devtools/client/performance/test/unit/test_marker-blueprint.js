@@ -5,11 +5,7 @@
  * Tests if the timeline blueprint has a correct structure.
  */
 
-function run_test() {
-  run_next_test();
-}
-
-add_task(function () {
+add_task(function() {
   let { TIMELINE_BLUEPRINT } = require("devtools/client/performance/modules/markers");
 
   ok(TIMELINE_BLUEPRINT,

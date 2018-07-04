@@ -9,13 +9,16 @@
 #include "gfx2DGlue.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/SyncRunnable.h"
+#include "ImageContainer.h"
 #include "nsError.h"
 #include "prsystem.h"
 
 #include <algorithm>
 
 #undef LOG
-#define LOG(arg, ...) MOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, ("VPXDecoder(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
+#define LOG(arg, ...)                                                          \
+  DDMOZ_LOG(                                                                   \
+    sPDMLog, mozilla::LogLevel::Debug, "::%s: " arg, __func__, ##__VA_ARGS__)
 
 namespace mozilla {
 
@@ -24,10 +27,8 @@ using namespace layers;
 
 static VPXDecoder::Codec MimeTypeToCodec(const nsACString& aMimeType)
 {
-  if (aMimeType.EqualsLiteral("video/webm; codecs=vp8")) {
+  if (aMimeType.EqualsLiteral("video/vp8")) {
     return VPXDecoder::Codec::VP8;
-  } else if (aMimeType.EqualsLiteral("video/webm; codecs=vp9")) {
-    return VPXDecoder::Codec::VP9;
   } else if (aMimeType.EqualsLiteral("video/vp9")) {
     return VPXDecoder::Codec::VP9;
   }
@@ -87,9 +88,9 @@ RefPtr<ShutdownPromise>
 VPXDecoder::Shutdown()
 {
   RefPtr<VPXDecoder> self = this;
-  return InvokeAsync(mTaskQueue, __func__, [self, this]() {
-    vpx_codec_destroy(&mVPX);
-    vpx_codec_destroy(&mVPXAlpha);
+  return InvokeAsync(mTaskQueue, __func__, [self]() {
+    vpx_codec_destroy(&self->mVPX);
+    vpx_codec_destroy(&self->mVPXAlpha);
     return ShutdownPromise::CreateAndResolve(true, __func__);
   });
 }
@@ -123,11 +124,6 @@ RefPtr<MediaDataDecoder::DecodePromise>
 VPXDecoder::ProcessDecode(MediaRawData* aSample)
 {
   MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());
-
-#if defined(DEBUG)
-  NS_ASSERTION(IsKeyframe(*aSample, mCodec) == aSample->mKeyframe,
-               "VPX Decode Keyframe error sample->mKeyframe and sample data out of sync");
-#endif
 
   if (vpx_codec_err_t r = vpx_codec_decode(&mVPX, aSample->Data(), aSample->Size(), nullptr, 0)) {
     LOG("VPX Decode error: %s", vpx_codec_err_to_string(r));
@@ -286,12 +282,10 @@ VPXDecoder::DecodeAlpha(vpx_image_t** aImgAlpha, const MediaRawData* aSample)
 bool
 VPXDecoder::IsVPX(const nsACString& aMimeType, uint8_t aCodecMask)
 {
-  return ((aCodecMask & VPXDecoder::VP8)
-          && aMimeType.EqualsLiteral("video/webm; codecs=vp8"))
-         || ((aCodecMask & VPXDecoder::VP9)
-             && aMimeType.EqualsLiteral("video/webm; codecs=vp9"))
-         || ((aCodecMask & VPXDecoder::VP9)
-             && aMimeType.EqualsLiteral("video/vp9"));
+  return ((aCodecMask & VPXDecoder::VP8) &&
+          aMimeType.EqualsLiteral("video/vp8")) ||
+         ((aCodecMask & VPXDecoder::VP9) &&
+          aMimeType.EqualsLiteral("video/vp9"));
 }
 
 /* static */
@@ -328,7 +322,7 @@ VPXDecoder::IsKeyframe(Span<const uint8_t> aBuffer, Codec aCodec)
 }
 
 /* static */
-nsIntSize
+gfx::IntSize
 VPXDecoder::GetFrameSize(Span<const uint8_t> aBuffer, Codec aCodec)
 {
   vpx_codec_stream_info_t si;
@@ -341,7 +335,7 @@ VPXDecoder::GetFrameSize(Span<const uint8_t> aBuffer, Codec aCodec)
     vpx_codec_peek_stream_info(vpx_codec_vp9_dx(), aBuffer.Elements(), aBuffer.Length(), &si);
   }
 
-  return nsIntSize(si.w, si.h);
+  return gfx::IntSize(si.w, si.h);
 }
 } // namespace mozilla
 #undef LOG

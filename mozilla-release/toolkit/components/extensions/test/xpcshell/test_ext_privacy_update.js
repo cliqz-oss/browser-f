@@ -2,15 +2,8 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-XPCOMUtils.defineLazyGetter(this, "Management", () => {
-  const {Management} = Cu.import("resource://gre/modules/Extension.jsm", {});
-  return Management;
-});
-
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
-                                  "resource://gre/modules/Preferences.jsm");
+ChromeUtils.defineModuleGetter(this, "Preferences",
+                               "resource://gre/modules/Preferences.jsm");
 
 const {
   createAppInfo,
@@ -26,7 +19,7 @@ AddonTestUtils.init(this);
 // Allow for unsigned addons.
 AddonTestUtils.overrideCertDB();
 
-createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
+createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "42", "42");
 
 add_task(async function test_privacy_update() {
   // Create a object to hold the values to which we will initialize the prefs.
@@ -45,7 +38,7 @@ add_task(async function test_privacy_update() {
     Preferences.set(pref, PREFS[pref]);
   }
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     // Reset the prefs.
     for (let pref in PREFS) {
       Preferences.reset(pref);

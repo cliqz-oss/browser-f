@@ -85,10 +85,9 @@ nsHttpHeaderArray::SetHeader(nsHttpAtom header,
             MOZ_ASSERT(variety == eVarietyResponse);
             entry->variety = eVarietyResponseNetOriginal;
             return SetHeader_internal(header, headerName, value, variety);
-        } else {
-            entry->value = value;
-            entry->variety = variety;
         }
+        entry->value = value;
+        entry->variety = variety;
     }
 
     return NS_OK;
@@ -158,18 +157,6 @@ nsHttpHeaderArray::SetHeaderFromNet(nsHttpAtom header,
     LookupEntry(header, &entry);
 
     if (!entry) {
-        if (value.IsEmpty()) {
-            if (!gHttpHandler->KeepEmptyResponseHeadersAsEmtpyString() &&
-                !TrackEmptyHeader(header)) {
-                LOG(("Ignoring Empty Header: %s\n", header.get()));
-                if (response) {
-                    // Set header as original but not as response header.
-                    return SetHeader_internal(header, headerNameOriginal, value,
-                                              eVarietyResponseNetOriginal);
-                }
-                return NS_OK; // ignore empty headers by default
-            }
-        }
         HeaderVariety variety = eVarietyRequestOverride;
         if (response) {
             variety = eVarietyResponseNetOriginalAndResponse;
@@ -225,27 +212,25 @@ nsHttpHeaderArray::SetResponseHeaderFromCache(nsHttpAtom header,
     if (variety == eVarietyResponseNetOriginal) {
         return SetHeader_internal(header, headerNameOriginal, value,
                                   eVarietyResponseNetOriginal);
-    } else {
-        nsTArray<nsEntry>::index_type index = 0;
-        do {
-            index = mHeaders.IndexOf(header, index, nsEntry::MatchHeader());
-            if (index != mHeaders.NoIndex) {
-                nsEntry &entry = mHeaders[index];
-                if (value.Equals(entry.value)) {
-                    MOZ_ASSERT((entry.variety == eVarietyResponseNetOriginal) ||
-                               (entry.variety == eVarietyResponseNetOriginalAndResponse),
-                               "This array must contain only eVarietyResponseNetOriginal"
-                               " and eVarietyResponseNetOriginalAndRespons headers!");
-                    entry.variety = eVarietyResponseNetOriginalAndResponse;
-                    return NS_OK;
-                }
-                index++;
-            }
-        } while (index != mHeaders.NoIndex);
-        // If we are here, we have not found an entry so add a new one.
-        return SetHeader_internal(header, headerNameOriginal, value,
-                                  eVarietyResponse);
     }
+    nsTArray<nsEntry>::index_type index = 0;
+    do {
+        index = mHeaders.IndexOf(header, index, nsEntry::MatchHeader());
+        if (index != mHeaders.NoIndex) {
+            nsEntry &entry = mHeaders[index];
+            if (value.Equals(entry.value)) {
+                MOZ_ASSERT((entry.variety == eVarietyResponseNetOriginal) ||
+                            (entry.variety == eVarietyResponseNetOriginalAndResponse),
+                            "This array must contain only eVarietyResponseNetOriginal"
+                            " and eVarietyResponseNetOriginalAndRespons headers!");
+                entry.variety = eVarietyResponseNetOriginalAndResponse;
+                return NS_OK;
+            }
+            index++;
+        }
+    } while (index != mHeaders.NoIndex);
+    // If we are here, we have not found an entry so add a new one.
+    return SetHeader_internal(header, headerNameOriginal, value, eVarietyResponse);
 }
 
 void
@@ -355,7 +340,7 @@ nsHttpHeaderArray::VisitHeaders(nsIHttpHeaderVisitor *visitor, nsHttpHeaderArray
             hdr = entry.headerNameOriginal;
         }
         rv = visitor->VisitHeader(hdr, entry.value);
-        if NS_FAILED(rv) {
+        if (NS_FAILED(rv)) {
             return rv;
         }
     }

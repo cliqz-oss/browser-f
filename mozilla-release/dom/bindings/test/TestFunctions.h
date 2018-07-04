@@ -40,6 +40,12 @@ public:
   void GetStringDataAsDOMString(const Optional<uint32_t>& aLength,
                                 DOMString& aString);
 
+  void TestThrowNsresult(ErrorResult& aError);
+  void TestThrowNsresultFromNative(ErrorResult& aError);
+  static already_AddRefed<Promise>
+  ThrowToRejectPromise(GlobalObject& aGlobal,
+                       ErrorResult& aError);
+
   bool WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto,
                   JS::MutableHandle<JSObject*> aWrapper);
 private:

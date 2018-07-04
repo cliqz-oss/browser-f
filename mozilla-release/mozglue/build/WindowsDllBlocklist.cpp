@@ -23,16 +23,18 @@
 #include <map>
 #pragma warning( pop )
 
+#include "Authenticode.h"
 #include "nsAutoPtr.h"
-
 #include "nsWindowsDllInterceptor.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/StackWalk_windows.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/Vector.h"
 #include "mozilla/WindowsVersion.h"
 #include "nsWindowsHelpers.h"
 #include "WindowsDllBlocklist.h"
 #include "mozilla/AutoProfilerLabel.h"
+#include "mozilla/glue/WindowsDllServices.h"
 
 using namespace mozilla;
 
@@ -243,12 +245,32 @@ static const DllBlockInfo sWindowsDllBlocklist[] = {
   { "idmcchandler5_64.dll", ALL_VERSIONS },
 
   // Nahimic 2 breaks applicaton update (bug 1356637)
-  { "nahimic2devprops.dll", ALL_VERSIONS },
+  { "nahimic2devprops.dll", MAKE_VERSION(2, 5, 19, 0xffff) },
   // Nahimic is causing crashes, bug 1233556
-  { "nahimicmsiosd.dll", ALL_VERSIONS },
+  { "nahimicmsiosd.dll", UNVERSIONED },
+  // Nahimic is causing crashes, bug 1360029
+  { "nahimicvrdevprops.dll", UNVERSIONED },
+  { "nahimic2osd.dll", MAKE_VERSION(2, 5, 19, 0xffff) },
+  { "nahimicmsidevprops.dll", UNVERSIONED },
 
   // Bug 1268470 - crashes with Kaspersky Lab on Windows 8
   { "klsihk64.dll", MAKE_VERSION(14, 0, 456, 0xffff), DllBlockInfo::BLOCK_WIN8_ONLY },
+
+  // Bug 1407337, crashes with OpenSC < 0.16.0
+  { "onepin-opensc-pkcs11.dll", MAKE_VERSION(0, 15, 0xffff, 0xffff) },
+
+  // Avecto Privilege Guard causes crashes, bug 1385542
+  { "pghook.dll", ALL_VERSIONS },
+
+  // Old versions of G DATA BankGuard, bug 1421991
+  { "banksafe64.dll", MAKE_VERSION(1, 2, 15299, 65535) },
+
+  // Old versions of G DATA, bug 1043775
+  { "gdkbfltdll64.dll", MAKE_VERSION(1, 0, 14141, 240) },
+
+  // Dell Backup and Recovery tool causes crashes, bug 1433408
+  { "dbroverlayiconnotbackuped.dll", MAKE_VERSION(1, 8, 0, 9) },
+  { "dbroverlayiconbackuped.dll", MAKE_VERSION(1, 8, 0, 9) },
 
   { nullptr, 0 }
 };
@@ -303,10 +325,8 @@ printf_stderr(const char *fmt, ...)
 }
 
 
-#ifdef _M_IX86
-typedef void (__fastcall* BaseThreadInitThunk_func)(BOOL aIsInitialThread, void* aStartAddress, void* aThreadParam);
+typedef MOZ_NORETURN_PTR void (__fastcall* BaseThreadInitThunk_func)(BOOL aIsInitialThread, void* aStartAddress, void* aThreadParam);
 static BaseThreadInitThunk_func stub_BaseThreadInitThunk = nullptr;
-#endif
 
 typedef NTSTATUS (NTAPI *LdrLoadDll_func) (PWCHAR filePath, PULONG flags, PUNICODE_STRING moduleFileName, PHANDLE handle);
 static LdrLoadDll_func stub_LdrLoadDll;
@@ -524,7 +544,7 @@ DllBlockSet::Write(HANDLE file)
     for (DllBlockSet* b = gFirst; b; b = b->mNext) {
       // write name[,v.v.v.v];
       WriteFile(file, b->mName, strlen(b->mName), &nBytes, nullptr);
-      if (b->mVersion != -1) {
+      if (b->mVersion != ALL_VERSIONS) {
         WriteFile(file, ",", 1, &nBytes, nullptr);
         uint16_t parts[4];
         parts[0] = b->mVersion >> 48;
@@ -788,13 +808,26 @@ continue_loading:
   return stub_LdrLoadDll(filePath, flags, moduleFileName, handle);
 }
 
-#ifdef _M_IX86
+#if defined(NIGHTLY_BUILD)
+// Map of specific thread proc addresses we should block. In particular,
+// LoadLibrary* APIs which indicate DLL injection
+static mozilla::Vector<void*, 4>* gStartAddressesToBlock;
+#endif
+
 static bool
 ShouldBlockThread(void* aStartAddress)
 {
   // Allows crashfirefox.exe to continue to work. Also if your threadproc is null, this crash is intentional.
   if (aStartAddress == 0)
     return false;
+
+#if defined(NIGHTLY_BUILD)
+  for (auto p : *gStartAddressesToBlock) {
+    if (p == aStartAddress) {
+      return true;
+    }
+  }
+#endif
 
   bool shouldBlock = false;
   MEMORY_BASIC_INFORMATION startAddressInfo = {0};
@@ -824,8 +857,6 @@ patched_BaseThreadInitThunk(BOOL aIsInitialThread, void* aStartAddress,
   stub_BaseThreadInitThunk(aIsInitialThread, aStartAddress, aThreadParam);
 }
 
-#endif // _M_IX86
-
 
 static WindowsDllInterceptor NtDllIntercept;
 static WindowsDllInterceptor Kernel32Intercept;
@@ -838,6 +869,9 @@ DllBlocklist_Initialize(uint32_t aInitFlags)
   }
   sInitFlags = aInitFlags;
   sBlocklistInitAttempted = true;
+#if defined(NIGHTLY_BUILD)
+  gStartAddressesToBlock = new mozilla::Vector<void*, 4>;
+#endif
 
   // In order to be effective against AppInit DLLs, the blocklist must be
   // initialized before user32.dll is loaded into the process (bug 932100).
@@ -864,6 +898,13 @@ DllBlocklist_Initialize(uint32_t aInitFlags)
 #endif
   }
 
+  // If someone injects a thread early that causes user32.dll to load off the
+  // main thread this causes issues, so load it as soon as we've initialized
+  // the block-list. (See bug 1400637)
+  if (!sUser32BeforeBlocklist) {
+    ::LoadLibraryW(L"user32.dll");
+  }
+
   Kernel32Intercept.Init("kernel32.dll");
 
 #ifdef _M_AMD64
@@ -874,8 +915,6 @@ DllBlocklist_Initialize(uint32_t aInitFlags)
                               (void**)&stub_RtlInstallFunctionTableCallback);
   }
 #endif
-
-#ifdef _M_IX86 // Minimize impact. Crashes in BaseThreadInitThunk are more frequent on x86
 
   // Bug 1361410: WRusr.dll will overwrite our hook and cause a crash.
   // Workaround: If we detect WRusr.dll, don't hook.
@@ -888,7 +927,34 @@ DllBlocklist_Initialize(uint32_t aInitFlags)
 #endif
     }
   }
-#endif // _M_IX86
+
+#if defined(NIGHTLY_BUILD)
+  // Populate a list of thread start addresses to block.
+  HMODULE hKernel = GetModuleHandleW(L"kernel32.dll");
+  if (hKernel) {
+    void* pProc;
+
+    pProc = (void*)GetProcAddress(hKernel, "LoadLibraryA");
+    if (pProc) {
+      gStartAddressesToBlock->append(pProc);
+    }
+
+    pProc = (void*)GetProcAddress(hKernel, "LoadLibraryW");
+    if (pProc) {
+      gStartAddressesToBlock->append(pProc);
+    }
+
+    pProc = (void*)GetProcAddress(hKernel, "LoadLibraryExA");
+    if (pProc) {
+      gStartAddressesToBlock->append(pProc);
+    }
+
+    pProc = (void*)GetProcAddress(hKernel, "LoadLibraryExW");
+    if (pProc) {
+      gStartAddressesToBlock->append(pProc);
+    }
+  }
+#endif
 }
 
 MFBT_API void
@@ -918,3 +984,148 @@ DllBlocklist_CheckStatus()
     return false;
   return true;
 }
+
+// ============================================================================
+// This section is for DLL Services
+// ============================================================================
+
+
+static SRWLOCK gDllServicesLock = SRWLOCK_INIT;
+static mozilla::glue::detail::DllServicesBase* gDllServices;
+
+class MOZ_RAII AutoSharedLock final
+{
+public:
+  explicit AutoSharedLock(SRWLOCK& aLock)
+    : mLock(aLock)
+  {
+    ::AcquireSRWLockShared(&aLock);
+  }
+
+  ~AutoSharedLock()
+  {
+    ::ReleaseSRWLockShared(&mLock);
+  }
+
+  AutoSharedLock(const AutoSharedLock&) = delete;
+  AutoSharedLock(AutoSharedLock&&) = delete;
+  AutoSharedLock& operator=(const AutoSharedLock&) = delete;
+  AutoSharedLock& operator=(AutoSharedLock&&) = delete;
+
+private:
+  SRWLOCK& mLock;
+};
+
+class MOZ_RAII AutoExclusiveLock final
+{
+public:
+  explicit AutoExclusiveLock(SRWLOCK& aLock)
+    : mLock(aLock)
+  {
+    ::AcquireSRWLockExclusive(&aLock);
+  }
+
+  ~AutoExclusiveLock()
+  {
+    ::ReleaseSRWLockExclusive(&mLock);
+  }
+
+  AutoExclusiveLock(const AutoExclusiveLock&) = delete;
+  AutoExclusiveLock(AutoExclusiveLock&&) = delete;
+  AutoExclusiveLock& operator=(const AutoExclusiveLock&) = delete;
+  AutoExclusiveLock& operator=(AutoExclusiveLock&&) = delete;
+
+private:
+  SRWLOCK& mLock;
+};
+
+// These types are documented on MSDN but not provided in any SDK headers
+
+enum DllNotificationReason
+{
+  LDR_DLL_NOTIFICATION_REASON_LOADED = 1,
+  LDR_DLL_NOTIFICATION_REASON_UNLOADED = 2
+};
+
+typedef struct _LDR_DLL_LOADED_NOTIFICATION_DATA {
+  ULONG Flags;                    //Reserved.
+  PCUNICODE_STRING FullDllName;   //The full path name of the DLL module.
+  PCUNICODE_STRING BaseDllName;   //The base file name of the DLL module.
+  PVOID DllBase;                  //A pointer to the base address for the DLL in memory.
+  ULONG SizeOfImage;              //The size of the DLL image, in bytes.
+} LDR_DLL_LOADED_NOTIFICATION_DATA, *PLDR_DLL_LOADED_NOTIFICATION_DATA;
+
+typedef struct _LDR_DLL_UNLOADED_NOTIFICATION_DATA {
+  ULONG Flags;                    //Reserved.
+  PCUNICODE_STRING FullDllName;   //The full path name of the DLL module.
+  PCUNICODE_STRING BaseDllName;   //The base file name of the DLL module.
+  PVOID DllBase;                  //A pointer to the base address for the DLL in memory.
+  ULONG SizeOfImage;              //The size of the DLL image, in bytes.
+} LDR_DLL_UNLOADED_NOTIFICATION_DATA, *PLDR_DLL_UNLOADED_NOTIFICATION_DATA;
+
+typedef union _LDR_DLL_NOTIFICATION_DATA {
+  LDR_DLL_LOADED_NOTIFICATION_DATA Loaded;
+  LDR_DLL_UNLOADED_NOTIFICATION_DATA Unloaded;
+} LDR_DLL_NOTIFICATION_DATA, *PLDR_DLL_NOTIFICATION_DATA;
+
+typedef const LDR_DLL_NOTIFICATION_DATA* PCLDR_DLL_NOTIFICATION_DATA;
+
+typedef VOID (CALLBACK* PLDR_DLL_NOTIFICATION_FUNCTION)(
+          ULONG aReason,
+          PCLDR_DLL_NOTIFICATION_DATA aNotificationData,
+          PVOID aContext);
+
+NTSTATUS NTAPI
+LdrRegisterDllNotification(ULONG aFlags,
+                           PLDR_DLL_NOTIFICATION_FUNCTION aCallback,
+                           PVOID aContext, PVOID* aCookie);
+
+static PVOID gNotificationCookie;
+
+static VOID CALLBACK
+DllLoadNotification(ULONG aReason, PCLDR_DLL_NOTIFICATION_DATA aNotificationData,
+                    PVOID aContext)
+{
+  if (aReason != LDR_DLL_NOTIFICATION_REASON_LOADED) {
+    // We don't care about unloads
+    return;
+  }
+
+  AutoSharedLock lock(gDllServicesLock);
+  if (!gDllServices) {
+    return;
+  }
+
+  PCUNICODE_STRING fullDllName = aNotificationData->Loaded.FullDllName;
+  gDllServices->DispatchDllLoadNotification(fullDllName);
+}
+
+namespace mozilla {
+Authenticode* GetAuthenticode();
+} // namespace mozilla
+
+MFBT_API void
+DllBlocklist_SetDllServices(mozilla::glue::detail::DllServicesBase* aSvc)
+{
+  AutoExclusiveLock lock(gDllServicesLock);
+
+  if (aSvc) {
+    aSvc->SetAuthenticodeImpl(GetAuthenticode());
+
+    if (!gNotificationCookie) {
+      auto pLdrRegisterDllNotification =
+        reinterpret_cast<decltype(&::LdrRegisterDllNotification)>(
+          ::GetProcAddress(::GetModuleHandleW(L"ntdll.dll"),
+                           "LdrRegisterDllNotification"));
+
+      MOZ_DIAGNOSTIC_ASSERT(pLdrRegisterDllNotification);
+
+      NTSTATUS ntStatus = pLdrRegisterDllNotification(0, &DllLoadNotification,
+                                                      nullptr, &gNotificationCookie);
+      MOZ_DIAGNOSTIC_ASSERT(NT_SUCCESS(ntStatus));
+    }
+  }
+
+  gDllServices = aSvc;
+}
+

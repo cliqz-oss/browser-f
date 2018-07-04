@@ -7,7 +7,9 @@ description: >
     const declarations without initialisers in statement positions: 
     case Expression : StatementList
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 switch (true) { case true: const x; }

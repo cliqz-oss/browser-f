@@ -193,17 +193,22 @@ DecodedStreamData::DecodedStreamData(OutputStreamManager* aOutputStreamManager,
   , mAbstractMainThread(aMainThread)
 {
   mStream->AddListener(mListener);
-  mOutputStreamManager->Connect(mStream);
+  TrackID audioTrack = TRACK_NONE;
+  TrackID videoTrack = TRACK_NONE;
 
   // Initialize tracks.
   if (aInit.mInfo.HasAudio()) {
-    mStream->AddAudioTrack(aInit.mInfo.mAudio.mTrackId,
+    audioTrack = aInit.mInfo.mAudio.mTrackId;
+    mStream->AddAudioTrack(audioTrack,
                            aInit.mInfo.mAudio.mRate,
                            0, new AudioSegment());
   }
   if (aInit.mInfo.HasVideo()) {
-    mStream->AddTrack(aInit.mInfo.mVideo.mTrackId, 0, new VideoSegment());
+    videoTrack = aInit.mInfo.mVideo.mTrackId;
+    mStream->AddTrack(videoTrack, 0, new VideoSegment());
   }
+
+  mOutputStreamManager->Connect(mStream, audioTrack, videoTrack);
 }
 
 DecodedStreamData::~DecodedStreamData()
@@ -412,7 +417,7 @@ DecodedStream::DestroyData(UniquePtr<DecodedStreamData> aData)
   data->Forget();
   nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction("DecodedStream::DestroyData",
                                                    [=]() { delete data; });
-  mAbstractMainThread->Dispatch(r.forget());
+  NS_DispatchToMainThread(r.forget());
 }
 
 void
@@ -712,7 +717,7 @@ DecodedStream::SendData()
 
   if (finished && !mData->mHaveSentFinish) {
     mData->mHaveSentFinish = true;
-    mData->mStream->Finish();
+    mData->mStream->FinishPending();
   }
 }
 
@@ -791,10 +796,18 @@ DecodedStream::GetDebugInfo()
 {
   AssertOwnerThread();
   int64_t startTime = mStartTime.isSome() ? mStartTime->ToMicroseconds() : -1;
-  return nsPrintfCString(
-    "DecodedStream=%p mStartTime=%" PRId64 " mLastOutputTime=%" PRId64 " mPlaying=%d mData=%p",
-    this, startTime, mLastOutputTime.ToMicroseconds(), mPlaying, mData.get())
-    + (mData ? nsCString("\n") + mData->GetDebugInfo() : nsCString());
+  auto str =
+    nsPrintfCString("DecodedStream=%p mStartTime=%" PRId64
+                    " mLastOutputTime=%" PRId64 " mPlaying=%d mData=%p",
+                    this,
+                    startTime,
+                    mLastOutputTime.ToMicroseconds(),
+                    mPlaying,
+                    mData.get());
+  if (mData) {
+    AppendStringIfNotEmpty(str, mData->GetDebugInfo());
+  }
+  return Move(str);
 }
 
 } // namespace mozilla

@@ -1,8 +1,5 @@
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function inChildProcess() {
   return Cc["@mozilla.org/xre/app-info;1"]
@@ -24,6 +21,6 @@ function run_test() {
 
   let expected = "foo=b";
   let actual = cs.getCookieStringFromHttp(uri, null, null);
-  do_check_eq(actual, expected);
+  Assert.equal(actual, expected);
 }
 

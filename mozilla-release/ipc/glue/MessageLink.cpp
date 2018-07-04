@@ -14,9 +14,7 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/DebugOnly.h"
 #include "nsDebug.h"
-#ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
-#endif
 #include "nsISupportsImpl.h"
 #include "nsPrintfCString.h"
 #include "nsXULAppAPI.h"
@@ -161,10 +159,8 @@ void
 ProcessLink::SendMessage(Message *msg)
 {
     if (msg->size() > IPC::Channel::kMaximumMessageSize) {
-#ifdef MOZ_CRASHREPORTER
       CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("IPCMessageName"), nsDependentCString(msg->name()));
       CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("IPCMessageSize"), nsPrintfCString("%d", msg->size()));
-#endif
       MOZ_CRASH("IPC message size is too large");
     }
 
@@ -354,20 +350,24 @@ ProcessLink::OnChannelConnected(int32_t peer_pid)
 
     {
         MonitorAutoLock lock(*mChan->mMonitor);
-        // Only update channel state if its still thinks its opening.  Do not
-        // force it into connected if it has errored out, started closing, etc.
-        if (mChan->mChannelState == ChannelOpening) {
-          mChan->mChannelState = ChannelConnected;
-          mChan->mMonitor->Notify();
-          notifyChannel = true;
+        // Do not force it into connected if it has errored out, started
+        // closing, etc. Note that we can be in the Connected state already
+        // since the parent starts out Connected.
+        if (mChan->mChannelState == ChannelOpening ||
+            mChan->mChannelState == ChannelConnected)
+        {
+            mChan->mChannelState = ChannelConnected;
+            mChan->mMonitor->Notify();
+            notifyChannel = true;
         }
     }
 
-    if (mExistingListener)
+    if (mExistingListener) {
         mExistingListener->OnChannelConnected(peer_pid);
+    }
 
     if (notifyChannel) {
-      mChan->OnChannelConnected(peer_pid);
+        mChan->OnChannelConnected(peer_pid);
     }
 }
 

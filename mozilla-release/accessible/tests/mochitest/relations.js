@@ -1,4 +1,4 @@
-////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////
 // Constants
 
 var RELATION_CONTROLLED_BY = nsIAccessibleRelation.RELATION_CONTROLLED_BY;
@@ -26,7 +26,7 @@ const RELATION_DETAILS_FOR = nsIAccessibleRelation.RELATION_DETAILS_FOR;
 const RELATION_ERRORMSG = nsIAccessibleRelation.RELATION_ERRORMSG;
 const RELATION_ERRORMSG_FOR = nsIAccessibleRelation.RELATION_ERRORMSG_FOR;
 
-////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////
 // General
 
 /**
@@ -38,8 +38,7 @@ const RELATION_ERRORMSG_FOR = nsIAccessibleRelation.RELATION_ERRORMSG_FOR;
  * @param aRelatedIdentifiers  [in] identifier or array of identifiers of
  *                             expected related accessibles
  */
-function testRelation(aIdentifier, aRelType, aRelatedIdentifiers)
-{
+function testRelation(aIdentifier, aRelType, aRelatedIdentifiers) {
   var relation = getRelationByType(aIdentifier, aRelType);
 
   var relDescr = getRelationErrorMsg(aIdentifier, aRelType);
@@ -66,7 +65,7 @@ function testRelation(aIdentifier, aRelType, aRelatedIdentifiers)
   aRelatedIdentifiers : [aRelatedIdentifiers];
 
   var targets = [];
-   for (var idx = 0; idx < relatedIds.length; idx++)
+   for (let idx = 0; idx < relatedIds.length; idx++)
      targets.push(getAccessible(relatedIds[idx]));
 
   if (targets.length != relatedIds.length)
@@ -75,11 +74,11 @@ function testRelation(aIdentifier, aRelType, aRelatedIdentifiers)
   var actualTargets = relation.getTargets();
 
   // Check if all given related accessibles are targets of obtained relation.
-  for (var idx = 0; idx < targets.length; idx++) {
+  for (let idx = 0; idx < targets.length; idx++) {
     var isFound = false;
-    var enumerate = actualTargets.enumerate();
+    let enumerate = actualTargets.enumerate();
     while (enumerate.hasMoreElements()) {
-      var relatedAcc = enumerate.getNext().QueryInterface(nsIAccessible);
+      let relatedAcc = enumerate.getNext().QueryInterface(nsIAccessible);
       if (targets[idx] == relatedAcc) {
         isFound = true;
         break;
@@ -90,10 +89,11 @@ function testRelation(aIdentifier, aRelType, aRelatedIdentifiers)
   }
 
   // Check if all obtained targets are given related accessibles.
-  var enumerate = actualTargets.enumerate();
+  let enumerate = actualTargets.enumerate();
   while (enumerate.hasMoreElements()) {
-    var relatedAcc = enumerate.getNext().QueryInterface(nsIAccessible);
-    for (var idx = 0; idx < targets.length && relatedAcc != targets[idx]; idx++);
+    let relatedAcc = enumerate.getNext().QueryInterface(nsIAccessible);
+    let idx;
+    for (idx = 0; idx < targets.length && relatedAcc != targets[idx]; idx++);
 
     if (idx == targets.length)
       ok(false, "There is unexpected target" + prettyName(relatedAcc) + "of" + relDescr);
@@ -110,8 +110,7 @@ function testRelation(aIdentifier, aRelType, aRelatedIdentifiers)
  *                              accessibles that shouldn't exist for this
  *                              relation.
  */
-function testAbsentRelation(aIdentifier, aRelType, aUnrelatedIdentifiers)
-{
+function testAbsentRelation(aIdentifier, aRelType, aUnrelatedIdentifiers) {
   var relation = getRelationByType(aIdentifier, aRelType);
 
   var relDescr = getRelationErrorMsg(aIdentifier, aRelType);
@@ -130,7 +129,7 @@ function testAbsentRelation(aIdentifier, aRelType, aUnrelatedIdentifiers)
     aUnrelatedIdentifiers : [aUnrelatedIdentifiers];
 
   var targets = [];
-  for (var idx = 0; idx < relatedIds.length; idx++)
+  for (let idx = 0; idx < relatedIds.length; idx++)
     targets.push(getAccessible(relatedIds[idx]));
 
   if (targets.length != relatedIds.length)
@@ -139,7 +138,7 @@ function testAbsentRelation(aIdentifier, aRelType, aUnrelatedIdentifiers)
   var actualTargets = relation.getTargets();
 
   // Any found targets that match given accessibles should be called out.
-  for (var idx = 0; idx < targets.length; idx++) {
+  for (let idx = 0; idx < targets.length; idx++) {
     var notFound = true;
     var enumerate = actualTargets.enumerate();
     while (enumerate.hasMoreElements()) {
@@ -161,8 +160,7 @@ function testAbsentRelation(aIdentifier, aRelType, aUnrelatedIdentifiers)
  *                     or DOM element or accessible object
  * @param aRelType     [in] relation type (see constants above)
  */
-function getRelationByType(aIdentifier, aRelType)
-{
+function getRelationByType(aIdentifier, aRelType) {
   var acc = getAccessible(aIdentifier);
   if (!acc)
     return;
@@ -177,11 +175,10 @@ function getRelationByType(aIdentifier, aRelType)
   return relation;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////
 // Private implementation details
 
-function getRelationErrorMsg(aIdentifier, aRelType, aIsStartSentence)
-{
+function getRelationErrorMsg(aIdentifier, aRelType, aIsStartSentence) {
   var relStr = relationTypeToString(aRelType);
   var msg = aIsStartSentence ? "Relation of '" : " relation of '";
   msg += relStr + "' type for '" + prettyName(aIdentifier) + "'";

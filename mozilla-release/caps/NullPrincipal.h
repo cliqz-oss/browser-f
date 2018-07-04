@@ -41,6 +41,8 @@ public:
   {
   }
 
+  static PrincipalKind Kind() { return eNullPrincipal; }
+
   NS_DECL_NSISERIALIZABLE
 
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -62,8 +64,11 @@ public:
   CreateWithInheritedAttributes(nsIDocShell* aDocShell, bool aIsFirstParty = false);
 
   static already_AddRefed<NullPrincipal>
-  Create(const mozilla::OriginAttributes& aOriginAttributes = mozilla::OriginAttributes(),
+  Create(const mozilla::OriginAttributes& aOriginAttributes,
          nsIURI* aURI = nullptr);
+
+  static already_AddRefed<NullPrincipal>
+  CreateWithoutOriginAttributes();
 
   nsresult Init(const mozilla::OriginAttributes& aOriginAttributes = mozilla::OriginAttributes(),
                 nsIURI* aURI = nullptr);

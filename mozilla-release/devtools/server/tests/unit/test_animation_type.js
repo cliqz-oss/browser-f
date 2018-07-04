@@ -10,16 +10,16 @@ const { ANIMATION_TYPES, AnimationPlayerActor } =
 function run_test() {
   // Mock a window with just the properties the AnimationPlayerActor uses.
   let window = {
-    MutationObserver: function () {
+    MutationObserver: function() {
       this.observe = () => {};
     },
-    Animation: function () {
+    Animation: function() {
       this.effect = {target: getMockNode()};
     },
-    CSSAnimation: function () {
+    CSSAnimation: function() {
       this.effect = {target: getMockNode()};
     },
-    CSSTransition: function () {
+    CSSTransition: function() {
       this.effect = {target: getMockNode()};
     }
   };
@@ -61,8 +61,8 @@ function run_test() {
   }];
 
   for (let { desc, animation, expectedType } of TEST_DATA) {
-    do_print(desc);
+    info(desc);
     let actor = AnimationPlayerActor({}, animation);
-    do_check_eq(actor.getType(), expectedType);
+    Assert.equal(actor.getType(), expectedType);
   }
 }

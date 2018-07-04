@@ -1,4 +1,4 @@
-////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////
 // Role constants
 
 const ROLE_ALERT = nsIAccessibleRole.ROLE_ALERT;
@@ -18,6 +18,7 @@ const ROLE_COMBOBOX = nsIAccessibleRole.ROLE_COMBOBOX;
 const ROLE_COMBOBOX_LIST = nsIAccessibleRole.ROLE_COMBOBOX_LIST;
 const ROLE_COMBOBOX_OPTION = nsIAccessibleRole.ROLE_COMBOBOX_OPTION;
 const ROLE_COLUMNHEADER = nsIAccessibleRole.ROLE_COLUMNHEADER;
+const ROLE_DATE_EDITOR = nsIAccessibleRole.ROLE_DATE_EDITOR;
 const ROLE_DEFINITION = nsIAccessibleRole.ROLE_DEFINITION;
 const ROLE_DEFINITION_LIST = nsIAccessibleRole.ROLE_DEFINITION_LIST;
 const ROLE_DETAILS = nsIAccessibleRole.ROLE_DETAILS;
@@ -84,6 +85,7 @@ const ROLE_MENUBAR = nsIAccessibleRole.ROLE_MENUBAR;
 const ROLE_MENUITEM = nsIAccessibleRole.ROLE_MENUITEM;
 const ROLE_MENUPOPUP = nsIAccessibleRole.ROLE_MENUPOPUP;
 const ROLE_NAVIGATION = nsIAccessibleRole.ROLE_NAVIGATION;
+const ROLE_NON_NATIVE_DOCUMENT = nsIAccessibleRole.ROLE_NON_NATIVE_DOCUMENT;
 const ROLE_NOTHING = nsIAccessibleRole.ROLE_NOTHING;
 const ROLE_NOTE = nsIAccessibleRole.ROLE_NOTE;
 const ROLE_OPTION = nsIAccessibleRole.ROLE_OPTION;
@@ -125,7 +127,7 @@ const ROLE_TOOLTIP = nsIAccessibleRole.ROLE_TOOLTIP;
 const ROLE_TREE_TABLE = nsIAccessibleRole.ROLE_TREE_TABLE;
 const ROLE_WHITESPACE = nsIAccessibleRole.ROLE_WHITESPACE;
 
-////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////
 // Public methods
 
 /**
@@ -134,8 +136,7 @@ const ROLE_WHITESPACE = nsIAccessibleRole.ROLE_WHITESPACE;
  * @param aAccOrElmOrID  the accessible, DOM element or ID to be tested.
  * @param aRole  The role that is to be expected.
  */
-function testRole(aAccOrElmOrID, aRole)
-{
+function testRole(aAccOrElmOrID, aRole) {
   var role = getRole(aAccOrElmOrID);
   is(role, aRole, "Wrong role for " + prettyName(aAccOrElmOrID) + "!");
 }
@@ -147,8 +148,7 @@ function testRole(aAccOrElmOrID, aRole)
  * @param aAccOrElmOrID  [in] The accessible, DOM element or element ID the
  *                       accessible role is being requested for.
  */
-function getRole(aAccOrElmOrID)
-{
+function getRole(aAccOrElmOrID) {
   var acc = getAccessible(aAccOrElmOrID);
   if (!acc)
     return -1;
@@ -166,10 +166,9 @@ function getRole(aAccOrElmOrID)
 /**
  * Analogy of SimpleTest.is function used to check the role.
  */
-function isRole(aIdentifier, aRole, aMsg)
-{
+function isRole(aIdentifier, aRole, aMsg) {
   var role = getRole(aIdentifier);
-  if (role == - 1)
+  if (role == -1)
     return;
 
   if (role == aRole) {

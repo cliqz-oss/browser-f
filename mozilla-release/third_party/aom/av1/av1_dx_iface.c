@@ -106,6 +106,8 @@ static aom_codec_err_t decoder_init(aom_codec_ctx_t *ctx,
          (ctx->init_flags & AOM_CODEC_USE_FRAME_THREADING))
             ? 1
             : 0;
+    // TODO(tdaede): this should not be exposed to the API
+    priv->cfg.allow_lowbitdepth = CONFIG_LOWBITDEPTH;
     if (ctx->config.dec) {
       priv->cfg = *ctx->config.dec;
       ctx->config.dec = &priv->cfg;
@@ -151,17 +153,44 @@ static aom_codec_err_t decoder_destroy(aom_codec_alg_priv_t *ctx) {
   return AOM_CODEC_OK;
 }
 
+#if !CONFIG_OBU
 static int parse_bitdepth_colorspace_sampling(BITSTREAM_PROFILE profile,
                                               struct aom_read_bit_buffer *rb) {
   aom_color_space_t color_space;
+#if CONFIG_COLORSPACE_HEADERS
+  int subsampling_x = 0;
+  int subsampling_y = 0;
+#endif
+
   if (profile >= PROFILE_2) rb->bit_offset += 1;  // Bit-depth 10 or 12.
+#if CONFIG_COLORSPACE_HEADERS
+  color_space = (aom_color_space_t)aom_rb_read_literal(rb, 5);
+  rb->bit_offset += 5;  // Transfer function
+#else
   color_space = (aom_color_space_t)aom_rb_read_literal(rb, 3);
+#endif
   if (color_space != AOM_CS_SRGB) {
     rb->bit_offset += 1;  // [16,235] (including xvycc) vs [0,255] range.
+
     if (profile == PROFILE_1 || profile == PROFILE_3) {
+#if CONFIG_COLORSPACE_HEADERS
+      subsampling_x = aom_rb_read_bit(rb);
+      subsampling_y = aom_rb_read_bit(rb);
+#else
       rb->bit_offset += 2;  // subsampling x/y.
+#endif
       rb->bit_offset += 1;  // unused.
+#if CONFIG_COLORSPACE_HEADERS
+    } else {
+      subsampling_x = 1;
+      subsampling_y = 1;
     }
+    if (subsampling_x == 1 && subsampling_y == 1) {
+      rb->bit_offset += 2;
+    }
+#else
+    }
+#endif
   } else {
     if (profile == PROFILE_1 || profile == PROFILE_3) {
       rb->bit_offset += 1;  // unused
@@ -172,6 +201,7 @@ static int parse_bitdepth_colorspace_sampling(BITSTREAM_PROFILE profile,
   }
   return 1;
 }
+#endif
 
 static aom_codec_err_t decoder_peek_si_internal(
     const uint8_t *data, unsigned int data_sz, aom_codec_stream_info_t *si,
@@ -190,12 +220,37 @@ static aom_codec_err_t decoder_peek_si_internal(
     data = clear_buffer;
   }
 
+  // skip a potential superframe index
   {
+    uint32_t frame_sizes[8];
+    int frame_count;
+    int index_size = 0;
+    aom_codec_err_t res = av1_parse_superframe_index(
+        data, data_sz, frame_sizes, &frame_count, &index_size, NULL, NULL);
+    if (res != AOM_CODEC_OK) return res;
+
+    data += index_size;
+    data_sz -= index_size;
+#if CONFIG_OBU
+    if (data + data_sz <= data) return AOM_CODEC_INVALID_PARAM;
+#endif
+  }
+
+  {
+#if CONFIG_OBU
+    // Proper fix needed
+    si->is_kf = 1;
+    intra_only_flag = 1;
+    si->h = 1;
+#else
     int show_frame;
     int error_resilient;
     struct aom_read_bit_buffer rb = { data, data + data_sz, 0, NULL, NULL };
     const int frame_marker = aom_rb_read_literal(&rb, 2);
     const BITSTREAM_PROFILE profile = av1_read_profile(&rb);
+#if CONFIG_EXT_TILE
+    unsigned int large_scale_tile;
+#endif  // CONFIG_EXT_TILE
 
     if (frame_marker != AOM_FRAME_MARKER) return AOM_CODEC_UNSUP_BITSTREAM;
 
@@ -203,6 +258,10 @@ static aom_codec_err_t decoder_peek_si_internal(
 
     if ((profile >= 2 && data_sz <= 1) || data_sz < 1)
       return AOM_CODEC_UNSUP_BITSTREAM;
+
+#if CONFIG_EXT_TILE
+    large_scale_tile = aom_rb_read_literal(&rb, 1);
+#endif  // CONFIG_EXT_TILE
 
     if (aom_rb_read_bit(&rb)) {     // show an existing frame
       aom_rb_read_literal(&rb, 3);  // Frame buffer to show.
@@ -213,32 +272,35 @@ static aom_codec_err_t decoder_peek_si_internal(
 
     si->is_kf = !aom_rb_read_bit(&rb);
     show_frame = aom_rb_read_bit(&rb);
+    if (!si->is_kf) {
+      if (!show_frame) intra_only_flag = show_frame ? 0 : aom_rb_read_bit(&rb);
+    }
     error_resilient = aom_rb_read_bit(&rb);
 #if CONFIG_REFERENCE_BUFFER
-    {
-      /* TODO: Move outside frame loop or inside key-frame branch */
-      int frame_id_len;
-      SequenceHeader seq_params;
-      read_sequence_header(&seq_params);
-      if (seq_params.frame_id_numbers_present_flag) {
-        frame_id_len = seq_params.frame_id_length_minus7 + 7;
-        aom_rb_read_literal(&rb, frame_id_len);
-      }
-    }
-#endif
+    SequenceHeader seq_params = { 0, 0, 0 };
     if (si->is_kf) {
-      if (!av1_read_sync_code(&rb)) return AOM_CODEC_UNSUP_BITSTREAM;
-
+      /* TODO: Move outside frame loop or inside key-frame branch */
+      read_sequence_header(&seq_params, &rb);
+#if CONFIG_EXT_TILE
+      if (large_scale_tile) seq_params.frame_id_numbers_present_flag = 0;
+#endif  // CONFIG_EXT_TILE
+    }
+#endif  // CONFIG_REFERENCE_BUFFER
+#if CONFIG_REFERENCE_BUFFER
+    if (seq_params.frame_id_numbers_present_flag) {
+      int frame_id_len;
+      frame_id_len = seq_params.frame_id_length_minus7 + 7;
+      aom_rb_read_literal(&rb, frame_id_len);
+    }
+#endif  // CONFIG_REFERENCE_BUFFER
+    if (si->is_kf) {
       if (!parse_bitdepth_colorspace_sampling(profile, &rb))
         return AOM_CODEC_UNSUP_BITSTREAM;
       av1_read_frame_size(&rb, (int *)&si->w, (int *)&si->h);
     } else {
-      intra_only_flag = show_frame ? 0 : aom_rb_read_bit(&rb);
-
       rb.bit_offset += error_resilient ? 0 : 2;  // reset_frame_context
 
       if (intra_only_flag) {
-        if (!av1_read_sync_code(&rb)) return AOM_CODEC_UNSUP_BITSTREAM;
         if (profile > PROFILE_0) {
           if (!parse_bitdepth_colorspace_sampling(profile, &rb))
             return AOM_CODEC_UNSUP_BITSTREAM;
@@ -247,6 +309,7 @@ static aom_codec_err_t decoder_peek_si_internal(
         av1_read_frame_size(&rb, (int *)&si->w, (int *)&si->h);
       }
     }
+#endif  // CONFIG_OBU
   }
   if (is_intra_only != NULL) *is_intra_only = intra_only_flag;
   return AOM_CODEC_OK;
@@ -417,6 +480,8 @@ static aom_codec_err_t init_decoder(aom_codec_alg_priv_t *ctx) {
       return AOM_CODEC_MEM_ERROR;
     }
 #endif
+    frame_worker_data->pbi->allow_lowbitdepth = ctx->cfg.allow_lowbitdepth;
+
     // If decoding in serial mode, FrameWorker thread could create tile worker
     // thread or loopfilter thread.
     frame_worker_data->pbi->max_threads =
@@ -597,9 +662,13 @@ static aom_codec_err_t decoder_decode(aom_codec_alg_priv_t *ctx,
     if (res != AOM_CODEC_OK) return res;
   }
 
+  int index_size = 0;
   res = av1_parse_superframe_index(data, data_sz, frame_sizes, &frame_count,
-                                   ctx->decrypt_cb, ctx->decrypt_state);
+                                   &index_size, ctx->decrypt_cb,
+                                   ctx->decrypt_state);
   if (res != AOM_CODEC_OK) return res;
+
+  data_start += index_size;
 
   if (ctx->frame_parallel_decode) {
     // Decode in frame parallel mode. When decoding in this mode, the frame
@@ -752,7 +821,7 @@ static aom_image_t *decoder_get_frame(aom_codec_alg_priv_t *ctx,
           yuvconfig2image(&ctx->img, &sd, frame_worker_data->user_priv);
 
 #if CONFIG_EXT_TILE
-          if (cm->tile_encoding_mode &&
+          if (cm->single_tile_decoding &&
               frame_worker_data->pbi->dec_tile_row >= 0) {
             const int tile_row =
                 AOMMIN(frame_worker_data->pbi->dec_tile_row, cm->tile_rows - 1);
@@ -768,7 +837,7 @@ static aom_image_t *decoder_get_frame(aom_codec_alg_priv_t *ctx,
                 AOMMIN(cm->tile_height, cm->mi_rows - mi_row) * MI_SIZE;
           }
 
-          if (cm->tile_encoding_mode &&
+          if (cm->single_tile_decoding &&
               frame_worker_data->pbi->dec_tile_col >= 0) {
             const int tile_col =
                 AOMMIN(frame_worker_data->pbi->dec_tile_col, cm->tile_cols - 1);
@@ -819,7 +888,7 @@ static aom_codec_err_t decoder_set_fb_fn(
 
 static aom_codec_err_t ctrl_set_reference(aom_codec_alg_priv_t *ctx,
                                           va_list args) {
-  aom_ref_frame_t *const data = va_arg(args, aom_ref_frame_t *);
+  av1_ref_frame_t *const data = va_arg(args, av1_ref_frame_t *);
 
   // Only support this function in serial decode.
   if (ctx->frame_parallel_decode) {
@@ -828,13 +897,12 @@ static aom_codec_err_t ctrl_set_reference(aom_codec_alg_priv_t *ctx,
   }
 
   if (data) {
-    aom_ref_frame_t *const frame = (aom_ref_frame_t *)data;
+    av1_ref_frame_t *const frame = data;
     YV12_BUFFER_CONFIG sd;
     AVxWorker *const worker = ctx->frame_workers;
     FrameWorkerData *const frame_worker_data = (FrameWorkerData *)worker->data1;
     image2yuvconfig(&frame->img, &sd);
-    return av1_set_reference_dec(&frame_worker_data->pbi->common,
-                                 ref_frame_to_av1_reframe(frame->frame_type),
+    return av1_set_reference_dec(&frame_worker_data->pbi->common, frame->idx,
                                  &sd);
   } else {
     return AOM_CODEC_INVALID_PARAM;
@@ -843,7 +911,7 @@ static aom_codec_err_t ctrl_set_reference(aom_codec_alg_priv_t *ctx,
 
 static aom_codec_err_t ctrl_copy_reference(aom_codec_alg_priv_t *ctx,
                                            va_list args) {
-  const aom_ref_frame_t *const frame = va_arg(args, aom_ref_frame_t *);
+  const av1_ref_frame_t *const frame = va_arg(args, av1_ref_frame_t *);
 
   // Only support this function in serial decode.
   if (ctx->frame_parallel_decode) {
@@ -856,8 +924,7 @@ static aom_codec_err_t ctrl_copy_reference(aom_codec_alg_priv_t *ctx,
     AVxWorker *const worker = ctx->frame_workers;
     FrameWorkerData *const frame_worker_data = (FrameWorkerData *)worker->data1;
     image2yuvconfig(&frame->img, &sd);
-    return av1_copy_reference_dec(frame_worker_data->pbi,
-                                  (AOM_REFFRAME)frame->frame_type, &sd);
+    return av1_copy_reference_dec(frame_worker_data->pbi, frame->idx, &sd);
   } else {
     return AOM_CODEC_INVALID_PARAM;
   }
@@ -1152,10 +1219,10 @@ static aom_codec_err_t ctrl_set_inspection_callback(aom_codec_alg_priv_t *ctx,
 }
 
 static aom_codec_ctrl_fn_map_t decoder_ctrl_maps[] = {
-  { AOM_COPY_REFERENCE, ctrl_copy_reference },
+  { AV1_COPY_REFERENCE, ctrl_copy_reference },
 
   // Setters
-  { AOM_SET_REFERENCE, ctrl_set_reference },
+  { AV1_SET_REFERENCE, ctrl_set_reference },
   { AOM_SET_POSTPROC, ctrl_set_postproc },
   { AOM_SET_DBG_COLOR_REF_FRAME, ctrl_set_dbg_options },
   { AOM_SET_DBG_COLOR_MB_MODES, ctrl_set_dbg_options },

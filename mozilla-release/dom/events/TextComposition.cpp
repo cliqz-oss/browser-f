@@ -59,12 +59,15 @@ TextComposition::TextComposition(nsPresContext* aPresContext,
   , mNativeContext(aCompositionEvent->mNativeIMEContext)
   , mCompositionStartOffset(0)
   , mTargetClauseOffsetInComposition(0)
+  , mCompositionStartOffsetInTextNode(UINT32_MAX)
+  , mCompositionLengthInTextNode(UINT32_MAX)
   , mIsSynthesizedForTests(aCompositionEvent->mFlags.mIsSynthesizedForTests)
   , mIsComposing(false)
   , mIsEditorHandlingEvent(false)
   , mIsRequestingCommit(false)
   , mIsRequestingCancel(false)
   , mRequestedToCommitOrCancel(false)
+  , mHasReceivedCommitEvent(false)
   , mWasNativeCompositionEndEventDiscarded(false)
   , mAllowControlCharacters(
       Preferences::GetBool("dom.compositionevent.allow_control_characters",
@@ -80,6 +83,9 @@ TextComposition::Destroy()
   mPresContext = nullptr;
   mNode = nullptr;
   mTabParent = nullptr;
+  mContainerTextNode = nullptr;
+  mCompositionStartOffsetInTextNode = UINT32_MAX;
+  mCompositionLengthInTextNode = UINT32_MAX;
   // TODO: If the editor is still alive and this is held by it, we should tell
   //       this being destroyed for cleaning up the stuff.
 }
@@ -245,6 +251,10 @@ TextComposition::DispatchCompositionEvent(
                    bool aIsSynthesized)
 {
   mWasCompositionStringEmpty = mString.IsEmpty();
+
+  if (aCompositionEvent->IsFollowedByCompositionEnd()) {
+    mHasReceivedCommitEvent = true;
+  }
 
   // If this instance has requested to commit or cancel composition but
   // is not synthesizing commit event, that means that the IME commits or
@@ -563,10 +573,12 @@ nsresult
 TextComposition::RequestToCommit(nsIWidget* aWidget, bool aDiscard)
 {
   // If this composition is already requested to be committed or canceled,
-  // we don't need to request it again because even if the first request
-  // failed, new request won't success, probably.  And we shouldn't synthesize
-  // events for committing or canceling composition twice or more times.
-  if (mRequestedToCommitOrCancel) {
+  // or has already finished in IME, we don't need to request it again because
+  // request from this instance shouldn't cause committing nor canceling current
+  // composition in IME, and even if the first request failed, new request
+  // won't success, probably.  And we shouldn't synthesize events for
+  // committing or canceling composition twice or more times.
+  if (!CanRequsetIMEToCommitOrCancelComposition()) {
     return NS_OK;
   }
 

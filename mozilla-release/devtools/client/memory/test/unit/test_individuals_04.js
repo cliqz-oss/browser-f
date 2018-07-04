@@ -21,20 +21,16 @@ const {
   setFilterString,
 } = require("devtools/client/memory/actions/filter");
 
-function run_test() {
-  run_next_test();
-}
-
 const EXPECTED_INDIVIDUAL_STATES = [
   individualsState.COMPUTING_DOMINATOR_TREE,
   individualsState.FETCHING,
   individualsState.FETCHED,
 ];
 
-add_task(function* () {
+add_task(async function() {
   let front = new StubbedMemoryFront();
   let heapWorker = new HeapAnalysesClient();
-  yield front.attach();
+  await front.attach();
   let store = Store();
   const { getState, dispatch } = store;
 
@@ -44,7 +40,7 @@ add_task(function* () {
   // Take a snapshot and wait for the census to finish.
 
   dispatch(takeSnapshotAndCensus(front, heapWorker));
-  yield waitUntilCensusState(store, s => s.census, [censusState.SAVED]);
+  await waitUntilCensusState(store, s => s.census, [censusState.SAVED]);
 
   // Fetch individuals.
 
@@ -64,7 +60,7 @@ add_task(function* () {
                             reportLeafIndex));
 
   for (let state of EXPECTED_INDIVIDUAL_STATES) {
-    yield waitUntilState(store, s => {
+    await waitUntilState(store, s => {
       return s.view.state === viewState.INDIVIDUALS &&
              s.individuals &&
              s.individuals.state === state;
@@ -86,5 +82,5 @@ add_task(function* () {
   }
 
   heapWorker.destroy();
-  yield front.detach();
+  await front.detach();
 });

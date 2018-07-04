@@ -8,7 +8,7 @@ esid: sec-runtime-semantics-bindingclassdeclarationevaluation
 features: [default-parameters]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     ClassDeclaration : class BindingIdentifier ClassTail
@@ -78,6 +78,7 @@ info: |
       ...BindingPattern[?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 class C {
   static method(...x = []) {

@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "ImageLayerMLGPU.h"
 #include "LayerManagerMLGPU.h"
@@ -48,9 +49,8 @@ ImageLayerMLGPU::ComputeEffectiveTransforms(const gfx::Matrix4x4& aTransformToSu
       mScaleToSize.width != 0.0 &&
       mScaleToSize.height != 0.0)
   {
-    Size scale(
-      sourceRect.width / mScaleToSize.width,
-      sourceRect.height / mScaleToSize.height);
+    Size scale(sourceRect.Width() / mScaleToSize.width,
+               sourceRect.Height() / mScaleToSize.height);
     mScale = Some(scale);
   }
 
@@ -66,7 +66,7 @@ ImageLayerMLGPU::GetSamplingFilter()
 bool
 ImageLayerMLGPU::IsContentOpaque()
 {
-  if (mPictureRect.width == 0 || mPictureRect.height == 0) {
+  if (mPictureRect.Width() == 0 || mPictureRect.Height() == 0) {
     return false;
   }
   if (mScaleMode == ScaleMode::STRETCH) {
@@ -76,13 +76,20 @@ ImageLayerMLGPU::IsContentOpaque()
 }
 
 void
-ImageLayerMLGPU::SetRegionToRender(LayerIntRegion&& aRegion)
+ImageLayerMLGPU::SetRenderRegion(LayerIntRegion&& aRegion)
 {
-  // See bug 1264142.
-  if (mScaleMode == ScaleMode::STRETCH) {
+  switch (mScaleMode) {
+  case ScaleMode::STRETCH:
+    // See bug 1264142.
     aRegion.AndWith(LayerIntRect(0, 0, mScaleToSize.width, mScaleToSize.height));
+    break;
+  default:
+    // Clamp the visible region to the texture size. (see bug 1396507)
+    MOZ_ASSERT(mScaleMode == ScaleMode::SCALE_NONE);
+    aRegion.AndWith(LayerIntRect(0, 0, mPictureRect.Width(), mPictureRect.Height()));
+    break;
   }
-  LayerMLGPU::SetRegionToRender(Move(aRegion));
+  LayerMLGPU::SetRenderRegion(Move(aRegion));
 }
 
 void

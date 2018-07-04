@@ -14,7 +14,7 @@ var gThreadClient;
 var gCallback;
 
 function run_test() {
-  run_test_with_server(DebuggerServer, function () {
+  run_test_with_server(DebuggerServer, function() {
     run_test_with_server(WorkerDebuggerServer, do_test_finished);
   });
   do_test_pending();
@@ -25,10 +25,10 @@ function run_test_with_server(server, callback) {
   initTestDebuggerServer(server);
   gDebuggee = addTestGlobal("test-breakpoints", server);
   gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient,
                            "test-breakpoints",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_column_breakpoint();
                            });
@@ -37,7 +37,7 @@ function run_test_with_server(server, callback) {
 
 function test_column_breakpoint() {
   // Debugger statement
-  gClient.addOneTimeListener("paused", function (event, packet) {
+  gClient.addOneTimeListener("paused", function(event, packet) {
     let source = gThreadClient.source(packet.frame.where.source);
     let location = {
       line: gDebuggee.line0 + 1,
@@ -45,22 +45,22 @@ function test_column_breakpoint() {
     };
     let timesBreakpointHit = 0;
 
-    source.setBreakpoint(location, function (response, bpClient) {
+    source.setBreakpoint(location, function(response, bpClient) {
       gThreadClient.addListener("paused", function onPaused(event, packet) {
-        do_check_eq(packet.type, "paused");
-        do_check_eq(packet.why.type, "breakpoint");
-        do_check_eq(packet.why.actors[0], bpClient.actor);
-        do_check_eq(packet.frame.where.source.actor, source.actor);
-        do_check_eq(packet.frame.where.line, location.line);
-        do_check_eq(packet.frame.where.column, location.column);
+        Assert.equal(packet.type, "paused");
+        Assert.equal(packet.why.type, "breakpoint");
+        Assert.equal(packet.why.actors[0], bpClient.actor);
+        Assert.equal(packet.frame.where.source.actor, source.actor);
+        Assert.equal(packet.frame.where.line, location.line);
+        Assert.equal(packet.frame.where.column, location.column);
 
-        do_check_eq(gDebuggee.acc, timesBreakpointHit);
-        do_check_eq(packet.frame.environment.bindings.variables.i.value,
-                    timesBreakpointHit);
+        Assert.equal(gDebuggee.acc, timesBreakpointHit);
+        Assert.equal(packet.frame.environment.bindings.variables.i.value,
+                     timesBreakpointHit);
 
         if (++timesBreakpointHit === 3) {
           gThreadClient.removeListener("paused", onPaused);
-          bpClient.remove(function (response) {
+          bpClient.remove(function(response) {
             gThreadClient.resume(() => gClient.close().then(gCallback));
           });
         } else {
@@ -74,7 +74,7 @@ function test_column_breakpoint() {
   });
 
   /* eslint-disable */
-  Components.utils.evalInSandbox(
+  Cu.evalInSandbox(
     "var line0 = Error().lineNumber;\n" +
     "(function () { debugger; this.acc = 0; for (var i = 0; i < 3; i++) this.acc++; }());",
     gDebuggee

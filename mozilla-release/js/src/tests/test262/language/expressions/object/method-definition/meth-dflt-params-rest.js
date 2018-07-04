@@ -8,7 +8,7 @@ esid: sec-runtime-semantics-definemethod
 features: [default-parameters]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     MethodDefinition : PropertyName ( StrictFormalParameters ) { FunctionBody }
@@ -61,6 +61,7 @@ info: |
       ...BindingPattern[?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 0, {
   method(...x = []) {

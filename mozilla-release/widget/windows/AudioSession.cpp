@@ -20,6 +20,7 @@
 #include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/Mutex.h"
 
 #include <objbase.h>
 
@@ -54,6 +55,8 @@ public:
   STDMETHODIMP OnSessionDisconnected(AudioSessionDisconnectReason aReason);
 private:
   nsresult OnSessionDisconnectedInternal();
+  nsresult CommitAudioSessionData();
+
 public:
   STDMETHODIMP OnSimpleVolumeChanged(float aVolume,
                                      BOOL aMute,
@@ -86,6 +89,8 @@ protected:
   nsString mIconPath;
   nsID mSessionGroupingParameter;
   SessionState mState;
+  // Guards the IAudioSessionControl
+  mozilla::Mutex mMutex;
 
   ThreadSafeAutoRefCnt mRefCnt;
   NS_DECL_OWNINGTHREAD
@@ -127,7 +132,8 @@ RecvAudioSessionData(const nsID& aID,
 
 AudioSession* AudioSession::sService = nullptr;
 
-AudioSession::AudioSession()
+AudioSession::AudioSession() :
+  mMutex("AudioSessionControl")
 {
   mState = UNINITIALIZED;
 }
@@ -209,8 +215,7 @@ AudioSession::Start()
                                 getter_AddRefs(bundle));
     NS_ENSURE_TRUE(bundle, NS_ERROR_FAILURE);
 
-    bundle->GetStringFromName("brandFullName",
-                              getter_Copies(mDisplayName));
+    bundle->GetStringFromName("brandFullName", mDisplayName);
 
     wchar_t *buffer;
     mIconPath.GetMutableData(&buffer, MAX_PATH);
@@ -255,6 +260,7 @@ AudioSession::Start()
     return NS_ERROR_FAILURE;
   }
 
+  MutexAutoLock lock(mMutex);
   hr = manager->GetAudioSessionControl(&GUID_NULL,
                                        0,
                                        getter_AddRefs(mAudioSessionControl));
@@ -263,30 +269,17 @@ AudioSession::Start()
     return NS_ERROR_FAILURE;
   }
 
-  hr = mAudioSessionControl->SetGroupingParam((LPGUID)&mSessionGroupingParameter,
-                                              nullptr);
-  if (FAILED(hr)) {
-    StopInternal();
-    return NS_ERROR_FAILURE;
-  }
-
-  hr = mAudioSessionControl->SetDisplayName(mDisplayName.get(), nullptr);
-  if (FAILED(hr)) {
-    StopInternal();
-    return NS_ERROR_FAILURE;
-  }
-
-  hr = mAudioSessionControl->SetIconPath(mIconPath.get(), nullptr);
-  if (FAILED(hr)) {
-    StopInternal();
-    return NS_ERROR_FAILURE;
-  }
-
+  // Increments refcount of 'this'.
   hr = mAudioSessionControl->RegisterAudioSessionNotification(this);
   if (FAILED(hr)) {
     StopInternal();
     return NS_ERROR_FAILURE;
   }
+
+  nsCOMPtr<nsIRunnable> runnable =
+    NewRunnableMethod("AudioSession::CommitAudioSessionData",
+                      this, &AudioSession::CommitAudioSessionData);
+  NS_DispatchToMainThread(runnable);
 
   mState = STARTED;
 
@@ -296,8 +289,11 @@ AudioSession::Start()
 void
 AudioSession::StopInternal()
 {
+  mMutex.AssertCurrentThreadOwns();
+
   if (mAudioSessionControl &&
       (mState == STARTED || mState == STOPPED)) {
+    // Decrement refcount of 'this'
     mAudioSessionControl->UnregisterAudioSessionNotification(this);
   }
   mAudioSessionControl = nullptr;
@@ -317,6 +313,7 @@ AudioSession::Stop()
     RefPtr<AudioSession> kungFuDeathGrip;
     kungFuDeathGrip.swap(sService);
 
+    MutexAutoLock lock(mMutex);
     StopInternal();
   }
 
@@ -373,6 +370,39 @@ AudioSession::SetSessionData(const nsID& aID,
   return NS_OK;
 }
 
+nsresult
+AudioSession::CommitAudioSessionData()
+{
+  MutexAutoLock lock(mMutex);
+
+  if (!mAudioSessionControl) {
+    // Stop() was called before we had a chance to do this.
+    return NS_OK;
+  }
+
+  HRESULT hr =
+    mAudioSessionControl->SetGroupingParam((LPGUID)&mSessionGroupingParameter,
+                                           nullptr);
+  if (FAILED(hr)) {
+    StopInternal();
+    return NS_ERROR_FAILURE;
+  }
+
+  hr = mAudioSessionControl->SetDisplayName(mDisplayName.get(), nullptr);
+  if (FAILED(hr)) {
+    StopInternal();
+    return NS_ERROR_FAILURE;
+  }
+
+  hr = mAudioSessionControl->SetIconPath(mIconPath.get(), nullptr);
+  if (FAILED(hr)) {
+    StopInternal();
+    return NS_ERROR_FAILURE;
+  }
+
+  return NS_OK;
+}
+
 STDMETHODIMP
 AudioSession::OnChannelVolumeChanged(DWORD aChannelCount,
                                      float aChannelVolumeArray[],
@@ -418,11 +448,21 @@ AudioSession::OnSessionDisconnected(AudioSessionDisconnectReason aReason)
 nsresult
 AudioSession::OnSessionDisconnectedInternal()
 {
-  if (!mAudioSessionControl)
-    return NS_OK;
+  // When successful, UnregisterAudioSessionNotification will decrement the
+  // refcount of 'this'.  Start will re-increment it.  In the interim,
+  // we'll need to reference ourselves.
+  RefPtr<AudioSession> kungFuDeathGrip(this);
 
-  mAudioSessionControl->UnregisterAudioSessionNotification(this);
-  mAudioSessionControl = nullptr;
+  {
+    // We need to release the mutex before we call Start().
+    MutexAutoLock lock(mMutex);
+
+    if (!mAudioSessionControl)
+      return NS_OK;
+
+    mAudioSessionControl->UnregisterAudioSessionNotification(this);
+    mAudioSessionControl = nullptr;
+  }
 
   mState = AUDIO_SESSION_DISCONNECTED;
   CoUninitialize();

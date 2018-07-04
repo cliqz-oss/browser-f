@@ -7,10 +7,10 @@
  * Tests if very long JSON responses are handled correctly.
  */
 
-add_task(function* () {
+add_task(async function() {
   let { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
 
-  let { tab, monitor } = yield initNetMonitor(JSON_LONG_URL);
+  let { tab, monitor } = await initNetMonitor(JSON_LONG_URL);
   info("Starting test... ");
 
   // This is receiving over 80 KB of json and will populate over 6000 items
@@ -26,11 +26,13 @@ add_task(function* () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  let wait = waitForNetworkEvents(monitor, 1);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests();
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 1);
+
+  let requestItem = document.querySelector(".request-list-item");
+  let requestsListStatus = requestItem.querySelector(".status-code");
+  EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
+  await waitUntil(() => requestsListStatus.title);
 
   verifyRequestItemTarget(
     document,
@@ -48,16 +50,15 @@ add_task(function* () {
       time: true
     });
 
-  wait = waitForDOM(document, "#response-panel");
-  EventUtils.sendMouseEvent({ type: "click" },
-    document.querySelector(".network-details-panel-toggle"));
+  wait = waitForDOM(document, "#response-panel .CodeMirror-code");
+  store.dispatch(Actions.toggleNetworkDetails());
   EventUtils.sendMouseEvent({ type: "click" },
     document.querySelector("#response-tab"));
-  yield wait;
+  await wait;
 
   testResponseTab();
 
-  yield teardown(monitor);
+  await teardown(monitor);
 
   function testResponseTab() {
     let tabpanel = document.querySelector("#response-panel");
@@ -67,13 +68,13 @@ add_task(function* () {
     let jsonView = tabpanel.querySelector(".tree-section .treeLabel") || {};
     is(jsonView.textContent === L10N.getStr("jsonScopeName"), true,
       "The response json view has the intended visibility.");
-    is(tabpanel.querySelector(".CodeMirror-code") === null, true,
-      "The response editor doesn't have the intended visibility.");
+    is(tabpanel.querySelector(".CodeMirror-code") === null, false,
+      "The response editor has the intended visibility.");
     is(tabpanel.querySelector(".response-image-box") === null, true,
       "The response image box doesn't have the intended visibility.");
 
-    is(tabpanel.querySelectorAll(".tree-section").length, 1,
-      "There should be 1 tree sections displayed in this tabpanel.");
+    is(tabpanel.querySelectorAll(".tree-section").length, 2,
+      "There should be 2 tree sections displayed in this tabpanel.");
     is(tabpanel.querySelectorAll(".treeRow:not(.tree-section)").length, 2047,
       "There should be 2047 json properties displayed in this tabpanel.");
     is(tabpanel.querySelectorAll(".empty-notice").length, 0,

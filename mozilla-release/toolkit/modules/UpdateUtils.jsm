@@ -2,15 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["UpdateUtils"];
+var EXPORTED_SYMBOLS = ["UpdateUtils"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/ctypes.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ctypes.jsm");
 Cu.importGlobalProperties(["fetch"]); /* globals fetch */
+
+ChromeUtils.defineModuleGetter(this, "WindowsRegistry",
+                               "resource://gre/modules/WindowsRegistry.jsm");
 
 const FILE_UPDATE_LOCALE                  = "update.locale";
 const PREF_APP_DISTRIBUTION               = "distribution.id";
@@ -18,7 +19,7 @@ const PREF_APP_DISTRIBUTION_VERSION       = "distribution.version";
 const PREF_APP_UPDATE_CUSTOM              = "app.update.custom";
 
 
-this.UpdateUtils = {
+var UpdateUtils = {
   _locale: undefined,
 
   /**
@@ -135,20 +136,7 @@ function getDistributionPrefValue(aPrefName) {
 }
 
 function getSystemCapabilities() {
-  return "ISET:" + gInstructionSet + ",MEM:" + getMemoryMB() + getJAWS();
-}
-
-/**
- * Gets the appropriate update url string for whether a JAWS screen reader that
- * is incompatible with e10s is present on Windows. For platforms other than
- * Windows this returns an empty string which is easier for balrog to detect.
- */
-function getJAWS() {
-  if (AppConstants.platform != "win") {
-    return "";
-  }
-
-  return ",JAWS:" + (Services.appinfo.shouldBlockIncompatJaws ? "1" : "0");
+  return "ISET:" + gInstructionSet + ",MEM:" + getMemoryMB();
 }
 
 /**
@@ -173,47 +161,16 @@ function getMemoryMB() {
  * Gets the supported CPU instruction set.
  */
 XPCOMUtils.defineLazyGetter(this, "gInstructionSet", function aus_gIS() {
-  if (AppConstants.platform == "win") {
-    const PF_MMX_INSTRUCTIONS_AVAILABLE = 3; // MMX
-    const PF_XMMI_INSTRUCTIONS_AVAILABLE = 6; // SSE
-    const PF_XMMI64_INSTRUCTIONS_AVAILABLE = 10; // SSE2
-    const PF_SSE3_INSTRUCTIONS_AVAILABLE = 13; // SSE3
-
-    let lib = ctypes.open("kernel32.dll");
-    let IsProcessorFeaturePresent = lib.declare("IsProcessorFeaturePresent",
-                                                ctypes.winapi_abi,
-                                                ctypes.int32_t, /* success */
-                                                ctypes.uint32_t); /* DWORD */
-    let instructionSet = "unknown";
-    try {
-      if (IsProcessorFeaturePresent(PF_SSE3_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "SSE3";
-      } else if (IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "SSE2";
-      } else if (IsProcessorFeaturePresent(PF_XMMI_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "SSE";
-      } else if (IsProcessorFeaturePresent(PF_MMX_INSTRUCTIONS_AVAILABLE)) {
-        instructionSet = "MMX";
-      }
-    } catch (e) {
-      instructionSet = "error";
-      Cu.reportError("Error getting processor instruction set. " +
-                     "Exception: " + e);
+  const CPU_EXTENSIONS = ["hasSSE4_2", "hasSSE4_1", "hasSSE4A", "hasSSSE3",
+                          "hasSSE3", "hasSSE2", "hasSSE", "hasMMX",
+                          "hasNEON", "hasARMv7", "hasARMv6"];
+  for (let ext of CPU_EXTENSIONS) {
+    if (Services.sysinfo.getProperty(ext)) {
+      return ext.substring(3);
     }
-
-    lib.close();
-    return instructionSet;
   }
 
-  if (AppConstants == "linux") {
-    let instructionSet = "unknown";
-    if (navigator.cpuHasSSE2) {
-      instructionSet = "SSE2";
-    }
-    return instructionSet;
-  }
-
-  return "NA"
+  return "unknown";
 });
 
 /* Windows only getter that returns the processor architecture. */
@@ -302,6 +259,12 @@ XPCOMUtils.defineLazyGetter(UpdateUtils, "ABI", function() {
     // Windows build should report the CPU architecture that it's running on.
     abi += "-" + gWinCPUArch;
   }
+
+  if (AppConstants.ASAN) {
+    // Allow ASan builds to receive their own updates
+    abi += "-asan";
+  }
+
   return abi;
 });
 
@@ -361,7 +324,8 @@ XPCOMUtils.defineLazyGetter(UpdateUtils, "OSVersion", function() {
 
             if (0 !== GetVersionEx(winVer.address())) {
               osVersion += "." + winVer.wServicePackMajor +
-                           "." + winVer.wServicePackMinor;
+                           "." + winVer.wServicePackMinor +
+                           "." + winVer.dwBuildNumber;
             } else {
               Cu.reportError("Unknown failure in GetVersionEX (returned 0)");
               osVersion += ".unknown";
@@ -369,6 +333,14 @@ XPCOMUtils.defineLazyGetter(UpdateUtils, "OSVersion", function() {
           } catch (e) {
             Cu.reportError("Error getting service pack information. Exception: " + e);
             osVersion += ".unknown";
+          }
+
+          if (Services.vc.compare(Services.sysinfo.getProperty("version"), "10") >= 0) {
+            const WINDOWS_UBR_KEY_PATH = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+            let ubr = WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_LOCAL_MACHINE,
+                                                 WINDOWS_UBR_KEY_PATH, "UBR",
+                                                 Ci.nsIWindowsRegKey.WOW64_64);
+            osVersion += (ubr !== undefined) ? "." + ubr : ".unknown";
           }
         } finally {
           kernel32.close();

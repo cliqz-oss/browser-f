@@ -76,8 +76,7 @@ protected:
                   bool canRecycle);
 
 public:
-    virtual ~SharedSurface() {
-    }
+    virtual ~SharedSurface();
 
     // Specifies to the TextureClient any flags which
     // are required by the SharedSurface backend.
@@ -303,8 +302,7 @@ protected:
 public:
     UniquePtr<SharedSurface> NewSharedSurface(const gfx::IntSize& size);
     //already_AddRefed<ShSurfHandle> NewShSurfHandle(const gfx::IntSize& size);
-    already_AddRefed<layers::SharedSurfaceTextureClient> NewTexClient(const gfx::IntSize& size,
-                                                                      const layers::LayersIPCChannel* aLayersChannel = nullptr);
+    already_AddRefed<layers::SharedSurfaceTextureClient> NewTexClient(const gfx::IntSize& size);
 
     static void RecycleCallback(layers::TextureClient* tc, void* /*closure*/);
 

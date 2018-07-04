@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,6 +8,8 @@
 
 #include "nsLineLayout.h"
 
+#include "mozilla/ComputedStyle.h"
+
 #include "LayoutLogging.h"
 #include "SVGTextFrame.h"
 #include "nsBlockFrame.h"
@@ -14,7 +17,6 @@
 #include "nsStyleConsts.h"
 #include "nsContainerFrame.h"
 #include "nsFloatManager.h"
-#include "nsStyleContext.h"
 #include "nsPresContext.h"
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
@@ -214,7 +216,7 @@ nsLineLayout::BeginLineReflow(nscoord aICoord, nscoord aBCoord,
       pctBasis =
         mBlockReflowInput->GetContainingBlockContentISize(aWritingMode);
     }
-    nscoord indent = nsRuleNode::ComputeCoordPercentCalc(textIndent, pctBasis);
+    nscoord indent = textIndent.ComputeCoordPercentCalc(pctBasis);
 
     mTextIndent = indent;
 
@@ -429,7 +431,7 @@ nsLineLayout::BeginSpan(nsIFrame* aFrame,
   nsIFrame* frame = aSpanReflowInput->mFrame;
   psd->mNoWrap = !frame->StyleText()->WhiteSpaceCanWrap(frame) ||
                  mSuppressLineWrap ||
-                 frame->StyleContext()->ShouldSuppressLineBreak();
+                 frame->Style()->ShouldSuppressLineBreak();
   psd->mWritingMode = aSpanReflowInput->GetWritingMode();
 
   // Switch to new span
@@ -661,6 +663,7 @@ nsLineLayout::NewPerFrameData(nsIFrame* aFrame)
   pfd->mIsBullet = false;
   pfd->mSkipWhenTrimmingWhitespace = false;
   pfd->mIsEmpty = false;
+  pfd->mIsPlaceholder = false;
   pfd->mIsLinkedToBase = false;
 
   pfd->mWritingMode = aFrame->GetWritingMode();
@@ -839,7 +842,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
 
   // Figure out whether we're talking about a textframe here
   LayoutFrameType frameType = aFrame->Type();
-  bool isText = frameType == LayoutFrameType::Text;
+  const bool isText = frameType == LayoutFrameType::Text;
 
   // Inline-ish and text-ish things don't compute their width;
   // everything else does.  We need to give them an available width that
@@ -939,6 +942,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
   } else {
     if (LayoutFrameType::Placeholder == frameType) {
       isEmpty = true;
+      pfd->mIsPlaceholder = true;
       pfd->mSkipWhenTrimmingWhitespace = true;
       nsIFrame* outOfFlowFrame = nsLayoutUtils::GetFloatFromPlaceholder(aFrame);
       if (outOfFlowFrame) {
@@ -1041,8 +1045,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
 
   // Tell the frame that we're done reflowing it
   aFrame->DidReflow(mPresContext,
-                    isText ? nullptr : reflowInputHolder.ptr(),
-                    nsDidReflowStatus::FINISHED);
+                    isText ? nullptr : reflowInputHolder.ptr());
 
   if (aMetrics) {
     *aMetrics = reflowOutput;
@@ -1214,6 +1217,10 @@ nsLineLayout::SyncAnnotationBounds(PerFrameData* aRubyFrame)
   for (PerFrameData* pfd = span->mFirstFrame; pfd; pfd = pfd->mNext) {
     for (PerFrameData* rtc = pfd->mNextAnnotation;
          rtc; rtc = rtc->mNextAnnotation) {
+      if (lineWM.IsOrthogonalTo(rtc->mFrame->GetWritingMode())) {
+        // Inter-character case: don't attempt to sync annotation bounds.
+        continue;
+      }
       // When the annotation container is reflowed, the width of the
       // ruby container is unknown so we use a dummy container size;
       // in the case of RTL block direction, the final position will be
@@ -1655,8 +1662,10 @@ nsLineLayout::PlaceTopBottomFrames(PerSpanData* psd,
 static nscoord
 GetBSizeOfEmphasisMarks(nsIFrame* aSpanFrame, float aInflation)
 {
-  RefPtr<nsFontMetrics> fm = nsLayoutUtils::
-    GetFontMetricsOfEmphasisMarks(aSpanFrame->StyleContext(), aInflation);
+  RefPtr<nsFontMetrics> fm =
+    nsLayoutUtils::GetFontMetricsOfEmphasisMarks(aSpanFrame->Style(),
+                                                 aSpanFrame->PresContext(),
+                                                 aInflation);
   return fm->MaxHeight();
 }
 
@@ -1877,10 +1886,12 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
     // compute the top leading.
     float inflation =
       GetInflationForBlockDirAlignment(spanFrame, mInflationMinFontSize);
-    nscoord logicalBSize = ReflowInput::
-      CalcLineHeight(spanFrame->GetContent(), spanFrame->StyleContext(),
-                     mBlockReflowInput->ComputedHeight(),
-                     inflation);
+    nscoord logicalBSize =
+      ReflowInput::CalcLineHeight(spanFrame->GetContent(),
+                                  spanFrame->Style(),
+                                  spanFrame->PresContext(),
+                                  mBlockReflowInput->ComputedHeight(),
+                                  inflation);
     nscoord contentBSize = spanFramePFD->mBounds.BSize(lineWM) -
       spanFramePFD->mBorderPadding.BStartEnd(lineWM);
 
@@ -2166,12 +2177,14 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
         // of the elements line block size value.
         float inflation =
           GetInflationForBlockDirAlignment(frame, mInflationMinFontSize);
-        pctBasis = ReflowInput::CalcLineHeight(frame->GetContent(),
-          frame->StyleContext(), mBlockReflowInput->ComputedBSize(),
+        pctBasis = ReflowInput::CalcLineHeight(
+          frame->GetContent(),
+          frame->Style(),
+          frame->PresContext(),
+          mBlockReflowInput->ComputedBSize(),
           inflation);
       }
-      nscoord offset =
-        nsRuleNode::ComputeCoordPercentCalc(verticalAlign, pctBasis);
+      nscoord offset = verticalAlign.ComputeCoordPercentCalc(pctBasis);
       // According to the CSS2 spec (10.8.1), a positive value
       // "raises" the box by the given distance while a negative value
       // "lowers" the box by the given distance (with zero being the
@@ -2206,17 +2219,17 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
       //           For example in quirks mode, avoiding empty text frames prevents
       //           "tall" lines around elements like <hr> since the rules of <hr>
       //           in quirks.css have pseudo text contents with LF in them.
-#if 0
-      if (!pfd->mIsTextFrame) {
-#else
-      // Only consider non empty text frames when line-height=normal
-      bool canUpdate = !pfd->mIsTextFrame;
-      if (!canUpdate && pfd->mIsNonWhitespaceTextFrame) {
-        canUpdate =
+      bool canUpdate;
+      if (pfd->mIsTextFrame) {
+        // Only consider text frames if they're not empty and
+        // line-height=normal.
+        canUpdate = pfd->mIsNonWhitespaceTextFrame &&
           frame->StyleText()->mLineHeight.GetUnit() == eStyleUnit_Normal;
+      } else {
+        canUpdate = !pfd->mIsPlaceholder;
       }
+
       if (canUpdate) {
-#endif
         nscoord blockStart, blockEnd;
         if (frameSpan) {
           // For spans that were are now placing, use their position
@@ -2939,7 +2952,7 @@ nsLineLayout::ApplyFrameJustification(PerSpanData* aPSD,
 static nsIFrame*
 FindNearestRubyBaseAncestor(nsIFrame* aFrame)
 {
-  MOZ_ASSERT(aFrame->StyleContext()->ShouldSuppressLineBreak());
+  MOZ_ASSERT(aFrame->Style()->ShouldSuppressLineBreak());
   while (aFrame && !aFrame->IsRubyBaseFrame()) {
     aFrame = aFrame->GetParent();
   }
@@ -3017,6 +3030,10 @@ nsLineLayout::ExpandRubyBoxWithAnnotations(PerFrameData* aFrame,
   bool isLevelContainer = aFrame->mFrame->IsRubyBaseContainerFrame();
   for (PerFrameData* annotation = aFrame->mNextAnnotation;
        annotation; annotation = annotation->mNextAnnotation) {
+    if (lineWM.IsOrthogonalTo(annotation->mFrame->GetWritingMode())) {
+      // Inter-character case: don't attempt to expand ruby annotations.
+      continue;
+    }
     if (isLevelContainer) {
       nsIFrame* rtcFrame = annotation->mFrame;
       MOZ_ASSERT(rtcFrame->IsRubyTextContainerFrame());
@@ -3130,7 +3147,7 @@ nsLineLayout::TextAlignLine(nsLineBox* aLine,
     ComputeFrameJustification(psd, computeState);
     if (mHasRuby && computeState.mFirstParticipant) {
       PerFrameData* firstFrame = computeState.mFirstParticipant;
-      if (firstFrame->mFrame->StyleContext()->ShouldSuppressLineBreak()) {
+      if (firstFrame->mFrame->Style()->ShouldSuppressLineBreak()) {
         MOZ_ASSERT(!firstFrame->mJustificationAssignment.mGapsAtStart);
         nsIFrame* rubyBase = FindNearestRubyBaseAncestor(firstFrame->mFrame);
         if (rubyBase && IsRubyAlignSpaceAround(rubyBase)) {
@@ -3139,7 +3156,7 @@ nsLineLayout::TextAlignLine(nsLineBox* aLine,
         }
       }
       PerFrameData* lastFrame = computeState.mLastParticipant;
-      if (lastFrame->mFrame->StyleContext()->ShouldSuppressLineBreak()) {
+      if (lastFrame->mFrame->Style()->ShouldSuppressLineBreak()) {
         MOZ_ASSERT(!lastFrame->mJustificationAssignment.mGapsAtEnd);
         nsIFrame* rubyBase = FindNearestRubyBaseAncestor(lastFrame->mFrame);
         if (rubyBase && IsRubyAlignSpaceAround(rubyBase)) {
@@ -3333,7 +3350,7 @@ nsLineLayout::RelativePositionFrames(PerSpanData* psd, nsOverflowAreas& aOverflo
         //     put further away if the text is inside ruby.
         // (4) When there are text strokes
         if (pfd->mRecomputeOverflow ||
-            frame->StyleContext()->HasTextDecorationLines() ||
+            frame->Style()->HasTextDecorationLines() ||
             frame->StyleText()->HasTextEmphasis() ||
             frame->StyleText()->HasWebkitTextStroke()) {
           nsTextFrame* f = static_cast<nsTextFrame*>(frame);

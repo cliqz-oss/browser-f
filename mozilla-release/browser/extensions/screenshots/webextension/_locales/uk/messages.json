@@ -29,6 +29,27 @@
   "downloadScreenshot": {
     "message": "Завантажити"
   },
+  "downloadOnlyNotice": {
+    "message": "Ви зараз в режимі лише завантаження."
+  },
+  "downloadOnlyDetails": {
+    "message": "Firefox Screenshots автоматично переходить в режим лише завантаження в таких випадках:"
+  },
+  "downloadOnlyDetailsPrivate": {
+    "message": "У вікні приватного перегляду."
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "Сторонні куки вимкнено."
+  },
+  "downloadOnlyDetailsNeverRemember": {
+    "message": "Активовано налаштування “Ніколи не пам'ятати історії”."
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "Ви використовуєте Firefox ESR."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "Вивантаження було вимкнено."
+  },
   "notificationLinkCopiedTitle": {
     "message": "Посилання скопійовано"
   },
@@ -36,6 +57,28 @@
     "message": "Посилання на ваш знімок було скопійоване до буфера обміну. Натисніть $META_KEY$-V для вставлення.",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyScreenshot": {
+    "message": "Копіювати"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "Знімок скопійовано"
+  },
+  "notificationImageCopiedDetails": {
+    "message": "Ваш знімок був скопійований в буфер обміну. Натисніть $META_KEY$-V, щоб вставити.",
+    "placeholders": {
+      "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "imageCroppedWarning": {
+    "message": "Зображення було обрізано до $PIXELS$ пікселів.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -79,25 +122,31 @@
   "genericErrorDetails": {
     "message": "Ми не впевнені, в чому проблема. Спробувати ще раз, або ж зробити знімок іншої сторінки?"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Робіть знімки екрану, зберігайте та діліться ними прямо в Firefox."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "Новий спосіб збереження"
+  },
+  "tourBodyPageAction": {
+    "message": "Розгорніть меню дій для сторінки в панелі адреси, коли ви хочете зробити знімок екрану."
+  },
+  "tourHeaderClickAndDrag": {
     "message": "Робіть знімки чого завгодно"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "Клацніть і потягніть мишею для захоплення частини сторінки. Ви також можете навести курсор миші для підсвічення вибраної області."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "Захоплюйте вікна або цілі сторінки"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "За допомогою кнопок у верхній правій частині обирайте захоплення видимої області вікна, або сторінки повністю."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "Як вам подобається"
   },
-  "tourBodyFour": {
+  "tourBodyDownloadUpload": {
     "message": "Зберігайте свої знімки в Інтернеті, щоб легко ними ділитися, або завантажуйте їх на свій комп'ютер. Ви також можете переглянути всі збережені знімки, натиснувши на кнопку Мої знімки."
   },
   "tourSkip": {
@@ -112,8 +161,8 @@
   "tourDone": {
     "message": "Готово"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Використовуючи Firefox Screenshots, ви погоджуєтеся з умовами хмарних послуг Firefox: $TERMSANDPRIVACYNOTICETERMSLINK$ та $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
+  "termsAndPrivacyNotice2": {
+    "message": "Використовуючи Firefox Screenshots, ви погоджуєтеся з нашими $TERMSANDPRIVACYNOTICETERMSLINK$ та $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +177,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "Повідомленням про приватність"
+  },
+  "libraryLabel": {
+    "message": "Знімки екрану"
   }
 }

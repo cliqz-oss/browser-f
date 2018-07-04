@@ -1,12 +1,12 @@
 "use strict";
 
-Cu.import("resource://gre/modules/ForgetAboutSite.jsm");
+ChromeUtils.import("resource://gre/modules/ForgetAboutSite.jsm");
 
 add_task(async function() {
   registerFakePath("ULibDir", do_get_file("Library/"));
-  let migrator = MigrationUtils.getMigrator("chrome");
+  let migrator = await MigrationUtils.getMigrator("chrome");
 
-  Assert.ok(migrator.sourceExists, "Sanity check the source exists");
+  Assert.ok(await migrator.isSourceAvailable(), "Sanity check the source exists");
 
   const COOKIE = {
     expiry: 2145934800,

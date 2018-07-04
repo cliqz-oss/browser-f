@@ -11,27 +11,32 @@
 #include "nsWeakPtr.h"
 #include "txOutputFormat.h"
 
-class nsIDOMDocument;
-class nsIDOMDocumentFragment;
 class nsITransformObserver;
 class nsIDocument;
 class nsIContent;
+
+namespace mozilla {
+namespace dom {
+class DocumentFragment;
+class Element;
+}
+}
 
 class txMozillaTextOutput : public txAOutputXMLEventHandler
 {
 public:
     explicit txMozillaTextOutput(nsITransformObserver* aObserver);
-    explicit txMozillaTextOutput(nsIDOMDocumentFragment* aDest);
+    explicit txMozillaTextOutput(mozilla::dom::DocumentFragment* aDest);
     virtual ~txMozillaTextOutput();
 
     TX_DECL_TXAXMLEVENTHANDLER
     TX_DECL_TXAOUTPUTXMLEVENTHANDLER
 
-    nsresult createResultDocument(nsIDOMDocument* aSourceDocument,
+    nsresult createResultDocument(nsIDocument* aSourceDocument,
                                   bool aLoadedAsData);
 
 private:
-    nsresult createXHTMLElement(nsIAtom* aName, nsIContent** aResult);
+    nsresult createXHTMLElement(nsAtom* aName, mozilla::dom::Element** aResult);
 
     nsCOMPtr<nsIContent> mTextParent;
     nsWeakPtr mObserver;

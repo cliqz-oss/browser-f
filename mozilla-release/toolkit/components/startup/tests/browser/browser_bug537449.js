@@ -23,24 +23,24 @@ function test() {
       btnStay.click();
     });
 
-    let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"].
-                       getService(Ci.nsIAppStartup);
-    appStartup.quit(Ci.nsIAppStartup.eAttemptQuit);
+    Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit);
     ok(seenDialog, "Should have seen a prompt dialog");
     ok(!window.closed, "Shouldn't have closed the window");
 
     let win2 = window.openDialog(location, "", "chrome,all,dialog=no", "about:blank");
     ok(win2 != null, "Should have been able to open a new window");
-    win2.addEventListener("load", function() {
-      win2.close();
+    win2.addEventListener("load", () => {
+      executeSoon(() => {
+        win2.close();
 
-      // Leave the page the second time.
-      waitForOnBeforeUnloadDialog(browser, (btnLeave, btnStay) => {
-        btnLeave.click();
+        // Leave the page the second time.
+        waitForOnBeforeUnloadDialog(browser, (btnLeave, btnStay) => {
+          btnLeave.click();
+        });
+
+        gBrowser.removeTab(gBrowser.selectedTab);
+        finish();
       });
-
-      gBrowser.removeTab(gBrowser.selectedTab);
-      executeSoon(finish);
     }, {once: true});
   });
 }

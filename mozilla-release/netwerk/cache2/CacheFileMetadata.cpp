@@ -263,16 +263,20 @@ CacheFileMetadata::WriteMetadata(uint32_t aOffset,
   }
 
   char *p = mWriteBuf + sizeof(uint32_t);
-  memcpy(p, mHashArray, mHashCount * sizeof(CacheHash::Hash16_t));
-  p += mHashCount * sizeof(CacheHash::Hash16_t);
+  if (mHashCount) {
+    memcpy(p, mHashArray, mHashCount * sizeof(CacheHash::Hash16_t));
+    p += mHashCount * sizeof(CacheHash::Hash16_t);
+  }
   mMetaHdr.WriteToBuf(p);
   p += sizeof(CacheFileMetadataHeader);
   memcpy(p, mKey.get(), mKey.Length());
   p += mKey.Length();
   *p = 0;
   p++;
-  memcpy(p, mBuf, mElementsSize);
-  p += mElementsSize;
+  if (mElementsSize) {
+    memcpy(p, mBuf, mElementsSize);
+    p += mElementsSize;
+  }
 
   CacheHash::Hash32_t hash;
   hash = CacheHash::Hash(mWriteBuf + sizeof(uint32_t),
@@ -1104,7 +1108,8 @@ CacheFileMetadata::SizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const
   n += mKey.SizeOfExcludingThisIfUnshared(mallocSizeOf);
   n += mallocSizeOf(mHashArray);
   n += mallocSizeOf(mBuf);
-  n += mallocSizeOf(mWriteBuf);
+  // Ignore mWriteBuf, it's not safe to access it when metadata is being
+  // written and it's null otherwise.
   // mListener is usually the owning CacheFile.
 
   return n;

@@ -1,11 +1,10 @@
-"use strict"
+"use strict";
 
 add_task(async function() {
   info("Add a live bookmark editing its data");
 
   await withSidebarTree("bookmarks", async function(tree) {
-    let itemId = PlacesUIUtils.leftPaneQueries["UnfiledBookmarks"];
-    tree.selectItems([itemId]);
+    tree.selectItems([PlacesUtils.bookmarks.unfiledGuid]);
 
     await withBookmarksDialog(
       true,
@@ -14,7 +13,7 @@ add_task(async function() {
                                           "livemark", "description");
       },
       async function test(dialogWin) {
-        let promiseTitleChangeNotification = promiseBookmarksNotification(
+        let promiseTitleChangeNotification = PlacesTestUtils.waitForNotification(
           "onItemChanged", (unused, prop, isAnno, val) => prop == "title" && val == "modified");
 
         fillBookmarkTextField("editBMPanel_namePicker", "modified", dialogWin);
@@ -26,13 +25,13 @@ add_task(async function() {
           index: PlacesUtils.bookmarks.DEFAULT_INDEX
         });
 
-        is(bookmark.title, "modified", "folder name has been edited");
+        Assert.equal(bookmark.title, "modified", "folder name has been edited");
 
         let livemark = await PlacesUtils.livemarks.getLivemark({
           guid: bookmark.guid
         });
-        is(livemark.feedURI.spec, "http://livemark.com/", "livemark has the correct url");
-        is(livemark.title, "modified", "livemark has the correct title");
+        Assert.equal(livemark.feedURI.spec, "http://livemark.com/", "livemark has the correct url");
+        Assert.equal(livemark.title, "modified", "livemark has the correct title");
       }
     );
   });

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -76,7 +76,7 @@ private:
   // Only ::before and ::after are supported.
   CSSPseudoElement(Element* aElement, CSSPseudoElementType aType);
 
-  static nsIAtom* GetCSSPseudoElementPropertyAtom(CSSPseudoElementType aType);
+  static nsAtom* GetCSSPseudoElementPropertyAtom(CSSPseudoElementType aType);
 
   // mParentElement needs to be an owning reference since if script is holding
   // on to the pseudo-element, it needs to continue to be able to refer to

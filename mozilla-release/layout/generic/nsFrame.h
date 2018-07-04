@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -126,7 +127,7 @@ public:
    * 0,0 area.
    */
   friend nsIFrame* NS_NewEmptyFrame(nsIPresShell* aShell,
-                                    nsStyleContext* aContext);
+                                    ComputedStyle* aStyle);
 
 private:
   // Left undefined; nsFrame objects are never allocated from the heap.
@@ -159,10 +160,10 @@ public:
   void Init(nsIContent*       aContent,
             nsContainerFrame* aParent,
             nsIFrame*         aPrevInFlow) override;
-  void DestroyFrom(nsIFrame* aDestructRoot) override;
-  nsStyleContext* GetAdditionalStyleContext(int32_t aIndex) const override;
-  void SetAdditionalStyleContext(int32_t aIndex,
-                                 nsStyleContext* aStyleContext) override;
+  void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
+  ComputedStyle* GetAdditionalComputedStyle(int32_t aIndex) const override;
+  void SetAdditionalComputedStyle(int32_t aIndex,
+                                  ComputedStyle* aComputedStyle) override;
   nscoord GetLogicalBaseline(mozilla::WritingMode aWritingMode) const override;
   const nsFrameList& GetChildList(ChildListID aListID) const override;
   void GetChildLists(nsTArray<ChildList>* aLists) const override;
@@ -192,9 +193,9 @@ public:
                                                  int32_t aLineStart,
                                                  int8_t aOutSideLimit);
 
-  nsresult CharacterDataChanged(CharacterDataChangeInfo* aInfo) override;
+  nsresult CharacterDataChanged(const CharacterDataChangeInfo& aInfo) override;
   nsresult AttributeChanged(int32_t  aNameSpaceID,
-                            nsIAtom* aAttribute,
+                            nsAtom* aAttribute,
                             int32_t aModType) override;
   nsSplittableType GetSplittableType() const override;
   nsIFrame* GetPrevContinuation() const override;
@@ -244,24 +245,24 @@ public:
   mozilla::a11y::AccType AccessibleType() override;
 #endif
 
-  nsStyleContext* GetParentStyleContext(nsIFrame** aProviderFrame) const override {
-    return DoGetParentStyleContext(aProviderFrame);
+  ComputedStyle* GetParentComputedStyle(nsIFrame** aProviderFrame) const override {
+    return DoGetParentComputedStyle(aProviderFrame);
   }
 
   /**
-   * Do the work for getting the parent style context frame so that
-   * other frame's |GetParentStyleContext| methods can call this
+   * Do the work for getting the parent ComputedStyle frame so that
+   * other frame's |GetParentComputedStyle| methods can call this
    * method on *another* frame.  (This function handles out-of-flow
    * frames by using the frame manager's placeholder map and it also
    * handles block-within-inline and generated content wrappers.)
    *
    * @param aProviderFrame (out) the frame associated with the returned value
-   *     or null if the style context is for display:contents content.
-   * @return The style context that should be the parent of this frame's
-   *         style context.  Null is permitted, and means that this frame's
-   *         style context should be the root of the style context tree.
+   *   or null if the ComputedStyle is for display:contents content.
+   * @return The ComputedStyle that should be the parent of this frame's
+   *   ComputedStyle.  Null is permitted, and means that this frame's
+   *   ComputedStyle should be the root of the ComputedStyle tree.
    */
-  nsStyleContext* DoGetParentStyleContext(nsIFrame** aProviderFrame) const;
+  ComputedStyle* DoGetParentComputedStyle(nsIFrame** aProviderFrame) const;
 
   bool IsEmpty() override;
   bool IsSelfEmpty() override;
@@ -273,7 +274,8 @@ public:
                          InlineMinISizeData *aData) override;
   void AddInlinePrefISize(gfxContext *aRenderingContext,
                           InlinePrefISizeData *aData) override;
-  IntrinsicISizeOffsetData IntrinsicISizeOffsets() override;
+  IntrinsicISizeOffsetData
+  IntrinsicISizeOffsets(nscoord aPercentageBasis = NS_UNCONSTRAINEDSIZE) override;
   mozilla::IntrinsicSize GetIntrinsicSize() override;
   nsSize GetIntrinsicRatio() override;
 
@@ -367,8 +369,7 @@ public:
               const ReflowInput& aReflowInput,
               nsReflowStatus&    aStatus) override;
   void DidReflow(nsPresContext*     aPresContext,
-                 const ReflowInput* aReflowInput,
-                 nsDidReflowStatus  aStatus) override;
+                 const ReflowInput* aReflowInput) override;
 
   /**
    * NOTE: aStatus is assumed to be already-initialized. The reflow statuses of
@@ -440,7 +441,7 @@ public:
 
   // Helper for GetContentAndOffsetsFromPoint; calculation of content offsets
   // in this function assumes there is no child frame that can be targeted.
-  virtual ContentOffsets CalcContentOffsetsFromFramePoint(nsPoint aPoint);
+  virtual ContentOffsets CalcContentOffsetsFromFramePoint(const nsPoint& aPoint);
 
   // Box layout methods
   nsSize GetXULPrefSize(nsBoxLayoutState& aBoxLayoutState) override;
@@ -473,11 +474,7 @@ public:
   /**
    * @return true if we should avoid a page/column break in this frame.
    */
-  bool ShouldAvoidBreakInside(const ReflowInput& aReflowInput) const {
-    return !aReflowInput.mFlags.mIsTopOfPage &&
-           NS_STYLE_PAGE_BREAK_AVOID == StyleDisplay()->mBreakInside &&
-           !GetPrevInFlow();
-  }
+  bool ShouldAvoidBreakInside(const ReflowInput& aReflowInput) const;
 
 #ifdef DEBUG
   /**
@@ -487,25 +484,12 @@ public:
    * level field.
    */
   void Trace(const char* aMethod, bool aEnter);
-  void Trace(const char* aMethod, bool aEnter, nsReflowStatus aStatus);
+  void Trace(const char* aMethod, bool aEnter, const nsReflowStatus& aStatus);
   void TraceMsg(const char* fmt, ...) MOZ_FORMAT_PRINTF(2, 3);
 
   // Helper function that verifies that each frame in the list has the
   // NS_FRAME_IS_DIRTY bit set
   static void VerifyDirtyBitSet(const nsFrameList& aFrameList);
-
-  static void XMLQuote(nsString& aString);
-
-  /**
-   * Dump out the "base classes" regression data. This should dump
-   * out the interior data, not the "frame" XML container. And it
-   * should call the base classes same named method before doing
-   * anything specific in a derived class. This means that derived
-   * classes need not override DumpRegressionData unless they need
-   * some custom behavior that requires changing how the outer "frame"
-   * XML container is dumped.
-   */
-  virtual void DumpBaseRegressionData(nsPresContext* aPresContext, FILE* out, int32_t aIndent);
 
   // Display Reflow Debugging
   static void* DisplayReflowEnter(nsPresContext*          aPresContext,
@@ -573,7 +557,7 @@ public:
                       const nsDisplayListSet& aLists);
 
   /**
-   * Adjust the given parent frame to the right style context parent frame for
+   * Adjust the given parent frame to the right ComputedStyle parent frame for
    * the child, given the pseudo-type of the prospective child.  This handles
    * things like walking out of table pseudos and so forth.
    *
@@ -582,13 +566,13 @@ public:
    * @param aChildPseudo the child's pseudo type, if any.
    */
   static nsIFrame*
-  CorrectStyleParentFrame(nsIFrame* aProspectiveParent, nsIAtom* aChildPseudo);
+  CorrectStyleParentFrame(nsIFrame* aProspectiveParent, nsAtom* aChildPseudo);
 
 protected:
   // Protected constructor and destructor
-  nsFrame(nsStyleContext* aContext, ClassID aID);
-  explicit nsFrame(nsStyleContext* aContext)
-    : nsFrame(aContext, ClassID::nsFrame_id) {}
+  nsFrame(ComputedStyle* aStyle, ClassID aID);
+  explicit nsFrame(ComputedStyle* aStyle)
+    : nsFrame(aStyle, ClassID::nsFrame_id) {}
   virtual ~nsFrame();
 
   /**
@@ -603,7 +587,7 @@ protected:
   int16_t DisplaySelection(nsPresContext* aPresContext, bool isOkToTurnOn = false);
 
   // Style post processing hook
-  void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
 public:
   /**
@@ -695,10 +679,6 @@ protected:
                                              nsIFrame::Cursor& aCursor);
   NS_IMETHOD DoXULLayout(nsBoxLayoutState& aBoxLayoutState) override;
 
-#ifdef DEBUG_LAYOUT
-  void GetBoxName(nsAutoString& aName) override;
-#endif
-
   nsBoxLayoutMetrics* BoxMetrics() const;
 
   // Fire DOM event. If no aContent argument use frame's mContent.
@@ -723,8 +703,9 @@ private:
   // Returns true if this frame has any kind of CSS transitions.
   bool HasCSSTransitions();
 
-#ifdef DEBUG_FRAME_DUMP
 public:
+
+#ifdef DEBUG_FRAME_DUMP
   /**
    * Get a printable from of the name of the frame type.
    * XXX This should be eliminated and we use GetType() instead...
@@ -737,36 +718,6 @@ public:
 #endif
 
 #ifdef DEBUG
-public:
-  /**
-   * Return the state bits that are relevant to regression tests (that
-   * is, those bits which indicate a real difference when they differ
-   */
-  nsFrameState GetDebugStateBits() const override;
-  /**
-   * Called to dump out regression data that describes the layout
-   * of the frame and its children, and so on. The format of the
-   * data is dictated to be XML (using a specific DTD); the
-   * specific kind of data dumped is up to the frame itself, with
-   * the caveat that some base types are defined.
-   * For more information, see XXX.
-   */
-  nsresult DumpRegressionData(nsPresContext* aPresContext,
-                              FILE* out, int32_t aIndent) override;
-
-  /**
-   * See if style tree verification is enabled. To enable style tree
-   * verification add "styleverifytree:1" to your MOZ_LOG
-   * environment variable (any non-zero debug level will work). Or,
-   * call SetVerifyStyleTreeEnable with true.
-   */
-  static bool GetVerifyStyleTreeEnable();
-
-  /**
-   * Set the verify-style-tree enable flag.
-   */
-  static void SetVerifyStyleTreeEnable(bool aEnabled);
-
   static mozilla::LazyLogModule sFrameLogModule;
 
   // Show frame borders when rendering
@@ -776,10 +727,7 @@ public:
   // Show frame border of event target
   static void ShowEventTargetFrameBorder(bool aEnable);
   static bool GetShowEventTargetFrameBorder();
-
 #endif
-
-public:
 
   static void PrintDisplayList(nsDisplayListBuilder* aBuilder,
                                const nsDisplayList& aList,
@@ -864,7 +812,7 @@ public:
 
   struct DR_init_offsets_cookie {
     DR_init_offsets_cookie(nsIFrame* aFrame, mozilla::SizeComputationInput* aState,
-                           const mozilla::LogicalSize& aPercentBasis,
+                           nscoord aPercentBasis,
                            mozilla::WritingMode aCBWritingMode,
                            const nsMargin* aBorder,
                            const nsMargin* aPadding);

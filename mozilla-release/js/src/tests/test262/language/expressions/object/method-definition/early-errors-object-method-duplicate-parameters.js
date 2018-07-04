@@ -8,9 +8,11 @@ esid: pending
 description: >
   Early error rules for StrictFormalParameters are applied
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 ({
   async foo(a, a) { }
 })

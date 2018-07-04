@@ -8,19 +8,17 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginImport",
-                                  "resource://gre/modules/LoginImport.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginStore",
-                                  "resource://gre/modules/LoginStore.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginImport",
+                               "resource://gre/modules/LoginImport.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginStore",
+                               "resource://gre/modules/LoginStore.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gUUIDGenerator",
                                    "@mozilla.org/uuid-generator;1",
@@ -30,7 +28,7 @@ this.LoginManagerStorage_json = function() {};
 
 this.LoginManagerStorage_json.prototype = {
   classID: Components.ID("{c00c432d-a0c9-46d7-bef6-9c45b4d07341}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsILoginManagerStorage]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsILoginManagerStorage]),
 
   __crypto: null,  // nsILoginManagerCrypto service
   get _crypto() {
@@ -99,13 +97,15 @@ this.LoginManagerStorage_json.prototype = {
     return this._store._save();
   },
 
-  addLogin(login) {
+  addLogin(login, preEncrypted = false) {
     this._store.ensureDataReady();
 
     // Throws if there are bogus values.
     LoginHelper.checkLoginValues(login);
 
-    let [encUsername, encPassword, encType] = this._encryptLogin(login);
+    let [encUsername, encPassword, encType] = preEncrypted ?
+      [login.username, login.password, this._crypto.defaultEncType] :
+      this._encryptLogin(login);
 
     // Clone the login, so we don't modify the caller's object.
     let loginClone = login.clone();
@@ -113,8 +113,23 @@ this.LoginManagerStorage_json.prototype = {
     // Initialize the nsILoginMetaInfo fields, unless the caller gave us values
     loginClone.QueryInterface(Ci.nsILoginMetaInfo);
     if (loginClone.guid) {
-      if (!this._isGuidUnique(loginClone.guid))
-        throw new Error("specified GUID already exists");
+      let guid = loginClone.guid;
+      if (!this._isGuidUnique(guid)) {
+        // We have an existing GUID, but it's possible that entry is unable
+        // to be decrypted - if that's the case we remove the existing one
+        // and allow this one to be added.
+        let existing = this._searchLogins({guid})[0];
+        if (this._decryptLogins(existing).length) {
+          // Existing item is good, so it's an error to try and re-add it.
+          throw new Error("specified GUID already exists");
+        }
+        // find and remove the existing bad entry.
+        let foundIndex = this._store.data.logins.findIndex(l => l.guid == guid);
+        if (foundIndex == -1) {
+          throw new Error("can't find a matching GUID to remove");
+        }
+        this._store.data.logins.splice(foundIndex, 1);
+      }
     } else {
       loginClone.guid = gUUIDGenerator.generateUUID().toString();
     }

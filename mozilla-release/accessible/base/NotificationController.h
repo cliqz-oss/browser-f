@@ -9,10 +9,11 @@
 #include "EventQueue.h"
 #include "EventTree.h"
 
-#include "mozilla/IndexSequence.h"
 #include "mozilla/Tuple.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsRefreshDriver.h"
+
+#include <utility>
 
 #ifdef A11Y_LOG
 #include "Logging.h"
@@ -68,14 +69,14 @@ public:
   virtual ~TNotification() { mInstance = nullptr; }
 
   virtual void Process() override
-    { ProcessHelper(typename IndexSequenceFor<Args...>::Type()); }
+    { ProcessHelper(std::index_sequence_for<Args...>{}); }
 
 private:
   TNotification(const TNotification&);
   TNotification& operator = (const TNotification&);
 
   template <size_t... Indices>
-    void ProcessHelper(IndexSequence<Indices...>)
+    void ProcessHelper(std::index_sequence<Indices...>)
   {
      (mInstance->*mCallback)(Get<Indices>(mArgs)...);
   }
@@ -273,6 +274,12 @@ protected:
    * Return true if the accessible tree state update is pending.
    */
   bool IsUpdatePending();
+
+  /**
+   * Return true if we should wait for processing from the parent before we can
+   * process our own queue.
+   */
+  bool WaitingForParent();
 
 private:
   NotificationController(const NotificationController&);

@@ -6,7 +6,8 @@
 
   <browser id="thebrowser" type="content" remote="true" />
   <script type="application/javascript"><![CDATA[
-    Components.utils.import("resource://gre/modules/Services.jsm");
+    ChromeUtils.import("resource://gre/modules/Services.jsm");
+    ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
 
     const ok = window.opener.wrappedJSObject.ok;
     const is = window.opener.wrappedJSObject.is;
@@ -15,27 +16,22 @@
 
     function crashObserver(subject, topic, data) {
       is(topic, 'ipc:content-shutdown', 'Received correct observer topic.');
-      ok(subject instanceof Components.interfaces.nsIPropertyBag2,
+      ok(subject instanceof Ci.nsIPropertyBag2,
          'Subject implements nsIPropertyBag2.');
 
-      var waitCrash = Promise.resolve();
       var dumpID;
-      if ('nsICrashReporter' in Components.interfaces) {
+      if ('nsICrashReporter' in Ci) {
         dumpID = subject.getPropertyAsAString('dumpID');
         ok(dumpID, "dumpID is present and not an empty string");
-        waitCrash = Services.crashmanager.ensureCrashIsPresent(dumpID);
       }
 
       Services.obs.removeObserver(crashObserver, 'ipc:content-shutdown');
-      waitCrash.then(done);
+      done();
     }
 
     Services.obs.addObserver(crashObserver, 'ipc:content-shutdown');
 
-    document.getElementById('thebrowser')
-            .QueryInterface(Components.interfaces.nsIFrameLoaderOwner)
-            .frameLoader.messageManager
-            .loadFrameScript('chrome://mochitests/content/chrome/dom/ipc/tests/process_error_contentscript.js', true);
+    BrowserTestUtils.crashBrowser(document.getElementById('thebrowser'));
   ]]></script>
 
 </window>

@@ -41,7 +41,7 @@ function test() {
 
   function getElementByXPath(aTab, aQuery) {
     let doc = aTab.linkedBrowser.contentDocument;
-    let xptype = Ci.nsIDOMXPathResult.FIRST_ORDERED_NODE_TYPE;
+    let xptype = doc.defaultView.XPathResult.FIRST_ORDERED_NODE_TYPE;
     return doc.evaluate(aQuery, doc, null, xptype, null).singleNodeValue;
   }
 
@@ -62,10 +62,10 @@ function test() {
     let node = getElementByXPath(aTab, aQuery);
     if (!node)
       return false;
-    if (node instanceof Ci.nsIDOMHTMLInputElement)
+    if (ChromeUtils.getClassName(node) === "HTMLInputElement")
       return aValue == (node.type == "checkbox" || node.type == "radio" ?
                        node.checked : node.value);
-    if (node instanceof Ci.nsIDOMHTMLTextAreaElement)
+    if (ChromeUtils.getClassName(node) === "HTMLTextAreaElement")
       return aValue == node.value;
     if (!node.multiple)
       return aValue == node.selectedIndex;
@@ -102,7 +102,7 @@ function test() {
     promiseBrowserLoaded(tab_A.linkedBrowser).then(() => {
       // make sure that the next closed tab will increase getClosedTabCount
       Services.prefs.setIntPref(
-        "browser.sessionstore.max_tabs_undo", max_tabs_undo + 1)
+        "browser.sessionstore.max_tabs_undo", max_tabs_undo + 1);
 
       // populate tab_A with form data
       for (let i in fieldList)
@@ -144,7 +144,7 @@ function test() {
             let tab_C = win.gBrowser.duplicateTab(tab_B);
             promiseTabRestored(tab_C).then(() => {
               // verify the correctness of the duplicated tab
-              is(ss.getTabValue(tab_C, key1), value1,
+              is(ss.getCustomTabValue(tab_C, key1), value1,
                 "tab successfully duplicated - correct state");
 
               for (let item in fieldList)

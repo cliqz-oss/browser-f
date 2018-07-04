@@ -99,9 +99,10 @@ interface nsIDNSService : nsISupports
                                       in OriginAttributes  aOriginAttributes);
 
     /**
-     * called to synchronously resolve a hostname.  warning this method may
-     * block the calling thread for a long period of time.  it is extremely
-     * unwise to call this function on the UI thread of an application.
+     * called to synchronously resolve a hostname.
+     *
+     * Since this method may block the calling thread for a long period of
+     * time, it may not be accessed from the main thread.
      *
      * @param aHostName
      *        the hostname or IP-address-literal to resolve.
@@ -114,6 +115,7 @@ interface nsIDNSService : nsISupports
      *
      * @return DNS record corresponding to the given hostname.
      * @throws NS_ERROR_UNKNOWN_HOST if host could not be resolved.
+     * @throws NS_ERROR_NOT_AVAILABLE if accessed from the main thread.
      */
     [implicit_jscontext, optional_argc]
     nsIDNSRecord resolve(in AUTF8String   aHostName,
@@ -132,8 +134,7 @@ interface nsIDNSService : nsISupports
      * This function is identical to asyncResolve except an additional
      * parameter aNetwortInterface. If parameter aNetworkInterface is an empty
      * string function will return the same result as asyncResolve.
-     * Setting aNetworkInterface value make only sense for gonk,because it
-     * an per networking interface query is possible.
+     * Setting aNetworkInterface is deprecated.
      */
     [implicit_jscontext, optional_argc]
     nsICancelable asyncResolveExtended(in AUTF8String       aHostName,
@@ -232,4 +233,15 @@ interface nsIDNSService : nsISupports
      * If set, allow name collision results (127.0.53.53) which are normally filtered.
      */
     const unsigned long RESOLVE_ALLOW_NAME_COLLISION = (1 << 8);
+
+    /**
+     * If set, do not use TRR for resolving the host name.
+     */
+    const unsigned long RESOLVE_DISABLE_TRR = (1 << 9);
+
+    /**
+     * if set (together with RESOLVE_BYPASS_CACHE), invalidate the DNS
+     * existing cache entry first (if existing) then make a new resolve.
+     */
+    const unsigned long RESOLVE_REFRESH_CACHE = (1 << 10);
 };

@@ -101,20 +101,19 @@ IDBFileRequest::SetResultCallback(ResultCallback* aCallback)
 NS_IMPL_ADDREF_INHERITED(IDBFileRequest, DOMRequest)
 NS_IMPL_RELEASE_INHERITED(IDBFileRequest, DOMRequest)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(IDBFileRequest)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(IDBFileRequest)
 NS_INTERFACE_MAP_END_INHERITING(DOMRequest)
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(IDBFileRequest, DOMRequest,
                                    mFileHandle)
 
-nsresult
+void
 IDBFileRequest::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   AssertIsOnOwningThread();
 
   aVisitor.mCanHandle = true;
-  aVisitor.mParentTarget = mFileHandle;
-  return NS_OK;
+  aVisitor.SetParentTarget(mFileHandle, false);
 }
 
 // virtual

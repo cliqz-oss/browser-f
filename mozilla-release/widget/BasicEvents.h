@@ -12,7 +12,7 @@
 #include "mozilla/EventForwards.h"
 #include "mozilla/TimeStamp.h"
 #include "nsCOMPtr.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsISupportsImpl.h"
 #include "nsIWidget.h"
 #include "nsString.h"
@@ -28,6 +28,8 @@ struct ParamTraits;
 } // namespace IPC
 
 namespace mozilla {
+
+class EventTargetChainItem;
 
 /******************************************************************************
  * mozilla::BaseEventFlags
@@ -514,6 +516,7 @@ protected:
     , mLastRefPoint(0, 0)
     , mFocusSequenceNumber(0)
     , mSpecifiedEventType(nullptr)
+    , mPath(nullptr)
   {
     MOZ_COUNT_CTOR(WidgetEvent);
     mFlags.Clear();
@@ -525,6 +528,7 @@ protected:
 
   WidgetEvent()
     : WidgetEventTime()
+    , mPath(nullptr)
   {
     MOZ_COUNT_CTOR(WidgetEvent);
   }
@@ -546,6 +550,28 @@ public:
     MOZ_COUNT_CTOR(WidgetEvent);
     *this = aOther;
   }
+  WidgetEvent& operator=(const WidgetEvent& aOther) = default;
+
+  WidgetEvent(WidgetEvent&& aOther)
+    : WidgetEventTime(Move(aOther))
+    , mClass(aOther.mClass)
+    , mMessage(aOther.mMessage)
+    , mRefPoint(Move(aOther.mRefPoint))
+    , mLastRefPoint(Move(aOther.mLastRefPoint))
+    , mFocusSequenceNumber(aOther.mFocusSequenceNumber)
+    , mFlags(Move(aOther.mFlags))
+    , mSpecifiedEventType(Move(aOther.mSpecifiedEventType))
+    , mSpecifiedEventTypeString(Move(aOther.mSpecifiedEventTypeString))
+    , mTarget(Move(aOther.mTarget))
+    , mCurrentTarget(Move(aOther.mCurrentTarget))
+    , mOriginalTarget(Move(aOther.mOriginalTarget))
+    , mRelatedTarget(Move(aOther.mRelatedTarget))
+    , mOriginalRelatedTarget(Move(aOther.mOriginalRelatedTarget))
+    , mPath(Move(aOther.mPath))
+  {
+    MOZ_COUNT_CTOR(WidgetEvent);
+  }
+  WidgetEvent& operator=(WidgetEvent&& aOther) = default;
 
   virtual WidgetEvent* Duplicate() const
   {
@@ -574,9 +600,9 @@ public:
   // If JS creates an event with unknown event type or known event type but
   // for different event interface, the event type is stored to this.
   // NOTE: This is always used if the instance is a WidgetCommandEvent instance.
-  nsCOMPtr<nsIAtom> mSpecifiedEventType;
+  RefPtr<nsAtom> mSpecifiedEventType;
 
-  // nsIAtom isn't available on non-main thread due to unsafe.  Therefore,
+  // nsAtom isn't available on non-main thread due to unsafe.  Therefore,
   // mSpecifiedEventTypeString is used instead of mSpecifiedEventType if
   // the event is created in non-main thread.
   nsString mSpecifiedEventTypeString;
@@ -587,6 +613,12 @@ public:
   nsCOMPtr<dom::EventTarget> mTarget;
   nsCOMPtr<dom::EventTarget> mCurrentTarget;
   nsCOMPtr<dom::EventTarget> mOriginalTarget;
+
+  /// The possible related target
+  nsCOMPtr<dom::EventTarget> mRelatedTarget;
+  nsCOMPtr<dom::EventTarget> mOriginalRelatedTarget;
+
+  nsTArray<EventTargetChainItem>* mPath;
 
   dom::EventTarget* GetDOMEventTarget() const;
   dom::EventTarget* GetCurrentDOMEventTarget() const;
@@ -606,6 +638,9 @@ public:
     mTarget = aCopyTargets ? aEvent.mTarget : nullptr;
     mCurrentTarget = aCopyTargets ? aEvent.mCurrentTarget : nullptr;
     mOriginalTarget = aCopyTargets ? aEvent.mOriginalTarget : nullptr;
+    mRelatedTarget = aCopyTargets ? aEvent.mRelatedTarget : nullptr;
+    mOriginalRelatedTarget =
+      aCopyTargets ? aEvent.mOriginalRelatedTarget : nullptr;
   }
 
   /**
@@ -613,13 +648,9 @@ public:
    */
   void StopPropagation() { mFlags.StopPropagation(); }
   void StopImmediatePropagation() { mFlags.StopImmediatePropagation(); }
-  void PreventDefault(bool aCalledByDefaultHandler = true)
-  {
-    // Legacy mouse events shouldn't be prevented on ePointerDown by default
-    // handlers.
-    MOZ_RELEASE_ASSERT(!aCalledByDefaultHandler || mMessage != ePointerDown);
-    mFlags.PreventDefault(aCalledByDefaultHandler);
-  }
+  void PreventDefault(bool aCalledByDefaultHandler = true,
+                      nsIPrincipal* aPrincipal = nullptr);
+
   void PreventDefaultBeforeDispatch() { mFlags.PreventDefaultBeforeDispatch(); }
   bool DefaultPrevented() const { return mFlags.DefaultPrevented(); }
   bool DefaultPreventedByContent() const
@@ -773,9 +804,13 @@ public:
    */
   bool HasDragEventMessage() const;
   /**
-   * Returns true if the event mMessage is one of key events.
+   * Returns true if aMessage or mMessage is one of key events.
    */
-  bool HasKeyEventMessage() const;
+  static bool IsKeyEventMessage(EventMessage aMessage);
+  bool HasKeyEventMessage() const
+  {
+    return IsKeyEventMessage(mMessage);
+  }
   /**
    * Returns true if the event mMessage is one of composition events or text
    * event.
@@ -851,6 +886,10 @@ public:
    * Whether the event should be dispatched in system group.
    */
   bool IsAllowedToDispatchInSystemGroup() const;
+  /**
+   * Whether the event should be blocked for fingerprinting resistance.
+   */
+  bool IsBlockedForFingerprintingResistance() const;
   /**
    * Initialize mComposed
    */
@@ -1000,6 +1039,8 @@ public:
                                                mMessage != eLoadEnd &&
                                                mMessage != eLoadError;
   }
+
+  bool IsUserAction() const;
 };
 
 /******************************************************************************

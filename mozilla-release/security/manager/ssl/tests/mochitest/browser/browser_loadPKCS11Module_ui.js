@@ -5,9 +5,10 @@
 // Tests the dialog used for loading PKCS #11 modules.
 
 const { MockRegistrar } =
-  Cu.import("resource://testing-common/MockRegistrar.jsm", {});
+  ChromeUtils.import("resource://testing-common/MockRegistrar.jsm", {});
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
-const gMockPKCS11 = {
+const gMockPKCS11ModuleDB = {
   addModuleCallCount: 0,
   expectedLibPath: "",
   expectedModuleName: "",
@@ -33,7 +34,39 @@ const gMockPKCS11 = {
     Assert.ok(false, `deleteModule: should not be called`);
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPKCS11])
+  getInternal() {
+    throw new Error("not expecting getInternal() to be called");
+  },
+
+  getInternalFIPS() {
+    throw new Error("not expecting getInternalFIPS() to be called");
+  },
+
+  findModuleByName() {
+    throw new Error("not expecting findModuleByName() to be called");
+  },
+
+  findSlotByName() {
+    throw new Error("not expecting findSlotByName() to be called");
+  },
+
+  listModules() {
+    throw new Error("not expecting listModules() to be called");
+  },
+
+  get canToggleFIPS() {
+    throw new Error("not expecting get canToggleFIPS() to be called");
+  },
+
+  toggleFIPSMode() {
+    throw new Error("not expecting toggleFIPSMode() to be called");
+  },
+
+  get isFIPSEnabled() {
+    throw new Error("not expecting get isFIPSEnabled() to be called");
+  },
+
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPKCS11ModuleDB])
 };
 
 const gMockPromptService = {
@@ -50,12 +83,12 @@ const gMockPromptService = {
                  "alert: Actual and expected text should match");
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPromptService])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPromptService])
 };
 
 var gMockPKCS11CID =
-  MockRegistrar.register("@mozilla.org/security/pkcs11;1",
-                         gMockPKCS11);
+  MockRegistrar.register("@mozilla.org/security/pkcs11moduledb;1",
+                         gMockPKCS11ModuleDB);
 var gMockPromptServiceCID =
   MockRegistrar.register("@mozilla.org/embedcomp/prompt-service;1",
                          gMockPromptService);
@@ -63,9 +96,7 @@ var gMockPromptServiceCID =
 var gMockFilePicker = SpecialPowers.MockFilePicker;
 gMockFilePicker.init(window);
 
-var gTempFile = Cc["@mozilla.org/file/directory_service;1"]
-                  .getService(Ci.nsIProperties)
-                  .get("TmpD", Ci.nsIFile);
+var gTempFile = Services.dirsvc.get("TmpD", Ci.nsIFile);
 gTempFile.append("browser_loadPKCS11Module_ui-fakeModule");
 
 registerCleanupFunction(() => {
@@ -75,7 +106,7 @@ registerCleanupFunction(() => {
 });
 
 function resetCallCounts() {
-  gMockPKCS11.addModuleCallCount = 0;
+  gMockPKCS11ModuleDB.addModuleCallCount = 0;
   gMockPromptService.alertCallCount = 0;
 }
 
@@ -90,7 +121,7 @@ function openLoadModuleDialog() {
   let win = window.openDialog("chrome://pippki/content/load_device.xul", "", "");
   return new Promise(resolve => {
     win.addEventListener("load", function() {
-      resolve(win);
+      executeSoon(() => resolve(win));
     }, {once: true});
   });
 }
@@ -144,14 +175,14 @@ add_task(async function testBrowseButton() {
 
 function testAddModuleHelper(win, throwOnAddModule) {
   resetCallCounts();
-  gMockPKCS11.expectedLibPath = gTempFile.path;
-  gMockPKCS11.expectedModuleName = "test module";
-  gMockPKCS11.throwOnAddModule = throwOnAddModule;
+  gMockPKCS11ModuleDB.expectedLibPath = gTempFile.path;
+  gMockPKCS11ModuleDB.expectedModuleName = "test module";
+  gMockPKCS11ModuleDB.throwOnAddModule = throwOnAddModule;
 
   win.document.getElementById("device_name").value =
-    gMockPKCS11.expectedModuleName;
+    gMockPKCS11ModuleDB.expectedModuleName;
   win.document.getElementById("device_path").value =
-    gMockPKCS11.expectedLibPath;
+    gMockPKCS11ModuleDB.expectedLibPath;
 
   info("Accepting dialog");
   win.document.getElementById("loaddevice").acceptDialog();
@@ -163,7 +194,7 @@ add_task(async function testAddModuleSuccess() {
   testAddModuleHelper(win, false);
   await BrowserTestUtils.windowClosed(win);
 
-  Assert.equal(gMockPKCS11.addModuleCallCount, 1,
+  Assert.equal(gMockPKCS11ModuleDB.addModuleCallCount, 1,
                "addModule() should have been called once");
   Assert.equal(gMockPromptService.alertCallCount, 0,
                "alert() should never have been called");
@@ -179,7 +210,7 @@ add_task(async function testAddModuleFailure() {
   // close the window ourselves.
   await BrowserTestUtils.closeWindow(win);
 
-  Assert.equal(gMockPKCS11.addModuleCallCount, 1,
+  Assert.equal(gMockPKCS11ModuleDB.addModuleCallCount, 1,
                "addModule() should have been called once");
   Assert.equal(gMockPromptService.alertCallCount, 1,
                "alert() should have been called once");
@@ -192,10 +223,40 @@ add_task(async function testCancel() {
   info("Canceling dialog");
   win.document.getElementById("loaddevice").cancelDialog();
 
-  Assert.equal(gMockPKCS11.addModuleCallCount, 0,
+  Assert.equal(gMockPKCS11ModuleDB.addModuleCallCount, 0,
                "addModule() should never have been called");
   Assert.equal(gMockPromptService.alertCallCount, 0,
                "alert() should never have been called");
 
   await BrowserTestUtils.windowClosed(win);
+});
+
+async function testModuleNameHelper(moduleName, acceptButtonShouldBeDisabled) {
+  let win = await openLoadModuleDialog();
+  resetCallCounts();
+
+  info(`Setting Module Name to '${moduleName}'`);
+  let moduleNameBox = win.document.getElementById("device_name");
+  moduleNameBox.value = moduleName;
+  // this makes this not a great test, but it's the easiest way to simulate this
+  moduleNameBox.onchange();
+
+  let dialogNode = win.document.querySelector("dialog");
+  Assert.equal(dialogNode.getAttribute("buttondisabledaccept"),
+               acceptButtonShouldBeDisabled ? "true" : "", // it's a string
+               `dialog accept button should ${acceptButtonShouldBeDisabled ? "" : "not "}be disabled`);
+
+  return BrowserTestUtils.closeWindow(win);
+}
+
+add_task(async function testEmptyModuleName() {
+  await testModuleNameHelper("", true);
+});
+
+add_task(async function testReservedModuleName() {
+  await testModuleNameHelper("Root Certs", true);
+});
+
+add_task(async function testAcceptableModuleName() {
+  await testModuleNameHelper("Some Module Name", false);
 });

@@ -6,14 +6,12 @@
 
 'use strict';
 
-const { utils: Cu, results: Cr } = Components;
-
 /* globals ControllerStateMachine */
-Cu.import('resource://gre/modules/presentation/ControllerStateMachine.jsm');
+ChromeUtils.import('resource://gre/modules/presentation/ControllerStateMachine.jsm');
 /* globals ReceiverStateMachine */
-Cu.import('resource://gre/modules/presentation/ReceiverStateMachine.jsm');
+ChromeUtils.import('resource://gre/modules/presentation/ReceiverStateMachine.jsm');
 /* globals State */
-Cu.import('resource://gre/modules/presentation/StateMachineHelper.jsm');
+ChromeUtils.import('resource://gre/modules/presentation/StateMachineHelper.jsm');
 
 const testControllerId = 'test-controller-id';
 const testPresentationId = 'test-presentation-id';
@@ -26,13 +24,13 @@ let controllerState = new ControllerStateMachine(mockControllerChannel, testCont
 let receiverState = new ReceiverStateMachine(mockReceiverChannel);
 
 mockControllerChannel.sendCommand = function(command) {
-  do_execute_soon(function() {
+  executeSoon(function() {
     receiverState.onCommand(command);
   });
 };
 
 mockReceiverChannel.sendCommand = function(command) {
-  do_execute_soon(function() {
+  executeSoon(function() {
     controllerState.onCommand(command);
   });
 };

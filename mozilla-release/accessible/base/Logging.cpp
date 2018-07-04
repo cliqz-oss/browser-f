@@ -23,6 +23,7 @@
 #include "nsIDocShellTreeItem.h"
 #include "nsIURI.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/HTMLBodyElement.h"
 
 using namespace mozilla;
 using namespace mozilla::a11y;
@@ -686,7 +687,7 @@ logging::Tree(const char* aTitle, const char* aMsgText,
     printf("%s", NS_ConvertUTF16toUTF8(level).get());
     logging::AccessibleInfo(prefix, root);
     if (root->FirstChild() && !root->FirstChild()->IsDoc()) {
-      level.Append(NS_LITERAL_STRING("  "));
+      level.AppendLiteral(u"  ");
       root = root->FirstChild();
       continue;
     }
@@ -724,7 +725,7 @@ logging::DOMTree(const char* aTitle, const char* aMsgText,
     printf("%s", NS_ConvertUTF16toUTF8(level).get());
     logging::Node("", root);
     if (root->GetFirstChild()) {
-      level.Append(NS_LITERAL_STRING("  "));
+      level.AppendLiteral(u"  ");
       root = root->GetFirstChild();
       continue;
     }
@@ -758,7 +759,7 @@ logging::MsgBegin(const char* aTitle, const char* aMsgText, ...)
   uint32_t mins = (PR_IntervalToSeconds(time) / 60) % 60;
   uint32_t secs = PR_IntervalToSeconds(time) % 60;
   uint32_t msecs = PR_IntervalToMilliseconds(time) % 1000;
-  printf("; %02d:%02d.%03d", mins, secs, msecs);
+  printf("; %02u:%02u.%03u", mins, secs, msecs);
 
   printf("\n  {\n");
 }
@@ -828,15 +829,15 @@ logging::Node(const char* aDescr, nsINode* aNode)
     return;
   }
 
-  if (aNode->IsNodeOfType(nsINode::eDOCUMENT)) {
+  if (aNode->IsDocument()) {
     printf("%s: %p, document\n", aDescr, static_cast<void*>(aNode));
     return;
   }
 
   nsINode* parentNode = aNode->GetParentNode();
-  int32_t idxInParent = parentNode ? parentNode->IndexOf(aNode) : - 1;
+  int32_t idxInParent = parentNode ? parentNode->ComputeIndexOf(aNode) : - 1;
 
-  if (aNode->IsNodeOfType(nsINode::eTEXT)) {
+  if (aNode->IsText()) {
     printf("%s: %p, text node, idx in parent: %d\n",
            aDescr, static_cast<void*>(aNode), idxInParent);
     return;
@@ -853,7 +854,7 @@ logging::Node(const char* aDescr, nsINode* aNode)
   nsAutoCString tag;
   elm->NodeInfo()->NameAtom()->ToUTF8String(tag);
 
-  nsIAtom* idAtom = elm->GetID();
+  nsAtom* idAtom = elm->GetID();
   nsAutoCString id;
   if (idAtom)
     idAtom->ToUTF8String(id);
@@ -907,10 +908,10 @@ logging::AccessibleInfo(const char* aDescr, Accessible* aAccessible)
   if (!node) {
     printf(", node: null\n");
   }
-  else if (node->IsNodeOfType(nsINode::eDOCUMENT)) {
+  else if (node->IsDocument()) {
     printf(", document node: %p\n", static_cast<void*>(node));
   }
-  else if (node->IsNodeOfType(nsINode::eTEXT)) {
+  else if (node->IsText()) {
     printf(", text node: %p\n", static_cast<void*>(node));
   }
   else if (node->IsElement()) {
@@ -919,7 +920,7 @@ logging::AccessibleInfo(const char* aDescr, Accessible* aAccessible)
     nsAutoCString tag;
     el->NodeInfo()->NameAtom()->ToUTF8String(tag);
 
-    nsIAtom* idAtom = el->GetID();
+    nsAtom* idAtom = el->GetID();
     nsAutoCString id;
     if (idAtom) {
       idAtom->ToUTF8String(id);

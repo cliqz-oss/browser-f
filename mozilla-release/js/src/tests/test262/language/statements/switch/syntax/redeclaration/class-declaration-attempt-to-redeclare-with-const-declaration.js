@@ -7,7 +7,7 @@ description: redeclaration with const-LexicalDeclaration (ClassDeclaration in Sw
 esid: sec-switch-statement-static-semantics-early-errors
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     SwitchStatement : switch ( Expression ) CaseBlock
@@ -17,5 +17,7 @@ info: |
 
 ---*/
 
+
+throw "Test262: This statement should not be evaluated.";
 
 switch (0) { case 1: class f {} default: const f = 0; }

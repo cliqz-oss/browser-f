@@ -1,13 +1,78 @@
 Preferences
 ===========
 
-Telemetry behaviour is controlled through the preferences listed here.
+Telemetry behaviour is controlled through the mozconfig defines and preferences listed here.
 
-Default behaviors
+mozconfig Defines
 -----------------
 
-Sending only happens on official builds (i.e. with ``MOZILLA_OFFICIAL`` set) with ``MOZ_TELEMETRY_REPORTING`` defined.
-All other builds drop all outgoing pings, so they will also not retry sending them later.
+``MOZ_TELEMETRY_REPORTING``
+
+  When Defined (which it is for official builds):
+
+  * If ``RELEASE_OR_BETA`` is not defined, defines ``MOZ_TELEMETRY_ON_BY_DEFAULT``
+
+  When Not Defined:
+
+  * If ``datareporting.healthreport.uploadEnabled`` is locked, we print a message in the Privacy settings that you cannot turn on data submission and disabled the checkbox so you don't try.
+  * Android: hides the data submission UI to prevent users from thinking they can turn it on
+  * Disables Telemetry from being sent (due to ``Telemetry::IsOfficialTelemetry``)
+
+``MOZ_TELEMETRY_ON_BY_DEFAULT``
+
+  When Defined:
+
+  * Android: enables ``toolkit.telemetry.enabled``
+
+``MOZ_SERVICES_HEALTHREPORT``
+
+  When Defined (which it is on most platforms):
+
+  * includes ``toolkit/components/telemetry/healthreport-prefs.js`` (which sets ``datareporting.healthreport.{infoURL|uploadEnabled}``)
+
+``MOZ_DATA_REPORTING``
+
+  When Defined (which it is when ``MOZ_TELEMETRY_REPORTING``, ``MOZ_SERVICES_HEALTHREPORT``, or ``MOZ_CRASHREPORTER`` is defined (so, on most platforms, but not typically on developer builds)):
+
+  * Enables ``app.shield.optoutstudies.enabled``
+
+  When Not Defined:
+
+  * Disables ``app.shield.optoutstudies.enabled``
+  * Removes the Data Collection Preferences UI in ``privacy.xul``
+
+``MOZILLA_OFFICIAL``
+
+  When Not Defined (defined on our own external builds and builds from several Linux distros, but not typically on defeloper builds):
+
+  * Disables Telemetry from being sent (due to ``Telemetry::IsOfficialTelemetry``)
+
+``MOZ_UPDATE_CHANNEL``
+
+  When not ``release`` or ``beta``:
+
+  * If ``MOZ_TELEMETRY_REPORTING`` is also defined, defines ``MOZ_TELEMETRY_ON_BY_DEFAULT``
+
+  When ``beta``:
+
+  * If ``toolkit.telemetry.enabled`` is otherwise unset at startup, ``toolkit.telemetry.enabled`` is defaulted to ``true`` (this is irrespective of ``MOZ_TELEMETRY_REPORTING``)
+
+  When ``nightly`` or ``aurora`` or ``beta`` or ``default``:
+
+  * Desktop: Locks ``toolkit.telemetry.enabled`` to ``true``. All other values for ``MOZ_UPDATE_CHANNEL`` on Desktop locks ``toolkit.telemetry.enabled`` to ``false``.
+  * Desktop: Defaults ``Telemetry::CanRecordExtended`` (and, thus ``Telemetry::CanRecordReleaseData``) to ``true``. All other values of ``MOZ_UPDATE_CHANNEL`` on Desktop defaults these to ``false``.
+
+``DEBUG``
+
+  When Defined:
+
+  * Disables Telemetry from being sent (due to ``Telemetry::IsOfficialTelemetry``)
+
+**In Short:**
+
+  For builds downloaded from mozilla.com ``MOZ_TELEMETRY_REPORTING`` is defined, ``MOZ_TELEMETRY_ON_BY_DEFAULT`` is on if you downloaded Nightly or Developer Edition, ``MOZ_SERVICES_HEALTHREPORT`` is defined, ``MOZ_DATA_REPORTING`` is defined, ``MOZILLA_OFFICIAL`` is defined, ``MOZ_UPDATE_CHANNEL`` is set to the channel you downloaded, and ``DEBUG`` is false. This means Telemetry is, by default, collecting some amount of information and is sending it to Mozilla.
+
+  For builds you make yourself with a blank mozconfig, ``MOZ_UPDATE_CHANNEL`` is set to ``default`` and everything else is undefined. This means Telemetry is, by default, collecting an extended amount of information but isn't sending it anywhere.
 
 Preferences
 -----------
@@ -19,19 +84,17 @@ Preferences
   * Telemetry is always enabled and recording *base* data.
   * Telemetry will send additional ``main`` pings.
 
+  It defaults to ``true``, but is ``false`` on Android (Fennec) builds.
+
 ``toolkit.telemetry.enabled``
 
-  If ``unified`` is off, this controls whether the Telemetry module is enabled.
-  If ``unified`` is on, this controls whether to record *extended* data.
-  This preference is controlled through the `Preferences` dialog.
-
-  Note that the default value here of this pref depends on the define ``RELEASE_OR_BETA`` and the channel.
-  If ``RELEASE_OR_BETA`` is set, ``MOZ_TELEMETRY_ON_BY_DEFAULT`` gets set, which means this pref will default to ``true``.
-  This is overridden by the preferences code on the "beta" channel, the pref also defaults to ``true`` there.
+  If ``unified`` is off, this controls whether the Telemetry module is enabled. It can be set or unset via the `Preferences` dialog in Firefox for Android (Fennec).
+  If ``unified`` is on, this is locked to ``true`` if ``MOZ_UPDATE_CHANNEL`` is ``nightly`` or ``aurora`` or ``beta`` or ``default`` (which is the default value of ``MOZ_UPDATE_CHANNEL`` for developer builds). Otherwise it is locked to ``false``. This controls a diminishing number of things and is intended to be deprecated, and then removed.
 
 ``datareporting.healthreport.uploadEnabled``
 
-  Send the data we record if user has consented to FHR. This preference is controlled through the `Preferences` dialog.
+  If ``unified`` is true, this controls whether we send Telemetry data.
+  If ``unified`` is false, we don't use this value.
 
 ``toolkit.telemetry.archive.enabled``
 
@@ -58,17 +121,26 @@ Preferences
 
   Allow the ``shutdown`` ping to be sent using the :doc:`ping sender <pingsender>` from the first browsing session.
 
+``toolkit.telemetry.firstShutdownPing.enabled``
+
+  Allow a duplicate of the ``main`` shutdown ping from the first browsing session to be sent as a separate ``first-shutdown`` ping.
+
 ``toolkit.telemetry.newProfilePing.enabled``
 
-  Enable the :doc:`../data/new-profile` ping on new profiles.
+  Enable the :doc:`../data/new-profile-ping` on new profiles.
 
 ``toolkit.telemetry.newProfilePing.delay``
 
-  Controls the delay after which the :doc:`../data/new-profile` is sent on new profiles.
+  Controls the delay after which the :doc:`../data/new-profile-ping` is sent on new profiles.
 
 ``toolkit.telemetry.updatePing.enabled``
 
   Enable the :doc:`../data/update-ping` on browser updates.
+
+``toolkit.telemetry.maxEventSummaryKeys``
+
+  Set the maximum number of keys per process of the :ref:`Event Summary <events.event-summary>`
+  :ref:`keyed scalars <scalars.keyed-scalars>`. Default is 500. Change requires restart.
 
 Data-choices notification
 -------------------------
@@ -145,6 +217,10 @@ The following prefs are for testing purpose only.
 ``toolkit.telemetry.send.overrideOfficialCheck``
 
   If true, allows sending pings on unofficial builds. Requires a restart.
+
+``toolkit.telemetry.testing.overridePreRelease``
+
+  If true, allows recording opt-in Telemetry on the Release channel. Requires a restart.
 
 ``toolkit.telemetry.healthping.enabled``
 

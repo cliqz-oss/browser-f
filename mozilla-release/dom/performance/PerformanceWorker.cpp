@@ -5,12 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "PerformanceWorker.h"
-#include "WorkerPrivate.h"
+#include "mozilla/dom/DOMPrefs.h"
+#include "mozilla/dom/WorkerPrivate.h"
 
 namespace mozilla {
 namespace dom {
-
-using namespace workers;
 
 PerformanceWorker::PerformanceWorker(WorkerPrivate* aWorkerPrivate)
   : mWorkerPrivate(aWorkerPrivate)
@@ -26,7 +25,7 @@ PerformanceWorker::~PerformanceWorker()
 void
 PerformanceWorker::InsertUserEntry(PerformanceEntry* aEntry)
 {
-  if (mWorkerPrivate->PerformanceLoggingEnabled()) {
+  if (DOMPrefs::PerformanceLoggingEnabled()) {
     nsAutoCString uri;
     nsCOMPtr<nsIURI> scriptURI = mWorkerPrivate->GetResolvedScriptURI();
     if (!scriptURI || NS_FAILED(scriptURI->GetHost(uri))) {
@@ -48,6 +47,12 @@ DOMHighResTimeStamp
 PerformanceWorker::CreationTime() const
 {
   return mWorkerPrivate->CreationTime();
+}
+
+uint64_t
+PerformanceWorker::GetRandomTimelineSeed()
+{
+  return mWorkerPrivate->GetRandomTimelineSeed();
 }
 
 } // dom namespace

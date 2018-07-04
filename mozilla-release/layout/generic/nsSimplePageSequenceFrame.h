@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -57,7 +58,7 @@ class nsSimplePageSequenceFrame final
 {
 public:
   friend nsSimplePageSequenceFrame* NS_NewSimplePageSequenceFrame(nsIPresShell* aPresShell,
-                                                                  nsStyleContext* aContext);
+                                                                  ComputedStyle* aStyle);
 
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsSimplePageSequenceFrame)
@@ -65,17 +66,11 @@ public:
   // nsIFrame
   void Reflow(nsPresContext* aPresContext,
               ReflowOutput& aDesiredSize,
-              const ReflowInput& aMaxSize,
+              const ReflowInput& aReflowInput,
               nsReflowStatus& aStatus) override;
 
   void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                        const nsRect&           aDirtyRect,
                         const nsDisplayListSet& aLists) override;
-
-  // nsIPageSequenceFrame
-  NS_IMETHOD SetPageNo(int32_t aPageNo) { return NS_OK;}
-  NS_IMETHOD SetSelectionHeight(nscoord aYOffset, nscoord aHeight) override { mYSelOffset = aYOffset; mSelectionHeight = aHeight; return NS_OK; }
-  NS_IMETHOD SetTotalNumPages(int32_t aTotal) override { mTotalPages = aTotal; return NS_OK; }
 
   // For Shrink To Fit
   NS_IMETHOD GetSTFPercent(float& aSTFPercent) override;
@@ -110,7 +105,7 @@ public:
 #endif
 
 protected:
-  explicit nsSimplePageSequenceFrame(nsStyleContext* aContext);
+  explicit nsSimplePageSequenceFrame(ComputedStyle* aStyle);
   virtual ~nsSimplePageSequenceFrame();
 
   void SetPageNumberFormat(const char* aPropName, const char* aDefPropVal, bool aPageNumOnly);
@@ -149,15 +144,9 @@ protected:
   nsTArray<int32_t> mPageRanges;
   nsTArray<RefPtr<mozilla::dom::HTMLCanvasElement> > mCurrentCanvasList;
 
-  // Selection Printing Info
-  nscoord      mSelectionHeight;
-  nscoord      mYSelOffset;
-
   // Asynch Printing
   bool mPrintThisPage;
   bool mDoingPageRange;
-
-  bool mIsPrintingSelection;
 
   bool mCalledBeginPage;
 

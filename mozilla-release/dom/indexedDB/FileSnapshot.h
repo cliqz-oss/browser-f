@@ -108,6 +108,12 @@ private:
     mBlobImpl->GetType(aType);
   }
 
+  size_t
+  GetAllocationSize() const override
+  {
+    return mBlobImpl->GetAllocationSize();
+  }
+
   virtual uint64_t
   GetSerialNumber() const override
   {
@@ -127,7 +133,7 @@ private:
   }
 
   virtual void
-  GetInternalStream(nsIInputStream** aStream,
+  CreateInputStream(nsIInputStream** aStream,
                     ErrorResult& aRv) override;
 
   virtual int64_t

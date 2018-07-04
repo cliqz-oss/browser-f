@@ -18,7 +18,7 @@ const {
   setIgnoreLayoutChanges,
   getCurrentZoom,
  } = require("devtools/shared/layout/utils");
-const inspector = require("devtools/server/actors/inspector");
+const { getNodeDisplayName } = require("devtools/server/actors/inspector/utils");
 const nodeConstants = require("devtools/shared/dom-node-constants");
 
 // Note that the order of items in this array is important because it is used
@@ -119,6 +119,7 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
     let doc = this.win.document;
 
     let highlighterContainer = doc.createElement("div");
+    highlighterContainer.setAttribute("role", "presentation");
     highlighterContainer.className = "highlighter-container box-model";
 
     // Build the root wrapper, used to adapt to the page zoom.
@@ -126,7 +127,8 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
       parent: highlighterContainer,
       attributes: {
         "id": "root",
-        "class": "root"
+        "class": "root",
+        "role": "presentation"
       },
       prefix: this.ID_CLASS_PREFIX
     });
@@ -140,7 +142,8 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
         "id": "elements",
         "width": "100%",
         "height": "100%",
-        "hidden": "true"
+        "hidden": "true",
+        "role": "presentation"
       },
       prefix: this.ID_CLASS_PREFIX
     });
@@ -149,7 +152,8 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
       nodeType: "g",
       parent: svg,
       attributes: {
-        "class": "regions"
+        "class": "regions",
+        "role": "presentation"
       },
       prefix: this.ID_CLASS_PREFIX
     });
@@ -160,7 +164,8 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
         parent: regions,
         attributes: {
           "class": region,
-          "id": region
+          "id": region,
+          "role": "presentation"
         },
         prefix: this.ID_CLASS_PREFIX
       });
@@ -173,7 +178,8 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
         attributes: {
           "class": "guide-" + side,
           "id": "guide-" + side,
-          "stroke-width": GUIDE_STROKE_WIDTH
+          "stroke-width": GUIDE_STROKE_WIDTH,
+          "role": "presentation"
         },
         prefix: this.ID_CLASS_PREFIX
       });
@@ -289,7 +295,7 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
    * Show the highlighter on a given node
    */
   _show() {
-    if (BOX_MODEL_REGIONS.indexOf(this.options.region) == -1) {
+    if (!BOX_MODEL_REGIONS.includes(this.options.region)) {
       this.options.region = "content";
     }
 
@@ -670,7 +676,7 @@ class BoxModelHighlighter extends AutoRefreshHighlighter {
         getBindingElementAndPseudo(this.currentNode);
 
     // Update the tag, id, classes, pseudo-classes and dimensions
-    let displayName = inspector.getNodeDisplayName(node);
+    let displayName = getNodeDisplayName(node);
 
     let id = node.id ? "#" + node.id : "";
 

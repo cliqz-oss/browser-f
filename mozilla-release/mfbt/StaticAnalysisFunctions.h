@@ -21,10 +21,26 @@
 #ifdef MOZ_CLANG_PLUGIN
 
 #ifdef __cplusplus
+/**
+ * MOZ_KnownLive - used to opt an argument out of the CanRunScript checker so
+ * that we don't check it if is a strong ref.
+ *
+ * Example:
+ * canRunScript(MOZ_KnownLive(rawPointer));
+ */
+template <typename T>
+static MOZ_ALWAYS_INLINE T* MOZ_KnownLive(T* ptr) { return ptr; }
+
+/**
+ * Ditto, but for references.
+ */
+template <typename T>
+static MOZ_ALWAYS_INLINE T& MOZ_KnownLive(T& ref) { return ref; }
+
 extern "C" {
 #endif
 
-/*
+/**
  * MOZ_AssertAssignmentTest - used in MOZ_ASSERT in order to test the possible
  * presence of assignment instead of logical comparisons.
  *
@@ -44,6 +60,7 @@ static MOZ_ALWAYS_INLINE bool MOZ_AssertAssignmentTest(bool exprResult) {
 #else
 
 #define MOZ_CHECK_ASSERT_ASSIGNMENT(expr) (!!(expr))
+#define MOZ_KnownLive(expr) (expr)
 
 #endif /* MOZ_CLANG_PLUGIN */
 #endif /* StaticAnalysisFunctions_h */

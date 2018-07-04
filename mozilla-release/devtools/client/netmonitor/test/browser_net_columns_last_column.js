@@ -7,46 +7,40 @@
  * Tests that last visible column can't be hidden
  */
 
-add_task(function* () {
-  let { monitor } = yield initNetMonitor(SIMPLE_URL);
+add_task(async function() {
+  let { monitor } = await initNetMonitor(SIMPLE_URL);
   info("Starting test... ");
 
   let { document, store, parent } = monitor.panelWin;
 
-  for (let [column, shown] of store.getState().ui.columns) {
-    let visibleColumns = [...store.getState().ui.columns]
-      .filter(([_, visible]) => visible);
+  let initialColumns = store.getState().ui.columns;
+  for (let column in initialColumns) {
+    let shown = initialColumns[column];
+
+    let columns = store.getState().ui.columns;
+    let visibleColumns = [];
+    for (let c in columns) {
+      if (columns[c]) {
+        visibleColumns.push(c);
+      }
+    }
 
     if (visibleColumns.length === 1) {
       if (!shown) {
         continue;
       }
-      yield testLastMenuItem(column);
+      await testLastMenuItem(column);
       break;
     }
 
     if (shown) {
-      yield hideColumn(column);
+      await hideColumn(monitor, column);
     }
   }
 
-  yield teardown(monitor);
+  await teardown(monitor);
 
-  function* hideColumn(column) {
-    info(`Clicking context-menu item for ${column}`);
-    EventUtils.sendMouseEvent({ type: "contextmenu" },
-      document.querySelector("#requests-list-status-button") ||
-      document.querySelector("#requests-list-waterfall-button"));
-
-    let onHeaderRemoved = waitForDOM(document, `#requests-list-${column}-button`, 0);
-    parent.document.querySelector(`#request-list-header-${column}-toggle`).click();
-
-    yield onHeaderRemoved;
-    ok(!document.querySelector(`#requests-list-${column}-button`),
-       `Column ${column} should be hidden`);
-  }
-
-  function* testLastMenuItem(column) {
+  async function testLastMenuItem(column) {
     EventUtils.sendMouseEvent({ type: "contextmenu" },
       document.querySelector(`#requests-list-${column}-button`));
 

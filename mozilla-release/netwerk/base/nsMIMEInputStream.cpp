@@ -21,6 +21,7 @@
 #include "nsIClassInfoImpl.h"
 #include "nsIIPCSerializableInputStream.h"
 #include "mozilla/Move.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/ipc/InputStreamUtils.h"
 
 using namespace mozilla::ipc;
@@ -30,9 +31,10 @@ using mozilla::Move;
 class nsMIMEInputStream : public nsIMIMEInputStream,
                           public nsISeekableStream,
                           public nsIIPCSerializableInputStream,
-                          public nsIAsyncInputStream
+                          public nsIAsyncInputStream,
+                          public nsIInputStreamCallback
 {
-    virtual ~nsMIMEInputStream();
+    virtual ~nsMIMEInputStream() = default;
 
 public:
     nsMIMEInputStream();
@@ -43,6 +45,7 @@ public:
     NS_DECL_NSISEEKABLESTREAM
     NS_DECL_NSIIPCSERIALIZABLEINPUTSTREAM
     NS_DECL_NSIASYNCINPUTSTREAM
+    NS_DECL_NSIINPUTSTREAMCALLBACK
 
 private:
 
@@ -64,6 +67,11 @@ private:
 
     nsCOMPtr<nsIInputStream> mStream;
     bool mStartedReading;
+
+    mozilla::Mutex mMutex;
+
+    // This is protected by mutex.
+    nsCOMPtr<nsIInputStreamCallback> mAsyncWaitCallback;
 };
 
 NS_IMPL_ADDREF(nsMIMEInputStream)
@@ -80,6 +88,8 @@ NS_INTERFACE_MAP_BEGIN(nsMIMEInputStream)
                                      IsIPCSerializable())
   NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIAsyncInputStream,
                                      IsAsyncInputStream())
+  NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIInputStreamCallback,
+                                     IsAsyncInputStream())
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIMIMEInputStream)
   NS_IMPL_QUERY_CLASSINFO(nsMIMEInputStream)
 NS_INTERFACE_MAP_END
@@ -90,30 +100,10 @@ NS_IMPL_CI_INTERFACE_GETTER(nsMIMEInputStream,
                             nsIInputStream,
                             nsISeekableStream)
 
-nsMIMEInputStream::nsMIMEInputStream() : mStartedReading(false)
+nsMIMEInputStream::nsMIMEInputStream()
+  : mStartedReading(false)
+  , mMutex("nsMIMEInputStream::mMutex")
 {
-}
-
-nsMIMEInputStream::~nsMIMEInputStream()
-{
-}
-
-NS_IMETHODIMP
-nsMIMEInputStream::GetAddContentLength(bool *aAddContentLength)
-{
-    *aAddContentLength = true;
-    return NS_OK;
-}
-NS_IMETHODIMP
-nsMIMEInputStream::SetAddContentLength(bool aAddContentLength)
-{
-    NS_ENSURE_FALSE(mStartedReading, NS_ERROR_FAILURE);
-    if (!aAddContentLength) {
-      // Content-Length is automatically added by the channel when setting the
-      // upload stream, so setting this to false has no practical effect.
-      return NS_ERROR_FAILURE;
-    }
-    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -260,8 +250,44 @@ nsMIMEInputStream::AsyncWait(nsIInputStreamCallback* aCallback,
 {
     INITSTREAMS;
     nsCOMPtr<nsIAsyncInputStream> asyncStream = do_QueryInterface(mStream);
-    return asyncStream->AsyncWait(
-        aCallback, aFlags, aRequestedCount, aEventTarget);
+    if (NS_WARN_IF(!asyncStream)) {
+      return NS_ERROR_FAILURE;
+    }
+
+    nsCOMPtr<nsIInputStreamCallback> callback = aCallback ? this : nullptr;
+    {
+        MutexAutoLock lock(mMutex);
+        if (mAsyncWaitCallback && aCallback) {
+            return NS_ERROR_FAILURE;
+        }
+
+        mAsyncWaitCallback = aCallback;
+    }
+
+    return asyncStream->AsyncWait(callback, aFlags, aRequestedCount,
+                                  aEventTarget);
+}
+
+// nsIInputStreamCallback
+
+NS_IMETHODIMP
+nsMIMEInputStream::OnInputStreamReady(nsIAsyncInputStream* aStream)
+{
+    nsCOMPtr<nsIInputStreamCallback> callback;
+
+    {
+        MutexAutoLock lock(mMutex);
+
+        // We have been canceled in the meanwhile.
+        if (!mAsyncWaitCallback) {
+            return NS_OK;
+        }
+
+        callback.swap(mAsyncWaitCallback);
+  }
+
+  MOZ_ASSERT(callback);
+  return callback->OnInputStreamReady(this);
 }
 
 // nsISeekableStream

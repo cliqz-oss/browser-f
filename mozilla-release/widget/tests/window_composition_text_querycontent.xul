@@ -114,11 +114,11 @@ var windowOfContenteditable;
 var input = document.getElementById("input");
 var textareaInFrame;
 
-const nsITextInputProcessorCallback = Components.interfaces.nsITextInputProcessorCallback;
-const nsIDOMNSEditableElement = Components.interfaces.nsIDOMNSEditableElement;
-const nsIInterfaceRequestor = Components.interfaces.nsIInterfaceRequestor;
-const nsIWebNavigation = Components.interfaces.nsIWebNavigation;
-const nsIDocShell = Components.interfaces.nsIDocShell;
+const nsITextInputProcessorCallback = Ci.nsITextInputProcessorCallback;
+const nsIDOMNSEditableElement = Ci.nsIDOMNSEditableElement;
+const nsIInterfaceRequestor = Ci.nsIInterfaceRequestor;
+const nsIWebNavigation = Ci.nsIWebNavigation;
+const nsIDocShell = Ci.nsIDocShell;
 
 function hitEventLoop(aFunc, aTimes)
 {
@@ -319,7 +319,8 @@ function runUndoRedoTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "," },
     });
 
   synthesizeCompositionChange(
@@ -330,7 +331,8 @@ function runUndoRedoTest()
           { "length": 2, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 2, "length": 0 }
+      "caret": { "start": 2, "length": 0 },
+      "key": { key: "b" },
     });
 
   // convert
@@ -343,11 +345,12 @@ function runUndoRedoTest()
             "attr": COMPOSITION_ATTR_SELECTED_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: " " },
     });
 
   // commit
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Enter" } });
 
   // input raw characters
   synthesizeCompositionChange(
@@ -358,11 +361,12 @@ function runUndoRedoTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "j" },
     });
 
   // cancel the composition
-  synthesizeComposition({ type: "compositioncommit", data: "" });
+  synthesizeComposition({ type: "compositioncommit", data: "", key: { key: "KEY_Escape" } });
 
   // input raw characters
   synthesizeCompositionChange(
@@ -373,7 +377,8 @@ function runUndoRedoTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "]" },
     });
 
   synthesizeCompositionChange(
@@ -384,7 +389,8 @@ function runUndoRedoTest()
           { "length": 2, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 2, "length": 0 }
+      "caret": { "start": 2, "length": 0 },
+      "key": { key: "r" },
     });
 
   synthesizeCompositionChange(
@@ -395,7 +401,8 @@ function runUndoRedoTest()
           { "length": 3, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 3, "length": 0 }
+      "caret": { "start": 3, "length": 0 },
+      "key": { key: "/" },
     });
 
   // convert
@@ -408,44 +415,16 @@ function runUndoRedoTest()
             "attr": COMPOSITION_ATTR_SELECTED_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: " " },
     });
 
   // commit
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Enter" } });
 
-  synthesizeKey(" ", {});
-  synthesizeKey("m", {});
-  synthesizeKey("e", {});
-  synthesizeKey("a", {});
-  synthesizeKey("n", {});
-  synthesizeKey("t", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("s", {});
-  synthesizeKey(" ", {});
-  synthesizeKey("\"", {});
-  synthesizeKey("c", {});
-  synthesizeKey("a", {});
-  synthesizeKey("t", {});
-  synthesizeKey("-", {});
-  synthesizeKey("g", {});
-  synthesizeKey("i", {});
-  synthesizeKey("r", {});
-  synthesizeKey("l", {});
-  synthesizeKey("\"", {});
-  synthesizeKey(".", {});
-  synthesizeKey(" ", {});
-  synthesizeKey("VK_SHIFT", { type: "keydown" });
-  synthesizeKey("S", { shiftKey: true });
-  synthesizeKey("VK_SHIFT", { type: "keyup" });
-  synthesizeKey("h", {});
-  synthesizeKey("e", {});
-  synthesizeKey(" ", {});
-  synthesizeKey("i", {});
-  synthesizeKey("s", {});
-  synthesizeKey(" ", {});
-  synthesizeKey("a", {});
-  synthesizeKey(" ", {});
+  sendString(" meant");
+  synthesizeKey("KEY_Backspace");
+  synthesizeKey("s \"cat-girl\". She is a ");
 
   // input raw characters
   synthesizeCompositionChange(
@@ -456,7 +435,8 @@ function runUndoRedoTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "9" },
     });
 
   synthesizeCompositionChange(
@@ -467,7 +447,8 @@ function runUndoRedoTest()
           { "length": 2, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 2, "length": 0 }
+      "caret": { "start": 2, "length": 0 },
+      "key": { key: "4" },
     });
 
   synthesizeCompositionChange(
@@ -478,7 +459,8 @@ function runUndoRedoTest()
           { "length": 3, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 3, "length": 0 }
+      "caret": { "start": 3, "length": 0 },
+      "key": { key: "t" },
     });
 
   synthesizeCompositionChange(
@@ -489,7 +471,8 @@ function runUndoRedoTest()
           { "length": 4, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 4, "length": 0 }
+      "caret": { "start": 4, "length": 0 },
+      "key": { key: "e" },
     });
 
   // convert
@@ -501,24 +484,14 @@ function runUndoRedoTest()
           { "length": 2, "attr": COMPOSITION_ATTR_SELECTED_CLAUSE }
         ]
       },
-      "caret": { "start": 2, "length": 0 }
+      "caret": { "start": 2, "length": 0 },
+      "key": { key: " " },
     });
 
   // commit
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "Enter" } });
 
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
-  synthesizeKey("VK_BACK_SPACE", {});
+  synthesizeKey("KEY_Backspace", {repeat: 12});
 
   var i = 0;
   if (!checkContent("\u732B\u5A18 means \"cat-girl\".",
@@ -704,12 +677,13 @@ function runCompositionCommitAsIsTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitAsIsTest: textarea doesn't have composition string #1");
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "Enter" } });
 
   is(result.compositionupdate, false, "runCompositionCommitAsIsTest: compositionupdate shouldn't be fired after dispatching compositioncommitasis #1");
   is(result.compositionend, true, "runCompositionCommitAsIsTest: compositionend should be fired after dispatching compositioncommitasis #1");
@@ -727,7 +701,8 @@ function runCompositionCommitAsIsTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitAsIsTest: textarea doesn't have composition string #2");
   synthesizeCompositionChange(
@@ -738,12 +713,13 @@ function runCompositionCommitAsIsTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "KEY_Enter", type: "keydown" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitAsIsTest: textarea doesn't have committed string #2");
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Enter", type: "keyup" } });
 
   is(result.compositionupdate, false, "runCompositionCommitAsIsTest: compositionupdate shouldn't be fired after dispatching compositioncommitasis #2");
   is(result.compositionend, true, "runCompositionCommitAsIsTest: compositionend should be fired after dispatching compositioncommitasis #2");
@@ -761,7 +737,8 @@ function runCompositionCommitAsIsTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitAsIsTest: textarea doesn't have composition string #3");
   synthesizeCompositionChange(
@@ -772,12 +749,13 @@ function runCompositionCommitAsIsTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 0, "length": 0 }
+      "caret": { "start": 0, "length": 0 },
+      "key": { key: "KEY_Escape", type: "keydown" },
     });
   is(textarea.value, "", "runCompositionCommitAsIsTest: textarea has non-empty composition string #3");
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Escape", type: "keyup" } });
 
   is(result.compositionupdate, false, "runCompositionCommitAsIsTest: compositionupdate shouldn't be fired after dispatching compositioncommitasis #3");
   is(result.compositionend, true, "runCompositionCommitAsIsTest: compositionend should be fired after dispatching compositioncommitasis #3");
@@ -821,12 +799,13 @@ function runCompositionCommitTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a", type: "keydown" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitTest: textarea doesn't have composition string #1");
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommit", data: "\u3043" });
+  synthesizeComposition({ type: "compositioncommit", data: "\u3043", key: { key: "a", type: "keyup" } });
 
   is(result.compositionupdate, true, "runCompositionCommitTest: compositionupdate should be fired after dispatching compositioncommit #1");
   is(result.compositionend, true, "runCompositionCommitTest: compositionend should be fired after dispatching compositioncommit #1");
@@ -844,7 +823,8 @@ function runCompositionCommitTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitTest: textarea doesn't have composition string #2");
   synthesizeCompositionChange(
@@ -855,12 +835,13 @@ function runCompositionCommitTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "KEY_Enter", type: "keydown" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitTest: textarea doesn't have committed string #2");
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommit", data: "\u3043" });
+  synthesizeComposition({ type: "compositioncommit", data: "\u3043", key: { key: "KEY_Enter", type: "keyup" } });
 
   is(result.compositionupdate, true, "runCompositionCommitTest: compositionupdate should be fired after dispatching compositioncommit #2");
   is(result.compositionend, true, "runCompositionCommitTest: compositionend should be fired after dispatching compositioncommit #2");
@@ -878,7 +859,8 @@ function runCompositionCommitTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitTest: textarea doesn't have composition string #3");
   synthesizeCompositionChange(
@@ -889,12 +871,13 @@ function runCompositionCommitTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 0, "length": 0 }
+      "caret": { "start": 0, "length": 0 },
+      "key": { key: "KEY_Enter", type: "keydown" },
     });
   is(textarea.value, "", "runCompositionCommitTest: textarea has non-empty composition string #3");
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommit", data: "\u3043" });
+  synthesizeComposition({ type: "compositioncommit", data: "\u3043", key: { key: "KEY_Enter", type: "keyup" } });
 
   is(result.compositionupdate, true, "runCompositionCommitTest: compositionupdate should be fired after dispatching compositioncommit #3");
   is(result.compositionend, true, "runCompositionCommitTest: compositionend should be fired after dispatching compositioncommit #3");
@@ -912,12 +895,13 @@ function runCompositionCommitTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitTest: textarea doesn't have composition string #4");
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommit", data: "" });
+  synthesizeComposition({ type: "compositioncommit", data: "", key: { key: "KEY_Enter" } });
 
   is(result.compositionupdate, true, "runCompositionCommitTest: compositionupdate should be fired after dispatching compositioncommit #4");
   is(result.compositionend, true, "runCompositionCommitTest: compositionend should be fired after dispatching compositioncommit #4");
@@ -929,7 +913,7 @@ function runCompositionCommitTest()
   textarea.value = "";
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommit", data: "\u3042" });
+  synthesizeComposition({ type: "compositioncommit", data: "\u3042", key: { key: "a" } });
 
   is(result.compositionupdate, true, "runCompositionCommitTest: compositionupdate should be fired after dispatching compositioncommit #5");
   is(result.compositionend, true, "runCompositionCommitTest: compositionend should be fired after dispatching compositioncommit #5");
@@ -947,12 +931,13 @@ function runCompositionCommitTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitTest: textarea doesn't have composition string #5");
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommit", data: "\u3042" });
+  synthesizeComposition({ type: "compositioncommit", data: "\u3042", key: { key: "KEY_Enter" } });
 
   is(result.compositionupdate, false, "runCompositionCommitTest: compositionupdate shouldn't be fired after dispatching compositioncommit #5");
   is(result.compositionend, true, "runCompositionCommitTest: compositionend should be fired after dispatching compositioncommit #5");
@@ -970,7 +955,8 @@ function runCompositionCommitTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitTest: textarea doesn't have composition string #6");
 
@@ -982,12 +968,13 @@ function runCompositionCommitTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "KEY_Enter", type: "keydown" },
     });
   is(textarea.value, "\u3042", "runCompositionCommitTest: textarea doesn't have composition string #6");
 
   clearResult();
-  synthesizeComposition({ type: "compositioncommit", data: "\u3042" });
+  synthesizeComposition({ type: "compositioncommit", data: "\u3042", key: { key: "KEY_Enter", type: "keyup" } });
 
   is(result.compositionupdate, false, "runCompositionCommitTest: compositionupdate shouldn't be fired after dispatching compositioncommit #6");
   is(result.compositionend, true, "runCompositionCommitTest: compositionend should be fired after dispatching compositioncommit #6");
@@ -1023,7 +1010,8 @@ function runCompositionTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "o" },
     });
 
   if (!checkContent("\u3089", "runCompositionTest", "#1-1") ||
@@ -1047,7 +1035,8 @@ function runCompositionTest()
           { "length": 2, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 2, "length": 0 }
+      "caret": { "start": 2, "length": 0 },
+      "key": { key: "\\", code: "IntlYen", keyCode: KeyboardEvent.DOM_VK_BACKSLASH },
     });
 
   if (!checkContent("\u3089\u30FC", "runCompositionTest", "#1-2") ||
@@ -1080,7 +1069,8 @@ function runCompositionTest()
           { "length": 3, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 3, "length": 0 }
+      "caret": { "start": 3, "length": 0 },
+      "key": { key: "/" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081", "runCompositionTest", "#1-3") ||
@@ -1113,7 +1103,8 @@ function runCompositionTest()
           { "length": 3, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 2, "length": 0 }
+      "caret": { "start": 2, "length": 0 },
+      "key": { key: "KEY_ArrowLeft" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081", "runCompositionTest", "#1-3-1") ||
@@ -1147,7 +1138,8 @@ function runCompositionTest()
           { "length": 3, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "KEY_ArrowLeft" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081", "runCompositionTest", "#1-3-2") ||
@@ -1180,7 +1172,8 @@ function runCompositionTest()
           { "length": 4, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 4, "length": 0 }
+      "caret": { "start": 4, "length": 0 },
+      "key": { key: "y" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081\u3093", "runCompositionTest", "#1-4") ||
@@ -1198,7 +1191,8 @@ function runCompositionTest()
           { "length": 3, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 3, "length": 0 }
+      "caret": { "start": 3, "length": 0 },
+      "key": { key: "KEY_Backspace" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081", "runCompositionTest", "#1-5") ||
@@ -1215,7 +1209,8 @@ function runCompositionTest()
           { "length": 4, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 4, "length": 0 }
+      "caret": { "start": 4, "length": 0 },
+      "key": { key: "y" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081\u3093", "runCompositionTest", "#1-6") ||
@@ -1231,7 +1226,8 @@ function runCompositionTest()
           { "length": 5, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 5, "length": 0 }
+      "caret": { "start": 5, "length": 0 },
+      "key": { key: "x" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081\u3093\u3055", "runCompositionTest", "#1-7") ||
@@ -1247,7 +1243,8 @@ function runCompositionTest()
           { "length": 6, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 6, "length": 0 }
+      "caret": { "start": 6, "length": 0 },
+      "key": { key: "e" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081\u3093\u3055\u3044", "runCompositionTest", "#1-8") ||
@@ -1263,7 +1260,8 @@ function runCompositionTest()
           { "length": 7, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 7, "length": 0 }
+      "caret": { "start": 7, "length": 0 },
+      "key": { key: "b" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081\u3093\u3055\u3044\u3053", "runCompositionTest", "#1-8") ||
@@ -1279,7 +1277,8 @@ function runCompositionTest()
           { "length": 8, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 8, "length": 0 }
+      "caret": { "start": 8, "length": 0 },
+      "key": { key: "4" },
     });
 
   if (!checkContent("\u3089\u30FC\u3081\u3093\u3055\u3044\u3053\u3046",
@@ -1300,7 +1299,8 @@ function runCompositionTest()
             "attr": COMPOSITION_ATTR_CONVERTED_CLAUSE }
         ]
       },
-      "caret": { "start": 4, "length": 0 }
+      "caret": { "start": 4, "length": 0 },
+      "key": { key: " " },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u6700\u9AD8",
@@ -1321,7 +1321,8 @@ function runCompositionTest()
             "attr": COMPOSITION_ATTR_SELECTED_CLAUSE }
         ]
       },
-      "caret": { "start": 6, "length": 0 }
+      "caret": { "start": 6, "length": 0 },
+      "key": { key: "KEY_ArrowLeft", shiftKey: true },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u6700\u9AD8",
@@ -1342,7 +1343,8 @@ function runCompositionTest()
             "attr": COMPOSITION_ATTR_CONVERTED_CLAUSE }
         ]
       },
-      "caret": { "start": 5, "length": 0 }
+      "caret": { "start": 5, "length": 0 },
+      "key": { key: "KEY_ArrowRight" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u3055\u884C\u3053\u3046",
@@ -1392,7 +1394,8 @@ function runCompositionTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "d" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u3055\u884C\u3053\u3046\u3057",
@@ -1409,7 +1412,8 @@ function runCompositionTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "r" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u3055\u884C\u3053\u3046\u3058",
@@ -1426,7 +1430,8 @@ function runCompositionTest()
           { "length": 2, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 2, "length": 0 }
+      "caret": { "start": 2, "length": 0 },
+      "key": { key: ")", code: "Digit9", keyCode: KeyboardEvent.DOM_VK_9, shiftKey: true },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u3055\u884C\u3053\u3046\u3058\u3087",
@@ -1443,7 +1448,8 @@ function runCompositionTest()
           { "length": 3, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 3, "length": 0 }
+      "caret": { "start": 3, "length": 0 },
+      "key": { key: "4" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u3055\u884C\u3053\u3046\u3058\u3087\u3046",
@@ -1453,7 +1459,7 @@ function runCompositionTest()
   }
 
   // commit the composition string
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Enter" } });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u3055\u884C\u3053\u3046\u3058\u3087\u3046",
                     "runCompositionTest", "#2-4") ||
@@ -1478,7 +1484,8 @@ function runCompositionTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "6" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u304A",
@@ -1496,7 +1503,8 @@ function runCompositionTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 0, "length": 0 }
+      "caret": { "start": 0, "length": 0 },
+      "key": { key: "KEY_Backspace" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
@@ -1514,7 +1522,8 @@ function runCompositionTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "4" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u3046",
@@ -1524,7 +1533,7 @@ function runCompositionTest()
   }
 
   // cancel the composition
-  synthesizeComposition({ type: "compositioncommit", data: "" });
+  synthesizeComposition({ type: "compositioncommit", data: "", key: { key: "KEY_Escape" } });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
                     "runCompositionTest", "#3-5") ||
@@ -1543,7 +1552,8 @@ function runCompositionTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 0, "length": 0 }
+      "caret": { "start": 0, "length": 0 },
+      "key": { key: "a" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
@@ -1560,7 +1570,8 @@ function runCompositionTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 0, "length": 0 }
+      "caret": { "start": 0, "length": 0 },
+      "key": { key: "b" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
@@ -1569,7 +1580,7 @@ function runCompositionTest()
     return;
   }
 
-  synthesizeComposition({ type: "compositioncommit", data: "\u6700" });
+  synthesizeComposition({ type: "compositioncommit", data: "\u6700", key: { key: "KEY_Enter" } });
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u6700",
                     "runCompositionTest", "#4-3") ||
       !checkSelection(5, "", "runCompositionTest", "#4-3")) {
@@ -1585,7 +1596,8 @@ function runCompositionTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 0, "length": 0 }
+      "caret": { "start": 0, "length": 0 },
+      "key": { key: "a" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u6700",
@@ -1594,7 +1606,7 @@ function runCompositionTest()
     return;
   }
 
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Escape" } });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u6700",
                     "runCompositionTest", "#4-6") ||
@@ -1603,7 +1615,7 @@ function runCompositionTest()
   }
 
   // testing whether the empty composition string deletes selected string.
-  synthesizeKey("VK_LEFT", { shiftKey: true });
+  synthesizeKey("KEY_ArrowLeft", {shiftKey: true});
 
   synthesizeCompositionChange(
     { "composition":
@@ -1613,7 +1625,8 @@ function runCompositionTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 0, "length": 0 }
+      "caret": { "start": 0, "length": 0 },
+      "key": { key: "a" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
@@ -1622,14 +1635,14 @@ function runCompositionTest()
     return;
   }
 
-  synthesizeComposition({ type: "compositioncommit", data: "\u9AD8" });
+  synthesizeComposition({ type: "compositioncommit", data: "\u9AD8", key: { key: "KEY_Enter" } });
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u9AD8",
                     "runCompositionTest", "#4-9") ||
       !checkSelection(5, "", "runCompositionTest", "#4-9")) {
     return;
   }
 
-  synthesizeKey("VK_BACK_SPACE", {});
+  synthesizeKey("KEY_Backspace");
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
                     "runCompositionTest", "#4-11") ||
       !checkSelection(4, "", "runCompositionTest", "#4-11")) {
@@ -1646,7 +1659,8 @@ function runCompositionTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "a" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u6700",
@@ -1663,7 +1677,8 @@ function runCompositionTest()
           { "length": 0, "attr": 0 }
         ]
       },
-      "caret": { "start": 0, "length": 0 }
+      "caret": { "start": 0, "length": 0 },
+      "key": { key: "KEY_Backspace", type: "keydown" },
     });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
@@ -1672,7 +1687,7 @@ function runCompositionTest()
     return;
   }
 
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Backspace", type: "keyup" } });
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
                     "runCompositionTest", "#5-3") ||
       !checkSelection(4, "", "runCompositionTest", "#5-3")) {
@@ -1680,7 +1695,7 @@ function runCompositionTest()
   }
 
   // Undo tests for the testcases for bug 23558 and bug 271815
-  synthesizeKey("Z", { accelKey: true });
+  synthesizeKey("z", { accelKey: true });
 
   // XXX this is unexpected behavior, see bug 258291
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
@@ -1689,7 +1704,7 @@ function runCompositionTest()
     return;
   }
 
-  synthesizeKey("Z", { accelKey: true });
+  synthesizeKey("z", { accelKey: true });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u9AD8",
                     "runCompositionTest", "#6-2") ||
@@ -1697,7 +1712,7 @@ function runCompositionTest()
     return;
   }
 
-  synthesizeKey("Z", { accelKey: true });
+  synthesizeKey("z", { accelKey: true });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u6700",
                     "runCompositionTest", "#6-3") ||
@@ -1705,7 +1720,7 @@ function runCompositionTest()
     return;
   }
 
-  synthesizeKey("Z", { accelKey: true });
+  synthesizeKey("z", { accelKey: true });
 
   // XXX this is unexpected behavior, see bug 258291
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3\u6700",
@@ -1714,7 +1729,7 @@ function runCompositionTest()
     return;
   }
 
-  synthesizeKey("Z", { accelKey: true });
+  synthesizeKey("z", { accelKey: true });
 
   if (!checkContent("\u30E9\u30FC\u30E1\u30F3",
                     "runCompositionTest", "#6-5") ||
@@ -1817,7 +1832,8 @@ function runCompositionEventTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "o" },
     });
 
   is(windowEventCounts["compositionstart"], 1,
@@ -1868,7 +1884,8 @@ function runCompositionEventTest()
           { "length": 2, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 2, "length": 0 }
+      "caret": { "start": 2, "length": 0 },
+      "key": { key: "\\", code: "IntlYen", keyCode: KeyboardEvent.DOM_VK_BACKSLASH },
     });
 
   is(windowEventCounts["compositionstart"], 1,
@@ -1904,7 +1921,7 @@ function runCompositionEventTest()
      kDescription + "value of input element wasn't modified (input) #2");
 
   // text event shouldn't cause composition update, e.g., at committing.
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Enter" } });
 
   is(windowEventCounts["compositionstart"], 1,
      kDescription + "compositionstart has been handled more than once by window #3");
@@ -1941,7 +1958,7 @@ function runCompositionEventTest()
   // select the second character, then, data of composition start should be
   // the selected character.
   initResults();
-  synthesizeKey("VK_LEFT", { shiftKey: true });
+  synthesizeKey("KEY_ArrowLeft", {shiftKey: true});
 
   synthesizeCompositionChange(
     { "composition":
@@ -1951,10 +1968,11 @@ function runCompositionEventTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "o" },
     });
 
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Enter" } });
 
   is(windowEventCounts["compositionstart"], 1,
      kDescription + "compositionstart hasn't been handled by window #4");
@@ -2008,7 +2026,7 @@ function runCompositionEventTest()
   preventDefault = true;
 
   initResults();
-  synthesizeKey("A", { accelKey: true }); // Select All
+  synthesizeKey("a", { accelKey: true }); // Select All
 
   synthesizeCompositionChange(
     { "composition":
@@ -2018,7 +2036,8 @@ function runCompositionEventTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "," },
     });
 
   synthesizeComposition({ type: "compositioncommitasis" });
@@ -2077,7 +2096,7 @@ function runCompositionEventTest()
   stopPropagation = true;
 
   initResults();
-  synthesizeKey("A", { accelKey: true }); // Select All
+  synthesizeKey("a", { accelKey: true }); // Select All
 
   synthesizeCompositionChange(
     { "composition":
@@ -2087,10 +2106,11 @@ function runCompositionEventTest()
           { "length": 1, "attr": COMPOSITION_ATTR_RAW_CLAUSE }
         ]
       },
-      "caret": { "start": 1, "length": 0 }
+      "caret": { "start": 1, "length": 0 },
+      "key": { key: "\\", code: "IntlRo", keyCode: KeyboardEvent.DOM_VK_BACKSLASH },
     });
 
-  synthesizeComposition({ type: "compositioncommitasis" });
+  synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Enter" } });
 
   is(windowEventCounts["compositionstart"], 1,
      kDescription + "compositionstart hasn't been handled by window #6");
@@ -2134,7 +2154,7 @@ function runCompositionEventTest()
   initResults();
 
   input.value = "value of input";
-  synthesizeKey("A", { accelKey: true }); // Select All
+  synthesizeKey("a", { accelKey: true }); // Select All
 
   var compositionstart = document.createEvent("CompositionEvent");
   compositionstart.initCompositionEvent("compositionstart",
@@ -4286,6 +4306,28 @@ function runQueryTextContentEventTest()
   is(result.text, "abc", "runQueryTextContentEventTest #16 (0, 3), \"" + contenteditable.innerHTML + "\"");
 }
 
+function runQuerySelectionEventTest()
+{
+  contenteditable.focus();
+
+  var selection = windowOfContenteditable.getSelection();
+
+  // #1
+  contenteditable.innerHTML = "<br/>a";
+  selection.setBaseAndExtent(contenteditable.firstChild, 0, contenteditable.lastChild, 1);
+  checkSelection(0, kLF + "a", "runQuerySelectionEventTest #1, \"" + contenteditable.innerHTML + "\"");
+
+  // #2
+  contenteditable.innerHTML = "<p></p><p>abc</p>";
+  selection.setBaseAndExtent(contenteditable.firstChild, 0, contenteditable.lastChild.firstChild, 1);
+  checkSelection(kLFLen, kLF + "a", "runQuerySelectionEventTest #2, \"" + contenteditable.innerHTML + "\"");
+
+  // #3
+  contenteditable.innerHTML = "<p>abc</p><p>def</p>";
+  selection.setBaseAndExtent(contenteditable.firstChild, 0, contenteditable.lastChild.firstChild, 1);
+  checkSelection(kLFLen, "abc" + kLF + "d", "runQuerySelectionEventTest #3, \"" + contenteditable.innerHTML + "\"");
+}
+
 function runQueryIMESelectionTest()
 {
   textarea.focus();
@@ -5200,7 +5242,7 @@ function runForceCommitTest()
   ok(!getHTMLEditorIMESupport(iframe2.contentWindow).isComposing,
      "runForceCommitTest: the editable document still has composition #9");
   ok(iframe2.contentDocument.body.innerHTML != iframe2BodyInnerHTML &&
-     iframe2.contentDocument.body.innerHTML.indexOf("\u306E") >= 0,
+     iframe2.contentDocument.body.innerHTML.includes("\u306E"),
      "runForceCommitTest: the editable document doesn't have the committed text #9");
 
   // Make the composition in an editable document commit by click in another document's editor
@@ -5244,7 +5286,7 @@ function runForceCommitTest()
   ok(!getEditor(textarea).isComposing,
      "runForceCommitTest: the textarea has composition #10");
   ok(iframe2.contentDocument.body.innerHTML != iframe2BodyInnerHTML &&
-     iframe2.contentDocument.body.innerHTML.indexOf("\u306E") >= 0,
+     iframe2.contentDocument.body.innerHTML.includes("\u306E"),
      "runForceCommitTest: the editable document doesn't have the committed text #10");
   is(textarea.value, "",
      "runForceCommitTest: the textarea has the committed text? #10");
@@ -5291,7 +5333,7 @@ function runForceCommitTest()
   ok(!getHTMLEditorIMESupport(iframe3.contentWindow).isComposing,
      "runForceCommitTest: the other editable document has composition #11");
   ok(iframe2.contentDocument.body.innerHTML != iframe2BodyInnerHTML &&
-     iframe2.contentDocument.body.innerHTML.indexOf("\u306E") >= 0,
+     iframe2.contentDocument.body.innerHTML.includes("\u306E"),
      "runForceCommitTest: the editable document doesn't have the committed text #11");
   is(iframe3.contentDocument.body.innerHTML, iframe3BodyInnerHTML,
      "runForceCommitTest: the other editable document has the committed text? #11");
@@ -5811,7 +5853,7 @@ function runIsComposingTest()
   //     don't dispatch key events while composition (bug 354358).
   SpecialPowers.setBoolPref("dom.keyboardevent.dispatch_during_composition", true);
   description = "events before dispatching compositionstart";
-  synthesizeKey("VK_LEFT", {});
+  synthesizeKey("KEY_ArrowLeft");
 
   description = "events after dispatching compositionchange";
   synthesizeCompositionChange(
@@ -5827,7 +5869,7 @@ function runIsComposingTest()
     });
 
   // Although, firing keypress event during composition is a bug.
-  synthesizeKey("VK_INSERT", {});
+  synthesizeKey("KEY_Insert");
 
   description = "events for committing composition string";
 
@@ -5837,7 +5879,7 @@ function runIsComposingTest()
   // input event will be fired by synthesizing compositionend event.
   // Then, its isComposing should be false.
   description = "events after dispatching compositioncommitasis";
-  synthesizeKey("VK_RETURN", { type: "keyup" });
+  synthesizeKey("KEY_Enter", {type: "keyup"});
 
   SpecialPowers.clearUserPref("dom.keyboardevent.dispatch_during_composition");
 
@@ -7045,12 +7087,12 @@ function* runEditorReframeTests()
       },
       { test: function () {
           // Select "Cd"
-          synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft" });
-          synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft" });
-          synthesizeKey("KEY_Shift", { type: "keydown", code: "ShiftLeft", shiftKey: true });
-          synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true });
-          synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true });
-          synthesizeKey("KEY_Shift", { type: "keyup", code: "ShiftLeft" });
+          synthesizeKey("KEY_ArrowLeft");
+          synthesizeKey("KEY_ArrowLeft");
+          synthesizeKey("KEY_Shift", {type: "keydown", shiftKey: true});
+          synthesizeKey("KEY_ArrowLeft", {shiftKey: true});
+          synthesizeKey("KEY_ArrowLeft", {shiftKey: true});
+          synthesizeKey("KEY_Shift", {type: "keyup"});
         },
         check: function () {
         },
@@ -7326,7 +7368,7 @@ function* runIMEContentObserverTest()
     // "a[]"
     var description = aDescription + "typing 'a'";
     notifications = [];
-    synthesizeKey("a", { code: "KeyA" }, win, callback);
+    synthesizeKey("a", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 0, removedLength: 0, addedLength: 1 });
@@ -7338,7 +7380,7 @@ function* runIMEContentObserverTest()
     // "ab[]"
     description = aDescription + "typing 'b'";
     notifications = [];
-    synthesizeKey("b", { code: "KeyB" }, win, callback);
+    synthesizeKey("b", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 1, removedLength: 0, addedLength: 1 });
@@ -7350,7 +7392,7 @@ function* runIMEContentObserverTest()
     // "abc[]"
     description = aDescription + "typing 'c'";
     notifications = [];
-    synthesizeKey("c", { code: "KeyC" }, win, callback);
+    synthesizeKey("c", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 2, removedLength: 0, addedLength: 1 });
@@ -7362,7 +7404,7 @@ function* runIMEContentObserverTest()
     // "ab[c]"
     description = aDescription + "selecting 'c' with pressing Shift+ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 2, text: "c", reversed: true });
@@ -7372,7 +7414,7 @@ function* runIMEContentObserverTest()
     // "a[bc]"
     description = aDescription + "selecting 'bc' with pressing Shift+ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 1, text: "bc", reversed: true });
@@ -7382,7 +7424,7 @@ function* runIMEContentObserverTest()
     // "[abc]"
     description = aDescription + "selecting 'bc' with pressing Shift+ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 0, text: "abc", reversed: true });
@@ -7392,7 +7434,7 @@ function* runIMEContentObserverTest()
     // "[]abc"
     description = aDescription + "collapsing selection to the left-most with pressing ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft" }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 0, text: "" });
@@ -7402,7 +7444,7 @@ function* runIMEContentObserverTest()
     // "[a]bc"
     description = aDescription + "selecting 'a' with pressing Shift+ArrowRight";
     notifications = [];
-    synthesizeKey("KEY_ArrowRight", { code: "ArrowRight", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowRight", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 0, text: "a" });
@@ -7412,7 +7454,7 @@ function* runIMEContentObserverTest()
     // "[ab]c"
     description = aDescription + "selecting 'ab' with pressing Shift+ArrowRight";
     notifications = [];
-    synthesizeKey("KEY_ArrowRight", { code: "ArrowRight", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowRight", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 0, text: "ab" });
@@ -7422,7 +7464,7 @@ function* runIMEContentObserverTest()
     // "[]c"
     description = aDescription + "deleting 'ab' with pressing Delete";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 0, removedLength: 2, addedLength: 0 });
@@ -7434,7 +7476,7 @@ function* runIMEContentObserverTest()
     // "[]"
     description = aDescription + "deleting following 'c' with pressing Delete";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 0, removedLength: 1, addedLength: 0 });
@@ -7443,15 +7485,15 @@ function* runIMEContentObserverTest()
     dumpUnexpectedNotifications(description, 2);
 
     // "abc[]"
-    synthesizeKey("a", { code: "KeyA" }, win, callback);
-    synthesizeKey("b", { code: "KeyB" }, win, callback);
-    synthesizeKey("c", { code: "KeyC" }, win, callback);
+    synthesizeKey("a", {}, win, callback);
+    synthesizeKey("b", {}, win, callback);
+    synthesizeKey("c", {}, win, callback);
     yield flushNotifications();
 
     // "ab[]"
     description = aDescription + "deleting 'c' with pressing Backspace";
     notifications = [];
-    synthesizeKey("KEY_Backspace", { code: "Backspace" }, win, callback);
+    synthesizeKey("KEY_Backspace", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 2, removedLength: 1, addedLength: 0 });
@@ -7461,14 +7503,14 @@ function* runIMEContentObserverTest()
     dumpUnexpectedNotifications(description, 3);
 
     // "[ab]"
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield flushNotifications();
 
     // "[]"
     description = aDescription + "deleting 'ab' with pressing Backspace";
     notifications = [];
-    synthesizeKey("KEY_Backspace", { code: "Backspace" }, win, callback);
+    synthesizeKey("KEY_Backspace", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 0, removedLength: 2, addedLength: 0 });
@@ -7478,22 +7520,22 @@ function* runIMEContentObserverTest()
     dumpUnexpectedNotifications(description, 3);
 
     // "abcd[]"
-    synthesizeKey("a", { code: "KeyA" }, win, callback);
-    synthesizeKey("b", { code: "KeyB" }, win, callback);
-    synthesizeKey("c", { code: "KeyC" }, win, callback);
-    synthesizeKey("d", { code: "KeyD" }, win, callback);
+    synthesizeKey("a", {}, win, callback);
+    synthesizeKey("b", {}, win, callback);
+    synthesizeKey("c", {}, win, callback);
+    synthesizeKey("d", {}, win, callback);
     yield flushNotifications();
 
     // "a[bc]d"
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield flushNotifications();
 
     // "a[]d"
     description = aDescription + "deleting 'bc' with pressing Backspace";
     notifications = [];
-    synthesizeKey("KEY_Backspace", { code: "Backspace" }, win, callback);
+    synthesizeKey("KEY_Backspace", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 1, removedLength: 2, addedLength: 0 });
@@ -7503,16 +7545,16 @@ function* runIMEContentObserverTest()
     dumpUnexpectedNotifications(description, 3);
 
     // "a[bc]d"
-    synthesizeKey("b", { code: "KeyB" }, win, callback);
-    synthesizeKey("c", { code: "KeyC" }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("b", {}, win, callback);
+    synthesizeKey("c", {}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield flushNotifications();
 
     // "aB[]d"
     description = aDescription + "replacing 'bc' with 'B' with pressing Shift+B";
     notifications = [];
-    synthesizeKey("B", { code: "KeyB", shiftKey: true }, win, callback);
+    synthesizeKey("B", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 1, removedLength: 2, addedLength: 1 });
@@ -7528,7 +7570,7 @@ function* runIMEContentObserverTest()
     // "aB\n[]d"
     description = aDescription + "inserting a line break after 'B' with pressing Enter";
     notifications = [];
-    synthesizeKey("KEY_Enter", { code: "Enter" }, win, callback);
+    synthesizeKey("KEY_Enter", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 2, removedLength: 0, addedLength: kLFLen });
@@ -7540,7 +7582,7 @@ function* runIMEContentObserverTest()
     // "aB[]d"
     description = aDescription + "removing a line break after 'B' with pressing Backspace";
     notifications = [];
-    synthesizeKey("KEY_Backspace", { code: "Backspace" }, win, callback);
+    synthesizeKey("KEY_Backspace", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 2, removedLength: kLFLen, addedLength: 0 });
@@ -7550,13 +7592,13 @@ function* runIMEContentObserverTest()
     dumpUnexpectedNotifications(description, 3);
 
     // "a[B]d"
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield flushNotifications();
 
     // "a\n[]d"
     description = aDescription + "replacing 'B' with a line break with pressing Enter";
     notifications = [];
-    synthesizeKey("KEY_Enter", { code: "Enter" }, win, callback);
+    synthesizeKey("KEY_Enter", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 1, removedLength: 1, addedLength: kLFLen });
@@ -7568,7 +7610,7 @@ function* runIMEContentObserverTest()
     // "a[\n]d"
     description = aDescription + "selecting '\n' with pressing Shift+ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 1, text: kLF, reversed: true });
@@ -7578,7 +7620,7 @@ function* runIMEContentObserverTest()
     // "a[]d"
     description = aDescription + "removing selected '\n' with pressing Delete";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_Delete", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 1, removedLength: kLFLen, addedLength: 0 });
@@ -7651,7 +7693,7 @@ function* runIMEContentObserverTest()
     // "a[]"
     var description = aDescription + "typing 'a'";
     notifications = [];
-    synthesizeKey("a", { code: "KeyA" }, win, callback);
+    synthesizeKey("a", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 0 + offsetAtContainer, removedLength: 0, addedLength: 1 });
@@ -7662,7 +7704,7 @@ function* runIMEContentObserverTest()
     // "ab[]"
     description = aDescription + "typing 'b'";
     notifications = [];
-    synthesizeKey("b", { code: "KeyB" }, win, callback);
+    synthesizeKey("b", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 1 + offsetAtContainer, removedLength: 0, addedLength: 1 });
@@ -7673,7 +7715,7 @@ function* runIMEContentObserverTest()
     // "abc[]"
     description = aDescription + "typing 'c'";
     notifications = [];
-    synthesizeKey("c", { code: "KeyC" }, win, callback);
+    synthesizeKey("c", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 2 + offsetAtContainer, removedLength: 0, addedLength: 1 });
@@ -7684,7 +7726,7 @@ function* runIMEContentObserverTest()
     // "ab[c]"
     description = aDescription + "selecting 'c' with pressing Shift+ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 2 + offsetAtContainer, text: "c", reversed: true });
@@ -7693,7 +7735,7 @@ function* runIMEContentObserverTest()
     // "a[bc]"
     description = aDescription + "selecting 'bc' with pressing Shift+ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 1 + offsetAtContainer, text: "bc", reversed: true });
@@ -7702,7 +7744,7 @@ function* runIMEContentObserverTest()
     // "[abc]"
     description = aDescription + "selecting 'bc' with pressing Shift+ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 0 + offsetAtContainer, text: "abc", reversed: true });
@@ -7711,7 +7753,7 @@ function* runIMEContentObserverTest()
     // "[]abc"
     description = aDescription + "collapsing selection to the left-most with pressing ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft" }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 0 + offsetAtContainer, text: "" });
@@ -7720,7 +7762,7 @@ function* runIMEContentObserverTest()
     // "[a]bc"
     description = aDescription + "selecting 'a' with pressing Shift+ArrowRight";
     notifications = [];
-    synthesizeKey("KEY_ArrowRight", { code: "ArrowRight", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowRight", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 0 + offsetAtContainer, text: "a" });
@@ -7729,7 +7771,7 @@ function* runIMEContentObserverTest()
     // "[ab]c"
     description = aDescription + "selecting 'ab' with pressing Shift+ArrowRight";
     notifications = [];
-    synthesizeKey("KEY_ArrowRight", { code: "ArrowRight", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowRight", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 0 + offsetAtContainer, text: "ab" });
@@ -7738,7 +7780,7 @@ function* runIMEContentObserverTest()
     // "[]c"
     description = aDescription + "deleting 'ab' with pressing Delete";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 0 + offsetAtContainer, removedLength: 2, addedLength: 0 });
@@ -7749,7 +7791,7 @@ function* runIMEContentObserverTest()
     // "[]"
     description = aDescription + "deleting following 'c' with pressing Delete";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 0 + offsetAtContainer, removedLength: 1, addedLength: kLFLen });
@@ -7757,15 +7799,15 @@ function* runIMEContentObserverTest()
     dumpUnexpectedNotifications(description, 2);
 
     // "abc[]"
-    synthesizeKey("a", { code: "KeyA" }, win, callback);
-    synthesizeKey("b", { code: "KeyB" }, win, callback);
-    synthesizeKey("c", { code: "KeyC" }, win, callback);
+    synthesizeKey("a", {}, win, callback);
+    synthesizeKey("b", {}, win, callback);
+    synthesizeKey("c", {}, win, callback);
     yield flushNotifications();
 
     // "ab[]"
     description = aDescription + "deleting 'c' with pressing Backspace";
     notifications = [];
-    synthesizeKey("KEY_Backspace", { code: "Backspace" }, win, callback);
+    synthesizeKey("KEY_Backspace", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 2 + offsetAtContainer, removedLength: 1, addedLength: 0 });
@@ -7774,14 +7816,14 @@ function* runIMEContentObserverTest()
     dumpUnexpectedNotifications(description, 3);
 
     // "[ab]"
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield flushNotifications();
 
     // "[]"
     description = aDescription + "deleting 'ab' with pressing Backspace";
     notifications = [];
-    synthesizeKey("KEY_Backspace", { code: "Backspace" }, win, callback);
+    synthesizeKey("KEY_Backspace", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 0 + offsetAtContainer, removedLength: 2, addedLength: 0 });
@@ -7790,22 +7832,22 @@ function* runIMEContentObserverTest()
     dumpUnexpectedNotifications(description, 3);
 
     // "abcd[]"
-    synthesizeKey("a", { code: "KeyA" }, win, callback);
-    synthesizeKey("b", { code: "KeyB" }, win, callback);
-    synthesizeKey("c", { code: "KeyC" }, win, callback);
-    synthesizeKey("d", { code: "KeyD" }, win, callback);
+    synthesizeKey("a", {}, win, callback);
+    synthesizeKey("b", {}, win, callback);
+    synthesizeKey("c", {}, win, callback);
+    synthesizeKey("d", {}, win, callback);
     yield flushNotifications();
 
     // "a[bc]d"
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield flushNotifications();
 
     // "a[]d"
     description = aDescription + "deleting 'bc' with pressing Backspace";
     notifications = [];
-    synthesizeKey("KEY_Backspace", { code: "Backspace" }, win, callback);
+    synthesizeKey("KEY_Backspace", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 1 + offsetAtContainer, removedLength: 2, addedLength: 0 });
@@ -7814,16 +7856,16 @@ function* runIMEContentObserverTest()
     dumpUnexpectedNotifications(description, 3);
 
     // "a[bc]d"
-    synthesizeKey("b", { code: "KeyB" }, win, callback);
-    synthesizeKey("c", { code: "KeyC" }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("b", {}, win, callback);
+    synthesizeKey("c", {}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield flushNotifications();
 
     // "aB[]d"
     description = aDescription + "replacing 'bc' with 'B' with pressing Shift+B";
     notifications = [];
-    synthesizeKey("B", { code: "KeyB", shiftKey: true }, win, callback);
+    synthesizeKey("B", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkTextChangeNotification(notifications[0], description, { offset: 1 + offsetAtContainer, removedLength: 2, addedLength: 1 });
@@ -7834,7 +7876,7 @@ function* runIMEContentObserverTest()
     // "aB<br>[]d" or "<block>ab</block><block>[]d</block>"
     description = aDescription + "inserting a line break after 'B' with pressing Enter";
     notifications = [];
-    synthesizeKey("KEY_Enter", { code: "Enter" }, win, callback);
+    synthesizeKey("KEY_Enter", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     if (isDefaultParagraphSeparatorBlock) {
@@ -7851,7 +7893,7 @@ function* runIMEContentObserverTest()
     // "aB[]d"
     description = aDescription + "removing a line break after 'B' with pressing Backspace";
     notifications = [];
-    synthesizeKey("KEY_Backspace", { code: "Backspace" }, win, callback);
+    synthesizeKey("KEY_Backspace", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     if (isDefaultParagraphSeparatorBlock) {
@@ -7868,13 +7910,13 @@ function* runIMEContentObserverTest()
     }
 
     // "a[B]d"
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield flushNotifications();
 
     // "a<br>[]d" or "<block>a</block><block>[]d</block>"
     description = aDescription + "replacing 'B' with a line break with pressing Enter";
     notifications = [];
-    synthesizeKey("KEY_Enter", { code: "Enter" }, win, callback);
+    synthesizeKey("KEY_Enter", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     if (isDefaultParagraphSeparatorBlock) {
@@ -7890,7 +7932,7 @@ function* runIMEContentObserverTest()
     // "a[<br>]d" or "<block>a[</block><block>]d</block>"
     description = aDescription + "selecting '\\n' with pressing Shift+ArrowLeft";
     notifications = [];
-    synthesizeKey("KEY_ArrowLeft", { code: "ArrowLeft", shiftKey: true }, win, callback);
+    synthesizeKey("KEY_ArrowLeft", {shiftKey: true}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     checkSelectionChangeNotification(notifications[0], description, { offset: 1 + offsetAtContainer, text: kLF, reversed: true });
@@ -7899,7 +7941,7 @@ function* runIMEContentObserverTest()
     // "a[]d"
     description = aDescription + "removing selected '\\n' with pressing Delete";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     if (isDefaultParagraphSeparatorBlock) {
@@ -7933,7 +7975,7 @@ function* runIMEContentObserverTest()
     yield flushNotifications();
     description = aDescription + "deleting child nodes with pressing Delete key";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     is(aElement.innerHTML, "<div>15</div>", description + " should remove '<div>2<div>3</div>4</div>'");
@@ -7948,7 +7990,7 @@ function* runIMEContentObserverTest()
     yield flushNotifications();
     description = aDescription + "deleting child nodes (partially #1) with pressing Delete key";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     is(aElement.innerHTML, "<div>145</div>", description + " should remove '<div>2<div>3</div></div>'");
@@ -7964,7 +8006,7 @@ function* runIMEContentObserverTest()
     yield flushNotifications();
     description = aDescription + "deleting child nodes (partially #2) with pressing Delete key";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     is(aElement.innerHTML, "<div>13<div>4</div>5</div>", description + " should remove '<div>2</div>'");
@@ -7980,7 +8022,7 @@ function* runIMEContentObserverTest()
     yield flushNotifications();
     description = aDescription + "deleting child nodes (partially #3) with pressing Delete key";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     is(aElement.innerHTML, "<div>1<div>2<div>35</div></div></div>", description + " should remove '4'");
@@ -8006,7 +8048,7 @@ function* runIMEContentObserverTest()
     yield flushNotifications();
     description = aDescription + "deleting child nodes (between same level descendants) with pressing Delete key";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     is(aElement.innerHTML, "<div>1<div>2<div>37</div></div><div>8</div>9</div>", description + " should remove '456<div>7'");
@@ -8022,7 +8064,7 @@ function* runIMEContentObserverTest()
     yield flushNotifications();
     description = aDescription + "deleting child nodes (between different level descendants #1) with pressing Delete key";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     is(aElement.innerHTML, "<div>1<div>27</div><div>8</div>9</div>", description + " should remove '<div>2<div>3</div>4</div>5<div>6<div>7</div>'");
@@ -8038,7 +8080,7 @@ function* runIMEContentObserverTest()
     yield flushNotifications();
     description = aDescription + "deleting child nodes (between different level descendants #2) with pressing Delete key";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     is(aElement.innerHTML, "<div>1<div>29</div></div>", description + " should remove '<div>3</div>4</div>5<div>6<div>7</div>8</div>'");
@@ -8054,7 +8096,7 @@ function* runIMEContentObserverTest()
     yield flushNotifications();
     description = aDescription + "deleting child nodes (between different level descendants #3) with pressing Delete key";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     is(aElement.innerHTML, "<div>1<div>2<div>36<div>7</div>8</div></div>9</div>", description + " should remove '<div>36<div>7</div>8</div>'");
@@ -8070,7 +8112,7 @@ function* runIMEContentObserverTest()
     yield flushNotifications();
     description = aDescription + "deleting child nodes (between different level descendants #4) with pressing Delete key";
     notifications = [];
-    synthesizeKey("KEY_Delete", { code: "Delete" }, win, callback);
+    synthesizeKey("KEY_Delete", {}, win, callback);
     yield waitUntilNotificationsReceived();
     ensureToRemovePrecedingPositionChangeNotification();
     is(aElement.innerHTML, "<div>1<div>2<div>39</div></div></div>", description + " should remove '</div>4</div>5<div>6<div>7</div>8</div>'");
@@ -8120,6 +8162,7 @@ function* testBody()
   runCharAtPointAtOutsideTest();
   runSetSelectionEventTest();
   runQueryTextContentEventTest();
+  runQuerySelectionEventTest();
   runQueryIMESelectionTest();
   runQueryContentEventRelativeToInsertionPoint();
   yield* runIMEContentObserverTest();

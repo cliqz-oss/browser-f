@@ -34,15 +34,20 @@ const testCases = [
       getCookieId("c1", "test1.example.org", "/browser"),
       getCookieId("cs2", ".example.org", "/"),
       getCookieId("c3", "test1.example.org", "/"),
-      getCookieId("uc1", ".example.org", "/")
+      getCookieId("uc1", ".example.org", "/"),
+      getCookieId("uc2", ".example.org", "/")
     ]
   ],
   [
     ["cookies", "https://sectest1.example.org"],
     [
       getCookieId("uc1", ".example.org", "/"),
+      getCookieId("uc2", ".example.org", "/"),
       getCookieId("cs2", ".example.org", "/"),
-      getCookieId("sc1", "sectest1.example.org", "/browser/devtools/client/storage/test/")
+      getCookieId("sc1", "sectest1.example.org",
+        "/browser/devtools/client/storage/test/"),
+      getCookieId("sc2", "sectest1.example.org",
+        "/browser/devtools/client/storage/test/")
     ]
   ],
   [["localStorage", "http://test1.example.org"],
@@ -93,14 +98,14 @@ function testTree() {
   let doc = gPanelWindow.document;
   for (let [item] of testCases) {
     ok(doc.querySelector("[data-id='" + JSON.stringify(item) + "']"),
-       "Tree item " + item[0] + " should be present in the storage tree");
+      `Tree item ${item.toSource()} should be present in the storage tree`);
   }
 }
 
 /**
  * Test that correct table entries are shown for each of the tree item
  */
-function* testTables() {
+async function testTables() {
   let doc = gPanelWindow.document;
   // Expand all nodes so that the synthesized click event actually works
   gUI.tree.expandAll();
@@ -113,7 +118,7 @@ function* testTables() {
 
   // Click rest of the tree items and wait for the table to be updated
   for (let [treeItem, items] of testCases.slice(1)) {
-    yield selectTreeItem(treeItem);
+    await selectTreeItem(treeItem);
 
     // Check whether correct number of items are present in the table
     is(doc.querySelectorAll(
@@ -128,12 +133,12 @@ function* testTables() {
   }
 }
 
-add_task(function* () {
-  yield openTabAndSetupStorage(
+add_task(async function() {
+  await openTabAndSetupStorage(
     MAIN_DOMAIN + "storage-listings-with-fragment.html#abc");
 
   testTree();
-  yield testTables();
+  await testTables();
 
-  yield finishTests();
+  await finishTests();
 });

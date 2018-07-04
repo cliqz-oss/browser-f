@@ -48,6 +48,14 @@ public:
 
   void StartLayout() { MediaDocument::StartLayout(); }
 
+  virtual void Destroy() override
+  {
+    if (mStreamListener) {
+      mStreamListener->DropDocumentRef();
+    }
+    MediaDocument::Destroy();
+  }
+
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(PluginDocument, MediaDocument)
 protected:
   ~PluginDocument() override;
@@ -110,12 +118,9 @@ PluginDocument::~PluginDocument() = default;
 NS_IMPL_CYCLE_COLLECTION_INHERITED(PluginDocument, MediaDocument,
                                    mPluginContent)
 
-NS_IMPL_ADDREF_INHERITED(PluginDocument, MediaDocument)
-NS_IMPL_RELEASE_INHERITED(PluginDocument, MediaDocument)
-
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(PluginDocument)
-  NS_INTERFACE_TABLE_INHERITED(PluginDocument, nsIPluginDocument)
-NS_INTERFACE_TABLE_TAIL_INHERITING(MediaDocument)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(PluginDocument,
+                                             MediaDocument,
+                                             nsIPluginDocument)
 
 void
 PluginDocument::SetScriptGlobalObject(nsIScriptGlobalObject* aScriptGlobalObject)
@@ -141,7 +146,7 @@ PluginDocument::SetScriptGlobalObject(nsIScriptGlobalObject* aScriptGlobalObject
 
 
 bool
-PluginDocument::CanSavePresentation(nsIRequest *aNewRequest)
+PluginDocument::CanSavePresentation(nsIRequest* aNewRequest)
 {
   // Full-page plugins cannot be cached, currently, because we don't have
   // the stream listener data to feed to the plugin instance.
@@ -217,7 +222,7 @@ PluginDocument::CreateSyntheticPluginDocument()
   RefPtr<mozilla::dom::NodeInfo> nodeInfo;
   nodeInfo = mNodeInfoManager->GetNodeInfo(nsGkAtoms::embed, nullptr,
                                            kNameSpaceID_XHTML,
-                                           nsIDOMNode::ELEMENT_NODE);
+                                           nsINode::ELEMENT_NODE);
   rv = NS_NewHTMLElement(getter_AddRefs(mPluginContent), nodeInfo.forget(),
                          NOT_FROM_PARSER);
   NS_ENSURE_SUCCESS(rv, rv);

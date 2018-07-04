@@ -26,7 +26,7 @@ interface DataTransfer {
   void setData(DOMString format, DOMString data);
   [Throws, NeedsSubjectPrincipal]
   void clearData(optional DOMString format);
-  [Throws, NeedsSubjectPrincipal]
+  [NeedsSubjectPrincipal]
   readonly attribute FileList? files;
 };
 
@@ -155,4 +155,24 @@ partial interface DataTransfer {
    */
   [UseCounter]
   readonly attribute Node? mozSourceNode;
+
+  /**
+   * The URI spec of the triggering principal.  This may be different than
+   * sourceNode's principal when sourceNode is xul:browser and the drag is
+   * triggered in a browsing context inside it.
+   */
+  [ChromeOnly]
+  readonly attribute DOMString mozTriggeringPrincipalURISpec;
+
+  /**
+   * Copy the given DataTransfer for the given event. Used by testing code for
+   * creating emulated Drag and Drop events in the UI.
+   *
+   * NOTE: Don't expose a DataTransfer produced with this method to the web or
+   * use this for non-testing purposes. It can easily be used to get the
+   * DataTransfer into an invalid state, and is an unstable implementation
+   * detail of EventUtils.synthesizeDrag.
+   */
+  [Throws, ChromeOnly]
+  DataTransfer mozCloneForEvent(DOMString event);
 };

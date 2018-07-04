@@ -9,12 +9,12 @@
 
 #include "nsContentUtils.h"
 #include "nsISupports.h"
+#include "nsStringFwd.h"
 #include "nsTArrayForwardDeclare.h"
 
-class nsACString;
 class nsIDocument;
-class nsString;
 
+// Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
 #define NS_NSICONSOLEREPORTCOLLECTOR_IID \
   {0xdd98a481, 0xd2c4, 0x4203, {0x8d, 0xfa, 0x85, 0xbf, 0xd7, 0xdc, 0xd7, 0x05}}
 
@@ -82,6 +82,10 @@ public:
   virtual void
   FlushReportsToConsole(uint64_t aInnerWindowID,
                         ReportAction aAction = ReportAction::Forget) = 0;
+
+  virtual void
+  FlushReportsToConsoleForServiceWorkerScope(const nsACString& aScope,
+                                             ReportAction aAction = ReportAction::Forget) = 0;
 
   // Flush all pending reports to the console.  Main thread only.
   //

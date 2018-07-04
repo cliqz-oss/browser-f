@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -47,7 +47,7 @@ PaymentRequestParent::RecvRequestPayment(const IPCPaymentActionRequest& aRequest
         if (NS_WARN_IF(NS_FAILED(rv))) {
           return IPC_FAIL_NO_REASON(this);
         }
-        rv = methodData->AppendElement(method, false);
+        rv = methodData->AppendElement(method);
         if (NS_WARN_IF(NS_FAILED(rv))) {
           return IPC_FAIL_NO_REASON(this);
         }
@@ -73,9 +73,11 @@ PaymentRequestParent::RecvRequestPayment(const IPCPaymentActionRequest& aRequest
       rv = createAction->InitRequest(request.requestId(),
                                      callback,
                                      mTabId,
+                                     request.topLevelPrincipal(),
                                      methodData,
                                      details,
-                                     options);
+                                     options,
+				     request.shippingOption());
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return IPC_FAIL_NO_REASON(this);
       }
@@ -141,7 +143,8 @@ PaymentRequestParent::RecvRequestPayment(const IPCPaymentActionRequest& aRequest
         do_CreateInstance(NS_PAYMENT_UPDATE_ACTION_REQUEST_CONTRACT_ID);
       rv = updateAction->InitRequest(request.requestId(),
                                      callback,
-                                     details);
+                                     details,
+				     request.shippingOption());
       action = do_QueryInterface(updateAction);
       MOZ_ASSERT(action);
       break;
@@ -201,8 +204,8 @@ PaymentRequestParent::RespondPayment(nsIPaymentActionResponse* aResponse)
       nsCOMPtr<nsIPaymentShowActionResponse> response =
         do_QueryInterface(aResponse);
       MOZ_ASSERT(response);
-      bool isAccepted;
-      NS_ENSURE_SUCCESS(response->IsAccepted(&isAccepted), NS_ERROR_FAILURE);
+      uint32_t acceptStatus;
+      NS_ENSURE_SUCCESS(response->GetAcceptStatus(&acceptStatus), NS_ERROR_FAILURE);
       nsAutoString methodName;
       NS_ENSURE_SUCCESS(response->GetMethodName(methodName), NS_ERROR_FAILURE);
       nsAutoString data;
@@ -214,7 +217,7 @@ PaymentRequestParent::RespondPayment(nsIPaymentActionResponse* aResponse)
       nsAutoString payerPhone;
       NS_ENSURE_SUCCESS(response->GetPayerPhone(payerPhone), NS_ERROR_FAILURE);
       IPCPaymentShowActionResponse actionResponse(requestId,
-                                                  isAccepted,
+                                                  acceptStatus,
                                                   methodName,
                                                   data,
                                                   payerName,

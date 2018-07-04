@@ -247,8 +247,8 @@ var Agent = {
 
       // Find all backups
       let iterator;
-      let backups = [];  // array that will contain the paths to all upgrade backup
-      let upgradeBackupPrefix = this.Paths.upgradeBackupPrefix;  // access for forEach callback
+      let backups = []; // array that will contain the paths to all upgrade backup
+      let upgradeBackupPrefix = this.Paths.upgradeBackupPrefix; // access for forEach callback
 
       try {
         iterator = new File.DirectoryIterator(this.Paths.backups);
@@ -372,7 +372,7 @@ var Agent = {
       if (!iterator.exists()) {
         return;
       }
-      for (let entry in iterator) {
+      for (let entry of iterator) {
         if (entry.isDir) {
           continue;
         }

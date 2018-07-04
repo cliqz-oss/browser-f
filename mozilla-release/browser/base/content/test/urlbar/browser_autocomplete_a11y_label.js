@@ -9,9 +9,7 @@ add_task(async function switchToTab() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:about");
 
   await promiseAutocompleteResultPopup("% about");
-
-  ok(gURLBar.popup.richlistbox.children.length > 1, "Should get at least 2 results");
-  let result = gURLBar.popup.richlistbox.children[1];
+  let result = await waitForAutocompleteResultAt(1);
   is(result.getAttribute("type"), "switchtab", "Expect right type attribute");
   is(result.label, "about:about about:about Tab", "Result a11y label should be: <title> <url> Tab");
 
@@ -21,7 +19,8 @@ add_task(async function switchToTab() {
 });
 
 add_task(async function searchSuggestions() {
-  let engine = await promiseNewSearchEngine(TEST_ENGINE_BASENAME);
+  let engine = await SearchTestUtils.promiseNewSearchEngine(
+    getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME);
   let oldCurrentEngine = Services.search.currentEngine;
   Services.search.currentEngine = engine;
   Services.prefs.setBoolPref(SUGGEST_ALL_PREF, true);
@@ -34,6 +33,7 @@ add_task(async function searchSuggestions() {
   });
 
   await promiseAutocompleteResultPopup("foo");
+  await waitForAutocompleteResultAt(2);
   // Don't assume that the search doesn't match history or bookmarks left around
   // by earlier tests.
   Assert.ok(gURLBar.popup.richlistbox.children.length >= 3,
@@ -46,7 +46,7 @@ add_task(async function searchSuggestions() {
     "foobar",
   ];
   for (let child of gURLBar.popup.richlistbox.children) {
-    if (child.getAttribute("type").split(/\s+/).indexOf("searchengine") >= 0) {
+    if (child.getAttribute("type").split(/\s+/).includes("searchengine")) {
       Assert.ok(expectedSearches.length > 0);
       let suggestion = expectedSearches.shift();
       Assert.equal(child.label, suggestion + " browser_searchSuggestionEngine searchSuggestionEngine.xml Search",
@@ -54,5 +54,6 @@ add_task(async function searchSuggestions() {
     }
   }
   Assert.ok(expectedSearches.length == 0);
-  gURLBar.closePopup();
+  gURLBar.popup.hidePopup();
+  await promisePopupHidden(gURLBar.popup);
 });

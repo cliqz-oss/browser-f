@@ -9,31 +9,26 @@
 #define mozilla_dom_HTMLHRElement_h
 
 #include "nsGenericHTMLElement.h"
-#include "nsIDOMHTMLHRElement.h"
 #include "nsMappedAttributes.h"
 #include "nsAttrValueInlines.h"
-#include "nsRuleData.h"
 
 namespace mozilla {
 namespace dom {
 
-class HTMLHRElement final : public nsGenericHTMLElement,
-                            public nsIDOMHTMLHRElement
+class HTMLHRElement final : public nsGenericHTMLElement
 {
 public:
   explicit HTMLHRElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
   // nsISupports
-  NS_DECL_ISUPPORTS_INHERITED
-
-  // nsIDOMHTMLHRElement
-  NS_DECL_NSIDOMHTMLHRELEMENT
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLHRElement, nsGenericHTMLElement)
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                              nsIAtom* aAttribute,
+                              nsAtom* aAttribute,
                               const nsAString& aValue,
+                              nsIPrincipal* aMaybeScriptedPrincipal,
                               nsAttrValue& aResult) override;
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;

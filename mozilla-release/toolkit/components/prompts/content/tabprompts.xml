@@ -5,7 +5,6 @@
 
 <!-- This file is imported into the browser window, and expects various variables,
      e.g. Ci, Services, to be available. -->
-<!-- eslint-env mozilla/browser-window -->
 
 <!DOCTYPE bindings [
 <!ENTITY % commonDialogDTD  SYSTEM "chrome://global/locale/commonDialog.dtd">
@@ -28,7 +27,7 @@
 
     <xbl:content xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
                  role="dialog"
-                 aria-describedby="info.body">
+                 aria-describedby="infoBody">
 
         <!-- This is based on the guts of commonDialog.xul -->
         <spacer flex="1"/>
@@ -42,8 +41,8 @@
 
                     <rows>
                         <vbox anonid="infoContainer" align="center" pack="center" flex="1">
-                            <description anonid="info.title" class="info.title" hidden="true" />
-                            <description anonid="info.body" class="info.body"/>
+                            <description anonid="infoTitle" class="infoTitle" hidden="true" />
+                            <description anonid="infoBody" class="infoBody"/>
                         </vbox>
 
                         <row anonid="loginContainer" hidden="true" align="center">
@@ -85,7 +84,7 @@
         <spacer flex="2"/>
     </xbl:content>
 
-    <implementation implements="nsIDOMEventListener">
+    <implementation>
         <constructor>
         <![CDATA[
             let self = this;
@@ -101,8 +100,8 @@
                 password1Container: getElement("password1Container"),
                 password1Textbox: getElement("password1Textbox"),
                 password1Label: getElement("password1Label"),
-                infoBody: getElement("info.body"),
-                infoTitle: getElement("info.title"),
+                infoBody: getElement("infoBody"),
+                infoTitle: getElement("infoTitle"),
                 infoIcon: null,
                 checkbox: getElement("checkbox"),
                 checkboxContainer: getElement("checkboxContainer"),
@@ -169,7 +168,7 @@
                 // a "pagehide" event.
 
                 let tmp = {};
-                Components.utils.import("resource://gre/modules/CommonDialog.jsm", tmp);
+                ChromeUtils.import("resource://gre/modules/CommonDialog.jsm", tmp);
                 this.Dialog = new tmp.CommonDialog(args, this.ui);
                 this.Dialog.onLoad(null);
 
@@ -331,7 +330,7 @@
             let defaultButton = this.ui["button" + bnum];
 
             let { AppConstants } =
-                Components.utils.import("resource://gre/modules/AppConstants.jsm", {});
+                ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
             if (AppConstants.platform == "macosx") {
               // On OS X, the default button always stays marked as such (until
               // the entire prompt blurs).

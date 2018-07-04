@@ -36,7 +36,65 @@ function checkEventFormat(events) {
   }
 }
 
+/**
+ * @param summaries is of the form
+ *   [{process, [event category, event object, event method], count}]
+ * @param clearScalars - true if you want to clear the scalars
+ */
+function checkEventSummary(summaries, clearScalars) {
+  let scalars = Telemetry.snapshotKeyedScalars(OPTOUT, clearScalars);
+  dump(JSON.stringify(summaries));
+  for (let [process, [category, eObject, method], count] of summaries) {
+    let uniqueEventName = `${category}#${eObject}#${method}`;
+    let summaryCount;
+    if (process === "dynamic") {
+      summaryCount = scalars.dynamic["telemetry.dynamic_event_counts"][uniqueEventName];
+    } else {
+      summaryCount = scalars[process]["telemetry.event_counts"][uniqueEventName];
+    }
+    Assert.equal(summaryCount, count, `${uniqueEventName} had wrong summary count`);
+  }
+}
+
+add_task(async function test_event_summary_limit() {
+  if (AppConstants.DEBUG) {
+    // This test will intentionally assert in DEBUG builds
+    return;
+  }
+  Telemetry.clearEvents();
+  Telemetry.clearScalars();
+
+  const limit = 50;
+  Services.prefs.setIntPref("toolkit.telemetry.maxEventSummaryKeys", limit);
+  let objects = [];
+  for (let i = 0; i < limit + 1; i++) {
+    objects.push("object" + i);
+  }
+  // Using "telemetry.test.dynamic" as using "telemetry.test" will enable
+  // the "telemetry.test" category.
+  Telemetry.registerEvents("telemetry.test.dynamic", {
+    test_method: {
+      methods: ["testMethod"],
+      objects,
+      record_on_release: true,
+    }
+  });
+  for (let object of objects) {
+    Telemetry.recordEvent("telemetry.test.dynamic", "testMethod", object);
+  }
+
+  let snapshot = Telemetry.snapshotEvents(OPTIN, true);
+  Assert.equal(snapshot.dynamic.length, limit + 1, "Should have recorded all events");
+  let scalarSnapshot = Telemetry.snapshotKeyedScalars(OPTOUT, true);
+  Assert.equal(Object.keys(scalarSnapshot.dynamic["telemetry.dynamic_event_counts"]).length,
+               limit, "Should not have recorded more than `limit` events");
+
+});
+
 add_task(async function test_recording_state() {
+  Telemetry.clearEvents();
+  Telemetry.clearScalars();
+
   const events = [
     ["telemetry.test", "test1", "object1"],
     ["telemetry.test.second", "test", "object1"],
@@ -46,6 +104,7 @@ add_task(async function test_recording_state() {
   events.forEach(e => Telemetry.recordEvent(...e));
   let snapshot = Telemetry.snapshotEvents(OPTIN, true);
   Assert.equal(Object.keys(snapshot).length, 0, "Should not have recorded any events.");
+  checkEventSummary(events.map(e => (["parent", e, 1])), true);
 
   // Enable one test category and see that we record correctly.
   Telemetry.setEventRecordingEnabled("telemetry.test", true);
@@ -54,6 +113,7 @@ add_task(async function test_recording_state() {
   Assert.ok(("parent" in snapshot), "Should have entry for main process.");
   Assert.equal(snapshot.parent.length, 1, "Should have recorded one event.");
   Assert.equal(snapshot.parent[0][1], "telemetry.test", "Should have recorded one event in telemetry.test");
+  checkEventSummary(events.map(e => (["parent", e, 1])), true);
 
   // Also enable the other test category and see that we record correctly.
   Telemetry.setEventRecordingEnabled("telemetry.test.second", true);
@@ -63,6 +123,7 @@ add_task(async function test_recording_state() {
   Assert.equal(snapshot.parent.length, 2, "Should have recorded two events.");
   Assert.equal(snapshot.parent[0][1], "telemetry.test", "Should have recorded one event in telemetry.test");
   Assert.equal(snapshot.parent[1][1], "telemetry.test.second", "Should have recorded one event in telemetry.test.second");
+  checkEventSummary(events.map(e => (["parent", e, 1])), true);
 
   // Now turn of one category again and check that this works as expected.
   Telemetry.setEventRecordingEnabled("telemetry.test", false);
@@ -71,6 +132,7 @@ add_task(async function test_recording_state() {
   Assert.ok(("parent" in snapshot), "Should have entry for main process.");
   Assert.equal(snapshot.parent.length, 1, "Should have recorded one event.");
   Assert.equal(snapshot.parent[0][1], "telemetry.test.second", "Should have recorded one event in telemetry.test.second");
+  checkEventSummary(events.map(e => (["parent", e, 1])), true);
 });
 
 add_task(async function recording_setup() {
@@ -81,6 +143,7 @@ add_task(async function recording_setup() {
 });
 
 add_task(async function test_recording() {
+  Telemetry.clearScalars();
   Telemetry.clearEvents();
 
   // Record some events.
@@ -115,6 +178,19 @@ add_task(async function test_recording() {
       e.pop();
     }
   }
+
+  // Check that the events were summarized properly.
+  let summaries = {};
+  expected.forEach(({optout, event}) => {
+    let [category, eObject, method] = event;
+    let uniqueEventName = `${category}#${eObject}#${method}`;
+    if (!(uniqueEventName in summaries)) {
+      summaries[uniqueEventName] = ["parent", event, 1];
+    } else {
+      summaries[uniqueEventName][2]++;
+    }
+  });
+  checkEventSummary(Object.values(summaries), true);
 
   // The following should not result in any recorded events.
   Assert.throws(() => Telemetry.recordEvent("unknown.category", "test1", "object1"),
@@ -152,7 +228,7 @@ add_task(async function test_recording() {
   // Check serializing only opt-out events.
   snapshot = Telemetry.snapshotEvents(OPTOUT, false);
   Assert.ok(("parent" in snapshot), "Should have entry for main process.");
-  let filtered = expected.filter(e => e.optout == true);
+  let filtered = expected.filter(e => !!e.optout);
   checkEvents(snapshot.parent, filtered);
 });
 
@@ -184,16 +260,11 @@ add_task(async function test_expiry() {
   let snapshot = Telemetry.snapshotEvents(OPTIN, true);
   Assert.equal(Object.keys(snapshot).length, 0, "Should not record event with expired version.");
 
-  // Recording call with event that is expired by date.
-  Telemetry.recordEvent("telemetry.test", "expired_date", "object1");
-  snapshot = Telemetry.snapshotEvents(OPTIN, true);
-  Assert.equal(Object.keys(snapshot).length, 0, "Should not record event with expired date.");
-
-  // Recording call with event that has expiry_version and expiry_date in the future.
+  // Recording call with event that has expiry_version set into the future.
   Telemetry.recordEvent("telemetry.test", "not_expired_optout", "object1");
   snapshot = Telemetry.snapshotEvents(OPTOUT, true);
   Assert.ok(("parent" in snapshot), "Should have entry for main process.");
-  Assert.equal(snapshot.parent.length, 1, "Should record event when date and version are not expired.");
+  Assert.equal(snapshot.parent.length, 1, "Should record event when version is not expired.");
 });
 
 add_task(async function test_invalidParams() {
@@ -299,11 +370,12 @@ add_task(async function test_unicodeValues() {
   let events = snapshot.parent;
   Assert.equal(events.length, 2, "Should have recorded 2 events.");
   Assert.equal(events[0][4], value, "Should have recorded the right value.");
-  Assert.equal(events[1][5]["key1"], value, "Should have recorded the right extra value.");
+  Assert.equal(events[1][5].key1, value, "Should have recorded the right extra value.");
 });
 
-add_task(function* test_dynamicEvents() {
+add_task(async function test_dynamicEvents() {
   Telemetry.clearEvents();
+  Telemetry.clearScalars();
   Telemetry.canRecordExtended = true;
 
   // Register some test events.
@@ -337,6 +409,8 @@ add_task(function* test_dynamicEvents() {
   Telemetry.recordEvent("telemetry.test.dynamic", "test1", "object1");
   Telemetry.recordEvent("telemetry.test.dynamic", "test2", "object1", null,
                         {"key1": "foo", "key2": "bar"});
+  Telemetry.recordEvent("telemetry.test.dynamic", "test2b", "object1", null,
+                        {"key1": "foo", "key2": "bar"});
   Telemetry.recordEvent("telemetry.test.dynamic", "test3", "object1", "some value");
   Telemetry.recordEvent("telemetry.test.dynamic", "test4", "object1", null);
 
@@ -352,6 +426,7 @@ add_task(function* test_dynamicEvents() {
   let expected = [
     ["telemetry.test.dynamic", "test1", "object1"],
     ["telemetry.test.dynamic", "test2", "object1", null, {key1: "foo", key2: "bar"}],
+    ["telemetry.test.dynamic", "test2b", "object1", null, {key1: "foo", key2: "bar"}],
     // "test3" is epxired, so it should not be recorded.
     ["telemetry.test.dynamic", "test4", "object1"],
   ];
@@ -361,6 +436,9 @@ add_task(function* test_dynamicEvents() {
     Assert.deepEqual(events[i].slice(1), expected[i],
                      "Should have recorded the expected event data.");
   }
+
+  // Check that we've summarized the recorded events
+  checkEventSummary(expected.map(ev => ["dynamic", ev, 1]), true);
 
   // Check that the opt-out snapshot contains only the one expected event.
   snapshot = Telemetry.snapshotEvents(OPTOUT, false);
@@ -397,7 +475,7 @@ add_task(function* test_dynamicEvents() {
   Assert.deepEqual(snapshot.dynamic.map(e => e.slice(1)), expected);
 });
 
-add_task(function* test_dynamicEventRegistrationValidation() {
+add_task(async function test_dynamicEventRegistrationValidation() {
   Telemetry.canRecordExtended = true;
   Telemetry.clearEvents();
 
@@ -519,14 +597,90 @@ add_task(function* test_dynamicEventRegistrationValidation() {
       extra_keys: ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10"],
     },
   });
+});
 
-  // Test registering an event thats already registered through Events.yaml.
-  Assert.throws(() => Telemetry.registerEvents("telemetry.test", {
-      "test1": {
-        methods: ["test1"],
-        objects: ["object1"],
-      },
-    }),
-    /Attempt to register event that is already registered\./,
-    "Should throw when registering event that already was registered.");
+// When add-ons update, they may re-register some of the dynamic events.
+// Test through some possible scenarios.
+add_task(async function test_dynamicEventRegisterAgain() {
+  Telemetry.canRecordExtended = true;
+  Telemetry.clearEvents();
+
+  const category = "telemetry.test.register.again";
+  let events = {
+    "test1": {
+      methods: ["test1"],
+      objects: ["object1"],
+    }
+  };
+
+  // First register the initial event and make sure it can be recorded.
+  Telemetry.registerEvents(category, events);
+  let expected = [
+    [category, "test1", "object1"],
+  ];
+  expected.forEach(e => Telemetry.recordEvent(...e));
+
+  let snapshot = Telemetry.snapshotEvents(OPTIN, true);
+  Assert.equal(snapshot.dynamic.length, expected.length,
+               "Should have right number of events in the snapshot.");
+  Assert.deepEqual(snapshot.dynamic.map(e => e.slice(1)), expected);
+
+  // Register the same event again and make sure it can still be recorded.
+  Telemetry.registerEvents(category, events);
+  Telemetry.recordEvent(category, "test1", "object1");
+
+  snapshot = Telemetry.snapshotEvents(OPTIN, true);
+  Assert.equal(snapshot.dynamic.length, expected.length,
+               "Should have right number of events in the snapshot.");
+  Assert.deepEqual(snapshot.dynamic.map(e => e.slice(1)), expected);
+
+  // Now register another event in the same category and make sure both events can be recorded.
+  events.test2 = {
+    methods: ["test2"],
+    objects: ["object2"],
+  };
+  Telemetry.registerEvents(category, events);
+
+  expected = [
+    [category, "test1", "object1"],
+    [category, "test2", "object2"],
+  ];
+  expected.forEach(e => Telemetry.recordEvent(...e));
+
+  snapshot = Telemetry.snapshotEvents(OPTIN, true);
+  Assert.equal(snapshot.dynamic.length, expected.length,
+               "Should have right number of events in the snapshot.");
+  Assert.deepEqual(snapshot.dynamic.map(e => e.slice(1)), expected);
+
+  // Check that adding a new object to an event entry works.
+  events.test1.methods = ["test1a"];
+  events.test2.objects = ["object2", "object2a"];
+  Telemetry.registerEvents(category, events);
+
+  expected = [
+    [category, "test1", "object1"],
+    [category, "test2", "object2"],
+    [category, "test1a", "object1"],
+    [category, "test2", "object2a"],
+  ];
+  expected.forEach(e => Telemetry.recordEvent(...e));
+
+  snapshot = Telemetry.snapshotEvents(OPTIN, true);
+  Assert.equal(snapshot.dynamic.length, expected.length,
+               "Should have right number of events in the snapshot.");
+  Assert.deepEqual(snapshot.dynamic.map(e => e.slice(1)), expected);
+
+  // Make sure that we can expire events that are already registered.
+  events.test2.expired = true;
+  Telemetry.registerEvents(category, events);
+
+  expected = [
+    [category, "test1", "object1"],
+  ];
+  expected.forEach(e => Telemetry.recordEvent(...e));
+
+  snapshot = Telemetry.snapshotEvents(OPTIN, true);
+  Assert.equal(snapshot.dynamic.length, expected.length,
+               "Should have right number of events in the snapshot.");
+  Assert.deepEqual(snapshot.dynamic.map(e => e.slice(1)), expected);
 });

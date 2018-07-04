@@ -7,9 +7,11 @@ info: Check If Statement for automatic semicolon insertion
 es5id: 7.9_A11_T4
 description: Checking if execution of "if (false) x = 1 else x = -1" fails
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 //CHECK#1
 var x = 0;

@@ -1,10 +1,12 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsTextRunTransformations.h"
 
+#include "mozilla/ComputedStyleInlines.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Move.h"
 
@@ -160,8 +162,6 @@ MergeCharactersInTextRun(gfxTextRun* aDest, gfxTextRun* aSrc,
           gfxTextRun::DetailedGlyph details;
           details.mGlyphID = g.GetSimpleGlyph();
           details.mAdvance = g.GetSimpleAdvance();
-          details.mXOffset = 0;
-          details.mYOffset = 0;
           glyphs.AppendElement(details);
         }
       } else {
@@ -245,7 +245,7 @@ enum LanguageSpecificCasingBehavior {
 };
 
 static LanguageSpecificCasingBehavior
-GetCasingFor(const nsIAtom* aLang)
+GetCasingFor(const nsAtom* aLang)
 {
   if (!aLang) {
       return eLSCB_None;
@@ -268,11 +268,11 @@ GetCasingFor(const nsIAtom* aLang)
   }
 
   // Is there a region subtag we should ignore?
-  nsAtomString langStr(const_cast<nsIAtom*>(aLang));
+  nsAtomString langStr(const_cast<nsAtom*>(aLang));
   int index = langStr.FindChar('-');
   if (index > 0) {
     langStr.Truncate(index);
-    nsCOMPtr<nsIAtom> truncatedLang = NS_Atomize(langStr);
+    RefPtr<nsAtom> truncatedLang = NS_Atomize(langStr);
     return GetCasingFor(truncatedLang);
   }
 
@@ -284,7 +284,7 @@ nsCaseTransformTextRunFactory::TransformString(
     const nsAString& aString,
     nsString& aConvertedString,
     bool aAllUppercase,
-    const nsIAtom* aLanguage,
+    const nsAtom* aLanguage,
     nsTArray<bool>& aCharsToMergeArray,
     nsTArray<bool>& aDeletedCharsArray,
     const nsTransformedTextRun* aTextRun,
@@ -310,7 +310,7 @@ nsCaseTransformTextRunFactory::TransformString(
 
   uint8_t style = aAllUppercase ? NS_STYLE_TEXT_TRANSFORM_UPPERCASE : 0;
   bool forceNonFullWidth = false;
-  const nsIAtom* lang = aLanguage;
+  const nsAtom* lang = aLanguage;
 
   LanguageSpecificCasingBehavior languageSpecificCasing = GetCasingFor(lang);
   mozilla::GreekCasing::State greekState;
@@ -334,7 +334,7 @@ nsCaseTransformTextRunFactory::TransformString(
         charStyle->mTextTransform;
       forceNonFullWidth = charStyle->mForceNonFullWidth;
 
-      nsIAtom* newLang = charStyle->mExplicitLanguage
+      nsAtom* newLang = charStyle->mExplicitLanguage
                          ? charStyle->mLanguage.get() : nullptr;
       if (lang != newLang) {
         lang = newLang;

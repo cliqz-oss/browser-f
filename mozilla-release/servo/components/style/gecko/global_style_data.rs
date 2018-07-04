@@ -8,11 +8,13 @@ use context::StyleSystemOptions;
 use gecko_bindings::bindings::{Gecko_RegisterProfilerThread, Gecko_UnregisterProfilerThread};
 use gecko_bindings::bindings::Gecko_SetJemallocThreadLocalArena;
 use num_cpus;
+use parallel::STYLE_THREAD_STACK_SIZE_KB;
 use rayon;
 use shared_lock::SharedRwLock;
 use std::cmp;
 use std::env;
 use std::ffi::CString;
+use thread_state;
 
 /// Global style data
 pub struct GlobalStyleData {
@@ -37,6 +39,7 @@ fn thread_name(index: usize) -> String {
 }
 
 fn thread_startup(index: usize) {
+    thread_state::initialize_layout_worker_thread();
     unsafe {
         Gecko_SetJemallocThreadLocalArena(true);
     }
@@ -81,7 +84,7 @@ lazy_static! {
         let pool = if num_threads < 1 {
             None
         } else {
-            let configuration = rayon::Configuration::new()
+            let workers = rayon::ThreadPoolBuilder::new()
                 .num_threads(num_threads)
                 // Enable a breadth-first rayon traversal. This causes the work
                 // queue to be always FIFO, rather than FIFO for stealers and
@@ -91,9 +94,10 @@ lazy_static! {
                 .breadth_first()
                 .thread_name(thread_name)
                 .start_handler(thread_startup)
-                .exit_handler(thread_shutdown);
-            let pool = rayon::ThreadPool::new(configuration).ok();
-            pool
+                .exit_handler(thread_shutdown)
+                .stack_size(STYLE_THREAD_STACK_SIZE_KB * 1024)
+                .build();
+            workers.ok()
         };
 
         StyleThreadPool {

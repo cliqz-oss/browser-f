@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nspr.h"
-#include "mozilla/dom/TabGroup.h"
 #include "mozilla/Logging.h"
 #include "mozilla/IntegerPrintfMacros.h"
 
@@ -15,7 +14,7 @@
 #include "nsIWebProgressListener2.h"
 
 #include "nsIServiceManager.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 
 #include "nsIURL.h"
 #include "nsCOMPtr.h"
@@ -165,15 +164,14 @@ nsDocLoader::~nsDocLoader()
          ("DocLoader:%p: deleted.\n", this));
 }
 
-
 /*
  * Implementation of ISupports methods...
  */
-NS_IMPL_ADDREF(nsDocLoader)
-NS_IMPL_RELEASE(nsDocLoader)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(nsDocLoader)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(nsDocLoader)
 
-NS_INTERFACE_MAP_BEGIN(nsDocLoader)
-   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIRequestObserver)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsDocLoader)
+   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDocumentLoader)
    NS_INTERFACE_MAP_ENTRY(nsIRequestObserver)
    NS_INTERFACE_MAP_ENTRY(nsIDocumentLoader)
    NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
@@ -187,6 +185,8 @@ NS_INTERFACE_MAP_BEGIN(nsDocLoader)
      foundInterface = static_cast<nsIDocumentLoader *>(this);
    else
 NS_INTERFACE_MAP_END
+
+NS_IMPL_CYCLE_COLLECTION(nsDocLoader, mChildrenInOnload)
 
 
 /*
@@ -691,13 +691,10 @@ void nsDocLoader::DocLoaderIsEmpty(bool aFlushLayout)
         // no matter what.  If we have user fonts, we also need to flush layout,
         // since the reflow is what starts font loads.
         mozilla::FlushType flushType = mozilla::FlushType::Style;
-        nsIPresShell* shell = doc->GetShell();
-        if (shell) {
-          // Be safe in case this presshell is in teardown now
-          nsPresContext* presContext = shell->GetPresContext();
-          if (presContext && presContext->GetUserFontSet()) {
-            flushType = mozilla::FlushType::Layout;
-          }
+        // Be safe in case this presshell is in teardown now
+        nsPresContext* presContext = doc->GetPresContext();
+        if (presContext && presContext->GetUserFontSet()) {
+          flushType = mozilla::FlushType::Layout;
         }
         mDontFlushLayout = mIsFlushingLayout = true;
         doc->FlushPendingNotifications(flushType);
@@ -919,7 +916,6 @@ nsDocLoader::GetDOMWindowID(uint64_t *aResult)
   nsCOMPtr<nsPIDOMWindowOuter> piwindow = nsPIDOMWindowOuter::From(window);
   NS_ENSURE_STATE(piwindow);
 
-  MOZ_ASSERT(piwindow->IsOuterWindow());
   *aResult = piwindow->WindowID();
   return NS_OK;
 }
@@ -942,7 +938,6 @@ nsDocLoader::GetInnerDOMWindowID(uint64_t *aResult)
     return NS_OK;
   }
 
-  MOZ_ASSERT(inner->IsInnerWindow());
   *aResult = inner->WindowID();
   return NS_OK;
 }
@@ -988,10 +983,10 @@ nsDocLoader::GetTarget(nsIEventTarget** aTarget)
   nsresult rv = GetDOMWindow(getter_AddRefs(window));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsPIDOMWindowOuter> piwindow = nsPIDOMWindowOuter::From(window);
-  NS_ENSURE_STATE(piwindow);
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(window);
+  NS_ENSURE_STATE(global);
 
-  nsCOMPtr<nsIEventTarget> target = piwindow->TabGroup()->EventTargetFor(mozilla::TaskCategory::Other);
+  nsCOMPtr<nsIEventTarget> target = global->EventTargetFor(mozilla::TaskCategory::Other);
   target.forget(aTarget);
   return NS_OK;
 }
@@ -1162,9 +1157,8 @@ NS_IMETHODIMP nsDocLoader::OnStatus(nsIRequest* aRequest, nsISupports* ctxt,
       mozilla::services::GetStringBundleService();
     if (!sbs)
       return NS_ERROR_FAILURE;
-    nsXPIDLString msg;
-    nsresult rv = sbs->FormatStatusMessage(aStatus, aStatusArg,
-                                           getter_Copies(msg));
+    nsAutoString msg;
+    nsresult rv = sbs->FormatStatusMessage(aStatus, aStatusArg, msg);
     if (NS_FAILED(rv))
       return rv;
 
@@ -1185,7 +1179,7 @@ NS_IMETHODIMP nsDocLoader::OnStatus(nsIRequest* aRequest, nsISupports* ctxt,
       // Put the info at the front of the list
       mStatusInfoList.insertFront(info->mLastStatus);
     }
-    FireOnStatusChange(this, aRequest, aStatus, msg);
+    FireOnStatusChange(this, aRequest, aStatus, msg.get());
   }
   return NS_OK;
 }
@@ -1470,8 +1464,12 @@ NS_IMETHODIMP nsDocLoader::AsyncOnChannelRedirect(nsIChannel *aOldChannel,
       stateFlags |= nsIWebProgressListener::STATE_IS_DOCUMENT;
 
 #if defined(DEBUG)
-      nsCOMPtr<nsIRequest> request(do_QueryInterface(aOldChannel));
-      NS_ASSERTION(request == mDocumentRequest, "Wrong Document Channel");
+      // We only set mDocumentRequest in OnStartRequest(), but its possible
+      // to get a redirect before that for service worker interception.
+      if (mDocumentRequest) {
+        nsCOMPtr<nsIRequest> request(do_QueryInterface(aOldChannel));
+        NS_ASSERTION(request == mDocumentRequest, "Wrong Document Channel");
+      }
 #endif /* DEBUG */
     }
 

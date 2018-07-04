@@ -7,10 +7,10 @@
  * Tests if requests display the correct status code and text in the UI.
  */
 
-add_task(function* () {
+add_task(async function() {
   let { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
 
-  let { tab, monitor } = yield initNetMonitor(STATUS_CODES_URL);
+  let { tab, monitor } = await initNetMonitor(STATUS_CODES_URL);
 
   info("Starting test... ");
 
@@ -30,6 +30,7 @@ add_task(function* () {
       // request #0
       method: "GET",
       uri: STATUS_CODES_SJS + "?sts=100",
+      correctUri: STATUS_CODES_SJS + "?sts=100",
       details: {
         status: 101,
         statusText: "Switching Protocols",
@@ -42,7 +43,8 @@ add_task(function* () {
     {
       // request #1
       method: "GET",
-      uri: STATUS_CODES_SJS + "?sts=200",
+      uri: STATUS_CODES_SJS + "?sts=200#doh",
+      correctUri: STATUS_CODES_SJS + "?sts=200",
       details: {
         status: 202,
         statusText: "Created",
@@ -56,6 +58,7 @@ add_task(function* () {
       // request #2
       method: "GET",
       uri: STATUS_CODES_SJS + "?sts=300",
+      correctUri: STATUS_CODES_SJS + "?sts=300",
       details: {
         status: 303,
         statusText: "See Other",
@@ -69,6 +72,7 @@ add_task(function* () {
       // request #3
       method: "GET",
       uri: STATUS_CODES_SJS + "?sts=400",
+      correctUri: STATUS_CODES_SJS + "?sts=400",
       details: {
         status: 404,
         statusText: "Not Found",
@@ -82,6 +86,7 @@ add_task(function* () {
       // request #4
       method: "GET",
       uri: STATUS_CODES_SJS + "?sts=500",
+      correctUri: STATUS_CODES_SJS + "?sts=500",
       details: {
         status: 501,
         statusText: "Not Implemented",
@@ -93,16 +98,13 @@ add_task(function* () {
     }
   ];
 
-  let wait = waitForNetworkEvents(monitor, 5);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
-    content.wrappedJSObject.performRequests();
-  });
-  yield wait;
+  // Execute requests.
+  await performRequests(monitor, tab, 5);
 
   info("Performing tests");
-  yield verifyRequests();
-  yield testTab(0, testHeaders);
-  yield testTab(2, testParams);
+  await verifyRequests();
+  await testTab(0, testHeaders);
+  await testTab(2, testParams);
 
   return teardown(monitor);
 
@@ -110,7 +112,15 @@ add_task(function* () {
    * A helper that verifies all requests show the correct information and caches
    * request list items to requestItems array.
    */
-  function* verifyRequests() {
+  async function verifyRequests() {
+    let requestListItems = document.querySelectorAll(".request-list-item");
+    for (let requestItem of requestListItems) {
+      requestItem.scrollIntoView();
+      let requestsListStatus = requestItem.querySelector(".status-code");
+      EventUtils.sendMouseEvent({ type: "mouseover" }, requestsListStatus);
+      await waitUntil(() => requestsListStatus.title);
+    }
+
     info("Verifying requests contain correct information.");
     let index = 0;
     for (let request of REQUEST_DATA) {
@@ -118,7 +128,7 @@ add_task(function* () {
       requestItems[index] = item;
 
       info("Verifying request #" + index);
-      yield verifyRequestItemTarget(
+      await verifyRequestItemTarget(
         document,
         getDisplayedRequests(store.getState()),
         item,
@@ -142,11 +152,11 @@ add_task(function* () {
    *        for every item of REQUEST_DATA with that item being selected in the
    *        NetworkMonitor.
    */
-  function* testTab(tabIdx, testFn) {
+  async function testTab(tabIdx, testFn) {
     let counter = 0;
     for (let item of REQUEST_DATA) {
       info("Testing tab #" + tabIdx + " to update with request #" + counter);
-      yield testFn(item, counter);
+      await testFn(item, counter);
 
       counter++;
     }
@@ -155,33 +165,41 @@ add_task(function* () {
   /**
    * A function that tests "Headers" panel contains correct information.
    */
-  function* testHeaders(data, index) {
+  async function testHeaders(data, index) {
     EventUtils.sendMouseEvent({ type: "mousedown" },
       document.querySelectorAll(".request-list-item")[index]);
 
+    await waitUntil(() => document.querySelector(
+      "#headers-panel .tabpanel-summary-value.textbox-input"));
+
     let panel = document.querySelector("#headers-panel");
     let summaryValues = panel.querySelectorAll(".tabpanel-summary-value.textbox-input");
-    let { method, uri, details: { status, statusText } } = data;
+    let { method, correctUri, details: { status, statusText } } = data;
+    let statusCode = panel.querySelector(".status-code");
+    EventUtils.sendMouseEvent({ type: "mouseover" }, statusCode);
+    await waitUntil(() => statusCode.title);
 
-    is(summaryValues[0].value, uri, "The url summary value is incorrect.");
+    is(summaryValues[0].value, correctUri,
+      "The url summary value is incorrect.");
     is(summaryValues[1].value, method, "The method summary value is incorrect.");
-    is(panel.querySelector(".requests-list-status-icon").dataset.code, status,
+    is(statusCode.dataset.code, status,
       "The status summary code is incorrect.");
-    is(summaryValues[3].value, status + " " + statusText,
+    is(statusCode.getAttribute("title"), status + " " + statusText,
       "The status summary value is incorrect.");
   }
 
   /**
    * A function that tests "Params" panel contains correct information.
    */
-  function* testParams(data, index) {
+  function testParams(data, index) {
     EventUtils.sendMouseEvent({ type: "mousedown" },
       document.querySelectorAll(".request-list-item")[index]);
     EventUtils.sendMouseEvent({ type: "click" },
       document.querySelector("#params-tab"));
 
     let panel = document.querySelector("#params-panel");
-    let statusParamValue = data.uri.split("=").pop();
+    // Bug 1414981 - Request URL should not show #hash
+    let statusParamValue = data.uri.split("=").pop().split("#")[0];
     let treeSections = panel.querySelectorAll(".tree-section");
 
     is(treeSections.length, 1,

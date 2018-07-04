@@ -15,12 +15,11 @@
 
 #include "mozilla/Attributes.h"
 #include "nsXMLContentSerializer.h"
-#include "nsIEntityConverter.h"
 #include "nsString.h"
 #include "nsTArray.h"
 
 class nsIContent;
-class nsIAtom;
+class nsAtom;
 
 namespace mozilla {
 class Encoding;
@@ -49,10 +48,10 @@ class nsXHTMLContentSerializer : public nsXMLContentSerializer {
  protected:
 
 
-  virtual bool CheckElementStart(nsIContent * aContent,
-                          bool & aForceFormat,
-                          nsAString& aStr,
-                          nsresult& aResult) override;
+  virtual bool CheckElementStart(mozilla::dom::Element* aElement,
+                                 bool& aForceFormat,
+                                 nsAString& aStr,
+                                 nsresult& aResult) override;
 
   MOZ_MUST_USE
   virtual bool AfterElementStart(nsIContent* aContent,
@@ -66,10 +65,10 @@ class nsXHTMLContentSerializer : public nsXMLContentSerializer {
   virtual void AfterElementEnd(nsIContent * aContent,
                                nsAString& aStr) override;
 
-  virtual bool LineBreakBeforeOpen(int32_t aNamespaceID, nsIAtom* aName) override;
-  virtual bool LineBreakAfterOpen(int32_t aNamespaceID, nsIAtom* aName) override;
-  virtual bool LineBreakBeforeClose(int32_t aNamespaceID, nsIAtom* aName) override;
-  virtual bool LineBreakAfterClose(int32_t aNamespaceID, nsIAtom* aName) override;
+  virtual bool LineBreakBeforeOpen(int32_t aNamespaceID, nsAtom* aName) override;
+  virtual bool LineBreakAfterOpen(int32_t aNamespaceID, nsAtom* aName) override;
+  virtual bool LineBreakBeforeClose(int32_t aNamespaceID, nsAtom* aName) override;
+  virtual bool LineBreakAfterClose(int32_t aNamespaceID, nsAtom* aName) override;
 
   bool HasLongLines(const nsString& text, int32_t& aLastNewlineOffset);
 
@@ -78,22 +77,22 @@ class nsXHTMLContentSerializer : public nsXMLContentSerializer {
   virtual void MaybeLeaveFromPreContent(nsIContent* aNode) override;
 
   MOZ_MUST_USE
-  virtual bool SerializeAttributes(nsIContent* aContent,
-                           nsIContent *aOriginalElement,
-                           nsAString& aTagPrefix,
-                           const nsAString& aTagNamespaceURI,
-                           nsIAtom* aTagName,
-                           nsAString& aStr,
-                           uint32_t aSkipAttr,
-                           bool aAddNSAttr) override;
+  virtual bool SerializeAttributes(mozilla::dom::Element* aContent,
+                                   mozilla::dom::Element* aOriginalElement,
+                                   nsAString& aTagPrefix,
+                                   const nsAString& aTagNamespaceURI,
+                                   nsAtom* aTagName,
+                                   nsAString& aStr,
+                                   uint32_t aSkipAttr,
+                                   bool aAddNSAttr) override;
 
   bool IsFirstChildOfOL(nsIContent* aElement);
 
   MOZ_MUST_USE
   bool SerializeLIValueAttribute(nsIContent* aElement,
                                  nsAString& aStr);
-  bool IsShorthandAttr(const nsIAtom* aAttrName,
-                         const nsIAtom* aElementName);
+  bool IsShorthandAttr(const nsAtom* aAttrName,
+                         const nsAtom* aElementName);
 
   MOZ_MUST_USE
   virtual bool AppendAndTranslateEntities(const nsAString& aStr,
@@ -103,7 +102,6 @@ private:
   bool IsElementPreformatted(nsIContent* aNode);
 
 protected:
-  nsCOMPtr<nsIEntityConverter> mEntityConverter;
 
   /*
    * isHTMLParser should be set to true by the HTML parser which inherits from

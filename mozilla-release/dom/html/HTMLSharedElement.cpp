@@ -31,35 +31,9 @@ HTMLSharedElement::~HTMLSharedElement()
 {
 }
 
-NS_IMPL_ADDREF_INHERITED(HTMLSharedElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLSharedElement, Element)
-
-// QueryInterface implementation for HTMLSharedElement
-NS_INTERFACE_MAP_BEGIN(HTMLSharedElement)
-  NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLBaseElement, base)
-  NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLDirectoryElement, dir)
-  NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLQuoteElement, q)
-  NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLQuoteElement, blockquote)
-  NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLHeadElement, head)
-  NS_INTERFACE_MAP_ENTRY_IF_TAG(nsIDOMHTMLHtmlElement, html)
-NS_INTERFACE_MAP_END_INHERITING(nsGenericHTMLElement)
-
-
 NS_IMPL_ELEMENT_CLONE(HTMLSharedElement)
 
-// nsIDOMHTMLQuoteElement
-// Empty
-
-// nsIDOMHTMLHeadElement
-// Empty
-
-// nsIDOMHTMLHtmlElement
-NS_IMPL_STRING_ATTR(HTMLSharedElement, Version, version)
-
-// nsIDOMHTMLBaseElement
-NS_IMPL_STRING_ATTR(HTMLSharedElement, Target, target)
-
-NS_IMETHODIMP
+void
 HTMLSharedElement::GetHref(nsAString& aValue)
 {
   MOZ_ASSERT(mNodeInfo->Equals(nsGkAtoms::base),
@@ -74,27 +48,19 @@ HTMLSharedElement::GetHref(nsAString& aValue)
 
   if (!uri) {
     aValue = href;
-    return NS_OK;
+    return;
   }
 
   nsAutoCString spec;
   uri->GetSpec(spec);
   CopyUTF8toUTF16(spec, aValue);
-
-  return NS_OK;
 }
-
-NS_IMETHODIMP
-HTMLSharedElement::SetHref(const nsAString& aValue)
-{
-  return SetAttrHelper(nsGkAtoms::href, aValue);
-}
-
 
 bool
 HTMLSharedElement::ParseAttribute(int32_t aNamespaceID,
-                                  nsIAtom* aAttribute,
+                                  nsAtom* aAttribute,
                                   const nsAString& aValue,
+                                  nsIPrincipal* aMaybeScriptedPrincipal,
                                   nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None &&
@@ -108,23 +74,21 @@ HTMLSharedElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 static void
 DirectoryMapAttributesIntoRule(const nsMappedAttributes* aAttributes,
                                GenericSpecifiedValues* aData)
 {
-  if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(List))) {
-    if (!aData->PropertyIsSet(eCSSProperty_list_style_type)) {
-      // type: enum
-      const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::type);
-      if (value) {
-        if (value->Type() == nsAttrValue::eEnum) {
-          aData->SetKeywordValue(eCSSProperty_list_style_type, value->GetEnumValue());
-        } else {
-          aData->SetKeywordValue(eCSSProperty_list_style_type, NS_STYLE_LIST_STYLE_DISC);
-        }
+  if (!aData->PropertyIsSet(eCSSProperty_list_style_type)) {
+    // type: enum
+    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::type);
+    if (value) {
+      if (value->Type() == nsAttrValue::eEnum) {
+        aData->SetKeywordValue(eCSSProperty_list_style_type, value->GetEnumValue());
+      } else {
+        aData->SetKeywordValue(eCSSProperty_list_style_type, NS_STYLE_LIST_STYLE_DISC);
       }
     }
   }
@@ -133,7 +97,7 @@ DirectoryMapAttributesIntoRule(const nsMappedAttributes* aAttributes,
 }
 
 NS_IMETHODIMP_(bool)
-HTMLSharedElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+HTMLSharedElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   if (mNodeInfo->Equals(nsGkAtoms::dir)) {
     static const MappedAttributeEntry attributes[] = {
@@ -161,7 +125,7 @@ SetBaseURIUsingFirstBaseWithHref(nsIDocument* aDocument, nsIContent* aMustMatch)
   for (nsIContent* child = aDocument->GetFirstChild(); child;
        child = child->GetNextNode()) {
     if (child->IsHTMLElement(nsGkAtoms::base) &&
-        child->HasAttr(kNameSpaceID_None, nsGkAtoms::href)) {
+        child->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::href)) {
       if (aMustMatch && child != aMustMatch) {
         return;
       }
@@ -169,7 +133,7 @@ SetBaseURIUsingFirstBaseWithHref(nsIDocument* aDocument, nsIContent* aMustMatch)
       // Resolve the <base> element's href relative to our document's
       // fallback base URI.
       nsAutoString href;
-      child->GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
+      child->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
 
       nsCOMPtr<nsIURI> newBaseURI;
       nsContentUtils::NewURIWithDocumentCharset(
@@ -214,13 +178,13 @@ SetBaseTargetUsingFirstBaseWithTarget(nsIDocument* aDocument,
   for (nsIContent* child = aDocument->GetFirstChild(); child;
        child = child->GetNextNode()) {
     if (child->IsHTMLElement(nsGkAtoms::base) &&
-        child->HasAttr(kNameSpaceID_None, nsGkAtoms::target)) {
+        child->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::target)) {
       if (aMustMatch && child != aMustMatch) {
         return;
       }
 
       nsString target;
-      child->GetAttr(kNameSpaceID_None, nsGkAtoms::target, target);
+      child->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::target, target);
       aDocument->SetBaseTarget(target);
       return;
     }
@@ -230,9 +194,11 @@ SetBaseTargetUsingFirstBaseWithTarget(nsIDocument* aDocument,
 }
 
 nsresult
-HTMLSharedElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+HTMLSharedElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
-                                const nsAttrValue* aOldValue, bool aNotify)
+                                const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
+                                bool aNotify)
 {
   if (aNamespaceID == kNameSpaceID_None) {
     if (aName == nsGkAtoms::href) {
@@ -256,7 +222,7 @@ HTMLSharedElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
   }
 
   return nsGenericHTMLElement::AfterSetAttr(aNamespaceID, aName, aValue,
-                                            aOldValue, aNotify);
+                                            aOldValue, aSubjectPrincipal, aNotify);
 }
 
 nsresult

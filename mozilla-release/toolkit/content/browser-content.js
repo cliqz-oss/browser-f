@@ -4,22 +4,23 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* eslint-env mozilla/frame-script */
+/* global sendAsyncMessage */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/AutoForgetTabsMonitor.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
+ChromeUtils.defineModuleGetter(this, "ReaderMode",
   "resource://gre/modules/ReaderMode.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
   "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SelectContentHelper",
+ChromeUtils.defineModuleGetter(this, "SelectContentHelper",
   "resource://gre/modules/SelectContentHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "FindContent",
+  "resource://gre/modules/FindContent.jsm");
+ChromeUtils.defineModuleGetter(this, "RemoteFinder",
+  "resource://gre/modules/RemoteFinder.jsm");
 
 var global = this;
 
@@ -28,7 +29,7 @@ addEventListener("unload", () => { aftMon.shutdown(); });
 
 // Lazily load the finder code
 addMessageListener("Finder:Initialize", function() {
-  let {RemoteFinderListener} = Cu.import("resource://gre/modules/RemoteFinder.jsm", {});
+  let {RemoteFinderListener} = ChromeUtils.import("resource://gre/modules/RemoteFinder.jsm", {});
   new RemoteFinderListener(global);
 });
 
@@ -75,44 +76,90 @@ var ClickEventHandler = {
     return false;
   },
 
+  isScrollableElement(aNode) {
+    if (aNode instanceof content.HTMLElement) {
+      return !(aNode instanceof content.HTMLSelectElement) || aNode.multiple;
+    }
+
+    return aNode instanceof content.XULElement;
+  },
+
+  getXBLNodes(parent, array) {
+    let anonNodes = content.document.getAnonymousNodes(parent);
+    let nodes = Array.from(anonNodes || parent.childNodes || []);
+    for (let node of nodes) {
+      if (node.nodeName == "children") {
+        return true;
+      }
+      if (this.getXBLNodes(node, array)) {
+        array.push(node);
+        return true;
+      }
+    }
+    return false;
+  },
+
+  * parentNodeIterator(aNode) {
+    while (aNode) {
+      yield aNode;
+
+      let parent = aNode.parentNode;
+      if (parent && parent instanceof content.XULElement) {
+        let anonNodes = content.document.getAnonymousNodes(parent);
+        if (anonNodes && !Array.from(anonNodes).includes(aNode)) {
+          // XBL elements are skipped by parentNode property.
+          // Yield elements between parent and <children> here.
+          let nodes = [];
+          this.getXBLNodes(parent, nodes);
+          for (let node of nodes) {
+            yield node;
+          }
+        }
+      }
+
+      aNode = parent;
+    }
+  },
+
   findNearestScrollableElement(aNode) {
     // this is a list of overflow property values that allow scrolling
     const scrollingAllowed = ["scroll", "auto"];
 
     // go upward in the DOM and find any parent element that has a overflow
     // area and can therefore be scrolled
-    for (this._scrollable = aNode; this._scrollable;
-         this._scrollable = this._scrollable.parentNode) {
+    this._scrollable = null;
+    for (let node of this.parentNodeIterator(aNode)) {
       // do not use overflow based autoscroll for <html> and <body>
-      // Elements or non-html elements such as svg or Document nodes
+      // Elements or non-html/non-xul elements such as svg or Document nodes
       // also make sure to skip select elements that are not multiline
-      if (!(this._scrollable instanceof content.HTMLElement) ||
-          ((this._scrollable instanceof content.HTMLSelectElement) && !this._scrollable.multiple)) {
+      if (!this.isScrollableElement(node)) {
         continue;
       }
 
-      var overflowx = this._scrollable.ownerGlobal
-                          .getComputedStyle(this._scrollable)
+      var overflowx = node.ownerGlobal
+                          .getComputedStyle(node)
                           .getPropertyValue("overflow-x");
-      var overflowy = this._scrollable.ownerGlobal
-                          .getComputedStyle(this._scrollable)
+      var overflowy = node.ownerGlobal
+                          .getComputedStyle(node)
                           .getPropertyValue("overflow-y");
       // we already discarded non-multiline selects so allow vertical
       // scroll for multiline ones directly without checking for a
       // overflow property
-      var scrollVert = this._scrollable.scrollTopMax &&
-        (this._scrollable instanceof content.HTMLSelectElement ||
-         scrollingAllowed.indexOf(overflowy) >= 0);
+      var scrollVert = node.scrollTopMax &&
+        (node instanceof content.HTMLSelectElement ||
+         scrollingAllowed.includes(overflowy));
 
       // do not allow horizontal scrolling for select elements, it leads
       // to visual artifacts and is not the expected behavior anyway
-      if (!(this._scrollable instanceof content.HTMLSelectElement) &&
-          this._scrollable.scrollLeftMin != this._scrollable.scrollLeftMax &&
-          scrollingAllowed.indexOf(overflowx) >= 0) {
+      if (!(node instanceof content.HTMLSelectElement) &&
+          node.scrollLeftMin != node.scrollLeftMax &&
+          scrollingAllowed.includes(overflowx)) {
         this._scrolldir = scrollVert ? "NSEW" : "EW";
+        this._scrollable = node;
         break;
       } else if (scrollVert) {
         this._scrolldir = "NS";
+        this._scrollable = node;
         break;
       }
     }
@@ -139,6 +186,12 @@ var ClickEventHandler = {
     if (!this._scrollable)
       return;
 
+    // In some configurations like Print Preview, content.performance
+    // (which we use below) is null. Autoscrolling is broken in Print
+    // Preview anyways (see bug 1393494), so just don't start it at all.
+    if (!content.performance)
+      return;
+
     let domUtils = content.QueryInterface(Ci.nsIInterfaceRequestor)
                           .getInterface(Ci.nsIDOMWindowUtils);
     let scrollable = this._scrollable;
@@ -153,20 +206,19 @@ var ClickEventHandler = {
       // No view ID - leave this._scrollId as null. Receiving side will check.
     }
     let presShellId = domUtils.getPresShellId();
-    let [enabled] = sendSyncMessage("Autoscroll:Start",
-                                    {scrolldir: this._scrolldir,
-                                     screenX: event.screenX,
-                                     screenY: event.screenY,
-                                     scrollId: this._scrollId,
-                                     presShellId});
-    if (!enabled) {
+    let [result] = sendSyncMessage("Autoscroll:Start",
+                                   {scrolldir: this._scrolldir,
+                                    screenX: event.screenX,
+                                    screenY: event.screenY,
+                                    scrollId: this._scrollId,
+                                    presShellId});
+    if (!result.autoscrollEnabled) {
       this._scrollable = null;
       return;
     }
 
     Services.els.addSystemEventListener(global, "mousemove", this, true);
     addEventListener("pagehide", this, true);
-    Services.obs.addObserver(this, "autoscroll-handled-by-apz");
 
     this._ignoreMouseEvents = true;
     this._startX = event.screenX;
@@ -175,9 +227,22 @@ var ClickEventHandler = {
     this._screenY = event.screenY;
     this._scrollErrorX = 0;
     this._scrollErrorY = 0;
-    this._autoscrollHandledByApz = false;
-    this._lastFrame = content.performance.now();
+    this._autoscrollHandledByApz = result.usingApz;
 
+    if (!result.usingApz) {
+      // If the browser didn't hand the autoscroll off to APZ,
+      // scroll here in the main thread.
+      this.startMainThreadScroll();
+    } else {
+      // Even if the browser did hand the autoscroll to APZ,
+      // APZ might reject it in which case it will notify us
+      // and we need to take over.
+      Services.obs.addObserver(this, "autoscroll-rejected-by-apz");
+    }
+  },
+
+  startMainThreadScroll() {
+    this._lastFrame = content.performance.now();
     content.requestAnimationFrame(this.autoscrollLoop);
   },
 
@@ -188,7 +253,9 @@ var ClickEventHandler = {
 
       Services.els.removeSystemEventListener(global, "mousemove", this, true);
       removeEventListener("pagehide", this, true);
-      Services.obs.removeObserver(this, "autoscroll-handled-by-apz");
+      if (this._autoscrollHandledByApz) {
+        Services.obs.removeObserver(this, "autoscroll-rejected-by-apz");
+      }
     }
   },
 
@@ -212,12 +279,6 @@ var ClickEventHandler = {
   autoscrollLoop(timestamp) {
     if (!this._scrollable) {
       // Scrolling has been canceled
-      return;
-    }
-
-    if (this._autoscrollHandledByApz) {
-      // APZ is handling the autoscroll, so we don't need to keep running
-      // this callback.
       return;
     }
 
@@ -245,9 +306,6 @@ var ClickEventHandler = {
       actualScrollX = this.roundToZero(desiredScrollX);
       this._scrollErrorX = (desiredScrollX - actualScrollX);
     }
-
-    const kAutoscroll = 15;  // defined in mozilla/layers/ScrollInputMethods.h
-    Services.telemetry.getHistogramById("SCROLL_INPUT_METHODS").add(kAutoscroll);
 
     this._scrollable.scrollBy({
       left: actualScrollX,
@@ -291,10 +349,12 @@ var ClickEventHandler = {
   },
 
   observe(subject, topic, data) {
-    if (topic === "autoscroll-handled-by-apz") {
+    if (topic === "autoscroll-rejected-by-apz") {
       // The caller passes in the scroll id via 'data'.
       if (data == this._scrollId) {
-        this._autoscrollHandledByApz = true;
+        this._autoscrollHandledByApz = false;
+        this.startMainThreadScroll();
+        Services.obs.removeObserver(this, "autoscroll-rejected-by-apz");
       }
     }
   },
@@ -347,7 +407,7 @@ var PopupBlocking = {
           } else {
             // Limit 500 chars to be sent because the URI will be cropped
             // by the UI anyway, and data: URIs can be significantly larger.
-            popupWindowURIspec = popupWindowURIspec.substring(0, 500)
+            popupWindowURIspec = popupWindowURIspec.substring(0, 500);
           }
 
           popupData.push({popupWindowURIspec});
@@ -430,19 +490,19 @@ PopupBlocking.init();
 
 XPCOMUtils.defineLazyGetter(this, "console", () => {
   // Set up console.* for frame scripts.
-  let Console = Components.utils.import("resource://gre/modules/Console.jsm", {});
+  let Console = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
   return new Console.ConsoleAPI();
 });
 
 var Printing = {
-  // Bug 1088061: nsPrintEngine's DoCommonPrint currently expects the
+  // Bug 1088061: nsPrintJob's DoCommonPrint currently expects the
   // progress listener passed to it to QI to an nsIPrintingPromptService
   // in order to know that a printing progress dialog has been shown. That's
   // really all the interface is used for, hence the fact that I don't actually
   // implement the interface here. Bug 1088061 has been filed to remove
   // this hackery.
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                         Ci.nsIPrintingPromptService]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener,
+                                          Ci.nsIPrintingPromptService]),
 
   MESSAGES: [
     "Printing:Preview:Enter",
@@ -557,7 +617,7 @@ var Printing = {
 
       return printSettings;
     } catch (e) {
-      Components.utils.reportError(e);
+      Cu.reportError(e);
     }
 
     return null;
@@ -575,22 +635,28 @@ var Printing = {
         onStateChange(webProgress, req, flags, status) {
           if (flags & Ci.nsIWebProgressListener.STATE_STOP) {
             webProgress.removeProgressListener(webProgressListener);
-            let domUtils = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                                  .getInterface(Ci.nsIDOMWindowUtils);
+            let domUtils = contentWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                                        .getInterface(Ci.nsIDOMWindowUtils);
             // Here we tell the parent that we have parsed the document successfully
             // using ReaderMode primitives and we are able to enter on preview mode.
             if (domUtils.isMozAfterPaintPending) {
-              addEventListener("MozAfterPaint", function onPaint() {
+              let onPaint = function() {
                 removeEventListener("MozAfterPaint", onPaint);
                 sendAsyncMessage("Printing:Preview:ReaderModeReady");
-              });
+              };
+              contentWindow.addEventListener("MozAfterPaint", onPaint);
+              // This timer need when display list invalidation doesn't invalidate.
+              setTimeout(() => {
+                removeEventListener("MozAfterPaint", onPaint);
+                sendAsyncMessage("Printing:Preview:ReaderModeReady");
+              }, 100);
             } else {
               sendAsyncMessage("Printing:Preview:ReaderModeReady");
             }
           }
         },
 
-        QueryInterface: XPCOMUtils.generateQI([
+        QueryInterface: ChromeUtils.generateQI([
           Ci.nsIWebProgressListener,
           Ci.nsISupportsWeakReference,
           Ci.nsIObserver,
@@ -598,14 +664,11 @@ var Printing = {
       };
 
       // Here we QI the docShell into a nsIWebProgress passing our web progress listener in.
-      let webProgress =  docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                                 .getInterface(Ci.nsIWebProgress);
+      let webProgress = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
+                                .getInterface(Ci.nsIWebProgress);
       webProgress.addProgressListener(webProgressListener, Ci.nsIWebProgress.NOTIFY_STATE_REQUEST);
 
       content.document.head.innerHTML = "";
-
-      // Set title of document
-      content.document.title = article.title;
 
       // Set base URI of document. Print preview code will read this value to
       // populate the URL field in print settings so that it doesn't show
@@ -635,53 +698,68 @@ var Printing = {
       containerElement.setAttribute("id", "container");
       content.document.body.appendChild(containerElement);
 
-      // Create header div and append it to container
-      let headerElement = content.document.createElement("div");
-      headerElement.setAttribute("id", "reader-header");
-      headerElement.setAttribute("class", "header");
-      containerElement.appendChild(headerElement);
+      // Reader Mode might return null if there's a failure when parsing the document.
+      // We'll render the error message for the Simplify Page document when that happens.
+      if (article) {
+        // Set title of document
+        content.document.title = article.title;
 
-      // Jam the article's title and byline into header div
-      let titleElement = content.document.createElement("h1");
-      titleElement.setAttribute("id", "reader-title");
-      titleElement.textContent = article.title;
-      headerElement.appendChild(titleElement);
+        // Create header div and append it to container
+        let headerElement = content.document.createElement("div");
+        headerElement.setAttribute("id", "reader-header");
+        headerElement.setAttribute("class", "header");
+        containerElement.appendChild(headerElement);
 
-      let bylineElement = content.document.createElement("div");
-      bylineElement.setAttribute("id", "reader-credits");
-      bylineElement.setAttribute("class", "credits");
-      bylineElement.textContent = article.byline;
-      headerElement.appendChild(bylineElement);
+        // Jam the article's title and byline into header div
+        let titleElement = content.document.createElement("h1");
+        titleElement.setAttribute("id", "reader-title");
+        titleElement.textContent = article.title;
+        headerElement.appendChild(titleElement);
 
-      // Display header element
-      headerElement.style.display = "block";
+        let bylineElement = content.document.createElement("div");
+        bylineElement.setAttribute("id", "reader-credits");
+        bylineElement.setAttribute("class", "credits");
+        bylineElement.textContent = article.byline;
+        headerElement.appendChild(bylineElement);
 
-      // Create content div and append it to container
-      let contentElement = content.document.createElement("div");
-      contentElement.setAttribute("class", "content");
-      containerElement.appendChild(contentElement);
+        // Display header element
+        headerElement.style.display = "block";
 
-      // Create style element for content div and import aboutReaderContent.css
-      let controlContentStyle = content.document.createElement("style");
-      controlContentStyle.setAttribute("scoped", "");
-      controlContentStyle.textContent = "@import url(\"chrome://global/skin/aboutReaderContent.css\");";
-      contentElement.appendChild(controlContentStyle);
+        // Create content div and append it to container
+        let contentElement = content.document.createElement("div");
+        contentElement.setAttribute("class", "content");
+        containerElement.appendChild(contentElement);
 
-      // Jam the article's content into content div
-      let readerContent = content.document.createElement("div");
-      readerContent.setAttribute("id", "moz-reader-content");
-      contentElement.appendChild(readerContent);
+        // Jam the article's content into content div
+        let readerContent = content.document.createElement("div");
+        readerContent.setAttribute("id", "moz-reader-content");
+        contentElement.appendChild(readerContent);
 
-      let articleUri = Services.io.newURI(article.url);
-      let parserUtils = Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils);
-      let contentFragment = parserUtils.parseFragment(article.content,
-        Ci.nsIParserUtils.SanitizerDropForms | Ci.nsIParserUtils.SanitizerAllowStyle,
-        false, articleUri, readerContent);
+        let articleUri = Services.io.newURI(article.url);
+        let parserUtils = Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils);
+        let contentFragment = parserUtils.parseFragment(article.content,
+          Ci.nsIParserUtils.SanitizerDropForms | Ci.nsIParserUtils.SanitizerAllowStyle,
+          false, articleUri, readerContent);
 
-      readerContent.appendChild(contentFragment);
+        readerContent.appendChild(contentFragment);
 
-      // Display reader content element
-      readerContent.style.display = "block";
+        // Display reader content element
+        readerContent.style.display = "block";
+      } else {
+        let aboutReaderStrings = Services.strings.createBundle("chrome://global/locale/aboutReader.properties");
+        let errorMessage = aboutReaderStrings.GetStringFromName("aboutReader.loadError");
+
+        content.document.title = errorMessage;
+
+        // Create reader message div and append it to body
+        let readerMessageElement = content.document.createElement("div");
+        readerMessageElement.setAttribute("class", "reader-message");
+        readerMessageElement.textContent = errorMessage;
+        containerElement.appendChild(readerMessageElement);
+
+        // Display reader message element
+        readerMessageElement.style.display = "block";
+      }
     });
   },
 
@@ -705,11 +783,11 @@ var Printing = {
         } catch (error) {
           // This might fail if we, for example, attempt to print a XUL document.
           // In that case, we inform the parent to bail out of print preview.
-          Components.utils.reportError(error);
+          Cu.reportError(error);
           this.printPreviewInitializingInfo = null;
           sendAsyncMessage("Printing:Preview:Entered", { failed: true });
         }
-      }
+      };
 
       // If printPreviewInitializingInfo.entered is not set we are still in the
       // initial setup of a previous preview request. We delay this one until
@@ -724,7 +802,7 @@ var Printing = {
     } catch (error) {
       // This might fail if we, for example, attempt to print a XUL document.
       // In that case, we inform the parent to bail out of print preview.
-      Components.utils.reportError(error);
+      Cu.reportError(error);
       sendAsyncMessage("Printing:Preview:Entered", { failed: true });
     }
   },
@@ -828,7 +906,7 @@ var Printing = {
   onLocationChange(aWebProgress, aRequest, aLocation, aFlags) {},
   onStatusChange(aWebProgress, aRequest, aStatus, aMessage) {},
   onSecurityChange(aWebProgress, aRequest, aState) {},
-}
+};
 Printing.init();
 
 function SwitchDocumentDirection(aWindow) {
@@ -855,16 +933,37 @@ var FindBar = {
 
   _findMode: 0,
 
+  /**
+   * _findKey and _findModifiers are used to determine whether a keypress
+   * is a user attempting to use the find shortcut, after which we'll
+   * route keypresses to the parent until we know the findbar has focus
+   * there. To do this, we need shortcut data from the parent.
+   */
+  _findKey: null,
+  _findModifiers: null,
+
   init() {
     addMessageListener("Findbar:UpdateState", this);
     Services.els.addSystemEventListener(global, "keypress", this, false);
     Services.els.addSystemEventListener(global, "mouseup", this, false);
+    this._initShortcutData();
   },
 
   receiveMessage(msg) {
     switch (msg.name) {
       case "Findbar:UpdateState":
         this._findMode = msg.data.findMode;
+        this._quickFindTimeout = msg.data.hasQuickFindTimeout;
+        if (msg.data.isOpenAndFocused) {
+          this._keepPassingUntilToldOtherwise = false;
+        }
+        break;
+      case "Findbar:ShortcutData":
+        // Set us up to never need this again for the lifetime of this process,
+        // and remove the listener.
+        Services.cpmm.initialProcessData.findBarShortcutData = msg.data;
+        Services.cpmm.removeMessageListener("Findbar:ShortcutData", this);
+        this._initShortcutData(msg.data);
         break;
     }
   },
@@ -881,6 +980,36 @@ var FindBar = {
   },
 
   /**
+   * Use initial process data for find key/modifier data if we have it.
+   * Otherwise, add a listener so we get the data when the parent process has
+   * it.
+   */
+  _initShortcutData(data = Services.cpmm.initialProcessData.findBarShortcutData) {
+    if (data) {
+      this._findKey = data.key;
+      this._findModifiers = data.modifiers;
+    } else {
+      Services.cpmm.addMessageListener("Findbar:ShortcutData", this);
+    }
+  },
+
+  /**
+   * Check whether this key event will start the findbar in the parent,
+   * in which case we should pass any further key events to the parent to avoid
+   * them being lost.
+   * @param aEvent the key event to check.
+   */
+  _eventMatchesFindShortcut(aEvent) {
+    let modifiers = this._findModifiers;
+    if (!modifiers) {
+      return false;
+    }
+    return aEvent.ctrlKey == modifiers.ctrlKey && aEvent.altKey == modifiers.altKey &&
+      aEvent.shiftKey == modifiers.shiftKey && aEvent.metaKey == modifiers.metaKey &&
+      aEvent.key == this._findKey;
+  },
+
+  /**
    * Returns whether FAYT can be used for the given event in
    * the current content state.
    */
@@ -894,13 +1023,18 @@ var FindBar = {
       let win = focusedWindow.value;
       should = BrowserUtils.shouldFastFind(elt, win);
     }
-    return { can, should }
+    return { can, should };
   },
 
   _onKeypress(event) {
+    const FAYT_LINKS_KEY = "'";
+    const FAYT_TEXT_KEY = "/";
+    if (this._eventMatchesFindShortcut(event)) {
+      this._keepPassingUntilToldOtherwise = true;
+    }
     // Useless keys:
     if (event.ctrlKey || event.altKey || event.metaKey || event.defaultPrevented) {
-      return undefined;
+      return;
     }
 
     // Check the focused element etc.
@@ -908,26 +1042,51 @@ var FindBar = {
 
     // Can we even use find in this page at all?
     if (!fastFind.can) {
-      return undefined;
+      return;
+    }
+    if (this._keepPassingUntilToldOtherwise) {
+      this._passKeyToParent(event);
+      return;
+    }
+    if (!fastFind.should) {
+      return;
     }
 
-    let fakeEvent = {};
-    for (let k in event) {
-      if (typeof event[k] != "object" && typeof event[k] != "function" &&
-          !(k in content.KeyboardEvent)) {
-        fakeEvent[k] = event[k];
+    let charCode = event.charCode;
+    // If the find bar is open and quick find is on, send the key to the parent.
+    if (this._findMode != this.FIND_NORMAL && this._quickFindTimeout) {
+      if (!charCode)
+        return;
+      this._passKeyToParent(event);
+    } else {
+      let key = charCode ? String.fromCharCode(charCode) : null;
+      let manualstartFAYT = (key == FAYT_LINKS_KEY || key == FAYT_TEXT_KEY);
+      let autostartFAYT = !manualstartFAYT && RemoteFinder._findAsYouType && key && key != " ";
+      if (manualstartFAYT || autostartFAYT) {
+        let mode = (key == FAYT_LINKS_KEY || (autostartFAYT && RemoteFinder._typeAheadLinksOnly)) ?
+          this.FIND_LINKS : this.FIND_TYPEAHEAD;
+        // Set _findMode immediately (without waiting for child->parent->child roundtrip)
+        // to ensure we pass any further keypresses, too.
+        this._findMode = mode;
+        this._passKeyToParent(event);
       }
     }
-    // sendSyncMessage returns an array of the responses from all listeners
-    let rv = sendSyncMessage("Findbar:Keypress", {
-      fakeEvent,
-      shouldFastFind: fastFind.should
-    });
-    if (rv.indexOf(false) !== -1) {
-      event.preventDefault();
-      return false;
+  },
+
+  _passKeyToParent(event) {
+    event.preventDefault();
+    // These are the properties required to dispatch another 'real' event
+    // to the findbar in the parent in _dispatchKeypressEvent in findbar.xml .
+    // If you make changes here, verify that that method can still do its job.
+    const kRequiredProps = [
+      "type", "bubbles", "cancelable", "ctrlKey", "altKey", "shiftKey",
+      "metaKey", "keyCode", "charCode",
+    ];
+    let fakeEvent = {};
+    for (let prop of kRequiredProps) {
+      fakeEvent[prop] = event[prop];
     }
-    return undefined;
+    sendAsyncMessage("Findbar:Keypress", fakeEvent);
   },
 
   _onMouseup(event) {
@@ -1023,7 +1182,7 @@ addMessageListener("WebChannelMessageToContent", function(e) {
 });
 
 var AudioPlaybackListener = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   init() {
     Services.obs.addObserver(this, "audio-playback");
@@ -1126,10 +1285,11 @@ addMessageListener("Browser:PurgeSessionHistory", function BrowserPurgeHistory()
 
   // place the entry at current index at the end of the history list, so it won't get removed
   if (sessionHistory.index < sessionHistory.count - 1) {
-    let indexEntry = sessionHistory.getEntryAtIndex(sessionHistory.index, false);
-    sessionHistory.QueryInterface(Components.interfaces.nsISHistoryInternal);
-    indexEntry.QueryInterface(Components.interfaces.nsISHEntry);
-    sessionHistory.addEntry(indexEntry, true);
+    let legacy = sessionHistory.legacySHistory;
+    legacy.QueryInterface(Ci.nsISHistoryInternal);
+    let indexEntry = legacy.getEntryAtIndex(sessionHistory.index, false);
+    indexEntry.QueryInterface(Ci.nsISHEntry);
+    legacy.addEntry(indexEntry, true);
   }
 
   let purge = sessionHistory.count;
@@ -1138,7 +1298,7 @@ addMessageListener("Browser:PurgeSessionHistory", function BrowserPurgeHistory()
   }
 
   if (purge > 0) {
-    sessionHistory.PurgeHistory(purge);
+    sessionHistory.legacySHistory.PurgeHistory(purge);
   }
 });
 
@@ -1340,7 +1500,7 @@ var ViewSelectionSource = {
       return undefined;
 
     // serialize
-    const VIEW_SOURCE_CSS = "resource://gre-resources/viewsource.css";
+    const VIEW_SOURCE_CSS = "resource://content-accessible/viewsource.css";
     const BUNDLE_URL = "chrome://global/locale/viewSource.properties";
 
     let bundle = Services.strings.createBundle(BUNDLE_URL);
@@ -1349,7 +1509,8 @@ var ViewSelectionSource = {
     var source =
       "<!DOCTYPE html>"
     + "<html>"
-    + "<head><title>" + title + "</title>"
+    + '<head><meta name="viewport" content="width=device-width"/>'
+    + "<title>" + title + "</title>"
     + '<link rel="stylesheet" type="text/css" href="' + VIEW_SOURCE_CSS + '">'
     + '<style type="text/css">'
     + "#target { border: dashed 1px; background-color: lightyellow; }"
@@ -1463,35 +1624,8 @@ var ViewSelectionSource = {
       return charTable[letter];
     }
 
-    function convertEntity(letter) {
-      try {
-        var unichar = this._entityConverter
-                          .ConvertToEntity(letter, entityVersion);
-        var entity = unichar.substring(1); // extract '&'
-        return '&amp;<span class="entity">' + entity + "</span>";
-      } catch (ex) {
-        return letter;
-      }
-    }
-
-    if (!this._entityConverter) {
-      try {
-        this._entityConverter = Cc["@mozilla.org/intl/entityconverter;1"]
-                                  .createInstance(Ci.nsIEntityConverter);
-      } catch (e) { }
-    }
-
-    const entityVersion = Ci.nsIEntityConverter.entityW3C;
-
-    var str = text;
-
     // replace chars in our charTable
-    str = str.replace(/[<>&"]/g, charTableLookup);
-
-    // replace chars > 0x7f via nsIEntityConverter
-    str = str.replace(/[^\0-\u007f]/g, convertEntity);
-
-    return str;
+    return text.replace(/[<>&"]/g, charTableLookup);
   }
 };
 
@@ -1509,7 +1643,7 @@ addEventListener("MozApplicationManifest", function(e) {
 }, false);
 
 let AutoCompletePopup = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompletePopup]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompletePopup]),
 
   _connected: false,
 
@@ -1700,7 +1834,7 @@ let AutoCompletePopup = {
 
     return results;
   },
-}
+};
 
 AutoCompletePopup.init();
 
@@ -1811,6 +1945,14 @@ let DateTimePickerListener = {
             (aEvent.originalTarget.type == "time" && !this.getTimePickerPref())) {
           return;
         }
+
+        if (this._inputElement) {
+          // This happens when we're trying to open a picker when another picker
+          // is still open. We ignore this request to let the first picker
+          // close gracefully.
+          return;
+        }
+
         this._inputElement = aEvent.originalTarget;
         this._inputElement.setDateTimePickerState(true);
         this.addListeners();
@@ -1856,7 +1998,7 @@ let DateTimePickerListener = {
         break;
     }
   },
-}
+};
 
 DateTimePickerListener.init();
 
@@ -1877,3 +2019,37 @@ addEventListener("mozshowdropdown-sourcetouch", event => {
     new SelectContentHelper(event.target, {isOpenedViaTouch: true}, this);
   }
 });
+
+let ExtFind = {
+  init() {
+    addMessageListener("ext-Finder:CollectResults", this);
+    addMessageListener("ext-Finder:HighlightResults", this);
+    addMessageListener("ext-Finder:clearHighlighting", this);
+  },
+
+  _findContent: null,
+
+  async receiveMessage(message) {
+    if (!this._findContent) {
+      this._findContent = new FindContent(docShell);
+    }
+
+    let data;
+    switch (message.name) {
+      case "ext-Finder:CollectResults":
+        this.finderInited = true;
+        data = await this._findContent.findRanges(message.data);
+        sendAsyncMessage("ext-Finder:CollectResultsFinished", data);
+        break;
+      case "ext-Finder:HighlightResults":
+        data = this._findContent.highlightResults(message.data);
+        sendAsyncMessage("ext-Finder:HighlightResultsFinished", data);
+        break;
+      case "ext-Finder:clearHighlighting":
+        this._findContent.highlighter.highlight(false);
+        break;
+    }
+  },
+};
+
+ExtFind.init();

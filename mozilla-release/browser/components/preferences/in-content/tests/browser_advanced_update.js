@@ -3,9 +3,9 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, manager: Cm, utils: Cu, results: Cr } = Components;
+const Cm = Components.manager;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const uuidGenerator = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator);
 
@@ -18,7 +18,7 @@ const mockUpdateManager = {
 
   _originalFactory: null,
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIUpdateManager]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIUpdateManager]),
 
   createInstance(outer, iiD) {
     if (outer) {
@@ -56,7 +56,6 @@ const mockUpdateManager = {
       name: "Firefox Developer Edition 49.0a2",
       statusText: "The Update was successfully installed",
       buildID: "20160728004010",
-      type: "minor",
       installDate: 1469763105156,
       detailsURL: "https://www.mozilla.org/firefox/aurora/"
     },
@@ -64,7 +63,6 @@ const mockUpdateManager = {
       name: "Firefox Developer Edition 43.0a2",
       statusText: "The Update was successfully installed",
       buildID: "20150929004011",
-      type: "minor",
       installDate: 1443585886224,
       detailsURL: "https://www.mozilla.org/firefox/aurora/"
     },
@@ -72,7 +70,6 @@ const mockUpdateManager = {
       name: "Firefox Developer Edition 42.0a2",
       statusText: "The Update was successfully installed",
       buildID: "20150920004018",
-      type: "major",
       installDate: 1442818147544,
       detailsURL: "https://www.mozilla.org/firefox/aurora/"
     }
@@ -93,7 +90,7 @@ function formatInstallDate(sec) {
 registerCleanupFunction(resetPreferences);
 
 add_task(async function() {
-  await openPreferencesViaOpenPreferencesAPI("advanced", "updateTab", { leaveOpen: true });
+  await openPreferencesViaOpenPreferencesAPI("general", { leaveOpen: true });
   resetPreferences();
   Services.prefs.setBoolPref("browser.search.update", false);
 
@@ -110,13 +107,18 @@ add_task(async function() {
 });
 
 add_task(async function() {
-  mockUpdateManager.register();
-
-  await openPreferencesViaOpenPreferencesAPI("advanced", "updateTab", { leaveOpen: true });
+  await openPreferencesViaOpenPreferencesAPI("general", { leaveOpen: true });
   let doc = gBrowser.selectedBrowser.contentDocument;
 
   let showBtn = doc.getElementById("showUpdateHistory");
   let dialogOverlay = content.gSubDialog._preloadDialog._overlay;
+
+  // XXX: For unknown reasons, this mock cannot be loaded by
+  // XPCOMUtils.defineLazyServiceGetter() called in aboutDialog-appUpdater.js.
+  // It is registered here so that we could assert update history subdialog
+  // without stopping the preferences advanced pane from loading.
+  // See bug 1361929.
+  mockUpdateManager.register();
 
   // Test the dialog window opens
   is(dialogOverlay.style.visibility, "", "The dialog should be invisible");
@@ -127,7 +129,7 @@ add_task(async function() {
 
   let dialogFrame = dialogOverlay.querySelector(".dialogFrame");
   let frameDoc = dialogFrame.contentDocument;
-  let updates = frameDoc.querySelectorAll("update");
+  let updates = frameDoc.querySelectorAll("richlistitem.update");
 
   // Test the update history numbers are correct
   is(updates.length, mockUpdateManager.updateCount, "The update count is incorrect.");
@@ -140,7 +142,6 @@ add_task(async function() {
     updateData = mockUpdateManager.getUpdateAt(i);
 
     is(update.name, updateData.name + " (" + updateData.buildID + ")", "Wrong update name");
-    is(update.type, updateData.type == "major" ? "New Version" : "Security Update", "Wrong update type");
     is(update.installDate, formatInstallDate(updateData.installDate), "Wrong update installDate");
     is(update.detailsURL, updateData.detailsURL, "Wrong update detailsURL");
     is(update.status, updateData.statusText, "Wrong update status");

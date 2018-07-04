@@ -6,8 +6,10 @@
 Services.scriptloader.loadSubScript(new URL("head_webrequest.js", gTestPath).href,
                                     this);
 
-Cu.import("resource://gre/modules/HiddenFrame.jsm", this);
+ChromeUtils.import("resource://testing-common/HiddenFrame.jsm", this);
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+SimpleTest.requestCompleteLog();
 
 function createHiddenBrowser(url) {
   let frame = new HiddenFrame();
@@ -54,8 +56,17 @@ let headers = {
   },
 };
 
+let urls = ["http://mochi.test/browser/*"];
+let events = {
+  "onBeforeRequest":     [{urls}, ["blocking"]],
+  "onBeforeSendHeaders": [{urls}, ["blocking", "requestHeaders"]],
+  "onSendHeaders":       [{urls}, ["requestHeaders"]],
+  "onHeadersReceived":   [{urls}, ["blocking", "responseHeaders"]],
+  "onCompleted":         [{urls}, ["responseHeaders"]],
+};
+
 add_task(async function setup() {
-  extension = makeExtension();
+  extension = makeExtension(events);
   await extension.startup();
 });
 
@@ -75,7 +86,7 @@ add_task(async function test_newWindow() {
   await extension.awaitMessage("continue");
 
   let openedWindow = await BrowserTestUtils.openNewBrowserWindow();
-  await BrowserTestUtils.openNewForegroundTab(openedWindow.gBrowser, dummy + "?newWindow");
+  await BrowserTestUtils.openNewForegroundTab(openedWindow.gBrowser, `${dummy}?newWindow=${Math.random()}`);
 
   await extension.awaitMessage("done");
   await BrowserTestUtils.closeWindow(openedWindow);
@@ -91,10 +102,10 @@ add_task(async function test_newTab() {
   };
   extension.sendMessage("set-expected", {expect, ignore: ["favicon.ico"]});
   await extension.awaitMessage("continue");
-  let tab = await BrowserTestUtils.openNewForegroundTab(window.gBrowser, dummy + "?newTab");
+  let tab = await BrowserTestUtils.openNewForegroundTab(window.gBrowser, `${dummy}?newTab=${Math.random()}`);
 
   await extension.awaitMessage("done");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function test_subframe() {
@@ -106,9 +117,13 @@ add_task(async function test_subframe() {
   };
   // test a content subframe attached to hidden window
   extension.sendMessage("set-expected", {expect, ignore: ["favicon.ico"]});
+  info("*** waiting to continue");
   await extension.awaitMessage("continue");
-  let frameInfo = await createHiddenBrowser(dummy + "?subframe");
+  info("*** creating hidden browser");
+  let frameInfo = await createHiddenBrowser(`${dummy}?subframe=${Math.random()}`);
+  info("*** waiting for finish");
   await extension.awaitMessage("done");
+  info("*** destroying hidden browser");
   // cleanup
   frameInfo.browser.remove();
   frameInfo.frame.destroy();

@@ -17,7 +17,6 @@
 #include "nsIServiceManager.h"
 #include "nsIStringBundle.h"
 #include "nsToolkitCompsCID.h"
-#include "nsXPIDLString.h"
 #include "nsNetUtil.h"
 #include "nsString.h"
 #include "nsCRT.h"
@@ -36,35 +35,35 @@ extern nsresult CentralizedAdminPrefManagerInit();
 extern nsresult CentralizedAdminPrefManagerFinish();
 
 
-static void DisplayError(void)
+static nsresult DisplayError(void)
 {
     nsresult rv;
 
     nsCOMPtr<nsIPromptService> promptService = do_GetService("@mozilla.org/embedcomp/prompt-service;1");
     if (!promptService)
-        return;
+        return NS_ERROR_FAILURE;
 
     nsCOMPtr<nsIStringBundleService> bundleService = do_GetService(NS_STRINGBUNDLE_CONTRACTID);
     if (!bundleService)
-        return;
+        return NS_ERROR_FAILURE;
 
     nsCOMPtr<nsIStringBundle> bundle;
     bundleService->CreateBundle("chrome://autoconfig/locale/autoconfig.properties",
                                 getter_AddRefs(bundle));
     if (!bundle)
-        return;
+        return NS_ERROR_FAILURE;
 
-    nsXPIDLString title;
-    rv = bundle->GetStringFromName("readConfigTitle", getter_Copies(title));
+    nsAutoString title;
+    rv = bundle->GetStringFromName("readConfigTitle", title);
     if (NS_FAILED(rv))
-        return;
+        return rv;
 
-    nsXPIDLString err;
-    rv = bundle->GetStringFromName("readConfigMsg", getter_Copies(err));
+    nsAutoString err;
+    rv = bundle->GetStringFromName("readConfigMsg", err);
     if (NS_FAILED(rv))
-        return;
+        return rv;
 
-    promptService->Alert(nullptr, title.get(), err.get());
+    return promptService->Alert(nullptr, title.get(), err.get());
 }
 
 // nsISupports Implementation
@@ -101,23 +100,30 @@ NS_IMETHODIMP nsReadConfig::Observe(nsISupports *aSubject, const char *aTopic, c
     if (!nsCRT::strcmp(aTopic, NS_PREFSERVICE_READ_TOPIC_ID)) {
         rv = readConfigFile();
         if (NS_FAILED(rv)) {
-            DisplayError();
-
-            nsCOMPtr<nsIAppStartup> appStartup =
-                do_GetService(NS_APPSTARTUP_CONTRACTID);
-            if (appStartup)
-                appStartup->Quit(nsIAppStartup::eAttemptQuit);
+            rv = DisplayError();
+            if (NS_FAILED(rv)) {
+                nsCOMPtr<nsIAppStartup> appStartup =
+                    do_GetService(NS_APPSTARTUP_CONTRACTID);
+                if (appStartup)
+                    appStartup->Quit(nsIAppStartup::eAttemptQuit);
+            }
         }
     }
     return rv;
 }
 
+/**
+ * This is the blocklist for known bad autoconfig files.
+ */
+static const char *gBlockedConfigs[] = {
+  "dsengine.cfg"
+};
 
 nsresult nsReadConfig::readConfigFile()
 {
     nsresult rv = NS_OK;
-    nsXPIDLCString lockFileName;
-    nsXPIDLCString lockVendor;
+    nsAutoCString lockFileName;
+    nsAutoCString lockVendor;
     uint32_t fileNameLen = 0;
 
     nsCOMPtr<nsIPrefBranch> defaultPrefBranch;
@@ -134,12 +140,19 @@ nsresult nsReadConfig::readConfigFile()
     // running mozilla or netscp6)
 
     rv = defaultPrefBranch->GetCharPref("general.config.filename",
-                                  getter_Copies(lockFileName));
-
+                                        lockFileName);
 
     MOZ_LOG(MCD, LogLevel::Debug, ("general.config.filename = %s\n", lockFileName.get()));
     if (NS_FAILED(rv))
         return rv;
+
+    for (size_t index = 0, len = mozilla::ArrayLength(gBlockedConfigs); index < len;
+         ++index) {
+      if (lockFileName == gBlockedConfigs[index]) {
+        // This is NS_OK because we don't want to show an error to the user
+        return rv;
+      }
+    }
 
     // This needs to be read only once.
     //
@@ -180,33 +193,30 @@ nsresult nsReadConfig::readConfigFile()
       return rv;
     }
 
-    rv = prefBranch->GetCharPref("general.config.filename",
-                                  getter_Copies(lockFileName));
+    rv = prefBranch->GetCharPref("general.config.filename", lockFileName);
     if (NS_FAILED(rv))
         // There is NO REASON we should ever get here. This is POST reading
         // of the config file.
         return NS_ERROR_FAILURE;
 
 
-    rv = prefBranch->GetCharPref("general.config.vendor",
-                                  getter_Copies(lockVendor));
+    rv = prefBranch->GetCharPref("general.config.vendor", lockVendor);
     // If vendor is not nullptr, do this check
     if (NS_SUCCEEDED(rv)) {
 
-        fileNameLen = strlen(lockFileName);
+        fileNameLen = strlen(lockFileName.get());
 
         // lockVendor and lockFileName should be the same with the addtion of
         // .cfg to the filename by checking this post reading of the cfg file
         // this value can be set within the cfg file adding a level of security.
 
-        if (PL_strncmp(lockFileName, lockVendor, fileNameLen - 4) != 0)
+        if (PL_strncmp(lockFileName.get(), lockVendor.get(), fileNameLen - 4) != 0)
             return NS_ERROR_FAILURE;
     }
 
     // get the value of the autoconfig url
-    nsXPIDLCString urlName;
-    rv = prefBranch->GetCharPref("autoadmin.global_config_url",
-                                  getter_Copies(urlName));
+    nsAutoCString urlName;
+    rv = prefBranch->GetCharPref("autoadmin.global_config_url", urlName);
     if (NS_SUCCEEDED(rv) && !urlName.IsEmpty()) {
 
         // Instantiating nsAutoConfig object if the pref is present
@@ -214,7 +224,7 @@ nsresult nsReadConfig::readConfigFile()
         if (NS_FAILED(rv))
             return NS_ERROR_OUT_OF_MEMORY;
 
-        rv = mAutoConfig->SetConfigURL(urlName);
+        rv = mAutoConfig->SetConfigURL(urlName.get());
         if (NS_FAILED(rv))
             return NS_ERROR_FAILURE;
 

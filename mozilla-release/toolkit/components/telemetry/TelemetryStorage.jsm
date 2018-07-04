@@ -5,21 +5,16 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["TelemetryStorage"];
+var EXPORTED_SYMBOLS = ["TelemetryStorage"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/AppConstants.jsm", this);
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/Preferences.jsm", this);
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm", this);
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Preferences.jsm", this);
 
 const LOGGER_NAME = "Toolkit.Telemetry";
 const LOGGER_PREFIX = "TelemetryStorage::";
@@ -46,10 +41,12 @@ XPCOMUtils.defineLazyGetter(this, "gAbortedSessionFilePath", function() {
 XPCOMUtils.defineLazyGetter(this, "gDeletionPingFilePath", function() {
   return OS.Path.join(gDataReportingDir, DELETION_PING_FILE_NAME);
 });
-XPCOMUtils.defineLazyModuleGetter(this, "CommonUtils",
-                                  "resource://services-common/utils.js");
+ChromeUtils.defineModuleGetter(this, "CommonUtils",
+                               "resource://services-common/utils.js");
+ChromeUtils.defineModuleGetter(this, "TelemetryHealthPing",
+                               "resource://gre/modules/TelemetryHealthPing.jsm");
 // Maxmimum time, in milliseconds, archive pings should be retained.
-const MAX_ARCHIVED_PINGS_RETENTION_MS = 60 * 24 * 60 * 60 * 1000;  // 60 days
+const MAX_ARCHIVED_PINGS_RETENTION_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
 
 // Maximum space the archive can take on disk (in Bytes).
 const ARCHIVE_QUOTA_BYTES = 120 * 1024 * 1024; // 120 MB
@@ -129,7 +126,7 @@ function internString(str) {
   return Symbol.keyFor(Symbol.for(str));
 }
 
-this.TelemetryStorage = {
+var TelemetryStorage = {
   get pingDirectoryPath() {
     return OS.Path.join(OS.Constants.Path.profileDir, "saved-telemetry-pings");
   },
@@ -701,10 +698,11 @@ var TelemetryStorageImpl = {
    * @return {promise<object>} Promise that is resolved with the ping data.
    */
   async loadArchivedPing(id) {
-    TelemetryStopwatch.start("TELEMETRY_ARCHIVE_LOAD_MS");
+    let idAsObject = {id};
+    TelemetryStopwatch.start("TELEMETRY_ARCHIVE_LOAD_MS", idAsObject);
     const data = this._archivedPings.get(id);
     if (!data) {
-      TelemetryStopwatch.cancel("TELEMETRY_ARCHIVE_LOAD_MS");
+      TelemetryStopwatch.cancel("TELEMETRY_ARCHIVE_LOAD_MS", idAsObject);
       this._log.trace("loadArchivedPing - no ping with id: " + id);
       return Promise.reject(new Error("TelemetryStorage.loadArchivedPing - no ping with id " + id));
     }
@@ -719,7 +717,7 @@ var TelemetryStorageImpl = {
         Telemetry.getHistogramById("TELEMETRY_DISCARDED_ARCHIVED_PINGS_SIZE_MB")
                  .add(Math.floor(fileSize / 1024 / 1024));
         Telemetry.getHistogramById("TELEMETRY_PING_SIZE_EXCEEDED_ARCHIVED").add();
-        TelemetryStopwatch.cancel("TELEMETRY_ARCHIVE_LOAD_MS");
+        TelemetryStopwatch.cancel("TELEMETRY_ARCHIVE_LOAD_MS", idAsObject);
         await OS.File.remove(path, {ignoreAbsent: true});
         throw new Error("loadArchivedPing - exceeded the maximum ping size: " + fileSize);
       }
@@ -733,7 +731,7 @@ var TelemetryStorageImpl = {
       ping = await this.loadPingFile(pathCompressed, /* compressed*/ true);
     } catch (ex) {
       if (!ex.becauseNoSuchFile) {
-        TelemetryStopwatch.cancel("TELEMETRY_ARCHIVE_LOAD_MS");
+        TelemetryStopwatch.cancel("TELEMETRY_ARCHIVE_LOAD_MS", idAsObject);
         throw ex;
       }
       // If that fails, look for the uncompressed version.
@@ -742,7 +740,7 @@ var TelemetryStorageImpl = {
       ping = await this.loadPingFile(path, /* compressed*/ false);
     }
 
-    TelemetryStopwatch.finish("TELEMETRY_ARCHIVE_LOAD_MS");
+    TelemetryStopwatch.finish("TELEMETRY_ARCHIVE_LOAD_MS", idAsObject);
     return ping;
   },
 
@@ -1365,6 +1363,10 @@ var TelemetryStorageImpl = {
                .add(Math.floor(fileSize / 1024 / 1024));
       Telemetry.getHistogramById("TELEMETRY_PING_SIZE_EXCEEDED_PENDING").add();
       TelemetryStopwatch.cancel("TELEMETRY_PENDING_LOAD_MS");
+
+      // Currently we don't have the ping type available without loading the ping from disk.
+      // Bug 1384903 will fix that.
+      TelemetryHealthPing.recordDiscardedPing("<unknown>");
       throw new Error("loadPendingPing - exceeded the maximum ping size: " + fileSize);
     }
 
@@ -1598,6 +1600,10 @@ var TelemetryStorageImpl = {
             Telemetry.getHistogramById("TELEMETRY_DISCARDED_PENDING_PINGS_SIZE_MB")
                      .add(Math.floor(info.size / 1024 / 1024));
             Telemetry.getHistogramById("TELEMETRY_PING_SIZE_EXCEEDED_PENDING").add();
+
+            // Currently we don't have the ping type available without loading the ping from disk.
+            // Bug 1384903 will fix that.
+            TelemetryHealthPing.recordDiscardedPing("<unknown>");
           }
           continue;
         }
@@ -1754,7 +1760,7 @@ var TelemetryStorageImpl = {
       if (ex.becauseNoSuchFile) {
         this._log.trace("loadAbortedSessionPing - no such file");
       } else {
-        this._log.error("loadAbortedSessionPing - error loading ping", ex)
+        this._log.error("loadAbortedSessionPing - error loading ping", ex);
       }
     }
     return ping;
@@ -1769,7 +1775,7 @@ var TelemetryStorageImpl = {
         if (ex.becauseNoSuchFile) {
           this._log.trace("removeAbortedSessionPing - no such file");
         } else {
-          this._log.error("removeAbortedSessionPing - error removing ping", ex)
+          this._log.error("removeAbortedSessionPing - error removing ping", ex);
         }
       }
     });
@@ -1803,7 +1809,7 @@ var TelemetryStorageImpl = {
         if (ex.becauseNoSuchFile) {
           this._log.trace("removeDeletionPing - no such file");
         } else {
-          this._log.error("removeDeletionPing - error removing ping", ex)
+          this._log.error("removeDeletionPing - error removing ping", ex);
         }
       }
     });
@@ -1889,7 +1895,7 @@ function getPingDirectory() {
 function getArchivedPingPath(aPingId, aDate, aType) {
   // Get the ping creation date and generate the archive directory to hold it. Note
   // that getMonth returns a 0-based month, so we need to add an offset.
-  let month = new String(aDate.getMonth() + 1);
+  let month = String(aDate.getMonth() + 1);
   let archivedPingDir = OS.Path.join(gPingsArchivePath,
     aDate.getFullYear() + "-" + month.padStart(2, "0"));
   // Generate the archived ping file path as YYYY-MM/<TIMESTAMP>.UUID.type.json
@@ -1920,7 +1926,7 @@ var getArchivedPingSize = async function(aPingId, aDate, aType) {
  * @return {Integer} The file size, in bytes, of the ping file or 0 on errors.
  */
 var getPendingPingSize = async function(aPingId) {
-  const path = OS.Path.join(TelemetryStorage.pingDirectoryPath, aPingId)
+  const path = OS.Path.join(TelemetryStorage.pingDirectoryPath, aPingId);
   try {
     return (await OS.File.stat(path)).size;
   } catch (e) {}

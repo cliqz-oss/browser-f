@@ -7,10 +7,8 @@
 #include "Compatibility.h"
 
 #include "mozilla/WindowsVersion.h"
-#if defined(MOZ_CRASHREPORTER)
 #include "nsExceptionHandler.h"
 #include "nsPrintfCString.h"
-#endif // defined(MOZ_CRASHREPORTER)
 #include "nsUnicharUtils.h"
 #include "nsWindowsDllInterceptor.h"
 #include "nsWinUtils.h"
@@ -24,31 +22,71 @@ using namespace mozilla;
 using namespace mozilla::a11y;
 
 /**
- * Return true if module version is lesser than the given version.
+ * String versions of consumer flags. See GetHumanReadableConsumersStr.
  */
+static const wchar_t* ConsumerStringMap[CONSUMERS_ENUM_LEN+1] = {
+  L"NVDA",
+  L"JAWS",
+  L"OLDJAWS",
+  L"WE",
+  L"DOLPHIN",
+  L"SEROTEK",
+  L"COBRA",
+  L"ZOOMTEXT",
+  L"KAZAGURU",
+  L"YOUDAO",
+  L"UNKNOWN",
+  L"UIAUTOMATION",
+  L"\0"
+};
+
 bool
-IsModuleVersionLessThan(HMODULE aModuleHandle, DWORD aMajor, DWORD aMinor)
+Compatibility::IsModuleVersionLessThan(HMODULE aModuleHandle,
+                                       unsigned long long aVersion)
 {
-  wchar_t fileName[MAX_PATH];
-  ::GetModuleFileNameW(aModuleHandle, fileName, MAX_PATH);
+  // Get the full path to the dll.
+  // We start with MAX_PATH, but the path can actually be longer.
+  DWORD fnSize = MAX_PATH;
+  UniquePtr<wchar_t[]> fileName;
+  while (true) {
+    fileName = MakeUnique<wchar_t[]>(fnSize);
+    DWORD retLen = ::GetModuleFileNameW(aModuleHandle, fileName.get(), fnSize);
+    MOZ_ASSERT(retLen != 0);
+    if (retLen == 0) {
+      return true;
+    }
+    if (retLen == fnSize &&
+        ::GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+      // The buffer was too short. Increase the size and try again.
+      fnSize *= 2;
+    }
+    break; // Success!
+  }
 
-  DWORD dummy = 0;
-  DWORD length = ::GetFileVersionInfoSizeW(fileName, &dummy);
+  // Get the version info from the file.
+  DWORD length = ::GetFileVersionInfoSizeW(fileName.get(), nullptr);
+  if (length == 0) {
+    return true;
+  }
 
-  LPBYTE versionInfo = new BYTE[length];
-  ::GetFileVersionInfoW(fileName, 0, length, versionInfo);
+  auto versionInfo = MakeUnique<unsigned char[]>(length);
+  if (!::GetFileVersionInfoW(fileName.get(), 0, length, versionInfo.get())) {
+    return true;
+  }
 
   UINT uLen;
   VS_FIXEDFILEINFO* fixedFileInfo = nullptr;
-  ::VerQueryValueW(versionInfo, L"\\", (LPVOID*)&fixedFileInfo, &uLen);
-  DWORD dwFileVersionMS = fixedFileInfo->dwFileVersionMS;
-  DWORD dwFileVersionLS = fixedFileInfo->dwFileVersionLS;
-  delete [] versionInfo;
+  if (!::VerQueryValueW(versionInfo.get(), L"\\", (LPVOID*)&fixedFileInfo,
+      &uLen)) {
+    return true;
+  }
 
-  DWORD dwLeftMost = HIWORD(dwFileVersionMS);
-  DWORD dwSecondRight = HIWORD(dwFileVersionLS);
-  return (dwLeftMost < aMajor ||
-    (dwLeftMost == aMajor && dwSecondRight < aMinor));
+  // Combine into a 64 bit value for comparison.
+  unsigned long long version =
+    ((unsigned long long)fixedFileInfo->dwFileVersionMS) << 32 |
+    ((unsigned long long)fixedFileInfo->dwFileVersionLS);
+
+  return version < aVersion;
 }
 
 
@@ -98,12 +136,22 @@ InSendMessageExHook(LPVOID lpReserved)
     // We want to take a strong reference to the dll so that it is never
     // unloaded/reloaded from this point forward, hence we use LoadLibrary
     // and not GetModuleHandle.
-    static HMODULE comModule = LoadLibrary(L"combase.dll");
+    static const HMODULE comModule = []() -> HMODULE {
+      HMODULE module = LoadLibraryW(L"combase.dll");
+      if (!module) {
+        // combase is not present on Windows 7, so we fall back to ole32 there
+        module = LoadLibraryW(L"ole32.dll");
+      }
+
+      return module;
+    }();
+
     MOZ_ASSERT(comModule);
     if (!comModule) {
       return result;
     }
-    // Check if InSendMessageEx is being called from code within combase.dll
+
+    // Check if InSendMessageEx is being called from code within comModule
     HMODULE callingModule;
     if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -132,15 +180,18 @@ DetectInSendMessageExCompat(PEXCEPTION_POINTERS aExceptionInfo)
 
 uint32_t Compatibility::sConsumers = Compatibility::UNKNOWN;
 
-void
-Compatibility::Init()
+/**
+ * This function is safe to call multiple times.
+ */
+/* static */ void
+Compatibility::InitConsumers()
 {
-  // Note we collect some AT statistics/telemetry here for convenience.
-
   HMODULE jawsHandle = ::GetModuleHandleW(L"jhook");
-  if (jawsHandle)
-    sConsumers |= (IsModuleVersionLessThan(jawsHandle, 18, 4315)) ?
-                   OLDJAWS : JAWS;
+  if (jawsHandle) {
+    sConsumers |=
+      IsModuleVersionLessThan(jawsHandle, MAKE_FILE_VERSION(19, 0, 0, 0)) ?
+      OLDJAWS : JAWS;
+  }
 
   if (::GetModuleHandleW(L"gwm32inc"))
     sConsumers |= WE;
@@ -154,7 +205,7 @@ Compatibility::Init()
   if (::GetModuleHandleW(L"nvdaHelperRemote"))
     sConsumers |= NVDA;
 
-  if (::GetModuleHandleW(L"OsmHooks"))
+  if (::GetModuleHandleW(L"OsmHooks") || ::GetModuleHandleW(L"OsmHks64"))
     sConsumers |= COBRA;
 
   if (::GetModuleHandleW(L"WebFinderRemote"))
@@ -173,13 +224,25 @@ Compatibility::Init()
 
   // If we have a known consumer remove the unknown bit.
   if (sConsumers != Compatibility::UNKNOWN)
-    sConsumers ^= Compatibility::UNKNOWN;
+    sConsumers &= ~Compatibility::UNKNOWN;
+}
 
-#ifdef MOZ_CRASHREPORTER
+/* static */ bool
+Compatibility::HasKnownNonUiaConsumer()
+{
+  InitConsumers();
+  return sConsumers & ~(Compatibility::UNKNOWN | UIAUTOMATION);
+}
+
+void
+Compatibility::Init()
+{
+  // Note we collect some AT statistics/telemetry here for convenience.
+  InitConsumers();
+
   CrashReporter::
     AnnotateCrashReport(NS_LITERAL_CSTRING("AccessibilityInProcClient"),
                         nsPrintfCString("0x%X", sConsumers));
-#endif
 
   // Gather telemetry
   uint32_t temp = sConsumers;
@@ -198,9 +261,10 @@ Compatibility::Init()
       Preferences::SetBool("browser.ctrlTab.disallowForScreenReaders", true);
   }
 
-  // If we have a known consumer who is not NVDA, we enable detection for the
+  // If we have a consumer who is not NVDA, we enable detection for the
   // InSendMessageEx compatibility hack. NVDA does not require this.
-  if ((sConsumers & ~(Compatibility::UNKNOWN | NVDA)) &&
+  // We also skip UIA, as we see crashes there.
+  if ((sConsumers & (~(UIAUTOMATION | NVDA))) &&
       BrowserTabsRemoteAutostart()) {
     sUser32Interceptor.Init("user32.dll");
     if (!sInSendMessageExStub) {
@@ -211,8 +275,12 @@ Compatibility::Init()
     // The vectored exception handler allows us to catch exceptions ahead of any
     // SEH handlers.
     if (!sVectoredExceptionHandler) {
+      // We need to let ASan's ShadowExceptionHandler remain in the firstHandler
+      // position, otherwise we'll get infinite recursion when our handler
+      // faults on shadow memory.
+      const ULONG firstHandler = FALSE;
       sVectoredExceptionHandler =
-        AddVectoredExceptionHandler(TRUE, &DetectInSendMessageExCompat);
+        AddVectoredExceptionHandler(firstHandler, &DetectInSendMessageExCompat);
     }
   }
 }
@@ -224,11 +292,15 @@ ReadCOMRegDefaultString(const nsString& aRegPath, nsAString& aOutBuf)
 {
   aOutBuf.Truncate();
 
+  nsAutoString fullyQualifiedRegPath;
+  fullyQualifiedRegPath.AppendLiteral(u"SOFTWARE\\Classes\\");
+  fullyQualifiedRegPath.Append(aRegPath);
+
   // Get the required size and type of the registry value.
   // We expect either REG_SZ or REG_EXPAND_SZ.
   DWORD type;
   DWORD bufLen = 0;
-  LONG result = ::RegGetValue(HKEY_CLASSES_ROOT, aRegPath.get(),
+  LONG result = ::RegGetValue(HKEY_LOCAL_MACHINE, fullyQualifiedRegPath.get(),
                               nullptr, RRF_RT_ANY, &type, nullptr, &bufLen);
   if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)) {
     return false;
@@ -239,7 +311,7 @@ ReadCOMRegDefaultString(const nsString& aRegPath, nsAString& aOutBuf)
 
   aOutBuf.SetLength((bufLen + 1) / sizeof(char16_t));
 
-  result = ::RegGetValue(HKEY_CLASSES_ROOT, aRegPath.get(), nullptr,
+  result = ::RegGetValue(HKEY_LOCAL_MACHINE, fullyQualifiedRegPath.get(), nullptr,
                          flags, nullptr, aOutBuf.BeginWriting(), &bufLen);
   if (result != ERROR_SUCCESS) {
     aOutBuf.Truncate();
@@ -362,13 +434,11 @@ UseIAccessibleProxyStub()
     return true;
   }
 
-#if defined(MOZ_CRASHREPORTER)
   // If we reach this point then something is seriously wrong with the
   // IAccessible configuration in the computer's registry. Let's annotate this
   // so that we can easily determine this condition during crash analysis.
   CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("IAccessibleConfig"),
                                      NS_LITERAL_CSTRING("NoSystemTypeLibOrPS"));
-#endif // defined(MOZ_CRASHREPORTER)
   return false;
 }
 
@@ -394,3 +464,22 @@ Compatibility::GetActCtxResourceId()
 #endif // defined(HAVE_64BIT_BUILD)
 }
 
+// static
+void
+Compatibility::GetHumanReadableConsumersStr(nsAString &aResult)
+{
+  bool appened = false;
+  uint32_t index = 0;
+  for (uint32_t consumers = sConsumers; consumers; consumers = consumers >> 1) {
+    if (consumers & 0x1) {
+      if (appened) {
+        aResult.AppendLiteral(",");
+      }
+      aResult.Append(ConsumerStringMap[index]);
+      appened = true;
+    }
+    if (++index > CONSUMERS_ENUM_LEN) {
+      break;
+    }
+  }
+}

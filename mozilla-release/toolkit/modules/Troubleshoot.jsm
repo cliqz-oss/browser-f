@@ -2,24 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "Troubleshoot",
 ];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/AddonManager.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/AppConstants.jsm");
-
-var Experiments;
-try {
-  Experiments = Cu.import("resource:///modules/experiments/Experiments.jsm").Experiments;
-} catch (e) {
-}
-
-const env = Cc["@mozilla.org/process/environment;1"]
-              .getService(Ci.nsIEnvironment);
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+Cu.importGlobalProperties(["DOMParser"]);
 
 // We use a preferences whitelist to make sure we only show preferences that
 // are useful for support and won't compromise the user's privacy.  Note that
@@ -69,7 +59,7 @@ const PREFS_WHITELIST = [
   "keyword.",
   "layers.",
   "layout.css.dpi",
-  "layout.css.servo.enabled",
+  "layout.display-list.",
   "media.",
   "mousewheel.",
   "network.",
@@ -85,7 +75,6 @@ const PREFS_WHITELIST = [
   "services.sync.lastSync",
   "services.sync.numClients",
   "services.sync.engine.",
-  "social.enabled",
   "storage.vacuum.last.",
   "svg.",
   "toolkit.startup.recent_crashes",
@@ -104,7 +93,6 @@ const PREFS_BLACKLIST = [
 ];
 
 // Table of getters for various preference types.
-// It's important to use getComplexValue for strings: it returns Unicode (wchars), getCharPref returns UTF-8 encoded chars.
 const PREFS_GETTERS = {};
 
 PREFS_GETTERS[Ci.nsIPrefBranch.PREF_STRING] = (prefs, name) => prefs.getStringPref(name);
@@ -131,7 +119,7 @@ function getPrefList(filter) {
   }, {});
 }
 
-this.Troubleshoot = {
+var Troubleshoot = {
 
   /**
    * Captures a snapshot of data that may help troubleshooters troubleshoot
@@ -171,13 +159,9 @@ this.Troubleshoot = {
 var dataProviders = {
 
   application: function application(done) {
-
-    let sysInfo = Cc["@mozilla.org/system-info;1"].
-                  getService(Ci.nsIPropertyBag2);
-
     let data = {
       name: Services.appinfo.name,
-      osVersion: sysInfo.getProperty("name") + " " + sysInfo.getProperty("version"),
+      osVersion: Services.sysinfo.getProperty("name") + " " + Services.sysinfo.getProperty("version"),
       version: AppConstants.MOZ_APP_VERSION_DISPLAY,
       buildID: Services.appinfo.appBuildID,
       userAgent: Cc["@mozilla.org/network/protocol;1?name=http"].
@@ -187,16 +171,14 @@ var dataProviders = {
     };
 
     if (AppConstants.MOZ_UPDATER)
-      data.updateChannel = Cu.import("resource://gre/modules/UpdateUtils.jsm", {}).UpdateUtils.UpdateChannel;
+      data.updateChannel = ChromeUtils.import("resource://gre/modules/UpdateUtils.jsm", {}).UpdateUtils.UpdateChannel;
 
     // eslint-disable-next-line mozilla/use-default-preference-values
     try {
       data.vendor = Services.prefs.getCharPref("app.support.vendor");
     } catch (e) {}
-    let urlFormatter = Cc["@mozilla.org/toolkit/URLFormatterService;1"].
-                       getService(Ci.nsIURLFormatter);
     try {
-      data.supportURL = urlFormatter.formatURLPref("app.support.baseURL");
+      data.supportURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
     } catch (e) {}
 
     data.numTotalWindows = 0;
@@ -233,13 +215,9 @@ var dataProviders = {
       data.autoStartStatus = -1;
     }
 
-    data.styloBuild = AppConstants.MOZ_STYLO;
-    data.styloDefault = Services.prefs.getDefaultBranch(null)
-                                .getBoolPref("layout.css.servo.enabled", false);
-    data.styloResult =
-      AppConstants.MOZ_STYLO &&
-      (!!env.get("STYLO_FORCE_ENABLED") ||
-       Services.prefs.getBoolPref("layout.css.servo.enabled", false));
+    if (Services.policies) {
+      data.policiesStatus = Services.policies.status;
+    }
 
     const keyGoogle = Services.urlFormatter.formatURL("%GOOGLE_API_KEY%").trim();
     data.keyGoogleFound = keyGoogle != "no-google-api-key" && keyGoogle.length > 0;
@@ -250,67 +228,74 @@ var dataProviders = {
     done(data);
   },
 
-  extensions: function extensions(done) {
-    AddonManager.getAddonsByTypes(["extension"], function(extensions) {
-      extensions = extensions.filter(e => !e.isSystem);
-      extensions.sort(function(a, b) {
-        if (a.isActive != b.isActive)
-          return b.isActive ? 1 : -1;
+  extensions: async function extensions(done) {
+    let extensions = await AddonManager.getAddonsByTypes(["extension"]);
+    extensions = extensions.filter(e => !e.isSystem);
+    extensions.sort(function(a, b) {
+      if (a.isActive != b.isActive)
+        return b.isActive ? 1 : -1;
 
-        // In some unfortunate cases addon names can be null.
-        let aname = a.name || null;
-        let bname = b.name || null;
-        let lc = aname.localeCompare(bname);
-        if (lc != 0)
-          return lc;
-        if (a.version != b.version)
-          return a.version > b.version ? 1 : -1;
-        return 0;
-      });
-      let props = ["name", "version", "isActive", "id"];
-      done(extensions.map(function(ext) {
-        return props.reduce(function(extData, prop) {
-          extData[prop] = ext[prop];
-          return extData;
-        }, {});
-      }));
+      // In some unfortunate cases addon names can be null.
+      let aname = a.name || null;
+      let bname = b.name || null;
+      let lc = aname.localeCompare(bname);
+      if (lc != 0)
+        return lc;
+      if (a.version != b.version)
+        return a.version > b.version ? 1 : -1;
+      return 0;
     });
+    let props = ["name", "version", "isActive", "id"];
+    done(extensions.map(function(ext) {
+      return props.reduce(function(extData, prop) {
+        extData[prop] = ext[prop];
+        return extData;
+      }, {});
+    }));
   },
 
-  features: function features(done) {
-    AddonManager.getAddonsByTypes(["extension"], function(features) {
-      features = features.filter(f => f.isSystem);
-      features.sort(function(a, b) {
-        // In some unfortunate cases addon names can be null.
-        let aname = a.name || null;
-        let bname = b.name || null;
-        let lc = aname.localeCompare(bname);
-        if (lc != 0)
-          return lc;
-        if (a.version != b.version)
-          return a.version > b.version ? 1 : -1;
-        return 0;
-      });
-      let props = ["name", "version", "id"];
-      done(features.map(function(f) {
-        return props.reduce(function(fData, prop) {
-          fData[prop] = f[prop];
-          return fData;
-        }, {});
-      }));
-    });
-  },
+  securitySoftware: function securitySoftware(done) {
+    let data = {};
 
-  experiments: function experiments(done) {
-    if (Experiments === undefined) {
-      done([]);
-      return;
+    let sysInfo = Cc["@mozilla.org/system-info;1"].
+                  getService(Ci.nsIPropertyBag2);
+
+    const keys = ["registeredAntiVirus", "registeredAntiSpyware",
+                  "registeredFirewall"];
+    for (let key of keys) {
+      let prop = "";
+      try {
+        prop = sysInfo.getProperty(key);
+      } catch (e) {
+      }
+
+      data[key] = prop;
     }
 
-    // getExperiments promises experiment history
-    Experiments.instance().getExperiments().then(
-      experiments => done(experiments)
-    );
+    done(data);
+  },
+
+  features: async function features(done) {
+    let features = await AddonManager.getAddonsByTypes(["extension"]);
+    features = features.filter(f => f.isSystem);
+    features.sort(function(a, b) {
+      // In some unfortunate cases addon names can be null.
+      let aname = a.name || null;
+      let bname = b.name || null;
+      let lc = aname.localeCompare(bname);
+      if (lc != 0)
+        return lc;
+      if (a.version != b.version)
+        return a.version > b.version ? 1 : -1;
+      return 0;
+    });
+    let props = ["name", "version", "id"];
+    done(features.map(function(f) {
+      return props.reduce(function(fData, prop) {
+        fData[prop] = f[prop];
+        return fData;
+      }, {});
+    }));
   },
 
   modifiedPreferences: function modifiedPreferences(done) {
@@ -438,6 +423,10 @@ var dataProviders = {
       DWriteEnabled: "directWriteEnabled",
       DWriteVersion: "directWriteVersion",
       cleartypeParameters: "clearTypeParameters",
+      UsesTiling: "usesTiling",
+      ContentUsesTiling: "contentUsesTiling",
+      OffMainThreadPaintEnabled: "offMainThreadPaintEnabled",
+      OffMainThreadPaintWorkerCount: "offMainThreadPaintWorkerCount",
     };
 
     for (let prop in gfxInfoProps) {
@@ -451,10 +440,7 @@ var dataProviders = {
         statusMsgForFeature(Ci.nsIGfxInfo.FEATURE_DIRECT2D);
 
 
-    let doc =
-      Cc["@mozilla.org/xmlextras/domparser;1"]
-      .createInstance(Ci.nsIDOMParser)
-      .parseFromString("<html/>", "text/html");
+    let doc = new DOMParser().parseFromString("<html/>", "text/html");
 
     function GetWebGLInfo(data, keyPrefix, contextType) {
         data[keyPrefix + "Renderer"] = "-";
@@ -514,7 +500,9 @@ var dataProviders = {
 
         // Eagerly free resources.
         let loseExt = gl.getExtension("WEBGL_lose_context");
-        loseExt.loseContext();
+        if (loseExt) {
+             loseExt.loseContext();
+        }
     }
 
     GetWebGLInfo(data, "webgl1", "webgl");
@@ -576,7 +564,6 @@ var dataProviders = {
                    getInterface(Ci.nsIDOMWindowUtils);
     data.currentAudioBackend = winUtils.currentAudioBackend;
     data.currentMaxAudioChannels = winUtils.currentMaxAudioChannels;
-    data.currentPreferredChannelLayout = winUtils.currentPreferredChannelLayout;
     data.currentPreferredSampleRate = winUtils.currentPreferredSampleRate;
     data.audioOutputDevices = convertDevices(winUtils.audioDevices(Ci.nsIDOMWindowUtils.AUDIO_OUTPUT).
                                              QueryInterface(Ci.nsIArray));
@@ -605,6 +592,7 @@ var dataProviders = {
         Services.prefs.getIntPref("accessibility.force_disabled");
     } catch (e) {}
     data.handlerUsed = Services.appinfo.accessibleHandlerUsed;
+    data.instantiator = Services.appinfo.accessibilityInstantiator;
     done(data);
   },
 
@@ -629,12 +617,30 @@ var dataProviders = {
     done({
       exists: userJSFile.exists() && userJSFile.fileSize > 0,
     });
-  }
+  },
+
+  intl: function intl(done) {
+    const osPrefs =
+      Cc["@mozilla.org/intl/ospreferences;1"].getService(Ci.mozIOSPreferences);
+    done({
+      localeService: {
+        requested: Services.locale.getRequestedLocales(),
+        available: Services.locale.getAvailableLocales(),
+        supported: Services.locale.getAppLocalesAsBCP47(),
+        regionalPrefs: Services.locale.getRegionalPrefsLocales(),
+        defaultLocale: Services.locale.defaultLocale,
+      },
+      osPrefs: {
+        systemLocales: osPrefs.getSystemLocales(),
+        regionalPrefsLocales: osPrefs.getRegionalPrefsLocales()
+      },
+    });
+  },
 };
 
 if (AppConstants.MOZ_CRASHREPORTER) {
   dataProviders.crashes = function crashes(done) {
-    let CrashReports = Cu.import("resource://gre/modules/CrashReports.jsm").CrashReports;
+    let CrashReports = ChromeUtils.import("resource://gre/modules/CrashReports.jsm").CrashReports;
     let reports = CrashReports.getReports();
     let now = new Date();
     let reportsNew = reports.filter(report => (now - report.date < Troubleshoot.kMaxCrashAge));
@@ -642,7 +648,7 @@ if (AppConstants.MOZ_CRASHREPORTER) {
     let reportsPendingCount = reportsNew.length - reportsSubmitted.length;
     let data = {submitted: reportsSubmitted, pending: reportsPendingCount};
     done(data);
-  }
+  };
 }
 
 if (AppConstants.MOZ_SANDBOX) {
@@ -653,11 +659,9 @@ if (AppConstants.MOZ_SANDBOX) {
                     "hasPrivilegedUserNamespaces", "hasUserNamespaces",
                     "canSandboxContent", "canSandboxMedia"];
 
-      let sysInfo = Cc["@mozilla.org/system-info;1"].
-                    getService(Ci.nsIPropertyBag2);
       for (let key of keys) {
-        if (sysInfo.hasKey(key)) {
-          data[key] = sysInfo.getPropertyAsBool(key);
+        if (Services.sysinfo.hasKey(key)) {
+          data[key] = Services.sysinfo.getPropertyAsBool(key);
         }
       }
 
@@ -668,7 +672,7 @@ if (AppConstants.MOZ_SANDBOX) {
       for (let index = snapshot.begin; index < snapshot.end; ++index) {
         let report = snapshot.getElement(index);
         let { msecAgo, pid, tid, procType, syscall } = report;
-        let args = []
+        let args = [];
         for (let i = 0; i < report.numArgs; ++i) {
           args.push(report.getArg(i));
         }
@@ -687,5 +691,5 @@ if (AppConstants.MOZ_SANDBOX) {
     }
 
     done(data);
-  }
+  };
 }

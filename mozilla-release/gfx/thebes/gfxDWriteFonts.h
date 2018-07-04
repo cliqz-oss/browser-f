@@ -28,7 +28,6 @@ public:
     gfxDWriteFont(const RefPtr<mozilla::gfx::UnscaledFontDWrite>& aUnscaledFont,
                   gfxFontEntry *aFontEntry,
                   const gfxFontStyle *aFontStyle,
-                  bool aNeedsBold = false,
                   AntialiasOption = kAntialiasDefault);
     ~gfxDWriteFont();
 
@@ -71,9 +70,9 @@ public:
     virtual already_AddRefed<mozilla::gfx::ScaledFont>
     GetScaledFont(mozilla::gfx::DrawTarget *aTarget) override;
 
-    virtual cairo_scaled_font_t *GetCairoScaledFont() override;
-
 protected:
+    cairo_scaled_font_t *InitCairoScaledFont();
+
     virtual const Metrics& GetHorizontalMetrics() override;
 
     bool GetFakeMetricsForArialBlack(DWRITE_FONT_METRICS *aFontMetrics);
@@ -101,12 +100,14 @@ protected:
 
     uint32_t mSpaceGlyph;
 
-    bool mNeedsOblique;
-    bool mNeedsBold;
     bool mUseSubpixelPositions;
     bool mAllowManualShowGlyphs;
-    bool mAzureScaledFontIsCairo;
-    static bool mUseClearType;
+
+    // Used to record the sUseClearType setting at the time mAzureScaledFont
+    // was set up, so we can tell if it's stale and needs to be re-created.
+    bool mAzureScaledFontUsedClearType;
+
+    static bool sUseClearType;
 };
 
 #endif

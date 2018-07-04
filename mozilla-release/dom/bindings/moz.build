@@ -44,9 +44,11 @@ EXPORTS.mozilla.dom += [
     'NonRefcountedDOMObject.h',
     'Nullable.h',
     'PrimitiveConversions.h',
+    'ReadableStream.h',
     'Record.h',
     'RootedDictionary.h',
     'SimpleGlobalObject.h',
+    'SpiderMonkeyInterface.h',
     'StructuredClone.h',
     'ToJSValue.h',
     'TypedArray.h',
@@ -75,7 +77,6 @@ LOCAL_INCLUDES += [
     '/dom/media/webaudio',
     '/dom/media/webspeech/recognition',
     '/dom/svg',
-    '/dom/workers',
     '/dom/xbl',
     '/dom/xml',
     '/dom/xslt/base',
@@ -90,7 +91,11 @@ LOCAL_INCLUDES += [
     '/media/webrtc/',
     '/media/webrtc/signaling/src/common/time_profiling',
     '/media/webrtc/signaling/src/peerconnection',
+    '/media/webrtc/trunk/',
 ]
+
+DEFINES['GOOGLE_PROTOBUF_NO_RTTI'] = True
+DEFINES['GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER'] = True
 
 UNIFIED_SOURCES += [
     'BindingUtils.cpp',
@@ -116,7 +121,7 @@ SOURCES += [
 # rule stated in the test/ directory, but it's the only way this will work.
 # Test classes are only built in debug mode, and all tests requiring use of
 # them are only run in debug mode.
-if CONFIG['MOZ_DEBUG']:
+if CONFIG['MOZ_DEBUG'] and CONFIG['ENABLE_TESTS']:
     EXPORTS.mozilla.dom += [
         "test/TestFunctions.h",
         "test/TestInterfaceIterableDouble.h",
@@ -143,7 +148,14 @@ include('/ipc/chromium/chromium-config.mozbuild')
 FINAL_LIBRARY = 'xul'
 
 SPHINX_TREES['webidl'] = 'docs'
+
+with Files('docs/**'):
+    SCHEDULES.exclusive = ['docs']
+
 SPHINX_PYTHON_PACKAGE_DIRS += ['mozwebidlcodegen']
+
+with Files('mozwebidlcodegen/**.py'):
+    SCHEDULES.inclusive += ['docs']
 
 if CONFIG['MOZ_BUILD_APP'] in ['browser', 'mobile/android', 'xulrunner']:
     # This is needed for Window.webidl
@@ -154,8 +166,12 @@ PYTHON_UNITTEST_MANIFESTS += [
     'mozwebidlcodegen/test/python.ini',
 ]
 
-if CONFIG['GNU_CXX']:
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
+    # Suppress warnings in third-party code.
+    CXXFLAGS += [
+        '-Wno-maybe-uninitialized',
+    ]
 
 if CONFIG['COMPILE_ENVIRONMENT']:
     GENERATED_FILES += ['CSS2Properties.webidl']
@@ -163,5 +179,5 @@ if CONFIG['COMPILE_ENVIRONMENT']:
     css_props.script = 'GenerateCSS2PropertiesWebIDL.py:generate'
     css_props.inputs = [
         '/dom/webidl/CSS2Properties.webidl.in',
-        '/layout/style/PythonCSSProps.h',
+        '!/layout/style/ServoCSSPropList.py',
     ]

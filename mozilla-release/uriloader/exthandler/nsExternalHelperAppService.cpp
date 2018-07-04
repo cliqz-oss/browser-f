@@ -9,6 +9,7 @@
 /* This must occur *after* base/basictypes.h to avoid typedefs conflicts. */
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Base64.h"
+#include "mozilla/ResultExtensions.h"
 
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/TabChild.h"
@@ -25,7 +26,7 @@
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsICategoryManager.h"
 #include "nsDependentSubstring.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "nsUnicharUtils.h"
 #include "nsIStringEnumerator.h"
 #include "nsMemory.h"
@@ -55,6 +56,7 @@
 #include "nsIIOService.h"
 #include "nsNetCID.h"
 
+#include "nsDSURIContentListener.h"
 #include "nsMimeTypes.h"
 // used for header disposition information.
 #include "nsIHttpChannel.h"
@@ -145,16 +147,12 @@ static const char NEVER_ASK_FOR_OPEN_FILE_PREF[] =
 static nsresult UnescapeFragment(const nsACString& aFragment, nsIURI* aURI,
                                  nsAString& aResult)
 {
-  // First, we need a charset
-  nsAutoCString originCharset;
-  nsresult rv = aURI->GetOriginCharset(originCharset);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // Now, we need the unescaper
+  // We need the unescaper
+  nsresult rv;
   nsCOMPtr<nsITextToSubURI> textToSubURI = do_GetService(NS_ITEXTTOSUBURI_CONTRACTID, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return textToSubURI->UnEscapeURIForUI(originCharset, aFragment, aResult);
+  return textToSubURI->UnEscapeURIForUI(NS_LITERAL_CSTRING("UTF-8"), aFragment, aResult);
 }
 
 /**
@@ -907,17 +905,17 @@ NS_IMETHODIMP nsExternalHelperAppService::ExternalProtocolHandlerExists(const ch
   nsCOMPtr<nsIHandlerInfo> handlerInfo;
   nsresult rv = GetProtocolHandlerInfo(nsDependentCString(aProtocolScheme), 
                                        getter_AddRefs(handlerInfo));
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_SUCCEEDED(rv)) {
+    // See if we have any known possible handler apps for this
+    nsCOMPtr<nsIMutableArray> possibleHandlers;
+    handlerInfo->GetPossibleApplicationHandlers(getter_AddRefs(possibleHandlers));
 
-  // See if we have any known possible handler apps for this
-  nsCOMPtr<nsIMutableArray> possibleHandlers;
-  handlerInfo->GetPossibleApplicationHandlers(getter_AddRefs(possibleHandlers));
-
-  uint32_t length;
-  possibleHandlers->GetLength(&length);
-  if (length) {
-    *aHandlerExists = true;
-    return NS_OK;
+    uint32_t length;
+    possibleHandlers->GetLength(&length);
+    if (length) {
+      *aHandlerExists = true;
+      return NS_OK;
+    }
   }
 
   // if not, fall back on an os-based handler
@@ -944,11 +942,6 @@ NS_IMETHODIMP nsExternalHelperAppService::IsExposedProtocol(const char * aProtoc
     Preferences::GetBool("network.protocol-handler.expose-all", false);
 
   return NS_OK;
-}
-
-NS_IMETHODIMP nsExternalHelperAppService::LoadUrl(nsIURI * aURL)
-{
-  return LoadURI(aURL, nullptr);
 }
 
 static const char kExternalProtocolPrefPrefix[]  = "network.protocol-handler.external.";
@@ -1017,9 +1010,16 @@ nsExternalHelperAppService::LoadURI(nsIURI *aURI,
   // if we are not supposed to ask, and the preferred action is to use
   // a helper app or the system default, we just launch the URI.
   if (!alwaysAsk && (preferredAction == nsIHandlerInfo::useHelperApp ||
-                     preferredAction == nsIHandlerInfo::useSystemDefault))
-    return handler->LaunchWithURI(uri, aWindowContext);
-  
+                     preferredAction == nsIHandlerInfo::useSystemDefault)) {
+    rv = handler->LaunchWithURI(uri, aWindowContext);
+    // We are not supposed to ask, but when file not found the user most likely
+    // uninstalled the application which handles the uri so we will continue
+    // by application chooser dialog.
+    if (rv != NS_ERROR_FILE_NOT_FOUND) {
+      return rv;
+    }
+  }
+
   nsCOMPtr<nsIContentDispatchChooser> chooser =
     do_CreateInstance("@mozilla.org/content-dispatch-chooser;1", &rv);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1194,10 +1194,9 @@ NS_INTERFACE_MAP_BEGIN(nsExternalAppHandler)
    NS_INTERFACE_MAP_ENTRY(nsIRequestObserver)
    NS_INTERFACE_MAP_ENTRY(nsIHelperAppLauncher)
    NS_INTERFACE_MAP_ENTRY(nsICancelable)
-   NS_INTERFACE_MAP_ENTRY(nsITimerCallback)
    NS_INTERFACE_MAP_ENTRY(nsIBackgroundFileSaverObserver)
    NS_INTERFACE_MAP_ENTRY(nsINamed)
-NS_INTERFACE_MAP_END_THREADSAFE
+NS_INTERFACE_MAP_END
 
 nsExternalAppHandler::nsExternalAppHandler(nsIMIMEInfo * aMIMEInfo,
                                            const nsACString& aTempFileExtension,
@@ -1209,11 +1208,9 @@ nsExternalAppHandler::nsExternalAppHandler(nsIMIMEInfo * aMIMEInfo,
 : mMimeInfo(aMIMEInfo)
 , mContentContext(aContentContext)
 , mWindowContext(aWindowContext)
-, mWindowToClose(nullptr)
 , mSuggestedFileName(aSuggestedFilename)
 , mForceSave(aForceSave)
 , mCanceled(false)
-, mShouldCloseWindow(false)
 , mStopRequestIssued(false)
 , mReason(aReason)
 , mContentLength(-1)
@@ -1589,13 +1586,15 @@ NS_IMETHODIMP nsExternalAppHandler::OnStartRequest(nsIRequest *request, nsISuppo
     aChannel->GetContentLength(&mContentLength);
   }
 
+  mMaybeCloseWindowHelper = new MaybeCloseWindowHelper(mContentContext);
+
   nsCOMPtr<nsIPropertyBag2> props(do_QueryInterface(request, &rv));
   // Determine whether a new window was opened specifically for this request
   if (props) {
     bool tmp = false;
     props->GetPropertyAsBool(NS_LITERAL_STRING("docshell.newWindowTarget"),
                              &tmp);
-    mShouldCloseWindow = tmp;
+    mMaybeCloseWindowHelper->SetShouldCloseWindow(tmp);
   }
 
   // Now get the URI
@@ -1614,14 +1613,14 @@ NS_IMETHODIMP nsExternalAppHandler::OnStartRequest(nsIRequest *request, nsISuppo
       Unused << httpChannel->GetResponseHeader(NS_LITERAL_CSTRING("refresh"),
                                                refreshHeader);
       if (!refreshHeader.IsEmpty()) {
-        mShouldCloseWindow = false;
+        mMaybeCloseWindowHelper->SetShouldCloseWindow(false);
       }
     }
   }
 
   // Close the underlying DOMWindow if there is no refresh header
   // and it was opened specifically for the download
-  MaybeCloseWindow();
+  mContentContext = mMaybeCloseWindowHelper->MaybeCloseWindow();
 
   // In an IPC setting, we're allowing the child process, here, to make
   // decisions about decoding the channel (e.g. decompression).  It will
@@ -1786,7 +1785,7 @@ NS_IMETHODIMP nsExternalAppHandler::OnStartRequest(nsIRequest *request, nsISuppo
 // notification to the dialog progress listener or nsITransfer implementation.
 void nsExternalAppHandler::SendStatusChange(ErrorType type, nsresult rv, nsIRequest *aRequest, const nsString& path)
 {
-    const char* msgId;
+    const char* msgId = nullptr;
     switch (rv) {
     case NS_ERROR_OUT_OF_MEMORY:
         // No memory
@@ -1808,7 +1807,7 @@ void nsExternalAppHandler::SendStatusChange(ErrorType type, nsresult rv, nsIRequ
         if (type == kWriteError) {
           // Attempt to write without sufficient permissions.
 #if defined(ANDROID)
-          // On Android (and Gonk), this means the SD card is present but
+          // On Android this means the SD card is present but
           // unavailable (read-only).
           msgId = "SDAccessErrorCardReadOnly";
 #else
@@ -1829,7 +1828,7 @@ void nsExternalAppHandler::SendStatusChange(ErrorType type, nsresult rv, nsIRequ
         }
 #if defined(ANDROID)
         else if (type == kWriteError) {
-          // On Android (and Gonk), this means the SD card is missing (not in
+          // On Android this means the SD card is missing (not in
           // SD slot).
           msgId = "SDAccessErrorCardMissing";
           break;
@@ -1868,24 +1867,24 @@ void nsExternalAppHandler::SendStatusChange(ErrorType type, nsresult rv, nsIRequ
         nsCOMPtr<nsIStringBundle> bundle;
         if (NS_SUCCEEDED(stringService->CreateBundle("chrome://global/locale/nsWebBrowserPersist.properties",
                          getter_AddRefs(bundle)))) {
-            nsXPIDLString msgText;
+            nsAutoString msgText;
             const char16_t *strings[] = { path.get() };
             if (NS_SUCCEEDED(bundle->FormatStringFromName(msgId, strings, 1,
-                                                          getter_Copies(msgText)))) {
+                                                          msgText))) {
               if (mDialogProgressListener) {
                 // We have a listener, let it handle the error.
-                mDialogProgressListener->OnStatusChange(nullptr, (type == kReadError) ? aRequest : nullptr, rv, msgText);
+                mDialogProgressListener->OnStatusChange(nullptr, (type == kReadError) ? aRequest : nullptr, rv, msgText.get());
               } else if (mTransfer) {
-                mTransfer->OnStatusChange(nullptr, (type == kReadError) ? aRequest : nullptr, rv, msgText);
+                mTransfer->OnStatusChange(nullptr, (type == kReadError) ? aRequest : nullptr, rv, msgText.get());
               } else if (XRE_IsParentProcess()) {
                 // We don't have a listener.  Simply show the alert ourselves.
                 nsresult qiRv;
                 nsCOMPtr<nsIPrompt> prompter(do_GetInterface(GetDialogParent(), &qiRv));
-                nsXPIDLString title;
+                nsAutoString title;
                 bundle->FormatStringFromName("title",
                                              strings,
                                              1,
-                                             getter_Copies(title));
+                                             title);
 
                 MOZ_LOG(nsExternalHelperAppService::mLog, LogLevel::Debug,
                        ("mContentContext=0x%p, prompter=0x%p, qi rv=0x%08"
@@ -1925,7 +1924,7 @@ void nsExternalAppHandler::SendStatusChange(ErrorType type, nsresult rv, nsIRequ
                 }
 
                 // We should always have a prompter at this point.
-                prompter->Alert(title, msgText);
+                prompter->Alert(title.get(), msgText.get());
               }
             }
         }
@@ -2036,7 +2035,7 @@ nsExternalAppHandler::OnSaveComplete(nsIBackgroundFileSaver *aSaver,
         LOG(("nsExternalAppHandler: Got %zu redirects\n",
              loadInfo->RedirectChain().Length()));
         for (nsIRedirectHistoryEntry* entry : loadInfo->RedirectChain()) {
-          redirectChain->AppendElement(entry, false);
+          redirectChain->AppendElement(entry);
         }
         mRedirects = redirectChain;
       }
@@ -2524,47 +2523,6 @@ bool nsExternalAppHandler::GetNeverAskFlagFromPref(const char * prefName, const 
                                         start, end);
 }
 
-nsresult nsExternalAppHandler::MaybeCloseWindow()
-{
-  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mContentContext);
-  NS_ENSURE_STATE(window);
-
-  if (mShouldCloseWindow) {
-    // Reset the window context to the opener window so that the dependent
-    // dialogs have a parent
-    nsCOMPtr<nsPIDOMWindowOuter> opener = window->GetOpener();
-
-    if (opener && !opener->Closed()) {
-      mContentContext = do_GetInterface(opener);
-
-      // Now close the old window.  Do it on a timer so that we don't run
-      // into issues trying to close the window before it has fully opened.
-      NS_ASSERTION(!mTimer, "mTimer was already initialized once!");
-      mTimer = do_CreateInstance("@mozilla.org/timer;1");
-      if (!mTimer) {
-        return NS_ERROR_FAILURE;
-      }
-
-      mTimer->InitWithCallback(this, 0, nsITimer::TYPE_ONE_SHOT);
-      mWindowToClose = window;
-    }
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsExternalAppHandler::Notify(nsITimer* timer)
-{
-  NS_ASSERTION(mWindowToClose, "No window to close after timer fired");
-
-  mWindowToClose->Close();
-  mWindowToClose = nullptr;
-  mTimer = nullptr;
-
-  return NS_OK;
-}
-
 NS_IMETHODIMP
 nsExternalAppHandler::GetName(nsACString& aName)
 {
@@ -2746,7 +2704,7 @@ nsExternalHelperAppService::GetTypeFromExtension(const nsACString& aFileExt,
     nsAutoCString lowercaseFileExt(aFileExt);
     ToLowerCase(lowercaseFileExt);
     // Read the MIME type from the category entry, if available
-    nsXPIDLCString type;
+    nsCString type;
     nsresult rv = catMan->GetCategoryEntry("ext-to-type-mapping",
                                            lowercaseFileExt.get(),
                                            getter_Copies(type));

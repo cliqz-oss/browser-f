@@ -9,7 +9,6 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/WeakPtr.h"
 #include "nsIDOMEventListener.h"
-#include "nsIDOMHTMLCanvasElement.h"
 #include "nsIObserver.h"
 #include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
@@ -30,11 +29,13 @@ class WebGLContext;
 
 namespace layers {
 class AsyncCanvasRenderer;
+class CanvasRenderer;
 class CanvasLayer;
 class Image;
 class Layer;
 class LayerManager;
 class SharedSurfaceTextureClient;
+class WebRenderCanvasData;
 } // namespace layers
 namespace gfx {
 class SourceSurface;
@@ -115,7 +116,6 @@ protected:
 };
 
 class HTMLCanvasElement final : public nsGenericHTMLElement,
-                                public nsIDOMHTMLCanvasElement,
                                 public CanvasRenderingContextHelper
 {
   enum {
@@ -124,20 +124,19 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
   };
 
   typedef layers::AsyncCanvasRenderer AsyncCanvasRenderer;
+  typedef layers::CanvasRenderer CanvasRenderer;
   typedef layers::CanvasLayer CanvasLayer;
   typedef layers::Layer Layer;
   typedef layers::LayerManager LayerManager;
+  typedef layers::WebRenderCanvasData WebRenderCanvasData;
 
 public:
   explicit HTMLCanvasElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLCanvasElement, canvas)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLCanvasElement, canvas)
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
-
-  // nsIDOMHTMLCanvasElement
-  NS_DECL_NSIDOMHTMLCANVASELEMENT
 
   // CC
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(HTMLCanvasElement,
@@ -265,7 +264,8 @@ public:
    * caller's responsibility to keep them alive. Once a registered
    * FrameCaptureListener is destroyed it will be automatically deregistered.
    */
-  nsresult RegisterFrameCaptureListener(FrameCaptureListener* aListener);
+  nsresult RegisterFrameCaptureListener(FrameCaptureListener* aListener,
+                                        bool aReturnPlaceholderData);
 
   /*
    * Returns true when there is at least one registered FrameCaptureListener
@@ -288,18 +288,18 @@ public:
                        const TimeStamp& aTime);
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
-  nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute, int32_t aModType) const override;
+  nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute, int32_t aModType) const override;
 
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;
   nsresult CopyInnerTo(mozilla::dom::Element* aDest,
                        bool aPreallocateChildren);
 
-  virtual nsresult GetEventTargetParent(
-                     mozilla::EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
   /*
    * Helpers called by various users of Canvas
@@ -308,6 +308,10 @@ public:
   already_AddRefed<Layer> GetCanvasLayer(nsDisplayListBuilder* aBuilder,
                                          Layer *aOldLayer,
                                          LayerManager *aManager);
+  bool UpdateWebRenderCanvasData(nsDisplayListBuilder* aBuilder,
+                                 WebRenderCanvasData* aCanvasData);
+  bool InitializeCanvasRenderer(nsDisplayListBuilder* aBuilder,
+                                CanvasRenderer* aRenderer);
   // Should return true if the canvas layer should always be marked inactive.
   // We should return true here if we can't do accelerated compositing with
   // a non-BasicCanvasLayer.
@@ -337,8 +341,6 @@ public:
   static void SetAttrFromAsyncCanvasRenderer(AsyncCanvasRenderer *aRenderer);
   static void InvalidateFromAsyncCanvasRenderer(AsyncCanvasRenderer *aRenderer);
 
-  void StartVRPresentation();
-  void StopVRPresentation();
   already_AddRefed<layers::SharedSurfaceTextureClient> GetVRFrame();
 
 protected:
@@ -351,7 +353,8 @@ protected:
   virtual already_AddRefed<nsICanvasRenderingContextInternal>
   CreateContext(CanvasContextType aContextType) override;
 
-  nsresult ExtractData(nsAString& aType,
+  nsresult ExtractData(JSContext* aCx,
+                       nsAString& aType,
                        const nsAString& aOptions,
                        nsIInputStream** aStream);
   nsresult ToDataURLImpl(JSContext* aCx,
@@ -363,11 +366,12 @@ protected:
                             File** aResult);
   void CallPrintCallback();
 
-  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
-  virtual nsresult OnAttrSetButNotChanged(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult OnAttrSetButNotChanged(int32_t aNamespaceID, nsAtom* aName,
                                           const nsAttrValueOrString& aValue,
                                           bool aNotify) override;
 
@@ -382,7 +386,6 @@ protected:
   RefPtr<AsyncCanvasRenderer> mAsyncCanvasRenderer;
   RefPtr<OffscreenCanvas> mOffscreenCanvas;
   RefPtr<HTMLCanvasElementObserver> mContextObserver;
-  bool mVRPresentationActive;
 
 public:
   // Record whether this canvas should be write-only or not.
@@ -415,7 +418,7 @@ private:
    * @param aName the localname of the attribute being set
    * @param aNotify Whether we plan to notify document observers.
    */
-  void AfterMaybeChangeAttr(int32_t aNamespaceID, nsIAtom* aName, bool aNotify);
+  void AfterMaybeChangeAttr(int32_t aNamespaceID, nsAtom* aName, bool aNotify);
 };
 
 class HTMLCanvasPrintState final : public nsWrapperCache

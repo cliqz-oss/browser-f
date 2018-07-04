@@ -55,11 +55,15 @@
 
 const PREF_ACTIVE = "security.mixed_content.block_active_content";
 const PREF_DISPLAY = "security.mixed_content.block_display_content";
+const PREF_DISPLAY_UPGRADE = "security.mixed_content.upgrade_display_content";
 const HTTPS_TEST_ROOT = getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com");
 const HTTP_TEST_ROOT = getRootDirectory(gTestPath).replace("chrome://mochitests/content", "http://example.com");
+const PREF_INSECURE_ICON = "security.insecure_connection_icon.enabled";
 
 var origBlockActive;
 var origBlockDisplay;
+var origUpgradeDisplay;
+var origInsecurePref;
 var gTestBrowser = null;
 
 // ------------------------ Helper Functions ---------------------
@@ -68,6 +72,8 @@ registerCleanupFunction(function() {
   // Set preferences back to their original values
   Services.prefs.setBoolPref(PREF_ACTIVE, origBlockActive);
   Services.prefs.setBoolPref(PREF_DISPLAY, origBlockDisplay);
+  Services.prefs.setBoolPref(PREF_DISPLAY_UPGRADE, origUpgradeDisplay);
+  Services.prefs.setBoolPref(PREF_INSECURE_ICON, origInsecurePref);
 
   // Make sure we are online again
   Services.io.offline = false;
@@ -82,13 +88,23 @@ function cleanUpAfterTests() {
 // ------------------------ Test 1 ------------------------------
 
 function test1() {
+  Services.prefs.setBoolPref(PREF_INSECURE_ICON, false);
+
   var url = HTTPS_TEST_ROOT + "test_mcb_redirect.html";
   BrowserTestUtils.loadURI(gTestBrowser, url);
   BrowserTestUtils.browserLoaded(gTestBrowser).then(checkUIForTest1);
 }
 
-function checkUIForTest1() {
-  assertMixedContentBlockingState(gTestBrowser, {activeLoaded: false, activeBlocked: true, passiveLoaded: false});
+function testInsecure1() {
+  Services.prefs.setBoolPref(PREF_INSECURE_ICON, true);
+
+  var url = HTTPS_TEST_ROOT + "test_mcb_redirect.html";
+  BrowserTestUtils.loadURI(gTestBrowser, url);
+  BrowserTestUtils.browserLoaded(gTestBrowser).then(checkUIForTest1);
+}
+
+async function checkUIForTest1() {
+  await assertMixedContentBlockingState(gTestBrowser, {activeLoaded: false, activeBlocked: true, passiveLoaded: false});
 
   ContentTask.spawn(gTestBrowser, null, async function() {
     var expected = "script blocked";
@@ -106,8 +122,8 @@ function test2() {
   BrowserTestUtils.browserLoaded(gTestBrowser).then(checkUIForTest2);
 }
 
-function checkUIForTest2() {
-  assertMixedContentBlockingState(gTestBrowser, {activeLoaded: false, activeBlocked: false, passiveLoaded: false});
+async function checkUIForTest2() {
+  await assertMixedContentBlockingState(gTestBrowser, {activeLoaded: false, activeBlocked: false, passiveLoaded: false});
 
   ContentTask.spawn(gTestBrowser, null, async function() {
     var expected = "script executed";
@@ -128,7 +144,7 @@ function test3() {
 
 function checkLoadEventForTest3() {
   ContentTask.spawn(gTestBrowser, null, async function() {
-    var expected = "image blocked"
+    var expected = "image blocked";
     await ContentTaskUtils.waitForCondition(
       () => content.document.getElementById("mctestdiv").innerHTML == expected,
       "OK: Expected result in innerHTML for Test3!");
@@ -146,7 +162,7 @@ function test4() {
 
 function checkLoadEventForTest4() {
   ContentTask.spawn(gTestBrowser, null, async function() {
-    var expected = "image loaded"
+    var expected = "image loaded";
     await ContentTaskUtils.waitForCondition(
       () => content.document.getElementById("mctestdiv").innerHTML == expected,
       "OK: Expected result in innerHTML for Test4!");
@@ -169,7 +185,7 @@ function test5() {
 
 function checkLoadEventForTest5() {
   ContentTask.spawn(gTestBrowser, null, async function() {
-    var expected = "image loaded"
+    var expected = "image loaded";
     await ContentTaskUtils.waitForCondition(
       () => content.document.getElementById("mctestdiv").innerHTML == expected,
       "OK: Expected result in innerHTML for Test5!");
@@ -196,7 +212,7 @@ function test6() {
 
 function checkLoadEventForTest6() {
   ContentTask.spawn(gTestBrowser, null, async function() {
-    var expected = "image blocked"
+    var expected = "image blocked";
     await ContentTaskUtils.waitForCondition(
       () => content.document.getElementById("mctestdiv").innerHTML == expected,
       "OK: Expected result in innerHTML for Test6!");
@@ -217,7 +233,7 @@ function test7() {
 
 function checkLoadEventForTest7() {
   ContentTask.spawn(gTestBrowser, null, async function() {
-    var expected = "image loaded"
+    var expected = "image loaded";
     await ContentTaskUtils.waitForCondition(
       () => content.document.getElementById("mctestdiv").innerHTML == expected,
       "OK: Expected result in innerHTML for Test7!");
@@ -239,7 +255,7 @@ function test8() {
 
 function checkLoadEventForTest8() {
   ContentTask.spawn(gTestBrowser, null, async function() {
-    var expected = "image loaded"
+    var expected = "image loaded";
     await ContentTaskUtils.waitForCondition(
       () => content.document.getElementById("mctestdiv").innerHTML == expected,
       "OK: Expected result in innerHTML for Test8!");
@@ -265,7 +281,7 @@ function test9() {
 
 function checkLoadEventForTest9() {
   ContentTask.spawn(gTestBrowser, null, async function() {
-    var expected = "image blocked"
+    var expected = "image blocked";
     await ContentTaskUtils.waitForCondition(
       () => content.document.getElementById("mctestdiv").innerHTML == expected,
       "OK: Expected result in innerHTML for Test9!");
@@ -285,8 +301,11 @@ function test() {
   // Store original preferences so we can restore settings after testing
   origBlockActive = Services.prefs.getBoolPref(PREF_ACTIVE);
   origBlockDisplay = Services.prefs.getBoolPref(PREF_DISPLAY);
+  origUpgradeDisplay = Services.prefs.getBoolPref(PREF_DISPLAY_UPGRADE);
+  origInsecurePref = Services.prefs.getBoolPref(PREF_INSECURE_ICON);
   Services.prefs.setBoolPref(PREF_ACTIVE, true);
   Services.prefs.setBoolPref(PREF_DISPLAY, true);
+  Services.prefs.setBoolPref(PREF_DISPLAY_UPGRADE, false);
 
   var newTab = BrowserTestUtils.addTab(gBrowser);
   gBrowser.selectedTab = newTab;

@@ -10,27 +10,24 @@
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/Unused.h"
+#include "mozilla/ipc/ProtocolUtils.h"
+#include "mozilla/FileUtils.h"
 
+/* Scale DC by keeping aspect ratio */
 static
 float ComputeScaleFactor(int aDCWidth, int aDCHeight,
                          int aPageWidth, int aPageHeight)
 {
   MOZ_ASSERT(aPageWidth !=0 && aPageWidth != 0);
 
-  float scaleFactor = 1.0;
-  // If page fits DC - no scaling needed.
-  if (aDCWidth < aPageWidth || aDCHeight < aPageHeight) {
-    float xFactor =
-      static_cast<float>(aDCWidth) / static_cast <float>(aPageWidth);
-    float yFactor =
-      static_cast<float>(aDCHeight) / static_cast <float>(aPageHeight);
-    scaleFactor = std::min(xFactor, yFactor);
-  }
-  return scaleFactor;
+  return (aDCWidth >= aPageWidth && aDCHeight >= aPageHeight)
+    ? 1.0 /* If page fits DC - no scaling needed. */
+    : std::min(static_cast<float>(aDCWidth) / static_cast<float>(aPageWidth),         static_cast<float>(aDCHeight) / static_cast<float>(aPageHeight));
 }
 
 PDFViaEMFPrintHelper::PDFViaEMFPrintHelper()
   : mPDFDoc(nullptr)
+  , mPrfile(nullptr)
 {
 }
 
@@ -40,34 +37,55 @@ PDFViaEMFPrintHelper::~PDFViaEMFPrintHelper()
 }
 
 nsresult
-PDFViaEMFPrintHelper::OpenDocument(nsIFile *aFile)
+PDFViaEMFPrintHelper::OpenDocument(nsIFile* aFile)
 {
   MOZ_ASSERT(aFile);
+
   if (mPDFDoc) {
-    MOZ_ASSERT_UNREACHABLE("We can only open one PDF at a time");
+    MOZ_ASSERT_UNREACHABLE("We can only open one PDF at a time,"
+                           "Use CloseDocument() to close the opened file"
+                           "before calling OpenDocument()");
     return NS_ERROR_FAILURE;
   }
 
-  if (!mPDFiumEngine) {
-    mPDFiumEngine = PDFiumEngineShim::GetInstanceOrNull();
-    NS_ENSURE_TRUE(mPDFiumEngine, NS_ERROR_FAILURE);
-  }
-
-  nsAutoCString nativePath;
-  nsresult rv = aFile->GetNativePath(nativePath);
+  AutoFDClose prFileDesc;
+  nsresult rv = aFile->OpenNSPRFileDesc(PR_RDONLY, 0, &prFileDesc.rwget());
   if (NS_FAILED(rv)) {
     return rv;
   }
 
-  mPDFDoc = mPDFiumEngine->LoadDocument(nativePath.get(), nullptr);
-  if (!mPDFDoc) {
+  return OpenDocument(FileDescriptor(FileDescriptor::PlatformHandleType(
+                                     PR_FileDesc2NativeHandle(prFileDesc))));
+}
+
+nsresult
+PDFViaEMFPrintHelper::OpenDocument(const FileDescriptor& aFD)
+{
+  MOZ_ASSERT(!mPrfile, "Forget to call CloseDocument?");
+
+  if (mPDFDoc) {
+    MOZ_ASSERT_UNREACHABLE("We can only open one PDF at a time, "
+                           "Use CloseDocument() to close the opened file "
+                           "before calling OpenDocument()");
     return NS_ERROR_FAILURE;
   }
 
-  if (mPDFiumEngine->GetPageCount(mPDFDoc) < 1) {
-    CloseDocument();
+  NS_ENSURE_TRUE(CreatePDFiumEngineIfNeed(), NS_ERROR_FAILURE);
+
+  auto rawFD = aFD.ClonePlatformHandle();
+  PRFileDesc* prfile = PR_ImportFile(PROsfd(rawFD.release()));
+  NS_ENSURE_TRUE(prfile, NS_ERROR_FAILURE);
+
+  mPDFDoc = mPDFiumEngine->LoadDocument(prfile, nullptr);
+  if (!mPDFDoc) {
+    PR_Close(prfile);
     return NS_ERROR_FAILURE;
   }
+
+  // mPDFiumEngine keeps using this handle until we close mPDFDoc. Instead of
+  // closing this HANDLE here, we close it in
+  // PDFViaEMFPrintHelper::CloseDocument.
+  mPrfile = prfile;
 
   return NS_OK;
 }
@@ -87,9 +105,8 @@ PDFViaEMFPrintHelper::RenderPageToDC(HDC aDC, unsigned int aPageIndex,
   FPDF_PAGE pdfPage = mPDFiumEngine->LoadPage(mPDFDoc, aPageIndex);
   NS_ENSURE_TRUE(pdfPage, false);
 
-  int dcWidth = ::GetDeviceCaps(aDC, HORZRES);
-  int dcHeight = ::GetDeviceCaps(aDC, VERTRES);
-  float scaleFactor = ComputeScaleFactor(dcWidth,dcHeight,
+  float scaleFactor = ComputeScaleFactor(::GetDeviceCaps(aDC, HORZRES),
+                                         ::GetDeviceCaps(aDC, VERTRES),
                                          aPageWidth, aPageHeight);
   int savedState = ::SaveDC(aDC);
   ::SetGraphicsMode(aDC, GM_ADVANCED);
@@ -115,6 +132,15 @@ bool
 PDFViaEMFPrintHelper::DrawPage(HDC aPrinterDC, unsigned int aPageIndex,
                                int aPageWidth, int aPageHeight)
 {
+  MOZ_ASSERT(aPrinterDC);
+
+  // OpenDocument might fail.
+  if (!mPDFDoc) {
+    MOZ_ASSERT_UNREACHABLE("Make sure OpenDocument return true before"
+                           "using DrawPage.");
+    return false;
+  }
+
   // There is a comment in Chromium.
   // https://cs.chromium.org/chromium/src/pdf/pdfium/pdfium_engine.cc?rcl=9ad9f6860b4d6a4ec7f7f975b2c99672e02d5d49&l=4008
   // Some PDFs seems to render very slowly if RenderPageToDC is directly used
@@ -125,7 +151,6 @@ PDFViaEMFPrintHelper::DrawPage(HDC aPrinterDC, unsigned int aPageIndex,
   // whether our approach will avoid the performance issues though.  Bug
   // 1359298 covers investigating that.
 
-  MOZ_ASSERT(aPrinterDC);
   WindowsEMF emf;
   bool result = emf.InitForDrawing();
   NS_ENSURE_TRUE(result, false);
@@ -134,15 +159,24 @@ PDFViaEMFPrintHelper::DrawPage(HDC aPrinterDC, unsigned int aPageIndex,
   NS_ENSURE_TRUE(result, false);
 
   RECT printRect = {0, 0, aPageWidth, aPageHeight};
-  result = emf.Playback(aPrinterDC, &printRect);
+  result = emf.Playback(aPrinterDC, printRect);
   return result;
 }
 
 bool
-PDFViaEMFPrintHelper::DrawPageToFile(const wchar_t* aFilePath,
+PDFViaEMFPrintHelper::SavePageToFile(const wchar_t* aFilePath,
                                      unsigned int aPageIndex,
                                      int aPageWidth, int aPageHeight)
 {
+  MOZ_ASSERT(aFilePath);
+
+  // OpenDocument might fail.
+  if (!mPDFDoc) {
+    MOZ_ASSERT_UNREACHABLE("Make sure OpenDocument return true before"
+                           "using DrawPageToFile.");
+    return false;
+  }
+
   WindowsEMF emf;
   bool result = emf.InitForDrawing(aFilePath);
   NS_ENSURE_TRUE(result, false);
@@ -152,6 +186,43 @@ PDFViaEMFPrintHelper::DrawPageToFile(const wchar_t* aFilePath,
   return emf.SaveToFile();
 }
 
+bool
+PDFViaEMFPrintHelper::SavePageToBuffer(unsigned int aPageIndex,
+                                       int aPageWidth, int aPageHeight,
+                                       ipc::Shmem& aMem,
+                                       mozilla::ipc::IShmemAllocator* aAllocator)
+{
+  MOZ_ASSERT(aAllocator);
+
+  // OpenDocument might fail.
+  if (!mPDFDoc) {
+    MOZ_ASSERT_UNREACHABLE("Make sure OpenDocument return true before"
+                           "using DrawPageToFile.");
+    return false;
+  }
+
+  WindowsEMF emf;
+  bool result = emf.InitForDrawing();
+  NS_ENSURE_TRUE(result, false);
+
+  result = RenderPageToDC(emf.GetDC(), aPageIndex, aPageWidth, aPageHeight);
+  NS_ENSURE_TRUE(result, false);
+
+  UINT emfSize = emf.GetEMFContentSize();
+  NS_ENSURE_TRUE(emfSize != 0, false);
+
+  auto shmType = ipc::SharedMemory::SharedMemoryType::TYPE_BASIC;
+  result = aAllocator->AllocShmem(emfSize, shmType, &aMem);
+  NS_ENSURE_TRUE(result, false);
+
+  if (!emf.GetEMFContentBits(aMem.get<BYTE>())) {
+    aAllocator->DeallocShmem(aMem);
+    return false;;
+  }
+
+  return true;
+}
+
 void
 PDFViaEMFPrintHelper::CloseDocument()
 {
@@ -159,4 +230,20 @@ PDFViaEMFPrintHelper::CloseDocument()
     mPDFiumEngine->CloseDocument(mPDFDoc);
     mPDFDoc = nullptr;
   }
+
+  if (mPrfile) {
+    PR_Close(mPrfile);
+    mPrfile = nullptr;
+  }
+}
+
+bool
+PDFViaEMFPrintHelper::CreatePDFiumEngineIfNeed()
+{
+  if (!mPDFiumEngine) {
+    mPDFiumEngine = PDFiumEngineShim::GetInstanceOrNull();
+    MOZ_ASSERT(mPDFiumEngine);
+  }
+
+  return !!mPDFiumEngine;
 }

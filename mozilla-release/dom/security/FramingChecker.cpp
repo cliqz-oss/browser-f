@@ -78,6 +78,11 @@ FramingChecker::CheckOneFrameOptionsPolicy(nsIHttpChannel* aHttpChannel,
     MOZ_CRASH();
   }
 
+  // If the X-Frame-Options value is SAMEORIGIN, then the top frame in the
+  // parent chain must be from the same origin as this document.
+  bool checkSameOrigin = aPolicy.LowerCaseEqualsLiteral("sameorigin");
+  nsCOMPtr<nsIURI> topUri;
+
   // Traverse up the parent chain and stop when we see a docshell whose
   // parent has a system principal, or a docshell corresponding to
   // <iframe mozbrowser>.
@@ -97,6 +102,17 @@ FramingChecker::CheckOneFrameOptionsPolicy(nsIHttpChannel* aHttpChannel,
           system) {
         // Found a system-principled doc: last docshell was top.
         break;
+      }
+
+      if (checkSameOrigin) {
+        topDoc->NodePrincipal()->GetURI(getter_AddRefs(topUri));
+        rv = ssm->CheckSameOriginURI(uri, topUri, true);
+
+        // one of the ancestors is not same origin as this document
+        if (NS_FAILED(rv)) {
+          ReportXFOViolation(curDocShellItem, uri, eSAMEORIGIN);
+          return false;
+        }
       }
     } else {
       return false;
@@ -119,18 +135,7 @@ FramingChecker::CheckOneFrameOptionsPolicy(nsIHttpChannel* aHttpChannel,
   }
 
   topDoc = curDocShellItem->GetDocument();
-  nsCOMPtr<nsIURI> topUri;
   topDoc->NodePrincipal()->GetURI(getter_AddRefs(topUri));
-
-  // If the X-Frame-Options value is SAMEORIGIN, then the top frame in the
-  // parent chain must be from the same origin as this document.
-  if (aPolicy.LowerCaseEqualsLiteral("sameorigin")) {
-    rv = ssm->CheckSameOriginURI(uri, topUri, true);
-    if (NS_FAILED(rv)) {
-      ReportXFOViolation(curDocShellItem, uri, eSAMEORIGIN);
-      return false; /* wasn't same-origin */
-    }
-  }
 
   // If the X-Frame-Options value is "allow-from [uri]", then the top
   // frame in the parent chain must be from that origin
@@ -181,6 +186,7 @@ ShouldIgnoreFrameOptions(nsIChannel* aChannel, nsIPrincipal* aPrincipal)
   // log warning to console that xfo is ignored because of CSP
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->GetLoadInfo();
   uint64_t innerWindowID = loadInfo ? loadInfo->GetInnerWindowID() : 0;
+  bool privateWindow = loadInfo ?  !!loadInfo->GetOriginAttributes().mPrivateBrowsingId : false;
   const char16_t* params[] = { u"x-frame-options",
                                u"frame-ancestors" };
   CSP_LogLocalizedStr("IgnoringSrcBecauseOfDirective",
@@ -190,7 +196,8 @@ ShouldIgnoreFrameOptions(nsIChannel* aChannel, nsIPrincipal* aPrincipal)
                       0,             // no linenumber
                       0,             // no columnnumber
                       nsIScriptError::warningFlag,
-                      "CSP", innerWindowID);
+                      "CSP", innerWindowID,
+                      privateWindow);
 
   return true;
 }
@@ -330,10 +337,12 @@ FramingChecker::ReportXFOViolation(nsIDocShellTreeItem* aTopDocShellItem,
       break;
   }
 
-  rv = errorObject->InitWithWindowID(msg, EmptyString(), EmptyString(), 0, 0,
-                                     nsIScriptError::errorFlag,
-                                     "X-Frame-Options",
-                                     topInnerWindow->WindowID());
+  // It is ok to use InitWithSanitizedSource, because the source string is
+  // empty.
+  rv = errorObject->InitWithSanitizedSource(msg, EmptyString(), EmptyString(),
+                                            0, 0, nsIScriptError::errorFlag,
+                                            "X-Frame-Options",
+                                            topInnerWindow->WindowID());
   if (NS_FAILED(rv)) {
     return;
   }

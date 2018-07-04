@@ -4,9 +4,11 @@ module.exports = {
   "extends": [
     "plugin:mozilla/browser-test"
   ],
+  "globals": {
+    "gBrowser": false
+  },
   "rules": {
     "mozilla/no-aArgs": "error",
-    "mozilla/no-cpows-in-tests": "error",
     "mozilla/reject-importGlobalProperties": "error",
     "mozilla/var-only-at-top-level": "error",
 
@@ -18,20 +20,18 @@ module.exports = {
     "curly": ["error", "multi-line"],
     "default-case": "off",
     "dot-location": ["error", "property"],
-    "dot-notation": "error",
+
     "eqeqeq": "off",
     "func-names": "off",
     "func-style": "off",
-    "generator-star-spacing": "off",
     "handle-callback-err": ["error", "er"],
-    "indent": ["error", 2, {"SwitchCase": 1}],
+    "indent-legacy": ["error", 2, {"SwitchCase": 1}],
     "max-nested-callbacks": ["error", 4],
     "max-params": "off",
     "max-statements": "off",
     "new-cap": ["error", {"capIsNew": false}],
     "new-parens": "error",
     "no-bitwise": "off",
-    "no-caller": "error",
     "no-catch-shadow": "error",
     "no-comma-dangle": "off",
     "no-console": "off",
@@ -75,7 +75,6 @@ module.exports = {
     "padded-blocks": ["error", "never"],
     "quote-props": "off",
     "radix": "error",
-    "semi": ["error", "always"],
     "semi-spacing": ["error", {"before": false, "after": true}],
     "sort-vars": "off",
     "space-in-brackets": "off",
@@ -87,7 +86,6 @@ module.exports = {
     "wrap-iife": "off",
     "wrap-regex": "off",
     "yoda": "error",
-
     "guard-for-in": "off",
     "newline-after-var": "off",
     "no-alert": "off",
@@ -105,7 +103,6 @@ module.exports = {
     "no-new": "off",
     "no-new-func": "off",
     "no-new-object": "off",
-    "no-new-wrappers": "off",
     "no-obj-calls": "off",
     "no-octal-escape": "off",
     "no-undef-init": "error",

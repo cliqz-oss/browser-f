@@ -2,25 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-this.EXPORTED_SYMBOLS = ["FxAccountsClient"];
+var EXPORTED_SYMBOLS = ["FxAccountsClient"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-common/hawkclient.js");
-Cu.import("resource://services-common/hawkrequest.js");
-Cu.import("resource://services-crypto/utils.js");
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://gre/modules/Credentials.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-common/hawkclient.js");
+ChromeUtils.import("resource://services-common/hawkrequest.js");
+ChromeUtils.import("resource://services-crypto/utils.js");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://gre/modules/Credentials.jsm");
 
 const HOST_PREF = "identity.fxaccounts.auth.uri";
 
 const SIGNIN = "/account/login";
 const SIGNUP = "/account/create";
 
-this.FxAccountsClient = function(host = Services.prefs.getCharPref(HOST_PREF)) {
+var FxAccountsClient = function(host = Services.prefs.getCharPref(HOST_PREF)) {
   this.host = host;
 
   // The FxA auth server expects requests to certain endpoints to be authorized
@@ -204,7 +202,8 @@ this.FxAccountsClient.prototype = {
   },
 
   /**
-   * Destroy the current session with the Firefox Account API server
+   * Destroy the current session with the Firefox Account API server and its
+   * associated device.
    *
    * @param sessionTokenHex
    *        The session token encoded in hex
@@ -433,7 +432,7 @@ this.FxAccountsClient.prototype = {
    */
   notifyDevices(sessionTokenHex, deviceIds, excludedIds, payload, TTL = 0) {
     if (deviceIds && excludedIds) {
-      throw new Error("You cannot specify excluded devices if deviceIds is set.")
+      throw new Error("You cannot specify excluded devices if deviceIds is set.");
     }
     const body = {
       to: deviceIds || "all",
@@ -444,6 +443,49 @@ this.FxAccountsClient.prototype = {
       body.excluded = excludedIds;
     }
     return this._request("/account/devices/notify", "POST",
+      deriveHawkCredentials(sessionTokenHex, "sessionToken"), body);
+  },
+
+  /**
+   * Retrieves messages from our device's message box.
+   *
+   * @method getMessages
+   * @param  sessionTokenHex - Session token obtained from signIn
+   * @param  [index] - If specified, only messages received after the one who
+   *                   had that index will be retrieved.
+   * @param  [limit] - Maximum number of messages to retrieve.
+   */
+  getMessages(sessionTokenHex, {index, limit}) {
+    const params = new URLSearchParams();
+    if (index != undefined) {
+      params.set("index", index);
+    }
+    if (limit != undefined) {
+      params.set("limit", limit);
+    }
+    const path = `/account/device/messages?${params.toString()}`;
+    return this._request(path, "GET",
+      deriveHawkCredentials(sessionTokenHex, "sessionToken"));
+  },
+
+  /**
+   * Stores a message in the recipient's message box.
+   *
+   * @method sendMessage
+   * @param  sessionTokenHex - Session token obtained from signIn
+   * @param  topic
+   * @param  to - Recipient device ID.
+   * @param  data
+   * @return Promise
+   *         Resolves to the request's response, (which should be an empty object)
+   */
+  sendMessage(sessionTokenHex, topic, to, data) {
+    const body = {
+      topic,
+      to,
+      data
+    };
+    return this._request("/account/devices/messages", "POST",
       deriveHawkCredentials(sessionTokenHex, "sessionToken"), body);
   },
 
@@ -459,6 +501,8 @@ this.FxAccountsClient.prototype = {
    *         Device name
    * @param  [options]
    *         Extra device options
+   * @param  options.capabilities
+   *         Device capabilities
    * @param  [options.pushCallback]
    *         `pushCallback` push endpoint callback
    * @param  [options.pushPublicKey]
@@ -484,36 +528,7 @@ this.FxAccountsClient.prototype = {
       body.pushPublicKey = options.pushPublicKey;
       body.pushAuthKey = options.pushAuthKey;
     }
-
-    return this._request(path, "POST", creds, body);
-  },
-
-  /**
-   * Delete a device and its associated session token, signing the user
-   * out of the server.
-   *
-   * @method signOutAndDestroyDevice
-   * @param  sessionTokenHex
-   *         Session token obtained from signIn
-   * @param  id
-   *         Device identifier
-   * @param  [options]
-   *         Options object
-   * @param  [options.service]
-   *         `service` query parameter
-   * @return Promise
-   *         Resolves to an empty object:
-   *         {}
-   */
-  signOutAndDestroyDevice(sessionTokenHex, id, options = {}) {
-    let path = "/account/device/destroy";
-
-    if (options.service) {
-      path += "?service=" + encodeURIComponent(options.service);
-    }
-
-    let creds = deriveHawkCredentials(sessionTokenHex, "sessionToken");
-    let body = { id };
+    body.capabilities = options.capabilities;
 
     return this._request(path, "POST", creds, body);
   },

@@ -41,6 +41,8 @@ class ImageURL;
 class imgCacheEntry
 {
 public:
+  static uint32_t SecondsFromPRTime(PRTime prTime);
+
   imgCacheEntry(imgLoader* loader, imgRequest* request,
                 bool aForcePrincipalCheck);
   ~imgCacheEntry();
@@ -201,7 +203,8 @@ public:
   uint32_t GetSize() const;
   void UpdateSize(int32_t diff);
   uint32_t GetNumElements() const;
-  typedef std::vector<RefPtr<imgCacheEntry> > queueContainer;
+  bool Contains(imgCacheEntry* aEntry) const;
+  typedef nsTArray<RefPtr<imgCacheEntry> > queueContainer;
   typedef queueContainer::iterator iterator;
   typedef queueContainer::const_iterator const_iterator;
 
@@ -290,6 +293,7 @@ public:
                                   nsIURI* aReferrerURI,
                                   ReferrerPolicy aReferrerPolicy,
                                   nsIPrincipal* aLoadingPrincipal,
+                                  uint64_t aRequestContextID,
                                   nsILoadGroup* aLoadGroup,
                                   imgINotificationObserver* aObserver,
                                   nsINode* aContext,
@@ -340,7 +344,16 @@ public:
   nsresult InitCache();
 
   bool RemoveFromCache(const ImageCacheKey& aKey);
-  bool RemoveFromCache(imgCacheEntry* entry);
+
+  // Enumeration describing if a given entry is in the cache queue or not.
+  // There are some cases we know the entry is definitely not in the queue.
+  enum class QueueState {
+    MaybeExists,
+    AlreadyRemoved
+  };
+
+  bool RemoveFromCache(imgCacheEntry* entry,
+                       QueueState aQueueState = QueueState::MaybeExists);
 
   bool PutIntoCache(const ImageCacheKey& aKey, imgCacheEntry* aEntry);
 
@@ -544,6 +557,7 @@ public:
                     bool forcePrincipalCheckForCacheEntry);
 
   void AddProxy(imgRequestProxy* aProxy);
+  void RemoveProxy(imgRequestProxy* aProxy);
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSITHREADRETARGETABLESTREAMLISTENER
@@ -554,6 +568,7 @@ public:
   NS_DECL_NSIASYNCVERIFYREDIRECTCALLBACK
 
 private:
+  void UpdateProxies(bool aCancelRequest, bool aSyncNotify);
   virtual ~imgCacheValidator();
 
   nsCOMPtr<nsIStreamListener> mDestListener;
@@ -562,7 +577,7 @@ private:
   nsCOMPtr<nsIChannel> mRedirectChannel;
 
   RefPtr<imgRequest> mRequest;
-  nsCOMArray<imgIRequest> mProxies;
+  AutoTArray<RefPtr<imgRequestProxy>, 4> mProxies;
 
   RefPtr<imgRequest> mNewRequest;
   RefPtr<imgCacheEntry> mNewEntry;

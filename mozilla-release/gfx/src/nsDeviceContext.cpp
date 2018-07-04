@@ -21,7 +21,7 @@
 #include "nsDebug.h"                    // for NS_NOTREACHED, NS_ASSERTION, etc
 #include "nsFont.h"                     // for nsFont
 #include "nsFontMetrics.h"              // for nsFontMetrics
-#include "nsIAtom.h"                    // for nsIAtom, NS_Atomize
+#include "nsAtom.h"                    // for nsAtom, NS_Atomize
 #include "nsID.h"
 #include "nsIDeviceContextSpec.h"       // for nsIDeviceContextSpec
 #include "nsLanguageAtomService.h"      // for nsLanguageAtomService
@@ -68,7 +68,7 @@ protected:
     ~nsFontCache() {}
 
     nsDeviceContext*          mContext; // owner
-    nsCOMPtr<nsIAtom>         mLocaleLanguage;
+    RefPtr<nsAtom>         mLocaleLanguage;
     nsTArray<nsFontMetrics*>  mFontMetrics;
 };
 
@@ -114,7 +114,7 @@ already_AddRefed<nsFontMetrics>
 nsFontCache::GetMetricsFor(const nsFont& aFont,
                            const nsFontMetrics::Params& aParams)
 {
-    nsIAtom* language = aParams.language ? aParams.language
+    nsAtom* language = aParams.language ? aParams.language
                                          : mLocaleLanguage.get();
 
     // First check our cache
@@ -144,7 +144,7 @@ nsFontCache::GetMetricsFor(const nsFont& aFont,
     RefPtr<nsFontMetrics> fm = new nsFontMetrics(aFont, params, mContext);
     // the mFontMetrics list has the "head" at the end, because append
     // is cheaper than insert
-    mFontMetrics.AppendElement(do_AddRef(fm.get()).take());
+    mFontMetrics.AppendElement(do_AddRef(fm).take());
     return fm.forget();
 }
 
@@ -382,14 +382,13 @@ nsDeviceContext::CreateRenderingContextCommon(bool aWantReferenceContext)
     MOZ_ASSERT(IsPrinterContext());
     MOZ_ASSERT(mWidth > 0 && mHeight > 0);
 
-    // This will usually be null, depending on the pref print.print_via_parent.
-    RefPtr<DrawEventRecorder> recorder;
-    mDeviceContextSpec->GetDrawEventRecorder(getter_AddRefs(recorder));
-
     RefPtr<gfx::DrawTarget> dt;
     if (aWantReferenceContext) {
-      dt = mPrintTarget->GetReferenceDrawTarget(recorder);
+      dt = mPrintTarget->GetReferenceDrawTarget();
     } else {
+      // This will be null if e10s is disabled or print.print_via_parent=false.
+      RefPtr<DrawEventRecorder> recorder;
+      mDeviceContextSpec->GetDrawEventRecorder(getter_AddRefs(recorder));
       dt = mPrintTarget->MakeDrawTarget(gfx::IntSize(mWidth, mHeight), recorder);
     }
 
@@ -426,7 +425,7 @@ nsDeviceContext::CreateRenderingContextCommon(bool aWantReferenceContext)
     }
     transform.PreScale(mPrintingScale, mPrintingScale);
 
-    pContext->SetMatrix(transform);
+    pContext->SetMatrixDouble(transform);
     return pContext.forget();
 }
 
@@ -454,8 +453,8 @@ nsDeviceContext::GetDeviceSurfaceDimensions(nscoord &aWidth, nscoord &aHeight)
     } else {
         nsRect area;
         ComputeFullAreaUsingScreen(&area);
-        aWidth = area.width;
-        aHeight = area.height;
+        aWidth = area.Width();
+        aHeight = area.Height();
     }
 
     return NS_OK;
@@ -465,10 +464,7 @@ nsresult
 nsDeviceContext::GetRect(nsRect &aRect)
 {
     if (IsPrinterContext()) {
-        aRect.x = 0;
-        aRect.y = 0;
-        aRect.width = mWidth;
-        aRect.height = mHeight;
+        aRect.SetRect(0, 0, mWidth, mHeight);
     } else
         ComputeFullAreaUsingScreen ( &aRect );
 
@@ -479,10 +475,7 @@ nsresult
 nsDeviceContext::GetClientRect(nsRect &aRect)
 {
     if (IsPrinterContext()) {
-        aRect.x = 0;
-        aRect.y = 0;
-        aRect.width = mWidth;
-        aRect.height = mHeight;
+        aRect.SetRect(0, 0, mWidth, mHeight);
     }
     else
         ComputeClientRectUsingScreen(&aRect);
@@ -535,6 +528,10 @@ nsDeviceContext::BeginDocument(const nsAString& aTitle,
         }
         mIsCurrentlyPrintingDoc = true;
     }
+
+    // Warn about any failure (except user cancelling):
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv) || rv == NS_ERROR_ABORT,
+                         "nsDeviceContext::BeginDocument failed");
 
     return rv;
 }
@@ -621,10 +618,10 @@ nsDeviceContext::ComputeClientRectUsingScreen(nsRect* outRect)
         screen->GetAvailRect(&x, &y, &width, &height);
 
         // convert to device units
-        outRect->y = NSIntPixelsToAppUnits(y, AppUnitsPerDevPixel());
-        outRect->x = NSIntPixelsToAppUnits(x, AppUnitsPerDevPixel());
-        outRect->width = NSIntPixelsToAppUnits(width, AppUnitsPerDevPixel());
-        outRect->height = NSIntPixelsToAppUnits(height, AppUnitsPerDevPixel());
+        outRect->SetRect(NSIntPixelsToAppUnits(x, AppUnitsPerDevPixel()),
+                         NSIntPixelsToAppUnits(y, AppUnitsPerDevPixel()),
+                         NSIntPixelsToAppUnits(width, AppUnitsPerDevPixel()),
+                         NSIntPixelsToAppUnits(height, AppUnitsPerDevPixel()));
     }
 }
 
@@ -642,13 +639,12 @@ nsDeviceContext::ComputeFullAreaUsingScreen(nsRect* outRect)
         screen->GetRect ( &x, &y, &width, &height );
 
         // convert to device units
-        outRect->y = NSIntPixelsToAppUnits(y, AppUnitsPerDevPixel());
-        outRect->x = NSIntPixelsToAppUnits(x, AppUnitsPerDevPixel());
-        outRect->width = NSIntPixelsToAppUnits(width, AppUnitsPerDevPixel());
-        outRect->height = NSIntPixelsToAppUnits(height, AppUnitsPerDevPixel());
-
-        mWidth = outRect->width;
-        mHeight = outRect->height;
+        outRect->SetRect(NSIntPixelsToAppUnits(x, AppUnitsPerDevPixel()),
+                         NSIntPixelsToAppUnits(y, AppUnitsPerDevPixel()),
+                         NSIntPixelsToAppUnits(width, AppUnitsPerDevPixel()),
+                         NSIntPixelsToAppUnits(height, AppUnitsPerDevPixel()));
+        mWidth = outRect->Width();
+        mHeight = outRect->Height();
     }
 }
 
@@ -734,4 +730,25 @@ nsDeviceContext::GetDesktopToDeviceScale()
     }
 
     return DesktopToLayoutDeviceScale(1.0);
+}
+
+bool
+nsDeviceContext::IsSyncPagePrinting() const
+{
+  MOZ_ASSERT(mPrintTarget);
+  return mPrintTarget->IsSyncPagePrinting();
+}
+
+void
+nsDeviceContext::RegisterPageDoneCallback(PrintTarget::PageDoneCallback&& aCallback)
+{
+  MOZ_ASSERT(mPrintTarget && aCallback && !IsSyncPagePrinting());
+  mPrintTarget->RegisterPageDoneCallback(Move(aCallback));
+}
+void
+nsDeviceContext::UnregisterPageDoneCallback()
+{
+  if (mPrintTarget) {
+    mPrintTarget->UnregisterPageDoneCallback();
+  }
 }

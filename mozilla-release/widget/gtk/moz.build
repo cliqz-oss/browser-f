@@ -16,6 +16,12 @@ with Files("*WindowSurface*"):
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
     DIRS += ['mozgtk']
 
+if CONFIG['MOZ_WAYLAND']:
+    if CONFIG['GLIB_LIBS']:
+        DIRS += ['wayland', 'mozwayland']
+    else:
+        error('We support Wayland on glibc systems only, see Bug 1409707 for reference.')
+
 EXPORTS += [
     'mozcontainer.h',
     'nsGTKToolkit.h',
@@ -42,6 +48,7 @@ UNIFIED_SOURCES += [
     'nsToolkit.cpp',
     'nsWidgetFactory.cpp',
     'ScreenHelperGTK.cpp',
+    'TaskbarProgress.cpp',
     'WakeLockListener.cpp',
     'WidgetTraceEvent.cpp',
     'WidgetUtilsGtk.cpp',
@@ -55,31 +62,31 @@ if CONFIG['MOZ_X11']:
     UNIFIED_SOURCES += [
         'CompositorWidgetChild.cpp',
         'CompositorWidgetParent.cpp',
-        'InProcessX11CompositorWidget.cpp',
+        'GtkCompositorWidget.cpp',
+        'InProcessGtkCompositorWidget.cpp',
         'nsIdleServiceGTK.cpp',
-        'X11CompositorWidget.cpp',
     ]
     EXPORTS.mozilla.widget += [
         'CompositorWidgetChild.h',
         'CompositorWidgetParent.h',
-        'InProcessX11CompositorWidget.h',
-        'X11CompositorWidget.h',
+        'GtkCompositorWidget.h',
+        'InProcessGtkCompositorWidget.h',
     ]
 
 if CONFIG['NS_PRINTING']:
     UNIFIED_SOURCES += [
         'nsCUPSShim.cpp',
         'nsDeviceContextSpecG.cpp',
-        'nsPaperPS.cpp',
         'nsPrintDialogGTK.cpp',
-        'nsPrintOptionsGTK.cpp',
         'nsPrintSettingsGTK.cpp',
+        'nsPrintSettingsServiceGTK.cpp',
         'nsPSPrinters.cpp',
     ]
 
 if CONFIG['MOZ_X11']:
     UNIFIED_SOURCES += [
         'nsClipboard.cpp',
+        'nsClipboardX11.cpp',
         'nsDragService.cpp',
         'WindowSurfaceProvider.cpp',
         'WindowSurfaceX11.cpp',
@@ -88,6 +95,12 @@ if CONFIG['MOZ_X11']:
     ]
     EXPORTS.mozilla.widget += [
         'WindowSurfaceProvider.h',
+    ]
+
+if CONFIG['MOZ_WAYLAND']:
+    UNIFIED_SOURCES += [
+        'nsClipboardWayland.cpp',
+        'WindowSurfaceWayland.cpp',
     ]
 
 if CONFIG['ACCESSIBILITY']:

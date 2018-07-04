@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -27,27 +28,26 @@ public:
   explicit SharedPlanarYCbCrImage(ImageClient* aCompositable);
 
 protected:
-  ~SharedPlanarYCbCrImage();
+  virtual ~SharedPlanarYCbCrImage();
 
 public:
-  virtual TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override;
-  virtual uint8_t* GetBuffer() override;
+  TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override;
+  uint8_t* GetBuffer() const override;
 
-  virtual already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
-  virtual bool CopyData(const PlanarYCbCrData& aData) override;
-  virtual bool AdoptData(const Data &aData) override;
+  already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
+  bool CopyData(const PlanarYCbCrData& aData) override;
+  bool AdoptData(const Data& aData) override;
 
-  virtual bool Allocate(PlanarYCbCrData& aData);
-  virtual uint8_t* AllocateAndGetNewBuffer(uint32_t aSize) override;
+  bool Allocate(PlanarYCbCrData& aData);
 
-  virtual bool IsValid() override;
+  bool IsValid() const override;
 
-  virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override
+  size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override
   {
     return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
   }
 
-  virtual size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override;
+  size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override;
 
 private:
   RefPtr<TextureClient> mTextureClient;

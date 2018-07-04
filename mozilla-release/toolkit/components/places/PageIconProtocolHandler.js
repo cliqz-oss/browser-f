@@ -4,14 +4,12 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
 
 function makeDefaultFaviconChannel(uri, loadInfo) {
   let channel = Services.io.newChannelFromURIWithLoadInfo(
@@ -73,9 +71,10 @@ PageIconProtocolHandler.prototype = {
   },
 
   newURI(spec, originCharset, baseURI) {
-    let uri = Cc["@mozilla.org/network/simple-uri;1"].createInstance(Ci.nsIURI);
-    uri.spec = spec;
-    return uri;
+    return Cc["@mozilla.org/network/simple-uri-mutator;1"]
+             .createInstance(Ci.nsIURIMutator)
+             .setSpec(spec)
+             .finalize();
   },
 
   newChannel2(uri, loadInfo) {
@@ -94,7 +93,7 @@ PageIconProtocolHandler.prototype = {
       channel.contentStream = pipe.inputStream;
       channel.loadInfo = loadInfo;
 
-      let pageURI = NetUtil.newURI(uri.path.replace(/[&#]size=[^&]+$/, ""));
+      let pageURI = NetUtil.newURI(uri.pathQueryRef.replace(/[&#]size=[^&]+$/, ""));
       let preferredSize = PlacesUtils.favicons.preferredSizeFromURI(uri);
       PlacesUtils.favicons.getFaviconDataForPage(pageURI, (iconURI, len, data, mimeType) => {
         if (len == 0) {
@@ -125,8 +124,9 @@ PageIconProtocolHandler.prototype = {
   },
 
   classID: Components.ID("{60a1f7c6-4ff9-4a42-84d3-5a185faa6f32}"),
-  QueryInterface: XPCOMUtils.generateQI([
-    Ci.nsIProtocolHandler
+  QueryInterface: ChromeUtils.generateQI([
+    Ci.nsIProtocolHandler,
+    Ci.nsISupportsWeakReference,
   ])
 };
 

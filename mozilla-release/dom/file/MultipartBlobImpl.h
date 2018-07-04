@@ -18,7 +18,7 @@ namespace dom {
 class MultipartBlobImpl final : public BaseBlobImpl
 {
 public:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(MultipartBlobImpl, BaseBlobImpl)
 
   // Create as a file
   static already_AddRefed<MultipartBlobImpl>
@@ -71,7 +71,7 @@ public:
     return mLength;
   }
 
-  virtual void GetInternalStream(nsIInputStream** aInputStream,
+  virtual void CreateInputStream(nsIInputStream** aInputStream,
                                  ErrorResult& aRv) override;
 
   virtual const nsTArray<RefPtr<BlobImpl>>* GetSubBlobImpls() const override
@@ -91,6 +91,8 @@ public:
   }
 
   virtual bool MayBeClonedToOtherThreads() const override;
+
+  size_t GetAllocationSize() const override;
 
 protected:
   MultipartBlobImpl(nsTArray<RefPtr<BlobImpl>>&& aBlobImpls,

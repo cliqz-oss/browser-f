@@ -2,7 +2,7 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-Cu.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 
 AddonTestUtils.init(this);
 AddonTestUtils.overrideCertDB();
@@ -61,7 +61,13 @@ add_task(async function() {
     return extension.awaitMessage("manifest");
   }
 
-  Components.manager.addBootstrappedManifestLocation(do_get_file("data/locales/"));
+  // At the moment extension language negotiation is tied to Firefox language
+  // negotiation result. That means that to test an extension in `fr`, we need
+  // to mock `fr` being available in Firefox and then request it.
+  //
+  // In the future, we should provide some way for tests to decouple their
+  // language selection from that of Firefox.
+  Services.locale.setAvailableLocales(["en-US", "fr", "jp"]);
 
   await extension.startup();
 
@@ -70,7 +76,7 @@ add_task(async function() {
   equal(manifest.name, "en-US 1.0", "Got expected manifest name");
 
 
-  do_print("Restart and re-check");
+  info("Restart and re-check");
   await AddonTestUtils.promiseRestartManager();
   await extension.awaitStartup();
 
@@ -79,9 +85,8 @@ add_task(async function() {
   equal(manifest.name, "en-US 1.0", "Got expected manifest name");
 
 
-  do_print("Change locale to 'fr' and restart");
-  Preferences.set("intl.locale.matchOS", false);
-  Preferences.set("general.useragent.locale", "fr");
+  info("Change locale to 'fr' and restart");
+  Services.locale.setRequestedLocales(["fr"]);
   await AddonTestUtils.promiseRestartManager();
   await extension.awaitStartup();
 
@@ -90,7 +95,7 @@ add_task(async function() {
   equal(manifest.name, "fr 1.0", "Got expected manifest name");
 
 
-  do_print("Update to version 1.1");
+  info("Update to version 1.1");
   await extension.upgrade(makeExtension({version: "1.1"}));
 
   equal(extension.version, "1.1", "Expected extension version");
@@ -98,8 +103,8 @@ add_task(async function() {
   equal(manifest.name, "fr 1.1", "Got expected manifest name");
 
 
-  do_print("Change locale to 'en-US' and restart");
-  Preferences.set("general.useragent.locale", "en-US");
+  info("Change locale to 'en-US' and restart");
+  Services.locale.setRequestedLocales(["en-US"]);
   await AddonTestUtils.promiseRestartManager();
   await extension.awaitStartup();
 

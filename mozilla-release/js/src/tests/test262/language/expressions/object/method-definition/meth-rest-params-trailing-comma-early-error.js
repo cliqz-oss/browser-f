@@ -7,7 +7,7 @@ description: It's a syntax error if a FunctionRestParameter is followed by a tra
 esid: sec-runtime-semantics-definemethod
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     MethodDefinition : PropertyName ( StrictFormalParameters ) { FunctionBody }
@@ -53,6 +53,7 @@ info: |
         FormalParameterList[?Yield, ?Await] ,
         FormalParameterList[?Yield, ?Await] , FunctionRestParameter[?Yield, ?Await]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 0, {
   method(...a,) {

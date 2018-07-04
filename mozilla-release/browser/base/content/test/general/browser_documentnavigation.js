@@ -49,11 +49,9 @@ async function expectFocusOnF6(backward, expectedDocument, expectedElement, onCo
       }
 
       contentExpectedElement.addEventListener("focus", function() {
-        const contentFM = Components.classes["@mozilla.org/focus-manager;1"].
-                            getService(Components.interfaces.nsIFocusManager);
-        let details = contentFM.focusedWindow.document.documentElement.id;
-        if (contentFM.focusedElement) {
-          details += "," + contentFM.focusedElement.id;
+        let details = Services.focus.focusedWindow.document.documentElement.id;
+        if (Services.focus.focusedElement) {
+          details += "," + Services.focus.focusedElement.id;
         }
 
         sendSyncMessage("BrowserTest:FocusChanged", { details });
@@ -74,7 +72,7 @@ async function expectFocusOnF6(backward, expectedDocument, expectedElement, onCo
   }
 
   is(fm.focusedWindow.document.documentElement.id, expectedDocument, desc + " document matches");
-  is(fm.focusedElement, expectedElement, desc + " element matches");
+  is(fm.focusedElement, expectedElement, desc + " element matches (wanted: " + expectedElement.id + " got: " + fm.focusedElement.id + ")");
 
   if (onContent) {
     window.messageManager.removeMessageListener("BrowserTest:FocusChanged", focusChangedListener);
@@ -127,7 +125,7 @@ add_task(async function() {
   await expectFocusOnF6(false, "html2", "html2",
                                 true, "basic focus content page with second tab");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 // Shift+F6 should navigate backwards. There's only one document here so the effect
@@ -171,8 +169,9 @@ add_task(async function() {
 });
 
 // Navigate when the downloads panel is open
-add_task(async function() {
-  await pushPrefs(["accessibility.tabfocus", 7]);
+add_task(async function test_download_focus() {
+  await pushPrefs(["accessibility.tabfocus", 7], ["browser.download.autohideButton", false]);
+  await promiseButtonShown("downloads-button");
 
   let popupShownPromise = BrowserTestUtils.waitForEvent(document, "popupshown", true);
   EventUtils.synthesizeMouseAtCenter(document.getElementById("downloads-button"), { });
@@ -218,7 +217,7 @@ add_task(async function() {
   await expectFocusOnF6(false, "main-window", gURLBar.inputField,
                                 false, "back focus with contenteditable body urlbar");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 // Navigation with a frameset loaded
@@ -249,7 +248,16 @@ add_task(async function() {
   await expectFocusOnF6(true, "main-window", gURLBar.inputField,
                                false, "back focus on frameset frame urlbar");
 
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 // XXXndeakin add tests for browsers inside of panels
+
+function promiseButtonShown(id) {
+  let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+  return BrowserTestUtils.waitForCondition(() => {
+    let target = document.getElementById(id);
+    let bounds = dwu.getBoundsWithoutFlushing(target);
+    return bounds.width > 0 && bounds.height > 0;
+  }, `Waiting for button ${id} to have non-0 size`);
+}

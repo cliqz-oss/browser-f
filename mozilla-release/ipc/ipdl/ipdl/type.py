@@ -67,6 +67,9 @@ class TypeVisitor:
     def visitShmemType(self, s, *args):
         pass
 
+    def visitByteBufType(self, s, *args):
+        pass
+
     def visitShmemChmodType(self, c, *args):
         c.shmem.accept(self)
 
@@ -113,6 +116,8 @@ class VoidType(Type):
         return False
     def isAtom(self):
         return True
+    def isRefcounted(self):
+        return False
 
     def name(self): return 'void'
     def fullname(self): return 'void'
@@ -121,14 +126,17 @@ VOID = VoidType()
 
 ##--------------------
 class ImportedCxxType(Type):
-    def __init__(self, qname):
+    def __init__(self, qname, refcounted):
         assert isinstance(qname, QualifiedId)
         self.loc = qname.loc
         self.qname = qname
+        self.refcounted = refcounted
     def isCxx(self):
         return True
     def isAtom(self):
         return True
+    def isRefcounted(self):
+        return self.refcounted
 
     def name(self):
         return self.qname.baseid
@@ -147,6 +155,7 @@ class IPDLType(Type):
     def isAtom(self):  return True
     def isCompound(self): return False
     def isShmem(self): return False
+    def isByteBuf(self): return False
     def isFD(self): return False
     def isEndpoint(self): return False
 
@@ -362,6 +371,16 @@ class ShmemType(IPDLType):
     def __init__(self, qname):
         self.qname = qname
     def isShmem(self): return True
+
+    def name(self):
+        return self.qname.baseid
+    def fullname(self):
+        return str(self.qname)
+
+class ByteBufType(IPDLType):
+    def __init__(self, qname):
+        self.qname = qname
+    def isByteBuf(self): return True
 
     def name(self):
         return self.qname.baseid
@@ -725,12 +744,17 @@ class GatherDecls(TcheckVisitor):
             fullname = None
         if fullname == 'mozilla::ipc::Shmem':
             ipdltype = ShmemType(using.type.spec)
+        elif fullname == 'mozilla::ipc::ByteBuf':
+            ipdltype = ByteBufType(using.type.spec)
         elif fullname == 'mozilla::ipc::FileDescriptor':
             ipdltype = FDType(using.type.spec)
         else:
-            ipdltype = ImportedCxxType(using.type.spec)
+            ipdltype = ImportedCxxType(using.type.spec, using.isRefcounted())
             existingType = self.symtab.lookup(ipdltype.fullname())
             if existingType and existingType.fullname == ipdltype.fullname():
+                if ipdltype.isRefcounted() != existingType.type.isRefcounted():
+                    self.error(using.loc, "inconsistent refcounted status of type `%s`",
+                               str(using.type))
                 using.decl = existingType
                 return
         using.decl = self.declare(

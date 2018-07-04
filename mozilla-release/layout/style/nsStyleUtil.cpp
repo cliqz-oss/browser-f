@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6,15 +7,17 @@
 #include "nsStyleUtil.h"
 #include "nsStyleConsts.h"
 
+#include "mozilla/FontPropertyTypes.h"
 #include "nsIContent.h"
 #include "nsCSSProps.h"
 #include "nsContentUtils.h"
-#include "nsRuleNode.h"
 #include "nsROCSSPrimitiveValue.h"
 #include "nsStyleStruct.h"
 #include "nsIContentPolicy.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIURI.h"
+#include "nsISupportsPrimitives.h"
+#include "nsLayoutUtils.h"
 #include "nsPrintfCString.h"
 #include <cctype>
 
@@ -93,8 +96,8 @@ void nsStyleUtil::AppendEscapedCSSString(const nsAString& aString,
   const char16_t* in = aString.BeginReading();
   const char16_t* const end = aString.EndReading();
   for (; in != end; in++) {
-    if (*in < 0x20 || (*in >= 0x7F && *in < 0xA0)) {
-      // Escape U+0000 through U+001F and U+007F through U+009F numerically.
+    if (*in < 0x20 || *in == 0x7F) {
+      // Escape U+0000 through U+001F and U+007F numerically.
       aReturn.AppendPrintf("\\%x ", *in);
     } else {
       if (*in == '"' || *in == '\'' || *in == '\\') {
@@ -157,8 +160,8 @@ nsStyleUtil::AppendEscapedCSSIdent(const nsAString& aIdent, nsAString& aReturn)
     char16_t ch = *in;
     if (ch == 0x00) {
       aReturn.Append(char16_t(0xFFFD));
-    } else if (ch < 0x20 || (0x7F <= ch && ch < 0xA0)) {
-      // Escape U+0000 through U+001F and U+007F through U+009F numerically.
+    } else if (ch < 0x20 || 0x7F == ch) {
+      // Escape U+0000 through U+001F and U+007F numerically.
       aReturn.AppendPrintf("\\%x ", *in);
     } else {
       // Escape ASCII non-identifier printables as a backslash plus
@@ -205,16 +208,15 @@ AppendUnquotedFamilyName(const nsAString& aFamilyName, nsAString& aResult)
 
 /* static */ void
 nsStyleUtil::AppendEscapedCSSFontFamilyList(
-  const mozilla::FontFamilyList& aFamilyList,
+  const nsTArray<mozilla::FontFamilyName>& aNames,
   nsAString& aResult)
 {
-  const nsTArray<FontFamilyName>& fontlist = aFamilyList.GetFontlist();
-  size_t i, len = fontlist.Length();
+  size_t i, len = aNames.Length();
   for (i = 0; i < len; i++) {
     if (i != 0) {
-      aResult.Append(',');
+      aResult.AppendLiteral(", ");
     }
-    const FontFamilyName& name = fontlist[i];
+    const FontFamilyName& name = aNames[i];
     switch (name.mType) {
       case eFamily_named:
         AppendUnquotedFamilyName(name.mName, aResult);
@@ -228,9 +230,29 @@ nsStyleUtil::AppendEscapedCSSFontFamilyList(
   }
 }
 
+/* static */ void
+nsStyleUtil::AppendEscapedCSSFontFamilyList(
+  const mozilla::FontFamilyList& aFamilyList,
+  nsAString& aResult)
+{
+  if (aFamilyList.IsEmpty()) {
+    FontFamilyType defaultGeneric = aFamilyList.GetDefaultFontType();
+    // If the font list is empty, then serialize the default generic.
+    // See also: gfxFontGroup::BuildFontList()
+    if (defaultGeneric != eFamily_none) {
+      FontFamilyName(defaultGeneric).AppendToString(aResult);
+    } else {
+      NS_NOTREACHED("No fonts to serialize");
+    }
+    return;
+  }
+
+  AppendEscapedCSSFontFamilyList(aFamilyList.GetFontlist().get(), aResult);
+}
+
 
 /* static */ void
-nsStyleUtil::AppendBitmaskCSSValue(nsCSSPropertyID aProperty,
+nsStyleUtil::AppendBitmaskCSSValue(const nsCSSKTableEntry aTable[],
                                    int32_t aMaskedValue,
                                    int32_t aFirstMask,
                                    int32_t aLastMask,
@@ -238,8 +260,7 @@ nsStyleUtil::AppendBitmaskCSSValue(nsCSSPropertyID aProperty,
 {
   for (int32_t mask = aFirstMask; mask <= aLastMask; mask <<= 1) {
     if (mask & aMaskedValue) {
-      AppendASCIItoUTF16(nsCSSProps::LookupPropertyValue(aProperty, mask),
-                         aResult);
+      AppendASCIItoUTF16(nsCSSProps::ValueToKeyword(mask, aTable), aResult);
       aMaskedValue &= ~mask;
       if (aMaskedValue) { // more left
         aResult.Append(char16_t(' '));
@@ -359,15 +380,11 @@ nsStyleUtil::AppendFontFeatureSettings(const nsTArray<gfxFontFeature>& aFeatures
 
     AppendFontTagAsString(feat.mTag, aResult);
 
-    // output value, if necessary
-    if (feat.mValue == 0) {
-      // 0 ==> off
-      aResult.AppendLiteral(" off");
-    } else if (feat.mValue > 1) {
+    // omit value if it's 1, implied by default
+    if (feat.mValue != 1) {
       aResult.Append(' ');
       aResult.AppendInt(feat.mValue);
     }
-    // else, omit value if 1, implied by default
   }
 }
 
@@ -386,7 +403,7 @@ nsStyleUtil::AppendFontFeatureSettings(const nsCSSValue& aSrc,
                   "improper value unit for font-feature-settings:");
 
   nsTArray<gfxFontFeature> featureSettings;
-  nsRuleNode::ComputeFontFeatures(aSrc.GetPairListValue(), featureSettings);
+  nsLayoutUtils::ComputeFontFeatures(aSrc.GetPairListValue(), featureSettings);
   AppendFontFeatureSettings(featureSettings, aResult);
 }
 
@@ -425,7 +442,8 @@ nsStyleUtil::AppendFontVariationSettings(const nsCSSValue& aSrc,
                   "improper value unit for font-variation-settings:");
 
   nsTArray<gfxFontVariation> variationSettings;
-  nsRuleNode::ComputeFontVariations(aSrc.GetPairListValue(), variationSettings);
+  nsLayoutUtils::ComputeFontVariations(aSrc.GetPairListValue(),
+                                       variationSettings);
   AppendFontVariationSettings(variationSettings, aResult);
 }
 
@@ -605,8 +623,8 @@ nsStyleUtil::AppendSerializedFontSrc(const nsCSSValue& aValue,
 
     if (sources[i].GetUnit() == eCSSUnit_URL) {
       aResult.AppendLiteral("url(");
-      nsDependentString url(sources[i].GetOriginalURLValue());
-      nsStyleUtil::AppendEscapedCSSString(url, aResult);
+      nsDependentCSubstring url(sources[i].GetURLStructValue()->GetString());
+      nsStyleUtil::AppendEscapedCSSString(NS_ConvertUTF8toUTF16(url), aResult);
       aResult.Append(')');
     } else if (sources[i].GetUnit() == eCSSUnit_Local_Font) {
       aResult.AppendLiteral("local(");
@@ -723,40 +741,31 @@ nsStyleUtil::ColorComponentToFloat(uint8_t aAlpha)
 }
 
 /* static */ bool
-nsStyleUtil::IsSignificantChild(nsIContent* aChild, bool aTextIsSignificant,
+nsStyleUtil::IsSignificantChild(nsIContent* aChild,
                                 bool aWhitespaceIsSignificant)
 {
-  NS_ASSERTION(!aWhitespaceIsSignificant || aTextIsSignificant,
-               "Nonsensical arguments");
+  bool isText = aChild->IsText();
 
-  bool isText = aChild->IsNodeOfType(nsINode::eTEXT);
-
-  if (!isText && !aChild->IsNodeOfType(nsINode::eCOMMENT) &&
-      !aChild->IsNodeOfType(nsINode::ePROCESSING_INSTRUCTION)) {
+  if (!isText && !aChild->IsComment() && !aChild->IsProcessingInstruction()) {
     return true;
   }
 
-  return aTextIsSignificant && isText && aChild->TextLength() != 0 &&
+  return isText && aChild->TextLength() != 0 &&
          (aWhitespaceIsSignificant ||
           !aChild->TextIsOnlyWhitespace());
 }
 
 /* static */ bool
 nsStyleUtil::ThreadSafeIsSignificantChild(const nsIContent* aChild,
-                                          bool aTextIsSignificant,
                                           bool aWhitespaceIsSignificant)
 {
-  NS_ASSERTION(!aWhitespaceIsSignificant || aTextIsSignificant,
-               "Nonsensical arguments");
+  bool isText = aChild->IsText();
 
-  bool isText = aChild->IsNodeOfType(nsINode::eTEXT);
-
-  if (!isText && !aChild->IsNodeOfType(nsINode::eCOMMENT) &&
-      !aChild->IsNodeOfType(nsINode::ePROCESSING_INSTRUCTION)) {
+  if (!isText && !aChild->IsComment() && !aChild->IsProcessingInstruction()) {
     return true;
   }
 
-  return aTextIsSignificant && isText && aChild->TextLength() != 0 &&
+  return isText && aChild->TextLength() != 0 &&
          (aWhitespaceIsSignificant ||
           !aChild->ThreadSafeTextIsOnlyWhitespace());
 }
@@ -812,8 +821,9 @@ nsStyleUtil::ObjectPropsMightCauseOverflow(const nsStylePosition* aStylePos)
 
 
 /* static */ bool
-nsStyleUtil::CSPAllowsInlineStyle(nsIContent* aContent,
+nsStyleUtil::CSPAllowsInlineStyle(Element* aElement,
                                   nsIPrincipal* aPrincipal,
+                                  nsIPrincipal* aTriggeringPrincipal,
                                   nsIURI* aSourceURI,
                                   uint32_t aLineNumber,
                                   const nsAString& aStyleText,
@@ -825,12 +835,18 @@ nsStyleUtil::CSPAllowsInlineStyle(nsIContent* aContent,
     *aRv = NS_OK;
   }
 
-  MOZ_ASSERT(!aContent || aContent->NodeInfo()->NameAtom() == nsGkAtoms::style,
-      "aContent passed to CSPAllowsInlineStyle "
+  MOZ_ASSERT(!aElement || aElement->NodeInfo()->NameAtom() == nsGkAtoms::style,
+      "aElement passed to CSPAllowsInlineStyle "
       "for an element that is not <style>");
 
+  nsIPrincipal* principal = aPrincipal;
+  if (aTriggeringPrincipal &&
+      BasePrincipal::Cast(aTriggeringPrincipal)->OverridesCSP(aPrincipal)) {
+    principal = aTriggeringPrincipal;
+  }
+
   nsCOMPtr<nsIContentSecurityPolicy> csp;
-  rv = aPrincipal->GetCsp(getter_AddRefs(csp));
+  rv = principal->GetCsp(getter_AddRefs(csp));
 
   if (NS_FAILED(rv)) {
     if (aRv)
@@ -845,17 +861,39 @@ nsStyleUtil::CSPAllowsInlineStyle(nsIContent* aContent,
 
   // query the nonce
   nsAutoString nonce;
-  if (aContent) {
-    aContent->GetAttr(kNameSpaceID_None, nsGkAtoms::nonce, nonce);
+  if (aElement) {
+    aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::nonce, nonce);
+  }
+
+  nsCOMPtr<nsISupportsString> styleText(do_CreateInstance(NS_SUPPORTS_STRING_CONTRACTID));
+  if (styleText) {
+    styleText->SetData(aStyleText);
   }
 
   bool allowInlineStyle = true;
   rv = csp->GetAllowsInline(nsIContentPolicy::TYPE_STYLESHEET,
                             nonce,
                             false, // aParserCreated only applies to scripts
-                            aStyleText, aLineNumber,
+                            styleText, aLineNumber,
                             &allowInlineStyle);
   NS_ENSURE_SUCCESS(rv, false);
 
   return allowInlineStyle;
+}
+
+void
+nsStyleUtil::AppendFontSlantStyle(const FontSlantStyle& aStyle, nsAString& aOut)
+{
+  if (aStyle.IsNormal()) {
+    aOut.AppendLiteral("normal");
+  } else if (aStyle.IsItalic()) {
+    aOut.AppendLiteral("italic");
+  } else {
+    aOut.AppendLiteral("oblique");
+    auto angle = aStyle.ObliqueAngle();
+    if (angle != FontSlantStyle::kDefaultAngle) {
+      aOut.AppendLiteral(" ");
+      AppendAngleValue(nsStyleCoord(angle, eStyleUnit_Degree), aOut);
+    }
+  }
 }

@@ -1,4 +1,5 @@
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,7 +17,6 @@
 #include "nsIContent.h" // for GetParent()
 #include "nsTextFrame.h" // for nsTextFrame::ShouldSuppressLineBreak
 #include "nsSVGUtils.h" // for nsSVGUtils::IsInSVGTextSubtree
-#include "mozilla/ServoStyleSet.h"
 
 inline void
 nsStyleImage::EnsureCachedBIData() const
@@ -58,7 +58,7 @@ nsStyleText::NewlineIsSignificant(const nsTextFrame* aContextFrame) const
   NS_ASSERTION(aContextFrame->StyleText() == this, "unexpected aContextFrame");
   return NewlineIsSignificantStyle() &&
          !aContextFrame->ShouldSuppressLineBreak() &&
-         !aContextFrame->StyleContext()->IsTextCombined();
+         !aContextFrame->Style()->IsTextCombined();
 }
 
 bool
@@ -67,7 +67,7 @@ nsStyleText::WhiteSpaceCanWrap(const nsIFrame* aContextFrame) const
   NS_ASSERTION(aContextFrame->StyleText() == this, "unexpected aContextFrame");
   return WhiteSpaceCanWrapStyle() &&
          !nsSVGUtils::IsInSVGTextSubtree(aContextFrame) &&
-         !aContextFrame->StyleContext()->IsTextCombined();
+         !aContextFrame->Style()->IsTextCombined();
 }
 
 bool
@@ -146,17 +146,24 @@ nsStyleDisplay::HasTransform(const nsIFrame* aContextFrame) const
   return HasTransformStyle() && aContextFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms);
 }
 
-template<class StyleContextLike>
+bool
+nsStyleDisplay::HasPerspective(const nsIFrame* aContextFrame) const
+{
+  MOZ_ASSERT(aContextFrame->StyleDisplay() == this, "unexpected aContextFrame");
+  return HasPerspectiveStyle() && aContextFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms);
+}
+
+template<class ComputedStyleLike>
 bool
 nsStyleDisplay::HasFixedPosContainingBlockStyleInternal(
-                  StyleContextLike* aStyleContext) const
+                  ComputedStyleLike* aComputedStyle) const
 {
   // NOTE: Any CSS properties that influence the output of this function
-  // should have the CSS_PROPERTY_FIXPOS_CB set on them.
-  NS_ASSERTION(aStyleContext->ThreadsafeStyleDisplay() == this,
-               "unexpected aStyleContext");
+  // should have the FIXPOS_CB flag set on them.
+  NS_ASSERTION(aComputedStyle->ThreadsafeStyleDisplay() == this,
+               "unexpected aComputedStyle");
 
-  if (IsContainPaint() || HasPerspectiveStyle()) {
+  if (IsContainPaint()) {
     return true;
   }
 
@@ -164,65 +171,66 @@ nsStyleDisplay::HasFixedPosContainingBlockStyleInternal(
     return true;
   }
 
-  return aStyleContext->ThreadsafeStyleEffects()->HasFilters();
+  return aComputedStyle->ThreadsafeStyleEffects()->HasFilters();
 }
 
-template<class StyleContextLike>
+template<class ComputedStyleLike>
 bool
 nsStyleDisplay::IsFixedPosContainingBlockForAppropriateFrame(
-                  StyleContextLike* aStyleContext) const
+                  ComputedStyleLike* aComputedStyle) const
 {
   // NOTE: Any CSS properties that influence the output of this function
-  // should have the CSS_PROPERTY_FIXPOS_CB set on them.
-  return HasFixedPosContainingBlockStyleInternal(aStyleContext) ||
-         HasTransformStyle();
+  // should have the FIXPOS_CB flag set on them.
+  return HasFixedPosContainingBlockStyleInternal(aComputedStyle) ||
+         HasTransformStyle() || HasPerspectiveStyle();
 }
 
 bool
 nsStyleDisplay::IsFixedPosContainingBlock(const nsIFrame* aContextFrame) const
 {
   // NOTE: Any CSS properties that influence the output of this function
-  // should have the CSS_PROPERTY_FIXPOS_CB set on them.
-  if (!HasFixedPosContainingBlockStyleInternal(aContextFrame->StyleContext()) &&
-      !HasTransform(aContextFrame)) {
+  // should have the FIXPOS_CB flag set on them.
+  if (!HasFixedPosContainingBlockStyleInternal(aContextFrame->Style()) &&
+      !HasTransform(aContextFrame) && !HasPerspective(aContextFrame)) {
     return false;
   }
   return !nsSVGUtils::IsInSVGTextSubtree(aContextFrame);
 }
 
-template<class StyleContextLike>
+template<class ComputedStyleLike>
 bool
 nsStyleDisplay::HasAbsPosContainingBlockStyleInternal(
-                  StyleContextLike* aStyleContext) const
+                  ComputedStyleLike* aComputedStyle) const
 {
   // NOTE: Any CSS properties that influence the output of this function
-  // should have the CSS_PROPERTY_ABSPOS_CB set on them.
-  NS_ASSERTION(aStyleContext->ThreadsafeStyleDisplay() == this,
-               "unexpected aStyleContext");
+  // should have the ABSPOS_CB set on them.
+  NS_ASSERTION(aComputedStyle->ThreadsafeStyleDisplay() == this,
+               "unexpected aComputedStyle");
   return IsAbsolutelyPositionedStyle() ||
          IsRelativelyPositionedStyle() ||
          (mWillChangeBitField & NS_STYLE_WILL_CHANGE_ABSPOS_CB);
 }
 
-template<class StyleContextLike>
+template<class ComputedStyleLike>
 bool
-nsStyleDisplay::IsAbsPosContainingBlockForAppropriateFrame(StyleContextLike* aStyleContext) const
+nsStyleDisplay::IsAbsPosContainingBlockForAppropriateFrame(ComputedStyleLike* aComputedStyle) const
 {
   // NOTE: Any CSS properties that influence the output of this function
-  // should have the CSS_PROPERTY_ABSPOS_CB set on them.
-  return HasAbsPosContainingBlockStyleInternal(aStyleContext) ||
-         IsFixedPosContainingBlockForAppropriateFrame(aStyleContext);
+  // should have the ABSPOS_CB set on them.
+  return HasAbsPosContainingBlockStyleInternal(aComputedStyle) ||
+         IsFixedPosContainingBlockForAppropriateFrame(aComputedStyle);
 }
 
 bool
 nsStyleDisplay::IsAbsPosContainingBlock(const nsIFrame* aContextFrame) const
 {
   // NOTE: Any CSS properties that influence the output of this function
-  // should have the CSS_PROPERTY_ABSPOS_CB set on them.
-  nsStyleContext* sc = aContextFrame->StyleContext();
+  // should have the ABSPOS_CB set on them.
+  mozilla::ComputedStyle* sc = aContextFrame->Style();
   if (!HasAbsPosContainingBlockStyleInternal(sc) &&
       !HasFixedPosContainingBlockStyleInternal(sc) &&
-      !HasTransform(aContextFrame)) {
+      !HasTransform(aContextFrame) &&
+      !HasPerspective(aContextFrame)) {
     return false;
   }
   return !nsSVGUtils::IsInSVGTextSubtree(aContextFrame);

@@ -8,7 +8,7 @@
  */
 
 function test() {
-  let { Parser } = Cu.import("resource://devtools/shared/Parser.jsm", {});
+  let { Parser } = ChromeUtils.import("resource://devtools/shared/Parser.jsm", {});
 
   let source = "let x + 42;";
   let parser = new Parser();
@@ -23,7 +23,7 @@ function test() {
     "There should be one error logged when parsing.");
   is(parser.errors[0].name, "SyntaxError",
     "The correct exception was caught.");
-  is(parser.errors[0].message, "missing ; before statement",
+  is(parser.errors[0].message, "unexpected token: \'+\'",
     "The correct exception was caught.");
 
   finish();

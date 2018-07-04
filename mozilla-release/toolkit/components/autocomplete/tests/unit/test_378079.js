@@ -56,7 +56,7 @@ AutoCompleteInput.prototype = {
           iid.equals(Ci.nsIAutoCompletePopup))
         return this;
 
-      throw Components.results.NS_ERROR_NO_INTERFACE;
+      throw Cr.NS_ERROR_NO_INTERFACE;
     }
   },
 
@@ -66,9 +66,9 @@ AutoCompleteInput.prototype = {
         iid.equals(Ci.nsIAutoCompleteInput))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
-}
+};
 
 
 
@@ -135,9 +135,9 @@ AutoCompleteResult.prototype = {
         iid.equals(Ci.nsIAutoCompleteResult))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
-}
+};
 
 
 
@@ -178,14 +178,14 @@ AutoCompleteSearch.prototype = {
         iid.equals(Ci.nsIAutoCompleteSearch))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   },
 
   // nsIFactory implementation
   createInstance(outer, iid) {
     return this.QueryInterface(iid);
   }
-}
+};
 
 
 
@@ -241,8 +241,8 @@ function run_test() {
   registerAutoCompleteSearch(emptySearch);
   registerAutoCompleteSearch(regularSearch);
 
-  var controller = Components.classes["@mozilla.org/autocomplete/controller;1"].
-                   getService(Components.interfaces.nsIAutoCompleteController);
+  var controller = Cc["@mozilla.org/autocomplete/controller;1"].
+                   getService(Ci.nsIAutoCompleteController);
 
   // Make an AutoCompleteInput that uses our searches
   // and confirms results on search complete
@@ -251,20 +251,20 @@ function run_test() {
 
   input.onSearchBegin = function() {
     numSearchesStarted++;
-    do_check_eq(numSearchesStarted, 1);
+    Assert.equal(numSearchesStarted, 1);
   };
 
   input.onSearchComplete = function() {
 
-    do_check_eq(numSearchesStarted, 1);
+    Assert.equal(numSearchesStarted, 1);
 
-    do_check_eq(controller.searchStatus,
-                Ci.nsIAutoCompleteController.STATUS_COMPLETE_MATCH);
-    do_check_eq(controller.matchCount, 2);
+    Assert.equal(controller.searchStatus,
+                 Ci.nsIAutoCompleteController.STATUS_COMPLETE_MATCH);
+    Assert.equal(controller.matchCount, 2);
 
     // Confirm expected result values
     for (var i = 0; i < expectedValues.length; i++) {
-      do_check_eq(expectedValues[i], controller.getValueAt(i));
+      Assert.equal(expectedValues[i], controller.getValueAt(i));
     }
 
     // Unregister searches

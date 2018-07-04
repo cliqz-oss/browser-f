@@ -11,18 +11,16 @@
 #include "nsTArray.h"
 #include "mozilla/gfx/gfxVars.h"
 
-#if (MOZ_WIDGET_GTK == 2)
-extern "C" {
-    typedef struct _GdkDrawable GdkDrawable;
-}
-#endif
-
 #ifdef MOZ_X11
 struct _XDisplay;
 typedef struct _XDisplay Display;
 #endif // MOZ_X11
 
-class gfxFontconfigUtils;
+namespace mozilla {
+    namespace dom {
+        class SystemFontListEntry;
+    };
+};
 
 class gfxPlatformGtk : public gfxPlatform {
 public:
@@ -33,14 +31,14 @@ public:
         return (gfxPlatformGtk*) gfxPlatform::GetPlatform();
     }
 
+    void ReadSystemFontList(
+        InfallibleTArray<mozilla::dom::SystemFontListEntry>* retValue) override;
+
     virtual already_AddRefed<gfxASurface>
       CreateOffscreenSurface(const IntSize& aSize,
                              gfxImageFormat aFormat) override;
 
-    virtual already_AddRefed<mozilla::gfx::ScaledFont>
-      GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont) override;
-
-    virtual nsresult GetFontList(nsIAtom *aLangGroup,
+    virtual nsresult GetFontList(nsAtom *aLangGroup,
                                  const nsACString& aGenericFamily,
                                  nsTArray<nsString>& aListOfFonts) override;
 
@@ -64,37 +62,11 @@ public:
                     gfxFloat aDevToCssSize) override;
 
     /**
-     * Look up a local platform font using the full font face name (needed to
-     * support @font-face src local() )
-     */
-    virtual gfxFontEntry* LookupLocalFont(const nsAString& aFontName,
-                                          uint16_t aWeight,
-                                          int16_t aStretch,
-                                          uint8_t aStyle) override;
-
-    /**
-     * Activate a platform font (needed to support @font-face src url() )
-     *
-     */
-    virtual gfxFontEntry* MakePlatformFont(const nsAString& aFontName,
-                                           uint16_t aWeight,
-                                           int16_t aStretch,
-                                           uint8_t aStyle,
-                                           const uint8_t* aFontData,
-                                           uint32_t aLength) override;
-
-    /**
      * Calls XFlush if xrender is enabled.
      */
     virtual void FlushContentDrawing() override;
 
     FT_Library GetFTLibrary() override;
-
-#if (MOZ_WIDGET_GTK == 2)
-    static void SetGdkDrawable(cairo_surface_t *target,
-                               GdkDrawable *drawable);
-    static GdkDrawable *GetGdkDrawable(cairo_surface_t *target);
-#endif
 
     static int32_t GetFontScaleDPI();
     static double  GetFontScaleFactor();
@@ -123,9 +95,7 @@ public:
       return true;
     }
 
-    bool AccelerateLayersByDefault() override {
-      return false;
-    }
+    bool AccelerateLayersByDefault() override;
 
 #ifdef GL_PROVIDER_GLX
     already_AddRefed<mozilla::gfx::VsyncSource> CreateHardwareVsyncSource() override;
@@ -138,7 +108,7 @@ public:
 #endif // MOZ_X11
 
 protected:
-    static gfxFontconfigUtils *sFontconfigUtils;
+    bool CheckVariationFontSupport() override;
 
     int8_t mMaxGenericSubstitutions;
 

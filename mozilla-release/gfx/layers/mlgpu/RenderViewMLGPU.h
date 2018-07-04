@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef mozilla_gfx_layers_mlgpu_RenderViewMLGPU_h
 #define mozilla_gfx_layers_mlgpu_RenderViewMLGPU_h
@@ -52,6 +53,11 @@ public:
     return mUseDepthBuffer;
   }
 
+  // Render after having previously delayed rendering due to the view
+  // requiring a backdrop copy.
+  void RenderAfterBackdropCopy();
+  void RestoreDeviceState();
+
   // The size and render target cannot be read until the view has finished
   // building, since we try to right-size the render target to the visible
   // region.
@@ -72,6 +78,8 @@ private:
   void AddItemBackToFront(LayerMLGPU* aLayer, ItemInfo& aItem);
 
   void PrepareClears();
+  void SetDeviceState();
+  void SetDepthTestMode(MLGDepthTestMode aMode);
 
   void ExecutePass(RenderPassMLGPU* aPass);
 
@@ -123,6 +131,9 @@ private:
   // This state is used to avoid changing buffers while we execute batches.
   size_t mCurrentLayerBufferIndex;
   size_t mCurrentMaskRectBufferIndex;
+
+  // This state is saved locally so it can be restored in RestoreDeviceState.
+  MLGDepthTestMode mCurrentDepthMode;
 
   // Depth-buffer tracking.
   int32_t mNextSortIndex;

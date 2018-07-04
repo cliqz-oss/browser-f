@@ -11,6 +11,7 @@
 #include "nsContentUtils.h"
 #include "nsIConsoleService.h"
 #include "nsIScriptError.h"
+#include "AudioEventTimeline.h"
 
 namespace mozilla {
 
@@ -130,7 +131,7 @@ WebAudioUtils::LogToDeveloperConsole(uint64_t aWindowID, const char* aKey)
     return;
   }
 
-  nsXPIDLString result;
+  nsAutoString result;
   rv = nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                           aKey, result);
 

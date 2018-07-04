@@ -7,7 +7,9 @@ description: >
     const declarations without initialisers in statement positions: 
     do Statement while ( Expression )
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 do const x; while (false)

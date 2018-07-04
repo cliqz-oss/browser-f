@@ -4,15 +4,11 @@
 
 "use strict";
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cr = Components.results;
-
 const XPI_CONTENT_TYPE = "application/x-xpinstall";
 const MSG_INSTALL_ADDON = "WebInstallerInstallAddonFromWebpage";
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function amContentHandler() {
 }
@@ -66,8 +62,7 @@ amContentHandler.prototype = {
         element = element.ownerGlobal.frameElement;
 
       if (element) {
-        let listener = Cc["@mozilla.org/addons/integration;1"].
-                       getService(Ci.nsIMessageListener);
+        let listener = Cc["@mozilla.org/addons/integration;1"].getService();
         listener.wrappedJSObject.receiveMessage({
           name: MSG_INSTALL_ADDON,
           target: element,
@@ -87,12 +82,11 @@ amContentHandler.prototype = {
   },
 
   classID: Components.ID("{7beb3ba8-6ec3-41b4-b67c-da89b8518922}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentHandler]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIContentHandler]),
 
   log(aMsg) {
     let msg = "amContentHandler.js: " + (aMsg.join ? aMsg.join("") : aMsg);
-    Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService).
-      logStringMessage(msg);
+    Services.console.logStringMessage(msg);
     dump(msg + "\n");
   }
 };

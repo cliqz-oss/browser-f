@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -46,14 +45,14 @@ public:
     mForwarder = aForwarder;
   }
 
-  uint64_t GetId() const { return mId; }
+  LayersId GetId() const { return mId; }
 
   void MarkDestroyed() {
     mDestroyed = true;
   }
 
 protected:
-  explicit LayerTransactionChild(const uint64_t& aId)
+  explicit LayerTransactionChild(const LayersId& aId)
     : mForwarder(nullptr)
     , mIPCOpen(false)
     , mDestroyed(false)
@@ -61,7 +60,7 @@ protected:
   {}
   ~LayerTransactionChild() { }
 
-  virtual void ActorDestroy(ActorDestroyReason why) override;
+  void ActorDestroy(ActorDestroyReason why) override;
 
   void AddIPDLReference() {
     MOZ_ASSERT(mIPCOpen == false);
@@ -79,7 +78,7 @@ protected:
   ShadowLayerForwarder* mForwarder;
   bool mIPCOpen;
   bool mDestroyed;
-  uint64_t mId;
+  LayersId mId;
 };
 
 } // namespace layers

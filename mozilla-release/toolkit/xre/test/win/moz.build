@@ -8,10 +8,6 @@ SimplePrograms([
     'TestXREMakeCommandLineWin',
 ])
 
-CppUnitTests([
-    'TestDllInterceptor',
-])
-
 DEFINES['NS_NO_XPCOM'] = True
 
 LOCAL_INCLUDES += [
@@ -19,12 +15,11 @@ LOCAL_INCLUDES += [
     '/toolkit/xre',
 ]
 
-DISABLE_STL_WRAPPING = True
+DisableStlWrapping()
 USE_STATIC_LIBS = True
 
 OS_LIBS += [
     'comctl32',
-    'ole32',
     'shell32',
     'ws2_32',
 ]

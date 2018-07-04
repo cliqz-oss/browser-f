@@ -19,6 +19,7 @@
 <!ENTITY pref.showalarmbox "Den Erinnerungen-Dialog anzeigen">
 <!ENTITY pref.calendar.alarms.showAlarmBox.accessKey "n">
 <!ENTITY pref.missedalarms "Versäumte Erinnerungen anzeigen">
+<!ENTITY pref.missedalarms2 "Erinnerungen für nicht schreibgeschützte Kalender anzeigen">
 <!ENTITY pref.calendar.alarms.missedAlarms.accessKey "z">
 <!ENTITY pref.calendar.alarms.defaults.label "Standardeinstellungen für Erinnerungen">
 <!ENTITY pref.defalarm4events.label "Standardeinstellungen für Erinnerungen bei Terminen:">

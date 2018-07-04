@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,7 +13,7 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/gfx/Types.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsGkAtoms.h"
 #include "nsCOMPtr.h"
 #include "nsMenuFrame.h"
@@ -25,6 +26,12 @@
 #include "Units.h"
 
 class nsIWidget;
+
+namespace mozilla {
+namespace dom {
+class KeyboardEvent;
+} // namespace dom
+} // namespace mozilla
 
 // XUL popups can be in several different states. When opening a popup, the
 // state changes as follows:
@@ -128,7 +135,7 @@ enum MenuPopupAnchorType {
 #define POPUPPOSITION_HFLIP(v) (v ^ 1)
 #define POPUPPOSITION_VFLIP(v) (v ^ 2)
 
-nsIFrame* NS_NewMenuPopupFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+nsIFrame* NS_NewMenuPopupFrame(nsIPresShell* aPresShell, mozilla::ComputedStyle* aStyle);
 
 class nsView;
 class nsMenuPopupFrame;
@@ -166,7 +173,7 @@ public:
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsMenuPopupFrame)
 
-  explicit nsMenuPopupFrame(nsStyleContext* aContext);
+  explicit nsMenuPopupFrame(ComputedStyle* aStyle);
 
   // nsMenuParent interface
   virtual nsMenuFrame* GetCurrentMenuItem() override;
@@ -212,19 +219,16 @@ public:
 
   nsIWidget* GetWidget();
 
-  // The dismissal listener gets created and attached to the window.
-  void AttachedDismissalListener();
-
   // Overridden methods
   virtual void Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
 
   virtual nsresult AttributeChanged(int32_t aNameSpaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     int32_t aModType) override;
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   bool HasRemoteContent() const;
 
@@ -321,11 +325,6 @@ public:
                                int32_t aXPos, int32_t aYPos,
                                bool aIsContextMenu);
 
-  void InitializePopupWithAnchorAlign(nsIContent* aAnchorContent,
-                                      nsAString& aAnchor,
-                                      nsAString& aAlign,
-                                      int32_t aXPos, int32_t aYPos);
-
   // indicate that the popup should be opened
   void ShowPopup(bool aIsContextMenu);
   // indicate that the popup should be hidden. The new state should either be
@@ -338,7 +337,8 @@ public:
   // the Enter key. If doAction is false, the menu should just be highlighted.
   // This method also handles incremental searching in menus so the user can
   // type the first few letters of an item/s name to select it.
-  nsMenuFrame* FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent, bool& doAction);
+  nsMenuFrame* FindMenuWithShortcut(mozilla::dom::KeyboardEvent* aKeyEvent,
+                                    bool& doAction);
 
   void ClearIncrementalString() { mIncrementalString.Truncate(); }
   static bool IsWithinIncrementalTime(DOMTimeStamp time) {
@@ -369,7 +369,6 @@ public:
 
   bool GetAutoPosition();
   void SetAutoPosition(bool aShouldAutoPosition);
-  void SetConsumeRollupEvent(uint32_t aConsumeMode);
 
   nsIScrollableFrame* GetScrollFrame(nsIFrame* aStart);
 
@@ -602,8 +601,6 @@ protected:
   int8_t mPopupAnchor;
   int8_t mPosition;
 
-  // One of PopupBoxObject::ROLLUP_DEFAULT/ROLLUP_CONSUME/ROLLUP_NO_CONSUME
-  uint8_t mConsumeRollupEvent;
   FlipType mFlip; // Whether to flip
 
   struct ReflowCallbackData {
@@ -612,19 +609,22 @@ protected:
       mAnchor(nullptr),
       mSizedToPopup(false)
     {}
-    void MarkPosted(nsIFrame* aAnchor, bool aSizedToPopup) {
+    void MarkPosted(nsIFrame* aAnchor, bool aSizedToPopup, bool aIsOpenChanged) {
       mPosted = true;
       mAnchor = aAnchor;
       mSizedToPopup = aSizedToPopup;
+      mIsOpenChanged = aIsOpenChanged;
     }
     void Clear() {
       mPosted = false;
       mAnchor = nullptr;
       mSizedToPopup = false;
+      mIsOpenChanged = false;
     }
     bool mPosted;
     nsIFrame* mAnchor;
     bool mSizedToPopup;
+    bool mIsOpenChanged;
   };
   ReflowCallbackData mReflowCallbackData;
 
@@ -648,6 +648,11 @@ protected:
   // the flip modes that were used when the popup was opened
   bool mHFlip;
   bool mVFlip;
+
+  // When POPUPPOSITION_SELECTION is used, this indicates the vertical offset that the
+  // original selected item was. This needs to be used in case the popup gets changed
+  // so that we can keep the popup at the same vertical offset.
+  nscoord mPositionedOffset;
 
   // How the popup is anchored.
   MenuPopupAnchorType mAnchorType;

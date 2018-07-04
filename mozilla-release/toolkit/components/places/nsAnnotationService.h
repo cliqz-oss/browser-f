@@ -113,6 +113,7 @@ protected:
 
   nsresult StartSetAnnotation(nsIURI* aURI,
                               int64_t aItemId,
+                              BookmarkData* aBookmark,
                               const nsACString& aName,
                               int32_t aFlags,
                               uint16_t aExpiration,
@@ -121,24 +122,28 @@ protected:
 
   nsresult SetAnnotationStringInternal(nsIURI* aURI,
                                        int64_t aItemId,
+                                       BookmarkData* aBookmark,
                                        const nsACString& aName,
                                        const nsAString& aValue,
                                        int32_t aFlags,
                                        uint16_t aExpiration);
   nsresult SetAnnotationInt32Internal(nsIURI* aURI,
                                       int64_t aItemId,
+                                      BookmarkData* aBookmark,
                                       const nsACString& aName,
                                       int32_t aValue,
                                       int32_t aFlags,
                                       uint16_t aExpiration);
   nsresult SetAnnotationInt64Internal(nsIURI* aURI,
                                       int64_t aItemId,
+                                      BookmarkData* aBookmark,
                                       const nsACString& aName,
                                       int64_t aValue,
                                       int32_t aFlags,
                                       uint16_t aExpiration);
   nsresult SetAnnotationDoubleInternal(nsIURI* aURI,
                                        int64_t aItemId,
+                                       BookmarkData* aBookmark,
                                        const nsACString& aName,
                                        double aValue,
                                        int32_t aFlags,
@@ -146,16 +151,22 @@ protected:
 
   nsresult RemoveAnnotationInternal(nsIURI* aURI,
                                     int64_t aItemId,
+                                    BookmarkData* aBookmark,
                                     const nsACString& aName);
+
+  nsresult
+  GetValueFromStatement(nsCOMPtr<mozIStorageStatement>& aStatement,
+                        nsIVariant** _retval);
+
 
 public:
   nsresult GetPagesWithAnnotationCOMArray(const nsACString& aName,
                                           nsCOMArray<nsIURI>* _results);
   nsresult GetItemsWithAnnotationTArray(const nsACString& aName,
                                         nsTArray<int64_t>* _result);
-  nsresult GetAnnotationNamesTArray(nsIURI* aURI,
-                                    int64_t aItemId,
-                                    nsTArray<nsCString>* _result);
+  nsresult GetItemAnnotationNamesTArray(int64_t aItemId,
+                                        nsTArray<nsCString>* _result);
+  nsresult RemoveItemAnnotationsWithoutNotifying(int64_t aItemId);
 };
 
 #endif /* nsAnnotationService_h___ */

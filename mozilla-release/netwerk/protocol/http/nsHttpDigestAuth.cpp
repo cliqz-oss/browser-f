@@ -26,16 +26,6 @@ namespace mozilla {
 namespace net {
 
 //-----------------------------------------------------------------------------
-// nsHttpDigestAuth <public>
-//-----------------------------------------------------------------------------
-
-nsHttpDigestAuth::nsHttpDigestAuth()
-{}
-
-nsHttpDigestAuth::~nsHttpDigestAuth()
-{}
-
-//-----------------------------------------------------------------------------
 // nsHttpDigestAuth::nsISupports
 //-----------------------------------------------------------------------------
 
@@ -106,7 +96,7 @@ nsHttpDigestAuth::GetMethodAndPath(nsIHttpAuthenticableChannel *authChannel,
       }
       else {
         rv = authChannel->GetRequestMethod(httpMethod);
-        rv2 = uri->GetPath(path);
+        rv2 = uri->GetPathQueryRef(path);
         if (NS_SUCCEEDED(rv) && NS_SUCCEEDED(rv2)) {
           //
           // strip any fragment identifier from the URL path.

@@ -3,8 +3,10 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY  trackingProtectionHeader2.label      "Schutz vor Aktivitätenverfolgung">
-<!ENTITY  trackingProtection2.description      "Um Aktivitätenverfolgung handelt es sich, wenn Website-übergreifend Daten über Ihr Surfverhalten gesammelt werden. Aktivitätenverfolgung kann dazu eingesetzt werden, ein Profil von Ihnen zu erstellen, und Inhalte an Hand Ihrer besuchten Webseiten und persönlichen Daten anzuzeigen.">
+<!ENTITY  trackingProtection2.description      "Um Aktivitätenverfolgung handelt es sich, wenn Website-übergreifend Daten über dein Surfverhalten gesammelt werden. Aktivitätenverfolgung kann dazu eingesetzt werden, ein Profil von dir zu erstellen, und Inhalte an Hand deiner besuchten Webseiten und persönlichen Daten anzuzeigen.">
 <!ENTITY  trackingProtection2.radioGroupLabel  "Bekannte Aktivitäten verfolgende Skripte blockieren">
+<!ENTITY  trackingProtection3.description      "Der Schutz vor Aktivitätenverfolgung blockiert nur Systeme, welche Ihr Surfverhalten über mehrere Websites verteilt aufzeichnen.">
+<!ENTITY  trackingProtection3.radioGroupLabel  "Schutz vor Aktivitätenverfolgung verwenden, um bekannte Aktivitäten verfolgende Systeme zu blockieren">
 <!ENTITY  trackingProtectionAlways.label       "Immer">
 <!ENTITY  trackingProtectionAlways.accesskey   "m">
 <!ENTITY  trackingProtectionPrivate.label      "Nur in Vergessen Fenstern">
@@ -12,13 +14,15 @@
 <!ENTITY  trackingProtectionNever.label        "Nie">
 <!ENTITY  trackingProtectionNever.accesskey    "N">
 <!ENTITY  trackingProtectionLearnMore.label    "Weitere Informationen">
+<!ENTITY  trackingProtectionLearnMore2.label    "Weitere Informationen zum Schutz Ihrer Privatsphäre und vor Aktivitätenverfolgung">
 <!ENTITY  trackingProtectionExceptions.label   "Ausnahmen…">
 <!ENTITY  trackingProtectionExceptions.accesskey "u">
 
 <!-- LOCALIZATION NOTE (trackingProtectionPBM5.label): This string is displayed if privacy.trackingprotection.ui.enabled is set to true. This currently happens on the release and beta channel. -->
 <!ENTITY trackingProtectionPBM5.label         "Schutz vor Aktivitätenverfolgung in Vergessen Fenstern verwenden">
 <!ENTITY trackingProtectionPBM5.accesskey     "p">
-<!-- LOCALIZATION NOTE (trackingProtectionPBM6.label): This string is displayed if privacy.trackingprotection.ui.enabled is set to false. This currently happens on the nightly channel. -->
+
+<!-- LOCALIZATION NOTE (trackingProtectionPBM6.label): This string is displayed if privacy.trackingprotection.ui.enabled is set to false. This currently happens on the release and beta channel. -->
 <!ENTITY trackingProtectionPBM6.label         "Schutz vor Aktivitätenverfolgung im Privaten Modus verwenden, um Aktivitäten verfolgende Skripte zu blockieren">
 <!ENTITY trackingProtectionPBM6.accesskey     "v">
 <!ENTITY trackingProtectionPBMLearnMore.label "Weitere Informationen">
@@ -50,14 +54,23 @@
 <!ENTITY  acceptCookies2.label          "Cookies von Websites akzeptieren">
 <!ENTITY  acceptCookies2.accesskey      "C">
 
-<!ENTITY  acceptThirdParty.pre.label      "Cookies von Drittanbietern akzeptieren:">
-<!ENTITY  acceptThirdParty.pre.accesskey  "k">
+<!ENTITY  acceptThirdParty2.pre.label     "Cookies von Drittanbietern akzeptieren:">
+<!ENTITY  acceptThirdParty2.pre.accesskey "k">
 <!ENTITY  acceptThirdParty.always.label   "Immer">
 <!ENTITY  acceptThirdParty.never.label    "Nie">
 <!ENTITY  acceptThirdParty.visited.label  "Nur von besuchten Drittanbietern">
 
-<!ENTITY  keepUntil.label               "Behalten, bis:">
-<!ENTITY  keepUntil.accesskey           "B">
+<!ENTITY  acceptCookies4.label          "Cookies und Website-Daten annehmen (empfohlen)">
+<!ENTITY  acceptCookies4.accesskey      "C">
+
+<!ENTITY  blockCookies.label            "Cookies und Website-Daten ablehnen (kann Probleme mit Websites verursachen)">
+<!ENTITY  blockCookies.accesskey        "b">
+
+<!ENTITY  acceptThirdParty3.pre.label     "Cookies und Website-Daten von Drittanbietern akzeptieren">
+<!ENTITY  acceptThirdParty3.pre.accesskey "k">
+
+<!ENTITY  keepUntil2.label              "Behalten, bis">
+<!ENTITY  keepUntil2.accesskey          "B">
 
 <!ENTITY  expire.label                  "sie nicht mehr gültig sind">
 <!ENTITY  close.label                   "&brandShortName; geschlossen wird">
@@ -86,6 +99,8 @@
 <!ENTITY  rememberActions.removeCookies.label "einzelne Cookies">
 <!ENTITY  rememberActions.post.label          " löschen.">
 
+<!ENTITY  rememberDescription1.label      "&brandShortName; wird die Adressen der besuchten Webseiten, Downloads sowie eingebene Formular- und Suchdaten speichern.">
+
 <!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du &brandShortName; benutzt.">
 
 <!-- LOCALIZATION NOTE (dontrememberActions.pre.label): include a trailing space as needed -->
@@ -93,6 +108,9 @@
 <!ENTITY  dontrememberActions.pre.label          "Du kannst auch die ">
 <!ENTITY  dontrememberActions.clearHistory.label "gesamte bisherige Chronik">
 <!ENTITY  dontrememberActions.post.label         " löschen.">
+
+<!ENTITY  clearHistoryButton.label       "Chronik leeren…">
+<!ENTITY  clearHistoryButton.accesskey   "C">
 
 <!ENTITY  privateBrowsingPermanent2.label "Immer den Vergessen Modus verwenden">
 <!ENTITY  privateBrowsingPermanent2.accesskey "V">
@@ -114,6 +132,11 @@
 <!ENTITY  browserContainersEnabled.accesskey    "a">
 <!ENTITY  browserContainersSettings.label        "Einstellungen…">
 <!ENTITY  browserContainersSettings.accesskey    "u">
+
+<!ENTITY  a11yPrivacy.checkbox.label     "Externen Anwendungen den Zugriff auf den Dienst für Barrierefreiheit in &brandShortName; verweigern">
+<!ENTITY  a11yPrivacy.checkbox.accesskey "B">
+<!ENTITY  a11yPrivacy.learnmore.label    "Weitere Informationen">
+<!ENTITY enableSafeBrowsingLearnMore.label "Weitere Informationen">
 
 <!-- Forget mode -->
 <!ENTITY  forgetMode.caption "Vergessen Modus">

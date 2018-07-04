@@ -12,7 +12,13 @@
     title: "Renegotiation: add second video stream, no bundle"
   });
 
-  runNetworkTest(function (options = {}) {
+  runNetworkTest(async function (options = {}) {
+    // Use fake video here since the native fake device on linux doesn't
+    // change color as needed by checkVideoPlaying() below.
+    await pushPrefs(
+      ['media.video_loopback_dev', ''],
+      ['media.navigator.streams.fake', true]);
+
     options.bundle = false;
     const test = new PeerConnectionTest(options);
     addRenegotiation(test.chain,
@@ -23,9 +29,7 @@
           // Since this is a NoBundle variant, adding a track will cause us to
           // go back to checking.
           test.pcLocal.expectIceChecking();
-          // Use fake:true here since the native fake device on linux doesn't
-          // change color as needed by checkVideoPlaying() below.
-          return test.pcLocal.getAllUserMedia([{video: true, fake: true}]);
+          return test.pcLocal.getAllUserMediaAndAddStreams([{video: true}]);
         },
         function PC_REMOTE_EXPECT_ICE_CHECKING(test) {
           test.pcRemote.expectIceChecking();
@@ -37,12 +41,12 @@
           is(test.pcRemote.remoteMediaElements.length, 2,
              "Should have two remote media elements after renegotiation");
           return Promise.all(test.pcRemote.remoteMediaElements.map(video =>
-            h.checkVideoPlaying(video, 10, 10, 16)));
+            h.checkVideoPlaying(video)));
         },
       ]
     );
 
-    test.setMediaConstraints([{video: true, fake: true}], [{video: true}]);
+    test.setMediaConstraints([{video: true}], [{video: true}]);
     test.run();
   });
 </script>

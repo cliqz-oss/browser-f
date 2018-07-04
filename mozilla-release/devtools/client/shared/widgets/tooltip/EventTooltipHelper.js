@@ -48,7 +48,7 @@ function EventTooltip(tooltip, eventListenerInfos, toolbox) {
 }
 
 EventTooltip.prototype = {
-  init: function () {
+  init: function() {
     let config = {
       mode: Editor.modes.js,
       lineNumbers: false,
@@ -65,8 +65,10 @@ EventTooltip.prototype = {
 
     const sourceMapService = this._toolbox.sourceMapURLService;
 
+    const Bubbling = L10N.getStr("eventsTooltip.Bubbling");
+    const Capturing = L10N.getStr("eventsTooltip.Capturing");
     for (let listener of this._eventListenerInfos) {
-      let phase = listener.capturing ? "Capturing" : "Bubbling";
+      let phase = listener.capturing ? Capturing : Bubbling;
       let level = listener.DOM0 ? "DOM0" : "DOM2";
 
       // Create this early so we can refer to it from a closure, below.
@@ -76,20 +78,6 @@ EventTooltip.prototype = {
       let header = doc.createElementNS(XHTML_NS, "div");
       header.className = "event-header devtools-toolbar";
       this.container.appendChild(header);
-
-      if (!listener.hide.debugger) {
-        let debuggerIcon = doc.createElementNS(XHTML_NS, "img");
-        debuggerIcon.className = "event-tooltip-debugger-icon";
-        debuggerIcon.setAttribute("src",
-          "chrome://devtools/skin/images/tool-debugger.svg");
-        let openInDebugger = L10N.getStr("eventsTooltip.openInDebugger");
-        debuggerIcon.setAttribute("title", openInDebugger);
-        header.appendChild(debuggerIcon);
-      } else {
-        let debuggerDiv = doc.createElementNS(XHTML_NS, "div");
-        debuggerDiv.className = "event-tooltip-debugger-spacer";
-        header.appendChild(debuggerDiv);
-      }
 
       if (!listener.hide.type) {
         let eventTypeLabel = doc.createElementNS(XHTML_NS, "span");
@@ -141,6 +129,16 @@ EventTooltip.prototype = {
       filename.setAttribute("title", title);
       header.appendChild(filename);
 
+      if (!listener.hide.debugger) {
+        let debuggerIcon = doc.createElementNS(XHTML_NS, "img");
+        debuggerIcon.className = "event-tooltip-debugger-icon";
+        debuggerIcon.setAttribute("src",
+          "chrome://devtools/skin/images/jump-definition.svg");
+        let openInDebugger = L10N.getStr("eventsTooltip.openInDebugger");
+        debuggerIcon.setAttribute("title", openInDebugger);
+        header.appendChild(debuggerIcon);
+      }
+
       let attributesContainer = doc.createElementNS(XHTML_NS, "div");
       attributesContainer.className = "event-tooltip-attributes-container";
       header.appendChild(attributesContainer);
@@ -179,7 +177,6 @@ EventTooltip.prototype = {
         let dom0 = doc.createElementNS(XHTML_NS, "span");
         dom0.className = "event-tooltip-attributes";
         dom0.textContent = level;
-        dom0.setAttribute("title", level);
         attributesBox.appendChild(dom0);
       }
 
@@ -204,11 +201,11 @@ EventTooltip.prototype = {
     this._tooltip.on("hidden", this.destroy);
   },
 
-  _addContentListeners: function (header) {
+  _addContentListeners: function(header) {
     header.addEventListener("click", this._headerClicked);
   },
 
-  _headerClicked: function (event) {
+  _headerClicked: function(event) {
     if (event.target.classList.contains("event-tooltip-debugger-icon")) {
       this._debugClicked(event);
       event.stopPropagation();
@@ -218,6 +215,7 @@ EventTooltip.prototype = {
     let doc = this._tooltip.doc;
     let header = event.currentTarget;
     let content = header.nextElementSibling;
+    header.classList.toggle("content-expanded");
 
     if (content.hasAttribute("open")) {
       content.removeAttribute("open");
@@ -261,7 +259,7 @@ EventTooltip.prototype = {
     }
   },
 
-  _debugClicked: function (event) {
+  _debugClicked: function(event) {
     let header = event.currentTarget;
     let content = header.nextElementSibling;
 
@@ -281,7 +279,7 @@ EventTooltip.prototype = {
   /**
    * Parse URI and return {url, line}; or return null if it can't be parsed.
    */
-  _parseLocation: function (uri) {
+  _parseLocation: function(uri) {
     if (uri && uri !== "?") {
       uri = uri.replace(/"/g, "");
 
@@ -298,7 +296,7 @@ EventTooltip.prototype = {
     return null;
   },
 
-  destroy: function () {
+  destroy: function() {
     if (this._tooltip) {
       this._tooltip.off("hidden", this.destroy);
 

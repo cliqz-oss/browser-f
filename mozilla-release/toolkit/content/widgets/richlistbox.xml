@@ -60,7 +60,7 @@
             // remember the current item and all selected items with IDs
             var state = this.currentItem ? this.currentItem.id : "";
             if (this.selType == "multiple" && this.selectedCount) {
-              let getId = function getId(aItem) { return aItem.id; }
+              let getId = function getId(aItem) { return aItem.id; };
               state += " " + [...this.selectedItems].filter(getId).map(getId).join(" ");
             }
             if (state)
@@ -95,7 +95,7 @@
           while (aStartItem) {
             aStartItem = aStartItem[prop];
             if (aStartItem && aStartItem instanceof
-                Components.interfaces.nsIDOMXULSelectControlItemElement &&
+                Ci.nsIDOMXULSelectControlItemElement &&
                 (!this._userSelecting || this._canUserSelect(aStartItem))) {
               --aDelta;
               if (aDelta == 0)
@@ -117,7 +117,7 @@
           while (aStartItem) {
             aStartItem = aStartItem[prop];
             if (aStartItem && aStartItem instanceof
-                Components.interfaces.nsIDOMXULSelectControlItemElement &&
+                Ci.nsIDOMXULSelectControlItemElement &&
                 (!this._userSelecting || this._canUserSelect(aStartItem))) {
               --aDelta;
               if (aDelta == 0)
@@ -130,15 +130,6 @@
       </method>
 
       <method name="appendItem">
-        <parameter name="aLabel"/>
-        <parameter name="aValue"/>
-        <body>
-          return this.insertItemAt(-1, aLabel, aValue);
-        </body>
-      </method>
-
-      <method name="insertItemAt">
-        <parameter name="aIndex"/>
         <parameter name="aLabel"/>
         <parameter name="aValue"/>
         <body>
@@ -155,11 +146,7 @@
           label.setAttribute("crop", "end");
           item.appendChild(label);
 
-          var before = this.getItemAtIndex(aIndex);
-          if (!before)
-            this.appendChild(item);
-          else
-            this.insertBefore(item, before);
+          this.appendChild(item);
 
           return item;
         </body>
@@ -320,7 +307,7 @@
       <property name="children" readonly="true">
         <getter>
           <![CDATA[
-            let iface = Components.interfaces.nsIDOMXULSelectControlItemElement;
+            let iface = Ci.nsIDOMXULSelectControlItemElement;
             let children = Array.from(this.childNodes)
                                 .filter(node => node instanceof iface);
             if (this.dir == "reverse" && this._mayReverse) {

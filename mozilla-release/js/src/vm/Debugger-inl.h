@@ -29,7 +29,7 @@ js::Debugger::onLeaveFrame(JSContext* cx, AbstractFramePtr frame, jsbytecode* pc
 /* static */ inline js::Debugger*
 js::Debugger::fromJSObject(const JSObject* obj)
 {
-    MOZ_ASSERT(js::GetObjectClass(obj) == &class_);
+    MOZ_ASSERT(obj->getClass() == &class_);
     return (Debugger*) obj->as<NativeObject>().getPrivate();
 }
 
@@ -41,28 +41,28 @@ js::Debugger::checkNoExecute(JSContext* cx, HandleScript script)
     return slowPathCheckNoExecute(cx, script);
 }
 
-/* static */ JSTrapStatus
+/* static */ js::ResumeMode
 js::Debugger::onEnterFrame(JSContext* cx, AbstractFramePtr frame)
 {
     MOZ_ASSERT_IF(frame.hasScript() && frame.script()->isDebuggee(), frame.isDebuggee());
     if (!frame.isDebuggee())
-        return JSTRAP_CONTINUE;
+        return ResumeMode::Continue;
     return slowPathOnEnterFrame(cx, frame);
 }
 
-/* static */ JSTrapStatus
+/* static */ js::ResumeMode
 js::Debugger::onDebuggerStatement(JSContext* cx, AbstractFramePtr frame)
 {
     if (!cx->compartment()->isDebuggee())
-        return JSTRAP_CONTINUE;
+        return ResumeMode::Continue;
     return slowPathOnDebuggerStatement(cx, frame);
 }
 
-/* static */ JSTrapStatus
+/* static */ js::ResumeMode
 js::Debugger::onExceptionUnwind(JSContext* cx, AbstractFramePtr frame)
 {
     if (!cx->compartment()->isDebuggee())
-        return JSTRAP_CONTINUE;
+        return ResumeMode::Continue;
     return slowPathOnExceptionUnwind(cx, frame);
 }
 
@@ -73,11 +73,18 @@ js::Debugger::onNewWasmInstance(JSContext* cx, Handle<WasmInstanceObject*> wasmI
         slowPathOnNewWasmInstance(cx, wasmInstance);
 }
 
-inline bool
-js::Debugger::getScriptFrame(JSContext* cx, const FrameIter& iter,
-                             MutableHandle<DebuggerFrame*> result)
+/* static */ void
+js::Debugger::onNewPromise(JSContext* cx, Handle<PromiseObject*> promise)
 {
-    return getScriptFrameWithIter(cx, iter.abstractFramePtr(), &iter, result);
+    if (MOZ_UNLIKELY(cx->compartment()->isDebuggee()))
+        slowPathPromiseHook(cx, Debugger::OnNewPromise, promise);
+}
+
+/* static */ void
+js::Debugger::onPromiseSettled(JSContext* cx, Handle<PromiseObject*> promise)
+{
+    if (MOZ_UNLIKELY(cx->compartment()->isDebuggee()))
+        slowPathPromiseHook(cx, Debugger::OnPromiseSettled, promise);
 }
 
 inline js::Debugger*

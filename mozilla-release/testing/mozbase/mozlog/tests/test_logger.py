@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import datetime
 import json
 import socket
@@ -233,7 +235,7 @@ class TestLoggingMixin(unittest.TestCase):
         self.assertTrue(not hasattr(loggable, "_logger"))
         loggable.log(mozlog.INFO, "This will instantiate the logger")
         self.assertTrue(hasattr(loggable, "_logger"))
-        self.assertEqual(loggable._logger.name, "__main__.Loggable")
+        self.assertEqual(loggable._logger.name, "test_logger.Loggable")
 
         self.assertRaises(ValueError, loggable.set_logger,
                           "not a logger")

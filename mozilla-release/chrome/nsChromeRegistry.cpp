@@ -31,10 +31,9 @@
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/dom/Location.h"
+#include "nsIURIMutator.h"
 
-#ifdef ENABLE_INTL_API
 #include "unicode/uloc.h"
-#endif
 
 nsChromeRegistry* nsChromeRegistry::gChromeRegistry;
 
@@ -92,7 +91,8 @@ nsChromeRegistry::LogMessageWithContext(nsIURI* aURL, uint32_t aLineNumber, uint
   rv = error->Init(NS_ConvertUTF8toUTF16(formatted.get()),
                    NS_ConvertUTF8toUTF16(spec),
                    EmptyString(),
-                   aLineNumber, 0, flags, "chrome registration");
+                   aLineNumber, 0, flags, "chrome registration",
+                   false /* from private window */);
 
   if (NS_FAILED(rv))
     return;
@@ -154,7 +154,7 @@ nsChromeRegistry::Init()
 }
 
 nsresult
-nsChromeRegistry::GetProviderAndPath(nsIURL* aChromeURL,
+nsChromeRegistry::GetProviderAndPath(nsIURI* aChromeURL,
                                      nsACString& aProvider, nsACString& aPath)
 {
   nsresult rv;
@@ -166,7 +166,7 @@ nsChromeRegistry::GetProviderAndPath(nsIURL* aChromeURL,
 #endif
 
   nsAutoCString path;
-  rv = aChromeURL->GetPath(path);
+  rv = aChromeURL->GetPathQueryRef(path);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (path.Length() < 3) {
@@ -201,7 +201,7 @@ nsChromeRegistry::GetProviderAndPath(nsIURL* aChromeURL,
 
 
 nsresult
-nsChromeRegistry::Canonify(nsIURL* aChromeURL)
+nsChromeRegistry::Canonify(nsCOMPtr<nsIURI>& aChromeURL)
 {
   NS_NAMED_LITERAL_CSTRING(kSlash, "/");
 
@@ -230,13 +230,21 @@ nsChromeRegistry::Canonify(nsIURL* aChromeURL)
     else {
       return NS_ERROR_INVALID_ARG;
     }
-    aChromeURL->SetPath(path);
+    return NS_MutateURI(aChromeURL)
+             .SetPathQueryRef(path)
+             .Finalize(aChromeURL);
   }
   else {
     // prevent directory traversals ("..")
     // path is already unescaped once, but uris can get unescaped twice
     const char* pos = path.BeginReading();
     const char* end = path.EndReading();
+    // Must start with [a-zA-Z0-9].
+    if (!('a' <= *pos && *pos <= 'z') &&
+        !('A' <= *pos && *pos <= 'Z') &&
+        !('0' <= *pos && *pos <= '9')) {
+      return NS_ERROR_DOM_BAD_URI;
+    }
     while (pos < end) {
       switch (*pos) {
         case ':':
@@ -409,8 +417,8 @@ nsresult nsChromeRegistry::RefreshWindow(nsPIDOMWindowOuter* aWindow)
         rv = document->LoadChromeSheetSync(uri, true, &newSheet);
         if (NS_FAILED(rv)) return rv;
         if (newSheet) {
-          rv = newAgentSheets.AppendElement(newSheet) ? NS_OK : NS_ERROR_FAILURE;
-          if (NS_FAILED(rv)) return rv;
+          newAgentSheets.AppendElement(newSheet);
+          return NS_OK;
         }
       }
       else {  // Just use the same sheet.
@@ -423,23 +431,22 @@ nsresult nsChromeRegistry::RefreshWindow(nsPIDOMWindowOuter* aWindow)
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  int32_t count = document->GetNumberOfStyleSheets();
+  size_t count = document->SheetCount();
 
   // Build an array of style sheets we need to reload.
   nsTArray<RefPtr<StyleSheet>> oldSheets(count);
   nsTArray<RefPtr<StyleSheet>> newSheets(count);
 
   // Iterate over the style sheets.
-  for (int32_t i = 0; i < count; i++) {
+  for (size_t i = 0; i < count; i++) {
     // Get the style sheet
-    StyleSheet* styleSheet = document->GetStyleSheetAt(i);
-    oldSheets.AppendElement(styleSheet);
+    oldSheets.AppendElement(document->SheetAt(i));
   }
 
   // Iterate over our old sheets and kick off a sync load of the new
   // sheet if and only if it's a non-inline sheet with a chrome URL.
   for (StyleSheet* sheet : oldSheets) {
-    MOZ_ASSERT(sheet, "GetStyleSheetAt shouldn't return nullptr for "
+    MOZ_ASSERT(sheet, "SheetAt shouldn't return nullptr for "
                       "in-range sheet indexes");
     nsIURI* uri = sheet->GetSheetURI();
 
@@ -638,7 +645,6 @@ nsChromeRegistry::MustLoadURLRemotely(nsIURI *aURI, bool *aResult)
 bool
 nsChromeRegistry::GetDirectionForLocale(const nsACString& aLocale)
 {
-#ifdef ENABLE_INTL_API
   int pref = mozilla::Preferences::GetInt("intl.uidirection", -1);
   if (pref >= 0) {
     return (pref > 0);
@@ -646,28 +652,6 @@ nsChromeRegistry::GetDirectionForLocale(const nsACString& aLocale)
   nsAutoCString locale(aLocale);
   SanitizeForBCP47(locale);
   return uloc_isRightToLeft(locale.get());
-#else
-  // first check the intl.uidirection.<locale> preference, and if that is not
-  // set, check the same preference but with just the first two characters of
-  // the locale. If that isn't set, default to left-to-right.
-  nsAutoCString prefString = NS_LITERAL_CSTRING("intl.uidirection.") + aLocale;
-  nsCOMPtr<nsIPrefBranch> prefBranch (do_GetService(NS_PREFSERVICE_CONTRACTID));
-  if (!prefBranch) {
-    return false;
-  }
-
-  nsXPIDLCString dir;
-  prefBranch->GetCharPref(prefString.get(), getter_Copies(dir));
-  if (dir.IsEmpty()) {
-    int32_t hyphen = prefString.FindChar('-');
-    if (hyphen >= 1) {
-      nsAutoCString shortPref(Substring(prefString, 0, hyphen));
-      prefBranch->GetCharPref(shortPref.get(), getter_Copies(dir));
-    }
-  }
-
-  return dir.EqualsLiteral("rtl");
-#endif
 }
 
 NS_IMETHODIMP_(bool)
@@ -715,7 +699,6 @@ nsChromeRegistry::GetSingleton()
 void
 nsChromeRegistry::SanitizeForBCP47(nsACString& aLocale)
 {
-#ifdef ENABLE_INTL_API
   // Currently, the only locale code we use that's not BCP47-conformant is
   // "ja-JP-mac" on OS X, but let's try to be more general than just
   // hard-coding that here.
@@ -730,13 +713,4 @@ nsChromeRegistry::SanitizeForBCP47(nsACString& aLocale)
   if (U_SUCCESS(err) && len > 0) {
     aLocale.Assign(langTag, len);
   }
-#else
-  // This is only really needed for Intl API purposes, AFAIK,
-  // so probably won't be used in a non-ENABLE_INTL_API build.
-  // But let's fix up the single anomalous code we actually ship,
-  // just in case:
-  if (aLocale.EqualsLiteral("ja-JP-mac")) {
-    aLocale.AssignLiteral("ja-JP");
-  }
-#endif
 }

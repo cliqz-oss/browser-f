@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,7 +12,7 @@
 #define nsMenuBarFrame_h__
 
 #include "mozilla/Attributes.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsCOMPtr.h"
 #include "nsBoxFrame.h"
 #include "nsMenuFrame.h"
@@ -20,7 +21,13 @@
 
 class nsIContent;
 
-nsIFrame* NS_NewMenuBarFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+namespace mozilla {
+namespace dom {
+class KeyboardEvent;
+} // namespace dom
+} // namespace mozilla
+
+nsIFrame* NS_NewMenuBarFrame(nsIPresShell* aPresShell, mozilla::ComputedStyle* aStyle);
 
 class nsMenuBarFrame final : public nsBoxFrame, public nsMenuParent
 {
@@ -28,7 +35,7 @@ public:
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsMenuBarFrame)
 
-  explicit nsMenuBarFrame(nsStyleContext* aContext);
+  explicit nsMenuBarFrame(ComputedStyle* aStyle);
 
   // nsMenuParent interface
   virtual nsMenuFrame* GetCurrentMenuItem() override;
@@ -55,7 +62,7 @@ public:
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   virtual void LockMenuUntilClosed(bool aLock) override {}
   virtual bool IsMenuLocked() override { return false; }
@@ -84,7 +91,8 @@ public:
   nsMenuFrame* Enter(mozilla::WidgetGUIEvent* aEvent);
 
   // Used to handle ALT+key combos
-  nsMenuFrame* FindMenuWithShortcut(nsIDOMKeyEvent* aKeyEvent);
+  nsMenuFrame* FindMenuWithShortcut(mozilla::dom::KeyboardEvent* aKeyEvent,
+                                    bool aPeek);
 
   virtual bool IsFrameOfType(uint32_t aFlags) const override
   {

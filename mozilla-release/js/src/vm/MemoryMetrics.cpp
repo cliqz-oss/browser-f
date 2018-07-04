@@ -6,32 +6,29 @@
 
 #include "js/MemoryMetrics.h"
 
-#include "mozilla/DebugOnly.h"
-
-#include "jsapi.h"
-#include "jscompartment.h"
-#include "jsgc.h"
-#include "jsobj.h"
-#include "jsscript.h"
-
+#include "gc/GC.h"
 #include "gc/Heap.h"
+#include "gc/Nursery.h"
+#include "gc/PublicIterators.h"
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
 #include "vm/ArrayObject.h"
+#include "vm/HelperThreads.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSObject.h"
+#include "vm/JSScript.h"
 #include "vm/Runtime.h"
 #include "vm/Shape.h"
-#include "vm/String.h"
-#include "vm/Symbol.h"
+#include "vm/StringType.h"
+#include "vm/SymbolType.h"
 #include "vm/WrapperObject.h"
 #include "wasm/WasmInstance.h"
 #include "wasm/WasmJS.h"
 #include "wasm/WasmModule.h"
 
-using mozilla::DebugOnly;
 using mozilla::MallocSizeOf;
 using mozilla::Move;
 using mozilla::PodCopy;
-using mozilla::PodEqual;
 
 using namespace js;
 
@@ -316,7 +313,7 @@ StatsZoneCallback(JSRuntime* rt, void* data, Zone* zone)
     // CollectRuntimeStats reserves enough space.
     MOZ_ALWAYS_TRUE(rtStats->zoneStatsVector.growBy(1));
     ZoneStats& zStats = rtStats->zoneStatsVector.back();
-    if (!zStats.initStrings(rt))
+    if (!zStats.initStrings())
         MOZ_CRASH("oom");
     rtStats->initExtraZoneStats(zone, &zStats);
     rtStats->currZoneStats = &zStats;
@@ -341,7 +338,7 @@ StatsCompartmentCallback(JSContext* cx, void* data, JSCompartment* compartment)
     // CollectRuntimeStats reserves enough space.
     MOZ_ALWAYS_TRUE(rtStats->compartmentStatsVector.growBy(1));
     CompartmentStats& cStats = rtStats->compartmentStatsVector.back();
-    if (!cStats.initClasses(cx->runtime()))
+    if (!cStats.initClasses())
         MOZ_CRASH("oom");
     rtStats->initExtraCompartmentStats(compartment, &cStats);
 
@@ -361,9 +358,9 @@ StatsCompartmentCallback(JSContext* cx, void* data, JSCompartment* compartment)
                                         &cStats.savedStacksSet,
                                         &cStats.varNamesSet,
                                         &cStats.nonSyntacticLexicalScopesTable,
-                                        &cStats.templateLiteralMap,
                                         &cStats.jitCompartment,
-                                        &cStats.privateData);
+                                        &cStats.privateData,
+                                        &cStats.scriptCountsMap);
 }
 
 static void
@@ -522,13 +519,16 @@ StatsCellCallback(JSRuntime* rt, void* data, void* thing, JS::TraceKind traceKin
 
       case JS::TraceKind::String: {
         JSString* str = static_cast<JSString*>(thing);
+        size_t size = thingSize;
+        if (!str->isTenured())
+            size += Nursery::stringHeaderSize();
 
         JS::StringInfo info;
         if (str->hasLatin1Chars()) {
-            info.gcHeapLatin1 = thingSize;
+            info.gcHeapLatin1 = size;
             info.mallocHeapLatin1 = str->sizeOfExcludingThis(rtStats->mallocSizeOf_);
         } else {
-            info.gcHeapTwoByte = thingSize;
+            info.gcHeapTwoByte = size;
             info.mallocHeapTwoByte = str->sizeOfExcludingThis(rtStats->mallocSizeOf_);
         }
         info.numCopies = 1;
@@ -620,10 +620,10 @@ StatsCellCallback(JSRuntime* rt, void* data, void* thing, JS::TraceKind traceKin
 }
 
 bool
-ZoneStats::initStrings(JSRuntime* rt)
+ZoneStats::initStrings()
 {
     isTotals = false;
-    allStrings = rt->new_<StringsHashMap>();
+    allStrings = js_new<StringsHashMap>();
     if (!allStrings || !allStrings->init()) {
         js_delete(allStrings);
         allStrings = nullptr;
@@ -633,10 +633,10 @@ ZoneStats::initStrings(JSRuntime* rt)
 }
 
 bool
-CompartmentStats::initClasses(JSRuntime* rt)
+CompartmentStats::initClasses()
 {
     isTotals = false;
-    allClasses = rt->new_<ClassesHashMap>();
+    allClasses = js_new<ClassesHashMap>();
     if (!allClasses || !allClasses->init()) {
         js_delete(allClasses);
         allClasses = nullptr;
@@ -755,9 +755,7 @@ CollectRuntimeStatsHelper(JSContext* cx, RuntimeStats* rtStats, ObjectPrivateVis
     if (!rtStats->compartmentStatsVector.reserve(rt->numCompartments))
         return false;
 
-    size_t totalZones = 1; // For the atoms zone.
-    for (ZoneGroupsIter group(rt); !group.done(); group.next())
-        totalZones += group->zones().length();
+    size_t totalZones = rt->gc.zones().length() + 1; // + 1 for the atoms zone.
     if (!rtStats->zoneStatsVector.reserve(totalZones))
         return false;
 
@@ -849,6 +847,24 @@ CollectRuntimeStatsHelper(JSContext* cx, RuntimeStats* rtStats, ObjectPrivateVis
 }
 
 JS_PUBLIC_API(bool)
+JS::CollectGlobalStats(GlobalStats *gStats)
+{
+    AutoLockHelperThreadState lock;
+
+    // HelperThreadState holds data that is not part of a Runtime. This does
+    // not include data is is currently being processed by a HelperThread.
+    HelperThreadState().addSizeOfIncludingThis(gStats, lock);
+
+#ifdef JS_TRACE_LOGGING
+    // Global data used by TraceLogger
+    gStats->tracelogger += SizeOfTraceLogState(gStats->mallocSizeOf_);
+    gStats->tracelogger += SizeOfTraceLogGraphState(gStats->mallocSizeOf_);
+#endif
+
+    return true;
+}
+
+JS_PUBLIC_API(bool)
 JS::CollectRuntimeStats(JSContext* cx, RuntimeStats *rtStats, ObjectPrivateVisitor *opv,
                         bool anonymize)
 {
@@ -881,15 +897,6 @@ JS_PUBLIC_API(size_t)
 JS::PeakSizeOfTemporary(const JSContext* cx)
 {
     return cx->tempLifoAlloc().peakSizeOfExcludingThis();
-}
-
-JS_PUBLIC_API(void)
-JS::CollectTraceLoggerStateStats(RuntimeStats* rtStats)
-{
-#ifdef JS_TRACE_LOGGING
-    rtStats->runtime.tracelogger += SizeOfTraceLogState(rtStats->mallocSizeOf_);
-    rtStats->runtime.tracelogger += SizeOfTraceLogGraphState(rtStats->mallocSizeOf_);
-#endif
 }
 
 namespace JS {

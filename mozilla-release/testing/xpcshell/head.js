@@ -35,15 +35,20 @@ var _XPCSHELL_PROCESS;
 
 // Register the testing-common resource protocol early, to have access to its
 // modules.
+var _Services = ChromeUtils.import("resource://gre/modules/Services.jsm", null).Services;
 _register_modules_protocol_handler();
 
-var _Promise = Components.utils.import("resource://gre/modules/Promise.jsm", {}).Promise;
-var _PromiseTestUtils = Components.utils.import("resource://testing-common/PromiseTestUtils.jsm", {}).PromiseTestUtils;
-var _Task = Components.utils.import("resource://gre/modules/Task.jsm", {}).Task;
-Components.utils.importGlobalProperties(["XMLHttpRequest"]);
+var _PromiseTestUtils = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", null).PromiseTestUtils;
+var _Task = ChromeUtils.import("resource://gre/modules/Task.jsm", null).Task;
+
+let _NetUtil = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", null).NetUtil;
+
+let _XPCOMUtils = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", null).XPCOMUtils;
+
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 // Support a common assertion library, Assert.jsm.
-var AssertCls = Components.utils.import("resource://testing-common/Assert.jsm", null).Assert;
+var AssertCls = ChromeUtils.import("resource://testing-common/Assert.jsm", null).Assert;
 // Pass a custom report function for xpcshell-test style reporting.
 var Assert = new AssertCls(function(err, message, stack) {
   if (err) {
@@ -51,7 +56,7 @@ var Assert = new AssertCls(function(err, message, stack) {
   } else {
     do_report_result(true, message, stack);
   }
-});
+}, true);
 
 var _add_params = function(params) {
   if (typeof _XPCSHELL_PROCESS != "undefined") {
@@ -61,50 +66,44 @@ var _add_params = function(params) {
 
 var _dumpLog = function(raw_msg) {
   dump("\n" + JSON.stringify(raw_msg) + "\n");
-}
+};
 
-var _LoggerClass = Components.utils.import("resource://testing-common/StructuredLog.jsm", null).StructuredLogger;
+var _LoggerClass = ChromeUtils.import("resource://testing-common/StructuredLog.jsm", null).StructuredLogger;
 var _testLogger = new _LoggerClass("xpcshell/head.js", _dumpLog, [_add_params]);
 
 // Disable automatic network detection, so tests work correctly when
 // not connected to a network.
-{
-  let ios = Components.classes["@mozilla.org/network/io-service;1"]
-                      .getService(Components.interfaces.nsIIOService2);
-  ios.manageOfflineStatus = false;
-  ios.offline = false;
-}
+_Services.io.manageOfflineStatus = false;
+_Services.io.offline = false;
 
 // Determine if we're running on parent or child
 var runningInParent = true;
 try {
-  runningInParent = Components.classes["@mozilla.org/xre/runtime;1"].
-                    getService(Components.interfaces.nsIXULRuntime).processType
-                    == Components.interfaces.nsIXULRuntime.PROCESS_TYPE_DEFAULT;
+  // Don't use Services.appinfo here as it disables replacing appinfo with stubs
+  // for test usage.
+  // eslint-disable-next-line mozilla/use-services
+  runningInParent = Cc["@mozilla.org/xre/runtime;1"].
+                      getService(Ci.nsIXULRuntime).processType
+                      == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT;
 } catch (e) { }
 
 // Only if building of places is enabled.
 if (runningInParent &&
-    "mozIAsyncHistory" in Components.interfaces) {
+    "mozIAsyncHistory" in Ci) {
   // Ensure places history is enabled for xpcshell-tests as some non-FF
   // apps disable it.
-  let prefs = Components.classes["@mozilla.org/preferences-service;1"]
-              .getService(Components.interfaces.nsIPrefBranch);
-  prefs.setBoolPref("places.history.enabled", true);
+  _Services.prefs.setBoolPref("places.history.enabled", true);
 }
 
 try {
   if (runningInParent) {
-    let prefs = Components.classes["@mozilla.org/preferences-service;1"]
-                .getService(Components.interfaces.nsIPrefBranch);
-
     // disable necko IPC security checks for xpcshell, as they lack the
     // docshells needed to pass them
-    prefs.setBoolPref("network.disable.ipc.security", true);
+    _Services.prefs.setBoolPref("network.disable.ipc.security", true);
 
     // Disable IPv6 lookups for 'localhost' on windows.
-    if ("@mozilla.org/windows-registry-key;1" in Components.classes) {
-      prefs.setCharPref("network.dns.ipv4OnlyDomains", "localhost");
+    if ("@mozilla.org/windows-registry-key;1" in Cc) {
+      _Services.prefs.setCharPref("network.dns.ipv4OnlyDomains", "localhost");
     }
   }
 } catch (e) { }
@@ -116,10 +115,10 @@ try {
 // crashreporter component.
 try {
   if (runningInParent &&
-      "@mozilla.org/toolkit/crash-reporter;1" in Components.classes) {
+      "@mozilla.org/toolkit/crash-reporter;1" in Cc) {
     let crashReporter =
-          Components.classes["@mozilla.org/toolkit/crash-reporter;1"]
-          .getService(Components.interfaces.nsICrashReporter);
+          Cc["@mozilla.org/toolkit/crash-reporter;1"]
+          .getService(Ci.nsICrashReporter);
     crashReporter.UpdateCrashEventsDir();
     crashReporter.minidumpPath = do_get_minidumpdir();
   }
@@ -128,27 +127,24 @@ try {
 // Configure a console listener so messages sent to it are logged as part
 // of the test.
 try {
-  let levelNames = {}
+  let levelNames = {};
   for (let level of ["debug", "info", "warn", "error"]) {
-    levelNames[Components.interfaces.nsIConsoleMessage[level]] = level;
+    levelNames[Ci.nsIConsoleMessage[level]] = level;
   }
 
   let listener = {
-    QueryInterface(iid) {
-      if (!iid.equals(Components.interfaces.nsISupports) &&
-          !iid.equals(Components.interfaces.nsIConsoleListener)) {
-        throw Components.results.NS_NOINTERFACE;
-      }
-      return this;
-    },
+    QueryInterface: _XPCOMUtils.generateQI(["nsIConsoleListener"]),
     observe(msg) {
-      if (typeof do_print === "function")
-        do_print("CONSOLE_MESSAGE: (" + levelNames[msg.logLevel] + ") " + msg.toString());
+      if (typeof info === "function")
+        info("CONSOLE_MESSAGE: (" + levelNames[msg.logLevel] + ") " + msg.toString());
     }
   };
-  Components.classes["@mozilla.org/consoleservice;1"]
-            .getService(Components.interfaces.nsIConsoleService)
-            .registerListener(listener);
+  // Don't use _Services.console here as it causes one of the devtools tests
+  // to fail, probably due to initializing Services.console too early.
+  // eslint-disable-next-line mozilla/use-services
+  Cc["@mozilla.org/consoleservice;1"]
+    .getService(Ci.nsIConsoleService)
+    .registerListener(listener);
 } catch (e) {}
 /**
  * Date.now() is not necessarily monotonically increasing (insert sob story
@@ -170,21 +166,15 @@ function _Timer(func, delay) {
   this._start = Date.now();
   this._delay = delay;
 
-  var timer = Components.classes["@mozilla.org/timer;1"]
-                        .createInstance(Components.interfaces.nsITimer);
+  var timer = Cc["@mozilla.org/timer;1"]
+                .createInstance(Ci.nsITimer);
   timer.initWithCallback(this, delay + _timerFuzz, timer.TYPE_ONE_SHOT);
 
   // Keep timer alive until it fires
   _pendingTimers.push(timer);
 }
 _Timer.prototype = {
-  QueryInterface(iid) {
-    if (iid.equals(Components.interfaces.nsITimerCallback) ||
-        iid.equals(Components.interfaces.nsISupports))
-      return this;
-
-    throw Components.results.NS_ERROR_NO_INTERFACE;
-  },
+  QueryInterface: _XPCOMUtils.generateQI(["nsITimerCallback"]),
 
   notify(timer) {
     _pendingTimers.splice(_pendingTimers.indexOf(timer), 1);
@@ -210,13 +200,17 @@ _Timer.prototype = {
   }
 };
 
+function _isGenerator(val) {
+  return typeof val === "object" && val && typeof val.next === "function";
+}
+
 function _do_main() {
   if (_quit)
     return;
 
   _testLogger.info("running event loop");
 
-  var tm = Components.classes["@mozilla.org/thread-manager;1"].getService();
+  var tm = Cc["@mozilla.org/thread-manager;1"].getService();
 
   tm.spinEventLoopUntil(() => _quit);
 
@@ -242,7 +236,7 @@ var _fakeIdleService = {
   get registrar() {
     delete this.registrar;
     return this.registrar =
-      Components.manager.QueryInterface(Components.interfaces.nsIComponentRegistrar);
+      Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
   },
   contractID: "@mozilla.org/widget/idleservice;1",
   get CID() {
@@ -253,8 +247,8 @@ var _fakeIdleService = {
     if (!this.originalFactory) {
       // Save original factory.
       this.originalFactory =
-        Components.manager.getClassObject(Components.classes[this.contractID],
-                                          Components.interfaces.nsIFactory);
+        Components.manager.getClassObject(Cc[this.contractID],
+                                          Ci.nsIFactory);
       // Unregister original factory.
       this.registrar.unregisterFactory(this.CID, this.originalFactory);
       // Replace with the mock.
@@ -279,20 +273,14 @@ var _fakeIdleService = {
     // nsIFactory
     createInstance(aOuter, aIID) {
       if (aOuter) {
-        throw Components.results.NS_ERROR_NO_AGGREGATION;
+        throw Components.Exception("", Cr.NS_ERROR_NO_AGGREGATION);
       }
       return _fakeIdleService.QueryInterface(aIID);
     },
     lockFactory(aLock) {
-      throw Components.results.NS_ERROR_NOT_IMPLEMENTED;
+      throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
     },
-    QueryInterface(aIID) {
-      if (aIID.equals(Components.interfaces.nsIFactory) ||
-          aIID.equals(Components.interfaces.nsISupports)) {
-        return this;
-      }
-      throw Components.results.NS_ERROR_NO_INTERFACE;
-    }
+    QueryInterface: _XPCOMUtils.generateQI(["nsIFactory"]),
   },
 
   // nsIIdleService
@@ -304,16 +292,16 @@ var _fakeIdleService = {
 
   QueryInterface(aIID) {
     // Useful for testing purposes, see test_get_idle.js.
-    if (aIID.equals(Components.interfaces.nsIFactory)) {
+    if (aIID.equals(Ci.nsIFactory)) {
       return this.factory;
     }
-    if (aIID.equals(Components.interfaces.nsIIdleService) ||
-        aIID.equals(Components.interfaces.nsISupports)) {
+    if (aIID.equals(Ci.nsIIdleService) ||
+        aIID.equals(Ci.nsISupports)) {
       return this;
     }
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
   }
-}
+};
 
 /**
  * Restores the idle service factory if needed and returns the service's handle.
@@ -321,20 +309,18 @@ var _fakeIdleService = {
  */
 function do_get_idle() {
   _fakeIdleService.deactivate();
-  return Components.classes[_fakeIdleService.contractID]
-                   .getService(Components.interfaces.nsIIdleService);
+  return Cc[_fakeIdleService.contractID]
+           .getService(Ci.nsIIdleService);
 }
 
 // Map resource://test/ to current working directory and
 // resource://testing-common/ to the shared test modules directory.
 function _register_protocol_handlers() {
-  let ios = Components.classes["@mozilla.org/network/io-service;1"]
-                      .getService(Components.interfaces.nsIIOService);
   let protocolHandler =
-    ios.getProtocolHandler("resource")
-       .QueryInterface(Components.interfaces.nsIResProtocolHandler);
+    _Services.io.getProtocolHandler("resource")
+                .QueryInterface(Ci.nsIResProtocolHandler);
 
-  let curDirURI = ios.newFileURI(do_get_cwd());
+  let curDirURI = _Services.io.newFileURI(do_get_cwd());
   protocolHandler.setSubstitution("test", curDirURI);
 
   _register_modules_protocol_handler();
@@ -347,14 +333,12 @@ function _register_modules_protocol_handler() {
                     "head.js is included.");
   }
 
-  let ios = Components.classes["@mozilla.org/network/io-service;1"]
-                      .getService(Components.interfaces.nsIIOService);
   let protocolHandler =
-    ios.getProtocolHandler("resource")
-       .QueryInterface(Components.interfaces.nsIResProtocolHandler);
+    _Services.io.getProtocolHandler("resource")
+                .QueryInterface(Ci.nsIResProtocolHandler);
 
-  let modulesFile = Components.classes["@mozilla.org/file/local;1"].
-                    createInstance(Components.interfaces.nsILocalFile);
+  let modulesFile = Cc["@mozilla.org/file/local;1"].
+                    createInstance(Ci.nsIFile);
   modulesFile.initWithPath(_TESTING_MODULES_DIR);
 
   if (!modulesFile.exists()) {
@@ -367,7 +351,7 @@ function _register_modules_protocol_handler() {
                     _TESTING_MODULES_DIR);
   }
 
-  let modulesURI = ios.newFileURI(modulesFile);
+  let modulesURI = _Services.io.newFileURI(modulesFile);
 
   protocolHandler.setSubstitution("testing-common", modulesURI);
 }
@@ -375,25 +359,22 @@ function _register_modules_protocol_handler() {
 /* Debugging support */
 // Used locally and by our self-tests.
 function _setupDebuggerServer(breakpointFiles, callback) {
-  let prefs = Components.classes["@mozilla.org/preferences-service;1"]
-              .getService(Components.interfaces.nsIPrefBranch);
-
   // Always allow remote debugging.
-  prefs.setBoolPref("devtools.debugger.remote-enabled", true);
+  _Services.prefs.setBoolPref("devtools.debugger.remote-enabled", true);
 
   // for debugging-the-debugging, let an env var cause log spew.
-  let env = Components.classes["@mozilla.org/process/environment;1"]
-                      .getService(Components.interfaces.nsIEnvironment);
+  let env = Cc["@mozilla.org/process/environment;1"]
+              .getService(Ci.nsIEnvironment);
   if (env.get("DEVTOOLS_DEBUGGER_LOG")) {
-    prefs.setBoolPref("devtools.debugger.log", true);
+    _Services.prefs.setBoolPref("devtools.debugger.log", true);
   }
   if (env.get("DEVTOOLS_DEBUGGER_LOG_VERBOSE")) {
-    prefs.setBoolPref("devtools.debugger.log.verbose", true);
+    _Services.prefs.setBoolPref("devtools.debugger.log.verbose", true);
   }
 
   let require;
   try {
-    ({ require } = Components.utils.import("resource://devtools/shared/Loader.jsm", {}));
+    ({ require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {}));
   } catch (e) {
     throw new Error("resource://devtools appears to be inaccessible from the " +
                     "xpcshell environment.\n" +
@@ -403,20 +384,17 @@ function _setupDebuggerServer(breakpointFiles, callback) {
                     "It is possible for this to alter test behevior by " +
                     "triggering additional browser code to run, so check " +
                     "test behavior after making this change.\n" +
-                    "See also https://bugzil.la/1215378.")
+                    "See also https://bugzil.la/1215378.");
   }
   let { DebuggerServer } = require("devtools/server/main");
   let { OriginalLocation } = require("devtools/server/actors/common");
   DebuggerServer.init();
-  DebuggerServer.addBrowserActors();
+  DebuggerServer.registerAllActors();
   DebuggerServer.addActors("resource://testing-common/dbg-actors.js");
   DebuggerServer.allowChromeProcess = true;
 
   // An observer notification that tells us when we can "resume" script
   // execution.
-  let obsSvc = Components.classes["@mozilla.org/observer-service;1"].
-               getService(Components.interfaces.nsIObserverService);
-
   const TOPICS = ["devtools-thread-resumed", "xpcshell-test-devtools-shutdown"];
   let observe = function(subject, topic, data) {
     switch (topic) {
@@ -432,7 +410,7 @@ function _setupDebuggerServer(breakpointFiles, callback) {
             sourceActor._getOrCreateBreakpointActor(new OriginalLocation(sourceActor, 1));
           }
         } catch (ex) {
-          do_print("Failed to initialize breakpoints: " + ex + "\n" + ex.stack);
+          info("Failed to initialize breakpoints: " + ex + "\n" + ex.stack);
         }
         break;
       case "xpcshell-test-devtools-shutdown":
@@ -441,13 +419,13 @@ function _setupDebuggerServer(breakpointFiles, callback) {
         break;
     }
     for (let topicToRemove of TOPICS) {
-      obsSvc.removeObserver(observe, topicToRemove);
+      _Services.obs.removeObserver(observe, topicToRemove);
     }
     callback();
   };
 
   for (let topic of TOPICS) {
-    obsSvc.addObserver(observe, topic);
+    _Services.obs.addObserver(observe, topic);
   }
   return DebuggerServer;
 }
@@ -456,14 +434,14 @@ function _initDebugging(port) {
   let initialized = false;
   let DebuggerServer = _setupDebuggerServer(_TEST_FILE, () => { initialized = true; });
 
-  do_print("");
-  do_print("*******************************************************************");
-  do_print("Waiting for the debugger to connect on port " + port)
-  do_print("")
-  do_print("To connect the debugger, open a Firefox instance, select 'Connect'");
-  do_print("from the Developer menu and specify the port as " + port);
-  do_print("*******************************************************************");
-  do_print("")
+  info("");
+  info("*******************************************************************");
+  info("Waiting for the debugger to connect on port " + port);
+  info("");
+  info("To connect the debugger, open a Firefox instance, select 'Connect'");
+  info("from the Developer menu and specify the port as " + port);
+  info("*******************************************************************");
+  info("");
 
   let AuthenticatorType = DebuggerServer.Authenticators.get("PROMPT");
   let authenticator = new AuthenticatorType.Server();
@@ -477,18 +455,18 @@ function _initDebugging(port) {
   listener.open();
 
   // spin an event loop until the debugger connects.
-  let tm = Components.classes["@mozilla.org/thread-manager;1"].getService();
+  let tm = Cc["@mozilla.org/thread-manager;1"].getService();
   tm.spinEventLoopUntil(() => {
     if (initialized) {
       return true;
     }
-    do_print("Still waiting for debugger to connect...");
+    info("Still waiting for debugger to connect...");
     return false;
   });
   // NOTE: if you want to debug the harness itself, you can now add a 'debugger'
   // statement anywhere and it will stop - but we've already added a breakpoint
   // for the first line of the test scripts, so we just continue...
-  do_print("Debugger connected, starting test execution");
+  info("Debugger connected, starting test execution");
 }
 
 function _execute_test() {
@@ -510,11 +488,10 @@ function _execute_test() {
   _fakeIdleService.activate();
 
   _PromiseTestUtils.init();
-  _PromiseTestUtils.Assert = Assert;
 
   let coverageCollector = null;
   if (typeof _JSCOV_DIR === "string") {
-    let _CoverageCollector = Components.utils.import("resource://testing-common/CoverageUtils.jsm", {}).CoverageCollector;
+    let _CoverageCollector = ChromeUtils.import("resource://testing-common/CoverageUtils.jsm", {}).CoverageCollector;
     coverageCollector = new _CoverageCollector(_JSCOV_DIR);
   }
 
@@ -555,7 +532,7 @@ function _execute_test() {
     // possible that this will mask an NS_ERROR_ABORT that happens after a
     // do_check failure though.
 
-    if (!_quit || e != Components.results.NS_ERROR_ABORT) {
+    if (!_quit || e.result != Cr.NS_ERROR_ABORT) {
       let extra = {};
       if (e.fileName) {
         extra.source_file = e.fileName;
@@ -585,7 +562,7 @@ function _execute_test() {
     } else {
       stack = Components.stack.caller;
     }
-    if (stack instanceof Components.interfaces.nsIStackFrame) {
+    if (stack instanceof Ci.nsIStackFrame) {
       filename = stack.filename;
     } else if (ex.fileName) {
       filename = ex.fileName;
@@ -598,18 +575,20 @@ function _execute_test() {
   };
 
   let complete = _cleanupFunctions.length == 0;
-  _Task.spawn(function*() {
+  (async () => {
     for (let func of _cleanupFunctions.reverse()) {
       try {
-        yield func();
+        let result = await func();
+        if (_isGenerator(result)) {
+          Assert.ok(false, "Cleanup function returned a generator");
+        }
       } catch (ex) {
         reportCleanupError(ex);
       }
     }
     _cleanupFunctions = [];
-  }).catch(reportCleanupError).then(() => complete = true);
-  let tm = Components.classes["@mozilla.org/thread-manager;1"].getService();
-  tm.spinEventLoopUntil(() => complete);
+  })().catch(reportCleanupError).then(() => complete = true);
+  _Services.tm.spinEventLoopUntil(() => complete);
 
   // Restore idle service to avoid leaks.
   _fakeIdleService.deactivate();
@@ -617,12 +596,10 @@ function _execute_test() {
   if (_profileInitialized) {
     // Since we have a profile, we will notify profile shutdown topics at
     // the end of the current test, to ensure correct cleanup on shutdown.
-    let obs = Components.classes["@mozilla.org/observer-service;1"]
-                        .getService(Components.interfaces.nsIObserverService);
-    obs.notifyObservers(null, "profile-change-net-teardown");
-    obs.notifyObservers(null, "profile-change-teardown");
-    obs.notifyObservers(null, "profile-before-change");
-    obs.notifyObservers(null, "profile-before-change-qm");
+    _Services.obs.notifyObservers(null, "profile-change-net-teardown");
+    _Services.obs.notifyObservers(null, "profile-change-teardown");
+    _Services.obs.notifyObservers(null, "profile-before-change");
+    _Services.obs.notifyObservers(null, "profile-before-change-qm");
 
     _profileInitialized = false;
   }
@@ -649,7 +626,7 @@ function _load_files(aFiles) {
     } catch (e) {
       let extra = {
         source_file: element
-      }
+      };
       if (e.stack) {
         extra.stack = _format_stack(e.stack);
       }
@@ -669,7 +646,7 @@ function _wrap_with_quotes_if_necessary(val) {
 /**
  * Prints a message to the output log.
  */
-function do_print(msg, data) {
+function info(msg, data) {
   msg = _wrap_with_quotes_if_necessary(msg);
   data = data ? data : null;
   _testLogger.info(msg, data);
@@ -689,13 +666,11 @@ function do_timeout(delay, func) {
   new _Timer(func, Number(delay));
 }
 
-function do_execute_soon(callback, aName) {
+function executeSoon(callback, aName) {
   let funcName = (aName ? aName : callback.name);
   do_test_pending(funcName);
-  var tm = Components.classes["@mozilla.org/thread-manager;1"]
-                     .getService(Components.interfaces.nsIThreadManager);
 
-  tm.dispatchToMainThread({
+  _Services.tm.dispatchToMainThread({
     run() {
       try {
         callback();
@@ -705,7 +680,7 @@ function do_execute_soon(callback, aName) {
         // has already been logged so there is no need to log it again. It's
         // possible that this will mask an NS_ERROR_ABORT that happens after a
         // do_check failure though.
-        if (!_quit || e != Components.results.NS_ERROR_ABORT) {
+        if (!_quit || e.result != Cr.NS_ERROR_ABORT) {
           let stack = e.stack ? _format_stack(e.stack) : null;
           _testLogger.testStatus(_TEST_NAME,
                                  funcName,
@@ -735,7 +710,7 @@ function do_throw(error, stack) {
   // otherwise get it from our call context
   stack = stack || error.stack || Components.stack.caller;
 
-  if (stack instanceof Components.interfaces.nsIStackFrame)
+  if (stack instanceof Ci.nsIStackFrame)
     filename = stack.filename;
   else if (error.fileName)
     filename = error.fileName;
@@ -752,12 +727,12 @@ function _abort_failed_test() {
   // Called to abort the test run after all failures are logged.
   _passed = false;
   _do_quit();
-  throw Components.results.NS_ERROR_ABORT;
+  throw Components.Exception("", Cr.NS_ERROR_ABORT);
 }
 
 function _format_stack(stack) {
   let normalized;
-  if (stack instanceof Components.interfaces.nsIStackFrame) {
+  if (stack instanceof Ci.nsIStackFrame) {
     let frames = [];
     for (let frame = stack; frame; frame = frame.caller) {
       frames.push(frame.filename + ":" + frame.name + ":" + frame.lineNumber);
@@ -803,7 +778,7 @@ function do_report_unexpected_exception(ex, text) {
                       stack: _format_stack(ex.stack)
                     });
   _do_quit();
-  throw Components.results.NS_ERROR_ABORT;
+  throw Components.Exception("", Cr.NS_ERROR_ABORT);
 }
 
 function do_note_exception(ex, text) {
@@ -815,26 +790,10 @@ function do_note_exception(ex, text) {
                    });
 }
 
-function _do_check_neq(left, right, stack, todo) {
-  Assert.notEqual(left, right);
-}
-
-function do_check_neq(left, right, stack) {
-  if (!stack)
-    stack = Components.stack.caller;
-
-  _do_check_neq(left, right, stack, false);
-}
-
-function todo_check_neq(left, right, stack) {
-  if (!stack)
-      stack = Components.stack.caller;
-
-  _do_check_neq(left, right, stack, true);
-}
-
 function do_report_result(passed, text, stack, todo) {
-  while (stack.filename.includes("head.js") && stack.caller) {
+  // Match names like head.js, head_foo.js, and foo_head.js, but not
+  // test_headache.js
+  while (/(\/head(_.+)?|head)\.js$/.test(stack.filename) && stack.caller) {
     stack = stack.caller;
   }
 
@@ -888,19 +847,11 @@ function _do_check_eq(left, right, stack, todo) {
   do_report_result(left == right, text, stack, todo);
 }
 
-function do_check_eq(left, right, stack) {
-  Assert.equal(left, right);
-}
-
 function todo_check_eq(left, right, stack) {
   if (!stack)
       stack = Components.stack.caller;
 
   _do_check_eq(left, right, stack, true);
-}
-
-function do_check_true(condition, stack) {
-  Assert.ok(condition, stack);
 }
 
 function todo_check_true(condition, stack) {
@@ -910,10 +861,6 @@ function todo_check_true(condition, stack) {
   todo_check_eq(condition, true, stack);
 }
 
-function do_check_false(condition, stack) {
-  Assert.ok(!condition, stack);
-}
-
 function todo_check_false(condition, stack) {
   if (!stack)
     stack = Components.stack.caller;
@@ -921,22 +868,15 @@ function todo_check_false(condition, stack) {
   todo_check_eq(condition, false, stack);
 }
 
-function do_check_null(condition, stack) {
-  Assert.equal(condition, null);
-}
-
 function todo_check_null(condition, stack = Components.stack.caller) {
   todo_check_eq(condition, null, stack);
-}
-function do_check_matches(pattern, value) {
-  Assert.deepEqual(pattern, value);
 }
 
 // Check that |func| throws an nsIException that has
 // |Components.results[resultName]| as the value of its 'result' property.
 function do_check_throws_nsIException(func, resultName,
                                       stack = Components.stack.caller, todo = false) {
-  let expected = Components.results[resultName];
+  let expected = Cr[resultName];
   if (typeof expected !== "number") {
     do_throw("do_check_throws_nsIException requires a Components.results" +
              " property name, not " + uneval(resultName), stack);
@@ -949,7 +889,7 @@ function do_check_throws_nsIException(func, resultName,
   try {
     func();
   } catch (ex) {
-    if (!(ex instanceof Components.interfaces.nsIException) ||
+    if (!(ex instanceof Ci.nsIException) ||
         ex.result !== expected) {
       do_report_result(false, msg + ", threw " + legible_exception(ex) +
                        " instead", stack, todo);
@@ -969,14 +909,14 @@ function do_check_throws_nsIException(func, resultName,
 function legible_exception(exception) {
   switch (typeof exception) {
     case "object":
-    if (exception instanceof Components.interfaces.nsIException) {
+    if (exception instanceof Ci.nsIException) {
       return "nsIException instance: " + uneval(exception.toString());
     }
     return exception.toString();
 
     case "number":
-    for (let name in Components.results) {
-      if (exception === Components.results[name]) {
+    for (let name in Cr) {
+      if (exception === Cr[name]) {
         return "Components.results." + name;
       }
     }
@@ -1017,9 +957,7 @@ function do_test_finished(aName) {
 
 function do_get_file(path, allowNonexistent) {
   try {
-    let lf = Components.classes["@mozilla.org/file/directory_service;1"]
-      .getService(Components.interfaces.nsIProperties)
-      .get("CurWorkD", Components.interfaces.nsILocalFile);
+    let lf = _Services.dirsvc.get("CurWorkD", Ci.nsIFile);
 
     let bits = path.split("/");
     for (let i = 0; i < bits.length; i++) {
@@ -1054,8 +992,8 @@ function do_get_cwd() {
 
 function do_load_manifest(path) {
   var lf = do_get_file(path);
-  const nsIComponentRegistrar = Components.interfaces.nsIComponentRegistrar;
-  do_check_true(Components.manager instanceof nsIComponentRegistrar);
+  const nsIComponentRegistrar = Ci.nsIComponentRegistrar;
+  Assert.ok(Components.manager instanceof nsIComponentRegistrar);
   // Previous do_check_true() is not a test check.
   Components.manager.autoRegister(lf);
 }
@@ -1081,10 +1019,8 @@ function do_parse_document(aPath, aType) {
                Components.stack.caller);
   }
 
-  let file = do_get_file(aPath),
-      ios = Components.classes["@mozilla.org/network/io-service;1"]
-            .getService(Components.interfaces.nsIIOService),
-      url = ios.newFileURI(file).spec;
+  let file = do_get_file(aPath);
+  let url = _Services.io.newFileURI(file).spec;
   file = null;
   return new Promise((resolve, reject) => {
     let xhr = new XMLHttpRequest();
@@ -1105,7 +1041,7 @@ function do_parse_document(aPath, aType) {
  * @param aFunction
  *        The function to be called when the test harness has finished running.
  */
-function do_register_cleanup(aFunction) {
+function registerCleanupFunction(aFunction) {
   _cleanupFunctions.push(aFunction);
 }
 
@@ -1113,15 +1049,15 @@ function do_register_cleanup(aFunction) {
  * Returns the directory for a temp dir, which is created by the
  * test harness. Every test gets its own temp dir.
  *
- * @return nsILocalFile of the temporary directory
+ * @return nsIFile of the temporary directory
  */
 function do_get_tempdir() {
-  let env = Components.classes["@mozilla.org/process/environment;1"]
-                      .getService(Components.interfaces.nsIEnvironment);
+  let env = Cc["@mozilla.org/process/environment;1"]
+              .getService(Ci.nsIEnvironment);
   // the python harness sets this in the environment for us
   let path = env.get("XPCSHELL_TEST_TEMP_DIR");
-  let file = Components.classes["@mozilla.org/file/local;1"]
-                       .createInstance(Components.interfaces.nsILocalFile);
+  let file = Cc["@mozilla.org/file/local;1"]
+               .createInstance(Ci.nsIFile);
   file.initWithPath(path);
   return file;
 }
@@ -1129,16 +1065,16 @@ function do_get_tempdir() {
 /**
  * Returns the directory for crashreporter minidumps.
  *
- * @return nsILocalFile of the minidump directory
+ * @return nsIFile of the minidump directory
  */
 function do_get_minidumpdir() {
-  let env = Components.classes["@mozilla.org/process/environment;1"]
-                      .getService(Components.interfaces.nsIEnvironment);
+  let env = Cc["@mozilla.org/process/environment;1"]
+              .getService(Ci.nsIEnvironment);
   // the python harness may set this in the environment for us
   let path = env.get("XPCSHELL_MINIDUMP_DIR");
   if (path) {
-    let file = Components.classes["@mozilla.org/file/local;1"]
-                         .createInstance(Components.interfaces.nsILocalFile);
+    let file = Cc["@mozilla.org/file/local;1"]
+                 .createInstance(Ci.nsIFile);
     file.initWithPath(path);
     return file;
   }
@@ -1147,10 +1083,10 @@ function do_get_minidumpdir() {
 
 /**
  * Registers a directory with the profile service,
- * and return the directory as an nsILocalFile.
+ * and return the directory as an nsIFile.
  *
  * @param notifyProfileAfterChange Whether to notify for "profile-after-change".
- * @return nsILocalFile of the profile directory.
+ * @return nsIFile of the profile directory.
  */
 function do_get_profile(notifyProfileAfterChange = false) {
   if (!runningInParent) {
@@ -1158,16 +1094,14 @@ function do_get_profile(notifyProfileAfterChange = false) {
     return null;
   }
 
-  let env = Components.classes["@mozilla.org/process/environment;1"]
-                      .getService(Components.interfaces.nsIEnvironment);
+  let env = Cc["@mozilla.org/process/environment;1"]
+              .getService(Ci.nsIEnvironment);
   // the python harness sets this in the environment for us
   let profd = env.get("XPCSHELL_TEST_PROFILE_DIR");
-  let file = Components.classes["@mozilla.org/file/local;1"]
-                       .createInstance(Components.interfaces.nsILocalFile);
+  let file = Cc["@mozilla.org/file/local;1"]
+               .createInstance(Ci.nsIFile);
   file.initWithPath(profd);
 
-  let dirSvc = Components.classes["@mozilla.org/file/directory_service;1"]
-                         .getService(Components.interfaces.nsIProperties);
   let provider = {
     getFile(prop, persistent) {
       persistent.value = true;
@@ -1177,34 +1111,35 @@ function do_get_profile(notifyProfileAfterChange = false) {
       }
       return null;
     },
-    QueryInterface(iid) {
-      if (iid.equals(Components.interfaces.nsIDirectoryServiceProvider) ||
-          iid.equals(Components.interfaces.nsISupports)) {
-        return this;
-      }
-      throw Components.results.NS_ERROR_NO_INTERFACE;
-    }
+    QueryInterface: _XPCOMUtils.generateQI(["nsIDirectoryServiceProvider"]),
   };
-  dirSvc.QueryInterface(Components.interfaces.nsIDirectoryService)
-        .registerProvider(provider);
+  _Services.dirsvc.QueryInterface(Ci.nsIDirectoryService)
+           .registerProvider(provider);
 
-  let obsSvc = Components.classes["@mozilla.org/observer-service;1"].
-        getService(Components.interfaces.nsIObserverService);
+  try {
+    _Services.dirsvc.undefine("TmpD");
+  } catch (e) {
+    // This throws if the key is not already registered, but that
+    // doesn't matter.
+    if (e.result != Cr.NS_ERROR_FAILURE) {
+      throw e;
+    }
+  }
 
   // We need to update the crash events directory when the profile changes.
   if (runningInParent &&
-      "@mozilla.org/toolkit/crash-reporter;1" in Components.classes) {
+      "@mozilla.org/toolkit/crash-reporter;1" in Cc) {
     let crashReporter =
-        Components.classes["@mozilla.org/toolkit/crash-reporter;1"]
-                          .getService(Components.interfaces.nsICrashReporter);
+        Cc["@mozilla.org/toolkit/crash-reporter;1"]
+          .getService(Ci.nsICrashReporter);
     crashReporter.UpdateCrashEventsDir();
   }
 
   if (!_profileInitialized) {
-    obsSvc.notifyObservers(null, "profile-do-change", "xpcshell-do-get-profile");
+    _Services.obs.notifyObservers(null, "profile-do-change", "xpcshell-do-get-profile");
     _profileInitialized = true;
     if (notifyProfileAfterChange) {
-      obsSvc.notifyObservers(null, "profile-after-change", "xpcshell-do-get-profile");
+      _Services.obs.notifyObservers(null, "profile-after-change", "xpcshell-do-get-profile");
     }
   }
 
@@ -1212,9 +1147,7 @@ function do_get_profile(notifyProfileAfterChange = false) {
   // to avoid spurious leak reports.
   env = null;
   profd = null;
-  dirSvc = null;
   provider = null;
-  obsSvc = null;
   return file.clone();
 }
 
@@ -1323,9 +1256,9 @@ function do_await_remote_message(name, optionalCallback) {
 
     var mm;
     if (runningInParent) {
-      mm = Cc["@mozilla.org/parentprocessmessagemanager;1"].getService(Ci.nsIMessageBroadcaster);
+      mm = Cc["@mozilla.org/parentprocessmessagemanager;1"].getService();
     } else {
-      mm = Cc["@mozilla.org/childprocessmessagemanager;1"].getService(Ci.nsISyncMessageSender);
+      mm = Cc["@mozilla.org/childprocessmessagemanager;1"].getService();
     }
     do_test_pending();
     mm.addMessageListener(name, listener);
@@ -1340,10 +1273,10 @@ function do_send_remote_message(name) {
   var mm;
   var sender;
   if (runningInParent) {
-    mm = Cc["@mozilla.org/parentprocessmessagemanager;1"].getService(Ci.nsIMessageBroadcaster);
+    mm = Cc["@mozilla.org/parentprocessmessagemanager;1"].getService();
     sender = "broadcastAsyncMessage";
   } else {
-    mm = Cc["@mozilla.org/childprocessmessagemanager;1"].getService(Ci.nsISyncMessageSender);
+    mm = Cc["@mozilla.org/childprocessmessagemanager;1"].getService();
     sender = "sendAsyncMessage";
   }
   mm[sender](name);
@@ -1463,12 +1396,18 @@ function run_next_test() {
       _PromiseTestUtils.assertNoUncaughtRejections();
       let _properties;
       [_properties, _gRunningTest, ] = _gTests[_gTestIndex++];
+
+      // Must set to pending before we check for skip, so that we keep the
+      // running counts correct.
+      _testLogger.info(_TEST_NAME + " | Starting " + _gRunningTest.name);
+      do_test_pending(_gRunningTest.name);
+
       if ((typeof(_properties.skip_if) == "function" && _properties.skip_if()) ||
           (_gRunOnlyThisTest && _gRunningTest != _gRunOnlyThisTest)) {
         let _condition = _gRunOnlyThisTest ? "only one task may run." :
           _properties.skip_if.toSource().replace(/\(\)\s*=>\s*/, "");
         if (_condition == "true")
-          _condition = "explicitly skipped."
+          _condition = "explicitly skipped.";
         let _message = _gRunningTest.name
           + " skipped because the following conditions were"
           + " met: (" + _condition + ")";
@@ -1477,16 +1416,17 @@ function run_next_test() {
                                "SKIP",
                                "SKIP",
                                _message);
-        do_execute_soon(run_next_test);
+        executeSoon(run_next_test);
         return;
       }
-      _testLogger.info(_TEST_NAME + " | Starting " + _gRunningTest.name);
-      do_test_pending(_gRunningTest.name);
 
       if (_properties.isTask) {
         _gTaskRunning = true;
-        _Task.spawn(_gRunningTest).then(() => {
+        (async () => _gRunningTest())().then(result => {
           _gTaskRunning = false;
+          if (_isGenerator(result)) {
+            Assert.ok(false, "Task returned a generator");
+          }
           run_next_test();
         }, ex => {
           _gTaskRunning = false;
@@ -1511,8 +1451,8 @@ function run_next_test() {
   // For sane stacks during failures, we execute this code soon, but not now.
   // We do this now, before we call do_test_finished(), to ensure the pending
   // counter (_tests_pending) never reaches 0 while we still have tests to run
-  // (do_execute_soon bumps that counter).
-  do_execute_soon(_run_next_test, "run_next_test " + _gTestIndex);
+  // (executeSoon bumps that counter).
+  executeSoon(_run_next_test, "run_next_test " + _gTestIndex);
 
   if (_gRunningTest !== null) {
     // Close the previous test do_test_pending call.
@@ -1524,26 +1464,19 @@ try {
   if (runningInParent) {
     // Always use network provider for geolocation tests
     // so we bypass the OSX dialog raised by the corelocation provider
-    let prefs = Components.classes["@mozilla.org/preferences-service;1"]
-      .getService(Components.interfaces.nsIPrefBranch);
-
-    prefs.setBoolPref("geo.provider.testing", true);
+    _Services.prefs.setBoolPref("geo.provider.testing", true);
   }
 } catch (e) { }
 // We need to avoid hitting the network with certain components.
 try {
   if (runningInParent) {
-    let prefs = Components.classes["@mozilla.org/preferences-service;1"]
-      .getService(Components.interfaces.nsIPrefBranch);
-
-    prefs.setCharPref("media.gmp-manager.url.override", "http://%(server)s/dummy-gmp-manager.xml");
-    prefs.setCharPref("media.gmp-manager.updateEnabled", false);
-    prefs.setCharPref("extensions.systemAddon.update.url", "http://%(server)s/dummy-system-addons.xml");
-    prefs.setCharPref("extensions.shield-recipe-client.api_url",
-                      "https://%(server)s/selfsupport-dummy/");
-    prefs.setCharPref("toolkit.telemetry.server", "https://%(server)s/telemetry-dummy");
-    prefs.setCharPref("browser.search.geoip.url", "https://%(server)s/geoip-dummy");
-    prefs.setCharPref("browser.safebrowsing.downloads.remote.url", "https://%(server)s/safebrowsing-dummy");
+    _Services.prefs.setCharPref("media.gmp-manager.url.override", "http://%(server)s/dummy-gmp-manager.xml");
+    _Services.prefs.setCharPref("media.gmp-manager.updateEnabled", false);
+    _Services.prefs.setCharPref("extensions.systemAddon.update.url", "http://%(server)s/dummy-system-addons.xml");
+    _Services.prefs.setCharPref("app.normandy.api_url", "https://%(server)s/selfsupport-dummy/");
+    _Services.prefs.setCharPref("toolkit.telemetry.server", "https://%(server)s/telemetry-dummy");
+    _Services.prefs.setCharPref("browser.search.geoip.url", "https://%(server)s/geoip-dummy");
+    _Services.prefs.setCharPref("browser.safebrowsing.downloads.remote.url", "https://%(server)s/safebrowsing-dummy");
   }
 } catch (e) { }
 
@@ -1551,24 +1484,20 @@ try {
 // selected by default).
 try {
   if (runningInParent) {
-    let prefs = Components.classes["@mozilla.org/preferences-service;1"]
-      .getService(Components.interfaces.nsIPrefBranch);
-
-    prefs.deleteBranch("lightweightThemes.selectedThemeID");
-    prefs.deleteBranch("browser.devedition.theme.enabled");
+    _Services.prefs.deleteBranch("lightweightThemes.selectedThemeID");
+    _Services.prefs.deleteBranch("browser.devedition.theme.enabled");
   }
 } catch (e) { }
 
 function _load_mozinfo() {
-  let mozinfoFile = Components.classes["@mozilla.org/file/local;1"]
-    .createInstance(Components.interfaces.nsIFile);
+  let mozinfoFile = Cc["@mozilla.org/file/local;1"]
+    .createInstance(Ci.nsIFile);
   mozinfoFile.initWithPath(_MOZINFO_JS_PATH);
-  let stream = Components.classes["@mozilla.org/network/file-input-stream;1"]
-    .createInstance(Components.interfaces.nsIFileInputStream);
+  let stream = Cc["@mozilla.org/network/file-input-stream;1"]
+    .createInstance(Ci.nsIFileInputStream);
   stream.init(mozinfoFile, -1, 0, 0);
-  let json = Components.classes["@mozilla.org/dom/json;1"]
-    .createInstance(Components.interfaces.nsIJSON);
-  let mozinfo = json.decodeFromStream(stream, stream.available());
+  let bytes = _NetUtil.readInputStream(stream, stream.available());
+  let mozinfo = JSON.parse((new TextDecoder()).decode(bytes));
   stream.close();
   return mozinfo;
 }

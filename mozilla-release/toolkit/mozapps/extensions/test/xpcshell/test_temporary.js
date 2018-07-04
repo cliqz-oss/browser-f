@@ -2,6 +2,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+
 const ID = "bootstrap1@tests.mozilla.org";
 const sampleRDFManifest = {
   id: ID,
@@ -22,7 +24,9 @@ BootstrapMonitor.init();
 
 // Partial list of bootstrap reasons from XPIProvider.jsm
 const BOOTSTRAP_REASONS = {
+  APP_STARTUP: 1,
   ADDON_INSTALL: 5,
+  ADDON_UNINSTALL: 6,
   ADDON_UPGRADE: 7,
   ADDON_DOWNGRADE: 8,
 };
@@ -37,7 +41,7 @@ function waitForBootstrapEvent(expectedEvent, addonId) {
           resolve(info);
           Services.obs.removeObserver(observer, "bootstrapmonitor-event");
         } else {
-          do_print(
+          info(
             `Ignoring bootstrap event: ${info.event} for ${targetAddonId}`);
         }
       },
@@ -52,8 +56,8 @@ add_task(async function() {
   let extInstallCalled = false;
   AddonManager.addInstallListener({
     onExternalInstall: (aInstall) => {
-      do_check_eq(aInstall.id, ID);
-      do_check_eq(aInstall.version, "1.0");
+      Assert.equal(aInstall.id, ID);
+      Assert.equal(aInstall.version, "1.0");
       extInstallCalled = true;
     },
   });
@@ -62,13 +66,13 @@ add_task(async function() {
   let installedCalled = false;
   AddonManager.addAddonListener({
     onInstalling: (aInstall) => {
-      do_check_eq(aInstall.id, ID);
-      do_check_eq(aInstall.version, "1.0");
+      Assert.equal(aInstall.id, ID);
+      Assert.equal(aInstall.version, "1.0");
       installingCalled = true;
     },
     onInstalled: (aInstall) => {
-      do_check_eq(aInstall.id, ID);
-      do_check_eq(aInstall.version, "1.0");
+      Assert.equal(aInstall.id, ID);
+      Assert.equal(aInstall.version, "1.0");
       installedCalled = true;
     },
     onInstallStarted: (aInstall) => {
@@ -78,35 +82,44 @@ add_task(async function() {
 
   await AddonManager.installTemporaryAddon(do_get_addon("test_bootstrap1_1"));
 
-  do_check_true(extInstallCalled);
-  do_check_true(installingCalled);
-  do_check_true(installedCalled);
+  Assert.ok(extInstallCalled);
+  Assert.ok(installingCalled);
+  Assert.ok(installedCalled);
 
   const install = BootstrapMonitor.checkAddonInstalled(ID, "1.0");
   equal(install.reason, BOOTSTRAP_REASONS.ADDON_INSTALL);
   BootstrapMonitor.checkAddonStarted(ID, "1.0");
 
   let info = BootstrapMonitor.started.get(ID);
-  do_check_eq(info.reason, BOOTSTRAP_REASONS.ADDON_INSTALL);
+  Assert.equal(info.reason, BOOTSTRAP_REASONS.ADDON_INSTALL);
 
   let addon = await promiseAddonByID(ID);
 
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test Bootstrap 1");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Test Bootstrap 1");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+
+  let onShutdown = waitForBootstrapEvent("shutdown", ID);
+  let onUninstall = waitForBootstrapEvent("uninstall", ID);
 
   await promiseRestartManager();
+
+  let shutdown = await onShutdown;
+  equal(shutdown.reason, BOOTSTRAP_REASONS.ADDON_UNINSTALL);
+
+  let uninstall = await onUninstall;
+  equal(uninstall.reason, BOOTSTRAP_REASONS.ADDON_UNINSTALL);
 
   BootstrapMonitor.checkAddonNotInstalled(ID);
   BootstrapMonitor.checkAddonNotStarted(ID);
 
   addon = await promiseAddonByID(ID);
-  do_check_eq(addon, null);
+  Assert.equal(addon, null);
 
   await promiseRestartManager();
 });
@@ -114,236 +127,154 @@ add_task(async function() {
 // Install a temporary add-on over the top of an existing add-on.
 // Restart and make sure the existing add-on comes back.
 add_task(async function() {
-  await promiseInstallAllFiles([do_get_addon("test_bootstrap1_1")], true);
+  await promiseInstallAllFiles([do_get_addon("test_bootstrap1_2")], true);
 
-  BootstrapMonitor.checkAddonInstalled(ID, "1.0");
-  BootstrapMonitor.checkAddonStarted(ID, "1.0");
+  BootstrapMonitor.checkAddonInstalled(ID, "2.0");
+  BootstrapMonitor.checkAddonStarted(ID, "2.0");
 
   let addon = await promiseAddonByID(ID);
 
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test Bootstrap 1");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "2.0");
+  Assert.equal(addon.name, "Test Bootstrap 1");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
   let tempdir = gTmpD.clone();
 
-  // test that an unpacked add-on works too
-  writeInstallRDFToDir({
-    id: ID,
-    version: "3.0",
-    bootstrap: true,
-    targetApplications: [{
-      id: "xpcshell@tests.mozilla.org",
-      minVersion: "1",
-      maxVersion: "1"
-    }],
-    name: "Test Bootstrap 1 (temporary)",
-  }, tempdir, "bootstrap1@tests.mozilla.org", "bootstrap.js");
+  let bootstrapJS = await OS.File.read("data/test_temporary/bootstrap.js", {encoding: "utf-8"});
 
-  let unpacked_addon = tempdir.clone();
-  unpacked_addon.append(ID);
-  do_get_file("data/test_temporary/bootstrap.js")
-    .copyTo(unpacked_addon, "bootstrap.js");
-
-  await AddonManager.installTemporaryAddon(unpacked_addon);
-
-  BootstrapMonitor.checkAddonInstalled(ID, "3.0");
-  BootstrapMonitor.checkAddonStarted(ID, "3.0");
-
-  addon = await promiseAddonByID(ID);
-
-  // temporary add-on is installed and started
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "3.0");
-  do_check_eq(addon.name, "Test Bootstrap 1 (temporary)");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
-
-  restartManager();
-
-  BootstrapMonitor.checkAddonInstalled(ID, "1.0");
-  BootstrapMonitor.checkAddonStarted(ID, "1.0");
-
-  addon = await promiseAddonByID(ID);
-
-  // existing add-on is back
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test Bootstrap 1");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
-
-  unpacked_addon.remove(true);
-
-  // on Windows XPI files will be locked by the JAR cache, skip this test there.
-  if (!("nsIWindowsRegKey" in Components.interfaces)) {
-    // test that a packed (XPI) add-on works
-    writeInstallRDFToXPI({
-      id: ID,
-      version: "2.0",
-      bootstrap: true,
-      targetApplications: [{
-        id: "xpcshell@tests.mozilla.org",
-        minVersion: "1",
-        maxVersion: "1"
-      }],
-      name: "Test Bootstrap 1 (temporary)",
-    }, tempdir, "bootstrap1@tests.mozilla.org");
-
-    let packed_addon = tempdir.clone();
-    packed_addon.append(ID + ".xpi");
-
-    await AddonManager.installTemporaryAddon(packed_addon);
-
-    addon = await promiseAddonByID(ID);
-
-    // temporary add-on is installed and started
-    do_check_neq(addon, null);
-    do_check_eq(addon.version, "2.0");
-    do_check_eq(addon.name, "Test Bootstrap 1 (temporary)");
-    do_check_true(addon.isCompatible);
-    do_check_false(addon.appDisabled);
-    do_check_true(addon.isActive);
-    do_check_eq(addon.type, "extension");
-    do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
-
-    restartManager();
-
-    BootstrapMonitor.checkAddonInstalled(ID, "1.0");
-    BootstrapMonitor.checkAddonStarted(ID, "1.0");
-
-    addon = await promiseAddonByID(ID);
-
-    // existing add-on is back
-    do_check_neq(addon, null);
-    do_check_eq(addon.version, "1.0");
-    do_check_eq(addon.name, "Test Bootstrap 1");
-    do_check_true(addon.isCompatible);
-    do_check_false(addon.appDisabled);
-    do_check_true(addon.isActive);
-    do_check_eq(addon.type, "extension");
-    do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
-
-    packed_addon.remove(false);
-
-    // test that a webextension works
-    let webext = createTempWebExtensionFile({
-      manifest: {
-        version: "4.0",
-        name: "Test WebExtension 1 (temporary)",
-        applications: {
-          gecko: {
-            id: ID
-          }
-        }
+  for (let newversion of ["1.0", "3.0"]) {
+    for (let packed of [false, true]) {
+      // ugh, file locking issues with xpis on windows
+      if (packed && AppConstants.platform == "win") {
+        continue;
       }
-    });
 
-    await Promise.all([
-      AddonManager.installTemporaryAddon(webext),
-      promiseWebExtensionStartup(),
-    ]);
-    addon = await promiseAddonByID(ID);
+      let files = {
+        "install.rdf": AddonTestUtils.createInstallRDF({
+          id: ID,
+          version: newversion,
+          bootstrap: true,
+          targetApplications: [{
+            id: "xpcshell@tests.mozilla.org",
+            minVersion: "1",
+            maxVersion: "1"
+          }],
+          name: "Test Bootstrap 1 (temporary)",
+        }),
+        "bootstrap.js": bootstrapJS,
+      };
 
-    // temporary add-on is installed and started
-    do_check_neq(addon, null);
-    do_check_eq(addon.version, "4.0");
-    do_check_eq(addon.name, "Test WebExtension 1 (temporary)");
-    do_check_true(addon.isCompatible);
-    do_check_false(addon.appDisabled);
-    do_check_true(addon.isActive);
-    do_check_eq(addon.type, "extension");
-    do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+      let target;
+      if (packed) {
+        target = tempdir.clone();
+        target.append(ID);
 
-    // test that re-loading a webextension works, using the same filename
-    webext.remove(false);
-    webext = createTempWebExtensionFile({
-      manifest: {
-        version: "5.0",
-        name: "Test WebExtension 1 (temporary)",
-        applications: {
-          gecko: {
-            id: ID
-          }
-        }
+        await AddonTestUtils.promiseWriteFilesToDir(target.path, files);
+      } else {
+        target = tempdir.clone();
+        target.append(`${ID}.xpi`);
+
+        await AddonTestUtils.promiseWriteFilesToZip(target.path, files);
       }
-    });
 
-    await Promise.all([
-      AddonManager.installTemporaryAddon(webext),
-      promiseWebExtensionStartup(),
-    ]);
-    addon = await promiseAddonByID(ID);
+      let onShutdown = waitForBootstrapEvent("shutdown", ID);
+      let onUninstall = waitForBootstrapEvent("uninstall", ID);
+      let onInstall = waitForBootstrapEvent("install", ID);
+      let onStartup = waitForBootstrapEvent("startup", ID);
 
-    // temporary add-on is installed and started
-    do_check_neq(addon, null);
-    do_check_eq(addon.version, "5.0");
-    do_check_eq(addon.name, "Test WebExtension 1 (temporary)");
-    do_check_true(addon.isCompatible);
-    do_check_false(addon.appDisabled);
-    do_check_true(addon.isActive);
-    do_check_eq(addon.type, "extension");
-    do_check_true(addon.isWebExtension);
-    do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+      await AddonManager.installTemporaryAddon(target);
 
-    // test reloading a webextension with the same name, but a different type.
-    webext.remove(false);
-    webext = createTempWebExtensionFile({
-      manifest: {
-        version: "6.0",
-        name: "Test WebExtension 1 (temporary)",
-        applications: {
-          gecko: {
-            id: ID
-          }
-        },
-        theme: { images: { headerURL: "example.png" } }
-      }
-    });
+      let reason = Services.vc.compare(newversion, "2.0") < 0 ?
+                   BOOTSTRAP_REASONS.ADDON_DOWNGRADE :
+                   BOOTSTRAP_REASONS.ADDON_UPGRADE;
 
-    await Promise.all([
-      AddonManager.installTemporaryAddon(webext),
-      promiseWebExtensionStartup(),
-    ]);
-    addon = await promiseAddonByID(ID);
+      let shutdown = await onShutdown;
+      equal(shutdown.data.version, "2.0");
+      equal(shutdown.reason, reason);
 
-    do_check_neq(addon, null);
-    do_check_eq(addon.version, "6.0");
-    do_check_eq(addon.name, "Test WebExtension 1 (temporary)");
-    do_check_true(addon.isCompatible);
-    do_check_false(addon.appDisabled);
-    do_check_true(addon.isActive);
-    // This is what we're really interested in:
-    do_check_eq(addon.type, "theme");
-    do_check_true(addon.isWebExtension);
+      let uninstall = await onUninstall;
+      equal(uninstall.data.version, "2.0");
+      equal(uninstall.reason, reason);
 
-    restartManager();
+      let install = await onInstall;
+      equal(install.data.version, newversion);
+      equal(install.reason, reason);
+      equal(install.data.oldVersion, "2.0");
 
-    BootstrapMonitor.checkAddonInstalled(ID, "1.0");
-    BootstrapMonitor.checkAddonStarted(ID, "1.0");
+      let startup = await onStartup;
+      equal(startup.data.version, newversion);
+      equal(startup.reason, reason);
+      equal(startup.data.oldVersion, "2.0");
 
-    addon = await promiseAddonByID(ID);
+      addon = await promiseAddonByID(ID);
 
-    // existing add-on is back
-    do_check_neq(addon, null);
-    do_check_eq(addon.version, "1.0");
-    do_check_eq(addon.name, "Test Bootstrap 1");
-    do_check_true(addon.isCompatible);
-    do_check_false(addon.appDisabled);
-    do_check_true(addon.isActive);
-    do_check_eq(addon.type, "extension");
-    do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+      // temporary add-on is installed and started
+      Assert.notEqual(addon, null);
+      Assert.equal(addon.version, newversion);
+      Assert.equal(addon.name, "Test Bootstrap 1 (temporary)");
+      Assert.ok(addon.isCompatible);
+      Assert.ok(!addon.appDisabled);
+      Assert.ok(addon.isActive);
+      Assert.equal(addon.type, "extension");
+      Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+
+      // Now restart, the temporary addon will go away which should
+      // be the opposite action (ie, if the temporary addon was an
+      // upgrade, then removing it is a downgrade and vice versa)
+      reason = reason == BOOTSTRAP_REASONS.ADDON_UPGRADE ?
+               BOOTSTRAP_REASONS.ADDON_DOWNGRADE :
+               BOOTSTRAP_REASONS.ADDON_UPGRADE;
+
+      onShutdown = waitForBootstrapEvent("shutdown", ID);
+      onUninstall = waitForBootstrapEvent("uninstall", ID);
+      onInstall = waitForBootstrapEvent("install", ID);
+      onStartup = waitForBootstrapEvent("startup", ID);
+
+      await promiseRestartManager();
+
+      shutdown = await onShutdown;
+      equal(shutdown.data.version, newversion);
+      equal(shutdown.reason, reason);
+
+      uninstall = await onUninstall;
+      equal(uninstall.data.version, newversion);
+      equal(uninstall.reason, reason);
+
+      install = await onInstall;
+      equal(install.data.version, "2.0");
+      equal(install.reason, reason);
+      equal(install.data.oldVersion, newversion);
+
+      startup = await onStartup;
+      equal(startup.data.version, "2.0");
+      // We don't actually propagate the upgrade/downgrade reason across
+      // the browser restart when a temporary addon is removed.  See
+      // bug 1359558 for detailed reasoning.
+      equal(startup.reason, BOOTSTRAP_REASONS.APP_STARTUP);
+
+      BootstrapMonitor.checkAddonInstalled(ID, "2.0");
+      BootstrapMonitor.checkAddonStarted(ID, "2.0");
+
+      addon = await promiseAddonByID(ID);
+
+      // existing add-on is back
+      Assert.notEqual(addon, null);
+      Assert.equal(addon.version, "2.0");
+      Assert.equal(addon.name, "Test Bootstrap 1");
+      Assert.ok(addon.isCompatible);
+      Assert.ok(!addon.appDisabled);
+      Assert.ok(addon.isActive);
+      Assert.equal(addon.type, "extension");
+      Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+
+      Services.obs.notifyObservers(target, "flush-cache-entry");
+      target.remove(true);
+    }
   }
 
   // remove original add-on
@@ -353,6 +284,76 @@ add_task(async function() {
   BootstrapMonitor.checkAddonNotStarted(ID);
 
   await promiseRestartManager();
+});
+
+// Test that loading from the same path multiple times work
+add_task(async function test_samefile() {
+  // File locking issues on Windows, ugh
+  if (AppConstants.platform == "win") {
+    return;
+  }
+
+  // test that a webextension works
+  let webext = createTempWebExtensionFile({
+    manifest: {
+      version: "1.0",
+      name: "Test WebExtension 1 (temporary)",
+      applications: {
+        gecko: {
+          id: ID
+        }
+      }
+    }
+  });
+
+  await Promise.all([
+    AddonManager.installTemporaryAddon(webext),
+    promiseWebExtensionStartup(),
+  ]);
+  let addon = await promiseAddonByID(ID);
+
+  // temporary add-on is installed and started
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Test WebExtension 1 (temporary)");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+
+  Services.obs.notifyObservers(webext, "flush-cache-entry");
+  webext.remove(false);
+  webext = createTempWebExtensionFile({
+    manifest: {
+      version: "2.0",
+      name: "Test WebExtension 1 (temporary)",
+      applications: {
+        gecko: {
+          id: ID
+        }
+      }
+    }
+  });
+
+  await Promise.all([
+    AddonManager.installTemporaryAddon(webext),
+    promiseWebExtensionStartup(),
+  ]);
+  addon = await promiseAddonByID(ID);
+
+  // temporary add-on is installed and started
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "2.0");
+  Assert.equal(addon.name, "Test WebExtension 1 (temporary)");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
+  Assert.ok(addon.isWebExtension);
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+
+  addon.uninstall();
 });
 
 // Install a temporary add-on over the top of an existing add-on.
@@ -383,8 +384,8 @@ add_task(async function() {
   let extInstallCalled = false;
   AddonManager.addInstallListener({
     onExternalInstall: (aInstall) => {
-      do_check_eq(aInstall.id, ID);
-      do_check_eq(aInstall.version, "2.0");
+      Assert.equal(aInstall.id, ID);
+      Assert.equal(aInstall.version, "2.0");
       extInstallCalled = true;
     },
   });
@@ -393,15 +394,15 @@ add_task(async function() {
   let installedCalled = false;
   AddonManager.addAddonListener({
     onInstalling: (aInstall) => {
-      do_check_eq(aInstall.id, ID);
+      Assert.equal(aInstall.id, ID);
       if (!installingCalled)
-        do_check_eq(aInstall.version, "2.0");
+        Assert.equal(aInstall.version, "2.0");
       installingCalled = true;
     },
     onInstalled: (aInstall) => {
-      do_check_eq(aInstall.id, ID);
+      Assert.equal(aInstall.id, ID);
       if (!installedCalled)
-        do_check_eq(aInstall.version, "2.0");
+        Assert.equal(aInstall.version, "2.0");
       installedCalled = true;
     },
     onInstallStarted: (aInstall) => {
@@ -411,9 +412,9 @@ add_task(async function() {
 
   await AddonManager.installTemporaryAddon(unpacked_addon);
 
-  do_check_true(extInstallCalled);
-  do_check_true(installingCalled);
-  do_check_true(installedCalled);
+  Assert.ok(extInstallCalled);
+  Assert.ok(installingCalled);
+  Assert.ok(installedCalled);
 
   let addon = await promiseAddonByID(ID);
 
@@ -421,31 +422,32 @@ add_task(async function() {
   BootstrapMonitor.checkAddonNotStarted(ID);
 
   // temporary add-on is installed and started
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "2.0");
-  do_check_eq(addon.name, "Test Bootstrap 1 (temporary)");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "2.0");
+  Assert.equal(addon.name, "Test Bootstrap 1 (temporary)");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
   addon.uninstall();
 
+  await new Promise(executeSoon);
   addon = await promiseAddonByID(ID);
 
   BootstrapMonitor.checkAddonInstalled(ID);
   BootstrapMonitor.checkAddonStarted(ID);
 
   // existing add-on is back
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test Bootstrap 1");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Test Bootstrap 1");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
   unpacked_addon.remove(true);
   addon.uninstall();
@@ -584,7 +586,7 @@ add_task(async function() {
   equal(initialStartup.reason, BOOTSTRAP_REASONS.ADDON_INSTALL);
 
   let info = BootstrapMonitor.started.get(ID);
-  do_check_eq(info.reason, BOOTSTRAP_REASONS.ADDON_INSTALL);
+  Assert.equal(info.reason, BOOTSTRAP_REASONS.ADDON_INSTALL);
 
   // Install it again.
   const onShutdown = waitForBootstrapEvent("shutdown", ID);
@@ -653,15 +655,15 @@ add_task(async function() {
   let extInstallCalled = false;
   AddonManager.addInstallListener({
     onExternalInstall: (aInstall) => {
-      do_check_eq(aInstall.id, ID);
-      do_check_eq(aInstall.version, "2.0");
+      Assert.equal(aInstall.id, ID);
+      Assert.equal(aInstall.version, "2.0");
       extInstallCalled = true;
     },
   });
 
   await AddonManager.installTemporaryAddon(unpacked_addon);
 
-  do_check_true(extInstallCalled);
+  Assert.ok(extInstallCalled);
 
   let tempAddon = await promiseAddonByID(ID);
 
@@ -669,97 +671,35 @@ add_task(async function() {
   BootstrapMonitor.checkAddonStarted(ID);
 
   // temporary add-on is installed and started
-  do_check_neq(tempAddon, null);
-  do_check_eq(tempAddon.version, "2.0");
-  do_check_eq(tempAddon.name, "Test Bootstrap 1 (temporary)");
-  do_check_true(tempAddon.isCompatible);
-  do_check_false(tempAddon.appDisabled);
-  do_check_true(tempAddon.isActive);
-  do_check_eq(tempAddon.type, "extension");
-  do_check_eq(tempAddon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(tempAddon, null);
+  Assert.equal(tempAddon.version, "2.0");
+  Assert.equal(tempAddon.name, "Test Bootstrap 1 (temporary)");
+  Assert.ok(tempAddon.isCompatible);
+  Assert.ok(!tempAddon.appDisabled);
+  Assert.ok(tempAddon.isActive);
+  Assert.equal(tempAddon.type, "extension");
+  Assert.equal(tempAddon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
   tempAddon.uninstall();
   unpacked_addon.remove(true);
 
   addon.userDisabled = false;
+  await new Promise(executeSoon);
   addon = await promiseAddonByID(ID);
 
   BootstrapMonitor.checkAddonInstalled(ID, "1.0");
   BootstrapMonitor.checkAddonStarted(ID);
 
   // existing add-on is back
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test Bootstrap 1");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Test Bootstrap 1");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
-  addon.uninstall();
-
-  BootstrapMonitor.checkAddonNotInstalled(ID);
-  BootstrapMonitor.checkAddonNotStarted(ID);
-
-  await promiseRestartManager();
-});
-
-// Installing a temporary add-on over a non-restartless add-on should fail.
-add_task(async function() {
-  await promiseInstallAllFiles([do_get_addon("test_install1")], true);
-
-  let non_restartless_ID = "addon1@tests.mozilla.org";
-
-  BootstrapMonitor.checkAddonNotInstalled(non_restartless_ID);
-  BootstrapMonitor.checkAddonNotStarted(non_restartless_ID);
-
-  restartManager();
-
-  BootstrapMonitor.checkAddonNotInstalled(non_restartless_ID);
-  BootstrapMonitor.checkAddonNotStarted(non_restartless_ID);
-
-  let addon = await promiseAddonByID(non_restartless_ID);
-
-  // non-restartless add-on is installed and started
-  do_check_neq(addon, null);
-  do_check_eq(addon.id, non_restartless_ID);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test 1");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
-
-  let tempdir = gTmpD.clone();
-  writeInstallRDFToDir({
-    id: non_restartless_ID,
-    version: "2.0",
-    bootstrap: true,
-    unpack: true,
-    targetApplications: [{
-          id: "xpcshell@tests.mozilla.org",
-      minVersion: "1",
-      maxVersion: "1"
-        }],
-    name: "Test 1 (temporary)",
-  }, tempdir);
-
-  let unpacked_addon = tempdir.clone();
-  unpacked_addon.append(non_restartless_ID);
-
-  try {
-    await AddonManager.installTemporaryAddon(unpacked_addon);
-    do_throw("Installing over a non-restartless add-on should return"
-             + " a rejected promise");
-  } catch (err) {
-    do_check_eq(err.message,
-        "Non-restartless add-on with ID addon1@tests.mozilla.org is"
-        + " already installed");
-  }
-
-  unpacked_addon.remove(true);
   addon.uninstall();
 
   BootstrapMonitor.checkAddonNotInstalled(ID);
@@ -778,15 +718,15 @@ add_task(async function() {
   BootstrapMonitor.checkAddonInstalled(ID, "1.0");
   BootstrapMonitor.checkAddonStarted(ID, "1.0");
 
-  do_check_neq(addon, null);
-  do_check_eq(addon.version, "1.0");
-  do_check_eq(addon.name, "Test Bootstrap 1");
-  do_check_true(addon.isCompatible);
-  do_check_false(addon.appDisabled);
-  do_check_true(addon.isActive);
-  do_check_eq(addon.type, "extension");
-  do_check_false(addon.isWebExtension);
-  do_check_eq(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
+  Assert.notEqual(addon, null);
+  Assert.equal(addon.version, "1.0");
+  Assert.equal(addon.name, "Test Bootstrap 1");
+  Assert.ok(addon.isCompatible);
+  Assert.ok(!addon.appDisabled);
+  Assert.ok(addon.isActive);
+  Assert.equal(addon.type, "extension");
+  Assert.ok(!addon.isWebExtension);
+  Assert.equal(addon.signedState, mozinfo.addon_signing ? AddonManager.SIGNEDSTATE_PRIVILEGED : AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
   await AddonManager.installTemporaryAddon(do_get_addon("test_bootstrap1_1"));
 

@@ -12,15 +12,14 @@
 <!ENTITY window.title         "Neue Umgebung hinzufügen">
 <!ENTITY window.width         "45em">
 
-<!ENTITY name.label           "Name:">
-<!ENTITY name.accesskey       "N">
+<!ENTITY name2.label          "Name:">
+<!ENTITY name2.accesskey      "N">
 <!ENTITY name.placeholder     "Umgebungsnamen eingeben">
-<!ENTITY icon.label           "Symbol:">
-<!ENTITY icon.accesskey       "S">
-<!ENTITY color.label          "Farbe:">
-<!ENTITY color.accesskey      "F">
+<!ENTITY icon2.label          "Symbol:">
+<!ENTITY icon2.accesskey      "S">
+<!ENTITY color2.label         "Farbe:">
+<!ENTITY color2.accesskey     "F">
 <!ENTITY windowClose.key      "w">
 
 <!ENTITY button.ok.label      "Fertig">
 <!ENTITY button.ok.accesskey  "e">
-

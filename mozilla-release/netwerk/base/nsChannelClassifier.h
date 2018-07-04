@@ -11,6 +11,8 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Maybe.h"
 
+#include <functional>
+
 class nsIChannel;
 class nsIHttpChannelInternal;
 class nsIDocument;
@@ -45,12 +47,12 @@ public:
     nsresult OnClassifyCompleteInternal(nsresult aErrorCode,
                                         const nsACString& aList,
                                         const nsACString& aProvider,
-                                        const nsACString& aPrefix);
+                                        const nsACString& aFullHash);
 
     // Check a tracking URI against the local blacklist and whitelist.
     // Returning NS_OK means the check will be processed
     // and the caller should wait for the result.
-    nsresult CheckIsTrackerWithLocalTable(nsIURIClassifierCallback* aCallback);
+    nsresult CheckIsTrackerWithLocalTable(std::function<void()>&& aCallback);
 
     // Helper function to create a whitelist URL.
     already_AddRefed<nsIURI> CreateWhiteListURI() const;
@@ -66,7 +68,7 @@ private:
     Maybe<bool> mTrackingProtectionEnabled;
     Maybe<bool> mTrackingAnnotationEnabled;
 
-    ~nsChannelClassifier() {}
+    ~nsChannelClassifier();
     // Caches good classifications for the channel principal.
     void MarkEntryClassified(nsresult status);
     bool HasBeenClassified(nsIChannel *aChannel);
@@ -89,6 +91,10 @@ private:
     bool AddonMayLoad(nsIChannel *aChannel, nsIURI *aUri);
     void AddShutdownObserver();
     void RemoveShutdownObserver();
+    static nsresult SendThreatHitReport(nsIChannel *aChannel,
+                                        const nsACString& aProvider,
+                                        const nsACString& aList,
+                                        const nsACString& aFullHash);
 public:
     // If we are blocking content, update the corresponding flag in the respective
     // docshell and call nsISecurityEventSink::onSecurityChange.
@@ -96,7 +102,7 @@ public:
                                       nsresult aErrorCode,
                                       const nsACString& aList,
                                       const nsACString& aProvider,
-                                      const nsACString& aPrefix);
+                                      const nsACString& aFullHash);
     static nsresult NotifyTrackingProtectionDisabled(nsIChannel *aChannel);
 };
 

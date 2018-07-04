@@ -4,78 +4,59 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Preferences"];
+var EXPORTED_SYMBOLS = ["Preferences"];
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/TestUtils.jsm");
+ChromeUtils.import("resource://testing-common/ContentTask.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://testing-common/TestUtils.jsm");
-Cu.import("resource://testing-common/ContentTask.jsm");
-
-this.Preferences = {
+var Preferences = {
 
   init(libDir) {
     let panes = [
-      /* The "new" organization */
       ["paneGeneral"],
-      ["paneGeneral", scrollToBrowsingGroup],
-      ["paneApplications"],
-      ["paneSync"],
+      ["paneGeneral", browsingGroup],
+      ["paneGeneral", connectionDialog],
+      ["paneSearch"],
       ["panePrivacy"],
-      ["panePrivacy", scrollToCacheGroup],
-      ["panePrivacy", DNTDialog],
+      ["panePrivacy", cacheGroup],
       ["panePrivacy", clearRecentHistoryDialog],
-      ["panePrivacy", connectionDialog],
       ["panePrivacy", certManager],
       ["panePrivacy", deviceManager],
+      ["panePrivacy", DNTDialog],
       ["paneConnect"],
-      ["paneAdvanced"],
-
-      /* The "old" organization. The third argument says to
-         set the pref to show the old organization when
-         opening the preferences. */
-      ["paneGeneral", null, true],
-      ["paneSearch", null, true],
-      ["paneContent", null, true],
-      ["paneApplications", null, true],
-      ["panePrivacy", null, true],
-      ["panePrivacy", DNTDialog, true],
-      ["panePrivacy", clearRecentHistoryDialog, true],
-      ["paneSecurity", null, true],
-      ["paneSync", null, true],
-      ["paneAdvanced", null, true, "generalTab"],
-      ["paneAdvanced", null, true, "dataChoicesTab"],
-      ["paneAdvanced", null, true, "networkTab"],
-      ["paneAdvanced", connectionDialog, true, "networkTab"],
-      ["paneAdvanced", null, true, "updateTab"],
-      ["paneAdvanced", null, true, "encryptionTab"],
-      ["paneAdvanced", certManager, true, "encryptionTab"],
-      ["paneAdvanced", deviceManager, true, "encryptionTab"],
+      ["paneSync"],
     ];
-    for (let [primary, customFn, useOldOrg, advanced] of panes) {
-      let configName = primary.replace(/^pane/, "prefs") + (advanced ? "-" + advanced : "");
+
+    for (let [primary, customFn] of panes) {
+      let configName = primary.replace(/^pane/, "prefs");
       if (customFn) {
         configName += "-" + customFn.name;
       }
       this.configurations[configName] = {};
-      this.configurations[configName].applyConfig = prefHelper.bind(null, primary, customFn, useOldOrg, advanced);
+      this.configurations[configName].selectors = ["#browser"];
+      if (primary == "panePrivacy" && customFn) {
+        this.configurations[configName].applyConfig = async () => {
+          return {todo: `${configName} times out on the try server`};
+        };
+      } else {
+        this.configurations[configName].applyConfig = prefHelper.bind(null, primary, customFn);
+      }
     }
   },
 
   configurations: {},
 };
 
-let prefHelper = async function(primary, customFn = null, useOldOrg = false, advanced = null) {
+let prefHelper = async function(primary, customFn = null) {
   let browserWindow = Services.wm.getMostRecentWindow("navigator:browser");
   let selectedBrowser = browserWindow.gBrowser.selectedBrowser;
 
-  if (useOldOrg) {
-    Services.prefs.setBoolPref("browser.preferences.useOldOrganization", !!useOldOrg);
-  }
-
   // close any dialog that might still be open
   await ContentTask.spawn(selectedBrowser, null, async function() {
-    if (!content.window.gSubDialog) {
+    // Check that gSubDialog is defined on the content window
+    // and that there is an open dialog to close
+    if (!content.window.gSubDialog || !content.window.gSubDialog._topDialog) {
       return;
     }
     content.window.gSubDialog.close();
@@ -90,24 +71,20 @@ let prefHelper = async function(primary, customFn = null, useOldOrg = false, adv
       readyPromise = paintPromise(browserWindow);
     }
   } else {
-    readyPromise = TestUtils.topicObserved("advanced-pane-loaded");
+    readyPromise = TestUtils.topicObserved("sync-pane-loaded");
   }
 
-  if (useOldOrg && primary == "paneAdvanced") {
-    browserWindow.openAdvancedPreferences(advanced);
-  } else {
-    browserWindow.openPreferences(primary);
-  }
+  browserWindow.openPreferences(primary, {origin: "mozscreenshots"});
 
   await readyPromise;
 
   if (customFn) {
     let customPaintPromise = paintPromise(browserWindow);
-    await customFn(selectedBrowser);
+    let result = await customFn(selectedBrowser);
     await customPaintPromise;
+    return result;
   }
-
-  Services.prefs.clearUserPref("browser.preferences.useOldOrganization");
+  return undefined;
 };
 
 function paintPromise(browserWindow) {
@@ -118,21 +95,26 @@ function paintPromise(browserWindow) {
   });
 }
 
-async function scrollToBrowsingGroup(aBrowser) {
+async function browsingGroup(aBrowser) {
   await ContentTask.spawn(aBrowser, null, async function() {
     content.document.getElementById("browsingGroup").scrollIntoView();
   });
 }
 
-async function scrollToCacheGroup(aBrowser) {
+async function cacheGroup(aBrowser) {
   await ContentTask.spawn(aBrowser, null, async function() {
     content.document.getElementById("cacheGroup").scrollIntoView();
   });
 }
 
 async function DNTDialog(aBrowser) {
-  await ContentTask.spawn(aBrowser, null, async function() {
-    content.document.getElementById("doNotTrackSettings").click();
+  return ContentTask.spawn(aBrowser, null, async function() {
+    const button = content.document.getElementById("doNotTrackSettings");
+    if (!button) {
+      return {todo: "The dialog may have exited before we could click the button"};
+    }
+    button.click();
+    return undefined;
   });
 }
 
@@ -144,7 +126,7 @@ async function connectionDialog(aBrowser) {
 
 async function clearRecentHistoryDialog(aBrowser) {
   await ContentTask.spawn(aBrowser, null, async function() {
-    content.document.getElementById("historyRememberClear").click();
+    content.document.getElementById("clearHistoryButton").click();
   });
 }
 

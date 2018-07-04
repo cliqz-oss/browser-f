@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,15 +8,14 @@
 #include "nsPresContext.h"
 #include "nsContentUtils.h"
 #include "nsTextFrame.h"
-#include "mozilla/GeckoRestyleManager.h"
 #include <algorithm>
 
 using namespace mozilla;
 
 nsIFrame*
-NS_NewMathMLTokenFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLTokenFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLTokenFrame(aContext);
+  return new (aPresShell) nsMathMLTokenFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLTokenFrame)
@@ -43,7 +43,7 @@ nsMathMLTokenFrame::GetMathMLFrameType()
 
   uint8_t mathVariant = StyleFont()->mMathVariant;
   if ((mathVariant == NS_MATHML_MATHVARIANT_NONE &&
-       (StyleFont()->mFont.style == NS_STYLE_FONT_STYLE_ITALIC ||
+       (StyleFont()->mFont.style == FontSlantStyle::Italic() ||
         HasAnyStateBits(NS_FRAME_IS_IN_SINGLE_CHAR_MI))) ||
       mathVariant == NS_MATHML_MATHVARIANT_ITALIC ||
       mathVariant == NS_MATHML_MATHVARIANT_BOLD_ITALIC ||
@@ -125,6 +125,8 @@ nsMathMLTokenFrame::Reflow(nsPresContext*          aPresContext,
                            nsReflowStatus&          aStatus)
 {
   MarkInReflow();
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
   mPresentationData.flags &= ~NS_MATHML_ERROR;
 
   // initializations needed for empty markup like <mtag></mtag>
@@ -152,7 +154,7 @@ nsMathMLTokenFrame::Reflow(nsPresContext*          aPresContext,
   // place and size children
   FinalizeReflow(aReflowInput.mRenderingContext->GetDrawTarget(), aDesiredSize);
 
-  aStatus.Reset();
+  aStatus.Reset(); // This type of frame can't be split.
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
 

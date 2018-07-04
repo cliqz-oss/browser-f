@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,7 +8,6 @@
 #include "TCPSocket.h"
 #include "TCPServerSocket.h"
 #include "TCPSocketChild.h"
-#include "mozilla/dom/DOMError.h"
 #include "mozilla/dom/TCPSocketBinding.h"
 #include "mozilla/dom/TCPSocketErrorEvent.h"
 #include "mozilla/dom/TCPSocketErrorEventBinding.h"
@@ -107,8 +107,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(TCPSocket,
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mInputStreamPump)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mInputStreamScriptable)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mInputStreamBinary)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMultiplexStream)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMultiplexStreamCopier)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPendingDataAfterStartTLS)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSocketBridgeChild)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSocketBridgeParent)
@@ -122,8 +120,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(TCPSocket,
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mInputStreamPump)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mInputStreamScriptable)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mInputStreamBinary)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mMultiplexStream)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mMultiplexStreamCopier)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mPendingDataAfterStartTLS)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSocketBridgeChild)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSocketBridgeParent)
@@ -132,7 +128,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_ADDREF_INHERITED(TCPSocket, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(TCPSocket, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TCPSocket)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TCPSocket)
   NS_INTERFACE_MAP_ENTRY(nsITransportEventSink)
   NS_INTERFACE_MAP_ENTRY(nsIRequestObserver)
   NS_INTERFACE_MAP_ENTRY(nsIStreamListener)
@@ -208,25 +204,6 @@ TCPSocket::CreateStream()
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  mMultiplexStream = do_CreateInstance("@mozilla.org/io/multiplex-input-stream;1", &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  mMultiplexStreamCopier = do_CreateInstance("@mozilla.org/network/async-stream-copier;1", &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsISocketTransportService> sts =
-      do_GetService("@mozilla.org/network/socket-transport-service;1");
-
-  nsCOMPtr<nsIEventTarget> target = do_QueryInterface(sts);
-  rv = mMultiplexStreamCopier->Init(mMultiplexStream,
-                                    mSocketOutputStream,
-                                    target,
-                                    true, /* source buffered */
-                                    false, /* sink buffered */
-                                    BUFFER_SIZE,
-                                    false, /* close source */
-                                    false); /* close sink */
-  NS_ENSURE_SUCCESS(rv, rv);
   return NS_OK;
 }
 
@@ -336,9 +313,7 @@ TCPSocket::UpgradeToSecure(mozilla::ErrorResult& aRv)
     return;
   }
 
-  uint32_t count = 0;
-  mMultiplexStream->GetCount(&count);
-  if (!count) {
+  if (!mAsyncCopierActive) {
     ActivateTLS();
   } else {
     mWaitingForStartTLS = true;
@@ -383,8 +358,44 @@ TCPSocket::EnsureCopying()
   }
 
   mAsyncCopierActive = true;
+
+  nsresult rv;
+
+  nsCOMPtr<nsIMultiplexInputStream> multiplexStream =
+    do_CreateInstance("@mozilla.org/io/multiplex-input-stream;1", &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<nsIInputStream> stream = do_QueryInterface(multiplexStream);
+
+  while (!mPendingData.IsEmpty()) {
+    nsCOMPtr<nsIInputStream> stream = mPendingData[0];
+    multiplexStream->AppendStream(stream);
+    mPendingData.RemoveElementAt(0);
+  }
+
+  nsCOMPtr<nsIAsyncStreamCopier> copier =
+    do_CreateInstance("@mozilla.org/network/async-stream-copier;1", &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<nsISocketTransportService> sts =
+      do_GetService("@mozilla.org/network/socket-transport-service;1");
+
+  nsCOMPtr<nsIEventTarget> target = do_QueryInterface(sts);
+  rv = copier->Init(stream,
+                    mSocketOutputStream,
+                    target,
+                    true, /* source buffered */
+                    false, /* sink buffered */
+                    BUFFER_SIZE,
+                    false, /* close source */
+                    false); /* close sink */
+  NS_ENSURE_SUCCESS(rv, rv);
+
   RefPtr<CopierCallbacks> callbacks = new CopierCallbacks(this);
-  return mMultiplexStreamCopier->AsyncCopy(callbacks, nullptr);
+  rv = copier->AsyncCopy(callbacks, nullptr);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return NS_OK;
 }
 
 void
@@ -392,19 +403,16 @@ TCPSocket::NotifyCopyComplete(nsresult aStatus)
 {
   mAsyncCopierActive = false;
 
-  uint32_t countRemaining;
-  nsresult rvRemaining = mMultiplexStream->GetCount(&countRemaining);
-  NS_ENSURE_SUCCESS_VOID(rvRemaining);
-
-  while (countRemaining--) {
-    mMultiplexStream->RemoveStream(0);
+  // Let's update the buffered amount of data.
+  uint64_t bufferedAmount = 0;
+  for (uint32_t i = 0, len = mPendingData.Length(); i < len; ++i) {
+    nsCOMPtr<nsIInputStream> stream = mPendingData[i];
+    uint64_t available = 0;
+    if (NS_SUCCEEDED(stream->Available(&available))) {
+      bufferedAmount += available;
+    }
   }
-
-  while (!mPendingDataWhileCopierActive.IsEmpty()) {
-      nsCOMPtr<nsIInputStream> stream = mPendingDataWhileCopierActive[0];
-      mMultiplexStream->AppendStream(stream);
-      mPendingDataWhileCopierActive.RemoveElementAt(0);
-  }
+  mBufferedAmount = bufferedAmount;
 
   if (mSocketBridgeParent) {
     mozilla::Unused << mSocketBridgeParent->SendUpdateBufferedAmount(BufferedAmount(),
@@ -416,14 +424,13 @@ TCPSocket::NotifyCopyComplete(nsresult aStatus)
     return;
   }
 
-  uint32_t count;
-  nsresult rv = mMultiplexStream->GetCount(&count);
-  NS_ENSURE_SUCCESS_VOID(rv);
-
-  if (count) {
+  if (bufferedAmount != 0) {
     EnsureCopying();
     return;
   }
+
+  // Maybe we have some empty stream. We want to have an empty queue now.
+  mPendingData.Clear();
 
   // If we are waiting for initiating starttls, we can begin to
   // activate tls now.
@@ -433,11 +440,7 @@ TCPSocket::NotifyCopyComplete(nsresult aStatus)
     // If we have pending data, we should send them, or fire
     // a drain event if we are waiting for it.
     if (!mPendingDataAfterStartTLS.IsEmpty()) {
-      while (!mPendingDataAfterStartTLS.IsEmpty()) {
-        nsCOMPtr<nsIInputStream> stream = mPendingDataAfterStartTLS[0];
-        mMultiplexStream->AppendStream(stream);
-        mPendingDataAfterStartTLS.RemoveElementAt(0);
-      }
+      mPendingData.SwapElements(mPendingDataAfterStartTLS);
       EnsureCopying();
       return;
     }
@@ -489,8 +492,7 @@ TCPSocket::FireErrorEvent(const nsAString& aName, const nsAString& aType)
     TCPSocketErrorEvent::Constructor(this, NS_LITERAL_STRING("error"), init);
   MOZ_ASSERT(event);
   event->SetTrusted(true);
-  bool dummy;
-  DispatchEvent(event, &dummy);
+  DispatchEvent(*event);
   return NS_OK;
 }
 
@@ -559,8 +561,7 @@ TCPSocket::FireDataEvent(JSContext* aCx, const nsAString& aType, JS::Handle<JS::
   RefPtr<TCPSocketEvent> event =
     TCPSocketEvent::Constructor(this, aType, init);
   event->SetTrusted(true);
-  bool dummy;
-  DispatchEvent(event, &dummy);
+  DispatchEvent(*event);
   return NS_OK;
 }
 
@@ -586,20 +587,6 @@ bool
 TCPSocket::Ssl()
 {
   return mSsl;
-}
-
-uint64_t
-TCPSocket::BufferedAmount()
-{
-  if (mSocketBridgeChild) {
-    return mBufferedAmount;
-  }
-  if (mMultiplexStream) {
-    uint64_t available = 0;
-    mMultiplexStream->Available(&available);
-    return available;
-  }
-  return 0;
 }
 
 void
@@ -778,11 +765,11 @@ TCPSocket::CloseHelper(bool waitForUnsentData)
     return;
   }
 
-  uint32_t count = 0;
-  if (mMultiplexStream) {
-    mMultiplexStream->GetCount(&count);
-  }
-  if (!count || !waitForUnsentData) {
+  if (!mAsyncCopierActive || !waitForUnsentData) {
+
+    mPendingData.Clear();
+    mPendingDataAfterStartTLS.Clear();
+
     if (mSocketOutputStream) {
       mSocketOutputStream->Close();
       mSocketOutputStream = nullptr;
@@ -910,11 +897,8 @@ TCPSocket::Send(nsIInputStream* aStream, uint32_t aByteLength)
     // When we are waiting for starttls, newStream is added to pendingData
     // and will be appended to multiplexStream after tls had been set up.
     mPendingDataAfterStartTLS.AppendElement(aStream);
-  } else if (mAsyncCopierActive) {
-    // While the AsyncCopier is still active..
-    mPendingDataWhileCopierActive.AppendElement(aStream);
   } else {
-    mMultiplexStream->AppendStream(aStream);
+    mPendingData.AppendElement(aStream);
   }
 
   EnsureCopying();
@@ -989,7 +973,7 @@ TCPSocket::CreateInputStreamPump()
   mInputStreamPump = do_CreateInstance("@mozilla.org/network/input-stream-pump;1", &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = mInputStreamPump->Init(mSocketInputStream, -1, -1, 0, 0, false, nullptr);
+  rv = mInputStreamPump->Init(mSocketInputStream, 0, 0, false, nullptr);
   NS_ENSURE_SUCCESS(rv, rv);
 
   uint64_t suspendCount = mSuspendCount;
@@ -1011,10 +995,10 @@ TCPSocket::OnTransportStatus(nsITransport* aTransport, nsresult aStatus,
   }
 
   mReadyState = TCPReadyState::Open;
-  FireEvent(NS_LITERAL_STRING("open"));
-
   nsresult rv = CreateInputStreamPump();
   NS_ENSURE_SUCCESS(rv, rv);
+  FireEvent(NS_LITERAL_STRING("open"));
+
   return NS_OK;
 }
 
@@ -1096,14 +1080,9 @@ TCPSocket::OnDataAvailable(nsIRequest* aRequest, nsISupports* aContext, nsIInput
 NS_IMETHODIMP
 TCPSocket::OnStopRequest(nsIRequest* aRequest, nsISupports* aContext, nsresult aStatus)
 {
-  uint32_t count;
-  nsresult rv = mMultiplexStream->GetCount(&count);
-  NS_ENSURE_SUCCESS(rv, rv);
-  bool bufferedOutput = count != 0;
-
   mInputStreamPump = nullptr;
 
-  if (bufferedOutput && NS_SUCCEEDED(aStatus)) {
+  if (mAsyncCopierActive && NS_SUCCEEDED(aStatus)) {
     // If we have some buffered output still, and status is not an
     // error, the other side has done a half-close, but we don't
     // want to be in the close state until we are done sending

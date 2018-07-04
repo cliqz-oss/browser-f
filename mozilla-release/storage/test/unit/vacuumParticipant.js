@@ -4,11 +4,8 @@
 
 // This testing component is used in test_vacuum* tests.
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 /**
  * Returns a new nsIFile reference for a profile database.
@@ -25,8 +22,7 @@ function new_db_file(name) {
  * @param nsIFile interface to the database file.
  */
 function getDatabase(aFile) {
-  return Cc["@mozilla.org/storage/service;1"].getService(Ci.mozIStorageService)
-                                             .openDatabase(aFile);
+  return Services.storage.openDatabase(aFile);
 }
 
 function vacuumParticipant() {
@@ -92,9 +88,7 @@ vacuumParticipant.prototype =
       } catch (e) {
         // Do nothing.
       }
-      this._dbConn = Cc["@mozilla.org/storage/service;1"].
-                     getService(Ci.mozIStorageService).
-                     openSpecialDatabase("memory");
+      this._dbConn = Services.storage.openSpecialDatabase("memory");
     } else if (aData == "dispose") {
       Services.obs.removeObserver(this, "test-options");
       try {
@@ -105,7 +99,7 @@ vacuumParticipant.prototype =
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.mozIStorageVacuumParticipant,
     Ci.nsIObserver,
   ])

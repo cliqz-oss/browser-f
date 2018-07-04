@@ -64,7 +64,7 @@ class TPSTestRunner(object):
         'browser.warnOnQuit': False,
         # Allow installing extensions dropped into the profile folder
         'extensions.autoDisableScopes': 10,
-        'extensions.getAddons.get.url': 'http://127.0.0.1:4567/addons/api/%IDS%.xml',
+        'extensions.getAddons.get.url': 'http://127.0.0.1:4567/addons/api/%IDS%.json',
         # Our pretend addons server doesn't support metadata...
         'extensions.getAddons.cache.enabled': False,
         'extensions.install.requireSecureOrigin': False,
@@ -78,7 +78,7 @@ class TPSTestRunner(object):
         'xpinstall.signatures.required': False,
         'services.sync.testing.tps': True,
         'engine.bookmarks.repair.enabled': False,
-        'extensions.allow-non-mpc-extensions': True,
+        'extensions.legacy.enabled': True,
     }
 
     debug_preferences = {
@@ -86,25 +86,8 @@ class TPSTestRunner(object):
         'services.sync.log.appender.dump': 'Trace',
         'services.sync.log.appender.file.level': 'Trace',
         'services.sync.log.appender.file.logOnSuccess': True,
-        'services.sync.log.rootLogger': 'Trace',
-        'services.sync.log.logger.addonutils': 'Trace',
-        'services.sync.log.logger.declined': 'Trace',
-        'services.sync.log.logger.service.main': 'Trace',
-        'services.sync.log.logger.status': 'Trace',
-        'services.sync.log.logger.authenticator': 'Trace',
-        'services.sync.log.logger.network.resources': 'Trace',
-        'services.sync.log.logger.service.jpakeclient': 'Trace',
-        'services.sync.log.logger.engine.bookmarks': 'Trace',
-        'services.sync.log.logger.engine.clients': 'Trace',
-        'services.sync.log.logger.engine.forms': 'Trace',
-        'services.sync.log.logger.engine.history': 'Trace',
-        'services.sync.log.logger.engine.passwords': 'Trace',
-        'services.sync.log.logger.engine.prefs': 'Trace',
-        'services.sync.log.logger.engine.tabs': 'Trace',
-        'services.sync.log.logger.engine.addons': 'Trace',
-        'services.sync.log.logger.engine.apps': 'Trace',
-        'services.sync.log.logger.identity': 'Trace',
-        'services.sync.log.logger.userapi': 'Trace',
+        'services.sync.log.logger': 'Trace',
+        'services.sync.log.logger.engine': 'Trace',
     }
 
     syncVerRe = re.compile(
@@ -445,7 +428,6 @@ class TPSTestRunner(object):
         # build our tps.xpi extension
         self.extensions = []
         self.extensions.append(os.path.join(self.extensionDir, 'tps'))
-        self.extensions.append(os.path.join(self.extensionDir, "mozmill"))
 
         # build the test list
         try:

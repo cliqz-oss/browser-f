@@ -1,30 +1,24 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim:cindent:ts=2:et:sw=2:
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- * This Original Code has been modified by IBM Corporation. Modifications made by IBM
- * described herein are Copyright (c) International Business Machines Corporation, 2000.
- * Modifications to Mozilla code or documentation identified per MPL Section 3.3
- *
- * Date             Modified by     Description of modification
- * 04/20/2000       IBM Corp.      OS/2 VisualAge build.
- */
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* storage of the frame tree and information about it */
 
+#include "nsFrameManager.h"
+
 #include "nscore.h"
 #include "nsIPresShell.h"
-#include "nsStyleContext.h"
 #include "nsCOMPtr.h"
 #include "plhash.h"
 #include "nsPlaceholderFrame.h"
 #include "nsGkAtoms.h"
 #include "nsILayoutHistoryState.h"
-#include "nsPresState.h"
+#include "mozilla/PresState.h"
+#include "mozilla/ComputedStyle.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/UndisplayedNode.h"
 #include "nsIDocument.h"
 
 #include "nsContentUtils.h"
@@ -33,74 +27,18 @@
 #include "nsAbsoluteContainingBlock.h"
 #include "ChildIterator.h"
 
-#include "nsFrameManager.h"
 #include "GeckoProfiler.h"
 #include "nsIStatefulFrame.h"
 #include "nsContainerFrame.h"
+#include "nsWindowSizes.h"
+
+#include "mozilla/MemoryReporting.h"
 
 // #define DEBUG_UNDISPLAYED_MAP
 // #define DEBUG_DISPLAY_CONTENTS_MAP
 
 using namespace mozilla;
 using namespace mozilla::dom;
-
-//----------------------------------------------------------------------
-
-nsFrameManagerBase::nsFrameManagerBase()
-  : mPresShell(nullptr)
-  , mRootFrame(nullptr)
-  , mUndisplayedMap(nullptr)
-  , mDisplayContentsMap(nullptr)
-  , mIsDestroyingFrames(false)
-{
-}
-
-//----------------------------------------------------------------------
-
-/**
- * The undisplayed map is a class that maps a parent content node to the
- * undisplayed content children, and their style contexts.
- *
- * The linked list of nodes holds strong references to the style contexts and
- * the content.
- */
-class nsFrameManagerBase::UndisplayedMap :
-  private nsClassHashtable<nsPtrHashKey<nsIContent>,
-                           LinkedList<UndisplayedNode>>
-{
-  typedef nsClassHashtable<nsPtrHashKey<nsIContent>, LinkedList<UndisplayedNode>> base_type;
-
-public:
-  UndisplayedMap();
-  ~UndisplayedMap();
-
-  UndisplayedNode* GetFirstNode(nsIContent* aParentContent);
-
-  void AddNodeFor(nsIContent* aParentContent,
-                  nsIContent* aChild,
-                  nsStyleContext* aStyle);
-
-  void RemoveNodeFor(nsIContent* aParentContent, UndisplayedNode* aNode);
-
-  void RemoveNodesFor(nsIContent* aParentContent);
-
-  nsAutoPtr<LinkedList<UndisplayedNode>>
-    UnlinkNodesFor(nsIContent* aParentContent);
-
-  // Removes all entries from the hash table
-  void  Clear();
-
-protected:
-  LinkedList<UndisplayedNode>* GetListFor(nsIContent* aParentContent);
-  LinkedList<UndisplayedNode>* GetOrCreateListFor(nsIContent* aParentContent);
-  void AppendNodeFor(UndisplayedNode* aNode, nsIContent* aParentContent);
-  /**
-   * Get the applicable parent for the map lookup. This is almost always the
-   * provided argument, except if it's a <xbl:children> element, in which case
-   * it's the parent of the children element.
-   */
-  nsIContent* GetApplicableParent(nsIContent* aParent);
-};
 
 //----------------------------------------------------------------------
 
@@ -122,244 +60,7 @@ nsFrameManager::Destroy()
     mRootFrame = nullptr;
   }
 
-  delete mUndisplayedMap;
-  mUndisplayedMap = nullptr;
-  delete mDisplayContentsMap;
-  mDisplayContentsMap = nullptr;
-
   mPresShell = nullptr;
-}
-
-//----------------------------------------------------------------------
-
-static nsIContent*
-ParentForUndisplayedMap(const nsIContent* aContent)
-{
-  MOZ_ASSERT(aContent);
-
-  nsIContent* parent = aContent->GetParentElementCrossingShadowRoot();
-  MOZ_ASSERT(parent || !aContent->GetParent(), "no non-elements");
-
-  return parent;
-}
-
-/* static */ nsStyleContext*
-nsFrameManager::GetStyleContextInMap(UndisplayedMap* aMap,
-                                     const nsIContent* aContent)
-{
-  UndisplayedNode* node = GetUndisplayedNodeInMapFor(aMap, aContent);
-  return node ? node->mStyle.get() : nullptr;
-}
-
-/* static */ UndisplayedNode*
-nsFrameManager::GetUndisplayedNodeInMapFor(UndisplayedMap* aMap,
-                                           const nsIContent* aContent)
-{
-  if (!aContent) {
-    return nullptr;
-  }
-  nsIContent* parent = ParentForUndisplayedMap(aContent);
-  for (UndisplayedNode* node = aMap->GetFirstNode(parent);
-       node; node = node->getNext()) {
-    if (node->mContent == aContent)
-      return node;
-  }
-
-  return nullptr;
-}
-
-
-/* static */ UndisplayedNode*
-nsFrameManager::GetAllUndisplayedNodesInMapFor(UndisplayedMap* aMap,
-                                               nsIContent* aParentContent)
-{
-  return aMap ? aMap->GetFirstNode(aParentContent) : nullptr;
-}
-
-UndisplayedNode*
-nsFrameManager::GetAllUndisplayedContentIn(nsIContent* aParentContent)
-{
-  return GetAllUndisplayedNodesInMapFor(mUndisplayedMap, aParentContent);
-}
-
-/* static */ void
-nsFrameManager::SetStyleContextInMap(UndisplayedMap* aMap,
-                                     nsIContent* aContent,
-                                     nsStyleContext* aStyleContext)
-{
-  MOZ_ASSERT(!aStyleContext->GetPseudo(),
-             "Should only have actual elements here");
-
-#if defined(DEBUG_UNDISPLAYED_MAP) || defined(DEBUG_DISPLAY_BOX_CONTENTS_MAP)
-  static int i = 0;
-  printf("SetStyleContextInMap(%d): p=%p \n", i++, (void *)aContent);
-#endif
-
-  MOZ_ASSERT(!GetStyleContextInMap(aMap, aContent),
-             "Already have an entry for aContent");
-
-  nsIContent* parent = ParentForUndisplayedMap(aContent);
-#ifdef DEBUG
-  nsIPresShell* shell = aStyleContext->PresContext()->PresShell();
-  NS_ASSERTION(parent || (shell && shell->GetDocument() &&
-                          shell->GetDocument()->GetRootElement() == aContent),
-               "undisplayed content must have a parent, unless it's the root "
-               "element");
-#endif
-  aMap->AddNodeFor(parent, aContent, aStyleContext);
-}
-
-void
-nsFrameManager::SetUndisplayedContent(nsIContent* aContent,
-                                      nsStyleContext* aStyleContext)
-{
-  if (!mUndisplayedMap) {
-    mUndisplayedMap = new UndisplayedMap;
-  }
-  SetStyleContextInMap(mUndisplayedMap, aContent, aStyleContext);
-}
-
-/* static */ void
-nsFrameManager::ChangeStyleContextInMap(UndisplayedMap* aMap,
-                                        nsIContent* aContent,
-                                        nsStyleContext* aStyleContext)
-{
-  MOZ_ASSERT(aMap, "expecting a map");
-
-#if defined(DEBUG_UNDISPLAYED_MAP) || defined(DEBUG_DISPLAY_BOX_CONTENTS_MAP)
-   static int i = 0;
-   printf("ChangeStyleContextInMap(%d): p=%p \n", i++, (void *)aContent);
-#endif
-
-  for (UndisplayedNode* node = aMap->GetFirstNode(aContent->GetParent());
-       node; node = node->getNext()) {
-    if (node->mContent == aContent) {
-      node->mStyle = aStyleContext;
-      return;
-    }
-  }
-
-  MOZ_CRASH("couldn't find the entry to change");
-}
-
-void
-nsFrameManager::ClearUndisplayedContentIn(nsIContent* aContent,
-                                          nsIContent* aParentContent)
-{
-#ifdef DEBUG_UNDISPLAYED_MAP
-  static int i = 0;
-  printf("ClearUndisplayedContent(%d): content=%p parent=%p --> ", i++, (void *)aContent, (void*)aParentContent);
-#endif
-
-  if (!mUndisplayedMap) {
-    return;
-  }
-
-  for (UndisplayedNode* node = mUndisplayedMap->GetFirstNode(aParentContent);
-       node; node = node->getNext()) {
-    if (node->mContent == aContent) {
-      mUndisplayedMap->RemoveNodeFor(aParentContent, node);
-
-#ifdef DEBUG_UNDISPLAYED_MAP
-      printf( "REMOVED!\n");
-#endif
-      // make sure that there are no more entries for the same content
-      MOZ_ASSERT(!GetUndisplayedContent(aContent),
-                 "Found more undisplayed content data after removal");
-      return;
-    }
-  }
-
-#ifdef DEBUG_UNDISPLAYED_MAP
-  printf( "not found.\n");
-#endif
-}
-
-void
-nsFrameManager::ClearAllMapsFor(nsIContent* aParentContent)
-{
-#if defined(DEBUG_UNDISPLAYED_MAP) || defined(DEBUG_DISPLAY_CONTENTS_MAP)
-  static int i = 0;
-  printf("ClearAllMapsFor(%d): parent=%p \n", i++, aParentContent);
-#endif
-
-  if (mUndisplayedMap) {
-    mUndisplayedMap->RemoveNodesFor(aParentContent);
-  }
-  if (mDisplayContentsMap) {
-    nsAutoPtr<LinkedList<UndisplayedNode>> list =
-      mDisplayContentsMap->UnlinkNodesFor(aParentContent);
-    if (list) {
-      while (UndisplayedNode* node = list->popFirst()) {
-        ClearAllMapsFor(node->mContent);
-        delete node;
-      }
-    }
-  }
-
-  // Need to look at aParentContent's content list due to XBL insertions.
-  // Nodes in aParentContent's content list do not have aParentContent as a
-  // parent, but are treated as children of aParentContent. We iterate over
-  // the flattened content list and just ignore any nodes we don't care about.
-  FlattenedChildIterator iter(aParentContent);
-  for (nsIContent* child = iter.GetNextChild(); child; child = iter.GetNextChild()) {
-    auto parent = child->GetParent();
-    if (parent != aParentContent) {
-      ClearUndisplayedContentIn(child, parent);
-      ClearDisplayContentsIn(child, parent);
-    }
-  }
-}
-
-//----------------------------------------------------------------------
-
-void
-nsFrameManager::SetDisplayContents(nsIContent* aContent,
-                                   nsStyleContext* aStyleContext)
-{
-  if (!mDisplayContentsMap) {
-    mDisplayContentsMap = new UndisplayedMap;
-  }
-  SetStyleContextInMap(mDisplayContentsMap, aContent, aStyleContext);
-}
-
-UndisplayedNode*
-nsFrameManager::GetAllDisplayContentsIn(nsIContent* aParentContent)
-{
-  return GetAllUndisplayedNodesInMapFor(mDisplayContentsMap, aParentContent);
-}
-
-void
-nsFrameManager::ClearDisplayContentsIn(nsIContent* aContent,
-                                       nsIContent* aParentContent)
-{
-#ifdef DEBUG_DISPLAY_CONTENTS_MAP
-  static int i = 0;
-  printf("ClearDisplayContents(%d): content=%p parent=%p --> ", i++, (void *)aContent, (void*)aParentContent);
-#endif
-
-  if (!mDisplayContentsMap) {
-    return;
-  }
-
-  for (UndisplayedNode* node = mDisplayContentsMap->GetFirstNode(aParentContent);
-       node; node = node->getNext()) {
-    if (node->mContent == aContent) {
-      mDisplayContentsMap->RemoveNodeFor(aParentContent, node);
-
-#ifdef DEBUG_DISPLAY_CONTENTS_MAP
-      printf( "REMOVED!\n");
-#endif
-      // make sure that there are no more entries for the same content
-      MOZ_ASSERT(!GetDisplayContentsStyleFor(aContent),
-                 "Found more entries for aContent after removal");
-      ClearAllMapsFor(aContent);
-      return;
-    }
-  }
-#ifdef DEBUG_DISPLAY_CONTENTS_MAP
-  printf( "not found.\n");
-#endif
 }
 
 //----------------------------------------------------------------------
@@ -401,9 +102,6 @@ void
 nsFrameManager::RemoveFrame(ChildListID     aListID,
                             nsIFrame*       aOldFrame)
 {
-  bool wasDestroyingFrames = mIsDestroyingFrames;
-  mIsDestroyingFrames = true;
-
   // In case the reflow doesn't invalidate anything since it just leaves
   // a gap where the old frame was, we invalidate it here.  (This is
   // reasonably likely to happen when removing a last child in a way
@@ -427,20 +125,9 @@ nsFrameManager::RemoveFrame(ChildListID     aListID,
   } else {
     parentFrame->RemoveFrame(aListID, aOldFrame);
   }
-
-  mIsDestroyingFrames = wasDestroyingFrames;
 }
 
 //----------------------------------------------------------------------
-
-void
-nsFrameManager::NotifyDestroyingFrame(nsIFrame* aFrame)
-{
-  nsIContent* content = aFrame->GetContent();
-  if (content && content->GetPrimaryFrame() == aFrame) {
-    ClearAllMapsFor(content);
-  }
-}
 
 // Capture state for a given frame.
 // Accept a content id here, in some cases we may not have content (scroll position)
@@ -460,8 +147,7 @@ nsFrameManager::CaptureFrameStateFor(nsIFrame* aFrame,
   }
 
   // Capture the state, exit early if we get null (nothing to save)
-  nsAutoPtr<nsPresState> frameState;
-  nsresult rv = statefulFrame->SaveState(getter_Transfers(frameState));
+  UniquePtr<PresState> frameState = statefulFrame->SaveState();
   if (!frameState) {
     return;
   }
@@ -471,13 +157,13 @@ nsFrameManager::CaptureFrameStateFor(nsIFrame* aFrame,
   nsAutoCString stateKey;
   nsIContent* content = aFrame->GetContent();
   nsIDocument* doc = content ? content->GetUncomposedDoc() : nullptr;
-  rv = statefulFrame->GenerateStateKey(content, doc, stateKey);
+  nsresult rv = statefulFrame->GenerateStateKey(content, doc, stateKey);
   if(NS_FAILED(rv) || stateKey.IsEmpty()) {
     return;
   }
 
   // Store the state. aState owns frameState now.
-  aState->AddState(stateKey, frameState.forget());
+  aState->AddState(stateKey, Move(frameState));
 }
 
 void
@@ -540,7 +226,7 @@ nsFrameManager::RestoreFrameStateFor(nsIFrame* aFrame,
   }
 
   // Get the state from the hash
-  nsPresState* frameState = aState->GetState(stateKey);
+  PresState* frameState = aState->GetState(stateKey);
   if (!frameState) {
     return;
   }
@@ -573,134 +259,16 @@ nsFrameManager::RestoreFrameState(nsIFrame* aFrame,
   }
 }
 
-//----------------------------------------------------------------------
-
-nsFrameManagerBase::UndisplayedMap::UndisplayedMap()
-{
-  MOZ_COUNT_CTOR(nsFrameManagerBase::UndisplayedMap);
-}
-
-nsFrameManagerBase::UndisplayedMap::~UndisplayedMap(void)
-{
-  MOZ_COUNT_DTOR(nsFrameManagerBase::UndisplayedMap);
-  Clear();
-}
-
 void
-nsFrameManagerBase::UndisplayedMap::Clear()
+nsFrameManager::DestroyAnonymousContent(already_AddRefed<nsIContent> aContent)
 {
-  for (auto iter = Iter(); !iter.Done(); iter.Next()) {
-    auto* list = iter.UserData();
-    while (auto* node = list->popFirst()) {
-      delete node;
-    }
-    iter.Remove();
+  if (nsCOMPtr<nsIContent> content = aContent) {
+    content->UnbindFromTree();
   }
 }
 
-
-nsIContent*
-nsFrameManagerBase::UndisplayedMap::GetApplicableParent(nsIContent* aParent)
-{
-  // In the case of XBL default content, <xbl:children> elements do not get a
-  // frame causing a mismatch between the content tree and the frame tree.
-  // |GetEntryFor| is sometimes called with the content tree parent (which may
-  // be a <xbl:children> element) but the parent in the frame tree would be the
-  // insertion parent (parent of the <xbl:children> element). Here the children
-  // elements are normalized to the insertion parent to correct for the mismatch.
-  if (aParent && nsContentUtils::IsContentInsertionPoint(aParent)) {
-    return aParent->GetParent();
-  }
-
-  return aParent;
-}
-
-LinkedList<UndisplayedNode>*
-nsFrameManagerBase::UndisplayedMap::GetListFor(nsIContent* aParent)
-{
-  aParent = GetApplicableParent(aParent);
-
-  LinkedList<UndisplayedNode>* list;
-  if (Get(aParent, &list)) {
-    return list;
-  }
-
-  return nullptr;
-}
-
-LinkedList<UndisplayedNode>*
-nsFrameManagerBase::UndisplayedMap::GetOrCreateListFor(nsIContent* aParent)
-{
-  aParent = GetApplicableParent(aParent);
-  return LookupOrAdd(aParent);
-}
-
-
-UndisplayedNode*
-nsFrameManagerBase::UndisplayedMap::GetFirstNode(nsIContent* aParentContent)
-{
-  auto* list = GetListFor(aParentContent);
-  return list ? list->getFirst() : nullptr;
-}
-
-
 void
-nsFrameManagerBase::UndisplayedMap::AppendNodeFor(UndisplayedNode* aNode,
-                                                  nsIContent* aParentContent)
+nsFrameManager::AddSizeOfIncludingThis(nsWindowSizes& aSizes) const
 {
-  LinkedList<UndisplayedNode>* list = GetOrCreateListFor(aParentContent);
-
-#ifdef DEBUG
-  for (UndisplayedNode* node = list->getFirst(); node; node = node->getNext()) {
-    // NOTE: In the original code there was a work around for this case, I want
-    // to check it still happens before hacking around it the same way.
-    MOZ_ASSERT(node->mContent != aNode->mContent,
-               "Duplicated content in undisplayed list!");
-  }
-#endif
-
-  list->insertBack(aNode);
-}
-
-void
-nsFrameManagerBase::UndisplayedMap::AddNodeFor(nsIContent* aParentContent,
-                                               nsIContent* aChild,
-                                               nsStyleContext* aStyle)
-{
-  UndisplayedNode*  node = new UndisplayedNode(aChild, aStyle);
-  AppendNodeFor(node, aParentContent);
-}
-
-void
-nsFrameManagerBase::UndisplayedMap::RemoveNodeFor(nsIContent* aParentContent,
-                                                  UndisplayedNode* aNode)
-{
-#ifdef DEBUG
-  auto list = GetListFor(aParentContent);
-  MOZ_ASSERT(list, "content not in map");
-  aNode->removeFrom(*list);
-#else
-  aNode->remove();
-#endif
-  delete aNode;
-}
-
-
-nsAutoPtr<LinkedList<UndisplayedNode>>
-nsFrameManagerBase::UndisplayedMap::UnlinkNodesFor(nsIContent* aParentContent)
-{
-  nsAutoPtr<LinkedList<UndisplayedNode>> list;
-  Remove(GetApplicableParent(aParentContent), &list);
-  return list;
-}
-
-void
-nsFrameManagerBase::UndisplayedMap::RemoveNodesFor(nsIContent* aParentContent)
-{
-  nsAutoPtr<LinkedList<UndisplayedNode>> list = UnlinkNodesFor(aParentContent);
-  if (list) {
-    while (auto* node = list->popFirst()) {
-      delete node;
-    }
-  }
+  aSizes.mLayoutPresShellSize += aSizes.mState.mMallocSizeOf(this);
 }

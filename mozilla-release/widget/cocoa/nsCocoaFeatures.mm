@@ -19,6 +19,7 @@
 #define MAC_OS_X_VERSION_10_10_HEX 0x000010A0
 #define MAC_OS_X_VERSION_10_11_HEX 0x000010B0
 #define MAC_OS_X_VERSION_10_12_HEX 0x000010C0
+#define MAC_OS_X_VERSION_10_13_HEX 0x000010D0
 
 #include "nsCocoaFeatures.h"
 #include "nsCocoaUtils.h"
@@ -167,11 +168,30 @@ nsCocoaFeatures::OnSierraOrLater()
     return (OSXVersion() >= MAC_OS_X_VERSION_10_12_HEX);
 }
 
-/* Version of OnSierraOrLater as a global function callable from C (cairo) */
-bool
-Gecko_OnSierraOrLater()
+/* static */ bool
+nsCocoaFeatures::OnHighSierraOrLater()
 {
-    return nsCocoaFeatures::OnSierraOrLater();
+    return (OSXVersion() >= MAC_OS_X_VERSION_10_13_HEX);
+}
+
+/* static */ bool
+nsCocoaFeatures::OnSierraExactly()
+{
+    return (OSXVersion() >= MAC_OS_X_VERSION_10_12_HEX) &&
+           (OSXVersion() < MAC_OS_X_VERSION_10_13_HEX);
+}
+
+/* Version of OnSierraExactly as global function callable from cairo & skia */
+bool
+Gecko_OnSierraExactly()
+{
+    return nsCocoaFeatures::OnSierraExactly();
+}
+
+bool
+Gecko_OnHighSierraOrLater()
+{
+    return nsCocoaFeatures::OnHighSierraOrLater();
 }
 
 /* static */ bool

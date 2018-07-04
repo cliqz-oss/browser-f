@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from firefox_puppeteer.puppeteer import Puppeteer
 from firefox_puppeteer.ui.browser.window import BrowserWindow
 
@@ -88,7 +90,8 @@ class PuppeteerMixin(object):
         with self.marionette.using_context(self.marionette.CONTEXT_CONTENT):
             # Bug 1312674 - Navigating to about:blank twice can cause a hang in
             # Marionette. So try to always have a known default page loaded.
-            self.marionette.navigate('about:')
+            # Bug 1418979 - Update this to a test-framework-specific file.
+            self.marionette.navigate('about:about')
 
     def tearDown(self, *args, **kwargs):
         self.marionette.set_context('chrome')

@@ -7,13 +7,13 @@
 #ifndef vm_ObjectGroup_h
 #define vm_ObjectGroup_h
 
-#include "jsbytecode.h"
 #include "jsfriendapi.h"
 
 #include "ds/IdValuePair.h"
 #include "gc/Barrier.h"
 #include "js/CharacterEncoding.h"
 #include "js/GCHashTable.h"
+#include "js/TypeDecls.h"
 #include "vm/TaggedProto.h"
 #include "vm/TypeInference.h"
 
@@ -26,6 +26,7 @@ class PreliminaryObjectArrayWithTemplate;
 class TypeNewScript;
 class HeapTypeSet;
 class AutoClearTypeInferenceStateOnOOM;
+class AutoSweepObjectGroup;
 class CompilerConstraintList;
 
 namespace gc {
@@ -85,7 +86,7 @@ enum NewObjectKind {
 /* Type information about an object accessed by a script. */
 class ObjectGroup : public gc::TenuredCell
 {
-    friend void gc::MergeCompartments(JSCompartment* source, JSCompartment* target);
+    friend class gc::GCRuntime;
 
     /* Class shared by objects in this group. */
     const Class* clasp_;
@@ -97,14 +98,23 @@ class ObjectGroup : public gc::TenuredCell
     JSCompartment* compartment_;
 
   public:
-
     const Class* clasp() const {
         return clasp_;
     }
 
     void setClasp(const Class* clasp) {
         MOZ_ASSERT(JS::StringIsASCII(clasp->name));
+        MOZ_ASSERT(hasUncacheableClass());
         clasp_ = clasp;
+    }
+
+    // Certain optimizations may mutate the class of an ObjectGroup - and thus
+    // all objects in it - after it is created. If true, the JIT must not
+    // assume objects of a previously seen group have the same class as before.
+    //
+    // See: TryConvertToUnboxedLayout
+    bool hasUncacheableClass() const {
+        return clasp_->isNative();
     }
 
     bool hasDynamicPrototype() const {
@@ -121,6 +131,14 @@ class ObjectGroup : public gc::TenuredCell
 
     void setProto(TaggedProto proto);
     void setProtoUnchecked(TaggedProto proto);
+
+    bool hasUncacheableProto() const {
+        // We allow singletons to mutate their prototype after the group has
+        // been created. If true, the JIT must re-check prototype even if group
+        // has been seen before.
+        MOZ_ASSERT(!hasDynamicPrototype());
+        return singleton();
+    }
 
     bool singleton() const {
         return flagsDontCheckGeneration() & OBJECT_FLAG_SINGLETON;
@@ -187,7 +205,7 @@ class ObjectGroup : public gc::TenuredCell
         return nullptr;
     }
 
-    TypeNewScript* anyNewScript();
+    TypeNewScript* anyNewScript(const AutoSweepObjectGroup& sweep);
     void detachNewScript(bool writeBarrier, ObjectGroup* replacement);
 
     ObjectGroupFlags flagsDontCheckGeneration() const {
@@ -196,10 +214,10 @@ class ObjectGroup : public gc::TenuredCell
 
   public:
 
-    inline ObjectGroupFlags flags();
-    inline void addFlags(ObjectGroupFlags flags);
-    inline void clearFlags(ObjectGroupFlags flags);
-    inline TypeNewScript* newScript();
+    inline ObjectGroupFlags flags(const AutoSweepObjectGroup&);
+    inline void addFlags(const AutoSweepObjectGroup&, ObjectGroupFlags flags);
+    inline void clearFlags(const AutoSweepObjectGroup&, ObjectGroupFlags flags);
+    inline TypeNewScript* newScript(const AutoSweepObjectGroup& sweep);
 
     void setNewScript(TypeNewScript* newScript) {
         MOZ_ASSERT(newScript);
@@ -209,7 +227,8 @@ class ObjectGroup : public gc::TenuredCell
         setAddendum(Addendum_None, nullptr);
     }
 
-    inline PreliminaryObjectArrayWithTemplate* maybePreliminaryObjects();
+    inline PreliminaryObjectArrayWithTemplate*
+    maybePreliminaryObjects(const AutoSweepObjectGroup& sweep);
 
     PreliminaryObjectArrayWithTemplate* maybePreliminaryObjectsDontCheckGeneration() {
         if (addendumKind() == Addendum_PreliminaryObjects)
@@ -231,18 +250,18 @@ class ObjectGroup : public gc::TenuredCell
                maybePreliminaryObjectsDontCheckGeneration();
     }
 
-    inline UnboxedLayout* maybeUnboxedLayout();
-    inline UnboxedLayout& unboxedLayout();
+    inline UnboxedLayout* maybeUnboxedLayout(const AutoSweepObjectGroup& sweep);
+    inline UnboxedLayout& unboxedLayout(const AutoSweepObjectGroup& sweep);
 
     UnboxedLayout* maybeUnboxedLayoutDontCheckGeneration() const {
         if (addendumKind() == Addendum_UnboxedLayout)
-            return reinterpret_cast<UnboxedLayout*>(addendum_);
+            return &unboxedLayoutDontCheckGeneration();
         return nullptr;
     }
 
     UnboxedLayout& unboxedLayoutDontCheckGeneration() const {
         MOZ_ASSERT(addendumKind() == Addendum_UnboxedLayout);
-        return *maybeUnboxedLayoutDontCheckGeneration();
+        return *reinterpret_cast<UnboxedLayout*>(addendum_);
     }
 
     void setUnboxedLayout(UnboxedLayout* layout) {
@@ -263,13 +282,13 @@ class ObjectGroup : public gc::TenuredCell
         // Note: there is no need to sweep when accessing the type descriptor
         // of an object, as it is strongly held and immutable.
         if (addendumKind() == Addendum_TypeDescr)
-            return reinterpret_cast<TypeDescr*>(addendum_);
+            return &typeDescr();
         return nullptr;
     }
 
     TypeDescr& typeDescr() {
         MOZ_ASSERT(addendumKind() == Addendum_TypeDescr);
-        return *maybeTypeDescr();
+        return *reinterpret_cast<TypeDescr*>(addendum_);
     }
 
     void setTypeDescr(TypeDescr* descr) {
@@ -359,15 +378,15 @@ class ObjectGroup : public gc::TenuredCell
     inline ObjectGroup(const Class* clasp, TaggedProto proto, JSCompartment* comp,
                        ObjectGroupFlags initialFlags);
 
-    inline bool hasAnyFlags(ObjectGroupFlags flags);
-    inline bool hasAllFlags(ObjectGroupFlags flags);
+    inline bool hasAnyFlags(const AutoSweepObjectGroup& sweep, ObjectGroupFlags flags);
+    inline bool hasAllFlags(const AutoSweepObjectGroup& sweep, ObjectGroupFlags flags);
 
     bool hasAllFlagsDontCheckGeneration(ObjectGroupFlags flags) {
         MOZ_ASSERT((flags & OBJECT_FLAG_DYNAMIC_MASK) == flags);
         return (this->flagsDontCheckGeneration() & flags) == flags;
     }
 
-    inline bool unknownProperties();
+    inline bool unknownProperties(const AutoSweepObjectGroup& sweep);
 
     bool unknownPropertiesDontCheckGeneration() {
         MOZ_ASSERT_IF(flagsDontCheckGeneration() & OBJECT_FLAG_UNKNOWN_PROPERTIES,
@@ -375,55 +394,56 @@ class ObjectGroup : public gc::TenuredCell
         return !!(flagsDontCheckGeneration() & OBJECT_FLAG_UNKNOWN_PROPERTIES);
     }
 
-    inline bool shouldPreTenure();
+    inline bool shouldPreTenure(const AutoSweepObjectGroup& sweep);
 
     gc::InitialHeap initialHeap(CompilerConstraintList* constraints);
 
-    inline bool canPreTenure();
-    inline bool fromAllocationSite();
-    inline void setShouldPreTenure(JSContext* cx);
+    inline bool canPreTenure(const AutoSweepObjectGroup& sweep);
+    inline bool fromAllocationSite(const AutoSweepObjectGroup& sweep);
+    inline void setShouldPreTenure(const AutoSweepObjectGroup& sweep, JSContext* cx);
 
     /*
      * Get or create a property of this object. Only call this for properties which
      * a script accesses explicitly.
      */
-    inline HeapTypeSet* getProperty(JSContext* cx, JSObject* obj, jsid id);
+    inline HeapTypeSet* getProperty(const AutoSweepObjectGroup& sweep, JSContext* cx,
+                                    JSObject* obj, jsid id);
 
     /* Get a property only if it already exists. */
-    MOZ_ALWAYS_INLINE HeapTypeSet* maybeGetProperty(jsid id);
+    MOZ_ALWAYS_INLINE HeapTypeSet* maybeGetProperty(const AutoSweepObjectGroup& sweep, jsid id);
+    MOZ_ALWAYS_INLINE HeapTypeSet* maybeGetPropertyDontCheckGeneration(jsid id);
 
     /*
      * Iterate through the group's properties. getPropertyCount overapproximates
      * in the hash case (see SET_ARRAY_SIZE in TypeInference-inl.h), and
      * getProperty may return nullptr.
      */
-    inline unsigned getPropertyCount();
-    inline Property* getProperty(unsigned i);
+    inline unsigned getPropertyCount(const AutoSweepObjectGroup& sweep);
+    inline Property* getProperty(const AutoSweepObjectGroup& sweep, unsigned i);
 
     /* Helpers */
 
-    void updateNewPropertyTypes(JSContext* cx, JSObject* obj, jsid id, HeapTypeSet* types);
+    void updateNewPropertyTypes(const AutoSweepObjectGroup& sweep, JSContext* cx, JSObject* obj,
+                                jsid id, HeapTypeSet* types);
     void addDefiniteProperties(JSContext* cx, Shape* shape);
     bool matchDefiniteProperties(HandleObject obj);
     void markPropertyNonData(JSContext* cx, JSObject* obj, jsid id);
     void markPropertyNonWritable(JSContext* cx, JSObject* obj, jsid id);
-    void markStateChange(JSContext* cx);
-    void setFlags(JSContext* cx, ObjectGroupFlags flags);
-    void markUnknown(JSContext* cx);
+    void markStateChange(const AutoSweepObjectGroup& sweep, JSContext* cx);
+    void setFlags(const AutoSweepObjectGroup& sweep, JSContext* cx, ObjectGroupFlags flags);
+    void markUnknown(const AutoSweepObjectGroup& sweep, JSContext* cx);
     void maybeClearNewScriptOnOOM();
     void clearNewScript(JSContext* cx, ObjectGroup* replacement = nullptr);
 
-    void print();
+    void print(const AutoSweepObjectGroup& sweep);
 
-    inline void clearProperties();
+    inline void clearProperties(const AutoSweepObjectGroup& sweep);
     void traceChildren(JSTracer* trc);
 
     inline bool needsSweep();
-    inline void maybeSweep(AutoClearTypeInferenceStateOnOOM* oom);
+    void sweep(const AutoSweepObjectGroup& sweep, AutoClearTypeInferenceStateOnOOM* oom);
 
   private:
-    void sweep(AutoClearTypeInferenceStateOnOOM* oom);
-
     uint32_t generation() {
         return (flags_ & OBJECT_FLAG_GENERATION_MASK) >> OBJECT_FLAG_GENERATION_SHIFT;
     }
@@ -440,6 +460,10 @@ class ObjectGroup : public gc::TenuredCell
     void finalize(FreeOp* fop);
 
     static const JS::TraceKind TraceKind = JS::TraceKind::ObjectGroup;
+
+  private:
+    // See JSObject::offsetOfGroup() comment.
+    friend class js::jit::MacroAssembler;
 
     static inline uint32_t offsetOfClasp() {
         return offsetof(ObjectGroup, clasp_);
@@ -461,6 +485,7 @@ class ObjectGroup : public gc::TenuredCell
         return offsetof(ObjectGroup, flags_);
     }
 
+  public:
     const ObjectGroupFlags* addressOfFlags() const {
         return &flags_;
     }
@@ -471,10 +496,11 @@ class ObjectGroup : public gc::TenuredCell
         return Addendum_OriginalUnboxedGroup << OBJECT_FLAG_ADDENDUM_SHIFT;
     }
 
-    inline uint32_t basePropertyCount();
+    inline uint32_t basePropertyCount(const AutoSweepObjectGroup& sweep);
+    inline uint32_t basePropertyCountDontCheckGeneration();
 
   private:
-    inline void setBasePropertyCount(uint32_t count);
+    inline void setBasePropertyCount(const AutoSweepObjectGroup& sweep, uint32_t count);
 
     static void staticAsserts() {
         JS_STATIC_ASSERT(offsetof(ObjectGroup, proto_) == offsetof(js::shadow::ObjectGroup, proto));
@@ -515,11 +541,11 @@ class ObjectGroup : public gc::TenuredCell
         UnknownIndex  // Make an array with an unknown element type.
     };
 
-    // Create an ArrayObject or UnboxedArrayObject with the specified elements
-    // and a group specialized for the elements.
-    static JSObject* newArrayObject(JSContext* cx, const Value* vp, size_t length,
-                                    NewObjectKind newKind,
-                                    NewArrayKind arrayKind = NewArrayKind::Normal);
+    // Create an ArrayObject with the specified elements and a group specialized
+    // for the elements.
+    static ArrayObject* newArrayObject(JSContext* cx, const Value* vp, size_t length,
+                                       NewObjectKind newKind,
+                                       NewArrayKind arrayKind = NewArrayKind::Normal);
 
     // Create a PlainObject or UnboxedPlainObject with the specified properties
     // and a group specialized for those properties.
@@ -658,7 +684,7 @@ class ObjectGroupCompartment
 
     void clearTables();
 
-    void sweep(FreeOp* fop);
+    void sweep();
 
     void purge() {
         defaultNewGroupCache.purge();

@@ -45,8 +45,11 @@ module.exports = {
 
   "rules": {
     "mozilla/import-content-task-globals": "error",
-    "mozilla/import-headjs-globals": "warn",
-    "mozilla/mark-test-function-used": "warn",
+    "mozilla/import-headjs-globals": "error",
+    "mozilla/mark-test-function-used": "error",
+    // Turn off no-define-cc-etc for mochitests as these don't have Cc etc defined in the
+    // global scope.
+    "mozilla/no-define-cc-etc": "off",
     "no-shadow": "error"
   }
 };

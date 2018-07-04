@@ -5,19 +5,24 @@
 'use strict';
 
 (function() {
-  var mojomId = 'device/usb/public/interfaces/device.mojom';
+  var mojomId = 'device/usb/public/mojom/device.mojom';
   if (mojo.internal.isMojomLoaded(mojomId)) {
     console.warn('The following mojom is loaded multiple times: ' + mojomId);
     return;
   }
   mojo.internal.markMojomLoaded(mojomId);
-
-  // TODO(yzshen): Define these aliases to minimize the differences between the
-  // old/new modes. Remove them when the old mode goes away.
   var bindings = mojo;
   var associatedBindings = mojo;
   var codec = mojo.internal;
   var validator = mojo.internal;
+
+  var exports = mojo.internal.exposeNamespace('device.mojom');
+  var string16$ =
+      mojo.internal.exposeNamespace('mojo.common.mojom');
+  if (mojo.config.autoLoadMojomDeps) {
+    mojo.internal.loadMojomIfNecessary(
+        'mojo/public/mojom/base/string16.mojom', '../../../../mojo/public/mojom/base/string16.mojom.js');
+  }
 
 
   var UsbOpenDeviceError = {};
@@ -203,14 +208,12 @@
 
 
 
-    
     // validate UsbEndpointInfo.direction
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 4, UsbTransferDirection);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbEndpointInfo.type
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 8, UsbTransferType);
     if (err !== validator.validationError.NONE)
@@ -288,14 +291,12 @@
 
 
 
-    
     // validate UsbAlternateInterfaceInfo.interfaceName
-    err = messageValidator.validateStringPointer(offset + codec.kStructHeaderSize + 8, true)
+    err = messageValidator.validateStructPointer(offset + codec.kStructHeaderSize + 8, string16$.String16, true);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbAlternateInterfaceInfo.endpoints
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 16, 8, new codec.PointerTo(UsbEndpointInfo), false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -319,7 +320,7 @@
     decoder.skip(1);
     decoder.skip(1);
     decoder.skip(1);
-    val.interfaceName = decoder.decodeStruct(codec.NullableString);
+    val.interfaceName = decoder.decodeStructPointer(string16$.String16);
     val.endpoints = decoder.decodeArrayPointer(new codec.PointerTo(UsbEndpointInfo));
     return val;
   };
@@ -336,7 +337,7 @@
     encoder.skip(1);
     encoder.skip(1);
     encoder.skip(1);
-    encoder.encodeStruct(codec.NullableString, val.interfaceName);
+    encoder.encodeStructPointer(string16$.String16, val.interfaceName);
     encoder.encodeArrayPointer(new codec.PointerTo(UsbEndpointInfo), val.endpoints);
   };
   function UsbInterfaceInfo(values) {
@@ -371,7 +372,6 @@
 
 
 
-    
     // validate UsbInterfaceInfo.alternates
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 8, new codec.PointerTo(UsbAlternateInterfaceInfo), false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -446,14 +446,12 @@
 
 
 
-    
     // validate UsbConfigurationInfo.configurationName
-    err = messageValidator.validateStringPointer(offset + codec.kStructHeaderSize + 8, true)
+    err = messageValidator.validateStructPointer(offset + codec.kStructHeaderSize + 8, string16$.String16, true);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbConfigurationInfo.interfaces
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 16, 8, new codec.PointerTo(UsbInterfaceInfo), false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -477,7 +475,7 @@
     decoder.skip(1);
     decoder.skip(1);
     decoder.skip(1);
-    val.configurationName = decoder.decodeStruct(codec.NullableString);
+    val.configurationName = decoder.decodeStructPointer(string16$.String16);
     val.interfaces = decoder.decodeArrayPointer(new codec.PointerTo(UsbInterfaceInfo));
     return val;
   };
@@ -494,7 +492,7 @@
     encoder.skip(1);
     encoder.skip(1);
     encoder.skip(1);
-    encoder.encodeStruct(codec.NullableString, val.configurationName);
+    encoder.encodeStructPointer(string16$.String16, val.configurationName);
     encoder.encodeArrayPointer(new codec.PointerTo(UsbInterfaceInfo), val.interfaces);
   };
   function UsbDeviceInfo(values) {
@@ -543,7 +541,6 @@
         return err;
 
 
-    
     // validate UsbDeviceInfo.guid
     err = messageValidator.validateStringPointer(offset + codec.kStructHeaderSize + 0, false)
     if (err !== validator.validationError.NONE)
@@ -561,29 +558,25 @@
 
 
 
-    
     // validate UsbDeviceInfo.manufacturerName
-    err = messageValidator.validateStringPointer(offset + codec.kStructHeaderSize + 24, true)
+    err = messageValidator.validateStructPointer(offset + codec.kStructHeaderSize + 24, string16$.String16, true);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbDeviceInfo.productName
-    err = messageValidator.validateStringPointer(offset + codec.kStructHeaderSize + 32, true)
+    err = messageValidator.validateStructPointer(offset + codec.kStructHeaderSize + 32, string16$.String16, true);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbDeviceInfo.serialNumber
-    err = messageValidator.validateStringPointer(offset + codec.kStructHeaderSize + 40, true)
+    err = messageValidator.validateStructPointer(offset + codec.kStructHeaderSize + 40, string16$.String16, true);
     if (err !== validator.validationError.NONE)
         return err;
 
 
 
-    
     // validate UsbDeviceInfo.configurations
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 48, 8, new codec.PointerTo(UsbConfigurationInfo), false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -614,9 +607,9 @@
     val.activeConfiguration = decoder.decodeStruct(codec.Uint8);
     decoder.skip(1);
     decoder.skip(1);
-    val.manufacturerName = decoder.decodeStruct(codec.NullableString);
-    val.productName = decoder.decodeStruct(codec.NullableString);
-    val.serialNumber = decoder.decodeStruct(codec.NullableString);
+    val.manufacturerName = decoder.decodeStructPointer(string16$.String16);
+    val.productName = decoder.decodeStructPointer(string16$.String16);
+    val.serialNumber = decoder.decodeStructPointer(string16$.String16);
     val.configurations = decoder.decodeArrayPointer(new codec.PointerTo(UsbConfigurationInfo));
     return val;
   };
@@ -640,9 +633,9 @@
     encoder.encodeStruct(codec.Uint8, val.activeConfiguration);
     encoder.skip(1);
     encoder.skip(1);
-    encoder.encodeStruct(codec.NullableString, val.manufacturerName);
-    encoder.encodeStruct(codec.NullableString, val.productName);
-    encoder.encodeStruct(codec.NullableString, val.serialNumber);
+    encoder.encodeStructPointer(string16$.String16, val.manufacturerName);
+    encoder.encodeStructPointer(string16$.String16, val.productName);
+    encoder.encodeStructPointer(string16$.String16, val.serialNumber);
     encoder.encodeArrayPointer(new codec.PointerTo(UsbConfigurationInfo), val.configurations);
   };
   function UsbControlTransferParams(values) {
@@ -679,14 +672,12 @@
         return err;
 
 
-    
     // validate UsbControlTransferParams.type
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 0, UsbControlTransferType);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbControlTransferParams.recipient
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 4, UsbControlTransferRecipient);
     if (err !== validator.validationError.NONE)
@@ -763,7 +754,6 @@
 
 
 
-    
     // validate UsbIsochronousPacket.status
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 8, UsbTransferStatus);
     if (err !== validator.validationError.NONE)
@@ -877,7 +867,6 @@
         return err;
 
 
-    
     // validate UsbDevice_Open_ResponseParams.error
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 0, UsbOpenDeviceError);
     if (err !== validator.validationError.NONE)
@@ -1805,7 +1794,6 @@
         return err;
 
 
-    
     // validate UsbDevice_ControlTransferIn_Params.params
     err = messageValidator.validateStructPointer(offset + codec.kStructHeaderSize + 0, UsbControlTransferParams, false);
     if (err !== validator.validationError.NONE)
@@ -1868,16 +1856,14 @@
         return err;
 
 
-    
     // validate UsbDevice_ControlTransferIn_ResponseParams.status
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 0, UsbTransferStatus);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbDevice_ControlTransferIn_ResponseParams.data
-    err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 1, codec.Uint8, true, [0], 0);
+    err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 1, codec.Uint8, false, [0], 0);
     if (err !== validator.validationError.NONE)
         return err;
 
@@ -1943,14 +1929,12 @@
         return err;
 
 
-    
     // validate UsbDevice_ControlTransferOut_Params.params
     err = messageValidator.validateStructPointer(offset + codec.kStructHeaderSize + 0, UsbControlTransferParams, false);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbDevice_ControlTransferOut_Params.data
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 1, codec.Uint8, false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -2019,7 +2003,6 @@
         return err;
 
 
-    
     // validate UsbDevice_ControlTransferOut_ResponseParams.status
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 0, UsbTransferStatus);
     if (err !== validator.validationError.NONE)
@@ -2156,16 +2139,14 @@
         return err;
 
 
-    
     // validate UsbDevice_GenericTransferIn_ResponseParams.status
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 0, UsbTransferStatus);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbDevice_GenericTransferIn_ResponseParams.data
-    err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 1, codec.Uint8, true, [0], 0);
+    err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 1, codec.Uint8, false, [0], 0);
     if (err !== validator.validationError.NONE)
         return err;
 
@@ -2232,7 +2213,6 @@
 
 
 
-    
     // validate UsbDevice_GenericTransferOut_Params.data
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 1, codec.Uint8, false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -2299,7 +2279,6 @@
         return err;
 
 
-    
     // validate UsbDevice_GenericTransferOut_ResponseParams.status
     err = messageValidator.validateEnum(offset + codec.kStructHeaderSize + 0, UsbTransferStatus);
     if (err !== validator.validationError.NONE)
@@ -2366,7 +2345,6 @@
 
 
 
-    
     // validate UsbDevice_IsochronousTransferIn_Params.packetLengths
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 4, codec.Uint32, false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -2434,14 +2412,12 @@
         return err;
 
 
-    
     // validate UsbDevice_IsochronousTransferIn_ResponseParams.data
-    err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 0, 1, codec.Uint8, true, [0], 0);
+    err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 0, 1, codec.Uint8, false, [0], 0);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbDevice_IsochronousTransferIn_ResponseParams.packets
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 8, new codec.PointerTo(UsbIsochronousPacket), false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -2503,14 +2479,12 @@
 
 
 
-    
     // validate UsbDevice_IsochronousTransferOut_Params.data
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 8, 1, codec.Uint8, false, [0], 0);
     if (err !== validator.validationError.NONE)
         return err;
 
 
-    
     // validate UsbDevice_IsochronousTransferOut_Params.packetLengths
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 16, 4, codec.Uint32, false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -2579,7 +2553,6 @@
         return err;
 
 
-    
     // validate UsbDevice_IsochronousTransferOut_ResponseParams.packets
     err = messageValidator.validateArrayPointer(offset + codec.kStructHeaderSize + 0, 8, new codec.PointerTo(UsbIsochronousPacket), false, [0], 0);
     if (err !== validator.validationError.NONE)
@@ -3432,7 +3405,6 @@
   };
   UsbDeviceStub.prototype.validator = validateUsbDeviceRequest;
   UsbDeviceProxy.prototype.validator = validateUsbDeviceResponse;
-  var exports = mojo.internal.exposeNamespace("device.mojom");
   exports.UsbOpenDeviceError = UsbOpenDeviceError;
   exports.UsbTransferDirection = UsbTransferDirection;
   exports.UsbControlTransferType = UsbControlTransferType;

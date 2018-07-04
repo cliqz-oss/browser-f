@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -48,6 +49,7 @@ public:
   virtual void PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs) override;
   virtual bool IsRepaintThread() override;
   virtual void DispatchToRepaintThread(already_AddRefed<Runnable> aTask) override;
+  MOZ_CAN_RUN_SCRIPT
   virtual void HandleTap(TapType aType,
                          const mozilla::LayoutDevicePoint& aPoint,
                          Modifiers aModifiers,
@@ -64,7 +66,8 @@ public:
                                          const nsString& aEvent) override;
   virtual void NotifyFlushComplete() override;
   virtual void NotifyAsyncScrollbarDragRejected(const FrameMetrics::ViewID& aScrollId) override;
-  virtual void NotifyAutoscrollHandledByAPZ(const FrameMetrics::ViewID& aScrollId) override;
+  virtual void NotifyAsyncAutoscrollRejected(const FrameMetrics::ViewID& aScrollId) override;
+  virtual void CancelAutoscroll(const ScrollableLayerGuid& aGuid) override;
 private:
   nsCOMPtr<nsIWidget> mWidget;
   RefPtr<APZEventState> mAPZEventState;

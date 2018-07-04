@@ -12,6 +12,28 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 def jobs = [:]
 def helpers
 
+def withRVM(version, cl) {
+    RVM_HOME='$HOME/.rvm'
+    paths = [
+        "$RVM_HOME/bin",
+        "${env.PATH}"
+    ]
+
+    def path = paths.join(':')
+
+    withEnv(["PATH=${env.PATH}:$HOME/.rvm/bin", "RVM_HOME=$RVM_HOME"]) {
+        sh "set +x; source $RVM_HOME/scripts/rvm; rvm use --create --install --binary $version"
+    }
+
+    withEnv([
+        "PATH=$path",
+        "RUBY_VERSION=$version"
+        ]) {
+            cl()
+    }
+}
+
+
 properties([
     [$class: 'JobRestrictionProperty'],
     disableConcurrentBuilds(),
@@ -25,7 +47,7 @@ properties([
                 name: 'CQZ_AWS_CREDENTIAL_ID'),
         string(defaultValue: 's3://cdncliqz/update/browser_beta/latest.xpi',
                 name: 'CQZ_EXTENSION_URL'),
-        string(defaultValue: "4757E2EB2FE332E076F294D0230F41B6009968E5",
+        string(defaultValue: "5B0571C810B2BC947DE61ADCE8512CEA605A5625",
                 name: "CQZ_CERT_NAME"),
         string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.17-browser-signed.xpi',
                 name: 'CQZ_HTTPSE_EXTENSION_URL'),
@@ -34,14 +56,16 @@ properties([
                 name: "WIN_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "2832a98c-40f1-4dbf-afba-b74b91796d21",
                 name: "WIN_CERT_PATH_CREDENTIAL_ID"),
-        string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
+        string(defaultValue: "6712f640-9e25-4ec8-b7af-2456ca41b4b3",
                 name: "MAC_CERT_CREDENTIAL_ID"),
-        string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322",
+        string(defaultValue: "fe75da3d-cb92-4d23-aeab-9e72ca044099",
                 name: "MAC_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
                 name: "MAR_CERT_CREDENTIAL_ID"),
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322",
                 name: "MAR_CERT_PASS_CREDENTIAL_ID"),
+        string(defaultValue: "0ece63d0-527d-4468-9b1d-032235589419",
+                name: "MAR_CERT_NICKNAME"),
         string(defaultValue: "debian-gpg-key",
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"),
         string(defaultValue: "debian-gpg-pass",
@@ -54,7 +78,7 @@ properties([
                 name: 'IMAGE_AMI'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com',
                 name: 'DOCKER_REGISTRY_URL'),
-        string(defaultValue: "1.16.0", name: "CQZ_VERSION"),
+        string(defaultValue: "1.21.0", name: "CQZ_VERSION"),
         booleanParam(defaultValue: false, description: '',
                     name: 'LIN_REBUILD_IMAGE'),
     ]),
@@ -173,7 +197,7 @@ jobs["windows"] = {
 }
 
 jobs["mac"] = {
-    node('osx && pr') {
+    node('browser && osx && pr') {
         ws('x') {
             stage('OSX Hypervisor Checkout') {
                 checkout scm
@@ -187,10 +211,11 @@ jobs["mac"] = {
             } catch(e) {}
 
             stage('OSX Bootstrap') {
-                sh '/bin/bash -lc "sudo pip install compare-locales"'
-                sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
-                sh '/bin/bash -lc "brew uninstall terminal-notifier"'
-                sh '/bin/bash -lc "brew install wget --with-libressl"'
+                withRVM('ruby-2.4.2') {
+                    sh '/bin/bash -lc "pip install compare-locales"'
+                    sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
+                    sh '/bin/bash -lc "brew uninstall terminal-notifier"'
+                }
             }
 
             withEnv([
@@ -198,18 +223,18 @@ jobs["mac"] = {
                 "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
                 "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
 
-                 withCredentials([
-                     [$class: 'StringBinding',
-                        credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
-                        variable: 'CQZ_GOOGLE_API_KEY'],
-                     [$class: 'StringBinding',
-                        credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
-                        variable: 'MOZ_MOZILLA_API_KEY']]) {
+                withCredentials([
+                    [$class: 'StringBinding',
+                    credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
+                    variable: 'CQZ_GOOGLE_API_KEY'],
+                    [$class: 'StringBinding',
+                    credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
+                    variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                        stage('fix keys') {
-                            writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
-                            writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
-                        }
+                    stage('fix keys') {
+                        writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+                        writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+                    }
                 }
 
                 stage('OSX Build') {
@@ -228,23 +253,70 @@ jobs["mac"] = {
                             credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
                             variable: 'CERT_PASS']
                     ]) {
+                        // create temporary keychain and make it a default one
+                        sh '''#!/bin/bash -l -x
+                            security create-keychain -p cliqz cliqz
+                            security list-keychains -s cliqz
+                            security default-keychain -s cliqz
+                            security set-keychain-settings -t 3600 cliqz
+                            security unlock-keychain -p cliqz cliqz
+                        '''
+
+                        sh '''#!/bin/bash -l -x
+                            security import $CERT_FILE -P $CERT_PASS -k cliqz -A
+                            security set-key-partition-list -S apple-tool:,apple: -s -k cliqz cliqz
+                        '''
+
+                        withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
+                            sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+
+                        }
+
+                    }
+                }
+
+                stage('OSX Upload') {
+                    withEnv(["CQZ_CERT_DB_PATH=$HOME/certs"]) {
                         try {
-                            // create temporary keychain and make it a default one
-                            sh '''#!/bin/bash -l -x
-                                security create-keychain -p cliqz cliqz
-                                security list-keychains -s cliqz
-                                security default-keychain -s cliqz
-                                security unlock-keychain -p cliqz cliqz
-                            '''
+                            //expose certs
+                            withCredentials([
+                                [$class: 'FileBinding',
+                                    credentialsId: params.MAC_CERT_CREDENTIAL_ID,
+                                    variable: 'CLZ_CERTIFICATE_PATH'],
+                                [$class: 'StringBinding',
+                                    credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
+                                    variable: 'CLZ_CERTIFICATE_PWD']]) {
 
-                            sh '''#!/bin/bash -l +x
-                                security import $CERT_FILE -P $CERT_PASS -k cliqz -A
-                            '''
+                                sh '''#!/bin/bash -l -x
+                                    if [ -d $CQZ_CERT_DB_PATH ]; then
+                                        rm -rf $CQZ_CERT_DB_PATH
+                                    fi
+                                    mkdir -p $CQZ_CERT_DB_PATH
+                                    cd `brew --prefix nss`/bin
+                                    ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
 
-                            withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
-                                sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+                                    ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+                                '''
+                            }
+
+                            withCredentials([
+                                // [file(credentialsId: '1cb02bb6-3c6a-4959-91fb-5ce241af3ecc',
+                                // variable: 'CREDENTIALS_TEMPLATE'),
+                                [$class: 'AmazonWebServicesCredentialsBinding',
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
+                                string(credentialsId: params.MAR_CERT_NICKNAME,
+                                variable: 'MAR_CERT_NAME')
+                            ]) {
+                                // sh '/bin/bash -lc "chmod a+x $CREDENTIALS_TEMPLATE; $CREDENTIALS_TEMPLATE ${params.AWS_REGION} $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY > ~/.aws/credentials"'
+                                sh '/bin/bash -lc "./magic_upload_files.sh ${LANG_PARAM}"'
+
+                                archiveArtifacts 'obj/build_properties.json'
                             }
                         } finally {
+                            // remove certs and credentials
+                            sh 'rm -r $CQZ_CERT_DB_PATH || true'
                             sh '''#!/bin/bash -l -x
                                 security delete-keychain cliqz
                                 security list-keychains -s login.keychain
@@ -253,51 +325,7 @@ jobs["mac"] = {
                             '''
                         }
                     }
-                }
 
-                stage('OSX Upload') {
-                    if (params.RELEASE_CHANNEL == 'pr') {
-                        sh '/bin/bash -lc "./magic_upload_files.sh"'
-                    } else {
-                        withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
-                            try {
-                                //expose certs
-                                withCredentials([
-                                    [$class: 'FileBinding',
-                                        credentialsId: params.MAR_CERT_CREDENTIAL_ID,
-                                        variable: 'CLZ_CERTIFICATE_PATH'],
-                                    [$class: 'StringBinding',
-                                        credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
-                                        variable: 'CLZ_CERTIFICATE_PWD']]) {
-
-                                    sh '''#!/bin/bash -l -x
-                                        mkdir $CQZ_CERT_DB_PATH
-                                        cd `brew --prefix nss`/bin
-                                        ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-                                        set +x
-                                        ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
-                                    '''
-                                }
-
-
-                                withCredentials([[
-                                    $class: 'AmazonWebServicesCredentialsBinding',
-                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-
-                                    sh """#!/bin/bash -l -x
-                                        ./magic_upload_files.sh ${LANG_PARAM}
-                                    """
-
-                                    archiveArtifacts 'obj/build_properties.json'
-                                }
-                            } finally {
-                                // remove certs
-                                sh 'rm -r $CQZ_CERT_DB_PATH || true'
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -305,7 +333,7 @@ jobs["mac"] = {
 }
 
 jobs["linux"] = {
-    node('browser') {
+    node('ubuntu && browser') {
         ws('build') {
             stage('Linux Docker Checkout') {
                 checkout scm

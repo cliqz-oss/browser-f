@@ -15,12 +15,12 @@ We were using a temporary profile in the previous step, [building DevTools](./bu
 The solution is to create a new profile:
 
 ```
-./mach -P development
+./mach run -P development
 ```
 
 If this profile doesn't exist yet (quite likely), a window will open offering you options to create a new profile, and asking you which name you want to use. Create a new one, and name it `development`. Then start Firefox by clicking on `Start Nightly`.
 
-Next time you start Firefox with `./mach -P development`, the new profile will be automatically used, and settings will persist between browser launches.
+Next time you start Firefox with `./mach run -P development`, the new profile will be automatically used, and settings will persist between browser launches.
 
 ## Enable additional logging
 
@@ -40,7 +40,7 @@ Restart the browser to apply configuration changes.
 
 These settings allow you to use the [browser toolbox](https://developer.mozilla.org/docs/Tools/Browser_Toolbox) to inspect the DevTools themselves, set breakpoints inside of DevTools code, and run the [Scratchpad](https://developer.mozilla.org/en-US/docs/Tools/Scratchpad) in the *Browser* environment.
 
-Open DevTools, and click the "Toolbox Options" gear icon in the top right (the image underneath is outdated). <!--TODO update image--> 
+Open DevTools, and click the "Toolbox Options" gear icon in the top right (the image underneath is outdated). <!--TODO update image-->
 
 Make sure the following two options are checked:
 

@@ -41,49 +41,8 @@ directory `lib`, and tools in directory `bin`. In order to run the tools, set
 your system environment to use the libraries of your build from the "lib"
 directory, e.g., using the `LD_LIBRARY_PATH` or `DYLD_LIBRARY_PATH`.
 
-    Usage: build.sh [-hcv] [-j <n>] [--nspr] [--gyp|-g] [--opt|-o] [-m32]
-                    [--test] [--pprof] [--scan-build[=output]] [--ct-verif]
-                    [--asan] [--ubsan] [--msan] [--sancov[=edge|bb|func|...]]
-                    [--disable-tests] [--fuzz[=tls|oss]] [--system-sqlite]
-                    [--no-zdefs] [--with-nspr] [--system-nspr] [--enable-libpkix]
-
-    This script builds NSS with gyp and ninja.
-
-    This build system is still under development.  It does not yet support all
-    the features or platforms that NSS supports.
-
-    NSS build tool options:
-
-        -h               display this help and exit
-        -c               clean before build
-        -v               verbose build
-        -j <n>           run at most <n> concurrent jobs
-        --nspr           force a rebuild of NSPR
-        --gyp|-g         force a rerun of gyp
-        --opt|-o         do an opt build
-        -m32             do a 32-bit build on a 64-bit system
-        --test           ignore map files and export everything we have
-        --fuzz           build fuzzing targets (this always enables test builds)
-                         --fuzz=tls to enable TLS fuzzing mode
-                         --fuzz=oss to build for OSS-Fuzz
-        --pprof          build with gperftool support
-        --ct-verif       build with valgrind for ct-verif
-        --scan-build     run the build with scan-build (scan-build has to be in the path)
-                         --scan-build=/out/path sets the output path for scan-build
-        --asan           do an asan build
-        --ubsan          do an ubsan build
-                         --ubsan=bool,shift,... sets specific UB sanitizers
-        --msan           do an msan build
-        --sancov         do sanitize coverage builds
-                         --sancov=func sets coverage to function level for example
-        --disable-tests  don't build tests and corresponding cmdline utils
-        --system-sqlite  use system sqlite
-        --no-zdefs       don't set -Wl,-z,defs
-        --with-nspr      don't build NSPR but use the one at the given location, e.g.
-                         --with-nspr=/path/to/nspr/include:/path/to/nspr/lib
-        --system-nspr    use system nspr. This requires an installation of NSPR and
-                         might not work on all systems.
-        --enable-libpkix make libpkix part of the build.
+See [help.txt](https://hg.mozilla.org/projects/nss/raw-file/tip/help.txt) for
+more information on using build.sh.
 
 ## Building NSS (legacy build system)
 
@@ -121,10 +80,6 @@ set or export:
 
 Note that you might have to add `nss.local` to `/etc/hosts` if it's not
 there. The entry should look something like `127.0.0.1 nss.local nss`.
-
-If you get name resolution errors, try to ensure that you are using an IPv4
-address; IPv6 is the default on many systems for the loopback device which
-doesn't work.
 
 ### Running tests
 
@@ -182,3 +137,50 @@ The nss directory contains the following important subdirectories:
 A more comprehensible overview of the NSS folder structure and API guidelines
 can be found
 [here](https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/NSS_API_Guidelines).
+
+## Build mechanisms related to FIPS compliance
+
+NSS supports build configurations for FIPS-140 compliance, and alternative build
+configurations that disable functionality specific to FIPS-140 compliance.
+
+This section documents the environment variables and build parameters that
+control these configurations.
+
+### Build FIPS startup tests
+
+The C macro NSS_NO_INIT_SUPPORT controls the FIPS startup self tests.
+If NSS_NO_INIT_SUPPORT is defined, the startup tests are disabled.
+
+The legacy build system (make) by default disables these tests.
+To enable these tests, set environment variable NSS_FORCE_FIPS=1 at build time.
+
+The gyp build system by default disables these tests.
+To enable these tests, pass parameter --enable-fips to build.sh.
+
+### Building either FIPS compliant or alternative compliant code
+
+The C macro NSS_FIPS_DISABLED can be used to disable some FIPS compliant code
+and enable alternative implementations.
+
+The legacy build system (make) never defines NSS_FIPS_DISABLED and always uses
+the FIPS compliant code.
+
+The gyp build system by default defines NSS_FIPS_DISABLED.
+To use the FIPS compliant code, pass parameter --enable-fips to build.sh.
+
+### Test execution
+
+The NSS test suite may contain tests that are included, excluded, or are
+different based on the FIPS build configuration. To execute the correct tests,
+it's necessary to determine which build configuration was used.
+
+The legacy build system (make) uses environment variables to control all
+aspects of the build configuration, including FIPS build configuration.
+
+Because the gyp build system doesn't use environment variables to control the
+build configuration, the NSS tests cannot rely on environment variables to
+determine the build configuration.
+
+A helper binary named nss-build-flags is produced as part of the NSS build,
+which prints the C macro symbols that were defined at build time, and which are
+relevant to test execution.

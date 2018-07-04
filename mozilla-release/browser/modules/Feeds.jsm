@@ -4,19 +4,17 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [ "Feeds" ];
+var EXPORTED_SYMBOLS = [ "Feeds" ];
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
-                                  "resource://gre/modules/BrowserUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
-                                  "resource:///modules/RecentWindow.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserUtils",
+                               "resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserWindowTracker",
+                               "resource:///modules/BrowserWindowTracker.jsm");
 
-const { interfaces: Ci, classes: Cc } = Components;
-
-this.Feeds = {
+var Feeds = {
   // Listeners are added in nsBrowserGlue.js
   receiveMessage(aMessage) {
     let data = aMessage.data;
@@ -45,9 +43,9 @@ this.Feeds = {
       }
 
       case "FeedConverter:addLiveBookmark": {
-        let topWindow = RecentWindow.getMostRecentBrowserWindow();
+        let topWindow = BrowserWindowTracker.getTopWindow();
         topWindow.PlacesCommandHook.addLiveBookmark(data.spec, data.title, data.subtitle)
-                                   .catch(Components.utils.reportError);
+                                   .catch(Cu.reportError);
         break;
       }
     }
@@ -75,14 +73,9 @@ this.Feeds = {
     }
 
     if (aIsFeed) {
-      // re-create the principal as it may be a CPOW.
-      // once this can't be a CPOW anymore, we should just use aPrincipal instead
-      // of creating a new one.
-      let principalURI = BrowserUtils.makeURIFromCPOW(aPrincipal.URI);
-      let principalToCheck =
-        Services.scriptSecurityManager.createCodebasePrincipal(principalURI, aPrincipal.originAttributes);
       try {
-        BrowserUtils.urlSecurityCheck(aLink.href, principalToCheck,
+        let href = Services.io.newURI(aLink.href, aLink.ownerDocument.characterSet);
+        BrowserUtils.urlSecurityCheck(href, aPrincipal,
                                       Ci.nsIScriptSecurityManager.DISALLOW_INHERIT_PRINCIPAL);
         return type || "application/rss+xml";
       } catch (ex) {

@@ -7,21 +7,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "jsobj.h"
-#include "jswrapper.h"
-
+#include "js/Wrapper.h"
 #include "jsapi-tests/tests.h"
-
+#include "vm/JSObject.h"
 #include "vm/ProxyObject.h"
 
-static const js::ClassExtension OuterWrapperClassExtension = PROXY_MAKE_EXT(
-    nullptr  /* objectMoved */
-);
-
-const js::Class OuterWrapperClass = PROXY_CLASS_WITH_EXT(
+const js::Class OuterWrapperClass = PROXY_CLASS_DEF(
     "Proxy",
-    JSCLASS_HAS_RESERVED_SLOTS(1), /* additional class flags */
-    &OuterWrapperClassExtension);
+    JSCLASS_HAS_RESERVED_SLOTS(1) /* additional class flags */);
 
 static JSObject*
 wrap(JSContext* cx, JS::HandleObject toWrap, JS::HandleObject target)

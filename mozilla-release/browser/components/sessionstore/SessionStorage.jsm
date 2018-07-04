@@ -4,16 +4,13 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["SessionStorage"];
+var EXPORTED_SYMBOLS = ["SessionStorage"];
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-  "resource://gre/modules/Console.jsm");
+const ssu = Cc["@mozilla.org/browser/sessionstore/utils;1"]
+              .createInstance(Ci.nsISessionStoreUtils);
 
 // A bound to the size of data to store for DOM Storage.
 const DOM_STORAGE_LIMIT_PREF = "browser.sessionstore.dom_storage_limit";
@@ -25,19 +22,17 @@ function getPrincipalForFrame(docShell, frame) {
   return ssm.getDocShellCodebasePrincipal(uri, docShell);
 }
 
-this.SessionStorage = Object.freeze({
+var SessionStorage = Object.freeze({
   /**
    * Updates all sessionStorage "super cookies"
-   * @param docShell
-   *        That tab's docshell (containing the sessionStorage)
-   * @param frameTree
-   *        The docShell's FrameTree instance.
+   * @param content
+   *        A tab's global, i.e. the root frame we want to collect for.
    * @return Returns a nested object that will have hosts as keys and per-origin
    *         session storage data as strings. For example:
    *         {"https://example.com^userContextId=1": {"key": "value", "my_number": "123"}}
    */
-  collect(docShell, frameTree) {
-    return SessionStorageInternal.collect(docShell, frameTree);
+  collect(content) {
+    return SessionStorageInternal.collect(content);
   },
 
   /**
@@ -54,22 +49,36 @@ this.SessionStorage = Object.freeze({
   },
 });
 
+/**
+ * Calls the given callback |cb|, passing |frame| and each of its descendants.
+ */
+function forEachNonDynamicChildFrame(frame, cb) {
+  // Call for current frame.
+  cb(frame);
+
+  // Call the callback recursively for each descendant.
+  ssu.forEachNonDynamicChildFrame(frame, subframe => {
+    return forEachNonDynamicChildFrame(subframe, cb);
+  });
+}
+
 var SessionStorageInternal = {
   /**
    * Reads all session storage data from the given docShell.
-   * @param docShell
-   *        A tab's docshell (containing the sessionStorage)
-   * @param frameTree
-   *        The docShell's FrameTree instance.
+   * @param content
+   *        A tab's global, i.e. the root frame we want to collect for.
    * @return Returns a nested object that will have hosts as keys and per-origin
    *         session storage data as strings. For example:
    *         {"https://example.com^userContextId=1": {"key": "value", "my_number": "123"}}
    */
-  collect(docShell, frameTree) {
+  collect(content) {
     let data = {};
     let visitedOrigins = new Set();
+    let docShell = content.QueryInterface(Ci.nsIInterfaceRequestor)
+                          .getInterface(Ci.nsIWebNavigation)
+                          .QueryInterface(Ci.nsIDocShell);
 
-    frameTree.forEach(frame => {
+    forEachNonDynamicChildFrame(content, frame => {
       let principal = getPrincipalForFrame(docShell, frame);
       if (!principal) {
         return;
@@ -190,7 +199,6 @@ var SessionStorageInternal = {
     let usage = window.QueryInterface(Ci.nsIInterfaceRequestor)
                       .getInterface(Ci.nsIDOMWindowUtils)
                       .getStorageUsage(storage);
-    Services.telemetry.getHistogramById("FX_SESSION_RESTORE_DOM_STORAGE_SIZE_ESTIMATE_CHARS").add(usage);
     if (usage > Services.prefs.getIntPref(DOM_STORAGE_LIMIT_PREF)) {
       return hostData;
     }

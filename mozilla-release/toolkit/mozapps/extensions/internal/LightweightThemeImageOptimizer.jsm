@@ -4,23 +4,20 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["LightweightThemeImageOptimizer"];
+var EXPORTED_SYMBOLS = ["LightweightThemeImageOptimizer"];
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "Services",
+ChromeUtils.defineModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
+ChromeUtils.defineModuleGetter(this, "FileUtils",
   "resource://gre/modules/FileUtils.jsm");
 
 const ORIGIN_TOP_RIGHT = 1;
 const ORIGIN_BOTTOM_LEFT = 2;
 
-this.LightweightThemeImageOptimizer = {
+var LightweightThemeImageOptimizer = {
   optimize(aThemeData, aScreen) {
     let data = Object.assign({}, aThemeData);
     if (!data.headerURL) {
@@ -76,7 +73,9 @@ var ImageCropper = {
       let fileURI = Services.io.newFileURI(croppedFile);
 
       // Copy the query part to avoid wrong caching.
-      fileURI.QueryInterface(Ci.nsIURL).query = uri.query;
+      fileURI = fileURI.mutate()
+                       .setQuery(uri.query)
+                       .finalize();
       return fileURI.spec;
     }
 
@@ -98,14 +97,14 @@ var ImageCropper = {
 
     ImageFile.read(aURI, function(aInputStream, aContentType) {
       if (aInputStream && aContentType) {
-        let image = ImageTools.decode(aInputStream, aContentType);
-        if (image && image.width && image.height) {
-          let stream = ImageTools.encode(image, aScreen, aOrigin, aContentType);
-          if (stream) {
-            ImageFile.write(aTargetFile, stream, resetInProgress);
-            return;
+        ImageTools.decode(aInputStream, aContentType, function(aImage) {
+          if (aImage && aImage.width && aImage.height) {
+            let stream = ImageTools.encode(aImage, aScreen, aOrigin, aContentType);
+            if (stream) {
+              ImageFile.write(aTargetFile, stream, resetInProgress);
+            }
           }
-        }
+        });
       }
 
       resetInProgress();
@@ -150,14 +149,20 @@ XPCOMUtils.defineLazyModuleGetter(ImageFile, "_netUtil",
   "resource://gre/modules/NetUtil.jsm", "NetUtil");
 
 var ImageTools = {
-  decode(aInputStream, aContentType) {
-    let outParam = {value: null};
+  decode(aInputStream, aContentType, aCallback) {
+    let callback = {
+      onImageReady(aImage, aStatus) {
+        aCallback(aImage);
+      }
+    };
 
     try {
-      this._imgTools.decodeImageData(aInputStream, aContentType, outParam);
-    } catch (e) {}
-
-    return outParam.value;
+      let threadManager = Cc["@mozilla.org/thread-manager;1"].getService();
+      this._imgTools.decodeImageAsync(aInputStream, aContentType, callback,
+                                      threadManager.currentThread);
+    } catch (e) {
+      aCallback(null);
+    }
   },
 
   encode(aImage, aScreen, aOrigin, aContentType) {

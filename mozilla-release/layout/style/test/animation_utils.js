@@ -258,13 +258,16 @@ function runOMTATest(aTestFunction, aOnSkip, specialPowersForPrefs) {
     return waitForDocumentLoad()
       .then(loadPaintListener)
       .then(function() {
-        // Put refresh driver under test control and trigger animation
+        // Put refresh driver under test control and flush all pending style,
+        // layout and paint to avoid the situation that waitForPaintsFlush()
+        // receives unexpected MozAfterpaint event for those pending
+        // notifications.
         utils.advanceTimeAndRefresh(0);
+        return waitForPaintsFlushed();
+      }).then(function() {
         div.style.animation = animationName + " 10s";
 
-        // Trigger style flush
-        div.clientTop;
-        return waitForPaints();
+        return waitForPaintsFlushed();
       }).then(function() {
         var opacity = utils.getOMTAStyle(div, "opacity");
         cleanUp();
@@ -282,12 +285,6 @@ function runOMTATest(aTestFunction, aOnSkip, specialPowersForPrefs) {
       } else {
         window.addEventListener("load", resolve);
       }
-    });
-  }
-
-  function waitForPaints() {
-    return new Promise(function(resolve, reject) {
-      waitForAllPaintsFlushed(resolve);
     });
   }
 
@@ -406,15 +403,6 @@ const ExpectComparisonTo = {
   Fail: 2
 };
 
-// FIXME: Bug 1340005: We use |RawServoAnimationValue| on the main thread if
-// enabling Servo style backend, and still use |StyleAnimationValue| on the
-// compositor thread. |RawServoAnimationValue| rounds the interpolated results
-// to a nearest |app_units::Au| (i.e. i32), so we might have a tiny difference
-// between the results from getOMTAStyle() and getComputedStyle().
-// Note: 1 AU ~= 60 CSS pixel unit.
-const isStylo = SpecialPowers.DOMWindowUtils.isStyledByServo;
-const toleranceForServoBackend = isStylo ? 0.5 / 60.0 : 0.0;
-
 (function() {
   window.omta_todo_is = function(elem, property, expected, runningOn, desc,
                                  pseudo) {
@@ -435,7 +423,7 @@ const toleranceForServoBackend = isStylo ? 0.5 / 60.0 : 0.0;
                                    pseudo) {
     // Check input
     const omtaProperties = [ "transform", "opacity" ];
-    if (omtaProperties.indexOf(property) === -1) {
+    if (!omtaProperties.includes(property)) {
       ok(false, property + " is not an OMTA property");
       return;
     }
@@ -517,7 +505,7 @@ const toleranceForServoBackend = isStylo ? 0.5 / 60.0 : 0.0;
                   " - got " + computedStr);
         return;
       }
-      okOrTodo(compare(computedValue, actualValue, toleranceForServoBackend),
+      okOrTodo(compare(computedValue, actualValue, 0.0),
                desc + ": OMTA style and computed style should be equal" +
                " - OMTA " + actualStr + ", computed " + computedStr);
     }
@@ -599,30 +587,35 @@ const toleranceForServoBackend = isStylo ? 0.5 / 60.0 : 0.0;
     }
   }
 
+  // Return the first defined value in args.
+  function defined(...args) {
+    return args.find(arg => typeof arg !== 'undefined');
+  }
+
   // Takes an object of the form { a: 1.1, e: 23 } and builds up a 3d matrix
   // with unspecified values filled in with identity values.
   function convertObjectTo3dMatrix(obj) {
     return [
       [
-        obj.a || obj.sx || obj.m11 || 1,
+        defined(obj.a, obj.sx, obj.m11, 1),
         obj.b || obj.m12 || 0,
         obj.m13 || 0,
         obj.m14 || 0
       ], [
         obj.c || obj.m21 || 0,
-        obj.d || obj.sy || obj.m22 || 1,
+        defined(obj.d, obj.sy, obj.m22, 1),
         obj.m23 || 0,
         obj.m24 || 0
       ], [
         obj.m31 || 0,
         obj.m32 || 0,
-        obj.sz || obj.m33 || 1,
+        defined(obj.sz, obj.m33, 1),
         obj.m34 || 0
       ], [
         obj.e || obj.tx || obj.m41 || 0,
         obj.f || obj.ty || obj.m42 || 0,
         obj.tz || obj.m43 || 0,
-        obj.m44 || 1
+        defined(obj.m44, 1),
       ]
     ];
   }

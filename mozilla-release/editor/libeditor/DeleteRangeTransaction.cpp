@@ -11,6 +11,7 @@
 #include "mozilla/EditorBase.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/mozalloc.h"
+#include "mozilla/RangeBoundary.h"
 #include "nsCOMPtr.h"
 #include "nsDebug.h"
 #include "nsError.h"
@@ -23,13 +24,10 @@ namespace mozilla {
 
 using namespace dom;
 
-// note that aEditorBase is not refcounted
 DeleteRangeTransaction::DeleteRangeTransaction(EditorBase& aEditorBase,
-                                               nsRange& aRangeToDelete,
-                                               RangeUpdater* aRangeUpdater)
+                                               nsRange& aRangeToDelete)
   : mEditorBase(&aEditorBase)
   , mRangeToDelete(aRangeToDelete.CloneRange())
-  , mRangeUpdater(aRangeUpdater)
 {
 }
 
@@ -56,44 +54,54 @@ DeleteRangeTransaction::DoTransaction()
   rangeToDelete.swap(mRangeToDelete);
 
   // build the child transactions
-  nsCOMPtr<nsINode> startContainer = rangeToDelete->GetStartContainer();
-  int32_t startOffset = rangeToDelete->StartOffset();
-  nsCOMPtr<nsINode> endContainer = rangeToDelete->GetEndContainer();
-  int32_t endOffset = rangeToDelete->EndOffset();
-  MOZ_ASSERT(startContainer && endContainer);
+  const RangeBoundary& startRef = rangeToDelete->StartRef();
+  const RangeBoundary& endRef = rangeToDelete->EndRef();
+  MOZ_ASSERT(startRef.IsSetAndValid());
+  MOZ_ASSERT(endRef.IsSetAndValid());
 
-  if (startContainer == endContainer) {
+  if (startRef.Container() == endRef.Container()) {
     // the selection begins and ends in the same node
-    nsresult rv =
-      CreateTxnsToDeleteBetween(startContainer, startOffset, endOffset);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsresult rv = CreateTxnsToDeleteBetween(startRef.AsRaw(), endRef.AsRaw());
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
   } else {
     // the selection ends in a different node from where it started.  delete
     // the relevant content in the start node
-    nsresult rv =
-      CreateTxnsToDeleteContent(startContainer, startOffset, nsIEditor::eNext);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsresult rv = CreateTxnsToDeleteContent(startRef.AsRaw(), nsIEditor::eNext);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
     // delete the intervening nodes
     rv = CreateTxnsToDeleteNodesBetween(rangeToDelete);
-    NS_ENSURE_SUCCESS(rv, rv);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
     // delete the relevant content in the end node
-    rv = CreateTxnsToDeleteContent(endContainer, endOffset,
-                                   nsIEditor::ePrevious);
-    NS_ENSURE_SUCCESS(rv, rv);
+    rv = CreateTxnsToDeleteContent(endRef.AsRaw(), nsIEditor::ePrevious);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
   }
 
   // if we've successfully built this aggregate transaction, then do it.
   nsresult rv = EditAggregateTransaction::DoTransaction();
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
   // only set selection to deletion point if editor gives permission
   bool bAdjustSelection;
   mEditorBase->ShouldTxnSetSelection(&bAdjustSelection);
   if (bAdjustSelection) {
     RefPtr<Selection> selection = mEditorBase->GetSelection();
-    NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
-    rv = selection->Collapse(startContainer, startOffset);
-    NS_ENSURE_SUCCESS(rv, rv);
+    if (NS_WARN_IF(!selection)) {
+      return NS_ERROR_NULL_POINTER;
+    }
+    rv = selection->Collapse(startRef.AsRaw());
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
   }
   // else do nothing - dom range gravity will adjust selection
 
@@ -112,104 +120,105 @@ DeleteRangeTransaction::RedoTransaction()
   return EditAggregateTransaction::RedoTransaction();
 }
 
-NS_IMETHODIMP
-DeleteRangeTransaction::GetTxnDescription(nsAString& aString)
-{
-  aString.AssignLiteral("DeleteRangeTransaction");
-  return NS_OK;
-}
-
 nsresult
-DeleteRangeTransaction::CreateTxnsToDeleteBetween(nsINode* aNode,
-                                                  int32_t aStartOffset,
-                                                  int32_t aEndOffset)
+DeleteRangeTransaction::CreateTxnsToDeleteBetween(
+                          const RawRangeBoundary& aStart,
+                          const RawRangeBoundary& aEnd)
 {
+  if (NS_WARN_IF(!aStart.IsSetAndValid()) ||
+      NS_WARN_IF(!aEnd.IsSetAndValid()) ||
+      NS_WARN_IF(aStart.Container() != aEnd.Container())) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
   if (NS_WARN_IF(!mEditorBase)) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
   // see what kind of node we have
-  if (aNode->IsNodeOfType(nsINode::eDATA_NODE)) {
+  if (RefPtr<CharacterData> charDataNode =
+        CharacterData::FromNode(aStart.Container())) {
     // if the node is a chardata node, then delete chardata content
     int32_t numToDel;
-    if (aStartOffset == aEndOffset) {
+    if (aStart == aEnd) {
       numToDel = 1;
     } else {
-      numToDel = aEndOffset - aStartOffset;
+      numToDel = aEnd.Offset() - aStart.Offset();
+      MOZ_DIAGNOSTIC_ASSERT(numToDel > 0);
     }
 
-    RefPtr<nsGenericDOMDataNode> charDataNode =
-      static_cast<nsGenericDOMDataNode*>(aNode);
-
     RefPtr<DeleteTextTransaction> deleteTextTransaction =
-      new DeleteTextTransaction(*mEditorBase, *charDataNode, aStartOffset,
-                                numToDel, mRangeUpdater);
+      DeleteTextTransaction::MaybeCreate(*mEditorBase, *charDataNode,
+                                         aStart.Offset(), numToDel);
     // If the text node isn't editable, it should be never undone/redone.
     // So, the transaction shouldn't be recorded.
-    if (NS_WARN_IF(!deleteTextTransaction->CanDoIt())) {
+    if (NS_WARN_IF(!deleteTextTransaction)) {
       return NS_ERROR_FAILURE;
     }
     AppendChild(deleteTextTransaction);
     return NS_OK;
   }
 
-  nsCOMPtr<nsIContent> child = aNode->GetChildAt(aStartOffset);
-  for (int32_t i = aStartOffset; i < aEndOffset; ++i) {
-    // Even if we detect invalid range, we should ignore it for removing
-    // specified range's nodes as far as possible.
-    if (NS_WARN_IF(!child)) {
-      break;
-    }
+  // Even if we detect invalid range, we should ignore it for removing
+  // specified range's nodes as far as possible.
+  for (nsIContent* child = aStart.GetChildAtOffset();
+       child && child != aEnd.GetChildAtOffset();
+       child = child->GetNextSibling()) {
     RefPtr<DeleteNodeTransaction> deleteNodeTransaction =
-      new DeleteNodeTransaction(*mEditorBase, *child, mRangeUpdater);
+      DeleteNodeTransaction::MaybeCreate(*mEditorBase, *child);
     // XXX This is odd handling.  Even if some children are not editable,
     //     editor should append transactions because they could be editable
     //     at undoing/redoing.  Additionally, if the transaction needs to
     //     delete/restore all nodes, it should at undoing/redoing.
-    if (deleteNodeTransaction->CanDoIt()) {
+    if (deleteNodeTransaction) {
       AppendChild(deleteNodeTransaction);
     }
-    child = child->GetNextSibling();
   }
 
   return NS_OK;
 }
 
 nsresult
-DeleteRangeTransaction::CreateTxnsToDeleteContent(nsINode* aNode,
-                                                  int32_t aOffset,
-                                                  nsIEditor::EDirection aAction)
+DeleteRangeTransaction::CreateTxnsToDeleteContent(
+                          const RawRangeBoundary& aPoint,
+                          nsIEditor::EDirection aAction)
 {
+  if (NS_WARN_IF(!aPoint.IsSetAndValid())) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
   if (NS_WARN_IF(!mEditorBase)) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  // see what kind of node we have
-  if (aNode->IsNodeOfType(nsINode::eDATA_NODE)) {
-    // if the node is a chardata node, then delete chardata content
-    uint32_t start, numToDelete;
-    if (nsIEditor::eNext == aAction) {
-      start = aOffset;
-      numToDelete = aNode->Length() - aOffset;
-    } else {
-      start = 0;
-      numToDelete = aOffset;
-    }
-
-    if (numToDelete) {
-      RefPtr<nsGenericDOMDataNode> dataNode =
-        static_cast<nsGenericDOMDataNode*>(aNode);
-      RefPtr<DeleteTextTransaction> deleteTextTransaction =
-        new DeleteTextTransaction(*mEditorBase, *dataNode, start, numToDelete,
-                                  mRangeUpdater);
-      // If the text node isn't editable, it should be never undone/redone.
-      // So, the transaction shouldn't be recorded.
-      if (NS_WARN_IF(!deleteTextTransaction->CanDoIt())) {
-        return NS_ERROR_FAILURE;
-      }
-      AppendChild(deleteTextTransaction);
-    }
+  RefPtr<CharacterData> dataNode = CharacterData::FromNode(aPoint.Container());
+  if (!dataNode) {
+    return NS_OK;
   }
+
+  // If the node is a chardata node, then delete chardata content
+  uint32_t startOffset, numToDelete;
+  if (nsIEditor::eNext == aAction) {
+    startOffset = aPoint.Offset();
+    numToDelete = aPoint.Container()->Length() - aPoint.Offset();
+  } else {
+    startOffset = 0;
+    numToDelete = aPoint.Offset();
+  }
+
+  if (!numToDelete) {
+    return NS_OK;
+  }
+
+  RefPtr<DeleteTextTransaction> deleteTextTransaction =
+    DeleteTextTransaction::MaybeCreate(*mEditorBase, *dataNode,
+                                       startOffset, numToDelete);
+  // If the text node isn't editable, it should be never undone/redone.
+  // So, the transaction shouldn't be recorded.
+  if (NS_WARN_IF(!deleteTextTransaction)) {
+    return NS_ERROR_FAILURE;
+  }
+  AppendChild(deleteTextTransaction);
 
   return NS_OK;
 }
@@ -233,12 +242,12 @@ DeleteRangeTransaction::CreateTxnsToDeleteNodesBetween(nsRange* aRangeToDelete)
     }
 
     RefPtr<DeleteNodeTransaction> deleteNodeTransaction =
-      new DeleteNodeTransaction(*mEditorBase, *node, mRangeUpdater);
+      DeleteNodeTransaction::MaybeCreate(*mEditorBase, *node);
     // XXX This is odd handling.  Even if some nodes in the range are not
     //     editable, editor should append transactions because they could
     //     at undoing/redoing.  Additionally, if the transaction needs to
     //     delete/restore all nodes, it should at undoing/redoing.
-    if (NS_WARN_IF(!deleteNodeTransaction->CanDoIt())) {
+    if (NS_WARN_IF(!deleteNodeTransaction)) {
       return NS_ERROR_FAILURE;
     }
     AppendChild(deleteNodeTransaction);

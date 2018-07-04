@@ -16,7 +16,7 @@ add_task(async function() {
         { state: { entries: [{ ID: 1001, url: "about:blank", triggeringPrincipal_base64 }]} }
       ]
     }]
-  }
+  };
 
   const restoreState = {
     windows: [{
@@ -29,19 +29,19 @@ add_task(async function() {
         { state: { entries: [{ ID: 1004, url: "about:robots", triggeringPrincipal_base64 }]} }
       ]
     }]
-  }
+  };
 
   const maxTabsUndo = 4;
-  gPrefService.setIntPref("browser.sessionstore.max_tabs_undo", maxTabsUndo);
+  Services.prefs.setIntPref("browser.sessionstore.max_tabs_undo", maxTabsUndo);
 
   // Open a new window and restore it to an initial state.
   let win = await promiseNewWindowLoaded({private: false});
-  SessionStore.setWindowState(win, JSON.stringify(initialState), true);
+  await setWindowState(win, initialState, true);
   is(SessionStore.getClosedTabCount(win), 2, "2 closed tabs after restoring initial state");
 
   // Restore the new state but do not overwrite existing tabs (this should
   // cause the closed tabs to be merged).
-  SessionStore.setWindowState(win, JSON.stringify(restoreState), false);
+  await setWindowState(win, restoreState);
 
   // Verify the windows closed tab data is correct.
   let iClosed = initialState.windows[0]._closedTabs;
@@ -64,7 +64,7 @@ add_task(async function() {
   }
 
   // Clean up.
-  gPrefService.clearUserPref("browser.sessionstore.max_tabs_undo");
+  Services.prefs.clearUserPref("browser.sessionstore.max_tabs_undo");
   await BrowserTestUtils.closeWindow(win);
 });
 

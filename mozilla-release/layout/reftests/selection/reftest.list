@@ -27,8 +27,8 @@ fuzzy-if(skiaContent,1,700) == extend-3i.html extend-3-ref.html
 # these 3 random-if(Android) are a difference of Native & Xul, see bug 739714
 random-if(Android) needs-focus != pseudo-element-of-native-anonymous.html pseudo-element-of-native-anonymous-ref.html # bug 676641
 # These tests uses Highlight and HighlightText color keywords, they are not same as text selection color on Mac.
-random-if(Android) fails-if(cocoaWidget&&!styloVsGecko) needs-focus == non-themed-widget.html non-themed-widget-ref.html
-random-if(Android) fails-if(cocoaWidget&&!styloVsGecko) needs-focus == themed-widget.html themed-widget-ref.html
+random-if(Android) fails-if(cocoaWidget) needs-focus == non-themed-widget.html non-themed-widget-ref.html
+random-if(Android) fails-if(cocoaWidget) needs-focus == themed-widget.html themed-widget-ref.html
 == addrange-1.html addrange-ref.html
 fuzzy-if(skiaContent,1,1200) == addrange-2.html addrange-ref.html
 == splitText-normalize.html splitText-normalize-ref.html
@@ -48,3 +48,6 @@ fuzzy-if(OSX==1010,9,1) fuzzy-if(OSX&&skiaContent,6,1) fuzzy-if(skiaContent&&!OS
 == invalidation-2d.html invalidation-2-ref.html
 == invalidation-2e.html invalidation-2-ref.html
 == invalidation-2f.html invalidation-2-ref.html
+fuzzy(7,2) fuzzy-if(OSX,1,1) fails-if(isDebugBuild&&!browserIsRemote) fails-if(Android) needs-focus == rtl-selection-with-decoration.html rtl-selection-with-decoration-ref.html
+fails-if(isDebugBuild&&!browserIsRemote) fails-if(Android) needs-focus == semitransparent-decoration-line.html semitransparent-decoration-line-ref.html
+fuzzy-if(OSX,1,6) fails-if(isDebugBuild&&!browserIsRemote) fails-if(Android) needs-focus == writing-mode.html writing-mode-ref.html

@@ -23,13 +23,17 @@ public:
   virtual already_AddRefed<MediaData> Create(MediaRawData* aSample) = 0;
 };
 
+DDLoggedTypeDeclNameAndBase(DummyMediaDataDecoder, MediaDataDecoder);
+
 // Decoder that uses a passed in object's Create function to create Null
 // MediaData objects.
-class DummyMediaDataDecoder : public MediaDataDecoder
+class DummyMediaDataDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<DummyMediaDataDecoder>
 {
 public:
   DummyMediaDataDecoder(UniquePtr<DummyDataCreator>&& aCreator,
-                        const char* aDescription,
+                        const nsACString& aDescription,
                         const CreateDecoderParams& aParams);
 
   RefPtr<InitPromise> Init() override;
@@ -42,7 +46,7 @@ public:
 
   RefPtr<FlushPromise> Flush() override;
 
-  const char* GetDescriptionName() const override;
+  nsCString GetDescriptionName() const override;
 
   ConversionRequired NeedsConversion() const override;
 

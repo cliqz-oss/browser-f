@@ -6,15 +6,15 @@
 
 #include "IIRFilterNode.h"
 #include "AudioNodeEngine.h"
-
+#include "AudioDestinationNode.h"
 #include "blink/IIRFilter.h"
+#include "PlayingRefChangeHandler.h"
+#include "AlignmentUtils.h"
 
 #include "nsGkAtoms.h"
 
 namespace mozilla {
 namespace dom {
-
-NS_IMPL_ISUPPORTS_INHERITED0(IIRFilterNode, AudioNode)
 
 class IIRFilterNodeEngine final : public AudioNodeEngine
 {

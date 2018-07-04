@@ -1,0 +1,5 @@
+fruit     = pear
+sub2_seen = yup
+
+<<include ../cfg.sub1>>
+<<include ../cfg.sub1b>>

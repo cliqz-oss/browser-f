@@ -18,6 +18,7 @@
 #include <mach/mach.h>
 #include <mach/semaphore.h>
 #include <mach/task.h>
+#include <mach/thread_act.h>
 #include <mach/vm_statistics.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -31,10 +32,17 @@
 
 // this port is based off of v8 svn revision 9837
 
-/* static */ Thread::tid_t
+/* static */ int
 Thread::GetCurrentId()
 {
   return gettid();
+}
+
+void*
+GetStackTop(void* aGuess)
+{
+  pthread_t thread = pthread_self();
+  return pthread_get_stackaddr_np(thread);
 }
 
 class PlatformData
@@ -76,11 +84,11 @@ Sampler::Disable(PSLockRef aLock)
 template<typename Func>
 void
 Sampler::SuspendAndSampleAndResumeThread(PSLockRef aLock,
-                                         const ThreadInfo& aThreadInfo,
+                                         const RegisteredThread& aRegisteredThread,
                                          const Func& aProcessRegs)
 {
   thread_act_t samplee_thread =
-    aThreadInfo.GetPlatformData()->ProfiledThread();
+    aRegisteredThread.GetPlatformData()->ProfiledThread();
 
   //----------------------------------------------------------------//
   // Suspend the samplee thread and get its context.

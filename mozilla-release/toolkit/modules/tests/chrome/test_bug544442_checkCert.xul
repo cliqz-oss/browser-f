@@ -17,21 +17,16 @@
 <script type="application/javascript">
 <![CDATA[
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
-
 SimpleTest.waitForExplicitFinish();
 
-Components.utils.import("resource://gre/modules/CertUtils.jsm");
+ChromeUtils.import("resource://gre/modules/CertUtils.jsm");
 
 function testStart() {
   ok(true, "Entering testStart");
 
-  var request = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].
-                createInstance(Ci.nsIXMLHttpRequest);
+  var request = new XMLHttpRequest();
   request.open("GET", "https://example.com/", true);
-  request.channel.notificationCallbacks = new BadCertHandler(true);
+  request.channel.notificationCallbacks = new CertUtils.BadCertHandler(true);
   request.onerror = function(event) { testXHRError(event); };
   request.onload = function(event) { testXHRLoad(event); };
   request.send(null);
@@ -58,7 +53,7 @@ function testXHRError(aEvent) {
 
 function getCheckCertResult(aChannel, aAllowNonBuiltIn, aCerts) {
   try {
-    checkCert(aChannel, aAllowNonBuiltIn, aCerts);
+    CertUtils.checkCert(aChannel, aAllowNonBuiltIn, aCerts);
   }
   catch (e) {
     return e.result;

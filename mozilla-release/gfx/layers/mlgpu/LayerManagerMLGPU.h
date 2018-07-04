@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef MOZILLA_GFX_LAYERMANAGERMLGPU_H
 #define MOZILLA_GFX_LAYERMANAGERMLGPU_H
@@ -43,24 +44,18 @@ public:
   already_AddRefed<ContainerLayer> CreateContainerLayer() override;
   already_AddRefed<ImageLayer> CreateImageLayer() override;
   already_AddRefed<ColorLayer> CreateColorLayer() override;
-  already_AddRefed<TextLayer> CreateTextLayer() override;
   already_AddRefed<CanvasLayer> CreateCanvasLayer() override;
   already_AddRefed<RefLayer> CreateRefLayer() override;
   already_AddRefed<BorderLayer> CreateBorderLayer() override;
 
   bool AreComponentAlphaLayersEnabled() override;
   bool BlendingRequiresIntermediateSurface() override;
-  bool SupportsBackdropCopyForComponentAlpha() override;
 
   // HostLayerManager methods
   void ForcePresent() override;
   TextureFactoryIdentifier GetTextureFactoryIdentifier() override;
   LayersBackend GetBackendType() override;
   void AddInvalidRegion(const nsIntRegion& aRegion) override;
-  void ClearApproximatelyVisibleRegions(uint64_t aLayersId,
-                                                const Maybe<uint32_t>& aPresShellId) override {}
-  void UpdateApproximatelyVisibleRegion(const ScrollableLayerGuid& aGuid,
-                                                const CSSIntRegion& aRegion) override {}
   void EndTransaction(const TimeStamp& aTimeStamp, EndTransactionFlags aFlags) override;
   void EndTransaction(DrawPaintedLayerCallback aCallback,
                       void* aCallbackData,

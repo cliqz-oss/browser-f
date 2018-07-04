@@ -8,9 +8,6 @@ package org.mozilla.gecko.mozglue;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
-import java.text.NumberFormat;
 import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -18,6 +15,7 @@ import java.util.zip.ZipFile;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Environment;
 import java.util.ArrayList;
 import android.util.Log;
@@ -29,7 +27,6 @@ import org.mozilla.geckoview.BuildConfig;
 public final class GeckoLoader {
     private static final String LOGTAG = "GeckoLoader";
 
-    private static volatile SafeIntent sIntent;
     private static File sCacheFile;
     private static File sGREDir;
 
@@ -37,7 +34,6 @@ public final class GeckoLoader {
     private static boolean sSQLiteLibsLoaded;
     private static boolean sNSSLibsLoaded;
     private static boolean sMozGlueLoaded;
-    private static String[] sEnvList;
 
     private GeckoLoader() {
         // prevent instantiation
@@ -94,35 +90,26 @@ public final class GeckoLoader {
         return tmpDir;
     }
 
-    public static void setLastIntent(SafeIntent intent) {
-        sIntent = intent;
-    }
-
-    public static void addEnvironmentToIntent(Intent intent) {
-        if (sEnvList != null) {
-            for (int ix = 0; ix < sEnvList.length; ix++) {
-                intent.putExtra("env" + ix, sEnvList[ix]);
-            }
-        }
-    }
-
-    public static void setupGeckoEnvironment(Context context, String profilePath) {
+    public synchronized static void setupGeckoEnvironment(final Context context,
+                                                          final String profilePath,
+                                                          final Bundle extras) {
         // if we have an intent (we're being launched by an activity)
         // read in any environmental variables from it here
-        final SafeIntent intent = sIntent;
-        if (intent != null) {
-            final ArrayList<String> envList = new ArrayList<String>();
-            String env = intent.getStringExtra("env0");
+        if (extras != null) {
+            String env = extras.getString("env0");
             Log.d(LOGTAG, "Gecko environment env0: " + env);
             for (int c = 1; env != null; c++) {
-                envList.add(env);
                 putenv(env);
-                env = intent.getStringExtra("env" + c);
+                env = extras.getString("env" + c);
                 Log.d(LOGTAG, "env" + c + ": " + env);
             }
-            if (envList.size() > 0) {
-              sEnvList = envList.toArray(new String[envList.size()]);
-            }
+        }
+
+        try {
+            final File dataDir = new File(context.getApplicationInfo().dataDir);
+            putenv("MOZ_ANDROID_DATA_DIR=" + dataDir.getCanonicalPath());
+        } catch (final java.io.IOException e) {
+            Log.e(LOGTAG, "Failed to resolve app data directory");
         }
 
         putenv("MOZ_ANDROID_PACKAGE_NAME=" + context.getPackageName());
@@ -155,27 +142,17 @@ public final class GeckoLoader {
                 Log.d(LOGTAG, "Unable to obtain user manager service on a device with SDK version " + Build.VERSION.SDK_INT);
             }
         }
-        setupLocaleEnvironment();
 
-        // We don't need this any more.
-        sIntent = null;
+        putenv("LANG=" + Locale.getDefault().toString());
+
+        // env from extras could have reset out linker flags; set them again.
+        loadLibsSetupLocked(context);
     }
 
     private static void loadLibsSetupLocked(Context context) {
-        // The package data lib directory isn't placed in ld.so's
-        // search path, so we have to manually load libraries that
-        // libxul will depend on.  Not ideal.
-
-        File cacheFile = getCacheDir(context);
-        putenv("GRE_HOME=" + getGREDir(context).getPath());
-
         // setup the libs cache
-        String linkerCache = System.getenv("MOZ_LINKER_CACHE");
-        if (linkerCache == null) {
-            linkerCache = cacheFile.getPath();
-            putenv("MOZ_LINKER_CACHE=" + linkerCache);
-        }
-
+        putenv("GRE_HOME=" + getGREDir(context).getPath());
+        putenv("MOZ_LINKER_CACHE=" + getCacheDir(context).getPath());
         putenv("MOZ_LINKER_EXTRACT=1");
     }
 
@@ -464,19 +441,6 @@ public final class GeckoLoader {
         loadGeckoLibsNative(apkName);
     }
 
-    private static void setupLocaleEnvironment() {
-        putenv("LANG=" + Locale.getDefault().toString());
-        NumberFormat nf = NumberFormat.getInstance();
-        if (nf instanceof DecimalFormat) {
-            DecimalFormat df = (DecimalFormat)nf;
-            DecimalFormatSymbols dfs = df.getDecimalFormatSymbols();
-
-            putenv("LOCALE_DECIMAL_POINT=" + dfs.getDecimalSeparator());
-            putenv("LOCALE_THOUSANDS_SEP=" + dfs.getGroupingSeparator());
-            putenv("LOCALE_GROUPING=" + (char)df.getGroupingSize());
-        }
-    }
-
     @SuppressWarnings("serial")
     public static class AbortException extends Exception {
         public AbortException(String msg) {
@@ -496,9 +460,10 @@ public final class GeckoLoader {
 
     // These methods are implemented in mozglue/android/nsGeckoUtils.cpp
     private static native void putenv(String map);
+    public static native boolean verifyCRCs(String apkName);
 
     // These methods are implemented in mozglue/android/APKOpen.cpp
-    public static native void nativeRun(String[] args, int crashFd, int ipcFd);
+    public static native void nativeRun(String[] args, int prefsFd, int ipcFd, int crashFd, int crashAnnotationFd);
     private static native void loadGeckoLibsNative(String apkName);
     private static native void loadSQLiteLibsNative(String apkName);
     private static native void loadNSSLibsNative(String apkName);

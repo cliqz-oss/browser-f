@@ -2,12 +2,12 @@
    http://creativecommons.org/publicdomain/zero/1.0/
 */
 
-Cu.import("resource://gre/modules/Preferences.jsm", this);
-Cu.import("resource://gre/modules/TelemetryArchive.jsm", this);
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/TelemetryEnvironment.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Preferences.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryArchive.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryEnvironment.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
 const MS_IN_ONE_HOUR  = 60 * 60 * 1000;
 const MS_IN_ONE_DAY   = 24 * MS_IN_ONE_HOUR;
@@ -54,7 +54,7 @@ var promiseValidateArchivedPings = async function(aExpectedReasons) {
     let currentPing = await TelemetryArchive.promiseArchivedPingById(list[i].id);
     let currentInfo = currentPing.payload.info;
     let previousInfo = previousPing.payload.info;
-    do_print("Archive entry " + i + " - id: " + currentPing.id + ", reason: " + currentInfo.reason);
+    info("Archive entry " + i + " - id: " + currentPing.id + ", reason: " + currentInfo.reason);
 
     Assert.equal(aExpectedReasons.shift(), currentInfo.reason,
                  "Telemetry should only get pings with expected reasons.");
@@ -90,8 +90,6 @@ add_task(async function test_setup() {
   finishAddonManagerStartup();
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
-
-  Preferences.set(TelemetryUtils.Preferences.TelemetryEnabled, true);
 });
 
 add_task(async function test_subsessionsChaining() {
@@ -115,7 +113,7 @@ add_task(async function test_subsessionsChaining() {
     let ms = minutes * MILLISECONDS_PER_MINUTE;
     now = fakeNow(futureDate(now, ms));
     monotonicNow = fakeMonotonicNow(monotonicNow + ms);
-  }
+  };
 
   // Keep track of the ping reasons we're expecting in this test.
   let expectedReasons = [];

@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -42,8 +43,8 @@ public:
                    const nsIntRegion& aDirtyRegion,
                    LayerManager::DrawPaintedLayerCallback aCallback,
                    void* aCallbackData,
-                   bool aIsProgressive = false) override;
- 
+                   TilePaintFlags aFlags = TilePaintFlags::None) override;
+
   bool SupportsProgressiveUpdate() override { return false; }
   bool ProgressiveUpdate(const nsIntRegion& aValidRegion,
                          const nsIntRegion& aInvalidRegion,
@@ -56,17 +57,16 @@ public:
     MOZ_ASSERT(false, "ProgressiveUpdate not supported!");
     return false;
   }
-  
+
   void ResetPaintedAndValidState() override {
-    mPaintedRegion.SetEmpty();
     mValidRegion.SetEmpty();
     mTile.DiscardBuffers();
   }
-  
+
   const nsIntRegion& GetValidRegion() override {
     return mValidRegion;
   }
-  
+
   bool IsLowPrecision() const override {
     return false;
   }
@@ -77,14 +77,11 @@ public:
 
   SurfaceDescriptorTiles GetSurfaceDescriptorTiles();
 
-  void ClearPaintedRegion() {
-    mPaintedRegion.SetEmpty();
-  }
-
 private:
   TileClient mTile;
 
-  nsIntRegion mPaintedRegion;
+  RefPtr<ClientLayerManager> mManager;
+
   nsIntRegion mValidRegion;
   bool mWasLastPaintProgressive;
 

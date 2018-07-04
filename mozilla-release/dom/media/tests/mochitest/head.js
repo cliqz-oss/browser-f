@@ -7,20 +7,85 @@
 var Cc = SpecialPowers.Cc;
 var Ci = SpecialPowers.Ci;
 
-// Specifies whether we are using fake streams to run this automation
-var FAKE_ENABLED = true;
-var TEST_AUDIO_FREQ = 1000;
-try {
-  var audioDevice = SpecialPowers.getCharPref('media.audio_loopback_dev');
-  var videoDevice = SpecialPowers.getCharPref('media.video_loopback_dev');
-  dump('TEST DEVICES: Using media devices:\n');
-  dump('audio: ' + audioDevice + '\nvideo: ' + videoDevice + '\n');
-  FAKE_ENABLED = false;
-  TEST_AUDIO_FREQ = 440;
-} catch (e) {
-  dump('TEST DEVICES: No test devices found (in media.{audio,video}_loopback_dev, using fake streams.\n');
-  FAKE_ENABLED = true;
+// Specifies if we want fake audio streams for this run
+let WANT_FAKE_AUDIO = true;
+// Specifies if we want fake video streams for this run
+let WANT_FAKE_VIDEO = true;
+let TEST_AUDIO_FREQ = 1000;
+
+/**
+ * Reads the current values of preferences affecting fake and loopback devices
+ * and sets the WANT_FAKE_AUDIO and WANT_FAKE_VIDEO gloabals appropriately.
+*/
+function updateConfigFromFakeAndLoopbackPrefs() {
+  let audioDevice = SpecialPowers.getCharPref("media.audio_loopback_dev", "");
+  if (audioDevice) {
+    WANT_FAKE_AUDIO = false;
+    dump("TEST DEVICES: Got loopback audio: " + audioDevice + "\n");
+  } else {
+    WANT_FAKE_AUDIO = true;
+    dump("TEST DEVICES: No test device found in media.audio_loopback_dev, using fake audio streams.\n");
+  }
+  let videoDevice = SpecialPowers.getCharPref("media.video_loopback_dev", "");
+  if (videoDevice) {
+    WANT_FAKE_VIDEO = false;
+    dump("TEST DEVICES: Got loopback video: " + videoDevice + "\n");
+  } else {
+    WANT_FAKE_VIDEO = true;
+    dump("TEST DEVICES: No test device found in media.video_loopback_dev, using fake video streams.\n");
+  }
 }
+
+updateConfigFromFakeAndLoopbackPrefs();
+
+/**
+ *  Global flag to skip LoopbackTone
+ */
+let DISABLE_LOOPBACK_TONE = false;
+/**
+ * Helper class to setup a sine tone of a given frequency.
+ */
+class LoopbackTone {
+  constructor(audioContext, frequency) {
+    if (!audioContext) {
+      throw new Error("You must provide a valid AudioContext");
+    }
+    this.oscNode = audioContext.createOscillator();
+    var gainNode = audioContext.createGain();
+    gainNode.gain.value = 0.5;
+    this.oscNode.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    this.changeFrequency(frequency);
+  }
+
+  // Method should be used when WANT_FAKE_AUDIO is false.
+  start() {
+    if (!this.oscNode) {
+      throw new Error("Attempt to start a stopped LoopbackTone");
+    }
+    info(`Start loopback tone at ${this.oscNode.frequency.value}`);
+    this.oscNode.start();
+  }
+
+  // Change the frequency of the tone. It can be used after start.
+  // Frequency will change on the fly. No need to stop and create a new instance.
+  changeFrequency(frequency) {
+    if (!this.oscNode) {
+      throw new Error("Attempt to change frequency on a stopped LoopbackTone");
+    }
+    this.oscNode.frequency.value = frequency;
+  }
+
+  stop() {
+    if (!this.oscNode) {
+      throw new Error("Attempt to stop a stopped LoopbackTone");
+    }
+    this.oscNode.stop();
+    this.oscNode = null;
+  }
+}
+// Object that holds the default loopback tone.
+var DefaultLoopbackTone = null;
 
 /**
  * This class provides helpers around analysing the audio content in a stream
@@ -119,27 +184,29 @@ AudioStreamAnalyser.prototype = {
   /**
    * Return a Promise, that will be resolved when the function passed as
    * argument, when called, returns true (meaning the analysis was a
-   * success).
+   * success). The promise is rejected if the cancel promise resolves first.
    *
    * @param {function} analysisFunction
-   *        A fonction that performs an analysis, and returns true if the
+   *        A function that performs an analysis, and resolves with true if the
    *        analysis was a success (i.e. it found what it was looking for)
+   * @param {promise} cancel
+   *        A promise that on resolving will reject the promise we returned.
    */
-  waitForAnalysisSuccess: function(analysisFunction) {
-    var self = this;
-    return new Promise((resolve, reject) => {
-      function analysisLoop() {
-        var success = analysisFunction(self.getByteFrequencyData());
-        if (success) {
-          resolve();
-          return;
-        }
-        // else, we need more time
-        requestAnimationFrame(analysisLoop);
+  waitForAnalysisSuccess: async function(analysisFunction,
+                                         cancel = wait(60000, new Error("Audio analysis timed out"))) {
+    let aborted = false;
+    cancel.then(() => aborted = true);
+
+    // We need to give the Analyser some time to start gathering data.
+    await wait(200);
+
+    do {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      if (aborted) {
+        throw await cancel;
       }
-      // We need to give the Analyser some time to start gathering data.
-      wait(200).then(analysisLoop);
-    });
+    }
+    while (!analysisFunction(this.getByteFrequencyData()));
   },
 
   /**
@@ -249,6 +316,8 @@ function createMediaElement(type, id) {
   element.setAttribute('width', 150);
   element.setAttribute('controls', 'controls');
   element.setAttribute('autoplay', 'autoplay');
+  element.setAttribute('muted', 'muted');
+  element.muted = true;
   document.getElementById('content').appendChild(element);
 
   return element;
@@ -294,6 +363,28 @@ function createMediaElementForTrack(track, idPrefix) {
  *        The constraints for this mozGetUserMedia callback
  */
 function getUserMedia(constraints) {
+  // Tests may have changed the values of prefs, so recheck
+  updateConfigFromFakeAndLoopbackPrefs();
+  if (!WANT_FAKE_AUDIO
+      && !constraints.fake
+      && constraints.audio
+      && !DISABLE_LOOPBACK_TONE) {
+    // Loopback device is configured, start the default loopback tone
+    if (!DefaultLoopbackTone) {
+      TEST_AUDIO_FREQ = 440;
+      DefaultLoopbackTone = new LoopbackTone(new AudioContext, TEST_AUDIO_FREQ);
+      DefaultLoopbackTone.start();
+    }
+    // Disable input processing mode when it's not explicity enabled.
+    // This is to avoid distortion of the loopback tone
+    constraints.audio = Object.assign({}, {autoGainControl: false}
+                                        , {echoCancellation: false}
+                                        , {noiseSuppression: false}
+                                        , constraints.audio);
+  } else {
+    // Fake device configured, ensure our test freq is correct.
+    TEST_AUDIO_FREQ = 1000;
+  }
   info("Call getUserMedia for " + JSON.stringify(constraints));
   return navigator.mediaDevices.getUserMedia(constraints)
     .then(stream => (checkMediaStreamTracks(constraints, stream), stream));
@@ -303,6 +394,10 @@ function getUserMedia(constraints) {
 // are in place before running it.
 var setTestOptions;
 var testConfigured = new Promise(r => setTestOptions = r);
+
+function pushPrefs(...p) {
+  return SpecialPowers.pushPrefEnv({set: p});
+}
 
 function setupEnvironment() {
   if (!window.SimpleTest) {
@@ -317,14 +412,24 @@ function setupEnvironment() {
       ['media.peerconnection.identity.timeout', 120000],
       ['media.peerconnection.ice.stun_client_maximum_transmits', 14],
       ['media.peerconnection.ice.trickle_grace_period', 30000],
+      ['media.peerconnection.remoteTrackId.enabled', true],
+      ['media.peerconnection.rtpsourcesapi.enabled', true],
       ['media.navigator.permission.disabled', true],
-      ['media.navigator.streams.fake', FAKE_ENABLED],
+      // If either fake audio or video is desired we enable fake streams.
+      // If loopback devices are set they will be chosen instead of fakes in gecko.
+      ['media.navigator.streams.fake', WANT_FAKE_AUDIO || WANT_FAKE_VIDEO],
       ['media.getusermedia.screensharing.enabled', true],
-      ['media.getusermedia.screensharing.allowed_domains', "mochi.test"],
       ['media.getusermedia.audiocapture.enabled', true],
-      ['media.recorder.audio_node.enabled', true]
+      ['media.recorder.audio_node.enabled', true],
+      ['media.webaudio.audiocontextoptions-samplerate.enabled', true]
     ]
   };
+
+  if (!WANT_FAKE_AUDIO) {
+    defaultMochitestPrefs.set.push(
+      ["media.volume_scale", "1"],
+    );
+  }
 
   const isAndroid = !!navigator.userAgent.includes("Android");
 
@@ -379,7 +484,7 @@ function runTestWhenReady(testFunc) {
 
 /**
  * Checks that the media stream tracks have the expected amount of tracks
- * with the correct kind and id based on the type and constraints given.
+ * with the correct attributes based on the type and constraints given.
  *
  * @param {Object} constraints specifies whether the stream should have
  *                             audio, video, or both
@@ -394,6 +499,7 @@ function checkMediaStreamTracksByType(constraints, type, mediaStreamTracks) {
     if (mediaStreamTracks.length) {
       is(mediaStreamTracks[0].kind, type, 'Track kind should be ' + type);
       ok(mediaStreamTracks[0].id, 'Track id should be defined');
+      ok(!mediaStreamTracks[0].muted, 'Track should not be muted');
     }
   } else {
     is(mediaStreamTracks.length, 0, 'No ' + type + ' tracks shall be present');
@@ -461,6 +567,8 @@ function checkMediaStreamTrackCloneAgainstOriginal(clone, original) {
      "Track clone's kind should be same as the original's");
   is(clone.readyState, original.readyState,
      "Track clone's readyState should be same as the original's");
+  is(clone.muted, original.muted,
+     "Track clone's muted state should be same as the original's");
 }
 
 /*** Utility methods */
@@ -632,7 +740,7 @@ function createOneShotEventWrapper(wrapper, obj, event) {
 /**
  * Returns a promise that resolves when `target` has raised an event with the
  * given name the given number of times. Cancel the returned promise by passing
- * in a `cancelPromise` and resolve it.
+ * in a `cancel` promise and resolving it.
  *
  * @param {object} target
  *        The target on which the event should occur.
@@ -640,16 +748,16 @@ function createOneShotEventWrapper(wrapper, obj, event) {
  *        The name of the event that should occur.
  * @param {integer} count
  *        Optional number of times the event should be raised before resolving.
- * @param {promise} cancelPromise
+ * @param {promise} cancel
  *        Optional promise that on resolving rejects the returned promise,
  *        so we can avoid logging results after a test has finished.
  * @returns {promise} A promise that resolves to the last of the seen events.
  */
-function haveEvents(target, name, count, cancelPromise) {
+function haveEvents(target, name, count, cancel) {
   var listener;
   var counter = count || 1;
   return Promise.race([
-    (cancelPromise || new Promise(() => {})).then(e => Promise.reject(e)),
+    (cancel || new Promise(() => {})).then(e => Promise.reject(e)),
     new Promise(resolve =>
         target.addEventListener(name, listener = e => (--counter < 1 && resolve(e))))
   ])
@@ -658,20 +766,20 @@ function haveEvents(target, name, count, cancelPromise) {
 
 /**
  * Returns a promise that resolves when `target` has raised an event with the
- * given name. Cancel the returned promise by passing in a `cancelPromise` and
- * resolve it.
+ * given name. Cancel the returned promise by passing in a `cancel` promise and
+ * resolving it.
  *
  * @param {object} target
  *        The target on which the event should occur.
  * @param {string} name
  *        The name of the event that should occur.
- * @param {promise} cancelPromise
+ * @param {promise} cancel
  *        Optional promise that on resolving rejects the returned promise,
  *        so we can avoid logging results after a test has finished.
  * @returns {promise} A promise that resolves to the seen event.
  */
-function haveEvent(target, name, cancelPromise) {
-  return haveEvents(target, name, 1, cancelPromise);
+function haveEvent(target, name, cancel) {
+  return haveEvents(target, name, 1, cancel);
 };
 
 /**
@@ -704,13 +812,13 @@ function haveNoEvent(target, name, timeoutPromise) {
  *        The name of the event that should occur.
  * @param {integer} count
  *        Optional number of times the event should be raised before resolving.
- * @param {promise} cancelPromise
+ * @param {promise} cancel
  *        Optional promise that on resolving rejects the returned promise,
  *        so we can avoid logging results after a test has finished.
  * @returns {promise} A promise that resolves to the last of the seen events.
  */
-function haveEventsButNoMore(target, name, count, cancelPromise) {
-  return haveEvents(target, name, count, cancelPromise)
+function haveEventsButNoMore(target, name, count, cancel) {
+  return haveEvents(target, name, count, cancel)
     .then(e => haveNoEvent(target, name).then(() => e));
 };
 
@@ -909,11 +1017,14 @@ AudioStreamHelper.prototype = {
 }
 
 class VideoFrameEmitter {
-  constructor(color1, color2, size) {
-    if (!size) {
-      size = 50;
+  constructor(color1, color2, width, height) {
+    if (!width) {
+      width = 50;
     }
-    this._helper = new CaptureStreamTestHelper2D(size, size);
+    if (!height) {
+      height = width;
+    }
+    this._helper = new CaptureStreamTestHelper2D(width, height);
     this._canvas = this._helper.createAndAppendElement('canvas', 'source_canvas');
     this._color1 = color1 ? color1 : this._helper.green;
     this._color2 = color2 ? color2 : this._helper.red;
@@ -973,47 +1084,57 @@ class VideoStreamHelper {
     this._helper = new CaptureStreamTestHelper2D(50,50);
   }
 
-  checkHasFrame(video, offsetX, offsetY, threshold) {
+  async checkHasFrame(video, { offsetX, offsetY, threshold } = {}) {
     const h = this._helper;
-    return h.waitForPixel(video, offsetX, offsetY, px => {
+    await h.waitForPixel(video, px => {
       let result = h.isOpaquePixelNot(px, h.black, threshold);
       info("Checking that we have a frame, got [" +
            Array.slice(px) + "]. Ref=[" +
            Array.slice(h.black.data) + "]. Threshold=" + threshold +
            ". Pass=" + result);
       return result;
-    });
+    }, { offsetX, offsetY });
   }
 
-  async checkVideoPlaying(video, offsetX, offsetY, threshold) {
+  async checkVideoPlaying(video, { offsetX = 10, offsetY = 10,
+                                   threshold = 16,
+                                 } = {}) {
     const h = this._helper;
-    await this.checkHasFrame(video, offsetX, offsetY, threshold);
-    let startPixel = { data: h.getPixel(video, offsetX, offsetY)
-                     , name: "startcolor"
-                     };
-    return h.waitForPixel(video, offsetX, offsetY, px => {
-      let result = h.isPixelNot(px, startPixel, threshold)
+    await this.checkHasFrame(video, { offsetX, offsetY, threshold });
+    let startPixel = {
+      data: h.getPixel(video, offsetX, offsetY),
+      name: "startcolor",
+    };
+    await h.waitForPixel(video, px => {
+      let result = h.isPixelNot(px, startPixel, threshold);
       info("Checking playing, [" +
            Array.slice(px) + "] vs [" + Array.slice(startPixel.data) +
            "]. Threshold=" + threshold + " Pass=" + result);
       return result;
-    });
+    }, { offsetX, offsetY });
   }
 
-  async checkVideoPaused(video, offsetX, offsetY, threshold, timeout) {
+  async checkVideoPaused(video, { offsetX = 10, offsetY = 10,
+                                  threshold = 16, time = 5000,
+                                }={}) {
     const h = this._helper;
-    await this.checkHasFrame(video, offsetX, offsetY, threshold);
-    let startPixel = { data: h.getPixel(video, offsetX, offsetY)
-                     , name: "startcolor"
-                     };
-    const changed = await h.waitForPixel(video, offsetX, offsetY, px => {
-      let result = h.isOpaquePixelNot(px, startPixel, threshold);
-      info("Checking paused, [" +
-           Array.slice(px) + "] vs [" + Array.slice(startPixel.data) +
-           "]. Threshold=" + threshold + " Pass=" + result);
-      return result;
-    }, timeout);
-    ok(!changed, "Frame shouldn't change within " + timeout / 1000 + " seconds.");
+    await this.checkHasFrame(video, { offsetX, offsetY, threshold });
+    let startPixel = {
+      data: h.getPixel(video, offsetX, offsetY),
+      name: "startcolor",
+    };
+    try {
+      await h.waitForPixel(video, px => {
+          let result = h.isOpaquePixelNot(px, startPixel, threshold);
+          info("Checking paused, [" +
+               Array.slice(px) + "] vs [" + Array.slice(startPixel.data) +
+               "]. Threshold=" + threshold + " Pass=" + result);
+          return result;
+        }, { offsetX, offsetY, cancel: wait(time, "timeout") });
+      ok(false, "Frame changed within " + time/1000 + " seconds");
+    } catch (e) {
+      is(e, "timeout", "Frame shouldn't change for " + time/1000 + " seconds");
+    }
   }
 }
 

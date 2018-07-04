@@ -113,23 +113,11 @@ static void fdct4x4_sse4_1(__m128i *in, int bit) {
   in[3] = _mm_unpackhi_epi64(v1, v3);
 }
 
-static INLINE void write_buffer_4x4(__m128i *res, tran_low_t *output) {
+static INLINE void write_buffer_4x4(__m128i *res, int32_t *output) {
   _mm_store_si128((__m128i *)(output + 0 * 4), res[0]);
   _mm_store_si128((__m128i *)(output + 1 * 4), res[1]);
   _mm_store_si128((__m128i *)(output + 2 * 4), res[2]);
   _mm_store_si128((__m128i *)(output + 3 * 4), res[3]);
-}
-
-// Note:
-//  We implement av1_fwd_txfm2d_4x4(). This function is kept here since
-//  av1_highbd_fht4x4_c() is not removed yet
-void av1_highbd_fht4x4_sse4_1(const int16_t *input, tran_low_t *output,
-                              int stride, int tx_type) {
-  (void)input;
-  (void)output;
-  (void)stride;
-  (void)tx_type;
-  assert(0);
 }
 
 static void fadst4x4_sse4_1(__m128i *in, int bit) {
@@ -207,7 +195,7 @@ static void fadst4x4_sse4_1(__m128i *in, int bit) {
 }
 
 void av1_fwd_txfm2d_4x4_sse4_1(const int16_t *input, int32_t *coeff,
-                               int input_stride, int tx_type, int bd) {
+                               int input_stride, TX_TYPE tx_type, int bd) {
   __m128i in[4];
   const TXFM_1D_CFG *row_cfg = NULL;
   const TXFM_1D_CFG *col_cfg = NULL;
@@ -416,7 +404,7 @@ static INLINE void col_txfm_8x8_rounding(__m128i *in, int shift) {
   in[15] = _mm_srai_epi32(in[15], shift);
 }
 
-static INLINE void write_buffer_8x8(const __m128i *res, tran_low_t *output) {
+static INLINE void write_buffer_8x8(const __m128i *res, int32_t *output) {
   _mm_store_si128((__m128i *)(output + 0 * 4), res[0]);
   _mm_store_si128((__m128i *)(output + 1 * 4), res[1]);
   _mm_store_si128((__m128i *)(output + 2 * 4), res[2]);
@@ -938,7 +926,7 @@ static void fadst8x8_sse4_1(__m128i *in, __m128i *out, int bit) {
 }
 
 void av1_fwd_txfm2d_8x8_sse4_1(const int16_t *input, int32_t *coeff, int stride,
-                               int tx_type, int bd) {
+                               TX_TYPE tx_type, int bd) {
   __m128i in[16], out[16];
   const TXFM_1D_CFG *row_cfg = NULL;
   const TXFM_1D_CFG *col_cfg = NULL;
@@ -1800,7 +1788,7 @@ static void col_txfm_16x16_rounding(__m128i *in, int shift) {
   col_txfm_8x8_rounding(&in[48], shift);
 }
 
-static void write_buffer_16x16(const __m128i *in, tran_low_t *output) {
+static void write_buffer_16x16(const __m128i *in, int32_t *output) {
   const int size_8x8 = 16 * 4;
   write_buffer_8x8(&in[0], output);
   output += size_8x8;
@@ -1812,7 +1800,7 @@ static void write_buffer_16x16(const __m128i *in, tran_low_t *output) {
 }
 
 void av1_fwd_txfm2d_16x16_sse4_1(const int16_t *input, int32_t *coeff,
-                                 int stride, int tx_type, int bd) {
+                                 int stride, TX_TYPE tx_type, int bd) {
   __m128i in[64], out[64];
   const TXFM_1D_CFG *row_cfg = NULL;
   const TXFM_1D_CFG *col_cfg = NULL;

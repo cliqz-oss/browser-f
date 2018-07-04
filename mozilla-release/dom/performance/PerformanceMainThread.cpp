@@ -6,6 +6,7 @@
 
 #include "PerformanceMainThread.h"
 #include "PerformanceNavigation.h"
+#include "mozilla/dom/DOMPrefs.h"
 #include "nsICacheInfoChannel.h"
 
 namespace mozilla {
@@ -16,7 +17,8 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(PerformanceMainThread)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(PerformanceMainThread,
                                                 Performance)
 NS_IMPL_CYCLE_COLLECTION_UNLINK(mTiming,
-                                mNavigation)
+                                mNavigation,
+                                mDocEntry)
   tmp->mMozMemory = nullptr;
   mozilla::DropJSObjects(this);
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
@@ -24,7 +26,8 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(PerformanceMainThread,
                                                   Performance)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mTiming,
-                                    mNavigation)
+                                    mNavigation,
+                                    mDocEntry)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(PerformanceMainThread,
@@ -91,7 +94,7 @@ PerformanceMainThread::DispatchBufferFullEvent()
   // it bubbles, and it isn't cancelable
   event->InitEvent(NS_LITERAL_STRING("resourcetimingbufferfull"), true, false);
   event->SetTrusted(true);
-  DispatchDOMEvent(nullptr, event, nullptr, nullptr);
+  DispatchEvent(*event);
 }
 
 PerformanceNavigation*
@@ -114,84 +117,24 @@ PerformanceMainThread::AddEntry(nsIHttpChannel* channel,
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  // Check if resource timing is prefed off.
-  if (!nsContentUtils::IsResourceTimingEnabled()) {
+  nsAutoString initiatorType;
+  nsAutoString entryName;
+
+  UniquePtr<PerformanceTimingData> performanceTimingData(
+    PerformanceTimingData::Create(timedChannel, channel, 0, initiatorType,
+                                  entryName));
+  if (!performanceTimingData) {
     return;
   }
 
-  // Don't add the entry if the buffer is full
-  if (IsResourceEntryLimitReached()) {
-    return;
-  }
+  // The PerformanceResourceTiming object will use the PerformanceTimingData
+  // object to get all the required timings.
+  RefPtr<PerformanceResourceTiming> performanceEntry =
+    new PerformanceResourceTiming(Move(performanceTimingData), this,
+                                  entryName);
 
-  if (channel && timedChannel) {
-    nsAutoCString name;
-    nsAutoString initiatorType;
-    nsCOMPtr<nsIURI> originalURI;
-
-    timedChannel->GetInitiatorType(initiatorType);
-
-    // According to the spec, "The name attribute must return the resolved URL
-    // of the requested resource. This attribute must not change even if the
-    // fetch redirected to a different URL."
-    channel->GetOriginalURI(getter_AddRefs(originalURI));
-    originalURI->GetSpec(name);
-    NS_ConvertUTF8toUTF16 entryName(name);
-
-    // The nsITimedChannel argument will be used to gather all the timings.
-    // The nsIHttpChannel argument will be used to check if any cross-origin
-    // redirects occurred.
-    // The last argument is the "zero time" (offset). Since we don't want
-    // any offset for the resource timing, this will be set to "0" - the
-    // resource timing returns a relative timing (no offset).
-    RefPtr<PerformanceTiming> performanceTiming =
-        new PerformanceTiming(this, timedChannel, channel,
-            0);
-
-    // The PerformanceResourceTiming object will use the PerformanceTiming
-    // object to get all the required timings.
-    RefPtr<PerformanceResourceTiming> performanceEntry =
-      new PerformanceResourceTiming(performanceTiming, this, entryName);
-
-    nsAutoCString protocol;
-    // Can be an empty string.
-    Unused << channel->GetProtocolVersion(protocol);
-
-    // If this is a local fetch, nextHopProtocol should be set to empty string.
-    nsCOMPtr<nsICacheInfoChannel> cachedChannel = do_QueryInterface(channel);
-    if (cachedChannel) {
-      bool isFromCache;
-      if (NS_SUCCEEDED(cachedChannel->IsFromCache(&isFromCache))
-          && isFromCache) {
-        protocol.Truncate();
-      }
-    }
-
-    performanceEntry->SetNextHopProtocol(NS_ConvertUTF8toUTF16(protocol));
-
-    uint64_t encodedBodySize = 0;
-    Unused << channel->GetEncodedBodySize(&encodedBodySize);
-    performanceEntry->SetEncodedBodySize(encodedBodySize);
-
-    uint64_t transferSize = 0;
-    Unused << channel->GetTransferSize(&transferSize);
-    performanceEntry->SetTransferSize(transferSize);
-
-    uint64_t decodedBodySize = 0;
-    Unused << channel->GetDecodedBodySize(&decodedBodySize);
-    if (decodedBodySize == 0) {
-      decodedBodySize = encodedBodySize;
-    }
-    performanceEntry->SetDecodedBodySize(decodedBodySize);
-
-    // If the initiator type had no valid value, then set it to the default
-    // ("other") value.
-    if (initiatorType.IsEmpty()) {
-      initiatorType = NS_LITERAL_STRING("other");
-    }
-    performanceEntry->SetInitiatorType(initiatorType);
-    InsertResourceEntry(performanceEntry);
-  }
+  performanceEntry->SetInitiatorType(initiatorType);
+  InsertResourceEntry(performanceEntry);
 }
 
 // To be removed once bug 1124165 lands
@@ -299,7 +242,7 @@ PerformanceMainThread::InsertUserEntry(PerformanceEntry* aEntry)
   nsAutoCString uri;
   uint64_t markCreationEpoch = 0;
 
-  if (nsContentUtils::IsUserTimingLoggingEnabled() ||
+  if (DOMPrefs::PerformanceLoggingEnabled() ||
       nsContentUtils::SendPerformanceTimingNotifications()) {
     nsresult rv = NS_ERROR_FAILURE;
     nsCOMPtr<nsPIDOMWindowInner> owner = GetOwner();
@@ -313,7 +256,7 @@ PerformanceMainThread::InsertUserEntry(PerformanceEntry* aEntry)
     }
     markCreationEpoch = static_cast<uint64_t>(PR_Now() / PR_USEC_PER_MSEC);
 
-    if (nsContentUtils::IsUserTimingLoggingEnabled()) {
+    if (DOMPrefs::PerformanceLoggingEnabled()) {
       Performance::LogEntry(aEntry, uri);
     }
   }
@@ -335,6 +278,103 @@ DOMHighResTimeStamp
 PerformanceMainThread::CreationTime() const
 {
   return GetDOMTiming()->GetNavigationStart();
+}
+
+void
+PerformanceMainThread::EnsureDocEntry()
+{
+  if (!mDocEntry && nsContentUtils::IsPerformanceNavigationTimingEnabled()) {
+
+    UniquePtr<PerformanceTimingData> timing(
+      new PerformanceTimingData(mChannel, nullptr, 0));
+
+    nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(mChannel);
+    if (httpChannel) {
+      timing->SetPropertiesFromHttpChannel(httpChannel);
+    }
+
+    mDocEntry = new PerformanceNavigationTiming(Move(timing), this);
+  }
+}
+
+void
+PerformanceMainThread::CreateDocumentEntry(nsITimedChannel* aChannel)
+{
+  MOZ_ASSERT(aChannel);
+  MOZ_ASSERT(!mDocEntry, "mDocEntry should be null.");
+
+  if (!nsContentUtils::IsPerformanceNavigationTimingEnabled()) {
+    return;
+  }
+
+  UniquePtr<PerformanceTimingData> timing(
+      new PerformanceTimingData(aChannel, nullptr, 0));
+  mDocEntry = new PerformanceNavigationTiming(Move(timing), this);
+}
+
+void
+PerformanceMainThread::GetEntries(nsTArray<RefPtr<PerformanceEntry>>& aRetval)
+{
+  // We return an empty list when 'privacy.resistFingerprinting' is on.
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    aRetval.Clear();
+    return;
+  }
+
+  aRetval = mResourceEntries;
+  aRetval.AppendElements(mUserEntries);
+
+  EnsureDocEntry();
+  if (mDocEntry) {
+    aRetval.AppendElement(mDocEntry);
+  }
+
+  aRetval.Sort(PerformanceEntryComparator());
+}
+
+void
+PerformanceMainThread::GetEntriesByType(const nsAString& aEntryType,
+                                        nsTArray<RefPtr<PerformanceEntry>>& aRetval)
+{
+  // We return an empty list when 'privacy.resistFingerprinting' is on.
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    aRetval.Clear();
+    return;
+  }
+
+  if (aEntryType.EqualsLiteral("navigation")) {
+    aRetval.Clear();
+    EnsureDocEntry();
+    if (mDocEntry) {
+      aRetval.AppendElement(mDocEntry);
+    }
+    return;
+  }
+
+  Performance::GetEntriesByType(aEntryType, aRetval);
+}
+
+void
+PerformanceMainThread::GetEntriesByName(const nsAString& aName,
+                                        const Optional<nsAString>& aEntryType,
+                                        nsTArray<RefPtr<PerformanceEntry>>& aRetval)
+{
+  // We return an empty list when 'privacy.resistFingerprinting' is on.
+  if (nsContentUtils::ShouldResistFingerprinting()) {
+    aRetval.Clear();
+    return;
+  }
+
+  if (aName.EqualsLiteral("document")) {
+    aRetval.Clear();
+    EnsureDocEntry();
+    if (mDocEntry) {
+      aRetval.AppendElement(mDocEntry);
+    }
+    return;
+  }
+
+  Performance::GetEntriesByName(aName, aEntryType, aRetval);
 }
 
 } // dom namespace

@@ -14,7 +14,6 @@
 #ifndef mozilla_GenericSpecifiedValuesInlines_h
 #define mozilla_GenericSpecifiedValuesInlines_h
 
-#include "nsRuleData.h"
 #include "mozilla/GenericSpecifiedValues.h"
 #include "mozilla/ServoSpecifiedValues.h"
 
@@ -47,14 +46,14 @@ GenericSpecifiedValues::SetIdentStringValueIfUnset(nsCSSPropertyID aId,
 }
 
 void
-GenericSpecifiedValues::SetIdentAtomValue(nsCSSPropertyID aId, nsIAtom* aValue)
+GenericSpecifiedValues::SetIdentAtomValue(nsCSSPropertyID aId, nsAtom* aValue)
 {
   MOZ_STYLO_FORWARD(SetIdentAtomValue, (aId, aValue))
 }
 
 void
 GenericSpecifiedValues::SetIdentAtomValueIfUnset(nsCSSPropertyID aId,
-                                                 nsIAtom* aValue)
+                                                 nsAtom* aValue)
 {
   if (!PropertyIsSet(aId)) {
     SetIdentAtomValue(aId, aValue);
@@ -64,23 +63,8 @@ GenericSpecifiedValues::SetIdentAtomValueIfUnset(nsCSSPropertyID aId,
 void
 GenericSpecifiedValues::SetKeywordValue(nsCSSPropertyID aId, int32_t aValue)
 {
-  // there are some static asserts in MOZ_STYLO_FORWARD which
-  // won't work with the overloaded SetKeywordValue function,
-  // so we copy its expansion and use SetIntValue for decltype
-  // instead
-  static_assert(
-    !mozilla::IsSame<decltype(&MOZ_STYLO_THIS_TYPE::SetIntValue),
-                     decltype(&MOZ_STYLO_GECKO_TYPE::SetKeywordValue)>::value,
-    "Gecko subclass should define its own SetKeywordValue");
-  static_assert(
-    !mozilla::IsSame<decltype(&MOZ_STYLO_THIS_TYPE::SetIntValue),
-                     decltype(&MOZ_STYLO_SERVO_TYPE::SetKeywordValue)>::value,
-    "Servo subclass should define its own SetKeywordValue");
 
-  if (IsServo()) {
-    return AsServo()->SetKeywordValue(aId, aValue);
-  }
-  return AsGecko()->SetKeywordValue(aId, aValue);
+  return AsServo()->SetKeywordValue(aId, aValue);
 }
 
 void

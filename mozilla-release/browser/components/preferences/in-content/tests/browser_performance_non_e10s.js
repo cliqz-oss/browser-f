@@ -10,10 +10,10 @@ add_task(async function() {
 });
 
 add_task(async function() {
-  let prefs = await openPreferencesViaOpenPreferencesAPI("paneGeneral", null, {leaveOpen: true});
+  let prefs = await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
   is(prefs.selectedPane, "paneGeneral", "General pane was selected");
 
-  let doc = gBrowser.selectedBrowser.contentDocument;
+  let doc = gBrowser.contentDocument;
   let useRecommendedPerformanceSettings = doc.querySelector("#useRecommendedPerformanceSettings");
 
   is(Services.prefs.getBoolPref("browser.preferences.defaultPerformanceSettings.enabled"), true,
@@ -59,11 +59,11 @@ add_task(async function() {
   is(performanceSettings.hidden, false, "performance settings section should be still shown");
 
   Services.prefs.setBoolPref("browser.preferences.defaultPerformanceSettings.enabled", true);
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function() {
-  let prefs = await openPreferencesViaOpenPreferencesAPI("paneGeneral", null, {leaveOpen: true});
+  let prefs = await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
   is(prefs.selectedPane, "paneGeneral", "General pane was selected");
 
   let doc = gBrowser.contentDocument;
@@ -76,13 +76,13 @@ add_task(async function() {
   is(performanceSettings.hidden, false, "performance settings section should be shown");
 
   Services.prefs.setBoolPref("browser.preferences.defaultPerformanceSettings.enabled", true);
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function() {
   Services.prefs.setBoolPref("layers.acceleration.disabled", true);
 
-  let prefs = await openPreferencesViaOpenPreferencesAPI("paneGeneral", null, {leaveOpen: true});
+  let prefs = await openPreferencesViaOpenPreferencesAPI("paneGeneral", {leaveOpen: true});
   is(prefs.selectedPane, "paneGeneral", "General pane was selected");
 
   let doc = gBrowser.contentDocument;
@@ -96,5 +96,5 @@ add_task(async function() {
   ok(!allowHWAccel.checked, "checkbox should not be checked");
 
   Services.prefs.setBoolPref("browser.preferences.defaultPerformanceSettings.enabled", true);
-  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });

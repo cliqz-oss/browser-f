@@ -1,7 +1,7 @@
 var urifixup = Cc["@mozilla.org/docshell/urifixup;1"].
                getService(Ci.nsIURIFixup);
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 Services.prefs.setBoolPref("keyword.enabled", true);
 
@@ -10,13 +10,18 @@ const kSearchEngineURL = "http://www.example.org/?search={searchTerms}";
 Services.search.addEngineWithDetails(kSearchEngineID, "", "", "", "get",
                                      kSearchEngineURL);
 
+Services.io.getProtocolHandler("resource")
+        .QueryInterface(Ci.nsIResProtocolHandler)
+        .setSubstitution("search-plugins",
+                         Services.io.newURI("chrome://mozapps/locale/searchplugins/"));
+
 var oldDefaultEngine = Services.search.defaultEngine;
 Services.search.defaultEngine = Services.search.getEngineByName(kSearchEngineID);
 
 var selectedName = Services.search.defaultEngine.name;
-do_check_eq(selectedName, kSearchEngineID);
+Assert.equal(selectedName, kSearchEngineID);
 
-do_register_cleanup(function() {
+registerCleanupFunction(function() {
   if (oldDefaultEngine) {
     Services.search.defaultEngine = oldDefaultEngine;
   }
@@ -112,6 +117,6 @@ add_task(function test_fix_unknown_schemes() {
     let result =
       urifixup.createFixupURI(item.wrong,
                               urifixup.FIXUP_FLAG_FIX_SCHEME_TYPOS).spec;
-    do_check_eq(result, item.fixed);
+    Assert.equal(result, item.fixed);
   }
 });

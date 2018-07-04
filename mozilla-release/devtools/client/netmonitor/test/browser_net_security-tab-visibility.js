@@ -7,7 +7,7 @@
  * Test that security details tab is visible only when it should.
  */
 
-add_task(function* () {
+add_task(async function() {
   const TEST_DATA = [
     {
       desc: "http request",
@@ -31,7 +31,7 @@ add_task(function* () {
     }
   ];
 
-  let { tab, monitor } = yield initNetMonitor(CUSTOM_GET_URL);
+  let { tab, monitor } = await initNetMonitor(CUSTOM_GET_URL);
   let { document, store, windowRequire } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
   let { getSelectedRequest } =
@@ -41,19 +41,18 @@ add_task(function* () {
 
   for (let testcase of TEST_DATA) {
     info("Testing Security tab visibility for " + testcase.desc);
-    let onNewItem = monitor.panelWin.once(EVENTS.NETWORK_EVENT);
-    let onSecurityInfo = monitor.panelWin.once(EVENTS.RECEIVED_SECURITY_INFO);
+    let onNewItem = monitor.panelWin.api.once(EVENTS.NETWORK_EVENT);
     let onComplete = testcase.isBroken ?
                        waitForSecurityBrokenNetworkEvent() :
                        waitForNetworkEvents(monitor, 1);
 
     info("Performing a request to " + testcase.uri);
-    yield ContentTask.spawn(tab.linkedBrowser, testcase.uri, function* (url) {
+    await ContentTask.spawn(tab.linkedBrowser, testcase.uri, async function(url) {
       content.wrappedJSObject.performRequests(1, url);
     });
 
     info("Waiting for new network event.");
-    yield onNewItem;
+    await onNewItem;
 
     info("Selecting the request.");
     EventUtils.sendMouseEvent({ type: "mousedown" },
@@ -65,18 +64,26 @@ add_task(function* () {
       "Security tab is " + (testcase.visibleOnNewEvent ? "visible" : "hidden") +
       " after new request was added to the menu.");
 
-    info("Waiting for security information to arrive.");
-    yield onSecurityInfo;
+    if (testcase.visibleOnSecurityInfo) {
+      // click security panel to lazy load the securityState
+      await waitUntil(() => document.querySelector("#security-tab"));
+      EventUtils.sendMouseEvent({ type: "click" },
+        document.querySelector("#security-tab"));
+      await waitUntil(() => document.querySelector(
+        "#security-panel .security-info-value"));
+      info("Waiting for security information to arrive.");
 
-    yield waitUntil(() => !!getSelectedRequest(store.getState()).securityState);
-    ok(getSelectedRequest(store.getState()).securityState,
-       "Security state arrived.");
+      await waitUntil(() => !!getSelectedRequest(store.getState()).securityState);
+      ok(getSelectedRequest(store.getState()).securityState,
+         "Security state arrived.");
+    }
+
     is(!!document.querySelector("#security-tab"), testcase.visibleOnSecurityInfo,
        "Security tab is " + (testcase.visibleOnSecurityInfo ? "visible" : "hidden") +
        " after security information arrived.");
 
     info("Waiting for request to complete.");
-    yield onComplete;
+    await onComplete;
 
     is(!!document.querySelector("#security-tab"), testcase.visibleOnceComplete,
        "Security tab is " + (testcase.visibleOnceComplete ? "visible" : "hidden") +
@@ -94,19 +101,12 @@ add_task(function* () {
    */
   function waitForSecurityBrokenNetworkEvent() {
     let awaitedEvents = [
-      "UPDATING_REQUEST_HEADERS",
-      "RECEIVED_REQUEST_HEADERS",
-      "UPDATING_REQUEST_COOKIES",
-      "RECEIVED_REQUEST_COOKIES",
-      "STARTED_RECEIVING_RESPONSE",
-      "UPDATING_RESPONSE_CONTENT",
-      "RECEIVED_RESPONSE_CONTENT",
       "UPDATING_EVENT_TIMINGS",
       "RECEIVED_EVENT_TIMINGS",
     ];
 
     let promises = awaitedEvents.map((event) => {
-      return monitor.panelWin.once(EVENTS[event]);
+      return monitor.panelWin.api.once(EVENTS[event]);
     });
 
     return Promise.all(promises);

@@ -7,53 +7,63 @@
 #include "mozilla/ServoStyleRuleMap.h"
 
 #include "mozilla/css/GroupRule.h"
+#include "mozilla/dom/CSSRuleBinding.h"
 #include "mozilla/IntegerRange.h"
 #include "mozilla/ServoStyleRule.h"
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/ServoImportRule.h"
-
+#include "mozilla/StyleSheetInlines.h"
 #include "nsDocument.h"
 #include "nsStyleSheetService.h"
 
 namespace mozilla {
 
-ServoStyleRuleMap::ServoStyleRuleMap(ServoStyleSet* aStyleSet)
-  : mStyleSet(aStyleSet)
-{
-}
-
-ServoStyleRuleMap::~ServoStyleRuleMap()
-{
-}
-
-NS_IMPL_ISUPPORTS(ServoStyleRuleMap, nsIDocumentObserver, nsICSSLoaderObserver)
-
 void
-ServoStyleRuleMap::EnsureTable()
+ServoStyleRuleMap::EnsureTable(ServoStyleSet& aStyleSet)
 {
   if (!IsEmpty()) {
     return;
   }
-  mStyleSet->EnumerateStyleSheetArrays(
-    [this](const nsTArray<RefPtr<ServoStyleSheet>>& aArray) {
+  aStyleSet.EnumerateStyleSheetArrays(
+    [this](const nsTArray<RefPtr<StyleSheet>>& aArray) {
       for (auto& sheet : aArray) {
-        FillTableFromStyleSheet(sheet);
+        FillTableFromStyleSheet(*sheet);
       }
     });
 }
 
 void
-ServoStyleRuleMap::StyleSheetAdded(StyleSheet* aStyleSheet,
-                                   bool aDocumentSheet)
+ServoStyleRuleMap::EnsureTable(nsXBLPrototypeResources& aXBLResources)
 {
-  if (!IsEmpty()) {
-    FillTableFromStyleSheet(aStyleSheet->AsServo());
+  if (!IsEmpty() || !aXBLResources.GetServoStyles()) {
+    return;
+  }
+  for (auto index : IntegerRange(aXBLResources.SheetCount())) {
+    FillTableFromStyleSheet(*aXBLResources.StyleSheetAt(index));
   }
 }
 
 void
-ServoStyleRuleMap::StyleSheetRemoved(StyleSheet* aStyleSheet,
-                                     bool aDocumentSheet)
+ServoStyleRuleMap::EnsureTable(ShadowRoot& aShadowRoot)
+{
+  if (!IsEmpty()) {
+    return;
+  }
+  for (auto index : IntegerRange(aShadowRoot.SheetCount())) {
+    FillTableFromStyleSheet(*aShadowRoot.SheetAt(index));
+  }
+}
+
+void
+ServoStyleRuleMap::SheetAdded(StyleSheet& aStyleSheet)
+{
+  if (!IsEmpty()) {
+    FillTableFromStyleSheet(aStyleSheet);
+  }
+}
+
+void
+ServoStyleRuleMap::SheetRemoved(StyleSheet& aStyleSheet)
 {
   // Invalidate all data inside. This isn't strictly necessary since
   // we should always get update from document before new queries come.
@@ -65,18 +75,7 @@ ServoStyleRuleMap::StyleSheetRemoved(StyleSheet* aStyleSheet,
 }
 
 void
-ServoStyleRuleMap::StyleSheetApplicableStateChanged(StyleSheet* aStyleSheet)
-{
-  // We don't care if the stylesheet is disabled. Not removing no longer
-  // applicable stylesheets wouldn't make anything wrong.
-  if (!IsEmpty() && aStyleSheet->IsApplicable()) {
-    FillTableFromStyleSheet(aStyleSheet->AsServo());
-  }
-}
-
-void
-ServoStyleRuleMap::StyleRuleAdded(StyleSheet* aStyleSheet,
-                                  css::Rule* aStyleRule)
+ServoStyleRuleMap::RuleAdded(StyleSheet& aStyleSheet, css::Rule& aStyleRule)
 {
   if (!IsEmpty()) {
     FillTableFromRule(aStyleRule);
@@ -84,50 +83,38 @@ ServoStyleRuleMap::StyleRuleAdded(StyleSheet* aStyleSheet,
 }
 
 void
-ServoStyleRuleMap::StyleRuleRemoved(StyleSheet* aStyleSheet,
-                                    css::Rule* aStyleRule)
+ServoStyleRuleMap::RuleRemoved(StyleSheet& aStyleSheet,
+                               css::Rule& aStyleRule)
 {
   if (IsEmpty()) {
     return;
   }
 
-  switch (aStyleRule->Type()) {
-    case nsIDOMCSSRule::STYLE_RULE: {
-      auto rule = static_cast<ServoStyleRule*>(aStyleRule);
-      mTable.Remove(rule->Raw());
+  switch (aStyleRule.Type()) {
+    case CSSRuleBinding::STYLE_RULE: {
+      auto& rule = static_cast<ServoStyleRule&>(aStyleRule);
+      mTable.Remove(rule.Raw());
       break;
     }
-    case nsIDOMCSSRule::IMPORT_RULE:
-    case nsIDOMCSSRule::MEDIA_RULE:
-    case nsIDOMCSSRule::SUPPORTS_RULE:
-    case nsIDOMCSSRule::DOCUMENT_RULE: {
+    case CSSRuleBinding::IMPORT_RULE:
+    case CSSRuleBinding::MEDIA_RULE:
+    case CSSRuleBinding::SUPPORTS_RULE:
+    case CSSRuleBinding::DOCUMENT_RULE: {
       // See the comment in StyleSheetRemoved.
       mTable.Clear();
       break;
     }
-    case nsIDOMCSSRule::FONT_FACE_RULE:
-    case nsIDOMCSSRule::PAGE_RULE:
-    case nsIDOMCSSRule::KEYFRAMES_RULE:
-    case nsIDOMCSSRule::KEYFRAME_RULE:
-    case nsIDOMCSSRule::NAMESPACE_RULE:
-    case nsIDOMCSSRule::COUNTER_STYLE_RULE:
-    case nsIDOMCSSRule::FONT_FEATURE_VALUES_RULE:
+    case CSSRuleBinding::FONT_FACE_RULE:
+    case CSSRuleBinding::PAGE_RULE:
+    case CSSRuleBinding::KEYFRAMES_RULE:
+    case CSSRuleBinding::KEYFRAME_RULE:
+    case CSSRuleBinding::NAMESPACE_RULE:
+    case CSSRuleBinding::COUNTER_STYLE_RULE:
+    case CSSRuleBinding::FONT_FEATURE_VALUES_RULE:
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unhandled rule");
   }
-}
-
-NS_IMETHODIMP
-ServoStyleRuleMap::StyleSheetLoaded(StyleSheet* aSheet,
-                                    bool aWasAlternate,
-                                    nsresult aStatus)
-{
-  MOZ_ASSERT(aSheet->IsServo());
-  if (!IsEmpty()) {
-    FillTableFromStyleSheet(aSheet->AsServo());
-  }
-  return NS_OK;
 }
 
 size_t
@@ -139,43 +126,44 @@ ServoStyleRuleMap::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 }
 
 void
-ServoStyleRuleMap::FillTableFromRule(css::Rule* aRule)
+ServoStyleRuleMap::FillTableFromRule(css::Rule& aRule)
 {
-  switch (aRule->Type()) {
-    case nsIDOMCSSRule::STYLE_RULE: {
-      auto rule = static_cast<ServoStyleRule*>(aRule);
-      mTable.Put(rule->Raw(), rule);
+  switch (aRule.Type()) {
+    case CSSRuleBinding::STYLE_RULE: {
+      auto& rule = static_cast<ServoStyleRule&>(aRule);
+      mTable.Put(rule.Raw(), &rule);
       break;
     }
-    case nsIDOMCSSRule::MEDIA_RULE:
-    case nsIDOMCSSRule::SUPPORTS_RULE:
-    case nsIDOMCSSRule::DOCUMENT_RULE: {
-      auto rule = static_cast<css::GroupRule*>(aRule);
-      auto ruleList = static_cast<ServoCSSRuleList*>(rule->CssRules());
-      FillTableFromRuleList(ruleList);
+    case CSSRuleBinding::MEDIA_RULE:
+    case CSSRuleBinding::SUPPORTS_RULE:
+    case CSSRuleBinding::DOCUMENT_RULE: {
+      auto& rule = static_cast<css::GroupRule&>(aRule);
+      auto ruleList = static_cast<ServoCSSRuleList*>(rule.CssRules());
+      FillTableFromRuleList(*ruleList);
       break;
     }
-    case nsIDOMCSSRule::IMPORT_RULE: {
-      auto rule = static_cast<ServoImportRule*>(aRule);
-      FillTableFromStyleSheet(rule->GetStyleSheet()->AsServo());
+    case CSSRuleBinding::IMPORT_RULE: {
+      auto& rule = static_cast<ServoImportRule&>(aRule);
+      MOZ_ASSERT(aRule.GetStyleSheet());
+      FillTableFromStyleSheet(*rule.GetStyleSheet());
       break;
     }
   }
 }
 
 void
-ServoStyleRuleMap::FillTableFromRuleList(ServoCSSRuleList* aRuleList)
+ServoStyleRuleMap::FillTableFromRuleList(ServoCSSRuleList& aRuleList)
 {
-  for (uint32_t i : IntegerRange(aRuleList->Length())) {
-    FillTableFromRule(aRuleList->GetRule(i));
+  for (uint32_t i : IntegerRange(aRuleList.Length())) {
+    FillTableFromRule(*aRuleList.GetRule(i));
   }
 }
 
 void
-ServoStyleRuleMap::FillTableFromStyleSheet(ServoStyleSheet* aSheet)
+ServoStyleRuleMap::FillTableFromStyleSheet(StyleSheet& aSheet)
 {
-  if (aSheet->IsComplete()) {
-    FillTableFromRuleList(aSheet->GetCssRulesInternal());
+  if (aSheet.IsComplete()) {
+    FillTableFromRuleList(*aSheet.GetCssRulesInternal());
   }
 }
 

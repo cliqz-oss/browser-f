@@ -23,10 +23,12 @@ class nsIDocument;
 class nsIURI;
 class nsIContent;
 class nsIParser;
+class nsTextNode;
 
 namespace mozilla {
 namespace dom {
 class NodeInfo;
+class ProcessingInstruction;
 } // namespace dom
 } // namespace mozilla
 
@@ -99,19 +101,19 @@ protected:
   // stylesheets are all done loading.
   virtual void MaybeStartLayout(bool aIgnorePendingSheets);
 
-  virtual nsresult AddAttributes(const char16_t** aNode, nsIContent* aContent);
+  virtual nsresult AddAttributes(const char16_t** aNode, Element* aElement);
   nsresult AddText(const char16_t* aString, int32_t aLength);
 
   virtual bool OnOpenContainer(const char16_t **aAtts,
                                  uint32_t aAttsCount,
                                  int32_t aNameSpaceID,
-                                 nsIAtom* aTagName,
+                                 nsAtom* aTagName,
                                  uint32_t aLineNumber) { return true; }
   // Set the given content as the root element for the created document
   //  don't set if root element was already set.
   //  return TRUE if this call set the root element
   virtual bool SetDocElement(int32_t aNameSpaceID,
-                               nsIAtom *aTagName,
+                               nsAtom *aTagName,
                                nsIContent *aContent);
   virtual bool NotifyForDocElement() { return true; }
   virtual nsresult CreateElement(const char16_t** aAtts, uint32_t aAttsCount,
@@ -139,18 +141,35 @@ protected:
 
   void DidAddContent()
   {
-    if (IsTimeToNotify()) {
+    if (!mXSLTProcessor && IsTimeToNotify()) {
       FlushTags();
     }
   }
 
   // nsContentSink override
-  virtual nsresult ProcessStyleLink(nsIContent* aElement,
-                                    const nsAString& aHref,
-                                    bool aAlternate,
-                                    const nsAString& aTitle,
-                                    const nsAString& aType,
-                                    const nsAString& aMedia) override;
+  virtual nsresult ProcessStyleLinkFromHeader(
+    const nsAString& aHref,
+    bool aAlternate,
+    const nsAString& aTitle,
+    const nsAString& aType,
+    const nsAString& aMedia,
+    const nsAString& aReferrerPolicy) override;
+
+  // Try to handle an XSLT style link.  If NS_OK is returned and aWasXSLT is not
+  // null, *aWasXSLT will be set to whether we processed this link as XSLT.
+  //
+  // aProcessingInstruction can be null if this information comes from a Link
+  // header; otherwise it will be the xml-styleshset XML PI that the loading
+  // information comes from.
+  virtual nsresult MaybeProcessXSLTLink(
+    mozilla::dom::ProcessingInstruction* aProcessingInstruction,
+    const nsAString& aHref,
+    bool aAlternate,
+    const nsAString& aTitle,
+    const nsAString& aType,
+    const nsAString& aMedia,
+    const nsAString& aReferrerPolicy,
+    bool* aWasXSLT = nullptr);
 
   nsresult LoadXSLStyleSheet(nsIURI* aUrl);
 
@@ -176,7 +195,7 @@ protected:
   int32_t mTextLength;
 
   int32_t mNotifyLevel;
-  nsCOMPtr<nsIContent> mLastTextNode;
+  RefPtr<nsTextNode> mLastTextNode;
 
   uint8_t mPrettyPrintXML : 1;
   uint8_t mPrettyPrintHasSpecialRoot : 1;
@@ -189,6 +208,12 @@ protected:
   nsTArray<StackNode>              mContentStack;
 
   nsCOMPtr<nsIDocumentTransformer> mXSLTProcessor;
+
+  // Holds the children in the prolog until the root element is added, after which they're
+  // inserted in the document. However, if we're doing an XSLT transform this will
+  // actually hold all the children of the source document, until the transform is
+  // finished. After the transform is finished we'll just discard the children. 
+  nsTArray<nsCOMPtr<nsIContent>> mDocumentChildren;
 
   static const int NS_ACCUMULATION_BUFFER_SIZE = 4096;
   // Our currently accumulated text that we have not flushed to a textnode yet.

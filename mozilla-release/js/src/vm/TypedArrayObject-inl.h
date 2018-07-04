@@ -12,19 +12,21 @@
 #include "vm/TypedArrayObject.h"
 
 #include "mozilla/Assertions.h"
+#include "mozilla/Compiler.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/PodOperations.h"
 
-#include "jsarray.h"
-#include "jscntxt.h"
 #include "jsnum.h"
 
+#include "builtin/Array.h"
+#include "gc/Zone.h"
 #include "jit/AtomicOperations.h"
-
 #include "js/Conversions.h"
 #include "js/Value.h"
-
+#include "vm/JSContext.h"
 #include "vm/NativeObject.h"
+
+#include "gc/ObjectKind-inl.h"
 
 namespace js {
 
@@ -237,8 +239,7 @@ class ElementSpecific
      * case the two memory ranges overlap.
      */
     static bool
-    setFromTypedArray(JSContext* cx,
-                      Handle<TypedArrayObject*> target, Handle<TypedArrayObject*> source,
+    setFromTypedArray(Handle<TypedArrayObject*> target, Handle<TypedArrayObject*> source,
                       uint32_t offset)
     {
         // WARNING: |source| may be an unwrapped typed array from a different
@@ -253,7 +254,7 @@ class ElementSpecific
         MOZ_ASSERT(source->length() <= target->length() - offset);
 
         if (TypedArrayObject::sameBuffer(target, source))
-            return setFromOverlappingTypedArray(cx, target, source, offset);
+            return setFromOverlappingTypedArray(target, source, offset);
 
         SharedMem<T*> dest = target->viewDataEither().template cast<T*>() + offset;
         uint32_t count = source->length();
@@ -264,7 +265,7 @@ class ElementSpecific
         }
 
         // Inhibit unaligned accesses on ARM (bug 1097253, a compiler bug).
-#ifdef __arm__
+#if defined(__arm__) && MOZ_IS_GCC
 #  define JS_VOLATILE_ARM volatile
 #else
 #  define JS_VOLATILE_ARM
@@ -448,8 +449,7 @@ class ElementSpecific
 
   private:
     static bool
-    setFromOverlappingTypedArray(JSContext* cx,
-                                 Handle<TypedArrayObject*> target,
+    setFromOverlappingTypedArray(Handle<TypedArrayObject*> target,
                                  Handle<TypedArrayObject*> source,
                                  uint32_t offset)
     {
@@ -607,6 +607,18 @@ class ElementSpecific
         return T(JS::ToInt32(d));
     }
 };
+
+
+/* static */ gc::AllocKind
+js::TypedArrayObject::AllocKindForLazyBuffer(size_t nbytes)
+{
+    MOZ_ASSERT(nbytes <= INLINE_BUFFER_LIMIT);
+    if (nbytes == 0)
+        nbytes += sizeof(uint8_t);
+    size_t dataSlots = AlignBytes(nbytes, sizeof(Value)) / sizeof(Value);
+    MOZ_ASSERT(nbytes <= dataSlots * sizeof(Value));
+    return gc::GetGCObjectKind(FIXED_DATA_START + dataSlots);
+}
 
 } // namespace js
 

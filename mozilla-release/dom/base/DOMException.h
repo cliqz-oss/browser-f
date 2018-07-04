@@ -15,18 +15,15 @@
 
 #include <stdint.h>
 #include "jspubtd.h"
-#include "js/GCAPI.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsID.h"
-#include "nsIDOMDOMException.h"
 #include "nsWrapperCache.h"
-#include "xpcexception.h"
+#include "nsIException.h"
 #include "nsString.h"
 #include "mozilla/dom/BindingDeclarations.h"
 
 class nsIStackFrame;
-class nsString;
 
 nsresult
 NS_GetNameAndMessageForDOMNSResult(nsresult aNSResult, nsACString& aName,
@@ -44,19 +41,28 @@ class GlobalObject;
 { 0x55eda557, 0xeba0, 0x4fe3, \
   { 0xae, 0x2e, 0xf3, 0x94, 0x49, 0x23, 0x62, 0xd6 } }
 
-class Exception : public nsIXPCException,
+class Exception : public nsIException,
                   public nsWrapperCache
 {
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(MOZILLA_EXCEPTION_IID)
 
-  NS_DEFINE_STATIC_CID_ACCESSOR(NS_XPCEXCEPTION_CID)
-
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(Exception)
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_NSIEXCEPTION
-  NS_DECL_NSIXPCEXCEPTION
+
+  const nsCString& GetMessageMoz() const
+  {
+    return mMessage;
+  }
+  nsresult GetResult() const
+  {
+    return mResult;
+  }
+  // DOMException wants different ToString behavior, so allow it to override.
+  virtual void ToString(JSContext* aCx, nsACString& aReturn);
+
 
   // Cruft used by XPConnect for exceptions originating in JS implemented
   // components.
@@ -73,22 +79,19 @@ public:
 
   uint32_t Result() const;
 
-  void GetName(nsString& retval);
+  void GetName(nsAString& retval);
 
   virtual void GetErrorMessage(nsAString& aRetVal)
   {
-    // Since GetName and GetMessageMoz are non-virtual and they deal with
-    // different member variables in Exception vs. DOMException, have a
-    // virtual method to ensure the right error message creation.
+    // Since GetName is non non-virtual and deals with different
+    // member variables in Exception vs. DOMException, have a virtual
+    // method to ensure the right error message creation.
     nsAutoString name;
-    nsAutoString message;
     GetName(name);
-    GetMessageMoz(message);
-    CreateErrorMessage(name, message, aRetVal);
+    CreateErrorMessage(name, aRetVal);
   }
 
-  // The XPCOM GetFilename does the right thing.  It might throw, but we want to
-  // return an empty filename in that case anyway, instead of throwing.
+  void GetFilename(JSContext* aCx, nsAString& aFilename);
 
   uint32_t LineNumber(JSContext* aCx) const;
 
@@ -96,14 +99,11 @@ public:
 
   already_AddRefed<nsIStackFrame> GetLocation() const;
 
-  already_AddRefed<nsISupports> GetData() const;
+  nsISupports* GetData() const;
 
-  void GetStack(JSContext* aCx, nsAString& aStack, ErrorResult& aRv) const;
+  void GetStack(JSContext* aCx, nsAString& aStack) const;
 
   void Stringify(JSContext* aCx, nsString& retval);
-
-  // XPCOM factory ctor.
-  Exception();
 
   Exception(const nsACString& aMessage,
             nsresult aResult,
@@ -114,18 +114,17 @@ public:
 protected:
   virtual ~Exception();
 
-  void CreateErrorMessage(const nsAString& aName, const nsAString& aMessage,
-                          nsAString& aRetVal)
+  void CreateErrorMessage(const nsAString& aName, nsAString& aRetVal)
   {
     // Create similar error message as what ErrorReport::init does in jsexn.cpp.
-    if (!aName.IsEmpty() && !aMessage.IsEmpty()) {
+    if (!aName.IsEmpty() && !mMessage.IsEmpty()) {
       aRetVal.Assign(aName);
       aRetVal.AppendLiteral(": ");
-      aRetVal.Append(aMessage);
+      AppendUTF8toUTF16(mMessage, aRetVal);
     } else if (!aName.IsEmpty()) {
       aRetVal.Assign(aName);
-    } else if (!aMessage.IsEmpty()) {
-      aRetVal.Assign(aMessage);
+    } else if (!mMessage.IsEmpty()) {
+      CopyUTF8toUTF16(mMessage, aRetVal);
     } else {
       aRetVal.Truncate();
     }
@@ -140,25 +139,17 @@ protected:
 
   bool mHoldingJSVal;
   JS::Heap<JS::Value> mThrownJSVal;
-
-private:
-  static bool sEverMadeOneFromFactory;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(Exception, MOZILLA_EXCEPTION_IID)
 
-class DOMException : public Exception,
-                     public nsIDOMDOMException
+class DOMException : public Exception
 {
 public:
   DOMException(nsresult aRv, const nsACString& aMessage,
                const nsACString& aName, uint16_t aCode);
 
-  NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_NSIDOMDOMEXCEPTION
-
-  // nsIException overrides
-  NS_IMETHOD ToString(JSContext* aCx, nsACString& aReturn) override;
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(DOMException, Exception)
 
   // nsWrapperCache overrides
   virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
@@ -174,18 +165,18 @@ public:
     return mCode;
   }
 
-  // Intentionally shadow the nsXPCException version.
-  void GetMessageMoz(nsString& retval);
+  // Intentionally shadow the Exception version.
   void GetName(nsString& retval);
+
+  // Exception overrides
+  void ToString(JSContext* aCx, nsACString& aReturn) override;
 
   virtual void GetErrorMessage(nsAString& aRetVal) override
   {
     // See the comment in Exception::GetErrorMessage.
     nsAutoString name;
-    nsAutoString message;
     GetName(name);
-    GetMessageMoz(message);
-    CreateErrorMessage(name, message, aRetVal);
+    CreateErrorMessage(name, aRetVal);
   }
 
   static already_AddRefed<DOMException>
@@ -197,9 +188,6 @@ public:
 protected:
 
   virtual ~DOMException() {}
-
-  nsCString mName;
-  nsCString mMessage;
 
   uint16_t mCode;
 };

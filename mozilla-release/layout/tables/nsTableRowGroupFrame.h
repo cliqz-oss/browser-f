@@ -8,7 +8,7 @@
 #include "mozilla/Attributes.h"
 #include "nscore.h"
 #include "nsContainerFrame.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 #include "nsILineIterator.h"
 #include "nsTArray.h"
 #include "nsTableFrame.h"
@@ -46,7 +46,7 @@ public:
     * @return           the frame that was created
     */
   friend nsTableRowGroupFrame* NS_NewTableRowGroupFrame(nsIPresShell* aPresShell,
-                                                        nsStyleContext* aContext);
+                                                        ComputedStyle* aStyle);
   virtual ~nsTableRowGroupFrame();
 
   // nsIFrame overrides
@@ -60,10 +60,10 @@ public:
     }
   }
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
-  /** @see nsIFrame::DidSetStyleContext */
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  /** @see nsIFrame::DidSetComputedStyle */
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   virtual void AppendFrames(ChildListID     aListID,
                             nsFrameList&    aFrameList) override;
@@ -78,7 +78,6 @@ public:
   virtual nsMargin GetUsedPadding() const override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
    /** calls Reflow for all of its child rows.
@@ -329,12 +328,12 @@ public:
     return nsContainerFrame::IsFrameOfType(aFlags & ~(nsIFrame::eTablePart));
   }
 
-  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0) override;
-  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0) override;
+  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
+  virtual void InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDisplayItemKey = 0, bool aRebuildDisplayItems = true) override;
   virtual void InvalidateFrameForRemoval() override { InvalidateFrameSubtree(); }
 
 protected:
-  explicit nsTableRowGroupFrame(nsStyleContext* aContext);
+  explicit nsTableRowGroupFrame(ComputedStyle* aStyle);
 
   void InitChildReflowInput(nsPresContext&     aPresContext,
                             bool               aBorderCollapse,
@@ -451,12 +450,12 @@ inline void
 nsTableRowGroupFrame::GetContinuousBCBorderWidth(mozilla::WritingMode aWM,
                                                  mozilla::LogicalMargin& aBorder)
 {
-  int32_t aPixelsToTwips = nsPresContext::AppUnitsPerCSSPixel();
-  aBorder.IEnd(aWM) = BC_BORDER_START_HALF_COORD(aPixelsToTwips,
+  int32_t d2a = PresContext()->AppUnitsPerDevPixel();
+  aBorder.IEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a,
                                                  mIEndContBorderWidth);
-  aBorder.BEnd(aWM) = BC_BORDER_START_HALF_COORD(aPixelsToTwips,
+  aBorder.BEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a,
                                                  mBEndContBorderWidth);
-  aBorder.IStart(aWM) = BC_BORDER_END_HALF_COORD(aPixelsToTwips,
+  aBorder.IStart(aWM) = BC_BORDER_END_HALF_COORD(d2a,
                                                  mIStartContBorderWidth);
 }
 #endif

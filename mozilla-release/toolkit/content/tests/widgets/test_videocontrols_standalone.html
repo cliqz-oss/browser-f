@@ -12,6 +12,7 @@
 
 <pre id="test">
 <script class="testbody" type="text/javascript">
+  SimpleTest.expectAssertions(0, 1);
 
 const videoWidth = 320;
 const videoHeight = 240;
@@ -56,9 +57,9 @@ function runTestAudioPre() {
     else {
       audio.addEventListener("play", function() {
         runTestAudio(audio);
-      }, {once: true})
+      }, {once: true});
     }
-  }, {once: true})
+  }, {once: true});
 }
 
 function runTestAudio(aAudio) {

@@ -25,7 +25,7 @@
 #include "mozilla/FileUtils.h"
 #include "mozilla/Services.h"
 #include "mozilla/Unused.h"
-#include "nsIStringBundle.h"
+#include "mozilla/WidgetUtils.h"
 #include "nsIXULAppInfo.h"
 #include "nsContentUtils.h"
 #include "gfxPlatform.h"
@@ -125,22 +125,11 @@ ca_context_get_default()
         }
     }
 
-    nsCOMPtr<nsIStringBundleService> bundleService =
-        mozilla::services::GetStringBundleService();
-    if (bundleService) {
-        nsCOMPtr<nsIStringBundle> brandingBundle;
-        bundleService->CreateBundle("chrome://branding/locale/brand.properties",
-                                    getter_AddRefs(brandingBundle));
-        if (brandingBundle) {
-            nsAutoString wbrand;
-            brandingBundle->GetStringFromName("brandShortName",
-                                              getter_Copies(wbrand));
-            NS_ConvertUTF16toUTF8 brand(wbrand);
-
-            ca_context_change_props(ctx, "application.name", brand.get(),
-                                    nullptr);
-        }
-    }
+    nsAutoString wbrand;
+    mozilla::widget::WidgetUtils::GetBrandShortName(wbrand);
+    ca_context_change_props(ctx, "application.name",
+                            NS_ConvertUTF16toUTF8(wbrand).get(),
+                            nullptr);
 
     nsCOMPtr<nsIXULAppInfo> appInfo = do_GetService("@mozilla.org/xre/app-info;1");
     if (appInfo) {
@@ -236,7 +225,7 @@ nsSound::GetInstance()
 
     if (!sInstance) {
         if (gfxPlatform::IsHeadless()) {
-            sInstance = new widget::HeadlessSound();
+            sInstance = new mozilla::widget::HeadlessSound();
         } else {
             sInstance = new nsSound();
         }
@@ -427,44 +416,4 @@ NS_IMETHODIMP nsSound::PlayEventSound(uint32_t aEventId)
             break;
     }
     return NS_OK;
-}
-
-NS_IMETHODIMP nsSound::PlaySystemSound(const nsAString &aSoundAlias)
-{
-    if (NS_IsMozAliasSound(aSoundAlias)) {
-        NS_WARNING("nsISound::playSystemSound is called with \"_moz_\" events, they are obsolete, use nsISound::playEventSound instead");
-        uint32_t eventId;
-        if (aSoundAlias.Equals(NS_SYSSOUND_ALERT_DIALOG))
-            eventId = EVENT_ALERT_DIALOG_OPEN;
-        else if (aSoundAlias.Equals(NS_SYSSOUND_CONFIRM_DIALOG))
-            eventId = EVENT_CONFIRM_DIALOG_OPEN;
-        else if (aSoundAlias.Equals(NS_SYSSOUND_MAIL_BEEP))
-            eventId = EVENT_NEW_MAIL_RECEIVED;
-        else if (aSoundAlias.Equals(NS_SYSSOUND_MENU_EXECUTE))
-            eventId = EVENT_MENU_EXECUTE;
-        else if (aSoundAlias.Equals(NS_SYSSOUND_MENU_POPUP))
-            eventId = EVENT_MENU_POPUP;
-        else
-            return NS_OK;
-        return PlayEventSound(eventId);
-    }
-
-    nsresult rv;
-    nsCOMPtr <nsIURI> fileURI;
-
-    // create a nsIFile and then a nsIFileURL from that
-    nsCOMPtr <nsIFile> soundFile;
-    rv = NS_NewLocalFile(aSoundAlias, true,
-                         getter_AddRefs(soundFile));
-    NS_ENSURE_SUCCESS(rv,rv);
-
-    rv = NS_NewFileURI(getter_AddRefs(fileURI), soundFile);
-    NS_ENSURE_SUCCESS(rv,rv);
-
-    nsCOMPtr<nsIFileURL> fileURL = do_QueryInterface(fileURI,&rv);
-    NS_ENSURE_SUCCESS(rv,rv);
-
-    rv = Play(fileURL);
-
-    return rv;
 }

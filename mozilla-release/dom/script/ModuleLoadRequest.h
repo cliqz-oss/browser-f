@@ -8,6 +8,7 @@
 #define mozilla_dom_ModuleLoadRequest_h
 
 #include "ScriptLoadRequest.h"
+#include "nsURIHashKey.h"
 #include "mozilla/MozPromise.h"
 
 namespace mozilla {
@@ -15,6 +16,16 @@ namespace dom {
 
 class ModuleScript;
 class ScriptLoader;
+
+// A reference counted set of URLs we have visited in the process of loading a
+// module graph.
+class VisitedURLSet : public nsTHashtable<nsURIHashKey>
+{
+  NS_INLINE_DECL_REFCOUNTING(VisitedURLSet)
+
+private:
+  ~VisitedURLSet() = default;
+};
 
 // A load request for a module, created for every top level module script and
 // every module import.  Load request can share an ModuleScript if there are
@@ -31,13 +42,20 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(ModuleLoadRequest, ScriptLoadRequest)
 
-  ModuleLoadRequest(nsIScriptElement* aElement,
-                    uint32_t aVersion,
+  // Create a top-level module load request.
+  ModuleLoadRequest(nsIURI* aURI,
+                    nsIScriptElement* aElement,
                     CORSMode aCORSMode,
                     const SRIMetadata& aIntegrity,
+                    nsIURI* aReferrer,
+                    mozilla::net::ReferrerPolicy,
                     ScriptLoader* aLoader);
 
-  bool IsTopLevel() const
+  // Create a module load request for an imported module.
+  ModuleLoadRequest(nsIURI* aURI,
+                    ModuleLoadRequest* aParent);
+
+  bool IsTopLevel() const override
   {
     return mIsTopLevel;
   }
@@ -46,11 +64,17 @@ public:
   void Cancel() override;
 
   void ModuleLoaded();
+  void ModuleErrored();
   void DependenciesLoaded();
   void LoadFailed();
 
+ private:
+  void LoadFinished();
+  void CancelImports();
+
+ public:
   // Is this a request for a top level module script or an import?
-  bool mIsTopLevel;
+  const bool mIsTopLevel;
 
   // The base URL used for resolving relative module imports.
   nsCOMPtr<nsIURI> mBaseURL;
@@ -58,10 +82,6 @@ public:
   // Pointer to the script loader, used to trigger actions when the module load
   // finishes.
   RefPtr<ScriptLoader> mLoader;
-
-  // The importing module, or nullptr for top level module scripts.  Used to
-  // implement the ancestor list checked when fetching module dependencies.
-  RefPtr<ModuleLoadRequest> mParent;
 
   // Set to a module script object after a successful load or nullptr on
   // failure.
@@ -74,6 +94,10 @@ public:
 
   // Array of imported modules.
   nsTArray<RefPtr<ModuleLoadRequest>> mImports;
+
+  // Set of module URLs visited while fetching the module graph this request is
+  // part of.
+  RefPtr<VisitedURLSet> mVisitedSet;
 };
 
 } // dom namespace

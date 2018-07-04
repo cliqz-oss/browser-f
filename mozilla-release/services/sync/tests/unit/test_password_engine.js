@@ -1,7 +1,6 @@
-Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://services-sync/engines/passwords.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
+ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+ChromeUtils.import("resource://services-sync/engines/passwords.js");
+ChromeUtils.import("resource://services-sync/service.js");
 
 const LoginInfo = Components.Constructor(
   "@mozilla.org/login-manager/loginInfo;1", Ci.nsILoginInfo, "init");
@@ -9,25 +8,24 @@ const LoginInfo = Components.Constructor(
 const PropertyBag = Components.Constructor(
   "@mozilla.org/hash-property-bag;1", Ci.nsIWritablePropertyBag);
 
-function run_test() {
-  Service.engineManager.unregister("addons"); // To silence errors.
-  run_next_test();
-}
-
 async function cleanup(engine, server) {
-  Svc.Obs.notify("weave:engine:stop-tracking");
+  await engine._tracker.stop();
   await engine.wipeClient();
   Svc.Prefs.resetBranch("");
   Service.recordManager.clearCache();
   await promiseStopServer(server);
 }
 
+add_task(async function setup() {
+  await Service.engineManager.unregister("addons"); // To silence errors.
+});
+
 add_task(async function test_ignored_fields() {
   _("Only changes to syncable fields should be tracked");
 
   let engine = Service.engineManager.get("passwords");
 
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
 
   enableValidationPrefs();
@@ -36,7 +34,7 @@ add_task(async function test_ignored_fields() {
     null, "username", "password", "", ""));
   login.QueryInterface(Ci.nsILoginMetaInfo); // For `guid`.
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  engine._tracker.start();
 
   try {
     let nonSyncableProps = new PropertyBag();
@@ -64,12 +62,12 @@ add_task(async function test_ignored_sync_credentials() {
 
   let engine = Service.engineManager.get("passwords");
 
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
 
   enableValidationPrefs();
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  engine._tracker.start();
 
   try {
     let login = Services.logins.addLogin(new LoginInfo(FXA_PWDMGR_HOST, null,
@@ -94,7 +92,7 @@ add_task(async function test_password_engine() {
 
   let engine = Service.engineManager.get("passwords");
 
-  let server = serverForFoo(engine);
+  let server = await serverForFoo(engine);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("passwords");
 
@@ -157,19 +155,94 @@ add_task(async function test_password_engine() {
     collection.insert(oldLogin.guid, encryptPayload(rec.cleartext));
   }
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  await engine._tracker.stop();
 
   try {
     await sync_engine_and_validate_telem(engine, false);
 
-    let newRec = JSON.parse(JSON.parse(
-      collection.payload(newLogin.guid)).ciphertext);
+    let newRec = collection.cleartext(newLogin.guid);
     equal(newRec.password, "password",
       "Should update remote password for newer login");
 
     let logins = Services.logins.findLogins({}, "https://mozilla.com", "", "");
     equal(logins[0].password, "n3wpa55",
       "Should update local password for older login");
+  } finally {
+    await cleanup(engine, server);
+  }
+});
+
+add_task(async function test_password_dupe() {
+  let engine = Service.engineManager.get("passwords");
+
+  let server = await serverForFoo(engine);
+  await SyncTestingInfrastructure(server);
+  let collection = server.user("foo").collection("passwords");
+
+  let guid1 = Utils.makeGUID();
+  let guid2 = Utils.makeGUID();
+  let details = {
+    formSubmitURL: "https://www.example.com",
+    hostname: "https://www.example.com",
+    httpRealm: null,
+    username: "foo",
+    password: "bar",
+    usernameField: "username-field",
+    passwordField: "password-field",
+    timeCreated: Date.now(),
+    timePasswordChanged: Date.now(),
+  };
+
+
+  _("Create remote record with same details and guid1");
+  collection.insertRecord(Object.assign({}, details, { id: guid1 }));
+
+  _("Create remote record with guid2");
+  collection.insertRecord(Object.assign({}, details, { id: guid2 }));
+
+  _("Create local record with same details and guid1");
+  await engine._store.create(Object.assign({}, details, { id: guid1 }));
+
+  try {
+    _("Perform sync");
+    await sync_engine_and_validate_telem(engine, false);
+
+    let logins = Services.logins.findLogins({}, "https://www.example.com", "", "");
+
+    equal(logins.length, 1);
+    equal(logins[0].QueryInterface(Ci.nsILoginMetaInfo).guid, guid2);
+    equal(null, collection.payload(guid1));
+
+  } finally {
+    await cleanup(engine, server);
+  }
+
+});
+
+add_task(async function test_sync_password_validation() {
+  // This test isn't in test_password_validator to avoid duplicating cleanup.
+  _("Ensure that if a password validation happens, it ends up in the ping");
+
+  let engine = Service.engineManager.get("passwords");
+
+  let server = await serverForFoo(engine);
+  await SyncTestingInfrastructure(server);
+
+  Svc.Prefs.set("engine.passwords.validation.interval", 0);
+  Svc.Prefs.set("engine.passwords.validation.percentageChance", 100);
+  Svc.Prefs.set("engine.passwords.validation.maxRecords", -1);
+  Svc.Prefs.set("engine.passwords.validation.enabled", true);
+
+  try {
+
+    let ping = await wait_for_ping(() => Service.sync());
+
+    let engineInfo = ping.engines.find(e => e.name == "passwords");
+    ok(engineInfo, "Engine should be in ping");
+
+    let validation = engineInfo.validation;
+    ok(validation, "Engine should have validation info");
+
   } finally {
     await cleanup(engine, server);
   }

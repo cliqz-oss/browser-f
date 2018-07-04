@@ -13,24 +13,38 @@
 namespace mozilla {
 namespace widget {
 
+#if defined(MOZ_WIDGET_GTK)
+
+// Our nsLookAndFeel for GTK relies on APIs that aren't available in headless
+// mode, so we use an implementation with hardcoded values.
+
 class HeadlessLookAndFeel: public nsXPLookAndFeel {
 public:
   HeadlessLookAndFeel();
   virtual ~HeadlessLookAndFeel();
 
-  virtual nsresult NativeGetColor(ColorID aID, nscolor &aResult);
-  virtual void NativeInit() final {};
-  virtual nsresult GetIntImpl(IntID aID, int32_t &aResult);
-  virtual nsresult GetFloatImpl(FloatID aID, float &aResult);
+  virtual nsresult NativeGetColor(ColorID aID, nscolor &aResult) override;
+  void NativeInit() final {};
+  virtual nsresult GetIntImpl(IntID aID, int32_t &aResult) override;
+  virtual nsresult GetFloatImpl(FloatID aID, float &aResult) override;
   virtual bool GetFontImpl(FontID aID,
                            nsString& aFontName,
                            gfxFontStyle& aFontStyle,
-                           float aDevPixPerCSSPixel);
+                           float aDevPixPerCSSPixel) override;
 
-  virtual void RefreshImpl();
-  virtual char16_t GetPasswordCharacterImpl();
-  virtual bool GetEchoPasswordImpl();
+  virtual void RefreshImpl() override;
+  virtual char16_t GetPasswordCharacterImpl() override;
+  virtual bool GetEchoPasswordImpl() override;
 };
+
+#else
+
+// When possible, we simply reuse the platform's existing nsLookAndFeel
+// implementation in headless mode.
+
+typedef nsLookAndFeel HeadlessLookAndFeel;
+
+#endif
 
 } // namespace widget
 } // namespace mozilla

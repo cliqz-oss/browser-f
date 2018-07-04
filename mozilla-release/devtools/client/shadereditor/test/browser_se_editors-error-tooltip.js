@@ -6,21 +6,21 @@
  * a shader compilation error.
  */
 
-function* ifWebGLSupported() {
-  let { target, panel } = yield initShaderEditor(SIMPLE_CANVAS_URL);
+async function ifWebGLSupported() {
+  let { target, panel } = await initShaderEditor(SIMPLE_CANVAS_URL);
   let { gFront, EVENTS, ShadersEditorsView } = panel.panelWin;
 
   reload(target);
-  yield promise.all([
+  await promise.all([
     once(gFront, "program-linked"),
     once(panel.panelWin, EVENTS.SOURCES_SHOWN)
   ]);
 
-  let vsEditor = yield ShadersEditorsView._getEditor("vs");
-  let fsEditor = yield ShadersEditorsView._getEditor("fs");
+  let vsEditor = await ShadersEditorsView._getEditor("vs");
+  let fsEditor = await ShadersEditorsView._getEditor("fs");
 
   vsEditor.replaceText("vec3", { line: 7, ch: 22 }, { line: 7, ch: 26 });
-  yield once(panel.panelWin, EVENTS.SHADER_COMPILED);
+  await once(panel.panelWin, EVENTS.SHADER_COMPILED);
 
   // Synthesizing 'mouseover' events doesn't work, hack around this by
   // manually calling the event listener with the expected arguments.
@@ -39,18 +39,22 @@ function* ifWebGLSupported() {
     "The tooltip's content container was created correctly.");
 
   let messages = content.childNodes;
-  is(messages.length, 2,
-    "There are two messages displayed in the tooltip.");
+  is(messages.length, 3,
+    "There are three messages displayed in the tooltip.");
   ok(messages[0].className.includes("devtools-tooltip-simple-text"),
     "The first message was created correctly.");
   ok(messages[1].className.includes("devtools-tooltip-simple-text"),
     "The second message was created correctly.");
+  ok(messages[2].className.includes("devtools-tooltip-simple-text"),
+    "The third message was created correctly.");
 
   ok(messages[0].textContent.includes("'constructor' : too many arguments"),
     "The first message contains the correct text.");
-  ok(messages[1].textContent.includes("'assign' : cannot convert"),
+  ok(messages[1].textContent.includes("'=' : dimension mismatch"),
     "The second message contains the correct text.");
+  ok(messages[2].textContent.includes("'assign' : cannot convert"),
+    "The third message contains the correct text.");
 
-  yield teardown(panel);
+  await teardown(panel);
   finish();
 }

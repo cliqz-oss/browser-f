@@ -10,7 +10,6 @@ SCREEN_RESOLUTION_CHECK = {
 
 import os
 
-PYTHON = '/tools/buildbot/bin/python'
 VENV_PATH = '%s/build/venv' % os.getcwd()
 
 config = {
@@ -18,16 +17,6 @@ config = {
     "buildbot_json_path": "buildprops.json",
     "installer_path": "installer.exe",
     "virtualenv_path": VENV_PATH,
-    "find_links": [
-        "http://pypi.pvt.build.mozilla.org/pub",
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-    "pip_index": False,
-    "exes": {
-        'python': PYTHON,
-        'virtualenv': [PYTHON, '/tools/misc-python/virtualenv.py'],
-        'tooltool.py': "/tools/tooltool.py",
-    },
     "title": os.uname()[1].lower().split('.')[0],
     "default_actions": [
         "clobber",

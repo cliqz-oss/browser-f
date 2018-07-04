@@ -1,18 +1,27 @@
-const Joi = require("joi-browser");
-const {MAIN_MESSAGE_TYPE, CONTENT_MESSAGE_TYPE} = require("common/Actions.jsm");
+import {CONTENT_MESSAGE_TYPE, MAIN_MESSAGE_TYPE} from "common/Actions.jsm";
+import Joi from "joi-browser";
 
-const baseKeys = {
-  client_id: Joi.string().required(),
+export const baseKeys = {
+  // client_id will be set by PingCentre if it doesn't exist.
+  client_id: Joi.string().optional(),
   addon_version: Joi.string().required(),
   locale: Joi.string().required(),
   session_id: Joi.string(),
-  page: Joi.valid(["about:home", "about:newtab"]),
+  page: Joi.valid(["about:home", "about:newtab", "unknown"]),
   user_prefs: Joi.number().integer().required()
 };
 
-const BasePing = Joi.object().keys(baseKeys).options({allowUnknown: true});
+export const BasePing = Joi.object().keys(baseKeys).options({allowUnknown: true});
 
-const UserEventPing = Joi.object().keys(Object.assign({}, baseKeys, {
+export const eventsTelemetryExtraKeys = Joi.object().keys({
+  session_id: baseKeys.session_id.required(),
+  page: baseKeys.page.required(),
+  addon_version: baseKeys.addon_version.required(),
+  user_prefs: baseKeys.user_prefs.required(),
+  action_position: Joi.string().optional()
+}).options({allowUnknown: false});
+
+export const UserEventPing = Joi.object().keys(Object.assign({}, baseKeys, {
   session_id: baseKeys.session_id.required(),
   page: baseKeys.page.required(),
   source: Joi.string().required(),
@@ -23,8 +32,33 @@ const UserEventPing = Joi.object().keys(Object.assign({}, baseKeys, {
   recommender_type: Joi.string()
 }));
 
+export const UTUserEventPing = Joi.array().items(
+  Joi.string().required().valid("activity_stream"),
+  Joi.string().required().valid("event"),
+  Joi.string().required().valid([
+    "CLICK",
+    "SEARCH",
+    "BLOCK",
+    "DELETE",
+    "DELETE_CONFIRM",
+    "DIALOG_CANCEL",
+    "DIALOG_OPEN",
+    "OPEN_NEW_WINDOW",
+    "OPEN_PRIVATE_WINDOW",
+    "OPEN_NEWTAB_PREFS",
+    "CLOSE_NEWTAB_PREFS",
+    "BOOKMARK_DELETE",
+    "BOOKMARK_ADD",
+    "PIN",
+    "UNPIN",
+    "SAVE_TO_POCKET"
+  ]),
+  Joi.string().required(),
+  eventsTelemetryExtraKeys
+);
+
 // Use this to validate actions generated from Redux
-const UserEventAction = Joi.object().keys({
+export const UserEventAction = Joi.object().keys({
   type: Joi.string().required(),
   data: Joi.object().keys({
     event: Joi.valid([
@@ -42,11 +76,27 @@ const UserEventAction = Joi.object().keys({
       "BOOKMARK_DELETE",
       "BOOKMARK_ADD",
       "PIN",
+      "PREVIEW_REQUEST",
       "UNPIN",
-      "SAVE_TO_POCKET"
+      "SAVE_TO_POCKET",
+      "MENU_MOVE_UP",
+      "MENU_MOVE_DOWN",
+      "SCREENSHOT_REQUEST",
+      "MENU_REMOVE",
+      "MENU_COLLAPSE",
+      "MENU_EXPAND",
+      "MENU_MANAGE",
+      "MENU_ADD_TOPSITE",
+      "MENU_PRIVACY_NOTICE",
+      "DELETE_FROM_POCKET",
+      "ARCHIVE_FROM_POCKET"
     ]).required(),
-    source: Joi.valid(["TOP_SITES", "TOP_STORIES"]),
-    action_position: Joi.number().integer()
+    source: Joi.valid(["TOP_SITES", "TOP_STORIES", "HIGHLIGHTS"]),
+    action_position: Joi.number().integer(),
+    value: Joi.object().keys({
+      icon_type: Joi.valid(["tippytop", "rich_icon", "screenshot_with_icon", "screenshot", "no_image"]),
+      card_type: Joi.valid(["bookmark", "trending", "pinned", "pocket"])
+    })
   }).required(),
   meta: Joi.object().keys({
     to: Joi.valid(MAIN_MESSAGE_TYPE).required(),
@@ -54,20 +104,23 @@ const UserEventAction = Joi.object().keys({
   }).required()
 });
 
-const UndesiredPing = Joi.object().keys(Object.assign({}, baseKeys, {
+export const UndesiredPing = Joi.object().keys(Object.assign({}, baseKeys, {
   source: Joi.string().required(),
   event: Joi.string().required(),
   action: Joi.valid("activity_stream_undesired_event").required(),
   value: Joi.number().required()
 }));
 
-const TileSchema = Joi.object().keys({
+export const TileSchema = Joi.object().keys({
   id: Joi.number().integer().required(),
   pos: Joi.number().integer()
 });
 
-const ImpressionStatsPing = Joi.object().keys(Object.assign({}, baseKeys, {
+export const ImpressionStatsPing = Joi.object().keys(Object.assign({}, baseKeys, {
   source: Joi.string().required(),
+  impression_id: Joi.string().required(),
+  client_id: Joi.valid("n/a").required(),
+  session_id: Joi.valid("n/a").required(),
   action: Joi.valid("activity_stream_impression_stats").required(),
   tiles: Joi.array().items(TileSchema).required(),
   click: Joi.number().integer(),
@@ -75,19 +128,22 @@ const ImpressionStatsPing = Joi.object().keys(Object.assign({}, baseKeys, {
   pocket: Joi.number().integer()
 }));
 
-const PerfPing = Joi.object().keys(Object.assign({}, baseKeys, {
+export const PerfPing = Joi.object().keys(Object.assign({}, baseKeys, {
   source: Joi.string(),
   event: Joi.string().required(),
   action: Joi.valid("activity_stream_performance_event").required(),
   value: Joi.number().required()
 }));
 
-const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
+export const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
   session_id: baseKeys.session_id.required(),
   page: baseKeys.page.required(),
   session_duration: Joi.number().integer(),
   action: Joi.valid("activity_stream_session").required(),
   perf: Joi.object().keys({
+    // How long it took in ms for data to be ready for display.
+    highlights_data_late_by_ms: Joi.number().positive(),
+
     // Timestamp of the action perceived by the user to trigger the load
     // of this page.
     //
@@ -100,8 +156,12 @@ const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
     //
     // Not required at least for the error cases where the observer event
     // doesn't fire
-    load_trigger_type: Joi.valid(["menu_plus_or_keyboard", "unexpected"])
+    load_trigger_type: Joi.valid(["first_window_opened",
+      "menu_plus_or_keyboard", "unexpected"])
       .notes(["server counter", "server counter alert"]).required(),
+
+    // How long it took in ms for data to be ready for display.
+    topsites_data_late_by_ms: Joi.number().positive(),
 
     // When did the topsites element finish painting?  Note that, at least for
     // the first tab to be loaded, and maybe some others, this will be before
@@ -110,6 +170,19 @@ const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
     topsites_first_painted_ts: Joi.number().positive()
       .notes(["server counter", "server counter alert"]),
 
+    // Information about the quality of TopSites images and icons.
+    topsites_icon_stats: Joi.object().keys({
+      custom_screenshot: Joi.number(),
+      rich_icon: Joi.number(),
+      screenshot: Joi.number(),
+      screenshot_with_icon: Joi.number(),
+      tippytop: Joi.number(),
+      no_image: Joi.number()
+    }),
+
+    // The count of pinned Top Sites.
+    topsites_pinned: Joi.number(),
+
     // When the page itself receives an event that document.visibilityState
     // == visible.
     //
@@ -117,11 +190,36 @@ const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
     // visibility_event doesn't fire.  (It's not clear whether this
     // can happen in practice, but if it does, we'd like to know about it).
     visibility_event_rcvd_ts: Joi.number().positive()
-      .notes(["server counter", "server counter alert"])
+      .notes(["server counter", "server counter alert"]),
+
+    // The boolean to signify whether the page is preloaded or not.
+    is_preloaded: Joi.bool().required(),
+
+    // The boolean to signify whether the page is prerendered or not.
+    is_prerendered: Joi.bool().required()
   }).required()
 }));
 
-function chaiAssertions(_chai, utils) {
+export const ASRouterEventPing = Joi.object().keys({
+  client_id: Joi.string().required(),
+  action: Joi.string().required(),
+  impression_id: Joi.string().required(),
+  source: Joi.string().required(),
+  addon_version: Joi.string().required(),
+  locale: Joi.string().required(),
+  message_id: Joi.string().required(),
+  event: Joi.string().required()
+});
+
+export const UTSessionPing = Joi.array().items(
+  Joi.string().required().valid("activity_stream"),
+  Joi.string().required().valid("end"),
+  Joi.string().required().valid("session"),
+  Joi.string().required(),
+  eventsTelemetryExtraKeys
+);
+
+export function chaiAssertions(_chai, utils) {
   const {Assertion} = _chai;
 
   Assertion.addMethod("validate", function(schema, schemaName) {
@@ -155,15 +253,3 @@ function chaiAssertions(_chai, utils) {
 
   Object.assign(_chai.assert, assertions);
 }
-
-module.exports = {
-  baseKeys,
-  BasePing,
-  UndesiredPing,
-  UserEventPing,
-  UserEventAction,
-  ImpressionStatsPing,
-  PerfPing,
-  SessionPing,
-  chaiAssertions
-};

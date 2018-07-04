@@ -4,15 +4,14 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["FinderIterator"];
+var EXPORTED_SYMBOLS = ["FinderIterator"];
 
-const { interfaces: Ci, classes: Cc, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "NLP", "resource://gre/modules/NLP.jsm");
+ChromeUtils.defineModuleGetter(this, "NLP", "resource://gre/modules/NLP.jsm");
+ChromeUtils.defineModuleGetter(this, "Rect", "resource://gre/modules/Geometry.jsm");
 
 const kDebug = false;
 const kIterationSizeMax = 100;
@@ -22,7 +21,7 @@ const kTimeoutPref = "findbar.iteratorTimeout";
  * FinderIterator singleton. See the documentation for the `start()` method to
  * learn more.
  */
-this.FinderIterator = {
+var FinderIterator = {
   _currentParams: null,
   _listeners: new Map(),
   _catchingUp: new Set(),
@@ -35,7 +34,7 @@ this.FinderIterator = {
   running: false,
 
   // Expose `kIterationSizeMax` to the outside world for unit tests to use.
-  get kIterationSizeMax() { return kIterationSizeMax },
+  get kIterationSizeMax() { return kIterationSizeMax; },
 
   get params() {
     if (!this._currentParams && !this._previousParams)
@@ -532,10 +531,9 @@ this.FinderIterator = {
    * @param {nsIDOMWindow} window                The window to search in
    * @yield {nsIDOMRange}
    */
-  *_iterateDocument({ caseSensitive, entireWord, word }, window) {
+  * _iterateDocument({ caseSensitive, entireWord, word }, window) {
     let doc = window.document;
-    let body = (doc instanceof Ci.nsIDOMHTMLDocument && doc.body) ?
-               doc.body : doc.documentElement;
+    let body = doc.body || doc.documentElement;
 
     if (!body)
       return;
@@ -579,17 +577,13 @@ this.FinderIterator = {
 
     // Casting `window.frames` to an Iterator doesn't work, so we're stuck with
     // a plain, old for-loop.
+    let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
     for (let i = 0, l = window.frames.length; i < l; ++i) {
       let frame = window.frames[i];
-      // Don't count matches in hidden frames.
+      // Don't count matches in hidden frames; get the frame element rect and
+      // check if it's empty. We shan't flush!
       let frameEl = frame && frame.frameElement;
-      if (!frameEl)
-        continue;
-      // Construct a range around the frame element to check its visiblity.
-      let range = window.document.createRange();
-      range.setStart(frameEl, 0);
-      range.setEnd(frameEl, 0);
-      if (!finder._fastFind.isRangeVisible(range, this._getDocShell(range), true))
+      if (!frameEl || Rect.fromRect(dwu.getBoundsWithoutFlushing(frameEl)).isEmpty())
         continue;
       // All conditions pass, so push the current frame and its children on the
       // stack.

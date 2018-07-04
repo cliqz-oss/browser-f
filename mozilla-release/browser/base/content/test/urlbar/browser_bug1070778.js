@@ -29,27 +29,27 @@ add_task(async function() {
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:mozilla");
   await promiseAutocompleteResultPopup("keyword a");
+  await waitForAutocompleteResultAt(1);
 
   // First item should already be selected
   is_selected(0);
   // Select next one (important!)
-  EventUtils.synthesizeKey("VK_DOWN", {});
+  EventUtils.synthesizeKey("KEY_ArrowDown");
   is_selected(1);
   // Re-select keyword item
-  EventUtils.synthesizeKey("VK_UP", {});
+  EventUtils.synthesizeKey("KEY_ArrowUp");
   is_selected(0);
 
-  EventUtils.synthesizeKey("b", {});
+  EventUtils.sendString("b");
   await promiseSearchComplete();
 
   is(gURLBar.textValue, "keyword ab", "urlbar should have expected input");
-
-  let result = gURLBar.popup.richlistbox.firstChild;
+  let result = await waitForAutocompleteResultAt(0);
   isnot(result, null, "Should have first item");
   let uri = NetUtil.newURI(result.getAttribute("url"));
   is(uri.spec, PlacesUtils.mozActionURI("keyword", {url: "http://example.com/?q=ab", input: "keyword ab"}), "Expect correct url");
 
-  EventUtils.synthesizeKey("VK_ESCAPE", {});
+  EventUtils.synthesizeKey("KEY_Escape");
   await promisePopupHidden(gURLBar.popup);
   gBrowser.removeTab(tab);
 });

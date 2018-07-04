@@ -15,19 +15,10 @@ config = {
         ("{}{}".format(d, f),
         "ac_add_options --with-branding=mobile/android/branding/beta",
         "ac_add_options --with-branding=mobile/android/branding/official")
-        # TODO Bug 1389420: Rename api-15 into api-16 after Firefox 57 made Beta
-        for d in ["mobile/android/config/mozconfigs/android-api-15/",
+        for d in ["mobile/android/config/mozconfigs/android-api-16/",
                   "mobile/android/config/mozconfigs/android-x86/",
                   "mobile/android/config/mozconfigs/android-aarch64/"]
-        for f in ["debug", "nightly", "l10n-nightly"]
-    ] + [
-        # File, from, to
-        (f, "ac_add_options --with-l10n-base=../../mozilla-beta",
-        "ac_add_options --with-l10n-base=../../mozilla-release")
-        # TODO Bug 1389420: Rename api-15 into api-16 after Firefox 57 made Beta
-        for f in ["mobile/android/config/mozconfigs/android-api-15/l10n-nightly",
-                  "mobile/android/config/mozconfigs/android-x86/l10n-nightly",
-                  "mobile/android/config/mozconfigs/android-aarch64/l10n-nightly"]
+        for f in ["debug", "nightly"]
     ] + [
         # File, from, to
         ("browser/confvars.sh",
@@ -42,8 +33,8 @@ config = {
     # "hg_share_base": None,
     "tools_repo_url": "https://hg.mozilla.org/build/tools",
     "tools_repo_branch": "default",
-    "from_repo_url": "ssh://hg.mozilla.org/releases/mozilla-beta",
-    "to_repo_url": "ssh://hg.mozilla.org/releases/mozilla-release",
+    "from_repo_url": "https://hg.mozilla.org/releases/mozilla-beta",
+    "to_repo_url": "https://hg.mozilla.org/releases/mozilla-release",
 
     "base_tag": "FIREFOX_RELEASE_%(major_version)s_BASE",
     "end_tag": "FIREFOX_RELEASE_%(major_version)s_END",
@@ -54,10 +45,5 @@ config = {
 
     "virtualenv_modules": [
         "requests==2.8.1",
-    ],
-
-    "post_merge_builders": [],
-    "post_merge_nightly_branches": [
-        # No nightlies on mozilla-release
     ],
 }

@@ -3,22 +3,36 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {utils: Cu} = Components;
-const {actionCreators: ac, actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
-const {Prefs} = Cu.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
+const {actionCreators: ac, actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
+
 const MIGRATION_ENDED_EVENT = "Migration:Ended";
 const MS_PER_DAY = 86400000;
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "MigrationUtils", "resource:///modules/MigrationUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge", "resource://gre/modules/ProfileAge.jsm");
+ChromeUtils.defineModuleGetter(this, "MigrationUtils", "resource:///modules/MigrationUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "ProfileAge", "resource://gre/modules/ProfileAge.jsm");
 
 this.ManualMigration = class ManualMigration {
   constructor() {
     Services.obs.addObserver(this, MIGRATION_ENDED_EVENT);
-    this._prefs = new Prefs();
+  }
+
+  get migrationLastShownDate() {
+    return this.store.getState().Prefs.values.migrationLastShownDate;
+  }
+
+  set migrationLastShownDate(newDate) {
+    this.store.dispatch(ac.SetPref("migrationLastShownDate", newDate));
+  }
+
+  get migrationRemainingDays() {
+    return this.store.getState().Prefs.values.migrationRemainingDays;
+  }
+
+  set migrationRemainingDays(newDate) {
+    this.store.dispatch(ac.SetPref("migrationRemainingDays", newDate));
   }
 
   uninit() {
@@ -35,16 +49,17 @@ this.ManualMigration = class ManualMigration {
       return true;
     }
 
-    let migrationLastShownDate = new Date(this._prefs.get("migrationLastShownDate") * 1000);
+    let migrationLastShownDate = new Date(this.migrationLastShownDate * 1000);
     let today = new Date();
     // Round down to midnight.
     today = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     if (migrationLastShownDate < today) {
-      let migrationRemainingDays = this._prefs.get("migrationRemainingDays") - 1;
+      let migrationRemainingDays = this.migrationRemainingDays - 1;
 
-      this._prefs.set("migrationRemainingDays", migrationRemainingDays);
+      this.migrationRemainingDays = migrationRemainingDays;
+
       // .valueOf returns a value that is too large to store so we need to divide by 1000.
-      this._prefs.set("migrationLastShownDate", today.valueOf() / 1000);
+      this.migrationLastShownDate = today.valueOf() / 1000;
 
       if (migrationRemainingDays <= 0) {
         return true;
@@ -76,6 +91,7 @@ this.ManualMigration = class ManualMigration {
    */
   observe() {
     this.expireMigration();
+    this.store.dispatch({type: at.MIGRATION_COMPLETED});
   }
 
   onAction(action) {
@@ -96,4 +112,4 @@ this.ManualMigration = class ManualMigration {
   }
 };
 
-this.EXPORTED_SYMBOLS = ["ManualMigration"];
+const EXPORTED_SYMBOLS = ["ManualMigration"];

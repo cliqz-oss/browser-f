@@ -6,59 +6,63 @@
 
 from __future__ import absolute_import, print_function, unicode_literals
 
-from .registry import register_task_action
+import logging
+
+from .util import (
+    create_tasks,
+    fetch_graph_and_labels
+)
+from .registry import register_callback_action
+
+logger = logging.getLogger(__name__)
 
 
-@register_task_action(
+@register_callback_action(
     title='Retrigger',
     name='retrigger',
-    description='Create a clone of the task',
+    symbol='rt',
+    description=(
+        'Create a clone of the task.\n\n'
+    ),
     order=1,
     context=[{}],
-)
-def retrigger_task_builder(parameters):
-
-    new_expires = '30 days'
-
-    return {
-        '$merge': [
-            {'$eval': 'task'},
-            {'created': {'$fromNow': ''}},
-            {'deadline': {'$fromNow': '1 day'}},
-            {'expires': {'$fromNow': new_expires}},
-            {'payload': {
-                '$merge': [
-                    {'$eval': 'task.payload'},
-                    {
-                        '$if': '"artifacts" in task.payload',
-                        'then': {
-                            'artifacts': {
-                                '$if': 'typeof(task.payload.artifacts) == "object"',
-                                'then': {
-                                    '$map': {'$eval': 'task.payload.artifacts'},
-                                    'each(artifact)': {
-                                        '${artifact.key}': {
-                                            '$merge': [
-                                                {'$eval': 'artifact.val'},
-                                                {'expires': {'$fromNow': new_expires}},
-                                            ],
-                                        },
-                                    },
-                                },
-                                'else': {
-                                    '$map': {'$eval': 'task.payload.artifacts'},
-                                    'each(artifact)': {
-                                        '$merge': [
-                                            {'$eval': 'artifact'},
-                                            {'expires': {'$fromNow': new_expires}},
-                                        ],
-                                    },
-                                },
-                            },
-                        },
-                        'else': {},
-                    }
-                ]
-            }}
-        ]
+    schema={
+        'type': 'object',
+        'properties': {
+            'downstream': {
+                'type': 'boolean',
+                'description': (
+                    'If true, downstream tasks from this one will be cloned as well. '
+                    'The dependencies will be updated to work with the new task at the root.'
+                ),
+                'default': False,
+            },
+            'times': {
+                'type': 'integer',
+                'default': 1,
+                'minimum': 1,
+                'maximum': 6,
+                'title': 'Times',
+                'description': 'How many times to run each task.',
+            }
+        }
     }
+)
+def retrigger_action(parameters, graph_config, input, task_group_id, task_id, task):
+    decision_task_id, full_task_graph, label_to_taskid = fetch_graph_and_labels(
+        parameters, graph_config)
+
+    label = task['metadata']['name']
+    with_downstream = ' '
+    to_run = [label]
+
+    if input.get('downstream'):
+        to_run = full_task_graph.graph.transitive_closure(set(to_run), reverse=True).nodes
+        to_run = to_run & set(label_to_taskid.keys())
+        with_downstream = ' (with downstream) '
+
+    times = input.get('times', 1)
+    for i in xrange(times):
+        create_tasks(to_run, full_task_graph, label_to_taskid, parameters, decision_task_id, i)
+
+        logger.info('Scheduled {}{}(time {}/{})'.format(label, with_downstream, i+1, times))

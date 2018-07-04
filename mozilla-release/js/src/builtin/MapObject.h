@@ -7,10 +7,9 @@
 #ifndef builtin_MapObject_h
 #define builtin_MapObject_h
 
-#include "jsobj.h"
-
 #include "builtin/SelfHostingDefines.h"
 #include "vm/GlobalObject.h"
+#include "vm/JSObject.h"
 #include "vm/NativeObject.h"
 #include "vm/PIC.h"
 #include "vm/Runtime.h"
@@ -81,11 +80,11 @@ class OrderedHashSet;
 typedef OrderedHashMap<HashableValue,
                        HeapPtr<Value>,
                        HashableValue::Hasher,
-                       RuntimeAllocPolicy> ValueMap;
+                       ZoneAllocPolicy> ValueMap;
 
 typedef OrderedHashSet<HashableValue,
                        HashableValue::Hasher,
-                       RuntimeAllocPolicy> ValueSet;
+                       ZoneAllocPolicy> ValueSet;
 
 template <typename ObjectT>
 class OrderedHashTableRef;
@@ -106,9 +105,9 @@ class MapObject : public NativeObject {
     static const Class class_;
     static const Class protoClass_;
 
-    enum { NurseryKeysSlot, SlotCount };
+    enum { NurseryKeysSlot, HasNurseryMemorySlot, SlotCount };
 
-    static MOZ_MUST_USE bool getKeysAndValuesInterleaved(JSContext* cx, HandleObject obj,
+    static MOZ_MUST_USE bool getKeysAndValuesInterleaved(HandleObject obj,
                                             JS::MutableHandle<GCVector<JS::Value>> entries);
     static MOZ_MUST_USE bool entries(JSContext* cx, unsigned argc, Value* vp);
     static MOZ_MUST_USE bool has(JSContext* cx, unsigned argc, Value* vp);
@@ -130,8 +129,10 @@ class MapObject : public NativeObject {
     static MOZ_MUST_USE bool iterator(JSContext *cx, IteratorKind kind, HandleObject obj,
                                       MutableHandleValue iter);
 
-    using UnbarrieredTable = OrderedHashMap<Value, Value, UnbarrieredHashPolicy, RuntimeAllocPolicy>;
+    using UnbarrieredTable = OrderedHashMap<Value, Value, UnbarrieredHashPolicy, ZoneAllocPolicy>;
     friend class OrderedHashTableRef<MapObject>;
+
+    static void sweepAfterMinorGC(FreeOp* fop, MapObject* mapobj);
 
   private:
     static const ClassSpec classSpec_;
@@ -188,6 +189,7 @@ class MapIteratorObject : public NativeObject
     static MapIteratorObject* create(JSContext* cx, HandleObject mapobj, ValueMap* data,
                                      MapObject::IteratorKind kind);
     static void finalize(FreeOp* fop, JSObject* obj);
+    static size_t objectMoved(JSObject* obj, JSObject* old);
 
     static MOZ_MUST_USE bool next(Handle<MapIteratorObject*> mapIterator,
                                   HandleArrayObject resultPairObj, JSContext* cx);
@@ -213,7 +215,7 @@ class SetObject : public NativeObject {
     static const Class class_;
     static const Class protoClass_;
 
-    enum { NurseryKeysSlot, SlotCount };
+    enum { NurseryKeysSlot, HasNurseryMemorySlot, SlotCount };
 
     static MOZ_MUST_USE bool keys(JSContext *cx, HandleObject obj,
                                   JS::MutableHandle<GCVector<JS::Value>> keys);
@@ -231,8 +233,10 @@ class SetObject : public NativeObject {
                                       MutableHandleValue iter);
     static MOZ_MUST_USE bool delete_(JSContext *cx, HandleObject obj, HandleValue key, bool *rval);
 
-    using UnbarrieredTable = OrderedHashSet<Value, UnbarrieredHashPolicy, RuntimeAllocPolicy>;
+    using UnbarrieredTable = OrderedHashSet<Value, UnbarrieredHashPolicy, ZoneAllocPolicy>;
     friend class OrderedHashTableRef<SetObject>;
+
+    static void sweepAfterMinorGC(FreeOp* fop, SetObject* setobj);
 
   private:
     static const ClassSpec classSpec_;
@@ -252,7 +256,7 @@ class SetObject : public NativeObject {
     static bool is(HandleValue v);
     static bool is(HandleObject o);
 
-    static bool isBuiltinAdd(HandleValue add, JSContext* cx);
+    static bool isBuiltinAdd(HandleValue add);
 
     static MOZ_MUST_USE bool iterator_impl(JSContext* cx, const CallArgs& args, IteratorKind kind);
 
@@ -288,6 +292,7 @@ class SetIteratorObject : public NativeObject
     static SetIteratorObject* create(JSContext* cx, HandleObject setobj, ValueSet* data,
                                      SetObject::IteratorKind kind);
     static void finalize(FreeOp* fop, JSObject* obj);
+    static size_t objectMoved(JSObject* obj, JSObject* old);
 
     static MOZ_MUST_USE bool next(Handle<SetIteratorObject*> setIterator,
                                   HandleArrayObject resultObj, JSContext* cx);
@@ -299,7 +304,7 @@ class SetIteratorObject : public NativeObject
 };
 
 using SetInitGetPrototypeOp = NativeObject* (*)(JSContext*, Handle<GlobalObject*>);
-using SetInitIsBuiltinOp = bool (*)(HandleValue, JSContext*);
+using SetInitIsBuiltinOp = bool (*)(HandleValue);
 
 template <SetInitGetPrototypeOp getPrototypeOp, SetInitIsBuiltinOp isBuiltinOp>
 static MOZ_MUST_USE bool
@@ -325,12 +330,12 @@ IsOptimizableInitForSet(JSContext* cx, HandleObject setObject, HandleValue itera
 
     // Look up the 'add' value on the prototype object.
     Shape* addShape = setProto->lookup(cx, cx->names().add);
-    if (!addShape || !addShape->hasSlot())
+    if (!addShape || !addShape->isDataProperty())
         return true;
 
     // Get the referred value, ensure it holds the canonical add function.
     RootedValue add(cx, setProto->getSlot(addShape->slot()));
-    if (!isBuiltinOp(add, cx))
+    if (!isBuiltinOp(add))
         return true;
 
     ForOfPIC::Chain* stubChain = ForOfPIC::getOrCreate(cx);

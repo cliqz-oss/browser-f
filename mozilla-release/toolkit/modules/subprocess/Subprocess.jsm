@@ -12,24 +12,22 @@
 
 "use strict";
 
-let EXPORTED_SYMBOLS = ["Subprocess"];
+var EXPORTED_SYMBOLS = ["Subprocess"];
 
 /* exported Subprocess */
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
 Cu.importGlobalProperties(["TextEncoder"]);
 
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/subprocess/subprocess_common.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/subprocess/subprocess_common.jsm");
 
 if (AppConstants.platform == "win") {
-  XPCOMUtils.defineLazyModuleGetter(this, "SubprocessImpl",
-                                    "resource://gre/modules/subprocess/subprocess_win.jsm");
+  ChromeUtils.defineModuleGetter(this, "SubprocessImpl",
+                                 "resource://gre/modules/subprocess/subprocess_win.jsm");
 } else {
-  XPCOMUtils.defineLazyModuleGetter(this, "SubprocessImpl",
-                                    "resource://gre/modules/subprocess/subprocess_unix.jsm");
+  ChromeUtils.defineModuleGetter(this, "SubprocessImpl",
+                                 "resource://gre/modules/subprocess/subprocess_unix.jsm");
 }
 
 function encodeEnvVar(name, value) {
@@ -57,7 +55,7 @@ var Subprocess = {
    * An object describing the process to launch.
    *
    * @param {string} options.command
-   * The full path of the execuable to launch. Relative paths are not
+   * The full path of the executable to launch. Relative paths are not
    * accepted, and `$PATH` is not searched.
    *
    * If a path search is necessary, the {@link Subprocess.pathSearch} method may

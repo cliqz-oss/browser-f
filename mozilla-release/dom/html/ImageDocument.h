@@ -44,7 +44,7 @@ public:
   NS_DECL_IMGINOTIFICATIONOBSERVER
 
   // nsIDOMEventListener
-  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) override;
+  NS_DECL_NSIDOMEVENTLISTENER
 
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(ImageDocument, MediaDocument)
 
@@ -65,7 +65,9 @@ public:
     return mImageIsResized;
   }
   already_AddRefed<imgIRequest> GetImageRequest(ErrorResult& aRv);
-  void ShrinkToFit();
+  // ShrinkToFit is called from xpidl methods and we don't have a good
+  // way to mark those MOZ_CAN_RUN_SCRIPT yet.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY void ShrinkToFit();
   void RestoreImage();
   void RestoreImageTo(int32_t aX, int32_t aY)
   {
@@ -91,6 +93,9 @@ protected:
 
   void ResetZoomLevel();
   float GetZoomLevel();
+#if defined(MOZ_WIDGET_ANDROID)
+  float GetResolution();
+#endif
 
   void UpdateSizeFromLayout();
 
@@ -128,6 +133,9 @@ protected:
   bool                          mObservingImageLoader;
 
   float                         mOriginalZoomLevel;
+#if defined(MOZ_WIDGET_ANDROID)
+  float                         mOriginalResolution;
+#endif
 };
 
 } // namespace dom

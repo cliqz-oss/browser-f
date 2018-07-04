@@ -17,7 +17,10 @@ Vagrant.configure(2) do |config|
   config.vm.provider "vmware_workstation" do |v|
     v.gui = false
     v.memory = ENV["NODE_MEMORY"]
-    v.cpus = ENV["NODE_CPU_COUNT"]
+
+    v.vmx["numvcpus"] = "#{ENV['NODE_CPU_COUNT']}"
+    v.vmx["memsize"] =  ENV["NODE_MEMORY"]
+    v.vmx["cpuid.corespersocket"] = "#{ENV['NODE_CPU_COUNT']}"
     v.vmx["RemoteDisplay.vnc.enabled"] = "true"
     v.vmx["RemoteDisplay.vnc.port"] = ENV["NODE_VNC_PORT"]
   end

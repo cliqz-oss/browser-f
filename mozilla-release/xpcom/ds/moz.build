@@ -7,8 +7,6 @@
 XPIDL_SOURCES += [
     'nsIArray.idl',
     'nsIArrayExtensions.idl',
-    'nsIAtom.idl',
-    'nsIAtomService.idl',
     'nsIHashable.idl',
     'nsIINIParser.idl',
     'nsIMutableArray.idl',
@@ -44,7 +42,7 @@ EXPORTS += [
     'nsArray.h',
     'nsArrayEnumerator.h',
     'nsArrayUtils.h',
-    'nsAtomService.h',
+    'nsAtom.h',
     'nsBaseHashtable.h',
     'nsCharSeparatedTokenizer.h',
     'nsCheapSets.h',
@@ -55,6 +53,8 @@ EXPORTS += [
     'nsDeque.h',
     'nsEnumeratorUtils.h',
     'nsExpirationTracker.h',
+    'nsGkAtomList.h',
+    'nsGkAtoms.h',
     'nsHashKeys.h',
     'nsHashPropertyBag.h',
     'nsInterfaceHashtable.h',
@@ -82,6 +82,8 @@ EXPORTS.mozilla += [
     'ArenaAllocator.h',
     'ArenaAllocatorExtensions.h',
     'ArrayIterator.h',
+    'AtomArray.h',
+    'Dafsa.h',
     'IncrementalTokenizer.h',
     'Observer.h',
     'StickyTimeDuration.h',
@@ -89,11 +91,11 @@ EXPORTS.mozilla += [
 ]
 
 UNIFIED_SOURCES += [
+    'Dafsa.cpp',
     'IncrementalTokenizer.cpp',
     'nsArray.cpp',
     'nsArrayEnumerator.cpp',
     'nsArrayUtils.cpp',
-    'nsAtomService.cpp',
     'nsAtomTable.cpp',
     'nsCOMArray.cpp',
     'nsCRT.cpp',
@@ -115,6 +117,16 @@ UNIFIED_SOURCES += [
     'PLDHashTable.cpp',
     'Tokenizer.cpp',
 ]
+
+SOURCES += [
+    'nsGkAtoms.cpp',
+]
+if CONFIG['CC_TYPE'] == 'msvc':
+    # Needed for gGkAtoms.
+    SOURCES['nsGkAtoms.cpp'].flags += [
+        '-constexpr:steps300000',
+        '-Zc:externConstexpr',
+    ]
 
 EXTRA_COMPONENTS += [
     'nsINIProcessor.js',

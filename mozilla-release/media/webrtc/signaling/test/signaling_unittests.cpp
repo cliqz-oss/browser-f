@@ -242,7 +242,7 @@ public:
   NS_IMETHOD OnSetRemoteDescriptionSuccess(ER&) override;
   NS_IMETHOD OnSetLocalDescriptionError(uint32_t code, const char *msg, ER&) override;
   NS_IMETHOD OnSetRemoteDescriptionError(uint32_t code, const char *msg, ER&) override;
-  NS_IMETHOD NotifyDataChannel(nsIDOMDataChannel *channel, ER&) override;
+  NS_IMETHOD NotifyDataChannel(nsDataChannel *channel, ER&) override;
   NS_IMETHOD OnStateChange(PCObserverStateType state_type, ER&, void*) override;
   NS_IMETHOD OnAddStream(DOMMediaStream &stream, ER&) override;
   NS_IMETHOD OnRemoveStream(DOMMediaStream &stream, ER&) override;
@@ -345,7 +345,7 @@ TestObserver::OnSetRemoteDescriptionError(uint32_t code, const char *message, ER
 }
 
 NS_IMETHODIMP
-TestObserver::NotifyDataChannel(nsIDOMDataChannel *channel, ER&)
+TestObserver::NotifyDataChannel(nsDataChannel *channel, ER&)
 {
   std::cout << name << ": NotifyDataChannel" << std::endl;
   return NS_OK;
@@ -417,10 +417,6 @@ TestObserver::OnStateChange(PCObserverStateType state_type, ER&, void*)
         << "ICE Gathering State: "
         << PCImplIceGatheringStateStrings[int(goticegathering)]
         << std::endl;
-    break;
-  case PCObserverStateType::SdpState:
-    std::cout << "SDP State: " << std::endl;
-    // NS_ENSURE_SUCCESS(rv, rv);
     break;
   case PCObserverStateType::SignalingState:
     MOZ_ASSERT(NS_IsMainThread());
@@ -694,7 +690,7 @@ class PCDispatchWrapper : public nsSupportsWeakReference
   }
 
   NS_IMETHODIMP Initialize(TestObserver* aObserver,
-                           nsGlobalWindow* aWindow,
+                           nsGlobalWindowInner* aWindow,
                            const PeerConnectionConfiguration& aConfiguration,
                            nsIThread* aThread) {
     nsresult rv;

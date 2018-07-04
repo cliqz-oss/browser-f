@@ -10,9 +10,11 @@ description: >
     appears within a FormalParameterList of a strict mode
     FunctionDeclaration
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [onlyStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 function _13_1_1_fun(eval) { }

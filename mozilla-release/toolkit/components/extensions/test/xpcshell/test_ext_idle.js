@@ -2,7 +2,9 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+PromiseTestUtils.whitelistRejectionsGlobally(/Message manager disconnected/);
+
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 let idleService = {
   _observers: new Set(),
@@ -23,7 +25,7 @@ let idleService = {
       this._activity.observerFires.push(state);
     }
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIIdleService]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIIdleService]),
   idleTime: 19999,
   addIdleObserver: function(observer, time) {
     this._observers.add(observer);
@@ -48,21 +50,22 @@ function checkActivity(expectedActivity) {
 
 add_task(async function setup() {
   let fakeIdleService = MockRegistrar.register("@mozilla.org/widget/idleservice;1", idleService);
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     MockRegistrar.unregister(fakeIdleService);
   });
 });
 
 add_task(async function testQueryStateActive() {
   function background() {
-    browser.idle.queryState(20).then(status => {
-      browser.test.assertEq("active", status, "Idle status is active");
-      browser.test.notifyPass("idle");
-    },
-    err => {
-      browser.test.fail(`Error: ${err} :: ${err.stack}`);
-      browser.test.notifyFail("idle");
-    });
+    browser.idle.queryState(20).then(
+      status => {
+        browser.test.assertEq("active", status, "Idle status is active");
+        browser.test.notifyPass("idle");
+      },
+      err => {
+        browser.test.fail(`Error: ${err} :: ${err.stack}`);
+        browser.test.notifyFail("idle");
+      });
   }
 
   let extension = ExtensionTestUtils.loadExtension({
@@ -79,14 +82,15 @@ add_task(async function testQueryStateActive() {
 
 add_task(async function testQueryStateIdle() {
   function background() {
-    browser.idle.queryState(15).then(status => {
-      browser.test.assertEq("idle", status, "Idle status is idle");
-      browser.test.notifyPass("idle");
-    },
-    err => {
-      browser.test.fail(`Error: ${err} :: ${err.stack}`);
-      browser.test.notifyFail("idle");
-    });
+    browser.idle.queryState(15).then(
+      status => {
+        browser.test.assertEq("idle", status, "Idle status is idle");
+        browser.test.notifyPass("idle");
+      },
+      err => {
+        browser.test.fail(`Error: ${err} :: ${err.stack}`);
+        browser.test.notifyFail("idle");
+      });
   }
 
   let extension = ExtensionTestUtils.loadExtension({

@@ -9,7 +9,7 @@
     "message": "Padaryti ekrano nuotrauką"
   },
   "myShotsLink": {
-    "message": "Mano kadrai"
+    "message": "Mano nuotraukos"
   },
   "screenshotInstructions": {
     "message": "Tempkite arba spustelėkite tinklalapyje norėdami pasirinkti regioną. Spustelėkite „ESC“ norėdami atsisakyti."
@@ -29,6 +29,27 @@
   "downloadScreenshot": {
     "message": "Atsisiųsti"
   },
+  "downloadOnlyNotice": {
+    "message": "Dabar esate tik atsiuntimo veiksenoje."
+  },
+  "downloadOnlyDetails": {
+    "message": "„Firefox“ ekrano nuotraukos automatiškai įjungia tik atsiuntimo veikseną tokiais atvejais:"
+  },
+  "downloadOnlyDetailsPrivate": {
+    "message": "privačiojo naršymo lange"
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "kai išjungti trečiųjų šalių slapukai"
+  },
+  "downloadOnlyDetailsNeverRemember": {
+    "message": "kai įjungta „niekada nevesti žurnalo“ nuostata"
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "Jūs naudojate „Firefox“ ESR."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "Įkėlimai išjungti."
+  },
   "notificationLinkCopiedTitle": {
     "message": "Saitas nukopijuotas"
   },
@@ -36,6 +57,28 @@
     "message": "Jūsų nuotraukos saitas buvo nukopijuotas į iškarpinę. Spustelėkite „$META_KEY$-V“ norėdami įdėti.",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyScreenshot": {
+    "message": "Kopijuoti"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "Nuotrauka nukopijuota"
+  },
+  "notificationImageCopiedDetails": {
+    "message": "Jūsų nuotrauka nukopijuota į iškarpinę. Spustelėkite $META_KEY$-V, norėdami įdėti.",
+    "placeholders": {
+      "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "imageCroppedWarning": {
+    "message": "Ši nuotrauka buvo apkirpta iki $PIXELS$ taškų.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -79,26 +122,32 @@
   "genericErrorDetails": {
     "message": "Mes nesame tikri, kas ką tik nutiko. Norite pabandyti dar kartą arba nufotografuoti kitą tinklalapį?"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Darykite, įrašykite ir dalinkitės ekrano nuotraukomis nepalikdami „Firefox“."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "Naujas būdas įrašyti"
+  },
+  "tourBodyPageAction": {
+    "message": "Išskleiskite tinklalapio veiksmų meniu, esantį adreso juostoje, bet kada, kai norite padaryti ekrano nuotrauką."
+  },
+  "tourHeaderClickAndDrag": {
     "message": "Užfiksuokite būtent tai, ką norite"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "Spustelėkite ir tempkite, kad užfiksuotumėte tik dalį tinklalapio. Taip pat galite užvesti pelę, norėdami paryškinti savo pasirinkimą."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "Fiksuokite langus arba ištisus tinklalapius"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "Pasirinkite mygtukus aukščiau dešinėje, norėdami užfiksuoti matomą lango dalį arba visą tinklalapį."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "Kaip jums patogiau"
   },
-  "tourBodyFour": {
-    "message": "Įrašykite padarytas nuotraukas saityne patogesniam dalinimuisi, arba atsisiųskite jas į savo kompiuterį. Spustelėję mygtuką „Mano kadrai“, matysite visas savo padarytas nuotraukas."
+  "tourBodyDownloadUpload": {
+    "message": "Įrašykite padarytas nuotraukas saityne patogesniam dalinimuisi, arba atsisiųskite jas į savo kompiuterį. Spustelėję mygtuką „Mano nuotraukos“, matysite visas savo padarytas nuotraukas."
   },
   "tourSkip": {
     "message": "SKIP"
@@ -112,8 +161,8 @@
   "tourDone": {
     "message": "Baigta"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Naudodami „Firefox Screenshots“ sutinkate su „Firefox“ tinklo paslaugų $TERMSANDPRIVACYNOTICETERMSLINK$ bei $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
+  "termsAndPrivacyNotice2": {
+    "message": "Naudodamiesi „Firefox“ ekrano nuotraukomis, sutinkate su mūsų $TERMSANDPRIVACYNOTICETERMSLINK$ bei $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +177,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "privatumo nuostatais"
+  },
+  "libraryLabel": {
+    "message": "Ekrano nuotraukos"
   }
 }

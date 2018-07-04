@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -149,7 +150,7 @@ D2D1_CHANNEL_SELECTOR D2DChannelSelector(uint32_t aMode)
 
 already_AddRefed<ID2D1Image> GetImageForSourceSurface(DrawTarget *aDT, SourceSurface *aSurface)
 {
-  if (aDT->IsTiledDrawTarget() || aDT->IsDualDrawTarget()) {
+  if (aDT->IsTiledDrawTarget() || aDT->IsDualDrawTarget() || aDT->IsCaptureDT()) {
     gfxDevCrash(LogReason::FilterNodeD2D1Target) << "Incompatible draw target type! " << (int)aDT->IsTiledDrawTarget() << " " << (int)aDT->IsDualDrawTarget();
     return nullptr;
   }
@@ -201,6 +202,8 @@ uint32_t ConvertValue(FilterType aType, uint32_t aAttribute, uint32_t aValue)
       aValue = D2DFilterCompositionMode(aValue);
     }
     break;
+  default:
+    break;
   }
 
   return aValue;
@@ -216,6 +219,8 @@ void ConvertValue(FilterType aType, uint32_t aAttribute, IntSize &aValue)
       aValue.height *= 2;
       aValue.height += 1;
     }
+    break;
+  default:
     break;
   }
 }
@@ -440,6 +445,8 @@ GetD2D1PropForAttribute(FilterType aType, uint32_t aIndex)
       CONVERT_PROP(CROP_RECT, CROP_PROP_RECT);
     }
     break;
+  default:
+    break;
   }
 
   return UINT32_MAX;
@@ -455,6 +462,8 @@ GetD2D1PropsForIntSize(FilterType aType, uint32_t aIndex, UINT32 *aPropWidth, UI
       *aPropHeight = D2D1_MORPHOLOGY_PROP_HEIGHT;
       return true;
     }
+    break;
+  default:
     break;
   }
   return false;
@@ -513,6 +522,8 @@ static inline REFCLSID GetCLDIDForFilterType(FilterType aType)
     return CLSID_D2D1Premultiply;
   case FilterType::UNPREMULTIPLY:
     return CLSID_D2D1UnPremultiply;
+  default:
+    break;
   }
   return GUID_NULL;
 }
@@ -811,15 +822,15 @@ FilterNodeD2D1::SetAttribute(uint32_t aIndex, const IntRect &aValue)
   if (mType == FilterType::TURBULENCE) {
     MOZ_ASSERT(aIndex == ATT_TURBULENCE_RECT);
 
-    mEffect->SetValue(D2D1_TURBULENCE_PROP_OFFSET, D2D1::Vector2F(Float(aValue.x), Float(aValue.y)));
-    mEffect->SetValue(D2D1_TURBULENCE_PROP_SIZE, D2D1::Vector2F(Float(aValue.width), Float(aValue.height)));
+    mEffect->SetValue(D2D1_TURBULENCE_PROP_OFFSET, D2D1::Vector2F(Float(aValue.X()), Float(aValue.Y())));
+    mEffect->SetValue(D2D1_TURBULENCE_PROP_SIZE, D2D1::Vector2F(Float(aValue.Width()), Float(aValue.Height())));
     return;
   }
 
   UINT32 input = GetD2D1PropForAttribute(mType, aIndex);
   MOZ_ASSERT(input < mEffect->GetPropertyCount());
 
-  mEffect->SetValue(input, D2D1::RectF(Float(aValue.x), Float(aValue.y),
+  mEffect->SetValue(input, D2D1::RectF(Float(aValue.X()), Float(aValue.Y()),
                                        Float(aValue.XMost()), Float(aValue.YMost())));
 }
 
@@ -1020,7 +1031,7 @@ void
 FilterNodeConvolveD2D1::UpdateSourceRect()
 {
   mExtendInputEffect->SetValue(EXTENDINPUT_PROP_OUTPUT_RECT,
-    D2D1::Vector4F(Float(mSourceRect.x), Float(mSourceRect.y),
+                   D2D1::Vector4F(Float(mSourceRect.X()), Float(mSourceRect.Y()),
                    Float(mSourceRect.XMost()), Float(mSourceRect.YMost())));
 }
 

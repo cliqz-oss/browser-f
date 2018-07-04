@@ -21,7 +21,7 @@ function promiseStylesheetsUpdated(browser) {
           content.setTimeout(resolve, 0);
         }
       });
-    })
+    });
   });
 }
 
@@ -63,5 +63,5 @@ add_task(async function() {
   selected = menupopup.querySelector("menuitem[checked='true']");
   is(selected.getAttribute("label"), "1", "Should now have stylesheet 1 selected");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });

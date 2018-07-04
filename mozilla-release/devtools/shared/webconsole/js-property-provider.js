@@ -74,13 +74,13 @@ function findCompletionBeginning(str) {
           start = i + 1;
         } else if (c == " ") {
           start = i + 1;
-        } else if (OPEN_BODY.indexOf(c) != -1) {
+        } else if (OPEN_BODY.includes(c)) {
           bodyStack.push({
             token: c,
             start: start
           });
           start = i + 1;
-        } else if (CLOSE_BODY.indexOf(c) != -1) {
+        } else if (CLOSE_BODY.includes(c)) {
           let last = bodyStack.pop();
           if (!last || OPEN_CLOSE_BODY[last.token] != c) {
             return {
@@ -393,6 +393,9 @@ function getMatchedPropsImpl(obj, match, {chainIterator, getProperties}) {
   let iter = chainIterator(obj);
   for (obj of iter) {
     let props = getProperties(obj);
+    if (!props) {
+      continue;
+    }
     numProps += props.length;
 
     // If there are too many properties to event attempt autocompletion,
@@ -414,6 +417,7 @@ function getMatchedPropsImpl(obj, match, {chainIterator, getProperties}) {
       // If it is an array index, we can't take it.
       // This uses a trick: converting a string to a number yields NaN if
       // the operation failed, and NaN is not equal to itself.
+      // eslint-disable-next-line no-self-compare
       if (+prop != +prop) {
         matches.add(prop);
       }
@@ -458,15 +462,25 @@ var JSObjectSupport = {
   chainIterator: function* (obj) {
     while (obj) {
       yield obj;
-      obj = Object.getPrototypeOf(obj);
+      try {
+        obj = Object.getPrototypeOf(obj);
+      } catch (error) {
+        // The above can throw e.g. for some proxy objects.
+        return;
+      }
     }
   },
 
-  getProperties: function (obj) {
-    return Object.getOwnPropertyNames(obj);
+  getProperties: function(obj) {
+    try {
+      return Object.getOwnPropertyNames(obj);
+    } catch (error) {
+      // The above can throw e.g. for some proxy objects.
+      return null;
+    }
   },
 
-  getProperty: function () {
+  getProperty: function() {
     // getProperty is unsafe with raw JS objects.
     throw new Error("Unimplemented!");
   },
@@ -476,15 +490,25 @@ var DebuggerObjectSupport = {
   chainIterator: function* (obj) {
     while (obj) {
       yield obj;
-      obj = obj.proto;
+      try {
+        obj = obj.proto;
+      } catch (error) {
+        // The above can throw e.g. for some proxy objects.
+        return;
+      }
     }
   },
 
-  getProperties: function (obj) {
-    return obj.getOwnPropertyNames();
+  getProperties: function(obj) {
+    try {
+      return obj.getOwnPropertyNames();
+    } catch (error) {
+      // The above can throw e.g. for some proxy objects.
+      return null;
+    }
   },
 
-  getProperty: function (obj, name, rootObj) {
+  getProperty: function(obj, name, rootObj) {
     // This is left unimplemented in favor to DevToolsUtils.getProperty().
     throw new Error("Unimplemented!");
   },
@@ -498,7 +522,7 @@ var DebuggerEnvironmentSupport = {
     }
   },
 
-  getProperties: function (obj) {
+  getProperties: function(obj) {
     let names = obj.names();
 
     // Include 'this' in results (in sorted order)
@@ -512,7 +536,7 @@ var DebuggerEnvironmentSupport = {
     return names;
   },
 
-  getProperty: function (obj, name) {
+  getProperty: function(obj, name) {
     let result;
     // Try/catch since name can be anything, and getVariable throws if
     // it's not a valid ECMAScript identifier name

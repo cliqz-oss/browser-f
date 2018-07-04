@@ -87,7 +87,7 @@ nsDragService::CreateDragImage(nsIDOMNode *aDOMNode,
   if (!surface)
     return false;
 
-  uint32_t bmWidth = dragRect.width, bmHeight = dragRect.height;
+  uint32_t bmWidth = dragRect.Width(), bmHeight = dragRect.Height();
 
   if (bmWidth == 0 || bmHeight == 0)
     return false;
@@ -152,8 +152,8 @@ nsDragService::CreateDragImage(nsIDOMNode *aDOMNode,
 
     LayoutDeviceIntPoint screenPoint =
       ConvertToUnscaledDevPixels(pc, mScreenPosition);
-    psdi->ptOffset.x = screenPoint.x - dragRect.x;
-    psdi->ptOffset.y = screenPoint.y - dragRect.y;
+    psdi->ptOffset.x = screenPoint.x - dragRect.X();
+    psdi->ptOffset.y = screenPoint.y - dragRect.Y();
 
     DeleteDC(hdcSrc);
   }
@@ -326,7 +326,7 @@ nsDragService::StartInvokingDragSession(IDataObject * aDataObj,
   HRESULT res = ::DoDragDrop(aDataObj, nativeDragSrc, effects, &winDropRes);
 
   // In  cases where the drop operation completed outside the application, update
-  // the source node's nsIDOMDataTransfer dropEffect value so it is up to date.
+  // the source node's DataTransfer dropEffect value so it is up to date.
   if (!mSentLocalDropEvent) {
     uint32_t dropResult;
     // Order is important, since multiple flags can be returned.

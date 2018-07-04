@@ -11,6 +11,7 @@ include('/ipc/chromium/chromium-config.mozbuild')
 FINAL_LIBRARY = 'xul'
 
 DIRS = [
+    'hybrid-content',
     'pingsender',
 ]
 
@@ -23,7 +24,10 @@ LOCAL_INCLUDES += [
 
 SPHINX_TREES['telemetry'] = 'docs'
 
-if CONFIG['GNU_CXX']:
+with Files('docs/**'):
+    SCHEDULES.exclusive = ['docs']
+
+if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
 
 if CONFIG['ENABLE_TESTS']:
@@ -50,7 +54,6 @@ EXPORTS.mozilla += [
     'ipc/TelemetryIPC.h',
     'ProcessedStack.h',
     'Telemetry.h',
-    'ThreadHangStats.h',
 ]
 
 SOURCES += [
@@ -65,7 +68,6 @@ SOURCES += [
     'TelemetryHistogram.cpp',
     'TelemetryIOInterposeObserver.cpp',
     'TelemetryScalar.cpp',
-    'ThreadHangStats.cpp',
     'WebrtcTelemetry.cpp',
 ]
 
@@ -86,7 +88,6 @@ EXTRA_JS_MODULES += [
     'TelemetryController.jsm',
     'TelemetryEnvironment.jsm',
     'TelemetryHealthPing.jsm',
-    'TelemetryLog.jsm',
     'TelemetryModules.jsm',
     'TelemetryReportingPolicy.jsm',
     'TelemetrySend.jsm',
@@ -95,7 +96,6 @@ EXTRA_JS_MODULES += [
     'TelemetryStorage.jsm',
     'TelemetryTimestamps.jsm',
     'TelemetryUtils.jsm',
-    'ThirdPartyCookieProbe.jsm',
     'UITelemetry.jsm',
     'UpdatePing.jsm',
 ]
@@ -109,6 +109,8 @@ PYTHON_UNITTEST_MANIFESTS += [
 ]
 
 GENERATED_FILES = [
+    'EventArtifactDefinitions.json',
+    'ScalarArtifactDefinitions.json',
     'TelemetryEventData.h',
     'TelemetryEventEnums.h',
     'TelemetryHistogramData.inc',
@@ -127,11 +129,11 @@ histogram_files = [
 ]
 
 data = GENERATED_FILES['TelemetryHistogramData.inc']
-data.script = 'gen-histogram-data.py'
+data.script = 'gen_histogram_data.py'
 data.inputs = histogram_files
 
 enums = GENERATED_FILES['TelemetryHistogramEnums.h']
-enums.script = 'gen-histogram-enum.py'
+enums.script = 'gen_histogram_enum.py'
 enums.inputs = histogram_files
 
 # Generate scalar files.
@@ -140,12 +142,21 @@ scalar_files = [
 ]
 
 scalar_data = GENERATED_FILES['TelemetryScalarData.h']
-scalar_data.script = 'gen-scalar-data.py'
+scalar_data.script = 'gen_scalar_data.py'
 scalar_data.inputs = scalar_files
 
 scalar_enums = GENERATED_FILES['TelemetryScalarEnums.h']
-scalar_enums.script = 'gen-scalar-enum.py'
+scalar_enums.script = 'gen_scalar_enum.py'
 scalar_enums.inputs = scalar_files
+
+# Generate the JSON scalar definitions. They will only be
+# used in artifact or "build faster" builds.
+scalar_json_data = GENERATED_FILES['ScalarArtifactDefinitions.json']
+scalar_json_data.script = 'gen_scalar_data.py:generate_JSON_definitions'
+scalar_json_data.inputs = scalar_files
+
+# Move the scalars JSON file to the directory where the Firefox binary is.
+FINAL_TARGET_FILES += ['!ScalarArtifactDefinitions.json']
 
 # Generate event files.
 event_files = [
@@ -153,12 +164,21 @@ event_files = [
 ]
 
 event_data = GENERATED_FILES['TelemetryEventData.h']
-event_data.script = 'gen-event-data.py'
+event_data.script = 'gen_event_data.py'
 event_data.inputs = event_files
 
 event_enums = GENERATED_FILES['TelemetryEventEnums.h']
-event_enums.script = 'gen-event-enum.py'
+event_enums.script = 'gen_event_enum.py'
 event_enums.inputs = event_files
+
+# Generate the JSON event definitions. They will only be
+# used in artifact or "build faster" builds.
+event_json_data = GENERATED_FILES['EventArtifactDefinitions.json']
+event_json_data.script = 'gen_event_data.py:generate_JSON_definitions'
+event_json_data.inputs = event_files
+
+# Move the events JSON file to the directory where the Firefox binary is.
+FINAL_TARGET_FILES += ['!EventArtifactDefinitions.json']
 
 # Generate data from Processes.yaml
 processes_files = [
@@ -166,12 +186,21 @@ processes_files = [
 ]
 
 processes_enum = GENERATED_FILES['TelemetryProcessEnums.h']
-processes_enum.script = 'gen-process-enum.py'
+processes_enum.script = 'gen_process_enum.py'
 processes_enum.inputs = processes_files
 
 processes_data = GENERATED_FILES['TelemetryProcessData.h']
-processes_data.script = 'gen-process-data.py'
+processes_data.script = 'gen_process_data.py'
 processes_data.inputs = processes_files
+
+# Add support for GeckoView: please note that building GeckoView
+# implies having an Android build. The packaging step decides
+# which files to include. As a consequence, we can simply only
+# include the GeckoView files on all Android builds.
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
+    EXTRA_JS_MODULES += [
+        'geckoview/GeckoViewTelemetryController.jsm',
+    ]
 
 with Files('**'):
     BUG_COMPONENT = ('Toolkit', 'Telemetry')

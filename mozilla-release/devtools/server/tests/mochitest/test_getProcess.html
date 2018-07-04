@@ -1,4 +1,4 @@
-<SDOCTYPv HTM.>
+<!DOCTYPE HTML>
 <html>
 <!--
 Bug 1060093 - Test DebuggerServer.getProcess
@@ -14,14 +14,12 @@ Bug 1060093 - Test DebuggerServer.getProcess
 <script type="application/javascript">
 "use strict";
 
-let Cu = Components.utils;
-
-let {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
-let {DebuggerClient} = require("devtools/shared/client/main");
+let {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+let {DebuggerClient} = require("devtools/shared/client/debugger-client");
 let {DebuggerServer} = require("devtools/server/main");
 let Services = require("Services");
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
 
   SpecialPowers.pushPrefEnv({
@@ -38,12 +36,10 @@ window.onload = function () {
 
 function runTests() {
   // Instantiate a minimal server
-  if (!DebuggerServer.initialized) {
-    DebuggerServer.init();
-  }
+  DebuggerServer.init();
   DebuggerServer.allowChromeProcess = true;
   if (!DebuggerServer.createRootActor) {
-    DebuggerServer.addBrowserActors();
+    DebuggerServer.registerAllActors();
   }
 
   let client, iframe, processCount;
@@ -95,7 +91,7 @@ function runTests() {
           to: actor.consoleActor,
           type: "evaluateJS",
           text: "var a = 42; a"
-        }, function ({result}) {
+        }, function({result}) {
           ok(result, 42, "console.eval worked");
 
           getProcessAgain(actor, content.id);
@@ -116,17 +112,17 @@ function runTests() {
   }
 
   function processScript() {
-    Components.utils.import("resource://gre/modules/Services.jsm");
-    let listener = function () {
-      Services.obs.removeObserver(listener, "sdk:loader:destroy");
+    ChromeUtils.import("resource://gre/modules/Services.jsm");
+    let listener = function() {
+      Services.obs.removeObserver(listener, "devtools:loader:destroy");
       sendAsyncMessage("test:getProcess-destroy", null);
     };
-    Services.obs.addObserver(listener, "sdk:loader:destroy");
+    Services.obs.addObserver(listener, "devtools:loader:destroy");
   }
 
   function closeClient() {
     let onLoaderDestroyed = new Promise(done => {
-      let processListener = function () {
+      let processListener = function() {
         Services.ppmm.removeMessageListener("test:getProcess-destroy", processListener);
         done();
       };
@@ -136,7 +132,7 @@ function runTests() {
     Services.ppmm.loadProcessScript(script, true);
     client.close();
 
-    onLoaderDestroyed.then(function () {
+    onLoaderDestroyed.then(function() {
       Services.ppmm.removeDelayedProcessScript(script);
       info("Loader destroyed in the content process");
 

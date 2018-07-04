@@ -14,7 +14,7 @@
   </body>
 
   <!-- test code goes here -->
-  <script type="application/x-javascript;version=1.8"><![CDATA[
+  <script type="application/javascript"><![CDATA[
     function init() {
       var f = new Function("let test = 'let is ok'; return test;");
       is(f(), 'let is ok', 'let should be ok');
@@ -25,8 +25,8 @@
       include: function(p) {
 	var sawError = false;
 	try {
-	  Components.classes["@mozilla.org/moz/jssubscript-loader;1"].
-	    getService(Components.interfaces["mozIJSSubScriptLoader"]).
+	  Cc["@mozilla.org/moz/jssubscript-loader;1"].
+	    getService(Ci["mozIJSSubScriptLoader"]).
 	    loadSubScript(p);
 	} catch (e) {
 	  sawError = true;

@@ -8,7 +8,7 @@ esid: sec-async-function-definitions
 features: [default-parameters]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     14.6 Async Function Definitions
@@ -35,6 +35,7 @@ info: |
       ...BindingPattern[?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 
 (async function f(...x = []) {

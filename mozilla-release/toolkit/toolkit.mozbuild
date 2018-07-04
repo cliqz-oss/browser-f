@@ -4,8 +4,37 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+include('/js/app.mozbuild')
+
+PYTHON_UNITTEST_MANIFESTS += [
+    '/layout/tools/reftest/selftest/python.ini',
+    '/testing/marionette/harness/marionette_harness/tests/harness_unit/python.ini',
+    '/testing/mochitest/tests/python/python.ini',
+    '/testing/raptor/test/python.ini',
+    '/testing/talos/talos/unittests/python.ini'
+]
+
+CONFIGURE_SUBST_FILES += [
+    '/tools/update-packaging/Makefile',
+]
+
 DIRS += [
-    '/toolkit/library/gtest/rust',
+    '/tools',
+    '/xpcom/xpidl',
+]
+
+if CONFIG['COMPILE_ENVIRONMENT']:
+    DIRS += [
+        '/config/external',
+        '/security',
+    ]
+
+if CONFIG['ENABLE_TESTS']:
+    DIRS += [
+        '/toolkit/library/gtest/rust',
+    ]
+
+DIRS += [
     '/toolkit/library/rust',
 ]
 
@@ -13,8 +42,7 @@ if CONFIG['MOZ_SANDBOX']:
     DIRS += ['/security/sandbox']
 
 DIRS += [
-    # Depends on NSS and NSPR, and must be built after sandbox or else B2G emulator
-    # builds fail.
+    # Depends on NSS and NSPR
     '/security/certverifier',
     # Depends on certverifier
     '/security/apps',
@@ -55,11 +83,10 @@ if CONFIG['COMPILE_ENVIRONMENT']:
         '/media/libyuv',
     ]
 
-if CONFIG['MOZ_PERMISSIONS']:
-    DIRS += [
-        '/extensions/cookie',
-        '/extensions/permissions',
-    ]
+DIRS += [
+    '/extensions/cookie',
+    '/extensions/permissions',
+]
 
 DIRS += [
     '/rdf',
@@ -108,7 +135,6 @@ DIRS += [
     '/tools/code-coverage',
     '/tools/power',
     '/tools/profiler',
-    '/tools/memory-profiler',
     '/xpfe/components',
 ]
 
@@ -138,8 +164,6 @@ DIRS += [
 
 if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
     DIRS += ['/toolkit/system/gnome']
-
-DIRS += ['/addon-sdk']
 
 if CONFIG['ENABLE_MARIONETTE']:
     DIRS += [

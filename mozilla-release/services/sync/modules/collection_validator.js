@@ -4,18 +4,18 @@
 
 "use strict";
 
-const Cu = Components.utils;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "Async",
-                                  "resource://services-common/async.js");
+ChromeUtils.defineModuleGetter(this, "Async",
+                               "resource://services-common/async.js");
 
 
-this.EXPORTED_SYMBOLS = ["CollectionValidator", "CollectionProblemData"];
+var EXPORTED_SYMBOLS = ["CollectionValidator", "CollectionProblemData"];
 
 class CollectionProblemData {
   constructor() {
     this.missingIDs = 0;
+    this.clientDuplicates = [];
     this.duplicates = [];
     this.clientMissing = [];
     this.serverMissing = [];
@@ -39,7 +39,8 @@ class CollectionProblemData {
       { name: "serverUnexpected", count: this.serverUnexpected.length },
       { name: "differences", count: this.differences.length },
       { name: "missingIDs", count: this.missingIDs },
-      { name: "duplicates", count: this.duplicates.length }
+      { name: "clientDuplicates", count: this.clientDuplicates.length },
+      { name: "duplicates", count: this.duplicates.length },
     ];
   }
 }
@@ -77,10 +78,14 @@ class CollectionValidator {
     if (!result.response.success) {
       throw result.response;
     }
-    return result.records.map(record => {
-      record.decrypt(collectionKey);
-      return record.cleartext;
-    });
+    let maybeYield = Async.jankYielder();
+    let cleartexts = [];
+    for (let record of result.records) {
+      await maybeYield();
+      await record.decrypt(collectionKey);
+      cleartexts.push(record.cleartext);
+    }
+    return cleartexts;
   }
 
   // Should return a promise that resolves to an array of client items.
@@ -117,7 +122,7 @@ class CollectionValidator {
 
   // Return whether or not a client item should be present on the server. Expected
   // to be overridden
-  syncedByClient(item) {
+  async syncedByClient(item) {
     return true;
   }
 
@@ -166,8 +171,8 @@ class CollectionValidator {
       if (record.deleted) {
         serverDeleted.add(record);
       } else {
-        let possibleDupe = seenServer.get(id);
-        if (possibleDupe) {
+        let serverHasPossibleDupe = seenServer.has(id);
+        if (serverHasPossibleDupe) {
           problems.duplicates.push(id);
         } else {
           seenServer.set(id, record);
@@ -180,7 +185,13 @@ class CollectionValidator {
     let seenClient = new Map();
     for (let record of clientRecords) {
       let id = record[this.idProp];
-      record.shouldSync = this.syncedByClient(record);
+      record.shouldSync = await this.syncedByClient(record);
+      let clientHasPossibleDupe = seenClient.has(id);
+      if (clientHasPossibleDupe && record.shouldSync) {
+        // Only report duplicate client IDs for syncable records.
+        problems.clientDuplicates.push(id);
+        continue;
+      }
       seenClient.set(id, record);
       let combined = allRecords.get(id);
       if (combined) {
@@ -219,6 +230,27 @@ class CollectionValidator {
       clientRecords,
       records: serverRecords,
       deletedRecords: [...serverDeleted]
+    };
+  }
+
+  async validate(engine) {
+    let start = Cu.now();
+    let clientItems = await this.getClientItems();
+    let serverItems = await this.getServerItems(engine);
+    let serverRecordCount = serverItems.length;
+    let result = await this.compareClientWithServer(clientItems, serverItems);
+    let end = Cu.now();
+    let duration = end - start;
+    engine._log.debug(`Validated ${this.name} in ${duration}ms`);
+    engine._log.debug(`Problem summary`);
+    for (let { name, count } of result.problemData.getSummary()) {
+      engine._log.debug(`  ${name}: ${count}`);
+    }
+    return {
+      duration,
+      version: this.version,
+      problems: result.problemData,
+      recordCount: serverRecordCount
     };
   }
 }

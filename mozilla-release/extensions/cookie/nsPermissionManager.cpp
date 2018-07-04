@@ -28,6 +28,7 @@
 #include "mozilla/Attributes.h"
 #include "nsXULAppAPI.h"
 #include "nsIPrincipal.h"
+#include "nsIURIMutator.h"
 #include "nsContentUtils.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIEffectiveTLDService.h"
@@ -44,6 +45,7 @@
 #include "nsPrintfCString.h"
 #include "mozilla/AbstractThread.h"
 #include "ContentPrincipal.h"
+#include "ExpandedPrincipal.h"
 
 static nsPermissionManager *gPermissionManager = nullptr;
 
@@ -125,8 +127,41 @@ static const char* kPreloadPermissions[] = {
   "beacon",
   "fetch",
   "image",
-  "manifest"
+  "manifest",
+  "speculative",
+
+  // This permission is preloaded to support properly blocking service worker
+  // interception when a user has disabled storage for a specific site.  Once
+  // service worker interception moves to the parent process this should be
+  // removed.  See bug 1428130.
+  "cookie"
 };
+
+// A list of permissions that can have a fallback default permission
+// set under the permissions.default.* pref.
+static const char* kPermissionsWithDefaults[] = {
+  "camera",
+  "microphone",
+  "geo",
+  "desktop-notification",
+  "shortcuts"
+};
+
+// NOTE: nullptr can be passed as aType - if it is this function will return
+// "false" unconditionally.
+bool
+HasDefaultPref(const char* aType)
+{
+  if (aType) {
+    for (const char* perm : kPermissionsWithDefaults) {
+      if (!strcmp(aType, perm)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 // NOTE: nullptr can be passed as aType - if it is this function will return
 // "false" unconditionally.
@@ -263,13 +298,10 @@ GetNextSubDomainURI(nsIURI* aURI)
   }
 
   nsCOMPtr<nsIURI> uri;
-  rv = aURI->Clone(getter_AddRefs(uri));
+  rv = NS_MutateURI(aURI)
+         .SetHost(domain)
+         .Finalize(uri);
   if (NS_FAILED(rv) || !uri) {
-    return nullptr;
-  }
-
-  rv = uri->SetHost(domain);
-  if (NS_FAILED(rv)) {
     return nullptr;
   }
 
@@ -631,7 +663,9 @@ UpgradeHostToOriginAndInsert(const nsACString& aHost, const nsCString& aType,
       if (NS_WARN_IF(NS_FAILED(rv))) continue;
 
       // Use the provided host - this URI may be for a subdomain, rather than the host we care about.
-      rv = uri->SetHost(aHost);
+      rv = NS_MutateURI(uri)
+             .SetHost(aHost)
+             .Finalize(uri);
       if (NS_WARN_IF(NS_FAILED(rv))) continue;
 
       // We now have a URI which we can make a nsIPrincipal out of
@@ -661,7 +695,7 @@ UpgradeHostToOriginAndInsert(const nsACString& aHost, const nsCString& aType,
 
   // If we didn't find any origins for this host in the poermissions database,
   // we can insert the default http:// and https:// permissions into the database.
-  // This has a relatively high liklihood of applying the permission to the correct
+  // This has a relatively high likelihood of applying the permission to the correct
   // origin.
   if (!foundHistory) {
     nsAutoCString hostSegment;
@@ -671,9 +705,9 @@ UpgradeHostToOriginAndInsert(const nsACString& aHost, const nsCString& aType,
     // If this is an ipv6 URI, we need to surround it in '[', ']' before trying to
     // parse it as a URI.
     if (aHost.FindChar(':') != -1) {
-      hostSegment.Assign("[");
+      hostSegment.AssignLiteral("[");
       hostSegment.Append(aHost);
-      hostSegment.Append("]");
+      hostSegment.AppendLiteral("]");
     } else {
       hostSegment.Assign(aHost);
     }
@@ -713,6 +747,15 @@ IsExpandedPrincipal(nsIPrincipal* aPrincipal)
 {
   nsCOMPtr<nsIExpandedPrincipal> ep = do_QueryInterface(aPrincipal);
   return !!ep;
+}
+
+// We only want to persist permissions which don't have session or policy
+// expiration.
+static bool
+IsPersistentExpire(uint32_t aExpire)
+{
+  return aExpire != nsIPermissionManager::EXPIRE_SESSION &&
+    aExpire != nsIPermissionManager::EXPIRE_POLICY;
 }
 
 } // namespace
@@ -896,16 +939,18 @@ nsPermissionManager::~nsPermissionManager()
   mPermissionKeyPromiseMap.Clear();
 
   RemoveAllFromMemory();
-  gPermissionManager = nullptr;
+  if (gPermissionManager) {
+    MOZ_ASSERT(gPermissionManager == this);
+    gPermissionManager = nullptr;
+  }
 }
 
 // static
-nsIPermissionManager*
+already_AddRefed<nsIPermissionManager>
 nsPermissionManager::GetXPCOMSingleton()
 {
   if (gPermissionManager) {
-    NS_ADDREF(gPermissionManager);
-    return gPermissionManager;
+    return do_AddRef(gPermissionManager);
   }
 
   // Create a new singleton nsPermissionManager.
@@ -914,15 +959,14 @@ nsPermissionManager::GetXPCOMSingleton()
   // Release our members, since GC cycles have already been completed and
   // would result in serious leaks.
   // See bug 209571.
-  gPermissionManager = new nsPermissionManager();
-  if (gPermissionManager) {
-    NS_ADDREF(gPermissionManager);
-    if (NS_FAILED(gPermissionManager->Init())) {
-      NS_RELEASE(gPermissionManager);
-    }
+  auto permManager = MakeRefPtr<nsPermissionManager>();
+  if (NS_SUCCEEDED(permManager->Init())) {
+    // Note: This is cleared in the nsPermissionManager destructor.
+    gPermissionManager = permManager.get();
+    return permManager.forget();
   }
 
-  return gPermissionManager;
+  return nullptr;
 }
 
 nsresult
@@ -931,6 +975,13 @@ nsPermissionManager::Init()
   // If the 'permissions.memory_only' pref is set to true, then don't write any
   // permission settings to disk, but keep them in a memory-only database.
   mMemoryOnlyDB = mozilla::Preferences::GetBool("permissions.memory_only", false);
+
+  nsresult rv;
+  nsCOMPtr<nsIPrefService> prefService = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = prefService->GetBranch("permissions.default.", getter_AddRefs(mDefaultPrefBranch));
+  NS_ENSURE_SUCCESS(rv, rv);
 
   if (IsChildProcess()) {
     // Stop here; we don't need the DB in the child process. Instead we will be
@@ -1292,7 +1343,7 @@ nsPermissionManager::InitDB(bool aRemoveFile)
             }
           }
 
-          // We don't drop the moz_hosts table such that it is avaliable for
+          // We don't drop the moz_hosts table such that it is available for
           // backwards-compatability and for future migrations in case of
           // migration errors in the current code.
           // Create a marker empty table which will indicate that the moz_hosts
@@ -1647,7 +1698,8 @@ nsPermissionManager::AddFromPrincipal(nsIPrincipal* aPrincipal,
   NS_ENSURE_ARG_POINTER(aType);
   NS_ENSURE_TRUE(aExpireType == nsIPermissionManager::EXPIRE_NEVER ||
                  aExpireType == nsIPermissionManager::EXPIRE_TIME ||
-                 aExpireType == nsIPermissionManager::EXPIRE_SESSION,
+                 aExpireType == nsIPermissionManager::EXPIRE_SESSION ||
+                 aExpireType == nsIPermissionManager::EXPIRE_POLICY,
                  NS_ERROR_INVALID_ARG);
 
   // Skip addition if the permission is already expired. Note that EXPIRE_SESSION only
@@ -1714,7 +1766,7 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
     }
   }
 
-  MOZ_ASSERT(PermissionAvaliable(aPrincipal, aType.get()));
+  MOZ_ASSERT(PermissionAvailable(aPrincipal, aType.get()));
 
   // look up the type index
   int32_t typeIndex = GetTypeIndex(aType.get(), true);
@@ -1802,18 +1854,6 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
         id = aID;
       }
 
-#ifdef MOZ_B2G
-      // When we do the initial addition of the permissions we don't want to
-      // inherit session specific permissions from other tabs or apps
-      // so we ignore them and set the permission to PROMPT_ACTION if it was
-      // previously allowed or denied by the user.
-      if (aIgnoreSessionPermissions &&
-          aExpireType == nsIPermissionManager::EXPIRE_SESSION) {
-        aPermission = nsIPermissionManager::PROMPT_ACTION;
-        aExpireType = nsIPermissionManager::EXPIRE_NEVER;
-      }
-#endif // MOZ_B2G
-
       entry->GetPermissions().AppendElement(PermissionEntry(id, typeIndex, aPermission,
                                                             aExpireType, aExpireTime,
                                                             aModificationTime));
@@ -1824,7 +1864,7 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
         sPreloadPermissionCount++;
       }
 
-      if (aDBOperation == eWriteToDB && aExpireType != nsIPermissionManager::EXPIRE_SESSION) {
+      if (aDBOperation == eWriteToDB && IsPersistentExpire(aExpireType)) {
         UpdateDB(op, mStmtInsert, id, origin, aType, aPermission, aExpireType, aExpireTime, aModificationTime);
       }
 
@@ -1844,6 +1884,14 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
     {
       PermissionEntry oldPermissionEntry = entry->GetPermissions()[index];
       id = oldPermissionEntry.mID;
+
+      // If the type we want to remove is EXPIRE_POLICY, we need to reject
+      // attempts to change the permission.
+      if (entry->GetPermissions()[index].mExpireType == EXPIRE_POLICY) {
+        NS_WARNING("Attempting to remove EXPIRE_POLICY permission");
+        break;
+      }
+
       entry->GetPermissions().RemoveElementAt(index);
 
       // Record a count of the number of preload permissions present in the
@@ -1879,6 +1927,13 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
     {
       id = entry->GetPermissions()[index].mID;
 
+      // If the existing type is EXPIRE_POLICY, we need to reject attempts to
+      // change the permission.
+      if (entry->GetPermissions()[index].mExpireType == EXPIRE_POLICY) {
+        NS_WARNING("Attempting to modify EXPIRE_POLICY permission");
+        break;
+      }
+
       // If the new expireType is EXPIRE_SESSION, then we have to keep a
       // copy of the previous permission/expireType values. This cached value will be
       // used when restoring the permissions of an app.
@@ -1898,7 +1953,7 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
       entry->GetPermissions()[index].mExpireTime = aExpireTime;
       entry->GetPermissions()[index].mModificationTime = aModificationTime;
 
-      if (aDBOperation == eWriteToDB && aExpireType != nsIPermissionManager::EXPIRE_SESSION)
+      if (aDBOperation == eWriteToDB && IsPersistentExpire(aExpireType))
         // We care only about the id, the permission and expireType/expireTime/modificationTime here.
         // We pass dummy values for all other parameters.
         UpdateDB(op, mStmtUpdate, id, EmptyCString(), EmptyCString(),
@@ -1931,8 +1986,10 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
       // in memory doesn't have the magic cIDPermissionIsDefault value.
       id = ++mLargestID;
 
-      // The default permission being replaced can't have session expiry.
+      // The default permission being replaced can't have session expiry or policy expiry.
       NS_ENSURE_TRUE(entry->GetPermissions()[index].mExpireType != nsIPermissionManager::EXPIRE_SESSION,
+                     NS_ERROR_UNEXPECTED);
+      NS_ENSURE_TRUE(entry->GetPermissions()[index].mExpireType != nsIPermissionManager::EXPIRE_POLICY,
                      NS_ERROR_UNEXPECTED);
       // We don't support the new entry having any expiry - supporting that would
       // make things far more complex and none of the permissions we set as a
@@ -1947,7 +2004,7 @@ nsPermissionManager::AddInternal(nsIPrincipal* aPrincipal,
       entry->GetPermissions()[index].mModificationTime = aModificationTime;
 
       // If requested, create the entry in the DB.
-      if (aDBOperation == eWriteToDB) {
+      if (aDBOperation == eWriteToDB && IsPersistentExpire(aExpireType)) {
         UpdateDB(eOperationAdding, mStmtInsert, id, origin, aType, aPermission,
                  aExpireType, aExpireTime, aModificationTime);
       }
@@ -2186,7 +2243,7 @@ nsPermissionManager::GetPermissionObject(nsIPrincipal* aPrincipal,
     return NS_ERROR_INVALID_ARG;
   }
 
-  MOZ_ASSERT(PermissionAvaliable(aPrincipal, aType));
+  MOZ_ASSERT(PermissionAvailable(aPrincipal, aType));
 
   int32_t typeIndex = GetTypeIndex(aType, false);
   // If type == -1, the type isn't known,
@@ -2243,18 +2300,26 @@ nsPermissionManager::CommonTestPermissionInternal(nsIPrincipal* aPrincipal,
   // Set the default.
   *aPermission = nsIPermissionManager::UNKNOWN_ACTION;
 
+  // For some permissions, query the default from a pref. We want to avoid
+  // doing this for all permissions so that permissions can opt into having
+  // the pref lookup overhead on each call.
+  if (HasDefaultPref(aType)) {
+    int32_t defaultPermission = nsIPermissionManager::UNKNOWN_ACTION;
+    nsresult rv = mDefaultPrefBranch->GetIntPref(aType, &defaultPermission);
+    if (NS_SUCCEEDED(rv)) {
+      *aPermission = defaultPermission;
+    }
+  }
+
   // For expanded principals, we want to iterate over the whitelist and see
   // if the permission is granted for any of them.
-  nsCOMPtr<nsIExpandedPrincipal> ep = do_QueryInterface(aPrincipal);
-  if (ep) {
-    nsTArray<nsCOMPtr<nsIPrincipal>>* whitelist;
-    nsresult rv = ep->GetWhiteList(&whitelist);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    for (size_t i = 0; i < whitelist->Length(); ++i) {
+  auto* basePrin = BasePrincipal::Cast(aPrincipal);
+  if (basePrin && basePrin->Is<ExpandedPrincipal>()) {
+    auto ep = basePrin->As<ExpandedPrincipal>();
+    for (auto& prin : ep->WhiteList()) {
       uint32_t perm;
-      rv = CommonTestPermission(whitelist->ElementAt(i), aType, &perm,
-                                aExactHostMatch, aIncludingSession);
+      nsresult rv = CommonTestPermission(prin, aType, &perm,
+                                         aExactHostMatch, aIncludingSession);
       NS_ENSURE_SUCCESS(rv, rv);
       if (perm == nsIPermissionManager::ALLOW_ACTION) {
         *aPermission = perm;
@@ -2274,7 +2339,7 @@ nsPermissionManager::CommonTestPermissionInternal(nsIPrincipal* aPrincipal,
     if (!prin) {
       prin = mozilla::BasePrincipal::CreateCodebasePrincipal(aURI, OriginAttributes());
     }
-    MOZ_ASSERT(PermissionAvaliable(prin, aType));
+    MOZ_ASSERT(PermissionAvailable(prin, aType));
   }
 #endif
 
@@ -2311,7 +2376,7 @@ nsPermissionManager::GetPermissionHashKey(nsIPrincipal* aPrincipal,
                                           uint32_t aType,
                                           bool aExactHostMatch)
 {
-  MOZ_ASSERT(PermissionAvaliable(aPrincipal, mTypeArray[aType].get()));
+  MOZ_ASSERT(PermissionAvailable(aPrincipal, mTypeArray[aType].get()));
 
   nsresult rv;
   RefPtr<PermissionKey> key =
@@ -2371,7 +2436,7 @@ nsPermissionManager::GetPermissionHashKey(nsIURI* aURI,
     nsCOMPtr<nsIPrincipal> principal;
     nsresult rv = GetPrincipal(aURI, getter_AddRefs(principal));
     MOZ_ASSERT_IF(NS_SUCCEEDED(rv),
-                  PermissionAvaliable(principal, mTypeArray[aType].get()));
+                  PermissionAvailable(principal, mTypeArray[aType].get()));
   }
 #endif
 
@@ -2426,8 +2491,8 @@ nsPermissionManager::GetPermissionHashKey(nsIURI* aURI,
 NS_IMETHODIMP nsPermissionManager::GetEnumerator(nsISimpleEnumerator **aEnum)
 {
   if (XRE_IsContentProcess()) {
-    NS_WARNING("nsPermissionManager's enumerator is not avaliable in the "
-               "content process, as not all permissions may be avaliable.");
+    NS_WARNING("nsPermissionManager's enumerator is not available in the "
+               "content process, as not all permissions may be available.");
     *aEnum = nullptr;
     return NS_ERROR_NOT_AVAILABLE;
   }
@@ -2476,7 +2541,7 @@ NS_IMETHODIMP nsPermissionManager::GetAllForURI(nsIURI* aURI, nsISimpleEnumerato
   nsresult rv = GetPrincipal(aURI, getter_AddRefs(principal));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  MOZ_ASSERT(PermissionAvaliable(principal, nullptr));
+  MOZ_ASSERT(PermissionAvailable(principal, nullptr));
 
   RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(principal, rv);
   if (!key) {
@@ -3092,7 +3157,7 @@ nsPermissionManager::UpdateExpireTime(nsIPrincipal* aPrincipal,
     return NS_ERROR_INVALID_ARG;
   }
 
-  MOZ_ASSERT(PermissionAvaliable(aPrincipal, aType));
+  MOZ_ASSERT(PermissionAvailable(aPrincipal, aType));
 
   int32_t typeIndex = GetTypeIndex(aType, false);
   // If type == -1, the type isn't known,
@@ -3324,7 +3389,7 @@ nsPermissionManager::BroadcastPermissionsForPrincipalToAllContentProcesses(nsIPr
 }
 
 bool
-nsPermissionManager::PermissionAvaliable(nsIPrincipal* aPrincipal, const char* aType)
+nsPermissionManager::PermissionAvailable(nsIPrincipal* aPrincipal, const char* aType)
 {
   if (XRE_IsContentProcess()) {
     nsAutoCString permissionKey;
@@ -3332,7 +3397,7 @@ nsPermissionManager::PermissionAvaliable(nsIPrincipal* aPrincipal, const char* a
     GetKeyForPermission(aPrincipal, aType, permissionKey);
 
     // If we have a pending promise for the permission key in question, we don't
-    // have the permission avaliable, so report a warning and return false.
+    // have the permission available, so report a warning and return false.
     RefPtr<GenericPromise::Private> promise;
     if (!mPermissionKeyPromiseMap.Get(permissionKey, getter_AddRefs(promise)) || promise) {
       // Emit a useful diagnostic warning with the permissionKey for the process
@@ -3360,7 +3425,7 @@ nsPermissionManager::WhenPermissionsAvailable(nsIPrincipal* aPrincipal,
   for (auto& key : GetAllKeysForPrincipal(aPrincipal)) {
     RefPtr<GenericPromise::Private> promise;
     if (!mPermissionKeyPromiseMap.Get(key, getter_AddRefs(promise))) {
-      // In this case we have found a permission which isn't avaliable in the
+      // In this case we have found a permission which isn't available in the
       // content process and hasn't been requested yet. We need to create a new
       // promise, and send the request to the parent (if we have not already
       // done so).
@@ -3373,7 +3438,7 @@ nsPermissionManager::WhenPermissionsAvailable(nsIPrincipal* aPrincipal,
     }
   }
 
-  // If all of our permissions are avaliable, immediately run the runnable. This
+  // If all of our permissions are available, immediately run the runnable. This
   // avoids any extra overhead during fetch interception which is performance
   // sensitive.
   if (promises.IsEmpty()) {

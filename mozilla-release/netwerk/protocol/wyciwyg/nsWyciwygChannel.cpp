@@ -452,7 +452,7 @@ nsWyciwygChannel::WriteToCacheEntry(const nsAString &aData)
   uint32_t out;
   if (!mCacheOutputStream) {
     // Get the outputstream from the cache entry.
-    rv = mCacheEntry->OpenOutputStream(0, getter_AddRefs(mCacheOutputStream));
+    rv = mCacheEntry->OpenOutputStream(0, -1, getter_AddRefs(mCacheOutputStream));
     if (NS_FAILED(rv)) return rv;
 
     // Write out a Byte Order Mark, so that we'll know if the data is
@@ -473,7 +473,6 @@ nsWyciwygChannel::CloseCacheEntry(nsresult reason)
   if (mCacheEntry) {
     LOG(("nsWyciwygChannel::CloseCacheEntry [this=%p ]", this));
     mCacheOutputStream = nullptr;
-    mCacheInputStream = nullptr;
 
     if (NS_FAILED(reason)) {
       mCacheEntry->AsyncDoom(nullptr);
@@ -533,14 +532,14 @@ nsWyciwygChannel::GetCharsetAndSource(int32_t* aSource, nsACString& aCharset)
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  nsXPIDLCString data;
+  nsCString data;
   mCacheEntry->GetMetaDataElement("charset", getter_Copies(data));
 
   if (data.IsEmpty()) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  nsXPIDLCString sourceStr;
+  nsCString sourceStr;
   mCacheEntry->GetMetaDataElement("charset-source", getter_Copies(sourceStr));
 
   int32_t source;
@@ -769,12 +768,13 @@ nsWyciwygChannel::ReadFromCache()
     mLoadFlags |= INHIBIT_PERSISTENT_CACHING;
 
   // Get a transport to the cached data...
-  rv = mCacheEntry->OpenInputStream(0, getter_AddRefs(mCacheInputStream));
+  nsCOMPtr<nsIInputStream> inputStream;
+  rv = mCacheEntry->OpenInputStream(0, getter_AddRefs(inputStream));
   if (NS_FAILED(rv))
     return rv;
-  NS_ENSURE_TRUE(mCacheInputStream, NS_ERROR_UNEXPECTED);
+  NS_ENSURE_TRUE(inputStream, NS_ERROR_UNEXPECTED);
 
-  rv = NS_NewInputStreamPump(getter_AddRefs(mPump), mCacheInputStream);
+  rv = NS_NewInputStreamPump(getter_AddRefs(mPump), inputStream.forget());
   if (NS_FAILED(rv)) return rv;
 
   // Pump the cache data downstream

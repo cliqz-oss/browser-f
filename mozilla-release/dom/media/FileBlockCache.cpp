@@ -6,13 +6,14 @@
 
 #include "FileBlockCache.h"
 #include "MediaCache.h"
-#include "MediaPrefs.h"
-#include "mozilla/SharedThreadPool.h"
 #include "VideoUtils.h"
 #include "prio.h"
 #include <algorithm>
 #include "nsAnonymousTemporaryFile.h"
+#include "nsIThreadManager.h"
 #include "mozilla/dom/ContentChild.h"
+#include "mozilla/StaticPrefs.h"
+#include "mozilla/SystemGroup.h"
 #include "nsXULAppAPI.h"
 
 namespace mozilla {
@@ -75,22 +76,13 @@ FileBlockCache::SetCacheFile(PRFileDesc* aFD)
 nsresult
 FileBlockCache::Init()
 {
-  MutexAutoLock mon(mDataMutex);
-  if (mThread) {
-    LOG("Init() again");
-    // Just discard pending changes, assume MediaCache won't read from
-    // blocks it hasn't written to.
-    mChangeIndexList.clear();
-    mBlockChanges.Clear();
-    return NS_OK;
-  }
-
   LOG("Init()");
-
+  MutexAutoLock mon(mDataMutex);
+  MOZ_ASSERT(!mThread);
   nsresult rv = NS_NewNamedThread("FileBlockCache",
                                   getter_AddRefs(mThread),
                                   nullptr,
-                                  SharedThreadPool::kStackSize);
+                                  nsIThreadManager::kThreadPoolStackSize);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -123,13 +115,32 @@ FileBlockCache::Init()
   return rv;
 }
 
+void
+FileBlockCache::Flush()
+{
+  LOG("Flush()");
+  MutexAutoLock mon(mDataMutex);
+  MOZ_ASSERT(mThread);
+
+  // Dispatch a task so we won't clear the arrays while PerformBlockIOs() is
+  // dropping the data lock and cause InvalidArrayIndex.
+  RefPtr<FileBlockCache> self = this;
+  mThread->Dispatch(NS_NewRunnableFunction("FileBlockCache::Flush", [self]() {
+    MutexAutoLock mon(self->mDataMutex);
+    // Just discard pending changes, assume MediaCache won't read from
+    // blocks it hasn't written to.
+    self->mChangeIndexList.clear();
+    self->mBlockChanges.Clear();
+  }));
+}
+
 int32_t
 FileBlockCache::GetMaxBlocks() const
 {
   // We look up the cache size every time. This means dynamic changes
   // to the pref are applied.
   const uint32_t cacheSizeKb =
-    std::min(MediaPrefs::MediaCacheSizeKb(), uint32_t(INT32_MAX) * 2);
+    std::min(StaticPrefs::MediaCacheSize(), uint32_t(INT32_MAX) * 2);
   // Ensure we can divide BLOCK_SIZE by 1024.
   static_assert(MediaCacheStream::BLOCK_SIZE % 1024 == 0,
                 "BLOCK_SIZE should be a multiple of 1024");
@@ -351,7 +362,7 @@ nsresult FileBlockCache::MoveBlockInFile(int32_t aSourceBlockIndex,
 void
 FileBlockCache::PerformBlockIOs()
 {
-  NS_ASSERTION(!NS_IsMainThread(), "Don't call on main thread");
+  MOZ_ASSERT(mThread->IsOnCurrentThread());
   MutexAutoLock mon(mDataMutex);
   NS_ASSERTION(mIsWriteScheduled, "Should report write running or scheduled.");
 
@@ -443,7 +454,10 @@ nsresult FileBlockCache::Read(int64_t aOffset,
     // If the block is not yet written to file, we can just read from
     // the memory buffer, otherwise we need to read from file.
     int32_t bytesRead = 0;
-    RefPtr<BlockChange> change = mBlockChanges[blockIndex];
+    MOZ_ASSERT(!mBlockChanges.IsEmpty());
+    MOZ_ASSERT(blockIndex >= 0 &&
+               static_cast<uint32_t>(blockIndex) < mBlockChanges.Length());
+    RefPtr<BlockChange> change = mBlockChanges.SafeElementAt(blockIndex);
     if (change && change->IsWrite()) {
       // Block isn't yet written to file. Read from memory buffer.
       const uint8_t* blockData = change->mData.get();
@@ -457,7 +471,7 @@ nsresult FileBlockCache::Read(int64_t aOffset,
         // is resolved when MoveBlock() is called, and the move's source's
         // block could be have itself been subject to a move (or write)
         // which happened *after* this move was recorded.
-        blockIndex = mBlockChanges[blockIndex]->mSourceBlockIndex;
+        blockIndex = change->mSourceBlockIndex;
       }
       // Block has been written to file, either as the source block of a move,
       // or as a stable (all changes made) block. Read the data directly

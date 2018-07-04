@@ -30,6 +30,80 @@ MacroAssembler::move64(Register64 src, Register64 dest)
     movl(src.high, dest.high);
 }
 
+void
+MacroAssembler::moveDoubleToGPR64(FloatRegister src, Register64 dest)
+{
+    ScratchDoubleScope scratch(*this);
+
+    if (Assembler::HasSSE41()) {
+        vmovd(src, dest.low);
+        vpextrd(1, src, dest.high);
+    } else {
+        vmovd(src, dest.low);
+        moveDouble(src, scratch);
+        vpsrldq(Imm32(4), scratch, scratch);
+        vmovd(scratch, dest.high);
+    }
+}
+
+void
+MacroAssembler::moveGPR64ToDouble(Register64 src, FloatRegister dest)
+{
+    ScratchDoubleScope scratch(*this);
+
+    if (Assembler::HasSSE41()) {
+        vmovd(src.low, dest);
+        vpinsrd(1, src.high, dest, dest);
+    } else {
+        vmovd(src.low, dest);
+        vmovd(src.high, ScratchDoubleReg);
+        vunpcklps(ScratchDoubleReg, dest, dest);
+    }
+}
+
+void
+MacroAssembler::move64To32(Register64 src, Register dest)
+{
+    if (src.low != dest)
+        movl(src.low, dest);
+}
+
+void
+MacroAssembler::move32To64ZeroExtend(Register src, Register64 dest)
+{
+    if (src != dest.low)
+        movl(src, dest.low);
+    movl(Imm32(0), dest.high);
+}
+
+void
+MacroAssembler::move8To64SignExtend(Register src, Register64 dest)
+{
+    MOZ_ASSERT(dest.low == eax);
+    MOZ_ASSERT(dest.high == edx);
+    move8SignExtend(src, eax);
+    masm.cdq();
+}
+
+void
+MacroAssembler::move16To64SignExtend(Register src, Register64 dest)
+{
+    MOZ_ASSERT(dest.low == eax);
+    MOZ_ASSERT(dest.high == edx);
+    move16SignExtend(src, eax);
+    masm.cdq();
+}
+
+void
+MacroAssembler::move32To64SignExtend(Register src, Register64 dest)
+{
+    MOZ_ASSERT(dest.low == eax);
+    MOZ_ASSERT(dest.high == edx);
+    if (src != eax)
+        movl(src, eax);
+    masm.cdq();
+}
+
 // ===============================================================
 // Logical functions
 
@@ -192,18 +266,17 @@ MacroAssembler::addConstantDouble(double d, FloatRegister dest)
 }
 
 CodeOffset
-MacroAssembler::add32ToPtrWithPatch(Register src, Register dest)
+MacroAssembler::sub32FromStackPtrWithPatch(Register dest)
 {
-    if (src != dest)
-        movePtr(src, dest);
+    moveStackPtrTo(dest);
     addlWithPatch(Imm32(0), dest);
     return CodeOffset(currentOffset());
 }
 
 void
-MacroAssembler::patchAdd32ToPtr(CodeOffset offset, Imm32 imm)
+MacroAssembler::patchSub32FromStackPtr(CodeOffset offset, Imm32 imm)
 {
-    patchAddl(offset, imm.value);
+    patchAddl(offset, -imm.value);
 }
 
 void
@@ -897,7 +970,7 @@ void
 MacroAssembler::branchTest64(Condition cond, Register64 lhs, Register64 rhs, Register temp,
                              L label)
 {
-    if (cond == Assembler::Zero) {
+    if (cond == Assembler::Zero || cond == Assembler::NonZero) {
         MOZ_ASSERT(lhs.low == rhs.low);
         MOZ_ASSERT(lhs.high == rhs.high);
         movl(lhs.low, temp);
@@ -936,6 +1009,95 @@ MacroAssembler::branchToComputedAddress(const BaseIndex& addr)
     jmp(Operand(addr));
 }
 
+void
+MacroAssembler::cmp32MovePtr(Condition cond, Register lhs, Imm32 rhs, Register src,
+                             Register dest)
+{
+    cmp32(lhs, rhs);
+    cmovCCl(cond, Operand(src), dest);
+}
+
+void
+MacroAssembler::test32LoadPtr(Condition cond, const Address& addr, Imm32 mask, const Address& src,
+                              Register dest)
+{
+    MOZ_ASSERT(cond == Assembler::Zero || cond == Assembler::NonZero);
+    test32(addr, mask);
+    cmovCCl(cond, Operand(src), dest);
+}
+
+void
+MacroAssembler::test32MovePtr(Condition cond, const Address& addr, Imm32 mask, Register src,
+                              Register dest)
+{
+    MOZ_ASSERT(cond == Assembler::Zero || cond == Assembler::NonZero);
+    test32(addr, mask);
+    cmovCCl(cond, Operand(src), dest);
+}
+
+void
+MacroAssembler::spectreMovePtr(Condition cond, Register src, Register dest)
+{
+    cmovCCl(cond, Operand(src), dest);
+}
+
+void
+MacroAssembler::spectreBoundsCheck32(Register index, const Operand& length, Register maybeScratch,
+                                     Label* failure)
+{
+    Label failurePopValue;
+    bool pushedValue = false;
+    if (JitOptions.spectreIndexMasking) {
+        if (maybeScratch == InvalidReg) {
+            push(Imm32(0));
+            pushedValue = true;
+        } else {
+            move32(Imm32(0), maybeScratch);
+        }
+    }
+
+    cmp32(index, length);
+    j(Assembler::AboveOrEqual, pushedValue ? &failurePopValue : failure);
+
+    if (JitOptions.spectreIndexMasking) {
+        if (maybeScratch == InvalidReg) {
+            Label done;
+            cmovCCl(Assembler::AboveOrEqual, Operand(StackPointer, 0), index);
+            lea(Operand(StackPointer, sizeof(void*)), StackPointer);
+            jump(&done);
+
+            bind(&failurePopValue);
+            lea(Operand(StackPointer, sizeof(void*)), StackPointer);
+            jump(failure);
+
+            bind(&done);
+        } else {
+            cmovCCl(Assembler::AboveOrEqual, maybeScratch, index);
+        }
+    }
+}
+
+void
+MacroAssembler::spectreBoundsCheck32(Register index, Register length, Register maybeScratch,
+                                     Label* failure)
+{
+    MOZ_ASSERT(length != maybeScratch);
+    MOZ_ASSERT(index != maybeScratch);
+
+    spectreBoundsCheck32(index, Operand(length), maybeScratch, failure);
+}
+
+void
+MacroAssembler::spectreBoundsCheck32(Register index, const Address& length, Register maybeScratch,
+                                     Label* failure)
+{
+    MOZ_ASSERT(index != length.base);
+    MOZ_ASSERT(length.base != maybeScratch);
+    MOZ_ASSERT(index != maybeScratch);
+
+    spectreBoundsCheck32(index, Operand(length), maybeScratch, failure);
+}
+
 // ========================================================================
 // Truncate floating point.
 
@@ -950,7 +1112,7 @@ MacroAssembler::truncateFloat32ToUInt64(Address src, Address dest, Register temp
     truncateFloat32ToInt64(src, dest, temp);
 
     // For unsigned conversion the case of [INT64, UINT64] needs to get handle seperately.
-    load32(Address(dest.base, dest.offset + INT64HIGH_OFFSET), temp);
+    load32(HighWord(dest), temp);
     branch32(Assembler::Condition::NotSigned, temp, Imm32(0), &done);
 
     // Move the value inside INT64 range.
@@ -960,9 +1122,9 @@ MacroAssembler::truncateFloat32ToUInt64(Address src, Address dest, Register temp
     storeFloat32(floatTemp, dest);
     truncateFloat32ToInt64(dest, dest, temp);
 
-    load32(Address(dest.base, dest.offset + INT64HIGH_OFFSET), temp);
+    load32(HighWord(dest), temp);
     orl(Imm32(0x80000000), temp);
-    store32(temp, Address(dest.base, dest.offset + INT64HIGH_OFFSET));
+    store32(temp, HighWord(dest));
 
     bind(&done);
 }
@@ -978,7 +1140,7 @@ MacroAssembler::truncateDoubleToUInt64(Address src, Address dest, Register temp,
     truncateDoubleToInt64(src, dest, temp);
 
     // For unsigned conversion the case of [INT64, UINT64] needs to get handle seperately.
-    load32(Address(dest.base, dest.offset + INT64HIGH_OFFSET), temp);
+    load32(HighWord(dest), temp);
     branch32(Assembler::Condition::NotSigned, temp, Imm32(0), &done);
 
     // Move the value inside INT64 range.
@@ -988,30 +1150,11 @@ MacroAssembler::truncateDoubleToUInt64(Address src, Address dest, Register temp,
     storeDouble(floatTemp, dest);
     truncateDoubleToInt64(dest, dest, temp);
 
-    load32(Address(dest.base, dest.offset + INT64HIGH_OFFSET), temp);
+    load32(HighWord(dest), temp);
     orl(Imm32(0x80000000), temp);
-    store32(temp, Address(dest.base, dest.offset + INT64HIGH_OFFSET));
+    store32(temp, HighWord(dest));
 
     bind(&done);
-}
-
-// ========================================================================
-// wasm support
-
-template <class L>
-void
-MacroAssembler::wasmBoundsCheck(Condition cond, Register index, Register boundsCheckLimit, L label)
-{
-    cmp32(index, boundsCheckLimit);
-    j(cond, label);
-}
-
-template <class L>
-void
-MacroAssembler::wasmBoundsCheck(Condition cond, Register index, Address boundsCheckLimit, L label)
-{
-    cmp32(index, Operand(boundsCheckLimit));
-    j(cond, label);
 }
 
 //}}} check_macroassembler_style
@@ -1041,7 +1184,7 @@ MacroAssemblerX86::convertUInt32ToFloat32(Register src, FloatRegister dest)
 }
 
 void
-MacroAssemblerX86::unboxValue(const ValueOperand& src, AnyRegister dest)
+MacroAssemblerX86::unboxValue(const ValueOperand& src, AnyRegister dest, JSValueType)
 {
     if (dest.isFloat()) {
         Label notInt32, end;

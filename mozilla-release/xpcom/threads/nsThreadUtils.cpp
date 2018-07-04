@@ -9,6 +9,9 @@
 #include "mozilla/Likely.h"
 #include "mozilla/TimeStamp.h"
 #include "LeakRefPtr.h"
+#include "nsComponentManagerUtils.h"
+#include "nsExceptionHandler.h"
+#include "nsITimer.h"
 
 #ifdef MOZILLA_INTERNAL_API
 # include "nsThreadManager.h"
@@ -24,10 +27,6 @@
 #include <sys/resource.h>
 #endif
 
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
-
 using namespace mozilla;
 
 #ifndef XPCOM_GLUE_AVOID_NSPR
@@ -41,7 +40,16 @@ IdlePeriod::GetIdlePeriodHint(TimeStamp* aIdleDeadline)
   return NS_OK;
 }
 
-NS_IMPL_ISUPPORTS(Runnable, nsIRunnable, nsINamed)
+// NS_IMPL_NAMED_* relies on the mName field, which is not present on
+// release or beta. Instead, fall back to using "Runnable" for all
+// runnables.
+#ifndef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+NS_IMPL_ISUPPORTS(Runnable, nsIRunnable)
+#else
+NS_IMPL_NAMED_ADDREF(Runnable, mName)
+NS_IMPL_NAMED_RELEASE(Runnable, mName)
+NS_IMPL_QUERY_INTERFACE(Runnable, nsIRunnable, nsINamed)
+#endif
 
 NS_IMETHODIMP
 Runnable::Run()
@@ -50,20 +58,18 @@ Runnable::Run()
   return NS_OK;
 }
 
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
 NS_IMETHODIMP
 Runnable::GetName(nsACString& aName)
 {
-#ifdef RELEASE_OR_BETA
-  aName.Truncate();
-#else
   if (mName) {
     aName.AssignASCII(mName);
   } else {
     aName.Truncate();
   }
-#endif
   return NS_OK;
 }
+#endif
 
 NS_IMPL_ISUPPORTS_INHERITED(CancelableRunnable, Runnable,
                             nsICancelableRunnable)
@@ -78,15 +84,48 @@ CancelableRunnable::Cancel()
 NS_IMPL_ISUPPORTS_INHERITED(IdleRunnable, CancelableRunnable,
                             nsIIdleRunnable)
 
-namespace mozilla {
-namespace detail {
-already_AddRefed<nsITimer> CreateTimer()
+NS_IMPL_ISUPPORTS_INHERITED(PrioritizableRunnable, Runnable,
+                            nsIRunnablePriority)
+
+PrioritizableRunnable::PrioritizableRunnable(already_AddRefed<nsIRunnable>&& aRunnable,
+                                             uint32_t aPriority)
+ // Real runnable name is managed by overridding the GetName function.
+ : Runnable("PrioritizableRunnable")
+ , mRunnable(Move(aRunnable))
+ , mPriority(aPriority)
 {
-  nsCOMPtr<nsITimer> timer = do_CreateInstance(NS_TIMER_CONTRACTID);
-  return timer.forget();
+#if DEBUG
+  nsCOMPtr<nsIRunnablePriority> runnablePrio = do_QueryInterface(mRunnable);
+  MOZ_ASSERT(!runnablePrio);
+#endif
 }
-} // namespace detail
-} // namespace mozilla
+
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
+NS_IMETHODIMP
+PrioritizableRunnable::GetName(nsACString& aName)
+{
+  // Try to get a name from the underlying runnable.
+  nsCOMPtr<nsINamed> named = do_QueryInterface(mRunnable);
+  if (named) {
+    named->GetName(aName);
+  }
+  return NS_OK;
+}
+#endif
+
+NS_IMETHODIMP
+PrioritizableRunnable::Run()
+{
+  MOZ_RELEASE_ASSERT(NS_IsMainThread());
+  return mRunnable->Run();
+}
+
+NS_IMETHODIMP
+PrioritizableRunnable::GetPriority(uint32_t* aPriority)
+{
+  *aPriority = mPriority;
+  return NS_OK;
+}
 
 #endif  // XPCOM_GLUE_AVOID_NSPR
 
@@ -316,17 +355,16 @@ public:
   {
     MOZ_ASSERT(aTarget);
     MOZ_ASSERT(!mTimer);
-    mTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
-    if (mTimer) {
-      mTimer->SetTarget(aTarget);
-      mTimer->InitWithNamedFuncCallback(TimedOut,
-                                        this,
-                                        aDelay,
-                                        nsITimer::TYPE_ONE_SHOT,
-                                        "IdleRunnableWrapper::SetTimer");
-    }
+    NS_NewTimerWithFuncCallback(getter_AddRefs(mTimer),
+                                TimedOut,
+                                this,
+                                aDelay,
+                                nsITimer::TYPE_ONE_SHOT,
+                                "IdleRunnableWrapper::SetTimer",
+                                aTarget);
   }
 
+#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   NS_IMETHOD GetName(nsACString& aName) override
   {
     aName.AssignLiteral("IdleRunnableWrapper");
@@ -340,6 +378,7 @@ public:
     }
     return NS_OK;
   }
+#endif
 
 private:
   ~IdleRunnableWrapper()
@@ -484,9 +523,7 @@ void
 NS_SetCurrentThreadName(const char* aName)
 {
   PR_SetCurrentThreadName(aName);
-#ifdef MOZ_CRASHREPORTER
   CrashReporter::SetCurrentThreadName(aName);
-#endif
 }
 
 #ifdef MOZILLA_INTERNAL_API
@@ -494,6 +531,16 @@ nsIThread*
 NS_GetCurrentThread()
 {
   return nsThreadManager::get().GetCurrentThread();
+}
+
+
+nsIThread*
+NS_GetCurrentThreadNoCreate()
+{
+  if (nsThreadManager::get().IsNSThread()) {
+    return NS_GetCurrentThread();
+  }
+  return nullptr;
 }
 #endif
 
@@ -539,18 +586,6 @@ nsAutoLowPriorityIO::~nsAutoLowPriorityIO()
 }
 
 namespace mozilla {
-
-PRThread*
-GetCurrentVirtualThread()
-{
-  return PR_GetCurrentThread();
-}
-
-PRThread*
-GetCurrentPhysicalThread()
-{
-  return PR_GetCurrentThread();
-}
 
 nsIEventTarget*
 GetCurrentThreadEventTarget()

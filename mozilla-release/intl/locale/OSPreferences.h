@@ -9,9 +9,7 @@
 #include "mozilla/StaticPtr.h"
 #include "nsString.h"
 #include "nsTArray.h"
-#ifdef ENABLE_INTL_API
 #include "unicode/uloc.h"
-#endif
 
 #include "mozIOSPreferences.h"
 
@@ -57,6 +55,12 @@ public:
     Long,    // e.g. time: including seconds, date: including weekday
     Full     // e.g. time: with timezone, date: with long weekday, month
   };
+
+  /**
+   * Constructor, to do any necessary initialization such as registering for
+   * notifications from the system when prefs are modified.
+   */
+  OSPreferences();
 
   /**
    * Create (if necessary) and return a raw pointer to the singleton instance.
@@ -146,7 +150,7 @@ protected:
   nsTArray<nsCString> mRegionalPrefsLocales;
 
 private:
-  virtual ~OSPreferences() {};
+  virtual ~OSPreferences();
 
   static StaticRefPtr<OSPreferences> sInstance;
 

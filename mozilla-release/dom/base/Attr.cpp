@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /*
- * Implementation of DOM Core's nsIDOMAttr node.
+ * Implementation of DOM Core's Attr node.
  */
 
 #include "mozilla/dom/Attr.h"
@@ -49,7 +49,7 @@ Attr::Attr(nsDOMAttributeMap *aAttrMap,
   : nsIAttribute(aAttrMap, aNodeInfo), mValue(aValue)
 {
   MOZ_ASSERT(mNodeInfo, "We must get a nodeinfo here!");
-  MOZ_ASSERT(mNodeInfo->NodeType() == nsIDOMNode::ATTRIBUTE_NODE,
+  MOZ_ASSERT(mNodeInfo->NodeType() == ATTRIBUTE_NODE,
              "Wrong nodeType");
 
   // We don't add a reference to our content. It will tell us
@@ -99,8 +99,8 @@ NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 // QueryInterface implementation for Attr
 NS_INTERFACE_TABLE_HEAD(Attr)
   NS_WRAPPERCACHE_INTERFACE_TABLE_ENTRY
-  NS_INTERFACE_TABLE(Attr, nsINode, nsIDOMAttr, nsIAttribute, nsIDOMNode,
-                     nsIDOMEventTarget, EventTarget)
+  NS_INTERFACE_TABLE(Attr, nsINode, nsIAttribute, nsIDOMNode,
+                     EventTarget)
   NS_INTERFACE_TABLE_TO_MAP_SEGUE_CYCLE_COLLECTION(Attr)
   NS_INTERFACE_MAP_ENTRY_TEAROFF(nsISupportsWeakReference,
                                  new nsNodeSupportsWeakRefTearoff(this))
@@ -144,38 +144,34 @@ Attr::SetOwnerDocument(nsIDocument* aDocument)
   RefPtr<mozilla::dom::NodeInfo> newNodeInfo;
   newNodeInfo = aDocument->NodeInfoManager()->
     GetNodeInfo(mNodeInfo->NameAtom(), mNodeInfo->GetPrefixAtom(),
-                mNodeInfo->NamespaceID(),
-                nsIDOMNode::ATTRIBUTE_NODE);
+                mNodeInfo->NamespaceID(), ATTRIBUTE_NODE);
   NS_ASSERTION(newNodeInfo, "GetNodeInfo lies");
   mNodeInfo.swap(newNodeInfo);
 
   return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 Attr::GetName(nsAString& aName)
 {
   aName = NodeName();
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 Attr::GetValue(nsAString& aValue)
 {
   Element* element = GetElement();
   if (element) {
-    nsCOMPtr<nsIAtom> nameAtom = mNodeInfo->NameAtom();
+    RefPtr<nsAtom> nameAtom = mNodeInfo->NameAtom();
     element->GetAttr(mNodeInfo->NamespaceID(), nameAtom, aValue);
   }
   else {
     aValue = mValue;
   }
-
-  return NS_OK;
 }
 
 void
-Attr::SetValue(const nsAString& aValue, ErrorResult& aRv)
+Attr::SetValue(const nsAString& aValue, nsIPrincipal* aTriggeringPrincipal, ErrorResult& aRv)
 {
   Element* element = GetElement();
   if (!element) {
@@ -183,20 +179,19 @@ Attr::SetValue(const nsAString& aValue, ErrorResult& aRv)
     return;
   }
 
-  nsCOMPtr<nsIAtom> nameAtom = mNodeInfo->NameAtom();
+  RefPtr<nsAtom> nameAtom = mNodeInfo->NameAtom();
   aRv = element->SetAttr(mNodeInfo->NamespaceID(),
                          nameAtom,
                          mNodeInfo->GetPrefixAtom(),
                          aValue,
+                         aTriggeringPrincipal,
                          true);
 }
 
-NS_IMETHODIMP
-Attr::SetValue(const nsAString& aValue)
+void
+Attr::SetValue(const nsAString& aValue, ErrorResult& aRv)
 {
-  ErrorResult rv;
-  SetValue(aValue, rv);
-  return rv.StealNSResult();
+  SetValue(aValue, nullptr, aRv);
 }
 
 bool
@@ -205,49 +200,22 @@ Attr::Specified() const
   return true;
 }
 
-NS_IMETHODIMP
-Attr::GetSpecified(bool* aSpecified)
-{
-  NS_ENSURE_ARG_POINTER(aSpecified);
-  *aSpecified = Specified();
-  return NS_OK;
-}
-
 Element*
 Attr::GetOwnerElement(ErrorResult& aRv)
 {
   return GetElement();
 }
 
-NS_IMETHODIMP
-Attr::GetOwnerElement(nsIDOMElement** aOwnerElement)
-{
-  NS_ENSURE_ARG_POINTER(aOwnerElement);
-
-  Element* element = GetElement();
-  if (element) {
-    return CallQueryInterface(element, aOwnerElement);
-  }
-
-  *aOwnerElement = nullptr;
-
-  return NS_OK;
-}
-
 void
 Attr::GetNodeValueInternal(nsAString& aNodeValue)
 {
-  OwnerDoc()->WarnOnceAbout(nsIDocument::eNodeValue);
-
   GetValue(aNodeValue);
 }
 
 void
 Attr::SetNodeValueInternal(const nsAString& aNodeValue, ErrorResult& aError)
 {
-  OwnerDoc()->WarnOnceAbout(nsIDocument::eNodeValue);
-
-  aError = SetValue(aNodeValue);
+  SetValue(aNodeValue, nullptr, aError);
 }
 
 nsresult
@@ -280,31 +248,21 @@ void
 Attr::GetTextContentInternal(nsAString& aTextContent,
                              OOMReporter& aError)
 {
-  OwnerDoc()->WarnOnceAbout(nsIDocument::eTextContent);
-
   GetValue(aTextContent);
 }
 
 void
 Attr::SetTextContentInternal(const nsAString& aTextContent,
+                             nsIPrincipal* aSubjectPrincipal,
                              ErrorResult& aError)
 {
-  OwnerDoc()->WarnOnceAbout(nsIDocument::eTextContent);
-
   SetNodeValueInternal(aTextContent, aError);
-}
-
-NS_IMETHODIMP
-Attr::GetIsId(bool* aReturn)
-{
-  *aReturn = mNodeInfo->Equals(nsGkAtoms::id, kNameSpaceID_None);
-  return NS_OK;
 }
 
 bool
 Attr::IsNodeOfType(uint32_t aFlags) const
 {
-    return !(aFlags & ~eATTRIBUTE);
+    return false;
 }
 
 uint32_t
@@ -314,41 +272,45 @@ Attr::GetChildCount() const
 }
 
 nsIContent *
-Attr::GetChildAt(uint32_t aIndex) const
+Attr::GetChildAt_Deprecated(uint32_t aIndex) const
 {
-  return nullptr;
-}
-
-nsIContent * const *
-Attr::GetChildArray(uint32_t* aChildCount) const
-{
-  *aChildCount = 0;
   return nullptr;
 }
 
 int32_t
-Attr::IndexOf(const nsINode* aPossibleChild) const
+Attr::ComputeIndexOf(const nsINode* aPossibleChild) const
 {
   return -1;
 }
 
 nsresult
-Attr::InsertChildAt(nsIContent* aKid, uint32_t aIndex,
-                              bool aNotify)
+Attr::InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
+                        bool aNotify)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+nsresult
+Attr::InsertChildAt_Deprecated(nsIContent* aKid, uint32_t aIndex,
+                               bool aNotify)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 void
-Attr::RemoveChildAt(uint32_t aIndex, bool aNotify)
+Attr::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
 {
 }
 
-nsresult
+void
+Attr::RemoveChildNode(nsIContent* aKid, bool aNotify)
+{
+}
+
+void
 Attr::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
   aVisitor.mCanHandle = true;
-  return NS_OK;
 }
 
 void

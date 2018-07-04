@@ -13,6 +13,7 @@ const {
   evalCalcExpression,
   shapeModeToCssPropertyName,
   getCirclePath,
+  getDecimalPrecision,
   getUnit
 } = require("devtools/server/actors/highlighters/shapes");
 
@@ -22,6 +23,7 @@ function run_test() {
   test_eval_calc_expression();
   test_shape_mode_to_css_property_name();
   test_get_circle_path();
+  test_get_decimal_precision();
   test_get_unit();
   run_next_test();
 }
@@ -106,25 +108,48 @@ function test_shape_mode_to_css_property_name() {
 
 function test_get_circle_path() {
   const tests = [{
-    desc: "getCirclePath with no resizing, no zoom, 1:1 ratio",
-    cx: 0, cy: 0, width: 100, height: 100, zoom: 1,
-    expected: "M-10,0a10,10 0 1,0 20,0a10,10 0 1,0 -20,0"
-  }, {
-    desc: "getCirclePath with resizing, no zoom, 1:1 ratio",
-    cx: 0, cy: 0, width: 200, height: 200, zoom: 1,
+    desc: "getCirclePath with size 5, no resizing, no zoom, 1:1 ratio",
+    size: 5, cx: 0, cy: 0, width: 100, height: 100, zoom: 1,
     expected: "M-5,0a5,5 0 1,0 10,0a5,5 0 1,0 -10,0"
   }, {
-    desc: "getCirclePath with resizing, zoom, 1:1 ratio",
-    cx: 0, cy: 0, width: 200, height: 200, zoom: 2,
-    expected: "M-2.5,0a2.5,2.5 0 1,0 5,0a2.5,2.5 0 1,0 -5,0"
+    desc: "getCirclePath with size 7, resizing, no zoom, 1:1 ratio",
+    size: 7, cx: 0, cy: 0, width: 200, height: 200, zoom: 1,
+    expected: "M-3.5,0a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0"
   }, {
-    desc: "getCirclePath with resizing, zoom, non-square ratio",
-    cx: 0, cy: 0, width: 100, height: 200, zoom: 2,
-    expected: "M-5,0a5,2.5 0 1,0 10,0a5,2.5 0 1,0 -10,0"
+    desc: "getCirclePath with size 5, resizing, zoom, 1:1 ratio",
+    size: 5, cx: 0, cy: 0, width: 200, height: 200, zoom: 2,
+    expected: "M-1.25,0a1.25,1.25 0 1,0 2.5,0a1.25,1.25 0 1,0 -2.5,0"
+  }, {
+    desc: "getCirclePath with size 5, resizing, zoom, non-square ratio",
+    size: 5, cx: 0, cy: 0, width: 100, height: 200, zoom: 2,
+    expected: "M-2.5,0a2.5,1.25 0 1,0 5,0a2.5,1.25 0 1,0 -5,0"
   }];
 
-  for (let { desc, cx, cy, width, height, zoom, expected } of tests) {
-    equal(getCirclePath(cx, cy, width, height, zoom), expected, desc);
+  for (let { desc, size, cx, cy, width, height, zoom, expected } of tests) {
+    equal(getCirclePath(size, cx, cy, width, height, zoom), expected, desc);
+  }
+}
+
+function test_get_decimal_precision() {
+  const tests = [{
+    desc: "getDecimalPrecision with px",
+    expr: "px", expected: 0
+  }, {
+    desc: "getDecimalPrecision with %",
+    expr: "%", expected: 2
+  }, {
+    desc: "getDecimalPrecision with em",
+    expr: "em", expected: 2
+  }, {
+    desc: "getDecimalPrecision with undefined",
+    expr: undefined, expected: 0
+  }, {
+    desc: "getDecimalPrecision with empty string",
+    expr: "", expected: 0
+  }];
+
+  for (let { desc, expr, expected } of tests) {
+    equal(getDecimalPrecision(expr), expected, desc);
   }
 }
 
@@ -143,10 +168,16 @@ function test_get_unit() {
     expr: "0", expected: "px"
   }, {
     desc: "getUnit with 0%",
-    expr: "0%", expected: "px"
+    expr: "0%", expected: "%"
   }, {
-    desc: "getUnit with no unit",
-    expr: "30", expected: "px"
+    desc: "getUnit with 0.00%",
+    expr: "0.00%", expected: "%"
+  }, {
+    desc: "getUnit with 0px",
+    expr: "0px", expected: "px"
+  }, {
+    desc: "getUnit with 0em",
+    expr: "0em", expected: "em"
   }, {
     desc: "getUnit with calc",
     expr: "calc(30px + 5%)", expected: "px"

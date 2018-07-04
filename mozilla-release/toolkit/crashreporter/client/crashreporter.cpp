@@ -44,6 +44,7 @@ string       gEventsPath;
 string       gPingPath;
 int          gArgc;
 char**       gArgv;
+bool         gAutoSubmit;
 
 enum SubmissionResult {Succeeded, Failed};
 
@@ -57,6 +58,10 @@ static const char kMemoryReportExtension[] = ".memory.json.gz";
 
 void UIError(const string& message)
 {
+  if (gAutoSubmit) {
+    return;
+  }
+
   string errorMessage;
   if (!gStrings[ST_CRASHREPORTERERROR].empty()) {
     char buf[2048];
@@ -645,13 +650,17 @@ int main(int argc, char** argv)
   gArgc = argc;
   gArgv = argv;
 
+  string autoSubmitEnv = UIGetEnv("MOZ_CRASHREPORTER_AUTO_SUBMIT");
+  gAutoSubmit = !autoSubmitEnv.empty();
+
   if (!ReadConfig()) {
     UIError("Couldn't read configuration.");
     return 0;
   }
 
-  if (!UIInit())
+  if (!UIInit()) {
     return 0;
+  }
 
   if (argc > 1) {
     gReporterDumpFile = argv[1];
@@ -659,11 +668,17 @@ int main(int argc, char** argv)
 
   if (gReporterDumpFile.empty()) {
     // no dump file specified, run the default UI
-    UIShowDefaultUI();
+    if (!gAutoSubmit) {
+      UIShowDefaultUI();
+    }
   } else {
     // Start by running minidump analyzer to gather stack traces.
     string reporterDumpFile = gReporterDumpFile;
     vector<string> args = { reporterDumpFile };
+    string dumpAllThreadsEnv = UIGetEnv("MOZ_CRASHREPORTER_DUMP_ALL_THREADS");
+    if (!dumpAllThreadsEnv.empty()) {
+      args.insert(args.begin(), "--full");
+    }
     UIRunProgram(GetProgramPath(UI_MINIDUMP_ANALYZER_FILENAME),
                  args, /* wait */ true);
 
@@ -757,8 +772,9 @@ int main(int argc, char** argv)
     }
 
     string sendURL = queryParameters["ServerURL"];
-    // we don't need to actually send this
+    // we don't need to actually send these
     queryParameters.erase("ServerURL");
+    queryParameters.erase("StackTraces");
 
     queryParameters["Throttleable"] = "1";
 
@@ -799,13 +815,13 @@ int main(int argc, char** argv)
       sendURL = urlEnv;
     }
 
-     // see if this version has been end-of-lifed
-     if (queryParameters.find("Version") != queryParameters.end() &&
-         CheckEndOfLifed(queryParameters["Version"])) {
-       UIError(gStrings[ST_ERROR_ENDOFLIFE]);
-       DeleteDump();
-       return 0;
-     }
+    // see if this version has been end-of-lifed
+    if (queryParameters.find("Version") != queryParameters.end() &&
+        CheckEndOfLifed(queryParameters["Version"])) {
+      UIError(gStrings[ST_ERROR_ENDOFLIFE]);
+      DeleteDump();
+      return 0;
+    }
 
     StringTable files;
     files["upload_file_minidump"] = gReporterDumpFile;

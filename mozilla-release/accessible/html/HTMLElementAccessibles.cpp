@@ -56,8 +56,6 @@ HTMLBRAccessible::NativeName(nsString& aName)
 // HTMLLabelAccessible
 ////////////////////////////////////////////////////////////////////////////////
 
-NS_IMPL_ISUPPORTS_INHERITED0(HTMLLabelAccessible, HyperTextAccessible)
-
 ENameValueFlag
 HTMLLabelAccessible::NativeName(nsString& aName)
 {
@@ -70,7 +68,7 @@ HTMLLabelAccessible::RelationByType(RelationType aType)
 {
   Relation rel = AccessibleWrap::RelationByType(aType);
   if (aType == RelationType::LABEL_FOR) {
-    dom::HTMLLabelElement* label = dom::HTMLLabelElement::FromContent(mContent);
+    dom::HTMLLabelElement* label = dom::HTMLLabelElement::FromNode(mContent);
     rel.AppendTarget(mDoc, label->GetControl());
   }
 
@@ -107,8 +105,6 @@ HTMLLabelAccessible::DoAction(uint8_t aIndex)
 // nsHTMLOuputAccessible
 ////////////////////////////////////////////////////////////////////////////////
 
-NS_IMPL_ISUPPORTS_INHERITED0(HTMLOutputAccessible, HyperTextAccessible)
-
 Relation
 HTMLOutputAccessible::RelationByType(RelationType aType)
 {
@@ -143,7 +139,7 @@ HTMLSummaryAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName)
     return;
   }
 
-  dom::HTMLSummaryElement* summary = dom::HTMLSummaryElement::FromContent(mContent);
+  dom::HTMLSummaryElement* summary = dom::HTMLSummaryElement::FromNode(mContent);
   if (!summary) {
     return;
   }
@@ -175,7 +171,7 @@ HTMLSummaryAccessible::NativeState()
 {
   uint64_t state = HyperTextAccessibleWrap::NativeState();
 
-  dom::HTMLSummaryElement* summary = dom::HTMLSummaryElement::FromContent(mContent);
+  dom::HTMLSummaryElement* summary = dom::HTMLSummaryElement::FromNode(mContent);
   if (!summary) {
     return state;
   }
@@ -201,4 +197,58 @@ bool
 HTMLSummaryAccessible::IsWidget() const
 {
   return true;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// HTMLHeaderOrFooterAccessible
+////////////////////////////////////////////////////////////////////////////////
+
+role
+HTMLHeaderOrFooterAccessible::NativeRole()
+{
+  // Only map header and footer if they are direct descendants of the body tag.
+  // If other sectioning or sectioning root elements, they become sections.
+  nsIContent* parent = mContent->GetParent();
+  while (parent) {
+    if (parent->IsAnyOfHTMLElements(nsGkAtoms::article, nsGkAtoms::aside,
+                             nsGkAtoms::nav, nsGkAtoms::section,
+                             nsGkAtoms::blockquote, nsGkAtoms::details,
+                             nsGkAtoms::dialog, nsGkAtoms::fieldset,
+                             nsGkAtoms::figure, nsGkAtoms::td)) {
+      break;
+    }
+    parent = parent->GetParent();
+  }
+
+  // No sectioning or sectioning root elements found.
+  if (!parent) {
+    if (mContent->IsHTMLElement(nsGkAtoms::header)) {
+      return roles::HEADER;
+    }
+
+    if (mContent->IsHTMLElement(nsGkAtoms::footer)) {
+      return roles::FOOTER;
+    }
+  }
+
+  return roles::SECTION;
+}
+
+nsAtom*
+HTMLHeaderOrFooterAccessible::LandmarkRole() const
+{
+  if (!HasOwnContent())
+    return nullptr;
+
+  a11y::role r = const_cast<HTMLHeaderOrFooterAccessible*>(this)->Role();
+  if (r == roles::HEADER) {
+    return nsGkAtoms::banner;
+  }
+
+  if (r == roles::FOOTER) {
+    return nsGkAtoms::contentinfo;
+  }
+
+  return nullptr;
 }

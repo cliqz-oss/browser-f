@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -18,19 +19,18 @@ class nsHTMLButtonControlFrame : public nsContainerFrame,
                                  public nsIFormControlFrame
 {
 public:
-  explicit nsHTMLButtonControlFrame(nsStyleContext* aContext)
-    : nsHTMLButtonControlFrame(aContext, kClassID)
+  explicit nsHTMLButtonControlFrame(ComputedStyle* aStyle)
+    : nsHTMLButtonControlFrame(aStyle, kClassID)
   {}
 
   ~nsHTMLButtonControlFrame();
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsHTMLButtonControlFrame)
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   virtual nscoord GetMinISize(gfxContext *aRenderingContext) override;
@@ -57,9 +57,9 @@ public:
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow) override;
 
-  virtual nsStyleContext* GetAdditionalStyleContext(int32_t aIndex) const override;
-  virtual void SetAdditionalStyleContext(int32_t aIndex,
-                                         nsStyleContext* aStyleContext) override;
+  ComputedStyle* GetAdditionalComputedStyle(int32_t aIndex) const override;
+  void SetAdditionalComputedStyle(int32_t aIndex,
+                                  ComputedStyle* aComputedStyle) override;
 
 #ifdef DEBUG
   virtual void AppendFrames(ChildListID     aListID,
@@ -85,7 +85,7 @@ public:
 
   // nsIFormControlFrame
   void SetFocus(bool aOn, bool aRepaint) override;
-  virtual nsresult SetFormProperty(nsIAtom* aName, const nsAString& aValue) override;
+  virtual nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) override;
 
   // Inserted child content gets its frames parented by our child block
   virtual nsContainerFrame* GetContentInsertionFrame() override {
@@ -102,7 +102,7 @@ public:
   void AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult) override;
 
 protected:
-  nsHTMLButtonControlFrame(nsStyleContext* aContext, nsIFrame::ClassID aID);
+  nsHTMLButtonControlFrame(ComputedStyle* aStyle, nsIFrame::ClassID aID);
 
   virtual bool IsInput() { return false; }
 

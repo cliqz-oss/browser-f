@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,7 +14,6 @@
 #include "nsTArray.h"
 
 class nsINodeList;
-class inIDOMUtils;
 
 class inDeepTreeWalker final : public inIDeepTreeWalker
 {
@@ -38,7 +39,6 @@ protected:
   // null from here.
   nsCOMPtr<nsIDOMNode> mRoot;
   nsCOMPtr<nsIDOMNode> mCurrentNode;
-  nsCOMPtr<inIDOMUtils> mDOMUtils;
 
   // We cache the siblings of mCurrentNode as a list of nodes.
   // Notes: normally siblings are all the children of the parent

@@ -11,7 +11,6 @@ import org.json.simple.JSONObject;
 import org.mozilla.gecko.background.common.log.Logger;
 import org.mozilla.gecko.sync.CryptoRecord;
 import org.mozilla.gecko.sync.InfoConfiguration;
-import org.mozilla.gecko.sync.Server15PreviousPostFailedException;
 import org.mozilla.gecko.sync.net.AuthHeaderProvider;
 import org.mozilla.gecko.sync.repositories.RepositorySession;
 import org.mozilla.gecko.sync.repositories.delegates.RepositorySessionStoreDelegate;
@@ -101,15 +100,28 @@ public class BatchingUploader {
     // maintain this limit for a single sanity check.
     private final long maxPayloadFieldBytes;
 
+    // Depending on the 'shouldFailBatchOnFailure' flag below, "invalid" records (too large or fail
+    // to serialize correctly) will cause uploader to start ignoring any future records in the current
+    // flow.
+    private volatile boolean encounteredInvalidRecord = false;
+
+    // Whether or not we should set aborted if there are any issues with the record.
+    // This is used to prevent corruption with bookmark records, as uploading
+    // only a subset of the bookmarks is very likely to cause corruption, (e.g.
+    // uploading a parent without its children or vice versa).
+    @VisibleForTesting
+    protected final boolean shouldFailBatchOnFailure;
+
     public BatchingUploader(
             final RepositorySession repositorySession, final ExecutorService workQueue,
             final RepositorySessionStoreDelegate sessionStoreDelegate, final Uri baseCollectionUri,
             final Long localCollectionLastModified, final InfoConfiguration infoConfiguration,
-            final AuthHeaderProvider authHeaderProvider) {
+            final AuthHeaderProvider authHeaderProvider, final boolean shouldAbortOnFailure) {
         this.repositorySession = repositorySession;
         this.sessionStoreDelegate = sessionStoreDelegate;
         this.collectionUri = baseCollectionUri;
         this.authHeaderProvider = authHeaderProvider;
+        this.shouldFailBatchOnFailure = shouldAbortOnFailure;
 
         this.uploaderMeta = new UploaderMeta(
                 payloadLock, infoConfiguration.maxTotalBytes, infoConfiguration.maxTotalRecords);
@@ -128,16 +140,7 @@ public class BatchingUploader {
         final String guid = record.guid;
 
         // If store failed entirely, just bail out. We've already told our delegate that we failed.
-        if (payloadDispatcher.storeFailed) {
-            return;
-        }
-
-        // If a record or a payload failed, we won't let subsequent requests proceed.
-        // This means that we may bail much earlier.
-        if (payloadDispatcher.recordUploadFailed) {
-            sessionStoreDelegate.deferredStoreDelegate(executor).onRecordStoreFailed(
-                    new Server15PreviousPostFailedException(), guid
-            );
+        if (shouldIgnoreFurtherRecords()) {
             return;
         }
 
@@ -145,9 +148,7 @@ public class BatchingUploader {
 
         final String payloadField = (String) recordJSON.get(CryptoRecord.KEY_PAYLOAD);
         if (payloadField == null) {
-            sessionStoreDelegate.deferredStoreDelegate(executor).onRecordStoreFailed(
-                    new IllegalRecordException(), guid
-            );
+            processInvalidRecord(new IllegalRecordException(), record, false);
             return;
         }
 
@@ -155,17 +156,13 @@ public class BatchingUploader {
         // UTF-8 uses 1 byte per character for the ASCII range. Contents of the payloadField are
         // base64 and hex encoded, so character count is sufficient.
         if (payloadField.length() > this.maxPayloadFieldBytes) {
-            sessionStoreDelegate.deferredStoreDelegate(executor).onRecordStoreFailed(
-                    new PayloadTooLargeToUpload(), guid
-            );
+            processInvalidRecord(new PayloadTooLargeToUpload(), record, true);
             return;
         }
 
         final byte[] recordBytes = Record.stringToJSONBytes(recordJSON.toJSONString());
         if (recordBytes == null) {
-            sessionStoreDelegate.deferredStoreDelegate(executor).onRecordStoreFailed(
-                    new IllegalRecordException(), guid
-            );
+            processInvalidRecord(new IllegalRecordException(), record, false);
             return;
         }
 
@@ -174,9 +171,7 @@ public class BatchingUploader {
 
         // We can't upload individual records which exceed our payload total byte limit.
         if ((recordDeltaByteCount + PER_PAYLOAD_OVERHEAD_BYTE_COUNT) > payload.maxBytes) {
-            sessionStoreDelegate.deferredStoreDelegate(executor).onRecordStoreFailed(
-                    new RecordTooLargeToUpload(), guid
-            );
+            processInvalidRecord(new RecordTooLargeToUpload(), record, true);
             return;
         }
 
@@ -189,7 +184,7 @@ public class BatchingUploader {
                 Logger.debug(LOG_TAG, "Record fits into the current batch and payload");
                 addAndFlushIfNecessary(recordDeltaByteCount, recordBytes, guid);
 
-            // Payload won't fit the record.
+                // Payload won't fit the record.
             } else if (canFitRecordIntoBatch) {
                 Logger.debug(LOG_TAG, "Current payload won't fit incoming record, uploading payload.");
                 flush(false, false);
@@ -199,7 +194,7 @@ public class BatchingUploader {
                 // Keep track of the overflow record.
                 addAndFlushIfNecessary(recordDeltaByteCount, recordBytes, guid);
 
-            // Batch won't fit the record.
+                // Batch won't fit the record.
             } else {
                 Logger.debug(LOG_TAG, "Current batch won't fit incoming record, committing batch.");
                 flush(true, false);
@@ -226,6 +221,13 @@ public class BatchingUploader {
     }
 
     public void noMoreRecordsToUpload() {
+        // It's possible that we've hit a failure during an upload.
+        // If that's the case, bail out. Our delegate chain has already been notified.
+        if (shouldIgnoreFurtherRecords()) {
+            Logger.debug(LOG_TAG, "Ignoring 'no more records to upload' signal due to previous failure.");
+            return;
+        }
+
         Logger.debug(LOG_TAG, "Received 'no more records to upload' signal.");
 
         // If we have any pending records in the Payload, flush them!
@@ -246,8 +248,42 @@ public class BatchingUploader {
         });
     }
 
-    /* package-local */ void finished(AtomicLong lastModifiedTimestamp) {
-        sessionStoreDelegate.deferredStoreDelegate(executor).onStoreCompleted(lastModifiedTimestamp.get());
+
+    /* package-local */ void setLastStoreTimestamp(AtomicLong lastModifiedTimestamp) {
+        repositorySession.setLastStoreTimestamp(lastModifiedTimestamp.get());
+    }
+
+    /* package-local */ void finished() {
+        sessionStoreDelegate.deferredStoreDelegate(executor).onStoreCompleted();
+    }
+
+    private boolean shouldIgnoreFurtherRecords() {
+        return (shouldFailBatchOnFailure && encounteredInvalidRecord) || payloadDispatcher.storeFailed.get();
+    }
+
+    // Common handling for marking a record failure and calling our delegate's onRecordStoreFailed.
+    private void processInvalidRecord(final Exception e, final Record record, boolean sizeOverflow) {
+        encounteredInvalidRecord = true;
+
+        // There are three cases we're handling here. See bug 1362206 for some rationale here.
+        // 1. shouldFailBatchOnFailure is false, and it failed sanity checks for reasons other than
+        //    "it's too large" (say, `record`'s json is 0 bytes),
+        //     - Then mark record's store as 'failed' and continue uploading
+        // 2. shouldFailBatchOnFailure is false, and it failed sanity checks because it's too large,
+        //     - Continue uploading, and don't fail synchronization because of this one.
+        // 3. shouldFailBatchOnFailure is true, and it failed for any reason
+        //     - Stop uploading.
+        if (shouldFailBatchOnFailure) {
+            // case 3
+            Logger.debug(LOG_TAG, "Batch failed with exception: " + e.toString());
+            // Send off to our delegate that we failed.
+            sessionStoreDelegate.onRecordStoreFailed(e, record.guid);
+            payloadDispatcher.doStoreFailed(e);
+        } else if (!sizeOverflow) {
+            // case 1
+            sessionStoreDelegate.onRecordStoreFailed(e, record.guid);
+        }
+        // case 2 is an implicit empty else {} here.
     }
 
     // Will be called from a thread dispatched by PayloadDispatcher.
@@ -277,6 +313,10 @@ public class BatchingUploader {
         if (isCommit && !isLastPayload) {
             uploaderMeta = uploaderMeta.nextUploaderMeta();
         }
+    }
+
+    /* package-local */ void abort() {
+        repositorySession.abort();
     }
 
     /**
@@ -309,7 +349,8 @@ public class BatchingUploader {
     /* package-local */ static class PayloadTooLargeToUpload extends BatchingUploaderException {
         private static final long serialVersionUID = 1L;
     }
-    private static class IllegalRecordException extends BatchingUploaderException {
+    @VisibleForTesting
+    /* package-local */ static class IllegalRecordException extends BatchingUploaderException {
         private static final long serialVersionUID = 1L;
     }
 }

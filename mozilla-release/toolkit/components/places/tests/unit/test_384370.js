@@ -31,7 +31,7 @@ add_task(async function() {
   // Test importing a pre-Places canonical bookmarks file.
   // Note: we do not empty the db before this import to catch bugs like 380999
   let htmlFile = OS.Path.join(do_get_cwd().path, "bookmarks.preplaces.html");
-  await BookmarkHTMLUtils.importFromFile(htmlFile, true);
+  await BookmarkHTMLUtils.importFromFile(htmlFile, { replace: true });
 
   // Populate the database.
   for (let { uri, tags } of tagData) {
@@ -53,26 +53,26 @@ add_task(async function() {
   // Test exporting a Places canonical json file.
   // 1. export to bookmarks.exported.json
   await BookmarkJSONUtils.exportToFile(jsonFile);
-  do_print("exported json");
+  info("exported json");
 
   // 2. empty bookmarks db
   // 3. import bookmarks.exported.json
-  await BookmarkJSONUtils.importFromFile(jsonFile, true);
-  do_print("imported json");
+  await BookmarkJSONUtils.importFromFile(jsonFile, { replace: true });
+  info("imported json");
 
   // 4. run the test-suite
   await validate("re-imported json");
-  do_print("validated import");
+  info("validated import");
 });
 
 async function validate(infoMsg) {
-  do_print(`Validating ${infoMsg}: testMenuBookmarks`);
+  info(`Validating ${infoMsg}: testMenuBookmarks`);
   await testMenuBookmarks();
-  do_print(`Validating ${infoMsg}: testToolbarBookmarks`);
+  info(`Validating ${infoMsg}: testToolbarBookmarks`);
   await testToolbarBookmarks();
-  do_print(`Validating ${infoMsg}: testUnfiledBookmarks`);
+  info(`Validating ${infoMsg}: testUnfiledBookmarks`);
   testUnfiledBookmarks();
-  do_print(`Validating ${infoMsg}: testTags`);
+  info(`Validating ${infoMsg}: testTags`);
   testTags();
   await PlacesTestUtils.promiseAsyncUpdates();
 }
@@ -126,8 +126,8 @@ async function testMenuBookmarks() {
 async function testToolbarBookmarks() {
   let root = PlacesUtils.getFolderContents(PlacesUtils.toolbarFolderId).root;
 
-  // child count (add 2 for pre-existing items)
-  Assert.equal(root.childCount, bookmarkData.length + 2);
+  // child count (add 3 for pre-existing items)
+  Assert.equal(root.childCount, bookmarkData.length + 3);
 
   let livemarkNode = root.getChild(1);
   Assert.equal("Latest Headlines", livemarkNode.title);
@@ -138,11 +138,19 @@ async function testToolbarBookmarks() {
   Assert.equal("http://en-us.fxfeeds.mozilla.com/en-US/firefox/headlines.xml",
                livemark.feedURI.spec);
 
+  livemarkNode = root.getChild(2);
+  Assert.equal("Latest Headlines No Site", livemarkNode.title);
+
+  livemark = await PlacesUtils.livemarks.getLivemark({ id: livemarkNode.itemId });
+  Assert.equal(null, livemark.siteURI);
+  Assert.equal("http://en-us.fxfeeds.mozilla.com/en-US/firefox/headlines.xml",
+               livemark.feedURI.spec);
+
   // test added bookmark data
-  let bookmarkNode = root.getChild(2);
+  let bookmarkNode = root.getChild(3);
   Assert.equal(bookmarkNode.uri, bookmarkData[0].uri.spec);
   Assert.equal(bookmarkNode.title, bookmarkData[0].title);
-  bookmarkNode = root.getChild(3);
+  bookmarkNode = root.getChild(4);
   Assert.equal(bookmarkNode.uri, bookmarkData[1].uri.spec);
   Assert.equal(bookmarkNode.title, bookmarkData[1].title);
 
@@ -165,7 +173,7 @@ function testUnfiledBookmarks() {
 
 function testTags() {
   for (let { uri, tags } of tagData) {
-    do_print("Test tags for " + uri.spec + ": " + tags + "\n");
+    info("Test tags for " + uri.spec + ": " + tags + "\n");
     let foundTags = PlacesUtils.tagging.getTagsForURI(uri);
     Assert.equal(foundTags.length, tags.length);
     Assert.ok(tags.every(tag => foundTags.includes(tag)));

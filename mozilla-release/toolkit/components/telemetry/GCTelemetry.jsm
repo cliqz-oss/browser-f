@@ -9,22 +9,21 @@
  * This module records detailed timing information about selected
  * GCs. The data is sent back in the telemetry session ping. To avoid
  * bloating the ping, only a few GCs are included. There are two
- * selection strategies. We always save the five GCs with the worst
- * max_pause time. Additionally, five collections are selected at
+ * selection strategies. We always save the two GCs with the worst
+ * max_pause time. Additionally, two collections are selected at
  * random. If a GC runs for C milliseconds and the total time for all
  * GCs since the session began is T milliseconds, then the GC has a
- * 5*C/T probablility of being selected (the factor of 5 is because we
- * save 5 of them).
+ * 2*C/T probablility of being selected (the factor of 2 is because we
+ * save two of them).
  *
  * GCs from both the main process and all content processes are
  * recorded. The data is cleared for each new subsession.
  */
 
-const Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/Log.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-
-this.EXPORTED_SYMBOLS = ["GCTelemetry"];
+var EXPORTED_SYMBOLS = ["GCTelemetry"];
 
 // Names of processes where we record GCs.
 const PROCESS_NAMES = ["main", "content"];
@@ -52,8 +51,8 @@ class GCData {
 
     data.timestamp = fixup(data.timestamp);
 
-    for (let i = 0; i < data.slices.length; i++) {
-      let slice = data.slices[i];
+    for (let i = 0; i < data.slices_list.length; i++) {
+      let slice = data.slices_list[i];
       slice.start_timestamp = fixup(slice.start_timestamp);
       slice.end_timestamp = fixup(slice.end_timestamp);
     }
@@ -82,7 +81,7 @@ class GCData {
       }
     }
 
-    // Save the 5 worst GCs based on max_pause. A GC may appear in
+    // Save the 2 worst GCs based on max_pause. A GC may appear in
     // both worst and randomlySelected.
     for (let i = 0; i < this.worst.length; i++) {
       if (!this.worst[i]) {
@@ -110,48 +109,72 @@ class GCData {
 // make sure to update the JSON schema at:
 // https://github.com/mozilla-services/mozilla-pipeline-schemas/blob/master/telemetry/main.schema.json
 // You should also adjust browser_TelemetryGC.js.
-const MAX_GC_KEYS = 25;
+const MAX_GC_KEYS = 24;
 const MAX_SLICES = 4;
-const MAX_SLICE_KEYS = 15;
+const MAX_SLICE_KEYS = 12;
 const MAX_PHASES = 65;
+const LOGGER_NAME = "Toolkit.Telemetry";
 
-function limitProperties(obj, count) {
-  // If there are too many properties, just delete them all. We don't
+function limitProperties(name, obj, count, log) {
+  // If there are too many properties delete all/most of them. We don't
   // expect this ever to happen.
-  if (Object.keys(obj).length > count) {
+  let num_properties = Object.keys(obj).length;
+  if (num_properties > count) {
     for (let key of Object.keys(obj)) {
+      // If this is the main GC object then save some of the critical
+      // properties.
+      if (name === "data" && (
+          key === "max_pause" ||
+          key === "slices" ||
+          key === "slices_list" ||
+          key === "status" ||
+          key === "timestamp" ||
+          key === "total_time" ||
+          key === "totals")) {
+        continue;
+      }
+
       delete obj[key];
     }
+    let log_fn;
+    if ((name === "slice.times") || (name === "data.totals")) {
+        // This is a bit more likely, but is mostly-okay.
+        log_fn = s => log.info(s);
+    } else {
+        log_fn = s => log.warn(s);
+    }
+    log_fn(`Number of properties exceeded in the GC telemetry ${name} ping, expected ${count} got ${num_properties}`);
   }
 }
 
-function limitSize(data) {
-  // Store the number of slices so we know if we lost any at the end.
-  data.num_slices = data.slices.length;
+/*
+ * Reduce the size of the object by limiting the number of slices or times
+ * etc.
+ */
+function limitSize(data, log) {
+  data.slices_list.sort((a, b) => b.pause - a.pause);
 
-  data.slices.sort((a, b) => b.pause - a.pause);
-
-  if (data.slices.length > MAX_SLICES) {
+  if (data.slices_list.length > MAX_SLICES) {
     // Make sure we always keep the first slice since it has the
     // reason the GC was started.
-    let firstSliceIndex = data.slices.findIndex(s => s.slice == 0);
+    let firstSliceIndex = data.slices_list.findIndex(s => s.slice == 0);
     if (firstSliceIndex >= MAX_SLICES) {
-      data.slices[MAX_SLICES - 1] = data.slices[firstSliceIndex];
+      data.slices_list[MAX_SLICES - 1] = data.slices_list[firstSliceIndex];
     }
 
-    data.slices.length = MAX_SLICES;
+    data.slices_list.length = MAX_SLICES;
   }
 
-  data.slices.sort((a, b) => a.slice - b.slice);
+  data.slices_list.sort((a, b) => a.slice - b.slice);
 
-  limitProperties(data, MAX_GC_KEYS);
+  limitProperties("data", data, MAX_GC_KEYS, log);
 
-  for (let slice of data.slices) {
-    limitProperties(slice, MAX_SLICE_KEYS);
-    limitProperties(slice.times, MAX_PHASES);
+  for (let slice of data.slices_list) {
+    limitProperties("slice", slice, MAX_SLICE_KEYS, log);
+    limitProperties("slice.times", slice.times, MAX_PHASES, log);
   }
 
-  limitProperties(data.totals, MAX_PHASES);
+  limitProperties("data.totals", data.totals, MAX_PHASES, log);
 }
 
 let processData = new Map();
@@ -168,6 +191,9 @@ var GCTelemetry = {
     }
 
     this.initialized = true;
+    this._log = Log.repository.getLoggerWithMessagePrefix(
+      LOGGER_NAME, "GCTelemetry::");
+
     Services.obs.addObserver(this, "garbage-collection-statistics");
 
     if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT) {
@@ -191,9 +217,13 @@ var GCTelemetry = {
   },
 
   observe(subject, topic, arg) {
-    let data = JSON.parse(arg);
+    this.observeRaw(JSON.parse(arg));
+  },
 
-    limitSize(data);
+  // We expose this method so unit tests can call it, no need to test JSON
+  // parsing.
+  observeRaw(data) {
+    limitSize(data, this._log);
 
     if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT) {
       processData.get("main").record(data);

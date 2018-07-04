@@ -11,34 +11,31 @@
 #include "mozilla/dom/UIEvent.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/EventForwards.h"
-#include "nsIDOMMouseEvent.h"
 
 namespace mozilla {
 namespace dom {
 
-class MouseEvent : public UIEvent,
-                   public nsIDOMMouseEvent
+class MouseEvent : public UIEvent
 {
 public:
   MouseEvent(EventTarget* aOwner,
              nsPresContext* aPresContext,
              WidgetMouseEventBase* aEvent);
 
-  NS_DECL_ISUPPORTS_INHERITED
-
-  // nsIDOMMouseEvent Interface
-  NS_DECL_NSIDOMMOUSEEVENT
-
-  // Forward to base class
-  NS_FORWARD_TO_UIEVENT
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(MouseEvent, UIEvent)
 
   virtual JSObject* WrapObjectInternal(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override
   {
     return MouseEventBinding::Wrap(aCx, this, aGivenProto);
   }
 
+  virtual MouseEvent* AsMouseEvent() override
+  {
+    return this;
+  }
+
   // Web IDL binding methods
-  virtual uint32_t Which() override
+  virtual uint32_t Which(CallerType aCallerType) override
   {
     return Button() + 1;
   }
@@ -58,7 +55,7 @@ public:
   already_AddRefed<EventTarget> GetRelatedTarget();
   void GetRegion(nsAString& aRegion);
   void InitMouseEvent(const nsAString& aType, bool aCanBubble, bool aCancelable,
-                      nsGlobalWindow* aView, int32_t aDetail, int32_t aScreenX,
+                      nsGlobalWindowInner* aView, int32_t aDetail, int32_t aScreenX,
                       int32_t aScreenY, int32_t aClientX, int32_t aClientY,
                       bool aCtrlKey, bool aAltKey, bool aShiftKey,
                       bool aMetaKey, uint16_t aButton,
@@ -87,7 +84,7 @@ public:
   uint16_t MozInputSource() const;
   void InitNSMouseEvent(const nsAString& aType,
                         bool aCanBubble, bool aCancelable,
-                        nsGlobalWindow* aView, int32_t aDetail,
+                        nsGlobalWindowInner* aView, int32_t aDetail,
                         int32_t aScreenX, int32_t aScreenY,
                         int32_t aClientX, int32_t aClientY,
                         bool aCtrlKey, bool aAltKey, bool aShiftKey,
@@ -101,7 +98,7 @@ protected:
   void InitMouseEvent(const nsAString& aType,
                       bool aCanBubble,
                       bool aCancelable,
-                      nsGlobalWindow* aView,
+                      nsGlobalWindowInner* aView,
                       int32_t aDetail,
                       int32_t aScreenX,
                       int32_t aScreenY,
@@ -114,10 +111,6 @@ protected:
 
 } // namespace dom
 } // namespace mozilla
-
-#define NS_FORWARD_TO_MOUSEEVENT \
-  NS_FORWARD_NSIDOMMOUSEEVENT(MouseEvent::) \
-  NS_FORWARD_TO_UIEVENT
 
 already_AddRefed<mozilla::dom::MouseEvent>
 NS_NewDOMMouseEvent(mozilla::dom::EventTarget* aOwner,

@@ -1,8 +1,8 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
-/* This Source Code is subject to the terms of the Mozilla Public License
- * version 2.0 (the "License"). You can obtain a copy of the License at
- * http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* rendering object for CSS "display: grid | inline-grid" */
 
@@ -20,7 +20,7 @@
  * @return a newly allocated nsGridContainerFrame (infallible)
  */
 nsContainerFrame* NS_NewGridContainerFrame(nsIPresShell* aPresShell,
-                                           nsStyleContext* aContext);
+                                           mozilla::ComputedStyle* aStyle);
 
 namespace mozilla {
 
@@ -70,14 +70,17 @@ struct ComputedGridLineInfo
 {
   explicit ComputedGridLineInfo(nsTArray<nsTArray<nsString>>&& aNames,
                                 const nsTArray<nsString>& aNamesBefore,
-                                const nsTArray<nsString>& aNamesAfter)
+                                const nsTArray<nsString>& aNamesAfter,
+                                nsTArray<nsString>&& aNamesFollowingRepeat)
     : mNames(aNames)
     , mNamesBefore(aNamesBefore)
     , mNamesAfter(aNamesAfter)
+    , mNamesFollowingRepeat(aNamesFollowingRepeat)
   {}
   nsTArray<nsTArray<nsString>> mNames;
   nsTArray<nsString> mNamesBefore;
   nsTArray<nsString> mNamesAfter;
+  nsTArray<nsString> mNamesFollowingRepeat;
 };
 } // namespace mozilla
 
@@ -104,7 +107,6 @@ public:
   }
 
   void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                        const nsRect&           aDirtyRect,
                         const nsDisplayListSet& aLists) override;
 
   nscoord GetLogicalBaseline(mozilla::WritingMode aWM) const override
@@ -255,9 +257,9 @@ protected:
   struct Tracks;
   struct TranslatedLineRange;
   friend nsContainerFrame* NS_NewGridContainerFrame(nsIPresShell* aPresShell,
-                                                    nsStyleContext* aContext);
-  explicit nsGridContainerFrame(nsStyleContext* aContext)
-    : nsContainerFrame(aContext, kClassID)
+                                                    ComputedStyle* aStyle);
+  explicit nsGridContainerFrame(ComputedStyle* aStyle)
+    : nsContainerFrame(aStyle, kClassID)
     , mCachedMinISize(NS_INTRINSIC_WIDTH_UNKNOWN)
     , mCachedPrefISize(NS_INTRINSIC_WIDTH_UNKNOWN)
   {

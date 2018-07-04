@@ -21,7 +21,7 @@ add_task(async function() {
 
   Services.prefs.setBoolPref("plugins.click_to_play", true);
   setTestPluginEnabledState(Ci.nsIPluginTag.STATE_CLICKTOPLAY, "Test Plug-in");
-  let bindingPromise = waitForEvent(gBrowser.selectedBrowser, "PluginBindingAttached", null, true, true);
+  let bindingPromise = BrowserTestUtils.waitForContentEvent(gBrowser.selectedBrowser, "PluginBindingAttached", true, null, true);
   await promiseTabLoadEvent(gBrowser.selectedTab, gTestRoot + "plugin_test.html");
   await promiseUpdatePluginBindings(gBrowser.selectedBrowser);
   await bindingPromise;
@@ -40,8 +40,8 @@ add_task(async function() {
     let bounds = plugin.getBoundingClientRect();
     let left = (bounds.left + bounds.right) / 2;
     let top = (bounds.top + bounds.bottom) / 2;
-    let utils = content.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                       .getInterface(Components.interfaces.nsIDOMWindowUtils);
+    let utils = content.QueryInterface(Ci.nsIInterfaceRequestor)
+                       .getInterface(Ci.nsIDOMWindowUtils);
     utils.sendMouseEvent("contextmenu", left, top, 2, 1, 0);
   });
 
@@ -61,7 +61,7 @@ add_task(async function() {
   await promiseForCondition(() => !PopupNotifications.panel.dismissed && PopupNotifications.panel.firstChild);
 
   // Activate the plugin
-  PopupNotifications.panel.firstChild._primaryButton.click();
+  PopupNotifications.panel.firstChild.button.click();
 
   // check plugin state
   pluginInfo = await promiseForPluginInfo("test", gBrowser.selectedBrowser);

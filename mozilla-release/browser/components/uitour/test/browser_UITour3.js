@@ -1,5 +1,8 @@
 "use strict";
 
+ChromeUtils.import("resource://testing-common/CustomizableUITestUtils.jsm", this);
+let gCUITestUtils = new CustomizableUITestUtils(window);
+
 var gTestTab;
 var gContentAPI;
 var gContentWindow;
@@ -135,7 +138,7 @@ add_UITour_task(async function test_info_target_callback() {
 
   await showInfoPromise("appMenu", "I want to know when the target is clicked", "*click*", null, null, "makeInfoOptions");
 
-  await PanelUI.show();
+  await gCUITestUtils.openMainMenu();
 
   let returnValue = await waitForCallbackResultPromise();
 
@@ -162,6 +165,11 @@ add_UITour_task(async function test_getConfiguration_selectedSearchEngine() {
 });
 
 add_UITour_task(async function test_setSearchTerm() {
+  // Place the search bar in the navigation toolbar temporarily.
+  await SpecialPowers.pushPrefEnv({ set: [
+    ["browser.search.widget.inNavBar", true],
+  ]});
+
   const TERM = "UITour Search Term";
   await gContentAPI.setSearchTerm(TERM);
 
@@ -169,13 +177,22 @@ add_UITour_task(async function test_setSearchTerm() {
   // The UITour gets to the searchbar element through a promise, so the value setting
   // only happens after a tick.
   await waitForConditionPromise(() => searchbar.value == TERM, "Correct term set");
+
+  await SpecialPowers.popPrefEnv();
 });
 
 add_UITour_task(async function test_clearSearchTerm() {
+  // Place the search bar in the navigation toolbar temporarily.
+  await SpecialPowers.pushPrefEnv({ set: [
+    ["browser.search.widget.inNavBar", true],
+  ]});
+
   await gContentAPI.setSearchTerm("");
 
   let searchbar = document.getElementById("searchbar");
   // The UITour gets to the searchbar element through a promise, so the value setting
   // only happens after a tick.
   await waitForConditionPromise(() => searchbar.value == "", "Search term cleared");
+
+  await SpecialPowers.popPrefEnv();
 });

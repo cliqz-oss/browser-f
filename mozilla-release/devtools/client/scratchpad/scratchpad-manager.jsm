@@ -7,17 +7,12 @@
 
 this.EXPORTED_SYMBOLS = ["ScratchpadManager"];
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
 const SCRATCHPAD_WINDOW_URL = "chrome://devtools/content/scratchpad/scratchpad.xul";
 const SCRATCHPAD_WINDOW_FEATURES = "chrome,titlebar,toolbar,centerscreen,resizable,dialog=no";
 
-const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
+const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 const Services = require("Services");
 const Telemetry = require("devtools/client/shared/telemetry");
-
 
 /**
  * The ScratchpadManager object opens new Scratchpad windows and manages the state
@@ -38,8 +33,7 @@ this.ScratchpadManager = {
    * @return array
    *         The array of scratchpad states.
    */
-  getSessionState: function SPM_getSessionState()
-  {
+  getSessionState: function SPM_getSessionState() {
     return this._scratchpads;
   },
 
@@ -53,14 +47,13 @@ this.ScratchpadManager = {
    * @return array
    *         The restored scratchpad windows.
    */
-  restoreSession: function SPM_restoreSession(aSession)
-  {
+  restoreSession: function SPM_restoreSession(aSession) {
     if (!Array.isArray(aSession)) {
       return [];
     }
 
     let wins = [];
-    aSession.forEach(function (state) {
+    aSession.forEach(function(state) {
       let win = this.openScratchpad(state);
       wins.push(win);
     }, this);
@@ -111,8 +104,7 @@ this.ScratchpadManager = {
    * @return nsIDomWindow
    *         The opened scratchpad window.
    */
-  openScratchpad: function SPM_openScratchpad(aState)
-  {
+  openScratchpad: function SPM_openScratchpad(aState) {
     let params = Cc["@mozilla.org/embedcomp/dialogparam;1"]
                  .createInstance(Ci.nsIDialogParamBlock);
 
@@ -145,12 +137,10 @@ this.ScratchpadManager = {
   /**
    * Create a unique ID for a new Scratchpad.
    */
-  createUid: function SPM_createUid()
-  {
+  createUid: function SPM_createUid() {
     return JSON.stringify(this._nextUid++);
   }
 };
-
 
 /**
  * The ShutdownObserver listens for app shutdown and saves the current state
@@ -158,9 +148,7 @@ this.ScratchpadManager = {
  */
 var ShutdownObserver = {
   _initialized: false,
-
-  init: function SDO_init()
-  {
+  init() {
     if (this._initialized) {
       return;
     }
@@ -170,16 +158,14 @@ var ShutdownObserver = {
     this._initialized = true;
   },
 
-  observe: function SDO_observe(aMessage, aTopic, aData)
-  {
-    if (aTopic == "quit-application-granted") {
+  observe(message, topic) {
+    if (topic == "quit-application-granted") {
       ScratchpadManager.saveOpenWindows();
       this.uninit();
     }
   },
 
-  uninit: function SDO_uninit()
-  {
+  uninit() {
     Services.obs.removeObserver(this, "quit-application-granted");
   }
 };

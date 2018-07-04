@@ -39,11 +39,25 @@ class ABIArgGenerator
     }
 };
 
+// These registers may be volatile or nonvolatile.
 static constexpr Register ABINonArgReg0 = t0;
 static constexpr Register ABINonArgReg1 = t1;
 static constexpr Register ABINonArgReg2 = t2;
+
+// This register may be volatile or nonvolatile. Avoid f23 which is the
+// ScratchDoubleReg.
+static constexpr FloatRegister ABINonArgDoubleReg { FloatRegisters::f21, FloatRegisters::Double };
+
+// These registers may be volatile or nonvolatile.
+// Note: these three registers are all guaranteed to be different
 static constexpr Register ABINonArgReturnReg0 = t0;
 static constexpr Register ABINonArgReturnReg1 = t1;
+static constexpr Register ABINonVolatileReg = s0;
+
+// This register is guaranteed to be clobberable during the prologue and
+// epilogue of an ABI call which must preserve both ABI argument, return
+// and non-volatile registers.
+static constexpr Register ABINonArgReturnVolatileReg = t0;
 
 // TLS pointer argument register for WebAssembly functions. This must not alias
 // any other register used for passing function arguments or return values.
@@ -64,14 +78,20 @@ static constexpr FloatRegister ReturnFloat32Reg = { FloatRegisters::f0, FloatReg
 static constexpr FloatRegister ReturnDoubleReg = { FloatRegisters::f0, FloatRegisters::Double };
 static constexpr FloatRegister ScratchFloat32Reg = { FloatRegisters::f23, FloatRegisters::Single };
 static constexpr FloatRegister ScratchDoubleReg = { FloatRegisters::f23, FloatRegisters::Double };
-static constexpr FloatRegister SecondScratchFloat32Reg = { FloatRegisters::f21, FloatRegisters::Single };
-static constexpr FloatRegister SecondScratchDoubleReg = { FloatRegisters::f21, FloatRegisters::Double };
 
-// Registers used in the GenerateFFIIonExit Disable Activation block.
-// None of these may be the second scratch register (t8).
-static constexpr Register WasmIonExitRegReturnData = JSReturnReg_Data;
-static constexpr Register WasmIonExitRegReturnType = JSReturnReg_Type;
-static constexpr Register WasmIonExitTlsReg = s5;
+struct ScratchFloat32Scope : public AutoFloatRegisterScope
+{
+    explicit ScratchFloat32Scope(MacroAssembler& masm)
+      : AutoFloatRegisterScope(masm, ScratchFloat32Reg)
+    { }
+};
+
+struct ScratchDoubleScope : public AutoFloatRegisterScope
+{
+    explicit ScratchDoubleScope(MacroAssembler& masm)
+      : AutoFloatRegisterScope(masm, ScratchDoubleReg)
+    { }
+};
 
 static constexpr FloatRegister f0  = { FloatRegisters::f0, FloatRegisters::Double };
 static constexpr FloatRegister f1  = { FloatRegisters::f1, FloatRegisters::Double };
@@ -121,6 +141,7 @@ static_assert(JitStackAlignment % sizeof(Value) == 0 && JitStackValueAlignment >
 static constexpr uint32_t SimdMemoryAlignment = 16;
 
 static constexpr uint32_t WasmStackAlignment = SimdMemoryAlignment;
+static const uint32_t WasmTrapInstructionLength = 4;
 
 // Does this architecture support SIMD conversions between Uint32x4 and Float32x4?
 static constexpr bool SupportsUint32x4FloatConversions = false;
@@ -139,15 +160,14 @@ class Assembler : public AssemblerMIPSShared
       : AssemblerMIPSShared()
     { }
 
-    // MacroAssemblers hold onto gcthings, so they are traced by the GC.
-    void trace(JSTracer* trc);
-
     static uintptr_t GetPointer(uint8_t*);
 
     using AssemblerMIPSShared::bind;
 
     void bind(RepatchLabel* label);
-    void Bind(uint8_t* rawCode, CodeOffset* label, const void* address);
+    static void Bind(uint8_t* rawCode, const CodeLabel& label);
+
+    void processCodeLabels(uint8_t* rawCode);
 
     static void TraceJumpRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader);
     static void TraceDataRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader);
@@ -171,7 +191,6 @@ class Assembler : public AssemblerMIPSShared
     static void PatchDataWithValueCheck(CodeLocationLabel label, PatchedImmPtr newValue,
                                         PatchedImmPtr expectedValue);
 
-    static void PatchInstructionImmediate(uint8_t* code, PatchedImmPtr imm);
     static uint64_t ExtractInstructionImmediate(uint8_t* code);
 
     static void ToggleCall(CodeLocationLabel inst_, bool enabled);

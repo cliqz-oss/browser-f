@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,6 +11,7 @@
 
 #include "FrameMetrics.h"        // for FrameMetrics::ViewID
 #include "mozilla/DefineEnum.h"  // for MOZ_DEFINE_ENUM
+#include "mozilla/Variant.h"     // for Variant
 
 class nsIPresShell;
 
@@ -29,19 +31,21 @@ public:
   {
     FrameMetrics::ViewID mHorizontal;
     FrameMetrics::ViewID mVertical;
+
+    bool operator==(const ScrollTargets& aRhs) const
+    {
+      return mHorizontal == aRhs.mHorizontal &&
+             mVertical == aRhs.mVertical;
+    }
   };
 
-  MOZ_DEFINE_ENUM_AT_CLASS_SCOPE(
-    FocusTargetType, (
-      eNone,
-      eRefLayer,
-      eScrollLayer
-  ));
-
-  union FocusTargetData
-  {
-    uint64_t      mRefLayerId;
-    ScrollTargets mScrollTargets;
+  // We need this to represent the case where mData has no focus target data
+  // because we can't have an empty variant
+  struct NoFocusTarget {
+    bool operator==(const NoFocusTarget& aRhs) const
+    {
+     return true;
+    }
   };
 
   FocusTarget();
@@ -54,6 +58,8 @@ public:
 
   bool operator==(const FocusTarget& aRhs) const;
 
+  const char* Type() const;
+
 public:
   // The content sequence number recorded at the time of this class's creation
   uint64_t mSequenceNumber;
@@ -62,8 +68,7 @@ public:
   // in the event target chain of the focused element
   bool mFocusHasKeyEventListeners;
 
-  FocusTargetType mType;
-  FocusTargetData mData;
+  mozilla::Variant<LayersId, ScrollTargets, NoFocusTarget> mData;
 };
 
 } // namespace layers

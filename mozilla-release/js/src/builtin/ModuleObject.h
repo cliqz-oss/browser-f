@@ -7,13 +7,15 @@
 #ifndef builtin_ModuleObject_h
 #define builtin_ModuleObject_h
 
+#include "mozilla/Maybe.h"
+
 #include "jsapi.h"
-#include "jsatom.h"
 
 #include "builtin/SelfHostingDefines.h"
-#include "gc/Zone.h"
 #include "js/GCVector.h"
 #include "js/Id.h"
+#include "js/UniquePtr.h"
+#include "vm/JSAtom.h"
 #include "vm/NativeObject.h"
 #include "vm/ProxyObject.h"
 
@@ -24,6 +26,7 @@ class ModuleObject;
 
 namespace frontend {
 class ParseNode;
+class TokenStreamAnyChars;
 } /* namespace frontend */
 
 typedef Rooted<ModuleObject*> RootedModuleObject;
@@ -39,19 +42,24 @@ class ImportEntryObject : public NativeObject
         ModuleRequestSlot = 0,
         ImportNameSlot,
         LocalNameSlot,
+        LineNumberSlot,
+        ColumnNumberSlot,
         SlotCount
     };
 
     static const Class class_;
-    static JSObject* initClass(JSContext* cx, HandleObject obj);
     static bool isInstance(HandleValue value);
     static ImportEntryObject* create(JSContext* cx,
                                      HandleAtom moduleRequest,
                                      HandleAtom importName,
-                                     HandleAtom localName);
+                                     HandleAtom localName,
+                                     uint32_t lineNumber,
+                                     uint32_t columnNumber);
     JSAtom* moduleRequest() const;
     JSAtom* importName() const;
     JSAtom* localName() const;
+    uint32_t lineNumber() const;
+    uint32_t columnNumber() const;
 };
 
 typedef Rooted<ImportEntryObject*> RootedImportEntryObject;
@@ -66,50 +74,80 @@ class ExportEntryObject : public NativeObject
         ModuleRequestSlot,
         ImportNameSlot,
         LocalNameSlot,
+        LineNumberSlot,
+        ColumnNumberSlot,
         SlotCount
     };
 
     static const Class class_;
-    static JSObject* initClass(JSContext* cx, HandleObject obj);
     static bool isInstance(HandleValue value);
     static ExportEntryObject* create(JSContext* cx,
                                      HandleAtom maybeExportName,
                                      HandleAtom maybeModuleRequest,
                                      HandleAtom maybeImportName,
-                                     HandleAtom maybeLocalName);
+                                     HandleAtom maybeLocalName,
+                                     uint32_t lineNumber,
+                                     uint32_t columnNumber);
     JSAtom* exportName() const;
     JSAtom* moduleRequest() const;
     JSAtom* importName() const;
     JSAtom* localName() const;
+    uint32_t lineNumber() const;
+    uint32_t columnNumber() const;
 };
 
 typedef Rooted<ExportEntryObject*> RootedExportEntryObject;
 typedef Handle<ExportEntryObject*> HandleExportEntryObject;
 
+class RequestedModuleObject : public NativeObject
+{
+  public:
+    enum
+    {
+        ModuleSpecifierSlot = 0,
+        LineNumberSlot,
+        ColumnNumberSlot,
+        SlotCount
+    };
+
+    static const Class class_;
+    static bool isInstance(HandleValue value);
+    static RequestedModuleObject* create(JSContext* cx,
+                                         HandleAtom moduleSpecifier,
+                                         uint32_t lineNumber,
+                                         uint32_t columnNumber);
+    JSAtom* moduleSpecifier() const;
+    uint32_t lineNumber() const;
+    uint32_t columnNumber() const;
+};
+
+typedef Rooted<RequestedModuleObject*> RootedRequestedModuleObject;
+typedef Handle<RequestedModuleObject*> HandleRequestedModuleObject;
+
 class IndirectBindingMap
 {
   public:
-    explicit IndirectBindingMap(Zone* zone);
-    bool init();
-
     void trace(JSTracer* trc);
 
-    bool putNew(JSContext* cx, HandleId name,
-                HandleModuleEnvironmentObject environment, HandleId localName);
+    bool put(JSContext* cx, HandleId name,
+             HandleModuleEnvironmentObject environment, HandleId localName);
 
     size_t count() const {
-        return map_.count();
+        return map_ ? map_->count() : 0;
     }
 
     bool has(jsid name) const {
-        return map_.has(name);
+        return map_ ? map_->has(name) : false;
     }
 
     bool lookup(jsid name, ModuleEnvironmentObject** envOut, Shape** shapeOut) const;
 
     template <typename Func>
     void forEachExportedName(Func func) const {
-        for (auto r = map_.all(); !r.empty(); r.popFront())
+        if (!map_)
+            return;
+
+        for (auto r = map_->all(); !r.empty(); r.popFront())
             func(r.front().key());
     }
 
@@ -123,14 +161,22 @@ class IndirectBindingMap
 
     typedef HashMap<jsid, Binding, DefaultHasher<jsid>, ZoneAllocPolicy> Map;
 
-    Map map_;
+    mozilla::Maybe<Map> map_;
 };
 
 class ModuleNamespaceObject : public ProxyObject
 {
   public:
+    enum ModuleNamespaceSlot
+    {
+        ExportsSlot = 0,
+        BindingsSlot
+    };
+
     static bool isInstance(HandleValue value);
-    static ModuleNamespaceObject* create(JSContext* cx, HandleModuleObject module);
+    static ModuleNamespaceObject* create(JSContext* cx, HandleModuleObject module,
+                                         HandleObject exports,
+                                         UniquePtr<IndirectBindingMap> bindings);
 
     ModuleObject& module();
     JSObject& exports();
@@ -171,6 +217,9 @@ class ModuleNamespaceObject : public ProxyObject
         bool set(JSContext* cx, HandleObject proxy, HandleId id, HandleValue v,
                  HandleValue receiver, ObjectOpResult& result) const override;
 
+        void trace(JSTracer* trc, JSObject* proxy) const override;
+        void finalize(JSFreeOp* fop, JSObject* proxy) const override;
+
         static const char family;
     };
 
@@ -192,19 +241,19 @@ struct FunctionDeclaration
 
 using FunctionDeclarationVector = GCVector<FunctionDeclaration, 0, ZoneAllocPolicy>;
 
-// Possible values for ModuleState are defined in SelfHostingDefines.h.
-using ModuleState = int32_t;
+// Possible values for ModuleStatus are defined in SelfHostingDefines.h.
+using ModuleStatus = int32_t;
 
 class ModuleObject : public NativeObject
 {
   public:
-    enum
+    enum ModuleSlot
     {
         ScriptSlot = 0,
-        InitialEnvironmentSlot,
         EnvironmentSlot,
         NamespaceSlot,
-        StateSlot,
+        StatusSlot,
+        EvaluationErrorSlot,
         HostDefinedSlot,
         RequestedModulesSlot,
         ImportEntriesSlot,
@@ -212,14 +261,22 @@ class ModuleObject : public NativeObject
         IndirectExportEntriesSlot,
         StarExportEntriesSlot,
         ImportBindingsSlot,
-        NamespaceExportsSlot,
-        NamespaceBindingsSlot,
         FunctionDeclarationsSlot,
+        DFSIndexSlot,
+        DFSAncestorIndexSlot,
         SlotCount
     };
 
     static_assert(EnvironmentSlot == MODULE_OBJECT_ENVIRONMENT_SLOT,
                   "EnvironmentSlot must match self-hosting define");
+    static_assert(StatusSlot == MODULE_OBJECT_STATUS_SLOT,
+                  "StatusSlot must match self-hosting define");
+    static_assert(EvaluationErrorSlot == MODULE_OBJECT_EVALUATION_ERROR_SLOT,
+                  "EvaluationErrorSlot must match self-hosting define");
+    static_assert(DFSIndexSlot == MODULE_OBJECT_DFS_INDEX_SLOT,
+                  "DFSIndexSlot must match self-hosting define");
+    static_assert(DFSAncestorIndexSlot == MODULE_OBJECT_DFS_ANCESTOR_INDEX_SLOT,
+                  "DFSAncestorIndexSlot must match self-hosting define");
 
     static const Class class_;
 
@@ -235,7 +292,7 @@ class ModuleObject : public NativeObject
                               HandleArrayObject starExportEntries);
     static bool Freeze(JSContext* cx, HandleModuleObject self);
 #ifdef DEBUG
-    static bool IsFrozen(JSContext* cx, HandleModuleObject self);
+    static bool AssertFrozen(JSContext* cx, HandleModuleObject self);
 #endif
     void fixEnvironmentsAfterCompartmentMerge();
 
@@ -244,7 +301,9 @@ class ModuleObject : public NativeObject
     ModuleEnvironmentObject& initialEnvironment() const;
     ModuleEnvironmentObject* environment() const;
     ModuleNamespaceObject* namespace_();
-    ModuleState state() const;
+    ModuleStatus status() const;
+    bool hadEvaluationError() const;
+    Value evaluationError() const;
     Value hostDefinedField() const;
     ArrayObject& requestedModules() const;
     ArrayObject& importEntries() const;
@@ -252,16 +311,11 @@ class ModuleObject : public NativeObject
     ArrayObject& indirectExportEntries() const;
     ArrayObject& starExportEntries() const;
     IndirectBindingMap& importBindings();
-    JSObject* namespaceExports();
-    IndirectBindingMap* namespaceBindings();
 
-    static bool DeclarationInstantiation(JSContext* cx, HandleModuleObject self);
-    static bool Evaluation(JSContext* cx, HandleModuleObject self);
+    static bool Instantiate(JSContext* cx, HandleModuleObject self);
+    static bool Evaluate(JSContext* cx, HandleModuleObject self);
 
     void setHostDefinedField(const JS::Value& value);
-
-    // For intrinsic_CreateModuleEnvironment.
-    void createEnvironment();
 
     // For BytecodeEmitter.
     bool noteFunctionDeclaration(JSContext* cx, HandleAtom name, HandleFunction fun);
@@ -269,10 +323,8 @@ class ModuleObject : public NativeObject
     // For intrinsic_InstantiateModuleFunctionDeclarations.
     static bool instantiateFunctionDeclarations(JSContext* cx, HandleModuleObject self);
 
-    void setState(ModuleState newState);
-
-    // For intrinsic_EvaluateModule.
-    static bool evaluate(JSContext* cx, HandleModuleObject self, MutableHandleValue rval);
+    // For intrinsic_ExecuteModule.
+    static bool execute(JSContext* cx, HandleModuleObject self, MutableHandleValue rval);
 
     // For intrinsic_NewModuleNamespace.
     static ModuleNamespaceObject* createNamespace(JSContext* cx, HandleModuleObject self,
@@ -294,7 +346,9 @@ class ModuleObject : public NativeObject
 class MOZ_STACK_CLASS ModuleBuilder
 {
   public:
-    explicit ModuleBuilder(JSContext* cx, HandleModuleObject module);
+    explicit ModuleBuilder(JSContext* cx, HandleModuleObject module,
+                           const frontend::TokenStreamAnyChars& tokenStream);
+    bool init();
 
     bool processImport(frontend::ParseNode* pn);
     bool processExport(frontend::ParseNode* pn);
@@ -311,32 +365,46 @@ class MOZ_STACK_CLASS ModuleBuilder
     bool initModule();
 
   private:
-    using AtomVector = GCVector<JSAtom*>;
-    using RootedAtomVector = JS::Rooted<AtomVector>;
-    using ImportEntryVector = GCVector<ImportEntryObject*>;
-    using RootedImportEntryVector = JS::Rooted<ImportEntryVector>;
+    using RequestedModuleVector = GCVector<RequestedModuleObject*>;
+    using AtomSet = JS::GCHashSet<JSAtom*>;
+    using ImportEntryMap = GCHashMap<JSAtom*, ImportEntryObject*>;
     using RootedExportEntryVector = JS::Rooted<ExportEntryVector>;
+    using RootedRequestedModuleVector = JS::Rooted<RequestedModuleVector>;
+    using RootedAtomSet = JS::Rooted<AtomSet>;
+    using RootedImportEntryMap = JS::Rooted<ImportEntryMap>;
 
     JSContext* cx_;
     RootedModuleObject module_;
-    RootedAtomVector requestedModules_;
-    RootedAtomVector importedBoundNames_;
-    RootedImportEntryVector importEntries_;
+    const frontend::TokenStreamAnyChars& tokenStream_;
+    RootedAtomSet requestedModuleSpecifiers_;
+    RootedRequestedModuleVector requestedModules_;
+    RootedImportEntryMap importEntries_;
     RootedExportEntryVector exportEntries_;
+    RootedAtomSet exportNames_;
     RootedExportEntryVector localExportEntries_;
     RootedExportEntryVector indirectExportEntries_;
     RootedExportEntryVector starExportEntries_;
 
     ImportEntryObject* importEntryFor(JSAtom* localName) const;
 
-    bool appendExportEntry(HandleAtom exportName, HandleAtom localName);
-    bool appendExportFromEntry(HandleAtom exportName, HandleAtom moduleRequest,
-                               HandleAtom importName);
+    bool processExportBinding(frontend::ParseNode* pn);
+    bool processExportArrayBinding(frontend::ParseNode* pn);
+    bool processExportObjectBinding(frontend::ParseNode* pn);
 
-    bool maybeAppendRequestedModule(HandleAtom module);
+    bool appendImportEntryObject(HandleImportEntryObject importEntry);
+
+    bool appendExportEntry(HandleAtom exportName, HandleAtom localName,
+                           frontend::ParseNode* node = nullptr);
+    bool appendExportFromEntry(HandleAtom exportName, HandleAtom moduleRequest,
+                               HandleAtom importName, frontend::ParseNode* node);
+    bool appendExportEntryObject(HandleExportEntryObject exportEntry);
+
+    bool maybeAppendRequestedModule(HandleAtom specifier, frontend::ParseNode* node);
 
     template <typename T>
-    ArrayObject* createArray(const GCVector<T>& vector);
+    ArrayObject* createArray(const JS::Rooted<GCVector<T>>& vector);
+    template <typename K, typename V>
+    ArrayObject* createArray(const JS::Rooted<GCHashMap<K, V>>& map);
 };
 
 } // namespace js

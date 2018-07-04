@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,9 +13,9 @@
 using namespace mozilla;
 
 nsPageContentFrame*
-NS_NewPageContentFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewPageContentFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsPageContentFrame(aContext);
+  return new (aPresShell) nsPageContentFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsPageContentFrame)
@@ -28,7 +29,7 @@ nsPageContentFrame::Reflow(nsPresContext*           aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsPageContentFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
-  aStatus.Reset();  // initialize out parameter
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   if (GetPrevInFlow() && (GetStateBits() & NS_FRAME_FIRST_REFLOW)) {
     nsresult rv = aPresContext->PresShell()->FrameConstructor()

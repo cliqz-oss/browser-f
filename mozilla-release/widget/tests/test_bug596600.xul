@@ -27,8 +27,8 @@ var gLeftWindow, gRightWindow, gIFrame;
 var gExpectedEvents = [];
 
 function moveMouseTo(x, y, andThen) {
-  var utils = gLeftWindow.QueryInterface(Components.interfaces.nsIInterfaceRequestor).
-                                 getInterface(Components.interfaces.nsIDOMWindowUtils);
+  var utils = gLeftWindow.QueryInterface(Ci.nsIInterfaceRequestor).
+                                 getInterface(Ci.nsIDOMWindowUtils);
   utils.sendNativeMouseEvent(x, y, NSMouseMoved, 0, gLeftWindow.documentElement);
   SimpleTest.executeSoon(andThen);
 }
@@ -45,15 +45,16 @@ function attachIFrameToRightWindow() {
   gIFrame = gLeftWindow.document.createElementNS(XUL_NS, "iframe");
   gIFrame.setAttribute("type", "content");
   gIFrame.setAttribute("clickthrough", "never");
-  gIFrame.setAttribute("src", "data:text/html,<!DOCTYPE html>Content page");
+  gIFrame.setAttribute("src", "file_bug596600.html");
   gIFrame.style.width = "100px";
   gIFrame.style.height = "100px";
   gIFrame.style.margin = "50px";
   gLeftWindow.document.documentElement.appendChild(gIFrame);
-  gIFrame.contentWindow.addEventListener("load", function (e) {
-    gIFrame.removeEventListener("load", arguments.callee, false);
+  gIFrame.addEventListener("load", function (e) {
+    gIFrame.removeEventListener("load", arguments.callee, true);
     test1();
-  }, false);
+  }, true);
+
 }
 
 function test1() {
@@ -149,7 +150,7 @@ function test2() {
           ok(box.matches(":hover"), "Box should be hovered");
           // Unhover box and iframe by moving the mouse outside the window.
           moveMouseTo(0, 150, function () {
-            const isOSXSnowLeopard = navigator.userAgent.indexOf("Mac OS X 10.6") != -1;
+            const isOSXSnowLeopard = navigator.userAgent.includes("Mac OS X 10.6");
             if (!isOSXSnowLeopard) {
               ok(!gIFrame.matches(":hover"), "iframe shouldn't be hovered");
               ok(!box.matches(":hover"), "box shouldn't be hovered");

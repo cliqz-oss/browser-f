@@ -7,7 +7,6 @@
 #include "jit/SharedIC.h"
 
 #include "mozilla/Casting.h"
-#include "mozilla/DebugOnly.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Sprintf.h"
 
@@ -26,12 +25,13 @@
 #endif
 #include "jit/VMFunctions.h"
 #include "vm/Interpreter.h"
+#include "vm/StringType.h"
 
 #include "jit/MacroAssembler-inl.h"
+#include "jit/SharedICHelpers-inl.h"
 #include "vm/Interpreter-inl.h"
 
 using mozilla::BitwiseCast;
-using mozilla::DebugOnly;
 
 namespace js {
 namespace jit {
@@ -226,10 +226,16 @@ ICStub::trace(JSTracer* trc)
     // because the regular monitored stubs will always have a monitored fallback stub
     // that references the same stub chain.
     if (isMonitoredFallback()) {
-        ICTypeMonitor_Fallback* lastMonStub = toMonitoredFallbackStub()->fallbackMonitorStub();
-        for (ICStubConstIterator iter(lastMonStub->firstMonitorStub()); !iter.atEnd(); iter++) {
-            MOZ_ASSERT_IF(iter->next() == nullptr, *iter == lastMonStub);
-            iter->trace(trc);
+        ICTypeMonitor_Fallback* lastMonStub =
+            toMonitoredFallbackStub()->maybeFallbackMonitorStub();
+        if (lastMonStub) {
+            for (ICStubConstIterator iter(lastMonStub->firstMonitorStub());
+                 !iter.atEnd();
+                 iter++)
+            {
+                MOZ_ASSERT_IF(iter->next() == nullptr, *iter == lastMonStub);
+                iter->trace(trc);
+            }
         }
     }
 
@@ -283,17 +289,6 @@ ICStub::trace(JSTracer* trc)
       case ICStub::TypeUpdate_ObjectGroup: {
         ICTypeUpdate_ObjectGroup* updateStub = toTypeUpdate_ObjectGroup();
         TraceEdge(trc, &updateStub->group(), "baseline-update-group");
-        break;
-      }
-      case ICStub::GetIntrinsic_Constant: {
-        ICGetIntrinsic_Constant* constantStub = toGetIntrinsic_Constant();
-        TraceEdge(trc, &constantStub->value(), "baseline-getintrinsic-constant-value");
-        break;
-      }
-      case ICStub::InstanceOf_Function: {
-        ICInstanceOf_Function* instanceofStub = toInstanceOf_Function();
-        TraceEdge(trc, &instanceofStub->shape(), "baseline-instanceof-fun-shape");
-        TraceEdge(trc, &instanceofStub->prototypeObject(), "baseline-instanceof-fun-prototype");
         break;
       }
       case ICStub::NewArray_Fallback: {
@@ -366,7 +361,9 @@ ICFallbackStub::unlinkStub(Zone* zone, ICStub* prev, ICStub* stub)
         // We just have to reset its firstMonitorStub_ field to avoid a stale
         // pointer when purgeOptimizedStubs destroys all optimized monitor
         // stubs (unlinked stubs won't be updated).
-        ICTypeMonitor_Fallback* monitorFallback = toMonitoredFallbackStub()->fallbackMonitorStub();
+        ICTypeMonitor_Fallback* monitorFallback =
+            toMonitoredFallbackStub()->maybeFallbackMonitorStub();
+        MOZ_ASSERT(monitorFallback);
         stub->toMonitoredStub()->resetFirstMonitorStub(monitorFallback);
     }
 
@@ -457,11 +454,12 @@ ICMonitoredStub::ICMonitoredStub(Kind kind, JitCode* stubCode, ICStub* firstMoni
 }
 
 bool
-ICMonitoredFallbackStub::initMonitoringChain(JSContext* cx, ICStubSpace* space)
+ICMonitoredFallbackStub::initMonitoringChain(JSContext* cx, JSScript* script)
 {
     MOZ_ASSERT(fallbackMonitorStub_ == nullptr);
 
     ICTypeMonitor_Fallback::Compiler compiler(cx, this);
+    ICStubSpace* space = script->baselineScript()->fallbackStubSpace();
     ICTypeMonitor_Fallback* stub = compiler.getStub(space);
     if (!stub)
         return false;
@@ -473,7 +471,10 @@ bool
 ICMonitoredFallbackStub::addMonitorStubForValue(JSContext* cx, BaselineFrame* frame,
                                                 StackTypeSet* types, HandleValue val)
 {
-    return fallbackMonitorStub_->addMonitorStubForValue(cx, frame, types, val);
+    ICTypeMonitor_Fallback* typeMonitorFallback = getFallbackMonitorStub(cx, frame->script());
+    if (!typeMonitorFallback)
+        return false;
+    return typeMonitorFallback->addMonitorStubForValue(cx, frame, types, val);
 }
 
 bool
@@ -503,7 +504,7 @@ ICStubCompiler::getStubCode()
 
     // Compile new stubcode.
     JitContext jctx(cx, nullptr);
-    MacroAssembler masm;
+    StackMacroAssembler masm;
 #ifndef JS_USE_LINK_REGISTER
     // The first value contains the return addres,
     // which we pull into ICTailCallReg for tail calls.
@@ -517,7 +518,7 @@ ICStubCompiler::getStubCode()
         return nullptr;
     Linker linker(masm);
     AutoFlushICache afc("getStubCode");
-    Rooted<JitCode*> newStubCode(cx, linker.newCode<CanGC>(cx, BASELINE_CODE));
+    Rooted<JitCode*> newStubCode(cx, linker.newCode(cx, CodeKind::Baseline));
     if (!newStubCode)
         return nullptr;
 
@@ -542,10 +543,7 @@ ICStubCompiler::getStubCode()
 bool
 ICStubCompiler::tailCallVM(const VMFunction& fun, MacroAssembler& masm)
 {
-    JitCode* code = cx->runtime()->jitRuntime()->getVMWrapper(fun);
-    if (!code)
-        return false;
-
+    TrampolinePtr code = cx->runtime()->jitRuntime()->getVMWrapper(fun);
     MOZ_ASSERT(fun.expectTailCall == TailCall);
     uint32_t argSize = fun.explicitStackSlots() * sizeof(void*);
     if (engine_ == Engine::Baseline) {
@@ -562,10 +560,7 @@ ICStubCompiler::callVM(const VMFunction& fun, MacroAssembler& masm)
 {
     MOZ_ASSERT(inStubFrame_);
 
-    JitCode* code = cx->runtime()->jitRuntime()->getVMWrapper(fun);
-    if (!code)
-        return false;
-
+    TrampolinePtr code = cx->runtime()->jitRuntime()->getVMWrapper(fun);
     MOZ_ASSERT(fun.expectTailCall == NonTailCall);
     MOZ_ASSERT(engine_ == Engine::Baseline);
 
@@ -591,7 +586,7 @@ ICStubCompiler::enterStubFrame(MacroAssembler& masm, Register scratch)
 }
 
 void
-ICStubCompiler::assumeStubFrame(MacroAssembler& masm)
+ICStubCompiler::assumeStubFrame()
 {
     MOZ_ASSERT(!inStubFrame_);
     inStubFrame_ = true;
@@ -664,8 +659,8 @@ HandleScript
 SharedStubInfo::outerScript(JSContext* cx)
 {
     if (!outerScript_) {
-        js::jit::JitActivationIterator iter(cx);
-        JitFrameIterator it(iter);
+        js::jit::JitActivationIterator actIter(cx);
+        JSJitFrameIter it(actIter->asJit());
         MOZ_ASSERT(it.isExitFrame());
         ++it;
         MOZ_ASSERT(it.isIonJS());
@@ -1145,19 +1140,19 @@ ICBinaryArith_BooleanWithInt32::Compiler::generateStubCode(MacroAssembler& masm)
         break;
       }
       case JSOP_BITOR: {
-        masm.orPtr(rhsReg, lhsReg);
+        masm.or32(rhsReg, lhsReg);
         masm.tagValue(JSVAL_TYPE_INT32, lhsReg, R0);
         EmitReturnFromIC(masm);
         break;
       }
       case JSOP_BITXOR: {
-        masm.xorPtr(rhsReg, lhsReg);
+        masm.xor32(rhsReg, lhsReg);
         masm.tagValue(JSVAL_TYPE_INT32, lhsReg, R0);
         EmitReturnFromIC(masm);
         break;
       }
       case JSOP_BITAND: {
-        masm.andPtr(rhsReg, lhsReg);
+        masm.and32(rhsReg, lhsReg);
         masm.tagValue(JSVAL_TYPE_INT32, lhsReg, R0);
         EmitReturnFromIC(masm);
         break;
@@ -1205,8 +1200,9 @@ ICBinaryArith_DoubleWithInt32::Compiler::generateStubCode(MacroAssembler& masm)
         masm.push(intReg);
         masm.setupUnalignedABICall(scratchReg);
         masm.passABIArg(FloatReg0, MoveOp::DOUBLE);
-        masm.callWithABI(mozilla::BitwiseCast<void*, int32_t(*)(double)>(JS::ToInt32));
-        masm.storeCallWordResult(scratchReg);
+        masm.callWithABI(mozilla::BitwiseCast<void*, int32_t(*)(double)>(JS::ToInt32),
+                         MoveOp::GENERAL, CheckUnsafeCallWithABI::DontCheckOther);
+        masm.storeCallInt32Result(scratchReg);
         masm.pop(intReg);
 
         masm.bind(&doneTruncate);
@@ -1216,156 +1212,18 @@ ICBinaryArith_DoubleWithInt32::Compiler::generateStubCode(MacroAssembler& masm)
     // All handled ops commute, so no need to worry about ordering.
     switch(op) {
       case JSOP_BITOR:
-        masm.orPtr(intReg, intReg2);
+        masm.or32(intReg, intReg2);
         break;
       case JSOP_BITXOR:
-        masm.xorPtr(intReg, intReg2);
+        masm.xor32(intReg, intReg2);
         break;
       case JSOP_BITAND:
-        masm.andPtr(intReg, intReg2);
+        masm.and32(intReg, intReg2);
         break;
       default:
        MOZ_CRASH("Unhandled op for BinaryArith_DoubleWithInt32.");
     }
     masm.tagValue(JSVAL_TYPE_INT32, intReg2, R0);
-    EmitReturnFromIC(masm);
-
-    // Failure case - jump to next stub
-    masm.bind(&failure);
-    EmitStubGuardFailure(masm);
-    return true;
-}
-
-//
-// UnaryArith_Fallback
-//
-
-static bool
-DoUnaryArithFallback(JSContext* cx, void* payload, ICUnaryArith_Fallback* stub_,
-                     HandleValue val, MutableHandleValue res)
-{
-    SharedStubInfo info(cx, payload, stub_->icEntry());
-    ICStubCompiler::Engine engine = info.engine();
-    HandleScript script = info.innerScript();
-
-    // This fallback stub may trigger debug mode toggling.
-    DebugModeOSRVolatileStub<ICUnaryArith_Fallback*> stub(engine, info.maybeFrame(), stub_);
-
-    jsbytecode* pc = info.pc();
-    JSOp op = JSOp(*pc);
-    FallbackICSpew(cx, stub, "UnaryArith(%s)", CodeName[op]);
-
-    switch (op) {
-      case JSOP_BITNOT: {
-        int32_t result;
-        if (!BitNot(cx, val, &result))
-            return false;
-        res.setInt32(result);
-        break;
-      }
-      case JSOP_NEG:
-        if (!NegOperation(cx, script, pc, val, res))
-            return false;
-        break;
-      default:
-        MOZ_CRASH("Unexpected op");
-    }
-
-    // Check if debug mode toggling made the stub invalid.
-    if (stub.invalid())
-        return true;
-
-    if (res.isDouble())
-        stub->setSawDoubleResult();
-
-    if (stub->numOptimizedStubs() >= ICUnaryArith_Fallback::MAX_OPTIMIZED_STUBS) {
-        // TODO: Discard/replace stubs.
-        return true;
-    }
-
-    if (val.isInt32() && res.isInt32()) {
-        JitSpew(JitSpew_BaselineIC, "  Generating %s(Int32 => Int32) stub", CodeName[op]);
-        ICUnaryArith_Int32::Compiler compiler(cx, op, engine);
-        ICStub* int32Stub = compiler.getStub(compiler.getStubSpace(info.outerScript(cx)));
-        if (!int32Stub)
-            return false;
-        stub->addNewStub(int32Stub);
-        return true;
-    }
-
-    if (val.isNumber() && res.isNumber() && cx->runtime()->jitSupportsFloatingPoint) {
-        JitSpew(JitSpew_BaselineIC, "  Generating %s(Number => Number) stub", CodeName[op]);
-
-        // Unlink int32 stubs, the double stub handles both cases and TI specializes for both.
-        stub->unlinkStubsWithKind(cx, ICStub::UnaryArith_Int32);
-
-        ICUnaryArith_Double::Compiler compiler(cx, op, engine);
-        ICStub* doubleStub = compiler.getStub(compiler.getStubSpace(info.outerScript(cx)));
-        if (!doubleStub)
-            return false;
-        stub->addNewStub(doubleStub);
-        return true;
-    }
-
-    return true;
-}
-
-typedef bool (*DoUnaryArithFallbackFn)(JSContext*, void*, ICUnaryArith_Fallback*,
-                                       HandleValue, MutableHandleValue);
-static const VMFunction DoUnaryArithFallbackInfo =
-    FunctionInfo<DoUnaryArithFallbackFn>(DoUnaryArithFallback, "DoUnaryArithFallback", TailCall,
-                                         PopValues(1));
-
-bool
-ICUnaryArith_Fallback::Compiler::generateStubCode(MacroAssembler& masm)
-{
-    MOZ_ASSERT(R0 == JSReturnOperand);
-
-    // Restore the tail call register.
-    EmitRestoreTailCallReg(masm);
-
-    // Ensure stack is fully synced for the expression decompiler.
-    masm.pushValue(R0);
-
-    // Push arguments.
-    masm.pushValue(R0);
-    masm.push(ICStubReg);
-    pushStubPayload(masm, R0.scratchReg());
-
-    return tailCallVM(DoUnaryArithFallbackInfo, masm);
-}
-
-bool
-ICUnaryArith_Double::Compiler::generateStubCode(MacroAssembler& masm)
-{
-    Label failure;
-    masm.ensureDouble(R0, FloatReg0, &failure);
-
-    MOZ_ASSERT(op == JSOP_NEG || op == JSOP_BITNOT);
-
-    if (op == JSOP_NEG) {
-        masm.negateDouble(FloatReg0);
-        masm.boxDouble(FloatReg0, R0, FloatReg0);
-    } else {
-        // Truncate the double to an int32.
-        Register scratchReg = R1.scratchReg();
-
-        Label doneTruncate;
-        Label truncateABICall;
-        masm.branchTruncateDoubleMaybeModUint32(FloatReg0, scratchReg, &truncateABICall);
-        masm.jump(&doneTruncate);
-
-        masm.bind(&truncateABICall);
-        masm.setupUnalignedABICall(scratchReg);
-        masm.passABIArg(FloatReg0, MoveOp::DOUBLE);
-        masm.callWithABI(BitwiseCast<void*, int32_t(*)(double)>(JS::ToInt32));
-        masm.storeCallWordResult(scratchReg);
-
-        masm.bind(&doneTruncate);
-        masm.not32(scratchReg);
-        masm.tagValue(JSVAL_TYPE_INT32, scratchReg, R0);
-    }
-
     EmitReturnFromIC(masm);
 
     // Failure case - jump to next stub
@@ -1908,24 +1766,6 @@ ICCompare_Int32WithBoolean::Compiler::generateStubCode(MacroAssembler& masm)
 // GetProp_Fallback
 //
 
-// Return whether obj is in some PreliminaryObjectArray and has a structure
-// that might change in the future.
-bool
-IsPreliminaryObject(JSObject* obj)
-{
-    if (obj->isSingleton())
-        return false;
-
-    TypeNewScript* newScript = obj->group()->newScript();
-    if (newScript && !newScript->analyzed())
-        return true;
-
-    if (obj->group()->maybePreliminaryObjects())
-        return true;
-
-    return false;
-}
-
 void
 StripPreliminaryObjectStubs(JSContext* cx, ICFallbackStub* stub)
 {
@@ -1946,64 +1786,6 @@ StripPreliminaryObjectStubs(JSContext* cx, ICFallbackStub* stub)
         else if (iter->isCacheIR_Updated() && iter->toCacheIR_Updated()->hasPreliminaryObject())
             iter.unlink(cx);
     }
-}
-
-bool
-CheckHasNoSuchOwnProperty(JSContext* cx, JSObject* obj, jsid id)
-{
-    if (obj->isNative()) {
-        // Don't handle proto chains with resolve hooks.
-        if (ClassMayResolveId(cx->names(), obj->getClass(), id, obj))
-            return false;
-        if (obj->as<NativeObject>().contains(cx, id))
-            return false;
-        if (obj->getClass()->getGetProperty())
-            return false;
-    } else if (obj->is<UnboxedPlainObject>()) {
-        if (obj->as<UnboxedPlainObject>().containsUnboxedOrExpandoProperty(cx, id))
-            return false;
-    } else if (obj->is<UnboxedArrayObject>()) {
-        if (JSID_IS_ATOM(id, cx->names().length))
-            return false;
-    } else if (obj->is<TypedObject>()) {
-        if (obj->as<TypedObject>().typeDescr().hasProperty(cx->names(), id))
-            return false;
-    } else {
-        return false;
-    }
-
-    return true;
-}
-
-bool
-CheckHasNoSuchProperty(JSContext* cx, JSObject* obj, jsid id,
-                       JSObject** lastProto, size_t* protoChainDepthOut)
-{
-    size_t depth = 0;
-    JSObject* curObj = obj;
-    while (curObj) {
-        if (!CheckHasNoSuchOwnProperty(cx, curObj, id))
-            return false;
-
-        if (!curObj->isNative()) {
-            // Non-native objects are only handled as the original receiver.
-            if (curObj != obj)
-                return false;
-        }
-
-        JSObject* proto = curObj->staticPrototype();
-        if (!proto)
-            break;
-
-        curObj = proto;
-        depth++;
-    }
-
-    if (lastProto)
-        *lastProto = curObj;
-    if (protoChainDepthOut)
-        *protoChainDepthOut = depth;
-    return true;
 }
 
 static bool
@@ -2229,14 +2011,15 @@ ICGetProp_Fallback::Compiler::generateStubCode(MacroAssembler& masm)
     // This is the resume point used when bailout rewrites call stack to undo
     // Ion inlined frames. The return address pushed onto reconstructed stack
     // will point here.
-    assumeStubFrame(masm);
+    assumeStubFrame();
     bailoutReturnOffset_.bind(masm.currentOffset());
 
     leaveStubFrame(masm, true);
 
     // When we get here, ICStubReg contains the ICGetProp_Fallback stub,
     // which we can't use to enter the TypeMonitor IC, because it's a MonitoredFallbackStub
-    // instead of a MonitoredStub. So, we cheat.
+    // instead of a MonitoredStub. So, we cheat. Note that we must have a
+    // non-null fallbackMonitorStub here because InitFromBailout delazifies.
     masm.loadPtr(Address(ICStubReg, ICMonitoredFallbackStub::offsetOfFallbackMonitorStub()),
                  ICStubReg);
     EmitEnterTypeMonitorIC(masm, ICTypeMonitor_Fallback::offsetOfFirstMonitorStub());
@@ -2253,16 +2036,6 @@ ICGetProp_Fallback::Compiler::postGenerateStubCode(MacroAssembler& masm, Handle<
         void* address = code->raw() + bailoutReturnOffset_.offset();
         cx->compartment()->jitCompartment()->initBailoutReturnAddr(address, getKey(), kind);
     }
-}
-
-void
-CheckForTypedObjectWithDetachedStorage(JSContext* cx, MacroAssembler& masm, Label* failure)
-{
-    // All stubs manipulating typed objects must check the compartment-wide
-    // flag indicating whether their underlying storage might be detached, to
-    // bail out if needed.
-    int32_t* address = &cx->compartment()->detachedTypedObjects;
-    masm.branch32(Assembler::NotEqual, AbsoluteAddress(address), Imm32(0), failure);
 }
 
 void
@@ -2502,24 +2275,18 @@ DoTypeMonitorFallback(JSContext* cx, BaselineFrame* frame, ICTypeMonitor_Fallbac
         return true;
     }
 
-    // Note: ideally we would merge this if-else statement with the one below,
-    // but that triggers an MSVC 2015 compiler bug. See bug 1363054.
     StackTypeSet* types;
     uint32_t argument;
-    if (stub->monitorsArgument(&argument))
-        types = TypeScript::ArgTypes(script, argument);
-    else if (stub->monitorsThis())
-        types = TypeScript::ThisTypes(script);
-    else
-        types = TypeScript::BytecodeTypes(script, pc);
-
     if (stub->monitorsArgument(&argument)) {
         MOZ_ASSERT(pc == script->code());
+        types = TypeScript::ArgTypes(script, argument);
         TypeScript::SetArgument(cx, script, argument, value);
     } else if (stub->monitorsThis()) {
         MOZ_ASSERT(pc == script->code());
+        types = TypeScript::ThisTypes(script);
         TypeScript::SetThis(cx, script, value);
     } else {
+        types = TypeScript::BytecodeTypes(script, pc);
         TypeScript::Monitor(cx, script, pc, types, value);
     }
 
@@ -2628,12 +2395,13 @@ ICTypeMonitor_ObjectGroup::Compiler::generateStubCode(MacroAssembler& masm)
     masm.branchTestObject(Assembler::NotEqual, R0, &failure);
     MaybeWorkAroundAmdBug(masm);
 
-    // Guard on the object's ObjectGroup.
+    // Guard on the object's ObjectGroup. No Spectre mitigations are needed
+    // here: we're just recording type information for Ion compilation and
+    // it's safe to speculatively return.
     Register obj = masm.extractObject(R0, ExtractTemp0);
-    masm.loadPtr(Address(obj, JSObject::offsetOfGroup()), R1.scratchReg());
-
     Address expectedGroup(ICStubReg, ICTypeMonitor_ObjectGroup::offsetOfGroup());
-    masm.branchPtr(Assembler::NotEqual, expectedGroup, R1.scratchReg(), &failure);
+    masm.branchTestObjGroupNoSpectreMitigations(Assembler::NotEqual, obj, expectedGroup,
+                                                R1.scratchReg(), &failure);
     MaybeWorkAroundAmdBug(masm);
 
     EmitReturnFromIC(masm);
@@ -2665,10 +2433,11 @@ ICUpdatedStub::addUpdateStubForValue(JSContext* cx, HandleScript outerScript, Ha
     }
 
     bool unknown = false, unknownObject = false;
-    if (group->unknownProperties()) {
+    AutoSweepObjectGroup sweep(group);
+    if (group->unknownProperties(sweep)) {
         unknown = unknownObject = true;
     } else {
-        if (HeapTypeSet* types = group->maybeGetProperty(id)) {
+        if (HeapTypeSet* types = group->maybeGetProperty(sweep, id)) {
             unknown = types->unknown();
             unknownObject = types->unknownObject();
         } else {
@@ -2808,7 +2577,7 @@ DoNewArray(JSContext* cx, void* payload, ICNewArray_Fallback* stub, uint32_t len
         if (!obj)
             return false;
 
-        if (obj && !obj->isSingleton() && !obj->group()->maybePreliminaryObjects()) {
+        if (!obj->isSingleton() && !obj->group()->maybePreliminaryObjectsDontCheckGeneration()) {
             JSObject* templateObject = NewArrayOperation(cx, script, pc, length, TenuredObject);
             if (!templateObject)
                 return false;
@@ -2847,7 +2616,7 @@ static JitCode*
 GenerateNewObjectWithTemplateCode(JSContext* cx, JSObject* templateObject)
 {
     JitContext jctx(cx, nullptr);
-    MacroAssembler masm;
+    StackMacroAssembler masm;
 #ifdef JS_CODEGEN_ARM
     masm.setSecondScratchReg(BaselineSecondScratchReg);
 #endif
@@ -2855,12 +2624,11 @@ GenerateNewObjectWithTemplateCode(JSContext* cx, JSObject* templateObject)
     Label failure;
     Register objReg = R0.scratchReg();
     Register tempReg = R1.scratchReg();
-    masm.movePtr(ImmGCPtr(templateObject->group()), tempReg);
-    masm.branchTest32(Assembler::NonZero, Address(tempReg, ObjectGroup::offsetOfFlags()),
-                      Imm32(OBJECT_FLAG_PRE_TENURE), &failure);
+    masm.branchIfPretenuredGroup(templateObject->group(), tempReg, &failure);
     masm.branchPtr(Assembler::NotEqual, AbsoluteAddress(cx->compartment()->addressOfMetadataBuilder()),
                    ImmWord(0), &failure);
-    masm.createGCObject(objReg, tempReg, templateObject, gc::DefaultHeap, &failure);
+    TemplateObject templateObj(templateObject);
+    masm.createGCObject(objReg, tempReg, templateObj, gc::DefaultHeap, &failure);
     masm.tagValue(JSVAL_TYPE_OBJECT, objReg, R0);
 
     EmitReturnFromIC(masm);
@@ -2869,7 +2637,7 @@ GenerateNewObjectWithTemplateCode(JSContext* cx, JSObject* templateObject)
 
     Linker linker(masm);
     AutoFlushICache afc("GenerateNewObjectWithTemplateCode");
-    return linker.newCode<CanGC>(cx, BASELINE_CODE);
+    return linker.newCode(cx, CodeKind::Baseline);
 }
 
 static bool
@@ -2883,14 +2651,16 @@ DoNewObject(JSContext* cx, void* payload, ICNewObject_Fallback* stub, MutableHan
 
     RootedObject templateObject(cx, stub->templateObject());
     if (templateObject) {
-        MOZ_ASSERT(!templateObject->group()->maybePreliminaryObjects());
+        MOZ_ASSERT(!templateObject->group()->maybePreliminaryObjectsDontCheckGeneration());
         obj = NewObjectOperationWithTemplate(cx, templateObject);
     } else {
         HandleScript script = info.script();
         jsbytecode* pc = info.pc();
         obj = NewObjectOperation(cx, script, pc);
 
-        if (obj && !obj->isSingleton() && !obj->group()->maybePreliminaryObjects()) {
+        if (obj && !obj->isSingleton() &&
+            !obj->group()->maybePreliminaryObjectsDontCheckGeneration())
+        {
             JSObject* templateObject = NewObjectOperation(cx, script, pc, TenuredObject);
             if (!templateObject)
                 return false;

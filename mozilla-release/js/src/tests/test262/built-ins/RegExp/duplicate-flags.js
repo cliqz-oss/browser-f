@@ -1,8 +1,9 @@
+// |reftest| skip -- regexp-dotall is not supported
 // Copyright 2017 the V8 project authors.  All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-info: >
+info: |
     RegExpInitialize ( obj, pattern, flags )
       5. If F contains any code unit other than "g", "i", "m", "s", "u", or "y" or if it contains the same code unit more than once, throw a SyntaxError exception.
 esid: sec-regexpinitialize

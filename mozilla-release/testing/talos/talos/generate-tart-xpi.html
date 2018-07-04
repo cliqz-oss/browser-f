@@ -6,7 +6,7 @@
  -->
 <head>
   <meta charset="UTF-8"/>
-  <title>TART/CART addon xpi generator</title>
+  <title>TART addon xpi generator</title>
   <script src="scripts/jszip.min.js"></script>
   <script src="scripts/xpigen.js"></script>
 
@@ -14,6 +14,7 @@
     /* import-globals-from scripts/xpigen.js */
     var base = "tests/tart/addon/";
     var files = [
+      "bootstrap.js",
       "chrome.manifest",
       "install.rdf",
       "content/framescript.js",
@@ -68,7 +69,7 @@
   </h4>
 
   <p>
-    Once installed, to run TART or CART tests, visit
+    Once installed, to run TART tests, visit
     <span style="color: green; font-family: monospace;">chrome://tart/content/tart.html</span>
     and follow the instructions.
   </p>

@@ -13,15 +13,6 @@ using namespace mozilla;
 using namespace mozilla::gfx;
 
 //----------------------------------------------------------------------
-// nsISupports methods
-
-NS_IMPL_ADDREF_INHERITED(SVGPolyElement,SVGPolyElementBase)
-NS_IMPL_RELEASE_INHERITED(SVGPolyElement,SVGPolyElementBase)
-
-NS_INTERFACE_MAP_BEGIN(SVGPolyElement)
-NS_INTERFACE_MAP_END_INHERITING(SVGPolyElementBase)
-
-//----------------------------------------------------------------------
 // Implementation
 
 SVGPolyElement::SVGPolyElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
@@ -54,7 +45,7 @@ SVGPolyElement::AnimatedPoints()
 // nsIContent methods
 
 NS_IMETHODIMP_(bool)
-SVGPolyElement::IsAttributeMapped(const nsIAtom* name) const
+SVGPolyElement::IsAttributeMapped(const nsAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
     sMarkersMap
@@ -77,7 +68,7 @@ SVGPolyElement::HasValidDimensions() const
 // SVGGeometryElement methods
 
 bool
-SVGPolyElement::AttributeDefinesGeometry(const nsIAtom *aName)
+SVGPolyElement::AttributeDefinesGeometry(const nsAtom *aName)
 {
   if (aName == nsGkAtoms::points)
     return true;

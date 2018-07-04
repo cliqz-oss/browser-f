@@ -1,4 +1,4 @@
-asserts-if(stylo,0-1) load 43040-1.html # bug 1324691
+load 43040-1.html
 load 90613-1.html
 load 116848-1.html
 load 149320-1.html
@@ -8,7 +8,6 @@ load 244933-1.html
 load 275912-1.html
 load 293388-1.html
 load 308120-1.xul
-load 324871-1.html
 load 325730-1.html
 load 326618-1.html
 load 326646-1.html
@@ -114,8 +113,8 @@ load 603531.html
 load 604262-1.html
 load 605672-1.svg
 load 606729-1.html
-skip-if(stylo&&isDebugBuild&&winWidget) load 609560-1.xhtml # Bug 1383845
-skip-if(stylo&&isDebugBuild&&winWidget) load 610571-1.html # Bug 1383845
+load 609560-1.xhtml
+load 610571-1.html
 load 612018-1.html
 load 628599-1.html
 load 637116.html
@@ -126,6 +125,7 @@ load 646184.html
 load 658845-1.svg
 load 666869.html
 load 667336-1.html
+load 675516.xhtml
 load 675621-1.html
 load 677194.html
 load 679459.html
@@ -162,12 +162,11 @@ load 815477.html
 load 815500.html
 load 816253.html
 load 819014.html
-load 822691.html
 load 822723.html
 load 824719.html
 load 827190.html
 load 828054.html
-skip-if(stylo&&isDebugBuild&&winWidget) load 828903.html # Bug 1383845
+load 828903.html
 load 829428.html
 load 830098.html
 load 831287.html
@@ -193,31 +192,54 @@ load 930250.html
 load 942979.html
 load 973401.html
 load 978646.html
-pref(dom.webcomponents.enabled,true) load 1024428-1.html
-load 1026714.html
-pref(dom.webcomponents.enabled,true) load 1027461-1.html
-pref(dom.webcomponents.enabled,true) load 1029710.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1024428-1.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1027461-1.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1029710.html
 load 1154598.xhtml
 load 1157995.html
 load 1158412.html
 load 1181619.html
 load 1230422.html
 load 1251361.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1281715.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1281745.html
 load 1304437.html
 pref(dom.IntersectionObserver.enabled,true) load 1324209.html
+load 1324500.html
 pref(dom.IntersectionObserver.enabled,true) load 1326194-1.html
 pref(dom.IntersectionObserver.enabled,true) load 1326194-2.html
 pref(dom.IntersectionObserver.enabled,true) load 1332939.html
-pref(dom.webcomponents.enabled,true) load 1341693.html
+pref(dom.webcomponents.customelements.enabled,true) load 1341693.html
+load 1352453.html
 pref(dom.IntersectionObserver.enabled,true) load 1353529.xul
+load 1368327.html
 pref(dom.IntersectionObserver.enabled,true) load 1369363.xul
 load 1370072.html
 pref(clipboard.autocopy,true) load 1370737.html
 pref(dom.IntersectionObserver.enabled,true) load 1370968.html
+load 1373750.html
 load 1377826.html
 skip-if(stylo&&isDebugBuild&&winWidget) load structured_clone_container_throws.html # Bug 1383845
-HTTP(..) load xhr_abortinprogress.html
 load xhr_empty_datauri.html
 load xhr_html_nullresponse.html
 load 1383478.html
+load 1383780.html
 pref(clipboard.autocopy,true) load 1385272-1.html
+load 1393806.html
+load 1396466.html
+load 1397795.html
+load 1400701.html
+load 1403377.html
+load 1405771.html
+load 1406109-1.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1324463.html
+pref(dom.webcomponents.customelements.enabled,true) load 1413815.html
+load 1411473.html
+pref(dom.webcomponents.shadowdom.enabled,false) load 1422931.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1419799.html
+skip-if(!browserIsRemote) pref(dom.webcomponents.customelements.enabled,true) pref(dom.disable_open_during_load,false) load 1419902.html # skip on non e10s loads, Bug 1419902
+pref(dom.webcomponents.shadowdom.enabled,true) load 1422883.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1428053.html
+load 1449601.html
+load 1445670.html
+load 1458016.html

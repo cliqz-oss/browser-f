@@ -9,9 +9,9 @@
 #include <algorithm>
 
 #include "mozilla/AutoRestore.h"
+#include "mozilla/RestyleManager.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/SVGAnimationElement.h"
-#include "mozilla/RestyleManagerInlines.h"
 #include "nsContentUtils.h"
 #include "nsCSSProps.h"
 #include "nsIDocument.h"
@@ -21,7 +21,6 @@
 #include "nsSMILCompositor.h"
 #include "nsSMILCSSProperty.h"
 #include "nsSMILTimedElement.h"
-#include "RestyleTracker.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -652,7 +651,7 @@ nsSMILAnimationController::AddAnimationToCompositorTable(
 }
 
 static inline bool
-IsTransformAttribute(int32_t aNamespaceID, nsIAtom *aAttributeName)
+IsTransformAttribute(int32_t aNamespaceID, nsAtom *aAttributeName)
 {
   return aNamespaceID == kNameSpaceID_None &&
          (aAttributeName == nsGkAtoms::transform ||
@@ -676,7 +675,7 @@ nsSMILAnimationController::GetTargetIdentifierForAnimation(
   // Look up target (animated) attribute
   // SMILANIM section 3.1, attributeName may
   // have an XMLNS prefix to indicate the XML namespace.
-  nsCOMPtr<nsIAtom> attributeName;
+  RefPtr<nsAtom> attributeName;
   int32_t attributeNamespaceID;
   if (!aAnimElem->GetTargetAttributeName(&attributeNamespaceID,
                                          getter_AddRefs(attributeName)))
@@ -697,29 +696,6 @@ nsSMILAnimationController::GetTargetIdentifierForAnimation(
   return true;
 }
 
-void
-nsSMILAnimationController::AddStyleUpdatesTo(RestyleTracker& aTracker)
-{
-  MOZ_ASSERT(mMightHavePendingStyleUpdates,
-             "Should only add style updates when we think we might have some");
-
-  for (auto iter = mAnimationElementTable.Iter(); !iter.Done(); iter.Next()) {
-    SVGAnimationElement* animElement = iter.Get()->GetKey();
-
-    nsSMILTargetIdentifier key;
-    if (!GetTargetIdentifierForAnimation(animElement, key)) {
-      // Something's wrong/missing about animation's target; skip this animation
-      continue;
-    }
-
-    aTracker.AddPendingRestyle(key.mElement,
-                               eRestyle_StyleAttribute_Animations,
-                               nsChangeHint(0));
-  }
-
-  mMightHavePendingStyleUpdates = false;
-}
-
 bool
 nsSMILAnimationController::PreTraverse()
 {
@@ -735,17 +711,10 @@ nsSMILAnimationController::PreTraverseInSubtree(Element* aRoot)
     return false;
   }
 
-  nsIPresShell* shell = mDocument->GetShell();
-  if (!shell) {
-    return false;
-  }
-
-  nsPresContext* context = shell->GetPresContext();
+  nsPresContext* context = mDocument->GetPresContext();
   if (!context) {
     return false;
   }
-  MOZ_ASSERT(context->RestyleManager()->IsServo(),
-             "PreTraverse should only be called for the servo style system");
 
   bool foundElementsNeedingRestyle = false;
   for (auto iter = mAnimationElementTable.Iter(); !iter.Done(); iter.Next()) {
@@ -765,7 +734,7 @@ nsSMILAnimationController::PreTraverseInSubtree(Element* aRoot)
       continue;
     }
 
-    context->RestyleManager()->AsServo()->
+    context->RestyleManager()->
       PostRestyleEventForAnimations(key.mElement,
                                     CSSPseudoElementType::NotPseudo,
                                     eRestyle_StyleAttribute_Animations);
@@ -818,12 +787,7 @@ nsSMILAnimationController::GetRefreshDriver()
     return nullptr;
   }
 
-  nsIPresShell* shell = mDocument->GetShell();
-  if (!shell) {
-    return nullptr;
-  }
-
-  nsPresContext* context = shell->GetPresContext();
+  nsPresContext* context = mDocument->GetPresContext();
   return context ? context->RefreshDriver() : nullptr;
 }
 

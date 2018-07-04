@@ -5,16 +5,14 @@
 
 /* globals ContentAreaUtils */
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "Prompt",
+                               "resource://gre/modules/Prompt.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "Prompt",
-                                  "resource://gre/modules/Prompt.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "EventDispatcher",
-                                  "resource://gre/modules/Messaging.jsm");
+ChromeUtils.defineModuleGetter(this, "EventDispatcher",
+                               "resource://gre/modules/Messaging.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "ContentAreaUtils", function() {
   let ContentAreaUtils = {};
@@ -22,7 +20,7 @@ XPCOMUtils.defineLazyGetter(this, "ContentAreaUtils", function() {
   return ContentAreaUtils;
 });
 
-this.EXPORTED_SYMBOLS = ["App","HelperApps"];
+var EXPORTED_SYMBOLS = ["App", "HelperApps"];
 
 function App(data) {
   this.name = data.name;
@@ -38,7 +36,7 @@ App.prototype = {
     HelperApps._launchApp(this, uri, callback);
     return false;
   }
-}
+};
 
 var HelperApps =  {
   get defaultBrowsers() {
@@ -98,7 +96,7 @@ var HelperApps =  {
           name: protoApp.name,
           description: protoApp.detailedDescription,
         });
-      } catch(e) {}
+      } catch (e) {}
     }
 
     return results;
@@ -136,7 +134,7 @@ var HelperApps =  {
       // file extension.
       if (flags.filterHtml) {
         // Matches from the first '.' to the end of the string, '?', or '#'
-        let ext = /\.([^\?#]*)/.exec(uri.path);
+        let ext = /\.([^\?#]*)/.exec(uri.pathQueryRef);
         if (ext && (ext[1] === "html" || ext[1] === "htm")) {
           apps = apps.filter(function(app) {
             return app.name && !this.defaultHtmlHandlers[app.name];
@@ -158,11 +156,11 @@ var HelperApps =  {
         throw new Error("Intent:GetHandler did not return data");
       }
       return parseData(data);
-    } else {
+    }
       EventDispatcher.instance.sendRequestForResult(msg).then(function(data) {
         callback(parseData(data));
       });
-    }
+
   },
 
   launchUri: function launchUri(uri) {
@@ -177,10 +175,10 @@ var HelperApps =  {
 
     let apps = [];
     for (let i = 0; i < appInfo.length; i += numAttr) {
-      apps.push(new App({"name" : appInfo[i],
-                 "isDefault" : appInfo[i+1],
-                 "packageName" : appInfo[i+2],
-                 "activityName" : appInfo[i+3]}));
+      apps.push(new App({"name": appInfo[i],
+                 "isDefault": appInfo[i + 1],
+                 "packageName": appInfo[i + 2],
+                 "activityName": appInfo[i + 3]}));
     }
 
     return apps;
@@ -196,7 +194,7 @@ var HelperApps =  {
       type: type,
       mime: mimeType,
       action: options.action || "", // empty action string defaults to android.intent.action.VIEW
-      url: uri ? uri.spec : "",
+      url: uri ? uri.displaySpec : "",
       packageName: options.packageName || "",
       className: options.className || ""
     };

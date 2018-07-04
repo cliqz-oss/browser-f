@@ -11,15 +11,15 @@ add_task(async function test_remove_many() {
   // This is set so that we are guaranteed to trigger REMOVE_PAGES_CHUNKLEN.
   const SIZE = 310;
 
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   await PlacesUtils.bookmarks.eraseEverything();
 
-  do_print("Adding a witness page");
+  info("Adding a witness page");
   let WITNESS_URI = NetUtil.newURI("http://mozilla.com/test_browserhistory/test_remove/" + Math.random());
   await PlacesTestUtils.addVisits(WITNESS_URI);
   Assert.ok(page_in_database(WITNESS_URI), "Witness page added");
 
-  do_print("Generating samples");
+  info("Generating samples");
   let pages = [];
   for (let i = 0; i < SIZE; ++i) {
     let uri = NetUtil.newURI("http://mozilla.com/test_browserhistory/test_remove?sample=" + i + "&salt=" + Math.random());
@@ -38,22 +38,22 @@ add_task(async function test_remove_many() {
       // `true` once `onDeleteURI` has been called for this page
       onDeleteURICalled: false,
     };
-    do_print("Pushing: " + uri.spec);
+    info("Pushing: " + uri.spec);
     pages.push(page);
 
     await PlacesTestUtils.addVisits(page);
     page.guid = do_get_guid_for_uri(uri);
     if (hasBookmark) {
-      PlacesUtils.bookmarks.insertBookmark(
-        PlacesUtils.unfiledBookmarksFolderId,
-        uri,
-        PlacesUtils.bookmarks.DEFAULT_INDEX,
-        "test bookmark " + i);
+      await PlacesUtils.bookmarks.insert({
+        parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+        url: uri,
+        title: "test bookmark " + i
+      });
     }
     Assert.ok(page_in_database(uri), "Page added");
   }
 
-  do_print("Mixing key types and introducing dangling keys");
+  info("Mixing key types and introducing dangling keys");
   let keys = [];
   for (let i = 0; i < SIZE; ++i) {
     if (i % 4 == 0) {
@@ -74,8 +74,8 @@ add_task(async function test_remove_many() {
   let observer = {
     onBeginUpdateBatch() {},
     onEndUpdateBatch() {},
-    onVisit(aURI) {
-      Assert.ok(false, "Unexpected call to onVisit " + aURI.spec);
+    onVisits(aVisits) {
+      Assert.ok(false, "Unexpected call to onVisits " + aVisits.length);
     },
     onTitleChanged(aURI) {
       Assert.ok(false, "Unexpected call to onTitleChanged " + aURI.spec);
@@ -111,7 +111,7 @@ add_task(async function test_remove_many() {
   };
   PlacesUtils.history.addObserver(observer);
 
-  do_print("Removing the pages and checking the callbacks");
+  info("Removing the pages and checking the callbacks");
 
   let removed = await PlacesUtils.history.remove(keys, page => {
     let origin = pages.find(candidate => candidate.uri.spec == page.url.href);
@@ -127,7 +127,7 @@ add_task(async function test_remove_many() {
 
   PlacesUtils.history.removeObserver(observer);
 
-  do_print("Checking out results");
+  info("Checking out results");
   // By now the observers should have been called.
   for (let i = 0; i < pages.length; ++i) {
     let page = pages[i];
@@ -143,6 +143,6 @@ add_task(async function test_remove_many() {
 });
 
 add_task(async function cleanup() {
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   await PlacesUtils.bookmarks.eraseEverything();
 });

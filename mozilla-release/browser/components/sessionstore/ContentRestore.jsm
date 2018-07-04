@@ -4,26 +4,50 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ContentRestore"];
+var EXPORTED_SYMBOLS = ["ContentRestore"];
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "DocShellCapabilities",
+ChromeUtils.defineModuleGetter(this, "DocShellCapabilities",
   "resource:///modules/sessionstore/DocShellCapabilities.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FormData",
+ChromeUtils.defineModuleGetter(this, "FormData",
   "resource://gre/modules/FormData.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ScrollPosition",
+ChromeUtils.defineModuleGetter(this, "ScrollPosition",
   "resource://gre/modules/ScrollPosition.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionHistory",
+ChromeUtils.defineModuleGetter(this, "SessionHistory",
   "resource://gre/modules/sessionstore/SessionHistory.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "SessionStorage",
+ChromeUtils.defineModuleGetter(this, "SessionStorage",
   "resource:///modules/sessionstore/SessionStorage.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+ChromeUtils.defineModuleGetter(this, "Utils",
   "resource://gre/modules/sessionstore/Utils.jsm");
+
+const ssu = Cc["@mozilla.org/browser/sessionstore/utils;1"]
+              .getService(Ci.nsISessionStoreUtils);
+
+/**
+ * Restores frame tree |data|, starting at the given root |frame|. As the
+ * function recurses into descendant frames it will call cb(frame, data) for
+ * each frame it encounters, starting with the given root.
+ */
+function restoreFrameTreeData(frame, data, cb) {
+  // Restore data for the root frame.
+  // The callback can abort by returning false.
+  if (cb(frame, data) === false) {
+    return;
+  }
+
+  if (!data.hasOwnProperty("children")) {
+    return;
+  }
+
+  // Recurse into child frames.
+  ssu.forEachNonDynamicChildFrame(frame, (subframe, index) => {
+    if (data.children[index]) {
+      restoreFrameTreeData(subframe, data.children[index], cb);
+    }
+  });
+}
 
 /**
  * This module implements the content side of session restoration. The chrome
@@ -140,7 +164,7 @@ ContentRestoreInternal.prototype = {
       this.restoreTabContent(null, false, callbacks.onLoadFinished);
     });
 
-    webNavigation.sessionHistory.addSHistoryListener(listener);
+    webNavigation.sessionHistory.legacySHistory.addSHistoryListener(listener);
     this._historyListener = listener;
 
     // Make sure to reset the capabilities and attributes in case this tab gets
@@ -179,7 +203,7 @@ ContentRestoreInternal.prototype = {
     this._tabData = null;
 
     let webNavigation = this.docShell.QueryInterface(Ci.nsIWebNavigation);
-    let history = webNavigation.sessionHistory;
+    let history = webNavigation.sessionHistory.legacySHistory;
 
     // Listen for the tab to finish loading.
     this.restoreTabContentStarted(finishCallback);
@@ -294,8 +318,20 @@ ContentRestoreInternal.prototype = {
     let window = this.docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                                .getInterface(Ci.nsIDOMWindow);
 
-    FormData.restoreTree(window, formdata);
-    ScrollPosition.restoreTree(window, scrollPositions);
+    // Restore form data.
+    restoreFrameTreeData(window, formdata, (frame, data) => {
+      // restore() will return false, and thus abort restoration for the
+      // current |frame| and its descendants, if |data.url| is given but
+      // doesn't match the loaded document's URL.
+      return FormData.restore(frame, data);
+    });
+
+    // Restore scroll data.
+    restoreFrameTreeData(window, scrollPositions, (frame, data) => {
+      if (data.scroll) {
+        ScrollPosition.restore(frame, data.scroll);
+      }
+    });
   },
 
   /**
@@ -329,19 +365,19 @@ ContentRestoreInternal.prototype = {
  */
 function HistoryListener(docShell, callback) {
   let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
-  webNavigation.sessionHistory.addSHistoryListener(this);
+  webNavigation.sessionHistory.legacySHistory.addSHistoryListener(this);
 
   this.webNavigation = webNavigation;
   this.callback = callback;
 }
 HistoryListener.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsISHistoryListener,
     Ci.nsISupportsWeakReference
   ]),
 
   uninstall() {
-    let shistory = this.webNavigation.sessionHistory;
+    let shistory = this.webNavigation.sessionHistory.legacySHistory;
     if (shistory) {
       shistory.removeSHistoryListener(this);
     }
@@ -393,7 +429,7 @@ HistoryListener.prototype = {
   OnIndexChanged(aIndex) {
     // Ignore, the method is implemented so that XPConnect doesn't throw!
   },
-}
+};
 
 /**
  * This class informs SessionStore.jsm whenever the network requests for a
@@ -415,7 +451,7 @@ function ProgressListener(docShell, callbacks) {
 }
 
 ProgressListener.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIWebProgressListener,
     Ci.nsISupportsWeakReference
   ]),

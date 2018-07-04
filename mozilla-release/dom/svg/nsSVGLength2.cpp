@@ -22,7 +22,7 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-static nsIAtom** const unitMap[] =
+static nsStaticAtom** const unitMap[] =
 {
   nullptr, /* SVG_LENGTHTYPE_UNKNOWN */
   nullptr, /* SVG_LENGTHTYPE_NUMBER */
@@ -45,8 +45,8 @@ static nsSVGAttrTearoffTable<nsSVGLength2, SVGAnimatedLength>
 static bool
 IsValidUnitType(uint16_t unit)
 {
-  if (unit > nsIDOMSVGLength::SVG_LENGTHTYPE_UNKNOWN &&
-      unit <= nsIDOMSVGLength::SVG_LENGTHTYPE_PC)
+  if (unit > SVGLengthBinding::SVG_LENGTHTYPE_UNKNOWN &&
+      unit <= SVGLengthBinding::SVG_LENGTHTYPE_PC)
     return true;
 
   return false;
@@ -69,9 +69,9 @@ static uint16_t
 GetUnitTypeForString(const nsAString& unitStr)
 {
   if (unitStr.IsEmpty())
-    return nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER;
+    return SVGLengthBinding::SVG_LENGTHTYPE_NUMBER;
 
-  nsIAtom *unitAtom = NS_GetStaticAtom(unitStr);
+  nsAtom *unitAtom = NS_GetStaticAtom(unitStr);
   if (unitAtom) {
     for (uint32_t i = 0 ; i < ArrayLength(unitMap) ; i++) {
       if (unitMap[i] && *unitMap[i] == unitAtom) {
@@ -80,17 +80,13 @@ GetUnitTypeForString(const nsAString& unitStr)
     }
   }
 
-  return nsIDOMSVGLength::SVG_LENGTHTYPE_UNKNOWN;
+  return SVGLengthBinding::SVG_LENGTHTYPE_UNKNOWN;
 }
 
 static void
 GetValueString(nsAString &aValueAsString, float aValue, uint16_t aUnitType)
 {
-  char16_t buf[24];
-  nsTextFormatter::snprintf(buf, sizeof(buf)/sizeof(char16_t),
-                            u"%g",
-                            (double)aValue);
-  aValueAsString.Assign(buf);
+  nsTextFormatter::ssprintf(aValueAsString, u"%g", (double)aValue);
 
   nsAutoString unitString;
   GetUnitString(unitString, aUnitType);
@@ -114,8 +110,6 @@ GetValueFromString(const nsAString& aString,
   *aUnitType = GetUnitTypeForString(units);
   return IsValidUnitType(*aUnitType);
 }
-
-static float GetMMPerPixel() { return MM_PER_INCH_FLOAT / 96; }
 
 static float
 FixAxisLength(float aLength)
@@ -216,51 +210,58 @@ UserSpaceMetricsWithSize::GetAxisLength(uint8_t aCtxType) const
 }
 
 float
-nsSVGLength2::GetUnitScaleFactor(nsSVGElement* aSVGElement,
-                                 uint8_t aUnitType) const
+nsSVGLength2::GetPixelsPerUnit(nsSVGElement* aSVGElement,
+                               uint8_t aUnitType) const
 {
-  return GetUnitScaleFactor(SVGElementMetrics(aSVGElement), aUnitType);
+  return GetPixelsPerUnit(SVGElementMetrics(aSVGElement), aUnitType);
 }
 
 float
-nsSVGLength2::GetUnitScaleFactor(SVGViewportElement* aCtx, uint8_t aUnitType) const
+nsSVGLength2::GetPixelsPerUnit(SVGViewportElement* aCtx,
+                               uint8_t aUnitType) const
 {
-  return GetUnitScaleFactor(SVGElementMetrics(aCtx, aCtx), aUnitType);
+  return GetPixelsPerUnit(SVGElementMetrics(aCtx, aCtx), aUnitType);
 }
 
 float
-nsSVGLength2::GetUnitScaleFactor(nsIFrame* aFrame, uint8_t aUnitType) const
+nsSVGLength2::GetPixelsPerUnit(nsIFrame* aFrame,
+                               uint8_t aUnitType) const
 {
   nsIContent* content = aFrame->GetContent();
   if (content->IsSVGElement()) {
-    return GetUnitScaleFactor(SVGElementMetrics(static_cast<nsSVGElement*>(content)), aUnitType);
+    return GetPixelsPerUnit(
+             SVGElementMetrics(static_cast<nsSVGElement*>(content)), aUnitType);
   }
-  return GetUnitScaleFactor(NonSVGFrameUserSpaceMetrics(aFrame), aUnitType);
+  return GetPixelsPerUnit(NonSVGFrameUserSpaceMetrics(aFrame), aUnitType);
 }
 
+// See https://www.w3.org/TR/css-values-3/#absolute-lengths
+static const float DPI = 96.0f;
+
 float
-nsSVGLength2::GetUnitScaleFactor(const UserSpaceMetrics& aMetrics, uint8_t aUnitType) const
+nsSVGLength2::GetPixelsPerUnit(const UserSpaceMetrics& aMetrics,
+                               uint8_t aUnitType) const
 {
   switch (aUnitType) {
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_NUMBER:
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_PX:
+  case SVGLengthBinding::SVG_LENGTHTYPE_NUMBER:
+  case SVGLengthBinding::SVG_LENGTHTYPE_PX:
     return 1;
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_MM:
-    return GetMMPerPixel();
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_CM:
-    return GetMMPerPixel() / 10.0f;
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_IN:
-    return GetMMPerPixel() / MM_PER_INCH_FLOAT;
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_PT:
-    return GetMMPerPixel() * POINTS_PER_INCH_FLOAT / MM_PER_INCH_FLOAT;
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_PC:
-    return GetMMPerPixel() * POINTS_PER_INCH_FLOAT / MM_PER_INCH_FLOAT / 12.0f;
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_PERCENTAGE:
-    return 100.0f / aMetrics.GetAxisLength(mCtxType);
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_EMS:
-    return 1 / aMetrics.GetEmLength();
-  case nsIDOMSVGLength::SVG_LENGTHTYPE_EXS:
-    return 1 / aMetrics.GetExLength();
+  case SVGLengthBinding::SVG_LENGTHTYPE_MM:
+    return DPI / MM_PER_INCH_FLOAT;
+  case SVGLengthBinding::SVG_LENGTHTYPE_CM:
+    return 10.0f * DPI / MM_PER_INCH_FLOAT;
+  case SVGLengthBinding::SVG_LENGTHTYPE_IN:
+    return DPI;
+  case SVGLengthBinding::SVG_LENGTHTYPE_PT:
+    return DPI / POINTS_PER_INCH_FLOAT;
+  case SVGLengthBinding::SVG_LENGTHTYPE_PC:
+    return 12.0f * DPI / POINTS_PER_INCH_FLOAT;
+  case SVGLengthBinding::SVG_LENGTHTYPE_PERCENTAGE:
+    return aMetrics.GetAxisLength(mCtxType) / 100.0f;
+  case SVGLengthBinding::SVG_LENGTHTYPE_EMS:
+    return aMetrics.GetEmLength();
+  case SVGLengthBinding::SVG_LENGTHTYPE_EXS:
+    return aMetrics.GetExLength();
   default:
     NS_NOTREACHED("Unknown unit type");
     return 0;
@@ -303,18 +304,29 @@ nsSVGLength2::ConvertToSpecifiedUnits(uint16_t unitType,
   if (mIsBaseSet && mSpecifiedUnitType == uint8_t(unitType))
     return NS_OK;
 
+  float pixelsPerUnit = GetPixelsPerUnit(aSVGElement, unitType);
+  if (pixelsPerUnit == 0.0f) {
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+
+  float valueInUserUnits =
+    mBaseVal * GetPixelsPerUnit(aSVGElement, mSpecifiedUnitType);
+  float valueInSpecifiedUnits = valueInUserUnits / pixelsPerUnit;
+
+  if (!IsFinite(valueInSpecifiedUnits)) {
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+
   // Even though we're not changing the visual effect this length will have
   // on the document, we still need to send out notifications in case we have
   // mutation listeners, since the actual string value of the attribute will
   // change.
   nsAttrValue emptyOrOldValue = aSVGElement->WillChangeLength(mAttrEnum);
 
-  float valueInUserUnits =
-    mBaseVal / GetUnitScaleFactor(aSVGElement, mSpecifiedUnitType);
   mSpecifiedUnitType = uint8_t(unitType);
   // Setting aDoSetAttr to false here will ensure we don't call
   // Will/DidChangeAngle a second time (and dispatch duplicate notifications).
-  SetBaseValue(valueInUserUnits, aSVGElement, false);
+  SetBaseValueInSpecifiedUnits(valueInSpecifiedUnits, aSVGElement, false);
 
   aSVGElement->DidChangeLength(mAttrEnum, emptyOrOldValue);
 
@@ -421,13 +433,23 @@ nsSVGLength2::GetAnimValueString(nsAString & aValueAsString) const
   GetValueString(aValueAsString, mAnimVal, mSpecifiedUnitType);
 }
 
-void
+nsresult
 nsSVGLength2::SetBaseValue(float aValue, nsSVGElement *aSVGElement,
                            bool aDoSetAttr)
 {
-  SetBaseValueInSpecifiedUnits(aValue * GetUnitScaleFactor(aSVGElement,
-                                                           mSpecifiedUnitType),
+  float pixelsPerUnit = GetPixelsPerUnit(aSVGElement, mSpecifiedUnitType);
+  if (pixelsPerUnit == 0.0f) {
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+
+  float valueInSpecifiedUnits = aValue / pixelsPerUnit;
+  if (!IsFinite(valueInSpecifiedUnits)) {
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+
+  SetBaseValueInSpecifiedUnits(valueInSpecifiedUnits,
                                aSVGElement, aDoSetAttr);
+  return NS_OK;
 }
 
 void
@@ -442,12 +464,17 @@ nsSVGLength2::SetAnimValueInSpecifiedUnits(float aValue,
   aSVGElement->DidAnimateLength(mAttrEnum);
 }
 
-void
+nsresult
 nsSVGLength2::SetAnimValue(float aValue, nsSVGElement *aSVGElement)
 {
-  SetAnimValueInSpecifiedUnits(aValue * GetUnitScaleFactor(aSVGElement,
-                                                           mSpecifiedUnitType),
-                               aSVGElement);
+  float valueInSpecifiedUnits = aValue /
+          GetPixelsPerUnit(aSVGElement, mSpecifiedUnitType);
+
+  if (IsFinite(valueInSpecifiedUnits)) {
+    SetAnimValueInSpecifiedUnits(valueInSpecifiedUnits, aSVGElement);
+    return NS_OK;
+  }
+  return NS_ERROR_ILLEGAL_VALUE;
 }
 
 already_AddRefed<SVGAnimatedLength>
@@ -488,12 +515,12 @@ nsSVGLength2::SMILLength::ValueFromString(const nsAString& aStr,
   }
 
   nsSMILValue val(nsSMILFloatType::Singleton());
-  val.mU.mDouble = value / mVal->GetUnitScaleFactor(mSVGElement, unitType);
+  val.mU.mDouble = value * mVal->GetPixelsPerUnit(mSVGElement, unitType);
   aValue = val;
   aPreventCachingOfSandwich =
-              (unitType == nsIDOMSVGLength::SVG_LENGTHTYPE_PERCENTAGE ||
-               unitType == nsIDOMSVGLength::SVG_LENGTHTYPE_EMS ||
-               unitType == nsIDOMSVGLength::SVG_LENGTHTYPE_EXS);
+              (unitType == SVGLengthBinding::SVG_LENGTHTYPE_PERCENTAGE ||
+               unitType == SVGLengthBinding::SVG_LENGTHTYPE_EMS ||
+               unitType == SVGLengthBinding::SVG_LENGTHTYPE_EXS);
 
   return NS_OK;
 }
@@ -522,7 +549,7 @@ nsSVGLength2::SMILLength::SetAnimValue(const nsSMILValue& aValue)
   NS_ASSERTION(aValue.mType == nsSMILFloatType::Singleton(),
     "Unexpected type to assign animated value");
   if (aValue.mType == nsSMILFloatType::Singleton()) {
-    mVal->SetAnimValue(float(aValue.mU.mDouble), mSVGElement);
+    return mVal->SetAnimValue(float(aValue.mU.mDouble), mSVGElement);
   }
   return NS_OK;
 }

@@ -55,22 +55,15 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(HTMLEmbedElement,
 nsObjectLoadingContent::Traverse(tmp, cb);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
-NS_IMPL_ADDREF_INHERITED(HTMLEmbedElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLEmbedElement, Element)
-
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(HTMLEmbedElement)
-NS_INTERFACE_TABLE_INHERITED(HTMLEmbedElement,
-                             nsIRequestObserver,
-                             nsIStreamListener,
-                             nsIFrameLoaderOwner,
-                             nsIObjectLoadingContent,
-                             imgINotificationObserver,
-                             nsIImageLoadingContent,
-                             imgIOnloadBlocker,
-                             nsIChannelEventSink)
-NS_INTERFACE_TABLE_TO_MAP_SEGUE
-  NS_INTERFACE_MAP_ENTRY(nsIDOMHTMLEmbedElement)
-NS_INTERFACE_MAP_END_INHERITING(nsGenericHTMLElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLEmbedElement,
+                                             nsGenericHTMLElement,
+                                             nsIRequestObserver,
+                                             nsIStreamListener,
+                                             nsIFrameLoaderOwner,
+                                             nsIObjectLoadingContent,
+                                             imgINotificationObserver,
+                                             nsIImageLoadingContent,
+                                             nsIChannelEventSink)
 
 NS_IMPL_ELEMENT_CLONE(HTMLEmbedElement)
 
@@ -138,9 +131,10 @@ HTMLEmbedElement::UnbindFromTree(bool aDeep,
 }
 
 nsresult
-HTMLEmbedElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+HTMLEmbedElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                const nsAttrValue* aValue,
                                const nsAttrValue* aOldValue,
+                               nsIPrincipal* aSubjectPrincipal,
                                bool aNotify)
 {
   if (aValue) {
@@ -149,12 +143,12 @@ HTMLEmbedElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
   }
 
   return nsGenericHTMLElement::AfterSetAttr(aNamespaceID, aName, aValue,
-                                            aOldValue, aNotify);
+                                            aOldValue, aSubjectPrincipal, aNotify);
 }
 
 nsresult
 HTMLEmbedElement::OnAttrSetButNotChanged(int32_t aNamespaceID,
-                                         nsIAtom* aName,
+                                         nsAtom* aName,
                                          const nsAttrValueOrString& aValue,
                                          bool aNotify)
 {
@@ -167,7 +161,7 @@ HTMLEmbedElement::OnAttrSetButNotChanged(int32_t aNamespaceID,
 
 nsresult
 HTMLEmbedElement::AfterMaybeChangeAttr(int32_t aNamespaceID,
-                                       nsIAtom* aName,
+                                       nsAtom* aName,
                                        bool aNotify)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -225,8 +219,9 @@ HTMLEmbedElement::TabIndexDefault()
 
 bool
 HTMLEmbedElement::ParseAttribute(int32_t aNamespaceID,
-                                 nsIAtom *aAttribute,
+                                 nsAtom *aAttribute,
                                  const nsAString &aValue,
+                                 nsIPrincipal* aMaybeScriptedPrincipal,
                                  nsAttrValue &aResult)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -239,7 +234,7 @@ HTMLEmbedElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 static void
@@ -269,7 +264,7 @@ HTMLEmbedElement::MapAttributesIntoRule(const nsMappedAttributes *aAttributes,
 }
 
 NS_IMETHODIMP_(bool)
-HTMLEmbedElement::IsAttributeMapped(const nsIAtom *aAttribute) const
+HTMLEmbedElement::IsAttributeMapped(const nsAtom *aAttribute) const
 {
   static const MappedAttributeEntry* const map[] = {
     sCommonAttributeMap,
@@ -353,13 +348,6 @@ HTMLEmbedElement::GetContentPolicyType() const
 {
   return nsIContentPolicy::TYPE_INTERNAL_EMBED;
 }
-
-NS_IMPL_STRING_ATTR(HTMLEmbedElement, Align, align)
-NS_IMPL_STRING_ATTR(HTMLEmbedElement, Width, width)
-NS_IMPL_STRING_ATTR(HTMLEmbedElement, Height, height)
-NS_IMPL_STRING_ATTR(HTMLEmbedElement, Name, name)
-NS_IMPL_URI_ATTR(HTMLEmbedElement, Src, src)
-NS_IMPL_STRING_ATTR(HTMLEmbedElement, Type, type)
 
 } // namespace dom
 } // namespace mozilla

@@ -4,9 +4,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["ReaderMode"];
-
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
+var EXPORTED_SYMBOLS = ["ReaderMode"];
 
 // Constants for telemetry.
 const DOWNLOAD_SUCCESS = 0;
@@ -18,28 +16,40 @@ const PARSE_ERROR_TOO_MANY_ELEMENTS = 1;
 const PARSE_ERROR_WORKER = 2;
 const PARSE_ERROR_NO_ARTICLE = 3;
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+// Class names to preserve in the readerized output. We preserve these class
+// names so that rules in aboutReader.css can match them.
+const CLASSES_TO_PRESERVE = [
+  "caption",
+  "hidden",
+  "invisble",
+  "sr-only",
+  "visually-hidden",
+  "visuallyhidden",
+  "wp-caption",
+  "wp-caption-text",
+];
 
-Cu.importGlobalProperties(["XMLHttpRequest"]);
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "CommonUtils", "resource://services-common/utils.js");
-XPCOMUtils.defineLazyModuleGetter(this, "EventDispatcher", "resource://gre/modules/Messaging.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderWorker", "resource://gre/modules/reader/ReaderWorker.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch", "resource://gre/modules/TelemetryStopwatch.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LanguageDetector", "resource:///modules/translation/LanguageDetector.jsm");
+Cu.importGlobalProperties(["XMLHttpRequest", "XMLSerializer"]);
+
+ChromeUtils.defineModuleGetter(this, "CommonUtils", "resource://services-common/utils.js");
+ChromeUtils.defineModuleGetter(this, "EventDispatcher", "resource://gre/modules/Messaging.jsm");
+ChromeUtils.defineModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "ReaderWorker", "resource://gre/modules/reader/ReaderWorker.jsm");
+ChromeUtils.defineModuleGetter(this, "LanguageDetector", "resource:///modules/translation/LanguageDetector.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "Readability", function() {
   let scope = {};
   scope.dump = this.dump;
   Services.scriptloader.loadSubScript("resource://gre/modules/reader/Readability.js", scope);
-  return scope["Readability"];
+  return scope.Readability;
 });
 
 const gIsFirefoxDesktop = Services.appinfo.ID == "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}";
 
-this.ReaderMode = {
+var ReaderMode = {
   // Version of the cache schema.
   CACHE_VERSION: 1,
 
@@ -86,12 +96,15 @@ this.ReaderMode = {
    * if not, append the about:reader page in the history instead.
    */
   enterReaderMode(docShell, win) {
+    Services.telemetry.recordEvent("savant", "readermode", "on", null,
+                                  { subcategory: "feature" });
+
     let url = win.document.location.href;
     let readerURL = "about:reader?url=" + encodeURIComponent(url);
     let webNav = docShell.QueryInterface(Ci.nsIWebNavigation);
     let sh = webNav.sessionHistory;
     if (webNav.canGoForward) {
-      let forwardEntry = sh.getEntryAtIndex(sh.index + 1, false);
+      let forwardEntry = sh.legacySHistory.getEntryAtIndex(sh.index + 1, false);
       let forwardURL = forwardEntry.URI.spec;
       if (forwardURL && (forwardURL == readerURL || !readerURL)) {
         webNav.goForward();
@@ -107,12 +120,14 @@ this.ReaderMode = {
    * if not, append the original page in the history instead.
    */
   leaveReaderMode(docShell, win) {
+    Services.telemetry.recordEvent("savant", "readermode", "off", null,
+                                  { subcategory: "feature" });
     let url = win.document.location.href;
     let originalURL = this.getOriginalUrl(url);
     let webNav = docShell.QueryInterface(Ci.nsIWebNavigation);
     let sh = webNav.sessionHistory;
     if (webNav.canGoBack) {
-      let prevEntry = sh.getEntryAtIndex(sh.index - 1, false);
+      let prevEntry = sh.legacySHistory.getEntryAtIndex(sh.index - 1, false);
       let prevURL = prevEntry.URI.spec;
       if (prevURL && (prevURL == originalURL || !originalURL)) {
         webNav.goBack();
@@ -120,7 +135,18 @@ this.ReaderMode = {
       }
     }
 
-    win.document.location = originalURL;
+    let referrerURI, principal;
+    try {
+      referrerURI = Services.io.newURI(url);
+      principal = Services.scriptSecurityManager.createCodebasePrincipal(
+        referrerURI, win.document.nodePrincipal.originAttributes);
+    } catch (e) {
+      Cu.reportError(e);
+      return;
+    }
+    let flags =  webNav.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL |
+      webNav.LOAD_FLAGS_DISALLOW_INHERIT_OWNER;
+    webNav.loadURI(originalURL, flags, referrerURI, null, null, principal);
   },
 
   /**
@@ -234,6 +260,9 @@ this.ReaderMode = {
    */
   async downloadAndParseDocument(url) {
     let doc = await this._downloadDocument(url);
+    if (!doc) {
+      return null;
+    }
     if (!this._shouldCheckUri(doc.documentURIObject) || !this._shouldCheckUri(doc.baseURIObject, true)) {
       this.log("Reader mode disabled for URI");
       return null;
@@ -243,6 +272,14 @@ this.ReaderMode = {
   },
 
   _downloadDocument(url) {
+    try {
+      if (!this._shouldCheckUri(Services.io.newURI(url))) {
+        return null;
+      }
+    } catch (ex) {
+      Cu.reportError(new Error(`Couldn't create URI from ${url} to download: ${ex}`));
+      return null;
+    }
     let histogram = Services.telemetry.getHistogramById("READER_MODE_DOWNLOAD_RESULT");
     return new Promise((resolve, reject) => {
       let xhr = new XMLHttpRequest();
@@ -449,13 +486,16 @@ this.ReaderMode = {
       pathBase: Services.io.newURI(".", null, doc.baseURIObject).spec
     };
 
-    let serializer = Cc["@mozilla.org/xmlextras/xmlserializer;1"].
-                     createInstance(Ci.nsIDOMSerializer);
+    let serializer = new XMLSerializer();
     let serializedDoc = serializer.serializeToString(doc);
+
+    let options = {
+      classesToPreserve: CLASSES_TO_PRESERVE,
+    };
 
     let article = null;
     try {
-      article = await ReaderWorker.post("parseDocument", [uriParam, serializedDoc]);
+      article = await ReaderWorker.post("parseDocument", [uriParam, serializedDoc, options]);
     } catch (e) {
       Cu.reportError("Error in ReaderWorker: " + e);
       histogram.add(PARSE_ERROR_WORKER);

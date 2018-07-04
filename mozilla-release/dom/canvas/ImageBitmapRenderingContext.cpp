@@ -70,18 +70,6 @@ ImageBitmapRenderingContext::TransferFromImageBitmap(ImageBitmap& aImageBitmap)
   Redraw(gfxRect(0, 0, mWidth, mHeight));
 }
 
-int32_t
-ImageBitmapRenderingContext::GetWidth() const
-{
-  return mWidth;
-}
-
-int32_t
-ImageBitmapRenderingContext::GetHeight() const
-{
-  return mHeight;
-}
-
 NS_IMETHODIMP
 ImageBitmapRenderingContext::SetDimensions(int32_t aWidth, int32_t aHeight)
 {
@@ -201,8 +189,9 @@ ImageBitmapRenderingContext::GetSurfaceSnapshot(gfxAlphaType* const aOutAlphaTyp
 }
 
 void
-ImageBitmapRenderingContext::SetIsOpaque(bool aIsOpaque)
+ImageBitmapRenderingContext::SetOpaqueValueFromOpaqueAttr(bool aOpaqueAttrValue)
 {
+  // ignored
 }
 
 bool
@@ -226,14 +215,8 @@ ImageBitmapRenderingContext::Reset()
 already_AddRefed<Layer>
 ImageBitmapRenderingContext::GetCanvasLayer(nsDisplayListBuilder* aBuilder,
                                             Layer* aOldLayer,
-                                            LayerManager* aManager,
-                                            bool aMirror /* = false */)
+                                            LayerManager* aManager)
 {
-  if (aMirror) {
-    // Not supported for ImageBitmapRenderingContext
-    return nullptr;
-  }
-
   if (!mImage) {
     // No DidTransactionCallback will be received, so mark the context clean
     // now so future invalidations will be dispatched.
@@ -251,7 +234,7 @@ ImageBitmapRenderingContext::GetCanvasLayer(nsDisplayListBuilder* aBuilder,
 
   RefPtr<ImageContainer> imageContainer = imageLayer->GetContainer();
   if (!imageContainer) {
-    imageContainer = aManager->CreateImageContainer();
+    imageContainer = LayerManager::CreateImageContainer();
     imageLayer->SetContainer(imageContainer);
   }
 

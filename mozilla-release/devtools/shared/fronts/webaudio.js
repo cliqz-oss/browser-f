@@ -11,7 +11,8 @@ const {
   NODE_ROUTING_METHODS,
 } = require("devtools/shared/specs/webaudio");
 const protocol = require("devtools/shared/protocol");
-const AUDIO_NODE_DEFINITION = require("devtools/server/actors/utils/audionodes.json");
+loader.lazyRequireGetter(this, "AUDIO_NODE_DEFINITION",
+  "devtools/server/actors/utils/audionodes.json");
 
 /**
  * The corresponding Front object for the AudioNodeActor.
@@ -26,7 +27,7 @@ const AUDIO_NODE_DEFINITION = require("devtools/server/actors/utils/audionodes.j
  *            merger and destination nodes, for example, are not)
  */
 const AudioNodeFront = protocol.FrontClassWithSpec(audionodeSpec, {
-  form: function (form, detail) {
+  form: function(form, detail) {
     if (detail === "actorid") {
       this.actorID = form;
       return;
@@ -38,7 +39,7 @@ const AudioNodeFront = protocol.FrontClassWithSpec(audionodeSpec, {
     this.bypassable = form.bypassable;
   },
 
-  initialize: function (client, form) {
+  initialize: function(client, form) {
     protocol.Front.prototype.initialize.call(this, client, form);
     // if we were manually passed a form, this was created manually and
     // needs to own itself for now.
@@ -54,7 +55,7 @@ exports.AudioNodeFront = AudioNodeFront;
  * The corresponding Front object for the WebAudioActor.
  */
 const WebAudioFront = protocol.FrontClassWithSpec(webAudioSpec, {
-  initialize: function (client, { webaudioActor }) {
+  initialize: function(client, { webaudioActor }) {
     protocol.Front.prototype.initialize.call(this, client, { actor: webaudioActor });
     this.manage(this);
   },
@@ -64,7 +65,7 @@ const WebAudioFront = protocol.FrontClassWithSpec(webAudioSpec, {
    * contain `type`, `source` and `bypassable` properties, fetch
    * them manually here.
    */
-  _onCreateNode: protocol.preEvent("create-node", function (audionode) {
+  _onCreateNode: protocol.preEvent("create-node", function(audionode) {
     if (!audionode.type) {
       return audionode.getType().then(type => {
         audionode.type = type;

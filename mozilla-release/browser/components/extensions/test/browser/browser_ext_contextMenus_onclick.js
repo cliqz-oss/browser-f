@@ -69,10 +69,10 @@ function testScript() {
     // Sanity check - the pages must be in the same process.
     let pages = browser.extension.getViews();
     browser.test.assertTrue(pages.includes(window),
-        "Expected this tab to be an extension view");
+                            "Expected this tab to be an extension view");
     pages = pages.filter(w => w !== window);
     browser.test.assertEq(pages[0], browser.extension.getBackgroundPage(),
-        "Expected the other page to be a background page");
+                          "Expected the other page to be a background page");
     browser.test.sendMessage("tab.html ready");
   }
 }
@@ -193,7 +193,7 @@ add_task(async function() {
     }
   }
   await extension.unload();
-  await BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab1);
 });
 
 add_task(async function test_onclick_modifiers() {
@@ -242,6 +242,6 @@ add_task(async function test_onclick_modifiers() {
   const altShift = await click({altKey: true, shiftKey: true});
   is(altShift.modifiers.sort().join(), "Alt,Shift", "Correct modifiers: Shift+Alt");
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await extension.unload();
 });

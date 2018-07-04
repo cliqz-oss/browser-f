@@ -36,7 +36,7 @@ REPORT_BUILD = $(info $(notdir $@))
 ifdef BUILD_VERBOSE_LOG
 REPORT_BUILD_VERBOSE = $(REPORT_BUILD)
 else
-REPORT_BUILD_VERBOSE =
+REPORT_BUILD_VERBOSE = $(call BUILDSTATUS,BUILD_VERBOSE $(relativesrcdir))
 endif
 
 endif
@@ -68,7 +68,6 @@ ifdef COMPILE_ENVIRONMENT
 # through TestHarness.h, by modifying the list of includes and the libs against
 # which stuff links.
 SIMPLE_PROGRAMS += $(CPP_UNIT_TESTS)
-INCLUDES += -I$(ABS_DIST)/include/testing
 
 ifndef MOZ_PROFILE_GENERATE
 CPP_UNIT_TESTS_FILES = $(CPP_UNIT_TESTS)
@@ -101,28 +100,12 @@ endif # ENABLE_TESTS
 
 ifndef LIBRARY
 ifdef REAL_LIBRARY
-# Don't build actual static library if a shared library is also built
-ifdef FORCE_SHARED_LIB
-# ... except when we really want one
 ifdef NO_EXPAND_LIBS
+# Only build actual library if it is requested.
 LIBRARY			:= $(REAL_LIBRARY)
-else
-LIBRARY			:= $(REAL_LIBRARY).$(LIBS_DESC_SUFFIX)
-endif
-else
-# Only build actual library if it is installed in DIST/lib
-ifeq (,$(DIST_INSTALL)$(NO_EXPAND_LIBS))
-LIBRARY			:= $(REAL_LIBRARY).$(LIBS_DESC_SUFFIX)
-else
-ifdef NO_EXPAND_LIBS
-LIBRARY			:= $(REAL_LIBRARY)
-else
-LIBRARY			:= $(REAL_LIBRARY) $(REAL_LIBRARY).$(LIBS_DESC_SUFFIX)
 endif
 endif
 endif
-endif # REAL_LIBRARY
-endif # LIBRARY
 
 ifndef HOST_LIBRARY
 ifdef HOST_LIBRARY_NAME
@@ -169,19 +152,9 @@ ifdef MOZ_DEBUG
 CODFILE=$(basename $(@F)).cod
 endif
 
-ifdef DEFFILE
-OS_LDFLAGS += -DEF:$(call normalizepath,$(DEFFILE))
-EXTRA_DEPS += $(DEFFILE)
-endif
-
-else #!GNU_CC
-
-ifdef DEFFILE
-OS_LDFLAGS += $(call normalizepath,$(DEFFILE))
-EXTRA_DEPS += $(DEFFILE)
-endif
-
 endif # !GNU_CC
+
+EXTRA_DEPS += $(DEFFILE)
 
 endif # WINNT
 
@@ -196,6 +169,8 @@ HOST_PDBFILE=$(basename $(@F)).pdb
 HOST_PDB_FLAG ?= -Fd$(HOST_PDBFILE)
 HOST_CFLAGS += $(HOST_PDB_FLAG)
 HOST_CXXFLAGS += $(HOST_PDB_FLAG)
+HOST_C_LDFLAGS += $(HOST_PDB_FLAG)
+HOST_CXX_LDFLAGS += $(HOST_PDB_FLAG)
 endif
 
 # Don't build SIMPLE_PROGRAMS during the MOZ_PROFILE_GENERATE pass, and do not
@@ -251,7 +226,7 @@ ALL_TRASH = \
 	$(filter-out $(ASFILES),$(OBJS:.$(OBJ_SUFFIX)=.s)) $(OBJS:.$(OBJ_SUFFIX)=.ii) \
 	$(OBJS:.$(OBJ_SUFFIX)=.i) $(OBJS:.$(OBJ_SUFFIX)=.i_o) \
 	$(HOST_PROGOBJS) $(HOST_OBJS) $(IMPORT_LIBRARY) \
-	$(EXE_DEF_FILE) so_locations _gen _stubs $(wildcard *.res) $(wildcard *.RES) \
+	so_locations _gen _stubs $(wildcard *.res) $(wildcard *.RES) \
 	$(wildcard *.pdb) $(CODFILE) $(IMPORT_LIBRARY) \
 	$(SHARED_LIBRARY:$(DLL_SUFFIX)=.exp) $(wildcard *.ilk) \
 	$(PROGRAM:$(BIN_SUFFIX)=.exp) $(SIMPLE_PROGRAMS:$(BIN_SUFFIX)=.exp) \
@@ -347,16 +322,6 @@ ifneq (,$(filter layout/%,$(relativesrcdir)))
 OS_CFLAGS += -Wa,-xgot
 OS_CXXFLAGS += -Wa,-xgot
 endif
-endif
-endif
-
-#
-# Linux: add -Bsymbolic flag for components
-#
-ifeq ($(OS_ARCH),Linux)
-ifdef LD_VERSION_SCRIPT
-EXTRA_DSO_LDOPTS += -Wl,--version-script,$(LD_VERSION_SCRIPT)
-EXTRA_DEPS += $(LD_VERSION_SCRIPT)
 endif
 endif
 
@@ -465,9 +430,6 @@ everything::
 	$(MAKE) clean
 	$(MAKE) all
 
-STATIC_LIB_DEP = $(if $(wildcard $(1).$(LIBS_DESC_SUFFIX)),$(1).$(LIBS_DESC_SUFFIX),$(1))
-STATIC_LIBS_DEPS := $(foreach l,$(STATIC_LIBS),$(call STATIC_LIB_DEP,$(l)))
-
 # Dependencies which, if modified, should cause everything to rebuild
 GLOBAL_DEPS += Makefile $(addprefix $(DEPTH)/config/,$(INCLUDED_AUTOCONF_MK)) $(MOZILLA_DIR)/config/config.mk
 
@@ -480,6 +442,12 @@ compile:: host target
 host:: $(HOST_LIBRARY) $(HOST_PROGRAM) $(HOST_SIMPLE_PROGRAMS) $(HOST_RUST_PROGRAMS) $(HOST_RUST_LIBRARY_FILE)
 
 target:: $(LIBRARY) $(SHARED_LIBRARY) $(PROGRAM) $(SIMPLE_PROGRAMS) $(RUST_LIBRARY_FILE) $(RUST_PROGRAMS)
+
+ifndef LIBRARY
+ifdef OBJS
+target:: $(OBJS)
+endif
+endif
 
 syms::
 
@@ -544,9 +512,6 @@ endif # NO_PROFILE_GUIDED_OPTIMIZE
 
 ##############################################
 
-checkout:
-	$(MAKE) -C $(topsrcdir) -f client.mk checkout
-
 clean clobber realclean clobber_all::
 	-$(RM) $(ALL_TRASH)
 	-$(RM) -r $(ALL_TRASH_DIRS)
@@ -566,27 +531,31 @@ alltags:
 	$(RM) TAGS
 	find $(topsrcdir) -name dist -prune -o \( -name '*.[hc]' -o -name '*.cp' -o -name '*.cpp' -o -name '*.idl' \) -print | $(TAG_PROGRAM)
 
+define EXPAND_CC_OR_CXX
+$(if $(PROG_IS_C_ONLY_$(1)),$(CC),$(CCC))
+endef
+
 #
 # PROGRAM = Foo
 # creates OBJS, links with LIBS to create Foo
 #
-$(PROGRAM): $(PROGOBJS) $(STATIC_LIBS_DEPS) $(EXTRA_DEPS) $(EXE_DEF_FILE) $(RESFILE) $(GLOBAL_DEPS)
+$(PROGRAM): $(PROGOBJS) $(STATIC_LIBS) $(EXTRA_DEPS) $(RESFILE) $(GLOBAL_DEPS) $(call mkdir_deps,$(FINAL_TARGET))
 	$(REPORT_BUILD)
 	@$(RM) $@.manifest
 ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
-	$(EXPAND_LINK) -NOLOGO -OUT:$@ -PDB:$(LINK_PDBFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_PROGRAM_LDFLAGS) $(PROGOBJS) $(RESFILE) $(STATIC_LIBS) $(SHARED_LIBS) $(EXTRA_LIBS) $(OS_LIBS)
+	$(LINKER) -NOLOGO -OUT:$@ -PDB:$(LINK_PDBFILE) -IMPLIB:$(basename $(@F)).lib $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_PROGRAM_LDFLAGS) $($(notdir $@)_$(OBJS_VAR_SUFFIX)) $(RESFILE) $(STATIC_LIBS) $(SHARED_LIBS) $(OS_LIBS)
 ifdef MSMANIFEST_TOOL
 	@if test -f $@.manifest; then \
-		if test -f '$(srcdir)/$@.manifest'; then \
-			echo 'Embedding manifest from $(srcdir)/$@.manifest and $@.manifest'; \
-			$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$@.manifest' $@.manifest -OUTPUTRESOURCE:$@\;1; \
+		if test -f '$(srcdir)/$(notdir $@).manifest'; then \
+			echo 'Embedding manifest from $(srcdir)/$(notdir $@).manifest and $@.manifest'; \
+			$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$(notdir $@).manifest' $@.manifest -OUTPUTRESOURCE:$@\;1; \
 		else \
 			echo 'Embedding manifest from $@.manifest'; \
 			$(MT) -NOLOGO -MANIFEST $@.manifest -OUTPUTRESOURCE:$@\;1; \
 		fi; \
-	elif test -f '$(srcdir)/$@.manifest'; then \
-		echo 'Embedding manifest from $(srcdir)/$@.manifest'; \
-		$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$@.manifest' -OUTPUTRESOURCE:$@\;1; \
+	elif test -f '$(srcdir)/$(notdir $@).manifest'; then \
+		echo 'Embedding manifest from $(srcdir)/$(notdir $@).manifest'; \
+		$(MT) -NOLOGO -MANIFEST '$(win_srcdir)/$(notdir $@).manifest' -OUTPUTRESOURCE:$@\;1; \
 	fi
 endif	# MSVC with manifest tool
 ifdef MOZ_PROFILE_GENERATE
@@ -595,7 +564,7 @@ ifdef MOZ_PROFILE_GENERATE
 	touch -t `date +%Y%m%d%H%M.%S -d 'now+5seconds'` pgo.relink
 endif
 else # !WINNT || GNU_CC
-	$(EXPAND_CCC) -o $@ $(CXXFLAGS) $(PROGOBJS) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(WRAP_LDFLAGS) $(STATIC_LIBS) $(MOZ_PROGRAM_LDFLAGS) $(SHARED_LIBS) $(EXTRA_LIBS) $(OS_LIBS) $(BIN_FLAGS) $(EXE_DEF_FILE)
+	$(call EXPAND_CC_OR_CXX,$@) -o $@ $(COMPUTED_CXX_LDFLAGS) $(PGO_CFLAGS) $($(notdir $@)_$(OBJS_VAR_SUFFIX)) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(STATIC_LIBS) $(MOZ_PROGRAM_LDFLAGS) $(SHARED_LIBS) $(OS_LIBS)
 	$(call CHECK_BINARY,$@)
 endif # WINNT && !GNU_CC
 
@@ -609,7 +578,7 @@ endif
 $(HOST_PROGRAM): $(HOST_PROGOBJS) $(HOST_LIBS) $(HOST_EXTRA_DEPS) $(GLOBAL_DEPS)
 	$(REPORT_BUILD)
 ifeq (_WINNT,$(GNU_CC)_$(HOST_OS_ARCH))
-	$(EXPAND_LIBS_EXEC) -- $(LINK) -NOLOGO -OUT:$@ -PDB:$(HOST_PDBFILE) $(HOST_OBJS) $(WIN32_EXE_LDFLAGS) $(HOST_LDFLAGS) $(HOST_LIBS) $(HOST_EXTRA_LIBS)
+	$(LINKER) -NOLOGO -OUT:$@ -PDB:$(HOST_PDBFILE) $(HOST_OBJS) $(WIN32_EXE_LDFLAGS) $(HOST_LDFLAGS) $(HOST_LIBS) $(HOST_EXTRA_LIBS)
 ifdef MSMANIFEST_TOOL
 	@if test -f $@.manifest; then \
 		if test -f '$(srcdir)/$@.manifest'; then \
@@ -626,9 +595,9 @@ ifdef MSMANIFEST_TOOL
 endif	# MSVC with manifest tool
 else
 ifeq ($(HOST_CPP_PROG_LINK),1)
-	$(EXPAND_LIBS_EXEC) -- $(HOST_CXX) -o $@ $(HOST_CXXFLAGS) $(HOST_LDFLAGS) $(HOST_PROGOBJS) $(HOST_LIBS) $(HOST_EXTRA_LIBS)
+	$(HOST_CXX) -o $@ $(HOST_CXX_LDFLAGS) $(HOST_LDFLAGS) $(HOST_PROGOBJS) $(HOST_LIBS) $(HOST_EXTRA_LIBS)
 else
-	$(EXPAND_LIBS_EXEC) -- $(HOST_CC) -o $@ $(HOST_CFLAGS) $(HOST_LDFLAGS) $(HOST_PROGOBJS) $(HOST_LIBS) $(HOST_EXTRA_LIBS)
+	$(HOST_CC) -o $@ $(HOST_C_LDFLAGS) $(HOST_LDFLAGS) $(HOST_PROGOBJS) $(HOST_LIBS) $(HOST_EXTRA_LIBS)
 endif # HOST_CPP_PROG_LINK
 endif
 ifndef CROSS_COMPILE
@@ -643,10 +612,10 @@ endif
 # SIMPLE_PROGRAMS = Foo Bar
 # creates Foo.o Bar.o, links with LIBS to create Foo, Bar.
 #
-$(SIMPLE_PROGRAMS): %$(BIN_SUFFIX): %.$(OBJ_SUFFIX) $(STATIC_LIBS_DEPS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
+$(SIMPLE_PROGRAMS): %$(BIN_SUFFIX): %.$(OBJ_SUFFIX) $(STATIC_LIBS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
 	$(REPORT_BUILD)
 ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
-	$(EXPAND_LINK) -nologo -out:$@ -pdb:$(LINK_PDBFILE) $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_PROGRAM_LDFLAGS) $(STATIC_LIBS) $(SHARED_LIBS) $(EXTRA_LIBS) $(OS_LIBS)
+	$(LINKER) -nologo -out:$@ -pdb:$(LINK_PDBFILE) $($@_$(OBJS_VAR_SUFFIX)) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(MOZ_PROGRAM_LDFLAGS) $(STATIC_LIBS) $(SHARED_LIBS) $(OS_LIBS)
 ifdef MSMANIFEST_TOOL
 	@if test -f $@.manifest; then \
 		$(MT) -NOLOGO -MANIFEST $@.manifest -OUTPUTRESOURCE:$@\;1; \
@@ -654,7 +623,7 @@ ifdef MSMANIFEST_TOOL
 	fi
 endif	# MSVC with manifest tool
 else
-	$(EXPAND_CCC) $(CXXFLAGS) -o $@ $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(WRAP_LDFLAGS) $(STATIC_LIBS) $(MOZ_PROGRAM_LDFLAGS) $(SHARED_LIBS) $(EXTRA_LIBS) $(OS_LIBS) $(BIN_FLAGS)
+	$(call EXPAND_CC_OR_CXX,$@) $(COMPUTED_CXX_LDFLAGS) $(PGO_CFLAGS) -o $@ $($@_$(OBJS_VAR_SUFFIX)) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(STATIC_LIBS) $(MOZ_PROGRAM_LDFLAGS) $(SHARED_LIBS) $(OS_LIBS)
 	$(call CHECK_BINARY,$@)
 endif # WINNT && !GNU_CC
 
@@ -668,29 +637,22 @@ endif
 $(HOST_SIMPLE_PROGRAMS): host_%$(HOST_BIN_SUFFIX): host_%.$(OBJ_SUFFIX) $(HOST_LIBS) $(HOST_EXTRA_DEPS) $(GLOBAL_DEPS)
 	$(REPORT_BUILD)
 ifeq (WINNT_,$(HOST_OS_ARCH)_$(GNU_CC))
-	$(EXPAND_LIBS_EXEC) -- $(LINK) -NOLOGO -OUT:$@ -PDB:$(HOST_PDBFILE) $< $(WIN32_EXE_LDFLAGS) $(HOST_LIBS) $(HOST_EXTRA_LIBS)
+	$(LINKER) -NOLOGO -OUT:$@ -PDB:$(HOST_PDBFILE) $< $(WIN32_EXE_LDFLAGS) $(HOST_LIBS) $(HOST_EXTRA_LIBS)
 else
 ifneq (,$(HOST_CPPSRCS)$(USE_HOST_CXX))
-	$(EXPAND_LIBS_EXEC) -- $(HOST_CXX) $(HOST_OUTOPTION)$@ $(HOST_CXXFLAGS) $(INCLUDES) $< $(HOST_LIBS) $(HOST_EXTRA_LIBS)
+	$(HOST_CXX) $(HOST_OUTOPTION)$@ $(HOST_CXX_LDFLAGS) $< $(HOST_LIBS) $(HOST_EXTRA_LIBS)
 else
-	$(EXPAND_LIBS_EXEC) -- $(HOST_CC) $(HOST_OUTOPTION)$@ $(HOST_CFLAGS) $(INCLUDES) $< $(HOST_LIBS) $(HOST_EXTRA_LIBS)
+	$(HOST_CC) $(HOST_OUTOPTION)$@ $(HOST_C_LDFLAGS) $< $(HOST_LIBS) $(HOST_EXTRA_LIBS)
 endif
 endif
 ifndef CROSS_COMPILE
 	$(call CHECK_STDCXX,$@)
 endif
 
-$(filter %.$(LIB_SUFFIX),$(LIBRARY)): $(OBJS) $(STATIC_LIBS_DEPS) $(filter %.$(LIB_SUFFIX),$(EXTRA_LIBS)) $(EXTRA_DEPS) $(GLOBAL_DEPS)
+$(LIBRARY): $(OBJS) $(STATIC_LIBS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
 	$(REPORT_BUILD)
-# Always remove both library and library descriptor
-	$(RM) $(REAL_LIBRARY) $(REAL_LIBRARY).$(LIBS_DESC_SUFFIX)
-	$(EXPAND_AR) $(AR_FLAGS) $(OBJS) $(STATIC_LIBS) $(filter %.$(LIB_SUFFIX),$(EXTRA_LIBS))
-
-$(filter-out %.$(LIB_SUFFIX),$(LIBRARY)): $(filter %.$(LIB_SUFFIX),$(LIBRARY)) $(OBJS) $(STATIC_LIBS_DEPS) $(filter %.$(LIB_SUFFIX),$(EXTRA_LIBS)) $(EXTRA_DEPS) $(GLOBAL_DEPS)
-# When we only build a library descriptor, blow out any existing library
-	$(REPORT_BUILD)
-	$(if $(filter %.$(LIB_SUFFIX),$(LIBRARY)),,$(RM) $(REAL_LIBRARY))
-	$(EXPAND_LIBS_GEN) -o $@ $(OBJS) $(STATIC_LIBS) $(filter %.$(LIB_SUFFIX),$(EXTRA_LIBS))
+	$(RM) $(REAL_LIBRARY)
+	$(AR) $(AR_FLAGS) $(OBJS) $($@_$(OBJS_VAR_SUFFIX))
 
 ifeq ($(OS_ARCH),WINNT)
 # Import libraries are created by the rules creating shared libraries.
@@ -706,19 +668,19 @@ endif
 $(HOST_LIBRARY): $(HOST_OBJS) Makefile
 	$(REPORT_BUILD)
 	$(RM) $@
-	$(EXPAND_LIBS_EXEC) --extract -- $(HOST_AR) $(HOST_AR_FLAGS) $(HOST_OBJS)
+	$(HOST_AR) $(HOST_AR_FLAGS) $(HOST_OBJS)
 
 # On Darwin (Mac OS X), dwarf2 debugging uses debug info left in .o files,
 # so instead of deleting .o files after repacking them into a dylib, we make
 # symlinks back to the originals. The symlinks are a no-op for stabs debugging,
 # so no need to conditionalize on OS version or debugging format.
 
-$(SHARED_LIBRARY): $(OBJS) $(RESFILE) $(RUST_STATIC_LIB_FOR_SHARED_LIB) $(STATIC_LIBS_DEPS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
+$(SHARED_LIBRARY): $(OBJS) $(RESFILE) $(RUST_STATIC_LIB_FOR_SHARED_LIB) $(STATIC_LIBS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
 	$(REPORT_BUILD)
 ifndef INCREMENTAL_LINKER
 	$(RM) $@
 endif
-	$(EXPAND_MKSHLIB) $(SHLIB_LDSTARTFILE) $(OBJS) $(SUB_SHLOBJS) $(RESFILE) $(LDFLAGS) $(WRAP_LDFLAGS) $(STATIC_LIBS) $(RUST_STATIC_LIB_FOR_SHARED_LIB) $(SHARED_LIBS) $(EXTRA_DSO_LDOPTS) $(MOZ_GLUE_LDFLAGS) $(EXTRA_LIBS) $(OS_LIBS) $(SHLIB_LDENDFILE)
+	$(MKSHLIB) $($@_$(OBJS_VAR_SUFFIX)) $(RESFILE) $(LDFLAGS) $(STATIC_LIBS) $(RUST_STATIC_LIB_FOR_SHARED_LIB) $(SHARED_LIBS) $(EXTRA_DSO_LDOPTS) $(MOZ_GLUE_LDFLAGS) $(OS_LIBS)
 	$(call CHECK_BINARY,$@)
 
 ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
@@ -772,20 +734,20 @@ $(OBJS) $(HOST_OBJS) $(PROGOBJS) $(HOST_PROGOBJS): $(GLOBAL_DEPS)
 # Rules for building native targets must come first because of the host_ prefix
 $(HOST_COBJS):
 	$(REPORT_BUILD_VERBOSE)
-	$(ELOG) $(HOST_CC) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CFLAGS) $(INCLUDES) $(NSPR_CFLAGS) $(_VPATH_SRCS)
+	$(ELOG) $(HOST_CC) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CFLAGS) $(NSPR_CFLAGS) $(_VPATH_SRCS)
 
 $(HOST_CPPOBJS):
 	$(REPORT_BUILD_VERBOSE)
 	$(call BUILDSTATUS,OBJECT_FILE $@)
-	$(ELOG) $(HOST_CXX) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CXXFLAGS) $(INCLUDES) $(NSPR_CFLAGS) $(_VPATH_SRCS)
+	$(ELOG) $(HOST_CXX) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CXXFLAGS) $(NSPR_CFLAGS) $(_VPATH_SRCS)
 
 $(HOST_CMOBJS):
 	$(REPORT_BUILD_VERBOSE)
-	$(ELOG) $(HOST_CC) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CFLAGS) $(HOST_CMFLAGS) $(INCLUDES) $(NSPR_CFLAGS) $(_VPATH_SRCS)
+	$(ELOG) $(HOST_CC) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CFLAGS) $(HOST_CMFLAGS) $(NSPR_CFLAGS) $(_VPATH_SRCS)
 
 $(HOST_CMMOBJS):
 	$(REPORT_BUILD_VERBOSE)
-	$(ELOG) $(HOST_CXX) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CXXFLAGS) $(HOST_CMMFLAGS) $(INCLUDES) $(NSPR_CFLAGS) $(_VPATH_SRCS)
+	$(ELOG) $(HOST_CXX) $(HOST_OUTOPTION)$@ -c $(HOST_CPPFLAGS) $(HOST_CXXFLAGS) $(HOST_CMMFLAGS) $(NSPR_CFLAGS) $(_VPATH_SRCS)
 
 $(COBJS):
 	$(REPORT_BUILD_VERBOSE)
@@ -817,7 +779,9 @@ endif
 define syms_template
 syms:: $(2)
 $(2): $(1)
+ifdef MOZ_CRASHREPORTER
 	$$(call py_action,dumpsymbols,$$(abspath $$<) $$(abspath $$@))
+endif
 endef
 
 ifndef MOZ_PROFILE_GENERATE
@@ -832,7 +796,14 @@ DUMP_SYMS_TARGETS :=
 endif
 endif
 
-$(foreach file,$(DUMP_SYMS_TARGETS),$(eval $(call syms_template,$(file),$(file)_syms.track)))
+ifdef MOZ_CRASHREPORTER
+$(foreach file,$(DUMP_SYMS_TARGETS),$(eval $(call syms_template,$(file),$(notdir $(file))_syms.track)))
+else ifneq (,$(and $(LLVM_SYMBOLIZER),$(filter WINNT,$(OS_ARCH)),$(MOZ_AUTOMATION)))
+PDB_FILES = $(addsuffix .pdb,$(basename $(DUMP_SYMS_TARGETS)))
+PDB_DEST ?= $(FINAL_TARGET)
+PDB_TARGET = syms
+INSTALL_TARGETS += PDB
+endif
 
 cargo_host_flag := --target=$(RUST_HOST_TARGET)
 cargo_target_flag := --target=$(RUST_TARGET)
@@ -862,24 +833,21 @@ cargo_build_flags += --color=always
 endif
 endif
 
-# Cargo currently supports only two interesting profiles for building:
-# development and release.  Those map (roughly) to --enable-debug and
-# --disable-debug in Gecko, respectively, but there's another axis that we'd
-# like to support: --{disable,enable}-optimize.  Since that would be four
-# choices, and Cargo only supports two, we choose to enable various
-# optimization levels in our Cargo.toml files all the time, and override the
-# optimization level here, if necessary.  (The Cargo.toml files already
-# specify debug-assertions appropriately for --{disable,enable}-debug.)
-default_rustflags =
-ifndef MOZ_OPTIMIZE
-default_rustflags = -C opt-level=0
-# Unfortunately, -C opt-level=0 implies -C debug-assertions, so we need
-# to explicitly disable them when MOZ_DEBUG_RUST is not set.
+# These flags are passed via `cargo rustc` and only apply to the final rustc
+# invocation (i.e., only the top-level crate, not its dependencies).
+cargo_rustc_flags = $(CARGO_RUSTCFLAGS)
+ifndef DEVELOPER_OPTIONS
 ifndef MOZ_DEBUG_RUST
-default_rustflags += -C debug-assertions=no
+# Enable link-time optimization for release builds.
+cargo_rustc_flags += -C lto
 endif
 endif
-rustflags_override = RUSTFLAGS='$(default_rustflags) $(RUSTFLAGS)'
+
+ifdef CARGO_INCREMENTAL
+cargo_incremental := CARGO_INCREMENTAL=$(CARGO_INCREMENTAL)
+endif
+
+rustflags_override = RUSTFLAGS='$(MOZ_RUST_DEFAULT_FLAGS) $(RUSTFLAGS)'
 
 ifdef MOZ_MSVCBITS
 # If we are building a MozillaBuild shell, we want to clear out the
@@ -906,13 +874,6 @@ ifdef MOZ_USING_SCCACHE
 sccache_wrap := RUSTC_WRAPPER='$(CCACHE)'
 endif
 
-# XXX hack to work around dsymutil failing on cross-OSX builds (bug 1380381)
-ifeq ($(HOST_OS_ARCH)-$(OS_ARCH),Linux-Darwin)
-default_rustflags += -C debuginfo=1
-else
-default_rustflags += -C debuginfo=2
-endif
-
 # We use the + prefix to pass down the jobserver fds to cargo, but we
 # don't use the prefix when make -n is used, so that cargo doesn't run
 # in that case)
@@ -920,13 +881,15 @@ define RUN_CARGO
 $(if $(findstring n,$(filter-out --%, $(MAKEFLAGS))),,+)env $(environment_cleaner) $(rust_unlock_unstable) $(rustflags_override) $(sccache_wrap) \
 	CARGO_TARGET_DIR=$(CARGO_TARGET_DIR) \
 	RUSTC=$(RUSTC) \
+	RUSTDOC=$(RUSTDOC) \
 	MOZ_SRC=$(topsrcdir) \
 	MOZ_DIST=$(ABS_DIST) \
 	LIBCLANG_PATH="$(MOZ_LIBCLANG_PATH)" \
 	CLANG_PATH="$(MOZ_CLANG_PATH)" \
 	PKG_CONFIG_ALLOW_CROSS=1 \
-	RUST_BACKTRACE=1 \
+	RUST_BACKTRACE=full \
 	MOZ_TOPOBJDIR=$(topobjdir) \
+	$(cargo_incremental) \
 	$(2) \
 	$(CARGO) $(1) $(cargo_build_flags)
 endef
@@ -939,7 +902,7 @@ endef
 #
 #   $(call CARGO_BUILD)
 define CARGO_BUILD
-$(call RUN_CARGO,build,$(1))
+$(call RUN_CARGO,rustc,$(1))
 endef
 
 define CARGO_CHECK
@@ -984,7 +947,7 @@ endif
 # build.
 force-cargo-library-build:
 	$(REPORT_BUILD)
-	$(call CARGO_BUILD,$(target_cargo_env_vars)) --lib $(cargo_target_flag) $(rust_features_flag)
+	$(call CARGO_BUILD,$(target_cargo_env_vars)) --lib $(cargo_target_flag) $(rust_features_flag) -- $(cargo_rustc_flags)
 
 $(RUST_LIBRARY_FILE): force-cargo-library-build
 
@@ -994,6 +957,23 @@ else
 force-cargo-library-check:
 	@true
 endif # RUST_LIBRARY_FILE
+
+ifdef RUST_TESTS
+
+rust_test_options := $(foreach test,$(RUST_TESTS),-p $(test))
+
+ifdef RUST_TEST_FEATURES
+rust_features_flag := --features "$(RUST_TEST_FEATURES)"
+endif
+
+# Don't stop at the first failure. We want to list all failures together.
+rust_test_flag := --no-fail-fast
+
+force-cargo-test-run:
+	$(call RUN_CARGO,test $(cargo_target_flag) $(rust_test_flag) $(rust_test_options) $(rust_features_flag),$(target_cargo_env_vars))
+
+check:: force-cargo-test-run
+endif
 
 ifdef HOST_RUST_LIBRARY_FILE
 
@@ -1044,7 +1024,7 @@ endif # HOST_RUST_PROGRAMS
 
 $(SOBJS):
 	$(REPORT_BUILD)
-	$(AS) -o $@ $(DEFINES) $(ASFLAGS) $($(notdir $<)_FLAGS) $(LOCAL_INCLUDES) -c $<
+	$(AS) -o $@ $(SFLAGS) $($(notdir $<)_FLAGS) -c $<
 
 $(CPPOBJS):
 	$(REPORT_BUILD_VERBOSE)
@@ -1201,7 +1181,7 @@ endif
 ###############################################################################
 # Java rules
 ###############################################################################
-ifneq (,$(JAVAFILES)$(ANDROID_RESFILES)$(ANDROID_APKNAME)$(JAVA_JAR_TARGETS))
+ifneq (,$(JAVA_JAR_TARGETS))
   include $(MOZILLA_DIR)/config/makefiles/java-build.mk
 endif
 
@@ -1232,24 +1212,8 @@ endif
 # CHROME PACKAGING
 
 # Cliqz additional distribution files
-# For transition period (moving to new build system) let's use both, old and new
-# variant for downloading XPI.
-# NEW:
-ifdef CQZ_BUILD_ID
-CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/cliqz@cliqz.com.xpi"
-HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/https-everywhere@cliqz.com.xpi"
-endif  # CQZ_BUILD_ID
-
-# OLD:
-ifndef CQZ_BUILD_ID
-# TODO: Move to external file.
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser_beta/latest.xpi"
-HTTPSE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_beta/https-everywhere/https-everywhere@cliqz.com-5.2.9.3-browser_beta-signed.xpi"
-ifeq (release, $(CQZ_RELEASE_CHANNEL))
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.13.0.xpi"
-HTTPSE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.9.3-browser-signed.xpi"
-endif  # ifeq (release, $(CQZ_RELEASE_CHANNEL))
-endif  # CQZ_BUILD_ID
+CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
+HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
@@ -1389,23 +1353,6 @@ MDDEPEND_FILES		:= $(strip $(wildcard $(addprefix $(MDDEPDIR)/,$(EXTRA_MDDEPEND_
 
 ifneq (,$(MDDEPEND_FILES))
 -include $(MDDEPEND_FILES)
-endif
-
-#############################################################################
-
--include $(topsrcdir)/$(MOZ_BUILD_APP)/app-rules.mk
--include $(MY_RULES)
-
-#
-# Generate Emacs tags in a file named TAGS if ETAGS was set in $(MY_CONFIG)
-# or in $(MY_RULES)
-#
-ifdef ETAGS
-ifneq ($(CSRCS)$(CPPSRCS)$(HEADERS),)
-all:: TAGS
-TAGS:: $(CSRCS) $(CPPSRCS) $(HEADERS)
-	$(ETAGS) $(CSRCS) $(CPPSRCS) $(HEADERS)
-endif
 endif
 
 ################################################################################
@@ -1594,7 +1541,7 @@ endif
 # Fake targets.  Always run these rules, even if a file/directory with that
 # name already exists.
 #
-.PHONY: all alltags boot checkout chrome realchrome clean clobber clobber_all export install libs makefiles realclean run_apprunner tools $(DIRS) FORCE
+.PHONY: all alltags boot chrome realchrome clean clobber clobber_all export install libs makefiles realclean run_apprunner tools $(DIRS) FORCE
 
 # Used as a dependency to force targets to rebuild
 FORCE:
@@ -1635,15 +1582,6 @@ CHECK_FROZEN_VARIABLES = $(foreach var,$(FREEZE_VARIABLES), \
 
 libs export::
 	$(CHECK_FROZEN_VARIABLES)
-
-PURGECACHES_DIRS ?= $(DIST)/bin
-
-PURGECACHES_FILES = $(addsuffix /.purgecaches,$(PURGECACHES_DIRS))
-
-default all:: $(PURGECACHES_FILES)
-
-$(PURGECACHES_FILES):
-	if test -d $(@D) ; then touch $@ ; fi
 
 .DEFAULT_GOAL := $(or $(OVERRIDE_DEFAULT_GOAL),default)
 

@@ -15,18 +15,15 @@
 
   SimpleTest.waitForExplicitFinish();
 
-  const Cc = Components.classes;
-  const Ci = Components.interfaces;
-  const Cu = Components.utils;
   const STSPATH =
     "tests/security/manager/ssl/tests/mochitest/stricttransportsecurity";
   const NUM_TEST_FRAMES = 4;
   const CONTENT_PAGE =
     "http://mochi.test:8888/chrome/security/manager/ssl/tests/mochitest/stricttransportsecurity/page_blank.html";
 
-  Cu.import("resource://testing-common/BrowserTestUtils.jsm");
-  Cu.import("resource://testing-common/ContentTask.jsm");
-  Cu.import("resource://gre/modules/Services.jsm");
+  ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+  ChromeUtils.import("resource://testing-common/ContentTask.jsm");
+  ChromeUtils.import("resource://gre/modules/Services.jsm");
 
   // This is how many sub-tests (testframes) in each round.
   // When the round begins, this will be initialized.

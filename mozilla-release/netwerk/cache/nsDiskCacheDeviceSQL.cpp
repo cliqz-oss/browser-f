@@ -36,6 +36,7 @@
 #include "nsIInputStream.h"
 #include "nsIOutputStream.h"
 #include "nsSerializationHelper.h"
+#include "nsMemory.h"
 
 #include "mozIStorageService.h"
 #include "mozIStorageStatement.h"
@@ -287,9 +288,7 @@ nsOfflineCacheEvictionFunction::Apply()
 
   for (int32_t i = 0; i < items.Count(); i++) {
     if (MOZ_LOG_TEST(gCacheLog, LogLevel::Debug)) {
-      nsAutoCString path;
-      items[i]->GetNativePath(path);
-      LOG(("  removing %s\n", path.get()));
+      LOG(("  removing %s\n", items[i]->HumanReadablePath().get()));
     }
 
     items[i]->Remove(false);
@@ -340,7 +339,7 @@ public:
   {}
 
 private:
-  ~nsOfflineCacheDeviceInfo() {}
+  ~nsOfflineCacheDeviceInfo() = default;
 
   nsOfflineCacheDevice* mDevice;
 };
@@ -348,14 +347,14 @@ private:
 NS_IMPL_ISUPPORTS(nsOfflineCacheDeviceInfo, nsICacheDeviceInfo)
 
 NS_IMETHODIMP
-nsOfflineCacheDeviceInfo::GetDescription(char **aDescription)
+nsOfflineCacheDeviceInfo::GetDescription(nsACString& aDescription)
 {
-  *aDescription = NS_strdup("Offline cache device");
-  return *aDescription ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+  aDescription.AssignLiteral("Offline cache device");
+  return NS_OK;
 }
 
 NS_IMETHODIMP
-nsOfflineCacheDeviceInfo::GetUsageReport(char ** usageReport)
+nsOfflineCacheDeviceInfo::GetUsageReport(nsACString& aUsageReport)
 {
   nsAutoCString buffer;
   buffer.AssignLiteral("  <tr>\n"
@@ -375,10 +374,7 @@ nsOfflineCacheDeviceInfo::GetUsageReport(char ** usageReport)
   buffer.AppendLiteral("</td>\n"
                        "  </tr>\n");
 
-  *usageReport = ToNewCString(buffer);
-  if (!*usageReport)
-    return NS_ERROR_OUT_OF_MEMORY;
-
+  aUsageReport.Assign(buffer);
   return NS_OK;
 }
 
@@ -409,7 +405,7 @@ nsOfflineCacheDeviceInfo::GetMaximumSize(uint32_t *aMaximumSize)
 
 class nsOfflineCacheBinding final : public nsISupports
 {
-  ~nsOfflineCacheBinding() {}
+  ~nsOfflineCacheBinding() = default;
 
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -578,7 +574,7 @@ CreateCacheEntry(nsOfflineCacheDevice *device,
 
 class nsOfflineCacheEntryInfo final : public nsICacheEntryInfo
 {
-  ~nsOfflineCacheEntryInfo() {}
+  ~nsOfflineCacheEntryInfo() = default;
 
 public:
   NS_DECL_ISUPPORTS
@@ -590,17 +586,17 @@ public:
 NS_IMPL_ISUPPORTS(nsOfflineCacheEntryInfo, nsICacheEntryInfo)
 
 NS_IMETHODIMP
-nsOfflineCacheEntryInfo::GetClientID(char **result)
+nsOfflineCacheEntryInfo::GetClientID(nsACString& aClientID)
 {
-  *result = NS_strdup(mRec->clientID);
-  return *result ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+  aClientID.Assign(mRec->clientID);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
-nsOfflineCacheEntryInfo::GetDeviceID(char ** deviceID)
+nsOfflineCacheEntryInfo::GetDeviceID(nsACString& aDeviceID)
 {
-  *deviceID = NS_strdup(OFFLINE_CACHE_DEVICE_ID);
-  return *deviceID ? NS_OK : NS_ERROR_OUT_OF_MEMORY;
+  aDeviceID.Assign(OFFLINE_CACHE_DEVICE_ID);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -934,7 +930,7 @@ public:
   }
 
 protected:
-  virtual ~nsCloseDBEvent() {}
+  virtual ~nsCloseDBEvent() = default;
 
 private:
   nsCOMPtr<mozIStorageConnection> mDB;
@@ -958,9 +954,6 @@ nsOfflineCacheDevice::nsOfflineCacheDevice()
   , mLockedEntries(32)
 {
 }
-
-nsOfflineCacheDevice::~nsOfflineCacheDevice()
-{}
 
 /* static */
 bool
@@ -1324,11 +1317,11 @@ nsOfflineCacheDevice::InitWithSqlite(mozIStorageService * ss)
 
     StatementSql ( mStatement_ActivateClient,    "INSERT OR REPLACE INTO moz_cache_groups (GroupID, ActiveClientID, ActivateTimeStamp) VALUES (?, ?, ?);" ),
     StatementSql ( mStatement_DeactivateGroup,   "DELETE FROM moz_cache_groups WHERE GroupID = ?;" ),
-    StatementSql ( mStatement_FindClient,        "SELECT ClientID, ItemType FROM moz_cache WHERE Key = ? ORDER BY LastFetched DESC, LastModified DESC;" ),
+    StatementSql ( mStatement_FindClient,        "/* do not warn (bug 1293375) */ SELECT ClientID, ItemType FROM moz_cache WHERE Key = ? ORDER BY LastFetched DESC, LastModified DESC;" ),
 
     // Search for namespaces that match the URI.  Use the <= operator
     // to ensure that we use the index on moz_cache_namespaces.
-    StatementSql ( mStatement_FindClientByNamespace, "SELECT ns.ClientID, ns.ItemType FROM"
+    StatementSql ( mStatement_FindClientByNamespace, "/* do not warn (bug 1293375) */ SELECT ns.ClientID, ns.ItemType FROM"
                                                      "  moz_cache_namespaces AS ns JOIN moz_cache_groups AS groups"
                                                      "  ON ns.ClientID = groups.ActiveClientID"
                                                      " WHERE ns.NameSpace <= ?1 AND ?1 GLOB ns.NameSpace || '*'"
@@ -1815,10 +1808,11 @@ nsOfflineCacheDevice::OpenOutputStreamForEntry(nsCacheEntry       *entry,
 
   nsCOMPtr<nsIOutputStream> bufferedOut;
   nsresult rv =
-    NS_NewBufferedOutputStream(getter_AddRefs(bufferedOut), out, 16 * 1024);
+    NS_NewBufferedOutputStream(getter_AddRefs(bufferedOut), out.forget(),
+                               16 * 1024);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  bufferedOut.swap(*result);
+  bufferedOut.forget(result);
   return NS_OK;
 }
 
@@ -2545,7 +2539,7 @@ namespace { // anon
 
 class OriginMatch final : public mozIStorageFunction
 {
-  ~OriginMatch() {}
+  ~OriginMatch() = default;
   mozilla::OriginAttributesPattern const mPattern;
 
   NS_DECL_ISUPPORTS

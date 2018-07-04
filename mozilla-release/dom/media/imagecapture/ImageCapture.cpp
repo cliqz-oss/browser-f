@@ -7,6 +7,7 @@
 #include "ImageCapture.h"
 #include "mozilla/dom/BlobEvent.h"
 #include "mozilla/dom/DOMException.h"
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/ImageCaptureError.h"
 #include "mozilla/dom/ImageCaptureErrorEvent.h"
@@ -14,7 +15,7 @@
 #include "mozilla/dom/VideoStreamTrack.h"
 #include "nsIDocument.h"
 #include "CaptureTask.h"
-#include "MediaEngine.h"
+#include "MediaEngineSource.h"
 
 namespace mozilla {
 
@@ -29,7 +30,7 @@ namespace dom {
 NS_IMPL_CYCLE_COLLECTION_INHERITED(ImageCapture, DOMEventTargetHelper,
                                    mVideoStreamTrack)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(ImageCapture)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ImageCapture)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(ImageCapture, DOMEventTargetHelper)
@@ -199,7 +200,7 @@ ImageCapture::PostErrorEvent(uint16_t aErrorCode, nsresult aReason)
   init.mCancelable = false;
   init.mImageCaptureError = error;
 
-  nsCOMPtr<nsIDOMEvent> event =
+  RefPtr<Event> event =
     ImageCaptureErrorEvent::Constructor(this, NS_LITERAL_STRING("error"), init);
 
   return DispatchTrustedEvent(event);

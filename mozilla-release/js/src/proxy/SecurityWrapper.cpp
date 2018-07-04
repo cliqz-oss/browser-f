@@ -5,9 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "jsapi.h"
-#include "jswrapper.h"
+#include "jsfriendapi.h"
+#include "NamespaceImports.h"
 
-#include "jsatominlines.h"
+#include "js/Wrapper.h"
+#include "vm/StringType.h"
 
 using namespace js;
 
@@ -123,25 +125,6 @@ SecurityWrapper<Base>::defineProperty(JSContext* cx, HandleObject wrapper, Handl
 
     return Base::defineProperty(cx, wrapper, id, desc, result);
 }
-
-template <class Base>
-bool
-SecurityWrapper<Base>::watch(JSContext* cx, HandleObject proxy,
-                             HandleId id, HandleObject callable) const
-{
-    ReportAccessDenied(cx);
-    return false;
-}
-
-template <class Base>
-bool
-SecurityWrapper<Base>::unwatch(JSContext* cx, HandleObject proxy,
-                               HandleId id) const
-{
-    ReportAccessDenied(cx);
-    return false;
-}
-
 
 template class js::SecurityWrapper<Wrapper>;
 template class js::SecurityWrapper<CrossCompartmentWrapper>;

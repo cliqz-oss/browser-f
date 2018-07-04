@@ -15,6 +15,7 @@
 #include "nsSVGElement.h"
 #include "nsTArray.h"
 #include "SVGLength.h"
+#include "mozilla/dom/SVGLengthBinding.h"
 
 namespace mozilla {
 
@@ -300,7 +301,7 @@ private:
  * Consumers should check that the user unit values returned are finite. Even
  * if the consumer can guarantee the list's element has a valid viewport
  * ancestor to resolve percentage units against, and a valid presContext and
- * styleContext to resolve absolute and em/ex units against, unit conversions
+ * ComputedStyle to resolve absolute and em/ex units against, unit conversions
  * could still overflow. In that case the value returned will be
  * numeric_limits<float>::quiet_NaN().
  */
@@ -337,7 +338,7 @@ public:
 
   bool HasPercentageValueAt(uint32_t aIndex) const {
     const SVGLength& length = (*mList)[aIndex];
-    return length.GetUnit() == nsIDOMSVGLength::SVG_LENGTHTYPE_PERCENTAGE;
+    return length.GetUnit() == dom::SVGLengthBinding::SVG_LENGTHTYPE_PERCENTAGE;
   }
 
 private:

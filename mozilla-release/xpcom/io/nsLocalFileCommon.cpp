@@ -15,23 +15,12 @@
 #include "nsCRT.h"
 #include "nsNativeCharsetUtils.h"
 #include "nsUTF8Utils.h"
+#include "nsArray.h"
 
 #ifdef XP_WIN
 #include <string.h>
 #endif
 
-
-void
-NS_StartupLocalFile()
-{
-  nsLocalFile::GlobalInit();
-}
-
-void
-NS_ShutdownLocalFile()
-{
-  nsLocalFile::GlobalShutdown();
-}
 
 #if !defined(MOZ_WIDGET_COCOA) && !defined(XP_WIN)
 NS_IMETHODIMP
@@ -72,11 +61,19 @@ nsLocalFile::CreateUnique(uint32_t aType, uint32_t aAttributes)
     return rv;
   }
 
+  auto FailedBecauseExists = [&] (nsresult aRv) {
+    if (aRv == NS_ERROR_FILE_ACCESS_DENIED) {
+      bool exists;
+      return NS_SUCCEEDED(Exists(&exists)) && exists;
+    }
+    return aRv == NS_ERROR_FILE_ALREADY_EXISTS;
+  };
+
   longName = (pathName.Length() + kMaxSequenceNumberLength >
               kMaxFilenameLength);
   if (!longName) {
     rv = Create(aType, aAttributes);
-    if (rv != NS_ERROR_FILE_ALREADY_EXISTS) {
+    if (!FailedBecauseExists(rv)) {
       return rv;
     }
   }
@@ -139,7 +136,7 @@ nsLocalFile::CreateUnique(uint32_t aType, uint32_t aAttributes)
     SetNativeLeafName(rootName + suffix);
 #endif
     nsresult rvCreate = Create(aType, aAttributes);
-    if (rvCreate != NS_ERROR_FILE_ALREADY_EXISTS) {
+    if (!FailedBecauseExists(rvCreate)) {
       return rvCreate;
     }
   }
@@ -154,7 +151,7 @@ nsLocalFile::CreateUnique(uint32_t aType, uint32_t aAttributes)
     SetNativeLeafName(rootName + nsPrintfCString("-%d", indx) + suffix);
 #endif
     rv = Create(aType, aAttributes);
-    if (NS_SUCCEEDED(rv) || rv != NS_ERROR_FILE_ALREADY_EXISTS) {
+    if (NS_SUCCEEDED(rv) || !FailedBecauseExists(rv)) {
       return rv;
     }
   }

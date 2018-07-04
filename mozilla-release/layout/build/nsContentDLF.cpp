@@ -1,5 +1,5 @@
-/* -*- Mode: c++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=78: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -117,7 +117,7 @@ nsContentDLF::~nsContentDLF()
 NS_IMPL_ISUPPORTS(nsContentDLF,
                   nsIDocumentLoaderFactory)
 
-bool
+static bool
 MayUseXULXBL(nsIChannel* aChannel)
 {
   nsIScriptSecurityManager *securityManager =
@@ -291,19 +291,19 @@ nsContentDLF::CreateBlankDocument(nsILoadGroup* aLoadGroup,
 
   // generate an html html element
   htmlNodeInfo = nim->GetNodeInfo(nsGkAtoms::html, 0, kNameSpaceID_XHTML,
-                                  nsIDOMNode::ELEMENT_NODE);
+                                  nsINode::ELEMENT_NODE);
   nsCOMPtr<nsIContent> htmlElement =
     NS_NewHTMLHtmlElement(htmlNodeInfo.forget());
 
   // generate an html head element
   htmlNodeInfo = nim->GetNodeInfo(nsGkAtoms::head, 0, kNameSpaceID_XHTML,
-                                  nsIDOMNode::ELEMENT_NODE);
+                                  nsINode::ELEMENT_NODE);
   nsCOMPtr<nsIContent> headElement =
     NS_NewHTMLHeadElement(htmlNodeInfo.forget());
 
   // generate an html body elemment
   htmlNodeInfo = nim->GetNodeInfo(nsGkAtoms::body, 0, kNameSpaceID_XHTML,
-                                  nsIDOMNode::ELEMENT_NODE);
+                                  nsINode::ELEMENT_NODE);
   nsCOMPtr<nsIContent> bodyElement =
     NS_NewHTMLBodyElement(htmlNodeInfo.forget());
 

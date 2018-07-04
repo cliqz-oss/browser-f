@@ -72,13 +72,13 @@ function doneTest(dispResult) {
       var di = dispResult[i];
       var disp = [].concat(di.value).map(function(a) { return " " + (isNaN(a) ? -1 : a.toFixed(1)); }).join("&nbsp;&nbsp;");
       dispResult[i] = String(di.name) + ": " + disp;
-      if (di.name.indexOf(".half") >= 0 || di.name.indexOf(".all") >= 0)
+      if (di.name.includes(".half") || di.name.includes(".all"))
         dispResult[i] = "<b>" + dispResult[i] + "</b>";
-      if (di.name.indexOf(".raw") >= 0)
+      if (di.name.includes(".raw"))
         dispResult[i] = "<br/>" + dispResult[i]; // Add space before raw results (which are the first result of an animation)
 
       // stats:
-      if (di.name.indexOf(".raw") < 0) {
+      if (!di.name.includes(".raw")) {
         if (!stats[di.name]) {
           stats[di.name] = [];
         } else {
@@ -93,7 +93,7 @@ function doneTest(dispResult) {
     if (isRepeat) {
       dispStats = "<hr/><b>Aggregated</b>:<br/>";
       for (var s in stats) {
-        if (s.indexOf(".half") >= 0 )
+        if (s.includes(".half") )
           dispStats += "<br/>";
         dispStats += s + "&nbsp;&nbsp;&nbsp;&nbsp;Average (" + stats[s].length + "): " + average(stats[s]).toFixed(2) + " stddev: " + stddev(stats[s]).toFixed(2) + "<br/>";
       }
@@ -116,8 +116,8 @@ function triggerStart() {
 }
 
 function deselectAll() {
-  for (var test in defaultConfig.subtests) {
-    $("subtest-" + test).checked = false;
+  for (var test of defaultConfig.subtests) {
+    $("subtest-" + test.name).checked = false;
   }
 }
 
@@ -143,11 +143,11 @@ function updateOptionsFromUrl() {
   var tests = uriTests ? JSON.parse(uriTests) : [];
 
   if (tests.length) {
-    for (var d in defaultConfig.subtests) {
-      $("subtest-" + d).checked = false;
+    for (var test of defaultConfig.subtests) {
+      $("subtest-" + test.name).checked = false;
       for (var t in tests) {
-        if (tests[t] == d) {
-          $("subtest-" + d).checked = true;
+        if (tests[t] == test.name) {
+          $("subtest-" + test.name).checked = true;
         }
       }
     }

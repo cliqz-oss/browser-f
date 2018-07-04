@@ -1,4 +1,3 @@
-
 // Std
 use std::io::Write;
 
@@ -6,7 +5,8 @@ use std::io::Write;
 use app::parser::Parser;
 
 pub struct FishGen<'a, 'b>
-    where 'a: 'b
+where
+    'a: 'b,
 {
     p: &'b Parser<'a, 'b>,
 }
@@ -31,14 +31,16 @@ impl<'a, 'b> FishGen<'a, 'b> {
     return 1
 end
 
-"#
-            .to_string();
+"#.to_string();
 
         let mut buffer = detect_subcommand_function;
         gen_fish_inner(command, self, &command.to_string(), &mut buffer);
         w!(buf, buffer.as_bytes());
     }
 }
+
+// Escape string inside single quotes
+fn escape_string(string: &str) -> String { string.replace("\\", "\\\\").replace("'", "\\'") }
 
 fn gen_fish_inner(root_command: &str, comp_gen: &FishGen, parent_cmds: &str, buffer: &mut String) {
     debugln!("FishGen::gen_fish_inner;");
@@ -54,9 +56,11 @@ fn gen_fish_inner(root_command: &str, comp_gen: &FishGen, parent_cmds: &str, buf
     //      -f # don't use file completion
     //      -n "__fish_using_command myprog subcmd1" # complete for command "myprog subcmd1"
 
-    let basic_template = format!("complete -c {} -n \"__fish_using_command {}\"",
-                                 root_command,
-                                 parent_cmds);
+    let basic_template = format!(
+        "complete -c {} -n \"__fish_using_command {}\"",
+        root_command,
+        parent_cmds
+    );
 
     for option in comp_gen.p.opts() {
         let mut template = basic_template.clone();
@@ -67,7 +71,7 @@ fn gen_fish_inner(root_command: &str, comp_gen: &FishGen, parent_cmds: &str, buf
             template.push_str(format!(" -l {}", data).as_str());
         }
         if let Some(data) = option.b.help {
-            template.push_str(format!(" -d \"{}\"", data).as_str());
+            template.push_str(format!(" -d '{}'", escape_string(data)).as_str());
         }
         if let Some(ref data) = option.v.possible_vals {
             template.push_str(format!(" -r -f -a \"{}\"", data.join(" ")).as_str());
@@ -85,7 +89,7 @@ fn gen_fish_inner(root_command: &str, comp_gen: &FishGen, parent_cmds: &str, buf
             template.push_str(format!(" -l {}", data).as_str());
         }
         if let Some(data) = flag.b.help {
-            template.push_str(format!(" -d \"{}\"", data).as_str());
+            template.push_str(format!(" -d '{}'", escape_string(data)).as_str());
         }
         buffer.push_str(template.as_str());
         buffer.push_str("\n");
@@ -96,7 +100,7 @@ fn gen_fish_inner(root_command: &str, comp_gen: &FishGen, parent_cmds: &str, buf
         template.push_str(" -f");
         template.push_str(format!(" -a \"{}\"", &subcommand.p.meta.name).as_str());
         if let Some(data) = subcommand.p.meta.about {
-            template.push_str(format!(" -d \"{}\"", &data).as_str())
+            template.push_str(format!(" -d '{}'", escape_string(data)).as_str())
         }
         buffer.push_str(template.as_str());
         buffer.push_str("\n");

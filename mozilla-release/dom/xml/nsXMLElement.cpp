@@ -22,7 +22,7 @@ NS_NewXMLElement(Element** aInstancePtrResult,
 }
 
 NS_IMPL_ISUPPORTS_INHERITED(nsXMLElement, Element,
-                            nsIDOMNode, nsIDOMElement)
+                            nsIDOMNode)
 
 JSObject*
 nsXMLElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
@@ -35,7 +35,7 @@ nsXMLElement::UnbindFromTree(bool aDeep, bool aNullParent)
 {
   CSSPseudoElementType pseudoType = GetPseudoElementType();
   bool isBefore = pseudoType == CSSPseudoElementType::before;
-  nsIAtom* property = isBefore
+  nsAtom* property = isBefore
     ? nsGkAtoms::beforePseudoProperty : nsGkAtoms::afterPseudoProperty;
 
   switch (pseudoType) {

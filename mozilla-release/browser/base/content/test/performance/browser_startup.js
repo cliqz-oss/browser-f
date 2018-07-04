@@ -16,6 +16,9 @@
 
 "use strict";
 
+/* Set this to true only for debugging purpose; it makes the output noisy. */
+const kDumpAllStacks = false;
+
 const startupPhases = {
   // For app-startup, we have a whitelist of acceptable JS files.
   // Anything loaded during app-startup must have a compelling reason
@@ -46,12 +49,7 @@ const startupPhases = {
 
   // We are at this phase after creating the first browser window (ie. after final-ui-startup).
   "before opening first browser window": {blacklist: {
-    components: new Set([
-      "nsAsyncShutdown.js",
-    ]),
     modules: new Set([
-      "resource://gre/modules/PlacesBackups.jsm",
-      "resource://gre/modules/PlacesUtils.jsm",
     ])
   }},
 
@@ -60,20 +58,22 @@ const startupPhases = {
   // before first paint and delayed it.
   "before first paint": {blacklist: {
     components: new Set([
-      "UnifiedComplete.js",
       "nsSearchService.js",
     ]),
     modules: new Set([
-      "chrome://webcompat-reporter/content/TabListener.jsm",
       "chrome://webcompat-reporter/content/WebCompatReporter.jsm",
+      "chrome://webcompat/content/data/ua_overrides.jsm",
+      "chrome://webcompat/content/lib/ua_overrider.jsm",
       "resource:///modules/AboutNewTab.jsm",
       "resource:///modules/BrowserUITelemetry.jsm",
       "resource:///modules/BrowserUsageTelemetry.jsm",
       "resource:///modules/ContentCrashHandlers.jsm",
-      "resource:///modules/DirectoryLinksProvider.jsm",
+      "resource:///modules/ShellService.jsm",
       "resource://gre/modules/NewTabUtils.jsm",
       "resource://gre/modules/PageThumbs.jsm",
+      "resource://gre/modules/PlacesUtils.jsm",
       "resource://gre/modules/Promise.jsm", // imported by devtools during _delayedStartup
+      "resource://gre/modules/Preferences.jsm",
     ]),
     services: new Set([
       "@mozilla.org/browser/search-service;1",
@@ -90,19 +90,20 @@ const startupPhases = {
       "nsPlacesExpiration.js",
     ]),
     modules: new Set([
-      "resource:///modules/RecentWindow.jsm",
+      // Bug 1391495 - BrowserWindowTracker.jsm is intermittently used.
+      // "resource:///modules/BrowserWindowTracker.jsm",
       "resource://gre/modules/BookmarkHTMLUtils.jsm",
       "resource://gre/modules/Bookmarks.jsm",
       "resource://gre/modules/ContextualIdentityService.jsm",
       "resource://gre/modules/CrashSubmit.jsm",
       "resource://gre/modules/FxAccounts.jsm",
       "resource://gre/modules/FxAccountsStorage.jsm",
+      "resource://gre/modules/PlacesBackups.jsm",
       "resource://gre/modules/PlacesSyncUtils.jsm",
       "resource://gre/modules/Sqlite.jsm",
     ]),
     services: new Set([
       "@mozilla.org/browser/annotation-service;1",
-      "@mozilla.org/browser/favicon-service;1",
       "@mozilla.org/browser/nav-bookmarks-service;1",
     ])
   }},
@@ -111,6 +112,9 @@ const startupPhases = {
   // and loaded lazily when used for the first time by the user should
   // be blacklisted here.
   "before becoming idle": {blacklist: {
+    components: new Set([
+      "UnifiedComplete.js",
+    ]),
     modules: new Set([
       "resource://gre/modules/AsyncPrefs.jsm",
       "resource://gre/modules/LoginManagerContextMenu.jsm",
@@ -119,8 +123,12 @@ const startupPhases = {
   }},
 };
 
+if (Services.prefs.getBoolPref("browser.startup.blankWindow")) {
+  startupPhases["before profile selection"].whitelist.components.add("XULStore.js");
+}
+
 if (!gBrowser.selectedBrowser.isRemoteBrowser) {
-  // With e10s disabled, Places and RecentWindow.jsm (from a
+  // With e10s disabled, Places and BrowserWindowTracker.jsm (from a
   // SessionSaver.jsm timer) intermittently get loaded earlier. Likely
   // due to messages from the 'content' process arriving synchronously
   // instead of crossing a process boundary.
@@ -140,22 +148,35 @@ if (!gBrowser.selectedBrowser.isRemoteBrowser) {
 }
 
 add_task(async function() {
-  if (!AppConstants.NIGHTLY_BUILD && !AppConstants.DEBUG) {
+  if (!AppConstants.NIGHTLY_BUILD && !AppConstants.MOZ_DEV_EDITION && !AppConstants.DEBUG) {
     ok(!("@mozilla.org/test/startuprecorder;1" in Cc),
-       "the startup recorder component shouldn't exist in this non-nightly non-debug build.");
+       "the startup recorder component shouldn't exist in this non-nightly/non-devedition/" +
+       "non-debug build.");
     return;
   }
 
   let startupRecorder = Cc["@mozilla.org/test/startuprecorder;1"].getService().wrappedJSObject;
   await startupRecorder.done;
 
-  let data = startupRecorder.data.code;
+  let loader = Cc["@mozilla.org/moz/jsloader;1"].getService(Ci.xpcIJSModuleLoader);
+  let componentStacks = new Map();
+  let data = Cu.cloneInto(startupRecorder.data.code, {});
   // Keep only the file name for components, as the path is an absolute file
   // URL rather than a resource:// URL like for modules.
   for (let phase in data) {
     data[phase].components =
-      data[phase].components.map(f => f.replace(/.*\//, ""))
-                            .filter(c => c != "startupRecorder.js");
+      data[phase].components.map(uri => {
+        let fileName = uri.replace(/.*\//, "");
+        componentStacks.set(fileName, loader.getComponentLoadStack(uri));
+        return fileName;
+      }).filter(c => c != "startupRecorder.js");
+  }
+
+  function printStack(scriptType, name) {
+    if (scriptType == "modules")
+      info(loader.getModuleImportStack(name));
+    else if (scriptType == "components")
+      info(componentStacks.get(name));
   }
 
   // This block only adds debug output to help find the next bugs to file,
@@ -168,8 +189,11 @@ add_task(async function() {
         // phases are ordered, so if a script wasn't loaded yet at the immediate
         // previous phase, it wasn't loaded during any of the previous phases
         // either, and is new in the current phase.
-        if (!previous || !data[previous][scriptType].includes(f))
+        if (!previous || !data[previous][scriptType].includes(f)) {
           info(`${scriptType} loaded ${phase}: ${f}`);
+          if (kDumpAllStacks)
+            printStack(scriptType, f);
+        }
       }
     }
     previous = phase;
@@ -190,6 +214,7 @@ add_task(async function() {
            `should have no unexpected ${scriptType} loaded ${phase}`);
         for (let script of loadedList[scriptType]) {
           ok(false, `unexpected ${scriptType}: ${script}`);
+          printStack(scriptType, script);
         }
         is(whitelist[scriptType].size, 0,
            `all ${scriptType} whitelist entries should have been used`);
@@ -202,7 +227,10 @@ add_task(async function() {
     if (blacklist) {
       for (let scriptType in blacklist) {
         for (let file of blacklist[scriptType]) {
-          ok(!loadedList[scriptType].includes(file), `${file} is not allowed ${phase}`);
+          let loaded = loadedList[scriptType].includes(file);
+          ok(!loaded, `${file} is not allowed ${phase}`);
+          if (loaded)
+            printStack(scriptType, file);
         }
       }
     }

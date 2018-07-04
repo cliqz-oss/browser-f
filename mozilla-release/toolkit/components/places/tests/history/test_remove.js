@@ -10,7 +10,7 @@ Cu.importGlobalProperties(["URL"]);
 
 // Test removing a single page
 add_task(async function test_remove_single() {
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   await PlacesUtils.bookmarks.eraseEverything();
 
 
@@ -19,9 +19,9 @@ add_task(async function test_remove_single() {
   Assert.ok(page_in_database(WITNESS_URI));
 
   let remover = async function(name, filter, options) {
-    do_print(name);
-    do_print(JSON.stringify(options));
-    do_print("Setting up visit");
+    info(name);
+    info(JSON.stringify(options));
+    info("Setting up visit");
 
     let uri = NetUtil.newURI("http://mozilla.com/test_browserhistory/test_remove/" + Math.random());
     let title = "Visit " + Math.random();
@@ -31,11 +31,11 @@ add_task(async function test_remove_single() {
     let removeArg = await filter(uri);
 
     if (options.addBookmark) {
-      PlacesUtils.bookmarks.insertBookmark(
-        PlacesUtils.unfiledBookmarksFolderId,
-        uri,
-        PlacesUtils.bookmarks.DEFAULT_INDEX,
-        "test bookmark");
+      await PlacesUtils.bookmarks.insert({
+        parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+        url: uri,
+        title: "test bookmark"
+      });
     }
 
     let shouldRemove = !options.addBookmark;
@@ -44,8 +44,8 @@ add_task(async function test_remove_single() {
       observer = {
         onBeginUpdateBatch() {},
         onEndUpdateBatch() {},
-        onVisit(aUri) {
-          reject(new Error("Unexpected call to onVisit " + aUri.spec));
+        onVisits(aVisits) {
+          reject(new Error("Unexpected call to onVisits " + aVisits.length));
         },
         onTitleChanged(aUri) {
           reject(new Error("Unexpected call to onTitleChanged " + aUri.spec));
@@ -86,7 +86,7 @@ add_task(async function test_remove_single() {
     });
     PlacesUtils.history.addObserver(observer);
 
-    do_print("Performing removal");
+    info("Performing removal");
     let removed = false;
     if (options.useCallback) {
       let onRowCalled = false;
@@ -131,12 +131,12 @@ add_task(async function test_remove_single() {
       }
     }
   } finally {
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
   }
 });
 
 add_task(async function cleanup() {
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
   await PlacesUtils.bookmarks.eraseEverything();
 });
 

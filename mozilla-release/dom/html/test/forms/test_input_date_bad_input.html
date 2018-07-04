@@ -37,6 +37,7 @@ SimpleTest.waitForFocus(function() {
 });
 
 const DATE_BAD_INPUT_MSG = "Please enter a valid date.";
+const isDesktop = !/Mobile|Tablet/.test(navigator.userAgent);
 
 function checkValidity(aElement, aIsBadInput) {
   is(aElement.validity.valid, aIsBadInput ? false : true,
@@ -52,8 +53,8 @@ function checkValidity(aElement, aIsBadInput) {
 }
 
 function sendKeys(aKey) {
-  if (aKey.startsWith("VK")) {
-    synthesizeKey(aKey, {});
+  if (aKey.startsWith("KEY_")) {
+    synthesizeKey(aKey);
   } else {
     sendString(aKey);
   }
@@ -84,7 +85,7 @@ function test() {
 
   // Removing any of the fields makes the input valid again.
   elem.focus();
-  sendKeys("VK_BACK_SPACE");
+  sendKeys("KEY_Backspace");
   elem.blur();
   checkValidity(elem, false);
 
@@ -93,9 +94,12 @@ function test() {
   elem.blur();
   checkValidity(elem, true);
 
-  // Clearing all fields should clear bad input validity state as well.
-  synthesizeMouse(input, resetButton_X, resetButton_Y, {});
-  checkValidity(elem, false);
+  // Reset button is desktop only.
+  if (isDesktop) {
+    // Clearing all fields should clear bad input validity state as well.
+    synthesizeMouse(input, resetButton_X, resetButton_Y, {});
+    checkValidity(elem, false);
+  }
 }
 
 </script>

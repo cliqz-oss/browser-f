@@ -5,6 +5,7 @@ FRAGMENT(jsval, simple) {
   using namespace JS;
 
   RootedValue fortytwo(cx, Int32Value(42));
+  RootedValue fortytwoD(cx, DoubleValue(42));
   RootedValue negone(cx, Int32Value(-1));
   RootedValue undefined(cx, UndefinedValue());
   RootedValue null(cx, NullValue());
@@ -26,15 +27,16 @@ FRAGMENT(jsval, simple) {
 
   breakpoint();
 
-  (void) fortytwo;
-  (void) negone;
-  (void) undefined;
-  (void) js_true;
-  (void) js_false;
-  (void) null;
-  (void) elements_hole;
-  (void) empty_string;
-  (void) friendly_string;
-  (void) symbol;
-  (void) global;
+  use(fortytwo);
+  use(fortytwoD);
+  use(negone);
+  use(undefined);
+  use(js_true);
+  use(js_false);
+  use(null);
+  use(elements_hole);
+  use(empty_string);
+  use(friendly_string);
+  use(symbol);
+  use(global);
 }

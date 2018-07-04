@@ -7,6 +7,8 @@
 
 #include "ArithmeticArgChecker.h"
 #include "AssertAssignmentChecker.h"
+#include "CanRunScriptChecker.h"
+#include "DanglingOnTemporaryChecker.h"
 #include "ExplicitImplicitChecker.h"
 #include "ExplicitOperatorBoolChecker.h"
 #include "KungFuDeathGripChecker.h"
@@ -24,6 +26,7 @@
 #include "NonParamInsideFunctionDeclChecker.h"
 #include "OverrideBaseCallChecker.h"
 #include "OverrideBaseCallUsageChecker.h"
+#include "ParamTraitsEnumChecker.h"
 #include "RefCountedCopyConstructorChecker.h"
 #include "RefCountedInsideLambdaChecker.h"
 #include "ScopeChecker.h"

@@ -24,7 +24,7 @@ public:
   Create(AudioContext& aAudioContext, const AnalyserOptions& aOptions,
          ErrorResult& aRv);
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(AnalyserNode, AudioNode)
 
   virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
@@ -71,6 +71,8 @@ public:
 
   virtual size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override;
   virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const override;
+
+  void SetMinAndMaxDecibels(double aMinValue, double aMaxValue, ErrorResult& aRv);
 
 private:
   ~AnalyserNode() = default;

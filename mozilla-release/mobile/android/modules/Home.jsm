@@ -5,13 +5,11 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["Home"];
+var EXPORTED_SYMBOLS = ["Home"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/SharedPreferences.jsm");
-Cu.import("resource://gre/modules/Messaging.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/SharedPreferences.jsm");
+ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 
 // Keep this in sync with the constant defined in PanelAuthCache.java
 const PREFS_PANEL_AUTH_PREFIX = "home_panels_auth_";
@@ -25,7 +23,7 @@ function resolveGeckoURI(aURI) {
     throw "Can't resolve an empty uri";
 
   if (aURI.startsWith("chrome://")) {
-    let registry = Cc['@mozilla.org/chrome/chrome-registry;1'].getService(Ci["nsIChromeRegistry"]);
+    let registry = Cc["@mozilla.org/chrome/chrome-registry;1"].getService(Ci.nsIChromeRegistry);
     return registry.convertChromeURL(Services.io.newURI(aURI)).spec;
   } else if (aURI.startsWith("resource://")) {
     let handler = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
@@ -61,7 +59,7 @@ function BannerMessage(options) {
 // private members without leaking it outside Home.jsm.
 var HomeBannerMessageHandlers;
 
-var HomeBanner = (function () {
+var HomeBanner = (function() {
   // Whether there is a "HomeBanner:Get" request we couldn't fulfill.
   let _pendingRequest = false;
 
@@ -125,7 +123,7 @@ var HomeBanner = (function () {
 
   return Object.freeze({
     onEvent: function(event, data, callback) {
-      switch(event) {
+      switch (event) {
         case "HomeBanner:Click":
           _handleClick(data.id);
           break;
@@ -190,7 +188,7 @@ var HomeBanner = (function () {
 // private members without leaking it outside Home.jsm.
 var HomePanelsMessageHandlers;
 
-var HomePanels = (function () {
+var HomePanels = (function() {
   // Functions used to handle messages sent from Java.
   HomePanelsMessageHandlers = {
 
@@ -201,10 +199,10 @@ var HomePanels = (function () {
       let panels = [];
       for (let id in _registeredPanels) {
         // Null ids means we want to fetch all available panels
-        if (ids == null || ids.indexOf(id) >= 0) {
+        if (ids == null || ids.includes(id)) {
           try {
             panels.push(_generatePanel(id));
-          } catch(e) {
+          } catch (e) {
             Cu.reportError("Home.panels: Invalid options, panel.id = " + id + ": " + e);
           }
         }
@@ -467,12 +465,12 @@ var HomePanels = (function () {
 })();
 
 // Public API
-this.Home = Object.freeze({
+var Home = Object.freeze({
   banner: HomeBanner,
   panels: HomePanels,
 
   // Lazy notification observer registered in browser.js
-  onEvent: function (event, data, callback) {
+  onEvent: function(event, data, callback) {
     if (event in HomeBannerMessageHandlers) {
       HomeBannerMessageHandlers[event](data);
     } else if (event in HomePanelsMessageHandlers) {

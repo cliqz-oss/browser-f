@@ -15,14 +15,22 @@ interface Credential {
 
 [Exposed=Window, SecureContext, Pref="security.webauth.webauthn"]
 interface CredentialsContainer {
+  [Throws]
   Promise<Credential?> get(optional CredentialRequestOptions options);
+  [Throws]
   Promise<Credential?> create(optional CredentialCreationOptions options);
+  [Throws]
+  Promise<Credential> store(Credential credential);
+  [Throws]
+  Promise<void> preventSilentAccess();
 };
 
 dictionary CredentialRequestOptions {
   PublicKeyCredentialRequestOptions publicKey;
+  AbortSignal signal;
 };
 
 dictionary CredentialCreationOptions {
-  MakeCredentialOptions publicKey;
+  PublicKeyCredentialCreationOptions publicKey;
+  AbortSignal signal;
 };

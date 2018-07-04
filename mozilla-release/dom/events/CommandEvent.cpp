@@ -26,37 +26,15 @@ CommandEvent::CommandEvent(EventTarget* aOwner,
   }
 }
 
-NS_INTERFACE_MAP_BEGIN(CommandEvent)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMCommandEvent)
-NS_INTERFACE_MAP_END_INHERITING(Event)
-
-NS_IMPL_ADDREF_INHERITED(CommandEvent, Event)
-NS_IMPL_RELEASE_INHERITED(CommandEvent, Event)
-
-NS_IMETHODIMP
+void
 CommandEvent::GetCommand(nsAString& aCommand)
 {
-  nsIAtom* command = mEvent->AsCommandEvent()->mCommand;
+  nsAtom* command = mEvent->AsCommandEvent()->mCommand;
   if (command) {
     command->ToString(aCommand);
   } else {
     aCommand.Truncate();
   }
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-CommandEvent::InitCommandEvent(const nsAString& aTypeArg,
-                               bool aCanBubbleArg,
-                               bool aCancelableArg,
-                               const nsAString& aCommand)
-{
-  NS_ENSURE_TRUE(!mEvent->mFlags.mIsBeingDispatched, NS_OK);
-
-  Event::InitEvent(aTypeArg, aCanBubbleArg, aCancelableArg);
-
-  mEvent->AsCommandEvent()->mCommand = NS_Atomize(aCommand);
-  return NS_OK;
 }
 
 } // namespace dom

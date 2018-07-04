@@ -14,17 +14,15 @@
 
 #include "./aom_config.h"
 #if !CONFIG_PVQ || CONFIG_VAR_TX
-#include "av1/decoder/decoder.h"
 #include "av1/common/scan.h"
-#endif  // !CONFIG_PVQ
+#endif  // !CONFIG_PVQ || CONFIG_VAR_TX
+#include "av1/decoder/decoder.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#if CONFIG_PALETTE
 void av1_decode_palette_tokens(MACROBLOCKD *const xd, int plane, aom_reader *r);
-#endif  // CONFIG_PALETTE
 
 #if !CONFIG_PVQ || CONFIG_VAR_TX
 int av1_decode_block_tokens(AV1_COMMON *cm, MACROBLOCKD *const xd, int plane,

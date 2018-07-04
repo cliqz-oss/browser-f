@@ -12,6 +12,14 @@
 #include "PlatformDecoderModule.h"
 
 namespace mozilla {
+
+namespace dom {
+class RemoteVideoDecoder;
+}
+DDLoggedTypeCustomNameAndBase(dom::RemoteVideoDecoder,
+                              RemoteVideoDecoder,
+                              MediaDataDecoder);
+
 namespace dom {
 
 class VideoDecoderChild;
@@ -21,7 +29,9 @@ class RemoteDecoderModule;
 // to a 'real' decoder in the GPU process.
 // All requests get forwarded to a VideoDecoderChild instance that
 // operates solely on the VideoDecoderManagerChild thread.
-class RemoteVideoDecoder : public MediaDataDecoder
+class RemoteVideoDecoder
+  : public MediaDataDecoder
+  , public DecoderDoctorLifeLogger<RemoteVideoDecoder>
 {
 public:
   friend class RemoteDecoderModule;
@@ -34,8 +44,7 @@ public:
   RefPtr<ShutdownPromise> Shutdown() override;
   bool IsHardwareAccelerated(nsACString& aFailureReason) const override;
   void SetSeekThreshold(const media::TimeUnit& aTime) override;
-
-  const char* GetDescriptionName() const override { return "RemoteVideoDecoder"; }
+  nsCString GetDescriptionName() const override;
   ConversionRequired NeedsConversion() const override;
 
 private:
@@ -46,6 +55,12 @@ private:
   // destructor when we can guarantee no other threads are accessing it). Only
   // read from the manager thread.
   RefPtr<VideoDecoderChild> mActor;
+  // Only ever written/modified during decoder initialisation.
+  // As such can be accessed from any threads after that.
+  nsCString mDescription;
+  bool mIsHardwareAccelerated;
+  nsCString mHardwareAcceleratedReason;
+  MediaDataDecoder::ConversionRequired mConversion;
 };
 
 // A PDM implementation that creates RemoteVideoDecoders.

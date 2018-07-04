@@ -1,4 +1,4 @@
-// |reftest| skip-if(release_or_beta) error:SyntaxError -- async-iteration is not released yet
+// |reftest| error:SyntaxError
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-rest.case
 // - src/function-forms/syntax/cls-expr-async-gen-meth.template
@@ -8,7 +8,7 @@ esid: sec-class-definitions-runtime-semantics-evaluation
 features: [default-parameters, async-iteration]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     ClassExpression : class BindingIdentifieropt ClassTail
@@ -62,6 +62,7 @@ info: |
       ...BindingPattern[?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 0, class {
   async *method(...x = []) {

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,16 +12,15 @@
 #include "mozilla/gfx/2D.h"
 #include "imgIContainer.h"
 #include "nsContainerFrame.h"
-#include "nsIDOMMutationEvent.h"
 #include "nsIImageLoadingContent.h"
 #include "nsLayoutUtils.h"
 #include "imgINotificationObserver.h"
-#include "nsSVGEffects.h"
-#include "mozilla/dom/SVGSVGElement.h"
+#include "SVGObserverUtils.h"
 #include "nsSVGUtils.h"
 #include "SVGContentUtils.h"
 #include "SVGGeometryFrame.h"
 #include "SVGImageContext.h"
+#include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/dom/SVGImageElement.h"
 #include "nsContentUtils.h"
 #include "nsIReflowCallback.h"
@@ -38,9 +38,9 @@ NS_QUERYFRAME_HEAD(nsSVGImageFrame)
 NS_QUERYFRAME_TAIL_INHERITING(SVGGeometryFrame)
 
 nsIFrame*
-NS_NewSVGImageFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewSVGImageFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsSVGImageFrame(aContext);
+  return new (aPresShell) nsSVGImageFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGImageFrame)
@@ -49,7 +49,7 @@ nsSVGImageFrame::~nsSVGImageFrame()
 {
   // set the frame to null so we don't send messages to a dead object.
   if (mListener) {
-    nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(mContent);
+    nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(GetContent());
     if (imageLoader) {
       imageLoader->RemoveNativeObserver(mListener);
     }
@@ -81,7 +81,7 @@ nsSVGImageFrame::Init(nsIContent*       aContent,
   }
 
   mListener = new nsSVGImageListener(this);
-  nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(mContent);
+  nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(GetContent());
   if (!imageLoader) {
     MOZ_CRASH("Why is this not an image loading content?");
   }
@@ -94,14 +94,14 @@ nsSVGImageFrame::Init(nsIContent*       aContent,
 }
 
 /* virtual */ void
-nsSVGImageFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsSVGImageFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   if (GetStateBits() & NS_FRAME_IS_NONDISPLAY) {
     DecApproximateVisibleCount();
   }
 
   if (mReflowCallbackPosted) {
-    PresContext()->PresShell()->CancelReflowCallback(this);
+    PresShell()->CancelReflowCallback(this);
     mReflowCallbackPosted = false;
   }
 
@@ -112,7 +112,7 @@ nsSVGImageFrame::DestroyFrom(nsIFrame* aDestructRoot)
     imageLoader->FrameDestroyed(this);
   }
 
-  nsFrame::DestroyFrom(aDestructRoot);
+  nsFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 //----------------------------------------------------------------------
@@ -120,7 +120,7 @@ nsSVGImageFrame::DestroyFrom(nsIFrame* aDestructRoot)
 
 nsresult
 nsSVGImageFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                  nsIAtom*        aAttribute,
+                                  nsAtom*        aAttribute,
                                   int32_t         aModType)
 {
   if (aNameSpaceID == kNameSpaceID_None) {
@@ -147,11 +147,11 @@ nsSVGImageFrame::AttributeChanged(int32_t         aNameSpaceID,
   // Currently our SMIL implementation does not modify the DOM attributes. Once
   // we implement the SVG 2 SMIL behaviour this can be removed
   // SVGImageElement::AfterSetAttr's implementation will be sufficient.
-  if (aModType == nsIDOMMutationEvent::SMIL &&
+  if (aModType == MutationEventBinding::SMIL &&
       aAttribute == nsGkAtoms::href &&
       (aNameSpaceID == kNameSpaceID_XLink ||
        aNameSpaceID == kNameSpaceID_None)) {
-    SVGImageElement* element = static_cast<SVGImageElement*>(mContent);
+    SVGImageElement* element = static_cast<SVGImageElement*>(GetContent());
 
     bool hrefIsSet =
       element->mStringAttributes[SVGImageElement::HREF].IsExplicitlySet() ||
@@ -171,7 +171,7 @@ void
 nsSVGImageFrame::OnVisibilityChange(Visibility aNewVisibility,
                                     const Maybe<OnNonvisible>& aNonvisibleAction)
 {
-  nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(mContent);
+  nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(GetContent());
   if (!imageLoader) {
     SVGGeometryFrame::OnVisibilityChange(aNewVisibility, aNonvisibleAction);
     return;
@@ -187,7 +187,7 @@ nsSVGImageFrame::GetRasterImageTransform(int32_t aNativeWidth,
                                          int32_t aNativeHeight)
 {
   float x, y, width, height;
-  SVGImageElement *element = static_cast<SVGImageElement*>(mContent);
+  SVGImageElement *element = static_cast<SVGImageElement*>(GetContent());
   element->GetAnimatedLengthValues(&x, &y, &width, &height, nullptr);
 
   Matrix viewBoxTM =
@@ -202,7 +202,7 @@ gfx::Matrix
 nsSVGImageFrame::GetVectorImageTransform()
 {
   float x, y, width, height;
-  SVGImageElement *element = static_cast<SVGImageElement*>(mContent);
+  SVGImageElement *element = static_cast<SVGImageElement*>(GetContent());
   element->GetAnimatedLengthValues(&x, &y, &width, &height, nullptr);
 
   // No viewBoxTM needed here -- our height/width overrides any concept of
@@ -258,14 +258,14 @@ nsSVGImageFrame::PaintSVG(gfxContext& aContext,
   }
 
   float x, y, width, height;
-  SVGImageElement *imgElem = static_cast<SVGImageElement*>(mContent);
+  SVGImageElement *imgElem = static_cast<SVGImageElement*>(GetContent());
   imgElem->GetAnimatedLengthValues(&x, &y, &width, &height, nullptr);
   NS_ASSERTION(width > 0 && height > 0,
                "Should only be painting things with valid width/height");
 
   if (!mImageContainer) {
     nsCOMPtr<imgIRequest> currentRequest;
-    nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(mContent);
+    nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(GetContent());
     if (imageLoader)
       imageLoader->GetRequest(nsIImageLoadingContent::CURRENT_REQUEST,
                               getter_AddRefs(currentRequest));
@@ -356,6 +356,7 @@ nsSVGImageFrame::PaintSVG(gfxContext& aContext,
         nsLayoutUtils::GetSamplingFilterForFrame(this),
         nsPoint(0, 0),
         aDirtyRect ? &dirtyRect : nullptr,
+        Nothing(),
         flags);
     }
 
@@ -374,7 +375,7 @@ nsSVGImageFrame::GetFrameForPoint(const gfxPoint& aPoint)
   }
 
   Rect rect;
-  SVGImageElement *element = static_cast<SVGImageElement*>(mContent);
+  SVGImageElement *element = static_cast<SVGImageElement*>(GetContent());
   element->GetAnimatedLengthValues(&rect.x, &rect.y,
                                    &rect.width, &rect.height, nullptr);
 
@@ -432,7 +433,7 @@ nsSVGImageFrame::ReflowSVG()
   }
 
   float x, y, width, height;
-  SVGImageElement *element = static_cast<SVGImageElement*>(mContent);
+  SVGImageElement *element = static_cast<SVGImageElement*>(GetContent());
   element->GetAnimatedLengthValues(&x, &y, &width, &height, nullptr);
 
   Rect extent(x, y, width, height);
@@ -448,10 +449,10 @@ nsSVGImageFrame::ReflowSVG()
     // Make sure we have our filter property (if any) before calling
     // FinishAndStoreOverflow (subsequent filter changes are handled off
     // nsChangeHint_UpdateEffects):
-    nsSVGEffects::UpdateEffects(this);
+    SVGObserverUtils::UpdateEffects(this);
 
     if (!mReflowCallbackPosted) {
-      nsIPresShell* shell = PresContext()->PresShell();
+      nsIPresShell* shell = PresShell();
       mReflowCallbackPosted = true;
       shell->PostReflowCallback(this);
     }
@@ -461,8 +462,8 @@ nsSVGImageFrame::ReflowSVG()
   nsOverflowAreas overflowAreas(overflow, overflow);
   FinishAndStoreOverflow(overflowAreas, mRect.Size());
 
-  mState &= ~(NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_DIRTY |
-              NS_FRAME_HAS_DIRTY_CHILDREN);
+  RemoveStateBits(NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_DIRTY |
+                  NS_FRAME_HAS_DIRTY_CHILDREN);
 
   // Invalidate, but only if this is not our first reflow (since if it is our
   // first reflow then we haven't had our first paint yet).

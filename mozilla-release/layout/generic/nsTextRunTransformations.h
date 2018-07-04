@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -10,25 +11,27 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/UniquePtr.h"
 #include "gfxTextRun.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
+#include "nsPresContext.h"
 
 class nsTransformedTextRun;
 
 struct nsTransformedCharStyle final {
   NS_INLINE_DECL_REFCOUNTING(nsTransformedCharStyle)
 
-  explicit nsTransformedCharStyle(nsStyleContext* aContext)
-    : mFont(aContext->StyleFont()->mFont)
-    , mLanguage(aContext->StyleFont()->mLanguage)
-    , mPresContext(aContext->PresContext())
-    , mScriptSizeMultiplier(aContext->StyleFont()->mScriptSizeMultiplier)
-    , mTextTransform(aContext->StyleText()->mTextTransform)
-    , mMathVariant(aContext->StyleFont()->mMathVariant)
-    , mExplicitLanguage(aContext->StyleFont()->mExplicitLanguage) {}
+  explicit nsTransformedCharStyle(mozilla::ComputedStyle* aStyle,
+                                  nsPresContext* aPresContext)
+    : mFont(aStyle->StyleFont()->mFont)
+    , mLanguage(aStyle->StyleFont()->mLanguage)
+    , mPresContext(aPresContext)
+    , mScriptSizeMultiplier(aStyle->StyleFont()->mScriptSizeMultiplier)
+    , mTextTransform(aStyle->StyleText()->mTextTransform)
+    , mMathVariant(aStyle->StyleFont()->mMathVariant)
+    , mExplicitLanguage(aStyle->StyleFont()->mExplicitLanguage) {}
 
   nsFont                  mFont;
-  nsCOMPtr<nsIAtom>       mLanguage;
-  RefPtr<nsPresContext> mPresContext;
+  RefPtr<nsAtom>          mLanguage;
+  RefPtr<nsPresContext>   mPresContext;
   float                   mScriptSizeMultiplier;
   uint8_t                 mTextTransform;
   uint8_t                 mMathVariant;
@@ -104,7 +107,7 @@ public:
   static bool TransformString(const nsAString& aString,
                               nsString& aConvertedString,
                               bool aAllUppercase,
-                              const nsIAtom* aLanguage,
+                              const nsAtom* aLanguage,
                               nsTArray<bool>& aCharsToMergeArray,
                               nsTArray<bool>& aDeletedCharsArray,
                               const nsTransformedTextRun* aTextRun = nullptr,
@@ -143,7 +146,7 @@ public:
   void SetCapitalization(uint32_t aStart, uint32_t aLength,
                          bool* aCapitalization);
   virtual bool SetPotentialLineBreaks(Range aRange,
-                                      const uint8_t* aBreakBefore);
+                                      const uint8_t* aBreakBefore) override;
   /**
    * Called after SetCapitalization and SetPotentialLineBreaks
    * are done and before we request any data from the textrun. Also always
@@ -159,8 +162,8 @@ public:
   }
 
   // override the gfxTextRun impls to account for additional members here
-  virtual size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) MOZ_MUST_OVERRIDE;
-  virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) MOZ_MUST_OVERRIDE;
+  virtual size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) override;
+  virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) override;
 
   nsTransformingTextRunFactory       *mFactory;
   nsTArray<RefPtr<nsTransformedCharStyle>> mStyles;

@@ -23,29 +23,37 @@
 #include "js/Date.h"
 #include "js/StructuredClone.h"
 #include "KeyPath.h"
+#include "NullPrincipal.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/EndianUtils.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/JSObjectHolder.h"
 #include "mozilla/Move.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/DOMStringList.h"
 #include "mozilla/dom/File.h"
+#include "mozilla/dom/FileBlobImpl.h"
 #include "mozilla/dom/IDBMutableFileBinding.h"
 #include "mozilla/dom/BlobBinding.h"
 #include "mozilla/dom/IDBObjectStoreBinding.h"
 #include "mozilla/dom/MemoryBlobImpl.h"
+#include "mozilla/dom/StreamBlobImpl.h"
 #include "mozilla/dom/StructuredCloneHolder.h"
 #include "mozilla/dom/StructuredCloneTags.h"
 #include "mozilla/dom/indexedDB/PBackgroundIDBSharedTypes.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerScope.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
+#include "mozilla/SystemGroup.h"
 #include "nsCOMPtr.h"
 #include "nsQueryObject.h"
+#include "nsStreamUtils.h"
+#include "nsStringStream.h"
 #include "ProfilerHelpers.h"
 #include "ReportInternalError.h"
-#include "WorkerPrivate.h"
-#include "WorkerScope.h"
 
 // Include this last to avoid path problems on Windows.
 #include "ActorsChild.h"
@@ -55,7 +63,6 @@ namespace dom {
 
 using namespace mozilla::dom::indexedDB;
 using namespace mozilla::dom::quota;
-using namespace mozilla::dom::workers;
 using namespace mozilla::ipc;
 
 struct IDBObjectStore::StructuredCloneWriteInfo
@@ -66,7 +73,7 @@ struct IDBObjectStore::StructuredCloneWriteInfo
   uint64_t mOffsetToKeyProp;
 
   explicit StructuredCloneWriteInfo(IDBDatabase* aDatabase)
-    : mCloneBuffer(JS::StructuredCloneScope::SameProcessSameThread, nullptr,
+    : mCloneBuffer(JS::StructuredCloneScope::DifferentProcessForIndexedDB, nullptr,
                    nullptr)
     , mDatabase(aDatabase)
     , mOffsetToKeyProp(0)
@@ -188,6 +195,288 @@ GenerateRequest(JSContext* aCx, IDBObjectStore* aObjectStore)
 
   return request.forget();
 }
+
+// Blob internal code clones this stream before it's passed to IPC, so we
+// serialize module's optimized code only when AsyncWait() is called.
+class WasmCompiledModuleStream final
+  : public nsIAsyncInputStream
+  , public nsICloneableInputStream
+  , private JS::WasmModuleListener
+{
+  nsCOMPtr<nsISerialEventTarget> mOwningThread;
+
+  // Initially and while waiting for compilation to complete, the mModule field
+  // is non-null, keeping alive the module whose code needs to be serialized.
+  RefPtr<JS::WasmModule> mModule;
+
+  // A module stream can have up to one input stream callback.
+  nsCOMPtr<nsIInputStreamCallback> mCallback;
+
+  // When a module's optimized code is ready to be serialized, it will be
+  // serialized into mStream and the mModule will be released. At this point,
+  // stream reads will succeed.
+  nsCOMPtr<nsIInputStream> mStream;
+
+  // When the stream is finished reading or closed, mStatus will be changed from
+  // NS_OK to NS_BASE_STREAM_CLOSED or whatever status was passed to
+  // CloseWithStatus.
+  nsresult mStatus;
+
+public:
+  explicit WasmCompiledModuleStream(JS::WasmModule* aModule)
+    : mOwningThread(GetCurrentThreadSerialEventTarget())
+    , mModule(aModule)
+    , mStatus(NS_OK)
+  {
+    AssertIsOnOwningThread();
+    MOZ_ASSERT(aModule);
+  }
+
+  bool
+  IsOnOwningThread() const
+  {
+    MOZ_ASSERT(mOwningThread);
+
+    bool current;
+    return NS_SUCCEEDED(mOwningThread->IsOnCurrentThread(&current)) && current;
+  }
+
+  void
+  AssertIsOnOwningThread() const
+  {
+    MOZ_ASSERT(IsOnOwningThread());
+  }
+
+private:
+  // Copy constructor for cloning.
+  explicit WasmCompiledModuleStream(const WasmCompiledModuleStream& aOther)
+    : mOwningThread(aOther.mOwningThread)
+    , mModule(aOther.mModule)
+    , mStatus(aOther.mStatus)
+  {
+    AssertIsOnOwningThread();
+
+    if (aOther.mStream) {
+      nsCOMPtr<nsICloneableInputStream> cloneableStream =
+        do_QueryInterface(aOther.mStream);
+      MOZ_ASSERT(cloneableStream);
+
+      MOZ_ALWAYS_SUCCEEDS(cloneableStream->Clone(getter_AddRefs(mStream)));
+    }
+  }
+
+  ~WasmCompiledModuleStream() override
+  {
+    AssertIsOnOwningThread();
+
+    MOZ_ALWAYS_SUCCEEDS(Close());
+  }
+
+  void
+  CallCallback()
+  {
+    AssertIsOnOwningThread();
+    MOZ_ASSERT(mCallback);
+
+    nsCOMPtr<nsIInputStreamCallback> callback;
+    callback.swap(mCallback);
+
+    callback->OnInputStreamReady(this);
+  }
+
+  NS_DECL_THREADSAFE_ISUPPORTS
+
+  // nsIInputStream:
+
+  NS_IMETHOD
+  Close() override
+  {
+    AssertIsOnOwningThread();
+
+    return CloseWithStatus(NS_BASE_STREAM_CLOSED);
+  }
+
+  NS_IMETHOD
+  Available(uint64_t* _retval) override
+  {
+    AssertIsOnOwningThread();
+
+    if (NS_FAILED(mStatus)) {
+      return mStatus;
+    }
+
+    if (!mStream) {
+      *_retval = 0;
+      return NS_OK;
+    }
+
+    return mStream->Available(_retval);
+  }
+
+  NS_IMETHOD
+  Read(char* aBuf, uint32_t aCount, uint32_t* _retval) override
+  {
+    AssertIsOnOwningThread();
+
+    return ReadSegments(NS_CopySegmentToBuffer, aBuf, aCount, _retval);
+  }
+
+  NS_IMETHOD
+  ReadSegments(nsWriteSegmentFun aWriter,
+               void* aClosure,
+               uint32_t aCount,
+               uint32_t* _retval) override
+  {
+    AssertIsOnOwningThread();
+
+    if (NS_FAILED(mStatus)) {
+      *_retval = 0;
+      return NS_OK;
+    }
+
+    if (!mStream) {
+      return NS_BASE_STREAM_WOULD_BLOCK;
+    }
+
+    return mStream->ReadSegments(aWriter, aClosure, aCount, _retval);
+  }
+
+  NS_IMETHOD
+  IsNonBlocking(bool* _retval) override
+  {
+    AssertIsOnOwningThread();
+
+    *_retval = true;
+    return NS_OK;
+  }
+
+  // nsIAsyncInputStream:
+
+  NS_IMETHOD
+  CloseWithStatus(nsresult aStatus) override
+  {
+    AssertIsOnOwningThread();
+
+    if (NS_FAILED(mStatus)) {
+      return NS_OK;
+    }
+
+    mModule = nullptr;
+
+    if (mStream) {
+      MOZ_ALWAYS_SUCCEEDS(mStream->Close());
+      mStream = nullptr;
+    }
+
+    mStatus = NS_FAILED(aStatus) ? aStatus : NS_BASE_STREAM_CLOSED;
+
+    if (mCallback) {
+      CallCallback();
+    }
+
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  AsyncWait(nsIInputStreamCallback* aCallback,
+            uint32_t aFlags,
+            uint32_t aRequestedCount,
+            nsIEventTarget* aEventTarget) override
+  {
+    AssertIsOnOwningThread();
+    MOZ_ASSERT_IF(mCallback, !aCallback);
+
+    if (aFlags) {
+      return NS_ERROR_NOT_IMPLEMENTED;
+    }
+
+    if (!aCallback) {
+      mCallback = nullptr;
+      return NS_OK;
+    }
+
+    if (aEventTarget) {
+      mCallback =
+        NS_NewInputStreamReadyEvent("WasmCompiledModuleStream::AsyncWait",
+                                    aCallback,
+                                    aEventTarget);
+    } else {
+      mCallback = aCallback;
+    }
+
+    if (NS_FAILED(mStatus) || mStream) {
+      CallCallback();
+      return NS_OK;
+    }
+
+    MOZ_ASSERT(mModule);
+    mModule->notifyWhenCompilationComplete(this);
+
+    return NS_OK;
+  }
+
+  // nsICloneableInputStream:
+
+  NS_IMETHOD
+  GetCloneable(bool* aCloneable) override
+  {
+    AssertIsOnOwningThread();
+
+    *aCloneable = true;
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  Clone(nsIInputStream** _retval) override
+  {
+    AssertIsOnOwningThread();
+
+    nsCOMPtr<nsIInputStream> clone = new WasmCompiledModuleStream(*this);
+
+    clone.forget(_retval);
+    return NS_OK;
+  }
+
+  // JS::WasmModuleListener:
+
+  void
+  onCompilationComplete() override
+  {
+    if (!IsOnOwningThread()) {
+      MOZ_ALWAYS_SUCCEEDS(mOwningThread->Dispatch(NewCancelableRunnableMethod(
+        "WasmCompiledModuleStream::onCompilationComplete",
+        this,
+        &WasmCompiledModuleStream::onCompilationComplete)));
+      return;
+    }
+
+    if (NS_FAILED(mStatus) || !mCallback) {
+      return;
+    }
+
+    MOZ_ASSERT(mModule);
+
+    size_t compiledSize = mModule->compiledSerializedSize();
+
+    nsCString compiled;
+    compiled.SetLength(compiledSize);
+
+    mModule->compiledSerialize(
+      reinterpret_cast<uint8_t*>(compiled.BeginWriting()), compiledSize);
+
+    MOZ_ALWAYS_SUCCEEDS(NS_NewCStringInputStream(getter_AddRefs(mStream),
+                                                 Move(compiled)));
+
+    mModule = nullptr;
+
+    CallCallback();
+  }
+};
+
+NS_IMPL_ISUPPORTS(WasmCompiledModuleStream,
+                  nsIInputStream,
+                  nsIAsyncInputStream,
+                  nsICloneableInputStream)
 
 bool
 StructuredCloneWriteCallback(JSContext* aCx,
@@ -351,20 +640,26 @@ StructuredCloneWriteCallback(JSContext* aCx,
 
     size_t bytecodeSize = module->bytecodeSerializedSize();
     UniquePtr<uint8_t[]> bytecode(new uint8_t[bytecodeSize]);
-    MOZ_ASSERT(bytecode);
     module->bytecodeSerialize(bytecode.get(), bytecodeSize);
 
     RefPtr<BlobImpl> blobImpl =
       new MemoryBlobImpl(bytecode.release(), bytecodeSize, EmptyString());
+
     RefPtr<Blob> bytecodeBlob = Blob::Create(nullptr, blobImpl);
 
-    size_t compiledSize = module->compiledSerializedSize();
-    UniquePtr<uint8_t[]> compiled(new uint8_t[compiledSize]);
-    MOZ_ASSERT(compiled);
-    module->compiledSerialize(compiled.get(), compiledSize);
+    if (module->compilationComplete()) {
+      size_t compiledSize = module->compiledSerializedSize();
+      UniquePtr<uint8_t[]> compiled(new uint8_t[compiledSize]);
+      module->compiledSerialize(compiled.get(), compiledSize);
 
-    blobImpl =
-      new MemoryBlobImpl(compiled.release(), compiledSize, EmptyString());
+      blobImpl =
+        new MemoryBlobImpl(compiled.release(), compiledSize, EmptyString());
+    } else {
+      nsCOMPtr<nsIInputStream> stream(new WasmCompiledModuleStream(module));
+
+      blobImpl = StreamBlobImpl::Create(stream, EmptyString(), UINT64_MAX);
+    }
+
     RefPtr<Blob> compiledBlob = Blob::Create(nullptr, blobImpl);
 
     if (cloneWriteInfo->mFiles.Length() + 1 > size_t(UINT32_MAX)) {
@@ -405,7 +700,8 @@ GetAddInfoCallback(JSContext* aCx, void* aClosure)
     nullptr /* reportError */,
     nullptr /* readTransfer */,
     nullptr /* writeTransfer */,
-    nullptr /* freeTransfer */
+    nullptr /* freeTransfer */,
+    nullptr /* canTransfer */
   };
 
   MOZ_ASSERT(aCx);
@@ -576,6 +872,24 @@ public:
                            JS::MutableHandle<JSObject*> aResult)
   {
     MOZ_ASSERT(aCx);
+
+    // If we have eBlob, we are in an IDB SQLite schema upgrade where we don't
+    // care about a real 'MutableFile', but we just care of having a propert
+    // |mType| flag.
+    if (aFile.mType == StructuredCloneFile::eBlob) {
+      aFile.mType = StructuredCloneFile::eMutableFile;
+
+      // Just make a dummy object.
+      JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
+
+      if (NS_WARN_IF(!obj)) {
+        return false;
+      }
+
+      aResult.set(obj);
+      return true;
+    }
+
     MOZ_ASSERT(aFile.mType == StructuredCloneFile::eMutableFile);
 
     if (!aFile.mMutableFile || !NS_IsMainThread()) {
@@ -609,7 +923,26 @@ public:
                aData.tag == SCTAG_DOM_FILE_WITHOUT_LASTMODIFIEDDATE ||
                aData.tag == SCTAG_DOM_BLOB);
     MOZ_ASSERT(aFile.mType == StructuredCloneFile::eBlob);
-    MOZ_ASSERT(aFile.mBlob);
+
+    RefPtr<Blob> blob = aFile.mBlob;
+
+    /* If we are creating an index, we do not have an mBlob but do have an
+     * mInfo.  Unlike other index or upgrade cases, we do need a real-looking
+     * Blob/File instance because the index's key path can reference their
+     * properties.  Rather than create a fake-looking object, create a real
+     * Blob. */
+    if (!blob) {
+      MOZ_ASSERT(aFile.mFileInfo);
+      nsCOMPtr<nsIFile> file = FileInfo::GetFileForFileInfo(aFile.mFileInfo);
+      if (!file) {
+        return false;
+      }
+
+
+      RefPtr<FileBlobImpl> impl = new FileBlobImpl(file);
+      impl->SetFileId(aFile.mFileInfo->Id());
+      blob = File::Create(nullptr, impl);
+    }
 
     // It can happen that this IDB is chrome code, so there is no parent, but
     // still we want to set a correct parent for the new File object.
@@ -633,22 +966,22 @@ public:
     MOZ_ASSERT(parent);
 
     if (aData.tag == SCTAG_DOM_BLOB) {
-      aFile.mBlob->Impl()->SetLazyData(
-        NullString(), aData.type, aData.size, INT64_MAX);
-      MOZ_ASSERT(!aFile.mBlob->IsFile());
+      blob->Impl()->SetLazyData(
+        VoidString(), aData.type, aData.size, INT64_MAX);
+      MOZ_ASSERT(!blob->IsFile());
 
       // ActorsParent sends here a kind of half blob and half file wrapped into
       // a DOM File object. DOM File and DOM Blob are a WebIDL wrapper around a
       // BlobImpl object. SetLazyData() has just changed the BlobImpl to be a
-      // Blob (see the previous assert), but 'aFile.mBlob' still has the WebIDL
-      // DOM File wrapping.
+      // Blob (see the previous assert), but 'blob' still has the WebIDL DOM
+      // File wrapping.
       // Before exposing it to content, we must recreate a DOM Blob object.
 
-      RefPtr<Blob> blob =
-        Blob::Create(aFile.mBlob->GetParentObject(), aFile.mBlob->Impl());
-      MOZ_ASSERT(blob);
+      RefPtr<Blob> exposedBlob =
+        Blob::Create(blob->GetParentObject(), blob->Impl());
+      MOZ_ASSERT(exposedBlob);
       JS::Rooted<JS::Value> wrappedBlob(aCx);
-      if (!ToJSValue(aCx, blob, &wrappedBlob)) {
+      if (!ToJSValue(aCx, exposedBlob, &wrappedBlob)) {
         return false;
       }
 
@@ -656,12 +989,12 @@ public:
       return true;
     }
 
-    aFile.mBlob->Impl()->SetLazyData(
+    blob->Impl()->SetLazyData(
       aData.name, aData.type, aData.size,
       aData.lastModifiedDate * PR_USEC_PER_MSEC);
 
-    MOZ_ASSERT(aFile.mBlob->IsFile());
-    RefPtr<File> file = aFile.mBlob->ToFile();
+    MOZ_ASSERT(blob->IsFile());
+    RefPtr<File> file = blob->ToFile();
     MOZ_ASSERT(file);
 
     JS::Rooted<JS::Value> wrappedFile(aCx);
@@ -682,7 +1015,20 @@ public:
     MOZ_ASSERT(aCx);
     MOZ_ASSERT(aFile.mType == StructuredCloneFile::eWasmCompiled);
     MOZ_ASSERT(!aFile.mBlob);
-    MOZ_ASSERT(aFile.mWasmModule);
+
+    // If we don't have a WasmModule, we are probably using it for an index
+    // creation, but Wasm module can't be used in index creation, so just make a
+    // dummy object.
+    if (!aFile.mWasmModule) {
+      JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
+
+      if (NS_WARN_IF(!obj)) {
+        return false;
+      }
+
+      aResult.set(obj);
+      return true;
+    }
 
     JS::Rooted<JSObject*> moduleObj(aCx, aFile.mWasmModule->createObject(aCx));
     if (NS_WARN_IF(!moduleObj)) {
@@ -694,187 +1040,6 @@ public:
   }
 };
 
-class IndexDeserializationHelper
-{
-public:
-  static bool
-  CreateAndWrapMutableFile(JSContext* aCx,
-                           StructuredCloneFile& aFile,
-                           const MutableFileData& aData,
-                           JS::MutableHandle<JSObject*> aResult)
-  {
-    // MutableFile can't be used in index creation, so just make a dummy object.
-    JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
-    if (NS_WARN_IF(!obj)) {
-      return false;
-    }
-
-    aResult.set(obj);
-    return true;
-  }
-
-  static bool
-  CreateAndWrapBlobOrFile(JSContext* aCx,
-                          IDBDatabase* aDatabase,
-                          StructuredCloneFile& aFile,
-                          const BlobOrFileData& aData,
-                          JS::MutableHandle<JSObject*> aResult)
-  {
-    MOZ_ASSERT(aData.tag == SCTAG_DOM_FILE ||
-               aData.tag == SCTAG_DOM_FILE_WITHOUT_LASTMODIFIEDDATE ||
-               aData.tag == SCTAG_DOM_BLOB);
-
-    // The following properties are available for use in index creation
-    //   Blob.size
-    //   Blob.type
-    //   File.name
-    //   File.lastModifiedDate
-
-    JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
-    if (NS_WARN_IF(!obj)) {
-      return false;
-    }
-
-    // Technically these props go on the proto, but this detail won't change
-    // the results of index creation.
-
-    JS::Rooted<JSString*> type(aCx,
-      JS_NewUCStringCopyN(aCx, aData.type.get(), aData.type.Length()));
-    if (NS_WARN_IF(!type)) {
-      return false;
-    }
-
-    if (NS_WARN_IF(!JS_DefineProperty(aCx,
-                                      obj,
-                                      "size",
-                                      double(aData.size),
-                                      0))) {
-      return false;
-    }
-
-    if (NS_WARN_IF(!JS_DefineProperty(aCx, obj, "type", type, 0))) {
-      return false;
-    }
-
-    if (aData.tag == SCTAG_DOM_BLOB) {
-      aResult.set(obj);
-      return true;
-    }
-
-    JS::Rooted<JSString*> name(aCx,
-      JS_NewUCStringCopyN(aCx, aData.name.get(), aData.name.Length()));
-    if (NS_WARN_IF(!name)) {
-      return false;
-    }
-
-    JS::ClippedTime time = JS::TimeClip(aData.lastModifiedDate);
-    JS::Rooted<JSObject*> date(aCx, JS::NewDateObject(aCx, time));
-    if (NS_WARN_IF(!date)) {
-      return false;
-    }
-
-    if (NS_WARN_IF(!JS_DefineProperty(aCx, obj, "name", name, 0))) {
-      return false;
-    }
-
-    if (NS_WARN_IF(!JS_DefineProperty(aCx, obj, "lastModifiedDate", date, 0))) {
-      return false;
-    }
-
-    aResult.set(obj);
-    return true;
-  }
-
-  static bool
-  CreateAndWrapWasmModule(JSContext* aCx,
-                          StructuredCloneFile& aFile,
-                          const WasmModuleData& aData,
-                          JS::MutableHandle<JSObject*> aResult)
-  {
-    // Wasm module can't be used in index creation, so just make a dummy object.
-    JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
-    if (NS_WARN_IF(!obj)) {
-      return false;
-    }
-
-    aResult.set(obj);
-    return true;
-  }
-};
-
-// We don't need to upgrade database on B2G. See the comment in ActorsParent.cpp,
-// UpgradeSchemaFrom18_0To19_0()
-#if !defined(MOZ_B2G)
-
-class UpgradeDeserializationHelper
-{
-public:
-  static bool
-  CreateAndWrapMutableFile(JSContext* aCx,
-                           StructuredCloneFile& aFile,
-                           const MutableFileData& aData,
-                           JS::MutableHandle<JSObject*> aResult)
-  {
-    MOZ_ASSERT(aCx);
-    MOZ_ASSERT(aFile.mType == StructuredCloneFile::eBlob);
-
-    aFile.mType = StructuredCloneFile::eMutableFile;
-
-    // Just make a dummy object. The file_ids upgrade function is only
-    // interested in the |mType| flag.
-    JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
-
-    if (NS_WARN_IF(!obj)) {
-      return false;
-    }
-
-    aResult.set(obj);
-    return true;
-  }
-
-  static bool
-  CreateAndWrapBlobOrFile(JSContext* aCx,
-                          IDBDatabase* aDatabase,
-                          StructuredCloneFile& aFile,
-                          const BlobOrFileData& aData,
-                          JS::MutableHandle<JSObject*> aResult)
-  {
-    MOZ_ASSERT(aCx);
-    MOZ_ASSERT(aFile.mType == StructuredCloneFile::eBlob);
-    MOZ_ASSERT(aData.tag == SCTAG_DOM_FILE ||
-               aData.tag == SCTAG_DOM_FILE_WITHOUT_LASTMODIFIEDDATE ||
-               aData.tag == SCTAG_DOM_BLOB);
-
-    // Just make a dummy object. The file_ids upgrade function is only interested
-    // in the |mType| flag.
-    JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
-
-    if (NS_WARN_IF(!obj)) {
-      return false;
-    }
-
-    aResult.set(obj);
-    return true;
-  }
-
-  static bool
-  CreateAndWrapWasmModule(JSContext* aCx,
-                          StructuredCloneFile& aFile,
-                          const WasmModuleData& aData,
-                          JS::MutableHandle<JSObject*> aResult)
-  {
-    MOZ_ASSERT(aCx);
-    MOZ_ASSERT(aFile.mType == StructuredCloneFile::eBlob);
-
-    MOZ_ASSERT(false, "This should never be possible!");
-
-    return false;
-  }
-};
-
-#endif // MOZ_B2G
-
-template <class Traits>
 JSObject*
 CommonStructuredCloneReadCallback(JSContext* aCx,
                                   JSStructuredCloneReader* aReader,
@@ -918,10 +1083,10 @@ CommonStructuredCloneReadCallback(JSContext* aCx,
 
       StructuredCloneFile& file = cloneReadInfo->mFiles[data.compiledIndex];
 
-      if (NS_WARN_IF(!Traits::CreateAndWrapWasmModule(aCx,
-                                                      file,
-                                                      data,
-                                                      &result))) {
+      if (NS_WARN_IF(!ValueDeserializationHelper::CreateAndWrapWasmModule(aCx,
+                                                                          file,
+                                                                          data,
+                                                                          &result))) {
         return nullptr;
       }
 
@@ -941,10 +1106,10 @@ CommonStructuredCloneReadCallback(JSContext* aCx,
         return nullptr;
       }
 
-      if (NS_WARN_IF(!Traits::CreateAndWrapMutableFile(aCx,
-                                                       file,
-                                                       data,
-                                                       &result))) {
+      if (NS_WARN_IF(!ValueDeserializationHelper::CreateAndWrapMutableFile(aCx,
+                                                                           file,
+                                                                           data,
+                                                                           &result))) {
         return nullptr;
       }
 
@@ -956,11 +1121,11 @@ CommonStructuredCloneReadCallback(JSContext* aCx,
       return nullptr;
     }
 
-    if (NS_WARN_IF(!Traits::CreateAndWrapBlobOrFile(aCx,
-                                                    cloneReadInfo->mDatabase,
-                                                    file,
-                                                    data,
-                                                    &result))) {
+    if (NS_WARN_IF(!ValueDeserializationHelper::CreateAndWrapBlobOrFile(aCx,
+                                                                        cloneReadInfo->mDatabase,
+                                                                        file,
+                                                                        data,
+                                                                        &result))) {
       return nullptr;
     }
 
@@ -1029,9 +1194,7 @@ IDBObjectStore::AppendIndexUpdateInfo(
 {
   nsresult rv;
 
-#ifdef ENABLE_INTL_API
   const bool localeAware = !aLocale.IsEmpty();
-#endif
 
   if (!aMultiEntry) {
     Key key;
@@ -1049,14 +1212,12 @@ IDBObjectStore::AppendIndexUpdateInfo(
     IndexUpdateInfo* updateInfo = aUpdateInfoArray.AppendElement();
     updateInfo->indexId() = aIndexID;
     updateInfo->value() = key;
-#ifdef ENABLE_INTL_API
     if (localeAware) {
       rv = key.ToLocaleBasedKey(updateInfo->localizedValue(), aLocale);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
       }
     }
-#endif
 
     return NS_OK;
   }
@@ -1096,14 +1257,12 @@ IDBObjectStore::AppendIndexUpdateInfo(
       IndexUpdateInfo* updateInfo = aUpdateInfoArray.AppendElement();
       updateInfo->indexId() = aIndexID;
       updateInfo->value() = value;
-#ifdef ENABLE_INTL_API
       if (localeAware) {
         rv = value.ToLocaleBasedKey(updateInfo->localizedValue(), aLocale);
         if (NS_WARN_IF(NS_FAILED(rv))) {
           return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
         }
       }
-#endif
     }
   }
   else {
@@ -1117,14 +1276,12 @@ IDBObjectStore::AppendIndexUpdateInfo(
     IndexUpdateInfo* updateInfo = aUpdateInfoArray.AppendElement();
     updateInfo->indexId() = aIndexID;
     updateInfo->value() = value;
-#ifdef ENABLE_INTL_API
     if (localeAware) {
       rv = value.ToLocaleBasedKey(updateInfo->localizedValue(), aLocale);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
       }
     }
-#endif
   }
 
   return NS_OK;
@@ -1162,7 +1319,8 @@ IDBObjectStore::DeserializeValue(JSContext* aCx,
   JSAutoRequest ar(aCx);
 
   static const JSStructuredCloneCallbacks callbacks = {
-    CommonStructuredCloneReadCallback<ValueDeserializationHelper>,
+    CommonStructuredCloneReadCallback,
+    nullptr,
     nullptr,
     nullptr,
     nullptr,
@@ -1173,86 +1331,364 @@ IDBObjectStore::DeserializeValue(JSContext* aCx,
   // FIXME: Consider to use StructuredCloneHolder here and in other
   //        deserializing methods.
   if (!JS_ReadStructuredClone(aCx, aCloneReadInfo.mData, JS_STRUCTURED_CLONE_VERSION,
-                              JS::StructuredCloneScope::SameProcessSameThread,
+                              JS::StructuredCloneScope::DifferentProcessForIndexedDB,
                               aValue, &callbacks, &aCloneReadInfo)) {
     return false;
   }
 
   return true;
+}
+
+namespace {
+
+// This class helps to create only 1 sandbox.
+class SandboxHolder final
+{
+public:
+  NS_INLINE_DECL_REFCOUNTING(SandboxHolder)
+
+  static JSObject*
+  GetSandbox(JSContext* aCx)
+  {
+    SandboxHolder* holder = GetOrCreate();
+    return holder->GetSandboxInternal(aCx);
+  }
+
+private:
+  ~SandboxHolder() = default;
+
+  static SandboxHolder*
+  GetOrCreate()
+  {
+    MOZ_ASSERT(XRE_IsParentProcess());
+    MOZ_ASSERT(NS_IsMainThread());
+
+    static StaticRefPtr<SandboxHolder> sHolder;
+    if (!sHolder) {
+      sHolder = new SandboxHolder();
+      ClearOnShutdown(&sHolder);
+    }
+    return sHolder;
+  }
+
+  JSObject*
+  GetSandboxInternal(JSContext* aCx)
+  {
+    if (!mSandbox) {
+      nsIXPConnect* xpc = nsContentUtils::XPConnect();
+      MOZ_ASSERT(xpc, "This should never be null!");
+
+      // Let's use a null principal.
+      nsCOMPtr<nsIPrincipal> principal = NullPrincipal::CreateWithoutOriginAttributes();
+
+      JS::Rooted<JSObject*> sandbox(aCx);
+      nsresult rv = xpc->CreateSandbox(aCx, principal, sandbox.address());
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return nullptr;
+      }
+
+      mSandbox = new JSObjectHolder(aCx, sandbox);
+    }
+
+    return mSandbox->GetJSObject();
+  }
+
+  RefPtr<JSObjectHolder> mSandbox;
+};
+
+class DeserializeIndexValueHelper final : public Runnable
+{
+public:
+  DeserializeIndexValueHelper(int64_t aIndexID,
+                              const KeyPath& aKeyPath,
+                              bool aUnique,
+                              bool aMultiEntry,
+                              const nsCString& aLocale,
+                              StructuredCloneReadInfo& aCloneReadInfo,
+                              nsTArray<IndexUpdateInfo>& aUpdateInfoArray)
+    : Runnable("DeserializeIndexValueHelper")
+    , mMonitor("DeserializeIndexValueHelper::mMonitor")
+    , mIndexID(aIndexID)
+    , mKeyPath(aKeyPath)
+    , mUnique(aUnique)
+    , mMultiEntry(aMultiEntry)
+    , mLocale(aLocale)
+    , mCloneReadInfo(aCloneReadInfo)
+    , mUpdateInfoArray(aUpdateInfoArray)
+    , mStatus(NS_ERROR_FAILURE)
+  {}
+
+  nsresult
+  DispatchAndWait()
+  {
+    // We don't need to go to the main-thread and use the sandbox. Let's create
+    // the updateInfo data here.
+    if (!mCloneReadInfo.mData.Size()) {
+      AutoJSAPI jsapi;
+      jsapi.Init();
+
+      JS::Rooted<JS::Value> value(jsapi.cx());
+      value.setUndefined();
+
+      return IDBObjectStore::AppendIndexUpdateInfo(mIndexID, mKeyPath, mUnique,
+                                                   mMultiEntry, mLocale,
+                                                   jsapi.cx(), value,
+                                                   mUpdateInfoArray);
+    }
+
+    // The operation will continue on the main-thread.
+
+    MOZ_ASSERT(!(mCloneReadInfo.mData.Size() % sizeof(uint64_t)));
+
+    MonitorAutoLock lock(mMonitor);
+
+    RefPtr<Runnable> self = this;
+    nsresult rv = SystemGroup::Dispatch(TaskCategory::Other, self.forget());
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    lock.Wait();
+    return mStatus;
+  }
+
+  NS_IMETHOD
+  Run() override
+  {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    AutoJSAPI jsapi;
+    jsapi.Init();
+    JSContext* cx = jsapi.cx();
+
+    JS::Rooted<JSObject*> global(cx, SandboxHolder::GetSandbox(cx));
+    if (NS_WARN_IF(!global)) {
+      OperationCompleted(NS_ERROR_FAILURE);
+      return NS_OK;
+    }
+
+    JSAutoCompartment ac(cx, global);
+
+    JS::Rooted<JS::Value> value(cx);
+    nsresult rv = DeserializeIndexValue(cx, &value);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      OperationCompleted(rv);
+      return NS_OK;
+    }
+
+    rv = IDBObjectStore::AppendIndexUpdateInfo(mIndexID, mKeyPath, mUnique,
+                                               mMultiEntry, mLocale, cx,
+                                               value, mUpdateInfoArray);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      OperationCompleted(rv);
+      return NS_OK;
+    }
+
+    OperationCompleted(NS_OK);
+    return NS_OK;
+  }
+
+private:
+  nsresult
+  DeserializeIndexValue(JSContext* aCx, JS::MutableHandle<JS::Value> aValue)
+  {
+    static const JSStructuredCloneCallbacks callbacks = {
+      CommonStructuredCloneReadCallback,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+    };
+
+    if (!JS_ReadStructuredClone(aCx, mCloneReadInfo.mData,
+                                JS_STRUCTURED_CLONE_VERSION,
+                                JS::StructuredCloneScope::DifferentProcessForIndexedDB,
+                                aValue, &callbacks, &mCloneReadInfo)) {
+      return NS_ERROR_DOM_DATA_CLONE_ERR;
+    }
+
+    return NS_OK;
+  }
+
+  void
+  OperationCompleted(nsresult aStatus)
+  {
+    mStatus = aStatus;
+
+    MonitorAutoLock lock(mMonitor);
+    lock.Notify();
+  }
+
+  Monitor mMonitor;
+
+  int64_t mIndexID;
+  const KeyPath& mKeyPath;
+  bool mUnique;
+  bool mMultiEntry;
+  const nsCString mLocale;
+  StructuredCloneReadInfo& mCloneReadInfo;
+  nsTArray<IndexUpdateInfo>& mUpdateInfoArray;
+  nsresult mStatus;
+};
+
+class DeserializeUpgradeValueHelper final : public Runnable
+{
+public:
+  explicit DeserializeUpgradeValueHelper(StructuredCloneReadInfo& aCloneReadInfo)
+    : Runnable("DeserializeUpgradeValueHelper")
+    , mMonitor("DeserializeUpgradeValueHelper::mMonitor")
+    , mCloneReadInfo(aCloneReadInfo)
+    , mStatus(NS_ERROR_FAILURE)
+  {}
+
+  nsresult
+  DispatchAndWait(nsAString& aFileIds)
+  {
+    // We don't need to go to the main-thread and use the sandbox.
+    if (!mCloneReadInfo.mData.Size()) {
+      PopulateFileIds(aFileIds);
+      return NS_OK;
+    }
+
+    // The operation will continue on the main-thread.
+
+    MOZ_ASSERT(!(mCloneReadInfo.mData.Size() % sizeof(uint64_t)));
+
+    MonitorAutoLock lock(mMonitor);
+
+    RefPtr<Runnable> self = this;
+    nsresult rv = SystemGroup::Dispatch(TaskCategory::Other, self.forget());
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    lock.Wait();
+
+    if (NS_FAILED(mStatus)) {
+      return mStatus;
+    }
+
+    PopulateFileIds(aFileIds);
+    return NS_OK;
+  }
+
+  NS_IMETHOD
+  Run() override
+  {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    AutoJSAPI jsapi;
+    jsapi.Init();
+    JSContext* cx = jsapi.cx();
+
+    JS::Rooted<JSObject*> global(cx, SandboxHolder::GetSandbox(cx));
+    if (NS_WARN_IF(!global)) {
+      OperationCompleted(NS_ERROR_FAILURE);
+      return NS_OK;
+    }
+
+    JSAutoCompartment ac(cx, global);
+
+    JS::Rooted<JS::Value> value(cx);
+    nsresult rv = DeserializeUpgradeValue(cx, &value);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      OperationCompleted(rv);
+      return NS_OK;
+    }
+
+    OperationCompleted(NS_OK);
+    return NS_OK;
+  }
+
+private:
+  nsresult
+  DeserializeUpgradeValue(JSContext* aCx, JS::MutableHandle<JS::Value> aValue)
+  {
+    static const JSStructuredCloneCallbacks callbacks = {
+      CommonStructuredCloneReadCallback,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+    };
+
+    if (!JS_ReadStructuredClone(aCx, mCloneReadInfo.mData,
+                                JS_STRUCTURED_CLONE_VERSION,
+                                JS::StructuredCloneScope::DifferentProcessForIndexedDB,
+                                aValue, &callbacks, &mCloneReadInfo)) {
+      return NS_ERROR_DOM_DATA_CLONE_ERR;
+    }
+
+    return NS_OK;
+  }
+
+  void
+  PopulateFileIds(nsAString& aFileIds)
+  {
+    for (uint32_t count = mCloneReadInfo.mFiles.Length(), index = 0;
+         index < count;
+         index++) {
+      StructuredCloneFile& file = mCloneReadInfo.mFiles[index];
+      MOZ_ASSERT(file.mFileInfo);
+
+      const int64_t id = file.mFileInfo->Id();
+
+      if (index) {
+        aFileIds.Append(' ');
+      }
+      aFileIds.AppendInt(file.mType == StructuredCloneFile::eBlob ? id : -id);
+    }
+  }
+
+  void
+  OperationCompleted(nsresult aStatus)
+  {
+    mStatus = aStatus;
+
+    MonitorAutoLock lock(mMonitor);
+    lock.Notify();
+  }
+
+  Monitor mMonitor;
+  StructuredCloneReadInfo& mCloneReadInfo;
+  nsresult mStatus;
+};
+
+} // anonymous
+
+// static
+nsresult
+IDBObjectStore::DeserializeIndexValueToUpdateInfos(int64_t aIndexID,
+                                                   const KeyPath& aKeyPath,
+                                                   bool aUnique,
+                                                   bool aMultiEntry,
+                                                   const nsCString& aLocale,
+                                                   StructuredCloneReadInfo& aCloneReadInfo,
+                                                   nsTArray<IndexUpdateInfo>& aUpdateInfoArray)
+{
+  MOZ_ASSERT(!NS_IsMainThread());
+
+  RefPtr<DeserializeIndexValueHelper> helper =
+    new DeserializeIndexValueHelper(aIndexID, aKeyPath, aUnique, aMultiEntry,
+                                    aLocale, aCloneReadInfo, aUpdateInfoArray);
+  return helper->DispatchAndWait();
 }
 
 // static
-bool
-IDBObjectStore::DeserializeIndexValue(JSContext* aCx,
-                                      StructuredCloneReadInfo& aCloneReadInfo,
-                                      JS::MutableHandle<JS::Value> aValue)
+nsresult
+IDBObjectStore::DeserializeUpgradeValueToFileIds(StructuredCloneReadInfo& aCloneReadInfo,
+                                                 nsAString& aFileIds)
 {
   MOZ_ASSERT(!NS_IsMainThread());
-  MOZ_ASSERT(aCx);
 
-  if (!aCloneReadInfo.mData.Size()) {
-    aValue.setUndefined();
-    return true;
-  }
-
-  MOZ_ASSERT(!(aCloneReadInfo.mData.Size() % sizeof(uint64_t)));
-
-  JSAutoRequest ar(aCx);
-
-  static const JSStructuredCloneCallbacks callbacks = {
-    CommonStructuredCloneReadCallback<IndexDeserializationHelper>,
-    nullptr,
-    nullptr
-  };
-
-  if (!JS_ReadStructuredClone(aCx, aCloneReadInfo.mData, JS_STRUCTURED_CLONE_VERSION,
-                              JS::StructuredCloneScope::SameProcessSameThread,
-                              aValue, &callbacks, &aCloneReadInfo)) {
-    return false;
-  }
-
-  return true;
+  RefPtr<DeserializeUpgradeValueHelper> helper =
+    new DeserializeUpgradeValueHelper(aCloneReadInfo);
+  return helper->DispatchAndWait(aFileIds);
 }
-
-#if !defined(MOZ_B2G)
-
-// static
-bool
-IDBObjectStore::DeserializeUpgradeValue(JSContext* aCx,
-                                        StructuredCloneReadInfo& aCloneReadInfo,
-                                        JS::MutableHandle<JS::Value> aValue)
-{
-  MOZ_ASSERT(!NS_IsMainThread());
-  MOZ_ASSERT(aCx);
-
-  if (!aCloneReadInfo.mData.Size()) {
-    aValue.setUndefined();
-    return true;
-  }
-
-  MOZ_ASSERT(!(aCloneReadInfo.mData.Size() % sizeof(uint64_t)));
-
-  JSAutoRequest ar(aCx);
-
-  static JSStructuredCloneCallbacks callbacks = {
-    CommonStructuredCloneReadCallback<UpgradeDeserializationHelper>,
-    nullptr,
-    nullptr,
-    nullptr,
-    nullptr,
-    nullptr
-  };
-
-  if (!JS_ReadStructuredClone(aCx, aCloneReadInfo.mData, JS_STRUCTURED_CLONE_VERSION,
-                              JS::StructuredCloneScope::SameProcessSameThread,
-                              aValue, &callbacks, &aCloneReadInfo)) {
-    return false;
-  }
-
-  return true;
-}
-
-#endif // MOZ_B2G
 
 #ifdef DEBUG
 
@@ -1994,11 +2430,9 @@ IDBObjectStore::CreateIndex(const nsAString& aName,
   // Valid locale names are always ASCII as per BCP-47.
   nsCString locale = NS_LossyConvertUTF16toASCII(aOptionalParameters.mLocale);
   bool autoLocale = locale.EqualsASCII("auto");
-#ifdef ENABLE_INTL_API
   if (autoLocale) {
     locale = IndexedDatabaseManager::GetLocale();
   }
-#endif
 
   IndexMetadata* metadata = indexes.AppendElement(
     IndexMetadata(transaction->NextIndexId(), nsString(aName), keyPath,

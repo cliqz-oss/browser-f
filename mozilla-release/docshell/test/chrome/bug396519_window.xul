@@ -17,9 +17,6 @@
 
     const LISTEN_EVENTS = ["pageshow"];
 
-    const Cc = Components.classes;
-    const Ci = Components.interfaces;
-
     var gBrowser;
     var gTestCount = 0;
     var gTestsIterator;
@@ -62,8 +59,8 @@
       var history = gBrowser.webNavigation.sessionHistory;
       if (history.count == gExpected.length) {
         for (var i=0; i<history.count; i++) {
-          var shEntry = history.getEntryAtIndex(i,false).
-                          QueryInterface(Components.interfaces.nsISHEntry);
+          var shEntry = history.legacySHistory.getEntryAtIndex(i,false).
+                          QueryInterface(Ci.nsISHEntry);
           is(!!shEntry.contentViewer, gExpected[i], "content viewer "+i+", test "+gTestCount);
         }
 
@@ -74,9 +71,9 @@
             if (j == i)
               continue;
 
-            let shentry1 = history.getEntryAtIndex(i, false)
+            let shentry1 = history.legacySHistory.getEntryAtIndex(i, false)
                                   .QueryInterface(Ci.nsISHEntry);
-            let shentry2 = history.getEntryAtIndex(j, false)
+            let shentry2 = history.legacySHistory.getEntryAtIndex(j, false)
                                   .QueryInterface(Ci.nsISHEntry);
             ok(!shentry1.sharesDocumentWith(shentry2),
                'Test ' + gTestCount + ': shentry[' + i + "] shouldn't " +

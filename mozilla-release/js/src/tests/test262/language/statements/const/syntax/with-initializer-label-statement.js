@@ -7,7 +7,9 @@ description: >
     const declarations with initialisers in statement positions: 
     label: Statement
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 label: const x = 1;

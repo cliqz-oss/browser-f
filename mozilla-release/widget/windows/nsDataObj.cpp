@@ -16,7 +16,7 @@
 #include "nsISupportsPrimitives.h"
 #include "IEnumFE.h"
 #include "nsPrimitiveHelpers.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "nsImageClipboard.h"
 #include "nsCRT.h"
 #include "nsPrintfCString.h"
@@ -34,6 +34,7 @@
 #include "nsIContentPolicy.h"
 #include "nsContentUtils.h"
 #include "nsIPrincipal.h"
+#include "nsNativeCharsetUtils.h"
 
 #include "WinUtils.h"
 #include "mozilla/LazyIdleThread.h"
@@ -76,6 +77,7 @@ nsresult nsDataObj::CStream::Init(nsIURI *pSourceURI,
                      aRequestingPrincipal,
                      nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS,
                      aContentPolicyType,
+                     nullptr,   // PerformanceStorage
                      nullptr,   // loadGroup
                      nullptr,   // aCallbacks
                      nsIRequest::LOAD_FROM_CACHE);
@@ -439,7 +441,7 @@ STDMETHODIMP_(ULONG) nsDataObj::AddRef()
 }
 
 namespace {
-class RemoveTempFileHelper : public nsIObserver
+class RemoveTempFileHelper final : public nsIObserver
 {
 public:
   explicit RemoveTempFileHelper(nsIFile* aTempFile)
@@ -455,11 +457,11 @@ public:
     // We need to listen to both the xpcom shutdown message and our timer, and
     // fire when the first of either of these two messages is received.
     nsresult rv;
-    mTimer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
+    rv = NS_NewTimerWithObserver(getter_AddRefs(mTimer),
+                                 this, 500, nsITimer::TYPE_ONE_SHOT);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return;
     }
-    mTimer->Init(this, 500, nsITimer::TYPE_ONE_SHOT);
 
     nsCOMPtr<nsIObserverService> observerService =
       do_GetService("@mozilla.org/observer-service;1");
@@ -1079,7 +1081,7 @@ CreateFilenameFromTextW(nsString & aText, const wchar_t * aExtension,
 #define PAGEINFO_PROPERTIES "chrome://navigator/locale/pageInfo.properties"
 
 static bool
-GetLocalizedString(const char* aName, nsXPIDLString & aString)
+GetLocalizedString(const char* aName, nsAString& aString)
 {
   nsCOMPtr<nsIStringBundleService> stringService =
     mozilla::services::GetStringBundleService();
@@ -1092,7 +1094,7 @@ GetLocalizedString(const char* aName, nsXPIDLString & aString)
   if (NS_FAILED(rv))
     return false;
 
-  rv = stringBundle->GetStringFromName(aName, getter_Copies(aString));
+  rv = stringBundle->GetStringFromName(aName, aString);
   return NS_SUCCEEDED(rv);
 }
 
@@ -1124,7 +1126,7 @@ nsDataObj :: GetFileDescriptorInternetShortcutA ( FORMATETC& aFE, STGMEDIUM& aST
   // 2) localized string for an untitled page, 3) just use "Untitled.URL"
   if (!CreateFilenameFromTextA(title, ".URL", 
                                fileGroupDescA->fgd[0].cFileName, NS_MAX_FILEDESCRIPTOR)) {
-    nsXPIDLString untitled;
+    nsAutoString untitled;
     if (!GetLocalizedString("noPageTitle", untitled) ||
         !CreateFilenameFromTextA(untitled, ".URL", 
                                  fileGroupDescA->fgd[0].cFileName, NS_MAX_FILEDESCRIPTOR)) {
@@ -1165,7 +1167,7 @@ nsDataObj :: GetFileDescriptorInternetShortcutW ( FORMATETC& aFE, STGMEDIUM& aST
   // 2) localized string for an untitled page, 3) just use "Untitled.URL"
   if (!CreateFilenameFromTextW(title, L".URL",
                                fileGroupDescW->fgd[0].cFileName, NS_MAX_FILEDESCRIPTOR)) {
-    nsXPIDLString untitled;
+    nsAutoString untitled;
     if (!GetLocalizedString("noPageTitle", untitled) ||
         !CreateFilenameFromTextW(untitled, L".URL",
                                  fileGroupDescW->fgd[0].cFileName, NS_MAX_FILEDESCRIPTOR)) {
@@ -1213,7 +1215,7 @@ nsDataObj :: GetFileContentsInternetShortcut ( FORMATETC& aFE, STGMEDIUM& aSTG )
 
   const char *shortcutFormatStr;
   int totalLen;
-  nsCString path;
+  nsCString asciiPath;
   if (!Preferences::GetBool(kShellIconPref, true)) {
     shortcutFormatStr = "[InternetShortcut]\r\nURL=%s\r\n";
     const int formatLen = strlen(shortcutFormatStr) - 2;  // don't include %s
@@ -1227,15 +1229,29 @@ nsDataObj :: GetFileContentsInternetShortcut ( FORMATETC& aFE, STGMEDIUM& aSTG )
 
     rv = mozilla::widget::FaviconHelper::GetOutputIconPath(aUri, icoFile, true);
     NS_ENSURE_SUCCESS(rv, E_FAIL);
-    rv = icoFile->GetNativePath(path);
+    nsString path;
+    rv = icoFile->GetPath(path);
     NS_ENSURE_SUCCESS(rv, E_FAIL);
 
-    shortcutFormatStr = "[InternetShortcut]\r\nURL=%s\r\n"
-                        "IDList=\r\nHotKey=0\r\nIconFile=%s\r\n"
-                        "IconIndex=0\r\n";
+    if (NS_IsAscii(path.get())) {
+      LossyCopyUTF16toASCII(path, asciiPath);
+      shortcutFormatStr = "[InternetShortcut]\r\nURL=%s\r\n"
+                          "IDList=\r\nHotKey=0\r\nIconFile=%s\r\n"
+                          "IconIndex=0\r\n";
+    } else {
+      int len = WideCharToMultiByte(CP_UTF7, 0, char16ptr_t(path.BeginReading()),
+                                    path.Length(), nullptr, 0, nullptr, nullptr);
+      NS_ENSURE_TRUE(len > 0, E_FAIL);
+      asciiPath.SetLength(len);
+      WideCharToMultiByte(CP_UTF7, 0, char16ptr_t(path.BeginReading()), path.Length(),
+                          asciiPath.BeginWriting(), len, nullptr, nullptr);
+      shortcutFormatStr = "[InternetShortcut]\r\nURL=%s\r\n"
+                          "IDList=\r\nHotKey=0\r\nIconIndex=0\r\n"
+                          "[InternetShortcut.W]\r\nIconFile=%s\r\n";
+    }
     const int formatLen = strlen(shortcutFormatStr) - 2 * 2; // no %s twice
     totalLen = formatLen + asciiUrl.Length() +
-               path.Length(); // we don't want a null character on the end
+               asciiPath.Length(); // we don't want a null character on the end
   }
 
   // create a global memory area and build up the file contents w/in it
@@ -1257,7 +1273,7 @@ nsDataObj :: GetFileContentsInternetShortcut ( FORMATETC& aFE, STGMEDIUM& aSTG )
   if (!Preferences::GetBool(kShellIconPref, true)) {
     _snprintf(contents, totalLen, shortcutFormatStr, asciiUrl.get());
   } else {
-    _snprintf(contents, totalLen, shortcutFormatStr, asciiUrl.get(), path.get());
+    _snprintf(contents, totalLen, shortcutFormatStr, asciiUrl.get(), asciiPath.get());
   }
 
   ::GlobalUnlock(hGlobalMemory);
@@ -1341,7 +1357,8 @@ HRESULT nsDataObj::GetText(const nsACString & aDataFlavor, FORMATETC& aFE, STGME
   mTransferable->GetTransferData(flavorStr, getter_AddRefs(genericDataWrapper), &len);
   if ( !len )
     return E_FAIL;
-  nsPrimitiveHelpers::CreateDataFromPrimitive ( flavorStr, genericDataWrapper, &data, len );
+  nsPrimitiveHelpers::CreateDataFromPrimitive(
+    nsDependentCString(flavorStr), genericDataWrapper, &data, len);
   if ( !data )
     return E_FAIL;
 

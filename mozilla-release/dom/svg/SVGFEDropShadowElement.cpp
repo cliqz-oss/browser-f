@@ -109,7 +109,7 @@ SVGFEDropShadowElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstance,
 
   nsIFrame* frame = GetPrimaryFrame();
   if (frame) {
-    nsStyleContext* style = frame->StyleContext();
+    ComputedStyle* style = frame->Style();
     Color color(Color::FromABGR(style->StyleSVGReset()->mFloodColor));
     color.a *= style->StyleSVGReset()->mFloodOpacity;
     descr.Attributes().Set(eDropShadowColor, color);
@@ -121,7 +121,7 @@ SVGFEDropShadowElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstance,
 
 bool
 SVGFEDropShadowElement::AttributeAffectsRendering(int32_t aNameSpaceID,
-                                                  nsIAtom* aAttribute) const
+                                                  nsAtom* aAttribute) const
 {
   return SVGFEDropShadowElementBase::AttributeAffectsRendering(aNameSpaceID, aAttribute) ||
          (aNameSpaceID == kNameSpaceID_None &&
@@ -141,7 +141,7 @@ SVGFEDropShadowElement::GetSourceImageNames(nsTArray<nsSVGStringInfo>& aSources)
 // nsIContent methods
 
 NS_IMETHODIMP_(bool)
-SVGFEDropShadowElement::IsAttributeMapped(const nsIAtom* name) const
+SVGFEDropShadowElement::IsAttributeMapped(const nsAtom* name) const
 {
   static const MappedAttributeEntry* const map[] = {
     sFEFloodMap

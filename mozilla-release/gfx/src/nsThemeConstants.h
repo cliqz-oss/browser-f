@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -132,6 +134,9 @@ enum ThemeWidgetType : uint8_t {
 
   // A tooltip
   NS_THEME_TOOLTIP,
+
+  // A inner-spin control
+  NS_THEME_INNER_SPIN_BUTTON,
 
   // A spin control (up/down control for time/date pickers)
   NS_THEME_SPINNER,
@@ -292,6 +297,8 @@ enum ThemeWidgetType : uint8_t {
 
   NS_THEME_MAC_VIBRANCY_LIGHT,
   NS_THEME_MAC_VIBRANCY_DARK,
+  NS_THEME_MAC_VIBRANT_TITLEBAR_LIGHT,
+  NS_THEME_MAC_VIBRANT_TITLEBAR_DARK,
   NS_THEME_MAC_DISCLOSURE_BUTTON_OPEN,
   NS_THEME_MAC_DISCLOSURE_BUTTON_CLOSED,
 

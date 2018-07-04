@@ -4,10 +4,6 @@
 
 // Test the HeapAnalyses{Client,Worker} "getImmediatelyDominated" request.
 
-function run_test() {
-  run_next_test();
-}
-
 const breakdown = {
   by: "coarseType",
   objects: { by: "count", count: true, bytes: true },
@@ -16,14 +12,14 @@ const breakdown = {
   other: { by: "count", count: true, bytes: true },
 };
 
-add_task(function* () {
+add_task(async function() {
   const client = new HeapAnalysesClient();
 
   const snapshotFilePath = saveNewHeapSnapshot();
-  yield client.readHeapSnapshot(snapshotFilePath);
-  const dominatorTreeId = yield client.computeDominatorTree(snapshotFilePath);
+  await client.readHeapSnapshot(snapshotFilePath);
+  const dominatorTreeId = await client.computeDominatorTree(snapshotFilePath);
 
-  const partialTree = yield client.getDominatorTree({
+  const partialTree = await client.getDominatorTree({
     dominatorTreeId,
     breakdown
   });
@@ -31,7 +27,7 @@ add_task(function* () {
      "root should immediately dominate some nodes");
 
   // First, test getting a subset of children available.
-  const response = yield client.getImmediatelyDominated({
+  const response = await client.getImmediatelyDominated({
     dominatorTreeId,
     breakdown,
     nodeId: partialTree.nodeId,
@@ -55,7 +51,7 @@ add_task(function* () {
   }
 
   // Next, test getting a subset of children available.
-  const secondResponse = yield client.getImmediatelyDominated({
+  const secondResponse = await client.getImmediatelyDominated({
     dominatorTreeId,
     breakdown,
     nodeId: partialTree.nodeId,

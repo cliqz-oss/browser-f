@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,8 +13,8 @@
 TEST_F(APZCTreeManagerTester, WheelInterruptedByMouseDrag) {
   // Set up a scrollable layer
   CreateSimpleScrollingLayer();
-  ScopedLayerTreeRegistration registration(manager, 0, root, mcc);
-  manager->UpdateHitTestingTree(0, root, false, 0, 0);
+  ScopedLayerTreeRegistration registration(manager, LayersId{0}, root, mcc);
+  manager->UpdateHitTestingTree(LayersId{0}, root, false, LayersId{0}, 0);
   RefPtr<TestAsyncPanZoomController> apzc = ApzcOf(root);
 
   uint64_t dragBlockId = 0;

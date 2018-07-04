@@ -3,11 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use bluetooth_traits::BluetoothRequest;
+use canvas_traits::webgl::WebGLPipeline;
 use compositing::CompositionPipeline;
 use compositing::CompositorProxy;
 use compositing::compositor_thread::Msg as CompositorMsg;
 use devtools_traits::{DevtoolsControlMsg, ScriptToDevtoolsControlMsg};
-use euclid::{TypedSize2D, ScaleFactor};
+use euclid::{TypedSize2D, TypedScale};
 use event_loop::EventLoop;
 use gfx::font_cache_thread::FontCacheThread;
 use ipc_channel::Error;
@@ -15,16 +16,16 @@ use ipc_channel::ipc::{self, IpcReceiver, IpcSender};
 use ipc_channel::router::ROUTER;
 use layout_traits::LayoutThreadFactory;
 use metrics::PaintTimeMetrics;
-use msg::constellation_msg::{BrowsingContextId, TopLevelBrowsingContextId, FrameType, PipelineId, PipelineNamespaceId};
+use msg::constellation_msg::{BrowsingContextId, TopLevelBrowsingContextId, PipelineId, PipelineNamespaceId};
 use net::image_cache::ImageCacheImpl;
 use net_traits::{IpcSend, ResourceThreads};
 use net_traits::image_cache::ImageCache;
 use profile_traits::mem as profile_mem;
 use profile_traits::time;
-use script_traits::{ConstellationControlMsg, DiscardBrowsingContext};
+use script_traits::{ConstellationControlMsg, DiscardBrowsingContext, ScriptToConstellationChan};
 use script_traits::{DocumentActivity, InitialScriptState};
-use script_traits::{LayoutControlMsg, LayoutMsg, LoadData, MozBrowserEvent};
-use script_traits::{NewLayoutInfo, SWManagerMsg, SWManagerSenders, ScriptMsg};
+use script_traits::{LayoutControlMsg, LayoutMsg, LoadData};
+use script_traits::{NewLayoutInfo, SWManagerMsg, SWManagerSenders};
 use script_traits::{ScriptThreadFactory, TimerSchedulerMsg, WindowSizeData};
 use servo_config::opts::{self, Opts};
 use servo_config::prefs::{PREFS, Pref};
@@ -57,11 +58,8 @@ pub struct Pipeline {
     pub top_level_browsing_context_id: TopLevelBrowsingContextId,
 
     /// The parent pipeline of this one. `None` if this is a root pipeline.
-    /// Note that because of mozbrowser iframes, even top-level pipelines
-    /// may have a parent (in which case the frame type will be
-    /// `MozbrowserIFrame`).
     /// TODO: move this field to `BrowsingContext`.
-    pub parent_info: Option<(PipelineId, FrameType)>,
+    pub parent_info: Option<PipelineId>,
 
     /// The event loop handling this pipeline.
     pub event_loop: Rc<EventLoop>,
@@ -91,6 +89,9 @@ pub struct Pipeline {
     /// Whether this pipeline should be treated as visible for the purposes of scheduling and
     /// resource management.
     pub visible: bool,
+
+    /// The Load Data used to create this pipeline.
+    pub load_data: LoadData,
 }
 
 /// Initial setup data needed to construct a pipeline.
@@ -109,10 +110,10 @@ pub struct InitialPipelineState {
 
     /// The ID of the parent pipeline and frame type, if any.
     /// If `None`, this is the root.
-    pub parent_info: Option<(PipelineId, FrameType)>,
+    pub parent_info: Option<PipelineId>,
 
     /// A channel to the associated constellation.
-    pub constellation_chan: IpcSender<ScriptMsg>,
+    pub script_to_constellation_chan: ScriptToConstellationChan,
 
     /// A channel for the layout thread to send messages to the constellation.
     pub layout_to_constellation_chan: IpcSender<LayoutMsg>,
@@ -148,7 +149,7 @@ pub struct InitialPipelineState {
     pub window_size: Option<TypedSize2D<f32, CSSPixel>>,
 
     /// Information about the device pixel ratio.
-    pub device_pixel_ratio: ScaleFactor<f32, CSSPixel, DevicePixel>,
+    pub device_pixel_ratio: TypedScale<f32, CSSPixel, DevicePixel>,
 
     /// The event loop to run in, if applicable.
     pub event_loop: Option<Rc<EventLoop>>,
@@ -171,8 +172,12 @@ pub struct InitialPipelineState {
 
     /// Whether this pipeline is considered private.
     pub is_private: bool,
+
+    /// A channel to the WebGL thread.
+    pub webgl_chan: Option<WebGLPipeline>,
+
     /// A channel to the webvr thread.
-    pub webvr_thread: Option<IpcSender<WebVRMsg>>,
+    pub webvr_chan: Option<IpcSender<WebVRMsg>>,
 }
 
 impl Pipeline {
@@ -207,7 +212,7 @@ impl Pipeline {
                     new_pipeline_id: state.id,
                     browsing_context_id: state.browsing_context_id,
                     top_level_browsing_context_id: state.top_level_browsing_context_id,
-                    load_data: state.load_data,
+                    load_data: state.load_data.clone(),
                     window_size: window_size,
                     pipeline_port: pipeline_port,
                     content_process_shutdown_chan: Some(layout_content_process_shutdown_chan.clone()),
@@ -227,14 +232,14 @@ impl Pipeline {
                     let (script_to_devtools_chan, script_to_devtools_port) = ipc::channel()
                         .expect("Pipeline script to devtools chan");
                     let devtools_chan = (*devtools_chan).clone();
-                    ROUTER.add_route(script_to_devtools_port.to_opaque(), box move |message| {
+                    ROUTER.add_route(script_to_devtools_port.to_opaque(), Box::new(move |message| {
                         match message.to::<ScriptToDevtoolsControlMsg>() {
                             Err(e) => error!("Cast to ScriptToDevtoolsControlMsg failed ({}).", e),
                             Ok(message) => if let Err(e) = devtools_chan.send(DevtoolsControlMsg::FromScript(message)) {
                                 warn!("Sending to devtools failed ({})", e)
                             },
                         }
-                    });
+                    }));
                     script_to_devtools_chan
                 });
 
@@ -246,7 +251,7 @@ impl Pipeline {
                     browsing_context_id: state.browsing_context_id,
                     top_level_browsing_context_id: state.top_level_browsing_context_id,
                     parent_info: state.parent_info,
-                    constellation_chan: state.constellation_chan,
+                    script_to_constellation_chan: state.script_to_constellation_chan.clone(),
                     scheduler_chan: state.scheduler_chan,
                     devtools_chan: script_to_devtools_chan,
                     bluetooth_thread: state.bluetooth_thread,
@@ -258,7 +263,7 @@ impl Pipeline {
                     window_size: window_size,
                     layout_to_constellation_chan: state.layout_to_constellation_chan,
                     script_chan: script_chan.clone(),
-                    load_data: state.load_data,
+                    load_data: state.load_data.clone(),
                     script_port: script_port,
                     opts: (*opts::get()).clone(),
                     prefs: PREFS.cloned(),
@@ -270,7 +275,8 @@ impl Pipeline {
                     script_content_process_shutdown_port: script_content_process_shutdown_port,
                     webrender_api_sender: state.webrender_api_sender,
                     webrender_document: state.webrender_document,
-                    webvr_thread: state.webvr_thread,
+                    webgl_chan: state.webgl_chan,
+                    webvr_chan: state.webvr_chan,
                 };
 
                 // Spawn the child process.
@@ -295,7 +301,8 @@ impl Pipeline {
                          state.compositor_proxy,
                          state.is_private,
                          url,
-                         state.prev_visibility.unwrap_or(true)))
+                         state.prev_visibility.unwrap_or(true),
+                         state.load_data))
     }
 
     /// Creates a new `Pipeline`, after the script and layout threads have been
@@ -303,13 +310,14 @@ impl Pipeline {
     pub fn new(id: PipelineId,
                browsing_context_id: BrowsingContextId,
                top_level_browsing_context_id: TopLevelBrowsingContextId,
-               parent_info: Option<(PipelineId, FrameType)>,
+               parent_info: Option<PipelineId>,
                event_loop: Rc<EventLoop>,
                layout_chan: IpcSender<LayoutControlMsg>,
                compositor_proxy: CompositorProxy,
                is_private: bool,
                url: ServoUrl,
-               visible: bool)
+               visible: bool,
+               load_data: LoadData)
                -> Pipeline {
         let pipeline = Pipeline {
             id: id,
@@ -324,6 +332,7 @@ impl Pipeline {
             running_animations: false,
             visible: visible,
             is_private: is_private,
+            load_data: load_data,
         };
 
         pipeline.notify_visibility();
@@ -399,22 +408,6 @@ impl Pipeline {
         };
     }
 
-    /// Send a mozbrowser event to the script thread for this pipeline.
-    /// This will cause an event to be fired on an iframe in the document,
-    /// or on the `Window` if no frame is given.
-    pub fn trigger_mozbrowser_event(&self,
-                                     child_id: Option<TopLevelBrowsingContextId>,
-                                     event: MozBrowserEvent) {
-        assert!(PREFS.is_mozbrowser_enabled());
-
-        let event = ConstellationControlMsg::MozBrowserEvent(self.id,
-                                                             child_id,
-                                                             event);
-        if let Err(e) = self.event_loop.send(event) {
-            warn!("Sending mozbrowser event to script failed ({}).", e);
-        }
-    }
-
     /// Notify the script thread that this pipeline is visible.
     fn notify_visibility(&self) {
         let script_msg = ConstellationControlMsg::ChangeFrameVisibilityStatus(self.id, self.visible);
@@ -445,8 +438,8 @@ pub struct UnprivilegedPipelineContent {
     id: PipelineId,
     top_level_browsing_context_id: TopLevelBrowsingContextId,
     browsing_context_id: BrowsingContextId,
-    parent_info: Option<(PipelineId, FrameType)>,
-    constellation_chan: IpcSender<ScriptMsg>,
+    parent_info: Option<PipelineId>,
+    script_to_constellation_chan: ScriptToConstellationChan,
     layout_to_constellation_chan: IpcSender<LayoutMsg>,
     scheduler_chan: IpcSender<TimerSchedulerMsg>,
     devtools_chan: Option<IpcSender<ScriptToDevtoolsControlMsg>>,
@@ -470,7 +463,8 @@ pub struct UnprivilegedPipelineContent {
     script_content_process_shutdown_port: IpcReceiver<()>,
     webrender_api_sender: webrender_api::RenderApiSender,
     webrender_document: webrender_api::DocumentId,
-    webvr_thread: Option<IpcSender<WebVRMsg>>,
+    webgl_chan: Option<WebGLPipeline>,
+    webvr_chan: Option<IpcSender<WebVRMsg>>,
 }
 
 impl UnprivilegedPipelineContent {
@@ -479,7 +473,11 @@ impl UnprivilegedPipelineContent {
               STF: ScriptThreadFactory<Message=Message>
     {
         let image_cache = Arc::new(ImageCacheImpl::new(self.webrender_api_sender.create_api()));
-        let paint_time_metrics = PaintTimeMetrics::new(self.time_profiler_chan.clone());
+        let paint_time_metrics = PaintTimeMetrics::new(self.id,
+                                                       self.time_profiler_chan.clone(),
+                                                       self.layout_to_constellation_chan.clone(),
+                                                       self.script_chan.clone(),
+                                                       self.load_data.url.clone());
         let layout_pair = STF::create(InitialScriptState {
             id: self.id,
             browsing_context_id: self.browsing_context_id,
@@ -487,7 +485,7 @@ impl UnprivilegedPipelineContent {
             parent_info: self.parent_info,
             control_chan: self.script_chan.clone(),
             control_port: self.script_port,
-            constellation_chan: self.constellation_chan,
+            script_to_constellation_chan: self.script_to_constellation_chan.clone(),
             layout_to_constellation_chan: self.layout_to_constellation_chan.clone(),
             scheduler_chan: self.scheduler_chan,
             bluetooth_thread: self.bluetooth_thread,
@@ -499,7 +497,9 @@ impl UnprivilegedPipelineContent {
             window_size: self.window_size,
             pipeline_namespace_id: self.pipeline_namespace_id,
             content_process_shutdown_chan: self.script_content_process_shutdown_chan,
-            webvr_thread: self.webvr_thread,
+            webgl_chan: self.webgl_chan,
+            webvr_chan: self.webvr_chan,
+            webrender_document: self.webrender_document,
         }, self.load_data.clone());
 
         LTF::create(self.id,
@@ -527,7 +527,7 @@ impl UnprivilegedPipelineContent {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(all(not(target_os = "windows"), not(target_os = "ios")))]
     pub fn spawn_multiprocess(self) -> Result<(), Error> {
         use gaol::sandbox::{self, Sandbox, SandboxMethods};
         use ipc_channel::ipc::IpcOneShotServer;
@@ -575,9 +575,9 @@ impl UnprivilegedPipelineContent {
         Ok(())
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "ios"))]
     pub fn spawn_multiprocess(self) -> Result<(), Error> {
-        error!("Multiprocess is not supported on Windows.");
+        error!("Multiprocess is not supported on Windows or iOS.");
         process::exit(1);
     }
 
@@ -595,8 +595,8 @@ impl UnprivilegedPipelineContent {
         }
     }
 
-    pub fn constellation_chan(&self) -> IpcSender<ScriptMsg> {
-        self.constellation_chan.clone()
+    pub fn script_to_constellation_chan(&self) -> &ScriptToConstellationChan {
+        &self.script_to_constellation_chan
     }
 
     pub fn opts(&self) -> Opts {

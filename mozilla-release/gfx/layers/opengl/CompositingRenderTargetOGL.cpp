@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -60,7 +61,7 @@ CompositingRenderTargetOGL::BindRenderTarget()
         msg.AppendPrintf("Framebuffer not complete -- CheckFramebufferStatus returned 0x%x, "
                          "GLContext=%p, IsOffscreen()=%d, mFBO=%d, aFBOTextureTarget=0x%x, "
                          "aRect.width=%d, aRect.height=%d",
-                         result, mGL, mGL->IsOffscreen(), mFBO, mInitParams.mFBOTextureTarget,
+                         result, mGL.get(), mGL->IsOffscreen(), mFBO, mInitParams.mFBOTextureTarget,
                          mInitParams.mSize.width, mInitParams.mSize.height);
         NS_WARNING(msg.get());
       }

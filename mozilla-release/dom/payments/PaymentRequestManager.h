@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -41,7 +41,9 @@ public:
    *  process can ask specific task by sending requestId only.
    */
   nsresult
-  CreatePayment(nsPIDOMWindowInner* aWindow,
+  CreatePayment(JSContext* aCx,
+                nsPIDOMWindowInner* aWindow,
+                nsIPrincipal* aTopLevelPrincipal,
                 const Sequence<PaymentMethodData>& aMethodData,
                 const PaymentDetailsInit& aDetails,
                 const PaymentOptions& aOptions,
@@ -52,8 +54,10 @@ public:
   nsresult AbortPayment(const nsAString& aRequestId);
   nsresult CompletePayment(const nsAString& aRequestId,
                            const PaymentComplete& aComplete);
-  nsresult UpdatePayment(const nsAString& aRequestId,
-                         const PaymentDetailsUpdate& aDetails);
+  nsresult UpdatePayment(JSContext* aCx,
+                         const nsAString& aRequestId,
+                         const PaymentDetailsUpdate& aDetails,
+                         bool aRequestShipping);
 
   nsresult RespondPayment(const IPCPaymentActionResponse& aResponse);
   nsresult ChangeShippingAddress(const nsAString& aRequestId,

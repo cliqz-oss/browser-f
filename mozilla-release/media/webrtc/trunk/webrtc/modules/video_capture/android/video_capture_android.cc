@@ -18,7 +18,7 @@
 #include "webrtc/system_wrappers/include/logging.h"
 #include "webrtc/system_wrappers/include/trace.h"
 
-#include "AndroidJNIWrapper.h"
+#include "AndroidBridge.h"
 
 static JavaVM* g_jvm_capture = NULL;
 static jclass g_java_capturer_class = NULL;  // VideoCaptureAndroid.class.
@@ -64,12 +64,15 @@ int32_t SetCaptureAndroidVM(JavaVM* javaVM) {
     g_jvm_capture = javaVM;
     AttachThreadScoped ats(g_jvm_capture);
 
-    g_context = jsjni_GetGlobalContextRef();
+    g_context = mozilla::AndroidBridge::Bridge()->GetGlobalContextRef();
 
     videocapturemodule::DeviceInfoAndroid::Initialize(g_jvm_capture);
 
+    jclass clsRef = mozilla::jni::GetClassRef(
+        ats.env(), "org/webrtc/videoengine/VideoCaptureAndroid");
     g_java_capturer_class =
-      jsjni_GetGlobalClassRef("org/webrtc/videoengine/VideoCaptureAndroid");
+        static_cast<jclass>(ats.env()->NewGlobalRef(clsRef));
+    ats.env()->DeleteLocalRef(clsRef);
     assert(g_java_capturer_class);
 
     JNINativeMethod native_methods[] = {
@@ -113,7 +116,10 @@ int32_t VideoCaptureAndroid::OnIncomingFrame(uint8_t* videoFrame,
                                              size_t videoFrameLength,
                                              int32_t degrees,
                                              int64_t captureTime) {
-  if (!_captureStarted)
+  // _captureStarted is written on the controlling thread in
+  // StartCapture/StopCapture. This is the camera thread.
+  // CaptureStarted() will access it under a lock.
+  if (!CaptureStarted())
     return 0;
 
   VideoRotation current_rotation =
@@ -182,7 +188,7 @@ VideoCaptureAndroid::~VideoCaptureAndroid() {
 
 int32_t VideoCaptureAndroid::StartCapture(
     const VideoCaptureCapability& capability) {
-  CriticalSectionScoped cs(&_apiCs);
+  _apiCs.Enter();
   AttachThreadScoped ats(g_jvm_capture);
   JNIEnv* env = ats.env();
 
@@ -191,23 +197,32 @@ int32_t VideoCaptureAndroid::StartCapture(
     WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, -1,
                  "%s: GetBestMatchedCapability failed: %dx%d",
                  __FUNCTION__, capability.width, capability.height);
+    // Manual exit of critical section
+    _apiCs.Leave();
     return -1;
   }
 
   _captureDelay = _captureCapability.expectedCaptureDelay;
 
-  jmethodID j_start =
-      env->GetMethodID(g_java_capturer_class, "startCapture", "(IIII)Z");
-  assert(j_start);
+  int width = _captureCapability.width;
+  int height = _captureCapability.height;
   int min_mfps = 0;
   int max_mfps = 0;
   _deviceInfo.GetMFpsRange(_deviceUniqueId, _captureCapability.maxFPS,
                            &min_mfps, &max_mfps);
+
+  // Exit critical section to avoid blocking camera thread inside
+  // onIncomingFrame() call.
+  _apiCs.Leave();
+
+  jmethodID j_start =
+      env->GetMethodID(g_java_capturer_class, "startCapture", "(IIII)Z");
+  assert(j_start);
   bool started = env->CallBooleanMethod(_jCapturer, j_start,
-                                        _captureCapability.width,
-                                        _captureCapability.height,
+                                        width, height,
                                         min_mfps, max_mfps);
   if (started) {
+    CriticalSectionScoped cs(&_apiCs);
     _requestedCapability = capability;
     _captureStarted = true;
   }

@@ -1,4 +1,4 @@
-// |reftest| skip-if(release_or_beta) error:SyntaxError -- async-iteration is not released yet
+// |reftest| error:SyntaxError
 // Copyright (C) 2017 André Bargull. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 esid: sec-grammar-notation
 description: >
   The `async` contextual keyword must not contain Unicode escape sequences.
-info: >
+info: |
   Terminal symbols of the lexical, RegExp, and numeric string grammars are shown
   in fixed width font, both in the productions of the grammars and throughout this
   specification whenever the text directly refers to such a terminal symbol. These
@@ -15,10 +15,12 @@ info: >
   from the Basic Latin range, as opposed to any similar-looking code points from
   other Unicode ranges.
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 features: [async-iteration]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 ({
     \u0061sync* m(){}

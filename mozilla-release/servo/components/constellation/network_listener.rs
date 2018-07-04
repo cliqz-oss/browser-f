@@ -11,9 +11,9 @@ use ipc_channel::ipc;
 use ipc_channel::router::ROUTER;
 use msg::constellation_msg::PipelineId;
 use net::http_loader::{set_default_accept, set_default_accept_language};
-use net_traits::{CoreResourceMsg, FetchMetadata, FetchResponseMsg};
+use net_traits::{CoreResourceMsg, FetchChannels, FetchMetadata, FetchResponseMsg};
 use net_traits::{IpcSend, NetworkError, ResourceThreads};
-use net_traits::request::{Destination, RequestInit, Type};
+use net_traits::request::{Destination, RequestInit};
 use net_traits::response::ResponseInit;
 use std::sync::mpsc::Sender;
 
@@ -41,7 +41,7 @@ impl NetworkListener {
         }
     }
 
-    pub fn initiate_fetch(&self) {
+    pub fn initiate_fetch(&self, cancel_chan: Option<ipc::IpcReceiver<()>>) {
         let (ipc_sender, ipc_receiver) = ipc::channel().expect("Failed to create IPC channel!");
 
         let mut listener = NetworkListener {
@@ -57,25 +57,25 @@ impl NetworkListener {
             Some(ref res_init_) => CoreResourceMsg::FetchRedirect(
                                    self.req_init.clone(),
                                    res_init_.clone(),
-                                   ipc_sender),
+                                   ipc_sender, None),
             None => {
-                set_default_accept(Type::None, Destination::Document, &mut listener.req_init.headers);
+                set_default_accept(Destination::Document, &mut listener.req_init.headers);
                 set_default_accept_language(&mut listener.req_init.headers);
 
                 CoreResourceMsg::Fetch(
                 listener.req_init.clone(),
-                ipc_sender)
+                FetchChannels::ResponseMsg(ipc_sender, cancel_chan))
             }
         };
 
-        ROUTER.add_route(ipc_receiver.to_opaque(), box move |message| {
+        ROUTER.add_route(ipc_receiver.to_opaque(), Box::new(move |message| {
             let msg = message.to();
             match msg {
                 Ok(FetchResponseMsg::ProcessResponse(res)) => listener.check_redirect(res),
                 Ok(msg_) => listener.send(msg_),
                 Err(e) => warn!("Error while receiving network listener message: {}", e),
             };
-        });
+        }));
 
         if let Err(e) = self.resource_threads.sender().send(msg) {
             warn!("Resource thread unavailable ({})", e);
@@ -103,11 +103,16 @@ impl NetworkListener {
 
                         self.res_init = Some(ResponseInit {
                             url: metadata.final_url.clone(),
+                            location_url: metadata.location_url.clone(),
                             headers: headers.clone().into_inner(),
                             referrer: metadata.referrer.clone(),
                         });
 
-                        self.initiate_fetch();
+                        // XXXManishearth we don't have the cancel_chan anymore and
+                        // can't use it here.
+                        //
+                        // Ideally the Fetch code would handle manual redirects on its own
+                        self.initiate_fetch(None);
                     },
                     _ => {
                         // Response should be processed by script thread.

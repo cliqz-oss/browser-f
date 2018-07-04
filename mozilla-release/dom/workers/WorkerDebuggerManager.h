@@ -7,7 +7,7 @@
 #ifndef mozilla_dom_workers_workerdebuggermanager_h
 #define mozilla_dom_workers_workerdebuggermanager_h
 
-#include "Workers.h"
+#include "mozilla/dom/WorkerCommon.h"
 
 #include "nsIObserver.h"
 #include "nsIWorkerDebuggerManager.h"
@@ -22,9 +22,11 @@
 #define WORKERDEBUGGERMANAGER_CONTRACTID \
   "@mozilla.org/dom/workers/workerdebuggermanager;1"
 
-BEGIN_WORKERS_NAMESPACE
+namespace mozilla {
+namespace dom {
 
 class WorkerDebugger;
+class WorkerPrivate;
 
 class WorkerDebuggerManager final : public nsIObserver,
                                     public nsIWorkerDebuggerManager
@@ -72,6 +74,12 @@ public:
   void
   UnregisterDebuggerMainThread(WorkerPrivate* aWorkerPrivate);
 
+  uint32_t
+  GetDebuggersLength() const;
+
+  WorkerDebugger*
+  GetDebuggerAt(uint32_t aIndex) const;
+
 private:
   virtual ~WorkerDebuggerManager();
 };
@@ -116,6 +124,7 @@ UnregisterWorkerDebugger(WorkerPrivate* aWorkerPrivate)
   return NS_OK;
 }
 
-END_WORKERS_NAMESPACE
+} // dom namespace
+} // mozilla namespace
 
 #endif // mozilla_dom_workers_workerdebuggermanager_h

@@ -3,7 +3,7 @@ import os
 BRANCH = "mozilla-central"
 MOZ_UPDATE_CHANNEL = "nightly"
 MOZILLA_DIR = BRANCH
-OBJDIR = "obj-l10n"
+OBJDIR = "obj-firefox"
 EN_US_BINARY_URL = "http://archive.mozilla.org/pub/mobile/nightly/latest-%s-android-api-16/en-US" % BRANCH
 HG_SHARE_BASE_DIR = "/builds/hg-shared"
 
@@ -24,9 +24,6 @@ config = {
     "tooltool_config": {
         "manifest": "mobile/android/config/tooltool-manifests/android/releng.manifest",
         "output_dir": "%(abs_work_dir)s/" + MOZILLA_DIR,
-    },
-    "exes": {
-        'tooltool.py': '/builds/tooltool.py',
     },
     "repos": [{
         "vcs": "hg",
@@ -53,18 +50,11 @@ config = {
         "LD_LIBRARY_PATH": "/lib:/tools/gcc-4.7.2-0moz1/lib:/tools/gcc-4.7.2-0moz1/lib64",
         "MOZ_OBJDIR": OBJDIR,
         "EN_US_BINARY_URL": os.environ.get("EN_US_BINARY_URL", EN_US_BINARY_URL),
-        "LOCALE_MERGEDIR": "%(abs_merge_dir)s/",
         "MOZ_UPDATE_CHANNEL": MOZ_UPDATE_CHANNEL,
     },
     "upload_branch": "%s-android-api-16" % BRANCH,
-    "ssh_key_dir": "~/.ssh",
-    "merge_locales": True,
-    "mozilla_dir": MOZILLA_DIR,
-    "mozconfig": "%s/mobile/android/config/mozconfigs/android-api-16/l10n-nightly" % MOZILLA_DIR,
     "signature_verification_script": "tools/release/signing/verify-android-signature.sh",
-    "stage_product": "mobile",
     "platform": "android",
-    "build_type": "api-16-opt",
 
     # Balrog
     "build_target": "Android_arm-eabi-gcc3",
@@ -95,7 +85,6 @@ config = {
         ("/home/cltbld/.ssh", "/home/mock_mozilla/.ssh"),
         ('/home/cltbld/.hgrc', '/builds/.hgrc'),
         ('/builds/relengapi.tok', '/builds/relengapi.tok'),
-        ('/tools/tooltool.py', '/builds/tooltool.py'),
         ('/usr/local/lib/hgext', '/usr/local/lib/hgext'),
     ],
 }

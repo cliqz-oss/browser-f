@@ -34,7 +34,7 @@ def normalize_osx_path(p):
     return p
 
 def is_l10n_file(path):
-    return '/locale/' in path
+    return '/locale/' in path or '/localization/' in path
 
 def normalize_path(p):
     return normalize_osx_path(p)
@@ -102,7 +102,7 @@ def main():
     allowed_dupes = []
     for filename in args.dupes_files:
         pp = Preprocessor()
-        pp.context.update(buildconfig.defines)
+        pp.context.update(buildconfig.defines['ALLDEFINES'])
         if args.D:
             pp.context.update(args.D)
         for undefine in args.U:

@@ -136,7 +136,7 @@ TEST(TArray, AssignmentOperatorSelfAssignment)
   nsTArray<int> array;
   array = DummyArray();
 
-  array = array;
+  array = *&array;
   ASSERT_EQ(DummyArray(), array);
   array = Move(array);
   ASSERT_EQ(DummyArray(), array);
@@ -144,12 +144,12 @@ TEST(TArray, AssignmentOperatorSelfAssignment)
 
 TEST(TArray, CopyOverlappingForwards)
 {
-  nsTArray<Movable> array;
   const size_t rangeLength = 8;
   const size_t initialLength = 2 * rangeLength;
+  uint32_t destructionCounters[initialLength];
+  nsTArray<Movable> array;
   array.AppendElements(initialLength);
 
-  uint32_t destructionCounters[initialLength];
   for (uint32_t i = 0; i < initialLength; ++i) {
     destructionCounters[i] = 0;
   }
@@ -172,9 +172,10 @@ TEST(TArray, CopyOverlappingForwards)
 // destroy all over the source elements being copied.
 TEST(TArray, CopyOverlappingBackwards)
 {
-  nsTArray<Copyable> array;
   const size_t rangeLength = 8;
   const size_t initialLength = 2 * rangeLength;
+  uint32_t destructionCounters[initialLength];
+  nsTArray<Copyable> array;
   array.SetCapacity(3 * rangeLength);
   array.AppendElements(initialLength);
   // To tickle the bug, we need to copy a source region:
@@ -188,7 +189,6 @@ TEST(TArray, CopyOverlappingBackwards)
   // so we are forced to copy back-to-front to ensure correct behavior.
   // The easiest way to do that is to call InsertElementsAt, which will force
   // the desired kind of shift.
-  uint32_t destructionCounters[initialLength];
   for (uint32_t i = 0; i < initialLength; ++i) {
     destructionCounters[i] = 0;
   }
@@ -200,6 +200,138 @@ TEST(TArray, CopyOverlappingBackwards)
 
   for (uint32_t i = 0; i < initialLength; ++i) {
     ASSERT_EQ(destructionCounters[i], 1u);
+  }
+}
+
+TEST(TArray, UnorderedRemoveElements)
+{
+  // When removing an element from the end of the array, it can be removed in
+  // place, by destroying it and decrementing the length.
+  //
+  // [ 1, 2, 3 ] => [ 1, 2 ]
+  //         ^
+  {
+    nsTArray<int> array{ 1, 2, 3 };
+    array.UnorderedRemoveElementAt(2);
+
+    nsTArray<int> goal{ 1, 2 };
+    ASSERT_EQ(array, goal);
+  }
+
+  // When removing any other single element, it is removed by swapping it with
+  // the last element, and then decrementing the length as before.
+  //
+  // [ 1, 2, 3, 4, 5, 6 ]  => [ 1, 6, 3, 4, 5 ]
+  //      ^
+  {
+    nsTArray<int> array{1, 2, 3, 4, 5, 6};
+    array.UnorderedRemoveElementAt(1);
+
+    nsTArray<int> goal{1, 6, 3, 4, 5};
+    ASSERT_EQ(array, goal);
+  }
+
+  // This method also supports efficiently removing a range of elements. If they
+  // are at the end, then they can all be removed like in the one element case.
+  //
+  // [ 1, 2, 3, 4, 5, 6 ] => [ 1, 2 ]
+  //         ^--------^
+  {
+    nsTArray<int> array{1, 2, 3, 4, 5, 6};
+    array.UnorderedRemoveElementsAt(2, 4);
+
+    nsTArray<int> goal{1, 2};
+    ASSERT_EQ(array, goal);
+  }
+
+  // If more elements are removed than exist after the removed section, the
+  // remaining elements will be shifted down like in a normal removal.
+  //
+  // [ 1, 2, 3, 4, 5, 6, 7, 8 ] => [ 1, 2, 7, 8 ]
+  //         ^--------^
+  {
+    nsTArray<int> array{1, 2, 3, 4, 5, 6, 7, 8};
+    array.UnorderedRemoveElementsAt(2, 4);
+
+    nsTArray<int> goal{1, 2, 7, 8};
+    ASSERT_EQ(array, goal);
+  }
+
+  // And if fewer elements are removed than exist after the removed section,
+  // elements will be moved from the end of the array to fill the vacated space.
+  //
+  // [ 1, 2, 3, 4, 5, 6, 7, 8 ] => [ 1, 7, 8, 4, 5, 6 ]
+  //      ^--^
+  {
+    nsTArray<int> array{1, 2, 3, 4, 5, 6, 7, 8};
+    array.UnorderedRemoveElementsAt(1, 2);
+
+    nsTArray<int> goal{1, 7, 8, 4, 5, 6};
+    ASSERT_EQ(array, goal);
+  }
+
+  // We should do the right thing if we drain the entire array.
+  {
+    nsTArray<int> array{1, 2, 3, 4, 5};
+    array.UnorderedRemoveElementsAt(0, 5);
+
+    nsTArray<int> goal{};
+    ASSERT_EQ(array, goal);
+  }
+
+  {
+    nsTArray<int> array{1};
+    array.UnorderedRemoveElementAt(0);
+
+    nsTArray<int> goal{};
+    ASSERT_EQ(array, goal);
+  }
+
+  // We should do the right thing if we remove the same number of elements that
+  // we have remaining.
+  {
+    nsTArray<int> array{1, 2, 3, 4, 5, 6};
+    array.UnorderedRemoveElementsAt(2, 2);
+
+    nsTArray<int> goal{1, 2, 5, 6};
+    ASSERT_EQ(array, goal);
+  }
+
+  {
+    nsTArray<int> array{1, 2, 3};
+    array.UnorderedRemoveElementAt(1);
+
+    nsTArray<int> goal{1, 3};
+    ASSERT_EQ(array, goal);
+  }
+
+  // We should be able to remove elements from the front without issue.
+  {
+    nsTArray<int> array{1, 2, 3, 4, 5, 6};
+    array.UnorderedRemoveElementsAt(0, 2);
+
+    nsTArray<int> goal{5, 6, 3, 4};
+    ASSERT_EQ(array, goal);
+  }
+
+  {
+    nsTArray<int> array{1, 2, 3, 4};
+    array.UnorderedRemoveElementAt(0);
+
+    nsTArray<int> goal{4, 2, 3};
+    ASSERT_EQ(array, goal);
+  }
+}
+
+TEST(TArray, RemoveFromEnd)
+{
+  {
+    nsTArray<int> array{1,2,3,4};
+    ASSERT_EQ(array.PopLastElement(), 4);
+    array.RemoveLastElement();
+    ASSERT_EQ(array.PopLastElement(), 2);
+    array.RemoveLastElement();
+    ASSERT_TRUE(array.IsEmpty());
   }
 }
 

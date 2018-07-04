@@ -14,6 +14,8 @@ const actionTypes = {
   CLONE_SELECTED_REQUEST: "CLONE_SELECTED_REQUEST",
   ENABLE_REQUEST_FILTER_TYPE_ONLY: "ENABLE_REQUEST_FILTER_TYPE_ONLY",
   OPEN_NETWORK_DETAILS: "OPEN_NETWORK_DETAILS",
+  RESIZE_NETWORK_DETAILS: "RESIZE_NETWORK_DETAILS",
+  ENABLE_PERSISTENT_LOGS: "ENABLE_PERSISTENT_LOGS",
   DISABLE_BROWSER_CACHE: "DISABLE_BROWSER_CACHE",
   OPEN_STATISTICS: "OPEN_STATISTICS",
   REMOVE_SELECTED_CUSTOM_REQUEST: "REMOVE_SELECTED_CUSTOM_REQUEST",
@@ -24,6 +26,7 @@ const actionTypes = {
   SET_REQUEST_FILTER_TEXT: "SET_REQUEST_FILTER_TEXT",
   SORT_BY: "SORT_BY",
   TOGGLE_COLUMN: "TOGGLE_COLUMN",
+  TOGGLE_RECORDING: "TOGGLE_RECORDING",
   TOGGLE_REQUEST_FILTER_TYPE: "TOGGLE_REQUEST_FILTER_TYPE",
   UPDATE_REQUEST: "UPDATE_REQUEST",
   WATERFALL_RESIZE: "WATERFALL_RESIZE",
@@ -52,6 +55,7 @@ const EVENTS = {
   // See https://developer.mozilla.org/docs/Tools/Web_Console/remoting for
   // more information about what each packet is supposed to deliver.
   NETWORK_EVENT: "NetMonitor:NetworkEvent",
+  NETWORK_EVENT_UPDATED: "NetMonitor:NetworkEventUpdated",
   TIMELINE_EVENT: "NetMonitor:TimelineEvent",
 
   // When a network event is added to the view
@@ -70,8 +74,8 @@ const EVENTS = {
   RECEIVED_REQUEST_POST_DATA: "NetMonitor:NetworkEventUpdated:RequestPostData",
 
   // When security information begins and finishes receiving.
-  UPDATING_SECURITY_INFO: "NetMonitor::NetworkEventUpdating:SecurityInfo",
-  RECEIVED_SECURITY_INFO: "NetMonitor::NetworkEventUpdated:SecurityInfo",
+  UPDATING_SECURITY_INFO: "NetMonitor:NetworkEventUpdating:SecurityInfo",
+  RECEIVED_SECURITY_INFO: "NetMonitor:NetworkEventUpdated:SecurityInfo",
 
   // When response headers begin and finish receiving.
   UPDATING_RESPONSE_HEADERS: "NetMonitor:NetworkEventUpdating:ResponseHeaders",
@@ -90,8 +94,66 @@ const EVENTS = {
   UPDATING_RESPONSE_CONTENT: "NetMonitor:NetworkEventUpdating:ResponseContent",
   RECEIVED_RESPONSE_CONTENT: "NetMonitor:NetworkEventUpdated:ResponseContent",
 
+  // When stack-trace finishes receiving.
+  RECEIVED_EVENT_STACKTRACE: "NetMonitor:NetworkEventUpdated:StackTrace",
+
+  UPDATING_RESPONSE_CACHE: "NetMonitor:NetworkEventUpdating:ResponseCache",
+  RECEIVED_RESPONSE_CACHE: "NetMonitor:NetworkEventUpdated:ResponseCache",
+
   // Fired once the connection is established
   CONNECTED: "connected",
+
+  // When request payload (HTTP details data) are fetched from the backend.
+  PAYLOAD_READY: "NetMonitor:PayloadReady",
+};
+
+const UPDATE_PROPS = [
+  "method",
+  "url",
+  "remotePort",
+  "remoteAddress",
+  "status",
+  "statusText",
+  "httpVersion",
+  "securityState",
+  "securityInfo",
+  "securityInfoAvailable",
+  "mimeType",
+  "contentSize",
+  "transferredSize",
+  "totalTime",
+  "eventTimings",
+  "eventTimingsAvailable",
+  "headersSize",
+  "customQueryValue",
+  "requestHeaders",
+  "requestHeadersAvailable",
+  "requestHeadersFromUploadStream",
+  "requestCookies",
+  "requestCookiesAvailable",
+  "requestPostData",
+  "requestPostDataAvailable",
+  "responseHeaders",
+  "responseHeadersAvailable",
+  "responseCookies",
+  "responseCookiesAvailable",
+  "responseContent",
+  "responseContentAvailable",
+  "responseCache",
+  "responseCacheAvailable",
+  "formDataSections",
+  "stacktrace",
+];
+
+const PANELS = {
+  COOKIES: "cookies",
+  HEADERS: "headers",
+  PARAMS: "params",
+  RESPONSE: "response",
+  CACHE: "cache",
+  SECURITY: "security",
+  STACK_TRACE: "stack-trace",
+  TIMINGS: "timings",
 };
 
 const RESPONSE_HEADERS = [
@@ -196,6 +258,7 @@ const HEADERS = [
   ...RESPONSE_HEADERS
     .map(header => ({
       name: header,
+      boxName: "response-header",
       canFilter: false,
       subMenu: "responseHeaders",
       noLocalization: true
@@ -223,6 +286,18 @@ const FILTER_FLAGS = [
   "regexp",
 ];
 
+const FILTER_TAGS = [
+  "html",
+  "css",
+  "js",
+  "xhr",
+  "fonts",
+  "images",
+  "media",
+  "ws",
+  "other",
+];
+
 const REQUESTS_WATERFALL = {
   BACKGROUND_TICKS_MULTIPLE: 5, // ms
   BACKGROUND_TICKS_SCALES: 3,
@@ -231,24 +306,39 @@ const REQUESTS_WATERFALL = {
   // 8-bit value of the alpha component of the tick color
   BACKGROUND_TICKS_OPACITY_MIN: 32,
   BACKGROUND_TICKS_OPACITY_ADD: 32,
-  // RGBA colors for the timing markers
-  DOMCONTENTLOADED_TICKS_COLOR_RGBA: [0, 0, 255, 128],
+  // Colors for timing markers (theme colors, see variables.css)
+  DOMCONTENTLOADED_TICKS_COLOR: "highlight-blue",
+  LOAD_TICKS_COLOR: "highlight-red",
+  // Opacity for the timing markers
+  TICKS_COLOR_OPACITY: 192,
   HEADER_TICKS_MULTIPLE: 5, // ms
   HEADER_TICKS_SPACING_MIN: 60, // px
-  LOAD_TICKS_COLOR_RGBA: [255, 0, 0, 128],
   // Reserve extra space for rendering waterfall time label
   LABEL_WIDTH: 50, // px
 };
+
+const TIMING_KEYS = [
+  "blocked",
+  "dns",
+  "connect",
+  "ssl",
+  "send",
+  "wait",
+  "receive",
+];
 
 const general = {
   ACTIVITY_TYPE,
   EVENTS,
   FILTER_SEARCH_DELAY: 200,
+  UPDATE_PROPS,
   HEADERS,
   RESPONSE_HEADERS,
   FILTER_FLAGS,
-  SOURCE_EDITOR_SYNTAX_HIGHLIGHT_MAX_SIZE: 51200, // 50 KB in bytes
+  FILTER_TAGS,
   REQUESTS_WATERFALL,
+  PANELS,
+  TIMING_KEYS,
 };
 
 // flatten constants

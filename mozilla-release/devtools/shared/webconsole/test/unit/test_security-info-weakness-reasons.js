@@ -6,10 +6,10 @@
 // Tests that NetworkHelper.getReasonsForWeakness returns correct reasons for
 // weak requests.
 
-const { require } = Components.utils.import("resource://devtools/shared/Loader.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 
 Object.defineProperty(this, "NetworkHelper", {
-  get: function () {
+  get: function() {
     return require("devtools/shared/webconsole/network-helper");
   },
   configurable: true,
@@ -17,7 +17,6 @@ Object.defineProperty(this, "NetworkHelper", {
   enumerable: true
 });
 
-var Ci = Components.interfaces;
 const wpl = Ci.nsIWebProgressListener;
 const TEST_CASES = [
   {
@@ -36,10 +35,10 @@ const TEST_CASES = [
 ];
 
 function run_test() {
-  do_print("Testing NetworkHelper.getReasonsForWeakness.");
+  info("Testing NetworkHelper.getReasonsForWeakness.");
 
   for (let {description, input, expected} of TEST_CASES) {
-    do_print("Testing " + description);
+    info("Testing " + description);
 
     deepEqual(NetworkHelper.getReasonsForWeakness(input), expected,
       "Got the expected reasons for weakness.");

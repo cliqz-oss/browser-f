@@ -3,9 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {Task} = require("devtools/shared/task");
 const EventEmitter = require("devtools/shared/event-emitter");
-const {createNode} = require("devtools/client/animationinspector/utils");
+const {createNode} = require("devtools/client/inspector/animation-old/utils");
 const { LocalizationHelper } = require("devtools/shared/l10n");
 
 const STRINGS_URI = "devtools/client/locales/inspector.properties";
@@ -38,7 +37,7 @@ function DomNodePreview(inspector, options = {}) {
 exports.DomNodePreview = DomNodePreview;
 
 DomNodePreview.prototype = {
-  init: function (containerEl) {
+  init: function(containerEl) {
     let document = containerEl.ownerDocument;
 
     // Init the markup for displaying the target node.
@@ -172,7 +171,7 @@ DomNodePreview.prototype = {
     this.startListeners();
   },
 
-  startListeners: function () {
+  startListeners: function() {
     // Init events for highlighting and selecting the node.
     this.previewEl.addEventListener("mouseover", this.onPreviewMouseOver);
     this.previewEl.addEventListener("mouseout", this.onPreviewMouseOut);
@@ -186,7 +185,7 @@ DomNodePreview.prototype = {
     HighlighterLock.on("highlighted", this.onHighlighterLocked);
   },
 
-  stopListeners: function () {
+  stopListeners: function() {
     HighlighterLock.off("highlighted", this.onHighlighterLocked);
     this.inspector.off("markupmutation", this.onMarkupMutations);
     this.previewEl.removeEventListener("mouseover", this.onPreviewMouseOver);
@@ -195,8 +194,8 @@ DomNodePreview.prototype = {
     this.highlightNodeEl.removeEventListener("click", this.onHighlightElClick);
   },
 
-  destroy: function () {
-    HighlighterLock.unhighlight().catch(e => console.error(e));
+  destroy: function() {
+    HighlighterLock.unhighlight().catch(console.error);
 
     this.stopListeners();
 
@@ -213,30 +212,30 @@ DomNodePreview.prototype = {
     return null;
   },
 
-  onPreviewMouseOver: function () {
+  onPreviewMouseOver: function() {
     if (!this.nodeFront || !this.highlighterUtils) {
       return;
     }
     this.highlighterUtils.highlightNodeFront(this.nodeFront)
-                         .catch(e => console.error(e));
+                         .catch(console.error);
   },
 
-  onPreviewMouseOut: function () {
+  onPreviewMouseOut: function() {
     if (!this.nodeFront || !this.highlighterUtils) {
       return;
     }
     this.highlighterUtils.unhighlight()
-                         .catch(e => console.error(e));
+                         .catch(console.error);
   },
 
-  onSelectElClick: function () {
+  onSelectElClick: function() {
     if (!this.nodeFront) {
       return;
     }
-    this.inspector.selection.setNodeFront(this.nodeFront, "dom-node-preview");
+    this.inspector.selection.setNodeFront(this.nodeFront, { reason: "dom-node-preview" });
   },
 
-  onHighlightElClick: function (e) {
+  onHighlightElClick: function(e) {
     e.stopPropagation();
 
     let classList = this.highlightNodeEl.classList;
@@ -246,22 +245,22 @@ DomNodePreview.prototype = {
       classList.remove("selected");
       HighlighterLock.unhighlight().then(() => {
         this.emit("target-highlighter-unlocked");
-      }, error => console.error(error));
+      }, console.error);
     } else {
       classList.add("selected");
       HighlighterLock.highlight(this).then(() => {
         this.emit("target-highlighter-locked");
-      }, error => console.error(error));
+      }, console.error);
     }
   },
 
-  onHighlighterLocked: function (e, domNodePreview) {
+  onHighlighterLocked: function(domNodePreview) {
     if (domNodePreview !== this) {
       this.highlightNodeEl.classList.remove("selected");
     }
   },
 
-  onMarkupMutations: function (e, mutations) {
+  onMarkupMutations: function(mutations) {
     if (!this.nodeFront) {
       return;
     }
@@ -275,7 +274,7 @@ DomNodePreview.prototype = {
     }
   },
 
-  render: function (nodeFront) {
+  render: function(nodeFront) {
     this.nodeFront = nodeFront;
     let {displayName, attributes} = nodeFront;
 
@@ -327,26 +326,26 @@ var HighlighterLock = {
   highlighter: null,
   isShown: false,
 
-  highlight: Task.async(function* (animationTargetNode) {
+  async highlight(animationTargetNode) {
     if (!this.highlighter) {
       let util = animationTargetNode.inspector.toolbox.highlighterUtils;
-      this.highlighter = yield util.getHighlighterByType("BoxModelHighlighter");
+      this.highlighter = await util.getHighlighterByType("BoxModelHighlighter");
     }
 
-    yield this.highlighter.show(animationTargetNode.nodeFront);
+    await this.highlighter.show(animationTargetNode.nodeFront);
     this.isShown = true;
     this.emit("highlighted", animationTargetNode);
-  }),
+  },
 
-  unhighlight: Task.async(function* () {
+  async unhighlight() {
     if (!this.highlighter || !this.isShown) {
       return;
     }
 
-    yield this.highlighter.hide();
+    await this.highlighter.hide();
     this.isShown = false;
     this.emit("unhighlighted");
-  })
+  }
 };
 
 EventEmitter.decorate(HighlighterLock);

@@ -8,6 +8,9 @@
 
 #include "mozilla/Assertions.h"
 #include "mozilla/ipc/BackgroundChild.h"
+#include "EventQueue.h"
+#include "mozilla/ThreadEventQueue.h"
+#include "mozilla/PerformanceCounter.h"
 #include "nsIThreadInternal.h"
 #include "WorkerPrivate.h"
 #include "WorkerRunnable.h"
@@ -17,10 +20,10 @@
 #endif
 
 namespace mozilla {
-namespace dom {
-namespace workers {
 
-using namespace mozilla::ipc;
+using namespace ipc;
+
+namespace dom {
 
 namespace {
 
@@ -65,7 +68,10 @@ private:
 };
 
 WorkerThread::WorkerThread()
-  : nsThread(nsThread::NOT_MAIN_THREAD, kWorkerStackSize)
+  : nsThread(MakeNotNull<ThreadEventQueue<mozilla::EventQueue>*>(
+               MakeUnique<mozilla::EventQueue>()),
+             nsThread::NOT_MAIN_THREAD,
+             kWorkerStackSize)
   , mLock("WorkerThread::mLock")
   , mWorkerPrivateCondVar(mLock, "WorkerThread::mWorkerPrivateCondVar")
   , mWorkerPrivate(nullptr)
@@ -88,7 +94,7 @@ already_AddRefed<WorkerThread>
 WorkerThread::Create(const WorkerThreadFriendKey& /* aKey */)
 {
   RefPtr<WorkerThread> thread = new WorkerThread();
-  if (NS_FAILED(thread->Init())) {
+  if (NS_FAILED(thread->Init(NS_LITERAL_CSTRING("DOM Worker")))) {
     NS_WARNING("Failed to create new thread!");
     return nullptr;
   }
@@ -202,8 +208,6 @@ WorkerThread::DispatchAnyThread(const WorkerThreadFriendKey& /* aKey */,
   return NS_OK;
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(WorkerThread, nsThread)
-
 NS_IMETHODIMP
 WorkerThread::DispatchFromScript(nsIRunnable* aRunnable, uint32_t aFlags)
 {
@@ -223,6 +227,13 @@ WorkerThread::Dispatch(already_AddRefed<nsIRunnable> aRunnable, uint32_t aFlags)
   }
 
   const bool onWorkerThread = PR_GetCurrentThread() == mThread;
+
+  if (GetSchedulerLoggingEnabled() && onWorkerThread && mWorkerPrivate) {
+    PerformanceCounter* performanceCounter = mWorkerPrivate->GetPerformanceCounter();
+    if (performanceCounter) {
+      performanceCounter->IncrementDispatchCounter(DispatchCategory::Worker);
+    }
+  }
 
 #ifdef DEBUG
   if (runnable && !onWorkerThread) {
@@ -311,6 +322,15 @@ WorkerThread::RecursionDepth(const WorkerThreadFriendKey& /* aKey */) const
   return mNestedEventLoopDepth;
 }
 
+PerformanceCounter*
+WorkerThread::GetPerformanceCounter(nsIRunnable* aEvent)
+{
+  if (mWorkerPrivate) {
+    return mWorkerPrivate->GetPerformanceCounter();
+  }
+  return nullptr;
+}
+
 NS_IMPL_ISUPPORTS(WorkerThread::Observer, nsIThreadObserver)
 
 NS_IMETHODIMP
@@ -351,6 +371,5 @@ WorkerThread::Observer::AfterProcessNextEvent(nsIThreadInternal* /* aThread */,
   return NS_OK;
 }
 
-} // namespace workers
 } // namespace dom
 } // namespace mozilla

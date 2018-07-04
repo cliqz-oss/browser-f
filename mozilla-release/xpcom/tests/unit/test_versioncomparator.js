@@ -1,3 +1,5 @@
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+
 // Versions to test listed in ascending order, none can be equal
 var comparisons = [
   "0.9",
@@ -28,23 +30,17 @@ var equality = [
   "1.0+"
 ];
 
-function run_test()
-{
-  var vc = Components.classes["@mozilla.org/xpcom/version-comparator;1"]
-                     .getService(Components.interfaces.nsIVersionComparator);
-
+function run_test() {
   for (var i = 0; i < comparisons.length; i++) {
     for (var j = 0; j < comparisons.length; j++) {
-      var result = vc.compare(comparisons[i], comparisons[j]);
+      var result = Services.vc.compare(comparisons[i], comparisons[j]);
       if (i == j) {
         if (result != 0)
           do_throw(comparisons[i] + " should be the same as itself");
-      }
-      else if (i < j) {
+      } else if (i < j) {
         if (!(result < 0))
           do_throw(comparisons[i] + " should be less than " + comparisons[j]);
-      }
-      else if (!(result > 0)) {
+      } else if (!(result > 0)) {
         do_throw(comparisons[i] + " should be greater than " + comparisons[j]);
       }
     }
@@ -52,7 +48,7 @@ function run_test()
 
   for (i = 0; i < equality.length; i++) {
     for (j = 0; j < equality.length; j++) {
-      if (vc.compare(equality[i], equality[j]) != 0)
+      if (Services.vc.compare(equality[i], equality[j]) != 0)
         do_throw(equality[i] + " should equal " + equality[j]);
     }
   }

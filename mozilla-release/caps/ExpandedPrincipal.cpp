@@ -13,10 +13,12 @@ NS_IMPL_CLASSINFO(ExpandedPrincipal, nullptr, nsIClassInfo::MAIN_THREAD_ONLY,
                   NS_EXPANDEDPRINCIPAL_CID)
 NS_IMPL_QUERY_INTERFACE_CI(ExpandedPrincipal,
                            nsIPrincipal,
-                           nsIExpandedPrincipal)
+                           nsIExpandedPrincipal,
+                           nsISerializable)
 NS_IMPL_CI_INTERFACE_GETTER(ExpandedPrincipal,
                             nsIPrincipal,
-                            nsIExpandedPrincipal)
+                            nsIExpandedPrincipal,
+                            nsISerializable)
 
 struct OriginComparator
 {
@@ -54,6 +56,11 @@ ExpandedPrincipal::ExpandedPrincipal(nsTArray<nsCOMPtr<nsIPrincipal>> &aWhiteLis
   }
 }
 
+ExpandedPrincipal::ExpandedPrincipal()
+  : BasePrincipal(eExpandedPrincipal)
+{
+}
+
 ExpandedPrincipal::~ExpandedPrincipal()
 { }
 
@@ -75,7 +82,7 @@ ExpandedPrincipal::Create(nsTArray<nsCOMPtr<nsIPrincipal>>& aWhiteList,
     MOZ_ASSERT(NS_SUCCEEDED(rv));
     origin.Append(subOrigin);
   }
-  origin.Append("]]");
+  origin.AppendLiteral("]]");
 
   ep->FinishInit(origin, aAttrs);
   return ep.forget();
@@ -100,15 +107,14 @@ ExpandedPrincipal::SubsumesInternal(nsIPrincipal* aOther,
 {
   // If aOther is an ExpandedPrincipal too, we break it down into its component
   // nsIPrincipals, and check subsumes on each one.
-  nsCOMPtr<nsIExpandedPrincipal> expanded = do_QueryInterface(aOther);
-  if (expanded) {
-    nsTArray< nsCOMPtr<nsIPrincipal> >* otherList;
-    expanded->GetWhiteList(&otherList);
-    for (uint32_t i = 0; i < otherList->Length(); ++i){
+  if (Cast(aOther)->Is<ExpandedPrincipal>()) {
+    auto* expanded = Cast(aOther)->As<ExpandedPrincipal>();
+
+    for (auto& other : expanded->WhiteList()) {
       // Use SubsumesInternal rather than Subsumes here, since OriginAttribute
       // checks are only done between non-expanded sub-principals, and we don't
       // need to incur the extra virtual call overhead.
-      if (!SubsumesInternal((*otherList)[i], aConsideration)) {
+      if (!SubsumesInternal(other, aConsideration)) {
         return false;
       }
     }
@@ -151,11 +157,10 @@ ExpandedPrincipal::GetURI(nsIURI** aURI)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-ExpandedPrincipal::GetWhiteList(nsTArray<nsCOMPtr<nsIPrincipal> >** aWhiteList)
+const nsTArray<nsCOMPtr<nsIPrincipal>>&
+ExpandedPrincipal::WhiteList()
 {
-  *aWhiteList = &mPrincipals;
-  return NS_OK;
+  return mPrincipals;
 }
 
 NS_IMETHODIMP
@@ -172,7 +177,7 @@ ExpandedPrincipal::GetAddonId(nsAString& aAddonId)
 };
 
 bool
-ExpandedPrincipal::AddonHasPermission(const nsAString& aPerm)
+ExpandedPrincipal::AddonHasPermission(const nsAtom* aPerm)
 {
   for (size_t i = 0; i < mPrincipals.Length(); ++i) {
     if (BasePrincipal::Cast(mPrincipals[i])->AddonHasPermission(aPerm)) {
@@ -182,10 +187,40 @@ ExpandedPrincipal::AddonHasPermission(const nsAString& aPerm)
   return false;
 }
 
+bool
+ExpandedPrincipal::AddonAllowsLoad(nsIURI* aURI, bool aExplicit /* = false */)
+{
+  for (const auto& principal : mPrincipals) {
+    if (Cast(principal)->AddonAllowsLoad(aURI, aExplicit)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+nsIPrincipal*
+ExpandedPrincipal::PrincipalToInherit(nsIURI* aRequestedURI)
+{
+  if (aRequestedURI) {
+    // If a given sub-principal subsumes the given URI, use that principal for
+    // inheritance. In general, this only happens with certain CORS modes, loads
+    // with forced principal inheritance, and creation of XML documents from
+    // XMLHttpRequests or fetch requests. For URIs that normally inherit a
+    // principal (such as data: URIs), we fall back to the last principal in the
+    // whitelist.
+    for (const auto& principal : mPrincipals) {
+      if (Cast(principal)->MayLoadInternal(aRequestedURI)) {
+        return principal;
+      }
+    }
+  }
+  return mPrincipals.LastElement();
+}
+
 nsresult
 ExpandedPrincipal::GetScriptLocation(nsACString& aStr)
 {
-  aStr.Assign("[Expanded Principal [");
+  aStr.AssignLiteral("[Expanded Principal [");
   for (size_t i = 0; i < mPrincipals.Length(); ++i) {
     if (i != 0) {
       aStr.AppendLiteral(", ");
@@ -198,7 +233,7 @@ ExpandedPrincipal::GetScriptLocation(nsACString& aStr)
 
     aStr.Append(spec);
   }
-  aStr.Append("]]");
+  aStr.AppendLiteral("]]");
   return NS_OK;
 }
 
@@ -206,14 +241,71 @@ ExpandedPrincipal::GetScriptLocation(nsACString& aStr)
 // Methods implementing nsISerializable //
 //////////////////////////////////////////
 
+// We've had way too many issues with unversioned serializations, so
+// explicitly version this one.
+static const uint32_t kSerializationVersion = 1;
+
 NS_IMETHODIMP
 ExpandedPrincipal::Read(nsIObjectInputStream* aStream)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  uint32_t version;
+  nsresult rv = aStream->Read32(&version);
+  if (version != kSerializationVersion) {
+    MOZ_ASSERT(false,
+               "We really need to add handling of the old(?) version here");
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  uint32_t count;
+  rv = aStream->Read32(&count);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  if (!mPrincipals.SetCapacity(count, fallible)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  OriginComparator c;
+  for (uint32_t i = 0; i < count; ++i) {
+    nsCOMPtr<nsISupports> read;
+    rv = aStream->ReadObject(true, getter_AddRefs(read));
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+
+    nsCOMPtr<nsIPrincipal> principal = do_QueryInterface(read);
+    if (!principal) {
+      return NS_ERROR_UNEXPECTED;
+    }
+
+    // Play it safe and InsertElementSorted, in case the sort order
+    // changed for some bizarre reason.
+    mPrincipals.InsertElementSorted(Move(principal), c);
+  }
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 ExpandedPrincipal::Write(nsIObjectOutputStream* aStream)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  nsresult rv = aStream->Write32(kSerializationVersion);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  rv = aStream->Write32(mPrincipals.Length());
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  for (auto& principal : mPrincipals) {
+    rv = aStream->WriteObject(principal, true);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+  }
+
+  return NS_OK;
 }

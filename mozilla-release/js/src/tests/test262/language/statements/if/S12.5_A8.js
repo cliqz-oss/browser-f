@@ -7,9 +7,11 @@ info: In the "if" Statement empty expression is not allowed
 es5id: 12.5_A8
 description: Checking if execution of "if()" fails
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 //////////////////////////////////////////////////////////////////////////////
 //CHECK#1

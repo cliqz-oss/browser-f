@@ -2657,10 +2657,10 @@ mp_toradix(mp_int *mp, char *str, int radix)
         /* Reverse the digits and sign indicator     */
         ix = 0;
         while (ix < pos) {
-            char tmp = str[ix];
+            char tmpc = str[ix];
 
             str[ix] = str[pos];
-            str[pos] = tmp;
+            str[pos] = tmpc;
             ++ix;
             --pos;
         }
@@ -2782,15 +2782,7 @@ s_mp_pad(mp_int *mp, mp_size min)
 void
 s_mp_setz(mp_digit *dp, mp_size count)
 {
-#if MP_MEMSET == 0
-    int ix;
-
-    for (ix = 0; ix < count; ix++)
-        dp[ix] = 0;
-#else
     memset(dp, 0, count * sizeof(mp_digit));
-#endif
-
 } /* end s_mp_setz() */
 
 /* }}} */
@@ -2801,14 +2793,7 @@ s_mp_setz(mp_digit *dp, mp_size count)
 void
 s_mp_copy(const mp_digit *sp, mp_digit *dp, mp_size count)
 {
-#if MP_MEMCPY == 0
-    int ix;
-
-    for (ix = 0; ix < count; ix++)
-        dp[ix] = sp[ix];
-#else
     memcpy(dp, sp, count * sizeof(mp_digit));
-#endif
 } /* end s_mp_copy() */
 
 /* }}} */
@@ -3328,13 +3313,14 @@ s_mp_div_d(mp_int *mp, mp_digit d, mp_digit *r)
     /* could check for power of 2 here, but mp_div_d does that. */
     if (MP_USED(mp) == 1) {
         mp_digit n = MP_DIGIT(mp, 0);
-        mp_digit rem;
+        mp_digit remdig;
 
         q = n / d;
-        rem = n % d;
+        remdig = n % d;
         MP_DIGIT(mp, 0) = q;
-        if (r)
-            *r = rem;
+        if (r) {
+            *r = remdig;
+        }
         return MP_OKAY;
     }
 

@@ -1,4 +1,5 @@
-/* vim: set shiftwidth=2 tabstop=8 autoindent cindent expandtab: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,48 +8,39 @@
 #include "nsTransitionManager.h"
 #include "mozilla/dom/CSSAnimationBinding.h"
 
+#include "mozilla/AnimationEventDispatcher.h"
 #include "mozilla/AnimationTarget.h"
 #include "mozilla/EffectCompositor.h"
 #include "mozilla/EffectSet.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/StyleAnimationValue.h"
+#include "mozilla/dom/AnimationEffectReadOnly.h"
 #include "mozilla/dom/DocumentTimeline.h"
 #include "mozilla/dom/KeyframeEffectReadOnly.h"
 
 #include "nsPresContext.h"
-#include "nsStyleSet.h"
 #include "nsStyleChangeList.h"
 #include "nsContentUtils.h"
-#include "nsCSSRules.h"
-#include "mozilla/GeckoRestyleManager.h"
 #include "nsLayoutUtils.h"
 #include "nsIFrame.h"
 #include "nsIDocument.h"
 #include "nsDOMMutationObserver.h"
 #include "nsIPresShell.h"
 #include "nsIPresShellInlines.h"
+#include "nsRFPService.h"
 #include <algorithm> // std::stable_sort
 #include <math.h>
 
 using namespace mozilla;
 using namespace mozilla::css;
 using mozilla::dom::Animation;
+using mozilla::dom::AnimationEffectReadOnly;
 using mozilla::dom::AnimationPlayState;
 using mozilla::dom::KeyframeEffectReadOnly;
 using mozilla::dom::CSSAnimation;
 
 typedef mozilla::ComputedTiming::AnimationPhase AnimationPhase;
-
-namespace {
-
-struct AnimationEventParams {
-  EventMessage mMessage;
-  StickyTimeDuration mElapsedTime;
-  TimeStamp mTimeStamp;
-};
-
-} // anonymous namespace
 
 ////////////////////////// CSSAnimation ////////////////////////////
 
@@ -61,7 +53,7 @@ CSSAnimation::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 mozilla::dom::Promise*
 CSSAnimation::GetReady(ErrorResult& aRv)
 {
-  FlushStyle();
+  FlushUnanimatedStyle();
   return Animation::GetReady(aRv);
 }
 
@@ -84,8 +76,17 @@ CSSAnimation::PlayStateFromJS() const
 {
   // Flush style to ensure that any properties controlling animation state
   // (e.g. animation-play-state) are fully updated.
-  FlushStyle();
+  FlushUnanimatedStyle();
   return Animation::PlayStateFromJS();
+}
+
+bool
+CSSAnimation::PendingFromJS() const
+{
+  // Flush style since, for example, if the animation-play-state was just
+  // changed its possible we should now be pending.
+  FlushUnanimatedStyle();
+  return Animation::PendingFromJS();
 }
 
 void
@@ -93,7 +94,7 @@ CSSAnimation::PlayFromJS(ErrorResult& aRv)
 {
   // Note that flushing style below might trigger calls to
   // PlayFromStyle()/PauseFromStyle() on this object.
-  FlushStyle();
+  FlushUnanimatedStyle();
   Animation::PlayFromJS(aRv);
 }
 
@@ -103,7 +104,7 @@ CSSAnimation::PlayFromStyle()
   mIsStylePaused = false;
   if (!mPauseShouldStick) {
     ErrorResult rv;
-    PlayNoUpdate(rv, Animation::LimitBehavior::Continue);
+    Animation::Play(rv, Animation::LimitBehavior::Continue);
     // play() should not throw when LimitBehavior is Continue
     MOZ_ASSERT(!rv.Failed(), "Unexpected exception playing animation");
   }
@@ -119,7 +120,7 @@ CSSAnimation::PauseFromStyle()
 
   mIsStylePaused = true;
   ErrorResult rv;
-  PauseNoUpdate(rv);
+  Animation::Pause(rv);
   // pause() should only throw when *all* of the following conditions are true:
   // - we are in the idle state, and
   // - we have a negative playback rate, and
@@ -163,7 +164,7 @@ CSSAnimation::HasLowerCompositeOrderThan(const CSSAnimation& aOther) const
 }
 
 void
-CSSAnimation::QueueEvents(StickyTimeDuration aActiveTime)
+CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime)
 {
   // If the animation is pending, we ignore animation events until we finish
   // pending.
@@ -187,20 +188,12 @@ CSSAnimation::QueueEvents(StickyTimeDuration aActiveTime)
     return;
   }
 
-  dom::Element* owningElement;
-  CSSPseudoElementType owningPseudoType;
-  mOwningElement.GetElement(owningElement, owningPseudoType);
-  MOZ_ASSERT(owningElement, "Owning element should be set");
-
-  // Get the nsAnimationManager so we can queue events on it
-  nsPresContext* presContext =
-    nsContentUtils::GetContextForContent(owningElement);
+  nsPresContext* presContext = mOwningElement.GetPresContext();
   if (!presContext) {
     return;
   }
-  nsAnimationManager* manager = presContext->AnimationManager();
 
-  const StickyTimeDuration zeroDuration;
+  static constexpr StickyTimeDuration zeroDuration = StickyTimeDuration();
   uint64_t currentIteration = 0;
   ComputedTiming::AnimationPhase currentPhase;
   StickyTimeDuration intervalStartTime;
@@ -239,76 +232,78 @@ CSSAnimation::QueueEvents(StickyTimeDuration aActiveTime)
   TimeStamp endTimeStamp       = ElapsedTimeToTimeStamp(intervalEndTime);
   TimeStamp iterationTimeStamp = ElapsedTimeToTimeStamp(iterationStartTime);
 
-  AutoTArray<AnimationEventParams, 2> events;
+  AutoTArray<AnimationEventInfo, 2> events;
+
+  auto appendAnimationEvent = [&](EventMessage aMessage,
+                                  const StickyTimeDuration& aElapsedTime,
+                                  const TimeStamp& aTimeStamp) {
+    double elapsedTime = aElapsedTime.ToSeconds();
+    if (aMessage == eAnimationCancel) {
+      // 0 is an inappropriate value for this callsite. What we need to do is
+      // use a single random value for all increasing times reportable.
+      // That is to say, whenever elapsedTime goes negative (because an
+      // animation restarts, something rewinds the animation, or otherwise)
+      // a new random value for the mix-in must be generated.
+      elapsedTime = nsRFPService::ReduceTimePrecisionAsSecs(elapsedTime, 0, TimerPrecisionType::RFPOnly);
+    }
+    events.AppendElement(AnimationEventInfo(mAnimationName,
+                                            mOwningElement.Target(),
+                                            aMessage,
+                                            elapsedTime,
+                                            aTimeStamp,
+                                            this));
+  };
 
   // Handle cancel event first
   if ((mPreviousPhase != AnimationPhase::Idle &&
        mPreviousPhase != AnimationPhase::After) &&
       currentPhase == AnimationPhase::Idle) {
     TimeStamp activeTimeStamp = ElapsedTimeToTimeStamp(aActiveTime);
-    events.AppendElement(AnimationEventParams{ eAnimationCancel,
-                                               aActiveTime,
-                                               activeTimeStamp });
+    appendAnimationEvent(eAnimationCancel, aActiveTime, activeTimeStamp);
   }
 
   switch (mPreviousPhase) {
     case AnimationPhase::Idle:
     case AnimationPhase::Before:
       if (currentPhase == AnimationPhase::Active) {
-        events.AppendElement(AnimationEventParams{ eAnimationStart,
-                                                   intervalStartTime,
-                                                   startTimeStamp });
+        appendAnimationEvent(eAnimationStart,
+                             intervalStartTime,
+                             startTimeStamp);
       } else if (currentPhase == AnimationPhase::After) {
-        events.AppendElement(AnimationEventParams{ eAnimationStart,
-                                                   intervalStartTime,
-                                                   startTimeStamp });
-        events.AppendElement(AnimationEventParams{ eAnimationEnd,
-                                                   intervalEndTime,
-                                                   endTimeStamp });
+        appendAnimationEvent(eAnimationStart,
+                             intervalStartTime,
+                             startTimeStamp);
+        appendAnimationEvent(eAnimationEnd, intervalEndTime, endTimeStamp);
       }
       break;
     case AnimationPhase::Active:
       if (currentPhase == AnimationPhase::Before) {
-        events.AppendElement(AnimationEventParams{ eAnimationEnd,
-                                                   intervalStartTime,
-                                                   startTimeStamp });
+        appendAnimationEvent(eAnimationEnd, intervalStartTime, startTimeStamp);
       } else if (currentPhase == AnimationPhase::Active) {
         // The currentIteration must have changed or element we would have
         // returned early above.
         MOZ_ASSERT(currentIteration != mPreviousIteration);
-        events.AppendElement(AnimationEventParams{ eAnimationIteration,
-                                                   iterationStartTime,
-                                                   iterationTimeStamp });
+        appendAnimationEvent(eAnimationIteration,
+                             iterationStartTime,
+                             iterationTimeStamp);
       } else if (currentPhase == AnimationPhase::After) {
-        events.AppendElement(AnimationEventParams{ eAnimationEnd,
-                                                   intervalEndTime,
-                                                   endTimeStamp });
+        appendAnimationEvent(eAnimationEnd, intervalEndTime, endTimeStamp);
       }
       break;
     case AnimationPhase::After:
       if (currentPhase == AnimationPhase::Before) {
-        events.AppendElement(AnimationEventParams{ eAnimationStart,
-                                                   intervalEndTime,
-                                                   startTimeStamp});
-        events.AppendElement(AnimationEventParams{ eAnimationEnd,
-                                                   intervalStartTime,
-                                                   endTimeStamp });
+        appendAnimationEvent(eAnimationStart, intervalEndTime, startTimeStamp);
+        appendAnimationEvent(eAnimationEnd, intervalStartTime, endTimeStamp);
       } else if (currentPhase == AnimationPhase::Active) {
-        events.AppendElement(AnimationEventParams{ eAnimationStart,
-                                                   intervalEndTime,
-                                                   endTimeStamp });
+        appendAnimationEvent(eAnimationStart, intervalEndTime, endTimeStamp);
       }
       break;
   }
   mPreviousPhase = currentPhase;
   mPreviousIteration = currentIteration;
 
-  for (const AnimationEventParams& event : events){
-    manager->QueueEvent(
-               AnimationEventInfo(owningElement, owningPseudoType,
-                                  event.mMessage, mAnimationName,
-                                  event.mElapsedTime, event.mTimeStamp,
-                                  this));
+  if (!events.IsEmpty()) {
+    presContext->AnimationEventDispatcher()->QueueEvents(Move(events));
   }
 }
 
@@ -326,15 +321,10 @@ CSSAnimation::UpdateTiming(SeekFlag aSeekFlag, SyncNotifyFlag aSyncNotifyFlag)
 
 ////////////////////////// nsAnimationManager ////////////////////////////
 
-NS_IMPL_CYCLE_COLLECTION(nsAnimationManager, mEventDispatcher)
-
-NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(nsAnimationManager, AddRef)
-NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(nsAnimationManager, Release)
-
 // Find the matching animation by |aName| in the old list
 // of animations and remove the matched animation from the list.
 static already_AddRefed<CSSAnimation>
-PopExistingAnimation(const nsAString& aName,
+PopExistingAnimation(const nsAtom* aName,
                      nsAnimationManager::CSSAnimationCollection* aCollection)
 {
   if (!aCollection) {
@@ -358,136 +348,85 @@ PopExistingAnimation(const nsAString& aName,
   return nullptr;
 }
 
-class ResolvedStyleCache {
-public:
-  ResolvedStyleCache() : mCache() {}
-  GeckoStyleContext* Get(nsPresContext* aPresContext,
-                         GeckoStyleContext* aParentStyleContext,
-                         Declaration* aKeyframeDeclaration);
-
-private:
-  nsRefPtrHashtable<nsPtrHashKey<Declaration>, GeckoStyleContext> mCache;
-};
-
-GeckoStyleContext*
-ResolvedStyleCache::Get(nsPresContext* aPresContext,
-                        GeckoStyleContext* aParentStyleContext,
-                        Declaration* aKeyframeDeclaration)
-{
-  // FIXME (spec):  The css3-animations spec isn't very clear about how
-  // properties are resolved when they have values that depend on other
-  // properties (e.g., values in 'em').  I presume that they're resolved
-  // relative to the other styles of the element.  The question is
-  // whether they are resolved relative to other animations:  I assume
-  // that they're not, since that would prevent us from caching a lot of
-  // data that we'd really like to cache (in particular, the
-  // StyleAnimationValue values in AnimationPropertySegment).
-  GeckoStyleContext* result = mCache.GetWeak(aKeyframeDeclaration);
-  if (!result) {
-    aKeyframeDeclaration->SetImmutable();
-    // The spec says that !important declarations should just be ignored
-    MOZ_ASSERT(!aKeyframeDeclaration->HasImportantData(),
-               "Keyframe rule has !important data");
-
-    nsCOMArray<nsIStyleRule> rules;
-    rules.AppendObject(aKeyframeDeclaration);
-    MOZ_ASSERT(aPresContext->StyleSet()->IsGecko(),
-               "ServoStyleSet should not use nsAnimationManager for "
-               "animations");
-    RefPtr<GeckoStyleContext> resultStrong =
-      aPresContext->StyleSet()->AsGecko()->
-        ResolveStyleByAddingRules(aParentStyleContext, rules);
-    mCache.Put(aKeyframeDeclaration, resultStrong);
-    result = resultStrong;
-  }
-  return result;
-}
 
 class MOZ_STACK_CLASS ServoCSSAnimationBuilder final {
 public:
-  explicit ServoCSSAnimationBuilder(const ServoStyleContext* aStyleContext)
-    : mStyleContext(aStyleContext)
+  explicit ServoCSSAnimationBuilder(const ComputedStyle* aComputedStyle)
+    : mComputedStyle(aComputedStyle)
   {
-    MOZ_ASSERT(aStyleContext);
+    MOZ_ASSERT(aComputedStyle);
   }
 
-  bool BuildKeyframes(nsPresContext* aPresContext,
-                      const StyleAnimation& aSrc,
+  bool BuildKeyframes(const Element& aElement,
+                      nsPresContext* aPresContext,
+                      nsAtom* aName,
+                      const nsTimingFunction& aTimingFunction,
                       nsTArray<Keyframe>& aKeyframes)
   {
-    ServoStyleSet* styleSet = aPresContext->StyleSet()->AsServo();
+    ServoStyleSet* styleSet = aPresContext->StyleSet();
     MOZ_ASSERT(styleSet);
-    const nsTimingFunction& timingFunction = aSrc.GetTimingFunction();
-    return styleSet->GetKeyframesForName(aSrc.GetName(),
-                                         timingFunction,
+    return styleSet->GetKeyframesForName(aElement,
+                                         aName,
+                                         aTimingFunction,
                                          aKeyframes);
   }
   void SetKeyframes(KeyframeEffectReadOnly& aEffect,
                     nsTArray<Keyframe>&& aKeyframes)
   {
-    aEffect.SetKeyframes(Move(aKeyframes), mStyleContext);
+    aEffect.SetKeyframes(Move(aKeyframes), mComputedStyle);
+  }
+
+  // Currently all the animation building code in this file is based on
+  // assumption that creating and removing animations should *not* trigger
+  // additional restyles since those changes will be handled within the same
+  // restyle.
+  //
+  // While that is true for the Gecko style backend, it is not true for the
+  // Servo style backend where we want restyles to be triggered so that we
+  // perform a second animation restyle where we will incorporate the changes
+  // arising from creating and removing animations.
+  //
+  // Fortunately, our attempts to avoid posting extra restyles as part of the
+  // processing here are imperfect and most of the time we happen to post
+  // them anyway. Occasionally, however, we don't. For example, we don't post
+  // a restyle when we create a new animation whose an animation index matches
+  // the default value it was given already (which is typically only true when
+  // the CSSAnimation we create is the first Animation created in a particular
+  // content process).
+  //
+  // As a result, when we are using the Servo backend, whenever we have an added
+  // or removed animation we need to explicitly trigger a restyle.
+  //
+  // This code should eventually disappear along with the Gecko style backend
+  // and we should simply call Play() / Pause() / Cancel() etc. which will
+  // post the required restyles.
+  void NotifyNewOrRemovedAnimation(const Animation& aAnimation)
+  {
+    dom::AnimationEffectReadOnly* effect = aAnimation.GetEffect();
+    if (!effect) {
+      return;
+    }
+
+    KeyframeEffectReadOnly* keyframeEffect = effect->AsKeyframeEffect();
+    if (!keyframeEffect) {
+      return;
+    }
+
+    keyframeEffect->RequestRestyle(EffectCompositor::RestyleType::Standard);
   }
 
 private:
-  const ServoStyleContext* mStyleContext;
+  const ComputedStyle* mComputedStyle;
 };
 
-class MOZ_STACK_CLASS GeckoCSSAnimationBuilder final {
-public:
-  GeckoCSSAnimationBuilder(GeckoStyleContext* aStyleContext,
-                           const NonOwningAnimationTarget& aTarget)
-    : mStyleContext(aStyleContext)
-    , mTarget(aTarget)
-  {
-    MOZ_ASSERT(aStyleContext);
-    MOZ_ASSERT(aTarget.mElement);
-  }
 
-  bool BuildKeyframes(nsPresContext* aPresContext,
-                      const StyleAnimation& aSrc,
-                      nsTArray<Keyframe>& aKeyframs);
-  void SetKeyframes(KeyframeEffectReadOnly& aEffect,
-                    nsTArray<Keyframe>&& aKeyframes)
-  {
-    aEffect.SetKeyframes(Move(aKeyframes), mStyleContext);
-  }
-
-private:
-  nsTArray<Keyframe> BuildAnimationFrames(nsPresContext* aPresContext,
-                                          const StyleAnimation& aSrc,
-                                          const nsCSSKeyframesRule* aRule);
-  Maybe<ComputedTimingFunction> GetKeyframeTimingFunction(
-    nsPresContext* aPresContext,
-    nsCSSKeyframeRule* aKeyframeRule,
-    const Maybe<ComputedTimingFunction>& aInheritedTimingFunction);
-  nsTArray<PropertyValuePair> GetKeyframePropertyValues(
-    nsPresContext* aPresContext,
-    nsCSSKeyframeRule* aKeyframeRule,
-    nsCSSPropertyIDSet& aAnimatedProperties);
-  void FillInMissingKeyframeValues(
-    nsCSSPropertyIDSet aAnimatedProperties,
-    nsCSSPropertyIDSet aPropertiesSetAtStart,
-    nsCSSPropertyIDSet aPropertiesSetAtEnd,
-    const Maybe<ComputedTimingFunction>& aInheritedTimingFunction,
-    nsTArray<Keyframe>& aKeyframes);
-
-  RefPtr<GeckoStyleContext> mStyleContext;
-  NonOwningAnimationTarget mTarget;
-
-  ResolvedStyleCache mResolvedStyles;
-};
-
-static Maybe<ComputedTimingFunction>
-ConvertTimingFunction(const nsTimingFunction& aTimingFunction);
-
-template<class BuilderType>
 static void
 UpdateOldAnimationPropertiesWithNew(
     CSSAnimation& aOld,
     TimingParams& aNewTiming,
     nsTArray<Keyframe>&& aNewKeyframes,
     bool aNewIsStylePaused,
-    BuilderType& aBuilder)
+    ServoCSSAnimationBuilder& aBuilder)
 {
   bool animationChanged = false;
 
@@ -534,34 +473,41 @@ UpdateOldAnimationPropertiesWithNew(
 // Returns a new animation set up with given StyleAnimation.
 // Or returns an existing animation matching StyleAnimation's name updated
 // with the new StyleAnimation.
-template<class BuilderType>
 static already_AddRefed<CSSAnimation>
 BuildAnimation(nsPresContext* aPresContext,
                const NonOwningAnimationTarget& aTarget,
-               const StyleAnimation& aSrc,
-               BuilderType& aBuilder,
+               const nsStyleDisplay& aStyleDisplay,
+               uint32_t animIdx,
+               ServoCSSAnimationBuilder& aBuilder,
                nsAnimationManager::CSSAnimationCollection* aCollection)
 {
   MOZ_ASSERT(aPresContext);
 
+  nsAtom* animationName = aStyleDisplay.GetAnimationName(animIdx);
   nsTArray<Keyframe> keyframes;
-  if (!aBuilder.BuildKeyframes(aPresContext, aSrc, keyframes)) {
+  if (!aBuilder.BuildKeyframes(*aTarget.mElement,
+                               aPresContext,
+                               animationName,
+                               aStyleDisplay.GetAnimationTimingFunction(animIdx),
+                               keyframes)) {
     return nullptr;
   }
 
-  TimingParams timing = TimingParamsFromCSSParams(aSrc.GetDuration(),
-                                                  aSrc.GetDelay(),
-                                                  aSrc.GetIterationCount(),
-                                                  aSrc.GetDirection(),
-                                                  aSrc.GetFillMode());
+  TimingParams timing =
+    TimingParamsFromCSSParams(aStyleDisplay.GetAnimationDuration(animIdx),
+                              aStyleDisplay.GetAnimationDelay(animIdx),
+                              aStyleDisplay.GetAnimationIterationCount(animIdx),
+                              aStyleDisplay.GetAnimationDirection(animIdx),
+                              aStyleDisplay.GetAnimationFillMode(animIdx));
 
   bool isStylePaused =
-    aSrc.GetPlayState() == NS_STYLE_ANIMATION_PLAY_STATE_PAUSED;
+    aStyleDisplay.GetAnimationPlayState(animIdx) ==
+      NS_STYLE_ANIMATION_PLAY_STATE_PAUSED;
 
   // Find the matching animation with animation name in the old list
   // of animations and remove the matched animation from the list.
   RefPtr<CSSAnimation> oldAnim =
-    PopExistingAnimation(aSrc.GetName(), aCollection);
+    PopExistingAnimation(animationName, aCollection);
 
   if (oldAnim) {
     // Copy over the start times and (if still paused) pause starts
@@ -591,8 +537,7 @@ BuildAnimation(nsPresContext* aPresContext,
   aBuilder.SetKeyframes(*effect, Move(keyframes));
 
   RefPtr<CSSAnimation> animation =
-    new CSSAnimation(aPresContext->Document()->GetScopeObject(),
-                     aSrc.GetName());
+    new CSSAnimation(aPresContext->Document()->GetScopeObject(), animationName);
   animation->SetOwningElement(
     OwningElementRef(*aTarget.mElement, aTarget.mPseudoType));
 
@@ -605,379 +550,38 @@ BuildAnimation(nsPresContext* aPresContext,
     animation->PlayFromStyle();
   }
 
+  aBuilder.NotifyNewOrRemovedAnimation(*animation);
+
   return animation.forget();
 }
 
-bool
-GeckoCSSAnimationBuilder::BuildKeyframes(nsPresContext* aPresContext,
-                                         const StyleAnimation& aSrc,
-                                         nsTArray<Keyframe>& aKeyframes)
-{
-  MOZ_ASSERT(aPresContext);
-  MOZ_ASSERT(aPresContext->StyleSet()->IsGecko());
 
-  nsCSSKeyframesRule* rule =
-    aPresContext->StyleSet()->AsGecko()->KeyframesRuleForName(aSrc.GetName());
-  if (!rule) {
-    return false;
-  }
-
-  aKeyframes = BuildAnimationFrames(aPresContext, aSrc, rule);
-
-  return true;
-}
-
-nsTArray<Keyframe>
-GeckoCSSAnimationBuilder::BuildAnimationFrames(nsPresContext* aPresContext,
-                                               const StyleAnimation& aSrc,
-                                               const nsCSSKeyframesRule* aRule)
-{
-  // Ideally we'd like to build up a set of Keyframe objects that more-or-less
-  // reflect the keyframes as-specified in the @keyframes rule(s) so that
-  // authors get something intuitive when they call anim.effect.getKeyframes().
-  //
-  // That, however, proves to be difficult because the way CSS declarations are
-  // processed differs from how we are able to represent keyframes as
-  // JavaScript objects in the Web Animations API.
-  //
-  // For example,
-  //
-  //   { margin: 10px; margin-left: 20px }
-  //
-  // could be represented as:
-  //
-  //   { margin: '10px', marginLeft: '20px' }
-  //
-  // BUT:
-  //
-  //   { margin-left: 20px; margin: 10px }
-  //
-  // would be represented as:
-  //
-  //   { margin: '10px' }
-  //
-  // Likewise,
-  //
-  //   { margin-left: 20px; margin-left: 30px }
-  //
-  // would be represented as:
-  //
-  //   { marginLeft: '30px' }
-  //
-  // As such, the mapping between source @keyframes and the Keyframe objects
-  // becomes obscured. The deviation is even more significant when we consider
-  // cascading between @keyframes rules and variable references in shorthand
-  // properties.
-  //
-  // We could, perhaps, produce a mapping that makes sense most of the time
-  // but it would be complex and need to be specified and implemented
-  // interoperably. Instead, for now, for CSS Animations (and CSS Transitions,
-  // for that matter) we resolve values on @keyframes down to computed values
-  // (thereby expanding shorthands and variable references) and then pick up the
-  // last value for each longhand property at each offset.
-
-  // FIXME: There is a pending spec change to make multiple @keyframes
-  // rules with the same name cascade but we don't support that yet.
-
-  Maybe<ComputedTimingFunction> inheritedTimingFunction =
-    ConvertTimingFunction(aSrc.GetTimingFunction());
-
-  // First, make up Keyframe objects for each rule
-  nsTArray<Keyframe> keyframes;
-  nsCSSPropertyIDSet animatedProperties;
-
-  for (auto ruleIdx = 0, ruleEnd = aRule->StyleRuleCount();
-       ruleIdx != ruleEnd; ++ruleIdx) {
-    css::Rule* cssRule = aRule->GetStyleRuleAt(ruleIdx);
-    MOZ_ASSERT(cssRule, "must have rule");
-    MOZ_ASSERT(cssRule->GetType() == css::Rule::KEYFRAME_RULE,
-               "must be keyframe rule");
-    nsCSSKeyframeRule* keyframeRule = static_cast<nsCSSKeyframeRule*>(cssRule);
-
-    const nsTArray<float>& keys = keyframeRule->GetKeys();
-    for (float key : keys) {
-      if (key < 0.0f || key > 1.0f) {
-        continue;
-      }
-
-      Keyframe keyframe;
-      keyframe.mOffset.emplace(key);
-      keyframe.mTimingFunction =
-        GetKeyframeTimingFunction(aPresContext, keyframeRule,
-                                  inheritedTimingFunction);
-      keyframe.mPropertyValues =
-        GetKeyframePropertyValues(aPresContext, keyframeRule,
-                                  animatedProperties);
-
-      keyframes.AppendElement(Move(keyframe));
-    }
-  }
-
-  // Next, stable sort by offset
-  std::stable_sort(keyframes.begin(), keyframes.end(),
-                   [](const Keyframe& a, const Keyframe& b)
-                   {
-                     return a.mOffset < b.mOffset;
-                   });
-
-  // Then walk backwards through the keyframes and drop overridden properties.
-  nsCSSPropertyIDSet propertiesSetAtCurrentOffset;
-  nsCSSPropertyIDSet propertiesSetAtStart;
-  nsCSSPropertyIDSet propertiesSetAtEnd;
-  double currentOffset = -1.0;
-  for (size_t keyframeIdx = keyframes.Length();
-       keyframeIdx > 0;
-       --keyframeIdx) {
-    Keyframe& keyframe = keyframes[keyframeIdx - 1];
-    MOZ_ASSERT(keyframe.mOffset, "Should have filled in the offset");
-
-    if (keyframe.mOffset.value() != currentOffset) {
-      propertiesSetAtCurrentOffset.Empty();
-      currentOffset = keyframe.mOffset.value();
-    }
-
-    // Get the set of properties from this keyframe that have not
-    // already been set at this offset.
-    nsTArray<PropertyValuePair> uniquePropertyValues;
-    uniquePropertyValues.SetCapacity(keyframe.mPropertyValues.Length());
-    for (const PropertyValuePair& pair : keyframe.mPropertyValues) {
-      if (!propertiesSetAtCurrentOffset.HasProperty(pair.mProperty)) {
-        uniquePropertyValues.AppendElement(pair);
-        propertiesSetAtCurrentOffset.AddProperty(pair.mProperty);
-
-        if (currentOffset == 0.0) {
-          propertiesSetAtStart.AddProperty(pair.mProperty);
-        } else if (currentOffset == 1.0) {
-          propertiesSetAtEnd.AddProperty(pair.mProperty);
-        }
-      }
-    }
-
-    // If we have a keyframe at the same offset with the same timing
-    // function we should merge our (unique) values into it.
-    // Otherwise, we should update the existing keyframe with only the
-    // unique properties.
-    //
-    // Bug 1293490: We should also match composite modes here.
-    Keyframe* existingKeyframe = nullptr;
-    // Don't bother searching for an existing keyframe if we don't
-    // have anything to contribute to it.
-    if (!uniquePropertyValues.IsEmpty()) {
-      for (size_t i = keyframeIdx; i < keyframes.Length(); i++) {
-        Keyframe& kf = keyframes[i];
-        if (kf.mOffset.value() != currentOffset) {
-          break;
-        }
-        if (kf.mTimingFunction == keyframe.mTimingFunction) {
-          existingKeyframe = &kf;
-          break;
-        }
-      }
-    }
-
-    if (existingKeyframe) {
-      existingKeyframe->
-        mPropertyValues.AppendElements(Move(uniquePropertyValues));
-      keyframe.mPropertyValues.Clear();
-    } else {
-      keyframe.mPropertyValues.SwapElements(uniquePropertyValues);
-    }
-
-    // Check for a now-empty keyframe
-    if (keyframe.mPropertyValues.IsEmpty()) {
-      keyframes.RemoveElementAt(keyframeIdx - 1);
-      // existingKeyframe might dangle now
-    }
-  }
-
-  // Finally, we need to look for any animated properties that have an
-  // implicit 'to' or 'from' value and fill in the appropriate keyframe
-  // with the current computed style.
-  FillInMissingKeyframeValues(animatedProperties, propertiesSetAtStart,
-                              propertiesSetAtEnd, inheritedTimingFunction,
-                              keyframes);
-
-  return keyframes;
-}
-
-Maybe<ComputedTimingFunction>
-GeckoCSSAnimationBuilder::GetKeyframeTimingFunction(
-    nsPresContext* aPresContext,
-    nsCSSKeyframeRule* aKeyframeRule,
-    const Maybe<ComputedTimingFunction>& aInheritedTimingFunction)
-{
-  Maybe<ComputedTimingFunction> result;
-
-  if (aKeyframeRule->Declaration() &&
-      aKeyframeRule->Declaration()->HasProperty(
-        eCSSProperty_animation_timing_function)) {
-    RefPtr<nsStyleContext> keyframeRuleContext =
-      mResolvedStyles.Get(aPresContext, mStyleContext,
-                          aKeyframeRule->Declaration());
-    const nsTimingFunction& tf = keyframeRuleContext->StyleDisplay()->
-      mAnimations[0].GetTimingFunction();
-    result = ConvertTimingFunction(tf);
-  } else {
-    result = aInheritedTimingFunction;
-  }
-
-  return result;
-}
-
-static Maybe<ComputedTimingFunction>
-ConvertTimingFunction(const nsTimingFunction& aTimingFunction)
-{
-  Maybe<ComputedTimingFunction> result;
-
-  if (aTimingFunction.mType != nsTimingFunction::Type::Linear) {
-    result.emplace();
-    result->Init(aTimingFunction);
-  }
-
-  return result;
-}
-
-nsTArray<PropertyValuePair>
-GeckoCSSAnimationBuilder::GetKeyframePropertyValues(
-    nsPresContext* aPresContext,
-    nsCSSKeyframeRule* aKeyframeRule,
-    nsCSSPropertyIDSet& aAnimatedProperties)
-{
-  nsTArray<PropertyValuePair> result;
-  RefPtr<GeckoStyleContext> styleContext =
-    mResolvedStyles.Get(aPresContext, mStyleContext,
-                        aKeyframeRule->Declaration());
-
-  for (nsCSSPropertyID prop = nsCSSPropertyID(0);
-       prop < eCSSProperty_COUNT_no_shorthands;
-       prop = nsCSSPropertyID(prop + 1)) {
-    if (nsCSSProps::kAnimTypeTable[prop] == eStyleAnimType_None ||
-        !aKeyframeRule->Declaration()->HasNonImportantValueFor(prop)) {
-      continue;
-    }
-
-    StyleAnimationValue computedValue;
-    if (!StyleAnimationValue::ExtractComputedValue(prop, styleContext,
-                                                   computedValue)) {
-      continue;
-    }
-
-    nsCSSValue propertyValue;
-    DebugOnly<bool> uncomputeResult =
-      StyleAnimationValue::UncomputeValue(prop, Move(computedValue),
-                                          propertyValue);
-    MOZ_ASSERT(uncomputeResult,
-               "Unable to get specified value from computed value");
-    MOZ_ASSERT(propertyValue.GetUnit() != eCSSUnit_Null,
-               "Not expecting to read invalid properties");
-
-    result.AppendElement(Move(PropertyValuePair(prop, Move(propertyValue))));
-    aAnimatedProperties.AddProperty(prop);
-  }
-
-  return result;
-}
-
-void
-GeckoCSSAnimationBuilder::FillInMissingKeyframeValues(
-    nsCSSPropertyIDSet aAnimatedProperties,
-    nsCSSPropertyIDSet aPropertiesSetAtStart,
-    nsCSSPropertyIDSet aPropertiesSetAtEnd,
-    const Maybe<ComputedTimingFunction>& aInheritedTimingFunction,
-    nsTArray<Keyframe>& aKeyframes)
-{
-  static const size_t kNotSet = static_cast<size_t>(-1);
-
-  // Find/create the keyframe to add start values to
-  size_t startKeyframeIndex = kNotSet;
-  if (!aAnimatedProperties.Equals(aPropertiesSetAtStart) &&
-      !nsAnimationManager::FindMatchingKeyframe(aKeyframes,
-                                                0.0,
-                                                aInheritedTimingFunction,
-                                                startKeyframeIndex)) {
-    Keyframe newKeyframe;
-    newKeyframe.mOffset.emplace(0.0);
-    newKeyframe.mTimingFunction = aInheritedTimingFunction;
-    aKeyframes.InsertElementAt(startKeyframeIndex, Move(newKeyframe));
-  }
-
-  // Find/create the keyframe to add end values to
-  size_t endKeyframeIndex = kNotSet;
-  if (!aAnimatedProperties.Equals(aPropertiesSetAtEnd)) {
-    if (!nsAnimationManager::FindMatchingKeyframe(Reversed(aKeyframes),
-                                                  1.0,
-                                                  aInheritedTimingFunction,
-                                                  endKeyframeIndex)) {
-      Keyframe newKeyframe;
-      newKeyframe.mOffset.emplace(1.0);
-      newKeyframe.mTimingFunction = aInheritedTimingFunction;
-      aKeyframes.AppendElement(Move(newKeyframe));
-      endKeyframeIndex = aKeyframes.Length() - 1;
-    } else {
-      // endKeyframeIndex is currently a count from the end of the array
-      // so we need to reverse it.
-      endKeyframeIndex = aKeyframes.Length() - 1 - endKeyframeIndex;
-    }
-  }
-
-  if (startKeyframeIndex == kNotSet && endKeyframeIndex == kNotSet) {
-    return;
-  }
-
-  // Now that we have finished manipulating aKeyframes, it is safe to
-  // take pointers to its elements.
-  Keyframe* startKeyframe = startKeyframeIndex == kNotSet
-                            ? nullptr : &aKeyframes[startKeyframeIndex];
-  Keyframe* endKeyframe   = endKeyframeIndex == kNotSet
-                            ? nullptr : &aKeyframes[endKeyframeIndex];
-
-  // Iterate through all properties and fill-in missing values
-  for (nsCSSPropertyID prop = nsCSSPropertyID(0);
-       prop < eCSSProperty_COUNT_no_shorthands;
-       prop = nsCSSPropertyID(prop + 1)) {
-    if (!aAnimatedProperties.HasProperty(prop)) {
-      continue;
-    }
-
-    if (startKeyframe && !aPropertiesSetAtStart.HasProperty(prop)) {
-      // An uninitialized nsCSSValue represents the underlying value.
-      PropertyValuePair propertyValue(prop, Move(nsCSSValue()));
-      startKeyframe->mPropertyValues.AppendElement(Move(propertyValue));
-    }
-    if (endKeyframe && !aPropertiesSetAtEnd.HasProperty(prop)) {
-      // An uninitialized nsCSSValue represents the underlying value.
-      PropertyValuePair propertyValue(prop, Move(nsCSSValue()));
-      endKeyframe->mPropertyValues.AppendElement(Move(propertyValue));
-    }
-  }
-}
-
-template<class BuilderType>
 static nsAnimationManager::OwningCSSAnimationPtrArray
 BuildAnimations(nsPresContext* aPresContext,
                 const NonOwningAnimationTarget& aTarget,
-                const nsStyleAutoArray<StyleAnimation>& aStyleAnimations,
-                uint32_t aStyleAnimationNameCount,
-                BuilderType& aBuilder,
-                nsAnimationManager::CSSAnimationCollection* aCollection)
+                const nsStyleDisplay& aStyleDisplay,
+                ServoCSSAnimationBuilder& aBuilder,
+                nsAnimationManager::CSSAnimationCollection* aCollection,
+                nsTHashtable<nsRefPtrHashKey<nsAtom>>& aReferencedAnimations)
 {
   nsAnimationManager::OwningCSSAnimationPtrArray result;
 
-  for (size_t animIdx = aStyleAnimationNameCount; animIdx-- != 0;) {
-    const StyleAnimation& src = aStyleAnimations[animIdx];
-
+  for (size_t animIdx = aStyleDisplay.mAnimationNameCount; animIdx-- != 0;) {
+    nsAtom* name = aStyleDisplay.GetAnimationName(animIdx);
     // CSS Animations whose animation-name does not match a @keyframes rule do
     // not generate animation events. This includes when the animation-name is
     // "none" which is represented by an empty name in the StyleAnimation.
     // Since such animations neither affect style nor dispatch events, we do
     // not generate a corresponding CSSAnimation for them.
-    if (src.GetName().IsEmpty()) {
+    if (name == nsGkAtoms::_empty) {
       continue;
     }
 
+    aReferencedAnimations.PutEntry(name);
     RefPtr<CSSAnimation> dest = BuildAnimation(aPresContext,
                                                aTarget,
-                                               src,
+                                               aStyleDisplay,
+                                               animIdx,
                                                aBuilder,
                                                aCollection);
     if (!dest) {
@@ -990,33 +594,12 @@ BuildAnimations(nsPresContext* aPresContext,
   return result;
 }
 
-void
-nsAnimationManager::UpdateAnimations(GeckoStyleContext* aStyleContext,
-                                     mozilla::dom::Element* aElement)
-{
-  MOZ_ASSERT(mPresContext->IsDynamic(),
-             "Should not update animations for print or print preview");
-  MOZ_ASSERT(aElement->IsInComposedDoc(),
-             "Should not update animations that are not attached to the "
-             "document tree");
-
-  if (aStyleContext->IsInDisplayNoneSubtree()) {
-    StopAnimationsForElement(aElement, aStyleContext->GetPseudoType());
-    return;
-  }
-
-  NonOwningAnimationTarget target(aElement, aStyleContext->GetPseudoType());
-  GeckoCSSAnimationBuilder builder(aStyleContext, target);
-
-  const nsStyleDisplay* disp = aStyleContext->StyleDisplay();
-  DoUpdateAnimations(target, *disp, builder);
-}
 
 void
 nsAnimationManager::UpdateAnimations(
   dom::Element* aElement,
   CSSPseudoElementType aPseudoType,
-  const ServoStyleContext* aStyleContext)
+  const ComputedStyle* aComputedStyle)
 {
   MOZ_ASSERT(mPresContext->IsDynamic(),
              "Should not update animations for print or print preview");
@@ -1024,28 +607,32 @@ nsAnimationManager::UpdateAnimations(
              "Should not update animations that are not attached to the "
              "document tree");
 
-  if (!aStyleContext) {
+  const nsStyleDisplay* disp = aComputedStyle
+    ? aComputedStyle->ComputedData()->GetStyleDisplay()
+    : nullptr;
+
+  if (!disp || disp->mDisplay == StyleDisplay::None) {
     // If we are in a display:none subtree we will have no computed values.
-    // Since CSS animations should not run in display:none subtrees we should
-    // stop (actually, destroy) any animations on this element here.
+    // However, if we are on the root of display:none subtree, the computed
+    // values might not have been cleared yet.
+    // In either case, since CSS animations should not run in display:none
+    // subtrees we should stop (actually, destroy) any animations on this
+    // element here.
     StopAnimationsForElement(aElement, aPseudoType);
     return;
   }
 
   NonOwningAnimationTarget target(aElement, aPseudoType);
-  ServoCSSAnimationBuilder builder(aStyleContext);
+  ServoCSSAnimationBuilder builder(aComputedStyle);
 
-  const nsStyleDisplay *disp =
-      aStyleContext->ComputedData()->GetStyleDisplay();
   DoUpdateAnimations(target, *disp, builder);
 }
 
-template<class BuilderType>
 void
 nsAnimationManager::DoUpdateAnimations(
   const NonOwningAnimationTarget& aTarget,
   const nsStyleDisplay& aStyleDisplay,
-  BuilderType& aBuilder)
+  ServoCSSAnimationBuilder& aBuilder)
 {
   // Everything that causes our animation data to change triggers a
   // style change, which in turn triggers a non-animation restyle.
@@ -1057,7 +644,7 @@ nsAnimationManager::DoUpdateAnimations(
                                                    aTarget.mPseudoType);
   if (!collection &&
       aStyleDisplay.mAnimationNameCount == 1 &&
-      aStyleDisplay.mAnimations[0].GetName().IsEmpty()) {
+      aStyleDisplay.mAnimations[0].GetName() == nsGkAtoms::_empty) {
     return;
   }
 
@@ -1068,10 +655,10 @@ nsAnimationManager::DoUpdateAnimations(
   OwningCSSAnimationPtrArray newAnimations;
   newAnimations = BuildAnimations(mPresContext,
                                   aTarget,
-                                  aStyleDisplay.mAnimations,
-                                  aStyleDisplay.mAnimationNameCount,
+                                  aStyleDisplay,
                                   aBuilder,
-                                  collection);
+                                  collection,
+                                  mMaybeReferencedAnimations);
 
   if (newAnimations.IsEmpty()) {
     if (collection) {
@@ -1099,6 +686,7 @@ nsAnimationManager::DoUpdateAnimations(
 
   // Cancel removed animations
   for (size_t newAnimIdx = newAnimations.Length(); newAnimIdx-- != 0; ) {
+    aBuilder.NotifyNewOrRemovedAnimation(*newAnimations[newAnimIdx]);
     newAnimations[newAnimIdx]->CancelFromStyle();
   }
 }

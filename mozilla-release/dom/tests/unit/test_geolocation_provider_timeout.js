@@ -1,8 +1,4 @@
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-
-Cu.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://testing-common/httpd.js");
 
 var httpserver = null;
 var geolocation = null;
@@ -14,12 +10,12 @@ function geoHandler(metadata, response)
 
 function successCallback() {
   // The call shouldn't be sucessful.
-  do_check_true(false);
+  Assert.ok(false);
   do_test_finished();
 }
 
 function errorCallback() {
-  do_check_true(true);
+  Assert.ok(true);
   do_test_finished();
 }
 

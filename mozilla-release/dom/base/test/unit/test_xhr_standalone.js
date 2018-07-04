@@ -7,8 +7,7 @@
 
 function run_test()
 {
-    var xhr = Components.classes['@mozilla.org/xmlextras/xmlhttprequest;1'].
-          createInstance(Components.interfaces.nsIXMLHttpRequest);
+    var xhr = new XMLHttpRequest();
     xhr.open('GET', 'data:,', false);
     var exceptionThrown = false;
     try {
@@ -17,5 +16,5 @@ function run_test()
     } catch (e) {
         exceptionThrown = true;
     }
-    do_check_eq(false, exceptionThrown);
+    Assert.equal(false, exceptionThrown);
 }

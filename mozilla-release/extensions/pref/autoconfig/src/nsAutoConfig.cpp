@@ -3,6 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/ResultExtensions.h"
 #include "nsAutoConfig.h"
 #include "nsIURI.h"
 #include "nsIHttpChannel.h"
@@ -208,7 +209,6 @@ nsresult nsAutoConfig::downloadAutoConfig()
 {
     nsresult rv;
     nsAutoCString emailAddr;
-    nsXPIDLCString urlName;
     static bool firstTime = true;
 
     if (mConfigURL.IsEmpty()) {
@@ -297,6 +297,7 @@ nsresult nsAutoConfig::downloadAutoConfig()
                        nsContentUtils::GetSystemPrincipal(),
                        nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
                        nsIContentPolicy::TYPE_OTHER,
+                       nullptr,  // PerformanceStorage
                        nullptr,  // loadGroup
                        nullptr,  // aCallbacks
                        nsIRequest::INHIBIT_PERSISTENT_CACHING |
@@ -336,13 +337,8 @@ nsresult nsAutoConfig::downloadAutoConfig()
         if (NS_SUCCEEDED(rv) && minutes > 0) {
             // Create a new timer and pass this nsAutoConfig
             // object as a timer callback.
-            mTimer = do_CreateInstance("@mozilla.org/timer;1",&rv);
-            if (NS_FAILED(rv))
-                return rv;
-            rv = mTimer->InitWithCallback(this, minutes * 60 * 1000,
-                             nsITimer::TYPE_REPEATING_SLACK);
-            if (NS_FAILED(rv))
-                return rv;
+            MOZ_TRY_VAR(mTimer, NS_NewTimerWithCallback(this, minutes * 60 * 1000,
+                                                        nsITimer::TYPE_REPEATING_SLACK));
         }
     } //first_time
 
@@ -463,7 +459,7 @@ nsresult nsAutoConfig::getEmailAddr(nsACString & emailAddr)
 {
 
     nsresult rv;
-    nsXPIDLCString prefValue;
+    nsAutoCString prefValue;
 
     /* Getting an email address through set of three preferences:
        First getting a default account with
@@ -473,12 +469,12 @@ nsresult nsAutoConfig::getEmailAddr(nsACString & emailAddr)
     */
 
     rv = mPrefBranch->GetCharPref("mail.accountmanager.defaultaccount",
-                                  getter_Copies(prefValue));
+                                  prefValue);
     if (NS_SUCCEEDED(rv) && !prefValue.IsEmpty()) {
         emailAddr = NS_LITERAL_CSTRING("mail.account.") +
             prefValue + NS_LITERAL_CSTRING(".identities");
         rv = mPrefBranch->GetCharPref(PromiseFlatCString(emailAddr).get(),
-                                      getter_Copies(prefValue));
+                                      prefValue);
         if (NS_FAILED(rv) || prefValue.IsEmpty())
             return PromptForEMailAddress(emailAddr);
         int32_t commandIndex = prefValue.FindChar(',');
@@ -487,15 +483,14 @@ nsresult nsAutoConfig::getEmailAddr(nsACString & emailAddr)
         emailAddr = NS_LITERAL_CSTRING("mail.identity.") +
             prefValue + NS_LITERAL_CSTRING(".useremail");
         rv = mPrefBranch->GetCharPref(PromiseFlatCString(emailAddr).get(),
-                                      getter_Copies(prefValue));
+                                      prefValue);
         if (NS_FAILED(rv)  || prefValue.IsEmpty())
             return PromptForEMailAddress(emailAddr);
         emailAddr = prefValue;
     }
     else {
         // look for 4.x pref in case we just migrated.
-        rv = mPrefBranch->GetCharPref("mail.identity.useremail",
-                                  getter_Copies(prefValue));
+        rv = mPrefBranch->GetCharPref("mail.identity.useremail", prefValue);
         if (NS_SUCCEEDED(rv) && !prefValue.IsEmpty())
             emailAddr = prefValue;
         else
@@ -518,15 +513,15 @@ nsresult nsAutoConfig::PromptForEMailAddress(nsACString &emailAddress)
                                 getter_AddRefs(bundle));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsXPIDLString title;
-    rv = bundle->GetStringFromName("emailPromptTitle", getter_Copies(title));
+    nsAutoString title;
+    rv = bundle->GetStringFromName("emailPromptTitle", title);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsXPIDLString err;
-    rv = bundle->GetStringFromName("emailPromptMsg", getter_Copies(err));
+    nsAutoString err;
+    rv = bundle->GetStringFromName("emailPromptMsg", err);
     NS_ENSURE_SUCCESS(rv, rv);
     bool check = false;
-    nsXPIDLString emailResult;
+    nsString emailResult;
     bool success;
     rv = promptService->Prompt(nullptr, title.get(), err.get(), getter_Copies(emailResult), nullptr, &check, &success);
     if (!success)

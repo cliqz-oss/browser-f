@@ -7,7 +7,8 @@
 #ifndef mozilla_dom_workers_workerrunnable_h__
 #define mozilla_dom_workers_workerrunnable_h__
 
-#include "Workers.h"
+#include "mozilla/dom/WorkerCommon.h"
+#include "mozilla/dom/WorkerHolder.h"
 
 #include "nsICancelableRunnable.h"
 
@@ -19,10 +20,10 @@ struct JSContext;
 class nsIEventTarget;
 
 namespace mozilla {
-class ErrorResult;
-} // namespace mozilla
 
-BEGIN_WORKERS_NAMESPACE
+class ErrorResult;
+
+namespace dom {
 
 class WorkerPrivate;
 
@@ -144,13 +145,14 @@ protected:
   // parent global (which is the compartment reflector would have been in), or
   // in the null compartment if there is no parent global.  For other mBehavior
   // values, we're running on the worker thread and aCx is in whatever
-  // compartment GetCurrentThreadJSContext() was in when nsIRunnable::Run() got
-  // called.  This is actually important for cases when a runnable spins a
-  // syncloop and wants everything that happens during the syncloop to happen in
-  // the compartment that runnable set up (which may, for example, be a debugger
-  // sandbox compartment!).  If aCx wasn't in a compartment to start with, aCx
-  // will be in either the debugger global's compartment or the worker's
-  // global's compartment depending on whether IsDebuggerRunnable() is true.
+  // compartment GetCurrentWorkerThreadJSContext() was in when
+  // nsIRunnable::Run() got called.  This is actually important for cases when a
+  // runnable spins a syncloop and wants everything that happens during the
+  // syncloop to happen in the compartment that runnable set up (which may, for
+  // example, be a debugger sandbox compartment!).  If aCx wasn't in a
+  // compartment to start with, aCx will be in either the debugger global's
+  // compartment or the worker's global's compartment depending on whether
+  // IsDebuggerRunnable() is true.
   //
   // Immediately after WorkerRun returns, the caller will assert that either it
   // returns false or there is no exception pending on aCx.  Then it will report
@@ -167,7 +169,8 @@ protected:
   // exception on the JSContext and must not run script, because the incoming
   // JSContext may be in the null compartment.
   virtual void
-  PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate, bool aRunResult);
+  PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
+          bool aRunResult);
 
   virtual bool
   DispatchInternal();
@@ -196,8 +199,8 @@ private:
     return true;
   }
 
-  virtual bool
-  PreDispatch(WorkerPrivate* aWorkerPrivate) override final
+  bool
+  PreDispatch(WorkerPrivate* aWorkerPrivate) final
   {
     AssertIsOnMainThread();
 
@@ -205,7 +208,8 @@ private:
   }
 
   virtual void
-  PostDispatch(WorkerPrivate* aWorkerPrivate, bool aDispatchResult) override;
+  PostDispatch(WorkerPrivate* aWorkerPrivate,
+               bool aDispatchResult) override;
 };
 
 // This runnable is used to send a message directly to a worker's sync loop.
@@ -262,7 +266,8 @@ private:
   }
 
   virtual void
-  PostDispatch(WorkerPrivate* aWorkerPrivate, bool aDispatchResult) override;
+  PostDispatch(WorkerPrivate* aWorkerPrivate,
+               bool aDispatchResult) override;
 };
 
 // This runnable is processed as soon as it is received by the worker,
@@ -276,7 +281,7 @@ class WorkerControlRunnable : public WorkerRunnable
 
 protected:
   WorkerControlRunnable(WorkerPrivate* aWorkerPrivate,
-                        TargetAndBusyBehavior aBehavior = WorkerThreadModifyBusyCount)
+                        TargetAndBusyBehavior aBehavior)
 #ifdef DEBUG
   ;
 #else
@@ -291,7 +296,7 @@ protected:
   Cancel() override;
 
 public:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(WorkerControlRunnable, WorkerRunnable)
 
 private:
   virtual bool
@@ -350,7 +355,8 @@ protected:
   }
 
   virtual void
-  PostDispatch(WorkerPrivate* aWorkerPrivate, bool aDispatchResult) override
+  PostDispatch(WorkerPrivate* aWorkerPrivate,
+               bool aDispatchResult) override
   {
     AssertIsOnMainThread();
   }
@@ -376,7 +382,8 @@ protected:
   PreDispatch(WorkerPrivate* aWorkerPrivate) override;
 
   virtual void
-  PostDispatch(WorkerPrivate* aWorkerPrivate, bool aDispatchResult) override;
+  PostDispatch(WorkerPrivate* aWorkerPrivate,
+               bool aDispatchResult) override;
 
   // We just delegate PostRun to WorkerRunnable, since it does exactly
   // what we want.
@@ -406,7 +413,7 @@ public:
   // aFailStatus, except if you want an infallible runnable. In this case, use
   // 'Killing'.
   // In that case the error MUST be propagated out to script.
-  void Dispatch(Status aFailStatus, ErrorResult& aRv);
+  void Dispatch(WorkerStatus aFailStatus, ErrorResult& aRv);
 
 private:
   NS_IMETHOD Run() override;
@@ -450,27 +457,6 @@ protected:
   UniquePtr<WorkerHolder> mWorkerHolder;
 };
 
-// Class for checking API exposure.  This totally violates the "MUST" in the
-// comments on WorkerMainThreadRunnable::Dispatch, because API exposure checks
-// can't throw.  Maybe we should change it so they _could_ throw.  But for now
-// we are bad people and should be ashamed of ourselves.  Let's hope none of
-// them happen while a worker is shutting down.
-//
-// Do NOT copy what this class is doing elsewhere.  Just don't.
-class WorkerCheckAPIExposureOnMainThreadRunnable
-  : public WorkerMainThreadRunnable
-{
-public:
-  explicit
-  WorkerCheckAPIExposureOnMainThreadRunnable(WorkerPrivate* aWorkerPrivate);
-  virtual
-  ~WorkerCheckAPIExposureOnMainThreadRunnable();
-
-  // Returns whether the dispatch succeeded.  If this returns false, the API
-  // should not be exposed.
-  bool Dispatch();
-};
-
 // This runnable is used to stop a sync loop and it's meant to be used on the
 // main-thread only. As sync loops keep the busy count incremented as long as
 // they run this runnable does not modify the busy count
@@ -496,23 +482,25 @@ protected:
   { }
 
 private:
-  virtual bool
-  PreDispatch(WorkerPrivate* aWorkerPrivate) override final
+  bool
+  PreDispatch(WorkerPrivate* aWorkerPrivate) final
   {
     AssertIsOnMainThread();
     return true;
   }
 
   virtual void
-  PostDispatch(WorkerPrivate* aWorkerPrivate, bool aDispatchResult) override;
+  PostDispatch(WorkerPrivate* aWorkerPrivate,
+               bool aDispatchResult) override;
 
   virtual bool
   WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override;
 
-  virtual bool
-  DispatchInternal() override final;
+  bool
+  DispatchInternal() final;
 };
 
-END_WORKERS_NAMESPACE
+} // dom namespace
+} // mozilla namespace
 
 #endif // mozilla_dom_workers_workerrunnable_h__

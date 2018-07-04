@@ -7,15 +7,9 @@
 #include "nsMappedAttributeElement.h"
 #include "nsIDocument.h"
 
-nsresult
-nsMappedAttributeElement::WalkContentStyleRules(nsRuleWalker* aRuleWalker)
-{
-  mAttrsAndChildren.WalkMappedAttributeStyleRules(aRuleWalker);
-  return NS_OK;
-}
 
 bool
-nsMappedAttributeElement::SetAndSwapMappedAttribute(nsIAtom* aName,
+nsMappedAttributeElement::SetAndSwapMappedAttribute(nsAtom* aName,
                                                     nsAttrValue& aValue,
                                                     bool* aValueWasSet,
                                                     nsresult* aRetval)

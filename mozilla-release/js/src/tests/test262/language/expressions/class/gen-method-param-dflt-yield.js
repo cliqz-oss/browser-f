@@ -17,9 +17,11 @@ info: |
   evaluated before the resulting generator object is in a resumable state.
 features: [generators, default-parameters]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 0, class {
   *g(x = yield) {}

@@ -41,14 +41,14 @@ class Cache final : public nsISupports
                   , public TypeUtils
 {
 public:
-  Cache(nsIGlobalObject* aGlobal, CacheChild* aActor);
+  Cache(nsIGlobalObject* aGlobal, CacheChild* aActor, Namespace aNamespace);
 
   // webidl interface methods
   already_AddRefed<Promise>
-  Match(const RequestOrUSVString& aRequest, const CacheQueryOptions& aOptions,
-        ErrorResult& aRv);
+  Match(JSContext* aCx, const RequestOrUSVString& aRequest,
+        const CacheQueryOptions& aOptions, ErrorResult& aRv);
   already_AddRefed<Promise>
-  MatchAll(const Optional<RequestOrUSVString>& aRequest,
+  MatchAll(JSContext* aCx, const Optional<RequestOrUSVString>& aRequest,
            const CacheQueryOptions& aOptions, ErrorResult& aRv);
   already_AddRefed<Promise>
   Add(JSContext* aContext, const RequestOrUSVString& aRequest,
@@ -58,18 +58,16 @@ public:
          const Sequence<OwningRequestOrUSVString>& aRequests,
          CallerType aCallerType, ErrorResult& aRv);
   already_AddRefed<Promise>
-  Put(const RequestOrUSVString& aRequest, Response& aResponse,
+  Put(JSContext* aCx, const RequestOrUSVString& aRequest, Response& aResponse,
       ErrorResult& aRv);
   already_AddRefed<Promise>
-  Delete(const RequestOrUSVString& aRequest, const CacheQueryOptions& aOptions,
-         ErrorResult& aRv);
+  Delete(JSContext* aCx, const RequestOrUSVString& aRequest,
+         const CacheQueryOptions& aOptions, ErrorResult& aRv);
   already_AddRefed<Promise>
-  Keys(const Optional<RequestOrUSVString>& aRequest,
+  Keys(JSContext* aCx, const Optional<RequestOrUSVString>& aRequest,
        const CacheQueryOptions& aParams, ErrorResult& aRv);
 
   // binding methods
-  static bool PrefEnabled(JSContext* aCx, JSObject* aObj);
-
   nsISupports* GetParentObject() const;
   virtual JSObject* WrapObject(JSContext* aContext, JS::Handle<JSObject*> aGivenProto) override;
 
@@ -103,12 +101,16 @@ private:
          CallerType aCallerType, ErrorResult& aRv);
 
   already_AddRefed<Promise>
-  PutAll(const nsTArray<RefPtr<Request>>& aRequestList,
+  PutAll(JSContext* aCx, const nsTArray<RefPtr<Request>>& aRequestList,
          const nsTArray<RefPtr<Response>>& aResponseList,
          ErrorResult& aRv);
 
+  OpenMode
+  GetOpenMode() const;
+
   nsCOMPtr<nsIGlobalObject> mGlobal;
   CacheChild* mActor;
+  const Namespace mNamespace;
 
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS

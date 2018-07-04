@@ -41,21 +41,16 @@ static void temporal_filter_predictors_mb_c(
   enum mv_precision mv_precision_uv;
   int uv_stride;
   // TODO(angiebird): change plane setting accordingly
-  ConvolveParams conv_params = get_conv_params(which_mv, 0);
+  ConvolveParams conv_params = get_conv_params(which_mv, which_mv, 0);
 
 #if USE_TEMPORALFILTER_12TAP
-#if CONFIG_DUAL_FILTER
-  const InterpFilter interp_filter[4] = { TEMPORALFILTER_12TAP,
-                                          TEMPORALFILTER_12TAP,
-                                          TEMPORALFILTER_12TAP,
-                                          TEMPORALFILTER_12TAP };
-#else
-  const InterpFilter interp_filter = TEMPORALFILTER_12TAP;
-#endif
+  const InterpFilters interp_filters =
+      av1_broadcast_interp_filter(TEMPORALFILTER_12TAP);
   (void)xd;
 #else
-  const InterpFilter interp_filter = xd->mi[0]->mbmi.interp_filter;
+  const InterpFilters interp_filters = xd->mi[0]->mbmi.interp_filters;
 #endif  // USE_TEMPORALFILTER_12TAP
+
 #if CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
   WarpTypesAllowed warp_types;
   memset(&warp_types, 0, sizeof(WarpTypesAllowed));
@@ -72,7 +67,7 @@ static void temporal_filter_predictors_mb_c(
 #if CONFIG_HIGHBITDEPTH
   if (xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH) {
     av1_highbd_build_inter_predictor(y_mb_ptr, stride, &pred[0], 16, &mv, scale,
-                                     16, 16, which_mv, interp_filter,
+                                     16, 16, which_mv, interp_filters,
 #if CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
                                      &warp_types, x, y,
 #endif  // CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
@@ -80,7 +75,7 @@ static void temporal_filter_predictors_mb_c(
 
     av1_highbd_build_inter_predictor(u_mb_ptr, uv_stride, &pred[256],
                                      uv_block_width, &mv, scale, uv_block_width,
-                                     uv_block_height, which_mv, interp_filter,
+                                     uv_block_height, which_mv, interp_filters,
 #if CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
                                      &warp_types, x, y,
 #endif  // CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
@@ -88,7 +83,7 @@ static void temporal_filter_predictors_mb_c(
 
     av1_highbd_build_inter_predictor(v_mb_ptr, uv_stride, &pred[512],
                                      uv_block_width, &mv, scale, uv_block_width,
-                                     uv_block_height, which_mv, interp_filter,
+                                     uv_block_height, which_mv, interp_filters,
 #if CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
                                      &warp_types, x, y,
 #endif  // CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
@@ -97,7 +92,7 @@ static void temporal_filter_predictors_mb_c(
   }
 #endif  // CONFIG_HIGHBITDEPTH
   av1_build_inter_predictor(y_mb_ptr, stride, &pred[0], 16, &mv, scale, 16, 16,
-                            &conv_params, interp_filter,
+                            &conv_params, interp_filters,
 #if CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
                             &warp_types, x, y, 0, 0,
 #endif  // CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
@@ -105,7 +100,7 @@ static void temporal_filter_predictors_mb_c(
 
   av1_build_inter_predictor(u_mb_ptr, uv_stride, &pred[256], uv_block_width,
                             &mv, scale, uv_block_width, uv_block_height,
-                            &conv_params, interp_filter,
+                            &conv_params, interp_filters,
 #if CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
                             &warp_types, x, y, 1, 0,
 #endif  // CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
@@ -113,7 +108,7 @@ static void temporal_filter_predictors_mb_c(
 
   av1_build_inter_predictor(v_mb_ptr, uv_stride, &pred[512], uv_block_width,
                             &mv, scale, uv_block_width, uv_block_height,
-                            &conv_params, interp_filter,
+                            &conv_params, interp_filters,
 #if CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
                             &warp_types, x, y, 2, 0,
 #endif  // CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
@@ -291,15 +286,30 @@ static int temporal_filter_find_matching_mb_c(AV1_COMP *cpi,
 
   x->mv_limits = tmp_mv_limits;
 
-  // Ignore mv costing by sending NULL pointer instead of cost array
-  bestsme = cpi->find_fractional_mv_step(
-      x, &best_ref_mv1, cpi->common.allow_high_precision_mv, x->errorperbit,
-      &cpi->fn_ptr[BLOCK_16X16], 0, mv_sf->subpel_iters_per_step,
-      cond_cost_list(cpi, cost_list), NULL, NULL, &distortion, &sse, NULL,
-#if CONFIG_EXT_INTER
-      NULL, 0, 0,
+// Ignore mv costing by sending NULL pointer instead of cost array
+#if CONFIG_AMVR
+  if (cpi->common.cur_frame_mv_precision_level == 1) {
+    const uint8_t *const src_address = x->plane[0].src.buf;
+    const int src_stride = x->plane[0].src.stride;
+    const uint8_t *const y = xd->plane[0].pre[0].buf;
+    const int y_stride = xd->plane[0].pre[0].stride;
+    const int offset = x->best_mv.as_mv.row * y_stride + x->best_mv.as_mv.col;
+
+    x->best_mv.as_mv.row *= 8;
+    x->best_mv.as_mv.col *= 8;
+
+    bestsme = cpi->fn_ptr[BLOCK_16X16].vf(y + offset, y_stride, src_address,
+                                          src_stride, &sse);
+  } else {
 #endif
-      0, 0, 0);
+    bestsme = cpi->find_fractional_mv_step(
+        x, &best_ref_mv1, cpi->common.allow_high_precision_mv, x->errorperbit,
+        &cpi->fn_ptr[BLOCK_16X16], 0, mv_sf->subpel_iters_per_step,
+        cond_cost_list(cpi, cost_list), NULL, NULL, &distortion, &sse, NULL,
+        NULL, 0, 0, 0, 0, 0);
+#if CONFIG_AMVR
+  }
+#endif
 
   x->e_mbd.mi[0]->bmi[0].as_mv[0] = x->best_mv;
 
@@ -311,6 +321,9 @@ static int temporal_filter_find_matching_mb_c(AV1_COMP *cpi,
 }
 
 static void temporal_filter_iterate_c(AV1_COMP *cpi,
+#if CONFIG_BGSPRITE
+                                      YV12_BUFFER_CONFIG *target,
+#endif  // CONFIG_BGSPRITE
                                       YV12_BUFFER_CONFIG **frames,
                                       int frame_count, int alt_ref_index,
                                       int strength,
@@ -413,10 +426,10 @@ static void temporal_filter_iterate_c(AV1_COMP *cpi,
               mbd->mi[0]->bmi[0].as_mv[0].as_mv.col, predictor, scale,
               mb_col * 16, mb_row * 16);
 
+// Apply the filter (YUV)
 #if CONFIG_HIGHBITDEPTH
           if (mbd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH) {
             int adj_strength = strength + 2 * (mbd->bd - 8);
-            // Apply the filter (YUV)
             av1_highbd_temporal_filter_apply(
                 f->y_buffer + mb_y_offset, f->y_stride, predictor, 16, 16,
                 adj_strength, filter_weight, accumulator, count);
@@ -429,7 +442,7 @@ static void temporal_filter_iterate_c(AV1_COMP *cpi,
                 mb_uv_width, mb_uv_height, adj_strength, filter_weight,
                 accumulator + 512, count + 512);
           } else {
-            // Apply the filter (YUV)
+#endif  // CONFIG_HIGHBITDEPTH
             av1_temporal_filter_apply_c(f->y_buffer + mb_y_offset, f->y_stride,
                                         predictor, 16, 16, strength,
                                         filter_weight, accumulator, count);
@@ -441,32 +454,28 @@ static void temporal_filter_iterate_c(AV1_COMP *cpi,
                 f->v_buffer + mb_uv_offset, f->uv_stride, predictor + 512,
                 mb_uv_width, mb_uv_height, strength, filter_weight,
                 accumulator + 512, count + 512);
+#if CONFIG_HIGHBITDEPTH
           }
-#else
-          // Apply the filter (YUV)
-          av1_temporal_filter_apply_c(f->y_buffer + mb_y_offset, f->y_stride,
-                                      predictor, 16, 16, strength,
-                                      filter_weight, accumulator, count);
-          av1_temporal_filter_apply_c(f->u_buffer + mb_uv_offset, f->uv_stride,
-                                      predictor + 256, mb_uv_width,
-                                      mb_uv_height, strength, filter_weight,
-                                      accumulator + 256, count + 256);
-          av1_temporal_filter_apply_c(f->v_buffer + mb_uv_offset, f->uv_stride,
-                                      predictor + 512, mb_uv_width,
-                                      mb_uv_height, strength, filter_weight,
-                                      accumulator + 512, count + 512);
 #endif  // CONFIG_HIGHBITDEPTH
         }
       }
 
+// Normalize filter output to produce AltRef frame
 #if CONFIG_HIGHBITDEPTH
       if (mbd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH) {
         uint16_t *dst1_16;
         uint16_t *dst2_16;
-        // Normalize filter output to produce AltRef frame
+#if CONFIG_BGSPRITE
+        dst1 = target->y_buffer;
+#else
         dst1 = cpi->alt_ref_buffer.y_buffer;
+#endif  // CONFIG_BGSPRITE
         dst1_16 = CONVERT_TO_SHORTPTR(dst1);
+#if CONFIG_BGSPRITE
+        stride = target->y_stride;
+#else
         stride = cpi->alt_ref_buffer.y_stride;
+#endif  // CONFIG_BGSPRITE
         byte = mb_y_offset;
         for (i = 0, k = 0; i < 16; i++) {
           for (j = 0; j < 16; j++, k++) {
@@ -505,9 +514,14 @@ static void temporal_filter_iterate_c(AV1_COMP *cpi,
           byte += stride - mb_uv_width;
         }
       } else {
-        // Normalize filter output to produce AltRef frame
-        dst1 = cpi->alt_ref_buffer.y_buffer;
-        stride = cpi->alt_ref_buffer.y_stride;
+#endif  // CONFIG_HIGHBITDEPTH
+#if CONFIG_BGSPRITE
+        dst1 = target->y_buffer;
+        stride = target->y_stride;
+#else
+      dst1 = cpi->alt_ref_buffer.y_buffer;
+      stride = cpi->alt_ref_buffer.y_stride;
+#endif  // CONFIG_BGSPRITE
         byte = mb_y_offset;
         for (i = 0, k = 0; i < 16; i++) {
           for (j = 0; j < 16; j++, k++) {
@@ -519,10 +533,15 @@ static void temporal_filter_iterate_c(AV1_COMP *cpi,
           }
           byte += stride - 16;
         }
-
-        dst1 = cpi->alt_ref_buffer.u_buffer;
-        dst2 = cpi->alt_ref_buffer.v_buffer;
-        stride = cpi->alt_ref_buffer.uv_stride;
+#if CONFIG_BGSPRITE
+        dst1 = target->u_buffer;
+        dst2 = target->v_buffer;
+        stride = target->uv_stride;
+#else
+      dst1 = cpi->alt_ref_buffer.u_buffer;
+      dst2 = cpi->alt_ref_buffer.v_buffer;
+      stride = cpi->alt_ref_buffer.uv_stride;
+#endif  // CONFIG_BGSPRITE
         byte = mb_uv_offset;
         for (i = 0, k = 256; i < mb_uv_height; i++) {
           for (j = 0; j < mb_uv_width; j++, k++) {
@@ -541,43 +560,7 @@ static void temporal_filter_iterate_c(AV1_COMP *cpi,
           }
           byte += stride - mb_uv_width;
         }
-      }
-#else
-      // Normalize filter output to produce AltRef frame
-      dst1 = cpi->alt_ref_buffer.y_buffer;
-      stride = cpi->alt_ref_buffer.y_stride;
-      byte = mb_y_offset;
-      for (i = 0, k = 0; i < 16; i++) {
-        for (j = 0; j < 16; j++, k++) {
-          dst1[byte] =
-              (uint8_t)OD_DIVU(accumulator[k] + (count[k] >> 1), count[k]);
-
-          // move to next pixel
-          byte++;
-        }
-        byte += stride - 16;
-      }
-
-      dst1 = cpi->alt_ref_buffer.u_buffer;
-      dst2 = cpi->alt_ref_buffer.v_buffer;
-      stride = cpi->alt_ref_buffer.uv_stride;
-      byte = mb_uv_offset;
-      for (i = 0, k = 256; i < mb_uv_height; i++) {
-        for (j = 0; j < mb_uv_width; j++, k++) {
-          int m = k + 256;
-
-          // U
-          dst1[byte] =
-              (uint8_t)OD_DIVU(accumulator[k] + (count[k] >> 1), count[k]);
-
-          // V
-          dst2[byte] =
-              (uint8_t)OD_DIVU(accumulator[m] + (count[m] >> 1), count[m]);
-
-          // move to next pixel
-          byte++;
-        }
-        byte += stride - mb_uv_width;
+#if CONFIG_HIGHBITDEPTH
       }
 #endif  // CONFIG_HIGHBITDEPTH
       mb_y_offset += 16;
@@ -650,7 +633,11 @@ static void adjust_arnr_filter(AV1_COMP *cpi, int distance, int group_boost,
   *arnr_strength = strength;
 }
 
-void av1_temporal_filter(AV1_COMP *cpi, int distance) {
+void av1_temporal_filter(AV1_COMP *cpi,
+#if CONFIG_BGSPRITE
+                         YV12_BUFFER_CONFIG *bg, YV12_BUFFER_CONFIG *target,
+#endif  // CONFIG_BGSPRITE
+                         int distance) {
   RATE_CONTROL *const rc = &cpi->rc;
   int frame;
   int frames_to_blur;
@@ -662,7 +649,7 @@ void av1_temporal_filter(AV1_COMP *cpi, int distance) {
   YV12_BUFFER_CONFIG *frames[MAX_LAG_BUFFERS] = { NULL };
 #if CONFIG_EXT_REFS
   const GF_GROUP *const gf_group = &cpi->twopass.gf_group;
-#endif
+#endif  // CONFIG_EXT_REFS
 
   // Apply context specific adjustments to the arnr filter parameters.
   adjust_arnr_filter(cpi, distance, rc->gfu_boost, &frames_to_blur, &strength);
@@ -671,19 +658,34 @@ void av1_temporal_filter(AV1_COMP *cpi, int distance) {
 //                   case it is more beneficial to use non-zero strength
 //                   filtering.
 #if CONFIG_EXT_REFS
-  if (gf_group->rf_level[gf_group->index] == GF_ARF_LOW) {
+  if (gf_group->update_type[gf_group->index] == INTNL_ARF_UPDATE) {
     strength = 0;
     frames_to_blur = 1;
   }
-#endif
 
-#if CONFIG_EXT_REFS
-  if (strength == 0 && frames_to_blur == 1) {
-    cpi->is_arf_filter_off[gf_group->arf_update_idx[gf_group->index]] = 1;
-  } else {
-    cpi->is_arf_filter_off[gf_group->arf_update_idx[gf_group->index]] = 0;
+  int which_arf = gf_group->arf_update_idx[gf_group->index];
+
+#if USE_GF16_MULTI_LAYER
+  if (cpi->rc.baseline_gf_interval == 16) {
+    // Identify the index to the current ARF.
+    const int num_arfs_in_gf = cpi->num_extra_arfs + 1;
+    int arf_idx;
+    for (arf_idx = 0; arf_idx < num_arfs_in_gf; arf_idx++) {
+      if (gf_group->index == cpi->arf_pos_in_gf[arf_idx]) {
+        which_arf = arf_idx;
+        break;
+      }
+    }
+    assert(arf_idx < num_arfs_in_gf);
   }
-#endif
+#endif  // USE_GF16_MULTI_LAYER
+
+  // Set the temporal filtering status for the corresponding OVERLAY frame
+  if (strength == 0 && frames_to_blur == 1)
+    cpi->is_arf_filter_off[which_arf] = 1;
+  else
+    cpi->is_arf_filter_off[which_arf] = 0;
+#endif  // CONFIG_EXT_REFS
 
   frames_to_blur_backward = (frames_to_blur / 2);
   frames_to_blur_forward = ((frames_to_blur - 1) / 2);
@@ -692,9 +694,18 @@ void av1_temporal_filter(AV1_COMP *cpi, int distance) {
   // Setup frame pointers, NULL indicates frame not included in filter.
   for (frame = 0; frame < frames_to_blur; ++frame) {
     const int which_buffer = start_frame - frame;
-    struct lookahead_entry *buf =
-        av1_lookahead_peek(cpi->lookahead, which_buffer);
-    frames[frames_to_blur - 1 - frame] = &buf->img;
+#if CONFIG_BGSPRITE
+    if (frame == frames_to_blur_backward && bg != NULL) {
+      // Insert bg into frames at ARF index.
+      frames[frames_to_blur - 1 - frame] = bg;
+    } else {
+#endif  // CONFIG_BGSPRITE
+      struct lookahead_entry *buf =
+          av1_lookahead_peek(cpi->lookahead, which_buffer);
+      frames[frames_to_blur - 1 - frame] = &buf->img;
+#if CONFIG_BGSPRITE
+    }
+#endif  // CONFIG_BGSPRITE
   }
 
   if (frames_to_blur > 0) {
@@ -713,6 +724,10 @@ void av1_temporal_filter(AV1_COMP *cpi, int distance) {
 #endif  // CONFIG_HIGHBITDEPTH
   }
 
-  temporal_filter_iterate_c(cpi, frames, frames_to_blur,
-                            frames_to_blur_backward, strength, &sf);
+  temporal_filter_iterate_c(cpi,
+#if CONFIG_BGSPRITE
+                            target,
+#endif  // CONFIG_BGSPRITE
+                            frames, frames_to_blur, frames_to_blur_backward,
+                            strength, &sf);
 }

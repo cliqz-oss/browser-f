@@ -7,7 +7,6 @@
 #ifndef mozilla_DeclarationBlockInlines_h
 #define mozilla_DeclarationBlockInlines_h
 
-#include "mozilla/css/Declaration.h"
 #include "mozilla/ServoDeclarationBlock.h"
 
 namespace mozilla {
@@ -29,23 +28,21 @@ DeclarationBlock::Release()
 already_AddRefed<DeclarationBlock>
 DeclarationBlock::Clone() const
 {
-  RefPtr<DeclarationBlock> result;
-  if (IsGecko()) {
-    result = new css::Declaration(*AsGecko());
-  } else {
-    result = new ServoDeclarationBlock(*AsServo());
-  }
-  return result.forget();
+  return do_AddRef(new ServoDeclarationBlock(*AsServo()));
 }
 
 already_AddRefed<DeclarationBlock>
 DeclarationBlock::EnsureMutable()
 {
-#ifdef DEBUG
-  if (IsGecko()) {
-    AsGecko()->AssertNotExpanded();
+  if (!IsDirty()) {
+    // In stylo, the old DeclarationBlock is stored in element's rule node tree
+    // directly, to avoid new values replacing the DeclarationBlock in the tree
+    // directly, we need to copy the old one here if we haven't yet copied.
+    // As a result the new value does not replace rule node tree until traversal
+    // happens.
+    return Clone();
   }
-#endif
+
   if (!IsMutable()) {
     return Clone();
   }
@@ -84,26 +81,19 @@ DeclarationBlock::GetPropertyValueByID(nsCSSPropertyID aPropID,
   MOZ_STYLO_FORWARD(GetPropertyValueByID, (aPropID, aValue))
 }
 
-void
-DeclarationBlock::GetAuthoredPropertyValue(const nsAString& aProperty,
-                                           nsAString& aValue) const
-{
-  MOZ_STYLO_FORWARD(GetAuthoredPropertyValue, (aProperty, aValue))
-}
-
 bool
 DeclarationBlock::GetPropertyIsImportant(const nsAString& aProperty) const
 {
   MOZ_STYLO_FORWARD(GetPropertyIsImportant, (aProperty))
 }
 
-void
+bool
 DeclarationBlock::RemoveProperty(const nsAString& aProperty)
 {
   MOZ_STYLO_FORWARD(RemoveProperty, (aProperty))
 }
 
-void
+bool
 DeclarationBlock::RemovePropertyByID(nsCSSPropertyID aProperty)
 {
   MOZ_STYLO_FORWARD(RemovePropertyByID, (aProperty))

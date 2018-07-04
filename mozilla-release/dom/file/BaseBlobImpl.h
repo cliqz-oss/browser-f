@@ -97,6 +97,11 @@ public:
 
   virtual void GetType(nsAString& aType) override;
 
+  size_t GetAllocationSize() const override
+  {
+    return 0;
+  }
+
   virtual uint64_t GetSerialNumber() const override { return mSerialNumber; }
 
   virtual already_AddRefed<BlobImpl>
@@ -112,7 +117,7 @@ public:
     return nullptr;
   }
 
-  virtual void GetInternalStream(nsIInputStream** aStream,
+  virtual void CreateInputStream(nsIInputStream** aStream,
                                  ErrorResult& aRv) override
   {
     aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);

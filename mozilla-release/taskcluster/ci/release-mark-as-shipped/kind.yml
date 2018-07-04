@@ -1,0 +1,49 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+loader: taskgraph.loader.transform:loader
+
+transforms:
+   - taskgraph.transforms.release_deps:transforms
+   - taskgraph.transforms.release_mark_as_shipped:transforms
+   - taskgraph.transforms.task:transforms
+
+kind-dependencies:
+   - push-apk
+   - release-balrog-scheduling
+   - release-bouncer-aliases
+   - release-version-bump
+
+job-defaults:
+   description: mark release as shipped in Ship-It
+   worker-type:
+      by-project:
+         mozilla-central: scriptworker-prov-v1/shipit-v1
+         mozilla-beta: scriptworker-prov-v1/shipit-v1
+         mozilla-release: scriptworker-prov-v1/shipit-v1
+         mozilla-esr60: scriptworker-prov-v1/shipit-v1
+         default: scriptworker-prov-v1/shipit-dev
+   worker:
+      implementation: shipit
+   scopes:
+      by-project:
+         mozilla-beta: ['project:releng:ship-it:production']
+         mozilla-release: ['project:releng:ship-it:production']
+         mozilla-esr60: ['project:releng:ship-it:production']
+         default: ['project:releng:ship-it:staging']
+   run-on-projects: []
+   shipping-phase: ship
+
+jobs:
+   fennec:
+      name: release-fennec_mark_as_shipped
+      shipping-product: fennec
+
+   firefox:
+      name: release-firefox_mark_as_shipped
+      shipping-product: firefox
+
+   devedition:
+      name: release-devedition_mark_as_shipped
+      shipping-product: devedition

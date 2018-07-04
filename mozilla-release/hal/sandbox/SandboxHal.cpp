@@ -136,132 +136,6 @@ UnlockScreenOrientation()
   Hal()->SendUnlockScreenOrientation();
 }
 
-bool
-GetScreenEnabled()
-{
-  bool enabled = false;
-  Hal()->SendGetScreenEnabled(&enabled);
-  return enabled;
-}
-
-void
-SetScreenEnabled(bool aEnabled)
-{
-  Hal()->SendSetScreenEnabled(aEnabled);
-}
-
-bool
-GetKeyLightEnabled()
-{
-  bool enabled = false;
-  Hal()->SendGetKeyLightEnabled(&enabled);
-  return enabled;
-}
-
-void
-SetKeyLightEnabled(bool aEnabled)
-{
-  Hal()->SendSetKeyLightEnabled(aEnabled);
-}
-
-bool
-GetCpuSleepAllowed()
-{
-  bool allowed = true;
-  Hal()->SendGetCpuSleepAllowed(&allowed);
-  return allowed;
-}
-
-void
-SetCpuSleepAllowed(bool aAllowed)
-{
-  Hal()->SendSetCpuSleepAllowed(aAllowed);
-}
-
-double
-GetScreenBrightness()
-{
-  double brightness = 0;
-  Hal()->SendGetScreenBrightness(&brightness);
-  return brightness;
-}
-
-void
-SetScreenBrightness(double aBrightness)
-{
-  Hal()->SendSetScreenBrightness(aBrightness);
-}
-
-void
-AdjustSystemClock(int64_t aDeltaMilliseconds)
-{
-  Hal()->SendAdjustSystemClock(aDeltaMilliseconds);
-}
-
-void
-SetTimezone(const nsCString& aTimezoneSpec)
-{
-  Hal()->SendSetTimezone(nsCString(aTimezoneSpec));
-}
-
-nsCString
-GetTimezone()
-{
-  nsCString timezone;
-  Hal()->SendGetTimezone(&timezone);
-  return timezone;
-}
-
-int32_t
-GetTimezoneOffset()
-{
-  int32_t timezoneOffset;
-  Hal()->SendGetTimezoneOffset(&timezoneOffset);
-  return timezoneOffset;
-}
-
-void
-EnableSystemClockChangeNotifications()
-{
-  Hal()->SendEnableSystemClockChangeNotifications();
-}
-
-void
-DisableSystemClockChangeNotifications()
-{
-  Hal()->SendDisableSystemClockChangeNotifications();
-}
-
-void
-EnableSystemTimezoneChangeNotifications()
-{
-  Hal()->SendEnableSystemTimezoneChangeNotifications();
-}
-
-void
-DisableSystemTimezoneChangeNotifications()
-{
-  Hal()->SendDisableSystemTimezoneChangeNotifications();
-}
-
-void
-Reboot()
-{
-  MOZ_CRASH("Reboot() can't be called from sandboxed contexts.");
-}
-
-void
-PowerOff()
-{
-  MOZ_CRASH("PowerOff() can't be called from sandboxed contexts.");
-}
-
-void
-StartForceQuitWatchdog(ShutdownMode aMode, int32_t aTimeoutSecs)
-{
-  MOZ_CRASH("StartForceQuitWatchdog() can't be called from sandboxed contexts.");
-}
-
 void
 EnableSensorNotifications(SensorType aSensor) {
   Hal()->SendEnableSensorNotifications(aSensor);
@@ -300,90 +174,34 @@ GetWakeLockInfo(const nsAString &aTopic, WakeLockInformation *aWakeLockInfo)
   Hal()->SendGetWakeLockInfo(nsString(aTopic), aWakeLockInfo);
 }
 
-void
-EnableSwitchNotifications(SwitchDevice aDevice)
-{
-  Hal()->SendEnableSwitchNotifications(aDevice);
-}
-
-void
-DisableSwitchNotifications(SwitchDevice aDevice)
-{
-  Hal()->SendDisableSwitchNotifications(aDevice);
-}
-
-SwitchState
-GetCurrentSwitchState(SwitchDevice aDevice)
-{
-  SwitchState state;
-  Hal()->SendGetCurrentSwitchState(aDevice, &state);
-  return state;
-}
-
-void
-NotifySwitchStateFromInputDevice(SwitchDevice aDevice, SwitchState aState)
-{
-  Unused << aDevice;
-  Unused << aState;
-  NS_RUNTIMEABORT("Only the main process may notify switch state change.");
-}
-
 bool
 EnableAlarm()
 {
-  NS_RUNTIMEABORT("Alarms can't be programmed from sandboxed contexts.  Yet.");
-  return false;
+  MOZ_CRASH("Alarms can't be programmed from sandboxed contexts.  Yet.");
 }
 
 void
 DisableAlarm()
 {
-  NS_RUNTIMEABORT("Alarms can't be programmed from sandboxed contexts.  Yet.");
+  MOZ_CRASH("Alarms can't be programmed from sandboxed contexts.  Yet.");
 }
 
 bool
 SetAlarm(int32_t aSeconds, int32_t aNanoseconds)
 {
-  NS_RUNTIMEABORT("Alarms can't be programmed from sandboxed contexts.  Yet.");
-  return false;
+  MOZ_CRASH("Alarms can't be programmed from sandboxed contexts.  Yet.");
 }
 
 void
 SetProcessPriority(int aPid, ProcessPriority aPriority)
 {
-  NS_RUNTIMEABORT("Only the main process may set processes' priorities.");
+  MOZ_CRASH("Only the main process may set processes' priorities.");
 }
 
 bool
 SetProcessPrioritySupported()
 {
-  NS_RUNTIMEABORT("Only the main process may call SetProcessPrioritySupported().");
-  return false;
-}
-
-void
-SetCurrentThreadPriority(ThreadPriority aThreadPriority)
-{
-  NS_RUNTIMEABORT("Setting current thread priority cannot be called from sandboxed contexts.");
-}
-
-void
-SetThreadPriority(PlatformThreadId aThreadId,
-                  ThreadPriority aThreadPriority)
-{
-  NS_RUNTIMEABORT("Setting thread priority cannot be called from sandboxed contexts.");
-}
-
-void
-FactoryReset(FactoryResetReason& aReason)
-{
-  if (aReason == FactoryResetReason::Normal) {
-    Hal()->SendFactoryReset(NS_LITERAL_STRING("normal"));
-  } else if (aReason == FactoryResetReason::Wipe) {
-    Hal()->SendFactoryReset(NS_LITERAL_STRING("wipe"));
-  } else if (aReason == FactoryResetReason::Root) {
-    Hal()->SendFactoryReset(NS_LITERAL_STRING("root"));
-  }
+  MOZ_CRASH("Only the main process may call SetProcessPrioritySupported().");
 }
 
 void
@@ -398,38 +216,12 @@ StopDiskSpaceWatcher()
   MOZ_CRASH("StopDiskSpaceWatcher() can't be called from sandboxed contexts.");
 }
 
-bool IsHeadphoneEventFromInputDev()
-{
-  MOZ_CRASH("IsHeadphoneEventFromInputDev() cannot be called from sandboxed contexts.");
-  return false;
-}
-
-nsresult StartSystemService(const char* aSvcName, const char* aArgs)
-{
-  MOZ_CRASH("System services cannot be controlled from sandboxed contexts.");
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-void StopSystemService(const char* aSvcName)
-{
-  MOZ_CRASH("System services cannot be controlled from sandboxed contexts.");
-}
-
-bool SystemServiceIsRunning(const char* aSvcName)
-{
-  MOZ_CRASH("System services cannot be controlled from sandboxed contexts.");
-  return false;
-}
-
 class HalParent : public PHalParent
                 , public BatteryObserver
                 , public NetworkObserver
                 , public ISensorObserver
                 , public WakeLockObserver
                 , public ScreenConfigurationObserver
-                , public SwitchObserver
-                , public SystemClockChangeObserver
-                , public SystemTimezoneChangeObserver
 {
 public:
   virtual void
@@ -445,12 +237,6 @@ public:
       hal::UnregisterSensorObserver(SensorType(sensor), this);
     }
     hal::UnregisterWakeLockObserver(this);
-    hal::UnregisterSystemClockChangeObserver(this);
-    hal::UnregisterSystemTimezoneChangeObserver(this);
-    for (int32_t switchDevice = SWITCH_DEVICE_UNKNOWN + 1;
-         switchDevice < NUM_SWITCH_DEVICE; ++switchDevice) {
-      hal::UnregisterSwitchObserver(SwitchDevice(switchDevice), this);
-    }
   }
 
   virtual mozilla::ipc::IPCResult
@@ -567,118 +353,6 @@ public:
   }
 
   virtual mozilla::ipc::IPCResult
-  RecvGetScreenEnabled(bool* aEnabled) override
-  {
-    *aEnabled = hal::GetScreenEnabled();
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvSetScreenEnabled(const bool& aEnabled) override
-  {
-    hal::SetScreenEnabled(aEnabled);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvGetKeyLightEnabled(bool* aEnabled) override
-  {
-    *aEnabled = hal::GetKeyLightEnabled();
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvSetKeyLightEnabled(const bool& aEnabled) override
-  {
-    hal::SetKeyLightEnabled(aEnabled);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvGetCpuSleepAllowed(bool* aAllowed) override
-  {
-    *aAllowed = hal::GetCpuSleepAllowed();
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvSetCpuSleepAllowed(const bool& aAllowed) override
-  {
-    hal::SetCpuSleepAllowed(aAllowed);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvGetScreenBrightness(double* aBrightness) override
-  {
-    *aBrightness = hal::GetScreenBrightness();
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvSetScreenBrightness(const double& aBrightness) override
-  {
-    hal::SetScreenBrightness(aBrightness);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvAdjustSystemClock(const int64_t &aDeltaMilliseconds) override
-  {
-    hal::AdjustSystemClock(aDeltaMilliseconds);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvSetTimezone(const nsCString& aTimezoneSpec) override
-  {
-    hal::SetTimezone(aTimezoneSpec);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvGetTimezone(nsCString *aTimezoneSpec) override
-  {
-    *aTimezoneSpec = hal::GetTimezone();
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvGetTimezoneOffset(int32_t *aTimezoneOffset) override
-  {
-    *aTimezoneOffset = hal::GetTimezoneOffset();
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvEnableSystemClockChangeNotifications() override
-  {
-    hal::RegisterSystemClockChangeObserver(this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvDisableSystemClockChangeNotifications() override
-  {
-    hal::UnregisterSystemClockChangeObserver(this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvEnableSystemTimezoneChangeNotifications() override
-  {
-    hal::RegisterSystemTimezoneChangeObserver(this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvDisableSystemTimezoneChangeNotifications() override
-  {
-    hal::UnregisterSystemTimezoneChangeObserver(this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
   RecvEnableSensorNotifications(const SensorType &aSensor) override {
     // We currently allow any content to register device-sensor
     // listeners.
@@ -735,63 +409,6 @@ public:
   {
     Unused << SendNotifyWakeLockChange(aWakeLockInfo);
   }
-
-  virtual mozilla::ipc::IPCResult
-  RecvEnableSwitchNotifications(const SwitchDevice& aDevice) override
-  {
-    // Content has no reason to listen to switch events currently.
-    hal::RegisterSwitchObserver(aDevice, this);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvDisableSwitchNotifications(const SwitchDevice& aDevice) override
-  {
-    hal::UnregisterSwitchObserver(aDevice, this);
-    return IPC_OK();
-  }
-
-  void Notify(const SwitchEvent& aSwitchEvent) override
-  {
-    Unused << SendNotifySwitchChange(aSwitchEvent);
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvGetCurrentSwitchState(const SwitchDevice& aDevice, hal::SwitchState *aState) override
-  {
-    // Content has no reason to listen to switch events currently.
-    *aState = hal::GetCurrentSwitchState(aDevice);
-    return IPC_OK();
-  }
-
-  void Notify(const int64_t& aClockDeltaMS) override
-  {
-    Unused << SendNotifySystemClockChange(aClockDeltaMS);
-  }
-
-  void Notify(const SystemTimezoneChangeInformation& aSystemTimezoneChangeInfo) override
-  {
-    Unused << SendNotifySystemTimezoneChange(aSystemTimezoneChangeInfo);
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvFactoryReset(const nsString& aReason) override
-  {
-    FactoryResetReason reason = FactoryResetReason::Normal;
-    if (aReason.EqualsLiteral("normal")) {
-      reason = FactoryResetReason::Normal;
-    } else if (aReason.EqualsLiteral("wipe")) {
-      reason = FactoryResetReason::Wipe;
-    } else if (aReason.EqualsLiteral("root")) {
-      reason = FactoryResetReason::Root;
-    } else {
-      // Invalid factory reset reason. That should never happen.
-      return IPC_FAIL_NO_REASON(this);
-    }
-
-    hal::FactoryReset(reason);
-    return IPC_OK();
-  }
 };
 
 class HalChild : public PHalChild {
@@ -826,25 +443,6 @@ public:
   virtual mozilla::ipc::IPCResult
   RecvNotifyScreenConfigurationChange(const ScreenConfiguration& aScreenConfiguration) override {
     hal::NotifyScreenConfigurationChange(aScreenConfiguration);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvNotifySwitchChange(const mozilla::hal::SwitchEvent& aEvent) override {
-    hal::NotifySwitchChange(aEvent);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvNotifySystemClockChange(const int64_t& aClockDeltaMS) override {
-    hal::NotifySystemClockChange(aClockDeltaMS);
-    return IPC_OK();
-  }
-
-  virtual mozilla::ipc::IPCResult
-  RecvNotifySystemTimezoneChange(
-    const SystemTimezoneChangeInformation& aSystemTimezoneChangeInfo) override {
-    hal::NotifySystemTimezoneChange(aSystemTimezoneChangeInfo);
     return IPC_OK();
   }
 };

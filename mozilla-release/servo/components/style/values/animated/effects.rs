@@ -4,16 +4,17 @@
 
 //! Animated types for CSS values related to effects.
 
-use properties::animated_properties::{Animatable, IntermediateColor};
 use properties::longhands::box_shadow::computed_value::T as ComputedBoxShadowList;
 use properties::longhands::filter::computed_value::T as ComputedFilterList;
 use properties::longhands::text_shadow::computed_value::T as ComputedTextShadowList;
 use std::cmp;
 #[cfg(not(feature = "gecko"))]
 use values::Impossible;
-use values::animated::{ToAnimatedValue, ToAnimatedZero};
+use values::animated::{Animate, Procedure, ToAnimatedValue, ToAnimatedZero};
+use values::animated::color::RGBA;
 use values::computed::{Angle, Number};
 use values::computed::length::Length;
+use values::distance::{ComputeSquaredDistance, SquaredDistance};
 use values::generics::effects::BoxShadow as GenericBoxShadow;
 use values::generics::effects::Filter as GenericFilter;
 use values::generics::effects::SimpleShadow as GenericSimpleShadow;
@@ -26,16 +27,16 @@ pub type TextShadowList = ShadowList<SimpleShadow>;
 
 /// An animated value for shadow lists.
 ///
-/// https://drafts.csswg.org/css-transitions/#animtype-shadow-list
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+/// <https://drafts.csswg.org/css-transitions/#animtype-shadow-list>
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShadowList<Shadow>(Vec<Shadow>);
 
 /// An animated value for a single `box-shadow`.
-pub type BoxShadow = GenericBoxShadow<IntermediateColor, Length, Length>;
+pub type BoxShadow = GenericBoxShadow<Option<RGBA>, Length, Length, Length>;
 
 /// An animated value for the `filter` property.
-#[cfg_attr(feature = "servo", derive(HeapSizeOf))]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct FilterList(pub Vec<Filter>);
 
@@ -48,7 +49,7 @@ pub type Filter = GenericFilter<Angle, Number, Length, SimpleShadow>;
 pub type Filter = GenericFilter<Angle, Number, Length, Impossible>;
 
 /// An animated value for the `drop-shadow()` filter.
-pub type SimpleShadow = GenericSimpleShadow<IntermediateColor, Length, Length>;
+pub type SimpleShadow = GenericSimpleShadow<Option<RGBA>, Length, Length>;
 
 impl ToAnimatedValue for ComputedBoxShadowList {
     type AnimatedValue = BoxShadowList;
@@ -64,41 +65,48 @@ impl ToAnimatedValue for ComputedBoxShadowList {
     }
 }
 
-impl<S> Animatable for ShadowList<S>
+impl<S> Animate for ShadowList<S>
 where
-    S: Animatable + Clone + ToAnimatedZero,
+    S: Animate + Clone + ToAnimatedZero,
 {
     #[inline]
-    fn add_weighted(
-        &self,
-        other: &Self,
-        self_portion: f64,
-        other_portion: f64,
-    ) -> Result<Self, ()> {
+    fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
+        if procedure == Procedure::Add {
+            return Ok(ShadowList(self.0.iter().chain(&other.0).cloned().collect()));
+        }
+        // FIXME(nox): Use itertools here, to avoid the need for `unreachable!`.
         let max_len = cmp::max(self.0.len(), other.0.len());
         let mut shadows = Vec::with_capacity(max_len);
         for i in 0..max_len {
             shadows.push(match (self.0.get(i), other.0.get(i)) {
-                (Some(shadow), Some(other)) => {
-                    shadow.add_weighted(other, self_portion, other_portion)?
-                },
-                (Some(shadow), None) => {
-                    shadow.add_weighted(&shadow.to_animated_zero()?, self_portion, other_portion)?
-                },
-                (None, Some(shadow)) => {
-                    shadow.to_animated_zero()?.add_weighted(&shadow, self_portion, other_portion)?
-                },
+                (Some(shadow), Some(other)) => shadow.animate(other, procedure)?,
+                (Some(shadow), None) => shadow.animate(&shadow.to_animated_zero()?, procedure)?,
+                (None, Some(shadow)) => shadow.to_animated_zero()?.animate(shadow, procedure)?,
                 (None, None) => unreachable!(),
             });
         }
         Ok(ShadowList(shadows))
     }
+}
 
+impl<S> ComputeSquaredDistance for ShadowList<S>
+where
+    S: ComputeSquaredDistance + ToAnimatedZero,
+{
     #[inline]
-    fn add(&self, other: &Self) -> Result<Self, ()> {
-        Ok(ShadowList(
-            self.0.iter().cloned().chain(other.0.iter().cloned()).collect(),
-        ))
+    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
+        use itertools::{EitherOrBoth, Itertools};
+
+        self.0
+            .iter()
+            .zip_longest(other.0.iter())
+            .map(|it| match it {
+                EitherOrBoth::Both(from, to) => from.compute_squared_distance(to),
+                EitherOrBoth::Left(list) | EitherOrBoth::Right(list) => {
+                    list.compute_squared_distance(&list.to_animated_zero()?)
+                },
+            })
+            .sum()
     }
 }
 
@@ -123,74 +131,25 @@ impl ToAnimatedValue for ComputedTextShadowList {
     }
 }
 
-impl Animatable for BoxShadow {
+impl ComputeSquaredDistance for BoxShadow {
     #[inline]
-    fn add_weighted(
-        &self,
-        other: &Self,
-        self_portion: f64,
-        other_portion: f64,
-    ) -> Result<Self, ()> {
+    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
         if self.inset != other.inset {
             return Err(());
         }
-        Ok(BoxShadow {
-            base: self.base.add_weighted(&other.base, self_portion, other_portion)?,
-            spread: self.spread.add_weighted(&other.spread, self_portion, other_portion)?,
-            inset: self.inset,
-        })
-    }
-
-    #[inline]
-    fn compute_distance(&self, other: &Self) -> Result<f64, ()> {
-        self.compute_squared_distance(other).map(|sd| sd.sqrt())
-    }
-
-    #[inline]
-    fn compute_squared_distance(&self, other: &Self) -> Result<f64, ()> {
-        if self.inset != other.inset {
-            return Err(());
-        }
-        Ok(
-            self.base.compute_squared_distance(&other.base)? +
-            self.spread.compute_squared_distance(&other.spread)?,
-        )
-    }
-}
-
-impl ToAnimatedZero for BoxShadow {
-    #[inline]
-    fn to_animated_zero(&self) -> Result<Self, ()> {
-        Ok(BoxShadow {
-            base: self.base.to_animated_zero()?,
-            spread: self.spread.to_animated_zero()?,
-            inset: self.inset,
-        })
+        Ok(self.base.compute_squared_distance(&other.base)? +
+            self.spread.compute_squared_distance(&other.spread)?)
     }
 }
 
 impl ToAnimatedValue for ComputedFilterList {
     type AnimatedValue = FilterList;
 
-    #[cfg(not(feature = "gecko"))]
-    #[inline]
-    fn to_animated_value(self) -> Self::AnimatedValue {
-        FilterList(self.0)
-    }
-
-    #[cfg(feature = "gecko")]
     #[inline]
     fn to_animated_value(self) -> Self::AnimatedValue {
         FilterList(self.0.to_animated_value())
     }
 
-    #[cfg(not(feature = "gecko"))]
-    #[inline]
-    fn from_animated_value(animated: Self::AnimatedValue) -> Self {
-        ComputedFilterList(animated.0)
-    }
-
-    #[cfg(feature = "gecko")]
     #[inline]
     fn from_animated_value(animated: Self::AnimatedValue) -> Self {
         ComputedFilterList(ToAnimatedValue::from_animated_value(animated.0))
@@ -201,49 +160,5 @@ impl ToAnimatedZero for FilterList {
     #[inline]
     fn to_animated_zero(&self) -> Result<Self, ()> {
         Ok(FilterList(vec![]))
-    }
-}
-
-impl Animatable for SimpleShadow {
-    #[inline]
-    fn add_weighted(&self, other: &Self, self_portion: f64, other_portion: f64) -> Result<Self, ()> {
-        let color = self.color.add_weighted(&other.color, self_portion, other_portion)?;
-        let horizontal = self.horizontal.add_weighted(&other.horizontal, self_portion, other_portion)?;
-        let vertical = self.vertical.add_weighted(&other.vertical, self_portion, other_portion)?;
-        let blur = self.blur.add_weighted(&other.blur, self_portion, other_portion)?;
-
-        Ok(SimpleShadow {
-            color: color,
-            horizontal: horizontal,
-            vertical: vertical,
-            blur: blur,
-        })
-    }
-
-    #[inline]
-    fn compute_distance(&self, other: &Self) -> Result<f64, ()> {
-        self.compute_squared_distance(other).map(|sd| sd.sqrt())
-    }
-
-    #[inline]
-    fn compute_squared_distance(&self, other: &Self) -> Result<f64, ()> {
-        Ok(
-            self.color.compute_squared_distance(&other.color)? +
-            self.horizontal.compute_squared_distance(&other.horizontal)? +
-            self.vertical.compute_squared_distance(&other.vertical)? +
-            self.blur.compute_squared_distance(&other.blur)?
-        )
-    }
-}
-
-impl ToAnimatedZero for SimpleShadow {
-    #[inline]
-    fn to_animated_zero(&self) -> Result<Self, ()> {
-        Ok(SimpleShadow {
-            color: IntermediateColor::transparent(),
-            horizontal: self.horizontal.to_animated_zero()?,
-            vertical: self.vertical.to_animated_zero()?,
-            blur: self.blur.to_animated_zero()?,
-        })
     }
 }

@@ -19,8 +19,7 @@ class gfxMacFont : public gfxFont
 {
 public:
     gfxMacFont(const RefPtr<mozilla::gfx::UnscaledFontMac>& aUnscaledFont,
-               MacOSFontEntry *aFontEntry, const gfxFontStyle *aFontStyle,
-               bool aNeedsBold);
+               MacOSFontEntry *aFontEntry, const gfxFontStyle *aFontStyle);
 
     virtual ~gfxMacFont();
 
@@ -55,9 +54,6 @@ public:
     already_AddRefed<mozilla::gfx::ScaledFont>
     GetScaledFont(mozilla::gfx::DrawTarget *aTarget) override;
 
-    already_AddRefed<mozilla::gfx::GlyphRenderingOptions>
-      GetGlyphRenderingOptions(const TextRunDrawParams* aRunParams = nullptr) override;
-
     void AddSizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf,
                                 FontCacheSizes* aSizes) const override;
     void AddSizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf,
@@ -71,6 +67,7 @@ public:
     static CTFontRef
     CreateCTFontFromCGFontWithVariations(CGFontRef aCGFont,
                                          CGFloat aSize,
+                                         bool aInstalledFont,
                                          CTFontDescriptorRef aFontDesc = nullptr);
 
 protected:
@@ -109,6 +106,7 @@ protected:
 
     Metrics               mMetrics;
     uint32_t              mSpaceGlyph;
+    nscolor               mFontSmoothingBackgroundColor;
 
     bool                  mVariationFont; // true if font has OpenType variations
 };

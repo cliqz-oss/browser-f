@@ -12,6 +12,7 @@
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/MemoryReporting.h"
+#include "nsWindowSizes.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(Area)
 
@@ -28,36 +29,15 @@ HTMLAreaElement::~HTMLAreaElement()
 {
 }
 
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(HTMLAreaElement)
-  NS_INTERFACE_TABLE_INHERITED(HTMLAreaElement,
-                               nsIDOMHTMLAreaElement,
-                               Link)
-NS_INTERFACE_TABLE_TAIL_INHERITING(nsGenericHTMLElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLAreaElement,
+                                             nsGenericHTMLElement,
+                                             Link)
 
-NS_IMPL_ADDREF_INHERITED(HTMLAreaElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLAreaElement, Element)
-
-NS_IMPL_CYCLE_COLLECTION_CLASS(HTMLAreaElement)
-
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(HTMLAreaElement,
-                                                  nsGenericHTMLElement)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mRelList)
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
-
-NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(HTMLAreaElement,
-                                                nsGenericHTMLElement)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mRelList)
-NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+NS_IMPL_CYCLE_COLLECTION_INHERITED(HTMLAreaElement,
+                                   nsGenericHTMLElement,
+                                   mRelList)
 
 NS_IMPL_ELEMENT_CLONE(HTMLAreaElement)
-
-
-NS_IMPL_STRING_ATTR(HTMLAreaElement, Alt, alt)
-NS_IMPL_STRING_ATTR(HTMLAreaElement, Coords, coords)
-NS_IMPL_URI_ATTR(HTMLAreaElement, Href, href)
-NS_IMPL_BOOL_ATTR(HTMLAreaElement, NoHref, nohref)
-NS_IMPL_STRING_ATTR(HTMLAreaElement, Shape, shape)
-NS_IMPL_STRING_ATTR(HTMLAreaElement, Download, download)
 
 int32_t
 HTMLAreaElement::TabIndexDefault()
@@ -65,25 +45,18 @@ HTMLAreaElement::TabIndexDefault()
   return 0;
 }
 
-NS_IMETHODIMP
-HTMLAreaElement::GetTarget(nsAString& aValue)
+void
+HTMLAreaElement::GetTarget(DOMString& aValue)
 {
   if (!GetAttr(kNameSpaceID_None, nsGkAtoms::target, aValue)) {
     GetBaseTarget(aValue);
   }
-  return NS_OK;
 }
 
-NS_IMETHODIMP
-HTMLAreaElement::SetTarget(const nsAString& aValue)
-{
-  return SetAttr(kNameSpaceID_None, nsGkAtoms::target, aValue, true);
-}
-
-nsresult
+void
 HTMLAreaElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
 {
-  return GetEventTargetParentForAnchors(aVisitor);
+  GetEventTargetParentForAnchors(aVisitor);
 }
 
 nsresult
@@ -146,9 +119,11 @@ HTMLAreaElement::UnbindFromTree(bool aDeep, bool aNullParent)
 }
 
 nsresult
-HTMLAreaElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+HTMLAreaElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                               const nsAttrValue* aValue,
-                              const nsAttrValue* aOldValue, bool aNotify)
+                              const nsAttrValue* aOldValue,
+                              nsIPrincipal* aSubjectPrincipal,
+                              bool aNotify)
 {
   if (aNamespaceID == kNameSpaceID_None) {
     // This must happen after the attribute is set. We will need the updated
@@ -161,50 +136,13 @@ HTMLAreaElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
   }
 
   return nsGenericHTMLElement::AfterSetAttr(aNamespaceID, aName, aValue,
-                                            aOldValue, aNotify);
+                                            aOldValue, aSubjectPrincipal, aNotify);
 }
 
-#define IMPL_URI_PART(_part)                                 \
-  NS_IMETHODIMP                                              \
-  HTMLAreaElement::Get##_part(nsAString& a##_part)           \
-  {                                                          \
-    Link::Get##_part(a##_part);                              \
-    return NS_OK;                                            \
-  }                                                          \
-  NS_IMETHODIMP                                              \
-  HTMLAreaElement::Set##_part(const nsAString& a##_part)     \
-  {                                                          \
-    Link::Set##_part(a##_part);                              \
-    return NS_OK;                                            \
-  }
-
-IMPL_URI_PART(Protocol)
-IMPL_URI_PART(Host)
-IMPL_URI_PART(Hostname)
-IMPL_URI_PART(Pathname)
-IMPL_URI_PART(Search)
-IMPL_URI_PART(Port)
-IMPL_URI_PART(Hash)
-
-#undef IMPL_URI_PART
-
-NS_IMETHODIMP
+void
 HTMLAreaElement::ToString(nsAString& aSource)
 {
-  return GetHref(aSource);
-}
-
-NS_IMETHODIMP
-HTMLAreaElement::GetPing(nsAString& aValue)
-{
-  GetAttr(kNameSpaceID_None, nsGkAtoms::ping, aValue);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-HTMLAreaElement::SetPing(const nsAString& aValue)
-{
-  return SetAttr(kNameSpaceID_None, nsGkAtoms::ping, aValue, true);
+  GetHref(aSource);
 }
 
 already_AddRefed<nsIURI>
@@ -219,11 +157,12 @@ HTMLAreaElement::IntrinsicState() const
   return Link::LinkState() | nsGenericHTMLElement::IntrinsicState();
 }
 
-size_t
-HTMLAreaElement::SizeOfExcludingThis(mozilla::SizeOfState& aState) const
+void
+HTMLAreaElement::AddSizeOfExcludingThis(nsWindowSizes& aSizes,
+                                        size_t* aNodeSize) const
 {
-  return nsGenericHTMLElement::SizeOfExcludingThis(aState) +
-         Link::SizeOfExcludingThis(aState);
+  nsGenericHTMLElement::AddSizeOfExcludingThis(aSizes, aNodeSize);
+  *aNodeSize += Link::SizeOfExcludingThis(aSizes.mState);
 }
 
 JSObject*

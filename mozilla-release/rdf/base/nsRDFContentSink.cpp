@@ -52,15 +52,15 @@
 #include "nsIXMLContentSink.h"
 #include "nsRDFCID.h"
 #include "nsTArray.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "mozilla/Logging.h"
 #include "rdf.h"
 #include "rdfutil.h"
 #include "nsReadableUtils.h"
 #include "nsIExpatSink.h"
 #include "nsCRT.h"
-#include "nsIAtom.h"
-#include "nsStaticAtom.h"
+#include "nsAtom.h"
+#include "nsGkAtoms.h"
 #include "nsIScriptError.h"
 #include "nsIDTD.h"
 
@@ -126,10 +126,6 @@ public:
     static nsIRDFResource* kRDF_Seq;
     static nsIRDFResource* kRDF_nextVal;
 
-#define RDF_ATOM(name_, value_) static nsIAtom* name_;
-#include "nsRDFContentSinkAtomList.h"
-#undef RDF_ATOM
-
     typedef struct ContainerInfo {
         nsIRDFResource**  mType;
         nsContainerTestFn mTestFn;
@@ -177,7 +173,7 @@ protected:
      * The return value is a dependent string containing just the namespace.
      */
     const nsDependentSubstring SplitExpatName(const char16_t *aExpatName,
-                                              nsIAtom **aLocalName);
+                                              nsAtom **aLocalName);
 
     enum eContainerType { eBag, eSeq, eAlt };
     nsresult InitContainer(nsIRDFResource* aContainerType, nsIRDFResource* aContainer);
@@ -234,27 +230,6 @@ nsIRDFResource* RDFContentSinkImpl::kRDF_nextVal;
 mozilla::LazyLogModule RDFContentSinkImpl::gLog("nsRDFContentSink");
 
 ////////////////////////////////////////////////////////////////////////
-
-#define RDF_ATOM(name_, value_) nsIAtom* RDFContentSinkImpl::name_;
-#include "nsRDFContentSinkAtomList.h"
-#undef RDF_ATOM
-
-#define RDF_ATOM(name_, value_) NS_STATIC_ATOM_BUFFER(name_##_buffer, value_)
-#include "nsRDFContentSinkAtomList.h"
-#undef RDF_ATOM
-
-static const nsStaticAtom rdf_atoms[] = {
-#define RDF_ATOM(name_, value_) NS_STATIC_ATOM(name_##_buffer, &RDFContentSinkImpl::name_),
-#include "nsRDFContentSinkAtomList.h"
-#undef RDF_ATOM
-};
-
-// static
-void
-nsRDFAtoms::RegisterAtoms()
-{
-    NS_RegisterStaticAtoms(rdf_atoms);
-}
 
 RDFContentSinkImpl::RDFContentSinkImpl()
     : mText(nullptr),
@@ -315,10 +290,10 @@ RDFContentSinkImpl::~RDFContentSinkImpl()
             // XXX we should save line numbers on the context stack: this'd
             // be about 1000x more helpful.
             if (resource && MOZ_LOG_TEST(gLog, LogLevel::Debug)) {
-                nsXPIDLCString uri;
+                nsCString uri;
                 resource->GetValue(getter_Copies(uri));
                 MOZ_LOG(gLog, LogLevel::Debug,
-                       ("rdfxml:   uri=%s", (const char*) uri));
+                       ("rdfxml:   uri=%s", uri.get()));
             }
 
             NS_IF_RELEASE(resource);
@@ -782,7 +757,7 @@ RDFContentSinkImpl::GetIdAboutAttribute(const char16_t** aAttributes,
 
     nsAutoString nodeID;
 
-    nsCOMPtr<nsIAtom> localName;
+    RefPtr<nsAtom> localName;
     for (; *aAttributes; aAttributes += 2) {
         const nsDependentSubstring& nameSpaceURI =
             SplitExpatName(aAttributes[0], getter_AddRefs(localName));
@@ -798,7 +773,7 @@ RDFContentSinkImpl::GetIdAboutAttribute(const char16_t** aAttributes,
         // XXX you can't specify both, but we'll just pick up the
         // first thing that was specified and ignore the other.
 
-        if (localName == kAboutAtom) {
+        if (localName == nsGkAtoms::about) {
             if (aIsAnonymous)
                 *aIsAnonymous = false;
 
@@ -814,7 +789,7 @@ RDFContentSinkImpl::GetIdAboutAttribute(const char16_t** aAttributes,
             return gRDFService->GetResource(NS_ConvertUTF16toUTF8(aAttributes[1]),
                                             aResource);
         }
-        else if (localName == kIdAtom) {
+        else if (localName == nsGkAtoms::ID) {
             if (aIsAnonymous)
                 *aIsAnonymous = false;
             // In the spirit of leniency, we do not bother trying to
@@ -834,10 +809,10 @@ RDFContentSinkImpl::GetIdAboutAttribute(const char16_t** aAttributes,
 
             return gRDFService->GetResource(name, aResource);
         }
-        else if (localName == kNodeIdAtom) {
+        else if (localName == nsGkAtoms::nodeID) {
             nodeID.Assign(aAttributes[1]);
         }
-        else if (localName == kAboutEachAtom) {
+        else if (localName == nsGkAtoms::about) {
             // XXX we don't deal with aboutEach...
             //MOZ_LOG(gLog, LogLevel::Warning,
             //       ("rdfxml: ignoring aboutEach at line %d",
@@ -870,7 +845,7 @@ nsresult
 RDFContentSinkImpl::GetResourceAttribute(const char16_t** aAttributes,
                                          nsIRDFResource** aResource)
 {
-  nsCOMPtr<nsIAtom> localName;
+  RefPtr<nsAtom> localName;
 
   nsAutoString nodeID;
 
@@ -889,7 +864,7 @@ RDFContentSinkImpl::GetResourceAttribute(const char16_t** aAttributes,
       // XXX you can't specify both, but we'll just pick up the
       // first thing that was specified and ignore the other.
 
-      if (localName == kResourceAtom) {
+      if (localName == nsGkAtoms::resource) {
           // XXX Take the URI and make it fully qualified by
           // sticking it into the document's URL. This may not be
           // appropriate...
@@ -906,7 +881,7 @@ RDFContentSinkImpl::GetResourceAttribute(const char16_t** aAttributes,
           return gRDFService->GetResource(NS_ConvertUTF16toUTF8(aAttributes[1]),
                                           aResource);
       }
-      else if (localName == kNodeIdAtom) {
+      else if (localName == nsGkAtoms::nodeID) {
           nodeID.Assign(aAttributes[1]);
       }
   }
@@ -938,7 +913,7 @@ RDFContentSinkImpl::AddProperties(const char16_t** aAttributes,
   if (aCount)
       *aCount = 0;
 
-  nsCOMPtr<nsIAtom> localName;
+  RefPtr<nsAtom> localName;
   for (; *aAttributes; aAttributes += 2) {
       const nsDependentSubstring& nameSpaceURI =
           SplitExpatName(aAttributes[0], getter_AddRefs(localName));
@@ -951,8 +926,8 @@ RDFContentSinkImpl::AddProperties(const char16_t** aAttributes,
       // skip `about', `ID', `resource', and 'nodeID' attributes (either with or
       // without the `rdf:' prefix); these are all "special" and
       // should've been dealt with by the caller.
-      if (localName == kAboutAtom || localName == kIdAtom ||
-          localName == kResourceAtom || localName == kNodeIdAtom) {
+      if (localName == nsGkAtoms::about || localName == nsGkAtoms::ID ||
+          localName == nsGkAtoms::resource || localName == nsGkAtoms::nodeID) {
           if (nameSpaceURI.IsEmpty() ||
               nameSpaceURI.EqualsLiteral(RDF_NAMESPACE_URI))
               continue;
@@ -960,7 +935,7 @@ RDFContentSinkImpl::AddProperties(const char16_t** aAttributes,
 
       // Skip `parseType', `RDF:parseType', and `NC:parseType'. This
       // is meta-information that will be handled in SetParseMode.
-      if (localName == kParseTypeAtom) {
+      if (localName == nsGkAtoms::parseType) {
           if (nameSpaceURI.IsEmpty() ||
               nameSpaceURI.EqualsLiteral(RDF_NAMESPACE_URI) ||
               nameSpaceURI.EqualsLiteral(NC_NAMESPACE_URI)) {
@@ -987,12 +962,12 @@ RDFContentSinkImpl::AddProperties(const char16_t** aAttributes,
 void
 RDFContentSinkImpl::SetParseMode(const char16_t **aAttributes)
 {
-    nsCOMPtr<nsIAtom> localName;
+    RefPtr<nsAtom> localName;
     for (; *aAttributes; aAttributes += 2) {
         const nsDependentSubstring& nameSpaceURI =
             SplitExpatName(aAttributes[0], getter_AddRefs(localName));
 
-        if (localName == kParseTypeAtom) {
+        if (localName == nsGkAtoms::parseType) {
             nsDependentString v(aAttributes[1]);
 
             if (nameSpaceURI.IsEmpty() ||
@@ -1023,11 +998,12 @@ RDFContentSinkImpl::OpenRDF(const char16_t* aName)
     // ensure that we're actually reading RDF by making sure that the
     // opening tag is <rdf:RDF>, where "rdf:" corresponds to whatever
     // they've declared the standard RDF namespace to be.
-    nsCOMPtr<nsIAtom> localName;
+    RefPtr<nsAtom> localName;
     const nsDependentSubstring& nameSpaceURI =
         SplitExpatName(aName, getter_AddRefs(localName));
 
-    if (!nameSpaceURI.EqualsLiteral(RDF_NAMESPACE_URI) || localName != kRDFAtom) {
+    if (!nameSpaceURI.EqualsLiteral(RDF_NAMESPACE_URI) ||
+        localName != nsGkAtoms::RDF) {
        // MOZ_LOG(gLog, LogLevel::Info,
        //        ("rdfxml: expected RDF:RDF at line %d",
        //         aNode.GetSourceLineNumber()));
@@ -1047,7 +1023,7 @@ RDFContentSinkImpl::OpenObject(const char16_t* aName,
     // an "object" non-terminal is either a "description", a "typed
     // node", or a "container", so this change the content sink's
     // state appropriately.
-    nsCOMPtr<nsIAtom> localName;
+    RefPtr<nsAtom> localName;
     const nsDependentSubstring& nameSpaceURI =
         SplitExpatName(aName, getter_AddRefs(localName));
 
@@ -1070,21 +1046,21 @@ RDFContentSinkImpl::OpenObject(const char16_t* aName,
     if (nameSpaceURI.EqualsLiteral(RDF_NAMESPACE_URI)) {
         isaTypedNode = false;
 
-        if (localName == kDescriptionAtom) {
+        if (localName == nsGkAtoms::Description) {
             // it's a description
             mState = eRDFContentSinkState_InDescriptionElement;
         }
-        else if (localName == kBagAtom) {
+        else if (localName == nsGkAtoms::Bag) {
             // it's a bag container
             InitContainer(kRDF_Bag, source);
             mState = eRDFContentSinkState_InContainerElement;
         }
-        else if (localName == kSeqAtom) {
+        else if (localName == nsGkAtoms::Seq) {
             // it's a seq container
             InitContainer(kRDF_Seq, source);
             mState = eRDFContentSinkState_InContainerElement;
         }
-        else if (localName == kAltAtom) {
+        else if (localName == nsGkAtoms::Alt) {
             // it's an alt container
             InitContainer(kRDF_Alt, source);
             mState = eRDFContentSinkState_InContainerElement;
@@ -1122,7 +1098,7 @@ RDFContentSinkImpl::OpenProperty(const char16_t* aName, const char16_t** aAttrib
     // an "object" non-terminal is either a "description", a "typed
     // node", or a "container", so this change the content sink's
     // state appropriately.
-    nsCOMPtr<nsIAtom> localName;
+    RefPtr<nsAtom> localName;
     const nsDependentSubstring& nameSpaceURI =
         SplitExpatName(aName, getter_AddRefs(localName));
 
@@ -1196,12 +1172,12 @@ RDFContentSinkImpl::OpenMember(const char16_t* aName,
     // to whatever they've declared the standard RDF namespace to be.
     nsresult rv;
 
-    nsCOMPtr<nsIAtom> localName;
+    RefPtr<nsAtom> localName;
     const nsDependentSubstring& nameSpaceURI =
         SplitExpatName(aName, getter_AddRefs(localName));
 
     if (!nameSpaceURI.EqualsLiteral(RDF_NAMESPACE_URI) ||
-        localName != kLiAtom) {
+        localName != nsGkAtoms::li) {
         MOZ_LOG(gLog, LogLevel::Error,
                ("rdfxml: expected RDF:li at line %d",
                 -1)); // XXX pass in line number
@@ -1279,8 +1255,8 @@ RDFContentSinkImpl::RegisterNamespaces(const char16_t **aAttributes)
             ++endLocal;
         }
         nsDependentSubstring lname(attr, endLocal);
-        nsCOMPtr<nsIAtom> preferred = NS_Atomize(lname);
-        if (preferred == kXMLNSAtom) {
+        RefPtr<nsAtom> preferred = NS_Atomize(lname);
+        if (preferred == nsGkAtoms::xmlns) {
             preferred = nullptr;
         }
         sink->AddNameSpace(preferred, nsDependentString(aAttributes[1]));
@@ -1292,7 +1268,7 @@ RDFContentSinkImpl::RegisterNamespaces(const char16_t **aAttributes)
 
 const nsDependentSubstring
 RDFContentSinkImpl::SplitExpatName(const char16_t *aExpatName,
-                                   nsIAtom **aLocalName)
+                                   nsAtom **aLocalName)
 {
     /**
      *  Expat can send the following:

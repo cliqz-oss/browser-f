@@ -21,7 +21,7 @@ const INITIAL_DEVICES = {
   types: [],
   isModalOpen: false,
   modalOpenedFromViewport: null,
-  listState: Types.deviceListState.INITIALIZED,
+  listState: Types.loadableState.INITIALIZED,
 };
 
 let reducers = {
@@ -55,19 +55,19 @@ let reducers = {
 
   [LOAD_DEVICE_LIST_START](devices, action) {
     return Object.assign({}, devices, {
-      listState: Types.deviceListState.LOADING,
+      listState: Types.loadableState.LOADING,
     });
   },
 
   [LOAD_DEVICE_LIST_ERROR](devices, action) {
     return Object.assign({}, devices, {
-      listState: Types.deviceListState.ERROR,
+      listState: Types.loadableState.ERROR,
     });
   },
 
   [LOAD_DEVICE_LIST_END](devices, action) {
     return Object.assign({}, devices, {
-      listState: Types.deviceListState.LOADED,
+      listState: Types.loadableState.LOADED,
     });
   },
 
@@ -93,7 +93,7 @@ let reducers = {
 
 };
 
-module.exports = function (devices = INITIAL_DEVICES, action) {
+module.exports = function(devices = INITIAL_DEVICES, action) {
   let reducer = reducers[action.type];
   if (!reducer) {
     return devices;

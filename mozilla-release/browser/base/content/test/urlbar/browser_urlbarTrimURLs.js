@@ -4,7 +4,7 @@ add_task(async function() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
 
   registerCleanupFunction(async function() {
-    await BrowserTestUtils.removeTab(tab);
+    BrowserTestUtils.removeTab(tab);
     Services.prefs.clearUserPref(PREF_TRIMURLS);
     URLBarSetURI();
   });
@@ -72,7 +72,7 @@ add_task(async function() {
   gBrowser.loadURI("http://example.com/");
   await promiseLoaded;
 
-  await testCopy("example.com", "http://example.com/")
+  await testCopy("example.com", "http://example.com/");
 
   SetPageProxyState("invalid");
   gURLBar.valueIsTyped = true;

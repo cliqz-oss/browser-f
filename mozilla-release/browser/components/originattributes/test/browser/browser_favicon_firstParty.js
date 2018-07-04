@@ -2,9 +2,13 @@
  * Bug 1277803 - A test case for testing favicon loading across different first party domains.
  */
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
 
-Cu.import("resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
+
+let EventUtils = {};
+Services.scriptloader.loadSubScript(
+  "chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
 
 const FIRST_PARTY_ONE = "example.com";
 const FIRST_PARTY_TWO = "example.org";
@@ -23,13 +27,13 @@ const FAVICON_URI = TEST_DIRECTORY + "file_favicon.png";
 const TEST_FAVICON_CACHE_URI = TEST_DIRECTORY + "file_favicon_cache.png";
 
 let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-let makeURI = Cu.import("resource://gre/modules/BrowserUtils.jsm", {}).BrowserUtils.makeURI;
+let makeURI = ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm", {}).BrowserUtils.makeURI;
 
 function clearAllImageCaches() {
   let tools = SpecialPowers.Cc["@mozilla.org/image/tools;1"]
                              .getService(SpecialPowers.Ci.imgITools);
   let imageCache = tools.getImgCacheForDocument(window.document);
-  imageCache.clearCache(true);  // true=chrome
+  imageCache.clearCache(true); // true=chrome
   imageCache.clearCache(false); // false=content
 }
 
@@ -52,9 +56,10 @@ function clearAllPlacesFavicons() {
   });
 }
 
-function observeFavicon(aFirstPartyDomain, aExpectedCookie, aPageURI) {
+function observeFavicon(aFirstPartyDomain, aExpectedCookie, aPageURI, aOnlyXUL) {
   let faviconReqXUL = false;
-  let faviconReqPlaces = false;
+  // If aOnlyXUL is true, we only care about the favicon request from XUL.
+  let faviconReqPlaces = aOnlyXUL === true;
   let expectedPrincipal = Services.scriptSecurityManager
                                   .createCodebasePrincipal(aPageURI, { firstPartyDomain: aFirstPartyDomain });
 
@@ -182,7 +187,7 @@ async function assignCookiesUnderFirstParty(aURL, aFirstParty, aCookieValue) {
     content.document.cookie = value;
   });
 
-  await BrowserTestUtils.removeTab(tabInfo.tab);
+  BrowserTestUtils.removeTab(tabInfo.tab);
 }
 
 async function generateCookies(aThirdParty) {
@@ -229,8 +234,10 @@ async function doTest(aTestPage, aExpectedCookies, aFaviconURL) {
   // Waiting until favicon loaded.
   await promiseFaviconLoaded;
 
-  // Close the tab.
-  await BrowserTestUtils.removeTab(tabInfo.tab);
+  BrowserTestUtils.removeTab(tabInfo.tab);
+  // FIXME: We need to wait for the next event tick here to avoid observing
+  //        the previous tab info in the next step (bug 1446725).
+  await new Promise(executeSoon);
 
   // Start to observe the favicon requests earlier in case we miss it.
   promiseObserveFavicon = observeFavicon(FIRST_PARTY_TWO, aExpectedCookies[1], secondPageURI);
@@ -241,7 +248,86 @@ async function doTest(aTestPage, aExpectedCookies, aFaviconURL) {
   // Waiting until favicon requests are all made.
   await promiseObserveFavicon;
 
-  await BrowserTestUtils.removeTab(tabInfo.tab);
+  BrowserTestUtils.removeTab(tabInfo.tab);
+}
+
+async function doTestForAllTabsFavicon(aTestPage, aExpectedCookies, aIsThirdParty) {
+  let firstPageURI = makeURI(TEST_SITE_ONE + aTestPage);
+  let secondPageURI = makeURI(TEST_SITE_TWO + aTestPage);
+  let faviconURI = aIsThirdParty ? THIRD_PARTY_SITE + FAVICON_URI :
+                                   TEST_SITE_ONE + FAVICON_URI;
+
+  // Set the 'overflow' attribute to make allTabs button available.
+  let tabBrowser = document.getElementById("tabbrowser-tabs");
+  let allTabsBtn = document.getElementById("alltabs-button");
+  tabBrowser.setAttribute("overflow", true);
+
+  // Start to observe the event of that the favicon has been fully loaded.
+  let promiseFaviconLoaded = waitOnFaviconLoaded(faviconURI);
+
+  // Open the tab for the first site.
+  let tabInfo = await openTab(TEST_SITE_ONE + aTestPage);
+
+  // Waiting until the favicon loaded.
+  await promiseFaviconLoaded;
+
+  // We need to clear the image cache here for making sure the network request will
+  // be made for the favicon of allTabs menuitem.
+  clearAllImageCaches();
+
+  // Start to observe the allTabs favicon requests earlier in case we miss it.
+  let promiseObserveFavicon = observeFavicon(FIRST_PARTY_ONE, aExpectedCookies[0],
+                                             firstPageURI, true);
+
+  // Make the popup of allTabs showing up and trigger the loading of the favicon.
+  let allTabsPopupShownPromise = BrowserTestUtils.waitForEvent(allTabsBtn, "popupshown");
+  EventUtils.synthesizeMouseAtCenter(allTabsBtn, {});
+  await promiseObserveFavicon;
+  await allTabsPopupShownPromise;
+
+  // Close the popup of allTabs and wait until it's done.
+  let allTabsPopupHiddenPromise = BrowserTestUtils.waitForEvent(allTabsBtn, "popuphidden");
+  EventUtils.synthesizeMouseAtCenter(allTabsBtn, {});
+  await allTabsPopupHiddenPromise;
+
+  // Close the tab.
+  BrowserTestUtils.removeTab(tabInfo.tab);
+
+  faviconURI = aIsThirdParty ? THIRD_PARTY_SITE + FAVICON_URI :
+                               TEST_SITE_TWO + FAVICON_URI;
+
+  // Start to observe the event of that favicon has been fully loaded.
+  promiseFaviconLoaded = waitOnFaviconLoaded(faviconURI);
+
+  // Open the tab for the second site.
+  tabInfo = await openTab(TEST_SITE_TWO + aTestPage);
+
+  // Wait until the favicon is fully loaded.
+  await promiseFaviconLoaded;
+
+  // Clear the image cache for the favicon of the second site.
+  clearAllImageCaches();
+
+  // Start to observe the allTabs favicon requests earlier in case we miss it.
+  promiseObserveFavicon = observeFavicon(FIRST_PARTY_TWO, aExpectedCookies[1],
+                                         secondPageURI, true);
+
+  // Make the popup of allTabs showing up again.
+  allTabsPopupShownPromise = BrowserTestUtils.waitForEvent(allTabsBtn, "popupshown");
+  EventUtils.synthesizeMouseAtCenter(allTabsBtn, {});
+  await promiseObserveFavicon;
+  await allTabsPopupShownPromise;
+
+  // Close the popup of allTabs and wait until it's done.
+  allTabsPopupHiddenPromise = BrowserTestUtils.waitForEvent(allTabsBtn, "popuphidden");
+  EventUtils.synthesizeMouseAtCenter(allTabsBtn, {});
+  await allTabsPopupHiddenPromise;
+
+  // Close the tab.
+  BrowserTestUtils.removeTab(tabInfo.tab);
+
+  // Reset the 'overflow' attribute to make the allTabs button hidden again.
+  tabBrowser.removeAttribute("overflow");
 }
 
 add_task(async function setup() {
@@ -254,16 +340,12 @@ add_task(async function setup() {
 // A clean up function to prevent affecting other tests.
 registerCleanupFunction(() => {
   // Clear all cookies.
-  let cookieMgr = Cc["@mozilla.org/cookiemanager;1"]
-                     .getService(Ci.nsICookieManager);
-  cookieMgr.removeAll();
+  Services.cookies.removeAll();
 
   // Clear all image caches and network caches.
   clearAllImageCaches();
 
-  let networkCache = Cc["@mozilla.org/netwerk/cache-storage-service;1"]
-                        .getService(Ci.nsICacheStorageService);
-  networkCache.clear();
+  Services.cache2.clear();
 });
 
 add_task(async function test_favicon_firstParty() {
@@ -271,9 +353,7 @@ add_task(async function test_favicon_firstParty() {
     // Clear all image caches and network caches before running the test.
     clearAllImageCaches();
 
-    let networkCache = Cc["@mozilla.org/netwerk/cache-storage-service;1"]
-                        .getService(Ci.nsICacheStorageService);
-    networkCache.clear();
+    Services.cache2.clear();
 
     // Clear Places favicon caches.
     await clearAllPlacesFavicons();
@@ -288,13 +368,31 @@ add_task(async function test_favicon_firstParty() {
   }
 });
 
+add_task(async function test_allTabs_favicon_firstParty() {
+  for (let testThirdParty of [false, true]) {
+    // Clear all image caches and network caches before running the test.
+    clearAllImageCaches();
+
+    Services.cache2.clear();
+
+    // Clear Places favicon caches.
+    await clearAllPlacesFavicons();
+
+    let cookies = await generateCookies(testThirdParty);
+
+    if (testThirdParty) {
+      await doTestForAllTabsFavicon(TEST_THIRD_PARTY_PAGE, cookies, testThirdParty);
+    } else {
+      await doTestForAllTabsFavicon(TEST_PAGE, cookies, testThirdParty);
+    }
+  }
+});
+
 add_task(async function test_favicon_cache_firstParty() {
   // Clear all image caches and network caches before running the test.
   clearAllImageCaches();
 
-  let networkCache = Cc["@mozilla.org/netwerk/cache-storage-service;1"]
-                        .getService(Ci.nsICacheStorageService);
-  networkCache.clear();
+  Services.cache2.clear();
 
   // Start to observer the event of that favicon has been fully loaded and cached.
   let promiseForFaviconLoaded = waitOnFaviconLoaded(THIRD_PARTY_SITE + TEST_FAVICON_CACHE_URI);
@@ -337,7 +435,7 @@ add_task(async function test_favicon_cache_firstParty() {
   is(response.topic, "http-on-examine-response", "The favicon image should be loaded through network again.");
   is(response.firstPartyDomain, FIRST_PARTY_TWO, "We should only observe the network response for the second first party.");
 
-  await BrowserTestUtils.removeTab(tabInfoA.tab);
-  await BrowserTestUtils.removeTab(tabInfoB.tab);
-  await BrowserTestUtils.removeTab(tabInfoC.tab);
+  BrowserTestUtils.removeTab(tabInfoA.tab);
+  BrowserTestUtils.removeTab(tabInfoB.tab);
+  BrowserTestUtils.removeTab(tabInfoC.tab);
 });

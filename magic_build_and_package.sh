@@ -1,17 +1,8 @@
 #! /bin/bash
 
-# Copyright (c) 2016 Cliqz GmbH. All rights reserved.
-# Authors: Lucian Corlaciu <lucian@cliqz.com>
-#          Max Breev <maxim@cliqz.com>
-
-# Required ENVs:
-# WIN32_REDIST_DIR
-# CQZ_GOOGLE_API_KEY or MOZ_GOOGLE_API_KEY
-# MOZ_MOZILLA_API_KEY
-# CQZ_RELEASE_CHANNEL or MOZ_UPDATE_CHANNEL
-# CQZ_CERT_DB_PATH
-#
 # Optional ENVs:
+#  CQZ_BUILD_ID - specify special build timestamp or use latest one (depend on channel)
+#  CQZ_RELEASE_CHANNEL - specify special build channel (beta by default)
 #  CQZ_BUILD_DE_LOCALIZATION - for build DE localization
 
 set -e
@@ -29,12 +20,6 @@ if [ -z "$LANG" ]; then
   LANG='en-US'
 fi
 
-# for support old build
-if [[ "$LANG" == 'de' ]]; then
-  echo '***** German builds detected *****'
-  export MOZ_UI_LOCALE=de
-fi
-
 # for localization repack
 export L10NBASEDIR=../l10n  # --with-l10n-base=...
 
@@ -49,25 +34,20 @@ fi
 echo '***** Building *****'
 ./mach build
 
-if [ $IS_WIN ]; then
-  echo '***** Windows build installer *****'
-  ./mach build installer
-fi
-
 echo '***** Packaging *****'
 ./mach package
 
-echo '***** Prepare build symbols (release only) *****'
-if [ "$MOZ_UPDATE_CHANNEL" = "release" ]; then
-  ./mach buildsymbols
+echo '***** Prepare build symbols *****'
+# Because of Rust problem with dsymutil on Mac (stylo) - only for Windows platform
+if [ $IS_WIN ]; then
+  if [ "$MOZ_UPDATE_CHANNEL" == "release" ] || [ "$MOZ_UPDATE_CHANNEL" == "beta" ]; then
+    ./mach buildsymbols
+  fi
 fi
 
 echo '***** Build DE language pack *****'
-if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
-  cd $OLDPWD
-  cd $SRC_BASE/$MOZ_OBJDIR/browser/locales
-  $MAKE merge-de LOCALE_MERGEDIR=$(pwd)/mergedir
-  $MAKE installers-de LOCALE_MERGEDIR=$(pwd)/mergedir
+if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
+  ./mach build installers-de
 fi
 
 echo '***** Build & package finished successfully. *****'

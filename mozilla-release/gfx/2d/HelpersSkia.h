@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -10,9 +11,6 @@
 #include "skia/include/core/SkCanvas.h"
 #include "skia/include/effects/SkDashPathEffect.h"
 #include "skia/include/core/SkShader.h"
-#ifdef USE_SKIA_GPU
-#include "skia/include/gpu/GrTypes.h"
-#endif
 #include "mozilla/Assertions.h"
 #include <vector>
 #include "nsDebug.h"
@@ -77,27 +75,6 @@ MakeSkiaImageInfo(const IntSize& aSize, SurfaceFormat aFormat)
                            GfxFormatToSkiaAlphaType(aFormat));
 }
 
-#ifdef USE_SKIA_GPU
-static inline GrPixelConfig
-GfxFormatToGrConfig(SurfaceFormat format)
-{
-  switch (format)
-  {
-    case SurfaceFormat::B8G8R8A8:
-      return kBGRA_8888_GrPixelConfig;
-    case SurfaceFormat::B8G8R8X8:
-      // We probably need to do something here.
-      return kBGRA_8888_GrPixelConfig;
-    case SurfaceFormat::R5G6B5_UINT16:
-      return kRGB_565_GrPixelConfig;
-    case SurfaceFormat::A8:
-      return kAlpha_8_GrPixelConfig;
-    default:
-      return kRGBA_8888_GrPixelConfig;
-  }
-
-}
-#endif
 static inline void
 GfxMatrixToSkiaMatrix(const Matrix& mat, SkMatrix& retval)
 {
@@ -273,28 +250,28 @@ PointToSkPoint(const Point &aPoint)
 static inline SkRect
 RectToSkRect(const Rect& aRect)
 {
-  return SkRect::MakeXYWH(SkFloatToScalar(aRect.x), SkFloatToScalar(aRect.y),
-                          SkFloatToScalar(aRect.width), SkFloatToScalar(aRect.height));
+  return SkRect::MakeXYWH(SkFloatToScalar(aRect.X()), SkFloatToScalar(aRect.Y()),
+                          SkFloatToScalar(aRect.Width()), SkFloatToScalar(aRect.Height()));
 }
 
 static inline SkRect
 IntRectToSkRect(const IntRect& aRect)
 {
-  return SkRect::MakeXYWH(SkIntToScalar(aRect.x), SkIntToScalar(aRect.y),
-                          SkIntToScalar(aRect.width), SkIntToScalar(aRect.height));
+  return SkRect::MakeXYWH(SkIntToScalar(aRect.X()), SkIntToScalar(aRect.Y()),
+                          SkIntToScalar(aRect.Width()), SkIntToScalar(aRect.Height()));
 }
 
 static inline SkIRect
 RectToSkIRect(const Rect& aRect)
 {
-  return SkIRect::MakeXYWH(int32_t(aRect.x), int32_t(aRect.y),
-                           int32_t(aRect.width), int32_t(aRect.height));
+  return SkIRect::MakeXYWH(int32_t(aRect.X()), int32_t(aRect.Y()),
+                           int32_t(aRect.Width()), int32_t(aRect.Height()));
 }
 
 static inline SkIRect
 IntRectToSkIRect(const IntRect& aRect)
 {
-  return SkIRect::MakeXYWH(aRect.x, aRect.y, aRect.width, aRect.height);
+  return SkIRect::MakeXYWH(aRect.X(), aRect.Y(), aRect.Width(), aRect.Height());
 }
 
 static inline IntRect

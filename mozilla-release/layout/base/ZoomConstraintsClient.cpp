@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -27,11 +28,11 @@
 
 NS_IMPL_ISUPPORTS(ZoomConstraintsClient, nsIDOMEventListener, nsIObserver)
 
-static const nsLiteralString DOM_META_ADDED = NS_LITERAL_STRING("DOMMetaAdded");
-static const nsLiteralString DOM_META_CHANGED = NS_LITERAL_STRING("DOMMetaChanged");
-static const nsLiteralString FULLSCREEN_CHANGED = NS_LITERAL_STRING("fullscreenchange");
-static const nsLiteralCString BEFORE_FIRST_PAINT = NS_LITERAL_CSTRING("before-first-paint");
-static const nsLiteralCString NS_PREF_CHANGED = NS_LITERAL_CSTRING("nsPref:changed");
+#define DOM_META_ADDED NS_LITERAL_STRING("DOMMetaAdded")
+#define DOM_META_CHANGED NS_LITERAL_STRING("DOMMetaChanged")
+#define FULLSCREEN_CHANGED NS_LITERAL_STRING("fullscreenchange")
+#define BEFORE_FIRST_PAINT NS_LITERAL_CSTRING("before-first-paint")
+#define NS_PREF_CHANGED NS_LITERAL_CSTRING("nsPref:changed")
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -128,7 +129,7 @@ ZoomConstraintsClient::Init(nsIPresShell* aPresShell, nsIDocument* aDocument)
 }
 
 NS_IMETHODIMP
-ZoomConstraintsClient::HandleEvent(nsIDOMEvent* event)
+ZoomConstraintsClient::HandleEvent(dom::Event* event)
 {
   nsAutoString type;
   event->GetType(type);
@@ -175,7 +176,7 @@ ZoomConstraintsClient::ScreenSizeChanged()
   RefreshZoomConstraints();
 }
 
-mozilla::layers::ZoomConstraints
+static mozilla::layers::ZoomConstraints
 ComputeZoomConstraintsFromViewportInfo(const nsViewportInfo& aViewportInfo)
 {
   mozilla::layers::ZoomConstraints constraints;
@@ -243,7 +244,7 @@ ZoomConstraintsClient::RefreshZoomConstraints()
     rcdrsf->SetZoomableByAPZ(zoomConstraints.mAllowZoom);
   }
 
-  ScrollableLayerGuid newGuid(0, presShellId, viewId);
+  ScrollableLayerGuid newGuid(LayersId{0}, presShellId, viewId);
   if (mGuid && mGuid.value() != newGuid) {
     ZCC_LOG("Clearing old constraints in %p for { %u, %" PRIu64 " }\n",
       this, mGuid->mPresShellId, mGuid->mScrollId);

@@ -8,7 +8,6 @@ cat <<EOF
  usage: `basename $0` [-n] [-c] [-d] [-a]
            [-p product]
            [--hgtool hgtool_location]
-           [--mirror hg_mirror --bundle bundle_location]
            [-u hg_ssh_user]
            [-k hg_ssh_key]
            [-r existing_repo_dir]
@@ -31,8 +30,6 @@ HG_SSH_USER='ffxbld'
 HG_SSH_KEY='~cltbld/.ssh/ffxbld_rsa'
 REPODIR='hsts'
 HGTOOL=''
-MIRROR=''
-BUNDLE=''
 APP_DIR="browser"
 LOCALHOST=`/bin/hostname -s`
 HGHOST="hg.mozilla.org"
@@ -58,8 +55,6 @@ while [ $# -gt 0 ]; do
         -k) HG_SSH_KEY="$2"; shift;;
         -r) REPODIR="$2"; shift;;
         --hgtool) HGTOOL="$2"; shift;;
-        --mirror) MIRROR="$2"; shift;;
-        --bundle) BUNDLE="$2"; shift;;
         -*) USAGE
             exit 1;;
         *)  break;; # terminate while loop
@@ -179,12 +174,6 @@ update_preload_list_in_hg()
 	    # Need to pass the default branch here to avoid pollution from buildprops.json
 	    # when hgtool.py is run in production.
 	    CLONE_CMD="${HGTOOL} --branch default"
-            if [ "${MIRROR}" != "" ]; then
-                CLONE_CMD="${CLONE_CMD} --mirror ${MIRROR}"
-            fi
-            if [ "${BUNDLE}" != "" ]; then
-                CLONE_CMD="${CLONE_CMD} --bundle ${BUNDLE}"
-	    fi
         else
 	    # Fallback on vanilla hg
 	    echo "hgtool.py not found. Falling back to vanilla hg."

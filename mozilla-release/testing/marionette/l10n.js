@@ -15,16 +15,13 @@
  * content retrieved.
  */
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyServiceGetter(
-    this, "domParser", "@mozilla.org/xmlextras/domparser;1", "nsIDOMParser");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.importGlobalProperties(["DOMParser"]);
+const domParser = new DOMParser();
 
 const {NoSuchElementError} =
-    Cu.import("chrome://marionette/content/error.js", {});
+    ChromeUtils.import("chrome://marionette/content/error.js", {});
 
 this.EXPORTED_SYMBOLS = ["l10n"];
 
@@ -35,7 +32,7 @@ this.l10n = {};
  * Retrieve the localized string for the specified entity id.
  *
  * Example:
- *     localizeEntity(["chrome://global/locale/about.dtd"], "about.version")
+ *     localizeEntity(["chrome://branding/locale/brand.dtd"], "brandShortName")
  *
  * @param {Array.<string>} urls
  *     Array of .dtd URLs.

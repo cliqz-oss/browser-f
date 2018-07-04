@@ -12,6 +12,7 @@
 
 #include "mozilla/RefPtr.h"
 #include "nsBaseWidget.h"
+#include "CompositorWidget.h"
 #include "nsWindowBase.h"
 #include "nsdefs.h"
 #include "nsIdleService.h"
@@ -25,8 +26,11 @@
 #include "nsITimer.h"
 #include "nsRegion.h"
 #include "mozilla/EventForwards.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/webrender/WebRenderTypes.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "nsMargin.h"
 #include "nsRegionFwd.h"
 
@@ -42,7 +46,6 @@
 #endif
 
 #include "nsUXThemeData.h"
-#include "nsIDOMMouseEvent.h"
 #include "nsIIdleServiceInternal.h"
 
 #include "IMMHandler.h"
@@ -76,11 +79,12 @@ class nsWindow final : public nsWindowBase
   typedef mozilla::widget::NativeKey NativeKey;
   typedef mozilla::widget::MSGResult MSGResult;
   typedef mozilla::widget::IMEContext IMEContext;
+  typedef mozilla::widget::PlatformCompositorWidgetDelegate PlatformCompositorWidgetDelegate;
 
 public:
   explicit nsWindow(bool aIsChildWindow = false);
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(nsWindow, nsWindowBase)
 
   friend class nsWindowGfx;
 
@@ -152,6 +156,7 @@ public:
                                            uint16_t aDuration,
                                            nsISupports* aData,
                                            nsIRunnable* aCallback) override;
+  virtual void CleanupFullscreenTransition() override;
   virtual nsresult        MakeFullScreen(bool aFullScreen,
                                          nsIScreen* aScreen = nullptr) override;
   virtual void            HideWindowChrome(bool aShouldHide) override;
@@ -177,6 +182,7 @@ public:
   virtual LayerManager*   GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
                                           LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
                                           LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
+  void                    SetCompositorWidgetDelegate(CompositorWidgetDelegate* delegate) override;
   virtual MOZ_MUST_USE nsresult OnDefaultButtonLoaded(const LayoutDeviceIntRect& aButtonRect) override;
   virtual nsresult        SynthesizeNativeKeyEvent(int32_t aNativeKeyboardLayout,
                                                    int32_t aNativeKeyCode,
@@ -217,6 +223,7 @@ public:
 
   virtual void            UpdateThemeGeometries(const nsTArray<ThemeGeometry>& aThemeGeometries) override;
   virtual uint32_t        GetMaxTouchPoints() const override;
+  virtual void            SetWindowClass(const nsAString& xulWinType) override;
 
   /**
    * Event helpers
@@ -229,7 +236,7 @@ public:
                             int16_t aButton =
                               mozilla::WidgetMouseEvent::eLeftButton,
                             uint16_t aInputSource =
-                              nsIDOMMouseEvent::MOZ_SOURCE_MOUSE,
+                              mozilla::dom::MouseEventBinding::MOZ_SOURCE_MOUSE,
                             WinPointerInfo* aPointerInfo = nullptr);
   virtual bool            DispatchWindowEvent(mozilla::WidgetGUIEvent* aEvent,
                                               nsEventStatus& aStatus);
@@ -265,6 +272,8 @@ public:
   bool WidgetTypeSupportsAcceleration() override;
 
   void                    ForcePresent();
+  bool                    TouchEventShouldStartDrag(mozilla::EventMessage aEventMessage,
+                                                    LayoutDeviceIntPoint aEventPoint);
 
   /**
    * AssociateDefaultIMC() associates or disassociates the default IMC for
@@ -421,7 +430,7 @@ protected:
    * Event handlers
    */
   virtual void            OnDestroy() override;
-  virtual bool            OnResize(nsIntRect &aWindowRect);
+  bool                    OnResize(const LayoutDeviceIntSize& aSize);
   bool                    OnGesture(WPARAM wParam, LPARAM lParam);
   bool                    OnTouch(WPARAM wParam, LPARAM lParam);
   bool                    OnHotKey(WPARAM wParam, LPARAM lParam);
@@ -486,13 +495,18 @@ protected:
    * Misc.
    */
   void                    StopFlashing();
+  static HWND             WindowAtMouse();
   static bool             IsTopLevelMouseExit(HWND aWnd);
   virtual nsresult        SetWindowClipRegion(const nsTArray<LayoutDeviceIntRect>& aRects,
                                               bool aIntersectWithExisting) override;
-  nsIntRegion             GetRegionToPaint(bool aForceFullRepaint,
+  LayoutDeviceIntRegion   GetRegionToPaint(bool aForceFullRepaint,
                                            PAINTSTRUCT ps, HDC aDC);
   void                    ClearCachedResources();
   nsIWidgetListener*      GetPaintListener();
+
+  virtual void AddWindowOverlayWebRenderCommands(mozilla::layers::WebRenderBridgeChild* aWrBridge,
+                                                 mozilla::wr::DisplayListBuilder& aBuilder,
+                                                 mozilla::wr::IpcResourceUpdateQueue& aResourceUpdates) override;
 
   already_AddRefed<SourceSurface> CreateScrollSnapshot() override;
 
@@ -535,6 +549,7 @@ protected:
   bool                  mMousePresent;
   bool                  mDestroyCalled;
   bool                  mOpeningAnimationSuppressed;
+  bool                  mIsEarlyBlankWindow;
   uint32_t              mBlurSuppressLevel;
   DWORD_PTR             mOldStyle;
   DWORD_PTR             mOldExStyle;
@@ -558,6 +573,8 @@ protected:
   static bool           sJustGotActivate;
   static bool           sIsInMouseCapture;
   static bool           sHaveInitializedPrefs;
+
+  PlatformCompositorWidgetDelegate* mCompositorWidgetDelegate;
 
   // Always use the helper method to read this property.  See bug 603793.
   static TriStateBool   sHasBogusPopupsDropShadowOnMultiMonitor;
@@ -644,6 +661,9 @@ protected:
   //  painting too rapidly in response to frequent input events.
   TimeStamp mLastPaintEndTime;
 
+  // The location of the window buttons in the window.
+  mozilla::Maybe<LayoutDeviceIntRect> mWindowButtonsRect;
+
   // Caching for hit test results
   POINT mCachedHitTestPoint;
   TimeStamp mCachedHitTestTime;
@@ -655,13 +675,6 @@ protected:
   static void InitMouseWheelScrollData();
 
   double mSizeConstraintsScale; // scale in effect when setting constraints
-
-  // Used to remember the wParam (i.e. currently pressed modifier keys)
-  // and lParam (i.e. last mouse position) in screen coordinates from
-  // the previous mouse-exit.  Static since it is not
-  // associated with a particular widget (since we exited the widget).
-  static WPARAM sMouseExitwParam;
-  static LPARAM sMouseExitlParamScreen;
 
   // Pointer events processing and management
   WinPointerEvents mPointerEvents;

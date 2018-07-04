@@ -39,10 +39,6 @@ nsUnknownDecoder::ConvertedStreamListener::
   mDecoder = aDecoder;
 }
 
-nsUnknownDecoder::ConvertedStreamListener::~ConvertedStreamListener()
-{
-}
-
 nsresult
 nsUnknownDecoder::ConvertedStreamListener::
                   AppendDataToString(nsIInputStream* inputStream,
@@ -75,6 +71,10 @@ nsUnknownDecoder::ConvertedStreamListener::
 {
   uint32_t read;
   nsAutoCString decodedData;
+  {
+    MutexAutoLock lock(mDecoder->mMutex);
+    decodedData = mDecoder->mDecodedData;
+  }
   nsresult rv = stream->ReadSegments(AppendDataToString, &decodedData, count,
                                      &read);
   if (NS_FAILED(rv)) {
@@ -934,7 +934,7 @@ nsBinaryDetector::DetermineContentType(nsIRequest* aRequest)
 
   LastDitchSniff(aRequest);
   MutexAutoLock lock(mMutex);
-  if (mContentType.Equals(APPLICATION_OCTET_STREAM)) {
+  if (mContentType.EqualsLiteral(APPLICATION_OCTET_STREAM)) {
     // We want to guess at it instead
     mContentType = APPLICATION_GUESS_FROM_EXT;
   } else {

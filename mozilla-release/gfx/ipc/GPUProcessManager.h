@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=99: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,6 +16,8 @@
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/ipc/TaskFactory.h"
 #include "mozilla/ipc/Transport.h"
+#include "mozilla/layers/LayersTypes.h"
+#include "mozilla/webrender/WebRenderTypes.h"
 #include "nsIObserverService.h"
 #include "nsThreadUtils.h"
 class nsBaseWidget;
@@ -67,6 +69,7 @@ class GPUProcessManager final : public GPUProcessHost::Listener
   typedef layers::CompositorUpdateObserver CompositorUpdateObserver;
   typedef layers::IAPZCTreeManager IAPZCTreeManager;
   typedef layers::LayerManager LayerManager;
+  typedef layers::LayersId LayersId;
   typedef layers::PCompositorBridgeChild PCompositorBridgeChild;
   typedef layers::PCompositorManagerChild PCompositorManagerChild;
   typedef layers::PImageBridgeChild PImageBridgeChild;
@@ -106,27 +109,23 @@ public:
     mozilla::ipc::Endpoint<dom::PVideoDecoderManagerChild>* aOutVideoManager,
     nsTArray<uint32_t>* aNamespaces);
 
-  // This returns a reference to the APZCTreeManager to which
-  // pan/zoom-related events can be sent.
-  already_AddRefed<IAPZCTreeManager> GetAPZCTreeManagerForLayers(uint64_t aLayersId);
-
   // Maps the layer tree and process together so that aOwningPID is allowed
   // to access aLayersId across process.
-  void MapLayerTreeId(uint64_t aLayersId, base::ProcessId aOwningId);
+  void MapLayerTreeId(LayersId aLayersId, base::ProcessId aOwningId);
 
   // Release compositor-thread resources referred to by |aID|.
   //
   // Must run on the content main thread.
-  void UnmapLayerTreeId(uint64_t aLayersId, base::ProcessId aOwningId);
+  void UnmapLayerTreeId(LayersId aLayersId, base::ProcessId aOwningId);
 
   // Checks to see if aLayersId and aRequestingPID have been mapped by MapLayerTreeId
-  bool IsLayerTreeIdMapped(uint64_t aLayersId, base::ProcessId aRequestingId);
+  bool IsLayerTreeIdMapped(LayersId aLayersId, base::ProcessId aRequestingId);
 
   // Allocate an ID that can be used to refer to a layer tree and
   // associated resources that live only on the compositor thread.
   //
   // Must run on the browser main thread.
-  uint64_t AllocateLayerTreeId();
+  LayersId AllocateLayerTreeId();
 
   // Allocate an ID that can be used as Namespace and
   // Must run on the browser main thread.
@@ -140,7 +139,7 @@ public:
   bool AllocateAndConnectLayerTreeId(
     PCompositorBridgeChild* aCompositorBridge,
     base::ProcessId aOtherPid,
-    uint64_t* aOutLayersId,
+    LayersId* aOutLayersId,
     CompositorOptions* aOutCompositorOptions);
 
   // Destroy and recreate all of the compositors
@@ -149,6 +148,8 @@ public:
   void OnProcessLaunchComplete(GPUProcessHost* aHost) override;
   void OnProcessUnexpectedShutdown(GPUProcessHost* aHost) override;
   void SimulateDeviceReset();
+  void DisableWebRender(wr::WebRenderError aError);
+  void NotifyWebRenderError(wr::WebRenderError aError);
   void OnInProcessDeviceReset();
   void OnRemoteProcessDeviceReset(GPUProcessHost* aHost) override;
   void NotifyListenersOnCompositeDeviceReset();
@@ -231,13 +232,13 @@ private:
   void EnsureVRManager();
 
 #if defined(MOZ_WIDGET_ANDROID)
-  already_AddRefed<UiCompositorControllerChild> CreateUiCompositorController(nsBaseWidget* aWidget, const uint64_t aId);
+  already_AddRefed<UiCompositorControllerChild> CreateUiCompositorController(nsBaseWidget* aWidget, const LayersId aId);
 #endif // defined(MOZ_WIDGET_ANDROID)
 
   RefPtr<CompositorSession> CreateRemoteSession(
     nsBaseWidget* aWidget,
     LayerManager* aLayerManager,
-    const uint64_t& aRootLayerTreeId,
+    const LayersId& aRootLayerTreeId,
     CSSToLayoutDeviceScale aScale,
     const CompositorOptions& aOptions,
     bool aUseExternalSurfaceSize,
@@ -278,7 +279,7 @@ private:
 
   // Fields that are associated with the current GPU process.
   GPUProcessHost* mProcess;
-  MOZ_INIT_OUTSIDE_CTOR uint64_t mProcessToken;
+  uint64_t mProcessToken;
   GPUChild* mGPUChild;
   RefPtr<VsyncBridgeChild> mVsyncBridge;
 };

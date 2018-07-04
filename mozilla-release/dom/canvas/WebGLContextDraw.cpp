@@ -5,6 +5,8 @@
 
 #include "WebGLContext.h"
 
+#include "GeckoProfiler.h"
+#include "MozFramebuffer.h"
 #include "GLContext.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/UniquePtrExtensions.h"
@@ -98,23 +100,10 @@ ScopedResolveTexturesForDraw::ScopedResolveTexturesForDraw(WebGLContext* webgl,
 {
     MOZ_ASSERT(mWebGL->gl->IsCurrent());
 
-    if (!mWebGL->mActiveProgramLinkInfo) {
-        mWebGL->ErrorInvalidOperation("%s: The current program is not linked.", funcName);
-        *out_error = true;
-        return;
-    }
-
     const std::vector<const WebGLFBAttachPoint*>* attachList = nullptr;
     const auto& fb = mWebGL->mBoundDrawFramebuffer;
     if (fb) {
-        if (!fb->ValidateAndInitAttachments(funcName)) {
-            *out_error = true;
-            return;
-        }
-
         attachList = &(fb->ResolvedCompleteData()->texDrawBuffers);
-    } else {
-        webgl->ClearBackbufferIfNeeded();
     }
 
     MOZ_ASSERT(mWebGL->mActiveProgramLinkInfo);
@@ -164,7 +153,7 @@ ScopedResolveTexturesForDraw::ScopedResolveTexturesForDraw(WebGLContext* webgl,
 
 ScopedResolveTexturesForDraw::~ScopedResolveTexturesForDraw()
 {
-    if (!mRebindRequests.size())
+    if (mRebindRequests.empty())
         return;
 
     gl::GLContext* gl = mWebGL->gl;
@@ -216,7 +205,21 @@ WebGLContext::BindFakeBlack(uint32_t texUnit, TexTarget target, FakeBlackType fa
     UniquePtr<FakeBlackTexture>& fakeBlackTex = *slot;
 
     if (!fakeBlackTex) {
+        gl->fPixelStorei(LOCAL_GL_UNPACK_ALIGNMENT, 1);
+        if (IsWebGL2()) {
+            gl->fPixelStorei(LOCAL_GL_UNPACK_SKIP_PIXELS, 0);
+            gl->fPixelStorei(LOCAL_GL_UNPACK_SKIP_ROWS, 0);
+            gl->fPixelStorei(LOCAL_GL_UNPACK_SKIP_IMAGES, 0);
+        }
+
         fakeBlackTex = FakeBlackTexture::Create(gl, target, fakeBlack);
+
+        gl->fPixelStorei(LOCAL_GL_UNPACK_ALIGNMENT, mPixelStore_UnpackAlignment);
+        if (IsWebGL2()) {
+            gl->fPixelStorei(LOCAL_GL_UNPACK_SKIP_PIXELS, mPixelStore_UnpackSkipPixels);
+            gl->fPixelStorei(LOCAL_GL_UNPACK_SKIP_ROWS, mPixelStore_UnpackSkipRows);
+            gl->fPixelStorei(LOCAL_GL_UNPACK_SKIP_IMAGES, mPixelStore_UnpackSkipImages);
+        }
         if (!fakeBlackTex) {
             return false;
         }
@@ -231,74 +234,44 @@ WebGLContext::BindFakeBlack(uint32_t texUnit, TexTarget target, FakeBlackType fa
 ////////////////////////////////////////
 
 bool
-WebGLContext::DrawInstanced_check(const char* info)
+WebGLContext::ValidateStencilParamsForDrawCall(const char* const funcName) const
 {
-    MOZ_ASSERT(IsWebGL2() ||
-               IsExtensionEnabled(WebGLExtensionID::ANGLE_instanced_arrays));
-    if (!mBufferFetchingHasPerVertex) {
-        /* http://www.khronos.org/registry/gles/extensions/ANGLE/ANGLE_instanced_arrays.txt
-         *  If all of the enabled vertex attribute arrays that are bound to active
-         *  generic attributes in the program have a non-zero divisor, the draw
-         *  call should return INVALID_OPERATION.
-         *
-         * NB: This also appears to apply to NV_instanced_arrays, though the
-         * INVALID_OPERATION emission is not explicitly stated.
-         * ARB_instanced_arrays does not have this restriction.
-         */
-        ErrorInvalidOperation("%s: at least one vertex attribute divisor should be 0", info);
-        return false;
-    }
+    const auto stencilBits = [&]() -> uint8_t {
+        if (!mStencilTestEnabled)
+            return 0;
 
-    return true;
-}
+        if (!mBoundDrawFramebuffer)
+            return mOptions.stencil ? 8 : 0;
 
-bool
-WebGLContext::DrawArrays_check(const char* funcName, GLenum mode, GLint first,
-                               GLsizei vertCount, GLsizei instanceCount)
-{
-    if (!ValidateDrawModeEnum(mode, funcName))
-        return false;
+        if (mBoundDrawFramebuffer->StencilAttachment().IsDefined())
+            return 8;
 
-    if (!ValidateNonNegative(funcName, "first", first) ||
-        !ValidateNonNegative(funcName, "vertCount", vertCount) ||
-        !ValidateNonNegative(funcName, "instanceCount", instanceCount))
-    {
-        return false;
-    }
+        if (mBoundDrawFramebuffer->DepthStencilAttachment().IsDefined())
+            return 8;
 
-    if (!ValidateStencilParamsForDrawCall())
-        return false;
+        return 0;
+    }();
+    const uint32_t stencilMax = (1 << stencilBits) - 1;
 
-    if (IsWebGL2() && !gl->IsSupported(gl::GLFeature::prim_restart_fixed)) {
-        MOZ_ASSERT(gl->IsSupported(gl::GLFeature::prim_restart));
-        if (mPrimRestartTypeBytes != 0) {
-            mPrimRestartTypeBytes = 0;
+    const auto fnMask = [&](const uint32_t x) { return x & stencilMax; };
+    const auto fnClamp = [&](const int32_t x) {
+        return std::max(0, std::min(x, (int32_t)stencilMax));
+    };
 
-            // OSX appears to have severe perf issues with leaving this enabled.
-            gl->fDisable(LOCAL_GL_PRIMITIVE_RESTART);
-        }
-    }
+    bool ok = true;
+    ok &= (fnMask(mStencilWriteMaskFront) == fnMask(mStencilWriteMaskBack));
+    ok &= (fnMask(mStencilValueMaskFront) == fnMask(mStencilValueMaskBack));
+    ok &= (fnClamp(mStencilRefFront) == fnClamp(mStencilRefBack));
 
-    if (!vertCount || !instanceCount)
-        return false; // No error, just early out.
-
-    if (!ValidateBufferFetching(funcName))
-        return false;
-
-    const auto checked_firstPlusCount = CheckedInt<GLsizei>(first) + vertCount;
-    if (!checked_firstPlusCount.isValid()) {
-        ErrorInvalidOperation("%s: overflow in first+vertCount", funcName);
-        return false;
-    }
-
-    if (uint32_t(checked_firstPlusCount.value()) > mMaxFetchedVertices) {
-        ErrorInvalidOperation("%s: Bound vertex attribute buffers do not have sufficient"
-                              " size for given first and count.",
+    if (!ok) {
+        ErrorInvalidOperation("%s: Stencil front/back state must effectively match."
+                              " (before front/back comparison, WRITEMASK and VALUE_MASK"
+                              " are masked with (2^s)-1, and REF is clamped to"
+                              " [0, (2^s)-1], where `s` is the number of enabled stencil"
+                              " bits in the draw framebuffer)",
                               funcName);
-        return false;
     }
-
-    return true;
+    return ok;
 }
 
 ////////////////////////////////////////
@@ -319,44 +292,38 @@ class ScopedDrawHelper final
     bool mDidFake;
 
 public:
-    ScopedDrawHelper(WebGLContext* webgl, const char* funcName, uint32_t firstVertex,
-                     uint32_t vertCount, uint32_t instanceCount, bool* const out_error)
+    ScopedDrawHelper(WebGLContext* const webgl, const char* const funcName,
+                     const GLenum mode, const Maybe<uint32_t>& lastRequiredVertex,
+                     const uint32_t instanceCount, bool* const out_error)
         : mWebGL(webgl)
         , mDidFake(false)
     {
-        if (instanceCount > mWebGL->mMaxFetchedInstances) {
-            mWebGL->ErrorInvalidOperation("%s: Bound instance attribute buffers do not"
-                                          " have sufficient size for given"
-                                          " `instanceCount`.",
-                                          funcName);
-            *out_error = true;
-            return;
-        }
-
         MOZ_ASSERT(mWebGL->gl->IsCurrent());
 
-        if (mWebGL->mBoundDrawFramebuffer) {
-            if (!mWebGL->mBoundDrawFramebuffer->ValidateAndInitAttachments(funcName)) {
-                *out_error = true;
-                return;
-            }
-        } else {
-            mWebGL->ClearBackbufferIfNeeded();
-        }
-
-        ////
-
-        const size_t requiredVerts = firstVertex + vertCount;
-        if (!mWebGL->DoFakeVertexAttrib0(funcName, requiredVerts)) {
+        if (!mWebGL->BindCurFBForDraw(funcName)) {
             *out_error = true;
             return;
         }
-        mDidFake = true;
+
+        if (!mWebGL->ValidateDrawModeEnum(mode, funcName)) {
+            *out_error = true;
+            return;
+        }
+
+        if (!mWebGL->ValidateStencilParamsForDrawCall(funcName)) {
+            *out_error = true;
+            return;
+        }
+
+        if (!mWebGL->mActiveProgramLinkInfo) {
+            mWebGL->ErrorInvalidOperation("%s: The current program is not linked.", funcName);
+            *out_error = true;
+            return;
+        }
+        const auto& linkInfo = mWebGL->mActiveProgramLinkInfo;
 
         ////
         // Check UBO sizes.
-
-        const auto& linkInfo = mWebGL->mActiveProgramLinkInfo;
 
         for (const auto& cur : linkInfo->uniformBlocks) {
             const auto& dataSize = cur->mDataSize;
@@ -414,44 +381,48 @@ public:
                     *out_error = true;
                     return;
                 }
+
+                // Technically we don't know that this will be updated yet, but we can
+                // speculatively mark it.
+                buffer->ResetLastUpdateFenceId();
             }
         }
 
         ////
 
-        for (const auto& progAttrib : linkInfo->attribs) {
-            const auto& loc = progAttrib.mLoc;
-            if (loc == -1)
-                continue;
+        const auto& fetchLimits = linkInfo->GetDrawFetchLimits(funcName);
+        if (!fetchLimits) {
+            *out_error = true;
+            return;
+        }
 
-            const auto& attribData = mWebGL->mBoundVertexArray->mAttribs[loc];
-
-            GLenum attribDataBaseType;
-            if (attribData.mEnabled) {
-                attribDataBaseType = attribData.BaseType();
-
-                if (attribData.mBuf->IsBoundForTF()) {
-                    mWebGL->ErrorInvalidOperation("%s: Vertex attrib %u's buffer is bound"
-                                                  " or in use for transform feedback.",
-                                                  funcName, loc);
-                    *out_error = true;
-                    return;
-                }
-            } else {
-                attribDataBaseType = mWebGL->mGenericVertexAttribTypes[loc];
-            }
-
-            if (attribDataBaseType != progAttrib.mBaseType) {
-                nsCString progType, dataType;
-                WebGLContext::EnumName(progAttrib.mBaseType, &progType);
-                WebGLContext::EnumName(attribDataBaseType, &dataType);
-                mWebGL->ErrorInvalidOperation("%s: Vertex attrib %u requires data of type"
-                                              " %s, but is being supplied with type %s.",
-                                              funcName, loc, progType.BeginReading(),
-                                              dataType.BeginReading());
+        if (lastRequiredVertex && instanceCount) {
+            if (lastRequiredVertex.value() >= fetchLimits->maxVerts) {
+                mWebGL->ErrorInvalidOperation("%s: Vertex fetch requires vertex #%u, but"
+                                              " attribs only supply %" PRIu64 ".",
+                                              funcName, lastRequiredVertex.value(),
+                                              fetchLimits->maxVerts);
                 *out_error = true;
                 return;
             }
+            if (instanceCount > fetchLimits->maxInstances) {
+                mWebGL->ErrorInvalidOperation("%s: Instance fetch requires %u, but"
+                                              " attribs only supply %" PRIu64 ".",
+                                              funcName, instanceCount,
+                                              fetchLimits->maxInstances);
+                *out_error = true;
+                return;
+            }
+        }
+
+        ////
+
+        if (lastRequiredVertex) {
+            if (!mWebGL->DoFakeVertexAttrib0(funcName, lastRequiredVertex.value())) {
+                *out_error = true;
+                return;
+            }
+            mDidFake = true;
         }
 
         ////
@@ -546,66 +517,71 @@ public:
     }
 };
 
+static bool
+HasInstancedDrawing(const WebGLContext& webgl)
+{
+    return webgl.IsWebGL2() ||
+           webgl.IsExtensionEnabled(WebGLExtensionID::ANGLE_instanced_arrays);
+}
+
 ////////////////////////////////////////
 
-void
-WebGLContext::DrawArrays(GLenum mode, GLint first, GLsizei vertCount)
+bool
+WebGLContext::DrawArrays_check(const char* const funcName, const GLint first,
+                               const GLsizei vertCount, const GLsizei instanceCount,
+                               Maybe<uint32_t>* const out_lastVert)
 {
-    const char funcName[] = "drawArrays";
-    if (IsContextLost())
-        return;
-
-    MakeContextCurrent();
-
-    bool error = false;
-    ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
-    if (error)
-        return;
-
-    const GLsizei instanceCount = 1;
-    if (!DrawArrays_check(funcName, mode, first, vertCount, instanceCount))
-        return;
-
-    const ScopedDrawHelper scopedHelper(this, funcName, first, vertCount, instanceCount, &error);
-    if (error)
-        return;
-
-    const ScopedDrawWithTransformFeedback scopedTF(this, funcName, mode, vertCount,
-                                                   instanceCount, &error);
-    if (error)
-        return;
-
+    if (!ValidateNonNegative(funcName, "first", first) ||
+        !ValidateNonNegative(funcName, "vertCount", vertCount) ||
+        !ValidateNonNegative(funcName, "instanceCount", instanceCount))
     {
-        ScopedDrawCallWrapper wrapper(*this);
-        gl->fDrawArrays(mode, first, vertCount);
+        return false;
     }
 
-    Draw_cleanup(funcName);
-    scopedTF.Advance();
+    if (IsWebGL2() && !gl->IsSupported(gl::GLFeature::prim_restart_fixed)) {
+        MOZ_ASSERT(gl->IsSupported(gl::GLFeature::prim_restart));
+        if (mPrimRestartTypeBytes != 0) {
+            mPrimRestartTypeBytes = 0;
+
+            // OSX appears to have severe perf issues with leaving this enabled.
+            gl->fDisable(LOCAL_GL_PRIMITIVE_RESTART);
+        }
+    }
+
+    if (!vertCount) {
+        *out_lastVert = Nothing();
+    } else {
+        const auto lastVert_checked = CheckedInt<uint32_t>(first) + vertCount - 1;
+        if (!lastVert_checked.isValid()) {
+            ErrorOutOfMemory("%s: `first+vertCount` out of range.", funcName);
+            return false;
+        }
+        *out_lastVert = Some(lastVert_checked.value());
+    }
+    return true;
 }
 
 void
 WebGLContext::DrawArraysInstanced(GLenum mode, GLint first, GLsizei vertCount,
-                                  GLsizei instanceCount)
+                                  GLsizei instanceCount, const char* const funcName)
 {
-    const char funcName[] = "drawArraysInstanced";
+    AUTO_PROFILER_LABEL("WebGLContext::DrawArraysInstanced", GRAPHICS);
     if (IsContextLost())
         return;
 
-    MakeContextCurrent();
+    const gl::GLContext::TlsScope inTls(gl);
+
+    Maybe<uint32_t> lastVert;
+    if (!DrawArrays_check(funcName, first, vertCount, instanceCount, &lastVert))
+        return;
 
     bool error = false;
-    ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
+    const ScopedDrawHelper scopedHelper(this, funcName, mode, lastVert, instanceCount,
+                                        &error);
     if (error)
         return;
 
-    if (!DrawArrays_check(funcName, mode, first, vertCount, instanceCount))
-        return;
-
-    if (!DrawInstanced_check(funcName))
-        return;
-
-    const ScopedDrawHelper scopedHelper(this, funcName, first, vertCount, instanceCount, &error);
+    const ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
     if (error)
         return;
 
@@ -616,7 +592,15 @@ WebGLContext::DrawArraysInstanced(GLenum mode, GLint first, GLsizei vertCount,
 
     {
         ScopedDrawCallWrapper wrapper(*this);
-        gl->fDrawArraysInstanced(mode, first, vertCount, instanceCount);
+        if (vertCount && instanceCount) {
+            AUTO_PROFILER_LABEL("glDrawArraysInstanced", GRAPHICS);
+            if (HasInstancedDrawing(*this)) {
+                gl->fDrawArraysInstanced(mode, first, vertCount, instanceCount);
+            } else {
+                MOZ_ASSERT(instanceCount == 1);
+                gl->fDrawArrays(mode, first, vertCount);
+            }
+        }
     }
 
     Draw_cleanup(funcName);
@@ -626,13 +610,11 @@ WebGLContext::DrawArraysInstanced(GLenum mode, GLint first, GLsizei vertCount,
 ////////////////////////////////////////
 
 bool
-WebGLContext::DrawElements_check(const char* funcName, GLenum mode, GLsizei vertCount,
-                                 GLenum type, WebGLintptr byteOffset,
-                                 GLsizei instanceCount)
+WebGLContext::DrawElements_check(const char* const funcName, const GLsizei rawIndexCount,
+                                 const GLenum type, const WebGLintptr byteOffset,
+                                 const GLsizei instanceCount,
+                                 Maybe<uint32_t>* const out_lastVert)
 {
-    if (!ValidateDrawModeEnum(mode, funcName))
-        return false;
-
     if (mBoundTransformFeedback &&
         mBoundTransformFeedback->mIsActive &&
         !mBoundTransformFeedback->mIsPaused)
@@ -643,42 +625,35 @@ WebGLContext::DrawElements_check(const char* funcName, GLenum mode, GLsizei vert
         return false;
     }
 
-    if (!ValidateNonNegative(funcName, "vertCount", vertCount) ||
+    if (!ValidateNonNegative(funcName, "vertCount", rawIndexCount) ||
         !ValidateNonNegative(funcName, "byteOffset", byteOffset) ||
         !ValidateNonNegative(funcName, "instanceCount", instanceCount))
     {
         return false;
     }
+    const auto indexCount = uint32_t(rawIndexCount);
 
-    if (!ValidateStencilParamsForDrawCall())
-        return false;
-
-    if (!vertCount || !instanceCount)
-        return false; // No error, just early out.
-
-    uint8_t bytesPerElem = 0;
+    uint8_t bytesPerIndex = 0;
     switch (type) {
     case LOCAL_GL_UNSIGNED_BYTE:
-        bytesPerElem = 1;
+        bytesPerIndex = 1;
         break;
 
     case LOCAL_GL_UNSIGNED_SHORT:
-        bytesPerElem = 2;
+        bytesPerIndex = 2;
         break;
 
     case LOCAL_GL_UNSIGNED_INT:
         if (IsWebGL2() || IsExtensionEnabled(WebGLExtensionID::OES_element_index_uint)) {
-            bytesPerElem = 4;
+            bytesPerIndex = 4;
         }
         break;
     }
-
-    if (!bytesPerElem) {
+    if (!bytesPerIndex) {
         ErrorInvalidEnum("%s: Invalid `type`: 0x%04x", funcName, type);
         return false;
     }
-
-    if (byteOffset % bytesPerElem != 0) {
+    if (byteOffset % bytesPerIndex != 0) {
         ErrorInvalidOperation("%s: `byteOffset` must be a multiple of the size of `type`",
                               funcName);
         return false;
@@ -688,8 +663,8 @@ WebGLContext::DrawElements_check(const char* funcName, GLenum mode, GLsizei vert
 
     if (IsWebGL2() && !gl->IsSupported(gl::GLFeature::prim_restart_fixed)) {
         MOZ_ASSERT(gl->IsSupported(gl::GLFeature::prim_restart));
-        if (mPrimRestartTypeBytes != bytesPerElem) {
-            mPrimRestartTypeBytes = bytesPerElem;
+        if (mPrimRestartTypeBytes != bytesPerIndex) {
+            mPrimRestartTypeBytes = bytesPerIndex;
 
             const uint32_t ones = UINT32_MAX >> (32 - 8*mPrimRestartTypeBytes);
             gl->fEnable(LOCAL_GL_PRIMITIVE_RESTART);
@@ -698,54 +673,28 @@ WebGLContext::DrawElements_check(const char* funcName, GLenum mode, GLsizei vert
     }
 
     ////
+    // Index fetching
 
-    const GLsizei first = byteOffset / bytesPerElem;
-    const CheckedUint32 checked_byteCount = bytesPerElem * CheckedUint32(vertCount);
+    if (!indexCount || !instanceCount) {
+        *out_lastVert = Nothing();
+        return true;
+    }
 
-    if (!checked_byteCount.isValid()) {
-        ErrorInvalidValue("%s: Overflow in byteCount.", funcName);
+    const auto& indexBuffer = mBoundVertexArray->mElementArrayBuffer;
+
+    size_t availBytes = 0;
+    if (indexBuffer) {
+        MOZ_ASSERT(!indexBuffer->IsBoundForTF(), "This should be impossible.");
+        availBytes = indexBuffer->ByteLength();
+    }
+    const auto availIndices = AvailGroups(availBytes, byteOffset, bytesPerIndex,
+                                          bytesPerIndex);
+    if (indexCount > availIndices) {
+        ErrorInvalidOperation("%s: Index buffer too small.", funcName);
         return false;
     }
 
-    if (!mBoundVertexArray->mElementArrayBuffer) {
-        ErrorInvalidOperation("%s: Must have element array buffer binding.", funcName);
-        return false;
-    }
-
-    WebGLBuffer& elemArrayBuffer = *mBoundVertexArray->mElementArrayBuffer;
-
-    if (!elemArrayBuffer.ByteLength()) {
-        ErrorInvalidOperation("%s: Bound element array buffer doesn't have any data.",
-                              funcName);
-        return false;
-    }
-
-    CheckedInt<GLsizei> checked_neededByteCount = checked_byteCount.toChecked<GLsizei>() + byteOffset;
-
-    if (!checked_neededByteCount.isValid()) {
-        ErrorInvalidOperation("%s: Overflow in byteOffset+byteCount.", funcName);
-        return false;
-    }
-
-    if (uint32_t(checked_neededByteCount.value()) > elemArrayBuffer.ByteLength()) {
-        ErrorInvalidOperation("%s: Bound element array buffer is too small for given"
-                              " count and offset.",
-                              funcName);
-        return false;
-    }
-
-    if (!ValidateBufferFetching(funcName))
-        return false;
-
-    if (!mMaxFetchedVertices ||
-        !elemArrayBuffer.ValidateIndexedFetch(type, mMaxFetchedVertices, first, vertCount))
-    {
-        ErrorInvalidOperation("%s: bound vertex attribute buffers do not have sufficient "
-                              "size for given indices from the bound element array",
-                              funcName);
-        return false;
-    }
-
+    *out_lastVert = indexBuffer->GetIndexedFetchMaxVert(type, byteOffset, indexCount);
     return true;
 }
 
@@ -770,29 +719,30 @@ HandleDrawElementsErrors(WebGLContext* webgl, const char* funcName,
 }
 
 void
-WebGLContext::DrawElements(GLenum mode, GLsizei vertCount, GLenum type,
-                           WebGLintptr byteOffset, const char* funcName)
+WebGLContext::DrawElementsInstanced(GLenum mode, GLsizei indexCount, GLenum type,
+                                    WebGLintptr byteOffset, GLsizei instanceCount,
+                                    const char* const funcName)
 {
-    if (!funcName) {
-        funcName = "drawElements";
-    }
-
+    AUTO_PROFILER_LABEL("WebGLContext::DrawElementsInstanced", GRAPHICS);
     if (IsContextLost())
         return;
 
-    MakeContextCurrent();
+    const gl::GLContext::TlsScope inTls(gl);
+
+    Maybe<uint32_t> lastVert;
+    if (!DrawElements_check(funcName, indexCount, type, byteOffset, instanceCount,
+                            &lastVert))
+    {
+        return;
+    }
 
     bool error = false;
-    ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
+    const ScopedDrawHelper scopedHelper(this, funcName, mode, lastVert, instanceCount,
+                                        &error);
     if (error)
         return;
 
-    const GLsizei instanceCount = 1;
-    if (!DrawElements_check(funcName, mode, vertCount, type, byteOffset, instanceCount))
-        return;
-
-    const ScopedDrawHelper scopedHelper(this, funcName, 0, mMaxFetchedVertices, instanceCount,
-                                        &error);
+    const ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
     if (error)
         return;
 
@@ -805,56 +755,19 @@ WebGLContext::DrawElements(GLenum mode, GLsizei vertCount, GLenum type,
                 errorScope.reset(new gl::GLContext::LocalErrorScope(*gl));
             }
 
-            gl->fDrawElements(mode, vertCount, type,
-                              reinterpret_cast<GLvoid*>(byteOffset));
-
-            if (errorScope) {
-                HandleDrawElementsErrors(this, funcName, *errorScope);
-            }
-        }
-    }
-
-    Draw_cleanup(funcName);
-}
-
-void
-WebGLContext::DrawElementsInstanced(GLenum mode, GLsizei vertCount, GLenum type,
-                                    WebGLintptr byteOffset, GLsizei instanceCount)
-{
-    const char funcName[] = "drawElementsInstanced";
-    if (IsContextLost())
-        return;
-
-    MakeContextCurrent();
-
-    bool error = false;
-    ScopedResolveTexturesForDraw scopedResolve(this, funcName, &error);
-    if (error)
-        return;
-
-    if (!DrawElements_check(funcName, mode, vertCount, type, byteOffset, instanceCount))
-        return;
-
-    if (!DrawInstanced_check(funcName))
-        return;
-
-    const ScopedDrawHelper scopedHelper(this, funcName, 0, mMaxFetchedVertices, instanceCount,
-                                        &error);
-    if (error)
-        return;
-
-    {
-        ScopedDrawCallWrapper wrapper(*this);
-        {
-            UniquePtr<gl::GLContext::LocalErrorScope> errorScope;
-
-            if (gl->IsANGLE()) {
-                errorScope.reset(new gl::GLContext::LocalErrorScope(*gl));
+            if (indexCount && instanceCount) {
+                AUTO_PROFILER_LABEL("glDrawElementsInstanced", GRAPHICS);
+                if (HasInstancedDrawing(*this)) {
+                    gl->fDrawElementsInstanced(mode, indexCount, type,
+                                               reinterpret_cast<GLvoid*>(byteOffset),
+                                               instanceCount);
+                } else {
+                    MOZ_ASSERT(instanceCount == 1);
+                    gl->fDrawElements(mode, indexCount, type,
+                                      reinterpret_cast<GLvoid*>(byteOffset));
+                }
             }
 
-            gl->fDrawElementsInstanced(mode, vertCount, type,
-                                       reinterpret_cast<GLvoid*>(byteOffset),
-                                       instanceCount);
             if (errorScope) {
                 HandleDrawElementsErrors(this, funcName, *errorScope);
             }
@@ -894,8 +807,8 @@ WebGLContext::Draw_cleanup(const char* funcName)
             break;
         }
     } else {
-        destWidth = mWidth;
-        destHeight = mHeight;
+        destWidth = mDefaultFB->mSize.width;
+        destHeight = mDefaultFB->mSize.height;
     }
 
     if (mViewportWidth > int32_t(destWidth) ||
@@ -910,116 +823,11 @@ WebGLContext::Draw_cleanup(const char* funcName)
     }
 }
 
-/*
- * Verify that state is consistent for drawing, and compute max number of elements (maxAllowedCount)
- * that will be legal to be read from bound VBOs.
- */
-
-bool
-WebGLContext::ValidateBufferFetching(const char* info)
-{
-    MOZ_ASSERT(mCurrentProgram);
-    // Note that mCurrentProgram->IsLinked() is NOT GUARANTEED.
-    MOZ_ASSERT(mActiveProgramLinkInfo);
-
-#ifdef DEBUG
-    GLint currentProgram = 0;
-    MakeContextCurrent();
-    gl->fGetIntegerv(LOCAL_GL_CURRENT_PROGRAM, &currentProgram);
-    MOZ_ASSERT(GLuint(currentProgram) == mCurrentProgram->mGLName,
-               "WebGL: current program doesn't agree with GL state");
-#endif
-
-    if (mBufferFetchingIsVerified)
-        return true;
-
-    bool hasPerVertex = false;
-    uint32_t maxVertices = UINT32_MAX;
-    uint32_t maxInstances = UINT32_MAX;
-    const uint32_t attribCount = mBoundVertexArray->mAttribs.Length();
-
-    uint32_t i = 0;
-    for (const auto& vd : mBoundVertexArray->mAttribs) {
-        // If the attrib array isn't enabled, there's nothing to check;
-        // it's a static value.
-        if (!vd.mEnabled)
-            continue;
-
-        if (!vd.mBuf) {
-            ErrorInvalidOperation("%s: no VBO bound to enabled vertex attrib index %du!",
-                                  info, i);
-            return false;
-        }
-
-        ++i;
-    }
-
-    mBufferFetch_IsAttrib0Active = false;
-
-    for (const auto& attrib : mActiveProgramLinkInfo->attribs) {
-        if (attrib.mLoc == -1)
-            continue;
-
-        const uint32_t attribLoc(attrib.mLoc);
-        if (attribLoc >= attribCount)
-            continue;
-
-        if (attribLoc == 0) {
-            mBufferFetch_IsAttrib0Active = true;
-        }
-
-        const auto& vd = mBoundVertexArray->mAttribs[attribLoc];
-        if (!vd.mEnabled)
-            continue;
-
-        const auto& bufByteLen = vd.mBuf->ByteLength();
-        if (vd.ByteOffset() > bufByteLen) {
-            maxVertices = 0;
-            maxInstances = 0;
-            break;
-        }
-
-        size_t availBytes = bufByteLen - vd.ByteOffset();
-        if (vd.BytesPerVertex() > availBytes) {
-            maxVertices = 0;
-            maxInstances = 0;
-            break;
-        }
-        availBytes -= vd.BytesPerVertex(); // Snip off the tail.
-        const size_t vertCapacity = availBytes / vd.ExplicitStride() + 1; // Add +1 for the snipped tail.
-
-        if (vd.mDivisor == 0) {
-            if (vertCapacity < maxVertices) {
-                maxVertices = vertCapacity;
-            }
-            hasPerVertex = true;
-        } else {
-            const auto curMaxInstances = CheckedInt<size_t>(vertCapacity) * vd.mDivisor;
-            // If this isn't valid, it's because we overflowed, which means we can support
-            // *too much*. Don't update maxInstances in this case.
-            if (curMaxInstances.isValid() &&
-                curMaxInstances.value() < maxInstances)
-            {
-                maxInstances = curMaxInstances.value();
-            }
-        }
-    }
-
-    mBufferFetchingIsVerified = true;
-    mBufferFetchingHasPerVertex = hasPerVertex;
-    mMaxFetchedVertices = maxVertices;
-    mMaxFetchedInstances = maxInstances;
-
-    return true;
-}
-
 WebGLVertexAttrib0Status
 WebGLContext::WhatDoesVertexAttrib0Need() const
 {
     MOZ_ASSERT(mCurrentProgram);
     MOZ_ASSERT(mActiveProgramLinkInfo);
-
-    const auto& isAttribArray0Enabled = mBoundVertexArray->mAttribs[0].mEnabled;
 
     bool legacyAttrib0 = gl->IsCompatibilityProfile();
 #ifdef XP_MACOSX
@@ -1033,23 +841,19 @@ WebGLContext::WhatDoesVertexAttrib0Need() const
     if (!legacyAttrib0)
         return WebGLVertexAttrib0Status::Default;
 
-    if (isAttribArray0Enabled && mBufferFetch_IsAttrib0Active)
-        return WebGLVertexAttrib0Status::Default;
+    if (!mActiveProgramLinkInfo->attrib0Active) {
+        // Ensure that the legacy code has enough buffer.
+        return WebGLVertexAttrib0Status::EmulatedUninitializedArray;
+    }
 
-    if (mBufferFetch_IsAttrib0Active)
-        return WebGLVertexAttrib0Status::EmulatedInitializedArray;
-
-    // Ensure that the legacy code has enough buffer.
-    return WebGLVertexAttrib0Status::EmulatedUninitializedArray;
+    const auto& isAttribArray0Enabled = mBoundVertexArray->mAttribs[0].mEnabled;
+    return isAttribArray0Enabled ? WebGLVertexAttrib0Status::Default
+                                 : WebGLVertexAttrib0Status::EmulatedInitializedArray;
 }
 
 bool
-WebGLContext::DoFakeVertexAttrib0(const char* funcName, GLuint vertexCount)
+WebGLContext::DoFakeVertexAttrib0(const char* const funcName, const uint32_t lastVert)
 {
-    if (!vertexCount) {
-        vertexCount = 1;
-    }
-
     const auto whatDoesAttrib0Need = WhatDoesVertexAttrib0Need();
     if (MOZ_LIKELY(whatDoesAttrib0Need == WebGLVertexAttrib0Status::Default))
         return true;
@@ -1093,10 +897,12 @@ WebGLContext::DoFakeVertexAttrib0(const char* funcName, GLuint vertexCount)
     ////
 
     const auto bytesPerVert = sizeof(mFakeVertexAttrib0Data);
-    const auto checked_dataSize = CheckedUint32(vertexCount) * bytesPerVert;
+    const auto checked_dataSize = (CheckedUint32(lastVert)+1) * bytesPerVert;
     if (!checked_dataSize.isValid()) {
-        ErrorOutOfMemory("Integer overflow trying to construct a fake vertex attrib 0 array for a draw-operation "
-                         "with %d vertices. Try reducing the number of vertices.", vertexCount);
+        ErrorOutOfMemory("Integer overflow trying to construct a fake vertex attrib 0"
+                         " array for a draw-operation with %" PRIu64 " vertices. Try"
+                         " reducing the number of vertices.",
+                         uint64_t(lastVert) + 1);
         return false;
     }
     const auto dataSize = checked_dataSize.value();
@@ -1203,13 +1009,8 @@ WebGLContext::FakeBlackTexture::Create(gl::GLContext* gl, TexTarget target,
     gl->fTexParameteri(target.get(), LOCAL_GL_TEXTURE_MIN_FILTER, LOCAL_GL_NEAREST);
     gl->fTexParameteri(target.get(), LOCAL_GL_TEXTURE_MAG_FILTER, LOCAL_GL_NEAREST);
 
-    // We allocate our zeros on the heap, and we overallocate (16 bytes instead of 4) to
-    // minimize the risk of running into a driver bug in texImage2D, as it is a bit
-    // unusual maybe to create 1x1 textures, and the stack may not have the alignment that
-    // TexImage2D expects.
-
     const webgl::DriverUnpackInfo dui = {texFormat, texFormat, LOCAL_GL_UNSIGNED_BYTE};
-    UniqueBuffer zeros = moz_xcalloc(1, 16); // Infallible allocation.
+    UniqueBuffer zeros = moz_xcalloc(1, 4); // Infallible allocation.
 
     MOZ_ASSERT(gl->IsCurrent());
 
@@ -1241,7 +1042,6 @@ WebGLContext::FakeBlackTexture::FakeBlackTexture(gl::GLContext* gl)
 
 WebGLContext::FakeBlackTexture::~FakeBlackTexture()
 {
-    mGL->MakeCurrent();
     mGL->fDeleteTextures(1, &mGLName);
 }
 

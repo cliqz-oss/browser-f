@@ -4,14 +4,20 @@
 
 #include "VideoUtils.h"
 
+#include <functional>
+#include <stdint.h>
+
+#include "CubebUtils.h"
 #include "ImageContainer.h"
 #include "MediaContainerType.h"
-#include "MediaPrefs.h"
 #include "MediaResource.h"
 #include "TimeUnits.h"
 #include "VorbisUtils.h"
 #include "mozilla/Base64.h"
 #include "mozilla/SharedThreadPool.h"
+#include "mozilla/StaticPrefs.h"
+#include "mozilla/SystemGroup.h"
+#include "mozilla/TaskCategory.h"
 #include "mozilla/TaskQueue.h"
 #include "mozilla/Telemetry.h"
 #include "nsCharSeparatedTokenizer.h"
@@ -21,11 +27,7 @@
 #include "nsIServiceManager.h"
 #include "nsMathUtils.h"
 #include "nsServiceManagerUtils.h"
-#include "nsSize.h"
 #include "nsThreadUtils.h"
-
-#include <functional>
-#include <stdint.h>
 
 namespace mozilla {
 
@@ -35,10 +37,15 @@ NS_NAMED_LITERAL_CSTRING(kEMEKeySystemWidevine, "com.widevine.alpha");
 using layers::PlanarYCbCrImage;
 using media::TimeUnit;
 
-CheckedInt64 SaferMultDiv(int64_t aValue, uint32_t aMul, uint32_t aDiv) {
-  int64_t major = aValue / aDiv;
-  int64_t remainder = aValue % aDiv;
-  return CheckedInt64(remainder) * aMul / aDiv + CheckedInt64(major) * aMul;
+CheckedInt64 SaferMultDiv(int64_t aValue, uint64_t aMul, uint64_t aDiv) {
+  if (aMul > INT64_MAX || aDiv > INT64_MAX) {
+    return CheckedInt64(INT64_MAX) + 1; // Return an invalid checked int.
+  }
+  int64_t mul = aMul;
+  int64_t div = aDiv;
+  int64_t major = aValue / div;
+  int64_t remainder = aValue % div;
+  return CheckedInt64(remainder) * mul / div + CheckedInt64(major) * mul;
 }
 
 // Converts from number of audio frames to microseconds, given the specified
@@ -81,7 +88,8 @@ static int32_t ConditionDimension(float aValue)
   return 0;
 }
 
-void ScaleDisplayByAspectRatio(nsIntSize& aDisplay, float aAspectRatio)
+void
+ScaleDisplayByAspectRatio(gfx::IntSize& aDisplay, float aAspectRatio)
 {
   if (aAspectRatio > 1.0) {
     // Increase the intrinsic width
@@ -160,6 +168,26 @@ void DownmixStereoToMono(mozilla::AudioDataValue* aBuffer,
   }
 }
 
+uint32_t
+DecideAudioPlaybackChannels(const AudioInfo& info)
+{
+  if (StaticPrefs::accessibility_monoaudio_enable()) {
+    return 1;
+  }
+
+  if (StaticPrefs::MediaForcestereoEnabled()) {
+    return 2;
+  }
+
+  return info.mChannels;
+}
+
+bool
+IsDefaultPlaybackDeviceMono()
+{
+  return CubebUtils::MaxNumberOfChannels() == 1;
+}
+
 bool
 IsVideoContentType(const nsCString& aContentType)
 {
@@ -171,8 +199,9 @@ IsVideoContentType(const nsCString& aContentType)
 }
 
 bool
-IsValidVideoRegion(const nsIntSize& aFrame, const nsIntRect& aPicture,
-                   const nsIntSize& aDisplay)
+IsValidVideoRegion(const gfx::IntSize& aFrame,
+                   const gfx::IntRect& aPicture,
+                   const gfx::IntSize& aDisplay)
 {
   return
     aFrame.width <= PlanarYCbCrImage::MAX_DIMENSION &&
@@ -200,14 +229,190 @@ already_AddRefed<SharedThreadPool> GetMediaThreadPool(MediaThreadType aType)
     case MediaThreadType::PLATFORM_DECODER:
       name = "MediaPDecoder";
       break;
+    case MediaThreadType::MSG_CONTROL:
+      name = "MSGControl";
+      break;
+    case MediaThreadType::WEBRTC_DECODER:
+      name = "WebRTCPD";
+      break;
     default:
       MOZ_FALLTHROUGH_ASSERT("Unexpected MediaThreadType");
     case MediaThreadType::PLAYBACK:
       name = "MediaPlayback";
       break;
   }
+
+  static const uint32_t kMediaThreadPoolDefaultCount = 4;
   return SharedThreadPool::
-    Get(nsDependentCString(name), MediaPrefs::MediaThreadPoolDefaultCount());
+    Get(nsDependentCString(name), kMediaThreadPoolDefaultCount);
+}
+
+bool
+ExtractVPXCodecDetails(const nsAString& aCodec,
+                       uint8_t& aProfile,
+                       uint8_t& aLevel,
+                       uint8_t& aBitDepth)
+{
+  uint8_t dummyChromaSubsampling = 1;
+  VideoColorSpace dummyColorspace;
+  return ExtractVPXCodecDetails(aCodec,
+                                aProfile,
+                                aLevel,
+                                aBitDepth,
+                                dummyChromaSubsampling,
+                                dummyColorspace);
+}
+
+bool ExtractVPXCodecDetails(const nsAString& aCodec,
+                            uint8_t& aProfile,
+                            uint8_t& aLevel,
+                            uint8_t& aBitDepth,
+                            uint8_t& aChromaSubsampling,
+                            VideoColorSpace& aColorSpace)
+{
+  // Assign default value.
+  aChromaSubsampling = 1;
+  auto splitter =  aCodec.Split(u'.');
+  auto fieldsItr = splitter.begin();
+  auto fourCC = *fieldsItr;
+
+  if (!fourCC.EqualsLiteral("vp09") && !fourCC.EqualsLiteral("vp08")) {
+    // Invalid 4CC
+    return false;
+  }
+  ++fieldsItr;
+  uint8_t *fields[] = { &aProfile, &aLevel, &aBitDepth, &aChromaSubsampling,
+                        &aColorSpace.mPrimaryId, &aColorSpace.mTransferId,
+                        &aColorSpace.mMatrixId, &aColorSpace.mRangeId };
+  int fieldsCount = 0;
+  nsresult rv;
+  for (; fieldsItr != splitter.end(); ++fieldsItr, ++fieldsCount) {
+    if (fieldsCount > 7) {
+      // No more than 8 fields are expected.
+      return false;
+    }
+    *(fields[fieldsCount]) =
+      static_cast<uint8_t>(PromiseFlatString((*fieldsItr)).ToInteger(&rv, 10));
+    // We got invalid field value, parsing error.
+    NS_ENSURE_SUCCESS(rv, false);
+  }
+  // Mandatory Fields
+  // <sample entry 4CC>.<profile>.<level>.<bitDepth>.
+  // Optional Fields
+  // <chromaSubsampling>.<colourPrimaries>.<transferCharacteristics>.
+  // <matrixCoefficients>.<videoFullRangeFlag>
+  // First three fields are mandatory(we have parsed 4CC).
+  if (fieldsCount < 3) {
+    // Invalid number of fields.
+    return false;
+  }
+  // Start to validate the parsing value.
+
+  // profile should be 0,1,2 or 3.
+  // See https://www.webmproject.org/vp9/profiles/
+  // We don't support more than profile 2
+  if (aProfile > 2) {
+    // Invalid profile.
+    return false;
+  }
+
+ // level, See https://www.webmproject.org/vp9/mp4/#semantics_1
+  switch (aLevel) {
+    case 10:
+    case 11:
+    case 20:
+    case 21:
+    case 30:
+    case 31:
+    case 40:
+    case 41:
+    case 50:
+    case 51:
+    case 52:
+    case 60:
+    case 61:
+    case 62:
+      break;
+    default:
+      // Invalid level.
+      return false;
+  }
+
+  if (aBitDepth != 8 && aBitDepth != 10 && aBitDepth != 12) {
+    // Invalid bitDepth:
+    return false;
+  }
+
+  if (fieldsCount == 3) {
+    // No more options.
+    return true;
+  }
+
+  // chromaSubsampling should be 0,1,2,3...4~7 are reserved.
+  if (aChromaSubsampling > 3) {
+    return false;
+  }
+
+  if (fieldsCount == 4) {
+    // No more options.
+    return true;
+  }
+
+  // It is an integer that is defined by the "Colour primaries"
+  // section of ISO/IEC 23001-8:2016 Table 2.
+  // We treat reserved value as false case.
+  const auto& primaryId = aColorSpace.mPrimaryId;
+  if (primaryId == 0 || primaryId == 3 || primaryId > 22) {
+    // reserved value.
+    return false;
+  }
+  if (primaryId > 12 && primaryId < 22) {
+    // 13~21 are reserved values.
+    return false;
+  }
+
+  if (fieldsCount == 5) {
+    // No more options.
+    return true;
+  }
+
+  // It is an integer that is defined by the
+  // "Transfer characteristics" section of ISO/IEC 23001-8:2016 Table 3.
+  // We treat reserved value as false case.
+  const auto& transferId = aColorSpace.mTransferId;
+  if (transferId == 0 || transferId == 3 || transferId > 18) {
+    // reserved value.
+    return false;
+  }
+
+  if (fieldsCount == 6) {
+    // No more options.
+    return true;
+  }
+
+  // It is an integer that is defined by the
+  // "Matrix coefficients" section of ISO/IEC 23001-8:2016 Table 4.
+  // We treat reserved value as false case.
+  const auto& matrixId = aColorSpace.mMatrixId;
+  if (matrixId == 3 || matrixId > 11) {
+    return false;
+  }
+
+  // If matrixCoefficients is 0 (RGB), then chroma subsampling MUST be 3 (4:4:4).
+  if (matrixId == 0 && aChromaSubsampling != 3) {
+    return false;
+  }
+
+  if (fieldsCount == 7) {
+    // No more options.
+    return true;
+  }
+
+  // videoFullRangeFlag indicates the black level and range of the luma and
+  // chroma signals. 0 = legal range (e.g. 16-235 for 8 bit sample depth);
+  // 1 = full range (e.g. 0-255 for 8-bit sample depth).
+  const auto& rangeId = aColorSpace.mRangeId;
+  return rangeId <= 1;
 }
 
 bool
@@ -364,23 +569,13 @@ SimpleTimer::Init(nsIRunnable* aTask, uint32_t aTimeoutMs, nsIEventTarget* aTarg
     }
   }
 
-  nsCOMPtr<nsITimer> timer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-  // Note: set target before InitWithCallback in case the timer fires before
-  // we change the event target.
-  rv = timer->SetTarget(target);
-  if (NS_FAILED(rv)) {
-    timer->Cancel();
-    return rv;
-  }
-  rv = timer->InitWithCallback(this, aTimeoutMs, nsITimer::TYPE_ONE_SHOT);
+  rv = NS_NewTimerWithCallback(getter_AddRefs(mTimer),
+                               this, aTimeoutMs, nsITimer::TYPE_ONE_SHOT,
+                               target);
   if (NS_FAILED(rv)) {
     return rv;
   }
 
-  mTimer = timer.forget();
   mTask = aTask;
   return NS_OK;
 }
@@ -451,6 +646,16 @@ ParseMIMETypeString(const nsAString& aMIMEType,
   return ParseCodecsString(codecsStr, aOutCodecs);
 }
 
+template <int N>
+static bool
+StartsWith(const nsACString& string, const char (&prefix)[N])
+{
+    if (N - 1 > string.Length()) {
+      return false;
+    }
+    return memcmp(string.Data(), prefix, N - 1) == 0;
+}
+
 bool
 IsH264CodecString(const nsAString& aCodec)
 {
@@ -474,25 +679,25 @@ IsAACCodecString(const nsAString& aCodec)
 bool
 IsVP8CodecString(const nsAString& aCodec)
 {
+  uint8_t profile = 0;
+  uint8_t level = 0;
+  uint8_t bitDepth = 0;
   return aCodec.EqualsLiteral("vp8") ||
-         aCodec.EqualsLiteral("vp8.0");
+         aCodec.EqualsLiteral("vp8.0") ||
+         (StartsWith(NS_ConvertUTF16toUTF8(aCodec), "vp08") &&
+          ExtractVPXCodecDetails(aCodec, profile, level, bitDepth));
 }
 
 bool
 IsVP9CodecString(const nsAString& aCodec)
 {
+  uint8_t profile = 0;
+  uint8_t level = 0;
+  uint8_t bitDepth = 0;
   return aCodec.EqualsLiteral("vp9") ||
-         aCodec.EqualsLiteral("vp9.0");
-}
-
-template <int N>
-static bool
-StartsWith(const nsACString& string, const char (&prefix)[N])
-{
-    if (N - 1 > string.Length()) {
-      return false;
-    }
-    return memcmp(string.Data(), prefix, N - 1) == 0;
+         aCodec.EqualsLiteral("vp9.0") ||
+         (StartsWith(NS_ConvertUTF16toUTF8(aCodec), "vp09") &&
+          ExtractVPXCodecDetails(aCodec, profile, level, bitDepth));
 }
 
 UniquePtr<TrackInfo>

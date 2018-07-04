@@ -2,15 +2,12 @@ var gTestRoot = getRootDirectory(gTestPath).replace("chrome://mochitests/content
 var gTestBrowser = null;
 var gConsoleErrors = 0;
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-
 add_task(async function() {
   registerCleanupFunction(function() {
     clearAllPluginPermissions();
     setTestPluginEnabledState(Ci.nsIPluginTag.STATE_ENABLED, "Test Plug-in");
     setTestPluginEnabledState(Ci.nsIPluginTag.STATE_ENABLED, "Second Test Plug-in");
-    consoleService.unregisterListener(errorListener);
+    Services.console.unregisterListener(errorListener);
     gBrowser.removeCurrentTab();
     window.focus();
     gTestBrowser = null;
@@ -19,15 +16,13 @@ add_task(async function() {
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
   gTestBrowser = gBrowser.selectedBrowser;
 
-  let consoleService = Cc["@mozilla.org/consoleservice;1"]
-                         .getService(Ci.nsIConsoleService);
   let errorListener = {
     observe(aMessage) {
       if (aMessage.message.includes("NS_ERROR_FAILURE"))
         gConsoleErrors++;
     }
   };
-  consoleService.registerListener(errorListener);
+  Services.console.registerListener(errorListener);
 
   await promiseTabLoadEvent(gBrowser.selectedTab, gTestRoot + "plugin_bug797677.html");
 

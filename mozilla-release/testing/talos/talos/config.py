@@ -1,13 +1,16 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
+from __future__ import absolute_import, print_function
 
-import sys
-import os
 import copy
+import json
+import os
+import sys
+import time
 
+import mozinfo
 from mozlog.commandline import setup_logging
-
 from talos import utils, test
 from talos.cmdline import parse_args
 
@@ -15,6 +18,12 @@ from talos.cmdline import parse_args
 class ConfigurationError(Exception):
     pass
 
+
+# Set places maintenance far in the future (the maximum time possible in an
+# int32_t) to avoid it kicking in during tests. The maintenance can take a
+# relatively long time which may cause unnecessary intermittents and slow
+# things down. This, like many things, will stop working correctly in 2038.
+FAR_IN_FUTURE = 2147483647
 
 DEFAULTS = dict(
     # args to pass to browser
@@ -27,29 +36,26 @@ DEFAULTS = dict(
         cycles=1,
         profile_path='${talos}/base_profile',
         responsiveness=False,
-        e10s=False,
         gecko_profile=False,
         gecko_profile_interval=1,
         gecko_profile_entries=100000,
         resolution=1,
-        rss=False,
         mainthread=False,
         shutdown=False,
         timeout=3600,
         tpchrome=True,
         tpcycles=10,
         tpmozafterpaint=False,
+        tphero=False,
         fnbpaint=False,
         firstpaint=False,
+        format_pagename=True,
         userready=False,
         testeventmap=[],
         base_vs_ref=False,
-        tpdisable_e10s=False,
-        tpnoisy=True,
         tppagecycles=1,
         tploadnocache=False,
         tpscrolltest=False,
-        tprender=False,
         win_counters=[],
         w7_counters=[],
         linux_counters=[],
@@ -57,6 +63,7 @@ DEFAULTS = dict(
         xperf_counters=[],
         setup=None,
         cleanup=None,
+        preferences={},
     ),
     # default preferences to run with
     # these are updated with --extraPrefs from the commandline
@@ -92,6 +99,11 @@ DEFAULTS = dict(
         'network.proxy.http': 'localhost',
         'network.proxy.http_port': 80,
         'network.proxy.type': 1,
+        # Bug 1383896 - reduces noise in tests
+        'idle.lastDailyNotification': int(time.time()),
+        # Bug 1445243 - reduces precision of tests
+        'privacy.reduceTimerPrecision': False,
+        'places.database.lastMaintenance': FAR_IN_FUTURE,
         'security.enable_java': False,
         'security.fileuri.strict_origin_policy': False,
         'dom.send_after_paint_to_content': True,
@@ -99,11 +111,9 @@ DEFAULTS = dict(
         'take_over_this_computer': True,
         'browser.newtabpage.activity-stream.default.sites': '',
         'browser.newtabpage.activity-stream.telemetry': False,
+        'browser.newtabpage.activity-stream.tippyTop.service.endpoint': '',
         'browser.newtabpage.activity-stream.feeds.section.topstories': False,
         'browser.newtabpage.activity-stream.feeds.snippets': False,
-        'browser.newtabpage.directory.source':
-            '${webserver}/directoryLinks.json',
-        'browser.newtabpage.introShown': True,
         'browser.safebrowsing.downloads.remote.url':
             'http://127.0.0.1/safebrowsing-dummy/downloads',
         'browser.safebrowsing.provider.google.gethashURL':
@@ -123,10 +133,15 @@ DEFAULTS = dict(
         'browser.safebrowsing.phishing.enabled': False,
         'browser.safebrowsing.malware.enabled': False,
         'browser.safebrowsing.blockedURIs.enabled': False,
+        'browser.safebrowsing.downloads.enabled': False,
+        'browser.safebrowsing.passwords.enabled': False,
+        'plugins.flashBlock.enabled': False,
+        'privacy.trackingprotection.annotate_channels': False,
         'privacy.trackingprotection.enabled': False,
         'privacy.trackingprotection.pbmode.enabled': False,
         'browser.search.isUS': True,
         'browser.search.countryCode': 'US',
+        'browser.search.geoip.url': '',
         'browser.urlbar.userMadeSearchSuggestionsChoice': True,
         'extensions.update.url':
             'http://127.0.0.1/extensions-dummy/updateURL',
@@ -140,7 +155,6 @@ DEFAULTS = dict(
         'extensions.update.enabled': False,
         'extensions.webservice.discoverURL':
             'http://127.0.0.1/extensions-dummy/discoveryURL',
-        'extensions.getAddons.maxResults': 0,
         'extensions.getAddons.get.url':
             'http://127.0.0.1/extensions-dummy/repositoryGetURL',
         'extensions.getAddons.getWithPerformance.url':
@@ -148,15 +162,17 @@ DEFAULTS = dict(
             '/repositoryGetWithPerformanceURL',
         'extensions.getAddons.search.browseURL':
             'http://127.0.0.1/extensions-dummy/repositoryBrowseURL',
-        'extensions.getAddons.search.url':
-            'http://127.0.0.1/extensions-dummy/repositorySearchURL',
         'media.gmp-manager.url':
             'http://127.0.0.1/gmpmanager-dummy/update.xml',
         'media.gmp-manager.updateEnabled': False,
         'extensions.systemAddon.update.url':
             'http://127.0.0.1/dummy-system-addons.xml',
-        'extensions.shield-recipe-client.api_url':
+        'app.normandy.api_url':
             'https://127.0.0.1/selfsupport-dummy/',
+        'browser.ping-centre.staging.endpoint':
+            'https://127.0.0.1/pingcentre/dummy/',
+        'browser.ping-centre.production.endpoint':
+            'https://127.0.0.1/pingcentre/dummy/',
         'media.navigator.enabled': True,
         'media.peerconnection.enabled': True,
         'media.navigator.permission.disabled': True,
@@ -168,8 +184,6 @@ DEFAULTS = dict(
         'browser.contentHandlers.types.4.uri': 'http://127.0.0.1/rss?url=%s',
         'browser.contentHandlers.types.5.uri': 'http://127.0.0.1/rss?url=%s',
         'identity.fxaccounts.auth.uri': 'https://127.0.0.1/fxa-dummy/',
-        'datareporting.healthreport.about.reportUrl':
-            'http://127.0.0.1/abouthealthreport/',
         'datareporting.healthreport.documentServerURI':
             'http://127.0.0.1/healthreport/',
         'datareporting.policy.dataSubmissionPolicyBypassNotification': True,
@@ -179,8 +193,6 @@ DEFAULTS = dict(
         'browser.snippets.enabled': False,
         'browser.snippets.syncPromo.enabled': False,
         'toolkit.telemetry.server': 'https://127.0.0.1/telemetry-dummy/',
-        'experiments.manifest.uri':
-            'https://127.0.0.1/experiments-dummy/manifest',
         'network.http.speculative-parallel-limit': 0,
         'lightweightThemes.selectedThemeID': "",
         'devtools.chrome.enabled': False,
@@ -190,7 +202,8 @@ DEFAULTS = dict(
         'identity.fxaccounts.migrateToDevEdition': False,
         'plugin.state.flash': 0,
         'media.libavcodec.allow-obsolete': True,
-        'extensions.legacy.enabled': True
+        'extensions.legacy.enabled': True,
+        'xpinstall.signatures.required': False,
     }
 )
 
@@ -201,15 +214,12 @@ GLOBAL_OVERRIDES = (
     'gecko_profile',
     'gecko_profile_interval',
     'gecko_profile_entries',
-    'rss',
-    'mainthread',
-    'shutdown',
     'tpcycles',
-    'tpdelay',
     'tppagecycles',
     'tpmanifest',
     'tptimeout',
     'tpmozafterpaint',
+    'tphero',
     'fnbpaint',
     'firstpaint',
     'userready',
@@ -276,15 +286,7 @@ def set_webserver(config):
 
 @validator
 def update_prefs(config):
-    # if e10s is enabled, set prefs accordingly
-    if config['e10s']:
-        config['preferences']['browser.tabs.remote.autostart'] = True
-        config['preferences']['extensions.e10sBlocksEnabling'] = False
-    else:
-        config['preferences']['browser.tabs.remote.autostart'] = False
-        config['preferences']['browser.tabs.remote.autostart.1'] = False
-        config['preferences']['browser.tabs.remote.autostart.2'] = False
-
+    config['preferences']['browser.tabs.remote.autostart'] = True
     # update prefs from command line
     prefs = config.pop('extraPrefs')
     if prefs:
@@ -299,10 +301,22 @@ def fix_init_url(config):
         config['init_url'] = convert_url(config, config['init_url'])
 
 
+@validator
+def determine_local_symbols_path(config):
+    if 'symbols_path' not in config:
+        return
+
+    # use objdir/dist/crashreporter-symbols for symbolsPath if none provided
+    if not config['symbols_path'] and \
+       config['develop'] and \
+       'MOZ_DEVELOPER_OBJ_DIR' in os.environ:
+        config['symbols_path'] = os.path.join(os.environ['MOZ_DEVELOPER_OBJ_DIR'],
+                                              'dist',
+                                              'crashreporter-symbols')
+
+
 def get_counters(config):
     counters = set()
-    if config['rss']:
-        counters.add('Main_RSS')
     return counters
 
 
@@ -330,16 +344,6 @@ def get_global_overrides(config):
         if key != 'gecko_profile':
             config.pop(key)
 
-    # add noChrome to global overrides (HACK)
-    noChrome = config.pop('noChrome')
-    if noChrome:
-        global_overrides['tpchrome'] = False
-
-    # HACK: currently xperf tests post results to graph server and
-    # we want to ensure we don't publish shutdown numbers
-    # This is also hacked because "--noShutdown -> shutdown:True"
-    if config['xperf_path']:
-        global_overrides['shutdown'] = False
     return global_overrides
 
 
@@ -348,11 +352,39 @@ def build_manifest(config, manifestName):
     with open(manifestName, 'r') as fHandle:
         manifestLines = fHandle.readlines()
 
+    # look for configuration data - right now just MotionMark
+    tuning_data = {}
+    if os.path.isfile(manifestName + '.json'):
+        with open(manifestName + '.json', 'r') as f:
+            tuning_data = json.load(f)
+
     # write modified manifest lines
     with open(manifestName + '.develop', 'w') as newHandle:
         for line in manifestLines:
             newline = line.replace('localhost', config['webserver'])
             newline = newline.replace('page_load_test', 'tests')
+
+            if tuning_data:
+                suite = ''
+                test = ''
+                # parse suite/test from: suite-name=HTMLsuite&test-name=CompositedTransforms
+                parts = newline.split('&')
+                for part in parts:
+                    key_val = part.split('=')
+                    if len(key_val) != 2:
+                        continue
+
+                    if key_val[0] == 'suite-name':
+                        suite = key_val[1]
+                    if key_val[0] == 'test-name':
+                        test = key_val[1]
+
+                if suite and test and tuning_data:
+                    osver = mozinfo.os
+                    if osver not in ['linux', 'win']:
+                        osver = 'osx'
+                    complexity = tuning_data[suite]['complexity'][test][osver]
+                    newline = newline.replace('complexity=300', 'complexity=%s' % complexity)
             newHandle.write(newline)
 
     newManifestName = manifestName + '.develop'
@@ -363,6 +395,7 @@ def build_manifest(config, manifestName):
 
 def get_test(config, global_overrides, counters, test_instance):
     mozAfterPaint = getattr(test_instance, 'tpmozafterpaint', None)
+    hero = getattr(test_instance, 'tphero', None)
     firstPaint = getattr(test_instance, 'firstpaint', None)
     userReady = getattr(test_instance, 'userready', None)
     firstNonBlankPaint = getattr(test_instance, 'fnbpaint', None)
@@ -379,6 +412,8 @@ def get_test(config, global_overrides, counters, test_instance):
         test_instance.firstpaint = firstPaint
     if userReady is not None:
         test_instance.userready = userReady
+    if hero is not None:
+        test_instance.tphero = hero
 
     # fix up url
     url = getattr(test_instance, 'url', None)
@@ -428,8 +463,10 @@ def get_browser_config(config):
     optional = {'bcontroller_config': '${talos}/bcontroller.json',
                 'branch_name': '',
                 'child_process': 'plugin-container',
+                'debug': False,
+                'debugger': None,
+                'debugger_args': None,
                 'develop': False,
-                'e10s': False,
                 'process': '',
                 'framework': 'talos',
                 'repository': None,
@@ -439,8 +476,8 @@ def get_browser_config(config):
                 'xperf_path': None,
                 'error_filename': None,
                 'no_upload_results': False,
-                'stylo': False,
                 'stylothreads': 0,
+                'subtests': None,
                 }
     browser_config = dict(title=config['title'])
     browser_config.update(dict([(i, config[i]) for i in required]))

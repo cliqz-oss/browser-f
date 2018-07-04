@@ -23,7 +23,7 @@
 #include "nsIRunnable.h"
 #include "nsIThreadInternal.h"
 #include "nsIFrame.h"
-#include "nsIFrameLoader.h"
+#include "nsIFrameLoaderOwner.h"
 
 class nsAsyncInstantiateEvent;
 class nsStopPluginRunnable;
@@ -94,13 +94,15 @@ class nsObjectLoadingContent : public nsImageLoadingContent
       /// ** All values >= eFallbackClickToPlay are plugin placeholder types
       ///    that would be replaced by a real plugin if activated (PlayPlugin())
       /// ** Furthermore, values >= eFallbackClickToPlay and
-      ///    <= eFallbackVulnerableNoUpdate are click-to-play types.
+      ///    <= eFallbackClickToPlayQuiet are click-to-play types.
       // The plugin is disabled until the user clicks on it
       eFallbackClickToPlay = nsIObjectLoadingContent::PLUGIN_CLICK_TO_PLAY,
       // The plugin is vulnerable (update available)
       eFallbackVulnerableUpdatable = nsIObjectLoadingContent::PLUGIN_VULNERABLE_UPDATABLE,
       // The plugin is vulnerable (no update available)
       eFallbackVulnerableNoUpdate = nsIObjectLoadingContent::PLUGIN_VULNERABLE_NO_UPDATE,
+      // The plugin is click-to-play, but the user won't see overlays
+      eFallbackClickToPlayQuiet = nsIObjectLoadingContent::PLUGIN_CLICK_TO_PLAY_QUIET,
     };
 
     nsObjectLoadingContent();
@@ -271,7 +273,7 @@ class nsObjectLoadingContent : public nsImageLoadingContent
      * - The mime type returned by opening the URI
      * - Enabled plugins claiming the ultimate mime type
      * - The capabilities returned by GetCapabilities
-     * - The classid attribute, if eSupportClassID is among the capabilities
+     * - The classid attribute, if eFallbackIfClassIDPresent is among the capabilities
      *
      * If eAllowPluginSkipChannel is true, we may skip opening the URI if our
      * type hint points to a valid plugin, deferring that responsibility to the
@@ -299,10 +301,12 @@ class nsObjectLoadingContent : public nsImageLoadingContent
       eSupportImages       = 1u << 0, // Images are supported (imgILoader)
       eSupportPlugins      = 1u << 1, // Plugins are supported (nsIPluginHost)
       eSupportDocuments    = 1u << 2, // Documents are supported
-                                        // (nsIDocumentLoaderFactory)
-                                        // This flag always includes SVG
-      eSupportClassID      = 1u << 3, // The classid attribute is supported. No
-                                      // longer used.
+                                      // (nsIDocumentLoaderFactory)
+                                      // This flag always includes SVG
+
+      // Node supports class ID as an attribute, and should fallback if it is
+      // present, as class IDs are not supported.
+      eFallbackIfClassIDPresent = 1u << 3,
 
       // If possible to get a *plugin* type from the type attribute *or* file
       // extension, we can use that type and begin loading the plugin before
@@ -582,12 +586,12 @@ class nsObjectLoadingContent : public nsImageLoadingContent
      *
      * - is an embed or object node
      * - has a URL pointing at the youtube.com domain, using "/v/" style video
-     *   path reference, and without enablejsapi=1 in the path
+     *   path reference.
      *
      * Having the enablejsapi flag means the document that contains the element
      * could possibly be manipulating the youtube video elsewhere on the page
-     * via javascript. We can't rewrite these kinds of elements without possibly
-     * breaking content, which we want to avoid.
+     * via javascript. In the context of embed elements, this usage has been
+     * deprecated by youtube, so we can just rewrite as normal.
      *
      * If we can rewrite the URL, we change the "/v/" to "/embed/", and change
      * our type to eType_Document so that we render similarly to an iframe

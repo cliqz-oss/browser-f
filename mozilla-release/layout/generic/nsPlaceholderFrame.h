@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -39,8 +40,8 @@
 #include "nsGkAtoms.h"
 
 nsIFrame* NS_NewPlaceholderFrame(nsIPresShell* aPresShell,
-                                 nsStyleContext* aContext,
-                                 nsFrameState aTypeBit);
+                                 mozilla::ComputedStyle* aStyle,
+                                 nsFrameState aTypeBits);
 
 #define PLACEHOLDER_TYPE_MASK    (PLACEHOLDER_FOR_FLOAT | \
                                   PLACEHOLDER_FOR_ABSPOS | \
@@ -64,19 +65,20 @@ public:
    * PLACEHOLDER_FOR_* constants above.
    */
   friend nsIFrame* NS_NewPlaceholderFrame(nsIPresShell* aPresShell,
-                                          nsStyleContext* aContext,
-                                          nsFrameState aTypeBit);
-  nsPlaceholderFrame(nsStyleContext* aContext, nsFrameState aTypeBit)
-    : nsFrame(aContext, kClassID)
+                                          ComputedStyle* aStyle,
+                                          nsFrameState aTypeBits);
+  nsPlaceholderFrame(ComputedStyle* aStyle, nsFrameState aTypeBits)
+    : nsFrame(aStyle, kClassID)
     , mOutOfFlowFrame(nullptr)
   {
-    NS_PRECONDITION(aTypeBit == PLACEHOLDER_FOR_FLOAT ||
-                    aTypeBit == PLACEHOLDER_FOR_ABSPOS ||
-                    aTypeBit == PLACEHOLDER_FOR_FIXEDPOS ||
-                    aTypeBit == PLACEHOLDER_FOR_POPUP ||
-                    aTypeBit == PLACEHOLDER_FOR_TOPLAYER,
-                    "Unexpected type bit");
-    AddStateBits(aTypeBit);
+    MOZ_ASSERT(aTypeBits == PLACEHOLDER_FOR_FLOAT ||
+               aTypeBits == PLACEHOLDER_FOR_ABSPOS ||
+               aTypeBits == PLACEHOLDER_FOR_FIXEDPOS ||
+               aTypeBits == PLACEHOLDER_FOR_POPUP ||
+               aTypeBits == (PLACEHOLDER_FOR_TOPLAYER | PLACEHOLDER_FOR_ABSPOS) ||
+               aTypeBits == (PLACEHOLDER_FOR_TOPLAYER | PLACEHOLDER_FOR_FIXEDPOS),
+               "Unexpected type bit");
+    AddStateBits(aTypeBits);
   }
 
   // Get/Set the associated out of flow frame
@@ -103,11 +105,10 @@ public:
                       const ReflowInput& aReflowInput,
                       nsReflowStatus& aStatus) override;
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
 #if defined(DEBUG) || (defined(MOZ_REFLOW_PERF_DSP) && defined(MOZ_REFLOW_PERF))
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 #endif // DEBUG || (MOZ_REFLOW_PERF_DSP && MOZ_REFLOW_PERF)
 
@@ -145,7 +146,10 @@ public:
   }
 #endif
 
-  nsStyleContext* GetParentStyleContextForOutOfFlow(nsIFrame** aProviderFrame) const;
+  ComputedStyle* GetParentComputedStyleForOutOfFlow(nsIFrame** aProviderFrame) const;
+
+  // Like GetParentComputedStyleForOutOfFlow, but ignores display:contents bits.
+  ComputedStyle* GetLayoutParentStyleForOutOfFlow(nsIFrame** aProviderFrame) const;
 
   bool RenumberFrameAndDescendants(int32_t* aOrdinal,
                                    int32_t aDepth,

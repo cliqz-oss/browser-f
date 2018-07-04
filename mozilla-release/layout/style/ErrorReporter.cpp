@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,16 +16,19 @@
 #include "nsCSSScanner.h"
 #include "nsIConsoleService.h"
 #include "nsIDocument.h"
+#include "nsIDocShell.h"
 #include "nsIFactory.h"
+#include "nsINode.h"
 #include "nsIScriptError.h"
+#include "nsISensitiveInfoHiddenURI.h"
 #include "nsIStringBundle.h"
 #include "nsServiceManagerUtils.h"
 #include "nsStyleUtil.h"
 #include "nsThreadUtils.h"
-
-#ifdef CSS_REPORT_PARSE_ERRORS
+#include "nsNetUtil.h"
 
 using namespace mozilla;
+using namespace mozilla::css;
 
 namespace {
 class ShortTermURISpecCache : public Runnable {
@@ -37,12 +41,9 @@ public:
     if (mURI != aURI) {
       mURI = aURI;
 
-      nsAutoCString cSpec;
-      nsresult rv = mURI->GetSpec(cSpec);
-      if (NS_FAILED(rv)) {
-        cSpec.AssignLiteral("[nsIURI::GetSpec failed]");
+      if (NS_FAILED(NS_GetSanitizedURIStringFromURI(mURI, mSpec))) {
+        mSpec.AssignLiteral("[nsIURI::GetSpec failed]");
       }
-      CopyUTF8toUTF16(cSpec, mSpec);
     }
     return mSpec;
   }
@@ -67,7 +68,9 @@ private:
 
 } // namespace
 
-static bool sReportErrors;
+bool ErrorReporter::sReportErrors = false;
+bool ErrorReporter::sInitialized = false;
+
 static nsIConsoleService *sConsoleService;
 static nsIFactory *sScriptErrorFactory;
 static nsIStringBundle *sStringBundle;
@@ -75,55 +78,45 @@ static ShortTermURISpecCache *sSpecCache;
 
 #define CSS_ERRORS_PREF "layout.css.report_errors"
 
-static bool
-InitGlobals()
+void
+ErrorReporter::InitGlobals()
 {
-  MOZ_ASSERT(!sConsoleService && !sScriptErrorFactory && !sStringBundle,
-             "should not have been called");
+  MOZ_RELEASE_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(!sInitialized, "should not have been called");
 
-  if (NS_FAILED(Preferences::AddBoolVarCache(&sReportErrors, CSS_ERRORS_PREF,
+  sInitialized = true;
+
+  if (NS_FAILED(Preferences::AddBoolVarCache(&sReportErrors,
+                                             CSS_ERRORS_PREF,
                                              true))) {
-    return false;
+    return;
   }
 
   nsCOMPtr<nsIConsoleService> cs = do_GetService(NS_CONSOLESERVICE_CONTRACTID);
   if (!cs) {
-    return false;
+    return;
   }
 
   nsCOMPtr<nsIFactory> sf = do_GetClassObject(NS_SCRIPTERROR_CONTRACTID);
   if (!sf) {
-    return false;
+    return;
   }
 
   nsCOMPtr<nsIStringBundleService> sbs = services::GetStringBundleService();
   if (!sbs) {
-    return false;
+    return;
   }
 
   nsCOMPtr<nsIStringBundle> sb;
   nsresult rv = sbs->CreateBundle("chrome://global/locale/css.properties",
                                   getter_AddRefs(sb));
   if (NS_FAILED(rv) || !sb) {
-    return false;
+    return;
   }
 
   cs.forget(&sConsoleService);
   sf.forget(&sScriptErrorFactory);
   sb.forget(&sStringBundle);
-
-  return true;
-}
-
-static inline bool
-ShouldReportErrors()
-{
-  if (!sConsoleService) {
-    if (!InitGlobals()) {
-      return false;
-    }
-  }
-  return sReportErrors;
 }
 
 namespace mozilla {
@@ -138,27 +131,22 @@ ErrorReporter::ReleaseGlobals()
   NS_IF_RELEASE(sSpecCache);
 }
 
-ErrorReporter::ErrorReporter(const nsCSSScanner& aScanner,
-                             const StyleSheet* aSheet,
+ErrorReporter::ErrorReporter(const StyleSheet* aSheet,
                              const Loader* aLoader,
                              nsIURI* aURI)
-  : mScanner(&aScanner), mSheet(aSheet), mLoader(aLoader), mURI(aURI),
-    mInnerWindowID(0), mErrorLineNumber(0), mPrevErrorLineNumber(0),
-    mErrorColNumber(0)
-{
-}
-
-ErrorReporter::ErrorReporter(const ServoStyleSheet* aSheet,
-                             const Loader* aLoader,
-                             nsIURI* aURI)
-  : mScanner(nullptr), mSheet(aSheet), mLoader(aLoader), mURI(aURI),
-    mInnerWindowID(0), mErrorLineNumber(0), mPrevErrorLineNumber(0),
-    mErrorColNumber(0)
+  : mSheet(aSheet)
+  , mLoader(aLoader)
+  , mURI(aURI)
+  , mInnerWindowID(0)
+  , mErrorLineNumber(0)
+  , mPrevErrorLineNumber(0)
+  , mErrorColNumber(0)
 {
 }
 
 ErrorReporter::~ErrorReporter()
 {
+  MOZ_ASSERT(NS_IsMainThread());
   // Schedule deferred cleanup for cached data. We want to strike a
   // balance between performance and memory usage, so we only allow
   // short-term caching.
@@ -175,14 +163,61 @@ ErrorReporter::~ErrorReporter()
   }
 }
 
+bool
+ErrorReporter::ShouldReportErrors(const nsIDocument& aDoc)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  nsIDocShell* shell = aDoc.GetDocShell();
+  if (!shell) {
+    return false;
+  }
+
+  bool report = false;
+  shell->GetCssErrorReportingEnabled(&report);
+  return report;
+}
+
+bool
+ErrorReporter::ShouldReportErrors()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  EnsureGlobalsInitialized();
+  if (!sReportErrors) {
+    return false;
+  }
+
+  if (mInnerWindowID) {
+    // We already reported an error, and that has cleared mSheet and mLoader, so
+    // we'd get the bogus value otherwise.
+    return true;
+  }
+
+  if (mSheet) {
+    nsINode* owner = mSheet->GetOwnerNode()
+      ? mSheet->GetOwnerNode()
+      : mSheet->GetAssociatedDocument();
+
+    if (owner && ShouldReportErrors(*owner->OwnerDoc())) {
+      return true;
+    }
+  }
+
+  if (mLoader && mLoader->GetDocument() &&
+      ShouldReportErrors(*mLoader->GetDocument())) {
+    return true;
+  }
+
+  return false;
+}
+
 void
 ErrorReporter::OutputError()
 {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(ShouldReportErrors());
+
   if (mError.IsEmpty()) {
-    return;
-  }
-  if (!ShouldReportErrors()) {
-    ClearError();
     return;
   }
 
@@ -219,28 +254,22 @@ ErrorReporter::OutputError()
     do_CreateInstance(sScriptErrorFactory, &rv);
 
   if (NS_SUCCEEDED(rv)) {
-    rv = errorObject->InitWithWindowID(mError,
-                                       mFileName,
-                                       mErrorLine,
-                                       mErrorLineNumber,
-                                       mErrorColNumber,
-                                       nsIScriptError::warningFlag,
-                                       "CSS Parser",
-                                       mInnerWindowID);
+    // It is safe to used InitWithSanitizedSource because mFileName is
+    // an already anonymized uri spec.
+    rv = errorObject->InitWithSanitizedSource(mError,
+                                              mFileName,
+                                              mErrorLine,
+                                              mErrorLineNumber,
+                                              mErrorColNumber,
+                                              nsIScriptError::warningFlag,
+                                              "CSS Parser",
+                                              mInnerWindowID);
     if (NS_SUCCEEDED(rv)) {
       sConsoleService->LogMessage(errorObject);
     }
   }
 
   ClearError();
-}
-
-void
-ErrorReporter::OutputError(uint32_t aLineNumber, uint32_t aColNumber)
-{
-  mErrorLineNumber = aLineNumber;
-  mErrorColNumber = aColNumber;
-  OutputError();
 }
 
 // When Stylo's CSS parser is in use, this reporter does not have access to the CSS parser's
@@ -282,27 +311,10 @@ ErrorReporter::ClearError()
 void
 ErrorReporter::AddToError(const nsString &aErrorText)
 {
-  if (!ShouldReportErrors()) return;
+  MOZ_ASSERT(ShouldReportErrors());
 
   if (mError.IsEmpty()) {
     mError = aErrorText;
-    // If this error reporter is being used from Stylo, the equivalent operation occurs
-    // in the OutputError variant that provides source information.
-    if (!IsServo()) {
-      mErrorLineNumber = mScanner->GetLineNumber();
-      mErrorColNumber = mScanner->GetColumnNumber();
-      // Retrieve the error line once per line, and reuse the same nsString
-      // for all errors on that line.  That causes the text of the line to
-      // be shared among all the nsIScriptError objects.
-      if (mErrorLine.IsEmpty() || mErrorLineNumber != mPrevErrorLineNumber) {
-        // Be careful here: the error line might be really long and OOM
-        // when we try to make a copy here.  If so, just leave it empty.
-        if (!mErrorLine.Assign(mScanner->GetCurrentLine(), fallible)) {
-          mErrorLine.Truncate();
-        }
-        mPrevErrorLineNumber = mErrorLineNumber;
-      }
-    }
   } else {
     mError.AppendLiteral("  ");
     mError.Append(aErrorText);
@@ -312,27 +324,10 @@ ErrorReporter::AddToError(const nsString &aErrorText)
 void
 ErrorReporter::ReportUnexpected(const char *aMessage)
 {
-  if (!ShouldReportErrors()) return;
+  MOZ_ASSERT(ShouldReportErrors());
 
   nsAutoString str;
-  sStringBundle->GetStringFromName(aMessage, getter_Copies(str));
-  AddToError(str);
-}
-
-void
-ErrorReporter::ReportUnexpected(const char *aMessage,
-                                const nsString &aParam)
-{
-  if (!ShouldReportErrors()) return;
-
-  nsAutoString qparam;
-  nsStyleUtil::AppendEscapedCSSIdent(aParam, qparam);
-  const char16_t *params[1] = { qparam.get() };
-
-  nsAutoString str;
-  sStringBundle->FormatStringFromName(aMessage,
-                                      params, ArrayLength(params),
-                                      getter_Copies(str));
+  sStringBundle->GetStringFromName(aMessage, str);
   AddToError(str);
 }
 
@@ -340,105 +335,15 @@ void
 ErrorReporter::ReportUnexpectedUnescaped(const char *aMessage,
                                          const nsAutoString& aParam)
 {
-  if (!ShouldReportErrors()) return;
+  MOZ_ASSERT(ShouldReportErrors());
 
   const char16_t *params[1] = { aParam.get() };
 
   nsAutoString str;
-  sStringBundle->FormatStringFromName(aMessage,
-                                      params, ArrayLength(params),
-                                      getter_Copies(str));
+  sStringBundle->FormatStringFromName(aMessage, params, ArrayLength(params),
+                                      str);
   AddToError(str);
-}
-
-void
-ErrorReporter::ReportUnexpected(const char *aMessage,
-                                const nsCSSToken &aToken)
-{
-  if (!ShouldReportErrors()) return;
-
-  nsAutoString tokenString;
-  aToken.AppendToString(tokenString);
-  ReportUnexpectedUnescaped(aMessage, tokenString);
-}
-
-void
-ErrorReporter::ReportUnexpected(const char *aMessage,
-                                const nsCSSToken &aToken,
-                                char16_t aChar)
-{
-  if (!ShouldReportErrors()) return;
-
-  nsAutoString tokenString;
-  aToken.AppendToString(tokenString);
-  const char16_t charStr[2] = { aChar, 0 };
-  const char16_t *params[2] = { tokenString.get(), charStr };
-
-  nsAutoString str;
-  sStringBundle->FormatStringFromName(aMessage,
-                                      params, ArrayLength(params),
-                                      getter_Copies(str));
-  AddToError(str);
-}
-
-void
-ErrorReporter::ReportUnexpected(const char *aMessage,
-                                const nsString &aParam,
-                                const nsString &aValue)
-{
-  if (!ShouldReportErrors()) return;
-
-  nsAutoString qparam;
-  nsStyleUtil::AppendEscapedCSSIdent(aParam, qparam);
-  const char16_t *params[2] = { qparam.get(), aValue.get() };
-
-  nsAutoString str;
-  sStringBundle->FormatStringFromName(aMessage,
-                                      params, ArrayLength(params),
-                                      getter_Copies(str));
-  AddToError(str);
-}
-
-void
-ErrorReporter::ReportUnexpectedEOF(const char *aMessage)
-{
-  if (!ShouldReportErrors()) return;
-
-  nsAutoString innerStr;
-  sStringBundle->GetStringFromName(aMessage, getter_Copies(innerStr));
-  const char16_t *params[1] = { innerStr.get() };
-
-  nsAutoString str;
-  sStringBundle->FormatStringFromName("PEUnexpEOF2",
-                                      params, ArrayLength(params),
-                                      getter_Copies(str));
-  AddToError(str);
-}
-
-void
-ErrorReporter::ReportUnexpectedEOF(char16_t aExpected)
-{
-  if (!ShouldReportErrors()) return;
-
-  const char16_t expectedStr[] = {
-    char16_t('\''), aExpected, char16_t('\''), char16_t(0)
-  };
-  const char16_t *params[1] = { expectedStr };
-
-  nsAutoString str;
-  sStringBundle->FormatStringFromName("PEUnexpEOF2",
-                                      params, ArrayLength(params),
-                                      getter_Copies(str));
-  AddToError(str);
-}
-
-bool
-ErrorReporter::IsServo() const
-{
-  return !mScanner;
 }
 
 } // namespace css
 } // namespace mozilla
-
-#endif

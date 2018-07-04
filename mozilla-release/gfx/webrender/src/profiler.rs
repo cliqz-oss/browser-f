@@ -2,20 +2,33 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use debug_render::DebugRenderer;
-use device::{Device, GpuMarker, GpuSample, NamedTag};
-use euclid::{Point2D, Size2D, Rect, vec2};
+use api::ColorF;
+use query::{GpuTimer, NamedTag};
 use std::collections::vec_deque::VecDeque;
 use std::f32;
-use std::mem;
-use api::{ColorF, ColorU};
 use time::precise_time_ns;
 
-const GRAPH_WIDTH: f32 = 1024.0;
-const GRAPH_HEIGHT: f32 = 320.0;
-const GRAPH_PADDING: f32 = 8.0;
-const GRAPH_FRAME_HEIGHT: f32 = 16.0;
-const PROFILE_PADDING: f32 = 10.0;
+cfg_if! {
+    if #[cfg(feature = "debug_renderer")] {
+        use api::ColorU;
+        use debug_render::DebugRenderer;
+        use euclid::{Point2D, Rect, Size2D, vec2};
+        use query::GpuSampler;
+        use internal_types::FastHashMap;
+        use renderer::MAX_VERTEX_TEXTURE_WIDTH;
+        use std::mem;
+    }
+}
+
+cfg_if! {
+    if #[cfg(feature = "debug_renderer")] {
+        const GRAPH_WIDTH: f32 = 1024.0;
+        const GRAPH_HEIGHT: f32 = 320.0;
+        const GRAPH_PADDING: f32 = 8.0;
+        const GRAPH_FRAME_HEIGHT: f32 = 16.0;
+        const PROFILE_PADDING: f32 = 10.0;
+    }
+}
 
 const ONE_SECOND_NS: u64 = 1000000000;
 
@@ -24,7 +37,7 @@ pub struct GpuProfileTag {
     pub label: &'static str,
     pub color: ColorF,
 }
-
+ 
 impl NamedTag for GpuProfileTag {
     fn get_label(&self) -> &str {
         self.label
@@ -43,7 +56,7 @@ pub struct IntProfileCounter {
 }
 
 impl IntProfileCounter {
-    fn new(description: &'static str) -> IntProfileCounter {
+    fn new(description: &'static str) -> Self {
         IntProfileCounter {
             description,
             value: 0,
@@ -84,6 +97,23 @@ impl ProfileCounter for IntProfileCounter {
     }
 }
 
+#[cfg(feature = "debug_renderer")]
+pub struct FloatProfileCounter {
+    description: &'static str,
+    value: f32,
+}
+
+#[cfg(feature = "debug_renderer")]
+impl ProfileCounter for FloatProfileCounter {
+    fn description(&self) -> &'static str {
+        self.description
+    }
+
+    fn value(&self) -> String {
+        format!("{:.2}", self.value)
+    }
+}
+
 #[derive(Clone)]
 pub struct ResourceProfileCounter {
     description: &'static str,
@@ -92,7 +122,7 @@ pub struct ResourceProfileCounter {
 }
 
 impl ResourceProfileCounter {
-    fn new(description: &'static str) -> ResourceProfileCounter {
+    fn new(description: &'static str) -> Self {
         ResourceProfileCounter {
             description,
             value: 0,
@@ -110,6 +140,11 @@ impl ResourceProfileCounter {
     pub fn inc(&mut self, size: usize) {
         self.value += 1;
         self.size += size;
+    }
+
+    pub fn set(&mut self, count: usize, size: usize) {
+        self.value = count;
+        self.size = size;
     }
 }
 
@@ -131,8 +166,20 @@ pub struct TimeProfileCounter {
     invert: bool,
 }
 
+pub struct Timer<'a> {
+    start: u64,
+    result: &'a mut u64,
+}
+
+impl<'a> Drop for Timer<'a> {
+    fn drop(&mut self) {
+        let end = precise_time_ns();
+        *self.result += end - self.start;
+    }
+}
+
 impl TimeProfileCounter {
-    pub fn new(description: &'static str, invert: bool) -> TimeProfileCounter {
+    pub fn new(description: &'static str, invert: bool) -> Self {
         TimeProfileCounter {
             description,
             nanoseconds: 0,
@@ -149,13 +196,23 @@ impl TimeProfileCounter {
         self.nanoseconds = ns;
     }
 
-    pub fn profile<T, F>(&mut self, callback: F) -> T where F: FnOnce() -> T {
+    pub fn profile<T, F>(&mut self, callback: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
         let t0 = precise_time_ns();
         let val = callback();
         let t1 = precise_time_ns();
         let ns = t1 - t0;
         self.nanoseconds += ns;
         val
+    }
+
+    pub fn timer(&mut self) -> Timer {
+        Timer {
+            start: precise_time_ns(),
+            result: &mut self.nanoseconds,
+        }
     }
 
     pub fn inc(&mut self, ns: u64) {
@@ -193,7 +250,7 @@ pub struct AverageTimeProfileCounter {
 }
 
 impl AverageTimeProfileCounter {
-    pub fn new(description: &'static str, invert: bool, average_over_ns: u64) -> AverageTimeProfileCounter {
+    pub fn new(description: &'static str, invert: bool, average_over_ns: u64) -> Self {
         AverageTimeProfileCounter {
             description,
             average_over_ns,
@@ -215,8 +272,7 @@ impl AverageTimeProfileCounter {
 
     pub fn set(&mut self, ns: u64) {
         let now = precise_time_ns();
-        if (now - self.start_ns) > self.average_over_ns &&
-           self.num_samples > 0 {
+        if (now - self.start_ns) > self.average_over_ns && self.num_samples > 0 {
             self.nanoseconds = self.sum_ns / self.num_samples;
             self.start_ns = now;
             self.sum_ns = 0;
@@ -227,7 +283,10 @@ impl AverageTimeProfileCounter {
     }
 
     #[allow(dead_code)]
-    pub fn profile<T, F>(&mut self, callback: F) -> T where F: FnOnce() -> T {
+    pub fn profile<T, F>(&mut self, callback: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
         let t0 = precise_time_ns();
         let val = callback();
         let t1 = precise_time_ns();
@@ -250,41 +309,46 @@ impl ProfileCounter for AverageTimeProfileCounter {
     }
 }
 
+
+#[derive(Clone)]
 pub struct FrameProfileCounters {
     pub total_primitives: IntProfileCounter,
     pub visible_primitives: IntProfileCounter,
-    pub passes: IntProfileCounter,
-    pub color_targets: IntProfileCounter,
-    pub alpha_targets: IntProfileCounter,
+    pub targets_used: IntProfileCounter,
+    pub targets_changed: IntProfileCounter,
+    pub targets_created: IntProfileCounter,
 }
 
 impl FrameProfileCounters {
-    pub fn new() -> FrameProfileCounters {
+    pub fn new() -> Self {
         FrameProfileCounters {
             total_primitives: IntProfileCounter::new("Total Primitives"),
             visible_primitives: IntProfileCounter::new("Visible Primitives"),
-            passes: IntProfileCounter::new("Passes"),
-            color_targets: IntProfileCounter::new("Color Targets"),
-            alpha_targets: IntProfileCounter::new("Alpha Targets"),
+            targets_used: IntProfileCounter::new("Used targets"),
+            targets_changed: IntProfileCounter::new("Changed targets"),
+            targets_created: IntProfileCounter::new("Created targets"),
         }
+    }
+    pub fn reset_targets(&mut self) {
+        self.targets_used.reset();
+        self.targets_changed.reset();
+        self.targets_created.reset();
     }
 }
 
 #[derive(Clone)]
 pub struct TextureCacheProfileCounters {
-    pub pages_a8: ResourceProfileCounter,
-    pub pages_rgb8: ResourceProfileCounter,
-    pub pages_rgba8: ResourceProfileCounter,
-    pub pages_rg8: ResourceProfileCounter,
+    pub pages_a8_linear: ResourceProfileCounter,
+    pub pages_rgba8_linear: ResourceProfileCounter,
+    pub pages_rgba8_nearest: ResourceProfileCounter,
 }
 
 impl TextureCacheProfileCounters {
-    pub fn new() -> TextureCacheProfileCounters {
+    pub fn new() -> Self {
         TextureCacheProfileCounters {
-            pages_a8: ResourceProfileCounter::new("Texture A8 cached pages"),
-            pages_rgb8: ResourceProfileCounter::new("Texture RGB8 cached pages"),
-            pages_rgba8: ResourceProfileCounter::new("Texture RGBA8 cached pages"),
-            pages_rg8: ResourceProfileCounter::new("Texture RG8 cached pages"),
+            pages_a8_linear: ResourceProfileCounter::new("Texture A8 cached pages"),
+            pages_rgba8_linear: ResourceProfileCounter::new("Texture RGBA8 cached pages (L)"),
+            pages_rgba8_nearest: ResourceProfileCounter::new("Texture RGBA8 cached pages (N)"),
         }
     }
 }
@@ -293,13 +357,19 @@ impl TextureCacheProfileCounters {
 pub struct GpuCacheProfileCounters {
     pub allocated_rows: IntProfileCounter,
     pub allocated_blocks: IntProfileCounter,
+    pub updated_rows: IntProfileCounter,
+    pub updated_blocks: IntProfileCounter,
+    pub saved_blocks: IntProfileCounter,
 }
 
 impl GpuCacheProfileCounters {
-    pub fn new() -> GpuCacheProfileCounters {
+    pub fn new() -> Self {
         GpuCacheProfileCounters {
-            allocated_rows: IntProfileCounter::new("GPU cache rows"),
-            allocated_blocks: IntProfileCounter::new("GPU cache blocks"),
+            allocated_rows: IntProfileCounter::new("GPU cache rows: total"),
+            updated_rows: IntProfileCounter::new("GPU cache rows: updated"),
+            allocated_blocks: IntProfileCounter::new("GPU cache blocks: total"),
+            updated_blocks: IntProfileCounter::new("GPU cache blocks: updated"),
+            saved_blocks: IntProfileCounter::new("GPU cache blocks: saved"),
         }
     }
 }
@@ -329,13 +399,15 @@ pub struct IpcProfileCounters {
 }
 
 impl IpcProfileCounters {
-    pub fn set(&mut self,
-               build_start: u64,
-               build_end: u64,
-               send_start: u64,
-               consume_start: u64,
-               consume_end: u64,
-               display_len: usize) {
+    pub fn set(
+        &mut self,
+        build_start: u64,
+        build_end: u64,
+        send_start: u64,
+        consume_start: u64,
+        consume_end: u64,
+        display_len: usize,
+    ) {
         let build_time = build_end - build_start;
         let consume_time = consume_end - consume_start;
         let send_time = consume_start - send_start;
@@ -348,7 +420,7 @@ impl IpcProfileCounters {
 }
 
 impl BackendProfileCounters {
-    pub fn new() -> BackendProfileCounters {
+    pub fn new() -> Self {
         BackendProfileCounters {
             total_time: TimeProfileCounter::new("Backend CPU Time", false),
             resources: ResourceProfileCounters {
@@ -383,33 +455,39 @@ pub struct RendererProfileCounters {
     pub draw_calls: IntProfileCounter,
     pub vertices: IntProfileCounter,
     pub vao_count_and_size: ResourceProfileCounter,
+    pub color_targets: IntProfileCounter,
+    pub alpha_targets: IntProfileCounter,
 }
 
 pub struct RendererProfileTimers {
     pub cpu_time: TimeProfileCounter,
     pub gpu_time: TimeProfileCounter,
-    pub gpu_samples: Vec<GpuSample<GpuProfileTag>>,
+    pub gpu_samples: Vec<GpuTimer<GpuProfileTag>>,
 }
 
 impl RendererProfileCounters {
-    pub fn new() -> RendererProfileCounters {
+    pub fn new() -> Self {
         RendererProfileCounters {
             frame_counter: IntProfileCounter::new("Frame"),
             frame_time: AverageTimeProfileCounter::new("FPS", true, ONE_SECOND_NS / 2),
             draw_calls: IntProfileCounter::new("Draw Calls"),
             vertices: IntProfileCounter::new("Vertices"),
             vao_count_and_size: ResourceProfileCounter::new("VAO"),
+            color_targets: IntProfileCounter::new("Color Targets"),
+            alpha_targets: IntProfileCounter::new("Alpha Targets"),
         }
     }
 
     pub fn reset(&mut self) {
         self.draw_calls.reset();
         self.vertices.reset();
+        self.color_targets.reset();
+        self.alpha_targets.reset();
     }
 }
 
 impl RendererProfileTimers {
-    pub fn new() -> RendererProfileTimers {
+    pub fn new() -> Self {
         RendererProfileTimers {
             cpu_time: TimeProfileCounter::new("Compositor CPU Time", false),
             gpu_samples: Vec::new(),
@@ -425,18 +503,26 @@ struct GraphStats {
 }
 
 struct ProfileGraph {
+    #[cfg(feature = "debug_renderer")]
     max_samples: usize,
     values: VecDeque<f32>,
+    short_description: &'static str,
 }
 
 impl ProfileGraph {
-    fn new(max_samples: usize) -> ProfileGraph {
+    #[cfg(feature = "debug_renderer")]
+    fn new(
+        max_samples: usize,
+        short_description: &'static str,
+    ) -> Self {
         ProfileGraph {
             max_samples,
             values: VecDeque::new(),
+            short_description,
         }
     }
 
+    #[cfg(feature = "debug_renderer")]
     fn push(&mut self, ns: u64) {
         let ms = ns as f64 / 1000000.0;
         if self.values.len() == self.max_samples {
@@ -465,50 +551,63 @@ impl ProfileGraph {
         stats
     }
 
-    fn draw_graph(&self,
-                  x: f32,
-                  y: f32,
-                  description: &'static str,
-                  debug_renderer: &mut DebugRenderer) -> Rect<f32> {
+    #[cfg(feature = "debug_renderer")]
+    fn draw_graph(
+        &self,
+        x: f32,
+        y: f32,
+        description: &'static str,
+        debug_renderer: &mut DebugRenderer,
+    ) -> Rect<f32> {
         let size = Size2D::new(600.0, 120.0);
         let line_height = debug_renderer.line_height();
-        let mut rect = Rect::new(Point2D::new(x, y), size);
+        let graph_rect = Rect::new(Point2D::new(x, y), size);
+        let mut rect = graph_rect.inflate(10.0, 10.0);
+
         let stats = self.stats();
 
         let text_color = ColorU::new(255, 255, 0, 255);
         let text_origin = rect.origin + vec2(rect.size.width, 20.0);
-        debug_renderer.add_text(text_origin.x,
-                                text_origin.y,
-                                description,
-                                ColorU::new(0, 255, 0, 255));
-        debug_renderer.add_text(text_origin.x,
-                                text_origin.y + line_height,
-                                &format!("Min: {:.2} ms", stats.min_value),
-                                text_color);
-        debug_renderer.add_text(text_origin.x,
-                                text_origin.y + line_height * 2.0,
-                                &format!("Mean: {:.2} ms", stats.mean_value),
-                                text_color);
-        debug_renderer.add_text(text_origin.x,
-                                text_origin.y + line_height * 3.0,
-                                &format!("Max: {:.2} ms", stats.max_value),
-                                text_color);
+        debug_renderer.add_text(
+            text_origin.x,
+            text_origin.y,
+            description,
+            ColorU::new(0, 255, 0, 255),
+        );
+        debug_renderer.add_text(
+            text_origin.x,
+            text_origin.y + line_height,
+            &format!("Min: {:.2} ms", stats.min_value),
+            text_color,
+        );
+        debug_renderer.add_text(
+            text_origin.x,
+            text_origin.y + line_height * 2.0,
+            &format!("Mean: {:.2} ms", stats.mean_value),
+            text_color,
+        );
+        debug_renderer.add_text(
+            text_origin.x,
+            text_origin.y + line_height * 3.0,
+            &format!("Max: {:.2} ms", stats.max_value),
+            text_color,
+        );
 
         rect.size.width += 140.0;
-        debug_renderer.add_quad(rect.origin.x,
-                                rect.origin.y,
-                                rect.origin.x + rect.size.width + 10.0,
-                                rect.origin.y + rect.size.height,
-                                ColorF::new(0.1, 0.1, 0.1, 0.8).into(),
-                                ColorF::new(0.2, 0.2, 0.2, 0.8).into());
+        debug_renderer.add_quad(
+            rect.origin.x,
+            rect.origin.y,
+            rect.origin.x + rect.size.width + 10.0,
+            rect.origin.y + rect.size.height,
+            ColorU::new(25, 25, 25, 200),
+            ColorU::new(51, 51, 51, 200),
+        );
 
-        let bx0 = x + 10.0;
-        let by0 = y + 10.0;
-        let bx1 = bx0 + size.width - 20.0;
-        let by1 = by0 + size.height - 20.0;
+        let bx1 = graph_rect.max_x();
+        let by1 = graph_rect.max_y();
 
-        let w = (bx1 - bx0) / self.max_samples as f32;
-        let h = by1 - by0;
+        let w = graph_rect.size.width / self.max_samples as f32;
+        let h = graph_rect.size.height;
 
         let color_t0 = ColorU::new(0, 255, 0, 255);
         let color_b0 = ColorU::new(0, 180, 0, 255);
@@ -542,23 +641,36 @@ impl ProfileGraph {
     }
 }
 
-struct GpuFrame {
-    total_time: u64,
-    samples: Vec<GpuSample<GpuProfileTag>>,
+impl ProfileCounter for ProfileGraph {
+    fn description(&self) -> &'static str {
+        self.short_description
+    }
+
+    fn value(&self) -> String {
+        format!("{:.2}ms", self.stats().mean_value)
+    }
 }
 
+#[cfg(feature = "debug_renderer")]
+struct GpuFrame {
+    total_time: u64,
+    samples: Vec<GpuTimer<GpuProfileTag>>,
+}
+
+#[cfg(feature = "debug_renderer")]
 struct GpuFrameCollection {
     frames: VecDeque<GpuFrame>,
 }
 
+#[cfg(feature = "debug_renderer")]
 impl GpuFrameCollection {
-    fn new() -> GpuFrameCollection {
+    fn new() -> Self {
         GpuFrameCollection {
             frames: VecDeque::new(),
         }
     }
 
-    fn push(&mut self, total_time: u64, samples: Vec<GpuSample<GpuProfileTag>>) {
+    fn push(&mut self, total_time: u64, samples: Vec<GpuTimer<GpuProfileTag>>) {
         if self.frames.len() == 20 {
             self.frames.pop_back();
         }
@@ -569,31 +681,34 @@ impl GpuFrameCollection {
     }
 }
 
+#[cfg(feature = "debug_renderer")]
 impl GpuFrameCollection {
-    fn draw(&self,
-            x: f32,
-            y: f32,
-            debug_renderer: &mut DebugRenderer) -> Rect<f32> {
-        let bounding_rect = Rect::new(Point2D::new(x, y),
-                                      Size2D::new(GRAPH_WIDTH + 2.0 * GRAPH_PADDING,
-                                                  GRAPH_HEIGHT + 2.0 * GRAPH_PADDING));
-        let graph_rect = bounding_rect.inflate(-GRAPH_PADDING, -GRAPH_PADDING);
+    fn draw(&self, x: f32, y: f32, debug_renderer: &mut DebugRenderer) -> Rect<f32> {
+        let graph_rect = Rect::new(
+            Point2D::new(x, y),
+            Size2D::new(GRAPH_WIDTH, GRAPH_HEIGHT),
+        );
+        let bounding_rect = graph_rect.inflate(GRAPH_PADDING, GRAPH_PADDING);
 
-        debug_renderer.add_quad(bounding_rect.origin.x,
-                                bounding_rect.origin.y,
-                                bounding_rect.origin.x + bounding_rect.size.width,
-                                bounding_rect.origin.y + bounding_rect.size.height,
-                                ColorF::new(0.1, 0.1, 0.1, 0.8).into(),
-                                ColorF::new(0.2, 0.2, 0.2, 0.8).into());
+        debug_renderer.add_quad(
+            bounding_rect.origin.x,
+            bounding_rect.origin.y,
+            bounding_rect.origin.x + bounding_rect.size.width,
+            bounding_rect.origin.y + bounding_rect.size.height,
+            ColorU::new(25, 25, 25, 200),
+            ColorU::new(51, 51, 51, 200),
+        );
 
         let w = graph_rect.size.width;
         let mut y0 = graph_rect.origin.y;
 
         let max_time = self.frames
-                           .iter()
-                           .max_by_key(|f| f.total_time)
-                           .unwrap()
-                           .total_time as f32;
+            .iter()
+            .max_by_key(|f| f.total_time)
+            .unwrap()
+            .total_time as f32;
+
+        let mut tags_present = FastHashMap::default();
 
         for frame in &self.frames {
             let y1 = y0 + GRAPH_FRAME_HEIGHT;
@@ -603,30 +718,71 @@ impl GpuFrameCollection {
                 let x0 = graph_rect.origin.x + w * current_ns as f32 / max_time;
                 current_ns += sample.time_ns;
                 let x1 = graph_rect.origin.x + w * current_ns as f32 / max_time;
-
                 let mut bottom_color = sample.tag.color;
                 bottom_color.a *= 0.5;
 
-                debug_renderer.add_quad(x0,
-                                        y0,
-                                        x1,
-                                        y1,
-                                        sample.tag.color.into(),
-                                        bottom_color.into());
+                debug_renderer.add_quad(
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    sample.tag.color.into(),
+                    bottom_color.into(),
+                );
+
+                tags_present.insert(sample.tag.label, sample.tag.color);
             }
 
             y0 = y1;
+        }
+
+        // Add a legend to see which color correspond to what primitive.
+        const LEGEND_SIZE: f32 = 20.0;
+        const PADDED_LEGEND_SIZE: f32 = 25.0;
+        if !tags_present.is_empty() {
+            debug_renderer.add_quad(
+                bounding_rect.max_x() + GRAPH_PADDING,
+                bounding_rect.origin.y,
+                bounding_rect.max_x() + GRAPH_PADDING + 200.0,
+                bounding_rect.origin.y + tags_present.len() as f32 * PADDED_LEGEND_SIZE + GRAPH_PADDING,
+                ColorU::new(25, 25, 25, 200),
+                ColorU::new(51, 51, 51, 200),
+            );
+        }
+
+        for (i, (label, &color)) in tags_present.iter().enumerate() {
+            let x0 = bounding_rect.origin.x + bounding_rect.size.width + GRAPH_PADDING * 2.0;
+            let y0 = bounding_rect.origin.y + GRAPH_PADDING + i as f32 * PADDED_LEGEND_SIZE;
+
+            debug_renderer.add_quad(
+                x0, y0, x0 + LEGEND_SIZE, y0 + LEGEND_SIZE,
+                color.into(),
+                color.into(),
+            );
+
+            debug_renderer.add_text(
+                x0 + PADDED_LEGEND_SIZE,
+                y0 + LEGEND_SIZE * 0.75,
+                label,
+                ColorU::new(255, 255, 0, 255),
+            );
         }
 
         bounding_rect
     }
 }
 
-pub struct Profiler {
+#[cfg(feature = "debug_renderer")]
+struct DrawState {
     x_left: f32,
     y_left: f32,
     x_right: f32,
     y_right: f32,
+}
+
+#[cfg(feature = "debug_renderer")]
+pub struct Profiler {
+    draw_state: DrawState,
     backend_time: ProfileGraph,
     compositor_time: ProfileGraph,
     gpu_time: ProfileGraph,
@@ -634,31 +790,37 @@ pub struct Profiler {
     ipc_time: ProfileGraph,
 }
 
+#[cfg(feature = "debug_renderer")]
 impl Profiler {
-    pub fn new() -> Profiler {
+
+    pub fn new() -> Self {
         Profiler {
-            x_left: 0.0,
-            y_left: 0.0,
-            x_right: 0.0,
-            y_right: 0.0,
-            backend_time: ProfileGraph::new(600),
-            compositor_time: ProfileGraph::new(600),
-            gpu_time: ProfileGraph::new(600),
+            draw_state: DrawState {
+                x_left: 0.0,
+                y_left: 0.0,
+                x_right: 0.0,
+                y_right: 0.0,
+            },
+            backend_time: ProfileGraph::new(600, "Backend:"),
+            compositor_time: ProfileGraph::new(600, "Compositor:"),
+            gpu_time: ProfileGraph::new(600, "GPU:"),
             gpu_frames: GpuFrameCollection::new(),
-            ipc_time: ProfileGraph::new(600),
+            ipc_time: ProfileGraph::new(600, "IPC:"),
         }
     }
 
-    fn draw_counters(&mut self,
-                     counters: &[&ProfileCounter],
-                     debug_renderer: &mut DebugRenderer,
-                     left: bool) {
+    fn draw_counters<T: ProfileCounter + ?Sized>(
+        counters: &[&T],
+        debug_renderer: &mut DebugRenderer,
+        left: bool,
+        draw_state: &mut DrawState,
+    ) {
         let mut label_rect = Rect::zero();
         let mut value_rect = Rect::zero();
         let (mut current_x, mut current_y) = if left {
-            (self.x_left, self.y_left)
+            (draw_state.x_left, draw_state.y_left)
         } else {
-            (self.x_right, self.y_right)
+            (draw_state.x_right, draw_state.y_right)
         };
         let mut color_index = 0;
         let line_height = debug_renderer.line_height();
@@ -669,11 +831,13 @@ impl Profiler {
         ];
 
         for counter in counters {
-            let rect = debug_renderer.add_text(current_x,
-                                               current_y,
-                                               counter.description(),
-                                               colors[color_index]);
-            color_index = (color_index+1) % colors.len();
+            let rect = debug_renderer.add_text(
+                current_x,
+                current_y,
+                counter.description(),
+                colors[color_index],
+            );
+            color_index = (color_index + 1) % colors.len();
 
             label_rect = label_rect.union(&rect);
             current_y += line_height;
@@ -681,123 +845,372 @@ impl Profiler {
 
         color_index = 0;
         current_x = label_rect.origin.x + label_rect.size.width + 60.0;
-        current_y = if left {
-            self.y_left
-        } else {
-            self.y_right
-        };
+        current_y = if left { draw_state.y_left } else { draw_state.y_right };
 
         for counter in counters {
-            let rect = debug_renderer.add_text(current_x,
-                                                    current_y,
-                                                    &counter.value(),
-                                                    colors[color_index]);
-            color_index = (color_index+1) % colors.len();
+            let rect = debug_renderer.add_text(
+                current_x,
+                current_y,
+                &counter.value(),
+                colors[color_index],
+            );
+            color_index = (color_index + 1) % colors.len();
 
             value_rect = value_rect.union(&rect);
             current_y += line_height;
         }
 
         let total_rect = label_rect.union(&value_rect).inflate(10.0, 10.0);
-        debug_renderer.add_quad(total_rect.origin.x,
-                                total_rect.origin.y,
-                                total_rect.origin.x + total_rect.size.width,
-                                total_rect.origin.y + total_rect.size.height,
-                                ColorF::new(0.1, 0.1, 0.1, 0.8).into(),
-                                ColorF::new(0.2, 0.2, 0.2, 0.8).into());
+        debug_renderer.add_quad(
+            total_rect.origin.x,
+            total_rect.origin.y,
+            total_rect.origin.x + total_rect.size.width,
+            total_rect.origin.y + total_rect.size.height,
+            ColorF::new(0.1, 0.1, 0.1, 0.8).into(),
+            ColorF::new(0.2, 0.2, 0.2, 0.8).into(),
+        );
         let new_y = total_rect.origin.y + total_rect.size.height + 30.0;
         if left {
-            self.y_left = new_y;
+            draw_state.y_left = new_y;
         } else {
-            self.y_right = new_y;
+            draw_state.y_right = new_y;
         }
     }
 
-    pub fn draw_profile(&mut self,
-                        device: &mut Device,
-                        frame_profile: &FrameProfileCounters,
-                        backend_profile: &BackendProfileCounters,
-                        renderer_profile: &RendererProfileCounters,
-                        renderer_timers: &mut RendererProfileTimers,
-                        debug_renderer: &mut DebugRenderer) {
+    fn draw_bar(
+        &mut self,
+        label: &str,
+        label_color: ColorU,
+        counters: &[(ColorU, &IntProfileCounter)],
+        debug_renderer: &mut DebugRenderer,
+    ) -> Rect<f32> {
+        let mut rect = debug_renderer.add_text(
+            self.draw_state.x_left,
+            self.draw_state.y_left,
+            label,
+            label_color,
+        );
 
-        let _gm = GpuMarker::new(device.rc_gl(), "profile");
-        self.x_left = 20.0;
-        self.y_left = 40.0;
-        self.x_right = 400.0;
-        self.y_right = 40.0;
+        let x_base = rect.origin.x + rect.size.width + 10.0;
+        let height = debug_renderer.line_height();
+        let width = (self.draw_state.x_right - 30.0 - x_base).max(0.0);
+        let total_value = counters.last().unwrap().1.value;
+        let scale = width / total_value as f32;
+        let mut x_current = x_base;
+
+        for &(color, counter) in counters {
+            let x_stop = x_base + counter.value as f32 * scale;
+            debug_renderer.add_quad(
+                x_current,
+                rect.origin.y,
+                x_stop,
+                rect.origin.y + height,
+                color,
+                color,
+            );
+            x_current = x_stop;
+        }
+
+        self.draw_state.y_left += height;
+
+        rect.size.width += width + 10.0;
+        rect
+    }
+
+    fn draw_gpu_cache_bars(
+        &mut self,
+        counters: &GpuCacheProfileCounters,
+        debug_renderer: &mut DebugRenderer,
+    ) {
+        let color_updated = ColorU::new(0xFF, 0, 0, 0xFF);
+        let color_free = ColorU::new(0, 0, 0xFF, 0xFF);
+        let color_saved = ColorU::new(0, 0xFF, 0, 0xFF);
+
+        let requested_blocks = IntProfileCounter {
+            description: "",
+            value: counters.updated_blocks.value + counters.saved_blocks.value,
+        };
+        let total_blocks = IntProfileCounter {
+            description: "",
+            value: counters.allocated_rows.value * MAX_VERTEX_TEXTURE_WIDTH,
+        };
+
+        let rect0 = self.draw_bar(
+            &format!("GPU cache rows ({}):", counters.allocated_rows.value),
+            ColorU::new(0xFF, 0xFF, 0xFF, 0xFF),
+            &[
+                (color_updated, &counters.updated_rows),
+                (color_free, &counters.allocated_rows),
+            ],
+            debug_renderer,
+        );
+
+        let rect1 = self.draw_bar(
+            "GPU cache blocks",
+            ColorU::new(0xFF, 0xFF, 0, 0xFF),
+            &[
+                (color_updated, &counters.updated_blocks),
+                (color_saved, &requested_blocks),
+                (color_free, &counters.allocated_blocks),
+                (ColorU::new(0, 0, 0, 0xFF), &total_blocks),
+            ],
+            debug_renderer,
+        );
+
+        let total_rect = rect0.union(&rect1).inflate(10.0, 10.0);
+        debug_renderer.add_quad(
+            total_rect.origin.x,
+            total_rect.origin.y,
+            total_rect.origin.x + total_rect.size.width,
+            total_rect.origin.y + total_rect.size.height,
+            ColorF::new(0.1, 0.1, 0.1, 0.8).into(),
+            ColorF::new(0.2, 0.2, 0.2, 0.8).into(),
+        );
+
+        self.draw_state.y_left = total_rect.origin.y + total_rect.size.height + 30.0;
+    }
+
+    fn draw_frame_bars(
+        &mut self,
+        counters: &FrameProfileCounters,
+        debug_renderer: &mut DebugRenderer,
+    ) {
+        let rect0 = self.draw_bar(
+            &format!("primitives ({}):", counters.total_primitives.value),
+            ColorU::new(0xFF, 0xFF, 0xFF, 0xFF),
+            &[
+                (ColorU::new(0, 0, 0xFF, 0xFF), &counters.visible_primitives),
+                (ColorU::new(0, 0, 0, 0xFF), &counters.total_primitives),
+            ],
+            debug_renderer,
+        );
+
+        let rect1 = self.draw_bar(
+            &format!("GPU targets ({}):", &counters.targets_used.value),
+            ColorU::new(0xFF, 0xFF, 0, 0xFF),
+            &[
+                (ColorU::new(0, 0, 0xFF, 0xFF), &counters.targets_created),
+                (ColorU::new(0xFF, 0, 0, 0xFF), &counters.targets_changed),
+                (ColorU::new(0, 0xFF, 0, 0xFF), &counters.targets_used),
+            ],
+            debug_renderer,
+        );
+
+        let total_rect = rect0.union(&rect1).inflate(10.0, 10.0);
+        debug_renderer.add_quad(
+            total_rect.origin.x,
+            total_rect.origin.y,
+            total_rect.origin.x + total_rect.size.width,
+            total_rect.origin.y + total_rect.size.height,
+            ColorF::new(0.1, 0.1, 0.1, 0.8).into(),
+            ColorF::new(0.2, 0.2, 0.2, 0.8).into(),
+        );
+
+        self.draw_state.y_left = total_rect.origin.y + total_rect.size.height + 30.0;
+    }
+
+    fn draw_compact_profile(
+        &mut self,
+        renderer_profile: &RendererProfileCounters,
+        debug_renderer: &mut DebugRenderer,
+    ) {
+        Profiler::draw_counters(
+            &[
+                &renderer_profile.frame_time as &ProfileCounter,
+                &renderer_profile.color_targets,
+                &renderer_profile.alpha_targets,
+                &renderer_profile.draw_calls,
+                &renderer_profile.vertices,
+                &self.backend_time,
+                &self.compositor_time,
+                &self.gpu_time,
+            ],
+            debug_renderer,
+            true,
+            &mut self.draw_state,
+        );
+    }
+
+    fn draw_full_profile(
+        &mut self,
+        frame_profiles: &[FrameProfileCounters],
+        backend_profile: &BackendProfileCounters,
+        renderer_profile: &RendererProfileCounters,
+        renderer_timers: &mut RendererProfileTimers,
+        gpu_samplers: &[GpuSampler<GpuProfileTag>],
+        screen_fraction: f32,
+        debug_renderer: &mut DebugRenderer,
+    ) {
+        Profiler::draw_counters(
+            &[
+                &renderer_profile.frame_time as &ProfileCounter,
+                &renderer_profile.frame_counter,
+                &renderer_profile.color_targets,
+                &renderer_profile.alpha_targets,
+            ],
+            debug_renderer,
+            true,
+            &mut self.draw_state
+        );
+
+        self.draw_gpu_cache_bars(
+            &backend_profile.resources.gpu_cache,
+            debug_renderer,
+        );
+
+        Profiler::draw_counters(
+            &[
+                &backend_profile.resources.font_templates,
+                &backend_profile.resources.image_templates,
+            ],
+            debug_renderer,
+            true,
+            &mut self.draw_state
+        );
+
+        Profiler::draw_counters(
+            &[
+                &backend_profile.resources.texture_cache.pages_a8_linear,
+                &backend_profile.resources.texture_cache.pages_rgba8_linear,
+                &backend_profile.resources.texture_cache.pages_rgba8_nearest,
+                &backend_profile.ipc.display_lists,
+            ],
+            debug_renderer,
+            true,
+            &mut self.draw_state
+        );
+
+        Profiler::draw_counters(
+            &[
+                &backend_profile.ipc.build_time,
+                &backend_profile.ipc.send_time,
+                &backend_profile.ipc.consume_time,
+                &backend_profile.ipc.total_time,
+            ],
+            debug_renderer,
+            true,
+            &mut self.draw_state
+        );
+
+        for frame_profile in frame_profiles {
+            self.draw_frame_bars(frame_profile, debug_renderer);
+        }
+
+        Profiler::draw_counters(
+            &[&renderer_profile.draw_calls, &renderer_profile.vertices],
+            debug_renderer,
+            true,
+            &mut self.draw_state
+        );
+
+        Profiler::draw_counters(
+            &[
+                &backend_profile.total_time,
+                &renderer_timers.cpu_time,
+                &renderer_timers.gpu_time,
+            ],
+            debug_renderer,
+            false,
+            &mut self.draw_state
+        );
+
+        if !gpu_samplers.is_empty() {
+            let mut samplers = Vec::<FloatProfileCounter>::new();
+            // Gathering unique GPU samplers. This has O(N^2) complexity,
+            // but we only have a few samplers per target.
+            for sampler in gpu_samplers {
+                let value = sampler.count as f32 * screen_fraction;
+                match samplers.iter().position(|s| {
+                    s.description as *const _ == sampler.tag.label as *const _
+                }) {
+                    Some(pos) => samplers[pos].value += value,
+                    None => samplers.push(FloatProfileCounter {
+                        description: sampler.tag.label,
+                        value,
+                    }),
+                }
+            }
+            let samplers: Vec<&ProfileCounter> = samplers.iter().map(|sampler| {
+                sampler as &ProfileCounter
+            }).collect();
+            Profiler::draw_counters(
+                &samplers,
+                debug_renderer,
+                false,
+                &mut self.draw_state,
+            );
+        }
+
+        let rect =
+            self.backend_time
+                .draw_graph(self.draw_state.x_right, self.draw_state.y_right, "CPU (backend)", debug_renderer);
+        self.draw_state.y_right += rect.size.height + PROFILE_PADDING;
+        let rect = self.compositor_time.draw_graph(
+            self.draw_state.x_right,
+            self.draw_state.y_right,
+            "CPU (compositor)",
+            debug_renderer,
+        );
+        self.draw_state.y_right += rect.size.height + PROFILE_PADDING;
+        let rect =
+            self.ipc_time
+                .draw_graph(self.draw_state.x_right, self.draw_state.y_right, "DisplayList IPC", debug_renderer);
+        self.draw_state.y_right += rect.size.height + PROFILE_PADDING;
+        let rect = self.gpu_time
+            .draw_graph(self.draw_state.x_right, self.draw_state.y_right, "GPU", debug_renderer);
+        self.draw_state.y_right += rect.size.height + PROFILE_PADDING;
+        let rect = self.gpu_frames
+            .draw(self.draw_state.x_left, f32::max(self.draw_state.y_left, self.draw_state.y_right), debug_renderer);
+        self.draw_state.y_right += rect.size.height + PROFILE_PADDING;
+    }
+
+    pub fn draw_profile(
+        &mut self,
+        frame_profiles: &[FrameProfileCounters],
+        backend_profile: &BackendProfileCounters,
+        renderer_profile: &RendererProfileCounters,
+        renderer_timers: &mut RendererProfileTimers,
+        gpu_samplers: &[GpuSampler<GpuProfileTag>],
+        screen_fraction: f32,
+        debug_renderer: &mut DebugRenderer,
+        compact: bool,
+    ) {
+        self.draw_state.x_left = 20.0;
+        self.draw_state.y_left = 40.0;
+        self.draw_state.x_right = 450.0;
+        self.draw_state.y_right = 40.0;
 
         let mut gpu_time = 0;
-        let gpu_samples = mem::replace(&mut renderer_timers.gpu_samples, Vec::new());
-        for sample in &gpu_samples {
+        let gpu_timers = mem::replace(&mut renderer_timers.gpu_samples, Vec::new());
+        for sample in &gpu_timers {
             gpu_time += sample.time_ns;
         }
         renderer_timers.gpu_time.set(gpu_time);
 
-        self.draw_counters(&[
-            &renderer_profile.frame_counter,
-            &renderer_profile.frame_time,
-        ], debug_renderer, true);
-
-        self.draw_counters(&[
-            &frame_profile.total_primitives,
-            &frame_profile.visible_primitives,
-            &frame_profile.passes,
-            &frame_profile.color_targets,
-            &frame_profile.alpha_targets,
-            &backend_profile.resources.gpu_cache.allocated_rows,
-            &backend_profile.resources.gpu_cache.allocated_blocks,
-        ], debug_renderer, true);
-
-        self.draw_counters(&[
-            &backend_profile.resources.font_templates,
-            &backend_profile.resources.image_templates,
-        ], debug_renderer, true);
-
-        self.draw_counters(&[
-            &backend_profile.resources.texture_cache.pages_a8,
-            &backend_profile.resources.texture_cache.pages_rgb8,
-            &backend_profile.resources.texture_cache.pages_rgba8,
-            &backend_profile.resources.texture_cache.pages_rg8,
-        ], debug_renderer, true);
-
-        self.draw_counters(&[
-            &backend_profile.ipc.build_time,
-            &backend_profile.ipc.send_time,
-            &backend_profile.ipc.consume_time,
-            &backend_profile.ipc.total_time,
-            &backend_profile.ipc.display_lists,
-        ], debug_renderer, true);
-
-        self.draw_counters(&[
-            &renderer_profile.draw_calls,
-            &renderer_profile.vertices,
-        ], debug_renderer, true);
-
-        self.draw_counters(&[
-            &backend_profile.total_time,
-            &renderer_timers.cpu_time,
-            &renderer_timers.gpu_time,
-        ], debug_renderer, false);
-
-        self.backend_time.push(backend_profile.total_time.nanoseconds);
-        self.compositor_time.push(renderer_timers.cpu_time.nanoseconds);
-        self.ipc_time.push(backend_profile.ipc.total_time.nanoseconds);
+        self.backend_time
+            .push(backend_profile.total_time.nanoseconds);
+        self.compositor_time
+            .push(renderer_timers.cpu_time.nanoseconds);
+        self.ipc_time
+            .push(backend_profile.ipc.total_time.nanoseconds);
         self.gpu_time.push(gpu_time);
-        self.gpu_frames.push(gpu_time, gpu_samples);
+        self.gpu_frames.push(gpu_time, gpu_timers);
 
-
-        let rect = self.backend_time.draw_graph(self.x_left, self.y_left, "CPU (backend)", debug_renderer);
-        self.y_left += rect.size.height + PROFILE_PADDING;
-        let rect = self.compositor_time.draw_graph(self.x_left, self.y_left, "CPU (compositor)", debug_renderer);
-        self.y_left += rect.size.height + PROFILE_PADDING;
-        let rect = self.ipc_time.draw_graph(self.x_left, self.y_left, "DisplayList IPC", debug_renderer);
-        self.y_left += rect.size.height + PROFILE_PADDING;
-        let rect = self.gpu_time.draw_graph(self.x_left, self.y_left, "GPU", debug_renderer);
-        self.y_left += rect.size.height + PROFILE_PADDING;
-        let rect = self.gpu_frames.draw(self.x_left,
-                                        self.y_left,
-                                        debug_renderer);
-        self.y_left += rect.size.height + PROFILE_PADDING;
+        if compact {
+            self.draw_compact_profile(
+                renderer_profile,
+                debug_renderer,
+            );
+        } else {
+            self.draw_full_profile(
+                frame_profiles,
+                backend_profile,
+                renderer_profile,
+                renderer_timers,
+                gpu_samplers,
+                screen_fraction,
+                debug_renderer,
+            );
+        }
     }
 }

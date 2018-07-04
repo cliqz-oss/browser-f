@@ -6,8 +6,10 @@ es6id: 13.1
 description: >
     const declarations mixed: without, with initialiser
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 const x, y = 1;
 

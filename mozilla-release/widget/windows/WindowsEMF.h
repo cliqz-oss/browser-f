@@ -44,18 +44,32 @@ public:
   bool InitFromFileContents(const wchar_t* aMetafilePath);
 
   /**
+   * Creates the EMF from the specified data
+   *
+   * @param aByte Pointer to a buffer that contains EMF data.
+   * @param aSize Specifies the size, in bytes, of aByte.
+   */
+  bool InitFromFileContents(PBYTE aBytes, UINT aSize);
+
+  /**
    * If this object was initiaziled using InitForDrawing() then this function
    * returns an HDC that can be drawn to generate the EMF output. Otherwise it
    * returns null. After finishing with the HDC, consumers could call Playback()
    * to draw EMF onto the given DC or call SaveToFile() to finish writing the
    * EMF file.
    */
-  HDC GetDC() { return mDC; }
+  HDC GetDC() const
+  {
+    MOZ_ASSERT(mDC, "GetDC can be used only after "
+                    "InitForDrawing/ InitFromFileContents and before"
+                    "Playback/ SaveToFile");
+    return mDC;
+  }
 
   /**
    * Play the EMF's drawing commands onto the given DC.
    */
-  bool Playback(HDC aDeviceContext, const RECT* aRect);
+  bool Playback(HDC aDeviceContext, const RECT& aRect);
 
   /**
    * Called to generate the EMF file once a consumer has finished drawing to
@@ -64,11 +78,24 @@ public:
    */
   bool SaveToFile();
 
+  /**
+   * Return the size of the enhanced metafile, in bytes.
+   */
+  UINT GetEMFContentSize();
+
+  /**
+   * Retrieves the contents of the EMF and copies them into a buffer.
+   *
+   * @param aByte the buffer to receive the data.
+   */
+  bool GetEMFContentBits(PBYTE aBytes);
+
 private:
 
   WindowsEMF(const WindowsEMF& aEMF) = delete;
   bool FinishDocument();
   void ReleaseEMFHandle();
+  void ReleaseAllResource();
 
   /* Compiled EMF data handle. */
   HENHMETAFILE mEmf;

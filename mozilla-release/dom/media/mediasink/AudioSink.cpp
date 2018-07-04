@@ -13,7 +13,7 @@
 #include "mozilla/CheckedInt.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/IntegerPrintfMacros.h"
-#include "MediaPrefs.h"
+#include "mozilla/StaticPrefs.h"
 
 namespace mozilla {
 
@@ -34,11 +34,9 @@ static const int32_t LOW_AUDIO_USECS = 300000;
 AudioSink::AudioSink(AbstractThread* aThread,
                      MediaQueue<AudioData>& aAudioQueue,
                      const TimeUnit& aStartTime,
-                     const AudioInfo& aInfo,
-                     dom::AudioChannel aChannel)
+                     const AudioInfo& aInfo)
   : mStartTime(aStartTime)
   , mInfo(aInfo)
-  , mChannel(aChannel)
   , mPlaying(true)
   , mMonitor("AudioSink")
   , mWritten(0)
@@ -50,10 +48,10 @@ AudioSink::AudioSink(AbstractThread* aThread,
   , mIsAudioDataAudible(false)
   , mAudioQueue(aAudioQueue)
 {
-  bool resampling = MediaPrefs::AudioSinkResampling();
+  bool resampling = StaticPrefs::MediaResamplingEnabled();
 
   if (resampling) {
-    mOutputRate = MediaPrefs::AudioSinkResampleRate();
+    mOutputRate = 48000;
   } else if (mInfo.mRate == 44100 || mInfo.mRate == 48000) {
     // The original rate is of good quality and we want to minimize unecessary
     // resampling. The common scenario being that the sampling rate is one or
@@ -66,12 +64,7 @@ AudioSink::AudioSink(AbstractThread* aThread,
   }
   MOZ_DIAGNOSTIC_ASSERT(mOutputRate, "output rate can't be 0.");
 
-  bool monoAudioEnabled = MediaPrefs::MonoAudio();
-
-  mOutputChannels =
-    monoAudioEnabled
-    ? 1
-    : (MediaPrefs::AudioSinkForceStereo() ? 2 : mInfo.mChannels);
+  mOutputChannels = DecideAudioPlaybackChannels(mInfo);
 }
 
 AudioSink::~AudioSink()
@@ -197,13 +190,14 @@ AudioSink::InitializeAudioStream(const PlaybackParams& aParams)
   mAudioStream = new AudioStream(*this);
   // When AudioQueue is empty, there is no way to know the channel layout of
   // the coming audio data, so we use the predefined channel map instead.
-  uint32_t channelMap = mConverter
-                        ? mConverter->OutputConfig().Layout().Map()
-                        : AudioStream::GetPreferredChannelMap(mOutputChannels);
+  AudioConfig::ChannelLayout::ChannelMap channelMap =
+    mConverter ? mConverter->OutputConfig().Layout().Map()
+               : AudioConfig::ChannelLayout(mOutputChannels).Map();
   // The layout map used here is already processed by mConverter with
   // mOutputChannels into SMPTE format, so there is no need to worry if
-  // MediaPrefs::MonoAudio() or MediaPrefs::AudioSinkForceStereo() is applied.
-  nsresult rv = mAudioStream->Init(mOutputChannels, channelMap, mOutputRate, mChannel);
+  // StaticPrefs::accessibility_monoaudio_enable() or
+  // StaticPrefs::MediaForcestereoEnabled() is applied.
+  nsresult rv = mAudioStream->Init(mOutputChannels, channelMap, mOutputRate);
   if (NS_FAILED(rv)) {
     mAudioStream->Shutdown();
     mAudioStream = nullptr;
@@ -246,11 +240,11 @@ AudioSink::PopFrames(uint32_t aFrames)
     Chunk(AudioData* aBuffer, uint32_t aFrames, AudioDataValue* aData)
       : mBuffer(aBuffer), mFrames(aFrames), mData(aData) {}
     Chunk() : mFrames(0), mData(nullptr) {}
-    const AudioDataValue* Data() const { return mData; }
-    uint32_t Frames() const { return mFrames; }
-    uint32_t Channels() const { return mBuffer ? mBuffer->mChannels: 0; }
-    uint32_t Rate() const { return mBuffer ? mBuffer->mRate : 0; }
-    AudioDataValue* GetWritable() const { return mData; }
+    const AudioDataValue* Data() const override { return mData; }
+    uint32_t Frames() const override { return mFrames; }
+    uint32_t Channels() const override { return mBuffer ? mBuffer->mChannels: 0; }
+    uint32_t Rate() const override { return mBuffer ? mBuffer->mRate : 0; }
+    AudioDataValue* GetWritable() const override { return mData; }
   private:
     const RefPtr<AudioData> mBuffer;
     const uint32_t mFrames;
@@ -397,10 +391,17 @@ AudioSink::NotifyAudioNeeded()
         mFramesParsed = result.value();
       }
 
-      mConverter =
-        MakeUnique<AudioConverter>(
-          AudioConfig(data->mChannels, data->mRate),
-          AudioConfig(mOutputChannels, mOutputRate));
+      const AudioConfig::ChannelLayout inputLayout =
+        data->mChannelMap
+          ? AudioConfig::ChannelLayout::SMPTEDefault(data->mChannelMap)
+          : AudioConfig::ChannelLayout(data->mChannels);
+      const AudioConfig::ChannelLayout outputLayout =
+        mOutputChannels == data->mChannels
+          ? inputLayout
+          : AudioConfig::ChannelLayout(mOutputChannels);
+      mConverter = MakeUnique<AudioConverter>(
+        AudioConfig(inputLayout, data->mChannels, data->mRate),
+        AudioConfig(outputLayout, mOutputChannels, mOutputRate));
     }
 
     // See if there's a gap in the audio. If there is, push silence into the
@@ -426,28 +427,21 @@ AudioSink::NotifyAudioNeeded()
       missingFrames = std::min<int64_t>(INT32_MAX, missingFrames.value());
       mFramesParsed += missingFrames.value();
 
-      // We need to calculate how many frames are missing at the output rate.
-      missingFrames =
-        SaferMultDiv(missingFrames.value(), mOutputRate, data->mRate);
-      if (!missingFrames.isValid()) {
-        NS_WARNING("Int overflow in AudioSink");
-        mErrored = true;
-        return;
+      RefPtr<AudioData> silenceData;
+      AlignedAudioBuffer silenceBuffer(missingFrames.value() * data->mChannels);
+       if (!silenceBuffer) {
+         NS_WARNING("OOM in AudioSink");
+         mErrored = true;
+         return;
+       }
+      if (mConverter->InputConfig() != mConverter->OutputConfig()) {
+        AlignedAudioBuffer convertedData =
+          mConverter->Process(AudioSampleBuffer(Move(silenceBuffer))).Forget();
+        silenceData = CreateAudioFromBuffer(Move(convertedData), data);
+      } else {
+        silenceData = CreateAudioFromBuffer(Move(silenceBuffer), data);
       }
-
-      // We need to insert silence, first use drained frames if any.
-      missingFrames -= DrainConverter(missingFrames.value());
-      // Insert silence if still needed.
-      if (missingFrames.value()) {
-        AlignedAudioBuffer silenceData(missingFrames.value() * mOutputChannels);
-        if (!silenceData) {
-          NS_WARNING("OOM in AudioSink");
-          mErrored = true;
-          return;
-        }
-        RefPtr<AudioData> silence = CreateAudioFromBuffer(Move(silenceData), data);
-        PushProcessedAudio(silence);
-      }
+      PushProcessedAudio(silenceData);
     }
 
     mLastEndTime = data->GetEndTime();
@@ -488,7 +482,7 @@ AudioSink::PushProcessedAudio(AudioData* aData)
 
 already_AddRefed<AudioData>
 AudioSink::CreateAudioFromBuffer(AlignedAudioBuffer&& aBuffer,
-                                            AudioData* aReference)
+                                 AudioData* aReference)
 {
   uint32_t frames = aBuffer.Length() / mOutputChannels;
   if (!frames) {
@@ -542,6 +536,23 @@ AudioSink::DrainConverter(uint32_t aMaxFrames)
   }
   mProcessedQueue.Push(data);
   return data->mFrames;
+}
+
+nsCString
+AudioSink::GetDebugInfo()
+{
+  MOZ_ASSERT(mOwnerThread->IsCurrentThreadIn());
+  return nsPrintfCString("AudioSink: StartTime=%" PRId64
+                         " LastGoodPosition=%" PRId64
+                         " Playing=%d  OutputRate=%u Written=%" PRId64
+                         " Errored=%d PlaybackComplete=%d",
+                         mStartTime.ToMicroseconds(),
+                         mLastGoodPosition.ToMicroseconds(),
+                         mPlaying,
+                         mOutputRate,
+                         mWritten,
+                         bool(mErrored),
+                         bool(mPlaybackComplete));
 }
 
 } // namespace media

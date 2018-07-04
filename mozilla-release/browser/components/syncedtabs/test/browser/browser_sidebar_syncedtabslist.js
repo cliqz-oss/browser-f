@@ -6,7 +6,7 @@ const FIXTURE = [
     "type": "client",
     "lastModified": 1492201200,
     "name": "zcarter's Nightly on MacBook-Pro-25",
-    "isMobile": false,
+    "clientType": "desktop",
     "tabs": [
       {
         "type": "tab",
@@ -23,7 +23,7 @@ const FIXTURE = [
     "type": "client",
     "lastModified": 1492201200,
     "name": "laptop",
-    "isMobile": false,
+    "clientType": "desktop",
     "tabs": [
       {
         "type": "tab",
@@ -57,7 +57,7 @@ const FIXTURE = [
     "type": "client",
     "lastModified": 1492201200,
     "name": "desktop",
-    "isMobile": false,
+    "clientType": "desktop",
     "tabs": []
   }
 ];
@@ -67,7 +67,7 @@ let originalSyncedTabsInternal = null;
 async function testClean() {
   let syncedTabsDeckComponent = window.SidebarUI.browser.contentWindow.syncedTabsDeckComponent;
   let SyncedTabs = window.SidebarUI.browser.contentWindow.SyncedTabs;
-  syncedTabsDeckComponent._accountStatus.restore();
+  syncedTabsDeckComponent._getSignedInUser.restore();
   SyncedTabs._internal.getTabClients.restore();
   SyncedTabs._internal = originalSyncedTabsInternal;
 
@@ -93,11 +93,11 @@ add_task(async function testSyncedTabsSidebarList() {
   SyncedTabs._internal = {
     isConfiguredToSyncTabs: true,
     hasSyncedThisSession: true,
-    getTabClients() { return Promise.resolve([]) },
+    getTabClients() { return Promise.resolve([]); },
     syncTabs() { return Promise.resolve(); },
   };
 
-  sinon.stub(syncedTabsDeckComponent, "_accountStatus", () => Promise.resolve(true));
+  sinon.stub(syncedTabsDeckComponent, "_getSignedInUser", () => Promise.resolve({verified: true}));
   sinon.stub(SyncedTabs._internal, "getTabClients", () => Promise.resolve(Cu.cloneInto(FIXTURE, {})));
 
   await syncedTabsDeckComponent.updatePanel();
@@ -146,11 +146,11 @@ add_task(async function testSyncedTabsSidebarFilteredList() {
   SyncedTabs._internal = {
     isConfiguredToSyncTabs: true,
     hasSyncedThisSession: true,
-    getTabClients() { return Promise.resolve([]) },
+    getTabClients() { return Promise.resolve([]); },
     syncTabs() { return Promise.resolve(); },
   };
 
-  sinon.stub(syncedTabsDeckComponent, "_accountStatus", () => Promise.resolve(true));
+  sinon.stub(syncedTabsDeckComponent, "_getSignedInUser", () => Promise.resolve({verified: true}));
   sinon.stub(SyncedTabs._internal, "getTabClients", () => Promise.resolve(Cu.cloneInto(FIXTURE, {})));
 
   await syncedTabsDeckComponent.updatePanel();
@@ -195,7 +195,7 @@ add_task(async function testSyncedTabsSidebarFilteredList() {
 add_task(testClean);
 
 add_task(async function testSyncedTabsSidebarStatus() {
-  let accountExists = false;
+  let account = null;
 
   await SidebarUI.show("viewTabsSidebar");
   let syncedTabsDeckComponent = window.SidebarUI.browser.contentWindow.syncedTabsDeckComponent;
@@ -203,6 +203,7 @@ add_task(async function testSyncedTabsSidebarStatus() {
 
   originalSyncedTabsInternal = SyncedTabs._internal;
   SyncedTabs._internal = {
+    loginFailed: false,
     isConfiguredToSyncTabs: false,
     hasSyncedThisSession: false,
     getTabClients() {},
@@ -214,21 +215,35 @@ add_task(async function testSyncedTabsSidebarStatus() {
   sinon.spy(syncedTabsDeckComponent, "updatePanel");
   sinon.spy(syncedTabsDeckComponent, "observe");
 
-  sinon.stub(syncedTabsDeckComponent, "_accountStatus", () => Promise.reject("Test error"));
+  sinon.stub(syncedTabsDeckComponent, "_getSignedInUser", () => Promise.reject("Test error"));
   await syncedTabsDeckComponent.updatePanel();
 
   let selectedPanel = syncedTabsDeckComponent.container.querySelector(".sync-state.selected");
   Assert.ok(selectedPanel.classList.contains("notAuthedInfo"),
     "not-authed panel is selected on auth error");
 
-  syncedTabsDeckComponent._accountStatus.restore();
-  sinon.stub(syncedTabsDeckComponent, "_accountStatus", () => Promise.resolve(accountExists));
+  syncedTabsDeckComponent._getSignedInUser.restore();
+  sinon.stub(syncedTabsDeckComponent, "_getSignedInUser", () => Promise.resolve(account));
   await syncedTabsDeckComponent.updatePanel();
   selectedPanel = syncedTabsDeckComponent.container.querySelector(".sync-state.selected");
   Assert.ok(selectedPanel.classList.contains("notAuthedInfo"),
     "not-authed panel is selected");
 
-  accountExists = true;
+  account = {verified: false};
+  await syncedTabsDeckComponent.updatePanel();
+  selectedPanel = syncedTabsDeckComponent.container.querySelector(".sync-state.selected");
+  Assert.ok(selectedPanel.classList.contains("unverified"),
+    "unverified panel is selected");
+
+  SyncedTabs._internal.loginFailed = true;
+  account = {verified: true};
+  await syncedTabsDeckComponent.updatePanel();
+  selectedPanel = syncedTabsDeckComponent.container.querySelector(".sync-state.selected");
+  Assert.ok(selectedPanel.classList.contains("reauth"),
+    "reauth panel is selected");
+  SyncedTabs._internal.loginFailed = false;
+
+  account = {verified: true};
   await syncedTabsDeckComponent.updatePanel();
   selectedPanel = syncedTabsDeckComponent.container.querySelector(".sync-state.selected");
   Assert.ok(selectedPanel.classList.contains("tabs-disabled"),
@@ -268,11 +283,11 @@ add_task(async function testSyncedTabsSidebarContextMenu() {
   SyncedTabs._internal = {
     isConfiguredToSyncTabs: true,
     hasSyncedThisSession: true,
-    getTabClients() { return Promise.resolve([]) },
+    getTabClients() { return Promise.resolve([]); },
     syncTabs() { return Promise.resolve(); },
   };
 
-  sinon.stub(syncedTabsDeckComponent, "_accountStatus", () => Promise.resolve(true));
+  sinon.stub(syncedTabsDeckComponent, "_getSignedInUser", () => Promise.resolve({verified: true}));
   sinon.stub(SyncedTabs._internal, "getTabClients", () => Promise.resolve(Cu.cloneInto(FIXTURE, {})));
 
   await syncedTabsDeckComponent.updatePanel();

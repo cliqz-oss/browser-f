@@ -38,6 +38,17 @@ const SEARCH_ENGINE_DETAILS = [{
   },
   name: "DuckDuckGo",
 }, {
+  alias: "e",
+  baseURL: "https://rover.ebay.com/rover/1/711-53200-19255-0/1?ff3=4&toolid=20004&campid=5338192028&customid=&mpre=https://www.ebay.com/sch/foo",
+  codes: {
+    context: "",
+    keyword: "",
+    newTab: "",
+    submission: "",
+  },
+  name: "eBay",
+},
+// {
 // TODO: Google is tested in browser_google_behaviors.js - we can't test it here
 // yet because of bug 1315953.
 //   alias: "g",
@@ -49,62 +60,23 @@ const SEARCH_ENGINE_DETAILS = [{
 //     submission: "",
 //   },
 //   name: "Google",
-// }, {
-  alias: "y",
-  baseURL: "https://search.yahoo.com/yhs/search?p=foo&ei=UTF-8&hspart=mozilla",
-  codes: {
-    context: "&hsimp=yhs-005",
-    keyword: "&hsimp=yhs-002",
-    newTab: "&hsimp=yhs-004",
-    submission: "&hsimp=yhs-001",
-  },
-  name: "Yahoo",
-}];
+// },
+];
 
-function promiseStateChangeURI() {
-  return new Promise(resolve => {
-    let listener = {
-      onStateChange: function onStateChange(webProgress, req, flags, status) {
-        info("onStateChange");
-        // Only care about top-level document starts
-        let docStart = Ci.nsIWebProgressListener.STATE_IS_DOCUMENT |
-                       Ci.nsIWebProgressListener.STATE_START;
-        if (!(flags & docStart) || !webProgress.isTopLevel)
-          return;
-
-        if (req.originalURI.spec == "about:blank")
-          return;
-
-        gBrowser.removeProgressListener(listener);
-
-        info("received document start");
-
-        Assert.ok(req instanceof Ci.nsIChannel, "req is a channel");
-
-        req.cancel(Components.results.NS_ERROR_FAILURE);
-
-        executeSoon(() => {
-          resolve(req.originalURI.spec);
-        });
-      }
-    }
-
-    gBrowser.addProgressListener(listener);
-  });
-}
 
 function promiseContentSearchReady(browser) {
   return ContentTask.spawn(browser, {}, async function(args) {
-    return new Promise(resolve => {
-      content.addEventListener("ContentSearchService", function listener(aEvent) {
-        if (aEvent.detail.type == "State") {
-          content.removeEventListener("ContentSearchService", listener);
-          resolve();
-        }
-      });
-    });
+    await ContentTaskUtils.waitForCondition(() => content.wrappedJSObject.gContentSearchController &&
+      content.wrappedJSObject.gContentSearchController.defaultEngine
+    );
   });
 }
+
+add_task(async function() {
+  await SpecialPowers.pushPrefEnv({ set: [
+    ["browser.search.widget.inNavBar", true],
+  ]});
+});
 
 for (let engine of SEARCH_ENGINE_DETAILS) {
   add_task(async function() {
@@ -147,7 +119,7 @@ async function testSearchEngine(engineDetails) {
       run() {
         gURLBar.value = "? foo";
         gURLBar.focus();
-        EventUtils.synthesizeKey("VK_RETURN", {});
+        EventUtils.synthesizeKey("KEY_Enter");
       }
     },
     {
@@ -156,7 +128,7 @@ async function testSearchEngine(engineDetails) {
       run() {
         gURLBar.value = `${engineDetails.alias} foo`;
         gURLBar.focus();
-        EventUtils.synthesizeKey("VK_RETURN", {});
+        EventUtils.synthesizeKey("KEY_Enter");
       }
     },
     {
@@ -169,14 +141,14 @@ async function testSearchEngine(engineDetails) {
         registerCleanupFunction(function() {
           sb.value = "";
         });
-        EventUtils.synthesizeKey("VK_RETURN", {});
+        EventUtils.synthesizeKey("KEY_Enter");
       }
     },
     {
       name: "new tab search",
       searchURL: base + engineDetails.codes.newTab,
       async preTest(tab) {
-        let browser = tab.linkedBrowser
+        let browser = tab.linkedBrowser;
         await BrowserTestUtils.loadURI(browser, "about:newtab");
         await BrowserTestUtils.browserLoaded(browser);
 
@@ -188,7 +160,7 @@ async function testSearchEngine(engineDetails) {
           input.focus();
           input.value = "foo";
         });
-        EventUtils.synthesizeKey("VK_RETURN", {});
+        EventUtils.synthesizeKey("KEY_Enter");
       }
     }
   ];
@@ -212,5 +184,5 @@ async function testSearchEngine(engineDetails) {
   }
 
   engine.alias = undefined;
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 }

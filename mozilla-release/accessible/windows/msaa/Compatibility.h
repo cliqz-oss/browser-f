@@ -7,6 +7,8 @@
 #ifndef COMPATIBILITY_MANAGER_H
 #define COMPATIBILITY_MANAGER_H
 
+#include "mozilla/Maybe.h"
+#include "nsString.h"
 #include <stdint.h>
 
 namespace mozilla {
@@ -45,17 +47,42 @@ public:
    */
   static uint16_t GetActCtxResourceId();
 
+  /**
+   * Return a string describing sConsumers suitable for about:support.
+   * Exposed through nsIXULRuntime.accessibilityInstantiator.
+   */
+  static void GetHumanReadableConsumersStr(nsAString &aResult);
+
+  /**
+   * Initialize compatibility mode information.
+   */
+  static void Init();
+
+  static Maybe<bool> OnUIAMessage(WPARAM aWParam, LPARAM aLParam);
+
+  static Maybe<DWORD> GetUiaRemotePid() { return sUiaRemotePid; }
+
+  /**
+   * return true if a known, non-UIA a11y consumer is present
+   */
+  static bool HasKnownNonUiaConsumer();
+
+  /**
+   * Return true if a module's version is lesser than the given version.
+   * Generally, the version should be provided using the MAKE_FILE_VERSION
+   * macro.
+   * If the version information cannot be retrieved, true is returned; i.e.
+   * no version information implies an earlier version.
+   */
+  static bool IsModuleVersionLessThan(HMODULE aModuleHandle,
+                                      unsigned long long aVersion);
+
 private:
   Compatibility();
   Compatibility(const Compatibility&);
   Compatibility& operator = (const Compatibility&);
 
-  /**
-   * Initialize compatibility mode. Called by platform (see Platform.h) during
-   * accessibility initialization.
-   */
-  static void Init();
-  friend void PlatformInit();
+  static void InitConsumers();
 
   /**
    * List of detected consumers of a11y (used for statistics/telemetry and compat)
@@ -74,12 +101,20 @@ private:
     UNKNOWN = 1 << 10,
     UIAUTOMATION = 1 << 11
   };
+  #define CONSUMERS_ENUM_LEN 12
 
 private:
   static uint32_t sConsumers;
+  static Maybe<DWORD> sUiaRemotePid;
 };
 
 } // a11y namespace
 } // mozilla namespace
+
+// Convert the 4 (decimal) components of a DLL version number into a
+// single unsigned long long, as needed by
+// mozilla::a11y::Compatibility::IsModuleVersionLessThan.
+#define MAKE_FILE_VERSION(a,b,c,d)\
+  ((a##ULL << 48) + (b##ULL << 32) + (c##ULL << 16) + d##ULL)
 
 #endif

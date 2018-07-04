@@ -68,11 +68,11 @@ add_task(async function test_error_cases() {
 });
 
 add_task(async function test_description_change_saved() {
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
-  let TEST_URL = NetUtil.newURI("http://mozilla.org/test_description_change_saved");
+  let TEST_URL = "http://mozilla.org/test_description_change_saved";
   await PlacesTestUtils.addVisits(TEST_URL);
-  Assert.ok(page_in_database(TEST_URL));
+  Assert.ok(await PlacesTestUtils.isPageInDB(TEST_URL));
 
   let description = "Test description";
   await PlacesUtils.history.update({ url: TEST_URL, description });
@@ -102,12 +102,12 @@ add_task(async function test_description_change_saved() {
 });
 
 add_task(async function test_previewImageURL_change_saved() {
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
-  let TEST_URL = NetUtil.newURI("http://mozilla.org/test_previewImageURL_change_saved");
+  let TEST_URL = "http://mozilla.org/test_previewImageURL_change_saved";
   let IMAGE_URL = "http://mozilla.org/test_preview_image.png";
   await PlacesTestUtils.addVisits(TEST_URL);
-  Assert.ok(page_in_database(TEST_URL));
+  Assert.ok(await PlacesTestUtils.isPageInDB(TEST_URL));
 
   let previewImageURL = IMAGE_URL;
   await PlacesUtils.history.update({ url: TEST_URL, previewImageURL });
@@ -127,11 +127,11 @@ add_task(async function test_previewImageURL_change_saved() {
 });
 
 add_task(async function test_change_both_saved() {
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 
-  let TEST_URL = NetUtil.newURI("http://mozilla.org/test_change_both_saved");
+  let TEST_URL = "http://mozilla.org/test_change_both_saved";
   await PlacesTestUtils.addVisits(TEST_URL);
-  Assert.ok(page_in_database(TEST_URL));
+  Assert.ok(await PlacesTestUtils.isPageInDB(TEST_URL));
 
   let description = "Test description";
   let previewImageURL = "http://mozilla.org/test_preview_image.png";

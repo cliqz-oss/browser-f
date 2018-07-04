@@ -14,10 +14,6 @@ namespace net {
 
 NS_IMPL_ISUPPORTS(DataChannelParent, nsIParentChannel, nsIStreamListener)
 
-DataChannelParent::~DataChannelParent()
-{
-}
-
 bool
 DataChannelParent::Init(const uint32_t &channelId)
 {
@@ -52,7 +48,7 @@ DataChannelParent::NotifyTrackingResource()
 NS_IMETHODIMP
 DataChannelParent::SetClassifierMatchedInfo(const nsACString& aList,
                                             const nsACString& aProvider,
-                                            const nsACString& aPrefix)
+                                            const nsACString& aFullHash)
 {
   // nothing to do
   return NS_OK;

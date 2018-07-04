@@ -34,7 +34,9 @@ function preparePendingTab(aCallback) {
   let tab = BrowserTestUtils.addTab(gBrowser, URL);
 
   whenLoaded(tab.linkedBrowser, function() {
-    BrowserTestUtils.removeTab(tab).then(() => {
+    let sessionUpdatePromise = BrowserTestUtils.waitForSessionStoreUpdate(tab);
+    BrowserTestUtils.removeTab(tab);
+    sessionUpdatePromise.then(() => {
       let [{state}] = JSON.parse(SessionStore.getClosedTabData(window));
 
       tab = BrowserTestUtils.addTab(gBrowser, "about:blank");
@@ -47,8 +49,8 @@ function preparePendingTab(aCallback) {
   });
 }
 
-function whenLoaded(aElement, aCallback) {
-  aElement.addEventListener("load", function() {
+function whenLoaded(aBrowser, aCallback) {
+  BrowserTestUtils.browserLoaded(aBrowser).then(() => {
     executeSoon(aCallback);
-  }, {capture: true, once: true});
+  });
 }

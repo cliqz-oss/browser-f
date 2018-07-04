@@ -6,11 +6,15 @@
 #include "mozilla/Bootstrap.h"
 #include "nsXPCOM.h"
 
+#include "AutoSQLiteLifetime.h"
+
 namespace mozilla {
 
 class BootstrapImpl final : public Bootstrap
 {
 protected:
+  AutoSQLiteLifetime mSQLLT;
+
   virtual void Dispose() override
   {
     delete this;
@@ -74,8 +78,8 @@ public:
     ::GeckoStart(aEnv, argv, argc, aAppData);
   }
 
-  virtual void XRE_SetAndroidChildFds(JNIEnv* aEnv, int aCrashFd, int aIPCFd) override {
-    ::XRE_SetAndroidChildFds(aEnv, aCrashFd, aIPCFd);
+  virtual void XRE_SetAndroidChildFds(JNIEnv* aEnv, int aPrefsFd, int aIPCFd, int aCrashFd, int aCrashAnnotationFd) override {
+    ::XRE_SetAndroidChildFds(aEnv, aPrefsFd, aIPCFd, aCrashFd, aCrashAnnotationFd);
   }
 #endif
 

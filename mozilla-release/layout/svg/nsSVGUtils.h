@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,7 +11,7 @@
 #include <math.h>
 
 #include "DrawMode.h"
-#include "DrawResult.h"
+#include "ImgDrawResult.h"
 #include "gfx2DGlue.h"
 #include "gfxMatrix.h"
 #include "gfxPoint.h"
@@ -33,7 +34,6 @@ class nsIContent;
 class nsIDocument;
 class nsIFrame;
 class nsPresContext;
-class nsStyleContext;
 class nsStyleSVGPaint;
 class nsSVGDisplayContainerFrame;
 class nsSVGElement;
@@ -70,7 +70,6 @@ class GeneralPattern;
 #define SVG_HIT_TEST_CHECK_MRECT 0x04
 
 
-bool NS_SVGPathCachingEnabled();
 bool NS_SVGDisplayListHitTestingEnabled();
 bool NS_SVGDisplayListPaintingEnabled();
 bool NS_SVGNewGetBBoxEnabled();
@@ -389,8 +388,12 @@ public:
 
   enum BBoxFlags {
     eBBoxIncludeFill           = 1 << 0,
+    // Include the geometry of the fill even when the fill does not
+    // actually render (e.g. when fill="none" or fill-opacity="0")
     eBBoxIncludeFillGeometry   = 1 << 1,
     eBBoxIncludeStroke         = 1 << 2,
+    // Include the geometry of the stroke even when the stroke does not
+    // actually render (e.g. when stroke="none" or stroke-opacity="0")
     eBBoxIncludeStrokeGeometry = 1 << 3,
     eBBoxIncludeMarkers        = 1 << 4,
     eBBoxIncludeClipped        = 1 << 5,
@@ -404,6 +407,14 @@ public:
     // given frame, instead of all continuations of it, while computing bbox if
     // this flag is set.
     eIncludeOnlyCurrentFrameForNonSVGElement = 1 << 8,
+    // This flag is only has an effect when the target is a <use> element.
+    // getBBox returns the bounds of the elements children in user space if
+    // this flag is set; Otherwise, getBBox returns the union bounds in
+    // the coordinate system formed by the <use> element.
+    eUseUserSpaceOfUseElement = 1 << 9,
+    // For a frame with a clip-path, if this flag is set then the result
+    // will not be clipped to the bbox of the content inside the clip-path.
+    eDoNotClipToBBoxOfContentInsideClipPath = 1 << 10,
   };
   /**
    * This function in primarily for implementing the SVG DOM function getBBox()
@@ -508,7 +519,7 @@ public:
                             std::min(double(INT32_MAX), aVal)));
   }
 
-  static nscolor GetFallbackOrPaintColor(nsStyleContext *aStyleContext,
+  static nscolor GetFallbackOrPaintColor(mozilla::ComputedStyle *aComputedStyle,
                                          nsStyleSVGPaint nsStyleSVG::*aFillOrStroke);
 
   static void
@@ -539,10 +550,9 @@ public:
                               SVGContextPaint* aContextPaint = nullptr);
 
   /*
-   * Set up a cairo context for a stroked path (including any dashing that
-   * applies).
+   * Set up a context for a stroked path (including any dashing that applies).
    */
-  static void SetupCairoStrokeGeometry(nsIFrame* aFrame, gfxContext *aContext,
+  static void SetupStrokeGeometry(nsIFrame* aFrame, gfxContext *aContext,
                                        SVGContextPaint* aContextPaint = nullptr);
 
   /**

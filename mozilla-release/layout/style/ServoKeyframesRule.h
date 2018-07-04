@@ -25,22 +25,18 @@ public:
                                            dom::CSSKeyframesRule)
   bool IsCCLeaf() const final;
 
-  already_AddRefed<css::Rule> Clone() const final;
 #ifdef DEBUG
   void List(FILE* out = stdout, int32_t aIndent = 0) const final;
 #endif
   void SetStyleSheet(StyleSheet* aSheet) final;
 
-  // nsIDOMCSSKeyframesRule interface
-  NS_IMETHOD GetName(nsAString& aName) final;
-  NS_IMETHOD SetName(const nsAString& aName) final;
-  NS_IMETHOD AppendRule(const nsAString& aRule) final;
-  NS_IMETHOD DeleteRule(const nsAString& aKey) final;
-  using nsIDOMCSSKeyframesRule::FindRule;
-
   // WebIDL interface
-  void GetCssTextImpl(nsAString& aCssText) const final;
+  void GetCssText(nsAString& aCssText) const final;
+  void GetName(nsAString& aName) const final;
+  void SetName(const nsAString& aName) final;
   dom::CSSRuleList* CssRules() final;
+  void AppendRule(const nsAString& aRule) final;
+  void DeleteRule(const nsAString& aKey) final;
   dom::CSSKeyframeRule* FindRule(const nsAString& aKey) final;
 
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const final;

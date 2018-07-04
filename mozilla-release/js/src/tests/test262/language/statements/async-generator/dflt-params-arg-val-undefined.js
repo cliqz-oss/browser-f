@@ -1,9 +1,8 @@
-// |reftest| skip-if(release_or_beta) -- async-iteration is not released yet
 // This file was procedurally generated from the following sources:
 // - src/function-forms/dflt-params-arg-val-undefined.case
 // - src/function-forms/default/async-gen-func-decl.template
 /*---
-description: Use of intializer when argument value is `undefined` (async generator function declaration)
+description: Use of initializer when argument value is `undefined` (async generator function declaration)
 esid: sec-asyncgenerator-definitions-instantiatefunctionobject
 features: [default-parameters, async-iteration]
 flags: [generated, async]

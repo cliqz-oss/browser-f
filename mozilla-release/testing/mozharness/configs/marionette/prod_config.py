@@ -9,17 +9,6 @@ config = {
     "test_manifest": "unit-tests.ini",
 
     "vcs_share_base": HG_SHARE_BASE_DIR,
-    "exes": {
-        'python': '/tools/buildbot/bin/python',
-        'virtualenv': ['/tools/buildbot/bin/python', '/tools/misc-python/virtualenv.py'],
-        'tooltool.py': "/tools/tooltool.py",
-    },
-
-    "find_links": [
-        "http://pypi.pvt.build.mozilla.org/pub",
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-    "pip_index": False,
 
     "buildbot_json_path": "buildprops.json",
 
@@ -32,12 +21,12 @@ config = {
         'run-tests',
     ],
     "default_blob_upload_servers": [
-         "https://blobupload.elasticbeanstalk.com",
+        "https://blobupload.elasticbeanstalk.com",
     ],
-    "blob_uploader_auth_file" : os.path.join(os.getcwd(), "oauth.txt"),
+    "blob_uploader_auth_file": os.path.join(os.getcwd(), "oauth.txt"),
     "download_symbols": "ondemand",
     "download_minidump_stackwalk": True,
-    "tooltool_cache": "/home/worker/tooltool-cache",
+    "tooltool_cache": "/builds/worker/tooltool-cache",
     "suite_definitions": {
         "marionette_desktop": {
             "options": [
@@ -50,7 +39,7 @@ config = {
                 "--symbols-path=%(symbols_path)s"
             ],
             "run_filename": "",
-            "testsdir": ""
+            "testsdir": "marionette"
         }
     },
     "structured_output": True,

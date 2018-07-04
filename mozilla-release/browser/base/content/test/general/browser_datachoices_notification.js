@@ -6,9 +6,9 @@
 
 // Pass an empty scope object to the import to prevent "leaked window property"
 // errors in tests.
-var Preferences = Cu.import("resource://gre/modules/Preferences.jsm", {}).Preferences;
+var Preferences = ChromeUtils.import("resource://gre/modules/Preferences.jsm", {}).Preferences;
 var TelemetryReportingPolicy =
-  Cu.import("resource://gre/modules/TelemetryReportingPolicy.jsm", {}).TelemetryReportingPolicy;
+  ChromeUtils.import("resource://gre/modules/TelemetryReportingPolicy.jsm", {}).TelemetryReportingPolicy;
 
 const PREF_BRANCH = "datareporting.policy.";
 const PREF_BYPASS_NOTIFICATION = PREF_BRANCH + "dataSubmissionPolicyBypassNotification";
@@ -20,14 +20,14 @@ const TEST_POLICY_VERSION = 37;
 
 function fakeShowPolicyTimeout(set, clear) {
   let reportingPolicy =
-    Cu.import("resource://gre/modules/TelemetryReportingPolicy.jsm", {}).Policy;
+    ChromeUtils.import("resource://gre/modules/TelemetryReportingPolicy.jsm", {}).Policy;
   reportingPolicy.setShowInfobarTimeout = set;
   reportingPolicy.clearShowInfobarTimeout = clear;
 }
 
 function sendSessionRestoredNotification() {
   let reportingPolicyImpl =
-    Cu.import("resource://gre/modules/TelemetryReportingPolicy.jsm", {}).TelemetryReportingPolicyImpl;
+    ChromeUtils.import("resource://gre/modules/TelemetryReportingPolicy.jsm", {}).TelemetryReportingPolicyImpl;
   reportingPolicyImpl.observe(null, "sessionstore-windows-restored", null);
 }
 
@@ -83,15 +83,10 @@ var checkInfobarButton = async function(aNotification) {
   Assert.equal(buttons.length, 1, "There is 1 button in the data reporting notification.");
   let button = buttons[0];
 
-  // Add an observer to ensure the "advanced" pane opened (but don't bother
-  // closing it - we close the entire window when done.)
-  let paneLoadedPromise = promiseTopicObserved("advanced-pane-loaded");
-
   // Click on the button.
   button.click();
 
   // Wait for the preferences panel to open.
-  await paneLoadedPromise;
   await promiseNextTick();
 };
 

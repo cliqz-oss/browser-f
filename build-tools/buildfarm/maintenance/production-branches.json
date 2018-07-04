@@ -1,244 +1,367 @@
 {
-  "ionmonkey": {
-    "repo": "https://hg.mozilla.org/projects/ionmonkey",
-    "graph_branches": [
-      "Ionmonkey"
-    ],
-    "repo_type": "hg"
-  },
   "ash": {
     "repo": "https://hg.mozilla.org/projects/ash",
-    "graph_branches": [
-      "Ash"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "mozilla-release": {
     "repo": "https://hg.mozilla.org/releases/mozilla-release",
-    "graph_branches": [
-      "Mozilla-Release"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
-  "mozilla-esr38": {
-    "repo": "https://hg.mozilla.org/releases/mozilla-esr38",
-    "graph_branches": [
-      "Mozilla-Esr38"
-    ],
-    "repo_type": "hg"
+  "mozilla-esr52": {
+    "repo": "https://hg.mozilla.org/releases/mozilla-esr52",
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
-  "comm-esr38": {
-    "repo": "https://hg.mozilla.org/releases/comm-esr38",
-    "graph_branches": [
-      "Thunderbird-Esr38"
-    ],
-    "repo_type": "hg"
-  },
-  "mozilla-b2g44_v2_5": {
-    "repo": "https://hg.mozilla.org/releases/mozilla-b2g44_v2_5",
-    "graph_branches": [
-      "Mozilla-B2g44-v2.5"
-    ],
-    "repo_type": "hg"
+  "comm-esr52": {
+    "repo": "https://hg.mozilla.org/releases/comm-esr52",
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "comm",
+    "features": {
+        "taskcluster-cron": false,
+        "taskcluster-push": false
+    }
   },
   "oak": {
     "repo": "https://hg.mozilla.org/projects/oak",
-    "graph_branches": [
-      "Oak"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "pine": {
     "repo": "https://hg.mozilla.org/projects/pine",
-    "graph_branches": [
-      "Pine"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "mozilla-beta": {
     "repo": "https://hg.mozilla.org/releases/mozilla-beta",
-    "graph_branches": [
-      "Mozilla-Beta"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "comm-beta": {
     "repo": "https://hg.mozilla.org/releases/comm-beta",
-    "graph_branches": [
-      "Thunderbird-Beta"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "comm",
+    "features": {
+        "taskcluster-cron": false,
+        "taskcluster-push": false
+    }
   },
   "mozilla-inbound": {
     "repo": "https://hg.mozilla.org/integration/mozilla-inbound",
-    "graph_branches": [
-      "Mozilla-Inbound"
-    ],
-    "repo_type": "hg"
-  },
-  "b2g-inbound": {
-    "repo": "https://hg.mozilla.org/integration/b2g-inbound",
-    "graph_branches": [
-      "B2g-Inbound"
-    ],
-    "repo_type": "hg"
-  },
-  "b2g-ota": {
-    "repo": "https://hg.mozilla.org/releases/b2g-ota",
-    "graph_branches": [
-      "B2g-Ota"
-    ],
-    "repo_type": "hg"
-  },
-  "services-central": {
-    "repo": "https://hg.mozilla.org/services/services-central",
-    "graph_branches": [
-      "Services-Central"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "is-trunk": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "mozilla-central": {
     "repo": "https://hg.mozilla.org/mozilla-central",
-    "graph_branches": [
-      "Firefox",
-      "mobile"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "is-trunk": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "comm-central": {
     "repo": "https://hg.mozilla.org/comm-central",
-    "graph_branches": [
-      "Thunderbird-Trunk"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "comm",
+    "features": {
+        "taskcluster-cron": false,
+        "taskcluster-push": true
+    }
   },
   "alder": {
     "repo": "https://hg.mozilla.org/projects/alder",
-    "graph_branches": [
-      "Alder"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "cedar": {
     "repo": "https://hg.mozilla.org/projects/cedar",
-    "graph_branches": [
-      "Cedar"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
+  },
+  "holly": {
+    "repo": "https://hg.mozilla.org/projects/holly",
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "birch": {
     "repo": "https://hg.mozilla.org/projects/birch",
-    "graph_branches": [
-      "Birch"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "cypress": {
     "repo": "https://hg.mozilla.org/projects/cypress",
-    "graph_branches": [
-      "Cypress"
-    ],
-    "repo_type": "hg"
-  },
-  "mozilla-aurora": {
-    "repo": "https://hg.mozilla.org/releases/mozilla-aurora",
-    "graph_branches": [
-      "Mozilla-Aurora"
-    ],
-    "repo_type": "hg"
-  },
-  "comm-aurora": {
-    "repo": "https://hg.mozilla.org/releases/comm-aurora",
-    "graph_branches": [
-      "Thunderbird-Aurora"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "comm",
+    "features": {
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "ux": {
     "repo": "https://hg.mozilla.org/projects/ux",
-    "graph_branches": [
-      "UX"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": false,
+        "taskcluster-push": false
+    }
   },
   "elm": {
     "repo": "https://hg.mozilla.org/projects/elm",
-    "graph_branches": [
-      "Elm"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
+  },
+  "graphics": {
+    "repo": "https://hg.mozilla.org/projects/graphics",
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "try": {
     "repo": "https://hg.mozilla.org/try",
-    "graph_branches": [
-      "Try"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_1",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": false,
+        "taskcluster-push": true
+    }
   },
-  "gaia-try": {
-    "repo": "https://hg.mozilla.org/integration/gaia-try",
-    "graph_branches": [],
-    "repo_type": "hg"
+  "stylo-try": {
+    "repo": "https://hg.mozilla.org/incubator/stylo-try",
+    "repo_type": "hg",
+    "access": "scm_level_1",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": false,
+        "taskcluster-push": true
+    }
   },
   "try-comm-central": {
     "repo": "https://hg.mozilla.org/try-comm-central",
-    "graph_branches": [
-      "Try-Comm-Central"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_1",
+    "trust_domain": "comm",
+    "features": {
+        "taskcluster-cron": false,
+        "taskcluster-push": true
+    }
   },
   "larch": {
     "repo": "https://hg.mozilla.org/projects/larch",
-    "graph_branches": [
-      "Larch"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
-  "build-system": {
-    "repo": "https://hg.mozilla.org/projects/build-system",
-    "graph_branches": [
-      "Build-System"
-    ],
-    "repo_type": "hg"
-  },
-  "fx-team": {
-    "repo": "https://hg.mozilla.org/integration/fx-team",
-    "graph_branches": [
-      "Fx-Team"
-    ],
-    "repo_type": "hg"
-  },
-  "addon-sdk": {
-    "repo": "https://hg.mozilla.org/projects/addon-sdk",
-    "graph_branches": [],
-    "repo_type": "hg"
-  },
-  "date": {
-    "repo": "https://hg.mozilla.org/projects/date",
-    "graph_branches": [
-      "Date"
-    ],
-    "repo_type": "hg"
+  "maple": {
+    "repo": "https://hg.mozilla.org/projects/maple",
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "fig": {
     "repo": "https://hg.mozilla.org/projects/fig",
-    "graph_branches": [
-      "Fig"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "gum": {
     "repo": "https://hg.mozilla.org/projects/gum",
-    "graph_branches": [
-      "Gum"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
   },
   "jamun": {
     "repo": "https://hg.mozilla.org/projects/jamun",
-    "graph_branches": [
-      "Jamun"
-    ],
-    "repo_type": "hg"
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
+  },
+   "autoland": {
+    "repo": "https://hg.mozilla.org/integration/autoland",
+    "repo_type": "hg",
+    "access": "scm_level_3",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "is-trunk": true,
+        "taskcluster-cron": true,
+        "taskcluster-push": true
+    }
+  },
+  "stylo": {
+    "repo": "https://hg.mozilla.org/incubator/stylo",
+    "repo_type": "hg",
+    "access": "scm_level_2",
+    "trust_domain": "gecko",
+    "features": {
+        "buildbot": true,
+        "taskcluster-docker-routes-v1": true,
+        "taskcluster-docker-routes-v2": true,
+        "taskcluster-cron": false,
+        "taskcluster-push": true
+    }
   }
 }

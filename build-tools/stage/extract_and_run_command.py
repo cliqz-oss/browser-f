@@ -35,7 +35,7 @@ try:
     # the future - https://github.com/mozilla/build-mar via a venv
     from mardor.marfile import BZ2MarFile
 except:
-    # the past - http://hg.mozilla.org/build/tools/file/default/buildfarm/utils/mar.py
+    # the past - https://hg.mozilla.org/build/tools/file/default/buildfarm/utils/mar.py
     sys.path.append(
         path.join(path.dirname(path.realpath(__file__)), "../buildfarm/utils"))
     from mar import BZ2MarFile

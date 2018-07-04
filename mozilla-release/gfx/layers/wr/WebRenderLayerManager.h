@@ -1,11 +1,13 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef GFX_WEBRENDERLAYERMANAGER_H
 #define GFX_WEBRENDERLAYERMANAGER_H
 
+#include <unordered_set>
 #include <vector>
 
 #include "gfxPrefs.h"
@@ -15,6 +17,7 @@
 #include "mozilla/layers/FocusTarget.h"
 #include "mozilla/layers/StackingContextHelper.h"
 #include "mozilla/layers/TransactionIdAllocator.h"
+#include "mozilla/layers/WebRenderCommandBuilder.h"
 #include "mozilla/layers/WebRenderScrollData.h"
 #include "mozilla/layers/WebRenderUserData.h"
 #include "mozilla/webrender/WebRenderAPI.h"
@@ -27,6 +30,10 @@ namespace mozilla {
 
 struct ActiveScrolledRoot;
 
+namespace dom {
+class TabGroup;
+}
+
 namespace layers {
 
 class CompositorBridgeChild;
@@ -38,6 +45,7 @@ class WebRenderParentCommand;
 class WebRenderLayerManager final : public LayerManager
 {
   typedef nsTArray<RefPtr<Layer> > LayerRefArray;
+  typedef nsTHashtable<nsRefPtrHashKey<WebRenderUserData>> WebRenderUserDataRefTable;
 
 public:
   explicit WebRenderLayerManager(nsIWidget* aWidget);
@@ -55,42 +63,15 @@ public:
   WebRenderLayerManager* AsWebRenderLayerManager() override { return this; }
   virtual CompositorBridgeChild* GetCompositorBridgeChild() override;
 
-  virtual int32_t GetMaxTextureSize() const override;
+  // WebRender can handle images larger than the max texture size via tiling.
+  virtual int32_t GetMaxTextureSize() const override { return INT32_MAX; }
 
   virtual bool BeginTransactionWithTarget(gfxContext* aTarget) override;
   virtual bool BeginTransaction() override;
   virtual bool EndEmptyTransaction(EndTransactionFlags aFlags = END_DEFAULT) override;
-  Maybe<wr::ImageKey> CreateImageKey(nsDisplayItem* aItem,
-                                     ImageContainer* aContainer,
-                                     mozilla::wr::DisplayListBuilder& aBuilder,
-                                     const StackingContextHelper& aSc,
-                                     gfx::IntSize& aSize);
-  bool PushImage(nsDisplayItem* aItem,
-                 ImageContainer* aContainer,
-                 mozilla::wr::DisplayListBuilder& aBuilder,
-                 const StackingContextHelper& aSc,
-                 const LayerRect& aRect);
-  already_AddRefed<WebRenderFallbackData> GenerateFallbackData(nsDisplayItem* aItem,
-                                                               wr::DisplayListBuilder& aBuilder,
-                                                               nsDisplayListBuilder* aDisplayListBuilder,
-                                                               LayerRect& aImageRect,
-                                                               LayerPoint& aOffset);
-  Maybe<wr::WrImageMask> BuildWrMaskImage(nsDisplayItem* aItem,
-                                          wr::DisplayListBuilder& aBuilder,
-                                          const StackingContextHelper& aSc,
-                                          nsDisplayListBuilder* aDisplayListBuilder,
-                                          const LayerRect& aBounds);
-  bool PushItemAsImage(nsDisplayItem* aItem,
-                       wr::DisplayListBuilder& aBuilder,
-                       const StackingContextHelper& aSc,
-                       nsDisplayListBuilder* aDisplayListBuilder);
-  void CreateWebRenderCommandsFromDisplayList(nsDisplayList* aDisplayList,
-                                              nsDisplayListBuilder* aDisplayListBuilder,
-                                              const StackingContextHelper& aSc,
-                                              wr::DisplayListBuilder& aBuilder);
   void EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
-                                  nsDisplayListBuilder* aDisplayListBuilder);
-  bool IsLayersFreeTransaction() { return mEndTransactionWithoutLayers; }
+                                  nsDisplayListBuilder* aDisplayListBuilder,
+                                  const nsTArray<wr::WrFilterOp>& aFilters = nsTArray<wr::WrFilterOp>());
   virtual void EndTransaction(DrawPaintedLayerCallback aCallback,
                               void* aCallbackData,
                               EndTransactionFlags aFlags = END_DEFAULT) override;
@@ -101,32 +82,26 @@ public:
 
   virtual void SetRoot(Layer* aLayer) override;
 
-  virtual already_AddRefed<PaintedLayer> CreatePaintedLayer() override;
-  virtual already_AddRefed<ContainerLayer> CreateContainerLayer() override;
-  virtual already_AddRefed<ImageLayer> CreateImageLayer() override;
-  virtual already_AddRefed<CanvasLayer> CreateCanvasLayer() override;
-  virtual already_AddRefed<ReadbackLayer> CreateReadbackLayer() override;
-  virtual already_AddRefed<ColorLayer> CreateColorLayer() override;
-  virtual already_AddRefed<RefLayer> CreateRefLayer() override;
-  virtual already_AddRefed<TextLayer> CreateTextLayer() override;
-  virtual already_AddRefed<BorderLayer> CreateBorderLayer() override;
-  virtual already_AddRefed<DisplayItemLayer> CreateDisplayItemLayer() override;
+  already_AddRefed<PaintedLayer> CreatePaintedLayer() override { return nullptr; }
+  already_AddRefed<ContainerLayer> CreateContainerLayer() override { return nullptr; }
+  already_AddRefed<ImageLayer> CreateImageLayer() override { return nullptr; }
+  already_AddRefed<ColorLayer> CreateColorLayer() override { return nullptr; }
+  already_AddRefed<BorderLayer> CreateBorderLayer() override { return nullptr; }
+  already_AddRefed<CanvasLayer> CreateCanvasLayer() override { return nullptr; }
 
   virtual bool NeedsWidgetInvalidation() override { return false; }
 
   virtual void SetLayerObserverEpoch(uint64_t aLayerObserverEpoch) override;
 
-  virtual void DidComposite(uint64_t aTransactionId,
+  virtual void DidComposite(TransactionId aTransactionId,
                             const mozilla::TimeStamp& aCompositeStart,
                             const mozilla::TimeStamp& aCompositeEnd) override;
 
   virtual void ClearCachedResources(Layer* aSubtree = nullptr) override;
-  virtual void UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aNewIdentifier,
-                                              uint64_t aDeviceResetSeqNo) override;
+  virtual void UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aNewIdentifier) override;
   virtual TextureFactoryIdentifier GetTextureFactoryIdentifier() override;
 
-  virtual void SetTransactionIdAllocator(TransactionIdAllocator* aAllocator) override
-  { mTransactionIdAllocator = aAllocator; }
+  virtual void SetTransactionIdAllocator(TransactionIdAllocator* aAllocator) override;
 
   virtual void AddDidCompositeObserver(DidCompositeObserver* aObserver) override;
   virtual void RemoveDidCompositeObserver(DidCompositeObserver* aObserver) override;
@@ -146,13 +121,10 @@ public:
   virtual void SetIsFirstPaint() override { mIsFirstPaint = true; }
   virtual void SetFocusTarget(const FocusTarget& aFocusTarget) override;
 
+  virtual already_AddRefed<PersistentBufferProvider>
+  CreatePersistentBufferProvider(const gfx::IntSize& aSize, gfx::SurfaceFormat aFormat) override;
+
   bool AsyncPanZoomEnabled() const override;
-
-  DrawPaintedLayerCallback GetPaintedLayerCallback() const
-  { return mPaintedLayerCallback; }
-
-  void* GetPaintedLayerCallbackData() const
-  { return mPaintedLayerCallbackData; }
 
   // adds an imagekey to a list of keys that will be discarded on the next
   // transaction or destruction
@@ -160,19 +132,14 @@ public:
   void DiscardImages();
   void DiscardLocalImages();
 
-  // Before destroying a layer with animations, add its compositorAnimationsId
-  // to a list of ids that will be discarded on the next transaction
+  // Methods to manage the compositor animation ids. Active animations are still
+  // going, and when they end we discard them and remove them from the active
+  // list.
+  void AddActiveCompositorAnimationId(uint64_t aId);
   void AddCompositorAnimationsIdForDiscard(uint64_t aId);
   void DiscardCompositorAnimations();
 
   WebRenderBridgeChild* WrBridge() const { return mWrChild; }
-
-  virtual void Mutated(Layer* aLayer) override;
-  virtual void MutatedSimple(Layer* aLayer) override;
-
-  void Hold(Layer* aLayer);
-  void SetTransactionIncomplete() { mTransactionIncomplete = true; }
-  bool IsMutatedLayer(Layer* aLayer);
 
   // See equivalent function in ClientLayerManager
   void LogTestDataForCurrentPaint(FrameMetrics::ViewID aScrollId,
@@ -185,33 +152,18 @@ public:
   const APZTestData& GetAPZTestData() const
   { return mApzTestData; }
 
-  // Those are data that we kept between transactions. We used to cache some
-  // data in the layer. But in layers free mode, we don't have layer which
-  // means we need some other place to cached the data between transaction.
-  // We store the data in frame's property.
-  template<class T> already_AddRefed<T>
-  CreateOrRecycleWebRenderUserData(nsDisplayItem* aItem)
-  {
-    MOZ_ASSERT(aItem);
-    nsIFrame* frame = aItem->Frame();
+  bool SetPendingScrollUpdateForNextTransaction(FrameMetrics::ViewID aScrollId,
+                                                const ScrollUpdateInfo& aUpdateInfo) override;
 
-    if (!frame->HasProperty(nsIFrame::WebRenderUserDataProperty())) {
-      frame->AddProperty(nsIFrame::WebRenderUserDataProperty(),
-                         new nsIFrame::WebRenderUserDataTable());
-    }
+  WebRenderCommandBuilder& CommandBuilder() { return mWebRenderCommandBuilder; }
+  WebRenderUserDataRefTable* GetWebRenderUserDataTable() { return mWebRenderCommandBuilder.GetWebRenderUserDataTable(); }
+  WebRenderScrollData& GetScrollData() { return mScrollData; }
 
-    nsIFrame::WebRenderUserDataTable* userDataTable =
-      frame->GetProperty(nsIFrame::WebRenderUserDataProperty());
-    RefPtr<WebRenderUserData>& data = userDataTable->GetOrInsert(aItem->GetPerFrameKey());
-    if (!data || (data->GetType() != T::Type())) {
-      data = new T(this);
-    }
+  void WrUpdated();
+  void WindowOverlayChanged() { mWindowOverlayChanged = true; }
+  nsIWidget* GetWidget() { return mWidget; }
 
-    MOZ_ASSERT(data);
-    MOZ_ASSERT(data->GetType() == T::Type());
-    RefPtr<T> res = static_cast<T*>(data.get());
-    return res.forget();
-  }
+  dom::TabGroup* GetTabGroup();
 
 private:
   /**
@@ -220,76 +172,50 @@ private:
    */
   void MakeSnapshotIfRequired(LayoutDeviceIntSize aSize);
 
-  void ClearLayer(Layer* aLayer);
-
-  bool EndTransactionInternal(DrawPaintedLayerCallback aCallback,
-                              void* aCallbackData,
-                              EndTransactionFlags aFlags,
-                              nsDisplayList* aDisplayList = nullptr,
-                              nsDisplayListBuilder* aDisplayListBuilder = nullptr);
-
 private:
   nsIWidget* MOZ_NON_OWNING_REF mWidget;
-  std::vector<wr::ImageKey> mImageKeysToDelete;
-  nsTArray<uint64_t> mDiscardedCompositorAnimationsIds;
+  nsTArray<wr::ImageKey> mImageKeysToDelete;
 
-  /* PaintedLayer callbacks; valid at the end of a transaciton,
-   * while rendering */
-  DrawPaintedLayerCallback mPaintedLayerCallback;
-  void *mPaintedLayerCallbackData;
+  // Set of compositor animation ids for which there are active animations (as
+  // of the last transaction) on the compositor side.
+  std::unordered_set<uint64_t> mActiveCompositorAnimationIds;
+  // Compositor animation ids for animations that are done now and that we want
+  // the compositor to discard information for.
+  nsTArray<uint64_t> mDiscardedCompositorAnimationsIds;
 
   RefPtr<WebRenderBridgeChild> mWrChild;
 
   RefPtr<TransactionIdAllocator> mTransactionIdAllocator;
-  uint64_t mLatestTransactionId;
+  TransactionId mLatestTransactionId;
 
   nsTArray<DidCompositeObserver*> mDidCompositeObservers;
-
-  LayerRefArray mKeepAlive;
-
-  // These fields are used to save a copy of the display list for
-  // empty transactions in layers-free mode.
-  wr::BuiltDisplayList mBuiltDisplayList;
-  nsTArray<WebRenderParentCommand> mParentCommands;
 
   // This holds the scroll data that we need to send to the compositor for
   // APZ to do it's job
   WebRenderScrollData mScrollData;
-  // We use this as a temporary data structure while building the mScrollData
-  // inside a layers-free transaction.
-  std::vector<WebRenderLayerScrollData> mLayerScrollData;
-  // We use this as a temporary data structure to track the current display
-  // item's ASR as we recurse in CreateWebRenderCommandsFromDisplayList. We
-  // need this so that WebRenderLayerScrollData items that deeper in the
-  // tree don't duplicate scroll metadata that their ancestors already have.
-  std::vector<const ActiveScrolledRoot*> mAsrStack;
 
-  // Layers that have been mutated. If we have an empty transaction
-  // then a display item layer will no longer be valid
-  // if it was a mutated layers.
-  void AddMutatedLayer(Layer* aLayer);
-  void ClearMutatedLayers();
-  LayerRefArray mMutatedLayers;
-  bool mTransactionIncomplete;
-
+  bool mWindowOverlayChanged;
   bool mNeedsComposite;
   bool mIsFirstPaint;
   FocusTarget mFocusTarget;
-  bool mEndTransactionWithoutLayers;
 
- // When we're doing a transaction in order to draw to a non-default
- // target, the layers transaction is only performed in order to send
- // a PLayers:Update.  We save the original non-default target to
- // mTarget, and then perform the transaction. After the transaction ends,
- // we send a message to our remote side to capture the actual pixels
- // being drawn to the default target, and then copy those pixels
- // back to mTarget.
- RefPtr<gfxContext> mTarget;
+  // When we're doing a transaction in order to draw to a non-default
+  // target, the layers transaction is only performed in order to send
+  // a PLayers:Update.  We save the original non-default target to
+  // mTarget, and then perform the transaction. After the transaction ends,
+  // we send a message to our remote side to capture the actual pixels
+  // being drawn to the default target, and then copy those pixels
+  // back to mTarget.
+  RefPtr<gfxContext> mTarget;
 
   // See equivalent field in ClientLayerManager
   uint32_t mPaintSequenceNumber;
   // See equivalent field in ClientLayerManager
   APZTestData mApzTestData;
+
+  WebRenderCommandBuilder mWebRenderCommandBuilder;
+
+  size_t mLastDisplayListSize;
 };
 
 } // namespace layers

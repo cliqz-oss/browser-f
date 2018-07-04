@@ -24,7 +24,7 @@ add_task(async function test() {
   info("Creating a blob URL...");
   await ContentTask.spawn(browser1, null, function() {
     return Promise.resolve(content.window.URL.createObjectURL(new content.window.Blob([123])));
-  }).then(newURL => { blobURL = newURL });
+  }).then(newURL => { blobURL = newURL; });
 
   info("Blob URL: " + blobURL);
 
@@ -38,8 +38,8 @@ add_task(async function test() {
   await ContentTask.spawn(browser2, blobURL, function(url) {
     return new Promise(resolve => {
       var xhr = new content.window.XMLHttpRequest();
-      xhr.onerror = function() { resolve("SendErrored"); }
-      xhr.onload = function() { resolve("SendLoaded"); }
+      xhr.onerror = function() { resolve("SendErrored"); };
+      xhr.onload = function() { resolve("SendLoaded"); };
       xhr.open("GET", url);
       xhr.send();
     });
@@ -69,7 +69,7 @@ add_task(async function test() {
     is(status, "SendSucceeded", "Using a blob URI within a single user context id should work");
   });
 
-  await BrowserTestUtils.removeTab(tab1);
-  await BrowserTestUtils.removeTab(tab2);
-  await BrowserTestUtils.removeTab(tab3);
+  BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab2);
+  BrowserTestUtils.removeTab(tab3);
 });

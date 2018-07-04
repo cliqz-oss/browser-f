@@ -10,17 +10,16 @@ function test() {
 
   SpecialPowers.pushPrefEnv({"set": [
     ["extensions.checkUpdateSecurity", false],
+    ["xpinstall.signatures.required", false]
   ]});
 
   run_next_test();
 }
 
 // Install a first version
-add_test(function() {
-  AddonManager.getInstallForURL(TESTROOT + "addons/browser_update1_1.xpi",
-                                function(aInstall) {
-    aInstall.install();
-  }, "application/x-xpinstall");
+add_test(async function() {
+  let aInstall = await AddonManager.getInstallForURL(TESTROOT + "addons/browser_update1_1.xpi", "application/x-xpinstall");
+  aInstall.install();
 
   Services.ppmm.addMessageListener("my-addon-1", function messageListener() {
     Services.ppmm.removeMessageListener("my-addon-1", messageListener);
@@ -30,11 +29,9 @@ add_test(function() {
 });
 
 // Update to a second version and verify that content gets updated
-add_test(function() {
-  AddonManager.getInstallForURL(TESTROOT + "addons/browser_update1_2.xpi",
-                                function(aInstall) {
-    aInstall.install();
-  }, "application/x-xpinstall");
+add_test(async function() {
+  let aInstall = await AddonManager.getInstallForURL(TESTROOT + "addons/browser_update1_2.xpi", "application/x-xpinstall");
+  aInstall.install();
 
   Services.ppmm.addMessageListener("my-addon-2", function messageListener() {
     Services.ppmm.removeMessageListener("my-addon-2", messageListener);
@@ -44,10 +41,9 @@ add_test(function() {
 });
 
 // Finally, cleanup things
-add_test(function() {
-  AddonManager.getAddonByID("update1@tests.mozilla.org", function(aAddon) {
-    aAddon.uninstall();
+add_test(async function() {
+  let aAddon = await AddonManager.getAddonByID("update1@tests.mozilla.org");
+  aAddon.uninstall();
 
-    finish();
-  });
+  finish();
 });

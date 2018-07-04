@@ -9,6 +9,7 @@
 
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/ResultExtensions.h"
 #include "mozilla/Services.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
@@ -67,6 +68,7 @@ ExtensionPolicyService::GetSingleton()
 
   if (MOZ_UNLIKELY(!sExtensionPolicyService)) {
     sExtensionPolicyService = new ExtensionPolicyService();
+    RegisterWeakMemoryReporter(sExtensionPolicyService);
     ClearOnShutdown(&sExtensionPolicyService);
   }
   return *sExtensionPolicyService.get();
@@ -80,6 +82,11 @@ ExtensionPolicyService::ExtensionPolicyService()
   Preferences::AddBoolVarCache(&sRemoteExtensions, "extensions.webextensions.remote", false);
 
   RegisterObservers();
+}
+
+ExtensionPolicyService::~ExtensionPolicyService()
+{
+  UnregisterWeakMemoryReporter(this);
 }
 
 bool
@@ -175,6 +182,45 @@ ExtensionPolicyService::DefaultCSP(nsAString& aDefaultCSP) const
 
 
 /*****************************************************************************
+ * nsIMemoryReporter
+ *****************************************************************************/
+
+NS_IMETHODIMP
+ExtensionPolicyService::CollectReports(nsIHandleReportCallback* aHandleReport,
+                                       nsISupports* aData, bool aAnonymize)
+{
+  for (auto iter = mExtensions.Iter(); !iter.Done(); iter.Next()) {
+    auto& ext = iter.Data();
+
+    nsAtomCString id(ext->Id());
+
+    NS_ConvertUTF16toUTF8 name(ext->Name());
+    name.ReplaceSubstring("\"", "");
+    name.ReplaceSubstring("\\", "");
+
+    nsString url;
+    MOZ_TRY_VAR(url, ext->GetURL(NS_LITERAL_STRING("")));
+
+    nsPrintfCString desc("Extension(id=%s, name=\"%s\", baseURL=%s)",
+                         id.get(), name.get(),
+                         NS_ConvertUTF16toUTF8(url).get());
+    desc.ReplaceChar('/', '\\');
+
+    nsCString path("extensions/");
+    path.Append(desc);
+
+    aHandleReport->Callback(
+      EmptyCString(), path,
+      KIND_NONHEAP, UNITS_COUNT, 1,
+      NS_LITERAL_CSTRING("WebExtensions that are active in this session"),
+      aData);
+  }
+
+  return NS_OK;
+}
+
+
+/*****************************************************************************
  * Content script management
  *****************************************************************************/
 
@@ -258,10 +304,7 @@ ExtensionPolicyService::CheckDocument(nsIDocument* aDocument)
 
     nsIPrincipal* principal = aDocument->NodePrincipal();
 
-    nsAutoString addonId;
-    Unused << principal->GetAddonId(addonId);
-
-    RefPtr<WebExtensionPolicy> policy = GetByID(addonId);
+    RefPtr<WebExtensionPolicy> policy = BasePrincipal::Cast(principal)->AddonPolicy();
     if (policy) {
       nsCOMPtr<nsIDOMDocument> doc = do_QueryInterface(aDocument);
       ProcessScript().InitExtensionDocument(policy, doc);
@@ -386,6 +429,17 @@ ExtensionPolicyService::AddonMayLoadURI(const nsAString& aAddonId,
 }
 
 nsresult
+ExtensionPolicyService::GetExtensionName(const nsAString& aAddonId,
+                                         nsAString& aName)
+{
+  if (WebExtensionPolicy* policy = GetByID(aAddonId)) {
+    aName.Assign(policy->Name());
+    return NS_OK;
+  }
+  return NS_ERROR_INVALID_ARG;
+}
+
+nsresult
 ExtensionPolicyService::ExtensionURILoadableByAnyone(nsIURI* aURI, bool* aResult)
 {
   URLInfo url(aURI);
@@ -413,6 +467,7 @@ NS_IMPL_CYCLE_COLLECTION(ExtensionPolicyService, mExtensions, mExtensionHosts)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ExtensionPolicyService)
   NS_INTERFACE_MAP_ENTRY(nsIAddonPolicyService)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
+  NS_INTERFACE_MAP_ENTRY(nsIMemoryReporter)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIAddonPolicyService)
 NS_INTERFACE_MAP_END
 

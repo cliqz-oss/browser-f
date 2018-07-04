@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -20,24 +21,24 @@ class D3D11RecycleAllocator : public TextureClientRecycleAllocator
 {
 public:
   explicit D3D11RecycleAllocator(KnowsCompositor* aAllocator,
-                                 ID3D11Device* aDevice);
+                                 ID3D11Device* aDevice)
+    : TextureClientRecycleAllocator(aAllocator)
+    , mDevice(aDevice)
+  {}
 
   already_AddRefed<TextureClient>
   CreateOrRecycleClient(gfx::SurfaceFormat aFormat,
                         const gfx::IntSize& aSize);
 
-  uint32_t VendorId() const { return mVendorId; }
-
 protected:
-  virtual already_AddRefed<TextureClient>
-  Allocate(gfx::SurfaceFormat aFormat,
-           gfx::IntSize aSize,
-           BackendSelector aSelector,
-           TextureFlags aTextureFlags,
-           TextureAllocationFlags aAllocFlags) override;
+  virtual already_AddRefed<TextureClient> Allocate(
+    gfx::SurfaceFormat aFormat,
+    gfx::IntSize aSize,
+    BackendSelector aSelector,
+    TextureFlags aTextureFlags,
+    TextureAllocationFlags aAllocFlags) override;
 
   RefPtr<ID3D11Device> mDevice;
-  uint32_t mVendorId;
 };
 
 // Image class that wraps a ID3D11Texture2D. This class copies the image
@@ -48,14 +49,14 @@ class D3D11ShareHandleImage final : public Image {
 public:
   D3D11ShareHandleImage(const gfx::IntSize& aSize,
                         const gfx::IntRect& aRect);
-  ~D3D11ShareHandleImage() override {}
+  virtual ~D3D11ShareHandleImage() {}
 
   bool AllocateTexture(D3D11RecycleAllocator* aAllocator, ID3D11Device* aDevice);
 
-  gfx::IntSize GetSize() override;
-  virtual already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
-  virtual TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override;
-  virtual gfx::IntRect GetPictureRect() override { return mPictureRect; }
+  gfx::IntSize GetSize() const override;
+  already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
+  TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override;
+  gfx::IntRect GetPictureRect() const override { return mPictureRect; }
 
   ID3D11Texture2D* GetTexture() const;
 

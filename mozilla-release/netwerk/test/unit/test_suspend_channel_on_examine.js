@@ -2,8 +2,8 @@
 
 var CC = Components.Constructor;
 
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var obs = Cc["@mozilla.org/observer-service;1"]
             .getService(Ci.nsIObserverService);
@@ -50,12 +50,12 @@ add_test(function testAsyncCancel() {
     });
   });
   startChannelRequest(baseUrl, CL_EXPECT_FAILURE, (request, data, context) => {
-    do_check_true(!!!data, "no response");
+    Assert.ok(!!!data, "no response");
 
-    var cm = Cc["@mozilla.org/cookiemanager;1"].getService(Ci.nsICookieManager2);
-    do_check_eq(cm.countCookiesFromHost("localhost"), 0, "no cookies set");
+    var cm = Cc["@mozilla.org/cookiemanager;1"].getService(Ci.nsICookieManager);
+    Assert.equal(cm.countCookiesFromHost("localhost"), 0, "no cookies set");
 
-    do_execute_soon(run_next_test);
+    executeSoon(run_next_test);
   });
 });
 
@@ -68,7 +68,7 @@ function run_test() {
 
   run_next_test();
 
-  do_register_cleanup(function(){
+  registerCleanupFunction(function(){
     httpServer.stop(() => {});
   });
 }

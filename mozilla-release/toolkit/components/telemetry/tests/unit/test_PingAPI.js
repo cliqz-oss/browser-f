@@ -6,12 +6,12 @@
 
 "use strict";
 
-Cu.import("resource://gre/modules/ClientID.jsm", this);
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/TelemetryArchive.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/osfile.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/ClientID.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryArchive.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
 XPCOMUtils.defineLazyGetter(this, "gPingsArchivePath", function() {
   return OS.Path.join(OS.Constants.Path.profileDir, "datareporting", "archived");
@@ -22,7 +22,7 @@ XPCOMUtils.defineLazyGetter(this, "gPingsArchivePath", function() {
  * @param {Integer} aArchiveQuota The new quota, in bytes.
  */
 function fakeStorageQuota(aArchiveQuota) {
-  let storage = Cu.import("resource://gre/modules/TelemetryStorage.jsm", {});
+  let storage = ChromeUtils.import("resource://gre/modules/TelemetryStorage.jsm", {});
   storage.Policy.getArchiveQuota = () => aArchiveQuota;
 }
 
@@ -68,7 +68,6 @@ add_task(async function test_setup() {
   do_get_profile(true);
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
 });
 
 add_task(async function test_archivedPings() {
@@ -492,7 +491,7 @@ add_task(async function test_currentPingData() {
     Assert.equal(ping.payload.histograms[id].sum, 1, "Test count value should match.");
     id = "TELEMETRY_TEST_KEYED_RELEASE_OPTOUT";
     Assert.ok(id in ping.payload.keyedHistograms, "Payload should have keyed test histogram.");
-    Assert.equal(ping.payload.keyedHistograms[id]["a"].sum, 1, "Keyed test value should match.");
+    Assert.equal(ping.payload.keyedHistograms[id].a.sum, 1, "Keyed test value should match.");
   }
 });
 

@@ -1,4 +1,4 @@
-XPCOMUtils.defineLazyModuleGetter(this, "Promise",
+ChromeUtils.defineModuleGetter(this, "Promise",
   "resource://gre/modules/Promise.jsm");
 
 /* exported promiseTabLoadEvent, promiseWaitForCondition, is_element_visible, is_element_hidden */
@@ -116,7 +116,7 @@ function is_hidden(element) {
   if (style.visibility != "visible")
     return true;
   if (style.display == "-moz-popup")
-    return ["hiding", "closed"].indexOf(element.state) != -1;
+    return ["hiding", "closed"].includes(element.state);
 
   // Hiding a parent element will hide all its children
   if (element.parentNode != element.ownerDocument)

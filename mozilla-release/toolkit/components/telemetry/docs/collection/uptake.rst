@@ -1,3 +1,5 @@
+.. _telemetry/collection/uptake:
+
 ================
 Uptake Telemetry
 ================
@@ -10,9 +12,9 @@ The helper — described below — reports predefined update status, which event
 * its evolution over time;
 * the distribution of error causes.
 
-.. notes::
+.. note::
 
-   Examples of update sources: *remote settings, addons update, addons, gfx, and plugins blocklists, certificate revocation, certificate pinning, system addons delivery…*
+   Examples of update sources: *remote settings, add-ons update, add-ons, gfx, and plugins blocklists, certificate revocation, certificate pinning, system add-ons delivery…*
 
    Examples of update status: *up-to-date, success, network error, server error, signature error, server backoff, unknown error…*
 
@@ -22,7 +24,7 @@ Usage
 
 .. code-block:: js
 
-   const { UptakeTelemetry } = Cu.import("resource://services-common/uptake-telemetry.js", {});
+   const { UptakeTelemetry } = ChromeUtils.import("resource://services-common/uptake-telemetry.js", {});
 
    UptakeTelemetry.report(source, status);
 
@@ -85,9 +87,9 @@ The following remote data sources are already using this unified histogram.
 * plugins blocklist
 * certificate revocation
 * certificate pinning
+* :ref:`Shield Recipe client <components/normandy>`
 
 Obviously, the goal is to eventually converge and avoid ad-hoc Telemetry probes for measuring uptake of remote content. Some notable potential use-cases are:
 
 * nsUpdateService
 * mozapps extensions update
-* Shield recipe client

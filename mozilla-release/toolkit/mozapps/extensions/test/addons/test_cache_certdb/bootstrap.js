@@ -1,9 +1,9 @@
-var AM_Ci = Components.interfaces;
+var AM_Ci = Ci;
 
 const CERTDB_CONTRACTID = "@mozilla.org/security/x509certdb;1";
 const CERTDB_CID = Components.ID("{fb0bbc5c-452e-4783-b32c-80124693d871}");
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const CERT = `MIIDITCCAgmgAwIBAgIJALAv8fydd6nBMA0GCSqGSIb3DQEBBQUAMCcxJTAjBgNV
 BAMMHGJvb3RzdHJhcDFAdGVzdHMubW96aWxsYS5vcmcwHhcNMTYwMjAyMjMxNjUy
@@ -36,14 +36,14 @@ function overrideCertDB() {
 
   let fakeCertDB = {
     openSignedAppFileAsync(root, file, callback) {
-      callback.openSignedAppFileFinished(Components.results.NS_OK, null, fakeCert);
+      callback.openSignedAppFileFinished(Cr.NS_OK, null, fakeCert);
     },
 
     verifySignedDirectoryAsync(root, dir, callback) {
-      callback.verifySignedDirectoryFinished(Components.results.NS_OK, fakeCert);
+      callback.verifySignedDirectoryFinished(Cr.NS_OK, fakeCert);
     },
 
-    QueryInterface: XPCOMUtils.generateQI([AM_Ci.nsIX509CertDB])
+    QueryInterface: ChromeUtils.generateQI([AM_Ci.nsIX509CertDB])
   };
 
   for (let property of Object.keys(realCertDB)) {
@@ -59,7 +59,7 @@ function overrideCertDB() {
   let certDBFactory = {
     createInstance(outer, iid) {
       if (outer != null) {
-        throw Components.results.NS_ERROR_NO_AGGREGATION;
+        throw Cr.NS_ERROR_NO_AGGREGATION;
       }
       return fakeCertDB.QueryInterface(iid);
     }
@@ -67,7 +67,7 @@ function overrideCertDB() {
   registrar.registerFactory(CERTDB_CID, "CertDB",
                             CERTDB_CONTRACTID, certDBFactory);
 
-  const scope = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+  const scope = ChromeUtils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
   scope.gCertDB = fakeCertDB;
 }
 

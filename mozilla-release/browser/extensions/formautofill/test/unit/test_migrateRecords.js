@@ -4,7 +4,7 @@
 
 "use strict";
 
-const {ProfileStorage} = Cu.import("resource://formautofill/ProfileStorage.jsm", {});
+const {FormAutofillStorage} = ChromeUtils.import("resource://formautofill/FormAutofillStorage.jsm", {});
 
 const TEST_STORE_FILE_NAME = "test-profile.json";
 
@@ -101,6 +101,23 @@ const ADDRESS_TESTCASES = [
       name: "Timothy",
     },
   },
+  {
+    description: "The migration shouldn't be invoked on tombstones.",
+    record: {
+      guid: "test-guid",
+      timeLastModified: 12345,
+      deleted: true,
+    },
+    expectedResult: {
+      guid: "test-guid",
+      timeLastModified: 12345,
+      deleted: true,
+
+      // Make sure no new fields are appended.
+      version: undefined,
+      name: undefined,
+    },
+  },
 ];
 
 const CREDIT_CARD_TESTCASES = [
@@ -194,22 +211,39 @@ const CREDIT_CARD_TESTCASES = [
       "cc-given-name": "Timothy",
     },
   },
+  {
+    description: "The migration shouldn't be invoked on tombstones.",
+    record: {
+      guid: "test-guid",
+      timeLastModified: 12345,
+      deleted: true,
+    },
+    expectedResult: {
+      guid: "test-guid",
+      timeLastModified: 12345,
+      deleted: true,
+
+      // Make sure no new fields are appended.
+      version: undefined,
+      "cc-given-name": undefined,
+    },
+  },
 ];
 
 let do_check_record_matches = (expectedRecord, record) => {
   for (let key in expectedRecord) {
-    do_check_eq(expectedRecord[key], record[key]);
+    Assert.equal(expectedRecord[key], record[key]);
   }
 };
 
 add_task(async function test_migrateAddressRecords() {
   let path = getTempFile(TEST_STORE_FILE_NAME).path;
 
-  let profileStorage = new ProfileStorage(path);
+  let profileStorage = new FormAutofillStorage(path);
   await profileStorage.initialize();
 
   ADDRESS_TESTCASES.forEach(testcase => {
-    do_print(testcase.description);
+    info(testcase.description);
     profileStorage.addresses._migrateRecord(testcase.record);
     do_check_record_matches(testcase.expectedResult, testcase.record);
   });
@@ -218,11 +252,11 @@ add_task(async function test_migrateAddressRecords() {
 add_task(async function test_migrateCreditCardRecords() {
   let path = getTempFile(TEST_STORE_FILE_NAME).path;
 
-  let profileStorage = new ProfileStorage(path);
+  let profileStorage = new FormAutofillStorage(path);
   await profileStorage.initialize();
 
   CREDIT_CARD_TESTCASES.forEach(testcase => {
-    do_print(testcase.description);
+    info(testcase.description);
     profileStorage.creditCards._migrateRecord(testcase.record);
     do_check_record_matches(testcase.expectedResult, testcase.record);
   });

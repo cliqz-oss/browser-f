@@ -59,7 +59,7 @@ let gTestcases = [
 
 // Mock implementation of nsICertificateDialogs.
 const gCertificateDialogs = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsICertificateDialogs]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsICertificateDialogs]),
 
   getPKCS12FilePassword: (ctx, password) => {
     if (gGetPKCS12FilePasswordCalled) {
@@ -70,16 +70,16 @@ const gCertificateDialogs = {
     }
 
     password.value = gCurrentTestcase.passwordToUse;
-    do_print("getPKCS12FilePassword() called");
+    info("getPKCS12FilePassword() called");
     gGetPKCS12FilePasswordCalled = true;
     return true;
   },
 };
 
 const gPrompt = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPrompt]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPrompt]),
   alert: (title, text) => {
-    do_print(`alert('${text}')`);
+    info(`alert('${text}')`);
     ok(gCurrentTestcase.expectingAlert,
        "alert() should only be called if we're expecting it");
     ok(gCurrentTestcase.expectedAlertRegexp.test(text),
@@ -88,7 +88,7 @@ const gPrompt = {
 };
 
 const gPromptFactory = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPromptFactory]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPromptFactory]),
   getPrompt: (aWindow, aIID) => gPrompt,
 };
 
@@ -109,7 +109,7 @@ function doesCertExist(commonName) {
 }
 
 function runOneTestcase(testcase) {
-  do_print(`running ${testcase.name}`);
+  info(`running ${testcase.name}`);
   ok(!doesCertExist(CERT_COMMON_NAME),
      "cert should not be in the database before import");
 
@@ -127,16 +127,13 @@ function runOneTestcase(testcase) {
 }
 
 function run_test() {
-  // We have to set a password and login before we attempt to import anything.
-  loginToDBWithDefaultPassword();
-
   let certificateDialogsCID =
     MockRegistrar.register("@mozilla.org/nsCertificateDialogs;1",
                            gCertificateDialogs);
   let promptFactoryCID =
     MockRegistrar.register("@mozilla.org/prompter;1", gPromptFactory);
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     MockRegistrar.unregister(certificateDialogsCID);
     MockRegistrar.unregister(promptFactoryCID);
   });

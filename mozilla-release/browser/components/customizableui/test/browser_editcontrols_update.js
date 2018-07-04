@@ -52,10 +52,8 @@ add_task(async function test_init() {
   });
 
   // Open and close the panel first so that it is fully initialized.
-  await PanelUI.show();
-  let hiddenPromise = promisePanelHidden(window);
-  PanelUI.hide();
-  await hiddenPromise;
+  await gCUITestUtils.openMainMenu();
+  await gCUITestUtils.hideMainMenu();
 });
 
 // Test updating when the panel is open with the edit-controls on the panel.
@@ -64,7 +62,7 @@ add_task(async function test_panelui_opened() {
   gURLBar.focus();
   gURLBar.value = "test";
 
-  await PanelUI.show();
+  await gCUITestUtils.openMainMenu();
 
   checkState(false, "Update when edit-controls is on panel and visible");
 
@@ -75,9 +73,7 @@ add_task(async function test_panelui_opened() {
   checkState(true, "Update when edit-controls is on panel and selection changed");
 
   overridePromise = expectCommandUpdate(0);
-  let hiddenPromise = promisePanelHidden(window);
-  PanelUI.hide();
-  await hiddenPromise;
+  await gCUITestUtils.hideMainMenu();
   await overridePromise;
 
   // Check that updates do not occur after the panel has been closed.
@@ -95,7 +91,7 @@ add_task(async function test_panelui_opened() {
 add_task(async function test_panelui_customize_to_toolbar() {
   await startCustomizing();
   let navbar = document.getElementById("nav-bar");
-  simulateItemDrag(document.getElementById("edit-controls"), navbar.customizationTarget);
+  simulateItemDrag(document.getElementById("edit-controls"), navbar.customizationTarget, "end");
   await endCustomizing();
 
   // updateEditUIVisibility should be called when customization ends but isn't. See bug 1359790.
@@ -128,8 +124,9 @@ add_task(async function test_panelui_customize_to_toolbar() {
     CustomizableUI.reset();
   });
 
-  window.resizeTo(400, window.outerHeight);
-  await waitForCondition(() => navbar.hasAttribute("overflowing"));
+  window.resizeTo(kForceOverflowWidthPx, window.outerHeight);
+  await waitForCondition(() =>
+    navbar.hasAttribute("overflowing") && !navbar.querySelector("edit-controls"));
 
   // Mac will update the enabled state even when the buttons are overflowing,
   // so main menubar shortcuts will work properly.
@@ -153,27 +150,25 @@ add_task(async function test_panelui_customize_to_toolbar() {
   window.resizeTo(originalWidth, window.outerHeight);
   await waitForCondition(() => !navbar.hasAttribute("overflowing"));
 
-  if (gPhotonStructure) {
-    CustomizableUI.addWidgetToArea("edit-controls", CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
-    // updateEditUIVisibility should be called when customization happens but isn't. See bug 1359790.
-    updateEditUIVisibility();
+  CustomizableUI.addWidgetToArea("edit-controls", CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
+  // updateEditUIVisibility should be called when customization happens but isn't. See bug 1359790.
+  updateEditUIVisibility();
 
-    overridePromise = expectCommandUpdate(isMac ? 1 : 0);
-    gURLBar.select();
-    await overridePromise;
+  overridePromise = expectCommandUpdate(isMac ? 1 : 0);
+  gURLBar.select();
+  await overridePromise;
 
-    // Check that we get an update if we select content while the panel is open.
-    overridePromise = expectCommandUpdate(1);
-    await navbar.overflowable.show();
-    gURLBar.select();
-    await overridePromise;
+  // Check that we get an update if we select content while the panel is open.
+  overridePromise = expectCommandUpdate(1);
+  await navbar.overflowable.show();
+  gURLBar.select();
+  await overridePromise;
 
-    // And that we don't (except on mac) when the panel is hidden.
-    kOverflowPanel.hidePopup();
-    overridePromise = expectCommandUpdate(isMac ? 1 : 0);
-    gURLBar.select();
-    await overridePromise;
-  }
+  // And that we don't (except on mac) when the panel is hidden.
+  kOverflowPanel.hidePopup();
+  overridePromise = expectCommandUpdate(isMac ? 1 : 0);
+  gURLBar.select();
+  await overridePromise;
 });
 
 // Test updating when the edit-controls are moved to the palette.

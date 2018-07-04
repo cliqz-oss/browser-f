@@ -1,23 +1,21 @@
+/* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
+/* vim: set sts=2 sw=2 et tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionParent",
-                                  "resource://gre/modules/ExtensionParent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionUtils",
-                                  "resource://gre/modules/ExtensionUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
-                                  "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "JSONFile",
-                                  "resource://gre/modules/JSONFile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ExtensionParent: "resource://gre/modules/ExtensionParent.jsm",
+  JSONFile: "resource://gre/modules/JSONFile.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+});
 
 XPCOMUtils.defineLazyGetter(this, "StartupCache", () => ExtensionParent.StartupCache);
 
-this.EXPORTED_SYMBOLS = ["ExtensionPermissions"];
+var EXPORTED_SYMBOLS = ["ExtensionPermissions"];
 
 const FILE_NAME = "extension-preferences.json";
 
@@ -25,14 +23,14 @@ let prefs;
 let _initPromise;
 
 async function _lazyInit() {
-  let file = FileUtils.getFile("ProfD", [FILE_NAME]);
+  let path = OS.Path.join(OS.Constants.Path.profileDir, FILE_NAME);
 
-  prefs = new JSONFile({path: file.path});
+  prefs = new JSONFile({path});
   prefs.data = {};
 
   try {
-    let blob = await ExtensionUtils.promiseFileContents(file);
-    prefs.data = JSON.parse(new TextDecoder().decode(blob));
+    let {buffer} = await OS.File.read(path);
+    prefs.data = JSON.parse(new TextDecoder().decode(buffer));
   } catch (e) {
     if (!e.becauseNoSuchFile) {
       Cu.reportError(e);
@@ -51,7 +49,7 @@ function emptyPermissions() {
   return {permissions: [], origins: []};
 }
 
-this.ExtensionPermissions = {
+var ExtensionPermissions = {
   async _saveSoon(extension) {
     await lazyInit();
 

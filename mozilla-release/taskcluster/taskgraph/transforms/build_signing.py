@@ -9,6 +9,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.signed_artifacts import generate_specifications_of_artifacts_to_sign
+from taskgraph.util.taskcluster import get_artifact_path
 
 
 transforms = TransformSequence()
@@ -42,14 +43,17 @@ def define_upstream_artifacts(config, jobs):
         build_platform = dep_job.attributes.get('build_platform')
 
         artifacts_specifications = generate_specifications_of_artifacts_to_sign(
-            build_platform,
-            dep_job.attributes.get('nightly'),
-            keep_locale_template=False
+            dep_job,
+            keep_locale_template=False,
+            kind=config.kind,
+            project=config.params["project"],
         )
 
         if 'android' in build_platform:
             # We're in the job that creates both multilocale and en-US APKs
-            artifacts_specifications[0]['artifacts'].append('public/build/en-US/target.apk')
+            artifacts_specifications[0]['artifacts'].append(
+                get_artifact_path(dep_job, 'en-US/target.apk')
+            )
 
         job['upstream-artifacts'] = [{
             'taskId': {'task-reference': '<build>'},
@@ -57,8 +61,5 @@ def define_upstream_artifacts(config, jobs):
             'paths': spec['artifacts'],
             'formats': spec['formats'],
         } for spec in artifacts_specifications]
-
-        label = dep_job.label.replace("build-", "signing-")
-        job['label'] = label
 
         yield job

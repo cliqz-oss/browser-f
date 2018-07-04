@@ -17,14 +17,16 @@
 #include "nsWindow.h"
 #include "nsTransferable.h"
 #include "nsHTMLFormatConverter.h"
+#include "HeadlessClipboard.h"
 #ifdef MOZ_X11
 #include "nsClipboardHelper.h"
 #include "nsClipboard.h"
 #include "nsDragService.h"
 #endif
-#if (MOZ_WIDGET_GTK == 3)
+#ifdef MOZ_WIDGET_GTK
 #include "nsApplicationChooser.h"
 #endif
+#include "TaskbarProgress.h"
 #include "nsColorPicker.h"
 #include "nsFilePicker.h"
 #include "nsSound.h"
@@ -33,12 +35,10 @@
 #include "WakeLockListener.h"
 
 #ifdef NS_PRINTING
-#include "nsPrintOptionsGTK.h"
+#include "nsPrintSettingsServiceGTK.h"
 #include "nsPrintSession.h"
 #include "nsDeviceContextSpecG.h"
 #endif
-
-#include "mozilla/Preferences.h"
 
 #include "nsImageToPixbuf.h"
 #include "nsPrintDialogGTK.h"
@@ -49,6 +49,7 @@
 #endif
 
 #include "nsNativeThemeGTK.h"
+#include "HeadlessThemeGTK.h"
 
 #include "nsIComponentRegistrar.h"
 #include "nsComponentManagerUtils.h"
@@ -59,12 +60,6 @@
 using namespace mozilla;
 using namespace mozilla::widget;
 
-/* from nsFilePicker.js */
-#define XULFILEPICKER_CID \
-  { 0x54ae32f8, 0x1dd2, 0x11b2, \
-    { 0xa2, 0x09, 0xdf, 0x7c, 0x50, 0x53, 0x70, 0xf8} }
-static NS_DEFINE_CID(kXULFilePickerCID, XULFILEPICKER_CID);
-
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsWindow)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsTransferable)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsBidiKeyboard)
@@ -72,12 +67,12 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsHTMLFormatConverter)
 #ifdef MOZ_X11
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsIdleServiceGTK, nsIdleServiceGTK::GetInstance)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsClipboardHelper)
-NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsIClipboard, nsClipboard::GetInstance)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsDragService, nsDragService::GetInstance)
 #endif
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsISound, nsSound::GetInstance)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(ScreenManager, ScreenManager::GetAddRefedSingleton)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsImageToPixbuf)
+NS_GENERIC_FACTORY_CONSTRUCTOR(TaskbarProgress)
 
 
 // from nsWindow.cpp
@@ -87,11 +82,8 @@ static nsresult
 nsNativeThemeGTKConstructor(nsISupports *aOuter, REFNSIID aIID,
                             void **aResult)
 {
-    if (gfxPlatform::IsHeadless()) {
-        return NS_ERROR_NO_INTERFACE;
-    }
     nsresult rv;
-    nsNativeThemeGTK * inst;
+    nsCOMPtr<nsITheme> inst;
 
     if (gDisableNativeTheme)
         return NS_ERROR_NO_INTERFACE;
@@ -101,15 +93,16 @@ nsNativeThemeGTKConstructor(nsISupports *aOuter, REFNSIID aIID,
         rv = NS_ERROR_NO_AGGREGATION;
         return rv;
     }
-
-    inst = new nsNativeThemeGTK();
+    if (gfxPlatform::IsHeadless()) {
+        inst = new HeadlessThemeGTK();
+    } else {
+        inst = new nsNativeThemeGTK();
+    }
     if (nullptr == inst) {
         rv = NS_ERROR_OUT_OF_MEMORY;
         return rv;
     }
-    NS_ADDREF(inst);
     rv = inst->QueryInterface(aIID, aResult);
-    NS_RELEASE(inst);
 
     return rv;
 }
@@ -125,7 +118,7 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(GfxInfo, Init)
 
 #ifdef NS_PRINTING
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsDeviceContextSpecGTK)
-NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintOptionsGTK, Init)
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintSettingsServiceGTK, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsPrinterEnumeratorGTK)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintSession, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintDialogServiceGTK, Init)
@@ -140,24 +133,12 @@ nsFilePickerConstructor(nsISupports *aOuter, REFNSIID aIID,
     return NS_ERROR_NO_AGGREGATION;
   }
 
-  bool allowPlatformPicker =
-      Preferences::GetBool("ui.allow_platform_file_picker", true);
-
-  nsCOMPtr<nsIFilePicker> picker;
-  if (allowPlatformPicker) {
-      picker = new nsFilePicker;
-  } else {
-    picker = do_CreateInstance(kXULFilePickerCID);
-  }
-
-  if (!picker) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
+  nsCOMPtr<nsIFilePicker> picker = new nsFilePicker;
 
   return picker->QueryInterface(aIID, aResult);
 }
 
-#if (MOZ_WIDGET_GTK == 3)
+#ifdef MOZ_WIDGET_GTK
 static nsresult
 nsApplicationChooserConstructor(nsISupports *aOuter, REFNSIID aIID,
                                 void **aResult)
@@ -194,14 +175,37 @@ nsColorPickerConstructor(nsISupports *aOuter, REFNSIID aIID,
     return picker->QueryInterface(aIID, aResult);
 }
 
+static nsresult
+nsClipboardConstructor(nsISupports *aOuter, REFNSIID aIID,
+                       void **aResult)
+{
+  *aResult = nullptr;
+  if (aOuter != nullptr) {
+    return NS_ERROR_NO_AGGREGATION;
+  }
+
+  nsCOMPtr<nsIClipboard> inst;
+  if (gfxPlatform::IsHeadless()) {
+    inst = new HeadlessClipboard();
+  } else {
+    RefPtr<nsClipboard> clipboard = new nsClipboard();
+    nsresult rv = clipboard->Init();
+    NS_ENSURE_SUCCESS(rv, rv);
+    inst = clipboard;
+  }
+
+  return inst->QueryInterface(aIID, aResult);
+}
+
 NS_DEFINE_NAMED_CID(NS_WINDOW_CID);
 NS_DEFINE_NAMED_CID(NS_CHILD_CID);
 NS_DEFINE_NAMED_CID(NS_APPSHELL_CID);
 NS_DEFINE_NAMED_CID(NS_COLORPICKER_CID);
 NS_DEFINE_NAMED_CID(NS_FILEPICKER_CID);
-#if (MOZ_WIDGET_GTK == 3)
+#ifdef MOZ_WIDGET_GTK
 NS_DEFINE_NAMED_CID(NS_APPLICATIONCHOOSER_CID);
 #endif
+NS_DEFINE_NAMED_CID(NS_GTK_TASKBARPROGRESS_CID);
 NS_DEFINE_NAMED_CID(NS_SOUND_CID);
 NS_DEFINE_NAMED_CID(NS_TRANSFERABLE_CID);
 #ifdef MOZ_X11
@@ -233,13 +237,14 @@ static const mozilla::Module::CIDEntry kWidgetCIDs[] = {
     { &kNS_APPSHELL_CID, false, nullptr, nsAppShellConstructor, Module::ALLOW_IN_GPU_PROCESS },
     { &kNS_COLORPICKER_CID, false, nullptr, nsColorPickerConstructor, Module::MAIN_PROCESS_ONLY },
     { &kNS_FILEPICKER_CID, false, nullptr, nsFilePickerConstructor, Module::MAIN_PROCESS_ONLY },
-#if (MOZ_WIDGET_GTK == 3)
+#ifdef MOZ_WIDGET_GTK
     { &kNS_APPLICATIONCHOOSER_CID, false, nullptr, nsApplicationChooserConstructor, Module::MAIN_PROCESS_ONLY },
 #endif
+    { &kNS_GTK_TASKBARPROGRESS_CID, false, nullptr, TaskbarProgressConstructor},
     { &kNS_SOUND_CID, false, nullptr, nsISoundConstructor, Module::MAIN_PROCESS_ONLY },
     { &kNS_TRANSFERABLE_CID, false, nullptr, nsTransferableConstructor },
 #ifdef MOZ_X11
-    { &kNS_CLIPBOARD_CID, false, nullptr, nsIClipboardConstructor, Module::MAIN_PROCESS_ONLY },
+    { &kNS_CLIPBOARD_CID, false, nullptr, nsClipboardConstructor, Module::MAIN_PROCESS_ONLY },
     { &kNS_CLIPBOARDHELPER_CID, false, nullptr, nsClipboardHelperConstructor },
     { &kNS_DRAGSERVICE_CID, false, nullptr, nsDragServiceConstructor, Module::MAIN_PROCESS_ONLY },
 #endif
@@ -249,7 +254,7 @@ static const mozilla::Module::CIDEntry kWidgetCIDs[] = {
       Module::MAIN_PROCESS_ONLY },
     { &kNS_THEMERENDERER_CID, false, nullptr, nsNativeThemeGTKConstructor },
 #ifdef NS_PRINTING
-    { &kNS_PRINTSETTINGSSERVICE_CID, false, nullptr, nsPrintOptionsGTKConstructor },
+    { &kNS_PRINTSETTINGSSERVICE_CID, false, nullptr, nsPrintSettingsServiceGTKConstructor },
     { &kNS_PRINTER_ENUMERATOR_CID, false, nullptr, nsPrinterEnumeratorGTKConstructor },
     { &kNS_PRINTSESSION_CID, false, nullptr, nsPrintSessionConstructor },
     { &kNS_DEVICE_CONTEXT_SPEC_CID, false, nullptr, nsDeviceContextSpecGTKConstructor },
@@ -269,9 +274,10 @@ static const mozilla::Module::ContractIDEntry kWidgetContracts[] = {
     { "@mozilla.org/widget/appshell/gtk;1", &kNS_APPSHELL_CID, Module::ALLOW_IN_GPU_PROCESS },
     { "@mozilla.org/colorpicker;1", &kNS_COLORPICKER_CID, Module::MAIN_PROCESS_ONLY },
     { "@mozilla.org/filepicker;1", &kNS_FILEPICKER_CID, Module::MAIN_PROCESS_ONLY },
-#if (MOZ_WIDGET_GTK == 3)
+#ifdef MOZ_WIDGET_GTK
     { "@mozilla.org/applicationchooser;1", &kNS_APPLICATIONCHOOSER_CID, Module::MAIN_PROCESS_ONLY },
 #endif
+    { "@mozilla.org/widget/taskbarprogress/gtk;1", &kNS_GTK_TASKBARPROGRESS_CID },
     { "@mozilla.org/sound;1", &kNS_SOUND_CID, Module::MAIN_PROCESS_ONLY },
     { "@mozilla.org/widget/transferable;1", &kNS_TRANSFERABLE_CID },
 #ifdef MOZ_X11

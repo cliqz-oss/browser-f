@@ -5,10 +5,10 @@
 /*---
 description: RestParameter does not support an initializer (generator method)
 esid: sec-generator-function-definitions-runtime-semantics-propertydefinitionevaluation
-features: [default-parameters]
+features: [default-parameters, generators]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     GeneratorMethod :
@@ -46,6 +46,7 @@ info: |
            iteratorRecord and env as arguments.
     [...]
 
+
     14.1 Function Definitions
 
     Syntax
@@ -64,6 +65,7 @@ info: |
       ...BindingPattern[?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 0, {
   *method(...x = []) {

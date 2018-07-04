@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=4 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,6 +8,7 @@
 #define mozilla_layers_LayerTreeOwnerTracker_h
 
 #include "base/process.h"  // for base::ProcessId
+#include "LayersTypes.h"   // for LayersId
 #include "mozilla/Mutex.h" // for mozilla::Mutex
 
 #include <functional>
@@ -44,25 +45,25 @@ public:
    * Map aLayersId and aProcessId together so that that process
    * can access that layer tree.
    */
-  void Map(uint64_t aLayersId, base::ProcessId aProcessId);
+  void Map(LayersId aLayersId, base::ProcessId aProcessId);
 
   /**
   * Remove an existing mapping.
   */
-  void Unmap(uint64_t aLayersId, base::ProcessId aProcessId);
+  void Unmap(LayersId aLayersId, base::ProcessId aProcessId);
 
   /**
    * Checks whether it is okay for aProcessId to access aLayersId.
    */
-  bool IsMapped(uint64_t aLayersId, base::ProcessId aProcessId);
+  bool IsMapped(LayersId aLayersId, base::ProcessId aProcessId);
 
-  void Iterate(const std::function<void(uint64_t aLayersId, base::ProcessId aProcessId)>& aCallback);
+  void Iterate(const std::function<void(LayersId aLayersId, base::ProcessId aProcessId)>& aCallback);
 
 private:
   LayerTreeOwnerTracker();
 
   mozilla::Mutex mLayerIdsLock;
-  std::map<uint64_t, base::ProcessId> mLayerIds;
+  std::map<LayersId, base::ProcessId> mLayerIds;
 };
 
 } // namespace layers

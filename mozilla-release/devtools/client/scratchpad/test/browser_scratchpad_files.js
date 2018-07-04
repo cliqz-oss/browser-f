@@ -11,34 +11,31 @@ var gFile;
 // The temporary file content.
 var gFileContent = "hello.world('bug636725');";
 
-function test()
-{
+function test() {
   waitForExplicitFinish();
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  gBrowser.selectedBrowser.addEventListener("load", function () {
+  BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(function() {
     openScratchpad(runTests);
-  }, {capture: true, once: true});
+  });
 
-  content.location = "data:text/html,<p>test file open and save in Scratchpad";
+  gBrowser.loadURI("data:text/html,<p>test file open and save in Scratchpad");
 }
 
-function runTests()
-{
+function runTests() {
   gScratchpad = gScratchpadWindow.Scratchpad;
 
-  createTempFile("fileForBug636725.tmp", gFileContent, function (aStatus, aFile) {
+  createTempFile("fileForBug636725.tmp", gFileContent, function(aStatus, aFile) {
     ok(Components.isSuccessCode(aStatus),
       "The temporary file was saved successfully");
 
     gFile = aFile;
-    gScratchpad.importFromFile(gFile.QueryInterface(Ci.nsILocalFile), true,
+    gScratchpad.importFromFile(gFile.QueryInterface(Ci.nsIFile), true,
         fileImported);
   });
 }
 
-function fileImported(aStatus, aFileContent)
-{
+function fileImported(aStatus, aFileContent) {
   ok(Components.isSuccessCode(aStatus),
      "the temporary file was imported successfully with Scratchpad");
 
@@ -55,12 +52,11 @@ function fileImported(aStatus, aFileContent)
   gFileContent += "// omg, saved!";
   gScratchpad.editor.setText(gFileContent);
 
-  gScratchpad.exportToFile(gFile.QueryInterface(Ci.nsILocalFile), true, true,
+  gScratchpad.exportToFile(gFile.QueryInterface(Ci.nsIFile), true, true,
                           fileExported);
 }
 
-function fileExported(aStatus)
-{
+function fileExported(aStatus) {
   ok(Components.isSuccessCode(aStatus),
      "the temporary file was exported successfully with Scratchpad");
 
@@ -72,12 +68,12 @@ function fileExported(aStatus)
 
   let oldConfirm = gScratchpadWindow.confirm;
   let askedConfirmation = false;
-  gScratchpadWindow.confirm = function () {
+  gScratchpadWindow.confirm = function() {
     askedConfirmation = true;
     return false;
   };
 
-  gScratchpad.exportToFile(gFile.QueryInterface(Ci.nsILocalFile), false, true,
+  gScratchpad.exportToFile(gFile.QueryInterface(Ci.nsIFile), false, true,
                           fileExported2);
 
   gScratchpadWindow.confirm = oldConfirm;
@@ -95,13 +91,11 @@ function fileExported(aStatus)
   NetUtil.asyncFetch(channel, fileRead);
 }
 
-function fileExported2()
-{
+function fileExported2() {
   ok(false, "exportToFile() did not cancel file overwrite");
 }
 
-function fileRead(aInputStream, aStatus)
-{
+function fileRead(aInputStream, aStatus) {
   ok(Components.isSuccessCode(aStatus),
      "the temporary file was read back successfully");
 

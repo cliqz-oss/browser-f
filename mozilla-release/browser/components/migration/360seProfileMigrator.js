@@ -4,19 +4,17 @@
 
 "use strict";
 
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource:///modules/MigrationUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Sqlite",
-                                  "resource://gre/modules/Sqlite.jsm");
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
+                               "resource://gre/modules/PlacesUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "Sqlite",
+                               "resource://gre/modules/Sqlite.jsm");
 
 Cu.importGlobalProperties(["URL"]);
 
@@ -116,7 +114,7 @@ Bookmarks.prototype = {
       let toolbarBMs = [];
 
       let connection = await Sqlite.openConnection({
-        path: this._file.path
+        path: this._file.path,
       });
 
       try {
@@ -145,7 +143,7 @@ Bookmarks.prototype = {
             bmToInsert = {
               children: [],
               title,
-              type: PlacesUtils.bookmarks.TYPE_FOLDER
+              type: PlacesUtils.bookmarks.TYPE_FOLDER,
             };
             folderMap.set(id, bmToInsert);
           } else {
@@ -158,7 +156,7 @@ Bookmarks.prototype = {
 
             bmToInsert = {
               title,
-              url
+              url,
             };
           }
 
@@ -181,8 +179,8 @@ Bookmarks.prototype = {
         await MigrationUtils.insertManyBookmarksWrapper(toolbarBMs, parentGuid);
       }
     })().then(() => aCallback(true),
-                        e => { Cu.reportError(e); aCallback(false) });
-  }
+                        e => { Cu.reportError(e); aCallback(false); });
+  },
 };
 
 function Qihoo360seProfileMigrator() {
@@ -190,13 +188,13 @@ function Qihoo360seProfileMigrator() {
     // for v6 and above
     {
       users: ["360se6", "apps", "data", "users"],
-      defaultUser: "default"
+      defaultUser: "default",
     },
     // for earlier versions
     {
       users: ["360se"],
-      defaultUser: "data"
-    }
+      defaultUser: "data",
+    },
   ];
   this._usersDir = null;
   this._defaultUserPath = null;
@@ -212,83 +210,81 @@ function Qihoo360seProfileMigrator() {
 
 Qihoo360seProfileMigrator.prototype = Object.create(MigratorPrototype);
 
-Object.defineProperty(Qihoo360seProfileMigrator.prototype, "sourceProfiles", {
-  get() {
-    if ("__sourceProfiles" in this)
-      return this.__sourceProfiles;
+Qihoo360seProfileMigrator.prototype.getSourceProfiles = function() {
+  if ("__sourceProfiles" in this)
+    return this.__sourceProfiles;
 
-    if (!this._usersDir) {
-      this.__sourceProfiles = [];
-      return this.__sourceProfiles;
+  if (!this._usersDir) {
+    this.__sourceProfiles = [];
+    return this.__sourceProfiles;
+  }
+
+  let profiles = [];
+  let noLoggedInUser = true;
+  try {
+    let loginIni = this._usersDir.clone();
+    loginIni.append("login.ini");
+    if (!loginIni.exists()) {
+      throw new Error("360 Secure Browser's 'login.ini' does not exist.");
+    }
+    if (!loginIni.isReadable()) {
+      throw new Error("360 Secure Browser's 'login.ini' file could not be read.");
     }
 
-    let profiles = [];
-    let noLoggedInUser = true;
+    let loginIniInUtf8 = copyToTempUTF8File(loginIni, "GBK");
+    let loginIniObj = parseINIStrings(loginIniInUtf8);
     try {
-      let loginIni = this._usersDir.clone();
-      loginIni.append("login.ini");
-      if (!loginIni.exists()) {
-        throw new Error("360 Secure Browser's 'login.ini' does not exist.");
-      }
-      if (!loginIni.isReadable()) {
-        throw new Error("360 Secure Browser's 'login.ini' file could not be read.");
-      }
+      loginIniInUtf8.remove(false);
+    } catch (ex) {}
 
-      let loginIniInUtf8 = copyToTempUTF8File(loginIni, "GBK");
-      let loginIniObj = parseINIStrings(loginIniInUtf8);
-      try {
-        loginIniInUtf8.remove(false);
-      } catch (ex) {}
+    let nowLoginEmail = loginIniObj.NowLogin && loginIniObj.NowLogin.email;
 
-      let nowLoginEmail = loginIniObj.NowLogin && loginIniObj.NowLogin.email;
-
-      /*
-       * NowLogin section may:
-       * 1. be missing or without email, before any user logs in.
-       * 2. represents the current logged in user
-       * 3. represents the most recent logged in user
-       *
-       * In the second case, user represented by NowLogin should be the first
-       * profile; otherwise the default user should be selected by default.
-       */
-      if (nowLoginEmail) {
-        if (loginIniObj.NowLogin.IsLogined === "1") {
-          noLoggedInUser = false;
-        }
-
-        profiles.push({
-          id: this._getIdFromConfig(loginIniObj.NowLogin),
-          name: nowLoginEmail,
-        });
+    /*
+     * NowLogin section may:
+     * 1. be missing or without email, before any user logs in.
+     * 2. represents the current logged in user
+     * 3. represents the most recent logged in user
+     *
+     * In the second case, user represented by NowLogin should be the first
+     * profile; otherwise the default user should be selected by default.
+     */
+    if (nowLoginEmail) {
+      if (loginIniObj.NowLogin.IsLogined === "1") {
+        noLoggedInUser = false;
       }
 
-      for (let section in loginIniObj) {
-        if (!loginIniObj[section].email ||
-            (nowLoginEmail && loginIniObj[section].email == nowLoginEmail)) {
-          continue;
-        }
-
-        profiles.push({
-          id: this._getIdFromConfig(loginIniObj[section]),
-          name: loginIniObj[section].email,
-        });
-      }
-    } catch (e) {
-      Cu.reportError("Error detecting 360 Secure Browser profiles: " + e);
-    } finally {
-      profiles[noLoggedInUser ? "unshift" : "push"]({
-        id: this._defaultUserPath,
-        name: "Default",
+      profiles.push({
+        id: this._getIdFromConfig(loginIniObj.NowLogin),
+        name: nowLoginEmail,
       });
     }
 
-    this.__sourceProfiles = profiles.filter(profile => {
-      let resources = this.getResources(profile);
-      return resources && resources.length > 0;
+    for (let section in loginIniObj) {
+      if (!loginIniObj[section].email ||
+          (nowLoginEmail && loginIniObj[section].email == nowLoginEmail)) {
+        continue;
+      }
+
+      profiles.push({
+        id: this._getIdFromConfig(loginIniObj[section]),
+        name: loginIniObj[section].email,
+      });
+    }
+  } catch (e) {
+    Cu.reportError("Error detecting 360 Secure Browser profiles: " + e);
+  } finally {
+    profiles[noLoggedInUser ? "unshift" : "push"]({
+      id: this._defaultUserPath,
+      name: "Default",
     });
-    return this.__sourceProfiles;
   }
-});
+
+  this.__sourceProfiles = profiles.filter(profile => {
+    let resources = this.getResources(profile);
+    return resources && resources.length > 0;
+  });
+  return this.__sourceProfiles;
+};
 
 Qihoo360seProfileMigrator.prototype._getIdFromConfig = function(aConfig) {
   return aConfig.UserMd5 || getHash(aConfig.email);
@@ -303,17 +299,18 @@ Qihoo360seProfileMigrator.prototype.getResources = function(aProfile) {
   }
 
   let resources = [
-    new Bookmarks(profileFolder)
+    new Bookmarks(profileFolder),
   ];
   return resources.filter(r => r.exists);
 };
 
-Qihoo360seProfileMigrator.prototype.getLastUsedDate = function() {
-  let bookmarksPaths = this.sourceProfiles.map(({id}) => {
+Qihoo360seProfileMigrator.prototype.getLastUsedDate = async function() {
+  let sourceProfiles = await this.getSourceProfiles();
+  let bookmarksPaths = sourceProfiles.map(({id}) => {
     return OS.Path.join(this._usersDir.path, id, kBookmarksFileName);
   });
   if (!bookmarksPaths.length) {
-    return Promise.resolve(new Date(0));
+    return new Date(0);
   }
   let datePromises = bookmarksPaths.map(path => {
     return OS.File.stat(path).catch(() => null).then(info => {

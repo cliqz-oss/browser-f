@@ -1,4 +1,4 @@
-// |reftest| skip-if(release_or_beta) error:SyntaxError -- async-iteration is not released yet
+// |reftest| error:SyntaxError
 // This file was procedurally generated from the following sources:
 // - src/async-generators/yield-as-identifier-reference-escaped.case
 // - src/async-generators/syntax/async-obj-method.template
@@ -8,7 +8,7 @@ esid: prod-AsyncGeneratorMethod
 features: [async-iteration]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     Async Generator Function Definitions
@@ -23,6 +23,7 @@ info: |
     StringValue of Identifier is "yield".
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 var obj = {
   async *method() {

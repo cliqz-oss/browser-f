@@ -4,20 +4,15 @@
 
 "use strict";
 
-var Cu = Components.utils;
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cr = Components.results;
-
 /* BrowserElementParent injects script to listen for certain events in the
  * child.  We then listen to messages from the child script and take
  * appropriate action here in the parent.
  */
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/BrowserElementPromptService.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserElementPromptService.jsm");
 
 function debug(msg) {
   //dump("BrowserElementParent - " + msg + "\n");
@@ -34,7 +29,7 @@ function getIntPref(prefName, def) {
 
 function handleWindowEvent(e) {
   if (this._browserElementParents) {
-    let beps = ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(this._browserElementParents);
+    let beps = ChromeUtils.nondeterministicGetWeakMapKeys(this._browserElementParents);
     beps.forEach(bep => bep._handleOwnerEvent(e));
   }
 }
@@ -79,14 +74,14 @@ BrowserElementParent.prototype = {
   classDescription: "BrowserElementAPI implementation",
   classID: Components.ID("{9f171ac4-0939-4ef8-b360-3408aedc3060}"),
   contractID: "@mozilla.org/dom/browser-element-api;1",
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIBrowserElementAPI,
-                                         Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIBrowserElementAPI,
+                                          Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
   setFrameLoader: function(frameLoader) {
     debug("Setting frameLoader");
     this._frameLoader = frameLoader;
-    this._frameElement = frameLoader.QueryInterface(Ci.nsIFrameLoader).ownerElement;
+    this._frameElement = frameLoader.ownerElement;
     if (!this._frameElement) {
       debug("No frame element?");
       return;
@@ -733,8 +728,8 @@ BrowserElementParent.prototype = {
         this.extListener.onDataAvailable(aRequest, aContext, aInputStream,
                                          aOffset, aCount);
       },
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIStreamListener,
-                                             Ci.nsIRequestObserver])
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIStreamListener,
+                                              Ci.nsIRequestObserver])
     };
 
     let referrer = Services.io.newURI(_options.referrer);

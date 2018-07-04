@@ -6,7 +6,7 @@
 
 // Test getDisplayString.
 
-Cu.import("resource://testing-common/PromiseTestUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", this);
 
 var gDebuggee;
 var gClient;
@@ -20,9 +20,9 @@ function run_test() {
   }.toString());
 
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient, "test-grips",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test_display_string();
                            });
@@ -65,7 +65,7 @@ function test_display_string() {
       output: "[object Object],[object Object]"
     },
     {
-      input: "(" + function () {
+      input: "(" + function() {
         const arr = [1];
         arr.push(arr);
         return arr;
@@ -93,7 +93,7 @@ function test_display_string() {
       output: "ReferenceError"
     },
     {
-      input: "(" + function () {
+      input: "(" + function() {
         const err = new Error("bar");
         err.name = "foo";
         return err;
@@ -122,7 +122,7 @@ function test_display_string() {
     },
     {
       input: "new Proxy({}, {})",
-      output: "[object Object]"
+      output: "<proxy>"
     },
     {
       input: "Promise.resolve(5)",
@@ -141,17 +141,17 @@ function test_display_string() {
 
   PromiseTestUtils.expectUncaughtRejection(/Error/);
 
-  gThreadClient.addOneTimeListener("paused", function (event, packet) {
+  gThreadClient.addOneTimeListener("paused", function(event, packet) {
     const args = packet.frame.arguments;
 
     (function loop() {
       const objClient = gThreadClient.pauseGrip(args.pop());
-      objClient.getDisplayString(function ({ displayString }) {
-        do_check_eq(displayString, testCases.pop().output);
+      objClient.getDisplayString(function({ displayString }) {
+        Assert.equal(displayString, testCases.pop().output);
         if (args.length) {
           loop();
         } else {
-          gThreadClient.resume(function () {
+          gThreadClient.resume(function() {
             finishClient(gClient);
           });
         }

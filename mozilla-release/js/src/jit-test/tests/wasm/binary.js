@@ -232,34 +232,41 @@ function elemSection(elemArrays) {
     return { name: elemId, body };
 }
 
-function nameSection(moduleName, funcNames) {
+function moduleNameSubsection(moduleName) {
+    var body = [];
+    body.push(...varU32(nameTypeModule));
+
+    var subsection = encodedString(moduleName);
+    body.push(...varU32(subsection.length));
+    body.push(...subsection);
+
+    return body;
+}
+
+function funcNameSubsection(funcNames) {
+    var body = [];
+    body.push(...varU32(nameTypeFunction));
+
+    var subsection = varU32(funcNames.length);
+
+    var funcIndex = 0;
+    for (let f of funcNames) {
+        subsection.push(...varU32(f.index ? f.index : funcIndex));
+        subsection.push(...encodedString(f.name, f.nameLen));
+        funcIndex++;
+    }
+
+    body.push(...varU32(subsection.length));
+    body.push(...subsection);
+    return body;
+}
+
+function nameSection(subsections) {
     var body = [];
     body.push(...string(nameName));
 
-    if (moduleName) {
-        body.push(...varU32(nameTypeModule));
-
-        var subsection = encodedString(moduleName);
-
-        body.push(...varU32(subsection.length));
-        body.push(...subsection);
-    }
-
-    if (funcNames) {
-        body.push(...varU32(nameTypeFunction));
-
-        var subsection = varU32(funcNames.length);
-
-        var funcIndex = 0;
-        for (let f of funcNames) {
-            subsection.push(...varU32(f.index ? f.index : funcIndex));
-            subsection.push(...encodedString(f.name, f.nameLen));
-            funcIndex++;
-        }
-
-        body.push(...varU32(subsection.length));
-        body.push(...subsection);
-    }
+    for (let ss of subsections)
+        body.push(...ss);
 
     return { name: userDefinedId, body };
 }
@@ -290,7 +297,7 @@ assertErrorMessage(() => wasmEval(moduleWithSections([sigSection([{args:[100], r
 
 assertThrowsInstanceOf(() => wasmEval(moduleWithSections([sigSection([]), declSection([0])])), CompileError, /signature index out of range/);
 assertThrowsInstanceOf(() => wasmEval(moduleWithSections([v2vSigSection, declSection([1])])), CompileError, /signature index out of range/);
-assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, declSection([0])])), CompileError, /expected function bodies/);
+assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, declSection([0])])), CompileError, /expected code section/);
 wasmEval(moduleWithSections([v2vSigSection, declSection([0]), bodySection([v2vBody])]));
 
 assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, declSection([0]), bodySection([v2vBody.concat(v2vBody)])])), CompileError, /byte size mismatch in code section/);
@@ -395,7 +402,7 @@ wasmEval(moduleWithSections([tooBigNameSection]));
 var customDefSec = customSection("wee", 42, 13);
 var declSec = declSection([0]);
 var bodySec = bodySection([v2vBody]);
-var nameSec = nameSection(null, [{name:'hi'}]);
+var nameSec = nameSection([funcNameSubsection([{name:'hi'}])]);
 wasmEval(moduleWithSections([customDefSec, v2vSigSection, declSec, bodySec]));
 wasmEval(moduleWithSections([v2vSigSection, customDefSec, declSec, bodySec]));
 wasmEval(moduleWithSections([v2vSigSection, declSec, customDefSec, bodySec]));
@@ -432,6 +439,26 @@ var arr = Module.customSections(m, "name");
 assertEq(arr.length, 1);
 assertEq(arr[0].byteLength, nameSec.body.length - 5 /* 4name */);
 
+// Test name/custom section warnings:
+const nameWarning = /validated with warning.*'name' custom section/;
+const okNameSec = nameSection([]);
+assertNoWarning(() => wasmEval(moduleWithSections([v2vSigSection, declSec, bodySec, okNameSec])));
+const badNameSec1 = nameSection([]);
+badNameSec1.body.push(1);
+assertWarning(() => wasmEval(moduleWithSections([v2vSigSection, declSec, bodySec, badNameSec1])), nameWarning);
+const badNameSec2 = nameSection([funcNameSubsection([{name:'blah'}])]);
+badNameSec2.body.push(100, 20, 42, 83);
+assertWarning(() => wasmEval(moduleWithSections([v2vSigSection, declSec, bodySec, badNameSec2])), nameWarning);
+const badNameSec3 = nameSection([funcNameSubsection([{name:'blah'}])]);
+badNameSec3.body.pop();
+assertWarning(() => wasmEval(moduleWithSections([v2vSigSection, declSec, bodySec, badNameSec3])), nameWarning);
+assertNoWarning(() => wasmEval(moduleWithSections([nameSection([moduleNameSubsection('hi')])])));
+assertWarning(() => wasmEval(moduleWithSections([nameSection([moduleNameSubsection('hi'), moduleNameSubsection('boo')])])), nameWarning);
+// Unknown name subsection
+assertNoWarning(() => wasmEval(moduleWithSections([nameSection([moduleNameSubsection('hi'), [4, 0]])])));
+assertWarning(() => wasmEval(moduleWithSections([nameSection([moduleNameSubsection('hi'), [4, 1]])])), nameWarning);
+assertNoWarning(() => wasmEval(moduleWithSections([nameSection([moduleNameSubsection('hi'), [4, 1, 42]])])));
+
 // Diagnose nonstandard block signature types.
 for (var bad of [0xff, 0, 1, 0x3f])
     assertErrorMessage(() => wasmEval(moduleWithSections([sigSection([v2vSig]), declSection([0]), bodySection([funcBody({locals:[], body:[BlockCode, bad, EndCode]})])])), CompileError, /invalid inline block type/);
@@ -444,13 +471,44 @@ for (let i = FirstInvalidOpcode; i <= LastInvalidOpcode; i++) {
 }
 
 // Prefixed opcodes
-for (let prefix of [AtomicPrefix, MozPrefix]) {
-    for (let i = 0; i <= 255; i++) {
-        let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[prefix, i]})])]);
-        assertErrorMessage(() => wasmEval(binary), CompileError, /unrecognized opcode/);
-        assertEq(WebAssembly.validate(binary), false);
-    }
 
+function checkIllegalPrefixed(prefix, opcode) {
+    let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[prefix, opcode]})])]);
+    assertErrorMessage(() => wasmEval(binary), CompileError, /unrecognized opcode/);
+    assertEq(WebAssembly.validate(binary), false);
+}
+
+// Illegal AtomicPrefix opcodes
+//
+// June 2017 threads draft:
+//
+//  0x00 .. 0x02 are wait/wake ops
+//  0x10 .. 0x4f are primitive atomic ops
+
+for (let i = 3; i < 0x10; i++)
+    checkIllegalPrefixed(AtomicPrefix, i);
+
+for (let i = 0x4f; i < 0x100; i++)
+    checkIllegalPrefixed(AtomicPrefix, i);
+
+// Illegal Numeric opcodes
+//
+// Feb 2018 numeric draft:
+//
+//  0x00 .. 0x07 are saturating truncation ops
+
+for (let i = 0x08; i < 256; i++)
+    checkIllegalPrefixed(NumericPrefix, i);
+
+// Illegal SIMD opcodes (all of them, for now)
+for (let i = 0; i < 256; i++)
+    checkIllegalPrefixed(SimdPrefix, i);
+
+// Illegal MozPrefix opcodes (all of them)
+for (let i = 0; i < 256; i++)
+    checkIllegalPrefixed(MozPrefix, i);
+
+for (let prefix of [AtomicPrefix, NumericPrefix, SimdPrefix, MozPrefix]) {
     // Prefix without a subsequent opcode
     let binary = moduleWithSections([v2vSigSection, declSection([0]), bodySection([funcBody({locals:[], body:[prefix]})])]);
     assertErrorMessage(() => wasmEval(binary), CompileError, /unrecognized opcode/);
@@ -468,8 +526,14 @@ function runStackTraceTest(moduleName, funcNames, expectedName) {
         customSection("whoa"),
         customSection("wee", 42),
     ];
-    if (moduleName || funcNames)
-        sections.push(nameSection(moduleName, funcNames));
+    if (moduleName || funcNames) {
+        var subsections = [];
+        if (moduleName)
+            subsections.push(moduleNameSubsection(moduleName));
+        if (funcNames)
+            subsections.push(funcNameSubsection(funcNames));
+        sections.push(nameSection(subsections));
+    }
     sections.push(customSection("yay", 13));
 
     var result = "";

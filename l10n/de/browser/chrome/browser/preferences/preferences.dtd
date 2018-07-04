@@ -13,6 +13,11 @@
 <!ENTITY  prefWinMinSize.styleMac     "width: 50em; min-height: 45em;">
 <!ENTITY  prefWinMinSize.styleGNOME   "width: 48em; min-height: 38.5em;">
 
+<!-- LOCALIZATION NOTE: (searchField.width): This is used to determine the width
+     of the search field in about:preferences, in order to make entire placeholder
+     string visible -->
+<!ENTITY  searchField.width             "15.4em">
+
 <!ENTITY  paneSearchResults.title       "Suchergebnisse">
 <!ENTITY  paneGeneral.title             "Allgemein">
 <!ENTITY  paneSearch.title              "Suche">
@@ -30,5 +35,5 @@
 <!-- LOCALIZATION NOTE (paneSync1.title): This should match syncBrand.fxAccount.label in ../syncBrand.dtd -->
 <!ENTITY  paneSync1.title          "Firefox-Konto">
 
-<!-- In Cliqz browser use Firefox Support for preferences page -->
-<!ENTITY  helpButton2.label        "Firefox Support">
+<!-- In Cliqz browser use Mozilla Support for preferences page -->
+<!ENTITY  helpButton2.label        "Mozilla Support">

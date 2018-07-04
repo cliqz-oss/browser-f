@@ -1,10 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-var {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 function userInfo(username) {
   this.username = username;
@@ -14,7 +12,7 @@ userInfo.prototype = {
   fullname: "fullname",
   emailAddress: "emailAddress",
   domain: "domain",
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIUserInfo]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIUserInfo]),
 };
 
 add_test(function test_register() {
@@ -23,7 +21,7 @@ add_test(function test_register() {
     username: "localusername",
     emailAddress: "emailAddress",
     domain: "domain",
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIUserInfo]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIUserInfo]),
   };
 
   MockRegistrar.register("@mozilla.org/userinfo;1", localUserInfo);

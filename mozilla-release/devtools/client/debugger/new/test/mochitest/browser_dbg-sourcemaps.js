@@ -3,6 +3,7 @@
 
 // Tests loading sourcemapped sources, setting breakpoints, and
 // stepping in them.
+requestLongerTimeout(2);
 
 function assertBreakpointExists(dbg, source, line) {
   const { selectors: { getBreakpoint }, getState } = dbg;
@@ -33,56 +34,54 @@ function clickGutter(dbg, line) {
   clickElement(dbg, "gutter", line);
 }
 
-add_task(function*() {
+add_task(async function() {
   // NOTE: the CORS call makes the test run times inconsistent
-  requestLongerTimeout(2);
-
-  const dbg = yield initDebugger("doc-sourcemaps.html");
+  const dbg = await initDebugger("doc-sourcemaps.html");
   const { selectors: { getBreakpoint, getBreakpoints }, getState } = dbg;
 
-  yield waitForSources(dbg, "entry.js", "output.js", "times2.js", "opts.js");
+  await waitForSources(dbg, "entry.js", "output.js", "times2.js", "opts.js");
   ok(true, "Original sources exist");
   const bundleSrc = findSource(dbg, "bundle.js");
 
-  yield selectSource(dbg, bundleSrc);
+  await selectSource(dbg, bundleSrc);
 
-  yield clickGutter(dbg, 13);
-  yield waitForDispatch(dbg, "ADD_BREAKPOINT");
+  await clickGutter(dbg, 13);
+  await waitForDispatch(dbg, "ADD_BREAKPOINT");
   assertEditorBreakpoint(dbg, 13, true);
 
-  yield clickGutter(dbg, 13);
-  yield waitForDispatch(dbg, "REMOVE_BREAKPOINT");
+  await clickGutter(dbg, 13);
+  await waitForDispatch(dbg, "REMOVE_BREAKPOINT");
   is(getBreakpoints(getState()).size, 0, "No breakpoints exists");
 
   const entrySrc = findSource(dbg, "entry.js");
 
-  yield selectSource(dbg, entrySrc);
+  await selectSource(dbg, entrySrc);
   ok(
-    dbg.win.cm.getValue().includes("window.keepMeAlive"),
+    getCM(dbg).getValue().includes("window.keepMeAlive"),
     "Original source text loaded correctly"
   );
 
-  // Test that breakpoint sliding is not attempted. The breakpoint
-  // should not move anywhere.
-  yield addBreakpoint(dbg, entrySrc, 13);
-  is(getBreakpoints(getState()).size, 1, "One breakpoint exists");
-  assertBreakpointExists(dbg, entrySrc, 13);
-
   // Test breaking on a breakpoint
-  yield addBreakpoint(dbg, "entry.js", 15);
-  is(getBreakpoints(getState()).size, 2, "Two breakpoints exist");
+  await addBreakpoint(dbg, "entry.js", 15);
+  is(getBreakpoints(getState()).size, 1, "One breakpoint exists");
   assertBreakpointExists(dbg, entrySrc, 15);
 
   invokeInTab("keepMeAlive");
-  yield waitForPaused(dbg);
-  assertPausedLocation(dbg, entrySrc, 15);
+  await waitForPaused(dbg);
+  assertPausedLocation(dbg);
 
-  yield stepIn(dbg);
-  assertPausedLocation(dbg, "times2.js", 2);
-  yield stepOver(dbg);
-  assertPausedLocation(dbg, "times2.js", 3);
+  await stepIn(dbg);
+  await stepIn(dbg);
+  assertPausedLocation(dbg);
 
-  yield stepOut(dbg);
-  yield stepOut(dbg);
-  assertPausedLocation(dbg, "entry.js", 16);
+  await dbg.actions.jumpToMappedSelectedLocation();
+  await stepOver(dbg);
+  assertPausedLocation(dbg);
+  assertDebugLine(dbg, 71);
+
+  await dbg.actions.jumpToMappedSelectedLocation();
+  await stepOut(dbg);
+  await stepOut(dbg);
+  assertPausedLocation(dbg);
+  assertDebugLine(dbg, 16);
 });

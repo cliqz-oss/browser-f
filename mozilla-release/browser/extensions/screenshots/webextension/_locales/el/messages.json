@@ -29,6 +29,18 @@
   "downloadScreenshot": {
     "message": "Λήψη"
   },
+  "downloadOnlyDetailsPrivate": {
+    "message": "Σε ένα παράθυρο ιδιωτικής περιήγησης."
+  },
+  "downloadOnlyDetailsThirdParty": {
+    "message": "Τα cookies τρίτων είναι απενεργοποιημένα."
+  },
+  "downloadOnlyDetailsESR": {
+    "message": "Χρησιμοποιείτε το Firefox ESR."
+  },
+  "downloadOnlyDetailsNoUploadPref": {
+    "message": "Οι μεταφορτώσεις έχουν απενεργοποιηθεί."
+  },
   "notificationLinkCopiedTitle": {
     "message": "Ο σύνδεσμος αντιγράφηκε"
   },
@@ -36,6 +48,20 @@
     "message": "Ο σύνδεσμος προς την λήψη σας αντιγράφηκε στο πρόχειρο. Πατήστε $META_KEY$-V για επικόλληση.",
     "placeholders": {
       "meta_key": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyScreenshot": {
+    "message": "Αντιγραφή"
+  },
+  "notificationImageCopiedTitle": {
+    "message": "Το στιγμιότυπο αντιγράφηκε"
+  },
+  "imageCroppedWarning": {
+    "message": "Αυτή η εικόνα έχει περικοπεί σε $PIXELS$px.",
+    "placeholders": {
+      "pixels": {
         "content": "$1"
       }
     }
@@ -79,25 +105,28 @@
   "genericErrorDetails": {
     "message": "Δεν είμαστε σίγουροι για το τι ακριβώς συνέβη. Προσπαθήστε ξανά ή κάντε λήψη σε μια άλλη σελίδα."
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Λήψη, αποθήκευση και διαμοιρασμός στιγμιοτύπων μέσα από το Firefox."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "Ένας νέος τρόπος αποθήκευσης"
+  },
+  "tourHeaderClickAndDrag": {
     "message": "Καταγράψτε αυτό που εσείς επιθυμείτε"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "Κάντε κλικ και σύρετε για την καταγραφή ενός τμήματος της σελίδας. Μπορείτε να επισημάνετε την επιλογή σας μετακινώντας τον ποντίκι σας επάνω της."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "Λήψη παραθύρων ή ολόκληρων σελίδων"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "Επιλέξτε τα κουμπιά επάνω δεξιά για να καταγράψετε την ορατή περιοχή του παραθύρου ή να καταγράψετε μια ολόκληρη σελίδα."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "Ακριβώς όπως το θέλετε"
   },
-  "tourBodyFour": {
+  "tourBodyDownloadUpload": {
     "message": "Αποθηκεύστε της λήψεις σας στο Διαδίκτυο για ευκολότερο διαμοιρασμό, η λήψη τους στον υπολογιστή σας. Μπορείτε να βρείτε όλες τις λήψεις σας πατώντας στο κουμπί «Οι λήψεις μου»."
   },
   "tourSkip": {
@@ -112,8 +141,8 @@
   "tourDone": {
     "message": "Τέλος"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Χρησιμοποιώντας το Firefox Screenshots, συμφωνείτε με τους $TERMSANDPRIVACYNOTICETERMSLINK$ και την $TERMSANDPRIVACYNOTICEPRIVACYLINK$ των Υπηρεσιών Cloud του Firefox.",
+  "termsAndPrivacyNotice2": {
+    "message": "Χρησιμοποιώντας το Firefox Screenshots, συμφωνείτε με τους $TERMSANDPRIVACYNOTICETERMSLINK$ και την $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +157,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "Σημείωση απορρήτου"
+  },
+  "libraryLabel": {
+    "message": "Στιγμιότυπα"
   }
 }

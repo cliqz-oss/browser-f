@@ -13,16 +13,19 @@
 #include "mozilla/TaggedAnonymousMemory.h"
 #include "mozilla/XorShift128PlusRNG.h"
 
+#include <errno.h>
+
 #include "jsfriendapi.h"
 #include "jsmath.h"
 #include "jsutil.h"
-#include "jswin.h"
-
-#include <errno.h>
 
 #include "gc/Memory.h"
+#ifdef JS_CODEGEN_ARM64
+# include "jit/arm64/vixl/Cpu-vixl.h"
+#endif
 #include "threading/LockGuard.h"
 #include "threading/Mutex.h"
+#include "util/Windows.h"
 #include "vm/MutexIDs.h"
 
 #ifdef XP_WIN
@@ -245,11 +248,14 @@ ProtectionSettingToFlags(ProtectionSetting protection)
     MOZ_CRASH();
 }
 
-static void
+static MOZ_MUST_USE bool
 CommitPages(void* addr, size_t bytes, ProtectionSetting protection)
 {
-    if (!VirtualAlloc(addr, bytes, MEM_COMMIT, ProtectionSettingToFlags(protection)))
-        MOZ_CRASH("CommitPages failed");
+    void* p = VirtualAlloc(addr, bytes, MEM_COMMIT, ProtectionSettingToFlags(protection));
+    if (!p)
+        return false;
+    MOZ_RELEASE_ASSERT(p == addr);
+    return true;
 }
 
 static void
@@ -330,13 +336,16 @@ ProtectionSettingToFlags(ProtectionSetting protection)
     MOZ_CRASH();
 }
 
-static void
+static MOZ_MUST_USE bool
 CommitPages(void* addr, size_t bytes, ProtectionSetting protection)
 {
     void* p = MozTaggedAnonymousMmap(addr, bytes, ProtectionSettingToFlags(protection),
                                      MAP_FIXED | MAP_PRIVATE | MAP_ANON,
                                      -1, 0, "js-executable-memory");
-    MOZ_RELEASE_ASSERT(addr == p);
+    if (p == MAP_FAILED)
+        return false;
+    MOZ_RELEASE_ASSERT(p == addr);
+    return true;
 }
 
 static void
@@ -493,12 +502,13 @@ class ProcessExecutableMemory
                            uintptr_t(p) + bytes <= uintptr_t(base_) + MaxCodeBytesPerProcess);
     }
 
-    void* allocate(size_t bytes, ProtectionSetting protection);
-    void deallocate(void* addr, size_t bytes);
+    void* allocate(size_t bytes, ProtectionSetting protection, MemCheckKind checkKind);
+    void deallocate(void* addr, size_t bytes, bool decommit);
 };
 
 void*
-ProcessExecutableMemory::allocate(size_t bytes, ProtectionSetting protection)
+ProcessExecutableMemory::allocate(size_t bytes, ProtectionSetting protection,
+                                  MemCheckKind checkKind)
 {
     MOZ_ASSERT(initialized());
     MOZ_ASSERT(bytes > 0);
@@ -559,12 +569,18 @@ ProcessExecutableMemory::allocate(size_t bytes, ProtectionSetting protection)
     }
 
     // Commit the pages after releasing the lock.
-    CommitPages(p, bytes, protection);
+    if (!CommitPages(p, bytes, protection)) {
+        deallocate(p, bytes, /* decommit = */ false);
+        return nullptr;
+    }
+
+    SetMemCheckKind(p, bytes, checkKind);
+
     return p;
 }
 
 void
-ProcessExecutableMemory::deallocate(void* addr, size_t bytes)
+ProcessExecutableMemory::deallocate(void* addr, size_t bytes, bool decommit)
 {
     MOZ_ASSERT(initialized());
     MOZ_ASSERT(addr);
@@ -578,7 +594,9 @@ ProcessExecutableMemory::deallocate(void* addr, size_t bytes)
     size_t numPages = bytes / ExecutableCodePageSize;
 
     // Decommit before taking the lock.
-    DecommitPages(addr, bytes);
+    MOZ_MAKE_MEM_NOACCESS(addr, bytes);
+    if (decommit)
+        DecommitPages(addr, bytes);
 
     LockGuard<Mutex> guard(lock_);
     MOZ_ASSERT(numPages <= pagesAllocated_);
@@ -596,20 +614,24 @@ ProcessExecutableMemory::deallocate(void* addr, size_t bytes)
 static ProcessExecutableMemory execMemory;
 
 void*
-js::jit::AllocateExecutableMemory(size_t bytes, ProtectionSetting protection)
+js::jit::AllocateExecutableMemory(size_t bytes, ProtectionSetting protection, MemCheckKind checkKind)
 {
-    return execMemory.allocate(bytes, protection);
+    return execMemory.allocate(bytes, protection, checkKind);
 }
 
 void
 js::jit::DeallocateExecutableMemory(void* addr, size_t bytes)
 {
-    execMemory.deallocate(addr, bytes);
+    execMemory.deallocate(addr, bytes, /* decommit = */ true);
 }
 
 bool
 js::jit::InitProcessExecutableMemory()
 {
+#ifdef JS_CODEGEN_ARM64
+    // Initialize instruction cache flushing.
+    vixl::CPU::SetUp();
+#endif
     return execMemory.init();
 }
 
@@ -617,6 +639,13 @@ void
 js::jit::ReleaseProcessExecutableMemory()
 {
     execMemory.release();
+}
+
+size_t
+js::jit::LikelyAvailableExecutableMemory()
+{
+    // Round down available memory to the closest MB.
+    return MaxCodeBytesPerProcess - AlignBytes(execMemory.bytesAllocated(), 0x100000U);
 }
 
 bool

@@ -10,19 +10,16 @@ namespace mozilla {
 
 // Return the current sandbox level. This is the
 // "security.sandbox.content.level" preference, but rounded up to the current
-// minimum allowed level.
+// minimum allowed level. Returns 0 (disabled) if the env var
+// MOZ_DISABLE_CONTENT_SANDBOX is set.
 int GetEffectiveContentSandboxLevel();
 
-// Returns whether or not the currently running build is a development build -
-// where development build means "the files in the .app are symlinks to the src
-// directory". This check is implemented by looking for omni.ja in
-// .app/Contents/Resources/.
-bool IsDevelopmentBuild();
+// Checks whether the effective content sandbox level is > 0.
+bool IsContentSandboxEnabled();
 
-// Return the repo directory and the repo object directory respectively. These
-// should only be used on developer builds to determine the path to the repo
-// or object directory.
-nsresult GetRepoDir(nsIFile **aRepoDir);
-nsresult GetObjDir(nsIFile **aObjDir);
+#if defined(XP_MACOSX)
+int ClampFlashSandboxLevel(const int aLevel);
+#endif
+
 }
 #endif // mozilla_SandboxPolicies_h

@@ -2,16 +2,8 @@
 
 const PAGE = "data:text/html,<html><body>A%20regular,%20everyday,%20normal%20page.";
 
-/**
- * Monkey patches TabCrashHandler.getDumpID to return null in order to test
- * about:tabcrashed when a dump is not available.
- */
 add_task(async function setup() {
-  let originalGetDumpID = TabCrashHandler.getDumpID;
-  TabCrashHandler.getDumpID = function(browser) { return null; };
-  registerCleanupFunction(() => {
-    TabCrashHandler.getDumpID = originalGetDumpID;
-  });
+  prepareNoDump();
 });
 
 /**
@@ -25,7 +17,7 @@ add_task(async function test_without_dump() {
     let tab = gBrowser.getTabForBrowser(browser);
     await BrowserTestUtils.crashBrowser(browser);
 
-    let tabRemovedPromise = BrowserTestUtils.tabRemoved(tab);
+    let tabClosingPromise = BrowserTestUtils.waitForTabClosing(tab);
 
     await ContentTask.spawn(browser, null, async function() {
       let doc = content.document;
@@ -39,6 +31,6 @@ add_task(async function test_without_dump() {
       doc.getElementById("closeTab").click();
     });
 
-    await tabRemovedPromise;
+    await tabClosingPromise;
   });
 });

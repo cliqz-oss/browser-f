@@ -9,18 +9,18 @@
 #include "base/message_loop.h"
 #include "base/task.h"
 #include "mozilla/Hal.h"
+#include "nsExceptionHandler.h"
 #include "nsIScreen.h"
 #include "nsIScreenManager.h"
 #include "nsWindow.h"
 #include "nsThreadUtils.h"
 #include "nsICommandLineRunner.h"
+#include "nsICrashReporter.h"
 #include "nsIObserverService.h"
 #include "nsIAppStartup.h"
 #include "nsIGeolocationProvider.h"
 #include "nsCacheService.h"
 #include "nsIDOMEventListener.h"
-#include "nsIDOMClientRectList.h"
-#include "nsIDOMClientRect.h"
 #include "nsIDOMWakeLockListener.h"
 #include "nsIPowerManagerService.h"
 #include "nsISpeculativeConnect.h"
@@ -37,6 +37,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/Hal.h"
 #include "mozilla/dom/TabChild.h"
+#include "mozilla/intl/OSPreferences.h"
 #include "prenv.h"
 
 #include "AndroidBridge.h"
@@ -57,11 +58,6 @@
 #include "mozilla/Logging.h"
 #endif
 
-#ifdef MOZ_CRASHREPORTER
-#include "nsICrashReporter.h"
-#include "nsExceptionHandler.h"
-#endif
-
 #include "AndroidAlerts.h"
 #include "AndroidUiThread.h"
 #include "ANRReporter.h"
@@ -69,6 +65,7 @@
 #include "GeckoNetworkManager.h"
 #include "GeckoProcessManager.h"
 #include "GeckoScreenOrientation.h"
+#include "GeckoVRManager.h"
 #include "PrefsHelper.h"
 #include "fennec/MemoryMonitor.h"
 #include "fennec/Telemetry.h"
@@ -254,6 +251,12 @@ public:
         }
 
     }
+
+    static void Crash()
+    {
+        printf_stderr("Intentionally crashing...\n");
+        MOZ_CRASH("intentional crash");
+    }
 };
 
 int32_t GeckoThreadSupport::sPauseCount;
@@ -373,11 +376,23 @@ public:
             return;
         }
 
-        AndroidAlerts::NotifyListener(
+        widget::AndroidAlerts::NotifyListener(
                 aName->ToString(), aTopic->ToCString().get(),
                 aCookie->ToString().get());
     }
 };
+
+
+class BrowserLocaleManagerSupport final
+  : public java::BrowserLocaleManager::Natives<BrowserLocaleManagerSupport>
+{
+public:
+  static void RefreshLocales()
+  {
+    intl::OSPreferences::GetInstance()->Refresh();
+  }
+};
+
 
 nsAppShell::nsAppShell()
     : mSyncRunFinished(*(sAppShellLock = new Mutex("nsAppShell")),
@@ -391,6 +406,8 @@ nsAppShell::nsAppShell()
 
     if (!XRE_IsParentProcess()) {
         if (jni::IsAvailable()) {
+            GeckoThreadSupport::Init();
+
             // Set the corresponding state in GeckoThread.
             java::GeckoThread::SetState(java::GeckoThread::State::RUNNING());
         }
@@ -407,9 +424,11 @@ nsAppShell::nsAppShell()
         mozilla::GeckoProcessManager::Init();
         mozilla::GeckoScreenOrientation::Init();
         mozilla::PrefsHelper::Init();
+        mozilla::GeckoVRManager::Init();
         nsWindow::InitNatives();
 
         if (jni::IsFennec()) {
+            BrowserLocaleManagerSupport::Init();
             mozilla::ANRReporter::Init();
             mozilla::MemoryMonitor::Init();
             mozilla::widget::Telemetry::Init();
@@ -590,7 +609,7 @@ nsAppShell::Observe(nsISupports* aSubject,
         nsCOMPtr<nsIDocument> doc = do_QueryInterface(aSubject);
         MOZ_ASSERT(doc);
         nsCOMPtr<nsIWidget> widget =
-            WidgetUtils::DOMWindowToWidget(doc->GetWindow());
+            widget::WidgetUtils::DOMWindowToWidget(doc->GetWindow());
 
         // `widget` may be one of several different types in the parent
         // process, including the Android nsWindow, PuppetWidget, etc. To
@@ -609,7 +628,7 @@ nsAppShell::Observe(nsISupports* aSubject,
                         java::GeckoThread::State::RUNNING());
             }
             const auto window = static_cast<nsWindow*>(widget.get());
-            window->EnableEventDispatcher();
+            window->OnGeckoViewReady();
         }
     } else if (!strcmp(aTopic, "quit-application")) {
         if (jni::IsAvailable()) {
@@ -665,8 +684,8 @@ nsAppShell::Observe(nsISupports* aSubject,
         auto editableChild = java::GeckoEditableChild::New(editableParent);
         NS_ENSURE_TRUE(widget && editableChild, NS_OK);
 
-        RefPtr<GeckoEditableSupport> editableSupport =
-                new GeckoEditableSupport(editableChild);
+        RefPtr<widget::GeckoEditableSupport> editableSupport =
+                new widget::GeckoEditableSupport(editableChild);
 
         // Tell PuppetWidget to use our listener for IME operations.
         widget->SetNativeTextEventDispatcherListener(editableSupport);

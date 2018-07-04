@@ -1,6 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+// This file assumes head.js is loaded in the global scope.
+/* import-globals-from head.js */
+
 /* exported openTabAndSetupStorage, clearStorage */
 
 "use strict";
@@ -13,11 +16,11 @@
  *
  * @return {Promise} A promise that resolves after storage inspector is ready
  */
-function* openTabAndSetupStorage(url) {
-  let content = yield addTab(url);
+async function openTabAndSetupStorage(url) {
+  let content = await addTab(url);
 
   // Setup the async storages in main window and for all its iframes
-  yield ContentTask.spawn(gBrowser.selectedBrowser, null, function* () {
+  await ContentTask.spawn(gBrowser.selectedBrowser, null, async function() {
     /**
      * Get all windows including frames recursively.
      *
@@ -30,7 +33,7 @@ function* openTabAndSetupStorage(url) {
     function getAllWindows(baseWindow) {
       let windows = new Set();
 
-      let _getAllWindows = function (win) {
+      let _getAllWindows = function(win) {
         windows.add(win.wrappedJSObject);
 
         for (let i = 0; i < win.length; i++) {
@@ -45,14 +48,14 @@ function* openTabAndSetupStorage(url) {
     let windows = getAllWindows(content);
     for (let win of windows) {
       if (win.setup) {
-        yield win.setup();
+        await win.setup();
       }
     }
   });
 }
 
-function* clearStorage() {
-  yield ContentTask.spawn(gBrowser.selectedBrowser, null, function* () {
+async function clearStorage() {
+  await ContentTask.spawn(gBrowser.selectedBrowser, null, async function() {
     /**
      * Get all windows including frames recursively.
      *
@@ -65,7 +68,7 @@ function* clearStorage() {
     function getAllWindows(baseWindow) {
       let windows = new Set();
 
-      let _getAllWindows = function (win) {
+      let _getAllWindows = function(win) {
         windows.add(win.wrappedJSObject);
 
         for (let i = 0; i < win.length; i++) {
@@ -80,7 +83,7 @@ function* clearStorage() {
     let windows = getAllWindows(content);
     for (let win of windows) {
       if (win.clear) {
-        yield win.clear();
+        await win.clear();
       }
     }
   });

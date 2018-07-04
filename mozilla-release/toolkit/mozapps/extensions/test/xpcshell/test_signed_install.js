@@ -10,13 +10,14 @@ const ADDONS = {
     badid: "signed_bootstrap_badid_2.xpi",
     preliminary: "preliminary_bootstrap_2.xpi",
     signed: "signed_bootstrap_2.xpi",
+    sha256Signed: "signed_bootstrap_sha256_1.xpi",
     privileged: "privileged_bootstrap_2.xpi",
   },
 };
 const WORKING = "signed_bootstrap_1.xpi";
 const ID = "test@tests.mozilla.org";
 
-var gServer = createHttpServer(4444);
+var gServer = createHttpServer({port: 4444});
 
 // Creates an add-on with a broken signature by changing an existing file
 function createBrokenAddonModify(file) {
@@ -24,14 +25,14 @@ function createBrokenAddonModify(file) {
   brokenFile.append("broken.xpi");
   file.copyTo(brokenFile.parent, brokenFile.leafName);
 
-  var stream = AM_Cc["@mozilla.org/io/string-input-stream;1"].
-               createInstance(AM_Ci.nsIStringInputStream);
+  var stream = Cc["@mozilla.org/io/string-input-stream;1"].
+               createInstance(Ci.nsIStringInputStream);
   stream.setData("FOOBAR", -1);
-  var zipW = AM_Cc["@mozilla.org/zipwriter;1"].
-             createInstance(AM_Ci.nsIZipWriter);
+  var zipW = Cc["@mozilla.org/zipwriter;1"].
+             createInstance(Ci.nsIZipWriter);
   zipW.open(brokenFile, FileUtils.MODE_RDWR | FileUtils.MODE_APPEND);
   zipW.removeEntry("test.txt", false);
-  zipW.addEntryStream("test.txt", 0, AM_Ci.nsIZipWriter.COMPRESSION_NONE,
+  zipW.addEntryStream("test.txt", 0, Ci.nsIZipWriter.COMPRESSION_NONE,
                       stream, false);
   zipW.close();
 
@@ -44,13 +45,13 @@ function createBrokenAddonAdd(file) {
   brokenFile.append("broken.xpi");
   file.copyTo(brokenFile.parent, brokenFile.leafName);
 
-  var stream = AM_Cc["@mozilla.org/io/string-input-stream;1"].
-               createInstance(AM_Ci.nsIStringInputStream);
+  var stream = Cc["@mozilla.org/io/string-input-stream;1"].
+               createInstance(Ci.nsIStringInputStream);
   stream.setData("FOOBAR", -1);
-  var zipW = AM_Cc["@mozilla.org/zipwriter;1"].
-             createInstance(AM_Ci.nsIZipWriter);
+  var zipW = Cc["@mozilla.org/zipwriter;1"].
+             createInstance(Ci.nsIZipWriter);
   zipW.open(brokenFile, FileUtils.MODE_RDWR | FileUtils.MODE_APPEND);
-  zipW.addEntryStream("test2.txt", 0, AM_Ci.nsIZipWriter.COMPRESSION_NONE,
+  zipW.addEntryStream("test2.txt", 0, Ci.nsIZipWriter.COMPRESSION_NONE,
                       stream, false);
   zipW.close();
 
@@ -63,11 +64,11 @@ function createBrokenAddonRemove(file) {
   brokenFile.append("broken.xpi");
   file.copyTo(brokenFile.parent, brokenFile.leafName);
 
-  var stream = AM_Cc["@mozilla.org/io/string-input-stream;1"].
-               createInstance(AM_Ci.nsIStringInputStream);
+  var stream = Cc["@mozilla.org/io/string-input-stream;1"].
+               createInstance(Ci.nsIStringInputStream);
   stream.setData("FOOBAR", -1);
-  var zipW = AM_Cc["@mozilla.org/zipwriter;1"].
-             createInstance(AM_Ci.nsIZipWriter);
+  var zipW = Cc["@mozilla.org/zipwriter;1"].
+             createInstance(Ci.nsIZipWriter);
   zipW.open(brokenFile, FileUtils.MODE_RDWR | FileUtils.MODE_APPEND);
   zipW.removeEntry("test.txt", false);
   zipW.close();
@@ -76,24 +77,30 @@ function createBrokenAddonRemove(file) {
 }
 
 function createInstall(url) {
-  return AddonManager.getInstallForURL(url, null, "application/x-xpinstall");
+  return AddonManager.getInstallForURL(url, "application/x-xpinstall");
 }
 
 function serveUpdateRDF(leafName) {
   gServer.registerPathHandler("/update.rdf", function(request, response) {
-    let updateData = {};
-    updateData[ID] = [{
-      version: "2.0",
-      targetApplications: [{
-        id: "xpcshell@tests.mozilla.org",
-        minVersion: "4",
-        maxVersion: "6",
-        updateLink: "http://localhost:4444/" + leafName
-      }]
-    }];
-
     response.setStatusLine(request.httpVersion, 200, "OK");
-    response.write(createUpdateRDF(updateData));
+    response.write(JSON.stringify({
+      addons: {
+        [ID]: {
+          updates: [
+            {
+              version: "2.0",
+              update_link: "http://localhost:4444/" + leafName,
+              applications: {
+                gecko: {
+                  strict_min_version: "4",
+                  advisory_max_version: "6",
+                },
+              },
+            },
+          ],
+        },
+      },
+    }));
   });
 }
 
@@ -104,9 +111,9 @@ async function test_install_broken(file, expectedError) {
   let install = await createInstall("http://localhost:4444/" + file.leafName);
   await promiseCompleteAllInstalls([install]);
 
-  do_check_eq(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
-  do_check_eq(install.error, expectedError);
-  do_check_eq(install.addon, null);
+  Assert.equal(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
+  Assert.equal(install.error, expectedError);
+  Assert.equal(install.addon, null);
 
   gServer.registerFile("/" + file.leafName, null);
 }
@@ -117,9 +124,9 @@ async function test_install_working(file, expectedSignedState) {
   let install = await createInstall("http://localhost:4444/" + file.leafName);
   await promiseCompleteAllInstalls([install]);
 
-  do_check_eq(install.state, AddonManager.STATE_INSTALLED);
-  do_check_neq(install.addon, null);
-  do_check_eq(install.addon.signedState, expectedSignedState);
+  Assert.equal(install.state, AddonManager.STATE_INSTALLED);
+  Assert.notEqual(install.addon, null);
+  Assert.equal(install.addon.signedState, expectedSignedState);
 
   gServer.registerFile("/" + file.leafName, null);
 
@@ -138,9 +145,9 @@ async function test_update_broken(file, expectedError) {
   let install = update.updateAvailable;
   await promiseCompleteAllInstalls([install]);
 
-  do_check_eq(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
-  do_check_eq(install.error, expectedError);
-  do_check_eq(install.addon, null);
+  Assert.equal(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
+  Assert.equal(install.error, expectedError);
+  Assert.equal(install.addon, null);
 
   gServer.registerFile("/" + file.leafName, null);
   gServer.registerPathHandler("/update.rdf", null);
@@ -160,9 +167,9 @@ async function test_update_working(file, expectedSignedState) {
   let install = update.updateAvailable;
   await promiseCompleteAllInstalls([install]);
 
-  do_check_eq(install.state, AddonManager.STATE_INSTALLED);
-  do_check_neq(install.addon, null);
-  do_check_eq(install.addon.signedState, expectedSignedState);
+  Assert.equal(install.state, AddonManager.STATE_INSTALLED);
+  Assert.notEqual(install.addon, null);
+  Assert.equal(install.addon.signedState, expectedSignedState);
 
   gServer.registerFile("/" + file.leafName, null);
   gServer.registerPathHandler("/update.rdf", null);
@@ -217,6 +224,12 @@ add_task(async function() {
 // Try to install a signed add-on
 add_task(async function() {
   let file = do_get_file(DATA + ADDONS.bootstrap.signed);
+  await test_install_working(file, AddonManager.SIGNEDSTATE_SIGNED);
+});
+
+// Try to install an add-on signed with SHA-256
+add_task(async function() {
+  let file = do_get_file(DATA + ADDONS.bootstrap.sha256Signed);
   await test_install_working(file, AddonManager.SIGNEDSTATE_SIGNED);
 });
 

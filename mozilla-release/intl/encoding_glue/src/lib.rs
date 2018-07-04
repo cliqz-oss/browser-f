@@ -313,6 +313,11 @@ pub fn decode_to_nscstring_without_bom_handling(encoding: &'static Encoding,
     decode_from_slice_to_nscstring_without_bom_handling(encoding, src, dst, valid_up_to)
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn mozilla_encoding_decode_from_slice_to_nscstring_without_bom_handling(encoding: *const Encoding, src: *const u8, src_len: usize, dst: *mut nsACString, already_validated: usize) -> nsresult {
+    decode_from_slice_to_nscstring_without_bom_handling(&*encoding, slice::from_raw_parts(src, src_len), &mut *dst, already_validated)
+}
+
 fn decode_from_slice_to_nscstring_without_bom_handling(encoding: &'static Encoding,
                                                        src: &[u8],
                                                        dst: &mut nsACString,
@@ -577,4 +582,11 @@ fn checked_min(one: Option<usize>, other: Option<usize>) -> Option<usize> {
     } else {
         other
     }
+}
+
+// Bindings for encoding_rs::mem. These may move to a separate crate in the future.
+
+#[no_mangle]
+pub unsafe extern "C" fn encoding_mem_is_utf16_bidi(buffer: *const u16, len: usize) -> bool {
+    encoding_rs::mem::is_utf16_bidi(::std::slice::from_raw_parts(buffer, len))
 }

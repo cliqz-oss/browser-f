@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,13 +18,17 @@
 #include "nsColor.h"
 #include "nsStyleStruct.h"
 #include "nsTArray.h"
-#include "DrawResult.h"
+#include "ImgDrawResult.h"
 
 class gfxContext;
 class nsIDocument;
 class nsSVGPaintServerFrame;
 
 namespace mozilla {
+
+namespace dom {
+class SVGDocument;
+}
 
 /**
  * This class is used to pass information about a context element through to
@@ -50,6 +55,7 @@ class SVGContextPaint : public RefCounted<SVGContextPaint>
 {
 protected:
   typedef mozilla::gfx::DrawTarget DrawTarget;
+  typedef mozilla::gfx::Float Float;
   typedef mozilla::image::imgDrawingParams imgDrawingParams;
 
   SVGContextPaint()
@@ -95,15 +101,15 @@ public:
   void InitStrokeGeometry(gfxContext *aContext,
                           float devUnitsPerSVGUnit);
 
-  const FallibleTArray<gfxFloat>& GetStrokeDashArray() const {
+  const FallibleTArray<Float>& GetStrokeDashArray() const {
     return mDashes;
   }
 
-  gfxFloat GetStrokeDashOffset() const {
+  Float GetStrokeDashOffset() const {
     return mDashOffset;
   }
 
-  gfxFloat GetStrokeWidth() const {
+  Float GetStrokeWidth() const {
     return mStrokeWidth;
   }
 
@@ -122,9 +128,9 @@ public:
 
 private:
   // Member-vars are initialized in InitStrokeGeometry.
-  FallibleTArray<gfxFloat> mDashes;
-  MOZ_INIT_OUTSIDE_CTOR gfxFloat mDashOffset;
-  MOZ_INIT_OUTSIDE_CTOR gfxFloat mStrokeWidth;
+  FallibleTArray<Float> mDashes;
+  MOZ_INIT_OUTSIDE_CTOR Float mDashOffset;
+  MOZ_INIT_OUTSIDE_CTOR Float mStrokeWidth;
 };
 
 /**
@@ -137,14 +143,14 @@ private:
 class MOZ_RAII AutoSetRestoreSVGContextPaint
 {
 public:
-  AutoSetRestoreSVGContextPaint(const SVGContextPaint* aContextPaint,
-                                nsIDocument* aSVGDocument);
+  AutoSetRestoreSVGContextPaint(const SVGContextPaint& aContextPaint,
+                                dom::SVGDocument& aSVGDocument);
   ~AutoSetRestoreSVGContextPaint();
 private:
-  nsIDocument* mSVGDocument;
+  dom::SVGDocument& mSVGDocument;
   // The context paint that needs to be restored by our dtor after it removes
   // aContextPaint:
-  void* mOuterContextPaint;
+  const SVGContextPaint* mOuterContextPaint;
 };
 
 
@@ -271,8 +277,14 @@ public:
   void SetFill(nscolor aFill) {
     mFill.emplace(gfx::ToDeviceColor(aFill));
   }
+  const Maybe<Color>& GetFill() const {
+    return mFill;
+  }
   void SetStroke(nscolor aStroke) {
     mStroke.emplace(gfx::ToDeviceColor(aStroke));
+  }
+  const Maybe<Color>& GetStroke() const {
+    return mStroke;
   }
 
   /**

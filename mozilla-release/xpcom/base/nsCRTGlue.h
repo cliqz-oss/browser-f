@@ -53,19 +53,19 @@ int NS_strcmp(const char16_t* aStrA, const char16_t* aStrB);
 int NS_strncmp(const char16_t* aStrA, const char16_t* aStrB, size_t aLen);
 
 /**
- * "strdup" for char16_t strings, uses the NS_Alloc allocator.
+ * "strdup" for char16_t strings, uses the moz_xmalloc allocator.
  */
 char16_t* NS_strdup(const char16_t* aString);
 
 /**
- * "strdup", but using the NS_Alloc allocator.
+ * "strdup", but using the moz_xmalloc allocator.
  */
 char* NS_strdup(const char* aString);
 
 /**
  * strndup for char16_t or char strings (normal strndup is not available on
  * windows). This function will ensure that the new string is
- * null-terminated. Uses the NS_Alloc allocator.
+ * null-terminated. Uses the moz_xmalloc allocator.
  *
  * CharT may be either char16_t or char.
  */
@@ -98,13 +98,57 @@ NS_ToLower(char aChar)
 bool NS_IsUpper(char aChar);
 bool NS_IsLower(char aChar);
 
-bool NS_IsAscii(char16_t aChar);
-bool NS_IsAscii(const char16_t* aString);
-bool NS_IsAsciiAlpha(char16_t aChar);
-bool NS_IsAsciiDigit(char16_t aChar);
-bool NS_IsAsciiWhitespace(char16_t aChar);
-bool NS_IsAscii(const char* aString);
-bool NS_IsAscii(const char* aString, uint32_t aLength);
+constexpr bool
+NS_IsAscii(char16_t aChar)
+{
+  return (0x0080 > aChar);
+}
+
+constexpr bool
+NS_IsAscii(const char16_t* aString)
+{
+  while (*aString) {
+    if (0x0080 <= *aString) {
+      return false;
+    }
+    aString++;
+  }
+  return true;
+}
+
+constexpr bool
+NS_IsAscii(const char* aString)
+{
+  while (*aString) {
+    if (0x80 & *aString) {
+      return false;
+    }
+    aString++;
+  }
+  return true;
+}
+
+constexpr bool
+NS_IsAscii(const char* aString, uint32_t aLength)
+{
+  const char* end = aString + aLength;
+  while (aString < end) {
+    if (0x80 & *aString) {
+      return false;
+    }
+    aString++;
+  }
+  return true;
+}
+
+constexpr bool
+NS_IsAsciiWhitespace(char16_t aChar)
+{
+  return aChar == ' ' ||
+         aChar == '\r' ||
+         aChar == '\n' ||
+         aChar == '\t';
+}
 
 #ifndef XPCOM_GLUE_AVOID_NSPR
 void NS_MakeRandomString(char* aBuf, int32_t aBufLen);

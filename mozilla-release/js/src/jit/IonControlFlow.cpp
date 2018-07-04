@@ -255,8 +255,6 @@ ControlFlowGenerator::traverseBytecode()
         JSOp op = JSOp(*pc);
         pc += CodeSpec[op].length;
     }
-
-    return true;
 }
 
 ControlFlowGenerator::ControlStatus
@@ -922,7 +920,7 @@ ControlFlowGenerator::processWhileOrForInLoop(jssrcnote* sn)
 
     size_t stackPhiCount;
     if (SN_TYPE(sn) == SRC_FOR_OF)
-        stackPhiCount = 2;
+        stackPhiCount = 3;
     else if (SN_TYPE(sn) == SRC_FOR_IN)
         stackPhiCount = 1;
     else
@@ -940,6 +938,9 @@ ControlFlowGenerator::processWhileOrForInLoop(jssrcnote* sn)
     CFGLoopEntry* ins = CFGLoopEntry::New(alloc(), header, stackPhiCount);
     if (LoopEntryCanIonOsr(loopEntry))
         ins->setCanOsr();
+
+    if (SN_TYPE(sn) == SRC_FOR_IN)
+        ins->setIsForIn();
 
     current->setStopIns(ins);
     current->setStopPc(pc);
@@ -1408,7 +1409,7 @@ ControlFlowGenerator::maybeLoop(JSOp op, jssrcnote* sn)
         if (sn) {
             // do { } while (cond)
             if (SN_TYPE(sn) == SRC_WHILE)
-                return processDoWhileLoop(op, sn);
+                return processDoWhileLoop(sn);
             // Build a mapping such that given a basic block, whose successor
             // has a phi
 
@@ -1522,7 +1523,7 @@ ControlFlowGenerator::processForLoop(JSOp op, jssrcnote* sn)
 }
 
 ControlFlowGenerator::ControlStatus
-ControlFlowGenerator::processDoWhileLoop(JSOp op, jssrcnote* sn)
+ControlFlowGenerator::processDoWhileLoop(jssrcnote* sn)
 {
     // do { } while() loops have the following structure:
     //    NOP         ; SRC_WHILE (offset to COND)
@@ -1618,7 +1619,7 @@ ControlFlowGenerator::processBreak(JSOp op, jssrcnote* sn)
     DebugOnly<bool> found = false;
 
     if (SN_TYPE(sn) == SRC_BREAK2LABEL) {
-        for (size_t i = labels_.length() - 1; i < labels_.length(); i--) {
+        for (size_t i = labels_.length() - 1; ; i--) {
             CFGState& cfg = cfgStack_[labels_[i].cfgEntry];
             MOZ_ASSERT(cfg.state == CFGState::LABEL);
             if (cfg.stopAt == target) {
@@ -1626,9 +1627,11 @@ ControlFlowGenerator::processBreak(JSOp op, jssrcnote* sn)
                 found = true;
                 break;
             }
+            if (i == 0)
+                break;
         }
     } else {
-        for (size_t i = loops_.length() - 1; i < loops_.length(); i--) {
+        for (size_t i = loops_.length() - 1; ; i--) {
             CFGState& cfg = cfgStack_[loops_[i].cfgEntry];
             MOZ_ASSERT(cfg.isLoop());
             if (cfg.loop.exitpc == target) {
@@ -1636,6 +1639,8 @@ ControlFlowGenerator::processBreak(JSOp op, jssrcnote* sn)
                 found = true;
                 break;
             }
+            if (i == 0)
+                break;
         }
     }
 
@@ -1664,7 +1669,7 @@ ControlFlowGenerator::processContinue(JSOp op)
     // Find the target loop.
     CFGState* found = nullptr;
     jsbytecode* target = pc + GetJumpOffset(pc);
-    for (size_t i = loops_.length() - 1; i < loops_.length(); i--) {
+    for (size_t i = loops_.length() - 1; ; i--) {
         // +1 to skip JSOP_JUMPTARGET.
         if (loops_[i].continuepc == target + 1 ||
             EffectiveContinue(loops_[i].continuepc) == target)
@@ -1672,6 +1677,8 @@ ControlFlowGenerator::processContinue(JSOp op)
             found = &cfgStack_[loops_[i].cfgEntry];
             break;
         }
+        if (i == 0)
+            break;
     }
 
     // There must always be a valid target loop structure. If not, there's
@@ -1697,11 +1704,13 @@ ControlFlowGenerator::processSwitchBreak(JSOp op)
     // Find the target switch.
     CFGState* found = nullptr;
     jsbytecode* target = pc + GetJumpOffset(pc);
-    for (size_t i = switches_.length() - 1; i < switches_.length(); i--) {
+    for (size_t i = switches_.length() - 1; ; i--) {
         if (switches_[i].continuepc == target) {
             found = &cfgStack_[switches_[i].cfgEntry];
             break;
         }
+        if (i == 0)
+            break;
     }
 
     // There must always be a valid target loop structure. If not, there's

@@ -2,7 +2,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function test() {
   waitForExplicitFinish();
@@ -50,15 +50,15 @@ function test() {
       }
 
       dialog = await openAndLoadSubDialog(connectionURL);
-      dialogClosingPromise = waitForEvent(dialog.document.documentElement, "dialogclosing");
+      dialogClosingPromise = BrowserTestUtils.waitForEvent(dialog.document.documentElement, "dialogclosing");
 
       doc = dialog.document;
-      proxyTypePref = doc.getElementById("network.proxy.type");
-      sharePref = doc.getElementById("network.proxy.share_proxy_settings");
-      httpPref = doc.getElementById("network.proxy.http");
-      httpPortPref = doc.getElementById("network.proxy.http_port");
-      ftpPref = doc.getElementById("network.proxy.ftp");
-      ftpPortPref = doc.getElementById("network.proxy.ftp_port");
+      proxyTypePref = dialog.Preferences.get("network.proxy.type");
+      sharePref = dialog.Preferences.get("network.proxy.share_proxy_settings");
+      httpPref = dialog.Preferences.get("network.proxy.http");
+      httpPortPref = dialog.Preferences.get("network.proxy.http_port");
+      ftpPref = dialog.Preferences.get("network.proxy.ftp");
+      ftpPortPref = dialog.Preferences.get("network.proxy.ftp_port");
     }
 
     // This batch of tests should not close the dialog

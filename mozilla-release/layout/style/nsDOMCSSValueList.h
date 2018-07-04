@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,19 +9,14 @@
 #ifndef nsDOMCSSValueList_h___
 #define nsDOMCSSValueList_h___
 
-#include "nsIDOMCSSValueList.h"
 #include "CSSValue.h"
 #include "nsTArray.h"
 
-class nsDOMCSSValueList final : public mozilla::dom::CSSValue,
-                                public nsIDOMCSSValueList
+class nsDOMCSSValueList final : public mozilla::dom::CSSValue
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsDOMCSSValueList, mozilla::dom::CSSValue)
-
-  // nsIDOMCSSValue
-  NS_DECL_NSIDOMCSSVALUE
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(nsDOMCSSValueList)
 
   // nsDOMCSSValueList
   nsDOMCSSValueList(bool aCommaDelimited, bool aReadonly);
@@ -29,11 +26,11 @@ public:
    */
   void AppendCSSValue(already_AddRefed<CSSValue> aValue);
 
-  virtual void GetCssText(nsString& aText, mozilla::ErrorResult& aRv)
-    override final;
-  virtual void SetCssText(const nsAString& aText,
-                          mozilla::ErrorResult& aRv) override final;
-  virtual uint16_t CssValueType() const override final;
+  void GetCssText(nsString& aText, mozilla::ErrorResult& aRv) final;
+  void SetCssText(const nsAString& aText, mozilla::ErrorResult& aRv) final;
+  uint16_t CssValueType() const final;
+
+  void GetCssText(nsAString& aText);
 
   CSSValue* IndexedGetter(uint32_t aIdx, bool& aFound) const
   {

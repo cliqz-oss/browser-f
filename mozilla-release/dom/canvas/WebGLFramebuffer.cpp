@@ -655,7 +655,6 @@ WebGLFramebuffer::Delete()
         cur.Clear(funcName);
     }
 
-    mContext->MakeContextCurrent();
     mContext->gl->fDeleteFramebuffers(1, &mGLName);
 
     LinkedListElement<WebGLFramebuffer>::removeFrom(mContext->mFramebuffers);
@@ -678,8 +677,8 @@ WebGLFramebuffer::GetColorAttachPoint(GLenum attachPoint)
 
     const size_t colorId = attachPoint - LOCAL_GL_COLOR_ATTACHMENT0;
 
-    MOZ_ASSERT(mContext->mImplMaxColorAttachments <= kMaxColorAttachments);
-    if (colorId >= mContext->mImplMaxColorAttachments)
+    MOZ_ASSERT(mContext->mGLMaxColorAttachments <= kMaxColorAttachments);
+    if (colorId >= mContext->mGLMaxColorAttachments)
         return Nothing();
 
     return Some(&mColorAttachments[colorId]);
@@ -890,7 +889,7 @@ WebGLFramebuffer::PrecheckFramebufferStatus(nsCString* const out_info) const
 // Validation
 
 bool
-WebGLFramebuffer::ValidateAndInitAttachments(const char* funcName)
+WebGLFramebuffer::ValidateAndInitAttachments(const char* funcName) const
 {
     MOZ_ASSERT(mContext->mBoundDrawFramebuffer == this ||
                mContext->mBoundReadFramebuffer == this);
@@ -943,13 +942,11 @@ WebGLFramebuffer::ValidateClearBufferType(const char* funcName, GLenum buffer,
 }
 
 bool
-WebGLFramebuffer::ValidateForRead(const char* funcName,
-                                  const webgl::FormatUsageInfo** const out_format,
-                                  uint32_t* const out_width, uint32_t* const out_height)
+WebGLFramebuffer::ValidateForColorRead(const char* funcName,
+                                       const webgl::FormatUsageInfo** const out_format,
+                                       uint32_t* const out_width,
+                                       uint32_t* const out_height) const
 {
-    if (!ValidateAndInitAttachments(funcName))
-        return false;
-
     if (!mColorReadBuffer) {
         mContext->ErrorInvalidOperation("%s: READ_BUFFER must not be NONE.", funcName);
         return false;
@@ -983,7 +980,7 @@ WebGLFramebuffer::ResolveAttachments() const
     ////
     // Nuke attachment points.
 
-    for (uint32_t i = 0; i < mContext->mImplMaxColorAttachments; i++) {
+    for (uint32_t i = 0; i < mContext->mGLMaxColorAttachments; i++) {
         const GLenum attachEnum = LOCAL_GL_COLOR_ATTACHMENT0 + i;
         gl->fFramebufferRenderbuffer(LOCAL_GL_FRAMEBUFFER, attachEnum,
                                      LOCAL_GL_RENDERBUFFER, 0);
@@ -1087,8 +1084,6 @@ WebGLFramebuffer::ResolveAttachmentData(const char* funcName) const
         ////
         // Clear
 
-        mContext->MakeContextCurrent();
-
         const bool hasDrawBuffers = mContext->HasDrawBuffers();
         if (hasDrawBuffers) {
             fnDrawBuffers(colorAttachmentsToClear);
@@ -1188,7 +1183,7 @@ WebGLFramebuffer::RefreshResolvedData()
 // Entrypoints
 
 FBStatus
-WebGLFramebuffer::CheckFramebufferStatus(const char* funcName)
+WebGLFramebuffer::CheckFramebufferStatus(const char* const funcName) const
 {
     if (IsResolvedComplete())
         return LOCAL_GL_FRAMEBUFFER_COMPLETE;
@@ -1203,7 +1198,6 @@ WebGLFramebuffer::CheckFramebufferStatus(const char* funcName)
 
         // Looks good on our end. Let's ask the driver.
         gl::GLContext* const gl = mContext->gl;
-        gl->MakeCurrent();
 
         const ScopedFBRebinder autoFB(mContext);
         gl->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, mGLName);
@@ -1254,7 +1248,7 @@ WebGLFramebuffer::RefreshDrawBuffers() const
     // yields a framebuffer status of FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER.
     // We could workaround this only on affected versions, but it's easier be
     // unconditional.
-    std::vector<GLenum> driverBuffers(mContext->mImplMaxDrawBuffers, LOCAL_GL_NONE);
+    std::vector<GLenum> driverBuffers(mContext->mGLMaxDrawBuffers, LOCAL_GL_NONE);
     for (const auto& attach : mColorDrawBuffers) {
         if (attach->HasImage()) {
             const uint32_t index = attach->mAttachmentPoint - LOCAL_GL_COLOR_ATTACHMENT0;
@@ -1289,7 +1283,7 @@ WebGLFramebuffer::RefreshReadBuffer() const
 void
 WebGLFramebuffer::DrawBuffers(const char* funcName, const dom::Sequence<GLenum>& buffers)
 {
-    if (buffers.Length() > mContext->mImplMaxDrawBuffers) {
+    if (buffers.Length() > mContext->mGLMaxDrawBuffers) {
         // "An INVALID_VALUE error is generated if `n` is greater than MAX_DRAW_BUFFERS."
         mContext->ErrorInvalidValue("%s: `buffers` must have a length <="
                                     " MAX_DRAW_BUFFERS.", funcName);
@@ -1333,8 +1327,6 @@ WebGLFramebuffer::DrawBuffers(const char* funcName, const dom::Sequence<GLenum>&
 
     ////
 
-    mContext->MakeContextCurrent();
-
     mColorDrawBuffers.swap(newColorDrawBuffers);
     RefreshDrawBuffers(); // Calls glDrawBuffers.
     RefreshResolvedData();
@@ -1357,8 +1349,6 @@ WebGLFramebuffer::ReadBuffer(const char* funcName, GLenum attachPoint)
     const auto& attach = maybeAttach.value(); // Might be nullptr.
 
     ////
-
-    mContext->MakeContextCurrent();
 
     mColorReadBuffer = attach;
     RefreshReadBuffer(); // Calls glReadBuffer.
@@ -1476,13 +1466,13 @@ WebGLFramebuffer::FramebufferTexture2D(const char* funcName, GLenum attachEnum,
          */
 
         if (texImageTarget == LOCAL_GL_TEXTURE_2D) {
-            if (uint32_t(level) > FloorLog2(mContext->mImplMaxTextureSize))
+            if (uint32_t(level) > FloorLog2(mContext->mGLMaxTextureSize))
                 return mContext->ErrorInvalidValue("%s: `level` is too large.", funcName);
         } else {
             MOZ_ASSERT(texImageTarget >= LOCAL_GL_TEXTURE_CUBE_MAP_POSITIVE_X &&
                        texImageTarget <= LOCAL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Z);
 
-            if (uint32_t(level) > FloorLog2(mContext->mImplMaxCubeMapTextureSize))
+            if (uint32_t(level) > FloorLog2(mContext->mGLMaxCubeMapTextureSize))
                 return mContext->ErrorInvalidValue("%s: `level` is too large.", funcName);
         }
     } else if (level != 0) {
@@ -1538,13 +1528,13 @@ WebGLFramebuffer::FramebufferTextureLayer(const char* funcName, GLenum attachEnu
         texImageTarget = tex->Target().get();
         switch (texImageTarget) {
         case LOCAL_GL_TEXTURE_3D:
-            if (uint32_t(layer) >= mContext->mImplMax3DTextureSize) {
+            if (uint32_t(layer) >= mContext->mGLMax3DTextureSize) {
                 mContext->ErrorInvalidValue("%s: `layer` must be < %s.", funcName,
                                             "MAX_3D_TEXTURE_SIZE");
                 return;
             }
 
-            if (uint32_t(level) > FloorLog2(mContext->mImplMax3DTextureSize)) {
+            if (uint32_t(level) > FloorLog2(mContext->mGLMax3DTextureSize)) {
                 mContext->ErrorInvalidValue("%s: `level` must be <= log2(%s).", funcName,
                                             "MAX_3D_TEXTURE_SIZE");
                 return;
@@ -1552,13 +1542,13 @@ WebGLFramebuffer::FramebufferTextureLayer(const char* funcName, GLenum attachEnu
             break;
 
         case LOCAL_GL_TEXTURE_2D_ARRAY:
-            if (uint32_t(layer) >= mContext->mImplMaxArrayTextureLayers) {
+            if (uint32_t(layer) >= mContext->mGLMaxArrayTextureLayers) {
                 mContext->ErrorInvalidValue("%s: `layer` must be < %s.", funcName,
                                             "MAX_ARRAY_TEXTURE_LAYERS");
                 return;
             }
 
-            if (uint32_t(level) > FloorLog2(mContext->mImplMaxTextureSize)) {
+            if (uint32_t(level) > FloorLog2(mContext->mGLMaxTextureSize)) {
                 mContext->ErrorInvalidValue("%s: `level` must be <= log2(%s).", funcName,
                                             "MAX_TEXTURE_SIZE");
                 return;
@@ -1659,14 +1649,15 @@ GetBackbufferFormats(const WebGLContext* webgl,
 
 /*static*/ void
 WebGLFramebuffer::BlitFramebuffer(WebGLContext* webgl,
-                                  const WebGLFramebuffer* srcFB, GLint srcX0, GLint srcY0,
-                                  GLint srcX1, GLint srcY1,
-                                  const WebGLFramebuffer* dstFB, GLint dstX0, GLint dstY0,
-                                  GLint dstX1, GLint dstY1,
+                                  GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
+                                  GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1,
                                   GLbitfield mask, GLenum filter)
 {
     const char funcName[] = "blitFramebuffer";
     const auto& gl = webgl->gl;
+
+    const auto& srcFB = webgl->mBoundReadFramebuffer;
+    const auto& dstFB = webgl->mBoundDrawFramebuffer;
 
     ////
     // Collect data
@@ -1936,9 +1927,7 @@ WebGLFramebuffer::BlitFramebuffer(WebGLContext* webgl,
 
     ////
 
-    gl->MakeCurrent();
-    webgl->OnBeforeReadCall();
-    WebGLContext::ScopedDrawCallWrapper wrapper(*webgl);
+    const ScopedDrawCallWrapper wrapper(*webgl);
     gl->fBlitFramebuffer(srcX0, srcY0, srcX1, srcY1,
                          dstX0, dstY0, dstX1, dstY1,
                          mask, filter);

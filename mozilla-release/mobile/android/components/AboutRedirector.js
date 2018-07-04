@@ -1,29 +1,20 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/AppConstants.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var modules = {
-  // about:
-  "": {
-    uri: "chrome://browser/content/about.xhtml",
-    privileged: true
-  },
-
-  // about:fennec and about:firefox are aliases for about:,
-  // but hidden from about:about
   fennec: {
     uri: "chrome://browser/content/about.xhtml",
     privileged: true,
     hide: true
   },
+
+  // about:firefox is an alias for about:fennec, but not hidden from about:about
   get firefox() {
-    return this.fennec
+    return Object.assign({}, this.fennec, {hide: false});
   },
 
   // about:blank has some bad loading behavior we can avoid, if we use an alias
@@ -78,20 +69,13 @@ var modules = {
   },
 };
 
-if (AppConstants.MOZ_SERVICES_HEALTHREPORT) {
-  modules['healthreport'] = {
-    uri: "chrome://browser/content/aboutHealthReport.xhtml",
-    privileged: true
-  };
-}
-
 function AboutRedirector() {}
 AboutRedirector.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutModule]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAboutModule]),
   classID: Components.ID("{322ba47e-7047-4f71-aebf-cb7d69325cd9}"),
 
-  _getModuleInfo: function (aURI) {
-    let moduleName = aURI.path.replace(/[?#].*/, "").toLowerCase();
+  _getModuleInfo: function(aURI) {
+    let moduleName = aURI.pathQueryRef.replace(/[?#].*/, "").toLowerCase();
     return modules[moduleName];
   },
 
@@ -108,12 +92,9 @@ AboutRedirector.prototype = {
   newChannel: function(aURI, aLoadInfo) {
     let moduleInfo = this._getModuleInfo(aURI);
 
-    var ios = Cc["@mozilla.org/network/io-service;1"].
-              getService(Ci.nsIIOService);
+    var newURI = Services.io.newURI(moduleInfo.uri);
 
-    var newURI = ios.newURI(moduleInfo.uri);
-
-    var channel = ios.newChannelFromURIWithLoadInfo(newURI, aLoadInfo);
+    var channel = Services.io.newChannelFromURIWithLoadInfo(newURI, aLoadInfo);
 
     if (!moduleInfo.privileged) {
       // Setting the owner to null means that we'll go through the normal

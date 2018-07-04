@@ -10,7 +10,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/Element.h"
 #include "nsMappedAttributeElement.h"
-#include "nsIDOMElement.h"
+#include "nsIDOMNode.h"
 #include "Link.h"
 #include "mozilla/dom/DOMRect.h"
 
@@ -27,7 +27,7 @@ class EventChainPreVisitor;
  * The base class for MathML elements.
  */
 class nsMathMLElement final : public nsMathMLElementBase,
-                              public nsIDOMElement,
+                              public nsIDOMNode,
                               public mozilla::dom::Link
 {
 public:
@@ -37,11 +37,6 @@ public:
   // Implementation of nsISupports is inherited from nsMathMLElementBase
   NS_DECL_ISUPPORTS_INHERITED
 
-  // Forward implementations of parent interfaces of nsMathMLElement to
-  // our base class
-  NS_FORWARD_NSIDOMNODE_TO_NSINODE
-  NS_FORWARD_NSIDOMELEMENT_TO_GENERIC
-
   nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
                       nsIContent* aBindingParent,
                       bool aCompileEventHandlers) override;
@@ -49,11 +44,12 @@ public:
                               bool aNullParent = true) override;
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                                nsIAtom* aAttribute,
+                                nsAtom* aAttribute,
                                 const nsAString& aValue,
+                                nsIPrincipal* aMaybeScriptedPrincipal,
                                 nsAttrValue& aResult) override;
 
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom* aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
 
   enum {
@@ -74,8 +70,7 @@ public:
   static void MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
                                       mozilla::GenericSpecifiedValues* aGenericData);
 
-  virtual nsresult GetEventTargetParent(
-                     mozilla::EventChainPreVisitor& aVisitor) override;
+  void GetEventTargetParent(mozilla::EventChainPreVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(
                      mozilla::EventChainPostVisitor& aVisitor) override;
   nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult,
@@ -108,9 +103,10 @@ protected:
 
   virtual JSObject* WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
 
-  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
 
 private:

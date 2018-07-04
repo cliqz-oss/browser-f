@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,9 +12,10 @@
 #include "nsIDocumentViewerPrint.h"
 #include "nsPrintObject.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/OwningNonNull.h"
 #include "nsThreadUtils.h"
 
-class nsPrintEngine;
+class nsPrintJob;
 class nsIDocument;
 
 //---------------------------------------------------
@@ -26,13 +28,13 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
 
-  nsPagePrintTimer(nsPrintEngine* aPrintEngine,
+  nsPagePrintTimer(nsPrintJob* aPrintJob,
                    nsIDocumentViewerPrint* aDocViewerPrint,
                    nsIDocument* aDocument,
                    uint32_t aDelay)
     : Runnable("nsPagePrintTimer")
-    , mPrintEngine(aPrintEngine)
-    , mDocViewerPrint(aDocViewerPrint)
+    , mPrintJob(aPrintJob)
+    , mDocViewerPrint(*aDocViewerPrint)
     , mDocument(aDocument)
     , mDelay(aDelay)
     , mFiringCount(0)
@@ -40,8 +42,8 @@ public:
     , mWatchDogCount(0)
     , mDone(false)
   {
-    MOZ_ASSERT(aDocument);
-    mDocViewerPrint->IncrementDestroyRefCount();
+    MOZ_ASSERT(aDocViewerPrint && aDocument);
+    mDocViewerPrint->IncrementDestroyBlockedCount();
   }
 
   NS_DECL_NSITIMERCALLBACK
@@ -57,7 +59,7 @@ public:
 
   void Disconnect()
   {
-    mPrintEngine = nullptr;
+    mPrintJob = nullptr;
     mPrintObj = nullptr;
   }
 
@@ -69,8 +71,8 @@ private:
   void     StopWatchDogTimer();
   void     Fail();
 
-  nsPrintEngine*             mPrintEngine;
-  nsCOMPtr<nsIDocumentViewerPrint> mDocViewerPrint;
+  nsPrintJob*                mPrintJob;
+  const mozilla::OwningNonNull<nsIDocumentViewerPrint> mDocViewerPrint;
   nsCOMPtr<nsIDocument>      mDocument;
   nsCOMPtr<nsITimer>         mTimer;
   nsCOMPtr<nsITimer>         mWatchDogTimer;

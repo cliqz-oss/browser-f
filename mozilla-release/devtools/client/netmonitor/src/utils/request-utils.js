@@ -6,6 +6,13 @@
 
 "use strict";
 
+const { getUnicodeUrl, getUnicodeUrlPath, getUnicodeHostname } =
+  require("devtools/client/shared/unicode-url");
+
+const {
+  UPDATE_PROPS,
+} = require("devtools/client/netmonitor/src/constants");
+
 const CONTENT_MIME_TYPE_ABBREVIATIONS = {
   "ecmascript": "js",
   "javascript": "js",
@@ -66,6 +73,30 @@ async function fetchHeaders(headers, getLongString) {
 }
 
 /**
+ * Fetch network event update packets from actor server
+ * Expect to fetch a couple of network update packets from a given request.
+ *
+ * @param {function} requestData - requestData function for lazily fetch data
+ * @param {object} request - request object
+ * @param {array} updateTypes - a list of network event update types
+ */
+function fetchNetworkUpdatePacket(requestData, request, updateTypes) {
+  updateTypes.forEach((updateType) => {
+    // Only stackTrace will be handled differently
+    if (updateType === "stackTrace") {
+      if (request.cause.stacktraceAvailable && !request.stacktrace) {
+        requestData(request.id, updateType);
+      }
+      return;
+    }
+
+    if (request[`${updateType}Available`] && !request[updateType]) {
+      requestData(request.id, updateType);
+    }
+  });
+}
+
+/**
  * Form a data: URI given a mime type, encoding, and some text.
  *
  * @param {string} mimeType - mime type
@@ -93,15 +124,14 @@ function writeHeaderText(headers) {
 }
 
 /**
- * Convert a string into unicode if string is valid.
- * If there is a malformed URI sequence, it returns input string.
+ * Decode base64 string.
  *
  * @param {string} url - a string
- * @return {string} unicode string
+ * @return {string} decoded string
  */
-function decodeUnicodeUrl(string) {
+function decodeUnicodeBase64(string) {
   try {
-    return decodeURIComponent(string);
+    return decodeURIComponent(atob(string));
   } catch (err) {
     // Ignore error and return input string directly.
   }
@@ -132,7 +162,7 @@ function getAbbreviatedMimeType(mimeType) {
  */
 function getUrlBaseName(url) {
   const pathname = (new URL(url)).pathname;
-  return decodeUnicodeUrl(
+  return getUnicodeUrlPath(
     pathname.replace(/\S*\//, "") || pathname || "/");
 }
 
@@ -153,27 +183,27 @@ function getUrlQuery(url) {
  * @return {string} unicode basename and query portions of a url
  */
 function getUrlBaseNameWithQuery(url) {
-  return getUrlBaseName(url) + decodeUnicodeUrl((new URL(url)).search);
+  return getUrlBaseName(url) + getUnicodeUrlPath((new URL(url)).search);
 }
 
 /**
- * Helpers for getting unicode hostname portion of an URL.
+ * Helpers for getting hostname portion of an URL.
  *
  * @param {string} url - url string
  * @return {string} unicode hostname of a url
  */
 function getUrlHostName(url) {
-  return decodeUnicodeUrl((new URL(url)).hostname);
+  return new URL(url).hostname;
 }
 
 /**
- * Helpers for getting unicode host portion of an URL.
+ * Helpers for getting host portion of an URL.
  *
  * @param {string} url - url string
  * @return {string} unicode host of a url
  */
 function getUrlHost(url) {
-  return decodeUnicodeUrl((new URL(url)).host);
+  return new URL(url).host;
 }
 
 /**
@@ -194,8 +224,21 @@ function getUrlDetails(url) {
   let baseNameWithQuery = getUrlBaseNameWithQuery(url);
   let host = getUrlHost(url);
   let hostname = getUrlHostName(url);
-  let unicodeUrl = decodeUnicodeUrl(url);
+  let unicodeUrl = getUnicodeUrl(url);
   let scheme = getUrlScheme(url);
+
+  // If the hostname contains unreadable ASCII characters, we need to do the
+  // following two steps:
+  // 1. Converting the unreadable hostname to a readable Unicode domain name.
+  //    For example, converting xn--g6w.xn--8pv into a Unicode domain name.
+  // 2. Replacing the unreadable hostname portion in the `host` with the
+  //    readable hostname.
+  //    For example, replacing xn--g6w.xn--8pv:8000 with [Unicode domain]:8000
+  // After finishing the two steps, we get a readable `host`.
+  const unicodeHostname = getUnicodeHostname(hostname);
+  if (unicodeHostname !== hostname) {
+    host = host.replace(hostname, unicodeHostname);
+  }
 
   // Mark local hosts specially, where "local" is  as defined in the W3C
   // spec for secure contexts.
@@ -234,8 +277,8 @@ function parseQueryString(query) {
   return query.replace(/^[?&]/, "").split("&").map(e => {
     let param = e.split("=");
     return {
-      name: param[0] ? decodeUnicodeUrl(param[0]) : "",
-      value: param[1] ? decodeUnicodeUrl(param[1]) : "",
+      name: param[0] ? getUnicodeUrlPath(param[0]) : "",
+      value: param[1] ? getUnicodeUrlPath(param[1]) : "",
     };
   });
 }
@@ -254,8 +297,8 @@ function parseFormData(sections) {
   return sections.replace(/^&/, "").split("&").map(e => {
     let param = e.split("=");
     return {
-      name: param[0] ? decodeUnicodeUrl(param[0]) : "",
-      value: param[1] ? decodeUnicodeUrl(param[1]) : "",
+      name: param[0] ? getUnicodeUrlPath(param[0]) : "",
+      value: param[1] ? getUnicodeUrlPath(param[1]) : "",
     };
   });
 }
@@ -374,12 +417,80 @@ function getResponseHeader(item, header) {
   return null;
 }
 
+/**
+ * Extracts any urlencoded form data sections from a POST request.
+ */
+async function updateFormDataSections(props) {
+  let {
+    connector,
+    request = {},
+    updateRequest,
+  } = props;
+  let {
+    id,
+    formDataSections,
+    requestHeaders,
+    requestHeadersAvailable,
+    requestHeadersFromUploadStream,
+    requestPostData,
+    requestPostDataAvailable,
+  } = request;
+
+  if (requestHeadersAvailable && !requestHeaders) {
+    requestHeaders = await connector.requestData(id, "requestHeaders");
+  }
+
+  if (requestPostDataAvailable && !requestPostData) {
+    requestPostData = await connector.requestData(id, "requestPostData");
+  }
+
+  if (!formDataSections && requestHeaders && requestPostData &&
+      requestHeadersFromUploadStream) {
+    formDataSections = await getFormDataSections(
+      requestHeaders,
+      requestHeadersFromUploadStream,
+      requestPostData,
+      connector.getLongString,
+    );
+
+    updateRequest(request.id, { formDataSections }, true);
+  }
+}
+
+/**
+ * This helper function is used for additional processing of
+ * incoming network update packets. It's used by Network and
+ * Console panel reducers.
+ */
+function processNetworkUpdates(request = {}) {
+  let result = {};
+  for (let [key, value] of Object.entries(request)) {
+    if (UPDATE_PROPS.includes(key)) {
+      result[key] = value;
+
+      switch (key) {
+        case "securityInfo":
+          result.securityState = value.state;
+          break;
+        case "totalTime":
+          result.totalTime = request.totalTime;
+          break;
+        case "requestPostData":
+          result.requestHeadersFromUploadStream = value.uploadHeaders;
+          break;
+      }
+    }
+  }
+  return result;
+}
+
 module.exports = {
+  decodeUnicodeBase64,
   getFormDataSections,
   fetchHeaders,
+  fetchNetworkUpdatePacket,
   formDataURI,
   writeHeaderText,
-  decodeUnicodeUrl,
   getAbbreviatedMimeType,
   getEndTime,
   getFormattedProtocol,
@@ -395,6 +506,8 @@ module.exports = {
   getUrlScheme,
   parseQueryString,
   parseFormData,
+  updateFormDataSections,
+  processNetworkUpdates,
   propertiesEqual,
   ipToLong,
 };

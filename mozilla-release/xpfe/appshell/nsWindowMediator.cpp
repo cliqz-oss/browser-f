@@ -17,7 +17,6 @@
 #include "nsAppShellWindowEnumerator.h"
 #include "nsWindowMediator.h"
 #include "nsIWindowMediatorListener.h"
-#include "nsXPIDLString.h"
 #include "nsGlobalWindow.h"
 
 #include "nsIDocShell.h"
@@ -353,7 +352,7 @@ NS_IMETHODIMP
 nsWindowMediator::GetOuterWindowWithId(uint64_t aWindowID,
                                        mozIDOMWindowProxy** aWindow)
 {
-  RefPtr<nsGlobalWindow> window = nsGlobalWindow::GetOuterWindowWithId(aWindowID);
+  RefPtr<nsGlobalWindowOuter> window = nsGlobalWindowOuter::GetOuterWindowWithId(aWindowID);
   nsCOMPtr<nsPIDOMWindowOuter> outer = window ? window->AsOuter() : nullptr;
   outer.forget(aWindow);
   return NS_OK;
@@ -363,7 +362,7 @@ NS_IMETHODIMP
 nsWindowMediator::GetCurrentInnerWindowWithId(uint64_t aWindowID,
                                               mozIDOMWindow** aWindow)
 {
-  RefPtr<nsGlobalWindow> window = nsGlobalWindow::GetInnerWindowWithId(aWindowID);
+  RefPtr<nsGlobalWindowInner> window = nsGlobalWindowInner::GetInnerWindowWithId(aWindowID);
 
   // not found
   if (!window)
@@ -393,22 +392,6 @@ nsWindowMediator::UpdateWindowTimeStamp(nsIXULWindow* inWindow)
     return NS_OK;
   }
   return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-nsWindowMediator::UpdateWindowTitle(nsIXULWindow* inWindow,
-                                    const char16_t* inTitle)
-{
-  MOZ_RELEASE_ASSERT(NS_IsMainThread());
-  NS_ENSURE_STATE(mReady);
-  if (GetInfoFor(inWindow)) {
-    ListenerArray::ForwardIterator iter(mListeners);
-    while (iter.HasMore()) {
-      iter.GetNext()->OnWindowTitleChange(inWindow, inTitle);
-    }
-  }
-
-  return NS_OK;
 }
 
 /* This method's plan is to intervene only when absolutely necessary.
@@ -774,7 +757,6 @@ nsWindowMediator::SortZOrderBackToFront()
 }
 
 NS_IMPL_ISUPPORTS(nsWindowMediator,
-  nsIWindowMediator_44,
   nsIWindowMediator,
   nsIObserver,
   nsISupportsWeakReference)

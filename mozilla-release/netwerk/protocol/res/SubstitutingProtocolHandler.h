@@ -9,9 +9,9 @@
 
 #include "nsISubstitutingProtocolHandler.h"
 
-#include "nsInterfaceHashtable.h"
 #include "nsIOService.h"
 #include "nsISubstitutionObserver.h"
+#include "nsDataHashtable.h"
 #include "nsStandardURL.h"
 #include "mozilla/chrome/RegistryMessageUtils.h"
 #include "mozilla/Maybe.h"
@@ -41,16 +41,19 @@ public:
   MOZ_MUST_USE nsresult CollectSubstitutions(InfallibleTArray<SubstitutionMapping>& aResources);
 
 protected:
-  virtual ~SubstitutingProtocolHandler() {}
+  virtual ~SubstitutingProtocolHandler() = default;
   void ConstructInternal();
 
-  MOZ_MUST_USE nsresult SendSubstitution(const nsACString& aRoot, nsIURI* aBaseURI);
+  MOZ_MUST_USE nsresult SendSubstitution(const nsACString& aRoot, nsIURI* aBaseURI, uint32_t aFlags);
+
+  nsresult GetSubstitutionFlags(const nsACString& root, uint32_t* flags);
 
   // Override this in the subclass to try additional lookups after checking
   // mSubstitutions.
-  virtual MOZ_MUST_USE nsresult GetSubstitutionInternal(const nsACString& aRoot, nsIURI** aResult)
+  virtual MOZ_MUST_USE nsresult GetSubstitutionInternal(const nsACString& aRoot, nsIURI** aResult, uint32_t* aFlags)
   {
     *aResult = nullptr;
+    *aFlags = 0;
     return NS_ERROR_NOT_AVAILABLE;
   }
 
@@ -74,13 +77,26 @@ protected:
   nsIIOService* IOService() { return mIOService; }
 
 private:
+  struct SubstitutionEntry
+  {
+    SubstitutionEntry()
+        : flags(0)
+    {
+    }
+
+    ~SubstitutionEntry() = default;
+
+    nsCOMPtr<nsIURI> baseURI;
+    uint32_t flags;
+  };
+
   // Notifies all observers that a new substitution from |aRoot| to
   // |aBaseURI| has been set/installed for this protocol handler.
   void NotifyObservers(const nsACString& aRoot, nsIURI* aBaseURI);
 
   nsCString mScheme;
   Maybe<uint32_t> mFlags;
-  nsInterfaceHashtable<nsCStringHashKey,nsIURI> mSubstitutions;
+  nsDataHashtable<nsCStringHashKey, SubstitutionEntry> mSubstitutions;
   nsCOMPtr<nsIIOService> mIOService;
 
   // The list of observers added with AddObserver that will be
@@ -104,10 +120,43 @@ private:
 class SubstitutingURL : public nsStandardURL
 {
 public:
-  SubstitutingURL() : nsStandardURL(true) {}
-  virtual nsStandardURL* StartClone();
-  virtual MOZ_MUST_USE nsresult EnsureFile();
-  NS_IMETHOD GetClassIDNoAlloc(nsCID *aCID);
+  virtual nsStandardURL* StartClone() override;
+  virtual MOZ_MUST_USE nsresult EnsureFile() override;
+  NS_IMETHOD GetClassIDNoAlloc(nsCID *aCID) override;
+
+private:
+  explicit SubstitutingURL() : nsStandardURL(true) {}
+  explicit SubstitutingURL(bool aSupportsFileURL) : nsStandardURL(true) { MOZ_ASSERT(aSupportsFileURL); }
+
+public:
+  class Mutator
+    : public TemplatedMutator<SubstitutingURL>
+  {
+    NS_DECL_ISUPPORTS
+  public:
+    explicit Mutator() = default;
+  private:
+    virtual ~Mutator() = default;
+
+    SubstitutingURL* Create() override
+    {
+      return new SubstitutingURL();
+    }
+  };
+
+  NS_IMETHOD Mutate(nsIURIMutator** aMutator) override
+  {
+    RefPtr<SubstitutingURL::Mutator> mutator = new SubstitutingURL::Mutator();
+    nsresult rv = mutator->InitFromURI(this);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    mutator.forget(aMutator);
+    return NS_OK;
+  }
+
+  friend BaseURIMutator<SubstitutingURL>;
+  friend TemplatedMutator<SubstitutingURL>;
 };
 
 } // namespace net

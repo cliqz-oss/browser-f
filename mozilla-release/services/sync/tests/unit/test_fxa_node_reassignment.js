@@ -7,40 +7,24 @@ _("Test that node reassignment happens correctly using the FxA identity mgr.");
 // reassignment - it comes from the token server - so we need to ensure the
 // Fxa cluster manager grabs a new token.
 
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-common/rest.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/status.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/rotaryengine.js");
-Cu.import("resource://services-sync/browserid_identity.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
-Cu.import("resource://gre/modules/PromiseUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-common/rest.js");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/status.js");
+ChromeUtils.import("resource://services-sync/util.js");
+ChromeUtils.import("resource://testing-common/services/sync/rotaryengine.js");
+ChromeUtils.import("resource://services-sync/browserid_identity.js");
+ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 
 add_task(async function setup() {
-  Log.repository.getLogger("Sync.AsyncResource").level = Log.Level.Trace;
-  Log.repository.getLogger("Sync.ErrorHandler").level  = Log.Level.Trace;
-  Log.repository.getLogger("Sync.Resource").level      = Log.Level.Trace;
-  Log.repository.getLogger("Sync.RESTRequest").level   = Log.Level.Trace;
-  Log.repository.getLogger("Sync.Service").level       = Log.Level.Trace;
-  Log.repository.getLogger("Sync.SyncScheduler").level = Log.Level.Trace;
-  initTestLogging();
-
   // Disables all built-in engines. Important for avoiding errors thrown by the
   // add-ons engine.
-  Service.engineManager.clear();
+  await Service.engineManager.clear();
 
   // Setup the FxA identity manager and cluster manager.
   Status.__authManager = Service.identity = new BrowserIDManager();
-  Service._clusterManager = Service.identity.createClusterManager(Service);
-
-  // None of the failures in this file should result in a UI error.
-  function onUIError() {
-    do_throw("Errors should not be presented in the UI.");
-  }
-  Svc.Obs.add("weave:ui:login:error", onUIError);
-  Svc.Obs.add("weave:ui:sync:error", onUIError);
 });
 
 
@@ -56,6 +40,7 @@ function handleReassign(handler, req, resp) {
 var numTokenRequests = 0;
 
 function prepareServer(cbAfterTokenFetch) {
+  syncTestLogging();
   let config = makeIdentityConfig({username: "johndoe"});
   // A server callback to ensure we don't accidentally hit the wrong endpoint
   // after a node reassignment.
@@ -63,10 +48,11 @@ function prepareServer(cbAfterTokenFetch) {
     __proto__: SyncServerCallback,
     onRequest(req, resp) {
       let full = `${req.scheme}://${req.host}:${req.port}${req.path}`;
-      do_check_true(full.startsWith(config.fxaccount.token.endpoint),
-                    `request made to ${full}`);
+      let expected = config.fxaccount.token.endpoint;
+      Assert.ok(full.startsWith(expected),
+                `request made to ${full}, expected ${expected}`);
     }
-  }
+  };
   let server = new SyncServer(callback);
   server.registerUser("johndoe");
   server.start();
@@ -78,20 +64,23 @@ function prepareServer(cbAfterTokenFetch) {
   let numReassigns = 0;
   return configureIdentity(config).then(() => {
     Service.identity._tokenServerClient = {
-      getTokenFromBrowserIDAssertion(uri, assertion, cb) {
-        // Build a new URL with trailing zeros for the SYNC_VERSION part - this
-        // will still be seen as equivalent by the test server, but different
-        // by sync itself.
-        numReassigns += 1;
-        let trailingZeros = new Array(numReassigns + 1).join("0");
-        let token = config.fxaccount.token;
-        token.endpoint = server.baseURI + "1.1" + trailingZeros + "/johndoe";
-        token.uid = config.username;
-        numTokenRequests += 1;
-        cb(null, token);
-        if (cbAfterTokenFetch) {
-          cbAfterTokenFetch();
-        }
+      getTokenFromBrowserIDAssertion(uri, assertion) {
+        return new Promise(res => {
+          // Build a new URL with trailing zeros for the SYNC_VERSION part - this
+          // will still be seen as equivalent by the test server, but different
+          // by sync itself.
+          numReassigns += 1;
+          let trailingZeros = new Array(numReassigns + 1).join("0");
+          let token = config.fxaccount.token;
+          token.endpoint = server.baseURI + "1.1" + trailingZeros + "/johndoe";
+          token.uid = config.username;
+          _(`test server saw token fetch - endpoint now ${token.endpoint}`);
+          numTokenRequests += 1;
+          res(token);
+          if (cbAfterTokenFetch) {
+            cbAfterTokenFetch();
+          }
+        });
       },
     };
     return server;
@@ -127,7 +116,7 @@ async function syncAndExpectNodeReassignment(server, firstNotification, between,
       Svc.Obs.remove(firstNotification, onFirstSync);
       Svc.Obs.add(secondNotification, onSecondSync);
 
-      do_check_eq(Service.clusterURL, "");
+      Assert.equal(Service.clusterURL, "");
 
       // Track whether we fetched a new token.
       numTokenRequestsBefore = numTokenRequests;
@@ -144,7 +133,7 @@ async function syncAndExpectNodeReassignment(server, firstNotification, between,
       // before we proceed.
       waitForZeroTimer(function() {
         _("Second sync nextTick.");
-        do_check_eq(numTokenRequests, numTokenRequestsBefore + 1, "fetched a new token");
+        Assert.equal(numTokenRequests, numTokenRequestsBefore + 1, "fetched a new token");
         Service.startOver().then(() => {
           server.stop(deferred.resolve);
         });
@@ -160,13 +149,12 @@ async function syncAndExpectNodeReassignment(server, firstNotification, between,
   if (Service.isLoggedIn) {
     _("Making request to " + url + " which should 401");
     let request = new RESTRequest(url);
-    request.get(function() {
-      do_check_eq(request.response.status, 401);
-      Utils.nextTick(onwards);
-    });
+    await request.get();
+    Assert.equal(request.response.status, 401);
+    CommonUtils.nextTick(onwards);
   } else {
     _("Skipping preliminary validation check for a 401 as we aren't logged in");
-    Utils.nextTick(onwards);
+    CommonUtils.nextTick(onwards);
   }
   await deferred.promise;
 }
@@ -194,14 +182,14 @@ add_task(async function test_single_token_fetch() {
 
   let server = await prepareServer(afterTokenFetch);
 
-  do_check_false(Service.isLoggedIn, "not already logged in");
+  Assert.ok(!Service.isLoggedIn, "not already logged in");
   await Service.sync();
-  do_check_eq(Status.sync, SYNC_SUCCEEDED, "sync succeeded");
-  do_check_eq(numTokenFetches, 0, "didn't fetch a new token");
+  Assert.equal(Status.sync, SYNC_SUCCEEDED, "sync succeeded");
+  Assert.equal(numTokenFetches, 0, "didn't fetch a new token");
   // A bit hacky, but given we know how prepareServer works we can deduce
   // that clusterURL we expect.
   let expectedClusterURL = server.baseURI + "1.1/johndoe/";
-  do_check_eq(Service.clusterURL, expectedClusterURL);
+  Assert.equal(Service.clusterURL, expectedClusterURL);
   await Service.startOver();
   await promiseStopServer(server);
 });
@@ -214,14 +202,13 @@ add_task(async function test_momentary_401_engine() {
   let john   = server.user("johndoe");
 
   _("Enabling the Rotary engine.");
-  let { engine, tracker } = await registerRotaryEngine();
+  let { engine, syncID, tracker } = await registerRotaryEngine();
 
   // We need the server to be correctly set up prior to experimenting. Do this
   // through a sync.
   let global = {syncID: Service.syncID,
                 storageVersion: STORAGE_VERSION,
-                rotary: {version: engine.version,
-                         syncID:  engine.syncID}}
+                rotary: {version: engine.version, syncID}};
   john.createCollection("meta").insert("global", global);
 
   _("First sync to prepare server contents.");
@@ -244,7 +231,7 @@ add_task(async function test_momentary_401_engine() {
       // lastSyncReassigned shouldn't be cleared until a sync has succeeded.
       _("Ensuring that lastSyncReassigned is still set at next sync start.");
       Svc.Obs.remove("weave:service:login:start", onLoginStart);
-      do_check_true(getReassigned());
+      Assert.ok(getReassigned());
     }
 
     _("Adding observer that lastSyncReassigned is still set on login.");
@@ -257,8 +244,8 @@ add_task(async function test_momentary_401_engine() {
                                       "weave:service:sync:finish",
                                       Service.storageURL + "rotary");
 
-  tracker.clearChangedIDs();
-  Service.engineManager.unregister(engine);
+  await tracker.clearChangedIDs();
+  await Service.engineManager.unregister(engine);
 });
 
 // This test ends up being a failing info fetch *after we're already logged in*.
@@ -280,7 +267,7 @@ add_task(async function test_momentary_401_info_collections_loggedin() {
     server.toplevelHandlers.info = oldHandler;
   }
 
-  do_check_true(Service.isLoggedIn, "already logged in");
+  Assert.ok(Service.isLoggedIn, "already logged in");
 
   await syncAndExpectNodeReassignment(server,
                                       "weave:service:sync:error",
@@ -311,15 +298,15 @@ add_task(async function test_momentary_401_info_collections_loggedout() {
 
   // Return a 401 for the next /info request - it will be reset immediately
   // after a new token is fetched.
-  oldHandler = server.toplevelHandlers.info
+  oldHandler = server.toplevelHandlers.info;
   server.toplevelHandlers.info = handleReassign;
 
-  do_check_false(Service.isLoggedIn, "not already logged in");
+  Assert.ok(!Service.isLoggedIn, "not already logged in");
 
   await Service.sync();
-  do_check_eq(Status.sync, SYNC_SUCCEEDED, "sync succeeded");
+  Assert.equal(Status.sync, SYNC_SUCCEEDED, "sync succeeded");
   // sync was successful - check we grabbed a new token.
-  do_check_true(sawTokenFetch, "a new token was fetched by this test.")
+  Assert.ok(sawTokenFetch, "a new token was fetched by this test.");
   // and we are done.
   await Service.startOver();
   await promiseStopServer(server);
@@ -345,7 +332,7 @@ add_task(async function test_momentary_401_storage_loggedin() {
     server.toplevelHandlers.storage = oldHandler;
   }
 
-  do_check_true(Service.isLoggedIn, "already logged in");
+  Assert.ok(Service.isLoggedIn, "already logged in");
 
   await syncAndExpectNodeReassignment(server,
                                       "weave:service:sync:error",
@@ -371,7 +358,7 @@ add_task(async function test_momentary_401_storage_loggedout() {
     server.toplevelHandlers.storage = oldHandler;
   }
 
-  do_check_false(Service.isLoggedIn, "already logged in");
+  Assert.ok(!Service.isLoggedIn, "already logged in");
 
   await syncAndExpectNodeReassignment(server,
                                       "weave:service:login:error",

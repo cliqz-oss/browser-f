@@ -7,7 +7,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1322273
   <meta charset="utf-8">
   <title>Test for Bug 1322273</title>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="application/javascript" src="/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="application/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body>
@@ -52,7 +52,7 @@ add_task(async function() {
 
   let isWrapperDead = SpecialPowers.Cu.evalInSandbox(`(${
       function isWrapperDead() {
-        return Components.utils.isDeadWrapper(obj);
+        return Cu.isDeadWrapper(obj);
       }
     })`,
     sandbox);

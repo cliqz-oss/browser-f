@@ -473,6 +473,7 @@ typedef enum {
   , NPNVsupportsCompositingCoreAnimationPluginsBool = 74656 /* TRUE if the browser supports
                                                                CA model compositing */
 #endif
+  , NPNVLast
 } NPNVariable;
 
 typedef enum {
@@ -564,7 +565,7 @@ typedef struct _NPEvent
 {
   uint16_t event;
   uintptr_t wParam;
-  uintptr_t lParam;
+  intptr_t lParam;
 } NPEvent;
 #elif defined(XP_UNIX) && defined(MOZ_X11)
 typedef XEvent NPEvent;

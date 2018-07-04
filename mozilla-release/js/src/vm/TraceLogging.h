@@ -11,8 +11,7 @@
 #include "mozilla/LinkedList.h"
 #include "mozilla/MemoryReporting.h"
 
-#include "jsalloc.h"
-
+#include "js/AllocPolicy.h"
 #include "js/HashTable.h"
 #include "js/TypeDecls.h"
 #include "js/Vector.h"
@@ -20,10 +19,9 @@
 #include "vm/TraceLoggingGraph.h"
 #include "vm/TraceLoggingTypes.h"
 
-struct JSRuntime;
 
 namespace JS {
-    class ReadOnlyCompileOptions;
+class ReadOnlyCompileOptions;
 } // namespace JS
 
 namespace js {
@@ -380,7 +378,7 @@ class TraceLoggerThreadState
 #endif
 
     bool enabledTextIds[TraceLogger_Last];
-    bool cooperatingThreadEnabled;
+    bool mainThreadEnabled;
     bool helperThreadEnabled;
     bool graphSpewingEnabled;
     bool spewErrors;
@@ -407,7 +405,7 @@ class TraceLoggerThreadState
 #ifdef DEBUG
         initialized(false),
 #endif
-        cooperatingThreadEnabled(false),
+        mainThreadEnabled(false),
         helperThreadEnabled(false),
         graphSpewingEnabled(false),
         spewErrors(false),

@@ -96,22 +96,16 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(HTMLObjectElement,
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mValidity)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_IMPL_ADDREF_INHERITED(HTMLObjectElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLObjectElement, Element)
-
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(HTMLObjectElement)
-  NS_INTERFACE_TABLE_INHERITED(HTMLObjectElement,
-                               nsIDOMHTMLObjectElement,
-                               imgINotificationObserver,
-                               nsIRequestObserver,
-                               nsIStreamListener,
-                               nsIFrameLoaderOwner,
-                               nsIObjectLoadingContent,
-                               nsIImageLoadingContent,
-                               imgIOnloadBlocker,
-                               nsIChannelEventSink,
-                               nsIConstraintValidation)
-NS_INTERFACE_TABLE_TAIL_INHERITING(nsGenericHTMLFormElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLObjectElement,
+                                             nsGenericHTMLFormElement,
+                                             imgINotificationObserver,
+                                             nsIRequestObserver,
+                                             nsIStreamListener,
+                                             nsIFrameLoaderOwner,
+                                             nsIObjectLoadingContent,
+                                             nsIImageLoadingContent,
+                                             nsIChannelEventSink,
+                                             nsIConstraintValidation)
 
 NS_IMPL_ELEMENT_CLONE(HTMLObjectElement)
 
@@ -198,12 +192,8 @@ HTMLObjectElement::HandlePluginInstantiated(Element* aElement)
   // to initiate a call to nsIWidget::SetPluginFocused(true).  Otherwise
   // keyboard input won't work in a click-to-play plugin until aElement
   // loses focus and regains it.
-  nsIContent* focusedContent = nullptr;
   nsFocusManager *fm = nsFocusManager::GetFocusManager();
-  if (fm) {
-    focusedContent = fm->GetFocusedContent();
-  }
-  if (SameCOMIdentity(focusedContent, aElement)) {
+  if (fm && fm->GetFocusedElement() == aElement) {
     OnFocusBlurPlugin(aElement, true);
   }
 }
@@ -237,12 +227,6 @@ HTMLObjectElement::PostHandleEvent(EventChainPostVisitor& aVisitor)
 }
 
 #endif // #ifdef XP_MACOSX
-
-NS_IMETHODIMP
-HTMLObjectElement::GetForm(nsIDOMHTMLFormElement **aForm)
-{
-  return nsGenericHTMLFormElement::GetForm(aForm);
-}
 
 nsresult
 HTMLObjectElement::BindToTree(nsIDocument *aDocument,
@@ -292,19 +276,21 @@ HTMLObjectElement::UnbindFromTree(bool aDeep,
 }
 
 nsresult
-HTMLObjectElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+HTMLObjectElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
-                                const nsAttrValue* aOldValue, bool aNotify)
+                                const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
+                                bool aNotify)
 {
   nsresult rv = AfterMaybeChangeAttr(aNamespaceID, aName, aNotify);
   NS_ENSURE_SUCCESS(rv, rv);
 
   return nsGenericHTMLFormElement::AfterSetAttr(aNamespaceID, aName, aValue,
-                                                aOldValue, aNotify);
+                                                aOldValue, aSubjectPrincipal, aNotify);
 }
 
 nsresult
-HTMLObjectElement::OnAttrSetButNotChanged(int32_t aNamespaceID, nsIAtom* aName,
+HTMLObjectElement::OnAttrSetButNotChanged(int32_t aNamespaceID, nsAtom* aName,
                                           const nsAttrValueOrString& aValue,
                                           bool aNotify)
 {
@@ -316,7 +302,7 @@ HTMLObjectElement::OnAttrSetButNotChanged(int32_t aNamespaceID, nsIAtom* aName,
 }
 
 nsresult
-HTMLObjectElement::AfterMaybeChangeAttr(int32_t aNamespaceID, nsIAtom* aName,
+HTMLObjectElement::AfterMaybeChangeAttr(int32_t aNamespaceID, nsAtom* aName,
                                         bool aNotify)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -442,38 +428,10 @@ HTMLObjectElement::SubmitNamesValues(HTMLFormSubmission *aFormSubmission)
   return aFormSubmission->AddNameValuePair(name, value);
 }
 
-NS_IMPL_STRING_ATTR(HTMLObjectElement, Align, align)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, Archive, archive)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, Border, border)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, Code, code)
-NS_IMPL_URI_ATTR(HTMLObjectElement, CodeBase, codebase)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, CodeType, codetype)
-NS_IMPL_URI_ATTR_WITH_BASE(HTMLObjectElement, Data, data, codebase)
-NS_IMPL_BOOL_ATTR(HTMLObjectElement, Declare, declare)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, Height, height)
-NS_IMPL_INT_ATTR(HTMLObjectElement, Hspace, hspace)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, Name, name)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, Standby, standby)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, Type, type)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, UseMap, usemap)
-NS_IMPL_INT_ATTR(HTMLObjectElement, Vspace, vspace)
-NS_IMPL_STRING_ATTR(HTMLObjectElement, Width, width)
-
 int32_t
 HTMLObjectElement::TabIndexDefault()
 {
   return IsFocusableForTabIndex() ? 0 : -1;
-}
-
-NS_IMETHODIMP
-HTMLObjectElement::GetContentDocument(nsIDOMDocument **aContentDocument)
-{
-  NS_ENSURE_ARG_POINTER(aContentDocument);
-
-  nsCOMPtr<nsIDOMDocument> domDoc =
-    do_QueryInterface(GetContentDocument(*nsContentUtils::SubjectPrincipal()));
-  domDoc.forget(aContentDocument);
-  return NS_OK;
 }
 
 nsPIDOMWindowOuter*
@@ -489,8 +447,9 @@ HTMLObjectElement::GetContentWindow(nsIPrincipal& aSubjectPrincipal)
 
 bool
 HTMLObjectElement::ParseAttribute(int32_t aNamespaceID,
-                                  nsIAtom *aAttribute,
+                                  nsAtom *aAttribute,
                                   const nsAString &aValue,
+                                  nsIPrincipal* aMaybeScriptedPrincipal,
                                   nsAttrValue &aResult)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -503,7 +462,7 @@ HTMLObjectElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLFormElement::ParseAttribute(aNamespaceID, aAttribute,
-                                                  aValue, aResult);
+                                                  aValue, aMaybeScriptedPrincipal, aResult);
 }
 
 void
@@ -518,7 +477,7 @@ HTMLObjectElement::MapAttributesIntoRule(const nsMappedAttributes *aAttributes,
 }
 
 NS_IMETHODIMP_(bool)
-HTMLObjectElement::IsAttributeMapped(const nsIAtom *aAttribute) const
+HTMLObjectElement::IsAttributeMapped(const nsAtom *aAttribute) const
 {
   static const MappedAttributeEntry* const map[] = {
     sCommonAttributeMap,
@@ -560,7 +519,7 @@ HTMLObjectElement::IntrinsicState() const
 uint32_t
 HTMLObjectElement::GetCapabilities() const
 {
-  return nsObjectLoadingContent::GetCapabilities();
+  return nsObjectLoadingContent::GetCapabilities() | eFallbackIfClassIDPresent;
 }
 
 void

@@ -21,7 +21,9 @@
 <!-- LOCALIZATION NOTE (sanitizeDialog2.width): width of the Clear Recent History dialog -->
 <!ENTITY sanitizeDialog2.width         "34em">
 
-<!ENTITY clearDataSettings2.label     "Wenn &brandShortName; beendet wird, folgende Daten automatisch löschen:"> 
+<!ENTITY clearDataSettings2.label     "Wenn &brandShortName; beendet wird, folgende Daten automatisch löschen:">
+
+<!ENTITY clearDataSettings3.label     "Wenn &brandShortName; beendet wird, folgende Daten automatisch löschen:">
 
 <!-- XXX rearrange entities to match physical layout when l10n isn't an issue -->
 <!-- LOCALIZATION NOTE (clearTimeDuration.*): "Time range to clear" dropdown.
@@ -54,7 +56,7 @@ that require it.  -->
 <!ENTITY itemCookies.accesskey             "C">
 <!ENTITY itemCache.label                   "Cache">
 <!ENTITY itemCache.accesskey               "A">
-<!ENTITY itemOfflineApps.label             "Offline-Website-Daten">
+<!ENTITY itemOfflineApps.label             "Offline-Websitedaten">
 <!ENTITY itemOfflineApps.accesskey         "O">
 <!ENTITY itemActiveLogins.label            "Aktive Logins">
 <!ENTITY itemActiveLogins.accesskey        "L">

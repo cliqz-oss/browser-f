@@ -138,7 +138,7 @@ const map_entry refs_map[] = { ENUM(INTRA_FRAME),  ENUM(LAST_FRAME),
                                LAST_ENUM };
 
 const map_entry block_size_map[] = {
-#if CONFIG_CB4X4
+#if CONFIG_CHROMA_2X2 || CONFIG_CHROMA_SUB8X8
   ENUM(BLOCK_2X2),    ENUM(BLOCK_2X4),    ENUM(BLOCK_4X2),
 #endif
   ENUM(BLOCK_4X4),    ENUM(BLOCK_4X8),    ENUM(BLOCK_8X4),
@@ -148,6 +148,11 @@ const map_entry block_size_map[] = {
   ENUM(BLOCK_64X64),
 #if CONFIG_EXT_PARTITION
   ENUM(BLOCK_64X128), ENUM(BLOCK_128X64), ENUM(BLOCK_128X128),
+#endif
+  ENUM(BLOCK_4X16),   ENUM(BLOCK_16X4),   ENUM(BLOCK_8X32),
+  ENUM(BLOCK_32X8),   ENUM(BLOCK_16X64),  ENUM(BLOCK_64X16),
+#if CONFIG_EXT_PARTITION
+  ENUM(BLOCK_32X128), ENUM(BLOCK_128X32),
 #endif
   LAST_ENUM
 };
@@ -161,8 +166,12 @@ const map_entry tx_size_map[] = {
   ENUM(TX_64X64),
 #endif
   ENUM(TX_4X8),   ENUM(TX_8X4),   ENUM(TX_8X16),  ENUM(TX_16X8),
-  ENUM(TX_16X32), ENUM(TX_32X16), ENUM(TX_4X16),  ENUM(TX_16X4),
-  ENUM(TX_8X32),  ENUM(TX_32X8),  LAST_ENUM
+  ENUM(TX_16X32), ENUM(TX_32X16),
+#if CONFIG_TX64X64
+  ENUM(TX_32X64), ENUM(TX_64X32),
+#endif  // CONFIG_TX64X64
+  ENUM(TX_4X16),  ENUM(TX_16X4),  ENUM(TX_8X32),  ENUM(TX_32X8),
+  LAST_ENUM
 };
 
 const map_entry tx_type_map[] = { ENUM(DCT_DCT),
@@ -185,40 +194,40 @@ const map_entry tx_type_map[] = { ENUM(DCT_DCT),
 #endif
                                   LAST_ENUM };
 
-const map_entry prediction_mode_map[] = { ENUM(DC_PRED),
-                                          ENUM(V_PRED),
-                                          ENUM(H_PRED),
-                                          ENUM(D45_PRED),
-                                          ENUM(D135_PRED),
-                                          ENUM(D117_PRED),
-                                          ENUM(D153_PRED),
-                                          ENUM(D207_PRED),
-                                          ENUM(D63_PRED),
-#if CONFIG_ALT_INTRA
-                                          ENUM(SMOOTH_PRED),
+const map_entry prediction_mode_map[] = {
+  ENUM(DC_PRED),       ENUM(V_PRED),        ENUM(H_PRED),
+  ENUM(D45_PRED),      ENUM(D135_PRED),     ENUM(D117_PRED),
+  ENUM(D153_PRED),     ENUM(D207_PRED),     ENUM(D63_PRED),
+  ENUM(SMOOTH_PRED),
 #if CONFIG_SMOOTH_HV
-                                          ENUM(SMOOTH_V_PRED),
-                                          ENUM(SMOOTH_H_PRED),
+  ENUM(SMOOTH_V_PRED), ENUM(SMOOTH_H_PRED),
 #endif  // CONFIG_SMOOTH_HV
-#endif  // CONFIG_ALT_INTRA
-                                          ENUM(TM_PRED),
-                                          ENUM(NEARESTMV),
-                                          ENUM(NEARMV),
-                                          ENUM(ZEROMV),
-                                          ENUM(NEWMV),
-#if CONFIG_EXT_INTER
-                                          ENUM(NEAREST_NEARESTMV),
-                                          ENUM(NEAR_NEARMV),
-                                          ENUM(NEAREST_NEWMV),
-                                          ENUM(NEW_NEARESTMV),
-                                          ENUM(NEAR_NEWMV),
-                                          ENUM(NEW_NEARMV),
-                                          ENUM(ZERO_ZEROMV),
-                                          ENUM(NEW_NEWMV),
-#endif
-                                          ENUM(INTRA_INVALID),
-                                          LAST_ENUM };
+  ENUM(TM_PRED),       ENUM(NEARESTMV),     ENUM(NEARMV),
+  ENUM(ZEROMV),        ENUM(NEWMV),         ENUM(NEAREST_NEARESTMV),
+  ENUM(NEAR_NEARMV),   ENUM(NEAREST_NEWMV), ENUM(NEW_NEARESTMV),
+  ENUM(NEAR_NEWMV),    ENUM(NEW_NEARMV),    ENUM(ZERO_ZEROMV),
+  ENUM(NEW_NEWMV),     ENUM(INTRA_INVALID), LAST_ENUM
+};
 
+#if CONFIG_CFL
+const map_entry uv_prediction_mode_map[] = {
+  ENUM(UV_DC_PRED),       ENUM(UV_V_PRED),
+  ENUM(UV_H_PRED),        ENUM(UV_D45_PRED),
+  ENUM(UV_D135_PRED),     ENUM(UV_D117_PRED),
+  ENUM(UV_D153_PRED),     ENUM(UV_D207_PRED),
+  ENUM(UV_D63_PRED),      ENUM(UV_SMOOTH_PRED),
+#if CONFIG_SMOOTH_HV
+  ENUM(UV_SMOOTH_V_PRED), ENUM(UV_SMOOTH_H_PRED),
+#endif  // CONFIG_SMOOTH_HV
+  ENUM(UV_TM_PRED),
+#if CONFIG_CFL
+  ENUM(UV_CFL_PRED),
+#endif
+  ENUM(UV_MODE_INVALID),  LAST_ENUM
+};
+#else
+#define uv_prediction_mode_map prediction_mode_map
+#endif
 #define NO_SKIP 0
 #define SKIP 1
 
@@ -252,6 +261,20 @@ int put_str(char *buffer, const char *str) {
     buffer[i] = str[i];
   }
   return i;
+}
+
+int put_str_with_escape(char *buffer, const char *str) {
+  int i;
+  int j = 0;
+  for (i = 0; str[i] != '\0'; i++) {
+    if (str[i] < ' ') {
+      continue;
+    } else if (str[i] == '"' || str[i] == '\\') {
+      buffer[j++] = '\\';
+    }
+    buffer[j++] = str[i];
+  }
+  return j;
 }
 
 int put_num(char *buffer, char prefix, int num, char suffix) {
@@ -491,7 +514,7 @@ void inspect(void *pbi, void *data) {
                           offsetof(insp_mi_data, mode));
   }
   if (layers & UV_MODE_LAYER) {
-    buf += put_block_info(buf, prediction_mode_map, "uv_mode",
+    buf += put_block_info(buf, uv_prediction_mode_map, "uv_mode",
                           offsetof(insp_mi_data, uv_mode));
   }
   if (layers & SKIP_LAYER) {
@@ -541,8 +564,9 @@ void inspect(void *pbi, void *data) {
   buf += put_str(buf, "  \"config\": {");
   buf += put_map(buf, config_map);
   buf += put_str(buf, "},\n");
-  buf += snprintf(buf, MAX_BUFFER, "  \"configString\": \"%s\"\n",
-                  aom_codec_build_config());
+  buf += put_str(buf, "  \"configString\": \"");
+  buf += put_str_with_escape(buf, aom_codec_build_config());
+  buf += put_str(buf, "\"\n");
   decoded_frame_count++;
   buf += put_str(buf, "},\n");
   *(buf++) = 0;
@@ -601,6 +625,12 @@ const char *get_aom_codec_build_config() { return aom_codec_build_config(); }
 
 EMSCRIPTEN_KEEPALIVE
 int get_bit_depth() { return img->bit_depth; }
+
+EMSCRIPTEN_KEEPALIVE
+int get_bits_per_sample() { return img->bps; }
+
+EMSCRIPTEN_KEEPALIVE
+int get_image_format() { return img->fmt; }
 
 EMSCRIPTEN_KEEPALIVE
 unsigned char *get_plane(int plane) { return img->planes[plane]; }

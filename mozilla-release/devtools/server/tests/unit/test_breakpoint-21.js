@@ -14,7 +14,7 @@ var gClient;
 var gThreadClient;
 
 function run_test() {
-  run_test_with_server(DebuggerServer, function () {
+  run_test_with_server(DebuggerServer, function() {
     run_test_with_server(WorkerDebuggerServer, do_test_finished);
   });
   do_test_pending();
@@ -24,46 +24,46 @@ function run_test_with_server(server, callback) {
   initTestDebuggerServer(server);
   gDebuggee = addTestGlobal("test-breakpoints", server);
   gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient,
                            "test-breakpoints",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              test();
                            });
   });
 }
 
-const test = Task.async(function* () {
+const test = async function() {
   // Populate the `ScriptStore` so that we only test that the script
   // is added through `onNewScript`
-  yield getSources(gThreadClient);
+  await getSources(gThreadClient);
 
-  let packet = yield executeOnNextTickAndWaitForPause(evalCode, gClient);
+  let packet = await executeOnNextTickAndWaitForPause(evalCode, gClient);
   let source = gThreadClient.source(packet.frame.where.source);
   let location = {
     line: gDebuggee.line0 + 8
   };
 
-  let [res, bpClient] = yield setBreakpoint(source, location);
+  let [res, bpClient] = await setBreakpoint(source, location);
   ok(!res.error);
 
-  yield resume(gThreadClient);
-  packet = yield waitForPause(gClient);
-  do_check_eq(packet.type, "paused");
-  do_check_eq(packet.why.type, "breakpoint");
-  do_check_eq(packet.why.actors[0], bpClient.actor);
-  do_check_eq(packet.frame.where.source.actor, source.actor);
-  do_check_eq(packet.frame.where.line, location.line);
+  await resume(gThreadClient);
+  packet = await waitForPause(gClient);
+  Assert.equal(packet.type, "paused");
+  Assert.equal(packet.why.type, "breakpoint");
+  Assert.equal(packet.why.actors[0], bpClient.actor);
+  Assert.equal(packet.frame.where.source.actor, source.actor);
+  Assert.equal(packet.frame.where.line, location.line);
 
-  yield resume(gThreadClient);
+  await resume(gThreadClient);
   finishClient(gClient);
-});
+};
 
 /* eslint-disable */
 function evalCode() {
   // Start a new script
-  Components.utils.evalInSandbox(
+  Cu.evalInSandbox(
     "var line0 = Error().lineNumber;\n(" + function () {
       debugger;
       var a = (function () {

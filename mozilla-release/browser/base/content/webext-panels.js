@@ -7,10 +7,11 @@
 /* import-globals-from browser.js */
 /* import-globals-from nsContextMenu.js */
 
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionParent",
-                                  "resource://gre/modules/ExtensionParent.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionParent",
+                               "resource://gre/modules/ExtensionParent.jsm");
 
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 var {
   promiseEvent,
@@ -36,10 +37,15 @@ function getBrowser(sidebar) {
   browser.setAttribute("context", "contentAreaContextMenu");
   browser.setAttribute("tooltip", "aHTMLTooltip");
   browser.setAttribute("autocompletepopup", "PopupAutoComplete");
+  browser.setAttribute("selectmenulist", "ContentSelectDropdown");
   browser.setAttribute("onclick", "window.parent.contentAreaClick(event, true);");
 
+  // Ensure that the browser is going to run in the same process of the other
+  // extension pages from the same addon.
+  browser.sameProcessAsFrameLoader = sidebar.extension.groupFrameLoader;
+
   let readyPromise;
-  if (sidebar.remote) {
+  if (sidebar.extension.remote) {
     browser.setAttribute("remote", "true");
     browser.setAttribute("remoteType",
                          E10SUtils.getRemoteTypeForURI(sidebar.uri, true,
@@ -87,18 +93,36 @@ var gBrowser = {
   },
 };
 
-function loadWebPanel() {
-  let sidebarURI = new URL(location);
-  let sidebar = {
-    uri: sidebarURI.searchParams.get("panel"),
-    remote: sidebarURI.searchParams.get("remote"),
-    browserStyle: sidebarURI.searchParams.get("browser-style"),
-  };
-  getBrowser(sidebar).then(browser => {
-    browser.loadURI(sidebar.uri);
-  });
+function updatePosition() {
+  // We need both of these to make sure we update the position
+  // after any lower level updates have finished.
+  requestAnimationFrame(() => setTimeout(() => {
+    let browser = document.getElementById("webext-panels-browser");
+    if (browser && browser.isRemoteBrowser) {
+      browser.frameLoader.requestUpdatePosition();
+    }
+  }, 0));
 }
 
-function load() {
-  this.loadWebPanel();
+function loadPanel(extensionId, extensionUrl, browserStyle) {
+  let browserEl = document.getElementById("webext-panels-browser");
+  if (browserEl) {
+    if (browserEl.currentURI.spec === extensionUrl) {
+      return;
+    }
+    // Forces runtime disconnect.  Remove the stack (parent).
+    browserEl.parentNode.remove();
+  }
+
+  let policy = WebExtensionPolicy.getByID(extensionId);
+  let sidebar = {
+    uri: extensionUrl,
+    extension: policy.extension,
+    browserStyle,
+  };
+  getBrowser(sidebar).then(browser => {
+    let uri = Services.io.newURI(policy.getURL());
+    let triggeringPrincipal = Services.scriptSecurityManager.createCodebasePrincipal(uri, {});
+    browser.loadURI(extensionUrl, {triggeringPrincipal});
+  });
 }

@@ -5,6 +5,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "DocumentTimeline.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/dom/DocumentTimelineBinding.h"
 #include "AnimationUtils.h"
 #include "nsContentUtils.h"
@@ -35,7 +36,7 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(DocumentTimeline,
                                                AnimationTimeline)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(DocumentTimeline)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(DocumentTimeline)
 NS_INTERFACE_MAP_END_INHERITING(AnimationTimeline)
 
 NS_IMPL_ADDREF_INHERITED(DocumentTimeline, AnimationTimeline)
@@ -156,10 +157,18 @@ DocumentTimeline::WillRefresh(mozilla::TimeStamp aTime)
   bool needsTicks = false;
   nsTArray<Animation*> animationsToRemove(mAnimations.Count());
 
+  // https://drafts.csswg.org/web-animations-1/#update-animations-and-send-events,
+  // step2.
+  // Note that this should be done before nsAutoAnimationMutationBatch.  If
+  // PerformMicroTaskCheckpoint was called before nsAutoAnimationMutationBatch
+  // is destroyed, some mutation records might not be delivered in this
+  // checkpoint.
+  nsAutoMicroTask mt;
   nsAutoAnimationMutationBatch mb(mDocument);
 
   for (Animation* animation = mAnimationOrder.getFirst(); animation;
-       animation = animation->getNext()) {
+       animation =
+         static_cast<LinkedListElement<Animation>*>(animation)->getNext()) {
     // Skip any animations that are longer need associated with this timeline.
     if (animation->GetTimeline() != this) {
       // If animation has some other timeline, it better not be also in the
@@ -250,12 +259,7 @@ DocumentTimeline::ToTimeStamp(const TimeDuration& aTimeDuration) const
 nsRefreshDriver*
 DocumentTimeline::GetRefreshDriver() const
 {
-  nsIPresShell* presShell = mDocument->GetShell();
-  if (MOZ_UNLIKELY(!presShell)) {
-    return nullptr;
-  }
-
-  nsPresContext* presContext = presShell->GetPresContext();
+  nsPresContext* presContext = mDocument->GetPresContext();
   if (MOZ_UNLIKELY(!presContext)) {
     return nullptr;
   }

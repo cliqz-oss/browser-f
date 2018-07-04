@@ -2,19 +2,19 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-/* global OS */
-
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://gre/modules/Downloads.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/Downloads.jsm");
 
 const gServer = createHttpServer();
 gServer.registerDirectory("/data/", do_get_file("data"));
 
+gServer.registerPathHandler("/dir/", (_, res) => res.write("length=8"));
+
 const WINDOWS = AppConstants.platform == "win";
 
-const BASE = `http://localhost:${gServer.identity.primaryPort}/data`;
+const BASE = `http://localhost:${gServer.identity.primaryPort}/`;
 const FILE_NAME = "file_download.txt";
-const FILE_URL = BASE + "/" + FILE_NAME;
+const FILE_URL = BASE + "data/" + FILE_NAME;
 const FILE_NAME_UNIQUE = "file_download(1).txt";
 const FILE_LEN = 46;
 
@@ -23,12 +23,12 @@ let downloadDir;
 function setup() {
   downloadDir = FileUtils.getDir("TmpD", ["downloads"]);
   downloadDir.createUnique(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
-  do_print(`Using download directory ${downloadDir.path}`);
+  info(`Using download directory ${downloadDir.path}`);
 
   Services.prefs.setIntPref("browser.download.folderList", 2);
   Services.prefs.setComplexValue("browser.download.dir", Ci.nsIFile, downloadDir);
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     Services.prefs.clearUserPref("browser.download.folderList");
     Services.prefs.clearUserPref("browser.download.dir");
 
@@ -127,7 +127,7 @@ add_task(async function test_downloads() {
 
   await extension.startup();
   await extension.awaitMessage("ready");
-  do_print("extension started");
+  info("extension started");
 
   // Call download() with just the url property.
   await testDownload({url: FILE_URL}, FILE_NAME, FILE_LEN, "just source");
@@ -236,6 +236,17 @@ add_task(async function test_downloads() {
     equal(msg.errmsg, "filename must not contain back-references (..)", "error message for back-references is correct");
   });
 
+  // Test illegal characters on Windows.
+  if (WINDOWS) {
+    await download({
+      url: FILE_URL,
+      filename: "like:this",
+    }).then(msg => {
+      equal(msg.status, "error", "downloads.download() fails with illegal chars");
+      equal(msg.errmsg, "filename must not contain illegal characters", "error message correct");
+    });
+  }
+
   // Try to download a blob url
   const BLOB_STRING = "Hello, world";
   await testDownload({
@@ -249,6 +260,22 @@ add_task(async function test_downloads() {
     blobme: [BLOB_STRING],
   }, "download", BLOB_STRING.length, "blob url with no filename");
   extension.sendMessage("killTheBlob");
+
+  // Download a normal URL with an empty filename part.
+  await testDownload({
+    url: BASE + "dir/",
+  }, "download", 8, "normal url with empty filename");
+
+  // Check that the "incognito" property is supported.
+  await testDownload({
+    url: FILE_URL,
+    incognito: false,
+  }, FILE_NAME, FILE_LEN, "incognito=false");
+
+  await testDownload({
+    url: FILE_URL,
+    incognito: true,
+  }, FILE_NAME, FILE_LEN, "incognito=true");
 
   await extension.unload();
 });
@@ -272,7 +299,8 @@ add_task(async function test_download_post() {
     }
 
     if (body) {
-      const str = NetUtil.readInputStreamToString(received.bodyInputStream,
+      const str = NetUtil.readInputStreamToString(
+        received.bodyInputStream,
         received.bodyInputStream.available());
       equal(str, body, "body is correct");
     }

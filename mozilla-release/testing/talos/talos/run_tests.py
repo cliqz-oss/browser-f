@@ -3,24 +3,24 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+from __future__ import absolute_import, print_function
 
 import copy
-import mozversion
 import os
 import sys
 import time
 import traceback
 import urllib
-import utils
+
 import mozhttpd
-
+import mozversion
+import utils
 from mozlog import get_proxy_logger
-
+from talos.config import get_configs, ConfigurationError
 from talos.mitmproxy import mitmproxy
 from talos.results import TalosResults
 from talos.ttest import TTest
 from talos.utils import TalosError, TalosRegression
-from talos.config import get_configs, ConfigurationError
 
 # directory of this file
 here = os.path.dirname(os.path.realpath(__file__))
@@ -37,15 +37,11 @@ def useBaseTestDefaults(base, tests):
     return tests
 
 
-def buildCommandLine(test):
-    """build firefox command line options for tp tests"""
-
+def set_tp_preferences(test, browser_config):
     # sanity check pageloader values
     # mandatory options: tpmanifest, tpcycles
     if test['tpcycles'] not in range(1, 1000):
         raise TalosError('pageloader cycles must be int 1 to 1,000')
-    if test.get('tpdelay') and test['tpdelay'] not in range(1, 10000):
-        raise TalosError('pageloader delay must be int 1 to 10,000')
     if 'tpmanifest' not in test:
         raise TalosError("tpmanifest not found in test: %s" % test)
 
@@ -57,25 +53,27 @@ def buildCommandLine(test):
             if test[cycle_var] > 2:
                 test[cycle_var] = 2
 
-    # build pageloader command from options
-    url = ['-tp', test['tpmanifest']]
-    CLI_bool_options = ['tpchrome', 'tpmozafterpaint', 'tpdisable_e10s',
-                        'tpnoisy', 'rss', 'tprender', 'tploadnocache',
-                        'tpscrolltest', 'fnbpaint']
-    CLI_options = ['tpcycles', 'tppagecycles', 'tpdelay', 'tptimeout']
+    CLI_bool_options = ['tpchrome', 'tphero', 'tpmozafterpaint', 'tploadnocache', 'tpscrolltest',
+                        'fnbpaint']
+    CLI_options = ['tpcycles', 'tppagecycles', 'tptimeout', 'tpmanifest']
     for key in CLI_bool_options:
-        if test.get(key):
-            url.append('-%s' % key)
+        _pref_name = "talos.%s" % key
+        if key in test:
+            test['preferences'][_pref_name] = test.get(key)
+        else:
+            # current test doesn't use this setting, remove it from our prefs
+            if _pref_name in test['preferences']:
+                del test['preferences'][_pref_name]
 
     for key in CLI_options:
         value = test.get(key)
+        _pref_name = "talos.%s" % key
         if value:
-            url.extend(['-%s' % key, str(value)])
-
-    # XXX we should actually return the list but since we abuse
-    # the url as a command line flag to pass to firefox all over the place
-    # will just make a string for now
-    return ' '.join(url)
+            test['preferences'][_pref_name] = value
+        else:
+            # current test doesn't use this setting, remove it from our prefs
+            if _pref_name in test['preferences']:
+                del test['preferences'][_pref_name]
 
 
 def setup_webserver(webserver):
@@ -93,23 +91,35 @@ def run_tests(config, browser_config):
     tests = config['tests']
     tests = useBaseTestDefaults(config.get('basetest', {}), tests)
     paths = ['profile_path', 'tpmanifest', 'extensions', 'setup', 'cleanup']
+
     for test in tests:
         # Check for profile_path, tpmanifest and interpolate based on Talos
         # root https://bugzilla.mozilla.org/show_bug.cgi?id=727711
         # Build command line from config
         for path in paths:
             if test.get(path):
-                test[path] = utils.interpolate(test[path])
+                if path == 'extensions':
+                    for _index, _ext in enumerate(test['extensions']):
+                        test['extensions'][_index] = utils.interpolate(_ext)
+                else:
+                    test[path] = utils.interpolate(test[path])
         if test.get('tpmanifest'):
             test['tpmanifest'] = \
                 os.path.normpath('file:/%s' % (urllib.quote(test['tpmanifest'],
                                                '/\\t:\\')))
-        if not test.get('url'):
-            # build 'url' for tptest
-            test['url'] = buildCommandLine(test)
-        test['url'] = utils.interpolate(test['url'])
+            test['preferences']['talos.tpmanifest'] = test['tpmanifest']
+
+        # if using firstNonBlankPaint, set test preference for it
+        # so that the browser pref will be turned on (in ffsetup)
+        if test.get('fnbpaint', False):
+            LOG.info("Test is using firstNonBlankPaint, browser pref will be turned on")
+            test['preferences']['dom.performance.time_to_non_blank_paint.enabled'] = True
+
         test['setup'] = utils.interpolate(test['setup'])
         test['cleanup'] = utils.interpolate(test['cleanup'])
+
+        if not test.get('profile', False):
+            test['profile'] = config.get('profile')
 
     # pass --no-remote to firefox launch, if --develop is specified
     # we do that to allow locally the user to have another running firefox
@@ -117,16 +127,21 @@ def run_tests(config, browser_config):
     if browser_config['develop']:
         browser_config['extra_args'] = '--no-remote'
 
-    # with addon signing for production talos, we want to develop without it
-    if browser_config['develop'] or browser_config['branch_name'] == 'Try':
-        browser_config['preferences']['xpinstall.signatures.required'] = False
+    # Pass subtests filter argument via a preference
+    if browser_config['subtests']:
+        browser_config['preferences']['talos.subtests'] = browser_config['subtests']
 
-    browser_config['preferences']['extensions.allow-non-mpc-extensions'] = True
-
-    # if using firstNonBlankPaint, must turn on pref for it
-    if test.get('fnbpaint', False):
-        LOG.info("Using firstNonBlankPaint, so turning on pref for it")
-        browser_config['preferences']['dom.performance.time_to_non_blank_paint.enabled'] = True
+    # If --code-coverage files are expected, set flag in browser config so ffsetup knows
+    # that it needs to delete any ccov files resulting from browser initialization
+    # NOTE: This is only supported in production; local setup of ccov folders and
+    # data collection not supported yet, so if attempting to run with --code-coverage
+    # flag locally, that is not supported yet
+    if config.get('code_coverage', False):
+        if browser_config['develop']:
+            raise TalosError('Aborting: talos --code-coverage flag is only '
+                             'supported in production')
+        else:
+            browser_config['code_coverage'] = True
 
     # set defaults
     testdate = config.get('testdate', '')
@@ -190,13 +205,9 @@ def run_tests(config, browser_config):
     httpd = setup_webserver(browser_config['webserver'])
     httpd.start()
 
-    # if e10s add as extra results option
-    if config['e10s']:
-        talos_results.add_extra_option('e10s')
-
-    # stylo is another option for testing
-    if config['stylo']:
-        talos_results.add_extra_option('stylo')
+    # legacy still required for perfherder data
+    talos_results.add_extra_option('e10s')
+    talos_results.add_extra_option('stylo')
 
     # measuring the difference of a a certain thread level
     if config.get('stylothreads', 0) > 0:
@@ -233,6 +244,7 @@ def run_tests(config, browser_config):
                                          str(scripts_path))
 
     testname = None
+
     # run the tests
     timer = utils.Timer()
     LOG.suite_start(tests=[test['name'] for test in tests])
@@ -240,6 +252,11 @@ def run_tests(config, browser_config):
         for test in tests:
             testname = test['name']
             LOG.test_start(testname)
+
+            if not test.get('url'):
+                # set browser prefs for pageloader test setings (doesn't use cmd line args / url)
+                test['url'] = None
+                set_tp_preferences(test, browser_config)
 
             mytest = TTest()
 
@@ -339,29 +356,45 @@ def make_comparison_result(base_and_reference_results):
     [16.705, ...], "value": 16.705, "unit": "ms"}], "extraOptions": ["e10s"], "name":
     "bloom_basic", "alertThreshold": 5.0}]}
     '''
-    # separate the 'base' and 'reference' result run values
-    base_result_runs = base_and_reference_results.results[0].results[0]['runs']
-    ref_result_runs = base_and_reference_results.results[0].results[1]['runs']
-
     # create a new results object for the comparison result; keep replicates from both pages
     comparison_result = copy.deepcopy(base_and_reference_results)
 
     # remove original results from our copy as they will be replaced by one comparison result
     comparison_result.results[0].results = []
+    comp_results = comparison_result.results[0].results
 
-    # populate our new comparison result with 'base' and 'ref' replicates
-    comparison_result.results[0].results.append({'index': 0,
-                                                 'runs': [],
-                                                 'page': '',
-                                                 'base_runs': base_result_runs,
-                                                 'ref_runs': ref_result_runs})
+    # zero-based count of how many base vs reftest sets we have
+    subtest_index = 0
 
-    # now step thru each result, compare 'base' vs 'ref', and store the difference in 'runs'
-    _index = 0
-    for next_ref in comparison_result.results[0].results[0]['ref_runs']:
-        diff = abs(next_ref - comparison_result.results[0].results[0]['base_runs'][_index])
-        comparison_result.results[0].results[0]['runs'].append(round(diff, 3))
-        _index += 1
+    # each set of two results is actually a base test followed by the
+    # reference test; we want to go through each set of base vs reference
+    for x in range(0, len(base_and_reference_results.results[0].results), 2):
+
+        # separate the 'base' and 'reference' result run values
+        results = base_and_reference_results.results[0].results
+        base_result_runs = results[x]['runs']
+        ref_result_runs = results[x + 1]['runs']
+
+        # the test/subtest result is the difference between the base vs reference test page
+        # values; for this result use the base test page name for the subtest/test name
+        sub_test_name = base_and_reference_results.results[0].results[x]['page']
+
+        # populate our new comparison result with 'base' and 'ref' replicates
+        comp_results.append({'index': 0,
+                             'runs': [],
+                             'page': sub_test_name,
+                             'base_runs': base_result_runs,
+                             'ref_runs': ref_result_runs})
+
+        # now step thru each result, compare 'base' vs 'ref', and store the difference in 'runs'
+        _index = 0
+        for next_ref in comp_results[subtest_index]['ref_runs']:
+            diff = abs(next_ref - comp_results[subtest_index]['base_runs'][_index])
+            comp_results[subtest_index]['runs'].append(round(diff, 3))
+            _index += 1
+
+        # increment our base vs reference subtest index
+        subtest_index += 1
 
     return comparison_result
 

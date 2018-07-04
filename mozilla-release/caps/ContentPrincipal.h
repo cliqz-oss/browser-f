@@ -14,6 +14,7 @@
 #include "nsNetUtil.h"
 #include "nsScriptSecurityManager.h"
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/extensions/WebExtensionPolicy.h"
 
 class ContentPrincipal final : public mozilla::BasePrincipal
 {
@@ -30,6 +31,8 @@ public:
 
   ContentPrincipal();
 
+  static PrincipalKind Kind() { return eCodebasePrincipal; }
+
   // Init() must be called before the principal is in a usable state.
   nsresult Init(nsIURI* aCodebase,
                 const mozilla::OriginAttributes& aOriginAttributes,
@@ -37,13 +40,10 @@ public:
 
   virtual nsresult GetScriptLocation(nsACString& aStr) override;
 
-  /**
-   * Called at startup to setup static data, e.g. about:config pref-observers.
-   */
-  static void InitializeStatics();
-
   static nsresult
   GenerateOriginNoSuffixFromURI(nsIURI* aURI, nsACString& aOrigin);
+
+  mozilla::extensions::WebExtensionPolicy* AddonPolicy();
 
   nsCOMPtr<nsIURI> mDomain;
   nsCOMPtr<nsIURI> mCodebase;
@@ -59,7 +59,7 @@ protected:
   bool MayLoadInternal(nsIURI* aURI) override;
 
 private:
-  mozilla::Maybe<nsString> mAddonIdCache;
+  mozilla::Maybe<mozilla::WeakPtr<mozilla::extensions::WebExtensionPolicy>> mAddon;
 };
 
 #define NS_PRINCIPAL_CONTRACTID "@mozilla.org/principal;1"

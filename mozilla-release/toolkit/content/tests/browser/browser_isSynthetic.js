@@ -15,21 +15,21 @@ LocationChangeListener.prototype = {
     this.wasSynthetic = this.browser.isSyntheticDocument;
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                         Ci.nsISupportsWeakReference])
-}
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener,
+                                          Ci.nsISupportsWeakReference])
+};
 
 const FILES = gTestPath.replace("browser_isSynthetic.js", "")
                        .replace("chrome://mochitests/content/", "http://example.com/");
 
 function waitForPageShow(browser) {
   return ContentTask.spawn(browser, null, async function() {
-    Cu.import("resource://gre/modules/PromiseUtils.jsm");
+    ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
     await new Promise(resolve => {
       let listener = () => {
         removeEventListener("pageshow", listener, true);
         resolve();
-      }
+      };
       addEventListener("pageshow", listener, true);
     });
   });

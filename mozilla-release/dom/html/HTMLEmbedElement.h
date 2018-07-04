@@ -12,27 +12,24 @@
 #include "nsObjectLoadingContent.h"
 #include "nsGkAtoms.h"
 #include "nsError.h"
-#include "nsIDOMHTMLEmbedElement.h"
 
 namespace mozilla {
 namespace dom {
 
 class HTMLEmbedElement final : public nsGenericHTMLElement
                              , public nsObjectLoadingContent
-                             , public nsIDOMHTMLEmbedElement
 {
 public:
   explicit HTMLEmbedElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
                             mozilla::dom::FromParser aFromParser = mozilla::dom::NOT_FROM_PARSER);
 
-  NS_DECL_NSIDOMHTMLEMBEDELEMENT
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
-  NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLEmbedElement, embed)
+  NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLEmbedElement, embed)
   virtual int32_t TabIndexDefault() override;
 
 #ifdef XP_MACOSX
-  // nsIDOMEventTarget
+  // EventTarget
   NS_IMETHOD PostHandleEvent(EventChainPostVisitor& aVisitor) override;
 #endif
 
@@ -49,11 +46,12 @@ public:
   virtual IMEState GetDesiredIMEState() override;
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
-                              nsIAtom *aAttribute,
+                              nsAtom *aAttribute,
                               const nsAString &aValue,
+                              nsIPrincipal* aMaybeScriptedPrincipal,
                               nsAttrValue &aResult) override;
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsIAtom *aAttribute) const override;
+  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom *aAttribute) const override;
   virtual EventStates IntrinsicState() const override;
   virtual void DestroyContent() override;
 
@@ -104,7 +102,10 @@ public:
     SetHTMLAttr(nsGkAtoms::width, aValue, aRv);
   }
   // WebIDL <embed> api
-  // XPCOM GetSrc is ok; note that it's a URI attribute
+  void GetSrc(DOMString& aValue)
+  {
+    GetURIAttr(nsGkAtoms::src, nullptr, aValue);
+  }
   void SetSrc(const nsAString& aValue, ErrorResult& aRv)
   {
     SetHTMLAttr(nsGkAtoms::src, aValue, aRv);
@@ -132,11 +133,12 @@ protected:
   // Override for nsImageLoadingContent.
   nsIContent* AsContent() override { return this; }
 
-  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                 const nsAttrValue* aValue,
                                 const nsAttrValue* aOldValue,
+                                nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
-  virtual nsresult OnAttrSetButNotChanged(int32_t aNamespaceID, nsIAtom* aName,
+  virtual nsresult OnAttrSetButNotChanged(int32_t aNamespaceID, nsAtom* aName,
                                           const nsAttrValueOrString& aValue,
                                           bool aNotify) override;
 
@@ -158,7 +160,7 @@ private:
    * @param aName the localname of the attribute being set
    * @param aNotify Whether we plan to notify document observers.
    */
-  nsresult AfterMaybeChangeAttr(int32_t aNamespaceID, nsIAtom* aName,
+  nsresult AfterMaybeChangeAttr(int32_t aNamespaceID, nsAtom* aName,
                                 bool aNotify);
 };
 

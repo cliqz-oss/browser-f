@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -20,13 +20,6 @@
 
 namespace mozilla {
 namespace layers {
-
-/**
- * Maximum time for a touch on the screen and corresponding lift of the finger
- * to be considered a tap. This also applies to double taps, except that it is
- * used twice.
- */
-static const uint32_t MAX_TAP_TIME = 300;
 
 /**
  * Amount of span or focus change needed to take us from the GESTURE_WAITING_PINCH
@@ -88,9 +81,7 @@ GestureEventListener::GestureEventListener(AsyncPanZoomController* aAsyncPanZoom
 {
 }
 
-GestureEventListener::~GestureEventListener()
-{
-}
+GestureEventListener::~GestureEventListener() = default;
 
 nsEventStatus GestureEventListener::HandleInputEvent(const MultiTouchInput& aEvent)
 {
@@ -263,7 +254,7 @@ bool GestureEventListener::MoveDistanceExceeds(ScreenCoord aThreshold) const
 
 bool GestureEventListener::MoveDistanceIsLarge() const
 {
-  return MoveDistanceExceeds(AsyncPanZoomController::GetTouchStartTolerance());
+  return MoveDistanceExceeds(mAsyncPanZoomController->GetTouchStartTolerance());
 }
 
 bool GestureEventListener::SecondTapIsFar() const
@@ -271,7 +262,7 @@ bool GestureEventListener::SecondTapIsFar() const
   // Allow a little more room here, because the is actually lifting their finger
   // off the screen before replacing it, and that tends to have more error than
   // wiggling the finger while on the screen.
-  return MoveDistanceExceeds(AsyncPanZoomController::GetSecondTapTolerance());
+  return MoveDistanceExceeds(mAsyncPanZoomController->GetSecondTapTolerance());
 }
 
 nsEventStatus GestureEventListener::HandleInputTouchMove()
@@ -305,7 +296,7 @@ nsEventStatus GestureEventListener::HandleInputTouchMove()
 
   // The user has performed a double tap, but not lifted her finger.
   case GESTURE_SECOND_SINGLE_TOUCH_DOWN: {
-    // If touch has moved noticeably (within MAX_TAP_TIME), change state.
+    // If touch has moved noticeably (within gfxPrefs::APZMaxTapTime()), change state.
     if (MoveDistanceIsLarge()) {
       CancelLongTapTimeoutTask();
       CancelMaxTapTimeoutTask();
@@ -487,7 +478,7 @@ nsEventStatus GestureEventListener::HandleInputTouchEnd()
   case GESTURE_PINCH:
     if (mTouches.Length() < 2) {
       SetState(GESTURE_NONE);
-      ParentLayerPoint point(-1, -1);
+      ParentLayerPoint point = PinchGestureInput::BothFingersLifted();
       if (mTouches.Length() == 1) {
         // As user still keeps one finger down the event's focus point should
         // contain meaningful data.
@@ -550,7 +541,7 @@ void GestureEventListener::HandleInputTimeoutLongTap()
 
   switch (mState) {
   case GESTURE_FIRST_SINGLE_TOUCH_DOWN:
-    // just in case MAX_TAP_TIME > ContextMenuDelay cancel MAX_TAP timer
+    // just in case MaxTapTime > ContextMenuDelay cancel MaxTap timer
     // and fall through
     CancelMaxTapTimeoutTask();
     MOZ_FALLTHROUGH;
@@ -663,7 +654,7 @@ void GestureEventListener::CreateMaxTapTimeoutTask()
   mMaxTapTimeoutTask = task;
   mAsyncPanZoomController->PostDelayedTask(
     task.forget(),
-    MAX_TAP_TIME);
+    gfxPrefs::APZMaxTapTime());
 }
 
 } // namespace layers

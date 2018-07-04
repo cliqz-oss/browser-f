@@ -2,10 +2,10 @@
 
 const {
   LegacyExtensionContext,
-} = Cu.import("resource://gre/modules/LegacyExtensionsUtils.jsm", {});
+} = ChromeUtils.import("resource://gre/modules/LegacyExtensionsUtils.jsm", {});
 
 function promiseAddonStartup(extension) {
-  const {Management} = Cu.import("resource://gre/modules/Extension.jsm", {});
+  const {Management} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
 
   return new Promise((resolve) => {
     let listener = (evt, extensionInstance) => {
@@ -49,7 +49,7 @@ add_task(async function test_legacy_extension_context_contentscript_connection()
   function contentScript() {
     browser.runtime.sendMessage("webextension -> legacy_extension message", (reply) => {
       browser.test.assertEq("legacy_extension -> webextension reply", reply,
-                           "Got the expected reply from the LegacyExtensionContext");
+                            "Got the expected reply from the LegacyExtensionContext");
       browser.test.sendMessage("got-reply-message");
     });
 

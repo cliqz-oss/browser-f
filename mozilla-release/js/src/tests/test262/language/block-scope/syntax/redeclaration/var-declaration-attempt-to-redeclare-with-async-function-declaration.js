@@ -8,7 +8,7 @@ esid: sec-block-static-semantics-early-errors
 features: [async-functions]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     Block : { StatementList }
@@ -18,5 +18,7 @@ info: |
 
 ---*/
 
+
+throw "Test262: This statement should not be evaluated.";
 
 { var f; async function f() {} }

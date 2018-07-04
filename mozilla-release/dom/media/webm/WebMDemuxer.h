@@ -24,6 +24,8 @@ class WebMBufferedState;
 // Queue for holding MediaRawData samples
 class MediaRawDataQueue
 {
+  typedef std::deque<RefPtr<MediaRawData>> ContainerType;
+
  public:
   uint32_t GetSize()
   {
@@ -93,13 +95,39 @@ class MediaRawDataQueue
     return mQueue.back();
   }
 
+    // Methods for range-based for loops.
+  ContainerType::iterator begin()
+  {
+    return mQueue.begin();
+  }
+
+  ContainerType::const_iterator begin() const
+  {
+    return mQueue.begin();
+  }
+
+  ContainerType::iterator end()
+  {
+    return mQueue.end();
+  }
+
+  ContainerType::const_iterator end() const
+  {
+    return mQueue.end();
+  }
+
 private:
-  std::deque<RefPtr<MediaRawData>> mQueue;
+  ContainerType mQueue;
 };
 
 class WebMTrackDemuxer;
 
-class WebMDemuxer : public MediaDataDemuxer
+DDLoggedTypeDeclNameAndBase(WebMDemuxer, MediaDataDemuxer);
+DDLoggedTypeNameAndBase(WebMTrackDemuxer, MediaTrackDemuxer);
+
+class WebMDemuxer
+  : public MediaDataDemuxer
+  , public DecoderDoctorLifeLogger<WebMDemuxer>
 {
 public:
   explicit WebMDemuxer(MediaResource* aResource);
@@ -108,8 +136,6 @@ public:
   WebMDemuxer(MediaResource* aResource, bool aIsMediaSource);
 
   RefPtr<InitPromise> Init() override;
-
-  bool HasTrackType(TrackInfo::TrackType aType) const override;
 
   uint32_t GetNumberTracks(TrackInfo::TrackType aType) const override;
 
@@ -261,7 +287,7 @@ private:
   int64_t mLastWebMBlockOffset;
   const bool mIsMediaSource;
 
-  Maybe<nsIntSize> mLastSeenFrameSize;
+  Maybe<gfx::IntSize> mLastSeenFrameSize;
   // This will be populated only if a resolution change occurs, otherwise it
   // will be left as null so the original metadata is used
   RefPtr<TrackInfoSharedPtr> mSharedVideoTrackInfo;
@@ -269,7 +295,9 @@ private:
   EncryptionInfo mCrypto;
 };
 
-class WebMTrackDemuxer : public MediaTrackDemuxer
+class WebMTrackDemuxer
+  : public MediaTrackDemuxer
+  , public DecoderDoctorLifeLogger<WebMTrackDemuxer>
 {
 public:
   WebMTrackDemuxer(WebMDemuxer* aParent,

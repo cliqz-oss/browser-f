@@ -7,10 +7,10 @@ license = "MPL-2.0"
 [lib]
 name = "script_tests"
 path = "lib.rs"
-doctest = false
 
 [dependencies]
-euclid = "0.15"
+euclid = "0.17"
 msg = {path = "../../../components/msg"}
 script = {path = "../../../components/script"}
 servo_url = {path = "../../../components/url"}
+style = {path = "../../../components/style"}

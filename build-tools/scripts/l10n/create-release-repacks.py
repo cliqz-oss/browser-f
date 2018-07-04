@@ -46,7 +46,8 @@ def createRepacks(sourceRepo, revision, l10nRepoDir, l10nBaseRepo,
                   usePymake=False, tooltoolManifest=None,
                   tooltool_script=None, tooltool_urls=None,
                   balrog_submitter=None, balrog_hash="sha512",
-                  mozillaDir=None, mozillaSrcDir=None, bucket_prefix=None):
+                  mozillaDir=None, mozillaSrcDir=None, bucket_prefix=None,
+                  marSignatureFormat='mar'):
     buildid = retry(getBuildID, args=(platform, product, version,
                                       buildNumber, 'candidates', ftpServer))
     log.info('Got buildid: %s' % buildid)
@@ -139,7 +140,8 @@ def createRepacks(sourceRepo, revision, l10nRepoDir, l10nBaseRepo,
                                           productName=product, platform=platform,
                                           version=version, partialUpdates=partialUpdates,
                                           buildNumber=buildNumber, stageServer=ftpServer,
-                                          mozillaDir=mozillaDir, mozillaSrcDir=mozillaSrcDir)
+                                          mozillaDir=mozillaDir, mozillaSrcDir=mozillaSrcDir,
+                                          marSignatureFormat=marSignatureFormat)
 
             if balrog_submitter:
                 # TODO: partials, after bug 797033 is fixed
@@ -346,16 +348,6 @@ if __name__ == "__main__":
         balrog_submitter = None
 
     partialUpdates = releaseConfig.get('partialUpdates', {}).copy()
-    # FIXME: the follwong hack can be removed when win64 has the same list of
-    # partial update as other platforms. Check mozilla-esr38 to be sure.
-    if platform in releaseConfig.get('HACK_first_released_version', {}):
-        partialUpdates_copy = {}
-        for k, v in partialUpdates.iteritems():
-            if LooseVersion(k) >= LooseVersion(releaseConfig['HACK_first_released_version'][platform]):
-                partialUpdates_copy[k] = v
-        partialUpdates = partialUpdates_copy
-    # FIXME: end of hack
-
     createRepacks(
         sourceRepo=make_hg_url(branchConfig["hghost"], sourceRepoInfo["path"]),
         revision=options.releaseTag,
@@ -392,4 +384,5 @@ if __name__ == "__main__":
         mozillaDir=mozillaDir,
         mozillaSrcDir=mozillaSrcDir,
         bucket_prefix=branchConfig['bucket_prefix'],
+        marSignatureFormat=releaseConfig.get('marSignatureFormat', 'mar')
     )

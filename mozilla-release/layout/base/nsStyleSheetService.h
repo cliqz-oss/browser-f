@@ -45,17 +45,17 @@ public:
 
   nsresult Init();
 
-  SheetArray* AgentStyleSheets(mozilla::StyleBackendType aType)
+  SheetArray* AgentStyleSheets()
   {
-    return &Sheets(aType)[AGENT_SHEET];
+    return &mSheets[AGENT_SHEET];
   }
-  SheetArray* UserStyleSheets(mozilla::StyleBackendType aType)
+  SheetArray* UserStyleSheets()
   {
-    return &Sheets(aType)[USER_SHEET];
+    return &mSheets[USER_SHEET];
   }
-  SheetArray* AuthorStyleSheets(mozilla::StyleBackendType aType)
+  SheetArray* AuthorStyleSheets()
   {
-    return &Sheets(aType)[AUTHOR_SHEET];
+    return &mSheets[AUTHOR_SHEET];
   }
 
   void RegisterPresShell(nsIPresShell* aPresShell);
@@ -81,14 +81,7 @@ private:
   nsresult LoadAndRegisterSheetInternal(nsIURI *aSheetURI,
                                         uint32_t aSheetType);
 
-  mozilla::Array<SheetArray, 3>& Sheets(mozilla::StyleBackendType aType)
-  {
-    return aType == mozilla::StyleBackendType::Gecko ? mGeckoSheets
-                                                     : mServoSheets;
-  }
-
-  mozilla::Array<SheetArray, 3> mGeckoSheets;
-  mozilla::Array<SheetArray, 3> mServoSheets;
+  mozilla::Array<SheetArray, 3> mSheets;
 
   // Registered PresShells that will be notified when sheets are added and
   // removed from the style sheet service.

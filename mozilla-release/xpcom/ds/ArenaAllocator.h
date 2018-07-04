@@ -9,12 +9,15 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <sstream>
 
+#include "mozilla/Assertions.h"
 #include "mozilla/fallible.h"
 #include "mozilla/Likely.h"
 #include "mozilla/MemoryChecking.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/OperatorNewExtensions.h"
+#include "mozilla/Poison.h"
 #include "mozilla/TemplateLib.h"
 #include "nsDebug.h"
 
@@ -121,6 +124,14 @@ public:
     return s;
   }
 
+
+  void Check()
+  {
+    if (mCurrent) {
+      mCurrent->canary.Check();
+    }
+  }
+
 private:
   struct ArenaHeader
   {
@@ -144,6 +155,7 @@ private:
     {
     }
 
+    CorruptionCanary canary;
     ArenaHeader header;
     ArenaChunk* next;
 
@@ -154,7 +166,9 @@ private:
     {
       MOZ_ASSERT(aSize <= Available());
       char* p = reinterpret_cast<char*>(header.offset);
+      MOZ_RELEASE_ASSERT(p);
       header.offset += aSize;
+      canary.Check();
       MOZ_MAKE_MEM_UNDEFINED(p, aSize);
       return p;
     }

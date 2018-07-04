@@ -33,6 +33,15 @@ class CheckTidiness(unittest.TestCase):
         self.assertEqual("ignored directory './fake/dir' doesn't exist", errors.next()[2])
         self.assertNoMoreErrors(errors)
 
+    def test_non_existing_wpt_manifest_checks(self):
+        wrong_path = "/wrong/path.ini"
+        errors = tidy.check_manifest_dirs(wrong_path, print_text=False)
+        self.assertEqual("%s manifest file is required but was not found" % wrong_path, errors.next()[2])
+        self.assertNoMoreErrors(errors)
+        errors = tidy.check_manifest_dirs(os.path.join(base_path, 'manifest-include.ini'), print_text=False)
+        self.assertTrue(errors.next()[2].endswith("never_going_to_exist"))
+        self.assertNoMoreErrors(errors)
+
     def test_directory_checks(self):
         dirs = {
             os.path.join(base_path, "dir_check/webidl_plus"): ['webidl', 'test'],
@@ -107,6 +116,7 @@ class CheckTidiness(unittest.TestCase):
         self.assertTrue('mod declaration is not in alphabetical order' in errors.next()[2])
         self.assertEqual('mod declaration spans multiple lines', errors.next()[2])
         self.assertTrue('extern crate declaration is not in alphabetical order' in errors.next()[2])
+        self.assertTrue('derivable traits list is not in alphabetical order' in errors.next()[2])
         self.assertEqual('found an empty line following a {', errors.next()[2])
         self.assertEqual('missing space before ->', errors.next()[2])
         self.assertEqual('missing space after ->', errors.next()[2])
@@ -146,11 +156,11 @@ class CheckTidiness(unittest.TestCase):
         self.assertNoMoreErrors(feature_errors)
 
         ban_errors = tidy.collect_errors_for_files(iterFile('ban.rs'), [], [tidy.check_rust], print_text=False)
-        self.assertEqual('Banned type Cell<JSVal> detected. Use MutJS<JSVal> instead', ban_errors.next()[2])
+        self.assertEqual('Banned type Cell<JSVal> detected. Use MutDom<JSVal> instead', ban_errors.next()[2])
         self.assertNoMoreErrors(ban_errors)
 
         ban_errors = tidy.collect_errors_for_files(iterFile('ban-domrefcell.rs'), [], [tidy.check_rust], print_text=False)
-        self.assertEqual('Banned type DOMRefCell<JS<T>> detected. Use MutJS<JS<T>> instead', ban_errors.next()[2])
+        self.assertEqual('Banned type DomRefCell<Dom<T>> detected. Use MutDom<T> instead', ban_errors.next()[2])
         self.assertNoMoreErrors(ban_errors)
 
     def test_spec_link(self):
@@ -209,12 +219,12 @@ class CheckTidiness(unittest.TestCase):
 
     def test_non_list_mapped_buildbot_steps(self):
         errors = tidy.collect_errors_for_files(iterFile('non_list_mapping_buildbot_steps.yml'), [tidy.check_yaml], [], print_text=False)
-        self.assertEqual("Key 'non-list-key' maps to type 'str', but list expected", errors.next()[2])
+        self.assertEqual("expected a list for dictionary value @ data['non-list-key']", errors.next()[2])
         self.assertNoMoreErrors(errors)
 
     def test_non_string_list_mapping_buildbot_steps(self):
         errors = tidy.collect_errors_for_files(iterFile('non_string_list_buildbot_steps.yml'), [tidy.check_yaml], [], print_text=False)
-        self.assertEqual("List mapped to 'mapping_key' contains non-string element", errors.next()[2])
+        self.assertEqual("expected str @ data['mapping_key'][0]", errors.next()[2])
         self.assertNoMoreErrors(errors)
 
     def test_lock(self):
@@ -230,6 +240,24 @@ class CheckTidiness(unittest.TestCase):
 \t\x1b[93mThe following packages depend on version 0.5.1 from 'https://github.com/user/test3':\x1b[0m
 \t\ttest5"""
         self.assertEqual(msg2, errors.next()[2])
+        self.assertNoMoreErrors(errors)
+
+    def test_lock_ignore_without_duplicates(self):
+        tidy.config["ignore"]["packages"] = ["test", "test2", "test3", "test5"]
+        errors = tidy.collect_errors_for_files(iterFile('duplicated_package.lock'), [tidy.check_lock], [], print_text=False)
+
+        msg = (
+            "duplicates for `test2` are allowed, but only single version found"
+            "\n\t\x1b[93mThe following packages depend on version 0.1.0 from 'https://github.com/user/test2':\x1b[0m"
+        )
+        self.assertEqual(msg, errors.next()[2])
+
+        msg2 = (
+            "duplicates for `test5` are allowed, but only single version found"
+            "\n\t\x1b[93mThe following packages depend on version 0.1.0 from 'https://github.com/':\x1b[0m"
+        )
+        self.assertEqual(msg2, errors.next()[2])
+
         self.assertNoMoreErrors(errors)
 
     def test_lint_runner(self):
@@ -264,6 +292,11 @@ class CheckTidiness(unittest.TestCase):
                                   exclude_dirs=[os.path.join(base_path, 'whee', 'foo')])
         lst = list(file_list)
         self.assertEqual([os.path.join(base_path, 'whee', 'test.rs')], lst)
+
+    def test_multiline_string(self):
+        errors = tidy.collect_errors_for_files(iterFile('multiline_string.rs'), [], [tidy.check_rust], print_text=True)
+        self.assertNoMoreErrors(errors)
+
 
 def do_tests():
     suite = unittest.TestLoader().loadTestsFromTestCase(CheckTidiness)

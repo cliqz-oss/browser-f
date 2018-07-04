@@ -19,7 +19,8 @@ namespace gfx {
 class NativeFontResourceGDI final : public NativeFontResource
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(NativeFontResourceGDI)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(NativeFontResourceGDI, override)
+
   /**
    * Creates a NativeFontResourceGDI if data is valid. Note aFontData will be
    * copied if required and so can be released after calling.

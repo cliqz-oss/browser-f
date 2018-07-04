@@ -15,7 +15,7 @@
 #elif defined(XP_MACOSX)
 #include <CoreFoundation/CoreFoundation.h>
 #elif defined(XP_WIN)
-#include <Objbase.h>
+#include <objbase.h>
 #endif
 
 #include "json/json.h"
@@ -132,6 +132,7 @@ CreateMetadataNode(StringTable& strings)
     "ContainsMemoryReport",
     "CrashTime",
     "EventLoopNestingLevel",
+    "ipc_channel_error",
     "IsGarbageCollecting",
     "MozCrashReason",
     "OOMAllocationSize",
@@ -197,7 +198,8 @@ CreatePayloadNode(StringTable& strings, const string& aHash,
 // Create the application node of the crash ping
 static Json::Value
 CreateApplicationNode(const string& aVendor, const string& aName,
-                      const string& aVersion, const string& aChannel,
+                      const string& aVersion, const string& aDisplayVersion,
+                      const string& aPlatformVersion, const string& aChannel,
                       const string& aBuildId, const string& aArchitecture,
                       const string& aXpcomAbi)
 {
@@ -206,8 +208,8 @@ CreateApplicationNode(const string& aVendor, const string& aName,
   application["vendor"] = aVendor;
   application["name"] = aName;
   application["buildId"] = aBuildId;
-  application["displayVersion"] = aVersion;
-  application["platformVersion"] = aVersion;
+  application["displayVersion"] = aDisplayVersion;
+  application["platformVersion"] = aPlatformVersion;
   application["version"] = aVersion;
   application["channel"] = aChannel;
   if (!aArchitecture.empty()) {
@@ -239,6 +241,8 @@ CreateRootNode(StringTable& strings, const string& aUuid, const string& aHash,
   Json::Reader reader;
   string architecture;
   string xpcomAbi;
+  string displayVersion;
+  string platformVersion;
 
   if (reader.parse(strings["TelemetryEnvironment"], environment,
                    /* collectComments */ false)) {
@@ -250,6 +254,12 @@ CreateRootNode(StringTable& strings, const string& aUuid, const string& aHash,
       if (build.isMember("xpcomAbi") && build["xpcomAbi"].isString()) {
         xpcomAbi = build["xpcomAbi"].asString();
       }
+      if (build.isMember("displayVersion") && build["displayVersion"].isString()) {
+        displayVersion = build["displayVersion"].asString();
+      }
+      if (build.isMember("platformVersion") && build["platformVersion"].isString()) {
+        platformVersion = build["platformVersion"].asString();
+      }
     }
 
     root["environment"] = environment;
@@ -257,7 +267,9 @@ CreateRootNode(StringTable& strings, const string& aUuid, const string& aHash,
 
   root["payload"] = CreatePayloadNode(strings, aHash, aSessionId);
   root["application"] = CreateApplicationNode(strings["Vendor"], aName,
-                                              aVersion, aChannel, aBuildId,
+                                              aVersion, displayVersion,
+                                              platformVersion,
+                                              aChannel, aBuildId,
                                               architecture, xpcomAbi);
 
   return root;
@@ -285,13 +297,8 @@ WritePing(const string& aPath, const string& aPing)
 
   if (f->is_open()) {
     *f << aPing;
-    f->flush();
-
-    if (f->good()) {
-      success = true;
-    }
-
     f->close();
+    success = f->good();
   }
 
   delete f;

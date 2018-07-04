@@ -6,13 +6,13 @@
  */
 
 const { UnsubmittedCrashHandler } =
-  Cu.import("resource:///modules/ContentCrashHandlers.jsm", {});
+  ChromeUtils.import("resource:///modules/ContentCrashHandlers.jsm", {});
 const { FileUtils } =
-  Cu.import("resource://gre/modules/FileUtils.jsm", {});
+  ChromeUtils.import("resource://gre/modules/FileUtils.jsm", {});
 const { makeFakeAppDir }  =
-  Cu.import("resource://testing-common/AppData.jsm", {});
+  ChromeUtils.import("resource://testing-common/AppData.jsm", {});
 const { OS } =
-  Cu.import("resource://gre/modules/osfile.jsm", {});
+  ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
 
 const DAY = 24 * 60 * 60 * 1000; // milliseconds
 const SERVER_URL = "http://example.com/browser/toolkit/crashreporter/test/browser/crashreport.sjs";
@@ -88,7 +88,7 @@ function createPendingCrashReports(howMany, accessDate) {
   let createFile = (fileName, extension, lastAccessedDate, contents) => {
     let file = dir.clone();
     file.append(fileName + "." + extension);
-    file.create(Ci.nsILocalFile.NORMAL_FILE_TYPE, FileUtils.PERMS_FILE);
+    file.create(Ci.nsIFile.NORMAL_FILE_TYPE, FileUtils.PERMS_FILE);
     let promises = [OS.File.setDates(file.path, lastAccessedDate)];
 
     if (contents) {
@@ -99,7 +99,7 @@ function createPendingCrashReports(howMany, accessDate) {
       }));
     }
     return Promise.all(promises);
-  }
+  };
 
   let uuidGenerator = Cc["@mozilla.org/uuid-generator;1"]
                       .getService(Ci.nsIUUIDGenerator);
@@ -194,16 +194,22 @@ add_task(async function setup() {
   }
 
   let env = Cc["@mozilla.org/process/environment;1"]
-              .getService(Components.interfaces.nsIEnvironment);
+              .getService(Ci.nsIEnvironment);
   let oldServerURL = env.get("MOZ_CRASHREPORTER_URL");
   env.set("MOZ_CRASHREPORTER_URL", SERVER_URL);
 
   // nsBrowserGlue starts up UnsubmittedCrashHandler automatically
-  // so at this point, it is initialized. It's possible that it
-  // was initialized, but is preffed off, so it's inert, so we
-  // shut it down, make sure it's preffed on, and then restart it.
-  // Note that making the component initialize even when it's
-  // disabled is an intentional choice, as this allows for easier
+  // on a timer, so at this point, it can be in one of several states:
+  //
+  // 1. The timer hasn't yet finished, and an automatic scan for crash
+  //    reports is pending.
+  // 2. The timer has already gone off and the scan has already completed.
+  // 3. The handler is disabled.
+  //
+  // To collapse all of these possibilities, we uninit the UnsubmittedCrashHandler
+  // to cancel the timer, make sure it's preffed on, and then restart it (which
+  // doesn't restart the timer). Note that making the component initialize
+  // even when it's disabled is an intentional choice, as this allows for easier
   // simulation of startup and shutdown.
   UnsubmittedCrashHandler.uninit();
 
@@ -278,8 +284,8 @@ add_task(async function test_other_ignored() {
   Assert.ok(notification, "There should be a notification");
 
   // Dismiss notification, creating the .dmp.ignore file
-  let anonyNodes = document.getAnonymousNodes(notification)[0];
-  let closeButton = anonyNodes.querySelector(".close-icon");
+  let closeButton =
+    document.getAnonymousElementByAttribute(notification, "anonid", "close-button");
   closeButton.click();
   gNotificationBox.removeNotification(notification, true);
   await waitForIgnoredReports(toIgnore);
@@ -398,7 +404,7 @@ add_task(async function test_can_submit_several() {
  * and sends the pending crash reports.
  */
 add_task(async function test_can_submit_always() {
-  let pref = "browser.crashReports.unsubmittedCheck.autoSubmit";
+  let pref = "browser.crashReports.unsubmittedCheck.autoSubmit2";
   Assert.equal(Services.prefs.getBoolPref(pref), false,
                "We should not be auto-submitting by default");
 
@@ -442,7 +448,7 @@ add_task(async function test_can_submit_always() {
  */
 add_task(async function test_can_auto_submit() {
   await SpecialPowers.pushPrefEnv({ set: [
-    ["browser.crashReports.unsubmittedCheck.autoSubmit", true],
+    ["browser.crashReports.unsubmittedCheck.autoSubmit2", true],
   ]});
 
   let reportIDs = await createPendingCrashReports(3);
@@ -470,8 +476,8 @@ add_task(async function test_can_ignore() {
   Assert.ok(notification, "There should be a notification");
 
   // Dismiss the notification by clicking on the "X" button.
-  let anonyNodes = document.getAnonymousNodes(notification)[0];
-  let closeButton = anonyNodes.querySelector(".close-icon");
+  let closeButton =
+    document.getAnonymousElementByAttribute(notification, "anonid", "close-button");
   closeButton.click();
   // We'll not wait for the notification to finish its transition -
   // we'll just remove it right away.
@@ -544,8 +550,8 @@ add_task(async function test_shutdown_while_not_showing() {
   Assert.ok(notification, "There should be a notification");
 
   // Dismiss the notification by clicking on the "X" button.
-  let anonyNodes = document.getAnonymousNodes(notification)[0];
-  let closeButton = anonyNodes.querySelector(".close-icon");
+  let closeButton =
+    document.getAnonymousElementByAttribute(notification, "anonid", "close-button");
   closeButton.click();
   // We'll not wait for the notification to finish its transition -
   // we'll just remove it right away.

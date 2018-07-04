@@ -1,7 +1,7 @@
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
+/* global registerAppManifest */
 
 function info(s) {
   dump("TEST-INFO | test_bug656331.js | " + s + "\n");
@@ -11,8 +11,8 @@ var gMessageExpected = /Native module.*has version 3.*expected/;
 var gFound = false;
 
 const kConsoleListener = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIConsoleListener]),
-  
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIConsoleListener]),
+
   observe: function listener_observe(message) {
     if (gMessageExpected.test(message.message))
       gFound = true;
@@ -20,20 +20,17 @@ const kConsoleListener = {
 };
 
 function run_test() {
-  let cs = Components.classes["@mozilla.org/consoleservice;1"].
-    getService(Ci.nsIConsoleService);
-  cs.registerListener(kConsoleListener);
+  Services.console.registerListener(kConsoleListener);
 
-  let manifest = do_get_file('components/bug656331.manifest');
+  let manifest = do_get_file("components/bug656331.manifest");
   registerAppManifest(manifest);
 
-  do_check_false("{f18fb09b-28b4-4435-bc5b-8027f18df743}" in Components.classesByID);
+  Assert.equal(false, "{f18fb09b-28b4-4435-bc5b-8027f18df743}" in Components.classesByID);
 
   do_test_pending();
-  Components.classes["@mozilla.org/thread-manager;1"].
-    getService(Ci.nsIThreadManager).dispatchToMainThread(function() {
-      cs.unregisterListener(kConsoleListener);
-      do_check_true(gFound);
-      do_test_finished();
-    });
+  Services.tm.dispatchToMainThread(function() {
+    Services.console.unregisterListener(kConsoleListener);
+    Assert.ok(gFound);
+    do_test_finished();
+  });
 }

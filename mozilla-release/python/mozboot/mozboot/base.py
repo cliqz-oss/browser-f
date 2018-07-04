@@ -2,9 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import print_function, unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
-import errno
 import hashlib
 import os
 import re
@@ -145,13 +144,14 @@ ac_add_options --enable-artifact-builds
 # Upgrade Mercurial older than this.
 # This should match OLDEST_NON_LEGACY_VERSION from
 # the hg setup wizard in version-control-tools.
-MODERN_MERCURIAL_VERSION = LooseVersion('3.7.3')
+MODERN_MERCURIAL_VERSION = LooseVersion('4.2.3')
 
 # Upgrade Python older than this.
 MODERN_PYTHON_VERSION = LooseVersion('2.7.3')
 
 # Upgrade rust older than this.
-MODERN_RUST_VERSION = LooseVersion('1.19.0')
+MODERN_RUST_VERSION = LooseVersion('1.24.0')
+
 
 class BaseBootstrapper(object):
     """Base class for system bootstrappers."""
@@ -259,8 +259,9 @@ class BaseBootstrapper(object):
             '%s does not yet implement ensure_stylo_packages()'
             % __name__)
 
-    def install_tooltool_clang_package(self, state_dir, checkout_root, toolchain_job):
+    def install_toolchain_artifact(self, state_dir, checkout_root, toolchain_job):
         mach_binary = os.path.join(checkout_root, 'mach')
+        mach_binary = os.path.abspath(mach_binary)
         if not os.path.exists(mach_binary):
             raise ValueError("mach not found at %s" % mach_binary)
 
@@ -438,15 +439,20 @@ class BaseBootstrapper(object):
 
         return LooseVersion(match.group(1))
 
-    def _hgplain_env(self):
+    def _hg_cleanenv(self, load_hgrc=False):
         """ Returns a copy of the current environment updated with the HGPLAIN
-        environment variable.
+        and HGRCPATH environment variables.
 
         HGPLAIN prevents Mercurial from applying locale variations to the output
         making it suitable for use in scripts.
+
+        HGRCPATH controls the loading of hgrc files. Setting it to the empty
+        string forces that no user or system hgrc file is used.
         """
         env = os.environ.copy()
         env[b'HGPLAIN'] = b'1'
+        if not load_hgrc:
+            env[b'HGRCPATH'] = b''
 
         return env
 
@@ -456,7 +462,7 @@ class BaseBootstrapper(object):
             print(NO_MERCURIAL)
             return False, False, None
 
-        our = self._parse_version(hg, 'version', self._hgplain_env())
+        our = self._parse_version(hg, 'version', self._hg_cleanenv())
         if not our:
             return True, False, None
 
@@ -549,8 +555,6 @@ class BaseBootstrapper(object):
             print('Could not find a Rust compiler.')
             return False, None
 
-        cargo = self.which('cargo')
-
         our = self._parse_version(rustc)
         if not our:
             return False, None
@@ -559,7 +563,7 @@ class BaseBootstrapper(object):
 
     def cargo_home(self):
         cargo_home = os.environ.get('CARGO_HOME',
-                os.path.expanduser(os.path.join('~', '.cargo')))
+                                    os.path.expanduser(os.path.join('~', '.cargo')))
         cargo_bin = os.path.join(cargo_home, 'bin')
         return cargo_home, cargo_bin
 
@@ -608,7 +612,7 @@ class BaseBootstrapper(object):
             have_cargo = os.path.exists(try_cargo)
             if have_rustc or have_cargo:
                 self.print_rust_path_advice(RUST_NOT_IN_PATH,
-                        cargo_home, cargo_bin)
+                                            cargo_home, cargo_bin)
                 sys.exit(1)
         else:
             print('Your version of Rust (%s) is too old.' % version)
@@ -633,15 +637,15 @@ class BaseBootstrapper(object):
 
     def ensure_rust_targets(self, rustup):
         """Make sure appropriate cross target libraries are installed."""
-        target_list =  subprocess.check_output([rustup, 'target', 'list'])
+        target_list = subprocess.check_output([rustup, 'target', 'list'])
         targets = [line.split()[0] for line in target_list.splitlines()
-                if 'installed' in line or 'default' in line]
+                   if 'installed' in line or 'default' in line]
         print('Rust supports %s targets.' % ', '.join(targets))
 
         # Support 32-bit Windows on 64-bit Windows.
         win32 = 'i686-pc-windows-msvc'
         win64 = 'x86_64-pc-windows-msvc'
-        if rust.platform() == win64 and not win32 in targets:
+        if rust.platform() == win64 and win32 not in targets:
             subprocess.check_call([rustup, 'target', 'add', win32])
 
     def upgrade_rust(self, rustup):
@@ -671,12 +675,11 @@ class BaseBootstrapper(object):
             print('Ok')
             print('Running rustup-init...')
             subprocess.check_call([rustup_init, '-y',
-                '--default-toolchain', 'stable',
-                '--default-host', platform,
-            ])
+                                   '--default-toolchain', 'stable',
+                                   '--default-host', platform, ])
             cargo_home, cargo_bin = self.cargo_home()
             self.print_rust_path_advice(RUST_INSTALL_COMPLETE,
-                    cargo_home, cargo_bin)
+                                        cargo_home, cargo_bin)
         finally:
             try:
                 os.remove(rustup_init)

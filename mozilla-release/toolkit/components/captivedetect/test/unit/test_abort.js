@@ -33,9 +33,9 @@ function test_abort() {
   do_test_pending();
 
   let callback = {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsICaptivePortalCallback]),
+    QueryInterface: ChromeUtils.generateQI([Ci.nsICaptivePortalCallback]),
     prepare: function prepare() {
-      do_check_eq(++step, 1);
+      Assert.equal(++step, 1);
       gCaptivePortalDetector.finishPreparation(kInterfaceName);
     },
     complete: function complete(success) {

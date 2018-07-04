@@ -7,12 +7,11 @@
 
 #include "mozilla/dom/DocumentTimeline.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/SVGDocument.h"
 #include "nsICategoryManager.h"
 #include "nsIChannel.h"
 #include "nsIContentViewer.h"
-#include "nsIDocument.h"
 #include "nsIDocumentLoaderFactory.h"
-#include "nsIDOMSVGLength.h"
 #include "nsIHttpChannel.h"
 #include "nsIObserverService.h"
 #include "nsIParser.h"
@@ -25,7 +24,7 @@
 #include "nsSMILAnimationController.h"
 #include "nsServiceManagerUtils.h"
 #include "mozilla/dom/SVGSVGElement.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "mozilla/dom/SVGAnimatedLength.h"
 #include "nsMimeTypes.h"
 #include "DOMSVGLength.h"
@@ -276,7 +275,7 @@ SVGDocumentWrapper::Observe(nsISupports* aSubject,
     // Sever ties from rendering observers to helper-doc's root SVG node
     SVGSVGElement* svgElem = GetRootSVGElem();
     if (svgElem) {
-      nsSVGEffects::RemoveAllRenderingObservers(svgElem);
+      SVGObserverUtils::RemoveAllRenderingObservers(svgElem);
     }
 
     // Clean up at XPCOM shutdown time.
@@ -331,12 +330,12 @@ SVGDocumentWrapper::SetupViewer(nsIRequest* aRequest,
   nsCOMPtr<nsICategoryManager> catMan =
     do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
   NS_ENSURE_TRUE(catMan, NS_ERROR_NOT_AVAILABLE);
-  nsXPIDLCString contractId;
+  nsCString contractId;
   nsresult rv = catMan->GetCategoryEntry("Gecko-Content-Viewers", IMAGE_SVG_XML,
                                          getter_Copies(contractId));
   NS_ENSURE_SUCCESS(rv, rv);
   nsCOMPtr<nsIDocumentLoaderFactory> docLoaderFactory =
-    do_GetService(contractId);
+    do_GetService(contractId.get());
   NS_ENSURE_TRUE(docLoaderFactory, NS_ERROR_NOT_AVAILABLE);
 
   nsCOMPtr<nsIContentViewer> viewer;
@@ -419,21 +418,22 @@ SVGDocumentWrapper::UnregisterForXPCOMShutdown()
 void
 SVGDocumentWrapper::FlushLayout()
 {
-  nsCOMPtr<nsIPresShell> presShell;
-  mViewer->GetPresShell(getter_AddRefs(presShell));
-  if (presShell) {
-    presShell->FlushPendingNotifications(FlushType::Layout);
+  if (SVGDocument* doc = GetDocument()) {
+    doc->FlushPendingNotifications(FlushType::Layout);
   }
 }
 
-nsIDocument*
+SVGDocument*
 SVGDocumentWrapper::GetDocument()
 {
   if (!mViewer) {
     return nullptr;
   }
-
-  return mViewer->GetDocument(); // May be nullptr.
+  nsIDocument* doc = mViewer->GetDocument();
+  if (!doc) {
+    return nullptr;
+  }
+  return doc->AsSVGDocument();
 }
 
 SVGSVGElement*

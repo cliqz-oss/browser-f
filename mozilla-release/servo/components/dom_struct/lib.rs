@@ -5,24 +5,22 @@
 #![feature(proc_macro)]
 
 extern crate proc_macro;
-#[macro_use] extern crate quote;
 
-use proc_macro::TokenStream;
+use proc_macro::{TokenStream, quote};
 
 #[proc_macro_attribute]
 pub fn dom_struct(args: TokenStream, input: TokenStream) -> TokenStream {
-    if !args.to_string().is_empty() {
+    if !args.is_empty() {
         panic!("#[dom_struct] takes no arguments");
     }
-    expand_string(&input.to_string()).parse().unwrap()
-}
-
-fn expand_string(input: &str) -> String {
-    let mut tokens = quote! {
-        #[derive(DenyPublicFields, DomObject, HeapSizeOf, JSTraceable)]
+    let attributes = quote! {
+        #[derive(DenyPublicFields, DomObject, JSTraceable, MallocSizeOf)]
         #[must_root]
         #[repr(C)]
     };
-    tokens.append(input);
-    tokens.to_string()
+
+    // Work around https://github.com/rust-lang/rust/issues/46489
+    let attributes: TokenStream = attributes.to_string().parse().unwrap();
+
+    attributes.into_iter().chain(input.into_iter()).collect()
 }

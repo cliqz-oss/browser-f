@@ -27,7 +27,7 @@ using gfx::GradientStops;
 using gfx::ScaledFont;
 using gfx::NativeFontResource;
 
-class InlineTranslator final : public Translator
+class InlineTranslator : public Translator
 {
 public:
   explicit InlineTranslator(DrawTarget* aDT, void* aFontContext = nullptr);
@@ -83,6 +83,12 @@ public:
     return result;
   }
 
+  UnscaledFont* LookupUnscaledFontByIndex(size_t index) final
+  {
+    UnscaledFont* result = mUnscaledFontTable[index];
+    return result;
+  }
+
   NativeFontResource* LookupNativeFontResource(uint64_t aKey) final
   {
     NativeFontResource* result = mNativeFontResources.GetWeak(aKey);
@@ -122,6 +128,7 @@ public:
 
   void AddUnscaledFont(ReferencePtr aRefPtr, UnscaledFont *aUnscaledFont) final
   {
+    mUnscaledFontTable.push_back(aUnscaledFont);
     mUnscaledFonts.Put(aRefPtr, aUnscaledFont);
   }
 
@@ -179,6 +186,7 @@ private:
   RefPtr<DrawTarget> mBaseDT;
   void*              mFontContext;
 
+  std::vector<RefPtr<UnscaledFont>> mUnscaledFontTable;
   nsRefPtrHashtable<nsPtrHashKey<void>, DrawTarget> mDrawTargets;
   nsRefPtrHashtable<nsPtrHashKey<void>, Path> mPaths;
   nsRefPtrHashtable<nsPtrHashKey<void>, SourceSurface> mSourceSurfaces;

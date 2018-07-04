@@ -2,13 +2,13 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 function run_test() {
-  Components.utils.import("resource://testing-common/StructuredLog.jsm");
+  ChromeUtils.import("resource://testing-common/StructuredLog.jsm");
 
   let testBuffer = [];
 
   let appendBuffer = function(msg) {
     testBuffer.push(JSON.stringify(msg));
-  }
+  };
 
   let assertLastMsg = function(refData) {
     // Check all fields in refData agree with those in the
@@ -21,11 +21,11 @@ function run_test() {
     equal(lastMsg.source, "test_log");
     // The source_file field is always set by the mutator function.
     equal(lastMsg.source_file, "test_structuredlog.js");
-  }
+  };
 
   let addFileName = function(data) {
     data.source_file = "test_structuredlog.js";
-  }
+  };
 
   let logger = new StructuredLogger("test_log", appendBuffer, [addFileName]);
 

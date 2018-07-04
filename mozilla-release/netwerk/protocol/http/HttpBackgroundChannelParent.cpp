@@ -220,7 +220,8 @@ HttpBackgroundChannelParent::OnTransportAndData(
 
 bool
 HttpBackgroundChannelParent::OnStopRequest(const nsresult& aChannelStatus,
-                                           const ResourceTimingStruct& aTiming)
+                                           const ResourceTimingStruct& aTiming,
+                                           const nsHttpHeaderArray& aResponseTrailers)
 {
   LOG(("HttpBackgroundChannelParent::OnStopRequest [this=%p "
         "status=%" PRIx32 "]\n", this, static_cast<uint32_t>(aChannelStatus)));
@@ -233,12 +234,15 @@ HttpBackgroundChannelParent::OnStopRequest(const nsresult& aChannelStatus,
   if (!IsOnBackgroundThread()) {
     MutexAutoLock lock(mBgThreadMutex);
     nsresult rv = mBackgroundThread->Dispatch(
-      NewRunnableMethod<const nsresult, const ResourceTimingStruct>(
+      NewRunnableMethod<const nsresult,
+                        const ResourceTimingStruct,
+                        const nsHttpHeaderArray>(
         "net::HttpBackgroundChannelParent::OnStopRequest",
         this,
         &HttpBackgroundChannelParent::OnStopRequest,
         aChannelStatus,
-        aTiming),
+        aTiming,
+        aResponseTrailers),
       NS_DISPATCH_NORMAL);
 
     MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
@@ -246,7 +250,10 @@ HttpBackgroundChannelParent::OnStopRequest(const nsresult& aChannelStatus,
     return NS_SUCCEEDED(rv);
   }
 
-  return SendOnStopRequest(aChannelStatus, aTiming);
+  // See the child code for why we do this.
+  TimeStamp lastActTabOpt = nsHttp::GetLastActiveTabLoadOptimizationHit();
+
+  return SendOnStopRequest(aChannelStatus, aTiming, lastActTabOpt, aResponseTrailers);
 }
 
 bool
@@ -400,10 +407,9 @@ HttpBackgroundChannelParent::OnNotifyTrackingResource()
 }
 
 bool
-HttpBackgroundChannelParent::OnSetClassifierMatchedInfo(
-                                                    const nsACString& aList,
-                                                    const nsACString& aProvider,
-                                                    const nsACString& aPrefix)
+HttpBackgroundChannelParent::OnSetClassifierMatchedInfo(const nsACString& aList,
+                                                        const nsACString& aProvider,
+                                                        const nsACString& aFullHash)
 {
   LOG(("HttpBackgroundChannelParent::OnSetClassifierMatchedInfo [this=%p]\n", this));
   AssertIsInMainProcess();
@@ -421,7 +427,7 @@ HttpBackgroundChannelParent::OnSetClassifierMatchedInfo(
         &HttpBackgroundChannelParent::OnSetClassifierMatchedInfo,
         aList,
         aProvider,
-        aPrefix),
+        aFullHash),
       NS_DISPATCH_NORMAL);
 
     MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
@@ -431,7 +437,7 @@ HttpBackgroundChannelParent::OnSetClassifierMatchedInfo(
 
   ClassifierInfo info;
   info.list() = aList;
-  info.prefix() = aPrefix;
+  info.fullhash() = aFullHash;
   info.provider() = aProvider;
 
   return SendSetClassifierMatchedInfo(info);

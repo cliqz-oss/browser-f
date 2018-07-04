@@ -1,25 +1,20 @@
-"use strict"
+"use strict";
 
 const { Constructor: CC } = Components;
 
-Cu.import("resource://testing-common/httpd.js");
-
-const { Kinto } = Cu.import("resource://services-common/kinto-offline-client.js", {});
-const { FirefoxAdapter } = Cu.import("resource://services-common/kinto-storage-adapter.js", {});
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+const BlocklistClients = ChromeUtils.import("resource://services-common/blocklist-clients.js", {});
 
 const BinaryInputStream = CC("@mozilla.org/binaryinputstream;1",
   "nsIBinaryInputStream", "setInputStream");
 
-const PREF_BLOCKLIST_PINNING_COLLECTION = "services.blocklist.pinning.collection";
-const COLLECTION_NAME = "pins";
-const KINTO_STORAGE_PATH    = "kinto.sqlite";
-
-// First, we need to setup appInfo or we can't do version checks
+// First, we need to setup Services.appinfo or we can't do version checks
 var id = "xpcshell@tests.mozilla.org";
 var appName = "XPCShell";
 var version = "1";
 var platformVersion = "1.9.2";
-Cu.import("resource://testing-common/AppInfo.jsm", this);
+ChromeUtils.import("resource://testing-common/AppInfo.jsm", this);
 
 updateAppInfo({
   name: appName,
@@ -31,31 +26,12 @@ updateAppInfo({
 
 let server;
 
-
-function do_get_kinto_collection(connection, collectionName) {
-  let config = {
-    // Set the remote to be some server that will cause test failure when
-    // hit since we should never hit the server directly (any non-local
-    // request causes failure in tests), only via maybeSync()
-    remote: "https://firefox.settings.services.mozilla.com/v1/",
-    // Set up the adapter and bucket as normal
-    adapter: FirefoxAdapter,
-    adapterOptions: {sqliteHandle: connection},
-    bucket: "pinning"
-  };
-  let kintoClient = new Kinto(config);
-  return kintoClient.collection(collectionName);
-}
-
 // Some simple tests to demonstrate that the core preload sync operations work
 // correctly and that simple kinto operations are working as expected.
 add_task(async function test_something() {
-  // set the collection name explicitly - since there will be version
-  // specific collection names in prefs
-  Services.prefs.setCharPref(PREF_BLOCKLIST_PINNING_COLLECTION,
-                             COLLECTION_NAME);
+  BlocklistClients.initialize();
 
-  const { PinningPreloadClient } = Cu.import("resource://services-common/blocklist-clients.js", {});
+  const PinningPreloadClient = BlocklistClients.PinningBlocklistClient;
 
   const configPath = "/v1/";
   const recordsPath = "/v1/buckets/pinning/collections/pins/records";
@@ -82,7 +58,7 @@ add_task(async function test_something() {
 
       response.write(sample.responseBody);
     } catch (e) {
-      do_print(e);
+      info(e);
     }
   }
   server.registerPathHandler(configPath, handleResponse);
@@ -106,13 +82,10 @@ add_task(async function test_something() {
   // Test an empty db populates
   await PinningPreloadClient.maybeSync(2000, Date.now());
 
-  let connection = await FirefoxAdapter.openConnection({path: KINTO_STORAGE_PATH});
-
   // Open the collection, verify it's been populated:
   // Our test data has a single record; it should be in the local collection
-  let collection = do_get_kinto_collection(connection, COLLECTION_NAME);
-  let list = await collection.list();
-  do_check_eq(list.data.length, 1);
+  const before = await PinningPreloadClient.get();
+  Assert.equal(before.length, 1);
 
   // check that a pin exists for one.example.com
   ok(sss.isSecureURI(sss.HEADER_HPKP,
@@ -123,10 +96,8 @@ add_task(async function test_something() {
 
   // Open the collection, verify it's been updated:
   // Our data now has four new records; all should be in the local collection
-  collection = do_get_kinto_collection(connection, COLLECTION_NAME);
-  list = await collection.list();
-  do_check_eq(list.data.length, 5);
-  await connection.close();
+  const after = await PinningPreloadClient.get();
+  Assert.equal(after.length, 5);
 
   // check that a pin exists for two.example.com and three.example.com
   ok(sss.isSecureURI(sss.HEADER_HPKP,
@@ -153,7 +124,7 @@ add_task(async function test_something() {
   Services.prefs.setIntPref("services.blocklist.onecrl.checked", 0);
   await PinningPreloadClient.maybeSync(3000, Date.now());
   let newValue = Services.prefs.getIntPref("services.blocklist.pinning.checked");
-  do_check_neq(newValue, 0);
+  Assert.notEqual(newValue, 0);
 
   // Check that the HSTS preload added to the collection works...
   ok(sss.isSecureURI(sss.HEADER_HSTS,
@@ -180,7 +151,7 @@ add_task(async function test_something() {
 function run_test() {
   // Ensure that signature verification is disabled to prevent interference
   // with basic certificate sync tests
-  Services.prefs.setBoolPref("services.blocklist.signing.enforced", false);
+  Services.prefs.setBoolPref("services.settings.verify_signature", false);
 
   // Set up an HTTP Server
   server = new HttpServer();
@@ -188,16 +159,13 @@ function run_test() {
 
   run_next_test();
 
-  do_register_cleanup(function() {
+  registerCleanupFunction(function() {
     server.stop(() => { });
   });
 }
 
 // get a response for a given request from sample data
 function getSampleResponse(req, port) {
-  const appInfo = Cc["@mozilla.org/xre/app-info;1"]
-                     .getService(Ci.nsIXULAppInfo);
-
   const responses = {
     "OPTIONS": {
       "sampleHeaders": [
@@ -245,7 +213,7 @@ function getSampleResponse(req, port) {
         "expires": new Date().getTime() + 1000000,
         "pins": ["cUPcTAZWKaASuYWhhneDttWpY3oBAkE3h2+soZS7sWs=",
                   "M8HztCzM3elUxkcjR2S5P4hhyBNf6lHkmjAHKhpGPWE="],
-        "versions": [appInfo.version],
+        "versions": [Services.appinfo.version],
         "id": "78cf8900-fdea-4ce5-f8fb-b78710617718",
         "last_modified": 3000
       }]})
@@ -266,7 +234,7 @@ function getSampleResponse(req, port) {
         "expires": new Date().getTime() + 1000000,
         "pins": ["cUPcTAZWKaASuYWhhneDttWpY3oBAkE3h2+soZS7sWs=",
                   "M8HztCzM3elUxkcjR2S5P4hhyBNf6lHkmjAHKhpGPWE="],
-        "versions": [appInfo.version],
+        "versions": [Services.appinfo.version],
         "id": "dabafde9-df4a-ddba-2548-748da04cc02c",
         "last_modified": 4000
       }, {
@@ -276,7 +244,7 @@ function getSampleResponse(req, port) {
         "expires": new Date().getTime() + 1000000,
         "pins": ["cUPcTAZWKaASuYWhhneDttWpY3oBAkE3h2+soZS7sWs=",
                   "M8HztCzM3elUxkcjR2S5P4hhyBNf6lHkmjAHKhpGPWE="],
-        "versions": [appInfo.version, "some other version that won't match"],
+        "versions": [Services.appinfo.version, "some other version that won't match"],
         "id": "dabafde9-df4a-ddba-2548-748da04cc02d",
         "last_modified": 4000
       }, {
@@ -294,7 +262,7 @@ function getSampleResponse(req, port) {
         "hostName": "five.example.com",
         "includeSubdomains": false,
         "expires": new Date().getTime() + 1000000,
-        "versions": [appInfo.version, "some version that won't match"],
+        "versions": [Services.appinfo.version, "some version that won't match"],
         "id": "dabafde9-df4a-ddba-2548-748da04cc032",
         "last_modified": 4000
       }]})
@@ -328,7 +296,7 @@ function getSampleResponse(req, port) {
         "hostName": "missingpins.example.com",
         "includeSubdomains": false,
         "expires": new Date().getTime() + 1000000,
-        "versions": [appInfo.version],
+        "versions": [Services.appinfo.version],
         "id": "dabafde9-df4a-ddba-2548-748da04cc031",
         "last_modified": 5000
       }, {
@@ -336,7 +304,7 @@ function getSampleResponse(req, port) {
         "hostName": "five.example.com",
         "includeSubdomains": true,
         "expires": new Date().getTime() + 1000000,
-        "versions": [appInfo.version, "some version that won't match"],
+        "versions": [Services.appinfo.version, "some version that won't match"],
         "id": "dabafde9-df4a-ddba-2548-748da04cc032",
         "last_modified": 5000
       }]})

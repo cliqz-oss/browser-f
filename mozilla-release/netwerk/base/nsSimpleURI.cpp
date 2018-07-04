@@ -21,6 +21,7 @@
 #include "nsIIPCSerializableURI.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ipc/URIUtils.h"
+#include "nsIURIMutator.h"
 
 using namespace mozilla::ipc;
 
@@ -54,10 +55,6 @@ nsSimpleURI::nsSimpleURI()
 {
 }
 
-nsSimpleURI::~nsSimpleURI()
-{
-}
-
 NS_IMPL_ADDREF(nsSimpleURI)
 NS_IMPL_RELEASE(nsSimpleURI)
 NS_INTERFACE_TABLE_HEAD(nsSimpleURI)
@@ -74,7 +71,14 @@ NS_INTERFACE_MAP_END
 // nsISerializable methods:
 
 NS_IMETHODIMP
-nsSimpleURI::Read(nsIObjectInputStream* aStream)
+nsSimpleURI::Read(nsIObjectInputStream *aStream)
+{
+    NS_NOTREACHED("Use nsIURIMutator.read() instead");
+    return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+nsresult
+nsSimpleURI::ReadPrivate(nsIObjectInputStream *aStream)
 {
     nsresult rv;
 
@@ -274,39 +278,39 @@ nsSimpleURI::GetDisplayHost(nsACString &aUnicodeHost)
 }
 
 NS_IMETHODIMP
+nsSimpleURI::GetDisplayPrePath(nsACString &aPrePath)
+{
+    return GetPrePath(aPrePath);
+}
+
+NS_IMETHODIMP
 nsSimpleURI::GetHasRef(bool *result)
 {
     *result = mIsRefValid;
     return NS_OK;
 }
 
-NS_IMETHODIMP
-nsSimpleURI::SetSpec(const nsACString &aSpec)
+nsresult
+nsSimpleURI::SetSpecInternal(const nsACString &aSpec)
 {
     NS_ENSURE_STATE(mMutable);
 
-    // filter out unexpected chars "\r\n\t" if necessary
-    nsAutoCString filteredSpec;
-    net_FilterURIString(aSpec, filteredSpec);
-
-    // nsSimpleURI currently restricts the charset to US-ASCII
-    nsAutoCString spec;
-    nsresult rv = NS_EscapeURL(filteredSpec, esc_OnlyNonASCII, spec, fallible);
+    nsresult rv = net_ExtractURLScheme(aSpec, mScheme);
     if (NS_FAILED(rv)) {
-      return rv;
+        return rv;
+    }
+
+    nsAutoCString spec;
+    rv = net_FilterAndEscapeURI(aSpec, esc_OnlyNonASCII, spec);
+    if (NS_FAILED(rv)) {
+        return rv;
     }
 
     int32_t colonPos = spec.FindChar(':');
-    if (colonPos < 0 || !net_IsValidScheme(spec.get(), colonPos))
-        return NS_ERROR_MALFORMED_URI;
-
-    mScheme.Truncate();
-    DebugOnly<int32_t> n = spec.Left(mScheme, colonPos);
-    NS_ASSERTION(n == colonPos, "Left failed");
-    ToLowerCase(mScheme);
-
+    MOZ_ASSERT(colonPos != kNotFound, "A colon should be in this string");
     // This sets mPath, mQuery and mRef.
-    return SetPath(Substring(spec, colonPos + 1));
+    return SetPathQueryRefEscaped(Substring(spec, colonPos + 1),
+                                  /* aNeedsEscape = */ false);
 }
 
 NS_IMETHODIMP
@@ -316,7 +320,7 @@ nsSimpleURI::GetScheme(nsACString &result)
     return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetScheme(const nsACString &scheme)
 {
     NS_ENSURE_STATE(mMutable);
@@ -345,7 +349,7 @@ nsSimpleURI::GetUserPass(nsACString &result)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetUserPass(const nsACString &userPass)
 {
     return NS_ERROR_FAILURE;
@@ -357,7 +361,7 @@ nsSimpleURI::GetUsername(nsACString &result)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetUsername(const nsACString &userName)
 {
     NS_ENSURE_STATE(mMutable);
@@ -371,7 +375,7 @@ nsSimpleURI::GetPassword(nsACString &result)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetPassword(const nsACString &password)
 {
     NS_ENSURE_STATE(mMutable);
@@ -388,16 +392,8 @@ nsSimpleURI::GetHostPort(nsACString &result)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetHostPort(const nsACString &result)
-{
-    NS_ENSURE_STATE(mMutable);
-
-    return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-nsSimpleURI::SetHostAndPort(const nsACString &result)
 {
     NS_ENSURE_STATE(mMutable);
 
@@ -412,7 +408,7 @@ nsSimpleURI::GetHost(nsACString &result)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetHost(const nsACString &host)
 {
     NS_ENSURE_STATE(mMutable);
@@ -428,7 +424,7 @@ nsSimpleURI::GetPort(int32_t *result)
     return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetPort(int32_t port)
 {
     NS_ENSURE_STATE(mMutable);
@@ -437,7 +433,7 @@ nsSimpleURI::SetPort(int32_t port)
 }
 
 NS_IMETHODIMP
-nsSimpleURI::GetPath(nsACString &result)
+nsSimpleURI::GetPathQueryRef(nsACString &result)
 {
     result = mPath;
     if (mIsQueryValid) {
@@ -450,15 +446,29 @@ nsSimpleURI::GetPath(nsACString &result)
     return NS_OK;
 }
 
-NS_IMETHODIMP
-nsSimpleURI::SetPath(const nsACString &aPath)
+nsresult
+nsSimpleURI::SetPathQueryRef(const nsACString &aPath)
 {
     NS_ENSURE_STATE(mMutable);
 
+    return SetPathQueryRefEscaped(aPath, true);
+}
+nsresult
+nsSimpleURI::SetPathQueryRefEscaped(const nsACString &aPath, bool aNeedsEscape)
+{
+    nsresult rv;
     nsAutoCString path;
-    if (!path.Assign(aPath, fallible)) {
-        return NS_ERROR_OUT_OF_MEMORY;
+    if (aNeedsEscape) {
+        rv = NS_EscapeURL(aPath, esc_OnlyNonASCII, path, fallible);
+        if (NS_FAILED(rv)) {
+          return rv;
+        }
+    } else {
+        if (!path.Assign(aPath, fallible)) {
+            return NS_ERROR_OUT_OF_MEMORY;
+        }
     }
+
     int32_t queryPos = path.FindChar('?');
     int32_t hashPos = path.FindChar('#');
 
@@ -496,7 +506,7 @@ nsSimpleURI::SetPath(const nsACString &aPath)
         return NS_ERROR_OUT_OF_MEMORY;
     }
 
-    nsresult rv = SetQuery(query);
+    rv = SetQuery(query);
     if (NS_FAILED(rv)) {
         return rv;
     }
@@ -519,7 +529,7 @@ nsSimpleURI::GetRef(nsACString &result)
 
 // NOTE: SetRef("") removes our ref, whereas SetRef("#") sets it to the empty
 // string (and will result in .spec and .path having a terminal #).
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetRef(const nsACString &aRef)
 {
     NS_ENSURE_STATE(mMutable);
@@ -689,12 +699,12 @@ nsSimpleURI::Resolve(const nsACString &relativePath, nsACString &result)
 }
 
 NS_IMETHODIMP
-nsSimpleURI::GetAsciiSpec(nsACString &result)
+nsSimpleURI::GetAsciiSpec(nsACString &aResult)
 {
-    nsAutoCString buf;
-    nsresult rv = GetSpec(buf);
+    nsresult rv = GetSpec(aResult);
     if (NS_FAILED(rv)) return rv;
-    return NS_EscapeURL(buf, esc_OnlyNonASCII|esc_AlwaysCopy, result, fallible);
+    MOZ_ASSERT(IsASCII(aResult), "The spec should be ASCII");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -706,13 +716,6 @@ nsSimpleURI::GetAsciiHostPort(nsACString &result)
 
 NS_IMETHODIMP
 nsSimpleURI::GetAsciiHost(nsACString &result)
-{
-    result.Truncate();
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsSimpleURI::GetOriginCharset(nsACString &result)
 {
     result.Truncate();
     return NS_OK;
@@ -738,18 +741,18 @@ nsSimpleURI::GetScriptableHelper(nsIXPCScriptable **_retval)
 }
 
 NS_IMETHODIMP
-nsSimpleURI::GetContractID(char * *aContractID)
+nsSimpleURI::GetContractID(nsACString& aContractID)
 {
     // Make sure to modify any subclasses as needed if this ever
     // changes.
-    *aContractID = nullptr;
+    aContractID.SetIsVoid(true);
     return NS_OK;
 }
 
 NS_IMETHODIMP
-nsSimpleURI::GetClassDescription(char * *aClassDescription)
+nsSimpleURI::GetClassDescription(nsACString& aClassDescription)
 {
-    *aClassDescription = nullptr;
+    aClassDescription.SetIsVoid(true);
     return NS_OK;
 }
 
@@ -822,7 +825,7 @@ nsSimpleURI::GetFilePath(nsACString& aFilePath)
     return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetFilePath(const nsACString& aFilePath)
 {
     return NS_ERROR_FAILURE;
@@ -840,7 +843,7 @@ nsSimpleURI::GetQuery(nsACString& aQuery)
     return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 nsSimpleURI::SetQuery(const nsACString& aQuery)
 {
     NS_ENSURE_STATE(mMutable);
@@ -867,6 +870,31 @@ nsSimpleURI::SetQuery(const nsACString& aQuery)
         mQuery = query;
     }
 
+    return NS_OK;
+}
+
+nsresult
+nsSimpleURI::SetQueryWithEncoding(const nsACString& aQuery,
+                                  const Encoding* aEncoding)
+{
+    return SetQuery(aQuery);
+}
+
+// Queries this list of interfaces. If none match, it queries mURI.
+NS_IMPL_NSIURIMUTATOR_ISUPPORTS(nsSimpleURI::Mutator,
+                                nsIURISetters,
+                                nsIURIMutator,
+                                nsISerializable)
+
+NS_IMETHODIMP
+nsSimpleURI::Mutate(nsIURIMutator** aMutator)
+{
+    RefPtr<nsSimpleURI::Mutator> mutator = new nsSimpleURI::Mutator();
+    nsresult rv = mutator->InitFromURI(this);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+    mutator.forget(aMutator);
     return NS_OK;
 }
 

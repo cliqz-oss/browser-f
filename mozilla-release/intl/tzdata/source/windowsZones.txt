@@ -58,7 +58,7 @@ windowsZones:table(nofallback){
         }
         "Astrakhan Standard Time"{
             001{"Europe/Astrakhan"}
-            RU{"Europe/Astrakhan Europe/Saratov Europe/Ulyanovsk"}
+            RU{"Europe/Astrakhan Europe/Ulyanovsk"}
         }
         "Atlantic Standard Time"{
             001{"America/Halifax"}
@@ -156,7 +156,6 @@ windowsZones:table(nofallback){
         }
         "Central Pacific Standard Time"{
             001{"Pacific/Guadalcanal"}
-            AQ{"Antarctica/Casey"}
             AU{"Antarctica/Macquarie"}
             FM{"Pacific/Ponape Pacific/Kosrae"}
             NC{"Pacific/Noumea"}
@@ -212,7 +211,6 @@ windowsZones:table(nofallback){
             KE{"Africa/Nairobi"}
             KM{"Indian/Comoro"}
             MG{"Indian/Antananarivo"}
-            SD{"Africa/Khartoum"}
             SO{"Africa/Mogadishu"}
             SS{"Africa/Juba"}
             TZ{"Africa/Dar_es_Salaam"}
@@ -316,7 +314,6 @@ windowsZones:table(nofallback){
             SH{"Atlantic/St_Helena"}
             SL{"Africa/Freetown"}
             SN{"Africa/Dakar"}
-            ST{"Africa/Sao_Tome"}
             TG{"Africa/Lome"}
         }
         "Haiti Standard Time"{
@@ -371,6 +368,11 @@ windowsZones:table(nofallback){
         "Magadan Standard Time"{
             001{"Asia/Magadan"}
             RU{"Asia/Magadan"}
+        }
+        "Magallanes Standard Time"{
+            001{"America/Punta_Arenas"}
+            AQ{"Antarctica/Palmer"}
+            CL{"America/Punta_Arenas"}
         }
         "Marquesas Standard Time"{
             001{"Pacific/Marquesas"}
@@ -503,12 +505,11 @@ windowsZones:table(nofallback){
         }
         "SA Eastern Standard Time"{
             001{"America/Cayenne"}
-            AQ{"Antarctica/Rothera Antarctica/Palmer"}
+            AQ{"Antarctica/Rothera"}
             BR{
                 "America/Fortaleza America/Belem America/Maceio America/Recife Americ"
                 "a/Santarem"
             }
-            CL{"America/Punta_Arenas"}
             FK{"Atlantic/Stanley"}
             GF{"America/Cayenne"}
             SR{"America/Paramaribo"}
@@ -579,6 +580,10 @@ windowsZones:table(nofallback){
             001{"Pacific/Apia"}
             WS{"Pacific/Apia"}
         }
+        "Saratov Standard Time"{
+            001{"Europe/Saratov"}
+            RU{"Europe/Saratov"}
+        }
         "Singapore Standard Time"{
             001{"Asia/Singapore"}
             BN{"Asia/Brunei"}
@@ -606,6 +611,10 @@ windowsZones:table(nofallback){
         "Sri Lanka Standard Time"{
             001{"Asia/Colombo"}
             LK{"Asia/Colombo"}
+        }
+        "Sudan Standard Time"{
+            001{"Africa/Khartoum"}
+            SD{"Africa/Khartoum"}
         }
         "Syria Standard Time"{
             001{"Asia/Damascus"}
@@ -637,10 +646,7 @@ windowsZones:table(nofallback){
         }
         "Tonga Standard Time"{
             001{"Pacific/Tongatapu"}
-            KI{"Pacific/Enderbury"}
-            TK{"Pacific/Fakaofo"}
             TO{"Pacific/Tongatapu"}
-            ZZ{"Etc/GMT-13"}
         }
         "Transbaikal Standard Time"{
             001{"Asia/Chita"}
@@ -681,6 +687,12 @@ windowsZones:table(nofallback){
             WF{"Pacific/Wallis"}
             ZZ{"Etc/GMT-12"}
         }
+        "UTC+13"{
+            001{"Etc/GMT-13"}
+            KI{"Pacific/Enderbury"}
+            TK{"Pacific/Fakaofo"}
+            ZZ{"Etc/GMT-13"}
+        }
         "UTC-02"{
             001{"Etc/GMT+2"}
             BR{"America/Noronha"}
@@ -718,6 +730,7 @@ windowsZones:table(nofallback){
         }
         "W. Australia Standard Time"{
             001{"Australia/Perth"}
+            AQ{"Antarctica/Casey"}
             AU{"Australia/Perth"}
         }
         "W. Central Africa Standard Time"{
@@ -733,6 +746,7 @@ windowsZones:table(nofallback){
             GQ{"Africa/Malabo"}
             NE{"Africa/Niamey"}
             NG{"Africa/Lagos"}
+            ST{"Africa/Sao_Tome"}
             TD{"Africa/Ndjamena"}
             TN{"Africa/Tunis"}
             ZZ{"Etc/GMT-1"}

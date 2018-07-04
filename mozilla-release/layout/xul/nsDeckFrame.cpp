@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,7 +12,7 @@
 //
 
 #include "nsDeckFrame.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsPresContext.h"
 #include "nsIContent.h"
 #include "nsCOMPtr.h"
@@ -32,9 +33,9 @@
 #endif
 
 nsIFrame*
-NS_NewDeckFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewDeckFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsDeckFrame(aContext);
+  return new (aPresShell) nsDeckFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsDeckFrame)
@@ -43,8 +44,8 @@ NS_QUERYFRAME_HEAD(nsDeckFrame)
   NS_QUERYFRAME_ENTRY(nsDeckFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
 
-nsDeckFrame::nsDeckFrame(nsStyleContext* aContext)
-  : nsBoxFrame(aContext, kClassID)
+nsDeckFrame::nsDeckFrame(ComputedStyle* aStyle)
+  : nsBoxFrame(aStyle, kClassID)
   , mIndex(0)
 {
   nsCOMPtr<nsBoxLayout> layout;
@@ -54,7 +55,7 @@ nsDeckFrame::nsDeckFrame(nsStyleContext* aContext)
 
 nsresult
 nsDeckFrame::AttributeChanged(int32_t         aNameSpaceID,
-                              nsIAtom*        aAttribute,
+                              nsAtom*        aAttribute,
                               int32_t         aModType)
 {
   nsresult rv = nsBoxFrame::AttributeChanged(aNameSpaceID, aAttribute,
@@ -127,8 +128,8 @@ nsDeckFrame::GetSelectedIndex()
 
   // get the index attribute
   nsAutoString value;
-  if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::selectedIndex, value))
-  {
+  if (mContent->AsElement()->GetAttr(kNameSpaceID_None,
+                                     nsGkAtoms::selectedIndex, value)) {
     nsresult error;
 
     // convert it to an integer
@@ -146,14 +147,13 @@ nsDeckFrame::GetSelectedBox()
 
 void
 nsDeckFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                              const nsRect&           aDirtyRect,
                               const nsDisplayListSet& aLists)
 {
   // if a tab is hidden all its children are too.
   if (!StyleVisibility()->mVisible)
     return;
 
-  nsBoxFrame::BuildDisplayList(aBuilder, aDirtyRect, aLists);
+  nsBoxFrame::BuildDisplayList(aBuilder, aLists);
 }
 
 void
@@ -178,7 +178,7 @@ nsDeckFrame::RemoveFrame(ChildListID aListID,
       // This is going to cause us to handle the index change in IndexedChanged,
       // but since the new index will match mIndex, it's essentially a noop.
       nsContentUtils::AddScriptRunner(new nsSetAttrRunnable(
-        mContent, nsGkAtoms::selectedIndex, mIndex));
+        mContent->AsElement(), nsGkAtoms::selectedIndex, mIndex));
     }
   }
   nsBoxFrame::RemoveFrame(aListID, aOldFrame);
@@ -186,7 +186,6 @@ nsDeckFrame::RemoveFrame(ChildListID aListID,
 
 void
 nsDeckFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
-                                         const nsRect&           aDirtyRect,
                                          const nsDisplayListSet& aLists)
 {
   // only paint the selected box
@@ -197,7 +196,7 @@ nsDeckFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
   // Putting the child in the background list. This is a little weird but
   // it matches what we were doing before.
   nsDisplayListSet set(aLists, aLists.BlockBorderBackgrounds());
-  BuildDisplayListForChild(aBuilder, box, aDirtyRect, set);
+  BuildDisplayListForChild(aBuilder, box, set);
 }
 
 NS_IMETHODIMP

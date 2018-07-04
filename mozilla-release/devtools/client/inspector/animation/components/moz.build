@@ -1,0 +1,37 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+DIRS += [
+    'graph',
+    'keyframes-graph'
+]
+
+DevToolsModules(
+    'AnimatedPropertyItem.js',
+    'AnimatedPropertyList.js',
+    'AnimatedPropertyListContainer.js',
+    'AnimatedPropertyListHeader.js',
+    'AnimatedPropertyName.js',
+    'AnimationDetailContainer.js',
+    'AnimationDetailHeader.js',
+    'AnimationItem.js',
+    'AnimationList.js',
+    'AnimationListContainer.js',
+    'AnimationListHeader.js',
+    'AnimationTarget.js',
+    'AnimationTimelineTickItem.js',
+    'AnimationTimelineTickList.js',
+    'AnimationToolbar.js',
+    'App.js',
+    'CurrentTimeLabel.js',
+    'CurrentTimeScrubber.js',
+    'CurrentTimeScrubberController.js',
+    'KeyframesProgressBar.js',
+    'KeyframesProgressTickItem.js',
+    'KeyframesProgressTickList.js',
+    'NoAnimationPanel.js',
+    'PauseResumeButton.js',
+    'PlaybackRateSelector.js',
+    'RewindButton.js',
+)

@@ -62,6 +62,11 @@ interface nsIPaymentCreateActionRequest : nsIPaymentActionRequest
   readonly attribute uint64_t tabId;
 
   /*
+   *  The top level document's principal
+   */
+  readonly attribute nsIPrincipal topLevelPrincipal;
+
+  /*
    *  The methodData information of the payment request.
    */
   readonly attribute nsIArray methodData;
@@ -77,14 +82,21 @@ interface nsIPaymentCreateActionRequest : nsIPaymentActionRequest
   readonly attribute nsIPaymentOptions options;
 
   /*
+   *  The selected shipping option of the payment request;
+   */
+  readonly attribute AString shippingOption;
+
+  /*
    *  Initialize function the this request.
    */
   void initRequest(in AString aRequestId,
                    in nsIPaymentActionCallback aCallback,
                    in uint64_t aTabId,
+                   in nsIPrincipal aPrincipal,
                    in nsIArray aMethodData,
                    in nsIPaymentDetails aDetails,
-                   in nsIPaymentOptions aOptions);
+                   in nsIPaymentOptions aOptions,
+		   in AString aShippingOption);
 };
 
 [builtinclass, uuid(4429697d-1135-47de-a46e-5196d399ec55)]
@@ -112,11 +124,17 @@ interface nsIPaymentUpdateActionRequest : nsIPaymentActionRequest
   readonly attribute nsIPaymentDetails details;
 
   /*
+   *  The selected shipping option information
+   */
+  readonly attribute AString shippingOption;
+
+  /*
    *  Initialize function for this request.
    */
   void initRequest(in AString aRequestId,
                    in nsIPaymentActionCallback aCallback,
-                   in nsIPaymentDetails aDetails);
+                   in nsIPaymentDetails aDetails,
+		   in AString aShippingOption);
 };
 
 %{C++

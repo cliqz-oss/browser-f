@@ -5,7 +5,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DevToolsModules(
-    'CssDocsTooltip.js',
     'EventTooltipHelper.js',
     'HTMLTooltip.js',
     'ImageTooltipHelper.js',
@@ -17,4 +16,5 @@ DevToolsModules(
     'Tooltip.js',
     'TooltipToggle.js',
     'VariableContentHelper.js',
+    'VariableTooltipHelper.js'
 )

@@ -698,15 +698,14 @@
     macro(JSOP_THROWMSG,   74, "throwmsg",    NULL,         3,  0,  0, JOF_UINT16) \
     \
     /*
-     * Sets up a for-in or for-each-in loop using the JSITER_* flag bits in
-     * this op's uint8_t immediate operand. It pops the top of stack value as
-     * 'val' and pushes 'iter' which is an iterator for 'val'.
+     * Sets up a for-in loop. It pops the top of stack value as 'val' and pushes
+     * 'iter' which is an iterator for 'val'.
      *   Category: Statements
      *   Type: For-In Statement
-     *   Operands: uint8_t flags
+     *   Operands:
      *   Stack: val => iter
      */ \
-    macro(JSOP_ITER,      75, "iter",       NULL,         2,  1,  1,  JOF_UINT8) \
+    macro(JSOP_ITER,      75, "iter",       NULL,         1,  1,  1,  JOF_BYTE) \
     /*
      * Pushes the next iterated value onto the stack. If no value is available,
      * MagicValue(JS_NO_ITER_VALUE) is pushed.
@@ -1282,17 +1281,7 @@
      *   Stack: propval, receiver, obj => obj[propval]
      */ \
     macro(JSOP_GETELEM_SUPER, 125, "getelem-super", NULL, 1,  3,  1, JOF_BYTE|JOF_ELEM|JOF_TYPESET|JOF_LEFTASSOC) \
-    /*
-     * Pushes newly created array for a spread call onto the stack. This has
-     * the same semantics as JSOP_NEWARRAY, but is distinguished to avoid
-     * using unboxed arrays in spread calls, which would make compiling spread
-     * calls in baseline more complex.
-     *   Category: Literals
-     *   Type: Array
-     *   Operands: uint32_t length
-     *   Stack: => obj
-     */ \
-    macro(JSOP_SPREADCALLARRAY, 126, "spreadcallarray", NULL, 5,  0,  1, JOF_UINT32) \
+    macro(JSOP_UNUSED126, 126, "unused126", NULL, 5,  0,  1, JOF_UINT32) \
     \
     /*
      * Defines the given function on the current scope.
@@ -1626,8 +1615,14 @@
     macro(JSOP_STRICTSETGNAME, 156, "strict-setgname",  NULL,       5,  2,  1, JOF_ATOM|JOF_NAME|JOF_PROPSET|JOF_DETECTING|JOF_GNAME|JOF_CHECKSTRICT) \
     /*
      * Pushes the implicit 'this' value for calls to the associated name onto
-     * the stack; only used when we know this implicit this will be our first
-     * non-syntactic scope.
+     * the stack; only used when the implicit this might be derived from a
+     * non-syntactic scope (instead of the global itself).
+     *
+     * Note that code evaluated via the Debugger API uses DebugEnvironmentProxy
+     * objects on its scope chain, which are non-syntactic environments that
+     * refer to syntactic environments. As a result, the binding we want may be
+     * held by a syntactic environments such as CallObject or
+     * VarEnvrionmentObject.
      *
      *   Category: Variables and Scopes
      *   Type: This
@@ -2110,17 +2105,8 @@
      *   Stack: gen, val => rval
      */ \
     macro(JSOP_RESUME,        205,"resume",      NULL,    3,  2,  1,  JOF_UINT8|JOF_INVOKE) \
-    /*
-     * Pops the top two values on the stack as 'obj' and 'v', pushes 'v' to
-     * 'obj'.
-     *
-     * This opcode is used for Array Comprehension.
-     *   Category: Literals
-     *   Type: Array
-     *   Operands:
-     *   Stack: v, obj =>
-     */ \
-    macro(JSOP_ARRAYPUSH,     206,"arraypush",   NULL,    1,  2,  0,  JOF_BYTE) \
+    \
+    macro(JSOP_UNUSED206,     206,"unused206",   NULL,    1,  0,  0,  JOF_BYTE) \
     \
     /*
      * No-op bytecode only emitted in some self-hosted functions. Not handled by
@@ -2152,14 +2138,15 @@
      */ \
     macro(JSOP_AWAIT,         209, "await",        NULL,  4,  2,  1,  JOF_UINT24) \
     /*
-     * Pops the iterator from the top of the stack, and create async iterator
-     * from it and push the async iterator back onto the stack.
+     * Pops the iterator and its next method from the top of the stack, and
+     * create async iterator from it and push the async iterator back onto the
+     * stack.
      *   Category: Statements
      *   Type: Generator
      *   Operands:
-     *   Stack: iter => asynciter
+     *   Stack: iter, next => asynciter
      */ \
-    macro(JSOP_TOASYNCITER,   210, "toasynciter",  NULL,  1,  1,  1,  JOF_BYTE) \
+    macro(JSOP_TOASYNCITER,   210, "toasynciter",  NULL,  1,  2,  1,  JOF_BYTE) \
     /*
      * Pops the top two values 'id' and 'obj' from the stack, then pushes
      * obj.hasOwnProperty(id)
@@ -2269,8 +2256,16 @@
      *   Stack: => %BuiltinPrototype%
      */ \
     macro(JSOP_BUILTINPROTO, 221, "builtinproto", NULL, 2,  0,  1,  JOF_UINT8) \
-    macro(JSOP_UNUSED222,     222,"unused222",     NULL,  1,  0,  0,  JOF_BYTE) \
-    macro(JSOP_UNUSED223,     223,"unused223",     NULL,  1,  0,  0,  JOF_BYTE) \
+    \
+    /*
+     * NOP opcode to hint to IonBuilder that the value on top of the stack is
+     * the (likely string) key in a for-in loop.
+     *   Category: Other
+     *   Operands:
+     *   Stack: val => val
+     */ \
+    macro(JSOP_ITERNEXT,      222, "iternext",   NULL,  1,  1,  1,  JOF_BYTE) \
+    macro(JSOP_UNUSED223,     223, "unused223",  NULL,  1,  0,  0,  JOF_BYTE) \
     \
     /*
      * Creates rest parameter array for current function call, and pushes it

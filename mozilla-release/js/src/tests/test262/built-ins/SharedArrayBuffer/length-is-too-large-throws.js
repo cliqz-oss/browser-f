@@ -1,3 +1,4 @@
+// |reftest| skip-if(!this.hasOwnProperty('SharedArrayBuffer')) -- SharedArrayBuffer is not enabled unconditionally
 // Copyright (C) 2015 André Bargull. All rights reserved.
 // Copyright (C) 2017 Mozilla Corporation. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
@@ -6,7 +7,7 @@
 esid: sec-sharedarraybuffer-length
 description: >
   Throws a RangeError if length >= 2 ** 53
-info: >
+info: |
   SharedArrayBuffer( length )
 
   1. If NewTarget is undefined, throw a TypeError exception.
@@ -20,6 +21,7 @@ info: >
     a. Let integerIndex be ? ToInteger(value).
     b. If integerIndex < 0, throw a RangeError exception.
   ...
+features: [SharedArrayBuffer]
 ---*/
 
 assert.throws(RangeError, function() {

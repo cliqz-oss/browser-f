@@ -1,6 +1,6 @@
 var gTestRoot = getRootDirectory(gTestPath).replace("chrome://mochitests/content/", "http://127.0.0.1:8888/");
 var gTestBrowser = null;
-var gPluginHost = Components.classes["@mozilla.org/plugin/host;1"].getService(Components.interfaces.nsIPluginHost);
+var gPluginHost = Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost);
 
 function updateAllTestPlugins(aState) {
   setTestPluginEnabledState(aState, "Test Plug-in");
@@ -32,37 +32,6 @@ add_task(async function() {
 
   // Prime the content process
   await promiseTabLoadEvent(gBrowser.selectedTab, "data:text/html,<html>hi</html>");
-
-  // Make sure the blocklist service(s) are running
-  Components.classes["@mozilla.org/extensions/blocklist;1"]
-            .getService(Components.interfaces.nsIBlocklistService);
-  let exmsg = await promiseInitContentBlocklistSvc(gBrowser.selectedBrowser);
-  ok(!exmsg, "exception: " + exmsg);
-});
-
-add_task(async function() {
-  // enable hard blocklisting for the next test
-  await asyncSetAndUpdateBlocklist(gTestRoot + "blockPluginHard.xml", gTestBrowser);
-
-  await promiseTabLoadEvent(gBrowser.selectedTab, gTestRoot + "plugin_test.html");
-
-  // Work around for delayed PluginBindingAttached
-  await promiseUpdatePluginBindings(gTestBrowser);
-
-  await promisePopupNotification("click-to-play-plugins");
-
-  let notification = PopupNotifications.getNotification("click-to-play-plugins");
-  ok(notification.dismissed, "Test 5: The plugin notification should be dismissed by default");
-
-  await promiseForNotificationShown(notification);
-
-  let pluginInfo = await promiseForPluginInfo("test");
-  is(pluginInfo.pluginFallbackType, Ci.nsIObjectLoadingContent.PLUGIN_BLOCKLISTED, "Test 5, plugin fallback type should be PLUGIN_BLOCKLISTED");
-
-  is(notification.options.pluginData.size, 1, "Test 5: Only the blocked plugin should be present in the notification");
-  ok(PopupNotifications.panel.firstChild._buttonContainer.hidden, "Part 5: The blocked plugins notification should not have any buttons visible.");
-
-  await asyncSetAndUpdateBlocklist(gTestRoot + "blockNoPlugins.xml", gTestBrowser);
 });
 
 // Tests a vulnerable, updatable plugin
@@ -95,7 +64,7 @@ add_task(async function() {
       "Test 18a, Plugin should have an update link");
   });
 
-  let promise = waitForEvent(gBrowser.tabContainer, "TabOpen", null, true);
+  let promise = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen", true);
 
   await ContentTask.spawn(gTestBrowser, {}, async function() {
     let doc = content.document;
@@ -104,14 +73,14 @@ add_task(async function() {
     let bounds = updateLink.getBoundingClientRect();
     let left = (bounds.left + bounds.right) / 2;
     let top = (bounds.top + bounds.bottom) / 2;
-    let utils = content.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                       .getInterface(Components.interfaces.nsIDOMWindowUtils);
+    let utils = content.QueryInterface(Ci.nsIInterfaceRequestor)
+                       .getInterface(Ci.nsIDOMWindowUtils);
     utils.sendMouseEvent("mousedown", left, top, 0, 1, 0, false, 0, 0);
     utils.sendMouseEvent("mouseup", left, top, 0, 1, 0, false, 0, 0);
   });
   await promise;
 
-  promise = waitForEvent(gBrowser.tabContainer, "TabClose", null, true);
+  promise = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabClose", true);
   gBrowser.removeCurrentTab();
   await promise;
 });
@@ -163,10 +132,10 @@ add_task(async function() {
       "Test 18c, Plugin should not have an update link");
   });
 
-  // check that click "Always allow" works with blocked plugins
+  // check that click "Allow" works with blocked plugins
   await promiseForNotificationShown(notification);
 
-  PopupNotifications.panel.firstChild._primaryButton.click();
+  PopupNotifications.panel.firstChild.button.click();
 
   pluginInfo = await promiseForPluginInfo("test");
   is(pluginInfo.pluginFallbackType, Ci.nsIObjectLoadingContent.PLUGIN_VULNERABLE_NO_UPDATE,
@@ -219,8 +188,8 @@ add_task(async function() {
     let bounds = plugin.getBoundingClientRect();
     let left = (bounds.left + bounds.right) / 2;
     let top = (bounds.top + bounds.bottom) / 2;
-    let utils = content.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                       .getInterface(Components.interfaces.nsIDOMWindowUtils);
+    let utils = content.QueryInterface(Ci.nsIInterfaceRequestor)
+                       .getInterface(Ci.nsIDOMWindowUtils);
     utils.sendMouseEvent("mousedown", left, top, 0, 1, 0, false, 0, 0);
     utils.sendMouseEvent("mouseup", left, top, 0, 1, 0, false, 0, 0);
   });
@@ -254,10 +223,10 @@ add_task(async function() {
      "Test 24a, plugin fallback type should be PLUGIN_CLICK_TO_PLAY");
   ok(!pluginInfo.activated, "Test 24a, Plugin should not be active.");
 
-  // simulate "always allow"
+  // simulate "allow"
   await promiseForNotificationShown(notification);
 
-  PopupNotifications.panel.firstChild._primaryButton.click();
+  PopupNotifications.panel.firstChild.button.click();
 
   pluginInfo = await promiseForPluginInfo("test");
   ok(pluginInfo.activated, "Test 24a, Plugin should be active.");
@@ -280,10 +249,10 @@ add_task(async function() {
      "Test 24b, plugin fallback type should be PLUGIN_VULNERABLE_UPDATABLE");
   ok(!pluginInfo.activated, "Test 24b, Plugin should not be active.");
 
-  // simulate "always allow"
+  // simulate "allow"
   await promiseForNotificationShown(notification);
 
-  PopupNotifications.panel.firstChild._primaryButton.click();
+  PopupNotifications.panel.firstChild.button.click();
 
   pluginInfo = await promiseForPluginInfo("test");
   ok(pluginInfo.activated, "Test 24b, Plugin should be active.");
@@ -337,13 +306,4 @@ add_task(async function() {
     let objLoadingContent = plugin.QueryInterface(Ci.nsIObjectLoadingContent);
     Assert.ok(!objLoadingContent.activated, "Plugin should not be activated.");
   });
-
-  const testUrl = "http://test.url.com/";
-
-  let firstPanelChild = PopupNotifications.panel.firstChild;
-  let infoLink = document.getAnonymousElementByAttribute(firstPanelChild, "anonid",
-    "click-to-play-plugins-notification-link");
-  is(infoLink.href, testUrl,
-    "Test 26, the notification URL needs to match the infoURL from the blocklist file.");
 });
-

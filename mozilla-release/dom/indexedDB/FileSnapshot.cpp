@@ -10,6 +10,7 @@
 #include "IDBFileHandle.h"
 #include "IDBMutableFile.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/Mutex.h"
 #include "nsIAsyncInputStream.h"
 #include "nsICloneableInputStream.h"
 #include "nsIIPCSerializableInputStream.h"
@@ -36,7 +37,10 @@ class StreamWrapper final
   bool mFinished;
 
   // This is needed to call OnInputStreamReady() with the correct inputStream.
+  // It is protected by mutex.
   nsCOMPtr<nsIInputStreamCallback> mAsyncWaitCallback;
+
+  Mutex mMutex;
 
 public:
   StreamWrapper(nsIInputStream* aInputStream,
@@ -45,6 +49,7 @@ public:
     , mInputStream(aInputStream)
     , mFileHandle(aFileHandle)
     , mFinished(false)
+    , mMutex("StreamWrapper::mMutex")
   {
     AssertIsOnOwningThread();
     MOZ_ASSERT(aInputStream);
@@ -143,7 +148,7 @@ class StreamWrapper::CloseRunnable final
   RefPtr<StreamWrapper> mStreamWrapper;
 
 public:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(CloseRunnable, Runnable)
 
 private:
   explicit
@@ -205,7 +210,7 @@ BlobImplSnapshot::CreateSlice(uint64_t aStart,
 }
 
 void
-BlobImplSnapshot::GetInternalStream(nsIInputStream** aStream, ErrorResult& aRv)
+BlobImplSnapshot::CreateInputStream(nsIInputStream** aStream, ErrorResult& aRv)
 {
   nsCOMPtr<EventTarget> et = do_QueryReferent(mFileHandle);
   RefPtr<IDBFileHandle> fileHandle = static_cast<IDBFileHandle*>(et.get());
@@ -215,7 +220,7 @@ BlobImplSnapshot::GetInternalStream(nsIInputStream** aStream, ErrorResult& aRv)
   }
 
   nsCOMPtr<nsIInputStream> stream;
-  mBlobImpl->GetInternalStream(getter_AddRefs(stream), aRv);
+  mBlobImpl->CreateInputStream(getter_AddRefs(stream), aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return;
   }
@@ -355,17 +360,18 @@ StreamWrapper::AsyncWait(nsIInputStreamCallback* aCallback,
     return NS_ERROR_NO_INTERFACE;
   }
 
-  if (mAsyncWaitCallback && aCallback) {
-    return NS_ERROR_FAILURE;
+  nsCOMPtr<nsIInputStreamCallback> callback = aCallback ? this : nullptr;
+  {
+    MutexAutoLock lock(mMutex);
+
+    if (mAsyncWaitCallback && aCallback) {
+      return NS_ERROR_FAILURE;
+    }
+
+    mAsyncWaitCallback = aCallback;
   }
 
-  mAsyncWaitCallback = aCallback;
-
-  if (!mAsyncWaitCallback) {
-    return NS_OK;
-  }
-
-  return stream->AsyncWait(this, aFlags, aRequestedCount, aEventTarget);
+  return stream->AsyncWait(callback, aFlags, aRequestedCount, aEventTarget);
 }
 
 // nsIInputStreamCallback
@@ -378,14 +384,19 @@ StreamWrapper::OnInputStreamReady(nsIAsyncInputStream* aStream)
     return NS_ERROR_NO_INTERFACE;
   }
 
-  // We have been canceled in the meanwhile.
-  if (!mAsyncWaitCallback) {
-    return NS_OK;
+  nsCOMPtr<nsIInputStreamCallback> callback;
+  {
+    MutexAutoLock lock(mMutex);
+
+    // We have been canceled in the meanwhile.
+    if (!mAsyncWaitCallback) {
+      return NS_OK;
+    }
+
+    callback.swap(mAsyncWaitCallback);
   }
 
-  nsCOMPtr<nsIInputStreamCallback> callback;
-  callback.swap(mAsyncWaitCallback);
-
+  MOZ_ASSERT(callback);
   return callback->OnInputStreamReady(this);
 }
 
@@ -413,9 +424,6 @@ StreamWrapper::Clone(nsIInputStream** aResult)
 
   return stream->Clone(aResult);
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(StreamWrapper::CloseRunnable,
-                             Runnable)
 
 NS_IMETHODIMP
 StreamWrapper::

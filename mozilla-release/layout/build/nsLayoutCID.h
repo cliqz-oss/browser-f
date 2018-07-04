@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,14 +14,6 @@
 /* a6cf90f9-15b3-11d2-932e-00805f8add32 */
 #define NS_LAYOUT_DEBUGGER_CID \
  { 0xa6cf90f9, 0x15b3, 0x11d2,{0x93, 0x2e, 0x00, 0x80, 0x5f, 0x8a, 0xdd, 0x32}}
-
-/* a6cf90d7-15b3-11d2-932e-00805f8add32 */
-#define NS_FRAME_UTIL_CID \
- { 0xa6cf90d5, 0x15b3, 0x11d2,{0x93, 0x2e, 0x00, 0x80, 0x5f, 0x8a, 0xdd, 0x32}}
-
-#define NS_DOMSELECTION_CID \
-{/* {C87A37FC-8109-4ce2-A322-8CDEC925379F}*/ \
- 0xc87a37fc, 0x8109, 0x4ce2, { 0xa3, 0x22, 0x8c, 0xde, 0xc9, 0x25, 0x37, 0x9f } }
 
 // {D750A964-2D14-484c-B3AA-8ED7823B5C7B}
 #define NS_BOXOBJECT_CID \
@@ -37,14 +30,6 @@
 // {AA40253B-4C42-4056-8132-37BCD07862FD}
 #define NS_MENUBOXOBJECT_CID \
 { 0xaa40253b, 0x4c42, 0x4056, { 0x81, 0x32, 0x37, 0xbc, 0xd0, 0x78, 0x62, 0xfd } }
-
-// {6C392C62-1AB1-4de7-BFC6-ED4F9FC7749A}
-#define NS_POPUPBOXOBJECT_CID \
-{ 0x6c392c62, 0x1ab1, 0x4de7, { 0xbf, 0xc6, 0xed, 0x4f, 0x9f, 0xc7, 0x74, 0x9a } }
-
-// {dca9d7c3-7b6a-4490-ad6d-2699a8d683cd}
-#define NS_CONTAINERBOXOBJECT_CID \
-{ 0xdca9d7c3, 0x7b6a, 0x4490, { 0xad, 0x6d, 0x26, 0x99, 0xa8, 0xd6, 0x83, 0xcd } }
 
 // {3B581FD4-3497-426c-8F61-3658B971CB80}
 #define NS_TREEBOXOBJECT_CID \
@@ -81,6 +66,10 @@
 // {c74bde32-bcc7-4840-8430-c733351b212a}
 #define SERVICEWORKERMANAGER_CID \
 { 0xc74bde32, 0xbcc7, 0x4840, { 0x84, 0x30, 0xc7, 0x33, 0x35, 0x1b, 0x21, 0x2a } }
+
+// {69da374a-fda3-4a93-9fbc-d9304f66a7fe}
+#define STORAGEACTIVITYSERVICE_CID \
+{ 0x69da374a, 0xfda3, 0x4a93, { 0x9f, 0xbc, 0xd9, 0x30, 0x4f, 0x66, 0xa7, 0xfe } }
 
 #define NOTIFICATIONTELEMETRYSERVICE_CID \
 { 0x5995b782, 0x6a0e, 0x4066, { 0xaa, 0xc5, 0x27, 0x6f, 0x0a, 0x9a, 0xd8, 0xcf } }

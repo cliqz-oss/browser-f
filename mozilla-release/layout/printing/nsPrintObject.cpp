@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -84,10 +85,9 @@ nsPrintObject::Init(nsIDocShell* aDocShell, nsIDOMDocument* aDoc,
   }
 
   mDocument = doc->CreateStaticClone(mDocShell);
-  nsCOMPtr<nsIDOMDocument> clonedDOMDoc = do_QueryInterface(mDocument);
-  NS_ENSURE_STATE(clonedDOMDoc);
+  NS_ENSURE_STATE(mDocument);
 
-  viewer->SetDOMDocument(clonedDOMDoc);
+  viewer->SetDocument(mDocument);
   return NS_OK;
 }
 

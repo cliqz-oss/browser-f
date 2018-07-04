@@ -5,28 +5,26 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
+ChromeUtils.import("resource://gre/modules/Log.jsm", this);
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
-Cu.import("resource://gre/modules/Log.jsm", this);
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryController",
-                                  "resource://gre/modules/TelemetryController.jsm");
+ChromeUtils.defineModuleGetter(this, "TelemetryController",
+                               "resource://gre/modules/TelemetryController.jsm");
 
 const LOGGER_NAME = "Toolkit.Telemetry";
 const PING_TYPE = "update";
 const UPDATE_DOWNLOADED_TOPIC = "update-downloaded";
 
-this.EXPORTED_SYMBOLS = ["UpdatePing"];
+var EXPORTED_SYMBOLS = ["UpdatePing"];
 
 /**
  * This module is responsible for listening to all the relevant update
  * signals, gathering the needed information and assembling the "update"
  * ping.
  */
-this.UpdatePing = {
+var UpdatePing = {
   earlyInit() {
     this._log = Log.repository.getLoggerWithMessagePrefix(LOGGER_NAME, "UpdatePing::");
     this._enabled = Services.prefs.getBoolPref(TelemetryUtils.Preferences.UpdatePing, false);
@@ -38,6 +36,58 @@ this.UpdatePing = {
     }
 
     Services.obs.addObserver(this, UPDATE_DOWNLOADED_TOPIC);
+  },
+
+  /**
+   * Get the information about the update we're going to apply/was just applied
+   * from the update manager.
+   *
+   * @return {nsIUpdate} The information about the update, if available, or null.
+   */
+  _getActiveUpdate() {
+    let updateManager =
+      Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager);
+    if (!updateManager || !updateManager.activeUpdate) {
+      return null;
+    }
+
+    return updateManager.activeUpdate;
+  },
+
+  /**
+   * Generate an "update" ping with reason "success" and dispatch it
+   * to the Telemetry system.
+   *
+   * @param {String} aPreviousVersion The browser version we updated from.
+   * @param {String} aPreviousBuildId The browser build id we updated from.
+   */
+  handleUpdateSuccess(aPreviousVersion, aPreviousBuildId) {
+    this._log.trace("handleUpdateSuccess");
+
+    // An update could potentially change the update channel. Moreover,
+    // updates can only be applied if the update's channel matches with the build channel.
+    // There's no way to pass this information from the caller nor the environment as,
+    // in that case, the environment would report the "new" channel. However, the
+    // update manager should still have information about the active update: given the
+    // previous assumptions, we can simply get the channel from the update and assume
+    // it matches with the state previous to the update.
+    let update = this._getActiveUpdate();
+
+    const payload = {
+      reason: "success",
+      previousChannel: update ? update.channel : null,
+      previousVersion: aPreviousVersion,
+      previousBuildId: aPreviousBuildId,
+    };
+
+    const options = {
+      addClientId: true,
+      addEnvironment: true,
+      usePingSender: false,
+    };
+
+    TelemetryController.submitExternalPing(PING_TYPE, payload, options)
+                       .catch(e => this._log.error("handleUpdateSuccess - failed to submit update ping", e));
   },
 
   /**
@@ -58,20 +108,18 @@ this.UpdatePing = {
 
     // Get the information about the update we're going to apply from the
     // update manager.
-    let updateManager =
-      Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager);
-    if (!updateManager || !updateManager.activeUpdate) {
+    let update = this._getActiveUpdate();
+    if (!update) {
       this._log.trace("Cannot get the update manager or no update is currently active.");
       return;
     }
-
-    let update = updateManager.activeUpdate;
 
     const payload = {
       reason: "ready",
       targetChannel: update.channel,
       targetVersion: update.appVersion,
       targetBuildId: update.buildID,
+      targetDisplayVersion: update.displayVersion,
     };
 
     const options = {

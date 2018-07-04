@@ -81,7 +81,7 @@ public:
     MOZ_ASSERT(NS_IsMainThread());
     MOZ_ASSERT(!aMessageName.IsEmpty());
 
-    nsXPIDLString localizedMessage;
+    nsAutoString localizedMessage;
     if (NS_WARN_IF(NS_FAILED(
       nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                          aMessageName.BeginReading(),
@@ -143,7 +143,8 @@ public:
                           aLineNumber,
                           aColumnNumber,
                           aSeverityFlag,
-                          category.get()));
+                          category.get(),
+                          /* IDB doesn't run on Private browsing mode */ false));
     }
 
     MOZ_ALWAYS_SUCCEEDS(consoleService->LogMessage(scriptError));

@@ -3,6 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* eslint-env commonjs */
+
 "use strict";
 /**
  * Fennec-specific actors.
@@ -24,8 +26,7 @@ const { BrowserTabList, BrowserAddonList, sendShutdownEvent } =
  * * @param aConnection DebuggerServerConnection
  *        The conection to the client.
  */
-function createRootActor(aConnection)
-{
+function createRootActor(aConnection) {
   let parameters = {
     tabList: new MobileTabList(aConnection),
     addonList: new BrowserAddonList(aConnection),
@@ -51,8 +52,7 @@ function createRootActor(aConnection)
  * @see BrowserTabList for more a extensive description of how tab list objects
  *      work.
  */
-function MobileTabList(aConnection)
-{
+function MobileTabList(aConnection) {
   BrowserTabList.call(this, aConnection);
 }
 

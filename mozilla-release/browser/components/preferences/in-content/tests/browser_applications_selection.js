@@ -5,8 +5,11 @@ var container;
 SimpleTest.requestCompleteLog();
 
 add_task(async function setup() {
-  await openPreferencesViaOpenPreferencesAPI("applications", null, {leaveOpen: true});
-  info("Preferences page opened on the applications pane.");
+  await openPreferencesViaOpenPreferencesAPI("general", { leaveOpen: true });
+  info("Preferences page opened on the general pane.");
+
+  await gBrowser.selectedBrowser.contentWindow.promiseLoadHandlersList;
+  info("Apps list loaded.");
 
   registerCleanupFunction(() => {
     gBrowser.removeCurrentTab();
@@ -19,7 +22,7 @@ add_task(async function getFeedItem() {
   container = win.document.getElementById("handlersView");
   feedItem = container.querySelector("richlistitem[type='application/vnd.mozilla.maybe.feed']");
   Assert.ok(feedItem, "feedItem is present in handlersView.");
-})
+});
 
 add_task(async function selectInternalOptionForFeed() {
   // Select the item.
@@ -28,7 +31,7 @@ add_task(async function selectInternalOptionForFeed() {
   Assert.ok(feedItem.selected, "Should be able to select our item.");
 
   // Wait for the menu.
-  let list = await waitForCondition(() =>
+  let list = await TestUtils.waitForCondition(() =>
     win.document.getAnonymousElementByAttribute(feedItem, "class", "actionsMenu"));
   info("Got list after item was selected");
 
@@ -42,7 +45,7 @@ add_task(async function selectInternalOptionForFeed() {
   chooseItems[0].dispatchEvent(cmdEvent);
 
   // Check that we display the correct result.
-  list = await waitForCondition(() =>
+  list = await TestUtils.waitForCondition(() =>
     win.document.getAnonymousElementByAttribute(feedItem, "class", "actionsMenu"));
   info("Got list after item was selected");
   Assert.ok(list.selectedItem, "Should have a selected item.");
@@ -60,14 +63,14 @@ add_task(async function reselectInternalOptionForFeed() {
   container.selectItem(anotherItem);
 
   // Wait for the menu so that we don't hit race conditions.
-  await waitForCondition(() =>
+  await TestUtils.waitForCondition(() =>
     win.document.getAnonymousElementByAttribute(anotherItem, "class", "actionsMenu"));
   info("Got list after item was selected");
 
   // Now select the feed item again, and check what it is displaying.
   container.selectItem(feedItem);
 
-  let list = await waitForCondition(() =>
+  let list = await TestUtils.waitForCondition(() =>
     win.document.getAnonymousElementByAttribute(feedItem, "class", "actionsMenu"));
   info("Got list after item was selected");
 

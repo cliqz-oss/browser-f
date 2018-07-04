@@ -7,6 +7,8 @@
 #include "mozilla/dom/TestFunctions.h"
 #include "mozilla/dom/TestFunctionsBinding.h"
 #include "nsStringBuffer.h"
+#include "mozITestInterfaceJS.h"
+#include "nsComponentManagerUtils.h"
 
 namespace mozilla {
 namespace dom {
@@ -73,7 +75,7 @@ TestFunctions::GetStringDataAsDOMString(const Optional<uint32_t>& aLength,
 
   nsStringBuffer* buf = nsStringBuffer::FromString(mStringData);
   if (buf) {
-    aString.SetStringBuffer(buf, length);
+    aString.SetKnownLiveStringBuffer(buf, length);
     return;
   }
 
@@ -81,6 +83,29 @@ TestFunctions::GetStringDataAsDOMString(const Optional<uint32_t>& aLength,
   // buffer?
   MOZ_RELEASE_ASSERT(length == 0, "Why no stringbuffer?");
   // No need to do anything here; aString is already empty.
+}
+
+void
+TestFunctions::TestThrowNsresult(ErrorResult& aError)
+{
+  nsCOMPtr<mozITestInterfaceJS> impl =
+    do_CreateInstance("@mozilla.org/dom/test-interface-js;1");
+  aError = impl->TestThrowNsresult();
+}
+
+void
+TestFunctions::TestThrowNsresultFromNative(ErrorResult& aError)
+{
+  nsCOMPtr<mozITestInterfaceJS> impl =
+    do_CreateInstance("@mozilla.org/dom/test-interface-js;1");
+  aError = impl->TestThrowNsresultFromNative();
+}
+
+already_AddRefed<Promise>
+TestFunctions::ThrowToRejectPromise(GlobalObject& aGlobal, ErrorResult& aError)
+{
+  aError.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+  return nullptr;
 }
 
 bool

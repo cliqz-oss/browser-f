@@ -16,7 +16,6 @@ MOZ_AUTOMATION_PACKAGE_TESTS=0
 MOZ_AUTOMATION_UPLOAD=0
 
 . "$topsrcdir/build/mozconfig.common"
-ac_add_options --enable-elf-hack
 
 . "$topsrcdir/build/unix/mozconfig.stdcxx"
 
@@ -40,8 +39,5 @@ ac_add_options --disable-replace-malloc
 CFLAGS="$CFLAGS -Wno-attributes"
 CPPFLAGS="$CPPFLAGS -Wno-attributes"
 CXXFLAGS="$CXXFLAGS -Wno-attributes"
-
-export PKG_CONFIG_LIBDIR=/usr/lib64/pkgconfig:/usr/share/pkgconfig
-. $topsrcdir/build/unix/mozconfig.gtk
 
 . "$topsrcdir/build/mozconfig.common.override"

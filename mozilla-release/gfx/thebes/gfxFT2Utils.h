@@ -27,16 +27,16 @@ typedef struct FT_FaceRec_* FT_Face;
  * as that may accidentally try to re-lock the face within Cairo itself
  * and thus deadlock.
  */
-class gfxFT2LockedFace {
+class MOZ_STACK_CLASS gfxFT2LockedFace {
 public:
     explicit gfxFT2LockedFace(gfxFT2FontBase *aFont) :
         mGfxFont(aFont),
-        mFace(cairo_ft_scaled_font_lock_face(aFont->CairoScaledFont()))
+        mFace(cairo_ft_scaled_font_lock_face(aFont->GetCairoScaledFont()))
     { }
     ~gfxFT2LockedFace()
     {
         if (mFace) {
-            cairo_ft_scaled_font_unlock_face(mGfxFont->CairoScaledFont());
+            cairo_ft_scaled_font_unlock_face(mGfxFont->GetCairoScaledFont());
         }
     }
 
@@ -59,8 +59,26 @@ protected:
                                            FT_ULong variantSelector);
     CharVariantFunction FindCharVariantFunction();
 
-    RefPtr<gfxFT2FontBase> mGfxFont;
+    gfxFT2FontBase* MOZ_NON_OWNING_REF mGfxFont; // owned by caller
     FT_Face mFace;
+};
+
+
+// A couple of FreeType-based utilities shared by gfxFontconfigFontEntry
+// and FT2FontEntry.
+
+typedef struct FT_MM_Var_ FT_MM_Var;
+
+class gfxFT2Utils {
+public:
+    static void
+    GetVariationAxes(const FT_MM_Var* aMMVar,
+                     nsTArray<gfxFontVariationAxis>& aAxes);
+
+    static void
+    GetVariationInstances(gfxFontEntry* aFontEntry,
+                          const FT_MM_Var* aMMVar,
+                          nsTArray<gfxFontVariationInstance>& aInstances);
 };
 
 #endif /* GFX_FT2UTILS_H */

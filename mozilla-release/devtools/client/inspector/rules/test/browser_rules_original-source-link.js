@@ -8,37 +8,37 @@
 // are involved.
 
 const TESTCASE_URI = URL_ROOT + "doc_sourcemaps.html";
-const PREF = "devtools.styleeditor.source-maps-enabled";
+const PREF = "devtools.source-map.client-service.enabled";
 const SCSS_LOC = "doc_sourcemaps.scss:4";
 const CSS_LOC = "doc_sourcemaps.css:1";
 
-add_task(function* () {
+add_task(async function() {
   info("Setting the " + PREF + " pref to true");
   Services.prefs.setBoolPref(PREF, true);
 
-  yield addTab(TESTCASE_URI);
-  let {toolbox, inspector, view} = yield openRuleView();
+  await addTab(TESTCASE_URI);
+  let {toolbox, inspector, view} = await openRuleView();
 
   info("Selecting the test node");
-  yield selectNode("div", inspector);
+  await selectNode("div", inspector);
 
-  yield verifyLinkText(SCSS_LOC, view);
+  await verifyLinkText(SCSS_LOC, view);
 
   info("Setting the " + PREF + " pref to false");
   Services.prefs.setBoolPref(PREF, false);
-  yield verifyLinkText(CSS_LOC, view);
+  await verifyLinkText(CSS_LOC, view);
 
   info("Setting the " + PREF + " pref to true again");
   Services.prefs.setBoolPref(PREF, true);
 
-  yield testClickingLink(toolbox, view);
-  yield checkDisplayedStylesheet(toolbox);
+  await testClickingLink(toolbox, view);
+  await checkDisplayedStylesheet(toolbox);
 
   info("Clearing the " + PREF + " pref");
   Services.prefs.clearUserPref(PREF);
 });
 
-function* testClickingLink(toolbox, view) {
+async function testClickingLink(toolbox, view) {
   info("Listening for switch to the style editor");
   let onStyleEditorReady = toolbox.once("styleeditor-ready");
 
@@ -46,24 +46,22 @@ function* testClickingLink(toolbox, view) {
   let link = getRuleViewLinkByIndex(view, 1);
   link.scrollIntoView();
   link.click();
-  yield onStyleEditorReady;
+  await onStyleEditorReady;
 }
 
 function checkDisplayedStylesheet(toolbox) {
-  let def = defer();
-
   let panel = toolbox.getCurrentPanel();
-  panel.UI.on("editor-selected", (event, editor) => {
-    // The style editor selects the first sheet at first load before
-    // selecting the desired sheet.
-    if (editor.styleSheet.href.endsWith("scss")) {
-      info("Original source editor selected");
-      editor.getSourceEditor().then(editorSelected)
-        .then(def.resolve, def.reject);
-    }
+  return new Promise((resolve, reject) => {
+    panel.UI.on("editor-selected", editor => {
+      // The style editor selects the first sheet at first load before
+      // selecting the desired sheet.
+      if (editor.styleSheet.href.endsWith("scss")) {
+        info("Original source editor selected");
+        editor.getSourceEditor().then(editorSelected)
+          .then(resolve, reject);
+      }
+    });
   });
-
-  return def.promise;
 }
 
 function editorSelected(editor) {
@@ -79,7 +77,7 @@ function verifyLinkText(text, view) {
   info("Verifying that the rule-view stylesheet link is " + text);
   let label = getRuleViewLinkByIndex(view, 1)
     .querySelector(".ruleview-rule-source-label");
-  return waitForSuccess(function* () {
-    return label.textContent == text;
+  return waitForSuccess(function() {
+    return label.textContent == text && label.getAttribute("title") === URL_ROOT + text;
   }, "Link text changed to display correct location: " + text);
 }

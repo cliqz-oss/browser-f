@@ -13,14 +13,14 @@ namespace mozilla {
 
 void
 TelemetryIPC::AccumulateChildHistograms(Telemetry::ProcessID aProcessType,
-                                        const nsTArray<Telemetry::Accumulation>& aAccumulations)
+                                        const nsTArray<Telemetry::HistogramAccumulation>& aAccumulations)
 {
   TelemetryHistogram::AccumulateChild(aProcessType, aAccumulations);
 }
 
 void
 TelemetryIPC::AccumulateChildKeyedHistograms(Telemetry::ProcessID aProcessType,
-                                            const nsTArray<Telemetry::KeyedAccumulation>& aAccumulations)
+                                            const nsTArray<Telemetry::KeyedHistogramAccumulation>& aAccumulations)
 {
   TelemetryHistogram::AccumulateChildKeyed(aProcessType, aAccumulations);
 }
@@ -37,6 +37,18 @@ TelemetryIPC::UpdateChildKeyedScalars(Telemetry::ProcessID aProcessType,
                                       const nsTArray<Telemetry::KeyedScalarAction>& aScalarActions)
 {
   TelemetryScalar::UpdateChildKeyedData(aProcessType, aScalarActions);
+}
+
+void
+TelemetryIPC::GetDynamicScalarDefinitions(nsTArray<mozilla::Telemetry::DynamicScalarDefinition>& aDefs)
+{
+  TelemetryScalar::GetDynamicScalarDefinitions(aDefs);
+}
+
+void
+TelemetryIPC::AddDynamicScalarDefinitions(const nsTArray<mozilla::Telemetry::DynamicScalarDefinition>& aDefs)
+{
+  TelemetryScalar::AddDynamicScalarDefinitions(aDefs);
 }
 
 void

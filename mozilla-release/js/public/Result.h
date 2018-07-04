@@ -118,8 +118,6 @@
 
 #include "mozilla/Result.h"
 
-struct JSContext;
-
 /**
  * Evaluate the boolean expression expr. If it's true, do nothing.
  * If it's false, return an error result.
@@ -153,7 +151,7 @@ struct JSContext;
     do { \
         auto tmpResult_ = (expr); \
         if (tmpResult_.isErr()) { \
-            JS_ALWAYS_FALSE((cx)->resultToBool(tmpResult_)); \
+            MOZ_ALWAYS_FALSE((cx)->resultToBool(tmpResult_)); \
             return nullptr; \
         } \
     } while (0)
@@ -170,7 +168,7 @@ struct JSContext;
     do { \
         auto tmpResult_ = (expr); \
         if (tmpResult_.isErr()) {  \
-            JS_ALWAYS_FALSE((cx)->resultToBool(tmpResult_)); \
+            MOZ_ALWAYS_FALSE((cx)->resultToBool(tmpResult_)); \
             return nullptr; \
         } \
         (target) = tmpResult_.unwrap(); \

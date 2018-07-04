@@ -10,8 +10,7 @@
   [BinaryName="Self_", Replaceable] readonly attribute WindowProxy self;
   [Unforgeable] readonly attribute Document document;
 
-  // https://github.com/servo/servo/issues/14453
-  // attribute DOMString name;
+  attribute DOMString name;
 
   [/*PutForwards=href, */Unforgeable] readonly attribute Location location;
   readonly attribute History history;
@@ -98,11 +97,6 @@ interface WindowBase64 {
 };
 Window implements WindowBase64;
 
-// https://dvcs.w3.org/hg/webperf/raw-file/tip/specs/NavigationTiming/Overview.html#sec-window.performance-attribute
-partial interface Window {
-  [Replaceable] readonly attribute Performance performance;
-};
-
 // https://html.spec.whatwg.org/multipage/#Window-partial
 partial interface Window {
   void captureEvents();
@@ -169,8 +163,6 @@ partial interface Window {
   void debug(DOMString arg);
   void gc();
   void trap();
-  [Func="Window::global_is_mozbrowser", Throws]
-  void openURLInDefaultBrowser(DOMString href);
 };
 
 // WebDriver extensions
@@ -202,9 +194,4 @@ partial interface Window {
    [Pref="dom.bluetooth.testing.enabled", Exposed=Window]
    readonly attribute TestRunner testRunner;
    //readonly attribute EventSender eventSender;
-};
-
-// https://drafts.css-houdini.org/css-paint-api-1/#paint-worklet
-partial interface Window {
-    [SameObject, Pref="dom.worklet.enabled"] readonly attribute Worklet paintWorklet;
 };

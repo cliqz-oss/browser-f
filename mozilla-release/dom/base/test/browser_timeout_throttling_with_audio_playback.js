@@ -1,7 +1,7 @@
 // The tab closing code leaves an uncaught rejection. This test has been
 // whitelisted until the issue is fixed.
 if (!gMultiProcessBrowser) {
-  Cu.import("resource://testing-common/PromiseTestUtils.jsm", this);
+  ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", this);
   PromiseTestUtils.expectUncaughtRejection(/is no longer, usable/);
 }
 
@@ -51,7 +51,7 @@ async function runTest(url) {
   ok(timeout <= kMinTimeoutBackground, `Got the correct timeout (${timeout})`);
 
   // All done.
-  await BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(newTab);
 }
 
 add_task(async function setup() {

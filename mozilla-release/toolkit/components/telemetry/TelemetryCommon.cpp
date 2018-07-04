@@ -70,13 +70,13 @@ CanRecordDataset(uint32_t aDataset, bool aCanRecordBase, bool aCanRecordExtended
 bool
 CanRecordInProcess(RecordedProcessType processes, GeckoProcessType processType)
 {
-  bool recordAllChild = !!(processes & RecordedProcessType::AllChilds);
+  bool recordAllChildren = !!(processes & RecordedProcessType::AllChildren);
   // We can use (1 << ProcessType) due to the way RecordedProcessType is defined.
   bool canRecordProcess =
     !!(processes & static_cast<RecordedProcessType>(1 << processType));
 
   return canRecordProcess ||
-         ((processType != GeckoProcessType_Default) && recordAllChild);
+         ((processType != GeckoProcessType_Default) && recordAllChildren);
 }
 
 bool
@@ -116,7 +116,8 @@ LogToBrowserConsole(uint32_t aLogLevel, const nsAString& aMsg)
   }
 
   nsCOMPtr<nsIScriptError> error(do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
-  error->Init(aMsg, EmptyString(), EmptyString(), 0, 0, aLogLevel, "chrome javascript");
+  error->Init(aMsg, EmptyString(), EmptyString(), 0, 0, aLogLevel,
+              "chrome javascript", false /* from private window */);
   console->LogMessage(error);
 }
 
@@ -132,6 +133,55 @@ GetGeckoProcessType(ProcessID process)
 {
   MOZ_ASSERT(process < ProcessID::Count);
   return ProcessIDToGeckoProcessType[static_cast<uint32_t>(process)];
+}
+
+bool
+IsStringCharValid(const char aChar, const bool aAllowInfixPeriod,
+                  const bool aAllowInfixUnderscore)
+{
+  return (aChar >= 'A' && aChar <= 'Z')
+      || (aChar >= 'a' && aChar <= 'z')
+      || (aChar >= '0' && aChar <= '9')
+      || (aAllowInfixPeriod && (aChar == '.'))
+      || (aAllowInfixUnderscore && (aChar == '_'));
+}
+
+bool
+IsValidIdentifierString(const nsACString& aStr, const size_t aMaxLength,
+                        const bool aAllowInfixPeriod, const bool aAllowInfixUnderscore)
+{
+  // Check string length.
+  if (aStr.Length() > aMaxLength) {
+    return false;
+  }
+
+  // Check string characters.
+  const char* first = aStr.BeginReading();
+  const char* end = aStr.EndReading();
+
+  for (const char* cur = first; cur < end; ++cur) {
+      const bool infix = (cur != first) && (cur != (end - 1));
+      if (!IsStringCharValid(*cur,
+                             aAllowInfixPeriod && infix,
+                             aAllowInfixUnderscore && infix)) {
+        return false;
+      }
+  }
+
+  return true;
+}
+
+JSString*
+ToJSString(JSContext* cx, const nsACString& aStr)
+{
+  const NS_ConvertUTF8toUTF16 wide(aStr);
+  return JS_NewUCStringCopyN(cx, wide.Data(), wide.Length());
+}
+
+JSString*
+ToJSString(JSContext* cx, const nsAString& aStr)
+{
+  return JS_NewUCStringCopyN(cx, aStr.Data(), aStr.Length());
 }
 
 } // namespace Common

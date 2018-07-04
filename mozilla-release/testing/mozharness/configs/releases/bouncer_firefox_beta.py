@@ -1,6 +1,7 @@
 # lint_ignore=E501
 config = {
     "shipped-locales-url": "https://hg.mozilla.org/%(repo)s/raw-file/%(revision)s/browser/locales/shipped-locales",
+    "bouncer_prefix": "https://download.mozilla.org/",
     "products": {
         "installer": {
             "product-name": "Firefox-%(version)s",
@@ -105,7 +106,6 @@ config = {
                 },
             },
         },
-    },
     },
     "partials": {
         "releases-dir": {

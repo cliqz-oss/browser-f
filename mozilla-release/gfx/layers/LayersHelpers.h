@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -34,10 +35,10 @@ static inline gfx::Rect
 TextureRectToCoords(const T& aRect, const gfx::IntSize& aSize)
 {
   return gfx::Rect(
-    float(aRect.x) / aSize.width,
-    float(aRect.y) / aSize.height,
-    float(aRect.width) / aSize.width,
-    float(aRect.height) / aSize.height);
+    float(aRect.X()) / aSize.width,
+    float(aRect.Y()) / aSize.height,
+    float(aRect.Width()) / aSize.width,
+    float(aRect.Height()) / aSize.height);
 }
 
 // This is defined in Compositor.cpp.

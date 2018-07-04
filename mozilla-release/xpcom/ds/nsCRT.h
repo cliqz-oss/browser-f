@@ -42,12 +42,6 @@ public:
     return int32_t(PL_strcmp(aStr1, aStr2));
   }
 
-  static int32_t strncmp(const char* aStr1, const char* aStr2,
-                         uint32_t aMaxLen)
-  {
-    return int32_t(PL_strncmp(aStr1, aStr2, aMaxLen));
-  }
-
   /// Case-insensitive string comparison.
   static int32_t strcasecmp(const char* aStr1, const char* aStr2)
   {
@@ -65,17 +59,6 @@ public:
       result = -1;
     }
     return result;
-  }
-
-  static int32_t strncmp(const char* aStr1, const char* aStr2, int32_t aMaxLen)
-  {
-    // inline the first test (assumes strings are not null):
-    int32_t diff =
-      ((const unsigned char*)aStr1)[0] - ((const unsigned char*)aStr2)[0];
-    if (diff != 0) {
-      return diff;
-    }
-    return int32_t(PL_strncmp(aStr1, aStr2, unsigned(aMaxLen)));
   }
 
   /**
@@ -101,15 +84,6 @@ public:
 
   /// Like strcmp except for ucs2 strings
   static int32_t strcmp(const char16_t* aStr1, const char16_t* aStr2);
-  /// Like strcmp except for ucs2 strings
-  static int32_t strncmp(const char16_t* aStr1, const char16_t* aStr2,
-                         uint32_t aMaxLen);
-
-  // The GNU libc has memmem, which is strstr except for binary data
-  // This is our own implementation that uses memmem on platforms
-  // where it's available.
-  static const char* memmem(const char* aHaystack, uint32_t aHaystackLen,
-                            const char* aNeedle, uint32_t aNeedleLen);
 
   // String to longlong
   static int64_t atoll(const char* aStr);
@@ -122,8 +96,6 @@ public:
 
   static bool IsAscii(char16_t aChar) { return NS_IsAscii(aChar); }
   static bool IsAscii(const char16_t* aString) { return NS_IsAscii(aString); }
-  static bool IsAsciiAlpha(char16_t aChar) { return NS_IsAsciiAlpha(aChar); }
-  static bool IsAsciiDigit(char16_t aChar) { return NS_IsAsciiDigit(aChar); }
   static bool IsAsciiSpace(char16_t aChar) { return NS_IsAsciiWhitespace(aChar); }
   static bool IsAscii(const char* aString) { return NS_IsAscii(aString); }
   static bool IsAscii(const char* aString, uint32_t aLength)

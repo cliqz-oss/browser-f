@@ -1,11 +1,6 @@
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cr = Components.results;
-var Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
 
 var server = new HttpServer();
 server.registerPathHandler('/image.png', imageHandler);
@@ -82,7 +77,7 @@ function run_loadImage_tests() {
       loadImage(false, function() {
         loadImage(true, function() {
           loadImage(true, function() {
-            do_check_eq(gHits, 2);
+            Assert.equal(gHits, 2);
             server.stop(do_test_finished);
           });
         });
@@ -104,7 +99,7 @@ function cleanup()
 }
 
 function run_test() {
-  do_register_cleanup(cleanup);
+  registerCleanupFunction(cleanup);
 
   do_test_pending();
 
@@ -119,7 +114,7 @@ function run_test() {
     setup_chan('/image.png', false, function() {
       setup_chan('/image.png', true, function() {
         setup_chan('/image.png', true, function() {
-          do_check_eq(gHits, 2);
+          Assert.equal(gHits, 2);
           run_loadImage_tests();
         });
       });

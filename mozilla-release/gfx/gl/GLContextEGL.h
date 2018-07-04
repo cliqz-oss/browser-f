@@ -73,9 +73,9 @@ public:
         return mSurfaceOverride;
     }
 
-    virtual bool MakeCurrentImpl(bool aForce) override;
+    virtual bool MakeCurrentImpl() const override;
 
-    virtual bool IsCurrent() override;
+    virtual bool IsCurrentImpl() const override;
 
     virtual bool RenewSurface(widget::CompositorWidget* aWidget) override;
 
@@ -114,7 +114,7 @@ protected:
     friend class GLContextEGLFactory;
 
 public:
-    const EGLConfig  mConfig;
+    const EGLConfig mConfig;
 protected:
     EGLSurface mSurface;
 public:
@@ -133,7 +133,13 @@ protected:
     static EGLSurface CreatePBufferSurfaceTryingPowerOfTwo(EGLConfig config,
                                                            EGLenum bindToTextureFormat,
                                                            gfx::IntSize& pbsize);
+#if defined(MOZ_WIDGET_ANDROID)
+public:
+    EGLSurface CreateCompatibleSurface(void* aWindow);
+#endif // defined(MOZ_WIDGET_ANDROID)
 };
+
+bool CreateConfig(EGLConfig* config, int32_t depth, bool enableDepthBuffer);
 
 } // namespace gl
 } // namespace mozilla

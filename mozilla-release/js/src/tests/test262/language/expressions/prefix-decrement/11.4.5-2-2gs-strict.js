@@ -9,9 +9,11 @@ description: >
     Strict Mode - SyntaxError is throw if the UnaryExpression operated
     upon by a Prefix Decrement operator(--arguments)
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [onlyStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 --arguments;

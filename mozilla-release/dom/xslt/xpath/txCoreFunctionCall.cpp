@@ -24,7 +24,7 @@ struct txCoreFunctionDescriptor
     int8_t mMinParams;
     int8_t mMaxParams;
     Expr::ResultType mReturnType;
-    nsIAtom** mName;
+    nsStaticAtom** mName;
 };
 
 // This must be ordered in the same order as txCoreFunctionCall::eType.
@@ -719,7 +719,7 @@ txCoreFunctionCall::isSensitiveTo(ContextSensitivity aContext)
 
 // static
 bool
-txCoreFunctionCall::getTypeFromAtom(nsIAtom* aName, eType& aType)
+txCoreFunctionCall::getTypeFromAtom(nsAtom* aName, eType& aType)
 {
     uint32_t i;
     for (i = 0; i < ArrayLength(descriptTable); ++i) {
@@ -734,10 +734,9 @@ txCoreFunctionCall::getTypeFromAtom(nsIAtom* aName, eType& aType)
 }
 
 #ifdef TX_TO_STRING
-nsresult
-txCoreFunctionCall::getNameAtom(nsIAtom** aAtom)
+void
+txCoreFunctionCall::appendName(nsAString& aDest)
 {
-    NS_ADDREF(*aAtom = *descriptTable[mType].mName);
-    return NS_OK;
+    aDest.Append((*descriptTable[mType].mName)->GetUTF16String());
 }
 #endif

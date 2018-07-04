@@ -2,7 +2,7 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-Cu.import("resource://gre/modules/Downloads.jsm");
+ChromeUtils.import("resource://gre/modules/Downloads.jsm");
 
 const server = createHttpServer();
 server.registerDirectory("/data/", do_get_file("data"));
@@ -48,13 +48,20 @@ function handleRequest(request, response) {
     response.setStatusLine(request.httpVersion, 206, "Partial Content");
     response.setHeader("Content-Range", `${start}-${end}/${TOTAL_LEN}`, false);
     response.write(TEST_DATA.slice(start, end + 1));
+  } else if (request.queryString.includes("stream")) {
+    response.processAsync();
+    response.setHeader("Content-Length", "10000", false);
+    response.write("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    setInterval(() => {
+      response.write("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    }, 50);
   } else {
     response.processAsync();
     response.setHeader("Content-Length", `${TOTAL_LEN}`, false);
     response.write(TEST_DATA.slice(0, PARTIAL_LEN));
   }
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     try {
       response.finish();
     } catch (e) {
@@ -217,15 +224,15 @@ function runInExtension(what, ...args) {
 // download of the given url in which the total bytes are exactly equal
 // to the given value.  Unless you know exactly how data will arrive from
 // the server (eg see interruptible.sjs), it probably isn't very useful.
-async function waitForProgress(url, bytes) {
+async function waitForProgress(url, testFn) {
   let list = await Downloads.getList(Downloads.ALL);
 
   return new Promise(resolve => {
     const view = {
       onDownloadChanged(download) {
-        if (download.source.url == url && download.currentBytes == bytes) {
+        if (download.source.url == url && testFn(download.currentBytes)) {
           list.removeView(view);
-          resolve();
+          resolve(download.currentBytes);
         }
       },
     };
@@ -237,12 +244,12 @@ add_task(async function setup() {
   const nsIFile = Ci.nsIFile;
   downloadDir = FileUtils.getDir("TmpD", ["downloads"]);
   downloadDir.createUnique(nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
-  do_print(`downloadDir ${downloadDir.path}`);
+  info(`downloadDir ${downloadDir.path}`);
 
   Services.prefs.setIntPref("browser.download.folderList", 2);
   Services.prefs.setComplexValue("browser.download.dir", nsIFile, downloadDir);
 
-  do_register_cleanup(() => {
+  registerCleanupFunction(() => {
     Services.prefs.clearUserPref("browser.download.folderList");
     Services.prefs.clearUserPref("browser.download.dir");
     downloadDir.remove(true);
@@ -251,7 +258,7 @@ add_task(async function setup() {
   });
 
   await clearDownloads().then(downloads => {
-    do_print(`removed ${downloads.length} pre-existing downloads from history`);
+    info(`removed ${downloads.length} pre-existing downloads from history`);
   });
 
   extension = ExtensionTestUtils.loadExtension({
@@ -288,12 +295,12 @@ add_task(async function test_events() {
 
 add_task(async function test_cancel() {
   let url = getInterruptibleUrl();
-  do_print(url);
+  info(url);
   let msg = await runInExtension("download", {url});
   equal(msg.status, "success", "download() succeeded");
   const id = msg.result;
 
-  let progressPromise = waitForProgress(url, INT_PARTIAL_LEN);
+  let progressPromise = waitForProgress(url, bytes => bytes == INT_PARTIAL_LEN);
 
   msg = await runInExtension("waitForEvents", [
     {type: "onCreated", data: {id}},
@@ -301,12 +308,12 @@ add_task(async function test_cancel() {
   equal(msg.status, "success", "got created and changed events");
 
   await progressPromise;
-  do_print(`download reached ${INT_PARTIAL_LEN} bytes`);
+  info(`download reached ${INT_PARTIAL_LEN} bytes`);
 
   msg = await runInExtension("cancel", id);
   equal(msg.status, "success", "cancel() succeeded");
 
-  // This sequence of events is bogus (bug 1256243)
+  // TODO bug 1256243: This sequence of events is bogus
   msg = await runInExtension("waitForEvents", [
     {
       type: "onChanged",
@@ -348,6 +355,7 @@ add_task(async function test_cancel() {
   equal(msg.result[0].id, id, "download.id is correct");
   equal(msg.result[0].state, "interrupted", "download.state is correct");
   equal(msg.result[0].paused, false, "download.paused is correct");
+  equal(msg.result[0].estimatedEndTime, null, "download.estimatedEndTime is correct");
   equal(msg.result[0].canResume, false, "download.canResume is correct");
   equal(msg.result[0].error, "USER_CANCELED", "download.error is correct");
   equal(msg.result[0].totalBytes, INT_TOTAL_LEN, "download.totalBytes is correct");
@@ -366,7 +374,7 @@ add_task(async function test_pauseresume() {
   equal(msg.status, "success", "download() succeeded");
   const id = msg.result;
 
-  let progressPromise = waitForProgress(url, INT_PARTIAL_LEN);
+  let progressPromise = waitForProgress(url, bytes => bytes == INT_PARTIAL_LEN);
 
   msg = await runInExtension("waitForEvents", [
     {type: "onCreated", data: {id}},
@@ -374,7 +382,7 @@ add_task(async function test_pauseresume() {
   equal(msg.status, "success", "got created and changed events");
 
   await progressPromise;
-  do_print(`download reached ${INT_PARTIAL_LEN} bytes`);
+  info(`download reached ${INT_PARTIAL_LEN} bytes`);
 
   msg = await runInExtension("pause", id);
   equal(msg.status, "success", "pause() succeeded");
@@ -415,6 +423,7 @@ add_task(async function test_pauseresume() {
   equal(msg.result[0].id, id, "download.id is correct");
   equal(msg.result[0].state, "interrupted", "download.state is correct");
   equal(msg.result[0].paused, true, "download.paused is correct");
+  equal(msg.result[0].estimatedEndTime, null, "download.estimatedEndTime is correct");
   equal(msg.result[0].canResume, true, "download.canResume is correct");
   equal(msg.result[0].error, "USER_CANCELED", "download.error is correct");
   equal(msg.result[0].bytesReceived, INT_PARTIAL_LEN, "download.bytesReceived is correct");
@@ -473,6 +482,7 @@ add_task(async function test_pauseresume() {
   equal(msg.result.length, 1, "search() found 1 download");
   equal(msg.result[0].state, "complete", "download.state is correct");
   equal(msg.result[0].paused, false, "download.paused is correct");
+  equal(msg.result[0].estimatedEndTime, null, "download.estimatedEndTime is correct");
   equal(msg.result[0].canResume, false, "download.canResume is correct");
   equal(msg.result[0].error, null, "download.error is correct");
   equal(msg.result[0].bytesReceived, INT_TOTAL_LEN, "download.bytesReceived is correct");
@@ -492,7 +502,7 @@ add_task(async function test_pausecancel() {
   equal(msg.status, "success", "download() succeeded");
   const id = msg.result;
 
-  let progressPromise = waitForProgress(url, INT_PARTIAL_LEN);
+  let progressPromise = waitForProgress(url, bytes => bytes == INT_PARTIAL_LEN);
 
   msg = await runInExtension("waitForEvents", [
     {type: "onCreated", data: {id}},
@@ -500,7 +510,7 @@ add_task(async function test_pausecancel() {
   equal(msg.status, "success", "got created and changed events");
 
   await progressPromise;
-  do_print(`download reached ${INT_PARTIAL_LEN} bytes`);
+  info(`download reached ${INT_PARTIAL_LEN} bytes`);
 
   msg = await runInExtension("pause", id);
   equal(msg.status, "success", "pause() succeeded");
@@ -541,6 +551,7 @@ add_task(async function test_pausecancel() {
   equal(msg.result[0].id, id, "download.id is correct");
   equal(msg.result[0].state, "interrupted", "download.state is correct");
   equal(msg.result[0].paused, true, "download.paused is correct");
+  equal(msg.result[0].estimatedEndTime, null, "download.estimatedEndTime is correct");
   equal(msg.result[0].canResume, true, "download.canResume is correct");
   equal(msg.result[0].error, "USER_CANCELED", "download.error is correct");
   equal(msg.result[0].bytesReceived, INT_PARTIAL_LEN, "download.bytesReceived is correct");
@@ -578,6 +589,7 @@ add_task(async function test_pausecancel() {
   equal(msg.result.length, 1, "search() found 1 download");
   equal(msg.result[0].state, "interrupted", "download.state is correct");
   equal(msg.result[0].paused, false, "download.paused is correct");
+  equal(msg.result[0].estimatedEndTime, null, "download.estimatedEndTime is correct");
   equal(msg.result[0].canResume, false, "download.canResume is correct");
   equal(msg.result[0].error, "USER_CANCELED", "download.error is correct");
   equal(msg.result[0].totalBytes, INT_TOTAL_LEN, "download.totalBytes is correct");
@@ -638,7 +650,7 @@ add_task(async function test_removal_of_incomplete_download() {
   equal(msg.status, "success", "download() succeeded");
   const id = msg.result;
 
-  let progressPromise = waitForProgress(url, INT_PARTIAL_LEN);
+  let progressPromise = waitForProgress(url, bytes => bytes == INT_PARTIAL_LEN);
 
   msg = await runInExtension("waitForEvents", [
     {type: "onCreated", data: {id}},
@@ -646,7 +658,7 @@ add_task(async function test_removal_of_incomplete_download() {
   equal(msg.status, "success", "got created and changed events");
 
   await progressPromise;
-  do_print(`download reached ${INT_PARTIAL_LEN} bytes`);
+  info(`download reached ${INT_PARTIAL_LEN} bytes`);
 
   msg = await runInExtension("pause", id);
   equal(msg.status, "success", "pause() succeeded");
@@ -756,7 +768,7 @@ add_task(async function test_erase() {
   ids.dl3 = await download();
 
   let msg = await runInExtension("search", {});
-  equal(msg.status, "success", "search succeded");
+  equal(msg.status, "success", "search succeeded");
   equal(msg.result.length, 3, "search found 3 downloads");
 
   msg = await runInExtension("clearEvents");
@@ -770,7 +782,7 @@ add_task(async function test_erase() {
   equal(msg.status, "success", "received onErased event");
 
   msg = await runInExtension("search", {});
-  equal(msg.status, "success", "search succeded");
+  equal(msg.status, "success", "search succeeded");
   equal(msg.result.length, 2, "search found 2 downloads");
 
   msg = await runInExtension("erase", {});
@@ -783,7 +795,7 @@ add_task(async function test_erase() {
   equal(msg.status, "success", "received 2 onErased events");
 
   msg = await runInExtension("search", {});
-  equal(msg.status, "success", "search succeded");
+  equal(msg.status, "success", "search succeeded");
   equal(msg.result.length, 0, "search found 0 downloads");
 });
 
@@ -855,6 +867,32 @@ add_task(async function test_getFileIcon() {
   ok(msg.errmsg.includes("Error processing size"), "size is too big");
 
   webNav.close();
+});
+
+add_task(async function test_estimatedendtime() {
+  // Note we are not testing the actual value calculation of estimatedEndTime,
+  // only whether it is null/non-null at the appropriate times.
+
+  let url = `${getInterruptibleUrl()}&stream=1`;
+  let msg = await runInExtension("download", {url});
+  equal(msg.status, "success", "download() succeeded");
+  const id = msg.result;
+
+  let previousBytes = await waitForProgress(url, bytes => bytes > 0);
+  await waitForProgress(url, bytes => bytes > previousBytes);
+
+  msg = await runInExtension("search", {id});
+  equal(msg.status, "success", "search() succeeded");
+  equal(msg.result.length, 1, "search() found 1 download");
+  ok(msg.result[0].estimatedEndTime, "download.estimatedEndTime is correct");
+  ok(msg.result[0].bytesReceived > 0, "download.bytesReceived is correct");
+
+  msg = await runInExtension("cancel", id);
+
+  msg = await runInExtension("search", {id});
+  equal(msg.status, "success", "search() succeeded");
+  equal(msg.result.length, 1, "search() found 1 download");
+  ok(!msg.result[0].estimatedEndTime, "download.estimatedEndTime is correct");
 });
 
 add_task(async function cleanup() {

@@ -5,9 +5,9 @@ gUseRealCertChecks = true;
 
 const DATA = "data/signing_checks/";
 
-const ID_63 = "123456789012345678901234567890123456789012345@tests.mozilla.org"
-const ID_64 = "1234567890123456789012345678901234567890123456@tests.mozilla.org"
-const ID_65 = "12345678901234567890123456789012345678901234568@tests.mozilla.org"
+const ID_63 = "123456789012345678901234567890123456789012345@tests.mozilla.org";
+const ID_64 = "1234567890123456789012345678901234567890123456@tests.mozilla.org";
+const ID_65 = "12345678901234567890123456789012345678901234568@tests.mozilla.org";
 
 function run_test() {
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1");
@@ -25,8 +25,8 @@ add_task(async function test_working() {
   let addons = await promiseAddonsByIDs([ID_63, ID_64, ID_65]);
 
   for (let addon of addons) {
-    do_check_neq(addon, null);
-    do_check_true(addon.signedState > AddonManager.SIGNEDSTATE_MISSING);
+    Assert.notEqual(addon, null);
+    Assert.ok(addon.signedState > AddonManager.SIGNEDSTATE_MISSING);
 
     addon.uninstall();
   }
@@ -39,7 +39,7 @@ add_task(async function test_broken() {
   let installs = await Promise.all(promises);
 
   for (let install of installs) {
-    do_check_eq(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
-    do_check_eq(install.error, AddonManager.ERROR_CORRUPT_FILE);
+    Assert.equal(install.state, AddonManager.STATE_DOWNLOAD_FAILED);
+    Assert.equal(install.error, AddonManager.ERROR_CORRUPT_FILE);
   }
 });

@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,7 +17,6 @@
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "nsIIdleService.h"
-#include "nsIIPCBackgroundChildCreateCallback.h"
 #include "nsIObserverService.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsXULAppAPI.h"
@@ -95,28 +94,6 @@ private:
 };
 
 } // namespace
-
-class QuotaManagerService::BackgroundCreateCallback final
-  : public nsIIPCBackgroundChildCreateCallback
-{
-  RefPtr<QuotaManagerService> mService;
-
-public:
-  explicit
-  BackgroundCreateCallback(QuotaManagerService* aService)
-    : mService(aService)
-  {
-    MOZ_ASSERT(aService);
-  }
-
-  NS_DECL_ISUPPORTS
-
-private:
-  ~BackgroundCreateCallback()
-  { }
-
-  NS_DECL_NSIIPCBACKGROUNDCHILDCREATECALLBACK
-};
 
 class QuotaManagerService::PendingRequestInfo
 {
@@ -248,14 +225,11 @@ QuotaManagerService::Get()
 }
 
 // static
-QuotaManagerService*
+already_AddRefed<QuotaManagerService>
 QuotaManagerService::FactoryCreate()
 {
-  // Returns a raw pointer that carries an owning reference! Lame, but the
-  // singleton factory macros force this.
-  QuotaManagerService* quotaManagerService = GetOrCreate();
-  NS_IF_ADDREF(quotaManagerService);
-  return quotaManagerService;
+  RefPtr<QuotaManagerService> quotaManagerService = GetOrCreate();
+  return quotaManagerService.forget();
 }
 
 void
@@ -352,95 +326,34 @@ QuotaManagerService::InitiateRequest(nsAutoPtr<PendingRequestInfo>& aInfo)
     return NS_ERROR_FAILURE;
   }
 
-  if (!mBackgroundActor && mPendingRequests.IsEmpty()) {
-    if (PBackgroundChild* actor = BackgroundChild::GetForCurrentThread()) {
-      BackgroundActorCreated(actor);
-    } else {
-      // We need to start the sequence to create a background actor for this
-      // thread.
-      RefPtr<BackgroundCreateCallback> cb = new BackgroundCreateCallback(this);
-      if (NS_WARN_IF(!BackgroundChild::GetOrCreateForCurrentThread(cb))) {
-        return NS_ERROR_FAILURE;
-      }
+  if (!mBackgroundActor) {
+    PBackgroundChild* backgroundActor =
+      BackgroundChild::GetOrCreateForCurrentThread();
+    if (NS_WARN_IF(!backgroundActor)) {
+      mBackgroundActorFailed = true;
+      return NS_ERROR_FAILURE;
+    }
+
+    {
+      QuotaChild* actor = new QuotaChild(this);
+
+      mBackgroundActor =
+        static_cast<QuotaChild*>(backgroundActor->SendPQuotaConstructor(actor));
     }
   }
 
-  // If we already have a background actor then we can start this request now.
-  if (mBackgroundActor) {
-    nsresult rv = aInfo->InitiateRequest(mBackgroundActor);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-  } else {
-    mPendingRequests.AppendElement(aInfo.forget());
-  }
-
-  return NS_OK;
-}
-
-nsresult
-QuotaManagerService::BackgroundActorCreated(PBackgroundChild* aBackgroundActor)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aBackgroundActor);
-  MOZ_ASSERT(!mBackgroundActor);
-  MOZ_ASSERT(!mBackgroundActorFailed);
-
-  {
-    QuotaChild* actor = new QuotaChild(this);
-
-    mBackgroundActor =
-      static_cast<QuotaChild*>(aBackgroundActor->SendPQuotaConstructor(actor));
-  }
-
-  if (NS_WARN_IF(!mBackgroundActor)) {
-    BackgroundActorFailed();
+  if (!mBackgroundActor) {
+    mBackgroundActorFailed = true;
     return NS_ERROR_FAILURE;
   }
 
-  nsresult rv = NS_OK;
-
-  for (uint32_t index = 0, count = mPendingRequests.Length();
-       index < count;
-       index++) {
-    nsAutoPtr<PendingRequestInfo> info(mPendingRequests[index].forget());
-
-    nsresult rv2 = info->InitiateRequest(mBackgroundActor);
-
-    // Warn for every failure, but just return the first failure if there are
-    // multiple failures.
-    if (NS_WARN_IF(NS_FAILED(rv2)) && NS_SUCCEEDED(rv)) {
-      rv = rv2;
-    }
+  // If we already have a background actor then we can start this request now.
+  nsresult rv = aInfo->InitiateRequest(mBackgroundActor);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
   }
 
-  mPendingRequests.Clear();
-
-  return rv;
-}
-
-void
-QuotaManagerService::BackgroundActorFailed()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(!mPendingRequests.IsEmpty());
-  MOZ_ASSERT(!mBackgroundActor);
-  MOZ_ASSERT(!mBackgroundActorFailed);
-
-  mBackgroundActorFailed = true;
-
-  for (uint32_t index = 0, count = mPendingRequests.Length();
-       index < count;
-       index++) {
-    nsAutoPtr<PendingRequestInfo> info(mPendingRequests[index].forget());
-
-    RequestBase* request = info->GetRequest();
-    if (request) {
-      request->SetError(NS_ERROR_FAILURE);
-    }
-  }
-
-  mPendingRequests.Clear();
+  return NS_OK;
 }
 
 void
@@ -893,36 +806,6 @@ AbortOperationsRunnable::Run()
   quotaManager->AbortOperationsForProcess(mContentParentId);
 
   return NS_OK;
-}
-
-NS_IMPL_ISUPPORTS(QuotaManagerService::BackgroundCreateCallback,
-                  nsIIPCBackgroundChildCreateCallback)
-
-void
-QuotaManagerService::
-BackgroundCreateCallback::ActorCreated(PBackgroundChild* aActor)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aActor);
-  MOZ_ASSERT(mService);
-
-  RefPtr<QuotaManagerService> service;
-  mService.swap(service);
-
-  service->BackgroundActorCreated(aActor);
-}
-
-void
-QuotaManagerService::
-BackgroundCreateCallback::ActorFailed()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(mService);
-
-  RefPtr<QuotaManagerService> service;
-  mService.swap(service);
-
-  service->BackgroundActorFailed();
 }
 
 nsresult

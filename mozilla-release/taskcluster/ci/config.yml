@@ -1,0 +1,145 @@
+trust-domain: gecko
+project-repo-param-prefix: ''
+treeherder:
+    group-names:
+        'cram': 'Cram tests'
+        'mocha': 'Mocha unit tests'
+        'py': 'Python unit tests'
+        'A': 'Android Gradle tests'
+        'Fxfn-l': 'Firefox functional tests (local)'
+        'Fxfn-l-e10s': 'Firefox functional tests (local) with e10s'
+        'Fxfn-r': 'Firefox functional tests (remote)'
+        'Fxfn-r-e10s': 'Firefox functional tests (remote) with e10s'
+        'M': 'Mochitests'
+        'M-e10s': 'Mochitests with e10s'
+        'M-V': 'Mochitests on Valgrind'
+        'R': 'Reftests'
+        'R-e10s': 'Reftests with e10s'
+        'T': 'Talos performance tests'
+        'Tsd': 'Talos performance tests with Stylo disabled'
+        'Tss': 'Talos performance tests with Stylo sequential'
+        'T-e10s': 'Talos performance tests with e10s'
+        'Tsd-e10s': 'Talos performance tests with e10s, Stylo disabled'
+        'Tss-e10s': 'Talos performance tests with e10s, Stylo sequential'
+        'T-P-e10s': 'Talos performance tests with e10s and gecko profiling'
+        'tt-c': 'Telemetry client marionette tests'
+        'tt-c-e10s': 'Telemetry client marionette tests with e10s'
+        'SY-e10s': 'Are we slim yet tests by TaskCluster with e10s'
+        'SYsd-e10s': 'Are we slim yet tests by TaskCluster with e10s, Stylo disabled'
+        'SYss-e10s': 'Are we slim yet tests by TaskCluster with e10s, Stylo sequential'
+        'VP': 'VideoPuppeteer tests'
+        'W': 'Web platform tests'
+        'W-e10s': 'Web platform tests with e10s'
+        'X': 'Xpcshell tests'
+        'X-e10s': 'Xpcshell tests with e10s'
+        'L10n': 'Localised Repacks'
+        'L10n-Rpk': 'Localized Repackaged Repacks'
+        'BM-L10n': 'Beetmover for locales'
+        'BMR-L10n': 'Beetmover repackages for locales'
+        'c-Up': 'Balrog submission of complete updates'
+        'cs': 'Checksum signing'
+        'css': 'Checksum signing for source'
+        'rs': 'Repackage signing'
+        'BMcs': 'Beetmover checksums'
+        'BMcss': 'Beetmover checksums for source'
+        'Aries': 'Aries Device Image'
+        'Deb7': 'Packages for Debian 7'
+        'Deb9': 'Packages for Debian 9'
+        'Nexus 5-L': 'Nexus 5-L Device Image'
+        'I': 'Docker Image Builds'
+        'TL': 'Toolchain builds for Linux 64-bits'
+        'TM': 'Toolchain builds for OSX'
+        'TMW': 'Toolchain builds for Windows MinGW'
+        'TW32': 'Toolchain builds for Windows 32-bits'
+        'TW64': 'Toolchain builds for Windows 64-bits'
+        'WM32': 'MinGW builds for Windows 32-bits'
+        'WM64': 'MinGW builds for Windows 64-bits'
+        'Searchfox': 'Searchfox builds'
+        'SM': 'Spidermonkey builds'
+        'pub': 'APK publishing'
+        'p': 'Partial generation'
+        'ps': 'Partials signing'
+        'Rel': 'Release promotion'
+        'Snap': 'Snap image generation'
+        'langpack': 'Langpack sigatures and uploads'
+        'TPS': 'Sync tests'
+
+index:
+    products:
+        - 'firefox'
+        - 'fennec'
+        - 'mobile'
+        - 'static-analysis'
+        - 'devedition'
+        - 'source'
+
+try:
+    # We have a few platforms for which we want to do some "extra" builds, or at
+    # least build-ish things.  Sort of.  Anyway, these other things are implemented
+    # as different "platforms".  These do *not* automatically ride along with "-p
+    # all"
+    ridealong-builds:
+        'android-api-16':
+            - 'android-api-16-l10n'
+        'linux':
+            - 'linux-l10n'
+            - 'sm-arm-sim-linux32'
+        'linux64':
+            - 'linux64-l10n'
+            - 'sm-plain-linux64'
+            - 'sm-nojit-linux64'
+            - 'sm-nonunified-linux64'
+            - 'sm-arm-sim-linux32'
+            - 'sm-arm64-sim-linux64'
+            - 'sm-compacting-linux64'
+            - 'sm-rootanalysis-linux64'
+            - 'sm-package-linux64'
+            - 'sm-tsan-linux64'
+            - 'sm-asan-linux64'
+            - 'sm-mozjs-sys-linux64'
+            - 'sm-msan-linux64'
+            - 'sm-fuzzing-linux64'
+            - 'sm-rust-bindings-linux64'
+        'win32':
+            - 'sm-plain-win32'
+            - 'sm-compacting-win32'
+
+release-promotion:
+    products:
+        - 'devedition'
+        - 'fennec'
+        - 'firefox'
+
+scriptworker:
+    # See additional configuration in taskcluster/taskgraph/util/scriptworker.py
+    scope-prefix: 'project:releng'
+    worker-types:
+        'scriptworker-prov-v1/signing-linux-v1':
+            - 'project:releng:signing:cert:release-signing'
+            - 'project:releng:signing:cert:nightly-signing'
+        'scriptworker-prov-v1/depsigning':
+            - 'project:releng:signing:cert:dep-signing'
+        'scriptworker-prov-v1/beetmoverworker-v1':
+            - 'project:releng:beetmover:bucket:release'
+            - 'project:releng:beetmover:bucket:nightly'
+            - 'project:releng:beetmover:bucket:partner'
+        'scriptworker-prov-v1/beetmoverworker-dev':
+            - 'project:releng:beetmover:bucket:dep'
+            - 'project:releng:beetmover:bucket:dep-partner'
+        'scriptworker-prov-v1/balrogworker-v1':
+            - 'project:releng:balrog:server:nightly'
+            - 'project:releng:balrog:server:aurora'
+            - 'project:releng:balrog:server:beta'
+            - 'project:releng:balrog:server:release'
+            - 'project:releng:balrog:server:esr'
+        'scriptworker-prov-v1/balrog-dev':
+            - 'project:releng:balrog:server:dep'
+
+
+partner:
+    release:
+        release-partner-repack: git@github.com:mozilla-partners/repack-manifests.git
+        release-eme-free-repack: git@github.com:mozilla-partners/mozilla-EME-free-manifest
+    staging:
+        release-partner-repack: git@github.com:mozilla-releng/staging-repack-manifests.git
+        release-eme-free-repack: git@github.com:mozilla-releng/staging-repack-manifests.git

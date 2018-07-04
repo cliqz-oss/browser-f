@@ -2,21 +2,13 @@
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- * This Original Code has been modified by IBM Corporation. Modifications made by IBM
- * described herein are Copyright (c) International Business Machines Corporation, 2000.
- * Modifications to Mozilla code or documentation identified per MPL Section 3.3
- *
- * Date             Modified by     Description of modification
- * 04/20/2000       IBM Corp.      OS/2 VisualAge build.
- */
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
  * nsPropertyTable allows a set of arbitrary key/value pairs to be stored
  * for any number of nodes, in a global hashtable rather than on the nodes
  * themselves.  Nodes can be any type of object; the hashtable keys are
- * nsIAtom pointers, and the values are void pointers.
+ * nsAtom pointers, and the values are void pointers.
  */
 
 #include "nsPropertyTable.h"
@@ -25,7 +17,7 @@
 
 #include "PLDHashTable.h"
 #include "nsError.h"
-#include "nsIAtom.h"
+#include "nsAtom.h"
 
 struct PropertyListMapEntry : public PLDHashEntryHdr {
   const void  *key;
@@ -36,7 +28,7 @@ struct PropertyListMapEntry : public PLDHashEntryHdr {
 
 class nsPropertyTable::PropertyList {
 public:
-  PropertyList(nsIAtom*           aName,
+  PropertyList(nsAtom*           aName,
                NSPropertyDtorFunc aDtorFunc,
                void*              aDtorData,
                bool               aTransfer);
@@ -49,14 +41,14 @@ public:
   // Destroy all remaining properties (without removing them)
   void Destroy();
 
-  bool Equals(nsIAtom *aPropertyName)
+  bool Equals(nsAtom *aPropertyName)
   {
     return mName == aPropertyName;
   }
 
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf);
 
-  nsCOMPtr<nsIAtom>  mName;           // property name
+  RefPtr<nsAtom>  mName;           // property name
   PLDHashTable       mObjectValueMap; // map of object/value pairs
   NSPropertyDtorFunc mDtorFunc;       // property specific value dtor function
   void*              mDtorData;       // pointer to pass to dtor
@@ -88,7 +80,7 @@ nsPropertyTable::DeleteAllPropertiesFor(nsPropertyOwner aObject)
 
 nsresult
 nsPropertyTable::TransferOrDeleteAllPropertiesFor(nsPropertyOwner aObject,
-                                                  nsPropertyTable *aOtherTable)
+                                                  nsPropertyTable& aOtherTable)
 {
   nsresult rv = NS_OK;
   for (PropertyList* prop = mPropertyList; prop; prop = prop->mNext) {
@@ -96,20 +88,18 @@ nsPropertyTable::TransferOrDeleteAllPropertiesFor(nsPropertyOwner aObject,
       auto entry = static_cast<PropertyListMapEntry*>
                               (prop->mObjectValueMap.Search(aObject));
       if (entry) {
-        rv = aOtherTable->SetProperty(aObject, prop->mName,
-                                      entry->value, prop->mDtorFunc,
-                                      prop->mDtorData, prop->mTransfer);
+        rv = aOtherTable.SetProperty(aObject, prop->mName,
+                                     entry->value, prop->mDtorFunc,
+                                     prop->mDtorData, prop->mTransfer);
         if (NS_FAILED(rv)) {
           DeleteAllPropertiesFor(aObject);
-          aOtherTable->DeleteAllPropertiesFor(aObject);
-
+          aOtherTable.DeleteAllPropertiesFor(aObject);
           break;
         }
 
         prop->mObjectValueMap.RemoveEntry(entry);
       }
-    }
-    else {
+    } else {
       prop->DeletePropertyFor(aObject);
     }
   }
@@ -146,9 +136,9 @@ nsPropertyTable::EnumerateAll(NSPropertyFunc aCallBack, void* aData)
 
 void*
 nsPropertyTable::GetPropertyInternal(nsPropertyOwner aObject,
-                                     nsIAtom    *aPropertyName,
-                                     bool        aRemove,
-                                     nsresult   *aResult)
+                                     nsAtom* aPropertyName,
+                                     bool aRemove,
+                                     nsresult* aResult)
 {
   NS_PRECONDITION(aPropertyName && aObject, "unexpected null param");
   nsresult rv = NS_PROPTABLE_PROP_NOT_THERE;
@@ -175,13 +165,12 @@ nsPropertyTable::GetPropertyInternal(nsPropertyOwner aObject,
 }
 
 nsresult
-nsPropertyTable::SetPropertyInternal(nsPropertyOwner     aObject,
-                                     nsIAtom            *aPropertyName,
-                                     void               *aPropertyValue,
-                                     NSPropertyDtorFunc  aPropDtorFunc,
-                                     void               *aPropDtorData,
-                                     bool                aTransfer,
-                                     void              **aOldValue)
+nsPropertyTable::SetPropertyInternal(nsPropertyOwner aObject,
+                                     nsAtom* aPropertyName,
+                                     void* aPropertyValue,
+                                     NSPropertyDtorFunc aPropDtorFunc,
+                                     void* aPropDtorData,
+                                     bool aTransfer)
 {
   NS_PRECONDITION(aPropertyName && aObject, "unexpected null param");
 
@@ -213,15 +202,11 @@ nsPropertyTable::SetPropertyInternal(nsPropertyOwner     aObject,
   // A nullptr entry->key is the sign that the entry has just been allocated
   // for us.  If it's non-nullptr then we have an existing entry.
   if (entry->key) {
-    if (aOldValue)
-      *aOldValue = entry->value;
-    else if (propertyList->mDtorFunc)
+    if (propertyList->mDtorFunc) {
       propertyList->mDtorFunc(const_cast<void*>(entry->key), aPropertyName,
                               entry->value, propertyList->mDtorData);
+    }
     result = NS_PROPTABLE_PROP_OVERWRITTEN;
-  }
-  else if (aOldValue) {
-    *aOldValue = nullptr;
   }
   entry->key = aObject;
   entry->value = aPropertyValue;
@@ -231,7 +216,7 @@ nsPropertyTable::SetPropertyInternal(nsPropertyOwner     aObject,
 
 nsresult
 nsPropertyTable::DeleteProperty(nsPropertyOwner aObject,
-                                nsIAtom    *aPropertyName)
+                                nsAtom* aPropertyName)
 {
   NS_PRECONDITION(aPropertyName && aObject, "unexpected null param");
 
@@ -245,7 +230,7 @@ nsPropertyTable::DeleteProperty(nsPropertyOwner aObject,
 }
 
 nsPropertyTable::PropertyList*
-nsPropertyTable::GetPropertyListFor(nsIAtom* aPropertyName) const
+nsPropertyTable::GetPropertyListFor(nsAtom* aPropertyName) const
 {
   PropertyList* result;
 
@@ -260,7 +245,7 @@ nsPropertyTable::GetPropertyListFor(nsIAtom* aPropertyName) const
 
 //----------------------------------------------------------------------
 
-nsPropertyTable::PropertyList::PropertyList(nsIAtom            *aName,
+nsPropertyTable::PropertyList::PropertyList(nsAtom            *aName,
                                             NSPropertyDtorFunc  aDtorFunc,
                                             void               *aDtorData,
                                             bool                aTransfer)
@@ -334,7 +319,7 @@ nsPropertyTable::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
 
 /* static */
 void
-nsPropertyTable::SupportsDtorFunc(void *aObject, nsIAtom *aPropertyName,
+nsPropertyTable::SupportsDtorFunc(void *aObject, nsAtom *aPropertyName,
                                   void *aPropertyValue, void *aData)
 {
   nsISupports *propertyValue = static_cast<nsISupports*>(aPropertyValue);

@@ -38,7 +38,7 @@ BUILD_STATUS_FAILED = 'Failed'
 BUILD_STATUS_SUCCESSFUL = 'Successful'
 
 EMAIL_LIST = 'alexander@cliqz.com,leonid@cliqz.com,lucian@cliqz.com'
-EMAIL_LIST_SUCCESSFUL = 'kateryna@cliqz.com,prashant@cliqz.com,tamara@cliqz.com,marta@cliqz.com'
+EMAIL_LIST_SUCCESSFUL = 'kateryna@cliqz.com,prashant@cliqz.com,tamara@cliqz.com,marta@cliqz.com,oleksandra@cliqz.com'
 
 // Die early for missing build params
 CQZ_RELEASE_CHANNEL
@@ -46,6 +46,7 @@ CQZ_BUILD_ID
 COMMIT_ID
 REPO_URL
 CQZ_BUILD_DE_LOCALIZATION
+CQZ_BUILD_64BIT_WINDOWS
 LIN_REBUILD_IMAGE
 MAC_REBUILD_IMAGE
 WIN_REBUILD_IMAGE
@@ -60,6 +61,7 @@ stage("Copy XPI") {
     CQZ_VERSION=sh(returnStdout: true, script: "cat ./mozilla-release/browser/config/version_display.txt").trim()
     UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
     HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+    LAST_BUILDID_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/lastbuildid"
 
     withCredentials([[
                 $class: 'UsernamePasswordMultiBinding',
@@ -67,8 +69,9 @@ stage("Copy XPI") {
                 passwordVariable: 'AWS_SECRET_ACCESS_KEY',
                 usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
-        sh "s3cmd cp $CQZ_EXTENSION_URL $UPLOAD_PATH"
-        sh "s3cmd cp $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+        sh "aws s3 cp $CQZ_EXTENSION_URL $UPLOAD_PATH"
+        sh "aws s3 cp $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+        sh "rm -f lastbuildid && echo $CQZ_BUILD_ID > lastbuildid && aws s3 cp lastbuildid $LAST_BUILDID_PATH"
     }
 }
 
@@ -94,6 +97,23 @@ def getBaseBuildParams(jobName, entryPoint) {
     ]
   ]
 }
+
+
+def getBaseWinBuildParams(build_64bit, slave_name) {
+  return [
+    booleanParam(name: 'WIN_REBUILD_IMAGE', value: WIN_REBUILD_IMAGE.toBoolean()),
+    string(name: 'NODE_VNC_PORT', value: '7900'),
+    string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
+    string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
+    string(name: 'WIN_BUILD_NODE', value: 'master'),
+    string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
+    string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
+    string(name: 'NODE_CPU_COUNT', value: '8'),
+    booleanParam(name: 'CQZ_BUILD_64BIT_WINDOWS', value: build_64bit.toBoolean()),
+    string(name: 'WIN_BUILD_NODE', value: slave_name)
+  ]
+}
+
 
 def prepareBuildConfig() {
   return [
@@ -134,26 +154,36 @@ def prepareBuildConfig() {
           submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
         }
     },
-    'win': {
+    'win_32': {
         def buildParams = getBaseBuildParams('browser-f-win', 'Jenkinsfile.win')
-        buildParams.parameters += [
-          booleanParam(name: 'WIN_REBUILD_IMAGE', value: WIN_REBUILD_IMAGE.toBoolean()),
-          string(name: 'NODE_VNC_PORT', value: '7900'),
-          string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
-          string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
-          string(name: 'WIN_BUILD_NODE', value: 'master'),
-          string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
-          string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
-        ]
+        buildParams.parameters += getBaseWinBuildParams(false, 'master')
         if (CQZ_RELEASE_CHANNEL == "release") {
           buildParams.parameters += [
             string(name: 'NODE_MEMORY', value: '16000'),
-            string(name: 'NODE_CPU_COUNT', value: '6'),
           ]
         } else {
           buildParams.parameters += [
             string(name: 'NODE_MEMORY', value: '8000'),
-            string(name: 'NODE_CPU_COUNT', value: '6'),
+          ]
+        }
+        job = build buildParams
+        if (buildParams.parameters.contains(string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'))) {
+          submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
+          submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
+        } else {
+          submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
+        }
+    },
+    'win_64': {
+        def buildParams = getBaseBuildParams('browser-f-win', 'Jenkinsfile.win')
+        buildParams.parameters += getBaseWinBuildParams(true, 'rahm-win')
+        if (CQZ_RELEASE_CHANNEL == "release") {
+          buildParams.parameters += [
+            string(name: 'NODE_MEMORY', value: '16000'),
+          ]
+        } else {
+          buildParams.parameters += [
+            string(name: 'NODE_MEMORY', value: '8000'),
           ]
         }
         job = build buildParams
@@ -164,6 +194,7 @@ def prepareBuildConfig() {
           submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
         }
     }
+
   ]
 }
 

@@ -10,6 +10,12 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/TypeTraits.h"
 
+// GetCurrentTime is defined in winbase.h as zero argument macro forwarding to
+// GetTickCount().
+#ifdef GetCurrentTime
+#undef GetCurrentTime
+#endif
+
 namespace mozilla {
 
 // Utility class that converts time values represented as an unsigned integral
@@ -43,12 +49,17 @@ public:
   mozilla::TimeStamp
   GetTimeStampFromSystemTime(Time aTime,
                              CurrentTimeGetter& aCurrentTimeGetter) {
+    TimeStamp roughlyNow = TimeStamp::Now();
+
     // If the reference time is not set, use the current time value to fill
     // it in.
     if (mReferenceTimeStamp.IsNull()) {
+      // This sometimes happens when ::GetMessageTime returns 0 for the first
+      // message on Windows.
+      if (!aTime)
+        return roughlyNow;
       UpdateReferenceTime(aTime, aCurrentTimeGetter);
     }
-    TimeStamp roughlyNow = TimeStamp::Now();
 
     // Check for skew between the source of Time values and TimeStamp values.
     // We do this by comparing two durations (both in ms):

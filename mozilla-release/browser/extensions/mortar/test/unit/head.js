@@ -1,12 +1,12 @@
 "use strict";
 
-Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-Components.utils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 // For the following 5 lines of codes, we redirect the
 // path of the "ppapi.js" in addon to the exact file path.
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 let resHandler = Services.io.getProtocolHandler("resource")
-                         .QueryInterface(Components.interfaces.nsISubstitutingProtocolHandler);
+                         .QueryInterface(Ci.nsISubstitutingProtocolHandler);
 let dataURI = NetUtil.newURI(do_get_file("."));
 resHandler.setSubstitution("ppapi.js", dataURI);
 
@@ -53,7 +53,7 @@ function Call_PpbFunc(obj) {
 // PPAPIInstance constructor(id, rt, info, window, eventHandler, containerWindow, mm)
 let instance = new PPAPIInstance(instanceId, rt, info, new Mock_Window(), null /*docShell.chromeEventHandler*/, null, new Mock_MessageManager());
 
-do_register_cleanup(function () {
+registerCleanupFunction(function () {
   resHandler.setSubstitution("ppapi.js", null);
 })
 

@@ -1,5 +1,6 @@
 /* -*- Mode: indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set sts=2 sw=2 et tw=80: */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 "use strict";
 
 let scriptPage = url => `<html><head><meta charset="utf-8"><script src="${url}"></script></head><body>${url}</body></html>`;
@@ -26,7 +27,7 @@ add_task(async function testBrowserActionClickCanceled() {
 
   await extension.startup();
 
-  const {GlobalManager, Management: {global: {browserActionFor}}} = Cu.import("resource://gre/modules/Extension.jsm", {});
+  const {GlobalManager, Management: {global: {browserActionFor}}} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
 
   let ext = GlobalManager.extensionMap.get(extension.id);
   let browserAction = browserActionFor(ext);
@@ -81,7 +82,7 @@ add_task(async function testBrowserActionClickCanceled() {
 
   await extension.unload();
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function testBrowserActionDisabled() {
@@ -114,7 +115,7 @@ add_task(async function testBrowserActionDisabled() {
   await extension.awaitMessage("browserAction-disabled");
   await promiseAnimationFrame();
 
-  const {GlobalManager, Management: {global: {browserActionFor}}} = Cu.import("resource://gre/modules/Extension.jsm", {});
+  const {GlobalManager, Management: {global: {browserActionFor}}} = ChromeUtils.import("resource://gre/modules/Extension.jsm", {});
 
   let ext = GlobalManager.extensionMap.get(extension.id);
   let browserAction = browserActionFor(ext);

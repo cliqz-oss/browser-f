@@ -8,80 +8,37 @@ import os
 
 from buildconfig import topsrcdir
 from common import BaseConfigureTest
-from mozunit import main
+from mozunit import MockedOpen, main
 from mozbuild.configure.options import InvalidOptionError
 
 
 class TestToolkitMozConfigure(BaseConfigureTest):
-    def test_necko_protocols(self):
-        def get_value(arg):
-            sandbox = self.get_sandbox({}, {}, [arg])
-            return sandbox._value_for(sandbox['necko_protocols'])
-
-        default_protocols = get_value('')
-        self.assertNotEqual(default_protocols, ())
-
-        # Backwards compatibility
-        self.assertEqual(get_value('--enable-necko-protocols'),
-                         default_protocols)
-
-        self.assertEqual(get_value('--enable-necko-protocols=yes'),
-                         default_protocols)
-
-        self.assertEqual(get_value('--enable-necko-protocols=all'),
-                         default_protocols)
-
-        self.assertEqual(get_value('--enable-necko-protocols=default'),
-                         default_protocols)
-
-        self.assertEqual(get_value('--enable-necko-protocols='), ())
-
-        self.assertEqual(get_value('--enable-necko-protocols=no'), ())
-
-        self.assertEqual(get_value('--enable-necko-protocols=none'), ())
-
-        self.assertEqual(get_value('--disable-necko-protocols'), ())
-
-        self.assertEqual(get_value('--enable-necko-protocols=http'),
-                         ('http',))
-
-        self.assertEqual(get_value('--enable-necko-protocols=http,about'),
-                         ('about', 'http'))
-
-        self.assertEqual(get_value('--enable-necko-protocols=http,none'), ())
-
-        self.assertEqual(get_value('--enable-necko-protocols=-http'), ())
-
-        self.assertEqual(get_value('--enable-necko-protocols=none,http'),
-                         ('http',))
-
-        self.assertEqual(
-            get_value('--enable-necko-protocols=all,-http,-about'),
-            tuple(p for p in default_protocols if p not in ('http', 'about')))
-
-        self.assertEqual(
-            get_value('--enable-necko-protocols=default,-http,-about'),
-            tuple(p for p in default_protocols if p not in ('http', 'about')))
-
-    def test_developer_options(self):
+    def test_developer_options(self, milestone='42.0a1'):
         def get_value(args=[], environ={}):
             sandbox = self.get_sandbox({}, {}, args, environ)
             return sandbox._value_for(sandbox['developer_options'])
 
-        self.assertEqual(get_value(), True)
+        milestone_path = os.path.join(topsrcdir, 'config', 'milestone.txt')
+        with MockedOpen({milestone_path: milestone}):
+            # developer options are enabled by default on "nightly" milestone
+            # only
+            self.assertEqual(get_value(), 'a' in milestone or None)
 
-        self.assertEqual(get_value(['--enable-release']), None)
+            self.assertEqual(get_value(['--enable-release']), None)
 
-        self.assertEqual(get_value(environ={'MOZILLA_OFFICIAL': 1}), None)
+            self.assertEqual(get_value(environ={'MOZILLA_OFFICIAL': 1}), None)
 
-        self.assertEqual(get_value(['--enable-release'],
-                         environ={'MOZILLA_OFFICIAL': 1}), None)
+            self.assertEqual(get_value(['--enable-release'],
+                             environ={'MOZILLA_OFFICIAL': 1}), None)
 
-        with self.assertRaises(InvalidOptionError):
-            get_value(['--disable-release'], environ={'MOZILLA_OFFICIAL': 1})
+            with self.assertRaises(InvalidOptionError):
+                get_value(['--disable-release'],
+                          environ={'MOZILLA_OFFICIAL': 1})
 
-        self.assertEqual(get_value(environ={'MOZ_AUTOMATION': 1}), None)
+            self.assertEqual(get_value(environ={'MOZ_AUTOMATION': 1}), None)
 
+    def test_developer_options_release(self):
+        self.test_developer_options('42.0')
 
 if __name__ == '__main__':
     main()

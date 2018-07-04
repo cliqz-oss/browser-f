@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,7 +18,7 @@ class nsMathMLmpaddedFrame : public nsMathMLContainerFrame {
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsMathMLmpaddedFrame)
 
-  friend nsIFrame* NS_NewMathMLmpaddedFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  friend nsIFrame* NS_NewMathMLmpaddedFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
   NS_IMETHOD
   InheritAutomaticData(nsIFrame* aParent) override;
@@ -45,8 +46,8 @@ public:
   }
 
 protected:
-  explicit nsMathMLmpaddedFrame(nsStyleContext* aContext)
-    : nsMathMLContainerFrame(aContext, kClassID)
+  explicit nsMathMLmpaddedFrame(ComputedStyle* aStyle)
+    : nsMathMLContainerFrame(aStyle, kClassID)
     , mWidthSign(0)
     , mHeightSign(0)
     , mDepthSign(0)

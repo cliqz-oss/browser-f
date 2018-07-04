@@ -1,6 +1,6 @@
 var rootDir = getRootDirectory(gTestPath);
 const gTestRoot = rootDir.replace("chrome://mochitests/content/", "http://127.0.0.1:8888/");
-var gPluginHost = Components.classes["@mozilla.org/plugin/host;1"].getService(Components.interfaces.nsIPluginHost);
+var gPluginHost = Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost);
 
 add_task(async function() {
   registerCleanupFunction(function() {
@@ -31,7 +31,7 @@ add_task(async function() {
   let popupNotification = PopupNotifications.getNotification("click-to-play-plugins", gBrowser.selectedBrowser);
   ok(popupNotification, "Test 1, Should have a click-to-play notification");
 
-  let pluginRemovedPromise = waitForEvent(gBrowser.selectedBrowser, "PluginRemoved", null, true, true);
+  let pluginRemovedPromise = BrowserTestUtils.waitForContentEvent(gBrowser.selectedBrowser, "PluginRemoved", true, null, true);
   await ContentTask.spawn(gBrowser.selectedBrowser, {}, async function() {
     let plugin = content.document.getElementById("secondtestA");
     plugin.remove();

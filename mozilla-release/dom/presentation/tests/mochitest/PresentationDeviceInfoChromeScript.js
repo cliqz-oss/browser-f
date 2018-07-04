@@ -3,15 +3,13 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 'use strict';
 
-const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-
-const { XPCOMUtils } = Cu.import('resource://gre/modules/XPCOMUtils.jsm');
+const { XPCOMUtils } = ChromeUtils.import('resource://gre/modules/XPCOMUtils.jsm');
 
 const manager = Cc['@mozilla.org/presentation-device/manager;1']
                   .getService(Ci.nsIPresentationDeviceManager);
 
 var testProvider = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationDeviceProvider]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationDeviceProvider]),
   forceDiscovery: function() {
     sendAsyncMessage('force-discovery');
   },
@@ -19,7 +17,7 @@ var testProvider = {
 };
 
 var testDevice = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationDevice]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationDevice]),
   establishControlChannel: function() {
     return null;
   },
@@ -34,7 +32,7 @@ var testDevice = {
 };
 
 var testDevice1 = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationDevice]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationDevice]),
   id: 'dummyid',
   name: 'dummyName',
   type: 'dummyType',
@@ -48,7 +46,7 @@ var testDevice1 = {
 };
 
 var testDevice2 = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationDevice]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationDevice]),
   id: 'dummyid',
   name: 'dummyName',
   type: 'dummyType',
@@ -62,7 +60,7 @@ var testDevice2 = {
 };
 
 var mockedDeviceWithoutSupportedURL = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationDevice]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationDevice]),
   id: 'dummyid',
   name: 'dummyName',
   type: 'dummyType',
@@ -76,7 +74,7 @@ var mockedDeviceWithoutSupportedURL = {
 };
 
 var mockedDeviceSupportHttpsURL = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPresentationDevice]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPresentationDevice]),
   id: 'dummyid',
   name: 'dummyName',
   type: 'dummyType',
@@ -85,7 +83,7 @@ var mockedDeviceSupportHttpsURL = {
   },
   disconnect: function() {},
   isRequestedUrlSupported: function(requestedUrl) {
-    if (requestedUrl.indexOf("https://") != -1) {
+    if (requestedUrl.includes("https://")) {
       return true;
     }
     return false;

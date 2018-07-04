@@ -19,8 +19,8 @@ static StaticAutoPtr<PlatformChild> sPlatformChild;
 
 DocAccessibleChild::DocAccessibleChild(DocAccessible* aDoc, IProtocol* aManager)
   : DocAccessibleChildBase(aDoc)
-  , mEmulatedWindowHandle(nullptr)
   , mIsRemoteConstructed(false)
+  , mEmulatedWindowHandle(nullptr)
 {
   MOZ_COUNT_CTOR_INHERITED(DocAccessibleChild, DocAccessibleChildBase);
   if (!sPlatformChild) {
@@ -49,10 +49,10 @@ DocAccessibleChild::Shutdown()
 }
 
 ipc::IPCResult
-DocAccessibleChild::RecvParentCOMProxy(const IAccessibleHolder& aParentCOMProxy)
+DocAccessibleChild::RecvParentCOMProxy(const IDispatchHolder& aParentCOMProxy)
 {
   MOZ_ASSERT(!mParentProxy && !aParentCOMProxy.IsNull());
-  mParentProxy.reset(const_cast<IAccessibleHolder&>(aParentCOMProxy).Release());
+  mParentProxy.reset(const_cast<IDispatchHolder&>(aParentCOMProxy).Release());
   SetConstructedInParentProcess();
 
   for (uint32_t i = 0, l = mDeferredEvents.Length(); i < l; ++i) {
@@ -66,13 +66,13 @@ DocAccessibleChild::RecvParentCOMProxy(const IAccessibleHolder& aParentCOMProxy)
 
 ipc::IPCResult
 DocAccessibleChild::RecvEmulatedWindow(const WindowsHandle& aEmulatedWindowHandle,
-                                       const IAccessibleHolder& aEmulatedWindowCOMProxy)
+                                       const IDispatchHolder& aEmulatedWindowCOMProxy)
 {
   mEmulatedWindowHandle = reinterpret_cast<HWND>(aEmulatedWindowHandle);
   if (!aEmulatedWindowCOMProxy.IsNull()) {
     MOZ_ASSERT(!mEmulatedWindowProxy);
     mEmulatedWindowProxy.reset(
-      const_cast<IAccessibleHolder&>(aEmulatedWindowCOMProxy).Release());
+      const_cast<IDispatchHolder&>(aEmulatedWindowCOMProxy).Release());
   }
 
   return IPC_OK();
@@ -227,10 +227,11 @@ DocAccessibleChild::SendTextChangeEvent(const uint64_t& aID,
                                         const int32_t& aStart,
                                         const uint32_t& aLen,
                                         const bool& aIsInsert,
-                                        const bool& aFromUser)
+                                        const bool& aFromUser,
+                                        const bool aDoSyncCheck)
 {
   if (IsConstructedInParentProcess()) {
-    if (aStr.Contains(L'\xfffc')) {
+    if (aDoSyncCheck && aStr.Contains(L'\xfffc')) {
       // The AT is going to need to reenter content while the event is being
       // dispatched synchronously.
       return PDocAccessibleChild::SendSyncTextChangeEvent(aID, aStr, aStart,
@@ -262,7 +263,7 @@ DocAccessibleChild::SendSelectionEvent(const uint64_t& aID,
 }
 
 bool
-DocAccessibleChild::SendRoleChangedEvent(const uint32_t& aRole)
+DocAccessibleChild::SendRoleChangedEvent(const a11y::role& aRole)
 {
   if (IsConstructedInParentProcess()) {
     return PDocAccessibleChild::SendRoleChangedEvent(aRole);
@@ -317,4 +318,3 @@ DocAccessibleChild::RecvRestoreFocus()
 
 } // namespace a11y
 } // namespace mozilla
-

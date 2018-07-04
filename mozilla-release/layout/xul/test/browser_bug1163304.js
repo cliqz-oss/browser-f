@@ -1,6 +1,7 @@
 function test() {
   waitForExplicitFinish();
 
+  Services.prefs.setBoolPref("browser.search.widget.inNavBar", true);
   let searchBar = BrowserSearch.searchBar;
   searchBar.focus();
 
@@ -18,16 +19,17 @@ function test() {
           is(DOMWindowUtils.IMEStatus, DOMWindowUtils.IME_STATUS_DISABLED,
              "IME should not be available when menubar is active");
           // Inactivate the menubar (and restore the focus to the searchbar
-          EventUtils.synthesizeKey("VK_ESCAPE", {});
+          EventUtils.synthesizeKey("KEY_Escape");
           is(DOMWindowUtils.IMEStatus, DOMWindowUtils.IME_STATUS_ENABLED,
              "IME should be available after focus is back to the searchbar");
+          Services.prefs.clearUserPref("browser.search.widget.inNavBar");
           finish();
         }, 0);
       }, {once: true});
       // Activate the menubar, then, the popup should be closed
-      EventUtils.synthesizeKey("VK_ALT", {});
+      EventUtils.synthesizeKey("KEY_Alt");
     }, 0);
   }, {once: true});
   // Open popup of the searchbar
-  EventUtils.synthesizeKey("VK_F4", {});
+  EventUtils.synthesizeKey("KEY_F4");
 }

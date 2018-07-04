@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:set ts=2 sts=2 sw=2 et cin:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -97,7 +97,7 @@ public:
                                                            double aContentsScaleFactor = 1.0,
                                                            bool aHasAlpha = true);
 
-  explicit MacIOSurface(const void *aIOSurfacePtr,
+  explicit MacIOSurface(IOSurfacePtr aIOSurfacePtr,
                         double aContentsScaleFactor = 1.0,
                         bool aHasAlpha = true);
   ~MacIOSurface();
@@ -130,6 +130,11 @@ public:
                                   CGLContextObj ctxt,
                                   size_t plane,
                                   mozilla::gfx::SurfaceFormat* aOutReadFormat = nullptr);
+  CGLError CGLTexImageIOSurface2D(CGLContextObj ctxt,
+                                  GLenum target, GLenum internalFormat,
+                                  GLsizei width, GLsizei height,
+                                  GLenum format, GLenum type,
+                                  GLuint plane) const;
   already_AddRefed<SourceSurface> GetAsSurface();
   CGContextRef CreateIOSurfaceContext();
 
@@ -144,7 +149,7 @@ public:
 
 private:
   friend class nsCARenderer;
-  const void* mIOSurfacePtr;
+  const IOSurfacePtr mIOSurfacePtr;
   double mContentsScaleFactor;
   bool mHasAlpha;
 };

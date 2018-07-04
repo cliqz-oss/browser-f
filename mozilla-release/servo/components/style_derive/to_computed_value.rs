@@ -2,51 +2,83 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use quote;
-use syn;
-use synstructure;
+use cg;
+use quote::Tokens;
+use syn::DeriveInput;
+use synstructure::BindStyle;
 
-pub fn derive(input: syn::DeriveInput) -> quote::Tokens {
+pub fn derive(mut input: DeriveInput) -> Tokens {
+    let mut where_clause = input.generics.where_clause.take();
+    let (to_body, from_body) = {
+        let params = input.generics.type_params().collect::<Vec<_>>();
+        for param in &params {
+            cg::add_predicate(
+                &mut where_clause,
+                parse_quote!(#param: ::values::computed::ToComputedValue),
+            );
+        }
+
+        let to_body = cg::fmap_match(&input, BindStyle::Ref, |binding| {
+            let attrs = cg::parse_field_attrs::<ComputedValueAttrs>(&binding.ast());
+            if attrs.field_bound {
+                let ty = &binding.ast().ty;
+
+                let output_type = cg::map_type_params(ty, &params, &mut |ident| {
+                    parse_quote!(<#ident as ::values::computed::ToComputedValue>::ComputedValue)
+                });
+
+                cg::add_predicate(
+                    &mut where_clause,
+                    parse_quote!(
+                        #ty: ::values::computed::ToComputedValue<ComputedValue = #output_type>
+                    ),
+                );
+            }
+            quote! {
+                ::values::computed::ToComputedValue::to_computed_value(#binding, context)
+            }
+        });
+        let from_body = cg::fmap_match(&input, BindStyle::Ref, |binding| {
+            quote! {
+                ::values::computed::ToComputedValue::from_computed_value(#binding)
+            }
+        });
+
+        (to_body, from_body)
+    };
+
+    input.generics.where_clause = where_clause;
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let mut where_clause = where_clause.clone();
-    for param in &input.generics.ty_params {
-        where_clause.predicates.push(where_predicate(syn::Ty::Path(None, param.ident.clone().into()), None));
+
+    if input.generics.type_params().next().is_none() {
+        return quote! {
+            impl #impl_generics ::values::computed::ToComputedValue for #name #ty_generics
+            #where_clause
+            {
+                type ComputedValue = Self;
+
+                #[inline]
+                fn to_computed_value(
+                    &self,
+                    _context: &::values::computed::Context,
+                ) -> Self::ComputedValue {
+                    ::std::clone::Clone::clone(self)
+                }
+
+                #[inline]
+                fn from_computed_value(computed: &Self::ComputedValue) -> Self {
+                    ::std::clone::Clone::clone(computed)
+                }
+            }
+        }
     }
 
-    let computed_value_type = syn::Path::from(syn::PathSegment {
-        ident: name.clone(),
-        parameters: syn::PathParameters::AngleBracketed(syn::AngleBracketedParameterData {
-            lifetimes: input.generics.lifetimes.iter().map(|l| {
-                l.lifetime.clone()
-            }).collect(),
-            types: input.generics.ty_params.iter().map(|ty| {
-                syn::Ty::Path(
-                    Some(syn::QSelf {
-                        ty: Box::new(syn::Ty::Path(None, ty.ident.clone().into())),
-                        position: 3,
-                    }),
-                    syn::Path {
-                        global: true,
-                        segments: vec![
-                            "values".into(),
-                            "computed".into(),
-                            "ToComputedValue".into(),
-                            "ComputedValue".into(),
-                        ],
-                    },
-                )
-            }).collect(),
-            .. Default::default()
-        }),
-    });
-
-    let to_body = match_body(&input, |field| {
-        quote!(::values::computed::ToComputedValue::to_computed_value(#field, context))
-    });
-    let from_body = match_body(&input, |field| {
-        quote!(::values::computed::ToComputedValue::from_computed_value(#field))
-    });
+    let computed_value_type = cg::fmap_trait_output(
+        &input,
+        &parse_quote!(values::computed::ToComputedValue),
+        "ComputedValue".into(),
+    );
 
     quote! {
         impl #impl_generics ::values::computed::ToComputedValue for #name #ty_generics #where_clause {
@@ -70,73 +102,8 @@ pub fn derive(input: syn::DeriveInput) -> quote::Tokens {
     }
 }
 
-fn match_body<F>(input: &syn::DeriveInput, f: F) -> quote::Tokens
-    where F: Fn(&synstructure::BindingInfo) -> quote::Tokens,
-{
-    let by_ref = synstructure::BindStyle::Ref.into();
-    let by_value = synstructure::BindStyle::Move.into();
-
-    synstructure::each_variant(&input, &by_ref, |fields, variant| {
-        let name = if let syn::Body::Enum(_) = input.body {
-            format!("{}::{}", input.ident, variant.ident).into()
-        } else {
-            variant.ident.clone()
-        };
-        let (computed_value, computed_fields) = synstructure::match_pattern(&name, &variant.data, &by_value);
-        let fields_pairs = fields.iter().zip(computed_fields.iter());
-        let mut computations = quote!();
-        computations.append_all(fields_pairs.map(|(field, computed_field)| {
-            let expr = f(field);
-            quote!(let #computed_field = #expr;)
-        }));
-        Some(quote!(
-            #computations
-            #computed_value
-        ))
-    })
-}
-
-/// `#ty: ::values::computed::ToComputedValue<ComputedValue = #computed_value,>`
-fn where_predicate(ty: syn::Ty, computed_value: Option<syn::Ty>) -> syn::WherePredicate {
-    syn::WherePredicate::BoundPredicate(syn::WhereBoundPredicate {
-        bound_lifetimes: vec![],
-        bounded_ty: ty,
-        bounds: vec![syn::TyParamBound::Trait(
-            syn::PolyTraitRef {
-                bound_lifetimes: vec![],
-                trait_ref: trait_ref(computed_value),
-            },
-            syn::TraitBoundModifier::None
-        )],
-    })
-}
-
-/// `::values::computed::ToComputedValue<ComputedValue = #computed_value,>`
-fn trait_ref(computed_value: Option<syn::Ty>) -> syn::Path {
-    syn::Path {
-        global: true,
-        segments: vec![
-            "values".into(),
-            "computed".into(),
-            syn::PathSegment {
-                ident: "ToComputedValue".into(),
-                parameters: syn::PathParameters::AngleBracketed(
-                    syn::AngleBracketedParameterData {
-                        bindings: trait_bindings(computed_value),
-                        .. Default::default()
-                    }
-                ),
-            }
-        ],
-    }
-}
-
-/// `ComputedValue = #computed_value,`
-fn trait_bindings(computed_value: Option<syn::Ty>) -> Vec<syn::TypeBinding> {
-    computed_value.into_iter().map(|ty| {
-        syn::TypeBinding {
-            ident: "ComputedValue".into(),
-            ty: ty,
-        }
-    }).collect()
+#[darling(attributes(compute), default)]
+#[derive(Default, FromField)]
+struct ComputedValueAttrs {
+    field_bound: bool,
 }

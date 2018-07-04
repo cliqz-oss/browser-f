@@ -36,7 +36,7 @@ for (let key of Object.keys(ThreadSafeDevToolsUtils)) {
  * @param Debugger.Object debuggerObject
  * @return bool
  */
-exports.isCPOW = function (debuggerObject) {
+exports.isCPOW = function(debuggerObject) {
   try {
     return Cu.isCrossProcessWrapper(debuggerObject.unsafeDereference());
   } catch (e) { }
@@ -46,7 +46,7 @@ exports.isCPOW = function (debuggerObject) {
 /**
  * Waits for the next tick in the event loop to execute a callback.
  */
-exports.executeSoon = function (fn) {
+exports.executeSoon = function(fn) {
   if (isWorker) {
     setImmediate(fn);
   } else {
@@ -73,7 +73,7 @@ exports.executeSoon = function (fn) {
  * @return Promise
  *         A promise that is resolved after the next tick in the event loop.
  */
-exports.waitForTick = function () {
+exports.waitForTick = function() {
   let deferred = defer();
   exports.executeSoon(deferred.resolve);
   return deferred.promise;
@@ -87,7 +87,7 @@ exports.waitForTick = function () {
  * @return Promise
  *         A promise that is resolved after the specified amount of time passes.
  */
-exports.waitForTime = function (delay) {
+exports.waitForTime = function(delay) {
   let deferred = defer();
   setTimeout(deferred.resolve, delay);
   return deferred.promise;
@@ -108,7 +108,7 @@ exports.waitForTime = function (delay) {
  *          A promise that is resolved once the whole array has been iterated
  *          over, and all promises returned by the fn callback are resolved.
  */
-exports.yieldingEach = function (array, fn) {
+exports.yieldingEach = function(array, fn) {
   const deferred = defer();
 
   let i = 0;
@@ -155,10 +155,10 @@ exports.yieldingEach = function (array, fn) {
  *        The callback that will be called to determine the value. Will be
  *        called with the |this| value of the current instance.
  */
-exports.defineLazyPrototypeGetter = function (object, key, callback) {
+exports.defineLazyPrototypeGetter = function(object, key, callback) {
   Object.defineProperty(object, key, {
     configurable: true,
-    get: function () {
+    get: function() {
       const value = callback.call(this);
 
       Object.defineProperty(this, key, {
@@ -182,25 +182,111 @@ exports.defineLazyPrototypeGetter = function (object, key, callback) {
  *        The key to look for.
  * @return Any
  */
-exports.getProperty = function (object, key) {
+exports.getProperty = function(object, key) {
   let root = object;
-  try {
-    do {
-      const desc = object.getOwnPropertyDescriptor(key);
-      if (desc) {
-        if ("value" in desc) {
-          return desc.value;
-        }
-        // Call the getter if it's safe.
-        return exports.hasSafeGetter(desc) ? desc.get.call(root).return : undefined;
+  while (object && exports.isSafeDebuggerObject(object)) {
+    let desc;
+    try {
+      desc = object.getOwnPropertyDescriptor(key);
+    } catch (e) {
+      // The above can throw when the debuggee does not subsume the object's
+      // compartment, or for some WrappedNatives like Cu.Sandbox.
+      return undefined;
+    }
+    if (desc) {
+      if ("value" in desc) {
+        return desc.value;
       }
-      object = object.proto;
-    } while (object);
-  } catch (e) {
-    // If anything goes wrong report the error and return undefined.
-    exports.reportException("getProperty", e);
+      // Call the getter if it's safe.
+      if (exports.hasSafeGetter(desc)) {
+        try {
+          return desc.get.call(root).return;
+        } catch (e) {
+          // If anything goes wrong report the error and return undefined.
+          exports.reportException("getProperty", e);
+        }
+      }
+      return undefined;
+    }
+    object = object.proto;
   }
   return undefined;
+};
+
+/**
+ * Removes all the non-opaque security wrappers of a debuggee object.
+ *
+ * @param obj Debugger.Object
+ *        The debuggee object to be unwrapped.
+ * @return Debugger.Object|null|undefined
+ *      - If the object has no wrapper, the same `obj` is returned. Note DeadObject
+ *        objects belong to this case.
+ *      - Otherwise, if the debuggee doesn't subsume object's compartment, returns `null`.
+ *      - Otherwise, if the object belongs to an invisible-to-debugger compartment,
+ *        returns `undefined`. Note CPOW objects belong to this case.
+ *      - Otherwise, returns the unwrapped object.
+ */
+exports.unwrap = function unwrap(obj) {
+  // Check if `obj` has an opaque wrapper.
+  if (obj.class === "Opaque") {
+    return obj;
+  }
+
+  // Attempt to unwrap via `obj.unwrap()`. Note that:
+  // - This will return `null` if the debuggee does not subsume object's compartment.
+  // - This will throw if the object belongs to an invisible-to-debugger compartment.
+  //   This case includes CPOWs (see bug 1391449).
+  // - This will return `obj` if there is no wrapper.
+  let unwrapped;
+  try {
+    unwrapped = obj.unwrap();
+  } catch (err) {
+    return undefined;
+  }
+
+  // Check if further unwrapping is not possible.
+  if (!unwrapped || unwrapped === obj) {
+    return unwrapped;
+  }
+
+  // Recursively remove additional security wrappers.
+  return unwrap(unwrapped);
+};
+
+/**
+ * Checks whether a debuggee object is safe. Unsafe objects may run proxy traps or throw
+ * when using `proto`, `isExtensible`, `isFrozen` or `isSealed`. Note that safe objects
+ * may still throw when calling `getOwnPropertyNames`, `getOwnPropertyDescriptor`, etc.
+ * Also note CPOW objects are considered to be unsafe, and DeadObject objects to be safe.
+ *
+ * @param obj Debugger.Object
+ *        The debuggee object to be checked.
+ * @return boolean
+ */
+exports.isSafeDebuggerObject = function(obj) {
+  let unwrapped = exports.unwrap(obj);
+
+  // Objects belonging to an invisible-to-debugger compartment might be proxies,
+  // so just in case consider them unsafe. CPOWs are included in this case.
+  if (unwrapped === undefined) {
+    return false;
+  }
+
+  // If the debuggee does not subsume the object's compartment, most properties won't
+  // be accessible. Cross-origin Window and Location objects might expose some, though.
+  // Therefore, it must be considered safe. Note that proxy objects have fully opaque
+  // security wrappers, so proxy traps won't run in this case.
+  if (unwrapped === null) {
+    return true;
+  }
+
+  // Proxy objects can run traps when accessed. `isProxy` getter is called on `unwrapped`
+  // instead of on `obj` in order to detect proxies behind transparent wrappers.
+  if (unwrapped.isProxy) {
+    return false;
+  }
+
+  return true;
 };
 
 /**
@@ -211,16 +297,12 @@ exports.getProperty = function (object, key) {
  * @return Boolean
  *         Whether a safe getter was found.
  */
-exports.hasSafeGetter = function (desc) {
+exports.hasSafeGetter = function(desc) {
   // Scripted functions that are CCWs will not appear scripted until after
   // unwrapping.
-  try {
-    let fn = desc.get.unwrap();
-    return fn && fn.callable && fn.class == "Function" && fn.script === undefined;
-  } catch (e) {
-    // Avoid exception 'Object in compartment marked as invisible to Debugger'
-    return false;
-  }
+  let fn = desc.get;
+  fn = fn && exports.unwrap(fn);
+  return fn && fn.callable && fn.class == "Function" && fn.script === undefined;
 };
 
 /**
@@ -235,7 +317,7 @@ exports.hasSafeGetter = function (desc) {
  * @return Boolean
  *         True if it is safe to read properties from obj, or false otherwise.
  */
-exports.isSafeJSObject = function (obj) {
+exports.isSafeJSObject = function(obj) {
   // If we are running on a worker thread, Cu is not available. In this case,
   // we always return false, just to be on the safe side.
   if (isWorker) {
@@ -248,25 +330,51 @@ exports.isSafeJSObject = function (obj) {
     return true;
   }
 
-  let principal = Cu.getObjectPrincipal(obj);
-  if (Services.scriptSecurityManager.isSystemPrincipal(principal)) {
-    // allow chrome objects
+  // Xray wrappers protect against unintended code execution.
+  if (Cu.isXrayWrapper(obj)) {
     return true;
   }
 
-  return Cu.isXrayWrapper(obj);
+  // If there aren't Xrays, only allow chrome objects.
+  let principal = Cu.getObjectPrincipal(obj);
+  if (!Services.scriptSecurityManager.isSystemPrincipal(principal)) {
+    return false;
+  }
+
+  // Scripted proxy objects without Xrays can run their proxy traps.
+  if (Cu.isProxy(obj)) {
+    return false;
+  }
+
+  // Even if `obj` looks safe, an unsafe object in its prototype chain may still
+  // run unintended code, e.g. when using the `instanceof` operator.
+  let proto = Object.getPrototypeOf(obj);
+  if (proto && !exports.isSafeJSObject(proto)) {
+    return false;
+  }
+
+  // Allow non-problematic chrome objects.
+  return true;
 };
 
-exports.dumpn = function (str) {
+/**
+ * Dump with newline - This is a logging function that will only output when
+ * the preference "devtools.debugger.log" is set to true. Typically it is used
+ * for logging the remote debugging protocol calls.
+ */
+exports.dumpn = function(str) {
   if (flags.wantLogging) {
     dump("DBG-SERVER: " + str + "\n");
   }
 };
 
 /**
- * A verbose logger for low-level tracing.
+ * Dump verbose - This is a verbose logger for low-level tracing, that is typically
+ * used to provide information about the remote debugging protocol's transport
+ * mechanisms. The logging can be enabled by changing the preferences
+ * "devtools.debugger.log" and "devtools.debugger.log.verbose" to true.
  */
-exports.dumpv = function (msg) {
+exports.dumpv = function(msg) {
   if (flags.wantVerbose) {
     exports.dumpn(msg);
   }
@@ -283,9 +391,9 @@ exports.dumpv = function (msg) {
  *        A function that returns what the getter should return.  This will
  *        only ever be called once.
  */
-exports.defineLazyGetter = function (object, name, lambda) {
+exports.defineLazyGetter = function(object, name, lambda) {
   Object.defineProperty(object, name, {
-    get: function () {
+    get: function() {
       delete object[name];
       object[name] = lambda.apply(object);
       return object[name];
@@ -299,15 +407,13 @@ DevToolsUtils.defineLazyGetter(this, "AppConstants", () => {
   if (isWorker) {
     return {};
   }
-  const scope = {};
-  Cu.import("resource://gre/modules/AppConstants.jsm", scope);
-  return scope.AppConstants;
+  return require("resource://gre/modules/AppConstants.jsm").AppConstants;
 });
 
 /**
  * No operation. The empty function.
  */
-exports.noop = function () { };
+exports.noop = function() { };
 
 let assertionFailureCount = 0;
 
@@ -334,7 +440,6 @@ function reallyAssert(condition, message) {
  *
  * Assertions are enabled when any of the following are true:
  *   - This is a DEBUG_JS_MODULES build
- *   - This is a DEBUG build
  *   - flags.testing is set to true
  *
  * If assertions are enabled, then `condition` is checked and if false-y, the
@@ -343,7 +448,7 @@ function reallyAssert(condition, message) {
  * If assertions are not enabled, then this function is a no-op.
  */
 Object.defineProperty(exports, "assert", {
-  get: () => (AppConstants.DEBUG || AppConstants.DEBUG_JS_MODULES || flags.testing)
+  get: () => (AppConstants.DEBUG_JS_MODULES || flags.testing)
     ? reallyAssert
     : exports.noop,
 });
@@ -362,20 +467,20 @@ Object.defineProperty(exports, "assert", {
  *        The name of the symbol exported by the module.
  *        This parameter is optional and defaults to name.
  */
-exports.defineLazyModuleGetter = function (object, name, resource, symbol) {
-  this.defineLazyGetter(object, name, function () {
+exports.defineLazyModuleGetter = function(object, name, resource, symbol) {
+  this.defineLazyGetter(object, name, function() {
     let temp = {};
-    Cu.import(resource, temp);
+    ChromeUtils.import(resource, temp);
     return temp[symbol || name];
   });
 };
 
 DevToolsUtils.defineLazyGetter(this, "NetUtil", () => {
-  return Cu.import("resource://gre/modules/NetUtil.jsm", {}).NetUtil;
+  return require("resource://gre/modules/NetUtil.jsm").NetUtil;
 });
 
 DevToolsUtils.defineLazyGetter(this, "OS", () => {
-  return Cu.import("resource://gre/modules/osfile.jsm", {}).OS;
+  return require("resource://gre/modules/osfile.jsm").OS;
 });
 
 DevToolsUtils.defineLazyGetter(this, "NetworkHelper", () => {
@@ -417,7 +522,7 @@ function mainThreadFetch(urlIn, aOptions = { loadFromCache: true,
                                              window: null,
                                              charset: null,
                                              principal: null,
-                                             cacheKey: null }) {
+                                             cacheKey: 0 }) {
   // Create a channel.
   let url = urlIn.split(" -> ").pop();
   let channel;
@@ -435,7 +540,7 @@ function mainThreadFetch(urlIn, aOptions = { loadFromCache: true,
   // When loading from cache, the cacheKey allows us to target a specific
   // SHEntry and offer ways to restore POST requests from cache.
   if (aOptions.loadFromCache &&
-      aOptions.cacheKey && channel instanceof Ci.nsICacheInfoChannel) {
+      aOptions.cacheKey != 0 && channel instanceof Ci.nsICacheInfoChannel) {
     channel.cacheKey = aOptions.cacheKey;
   }
 
@@ -489,7 +594,18 @@ function mainThreadFetch(urlIn, aOptions = { loadFromCache: true,
       // the input unmodified. Essentially we try to decode the data as UTF-8
       // and if that fails, we use the locale specific default encoding. This is
       // the best we can do if the source does not provide charset info.
-      let charset = bomCharset || channel.contentCharset || aOptions.charset || "UTF-8";
+      let charset = bomCharset;
+      if (!charset) {
+        try {
+          charset = channel.contentCharset;
+        } catch (e) {
+          // Accessing `contentCharset` on content served by a service worker in
+          // non-e10s may throw.
+        }
+      }
+      if (!charset) {
+        charset = aOptions.charset || "UTF-8";
+      }
       let unicodeSource = NetworkHelper.convertToUnicode(source, charset);
 
       deferred.resolve({
@@ -558,20 +674,32 @@ function newChannelForURL(url, { policy, window, principal }) {
     securityFlags: securityFlags,
     uri: uri
   };
-  let prin = principal;
-  if (!prin) {
-    let oa = {};
-    if (window) {
-      oa = window.document.nodePrincipal.originAttributes;
-    }
-    prin = Services.scriptSecurityManager
-                   .createCodebasePrincipal(uri, oa);
-  }
-  // contentPolicyType is required when specifying a principal
+
+  // Ensure that we have some contentPolicyType type set if one was
+  // not provided.
   if (!channelOptions.contentPolicyType) {
     channelOptions.contentPolicyType = Ci.nsIContentPolicy.TYPE_OTHER;
   }
-  channelOptions.loadingPrincipal = prin;
+
+  // If a window is provided, always use it's document as the loadingNode.
+  // This will provide the correct principal, origin attributes, service
+  // worker controller, etc.
+  if (window) {
+    channelOptions.loadingNode = window.document;
+  } else {
+    // If a window is not provided, then we must set a loading principal.
+
+    // If the caller did not provide a principal, then we use the URI
+    // to create one.  Note, it's not clear what use cases require this
+    // and it may not be correct.
+    let prin = principal;
+    if (!prin) {
+      prin = Services.scriptSecurityManager
+                     .createCodebasePrincipal(uri, {});
+    }
+
+    channelOptions.loadingPrincipal = prin;
+  }
 
   try {
     return NetUtil.newChannel(channelOptions);
@@ -590,7 +718,7 @@ if (this.isWorker) {
   // Services is not available in worker threads, nor is there any other way
   // to fetch a URL. We need to enlist the help from the main thread here, by
   // issuing an rpc request, to fetch the URL on our behalf.
-  exports.fetch = function (url, options) {
+  exports.fetch = function(url, options) {
     return rpc("fetch", url, options);
   };
 } else {
@@ -604,7 +732,7 @@ if (this.isWorker) {
  *
  * @returns Promise<nsIInputStream>
  */
-exports.openFileStream = function (filePath) {
+exports.openFileStream = function(filePath) {
   return new Promise((resolve, reject) => {
     const uri = NetUtil.newURI(new FileUtils.File(filePath));
     NetUtil.asyncFetch(

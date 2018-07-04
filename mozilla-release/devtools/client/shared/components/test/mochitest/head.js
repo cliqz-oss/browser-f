@@ -5,32 +5,31 @@
 
 "use strict";
 
-var { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-var { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
+var { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 var { Assert } = require("resource://testing-common/Assert.jsm");
 var { gDevTools } = require("devtools/client/framework/devtools");
-var { BrowserLoader } = Cu.import("resource://devtools/client/shared/browser-loader.js", {});
+var { BrowserLoader } = ChromeUtils.import("resource://devtools/client/shared/browser-loader.js", {});
 var promise = require("promise");
 var defer = require("devtools/shared/defer");
 var Services = require("Services");
 var { DebuggerServer } = require("devtools/server/main");
-var { DebuggerClient } = require("devtools/shared/client/main");
+var { DebuggerClient } = require("devtools/shared/client/debugger-client");
 var DevToolsUtils = require("devtools/shared/DevToolsUtils");
-var flags = require("devtools/shared/flags");
-var { Task } = require("devtools/shared/task");
 var { TargetFactory } = require("devtools/client/framework/target");
 var { Toolbox } = require("devtools/client/framework/toolbox");
 
-flags.testing = true;
 var { require: browserRequire } = BrowserLoader({
   baseURI: "resource://devtools/client/shared/",
   window
 });
 
-let ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
-let React = browserRequire("devtools/client/shared/vendor/react");
-var TestUtils = React.addons.TestUtils;
+const React = browserRequire("devtools/client/shared/vendor/react");
+const ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
+const dom = browserRequire("devtools/client/shared/vendor/react-dom-factories");
+const TestUtils = browserRequire("devtools/client/shared/vendor/react-dom-test-utils");
+
+const ShallowRenderer =
+  browserRequire("devtools/client/shared/vendor/react-test-renderer-shallow");
 
 var EXAMPLE_URL = "http://example.com/browser/browser/devtools/shared/test/";
 
@@ -94,7 +93,9 @@ function isAccessibleTree(tree, options = {}) {
   for (let node of treeNodes) {
     ok(node.id, "TreeNode has an id");
     is(node.getAttribute("role"), "treeitem", "Tree item semantics is present");
-    ok(node.hasAttribute("aria-level"), "Aria level attribute is set");
+    is(parseInt(node.getAttribute("aria-level"), 10),
+       parseInt(node.getAttribute("data-depth"), 10) + 1,
+       "Aria level attribute is set correctly");
   }
 }
 
@@ -200,14 +201,14 @@ function renderComponent(component, props) {
   // By default, renderIntoDocument() won't work for stateless components, but
   // it will work if the stateless component is wrapped in a stateful one.
   // See https://github.com/facebook/react/issues/4839
-  const wrappedEl = React.DOM.span({}, [el]);
+  const wrappedEl = dom.span({}, [el]);
   const renderedComponent = TestUtils.renderIntoDocument(wrappedEl);
   return ReactDOM.findDOMNode(renderedComponent).children[0];
 }
 
 function shallowRenderComponent(component, props) {
   const el = React.createElement(component, props);
-  const renderer = TestUtils.createRenderer();
+  const renderer = new ShallowRenderer();
   renderer.render(el, {});
   return renderer.getRenderOutput();
 }

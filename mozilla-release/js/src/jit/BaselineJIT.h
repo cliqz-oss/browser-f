@@ -9,13 +9,12 @@
 
 #include "mozilla/MemoryReporting.h"
 
-#include "jscntxt.h"
-#include "jscompartment.h"
-
 #include "ds/LifoAlloc.h"
 #include "jit/Bailouts.h"
 #include "jit/IonCode.h"
 #include "jit/MacroAssembler.h"
+#include "vm/JSCompartment.h"
+#include "vm/JSContext.h"
 #include "vm/TraceLogging.h"
 
 namespace js {
@@ -409,7 +408,7 @@ struct BaselineScript
         return icEntries_;
     }
 
-    void copyICEntries(JSScript* script, const BaselineICEntry* entries, MacroAssembler& masm);
+    void copyICEntries(JSScript* script, const BaselineICEntry* entries);
     void adoptFallbackStubs(FallbackICStubSpace* stubSpace);
 
     void copyYieldAndAwaitEntries(JSScript* script, Vector<uint32_t>& yieldAndAwaitOffsets);
@@ -448,8 +447,8 @@ struct BaselineScript
     }
 
 #ifdef JS_TRACE_LOGGING
-    void initTraceLogger(JSRuntime* runtime, JSScript* script, const Vector<CodeOffset>& offsets);
-    void toggleTraceLoggerScripts(JSRuntime* runtime, JSScript* script, bool enable);
+    void initTraceLogger(JSScript* script, const Vector<CodeOffset>& offsets);
+    void toggleTraceLoggerScripts(JSScript* script, bool enable);
     void toggleTraceLoggerEngine(bool enable);
 
     static size_t offsetOfTraceLoggerScriptEvent() {
@@ -508,24 +507,24 @@ struct BaselineScript
         MOZ_ASSERT(hasPendingIonBuilder());
         return pendingBuilder_;
     }
-    void setPendingIonBuilder(JSRuntime* maybeRuntime, JSScript* script, js::jit::IonBuilder* builder) {
+    void setPendingIonBuilder(JSRuntime* rt, JSScript* script, js::jit::IonBuilder* builder) {
         MOZ_ASSERT(script->baselineScript() == this);
         MOZ_ASSERT(!builder || !hasPendingIonBuilder());
 
         if (script->isIonCompilingOffThread())
-            script->setIonScript(maybeRuntime, ION_PENDING_SCRIPT);
+            script->setIonScript(rt, ION_PENDING_SCRIPT);
 
         pendingBuilder_ = builder;
 
         // lazy linking cannot happen during asmjs to ion.
         clearDependentWasmImports();
 
-        script->updateBaselineOrIonRaw(maybeRuntime);
+        script->updateJitCodeRaw(rt);
     }
-    void removePendingIonBuilder(JSScript* script) {
-        setPendingIonBuilder(nullptr, script, nullptr);
+    void removePendingIonBuilder(JSRuntime* rt, JSScript* script) {
+        setPendingIonBuilder(rt, script, nullptr);
         if (script->maybeIonScript() == ION_PENDING_SCRIPT)
-            script->setIonScript(nullptr, nullptr);
+            script->setIonScript(rt, nullptr);
     }
 
     const ControlFlowGraph* controlFlowGraph() const {
@@ -554,10 +553,7 @@ MethodStatus
 CanEnterBaselineMethod(JSContext* cx, RunState& state);
 
 MethodStatus
-CanEnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp, bool newType);
-
-JitExecStatus
-EnterBaselineMethod(JSContext* cx, RunState& state);
+CanEnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp);
 
 JitExecStatus
 EnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp, jsbytecode* pc);
@@ -630,7 +626,7 @@ struct BaselineBailoutInfo
 };
 
 uint32_t
-BailoutIonToBaseline(JSContext* cx, JitActivation* activation, JitFrameIterator& iter,
+BailoutIonToBaseline(JSContext* cx, JitActivation* activation, const JSJitFrameIter& iter,
                      bool invalidate, BaselineBailoutInfo** bailoutInfo,
                      const ExceptionBailoutInfo* exceptionInfo);
 
@@ -641,6 +637,8 @@ MarkActiveBaselineScripts(Zone* zone);
 
 MethodStatus
 BaselineCompile(JSContext* cx, JSScript* script, bool forceDebugInstrumentation = false);
+
+static const unsigned BASELINE_MAX_ARGS_LENGTH = 20000;
 
 } // namespace jit
 } // namespace js

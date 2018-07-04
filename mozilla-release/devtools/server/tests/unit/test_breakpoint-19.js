@@ -13,7 +13,7 @@ var gClient;
 var gThreadClient;
 
 function run_test() {
-  run_test_with_server(DebuggerServer, function () {
+  run_test_with_server(DebuggerServer, function() {
     run_test_with_server(WorkerDebuggerServer, do_test_finished);
   });
   do_test_pending();
@@ -24,10 +24,10 @@ function run_test_with_server(server, callback) {
   gDebuggee = addTestGlobal("test-breakpoints", server);
   gDebuggee.console = { log: x => void x };
   gClient = new DebuggerClient(server.connectPipe());
-  gClient.connect().then(function () {
+  gClient.connect().then(function() {
     attachTestTabAndResume(gClient,
                            "test-breakpoints",
-                           function (response, tabClient, threadClient) {
+                           function(response, tabClient, threadClient) {
                              gThreadClient = threadClient;
                              testBreakpoint();
                            });
@@ -51,20 +51,20 @@ function setUpCode() {
   /* eslint-enable */
 }
 
-const testBreakpoint = Task.async(function* () {
-  let source = yield getSource(gThreadClient, URL);
-  let [response, ] = yield setBreakpoint(source, {line: 2});
+const testBreakpoint = async function() {
+  let source = await getSource(gThreadClient, URL);
+  let [response, ] = await setBreakpoint(source, {line: 2});
   ok(!response.error);
 
   let actor = response.actor;
   ok(actor);
 
-  yield executeOnNextTickAndWaitForPause(setUpCode, gClient);
-  yield resume(gThreadClient);
+  await executeOnNextTickAndWaitForPause(setUpCode, gClient);
+  await resume(gThreadClient);
 
-  let packet = yield executeOnNextTickAndWaitForPause(gDebuggee.test, gClient);
+  let packet = await executeOnNextTickAndWaitForPause(gDebuggee.test, gClient);
   equal(packet.why.type, "breakpoint");
   notEqual(packet.why.actors.indexOf(actor), -1);
 
   finishClient(gClient);
-});
+};

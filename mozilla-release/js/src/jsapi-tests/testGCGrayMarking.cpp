@@ -5,11 +5,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "jsweakmap.h"
-
 #include "gc/Heap.h"
+#include "gc/WeakMap.h"
 #include "gc/Zone.h"
-
 #include "jsapi-tests/tests.h"
 
 using namespace js;
@@ -27,11 +25,8 @@ struct MapTypeToRootKind<js::ObjectWeakMap*> {
 };
 
 template <>
-struct GCPolicy<js::ObjectWeakMap*> {
-    static void trace(JSTracer* trc, js::ObjectWeakMap** tp, const char* name) {
-        (*tp)->trace(trc);
-    }
-};
+struct GCPolicy<js::ObjectWeakMap*> : public NonGCPointerPolicy<js::ObjectWeakMap*>
+{};
 
 } // namespace JS
 
@@ -58,7 +53,6 @@ BEGIN_TEST(testGCGrayMarking)
         TestMarking() &&
         TestWeakMaps() &&
         TestUnassociatedWeakMaps() &&
-        TestWatchpoints() &&
         TestCCWs() &&
         TestGrayUnmarking();
 
@@ -426,63 +420,6 @@ TestUnassociatedWeakMaps()
     JS_GC(cx);
     CHECK(IsMarkedGray(key));
     CHECK(IsMarkedGray(value));
-
-    blackRoot = nullptr;
-    grayRoots.grayRoot1 = nullptr;
-    grayRoots.grayRoot2 = nullptr;
-
-    return true;
-}
-
-bool
-TestWatchpoints()
-{
-    JSObject* watched = AllocPlainObject();
-    CHECK(watched);
-
-    JSObject* closure = AllocPlainObject();
-    CHECK(closure);
-
-    {
-        RootedObject obj(cx, watched);
-        RootedObject callable(cx, closure);
-        RootedId id(cx, INT_TO_JSID(0));
-        CHECK(JS_DefinePropertyById(cx, obj, id, JS::TrueHandleValue, 0));
-        CHECK(js::WatchGuts(cx, obj, id, callable));
-    }
-
-    // Test that a watchpoint marks the callable black if the watched object is
-    // black.
-
-    RootedObject blackRoot(cx, watched);
-    grayRoots.grayRoot1 = nullptr;
-    JS_GC(cx);
-    CHECK(IsMarkedBlack(watched));
-    CHECK(IsMarkedBlack(closure));
-
-    // Test that a watchpoint marks the callable gray if the watched object is
-    // gray.
-
-    blackRoot = nullptr;
-    grayRoots.grayRoot1 = watched;
-    JS_GC(cx);
-    CHECK(IsMarkedGray(watched));
-    CHECK(IsMarkedGray(closure));
-
-    // Test that ExposeToActiveJS *doesn't* unmark through watchpoints.  We
-    // could make this work, but it's currently handled by the CC fixup.
-
-    CHECK(IsMarkedGray(watched));
-    CHECK(IsMarkedGray(closure));
-    JS::ExposeObjectToActiveJS(watched);
-    CHECK(IsMarkedBlack(watched));
-    CHECK(IsMarkedGray(closure));
-
-    {
-        RootedObject obj(cx, watched);
-        RootedId id(cx, INT_TO_JSID(0));
-        CHECK(js::UnwatchGuts(cx, obj, id));
-    }
 
     blackRoot = nullptr;
     grayRoots.grayRoot1 = nullptr;

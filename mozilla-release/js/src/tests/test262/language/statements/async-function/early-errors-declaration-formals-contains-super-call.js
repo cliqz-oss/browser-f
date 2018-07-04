@@ -7,8 +7,10 @@ author: Brian Terlson <brian.terlson@microsoft.com>
 esid: pending
 description: It is a syntax error if FormalParameters contains SuperCall is true
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 async function foo (foo = super()) { let bar; }

@@ -1,12 +1,11 @@
-Cu.import("resource://gre/modules/FormHistory.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/engines/bookmarks.js");
-Cu.import("resource://services-sync/engines/history.js");
-Cu.import("resource://services-sync/engines/forms.js");
-Cu.import("resource://services-sync/engines/passwords.js");
-Cu.import("resource://services-sync/engines/prefs.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
+ChromeUtils.import("resource://gre/modules/FormHistory.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/engines/bookmarks.js");
+ChromeUtils.import("resource://services-sync/engines/history.js");
+ChromeUtils.import("resource://services-sync/engines/forms.js");
+ChromeUtils.import("resource://services-sync/engines/passwords.js");
+ChromeUtils.import("resource://services-sync/engines/prefs.js");
 
 const LoginInfo = Components.Constructor(
   "@mozilla.org/login-manager/loginInfo;1", Ci.nsILoginInfo, "init");
@@ -19,8 +18,6 @@ const LoginInfo = Components.Constructor(
  * read-only.
  */
 
-Log.repository.getLogger("Sqlite").level = Log.Level.Error;
-
 async function assertChildGuids(folderGuid, expectedChildGuids, message) {
   let tree = await PlacesUtils.promiseBookmarksTree(folderGuid);
   let childGuids = tree.children.map(child => child.guid);
@@ -28,7 +25,7 @@ async function assertChildGuids(folderGuid, expectedChildGuids, message) {
 }
 
 async function cleanup(engine, server) {
-  Svc.Obs.notify("weave:engine:stop-tracking");
+  await engine._tracker.stop();
   await engine._store.wipe();
   Svc.Prefs.resetBranch("");
   Service.recordManager.clearCache();
@@ -41,26 +38,25 @@ add_task(async function test_history_change_during_sync() {
   enableValidationPrefs();
 
   let engine = Service.engineManager.get("history");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("history");
 
-  // Override `applyIncomingBatch` to insert a record while we're applying
+  // Override `uploadOutgoing` to insert a record while we're applying
   // changes. The tracker should ignore this change.
-  let { applyIncomingBatch } = engine._store;
-  engine._store.applyIncomingBatch = async function(records) {
-    _("Inserting local history visit");
-    engine._store.applyIncomingBatch = applyIncomingBatch;
-    let failed;
+  let uploadOutgoing = engine._uploadOutgoing;
+  engine._uploadOutgoing = async function() {
+    engine._uploadOutgoing = uploadOutgoing;
     try {
-      await addVisit("during_sync");
+      await uploadOutgoing.call(this);
     } finally {
-      failed = await applyIncomingBatch.call(this, records);
+      _("Inserting local history visit");
+      await addVisit("during_sync");
+      await engine._tracker.asyncObserver.promiseObserversComplete();
     }
-    return failed;
   };
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  engine._tracker.start();
 
   try {
     let remoteRec = new HistoryRec("history", "UrOOuzE5QM-e");
@@ -83,12 +79,10 @@ add_task(async function test_history_change_during_sync() {
     strictEqual(Service.scheduler.globalScore, 0,
       "Should not bump global score during second history sync");
 
-    // ...But we still won't ever upload the visit to the server, since we
-    // cleared the tracker after the first sync.
-    equal(collection.count(), 1,
-      "New local visit won't exist on server after second sync");
+    equal(collection.count(), 2,
+      "New local visit should exist on server after second sync");
   } finally {
-    engine._store.applyIncomingBatch = applyIncomingBatch;
+    engine._uploadOutgoing = uploadOutgoing;
     await cleanup(engine, server);
   }
 });
@@ -99,26 +93,25 @@ add_task(async function test_passwords_change_during_sync() {
   enableValidationPrefs();
 
   let engine = Service.engineManager.get("passwords");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("passwords");
 
-  let { applyIncomingBatch } = engine._store;
-  engine._store.applyIncomingBatch = async function(records) {
-    _("Inserting local password");
-    engine._store.applyIncomingBatch = applyIncomingBatch;
-    let failed;
+  let uploadOutgoing = engine._uploadOutgoing;
+  engine._uploadOutgoing = async function() {
+    engine._uploadOutgoing = uploadOutgoing;
     try {
+      await uploadOutgoing.call(this);
+    } finally {
+      _("Inserting local password");
       let login = new LoginInfo("https://example.com", "", null, "username",
         "password", "", "");
       Services.logins.addLogin(login);
-    } finally {
-      failed = await applyIncomingBatch.call(this, records);
+      await engine._tracker.asyncObserver.promiseObserversComplete();
     }
-    return failed;
   };
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  engine._tracker.start();
 
   try {
     let remoteRec = new LoginRec("passwords", "{765e3d6e-071d-d640-a83d-81a7eb62d3ed}");
@@ -142,12 +135,10 @@ add_task(async function test_passwords_change_during_sync() {
     strictEqual(Service.scheduler.globalScore, 0,
       "Should not bump global score during second passwords sync");
 
-    // ...But we still won't ever upload the entry to the server, since we
-    // cleared the tracker after the first sync.
-    equal(collection.count(), 1,
-      "New local password won't exist on server after second sync");
+    equal(collection.count(), 2,
+      "New local password should exist on server after second sync");
   } finally {
-    engine._store.applyIncomingBatch = applyIncomingBatch;
+    engine._uploadOutgoing = uploadOutgoing;
     await cleanup(engine, server);
   }
 });
@@ -160,25 +151,24 @@ add_task(async function test_prefs_change_during_sync() {
   enableValidationPrefs();
 
   let engine = Service.engineManager.get("prefs");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("prefs");
 
-  let { applyIncomingBatch } = engine._store;
-  engine._store.applyIncomingBatch = async function(records) {
-    _("Updating local pref value");
-    engine._store.applyIncomingBatch = applyIncomingBatch;
-    let failed;
+  let uploadOutgoing = engine._uploadOutgoing;
+  engine._uploadOutgoing = async function() {
+    engine._uploadOutgoing = uploadOutgoing;
     try {
+      await uploadOutgoing.call(this);
+    } finally {
+      _("Updating local pref value");
       // Change the value of a synced pref.
       Services.prefs.setCharPref(TEST_PREF, "hello");
-    } finally {
-      failed = await applyIncomingBatch.call(this, records);
+      await engine._tracker.asyncObserver.promiseObserversComplete();
     }
-    return failed;
   };
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  engine._tracker.start();
 
   try {
     // All synced prefs are stored in a single record, so we'll only ever
@@ -206,10 +196,10 @@ add_task(async function test_prefs_change_during_sync() {
     payloads = collection.payloads();
     equal(payloads.length, 1,
       "Should not upload multiple prefs records after second sync");
-    equal(payloads[0].value[TEST_PREF], "world",
-      "Should not upload changed pref value during second sync");
+    equal(payloads[0].value[TEST_PREF], "hello",
+      "Should upload changed pref value during second sync");
   } finally {
-    engine._store.applyIncomingBatch = applyIncomingBatch;
+    engine._uploadOutgoing = uploadOutgoing;
     await cleanup(engine, server);
     Services.prefs.clearUserPref(TEST_PREF);
   }
@@ -221,16 +211,17 @@ add_task(async function test_forms_change_during_sync() {
   enableValidationPrefs();
 
   let engine = Service.engineManager.get("forms");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
   await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("forms");
 
-  let { applyIncomingBatch } = engine._store;
-  engine._store.applyIncomingBatch = async function(records) {
-    _("Inserting local form history entry");
-    engine._store.applyIncomingBatch = applyIncomingBatch;
-    let failed;
+  let uploadOutgoing = engine._uploadOutgoing;
+  engine._uploadOutgoing = async function() {
+    engine._uploadOutgoing = uploadOutgoing;
     try {
+      await uploadOutgoing.call(this);
+    } finally {
+      _("Inserting local form history entry");
       await new Promise(resolve => {
         FormHistory.update([{
           op: "add",
@@ -240,13 +231,11 @@ add_task(async function test_forms_change_during_sync() {
           handleCompletion: resolve,
         });
       });
-    } finally {
-      failed = await applyIncomingBatch.call(this, records);
+      await engine._tracker.asyncObserver.promiseObserversComplete();
     }
-    return failed;
   };
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  engine._tracker.start();
 
   try {
     // Add an existing remote form history entry. We shouldn't bump the score when
@@ -267,12 +256,10 @@ add_task(async function test_forms_change_during_sync() {
     strictEqual(Service.scheduler.globalScore, 0,
       "Should not bump global score during second forms sync");
 
-    // ...But we still won't ever upload the entry to the server, since we
-    // cleared the tracker after the first sync.
-    equal(collection.count(), 1,
-      "New local form won't exist on server after second sync");
+    equal(collection.count(), 2,
+      "New local form should exist on server after second sync");
   } finally {
-    engine._store.applyIncomingBatch = applyIncomingBatch;
+    engine._uploadOutgoing = uploadOutgoing;
     await cleanup(engine, server);
   }
 });
@@ -281,6 +268,10 @@ add_task(async function test_bookmark_change_during_sync() {
   _("Ensure that we track bookmark changes made during a sync.");
 
   enableValidationPrefs();
+
+  let engine = Service.engineManager.get("bookmarks");
+  let server = await serverForEnginesWithKeys({"foo": "password"}, [engine]);
+  await SyncTestingInfrastructure(server);
 
   // Already-tracked bookmarks that shouldn't be uploaded during the first sync.
   let bzBmk = await PlacesUtils.bookmarks.insert({
@@ -296,28 +287,24 @@ add_task(async function test_bookmark_change_during_sync() {
     syncStatus: PlacesUtils.bookmarks.SYNC_STATUS.NORMAL,
   });
 
-  let engine = Service.engineManager.get("bookmarks");
-  let server = serverForEnginesWithKeys({"foo": "password"}, [engine]);
-  await SyncTestingInfrastructure(server);
   let collection = server.user("foo").collection("bookmarks");
 
   let bmk3; // New child of Folder 1, created locally during sync.
 
-  let { applyIncomingBatch } = engine._store;
-  engine._store.applyIncomingBatch = async function(records) {
-    _("Inserting bookmark into local store");
-    engine._store.applyIncomingBatch = applyIncomingBatch;
-    let failed;
+  let uploadOutgoing = engine._uploadOutgoing;
+  engine._uploadOutgoing = async function() {
+    engine._uploadOutgoing = uploadOutgoing;
     try {
+      await uploadOutgoing.call(this);
+    } finally {
+      _("Inserting bookmark into local store");
       bmk3 = await PlacesUtils.bookmarks.insert({
         parentGuid: folder1.guid,
         url: "https://mozilla.org/",
         title: "Mozilla",
       });
-    } finally {
-      failed = await applyIncomingBatch.call(this, records);
+      await engine._tracker.asyncObserver.promiseObserversComplete();
     }
-    return failed;
   };
 
   // New bookmarks that should be uploaded during the first sync.
@@ -335,7 +322,7 @@ add_task(async function test_bookmark_change_during_sync() {
   });
   _(`Thunderbird GUID: ${tbBmk.guid}`);
 
-  Svc.Obs.notify("weave:engine:start-tracking");
+  engine._tracker.start();
 
   try {
     let bmk2_guid = "get-firefox1"; // New child of Folder 1, created remotely.
@@ -350,8 +337,8 @@ add_task(async function test_bookmark_change_during_sync() {
       remoteBzBmk.description = "New description";
       remoteBzBmk.title       = "Bugzilla";
       remoteBzBmk.tags        = ["new", "tags"];
-      remoteBzBmk.parentName  = "Bookmarks Toolbar";
-      remoteBzBmk.parentid    = "toolbar";
+      remoteBzBmk.parentName  = "Bookmarks Menu";
+      remoteBzBmk.parentid    = "menu";
       collection.insert(bzBmk.guid, encryptPayload(remoteBzBmk.cleartext));
 
       let remoteFolder = new BookmarkFolder("bookmarks", folder2_guid);
@@ -398,7 +385,7 @@ add_task(async function test_bookmark_change_during_sync() {
 
     let pingsPromise = wait_for_pings(2);
 
-    let changes = await engine.pullNewChanges();
+    let changes = await PlacesSyncUtils.bookmarks.pullChanges();
     deepEqual(Object.keys(changes).sort(), [
       folder1.guid,
       tbBmk.guid,
@@ -412,7 +399,7 @@ add_task(async function test_bookmark_change_during_sync() {
     // because the bookmarks engine will automatically schedule a follow-up
     // sync for us.
     _("Perform first sync and immediate follow-up sync");
-    Service.sync(["bookmarks"]);
+    Service.sync({engines: ["bookmarks"]});
 
     let pings = await pingsPromise;
     equal(pings.length, 2, "Should submit two pings");
@@ -431,7 +418,7 @@ add_task(async function test_bookmark_change_during_sync() {
       guid: bmk2_guid,
     });
     ok(bmk2, "Remote bookmark should be applied during first sync");
-    await assertChildGuids(folder1.guid, [tbBmk.guid, bmk3.guid, bmk2_guid],
+    await assertChildGuids(folder1.guid, [tbBmk.guid, bmk2_guid, bmk3.guid],
       "Folder 1 should have 3 children after first sync");
     await assertChildGuids(folder2_guid, [bmk4_guid, tagQuery_guid],
       "Folder 2 should have 2 children after first sync");
@@ -440,7 +427,7 @@ add_task(async function test_bookmark_change_during_sync() {
     equal(taggedURIs[0].spec, "https://example.org/",
       "Synced tagged bookmark should appear in tagged URI list");
 
-    changes = await engine.pullNewChanges();
+    changes = await PlacesSyncUtils.bookmarks.pullChanges();
     deepEqual(changes, {},
       "Should have already uploaded changes in follow-up sync");
 
@@ -452,7 +439,7 @@ add_task(async function test_bookmark_change_during_sync() {
     ok(!engineData[0].validation, "Should not validate after first sync");
     ok(engineData[1].validation, "Should validate after second sync");
   } finally {
-    engine._store.applyIncomingBatch = applyIncomingBatch;
+    engine._uploadOutgoing = uploadOutgoing;
     await cleanup(engine, server);
   }
 });

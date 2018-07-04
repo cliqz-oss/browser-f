@@ -17,21 +17,21 @@ add_task(async function() {
 
   let places = [];
   let transition = PlacesUtils.history.TRANSITION_TYPED;
-  TEST_URIs.forEach(uri => places.push({uri: PlacesUtils._uri(uri), transition}));
+  TEST_URIs.forEach(uri => places.push({uri: Services.io.newURI(uri), transition}));
 
   await PlacesTestUtils.addVisits(places);
   await testForgetThisSiteVisibility(1);
   await testForgetThisSiteVisibility(2);
 
   // Cleanup.
-  await PlacesTestUtils.clearHistory();
+  await PlacesUtils.history.clear();
 });
 
 var testForgetThisSiteVisibility = async function(selectionCount) {
   let organizer = await promiseLibrary();
 
   // Select History in the left pane.
-  organizer.PlacesOrganizer.selectLeftPaneQuery("History");
+  organizer.PlacesOrganizer.selectLeftPaneBuiltIn("History");
   let PO = organizer.PlacesOrganizer;
   let histContainer = PO._places.selectedNode.QueryInterface(Ci.nsINavHistoryContainerResultNode);
   histContainer.containerOpen = true;

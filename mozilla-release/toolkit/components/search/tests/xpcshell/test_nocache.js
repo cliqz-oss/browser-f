@@ -11,7 +11,6 @@
  */
 
 function run_test() {
-  removeCacheFile();
   do_load_manifest("data/chrome.manifest");
   useHttpServer();
 
@@ -30,20 +29,20 @@ add_task(async function test_nocache() {
   // Check that the cache is created at startup
   await afterCachePromise;
 
-  // Check that search.json has been created.
+  // Check that search.json.mozlz4 has been created.
   let cacheFile = gProfD.clone();
   cacheFile.append(CACHE_FILENAME);
-  do_check_true(cacheFile.exists());
+  Assert.ok(cacheFile.exists());
 
   // Add engine and wait for cache update
   await addTestEngines([
     { name: "Test search engine", xmlFileName: "engine.xml" },
   ]);
 
-  do_print("Engine has been added, let's wait for the cache to be built");
+  info("Engine has been added, let's wait for the cache to be built");
   await promiseAfterCache();
 
-  do_print("Searching test engine in cache");
+  info("Searching test engine in cache");
   let cache = await promiseCacheData();
   let found = false;
   for (let engine of cache.engines) {
@@ -52,7 +51,5 @@ add_task(async function test_nocache() {
       break;
     }
   }
-  do_check_true(found);
-
-  removeCacheFile();
+  Assert.ok(found);
 });

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,6 +10,7 @@
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/dom/PaymentRequestBinding.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/PromiseNativeHandler.h"
 #include "mozilla/ErrorResult.h"
 #include "nsWrapperCache.h"
 #include "PaymentRequestUpdateEvent.h"
@@ -22,6 +23,7 @@ class PaymentAddress;
 class PaymentResponse;
 
 class PaymentRequest final : public DOMEventTargetHelper
+                           , public PromiseNativeHandler
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
@@ -36,28 +38,48 @@ public:
 
   static bool PrefEnabled(JSContext* aCx, JSObject* aObj);
 
-  static bool IsValidMethodData(JSContext* aCx,
-                                const Sequence<PaymentMethodData>& aMethodData,
-                                nsAString& aErrorMsg);
+  static nsresult IsValidStandardizedPMI(const nsAString& aIdentifier,
+                                         nsAString& aErrorMsg);
 
-  static bool
+  static nsresult IsValidPaymentMethodIdentifier(const nsAString& aIdentifier,
+                                                 nsAString& aErrorMsg);
+
+  static nsresult IsValidMethodData(JSContext* aCx,
+                                    const Sequence<PaymentMethodData>& aMethodData,
+                                    nsAString& aErrorMsg);
+
+  static nsresult
   IsValidNumber(const nsAString& aItem,
                 const nsAString& aStr,
                 nsAString& aErrorMsg);
-  static bool
+  static nsresult
   IsNonNegativeNumber(const nsAString& aItem,
                       const nsAString& aStr,
                       nsAString& aErrorMsg);
 
-  static bool
+  static nsresult
+  IsValidCurrencyAmount(const nsAString& aItem,
+                        const PaymentCurrencyAmount& aAmount,
+                        const bool aIsTotalItem,
+                        nsAString& aErrorMsg);
+
+  static nsresult
+  IsValidCurrency(const nsAString& aItem,
+                  const nsAString& aCurrency,
+                  nsAString& aErrorMsg);
+
+  static nsresult
   IsValidDetailsInit(const PaymentDetailsInit& aDetails,
+                     const bool aRequestShipping,
                      nsAString& aErrorMsg);
 
-  static bool
-  IsValidDetailsUpdate(const PaymentDetailsUpdate& aDetails);
+  static nsresult
+  IsValidDetailsUpdate(const PaymentDetailsUpdate& aDetails,
+                       const bool aRequestShipping);
 
-  static bool
+  static nsresult
   IsValidDetailsBase(const PaymentDetailsBase& aDetails,
+                     const bool aRequestShipping,
                      nsAString& aErrorMsg);
 
   static already_AddRefed<PaymentRequest>
@@ -70,14 +92,14 @@ public:
   already_AddRefed<Promise> CanMakePayment(ErrorResult& aRv);
   void RespondCanMakePayment(bool aResult);
 
-  already_AddRefed<Promise> Show(ErrorResult& aRv);
-  void RespondShowPayment(bool aAccept,
-                          const nsAString& aMethodName,
+  already_AddRefed<Promise> Show(const Optional<OwningNonNull<Promise>>& detailsPromise,
+                                 ErrorResult& aRv);
+  void RespondShowPayment(const nsAString& aMethodName,
                           const nsAString& aDetails,
                           const nsAString& aPayerName,
                           const nsAString& aPayerEmail,
                           const nsAString& aPayerPhone,
-                          nsresult aRv = NS_ERROR_DOM_ABORT_ERR);
+                          nsresult aRv);
   void RejectShowPayment(nsresult aRejectReason);
   void RespondComplete();
 
@@ -91,6 +113,7 @@ public:
   bool Equals(const nsAString& aInternalId) const;
 
   bool ReadyForUpdate();
+  bool IsUpdating() const { return mUpdating; }
   void SetUpdating(bool aUpdating);
 
   already_AddRefed<PaymentAddress> GetShippingAddress() const;
@@ -112,11 +135,21 @@ public:
   void GetShippingOption(nsAString& aRetVal) const;
   nsresult UpdateShippingOption(const nsAString& aShippingOption);
 
-  nsresult UpdatePayment(const PaymentDetailsUpdate& aDetails);
+  nsresult UpdatePayment(JSContext* aCx, const PaymentDetailsUpdate& aDetails);
   void AbortUpdate(nsresult aRv);
 
   void SetShippingType(const Nullable<PaymentShippingType>& aShippingType);
   Nullable<PaymentShippingType> GetShippingType() const;
+
+  inline void ShippingWasRequested()
+  {
+    mRequestShipping = true;
+  }
+
+  void
+  ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override;
+  void
+  RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override;
 
   IMPL_EVENT_HANDLER(shippingaddresschange);
   IMPL_EVENT_HANDLER(shippingoptionchange);
@@ -142,8 +175,10 @@ protected:
   RefPtr<Promise> mAbortPromise;
   // Resolve mAcceptPromise with mResponse if user accepts the request.
   RefPtr<PaymentResponse> mResponse;
-  // It is populated when the user provides a shipping address.
+  // The redacted shipping address.
   RefPtr<PaymentAddress> mShippingAddress;
+  // The full shipping address to be used in the response upon payment.
+  RefPtr<PaymentAddress> mFullShippingAddress;
   // It is populated when the user chooses a shipping option.
   nsString mShippingOption;
 
@@ -152,6 +187,10 @@ protected:
   // "true" when there is a pending updateWith() call to update the payment request
   // and "false" otherwise.
   bool mUpdating;
+
+  // Whether shipping was requested. This models [[options]].requestShipping,
+  // but we don't actually store the full [[options]] internal slot.
+  bool mRequestShipping;
   // The error is set in AbortUpdate(). The value is NS_OK by default.
   nsresult mUpdateError;
 

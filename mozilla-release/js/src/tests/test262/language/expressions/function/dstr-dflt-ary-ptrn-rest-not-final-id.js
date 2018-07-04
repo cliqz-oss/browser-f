@@ -9,7 +9,7 @@ es6id: 14.1.20
 features: [destructuring-binding, default-parameters]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     FunctionExpression : function ( FormalParameters ) { FunctionBody }
@@ -48,6 +48,7 @@ info: |
         [ BindingElementList[?Yield] ]
         [ BindingElementList[?Yield] , Elisionopt BindingRestElement[?Yield]opt ]
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 var callCount = 0;
 var f;

@@ -108,27 +108,25 @@ NS_NewXULPrototypeDocument(nsXULPrototypeDocument** aResult)
 NS_IMETHODIMP
 nsXULPrototypeDocument::Read(nsIObjectInputStream* aStream)
 {
-    nsresult rv;
-
     nsCOMPtr<nsISupports> supports;
-    rv = aStream->ReadObject(true, getter_AddRefs(supports));
+    nsresult rv = aStream->ReadObject(true, getter_AddRefs(supports));
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
     mURI = do_QueryInterface(supports);
 
     uint32_t count, i;
     nsCOMPtr<nsIURI> styleOverlayURI;
 
-    nsresult tmp = aStream->Read32(&count);
-    if (NS_FAILED(tmp)) {
-      return tmp;
-    }
+    rv = aStream->Read32(&count);
     if (NS_FAILED(rv)) {
       return rv;
     }
 
     for (i = 0; i < count; ++i) {
-        tmp = aStream->ReadObject(true, getter_AddRefs(supports));
-        if (NS_FAILED(tmp)) {
-          rv = tmp;
+        rv = aStream->ReadObject(true, getter_AddRefs(supports));
+        if (NS_FAILED(rv)) {
+          return rv;
         }
         styleOverlayURI = do_QueryInterface(supports);
         mStyleSheetReferences.AppendObject(styleOverlayURI);
@@ -136,12 +134,11 @@ nsXULPrototypeDocument::Read(nsIObjectInputStream* aStream)
 
 
     // nsIPrincipal mNodeInfoManager->mPrincipal
-    nsCOMPtr<nsIPrincipal> principal;
-    tmp = aStream->ReadObject(true, getter_AddRefs(supports));
-    principal = do_QueryInterface(supports);
-    if (NS_FAILED(tmp)) {
-      rv = tmp;
+    rv = aStream->ReadObject(true, getter_AddRefs(supports));
+    if (NS_FAILED(rv)) {
+      return rv;
     }
+    nsCOMPtr<nsIPrincipal> principal = do_QueryInterface(supports);
     // Better safe than sorry....
     mNodeInfoManager->SetDocumentPrincipal(principal);
 
@@ -150,45 +147,45 @@ nsXULPrototypeDocument::Read(nsIObjectInputStream* aStream)
     // mozilla::dom::NodeInfo table
     nsTArray<RefPtr<mozilla::dom::NodeInfo>> nodeInfos;
 
-    tmp = aStream->Read32(&count);
-    if (NS_FAILED(tmp)) {
-      rv = tmp;
+    rv = aStream->Read32(&count);
+    if (NS_FAILED(rv)) {
+      return rv;
     }
     nsAutoString namespaceURI, prefixStr, localName;
     bool prefixIsNull;
-    nsCOMPtr<nsIAtom> prefix;
+    RefPtr<nsAtom> prefix;
     for (i = 0; i < count; ++i) {
-        tmp = aStream->ReadString(namespaceURI);
-        if (NS_FAILED(tmp)) {
-          rv = tmp;
+        rv = aStream->ReadString(namespaceURI);
+        if (NS_FAILED(rv)) {
+          return rv;
         }
-        tmp = aStream->ReadBoolean(&prefixIsNull);
-        if (NS_FAILED(tmp)) {
-          rv = tmp;
+        rv = aStream->ReadBoolean(&prefixIsNull);
+        if (NS_FAILED(rv)) {
+          return rv;
         }
         if (prefixIsNull) {
             prefix = nullptr;
         } else {
-            tmp = aStream->ReadString(prefixStr);
-            if (NS_FAILED(tmp)) {
-              rv = tmp;
+            rv = aStream->ReadString(prefixStr);
+            if (NS_FAILED(rv)) {
+              return rv;
             }
             prefix = NS_Atomize(prefixStr);
         }
-        tmp = aStream->ReadString(localName);
-        if (NS_FAILED(tmp)) {
-          rv = tmp;
+        rv = aStream->ReadString(localName);
+        if (NS_FAILED(rv)) {
+          return rv;
         }
 
         RefPtr<mozilla::dom::NodeInfo> nodeInfo;
         // Using UINT16_MAX here as we don't know which nodeinfos will be
         // used for attributes and which for elements. And that doesn't really
         // matter.
-        tmp = mNodeInfoManager->GetNodeInfo(localName, prefix, namespaceURI,
-                                            UINT16_MAX,
-                                            getter_AddRefs(nodeInfo));
-        if (NS_FAILED(tmp)) {
-          rv = tmp;
+        rv = mNodeInfoManager->GetNodeInfo(localName, prefix, namespaceURI,
+                                           UINT16_MAX,
+                                           getter_AddRefs(nodeInfo));
+        if (NS_FAILED(rv)) {
+          return rv;
         }
         nodeInfos.AppendElement(nodeInfo);
     }
@@ -196,40 +193,36 @@ nsXULPrototypeDocument::Read(nsIObjectInputStream* aStream)
     // Document contents
     uint32_t type;
     while (NS_SUCCEEDED(rv)) {
-        tmp = aStream->Read32(&type);
-        if (NS_FAILED(tmp)) {
-          rv = tmp;
+        rv = aStream->Read32(&type);
+        if (NS_FAILED(rv)) {
+          return rv;
+          break;
         }
 
         if ((nsXULPrototypeNode::Type)type == nsXULPrototypeNode::eType_PI) {
             RefPtr<nsXULPrototypePI> pi = new nsXULPrototypePI();
 
-            tmp = pi->Deserialize(aStream, this, mURI, &nodeInfos);
-            if (NS_FAILED(tmp)) {
-              rv = tmp;
+            rv = pi->Deserialize(aStream, this, mURI, &nodeInfos);
+            if (NS_FAILED(rv)) {
+              return rv;
             }
-            tmp = AddProcessingInstruction(pi);
-            if (NS_FAILED(tmp)) {
-              rv = tmp;
+            rv = AddProcessingInstruction(pi);
+            if (NS_FAILED(rv)) {
+              return rv;
             }
         } else if ((nsXULPrototypeNode::Type)type == nsXULPrototypeNode::eType_Element) {
-            tmp = mRoot->Deserialize(aStream, this, mURI, &nodeInfos);
-            if (NS_FAILED(tmp)) {
-              rv = tmp;
+            rv = mRoot->Deserialize(aStream, this, mURI, &nodeInfos);
+            if (NS_FAILED(rv)) {
+              return rv;
             }
             break;
         } else {
             NS_NOTREACHED("Unexpected prototype node type");
-            rv = NS_ERROR_FAILURE;
-            break;
+            return NS_ERROR_FAILURE;
         }
     }
-    tmp = NotifyLoadDone();
-    if (NS_FAILED(tmp)) {
-      rv = tmp;
-    }
 
-    return rv;
+    return NotifyLoadDone();
 }
 
 static nsresult
@@ -248,7 +241,7 @@ GetNodeInfos(nsXULPrototypeElement* aPrototype,
         if (name->IsAtom()) {
             ni = aPrototype->mNodeInfo->NodeInfoManager()->
                 GetNodeInfo(name->Atom(), nullptr, kNameSpaceID_None,
-                            nsIDOMNode::ATTRIBUTE_NODE);
+                            nsINode::ATTRIBUTE_NODE);
         }
         else {
             ni = name->NodeInfo();
@@ -446,7 +439,7 @@ nsXULPrototypeDocument::GetStyleSheetReferences() const
 }
 
 NS_IMETHODIMP
-nsXULPrototypeDocument::GetHeaderData(nsIAtom* aField, nsAString& aData) const
+nsXULPrototypeDocument::GetHeaderData(nsAtom* aField, nsAString& aData) const
 {
     // XXX Not implemented
     aData.Truncate();
@@ -455,7 +448,7 @@ nsXULPrototypeDocument::GetHeaderData(nsIAtom* aField, nsAString& aData) const
 
 
 NS_IMETHODIMP
-nsXULPrototypeDocument::SetHeaderData(nsIAtom* aField, const nsAString& aData)
+nsXULPrototypeDocument::SetHeaderData(nsAtom* aField, const nsAString& aData)
 {
     // XXX Not implemented
     return NS_OK;
@@ -530,14 +523,17 @@ nsXULPrototypeDocument::NotifyLoadDone()
 }
 
 void
-nsXULPrototypeDocument::TraceProtos(JSTracer* aTrc, uint32_t aGCNumber)
+nsXULPrototypeDocument::TraceProtos(JSTracer* aTrc)
 {
-  // Only trace the protos once per GC.
-  if (mGCNumber == aGCNumber) {
-    return;
+  // Only trace the protos once per GC if we are marking.
+  if (aTrc->isMarkingTracer()) {
+    uint32_t currentGCNumber = aTrc->gcNumberForMarking();
+    if (mGCNumber == currentGCNumber) {
+      return;
+    }
+    mGCNumber = currentGCNumber;
   }
 
-  mGCNumber = aGCNumber;
   if (mRoot) {
     mRoot->TraceAllScripts(aTrc);
   }

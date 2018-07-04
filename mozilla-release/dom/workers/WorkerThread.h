@@ -18,19 +18,21 @@ class nsIRunnable;
 
 namespace mozilla {
 namespace dom {
-namespace workers {
 
-class RuntimeService;
+class WorkerRunnable;
 class WorkerPrivate;
 template <class> class WorkerPrivateParent;
-class WorkerRunnable;
+
+namespace workerinternals {
+class RuntimeService;
+}
 
 // This class lets us restrict the public methods that can be called on
 // WorkerThread to RuntimeService and WorkerPrivate without letting them gain
 // full access to private methods (as would happen if they were simply friends).
 class WorkerThreadFriendKey
 {
-  friend class RuntimeService;
+  friend class workerinternals::RuntimeService;
   friend class WorkerPrivate;
   friend class WorkerPrivateParent<WorkerPrivate>;
 
@@ -65,7 +67,8 @@ public:
   Create(const WorkerThreadFriendKey& aKey);
 
   void
-  SetWorker(const WorkerThreadFriendKey& aKey, WorkerPrivate* aWorkerPrivate);
+  SetWorker(const WorkerThreadFriendKey& aKey,
+            WorkerPrivate* aWorkerPrivate);
 
   nsresult
   DispatchPrimaryRunnable(const WorkerThreadFriendKey& aKey,
@@ -78,15 +81,10 @@ public:
   uint32_t
   RecursionDepth(const WorkerThreadFriendKey& aKey) const;
 
-  // Required for MinGW build #1336527 to handle compiler bug:
-  // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=79582
-  NS_IMETHOD
-  RegisterIdlePeriod(already_AddRefed<nsIIdlePeriod> aIdlePeriod) override
-  {
-    return nsThread::RegisterIdlePeriod(already_AddRefed<nsIIdlePeriod>(aIdlePeriod.take()));
-  }
+  PerformanceCounter*
+  GetPerformanceCounter(nsIRunnable* aEvent) override;
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(WorkerThread, nsThread)
 
 private:
   WorkerThread();
@@ -104,7 +102,6 @@ private:
   DelayedDispatch(already_AddRefed<nsIRunnable>, uint32_t) override;
 };
 
-} // namespace workers
 } // namespace dom
 } // namespace mozilla
 

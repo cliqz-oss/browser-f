@@ -1,8 +1,8 @@
-Cu.import("resource://testing-common/httpd.js");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/httpd.js");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "URL", function() {
   return "http://localhost:" + httpserv.identity.primaryPort + "/cached";
@@ -89,10 +89,7 @@ async function run_all_tests() {
 
 function run_test() {
   do_get_profile();
-  if (!newCacheBackEndUsed()) {
-    do_check_true(true, "This test checks only cache2 specific behavior.");
-    return;
-  }
+
   do_test_pending();
 
   Services.prefs.setBoolPref("network.http.rcwn.enabled", false);
@@ -120,6 +117,6 @@ function doneFirstLoad(resolve, req, buffer, expected) {
 }
 
 function doneSecondLoad(resolve, req, buffer, expected) {
-  do_check_eq(handlers_called, expected);
+  Assert.equal(handlers_called, expected);
   resolve();
 }

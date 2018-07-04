@@ -67,9 +67,12 @@ var tests = [
           });
         }, "Info should be shown after showInfo() for fixed menu panel items");
       });
-    }).catch(Components.utils.reportError);
+    }).catch(Cu.reportError);
   },
   taskify(async function test_bookmarks_menu() {
+    CustomizableUI.addWidgetToArea("bookmarks-menu-button", CustomizableUI.AREA_NAVBAR, 0);
+    registerCleanupFunction(() => CustomizableUI.removeWidgetFromArea("bookmarks-menu-button"));
+
     let bookmarksMenuButton = document.getElementById("bookmarks-menu-button");
 
     is(bookmarksMenuButton.open, false, "Menu should initially be closed");

@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/ServoElementSnapshot.h"
+#include "mozilla/ServoBindings.h"
 #include "mozilla/dom/Element.h"
 #include "nsIContentInlines.h"
 #include "nsContentUtils.h"
@@ -27,52 +28,6 @@ ServoElementSnapshot::ServoElementSnapshot(const Element* aElement)
   mSupportsLangAttr = aElement->SupportsLangAttr();
 }
 
-ServoElementSnapshot::~ServoElementSnapshot()
-{
-  MOZ_COUNT_DTOR(ServoElementSnapshot);
-}
-
-void
-ServoElementSnapshot::AddAttrs(Element* aElement,
-                               int32_t aNameSpaceID,
-                               nsIAtom* aAttribute)
-{
-  MOZ_ASSERT(aElement);
-
-  if (aNameSpaceID == kNameSpaceID_None) {
-    if (aAttribute == nsGkAtoms::_class) {
-      mClassAttributeChanged = true;
-    } else if (aAttribute == nsGkAtoms::id) {
-      mIdAttributeChanged = true;
-    } else {
-      mOtherAttributeChanged = true;
-    }
-  } else {
-    mOtherAttributeChanged = true;
-  }
-
-  if (HasAttrs()) {
-    return;
-  }
-
-  uint32_t attrCount = aElement->GetAttrCount();
-  const nsAttrName* attrName;
-  for (uint32_t i = 0; i < attrCount; ++i) {
-    attrName = aElement->GetAttrNameAt(i);
-    const nsAttrValue* attrValue =
-      aElement->GetParsedAttr(attrName->LocalName(), attrName->NamespaceID());
-    mAttrs.AppendElement(ServoAttrSnapshot(*attrName, *attrValue));
-  }
-  mContains |= Flags::Attributes;
-  if (aElement->HasID()) {
-    mContains |= Flags::Id;
-  }
-  if (const nsAttrValue* classValue = aElement->GetClasses()) {
-    mClass = *classValue;
-    mContains |= Flags::MaybeClass;
-  }
-}
-
 void
 ServoElementSnapshot::AddOtherPseudoClassState(Element* aElement)
 {
@@ -82,12 +37,8 @@ ServoElementSnapshot::AddOtherPseudoClassState(Element* aElement)
     return;
   }
 
-  mIsTableBorderNonzero =
-    *nsCSSPseudoClasses::MatchesElement(CSSPseudoClassType::mozTableBorderNonzero,
-                                        aElement);
-  mIsMozBrowserFrame =
-    *nsCSSPseudoClasses::MatchesElement(CSSPseudoClassType::mozBrowserFrame,
-                                        aElement);
+  mIsTableBorderNonzero = Gecko_IsTableBorderNonzero(aElement);
+  mIsMozBrowserFrame = Gecko_IsBrowserFrame(aElement);
 
   mContains |= Flags::OtherPseudoClassState;
 }

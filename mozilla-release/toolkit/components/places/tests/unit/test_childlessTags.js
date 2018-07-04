@@ -71,7 +71,7 @@ add_task(async function test_removing_folder_containing_tagged_bookmark_removes_
 function ensureTagsExist(aTags) {
   var query = histsvc.getNewQuery();
   var opts = histsvc.getNewQueryOptions();
-  opts.resultType = opts.RESULTS_AS_TAG_QUERY;
+  opts.resultType = opts.RESULTS_AS_TAGS_ROOT;
   var resultRoot = histsvc.executeQuery(query, opts).root;
 
   // Dupe aTags.
@@ -81,14 +81,14 @@ function ensureTagsExist(aTags) {
 
   // Ensure that the number of tags returned from the query is the same as the
   // number in |tags|.
-  do_check_eq(resultRoot.childCount, tags.length);
+  Assert.equal(resultRoot.childCount, tags.length);
 
   // For each tag result from the query, ensure that it's contained in |tags|.
   // Remove the tag from |tags| so that we ensure the sets are equal.
   for (let i = 0; i < resultRoot.childCount; i++) {
     var tag = resultRoot.getChild(i).title;
     var indexOfTag = tags.indexOf(tag);
-    do_check_true(indexOfTag >= 0);
+    Assert.ok(indexOfTag >= 0);
     tags.splice(indexOfTag, 1);
   }
 

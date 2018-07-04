@@ -70,7 +70,7 @@ BlockingResourceBase::GetStackTrace(AcquisitionState& aState)
 
   // NB: Ignore the return value, there's nothing useful we can do if this
   //     this fails.
-  MozStackWalk(StackWalkCallback, kSkipFrames, 24, &aState, 0, nullptr);
+  MozStackWalk(StackWalkCallback, kSkipFrames, 24, &aState);
 #endif
 }
 
@@ -271,7 +271,7 @@ void
 BlockingResourceBase::CheckAcquire()
 {
   if (mType == eCondVar) {
-    NS_NOTYETIMPLEMENTED(
+    MOZ_ASSERT_UNREACHABLE(
       "FIXME bug 456272: annots. to allow CheckAcquire()ing condvars");
     return;
   }
@@ -315,7 +315,7 @@ void
 BlockingResourceBase::Acquire()
 {
   if (mType == eCondVar) {
-    NS_NOTYETIMPLEMENTED(
+    MOZ_ASSERT_UNREACHABLE(
       "FIXME bug 456272: annots. to allow Acquire()ing condvars");
     return;
   }
@@ -340,7 +340,7 @@ void
 BlockingResourceBase::Release()
 {
   if (mType == eCondVar) {
-    NS_NOTYETIMPLEMENTED(
+    MOZ_ASSERT_UNREACHABLE(
       "FIXME bug 456272: annots. to allow Release()ing condvars");
     return;
   }
@@ -506,18 +506,14 @@ ReentrantMonitor::Wait(PRIntervalTime aInterval)
   mChainPrev = 0;
 
   nsresult rv;
-#if defined(MOZILLA_INTERNAL_API)
   {
-    AutoProfilerThreadSleep sleep;
-#endif //MOZILLA_INTERNAL_API
-
+#if defined(MOZILLA_INTERNAL_API)
+    AUTO_PROFILER_THREAD_SLEEP;
+#endif
     // give up the monitor until we're back from Wait()
     rv = PR_Wait(mReentrantMonitor, aInterval) == PR_SUCCESS ? NS_OK :
                                                                NS_ERROR_FAILURE;
-
-#if defined(MOZILLA_INTERNAL_API)
   }
-#endif //MOZILLA_INTERNAL_API
 
   // restore saved state
   mEntryCount = savedEntryCount;
@@ -590,8 +586,16 @@ RecursiveMutex::AssertCurrentThreadIn()
 
 //
 // Debug implementation of CondVar
-nsresult
-CondVar::Wait(PRIntervalTime aInterval)
+void
+CondVar::Wait()
+{
+  // Forward to the timed version of CondVar::Wait to avoid code duplication.
+  CVStatus status = Wait(TimeDuration::Forever());
+  MOZ_ASSERT(status == CVStatus::NoTimeout);
+}
+
+CVStatus
+CondVar::Wait(TimeDuration aDuration)
 {
   AssertCurrentThreadOwnsMutex();
 
@@ -604,18 +608,14 @@ CondVar::Wait(PRIntervalTime aInterval)
   mLock->mOwningThread = nullptr;
 
   // give up mutex until we're back from Wait()
-  if (aInterval == PR_INTERVAL_NO_TIMEOUT) {
-    mImpl.wait(*mLock);
-  } else {
-    mImpl.wait_for(*mLock, TimeDuration::FromMilliseconds(double(aInterval)));
-  }
+  CVStatus status = mImpl.wait_for(*mLock, aDuration);
 
   // restore saved state
   mLock->SetAcquisitionState(savedAcquisitionState);
   mLock->mChainPrev = savedChainPrev;
   mLock->mOwningThread = savedOwningThread;
 
-  return NS_OK;
+  return status;
 }
 
 #endif // ifdef DEBUG

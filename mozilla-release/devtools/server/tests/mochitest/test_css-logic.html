@@ -13,9 +13,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=
   <script type="application/javascript">
 "use strict";
 
-const {CssLogic} = require("devtools/server/css-logic");
+const {CssLogic} = require("devtools/server/actors/inspector/css-logic");
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
   runNextTest();
 };

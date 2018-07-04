@@ -1,43 +1,23 @@
 <html>
-<head>
+  <head>
 <meta charset="UTF-8"/>
 <title>DAMP - Devtools At Maximum Performance</title>
 
+<script src="damp-tests.js"></script>
 <script type="application/x-javascript">
 // Empty subtests interpreted as all subtests, since otherwise meaningless.
 var config = {subtests: [], repeat: 1};
+
 var defaultConfig = {
   repeat: 1,
   rest: 100,
-  subtests: {
-    webconsoleOpen: true,
-    inspectorOpen: true,
-    debuggerOpen: true,
-    styleEditorOpen: true,
-    performanceOpen: true,
-    netmonitorOpen: true,
-    saveAndReadHeapSnapshot: true,
-    consoleBulkLogging: true,
-    consoleStreamLogging: true,
-  }
-};
-
-var testsInfo = {
-  webconsoleOpen: "Measure open/close toolbox on webconsole panel",
-  inspectorOpen: "Measure open/close toolbox on inspector panel",
-  debuggerOpen: "Measure open/close toolbox on debugger panel",
-  styleEditorOpen: "Measure open/close toolbox on style editor panel",
-  performanceOpen: "Measure open/close toolbox on performance panel",
-  netmonitorOpen: "Measure open/close toolbox on network monitor panel",
-  saveAndReadHeapSnapshot: "Measure open/close toolbox on memory panel and save/read heap snapshot",
-  consoleBulkLogging: "Measure time for a bunch of sync console.log statements to appear",
-  consoleStreamLogging: "Measure rAF on page during a stream of console.log statements",
+  subtests: window.DAMP_TESTS // from damp-tests.js
 };
 
 function updateConfig() {
   config = {subtests: []};
-  for (var test in defaultConfig.subtests) {
-    if ($("subtest-" + test).checked) { // eslint-disable-line no-undef
+  for (var test of defaultConfig.subtests) {
+    if ($("subtest-" + test.name).checked) { // eslint-disable-line no-undef
       config.subtests.push(test);
     }
   }
@@ -66,13 +46,14 @@ Utilities:
 <br/><br/>
 <b>Configure DAMP</b> (CTRL-F5 to reset to talos defaults) <button type="button" onclick="deselectAll()">Deselect all tests</button><br/>
 <script>
-  for (var test in defaultConfig.subtests) {
-
+  for (let test of defaultConfig.subtests) {
+    let checked = test.disabled ? "unchecked" : "checked";
     // eslint-disable-next-line no-unsanitized/method
-    document.write('<input type="checkbox" id="subtest-' + test + '" ' + (defaultConfig.subtests[test] ? "" : "un") + "checked>"
-                  + test + "</input>"
-                  + '<span style="color:grey">&nbsp;&nbsp;&nbsp;' + testsInfo[test] + "</span>"
-                  + "<br/>");
+    document.write(`<input type="checkbox" id="subtest-${test.name}" ${checked}>
+                      ${test.name}
+                    </input>
+                    <span style="color:grey">&nbsp;&nbsp;&nbsp;${test.description}</span>
+                    <br/>`);
   }
 </script>
   <br/>

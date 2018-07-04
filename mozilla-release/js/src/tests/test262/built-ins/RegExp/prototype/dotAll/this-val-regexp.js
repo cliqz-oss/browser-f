@@ -1,3 +1,4 @@
+// |reftest| skip -- regexp-dotall is not supported
 // Copyright (C) 2017 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -5,7 +6,7 @@
 esid: sec-get-regexp.prototype.dotall
 description: >
     `dotAll` accessor function invoked on a RegExp instance
-info: >
+info: |
     21.2.5.12 get RegExp.prototype.dotAll
 
     4. Let flags be the value of R’s [[OriginalFlags]] internal slot.

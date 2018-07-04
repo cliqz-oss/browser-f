@@ -3,9 +3,6 @@
  /* import-globals-from browser_content_sandbox_utils.js */
 "use strict";
 
-var prefs = Cc["@mozilla.org/preferences-service;1"]
-            .getService(Ci.nsIPrefBranch);
-
 Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/" +
     "security/sandbox/test/browser_content_sandbox_utils.js", this);
 
@@ -19,7 +16,7 @@ Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/" +
 // Calls the native execv library function. Include imports so this can be
 // safely serialized and run remotely by ContentTask.spawn.
 function callExec(args) {
-  Components.utils.import("resource://gre/modules/ctypes.jsm");
+  ChromeUtils.import("resource://gre/modules/ctypes.jsm");
   let {lib, cmd} = args;
   let libc = ctypes.open(lib);
   let exec = libc.declare("execv", ctypes.default_abi,
@@ -31,7 +28,7 @@ function callExec(args) {
 
 // Calls the native fork syscall.
 function callFork(args) {
-  Components.utils.import("resource://gre/modules/ctypes.jsm");
+  ChromeUtils.import("resource://gre/modules/ctypes.jsm");
   let {lib} = args;
   let libc = ctypes.open(lib);
   let fork = libc.declare("fork", ctypes.default_abi, ctypes.int);
@@ -42,7 +39,7 @@ function callFork(args) {
 
 // Calls the native sysctl syscall.
 function callSysctl(args) {
-  Components.utils.import("resource://gre/modules/ctypes.jsm");
+  ChromeUtils.import("resource://gre/modules/ctypes.jsm");
   let {lib, name} = args;
   let libc = ctypes.open(lib);
   let sysctlbyname = libc.declare("sysctlbyname", ctypes.default_abi,
@@ -56,7 +53,7 @@ function callSysctl(args) {
 
 // Calls the native open/close syscalls.
 function callOpen(args) {
-  Components.utils.import("resource://gre/modules/ctypes.jsm");
+  ChromeUtils.import("resource://gre/modules/ctypes.jsm");
   let {lib, path, flags} = args;
   let libc = ctypes.open(lib);
   let open = libc.declare("open", ctypes.default_abi,
@@ -152,7 +149,7 @@ add_task(async function() {
   // on Nightly at this time.
   // eslint-disable-next-line mozilla/use-default-preference-values
   try {
-    level = prefs.getIntPref("security.sandbox.content.level");
+    level = Services.prefs.getIntPref("security.sandbox.content.level");
   } catch (e) {
     prefExists = false;
   }
@@ -197,12 +194,17 @@ add_task(async function() {
 
   // use open syscall
   if (isLinux() || isMac()) {
-    // open a file for writing in the content temp dir, this should work
-    // and the open handler in the content process closes the file for us
+    // open a file for writing in the content temp dir, this should fail on
+    // macOS and work on Linux. The open handler in the content process closes
+    // the file for us
     let path = fileInTempDir().path;
     let flags = openWriteCreateFlags();
     let fd = await ContentTask.spawn(browser, {lib, path, flags}, callOpen);
-    ok(fd >= 0, "opening a file for writing in content temp is permitted");
+    if (isMac()) {
+      ok(fd === -1, "opening a file for writing in content temp is not permitted");
+    } else {
+      ok(fd >= 0, "opening a file for writing in content temp is permitted");
+    }
   }
 
   // use fork syscall

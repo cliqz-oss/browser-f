@@ -21,8 +21,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=777385
   <![CDATA[
   /** Test for Bug 777385 **/
 
-  let Cu = Components.utils;
-
   let live_map = new WeakMap;
 
   let get_div_style = function () {
@@ -45,10 +43,10 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=777385
 
   make_live_map();
 
-  // RGBColor is a non-nsISupports refCounted class using WebIDL bindings.
+  // DOMPoint is a non-nsISupports refCounted class using WebIDL bindings.
 
   // non-nsISupports cycle-collected classes should fail as weak map keys.
-  let context = window.getComputedStyle(document.documentElement).getPropertyCSSValue("color").getRGBColorValue();
+  let context = new DOMPoint(1, 2, 3);
   let contextFail = false;
   try {
     live_map.set(context, 2);
@@ -67,7 +65,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=777385
     SpecialPowers.DOMWindowUtils.garbageCollect();
     SpecialPowers.DOMWindowUtils.garbageCollect();
 
-    is(ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(live_map).length, 1,
+    is(ChromeUtils.nondeterministicGetWeakMapKeys(live_map).length, 1,
        "Live nsISupports new DOM bindings wrappercached native weak map key should not be removed.");
 
     is(live_map.get(get_div_style()), 12345, "Live map should have live style with right value after GC.");

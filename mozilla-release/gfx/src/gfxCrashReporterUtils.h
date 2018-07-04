@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -25,14 +26,19 @@ class ScopedGfxFeatureReporter
 {
 public:
   explicit ScopedGfxFeatureReporter(const char *aFeature, bool aForce = false)
-    : mFeature(aFeature), mStatusChar('-')
+    : mFeature(aFeature), mStatusChar('-'), mStatusNumber(0)
   {
-    WriteAppNote(aForce ? '!' : '?');
+    WriteAppNote(aForce ? '!' : '?', 0);
   }
   ~ScopedGfxFeatureReporter() {
-    WriteAppNote(mStatusChar);
+    WriteAppNote(mStatusChar, mStatusNumber);
   }
   void SetSuccessful() { mStatusChar = '+'; }
+  void SetSuccessful(int32_t aNumber)
+  {
+    mStatusChar = '+';
+    mStatusNumber = aNumber;
+  }
 
   static void AppNote(const nsACString& aMessage);
 
@@ -41,9 +47,10 @@ public:
 protected:
   const char *mFeature;
   char mStatusChar;
+  int32_t mStatusNumber;
 
 private:
-  void WriteAppNote(char statusChar);
+  void WriteAppNote(char statusChar, int32_t statusNumber);
 };
 
 } // end namespace mozilla

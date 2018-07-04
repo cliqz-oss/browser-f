@@ -1,7 +1,8 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "MLGDeviceD3D11.h"
 #include "mozilla/ArrayUtils.h"
@@ -397,7 +398,7 @@ MLGSwapChainD3D11::UpdateBackBufferContents(ID3D11Texture2D* aBack)
   for (auto iter = frontValid.RectIter(); !iter.Done(); iter.Next()) {
     const IntRect& rect = iter.Get();
     D3D11_BOX box = RectToBox(rect);
-    context->CopySubresourceRegion(aBack, 0, rect.x, rect.y, 0, front, 0, &box);
+    context->CopySubresourceRegion(aBack, 0, rect.X(), rect.Y(), 0, front, 0, &box);
   }
 
   // The back and front buffers are now in sync.
@@ -453,8 +454,8 @@ MLGSwapChainD3D11::Present()
     size_t i = 0;
     for (auto iter = mBackBufferInvalid.RectIter(); !iter.Done(); iter.Next()) {
       const IntRect& rect = iter.Get();
-      rects[i].left = rect.x;
-      rects[i].top = rect.y;
+      rects[i].left = rect.X();
+      rects[i].top = rect.Y();
       rects[i].bottom = rect.YMost();
       rects[i].right = rect.XMost();
       i++;
@@ -575,7 +576,7 @@ MLGSwapChainD3D11::CopyBackbuffer(gfx::DrawTarget* aTarget, const gfx::IntRect& 
   aTarget->CopySurface(
     source,
     IntRect(0, 0, bbDesc.Width, bbDesc.Height),
-    IntPoint(-aBounds.x, -aBounds.y));
+    IntPoint(-aBounds.X(), -aBounds.Y()));
   aTarget->Flush();
 
   context->Unmap(temp, 0);
@@ -625,7 +626,11 @@ MLGBufferD3D11::Create(ID3D11Device* aDevice,
   data.SysMemSlicePitch = 0;
 
   RefPtr<ID3D11Buffer> buffer;
-  aDevice->CreateBuffer(&desc, aInitialData ? &data : nullptr, getter_AddRefs(buffer));
+  HRESULT hr = aDevice->CreateBuffer(&desc, aInitialData ? &data : nullptr, getter_AddRefs(buffer));
+  if (FAILED(hr) || !buffer) {
+    gfxCriticalError() << "Failed to create ID3D11Buffer.";
+    return nullptr;
+  }
 
   return new MLGBufferD3D11(buffer, aType, aSize);
 }
@@ -1089,6 +1094,17 @@ MLGDeviceD3D11::InitSamplerStates()
                   "Could not create linear clamp to zero sampler (%x)", hr);
     }
   }
+  {
+    CD3D11_SAMPLER_DESC desc = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
+    desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    HRESULT hr = mDevice->CreateSamplerState(&desc, getter_AddRefs(mSamplerStates[SamplerMode::LinearRepeat]));
+    if (FAILED(hr)) {
+      return Fail("FEATURE_FAILURE_LINEAR_CLAMP_ZERO_SAMPLER",
+                  "Could not create linear clamp to zero sampler (%x)", hr);
+    }
+  }
 
   {
     CD3D11_SAMPLER_DESC desc = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
@@ -1264,7 +1280,11 @@ MLGDeviceD3D11::GetTextureFactoryIdentifier() const
     GetLayersBackend(),
     XRE_GetProcessType(),
     GetMaxTextureSize());
-  ident.mSyncHandle = mSyncHandle;
+
+  if (mSyncObject) {
+    ident.mSyncHandle = mSyncObject->GetSyncHandle();
+  }
+
   return ident;
 }
 
@@ -1333,6 +1353,7 @@ bool
 MLGDeviceD3D11::Map(MLGResource* aResource, MLGMapType aType, MLGMappedResource* aMap)
 {
   ID3D11Resource* resource = aResource->AsResourceD3D11()->GetResource();
+  MOZ_ASSERT(resource);
 
   D3D11_MAPPED_SUBRESOURCE map;
   HRESULT hr = mCtx->Map(resource, 0, ToD3D11Map(aType), 0, &map);
@@ -1396,10 +1417,10 @@ MLGDeviceD3D11::SetViewport(const gfx::IntRect& aViewport)
   D3D11_VIEWPORT vp;
   vp.MaxDepth = 1.0f;
   vp.MinDepth = 0.0f;
-  vp.TopLeftX = aViewport.x;
-  vp.TopLeftY = aViewport.y;
-  vp.Width = aViewport.width;
-  vp.Height = aViewport.height;
+  vp.TopLeftX = aViewport.X();
+  vp.TopLeftY = aViewport.Y();
+  vp.Width = aViewport.Width();
+  vp.Height = aViewport.Height();
   mCtx->RSSetViewports(1, &vp);
 }
 
@@ -1407,8 +1428,8 @@ static inline D3D11_RECT
 ToD3D11Rect(const gfx::IntRect& aRect)
 {
   D3D11_RECT rect;
-  rect.left = aRect.x;
-  rect.top = aRect.y;
+  rect.left = aRect.X();
+  rect.top = aRect.Y();
   rect.right = aRect.XMost();
   rect.bottom = aRect.YMost();
   return rect;
@@ -1777,34 +1798,13 @@ MLGDeviceD3D11::SetPSTexturesNV12(uint32_t aSlot, TextureSource* aTexture)
 bool
 MLGDeviceD3D11::InitSyncObject()
 {
-  CD3D11_TEXTURE2D_DESC desc(
-    DXGI_FORMAT_B8G8R8A8_UNORM, 1, 1, 1, 1,
-    D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET);
-  desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+  MOZ_ASSERT(!mSyncObject);
+  MOZ_ASSERT(mDevice);
 
-  RefPtr<ID3D11Texture2D> texture;
-  HRESULT hr = mDevice->CreateTexture2D(&desc, nullptr, getter_AddRefs(texture));
-  if (FAILED(hr) || !texture) {
-    return Fail("FEATURE_FAILURE_SYNC_OBJECT",
-                "Could not create a sync texture: %x", hr);
-  }
+  mSyncObject = SyncObjectHost::CreateSyncObjectHost(mDevice);
+  MOZ_ASSERT(mSyncObject);
 
-  hr = texture->QueryInterface((IDXGIResource**)getter_AddRefs(mSyncTexture));
-  if (FAILED(hr) || !texture) {
-    return Fail("FEATURE_FAILURE_QI_SYNC_OBJECT",
-                "Could not QI sync texture: %x", hr);
-  }
-
-  hr = mSyncTexture->GetSharedHandle(&mSyncHandle);
-  if (FAILED(hr) || !mSyncHandle) {
-    NS_DispatchToMainThread(NS_NewRunnableFunction("layers::MLGDeviceD3D11::InitSyncObject",
-                                                   [] () -> void {
-      Accumulate(Telemetry::D3D11_SYNC_HANDLE_FAILURE, 1);
-    }));
-    return Fail("FEATURE_FAILURE_GET_SHARED_HANDLE",
-                "Could not get sync texture shared handle: %x", hr);
-  }
-  return true;
+  return mSyncObject->Init();
 }
 
 void
@@ -1828,26 +1828,13 @@ MLGDeviceD3D11::GetDiagnostics(GPUStats* aStats)
 bool
 MLGDeviceD3D11::Synchronize()
 {
-  RefPtr<IDXGIKeyedMutex> mutex;
-  mSyncTexture->QueryInterface((IDXGIKeyedMutex**)getter_AddRefs(mutex));
+  MOZ_ASSERT(mSyncObject);
 
-  {
-    HRESULT hr;
-    AutoTextureLock lock(mutex, hr, 10000);
-    if (hr == WAIT_TIMEOUT) {
-      hr = mDevice->GetDeviceRemovedReason();
-      if (hr == S_OK) {
-        // There is no driver-removed event. Crash with this timeout.
-        MOZ_CRASH("GFX: D3D11 normal status timeout");
-      }
-
-      // Since the timeout is related to the driver-removed, clear the
-      // render-bounding size to skip this frame.
+  if (mSyncObject) {
+    if (!mSyncObject->Synchronize()) {
+      // It's timeout or other error. Handle the device-reset here.
       HandleDeviceReset("SyncObject");
       return false;
-    }
-    if (hr == WAIT_ABANDONED) {
-      gfxCriticalNote << "GFX: AL_D3D11 abandoned sync";
     }
   }
 
@@ -1975,6 +1962,27 @@ MLGDeviceD3D11::CopyTexture(MLGTexture* aDest,
 {
   MLGTextureD3D11* dest = aDest->AsD3D11();
   MLGTextureD3D11* source = aSource->AsD3D11();
+
+  // We check both the source and destination copy regions, because
+  // CopySubresourceRegion is documented as causing a device reset if
+  // the operation is out-of-bounds. And it's not lying.
+  IntRect sourceBounds(IntPoint(0, 0), aSource->GetSize());
+  if (!sourceBounds.Contains(aRect)) {
+    gfxWarning() << "Attempt to read out-of-bounds in CopySubresourceRegion: " <<
+      Stringify(sourceBounds) <<
+      ", " <<
+      Stringify(aRect);
+    return;
+  }
+
+  IntRect destBounds(IntPoint(0, 0), aDest->GetSize());
+  if (!destBounds.Contains(IntRect(aTarget, aRect.Size()))) {
+    gfxWarning() << "Attempt to write out-of-bounds in CopySubresourceRegion: " <<
+      Stringify(destBounds) <<
+      ", " <<
+      Stringify(aTarget) << ", " << Stringify(aRect.Size());
+    return;
+  }
 
   D3D11_BOX box = RectToBox(aRect);
   mCtx->CopySubresourceRegion(
@@ -2114,8 +2122,8 @@ RectToBox(const gfx::IntRect& aRect)
   D3D11_BOX box;
   box.front = 0;
   box.back = 1;
-  box.left = aRect.x;
-  box.top = aRect.y;
+  box.left = aRect.X();
+  box.top = aRect.Y();
   box.right = aRect.XMost();
   box.bottom = aRect.YMost();
   return box;

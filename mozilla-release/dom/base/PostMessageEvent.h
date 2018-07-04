@@ -7,13 +7,15 @@
 #ifndef mozilla_dom_PostMessageEvent_h
 #define mozilla_dom_PostMessageEvent_h
 
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/StructuredCloneHolder.h"
 #include "nsCOMPtr.h"
 #include "mozilla/RefPtr.h"
 #include "nsTArray.h"
 #include "nsThreadUtils.h"
 
-class nsGlobalWindow;
+class nsGlobalWindowOuter;
+class nsGlobalWindowInner;
 class nsIDocument;
 class nsIPrincipal;
 
@@ -30,9 +32,9 @@ class PostMessageEvent final : public Runnable
 public:
   NS_DECL_NSIRUNNABLE
 
-  PostMessageEvent(nsGlobalWindow* aSource,
+  PostMessageEvent(nsGlobalWindowOuter* aSource,
                    const nsAString& aCallerOrigin,
-                   nsGlobalWindow* aTargetWindow,
+                   nsGlobalWindowOuter* aTargetWindow,
                    nsIPrincipal* aProvidedPrincipal,
                    nsIDocument* aSourceDocument,
                    bool aTrustedCaller);
@@ -40,9 +42,16 @@ public:
 private:
   ~PostMessageEvent();
 
-  RefPtr<nsGlobalWindow> mSource;
+  void
+  Dispatch(nsGlobalWindowInner* aTargetWindow, Event* aEvent);
+
+  void
+  DispatchError(JSContext* aCx, nsGlobalWindowInner* aTargetWindow,
+                mozilla::dom::EventTarget* aEventTarget);
+
+  RefPtr<nsGlobalWindowOuter> mSource;
   nsString mCallerOrigin;
-  RefPtr<nsGlobalWindow> mTargetWindow;
+  RefPtr<nsGlobalWindowOuter> mTargetWindow;
   nsCOMPtr<nsIPrincipal> mProvidedPrincipal;
   nsCOMPtr<nsIDocument> mSourceDocument;
   bool mTrustedCaller;

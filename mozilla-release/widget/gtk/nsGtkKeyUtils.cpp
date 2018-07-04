@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <gdk/gdk.h>
 #include <gdk/gdkx.h>
-#if (MOZ_WIDGET_GTK == 3)
+#ifdef MOZ_WIDGET_GTK
 #include <gdk/gdkkeysyms-compat.h>
 #endif
 #include <X11/XKBlib.h>
@@ -795,7 +795,7 @@ KeymapWrapper::ComputeDOMKeyCode(const GdkEventKey* aGdkKeyEvent)
 
     // If the unmodified character is not an ASCII character, that means we
     // couldn't find the hint. We should reset it.
-    if (unmodifiedChar > 0x7F) {
+    if (!IsPrintableASCIICharacter(unmodifiedChar)) {
         unmodifiedChar = 0;
     }
 
@@ -814,7 +814,7 @@ KeymapWrapper::ComputeDOMKeyCode(const GdkEventKey* aGdkKeyEvent)
 
     // If the shifted unmodified character isn't an ASCII character, we should
     // discard it too.
-    if (shiftedChar > 0x7F) {
+    if (!IsPrintableASCIICharacter(shiftedChar)) {
         shiftedChar = 0;
     }
 
@@ -822,14 +822,12 @@ KeymapWrapper::ComputeDOMKeyCode(const GdkEventKey* aGdkKeyEvent)
     // look for ASCII alphabet inputtable keyboard layout.  If the key
     // inputs an ASCII alphabet or an ASCII numeric, we should use it
     // for deciding our keyCode.
-    // Note that it's important not to use alternative keyboard layout for ASCII
-    // alphabet inputabble keyboard layout because the keycode for the key with
-    // alternative keyboard layout may conflict with another key on current
-    // keyboard layout.
+    uint32_t unmodCharLatin = 0;
+    uint32_t shiftedCharLatin = 0;
     if (!keymapWrapper->IsLatinGroup(aGdkKeyEvent->group)) {
         gint minGroup = keymapWrapper->GetFirstLatinGroup();
         if (minGroup >= 0) {
-            uint32_t unmodCharLatin =
+            unmodCharLatin =
                 keymapWrapper->GetCharCodeFor(aGdkKeyEvent, baseState,
                                               minGroup);
             if (IsBasicLatinLetterOrNumeral(unmodCharLatin)) {
@@ -837,7 +835,13 @@ KeymapWrapper::ComputeDOMKeyCode(const GdkEventKey* aGdkKeyEvent)
                 // an ASCII numeric, we should use it for the keyCode.
                 return WidgetUtils::ComputeKeyCodeFromChar(unmodCharLatin);
             }
-            uint32_t shiftedCharLatin =
+            // If the unmodified character in the alternative ASCII capable
+            // keyboard layout isn't an ASCII character, that means we couldn't
+            // find the hint. We should reset it.
+            if (!IsPrintableASCIICharacter(unmodCharLatin)) {
+                unmodCharLatin = 0;
+            }
+            shiftedCharLatin =
                 keymapWrapper->GetCharCodeFor(aGdkKeyEvent, shiftState,
                                               minGroup);
             if (IsBasicLatinLetterOrNumeral(shiftedCharLatin)) {
@@ -845,16 +849,46 @@ KeymapWrapper::ComputeDOMKeyCode(const GdkEventKey* aGdkKeyEvent)
                 // numeric, we should use it for the keyCode.
                 return WidgetUtils::ComputeKeyCodeFromChar(shiftedCharLatin);
             }
+            // If the shifted unmodified character in the alternative ASCII
+            // capable keyboard layout isn't an ASCII character, we should
+            // discard it too.
+            if (!IsPrintableASCIICharacter(shiftedCharLatin)) {
+                shiftedCharLatin = 0;
+            }
         }
     }
 
-    // If unmodified character is in ASCII range, use it.  Otherwise, use
-    // shifted character.
-    if (!unmodifiedChar && !shiftedChar) {
-        return 0;
+    // If the key itself or with Shift state on active keyboard layout produces
+    // an ASCII punctuation character, we should decide keyCode value with it.
+    if (unmodifiedChar || shiftedChar) {
+        return WidgetUtils::ComputeKeyCodeFromChar(
+                   unmodifiedChar ? unmodifiedChar : shiftedChar);
     }
-    return WidgetUtils::ComputeKeyCodeFromChar(
-                unmodifiedChar ? unmodifiedChar : shiftedChar);
+
+    // If the key itself or with Shift state on alternative ASCII capable
+    // keyboard layout produces an ASCII punctuation character, we should
+    // decide keyCode value with it.  Note that We've returned 0 for long
+    // time if keyCode isn't for an alphabet keys or a numeric key even in
+    // alternative ASCII capable keyboard layout because we decided that we
+    // should avoid setting same keyCode value to 2 or more keys since active
+    // keyboard layout may have a key to input the punctuation with different
+    // key.  However, setting keyCode to 0 makes some web applications which
+    // are aware of neither KeyboardEvent.key nor KeyboardEvent.code not work
+    // with Firefox when user selects non-ASCII capable keyboard layout such
+    // as Russian and Thai.  So, if alternative ASCII capable keyboard layout
+    // has keyCode value for the key, we should use it.  In other words, this
+    // behavior means that non-ASCII capable keyboard layout overrides some
+    // keys' keyCode value only if the key produces ASCII character by itself
+    // or with Shift key.
+    if (unmodCharLatin || shiftedCharLatin) {
+        return WidgetUtils::ComputeKeyCodeFromChar(
+                   unmodCharLatin ? unmodCharLatin : shiftedCharLatin);
+    }
+
+    // Otherwise, let's decide keyCode value from the hardware_keycode
+    // value on major keyboard layout.
+    CodeNameIndex code = ComputeDOMCodeNameIndex(aGdkKeyEvent);
+    return WidgetKeyboardEvent::GetFallbackKeyCodeOfPunctuationKey(code);
 }
 
 KeyNameIndex
@@ -897,14 +931,19 @@ KeymapWrapper::ComputeDOMCodeNameIndex(const GdkEventKey* aGdkKeyEvent)
 
 /* static */ void
 KeymapWrapper::InitKeyEvent(WidgetKeyboardEvent& aKeyEvent,
-                            GdkEventKey* aGdkKeyEvent)
+                            GdkEventKey* aGdkKeyEvent,
+                            bool aIsProcessedByIME)
 {
+    MOZ_ASSERT(!aIsProcessedByIME || aKeyEvent.mMessage != eKeyPress,
+      "If the key event is handled by IME, keypress event shouldn't be fired");
+
     KeymapWrapper* keymapWrapper = GetInstance();
 
     aKeyEvent.mCodeNameIndex = ComputeDOMCodeNameIndex(aGdkKeyEvent);
     MOZ_ASSERT(aKeyEvent.mCodeNameIndex != CODE_NAME_INDEX_USE_STRING);
     aKeyEvent.mKeyNameIndex =
-        keymapWrapper->ComputeDOMKeyNameIndex(aGdkKeyEvent);
+        aIsProcessedByIME ? KEY_NAME_INDEX_Process :
+                            keymapWrapper->ComputeDOMKeyNameIndex(aGdkKeyEvent);
     if (aKeyEvent.mKeyNameIndex == KEY_NAME_INDEX_Unidentified) {
         uint32_t charCode = GetCharCodeFor(aGdkKeyEvent);
         if (!charCode) {
@@ -917,10 +956,11 @@ KeymapWrapper::InitKeyEvent(WidgetKeyboardEvent& aKeyEvent,
             AppendUCS4ToUTF16(charCode, aKeyEvent.mKeyValue);
         }
     }
-    aKeyEvent.mKeyCode = ComputeDOMKeyCode(aGdkKeyEvent);
 
-    if (aKeyEvent.mKeyNameIndex != KEY_NAME_INDEX_USE_STRING ||
-        aKeyEvent.mMessage != eKeyPress) {
+    if (aIsProcessedByIME) {
+        aKeyEvent.mKeyCode = NS_VK_PROCESSKEY;
+    } else if (aKeyEvent.mKeyNameIndex != KEY_NAME_INDEX_USE_STRING ||
+               aKeyEvent.mMessage != eKeyPress) {
         aKeyEvent.mKeyCode = ComputeDOMKeyCode(aGdkKeyEvent);
     } else {
         aKeyEvent.mKeyCode = 0;
@@ -1371,6 +1411,14 @@ void
 KeymapWrapper::WillDispatchKeyboardEventInternal(WidgetKeyboardEvent& aKeyEvent,
                                                  GdkEventKey* aGdkKeyEvent)
 {
+    if (!aGdkKeyEvent) {
+        // If aGdkKeyEvent is nullptr, we're trying to dispatch a fake keyboard
+        // event in such case, we don't need to set alternative char codes.
+        // So, we don't need to do nothing here.  This case is typically we're
+        // dispatching eKeyDown or eKeyUp event during composition.
+        return;
+    }
+
     uint32_t charCode = GetCharCodeFor(aGdkKeyEvent);
     if (!charCode) {
         MOZ_LOG(gKeymapWrapperLog, LogLevel::Info,
@@ -1420,7 +1468,7 @@ KeymapWrapper::WillDispatchKeyboardEventInternal(WidgetKeyboardEvent& aKeyEvent,
 
     bool needLatinKeyCodes = !isLatin;
     if (!needLatinKeyCodes) {
-        needLatinKeyCodes = 
+        needLatinKeyCodes =
             (IS_ASCII_ALPHABETICAL(altCharCodes.mUnshiftedCharCode) !=
              IS_ASCII_ALPHABETICAL(altCharCodes.mShiftedCharCode));
     }

@@ -66,10 +66,14 @@ interface nsIPermissionManager : nsISupports
    * (never expire), expire at the end of the session, or expire at a specified
    * time. Permissions that expire at the end of a session may also have a
    * specified expiration time.
+   *
+   * EXPIRE_POLICY is a special expiration status. It is set when the permission
+   * is set by reading an enterprise policy. These permissions cannot be overridden.
    */
   const uint32_t EXPIRE_NEVER = 0;
   const uint32_t EXPIRE_SESSION = 1;
   const uint32_t EXPIRE_TIME = 2;
+  const uint32_t EXPIRE_POLICY = 3;
 
   /**
    * Add permission information for a given URI and permission type. This
@@ -163,6 +167,8 @@ interface nsIPermissionManager : nsISupports
 
   /**
    * Test whether a website has permission to perform the given action.
+   * This function will perform a pref lookup to permissions.default.<type>
+   * if the specific permission type is part of the whitelist for that functionality.
    * @param uri     the uri to be tested
    * @param type    a case-sensitive ASCII string, identifying the consumer
    * @param return  see add(), param permission. returns UNKNOWN_ACTION when
@@ -174,6 +180,8 @@ interface nsIPermissionManager : nsISupports
   /**
    * Test whether the principal has the permission to perform a given action.
    * System principals will always have permissions granted.
+   * This function will perform a pref lookup to permissions.default.<type>
+   * if the specific permission type is part of the whitelist for that functionality.
    */
   uint32_t testPermissionFromPrincipal(in nsIPrincipal principal,
                                        in string type);
@@ -182,6 +190,8 @@ interface nsIPermissionManager : nsISupports
    * Test whether the principal associated with the window's document has the
    * permission to perform a given action.  System principals will always
    * have permissions granted.
+   * This function will perform a pref lookup to permissions.default.<type>
+   * if the specific permission type is part of the whitelist for that functionality.
    */
   uint32_t testPermissionFromWindow(in mozIDOMWindow window,
                                     in string type);
@@ -189,6 +199,8 @@ interface nsIPermissionManager : nsISupports
   /**
    * Test whether a website has permission to perform the given action.
    * This requires an exact hostname match, subdomains are not a match.
+   * This function will perform a pref lookup to permissions.default.<type>
+   * if the specific permission type is part of the whitelist for that functionality.
    * @param uri     the uri to be tested
    * @param type    a case-sensitive ASCII string, identifying the consumer
    * @param return  see add(), param permission. returns UNKNOWN_ACTION when
@@ -200,6 +212,8 @@ interface nsIPermissionManager : nsISupports
   /**
    * See testExactPermission() above.
    * System principals will always have permissions granted.
+   * This function will perform a pref lookup to permissions.default.<type>
+   * if the specific permission type is part of the whitelist for that functionality.
    */
   uint32_t testExactPermissionFromPrincipal(in nsIPrincipal principal,
                                             in string type);
@@ -208,6 +222,8 @@ interface nsIPermissionManager : nsISupports
    * Test whether a website has permission to perform the given action
    * ignoring active sessions.
    * System principals will always have permissions granted.
+   * This function will perform a pref lookup to permissions.default.<type>
+   * if the specific permission type is part of the whitelist for that functionality.
    *
    * @param principal the principal
    * @param type      a case-sensitive ASCII string, identifying the consumer
@@ -310,7 +326,7 @@ interface nsIPermissionManager : nsISupports
    *
    * `SetPermissionsWithKey` may only be called in the Child process, and
    * initializes the permission manager with the permissions for a given
-   * Permission key. marking permissions with that key as avaliable.
+   * Permission key. marking permissions with that key as available.
    *
    * @param permissionKey  The key for the permissions which have been sent over.
    * @param perms  An array with the permissions which match the given key.

@@ -92,7 +92,7 @@ add_task(async function() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:newtab", false);
   // NB: CPOW usage because new tab pages can be preloaded, in which case no
   // load events fire.
-  await BrowserTestUtils.waitForCondition(() => !tab.linkedBrowser.contentDocument.hidden)
+  await BrowserTestUtils.waitForCondition(() => !tab.linkedBrowser.contentDocumentAsCPOW.hidden);
   let url = "https://example.org/browser/browser/base/content/test/urlbar/dummy_page.html#foo";
   gURLBar.value = url;
   gURLBar.select();
@@ -106,6 +106,6 @@ add_task(async function() {
      "Identity box should know we're doing SSL when the page loads from about:newtab");
   is(gURLBar.getAttribute("pageproxystate"), "valid",
      "URL bar is in valid page proxy state when SSL page with hash loads from about:newtab");
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
 });
 

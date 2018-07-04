@@ -10,19 +10,17 @@
 const TEST_BASE_HTTP = "http://example.com/browser/devtools/client/commandline/test/";
 const TEST_BASE_HTTPS = "https://example.com/browser/devtools/client/commandline/test/";
 
-var { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
-var { console } = require("resource://gre/modules/Console.jsm");
+var { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
 var flags = require("devtools/shared/flags");
+var { Task } = require("devtools/shared/task");
+
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/devtools/client/shared/test/telemetry-test-helpers.js", this);
 
 // Import the GCLI test helper
 var testDir = gTestPath.substr(0, gTestPath.lastIndexOf("/"));
 Services.scriptloader.loadSubScript(testDir + "/helpers.js", this);
-Services.scriptloader.loadSubScript(testDir + "/mockCommands.js", this);
-
-flags.testing = true;
-SimpleTest.registerCleanupFunction(() => {
-  flags.testing = false;
-});
+Services.scriptloader.loadSubScript(testDir + "/mockCommands.js", this, "UTF-8");
 
 function whenDelayedStartupFinished(aWindow, aCallback) {
   Services.obs.addObserver(function observer(aSubject, aTopic) {

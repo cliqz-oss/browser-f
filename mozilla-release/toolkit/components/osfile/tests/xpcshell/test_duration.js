@@ -1,5 +1,5 @@
-var {OS} = Components.utils.import("resource://gre/modules/osfile.jsm", {});
-var {Services} = Components.utils.import("resource://gre/modules/Services.jsm", {});
+var {OS} = ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
+var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
 
 /**
  * Test optional duration reporting that can be used for telemetry.
@@ -19,21 +19,21 @@ add_task(async function duration() {
   let copyFile = pathSource + ".bak";
   function testOptions(options, name, durations = availableDurations) {
     for (let duration of durations) {
-      do_print(`Checking ${duration} for operation: ${name}`);
-      do_print(`${name}: Gathered method duration time: ${options[duration]} ms`);
+      info(`Checking ${duration} for operation: ${name}`);
+      info(`${name}: Gathered method duration time: ${options[duration]} ms`);
       // Making sure that duration was updated.
-      do_check_eq(typeof options[duration], "number");
-      do_check_true(options[duration] >= 0);
+      Assert.equal(typeof options[duration], "number");
+      Assert.ok(options[duration] >= 0);
     }
   }
 
   function testOptionIncrements(options, name, backupDuration, durations = availableDurations) {
     for (let duration of durations) {
-      do_print(`Checking ${duration} increment for operation: ${name}`);
-      do_print(`${name}: Gathered method duration time: ${options[duration]} ms`);
-      do_print(`${name}: Previous duration: ${backupDuration[duration]} ms`);
+      info(`Checking ${duration} increment for operation: ${name}`);
+      info(`${name}: Gathered method duration time: ${options[duration]} ms`);
+      info(`${name}: Previous duration: ${backupDuration[duration]} ms`);
       // Making sure that duration was incremented.
-      do_check_true(options[duration] >= backupDuration[duration]);
+      Assert.ok(options[duration] >= backupDuration[duration]);
     }
   }
 
@@ -57,15 +57,15 @@ add_task(async function duration() {
   let writeAtomicOptions = {
     // This field should be first initialized with the actual
     // duration measurement then progressively incremented.
-    outSerializationDuration: null,
     outExecutionDuration: null,
-    tmpPath: tmpPath
+    tmpPath
   };
+  // Note that |contents| cannot be reused after this call since it is detached.
   await OS.File.writeAtomic(pathDest, contents, writeAtomicOptions);
-  testOptions(writeAtomicOptions, "OS.File.writeAtomic");
+  testOptions(writeAtomicOptions, "OS.File.writeAtomic", ["outExecutionDuration"]);
   await OS.File.remove(pathDest);
 
-  do_print(`Ensuring that we can use ${availableDurations.join(", ")} to accumulate durations`);
+  info(`Ensuring that we can use ${availableDurations.join(", ")} to accumulate durations`);
 
   let ARBITRARY_BASE_DURATION = 5;
   copyOptions = {
@@ -88,11 +88,16 @@ add_task(async function duration() {
 
   // Trying an operation where options are cloned.
   // Options structure passed to a OS.File writeAtomic method.
-  writeAtomicOptions = copyOptions;
+  writeAtomicOptions = {
+    // We do not check for |outSerializationDuration| since |Scheduler.post|
+    // may not be called whenever |writeAtomic| is called.
+    outExecutionDuration: ARBITRARY_BASE_DURATION
+  };
   writeAtomicOptions.tmpPath = tmpPath;
-  backupDuration = Object.assign({}, copyOptions);
+  backupDuration = Object.assign({}, writeAtomicOptions);
+  contents = await OS.File.read(pathSource, undefined, readOptions);
   await OS.File.writeAtomic(pathDest, contents, writeAtomicOptions);
-  testOptionIncrements(writeAtomicOptions, "writeAtomicOptions", backupDuration);
+  testOptionIncrements(writeAtomicOptions, "writeAtomicOptions", backupDuration, ["outExecutionDuration"]);
   OS.File.remove(pathDest);
 
   // Testing an operation that doesn't take arguments at all
@@ -100,7 +105,3 @@ add_task(async function duration() {
   await file.stat();
   await file.close();
 });
-
-function run_test() {
-  run_next_test();
-}

@@ -3,7 +3,7 @@
 <head>
   <title>Test for Form History Autocomplete Untrusted Events: Bug 511615</title>
   <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
   <script type="text/javascript" src="satchel_common.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
@@ -164,7 +164,7 @@ add_task(async function test_untrusted_events_ignored() {
 
   // A privileged key press will actually open the popup.
   let popupShown = waitForNextPopup();
-  doKey("down");
+  synthesizeKey("KEY_ArrowDown");
   await popupShown;
 
   // The selected autocomplete item should not change from untrusted events.
@@ -178,7 +178,7 @@ add_task(async function test_untrusted_events_ignored() {
 
   // A privileged key press will actually change the selected index.
   let indexChanged = new Promise(resolve => notifySelectedIndex(0, resolve));
-  doKey("down");
+  synthesizeKey("KEY_ArrowDown");
   await indexChanged;
 
   // The selected autocomplete item should not change and it should not be

@@ -4,26 +4,22 @@
 
 /* eslint-env mozilla/frame-script */
 
-var Ci = Components.interfaces;
-var Cu = Components.utils;
+ChromeUtils.defineModuleGetter(this, "Logger",
+  "resource://gre/modules/accessibility/Utils.jsm");
+ChromeUtils.defineModuleGetter(this, "Presentation",
+  "resource://gre/modules/accessibility/Presentation.jsm");
+ChromeUtils.defineModuleGetter(this, "Utils",
+  "resource://gre/modules/accessibility/Utils.jsm");
+ChromeUtils.defineModuleGetter(this, "EventManager",
+  "resource://gre/modules/accessibility/EventManager.jsm");
+ChromeUtils.defineModuleGetter(this, "ContentControl",
+  "resource://gre/modules/accessibility/ContentControl.jsm");
+ChromeUtils.defineModuleGetter(this, "Roles",
+  "resource://gre/modules/accessibility/Constants.jsm");
+ChromeUtils.defineModuleGetter(this, "States",
+  "resource://gre/modules/accessibility/Constants.jsm");
 
-Cu.import('resource://gre/modules/XPCOMUtils.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Logger',
-  'resource://gre/modules/accessibility/Utils.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Presentation',
-  'resource://gre/modules/accessibility/Presentation.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Utils',
-  'resource://gre/modules/accessibility/Utils.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'EventManager',
-  'resource://gre/modules/accessibility/EventManager.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'ContentControl',
-  'resource://gre/modules/accessibility/ContentControl.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'Roles',
-  'resource://gre/modules/accessibility/Constants.jsm');
-XPCOMUtils.defineLazyModuleGetter(this, 'States',
-  'resource://gre/modules/accessibility/Constants.jsm');
-
-Logger.info('content-script.js', content.document.location);
+Logger.info("content-script.js", content.document.location);
 
 var eventManager = null;
 var contentControl = null;
@@ -31,7 +27,7 @@ var contentControl = null;
 function forwardToParent(aMessage) {
   // XXX: This is a silly way to make a deep copy
   let newJSON = JSON.parse(JSON.stringify(aMessage.json));
-  newJSON.origin = 'child';
+  newJSON.origin = "child";
   sendAsyncMessage(aMessage.name, newJSON);
 }
 
@@ -43,8 +39,8 @@ function forwardToChild(aMessage, aListener, aVCPosition) {
   }
 
   Logger.debug(() => {
-    return ['forwardToChild', Logger.accessibleToString(acc),
-            aMessage.name, JSON.stringify(aMessage.json, null, '  ')];
+    return ["forwardToChild", Logger.accessibleToString(acc),
+            aMessage.name, JSON.stringify(aMessage.json, null, "  ")];
   });
 
   let mm = Utils.getMessageManager(acc.DOMNode);
@@ -55,7 +51,7 @@ function forwardToChild(aMessage, aListener, aVCPosition) {
 
   // XXX: This is a silly way to make a deep copy
   let newJSON = JSON.parse(JSON.stringify(aMessage.json));
-  newJSON.origin = 'parent';
+  newJSON.origin = "parent";
   if (Utils.isContentProcess) {
     // XXX: OOP content's screen offset is 0,
     // so we remove the real screen offset here.
@@ -66,50 +62,36 @@ function forwardToChild(aMessage, aListener, aVCPosition) {
   return true;
 }
 
-function activateContextMenu(aMessage) {
-  let position = Utils.getVirtualCursor(content.document).position;
-  if (!forwardToChild(aMessage, activateContextMenu, position)) {
-    let center = Utils.getBounds(position, true).center();
-
-    let evt = content.document.createEvent('HTMLEvents');
-    evt.initEvent('contextmenu', true, true);
-    evt.clientX = center.x;
-    evt.clientY = center.y;
-    position.DOMNode.dispatchEvent(evt);
-  }
-}
-
 function presentCaretChange(aText, aOldOffset, aNewOffset) {
   if (aOldOffset !== aNewOffset) {
     let msg = Presentation.textSelectionChanged(aText, aNewOffset, aNewOffset,
                                                 aOldOffset, aOldOffset, true);
-    sendAsyncMessage('AccessFu:Present', msg);
+    sendAsyncMessage("AccessFu:Present", msg);
   }
 }
 
 function scroll(aMessage) {
   let position = Utils.getVirtualCursor(content.document).position;
   if (!forwardToChild(aMessage, scroll, position)) {
-    sendAsyncMessage('AccessFu:DoScroll',
-                     { bounds: Utils.getBounds(position, true),
+    sendAsyncMessage("AccessFu:DoScroll",
+                     { bounds: Utils.getBounds(position),
                        page: aMessage.json.page,
                        horizontal: aMessage.json.horizontal });
   }
 }
 
 addMessageListener(
-  'AccessFu:Start',
+  "AccessFu:Start",
   function(m) {
     if (m.json.logLevel) {
       Logger.logLevel = Logger[m.json.logLevel];
     }
 
-    Logger.debug('AccessFu:Start');
+    Logger.debug("AccessFu:Start");
     if (m.json.buildApp)
       Utils.MozBuildApp = m.json.buildApp;
 
-    addMessageListener('AccessFu:ContextMenu', activateContextMenu);
-    addMessageListener('AccessFu:Scroll', scroll);
+    addMessageListener("AccessFu:Scroll", scroll);
 
     if (!contentControl) {
       contentControl = new ContentControl(this);
@@ -125,7 +107,7 @@ addMessageListener(
     function contentStarted() {
       let accDoc = Utils.AccService.getAccessibleFor(content.document);
       if (accDoc && !Utils.getState(accDoc).contains(States.BUSY)) {
-        sendAsyncMessage('AccessFu:ContentStarted');
+        sendAsyncMessage("AccessFu:ContentStarted");
       } else {
         content.setTimeout(contentStarted, 0);
       }
@@ -139,15 +121,14 @@ addMessageListener(
   });
 
 addMessageListener(
-  'AccessFu:Stop',
+  "AccessFu:Stop",
   function(m) {
-    Logger.debug('AccessFu:Stop');
+    Logger.debug("AccessFu:Stop");
 
-    removeMessageListener('AccessFu:ContextMenu', activateContextMenu);
-    removeMessageListener('AccessFu:Scroll', scroll);
+    removeMessageListener("AccessFu:Scroll", scroll);
 
     eventManager.stop();
     contentControl.stop();
   });
 
-sendAsyncMessage('AccessFu:Ready');
+sendAsyncMessage("AccessFu:Ready");

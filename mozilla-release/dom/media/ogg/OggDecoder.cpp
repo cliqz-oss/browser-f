@@ -4,44 +4,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "MediaPrefs.h"
-#include "MediaContainerType.h"
-#include "MediaDecoderStateMachine.h"
-#include "MediaFormatReader.h"
-#include "OggDemuxer.h"
 #include "OggDecoder.h"
+#include "MediaContainerType.h"
+#include "MediaDecoder.h"
+#include "nsMimeTypes.h"
+#include "mozilla/StaticPrefs.h"
 
 namespace mozilla {
-
-MediaDecoderStateMachine* OggDecoder::CreateStateMachine()
-{
-  RefPtr<OggDemuxer> demuxer = new OggDemuxer(mResource);
-  MediaFormatReaderInit init;
-  init.mVideoFrameContainer = GetVideoFrameContainer();
-  init.mKnowsCompositor = GetCompositor();
-  init.mCrashHelper = GetOwner()->CreateGMPCrashHelper();
-  init.mFrameStats = mFrameStats;
-  mReader = new MediaFormatReader(init, demuxer);
-  demuxer->SetChainingEvents(&mReader->TimedMetadataProducer(),
-                             &mReader->MediaNotSeekableProducer());
-  return new MediaDecoderStateMachine(this, mReader);
-}
 
 /* static */
 bool
 OggDecoder::IsSupportedType(const MediaContainerType& aContainerType)
 {
-  if (!MediaPrefs::OggEnabled()) {
+  if (!StaticPrefs::MediaOggEnabled()) {
     return false;
   }
 
-  if (aContainerType.Type() != MEDIAMIMETYPE("audio/ogg") &&
-      aContainerType.Type() != MEDIAMIMETYPE("video/ogg") &&
+  if (aContainerType.Type() != MEDIAMIMETYPE(AUDIO_OGG) &&
+      aContainerType.Type() != MEDIAMIMETYPE(VIDEO_OGG) &&
       aContainerType.Type() != MEDIAMIMETYPE("application/ogg")) {
     return false;
   }
 
-  const bool isOggVideo = (aContainerType.Type() != MEDIAMIMETYPE("audio/ogg"));
+  const bool isOggVideo = (aContainerType.Type() != MEDIAMIMETYPE(AUDIO_OGG));
 
   const MediaCodecs& codecs = aContainerType.ExtendedType().Codecs();
   if (codecs.IsEmpty()) {
@@ -51,9 +36,10 @@ OggDecoder::IsSupportedType(const MediaContainerType& aContainerType)
   // Verify that all the codecs specified are ones that we expect that
   // we can play.
   for (const auto& codec : codecs.Range()) {
-    if ((IsOpusEnabled() && codec.EqualsLiteral("opus")) ||
+    if ((MediaDecoder::IsOpusEnabled() && codec.EqualsLiteral("opus")) ||
         codec.EqualsLiteral("vorbis") ||
-        (MediaPrefs::FlacInOgg() && codec.EqualsLiteral("flac"))) {
+        (StaticPrefs::MediaOggFlacEnabled() &&
+         codec.EqualsLiteral("flac"))) {
       continue;
     }
     // Note: Only accept Theora in a video container type, not in an audio

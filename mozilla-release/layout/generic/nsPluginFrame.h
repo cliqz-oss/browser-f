@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,6 +18,8 @@
 #include "nsDisplayList.h"
 #include "nsIReflowCallback.h"
 #include "Units.h"
+#include "mozilla/layers/StackingContextHelper.h"
+#include "mozilla/webrender/WebRenderAPI.h"
 
 #ifdef XP_WIN
 #include <windows.h> // For HWND :(
@@ -60,12 +63,15 @@ public:
   typedef mozilla::layers::Layer Layer;
   typedef mozilla::layers::LayerManager LayerManager;
   typedef mozilla::layers::ImageContainer ImageContainer;
+  typedef mozilla::layers::StackingContextHelper StackingContextHelper;
+  typedef mozilla::layers::WebRenderLayerManager WebRenderLayerManager;
+  typedef mozilla::layers::WebRenderParentCommand WebRenderParentCommand;
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
 
   NS_DECL_FRAMEARENA_HELPERS(nsPluginFrame)
   NS_DECL_QUERYFRAME
 
-  friend nsIFrame* NS_NewObjectFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  friend nsIFrame* NS_NewObjectFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
   virtual void Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
@@ -77,10 +83,8 @@ public:
                       const ReflowInput& aReflowInput,
                       nsReflowStatus& aStatus) override;
   virtual void DidReflow(nsPresContext* aPresContext,
-                         const ReflowInput* aReflowInput,
-                         nsDidReflowStatus aStatus) override;
+                         const ReflowInput* aReflowInput) override;
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   virtual nsresult  HandleEvent(nsPresContext* aPresContext,
@@ -97,9 +101,9 @@ public:
   virtual nsresult GetFrameName(nsAString& aResult) const override;
 #endif
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
-  virtual void DidSetStyleContext(nsStyleContext* aOldStyleContext) override;
+  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   NS_IMETHOD GetPluginInstance(nsNPAPIPluginInstance** aPluginInstance) override;
 
@@ -174,7 +178,7 @@ public:
    * the frame's content-box but may be smaller if the plugin is rendering
    * asynchronously and has a different-sized image temporarily.
    */
-  nsRect GetPaintedRect(nsDisplayPlugin* aItem);
+  nsRect GetPaintedRect(const nsDisplayPlugin* aItem) const;
 
   /**
    * If aSupports has a nsPluginFrame, then prepare it for a DocShell swap.
@@ -222,8 +226,14 @@ public:
    */
   bool WantsToHandleWheelEventAsDefaultAction() const;
 
+  bool CreateWebRenderCommands(nsDisplayItem* aItem,
+                               mozilla::wr::DisplayListBuilder& aBuilder,
+                               mozilla::wr::IpcResourceUpdateQueue& aResources,
+                               const StackingContextHelper& aSc,
+                               mozilla::layers::WebRenderLayerManager* aManager,
+                               nsDisplayListBuilder* aDisplayListBuilder);
 protected:
-  explicit nsPluginFrame(nsStyleContext* aContext);
+  explicit nsPluginFrame(ComputedStyle* aStyle);
   virtual ~nsPluginFrame();
 
   // NOTE:  This frame class does not inherit from |nsLeafFrame|, so
@@ -268,6 +278,7 @@ protected:
 
   nsView* GetViewInternal() const override { return mOuterView; }
   void SetViewInternal(nsView* aView) override { mOuterView = aView; }
+  bool GetBounds(nsDisplayItem* aItem, mozilla::gfx::IntSize& aSize, gfxRect& aRect);
 
 private:
   // Registers the plugin for a geometry update, and requests a geometry
@@ -337,6 +348,21 @@ private:
   mozilla::UniquePtr<PluginFrameDidCompositeObserver> mDidCompositeObserver;
 };
 
+class nsDisplayPluginGeometry : public nsDisplayItemGenericGeometry
+{
+public:
+  nsDisplayPluginGeometry(nsDisplayItem *aItem, nsDisplayListBuilder* aBuilder)
+    : nsDisplayItemGenericGeometry(aItem, aBuilder)
+  {}
+
+  // Plugins MozPaintWait event depends on sync decode, so we always want
+  // to rebuild the display list when sync decoding.
+  virtual bool InvalidateForSyncDecodeImages() const override
+  {
+    return true;
+  }
+};
+
 class nsDisplayPlugin : public nsDisplayItem {
 public:
   nsDisplayPlugin(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
@@ -351,9 +377,10 @@ public:
   }
 #endif
 
-  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) override;
+  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder,
+                           bool* aSnap) const override;
   virtual nsRegion GetOpaqueRegion(nsDisplayListBuilder* aBuilder,
-                                   bool* aSnap) override;
+                                   bool* aSnap) const override;
   virtual void Paint(nsDisplayListBuilder* aBuilder,
                      gfxContext* aCtx) override;
   virtual bool ComputeVisibility(nsDisplayListBuilder* aBuilder,
@@ -378,6 +405,17 @@ public:
     return static_cast<nsPluginFrame*>(mFrame)->GetLayerState(aBuilder,
                                                               aManager);
   }
+
+  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override
+  {
+    return new nsDisplayPluginGeometry(this, aBuilder);
+  }
+
+  virtual bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                                       mozilla::wr::IpcResourceUpdateQueue& aResources,
+                                       const StackingContextHelper& aSc,
+                                       mozilla::layers::WebRenderLayerManager* aManager,
+                                       nsDisplayListBuilder* aDisplayListBuilder) override;
 };
 
 #endif /* nsPluginFrame_h___ */

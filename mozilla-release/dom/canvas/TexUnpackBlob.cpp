@@ -623,7 +623,6 @@ TexUnpackImage::TexOrSubImage(bool isSubImage, bool needsRespec, const char* fun
     WebGLContext* webgl = tex->mContext;
 
     gl::GLContext* gl = webgl->GL();
-    gl->MakeCurrent();
 
     if (needsRespec) {
         *out_error = DoTexOrSubImage(isSubImage, gl, target.get(), level, dui, xOffset,
@@ -637,6 +636,10 @@ TexUnpackImage::TexOrSubImage(bool isSubImage, bool needsRespec, const char* fun
     do {
         if (mDepth != 1) {
             fallbackReason = "depth is not 1";
+            break;
+        }
+        if (xOffset != 0 || yOffset != 0 || zOffset != 0) {
+            fallbackReason = "x/y/zOffset is not 0";
             break;
         }
 
@@ -698,12 +701,10 @@ TexUnpackImage::TexOrSubImage(bool isSubImage, bool needsRespec, const char* fun
             break;
         }
 
-        const gfx::IntSize destSize(mWidth, mHeight);
+        const gfx::IntSize dstSize(mWidth, mHeight);
         const auto dstOrigin = (webgl->mPixelStore_FlipY ? gl::OriginPos::TopLeft
                                                          : gl::OriginPos::BottomLeft);
-        if (!gl->BlitHelper()->BlitImageToFramebuffer(mImage, destSize, scopedFB.FB(),
-                                                      dstOrigin))
-        {
+        if (!gl->BlitHelper()->BlitImageToFramebuffer(mImage, dstSize, dstOrigin)) {
             fallbackReason = "likely bug: failed to blit";
             break;
         }

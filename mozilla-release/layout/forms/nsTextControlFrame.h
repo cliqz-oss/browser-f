@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,6 +8,7 @@
 #define nsTextControlFrame_h___
 
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/Element.h"
 #include "nsContainerFrame.h"
 #include "nsIAnonymousContentCreator.h"
 #include "nsIContent.h"
@@ -35,10 +37,10 @@ public:
 
   NS_DECLARE_FRAME_PROPERTY_DELETABLE(ContentScrollPos, nsPoint)
 
-  explicit nsTextControlFrame(nsStyleContext* aContext);
+  explicit nsTextControlFrame(ComputedStyle* aStyle);
   virtual ~nsTextControlFrame();
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot) override;
+  virtual void DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
 
   virtual nsIScrollableFrame* GetScrollTargetFrame() override {
     return do_QueryFrame(PrincipalChildList().FirstChild());
@@ -125,7 +127,6 @@ public:
                                    nsFrameList&    aChildList) override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   virtual mozilla::dom::Element*
@@ -133,7 +134,7 @@ public:
 
 //==== BEGIN NSIFORMCONTROLFRAME
   virtual void SetFocus(bool aOn , bool aRepaint) override;
-  virtual nsresult SetFormProperty(nsIAtom* aName, const nsAString& aValue) override;
+  virtual nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) override;
 
 //==== END NSIFORMCONTROLFRAME
 
@@ -157,8 +158,8 @@ public:
 
 //==== NSISTATEFULFRAME
 
-  NS_IMETHOD SaveState(nsPresState** aState) override;
-  NS_IMETHOD RestoreState(nsPresState* aState) override;
+  UniquePtr<PresState> SaveState() override;
+  NS_IMETHOD RestoreState(PresState* aState) override;
 
 //=== END NSISTATEFULFRAME
 
@@ -166,10 +167,10 @@ public:
 
   /** handler for attribute changes to mContent */
   virtual nsresult AttributeChanged(int32_t         aNameSpaceID,
-                                    nsIAtom*        aAttribute,
+                                    nsAtom*        aAttribute,
                                     int32_t         aModType) override;
 
-  nsresult GetText(nsString& aText);
+  void GetText(nsString& aText);
 
   virtual nsresult PeekOffset(nsPeekOffsetStruct *aPos) override;
 
@@ -188,16 +189,18 @@ protected:
 public: //for methods who access nsTextControlFrame directly
   void SetValueChanged(bool aValueChanged);
 
+  mozilla::dom::Element* GetRootNode() const {
+    return mRootNode;
+  }
+
+  mozilla::dom::Element* GetPreviewNode() const {
+    return mPreviewDiv;
+  }
+
   // called by the focus listener
   nsresult MaybeBeginSecureKeyboardInput();
   void MaybeEndSecureKeyboardInput();
 
-#define DEFINE_TEXTCTRL_FORWARDER(type, name)                                  \
-  type name() {                                                                \
-    nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent()); \
-    NS_ASSERTION(txtCtrl, "Content not a text control element");               \
-    return txtCtrl->name();                                                    \
-  }
 #define DEFINE_TEXTCTRL_CONST_FORWARDER(type, name)                            \
   type name() const {                                                          \
     nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent()); \
@@ -207,14 +210,12 @@ public: //for methods who access nsTextControlFrame directly
 
   DEFINE_TEXTCTRL_CONST_FORWARDER(bool, IsSingleLineTextControl)
   DEFINE_TEXTCTRL_CONST_FORWARDER(bool, IsTextArea)
-  DEFINE_TEXTCTRL_CONST_FORWARDER(bool, IsPlainTextControl)
   DEFINE_TEXTCTRL_CONST_FORWARDER(bool, IsPasswordTextControl)
   DEFINE_TEXTCTRL_CONST_FORWARDER(int32_t, GetCols)
   DEFINE_TEXTCTRL_CONST_FORWARDER(int32_t, GetWrapCols)
   DEFINE_TEXTCTRL_CONST_FORWARDER(int32_t, GetRows)
 
 #undef DEFINE_TEXTCTRL_CONST_FORWARDER
-#undef DEFINE_TEXTCTRL_FORWARDER
 
 protected:
   class EditorInitializer;
@@ -271,7 +272,8 @@ protected:
     nsTextControlFrame* mFrame;
   };
 
-  nsresult OffsetToDOMPoint(uint32_t aOffset, nsIDOMNode** aResult, uint32_t* aPosition);
+  nsresult OffsetToDOMPoint(uint32_t aOffset, nsINode** aResult,
+                            uint32_t* aPosition);
 
   /**
    * Update the textnode under our anonymous div to show the new
@@ -294,8 +296,8 @@ protected:
    * @param aAtt the attribute to determine the existence of
    * @returns false if it does not exist
    */
-  bool AttributeExists(nsIAtom *aAtt) const
-  { return mContent && mContent->HasAttr(kNameSpaceID_None, aAtt); }
+  bool AttributeExists(nsAtom *aAtt) const
+  { return mContent && mContent->AsElement()->HasAttr(kNameSpaceID_None, aAtt); }
 
   /**
    * We call this when we are being destroyed or removed from the PFM.
@@ -314,28 +316,64 @@ protected:
 
 private:
   //helper methods
-  nsresult SetSelectionInternal(nsIDOMNode *aStartNode, uint32_t aStartOffset,
-                                nsIDOMNode *aEndNode, uint32_t aEndOffset,
+  nsresult SetSelectionInternal(nsINode* aStartNode, uint32_t aStartOffset,
+                                nsINode* aEndNode, uint32_t aEndOffset,
                                 SelectionDirection aDirection = eNone);
   nsresult SelectAllOrCollapseToEndOfText(bool aSelect);
   nsresult SetSelectionEndPoints(uint32_t aSelStart, uint32_t aSelEnd,
                                  SelectionDirection aDirection = eNone);
 
-  /**
-   * Return the root DOM element, and implicitly initialize the editor if
-   * needed.
-   *
-   * XXXbz This function is slow.  Very slow.  Consider using
-   * EnsureEditorInitialized() if you need that, and
-   * nsITextControlElement::GetRootEditorNode on our content if you need that.
-   */
-  nsresult GetRootNodeAndInitializeEditor(nsIDOMElement **aRootElement);
-
   void FinishedInitializer() {
     DeleteProperty(TextControlInitializer());
   }
 
+  const nsAString& CachedValue() const
+  {
+    return mCachedValue;
+  }
+
+  void ClearCachedValue()
+  {
+    mCachedValue.SetIsVoid(true);
+  }
+
+  void CacheValue(const nsAString& aValue)
+  {
+    mCachedValue.Assign(aValue);
+  }
+
+  MOZ_MUST_USE bool
+  CacheValue(const nsAString& aValue, const mozilla::fallible_t& aFallible)
+  {
+    if (!mCachedValue.Assign(aValue, aFallible)) {
+      ClearCachedValue();
+      return false;
+    }
+    return true;
+  }
+
 private:
+  class nsAnonDivObserver;
+
+  nsresult CreateRootNode();
+  void CreatePlaceholderIfNeeded();
+  void CreatePreviewIfNeeded();
+  bool ShouldInitializeEagerly() const;
+  void InitializeEagerlyIfNeeded();
+
+  RefPtr<mozilla::dom::Element> mRootNode;
+  RefPtr<mozilla::dom::Element> mPlaceholderDiv;
+  RefPtr<mozilla::dom::Element> mPreviewDiv;
+  RefPtr<nsAnonDivObserver> mMutationObserver;
+  // Cache of the |.value| of <input> or <textarea> element without hard-wrap.
+  // If its IsVoid() returns true, it doesn't cache |.value|.
+  // Otherwise, it's cached when setting specific value or getting value from
+  // TextEditor.  Additionally, when contents in the anonymous <div> element
+  // is modified, this is cleared.
+  //
+  // FIXME(bug 1402545): Consider using an nsAutoString here.
+  nsString mCachedValue;
+
   // Our first baseline, or NS_INTRINSIC_WIDTH_UNKNOWN if we have a pending
   // Reflow.
   nscoord mFirstBaseline;
@@ -343,10 +381,6 @@ private:
   // these packed bools could instead use the high order bits on mState, saving 4 bytes
   bool mEditorHasBeenInitialized;
   bool mIsProcessing;
-  // Keep track if we have asked a placeholder node creation.
-  bool mUsePlaceholder;
-  // Similarly for preview node creation.
-  bool mUsePreview;
 
 #ifdef DEBUG
   bool mInEditorInitialization;

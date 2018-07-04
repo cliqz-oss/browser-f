@@ -148,36 +148,40 @@ TEST(RtpHeaderParser, ParseWithOverSizedExtension) {
   EXPECT_EQ(sizeof(kPacket), header.headerLength);
 }
 
-TEST(RtpHeaderParser, ParseAll8Extensions) {
+TEST(RtpHeaderParser, ParseAll10Extensions) {
   const uint8_t kAudioLevel = 0x5a;
   // clang-format off
   const uint8_t kPacket[] = {
       0x90, kPayloadType, 0x00, kSeqNum,
       0x65, 0x43, 0x12, 0x78,  // kTimestamp.
       0x12, 0x34, 0x56, 0x78,  // kSsrc.
-      0xbe, 0xde, 0x00, 0x08,  // Extension of size 8x32bit words.
+      0xbe, 0xde, 0x00, 0x0b,  // Extension of size 10x32bit words.
       0x40, 0x80|kAudioLevel,  // AudioLevel.
       0x22, 0x01, 0x56, 0xce,  // TransmissionOffset.
       0x62, 0x12, 0x34, 0x56,  // AbsoluteSendTime.
+      0x72, 0x7f, 0x01, 0x10,  // CsrcAudioLevel
       0x81, 0xce, 0xab,        // TransportSequenceNumber.
       0xa0, 0x03,              // VideoRotation.
       0xb2, 0x12, 0x48, 0x76,  // PlayoutDelayLimits.
       0xc2, 'r', 't', 'x',     // RtpStreamId
       0xd5, 's', 't', 'r', 'e', 'a', 'm',  // RepairedRtpStreamId
-      0x00, 0x00,              // Padding to 32bit boundary.
+      0xe7, 'm', 'i', 'd', 'v', 'a', 'l', 'u', 'e', // MId
+      0x00,                    // Padding to 32bit boundary.
   };
   // clang-format on
   ASSERT_EQ(sizeof(kPacket) % 4, 0u);
 
   RtpHeaderExtensionMap extensions;
-  extensions.Register<TransmissionOffset>(2);
-  extensions.Register<AudioLevel>(4);
-  extensions.Register<AbsoluteSendTime>(6);
-  extensions.Register<TransportSequenceNumber>(8);
-  extensions.Register<VideoOrientation>(0xa);
-  extensions.Register<PlayoutDelayLimits>(0xb);
-  extensions.Register<RtpStreamId>(0xc);
-  extensions.Register<RepairedRtpStreamId>(0xd);
+  EXPECT_TRUE(extensions.Register<TransmissionOffset>(2));
+  EXPECT_TRUE(extensions.Register<AudioLevel>(4));
+  EXPECT_TRUE(extensions.Register<AbsoluteSendTime>(6));
+  EXPECT_TRUE(extensions.Register<CsrcAudioLevel>(7));
+  EXPECT_TRUE(extensions.Register<TransportSequenceNumber>(8));
+  EXPECT_TRUE(extensions.Register<VideoOrientation>(0xa));
+  EXPECT_TRUE(extensions.Register<PlayoutDelayLimits>(0xb));
+  EXPECT_TRUE(extensions.Register<RtpStreamId>(0xc));
+  EXPECT_TRUE(extensions.Register<RepairedRtpStreamId>(0xd));
+  EXPECT_TRUE(extensions.Register<MId>(0xe));
   RtpUtility::RtpHeaderParser parser(kPacket, sizeof(kPacket));
   RTPHeader header;
 
@@ -204,7 +208,12 @@ TEST(RtpHeaderParser, ParseAll8Extensions) {
   EXPECT_EQ(0x876 * PlayoutDelayLimits::kGranularityMs,
             header.extension.playout_delay.max_ms);
   EXPECT_EQ(header.extension.rtpStreamId, StreamId("rtx"));
-  EXPECT_EQ(header.extension.repairedStreamId, StreamId("stream"));
+  EXPECT_EQ(header.extension.repairedRtpStreamId, StreamId("stream"));
+  EXPECT_EQ(header.extension.mId, StreamId("midvalue"));
+  EXPECT_EQ(header.extension.csrcAudioLevels.numAudioLevels, 3);
+  EXPECT_EQ(header.extension.csrcAudioLevels.arrOfAudioLevels[0], 0x7f);
+  EXPECT_EQ(header.extension.csrcAudioLevels.arrOfAudioLevels[1], 0x01);
+  EXPECT_EQ(header.extension.csrcAudioLevels.arrOfAudioLevels[2], 0x10);
 }
 
 TEST(RtpHeaderParser, ParseMalformedRsidExtensions) {
@@ -229,7 +238,7 @@ TEST(RtpHeaderParser, ParseMalformedRsidExtensions) {
 
   EXPECT_TRUE(parser.Parse(&header, &extensions));
   EXPECT_TRUE(header.extension.rtpStreamId.empty());
-  EXPECT_EQ(header.extension.repairedStreamId, StreamId("str"));
+  EXPECT_EQ(header.extension.repairedRtpStreamId, StreamId("str"));
 }
 
 TEST(RtpHeaderParser, ParseWithCsrcsExtensionAndPadding) {

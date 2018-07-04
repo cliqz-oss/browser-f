@@ -2,14 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function sandboxScript(sandbox)
 {
   dump("sandboxScript " + sandbox.pluginElement + "\n");
-  Components.classes["@mozilla.org/moz/jssubscript-loader;1"].getService(Components.interfaces.mozIJSSubScriptLoader).loadSubScript("resource://ppapiflash.js/ppapi-content-sandbox.js", sandbox);
+  Cc["@mozilla.org/moz/jssubscript-loader;1"].getService(Ci.mozIJSSubScriptLoader).loadSubScript("resource://ppapiflash.js/ppapi-content-sandbox.js", sandbox);
 }
 
 let plugins;
@@ -53,7 +51,7 @@ function startup(data) {
     return rng.generateRandomBytes(data);
   });
 
-  let moduleLocalFiles = Services.dirsvc.get("ProfD", Ci.nsILocalFile);
+  let moduleLocalFiles = Services.dirsvc.get("ProfD", Ci.nsIFile);
   moduleLocalFiles.append("Flash PPAPI Data");
   try {
     moduleLocalFiles.create(Ci.nsIFile.DIRECTORY_TYPE, 0o755);

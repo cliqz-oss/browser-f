@@ -150,8 +150,9 @@ public:
     return (mStates & aEventStates.mStates) == aEventStates.mStates;
   }
 
-  // We only need that method for inDOMUtils::GetContentState.
-  // If inDOMUtils::GetContentState is removed, this method should be removed.
+  // We only need that method for InspectorUtils::GetContentState.
+  // If InspectorUtils::GetContentState is removed, this method should
+  // be removed.
   InternalType GetInternalValue() const {
     return mStates;
   }
@@ -242,8 +243,7 @@ private:
 #define NS_EVENT_STATE_REQUIRED      NS_DEFINE_EVENT_STATE_MACRO(21)
 // Content is optional (and can be required).
 #define NS_EVENT_STATE_OPTIONAL      NS_DEFINE_EVENT_STATE_MACRO(22)
-// Element is an unresolved custom element candidate
-#define NS_EVENT_STATE_UNRESOLVED NS_DEFINE_EVENT_STATE_MACRO(23)
+// Free bit                          NS_DEFINE_EVENT_STATE_MACRO(23)
 // Link has been visited.
 #define NS_EVENT_STATE_VISITED       NS_DEFINE_EVENT_STATE_MACRO(24)
 // Link hasn't been visited.
@@ -330,6 +330,8 @@ private:
 
 #define DISABLED_STATES (NS_EVENT_STATE_DISABLED | NS_EVENT_STATE_ENABLED)
 
+#define REQUIRED_STATES (NS_EVENT_STATE_REQUIRED | NS_EVENT_STATE_OPTIONAL)
+
 // Event states that can be added and removed through
 // Element::{Add,Remove}ManuallyManagedStates.
 //
@@ -350,6 +352,7 @@ private:
   MANUALLY_MANAGED_STATES |                   \
   DIR_ATTR_STATES |                           \
   DISABLED_STATES |                           \
+  REQUIRED_STATES |                           \
   NS_EVENT_STATE_ACTIVE |                     \
   NS_EVENT_STATE_DRAGOVER |                   \
   NS_EVENT_STATE_FOCUS |                      \
@@ -357,7 +360,6 @@ private:
   NS_EVENT_STATE_FOCUS_WITHIN |               \
   NS_EVENT_STATE_FULL_SCREEN |                \
   NS_EVENT_STATE_HOVER |                      \
-  NS_EVENT_STATE_UNRESOLVED |                 \
   NS_EVENT_STATE_URLTARGET                    \
 )
 

@@ -8,7 +8,7 @@ esid: sec-class-definitions-runtime-semantics-evaluation
 features: [default-parameters]
 flags: [generated]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 info: |
     ClassExpression : class BindingIdentifieropt ClassTail
@@ -60,6 +60,7 @@ info: |
       ...BindingPattern[?Yield]
 
 ---*/
+throw "Test262: This statement should not be evaluated.";
 
 var C = class {
   static async method(...x = []) {

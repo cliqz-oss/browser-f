@@ -3,7 +3,7 @@
 <head>
   <title>BrowsingData Settings test</title>
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
-  <script src="chrome://mochikit/content/tests/SimpleTest/SpawnTask.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/AddTask.js"></script>
   <script src="chrome://mochikit/content/tests/SimpleTest/ExtensionTestUtils.js"></script>
   <script type="text/javascript" src="head.js"></script>
   <link rel="stylesheet" href="chrome://mochikit/contents/tests/SimpleTest/test.css"/>
@@ -13,9 +13,7 @@
 <script type="text/javascript">
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
-
-var {SharedPreferences} = Cu.import("resource://gre/modules/SharedPreferences.jsm", {});
+var {SharedPreferences} = ChromeUtils.import("resource://gre/modules/SharedPreferences.jsm", {});
 
 const PREF_DOMAIN = "android.not_a_preference.privacy.clear";
 const PREF_KEY_PREFIX = "private.data.";
@@ -26,11 +24,11 @@ function checkPrefs(key, actualValue, prefs, prefSuffix) {
   is(actualValue, prefValue, `${key} property of dataToRemove matches the expected pref.`);
 }
 
-function testSettingsPreferences(dataToRemove){
+function testSettingsPreferences(dataToRemove) {
   let prefs = SharedPreferences.forProfile().getSetPref(PREF_DOMAIN);
 
   for (let key of Object.keys(dataToRemove)) {
-    switch(key){
+    switch (key) {
       case "formData":
         checkPrefs(key, dataToRemove[key], prefs, "formdata");
         break;
@@ -73,7 +71,7 @@ add_task(async function testSettings() {
   is(SETTINGS_LIST.length, Object.keys(dataRemovalPermitted).length, `dataRemovalPermitted contains expected no of keys`);
   for (let key of SETTINGS_LIST) {
     is(true, dataRemovalPermitted[key],
-      `${key} property of dataRemovalPermitted matches the expected value.`);
+       `${key} property of dataRemovalPermitted matches the expected value.`);
   }
 
   // Verify values of dataToRemove keys are as expected.

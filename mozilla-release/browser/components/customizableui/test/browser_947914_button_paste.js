@@ -8,14 +8,16 @@ var initialLocation = gBrowser.currentURI.spec;
 var globalClipboard;
 
 add_task(async function() {
-  await SpecialPowers.pushPrefEnv({set: [["browser.photon.structure.enabled", false]]});
   await BrowserTestUtils.withNewTab({gBrowser, url: "about:blank"}, async function() {
+    CustomizableUI.addWidgetToArea("edit-controls", CustomizableUI.AREA_FIXED_OVERFLOW_PANEL);
     info("Check paste button existence and functionality");
 
     let clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper);
     globalClipboard = Services.clipboard.kGlobalClipboard;
 
-    await PanelUI.show();
+    await waitForOverflowButtonShown();
+
+    await document.getElementById("nav-bar").overflowable.show();
     info("Menu panel was opened");
 
     let pasteButton = document.getElementById("paste-button");
@@ -27,16 +29,19 @@ add_task(async function() {
 
     // test paste button by pasting text to URL bar
     gURLBar.focus();
-    await PanelUI.show();
+    await gCUITestUtils.openMainMenu();
     info("Menu panel was opened");
 
     ok(!pasteButton.hasAttribute("disabled"), "Paste button is enabled");
     pasteButton.click();
 
     is(gURLBar.value, text, "Text pasted successfully");
+
+    await gCUITestUtils.hideMainMenu();
   });
 });
 
 registerCleanupFunction(function cleanup() {
+  CustomizableUI.reset();
   Services.clipboard.emptyClipboard(globalClipboard);
 });

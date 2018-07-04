@@ -9,7 +9,6 @@ add_task(async function() {
     "special-powers@mozilla.org",
     "mochikit@mozilla.org",
     "workerbootstrap-test@mozilla.org",
-    "worker-test@mozilla.org",
     "mozscreenshots@mozilla.org",
     "indexedDB-test@mozilla.org",
   ];
@@ -111,7 +110,7 @@ add_task(async function() {
   // The legacy category does not watch for new installs since new
   // legacy extensions cannot be installed while legacy extensions
   // are disabled, so manually refresh it here.
-  await mgrWin.gLegacyView.refresh();
+  await mgrWin.gLegacyView.refreshVisibility();
 
   // Make sure we re-render the extensions list, after that we should
   // still just have the original two entries.
@@ -132,7 +131,7 @@ add_task(async function() {
 
   // Follow the link to the legacy extensions page
   let legacyLink = mgrWin.document.getElementById("legacy-extensions-learnmore-link");
-  is_element_visible(legacyLink, "Link to leagcy extension is visible");
+  is_element_visible(legacyLink, "Link to legacy extension is visible");
 
   let loadPromise = new Promise(resolve => wait_for_view_load(mgrWin, resolve, true));
   legacyLink.click();
@@ -156,7 +155,7 @@ add_task(async function() {
   });
 
   // The entry on the left side should now read "Unsupported"
-  await mgrWin.gLegacyView.refresh();
+  await mgrWin.gLegacyView.refreshVisibility();
   is(catItem.disabled, false, "Legacy category is visible");
   is(catItem.getAttribute("name"), get_string("type.unsupported.name"),
      "Category label with unsigned extensions is correct");
@@ -185,8 +184,10 @@ add_task(async function() {
     ],
   });
 
+  await new Promise(executeSoon);
+
   // The name of the pane should go back to "Legacy Extensions"
-  await mgrWin.gLegacyView.refresh();
+  await mgrWin.gLegacyView.refreshVisibility();
   is(catItem.disabled, false, "Legacy category is visible");
   is(catItem.getAttribute("name"), get_string("type.legacy.name"),
      "Category label with no unsigned extensions is correct");

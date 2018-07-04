@@ -83,6 +83,7 @@ public:
   MOZ_MUST_USE nsresult SuspendForDiversion() override;
   MOZ_MUST_USE nsresult SuspendMessageDiversion() override;
   MOZ_MUST_USE nsresult ResumeMessageDiversion() override;
+  MOZ_MUST_USE nsresult CancelDiversion() override;
 
   // Calls OnStartRequest for "DivertTo" listener, then notifies child channel
   // that it should divert OnDataAvailable and OnStopRequest calls to this
@@ -101,6 +102,7 @@ public:
   }
 
   MOZ_MUST_USE nsresult OpenAlternativeOutputStream(const nsACString & type,
+                                                    int64_t predictedSize,
                                                     nsIOutputStream * *_retval);
 
   // Callbacks for each asynchronous tasks required in AsyncOpen
@@ -118,6 +120,8 @@ public:
   void OnBackgroundParentReady(HttpBackgroundChannelParent* aBgParent);
   // Callback while background channel is destroyed.
   void OnBackgroundParentDestroyed();
+
+  base::ProcessId OtherPid() const override;
 
 protected:
   // used to connect redirected-to channel in parent with just created
@@ -151,6 +155,7 @@ protected:
               const bool&                allowSpdy,
               const bool&                allowAltSvc,
               const bool&                beConservative,
+              const uint32_t&            tlsFlags,
               const OptionalLoadInfoArgs& aLoadInfoArgs,
               const OptionalHttpResponseHead& aSynthesizedResponseHead,
               const nsCString&           aSecurityInfoSerialization,
@@ -162,6 +167,8 @@ protected:
               const bool&                aSuspendAfterSynthesizeResponse,
               const bool&                aAllowStaleCacheContent,
               const nsCString&           aContentTypeHint,
+              const uint32_t&            aCorsMode,
+              const uint32_t&            aRedirectMode,
               const uint64_t&            aChannelId,
               const uint64_t&            aContentWindowId,
               const nsCString&           aPreferredAlternativeType,
@@ -171,7 +178,8 @@ protected:
               const TimeStamp&           aDispatchFetchEventStart,
               const TimeStamp&           aDispatchFetchEventEnd,
               const TimeStamp&           aHandleFetchEventStart,
-              const TimeStamp&           aHandleFetchEventEnd);
+              const TimeStamp&           aHandleFetchEventEnd,
+              const bool&                aForceMainDocumentChannel);
 
   virtual mozilla::ipc::IPCResult RecvSetPriority(const int16_t& priority) override;
   virtual mozilla::ipc::IPCResult RecvSetClassOfService(const uint32_t& cos) override;
@@ -186,12 +194,10 @@ protected:
                                                       const OptionalURIParams& aReferrerURI,
                                                       const OptionalURIParams& apiRedirectUri,
                                                       const OptionalCorsPreflightArgs& aCorsPreflightArgs,
-                                                      const bool& aForceHSTSPriming,
-                                                      const bool& aMixedContentWouldBlock,
                                                       const bool& aChooseAppcache) override;
   virtual mozilla::ipc::IPCResult RecvUpdateAssociatedContentSecurity(const int32_t& broken,
                                                    const int32_t& no) override;
-  virtual mozilla::ipc::IPCResult RecvDocumentChannelCleanup() override;
+  virtual mozilla::ipc::IPCResult RecvDocumentChannelCleanup(const bool& clearCacheEntry) override;
   virtual mozilla::ipc::IPCResult RecvMarkOfflineCacheEntryAsForeign() override;
   virtual mozilla::ipc::IPCResult RecvDivertOnDataAvailable(const nsCString& data,
                                          const uint64_t& offset,
@@ -258,10 +264,10 @@ private:
   friend class DivertStopRequestEvent;
   friend class DivertCompleteEvent;
 
-  RefPtr<nsHttpChannel>       mChannel;
+  RefPtr<HttpBaseChannel>       mChannel;
   nsCOMPtr<nsICacheEntry>       mCacheEntry;
   nsCOMPtr<nsIAssociatedContentSecurity>  mAssociatedContentSecurity;
-  bool mIPCClosed;                // PHttpChannel actor has been Closed()
+  Atomic<bool> mIPCClosed; // PHttpChannel actor has been Closed()
 
   nsCOMPtr<nsIChannel> mRedirectChannel;
   nsCOMPtr<nsIAsyncVerifyRedirectCallback> mRedirectCallback;

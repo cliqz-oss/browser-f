@@ -5,21 +5,21 @@
 //! A shareable mutable container for the DOM.
 
 use std::cell::{BorrowError, BorrowMutError, Ref, RefCell, RefMut};
-use style::thread_state;
+use style::thread_state::{self, ThreadState};
 
 /// A mutable field in the DOM.
 ///
-/// This extends the API of `core::cell::RefCell` to allow unsafe access in
+/// This extends the API of `std::cell::RefCell` to allow unsafe access in
 /// certain situations, with dynamic checking in debug builds.
-#[derive(Clone, Debug, Default, HeapSizeOf, PartialEq)]
-pub struct DOMRefCell<T> {
+#[derive(Clone, Debug, Default, MallocSizeOf, PartialEq)]
+pub struct DomRefCell<T> {
     value: RefCell<T>,
 }
 
-// Functionality specific to Servo's `DOMRefCell` type
+// Functionality specific to Servo's `DomRefCell` type
 // ===================================================
 
-impl<T> DOMRefCell<T> {
+impl<T> DomRefCell<T> {
     /// Return a reference to the contents.
     ///
     /// For use in the layout thread only.
@@ -29,23 +29,11 @@ impl<T> DOMRefCell<T> {
         &*self.value.as_ptr()
     }
 
-    /// Borrow the contents for the purpose of GC tracing.
-    ///
-    /// This succeeds even if the object is mutably borrowed,
-    /// so you have to be careful in trace code!
-    #[allow(unsafe_code)]
-    pub unsafe fn borrow_for_gc_trace(&self) -> &T {
-        // FIXME: IN_GC isn't reliable enough - doesn't catch minor GCs
-        // https://github.com/servo/servo/issues/6389
-        // debug_assert!(thread_state::get().contains(SCRIPT | IN_GC));
-        &*self.value.as_ptr()
-    }
-
     /// Borrow the contents for the purpose of script deallocation.
     ///
     #[allow(unsafe_code)]
     pub unsafe fn borrow_for_script_deallocation(&self) -> &mut T {
-        debug_assert!(thread_state::get().contains(thread_state::SCRIPT));
+        debug_assert!(thread_state::get().contains(ThreadState::SCRIPT));
         &mut *self.value.as_ptr()
     }
 
@@ -57,12 +45,12 @@ impl<T> DOMRefCell<T> {
     }
 }
 
-// Functionality duplicated with `core::cell::RefCell`
+// Functionality duplicated with `std::cell::RefCell`
 // ===================================================
-impl<T> DOMRefCell<T> {
-    /// Create a new `DOMRefCell` containing `value`.
-    pub fn new(value: T) -> DOMRefCell<T> {
-        DOMRefCell {
+impl<T> DomRefCell<T> {
+    /// Create a new `DomRefCell` containing `value`.
+    pub fn new(value: T) -> DomRefCell<T> {
+        DomRefCell {
             value: RefCell::new(value),
         }
     }
@@ -79,7 +67,7 @@ impl<T> DOMRefCell<T> {
     ///
     /// Panics if the value is currently mutably borrowed.
     pub fn borrow(&self) -> Ref<T> {
-        self.try_borrow().expect("DOMRefCell<T> already mutably borrowed")
+        self.try_borrow().expect("DomRefCell<T> already mutably borrowed")
     }
 
     /// Mutably borrows the wrapped value.
@@ -93,7 +81,7 @@ impl<T> DOMRefCell<T> {
     ///
     /// Panics if the value is currently borrowed.
     pub fn borrow_mut(&self) -> RefMut<T> {
-        self.try_borrow_mut().expect("DOMRefCell<T> already borrowed")
+        self.try_borrow_mut().expect("DomRefCell<T> already borrowed")
     }
 
     /// Attempts to immutably borrow the wrapped value.

@@ -6,9 +6,12 @@ loader: taskgraph.loader.transform:loader
 
 transforms:
    - taskgraph.transforms.try_job:transforms
-   - taskgraph.transforms.toolchain:transforms
+   - taskgraph.transforms.use_toolchains:transforms
    - taskgraph.transforms.job:transforms
    - taskgraph.transforms.task:transforms
+
+job-defaults:
+   run-on-projects: []
 
 jobs-from:
    - linux.yml

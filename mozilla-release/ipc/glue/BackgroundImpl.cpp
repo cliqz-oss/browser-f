@@ -28,7 +28,6 @@
 #include "nsAutoPtr.h"
 #include "nsCOMPtr.h"
 #include "nsIEventTarget.h"
-#include "nsIIPCBackgroundChildCreateCallback.h"
 #include "nsIMutable.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
@@ -320,6 +319,11 @@ class ChildImpl final : public BackgroundChildImpl
 #endif
   };
 
+  // On the main thread, we store TLS in this global instead of in
+  // sThreadLocalIndex. That way, cooperative main threads all share the same
+  // thread info.
+  static ThreadLocalInfo* sMainThreadInfo;
+
   // This is only modified on the main thread. It prevents us from trying to
   // create the background thread after application shutdown has started.
   static bool sShutdownHasStarted;
@@ -392,10 +396,6 @@ private:
   // Forwarded from BackgroundChild.
   static PBackgroundChild*
   GetForCurrentThread();
-
-  // Forwarded from BackgroundChild.
-  static bool
-  GetOrCreateForCurrentThread(nsIIPCBackgroundChildCreateCallback* aCallback);
 
   // Forwarded from BackgroundChild.
   static PBackgroundChild*
@@ -622,35 +622,6 @@ private:
   }
 };
 
-// Must be cancelable in order to dispatch on active worker threads
-class ChildImpl::ActorCreatedRunnable final :
-  public CancelableRunnable
-{
-  nsCOMPtr<nsIIPCBackgroundChildCreateCallback> mCallback;
-  RefPtr<ChildImpl> mActor;
-
-public:
-  ActorCreatedRunnable(nsIIPCBackgroundChildCreateCallback* aCallback,
-                       ChildImpl* aActor)
-    : CancelableRunnable("Background::ChildImpl::ActorCreatedRunnable")
-    , mCallback(aCallback)
-    , mActor(aActor)
-  {
-    // May be created on any thread!
-    MOZ_ASSERT(aCallback);
-    MOZ_ASSERT(aActor);
-  }
-
-protected:
-  virtual ~ActorCreatedRunnable()
-  { }
-
-  NS_DECL_NSIRUNNABLE
-
-  nsresult
-  Cancel() override;
-};
-
 } // namespace
 
 namespace mozilla {
@@ -741,14 +712,6 @@ PBackgroundChild*
 BackgroundChild::GetForCurrentThread()
 {
   return ChildImpl::GetForCurrentThread();
-}
-
-// static
-bool
-BackgroundChild::GetOrCreateForCurrentThread(
-                                 nsIIPCBackgroundChildCreateCallback* aCallback)
-{
-  return ChildImpl::GetOrCreateForCurrentThread(aCallback);
 }
 
 // static
@@ -1025,9 +988,8 @@ ParentImpl::CreateBackgroundThread()
   nsCOMPtr<nsITimer> newShutdownTimer;
 
   if (!sShutdownTimer) {
-    nsresult rv;
-    newShutdownTimer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
+    newShutdownTimer = NS_NewTimer();
+    if (!newShutdownTimer) {
       return false;
     }
   }
@@ -1446,21 +1408,27 @@ ChildImpl::Shutdown()
 
   sShutdownHasStarted = true;
 
-#ifdef DEBUG
   MOZ_ASSERT(sThreadLocalIndex != kBadThreadLocalIndex);
 
-  auto threadLocalInfo =
-    static_cast<ThreadLocalInfo*>(PR_GetThreadPrivate(sThreadLocalIndex));
+  ThreadLocalInfo* threadLocalInfo;
+#ifdef DEBUG
+  threadLocalInfo = static_cast<ThreadLocalInfo*>(PR_GetThreadPrivate(sThreadLocalIndex));
+  MOZ_ASSERT(!threadLocalInfo);
+#endif
+  threadLocalInfo = sMainThreadInfo;
 
   if (threadLocalInfo) {
+#ifdef DEBUG
     MOZ_ASSERT(!threadLocalInfo->mClosed);
     threadLocalInfo->mClosed = true;
-  }
 #endif
 
-  DebugOnly<PRStatus> status = PR_SetThreadPrivate(sThreadLocalIndex, nullptr);
-  MOZ_ASSERT(status == PR_SUCCESS);
+    ThreadLocalDestructor(threadLocalInfo);
+    sMainThreadInfo = nullptr;
+  }
 }
+
+ChildImpl::ThreadLocalInfo* ChildImpl::sMainThreadInfo = nullptr;
 
 // static
 PBackgroundChild*
@@ -1469,6 +1437,7 @@ ChildImpl::GetForCurrentThread()
   MOZ_ASSERT(sThreadLocalIndex != kBadThreadLocalIndex);
 
   auto threadLocalInfo =
+    NS_IsMainThread() ? sMainThreadInfo :
     static_cast<ThreadLocalInfo*>(PR_GetThreadPrivate(sThreadLocalIndex));
 
   if (!threadLocalInfo) {
@@ -1478,25 +1447,6 @@ ChildImpl::GetForCurrentThread()
   return threadLocalInfo->mActor;
 }
 
-// static
-bool
-ChildImpl::GetOrCreateForCurrentThread(
-                                 nsIIPCBackgroundChildCreateCallback* aCallback)
-{
-  MOZ_ASSERT(aCallback);
-
-  RefPtr<ChildImpl> actor =
-    static_cast<ChildImpl*>(GetOrCreateForCurrentThread());
-  if (NS_WARN_IF(!actor)) {
-    return false;
-  }
-
-  nsCOMPtr<nsIRunnable> runnable = new ActorCreatedRunnable(aCallback, actor);
-  MOZ_ALWAYS_SUCCEEDS(NS_DispatchToCurrentThread(runnable));
-
-  return true;
-}
-
 /* static */
 PBackgroundChild*
 ChildImpl::GetOrCreateForCurrentThread()
@@ -1504,15 +1454,23 @@ ChildImpl::GetOrCreateForCurrentThread()
   MOZ_ASSERT(sThreadLocalIndex != kBadThreadLocalIndex,
              "BackgroundChild::Startup() was never called!");
 
-  auto threadLocalInfo =
+  if (NS_IsMainThread() && sShutdownHasStarted) {
+    return nullptr;
+  }
+
+  auto threadLocalInfo = NS_IsMainThread() ? sMainThreadInfo :
     static_cast<ThreadLocalInfo*>(PR_GetThreadPrivate(sThreadLocalIndex));
 
   if (!threadLocalInfo) {
     nsAutoPtr<ThreadLocalInfo> newInfo(new ThreadLocalInfo());
 
-    if (PR_SetThreadPrivate(sThreadLocalIndex, newInfo) != PR_SUCCESS) {
-      CRASH_IN_CHILD_PROCESS("PR_SetThreadPrivate failed!");
-      return nullptr;
+    if (NS_IsMainThread()) {
+      sMainThreadInfo = newInfo;
+    } else {
+      if (PR_SetThreadPrivate(sThreadLocalIndex, newInfo) != PR_SUCCESS) {
+        CRASH_IN_CHILD_PROCESS("PR_SetThreadPrivate failed!");
+        return nullptr;
+      }
     }
 
     threadLocalInfo = newInfo.forget();
@@ -1589,6 +1547,9 @@ ChildImpl::GetOrCreateForCurrentThread()
 void
 ChildImpl::CloseForCurrentThread()
 {
+  MOZ_ASSERT(!NS_IsMainThread(),
+             "PBackground for the main thread should be shut down via ChildImpl::Shutdown().");
+
   if (sThreadLocalIndex == kBadThreadLocalIndex) {
     return;
   }
@@ -1617,7 +1578,7 @@ ChildImpl::GetThreadLocalForCurrentThread()
   MOZ_ASSERT(sThreadLocalIndex != kBadThreadLocalIndex,
              "BackgroundChild::Startup() was never called!");
 
-  auto threadLocalInfo =
+  auto threadLocalInfo = NS_IsMainThread() ? sMainThreadInfo :
     static_cast<ThreadLocalInfo*>(PR_GetThreadPrivate(sThreadLocalIndex));
 
   if (!threadLocalInfo) {
@@ -1630,27 +1591,6 @@ ChildImpl::GetThreadLocalForCurrentThread()
   }
 
   return threadLocalInfo->mConsumerThreadLocal;
-}
-
-NS_IMETHODIMP
-ChildImpl::ActorCreatedRunnable::Run()
-{
-  // May run on any thread!
-
-  MOZ_ASSERT(mCallback);
-  MOZ_ASSERT(mActor);
-
-  mCallback->ActorCreated(mActor);
-
-  return NS_OK;
-}
-
-nsresult
-ChildImpl::ActorCreatedRunnable::Cancel()
-{
-  // These are IPC infrastructure objects and need to run unconditionally.
-  Run();
-  return NS_OK;
 }
 
 void

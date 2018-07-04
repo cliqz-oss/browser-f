@@ -8,16 +8,16 @@
  * checked in the second request.
  */
 
-Cu.import("resource://services-common/utils.js");
-Cu.import("resource://gre/modules/ClientID.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/TelemetryStorage.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySend.jsm", this);
-Cu.import("resource://gre/modules/TelemetryArchive.jsm", this);
-Cu.import("resource://gre/modules/TelemetryUtils.jsm", this);
-Cu.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
+ChromeUtils.import("resource://gre/modules/ClientID.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryStorage.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryArchive.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm", this);
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 
 const PING_FORMAT_VERSION = 4;
 const DELETION_PING_TYPE = "deletion";
@@ -96,7 +96,6 @@ add_task(async function test_setup() {
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
 
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, true);
 
   await new Promise(resolve =>
@@ -422,7 +421,8 @@ add_task(async function test_changePingAfterSubmission() {
                "The payload must not be changed after being submitted.");
 });
 
-add_task(async function test_telemetryEnabledUnexpectedValue() {
+add_task({ skip_if: () => Services.prefs.getBoolPref(TelemetryUtils.Preferences.Unified, false)},
+         async function test_telemetryEnabledUnexpectedValue() {
   // Remove the default value for toolkit.telemetry.enabled from the default prefs.
   // Otherwise, we wouldn't be able to set the pref to a string.
   let defaultPrefBranch = Services.prefs.getDefaultBranch(null);
@@ -597,6 +597,13 @@ add_task(async function test_pingRejection() {
   await sendPing(false, false)
     .then(() => Assert.ok(false, "Pings submitted after shutdown must be rejected."),
           () => Assert.ok(true, "Ping submitted after shutdown correctly rejected."));
+});
+
+add_task(async function test_newCanRecordsMatchTheOld() {
+  Assert.equal(Telemetry.canRecordBase, Telemetry.canRecordReleaseData,
+               "Release Data is the new way to say Base Collection");
+  Assert.equal(Telemetry.canRecordExtended, Telemetry.canRecordPrereleaseData,
+               "Prerelease Data is the new way to say Extended Collection");
 });
 
 add_task(async function stopServer() {

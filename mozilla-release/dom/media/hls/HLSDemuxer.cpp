@@ -73,7 +73,7 @@ public:
   using NativeCallbacks::DisposeNative;
   using NativeCallbacks::AttachNative;
 
-  HLSDemuxerCallbacksSupport(HLSDemuxer* aDemuxer)
+  explicit HLSDemuxerCallbacksSupport(HLSDemuxer* aDemuxer)
     : mMutex("HLSDemuxerCallbacksSupport")
     , mDemuxer(aDemuxer)
   {
@@ -86,14 +86,17 @@ public:
     MutexAutoLock lock(mMutex);
     if (!mDemuxer) { return; }
     RefPtr<HLSDemuxerCallbacksSupport> self = this;
-    mDemuxer->GetTaskQueue()->Dispatch(NS_NewRunnableFunction(
-     "HLSDemuxer::HLSDemuxerCallbacksSupport::OnInitialized",
-     [=] () {
-       MutexAutoLock lock(self->mMutex);
-       if (self->mDemuxer) {
-         self->mDemuxer->OnInitialized(aHasAudio, aHasVideo);
-       }
-     }));
+    nsresult rv =
+      mDemuxer->GetTaskQueue()->Dispatch(NS_NewRunnableFunction(
+       "HLSDemuxer::HLSDemuxerCallbacksSupport::OnInitialized",
+       [=] () {
+         MutexAutoLock lock(self->mMutex);
+         if (self->mDemuxer) {
+           self->mDemuxer->OnInitialized(aHasAudio, aHasVideo);
+         }
+       }));
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+    Unused << rv;
   }
 
   void OnError(int aErrorCode)
@@ -102,14 +105,17 @@ public:
     MutexAutoLock lock(mMutex);
     if (!mDemuxer) { return; }
     RefPtr<HLSDemuxerCallbacksSupport> self = this;
-    mDemuxer->GetTaskQueue()->Dispatch(NS_NewRunnableFunction(
-     "HLSDemuxer::HLSDemuxerCallbacksSupport::OnError",
-     [=] () {
-       MutexAutoLock lock(self->mMutex);
-       if (self->mDemuxer) {
-         self->mDemuxer->OnError(aErrorCode);
-       }
-     }));
+    nsresult rv =
+      mDemuxer->GetTaskQueue()->Dispatch(NS_NewRunnableFunction(
+       "HLSDemuxer::HLSDemuxerCallbacksSupport::OnError",
+       [=] () {
+         MutexAutoLock lock(self->mMutex);
+         if (self->mDemuxer) {
+           self->mDemuxer->OnError(aErrorCode);
+         }
+       }));
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+    Unused << rv;
   }
 
   void Detach()
@@ -182,19 +188,6 @@ HLSDemuxer::Init()
 void HLSDemuxer::NotifyDataArrived()
 {
   HLS_DEBUG("HLSDemuxer", "NotifyDataArrived");
-}
-
-bool
-HLSDemuxer::HasTrackType(TrackType aType) const
-{
-  HLS_DEBUG("HLSDemuxer", "HasTrackType(%d)", aType);
-  if (mAudioDemuxer && aType == TrackType::kAudioTrack) {
-    return mAudioDemuxer->IsTrackValid();
-  }
-  if (mVideoDemuxer && aType == TrackType::kVideoTrack) {
-    return mVideoDemuxer->IsTrackValid();
-  }
-  return false;
 }
 
 uint32_t
@@ -649,7 +642,9 @@ HLSTrackDemuxer::BreakCycles()
     [self]() {
       self->mParent = nullptr;
     } );
-  mParent->GetTaskQueue()->Dispatch(task.forget());
+  nsresult rv = mParent->GetTaskQueue()->Dispatch(task.forget());
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  Unused << rv;
 }
 
 HLSTrackDemuxer::~HLSTrackDemuxer()

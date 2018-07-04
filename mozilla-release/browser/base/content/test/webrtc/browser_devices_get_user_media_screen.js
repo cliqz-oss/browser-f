@@ -8,7 +8,7 @@
 //
 // NOTE: Whitelisting a class of rejections should be limited. Normally you
 //       should use "expectUncaughtRejection" to flag individual failures.
-Cu.import("resource://testing-common/PromiseTestUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", this);
 PromiseTestUtils.whitelistRejectionsGlobally(/aborted by the user agent/);
 
 const permissionError = "error: NotAllowedError: The request is not allowed " +
@@ -30,20 +30,23 @@ var gTests = [
     is(PopupNotifications.getNotification("webRTC-shareDevices").anchorID,
        "webRTC-shareScreen-notification-icon", "anchored to device icon");
     checkDeviceSelectors(false, false, true);
-    let iconclass =
-      PopupNotifications.panel.firstChild.getAttribute("iconclass");
+    let notification = PopupNotifications.panel.firstChild;
+    let iconclass = notification.getAttribute("iconclass");
     ok(iconclass.includes("screen-icon"), "panel using screen icon");
 
     let menulist =
       document.getElementById("webRTC-selectWindow-menulist");
     let count = menulist.itemCount;
     ok(count >= 3,
-       "There should be the 'No Screen' item, a separator and at least one screen");
+       "There should be the 'Select Screen' item, a separator and at least one screen");
 
     let noScreenItem = menulist.getItemAtIndex(0);
-    ok(noScreenItem.hasAttribute("selected"), "the 'No Screen' item is selected");
+    ok(noScreenItem.hasAttribute("selected"), "the 'Select Screen' item is selected");
+    is(menulist.selectedItem, noScreenItem, "'Select Screen' is the selected item");
     is(menulist.value, -1, "no screen is selected by default");
-    is(menulist.selectedItem, noScreenItem, "'No Screen' is the selected item");
+    ok(noScreenItem.disabled, "'Select Screen' item is disabled");
+    ok(notification.button.disabled, "Allow button is disabled");
+    ok(notification.hasAttribute("invalidselection"), "Notification is marked as invalid");
 
     let separator = menulist.getItemAtIndex(1);
     is(separator.localName, "menuseparator", "the second item is a separator");
@@ -64,13 +67,14 @@ var gTests = [
     menulist.getItemAtIndex(2).doCommand();
     ok(!document.getElementById("webRTC-all-windows-shared").hidden,
        "the 'all windows will be shared' warning should now be visible");
-    await promiseWaitForCondition(() => !document.getElementById("webRTC-preview").hidden, 100);
+    await TestUtils.waitForCondition(() => !document.getElementById("webRTC-preview").hidden, 100, 100);
     ok(!document.getElementById("webRTC-preview").hidden,
        "the preview area is visible");
     ok(!document.getElementById("webRTC-previewWarning").hidden,
        "the scary warning is visible");
+    ok(!notification.button.disabled, "Allow button is enabled");
 
-    // Select the 'No Screen' item again, the preview should be hidden.
+    // Select the 'Select Screen' item again, the preview should be hidden.
     menulist.getItemAtIndex(0).doCommand();
     ok(document.getElementById("webRTC-all-windows-shared").hidden,
        "the 'all windows will be shared' warning should now be hidden");
@@ -103,7 +107,7 @@ var gTests = [
     checkDeviceSelectors(false, false, true);
 
     await promiseMessage(permissionError, () => {
-      PopupNotifications.panel.firstChild.button.click();
+      activateSecondaryAction(kActionDeny);
     });
 
     await expectObserverCalled("getUserMedia:response:deny");
@@ -123,20 +127,23 @@ var gTests = [
     is(PopupNotifications.getNotification("webRTC-shareDevices").anchorID,
        "webRTC-shareScreen-notification-icon", "anchored to device icon");
     checkDeviceSelectors(false, false, true);
-    let iconclass =
-      PopupNotifications.panel.firstChild.getAttribute("iconclass");
+    let notification = PopupNotifications.panel.firstChild;
+    let iconclass = notification.getAttribute("iconclass");
     ok(iconclass.includes("screen-icon"), "panel using screen icon");
 
     let menulist =
       document.getElementById("webRTC-selectWindow-menulist");
     let count = menulist.itemCount;
     ok(count >= 3,
-       "There should be the 'No Window' item, a separator and at least one window");
+       "There should be the 'Select Window' item, a separator and at least one window");
 
     let noWindowItem = menulist.getItemAtIndex(0);
-    ok(noWindowItem.hasAttribute("selected"), "the 'No Window' item is selected");
+    ok(noWindowItem.hasAttribute("selected"), "the 'Select Window' item is selected");
+    is(menulist.selectedItem, noWindowItem, "'Select Window' is the selected item");
     is(menulist.value, -1, "no window is selected by default");
-    is(menulist.selectedItem, noWindowItem, "'No Window' is the selected item");
+    ok(noWindowItem.disabled, "'Select Window' item is disabled");
+    ok(notification.button.disabled, "Allow button is disabled");
+    ok(notification.hasAttribute("invalidselection"), "Notification is marked as invalid");
 
     let separator = menulist.getItemAtIndex(1);
     is(separator.localName, "menuseparator", "the second item is a separator");
@@ -162,13 +169,13 @@ var gTests = [
     menulist.getItemAtIndex(scaryIndex).doCommand();
     ok(document.getElementById("webRTC-all-windows-shared").hidden,
        "the 'all windows will be shared' warning should still be hidden");
-    await promiseWaitForCondition(() => !document.getElementById("webRTC-preview").hidden);
+    await TestUtils.waitForCondition(() => !document.getElementById("webRTC-preview").hidden);
     ok(!document.getElementById("webRTC-preview").hidden,
        "the preview area is visible");
     ok(!document.getElementById("webRTC-previewWarning").hidden,
        "the scary warning is visible");
 
-    // Select the 'No Window' item again, the preview should be hidden.
+    // Select the 'Select Window' item again, the preview should be hidden.
     menulist.getItemAtIndex(0).doCommand();
     ok(document.getElementById("webRTC-preview").hidden,
        "the preview area is hidden");
@@ -179,7 +186,7 @@ var gTests = [
       menulist.getItemAtIndex(nonScaryIndex).doCommand();
       ok(document.getElementById("webRTC-all-windows-shared").hidden,
          "the 'all windows will be shared' warning should still be hidden");
-      await promiseWaitForCondition(() => !document.getElementById("webRTC-preview").hidden);
+      await TestUtils.waitForCondition(() => !document.getElementById("webRTC-preview").hidden);
       ok(!document.getElementById("webRTC-preview").hidden,
          "the preview area is visible");
       ok(document.getElementById("webRTC-previewWarning").hidden,
@@ -229,20 +236,23 @@ var gTests = [
     is(PopupNotifications.getNotification("webRTC-shareDevices").anchorID,
        "webRTC-shareScreen-notification-icon", "anchored to device icon");
     checkDeviceSelectors(false, false, true);
-    let iconclass =
-      PopupNotifications.panel.firstChild.getAttribute("iconclass");
+    let notification = PopupNotifications.panel.firstChild;
+    let iconclass = notification.getAttribute("iconclass");
     ok(iconclass.includes("screen-icon"), "panel using screen icon");
 
     let menulist =
       document.getElementById("webRTC-selectWindow-menulist");
     let count = menulist.itemCount;
     ok(count >= 3,
-       "There should be the 'No Application' item, a separator and at least one application");
+       "There should be the 'Select Application' item, a separator and at least one application");
 
     let noApplicationItem = menulist.getItemAtIndex(0);
-    ok(noApplicationItem.hasAttribute("selected"), "the 'No Application' item is selected");
+    ok(noApplicationItem.hasAttribute("selected"), "the 'Select Application' item is selected");
+    is(menulist.selectedItem, noApplicationItem, "'Select Application' is the selected item");
     is(menulist.value, -1, "no app is selected by default");
-    is(menulist.selectedItem, noApplicationItem, "'No Application' is the selected item");
+    ok(noApplicationItem.disabled, "'Select Application' item is disabled");
+    ok(notification.button.disabled, "Allow button is disabled");
+    ok(notification.hasAttribute("invalidselection"), "Notification is marked as invalid");
 
     let separator = menulist.getItemAtIndex(1);
     is(separator.localName, "menuseparator", "the second item is a separator");
@@ -267,7 +277,7 @@ var gTests = [
     menulist.getItemAtIndex(2).doCommand();
     ok(document.getElementById("webRTC-all-windows-shared").hidden,
        "the 'all windows will be shared' warning should still be hidden");
-    await promiseWaitForCondition(() => !document.getElementById("webRTC-preview").hidden);
+    await TestUtils.waitForCondition(() => !document.getElementById("webRTC-preview").hidden);
     ok(!document.getElementById("webRTC-preview").hidden,
        "the preview area is visible");
     ok(document.getElementById("webRTC-previewWarning").hidden,
@@ -312,13 +322,13 @@ var gTests = [
       document.getElementById("webRTC-selectWindow-menulist");
     let count = menulist.itemCount;
     ok(count >= 3,
-       "There should be the 'No Screen' item, a separator and at least one screen");
+       "There should be the 'Select Screen' item, a separator and at least one screen");
 
     // Select a screen, a preview with a scary warning should appear.
     menulist.getItemAtIndex(2).doCommand();
     ok(!document.getElementById("webRTC-all-windows-shared").hidden,
        "the 'all windows will be shared' warning should now be visible");
-    await promiseWaitForCondition(() => !document.getElementById("webRTC-preview").hidden);
+    await TestUtils.waitForCondition(() => !document.getElementById("webRTC-preview").hidden);
     ok(!document.getElementById("webRTC-preview").hidden,
        "the preview area is visible");
     ok(!document.getElementById("webRTC-previewWarning").hidden,
@@ -339,29 +349,6 @@ var gTests = [
     await closeStream();
   }
 },
-
-
-{
-  desc: "getUserMedia screen: clicking through without selecting a screen denies",
-  run: async function checkClickThroughDenies() {
-    let promise = promisePopupNotificationShown("webRTC-shareDevices");
-    await promiseRequestDevice(false, true, null, "screen");
-    await promise;
-    await expectObserverCalled("getUserMedia:request");
-    checkDeviceSelectors(false, false, true);
-
-    await promiseMessage(permissionError, () => {
-      PopupNotifications.panel.firstChild.button.click();
-    });
-
-    await expectObserverCalled("getUserMedia:response:deny");
-    await expectObserverCalled("recording-window-ended");
-    await checkNotSharing();
-    SitePermissions.remove(null, "screen", gBrowser.selectedBrowser);
-    SitePermissions.remove(null, "camera", gBrowser.selectedBrowser);
-  }
-},
-
 
 {
   desc: "getUserMedia screen, user clicks \"Don't Allow\"",
@@ -511,7 +498,7 @@ var gTests = [
         Services.wm.getMostRecentWindow("Browser:WebRTCGlobalIndicator");
       let elt = win.document.getElementById("screenShareButton");
       EventUtils.synthesizeMouseAtCenter(elt, {}, win);
-      await promiseWaitForCondition(() => !gIdentityHandler._identityPopup.hidden);
+      await TestUtils.waitForCondition(() => !gIdentityHandler._identityPopup.hidden);
     }
     ok(!gIdentityHandler._identityPopup.hidden, "control center should be open");
 

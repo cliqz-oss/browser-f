@@ -6,8 +6,8 @@
 #ifndef mozInlineSpellWordUtil_h
 #define mozInlineSpellWordUtil_h
 
+#include "mozilla/Attributes.h"
 #include "nsCOMPtr.h"
-#include "nsIDOMDocument.h"
 #include "nsIDocument.h"
 #include "nsString.h"
 #include "nsTArray.h"
@@ -16,6 +16,57 @@
 
 class nsRange;
 class nsINode;
+
+namespace mozilla {
+class TextEditor;
+} // namespace mozilla
+
+struct NodeOffset
+{
+  nsINode* mNode;
+  int32_t  mOffset;
+
+  NodeOffset(): mNode(nullptr), mOffset(0) {}
+  NodeOffset(nsINode* aNode, int32_t aOffset)
+    : mNode(aNode), mOffset(aOffset) {}
+
+  bool operator==(const NodeOffset& aOther) const
+  {
+    return mNode == aOther.mNode && mOffset == aOther.mOffset;
+  }
+
+  bool operator!=(const NodeOffset& aOther) const
+  {
+    return !(*this == aOther);
+  }
+};
+
+class NodeOffsetRange
+{
+private:
+  NodeOffset mBegin;
+  NodeOffset mEnd;
+  bool mEmpty;
+public:
+  NodeOffsetRange() : mEmpty(true) {}
+  NodeOffsetRange(NodeOffset b, NodeOffset e)
+    : mBegin(b), mEnd(e), mEmpty(false) {}
+
+  NodeOffset Begin()
+  {
+    return mBegin;
+  }
+
+  NodeOffset End()
+  {
+    return mEnd;
+  }
+
+  bool Empty()
+  {
+    return mEmpty;
+  }
+};
 
 /**
  *    This class extracts text from the DOM and builds it into a single string.
@@ -37,31 +88,15 @@ class nsINode;
  *    4. Call GetNextWord over and over until it returns false.
  */
 
-class mozInlineSpellWordUtil
+class MOZ_STACK_CLASS mozInlineSpellWordUtil
 {
 public:
-  struct NodeOffset {
-    nsINode* mNode;
-    int32_t  mOffset;
-
-    NodeOffset(nsINode* aNode, int32_t aOffset) :
-      mNode(aNode), mOffset(aOffset) {}
-
-    bool operator==(const NodeOffset& aOther) const {
-      return mNode == aOther.mNode && mOffset == aOther.mOffset;
-    }
-
-    bool operator!=(const NodeOffset& aOther) const {
-      return !(*this == aOther);
-    }
-  };
-
   mozInlineSpellWordUtil()
     : mRootNode(nullptr),
       mSoftBegin(nullptr, 0), mSoftEnd(nullptr, 0),
       mNextWordIndex(-1), mSoftTextValid(false) {}
 
-  nsresult Init(const nsWeakPtr& aWeakEditor);
+  nsresult Init(mozilla::TextEditor* aTextEditor);
 
   nsresult SetEnd(nsINode* aEndNode, int32_t aEndOffset);
 
@@ -78,28 +113,30 @@ public:
   // THIS CHANGES THE CURRENT POSITION AND RANGE. It is designed to be called
   // before you actually generate the range you are interested in and iterate
   // the words in it.
-  nsresult GetRangeForWord(nsIDOMNode* aWordNode, int32_t aWordOffset,
+  nsresult GetRangeForWord(nsINode* aWordNode, int32_t aWordOffset,
                            nsRange** aRange);
+
+  // Convenience functions, object must be initialized
+  nsresult MakeRange(NodeOffset aBegin, NodeOffset aEnd, nsRange** aRange);
 
   // Moves to the the next word in the range, and retrieves it's text and range.
   // An empty word and a nullptr range are returned when we are done checking.
   // aSkipChecking will be set if the word is "special" and shouldn't be
   // checked (e.g., an email address).
-  nsresult GetNextWord(nsAString& aText, nsRange** aRange,
+  nsresult GetNextWord(nsAString& aText,
+                       NodeOffsetRange* aNodeOffsetRange,
                        bool* aSkipChecking);
 
   // Call to normalize some punctuation. This function takes an autostring
   // so we can access characters directly.
   static void NormalizeWord(nsAString& aWord);
 
-  nsIDOMDocument* GetDOMDocument() const { return mDOMDocument; }
   nsIDocument* GetDocument() const { return mDocument; }
   nsINode* GetRootNode() { return mRootNode; }
 
 private:
 
   // cached stuff for the editor, set by Init
-  nsCOMPtr<nsIDOMDocument> mDOMDocument;
   nsCOMPtr<nsIDocument>         mDocument;
 
   // range to check, see SetPosition and SetEnd
@@ -171,9 +208,9 @@ private:
 
   nsresult SplitDOMWord(int32_t aStart, int32_t aEnd);
 
-  // Convenience functions, object must be initialized
-  nsresult MakeRange(NodeOffset aBegin, NodeOffset aEnd, nsRange** aRange);
   nsresult MakeRangeForWord(const RealWord& aWord, nsRange** aRange);
+  void MakeNodeOffsetRangeForWord(const RealWord& aWord,
+                                  NodeOffsetRange* aNodeOffsetRange);
 };
 
 #endif

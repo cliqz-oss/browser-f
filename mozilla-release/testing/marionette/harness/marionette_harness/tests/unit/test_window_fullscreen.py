@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 from marionette_harness import MarionetteTestCase
 
 
@@ -30,14 +32,14 @@ class TestWindowFullscreen(MarionetteTestCase):
             self.marionette.fullscreen()
 
     def assert_window_fullscreen(self, actual):
-        self.assertGreater(actual["width"], self.max["width"])
-        self.assertGreater(actual["height"], self.max["height"])
-        self.assertTrue(self.marionette.execute_script("""
-            return window.fullScreen;""", sandbox=None))
+        self.assertTrue(self.marionette.execute_script(
+            "return window.fullScreen", sandbox=None))
 
     def assert_window_restored(self, actual):
         self.assertEqual(self.original_size["width"], actual["width"])
         self.assertEqual(self.original_size["height"], actual["height"])
+        self.assertFalse(self.marionette.execute_script(
+            "return window.fullScreen", sandbox=None))
 
     def assert_window_rect(self, rect):
         self.assertIn("width", rect)
@@ -56,9 +58,6 @@ class TestWindowFullscreen(MarionetteTestCase):
         self.assertEqual(size, rect)
         self.assert_window_fullscreen(size)
 
-    def test_fullscreen_twice_restores(self):
-        fullscreen = self.marionette.fullscreen()
-        self.assert_window_fullscreen(fullscreen)
-
-        restored = self.marionette.fullscreen()
-        self.assert_window_restored(restored)
+    def test_fullscreen_twice_is_idempotent(self):
+        self.assert_window_fullscreen(self.marionette.fullscreen())
+        self.assert_window_fullscreen(self.marionette.fullscreen())

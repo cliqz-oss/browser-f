@@ -13,6 +13,9 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
+#if defined(ACCESSIBILITY)
+#include "nsExceptionHandler.h"
+#endif // defined(ACCESSIBILITY)
 #include "nsWindowsHelpers.h"
 #include "nsXULAppAPI.h"
 

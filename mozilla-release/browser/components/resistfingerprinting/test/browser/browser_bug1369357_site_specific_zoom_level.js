@@ -6,7 +6,7 @@ add_task(async function() {
   let tab1, tab1Zoom, tab2, tab2Zoom, tab3, tab3Zoom;
 
   tab1 = await BrowserTestUtils.openNewForegroundTab(gBrowser, testPage);
-  FullZoom.enlarge();
+  await FullZoom.enlarge();
   tab1Zoom = ZoomManager.getZoomForBrowser(tab1.linkedBrowser);
 
   tab2 = await BrowserTestUtils.openNewForegroundTab(gBrowser, testPage);
@@ -25,7 +25,7 @@ add_task(async function() {
 
   isnot(tab3Zoom, tab1Zoom, "privacy.resistFingerprinting is true, site-specific zoom level should be disabled");
 
-  await BrowserTestUtils.removeTab(tab1);
-  await BrowserTestUtils.removeTab(tab2);
-  await BrowserTestUtils.removeTab(tab3);
+  BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab2);
+  BrowserTestUtils.removeTab(tab3);
 });

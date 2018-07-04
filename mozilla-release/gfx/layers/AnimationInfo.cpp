@@ -1,6 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * vim: sw=2 ts=8 et :
- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,6 +7,7 @@
 #include "AnimationInfo.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/layers/AnimationHelper.h"
+#include "mozilla/dom/Animation.h"
 
 namespace mozilla {
 namespace layers {
@@ -68,11 +68,6 @@ AnimationInfo::ClearAnimations()
     return;
   }
 
-  if (mManager->AsWebRenderLayerManager()) {
-    mManager->AsWebRenderLayerManager()->
-      AddCompositorAnimationsIdForDiscard(mCompositorAnimationsId);
-  }
-
   mAnimations.Clear();
   mAnimationData.Clear();
 
@@ -109,17 +104,27 @@ AnimationInfo::StartPendingAnimations(const TimeStamp& aReadyTime)
        animIdx < animEnd; animIdx++) {
     Animation& anim = mAnimations[animIdx];
 
+    // If the animation is doing an async update of its playback rate, then we
+    // want to match whatever its current time would be at *aReadyTime*.
+    if (!std::isnan(anim.previousPlaybackRate()) &&
+        anim.startTime().type() == MaybeTimeDuration::TTimeDuration &&
+        !anim.originTime().IsNull() && !anim.isNotPlaying()) {
+      TimeDuration readyTime = aReadyTime - anim.originTime();
+      anim.holdTime() = dom::Animation::CurrentTimeFromTimelineTime(
+        readyTime,
+        anim.startTime().get_TimeDuration(),
+        anim.previousPlaybackRate());
+      // Make start time null so that we know to update it below.
+      anim.startTime() = null_t();
+    }
+
     // If the animation is play-pending, resolve the start time.
-    // This mirrors the calculation in Animation::StartTimeFromReadyTime.
     if (anim.startTime().type() == MaybeTimeDuration::Tnull_t &&
         !anim.originTime().IsNull() &&
         !anim.isNotPlaying()) {
       TimeDuration readyTime = aReadyTime - anim.originTime();
-      anim.startTime() =
-        anim.playbackRate() == 0
-        ? readyTime
-        : readyTime - anim.holdTime().MultDouble(1.0 /
-                                                 anim.playbackRate());
+      anim.startTime() = dom::Animation::StartTimeFromTimelineTime(
+        readyTime, anim.holdTime(), anim.playbackRate());
       updated = true;
     }
   }
@@ -167,6 +172,25 @@ AnimationInfo::HasTransformAnimation() const
     }
   }
   return false;
+}
+
+/* static */ Maybe<uint64_t>
+AnimationInfo::GetGenerationFromFrame(nsIFrame* aFrame,
+                                      DisplayItemType aDisplayItemKey)
+{
+  layers::Layer* layer =
+    FrameLayerBuilder::GetDedicatedLayer(aFrame, aDisplayItemKey);
+  if (layer) {
+    return Some(layer->GetAnimationInfo().GetAnimationGeneration());
+  }
+
+  RefPtr<WebRenderAnimationData> animationData =
+      GetWebRenderUserData<WebRenderAnimationData>(aFrame, (uint32_t)aDisplayItemKey);
+  if (animationData) {
+    return Some(animationData->GetAnimationInfo().GetAnimationGeneration());
+  }
+
+  return Nothing();
 }
 
 } // namespace layers

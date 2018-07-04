@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -18,9 +19,9 @@
 //
 
 nsIFrame*
-NS_NewMathMLmunderoverFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmunderoverFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmunderoverFrame(aContext);
+  return new (aPresShell) nsMathMLmunderoverFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmunderoverFrame)
@@ -31,7 +32,7 @@ nsMathMLmunderoverFrame::~nsMathMLmunderoverFrame()
 
 nsresult
 nsMathMLmunderoverFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                          nsIAtom*        aAttribute,
+                                          nsAtom*        aAttribute,
                                           int32_t         aModType)
 {
   if (nsGkAtoms::accent_ == aAttribute ||
@@ -73,12 +74,12 @@ nsMathMLmunderoverFrame::InheritAutomaticData(nsIFrame* aParent)
 }
 
 void
-nsMathMLmunderoverFrame::DestroyFrom(nsIFrame* aDestroyRoot)
+nsMathMLmunderoverFrame::DestroyFrom(nsIFrame* aDestroyRoot, PostDestroyData& aPostDestroyData)
 {
   if (!mPostReflowIncrementScriptLevelCommands.IsEmpty()) {
-    PresContext()->PresShell()->CancelReflowCallback(this);
+    PresShell()->CancelReflowCallback(this);
   }
-  nsMathMLContainerFrame::DestroyFrom(aDestroyRoot);
+  nsMathMLContainerFrame::DestroyFrom(aDestroyRoot, aPostDestroyData);
 }
 
 uint8_t
@@ -118,7 +119,7 @@ nsMathMLmunderoverFrame::SetIncrementScriptLevel(uint32_t aChildIndex,
   }
 
   if (mPostReflowIncrementScriptLevelCommands.IsEmpty()) {
-    PresContext()->PresShell()->PostReflowCallback(this);
+    PresShell()->PostReflowCallback(this);
   }
 
   mPostReflowIncrementScriptLevelCommands.AppendElement(
@@ -232,7 +233,7 @@ XXX The winner is the outermost setting in conflicting settings like these:
     }
 
     // if we have an accentunder attribute, it overrides what the underscript said
-    if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::accentunder_, value)) {
+    if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::accentunder_, value)) {
       if (value.EqualsLiteral("true")) {
         mEmbellishData.flags |= NS_MATHML_EMBELLISH_ACCENTUNDER;
       } else if (value.EqualsLiteral("false")) {
@@ -253,7 +254,7 @@ XXX The winner is the outermost setting in conflicting settings like these:
     }
 
     // if we have an accent attribute, it overrides what the overscript said
-    if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::accent_, value)) {
+    if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::accent_, value)) {
       if (value.EqualsLiteral("true")) {
         mEmbellishData.flags |= NS_MATHML_EMBELLISH_ACCENTOVER;
       } else if (value.EqualsLiteral("false")) {
@@ -613,7 +614,7 @@ nsMathMLmunderoverFrame::Place(DrawTarget*          aDrawTarget,
     right
   } alignPosition = center;
 
-  if (mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::align, valueAlign)) {
+  if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::align, valueAlign)) {
     if (valueAlign.EqualsLiteral("left")) {
       alignPosition = left;
     } else if (valueAlign.EqualsLiteral("right")) {

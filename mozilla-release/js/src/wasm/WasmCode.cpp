@@ -27,7 +27,9 @@
 #endif
 #include "vtune/VTuneWrapper.h"
 #include "wasm/WasmModule.h"
+#include "wasm/WasmProcess.h"
 #include "wasm/WasmSerialize.h"
+#include "wasm/WasmStubs.h"
 
 #include "jit/MacroAssembler-inl.h"
 
@@ -36,23 +38,41 @@ using namespace js::jit;
 using namespace js::wasm;
 using mozilla::BinarySearch;
 using mozilla::MakeEnumeratedRange;
-using JS::GenericNaN;
+using mozilla::PodAssign;
+
+bool
+CodeSegment::registerInProcessMap()
+{
+    if (!RegisterCodeSegment(this))
+        return false;
+    registered_ = true;
+    return true;
+}
+
+CodeSegment::~CodeSegment()
+{
+    if (registered_)
+        UnregisterCodeSegment(this);
+}
 
 static uint32_t
 RoundupCodeLength(uint32_t codeLength)
 {
-    // codeLength is a multiple of the system's page size, but not necessarily
-    // a multiple of ExecutableCodePageSize.
-    MOZ_ASSERT(codeLength % gc::SystemPageSize() == 0);
+    // AllocateExecutableMemory() requires a multiple of ExecutableCodePageSize.
     return JS_ROUNDUP(codeLength, ExecutableCodePageSize);
 }
 
-/* static */ CodeSegment::UniqueCodeBytes
+/* static */ UniqueCodeBytes
 CodeSegment::AllocateCodeBytes(uint32_t codeLength)
 {
-    codeLength = RoundupCodeLength(codeLength);
+    if (codeLength > MaxCodeBytesPerProcess)
+        return nullptr;
 
-    void* p = AllocateExecutableMemory(codeLength, ProtectionSetting::Writable);
+    static_assert(MaxCodeBytesPerProcess <= INT32_MAX, "rounding won't overflow");
+    uint32_t roundedCodeLength = RoundupCodeLength(codeLength);
+
+    void* p = AllocateExecutableMemory(roundedCodeLength, ProtectionSetting::Writable,
+                                       MemCheckKind::MakeUndefined);
 
     // If the allocation failed and the embedding gives us a last-ditch attempt
     // to purge all memory (which, in gecko, does a purging GC/CC/GC), do that
@@ -60,21 +80,38 @@ CodeSegment::AllocateCodeBytes(uint32_t codeLength)
     if (!p) {
         if (OnLargeAllocationFailure) {
             OnLargeAllocationFailure();
-            p = AllocateExecutableMemory(codeLength, ProtectionSetting::Writable);
+            p = AllocateExecutableMemory(roundedCodeLength, ProtectionSetting::Writable,
+                                         MemCheckKind::MakeUndefined);
         }
     }
 
     if (!p)
         return nullptr;
 
+    // Zero the padding.
+    memset(((uint8_t*)p) + codeLength, 0, roundedCodeLength - codeLength);
+
     // We account for the bytes allocated in WasmModuleObject::create, where we
     // have the necessary JSContext.
 
-    return UniqueCodeBytes((uint8_t*)p, FreeCode(codeLength));
+    return UniqueCodeBytes((uint8_t*)p, FreeCode(roundedCodeLength));
+}
+
+const Code&
+CodeSegment::code() const
+{
+    MOZ_ASSERT(codeTier_);
+    return codeTier_->code();
 }
 
 void
-CodeSegment::FreeCode::operator()(uint8_t* bytes)
+CodeSegment::addSizeOfMisc(MallocSizeOf mallocSizeOf, size_t* code) const
+{
+    *code += RoundupCodeLength(length_);
+}
+
+void
+FreeCode::operator()(uint8_t* bytes)
 {
     MOZ_ASSERT(codeLength);
     MOZ_ASSERT(codeLength == RoundupCodeLength(codeLength));
@@ -86,15 +123,16 @@ CodeSegment::FreeCode::operator()(uint8_t* bytes)
 }
 
 static bool
-StaticallyLink(const CodeSegment& cs, const LinkDataTier& linkData)
+StaticallyLink(const ModuleSegment& ms, const LinkDataTier& linkData)
 {
     for (LinkDataTier::InternalLink link : linkData.internalLinks) {
-        uint8_t* patchAt = cs.base() + link.patchAtOffset;
-        void* target = cs.base() + link.targetOffset;
-        if (link.isRawPointerPatch())
-            *(void**)(patchAt) = target;
-        else
-            Assembler::PatchInstructionImmediate(patchAt, PatchedImmPtr(target));
+        CodeLabel label;
+        label.patchAt()->bind(link.patchAtOffset);
+        label.target()->bind(link.targetOffset);
+#ifdef JS_CODELABEL_LINKMODE
+        label.setLinkMode(static_cast<CodeLabel::LinkMode>(link.mode));
+#endif
+        Assembler::Bind(ms.base(), label);
     }
 
     if (!EnsureBuiltinThunksInitialized())
@@ -107,7 +145,7 @@ StaticallyLink(const CodeSegment& cs, const LinkDataTier& linkData)
 
         void* target = SymbolicAddressTarget(imm);
         for (uint32_t offset : offsets) {
-            uint8_t* patchAt = cs.base() + offset;
+            uint8_t* patchAt = ms.base() + offset;
             Assembler::PatchDataWithValueCheck(CodeLocationLabel(patchAt),
                                                PatchedImmPtr(target),
                                                PatchedImmPtr((void*)-1));
@@ -121,12 +159,13 @@ static void
 StaticallyUnlink(uint8_t* base, const LinkDataTier& linkData)
 {
     for (LinkDataTier::InternalLink link : linkData.internalLinks) {
-        uint8_t* patchAt = base + link.patchAtOffset;
-        void* target = 0;
-        if (link.isRawPointerPatch())
-            *(void**)(patchAt) = target;
-        else
-            Assembler::PatchInstructionImmediate(patchAt, PatchedImmPtr(target));
+        CodeLabel label;
+        label.patchAt()->bind(link.patchAtOffset);
+        label.target()->bind(-size_t(base)); // to reset immediate to null
+#ifdef JS_CODELABEL_LINKMODE
+        label.setLinkMode(static_cast<CodeLabel::LinkMode>(link.mode));
+#endif
+        Assembler::Bind(base, label);
     }
 
     for (auto imm : MakeEnumeratedRange(SymbolicAddress::Limit)) {
@@ -144,8 +183,17 @@ StaticallyUnlink(uint8_t* base, const LinkDataTier& linkData)
     }
 }
 
+#ifdef JS_ION_PERF
+static bool
+AppendToString(const char* str, UTF8Bytes* bytes)
+{
+    return bytes->append(str, strlen(str)) && bytes->append('\0');
+}
+#endif
+
 static void
-SendCodeRangesToProfiler(const CodeSegment& cs, const Bytes& bytecode, const Metadata& metadata)
+SendCodeRangesToProfiler(const ModuleSegment& ms, const Bytes& bytecode, const Metadata& metadata,
+                         const CodeRangeVector& codeRanges)
 {
     bool enabled = false;
 #ifdef JS_ION_PERF
@@ -157,18 +205,15 @@ SendCodeRangesToProfiler(const CodeSegment& cs, const Bytes& bytecode, const Met
     if (!enabled)
         return;
 
-    for (const CodeRange& codeRange : metadata.metadata(cs.tier()).codeRanges) {
-        if (!codeRange.isFunction())
+    for (const CodeRange& codeRange : codeRanges) {
+        if (!codeRange.hasFuncIndex())
             continue;
 
-        uintptr_t start = uintptr_t(cs.base() + codeRange.begin());
-        uintptr_t end = uintptr_t(cs.base() + codeRange.end());
-        uintptr_t size = end - start;
+        uintptr_t start = uintptr_t(ms.base() + codeRange.begin());
+        uintptr_t size = codeRange.end() - codeRange.begin();
 
         UTF8Bytes name;
         if (!metadata.getFuncName(&bytecode, codeRange.funcIndex(), &name))
-            return;
-        if (!name.append('\0'))
             return;
 
         // Avoid "unused" warnings
@@ -178,32 +223,53 @@ SendCodeRangesToProfiler(const CodeSegment& cs, const Bytes& bytecode, const Met
 #ifdef JS_ION_PERF
         if (PerfFuncEnabled()) {
             const char* file = metadata.filename.get();
-            unsigned line = codeRange.funcLineOrBytecode();
-            unsigned column = 0;
-            writePerfSpewerWasmFunctionMap(start, size, file, line, column, name.begin());
+            if (codeRange.isFunction()) {
+                if (!name.append('\0'))
+                    return;
+                unsigned line = codeRange.funcLineOrBytecode();
+                writePerfSpewerWasmFunctionMap(start, size, file, line, name.begin());
+            } else if (codeRange.isInterpEntry()) {
+                if (!AppendToString(" slow entry", &name))
+                    return;
+                writePerfSpewerWasmMap(start, size, file, name.begin());
+            } else if (codeRange.isJitEntry()) {
+                if (!AppendToString(" fast entry", &name))
+                    return;
+                writePerfSpewerWasmMap(start, size, file, name.begin());
+            } else if (codeRange.isImportInterpExit()) {
+                if (!AppendToString(" slow exit", &name))
+                    return;
+                writePerfSpewerWasmMap(start, size, file, name.begin());
+            } else if (codeRange.isImportJitExit()) {
+                if (!AppendToString(" fast exit", &name))
+                    return;
+                writePerfSpewerWasmMap(start, size, file, name.begin());
+            } else {
+                MOZ_CRASH("unhandled perf hasFuncIndex type");
+            }
         }
 #endif
 #ifdef MOZ_VTUNE
-        if (vtune::IsProfilingActive())
-            vtune::MarkWasm(vtune::GenerateUniqueMethodID(), name.begin(), (void*)start, size);
+        if (!vtune::IsProfilingActive())
+            continue;
+        if (!codeRange.isFunction())
+            continue;
+        if (!name.append('\0'))
+            return;
+        vtune::MarkWasm(vtune::GenerateUniqueMethodID(), name.begin(), (void*)start, size);
 #endif
     }
 }
 
-/* static */ UniqueConstCodeSegment
-CodeSegment::create(Tier tier,
-                    MacroAssembler& masm,
-                    const ShareableBytes& bytecode,
-                    const LinkDataTier& linkData,
-                    const Metadata& metadata)
+/* static */ UniqueModuleSegment
+ModuleSegment::create(Tier tier,
+                      MacroAssembler& masm,
+                      const ShareableBytes& bytecode,
+                      const LinkDataTier& linkData,
+                      const Metadata& metadata,
+                      const CodeRangeVector& codeRanges)
 {
-    // Round up the code size to page size since this is eventually required by
-    // the executable-code allocator and for setting memory protection.
-    uint32_t bytesNeeded = masm.bytesNeeded();
-    uint32_t padding = ComputeByteAlignment(bytesNeeded, gc::SystemPageSize());
-    uint32_t codeLength = bytesNeeded + padding;
-
-    MOZ_ASSERT(linkData.functionCodeLength < codeLength);
+    uint32_t codeLength = masm.bytesNeeded();
 
     UniqueCodeBytes codeBytes = AllocateCodeBytes(codeLength);
     if (!codeBytes)
@@ -212,75 +278,66 @@ CodeSegment::create(Tier tier,
     // We'll flush the icache after static linking, in initialize().
     masm.executableCopy(codeBytes.get(), /* flushICache = */ false);
 
-    // Zero the padding.
-    memset(codeBytes.get() + bytesNeeded, 0, padding);
-
-    return create(tier, Move(codeBytes), codeLength, bytecode, linkData, metadata);
+    return create(tier, Move(codeBytes), codeLength, bytecode, linkData, metadata, codeRanges);
 }
 
-/* static */ UniqueConstCodeSegment
-CodeSegment::create(Tier tier,
-                    const Bytes& unlinkedBytes,
-                    const ShareableBytes& bytecode,
-                    const LinkDataTier& linkData,
-                    const Metadata& metadata)
+/* static */ UniqueModuleSegment
+ModuleSegment::create(Tier tier,
+                      const Bytes& unlinkedBytes,
+                      const ShareableBytes& bytecode,
+                      const LinkDataTier& linkData,
+                      const Metadata& metadata,
+                      const CodeRangeVector& codeRanges)
 {
-    // The unlinked bytes are a snapshot of the MacroAssembler's contents so
-    // round up just like in the MacroAssembler overload above.
-    uint32_t padding = ComputeByteAlignment(unlinkedBytes.length(), gc::SystemPageSize());
-    uint32_t codeLength = unlinkedBytes.length() + padding;
+    uint32_t codeLength = unlinkedBytes.length();
 
     UniqueCodeBytes codeBytes = AllocateCodeBytes(codeLength);
     if (!codeBytes)
         return nullptr;
 
-    memcpy(codeBytes.get(), unlinkedBytes.begin(), unlinkedBytes.length());
-    memset(codeBytes.get() + unlinkedBytes.length(), 0, padding);
+    memcpy(codeBytes.get(), unlinkedBytes.begin(), codeLength);
 
-    return create(tier, Move(codeBytes), codeLength, bytecode, linkData, metadata);
+    return create(tier, Move(codeBytes), codeLength, bytecode, linkData, metadata, codeRanges);
 }
 
-/* static */ UniqueConstCodeSegment
-CodeSegment::create(Tier tier,
-                    UniqueCodeBytes codeBytes,
-                    uint32_t codeLength,
-                    const ShareableBytes& bytecode,
-                    const LinkDataTier& linkData,
-                    const Metadata& metadata)
+/* static */ UniqueModuleSegment
+ModuleSegment::create(Tier tier,
+                      UniqueCodeBytes codeBytes,
+                      uint32_t codeLength,
+                      const ShareableBytes& bytecode,
+                      const LinkDataTier& linkData,
+                      const Metadata& metadata,
+                      const CodeRangeVector& codeRanges)
 {
     // These should always exist and should never be first in the code segment.
-    MOZ_ASSERT(linkData.interruptOffset != 0);
-    MOZ_ASSERT(linkData.outOfBoundsOffset != 0);
-    MOZ_ASSERT(linkData.unalignedAccessOffset != 0);
 
-    auto cs = js::MakeUnique<CodeSegment>();
-    if (!cs)
+    auto ms = js::MakeUnique<ModuleSegment>();
+    if (!ms)
         return nullptr;
 
-    if (!cs->initialize(tier, Move(codeBytes), codeLength, bytecode, linkData, metadata))
+    if (!ms->initialize(tier, Move(codeBytes), codeLength, bytecode, linkData, metadata, codeRanges))
         return nullptr;
 
-    return UniqueConstCodeSegment(cs.release());
+    return UniqueModuleSegment(ms.release());
 }
 
 bool
-CodeSegment::initialize(Tier tier,
-                        UniqueCodeBytes codeBytes,
-                        uint32_t codeLength,
-                        const ShareableBytes& bytecode,
-                        const LinkDataTier& linkData,
-                        const Metadata& metadata)
+ModuleSegment::initialize(Tier tier,
+                          UniqueCodeBytes codeBytes,
+                          uint32_t codeLength,
+                          const ShareableBytes& bytecode,
+                          const LinkDataTier& linkData,
+                          const Metadata& metadata,
+                          const CodeRangeVector& codeRanges)
 {
-    MOZ_ASSERT(bytes_ == nullptr);
-    MOZ_ASSERT(tier == Tier::Baseline || tier == Tier::Ion);
+    MOZ_ASSERT(!bytes_);
 
     tier_ = tier;
     bytes_ = Move(codeBytes);
-    functionLength_ = linkData.functionCodeLength;
     length_ = codeLength;
-    interruptCode_ = bytes_.get() + linkData.interruptOffset;
     outOfBoundsCode_ = bytes_.get() + linkData.outOfBoundsOffset;
     unalignedAccessCode_ = bytes_.get() + linkData.unalignedAccessOffset;
+    trapCode_ = bytes_.get() + linkData.trapOffset;
 
     if (!StaticallyLink(*this, linkData))
         return false;
@@ -291,28 +348,31 @@ CodeSegment::initialize(Tier tier,
     if (!ExecutableAllocator::makeExecutable(bytes_.get(), RoundupCodeLength(codeLength)))
         return false;
 
-    SendCodeRangesToProfiler(*this, bytecode.bytes, metadata);
+    if (!registerInProcessMap())
+        return false;
+
+    SendCodeRangesToProfiler(*this, bytecode.bytes, metadata, codeRanges);
 
     return true;
 }
 
 size_t
-CodeSegment::serializedSize() const
+ModuleSegment::serializedSize() const
 {
     return sizeof(uint32_t) + length_;
 }
 
 void
-CodeSegment::addSizeOfMisc(mozilla::MallocSizeOf mallocSizeOf, size_t* code, size_t* data) const
+ModuleSegment::addSizeOfMisc(mozilla::MallocSizeOf mallocSizeOf, size_t* code, size_t* data) const
 {
+    CodeSegment::addSizeOfMisc(mallocSizeOf, code);
     *data += mallocSizeOf(this);
-    *code += RoundupCodeLength(length_);
 }
 
 uint8_t*
-CodeSegment::serialize(uint8_t* cursor, const LinkDataTier& linkData) const
+ModuleSegment::serialize(uint8_t* cursor, const LinkDataTier& linkData) const
 {
-    MOZ_ASSERT(tier() == Tier::Ion);
+    MOZ_ASSERT(tier() == Tier::Serialized);
 
     cursor = WriteScalar<uint32_t>(cursor, length_);
     uint8_t* base = cursor;
@@ -322,15 +382,15 @@ CodeSegment::serialize(uint8_t* cursor, const LinkDataTier& linkData) const
 }
 
 const uint8_t*
-CodeSegment::deserialize(const uint8_t* cursor, const ShareableBytes& bytecode,
-                         const LinkDataTier& linkData, const Metadata& metadata)
+ModuleSegment::deserialize(const uint8_t* cursor, const ShareableBytes& bytecode,
+                           const LinkDataTier& linkData, const Metadata& metadata,
+                           const CodeRangeVector& codeRanges)
 {
     uint32_t length;
     cursor = ReadScalar<uint32_t>(cursor, &length);
     if (!cursor)
         return nullptr;
 
-    MOZ_ASSERT(length_ % gc::SystemPageSize() == 0);
     UniqueCodeBytes bytes = AllocateCodeBytes(length);
     if (!bytes)
         return nullptr;
@@ -339,10 +399,16 @@ CodeSegment::deserialize(const uint8_t* cursor, const ShareableBytes& bytecode,
     if (!cursor)
         return nullptr;
 
-    if (!initialize(Tier::Ion, Move(bytes), length, bytecode, linkData, metadata))
+    if (!initialize(Tier::Serialized, Move(bytes), length, bytecode, linkData, metadata, codeRanges))
         return nullptr;
 
     return cursor;
+}
+
+const CodeRange*
+ModuleSegment::lookupRange(const void* pc) const
+{
+    return codeTier().lookupRange(pc);
 }
 
 size_t
@@ -452,9 +518,9 @@ CacheableChars::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 size_t
 MetadataTier::serializedSize() const
 {
-    return SerializedPodVectorSize(memoryAccesses) +
-           SerializedPodVectorSize(codeRanges) +
+    return SerializedPodVectorSize(codeRanges) +
            SerializedPodVectorSize(callSites) +
+           trapSites.serializedSize() +
            SerializedVectorSize(funcImports) +
            SerializedVectorSize(funcExports);
 }
@@ -462,9 +528,9 @@ MetadataTier::serializedSize() const
 size_t
 MetadataTier::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 {
-    return memoryAccesses.sizeOfExcludingThis(mallocSizeOf) +
-           codeRanges.sizeOfExcludingThis(mallocSizeOf) +
+    return codeRanges.sizeOfExcludingThis(mallocSizeOf) +
            callSites.sizeOfExcludingThis(mallocSizeOf) +
+           trapSites.sizeOfExcludingThis(mallocSizeOf) +
            SizeOfVectorExcludingThis(funcImports, mallocSizeOf) +
            SizeOfVectorExcludingThis(funcExports, mallocSizeOf);
 }
@@ -473,9 +539,9 @@ uint8_t*
 MetadataTier::serialize(uint8_t* cursor) const
 {
     MOZ_ASSERT(debugTrapFarJumpOffsets.empty() && debugFuncToCodeRange.empty());
-    cursor = SerializePodVector(cursor, memoryAccesses);
     cursor = SerializePodVector(cursor, codeRanges);
     cursor = SerializePodVector(cursor, callSites);
+    cursor = trapSites.serialize(cursor);
     cursor = SerializeVector(cursor, funcImports);
     cursor = SerializeVector(cursor, funcExports);
     return cursor;
@@ -484,9 +550,9 @@ MetadataTier::serialize(uint8_t* cursor) const
 /* static */ const uint8_t*
 MetadataTier::deserialize(const uint8_t* cursor)
 {
-    (cursor = DeserializePodVector(cursor, &memoryAccesses)) &&
     (cursor = DeserializePodVector(cursor, &codeRanges)) &&
     (cursor = DeserializePodVector(cursor, &callSites)) &&
+    (cursor = trapSites.deserialize(cursor)) &&
     (cursor = DeserializeVector(cursor, &funcImports)) &&
     (cursor = DeserializeVector(cursor, &funcExports));
     debugTrapFarJumpOffsets.clear();
@@ -494,77 +560,349 @@ MetadataTier::deserialize(const uint8_t* cursor)
     return cursor;
 }
 
-Tiers
-Metadata::tiers() const
+bool
+LazyStubSegment::initialize(UniqueCodeBytes codeBytes, size_t length)
 {
-    return Tiers(tier_->tier);
+    MOZ_ASSERT(bytes_ == nullptr);
+
+    bytes_ = Move(codeBytes);
+    length_ = length;
+
+    return registerInProcessMap();
 }
 
-const MetadataTier&
-Metadata::metadata(Tier t) const
+UniqueLazyStubSegment
+LazyStubSegment::create(const CodeTier& codeTier, size_t length)
 {
-    switch (t) {
-      case Tier::Debug:
-      case Tier::Baseline:
-        MOZ_RELEASE_ASSERT(tier_->tier == Tier::Baseline);
-        return *tier_;
-      case Tier::Ion:
-        MOZ_RELEASE_ASSERT(tier_->tier == Tier::Ion);
-        return *tier_;
-      case Tier::TBD:
-        return *tier_;
-      default:
-        MOZ_CRASH();
+    UniqueCodeBytes codeBytes = AllocateCodeBytes(length);
+    if (!codeBytes)
+        return nullptr;
+
+    auto segment = js::MakeUnique<LazyStubSegment>(codeTier);
+    if (!segment || !segment->initialize(Move(codeBytes), length))
+        return nullptr;
+    return segment;
+}
+
+bool
+LazyStubSegment::hasSpace(size_t bytes) const
+{
+    MOZ_ASSERT(bytes % MPROTECT_PAGE_SIZE == 0);
+    return bytes <= length_ &&
+           usedBytes_ <= length_ - bytes;
+}
+
+bool
+LazyStubSegment::addStubs(size_t codeLength, const Uint32Vector& funcExportIndices,
+                          const FuncExportVector& funcExports, const CodeRangeVector& codeRanges,
+                          uint8_t** codePtr, size_t* indexFirstInsertedCodeRange)
+{
+    MOZ_ASSERT(hasSpace(codeLength));
+
+    size_t offsetInSegment = usedBytes_;
+    *codePtr = base() + usedBytes_;
+    usedBytes_ += codeLength;
+
+    *indexFirstInsertedCodeRange = codeRanges_.length();
+
+    if (!codeRanges_.reserve(codeRanges_.length() + 2 * codeRanges.length()))
+        return false;
+
+    size_t i = 0;
+    for (uint32_t funcExportIndex : funcExportIndices) {
+        const CodeRange& interpRange = codeRanges[i];
+        MOZ_ASSERT(interpRange.isInterpEntry());
+        MOZ_ASSERT(interpRange.funcIndex() == funcExports[funcExportIndex].funcIndex());
+
+        codeRanges_.infallibleAppend(interpRange);
+        codeRanges_.back().offsetBy(offsetInSegment);
+        i++;
+
+        if (funcExports[funcExportIndex].sig().temporarilyUnsupportedAnyRef())
+            continue;
+
+        const CodeRange& jitRange = codeRanges[i];
+        MOZ_ASSERT(jitRange.isJitEntry());
+        MOZ_ASSERT(jitRange.funcIndex() == interpRange.funcIndex());
+
+        codeRanges_.infallibleAppend(jitRange);
+        codeRanges_.back().offsetBy(offsetInSegment);
+        i++;
+    }
+
+    return true;
+}
+
+const CodeRange*
+LazyStubSegment::lookupRange(const void* pc) const
+{
+    return LookupInSorted(codeRanges_, CodeRange::OffsetInCode((uint8_t*)pc - base()));
+}
+
+void
+LazyStubSegment::addSizeOfMisc(MallocSizeOf mallocSizeOf, size_t* code, size_t* data) const
+{
+    CodeSegment::addSizeOfMisc(mallocSizeOf, code);
+    *data += codeRanges_.sizeOfExcludingThis(mallocSizeOf);
+    *data += mallocSizeOf(this);
+}
+
+struct ProjectLazyFuncIndex
+{
+    const LazyFuncExportVector& funcExports;
+    explicit ProjectLazyFuncIndex(const LazyFuncExportVector& funcExports)
+      : funcExports(funcExports)
+    {}
+    uint32_t operator[](size_t index) const {
+        return funcExports[index].funcIndex;
+    }
+};
+
+static constexpr unsigned LAZY_STUB_LIFO_DEFAULT_CHUNK_SIZE = 8 * 1024;
+
+bool
+LazyStubTier::createMany(HasGcTypes gcTypesEnabled, const Uint32Vector& funcExportIndices,
+                         const CodeTier& codeTier, size_t* stubSegmentIndex)
+{
+    MOZ_ASSERT(funcExportIndices.length());
+
+    LifoAlloc lifo(LAZY_STUB_LIFO_DEFAULT_CHUNK_SIZE);
+    TempAllocator alloc(&lifo);
+    JitContext jitContext(&alloc);
+    WasmMacroAssembler masm(alloc);
+
+    const CodeRangeVector& moduleRanges = codeTier.metadata().codeRanges;
+    const FuncExportVector& funcExports = codeTier.metadata().funcExports;
+    uint8_t* moduleSegmentBase = codeTier.segment().base();
+
+    CodeRangeVector codeRanges;
+    DebugOnly<uint32_t> numExpectedRanges = 0;
+    for (uint32_t funcExportIndex : funcExportIndices) {
+        const FuncExport& fe = funcExports[funcExportIndex];
+        numExpectedRanges += fe.sig().temporarilyUnsupportedAnyRef() ? 1 : 2;
+        void* calleePtr = moduleSegmentBase +
+                          moduleRanges[fe.interpCodeRangeIndex()].funcNormalEntry();
+        Maybe<ImmPtr> callee;
+        callee.emplace(calleePtr, ImmPtr::NoCheckToken());
+        if (!GenerateEntryStubs(masm, funcExportIndex, fe, callee, /* asmjs */ false,
+                                gcTypesEnabled, &codeRanges))
+        {
+            return false;
+        }
+    }
+    MOZ_ASSERT(codeRanges.length() == numExpectedRanges, "incorrect number of entries per function");
+
+    masm.finish();
+
+    MOZ_ASSERT(!masm.numCodeLabels());
+    MOZ_ASSERT(masm.callSites().empty());
+    MOZ_ASSERT(masm.callSiteTargets().empty());
+    MOZ_ASSERT(masm.callFarJumps().empty());
+    MOZ_ASSERT(masm.trapSites().empty());
+    MOZ_ASSERT(masm.callFarJumps().empty());
+    MOZ_ASSERT(masm.symbolicAccesses().empty());
+
+    if (masm.oom())
+        return false;
+
+    size_t codeLength = LazyStubSegment::AlignBytesNeeded(masm.bytesNeeded());
+
+    if (!stubSegments_.length() || !stubSegments_[lastStubSegmentIndex_]->hasSpace(codeLength)) {
+        size_t newSegmentSize = Max(codeLength, ExecutableCodePageSize);
+        UniqueLazyStubSegment newSegment = LazyStubSegment::create(codeTier, newSegmentSize);
+        if (!newSegment)
+            return false;
+        lastStubSegmentIndex_ = stubSegments_.length();
+        if (!stubSegments_.emplaceBack(Move(newSegment)))
+            return false;
+    }
+
+    LazyStubSegment* segment = stubSegments_[lastStubSegmentIndex_].get();
+    *stubSegmentIndex = lastStubSegmentIndex_;
+
+    size_t interpRangeIndex;
+    uint8_t* codePtr = nullptr;
+    if (!segment->addStubs(codeLength, funcExportIndices, funcExports, codeRanges, &codePtr,
+                           &interpRangeIndex))
+        return false;
+
+    masm.executableCopy(codePtr, /* flushICache = */ false);
+    memset(codePtr + masm.bytesNeeded(), 0, codeLength - masm.bytesNeeded());
+
+    ExecutableAllocator::cacheFlush(codePtr, codeLength);
+    if (!ExecutableAllocator::makeExecutable(codePtr, codeLength))
+        return false;
+
+    // Create lazy function exports for funcIndex -> entry lookup.
+    if (!exports_.reserve(exports_.length() + funcExportIndices.length()))
+        return false;
+
+    for (uint32_t funcExportIndex : funcExportIndices) {
+        const FuncExport& fe = funcExports[funcExportIndex];
+
+        DebugOnly<CodeRange> cr = segment->codeRanges()[interpRangeIndex];
+        MOZ_ASSERT(cr.value.isInterpEntry());
+        MOZ_ASSERT(cr.value.funcIndex() == fe.funcIndex());
+
+        LazyFuncExport lazyExport(fe.funcIndex(), *stubSegmentIndex, interpRangeIndex);
+
+        size_t exportIndex;
+        MOZ_ALWAYS_FALSE(BinarySearch(ProjectLazyFuncIndex(exports_), 0, exports_.length(),
+                                      fe.funcIndex(), &exportIndex));
+        MOZ_ALWAYS_TRUE(exports_.insert(exports_.begin() + exportIndex, Move(lazyExport)));
+
+        // Functions with anyref in their sig have only one entry (interp).
+        // All other functions get an extra jit entry.
+        interpRangeIndex += fe.sig().temporarilyUnsupportedAnyRef() ? 1 : 2;
+    }
+
+    return true;
+}
+
+bool
+LazyStubTier::createOne(uint32_t funcExportIndex, const CodeTier& codeTier)
+{
+    Uint32Vector funcExportIndexes;
+    if (!funcExportIndexes.append(funcExportIndex))
+        return false;
+
+    size_t stubSegmentIndex;
+    if (!createMany(codeTier.code().metadata().temporaryHasGcTypes, funcExportIndexes, codeTier,
+                    &stubSegmentIndex))
+    {
+        return false;
+    }
+
+    const UniqueLazyStubSegment& segment = stubSegments_[stubSegmentIndex];
+    const CodeRangeVector& codeRanges = segment->codeRanges();
+
+    // Functions that have anyref in their sig don't get a jit entry.
+    if (codeTier.metadata().funcExports[funcExportIndex].sig().temporarilyUnsupportedAnyRef()) {
+        MOZ_ASSERT(codeRanges.length() >= 1);
+        MOZ_ASSERT(codeRanges.back().isInterpEntry());
+        return true;
+    }
+
+    MOZ_ASSERT(codeRanges.length() >= 2);
+    MOZ_ASSERT(codeRanges[codeRanges.length() - 2].isInterpEntry());
+
+    const CodeRange& cr = codeRanges[codeRanges.length() - 1];
+    MOZ_ASSERT(cr.isJitEntry());
+
+    codeTier.code().setJitEntry(cr.funcIndex(), segment->base() + cr.begin());
+    return true;
+}
+
+bool
+LazyStubTier::createTier2(HasGcTypes gcTypesEnabled, const Uint32Vector& funcExportIndices,
+                          const CodeTier& codeTier, Maybe<size_t>* outStubSegmentIndex)
+{
+    if (!funcExportIndices.length())
+        return true;
+
+    size_t stubSegmentIndex;
+    if (!createMany(gcTypesEnabled, funcExportIndices, codeTier, &stubSegmentIndex))
+        return false;
+
+    outStubSegmentIndex->emplace(stubSegmentIndex);
+    return true;
+}
+
+void
+LazyStubTier::setJitEntries(const Maybe<size_t>& stubSegmentIndex, const Code& code)
+{
+    if (!stubSegmentIndex)
+        return;
+    const UniqueLazyStubSegment& segment = stubSegments_[*stubSegmentIndex];
+    for (const CodeRange& cr : segment->codeRanges()) {
+        if (!cr.isJitEntry())
+            continue;
+        code.setJitEntry(cr.funcIndex(), segment->base() + cr.begin());
     }
 }
 
-MetadataTier&
-Metadata::metadata(Tier t)
+bool
+LazyStubTier::hasStub(uint32_t funcIndex) const
 {
-    switch (t) {
-      case Tier::Debug:
-      case Tier::Baseline:
-        MOZ_RELEASE_ASSERT(tier_->tier == Tier::Baseline);
-        return *tier_;
-      case Tier::Ion:
-        MOZ_RELEASE_ASSERT(tier_->tier == Tier::Ion);
-        return *tier_;
-      case Tier::TBD:
-        return *tier_;
-      default:
-        MOZ_CRASH();
+    size_t match;
+    return BinarySearch(ProjectLazyFuncIndex(exports_), 0, exports_.length(), funcIndex, &match);
+}
+
+void*
+LazyStubTier::lookupInterpEntry(uint32_t funcIndex) const
+{
+    size_t match;
+    MOZ_ALWAYS_TRUE(BinarySearch(ProjectLazyFuncIndex(exports_), 0, exports_.length(), funcIndex,
+                    &match));
+    const LazyFuncExport& fe = exports_[match];
+    const LazyStubSegment& stub = *stubSegments_[fe.lazyStubSegmentIndex];
+    return stub.base() + stub.codeRanges()[fe.interpCodeRangeIndex].begin();
+}
+
+void
+LazyStubTier::addSizeOfMisc(MallocSizeOf mallocSizeOf, size_t* code, size_t* data) const
+{
+    *data += sizeof(this);
+    *data += exports_.sizeOfExcludingThis(mallocSizeOf);
+    for (const UniqueLazyStubSegment& stub : stubSegments_)
+        stub->addSizeOfMisc(mallocSizeOf, code, data);
+}
+
+bool
+MetadataTier::clone(const MetadataTier& src)
+{
+    if (!codeRanges.appendAll(src.codeRanges))
+        return false;
+    if (!callSites.appendAll(src.callSites))
+        return false;
+    if (!debugTrapFarJumpOffsets.appendAll(src.debugTrapFarJumpOffsets))
+        return false;
+    if (!debugFuncToCodeRange.appendAll(src.debugFuncToCodeRange))
+        return false;
+
+    for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
+        if (!trapSites[trap].appendAll(src.trapSites[trap]))
+            return false;
     }
+
+    if (!funcImports.resize(src.funcImports.length()))
+        return false;
+    for (size_t i = 0; i < src.funcImports.length(); i++)
+        funcImports[i].clone(src.funcImports[i]);
+
+    if (!funcExports.resize(src.funcExports.length()))
+        return false;
+    for (size_t i = 0; i < src.funcExports.length(); i++)
+        funcExports[i].clone(src.funcExports[i]);
+
+    return true;
 }
 
 size_t
 Metadata::serializedSize() const
 {
     return sizeof(pod()) +
-           metadata(Tier::Ion).serializedSize() +
            SerializedVectorSize(sigIds) +
            SerializedPodVectorSize(globals) +
            SerializedPodVectorSize(tables) +
            SerializedPodVectorSize(funcNames) +
            SerializedPodVectorSize(customSections) +
            filename.serializedSize() +
-           sizeof(hash);
+           baseURL.serializedSize() +
+           sourceMapURL.serializedSize();
 }
 
 size_t
 Metadata::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 {
-    size_t sum = 0;
-
-    for (auto t : tiers())
-        sum += metadata(t).sizeOfExcludingThis(mallocSizeOf);
-
-    return sum +
-           SizeOfVectorExcludingThis(sigIds, mallocSizeOf) +
+    return SizeOfVectorExcludingThis(sigIds, mallocSizeOf) +
            globals.sizeOfExcludingThis(mallocSizeOf) +
            tables.sizeOfExcludingThis(mallocSizeOf) +
            funcNames.sizeOfExcludingThis(mallocSizeOf) +
            customSections.sizeOfExcludingThis(mallocSizeOf) +
-           filename.sizeOfExcludingThis(mallocSizeOf);
+           filename.sizeOfExcludingThis(mallocSizeOf) +
+           baseURL.sizeOfExcludingThis(mallocSizeOf) +
+           sourceMapURL.sizeOfExcludingThis(mallocSizeOf);
 }
 
 uint8_t*
@@ -572,14 +910,14 @@ Metadata::serialize(uint8_t* cursor) const
 {
     MOZ_ASSERT(!debugEnabled && debugFuncArgTypes.empty() && debugFuncReturnTypes.empty());
     cursor = WriteBytes(cursor, &pod(), sizeof(pod()));
-    cursor = metadata(Tier::Ion).serialize(cursor);
     cursor = SerializeVector(cursor, sigIds);
     cursor = SerializePodVector(cursor, globals);
     cursor = SerializePodVector(cursor, tables);
     cursor = SerializePodVector(cursor, funcNames);
     cursor = SerializePodVector(cursor, customSections);
     cursor = filename.serialize(cursor);
-    cursor = WriteBytes(cursor, hash, sizeof(hash));
+    cursor = baseURL.serialize(cursor);
+    cursor = sourceMapURL.serialize(cursor);
     return cursor;
 }
 
@@ -587,14 +925,14 @@ Metadata::serialize(uint8_t* cursor) const
 Metadata::deserialize(const uint8_t* cursor)
 {
     (cursor = ReadBytes(cursor, &pod(), sizeof(pod()))) &&
-    (cursor = metadata(Tier::Ion).deserialize(cursor)) &&
     (cursor = DeserializeVector(cursor, &sigIds)) &&
     (cursor = DeserializePodVector(cursor, &globals)) &&
     (cursor = DeserializePodVector(cursor, &tables)) &&
     (cursor = DeserializePodVector(cursor, &funcNames)) &&
     (cursor = DeserializePodVector(cursor, &customSections)) &&
-    (cursor = filename.deserialize(cursor)) &&
-    (cursor = ReadBytes(cursor, hash, sizeof(hash)));
+    (cursor = filename.deserialize(cursor));
+    (cursor = baseURL.deserialize(cursor));
+    (cursor = sourceMapURL.deserialize(cursor));
     debugEnabled = false;
     debugFuncArgTypes.clear();
     debugFuncReturnTypes.clear();
@@ -604,7 +942,6 @@ Metadata::deserialize(const uint8_t* cursor)
 struct ProjectFuncIndex
 {
     const FuncExportVector& funcExports;
-
     explicit ProjectFuncIndex(const FuncExportVector& funcExports)
       : funcExports(funcExports)
     {}
@@ -613,14 +950,21 @@ struct ProjectFuncIndex
     }
 };
 
-const FuncExport&
-MetadataTier::lookupFuncExport(uint32_t funcIndex) const
+FuncExport&
+MetadataTier::lookupFuncExport(uint32_t funcIndex, size_t* funcExportIndex /* = nullptr */)
 {
     size_t match;
     if (!BinarySearch(ProjectFuncIndex(funcExports), 0, funcExports.length(), funcIndex, &match))
         MOZ_CRASH("missing function export");
-
+    if (funcExportIndex)
+        *funcExportIndex = match;
     return funcExports[match];
+}
+
+const FuncExport&
+MetadataTier::lookupFuncExport(uint32_t funcIndex, size_t* funcExportIndex) const
+{
+    return const_cast<MetadataTier*>(this)->lookupFuncExport(funcIndex, funcExportIndex);
 }
 
 bool
@@ -650,10 +994,113 @@ Metadata::getFuncName(const Bytes* maybeBytecode, uint32_t funcIndex, UTF8Bytes*
            name->append(afterFuncIndex, strlen(afterFuncIndex));
 }
 
-Code::Code(UniqueConstCodeSegment tier, const Metadata& metadata)
-  : tier_(Move(tier)),
+size_t
+CodeTier::serializedSize() const
+{
+    return segment_->serializedSize() +
+           metadata_->serializedSize();
+}
+
+uint8_t*
+CodeTier::serialize(uint8_t* cursor, const LinkDataTier& linkData) const
+{
+    cursor = metadata_->serialize(cursor);
+    cursor = segment_->serialize(cursor, linkData);
+    return cursor;
+}
+
+const uint8_t*
+CodeTier::deserialize(const uint8_t* cursor, const SharedBytes& bytecode, Metadata& metadata,
+                      const LinkDataTier& linkData)
+{
+    metadata_ = js::MakeUnique<MetadataTier>(Tier::Serialized);
+    if (!metadata_)
+        return nullptr;
+    cursor = metadata_->deserialize(cursor);
+    if (!cursor)
+        return nullptr;
+
+    auto segment = Move(js::MakeUnique<ModuleSegment>());
+    if (!segment)
+        return nullptr;
+    cursor = segment->deserialize(cursor, *bytecode, linkData, metadata, metadata_->codeRanges);
+    if (!cursor)
+        return nullptr;
+    segment_ = takeOwnership(Move(segment));
+
+    return cursor;
+}
+
+void
+CodeTier::addSizeOfMisc(MallocSizeOf mallocSizeOf, size_t* code, size_t* data) const
+{
+    segment_->addSizeOfMisc(mallocSizeOf, code, data);
+    lazyStubs_.lock()->addSizeOfMisc(mallocSizeOf, code, data);
+    *data += metadata_->sizeOfExcludingThis(mallocSizeOf);
+}
+
+const CodeRange*
+CodeTier::lookupRange(const void* pc) const
+{
+    CodeRange::OffsetInCode target((uint8_t*)pc - segment_->base());
+    return LookupInSorted(metadata_->codeRanges, target);
+}
+
+bool
+JumpTables::init(CompileMode mode, const ModuleSegment& ms, const CodeRangeVector& codeRanges)
+{
+    // Note a fast jit entry has two addresses, to be compatible with
+    // ion/baseline functions which have the raw vs checked args entries,
+    // both used all over the place in jit calls. This allows the fast entries
+    // to be compatible with jit code pointer loading routines.
+    // We can use the same entry for both kinds of jit entries since a wasm
+    // entry knows how to convert any kind of arguments and doesn't assume
+    // any input types.
+
+    static_assert(JSScript::offsetOfJitCodeRaw() == 0,
+                  "wasm fast jit entry is at (void*) jit[2*funcIndex]");
+    static_assert(JSScript::offsetOfJitCodeSkipArgCheck() == sizeof(void*),
+                  "wasm fast jit entry is also at (void*) jit[2*funcIndex+1]");
+
+    mode_ = mode;
+
+    size_t numFuncs = 0;
+    for (const CodeRange& cr : codeRanges) {
+        if (cr.isFunction())
+            numFuncs++;
+    }
+
+    numFuncs_ = numFuncs;
+
+    if (mode_ == CompileMode::Tier1) {
+        tiering_ = TablePointer(js_pod_calloc<void*>(numFuncs));
+        if (!tiering_)
+            return false;
+    }
+
+    // The number of jit entries is overestimated, but it is simpler when
+    // filling/looking up the jit entries and safe (worst case we'll crash
+    // because of a null deref when trying to call the jit entry of an
+    // unexported function).
+    jit_ = TablePointer(js_pod_calloc<void*>(2 * numFuncs));
+    if (!jit_)
+        return false;
+
+    uint8_t* codeBase = ms.base();
+    for (const CodeRange& cr : codeRanges) {
+        if (cr.isFunction())
+            setTieringEntry(cr.funcIndex(), codeBase + cr.funcTierEntry());
+        else if (cr.isJitEntry())
+            setJitEntry(cr.funcIndex(), codeBase + cr.begin());
+    }
+    return true;
+}
+
+Code::Code(UniqueCodeTier codeTier, const Metadata& metadata, JumpTables&& maybeJumpTables)
+  : tier1_(takeOwnership(Move(codeTier))),
     metadata_(&metadata),
-    profilingLabels_(mutexid::WasmCodeProfilingLabels, CacheableCharsVector())
+    profilingLabels_(mutexid::WasmCodeProfilingLabels, CacheableCharsVector()),
+    jumpTables_(Move(maybeJumpTables))
 {
 }
 
@@ -662,60 +1109,86 @@ Code::Code()
 {
 }
 
-Tier
-Code::anyTier() const
+void
+Code::setTier2(UniqueCodeTier tier2) const
 {
-    return tier_->tier();
+    MOZ_RELEASE_ASSERT(!hasTier2());
+    MOZ_RELEASE_ASSERT(tier2->tier() == Tier::Ion && tier1_->tier() == Tier::Baseline);
+    tier2_ = takeOwnership(Move(tier2));
+}
+
+void
+Code::commitTier2() const
+{
+    MOZ_RELEASE_ASSERT(!hasTier2());
+    MOZ_RELEASE_ASSERT(tier2_.get());
+    hasTier2_ = true;
+}
+
+uint32_t
+Code::getFuncIndex(JSFunction* fun) const
+{
+    if (fun->isAsmJSNative())
+        return fun->asmJSFuncIndex();
+    return jumpTables_.funcIndexFromJitEntry(fun->wasmJitEntry());
 }
 
 Tiers
 Code::tiers() const
 {
-    return Tiers(tier_->tier());
+    if (hasTier2())
+        return Tiers(tier1_->tier(), tier2_->tier());
+    return Tiers(tier1_->tier());
 }
 
-const CodeSegment&
-Code::segment(Tier tier) const
+bool
+Code::hasTier(Tier t) const
+{
+    if (hasTier2() && tier2_->tier() == t)
+        return true;
+    return tier1_->tier() == t;
+}
+
+Tier
+Code::stableTier() const
+{
+    return tier1_->tier();
+}
+
+Tier
+Code::bestTier() const
+{
+    if (hasTier2())
+        return tier2_->tier();
+    return tier1_->tier();
+}
+
+const CodeTier&
+Code::codeTier(Tier tier) const
 {
     switch (tier) {
-      case Tier::Debug:
       case Tier::Baseline:
-        MOZ_RELEASE_ASSERT(tier_->tier() == Tier::Baseline);
-        return *tier_;
+        if (tier1_->tier() == Tier::Baseline)
+            return *tier1_;
+        MOZ_CRASH("No code segment at this tier");
       case Tier::Ion:
-        MOZ_RELEASE_ASSERT(tier_->tier() == Tier::Ion);
-        return *tier_;
-      case Tier::TBD:
-        return *tier_;
+        if (tier1_->tier() == Tier::Ion)
+            return *tier1_;
+        if (hasTier2())
+            return *tier2_;
+        MOZ_CRASH("No code segment at this tier");
       default:
         MOZ_CRASH();
     }
 }
 
 bool
-Code::containsFunctionPC(const void* pc, const CodeSegment** segmentp) const
+Code::containsCodePC(const void* pc) const
 {
-    for (auto t : tiers()) {
-        const CodeSegment& cs = segment(t);
-        if (cs.containsFunctionPC(pc)) {
-            if (segmentp)
-                *segmentp = &cs;
+    for (Tier t : tiers()) {
+        const ModuleSegment& ms = segment(t);
+        if (ms.containsCodePC(pc))
             return true;
-        }
-    }
-    return false;
-}
-
-bool
-Code::containsCodePC(const void* pc, const CodeSegment** segmentp) const
-{
-    for (auto t : tiers()) {
-        const CodeSegment& cs = segment(t);
-        if (cs.containsCodePC(pc)) {
-            if (segmentp)
-                *segmentp = &cs;
-            return true;
-        }
     }
     return false;
 }
@@ -729,62 +1202,10 @@ struct CallSiteRetAddrOffset
     }
 };
 
-size_t
-Code::serializedSize() const
-{
-    return metadata().serializedSize() +
-           segment(Tier::Ion).serializedSize();
-}
-
-uint8_t*
-Code::serialize(uint8_t* cursor, const LinkData& linkData) const
-{
-    MOZ_RELEASE_ASSERT(!metadata().debugEnabled);
-
-    cursor = metadata().serialize(cursor);
-    cursor = segment(Tier::Ion).serialize(cursor, linkData.linkData(Tier::Ion));
-    return cursor;
-}
-
-const uint8_t*
-Code::deserialize(const uint8_t* cursor, const SharedBytes& bytecode, const LinkData& linkData,
-                  Metadata* maybeMetadata)
-{
-    MutableMetadata metadata;
-    if (maybeMetadata) {
-        metadata = maybeMetadata;
-    } else {
-        auto tier = js::MakeUnique<MetadataTier>(Tier::Ion);
-        if (!tier)
-            return nullptr;
-
-        metadata = js_new<Metadata>(Move(tier));
-        if (!metadata)
-            return nullptr;
-    }
-
-    cursor = metadata->deserialize(cursor);
-    if (!cursor)
-        return nullptr;
-
-    UniqueCodeSegment codeSegment = js::MakeUnique<CodeSegment>();
-    if (!codeSegment)
-        return nullptr;
-
-    cursor = codeSegment->deserialize(cursor, *bytecode, linkData.linkData(Tier::Ion), *metadata);
-    if (!cursor)
-        return nullptr;
-
-    tier_ = UniqueConstCodeSegment(codeSegment.release());
-    metadata_ = metadata;
-
-    return cursor;
-}
-
 const CallSite*
-Code::lookupCallSite(void* returnAddress, const CodeSegment** segmentp) const
+Code::lookupCallSite(void* returnAddress) const
 {
-    for (auto t : tiers()) {
+    for (Tier t : tiers()) {
         uint32_t target = ((uint8_t*)returnAddress) - segment(t).base();
         size_t lowerBound = 0;
         size_t upperBound = metadata(t).callSites.length();
@@ -792,63 +1213,55 @@ Code::lookupCallSite(void* returnAddress, const CodeSegment** segmentp) const
         size_t match;
         if (BinarySearch(CallSiteRetAddrOffset(metadata(t).callSites), lowerBound, upperBound,
                          target, &match))
-        {
-            if (segmentp)
-                *segmentp = &segment(t);
             return &metadata(t).callSites[match];
-        }
     }
 
     return nullptr;
 }
 
 const CodeRange*
-Code::lookupRange(void* pc, const CodeSegment** segmentp) const
+Code::lookupFuncRange(void* pc) const
 {
-    for (auto t : tiers()) {
-        CodeRange::OffsetInCode target((uint8_t*)pc - segment(t).base());
-        const CodeRange* result = LookupInSorted(metadata(t).codeRanges, target);
-        if (result) {
-            if (segmentp)
-                *segmentp = &segment(t);
+    for (Tier t : tiers()) {
+        const CodeRange* result = codeTier(t).lookupRange(pc);
+        if (result && result->isFunction())
             return result;
-        }
     }
-
     return nullptr;
 }
 
-struct MemoryAccessOffset
+struct TrapSitePCOffset
 {
-    const MemoryAccessVector& accesses;
-    explicit MemoryAccessOffset(const MemoryAccessVector& accesses) : accesses(accesses) {}
-    uintptr_t operator[](size_t index) const {
-        return accesses[index].insnOffset();
+    const TrapSiteVector& trapSites;
+    explicit TrapSitePCOffset(const TrapSiteVector& trapSites) : trapSites(trapSites) {}
+    uint32_t operator[](size_t index) const {
+        return trapSites[index].pcOffset;
     }
 };
 
-const MemoryAccess*
-Code::lookupMemoryAccess(void* pc, const CodeSegment** segmentp) const
+bool
+Code::lookupTrap(void* pc, Trap* trapOut, BytecodeOffset* bytecode) const
 {
-    for (auto t : tiers()) {
-        MOZ_ASSERT(segment(t).containsFunctionPC(pc));
+    for (Tier t : tiers()) {
+        const TrapSiteVectorArray& trapSitesArray = metadata(t).trapSites;
+        for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
+            const TrapSiteVector& trapSites = trapSitesArray[trap];
 
-        const MemoryAccessVector& memoryAccesses = metadata(t).memoryAccesses;
+            uint32_t target = ((uint8_t*)pc) - segment(t).base();
+            size_t lowerBound = 0;
+            size_t upperBound = trapSites.length();
 
-        uint32_t target = ((uint8_t*)pc) - segment(t).base();
-        size_t lowerBound = 0;
-        size_t upperBound = memoryAccesses.length();
-
-        size_t match;
-        if (BinarySearch(MemoryAccessOffset(memoryAccesses), lowerBound, upperBound, target,
-                         &match))
-        {
-            if (segmentp)
-                *segmentp = &segment(t);
-            return &memoryAccesses[match];
+            size_t match;
+            if (BinarySearch(TrapSitePCOffset(trapSites), lowerBound, upperBound, target, &match)) {
+                MOZ_ASSERT(segment(t).containsCodePC(pc));
+                *trapOut = trap;
+                *bytecode = trapSites[match].bytecode;
+                return true;
+            }
         }
     }
-    return nullptr;
+
+    return false;
 }
 
 // When enabled, generate profiling labels for every name in funcNames_ that is
@@ -871,7 +1284,7 @@ Code::ensureProfilingLabels(const Bytes* maybeBytecode, bool profilingEnabled) c
     // Any tier will do, we only need tier-invariant data that are incidentally
     // stored with the code ranges.
 
-    for (const CodeRange& codeRange : metadata(anyTier()).codeRanges) {
+    for (const CodeRange& codeRange : metadata(stableTier()).codeRanges) {
         if (!codeRange.isFunction())
             continue;
 
@@ -938,8 +1351,50 @@ Code::addSizeOfMiscIfNotSeen(MallocSizeOf mallocSizeOf,
 
     *data += mallocSizeOf(this) +
              metadata().sizeOfIncludingThisIfNotSeen(mallocSizeOf, seenMetadata) +
-             profilingLabels_.lock()->sizeOfExcludingThis(mallocSizeOf);
+             profilingLabels_.lock()->sizeOfExcludingThis(mallocSizeOf) +
+             jumpTables_.sizeOfMiscIncludingThis(mallocSizeOf);
 
     for (auto t : tiers())
-        segment(t).addSizeOfMisc(mallocSizeOf, code, data);
+        codeTier(t).addSizeOfMisc(mallocSizeOf, code, data);
+}
+
+size_t
+Code::serializedSize() const
+{
+    return metadata().serializedSize() +
+           codeTier(Tier::Serialized).serializedSize();
+}
+
+uint8_t*
+Code::serialize(uint8_t* cursor, const LinkDataTier& linkDataTier) const
+{
+    MOZ_RELEASE_ASSERT(!metadata().debugEnabled);
+
+    cursor = metadata().serialize(cursor);
+    cursor = codeTier(Tier::Serialized).serialize(cursor, linkDataTier);
+    return cursor;
+}
+
+const uint8_t*
+Code::deserialize(const uint8_t* cursor, const SharedBytes& bytecode,
+                  const LinkDataTier& linkDataTier, Metadata& metadata)
+{
+    cursor = metadata.deserialize(cursor);
+    if (!cursor)
+        return nullptr;
+
+    auto codeTier = js::MakeUnique<CodeTier>(Tier::Serialized);
+    if (!codeTier)
+        return nullptr;
+    cursor = codeTier->deserialize(cursor, bytecode, metadata, linkDataTier);
+    if (!cursor)
+        return nullptr;
+
+    tier1_ = takeOwnership(Move(codeTier));
+    metadata_ = &metadata;
+
+    if (!jumpTables_.init(CompileMode::Once, tier1_->segment(), tier1_->metadata().codeRanges))
+        return nullptr;
+
+    return cursor;
 }

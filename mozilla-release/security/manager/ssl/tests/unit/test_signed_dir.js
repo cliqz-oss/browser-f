@@ -6,7 +6,7 @@
 // verification when non-tampered, and fail verification when tampered via
 // various means.
 
-const { ZipUtils } = Cu.import("resource://gre/modules/ZipUtils.jsm", {});
+const { ZipUtils } = ChromeUtils.import("resource://gre/modules/ZipUtils.jsm", {});
 
 do_get_profile(); // must be called before getting nsIX509CertDB
 const certdb = Cc["@mozilla.org/security/x509certdb;1"]
@@ -194,7 +194,7 @@ add_task(async function testExtraFileInDir() {
                        {copy: [["lib/ui.js", "extra"]]});
 });
 
-do_register_cleanup(function() {
+registerCleanupFunction(function() {
   if (gTarget.exists()) {
     gTarget.remove(true);
   }

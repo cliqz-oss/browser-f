@@ -12,13 +12,12 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/MemoryReporting.h"
 
-#include "jscntxt.h"
-
 #include "builtin/SelfHostingDefines.h"
 #include "gc/Marking.h"
 #include "js/GCHashTable.h"
 #include "proxy/Proxy.h"
 #include "vm/ArrayObject.h"
+#include "vm/JSContext.h"
 #include "vm/RegExpShared.h"
 #include "vm/Shape.h"
 
@@ -43,7 +42,7 @@ struct MatchPair;
 class MatchPairs;
 class RegExpStatics;
 
-namespace frontend { class TokenStream; }
+namespace frontend { class TokenStreamAnyChars; }
 
 extern RegExpObject*
 RegExpAlloc(JSContext* cx, NewObjectKind newKind, HandleObject proto = nullptr);
@@ -71,15 +70,23 @@ class RegExpObject : public NativeObject
     // allocate a bigger MatchResult.
     static const size_t MaxPairCount = 14;
 
+    template<typename CharT>
     static RegExpObject*
-    create(JSContext* cx, const char16_t* chars, size_t length, RegExpFlag flags,
-           const ReadOnlyCompileOptions* options, frontend::TokenStream* ts, LifoAlloc& alloc,
+    create(JSContext* cx, const CharT* chars, size_t length, RegExpFlag flags, LifoAlloc& alloc,
+           NewObjectKind newKind);
+
+    template<typename CharT>
+    static RegExpObject*
+    create(JSContext* cx, const CharT* chars, size_t length, RegExpFlag flags,
+           frontend::TokenStreamAnyChars& ts, LifoAlloc& alloc, NewObjectKind kind);
+
+    static RegExpObject*
+    create(JSContext* cx, HandleAtom atom, RegExpFlag flags, LifoAlloc& alloc,
            NewObjectKind newKind);
 
     static RegExpObject*
-    create(JSContext* cx, HandleAtom atom, RegExpFlag flags,
-           const ReadOnlyCompileOptions* options, frontend::TokenStream* ts, LifoAlloc& alloc,
-           NewObjectKind newKind);
+    create(JSContext* cx, HandleAtom atom, RegExpFlag flags, frontend::TokenStreamAnyChars& ts,
+           LifoAlloc& alloc, NewObjectKind newKind);
 
     /*
      * Compute the initial shape to associate with fresh RegExp objects,
@@ -95,7 +102,7 @@ class RegExpObject : public NativeObject
 
     static bool isInitialShape(RegExpObject* rx) {
         Shape* shape = rx->lastProperty();
-        if (!shape->hasSlot())
+        if (shape->isEmptyShape() || !shape->isDataProperty())
             return false;
         if (shape->maybeSlot() != LAST_INDEX_SLOT)
             return false;
@@ -204,7 +211,7 @@ RegExpToShared(JSContext* cx, HandleObject obj)
 }
 
 template<XDRMode mode>
-bool
+XDRResult
 XDRScriptRegExpObject(XDRState<mode>* xdr, MutableHandle<RegExpObject*> objp);
 
 extern JSObject*

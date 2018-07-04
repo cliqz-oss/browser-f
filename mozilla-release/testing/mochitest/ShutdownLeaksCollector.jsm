@@ -2,14 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Timer.jsm");
-
-this.EXPORTED_SYMBOLS = ["ContentCollector"];
+var EXPORTED_SYMBOLS = ["ContentCollector"];
 
 // This listens for the message "browser-test:collect-request". When it gets it,
 // it runs some GCs and CCs, then prints out a message indicating the collections
@@ -17,19 +13,17 @@ this.EXPORTED_SYMBOLS = ["ContentCollector"];
 // docshells should be destroyed.
 
 var ContentCollector = {
-  init: function() {
-      let processType = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).processType;
+  init() {
+      let processType = Services.appinfo.processType;
       if (processType == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT) {
         // In the main process, we handle triggering collections in browser-test.js
         return;
       }
 
-    let cpmm = Cc["@mozilla.org/childprocessmessagemanager;1"]
-                 .getService(Ci.nsISyncMessageSender);
-    cpmm.addMessageListener("browser-test:collect-request", this);
+    Services.cpmm.addMessageListener("browser-test:collect-request", this);
   },
 
-  receiveMessage: function(aMessage) {
+  receiveMessage(aMessage) {
     switch (aMessage.name) {
       case "browser-test:collect-request":
         Services.obs.notifyObservers(null, "memory-pressure", "heap-minimize");
@@ -51,7 +45,7 @@ var ContentCollector = {
           setTimeout(() => {
             shutdownCleanup(() => {
               this.finish();
-            })
+            });
           }, 1000);
         });
 
@@ -60,12 +54,10 @@ var ContentCollector = {
   },
 
   finish() {
-    let pid = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).processID;
+    let pid = Services.appinfo.processID;
     dump("Completed ShutdownLeaks collections in process " + pid + "\n");
 
-    let cpmm = Cc["@mozilla.org/childprocessmessagemanager;1"]
-                 .getService(Ci.nsISyncMessageSender);
-    cpmm.removeMessageListener("browser-test:collect-request", this);
+    Services.cpmm.removeMessageListener("browser-test:collect-request", this);
   },
 
 };

@@ -19,6 +19,7 @@
 #include "base/task.h"
 #include "nsIObserverService.h"
 #include "nsComponentManagerUtils.h"
+#include "mozilla/SystemGroup.h"
 
 namespace mozilla {
 
@@ -83,6 +84,8 @@ GeckoMediaPluginServiceChild::GetContentParent(GMPCrashHelper* aHelper,
       nsCString displayName;
       uint32_t pluginId = 0;
       ipc::Endpoint<PGMPContentParent> endpoint;
+      nsCString errorDescription = NS_LITERAL_CSTRING("");
+
       bool ok = child->SendLaunchGMP(nodeIdString,
                                      api,
                                      tags,
@@ -91,7 +94,8 @@ GeckoMediaPluginServiceChild::GetContentParent(GMPCrashHelper* aHelper,
                                      &otherProcess,
                                      &displayName,
                                      &endpoint,
-                                     &rv);
+                                     &rv,
+                                     &errorDescription);
       if (helper && pluginId) {
         // Note: Even if the launch failed, we need to connect the crash
         // helper so that if the launch failed due to the plugin crashing,
@@ -102,10 +106,14 @@ GeckoMediaPluginServiceChild::GetContentParent(GMPCrashHelper* aHelper,
       }
 
       if (!ok || NS_FAILED(rv)) {
-        LOGD(("GeckoMediaPluginServiceChild::GetContentParent SendLaunchGMP "
-              "failed rv=0x%x",
-              static_cast<uint32_t>(rv)));
-        holder->Reject(rv, __func__);
+        MediaResult error(
+          rv,
+          nsPrintfCString("GeckoMediaPluginServiceChild::GetContentParent "
+                          "SendLaunchGMPForNodeId failed with description (%s)",
+                          errorDescription.get()));
+
+        LOGD(("%s", error.Description().get()));
+        holder->Reject(error, __func__);
         return;
       }
 
@@ -119,9 +127,9 @@ GeckoMediaPluginServiceChild::GetContentParent(GMPCrashHelper* aHelper,
         new GMPContentParent::CloseBlocker(parent));
       holder->Resolve(blocker, __func__);
     },
-    [rawHolder](nsresult rv) {
+    [rawHolder](MediaResult result) {
       UniquePtr<MozPromiseHolder<GetGMPContentParentPromise>> holder(rawHolder);
-      holder->Reject(rv, __func__);
+      holder->Reject(result, __func__);
     });
 
   return promise;
@@ -145,7 +153,9 @@ GeckoMediaPluginServiceChild::GetContentParent(GMPCrashHelper* aHelper,
   nsTArray<nsCString> tags(aTags);
   RefPtr<GMPCrashHelper> helper(aHelper);
   RefPtr<GeckoMediaPluginServiceChild> self(this);
-  GetServiceChild()->Then(thread, __func__,
+  GetServiceChild()->Then(
+    thread,
+    __func__,
     [self, nodeId, api, tags, helper, rawHolder](GMPServiceChild* child) {
       UniquePtr<MozPromiseHolder<GetGMPContentParentPromise>> holder(rawHolder);
       nsresult rv;
@@ -157,6 +167,7 @@ GeckoMediaPluginServiceChild::GetContentParent(GMPCrashHelper* aHelper,
       nsCString displayName;
       uint32_t pluginId = 0;
       ipc::Endpoint<PGMPContentParent> endpoint;
+      nsCString errorDescription = NS_LITERAL_CSTRING("");
 
       bool ok = child->SendLaunchGMPForNodeId(nodeId,
                                               api,
@@ -166,7 +177,8 @@ GeckoMediaPluginServiceChild::GetContentParent(GMPCrashHelper* aHelper,
                                               &otherProcess,
                                               &displayName,
                                               &endpoint,
-                                              &rv);
+                                              &rv,
+                                              &errorDescription);
 
       if (helper && pluginId) {
         // Note: Even if the launch failed, we need to connect the crash
@@ -178,9 +190,14 @@ GeckoMediaPluginServiceChild::GetContentParent(GMPCrashHelper* aHelper,
       }
 
       if (!ok || NS_FAILED(rv)) {
-        LOGD(("GeckoMediaPluginServiceChild::GetContentParent SendLaunchGMP failed rv=%" PRIu32,
-              static_cast<uint32_t>(rv)));
-        holder->Reject(rv, __func__);
+        MediaResult error(
+          rv,
+          nsPrintfCString("GeckoMediaPluginServiceChild::GetContentParent "
+                          "SendLaunchGMPForNodeId failed with description (%s)",
+                          errorDescription.get()));
+
+        LOGD(("%s", error.Description().get()));
+        holder->Reject(error, __func__);
         return;
       }
 
@@ -194,9 +211,9 @@ GeckoMediaPluginServiceChild::GetContentParent(GMPCrashHelper* aHelper,
       RefPtr<GMPContentParent::CloseBlocker> blocker(new GMPContentParent::CloseBlocker(parent));
       holder->Resolve(blocker, __func__);
     },
-    [rawHolder](nsresult rv) {
+    [rawHolder](MediaResult result) {
       UniquePtr<MozPromiseHolder<GetGMPContentParentPromise>> holder(rawHolder);
-      holder->Reject(rv, __func__);
+      holder->Reject(result, __func__);
     });
 
   return promise;
@@ -225,22 +242,22 @@ struct GMPCapabilityAndVersion
   {
     nsCString s;
     s.Append(mName);
-    s.Append(" version=");
+    s.AppendLiteral(" version=");
     s.Append(mVersion);
-    s.Append(" tags=[");
+    s.AppendLiteral(" tags=[");
     nsCString tags;
     for (const GMPCapability& cap : mCapabilities) {
       if (!tags.IsEmpty()) {
-        tags.Append(" ");
+        tags.AppendLiteral(" ");
       }
       tags.Append(cap.mAPIName);
       for (const nsCString& tag : cap.mAPITags) {
-        tags.Append(":");
+        tags.AppendLiteral(":");
         tags.Append(tag);
       }
     }
     s.Append(tags);
-    s.Append("]");
+    s.AppendLiteral("]");
     return s;
   }
 
@@ -258,7 +275,7 @@ GMPCapabilitiesToString()
   nsCString s;
   for (const GMPCapabilityAndVersion& gmp : *sGMPCapabilities) {
     if (!s.IsEmpty()) {
-      s.Append(", ");
+      s.AppendLiteral(", ");
     }
     s.Append(gmp.ToString());
   }
@@ -370,6 +387,8 @@ GeckoMediaPluginServiceChild::Observe(nsISupports* aSubject,
       mServiceChild = nullptr;
     }
     ShutdownGMPThread();
+  } else if (!strcmp(NS_XPCOM_WILL_SHUTDOWN_OBSERVER_ID, aTopic)) {
+    mXPCOMWillShutdown = true;
   }
 
   return NS_OK;

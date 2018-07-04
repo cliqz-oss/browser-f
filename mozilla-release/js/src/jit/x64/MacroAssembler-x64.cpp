@@ -73,172 +73,6 @@ MacroAssemblerX64::loadConstantSimd128Float(const SimdConstant&v, FloatRegister 
 }
 
 void
-MacroAssemblerX64::convertInt64ToDouble(Register64 input, FloatRegister output)
-{
-    // Zero the output register to break dependencies, see convertInt32ToDouble.
-    zeroDouble(output);
-
-    vcvtsq2sd(input.reg, output, output);
-}
-
-void
-MacroAssemblerX64::convertInt64ToFloat32(Register64 input, FloatRegister output)
-{
-    // Zero the output register to break dependencies, see convertInt32ToDouble.
-    zeroFloat32(output);
-
-    vcvtsq2ss(input.reg, output, output);
-}
-
-bool
-MacroAssemblerX64::convertUInt64ToDoubleNeedsTemp()
-{
-    return true;
-}
-
-void
-MacroAssemblerX64::convertUInt64ToDouble(Register64 input, FloatRegister output, Register temp)
-{
-    // Zero the output register to break dependencies, see convertInt32ToDouble.
-    zeroDouble(output);
-
-    // If the input's sign bit is not set we use vcvtsq2sd directly.
-    // Else, we divide by 2 and keep the LSB, convert to double, and multiply
-    // the result by 2.
-    Label done;
-    Label isSigned;
-
-    testq(input.reg, input.reg);
-    j(Assembler::Signed, &isSigned);
-    vcvtsq2sd(input.reg, output, output);
-    jump(&done);
-
-    bind(&isSigned);
-
-    ScratchRegisterScope scratch(asMasm());
-    mov(input.reg, scratch);
-    mov(input.reg, temp);
-    shrq(Imm32(1), scratch);
-    andq(Imm32(1), temp);
-    orq(temp, scratch);
-
-    vcvtsq2sd(scratch, output, output);
-    vaddsd(output, output, output);
-
-    bind(&done);
-}
-
-void
-MacroAssemblerX64::convertUInt64ToFloat32(Register64 input, FloatRegister output, Register temp)
-{
-    // Zero the output register to break dependencies, see convertInt32ToDouble.
-    zeroFloat32(output);
-
-    // See comment in convertUInt64ToDouble.
-    Label done;
-    Label isSigned;
-
-    testq(input.reg, input.reg);
-    j(Assembler::Signed, &isSigned);
-    vcvtsq2ss(input.reg, output, output);
-    jump(&done);
-
-    bind(&isSigned);
-
-    ScratchRegisterScope scratch(asMasm());
-    mov(input.reg, scratch);
-    mov(input.reg, temp);
-    shrq(Imm32(1), scratch);
-    andq(Imm32(1), temp);
-    orq(temp, scratch);
-
-    vcvtsq2ss(scratch, output, output);
-    vaddss(output, output, output);
-
-    bind(&done);
-}
-
-void
-MacroAssemblerX64::wasmTruncateDoubleToInt64(FloatRegister input, Register64 output, Label* oolEntry,
-                                             Label* oolRejoin, FloatRegister tempReg)
-{
-    vcvttsd2sq(input, output.reg);
-    cmpq(Imm32(1), output.reg);
-    j(Assembler::Overflow, oolEntry);
-    bind(oolRejoin);
-}
-
-void
-MacroAssemblerX64::wasmTruncateFloat32ToInt64(FloatRegister input, Register64 output, Label* oolEntry,
-                                              Label* oolRejoin, FloatRegister tempReg)
-{
-    vcvttss2sq(input, output.reg);
-    cmpq(Imm32(1), output.reg);
-    j(Assembler::Overflow, oolEntry);
-    bind(oolRejoin);
-}
-
-void
-MacroAssemblerX64::wasmTruncateDoubleToUInt64(FloatRegister input, Register64 output, Label* oolEntry,
-                                              Label* oolRejoin, FloatRegister tempReg)
-{
-    // If the input < INT64_MAX, vcvttsd2sq will do the right thing, so
-    // we use it directly. Else, we subtract INT64_MAX, convert to int64,
-    // and then add INT64_MAX to the result.
-
-    Label isLarge;
-
-    ScratchDoubleScope scratch(asMasm());
-    loadConstantDouble(double(0x8000000000000000), scratch);
-    asMasm().branchDouble(Assembler::DoubleGreaterThanOrEqual, input, scratch, &isLarge);
-    vcvttsd2sq(input, output.reg);
-    testq(output.reg, output.reg);
-    j(Assembler::Signed, oolEntry);
-    jump(oolRejoin);
-
-    bind(&isLarge);
-
-    moveDouble(input, tempReg);
-    vsubsd(scratch, tempReg, tempReg);
-    vcvttsd2sq(tempReg, output.reg);
-    testq(output.reg, output.reg);
-    j(Assembler::Signed, oolEntry);
-    asMasm().or64(Imm64(0x8000000000000000), output);
-
-    bind(oolRejoin);
-}
-
-void
-MacroAssemblerX64::wasmTruncateFloat32ToUInt64(FloatRegister input, Register64 output, Label* oolEntry,
-                                               Label* oolRejoin, FloatRegister tempReg)
-{
-    // If the input < INT64_MAX, vcvttss2sq will do the right thing, so
-    // we use it directly. Else, we subtract INT64_MAX, convert to int64,
-    // and then add INT64_MAX to the result.
-
-    Label isLarge;
-
-    ScratchFloat32Scope scratch(asMasm());
-    loadConstantFloat32(float(0x8000000000000000), scratch);
-    asMasm().branchFloat(Assembler::DoubleGreaterThanOrEqual, input, scratch, &isLarge);
-    vcvttss2sq(input, output.reg);
-    testq(output.reg, output.reg);
-    j(Assembler::Signed, oolEntry);
-    jump(oolRejoin);
-
-    bind(&isLarge);
-
-    moveFloat32(input, tempReg);
-    vsubss(scratch, tempReg, tempReg);
-    vcvttss2sq(tempReg, output.reg);
-    testq(output.reg, output.reg);
-    j(Assembler::Signed, oolEntry);
-    asMasm().or64(Imm64(0x8000000000000000), output);
-
-    bind(oolRejoin);
-}
-
-void
 MacroAssemblerX64::bindOffsets(const MacroAssemblerX86Shared::UsesVector& uses)
 {
     for (CodeOffset use : uses) {
@@ -298,7 +132,7 @@ MacroAssemblerX64::boxValue(JSValueType type, Register src, Register dest)
 }
 
 void
-MacroAssemblerX64::handleFailureWithHandlerTail(void* handler)
+MacroAssemblerX64::handleFailureWithHandlerTail(void* handler, Label* profilerExitTail)
 {
     // Reserve space for exception information.
     subq(Imm32(sizeof(ResumeFromException)), rsp);
@@ -307,13 +141,14 @@ MacroAssemblerX64::handleFailureWithHandlerTail(void* handler)
     // Call the handler.
     asMasm().setupUnalignedABICall(rcx);
     asMasm().passABIArg(rax);
-    asMasm().callWithABI(handler);
+    asMasm().callWithABI(handler, MoveOp::GENERAL, CheckUnsafeCallWithABI::DontCheckHasExitFrame);
 
     Label entryFrame;
     Label catch_;
     Label finally;
     Label return_;
     Label bailout;
+    Label wasm;
 
     load32(Address(rsp, offsetof(ResumeFromException, kind)), rax);
     asMasm().branch32(Assembler::Equal, rax, Imm32(ResumeFromException::RESUME_ENTRY_FRAME), &entryFrame);
@@ -321,6 +156,7 @@ MacroAssemblerX64::handleFailureWithHandlerTail(void* handler)
     asMasm().branch32(Assembler::Equal, rax, Imm32(ResumeFromException::RESUME_FINALLY), &finally);
     asMasm().branch32(Assembler::Equal, rax, Imm32(ResumeFromException::RESUME_FORCED_RETURN), &return_);
     asMasm().branch32(Assembler::Equal, rax, Imm32(ResumeFromException::RESUME_BAILOUT), &bailout);
+    asMasm().branch32(Assembler::Equal, rax, Imm32(ResumeFromException::RESUME_WASM), &wasm);
 
     breakpoint(); // Invalid kind.
 
@@ -368,7 +204,7 @@ MacroAssemblerX64::handleFailureWithHandlerTail(void* handler)
         Label skipProfilingInstrumentation;
         AbsoluteAddress addressOfEnabled(GetJitContext()->runtime->geckoProfiler().addressOfEnabled());
         asMasm().branch32(Assembler::Equal, addressOfEnabled, Imm32(0), &skipProfilingInstrumentation);
-        profilerExitFrame();
+        jump(profilerExitTail);
         bind(&skipProfilingInstrumentation);
     }
 
@@ -380,6 +216,14 @@ MacroAssemblerX64::handleFailureWithHandlerTail(void* handler)
     loadPtr(Address(esp, offsetof(ResumeFromException, bailoutInfo)), r9);
     mov(ImmWord(BAILOUT_RETURN_OK), rax);
     jmp(Operand(rsp, offsetof(ResumeFromException, target)));
+
+    // If we are throwing and the innermost frame was a wasm frame, reset SP and
+    // FP; SP is pointing to the unwound return address to the wasm entry, so
+    // we can just ret().
+    bind(&wasm);
+    loadPtr(Address(rsp, offsetof(ResumeFromException, framePointer)), rbp);
+    loadPtr(Address(rsp, offsetof(ResumeFromException, stackPointer)), rsp);
+    masm.ret();
 }
 
 void
@@ -394,7 +238,7 @@ MacroAssemblerX64::profilerEnterFrame(Register framePtr, Register scratch)
 void
 MacroAssemblerX64::profilerExitFrame()
 {
-    jmp(GetJitContext()->runtime->jitRuntime()->getProfilerExitFrameTail());
+    jump(GetJitContext()->runtime->jitRuntime()->getProfilerExitFrameTail());
 }
 
 MacroAssembler&
@@ -607,6 +451,15 @@ MacroAssembler::moveValue(const Value& src, const ValueOperand& dest)
 // Branch functions
 
 void
+MacroAssembler::loadStoreBuffer(Register ptr, Register buffer)
+{
+    if (ptr != buffer)
+        movePtr(ptr, buffer);
+    orPtr(Imm32(gc::ChunkMask), buffer);
+    loadPtr(Address(buffer, gc::ChunkStoreBufferOffsetFromLastByte), buffer);
+}
+
+void
 MacroAssembler::branchPtrInNurseryChunk(Condition cond, Register ptr, Register temp, Label* label)
 {
     MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
@@ -622,23 +475,8 @@ MacroAssembler::branchPtrInNurseryChunk(Condition cond, Register ptr, Register t
 }
 
 void
-MacroAssembler::branchValueIsNurseryObject(Condition cond, const Address& address, Register temp,
-                                           Label* label)
-{
-    branchValueIsNurseryObjectImpl(cond, address, temp, label);
-}
-
-void
 MacroAssembler::branchValueIsNurseryObject(Condition cond, ValueOperand value, Register temp,
                                            Label* label)
-{
-    branchValueIsNurseryObjectImpl(cond, value, temp, label);
-}
-
-template <typename T>
-void
-MacroAssembler::branchValueIsNurseryObjectImpl(Condition cond, const T& value, Register temp,
-                                               Label* label)
 {
     MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
     MOZ_ASSERT(temp != InvalidReg);
@@ -652,6 +490,48 @@ MacroAssembler::branchValueIsNurseryObjectImpl(Condition cond, const T& value, R
              Imm32(int32_t(gc::ChunkLocation::Nursery)), label);
 
     bind(&done);
+}
+
+template <typename T>
+void
+MacroAssembler::branchValueIsNurseryCellImpl(Condition cond, const T& value, Register temp,
+                                             Label* label)
+{
+    MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
+    MOZ_ASSERT(temp != InvalidReg);
+    Label done, checkAddress, checkObjectAddress;
+
+    Register tag = temp;
+    splitTag(value, tag);
+    branchTestObject(Assembler::Equal, tag, &checkObjectAddress);
+    branchTestString(Assembler::NotEqual, tag, cond == Assembler::Equal ? &done : label);
+
+    unboxString(value, temp);
+    jump(&checkAddress);
+
+    bind(&checkObjectAddress);
+    unboxObject(value, temp);
+
+    bind(&checkAddress);
+    orPtr(Imm32(gc::ChunkMask), temp);
+    branch32(cond, Address(temp, gc::ChunkLocationOffsetFromLastByte),
+             Imm32(int32_t(gc::ChunkLocation::Nursery)), label);
+
+    bind(&done);
+}
+
+void
+MacroAssembler::branchValueIsNurseryCell(Condition cond, const Address& address, Register temp,
+                                         Label* label)
+{
+    branchValueIsNurseryCellImpl(cond, address, temp, label);
+}
+
+void
+MacroAssembler::branchValueIsNurseryCell(Condition cond, ValueOperand value, Register temp,
+                                         Label* label)
+{
+    branchValueIsNurseryCellImpl(cond, value, temp, label);
 }
 
 void
@@ -712,9 +592,9 @@ MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType value
 void
 MacroAssembler::wasmLoad(const wasm::MemoryAccessDesc& access, Operand srcAddr, AnyRegister out)
 {
-    memoryBarrier(access.barrierBefore());
+    memoryBarrierBefore(access.sync());
 
-    size_t loadOffset = size();
+    append(access, size());
     switch (access.type()) {
       case Scalar::Int8:
         movsbl(srcAddr, out.gpr());
@@ -772,18 +652,18 @@ MacroAssembler::wasmLoad(const wasm::MemoryAccessDesc& access, Operand srcAddr, 
       case Scalar::MaxTypedArrayViewType:
         MOZ_CRASH("unexpected array type");
     }
-    append(access, loadOffset, framePushed());
 
-    memoryBarrier(access.barrierAfter());
+    memoryBarrierAfter(access.sync());
 }
 
 void
 MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access, Operand srcAddr, Register64 out)
 {
-    MOZ_ASSERT(!access.isAtomic());
+    memoryBarrierBefore(access.sync());
+
     MOZ_ASSERT(!access.isSimd());
 
-    size_t loadOffset = size();
+    append(access, size());
     switch (access.type()) {
       case Scalar::Int8:
         movsbq(srcAddr, out.reg);
@@ -818,15 +698,16 @@ MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access, Operand srcAdd
       case Scalar::MaxTypedArrayViewType:
         MOZ_CRASH("unexpected array type");
     }
-    append(access, loadOffset, framePushed());
+
+    memoryBarrierAfter(access.sync());
 }
 
 void
 MacroAssembler::wasmStore(const wasm::MemoryAccessDesc& access, AnyRegister value, Operand dstAddr)
 {
-    memoryBarrier(access.barrierBefore());
+    memoryBarrierBefore(access.sync());
 
-    size_t storeOffset = size();
+    append(access, masm.size());
     switch (access.type()) {
       case Scalar::Int8:
       case Scalar::Uint8:
@@ -881,13 +762,13 @@ MacroAssembler::wasmStore(const wasm::MemoryAccessDesc& access, AnyRegister valu
       case Scalar::MaxTypedArrayViewType:
         MOZ_CRASH("unexpected array type");
     }
-    append(access, storeOffset, framePushed());
 
-    memoryBarrier(access.barrierAfter());
+    memoryBarrierAfter(access.sync());
 }
 
 void
-MacroAssembler::wasmTruncateDoubleToUInt32(FloatRegister input, Register output, Label* oolEntry)
+MacroAssembler::wasmTruncateDoubleToUInt32(FloatRegister input, Register output, bool isSaturating,
+                                           Label* oolEntry)
 {
     vcvttsd2sq(input, output);
 
@@ -899,7 +780,8 @@ MacroAssembler::wasmTruncateDoubleToUInt32(FloatRegister input, Register output,
 }
 
 void
-MacroAssembler::wasmTruncateFloat32ToUInt32(FloatRegister input, Register output, Label* oolEntry)
+MacroAssembler::wasmTruncateFloat32ToUInt32(FloatRegister input, Register output, bool isSaturating,
+                                            Label* oolEntry)
 {
     vcvttss2sq(input, output);
 
@@ -908,6 +790,274 @@ MacroAssembler::wasmTruncateFloat32ToUInt32(FloatRegister input, Register output
     move32(Imm32(0xffffffff), scratch);
     cmpq(scratch, output);
     j(Assembler::Above, oolEntry);
+}
+
+void
+MacroAssembler::wasmTruncateDoubleToInt64(FloatRegister input, Register64 output, bool isSaturating,
+                                          Label* oolEntry, Label* oolRejoin, FloatRegister tempReg)
+{
+    vcvttsd2sq(input, output.reg);
+    cmpq(Imm32(1), output.reg);
+    j(Assembler::Overflow, oolEntry);
+    bind(oolRejoin);
+}
+
+void
+MacroAssembler::wasmTruncateFloat32ToInt64(FloatRegister input, Register64 output, bool isSaturating,
+                                           Label* oolEntry, Label* oolRejoin, FloatRegister tempReg)
+{
+    vcvttss2sq(input, output.reg);
+    cmpq(Imm32(1), output.reg);
+    j(Assembler::Overflow, oolEntry);
+    bind(oolRejoin);
+}
+
+void
+MacroAssembler::wasmTruncateDoubleToUInt64(FloatRegister input, Register64 output, bool isSaturating,
+                                           Label* oolEntry, Label* oolRejoin, FloatRegister tempReg)
+{
+    // If the input < INT64_MAX, vcvttsd2sq will do the right thing, so
+    // we use it directly. Else, we subtract INT64_MAX, convert to int64,
+    // and then add INT64_MAX to the result.
+
+    Label isLarge;
+
+    ScratchDoubleScope scratch(*this);
+    loadConstantDouble(double(0x8000000000000000), scratch);
+    branchDouble(Assembler::DoubleGreaterThanOrEqual, input, scratch, &isLarge);
+    vcvttsd2sq(input, output.reg);
+    testq(output.reg, output.reg);
+    j(Assembler::Signed, oolEntry);
+    jump(oolRejoin);
+
+    bind(&isLarge);
+
+    moveDouble(input, tempReg);
+    vsubsd(scratch, tempReg, tempReg);
+    vcvttsd2sq(tempReg, output.reg);
+    testq(output.reg, output.reg);
+    j(Assembler::Signed, oolEntry);
+    or64(Imm64(0x8000000000000000), output);
+
+    bind(oolRejoin);
+}
+
+void
+MacroAssembler::wasmTruncateFloat32ToUInt64(FloatRegister input, Register64 output,
+                                            bool isSaturating, Label* oolEntry,
+                                            Label* oolRejoin, FloatRegister tempReg)
+{
+    // If the input < INT64_MAX, vcvttss2sq will do the right thing, so
+    // we use it directly. Else, we subtract INT64_MAX, convert to int64,
+    // and then add INT64_MAX to the result.
+
+    Label isLarge;
+
+    ScratchFloat32Scope scratch(*this);
+    loadConstantFloat32(float(0x8000000000000000), scratch);
+    branchFloat(Assembler::DoubleGreaterThanOrEqual, input, scratch, &isLarge);
+    vcvttss2sq(input, output.reg);
+    testq(output.reg, output.reg);
+    j(Assembler::Signed, oolEntry);
+    jump(oolRejoin);
+
+    bind(&isLarge);
+
+    moveFloat32(input, tempReg);
+    vsubss(scratch, tempReg, tempReg);
+    vcvttss2sq(tempReg, output.reg);
+    testq(output.reg, output.reg);
+    j(Assembler::Signed, oolEntry);
+    or64(Imm64(0x8000000000000000), output);
+
+    bind(oolRejoin);
+}
+
+// ========================================================================
+// Convert floating point.
+
+void
+MacroAssembler::convertInt64ToDouble(Register64 input, FloatRegister output)
+{
+    // Zero the output register to break dependencies, see convertInt32ToDouble.
+    zeroDouble(output);
+
+    vcvtsq2sd(input.reg, output, output);
+}
+
+void
+MacroAssembler::convertInt64ToFloat32(Register64 input, FloatRegister output)
+{
+    // Zero the output register to break dependencies, see convertInt32ToDouble.
+    zeroFloat32(output);
+
+    vcvtsq2ss(input.reg, output, output);
+}
+
+bool
+MacroAssembler::convertUInt64ToDoubleNeedsTemp()
+{
+    return true;
+}
+
+void
+MacroAssembler::convertUInt64ToDouble(Register64 input, FloatRegister output, Register temp)
+{
+    // Zero the output register to break dependencies, see convertInt32ToDouble.
+    zeroDouble(output);
+
+    // If the input's sign bit is not set we use vcvtsq2sd directly.
+    // Else, we divide by 2 and keep the LSB, convert to double, and multiply
+    // the result by 2.
+    Label done;
+    Label isSigned;
+
+    testq(input.reg, input.reg);
+    j(Assembler::Signed, &isSigned);
+    vcvtsq2sd(input.reg, output, output);
+    jump(&done);
+
+    bind(&isSigned);
+
+    ScratchRegisterScope scratch(*this);
+    mov(input.reg, scratch);
+    mov(input.reg, temp);
+    shrq(Imm32(1), scratch);
+    andq(Imm32(1), temp);
+    orq(temp, scratch);
+
+    vcvtsq2sd(scratch, output, output);
+    vaddsd(output, output, output);
+
+    bind(&done);
+}
+
+void
+MacroAssembler::convertUInt64ToFloat32(Register64 input, FloatRegister output, Register temp)
+{
+    // Zero the output register to break dependencies, see convertInt32ToDouble.
+    zeroFloat32(output);
+
+    // See comment in convertUInt64ToDouble.
+    Label done;
+    Label isSigned;
+
+    testq(input.reg, input.reg);
+    j(Assembler::Signed, &isSigned);
+    vcvtsq2ss(input.reg, output, output);
+    jump(&done);
+
+    bind(&isSigned);
+
+    ScratchRegisterScope scratch(*this);
+    mov(input.reg, scratch);
+    mov(input.reg, temp);
+    shrq(Imm32(1), scratch);
+    andq(Imm32(1), temp);
+    orq(temp, scratch);
+
+    vcvtsq2ss(scratch, output, output);
+    vaddss(output, output, output);
+
+    bind(&done);
+}
+
+// ========================================================================
+// Primitive atomic operations.
+
+void
+MacroAssembler::compareExchange64(const Synchronization&, const Address& mem, Register64 expected,
+                                  Register64 replacement, Register64 output)
+{
+    MOZ_ASSERT(output.reg == rax);
+    if (expected != output)
+        movq(expected.reg, output.reg);
+    lock_cmpxchgq(replacement.reg, Operand(mem));
+}
+
+void
+MacroAssembler::compareExchange64(const Synchronization&, const BaseIndex& mem, Register64 expected,
+                                  Register64 replacement, Register64 output)
+{
+    MOZ_ASSERT(output.reg == rax);
+    if (expected != output)
+        movq(expected.reg, output.reg);
+    lock_cmpxchgq(replacement.reg, Operand(mem));
+}
+
+void
+MacroAssembler::atomicExchange64(const Synchronization& sync, const Address& mem, Register64 value, Register64 output)
+{
+    if (value != output)
+        movq(value.reg, output.reg);
+    xchgq(output.reg, Operand(mem));
+}
+
+void
+MacroAssembler::atomicExchange64(const Synchronization& sync, const BaseIndex& mem, Register64 value, Register64 output)
+{
+    if (value != output)
+        movq(value.reg, output.reg);
+    xchgq(output.reg, Operand(mem));
+}
+
+template<typename T>
+static void
+AtomicFetchOp64(MacroAssembler& masm, AtomicOp op, Register value, const T& mem, Register temp,
+                Register output)
+{
+    if (op == AtomicFetchAddOp) {
+        if (value != output)
+            masm.movq(value, output);
+        masm.lock_xaddq(output, Operand(mem));
+    } else if (op == AtomicFetchSubOp) {
+        if (value != output)
+            masm.movq(value, output);
+        masm.negq(output);
+        masm.lock_xaddq(output, Operand(mem));
+    } else {
+        Label again;
+        MOZ_ASSERT(output == rax);
+        masm.movq(Operand(mem), rax);
+        masm.bind(&again);
+        masm.movq(rax, temp);
+        switch (op) {
+          case AtomicFetchAndOp: masm.andq(value, temp); break;
+          case AtomicFetchOrOp:  masm.orq(value, temp); break;
+          case AtomicFetchXorOp: masm.xorq(value, temp); break;
+          default:               MOZ_CRASH();
+        }
+        masm.lock_cmpxchgq(temp, Operand(mem));
+        masm.j(MacroAssembler::NonZero, &again);
+    }
+}
+
+void
+MacroAssembler::atomicFetchOp64(const Synchronization&, AtomicOp op, Register64 value,
+                                const Address& mem, Register64 temp, Register64 output)
+{
+    AtomicFetchOp64(*this, op, value.reg, mem, temp.reg, output.reg);
+}
+
+void
+MacroAssembler::atomicFetchOp64(const Synchronization&, AtomicOp op, Register64 value,
+                                const BaseIndex& mem, Register64 temp, Register64 output)
+{
+    AtomicFetchOp64(*this, op, value.reg, mem, temp.reg, output.reg);
+}
+
+void
+MacroAssembler::atomicEffectOp64(const Synchronization&, AtomicOp op, Register64 value,
+                                 const BaseIndex& mem)
+{
+    switch (op) {
+      case AtomicFetchAddOp: lock_addq(value.reg, Operand(mem)); break;
+      case AtomicFetchSubOp: lock_subq(value.reg, Operand(mem)); break;
+      case AtomicFetchAndOp: lock_andq(value.reg, Operand(mem)); break;
+      case AtomicFetchOrOp:  lock_orq(value.reg, Operand(mem)); break;
+      case AtomicFetchXorOp: lock_xorq(value.reg, Operand(mem)); break;
+      default:               MOZ_CRASH();
+    }
 }
 
 //}}} check_macroassembler_style

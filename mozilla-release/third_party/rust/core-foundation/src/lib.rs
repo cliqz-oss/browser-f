@@ -11,18 +11,101 @@
 extern crate core_foundation_sys;
 extern crate libc;
 
+#[cfg(feature = "with-chrono")]
+extern crate chrono;
+
+#[macro_export]
+macro_rules! declare_TCFType {
+    (
+        $(#[$doc:meta])*
+        $ty:ident, $raw:ident
+    ) => {
+        $(#[$doc])*
+        pub struct $ty($raw);
+
+        impl Drop for $ty {
+            fn drop(&mut self) {
+                unsafe { $crate::base::CFRelease(self.as_CFTypeRef()) }
+            }
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! impl_TCFType {
-    ($ty:ident, $raw:ident, $ty_id:ident) => {
-        impl $crate::base::TCFType<$raw> for $ty {
+    ($ty:ident, $ty_ref:ident, $ty_id:ident) => {
+        impl $crate::base::TCFType for $ty {
+            type Ref = $ty_ref;
+
             #[inline]
-            fn as_concrete_TypeRef(&self) -> $raw {
+            fn as_concrete_TypeRef(&self) -> $ty_ref {
                 self.0
             }
 
             #[inline]
-            unsafe fn wrap_under_get_rule(reference: $raw) -> $ty {
-                let reference = ::std::mem::transmute(::core_foundation_sys::base::CFRetain(::std::mem::transmute(reference)));
+            unsafe fn wrap_under_get_rule(reference: $ty_ref) -> $ty {
+                use std::mem;
+                let reference = mem::transmute($crate::base::CFRetain(mem::transmute(reference)));
+                $crate::base::TCFType::wrap_under_create_rule(reference)
+            }
+
+            #[inline]
+            fn as_CFTypeRef(&self) -> $crate::base::CFTypeRef {
+                unsafe {
+                    ::std::mem::transmute(self.as_concrete_TypeRef())
+                }
+            }
+
+            #[inline]
+            unsafe fn wrap_under_create_rule(reference: $ty_ref) -> $ty {
+                $ty(reference)
+            }
+
+            #[inline]
+            fn type_id() -> $crate::base::CFTypeID {
+                unsafe {
+                    $ty_id()
+                }
+            }
+        }
+
+        impl Clone for $ty {
+            #[inline]
+            fn clone(&self) -> $ty {
+                unsafe {
+                    $ty::wrap_under_get_rule(self.0)
+                }
+            }
+        }
+
+        impl PartialEq for $ty {
+            #[inline]
+            fn eq(&self, other: &$ty) -> bool {
+                self.as_CFType().eq(&other.as_CFType())
+            }
+        }
+
+        impl Eq for $ty { }
+    }
+}
+
+// This is basically identical to the implementation above. I can't
+// think of a clean way to have them share code
+#[macro_export]
+macro_rules! impl_TCFTypeGeneric {
+    ($ty:ident, $ty_ref:ident, $ty_id:ident) => {
+        impl<T> $crate::base::TCFType for $ty<T> {
+            type Ref = $ty_ref;
+
+            #[inline]
+            fn as_concrete_TypeRef(&self) -> $ty_ref {
+                self.0
+            }
+
+            #[inline]
+            unsafe fn wrap_under_get_rule(reference: $ty_ref) -> $ty<T> {
+                use std::mem;
+                let reference = mem::transmute($crate::base::CFRetain(mem::transmute(reference)));
                 $crate::base::TCFType::wrap_under_create_rule(reference)
             }
 
@@ -34,8 +117,8 @@ macro_rules! impl_TCFType {
             }
 
             #[inline]
-            unsafe fn wrap_under_create_rule(obj: $raw) -> $ty {
-                $ty(obj)
+            unsafe fn wrap_under_create_rule(obj: $ty_ref) -> $ty<T> {
+                $ty(obj, PhantomData)
             }
 
             #[inline]
@@ -45,6 +128,68 @@ macro_rules! impl_TCFType {
                 }
             }
         }
+
+        impl<T> Clone for $ty<T> {
+            #[inline]
+            fn clone(&self) -> $ty<T> {
+                unsafe {
+                    $ty::wrap_under_get_rule(self.0)
+                }
+            }
+        }
+
+        impl<T> PartialEq for $ty<T> {
+            #[inline]
+            fn eq(&self, other: &$ty<T>) -> bool {
+                self.as_CFType().eq(&other.as_CFType())
+            }
+        }
+
+        impl<T> Eq for $ty<T> { }
+    }
+}
+
+#[macro_export]
+macro_rules! impl_CFTypeDescription {
+    ($ty:ident) => {
+        impl ::std::fmt::Debug for $ty {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                self.as_CFType().fmt(f)
+            }
+        }
+    }
+}
+
+// The same as impl_CFTypeDescription but with a type parameter
+#[macro_export]
+macro_rules! impl_CFTypeDescriptionGeneric {
+    ($ty:ident) => {
+        impl<T> ::std::fmt::Debug for $ty<T> {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                self.as_CFType().fmt(f)
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! impl_CFComparison {
+    ($ty:ident, $compare:ident) => {
+        impl PartialOrd for $ty {
+            #[inline]
+            fn partial_cmp(&self, other: &$ty) -> Option<::std::cmp::Ordering> {
+                unsafe {
+                    Some($compare(self.as_concrete_TypeRef(), other.as_concrete_TypeRef(), ::std::ptr::null_mut()).into())
+                }
+            }
+        }
+
+        impl Ord for $ty {
+            #[inline]
+            fn cmp(&self, other: &$ty) -> ::std::cmp::Ordering {
+                self.partial_cmp(other).unwrap()
+            }
+        }
     }
 }
 
@@ -52,9 +197,10 @@ pub mod array;
 pub mod base;
 pub mod boolean;
 pub mod data;
-pub use core_foundation_sys::date; // back compat
+pub mod date;
 pub mod dictionary;
 pub mod error;
+pub mod filedescriptor;
 pub mod number;
 pub mod set;
 pub mod string;
@@ -62,37 +208,5 @@ pub mod url;
 pub mod bundle;
 pub mod propertylist;
 pub mod runloop;
-
-#[cfg(test)]
-pub mod test {
-    #[test]
-    fn test_stuff() {
-        use base::TCFType;
-        use boolean::CFBoolean;
-        use number::number;
-        use dictionary::CFDictionary;
-        use string::CFString;
-
-        /*let n = CFNumber::new_number(42 as i32);
-        io::println(format!("%d", (&n).retain_count() as int));
-        (&n).show();*/
-
-        let bar = CFString::from_static_string("Bar");
-        let baz = CFString::from_static_string("Baz");
-        let boo = CFString::from_static_string("Boo");
-        let foo = CFString::from_static_string("Foo");
-        let tru = CFBoolean::true_value();
-        let n42 = number(42);
-
-        let d = CFDictionary::from_CFType_pairs(&[
-            (bar.as_CFType(), boo.as_CFType()),
-            (baz.as_CFType(), tru.as_CFType()),
-            (foo.as_CFType(), n42.as_CFType()),
-        ]);
-
-        let (v1, v2) = d.get_keys_and_values();
-
-        assert!(v1 == &[bar.as_CFTypeRef(), baz.as_CFTypeRef(), foo.as_CFTypeRef()]);
-        assert!(v2 == &[boo.as_CFTypeRef(), tru.as_CFTypeRef(), n42.as_CFTypeRef()]);
-    }
-}
+pub mod timezone;
+pub mod uuid;

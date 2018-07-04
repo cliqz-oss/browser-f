@@ -1,12 +1,11 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/engines/tabs.js");
-Cu.import("resource://services-sync/record.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/util.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/engines/tabs.js");
+ChromeUtils.import("resource://services-sync/record.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/util.js");
 
 async function getMocks() {
   let engine = new TabEngine(Service);
@@ -21,7 +20,7 @@ add_task(async function test_getOpenURLs() {
   _("Test getOpenURLs.");
   let [engine, store] = await getMocks();
 
-  let superLongURL = "http://" + (new Array(MAX_UPLOAD_BYTES).join("w")) + ".com/";
+  let superLongURL = "http://" + (new Array(URI_LENGTH_MAX).join("w")) + ".com/";
   let urls = ["http://bar.com", "http://foo.com", "http://foobar.com", superLongURL];
   function fourURLs() {
     return urls.pop();
@@ -55,7 +54,7 @@ add_task(async function test_tab_engine_skips_incoming_local_record() {
     notEqual(record.id, localID, "Only apply tab records from remote clients");
     applied.push(record);
     apply.call(store, record);
-  }
+  };
 
   let collection = new ServerCollection();
 
@@ -75,12 +74,12 @@ add_task(async function test_tab_engine_skips_incoming_local_record() {
 
   await SyncTestingInfrastructure(server);
 
+  let syncID = await engine.resetLocalSyncID();
   let meta_global = Service.recordManager.set(engine.metaURL,
                                               new WBORecord(engine.metaURL));
-  meta_global.payload.engines = {tabs: {version: engine.version,
-                                        syncID: engine.syncID}};
+  meta_global.payload.engines = {tabs: {version: engine.version, syncID}};
 
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
   let promiseFinished = new Promise(resolve => {
     let syncFinish = engine._syncFinish;
@@ -90,7 +89,7 @@ add_task(async function test_tab_engine_skips_incoming_local_record() {
 
       await syncFinish.call(engine);
       resolve();
-    }
+    };
   });
 
   _("Start sync");

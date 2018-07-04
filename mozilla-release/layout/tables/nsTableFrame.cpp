@@ -12,7 +12,7 @@
 #include "gfxContext.h"
 #include "nsCOMPtr.h"
 #include "nsTableFrame.h"
-#include "nsStyleContext.h"
+#include "mozilla/ComputedStyle.h"
 #include "nsStyleConsts.h"
 #include "nsIContent.h"
 #include "nsCellMap.h"
@@ -33,27 +33,22 @@
 #include "nsGkAtoms.h"
 #include "nsCSSAnonBoxes.h"
 #include "nsIPresShell.h"
-#include "nsIDOMElement.h"
-#include "nsIDOMHTMLElement.h"
 #include "nsIScriptError.h"
 #include "nsFrameManager.h"
 #include "nsError.h"
 #include "nsCSSFrameConstructor.h"
 #include "mozilla/Range.h"
-#include "mozilla/ServoRestyleManager.h"
+#include "mozilla/RestyleManager.h"
 #include "mozilla/ServoStyleSet.h"
-#include "mozilla/StyleSetHandle.h"
-#include "mozilla/StyleSetHandleInlines.h"
 #include "nsDisplayList.h"
 #include "nsIScrollableFrame.h"
 #include "nsCSSProps.h"
-#include "RestyleTracker.h"
 #include "nsStyleChangeList.h"
 #include <algorithm>
 
 #include "gfxPrefs.h"
 #include "mozilla/layers/StackingContextHelper.h"
-#include "mozilla/layers/WebRenderDisplayItemLayer.h"
+#include "mozilla/layers/WebRenderLayerManager.h"
 
 using namespace mozilla;
 using namespace mozilla::image;
@@ -132,24 +127,24 @@ struct BCPropertyData
   BCPixelSize mIEndCellBorderWidth;
 };
 
-nsStyleContext*
-nsTableFrame::GetParentStyleContext(nsIFrame** aProviderFrame) const
+ComputedStyle*
+nsTableFrame::GetParentComputedStyle(nsIFrame** aProviderFrame) const
 {
   // Since our parent, the table wrapper frame, returned this frame, we
   // must return whatever our parent would normally have returned.
 
   NS_PRECONDITION(GetParent(), "table constructed without table wrapper");
-  if (!mContent->GetParent() && !StyleContext()->GetPseudo()) {
-    // We're the root.  We have no style context parent.
+  if (!mContent->GetParent() && !Style()->GetPseudo()) {
+    // We're the root.  We have no ComputedStyle parent.
     *aProviderFrame = nullptr;
     return nullptr;
   }
 
-  return GetParent()->DoGetParentStyleContext(aProviderFrame);
+  return GetParent()->DoGetParentComputedStyle(aProviderFrame);
 }
 
-nsTableFrame::nsTableFrame(nsStyleContext* aContext, ClassID aID)
-  : nsContainerFrame(aContext, aID)
+nsTableFrame::nsTableFrame(ComputedStyle* aStyle, ClassID aID)
+  : nsContainerFrame(aStyle, aID)
   , mCellMap(nullptr)
   , mTableLayoutStrategy(nullptr)
 {
@@ -173,6 +168,9 @@ nsTableFrame::Init(nsIContent*       aContent,
   const nsStyleTableBorder* tableStyle = StyleTableBorder();
   bool borderCollapse = (NS_STYLE_BORDER_COLLAPSE == tableStyle->mBorderCollapse);
   SetBorderCollapse(borderCollapse);
+  if (borderCollapse) {
+    SetNeedToCalcHasBCBorders(true);
+  }
 
   if (!aPrevInFlow) {
     // If we're the first-in-flow, we manage the cell map & layout strategy that
@@ -198,10 +196,10 @@ nsTableFrame::~nsTableFrame()
 }
 
 void
-nsTableFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsTableFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
-  mColGroups.DestroyFramesFrom(aDestructRoot);
-  nsContainerFrame::DestroyFrom(aDestructRoot);
+  mColGroups.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
+  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 // Make sure any views are positioned properly
@@ -355,30 +353,23 @@ nsTableFrame::SetInitialChildList(ChildListID     aListID,
 }
 
 void
-nsTableFrame::AttributeChangedFor(nsIFrame*       aFrame,
-                                  nsIContent*     aContent,
-                                  nsIAtom*        aAttribute)
+nsTableFrame::RowOrColSpanChanged(nsTableCellFrame* aCellFrame)
 {
-  nsTableCellFrame *cellFrame = do_QueryFrame(aFrame);
-  if (cellFrame) {
-    if ((nsGkAtoms::rowspan == aAttribute) ||
-        (nsGkAtoms::colspan == aAttribute)) {
-      nsTableCellMap* cellMap = GetCellMap();
-      if (cellMap) {
-        // for now just remove the cell from the map and reinsert it
-        int32_t rowIndex, colIndex;
-        cellFrame->GetRowIndex(rowIndex);
-        cellFrame->GetColIndex(colIndex);
-        RemoveCell(cellFrame, rowIndex);
-        AutoTArray<nsTableCellFrame*, 1> cells;
-        cells.AppendElement(cellFrame);
-        InsertCells(cells, rowIndex, colIndex - 1);
+  if (aCellFrame) {
+    nsTableCellMap* cellMap = GetCellMap();
+    if (cellMap) {
+      // for now just remove the cell from the map and reinsert it
+      uint32_t rowIndex = aCellFrame->RowIndex();
+      uint32_t colIndex = aCellFrame->ColIndex();
+      RemoveCell(aCellFrame, rowIndex);
+      AutoTArray<nsTableCellFrame*, 1> cells;
+      cells.AppendElement(aCellFrame);
+      InsertCells(cells, rowIndex, colIndex - 1);
 
-        // XXX Should this use eStyleChange?  It currently doesn't need
-        // to, but it might given more optimization.
-        PresContext()->PresShell()->
-          FrameNeedsReflow(this, nsIPresShell::eTreeChange, NS_FRAME_IS_DIRTY);
-      }
+      // XXX Should this use eStyleChange?  It currently doesn't need
+      // to, but it might given more optimization.
+      PresShell()->
+        FrameNeedsReflow(this, nsIPresShell::eTreeChange, NS_FRAME_IS_DIRTY);
     }
   }
 }
@@ -445,9 +436,7 @@ nsTableFrame::GetEffectiveRowSpan(int32_t                 aRowIndex,
   nsTableCellMap* cellMap = GetCellMap();
   NS_PRECONDITION (nullptr != cellMap, "bad call, cellMap not yet allocated.");
 
-  int32_t colIndex;
-  aCell.GetColIndex(colIndex);
-  return cellMap->GetEffectiveRowSpan(aRowIndex, colIndex);
+  return cellMap->GetEffectiveRowSpan(aRowIndex, aCell.ColIndex());
 }
 
 int32_t
@@ -456,9 +445,8 @@ nsTableFrame::GetEffectiveRowSpan(const nsTableCellFrame& aCell,
 {
   nsTableCellMap* tableCellMap = GetCellMap(); if (!tableCellMap) ABORT1(1);
 
-  int32_t colIndex, rowIndex;
-  aCell.GetColIndex(colIndex);
-  aCell.GetRowIndex(rowIndex);
+  uint32_t colIndex = aCell.ColIndex();
+  uint32_t rowIndex = aCell.RowIndex();
 
   if (aCellMap)
     return aCellMap->GetRowSpan(rowIndex, colIndex, true);
@@ -472,9 +460,8 @@ nsTableFrame::GetEffectiveColSpan(const nsTableCellFrame& aCell,
 {
   nsTableCellMap* tableCellMap = GetCellMap(); if (!tableCellMap) ABORT1(1);
 
-  int32_t colIndex, rowIndex;
-  aCell.GetColIndex(colIndex);
-  aCell.GetRowIndex(rowIndex);
+  uint32_t colIndex = aCell.ColIndex();
+  uint32_t rowIndex = aCell.RowIndex();
 
   if (aCellMap)
     return aCellMap->GetEffectiveColSpan(*tableCellMap, rowIndex, colIndex);
@@ -604,9 +591,10 @@ nsTableFrame::InsertCol(nsTableColFrame& aColFrame,
           if (eColAnonymousCell == lastColType) {
             // remove the col from the cache
             mColFrames.RemoveElementAt(numCacheCols - 1);
-            // remove the col from the eColGroupAnonymousCell col group
+            // remove the col from the synthetic col group
             nsTableColGroupFrame* lastColGroup = (nsTableColGroupFrame *)mColGroups.LastChild();
             if (lastColGroup) {
+              MOZ_ASSERT(lastColGroup->IsSynthetic());
               lastColGroup->RemoveChild(*lastCol, false);
 
               // remove the col group if it is empty
@@ -678,38 +666,37 @@ nsTableFrame::GetCellMap() const
   return static_cast<nsTableFrame*>(FirstInFlow())->mCellMap;
 }
 
-// XXX this needs to be moved to nsCSSFrameConstructor
 nsTableColGroupFrame*
-nsTableFrame::CreateAnonymousColGroupFrame(nsTableColGroupType aColGroupType)
+nsTableFrame::CreateSyntheticColGroupFrame()
 {
   nsIContent* colGroupContent = GetContent();
   nsPresContext* presContext = PresContext();
   nsIPresShell *shell = presContext->PresShell();
 
-  RefPtr<nsStyleContext> colGroupStyle;
+  RefPtr<ComputedStyle> colGroupStyle;
   colGroupStyle = shell->StyleSet()->
-    ResolveInheritingAnonymousBoxStyle(nsCSSAnonBoxes::tableColGroup,
-                                       mStyleContext);
+    ResolveNonInheritingAnonymousBoxStyle(nsCSSAnonBoxes::tableColGroup);
   // Create a col group frame
-  nsIFrame* newFrame = NS_NewTableColGroupFrame(shell, colGroupStyle);
-  ((nsTableColGroupFrame *)newFrame)->SetColType(aColGroupType);
+  nsTableColGroupFrame* newFrame =
+    NS_NewTableColGroupFrame(shell, colGroupStyle);
+  newFrame->SetIsSynthetic();
   newFrame->Init(colGroupContent, this, nullptr);
-  return (nsTableColGroupFrame *)newFrame;
+  return newFrame;
 }
 
 void
 nsTableFrame::AppendAnonymousColFrames(int32_t aNumColsToAdd)
 {
+  MOZ_ASSERT(aNumColsToAdd > 0, "We should be adding _something_.");
   // get the last col group frame
   nsTableColGroupFrame* colGroupFrame =
     static_cast<nsTableColGroupFrame*>(mColGroups.LastChild());
 
-  if (!colGroupFrame ||
-      (colGroupFrame->GetColType() != eColGroupAnonymousCell)) {
+  if (!colGroupFrame || !colGroupFrame->IsSynthetic()) {
     int32_t colIndex = (colGroupFrame) ?
                         colGroupFrame->GetStartColumnIndex() +
                         colGroupFrame->GetColCount() : 0;
-    colGroupFrame = CreateAnonymousColGroupFrame(eColGroupAnonymousCell);
+    colGroupFrame = CreateSyntheticColGroupFrame();
     if (!colGroupFrame) {
       return;
     }
@@ -732,8 +719,9 @@ nsTableFrame::AppendAnonymousColFrames(nsTableColGroupFrame* aColGroupFrame,
 {
   NS_PRECONDITION(aColGroupFrame, "null frame");
   NS_PRECONDITION(aColType != eColAnonymousCol, "Shouldn't happen");
+  MOZ_ASSERT(aNumColsToAdd > 0, "We should be adding _something_.");
 
-  nsIPresShell *shell = PresContext()->PresShell();
+  nsIPresShell *shell = PresShell();
 
   // Get the last col frame
   nsFrameList newColFrames;
@@ -742,22 +730,16 @@ nsTableFrame::AppendAnonymousColFrames(nsTableColGroupFrame* aColGroupFrame,
   int32_t lastIndex  = startIndex + aNumColsToAdd - 1;
 
   for (int32_t childX = startIndex; childX <= lastIndex; childX++) {
-    nsIContent* iContent;
-    RefPtr<nsStyleContext> styleContext;
-    nsStyleContext* parentStyleContext;
-
-    // all anonymous cols that we create here use a pseudo style context of the
+    // all anonymous cols that we create here use a pseudo ComputedStyle of the
     // col group
-    iContent = aColGroupFrame->GetContent();
-    parentStyleContext = aColGroupFrame->StyleContext();
-    styleContext = shell->StyleSet()->
-      ResolveInheritingAnonymousBoxStyle(nsCSSAnonBoxes::tableCol,
-                                         parentStyleContext);
+    nsIContent* iContent = aColGroupFrame->GetContent();
+    RefPtr<ComputedStyle> computedStyle = shell->StyleSet()->
+      ResolveNonInheritingAnonymousBoxStyle(nsCSSAnonBoxes::tableCol);
     // ASSERTION to check for bug 54454 sneaking back in...
     NS_ASSERTION(iContent, "null content in CreateAnonymousColFrames");
 
     // create the new col frame
-    nsIFrame* colFrame = NS_NewTableColFrame(shell, styleContext);
+    nsIFrame* colFrame = NS_NewTableColFrame(shell, computedStyle);
     ((nsTableColFrame *) colFrame)->SetColType(aColType);
     colFrame->Init(iContent, aColGroupFrame, nullptr);
 
@@ -972,7 +954,7 @@ nsTableFrame::InsertRows(nsTableRowGroupFrame*       aRowGroupFrame,
 void
 nsTableFrame::AddDeletedRowIndex(int32_t aDeletedRowStoredIndex)
 {
-  if (mDeletedRowIndexRanges.size() == 0) {
+  if (mDeletedRowIndexRanges.empty()) {
     mDeletedRowIndexRanges.insert(std::pair<int32_t, int32_t>
                                     (aDeletedRowStoredIndex,
                                      aDeletedRowStoredIndex));
@@ -1044,7 +1026,7 @@ nsTableFrame::AddDeletedRowIndex(int32_t aDeletedRowStoredIndex)
 int32_t
 nsTableFrame::GetAdjustmentForStoredIndex(int32_t aStoredIndex)
 {
-  if (mDeletedRowIndexRanges.size() == 0)
+  if (mDeletedRowIndexRanges.empty())
     return 0;
 
   int32_t adjustment = 0;
@@ -1206,7 +1188,9 @@ nsTableFrame::GetChildLists(nsTArray<ChildList>* aLists) const
 }
 
 nsRect
-nsDisplayTableItem::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) {
+nsDisplayTableItem::GetBounds(nsDisplayListBuilder* aBuilder,
+                              bool* aSnap) const
+{
   *aSnap = false;
   return mFrame->GetVisualOverflowRectRelativeToSelf() + ToReferenceFrame();
 }
@@ -1214,7 +1198,7 @@ nsDisplayTableItem::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) {
 void
 nsDisplayTableItem::UpdateForFrameBackground(nsIFrame* aFrame)
 {
-  nsStyleContext *bgSC;
+  ComputedStyle *bgSC;
   if (!nsCSSRendering::FindBackground(aFrame, &bgSC))
     return;
   if (!bgSC->StyleBackground()->HasFixedBackground(aFrame))
@@ -1227,13 +1211,13 @@ nsDisplayItemGeometry*
 nsDisplayTableItem::AllocateGeometry(nsDisplayListBuilder* aBuilder)
 {
   return new nsDisplayTableItemGeometry(this, aBuilder,
-      mFrame->GetOffsetTo(mFrame->PresContext()->PresShell()->GetRootFrame()));
+      mFrame->GetOffsetTo(mFrame->PresShell()->GetRootFrame()));
 }
 
 void
 nsDisplayTableItem::ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
                                               const nsDisplayItemGeometry* aGeometry,
-                                              nsRegion *aInvalidRegion)
+                                              nsRegion *aInvalidRegion) const
 {
   auto geometry =
     static_cast<const nsDisplayTableItemGeometry*>(aGeometry);
@@ -1241,7 +1225,7 @@ nsDisplayTableItem::ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
   bool invalidateForAttachmentFixed = false;
   if (mDrawsBackground && mPartHasFixedBackground) {
     nsPoint frameOffsetToViewport = mFrame->GetOffsetTo(
-        mFrame->PresContext()->PresShell()->GetRootFrame());
+        mFrame->PresShell()->GetRootFrame());
     invalidateForAttachmentFixed =
         frameOffsetToViewport != geometry->mFrameOffsetToViewport;
   }
@@ -1274,17 +1258,11 @@ public:
 
   virtual void Paint(nsDisplayListBuilder* aBuilder,
                      gfxContext* aCtx) override;
-  virtual already_AddRefed<layers::Layer> BuildLayer(nsDisplayListBuilder* aBuilder,
-                                                     LayerManager* aManager,
-                                                     const ContainerLayerParameters& aContainerParameters) override;
   virtual bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                                       wr::IpcResourceUpdateQueue& aResources,
                                        const StackingContextHelper& aSc,
-                                       nsTArray<WebRenderParentCommand>& aParentCommands,
                                        mozilla::layers::WebRenderLayerManager* aManager,
                                        nsDisplayListBuilder* aDisplayListBuilder) override;
-  virtual LayerState GetLayerState(nsDisplayListBuilder* aBuilder,
-                                   LayerManager* aManager,
-                                   const ContainerLayerParameters& aParameters) override;
   NS_DISPLAY_DECL_NAME("TableBorderCollapse", TYPE_TABLE_BORDER_COLLAPSE)
 };
 
@@ -1307,50 +1285,23 @@ nsDisplayTableBorderCollapse::Paint(nsDisplayListBuilder* aBuilder,
   static_cast<nsTableFrame*>(mFrame)->PaintBCBorders(*drawTarget, mVisibleRect - pt);
 }
 
-already_AddRefed<layers::Layer>
-nsDisplayTableBorderCollapse::BuildLayer(nsDisplayListBuilder* aBuilder,
-                                         LayerManager* aManager,
-                                         const ContainerLayerParameters& aContainerParameters)
-{
-  return BuildDisplayItemLayer(aBuilder, aManager, aContainerParameters);
-}
-
 bool
 nsDisplayTableBorderCollapse::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                                                      wr::IpcResourceUpdateQueue& aResources,
                                                       const StackingContextHelper& aSc,
-                                                      nsTArray<WebRenderParentCommand>& aParentCommands,
                                                       mozilla::layers::WebRenderLayerManager* aManager,
                                                       nsDisplayListBuilder* aDisplayListBuilder)
 {
-  if (aManager->IsLayersFreeTransaction()) {
-    ContainerLayerParameters parameter;
-    if (GetLayerState(aDisplayListBuilder, aManager, parameter) != LAYER_ACTIVE) {
-      return false;
-    }
-  }
-
   static_cast<nsTableFrame *>(mFrame)->CreateWebRenderCommandsForBCBorders(aBuilder,
                                                                           aSc,
-                                                                          aParentCommands,
+                                                                          mVisibleRect,
                                                                           ToReferenceFrame());
   return true;
 }
 
-LayerState
-nsDisplayTableBorderCollapse::GetLayerState(nsDisplayListBuilder* aBuilder,
-                                            LayerManager* aManager,
-                                            const ContainerLayerParameters& aParameters)
-{
-  if (gfxPrefs::LayersAllowTable()) {
-    return LAYER_ACTIVE;
-  }
-
-  return LAYER_NONE;
-}
-
 /* static */ void
 nsTableFrame::GenericTraversal(nsDisplayListBuilder* aBuilder, nsFrame* aFrame,
-                               const nsRect& aDirtyRect, const nsDisplayListSet& aLists)
+                               const nsDisplayListSet& aLists)
 {
   // This is similar to what nsContainerFrame::BuildDisplayListForNonBlockChildren
   // does, except that we allow the children's background and borders to go
@@ -1361,11 +1312,11 @@ nsTableFrame::GenericTraversal(nsDisplayListBuilder* aBuilder, nsFrame* aFrame,
   // BorderBackground list anyway. It does affect cell borders though; this
   // lets us get cell borders into the nsTableFrame's BorderBackground list.
   for (nsIFrame* kid : aFrame->GetChildList(kColGroupList)) {
-    aFrame->BuildDisplayListForChild(aBuilder, kid, aDirtyRect, aLists);
+    aFrame->BuildDisplayListForChild(aBuilder, kid, aLists);
   }
 
   for (nsIFrame* kid : aFrame->PrincipalChildList()) {
-    aFrame->BuildDisplayListForChild(aBuilder, kid, aDirtyRect, aLists);
+    aFrame->BuildDisplayListForChild(aBuilder, kid, aLists);
   }
 }
 
@@ -1374,13 +1325,16 @@ PaintRowBackground(nsTableRowFrame* aRow,
                    nsIFrame* aFrame,
                    nsDisplayListBuilder* aBuilder,
                    const nsDisplayListSet& aLists,
-                   const nsRect& aDirtyRect,
                    const nsPoint& aOffset = nsPoint())
 {
   // Compute background rect by iterating all cell frame.
   for (nsTableCellFrame* cell = aRow->GetFirstCell(); cell; cell = cell->GetNextCell()) {
+    if (!cell->ShouldPaintBackground(aBuilder)) {
+      continue;
+    }
+
     auto cellRect = cell->GetRectRelativeToSelf() + cell->GetNormalPosition() + aOffset;
-    if (!aDirtyRect.Intersects(cellRect)) {
+    if (!aBuilder->GetDirtyRect().Intersects(cellRect)) {
       continue;
     }
     nsDisplayBackgroundImage::AppendBackgroundItemsToTop(aBuilder, aFrame, cellRect,
@@ -1395,14 +1349,14 @@ static void
 PaintRowGroupBackground(nsTableRowGroupFrame* aRowGroup,
                         nsIFrame* aFrame,
                         nsDisplayListBuilder* aBuilder,
-                        const nsDisplayListSet& aLists,
-                        const nsRect& aDirtyRect)
+                        const nsDisplayListSet& aLists)
 {
   for (nsTableRowFrame* row = aRowGroup->GetFirstRow(); row; row = row->GetNextRow()) {
-    if (!aDirtyRect.Intersects(nsRect(row->GetNormalPosition(), row->GetSize()))) {
+    if (!aBuilder->GetDirtyRect().Intersects(nsRect(row->GetNormalPosition(),
+                                                    row->GetSize()))) {
       continue;
     }
-    PaintRowBackground(row, aFrame, aBuilder, aLists, aDirtyRect, row->GetNormalPosition());
+    PaintRowBackground(row, aFrame, aBuilder, aLists, row->GetNormalPosition());
   }
 }
 
@@ -1411,30 +1365,41 @@ PaintRowGroupBackgroundByColIdx(nsTableRowGroupFrame* aRowGroup,
                                 nsIFrame* aFrame,
                                 nsDisplayListBuilder* aBuilder,
                                 const nsDisplayListSet& aLists,
-                                const nsRect& aDirtyRect,
-                                const nsTArray<int32_t>& aColIdx,
+                                const nsTArray<uint32_t>& aColIdx,
                                 const nsPoint& aOffset)
 {
+  MOZ_DIAGNOSTIC_ASSERT(!aColIdx.IsEmpty(),
+                        "Must be painting backgrounds for something");
+
   for (nsTableRowFrame* row = aRowGroup->GetFirstRow(); row; row = row->GetNextRow()) {
     auto rowPos = row->GetNormalPosition() + aOffset;
-    if (!aDirtyRect.Intersects(nsRect(rowPos, row->GetSize()))) {
+    if (!aBuilder->GetDirtyRect().Intersects(nsRect(rowPos, row->GetSize()))) {
       continue;
     }
     for (nsTableCellFrame* cell = row->GetFirstCell(); cell; cell = cell->GetNextCell()) {
-      int32_t curColIdx;
-      cell->GetColIndex(curColIdx);
-      if (aColIdx.Contains(curColIdx)) {
-        auto cellPos = cell->GetNormalPosition() + rowPos;
-        auto cellRect = nsRect(cellPos, cell->GetSize());
-        if (!aDirtyRect.Intersects(cellRect)) {
-          continue;
+      uint32_t curColIdx = cell->ColIndex();
+      if (!aColIdx.ContainsSorted(curColIdx)) {
+        if (curColIdx > aColIdx.LastElement()) {
+          // We can just stop looking at this row.
+          break;
         }
-        nsDisplayBackgroundImage::AppendBackgroundItemsToTop(aBuilder, aFrame, cellRect,
-                                                             aLists.BorderBackground(),
-                                                             false, nullptr,
-                                                             aFrame->GetRectRelativeToSelf(),
-                                                             cell);
+        continue;
       }
+
+      if (!cell->ShouldPaintBackground(aBuilder)) {
+        continue;
+      }
+
+      auto cellPos = cell->GetNormalPosition() + rowPos;
+      auto cellRect = nsRect(cellPos, cell->GetSize());
+      if (!aBuilder->GetDirtyRect().Intersects(cellRect)) {
+        continue;
+      }
+      nsDisplayBackgroundImage::AppendBackgroundItemsToTop(aBuilder, aFrame, cellRect,
+                                                           aLists.BorderBackground(),
+                                                           false, nullptr,
+                                                           aFrame->GetRectRelativeToSelf(),
+                                                           cell);
     }
   }
 }
@@ -1510,115 +1475,137 @@ void nsTableFrame::CalcHasBCBorders()
 /* static */ void
 nsTableFrame::DisplayGenericTablePart(nsDisplayListBuilder* aBuilder,
                                       nsFrame* aFrame,
-                                      const nsRect& aDirtyRect,
                                       const nsDisplayListSet& aLists,
                                       DisplayGenericTablePartTraversal aTraversal)
 {
-  if (aFrame->IsVisibleForPainting(aBuilder)) {
+  bool isVisible = aFrame->IsVisibleForPainting(aBuilder);
+  bool isTable = aFrame->IsTableFrame();
+
+  // Note that we UpdateForFrameBackground() even if we're not visible, unless
+  // we're a table frame, because our backgrounds may paint anyway if the _cell_
+  // is visible.
+  if (isVisible || !isTable) {
     nsDisplayTableItem* currentItem = aBuilder->GetCurrentTableItem();
     // currentItem may be null, when none of the table parts have a
     // background or border
     if (currentItem) {
       currentItem->UpdateForFrameBackground(aFrame);
     }
+  }
+
+  if (isVisible) {
+    // XXXbz should box-shadow for rows/rowgroups/columns/colgroups get painted
+    // just because we're visible?  Or should it depend on the cell visibility
+    // when we're not the whole table?
 
     // Paint the outset box-shadows for the table frames
-    bool hasBoxShadow = aFrame->StyleEffects()->mBoxShadow != nullptr;
-    if (hasBoxShadow) {
-      aLists.BorderBackground()->AppendNewToTop(
-        new (aBuilder) nsDisplayBoxShadowOuter(aBuilder, aFrame));
+    if (aFrame->StyleEffects()->mBoxShadow) {
+      aLists.BorderBackground()->AppendToTop(
+        MakeDisplayItem<nsDisplayBoxShadowOuter>(aBuilder, aFrame));
+    }
+  }
+
+  // Background visibility for rows, rowgroups, columns, colgroups depends on
+  // the visibility of the _cell_, not of the row/col(group).
+  if (aFrame->IsTableRowGroupFrame()) {
+    nsTableRowGroupFrame* rowGroup = static_cast<nsTableRowGroupFrame*>(aFrame);
+    PaintRowGroupBackground(rowGroup, aFrame, aBuilder, aLists);
+  } else if (aFrame->IsTableRowFrame()) {
+    nsTableRowFrame* row = static_cast<nsTableRowFrame*>(aFrame);
+    PaintRowBackground(row, aFrame, aBuilder, aLists);
+  } else if (aFrame->IsTableColGroupFrame()) {
+    // Compute background rect by iterating all cell frame.
+    nsTableColGroupFrame* colGroup = static_cast<nsTableColGroupFrame*>(aFrame);
+    // Collecting column index.
+    AutoTArray<uint32_t, 1> colIdx;
+    for (nsTableColFrame* col = colGroup->GetFirstColumn(); col; col = col->GetNextCol()) {
+      MOZ_ASSERT(colIdx.IsEmpty() ||
+                 static_cast<uint32_t>(col->GetColIndex()) > colIdx.LastElement());
+      colIdx.AppendElement(col->GetColIndex());
     }
 
-    if (aFrame->IsTableRowGroupFrame()) {
-      nsTableRowGroupFrame* rowGroup = static_cast<nsTableRowGroupFrame*>(aFrame);
-      PaintRowGroupBackground(rowGroup, aFrame, aBuilder, aLists, aDirtyRect);
-    } else if (aFrame->IsTableRowFrame()) {
-      nsTableRowFrame* row = static_cast<nsTableRowFrame*>(aFrame);
-      PaintRowBackground(row, aFrame, aBuilder, aLists, aDirtyRect);
-    } else if (aFrame->IsTableColGroupFrame()) {
-      // Compute background rect by iterating all cell frame.
-      nsTableColGroupFrame* colGroup = static_cast<nsTableColGroupFrame*>(aFrame);
-      // Collecting column index.
-      AutoTArray<int32_t, 1> colIdx;
-      for (nsTableColFrame* col = colGroup->GetFirstColumn(); col; col = col->GetNextCol()) {
-        colIdx.AppendElement(col->GetColIndex());
-      }
-
+    if (!colIdx.IsEmpty()) {
+      // We have some actual cells that live inside this rowgroup.
       nsTableFrame* table = colGroup->GetTableFrame();
       RowGroupArray rowGroups;
       table->OrderRowGroups(rowGroups);
       for (nsTableRowGroupFrame* rowGroup : rowGroups) {
         auto offset = rowGroup->GetNormalPosition() - colGroup->GetNormalPosition();
-        if (!aDirtyRect.Intersects(nsRect(offset, rowGroup->GetSize()))) {
+        if (!aBuilder->GetDirtyRect().Intersects(nsRect(offset, rowGroup->GetSize()))) {
           continue;
         }
-        PaintRowGroupBackgroundByColIdx(rowGroup, aFrame, aBuilder, aLists, aDirtyRect, colIdx, offset);
+        PaintRowGroupBackgroundByColIdx(rowGroup, aFrame, aBuilder, aLists, colIdx, offset);
       }
-    } else if (aFrame->IsTableColFrame()) {
-      // Compute background rect by iterating all cell frame.
-      nsTableColFrame* col = static_cast<nsTableColFrame*>(aFrame);
-      AutoTArray<int32_t, 1> colIdx;
-      colIdx.AppendElement(col->GetColIndex());
+    }
+  } else if (aFrame->IsTableColFrame()) {
+    // Compute background rect by iterating all cell frame.
+    nsTableColFrame* col = static_cast<nsTableColFrame*>(aFrame);
+    AutoTArray<uint32_t, 1> colIdx;
+    colIdx.AppendElement(col->GetColIndex());
 
-      nsTableFrame* table = col->GetTableFrame();
-      RowGroupArray rowGroups;
-      table->OrderRowGroups(rowGroups);
-      for (nsTableRowGroupFrame* rowGroup : rowGroups) {
-        auto offset = rowGroup->GetNormalPosition() -
-                      col->GetNormalPosition() -
-                      col->GetTableColGroupFrame()->GetNormalPosition();
-        if (!aDirtyRect.Intersects(nsRect(offset, rowGroup->GetSize()))) {
-          continue;
-        }
-        PaintRowGroupBackgroundByColIdx(rowGroup, aFrame, aBuilder, aLists, aDirtyRect, colIdx, offset);
+    nsTableFrame* table = col->GetTableFrame();
+    RowGroupArray rowGroups;
+    table->OrderRowGroups(rowGroups);
+    for (nsTableRowGroupFrame* rowGroup : rowGroups) {
+      auto offset = rowGroup->GetNormalPosition() -
+                    col->GetNormalPosition() -
+                    col->GetTableColGroupFrame()->GetNormalPosition();
+      if (!aBuilder->GetDirtyRect().Intersects(nsRect(offset, rowGroup->GetSize()))) {
+        continue;
       }
-    } else {
-      nsDisplayBackgroundImage::AppendBackgroundItemsToTop(aBuilder, aFrame,
-                                                           aFrame->GetRectRelativeToSelf(),
-                                                           aLists.BorderBackground());
+      PaintRowGroupBackgroundByColIdx(rowGroup, aFrame, aBuilder, aLists, colIdx, offset);
     }
-
-    // Paint the inset box-shadows for the table frames
-    if (hasBoxShadow) {
-      aLists.BorderBackground()->AppendNewToTop(
-        new (aBuilder) nsDisplayBoxShadowInner(aBuilder, aFrame));
-    }
+  } else if (isVisible) {
+    nsDisplayBackgroundImage::AppendBackgroundItemsToTop(aBuilder, aFrame,
+                                                         aFrame->GetRectRelativeToSelf(),
+                                                         aLists.BorderBackground());
   }
 
-  aTraversal(aBuilder, aFrame, aDirtyRect, aLists);
+  if (isVisible) {
+    // XXXbz should box-shadow for rows/rowgroups/columns/colgroups get painted
+    // just because we're visible?  Or should it depend on the cell visibility
+    // when we're not the whole table?
 
-  if (aFrame->IsVisibleForPainting(aBuilder)) {
-    if (aFrame->IsTableFrame()) {
-      nsTableFrame* table = static_cast<nsTableFrame*>(aFrame);
-      // In the collapsed border model, overlay all collapsed borders.
-      if (table->IsBorderCollapse()) {
-        if (table->HasBCBorders()) {
-          aLists.BorderBackground()->AppendNewToTop(
-            new (aBuilder) nsDisplayTableBorderCollapse(aBuilder, table));
-        }
-      } else {
-        const nsStyleBorder* borderStyle = aFrame->StyleBorder();
-        if (borderStyle->HasBorder()) {
-          aLists.BorderBackground()->AppendNewToTop(
-            new (aBuilder) nsDisplayBorder(aBuilder, table));
-        }
-      }
+    // Paint the inset box-shadows for the table frames
+    if (aFrame->StyleEffects()->mBoxShadow) {
+      aLists.BorderBackground()->AppendToTop(
+        MakeDisplayItem<nsDisplayBoxShadowInner>(aBuilder, aFrame));
     }
   }
 
   aFrame->DisplayOutline(aBuilder, aLists);
+
+  aTraversal(aBuilder, aFrame, aLists);
+
+  if (isVisible) {
+    if (isTable) {
+      nsTableFrame* table = static_cast<nsTableFrame*>(aFrame);
+      // In the collapsed border model, overlay all collapsed borders.
+      if (table->IsBorderCollapse()) {
+        if (table->HasBCBorders()) {
+          aLists.BorderBackground()->AppendToTop(
+            MakeDisplayItem<nsDisplayTableBorderCollapse>(aBuilder, table));
+        }
+      } else {
+        const nsStyleBorder* borderStyle = aFrame->StyleBorder();
+        if (borderStyle->HasBorder()) {
+          aLists.BorderBackground()->AppendToTop(
+            MakeDisplayItem<nsDisplayBorder>(aBuilder, table));
+        }
+      }
+    }
+  }
 }
 
 // table paint code is concerned primarily with borders and bg color
 // SEC: TODO: adjust the rect for captions
 void
 nsTableFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                               const nsRect&           aDirtyRect,
                                const nsDisplayListSet& aLists)
 {
   DO_GLOBAL_REFLOW_COUNT_DSP_COLOR("nsTableFrame", NS_RGB(255,128,255));
 
-  DisplayGenericTablePart(aBuilder, this, aDirtyRect, aLists);
+  DisplayGenericTablePart(aBuilder, this, aLists);
 }
 
 nsMargin
@@ -1784,16 +1771,15 @@ nsTableFrame::GetPrefISize(gfxContext *aRenderingContext)
 }
 
 /* virtual */ nsIFrame::IntrinsicISizeOffsetData
-nsTableFrame::IntrinsicISizeOffsets()
+nsTableFrame::IntrinsicISizeOffsets(nscoord aPercentageBasis)
 {
-  IntrinsicISizeOffsetData result = nsContainerFrame::IntrinsicISizeOffsets();
+  IntrinsicISizeOffsetData result =
+    nsContainerFrame::IntrinsicISizeOffsets(aPercentageBasis);
 
   result.hMargin = 0;
-  result.hPctMargin = 0;
 
   if (IsBorderCollapse()) {
     result.hPadding = 0;
-    result.hPctPadding = 0;
 
     WritingMode wm = GetWritingMode();
     LogicalMargin outerBC = GetIncludedOuterBCBorder(wm);
@@ -2032,10 +2018,11 @@ nsTableFrame::Reflow(nsPresContext*           aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsTableFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
   bool isPaginated = aPresContext->IsPaginated();
   WritingMode wm = aReflowInput.GetWritingMode();
 
-  aStatus.Reset();
   if (!GetPrevInFlow() && !mTableLayoutStrategy) {
     NS_ERROR("strategy should have been created in Init");
     return;
@@ -2054,11 +2041,20 @@ nsTableFrame::Reflow(nsPresContext*           aPresContext,
   bool haveDesiredBSize = false;
   SetHaveReflowedColGroups(false);
 
+  // The tentative width is the width we assumed for the table when the child
+  // frames were positioned (which only matters in vertical-rl mode, because
+  // they're positioned relative to the right-hand edge). Then, after reflowing
+  // the kids, we can check whether the table ends up with a different width
+  // than this tentative value (either because it was unconstrained, so we used
+  // zero, or because it was enlarged by the child frames), we make the
+  // necessary positioning adjustments along the x-axis.
+  nscoord tentativeContainerWidth = 0;
+  bool mayAdjustXForAllChildren = false;
+
   // Reflow the entire table (pass 2 and possibly pass 3). This phase is necessary during a
   // constrained initial reflow and other reflows which require either a strategy init or balance.
   // This isn't done during an unconstrained reflow, because it will occur later when the parent
   // reflows with a constrained isize.
-  bool fixupKidPositions = false;
   if (NS_SUBTREE_DIRTY(this) ||
       aReflowInput.ShouldReflowAllKids() ||
       IsGeometryDirty() ||
@@ -2114,11 +2110,26 @@ nsTableFrame::Reflow(nsPresContext*           aPresContext,
 
     ReflowTable(aDesiredSize, aReflowInput, availBSize,
                 lastChildReflowed, aStatus);
-    // If ComputedWidth is unconstrained, we may need to fix child positions
-    // later (in vertical-rl mode) due to use of 0 as a dummy
-    // containerSize.width during ReflowChildren.
-    fixupKidPositions = wm.IsVerticalRL() &&
-      aReflowInput.ComputedWidth() == NS_UNCONSTRAINEDSIZE;
+    // When in vertical-rl mode, there may be two kinds of scenarios in which
+    // the positioning of all the children need to be adjusted along the x-axis
+    // because the width we assumed for the table when the child frames were
+    // being positioned(i.e. tentative width) may be different from the final
+    // width for the table:
+    // 1. If the computed width for the table is unconstrained, a dummy zero
+    //    width was assumed as the tentative width to begin with.
+    // 2. If the child frames enlarge the width for the table, the final width
+    //    becomes larger than the tentative one.
+    // Let's record the tentative width here, if later the final width turns out
+    // to be different from this tentative one, it means one of the above
+    // scenarios happens, then we adjust positioning of all the children.
+    // Note that vertical-lr, unlike vertical-rl, doesn't need to take special
+    // care of this situation, because they're positioned relative to the
+    // left-hand edge.
+    if (wm.IsVerticalRL()) {
+      tentativeContainerWidth =
+        aReflowInput.ComputedSizeAsContainerIfConstrained().width;
+      mayAdjustXForAllChildren = true;
+    }
 
     // reevaluate special bsize reflow conditions
     if (HasAnyStateBits(NS_FRAME_CONTAINS_RELATIVE_BSIZE)) {
@@ -2162,12 +2173,17 @@ nsTableFrame::Reflow(nsPresContext*           aPresContext,
     ProcessRowInserted(aDesiredSize.BSize(wm));
   }
 
-  if (fixupKidPositions) {
-    // If we didn't already know the containerSize (and so used zero during
-    // ReflowChildren), then we need to update the block-position of our kids.
-    for (nsIFrame* kid : mFrames) {
-      kid->MovePositionBy(nsPoint(aDesiredSize.Width(), 0));
-      RePositionViews(kid);
+  // For more information on the reason for what we should do this, refer to the
+  // code which defines and evaluates the variables xAdjustmentForAllKids and
+  // tentativeContainerWidth in the previous part in this function.
+  if (mayAdjustXForAllChildren) {
+    nscoord xAdjustmentForAllKids =
+      aDesiredSize.Width() - tentativeContainerWidth;
+    if (0 != xAdjustmentForAllKids) {
+      for (nsIFrame* kid : mFrames) {
+        kid->MovePositionBy(nsPoint(xAdjustmentForAllKids, 0));
+        RePositionViews(kid);
+      }
     }
   }
 
@@ -2200,11 +2216,6 @@ nsTableFrame::Reflow(nsPresContext*           aPresContext,
     tableRect.Inflate(bcMargin.GetPhysicalMargin(wm));
   }
   aDesiredSize.mOverflowAreas.UnionAllWith(tableRect);
-
-  if (HasAnyStateBits(NS_FRAME_FIRST_REFLOW) ||
-      nsSize(aDesiredSize.Width(), aDesiredSize.Height()) != mRect.Size()) {
-      nsIFrame::InvalidateFrame();
-  }
 
   FinishAndStoreOverflow(&aDesiredSize);
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
@@ -2472,15 +2483,15 @@ nsTableFrame::GetCollapsedISize(const WritingMode aWM,
 }
 
 /* virtual */ void
-nsTableFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
+nsTableFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle)
 {
-  nsContainerFrame::DidSetStyleContext(aOldStyleContext);
+  nsContainerFrame::DidSetComputedStyle(aOldComputedStyle);
 
-  if (!aOldStyleContext) //avoid this on init
+  if (!aOldComputedStyle) //avoid this on init
     return;
 
   if (IsBorderCollapse() &&
-      BCRecalcNeeded(aOldStyleContext, StyleContext())) {
+      BCRecalcNeeded(aOldComputedStyle, Style())) {
     SetFullBCDamageArea();
   }
 
@@ -2556,8 +2567,8 @@ nsTableFrame::AppendFrames(ChildListID     aListID,
   printf("=== TableFrame::AppendFrames\n");
   Dump(true, true, true);
 #endif
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
   SetGeometryDirty();
 }
 
@@ -2662,7 +2673,7 @@ nsTableFrame::HomogenousInsertFrames(ChildListID     aListID,
       }
       nsCOMPtr<nsIContent> container = content->GetParent();
       if (MOZ_LIKELY(container)) { // XXX need this null-check, see bug 411823.
-        int32_t newIndex = container->IndexOf(content);
+        int32_t newIndex = container->ComputeIndexOf(content);
         nsIFrame* kidFrame;
         nsTableColGroupFrame* lastColGroup = nullptr;
         if (isColGroup) {
@@ -2686,7 +2697,7 @@ nsTableFrame::HomogenousInsertFrames(ChildListID     aListID,
                                   (content = pseudoFrame->GetContent()))) {
             pseudoFrame = pseudoFrame->PrincipalChildList().FirstChild();
           }
-          int32_t index = container->IndexOf(content);
+          int32_t index = container->ComputeIndexOf(content);
           if (index > lastIndex && index < newIndex) {
             lastIndex = index;
             aPrevFrame = kidFrame;
@@ -2728,8 +2739,8 @@ nsTableFrame::HomogenousInsertFrames(ChildListID     aListID,
     return;
   }
 
-  PresContext()->PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
-                                               NS_FRAME_HAS_DIRTY_CHILDREN);
+  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+                                NS_FRAME_HAS_DIRTY_CHILDREN);
   SetGeometryDirty();
 #ifdef DEBUG_TABLE_CELLMAP
   printf("=== TableFrame::InsertFrames\n");
@@ -2817,7 +2828,7 @@ nsTableFrame::RemoveFrame(ChildListID     aListID,
                mozilla::StyleDisplay::TableColumnGroup !=
                  aOldFrame->StyleDisplay()->mDisplay,
                "Wrong list name; use kColGroupList iff colgroup");
-  nsIPresShell* shell = PresContext()->PresShell();
+  nsIPresShell* shell = PresShell();
   nsTableFrame* lastParent = nullptr;
   while (aOldFrame) {
     nsIFrame* oldFrameNextContinuation = aOldFrame->GetNextContinuation();
@@ -2907,15 +2918,14 @@ nsTableFrame::GetOuterBCBorder(const WritingMode aWM) const
   if (NeedToCalcBCBorders()) {
     const_cast<nsTableFrame*>(this)->CalcBCBorders();
   }
-
-  int32_t p2t = nsPresContext::AppUnitsPerCSSPixel();
+  int32_t d2a = PresContext()->AppUnitsPerDevPixel();
   BCPropertyData* propData = GetBCProperty();
   if (propData) {
     return LogicalMargin(aWM,
-               BC_BORDER_START_HALF_COORD(p2t, propData->mBStartBorderWidth),
-               BC_BORDER_END_HALF_COORD(p2t, propData->mIEndBorderWidth),
-               BC_BORDER_END_HALF_COORD(p2t, propData->mBEndBorderWidth),
-               BC_BORDER_START_HALF_COORD(p2t, propData->mIStartBorderWidth));
+               BC_BORDER_START_HALF_COORD(d2a, propData->mBStartBorderWidth),
+               BC_BORDER_END_HALF_COORD(d2a, propData->mIEndBorderWidth),
+               BC_BORDER_END_HALF_COORD(d2a, propData->mBEndBorderWidth),
+               BC_BORDER_START_HALF_COORD(d2a, propData->mIStartBorderWidth));
   }
   return LogicalMargin(aWM);
 }
@@ -2927,14 +2937,14 @@ nsTableFrame::GetIncludedOuterBCBorder(const WritingMode aWM) const
     const_cast<nsTableFrame*>(this)->CalcBCBorders();
   }
 
-  int32_t p2t = nsPresContext::AppUnitsPerCSSPixel();
+  int32_t d2a = PresContext()->AppUnitsPerDevPixel();
   BCPropertyData* propData = GetBCProperty();
   if (propData) {
     return LogicalMargin(aWM,
-               BC_BORDER_START_HALF_COORD(p2t, propData->mBStartBorderWidth),
-               BC_BORDER_END_HALF_COORD(p2t, propData->mIEndCellBorderWidth),
-               BC_BORDER_END_HALF_COORD(p2t, propData->mBEndBorderWidth),
-               BC_BORDER_START_HALF_COORD(p2t, propData->mIStartCellBorderWidth));
+               BC_BORDER_START_HALF_COORD(d2a, propData->mBStartBorderWidth),
+               BC_BORDER_END_HALF_COORD(d2a, propData->mIEndCellBorderWidth),
+               BC_BORDER_END_HALF_COORD(d2a, propData->mBEndBorderWidth),
+               BC_BORDER_START_HALF_COORD(d2a, propData->mIStartCellBorderWidth));
   }
   return LogicalMargin(aWM);
 }
@@ -2948,12 +2958,12 @@ nsTableFrame::GetExcludedOuterBCBorder(const WritingMode aWM) const
 static LogicalMargin
 GetSeparateModelBorderPadding(const WritingMode aWM,
                               const ReflowInput* aReflowInput,
-                              nsStyleContext* aStyleContext)
+                              ComputedStyle* aComputedStyle)
 {
   // XXXbz Either we _do_ have a reflow state and then we can use its
   // mComputedBorderPadding or we don't and then we get the padding
   // wrong!
-  const nsStyleBorder* border = aStyleContext->StyleBorder();
+  const nsStyleBorder* border = aComputedStyle->StyleBorder();
   LogicalMargin borderPadding(aWM, border->GetComputedBorder());
   if (aReflowInput) {
     borderPadding += aReflowInput->ComputedLogicalPadding();
@@ -2966,7 +2976,7 @@ nsTableFrame::GetChildAreaOffset(const WritingMode aWM,
                                  const ReflowInput* aReflowInput) const
 {
   return IsBorderCollapse() ? GetIncludedOuterBCBorder(aWM) :
-    GetSeparateModelBorderPadding(aWM, aReflowInput, mStyleContext);
+    GetSeparateModelBorderPadding(aWM, aReflowInput, mComputedStyle);
 }
 
 void
@@ -3367,6 +3377,7 @@ nsTableFrame::ReflowChildren(TableReflowInput& aReflowInput,
         reorder = true;
 
       LogicalPoint kidPosition(wm, aReflowInput.iCoord, aReflowInput.bCoord);
+      aStatus.Reset();
       ReflowChild(kidFrame, presContext, desiredSize, kidReflowInput,
                   wm, kidPosition, containerSize, 0, aStatus);
       kidReflowInput.ApplyRelativePositioning(&kidPosition, containerSize);
@@ -4075,9 +4086,9 @@ nsTableFrame::GetNaturalBaselineBOffset(WritingMode aWM,
 /* ----- global methods ----- */
 
 nsTableFrame*
-NS_NewTableFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewTableFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsTableFrame(aContext);
+  return new (aPresShell) nsTableFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsTableFrame)
@@ -4133,12 +4144,12 @@ nsTableFrame::IsAutoBSize(WritingMode aWM)
 }
 
 nscoord
-nsTableFrame::CalcBorderBoxBSize(const ReflowInput& aState)
+nsTableFrame::CalcBorderBoxBSize(const ReflowInput& aReflowInput)
 {
-  nscoord bSize = aState.ComputedBSize();
+  nscoord bSize = aReflowInput.ComputedBSize();
   if (NS_AUTOHEIGHT != bSize) {
-    WritingMode wm = aState.GetWritingMode();
-    LogicalMargin borderPadding = GetChildAreaOffset(wm, &aState);
+    WritingMode wm = aReflowInput.GetWritingMode();
+    LogicalMargin borderPadding = GetChildAreaOffset(wm, &aReflowInput);
     bSize += borderPadding.BStartEnd(wm);
   }
   bSize = std::max(0, bSize);
@@ -4212,9 +4223,8 @@ nsTableFrame::DumpRowGroup(nsIFrame* aKidFrame)
       for (nsIFrame* childFrame : cFrame->PrincipalChildList()) {
         nsTableCellFrame *cellFrame = do_QueryFrame(childFrame);
         if (cellFrame) {
-          int32_t colIndex;
-          cellFrame->GetColIndex(colIndex);
-          printf("cell(%d)=%p ", colIndex, static_cast<void*>(childFrame));
+          uint32_t colIndex = cellFrame->ColIndex();
+          printf("cell(%u)=%p ", colIndex, static_cast<void*>(childFrame));
         }
       }
       printf("\n");
@@ -4558,7 +4568,7 @@ BCMapCellInfo::BCMapCellInfo(nsTableFrame* aTableFrame)
   , mNumTableRows(aTableFrame->GetRowCount())
   , mNumTableCols(aTableFrame->GetColCount())
   , mTableBCData(mTableFrame->GetProperty(TableBCProperty()))
-  , mTableWM(aTableFrame->StyleContext())
+  , mTableWM(aTableFrame->Style())
 {
   ResetCellInfo();
 }
@@ -5033,12 +5043,12 @@ GetColorAndStyle(const nsIFrame* aFrame,
       (NS_STYLE_BORDER_STYLE_HIDDEN == *aStyle)) {
     return;
   }
-  *aColor = aFrame->StyleContext()->
+  *aColor = aFrame->Style()->
     GetVisitedDependentColor(nsStyleBorder::BorderColorFieldFor(physicalSide));
 
   if (aWidth) {
     nscoord width = styleData->GetComputedBorderWidth(physicalSide);
-    *aWidth = nsPresContext::AppUnitsToIntCSSPixels(width);
+    *aWidth = aFrame->PresContext()->AppUnitsToDevPixels(width);
   }
 }
 
@@ -5086,18 +5096,18 @@ private:
 };
 
 bool
-nsTableFrame::BCRecalcNeeded(nsStyleContext* aOldStyleContext,
-                             nsStyleContext* aNewStyleContext)
+nsTableFrame::BCRecalcNeeded(ComputedStyle* aOldComputedStyle,
+                             ComputedStyle* aNewComputedStyle)
 {
-  // Attention: the old style context is the one we're forgetting,
+  // Attention: the old ComputedStyle is the one we're forgetting,
   // and hence possibly completely bogus for GetStyle* purposes.
   // We use PeekStyleData instead.
 
-  const nsStyleBorder* oldStyleData = aOldStyleContext->PeekStyleBorder();
+  const nsStyleBorder* oldStyleData = aOldComputedStyle->PeekStyleBorder();
   if (!oldStyleData)
     return false;
 
-  const nsStyleBorder* newStyleData = aNewStyleContext->StyleBorder();
+  const nsStyleBorder* newStyleData = aNewComputedStyle->StyleBorder();
   nsChangeHint change = newStyleData->CalcDifference(*oldStyleData);
   if (!change)
     return false;
@@ -6433,13 +6443,15 @@ nsTableFrame::CalcBCBorders()
         gotRowBorder = true;
       }
     }
-
-    // see if the cell to the iEnd side had a rowspan and its bEnd-iStart border
-    // needs be joined with this one's bEnd
-    // if  there is a cell to the iEnd and the cell to iEnd side was a rowspan
-    if ((info.mNumTableCols != info.GetCellEndColIndex() + 1) &&
-        (lastBEndBorders[info.GetCellEndColIndex() + 1].rowSpan > 1)) {
-      BCCornerInfo& corner = bEndCorners[info.GetCellEndColIndex() + 1];
+    // In the function, we try to join two cells' BEnd.
+    // We normally do this work when processing the cell on the iEnd side,
+    // but when the cell on the iEnd side has a rowspan, the cell on the
+    // iStart side gets processed later (now), so we have to do this work now.
+    const auto nextColIndex = info.GetCellEndColIndex() + 1;
+    if ((info.mNumTableCols != nextColIndex) &&
+        (lastBEndBorders[nextColIndex].rowSpan > 1) &&
+        (lastBEndBorders[nextColIndex].rowIndex == info.GetCellEndRowIndex() + 1)) {
+      BCCornerInfo& corner = bEndCorners[nextColIndex];
       if (!IsBlock(LogicalSide(corner.ownerSide))) {
         // not a block-dir owner
         BCCellBorder& thisBorder = lastBEndBorder;
@@ -6451,8 +6463,9 @@ nsTableFrame::CalcBCBorders()
           // new segment
           if (iter.mCellMap) {
             tableCellMap->ResetBStartStart(eLogicalSideBEnd, *iter.mCellMap,
+                                           iter.mRowGroupStart,
                                            info.GetCellEndRowIndex(),
-                                           info.GetCellEndColIndex() + 1);
+                                           nextColIndex);
           }
         }
       }
@@ -6475,10 +6488,11 @@ struct BCBorderParameters
   nscolor mBGColor;
   nsRect mBorderRect;
   int32_t mAppUnitsPerDevPixel;
-  uint8_t mStartBevelSide;
+  mozilla::Side mStartBevelSide;
   nscoord mStartBevelOffset;
-  uint8_t mEndBevelSide;
+  mozilla::Side mEndBevelSide;
   nscoord mEndBevelOffset;
+  bool mBackfaceIsVisible;
 };
 
 struct BCBlockDirSeg
@@ -6503,8 +6517,8 @@ struct BCBlockDirSeg
                                BCPixelSize aInlineSegBSize,
                                wr::DisplayListBuilder& aBuilder,
                                const layers::StackingContextHelper& aSc,
-                               nsTArray<layers::WebRenderParentCommand>& aParentCommands,
-                               const nsPoint& aPt);
+                               const nsPoint& aPt,
+                               Maybe<BCBorderParameters>* aBevelBorders);
   void AdvanceOffsetB();
   void IncludeCurrentBorder(BCPaintBorderIterator& aIter);
 
@@ -6558,8 +6572,8 @@ struct BCInlineDirSeg
   void CreateWebRenderCommands(BCPaintBorderIterator& aIter,
                                wr::DisplayListBuilder& aBuilder,
                                const layers::StackingContextHelper& aSc,
-                               nsTArray<layers::WebRenderParentCommand>& aParentCommands,
-                               const nsPoint& aPt);
+                               const nsPoint& aPt,
+                               Maybe<BCBorderParameters>* aBevelBorders);
 
   nscoord            mOffsetI;       // i-offset with respect to the table edge
   nscoord            mOffsetB;       // b-offset with respect to the table edge
@@ -6596,19 +6610,17 @@ struct BCCreateWebRenderCommandsData
 {
   BCCreateWebRenderCommandsData(wr::DisplayListBuilder& aBuilder,
                                 const layers::StackingContextHelper& aSc,
-                                nsTArray<layers::WebRenderParentCommand>& aParentCommands,
                                 const nsPoint& aOffsetToReferenceFrame)
     : mBuilder(aBuilder)
     , mSc(aSc)
-    , mParentCommands(aParentCommands)
     , mOffsetToReferenceFrame(aOffsetToReferenceFrame)
   {
   }
 
   wr::DisplayListBuilder& mBuilder;
   const layers::StackingContextHelper& mSc;
-  nsTArray<layers::WebRenderParentCommand>& mParentCommands;
   const nsPoint& mOffsetToReferenceFrame;
+  Maybe<BCBorderParameters> mBevelBorders[4];
 };
 
 struct BCPaintBorderAction
@@ -6621,12 +6633,21 @@ struct BCPaintBorderAction
 
   BCPaintBorderAction(wr::DisplayListBuilder& aBuilder,
                       const layers::StackingContextHelper& aSc,
-                      nsTArray<layers::WebRenderParentCommand>& aParentCommands,
                       const nsPoint& aOffsetToReferenceFrame)
     : mMode(Mode::CREATE_WEBRENDER_COMMANDS)
-    , mCreateWebRenderCommandsData(aBuilder, aSc, aParentCommands, aOffsetToReferenceFrame)
+    , mCreateWebRenderCommandsData(aBuilder, aSc, aOffsetToReferenceFrame)
   {
     mMode = Mode::CREATE_WEBRENDER_COMMANDS;
+  }
+
+  ~BCPaintBorderAction()
+  {
+    // mCreateWebRenderCommandsData is in a union which means the destructor
+    // wouldn't be called when BCPaintBorderAction get destroyed. So call the
+    // destructor here explicitly.
+    if (mMode == Mode::CREATE_WEBRENDER_COMMANDS) {
+      mCreateWebRenderCommandsData.~BCCreateWebRenderCommandsData();
+    }
   }
 
   enum class Mode {
@@ -6775,7 +6796,7 @@ BCPaintBorderIterator::BCPaintBorderIterator(nsTableFrame* aTable)
   : mTable(aTable)
   , mTableFirstInFlow(static_cast<nsTableFrame*>(aTable->FirstInFlow()))
   , mTableCellMap(aTable->GetCellMap())
-  , mTableWM(aTable->StyleContext())
+  , mTableWM(aTable->Style())
 {
   mBlockDirInfo    = nullptr;
   LogicalMargin childAreaOffset = mTable->GetChildAreaOffset(mTableWM, nullptr);
@@ -6806,6 +6827,7 @@ BCPaintBorderIterator::SetDamageArea(const nsRect& aDirtyRect)
   bool haveIntersect = false;
   // find startRowIndex, endRowIndex
   nscoord rowB = mInitialOffsetB;
+  nsPresContext* presContext = mTable->PresContext();
   for (uint32_t rgIdx = 0; rgIdx < mRowGroups.Length() && !done; rgIdx++) {
     nsTableRowGroupFrame* rgFrame = mRowGroups[rgIdx];
     for (nsTableRowFrame* rowFrame = rgFrame->GetFirstRow(); rowFrame;
@@ -6814,8 +6836,10 @@ BCPaintBorderIterator::SetDamageArea(const nsRect& aDirtyRect)
       nscoord rowBSize = rowFrame->BSize(mTableWM);
       if (haveIntersect) {
         // conservatively estimate the half border widths outside the row
-        nscoord borderHalf = mTable->GetPrevInFlow() ? 0 : nsPresContext::
-          CSSPixelsToAppUnits(rowFrame->GetBStartBCBorderWidth() + 1);
+        nscoord borderHalf = mTable->GetPrevInFlow() ? 0 :
+                               presContext->DevPixelsToAppUnits(
+                                 rowFrame->GetBStartBCBorderWidth() + 1);
+
         if (dirtyRect.BEnd(mTableWM) >= rowB - borderHalf) {
           nsTableRowFrame* fifRow =
             static_cast<nsTableRowFrame*>(rowFrame->FirstInFlow());
@@ -6825,8 +6849,9 @@ BCPaintBorderIterator::SetDamageArea(const nsRect& aDirtyRect)
       }
       else {
         // conservatively estimate the half border widths outside the row
-        nscoord borderHalf = mTable->GetNextInFlow() ? 0 : nsPresContext::
-          CSSPixelsToAppUnits(rowFrame->GetBEndBCBorderWidth() + 1);
+        nscoord borderHalf = mTable->GetNextInFlow() ? 0 :
+                               presContext->DevPixelsToAppUnits(
+                                 rowFrame->GetBEndBCBorderWidth() + 1);
         if (rowB + rowBSize + borderHalf >= dirtyRect.BStart(mTableWM)) {
           mStartRg  = rgFrame;
           mStartRow = rowFrame;
@@ -6870,8 +6895,8 @@ BCPaintBorderIterator::SetDamageArea(const nsRect& aDirtyRect)
     nscoord colISize = colFrame->ISize(mTableWM);
     if (haveIntersect) {
       // conservatively estimate the iStart half border width outside the col
-      nscoord iStartBorderHalf = nsPresContext::
-        CSSPixelsToAppUnits(colFrame->GetIStartBorderWidth() + 1);
+      nscoord iStartBorderHalf = presContext->DevPixelsToAppUnits(
+        colFrame->GetIStartBorderWidth() + 1);
       if (dirtyRect.IEnd(mTableWM) >= x - iStartBorderHalf) {
         endColIndex = colIdx;
       }
@@ -6879,8 +6904,8 @@ BCPaintBorderIterator::SetDamageArea(const nsRect& aDirtyRect)
     }
     else {
       // conservatively estimate the iEnd half border width outside the col
-      nscoord iEndBorderHalf = nsPresContext::
-        CSSPixelsToAppUnits(colFrame->GetIEndBorderWidth() + 1);
+      nscoord iEndBorderHalf = presContext->DevPixelsToAppUnits(
+        colFrame->GetIEndBorderWidth() + 1);
       if (x + colISize + iEndBorderHalf >= dirtyRect.IStart(mTableWM)) {
         startColIndex = endColIndex = colIdx;
         haveIntersect = true;
@@ -7119,7 +7144,8 @@ BCPaintBorderIterator::Next()
   * @return                 - offset in twips
   */
 static nscoord
-CalcVerCornerOffset(LogicalSide aCornerOwnerSide,
+CalcVerCornerOffset(nsPresContext* aPresContext,
+                    LogicalSide aCornerOwnerSide,
                     BCPixelSize aCornerSubWidth,
                     BCPixelSize aHorWidth,
                     bool        aIsStartOfSeg,
@@ -7146,7 +7172,7 @@ CalcVerCornerOffset(LogicalSide aCornerOwnerSide,
       offset = (aIsStartOfSeg) ? smallHalf : -largeHalf;
     }
   }
-  return nsPresContext::CSSPixelsToAppUnits(offset);
+  return aPresContext->DevPixelsToAppUnits(offset);
 }
 
 /** Compute the horizontal offset of a horizontal border segment
@@ -7158,7 +7184,8 @@ CalcVerCornerOffset(LogicalSide aCornerOwnerSide,
   * @return                 - offset in twips
   */
 static nscoord
-CalcHorCornerOffset(LogicalSide aCornerOwnerSide,
+CalcHorCornerOffset(nsPresContext* aPresContext,
+                    LogicalSide aCornerOwnerSide,
                     BCPixelSize aCornerSubWidth,
                     BCPixelSize aVerWidth,
                     bool        aIsStartOfSeg,
@@ -7185,7 +7212,7 @@ CalcHorCornerOffset(LogicalSide aCornerOwnerSide,
       offset = (aIsStartOfSeg) ? smallHalf : -largeHalf;
     }
   }
-  return nsPresContext::CSSPixelsToAppUnits(offset);
+  return aPresContext->DevPixelsToAppUnits(offset);
 }
 
 BCBlockDirSeg::BCBlockDirSeg()
@@ -7219,12 +7246,14 @@ BCBlockDirSeg::Start(BCPaintBorderIterator& aIter,
 
   bool    bStartBevel     = (aBlockSegISize > 0) ? bevel : false;
   BCPixelSize maxInlineSegBSize = std::max(aIter.mPrevInlineSegBSize, aInlineSegBSize);
-  nscoord offset          = CalcVerCornerOffset(ownerSide, cornerSubWidth,
+  nsPresContext* presContext = aIter.mTable->PresContext();
+  nscoord offset          = CalcVerCornerOffset(presContext,
+                                                ownerSide, cornerSubWidth,
                                                 maxInlineSegBSize, true,
                                                 bStartBevel);
 
   mBStartBevelOffset = bStartBevel ?
-    nsPresContext::CSSPixelsToAppUnits(maxInlineSegBSize): 0;
+    presContext->DevPixelsToAppUnits(maxInlineSegBSize): 0;
   // XXX this assumes that only corners where 2 segments join can be beveled
   mBStartBevelSide     = (aInlineSegBSize > 0) ? eLogicalSideIEnd : eLogicalSideIStart;
   mOffsetB      += offset;
@@ -7281,7 +7310,8 @@ BCBlockDirSeg::GetBEndCorner(BCPaintBorderIterator& aIter,
    }
    mIsBEndBevel = (mWidth > 0) ? bevel : false;
    mBEndInlineSegBSize = std::max(aIter.mPrevInlineSegBSize, aInlineSegBSize);
-   mBEndOffset = CalcVerCornerOffset(ownerSide, cornerSubWidth,
+   mBEndOffset = CalcVerCornerOffset(aIter.mTable->PresContext(),
+                                    ownerSide, cornerSubWidth,
                                     mBEndInlineSegBSize,
                                     false, mIsBEndBevel);
    mLength += mBEndOffset;
@@ -7303,10 +7333,12 @@ BCBlockDirSeg::BuildBorderParameters(BCPaintBorderIterator& aIter,
   result.mBorderStyle = NS_STYLE_BORDER_STYLE_SOLID;
   result.mBorderColor = 0xFFFFFFFF;
   result.mBGColor = aIter.mTableBgColor;
+  result.mBackfaceIsVisible = true;
 
   // All the tables frames have the same presContext, so we just use any one
   // that exists here:
-  result.mAppUnitsPerDevPixel = col->PresContext()->AppUnitsPerDevPixel();
+  nsPresContext* presContext = aIter.mTable->PresContext();
+  result.mAppUnitsPerDevPixel = presContext->AppUnitsPerDevPixel();
 
   switch (mOwner) {
     case eTableOwner:
@@ -7358,15 +7390,16 @@ BCBlockDirSeg::BuildBorderParameters(BCPaintBorderIterator& aIter,
   }
   if (owner) {
     ::GetPaintStyleInfo(owner, aIter.mTableWM, side, &result.mBorderStyle, &result.mBorderColor);
+    result.mBackfaceIsVisible = !owner->BackfaceIsHidden();
   }
   BCPixelSize smallHalf, largeHalf;
   DivideBCBorderSize(mWidth, smallHalf, largeHalf);
   LogicalRect segRect(aIter.mTableWM,
-                 mOffsetI - nsPresContext::CSSPixelsToAppUnits(largeHalf),
+                 mOffsetI - presContext->DevPixelsToAppUnits(largeHalf),
                  mOffsetB,
-                 nsPresContext::CSSPixelsToAppUnits(mWidth), mLength);
+                 presContext->DevPixelsToAppUnits(mWidth), mLength);
   nscoord bEndBevelOffset = (mIsBEndBevel) ?
-                  nsPresContext::CSSPixelsToAppUnits(mBEndInlineSegBSize) : 0;
+    presContext->DevPixelsToAppUnits(mBEndInlineSegBSize) : 0;
   LogicalSide bEndBevelSide =
     (aInlineSegBSize > 0) ? eLogicalSideIEnd : eLogicalSideIStart;
 
@@ -7420,7 +7453,6 @@ BCBlockDirSeg::Paint(BCPaintBorderIterator& aIter,
   nsCSSRendering::DrawTableBorderSegment(aDrawTarget, param->mBorderStyle, param->mBorderColor,
                                          param->mBGColor, param->mBorderRect,
                                          param->mAppUnitsPerDevPixel,
-                                         nsPresContext::AppUnitsPerCSSPixel(),
                                          param->mStartBevelSide, param->mStartBevelOffset,
                                          param->mEndBevelSide, param->mEndBevelOffset);
 }
@@ -7430,37 +7462,64 @@ BCBlockDirSeg::CreateWebRenderCommands(BCPaintBorderIterator& aIter,
                                        BCPixelSize aInlineSegBSize,
                                        wr::DisplayListBuilder& aBuilder,
                                        const layers::StackingContextHelper& aSc,
-                                       nsTArray<layers::WebRenderParentCommand>& aParentCommands,
-                                       const nsPoint& aOffset)
+                                       const nsPoint& aOffset,
+                                       Maybe<BCBorderParameters>* aBevelBorders)
 {
   Maybe<BCBorderParameters> param = BuildBorderParameters(aIter, aInlineSegBSize);
   if (param.isNothing()) {
     return;
   }
 
-  //TODO: Currently, we don't support border with m{Start,End}Bevel{Side,Offset} attributes.
+  if (param->mStartBevelOffset != 0 || param->mEndBevelOffset != 0) {
+    // If both bevel offsets are non zero, the parameters of two bevels should
+    // be the same. So we choose start bevel side here.
+    mozilla::Side bevelSide = param->mStartBevelOffset != 0 ? param->mStartBevelSide : param->mEndBevelSide;
+
+    // The left border is going to be beveled on its right edge because that's
+    // the edge that intersects other borders (in this case the top and bottom borders).
+    // Correspondingly, if the bevel side is "right" that means we are operating on
+    // the left border, and so store the parameters for that entry in aBevelBorders.
+    // Same goes for the other directions.
+    switch (bevelSide) {
+      case eSideTop:
+        aBevelBorders[eSideBottom] = param;
+        break;
+      case eSideBottom:
+        aBevelBorders[eSideTop] = param;
+        break;
+      case eSideLeft:
+        aBevelBorders[eSideRight] = param;
+        break;
+      case eSideRight:
+        aBevelBorders[eSideLeft] = param;
+        break;
+    }
+
+    return;
+  }
 
   LayoutDeviceRect borderRect = LayoutDeviceRect::FromUnknownRect(NSRectToRect(param->mBorderRect + aOffset,
                                                                                param->mAppUnitsPerDevPixel));
-  wr::LayoutRect transformedRect = aSc.ToRelativeLayoutRect(borderRect);
+
+  wr::LayoutRect roundedRect = wr::ToRoundedLayoutRect(borderRect);
   wr::BorderSide wrSide[4];
   NS_FOR_CSS_SIDES(i) {
     wrSide[i] = wr::ToBorderSide(ToDeviceColor(param->mBorderColor), NS_STYLE_BORDER_STYLE_NONE);
   }
   wrSide[eSideLeft] = wr::ToBorderSide(ToDeviceColor(param->mBorderColor), param->mBorderStyle);
 
-  wr::BorderRadius borderRadii = wr::ToBorderRadius( {0, 0}, {0, 0}, {0, 0}, {0, 0} );
+  wr::BorderRadius borderRadii = wr::EmptyBorderRadius();
 
   // All border style is set to none except left side. So setting the widths of
   // each side to width of rect is fine.
-  wr::BorderWidths borderWidths = wr::ToBorderWidths(transformedRect.size.width,
-                                                     transformedRect.size.width,
-                                                     transformedRect.size.width,
-                                                     transformedRect.size.width);
-  transformedRect.size.width *= 2.0f;
+  wr::BorderWidths borderWidths = wr::ToBorderWidths(roundedRect.size.width,
+                                                     roundedRect.size.width,
+                                                     roundedRect.size.width,
+                                                     roundedRect.size.width);
   Range<const wr::BorderSide> wrsides(wrSide, 4);
-  aBuilder.PushBorder(transformedRect,
-                      transformedRect,
+  aBuilder.PushBorder(roundedRect,
+                      roundedRect,
+                      param->mBackfaceIsVisible,
                       borderWidths,
                       wrsides,
                       borderRadii);
@@ -7516,7 +7575,8 @@ BCInlineDirSeg::Start(BCPaintBorderIterator& aIter,
   int32_t relColIndex = aIter.GetRelativeColIndex();
   nscoord maxBlockSegISize = std::max(aIter.mBlockDirInfo[relColIndex].mWidth,
                                       aBEndBlockSegISize);
-  nscoord offset = CalcHorCornerOffset(cornerOwnerSide, cornerSubWidth,
+  nscoord offset = CalcHorCornerOffset(aIter.mTable->PresContext(),
+                                       cornerOwnerSide, cornerSubWidth,
                                        maxBlockSegISize, true, iStartBevel);
   mIStartBevelOffset = (iStartBevel && (aInlineSegBSize > 0)) ? maxBlockSegISize : 0;
   // XXX this assumes that only corners where 2 segments join can be beveled
@@ -7550,11 +7610,12 @@ BCInlineDirSeg::GetIEndCorner(BCPaintBorderIterator& aIter,
   int32_t relColIndex = aIter.GetRelativeColIndex();
   nscoord verWidth = std::max(aIter.mBlockDirInfo[relColIndex].mWidth,
                               aIStartSegISize);
-  mEndOffset = CalcHorCornerOffset(ownerSide, cornerSubWidth, verWidth,
-                                   false, mIsIEndBevel);
+  nsPresContext* presContext = aIter.mTable->PresContext();
+  mEndOffset = CalcHorCornerOffset(presContext, ownerSide, cornerSubWidth,
+                                   verWidth, false, mIsIEndBevel);
   mLength += mEndOffset;
   mIEndBevelOffset = (mIsIEndBevel) ?
-                       nsPresContext::CSSPixelsToAppUnits(verWidth) : 0;
+                       presContext->DevPixelsToAppUnits(verWidth) : 0;
   mIEndBevelSide = (aIStartSegISize > 0) ? eLogicalSideBEnd : eLogicalSideBStart;
 }
 
@@ -7571,10 +7632,12 @@ BCInlineDirSeg::BuildBorderParameters(BCPaintBorderIterator& aIter)
   nsIFrame* cell = mFirstCell;
   nsIFrame* col;
   nsIFrame* owner = nullptr;
+  result.mBackfaceIsVisible = true;
 
   // All the tables frames have the same presContext, so we just use any one
   // that exists here:
-  result.mAppUnitsPerDevPixel = row->PresContext()->AppUnitsPerDevPixel();
+  nsPresContext* presContext = aIter.mTable->PresContext();
+  result.mAppUnitsPerDevPixel = presContext->AppUnitsPerDevPixel();
 
   result.mBorderStyle = NS_STYLE_BORDER_STYLE_SOLID;
   result.mBorderColor = 0xFFFFFFFF;
@@ -7628,20 +7691,21 @@ BCInlineDirSeg::BuildBorderParameters(BCPaintBorderIterator& aIter)
   }
   if (owner) {
     ::GetPaintStyleInfo(owner, aIter.mTableWM, side, &result.mBorderStyle, &result.mBorderColor);
+    result.mBackfaceIsVisible = !owner->BackfaceIsHidden();
   }
   BCPixelSize smallHalf, largeHalf;
   DivideBCBorderSize(mWidth, smallHalf, largeHalf);
   LogicalRect segRect(aIter.mTableWM, mOffsetI,
-                      mOffsetB - nsPresContext::CSSPixelsToAppUnits(largeHalf),
+                      mOffsetB - presContext->DevPixelsToAppUnits(largeHalf),
                       mLength,
-                      nsPresContext::CSSPixelsToAppUnits(mWidth));
+                      presContext->DevPixelsToAppUnits(mWidth));
 
   // Convert logical to physical sides/coordinates for DrawTableBorderSegment.
   result.mBorderRect = segRect.GetPhysicalRect(aIter.mTableWM, aIter.mTable->GetSize());
   result.mStartBevelSide = aIter.mTableWM.PhysicalSide(mIStartBevelSide);
   result.mEndBevelSide = aIter.mTableWM.PhysicalSide(mIEndBevelSide);
   result.mStartBevelOffset =
-    nsPresContext::CSSPixelsToAppUnits(mIStartBevelOffset);
+    presContext->DevPixelsToAppUnits(mIStartBevelOffset);
   result.mEndBevelOffset = mIEndBevelOffset;
   // With inline-RTL directionality, the 'start' and 'end' of the inline-dir
   // border segment need to be swapped because DrawTableBorderSegment will
@@ -7679,7 +7743,6 @@ BCInlineDirSeg::Paint(BCPaintBorderIterator& aIter, DrawTarget& aDrawTarget)
   nsCSSRendering::DrawTableBorderSegment(aDrawTarget, param->mBorderStyle, param->mBorderColor,
                                          param->mBGColor, param->mBorderRect,
                                          param->mAppUnitsPerDevPixel,
-                                         nsPresContext::AppUnitsPerCSSPixel(),
                                          param->mStartBevelSide, param->mStartBevelOffset,
                                          param->mEndBevelSide, param->mEndBevelOffset);
 }
@@ -7688,37 +7751,57 @@ void
 BCInlineDirSeg::CreateWebRenderCommands(BCPaintBorderIterator& aIter,
                                         wr::DisplayListBuilder& aBuilder,
                                         const layers::StackingContextHelper& aSc,
-                                        nsTArray<layers::WebRenderParentCommand>& aParentCommands,
-                                        const nsPoint& aPt)
+                                        const nsPoint& aPt,
+                                        Maybe<BCBorderParameters>* aBevelBorders)
 {
   Maybe<BCBorderParameters> param = BuildBorderParameters(aIter);
   if (param.isNothing()) {
     return;
   }
 
-  //TODO: Currently, we don't support border with m{Start,End}Bevel{Side,Offset} attributes.
+  if (param->mStartBevelOffset != 0 || param->mEndBevelOffset != 0) {
+    mozilla::Side bevelSide = param->mStartBevelOffset != 0 ? param->mStartBevelSide : param->mEndBevelSide;
+
+    // See detailed comment on equivalent code in BCBlockDirSeg::CreateWebRenderCommands.
+    switch (bevelSide) {
+      case eSideTop:
+        aBevelBorders[eSideBottom] = param;
+        break;
+      case eSideBottom:
+        aBevelBorders[eSideTop] = param;
+        break;
+      case eSideLeft:
+        aBevelBorders[eSideRight] = param;
+        break;
+      case eSideRight:
+        aBevelBorders[eSideLeft] = param;
+        break;
+    }
+
+    return;
+  }
 
   LayoutDeviceRect borderRect = LayoutDeviceRect::FromUnknownRect(NSRectToRect(param->mBorderRect + aPt,
                                                                                param->mAppUnitsPerDevPixel));
-  wr::LayoutRect transformedRect = aSc.ToRelativeLayoutRect(borderRect);
+  wr::LayoutRect roundedRect = wr::ToRoundedLayoutRect(borderRect);
   wr::BorderSide wrSide[4];
   NS_FOR_CSS_SIDES(i) {
     wrSide[i] = wr::ToBorderSide(ToDeviceColor(param->mBorderColor), NS_STYLE_BORDER_STYLE_NONE);
   }
   wrSide[eSideTop] = wr::ToBorderSide(ToDeviceColor(param->mBorderColor), param->mBorderStyle);
 
-  wr::BorderRadius borderRadii = wr::ToBorderRadius( {0, 0}, {0, 0}, {0, 0}, {0, 0} );
+  wr::BorderRadius borderRadii = wr::EmptyBorderRadius();
 
   // All border style is set to none except top side. So setting the widths of
   // each side to height of rect is fine.
-  wr::BorderWidths borderWidths = wr::ToBorderWidths(transformedRect.size.height,
-                                                     transformedRect.size.height,
-                                                     transformedRect.size.height,
-                                                     transformedRect.size.height);
-  transformedRect.size.height *= 2.0f;
+  wr::BorderWidths borderWidths = wr::ToBorderWidths(roundedRect.size.height,
+                                                     roundedRect.size.height,
+                                                     roundedRect.size.height,
+                                                     roundedRect.size.height);
   Range<const wr::BorderSide> wrsides(wrSide, 4);
-  aBuilder.PushBorder(transformedRect,
-                      transformedRect,
+  aBuilder.PushBorder(roundedRect,
+                      roundedRect,
+                      param->mBackfaceIsVisible,
                       borderWidths,
                       wrsides,
                       borderRadii);
@@ -7818,8 +7901,8 @@ BCPaintBorderIterator::AccumulateOrDoActionInlineDirSegment(BCPaintBorderAction&
           mInlineSeg.CreateWebRenderCommands(*this,
                                              aAction.mCreateWebRenderCommandsData.mBuilder,
                                              aAction.mCreateWebRenderCommandsData.mSc,
-                                             aAction.mCreateWebRenderCommandsData.mParentCommands,
-                                             aAction.mCreateWebRenderCommandsData.mOffsetToReferenceFrame);
+                                             aAction.mCreateWebRenderCommandsData.mOffsetToReferenceFrame,
+                                             aAction.mCreateWebRenderCommandsData.mBevelBorders);
         }
       }
       mInlineSeg.AdvanceOffsetI();
@@ -7871,8 +7954,8 @@ BCPaintBorderIterator::AccumulateOrDoActionBlockDirSegment(BCPaintBorderAction& 
                                               inlineSegBSize,
                                               aAction.mCreateWebRenderCommandsData.mBuilder,
                                               aAction.mCreateWebRenderCommandsData.mSc,
-                                              aAction.mCreateWebRenderCommandsData.mParentCommands,
-                                              aAction.mCreateWebRenderCommandsData.mOffsetToReferenceFrame);
+                                              aAction.mCreateWebRenderCommandsData.mOffsetToReferenceFrame,
+                                              aAction.mCreateWebRenderCommandsData.mBevelBorders);
         }
       }
       blockDirSeg.AdvanceOffsetB();
@@ -7946,13 +8029,61 @@ nsTableFrame::PaintBCBorders(DrawTarget& aDrawTarget, const nsRect& aDirtyRect)
 void
 nsTableFrame::CreateWebRenderCommandsForBCBorders(wr::DisplayListBuilder& aBuilder,
                                                   const mozilla::layers::StackingContextHelper& aSc,
-                                                  nsTArray<layers::WebRenderParentCommand>& aParentCommands,
+                                                  const nsRect& aVisibleRect,
                                                   const nsPoint& aOffsetToReferenceFrame)
 {
-  BCPaintBorderAction action(aBuilder, aSc, aParentCommands, aOffsetToReferenceFrame);
-  // We always draw whole table border for webrender. Passing the table rect as
+  BCPaintBorderAction action(aBuilder, aSc, aOffsetToReferenceFrame);
+  // We always draw whole table border for webrender. Passing the visible rect
   // dirty rect.
-  IterateBCBorders(action, GetRect());
+  IterateBCBorders(action, aVisibleRect - aOffsetToReferenceFrame);
+
+  LayoutDeviceRect allBorderRect;
+  wr::BorderSide wrSide[4];
+  wr::BorderWidths wrWidths;
+  wr::BorderRadius borderRadii = wr::EmptyBorderRadius();
+  bool backfaceIsVisible = false;
+  NS_FOR_CSS_SIDES(side) {
+    auto param = action.mCreateWebRenderCommandsData.mBevelBorders[side];
+    LayoutDeviceRect borderRect;
+    nscolor borderColor = NS_RGBA(0, 0, 0, 255);
+    uint8_t borderStyle = NS_STYLE_BORDER_STYLE_NONE;
+    if (param.isSome()) {
+      borderRect = LayoutDeviceRect::FromUnknownRect(NSRectToRect(param->mBorderRect + aOffsetToReferenceFrame,
+                                                                  param->mAppUnitsPerDevPixel));
+      borderColor = param->mBorderColor;
+      borderStyle = param->mBorderStyle;
+      backfaceIsVisible |= param->mBackfaceIsVisible;
+    }
+
+    wr::LayoutRect roundedRect = wr::ToRoundedLayoutRect(borderRect);
+    allBorderRect = allBorderRect.Union(borderRect);
+    wrSide[side] = wr::ToBorderSide(ToDeviceColor(borderColor), borderStyle);
+    switch (side) {
+      case eSideTop:
+        wrWidths.top = roundedRect.size.height;
+        break;
+      case eSideBottom:
+        wrWidths.bottom = roundedRect.size.height;
+        break;
+      case eSideLeft:
+        wrWidths.left = roundedRect.size.width;
+        break;
+      case eSideRight:
+        wrWidths.right = roundedRect.size.width;
+        break;
+    }
+  }
+
+  if (!allBorderRect.IsEmpty()) {
+    Range<const wr::BorderSide> wrsides(wrSide, 4);
+    wr::LayoutRect allRoundedRect = wr::ToRoundedLayoutRect(allBorderRect);
+    aBuilder.PushBorder(allRoundedRect,
+                        allRoundedRect,
+                        backfaceIsVisible,
+                        wrWidths,
+                        wrsides,
+                        borderRadii);
+  }
 }
 
 bool
@@ -8017,8 +8148,6 @@ nsTableFrame::InvalidateTableFrame(nsIFrame* aFrame,
              aOrigVisualOverflow.Size() != visualOverflow.Size()){
     aFrame->InvalidateFrameWithRect(aOrigVisualOverflow);
     aFrame->InvalidateFrame();
-    parent->InvalidateFrameWithRect(aOrigRect);
-    parent->InvalidateFrame();
   }
 }
 
@@ -8026,7 +8155,7 @@ void
 nsTableFrame::AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult)
 {
   nsIFrame* wrapper = GetParent();
-  MOZ_ASSERT(wrapper->StyleContext()->GetPseudo() ==
+  MOZ_ASSERT(wrapper->Style()->GetPseudo() ==
                nsCSSAnonBoxes::tableWrapper,
              "What happened to our parent?");
   aResult.AppendElement(
@@ -8039,13 +8168,13 @@ nsTableFrame::UpdateStyleOfOwnedAnonBoxesForTableWrapper(
   nsIFrame* aWrapperFrame,
   ServoRestyleState& aRestyleState)
 {
-  MOZ_ASSERT(aWrapperFrame->StyleContext()->GetPseudo() ==
+  MOZ_ASSERT(aWrapperFrame->Style()->GetPseudo() ==
                nsCSSAnonBoxes::tableWrapper,
              "What happened to our parent?");
 
-  RefPtr<ServoStyleContext> newContext =
+  RefPtr<ComputedStyle> newStyle =
     aRestyleState.StyleSet().ResolveInheritingAnonymousBoxStyle(
-      nsCSSAnonBoxes::tableWrapper, aOwningFrame->StyleContext()->AsServo());
+      nsCSSAnonBoxes::tableWrapper, aOwningFrame->Style());
 
   // Figure out whether we have an actual change.  It's important that we do
   // this, even though all the wrapper's changes are due to properties it
@@ -8060,18 +8189,16 @@ nsTableFrame::UpdateStyleOfOwnedAnonBoxesForTableWrapper(
   // NOTE(emilio): We can't use the ChangesHandledFor optimization (and we
   // assert against that), because the table wrapper is up in the frame tree
   // compared to the owner frame.
-  uint32_t equalStructs, samePointerStructs; // Not used, actually.
-  nsChangeHint wrapperHint = aWrapperFrame->StyleContext()->CalcStyleDifference(
-    newContext,
-    &equalStructs,
-    &samePointerStructs);
+  uint32_t equalStructs; // Not used, actually.
+  nsChangeHint wrapperHint =
+    aWrapperFrame->Style()->CalcStyleDifference(newStyle, &equalStructs);
 
-  // CalcStyleDifference will handle caching structs on the new style context,
+  // CalcStyleDifference will handle caching structs on the new ComputedStyle,
   // but only if we're not on a style worker thread.
   MOZ_ASSERT(!ServoStyleSet::IsInServoTraversal(),
              "if we can get in here from style worker threads, then we need "
              "a ResolveSameStructsAs call to ensure structs are cached on "
-             "aNewStyleContext");
+             "aNewComputedStyle");
 
   if (wrapperHint) {
     aRestyleState.ChangeList().AppendChange(
@@ -8079,7 +8206,7 @@ nsTableFrame::UpdateStyleOfOwnedAnonBoxesForTableWrapper(
   }
 
   for (nsIFrame* cur = aWrapperFrame; cur; cur = cur->GetNextContinuation()) {
-    cur->SetStyleContext(newContext);
+    cur->SetComputedStyle(newStyle);
   }
 
   MOZ_ASSERT(!(aWrapperFrame->GetStateBits() & NS_FRAME_OWNS_ANON_BOXES),

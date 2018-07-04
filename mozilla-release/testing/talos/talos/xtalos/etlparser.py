@@ -3,17 +3,18 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+from __future__ import absolute_import, print_function
 
 import csv
-import re
-import os
-import sys
-import xtalos
-import subprocess
 import json
-import mozfile
+import os
+import re
 import shutil
+import subprocess
+import sys
 
+import mozfile
+import xtalos
 
 EVENTNAME_INDEX = 0
 PROCESS_INDEX = 2
@@ -27,6 +28,18 @@ NUMBYTES_COL = "NumBytes"
 
 CEVT_WINDOWS_RESTORED = "{917b96b1-ecad-4dab-a760-8d49027748ae}"
 CEVT_XPCOM_SHUTDOWN = "{26d1e091-0ae7-4f49-a554-4214445c505c}"
+NAME_SUBSTITUTIONS = [
+    # Careful with your regex!
+    # Substitution happens after combinations like \t \s \n ... are replaced
+    # with their real representations. So, prepend them with extra backslash.
+    # Read more: https://docs.python.org/2.7/library/re.html#re.sub
+    (re.compile(r'{\w{8}-\w{4}-\w{4}-\w{4}-\w{12}}'), '{uuid}'),
+    (re.compile(r'talos\\tests\\tp5n\\.*'), r'talos\\tests\{tp5n_files}'),
+    (re.compile(r'nvidia corporation\\3d vision\\.*'), '{nvidia_3d_vision}'),
+    (re.compile(r'cltbld\.t-w732-ix-\d+\.\d+'), '{cltbld}'),
+    (re.compile(r'venv\\lib\\site-packages\\pip\\_vendor\\.*'),
+     r'venv\lib\\site-packages\\{pip_vendor}'),
+]
 stages = ["startup", "normal", "shutdown"]
 net_events = {
     "TcpDataTransferReceive": "recv",
@@ -274,6 +287,7 @@ def etlparser(xperf_path, etl_filename, processID, approot=None,
               configFile=None, outputFile=None, whitelist_file=None,
               error_filename=None, all_stages=False, all_threads=False,
               debug=False):
+    global NAME_SUBSTITUTIONS
 
     # setup output file
     if outputFile:
@@ -363,19 +377,19 @@ def etlparser(xperf_path, etl_filename, processID, approot=None,
 
     # We still like to have the outputfile to record the raw data, now
     # filter out acceptable files/ranges
-    filename = None
+    whitelist_path = None
     wl_temp = {}
     dirname = os.path.dirname(__file__)
     if os.path.exists(os.path.join(dirname, 'xperf_whitelist.json')):
-        filename = os.path.join(dirname, 'xperf_whitelist.json')
+        whitelist_path = os.path.join(dirname, 'xperf_whitelist.json')
     elif os.path.exists(os.path.join(dirname, 'xtalos')) and \
             os.path.exists(os.path.join(dirname, 'xtalos',
                                         'xperf_whitelist.json')):
-        filename = os.path.join(dirname, 'xtalos', 'xperf_whitelist.json')
+        whitelist_path = os.path.join(dirname, 'xtalos', 'xperf_whitelist.json')
 
     wl_temp = {}
-    if filename:
-        with open(filename, 'r') as fHandle:
+    if whitelist_path:
+        with open(whitelist_path, 'r') as fHandle:
             wl_temp = json.load(fHandle)
 
     # Approot is the full path where the application is located at
@@ -397,7 +411,7 @@ def etlparser(xperf_path, etl_filename, processID, approot=None,
 
     errors = []
     for row in filekeys:
-        filename = row[0]
+        filename = original_filename = row[0]
         filename = filename.lower()
         # take care of 'program files (x86)' matching 'program files'
         filename = filename.replace(" (x86)", '')
@@ -418,6 +432,9 @@ def etlparser(xperf_path, etl_filename, processID, approot=None,
         parts = filename.split('refetch')
         if len(parts) >= 2:
             filename = "%srefetch\\{prefetch}.pf" % parts[0]
+
+        for pattern, substitution in NAME_SUBSTITUTIONS:
+            filename = re.sub(pattern, substitution, filename)
 
         if filename in wl:
             if 'ignore' in wl[filename] and wl[filename]['ignore']:
@@ -457,10 +474,11 @@ def etlparser(xperf_path, etl_filename, processID, approot=None,
 #                                            files[row]['DiskWriteCount']),
 #                                 wl[filename]['maxcount']))
         else:
-            errors.append("File '%s' was accessed and we were not expecting"
+            errors.append("File '%s' (normalized from '%s') was accessed and we were not expecting"
                           " it.  DiskReadCount: %s, DiskWriteCount: %s,"
                           " DiskReadBytes: %s, DiskWriteBytes: %s"
                           % (filename,
+                             original_filename,
                              files[row]['DiskReadCount'],
                              files[row]['DiskWriteCount'],
                              files[row]['DiskReadBytes'],

@@ -3,30 +3,19 @@
 
 // Tests the bookmark repair requestor and responder end-to-end (ie, without
 // many mocks)
-Cu.import("resource://gre/modules/Log.jsm");
-Cu.import("resource://gre/modules/osfile.jsm");
-Cu.import("resource://services-sync/bookmark_repair.js");
-Cu.import("resource://services-sync/constants.js");
-Cu.import("resource://services-sync/doctor.js");
-Cu.import("resource://services-sync/service.js");
-Cu.import("resource://services-sync/engines/clients.js");
-Cu.import("resource://services-sync/engines/bookmarks.js");
-Cu.import("resource://testing-common/services/sync/utils.js");
-
-initTestLogging("Trace");
-Log.repository.getLogger("Sync.Engine.Bookmarks").level = Log.Level.Trace
-Log.repository.getLogger("Sync.Engine.Clients").level = Log.Level.Trace
-Log.repository.getLogger("Sqlite").level = Log.Level.Info; // less noisy
-
-const LAST_BOOKMARK_SYNC_PREFS = [
-  "bookmarks.lastSync",
-  "bookmarks.lastSyncLocal",
-];
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/PlacesSyncUtils.jsm");
+ChromeUtils.import("resource://services-sync/bookmark_repair.js");
+ChromeUtils.import("resource://services-sync/constants.js");
+ChromeUtils.import("resource://services-sync/doctor.js");
+ChromeUtils.import("resource://services-sync/service.js");
+ChromeUtils.import("resource://services-sync/engines/clients.js");
+ChromeUtils.import("resource://services-sync/engines/bookmarks.js");
 
 const BOOKMARK_REPAIR_STATE_PREFS = [
   "client.GUID",
   "doctor.lastRepairAdvance",
-  ...LAST_BOOKMARK_SYNC_PREFS,
   ...Object.values(BookmarkRepairRequestor.PREF).map(name =>
     `repairs.bookmarks.${name}`
   ),
@@ -37,10 +26,14 @@ let bookmarksEngine;
 var recordedEvents = [];
 
 add_task(async function setup() {
+  await Service.engineManager.unregister("bookmarks");
+  await Service.engineManager.register(BufferedBookmarksEngine);
+
   clientsEngine = Service.clientsEngine;
+  clientsEngine.ignoreLastModifiedOnProcessCommands = true;
   bookmarksEngine = Service.engineManager.get("bookmarks");
 
-  generateNewKeys(Service.collectionKeys);
+  await generateNewKeys(Service.collectionKeys);
 
   Service.recordTelemetryEvent = (object, method, value, extra = undefined) => {
     recordedEvents.push({ object, method, value, extra });
@@ -48,7 +41,9 @@ add_task(async function setup() {
 });
 
 function checkRecordedEvents(expected, message) {
-  deepEqual(recordedEvents, expected, message);
+  // Ignore event telemetry from the merger.
+  let repairEvents = recordedEvents.filter(event => event.object != "mirror");
+  deepEqual(repairEvents, expected, message);
   // and clear the list so future checks are easier to write.
   recordedEvents = [];
 }
@@ -82,6 +77,7 @@ async function promiseValidationDone(expected) {
 
 async function cleanup(server) {
   await bookmarksEngine._store.wipe();
+  await bookmarksEngine.resetClient();
   await clientsEngine._store.wipe();
   Svc.Prefs.resetBranch("");
   Service.recordManager.clearCache();
@@ -93,7 +89,7 @@ add_task(async function test_bookmark_repair_integration() {
 
   _("Ensure that a validation error triggers a repair request.");
 
-  let server = serverForFoo(bookmarksEngine);
+  let server = await serverForFoo(bookmarksEngine);
   await SyncTestingInfrastructure(server);
 
   let user = server.user("foo");
@@ -135,7 +131,16 @@ add_task(async function test_bookmark_repair_integration() {
     checkRecordedEvents([], "Should not start repair after first sync");
 
     _("Back up last sync timestamps for remote client");
-    let restoreRemoteLastBookmarkSync = backupPrefs(LAST_BOOKMARK_SYNC_PREFS);
+    let buf = await bookmarksEngine._store.ensureOpenMirror();
+    let metaRows = await buf.db.execute(`
+      SELECT key, value FROM meta`);
+    let metaInfos = [];
+    for (let row of metaRows) {
+      metaInfos.push({
+        key: row.getResultByName("key"),
+        value: row.getResultByName("value"),
+      });
+    }
 
     _(`Delete ${bookmarkInfo.guid} locally and on server`);
     // Now we will reach into the server and hard-delete the bookmark
@@ -145,8 +150,28 @@ add_task(async function test_bookmark_repair_integration() {
     await PlacesUtils.bookmarks.remove(bookmarkInfo.guid, {
       source: PlacesUtils.bookmarks.SOURCE_SYNC,
     });
-    deepEqual((await bookmarksEngine.pullNewChanges()), {},
+    deepEqual((await PlacesSyncUtils.bookmarks.pullChanges()), {},
       `Should not upload tombstone for ${bookmarkInfo.guid}`);
+
+    // Remove the bookmark from the mirror, too.
+    let itemRows = await buf.db.execute(`
+      SELECT guid, kind, title, urlId
+      FROM items
+      WHERE guid = :guid`,
+      { guid: bookmarkInfo.guid });
+    equal(itemRows.length, 1, `Bookmark ${
+      bookmarkInfo.guid} should exist in mirror`);
+    let bufInfos = [];
+    for (let row of itemRows) {
+      bufInfos.push({
+        guid: row.getResultByName("guid"),
+        kind: row.getResultByName("kind"),
+        title: row.getResultByName("title"),
+        urlId: row.getResultByName("urlId"),
+      });
+    }
+    await buf.db.execute(`DELETE FROM items WHERE guid = :guid`,
+                         { guid: bookmarkInfo.guid });
 
     // sync again - we should have a few problems...
     _("Sync again to trigger repair");
@@ -200,6 +225,7 @@ add_task(async function test_bookmark_repair_integration() {
     // so now let's take over the role of that other client!
     _("Create new clients engine pretending to be remote client");
     let remoteClientsEngine = Service.clientsEngine = new ClientEngine(Service);
+    remoteClientsEngine.ignoreLastModifiedOnProcessCommands = true;
     await remoteClientsEngine.initialize();
     remoteClientsEngine.localID = remoteID;
 
@@ -208,7 +234,14 @@ add_task(async function test_bookmark_repair_integration() {
     // repair instead of the sync.
     bookmarkInfo.source = PlacesUtils.bookmarks.SOURCE_SYNC;
     await PlacesUtils.bookmarks.insert(bookmarkInfo);
-    restoreRemoteLastBookmarkSync();
+    await buf.db.execute(`
+      INSERT INTO items(guid, urlId, kind, title)
+      VALUES(:guid, :urlId, :kind, :title)`,
+      bufInfos);
+    await buf.db.execute(`
+      REPLACE INTO meta(key, value)
+      VALUES(:key, :value)`,
+      metaInfos);
 
     _("Sync as remote client");
     await Service.sync();
@@ -267,6 +300,12 @@ add_task(async function test_bookmark_repair_integration() {
     await PlacesUtils.bookmarks.remove(bookmarkInfo.guid, {
       source: PlacesUtils.bookmarks.SOURCE_SYNC,
     });
+    await buf.db.execute(`DELETE FROM items WHERE guid = :guid`,
+                         { guid: bookmarkInfo.guid });
+    await buf.db.execute(`
+      REPLACE INTO meta(key, value)
+      VALUES(:key, :value)`,
+      metaInfos);
     restoreInitialRepairState();
     ok(Services.prefs.prefHasUserValue("services.sync.repairs.bookmarks.state"),
       "Initial client should still be repairing");
@@ -275,7 +314,8 @@ add_task(async function test_bookmark_repair_integration() {
     let revalidationPromise = promiseValidationDone([]);
     await Service.sync();
     let restoredBookmarkInfo = await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid);
-    ok(restoredBookmarkInfo, "Missing bookmark should be downloaded to initial client");
+    ok(restoredBookmarkInfo, `Missing bookmark ${
+      bookmarkInfo.guid} should be downloaded to initial client`);
     checkRecordedEvents([{
       object: "processcommand",
       method: "repairResponse",
@@ -307,7 +347,8 @@ add_task(async function test_bookmark_repair_integration() {
   } finally {
     await cleanup(server);
     clientsEngine = Service.clientsEngine = new ClientEngine(Service);
-    clientsEngine.initialize();
+    clientsEngine.ignoreLastModifiedOnProcessCommands = true;
+    await clientsEngine.initialize();
   }
 });
 
@@ -316,7 +357,7 @@ add_task(async function test_repair_client_missing() {
 
   _("Ensure that a record missing from the client only will get re-downloaded from the server");
 
-  let server = serverForFoo(bookmarksEngine);
+  let server = await serverForFoo(bookmarksEngine);
   await SyncTestingInfrastructure(server);
 
   let remoteID = Utils.makeGUID();
@@ -345,7 +386,7 @@ add_task(async function test_repair_client_missing() {
     _("Syncing.");
     await Service.sync();
     // should have 2 clients
-    equal(clientsEngine.stats.numClients, 2)
+    equal(clientsEngine.stats.numClients, 2);
     await validationPromise;
 
     // Delete the bookmark localy, but cheat by telling places that Sync did
@@ -353,10 +394,15 @@ add_task(async function test_repair_client_missing() {
     await PlacesUtils.bookmarks.remove(bookmarkInfo.guid, {
       source: PlacesUtils.bookmarks.SOURCE_SYNC,
     });
-    // sanity check we aren't going to sync this removal.
-    do_check_empty((await bookmarksEngine.pullNewChanges()));
-    // sanity check that the bookmark is not there anymore
-    do_check_false(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid));
+    // Delete the bookmark from the mirror, too.
+    let buf = await bookmarksEngine._store.ensureOpenMirror();
+    await buf.db.execute(`DELETE FROM items WHERE guid = :guid`,
+                         { guid: bookmarkInfo.guid });
+
+    // Ensure we won't upload a tombstone for the removed bookmark.
+    Assert.deepEqual((await PlacesSyncUtils.bookmarks.pullChanges()), {});
+    // Ensure the bookmark no longer exists in Places.
+    Assert.equal(null, await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid));
 
     // sync again - we should have a few problems...
     _("Syncing again.");
@@ -374,7 +420,7 @@ add_task(async function test_repair_client_missing() {
     await Service.sync();
 
     // And we got our bookmark back
-    do_check_true(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid));
+    Assert.ok(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid));
   } finally {
     await cleanup(server);
   }
@@ -385,7 +431,7 @@ add_task(async function test_repair_server_missing() {
 
   _("Ensure that a record missing from the server only will get re-upload from the client");
 
-  let server = serverForFoo(bookmarksEngine);
+  let server = await serverForFoo(bookmarksEngine);
   await SyncTestingInfrastructure(server);
 
   let user = server.user("foo");
@@ -416,7 +462,7 @@ add_task(async function test_repair_server_missing() {
     _("Syncing.");
     await Service.sync();
     // should have 2 clients
-    equal(clientsEngine.stats.numClients, 2)
+    equal(clientsEngine.stats.numClients, 2);
     await validationPromise;
 
     // Now we will reach into the server and hard-delete the bookmark
@@ -438,7 +484,7 @@ add_task(async function test_repair_server_missing() {
     await Service.sync();
 
     // And the server got our bookmark back
-    do_check_true(user.collection("bookmarks").wbo(bookmarkInfo.guid));
+    Assert.ok(user.collection("bookmarks").wbo(bookmarkInfo.guid));
   } finally {
     await cleanup(server);
   }
@@ -449,7 +495,7 @@ add_task(async function test_repair_server_deleted() {
 
   _("Ensure that a record marked as deleted on the server but present on the client will get deleted on the client");
 
-  let server = serverForFoo(bookmarksEngine);
+  let server = await serverForFoo(bookmarksEngine);
   await SyncTestingInfrastructure(server);
 
   let remoteID = Utils.makeGUID();
@@ -478,21 +524,23 @@ add_task(async function test_repair_server_deleted() {
     _("Syncing.");
     await Service.sync();
     // should have 2 clients
-    equal(clientsEngine.stats.numClients, 2)
+    equal(clientsEngine.stats.numClients, 2);
     await validationPromise;
 
     // Now we will reach into the server and create a tombstone for that bookmark
+    // but with a last-modified in the past - this way our sync isn't going to
+    // pick up the record.
+    _(`Adding server tombstone for ${bookmarkInfo.guid}`);
     server.insertWBO("foo", "bookmarks", new ServerWBO(bookmarkInfo.guid, encryptPayload({
       id: bookmarkInfo.guid,
       deleted: true,
-    }), Date.now() / 1000));
+    }), (Date.now() - 60000) / 1000));
 
     // sync again - we should have a few problems...
     _("Syncing again.");
     validationPromise = promiseValidationDone([
       {"name": "serverDeleted", "count": 1},
       {"name": "deletedChildren", "count": 1},
-      {"name": "orphans", "count": 1}
     ]);
     await Service.sync();
     await validationPromise;
@@ -504,7 +552,7 @@ add_task(async function test_repair_server_deleted() {
     await Service.sync();
 
     // And the client deleted our bookmark
-    do_check_true(!(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid)));
+    Assert.ok(!(await PlacesUtils.bookmarks.fetch(bookmarkInfo.guid)));
   } finally {
     await cleanup(server);
   }

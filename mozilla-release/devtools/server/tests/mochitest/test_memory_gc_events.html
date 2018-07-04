@@ -15,28 +15,28 @@ Bug 1137527 - Test receiving GC events from the memory actor.
 <script>
 "use strict";
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
 
-  let event = require("sdk/event/core");
+  let EventEmitter = require("devtools/shared/event-emitter");
 
-  Task.spawn(function* () {
-    let { memory, client } = yield startServerAndGetSelectedTabMemory();
-    yield memory.attach();
+  (async function() {
+    let { memory, client } = await startServerAndGetSelectedTabMemory();
+    await memory.attach();
 
     let gotGcEvent = new Promise(resolve => {
-      event.on(memory, "garbage-collection", gcData => {
+      EventEmitter.on(memory, "garbage-collection", gcData => {
         ok(gcData, "Got GC data");
         resolve();
       });
     });
 
     memory.forceGarbageCollection();
-    yield gotGcEvent;
+    await gotGcEvent;
 
-    yield memory.detach();
+    await memory.detach();
     destroyServerAndFinish(client);
-  });
+  })();
 };
 </script>
 </pre>

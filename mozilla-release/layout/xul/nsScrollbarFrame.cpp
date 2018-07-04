@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,13 +14,14 @@
 #include "nsScrollbarFrame.h"
 #include "nsSliderFrame.h"
 #include "nsScrollbarButtonFrame.h"
+#include "nsContentCreatorFunctions.h"
 #include "nsGkAtoms.h"
 #include "nsIScrollableFrame.h"
 #include "nsIScrollbarMediator.h"
 #include "mozilla/LookAndFeel.h"
 #include "nsThemeConstants.h"
 #include "nsIContent.h"
-#include "nsIDOMMutationEvent.h"
+#include "mozilla/dom/MutationEventBinding.h"
 
 using namespace mozilla;
 
@@ -29,15 +31,16 @@ using namespace mozilla;
 // Creates a new scrollbar frame and returns it
 //
 nsIFrame*
-NS_NewScrollbarFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewScrollbarFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsScrollbarFrame(aContext);
+  return new (aPresShell) nsScrollbarFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsScrollbarFrame)
 
 NS_QUERYFRAME_HEAD(nsScrollbarFrame)
   NS_QUERYFRAME_ENTRY(nsScrollbarFrame)
+  NS_QUERYFRAME_ENTRY(nsIAnonymousContentCreator)
 NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
 
 void
@@ -51,7 +54,17 @@ nsScrollbarFrame::Init(nsIContent*       aContent,
   // slider.  Any reflow inside the scrollbar frame will be a reflow to
   // move the slider and will thus not change anything outside of the
   // scrollbar or change the size of the scrollbar frame.
-  mState |= NS_FRAME_REFLOW_ROOT;
+  AddStateBits(NS_FRAME_REFLOW_ROOT);
+}
+
+void nsScrollbarFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
+{
+  aPostDestroyData.AddAnonymousContent(mUpTopButton.forget());
+  aPostDestroyData.AddAnonymousContent(mDownTopButton.forget());
+  aPostDestroyData.AddAnonymousContent(mSlider.forget());
+  aPostDestroyData.AddAnonymousContent(mUpBottomButton.forget());
+  aPostDestroyData.AddAnonymousContent(mDownBottomButton.forget());
+  nsBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 void
@@ -60,6 +73,8 @@ nsScrollbarFrame::Reflow(nsPresContext*          aPresContext,
                          const ReflowInput& aReflowInput,
                          nsReflowStatus&          aStatus)
 {
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
   nsBoxFrame::Reflow(aPresContext, aDesiredSize, aReflowInput, aStatus);
 
   // nsGfxScrollFrame may have told us to shrink to nothing. If so, make sure our
@@ -74,11 +89,14 @@ nsScrollbarFrame::Reflow(nsPresContext*          aPresContext,
 
 nsresult
 nsScrollbarFrame::AttributeChanged(int32_t aNameSpaceID,
-                                   nsIAtom* aAttribute,
+                                   nsAtom* aAttribute,
                                    int32_t aModType)
 {
   nsresult rv = nsBoxFrame::AttributeChanged(aNameSpaceID, aAttribute,
                                              aModType);
+
+  // Update value in our children
+  UpdateChildrenAttributeValue(aAttribute, true);
 
   // if the current position changes, notify any nsGfxScrollFrame
   // parent we may have
@@ -152,7 +170,7 @@ nsScrollbarFrame::GetScrollbarMediator()
   }
   sbm = do_QueryFrame(f);
   if (f && !sbm) {
-    f = f->PresContext()->PresShell()->GetRootScrollFrame();
+    f = f->PresShell()->GetRootScrollFrame();
     if (f && f->GetContent() == mScrollbarMediator) {
       return do_QueryFrame(f);
     }
@@ -169,15 +187,14 @@ nsScrollbarFrame::GetXULMargin(nsMargin& aMargin)
   if (LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars) != 0) {
     nsPresContext* presContext = PresContext();
     nsITheme* theme = presContext->GetTheme();
-    if (theme) {
+    if (theme && theme->ThemeSupportsWidget(presContext, this, NS_THEME_SCROLLBAR)) {
       LayoutDeviceIntSize size;
       bool isOverridable;
       theme->GetMinimumWidgetSize(presContext, this, NS_THEME_SCROLLBAR, &size,
                                   &isOverridable);
       if (IsXULHorizontal()) {
         aMargin.top = -presContext->DevPixelsToAppUnits(size.height);
-      }
-      else {
+      } else {
         aMargin.left = -presContext->DevPixelsToAppUnits(size.width);
       }
       rv = NS_OK;
@@ -235,7 +252,7 @@ int32_t
 nsScrollbarFrame::MoveToNewPosition()
 {
   // get the scrollbar's content node
-  nsCOMPtr<nsIContent> content = GetContent();
+  RefPtr<Element> content = GetContent()->AsElement();
 
   // get the current pos
   int32_t curpos = nsSliderFrame::GetCurrentPosition(content);
@@ -265,7 +282,8 @@ nsScrollbarFrame::MoveToNewPosition()
   }
   content->SetAttr(kNameSpaceID_None, nsGkAtoms::curpos, curposStr, false);
   // notify the nsScrollbarFrame of the change
-  AttributeChanged(kNameSpaceID_None, nsGkAtoms::curpos, nsIDOMMutationEvent::MODIFICATION);
+  AttributeChanged(kNameSpaceID_None, nsGkAtoms::curpos,
+                   dom::MutationEventBinding::MODIFICATION);
   if (!weakFrame.IsAlive()) {
     return curpos;
   }
@@ -277,7 +295,8 @@ nsScrollbarFrame::MoveToNewPosition()
       nsIFrame* f = childFrames.get();
       nsSliderFrame* sliderFrame = do_QueryFrame(f);
       if (sliderFrame) {
-        sliderFrame->AttributeChanged(kNameSpaceID_None, nsGkAtoms::curpos, nsIDOMMutationEvent::MODIFICATION);
+        sliderFrame->AttributeChanged(kNameSpaceID_None, nsGkAtoms::curpos,
+                                      dom::MutationEventBinding::MODIFICATION);
         if (!weakFrame.IsAlive()) {
           return curpos;
         }
@@ -286,4 +305,223 @@ nsScrollbarFrame::MoveToNewPosition()
   }
   content->UnsetAttr(kNameSpaceID_None, nsGkAtoms::smooth, false);
   return curpos;
+}
+
+nsresult
+nsScrollbarFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
+{
+  // <xul:scrollbarbutton sbattr="scrollbar-up-top" type="decrement" xbl:inherits="curpos,maxpos,disabled"/>
+  // <xul:scrollbarbutton sbattr="scrollbar-down-top" type="increment" xbl:inherits="curpos,maxpos,disabled"/>
+  // <xul:slider flex="1" xbl:inherits="disabled,curpos,maxpos,pageincrement,increment,orient">
+  //   <xul:thumb sbattr="scrollbar-thumb" xbl:inherits="orient,collapsed=disabled"
+  //              align="center" pack="center"/>
+  // </xul:slider>
+  // <xul:scrollbarbutton sbattr="scrollbar-up-bottom" type="decrement" xbl:inherits="curpos,maxpos,disabled"/>
+  // <xul:scrollbarbutton sbattr="scrollbar-down-bottom" type="increment" xbl:inherits="curpos,maxpos,disabled"/>
+
+  nsNodeInfoManager* nodeInfoManager = mContent->NodeInfo()->NodeInfoManager();
+
+  Element* el(GetContent()->AsElement());
+
+  // If there are children already in the node, don't create any anonymous content
+  // (this only apply to crashtests/369038-1.xhtml)
+  if (el->HasChildren()) {
+    return NS_OK;
+  }
+
+  nsAutoString orient;
+  el->GetAttr(kNameSpaceID_None, nsGkAtoms::orient, orient);
+
+  NS_TrustedNewXULElement(getter_AddRefs(mUpTopButton),
+    nodeInfoManager->GetNodeInfo(nsGkAtoms::scrollbarbutton, nullptr,
+                                 kNameSpaceID_XUL,
+                                 nsINode::ELEMENT_NODE)
+  );
+  mUpTopButton->SetAttr(kNameSpaceID_None, nsGkAtoms::sbattr,
+                        NS_LITERAL_STRING("scrollbar-up-top"), false);
+  mUpTopButton->SetAttr(kNameSpaceID_None, nsGkAtoms::type,
+                        NS_LITERAL_STRING("decrement"), false);
+
+  if (!aElements.AppendElement(mUpTopButton)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  NS_TrustedNewXULElement(getter_AddRefs(mDownTopButton),
+    nodeInfoManager->GetNodeInfo(nsGkAtoms::scrollbarbutton, nullptr,
+                                 kNameSpaceID_XUL,
+                                 nsINode::ELEMENT_NODE)
+  );
+  mDownTopButton->SetAttr(kNameSpaceID_None, nsGkAtoms::sbattr,
+                          NS_LITERAL_STRING("scrollbar-down-top"), false);
+  mDownTopButton->SetAttr(kNameSpaceID_None, nsGkAtoms::type,
+                          NS_LITERAL_STRING("increment"), false);
+
+  if (!aElements.AppendElement(mDownTopButton)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  NS_TrustedNewXULElement(getter_AddRefs(mSlider),
+    nodeInfoManager->GetNodeInfo(nsGkAtoms::slider, nullptr,
+                                 kNameSpaceID_XUL,
+                                 nsINode::ELEMENT_NODE)
+  );
+  mSlider->SetAttr(kNameSpaceID_None, nsGkAtoms::orient, orient, false);
+  mSlider->SetAttr(kNameSpaceID_None, nsGkAtoms::flex,
+                   NS_LITERAL_STRING("1"), false);
+
+  if (!aElements.AppendElement(mSlider)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  NS_TrustedNewXULElement(getter_AddRefs(mThumb),
+    nodeInfoManager->GetNodeInfo(nsGkAtoms::thumb, nullptr,
+                                 kNameSpaceID_XUL,
+                                 nsINode::ELEMENT_NODE)
+  );
+  mThumb->SetAttr(kNameSpaceID_None, nsGkAtoms::sbattr,
+                  NS_LITERAL_STRING("scrollbar-thumb"), false);
+  mThumb->SetAttr(kNameSpaceID_None, nsGkAtoms::orient, orient, false);
+  mThumb->SetAttr(kNameSpaceID_None, nsGkAtoms::align,
+                  NS_LITERAL_STRING("center"), false);
+  mThumb->SetAttr(kNameSpaceID_None, nsGkAtoms::pack,
+                  NS_LITERAL_STRING("center"), false);
+  mSlider->AppendChildTo(mThumb, false);
+
+  NS_TrustedNewXULElement(getter_AddRefs(mUpBottomButton),
+    nodeInfoManager->GetNodeInfo(nsGkAtoms::scrollbarbutton, nullptr,
+                                 kNameSpaceID_XUL,
+                                 nsINode::ELEMENT_NODE)
+  );
+  mUpBottomButton->SetAttr(kNameSpaceID_None, nsGkAtoms::type,
+                           NS_LITERAL_STRING("decrement"), false);
+  mUpBottomButton->SetAttr(kNameSpaceID_None, nsGkAtoms::sbattr,
+                           NS_LITERAL_STRING("scrollbar-up-bottom"), false);
+
+  if (!aElements.AppendElement(mUpBottomButton)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  NS_TrustedNewXULElement(getter_AddRefs(mDownBottomButton),
+    nodeInfoManager->GetNodeInfo(nsGkAtoms::scrollbarbutton, nullptr,
+                                 kNameSpaceID_XUL,
+                                 nsINode::ELEMENT_NODE)
+  );
+  mDownBottomButton->SetAttr(kNameSpaceID_None, nsGkAtoms::sbattr,
+                             NS_LITERAL_STRING("scrollbar-down-bottom"), false);
+  mDownBottomButton->SetAttr(kNameSpaceID_None, nsGkAtoms::type,
+                             NS_LITERAL_STRING("increment"), false);
+
+  if (!aElements.AppendElement(mDownBottomButton)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  UpdateChildrenAttributeValue(nsGkAtoms::curpos, false);
+  UpdateChildrenAttributeValue(nsGkAtoms::maxpos, false);
+  UpdateChildrenAttributeValue(nsGkAtoms::disabled, false);
+  UpdateChildrenAttributeValue(nsGkAtoms::pageincrement, false);
+  UpdateChildrenAttributeValue(nsGkAtoms::increment, false);
+
+  return NS_OK;
+}
+
+void
+nsScrollbarFrame::UpdateChildrenAttributeValue(nsAtom* aAttribute, bool aNotify)
+{
+  Element* el(GetContent()->AsElement());
+
+  nsAutoString value;
+  el->GetAttr(kNameSpaceID_None, aAttribute, value);
+
+  if (!el->HasAttr(kNameSpaceID_None, aAttribute)) {
+    if (mUpTopButton) {
+      mUpTopButton->UnsetAttr(kNameSpaceID_None, aAttribute, aNotify);
+    }
+    if (mDownTopButton) {
+      mDownTopButton->UnsetAttr(kNameSpaceID_None, aAttribute, aNotify);
+    }
+    if (mSlider) {
+      mSlider->UnsetAttr(kNameSpaceID_None, aAttribute, aNotify);
+    }
+    if (mThumb && aAttribute == nsGkAtoms::disabled) {
+      mThumb->UnsetAttr(kNameSpaceID_None, nsGkAtoms::collapsed, aNotify);
+    }
+    if (mUpBottomButton) {
+      mUpBottomButton->UnsetAttr(kNameSpaceID_None, aAttribute, aNotify);
+    }
+    if (mDownBottomButton) {
+      mDownBottomButton->UnsetAttr(kNameSpaceID_None, aAttribute, aNotify);
+    }
+    return;
+  }
+
+  if (aAttribute == nsGkAtoms::curpos ||
+      aAttribute == nsGkAtoms::maxpos) {
+    if (mUpTopButton) {
+      mUpTopButton->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+    if (mDownTopButton) {
+      mDownTopButton->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+    if (mSlider) {
+      mSlider->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+    if (mUpBottomButton) {
+      mUpBottomButton->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+    if (mDownBottomButton) {
+      mDownBottomButton->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+  }
+  else if (aAttribute == nsGkAtoms::disabled) {
+    if (mUpTopButton) {
+      mUpTopButton->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+    if (mDownTopButton) {
+      mDownTopButton->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+    if (mSlider) {
+      mSlider->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+    // Set the value on "collapsed" attribute.
+    if (mThumb) {
+      mThumb->SetAttr(kNameSpaceID_None, nsGkAtoms::collapsed, value, aNotify);
+    }
+    if (mUpBottomButton) {
+      mUpBottomButton->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+    if (mDownBottomButton) {
+      mDownBottomButton->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+  }
+  else if (aAttribute == nsGkAtoms::pageincrement ||
+           aAttribute == nsGkAtoms::increment) {
+    if (mSlider) {
+      mSlider->SetAttr(kNameSpaceID_None, aAttribute, value, aNotify);
+    }
+  }
+}
+
+void
+nsScrollbarFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
+                                           uint32_t aFilter)
+{
+  if (mUpTopButton) {
+    aElements.AppendElement(mUpTopButton);
+  }
+
+  if (mDownTopButton) {
+    aElements.AppendElement(mDownTopButton);
+  }
+
+  if (mSlider) {
+    aElements.AppendElement(mSlider);
+  }
+
+  if (mUpBottomButton) {
+    aElements.AppendElement(mUpBottomButton);
+  }
+
+  if (mDownBottomButton) {
+    aElements.AppendElement(mDownBottomButton);
+  }
 }

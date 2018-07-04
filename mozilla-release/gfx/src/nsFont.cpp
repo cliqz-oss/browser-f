@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -41,31 +42,43 @@ nsFont::~nsFont()
 
 bool nsFont::Equals(const nsFont& aOther) const
 {
-  if ((style == aOther.style) &&
-      (systemFont == aOther.systemFont) &&
-      (weight == aOther.weight) &&
-      (stretch == aOther.stretch) &&
-      (size == aOther.size) &&
-      (sizeAdjust == aOther.sizeAdjust) &&
-      (fontlist == aOther.fontlist) &&
-      (kerning == aOther.kerning) &&
-      (synthesis == aOther.synthesis) &&
-      (fontFeatureSettings == aOther.fontFeatureSettings) &&
-      (fontVariationSettings == aOther.fontVariationSettings) &&
-      (languageOverride == aOther.languageOverride) &&
-      (variantAlternates == aOther.variantAlternates) &&
-      (variantCaps == aOther.variantCaps) &&
-      (variantEastAsian == aOther.variantEastAsian) &&
-      (variantLigatures == aOther.variantLigatures) &&
-      (variantNumeric == aOther.variantNumeric) &&
-      (variantPosition == aOther.variantPosition) &&
-      (variantWidth == aOther.variantWidth) &&
-      (alternateValues == aOther.alternateValues) &&
-      (featureValueLookup == aOther.featureValueLookup) &&
-      (smoothing == aOther.smoothing)) {
-    return true;
+  return CalcDifference(aOther) == MaxDifference::eNone;
+}
+
+nsFont::MaxDifference
+nsFont::CalcDifference(const nsFont& aOther) const
+{
+  if ((style != aOther.style) ||
+      (systemFont != aOther.systemFont) ||
+      (weight != aOther.weight) ||
+      (stretch != aOther.stretch) ||
+      (size != aOther.size) ||
+      (sizeAdjust != aOther.sizeAdjust) ||
+      (fontlist != aOther.fontlist) ||
+      (kerning != aOther.kerning) ||
+      (opticalSizing != aOther.opticalSizing) ||
+      (synthesis != aOther.synthesis) ||
+      (fontFeatureSettings != aOther.fontFeatureSettings) ||
+      (fontVariationSettings != aOther.fontVariationSettings) ||
+      (languageOverride != aOther.languageOverride) ||
+      (variantAlternates != aOther.variantAlternates) ||
+      (variantCaps != aOther.variantCaps) ||
+      (variantEastAsian != aOther.variantEastAsian) ||
+      (variantLigatures != aOther.variantLigatures) ||
+      (variantNumeric != aOther.variantNumeric) ||
+      (variantPosition != aOther.variantPosition) ||
+      (variantWidth != aOther.variantWidth) ||
+      (alternateValues != aOther.alternateValues) ||
+      (featureValueLookup != aOther.featureValueLookup)) {
+    return MaxDifference::eLayoutAffecting;
   }
-  return false;
+
+  if ((smoothing != aOther.smoothing) ||
+      (fontSmoothingBackgroundColor != aOther.fontSmoothingBackgroundColor)) {
+    return MaxDifference::eVisual;
+  }
+
+  return MaxDifference::eNone;
 }
 
 nsFont& nsFont::operator=(const nsFont& aOther) = default;
@@ -166,13 +179,15 @@ FontFeatureTagForVariantWidth(uint32_t aVariantWidth)
   }
 }
 
-void nsFont::AddFontFeaturesToStyle(gfxFontStyle *aStyle) const
+void nsFont::AddFontFeaturesToStyle(gfxFontStyle *aStyle,
+                                    bool aVertical) const
 {
   // add in font-variant features
   gfxFontFeature setting;
 
   // -- kerning
-  setting.mTag = TRUETYPE_TAG('k','e','r','n');
+  setting.mTag = aVertical ? TRUETYPE_TAG('v','k','r','n')
+                           : TRUETYPE_TAG('k','e','r','n');
   switch (kerning) {
     case NS_FONT_KERNING_NONE:
       setting.mValue = 0;
@@ -271,12 +286,30 @@ void nsFont::AddFontFeaturesToStyle(gfxFontStyle *aStyle) const
   if (smoothing == NS_FONT_SMOOTHING_GRAYSCALE) {
     aStyle->useGrayscaleAntialiasing = true;
   }
+
+  aStyle->fontSmoothingBackgroundColor = fontSmoothingBackgroundColor;
 }
 
 void nsFont::AddFontVariationsToStyle(gfxFontStyle *aStyle) const
 {
-  // TODO: add variation settings from specific CSS properties
-  // such as weight, width, optical-size
+  // If auto optical sizing is enabled, and if there's no 'opsz' axis in
+  // fontVariationSettings, then set the automatic value on the style.
+  class VariationTagComparator {
+  public:
+    bool Equals(const gfxFontVariation& aVariation, uint32_t aTag) const {
+      return aVariation.mTag == aTag;
+    }
+  };
+  const uint32_t kTagOpsz = TRUETYPE_TAG('o','p','s','z');
+  if (opticalSizing == NS_FONT_OPTICAL_SIZING_AUTO &&
+    !fontVariationSettings.Contains(kTagOpsz, VariationTagComparator())) {
+    gfxFontVariation opsz = {
+      kTagOpsz,
+      // size is in app units, but we want a floating-point px size
+      float(size) / float(AppUnitsPerCSSPixel())
+    };
+    aStyle->variationSettings.AppendElement(opsz);
+  }
 
   // Add in arbitrary values from font-variation-settings
   aStyle->variationSettings.AppendElements(fontVariationSettings);

@@ -7,14 +7,14 @@
  * after delayed init.
  */
 
-"use strict"
+"use strict";
 
-Cu.import("resource://gre/modules/Services.jsm", this);
-Cu.import("resource://gre/modules/TelemetryStorage.jsm", this);
-Cu.import("resource://gre/modules/TelemetryController.jsm", this);
-Cu.import("resource://gre/modules/TelemetrySend.jsm", this);
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-const {OS: {File, Path, Constants}} = Cu.import("resource://gre/modules/osfile.jsm", {});
+ChromeUtils.import("resource://gre/modules/Services.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryStorage.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetryController.jsm", this);
+ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", this);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const {OS: {File, Path, Constants}} = ChromeUtils.import("resource://gre/modules/osfile.jsm", {});
 
 // We increment TelemetryStorage's MAX_PING_FILE_AGE and
 // OVERDUE_PING_FILE_AGE by 1 minute so that our test pings exceed
@@ -85,7 +85,7 @@ var clearPings = async function(aPingIds) {
  * @param {Integer} aPendingQuota The new quota, in bytes.
  */
 function fakePendingPingsQuota(aPendingQuota) {
-  let storage = Cu.import("resource://gre/modules/TelemetryStorage.jsm", {});
+  let storage = ChromeUtils.import("resource://gre/modules/TelemetryStorage.jsm", {});
   storage.Policy.getPendingPingsQuota = () => aPendingQuota;
 }
 
@@ -106,7 +106,7 @@ function getSavePathForPingId(aPingId) {
  * @param aExpectedNum the number of pings we expect to receive.
  */
 function assertReceivedPings(aExpectedNum) {
-  do_check_eq(gSeenPings, aExpectedNum);
+  Assert.equal(gSeenPings, aExpectedNum);
 }
 
 /**
@@ -148,7 +148,6 @@ add_task(async function test_setup() {
   // Make sure we don't generate unexpected pings due to pref changes.
   await setEmptyPrefWatchlist();
 
-  Services.prefs.setBoolPref(TelemetryUtils.Preferences.TelemetryEnabled, true);
   Services.prefs.setCharPref(TelemetryUtils.Preferences.Server,
                               "http://localhost:" + PingServer.port);
 });

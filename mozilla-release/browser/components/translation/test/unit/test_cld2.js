@@ -373,8 +373,8 @@ const kTestPairs = [
   ["az", "AZERBAIJANI", kTeststr_version]   // 2014.01.31
 ];
 
-Components.utils.import("resource://gre/modules/Timer.jsm");
-let detectorModule = Components.utils.import("resource:///modules/translation/LanguageDetector.jsm", {});
+ChromeUtils.import("resource://gre/modules/Timer.jsm");
+let detectorModule = ChromeUtils.import("resource:///modules/translation/LanguageDetector.jsm", {});
 const LanguageDetector = detectorModule.LanguageDetector;
 
 function check_result(result, langCode, expected) {
@@ -405,7 +405,7 @@ function check_result(result, langCode, expected) {
 add_task(async function test_pairs() {
   for (let item of kTestPairs) {
     let params = [item[2],
-                  { text: item[2], tld: "com", language: item[0], encoding: "utf-8" }]
+                  { text: item[2], tld: "com", language: item[0], encoding: "utf-8" }];
 
     for (let [i, param] of params.entries()) {
       // For test items with different expected results when using the

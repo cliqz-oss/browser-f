@@ -14,6 +14,8 @@
 #include "jsapi.h"
 #include "js/RootingAPI.h"
 
+#include "nsCOMArray.h"
+#include "nsCycleCollectionParticipant.h"
 #include "nsIScriptError.h"
 #include "nsString.h"
 
@@ -53,6 +55,12 @@ protected:
   void
   InitializeOnMainThread();
 
+  void InitializationHelper(const nsAString& message,
+                            const nsAString& sourceLine, uint32_t lineNumber,
+                            uint32_t columnNumber, uint32_t flags,
+                            const nsACString& category,
+                            uint64_t aInnerWindowID);
+
   nsCOMArray<nsIScriptErrorNote> mNotes;
   nsString mMessage;
   nsString mMessageName;
@@ -87,14 +95,6 @@ public:
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(nsScriptErrorWithStack)
-
-  NS_IMETHOD Init(const nsAString& message,
-                  const nsAString& sourceName,
-                  const nsAString& sourceLine,
-                  uint32_t lineNumber,
-                  uint32_t columnNumber,
-                  uint32_t flags,
-                  const char* category) override;
 
   NS_IMETHOD GetStack(JS::MutableHandleValue) override;
   NS_IMETHOD ToString(nsACString& aResult) override;

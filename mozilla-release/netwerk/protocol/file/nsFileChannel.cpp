@@ -23,10 +23,13 @@
 #include "nsContentUtils.h"
 
 #include "nsIFileURL.h"
+#include "nsIURIMutator.h"
 #include "nsIFile.h"
 #include "nsIMIMEService.h"
 #include "prio.h"
 #include <algorithm>
+
+#include "mozilla/Unused.h"
 
 using namespace mozilla;
 using namespace mozilla::net;
@@ -168,7 +171,8 @@ nsFileCopyEvent::Dispatch(nsIRunnable *callback,
 
 class nsFileUploadContentStream : public nsBaseContentStream {
 public:
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(nsFileUploadContentStream,
+                                       nsBaseContentStream)
 
   nsFileUploadContentStream(bool nonBlocking,
                             nsIOutputStream *dest,
@@ -190,16 +194,13 @@ public:
                        uint32_t count, nsIEventTarget *target) override;
 
 private:
-  virtual ~nsFileUploadContentStream() {}
+  virtual ~nsFileUploadContentStream() = default;
 
   void OnCopyComplete();
 
   RefPtr<nsFileCopyEvent> mCopyEvent;
   nsCOMPtr<nsITransportEventSink> mSink;
 };
-
-NS_IMPL_ISUPPORTS_INHERITED0(nsFileUploadContentStream,
-                             nsBaseContentStream)
 
 NS_IMETHODIMP
 nsFileUploadContentStream::ReadSegments(nsWriteSegmentFun fun, void *closure,
@@ -303,7 +304,9 @@ nsFileChannel::Init()
     nsCOMPtr<nsIURL> targetURL = do_QueryInterface(targetURI);
     nsAutoCString queryString;
     if (origURL && targetURL && NS_SUCCEEDED(origURL->GetQuery(queryString))) {
-      targetURL->SetQuery(queryString);
+      Unused << NS_MutateURI(targetURI)
+                  .SetQuery(queryString)
+                  .Finalize(targetURI);
     }
 
     SetURI(targetURI);
@@ -314,10 +317,6 @@ nsFileChannel::Init()
   }
 
   return NS_OK;
-}
-
-nsFileChannel::~nsFileChannel()
-{
 }
 
 nsresult

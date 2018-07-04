@@ -58,7 +58,7 @@ AutoCompleteInput.prototype = {
           iid.equals(Ci.nsIAutoCompletePopup))
         return this;
 
-      throw Components.results.NS_ERROR_NO_INTERFACE;
+      throw Cr.NS_ERROR_NO_INTERFACE;
     }
   },
 
@@ -68,15 +68,15 @@ AutoCompleteInput.prototype = {
         iid.equals(Ci.nsIAutoCompleteInput))
       return this;
 
-    throw Components.results.NS_ERROR_NO_INTERFACE;
+    throw Cr.NS_ERROR_NO_INTERFACE;
   }
-}
+};
 
 add_task(async function test_autocomplete_non_english() {
   await PlacesTestUtils.addVisits(url);
 
-  var controller = Components.classes["@mozilla.org/autocomplete/controller;1"].
-                   getService(Components.interfaces.nsIAutoCompleteController);
+  var controller = Cc["@mozilla.org/autocomplete/controller;1"].
+                   getService(Ci.nsIAutoCompleteController);
 
   // Make an AutoCompleteInput that uses our searches
   // and confirms results on search complete
@@ -88,19 +88,19 @@ add_task(async function test_autocomplete_non_english() {
     var numSearchesStarted = 0;
     input.onSearchBegin = function() {
       numSearchesStarted++;
-      do_check_eq(numSearchesStarted, 1);
+      Assert.equal(numSearchesStarted, 1);
     };
 
     input.onSearchComplete = function() {
-      do_check_eq(numSearchesStarted, 1);
-      do_check_eq(controller.searchStatus,
-                  Ci.nsIAutoCompleteController.STATUS_COMPLETE_MATCH);
+      Assert.equal(numSearchesStarted, 1);
+      Assert.equal(controller.searchStatus,
+                   Ci.nsIAutoCompleteController.STATUS_COMPLETE_MATCH);
 
       // test that we found the entry we added
-      do_check_eq(controller.matchCount, 1);
+      Assert.equal(controller.matchCount, 1);
 
       // Make sure the url is the same according to spec, so it can be deleted
-      do_check_eq(controller.getValueAt(0), url.spec);
+      Assert.equal(controller.getValueAt(0), url.spec);
 
       resolve();
     };

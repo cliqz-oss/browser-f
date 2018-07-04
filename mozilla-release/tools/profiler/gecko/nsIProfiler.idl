@@ -7,7 +7,7 @@
 
 %{C++
 #include "nsTArrayForwardDeclare.h"
-class nsCString;
+#include "nsStringFwd.h"
 %}
 
 [ref] native nsCString(const nsCString);
@@ -18,7 +18,7 @@ class nsCString;
  * which, unfortunately, means we need to implement nsISupports in order to
  * go through it.
  */
-[builtinclass, uuid(0a175ba7-8fcf-4ce9-9c4b-ccc6272f4425)]
+[scriptable, builtinclass, uuid(0a175ba7-8fcf-4ce9-9c4b-ccc6272f4425)]
 interface nsIProfilerStartParams : nsISupports
 {
   readonly attribute uint32_t entries;
@@ -61,8 +61,12 @@ interface nsIProfiler : nsISupports
   [implicit_jscontext]
   nsISupports getProfileDataAsArrayBuffer([optional] in double aSinceTime);
 
-  void dumpProfileToFileAsync(in ACString aFilename,
-                              [optional] in double aSinceTime);
+  /**
+   * Returns a promise that resolves once the file has been written.
+   */
+  [implicit_jscontext]
+  nsISupports dumpProfileToFileAsync(in ACString aFilename,
+                                     [optional] in double aSinceTime);
 
   boolean IsActive();
 

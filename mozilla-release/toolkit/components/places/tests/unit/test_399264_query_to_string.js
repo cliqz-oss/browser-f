@@ -18,7 +18,7 @@ function query_string(aFolderID) {
   var query = hs.getNewQuery();
   query.setFolders([aFolderID], 1);
   var options = hs.getNewQueryOptions();
-  return hs.queriesToQueryString([query], 1, options);
+  return hs.queryToQueryString(query, options);
 }
 
 function run_test() {
@@ -40,6 +40,6 @@ function run_test() {
   for (var i = 0; i < QUERIES.length; i++) {
     var result = query_string(FOLDER_IDS[i]);
     dump("Looking for '" + QUERIES[i] + "' in '" + result + "'\n");
-    do_check_neq(-1, result.indexOf(QUERIES[i]));
+    Assert.notEqual(-1, result.indexOf(QUERIES[i]));
   }
 }

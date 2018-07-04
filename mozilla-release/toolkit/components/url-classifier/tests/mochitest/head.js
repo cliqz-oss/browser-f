@@ -17,12 +17,12 @@ function addCompletionToServer(list, url, mochitestUrl) {
 }
 
 function hash(str) {
-  function bytesFromString(str) {
+  function bytesFromString(str1) {
     var converter =
       SpecialPowers.Cc["@mozilla.org/intl/scriptableunicodeconverter"]
                        .createInstance(SpecialPowers.Ci.nsIScriptableUnicodeConverter);
     converter.charset = "UTF-8";
-    return converter.convertToByteArray(str);
+    return converter.convertToByteArray(str1);
   }
 
   var hasher = SpecialPowers.Cc["@mozilla.org/security/hash;1"]
@@ -34,3 +34,16 @@ function hash(str) {
 
   return hasher.finish(true);
 }
+
+var pushPrefs = (...p) => SpecialPowers.pushPrefEnv({set: p});
+
+function whenDelayedStartupFinished(aWindow, aCallback) {
+  Services.obs.addObserver(function observer(aSubject, aTopic) {
+    if (aWindow == aSubject) {
+      Services.obs.removeObserver(observer, aTopic);
+      setTimeout(aCallback, 0);
+    }
+  }, "browser-delayed-startup-finished");
+}
+
+

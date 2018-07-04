@@ -7,6 +7,7 @@
 
 #include "InputData.h"
 #include "mozilla/EventForwards.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WidgetUtils.h"
@@ -174,7 +175,6 @@ public:
     return mIsFullyOccluded;
   }
 
-  virtual nsCursor        GetCursor() override;
   virtual void            SetCursor(nsCursor aCursor) override;
   virtual nsresult        SetCursor(imgIContainer* aCursor,
                                     uint32_t aHotspotX, uint32_t aHotspotY) override;
@@ -192,6 +192,7 @@ public:
                                            uint16_t aDuration,
                                            nsISupports* aData,
                                            nsIRunnable* aCallback) override;
+  virtual void CleanupFullscreenTransition() override {};
   virtual already_AddRefed<nsIScreen> GetWidgetScreen() override;
   virtual nsresult        MakeFullScreen(bool aFullScreen,
                                          nsIScreen* aScreen = nullptr) override;
@@ -210,10 +211,11 @@ public:
   // returned.
   void NotifyCompositorSessionLost(mozilla::layers::CompositorSession* aSession);
 
-  mozilla::CompositorVsyncDispatcher* GetCompositorVsyncDispatcher();
+  already_AddRefed<mozilla::CompositorVsyncDispatcher> GetCompositorVsyncDispatcher();
   void            CreateCompositorVsyncDispatcher();
   virtual void            CreateCompositor();
   virtual void            CreateCompositor(int aWidth, int aHeight);
+  virtual void            SetCompositorWidgetDelegate(CompositorWidgetDelegate* delegate) {}
   virtual void            PrepareWindowEffects() override {}
   virtual void            UpdateThemeGeometries(const nsTArray<ThemeGeometry>& aThemeGeometries) override {}
   virtual void            SetModal(bool aModal) override {}
@@ -249,13 +251,12 @@ public:
   virtual nsresult        SetNonClientMargins(LayoutDeviceIntMargin& aMargins) override;
   virtual LayoutDeviceIntPoint GetClientOffset() override;
   virtual void            EnableDragDrop(bool aEnable) override {};
+  virtual nsresult        AsyncEnableDragDrop(bool aEnable) override;
   virtual MOZ_MUST_USE nsresult
                           GetAttention(int32_t aCycleCount) override
                           { return NS_OK; }
   virtual bool            HasPendingInputEvent() override;
   virtual void            SetIcon(const nsAString &aIconSpec) override {}
-  virtual void            SetWindowTitlebarColor(nscolor aColor, bool aActive)
-                            override {}
   virtual void            SetDrawsInTitlebar(bool aState) override {}
   virtual bool            ShowsResizeIndicator(LayoutDeviceIntRect* aResizerRect) override;
   virtual void            FreeNativeData(void * data, uint32_t aDataType) override {}
@@ -269,8 +270,8 @@ public:
                           { return NS_ERROR_NOT_IMPLEMENTED; }
   virtual nsresult        ActivateNativeMenuItemAt(const nsAString& indexString) override { return NS_ERROR_NOT_IMPLEMENTED; }
   virtual nsresult        ForceUpdateNativeMenuAt(const nsAString& indexString) override { return NS_ERROR_NOT_IMPLEMENTED; }
-  virtual nsresult        NotifyIME(const IMENotification& aIMENotification)
-                            override final;
+  nsresult                NotifyIME(const IMENotification& aIMENotification)
+                            final;
   virtual MOZ_MUST_USE nsresult
                           StartPluginIME(const mozilla::WidgetKeyboardEvent& aKeyboardEvent,
                                          int32_t aPanelX, int32_t aPanelY,
@@ -297,7 +298,7 @@ public:
   virtual void               SetAttachedWidgetListener(nsIWidgetListener* aListener) override;
   virtual nsIWidgetListener* GetPreviouslyAttachedWidgetListener() override;
   virtual void               SetPreviouslyAttachedWidgetListener(nsIWidgetListener* aListener) override;
-  virtual TextEventDispatcher* GetTextEventDispatcher() override final;
+  TextEventDispatcher* GetTextEventDispatcher() final;
   virtual TextEventDispatcherListener*
     GetNativeTextEventDispatcherListener() override;
   virtual void ZoomToRect(const uint32_t& aPresShellId,
@@ -366,7 +367,7 @@ public:
 
   virtual void StartAsyncScrollbarDrag(const AsyncDragMetrics& aDragMetrics) override;
 
-  virtual void StartAsyncAutoscroll(const ScreenPoint& aAnchorLocation,
+  virtual bool StartAsyncAutoscroll(const ScreenPoint& aAnchorLocation,
                                     const ScrollableLayerGuid& aGuid) override;
 
   virtual void StopAsyncAutoscroll(const ScrollableLayerGuid& aGuid) override;
@@ -415,6 +416,12 @@ public:
   void UpdateRootFrameMetrics(const ScreenPoint& aScrollOffset, const CSSToScreenScale& aZoom) override {};
   void RecvScreenPixels(mozilla::ipc::Shmem&& aMem, const ScreenIntSize& aSize) override {};
 #endif
+
+  /**
+   * Whether context menus should only appear on mouseup instead of mousedown,
+   * on OSes where they normally appear on mousedown (macOS, *nix).
+   */
+  static bool ShowContextMenuAfterMouseUp();
 
 protected:
   // These are methods for CompositorWidgetWrapper, and should only be
@@ -595,6 +602,8 @@ protected:
 
   bool UseAPZ();
 
+  bool AllowWebRenderForThisWindow();
+
   /**
    * For widgets that support synthesizing native touch events, this function
    * can be used to manage the current state of synthetic pointers. Each widget
@@ -670,7 +679,10 @@ protected:
   RefPtr<LayerManager> mLayerManager;
   RefPtr<CompositorSession> mCompositorSession;
   RefPtr<CompositorBridgeChild> mCompositorBridgeChild;
+
+  mozilla::UniquePtr<mozilla::Mutex> mCompositorVsyncDispatcherLock;
   RefPtr<mozilla::CompositorVsyncDispatcher> mCompositorVsyncDispatcher;
+
   RefPtr<IAPZCTreeManager> mAPZC;
   RefPtr<GeckoContentController> mRootContentController;
   RefPtr<APZEventState> mAPZEventState;
@@ -690,15 +702,10 @@ protected:
   SizeConstraints   mSizeConstraints;
   bool              mHasRemoteContent;
 
-  CompositorWidgetDelegate* mCompositorWidgetDelegate;
-
   bool              mUpdateCursor;
   bool              mUseAttachedEvents;
   bool              mIMEHasFocus;
   bool              mIsFullyOccluded;
-#if defined(XP_WIN) || defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK)
-  bool              mAccessibilityInUseFlag;
-#endif
   static nsIRollupListener* gRollupListener;
 
   struct InitialZoomConstraints {

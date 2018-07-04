@@ -9,11 +9,11 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/FastBernoulliTrial.h"
+#include "mozilla/Maybe.h"
 
-#include "jscntxt.h"
-#include "jsmath.h"
-#include "jswrapper.h"
 #include "js/HashTable.h"
+#include "js/Wrapper.h"
+#include "vm/JSContext.h"
 #include "vm/SavedFrame.h"
 #include "vm/Stack.h"
 
@@ -82,35 +82,35 @@ namespace js {
 //
 // Consider the following diagram:
 //
-//                                              Content Compartment
-//                                    +---------------------------------------+
-//                                    |                                       |
-//                                    |           +------------------------+  |
-//      Chrome Compartment            |           |                        |  |
-//    +--------------------+          |           | SavedFrame C (content) |  |
-//    |                    |          |           |                        |  |
-//    |                  +--------------+         +------------------------+  |
-//    |                  |              |                    ^                |
-//    |     var x -----> | Xray Wrapper |-----.              |                |
-//    |                  |              |     |              |                |
-//    |                  +--------------+     |   +------------------------+  |
-//    |                    |          |       |   |                        |  |
-//    |                  +--------------+     |   | SavedFrame B (content) |  |
-//    |                  |              |     |   |                        |  |
-//    |     var y -----> | CCW (waived) |--.  |   +------------------------+  |
-//    |                  |              |  |  |              ^                |
-//    |                  +--------------+  |  |              |                |
-//    |                    |          |    |  |              |                |
-//    +--------------------+          |    |  |   +------------------------+  |
-//                                    |    |  '-> |                        |  |
-//                                    |    |      | SavedFrame A (chrome)  |  |
-//                                    |    '----> |                        |  |
-//                                    |           +------------------------+  |
-//                                    |                      ^                |
-//                                    |                      |                |
-//                                    |           var z -----'                |
-//                                    |                                       |
-//                                    +---------------------------------------+
+//                                              Content Compartment
+//                                    +---------------------------------------+
+//                                    |                                       |
+//                                    |           +------------------------+  |
+//      Chrome Compartment            |           |                        |  |
+//    +--------------------+          |           | SavedFrame C (content) |  |
+//    |                    |          |           |                        |  |
+//    |                  +--------------+         +------------------------+  |
+//    |                  |              |                    ^                |
+//    |     var x -----> | Xray Wrapper |-----.              |                |
+//    |                  |              |     |              |                |
+//    |                  +--------------+     |   +------------------------+  |
+//    |                    |          |       |   |                        |  |
+//    |                  +--------------+     |   | SavedFrame B (content) |  |
+//    |                  |              |     |   |                        |  |
+//    |     var y -----> | CCW (waived) |--.  |   +------------------------+  |
+//    |                  |              |  |  |              ^                |
+//    |                  +--------------+  |  |              |                |
+//    |                    |          |    |  |              |                |
+//    +--------------------+          |    |  |   +------------------------+  |
+//                                    |    |  '-> |                        |  |
+//                                    |    |      | SavedFrame A (chrome)  |  |
+//                                    |    '----> |                        |  |
+//                                    |           +------------------------+  |
+//                                    |                      ^                |
+//                                    |                      |                |
+//                                    |           var z -----'                |
+//                                    |                                       |
+//                                    +---------------------------------------+
 //
 // CCW is a plain cross-compartment wrapper, yielded by waiving Xray vision. A
 // is the youngest `SavedFrame` and represents a frame that was from the chrome
@@ -169,7 +169,7 @@ class SavedStacks {
     MOZ_MUST_USE bool copyAsyncStack(JSContext* cx, HandleObject asyncStack,
                                      HandleString asyncCause,
                                      MutableHandleSavedFrame adoptedStack,
-                                     uint32_t maxFrameCount = 0);
+                                     const mozilla::Maybe<size_t>& maxFrameCount);
     void sweep();
     void trace(JSTracer* trc);
     uint32_t count();
@@ -219,13 +219,12 @@ class SavedStacks {
         }
     };
 
-    MOZ_MUST_USE bool insertFrames(JSContext* cx, FrameIter& iter,
-                                   MutableHandleSavedFrame frame,
+    MOZ_MUST_USE bool insertFrames(JSContext* cx, MutableHandleSavedFrame frame,
                                    JS::StackCapture&& capture);
-    MOZ_MUST_USE bool adoptAsyncStack(JSContext* cx, HandleSavedFrame asyncStack,
-                                      HandleString asyncCause,
-                                      MutableHandleSavedFrame adoptedStack,
-                                      uint32_t maxFrameCount);
+    MOZ_MUST_USE bool adoptAsyncStack(JSContext* cx, MutableHandleSavedFrame asyncStack,
+                                      HandleAtom asyncCause,
+                                      const mozilla::Maybe<size_t>& maxFrameCount);
+    MOZ_MUST_USE bool checkForEvalInFramePrev(JSContext* cx, SavedFrame::HandleLookup lookup);
     SavedFrame* getOrCreateSavedFrame(JSContext* cx, SavedFrame::HandleLookup lookup);
     SavedFrame* createFrameFromLookup(JSContext* cx, SavedFrame::HandleLookup lookup);
 

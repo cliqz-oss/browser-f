@@ -6,12 +6,15 @@
 #include "base/message_loop.h"
 #include "GeneratedJNIWrappers.h"
 #include "mozilla/Atomics.h"
+#include "mozilla/EventQueue.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/Monitor.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/ThreadEventQueue.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/UniquePtr.h"
 #include "nsThread.h"
 #include "nsThreadManager.h"
 #include "nsThreadUtils.h"
@@ -49,8 +52,12 @@ void EnqueueTask(already_AddRefed<nsIRunnable> aTask, int aDelayMs);
 class AndroidUiThread : public nsThread
 {
 public:
-  NS_DECL_ISUPPORTS_INHERITED
-  AndroidUiThread() : nsThread(nsThread::NOT_MAIN_THREAD, 0)
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(AndroidUiThread, nsThread)
+  AndroidUiThread()
+    : nsThread(MakeNotNull<ThreadEventQueue<mozilla::EventQueue>*>(
+                 MakeUnique<mozilla::EventQueue>()),
+               nsThread::NOT_MAIN_THREAD,
+               0)
   {}
 
   nsresult Dispatch(already_AddRefed<nsIRunnable> aEvent, uint32_t aFlags) override;
@@ -60,8 +67,6 @@ private:
   ~AndroidUiThread()
   {}
 };
-
-NS_IMPL_ISUPPORTS_INHERITED0(AndroidUiThread, nsThread)
 
 NS_IMETHODIMP
 AndroidUiThread::Dispatch(already_AddRefed<nsIRunnable> aEvent, uint32_t aFlags)
@@ -126,7 +131,7 @@ class AndroidUiTask : public LinkedListElement<AndroidUiTask> {
     using TimeDuration = mozilla::TimeDuration;
 
 public:
-  AndroidUiTask(already_AddRefed<nsIRunnable> aTask)
+  explicit AndroidUiTask(already_AddRefed<nsIRunnable> aTask)
     : mTask(aTask)
     , mRunTime() // Null timestamp representing no delay.
   {}

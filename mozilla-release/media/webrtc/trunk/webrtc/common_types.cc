@@ -50,7 +50,8 @@ RTPHeaderExtension::RTPHeaderExtension()
       voiceActivity(false),
       audioLevel(0),
       hasVideoRotation(false),
-      videoRotation(kVideoRotation_0) {
+      videoRotation(kVideoRotation_0),
+      csrcAudioLevels() {
 }
 
 RTPHeaderExtension::RTPHeaderExtension(const RTPHeaderExtension& rhs) {
@@ -74,6 +75,9 @@ RTPHeaderExtension::operator=(const RTPHeaderExtension& rhs) {
   videoRotation = rhs.videoRotation;
 
   rtpStreamId = rhs.rtpStreamId;
+  repairedRtpStreamId = rhs.repairedRtpStreamId;
+
+  mId = rhs.mId;
 
   return *this;
 }

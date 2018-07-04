@@ -90,8 +90,8 @@ public:
   virtual uint32_t ChildCount() const override;
 
   // XULTreeItemAccessibleBase
-  virtual XULTreeGridCellAccessible* GetCellAccessible(nsITreeColumn* aColumn)
-    const override final;
+  XULTreeGridCellAccessible* GetCellAccessible(nsITreeColumn* aColumn)
+    const final;
   virtual void RowInvalidated(int32_t aStartColIdx, int32_t aEndColIdx) override;
 
 protected:
@@ -126,7 +126,8 @@ public:
   // Accessible
   virtual void Shutdown() override;
   virtual TableCellAccessible* AsTableCell() override { return this; }
-  virtual nsIntRect Bounds() const override;
+  virtual nsRect BoundsInAppUnits() const override;
+  virtual nsIntRect BoundsInCSSPixels() const override;
   virtual ENameValueFlag Name(nsString& aName) override;
   virtual Accessible* FocusedChild() override;
   virtual already_AddRefed<nsIPersistentProperties> NativeAttributes() override;

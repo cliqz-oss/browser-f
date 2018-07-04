@@ -4,16 +4,15 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["LoginManagerContextMenu"];
+var EXPORTED_SYMBOLS = ["LoginManagerContextMenu"];
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
-                                  "resource://gre/modules/LoginHelper.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
-                                  "resource://gre/modules/LoginManagerParent.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginHelper",
+                               "resource://gre/modules/LoginHelper.jsm");
+ChromeUtils.defineModuleGetter(this, "LoginManagerParent",
+                               "resource://gre/modules/LoginManagerParent.jsm");
 
 /*
  * Password manager object for the browser contextual menu.
@@ -93,7 +92,7 @@ var LoginManagerContextMenu = {
    */
   _findLogins(documentURI) {
     let searchParams = {
-      hostname: documentURI.prePath,
+      hostname: documentURI.displayPrePath,
       schemeUpgrades: LoginHelper.schemeUpgrades,
     };
     let logins = LoginHelper.searchLoginsWithObject(searchParams);
@@ -101,7 +100,7 @@ var LoginManagerContextMenu = {
       "scheme",
       "timePasswordChanged",
     ];
-    logins = LoginHelper.dedupeLogins(logins, ["username", "password"], resolveBy, documentURI.prePath);
+    logins = LoginHelper.dedupeLogins(logins, ["username", "password"], resolveBy, documentURI.displayPrePath);
 
     // Sort logins in alphabetical order and by date.
     logins.sort((loginA, loginB) => {
@@ -162,7 +161,7 @@ var LoginManagerContextMenu = {
   _fillTargetField(login, inputElement, browser, documentURI) {
     LoginManagerParent.fillForm({
       browser,
-      loginFormOrigin: documentURI.prePath,
+      loginFormOrigin: documentURI.displayPrePath,
       login,
       inputElement,
     }).catch(Cu.reportError);
@@ -191,7 +190,7 @@ XPCOMUtils.defineLazyGetter(LoginManagerContextMenu, "_stringBundle", function()
 });
 
 XPCOMUtils.defineLazyGetter(LoginManagerContextMenu, "dateAndTimeFormatter", function() {
-  return Services.intl.createDateTimeFormat(undefined, {
+  return new Services.intl.DateTimeFormat(undefined, {
     dateStyle: "medium"
   });
 });

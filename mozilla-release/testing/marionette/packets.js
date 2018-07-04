@@ -24,9 +24,8 @@
  *     Called to clean up at the end of use
  */
 
-const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 const {StreamUtils} =
-    Cu.import("chrome://marionette/content/stream-utils.js", {});
+    ChromeUtils.import("chrome://marionette/content/stream-utils.js", {});
 
 const unicodeConverter = Cc["@mozilla.org/intl/scriptableunicodeconverter"]
     .createInstance(Ci.nsIScriptableUnicodeConverter);
@@ -85,8 +84,8 @@ Packet.prototype = {
 
   set length(length) {
     if (length > PACKET_LENGTH_MAX) {
-      throw Error("Packet length " + length + " exceeds the max length of " +
-                  PACKET_LENGTH_MAX);
+      throw new Error("Packet length " + length +
+                      " exceeds the max length of " + PACKET_LENGTH_MAX);
     }
     this._length = length;
   },
@@ -390,9 +389,9 @@ function RawPacket(transport, data) {
 
 RawPacket.prototype = Object.create(Packet.prototype);
 
-RawPacket.prototype.read = function(stream) {
-  // This hasn't yet been needed for testing.
-  throw Error("Not implmented.");
+RawPacket.prototype.read = function() {
+  // this has not yet been needed for testing
+  throw new Error("Not implemented");
 };
 
 RawPacket.prototype.write = function(stream) {

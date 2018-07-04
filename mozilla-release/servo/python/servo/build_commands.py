@@ -167,6 +167,9 @@ class MachCommands(CommandBase):
     @CommandArgument('--verbose', '-v',
                      action='store_true',
                      help='Print verbose output')
+    @CommandArgument('--very-verbose', '-vv',
+                     action='store_true',
+                     help='Print very verbose output')
     @CommandArgument('params', nargs='...',
                      help="Command-line arguments to be passed through to Cargo")
     @CommandArgument('--with-debug-assertions',
@@ -174,13 +177,15 @@ class MachCommands(CommandBase):
                      action='store_true',
                      help='Enable debug assertions in release')
     def build(self, target=None, release=False, dev=False, jobs=None,
-              features=None, android=None, verbose=False, debug_mozjs=False, params=None,
-              with_debug_assertions=False):
+              features=None, android=None, verbose=False, very_verbose=False,
+              debug_mozjs=False, params=None, with_debug_assertions=False):
+
+        opts = params or []
+        opts += ["--manifest-path", self.servo_manifest()]
+
         if android is None:
             android = self.config["build"]["android"]
         features = features or self.servo_features()
-
-        opts = params or []
 
         base_path = self.get_target_dir()
         release_path = path.join(base_path, "release", "servo")
@@ -221,11 +226,20 @@ class MachCommands(CommandBase):
             opts += ["-j", jobs]
         if verbose:
             opts += ["-v"]
+        if very_verbose:
+            opts += ["-vv"]
 
         if android:
             target = self.config["android"]["target"]
 
         if target:
+            if self.config["tools"]["use-rustup"]:
+                # 'rustup target add' fails if the toolchain is not installed at all.
+                self.call_rustup_run(["rustc", "--version"])
+
+                check_call(["rustup" + BIN_SUFFIX, "target", "add",
+                            "--toolchain", self.toolchain(), target])
+
             opts += ["--target", target]
             if not android:
                 android = self.handle_android_target(target)
@@ -243,9 +257,16 @@ class MachCommands(CommandBase):
         env = self.build_env(target=target, is_build=True)
 
         if with_debug_assertions:
-            env["RUSTFLAGS"] = "-C debug_assertions"
+            env['RUSTFLAGS'] = env.get('RUSTFLAGS', "") + " -C debug_assertions"
 
         if android:
+            if "ANDROID_NDK" not in os.environ:
+                print("Please set the ANDROID_NDK environment variable.")
+                sys.exit(1)
+            if "ANDROID_SDK" not in os.environ:
+                print("Please set the ANDROID_SDK environment variable.")
+                sys.exit(1)
+
             android_platform = self.config["android"]["platform"]
             android_toolchain = self.config["android"]["toolchain_name"]
             android_arch = "arch-" + self.config["android"]["arch"]
@@ -261,7 +282,18 @@ class MachCommands(CommandBase):
                 os.makedirs(openssl_dir)
             shutil.copy(path.join(self.android_support_dir(), "openssl.makefile"), openssl_dir)
             shutil.copy(path.join(self.android_support_dir(), "openssl.sh"), openssl_dir)
-            env["ANDROID_NDK_ROOT"] = env["ANDROID_NDK"]
+
+            # Check if the NDK version is 12
+            if not os.path.isfile(path.join(env["ANDROID_NDK"], 'source.properties')):
+                print("ANDROID_NDK should have file `source.properties`.")
+                print("The environment variable ANDROID_NDK may be set at a wrong path.")
+                sys.exit(1)
+            with open(path.join(env["ANDROID_NDK"], 'source.properties')) as ndk_properties:
+                lines = ndk_properties.readlines()
+                if lines[1].split(' = ')[1].split('.')[0] != '12':
+                    print("Currently only support NDK 12.")
+                    sys.exit(1)
+
             env["RUST_TARGET"] = target
             with cd(openssl_dir):
                 status = call(
@@ -306,21 +338,22 @@ class MachCommands(CommandBase):
                 "-I" + cxx_include,
                 "-I" + cxxabi_include])
             env["NDK_ANDROID_VERSION"] = android_platform.replace("android-", "")
+            env['CPPFLAGS'] = ' '.join(["--sysroot", env['ANDROID_SYSROOT']])
+            env["CMAKE_ANDROID_ARCH_ABI"] = self.config["android"]["lib"]
+            env["CMAKE_TOOLCHAIN_FILE"] = path.join(self.android_support_dir(), "toolchain.cmake")
+            # Set output dir for gradle aar files
+            aar_out_dir = self.android_aar_dir()
+            if not os.path.exists(aar_out_dir):
+                os.makedirs(aar_out_dir)
+            env["AAR_OUT_DIR"] = aar_out_dir
 
-        cargo_binary = "cargo" + BIN_SUFFIX
-
-        status = call(
-            [cargo_binary, "build"] + opts,
-            env=env, cwd=self.servo_crate(), verbose=verbose)
+        status = self.call_rustup_run(["cargo", "build"] + opts, env=env, verbose=verbose)
         elapsed = time() - build_start
 
         # Do some additional things if the build succeeded
         if status == 0:
             if sys.platform == "win32":
                 servo_exe_dir = path.join(base_path, "debug" if dev else "release")
-                # On windows, copy in our manifest
-                shutil.copy(path.join(self.get_top_dir(), "components", "servo", "servo.exe.manifest"),
-                            servo_exe_dir)
 
                 msvc_x64 = "64" if "x86_64" in (target or host_triple()) else ""
                 # on msvc builds, use editbin to change the subsystem to windows, but only
@@ -353,59 +386,6 @@ class MachCommands(CommandBase):
         print("Build %s in %s" % ("Completed" if status == 0 else "FAILED", format_duration(elapsed)))
         return status
 
-    @Command('build-cef',
-             description='Build the Chromium Embedding Framework library',
-             category='build')
-    @CommandArgument('--jobs', '-j',
-                     default=None,
-                     help='Number of jobs to run in parallel')
-    @CommandArgument('--verbose', '-v',
-                     action='store_true',
-                     help='Print verbose output')
-    @CommandArgument('--release', '-r',
-                     action='store_true',
-                     help='Build in release mode')
-    @CommandArgument('--with-debug-assertions',
-                     default=None,
-                     action='store_true',
-                     help='Enable debug assertions in release')
-    def build_cef(self, jobs=None, verbose=False, release=False,
-                  with_debug_assertions=False):
-        self.ensure_bootstrapped()
-        self.ensure_clobbered()
-
-        ret = None
-        opts = []
-        if jobs is not None:
-            opts += ["-j", jobs]
-        if verbose:
-            opts += ["-v"]
-        if release:
-            opts += ["--release"]
-
-        servo_features = self.servo_features()
-        if servo_features:
-            opts += ["--features", "%s" % ' '.join(servo_features)]
-
-        build_start = time()
-        env = self.build_env(is_build=True)
-
-        if with_debug_assertions:
-            env["RUSTFLAGS"] = "-C debug_assertions"
-
-        with cd(path.join("ports", "cef")):
-            ret = call(["cargo", "build"] + opts,
-                       env=env,
-                       verbose=verbose)
-        elapsed = time() - build_start
-
-        # Generate Desktop Notification if elapsed-time > some threshold value
-        notify_build_done(self.config, elapsed)
-
-        print("CEF build completed in %s" % format_duration(elapsed))
-
-        return ret
-
     @Command('build-geckolib',
              description='Build a static library of components used by Gecko',
              category='build')
@@ -419,30 +399,27 @@ class MachCommands(CommandBase):
                      action='store_true',
                      help='Build in release mode')
     def build_geckolib(self, jobs=None, verbose=False, release=False):
-        self.set_use_stable_rust()
+        self.set_use_geckolib_toolchain()
         self.ensure_bootstrapped()
         self.ensure_clobbered()
 
         env = self.build_env(is_build=True, geckolib=True)
 
         ret = None
-        opts = []
+        opts = ["-p", "geckoservo"]
         features = []
+
         if jobs is not None:
             opts += ["-j", jobs]
         if verbose:
             opts += ["-v"]
         if release:
             opts += ["--release"]
-        else:
-            features += ["gecko_debug"]
-
         if features:
             opts += ["--features", ' '.join(features)]
 
         build_start = time()
-        with cd(path.join("ports", "geckolib")):
-            ret = call(["cargo", "build"] + opts, env=env, verbose=verbose)
+        ret = self.call_rustup_run(["cargo", "build"] + opts, env=env, verbose=verbose)
         elapsed = time() - build_start
 
         # Generate Desktop Notification if elapsed-time > some threshold value

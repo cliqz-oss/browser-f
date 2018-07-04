@@ -4,7 +4,7 @@
 
 "use strict";
 
-Cu.import("resource://formautofill/FormAutofillNameUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofillNameUtils.jsm");
 
 // Test cases is initially copied from
 // https://cs.chromium.org/chromium/src/components/autofill/core/browser/autofill_data_util_unittest.cc
@@ -68,8 +68,8 @@ const TESTCASES = [
 
 add_task(async function test_isCJKName() {
   TESTCASES.forEach(testcase => {
-    do_print("Starting testcase: " + testcase.fullName);
+    info("Starting testcase: " + testcase.fullName);
     let result = FormAutofillNameUtils._isCJKName(testcase.fullName);
-    do_check_eq(result, testcase.expectedResult);
+    Assert.equal(result, testcase.expectedResult);
   });
 });

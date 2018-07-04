@@ -5,9 +5,10 @@
 loader: taskgraph.loader.build_signing:loader
 
 transforms:
+   - taskgraph.transforms.name_sanity:transforms
    - taskgraph.transforms.build_signing:transforms
    - taskgraph.transforms.signing:transforms
    - taskgraph.transforms.task:transforms
 
 kind-dependencies:
-  - build
+   - build

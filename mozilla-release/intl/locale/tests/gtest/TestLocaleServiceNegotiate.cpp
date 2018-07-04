@@ -27,6 +27,27 @@ TEST(Intl_Locale_LocaleService, Negotiate) {
       requestedLocales, availableLocales, defaultLocale, strategy, supportedLocales);
 
   ASSERT_TRUE(supportedLocales.Length() == 2);
-  ASSERT_TRUE(supportedLocales[0].Equals("sr-Cyrl"));
-  ASSERT_TRUE(supportedLocales[1].Equals("en-US"));
+  ASSERT_TRUE(supportedLocales[0].EqualsLiteral("sr-Cyrl"));
+  ASSERT_TRUE(supportedLocales[1].EqualsLiteral("en-US"));
+}
+
+TEST(Intl_Locale_LocaleService, UseLSDefaultLocale) {
+  nsTArray<nsCString> requestedLocales;
+  nsTArray<nsCString> availableLocales;
+  nsTArray<nsCString> supportedLocales;
+  nsAutoCString defaultLocale("");
+  LocaleService::LangNegStrategy strategy =
+    LocaleService::LangNegStrategy::Lookup;
+
+  requestedLocales.AppendElement(NS_LITERAL_CSTRING("sr"));
+
+  availableLocales.AppendElement(NS_LITERAL_CSTRING("de"));
+
+  LocaleService::GetInstance()->NegotiateLanguages(
+      requestedLocales, availableLocales, defaultLocale, strategy, supportedLocales);
+
+  nsAutoCString lsDefaultLocale;
+  LocaleService::GetInstance()->GetDefaultLocale(lsDefaultLocale);
+  ASSERT_TRUE(supportedLocales.Length() == 1);
+  ASSERT_TRUE(supportedLocales[0].Equals(lsDefaultLocale));
 }

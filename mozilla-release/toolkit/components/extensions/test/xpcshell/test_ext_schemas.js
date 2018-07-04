@@ -1,354 +1,398 @@
 "use strict";
 
-Components.utils.import("resource://gre/modules/Schemas.jsm");
-Components.utils.import("resource://gre/modules/BrowserUtils.jsm");
-Components.utils.import("resource://gre/modules/ExtensionCommon.jsm");
+ChromeUtils.import("resource://gre/modules/Schemas.jsm");
+ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 
 let {LocalAPIImplementation, SchemaAPIInterface} = ExtensionCommon;
 
 const global = this;
 
 let json = [
-  {namespace: "testing",
+  {
+    namespace: "testing",
 
-   properties: {
-     PROP1: {value: 20},
-     prop2: {type: "string"},
-     prop3: {
-       $ref: "submodule",
-     },
-     prop4: {
-       $ref: "submodule",
-       unsupported: true,
-     },
-   },
+    properties: {
+      PROP1: {value: 20},
+      prop2: {type: "string"},
+      prop3: {
+        $ref: "submodule",
+      },
+      prop4: {
+        $ref: "submodule",
+        unsupported: true,
+      },
+    },
 
-   types: [
-     {
-       id: "type1",
-       type: "string",
-       "enum": ["value1", "value2", "value3"],
-     },
+    types: [
+      {
+        id: "type1",
+        type: "string",
+        "enum": ["value1", "value2", "value3"],
+      },
 
-     {
-       id: "type2",
-       type: "object",
-       properties: {
-         prop1: {type: "integer"},
-         prop2: {type: "array", items: {"$ref": "type1"}},
-       },
-     },
+      {
+        id: "type2",
+        type: "object",
+        properties: {
+          prop1: {type: "integer"},
+          prop2: {type: "array", items: {"$ref": "type1"}},
+        },
+      },
 
-     {
-       id: "basetype1",
-       type: "object",
-       properties: {
-         prop1: {type: "string"},
-       },
-     },
+      {
+        id: "basetype1",
+        type: "object",
+        properties: {
+          prop1: {type: "string"},
+        },
+      },
 
-     {
-       id: "basetype2",
-       choices: [
-         {type: "integer"},
-       ],
-     },
+      {
+        id: "basetype2",
+        choices: [
+          {type: "integer"},
+        ],
+      },
 
-     {
-       $extend: "basetype1",
-       properties: {
-         prop2: {type: "string"},
-       },
-     },
+      {
+        $extend: "basetype1",
+        properties: {
+          prop2: {type: "string"},
+        },
+      },
 
-     {
-       $extend: "basetype2",
-       choices: [
-         {type: "string"},
-       ],
-     },
+      {
+        $extend: "basetype2",
+        choices: [
+          {type: "string"},
+        ],
+      },
 
-     {
-       id: "submodule",
-       type: "object",
-       functions: [
-         {
-           name: "sub_foo",
-           type: "function",
-           parameters: [],
-           returns: {type: "integer"},
-         },
-       ],
-     },
-   ],
+      {
+        id: "basetype3",
+        type: "object",
+        properties: {
+          baseprop: {type: "string"},
+        },
+      },
 
-   functions: [
-     {
-       name: "foo",
-       type: "function",
-       parameters: [
-         {name: "arg1", type: "integer", optional: true, default: 99},
-         {name: "arg2", type: "boolean", optional: true},
-       ],
-     },
+      {
+        id: "derivedtype1",
+        type: "object",
+        $import: "basetype3",
+        properties: {
+          derivedprop: {type: "string"},
+        },
+      },
 
-     {
-       name: "bar",
-       type: "function",
-       parameters: [
-         {name: "arg1", type: "integer", optional: true},
-         {name: "arg2", type: "boolean"},
-       ],
-     },
+      {
+        id: "derivedtype2",
+        type: "object",
+        $import: "basetype3",
+        properties: {
+          derivedprop: {type: "integer"},
+        },
+      },
 
-     {
-       name: "baz",
-       type: "function",
-       parameters: [
-         {name: "arg1", type: "object", properties: {
-           prop1: {type: "string"},
-           prop2: {type: "integer", optional: true},
-           prop3: {type: "integer", unsupported: true},
-         }},
-       ],
-     },
+      {
+        id: "submodule",
+        type: "object",
+        functions: [
+          {
+            name: "sub_foo",
+            type: "function",
+            parameters: [],
+            returns: {type: "integer"},
+          },
+        ],
+      },
+    ],
 
-     {
-       name: "qux",
-       type: "function",
-       parameters: [
-         {name: "arg1", "$ref": "type1"},
-       ],
-     },
+    functions: [
+      {
+        name: "foo",
+        type: "function",
+        parameters: [
+          {name: "arg1", type: "integer", optional: true, default: 99},
+          {name: "arg2", type: "boolean", optional: true},
+        ],
+      },
 
-     {
-       name: "quack",
-       type: "function",
-       parameters: [
-         {name: "arg1", "$ref": "type2"},
-       ],
-     },
+      {
+        name: "bar",
+        type: "function",
+        parameters: [
+          {name: "arg1", type: "integer", optional: true},
+          {name: "arg2", type: "boolean"},
+        ],
+      },
 
-     {
-       name: "quora",
-       type: "function",
-       parameters: [
-         {name: "arg1", type: "function"},
-       ],
-     },
+      {
+        name: "baz",
+        type: "function",
+        parameters: [
+          {name: "arg1", type: "object", properties: {
+            prop1: {type: "string"},
+            prop2: {type: "integer", optional: true},
+            prop3: {type: "integer", unsupported: true},
+          }},
+        ],
+      },
 
-     {
-       name: "quileute",
-       type: "function",
-       parameters: [
-         {name: "arg1", type: "integer", optional: true},
-         {name: "arg2", type: "integer"},
-       ],
-     },
+      {
+        name: "qux",
+        type: "function",
+        parameters: [
+          {name: "arg1", "$ref": "type1"},
+        ],
+      },
 
-     {
-       name: "queets",
-       type: "function",
-       unsupported: true,
-       parameters: [],
-     },
+      {
+        name: "quack",
+        type: "function",
+        parameters: [
+          {name: "arg1", "$ref": "type2"},
+        ],
+      },
 
-     {
-       name: "quintuplets",
-       type: "function",
-       parameters: [
-         {name: "obj", type: "object", properties: [], additionalProperties: {type: "integer"}},
-       ],
-     },
+      {
+        name: "quora",
+        type: "function",
+        parameters: [
+          {name: "arg1", type: "function"},
+        ],
+      },
 
-     {
-       name: "quasar",
-       type: "function",
-       parameters: [
-         {name: "abc", type: "object", properties: {
-           func: {type: "function", parameters: [
-             {name: "x", type: "integer"},
-           ]},
-         }},
-       ],
-     },
+      {
+        name: "quileute",
+        type: "function",
+        parameters: [
+          {name: "arg1", type: "integer", optional: true},
+          {name: "arg2", type: "integer"},
+        ],
+      },
 
-     {
-       name: "quosimodo",
-       type: "function",
-       parameters: [
-         {name: "xyz", type: "object", additionalProperties: {type: "any"}},
-       ],
-     },
+      {
+        name: "queets",
+        type: "function",
+        unsupported: true,
+        parameters: [],
+      },
 
-     {
-       name: "patternprop",
-       type: "function",
-       parameters: [
-         {
-           name: "obj",
-           type: "object",
-           properties: {"prop1": {type: "string", pattern: "^\\d+$"}},
-           patternProperties: {
-             "(?i)^prop\\d+$": {type: "string"},
-             "^foo\\d+$": {type: "string"},
-           },
-         },
-       ],
-     },
+      {
+        name: "quintuplets",
+        type: "function",
+        parameters: [
+          {name: "obj", type: "object", properties: [], additionalProperties: {type: "integer"}},
+        ],
+      },
 
-     {
-       name: "pattern",
-       type: "function",
-       parameters: [
-         {name: "arg", type: "string", pattern: "(?i)^[0-9a-f]+$"},
-       ],
-     },
+      {
+        name: "quasar",
+        type: "function",
+        parameters: [
+          {name: "abc", type: "object", properties: {
+            func: {type: "function", parameters: [
+              {name: "x", type: "integer"},
+            ]},
+          }},
+        ],
+      },
 
-     {
-       name: "format",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           type: "object",
-           properties: {
-             hostname: {type: "string", "format": "hostname", "optional": true},
-             url: {type: "string", "format": "url", "optional": true},
-             relativeUrl: {type: "string", "format": "relativeUrl", "optional": true},
-             strictRelativeUrl: {type: "string", "format": "strictRelativeUrl", "optional": true},
-           },
-         },
-       ],
-     },
+      {
+        name: "quosimodo",
+        type: "function",
+        parameters: [
+          {name: "xyz", type: "object", additionalProperties: {type: "any"}},
+        ],
+      },
 
-     {
-       name: "formatDate",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           type: "object",
-           properties: {
-             date: {type: "string", format: "date", optional: true},
-           },
-         },
-       ],
-     },
+      {
+        name: "patternprop",
+        type: "function",
+        parameters: [
+          {
+            name: "obj",
+            type: "object",
+            properties: {"prop1": {type: "string", pattern: "^\\d+$"}},
+            patternProperties: {
+              "(?i)^prop\\d+$": {type: "string"},
+              "^foo\\d+$": {type: "string"},
+            },
+          },
+        ],
+      },
 
-     {
-       name: "deep",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           type: "object",
-           properties: {
-             foo: {
-               type: "object",
-               properties: {
-                 bar: {
-                   type: "array",
-                   items: {
-                     type: "object",
-                     properties: {
-                       baz: {
-                         type: "object",
-                         properties: {
-                           required: {type: "integer"},
-                           optional: {type: "string", optional: true},
-                         },
-                       },
-                     },
-                   },
-                 },
-               },
-             },
-           },
-         },
-       ],
-     },
+      {
+        name: "pattern",
+        type: "function",
+        parameters: [
+          {name: "arg", type: "string", pattern: "(?i)^[0-9a-f]+$"},
+        ],
+      },
 
-     {
-       name: "errors",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           type: "object",
-           properties: {
-             warn: {
-               type: "string",
-               pattern: "^\\d+$",
-               optional: true,
-               onError: "warn",
-             },
-             ignore: {
-               type: "string",
-               pattern: "^\\d+$",
-               optional: true,
-               onError: "ignore",
-             },
-             default: {
-               type: "string",
-               pattern: "^\\d+$",
-               optional: true,
-             },
-           },
-         },
-       ],
-     },
+      {
+        name: "format",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            type: "object",
+            properties: {
+              hostname: {type: "string", "format": "hostname", "optional": true},
+              url: {type: "string", "format": "url", "optional": true},
+              relativeUrl: {type: "string", "format": "relativeUrl", "optional": true},
+              strictRelativeUrl: {type: "string", "format": "strictRelativeUrl", "optional": true},
+              imageDataOrStrictRelativeUrl: {type: "string", "format": "imageDataOrStrictRelativeUrl", "optional": true},
+            },
+          },
+        ],
+      },
 
-     {
-       name: "localize",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           type: "object",
-           properties: {
-             foo: {type: "string", "preprocess": "localize", "optional": true},
-             bar: {type: "string", "optional": true},
-             url: {type: "string", "preprocess": "localize", "format": "url", "optional": true},
-           },
-         },
-       ],
-     },
+      {
+        name: "formatDate",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            type: "object",
+            properties: {
+              date: {type: "string", format: "date", optional: true},
+            },
+          },
+        ],
+      },
 
-     {
-       name: "extended1",
-       type: "function",
-       parameters: [
-         {name: "val", $ref: "basetype1"},
-       ],
-     },
+      {
+        name: "deep",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            type: "object",
+            properties: {
+              foo: {
+                type: "object",
+                properties: {
+                  bar: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        baz: {
+                          type: "object",
+                          properties: {
+                            required: {type: "integer"},
+                            optional: {type: "string", optional: true},
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
 
-     {
-       name: "extended2",
-       type: "function",
-       parameters: [
-         {name: "val", $ref: "basetype2"},
-       ],
-     },
-   ],
+      {
+        name: "errors",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            type: "object",
+            properties: {
+              warn: {
+                type: "string",
+                pattern: "^\\d+$",
+                optional: true,
+                onError: "warn",
+              },
+              ignore: {
+                type: "string",
+                pattern: "^\\d+$",
+                optional: true,
+                onError: "ignore",
+              },
+              default: {
+                type: "string",
+                pattern: "^\\d+$",
+                optional: true,
+              },
+            },
+          },
+        ],
+      },
 
-   events: [
-     {
-       name: "onFoo",
-       type: "function",
-     },
+      {
+        name: "localize",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            type: "object",
+            properties: {
+              foo: {type: "string", "preprocess": "localize", "optional": true},
+              bar: {type: "string", "optional": true},
+              url: {type: "string", "preprocess": "localize", "format": "url", "optional": true},
+            },
+          },
+        ],
+      },
 
-     {
-       name: "onBar",
-       type: "function",
-       extraParameters: [{
-         name: "filter",
-         type: "integer",
-         optional: true,
-         default: 1,
-       }],
-     },
-   ],
+      {
+        name: "extended1",
+        type: "function",
+        parameters: [
+          {name: "val", $ref: "basetype1"},
+        ],
+      },
+
+      {
+        name: "extended2",
+        type: "function",
+        parameters: [
+          {name: "val", $ref: "basetype2"},
+        ],
+      },
+
+      {
+        name: "callderived1",
+        type: "function",
+        parameters: [
+          {name: "value", $ref: "derivedtype1"},
+        ],
+      },
+
+      {
+        name: "callderived2",
+        type: "function",
+        parameters: [
+          {name: "value", $ref: "derivedtype2"},
+        ],
+      },
+    ],
+
+    events: [
+      {
+        name: "onFoo",
+        type: "function",
+      },
+
+      {
+        name: "onBar",
+        type: "function",
+        extraParameters: [{
+          name: "filter",
+          type: "integer",
+          optional: true,
+          default: 1,
+        }],
+      },
+    ],
   },
   {
     namespace: "foreign",
@@ -377,17 +421,17 @@ function tally(kind, ns, name, args) {
 }
 
 function verify(...args) {
-  do_check_eq(JSON.stringify(tallied), JSON.stringify(args));
+  Assert.equal(JSON.stringify(tallied), JSON.stringify(args));
   tallied = null;
 }
 
 let talliedErrors = [];
 
 function checkErrors(errors) {
-  do_check_eq(talliedErrors.length, errors.length, "Got expected number of errors");
+  Assert.equal(talliedErrors.length, errors.length, "Got expected number of errors");
   for (let [i, error] of errors.entries()) {
-    do_check_true(i in talliedErrors && String(talliedErrors[i]).includes(error),
-                  `${JSON.stringify(error)} is a substring of error ${JSON.stringify(talliedErrors[i])}`);
+    Assert.ok(i in talliedErrors && String(talliedErrors[i]).includes(error),
+              `${JSON.stringify(error)} is a substring of error ${JSON.stringify(talliedErrors[i])}`);
   }
 
   talliedErrors.length = 0;
@@ -468,19 +512,20 @@ let wrapper = {
 
 add_task(async function() {
   let url = "data:," + JSON.stringify(json);
+  Schemas._rootSchema = null;
   await Schemas.load(url);
 
   let root = {};
   tallied = null;
   Schemas.inject(root, wrapper);
-  do_check_eq(tallied, null);
+  Assert.equal(tallied, null);
 
-  do_check_eq(root.testing.PROP1, 20, "simple value property");
-  do_check_eq(root.testing.type1.VALUE1, "value1", "enum type");
-  do_check_eq(root.testing.type1.VALUE2, "value2", "enum type");
+  Assert.equal(root.testing.PROP1, 20, "simple value property");
+  Assert.equal(root.testing.type1.VALUE1, "value1", "enum type");
+  Assert.equal(root.testing.type1.VALUE2, "value2", "enum type");
 
-  do_check_eq("inject" in root, true, "namespace 'inject' should be injected");
-  do_check_eq(root["do-not-inject"], undefined, "namespace 'do-not-inject' should not be injected");
+  Assert.equal("inject" in root, true, "namespace 'inject' should be injected");
+  Assert.equal(root["do-not-inject"], undefined, "namespace 'do-not-inject' should not be injected");
 
   root.testing.foo(11, true);
   verify("call", "testing", "foo", [11, true]);
@@ -549,14 +594,14 @@ add_task(async function() {
 
   function f() {}
   root.testing.quora(f);
-  do_check_eq(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["call", "testing", "quora"]));
-  do_check_eq(tallied[3][0], f);
+  Assert.equal(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["call", "testing", "quora"]));
+  Assert.equal(tallied[3][0], f);
   tallied = null;
 
   let g = () => 0;
   root.testing.quora(g);
-  do_check_eq(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["call", "testing", "quora"]));
-  do_check_eq(tallied[3][0], g);
+  Assert.equal(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["call", "testing", "quora"]));
+  Assert.equal(tallied[3][0], g);
   tallied = null;
 
   root.testing.quileute(10);
@@ -574,8 +619,8 @@ add_task(async function() {
                 "should throw for wrong additionalProperties type");
 
   root.testing.quasar({func: f});
-  do_check_eq(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["call", "testing", "quasar"]));
-  do_check_eq(tallied[3][0].func, f);
+  Assert.equal(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["call", "testing", "quasar"]));
+  Assert.equal(tallied[3][0].func, f);
   tallied = null;
 
   root.testing.quosimodo({a: 10, b: 20, c: 30});
@@ -628,6 +673,7 @@ add_task(async function() {
 
   root.testing.format({hostname: "foo"});
   verify("call", "testing", "format", [{hostname: "foo",
+                                        imageDataOrStrictRelativeUrl: null,
                                         relativeUrl: null,
                                         strictRelativeUrl: null,
                                         url: null}]);
@@ -642,6 +688,7 @@ add_task(async function() {
   root.testing.format({url: "http://foo/bar",
                        relativeUrl: "http://foo/bar"});
   verify("call", "testing", "format", [{hostname: null,
+                                        imageDataOrStrictRelativeUrl: null,
                                         relativeUrl: "http://foo/bar",
                                         strictRelativeUrl: null,
                                         url: "http://foo/bar"}]);
@@ -649,9 +696,35 @@ add_task(async function() {
 
   root.testing.format({relativeUrl: "foo.html", strictRelativeUrl: "foo.html"});
   verify("call", "testing", "format", [{hostname: null,
+                                        imageDataOrStrictRelativeUrl: null,
                                         relativeUrl: `${wrapper.url}foo.html`,
                                         strictRelativeUrl: `${wrapper.url}foo.html`,
                                         url: null}]);
+  tallied = null;
+
+  root.testing.format({imageDataOrStrictRelativeUrl: "data:image/png;base64,A"});
+  verify("call", "testing", "format", [{hostname: null,
+                                        imageDataOrStrictRelativeUrl: "data:image/png;base64,A",
+                                        relativeUrl: null,
+                                        strictRelativeUrl: null,
+                                        url: null}]);
+  tallied = null;
+
+  root.testing.format({imageDataOrStrictRelativeUrl: "data:image/jpeg;base64,A"});
+  verify("call", "testing", "format", [{hostname: null,
+                                        imageDataOrStrictRelativeUrl: "data:image/jpeg;base64,A",
+                                        relativeUrl: null,
+                                        strictRelativeUrl: null,
+                                        url: null}]);
+  tallied = null;
+
+  root.testing.format({imageDataOrStrictRelativeUrl: "foo.html"});
+  verify("call", "testing", "format", [{hostname: null,
+                                        imageDataOrStrictRelativeUrl: `${wrapper.url}foo.html`,
+                                        relativeUrl: null,
+                                        strictRelativeUrl: null,
+                                        url: null}]);
+
   tallied = null;
 
   for (let format of ["url", "relativeUrl"]) {
@@ -665,6 +738,10 @@ add_task(async function() {
                   /must be a relative URL/,
                   "should throw for non-relative URL");
   }
+
+  Assert.throws(() => root.testing.format({imageDataOrStrictRelativeUrl: "data:image/svg+xml;utf8,A"}),
+                /must be a relative or PNG or JPG data:image URL/,
+                "should throw for non-relative or non PNG/JPG data URL");
 
   const dates = [
     "2016-03-04",
@@ -734,19 +811,19 @@ add_task(async function() {
 
 
   root.testing.onFoo.addListener(f);
-  do_check_eq(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["addListener", "testing", "onFoo"]));
-  do_check_eq(tallied[3][0], f);
-  do_check_eq(JSON.stringify(tallied[3][1]), JSON.stringify([]));
+  Assert.equal(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["addListener", "testing", "onFoo"]));
+  Assert.equal(tallied[3][0], f);
+  Assert.equal(JSON.stringify(tallied[3][1]), JSON.stringify([]));
   tallied = null;
 
   root.testing.onFoo.removeListener(f);
-  do_check_eq(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["removeListener", "testing", "onFoo"]));
-  do_check_eq(tallied[3][0], f);
+  Assert.equal(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["removeListener", "testing", "onFoo"]));
+  Assert.equal(tallied[3][0], f);
   tallied = null;
 
   root.testing.onFoo.hasListener(f);
-  do_check_eq(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["hasListener", "testing", "onFoo"]));
-  do_check_eq(tallied[3][0], f);
+  Assert.equal(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["hasListener", "testing", "onFoo"]));
+  Assert.equal(tallied[3][0], f);
   tallied = null;
 
   Assert.throws(() => root.testing.onFoo.addListener(10),
@@ -754,15 +831,15 @@ add_task(async function() {
                 "addListener with non-function should throw");
 
   root.testing.onBar.addListener(f, 10);
-  do_check_eq(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["addListener", "testing", "onBar"]));
-  do_check_eq(tallied[3][0], f);
-  do_check_eq(JSON.stringify(tallied[3][1]), JSON.stringify([10]));
+  Assert.equal(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["addListener", "testing", "onBar"]));
+  Assert.equal(tallied[3][0], f);
+  Assert.equal(JSON.stringify(tallied[3][1]), JSON.stringify([10]));
   tallied = null;
 
   root.testing.onBar.addListener(f);
-  do_check_eq(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["addListener", "testing", "onBar"]));
-  do_check_eq(tallied[3][0], f);
-  do_check_eq(JSON.stringify(tallied[3][1]), JSON.stringify([1]));
+  Assert.equal(JSON.stringify(tallied.slice(0, -1)), JSON.stringify(["addListener", "testing", "onBar"]));
+  Assert.equal(tallied[3][0], f);
+  Assert.equal(JSON.stringify(tallied[3][1]), JSON.stringify([1]));
   tallied = null;
 
   Assert.throws(() => root.testing.onBar.addListener(f, "hi"),
@@ -835,119 +912,151 @@ add_task(async function() {
   root.foreign.foreignRef.sub_foo();
   verify("call", "foreign.foreignRef", "sub_foo", []);
   tallied = null;
+
+  root.testing.callderived1({baseprop: "s1", derivedprop: "s2"});
+  verify("call", "testing", "callderived1",
+         [{baseprop: "s1", derivedprop: "s2"}]);
+  tallied = null;
+
+  Assert.throws(() => root.testing.callderived1({baseprop: "s1", derivedprop: 42}),
+                /Error processing derivedprop: Expected string/,
+                "Two different objects may $import the same base object");
+  Assert.throws(() => root.testing.callderived1({baseprop: "s1"}),
+                /Property "derivedprop" is required/,
+                "Object using $import has its local properites");
+  Assert.throws(() => root.testing.callderived1({derivedprop: "s2"}),
+                /Property "baseprop" is required/,
+                "Object using $import has imported properites");
+
+  root.testing.callderived2({baseprop: "s1", derivedprop: 42});
+  verify("call", "testing", "callderived2",
+         [{baseprop: "s1", derivedprop: 42}]);
+  tallied = null;
+
+  Assert.throws(() => root.testing.callderived2({baseprop: "s1", derivedprop: "s2"}),
+                /Error processing derivedprop: Expected integer/,
+                "Two different objects may $import the same base object");
+  Assert.throws(() => root.testing.callderived2({baseprop: "s1"}),
+                /Property "derivedprop" is required/,
+                "Object using $import has its local properites");
+  Assert.throws(() => root.testing.callderived2({derivedprop: 42}),
+                /Property "baseprop" is required/,
+                "Object using $import has imported properites");
 });
 
 let deprecatedJson = [
-  {namespace: "deprecated",
+  {
+    namespace: "deprecated",
 
-   properties: {
-     accessor: {
-       type: "string",
-       writable: true,
-       deprecated: "This is not the property you are looking for",
-     },
-   },
+    properties: {
+      accessor: {
+        type: "string",
+        writable: true,
+        deprecated: "This is not the property you are looking for",
+      },
+    },
 
-   types: [
-     {
-       "id": "Type",
-       "type": "string",
-     },
-   ],
+    types: [
+      {
+        "id": "Type",
+        "type": "string",
+      },
+    ],
 
-   functions: [
-     {
-       name: "property",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           type: "object",
-           properties: {
-             foo: {
-               type: "string",
-             },
-           },
-           additionalProperties: {
-             type: "any",
-             deprecated: "Unknown property",
-           },
-         },
-       ],
-     },
+    functions: [
+      {
+        name: "property",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            type: "object",
+            properties: {
+              foo: {
+                type: "string",
+              },
+            },
+            additionalProperties: {
+              type: "any",
+              deprecated: "Unknown property",
+            },
+          },
+        ],
+      },
 
-     {
-       name: "value",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           choices: [
-             {
-               type: "integer",
-             },
-             {
-               type: "string",
-               deprecated: "Please use an integer, not ${value}",
-             },
-           ],
-         },
-       ],
-     },
+      {
+        name: "value",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            choices: [
+              {
+                type: "integer",
+              },
+              {
+                type: "string",
+                deprecated: "Please use an integer, not ${value}",
+              },
+            ],
+          },
+        ],
+      },
 
-     {
-       name: "choices",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           deprecated: "You have no choices",
-           choices: [
-             {
-               type: "integer",
-             },
-           ],
-         },
-       ],
-     },
+      {
+        name: "choices",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            deprecated: "You have no choices",
+            choices: [
+              {
+                type: "integer",
+              },
+            ],
+          },
+        ],
+      },
 
-     {
-       name: "ref",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           choices: [
-             {
-               $ref: "Type",
-               deprecated: "Deprecated alias",
-             },
-           ],
-         },
-       ],
-     },
+      {
+        name: "ref",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            choices: [
+              {
+                $ref: "Type",
+                deprecated: "Deprecated alias",
+              },
+            ],
+          },
+        ],
+      },
 
-     {
-       name: "method",
-       type: "function",
-       deprecated: "Do not call this method",
-       parameters: [
-       ],
-     },
-   ],
+      {
+        name: "method",
+        type: "function",
+        deprecated: "Do not call this method",
+        parameters: [
+        ],
+      },
+    ],
 
-   events: [
-     {
-       name: "onDeprecated",
-       type: "function",
-       deprecated: "This event does not work",
-     },
-   ],
+    events: [
+      {
+        name: "onDeprecated",
+        type: "function",
+        deprecated: "This event does not work",
+      },
+    ],
   },
 ];
 
 add_task(async function testDeprecation() {
   let url = "data:," + JSON.stringify(deprecatedJson);
+  Schemas._rootSchema = null;
   await Schemas.load(url);
 
   let root = {};
@@ -1005,103 +1114,106 @@ add_task(async function testDeprecation() {
 
 
 let choicesJson = [
-  {namespace: "choices",
+  {
+    namespace: "choices",
 
-   types: [
-   ],
+    types: [
+    ],
 
-   functions: [
-     {
-       name: "meh",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           choices: [
-             {
-               type: "string",
-               enum: ["foo", "bar", "baz"],
-             },
-             {
-               type: "string",
-               pattern: "florg.*meh",
-             },
-             {
-               type: "integer",
-               minimum: 12,
-               maximum: 42,
-             },
-           ],
-         },
-       ],
-     },
+    functions: [
+      {
+        name: "meh",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            choices: [
+              {
+                type: "string",
+                enum: ["foo", "bar", "baz"],
+              },
+              {
+                type: "string",
+                pattern: "florg.*meh",
+              },
+              {
+                type: "integer",
+                minimum: 12,
+                maximum: 42,
+              },
+            ],
+          },
+        ],
+      },
 
-     {
-       name: "foo",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           choices: [
-             {
-               type: "object",
-               properties: {
-                 blurg: {
-                   type: "string",
-                   unsupported: true,
-                   optional: true,
-                 },
-               },
-               additionalProperties: {
-                 type: "string",
-               },
-             },
-             {
-               type: "string",
-             },
-             {
-               type: "array",
-               minItems: 2,
-               maxItems: 3,
-               items: {
-                 type: "integer",
-               },
-             },
-           ],
-         },
-       ],
-     },
+      {
+        name: "foo",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            choices: [
+              {
+                type: "object",
+                properties: {
+                  blurg: {
+                    type: "string",
+                    unsupported: true,
+                    optional: true,
+                  },
+                },
+                additionalProperties: {
+                  type: "string",
+                },
+              },
+              {
+                type: "string",
+              },
+              {
+                type: "array",
+                minItems: 2,
+                maxItems: 3,
+                items: {
+                  type: "integer",
+                },
+              },
+            ],
+          },
+        ],
+      },
 
-     {
-       name: "bar",
-       type: "function",
-       parameters: [
-         {
-           name: "arg",
-           choices: [
-             {
-               type: "object",
-               properties: {
-                 baz: {
-                   type: "string",
-                 },
-               },
-             },
-             {
-               type: "array",
-               items: {
-                 type: "integer",
-               },
-             },
-           ],
-         },
-       ],
-     },
-   ]},
+      {
+        name: "bar",
+        type: "function",
+        parameters: [
+          {
+            name: "arg",
+            choices: [
+              {
+                type: "object",
+                properties: {
+                  baz: {
+                    type: "string",
+                  },
+                },
+              },
+              {
+                type: "array",
+                items: {
+                  type: "integer",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 add_task(async function testChoices() {
   let url = "data:," + JSON.stringify(choicesJson);
+  Schemas._rootSchema = null;
   await Schemas.load(url);
 
   let root = {};
@@ -1144,49 +1256,54 @@ add_task(async function testChoices() {
 
 
 let permissionsJson = [
-  {namespace: "noPerms",
+  {
+    namespace: "noPerms",
 
-   types: [],
+    types: [],
 
-   functions: [
-     {
-       name: "noPerms",
-       type: "function",
-       parameters: [],
-     },
+    functions: [
+      {
+        name: "noPerms",
+        type: "function",
+        parameters: [],
+      },
 
-     {
-       name: "fooPerm",
-       type: "function",
-       permissions: ["foo"],
-       parameters: [],
-     },
-   ]},
+      {
+        name: "fooPerm",
+        type: "function",
+        permissions: ["foo"],
+        parameters: [],
+      },
+    ],
+  },
 
-  {namespace: "fooPerm",
+  {
+    namespace: "fooPerm",
 
-   permissions: ["foo"],
+    permissions: ["foo"],
 
-   types: [],
+    types: [],
 
-   functions: [
-     {
-       name: "noPerms",
-       type: "function",
-       parameters: [],
-     },
+    functions: [
+      {
+        name: "noPerms",
+        type: "function",
+        parameters: [],
+      },
 
-     {
-       name: "fooBarPerm",
-       type: "function",
-       permissions: ["foo.bar"],
-       parameters: [],
-     },
-   ]},
+      {
+        name: "fooBarPerm",
+        type: "function",
+        permissions: ["foo.bar"],
+        parameters: [],
+      },
+    ],
+  },
 ];
 
 add_task(async function testPermissions() {
   let url = "data:," + JSON.stringify(permissionsJson);
+  Schemas._rootSchema = null;
   await Schemas.load(url);
 
   let root = {};
@@ -1200,7 +1317,7 @@ add_task(async function testPermissions() {
   equal(root.fooPerm, undefined, "fooPerm namespace should not exist");
 
 
-  do_print('Add "foo" permission');
+  info('Add "foo" permission');
   permissions.add("foo");
 
   root = {};
@@ -1216,7 +1333,7 @@ add_task(async function testPermissions() {
   equal(root.fooPerm.fooBarPerm, undefined, "fooPerm.fooBarPerm method should not exist");
 
 
-  do_print('Add "foo.bar" permission');
+  info('Add "foo.bar" permission');
   permissions.add("foo.bar");
 
   root = {};
@@ -1286,6 +1403,7 @@ let nestedNamespaceJson = [
 add_task(async function testNestedNamespace() {
   let url = "data:," + JSON.stringify(nestedNamespaceJson);
 
+  Schemas._rootSchema = null;
   await Schemas.load(url);
 
   let root = {};
@@ -1297,8 +1415,8 @@ add_task(async function testNestedNamespace() {
   ok(root.nested.namespace, "The first level object contains the second namespace level");
 
   ok(root.nested.namespace.create, "Got the expected function in the nested namespace");
-  do_check_eq(typeof root.nested.namespace.create, "function",
-     "The property is a function as expected");
+  equal(typeof root.nested.namespace.create, "function",
+        "The property is a function as expected");
 
   let {instanceOfCustomType} = root.nested.namespace;
 
@@ -1375,6 +1493,7 @@ let $importJson = [
 
 add_task(async function test_$import() {
   let url = "data:," + JSON.stringify($importJson);
+  Schemas._rootSchema = null;
   await Schemas.load(url);
 
   let root = {};
@@ -1445,7 +1564,7 @@ add_task(async function testLocalAPIImplementation() {
       return name == "testing" || ns == "testing" || ns == "testing.prop3";
     },
     getImplementation(ns, name) {
-      do_check_true(ns == "testing" || ns == "testing.prop3");
+      Assert.ok(ns == "testing" || ns == "testing.prop3");
       if (ns == "testing.prop3" && name == "sub_foo") {
         // It is fine to use `null` here because we don't call async functions.
         return new LocalAPIImplementation(submoduleApiObj, name, null);
@@ -1457,60 +1576,63 @@ add_task(async function testLocalAPIImplementation() {
 
   let root = {};
   Schemas.inject(root, localWrapper);
-  do_check_eq(countGet2, 0);
-  do_check_eq(countProp3, 0);
-  do_check_eq(countProp3SubFoo, 0);
+  Assert.equal(countGet2, 0);
+  Assert.equal(countProp3, 0);
+  Assert.equal(countProp3SubFoo, 0);
 
-  do_check_eq(root.testing.PROP1, 20);
+  Assert.equal(root.testing.PROP1, 20);
 
-  do_check_eq(root.testing.prop2, "prop2 val");
-  do_check_eq(countGet2, 1);
+  Assert.equal(root.testing.prop2, "prop2 val");
+  Assert.equal(countGet2, 1);
 
-  do_check_eq(root.testing.prop2, "prop2 val");
-  do_check_eq(countGet2, 2);
+  Assert.equal(root.testing.prop2, "prop2 val");
+  Assert.equal(countGet2, 2);
 
-  do_print(JSON.stringify(root.testing));
-  do_check_eq(root.testing.prop3.sub_foo(), 1);
-  do_check_eq(countProp3, 1);
-  do_check_eq(countProp3SubFoo, 1);
+  info(JSON.stringify(root.testing));
+  Assert.equal(root.testing.prop3.sub_foo(), 1);
+  Assert.equal(countProp3, 1);
+  Assert.equal(countProp3SubFoo, 1);
 
-  do_check_eq(root.testing.prop3.sub_foo(), 2);
-  do_check_eq(countProp3, 2);
-  do_check_eq(countProp3SubFoo, 2);
+  Assert.equal(root.testing.prop3.sub_foo(), 2);
+  Assert.equal(countProp3, 2);
+  Assert.equal(countProp3SubFoo, 2);
 
   root.testing.prop3.sub_foo = () => { return "overwritten"; };
-  do_check_eq(root.testing.prop3.sub_foo(), "overwritten");
+  Assert.equal(root.testing.prop3.sub_foo(), "overwritten");
 
   root.testing.prop3 = {sub_foo() { return "overwritten again"; }};
-  do_check_eq(root.testing.prop3.sub_foo(), "overwritten again");
-  do_check_eq(countProp3SubFoo, 2);
+  Assert.equal(root.testing.prop3.sub_foo(), "overwritten again");
+  Assert.equal(countProp3SubFoo, 2);
 });
 
 
 let defaultsJson = [
-  {namespace: "defaultsJson",
+  {
+    namespace: "defaultsJson",
 
-   types: [],
+    types: [],
 
-   functions: [
-     {
-       name: "defaultFoo",
-       type: "function",
-       parameters: [
-         {name: "arg", type: "object", optional: true, properties: {
-           prop1: {type: "integer", optional: true},
-         }, default: {prop1: 1}},
-       ],
-       returns: {
-         type: "object",
-         additionalProperties: true,
-       },
-     },
-   ]},
+    functions: [
+      {
+        name: "defaultFoo",
+        type: "function",
+        parameters: [
+          {name: "arg", type: "object", optional: true, properties: {
+            prop1: {type: "integer", optional: true},
+          }, default: {prop1: 1}},
+        ],
+        returns: {
+          type: "object",
+          additionalProperties: true,
+        },
+      },
+    ],
+  },
 ];
 
 add_task(async function testDefaults() {
   let url = "data:," + JSON.stringify(defaultsJson);
+  Schemas._rootSchema = null;
   await Schemas.load(url);
 
   let testingApiObj = {
@@ -1577,6 +1699,7 @@ let returnsJson = [{
 
 add_task(async function testReturns() {
   const url = "data:," + JSON.stringify(returnsJson);
+  Schemas._rootSchema = null;
   await Schemas.load(url);
 
   const apiObject = {

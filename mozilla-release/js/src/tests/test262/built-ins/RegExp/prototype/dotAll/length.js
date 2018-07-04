@@ -1,3 +1,4 @@
+// |reftest| skip -- regexp-dotall is not supported
 // Copyright (C) 2017 André Bargull. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -5,7 +6,7 @@
 esid: sec-get-regexp.prototype.dotall
 description: >
   get RegExp.prototype.dotAll.length is 0.
-info: >
+info: |
   get RegExp.prototype.dotAll
 
   17 ECMAScript Standard Built-in Objects:

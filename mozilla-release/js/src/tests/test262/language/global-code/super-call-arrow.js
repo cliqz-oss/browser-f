@@ -27,9 +27,11 @@ info: |
        ArrowFunction.
 features: [super, arrow-function]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 () => {
   super();

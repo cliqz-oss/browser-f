@@ -5,25 +5,45 @@ android-api-16/debug:
         job-name: android-api-16-debug
     treeherder:
         platform: android-4-0-armv7-api16/debug
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-android
     worker:
+        docker-image: {in-tree: android-build}
         max-run-time: 7200
         env:
+            GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
+        artifacts:
+            - name: public/android/R
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/R
+              type: directory
+            - name: public/android/maven
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/maven/
+              type: directory
+            - name: public/build/geckoview-androidTest.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/officialWithGeckoBinariesNoMinApi/debug/geckoview-official-withGeckoBinaries-noMinApi-debug-androidTest.apk
+              type: file
+            - name: public/build/geckoview_example.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview_example/outputs/apk/officialWithGeckoBinariesNoMinApi/debug/geckoview_example-official-withGeckoBinaries-noMinApi-debug.apk
+              type: file
+            - name: public/build
+              path: /builds/worker/artifacts/
+              type: directory
     run:
         using: mozharness
         actions: [get-secrets build multi-l10n update]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: api-16-debug
         tooltool-downloads: internal
     toolchains:
-        - linux64-gcc
+        - android-gradle-dependencies
+        - android-ndk-linux
+        - android-sdk-linux
+        - linux64-clang
+        - linux64-rust-android
         - linux64-sccache
 
 android-x86/opt:
@@ -33,57 +53,109 @@ android-x86/opt:
         job-name: android-x86-opt
     treeherder:
         platform: android-4-2-x86/opt
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-android
     worker:
+        docker-image: {in-tree: android-build}
         max-run-time: 7200
         env:
+            GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android-x86/releng.manifest"
+            # Increase the timeout because nsContentUtils.o takes a ridiculously
+            # long time to compile for x86 when using the current NDKs.  This
+            # will eventually get fixed, but for now we have to live with this.
+            # See https://github.com/android-ndk/ndk/issues/522 for more context.
+            SCCACHE_IDLE_TIMEOUT: "1500"
+        artifacts:
+            - name: public/android/R
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/R
+              type: directory
+            - name: public/android/maven
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/maven/
+              type: directory
+            - name: public/build/geckoview-androidTest.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/officialWithGeckoBinariesNoMinApi/debug/geckoview-official-withGeckoBinaries-noMinApi-debug-androidTest.apk
+              type: file
+            - name: public/build/geckoview_example.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview_example/outputs/apk/officialWithGeckoBinariesNoMinApi/debug/geckoview_example-official-withGeckoBinaries-noMinApi-debug.apk
+              type: file
+            - name: public/build
+              path: /builds/worker/artifacts/
+              type: directory
     run:
         using: mozharness
         actions: [get-secrets build multi-l10n update]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: x86
         tooltool-downloads: internal
     toolchains:
-        - linux64-gcc
+        - android-gradle-dependencies
+        - android-ndk-linux
+        - android-sdk-linux
+        - linux64-clang
+        - linux64-rust-android
         - linux64-sccache
 
 android-x86-nightly/opt:
     description: "Android 4.2 x86 Nightly"
     attributes:
         nightly: true
+    shipping-phase: promote
+    shipping-product: fennec
     index:
         product: mobile
         job-name: android-x86-opt
         type: nightly
     treeherder:
         platform: android-4-2-x86/opt
-        symbol: tc(N)
+        symbol: N
     worker-type: aws-provisioner-v1/gecko-{level}-b-android
     worker:
+        docker-image: {in-tree: android-build}
         max-run-time: 7200
         env:
+            GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android-x86/releng.manifest"
+            # Increase the timeout because nsContentUtils.o takes a ridiculously
+            # long time to compile for x86 when using the current NDKs.  This
+            # will eventually get fixed, but for now we have to live with this.
+            # See https://github.com/android-ndk/ndk/issues/522 for more context.
+            SCCACHE_IDLE_TIMEOUT: "1500"
+        artifacts:
+            - name: public/android/R
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/R
+              type: directory
+            - name: public/android/maven
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/maven/
+              type: directory
+            - name: public/build/geckoview-androidTest.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/officialWithGeckoBinariesNoMinApi/debug/geckoview-official-withGeckoBinaries-noMinApi-debug-androidTest.apk
+              type: file
+            - name: public/build/geckoview_example.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview_example/outputs/apk/officialWithGeckoBinariesNoMinApi/debug/geckoview_example-official-withGeckoBinaries-noMinApi-debug.apk
+              type: file
+            - name: public/build
+              path: /builds/worker/artifacts/
+              type: directory
     run:
         using: mozharness
         actions: [get-secrets build multi-l10n update]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
             - taskcluster_nightly.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: x86
         tooltool-downloads: internal
     toolchains:
-        - linux64-gcc
+        - android-gradle-dependencies
+        - android-ndk-linux
+        - android-sdk-linux
+        - linux64-clang
+        - linux64-rust-android
         - linux64-sccache
 
 android-api-16/opt:
@@ -93,222 +165,146 @@ android-api-16/opt:
         job-name: android-api-16-opt
     treeherder:
         platform: android-4-0-armv7-api16/opt
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-android
     worker:
+        docker-image: {in-tree: android-build}
         max-run-time: 7200
         env:
+            GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
+        artifacts:
+            - name: public/android/R
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/R
+              type: directory
+            - name: public/android/maven
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/maven/
+              type: directory
+            - name: public/build/geckoview-androidTest.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/officialWithGeckoBinariesNoMinApi/debug/geckoview-official-withGeckoBinaries-noMinApi-debug-androidTest.apk
+              type: file
+            - name: public/build/geckoview_example.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview_example/outputs/apk/officialWithGeckoBinariesNoMinApi/debug/geckoview_example-official-withGeckoBinaries-noMinApi-debug.apk
+              type: file
+            - name: public/build
+              path: /builds/worker/artifacts/
+              type: directory
     run:
         using: mozharness
         actions: [get-secrets build multi-l10n update]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: api-16
         tooltool-downloads: internal
     toolchains:
-        - linux64-gcc
+        - android-gradle-dependencies
+        - android-ndk-linux
+        - android-sdk-linux
+        - linux64-clang
+        - linux64-rust-android
+        - linux64-sccache
+
+android-api-16-without-google-play-services/opt:
+    description: "Android 4.0 api-16+ (without Google Play Services) Opt"
+    index:
+        product: mobile
+        job-name: android-api-16-without-google-play-services-opt
+    treeherder:
+        platform: android-4-0-armv7-api16/opt
+        symbol: BnoGPS
+    worker-type: aws-provisioner-v1/gecko-{level}-b-android
+    worker:
+        docker-image: {in-tree: android-build}
+        max-run-time: 7200
+        env:
+            GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
+            PERFHERDER_EXTRA_OPTIONS: android-api-16-without-google-play-services
+            TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
+        artifacts:
+            - name: public/android/R
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/R
+              type: directory
+            - name: public/android/maven
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/maven/
+              type: directory
+            - name: public/build/geckoview_example.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview_example/outputs/apk/geckoview_example-withGeckoBinaries.apk
+              type: file
+            - name: public/build
+              path: /builds/worker/artifacts/
+              type: directory
+    run:
+        using: mozharness
+        actions: [get-secrets build multi-l10n update]
+        config:
+            - builds/releng_base_android_64_builds.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        custom-build-variant-cfg: api-16-without-google-play-services
+        tooltool-downloads: internal
+    run-on-projects: ['mozilla-central']
+    toolchains:
+        - android-gradle-dependencies
+        - android-ndk-linux
+        - android-sdk-linux
+        - linux64-clang
+        - linux64-rust-android
         - linux64-sccache
 
 android-api-16-nightly/opt:
     description: "Android 4.0 api-16+ Nightly"
     attributes:
         nightly: true
+    shipping-phase: promote
+    shipping-product: fennec
     index:
         product: mobile
         job-name: android-api-16-opt
         type: nightly-with-multi-l10n
     treeherder:
         platform: android-4-0-armv7-api16/opt
-        symbol: tc(N)
+        symbol: N
     worker-type: aws-provisioner-v1/gecko-{level}-b-android
     worker:
+        docker-image: {in-tree: android-build}
         max-run-time: 7200
         env:
+            GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
+        artifacts:
+            - name: public/android/R
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/R
+              type: directory
+            - name: public/android/maven
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/maven/
+              type: directory
+            - name: public/build/geckoview-androidTest.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/officialWithGeckoBinariesNoMinApi/debug/geckoview-official-withGeckoBinaries-noMinApi-debug-androidTest.apk
+              type: file
+            - name: public/build/geckoview_example.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview_example/outputs/apk/officialWithGeckoBinariesNoMinApi/debug/geckoview_example-official-withGeckoBinaries-noMinApi-debug.apk
+              type: file
+            - name: public/build
+              path: /builds/worker/artifacts/
+              type: directory
     run:
         using: mozharness
         actions: [get-secrets build multi-l10n update]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
             - taskcluster_nightly.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: api-16
         tooltool-downloads: internal
     toolchains:
-        - linux64-gcc
-        - linux64-sccache
-
-android-x86-old-id/opt:
-    description: "Android 4.2 x86 Opt OldId"
-    index:
-        product: mobile
-        job-name: android-x86-old-id-opt
-    treeherder:
-        platform: android-4-2-x86-old-id/opt
-        symbol: tc(B)
-    worker-type: aws-provisioner-v1/gecko-{level}-b-android
-    worker:
-        max-run-time: 7200
-        env:
-            TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android-x86/releng.manifest"
-    run:
-        using: mozharness
-        actions: [get-secrets build multi-l10n update]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
-        script: "mozharness/scripts/fx_desktop_build.py"
-        secrets: true
-        custom-build-variant-cfg: x86-old-id
-        tooltool-downloads: internal
-    run-on-projects: [ 'mozilla-central' ]
-    toolchains:
-        - linux64-gcc
-        - linux64-sccache
-
-android-x86-old-id-nightly/opt:
-    description: "Android 4.2 x86 OldId Nightly"
-    attributes:
-        nightly: true
-    index:
-        product: mobile
-        job-name: android-x86-old-id-opt
-        type: nightly
-    treeherder:
-        platform: android-4-2-x86-old-id/opt
-        symbol: tc(N)
-    worker-type: aws-provisioner-v1/gecko-{level}-b-android
-    worker:
-        max-run-time: 7200
-        env:
-            TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android-x86/releng.manifest"
-    run:
-        using: mozharness
-        actions: [get-secrets build multi-l10n update]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
-            - taskcluster_nightly.py
-        script: "mozharness/scripts/fx_desktop_build.py"
-        secrets: true
-        custom-build-variant-cfg: x86-old-id
-        tooltool-downloads: internal
-    run-on-projects: [ 'mozilla-central' ]
-    toolchains:
-        - linux64-gcc
-        - linux64-sccache
-
-android-api-16-old-id/opt:
-    description: "Android 4.0 api-16+ Opt OldId"
-    index:
-        product: mobile
-        job-name: android-api-16-old-id-opt
-    treeherder:
-        platform: android-4-0-armv7-api16-old-id/opt
-        symbol: tc(B)
-    worker-type: aws-provisioner-v1/gecko-{level}-b-android
-    worker:
-        max-run-time: 7200
-        env:
-            TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
-    run:
-        using: mozharness
-        actions: [get-secrets build multi-l10n update]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
-        script: "mozharness/scripts/fx_desktop_build.py"
-        secrets: true
-        custom-build-variant-cfg: api-16-old-id
-        tooltool-downloads: internal
-    run-on-projects: [ 'mozilla-central' ]
-    toolchains:
-        - linux64-gcc
-        - linux64-sccache
-
-android-api-16-old-id-nightly/opt:
-    description: "Android 4.0 api-16+ OldId Nightly"
-    attributes:
-        nightly: true
-    index:
-        product: mobile
-        job-name: android-api-16-old-id-opt
-        type: nightly-with-multi-l10n
-    treeherder:
-        platform: android-4-0-armv7-api16-old-id/opt
-        symbol: tc(N)
-    worker-type: aws-provisioner-v1/gecko-{level}-b-android
-    worker:
-        max-run-time: 7200
-        env:
-            TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
-    run:
-        using: mozharness
-        actions: [get-secrets build multi-l10n update]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
-            - taskcluster_nightly.py
-        script: "mozharness/scripts/fx_desktop_build.py"
-        secrets: true
-        custom-build-variant-cfg: api-16-old-id
-        tooltool-downloads: internal
-    run-on-projects: [ 'mozilla-central' ]
-    toolchains:
-        - linux64-gcc
-        - linux64-sccache
-
-android-api-16-gradle/opt:
-    description: "Android 4.0 api-16+ (Gradle) Opt"
-    index:
-        product: mobile
-        job-name: android-api-16-gradle-opt
-    treeherder:
-        platform: android-api-16-gradle/opt
-        symbol: tc(Bg)
-        tier: 2
-    worker-type: aws-provisioner-v1/gecko-{level}-b-android
-    worker:
-        max-run-time: 7200
-        env:
-            # Bug 1292762 - Set GRADLE_USER_HOME to avoid sdk-manager-plugin intermittent
-            GRADLE_USER_HOME: /home/worker/workspace/build/src/dotgradle
-            TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
-        artifacts:
-          - name: public/android/maven
-            path: /home/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/maven/
-            type: directory
-          - name: public/build/geckoview_example.apk
-            path: /home/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview_example/outputs/apk/geckoview_example-withGeckoBinaries.apk
-            type: file
-          - name: public/build
-            path: /home/worker/artifacts/
-            type: directory
-    run:
-        using: mozharness
-        actions: [get-secrets build multi-l10n update]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
-        script: "mozharness/scripts/fx_desktop_build.py"
-        secrets: true
-        custom-build-variant-cfg: api-16-gradle
-        tooltool-downloads: internal
-    toolchains:
-        - linux64-gcc
+        - android-gradle-dependencies
+        - android-ndk-linux
+        - android-sdk-linux
+        - linux64-clang
+        - linux64-rust-android
         - linux64-sccache
 
 android-aarch64/opt:
@@ -318,55 +314,97 @@ android-aarch64/opt:
         job-name: android-aarch64-opt
     treeherder:
         platform: android-5-0-aarch64/opt
-        symbol: tc(B)
+        symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-android
     worker:
+        docker-image: {in-tree: android-build}
         max-run-time: 7200
         env:
+            GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
+        artifacts:
+            - name: public/android/R
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/R
+              type: directory
+            - name: public/android/maven
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/maven/
+              type: directory
+            - name: public/build/geckoview-androidTest.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/officialWithGeckoBinariesNoMinApi/debug/geckoview-official-withGeckoBinaries-noMinApi-debug-androidTest.apk
+              type: file
+            - name: public/build/geckoview_example.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview_example/outputs/apk/officialWithGeckoBinariesNoMinApi/debug/geckoview_example-official-withGeckoBinaries-noMinApi-debug.apk
+              type: file
+            - name: public/build
+              path: /builds/worker/artifacts/
+              type: directory
     run:
         using: mozharness
         actions: [get-secrets build multi-l10n update]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: aarch64
         tooltool-downloads: internal
     toolchains:
-        - linux64-gcc
+        - android-gradle-dependencies
+        - android-ndk-linux
+        - android-sdk-linux
+        - linux64-clang
+        - linux64-rust-android
         - linux64-sccache
 
 android-aarch64-nightly/opt:
     description: "Android 5.0 AArch64 Nightly"
     attributes:
         nightly: true
+    shipping-phase: promote
+    shipping-product: fennec
     index:
         product: mobile
         job-name: android-aarch64-opt
         type: nightly
     treeherder:
         platform: android-5-0-aarch64/opt
-        symbol: tc(N)
+        symbol: N
     worker-type: aws-provisioner-v1/gecko-{level}-b-android
     worker:
+        docker-image: {in-tree: android-build}
         max-run-time: 7200
         env:
+            GRADLE_USER_HOME: "/builds/worker/workspace/build/src/mobile/android/gradle/dotgradle-offline"
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
+        artifacts:
+            - name: public/android/R
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/app/R
+              type: directory
+            - name: public/android/maven
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/maven/
+              type: directory
+            - name: public/build/geckoview-androidTest.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/officialWithGeckoBinariesNoMinApi/debug/geckoview-official-withGeckoBinaries-noMinApi-debug-androidTest.apk
+              type: file
+            - name: public/build/geckoview_example.apk
+              path: /builds/worker/workspace/build/src/obj-firefox/gradle/build/mobile/android/geckoview_example/outputs/apk/officialWithGeckoBinariesNoMinApi/debug/geckoview_example-official-withGeckoBinaries-noMinApi-debug.apk
+              type: file
+            - name: public/build
+              path: /builds/worker/artifacts/
+              type: directory
     run:
         using: mozharness
         actions: [get-secrets build multi-l10n update]
         config:
             - builds/releng_base_android_64_builds.py
-            - disable_signing.py
-            - platform_supports_post_upload_to_latest.py
             - taskcluster_nightly.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: aarch64
         tooltool-downloads: internal
     toolchains:
-        - linux64-gcc
+        - android-gradle-dependencies
+        - android-ndk-linux
+        - android-sdk-linux
+        - linux64-clang
+        - linux64-rust-android
         - linux64-sccache

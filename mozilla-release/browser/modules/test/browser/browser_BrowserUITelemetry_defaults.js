@@ -5,8 +5,8 @@
 
 function test() {
   let s = {};
-  Cu.import("resource:///modules/CustomizableUI.jsm", s);
-  Cu.import("resource:///modules/BrowserUITelemetry.jsm", s);
+  ChromeUtils.import("resource:///modules/CustomizableUI.jsm", s);
+  ChromeUtils.import("resource:///modules/BrowserUITelemetry.jsm", s);
 
   let { CustomizableUI, BrowserUITelemetry } = s;
 
@@ -18,18 +18,14 @@ function test() {
 
   let result = BrowserUITelemetry._getWindowMeasurements(window, 0);
 
-  // Bug 1278176 - DevEdition always reports the developer-button is moved.
+  Assert.deepEqual(result.defaultMoved, []);
+  // Bug 1278176 - DevEdition always reports the developer-button is added to
+  // the toolbar.
   if (!AppConstants.MOZ_DEV_EDITION) {
-    Assert.deepEqual(result.defaultMoved, []);
+    Assert.deepEqual(result.nondefaultAdded, []);
   }
-  Assert.deepEqual(result.nondefaultAdded, []);
-  // This one is a bit weird - the "social-share-button" is dynamically added
-  // to the toolbar as the feature is first used - but it's listed as being in
-  // the toolbar by default so it doesn't end up in nondefaultAdded once it
-  // is created. The end result is that it ends up in defaultRemoved before
-  // the feature has been activated.
-  // Bug 1273358 exists to fix this.
-  Assert.deepEqual(result.defaultRemoved, ["social-share-button"]);
+
+  Assert.deepEqual(result.defaultRemoved, []);
 
   // And mochi insists there's only a single window with a single tab when
   // starting a test, so check that for good measure.

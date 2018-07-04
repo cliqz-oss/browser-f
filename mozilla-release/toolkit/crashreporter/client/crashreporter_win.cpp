@@ -414,7 +414,14 @@ static DWORD WINAPI SendThreadProc(LPVOID param)
     }
   }
 
-  PostMessage(td->hDlg, WM_UPLOADCOMPLETE, finishedOk ? 1 : 0, 0);
+  if (gAutoSubmit) {
+    // Ordinarily this is done on the main thread in CrashReporterDialogProc,
+    // for auto submit we don't run that and it should be safe to finish up
+    // here as is done on other platforms.
+    SendCompleted(finishedOk, WideToUTF8(gSendData.serverResponse));
+  } else {
+    PostMessage(td->hDlg, WM_UPLOADCOMPLETE, finishedOk ? 1 : 0, 0);
+  }
 
   return 0;
 }
@@ -1357,6 +1364,16 @@ bool UIShowCrashUI(const StringTable& files,
       gStrings["isRTL"] == "yes")
     gRTLlayout = true;
 
+  if (gAutoSubmit) {
+    gSendData.queryParameters = gQueryParameters;
+
+    gThreadHandle = CreateThread(nullptr, 0, SendThreadProc, &gSendData, 0,
+                                 nullptr);
+    WaitForSingleObject(gThreadHandle, INFINITE);
+    // SendCompleted was called from SendThreadProc
+    return true;
+  }
+
   return 1 == DialogBoxParamMaybeRTL(IDD_SENDDIALOG, nullptr,
                                      (DLGPROC)CrashReporterDialogProc, 0);
 }
@@ -1549,6 +1566,7 @@ void UIPruneSavedDumps(const std::string& directory)
 
     dumpfiles.pop_back();
   }
+  FindClose(dirlist);
 }
 
 bool UIRunProgram(const string& exename,
@@ -1587,7 +1605,7 @@ bool UIRunProgram(const string& exename,
 }
 
 string
-UIGetEnv(const string name)
+UIGetEnv(const string& name)
 {
   const wchar_t *var = _wgetenv(UTF8ToWide(name).c_str());
   if (var && *var) {

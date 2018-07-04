@@ -21,8 +21,8 @@ impl Edge {
     /// Construct a new edge whose referent is `to` and is of the given `kind`.
     pub fn new(to: ItemId, kind: EdgeKind) -> Edge {
         Edge {
-            to: to,
-            kind: kind,
+            to,
+            kind,
         }
     }
 }
@@ -214,7 +214,9 @@ pub fn no_edges(_: &BindgenContext, _: Edge) -> bool {
 pub fn codegen_edges(ctx: &BindgenContext, edge: Edge) -> bool {
     let cc = &ctx.options().codegen_config;
     match edge.kind {
-        EdgeKind::Generic => ctx.resolve_item(edge.to).is_enabled_for_codegen(ctx),
+        EdgeKind::Generic => {
+            ctx.resolve_item(edge.to).is_enabled_for_codegen(ctx)
+        }
 
         // We statically know the kind of item that non-generic edges can point
         // to, so we don't need to actually resolve the item and check
@@ -239,9 +241,9 @@ pub fn codegen_edges(ctx: &BindgenContext, edge: Edge) -> bool {
 /// The storage for the set of items that have been seen (although their
 /// outgoing edges might not have been fully traversed yet) in an active
 /// traversal.
-pub trait TraversalStorage<'ctx, 'gen> {
+pub trait TraversalStorage<'ctx> {
     /// Construct a new instance of this TraversalStorage, for a new traversal.
-    fn new(ctx: &'ctx BindgenContext<'gen>) -> Self;
+    fn new(ctx: &'ctx BindgenContext) -> Self;
 
     /// Add the given item to the storage. If the item has never been seen
     /// before, return `true`. Otherwise, return `false`.
@@ -251,8 +253,8 @@ pub trait TraversalStorage<'ctx, 'gen> {
     fn add(&mut self, from: Option<ItemId>, item: ItemId) -> bool;
 }
 
-impl<'ctx, 'gen> TraversalStorage<'ctx, 'gen> for ItemSet {
-    fn new(_: &'ctx BindgenContext<'gen>) -> Self {
+impl<'ctx> TraversalStorage<'ctx> for ItemSet {
+    fn new(_: &'ctx BindgenContext) -> Self {
         ItemSet::new()
     }
 
@@ -265,14 +267,13 @@ impl<'ctx, 'gen> TraversalStorage<'ctx, 'gen> for ItemSet {
 /// each item. This is useful for providing debug assertions with meaningful
 /// diagnostic messages about dangling items.
 #[derive(Debug)]
-pub struct Paths<'ctx, 'gen>(BTreeMap<ItemId, ItemId>,
-                             &'ctx BindgenContext<'gen>)
-    where 'gen: 'ctx;
+pub struct Paths<'ctx>(
+    BTreeMap<ItemId, ItemId>,
+    &'ctx BindgenContext
+);
 
-impl<'ctx, 'gen> TraversalStorage<'ctx, 'gen> for Paths<'ctx, 'gen>
-    where 'gen: 'ctx,
-{
-    fn new(ctx: &'ctx BindgenContext<'gen>) -> Self {
+impl<'ctx> TraversalStorage<'ctx> for Paths<'ctx> {
+    fn new(ctx: &'ctx BindgenContext) -> Self {
         Paths(BTreeMap::new(), ctx)
     }
 
@@ -284,10 +285,10 @@ impl<'ctx, 'gen> TraversalStorage<'ctx, 'gen> for Paths<'ctx, 'gen>
             let mut path = vec![];
             let mut current = item;
             loop {
-                let predecessor = *self.0
-                    .get(&current)
-                    .expect("We know we found this item id, so it must have a \
-                            predecessor");
+                let predecessor = *self.0.get(&current).expect(
+                    "We know we found this item id, so it must have a \
+                            predecessor",
+                );
                 if predecessor == current {
                     break;
                 }
@@ -295,9 +296,11 @@ impl<'ctx, 'gen> TraversalStorage<'ctx, 'gen> for Paths<'ctx, 'gen>
                 current = predecessor;
             }
             path.reverse();
-            panic!("Found reference to dangling id = {:?}\nvia path = {:?}",
-                   item,
-                   path);
+            panic!(
+                "Found reference to dangling id = {:?}\nvia path = {:?}",
+                item,
+                path
+            );
         }
 
         newly_discovered
@@ -349,7 +352,8 @@ pub trait Tracer {
 }
 
 impl<F> Tracer for F
-    where F: FnMut(ItemId, EdgeKind),
+where
+    F: FnMut(ItemId, EdgeKind),
 {
     fn visit_kind(&mut self, item: ItemId, kind: EdgeKind) {
         (*self)(item, kind)
@@ -367,23 +371,25 @@ pub trait Trace {
     type Extra;
 
     /// Trace all of this item's outgoing edges to other items.
-    fn trace<T>(&self,
-                context: &BindgenContext,
-                tracer: &mut T,
-                extra: &Self::Extra)
-        where T: Tracer;
+    fn trace<T>(
+        &self,
+        context: &BindgenContext,
+        tracer: &mut T,
+        extra: &Self::Extra,
+    ) where
+        T: Tracer;
 }
 
 /// An graph traversal of the transitive closure of references between items.
 ///
 /// See `BindgenContext::whitelisted_items` for more information.
-pub struct ItemTraversal<'ctx, 'gen, Storage, Queue, Predicate>
-    where 'gen: 'ctx,
-          Storage: TraversalStorage<'ctx, 'gen>,
-          Queue: TraversalQueue,
-          Predicate: TraversalPredicate,
+pub struct ItemTraversal<'ctx, Storage, Queue, Predicate>
+where
+    Storage: TraversalStorage<'ctx>,
+    Queue: TraversalQueue,
+    Predicate: TraversalPredicate,
 {
-    ctx: &'ctx BindgenContext<'gen>,
+    ctx: &'ctx BindgenContext,
 
     /// The set of items we have seen thus far in this traversal.
     seen: Storage,
@@ -398,22 +404,21 @@ pub struct ItemTraversal<'ctx, 'gen, Storage, Queue, Predicate>
     currently_traversing: Option<ItemId>,
 }
 
-impl<'ctx, 'gen, Storage, Queue, Predicate> ItemTraversal<'ctx,
-                                                          'gen,
-                                                          Storage,
-                                                          Queue,
-                                                          Predicate>
-    where 'gen: 'ctx,
-          Storage: TraversalStorage<'ctx, 'gen>,
-          Queue: TraversalQueue,
-          Predicate: TraversalPredicate,
+impl<'ctx, Storage, Queue, Predicate>
+    ItemTraversal<'ctx, Storage, Queue, Predicate>
+where
+    Storage: TraversalStorage<'ctx>,
+    Queue: TraversalQueue,
+    Predicate: TraversalPredicate,
 {
     /// Begin a new traversal, starting from the given roots.
-    pub fn new<R>(ctx: &'ctx BindgenContext<'gen>,
-                  roots: R,
-                  predicate: Predicate)
-                  -> ItemTraversal<'ctx, 'gen, Storage, Queue, Predicate>
-        where R: IntoIterator<Item = ItemId>,
+    pub fn new<R>(
+        ctx: &'ctx BindgenContext,
+        roots: R,
+        predicate: Predicate,
+    ) -> ItemTraversal<'ctx, Storage, Queue, Predicate>
+    where
+        R: IntoIterator<Item = ItemId>,
     {
         let mut seen = Storage::new(ctx);
         let mut queue = Queue::default();
@@ -433,12 +438,12 @@ impl<'ctx, 'gen, Storage, Queue, Predicate> ItemTraversal<'ctx,
     }
 }
 
-impl<'ctx, 'gen, Storage, Queue, Predicate> Tracer
-    for ItemTraversal<'ctx, 'gen, Storage, Queue, Predicate>
-    where 'gen: 'ctx,
-          Storage: TraversalStorage<'ctx, 'gen>,
-          Queue: TraversalQueue,
-          Predicate: TraversalPredicate,
+impl<'ctx, Storage, Queue, Predicate> Tracer
+    for ItemTraversal<'ctx, Storage, Queue, Predicate>
+where
+    Storage: TraversalStorage<'ctx>,
+    Queue: TraversalQueue,
+    Predicate: TraversalPredicate,
 {
     fn visit_kind(&mut self, item: ItemId, kind: EdgeKind) {
         let edge = Edge::new(item, kind);
@@ -446,34 +451,35 @@ impl<'ctx, 'gen, Storage, Queue, Predicate> Tracer
             return;
         }
 
-        let is_newly_discovered = self.seen
-            .add(self.currently_traversing, item);
+        let is_newly_discovered =
+            self.seen.add(self.currently_traversing, item);
         if is_newly_discovered {
             self.queue.push(item)
         }
     }
 }
 
-impl<'ctx, 'gen, Storage, Queue, Predicate> Iterator
-    for ItemTraversal<'ctx, 'gen, Storage, Queue, Predicate>
-    where 'gen: 'ctx,
-          Storage: TraversalStorage<'ctx, 'gen>,
-          Queue: TraversalQueue,
-          Predicate: TraversalPredicate,
+impl<'ctx, Storage, Queue, Predicate> Iterator
+    for ItemTraversal<'ctx, Storage, Queue, Predicate>
+where
+    Storage: TraversalStorage<'ctx>,
+    Queue: TraversalQueue,
+    Predicate: TraversalPredicate,
 {
     type Item = ItemId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let id = match self.queue.next() {
-            None => return None,
-            Some(id) => id,
-        };
+        let id = self.queue.next()?;
 
         let newly_discovered = self.seen.add(None, id);
-        debug_assert!(!newly_discovered,
-                      "should have already seen anything we get out of our queue");
-        debug_assert!(self.ctx.resolve_item_fallible(id).is_some(),
-                      "should only get IDs of actual items in our context during traversal");
+        debug_assert!(
+            !newly_discovered,
+            "should have already seen anything we get out of our queue"
+        );
+        debug_assert!(
+            self.ctx.resolve_item_fallible(id).is_some(),
+            "should only get IDs of actual items in our context during traversal"
+        );
 
         self.currently_traversing = Some(id);
         id.trace(self.ctx, self, &());
@@ -487,12 +493,13 @@ impl<'ctx, 'gen, Storage, Queue, Predicate> Iterator
 ///
 /// See `BindgenContext::assert_no_dangling_item_traversal` for more
 /// information.
-pub type AssertNoDanglingItemsTraversal<'ctx, 'gen> =
-    ItemTraversal<'ctx,
-                  'gen,
-                  Paths<'ctx, 'gen>,
-                  VecDeque<ItemId>,
-                  for<'a> fn(&'a BindgenContext, Edge) -> bool>;
+pub type AssertNoDanglingItemsTraversal<'ctx> =
+    ItemTraversal<
+        'ctx,
+        Paths<'ctx>,
+        VecDeque<ItemId>,
+        for<'a> fn(&'a BindgenContext, Edge) -> bool,
+    >;
 
 #[cfg(test)]
 mod tests {

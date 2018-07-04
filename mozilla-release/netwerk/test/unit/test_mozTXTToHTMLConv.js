@@ -6,9 +6,6 @@
  * Test that mozITXTToHTMLConv works properly.
  */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-
 function run_test() {
   let converter = Cc["@mozilla.org/txttohtmlconv;1"]
                      .getService(Ci.mozITXTToHTMLConv);
@@ -180,7 +177,7 @@ function run_test() {
     let t = scanTXTtests[i];
     let output = converter.scanTXT(t.input, Ci.mozITXTToHTMLConv.kURLs);
     let link = hrefLink(t.url);
-    if (output.indexOf(link) == -1)
+    if (!output.includes(link))
       do_throw("Unexpected conversion by scanTXT: input=" + t.input +
                ", output=" + output + ", link=" + link);
   }

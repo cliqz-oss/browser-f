@@ -13,22 +13,16 @@ def moz_jemalloc4(value):
 option('--enable-jemalloc', env='MOZ_MEMORY',
        help='Replace memory allocator with jemalloc')
 
-@depends('--enable-jemalloc', target, build_project, c_compiler)
-def jemalloc(value, target, build_project, c_compiler):
+
+@depends('--enable-jemalloc', target, c_compiler)
+def jemalloc(value, target, c_compiler):
     if value.origin != 'default':
         return bool(value) or None
 
-    if build_project == 'js':
-        return True
-
-    if target.kernel == 'Darwin' and target.cpu == 'x86_64':
-        # Don't enable by default on 32-bits OSX. See bug 702250.
+    if target.kernel in ('Darwin', 'Linux'):
         return True
 
     if target.kernel == 'WINNT' and c_compiler.type in ('msvc', 'clang-cl'):
-        return True
-
-    if target.kernel == 'Linux':
         return True
 
 
@@ -44,34 +38,13 @@ add_old_configure_assignment('MOZ_MEMORY', jemalloc)
 def jemalloc_for_old_configure(jemalloc):
     return '--%s-jemalloc' % ('enable' if jemalloc else 'disable')
 
+
 add_old_configure_arg(jemalloc_for_old_configure)
-
-
-@depends(jemalloc, target)
-def jemalloc_os_define(jemalloc, target):
-    if jemalloc:
-        if target.kernel == 'WINNT':
-            return 'MOZ_MEMORY_WINDOWS'
-        if target.kernel == 'Linux':
-            return 'MOZ_MEMORY_LINUX'
-        if target.kernel == 'Darwin':
-            return 'MOZ_MEMORY_DARWIN'
-        if target.kernel in ('kFreeBSD', 'FreeBSD', 'NetBSD'):
-            return 'MOZ_MEMORY_BSD'
-        die('--enable-jemalloc is not supported on %s', target.kernel)
-
-set_define(jemalloc_os_define, '1')
-
-@depends(jemalloc, target)
-def jemalloc_os_define_android(jemalloc, target):
-    if jemalloc and target.os == 'Android':
-        return 'MOZ_MEMORY_ANDROID'
-
-set_define(jemalloc_os_define_android, '1')
 
 
 option('--enable-replace-malloc',
        help='Enable ability to dynamically replace the malloc implementation')
+
 
 @depends('--enable-replace-malloc', jemalloc, milestone, build_project)
 def replace_malloc(value, jemalloc, milestone, build_project):
@@ -80,9 +53,23 @@ def replace_malloc(value, jemalloc, milestone, build_project):
         die('--enable-replace-malloc requires --enable-jemalloc')
     if value.origin != 'default':
         return bool(value) or None
+    if build_project == 'memory':
+        return True
     if milestone.is_nightly and jemalloc and build_project != 'js':
         return True
+
 
 set_config('MOZ_REPLACE_MALLOC', replace_malloc)
 set_define('MOZ_REPLACE_MALLOC', replace_malloc)
 add_old_configure_assignment('MOZ_REPLACE_MALLOC', replace_malloc)
+
+
+@depends(replace_malloc, build_project)
+def replace_malloc_static(replace_malloc, build_project):
+    # Default to statically linking replace-malloc libraries that can be
+    # statically linked, except when building with --enable-project=memory.
+    if replace_malloc and build_project != 'memory':
+        return True
+
+
+set_config('MOZ_REPLACE_MALLOC_STATIC', replace_malloc_static)

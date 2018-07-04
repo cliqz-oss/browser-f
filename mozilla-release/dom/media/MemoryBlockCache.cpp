@@ -6,12 +6,12 @@
 
 #include "MemoryBlockCache.h"
 
-#include "MediaPrefs.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Services.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
 #include "nsWeakReference.h"
@@ -71,10 +71,9 @@ NS_IMPL_ISUPPORTS(MemoryBlockCacheTelemetry,
 /* static */ size_t
 MemoryBlockCacheTelemetry::NotifyCombinedSizeGrown(size_t aNewSize)
 {
-  NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
-
   // Ensure gMemoryBlockCacheTelemetry exists.
   if (!gMemoryBlockCacheTelemetry) {
+    MOZ_ASSERT(NS_IsMainThread());
     gMemoryBlockCacheTelemetry = new MemoryBlockCacheTelemetry();
 
     nsCOMPtr<nsIObserverService> observerService =
@@ -140,10 +139,12 @@ enum MemoryBlockCacheTelemetryErrors
 static int32_t
 CalculateMaxBlocks(int64_t aContentLength)
 {
+  int64_t maxSize = int64_t(StaticPrefs::MediaMemoryCacheMaxSize()) * 1024;
+  MOZ_ASSERT(aContentLength <= maxSize);
+  MOZ_ASSERT(maxSize % MediaBlockCacheBase::BLOCK_SIZE == 0);
   // Note: It doesn't matter if calculations overflow, Init() would later fail.
   // We want at least enough blocks to contain the original content length.
-  const int32_t requiredBlocks =
-    int32_t((aContentLength - 1) / MediaBlockCacheBase::BLOCK_SIZE + 1);
+  const int32_t requiredBlocks = maxSize / MediaBlockCacheBase::BLOCK_SIZE;
   // Allow at least 1s of ultra HD (25Mbps).
   const int32_t workableBlocks =
     25 * 1024 * 1024 / 8 / MediaBlockCacheBase::BLOCK_SIZE;
@@ -204,8 +205,8 @@ MemoryBlockCache::EnsureBufferCanContain(size_t aContentLength)
     static const size_t sysmem =
       std::max<size_t>(PR_GetPhysicalMemorySize(), 32 * 1024 * 1024);
     const size_t limit = std::min(
-      size_t(MediaPrefs::MediaMemoryCachesCombinedLimitKb()) * 1024,
-      sysmem * MediaPrefs::MediaMemoryCachesCombinedLimitPcSysmem() / 100);
+      size_t(StaticPrefs::MediaMemoryCachesCombinedLimitKb()) * 1024,
+      sysmem * StaticPrefs::MediaMemoryCachesCombinedLimitPcSysmem() / 100);
     const size_t currentSizes = static_cast<size_t>(gCombinedSizes);
     if (currentSizes + extra > limit) {
       LOG("EnsureBufferCanContain(%zu) - buffer size %zu, wanted + %zu = %zu;"
@@ -259,25 +260,27 @@ MemoryBlockCache::EnsureBufferCanContain(size_t aContentLength)
 nsresult
 MemoryBlockCache::Init()
 {
+  LOG("Init()");
   MutexAutoLock lock(mMutex);
-  if (mBuffer.IsEmpty()) {
-    LOG("Init()");
-    // Attempt to pre-allocate buffer for expected content length.
-    if (!EnsureBufferCanContain(mInitialContentLength)) {
-      LOG("Init() MEMORYBLOCKCACHE_ERRORS='InitAllocation'");
-      Telemetry::Accumulate(Telemetry::HistogramID::MEMORYBLOCKCACHE_ERRORS,
-                            InitAllocation);
-      return NS_ERROR_FAILURE;
-    }
-  } else {
-    LOG("Init() again");
-    // Re-initialization - Just erase data.
-    MOZ_ASSERT(mBuffer.Length() >= mInitialContentLength);
-    memset(mBuffer.Elements(), 0, mBuffer.Length());
+  MOZ_ASSERT(mBuffer.IsEmpty());
+  // Attempt to pre-allocate buffer for expected content length.
+  if (!EnsureBufferCanContain(mInitialContentLength)) {
+    LOG("Init() MEMORYBLOCKCACHE_ERRORS='InitAllocation'");
+    Telemetry::Accumulate(Telemetry::HistogramID::MEMORYBLOCKCACHE_ERRORS,
+                          InitAllocation);
+    return NS_ERROR_FAILURE;
   }
-  // Ignore initial growth.
-  mHasGrown = false;
   return NS_OK;
+}
+
+void
+MemoryBlockCache::Flush()
+{
+  LOG("Flush()");
+  MutexAutoLock lock(mMutex);
+  MOZ_ASSERT(mBuffer.Length() >= mInitialContentLength);
+  memset(mBuffer.Elements(), 0, mBuffer.Length());
+  mHasGrown = false;
 }
 
 nsresult

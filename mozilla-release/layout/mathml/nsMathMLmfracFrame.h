@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -53,7 +54,7 @@ class nsMathMLmfracFrame : public nsMathMLContainerFrame {
 public:
   NS_DECL_FRAMEARENA_HELPERS(nsMathMLmfracFrame)
 
-  friend nsIFrame* NS_NewMathMLmfracFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
+  friend nsIFrame* NS_NewMathMLmfracFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle);
 
   virtual eMathMLFrameType GetMathMLFrameType() override;
 
@@ -67,12 +68,11 @@ public:
         ReflowOutput& aDesiredSize) override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
   virtual nsresult
   AttributeChanged(int32_t  aNameSpaceID,
-                   nsIAtom* aAttribute,
+                   nsAtom* aAttribute,
                    int32_t  aModType) override;
 
   NS_IMETHOD
@@ -85,7 +85,7 @@ public:
   // helper to translate the thickness attribute into a usable form
   static nscoord
   CalcLineThickness(nsPresContext*  aPresContext,
-                    nsStyleContext*  aStyleContext,
+                    ComputedStyle*  aComputedStyle,
                     nsString&        aThicknessAttribute,
                     nscoord          onePixel,
                     nscoord          aDefaultRuleThickness,
@@ -95,8 +95,8 @@ public:
   ScriptIncrement(nsIFrame* aFrame) override;
 
 protected:
-  explicit nsMathMLmfracFrame(nsStyleContext* aContext)
-    : nsMathMLContainerFrame(aContext, kClassID)
+  explicit nsMathMLmfracFrame(ComputedStyle* aStyle)
+    : nsMathMLContainerFrame(aStyle, kClassID)
     , mLineRect()
     , mSlashChar(nullptr)
     , mLineThickness(0)

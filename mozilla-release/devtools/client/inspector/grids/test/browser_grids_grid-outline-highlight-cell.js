@@ -18,10 +18,10 @@ const TEST_URI = `
   </div>
 `;
 
-add_task(function* () {
-  yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
+add_task(async function() {
+  await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
 
-  let { inspector, gridInspector } = yield openLayoutView();
+  let { inspector, gridInspector } = await openLayoutView();
   let { document: doc } = gridInspector;
   let { highlighters, store } = inspector;
 
@@ -33,20 +33,20 @@ add_task(function* () {
 
   info("Toggling ON the CSS grid highlighter from the layout panel.");
   let onHighlighterShown = highlighters.once("grid-highlighter-shown");
-  let onGridOutlineRendered = waitForDOM(doc, "#grid-cell-group rect", 3);
+  let onGridOutlineRendered = waitForDOM(doc, "#grid-cell-group rect", 2);
   let onCheckboxChange = waitUntilState(store, state =>
     state.grids.length == 1 &&
     state.grids[0].highlighted);
   checkbox.click();
-  yield onCheckboxChange;
-  yield onHighlighterShown;
-  let elements = yield onGridOutlineRendered;
+  await onCheckboxChange;
+  await onHighlighterShown;
+  let elements = await onGridOutlineRendered;
 
-  let gridCellA = elements[1];
+  let gridCellA = elements[0];
 
   info("Hovering over grid cell A in the grid outline.");
   let onCellAHighlight = highlighters.once("grid-highlighter-shown",
-    (event, nodeFront, options) => {
+    (nodeFront, options) => {
       info("Checking show grid cell options are correct.");
       const { showGridCell } = options;
       const { gridFragmentIndex, rowNumber, columnNumber } = showGridCell;
@@ -55,6 +55,6 @@ add_task(function* () {
       is(rowNumber, 1, "Should be the first grid row.");
       is(columnNumber, 1, "Should be the first grid column.");
     });
-  EventUtils.synthesizeMouse(gridCellA, 10, 5, {type: "mouseover"}, doc.defaultView);
-  yield onCellAHighlight;
+  EventUtils.synthesizeMouse(gridCellA, 1, 1, {type: "mouseover"}, doc.defaultView);
+  await onCellAHighlight;
 });

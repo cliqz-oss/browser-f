@@ -33,8 +33,9 @@ NS_IMPL_ELEMENT_CLONE(HTMLTableColElement)
 
 bool
 HTMLTableColElement::ParseAttribute(int32_t aNamespaceID,
-                                    nsIAtom* aAttribute,
+                                    nsAtom* aAttribute,
                                     const nsAString& aValue,
+                                    nsIPrincipal* aMaybeScriptedPrincipal,
                                     nsAttrValue& aResult)
 {
   if (aNamespaceID == kNameSpaceID_None) {
@@ -44,7 +45,7 @@ HTMLTableColElement::ParseAttribute(int32_t aNamespaceID,
     }
     if (aAttribute == nsGkAtoms::span) {
       /* protection from unrealistic large colspan values */
-      aResult.ParseIntWithFallback(aValue, 1, MAX_COLSPAN);
+      aResult.ParseClampedNonNegativeInt(aValue, 1, 1, MAX_COLSPAN);
       return true;
     }
     if (aAttribute == nsGkAtoms::width) {
@@ -59,25 +60,23 @@ HTMLTableColElement::ParseAttribute(int32_t aNamespaceID,
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
-                                              aResult);
+                                              aMaybeScriptedPrincipal, aResult);
 }
 
 void
 HTMLTableColElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
                                            GenericSpecifiedValues* aData)
 {
-  if (aData->ShouldComputeStyleStruct(NS_STYLE_INHERIT_BIT(Table))) {
-    if (!aData->PropertyIsSet(eCSSProperty__x_span)) {
-      // span: int
-      const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::span);
-      if (value && value->Type() == nsAttrValue::eInteger) {
-        int32_t val = value->GetIntegerValue();
-        // Note: Do NOT use this code for table cells!  The value "0"
-        // means something special for colspan and rowspan, but for <col
-        // span> and <colgroup span> it's just disallowed.
-        if (val > 0) {
-          aData->SetIntValue(eCSSProperty__x_span, value->GetIntegerValue());
-        }
+  if (!aData->PropertyIsSet(eCSSProperty__x_span)) {
+    // span: int
+    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::span);
+    if (value && value->Type() == nsAttrValue::eInteger) {
+      int32_t val = value->GetIntegerValue();
+      // Note: Do NOT use this code for table cells!  The value "0"
+      // means something special for colspan and rowspan, but for <col
+      // span> and <colgroup span> it's just disallowed.
+      if (val > 0) {
+        aData->SetIntValue(eCSSProperty__x_span, value->GetIntegerValue());
       }
     }
   }
@@ -89,7 +88,7 @@ HTMLTableColElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes
 }
 
 NS_IMETHODIMP_(bool)
-HTMLTableColElement::IsAttributeMapped(const nsIAtom* aAttribute) const
+HTMLTableColElement::IsAttributeMapped(const nsAtom* aAttribute) const
 {
   static const MappedAttributeEntry attributes[] = {
     { &nsGkAtoms::width },

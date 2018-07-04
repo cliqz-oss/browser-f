@@ -13,11 +13,12 @@
 #define READTYPE  int32_t
 #include "zlib.h"
 #ifdef MOZ_JAR_BROTLI
-#include "decode.h" // brotli
+#include "brotli/decode.h" // brotli
 #endif
 #include "nsISupportsUtils.h"
 #include "prio.h"
 #include "plstr.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/Logging.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "stdlib.h"
@@ -74,9 +75,6 @@ static const uint16_t kSyntheticDate = (1 + (1 << 5) + (0 << 9));
 static uint16_t xtoint(const uint8_t *ii);
 static uint32_t xtolong(const uint8_t *ll);
 static uint32_t HashName(const char* aName, uint16_t nameLen);
-#ifdef XP_UNIX
-static nsresult ResolveSymlink(const char *path);
-#endif
 
 class ZipArchiveLogger {
 public:
@@ -475,9 +473,8 @@ MOZ_WIN_MEM_TRY_CATCH(return nullptr)
 // This extracts the item to the filehandle provided.
 // If 'aFd' is null, it only tests the extraction.
 // On extraction error(s) it removes the file.
-// When needed, it also resolves the symlink.
 //---------------------------------------------
-nsresult nsZipArchive::ExtractFile(nsZipItem *item, const char *outname,
+nsresult nsZipArchive::ExtractFile(nsZipItem *item, nsIFile* outFile,
                                    PRFileDesc* aFd)
 {
   if (!item)
@@ -513,15 +510,12 @@ nsresult nsZipArchive::ExtractFile(nsZipItem *item, const char *outname,
     }
   }
 
-  //-- delete the file on errors, or resolve symlink if needed
+  //-- delete the file on errors
   if (aFd) {
     PR_Close(aFd);
-    if (rv != NS_OK)
-      PR_Delete(outname);
-#ifdef XP_UNIX
-    else if (item->IsSymlink())
-      rv = ResolveSymlink(outname);
-#endif
+    if (NS_FAILED(rv) && outFile) {
+      outFile->Remove(false);
+    }
   }
 
   return rv;
@@ -627,33 +621,6 @@ MOZ_WIN_MEM_TRY_BEGIN
 MOZ_WIN_MEM_TRY_CATCH(return NS_ERROR_FAILURE)
   return NS_ERROR_FILE_TARGET_DOES_NOT_EXIST;
 }
-
-#ifdef XP_UNIX
-//---------------------------------------------
-// ResolveSymlink
-//---------------------------------------------
-static nsresult ResolveSymlink(const char *path)
-{
-  PRFileDesc * fIn = PR_Open(path, PR_RDONLY, 0000);
-  if (!fIn)
-    return NS_ERROR_FILE_DISK_FULL;
-
-  char buf[PATH_MAX+1];
-  int32_t length = PR_Read(fIn, (void*)buf, PATH_MAX);
-  PR_Close(fIn);
-
-  if (length <= 0) {
-    return NS_ERROR_FILE_DISK_FULL;
-  }
-
-  buf[length] = '\0';
-
-  if (PR_Delete(path) != 0 || symlink(buf, path) != 0) {
-     return NS_ERROR_FILE_DISK_FULL;
-  }
-  return NS_OK;
-}
-#endif
 
 //***********************************************************
 //      nsZipArchive  --  private implementation
@@ -998,6 +965,7 @@ nsZipFind::~nsZipFind()
  *
  * returns a hash key for the entry name
  */
+MOZ_NO_SANITIZE_UNSIGNED_OVERFLOW
 static uint32_t HashName(const char* aName, uint16_t len)
 {
   MOZ_ASSERT(aName != 0);
@@ -1163,14 +1131,6 @@ PRTime nsZipItem::LastModTime()
   return GetModTime(Date(), Time());
 }
 
-#ifdef XP_UNIX
-bool nsZipItem::IsSymlink()
-{
-  if (isSynthetic) return false;
-  return (xtoint(central->external_attributes+2) & S_IFMT) == S_IFLNK;
-}
-#endif
-
 nsZipCursor::nsZipCursor(nsZipItem *item, nsZipArchive *aZip, uint8_t* aBuf,
                          uint32_t aBufSize, bool doCRC)
   : mItem(item)
@@ -1196,7 +1156,7 @@ nsZipCursor::nsZipCursor(nsZipItem *item, nsZipArchive *aZip, uint8_t* aBuf,
 
 #ifdef MOZ_JAR_BROTLI
   if (mItem->Compression() == MOZ_JAR_BROTLI) {
-    mBrotliState = BrotliCreateState(nullptr, nullptr, nullptr);
+    mBrotliState = BrotliDecoderCreateInstance(nullptr, nullptr, nullptr);
   }
 #endif
 
@@ -1211,7 +1171,7 @@ nsZipCursor::~nsZipCursor()
   }
 #ifdef MOZ_JAR_BROTLI
   if (mItem->Compression() == MOZ_JAR_BROTLI) {
-    BrotliDestroyState(mBrotliState);
+    BrotliDecoderDestroyInstance(mBrotliState);
   }
 #endif
 }
@@ -1258,19 +1218,20 @@ MOZ_WIN_MEM_TRY_BEGIN
      * unsigned int for avail_*. So use temporary stack values. */
     size_t avail_out = mBufSize;
     size_t avail_in = mZs.avail_in;
-    BrotliResult result = BrotliDecompressStream(
+    BrotliDecoderResult result = BrotliDecoderDecompressStream(
+      mBrotliState,
       &avail_in, const_cast<const unsigned char**>(&mZs.next_in),
-      &avail_out, &mZs.next_out, nullptr, mBrotliState);
+      &avail_out, &mZs.next_out, nullptr);
     /* We don't need to update avail_out, it's not used outside this
      * function. */
     mZs.avail_in = avail_in;
 
-    if (result == BROTLI_RESULT_ERROR) {
+    if (result == BROTLI_DECODER_RESULT_ERROR) {
       return nullptr;
     }
 
     *aBytesRead = mZs.next_out - buf;
-    verifyCRC = (result == BROTLI_RESULT_SUCCESS);
+    verifyCRC = (result == BROTLI_DECODER_RESULT_SUCCESS);
     break;
   }
 #endif

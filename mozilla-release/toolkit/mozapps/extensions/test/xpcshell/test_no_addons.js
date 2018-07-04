@@ -7,20 +7,15 @@
 
 
 // Load XPI Provider to get schema version ID
-var XPIScope = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+var XPIScope = ChromeUtils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
 const DB_SCHEMA = XPIScope.DB_SCHEMA;
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
 
-function run_test() {
-  // Kick off the task-based tests...
-  run_next_test();
-}
-
 // Test for a preference to either exist with a specified value, or not exist at all
 function checkPending() {
   try {
-    do_check_false(Services.prefs.getBoolPref("extensions.pendingOperations"));
+    Assert.ok(!Services.prefs.getBoolPref("extensions.pendingOperations"));
   } catch (e) {
     // OK
   }
@@ -28,7 +23,7 @@ function checkPending() {
 
 // Make sure all our extension state is empty/nonexistent
 function check_empty_state() {
-  do_check_eq(Services.prefs.getIntPref("extensions.databaseSchema"), DB_SCHEMA);
+  Assert.equal(Services.prefs.getIntPref("extensions.databaseSchema"), DB_SCHEMA);
   checkPending();
 }
 
@@ -47,11 +42,9 @@ add_task(async function first_run() {
 
 // Now do something that causes a DB load, and re-check
 async function trigger_db_load() {
-  let addonList = await new Promise(resolve => {
-    AddonManager.getAddonsByTypes(["extension"], resolve);
-  });
+  let addonList = await AddonManager.getAddonsByTypes(["extension"]);
 
-  do_check_eq(addonList.length, 0);
+  Assert.equal(addonList.length, 0);
   check_empty_state();
 
   await true;
@@ -75,6 +68,6 @@ add_task(function upgrade_schema_version() {
   Services.prefs.setIntPref("extensions.databaseSchema", 1);
 
   startupManager();
-  do_check_eq(Services.prefs.getIntPref("extensions.databaseSchema"), DB_SCHEMA);
+  Assert.equal(Services.prefs.getIntPref("extensions.databaseSchema"), DB_SCHEMA);
   check_empty_state();
 });

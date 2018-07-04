@@ -4,24 +4,26 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["NewTabUtils"];
+var EXPORTED_SYMBOLS = ["NewTabUtils"];
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.importGlobalProperties(["btoa"]);
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
+ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "PageThumbs",
+ChromeUtils.defineModuleGetter(this, "PageThumbs",
   "resource://gre/modules/PageThumbs.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BinarySearch",
+ChromeUtils.defineModuleGetter(this, "BinarySearch",
   "resource://gre/modules/BinarySearch.jsm");
+
+ChromeUtils.defineModuleGetter(this, "pktApi",
+  "chrome://pocket/content/pktApi.jsm");
+
+ChromeUtils.defineModuleGetter(this, "Pocket",
+  "chrome://pocket/content/Pocket.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "gCryptoHash", function() {
   return Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
@@ -36,13 +38,6 @@ XPCOMUtils.defineLazyGetter(this, "gUnicodeConverter", function() {
 
 // Boolean preferences that control newtab content
 const PREF_NEWTAB_ENABLED = "browser.newtabpage.enabled";
-const PREF_NEWTAB_ENHANCED = "browser.newtabpage.enhanced";
-
-// The preference that tells the number of rows of the newtab grid.
-const PREF_NEWTAB_ROWS = "browser.newtabpage.rows";
-
-// The preference that tells the number of columns of the newtab grid.
-const PREF_NEWTAB_COLUMNS = "browser.newtabpage.columns";
 
 // The maximum number of results PlacesProvider retrieves from history.
 const HISTORY_RESULTS_LIMIT = 100;
@@ -53,11 +48,18 @@ const LINKS_GET_LINKS_LIMIT = 100;
 // The gather telemetry topic.
 const TOPIC_GATHER_TELEMETRY = "gather-telemetry";
 
-// The number of top sites to display on Activity Stream page
-const TOP_SITES_LENGTH = 6;
+// Some default frecency threshold for Activity Stream requests
+const ACTIVITY_STREAM_DEFAULT_FRECENCY = 150;
 
-// Use double the number to allow for immediate display when blocking sites
-const TOP_SITES_LIMIT = TOP_SITES_LENGTH * 2;
+// Some default query limit for Activity Stream requests
+const ACTIVITY_STREAM_DEFAULT_LIMIT = 12;
+
+// Some default seconds ago for Activity Stream recent requests
+const ACTIVITY_STREAM_DEFAULT_RECENT = 5 * 24 * 60 * 60;
+
+const POCKET_UPDATE_TIME = 24 * 60 * 60 * 1000; // 1 day
+const POCKET_INACTIVE_TIME = 7 * 24 * 60 * 60 * 1000; // 1 week
+const PREF_POCKET_LATEST_SINCE = "extensions.pocket.settings.latestSince";
 
 /**
  * Calculate the MD5 hash for a string.
@@ -100,7 +102,7 @@ function LinksStorage() {
   } catch (ex) {
     // Something went wrong in the update process, we can't recover from here,
     // so just clear the storage and start from scratch (dataloss!).
-    Components.utils.reportError(
+    Cu.reportError(
       "Unable to migrate the newTab storage to the current version. " +
       "Restarting from scratch.\n" + ex);
     this.clear();
@@ -200,11 +202,6 @@ var AllPages = {
   _enabled: null,
 
   /**
-   * Cached value that tells whether the New Tab Page feature is enhanced.
-   */
-  _enhanced: null,
-
-  /**
    * Adds a page to the internal list of pages.
    * @param aPage The page to register.
    */
@@ -242,24 +239,6 @@ var AllPages = {
   },
 
   /**
-   * Returns whether the history tiles are enhanced.
-   */
-  get enhanced() {
-    if (this._enhanced === null)
-      this._enhanced = Services.prefs.getBoolPref(PREF_NEWTAB_ENHANCED);
-
-    return this._enhanced;
-  },
-
-  /**
-   * Enables or disables the enhancement of history tiles feature.
-   */
-  set enhanced(aEnhanced) {
-    if (this.enhanced != aEnhanced)
-      Services.prefs.setBoolPref(PREF_NEWTAB_ENHANCED, !!aEnhanced);
-  },
-
-  /**
    * Returns the number of registered New Tab Pages (i.e. the number of open
    * about:newtab instances).
    */
@@ -291,9 +270,6 @@ var AllPages = {
         case PREF_NEWTAB_ENABLED:
           this._enabled = null;
           break;
-        case PREF_NEWTAB_ENHANCED:
-          this._enhanced = null;
-          break;
       }
     }
     // and all notifications get forwarded to each page.
@@ -308,76 +284,13 @@ var AllPages = {
    */
   _addObserver: function AllPages_addObserver() {
     Services.prefs.addObserver(PREF_NEWTAB_ENABLED, this, true);
-    Services.prefs.addObserver(PREF_NEWTAB_ENHANCED, this, true);
     Services.obs.addObserver(this, "page-thumbnail:create", true);
     this._addObserver = function() {};
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference])
 };
-
-/**
- * Singleton that keeps Grid preferences
- */
-var GridPrefs = {
-  /**
-   * Cached value that tells the number of rows of newtab grid.
-   */
-  _gridRows: null,
-  get gridRows() {
-    if (!this._gridRows) {
-      this._gridRows = Math.max(1, Services.prefs.getIntPref(PREF_NEWTAB_ROWS));
-    }
-
-    return this._gridRows;
-  },
-
-  /**
-   * Cached value that tells the number of columns of newtab grid.
-   */
-  _gridColumns: null,
-  get gridColumns() {
-    if (!this._gridColumns) {
-      this._gridColumns = Math.max(1, Services.prefs.getIntPref(PREF_NEWTAB_COLUMNS));
-    }
-
-    return this._gridColumns;
-  },
-
-
-  /**
-   * Initializes object. Adds a preference observer
-   */
-  init: function GridPrefs_init() {
-    Services.prefs.addObserver(PREF_NEWTAB_ROWS, this);
-    Services.prefs.addObserver(PREF_NEWTAB_COLUMNS, this);
-  },
-
- /**
-  * Uninitializes object. Removes the preference observers
-  */
-  uninit: function GridPrefs_uninit() {
-    Services.prefs.removeObserver(PREF_NEWTAB_ROWS, this);
-    Services.prefs.removeObserver(PREF_NEWTAB_COLUMNS, this);
-  },
-
-  /**
-   * Implements the nsIObserver interface to get notified when the preference
-   * value changes.
-   */
-  observe: function GridPrefs_observe(aSubject, aTopic, aData) {
-    if (aData == PREF_NEWTAB_ROWS) {
-      this._gridRows = null;
-    } else {
-      this._gridColumns = null;
-    }
-
-    AllPages.update();
-  }
-};
-
-GridPrefs.init();
 
 /**
  * Singleton that keeps track of all pinned links and their positions in the
@@ -647,7 +560,7 @@ var PlacesProvider = {
     options.maxResults = this.maxNumLinks;
 
     // Sort by frecency, descending.
-    options.sortingMode = Ci.nsINavHistoryQueryOptions.SORT_BY_FRECENCY_DESCENDING
+    options.sortingMode = Ci.nsINavHistoryQueryOptions.SORT_BY_FRECENCY_DESCENDING;
 
     let links = [];
 
@@ -704,7 +617,7 @@ var PlacesProvider = {
     // Execute the query.
     let query = PlacesUtils.history.getNewQuery();
     let db = PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase);
-    db.asyncExecuteLegacyQueries([query], 1, options, callback);
+    db.asyncExecuteLegacyQuery(query, options, callback);
   },
 
   /**
@@ -744,11 +657,13 @@ var PlacesProvider = {
     }
   },
 
-  onVisit(aURI, aVisitId, aTime, aSessionId, aReferrerVisitId, aTransitionType,
-          aGuid, aHidden, aVisitCount, aTyped, aLastKnownTitle) {
-    // For new visits, if we're not batch processing, notify for a title // update
-    if (!this._batchProcessingDepth && aVisitCount == 1 && aLastKnownTitle) {
-      this.onTitleChanged(aURI, aLastKnownTitle, aGuid);
+  onVisits(aVisits) {
+    if (!this._batchProcessingDepth) {
+      for (let visit of aVisits) {
+        if (visit.visitCount == 1 && visit.lastKnownTitle) {
+          this.onTitleChanged(visit.uri, visit.lastKnownTitle, visit.guid);
+        }
+      }
     }
   },
 
@@ -760,7 +675,7 @@ var PlacesProvider = {
   },
 
   onClearHistory() {
-    this._callObservers("onClearHistory")
+    this._callObservers("onClearHistory");
   },
 
   /**
@@ -815,8 +730,8 @@ var PlacesProvider = {
     }
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsINavHistoryObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryObserver,
+                                          Ci.nsISupportsWeakReference]),
 };
 
 /**
@@ -824,19 +739,84 @@ var PlacesProvider = {
  * history changes.
  */
 var ActivityStreamProvider = {
+  /**
+   * Shared adjustment for selecting potentially blocked links.
+   */
+  _adjustLimitForBlocked({ignoreBlocked, numItems}) {
+    // Just use the usual number if blocked links won't be filtered out
+    if (ignoreBlocked) {
+      return numItems;
+    }
+    // Additionally select the number of blocked links in case they're removed
+    return Object.keys(BlockedLinks.links).length + numItems;
+  },
 
   /**
-   * Process links after getting them from the database.
-   *
-   * @param {Array} aLinks
-   *          an array containing link objects
-   *
-   * @returns {Array} an array of checked links with favicons and eTLDs added
+   * Shared sub-SELECT to get the guid of a bookmark of the current url while
+   * avoiding LEFT JOINs on moz_bookmarks. This avoids gettings tags. The guid
+   * could be one of multiple possible guids. Assumes `moz_places h` is in FROM.
    */
-  _processLinks(aLinks) {
-    let links_ = aLinks.filter(link => LinkChecker.checkLoadURI(link.url));
-    links_ = this._faviconBytesToDataURI(links_);
-    return this._addETLD(links_);
+  _commonBookmarkGuidSelect: `(
+    SELECT guid
+    FROM moz_bookmarks b
+    WHERE fk = h.id
+      AND type = :bookmarkType
+      AND (
+        SELECT id
+        FROM moz_bookmarks p
+        WHERE p.id = b.parent
+          AND p.parent <> :tagsFolderId
+      ) NOTNULL
+    ) AS bookmarkGuid`,
+
+  /**
+   * Shared WHERE expression filtering out undesired pages, e.g., hidden,
+   * unvisited, and non-http/s urls. Assumes moz_places is in FROM / JOIN.
+   *
+   * NB: SUBSTR(url) is used even without an index instead of url_hash because
+   * most desired pages will match http/s, so it will only run on the ~10s of
+   * rows matched. If url_hash were to be used, it should probably *not* be used
+   * by the query optimizer as we primarily want it optimized for the other
+   * conditions, e.g., most frecent first.
+   */
+  _commonPlacesWhere: `
+    AND hidden = 0
+    AND last_visit_date > 0
+    AND (SUBSTR(url, 1, 6) == "https:"
+      OR SUBSTR(url, 1, 5) == "http:")
+  `,
+
+  /**
+   * Shared parameters for getting correct bookmarks and LIMITed queries.
+   */
+  _getCommonParams(aOptions, aParams = {}) {
+    return Object.assign({
+      bookmarkType: PlacesUtils.bookmarks.TYPE_BOOKMARK,
+      limit: this._adjustLimitForBlocked(aOptions),
+      tagsFolderId: PlacesUtils.tagsFolderId
+    }, aParams);
+  },
+
+  /**
+   * Shared columns for Highlights related queries.
+   */
+  _highlightsColumns: ["bookmarkGuid", "description", "guid",
+    "preview_image_url", "title", "url"],
+
+  /**
+   * Shared post-processing of Highlights links.
+   */
+  _processHighlights(aLinks, aOptions, aType) {
+    // Filter out blocked if necessary
+    if (!aOptions.ignoreBlocked) {
+      aLinks = aLinks.filter(link => !BlockedLinks.isBlocked(link));
+    }
+
+    // Limit the results to the requested number and set a type corresponding to
+    // which query selected it
+    return aLinks.slice(0, aOptions.numItems).map(item => Object.assign(item, {
+      type: aType
+    }));
   },
 
   /**
@@ -859,114 +839,276 @@ var ActivityStreamProvider = {
   },
 
   /**
+   * Get favicon data (and metadata) for a uri.
+   *
+   * @param aUri {nsIURI} Page to check for favicon data
+   * @returns A promise of an object (possibly null) containing the data
+   */
+  _getIconData(aUri) {
+    // Use 0 to get the biggest width available
+    const preferredWidth = 0;
+    return new Promise(resolve => PlacesUtils.favicons.getFaviconDataForPage(
+      aUri,
+      // Package up the icon data in an object if we have it; otherwise null
+      (iconUri, faviconLength, favicon, mimeType, faviconSize) =>
+        resolve(iconUri ? {favicon, faviconLength, faviconRef: iconUri.ref, faviconSize, mimeType} : null),
+      preferredWidth));
+  },
+
+  /**
    * Computes favicon data for each url in a set of links
    *
    * @param {Array} links
    *          an array containing objects without favicon data or mimeTypes yet
    *
-   * @returns {Promise} Returns a promise with the array of links with favicon data,
-   *                    mimeType, and byte array length
+   * @returns {Promise} Returns a promise with the array of links with the largest
+   *                    favicon available (as a byte array), mimeType, byte array
+   *                    length, and favicon size (width)
    */
-  async _addFavicons(aLinks) {
-    if (aLinks.length) {
-      // Each link in the array needs a favicon for it's page - so we fire off
-      // a promise for each link to compute the favicon data and attach it back
-      // to the original link object. We must wait until all favicons for
-      // the array of links are computed before returning
-      await Promise.all(aLinks.map(link => new Promise(resolve => {
-        return PlacesUtils.favicons.getFaviconDataForPage(
-            Services.io.newURI(link.url),
-            (iconuri, len, data, mime) => {
-              // Due to the asynchronous behaviour of inserting a favicon into
-              // moz_favicons, the data may not be available to us just yet,
-              // since we listen on a history entry being inserted. As a result,
-              // we don't want to throw if the icon uri is not here yet, we
-              // just want to resolve on an empty favicon. Activity Stream
-              // knows how to handle null favicons
-              if (!iconuri) {
-                link.favicon = null;
-                link.mimeType = null;
-              } else {
-                link.favicon = data;
-                link.mimeType = mime;
-                link.faviconLength = len;
-              }
-              return resolve(link);
-            });
-        }).catch(() => {
-          // If something goes wrong - that's ok - just return a null favicon
-          // without rejecting the entire Promise.all
-          link.favicon = null;
-          link.mimeType = null;
-          return link;
-        })
-      ));
-    }
-    return aLinks;
+  _addFavicons(aLinks) {
+    // Each link in the array needs a favicon for it's page - so we fire off a
+    // promise for each link to compute the favicon data and attach it back to
+    // the original link object. We must wait until all favicons for the array
+    // of links are computed before returning
+    return Promise.all(aLinks.map(link => new Promise(async resolve => {
+      // Never add favicon data for pocket items
+      if (link.type === "pocket") {
+        resolve(link);
+        return;
+      }
+      let iconData;
+      try {
+        let linkUri = Services.io.newURI(link.url);
+        iconData = await this._getIconData(linkUri);
+
+        // Switch the scheme to try again with the other
+        if (!iconData) {
+          linkUri = linkUri.mutate()
+                           .setScheme(linkUri.scheme === "https" ? "http" : "https")
+                           .finalize();
+          iconData = await this._getIconData(linkUri);
+        }
+      } catch (e) {
+        // We just won't put icon data on the link
+      }
+
+      // Add the icon data to the link if we have any
+      resolve(Object.assign(link, iconData || {}));
+    })));
   },
 
   /**
-   * Add the eTLD to each link in the array of links.
-   *
-   * @param {Array} aLinks
-   *          an array containing objects with urls
-   *
-   * @returns {Array} an array of links with eTLDs added
+   * Helper function which makes the call to the Pocket API to fetch the user's
+   * saved Pocket items.
    */
-  _addETLD(aLinks) {
-    return aLinks.map(link => {
-      try {
-        link.eTLD = Services.eTLD.getPublicSuffix(Services.io.newURI(link.url));
-      } catch (e) {
-        link.eTLD = "";
-      }
-      return link;
+  fetchSavedPocketItems(requestData) {
+    const latestSince = (Services.prefs.getStringPref(PREF_POCKET_LATEST_SINCE, 0) * 1000);
+
+    // Do not fetch Pocket items for users that have been inactive for too long, or are not logged in
+    if (!pktApi.isUserLoggedIn() || (Date.now() - latestSince > POCKET_INACTIVE_TIME)) {
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve, reject) => {
+      pktApi.retrieve(requestData, {
+        success(data) {
+          resolve(data);
+        },
+        error(error) {
+          reject(error);
+        }
+      });
     });
+  },
+
+  /**
+   * Get the most recently Pocket-ed items from a user's Pocket list. See:
+   * https://getpocket.com/developer/docs/v3/retrieve for details
+   *
+   * @param {Object} aOptions
+   *   {int} numItems: The max number of pocket items to fetch
+   */
+  async getRecentlyPocketed(aOptions) {
+    const pocketSecondsAgo = Math.floor(Date.now() / 1000) - ACTIVITY_STREAM_DEFAULT_RECENT;
+    const requestData = {
+      detailType: "complete",
+      count: aOptions.numItems,
+      since: pocketSecondsAgo
+    };
+    let data;
+    try {
+      data = await this.fetchSavedPocketItems(requestData);
+      if (!data) {
+        return [];
+      }
+    } catch (e) {
+      Cu.reportError(e);
+      return [];
+    }
+    /* Extract relevant parts needed to show this card as a highlight:
+     * url, preview image, title, description, and the unique item_id
+     * necessary for Pocket to identify the item
+     */
+    let items = Object.values(data.list)
+                  // status "0" means not archived or deleted
+                  .filter(item => item.status === "0")
+                  .map(item => ({
+                    date_added: item.time_added * 1000,
+                    description: item.excerpt,
+                    preview_image_url: item.image && item.image.src,
+                    title: item.resolved_title,
+                    url: item.resolved_url,
+                    pocket_id: item.item_id,
+                    open_url: item.open_url
+                  }));
+
+    return this._processHighlights(items, aOptions, "pocket");
+  },
+
+  /**
+   * Get most-recently-created visited bookmarks for Activity Stream.
+   *
+   * @param {Object} aOptions
+   *   {num}  bookmarkSecondsAgo: Maximum age of added bookmark.
+   *   {bool} ignoreBlocked: Do not filter out blocked links.
+   *   {int}  numItems: Maximum number of items to return.
+   */
+  async getRecentBookmarks(aOptions) {
+    const options = Object.assign({
+      bookmarkSecondsAgo: ACTIVITY_STREAM_DEFAULT_RECENT,
+      ignoreBlocked: false,
+      numItems: ACTIVITY_STREAM_DEFAULT_LIMIT
+    }, aOptions || {});
+
+    const sqlQuery = `
+      SELECT
+        b.guid AS bookmarkGuid,
+        description,
+        h.guid,
+        preview_image_url,
+        b.title,
+        b.dateAdded / 1000 AS date_added,
+        url
+      FROM moz_bookmarks b
+      JOIN moz_bookmarks p
+        ON p.id = b.parent
+      JOIN moz_places h
+        ON h.id = b.fk
+      WHERE b.dateAdded >= :dateAddedThreshold
+        AND b.title NOTNULL
+        AND b.type = :bookmarkType
+        AND p.parent <> :tagsFolderId
+        ${this._commonPlacesWhere}
+      ORDER BY b.dateAdded DESC
+      LIMIT :limit
+    `;
+
+    return this._processHighlights(await this.executePlacesQuery(sqlQuery, {
+      columns: [...this._highlightsColumns, "date_added"],
+      params: this._getCommonParams(options, {
+        dateAddedThreshold: (Date.now() - options.bookmarkSecondsAgo * 1000) * 1000
+      })
+    }), options, "bookmark");
+  },
+
+  /**
+   * Get total count of all bookmarks.
+   * Note: this includes default bookmarks
+   *
+   * @return {int} The number bookmarks in the places DB.
+   */
+  async getTotalBookmarksCount() {
+    let sqlQuery = `
+      SELECT count(*) FROM moz_bookmarks b
+      JOIN moz_bookmarks t ON t.id = b.parent
+      AND t.parent <> :tags_folder
+     WHERE b.type = :type_bookmark
+    `;
+
+    const result = await this.executePlacesQuery(sqlQuery, {
+      params: {
+        tags_folder: PlacesUtils.tagsFolderId,
+        type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
+      }
+    });
+
+    return result[0][0];
+  },
+
+  /**
+   * Get most-recently-visited history with metadata for Activity Stream.
+   *
+   * @param {Object} aOptions
+   *   {bool} ignoreBlocked: Do not filter out blocked links.
+   *   {int}  numItems: Maximum number of items to return.
+   */
+  async getRecentHistory(aOptions) {
+    const options = Object.assign({
+      ignoreBlocked: false,
+      numItems: ACTIVITY_STREAM_DEFAULT_LIMIT,
+    }, aOptions || {});
+
+    const sqlQuery = `
+      SELECT
+        ${this._commonBookmarkGuidSelect},
+        description,
+        guid,
+        preview_image_url,
+        title,
+        url
+      FROM moz_places h
+      WHERE description NOTNULL
+        AND preview_image_url NOTNULL
+        ${this._commonPlacesWhere}
+      ORDER BY last_visit_date DESC
+      LIMIT :limit
+    `;
+
+    return this._processHighlights(await this.executePlacesQuery(sqlQuery, {
+      columns: this._highlightsColumns,
+      params: this._getCommonParams(options)
+    }), options, "history");
   },
 
   /*
    * Gets the top frecent sites for Activity Stream.
    *
    * @param {Object} aOptions
-   *          options.ignoreBlocked: Do not filter out blocked links .
+   *   {bool} ignoreBlocked: Do not filter out blocked links.
+   *   {int}  numItems: Maximum number of items to return.
+   *   {int}  topsiteFrecency: Minimum amount of frecency for a site.
    *
    * @returns {Promise} Returns a promise with the array of links as payload.
    */
-  async getTopFrecentSites(aOptions = {}) {
-    let {ignoreBlocked} = aOptions;
+  async getTopFrecentSites(aOptions) {
+    const options = Object.assign({
+      ignoreBlocked: false,
+      numItems: ACTIVITY_STREAM_DEFAULT_LIMIT,
+      topsiteFrecency: ACTIVITY_STREAM_DEFAULT_FRECENCY
+    }, aOptions || {});
 
-    // GROUP first by rev_host to get the most-frecent page of an exact host
-    // then GROUP by rev_nowww to dedupe between top two pages of nowww host.
-    // Note that unlike mysql, sqlite picks the last raw from groupby bucket.
-    // Which is why subselect orders frecency and last_visit_date backwards.
-    // In general the groupby behavior in the absence of aggregates is not
-    // defined in SQL, hence we are relying on sqlite implementation that may
-    // change in the future.
+    // Double the item count in case the host is deduped between with www or
+    // not-www (i.e., 2 hosts) and an extra buffer for multiple pages per host.
+    const origNumItems = options.numItems;
+    options.numItems *= 2 * 10;
 
-    const limit = Object.keys(BlockedLinks.links).length + TOP_SITES_LIMIT;
-    let sqlQuery = `/* do not warn (bug N/A): do not need index */
-                    SELECT url, title, SUM(frecency) frecency, guid, bookmarkGuid,
-                     last_visit_date / 1000 as lastVisitDate, "history" as type
-                    FROM (SELECT * FROM (
-                      SELECT
-                        rev_host,
-                        fixup_url(get_unreversed_host(rev_host)) AS rev_nowww,
-                        moz_places.url,
-                        moz_places.title,
-                        frecency,
-                        last_visit_date,
-                        moz_places.guid AS guid,
-                        moz_bookmarks.guid AS bookmarkGuid
-                      FROM moz_places
-                      LEFT JOIN moz_bookmarks
-                      on moz_places.id = moz_bookmarks.fk
-                      WHERE hidden = 0 AND last_visit_date NOTNULL
-                      AND (SUBSTR(moz_places.url, 1, 6) == "https:" OR SUBSTR(moz_places.url, 1, 5) == "http:")
-                      ORDER BY frecency, last_visit_date, moz_places.url DESC
-                    ) GROUP BY rev_host)
-                    GROUP BY rev_nowww
-                    ORDER BY frecency DESC, lastVisitDate DESC, url
-                    LIMIT ${limit}`;
+    // Keep this query fast with frecency-indexed lookups (even with excess
+    // rows) and shift the more complex logic to post-processing afterwards
+    const sqlQuery = `
+      SELECT
+        ${this._commonBookmarkGuidSelect},
+        frecency,
+        guid,
+        last_visit_date / 1000 AS lastVisitDate,
+        rev_host,
+        title,
+        url
+      FROM moz_places h
+      WHERE frecency >= :frecencyThreshold
+        ${this._commonPlacesWhere}
+      ORDER BY frecency DESC
+      LIMIT :limit
+    `;
 
     let links = await this.executePlacesQuery(sqlQuery, {
       columns: [
@@ -975,27 +1117,75 @@ var ActivityStreamProvider = {
         "guid",
         "lastVisitDate",
         "title",
-        "type",
         "url"
-      ]
+      ],
+      params: this._getCommonParams(options, {
+        frecencyThreshold: options.topsiteFrecency
+      })
     });
 
-    if (!ignoreBlocked) {
-      links = links.filter(link => !BlockedLinks.isBlocked(link));
+    // Determine if the other link is "better" (larger frecency, more recent,
+    // lexicographically earlier url)
+    function isOtherBetter(link, other) {
+      return other.frecency > link.frecency ||
+        (other.frecency === link.frecency && other.lastVisitDate > link.lastVisitDate ||
+         other.lastVisitDate === link.lastVisitDate && other.url < link.url);
     }
-    links = links.slice(0, TOP_SITES_LIMIT);
-    links = await this._addFavicons(links);
-    return this._processLinks(links);
+
+    // Update a host Map with the better link
+    function setBetterLink(map, link, hostMatcher, combiner = () => {}) {
+      const host = hostMatcher(link.url)[1];
+      if (map.has(host)) {
+        const other = map.get(host);
+        if (isOtherBetter(link, other)) {
+          link = other;
+        }
+        combiner(link, other);
+      }
+      map.set(host, link);
+    }
+
+    // Clean up the returned links by removing blocked, deduping, etc.
+    const exactHosts = new Map();
+    for (const link of links) {
+      if (!options.ignoreBlocked && BlockedLinks.isBlocked(link)) {
+        continue;
+      }
+
+      link.type = "history";
+
+      // First we want to find the best link for an exact host
+      setBetterLink(exactHosts, link, url => url.match(/:\/\/([^\/]+)/));
+    }
+
+    // Clean up exact hosts to dedupe as non-www hosts
+    const hosts = new Map();
+    for (const link of exactHosts.values()) {
+      setBetterLink(hosts, link, url => url.match(/:\/\/(?:www\.)?([^\/]+)/),
+        // Combine frecencies when deduping these links
+        (targetLink, otherLink) => {
+          targetLink.frecency = link.frecency + otherLink.frecency;
+        });
+    }
+
+    // Pick out the top links using the same comparer as before
+    links = [...hosts.values()].sort(isOtherBetter).slice(0, origNumItems);
+
+    // Get the favicons as data URI for now (until we use the favicon protocol)
+    return this._faviconBytesToDataURI(await this._addFavicons(links));
   },
 
   /**
-   * Gets a specific bookmark given an id
+   * Gets a specific bookmark given some info about it
    *
-   * @param {String} aGuid
-   *          A bookmark guid to use as a refrence to fetch the bookmark
+   * @param {Obj} aInfo
+   *          An object with one and only one of the following properties:
+   *            - url
+   *            - guid
+   *            - parentGuid and index
    */
-  async getBookmark(aGuid) {
-    let bookmark = await PlacesUtils.bookmarks.fetch(aGuid);
+  async getBookmark(aInfo) {
+    let bookmark = await PlacesUtils.bookmarks.fetch(aInfo);
     if (!bookmark) {
       return null;
     }
@@ -1004,31 +1194,6 @@ var ActivityStreamProvider = {
     result.bookmarkTitle = bookmark.title;
     result.lastModified = bookmark.lastModified.getTime();
     result.url = bookmark.url.href;
-    return result;
-  },
-
-  /**
-   * Gets History size
-   *
-   * @returns {Promise} Returns a promise with the count of moz_places records
-   */
-  async getHistorySize() {
-    let sqlQuery = `SELECT count(*) FROM moz_places
-                    WHERE hidden = 0 AND last_visit_date NOT NULL`;
-
-    let result = await this.executePlacesQuery(sqlQuery);
-    return result;
-  },
-
-  /**
-   * Gets Bookmarks count
-   *
-   * @returns {Promise} Returns a promise with the count of bookmarks
-   */
-  async getBookmarksSize() {
-    let sqlQuery = `SELECT count(*) FROM moz_bookmarks WHERE type = :type`;
-
-    let result = await this.executePlacesQuery(sqlQuery, {params: {type: PlacesUtils.bookmarks.TYPE_BOOKMARK}});
     return result;
   },
 
@@ -1050,7 +1215,7 @@ var ActivityStreamProvider = {
     let items = [];
     let queryError = null;
     let conn = await PlacesUtils.promiseDBConnection();
-    await conn.executeCached(aQuery, params, aRow => {
+    await conn.executeCached(aQuery, params, (aRow, aCancel) => {
       try {
         let item = null;
         // if columns array is given construct an object
@@ -1069,7 +1234,7 @@ var ActivityStreamProvider = {
         items.push(item);
       } catch (e) {
         queryError = e;
-        throw StopIteration;
+        aCancel();
       }
     });
     if (queryError) {
@@ -1083,7 +1248,11 @@ var ActivityStreamProvider = {
  * A set of actions which influence what sites shown on the Activity Stream page
  */
 var ActivityStreamLinks = {
-  /**
+  _savedPocketStories: null,
+  _pocketLastUpdated: 0,
+  _pocketLastLatest: 0,
+
+ /**
    * Block a url
    *
    * @param {Object} aLink
@@ -1091,6 +1260,10 @@ var ActivityStreamLinks = {
    */
   blockURL(aLink) {
     BlockedLinks.block(aLink);
+    // If we're blocking a pocket item, invalidate the cache too
+    if (aLink.pocket_id) {
+      this._savedPocketStories = null;
+    }
   },
 
   onLinkBlocked(aLink) {
@@ -1098,18 +1271,24 @@ var ActivityStreamLinks = {
   },
 
   /**
-   * Adds a bookmark
+   * Adds a bookmark and opens up the Bookmark Dialog to show feedback that
+   * the bookmarking action has been successful
    *
-   * @param {String} aUrl
-   *          The url to bookmark
+   * @param {Object} aData
+   *          aData.url The url to bookmark
+   *          aData.title The title of the page to bookmark
+   * @param {Browser} aBrowser
+   *          a <browser> element
    *
    * @returns {Promise} Returns a promise set to an object representing the bookmark
    */
-  addBookmark(aUrl) {
-    return PlacesUtils.bookmarks.insert({
-      url: aUrl,
-      parentGuid: PlacesUtils.bookmarks.unfiledGuid
-    });
+  addBookmark(aData, aBrowser) {
+      const {url, title} = aData;
+      return aBrowser.ownerGlobal.PlacesCommandHook.bookmarkPage(
+              aBrowser,
+              true,
+              url,
+              title);
   },
 
   /**
@@ -1118,15 +1297,14 @@ var ActivityStreamLinks = {
    * @param {String} aBookmarkGuid
    *          The bookmark guid associated with the bookmark to remove
    *
-   * @returns {Promise} Returns a promise set to an object representing the
-   *            removed bookmark
+   * @returns {Promise} Returns a promise at completion.
    */
   deleteBookmark(aBookmarkGuid) {
     return PlacesUtils.bookmarks.remove(aBookmarkGuid);
   },
 
   /**
-   * Removes a history link
+   * Removes a history link and unpins the URL if previously pinned
    *
    * @param {String} aUrl
    *           The url to be removed from history
@@ -1134,7 +1312,135 @@ var ActivityStreamLinks = {
    * @returns {Promise} Returns a promise set to true if link was removed
    */
   deleteHistoryEntry(aUrl) {
-    return PlacesUtils.history.remove(aUrl);
+    const url = aUrl;
+    PinnedLinks.unpin({url});
+    return PlacesUtils.history.remove(url);
+  },
+
+  /**
+   * Helper function which makes the call to the Pocket API to delete an item from
+   * a user's saved to Pocket feed. Also, invalidate the Pocket stories cache
+   *
+   * @param {Integer} aItemID
+   *           The unique pocket ID used to find the item to be deleted
+   *
+   *@returns {Promise} Returns a promise at completion
+   */
+  deletePocketEntry(aItemID) {
+    this._savedPocketStories = null;
+    return new Promise((success, error) => pktApi.deleteItem(aItemID, {success, error}));
+  },
+
+  /**
+   * Helper function which makes the call to the Pocket API to archive an item from
+   * a user's saved to Pocket feed. Also, invalidate the Pocket stories cache
+   *
+   * @param {Integer} aItemID
+   *           The unique pocket ID used to find the item to be archived
+   *
+   *@returns {Promise} Returns a promise at completion
+   */
+  archivePocketEntry(aItemID) {
+    this._savedPocketStories = null;
+    return new Promise((success, error) => pktApi.archiveItem(aItemID, {success, error}));
+  },
+
+  /**
+   * Helper function which makes the call to the Pocket API to save an item to
+   * a user's saved to Pocket feed if they are logged in. Also, invalidate the
+   * Pocket stories cache
+   *
+   * @param {String} aUrl
+   *           The URL belonging to the story being saved
+   * @param {String} aTitle
+   *           The title belonging to the story being saved
+   * @param {Browser} aBrowser
+   *           The target browser to show the doorhanger in
+   *
+   *@returns {Promise} Returns a promise at completion
+   */
+  addPocketEntry(aUrl, aTitle, aBrowser) {
+    // If the user is not logged in, show the panel to prompt them to log in
+    if (!pktApi.isUserLoggedIn()) {
+      Pocket.savePage(aBrowser, aUrl, aTitle);
+      return Promise.resolve(null);
+    }
+
+    // If the user is logged in, just save the link to Pocket and Activity Stream
+    // will update the page
+    this._savedPocketStories = null;
+    return new Promise((success, error) => {
+      pktApi.addLink(aUrl, {
+        title: aTitle,
+        success,
+        error
+      });
+    });
+  },
+
+  /**
+   * Get the Highlights links to show on Activity Stream
+   *
+   * @param {Object} aOptions
+   *   {bool} excludeBookmarks: Don't add bookmark items.
+   *   {bool} excludeHistory: Don't add history items.
+   *   {bool} excludePocket: Don't add Pocket items.
+   *   {bool} withFavicons: Add favicon data: URIs, when possible.
+   *   {int}  numItems: Maximum number of (bookmark or history) items to return.
+   *
+   * @return {Promise} Returns a promise with the array of links as the payload
+   */
+  async getHighlights(aOptions = {}) {
+    aOptions.numItems = aOptions.numItems || ACTIVITY_STREAM_DEFAULT_LIMIT;
+    const results = [];
+
+    // First get bookmarks if we want them
+    if (!aOptions.excludeBookmarks) {
+      results.push(...await ActivityStreamProvider.getRecentBookmarks(aOptions));
+    }
+
+    // Add the Pocket items if we need more and want them
+    if (aOptions.numItems - results.length > 0 && !aOptions.excludePocket) {
+      const latestSince = ~~(Services.prefs.getStringPref(PREF_POCKET_LATEST_SINCE, 0));
+      // Invalidate the cache, get new stories, and update timestamps if:
+      //  1. we do not have saved to Pocket stories already cached OR
+      //  2. it has been too long since we last got Pocket stories OR
+      //  3. there has been a paged saved to pocket since we last got new stories
+      if (!this._savedPocketStories ||
+          (Date.now() - this._pocketLastUpdated > POCKET_UPDATE_TIME) ||
+          (this._pocketLastLatest < latestSince)) {
+        this._savedPocketStories = await ActivityStreamProvider.getRecentlyPocketed(aOptions);
+        this._pocketLastUpdated = Date.now();
+        this._pocketLastLatest = latestSince;
+      }
+      results.push(...this._savedPocketStories);
+    }
+
+    // Add in history if we need more and want them
+    if (aOptions.numItems - results.length > 0 && !aOptions.excludeHistory) {
+      // Use the same numItems as bookmarks above in case we remove duplicates
+      const history = await ActivityStreamProvider.getRecentHistory(aOptions);
+
+      // Only include a url once in the result preferring the bookmark
+      const bookmarkUrls = new Set(results.map(({url}) => url));
+      for (const page of history) {
+        if (!bookmarkUrls.has(page.url)) {
+          results.push(page);
+
+          // Stop adding pages once we reach the desired maximum
+          if (results.length === aOptions.numItems) {
+            break;
+          }
+        }
+      }
+    }
+
+    if (aOptions.withFavicons) {
+      return ActivityStreamProvider._faviconBytesToDataURI(
+        await ActivityStreamProvider._addFavicons(results));
+    }
+
+    return results;
   },
 
   /**
@@ -1444,10 +1750,6 @@ var Links = {
     // Build a list containing a copy of each provider's sortedLinks list.
     let linkLists = [];
     for (let provider of this._providers.keys()) {
-      if (!AllPages.enhanced && provider != PlacesProvider) {
-        // Only show history tiles if we're not in 'enhanced' mode.
-        continue;
-      }
       let links = this._providers.get(provider);
       if (links && links.sortedLinks) {
         linkLists.push(links.sortedLinks.slice());
@@ -1605,7 +1907,7 @@ var Links = {
     // Make sure to update open about:newtab instances. If there are no opened
     // pages we can just wait for the next new tab to populate the cache again.
     if (AllPages.length && AllPages.enabled)
-      this.populateCache(function() { AllPages.update() }, true);
+      this.populateCache(function() { AllPages.update(); }, true);
     else
       this.resetCache();
   },
@@ -1631,8 +1933,8 @@ var Links = {
     this._addObserver = function() {};
   },
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference])
 };
 
 Links.compareLinks = Links.compareLinks.bind(Links);
@@ -1660,8 +1962,6 @@ var Telemetry = {
     let probes = [
       { histogram: "NEWTAB_PAGE_ENABLED",
         value: AllPages.enabled },
-      { histogram: "NEWTAB_PAGE_ENHANCED",
-        value: AllPages.enhanced },
       { histogram: "NEWTAB_PAGE_PINNED_SITES_COUNT",
         value: PinnedLinks.links.length },
       { histogram: "NEWTAB_PAGE_BLOCKED_SITES_COUNT",
@@ -1747,7 +2047,7 @@ var ExpirationFilter = {
 /**
  * Singleton that provides the public API of this JSM.
  */
-this.NewTabUtils = {
+var NewTabUtils = {
   _initialized: false,
 
   /**
@@ -1792,7 +2092,6 @@ this.NewTabUtils = {
   uninit: function NewTabUtils_uninit() {
     if (this.initialized) {
       Telemetry.uninit();
-      GridPrefs.uninit();
       BlockedLinks.removeObservers();
     }
   },
@@ -1845,10 +2144,8 @@ this.NewTabUtils = {
 
   links: Links,
   allPages: AllPages,
-  linkChecker: LinkChecker,
   pinnedLinks: PinnedLinks,
   blockedLinks: BlockedLinks,
-  gridPrefs: GridPrefs,
   placesProvider: PlacesProvider,
   activityStreamLinks: ActivityStreamLinks,
   activityStreamProvider: ActivityStreamProvider

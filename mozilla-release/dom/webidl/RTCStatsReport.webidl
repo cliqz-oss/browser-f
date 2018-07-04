@@ -138,6 +138,8 @@ dictionary RTCIceCandidatePairStats : RTCStats {
   DOMHighResTimeStamp lastPacketSentTimestamp;
   DOMHighResTimeStamp lastPacketReceivedTimestamp;
   boolean selected;
+  [ChromeOnly]
+  unsigned long componentId; // moz
 };
 
 enum RTCStatsIceCandidateType {
@@ -185,7 +187,11 @@ dictionary RTCStatsReportInternal {
   DOMHighResTimeStamp                     timestamp;
   unsigned long                           iceRestarts;
   unsigned long                           iceRollbacks;
+  boolean                                 offerer; // Is the PC the offerer
   boolean                                 closed; // Is the PC now closed
+  sequence<RTCIceCandidateStats>          trickledIceCandidateStats;
+  sequence<DOMString>                     rawLocalCandidates;
+  sequence<DOMString>                     rawRemoteCandidates;
 };
 
 [Pref="media.peerconnection.enabled",

@@ -8,8 +8,10 @@ description: >
     7.6 - SyntaxError expected: reserved words used as Identifier
     Names in UTF8: try (try)
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 var \u0074\u0072\u0079 = 123;

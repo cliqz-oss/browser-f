@@ -135,6 +135,9 @@ public:
         mForcePlainText = true;
     }
 
+    bool IsUrgentStartPreferred() const { return mUrgentStartPreferredKnown && mUrgentStartPreferred; }
+    void SetUrgentStartPreferred(bool urgent);
+
     nsISocketTransport   *Transport()      { return mSocketTransport; }
     nsAHttpTransaction   *Transaction()    { return mTransaction; }
     nsHttpConnectionInfo *ConnectionInfo() { return mConnInfo; }
@@ -233,9 +236,17 @@ public:
     bool TestJoinConnection(const nsACString &hostname, int32_t port);
     bool JoinConnection(const nsACString &hostname, int32_t port);
 
-    void SetFastOpenStatus(uint8_t tfoStatus) {
-        mFastOpenStatus = tfoStatus;
+    void SetFastOpenStatus(uint8_t tfoStatus);
+    uint8_t GetFastOpenStatus() {
+      return mFastOpenStatus;
     }
+
+    void SetEvent(nsresult aStatus);
+
+    // Return true when the socket this connection is using has not been
+    // authenticated using a client certificate.  Before SSL negotiation
+    // has finished this returns false.
+    bool NoClientCertAuth() const;
 
 private:
     // Value (set in mTCPKeepaliveConfig) indicates which set of prefs to use.
@@ -266,7 +277,7 @@ private:
     void     SetupSSL();
 
     // Start the Spdy transaction handler when NPN indicates spdy/*
-    void     StartSpdy(uint8_t versionLevel);
+    void     StartSpdy(nsISSLSocketControl *ssl, uint8_t versionLevel);
     // Like the above, but do the bare minimum to do 0RTT data, so we can back
     // it out, if necessary
     void     Start0RTTSpdy(uint8_t versionLevel);
@@ -323,6 +334,11 @@ private:
 
     PRIntervalTime                  mRtt;
 
+    // Whether the first non-null transaction dispatched on this connection was
+    // urgent-start or not
+    bool                            mUrgentStartPreferred;
+    // A flag to prevent reset of mUrgentStartPreferred by subsequent transactions
+    bool                            mUrgentStartPreferredKnown;
     bool                            mConnectedTransport;
     bool                            mKeepAlive;
     bool                            mKeepAliveMask;
@@ -369,6 +385,10 @@ private:
     // The capabailities associated with the most recent transaction
     uint32_t                        mTransactionCaps;
 
+    // If a large keepalive has been requested for any trans,
+    // scale the default by this factor
+    uint32_t                        mDefaultTimeoutFactor;
+
     bool                            mResponseTimeoutEnabled;
 
     // Flag to indicate connection is in inital keepalive period (fast detect).
@@ -401,11 +421,14 @@ private:
 
     bool                           mForceSendDuringFastOpenPending;
     bool                           mReceivedSocketWouldBlockDuringFastOpen;
+    bool                           mCheckNetworkStallsWithTFO;
+    PRIntervalTime                 mLastRequestBytesSentTime;
 
 public:
     void BootstrapTimings(TimingStruct times);
 private:
     TimingStruct    mBootstrappedTimings;
+    bool            mBootstrappedTimingsSet;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsHttpConnection, NS_HTTPCONNECTION_IID)

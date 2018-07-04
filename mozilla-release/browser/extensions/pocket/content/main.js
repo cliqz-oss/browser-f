@@ -44,12 +44,12 @@
 /* eslint-disable no-shadow */
 /* eslint-env mozilla/browser-window */
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
+ChromeUtils.defineModuleGetter(this, "ReaderMode",
   "resource://gre/modules/ReaderMode.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "pktApi",
+ChromeUtils.defineModuleGetter(this, "pktApi",
   "chrome://pocket/content/pktApi.jsm");
 
 var pktUI = (function() {
@@ -149,7 +149,8 @@ var pktUI = (function() {
         // AB test: Direct logged-out users to tab vs panel
         if (pktApi.getSignupPanelTabTestVariant() == "v2") {
             let site = Services.prefs.getCharPref("extensions.pocket.site");
-            openTabWithUrl("https://" + site + "/firefox_learnmore?s=ffi&t=autoredirect&tv=page_learnmore&src=ff_ext", true);
+            openTabWithUrl("https://" + site + "/firefox_learnmore?s=ffi&t=autoredirect&tv=page_learnmore&src=ff_ext",
+                           Services.scriptSecurityManager.getSystemPrincipal());
 
             // force the panel closed before it opens
             getPanel().hidePopup();
@@ -225,6 +226,7 @@ var pktUI = (function() {
             onShow() {
                 var saveLinkMessageId = "saveLink";
                 _lastAddSucceeded = false;
+                getPanelFrame().setAttribute("itemAdded", "false");
 
                 // Send error message for invalid url
                 if (!isValidURL) {
@@ -257,6 +259,7 @@ var pktUI = (function() {
                         };
                         pktUIMessaging.sendMessageToPanel(panelId, saveLinkMessageId, successResponse);
                         _lastAddSucceeded = true;
+                        getPanelFrame().setAttribute("itemAdded", "true");
                     },
                     error(error, request) {
                         // If user is not authorized show singup page
@@ -268,12 +271,12 @@ var pktUI = (function() {
                         // If there is no error message in the error use a
                         // complete catch-all
                         var errorMessage = error.message || "There was an error when trying to save to Pocket.";
-                        var panelError = { message: errorMessage}
+                        var panelError = { message: errorMessage};
 
                         // Send error message to panel
                         pktUIMessaging.sendErrorMessageToPanel(panelId, saveLinkMessageId, panelError);
                     }
-                }
+                };
 
                 // Add title if given
                 if (typeof title !== "undefined") {
@@ -336,17 +339,10 @@ var pktUI = (function() {
      */
     function resizePanel(options) {
         var iframe = getPanelFrame();
-        var subview = getSubview();
 
-        if (subview) {
-          // Use the subview's size
-          iframe.style.width = "100%";
-          iframe.style.height = subview.parentNode.clientHeight + "px";
-        } else {
-          // Set an explicit size, panel will adapt.
-          iframe.style.width  = options.width + "px";
-          iframe.style.height = options.height + "px";
-        }
+        // Set an explicit size, panel will adapt.
+        iframe.style.width  = options.width + "px";
+        iframe.style.height = options.height + "px";
     }
 
     /**
@@ -382,7 +378,7 @@ var pktUI = (function() {
             pktUIMessaging.sendMessageToPanel(panelId, _showMessageId);
         });
 
-        // Open a new tab with a given url and activate if
+        // Open a new tab with a given url
         var _openTabWithUrlMessageId = "openTabWithUrl";
         pktUIMessaging.addMessageListener(iframe, _openTabWithUrlMessageId, function(panelId, data, contentPrincipal) {
             try {
@@ -391,14 +387,8 @@ var pktUI = (function() {
               return;
             }
 
-            // Check if the tab should become active after opening
-            var activate = true;
-            if (typeof data.activate !== "undefined") {
-                activate = data.activate;
-            }
-
             var url = data.url;
-            openTabWithUrl(url, activate);
+            openTabWithUrl(url, contentPrincipal);
             pktUIMessaging.sendResponseMessageToPanel(panelId, _openTabWithUrlMessageId, url);
         });
 
@@ -456,13 +446,13 @@ var pktUI = (function() {
                         value: {
                             suggestedTags
                         }
-                    }
+                    };
                     pktUIMessaging.sendResponseMessageToPanel(panelId, _getSuggestedTagsMessageId, successResponse);
                 },
                 error(error, response) {
                     pktUIMessaging.sendErrorResponseMessageToPanel(panelId, _getSuggestedTagsMessageId, error);
                 }
-            })
+            });
         });
 
         // Pass url and array list of tags, add to existing save item accordingly
@@ -487,11 +477,12 @@ var pktUI = (function() {
                     var successResponse = {status: "success"};
                     pktUIMessaging.sendResponseMessageToPanel(panelId, _deleteItemMessageId, successResponse);
                     _lastAddSucceeded = false;
+                    getPanelFrame().setAttribute("itemAdded", "false");
                 },
                 error(error, response) {
                     pktUIMessaging.sendErrorResponseMessageToPanel(panelId, _deleteItemMessageId, error);
                 }
-            })
+            });
         });
 
         var _initL10NMessageId = "initL10N";
@@ -500,7 +491,7 @@ var pktUI = (function() {
             var bundle = Services.strings.createBundle("chrome://pocket/locale/pocket.properties");
             var e = bundle.getSimpleEnumeration();
             while (e.hasMoreElements()) {
-                var str = e.getNext().QueryInterface(Components.interfaces.nsIPropertyElement);
+                var str = e.getNext().QueryInterface(Ci.nsIPropertyElement);
                 if (str.key in data) {
                     strings[str.key] = bundle.formatStringFromName(str.key, data[str.key], data[str.key].length);
                 } else {
@@ -518,7 +509,7 @@ var pktUI = (function() {
      * Open a new tab with a given url and notify the iframe panel that it was opened
      */
 
-    function openTabWithUrl(url) {
+    function openTabWithUrl(url, aTriggeringPrincipal) {
         let recentWindow = Services.wm.getMostRecentWindow("navigator:browser");
         if (!recentWindow) {
           Cu.reportError("Pocket: No open browser windows to openTabWithUrl");
@@ -530,7 +521,9 @@ var pktUI = (function() {
         // windows.
         if (!PrivateBrowsingUtils.isWindowPrivate(recentWindow) ||
             PrivateBrowsingUtils.permanentPrivateBrowsing) {
-          recentWindow.openUILinkIn(url, "tab");
+          recentWindow.openWebLinkIn(url, "tab", {
+            triggeringPrincipal: aTriggeringPrincipal
+          });
           return;
         }
 
@@ -538,13 +531,17 @@ var pktUI = (function() {
         while (windows.hasMoreElements()) {
           let win = windows.getNext();
           if (!PrivateBrowsingUtils.isWindowPrivate(win)) {
-            win.openUILinkIn(url, "tab");
+            win.openWebLinkIn(url, "tab", {
+              triggeringPrincipal: aTriggeringPrincipal
+            });
             return;
           }
         }
 
         // If there were no non-private windows opened already.
-        recentWindow.openUILinkIn(url, "window");
+        recentWindow.openWebLinkIn(url, "window", {
+          triggeringPrincipal: aTriggeringPrincipal
+        });
     }
 
 
@@ -567,28 +564,18 @@ var pktUI = (function() {
         return panel;
     }
 
-    function getPanelFrame() {
-        var frame = document.getElementById("pocket-panel-iframe");
-        if (!frame) {
-            var frameParent = document.getElementById("PanelUI-pocketView").firstChild;
-            frame = document.createElement("iframe");
-            frame.id = "pocket-panel-iframe";
-            frame.setAttribute("type", "content");
-            frameParent.appendChild(frame);
-        }
-        return frame;
+    var photonPageActionPanelFrame;
+
+    function setPhotonPageActionPanelFrame(frame) {
+        photonPageActionPanelFrame = frame;
     }
 
-    function getSubview() {
-        var view = document.getElementById("PanelUI-pocketView");
-        if (view && view.getAttribute("current") == "true" && !view.getAttribute("mainview"))
-            return view;
-        return null;
+    function getPanelFrame() {
+        return photonPageActionPanelFrame;
     }
 
     function isInOverflowMenu() {
-        var subview = getSubview();
-        return !!subview;
+        return false;
     }
 
     function getFirefoxAccountSignedInUser(callback) {
@@ -607,6 +594,7 @@ var pktUI = (function() {
      * Public functions
      */
     return {
+        setPhotonPageActionPanelFrame,
         getPanelFrame,
 
         openTabWithUrl,
@@ -709,11 +697,11 @@ var pktUIMessaging = (function() {
         // happens, it means some race condition occurred where the panel was
         // trying to communicate before it should.
         if (panelId === 0) {
-            console.warn("Tried to send message to panel with id 0.")
+            console.warn("Tried to send message to panel with id 0.");
             return false;
         }
 
-        return true
+        return true;
     }
 
     function isPocketPanelFrameValid(panelFrame) {
@@ -754,5 +742,5 @@ var pktUIMessaging = (function() {
         sendResponseMessageToPanel,
         sendErrorMessageToPanel,
         sendErrorResponseMessageToPanel
-    }
+    };
 }());

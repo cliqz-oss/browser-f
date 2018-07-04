@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#[cfg(windows)]
+extern crate winres;
+
 use std::env;
 use std::path::Path;
 use std::process;
@@ -13,11 +16,19 @@ fn main() {
     if target.contains("android") {
         android_main()
     }
+
+    #[cfg(windows)]
+    {
+        let mut res = winres::WindowsResource::new();
+        res.set_icon("../../resources/Servo.ico");
+        res.set_manifest_file("platform/windows/servo.exe.manifest");
+        res.compile().unwrap();
+    }
 }
 
 fn android_main() {
     // Get the NDK path from NDK_HOME env.
-    let ndk_path = env::var("ANDROID_NDK").ok().expect("Please set the ANDROID_NDK environment variable");
+    let ndk_path = env::var_os("ANDROID_NDK").expect("Please set the ANDROID_NDK environment variable");
     let ndk_path = Path::new(&ndk_path);
 
     // Build up the path to the NDK compilers
@@ -62,7 +73,7 @@ fn android_main() {
     println!("toolchain path is: {}", toolchain_path.to_str().unwrap());
 
     // Get the output directory.
-    let out_dir = env::var("OUT_DIR").ok().expect("Cargo should have set the OUT_DIR environment variable");
+    let out_dir = env::var("OUT_DIR").expect("Cargo should have set the OUT_DIR environment variable");
     let directory = Path::new(&out_dir);
 
     // compiling android_native_app_glue.c

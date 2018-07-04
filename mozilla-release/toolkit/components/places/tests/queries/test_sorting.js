@@ -10,7 +10,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_NONE,
 
   async setup() {
-    do_print("Sorting test 1: SORT BY NONE");
+    info("Sorting test 1: SORT BY NONE");
 
     this._unsortedData = [
       { isBookmark: true,
@@ -18,7 +18,6 @@ tests.push({
         parentGuid: PlacesUtils.bookmarks.toolbarGuid,
         index: PlacesUtils.bookmarks.DEFAULT_INDEX,
         title: "y",
-        keyword: "b",
         isInQuery: true },
 
       { isBookmark: true,
@@ -26,7 +25,6 @@ tests.push({
         parentGuid: PlacesUtils.bookmarks.toolbarGuid,
         index: PlacesUtils.bookmarks.DEFAULT_INDEX,
         title: "z",
-        keyword: "a",
         isInQuery: true },
 
       { isBookmark: true,
@@ -34,7 +32,6 @@ tests.push({
         parentGuid: PlacesUtils.bookmarks.toolbarGuid,
         index: PlacesUtils.bookmarks.DEFAULT_INDEX,
         title: "x",
-        keyword: "c",
         isInQuery: true },
     ];
 
@@ -71,7 +68,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_TITLE_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 2: SORT BY TITLE");
+    info("Sorting test 2: SORT BY TITLE");
 
     this._unsortedData = [
       { isBookmark: true,
@@ -144,7 +141,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_DATE_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 3: SORT BY DATE");
+    info("Sorting test 3: SORT BY DATE");
 
     var timeInMicroseconds = Date.now() * 1000;
     this._unsortedData = [
@@ -242,7 +239,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_URI_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 4: SORT BY URI");
+    info("Sorting test 4: SORT BY URI");
 
     var timeInMicroseconds = Date.now() * 1000;
     this._unsortedData = [
@@ -346,7 +343,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_VISITCOUNT_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 5: SORT BY VISITCOUNT");
+    info("Sorting test 5: SORT BY VISITCOUNT");
 
     var timeInMicroseconds = Date.now() * 1000;
     this._unsortedData = [
@@ -442,107 +439,10 @@ tests.push({
 });
 
 tests.push({
-  _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_KEYWORD_ASCENDING,
-
-  async setup() {
-    do_print("Sorting test 6: SORT BY KEYWORD");
-
-    this._unsortedData = [
-      { isBookmark: true,
-        uri: "http://example.com/a",
-        parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-        index: PlacesUtils.bookmarks.DEFAULT_INDEX,
-        title: "z",
-        keyword: "a",
-        isInQuery: true },
-
-      { isBookmark: true,
-        uri: "http://example.com/c",
-        parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-        index: PlacesUtils.bookmarks.DEFAULT_INDEX,
-        title: "x",
-        keyword: "c",
-        isInQuery: true },
-
-      { isBookmark: true,
-        uri: "http://example.com/b1",
-        parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-        index: PlacesUtils.bookmarks.DEFAULT_INDEX,
-        title: "y9",
-        keyword: "b",
-        isInQuery: true },
-
-      // without a keyword, should fall back to title
-      { isBookmark: true,
-        uri: "http://example.com/null2",
-        parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-        index: PlacesUtils.bookmarks.DEFAULT_INDEX,
-        title: "null8",
-        keyword: null,
-        isInQuery: true },
-
-      // without a keyword, should fall back to title
-      { isBookmark: true,
-        uri: "http://example.com/null1",
-        parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-        index: PlacesUtils.bookmarks.DEFAULT_INDEX,
-        title: "null9",
-        keyword: null,
-        isInQuery: true },
-
-      // if keywords are equal, should fall back to title
-      { isBookmark: true,
-        uri: "http://example.com/b1",
-        parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-        index: PlacesUtils.bookmarks.DEFAULT_INDEX,
-        title: "y8",
-        keyword: "b",
-        isInQuery: true },
-    ];
-
-    this._sortedData = [
-      this._unsortedData[3],
-      this._unsortedData[4],
-      this._unsortedData[0],
-      this._unsortedData[5],
-      this._unsortedData[2],
-      this._unsortedData[1],
-    ];
-
-    // This function in head_queries.js creates our database with the above data
-    await task_populateDB(this._unsortedData);
-  },
-
-  check() {
-    // Query
-    var query = PlacesUtils.history.getNewQuery();
-    query.setFolders([PlacesUtils.bookmarks.toolbarFolder], 1);
-    query.onlyBookmarked = true;
-
-    // query options
-    var options = PlacesUtils.history.getNewQueryOptions();
-    options.sortingMode = this._sortingMode;
-
-    // Results - this gets the result set and opens it for reading and modification.
-    var result = PlacesUtils.history.executeQuery(query, options);
-    var root = result.root;
-    root.containerOpen = true;
-    compareArrayToResult(this._sortedData, root);
-    root.containerOpen = false;
-  },
-
-  check_reverse() {
-    this._sortingMode = Ci.nsINavHistoryQueryOptions.SORT_BY_KEYWORD_DESCENDING;
-    this._sortedData.reverse();
-    this.check();
-  }
-});
-
-tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_DATEADDED_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 7: SORT BY DATEADDED");
+    info("Sorting test 7: SORT BY DATEADDED");
 
     var timeInMicroseconds = Date.now() * 1000;
     this._unsortedData = [
@@ -630,7 +530,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_LASTMODIFIED_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 8: SORT BY LASTMODIFIED");
+    info("Sorting test 8: SORT BY LASTMODIFIED");
 
     var timeInMicroseconds = Date.now() * 1000;
     var timeAddedInMicroseconds = timeInMicroseconds - 10000;
@@ -726,7 +626,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_TAGS_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 9: SORT BY TAGS");
+    info("Sorting test 9: SORT BY TAGS");
 
     this._unsortedData = [
       { isBookmark: true,
@@ -826,7 +726,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_ANNOTATION_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 10: SORT BY ANNOTATION (int32)");
+    info("Sorting test 10: SORT BY ANNOTATION (int32)");
 
     var timeInMicroseconds = Date.now() * 1000;
     this._unsortedData = [
@@ -921,7 +821,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_ANNOTATION_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 11: SORT BY ANNOTATION (int64)");
+    info("Sorting test 11: SORT BY ANNOTATION (int64)");
 
     var timeInMicroseconds = Date.now() * 1000;
     this._unsortedData = [
@@ -1002,7 +902,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_ANNOTATION_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 12: SORT BY ANNOTATION (string)");
+    info("Sorting test 12: SORT BY ANNOTATION (string)");
 
     var timeInMicroseconds = Date.now() * 1000;
     this._unsortedData = [
@@ -1083,7 +983,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_ANNOTATION_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 13: SORT BY ANNOTATION (double)");
+    info("Sorting test 13: SORT BY ANNOTATION (double)");
 
     var timeInMicroseconds = Date.now() * 1000;
     this._unsortedData = [
@@ -1164,7 +1064,7 @@ tests.push({
   _sortingMode: Ci.nsINavHistoryQueryOptions.SORT_BY_FRECENCY_ASCENDING,
 
   async setup() {
-    do_print("Sorting test 13: SORT BY FRECENCY ");
+    info("Sorting test 13: SORT BY FRECENCY ");
 
     let timeInMicroseconds = PlacesUtils.toPRTime(Date.now() - 10000);
 
@@ -1254,6 +1154,6 @@ add_task(async function test_sorting() {
     test.check_reverse();
     // Execute cleanup tasks
     await PlacesUtils.bookmarks.eraseEverything();
-    await PlacesTestUtils.clearHistory();
+    await PlacesUtils.history.clear();
   }
 });

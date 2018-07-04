@@ -8,10 +8,11 @@
 
 #include "xpcprivate.h"
 #include "XPCWrapper.h"
-#include "jsprf.h"
+#include "js/Printf.h"
 #include "mozilla/dom/BindingUtils.h"
+#include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/Exceptions.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -50,13 +51,12 @@ Throw(JSContext* cx, nsresult rv)
 bool
 XPCThrower::CheckForPendingException(nsresult result, JSContext* cx)
 {
-    nsCOMPtr<nsIException> e = XPCJSContext::Get()->GetPendingException();
+    RefPtr<Exception> e = XPCJSContext::Get()->GetPendingException();
     if (!e)
         return false;
     XPCJSContext::Get()->SetPendingException(nullptr);
 
-    nsresult e_result;
-    if (NS_FAILED(e->GetResult(&e_result)) || e_result != result)
+    if (e->GetResult() != result)
         return false;
 
     ThrowExceptionObject(cx, e);

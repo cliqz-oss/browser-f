@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -21,24 +22,14 @@ using namespace mozilla;
 ///////////////////////////////////////////////////////////////////////////////
 
 EventStateManager*
-inLayoutUtils::GetEventStateManagerFor(nsIDOMElement *aElement)
+inLayoutUtils::GetEventStateManagerFor(Element& aElement)
 {
-  NS_PRECONDITION(aElement, "Passing in a null element is bad");
-
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  aElement->GetOwnerDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
-
-  if (!doc) {
-    NS_WARNING("Could not get an nsIDocument!");
-    return nullptr;
-  }
-
-  nsIPresShell *shell = doc->GetShell();
-  if (!shell)
+  nsIDocument* doc = aElement.OwnerDoc();
+  nsPresContext* presContext = doc->GetPresContext();
+  if (!presContext)
     return nullptr;
 
-  return shell->GetPresContext()->EventStateManager();
+  return presContext->EventStateManager();
 }
 
 nsIDOMDocument*
@@ -57,7 +48,7 @@ inLayoutUtils::GetSubDocumentFor(nsIDOMNode* aNode)
   return nullptr;
 }
 
-nsIDOMNode*
+nsINode*
 inLayoutUtils::GetContainerFor(const nsIDocument& aDoc)
 {
   nsPIDOMWindowOuter* pwin = aDoc.GetWindow();
@@ -65,7 +56,6 @@ inLayoutUtils::GetContainerFor(const nsIDocument& aDoc)
     return nullptr;
   }
 
-  nsCOMPtr<nsIDOMNode> node = do_QueryInterface(pwin->GetFrameElementInternal());
-  return node;
+  return pwin->GetFrameElementInternal();
 }
 

@@ -10,7 +10,7 @@
 #include "nsIDOMClassInfo.h"
 #include "Constants.h"
 #include "mozilla/Telemetry.h"
-#include "WorkerPrivate.h"
+#include "mozilla/dom/WorkerPrivate.h"
 
 /**
  * We have to use macros here because our leak analysis tool things we are
@@ -20,8 +20,6 @@
 
 namespace mozilla {
 namespace dom {
-
-using namespace workers;
 
 namespace network {
 
@@ -106,18 +104,6 @@ Connection::Update(ConnectionType aType, bool aIsWifi, uint32_t aDHCPGateway,
   }
 }
 
-/* static */ bool
-Connection::IsEnabled(JSContext* aCx, JSObject* aObj)
-{
-  if (NS_IsMainThread()) {
-    return Preferences::GetBool("dom.netinfo.enabled");
-  }
-
-  WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(aCx);
-  MOZ_ASSERT(workerPrivate);
-  return workerPrivate->NetworkInformationEnabled();
-}
-
 /* static */ Connection*
 Connection::CreateForWindow(nsPIDOMWindowInner* aWindow)
 {
@@ -126,7 +112,7 @@ Connection::CreateForWindow(nsPIDOMWindowInner* aWindow)
 }
 
 /* static */ already_AddRefed<Connection>
-Connection::CreateForWorker(workers::WorkerPrivate* aWorkerPrivate,
+Connection::CreateForWorker(WorkerPrivate* aWorkerPrivate,
                             ErrorResult& aRv)
 {
   MOZ_ASSERT(aWorkerPrivate);

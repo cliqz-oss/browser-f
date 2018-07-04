@@ -3,7 +3,7 @@
  *   fingerprinting resistance is enabled.
  */
 
-const { classes: Cc, Constructor: CC, interfaces: Ci, utils: Cu } = Components;
+const CC = Components.Constructor;
 
 const TEST_DOMAIN = "http://example.net/";
 const TEST_PATH = TEST_DOMAIN + "browser/browser/components/resistfingerprinting/test/browser/";
@@ -44,6 +44,6 @@ add_task(async function test_new_window() {
     }
   );
 
-  await BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(tab);
   await BrowserTestUtils.closeWindow(win);
 });

@@ -8,8 +8,10 @@ esid: pending
 description: >
   Async function expressions are not a simple assignment target.
 negative:
-  phase: early
+  phase: parse
   type: ReferenceError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 (async function foo() { } = 1)

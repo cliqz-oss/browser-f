@@ -153,7 +153,7 @@ LazyIdleThread::EnsureThread()
     }
   }
 
-  mIdleTimer = do_CreateInstance(NS_TIMER_CONTRACTID, &rv);
+  mIdleTimer = NS_NewTimer();
   if (NS_WARN_IF(!mIdleTimer)) {
     return NS_ERROR_UNEXPECTED;
   }
@@ -509,12 +509,6 @@ LazyIdleThread::HasPendingEvents(bool* aHasPendingEvents)
 
 NS_IMETHODIMP
 LazyIdleThread::IdleDispatch(already_AddRefed<nsIRunnable> aEvent)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-LazyIdleThread::RegisterIdlePeriod(already_AddRefed<nsIIdlePeriod> aIdlePeriod)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }

@@ -33,9 +33,6 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     LOCAL_INCLUDES += [
         '/toolkit/xre',
     ]
-    USE_LIBS += [
-        'updatecommon-standalone',
-    ]
     OS_LIBS += [
         'comctl32',
         'ws2_32',
@@ -48,16 +45,12 @@ elif CONFIG['OS_ARCH'] == 'Linux' and CONFIG['MOZ_VERIFY_MAR_SIGNATURE']:
     USE_LIBS += [
         'nss',
         'signmar',
-        'updatecommon',
     ]
     OS_LIBS += CONFIG['NSPR_LIBS']
-else:
-    USE_LIBS += [
-        'updatecommon',
-    ]
 
 USE_LIBS += [
     'mar',
+    'updatecommon',
     'xz-embedded',
 ]
 
@@ -100,7 +93,7 @@ if have_progressui == 0:
 SOURCES += sorted(srcs)
 
 DEFINES['NS_NO_XPCOM'] = True
-DISABLE_STL_WRAPPING = True
+DisableStlWrapping()
 for var in ('MAR_CHANNEL_ID', 'MOZ_APP_VERSION'):
     DEFINES[var] = '"%s"' % CONFIG[var]
 
@@ -116,7 +109,7 @@ DELAYLOAD_DLLS += [
     'wsock32.dll',
 ]
 
-if CONFIG['_MSC_VER']:
+if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     WIN32_EXE_LDFLAGS += ['-ENTRY:wmainCRTStartup']
 elif CONFIG['OS_ARCH'] == 'WINNT':
     WIN32_EXE_LDFLAGS += ['-municode']
@@ -124,3 +117,7 @@ elif CONFIG['OS_ARCH'] == 'WINNT':
 if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
     CXXFLAGS += CONFIG['TK_CFLAGS']
     OS_LIBS += CONFIG['TK_LIBS']
+
+if CONFIG['CC_TYPE'] == 'gcc':
+    CXXFLAGS += ['-Wno-format-truncation']
+

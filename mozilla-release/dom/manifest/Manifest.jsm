@@ -11,21 +11,17 @@
 
 "use strict";
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cc = Components.classes;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const { ManifestObtainer } =
-  Cu.import("resource://gre/modules/ManifestObtainer.jsm", {});
+  ChromeUtils.import("resource://gre/modules/ManifestObtainer.jsm", {});
 const { ManifestIcons } =
-  Cu.import("resource://gre/modules/ManifestIcons.jsm", {});
+  ChromeUtils.import("resource://gre/modules/ManifestIcons.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "JSONFile",
-                                  "resource://gre/modules/JSONFile.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "JSONFile",
+                               "resource://gre/modules/JSONFile.jsm");
 
 /**
  * Generates an hash for the given string.
@@ -75,8 +71,19 @@ class Manifest {
   }
 
   async initialise() {
-    this._store = new JSONFile({path: this._path});
+    this._store = new JSONFile({path: this._path, saveDelayMs: 100});
     await this._store.load();
+  }
+
+  async prefetch(browser) {
+    const manifestData = await ManifestObtainer.browserObtainManifest(browser);
+    const icon = await ManifestIcons.browserFetchIcon(browser, manifestData, 192);
+    const data = {
+      installed: false,
+      manifest: manifestData,
+      cached_icon: icon
+    };
+    return data;
   }
 
   async install() {
@@ -109,6 +116,7 @@ class Manifest {
 
   get name() {
     return this._store.data.manifest.short_name ||
+      this._store.data.manifest.name ||
       this._store.data.manifest.short_url;
   }
 
@@ -215,4 +223,4 @@ var Manifests = {
 
 };
 
-this.EXPORTED_SYMBOLS = ["Manifests"]; // jshint ignore:line
+var EXPORTED_SYMBOLS = ["Manifests"]; // jshint ignore:line

@@ -16,9 +16,11 @@ info: |
     StringValue of IdentifierName is: "implements", "interface", "let", "package",
     "private", "protected", "public", "static", or "yield".
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 flags: [onlyStrict]
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 var \u0073\u0074\u0061\u0074\u0069\u0063 = 123;

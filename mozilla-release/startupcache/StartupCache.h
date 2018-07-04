@@ -10,16 +10,15 @@
 #include "nsComponentManagerUtils.h"
 #include "nsTArray.h"
 #include "nsZipArchive.h"
-#include "nsIStartupCache.h"
 #include "nsITimer.h"
 #include "nsIMemoryReporter.h"
 #include "nsIObserverService.h"
 #include "nsIObserver.h"
+#include "nsIObjectOutputStream.h"
 #include "nsIOutputStream.h"
 #include "nsIFile.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/MemoryReporting.h"
-#include "mozilla/StaticPtr.h"
 #include "mozilla/UniquePtr.h"
 
 /**
@@ -104,7 +103,6 @@ class StartupCache : public nsIMemoryReporter
 {
 
 friend class StartupCacheListener;
-friend class StartupCacheWrapper;
 
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -115,8 +113,8 @@ public:
   // Returns a buffer that was previously stored, caller takes ownership.
   nsresult GetBuffer(const char* id, UniquePtr<char[]>* outbuf, uint32_t* length);
 
-  // Stores a buffer. Caller keeps ownership, we make a copy.
-  nsresult PutBuffer(const char* id, const char* inbuf, uint32_t length);
+  // Stores a buffer. Caller yields ownership.
+  nsresult PutBuffer(const char* id, UniquePtr<char[]>&& inbuf, uint32_t length);
 
   // Removes the cache file.
   void InvalidateCache();
@@ -199,24 +197,6 @@ class StartupCacheDebugOutputStream final
   nsTHashtable<nsISupportsHashKey> *mObjectMap;
 };
 #endif // DEBUG
-
-// XPCOM wrapper interface provided for tests only.
-#define NS_STARTUPCACHE_CID \
-      {0xae4505a9, 0x87ab, 0x477c, \
-      {0xb5, 0x77, 0xf9, 0x23, 0x57, 0xed, 0xa8, 0x84}}
-// contract id: "@mozilla.org/startupcache/cache;1"
-
-class StartupCacheWrapper final
-  : public nsIStartupCache
-{
-  ~StartupCacheWrapper() {}
-
-  NS_DECL_THREADSAFE_ISUPPORTS
-  NS_DECL_NSISTARTUPCACHE
-
-  static StartupCacheWrapper* GetSingleton();
-  static StartupCacheWrapper *gStartupCacheWrapper;
-};
 
 } // namespace scache
 } // namespace mozilla

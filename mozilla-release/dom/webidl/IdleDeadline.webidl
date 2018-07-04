@@ -7,7 +7,8 @@
  * https://w3c.github.io/requestidlecallback/
  */
 
-[Func="nsGlobalWindow::IsRequestIdleCallbackEnabled"]
+[Exposed=(Window,System),
+ Func="nsGlobalWindowInner::IsRequestIdleCallbackEnabled"]
 interface IdleDeadline {
   DOMHighResTimeStamp timeRemaining();
   readonly attribute boolean didTimeout;

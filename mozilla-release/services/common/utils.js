@@ -2,17 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+var EXPORTED_SYMBOLS = ["CommonUtils"];
 
-this.EXPORTED_SYMBOLS = ["CommonUtils"];
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Log.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
 
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Log.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-
-this.CommonUtils = {
+var CommonUtils = {
   /*
    * Set manipulation methods. These should be lifted into toolkit, or added to
    * `Set` itself.
@@ -136,19 +134,6 @@ this.CommonUtils = {
   },
 
   /**
-   * Return a promise resolving on some later tick.
-   *
-   * This a wrapper around Promise.resolve() that prevents stack
-   * accumulation and prevents callers from accidentally relying on
-   * same-tick promise resolution.
-   */
-  laterTickResolvingPromise(value) {
-    return new Promise(resolve => {
-      this.nextTick(() => resolve(value));
-    });
-  },
-
-  /**
    * Return a timer that is scheduled to call the callback after waiting the
    * provided time or as soon as possible. The timer will be set as a property
    * of the provided object with the given timer name.
@@ -213,7 +198,15 @@ this.CommonUtils = {
   },
 
   bytesAsHex: function bytesAsHex(bytes) {
-    return Array.prototype.slice.call(bytes).map(c => ("0" + c.charCodeAt(0).toString(16)).slice(-2)).join("");
+    let s = "";
+    for (let i = 0, len = bytes.length; i < len; i++) {
+      let c = (bytes[i].charCodeAt(0) & 0xff).toString(16);
+      if (c.length == 1) {
+        c = "0" + c;
+      }
+      s += c;
+    }
+    return s;
   },
 
   stringAsHex: function stringAsHex(str) {
@@ -304,7 +297,7 @@ this.CommonUtils = {
       function advance() {
         c  = str[cOffset++];
         if (!c || c == "" || c == "=") // Easier than range checking.
-          throw new Error("Done");     // Will be caught far away.
+          throw new Error("Done"); // Will be caught far away.
         val = key.indexOf(c);
         if (val == -1)
           throw new Error(`Unknown character in base32: ${c}`);

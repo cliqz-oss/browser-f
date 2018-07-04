@@ -41,9 +41,9 @@ add_task(async function testPageActionPopupResize() {
 
     is(dims.window.innerHeight, expected, `Panel window should be ${expected}px tall`);
     is(body.clientHeight, body.scrollHeight,
-      "Panel body should be tall enough to fit its contents");
+       "Panel body should be tall enough to fit its contents");
     is(root.clientHeight, root.scrollHeight,
-      "Panel root should be tall enough to fit its contents");
+       "Panel root should be tall enough to fit its contents");
 
     // Tolerate if it is 1px too wide, as that may happen with the current resizing method.
     ok(Math.abs(dims.window.innerWidth - expected) <= 1, `Panel window should be ${expected}px wide`);
@@ -51,13 +51,11 @@ add_task(async function testPageActionPopupResize() {
        "Panel body should be wide enough to fit its contents");
   }
 
-  /* eslint-disable mozilla/no-cpows-in-tests */
   function setSize(size) {
     let elem = content.document.body.firstChild;
     elem.style.height = `${size}px`;
     elem.style.width = `${size}px`;
   }
-  /* eslint-enable mozilla/no-cpows-in-tests */
 
   let sizes = [
     200,
@@ -124,11 +122,9 @@ add_task(async function testPageActionPopupReflow() {
 
   browser = await awaitExtensionPanel(extension);
 
-  /* eslint-disable mozilla/no-cpows-in-tests */
   function setSize(size) {
     content.document.body.style.fontSize = `${size}px`;
   }
-  /* eslint-enable mozilla/no-cpows-in-tests */
 
   let dims = await alterContent(browser, setSize, 18);
 
@@ -141,9 +137,9 @@ add_task(async function testPageActionPopupReflow() {
      `Panel window height (${dims.window.innerHeight}px) should be taller than two lines of text.`);
 
   is(dims.body.clientHeight, dims.body.scrollHeight,
-    "Panel body should be tall enough to fit its contents");
+     "Panel body should be tall enough to fit its contents");
   is(dims.root.clientHeight, dims.root.scrollHeight,
-    "Panel root should be tall enough to fit its contents");
+     "Panel root should be tall enough to fit its contents");
 
   await extension.unload();
 });

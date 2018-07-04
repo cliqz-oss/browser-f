@@ -10,7 +10,7 @@
 var protocol = require("devtools/shared/protocol");
 var {preEvent, types, Arg, RetVal} = protocol;
 
-var events = require("sdk/event/core");
+var EventEmitter = require("devtools/shared/event-emitter");
 
 function simpleHello() {
   return {
@@ -81,7 +81,7 @@ const childSpec = protocol.generateActorSpec({
       response: { sibling: RetVal("childActor") }
     },
     emitEvents: {
-      response: { value: "correct response" },
+      response: { value: RetVal("string") },
     },
     release: {
       release: true
@@ -91,25 +91,25 @@ const childSpec = protocol.generateActorSpec({
 
 var ChildActor = protocol.ActorClassWithSpec(childSpec, {
   // Actors returned by this actor should be owned by the root actor.
-  marshallPool: function () {
+  marshallPool: function() {
     return this.parent();
   },
 
-  toString: function () {
+  toString: function() {
     return "[ChildActor " + this.childID + "]";
   },
 
-  initialize: function (conn, id) {
+  initialize: function(conn, id) {
     protocol.Actor.prototype.initialize.call(this, conn);
     this.childID = id;
   },
 
-  destroy: function () {
+  destroy: function() {
     protocol.Actor.prototype.destroy.call(this);
     this.destroyed = true;
   },
 
-  form: function (detail) {
+  form: function(detail) {
     if (detail === "actorid") {
       return this.actorID;
     }
@@ -120,23 +120,23 @@ var ChildActor = protocol.ActorClassWithSpec(childSpec, {
     };
   },
 
-  echo: function (str) {
+  echo: function(str) {
     return str;
   },
 
-  getDetail1: function () {
+  getDetail1: function() {
     return this;
   },
 
-  getDetail2: function () {
+  getDetail2: function() {
     return this;
   },
 
-  getIDDetail: function () {
+  getIDDetail: function() {
     return this;
   },
 
-  getIntArray: function (inputArray) {
+  getIntArray: function(inputArray) {
     // Test that protocol.js converts an iterator to an array.
     let f = function* () {
       for (let i of inputArray) {
@@ -146,40 +146,41 @@ var ChildActor = protocol.ActorClassWithSpec(childSpec, {
     return f();
   },
 
-  getSibling: function (id) {
+  getSibling: function(id) {
     return this.parent().getChild(id);
   },
 
-  emitEvents: function () {
-    events.emit(this, "event1", 1, 2, 3);
-    events.emit(this, "event2", 4, 5, 6);
-    events.emit(this, "named-event", 1, 2, 3);
-    events.emit(this, "object-event", this);
-    events.emit(this, "array-object-event", [this]);
+  emitEvents: function() {
+    EventEmitter.emit(this, "event1", 1, 2, 3);
+    EventEmitter.emit(this, "event2", 4, 5, 6);
+    EventEmitter.emit(this, "named-event", 1, 2, 3);
+    EventEmitter.emit(this, "object-event", this);
+    EventEmitter.emit(this, "array-object-event", [this]);
+    return "correct response";
   },
 
-  release: function () { },
+  release: function() { },
 });
 
 var ChildFront = protocol.FrontClassWithSpec(childSpec, {
-  initialize: function (client, form) {
+  initialize: function(client, form) {
     protocol.Front.prototype.initialize.call(this, client, form);
   },
 
-  destroy: function () {
+  destroy: function() {
     this.destroyed = true;
     protocol.Front.prototype.destroy.call(this);
   },
 
-  marshallPool: function () {
+  marshallPool: function() {
     return this.parent();
   },
 
-  toString: function () {
+  toString: function() {
     return "[child front " + this.childID + "]";
   },
 
-  form: function (form, detail) {
+  form: function(form, detail) {
     if (detail === "actorid") {
       return;
     }
@@ -187,17 +188,17 @@ var ChildFront = protocol.FrontClassWithSpec(childSpec, {
     this.detail = form.detail;
   },
 
-  onEvent1: preEvent("event1", function (a, b, c) {
+  onEvent1: preEvent("event1", function(a, b, c) {
     this.event1arg3 = c;
   }),
 
-  onEvent2a: preEvent("event2", function (a, b, c) {
-    return promise.resolve().then(() => {
+  onEvent2a: preEvent("event2", function(a, b, c) {
+    return Promise.resolve().then(() => {
       this.event2arg3 = c;
     });
   }),
 
-  onEvent2b: preEvent("event2", function (a, b, c) {
+  onEvent2b: preEvent("event2", function(a, b, c) {
     this.event2arg2 = b;
   }),
 });
@@ -238,11 +239,11 @@ const rootSpec = protocol.generateActorSpec({
 
 var rootActor = null;
 var RootActor = protocol.ActorClassWithSpec(rootSpec, {
-  toString: function () {
+  toString: function() {
     return "[root actor]";
   },
 
-  initialize: function (conn) {
+  initialize: function(conn) {
     rootActor = this;
     this.actorID = "root";
     this._children = {};
@@ -253,7 +254,7 @@ var RootActor = protocol.ActorClassWithSpec(rootSpec, {
 
   sayHello: simpleHello,
 
-  getChild: function (id) {
+  getChild: function(id) {
     if (id in this._children) {
       return this._children[id];
     }
@@ -262,11 +263,11 @@ var RootActor = protocol.ActorClassWithSpec(rootSpec, {
     return child;
   },
 
-  getChildren: function (ids) {
+  getChildren: function(ids) {
     return ids.map(id => this.getChild(id));
   },
 
-  getChildren2: function (ids) {
+  getChildren2: function(ids) {
     let f = function* () {
       for (let c of ids) {
         yield c;
@@ -275,7 +276,7 @@ var RootActor = protocol.ActorClassWithSpec(rootSpec, {
     return f();
   },
 
-  getManyChildren: function () {
+  getManyChildren: function() {
     return {
       // note that this isn't in the specialization array.
       foo: "bar",
@@ -285,14 +286,14 @@ var RootActor = protocol.ActorClassWithSpec(rootSpec, {
   },
 
   // This should remind you of a pause actor.
-  getTemporaryChild: function (id) {
+  getTemporaryChild: function(id) {
     if (!this._temporaryHolder) {
       this._temporaryHolder = this.manage(new protocol.Actor(this.conn));
     }
     return new ChildActor(this.conn, id);
   },
 
-  clearTemporaryChildren: function (id) {
+  clearTemporaryChildren: function(id) {
     if (!this._temporaryHolder) {
       return;
     }
@@ -302,19 +303,19 @@ var RootActor = protocol.ActorClassWithSpec(rootSpec, {
 });
 
 var RootFront = protocol.FrontClassWithSpec(rootSpec, {
-  toString: function () {
+  toString: function() {
     return "[root front]";
   },
-  initialize: function (client) {
+  initialize: function(client) {
     this.actorID = "root";
     protocol.Front.prototype.initialize.call(this, client);
     // Root actor owns itself.
     this.manage(this);
   },
 
-  getTemporaryChild: protocol.custom(function (id) {
+  getTemporaryChild: protocol.custom(function(id) {
     if (!this._temporaryHolder) {
-      this._temporaryHolder = protocol.Front(this.conn);
+      this._temporaryHolder = new protocol.Front(this.conn);
       this._temporaryHolder.actorID = this.actorID + "_temp";
       this._temporaryHolder = this.manage(this._temporaryHolder);
     }
@@ -323,9 +324,9 @@ var RootFront = protocol.FrontClassWithSpec(rootSpec, {
     impl: "_getTemporaryChild"
   }),
 
-  clearTemporaryChildren: protocol.custom(function () {
+  clearTemporaryChildren: protocol.custom(function() {
     if (!this._temporaryHolder) {
-      return promise.resolve(undefined);
+      return Promise.resolve(undefined);
     }
     this._temporaryHolder.destroy();
     delete this._temporaryHolder;
@@ -347,16 +348,16 @@ function run_test() {
     trace.expectReceive({"from": "<actorid>",
                          "applicationType": "xpcshell-tests",
                          "traits": []});
-    do_check_eq(applicationType, "xpcshell-tests");
+    Assert.equal(applicationType, "xpcshell-tests");
 
     let rootFront = RootFront(client);
     let childFront = null;
 
     let expectRootChildren = size => {
-      do_check_eq(rootActor._poolMap.size, size + 1);
-      do_check_eq(rootFront._poolMap.size, size + 1);
+      Assert.equal(rootActor._poolMap.size, size + 1);
+      Assert.equal(rootFront._poolMap.size, size + 1);
       if (childFront) {
-        do_check_eq(childFront._poolMap.size, 0);
+        Assert.equal(childFront._poolMap.size, 0);
       }
     };
 
@@ -365,8 +366,8 @@ function run_test() {
       trace.expectReceive({"actor": "<actorid>", "from": "<actorid>"});
 
       childFront = ret;
-      do_check_true(childFront instanceof ChildFront);
-      do_check_eq(childFront.childID, "child1");
+      Assert.ok(childFront instanceof ChildFront);
+      Assert.equal(childFront.childID, "child1");
       expectRootChildren(1);
     }).then(() => {
       // Request the child again, make sure the same is returned.
@@ -376,14 +377,14 @@ function run_test() {
       trace.expectReceive({"actor": "<actorid>", "from": "<actorid>"});
 
       expectRootChildren(1);
-      do_check_true(ret === childFront);
+      Assert.ok(ret === childFront);
     }).then(() => {
       return childFront.echo("hello");
     }).then(ret => {
       trace.expectSend({"type": "echo", "str": "hello", "to": "<actorid>"});
       trace.expectReceive({"str": "hello", "from": "<actorid>"});
 
-      do_check_eq(ret, "hello");
+      Assert.equal(ret, "hello");
     }).then(() => {
       return childFront.getDetail1();
     }).then(ret => {
@@ -392,8 +393,8 @@ function run_test() {
                            "childID": "child1",
                            "detail": "detail1",
                            "from": "<actorid>"});
-      do_check_true(ret === childFront);
-      do_check_eq(childFront.detail, "detail1");
+      Assert.ok(ret === childFront);
+      Assert.equal(childFront.detail, "detail1");
     }).then(() => {
       return childFront.getDetail2();
     }).then(ret => {
@@ -402,14 +403,14 @@ function run_test() {
                            "childID": "child1",
                            "detail": "detail2",
                            "from": "<actorid>"});
-      do_check_true(ret === childFront);
-      do_check_eq(childFront.detail, "detail2");
+      Assert.ok(ret === childFront);
+      Assert.equal(childFront.detail, "detail2");
     }).then(() => {
       return childFront.getIDDetail();
     }).then(ret => {
       trace.expectSend({"type": "getIDDetail", "to": "<actorid>"});
       trace.expectReceive({"idDetail": childFront.actorID, "from": "<actorid>"});
-      do_check_true(ret === childFront);
+      Assert.ok(ret === childFront);
     }).then(() => {
       return childFront.getSibling("siblingID");
     }).then(ret => {
@@ -426,8 +427,8 @@ function run_test() {
 
         // At this point we expect two direct children, plus the temporary holder
         // which should hold 1 itself.
-        do_check_eq(rootActor._temporaryHolder.__poolMap.size, 1);
-        do_check_eq(rootFront._temporaryHolder.__poolMap.size, 1);
+        Assert.equal(rootActor._temporaryHolder.__poolMap.size, 1);
+        Assert.equal(rootFront._temporaryHolder.__poolMap.size, 1);
 
         expectRootChildren(3);
         return rootFront.getTemporaryChild("temp2").then(temp2 => {
@@ -439,8 +440,8 @@ function run_test() {
 
           // Same amount of direct children, and an extra in the temporary holder.
           expectRootChildren(3);
-          do_check_eq(rootActor._temporaryHolder.__poolMap.size, 2);
-          do_check_eq(rootFront._temporaryHolder.__poolMap.size, 2);
+          Assert.equal(rootActor._temporaryHolder.__poolMap.size, 2);
+          Assert.equal(rootFront._temporaryHolder.__poolMap.size, 2);
 
           // Get the children of the temporary holder...
           let checkActors = rootActor._temporaryHolder.__poolMap.values();
@@ -451,11 +452,11 @@ function run_test() {
             trace.expectReceive({"from": "<actorid>"});
 
             expectRootChildren(2);
-            do_check_false(!!rootActor._temporaryHolder);
-            do_check_false(!!rootFront._temporaryHolder);
+            Assert.ok(!rootActor._temporaryHolder);
+            Assert.ok(!rootFront._temporaryHolder);
             for (let checkActor of checkActors) {
-              do_check_true(checkActor.destroyed);
-              do_check_true(checkActor.destroyed);
+              Assert.ok(checkActor.destroyed);
+              Assert.ok(checkActor.destroyed);
             }
           });
         });
@@ -471,9 +472,9 @@ function run_test() {
                            "from": "<actorid>"});
 
       expectRootChildren(3);
-      do_check_true(ret[0] === childFront);
-      do_check_true(ret[1] !== childFront);
-      do_check_true(ret[1] instanceof ChildFront);
+      Assert.ok(ret[0] === childFront);
+      Assert.ok(ret[1] !== childFront);
+      Assert.ok(ret[1] instanceof ChildFront);
 
       // On both children, listen to events.  We're only
       // going to trigger events on the first child, so an event
@@ -483,43 +484,43 @@ function run_test() {
                          "object-event", "array-object-event"]);
 
       childFront.on("event1", (a, b, c) => {
-        do_check_eq(a, 1);
-        do_check_eq(b, 2);
-        do_check_eq(c, 3);
+        Assert.equal(a, 1);
+        Assert.equal(b, 2);
+        Assert.equal(c, 3);
         // Verify that the pre-event handler was called.
-        do_check_eq(childFront.event1arg3, 3);
+        Assert.equal(childFront.event1arg3, 3);
         set.delete("event1");
       });
       childFront.on("event2", (a, b, c) => {
-        do_check_eq(a, 4);
-        do_check_eq(b, 5);
-        do_check_eq(c, 6);
+        Assert.equal(a, 4);
+        Assert.equal(b, 5);
+        Assert.equal(c, 6);
         // Verify that the async pre-event handler was called,
         // setting the property before this handler was called.
-        do_check_eq(childFront.event2arg3, 6);
+        Assert.equal(childFront.event2arg3, 6);
         // And check that the sync preEvent with the same name is also
         // executed
-        do_check_eq(childFront.event2arg2, 5);
+        Assert.equal(childFront.event2arg2, 5);
         set.delete("event2");
       });
       childFront.on("named-event", (a, b, c) => {
-        do_check_eq(a, 1);
-        do_check_eq(b, 2);
-        do_check_eq(c, 3);
+        Assert.equal(a, 1);
+        Assert.equal(b, 2);
+        Assert.equal(c, 3);
         set.delete("named-event");
       });
       childFront.on("object-event", (obj) => {
-        do_check_true(obj === childFront);
-        do_check_eq(childFront.detail, "detail1");
+        Assert.ok(obj === childFront);
+        Assert.equal(childFront.detail, "detail1");
         set.delete("object-event");
       });
       childFront.on("array-object-event", (array) => {
-        do_check_true(array[0] === childFront);
-        do_check_eq(childFront.detail, "detail2");
+        Assert.ok(array[0] === childFront);
+        Assert.equal(childFront.detail, "detail2");
         set.delete("array-object-event");
       });
 
-      let fail = function () {
+      let fail = function() {
         do_throw("Unexpected event");
       };
       ret[1].on("event1", fail);
@@ -548,7 +549,7 @@ function run_test() {
                              "from": "<actorid>"});
         trace.expectReceive({"value": "correct response", "from": "<actorid>"});
 
-        do_check_eq(set.size, 0);
+        Assert.equal(set.size, 0);
       });
     }).then(ret => {
       return rootFront.getManyChildren();
@@ -561,10 +562,10 @@ function run_test() {
                            "from": "<actorid>"});
 
       // Check all the crazy stuff we did in getManyChildren
-      do_check_eq(ret.foo, "bar");
-      do_check_eq(ret.child5.childID, "child5");
-      do_check_eq(ret.more[0].childID, "child6");
-      do_check_eq(ret.more[1].childID, "child7");
+      Assert.equal(ret.foo, "bar");
+      Assert.equal(ret.child5.childID, "child5");
+      Assert.equal(ret.more[0].childID, "child6");
+      Assert.equal(ret.more[1].childID, "child7");
     }).then(() => {
       // Test accepting a generator.
       let f = function* () {
@@ -574,10 +575,10 @@ function run_test() {
       };
       return childFront.getIntArray(f());
     }).then((ret) => {
-      do_check_eq(ret.length, 5);
+      Assert.equal(ret.length, 5);
       let expected = [2, 4, 6, 8, 10];
       for (let i = 0; i < 5; ++i) {
-        do_check_eq(ret[i], expected[i]);
+        Assert.equal(ret[i], expected[i]);
       }
     }).then(() => {
       return rootFront.getChildren(["child1", "child2"]);
@@ -589,10 +590,10 @@ function run_test() {
       };
       return rootFront.getChildren2(f());
     }).then(ret => {
-      do_check_eq(ret.length, 2);
-      do_check_true(ret[0] === childFront);
-      do_check_true(ret[1] !== childFront);
-      do_check_true(ret[1] instanceof ChildFront);
+      Assert.equal(ret.length, 2);
+      Assert.ok(ret[0] === childFront);
+      Assert.ok(ret[1] !== childFront);
+      Assert.ok(ret[1] instanceof ChildFront);
     }).then(() => {
       client.close().then(() => {
         do_test_finished();

@@ -17,7 +17,7 @@
 
   <binding id="tabbox"
            extends="chrome://global/content/bindings/tabbox.xml#tab-base">
-    <implementation implements="nsIDOMEventListener">
+    <implementation>
       <property name="handleCtrlTab">
         <setter>
         <![CDATA[
@@ -28,20 +28,6 @@
         <getter>
         <![CDATA[
           return (this.getAttribute("handleCtrlTab") != "false");
-        ]]>
-        </getter>
-      </property>
-
-      <property name="handleCtrlPageUpDown">
-        <setter>
-        <![CDATA[
-          this.setAttribute("handleCtrlPageUpDown", val);
-          return val;
-        ]]>
-        </setter>
-        <getter>
-        <![CDATA[
-          return (this.getAttribute("handleCtrlPageUpDown") != "false");
         ]]>
         </getter>
       </property>
@@ -58,6 +44,9 @@
       <property name="tabs" readonly="true">
         <getter>
         <![CDATA[
+          if (this.hasAttribute("tabcontainer")) {
+            return document.getElementById(this.getAttribute("tabcontainer"));
+          }
           return this.getElementsByTagNameNS(
               "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
               "tabs").item(0);
@@ -155,18 +144,18 @@
                 }
               break;
             case event.DOM_VK_PAGE_UP:
-              if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey)
-                if (this.tabs && this.handleCtrlPageUpDown) {
-                  this.tabs.advanceSelectedTab(-1, true);
-                  event.preventDefault();
-                }
+              if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey &&
+                  this.tabs) {
+                this.tabs.advanceSelectedTab(-1, true);
+                event.preventDefault();
+              }
               break;
             case event.DOM_VK_PAGE_DOWN:
-              if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey)
-                if (this.tabs && this.handleCtrlPageUpDown) {
-                  this.tabs.advanceSelectedTab(1, true);
-                  event.preventDefault();
-                }
+              if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey &&
+                  this.tabs) {
+                this.tabs.advanceSelectedTab(1, true);
+                event.preventDefault();
+              }
               break;
             case event.DOM_VK_LEFT:
               if (event.metaKey && event.altKey && !event.shiftKey && !event.ctrlKey)
@@ -198,9 +187,9 @@
           <![CDATA[
             if (val != this._eventNode) {
               const nsIEventListenerService =
-                Components.interfaces.nsIEventListenerService;
-              let els = Components.classes["@mozilla.org/eventlistenerservice;1"]
-                                  .getService(nsIEventListenerService);
+                Ci.nsIEventListenerService;
+              let els = Cc["@mozilla.org/eventlistenerservice;1"]
+                          .getService(nsIEventListenerService);
               els.addSystemEventListener(val, "keydown", this, false);
               els.removeSystemEventListener(this._eventNode, "keydown", this, false);
               this._eventNode = val;
@@ -216,24 +205,20 @@
           case "window": this._eventNode = window; break;
           case "document": this._eventNode = document; break;
         }
-        const nsIEventListenerService =
-          Components.interfaces.nsIEventListenerService;
-        let els = Components.classes["@mozilla.org/eventlistenerservice;1"]
-                            .getService(nsIEventListenerService);
+        let els = Cc["@mozilla.org/eventlistenerservice;1"]
+                    .getService(Ci.nsIEventListenerService);
         els.addSystemEventListener(this._eventNode, "keydown", this, false);
       </constructor>
 
       <destructor>
-        const nsIEventListenerService =
-          Components.interfaces.nsIEventListenerService;
-        let els = Components.classes["@mozilla.org/eventlistenerservice;1"]
-                            .getService(nsIEventListenerService);
+        let els = Cc["@mozilla.org/eventlistenerservice;1"]
+                    .getService(Ci.nsIEventListenerService);
         els.removeSystemEventListener(this._eventNode, "keydown", this, false);
       </destructor>
     </implementation>
   </binding>
 
-  <binding id="tabs" role="xul:tabs"
+  <binding id="tabs"
            extends="chrome://global/content/bindings/general.xml#basecontrol">
     <resources>
       <stylesheet src="chrome://global/skin/tabbox.css"/>
@@ -248,12 +233,6 @@
     <implementation implements="nsIDOMXULSelectControlElement, nsIDOMXULRelatedElement">
       <constructor>
       <![CDATA[
-        // first and last tabs need to be able to have unique styles
-        // and also need to select first tab on startup.
-        if (this.firstChild)
-          this.firstChild.setAttribute("first-tab", "true");
-        if (this.lastChild)
-          this.lastChild.setAttribute("last-tab", "true");
 
         if (!this.hasAttribute("orient"))
           this.setAttribute("orient", "horizontal");
@@ -548,38 +527,6 @@
         ]]>
         </body>
       </method>
-
-      <method name="insertItemAt">
-        <parameter name="index"/>
-        <parameter name="label"/>
-        <parameter name="value"/>
-        <body>
-        <![CDATA[
-          var XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-          var tab = document.createElementNS(XULNS, "tab");
-          tab.setAttribute("label", label);
-          tab.setAttribute("value", value);
-          var before = this.getItemAtIndex(index);
-          if (before)
-            this.insertBefore(tab, before);
-          else
-            this.appendChild(tab);
-          return tab;
-        ]]>
-        </body>
-      </method>
-
-      <method name="removeItemAt">
-        <parameter name="index"/>
-        <body>
-        <![CDATA[
-          var remove = this.getItemAtIndex(index);
-          if (remove)
-            this.removeChild(remove);
-          return remove;
-        ]]>
-        </body>
-      </method>
     </implementation>
 
 #ifdef MOZ_WIDGET_GTK
@@ -598,7 +545,7 @@
 #endif
   </binding>
 
-  <binding id="tabpanels" role="xul:tabpanels"
+  <binding id="tabpanels"
            extends="chrome://global/content/bindings/tabbox.xml#tab-base">
     <implementation implements="nsIDOMXULRelatedElement">
       <!-- nsIDOMXULRelatedElement -->
@@ -709,8 +656,8 @@
     </implementation>
   </binding>
 
-  <binding id="tab" display="xul:button" role="xul:tab"
-           extends="chrome://global/content/bindings/general.xml#control-item">
+  <binding id="tab" display="xul:button"
+           extends="chrome://global/content/bindings/general.xml#basetext">
     <resources>
       <stylesheet src="chrome://global/skin/tabbox.css"/>
     </resources>
@@ -728,11 +675,13 @@
     </content>
 
     <implementation implements="nsIDOMXULSelectControlItemElement">
+      <property name="value" onset="this.setAttribute('value', val); return val;"
+                             onget="return this.getAttribute('value');"/>
       <property name="control" readonly="true">
         <getter>
           <![CDATA[
             var parent = this.parentNode;
-            if (parent instanceof Components.interfaces.nsIDOMXULSelectControlElement)
+            if (parent instanceof Ci.nsIDOMXULSelectControlElement)
               return parent;
             return null;
           ]]>
@@ -752,36 +701,9 @@
             this.removeAttribute("visuallyselected");
           }
 
-          this._setPositionAttributes(val);
-
           return val;
         ]]></setter>
       </property>
-
-      <method name="_setPositionAttributes">
-        <parameter name="aSelected"/>
-        <body><![CDATA[
-          if (this.previousSibling && this.previousSibling.localName == "tab") {
-            if (aSelected)
-              this.previousSibling.setAttribute("beforeselected", "true");
-            else
-              this.previousSibling.removeAttribute("beforeselected");
-            this.removeAttribute("first-tab");
-          } else {
-            this.setAttribute("first-tab", "true");
-          }
-
-          if (this.nextSibling && this.nextSibling.localName == "tab") {
-            if (aSelected)
-              this.nextSibling.setAttribute("afterselected", "true");
-            else
-              this.nextSibling.removeAttribute("afterselected");
-            this.removeAttribute("last-tab");
-          } else {
-            this.setAttribute("last-tab", "true");
-          }
-        ]]></body>
-      </method>
 
       <property name="linkedPanel" onget="return this.getAttribute('linkedpanel')"
                                    onset="this.setAttribute('linkedpanel', val); return val;"/>
@@ -792,7 +714,7 @@
       <property name="TelemetryStopwatch" readonly="true">
         <getter><![CDATA[
           let module = {};
-          Cu.import("resource://gre/modules/TelemetryStopwatch.jsm", module);
+          ChromeUtils.import("resource://gre/modules/TelemetryStopwatch.jsm", module);
           Object.defineProperty(this, "TelemetryStopwatch", {
             configurable: true,
             enumerable: true,

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import absolute_import
+
 import os
 import stat
 import shutil
@@ -43,7 +45,7 @@ class FileOpenCloseThread(threading.Thread):
         if self.delete:
             try:
                 os.remove(self.path)
-            except:
+            except Exception:
                 pass
 
 

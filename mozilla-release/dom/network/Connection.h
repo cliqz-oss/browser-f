@@ -21,9 +21,7 @@ class NetworkInformation;
 
 namespace dom {
 
-namespace workers {
 class WorkerPrivate;
-} // namespace workers
 
 namespace network {
 
@@ -35,15 +33,11 @@ public:
   NS_DECL_NSINETWORKPROPERTIES
   NS_DECL_OWNINGTHREAD
 
-  NS_REALLY_FORWARD_NSIDOMEVENTTARGET(DOMEventTargetHelper)
-
-  static bool IsEnabled(JSContext* aCx, JSObject* aObj);
-
   static Connection*
   CreateForWindow(nsPIDOMWindowInner* aWindow);
 
   static already_AddRefed<Connection>
-  CreateForWorker(workers::WorkerPrivate* aWorkerPrivate,
+  CreateForWorker(WorkerPrivate* aWorkerPrivate,
                   ErrorResult& aRv);
 
   void Shutdown();

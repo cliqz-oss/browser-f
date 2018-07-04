@@ -7,6 +7,7 @@
 #ifndef mozilla_dom_MediaKeySession_h
 #define mozilla_dom_MediaKeySession_h
 
+#include "DecoderDoctorLogger.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/ErrorResult.h"
 #include "nsCycleCollectionParticipant.h"
@@ -24,6 +25,12 @@
 struct JSContext;
 
 namespace mozilla {
+
+namespace dom {
+class MediaKeySession;
+} // namespace dom
+DDLoggedTypeName(dom::MediaKeySession);
+
 namespace dom {
 
 class ArrayBufferViewOrArrayBuffer;
@@ -36,7 +43,9 @@ ToCString(MediaKeySessionType aType);
 nsString
 ToString(MediaKeySessionType aType);
 
-class MediaKeySession final : public DOMEventTargetHelper
+class MediaKeySession final
+  : public DOMEventTargetHelper
+  , public DecoderDoctorLifeLogger<MediaKeySession>
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED

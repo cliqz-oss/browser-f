@@ -4,11 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef frontend_NameAnalysis_h
-#define frontend_NameAnalysis_h
+#ifndef frontend_NameAnalysisTypes_h
+#define frontend_NameAnalysisTypes_h
 
-#include "jsopcode.h"
-
+#include "vm/BytecodeUtil.h"
 #include "vm/Scope.h"
 
 namespace js {
@@ -36,7 +35,7 @@ class EnvironmentCoordinate
         MOZ_ASSERT(JOF_OPTYPE(JSOp(*pc)) == JOF_ENVCOORD);
     }
 
-    EnvironmentCoordinate() {}
+    EnvironmentCoordinate() = default;
 
     void setHops(uint32_t hops) {
         MOZ_ASSERT(hops < ENVCOORD_HOPS_LIMIT);
@@ -76,6 +75,7 @@ enum class DeclarationKind : uint8_t
     ForOfVar,
     Let,
     Const,
+    Class, // Handled as same as `let` after parsing.
     Import,
     BodyLevelFunction,
     ModuleBodyLevelFunction,
@@ -103,6 +103,7 @@ DeclarationKindToBindingKind(DeclarationKind kind)
         return BindingKind::Var;
 
       case DeclarationKind::Let:
+      case DeclarationKind::Class:
       case DeclarationKind::LexicalFunction:
       case DeclarationKind::SloppyLexicalFunction:
       case DeclarationKind::SimpleCatchParameter:
@@ -375,4 +376,4 @@ struct IsPod<js::frontend::NameLocation> : TrueType {};
 
 } // namespace mozilla
 
-#endif // frontend_NameAnalysis_h
+#endif // frontend_NameAnalysisTypes_h

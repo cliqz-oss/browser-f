@@ -24,8 +24,10 @@ info: |
 
     IdentifierReference[?Yield] Initializer[+In, ?Yield]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 ({ a = 1 });

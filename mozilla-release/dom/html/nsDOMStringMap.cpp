@@ -11,7 +11,7 @@
 #include "nsGenericHTMLElement.h"
 #include "nsContentUtils.h"
 #include "mozilla/dom/DOMStringMapBinding.h"
-#include "nsIDOMMutationEvent.h"
+#include "mozilla/dom/MutationEventBinding.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -62,6 +62,12 @@ nsDOMStringMap::~nsDOMStringMap()
   }
 }
 
+DocGroup*
+nsDOMStringMap::GetDocGroup() const
+{
+  return mElement ? mElement->GetDocGroup() : nullptr;
+}
+
 /* virtual */
 JSObject*
 nsDOMStringMap::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto)
@@ -100,7 +106,7 @@ nsDOMStringMap::NamedSetter(const nsAString& aProp,
     return;
   }
 
-  nsCOMPtr<nsIAtom> attrAtom = NS_Atomize(attr);
+  RefPtr<nsAtom> attrAtom = NS_Atomize(attr);
   MOZ_ASSERT(attrAtom, "Should be infallible");
 
   res = mElement->SetAttr(kNameSpaceID_None, attrAtom, aValue, true);
@@ -124,7 +130,7 @@ nsDOMStringMap::NamedDeleter(const nsAString& aProp, bool& found)
     return;
   }
 
-  nsCOMPtr<nsIAtom> attrAtom = NS_Atomize(attr);
+  RefPtr<nsAtom> attrAtom = NS_Atomize(attr);
   MOZ_ASSERT(attrAtom, "Should be infallible");
 
   found = mElement->HasAttr(kNameSpaceID_None, attrAtom);
@@ -245,13 +251,14 @@ bool nsDOMStringMap::AttrToDataProp(const nsAString& aAttr,
 }
 
 void
-nsDOMStringMap::AttributeChanged(nsIDocument *aDocument, Element* aElement,
-                                 int32_t aNameSpaceID, nsIAtom* aAttribute,
+nsDOMStringMap::AttributeChanged(Element* aElement,
+                                 int32_t aNameSpaceID,
+                                 nsAtom* aAttribute,
                                  int32_t aModType,
                                  const nsAttrValue* aOldValue)
 {
-  if ((aModType == nsIDOMMutationEvent::ADDITION ||
-       aModType == nsIDOMMutationEvent::REMOVAL) &&
+  if ((aModType == MutationEventBinding::ADDITION ||
+       aModType == MutationEventBinding::REMOVAL) &&
       aNameSpaceID == kNameSpaceID_None &&
       StringBeginsWith(nsDependentAtomString(aAttribute),
                        NS_LITERAL_STRING("data-"))) {

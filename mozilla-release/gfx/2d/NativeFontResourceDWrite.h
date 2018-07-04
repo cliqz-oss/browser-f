@@ -18,7 +18,8 @@ namespace gfx {
 class NativeFontResourceDWrite final : public NativeFontResource
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(NativeFontResourceDWrite)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(NativeFontResourceDWrite, override)
+
   /**
    * Creates a NativeFontResourceDWrite if data is valid. Note aFontData will be
    * copied if required and so can be released after calling.

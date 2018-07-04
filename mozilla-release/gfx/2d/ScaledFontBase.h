@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -27,29 +28,30 @@ namespace gfx {
 class ScaledFontBase : public ScaledFont
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(ScaledFontBase)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(ScaledFontBase, override)
+
   ScaledFontBase(const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize);
   virtual ~ScaledFontBase();
 
-  virtual already_AddRefed<Path> GetPathForGlyphs(const GlyphBuffer &aBuffer, const DrawTarget *aTarget);
+  virtual already_AddRefed<Path> GetPathForGlyphs(const GlyphBuffer &aBuffer, const DrawTarget *aTarget) override;
 
-  virtual void CopyGlyphsToBuilder(const GlyphBuffer &aBuffer, PathBuilder *aBuilder, const Matrix *aTransformHint);
+  virtual void CopyGlyphsToBuilder(const GlyphBuffer &aBuffer, PathBuilder *aBuilder, const Matrix *aTransformHint) override;
 
-  virtual void GetGlyphDesignMetrics(const uint16_t* aGlyphIndices, uint32_t aNumGlyphs, GlyphMetrics* aGlyphMetrics);
+  virtual void GetGlyphDesignMetrics(const uint16_t* aGlyphIndices, uint32_t aNumGlyphs, GlyphMetrics* aGlyphMetrics) override;
 
-  virtual Float GetSize() const { return mSize; }
+  virtual Float GetSize() const override { return mSize; }
 
 #ifdef USE_SKIA
   virtual SkTypeface* GetSkTypeface() { return mTypeface; }
 #endif
 
   // Not true, but required to instantiate a ScaledFontBase.
-  virtual FontType GetType() const { return FontType::SKIA; }
+  virtual FontType GetType() const override { return FontType::SKIA; }
 
 #ifdef USE_CAIRO_SCALED_FONT
   bool PopulateCairoScaledFont();
-  cairo_scaled_font_t* GetCairoScaledFont() { return mScaledFont; }
-  void SetCairoScaledFont(cairo_scaled_font_t* font);
+  virtual cairo_scaled_font_t* GetCairoScaledFont() override { return mScaledFont; }
+  virtual void SetCairoScaledFont(cairo_scaled_font_t* font) override;
 #endif
 
 protected:

@@ -3,7 +3,7 @@
 
 /* eslint-env mozilla/frame-script */
 
-const {TabStateFlusher} = Cu.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
+const {TabStateFlusher} = ChromeUtils.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
 
 const DUMMY = "http://example.com/browser/browser/base/content/test/general/dummy_page.html";
 
@@ -86,8 +86,9 @@ add_task(async function navigate() {
 });
 
 add_task(async function crash() {
-  if (!gMultiProcessBrowser || !("nsICrashReporter" in Ci))
+  if (!gMultiProcessBrowser || !AppConstants.MOZ_CRASHREPORTER) {
     return;
+  }
 
   let tab = BrowserTestUtils.addTab(gBrowser, DUMMY);
   let browser = tab.linkedBrowser;

@@ -454,10 +454,8 @@ nsCommandLine::Init(int32_t argc, const char* const* argv, nsIFile* aWorkingDir,
       continue;
     }
 #endif
-#ifdef XP_UNIX
-    if (*curarg == '-' &&
-        *(curarg+1) == '-') {
-      ++curarg;
+    if (*curarg == '-') {
+      if (*(curarg+1) == '-') ++curarg;
 
       char* dup = PL_strdup(curarg);
       if (!dup) return NS_ERROR_OUT_OF_MEMORY;
@@ -473,7 +471,6 @@ nsCommandLine::Init(int32_t argc, const char* const* argv, nsIFile* aWorkingDir,
       PL_strfree(dup);
       continue;
     }
-#endif
 
     appendArg(curarg);
   }
@@ -483,19 +480,16 @@ nsCommandLine::Init(int32_t argc, const char* const* argv, nsIFile* aWorkingDir,
   return NS_OK;
 }
 
+template<typename ...T>
 static void
-LogConsoleMessage(const char16_t* fmt, ...)
+LogConsoleMessage(const char16_t* fmt, T... args)
 {
-  va_list args;
-  va_start(args, fmt);
-  char16_t* msg = nsTextFormatter::vsmprintf(fmt, args);
-  va_end(args);
+  nsString msg;
+  nsTextFormatter::ssprintf(msg, fmt, args...);
 
   nsCOMPtr<nsIConsoleService> cs = do_GetService("@mozilla.org/consoleservice;1");
   if (cs)
-    cs->LogStringMessage(msg);
-
-  free(msg);
+    cs->LogStringMessage(msg.get());
 }
 
 nsresult
@@ -566,11 +560,11 @@ nsCommandLine::EnumerateValidators(EnumerateValidatorsCallback aCallback, void *
   while (NS_SUCCEEDED(strenum->HasMore(&hasMore)) && hasMore) {
     strenum->GetNext(entry);
 
-    nsXPIDLCString contractID;
+    nsCString contractID;
     rv = catman->GetCategoryEntry("command-line-validator",
 				  entry.get(),
 				  getter_Copies(contractID));
-    if (!contractID)
+    if (contractID.IsVoid())
       continue;
 
     nsCOMPtr<nsICommandLineValidator> clv(do_GetService(contractID.get()));

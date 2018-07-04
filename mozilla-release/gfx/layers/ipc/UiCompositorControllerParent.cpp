@@ -1,10 +1,13 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set ts=8 sts=2 et sw=2 tw=99: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "UiCompositorControllerParent.h"
-#include "mozilla/layers/APZCTreeManager.h"
+
+#if defined(MOZ_WIDGET_ANDROID)
+#include "apz/src/APZCTreeManager.h"
+#endif
 #include "mozilla/layers/Compositor.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorThread.h"
@@ -19,18 +22,18 @@ namespace layers {
 typedef CompositorBridgeParent::LayerTreeState LayerTreeState;
 
 /* static */ RefPtr<UiCompositorControllerParent>
-UiCompositorControllerParent::GetFromRootLayerTreeId(const uint64_t& aRootLayerTreeId)
+UiCompositorControllerParent::GetFromRootLayerTreeId(const LayersId& aRootLayerTreeId)
 {
-  LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(aRootLayerTreeId);
-  if (state) {
-    return state->mUiControllerParent;
-  }
-
-  return nullptr;
+  RefPtr<UiCompositorControllerParent> controller;
+  CompositorBridgeParent::CallWithIndirectShadowTree(aRootLayerTreeId,
+    [&](LayerTreeState& aState) -> void {
+      controller = aState.mUiControllerParent;
+    });
+  return Move(controller);
 }
 
 /* static */ RefPtr<UiCompositorControllerParent>
-UiCompositorControllerParent::Start(const uint64_t& aRootLayerTreeId, Endpoint<PUiCompositorControllerParent>&& aEndpoint)
+UiCompositorControllerParent::Start(const LayersId& aRootLayerTreeId, Endpoint<PUiCompositorControllerParent>&& aEndpoint)
 {
   RefPtr<UiCompositorControllerParent> parent = new UiCompositorControllerParent(aRootLayerTreeId);
 
@@ -232,7 +235,7 @@ UiCompositorControllerParent::AllocPixelBuffer(const int32_t aSize, ipc::Shmem* 
   return AllocShmem(aSize, ipc::SharedMemory::TYPE_BASIC, aMem);
 }
 
-UiCompositorControllerParent::UiCompositorControllerParent(const uint64_t& aRootLayerTreeId)
+UiCompositorControllerParent::UiCompositorControllerParent(const LayersId& aRootLayerTreeId)
   : mRootLayerTreeId(aRootLayerTreeId)
   , mMaxToolbarHeight(0)
 {
@@ -277,11 +280,11 @@ UiCompositorControllerParent::Initialize()
   MOZ_ASSERT(state->mParent);
   state->mUiControllerParent = this;
 #if defined(MOZ_WIDGET_ANDROID)
-  RefPtr<APZCTreeManager> manager = state->mParent->GetAPZCTreeManager();
-  // Since this is called from the UI thread. It is possible the compositor has already
-  // started shutting down and the APZCTreeManager could be a nullptr.
-  if (manager) {
-    manager->InitializeDynamicToolbarAnimator(mRootLayerTreeId);
+  AndroidDynamicToolbarAnimator* animator = state->mParent->GetAndroidDynamicToolbarAnimator();
+  // It is possible the compositor has already started shutting down and
+  // the AndroidDynamicToolbarAnimator could be a nullptr.
+  if (animator) {
+    animator->Initialize(mRootLayerTreeId);
   }
 #endif
 }

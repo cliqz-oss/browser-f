@@ -16,7 +16,8 @@ class HTMLLinkAccessible : public HyperTextAccessibleWrap
 public:
   HTMLLinkAccessible(nsIContent* aContent, DocAccessible* aDoc);
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(HTMLLinkAccessible,
+                                       HyperTextAccessibleWrap)
 
   // Accessible
   virtual void Value(nsString& aValue) override;
@@ -31,7 +32,7 @@ public:
   virtual bool DoAction(uint8_t aIndex) override;
 
   // HyperLinkAccessible
-  virtual bool IsLink() override;
+  virtual bool IsLink() const override;
   virtual already_AddRefed<nsIURI> AnchorURIAt(uint32_t aAnchorIndex) override;
 
 protected:

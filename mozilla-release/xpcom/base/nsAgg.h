@@ -54,9 +54,10 @@ private:                                                                    \
                                                                             \
         Internal() {}                                                       \
                                                                             \
-        NS_IMETHOD QueryInterface(const nsIID& aIID, void** aInstancePtr);  \
-        NS_IMETHOD_(MozExternalRefCountType) AddRef(void);                  \
-        NS_IMETHOD_(MozExternalRefCountType) Release(void);                 \
+        NS_IMETHOD QueryInterface(const nsIID& aIID, void** aInstancePtr)   \
+                                  override;                                 \
+        NS_IMETHOD_(MozExternalRefCountType) AddRef(void) override;         \
+        NS_IMETHOD_(MozExternalRefCountType) Release(void) override;        \
                                                                             \
         NS_DECL_OWNINGTHREAD                                                \
     };                                                                      \
@@ -252,8 +253,23 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsAggregatedCycleCollectionParticipant,
 #define NS_INTERFACE_MAP_BEGIN_AGGREGATED(_class)                           \
   NS_IMPL_AGGREGATED_QUERY_HEAD(_class)
 
+#define NS_IMPL_QUERY_CYCLE_COLLECTION(_class)                              \
+  if ( aIID.Equals(NS_GET_IID(nsXPCOMCycleCollectionParticipant)) ) {       \
+    *aInstancePtr = NS_CYCLE_COLLECTION_PARTICIPANT(_class);                \
+    return NS_OK;                                                           \
+  } else
+
 #define NS_INTERFACE_MAP_ENTRY_CYCLE_COLLECTION_AGGREGATED(_class)          \
   NS_IMPL_QUERY_CYCLE_COLLECTION(_class)
+
+#define NS_IMPL_QUERY_CYCLE_COLLECTION_ISUPPORTS(_class)                    \
+  if ( aIID.Equals(NS_GET_IID(nsCycleCollectionISupports)) ) {              \
+    *aInstancePtr = NS_CYCLE_COLLECTION_CLASSNAME(_class)::Upcast(this);    \
+    return NS_OK;                                                           \
+  } else
+
+#define NS_INTERFACE_MAP_ENTRY_CYCLE_COLLECTION_ISUPPORTS(_class)           \
+  NS_IMPL_QUERY_CYCLE_COLLECTION_ISUPPORTS(_class)
 
 #define NS_INTERFACE_MAP_ENTRIES_CYCLE_COLLECTION_AGGREGATED(_class)        \
   NS_INTERFACE_MAP_ENTRY_CYCLE_COLLECTION_AGGREGATED(_class)                \

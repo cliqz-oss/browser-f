@@ -27,10 +27,6 @@
 #include "mozilla/net/StunAddrsRequestChild.h"
 #endif
 
-#ifdef NECKO_PROTOCOL_rtsp
-#include "mozilla/net/RtspControllerChild.h"
-#include "mozilla/net/RtspChannelChild.h"
-#endif
 #include "SerializedLoadContext.h"
 #include "nsGlobalWindow.h"
 #include "nsIOService.h"
@@ -49,9 +45,6 @@ namespace net {
 PNeckoChild *gNeckoChild = nullptr;
 
 // C++ file contents
-NeckoChild::NeckoChild()
-{
-}
 
 NeckoChild::~NeckoChild()
 {
@@ -118,6 +111,7 @@ NeckoChild::DeallocPStunAddrsRequestChild(PStunAddrsRequestChild* aActor)
 PAltDataOutputStreamChild*
 NeckoChild::AllocPAltDataOutputStreamChild(
         const nsCString& type,
+        const int64_t& predictedSize,
         PHttpChannelChild* channel)
 {
   // We don't allocate here: see HttpChannelChild::OpenAlternativeOutputStream()
@@ -210,7 +204,7 @@ PWebSocketEventListenerChild*
 NeckoChild::AllocPWebSocketEventListenerChild(const uint64_t& aInnerWindowID)
 {
   nsCOMPtr<nsIEventTarget> target;
-  if (nsGlobalWindow* win = nsGlobalWindow::GetInnerWindowWithId(aInnerWindowID)) {
+  if (nsGlobalWindowInner* win = nsGlobalWindowInner::GetInnerWindowWithId(aInnerWindowID)) {
     target = win->EventTargetFor(TaskCategory::Other);
   }
 
@@ -272,40 +266,6 @@ bool
 NeckoChild::DeallocPSimpleChannelChild(PSimpleChannelChild* child)
 {
   // NB: See SimpleChannelChild::ActorDestroy.
-  return true;
-}
-
-PRtspControllerChild*
-NeckoChild::AllocPRtspControllerChild()
-{
-  NS_NOTREACHED("AllocPRtspController should not be called");
-  return nullptr;
-}
-
-bool
-NeckoChild::DeallocPRtspControllerChild(PRtspControllerChild* child)
-{
-#ifdef NECKO_PROTOCOL_rtsp
-  RtspControllerChild* p = static_cast<RtspControllerChild*>(child);
-  p->ReleaseIPDLReference();
-#endif
-  return true;
-}
-
-PRtspChannelChild*
-NeckoChild::AllocPRtspChannelChild(const RtspChannelConnectArgs& aArgs)
-{
-  NS_NOTREACHED("AllocPRtspController should not be called");
-  return nullptr;
-}
-
-bool
-NeckoChild::DeallocPRtspChannelChild(PRtspChannelChild* child)
-{
-#ifdef NECKO_PROTOCOL_rtsp
-  RtspChannelChild* p = static_cast<RtspChannelChild*>(child);
-  p->ReleaseIPDLReference();
-#endif
   return true;
 }
 

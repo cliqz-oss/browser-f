@@ -26,10 +26,10 @@ class nsBaseWinFilePicker :
   public nsBaseFilePicker
 {
 public:
-  NS_IMETHOD GetDefaultString(nsAString& aDefaultString);
-  NS_IMETHOD SetDefaultString(const nsAString& aDefaultString);
-  NS_IMETHOD GetDefaultExtension(nsAString& aDefaultExtension);
-  NS_IMETHOD SetDefaultExtension(const nsAString& aDefaultExtension);
+  NS_IMETHOD GetDefaultString(nsAString& aDefaultString) override;
+  NS_IMETHOD SetDefaultString(const nsAString& aDefaultString) override;
+  NS_IMETHOD GetDefaultExtension(nsAString& aDefaultExtension) override;
+  NS_IMETHOD SetDefaultExtension(const nsAString& aDefaultExtension) override;
 
 protected:
   nsString mDefaultFilePath;
@@ -49,7 +49,7 @@ class nsFilePicker :
 public:
   nsFilePicker();
 
-  NS_IMETHOD Init(mozIDOMWindowProxy *aParent, const nsAString& aTitle, int16_t aMode);
+  NS_IMETHOD Init(mozIDOMWindowProxy *aParent, const nsAString& aTitle, int16_t aMode) override;
 
   NS_DECL_ISUPPORTS
 
@@ -57,14 +57,12 @@ public:
   STDMETHODIMP QueryInterface(REFIID refiid, void** ppvResult);
 
   // nsIFilePicker (less what's in nsBaseFilePicker and nsBaseWinFilePicker)
-  NS_IMETHOD GetFilterIndex(int32_t *aFilterIndex);
-  NS_IMETHOD SetFilterIndex(int32_t aFilterIndex);
-  NS_IMETHOD GetFile(nsIFile * *aFile);
-  NS_IMETHOD GetFileURL(nsIURI * *aFileURL);
-  NS_IMETHOD GetFiles(nsISimpleEnumerator **aFiles);
-  NS_IMETHOD Show(int16_t *aReturnVal);
-  NS_IMETHOD ShowW(int16_t *aReturnVal);
-  NS_IMETHOD AppendFilter(const nsAString& aTitle, const nsAString& aFilter);
+  NS_IMETHOD GetFilterIndex(int32_t *aFilterIndex) override;
+  NS_IMETHOD SetFilterIndex(int32_t aFilterIndex) override;
+  NS_IMETHOD GetFile(nsIFile * *aFile) override;
+  NS_IMETHOD GetFileURL(nsIURI * *aFileURL) override;
+  NS_IMETHOD GetFiles(nsISimpleEnumerator **aFiles) override;
+  NS_IMETHOD AppendFilter(const nsAString& aTitle, const nsAString& aFilter) override;
 
   // IFileDialogEvents
   HRESULT STDMETHODCALLTYPE OnFileOk(IFileDialog *pfd);
@@ -78,7 +76,9 @@ public:
 protected:
   /* method from nsBaseFilePicker */
   virtual void InitNative(nsIWidget *aParent,
-                          const nsAString& aTitle);
+                          const nsAString& aTitle) override;
+  nsresult Show(int16_t *aReturnVal) override;
+  nsresult ShowW(int16_t *aReturnVal);
   void GetFilterListArray(nsString& aFilterList);
   bool ShowFolderPicker(const nsString& aInitialDir);
   bool ShowFilePicker(const nsString& aInitialDir);

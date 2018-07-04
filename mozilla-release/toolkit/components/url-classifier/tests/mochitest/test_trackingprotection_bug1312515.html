@@ -16,9 +16,6 @@
 
 <script class="testbody" type="text/javascript">
 
-var Cc = SpecialPowers.Cc;
-var Ci = SpecialPowers.Ci;
-
 var mainWindow = window.QueryInterface(Ci.nsIInterfaceRequestor)
                        .getInterface(Ci.nsIWebNavigation)
                        .QueryInterface(Ci.nsIDocShellTreeItem)
@@ -27,22 +24,15 @@ var mainWindow = window.QueryInterface(Ci.nsIInterfaceRequestor)
                        .getInterface(Ci.nsIDOMWindow);
 var contentPage = "http://www.itisatrap.org/tests/toolkit/components/url-classifier/tests/mochitest/trackingRequest.html";
 
-Components.utils.import("resource://gre/modules/Services.jsm");
-Components.utils.import("resource://testing-common/UrlClassifierTestUtils.jsm");
-
-function whenDelayedStartupFinished(aWindow, aCallback) {
-  Services.obs.addObserver(function observer(aSubject, aTopic) {
-    if (aWindow == aSubject) {
-      Services.obs.removeObserver(observer, aTopic);
-      setTimeout(aCallback, 0);
-    }
-  }, "browser-delayed-startup-finished");
-}
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://testing-common/UrlClassifierTestUtils.jsm");
+ChromeUtils.import("resource://testing-common/TestUtils.jsm");
 
 function testOnWindow(aPrivate, aCallback) {
   var win = mainWindow.OpenBrowserWindow({private: aPrivate});
   win.addEventListener("load", function() {
-    whenDelayedStartupFinished(win, function() {
+    TestUtils.topicObserved("browser-delayed-startup-finished",
+                            subject => subject == win).then(() => {
       win.addEventListener("DOMContentLoaded", function onInnerLoad() {
         if (win.content.location.href != contentPage) {
           win.gBrowser.loadURI(contentPage);
@@ -50,8 +40,8 @@ function testOnWindow(aPrivate, aCallback) {
         }
         win.removeEventListener("DOMContentLoaded", onInnerLoad, true);
 
-        win.content.addEventListener('load', function innerLoad2() {
-          win.content.removeEventListener('load', innerLoad2);
+        win.content.addEventListener("load", function innerLoad2() {
+          win.content.removeEventListener("load", innerLoad2);
           SimpleTest.executeSoon(function() { aCallback(win); });
         }, false, true);
       }, true);
@@ -103,10 +93,10 @@ function endTest() {
 }
 
 SpecialPowers.pushPrefEnv(
-  {"set" : [["urlclassifier.trackingTable", "test-track-simple"],
-            ["privacy.trackingprotection.annotate_channels", true],
-            ["privacy.trackingprotection.lower_network_priority", true],
-            ["channelclassifier.allowlist_example", true]]},
+  {"set": [["urlclassifier.trackingTable", "test-track-simple"],
+           ["privacy.trackingprotection.annotate_channels", true],
+           ["privacy.trackingprotection.lower_network_priority", true],
+           ["channelclassifier.allowlist_example", true]]},
   test);
 
 function test() {
@@ -116,7 +106,7 @@ function test() {
       testWindow = aWindow;
       testXHR().
       then(testFetch).
-      then(endTest)
+      then(endTest);
     });
   });
 }

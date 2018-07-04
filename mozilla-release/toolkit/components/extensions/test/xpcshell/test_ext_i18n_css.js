@@ -1,6 +1,6 @@
 "use strict";
 
-Cu.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 
 
 const server = createHttpServer();
@@ -8,7 +8,7 @@ server.registerDirectory("/data/", do_get_file("data"));
 
 const BASE_URL = `http://localhost:${server.identity.primaryPort}/data`;
 
-const XMLHttpRequest = Components.Constructor("@mozilla.org/xmlextras/xmlhttprequest;1", "nsIXMLHttpRequest");
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 const {
   createAppInfo,
@@ -54,10 +54,17 @@ let extensionData = {
 
     "web_accessible_resources": ["foo.css", "foo.txt", "locale.css"],
 
-    "content_scripts": [{
-      "matches": ["http://*/*/file_sample.html"],
-      "css": ["foo.css"],
-    }],
+    "content_scripts": [
+      {
+        "matches": ["http://*/*/file_sample.html"],
+        "css": ["foo.css"],
+        "run_at": "document_start",
+      },
+      {
+        "matches": ["http://*/*/file_sample.html"],
+        "js": ["content.js"],
+      },
+    ],
 
     "default_locale": "en",
   },
@@ -69,6 +76,11 @@ let extensionData = {
         "description": "foo",
       },
     }),
+
+    "content.js": function() {
+      let style = getComputedStyle(document.body);
+      browser.test.sendMessage("content-maxWidth", style.maxWidth);
+    },
 
     "foo.css": "body { __MSG_foo__; }",
     "bar.CsS": "body { __MSG_foo__; }",
@@ -84,58 +96,39 @@ async function test_i18n_css(options = {}) {
   await extension.startup();
   let cssURL = await extension.awaitMessage("ready");
 
-  function fetch(url) {
-    return new Promise((resolve, reject) => {
-      let xhr = new XMLHttpRequest();
-      xhr.overrideMimeType("text/plain");
-      xhr.open("GET", url);
-      xhr.onload = () => { resolve(xhr.responseText); };
-      xhr.onerror = reject;
-      xhr.send();
-    });
-  }
+  let contentPage = await ExtensionTestUtils.loadContentPage(`${BASE_URL}/file_sample.html`);
 
-  let css = await fetch(cssURL);
+  let css = await contentPage.fetch(cssURL);
 
   equal(css, "body { max-width: 42px; }", "CSS file localized in mochitest scope");
 
-  let contentPage = await ExtensionTestUtils.loadContentPage(`${BASE_URL}/file_sample.html`);
-
-  let maxWidth = await ContentTask.spawn(contentPage.browser, {}, async function() {
-    /* globals content */
-    let style = content.getComputedStyle(content.document.body);
-
-    return style.maxWidth;
-  });
+  let maxWidth = await extension.awaitMessage("content-maxWidth");
 
   equal(maxWidth, "42px", "stylesheet correctly applied");
 
-  await contentPage.close();
-
   cssURL = cssURL.replace(/foo.css$/, "locale.css");
 
-  css = await fetch(cssURL);
+  css = await contentPage.fetch(cssURL);
   equal(css, '* { content: "en-US ltr rtl left right" }', "CSS file localized in mochitest scope");
+
+  await contentPage.close();
 
   // We don't currently have a good way to mock this.
   if (false) {
-    const LOCALE = "general.useragent.locale";
     const DIR = "intl.uidirection";
-    const DIR_LEGACY = "intl.uidirection.en"; // Needed for Android until bug 1215247 is resolved
 
     // We don't wind up actually switching the chrome registry locale, since we
     // don't have a chrome package for Hebrew. So just override it, and force
     // RTL directionality.
-    Preferences.set(LOCALE, "he");
+    const origReqLocales = Services.locale.getRequestedLocales();
+    Services.locale.setRequestedLocales(["he"]);
     Preferences.set(DIR, 1);
-    Preferences.set(DIR_LEGACY, "rtl");
 
     css = await fetch(cssURL);
     equal(css, '* { content: "he rtl ltr right left" }', "CSS file localized in mochitest scope");
 
-    Preferences.reset(LOCALE);
+    Services.locale.setRequestedLocales(origReqLocales);
     Preferences.reset(DIR);
-    Preferences.reset(DIR_LEGACY);
   }
 
   await extension.awaitFinish("i18n-css");

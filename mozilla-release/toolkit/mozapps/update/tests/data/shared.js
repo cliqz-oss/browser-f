@@ -5,8 +5,8 @@
 /* Shared code for xpcshell and mochitests-chrome */
 /* eslint-disable no-undef */
 
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const PREF_APP_UPDATE_AUTO                       = "app.update.auto";
 const PREF_APP_UPDATE_BACKGROUNDERRORS           = "app.update.backgroundErrors";
@@ -34,7 +34,6 @@ const PREF_APP_UPDATE_URL_MANUAL                 = "app.update.url.manual";
 const PREFBRANCH_APP_PARTNER         = "app.partner.";
 const PREF_DISTRIBUTION_ID           = "distribution.id";
 const PREF_DISTRIBUTION_VERSION      = "distribution.version";
-const PREF_TOOLKIT_TELEMETRY_ENABLED = "toolkit.telemetry.enabled";
 
 const NS_APP_PROFILE_DIR_STARTUP   = "ProfDS";
 const NS_APP_USER_PROFILE_50_DIR   = "ProfD";
@@ -120,11 +119,6 @@ XPCOMUtils.defineLazyServiceGetter(this, "gEnv",
                                    "@mozilla.org/process/environment;1",
                                    "nsIEnvironment");
 
-XPCOMUtils.defineLazyGetter(this, "gZipW", function test_gZipW() {
-  return Cc["@mozilla.org/zipwriter;1"].
-         createInstance(Ci.nsIZipWriter);
-});
-
 /* Triggers post-update processing */
 function testPostUpdateProcessing() {
   gAUS.observe(null, "test-post-update-processing", "");
@@ -152,7 +146,7 @@ const observer = {
       }
     }
   },
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver])
 };
 
 /**
@@ -280,7 +274,7 @@ function writeFile(aFile, aText) {
   let fos = Cc["@mozilla.org/network/file-output-stream;1"].
             createInstance(Ci.nsIFileOutputStream);
   if (!aFile.exists()) {
-    aFile.create(Ci.nsILocalFile.NORMAL_FILE_TYPE, PERMS_FILE);
+    aFile.create(Ci.nsIFile.NORMAL_FILE_TYPE, PERMS_FILE);
   }
   fos.init(aFile, MODE_WRONLY | MODE_CREATE | MODE_TRUNCATE, PERMS_FILE, 0);
   fos.write(aText, aText.length);

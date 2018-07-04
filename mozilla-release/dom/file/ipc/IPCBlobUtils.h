@@ -7,7 +7,9 @@
 #ifndef mozilla_dom_IPCBlobUtils_h
 #define mozilla_dom_IPCBlobUtils_h
 
+#include "mozilla/RefPtr.h"
 #include "mozilla/dom/File.h"
+#include "mozilla/ipc/IPDLParamTraits.h"
 
 /*
  * Blobs and IPC
@@ -33,11 +35,10 @@
  * - a memory buffer: MemoryBlobImpl
  * - a string: StringBlobImpl
  * - a real OS file: FileBlobImpl
- * - a temporary OS file: TemporaryBlobImpl
  * - a generic nsIInputStream: StreamBlobImpl
  * - an empty blob: EmptyBlobImpl
  * - more blobs combined together: MultipartBlobImpl
- * Each one of these implementations has a custom ::GetInternalStream method.
+ * Each one of these implementations has a custom ::CreateInputStream method.
  * So, basically, each one has a different kind of nsIInputStream (nsFileStream,
  * nsIStringInputStream, SlicedInputStream, and so on).
  *
@@ -178,11 +179,42 @@
  * If any API wants to retrieve a 'real inputStream when the migration is in
  * progress, that operation is stored in a pending queue and processed at the
  * end of the migration.
+ *
+ * IPCBlob and nsIAsyncInputStream
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *
+ * IPCBlobInputStream is always async. If the remote inputStream is not async,
+ * IPCBlobInputStream will create a pipe stream around it in order to be
+ * consistently async.
+ *
+ * Slicing IPCBlob
+ * ~~~~~~~~~~~~~~~
+ *
+ * Normally, slicing a blob consists of the creation of a new Blob, with a
+ * SlicedInputStream() wrapping a clone of the original inputStream. But this
+ * approach is extremely inefficient with IPCBlob, because it could be that we
+ * wrap the pipe stream and not the remote inputStream (See the previous section
+ * of this documentation). If we end up doing so, also if the remote
+ * inputStream is seekable, the pipe will not be, and in order to reach the
+ * starting point, SlicedInputStream will do consecutive read()s.
+ *
+ * This problem is fixed implmenting nsICloneableWithRange in IPCBlobInputStream
+ * and using cloneWithRange() when a StreamBlobImpl is sliced. When the remote
+ * stream is received, it will be sliced directly.
+ *
+ * If we want to represent the hierarchy of the InputStream classes, instead
+ * of having: |SlicedInputStream(IPCBlobInputStream(Async Pipe(RemoteStream)))|,
+ * we have: |IPCBlobInputStream(Async Pipe(SlicedInputStream(RemoteStream)))|.
+ *
+ * When IPCBlobInputStream is serialized and sent to the parent process, start
+ * and range are sent too and SlicedInputStream is used in the parent side as
+ * well.
  */
 
 namespace mozilla {
 
 namespace ipc {
+class IProtocol;
 class PBackgroundChild;
 class PBackgroundParent;
 }
@@ -214,8 +246,28 @@ nsresult
 Serialize(BlobImpl* aBlobImpl, mozilla::ipc::PBackgroundParent* aManager,
           IPCBlob& aIPCBlob);
 
+// WARNING: If you pass any actor which does not have P{Content,Background} as
+// its toplevel protocol, this method will MOZ_CRASH.
+nsresult
+SerializeUntyped(BlobImpl* aBlobImpl, mozilla::ipc::IProtocol* aActor, IPCBlob& aIPCBlob);
+
 } // IPCBlobUtils
 } // dom namespace
+
+namespace ipc {
+// ParamTraits implementation for BlobImpl. N.B: If the original BlobImpl cannot
+// be successfully serialized, a warning will be produced and a nullptr will be
+// sent over the wire. When Read()-ing a BlobImpl,
+// __always make sure to handle null!__
+template<>
+struct IPDLParamTraits<mozilla::dom::BlobImpl>
+{
+  static void Write(IPC::Message* aMsg, IProtocol* aActor,
+                    mozilla::dom::BlobImpl* aParam);
+  static bool Read(const IPC::Message* aMsg, PickleIterator* aIter,
+                   IProtocol* aActor, RefPtr<mozilla::dom::BlobImpl>* aResult);
+};
+} // ipc namespace
 } // mozilla namespace
 
 #endif // mozilla_dom_IPCBlobUtils_h

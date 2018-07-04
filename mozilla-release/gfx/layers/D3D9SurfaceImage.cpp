@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -173,7 +174,7 @@ D3D9SurfaceImage::AllocateAndCopy(D3D9RecycleAllocator* aAllocator,
     return E_FAIL;
   }
 
-  RECT src = { aRegion.x, aRegion.y, aRegion.x+aRegion.width, aRegion.y+aRegion.height };
+  RECT src = { aRegion.X(), aRegion.Y(), aRegion.XMost(), aRegion.YMost() };
   hr = device->StretchRect(surface, &src, textureSurface, nullptr, D3DTEXF_NONE);
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
@@ -182,7 +183,7 @@ D3D9SurfaceImage::AllocateAndCopy(D3D9RecycleAllocator* aAllocator,
 }
 
 already_AddRefed<IDirect3DSurface9>
-D3D9SurfaceImage::GetD3D9Surface()
+D3D9SurfaceImage::GetD3D9Surface() const
 {
   RefPtr<IDirect3DSurface9> textureSurface;
   HRESULT hr = mTexture->GetSurfaceLevel(0, getter_AddRefs(textureSurface));
@@ -203,7 +204,7 @@ D3D9SurfaceImage::GetShareHandle() const
 }
 
 gfx::IntSize
-D3D9SurfaceImage::GetSize()
+D3D9SurfaceImage::GetSize() const
 {
   return mSize;
 }

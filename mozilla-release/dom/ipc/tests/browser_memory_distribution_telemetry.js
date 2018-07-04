@@ -1,6 +1,6 @@
 "use strict";
 
-var session = Cu.import("resource://gre/modules/TelemetrySession.jsm", {});
+var session = ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", {});
 
 const DUMMY_PAGE_DATA_URI = `data:text/html,
     <html>
@@ -26,7 +26,6 @@ add_task(async function test_memory_distribution() {
     return;
   }
 
-  await SpecialPowers.pushPrefEnv({set: [["toolkit.telemetry.enabled", true]]});
   Services.telemetry.canRecordExtended = true;
 
   let histogram = Services.telemetry.getKeyedHistogramById("MEMORY_DISTRIBUTION_AMONG_CONTENT");
@@ -64,8 +63,8 @@ add_task(async function test_memory_distribution() {
 
   histogram.clear();
 
-  await BrowserTestUtils.removeTab(tab3);
-  await BrowserTestUtils.removeTab(tab2);
-  await BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab3);
+  BrowserTestUtils.removeTab(tab2);
+  BrowserTestUtils.removeTab(tab1);
   finish();
 });

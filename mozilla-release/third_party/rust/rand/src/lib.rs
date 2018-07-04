@@ -239,9 +239,14 @@
 
 #![doc(html_logo_url = "https://www.rust-lang.org/logos/rust-logo-128x128-blk.png",
        html_favicon_url = "https://www.rust-lang.org/favicon.ico",
-       html_root_url = "https://doc.rust-lang.org/rand/")]
+       html_root_url = "https://docs.rs/rand/0.3")]
+
+#![deny(missing_debug_implementations)]
+
+#![cfg_attr(feature = "i128_support", feature(i128_type))]
 
 #[cfg(test)] #[macro_use] extern crate log;
+
 
 use std::cell::RefCell;
 use std::marker;
@@ -249,6 +254,7 @@ use std::mem;
 use std::io;
 use std::rc::Rc;
 use std::num::Wrapping as w;
+use std::time;
 
 pub use os::OsRng;
 
@@ -277,6 +283,38 @@ type w64 = w<u64>;
 type w32 = w<u32>;
 
 /// A type that can be randomly generated using an `Rng`.
+///
+/// ## Built-in Implementations
+///
+/// This crate implements `Rand` for various primitive types.  Assuming the
+/// provided `Rng` is well-behaved, these implementations generate values with
+/// the following ranges and distributions:
+///
+/// * Integers (`i32`, `u32`, `isize`, `usize`, etc.): Uniformly distributed
+///   over all values of the type.
+/// * `char`: Uniformly distributed over all Unicode scalar values, i.e. all
+///   code points in the range `0...0x10_FFFF`, except for the range
+///   `0xD800...0xDFFF` (the surrogate code points).  This includes
+///   unassigned/reserved code points.
+/// * `bool`: Generates `false` or `true`, each with probability 0.5.
+/// * Floating point types (`f32` and `f64`): Uniformly distributed in the
+///   half-open range `[0, 1)`.  (The [`Open01`], [`Closed01`], [`Exp1`], and
+///   [`StandardNormal`] wrapper types produce floating point numbers with
+///   alternative ranges or distributions.)
+///
+/// [`Open01`]: struct.Open01.html
+/// [`Closed01`]: struct.Closed01.html
+/// [`Exp1`]: struct.Exp1.html
+/// [`StandardNormal`]: struct.StandardNormal.html
+///
+/// The following aggregate types also implement `Rand` as long as their
+/// component types implement it:
+///
+/// * Tuples and arrays: Each element of the tuple or array is generated
+///   independently, using its own `Rand` implementation.
+/// * `Option<T>`: Returns `None` with probability 0.5; otherwise generates a
+///   random `T` and returns `Some(T)`.
+
 pub trait Rand : Sized {
     /// Generates a random instance of this type using the specified source of
     /// randomness.
@@ -289,7 +327,7 @@ pub trait Rng {
     ///
     /// This rarely needs to be called directly, prefer `r.gen()` to
     /// `r.next_u32()`.
-    // FIXME #7771: Should be implemented in terms of next_u64
+    // FIXME #rust-lang/rfcs#628: Should be implemented in terms of next_u64
     fn next_u32(&mut self) -> u32;
 
     /// Return the next random u64.
@@ -317,8 +355,9 @@ pub trait Rng {
     /// See:
     /// A PRNG specialized in double precision floating point numbers using
     /// an affine transition
-    /// http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/ARTICLES/dSFMT.pdf
-    /// http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/SFMT/dSFMT-slide-e.pdf
+    ///
+    /// * <http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/ARTICLES/dSFMT.pdf>
+    /// * <http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/SFMT/dSFMT-slide-e.pdf>
     ///
     /// By default this is implemented in terms of `next_u32`, but a
     /// random number generator which can generate numbers satisfying
@@ -531,6 +570,9 @@ pub trait Rng {
 
     /// Shuffle a mutable slice in place.
     ///
+    /// This applies Durstenfeld's algorithm for the [Fisher–Yates shuffle](https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle#The_modern_algorithm)
+    /// which produces an unbiased permutation.
+    ///
     /// # Example
     ///
     /// ```rust
@@ -604,6 +646,7 @@ impl<R: ?Sized> Rng for Box<R> where R: Rng {
 ///
 /// [`gen_iter`]: trait.Rng.html#method.gen_iter
 /// [`Rng`]: trait.Rng.html
+#[derive(Debug)]
 pub struct Generator<'a, T, R:'a> {
     rng: &'a mut R,
     _marker: marker::PhantomData<fn() -> T>,
@@ -623,6 +666,7 @@ impl<'a, T: Rand, R: Rng> Iterator for Generator<'a, T, R> {
 ///
 /// [`gen_ascii_chars`]: trait.Rng.html#method.gen_ascii_chars
 /// [`Rng`]: trait.Rng.html
+#[derive(Debug)]
 pub struct AsciiGenerator<'a, R:'a> {
     rng: &'a mut R,
 }
@@ -682,7 +726,7 @@ pub trait SeedableRng<Seed>: Rng {
 /// RNGs"](http://www.jstatsoft.org/v08/i14/paper). *Journal of
 /// Statistical Software*. Vol. 8 (Issue 14).
 #[allow(missing_copy_implementations)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct XorShiftRng {
     x: w32,
     y: w32,
@@ -772,6 +816,7 @@ impl Rand for XorShiftRng {
 /// let Open01(val) = random::<Open01<f32>>();
 /// println!("f32 from (0,1): {}", val);
 /// ```
+#[derive(Debug)]
 pub struct Open01<F>(pub F);
 
 /// A wrapper for generating floating point numbers uniformly in the
@@ -789,11 +834,12 @@ pub struct Open01<F>(pub F);
 /// let Closed01(val) = random::<Closed01<f32>>();
 /// println!("f32 from [0,1]: {}", val);
 /// ```
+#[derive(Debug)]
 pub struct Closed01<F>(pub F);
 
 /// The standard RNG. This is designed to be efficient on the current
 /// platform.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct StdRng {
     rng: IsaacWordRng,
 }
@@ -846,23 +892,20 @@ impl<'a> SeedableRng<&'a [usize]> for StdRng {
 /// seeded `Rng` for consistency over time you should pick one algorithm and
 /// create the `Rng` yourself.
 ///
-/// This will read randomness from the operating system to seed the
-/// generator.
+/// This will seed the generator with randomness from thread_rng.
 pub fn weak_rng() -> XorShiftRng {
-    match OsRng::new() {
-        Ok(mut r) => r.gen(),
-        Err(e) => panic!("weak_rng: failed to create seeded RNG: {:?}", e)
-    }
+    thread_rng().gen()
 }
 
 /// Controls how the thread-local RNG is reseeded.
+#[derive(Debug)]
 struct ThreadRngReseeder;
 
 impl reseeding::Reseeder<StdRng> for ThreadRngReseeder {
     fn reseed(&mut self, rng: &mut StdRng) {
-        *rng = match StdRng::new() {
-            Ok(r) => r,
-            Err(e) => panic!("could not reseed thread_rng: {}", e)
+        match StdRng::new() {
+            Ok(r) => *rng = r,
+            Err(_) => rng.reseed(&weak_seed())
         }
     }
 }
@@ -870,7 +913,7 @@ const THREAD_RNG_RESEED_THRESHOLD: u64 = 32_768;
 type ThreadRngInner = reseeding::ReseedingRng<StdRng, ThreadRngReseeder>;
 
 /// The thread-local RNG.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ThreadRng {
     rng: Rc<RefCell<ThreadRngInner>>,
 }
@@ -879,8 +922,9 @@ pub struct ThreadRng {
 /// generator, seeded by the system. Intended to be used in method
 /// chaining style, e.g. `thread_rng().gen::<i32>()`.
 ///
-/// The RNG provided will reseed itself from the operating system
-/// after generating a certain amount of randomness.
+/// After generating a certain amount of randomness, the RNG will reseed itself
+/// from the operating system or, if the operating system RNG returns an error,
+/// a seed based on the current system time.
 ///
 /// The internal RNG used is platform and architecture dependent, even
 /// if the operating system random number generator is rigged to give
@@ -891,7 +935,7 @@ pub fn thread_rng() -> ThreadRng {
     thread_local!(static THREAD_RNG_KEY: Rc<RefCell<ThreadRngInner>> = {
         let r = match StdRng::new() {
             Ok(r) => r,
-            Err(e) => panic!("could not initialize thread_rng: {}", e)
+            Err(_) => StdRng::from_seed(&weak_seed())
         };
         let rng = reseeding::ReseedingRng::new(r,
                                                THREAD_RNG_RESEED_THRESHOLD,
@@ -900,6 +944,14 @@ pub fn thread_rng() -> ThreadRng {
     });
 
     ThreadRng { rng: THREAD_RNG_KEY.with(|t| t.clone()) }
+}
+
+fn weak_seed() -> [usize; 2] {
+    let now = time::SystemTime::now();
+    let unix_time = now.duration_since(time::UNIX_EPOCH).unwrap();
+    let seconds = unix_time.as_secs() as usize;
+    let nanoseconds = unix_time.subsec_nanos() as usize;
+    [seconds, nanoseconds]
 }
 
 impl Rng for ThreadRng {
@@ -964,7 +1016,8 @@ pub fn random<T: Rand>() -> T {
     thread_rng().gen()
 }
 
-/// Randomly sample up to `amount` elements from an iterator.
+/// Randomly sample up to `amount` elements from a finite iterator.
+/// The order of elements in the sample is not random.
 ///
 /// # Example
 ///
@@ -995,7 +1048,8 @@ pub fn sample<T, I, R>(rng: &mut R, iterable: I, amount: usize) -> Vec<T>
 
 #[cfg(test)]
 mod test {
-    use super::{Rng, thread_rng, random, SeedableRng, StdRng, sample};
+    use super::{Rng, thread_rng, random, SeedableRng, StdRng, sample,
+                weak_rng};
     use std::iter::repeat;
 
     pub struct MyRng<R> { inner: R }
@@ -1238,5 +1292,14 @@ mod test {
 
         let string2 = r.gen_ascii_chars().take(100).collect::<String>();
         assert_eq!(string1, string2);
+    }
+
+    #[test]
+    fn test_weak_rng() {
+        let s = weak_rng().gen_iter::<usize>().take(256).collect::<Vec<usize>>();
+        let mut ra: StdRng = SeedableRng::from_seed(&s[..]);
+        let mut rb: StdRng = SeedableRng::from_seed(&s[..]);
+        assert!(iter_eq(ra.gen_ascii_chars().take(100),
+                        rb.gen_ascii_chars().take(100)));
     }
 }

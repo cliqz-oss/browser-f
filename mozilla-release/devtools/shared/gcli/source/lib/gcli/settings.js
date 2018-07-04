@@ -22,18 +22,13 @@ var Cc = require('chrome').Cc;
 var Ci = require('chrome').Ci;
 var Cu = require('chrome').Cu;
 
-var XPCOMUtils = Cu.import('resource://gre/modules/XPCOMUtils.jsm', {}).XPCOMUtils;
+var XPCOMUtils = require('resource://gre/modules/XPCOMUtils.jsm').XPCOMUtils;
 var Services = require("Services");
 
 XPCOMUtils.defineLazyGetter(imports, 'prefBranch', function() {
   var prefService = Cc['@mozilla.org/preferences-service;1']
           .getService(Ci.nsIPrefService);
-  return prefService.getBranch(null).QueryInterface(Ci.nsIPrefBranch2);
-});
-
-XPCOMUtils.defineLazyGetter(imports, 'supportsString', function() {
-  return Cc['@mozilla.org/supports-string;1']
-          .createInstance(Ci.nsISupportsString);
+  return prefService.getBranch(null).QueryInterface(Ci.nsIPrefBranch);
 });
 
 var util = require('./util/util');
@@ -100,7 +95,7 @@ Settings.prototype.getAll = function(filter) {
   }
 
   return this._settingsAll.filter(setting => {
-    return setting.name.indexOf(filter) !== -1;
+    return setting.name.includes(filter);
   });
 };
 
@@ -266,10 +261,7 @@ Object.defineProperty(Setting.prototype, 'value', {
         break;
 
       case imports.prefBranch.PREF_STRING:
-        imports.supportsString.data = value;
-        imports.prefBranch.setComplexValue(this.name,
-                Ci.nsISupportsString,
-                imports.supportsString);
+        imports.prefBranch.setStringPref(this.name, value);
         break;
 
       default:

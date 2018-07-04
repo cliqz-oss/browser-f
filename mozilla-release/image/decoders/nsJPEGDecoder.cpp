@@ -24,6 +24,7 @@
 
 #include "gfxPlatform.h"
 #include "mozilla/EndianUtils.h"
+#include "mozilla/gfx/Types.h"
 #include "mozilla/Telemetry.h"
 
 extern "C" {
@@ -37,6 +38,8 @@ extern "C" {
 #endif
 
 static void cmyk_convert_rgb(JSAMPROW row, JDIMENSION width);
+
+using mozilla::gfx::SurfaceFormat;
 
 namespace mozilla {
 namespace image {
@@ -915,10 +918,18 @@ fill_input_buffer (j_decompress_ptr jd)
     decoder->mBackBufferSize = roundup_buflen;
   }
 
-  // Copy remainder of netlib segment into backtrack buffer.
-  memmove(decoder->mBackBuffer + decoder->mBackBufferLen,
-          src->next_input_byte,
-          src->bytes_in_buffer);
+  // Ensure we actually have a backtrack buffer. Without it, then we know that
+  // there is no data to copy and bytes_in_buffer is already zero.
+  if (decoder->mBackBuffer) {
+    // Copy remainder of netlib segment into backtrack buffer.
+    memmove(decoder->mBackBuffer + decoder->mBackBufferLen,
+            src->next_input_byte,
+            src->bytes_in_buffer);
+  } else {
+    MOZ_ASSERT(src->bytes_in_buffer == 0);
+    MOZ_ASSERT(decoder->mBackBufferLen == 0);
+    MOZ_ASSERT(decoder->mBackBufferUnreadLen == 0);
+  }
 
   // Point to start of data to be rescanned.
   src->next_input_byte = decoder->mBackBuffer + decoder->mBackBufferLen -

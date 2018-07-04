@@ -23,8 +23,7 @@ module.exports = {
     // Rules from the mozilla plugin
     "mozilla/balanced-listeners": "error",
     "mozilla/no-aArgs": "error",
-    "mozilla/no-cpows-in-tests": "warn",
-    "mozilla/var-only-at-top-level": "warn",
+    "mozilla/var-only-at-top-level": "error",
 
     "valid-jsdoc": ["error", {
       "prefer": {
@@ -56,11 +55,20 @@ module.exports = {
     // Require braces around blocks that start a new line
     "curly": ["error", "all"],
 
-    // Require function* name()
-    "generator-star-spacing": ["error", {"before": false, "after": true}],
-
     // Two space indent
-    "indent": ["error", 2, {"SwitchCase": 1, "ArrayExpression": "first", "ObjectExpression": "first"}],
+    "indent": [
+      "error", 2,
+      {
+        "ArrayExpression": "first",
+        "CallExpression": {"arguments": "first"},
+        "FunctionDeclaration": {"parameters": "first"},
+        "FunctionExpression": {"parameters": "first"},
+        "MemberExpression": "off",
+        "ObjectExpression": "first",
+        "SwitchCase": 1,
+        "ignoredNodes": ["ConditionalExpression"],
+      },
+    ],
 
     // Always require parenthesis for new calls
     "new-parens": "error",
@@ -78,25 +86,24 @@ module.exports = {
     // Disallow use of multiple spaces (sometimes used to align const values,
     // array or object items, etc.). It's hard to maintain and doesn't add that
     // much benefit.
-    "no-multi-spaces": "warn",
+    "no-multi-spaces": "error",
 
     // No expressions where a statement is expected
     "no-unused-expressions": "error",
 
     // No declaring variables that are never used
-    "no-unused-vars": ["error", {"args": "none", "varsIgnorePattern": "^(Cc|Ci|Cr|Cu|EXPORTED_SYMBOLS)$"}],
+    "no-unused-vars": ["error", {
+      "args": "none", "vars": "all", "varsIgnorePattern": "^console$"
+    }],
 
     // No using variables before defined
     "no-use-before-define": "error",
-
-    // Always require semicolon at end of statement
-    "semi": ["error", "always"],
 
     // Never use spaces before function parentheses
     "space-before-function-paren": ["error", {"anonymous": "never", "named": "never"}],
 
     // ++ and -- should not need spacing
-    "space-unary-ops": ["warn", {"nonwords": false, "words": true, "overrides": {"typeof": false}}],
+    "space-unary-ops": ["error", {"nonwords": false, "words": true, "overrides": {"typeof": false}}],
 
     // Disallow using variables outside the blocks they are defined (especially
     // since only let and const are used, see "no-var").
@@ -119,9 +126,6 @@ module.exports = {
 
     // Enforce dots on the next line with property name.
     "dot-location": ["error", "property"],
-
-    // Encourage the use of dot notation whenever possible.
-    "dot-notation": "error",
 
     // Allow using == instead of ===, in the interest of landing something since
     // the devtools codebase is split on convention here.
@@ -159,9 +163,6 @@ module.exports = {
     // Allow use of bitwise operators.
     "no-bitwise": "off",
 
-    // Disallow use of arguments.caller or arguments.callee.
-    "no-caller": "error",
-
     // Disallow the catch clause parameter name being the same as a variable in
     // the outer scope, to avoid confusion.
     "no-catch-shadow": "off",
@@ -197,7 +198,7 @@ module.exports = {
     "no-labels": ["error", {"allowLoop": true}],
 
     // Disallow use of multiline strings (use template strings instead).
-    "no-multi-str": "warn",
+    "no-multi-str": "error",
 
     // Disallow multiple empty lines.
     "no-multiple-empty-lines": [1, {"max": 2}],
@@ -265,7 +266,7 @@ module.exports = {
     "one-var": "off",
 
     // Disallow padding within blocks.
-    "padded-blocks": ["warn", "never"],
+    "padded-blocks": ["error", "never"],
 
     // Don't require quotes around object literal property names.
     "quote-props": "off",
@@ -304,8 +305,5 @@ module.exports = {
 
     // Disallow labels that share a name with a variable
     "no-label-var": "error",
-
-    // Disallow creating new instances of String, Number, and Boolean
-    "no-new-wrappers": "error",
   },
 };

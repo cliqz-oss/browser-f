@@ -35,9 +35,27 @@ class JSObject;
 extern mozilla::LogModule* GetMediaSourceLog();
 extern mozilla::LogModule* GetMediaSourceAPILog();
 
-#define MSE_DEBUG(arg, ...) MOZ_LOG(GetMediaSourceLog(), mozilla::LogLevel::Debug, ("SourceBuffer(%p:%s)::%s: " arg, this, mType.OriginalString().Data(), __func__, ##__VA_ARGS__))
-#define MSE_DEBUGV(arg, ...) MOZ_LOG(GetMediaSourceLog(), mozilla::LogLevel::Verbose, ("SourceBuffer(%p:%s)::%s: " arg, this, mType.OriginalString().Data(), __func__, ##__VA_ARGS__))
-#define MSE_API(arg, ...) MOZ_LOG(GetMediaSourceAPILog(), mozilla::LogLevel::Debug, ("SourceBuffer(%p:%s)::%s: " arg, this, mType.OriginalString().Data(), __func__, ##__VA_ARGS__))
+#define MSE_DEBUG(arg, ...)                                                    \
+  DDMOZ_LOG(GetMediaSourceLog(),                                               \
+            mozilla::LogLevel::Debug,                                          \
+            "(%s)::%s: " arg,                                                  \
+            mType.OriginalString().Data(),                                     \
+            __func__,                                                          \
+            ##__VA_ARGS__)
+#define MSE_DEBUGV(arg, ...)                                                   \
+  DDMOZ_LOG(GetMediaSourceLog(),                                               \
+            mozilla::LogLevel::Verbose,                                        \
+            "(%s)::%s: " arg,                                                  \
+            mType.OriginalString().Data(),                                     \
+            __func__,                                                          \
+            ##__VA_ARGS__)
+#define MSE_API(arg, ...)                                                      \
+  DDMOZ_LOG(GetMediaSourceAPILog(),                                            \
+            mozilla::LogLevel::Debug,                                          \
+            "(%s)::%s: " arg,                                                  \
+            mType.OriginalString().Data(),                                     \
+            __func__,                                                          \
+            ##__VA_ARGS__)
 
 namespace mozilla {
 
@@ -114,14 +132,13 @@ SourceBuffer::GetBuffered(ErrorResult& aRv)
   media::TimeIntervals intersection = mTrackBuffersManager->Buffered();
   MSE_DEBUGV("intersection=%s", DumpTimeRanges(intersection).get());
   if (mBuffered) {
-    media::TimeIntervals currentValue(mBuffered);
+    media::TimeIntervals currentValue(mBuffered->ToTimeIntervals());
     rangeChanged = (intersection != currentValue);
     MSE_DEBUGV("currentValue=%s", DumpTimeRanges(currentValue).get());
   }
   // 5. If intersection ranges does not contain the exact same range information as the current value of this attribute, then update the current value of this attribute to intersection ranges.
   if (rangeChanged) {
-    mBuffered = new TimeRanges(ToSupports(this));
-    intersection.ToTimeRanges(mBuffered);
+    mBuffered = new TimeRanges(ToSupports(this), intersection);
   }
   // 6. Return the current value of this attribute.
   return mBuffered;
@@ -138,6 +155,7 @@ SourceBuffer::SetAppendWindowStart(double aAppendWindowStart, ErrorResult& aRv)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MSE_API("SetAppendWindowStart(aAppendWindowStart=%f)", aAppendWindowStart);
+  DDLOG(DDLogCategory::API, "SetAppendWindowStart", aAppendWindowStart);
   if (!IsAttached() || mUpdating) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
@@ -155,6 +173,7 @@ SourceBuffer::SetAppendWindowEnd(double aAppendWindowEnd, ErrorResult& aRv)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MSE_API("SetAppendWindowEnd(aAppendWindowEnd=%f)", aAppendWindowEnd);
+  DDLOG(DDLogCategory::API, "SetAppendWindowEnd", aAppendWindowEnd);
   if (!IsAttached() || mUpdating) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
@@ -173,6 +192,7 @@ SourceBuffer::AppendBuffer(const ArrayBuffer& aData, ErrorResult& aRv)
   MOZ_ASSERT(NS_IsMainThread());
   MSE_API("AppendBuffer(ArrayBuffer)");
   aData.ComputeLengthAndData();
+  DDLOG(DDLogCategory::API, "AppendBuffer", aData.Length());
   AppendData(aData.Data(), aData.Length(), aRv);
 }
 
@@ -182,6 +202,7 @@ SourceBuffer::AppendBuffer(const ArrayBufferView& aData, ErrorResult& aRv)
   MOZ_ASSERT(NS_IsMainThread());
   MSE_API("AppendBuffer(ArrayBufferView)");
   aData.ComputeLengthAndData();
+  DDLOG(DDLogCategory::API, "AppendBuffer", aData.Length());
   AppendData(aData.Data(), aData.Length(), aRv);
 }
 
@@ -191,17 +212,21 @@ SourceBuffer::Abort(ErrorResult& aRv)
   MOZ_ASSERT(NS_IsMainThread());
   MSE_API("Abort()");
   if (!IsAttached()) {
+    DDLOG(DDLogCategory::API, "Abort", NS_ERROR_DOM_INVALID_STATE_ERR);
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
   if (mMediaSource->ReadyState() != MediaSourceReadyState::Open) {
+    DDLOG(DDLogCategory::API, "Abort", NS_ERROR_DOM_INVALID_STATE_ERR);
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
   if (mPendingRemoval.Exists()) {
+    DDLOG(DDLogCategory::API, "Abort", NS_ERROR_DOM_INVALID_STATE_ERR);
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
+  DDLOG(DDLogCategory::API, "Abort", NS_OK);
   AbortBufferAppend();
   ResetParserState();
   mCurrentAttributes.SetAppendWindowStart(0);
@@ -232,6 +257,8 @@ SourceBuffer::Remove(double aStart, double aEnd, ErrorResult& aRv)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MSE_API("Remove(aStart=%f, aEnd=%f)", aStart, aEnd);
+  DDLOG(DDLogCategory::API, "Remove-from", aStart);
+  DDLOG(DDLogCategory::API, "Remove-until", aEnd);
   if (!IsAttached()) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
@@ -271,6 +298,53 @@ SourceBuffer::RangeRemoval(double aStart, double aEnd)
 }
 
 void
+SourceBuffer::ChangeType(const nsAString& aType, ErrorResult& aRv)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  DecoderDoctorDiagnostics diagnostics;
+  nsresult rv = MediaSource::IsTypeSupported(aType, &diagnostics);
+  diagnostics.StoreFormatDiagnostics(mMediaSource->GetOwner()
+                                     ? mMediaSource->GetOwner()->GetExtantDoc()
+                                     : nullptr,
+                                     aType, NS_SUCCEEDED(rv), __func__);
+  MSE_API("ChangeType(aType=%s)%s",
+          NS_ConvertUTF16toUTF8(aType).get(),
+          rv == NS_OK ? "" : " [not supported]");
+  if (NS_FAILED(rv)) {
+    DDLOG(DDLogCategory::API, "ChangeType", rv);
+    aRv.Throw(rv);
+    return;
+  }
+  if (!mMediaSource->GetDecoder() ||
+      mMediaSource->GetDecoder()->OwnerHasError()) {
+    MSE_DEBUG("HTMLMediaElement.error is not null");
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return;
+  }
+  if (!IsAttached() || mUpdating) {
+    DDLOG(DDLogCategory::API, "ChangeType", NS_ERROR_DOM_INVALID_STATE_ERR);
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return;
+  }
+
+  MOZ_ASSERT(mMediaSource->ReadyState() != MediaSourceReadyState::Closed);
+  if (mMediaSource->ReadyState() == MediaSourceReadyState::Ended) {
+    mMediaSource->SetReadyState(MediaSourceReadyState::Open);
+  }
+  if (mCurrentAttributes.GetAppendState() == AppendState::PARSING_MEDIA_SEGMENT){
+    DDLOG(DDLogCategory::API, "ChangeType", NS_ERROR_DOM_INVALID_STATE_ERR);
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return;
+  }
+  Maybe<MediaContainerType> containerType = MakeMediaContainerType(aType);
+  MOZ_ASSERT(containerType);
+  mType = *containerType;
+  ResetParserState();
+  mTrackBuffersManager->ChangeType(mType);
+}
+
+void
 SourceBuffer::Detach()
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -281,9 +355,9 @@ SourceBuffer::Detach()
   }
   AbortBufferAppend();
   if (mTrackBuffersManager) {
-    mTrackBuffersManager->Detach();
     mMediaSource->GetDecoder()->GetDemuxer()->DetachSourceBuffer(
-      mTrackBuffersManager.get());
+      mTrackBuffersManager);
+    mTrackBuffersManager->Detach();
   }
   mTrackBuffersManager = nullptr;
   mMediaSource = nullptr;
@@ -314,6 +388,7 @@ SourceBuffer::SourceBuffer(MediaSource* aMediaSource,
 
   mTrackBuffersManager =
     new TrackBuffersManager(aMediaSource->GetDecoder(), aType);
+  DDLINKCHILD("track buffers manager", mTrackBuffersManager.get());
 
   MSE_DEBUG("Create mTrackBuffersManager=%p",
             mTrackBuffersManager.get());
@@ -325,7 +400,7 @@ SourceBuffer::SourceBuffer(MediaSource* aMediaSource,
     SetMode(SourceBufferAppendMode::Segments, dummy);
   }
   mMediaSource->GetDecoder()->GetDemuxer()->AttachSourceBuffer(
-    mTrackBuffersManager.get());
+    mTrackBuffersManager);
 }
 
 SourceBuffer::~SourceBuffer()
@@ -430,6 +505,7 @@ SourceBuffer::AppendDataCompletedWithSuccess(const SourceBufferTask::AppendBuffe
 {
   MOZ_ASSERT(mUpdating);
   mPendingAppend.Complete();
+  DDLOG(DDLogCategory::API, "AppendBuffer-completed", NS_OK);
 
   if (aResult.first()) {
     if (!mActive) {
@@ -466,6 +542,7 @@ SourceBuffer::AppendDataErrored(const MediaResult& aError)
 {
   MOZ_ASSERT(mUpdating);
   mPendingAppend.Complete();
+  DDLOG(DDLogCategory::API, "AppendBuffer-error", aError);
 
   switch (aError.Code()) {
     case NS_ERROR_DOM_MEDIA_CANCELED:
@@ -580,11 +657,7 @@ SourceBuffer::HighestEndTime()
 NS_IMPL_CYCLE_COLLECTION_CLASS(SourceBuffer)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(SourceBuffer)
-  // Tell the TrackBuffer to end its current SourceBufferResource.
-  TrackBuffersManager* manager = tmp->mTrackBuffersManager;
-  if (manager) {
-    manager->Detach();
-  }
+  tmp->Detach();
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mMediaSource)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mBuffered)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END_INHERITED(DOMEventTargetHelper)
@@ -598,7 +671,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_ADDREF_INHERITED(SourceBuffer, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(SourceBuffer, DOMEventTargetHelper)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(SourceBuffer)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SourceBuffer)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 #undef MSE_DEBUG

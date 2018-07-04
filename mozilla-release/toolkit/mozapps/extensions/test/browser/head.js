@@ -5,11 +5,11 @@
 
 /* eslint no-unused-vars: ["error", {vars: "local", args: "none"}] */
 
-Components.utils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var tmp = {};
-Components.utils.import("resource://gre/modules/AddonManager.jsm", tmp);
-Components.utils.import("resource://gre/modules/Log.jsm", tmp);
+ChromeUtils.import("resource://gre/modules/AddonManager.jsm", tmp);
+ChromeUtils.import("resource://gre/modules/Log.jsm", tmp);
 var AddonManager = tmp.AddonManager;
 var AddonManagerPrivate = tmp.AddonManagerPrivate;
 var Log = tmp.Log;
@@ -36,7 +36,6 @@ const PREF_UI_LASTCATEGORY = "extensions.ui.lastCategory";
 const MANAGER_URI = "about:addons";
 const INSTALL_URI = "chrome://mozapps/content/xpinstall/xpinstallConfirm.xul";
 const PREF_LOGGING_ENABLED = "extensions.logging.enabled";
-const PREF_SEARCH_MAXRESULTS = "extensions.getAddons.maxResults";
 const PREF_STRICT_COMPAT = "extensions.strictCompatibility";
 
 var PREF_CHECK_COMPATIBILITY;
@@ -66,11 +65,8 @@ var gRestorePrefs = [{name: PREF_LOGGING_ENABLED},
                      {name: "extensions.update.autoUpdateDefault"},
                      {name: "extensions.getAddons.get.url"},
                      {name: "extensions.getAddons.getWithPerformance.url"},
-                     {name: "extensions.getAddons.search.browseURL"},
-                     {name: "extensions.getAddons.search.url"},
                      {name: "extensions.getAddons.cache.enabled"},
                      {name: "devtools.chrome.enabled"},
-                     {name: PREF_SEARCH_MAXRESULTS},
                      {name: PREF_STRICT_COMPAT},
                      {name: PREF_CHECK_COMPATIBILITY}];
 
@@ -93,6 +89,10 @@ Services.prefs.setBoolPref(PREF_LOGGING_ENABLED, true);
 
 Services.prefs.setBoolPref(PREF_CUSTOM_XPINSTALL_CONFIRMATION_UI, false);
 
+function promiseFocus(window) {
+  return new Promise(resolve => waitForFocus(resolve, window));
+}
+
 // Helper to register test failures and close windows if any are left open
 function checkOpenWindows(aWindowID) {
   let windows = Services.wm.getEnumerator(aWindowID);
@@ -110,8 +110,8 @@ function checkOpenWindows(aWindowID) {
 
 // Tools to disable and re-enable the background update and blocklist timers
 // so that tests can protect themselves from unwanted timer events.
-var gCatMan = Components.classes["@mozilla.org/categorymanager;1"]
-                           .getService(Components.interfaces.nsICategoryManager);
+var gCatMan = Cc["@mozilla.org/categorymanager;1"]
+                .getService(Ci.nsICategoryManager);
 // Default values from toolkit/mozapps/extensions/extensions.manifest, but disable*UpdateTimer()
 // records the actual value so we can put it back in enable*UpdateTimer()
 var backgroundUpdateConfig = "@mozilla.org/addons/integration;1,getService,addon-background-update-timer,extensions.update.interval,86400";
@@ -283,9 +283,7 @@ function get_current_view(aManager) {
 function get_test_items_in_list(aManager) {
   var tests = "@tests.mozilla.org";
 
-  let view = get_current_view(aManager);
-  let listid = view.id == "search-view" ? "search-list" : "addon-list";
-  let item = aManager.document.getElementById(listid).firstChild;
+  let item = aManager.document.getElementById("addon-list").firstChild;
   let items = [];
 
   while (item) {
@@ -304,9 +302,7 @@ function get_test_items_in_list(aManager) {
 
 function check_all_in_list(aManager, aIds, aIgnoreExtras) {
   var doc = aManager.document;
-  var view = get_current_view(aManager);
-  var listid = view.id == "search-view" ? "search-list" : "addon-list";
-  var list = doc.getElementById(listid);
+  var list = doc.getElementById("addon-list");
 
   var inlist = [];
   var node = list.firstChild;
@@ -317,7 +313,7 @@ function check_all_in_list(aManager, aIds, aIgnoreExtras) {
   }
 
   for (let id of aIds) {
-    if (inlist.indexOf(id) == -1)
+    if (!inlist.includes(id))
       ok(false, "Should find " + id + " in the list");
   }
 
@@ -325,7 +321,7 @@ function check_all_in_list(aManager, aIds, aIgnoreExtras) {
     return;
 
   for (let inlistItem of inlist) {
-    if (aIds.indexOf(inlistItem) == -1)
+    if (!aIds.includes(inlistItem))
       ok(false, "Shouldn't have seen " + inlistItem + " in the list");
   }
 }
@@ -334,9 +330,7 @@ function get_addon_element(aManager, aId) {
   var doc = aManager.document;
   var view = get_current_view(aManager);
   var listid = "addon-list";
-  if (view.id == "search-view")
-    listid = "search-list";
-  else if (view.id == "updates-view")
+  if (view.id == "updates-view")
     listid = "updates-list";
   var list = doc.getElementById(listid);
 
@@ -350,34 +344,42 @@ function get_addon_element(aManager, aId) {
 }
 
 function wait_for_view_load(aManagerWindow, aCallback, aForceWait, aLongerTimeout) {
-  requestLongerTimeout(aLongerTimeout ? aLongerTimeout : 2);
+  let p = new Promise(resolve => {
+    requestLongerTimeout(aLongerTimeout ? aLongerTimeout : 2);
 
-  if (!aForceWait && !aManagerWindow.gViewController.isLoading) {
-    log_exceptions(aCallback, aManagerWindow);
-    return;
-  }
+    if (!aForceWait && !aManagerWindow.gViewController.isLoading) {
+      resolve(aManagerWindow);
+      return;
+    }
 
-  aManagerWindow.document.addEventListener("ViewChanged", function() {
-    log_exceptions(aCallback, aManagerWindow);
-  }, {once: true});
+    aManagerWindow.document.addEventListener("ViewChanged", function() {
+      resolve(aManagerWindow);
+    }, {once: true});
+  });
+
+  return log_callback(p, aCallback);
 }
 
 function wait_for_manager_load(aManagerWindow, aCallback) {
-  if (!aManagerWindow.gIsInitializing) {
-    log_exceptions(aCallback, aManagerWindow);
-    return;
-  }
+  let p = new Promise(resolve => {
+    if (!aManagerWindow.gIsInitializing) {
+      resolve(aManagerWindow);
+      return;
+    }
 
-  info("Waiting for initialization");
-  aManagerWindow.document.addEventListener("Initialized", function() {
-    log_exceptions(aCallback, aManagerWindow);
-  }, {once: true});
+    info("Waiting for initialization");
+    aManagerWindow.document.addEventListener("Initialized", function() {
+      resolve(aManagerWindow);
+    }, {once: true});
+  });
+
+  return log_callback(p, aCallback);
 }
 
 function open_manager(aView, aCallback, aLoadCallback, aLongerTimeout) {
   let p = new Promise((resolve, reject) => {
 
-    function setup_manager(aManagerWindow) {
+    async function setup_manager(aManagerWindow) {
       if (aLoadCallback)
         log_exceptions(aLoadCallback, aManagerWindow);
 
@@ -387,20 +389,17 @@ function open_manager(aView, aCallback, aLoadCallback, aLongerTimeout) {
       ok(aManagerWindow != null, "Should have an add-ons manager window");
       is(aManagerWindow.location, MANAGER_URI, "Should be displaying the correct UI");
 
-      waitForFocus(function() {
-        info("window has focus, waiting for manager load");
-        wait_for_manager_load(aManagerWindow, function() {
-          info("Manager waiting for view load");
-          wait_for_view_load(aManagerWindow, function() {
-            resolve(aManagerWindow);
-          }, null, aLongerTimeout);
-        });
-      }, aManagerWindow);
+      await promiseFocus(aManagerWindow);
+      info("window has focus, waiting for manager load");
+      await wait_for_manager_load(aManagerWindow);
+      info("Manager waiting for view load");
+      await wait_for_view_load(aManagerWindow, null, null, aLongerTimeout);
+      resolve(aManagerWindow);
     }
 
     info("Loading manager window in tab");
-    Services.obs.addObserver(function(aSubject, aTopic, aData) {
-      Services.obs.removeObserver(arguments.callee, aTopic);
+    Services.obs.addObserver(function observer(aSubject, aTopic, aData) {
+      Services.obs.removeObserver(observer, aTopic);
       if (aSubject.location.href != MANAGER_URI) {
         info("Ignoring load event for " + aSubject.location.href);
         return;
@@ -425,10 +424,10 @@ function close_manager(aManagerWindow, aCallback, aLongerTimeout) {
     ok(aManagerWindow != null, "Should have an add-ons manager window to close");
     is(aManagerWindow.location, MANAGER_URI, "Should be closing window with correct URI");
 
-    aManagerWindow.addEventListener("unload", function() {
+    aManagerWindow.addEventListener("unload", function listener() {
       try {
         dump("Manager window unload handler\n");
-        this.removeEventListener("unload", arguments.callee);
+        this.removeEventListener("unload", listener);
         resolve();
       } catch (e) {
         reject(e);
@@ -453,25 +452,26 @@ function restart_manager(aManagerWindow, aView, aCallback, aLoadCallback) {
 }
 
 function wait_for_window_open(aCallback) {
-  Services.wm.addListener({
-    onOpenWindow(aWindow) {
-      Services.wm.removeListener(this);
+  let p = new Promise(resolve => {
+    Services.wm.addListener({
+      onOpenWindow(aWindow) {
+        Services.wm.removeListener(this);
 
-      let domwindow = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDOMWindow);
-      domwindow.addEventListener("load", function() {
-        executeSoon(function() {
-          aCallback(domwindow);
-        });
-      }, {once: true});
-    },
+        let domwindow = aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
+                               .getInterface(Ci.nsIDOMWindow);
+        domwindow.addEventListener("load", function() {
+          executeSoon(function() {
+            resolve(domwindow);
+          });
+        }, {once: true});
+      },
 
-    onCloseWindow(aWindow) {
-    },
-
-    onWindowTitleChange(aWindow, aTitle) {
-    }
+      onCloseWindow(aWindow) {
+      },
+    });
   });
+
+  return log_callback(p, aCallback);
 }
 
 function get_string(aName, ...aArgs) {
@@ -511,15 +511,11 @@ function is_element_hidden(aElement, aMsg) {
 }
 
 function promiseAddonByID(aId) {
-  return new Promise(resolve => {
-    AddonManager.getAddonByID(aId, resolve);
-  });
+  return AddonManager.getAddonByID(aId);
 }
 
 function promiseAddonsByIDs(aIDs) {
-  return new Promise(resolve => {
-    AddonManager.getAddonsByIDs(aIDs, resolve);
-  });
+  return AddonManager.getAddonsByIDs(aIDs);
 }
 /**
  * Install an add-on and call a callback when complete.
@@ -527,14 +523,13 @@ function promiseAddonsByIDs(aIDs) {
  * The callback will receive the Addon for the installed add-on.
  */
 function install_addon(path, cb, pathPrefix = TESTROOT) {
-  let p = new Promise((resolve, reject) => {
-    AddonManager.getInstallForURL(pathPrefix + path, (install) => {
-      install.addListener({
-        onInstallEnded: () => resolve(install.addon),
-      });
+  let p = new Promise(async (resolve, reject) => {
+    let install = await AddonManager.getInstallForURL(pathPrefix + path, "application/x-xpinstall");
+    install.addListener({
+      onInstallEnded: () => resolve(install.addon),
+    });
 
-      install.install();
-    }, "application/x-xpinstall");
+    install.install();
   });
 
   return log_callback(p, cb);
@@ -611,7 +606,7 @@ CategoryUtilities.prototype = {
   openType(aCategoryType, aCallback) {
     return this.open(this.get(aCategoryType), aCallback);
   }
-}
+};
 
 function CertOverrideListener(host, bits) {
   this.host = host;
@@ -632,18 +627,18 @@ CertOverrideListener.prototype = {
         aIID.equals(Ci.nsISupports))
       return this;
 
-    throw Components.Exception("No interface", Components.results.NS_ERROR_NO_INTERFACE);
+    throw Components.Exception("No interface", Cr.NS_ERROR_NO_INTERFACE);
   },
 
   notifyCertProblem(socketInfo, sslStatus, targetHost) {
-    var cert = sslStatus.QueryInterface(Components.interfaces.nsISSLStatus)
+    var cert = sslStatus.QueryInterface(Ci.nsISSLStatus)
                         .serverCert;
     var cos = Cc["@mozilla.org/security/certoverride;1"].
               getService(Ci.nsICertOverrideService);
     cos.rememberValidityOverride(this.host, -1, cert, this.bits, false);
     return true;
   }
-}
+};
 
 // Add overrides for the bad certificates
 function addCertOverride(host, bits) {
@@ -732,7 +727,7 @@ MockProvider.prototype = {
     let requiresRestart = (aAddon.operationsRequiringRestart &
                            AddonManager.OP_NEEDS_RESTART_INSTALL) != 0;
     AddonManagerPrivate.callInstallListeners("onExternalInstall", null, aAddon,
-                                             oldAddon, requiresRestart)
+                                             oldAddon, requiresRestart);
   },
 
   /**
@@ -894,18 +889,15 @@ MockProvider.prototype = {
    *
    * @param  aId
    *         The ID of the add-on to retrieve
-   * @param  aCallback
-   *         A callback to pass the Addon to
    */
-  getAddonByID: function MP_getAddon(aId, aCallback) {
+  async getAddonByID(aId) {
     for (let addon of this.addons) {
       if (addon.id == aId) {
-        this._delayCallback(aCallback, addon);
-        return;
+        return addon;
       }
     }
 
-    aCallback(null);
+    return null;
   },
 
   /**
@@ -913,16 +905,14 @@ MockProvider.prototype = {
    *
    * @param  aTypes
    *         An array of types to fetch. Can be null to get all types.
-   * @param  callback
-   *         A callback to pass an array of Addons to
    */
-  getAddonsByTypes: function MP_getAddonsByTypes(aTypes, aCallback) {
+  async getAddonsByTypes(aTypes) {
     var addons = this.addons.filter(function(aAddon) {
-      if (aTypes && aTypes.length > 0 && aTypes.indexOf(aAddon.type) == -1)
+      if (aTypes && aTypes.length > 0 && !aTypes.includes(aAddon.type))
         return false;
       return true;
     });
-    this._delayCallback(aCallback, addons);
+    return addons;
   },
 
   /**
@@ -930,16 +920,14 @@ MockProvider.prototype = {
    *
    * @param  aTypes
    *         An array of types to fetch. Can be null to get all types
-   * @param  aCallback
-   *         A callback to pass an array of Addons to
    */
-  getAddonsWithOperationsByTypes: function MP_getAddonsWithOperationsByTypes(aTypes, aCallback) {
+  async getAddonsWithOperationsByTypes(aTypes, aCallback) {
     var addons = this.addons.filter(function(aAddon) {
-      if (aTypes && aTypes.length > 0 && aTypes.indexOf(aAddon.type) == -1)
+      if (aTypes && aTypes.length > 0 && !aTypes.includes(aAddon.type))
         return false;
       return aAddon.pendingOperations != 0;
     });
-    this._delayCallback(aCallback, addons);
+    return addons;
   },
 
   /**
@@ -947,21 +935,19 @@ MockProvider.prototype = {
    *
    * @param  aTypes
    *         An array of types or null to get all types
-   * @param  aCallback
-   *         A callback to pass the array of AddonInstalls to
    */
-  getInstallsByTypes: function MP_getInstallsByTypes(aTypes, aCallback) {
+  async getInstallsByTypes(aTypes) {
     var installs = this.installs.filter(function(aInstall) {
       // Appear to have actually removed cancelled installs from the provider
       if (aInstall.state == AddonManager.STATE_CANCELLED)
         return false;
 
-      if (aTypes && aTypes.length > 0 && aTypes.indexOf(aInstall.type) == -1)
+      if (aTypes && aTypes.length > 0 && !aTypes.includes(aInstall.type))
         return false;
 
       return true;
     });
-    this._delayCallback(aCallback, installs);
+    return installs;
   },
 
   /**
@@ -1002,11 +988,9 @@ MockProvider.prototype = {
    *         A version for the install
    * @param  aLoadGroup
    *         An nsILoadGroup to associate requests with
-   * @param  aCallback
-   *         A callback to pass the AddonInstall to
    */
   getInstallForURL: function MP_getInstallForURL(aUrl, aHash, aName, aIconURL,
-                                                  aVersion, aLoadGroup, aCallback) {
+                                                  aVersion, aLoadGroup) {
     // Not yet implemented
   },
 
@@ -1015,10 +999,8 @@ MockProvider.prototype = {
    *
    * @param  aFile
    *         The file to be installed
-   * @param  aCallback
-   *         A callback to pass the AddonInstall to
    */
-  getInstallForFile: function MP_getInstallForFile(aFile, aCallback) {
+  getInstallForFile: function MP_getInstallForFile(aFile) {
     // Not yet implemented
   },
 
@@ -1053,42 +1035,6 @@ MockProvider.prototype = {
   isInstallAllowed: function MP_isInstallAllowed(aUri) {
     return false;
   },
-
-
-  /** *** Internal functions *****/
-
-  /**
-   * Delay calling a callback to fake a time-consuming async operation.
-   * The delay is specified by the apiDelay property, in milliseconds.
-   * Parameters to send to the callback should be specified as arguments after
-   * the aCallback argument.
-   *
-   * @param aCallback Callback to eventually call
-   */
-  _delayCallback: function MP_delayCallback(aCallback, ...aArgs) {
-    if (!this.useAsyncCallbacks) {
-      aCallback(...aArgs);
-      return;
-    }
-
-    let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
-    // Need to keep a reference to the timer, so it doesn't get GC'ed
-    this.callbackTimers.push(timer);
-    // Capture a stack trace where the timer was set
-    // needs the 'new Error' hack until bug 1007656
-    this.timerLocations.set(timer, Log.stackTrace(new Error("dummy")));
-    timer.initWithCallback(() => {
-      let idx = this.callbackTimers.indexOf(timer);
-      if (idx == -1) {
-        dump("MockProvider._delayCallback lost track of timer set at "
-             + (this.timerLocations.get(timer) || "unknown location") + "\n");
-      } else {
-        this.callbackTimers.splice(idx, 1);
-      }
-      this.timerLocations.delete(timer);
-      aCallback(...aArgs);
-    }, this.apiDelay, timer.TYPE_ONE_SHOT);
-  }
 };
 
 /** *** Mock Addon object for the Mock Provider *****/
@@ -1200,6 +1146,10 @@ MockAddon.prototype = {
 
   findUpdates(aListener, aReason, aAppVersion, aPlatformVersion) {
     // Tests can implement this if they need to
+  },
+
+  async getBlocklistURL() {
+    return this.blocklistURL;
   },
 
   uninstall(aAlwaysAllowUndo = false) {

@@ -1,10 +1,12 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "GeometryUtils.h"
 
+#include "mozilla/dom/CharacterData.h"
 #include "mozilla/dom/DOMPointBinding.h"
 #include "mozilla/dom/GeometryUtilsBinding.h"
 #include "mozilla/dom/Element.h"
@@ -14,7 +16,6 @@
 #include "mozilla/dom/DOMRect.h"
 #include "nsContentUtils.h"
 #include "nsIFrame.h"
-#include "nsGenericDOMDataNode.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsLayoutUtils.h"
 #include "nsSVGUtils.h"
@@ -34,18 +35,18 @@ static nsIFrame*
 GetFrameForNode(nsINode* aNode, GeometryNodeType aType)
 {
   nsIDocument* doc = aNode->OwnerDoc();
+  if (aType == GEOMETRY_NODE_TEXT) {
+    if (nsIPresShell* shell = doc->GetShell()) {
+      shell->FrameConstructor()->EnsureFrameForTextNodeIsCreatedAfterFlush(
+          static_cast<CharacterData*>(aNode));
+    }
+  }
   doc->FlushPendingNotifications(FlushType::Layout);
+
   switch (aType) {
+  case GEOMETRY_NODE_TEXT:
   case GEOMETRY_NODE_ELEMENT:
     return aNode->AsContent()->GetPrimaryFrame();
-  case GEOMETRY_NODE_TEXT: {
-    nsIPresShell* presShell = doc->GetShell();
-    if (presShell) {
-      return presShell->FrameConstructor()->EnsureFrameForTextNode(
-          static_cast<nsGenericDOMDataNode*>(aNode));
-    }
-    return nullptr;
-  }
   case GEOMETRY_NODE_DOCUMENT: {
     nsIPresShell* presShell = doc->GetShell();
     return presShell ? presShell->GetRootFrame() : nullptr;
@@ -95,7 +96,7 @@ GetFrameForNode(nsINode* aNode)
   if (aNode == aNode->OwnerDoc()) {
     return GetFrameForNode(aNode, GEOMETRY_NODE_DOCUMENT);
   }
-  NS_ASSERTION(aNode->IsNodeOfType(nsINode::eTEXT), "Unknown node type");
+  NS_ASSERTION(aNode->IsText(), "Unknown node type");
   return GetFrameForNode(aNode, GEOMETRY_NODE_TEXT);
 }
 
@@ -151,11 +152,7 @@ GetBoxRectForFrame(nsIFrame** aFrame, CSSBoxType aType)
   case CSSBoxType::Content: r = f->GetContentRectRelativeToSelf(); break;
   case CSSBoxType::Padding: r = f->GetPaddingRectRelativeToSelf(); break;
   case CSSBoxType::Border: r = nsRect(nsPoint(0, 0), f->GetSize()); break;
-  case CSSBoxType::Margin: {
-    r = nsRect(nsPoint(0, 0), f->GetSize());
-    r.Inflate(f->GetUsedMargin());
-    break;
-  }
+  case CSSBoxType::Margin: r = f->GetMarginRectRelativeToSelf(); break;
   default: MOZ_ASSERT(false, "unknown box type"); return r;
   }
 

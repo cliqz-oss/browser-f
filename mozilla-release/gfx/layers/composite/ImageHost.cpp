@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -240,7 +241,7 @@ ImageHost::Composite(Compositor* aCompositor,
     }
 
     aEffectChain.mPrimaryEffect = effect;
-    gfx::Rect pictureRect(0, 0, img->mPictureRect.width, img->mPictureRect.height);
+    gfx::Rect pictureRect(0, 0, img->mPictureRect.Width(), img->mPictureRect.Height());
     BigImageIterator* it = mCurrentTextureSource->AsBigImageIterator();
     if (it) {
 
@@ -263,15 +264,15 @@ ImageHost::Composite(Compositor* aCompositor,
       it->BeginBigImageIteration();
       do {
         IntRect tileRect = it->GetTileRect();
-        gfx::Rect rect(tileRect.x, tileRect.y, tileRect.width, tileRect.height);
+        gfx::Rect rect(tileRect.X(), tileRect.Y(), tileRect.Width(), tileRect.Height());
         rect = rect.Intersect(pictureRect);
-        effect->mTextureCoords = Rect(Float(rect.x - tileRect.x) / tileRect.width,
-                                      Float(rect.y - tileRect.y) / tileRect.height,
-                                      Float(rect.width) / tileRect.width,
-                                      Float(rect.height) / tileRect.height);
+        effect->mTextureCoords = Rect(Float(rect.X() - tileRect.X()) / tileRect.Width(),
+                                      Float(rect.Y() - tileRect.Y()) / tileRect.Height(),
+                                      Float(rect.Width()) / tileRect.Width(),
+                                      Float(rect.Height()) / tileRect.Height());
         if (img->mTextureHost->GetFlags() & TextureFlags::ORIGIN_BOTTOM_LEFT) {
-          effect->mTextureCoords.y = effect->mTextureCoords.YMost();
-          effect->mTextureCoords.height = -effect->mTextureCoords.height;
+          effect->mTextureCoords.SetRectY(effect->mTextureCoords.YMost(),
+                                          -effect->mTextureCoords.Height());
         }
         aCompositor->DrawGeometry(rect, aClipRect, aEffectChain,
                                   aOpacity, aTransform, aGeometry);
@@ -284,14 +285,14 @@ ImageHost::Composite(Compositor* aCompositor,
                                    aClipRect, aTransform, mFlashCounter);
     } else {
       IntSize textureSize = mCurrentTextureSource->GetSize();
-      effect->mTextureCoords = Rect(Float(img->mPictureRect.x) / textureSize.width,
-                                    Float(img->mPictureRect.y) / textureSize.height,
-                                    Float(img->mPictureRect.width) / textureSize.width,
-                                    Float(img->mPictureRect.height) / textureSize.height);
+      effect->mTextureCoords = Rect(Float(img->mPictureRect.X()) / textureSize.width,
+                                    Float(img->mPictureRect.Y()) / textureSize.height,
+                                    Float(img->mPictureRect.Width()) / textureSize.width,
+                                    Float(img->mPictureRect.Height()) / textureSize.height);
 
       if (img->mTextureHost->GetFlags() & TextureFlags::ORIGIN_BOTTOM_LEFT) {
-        effect->mTextureCoords.y = effect->mTextureCoords.YMost();
-        effect->mTextureCoords.height = -effect->mTextureCoords.height;
+        effect->mTextureCoords.SetRectY(effect->mTextureCoords.YMost(),
+                                        -effect->mTextureCoords.Height());
       }
 
       aCompositor->DrawGeometry(pictureRect, aClipRect, aEffectChain,
@@ -459,7 +460,7 @@ ImageHost::GetImageSize() const
 {
   const TimedImage* img = ChooseImage();
   if (img) {
-    return IntSize(img->mPictureRect.width, img->mPictureRect.height);
+    return IntSize(img->mPictureRect.Width(), img->mPictureRect.Height());
   }
   return IntSize();
 }
@@ -472,8 +473,8 @@ ImageHost::IsOpaque()
     return false;
   }
 
-  if (img->mPictureRect.width == 0 ||
-      img->mPictureRect.height == 0 ||
+  if (img->mPictureRect.Width() == 0 ||
+      img->mPictureRect.Height() == 0 ||
       !img->mTextureHost) {
     return false;
   }

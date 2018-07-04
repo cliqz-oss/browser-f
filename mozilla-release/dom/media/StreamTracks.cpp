@@ -9,10 +9,11 @@
 
 namespace mozilla {
 
+#ifdef DEBUG
+
 extern LazyLogModule gMediaStreamGraphLog;
 #define STREAM_LOG(type, msg) MOZ_LOG(gMediaStreamGraphLog, type, msg)
 
-#ifdef DEBUG
 void
 StreamTracks::DumpTrackInfo() const
 {
@@ -61,7 +62,7 @@ StreamTracks::GetAllTracksEnd() const
 }
 
 StreamTracks::Track*
-StreamTracks::FindTrack(TrackID aID)
+StreamTracks::FindTrack(TrackID aID) const
 {
   if (aID == TRACK_NONE || mTracks.IsEmpty()) {
     return nullptr;

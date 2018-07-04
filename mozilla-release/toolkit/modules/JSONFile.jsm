@@ -28,25 +28,25 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [
+var EXPORTED_SYMBOLS = [
   "JSONFile",
 ];
 
 // Globals
 
-const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.defineModuleGetter(this, "AsyncShutdown",
+                               "resource://gre/modules/AsyncShutdown.jsm");
+ChromeUtils.defineModuleGetter(this, "DeferredTask",
+                               "resource://gre/modules/DeferredTask.jsm");
+ChromeUtils.defineModuleGetter(this, "FileUtils",
+                               "resource://gre/modules/FileUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "OS",
+                               "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(this, "NetUtil",
+                               "resource://gre/modules/NetUtil.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "AsyncShutdown",
-                                  "resource://gre/modules/AsyncShutdown.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
-                                  "resource://gre/modules/DeferredTask.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
-                                  "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "gTextDecoder", function() {
   return new TextDecoder();
@@ -179,6 +179,10 @@ JSONFile.prototype = {
    *          if there is no dataPostProcessor.
    */
   async load() {
+    if (this.dataReady) {
+      return;
+    }
+
     let data = {};
 
     try {
@@ -238,8 +242,8 @@ JSONFile.prototype = {
                                             FileUtils.MODE_RDONLY,
                                             FileUtils.PERMS_FILE, 0);
       try {
-        let json = Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
-        data = json.decodeFromStream(inputStream, inputStream.available());
+        let bytes = NetUtil.readInputStream(inputStream, inputStream.available());
+        data = JSON.parse(gTextDecoder.decode(bytes));
       } finally {
         inputStream.close();
       }

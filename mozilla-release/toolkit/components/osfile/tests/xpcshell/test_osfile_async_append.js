@@ -1,8 +1,8 @@
 "use strict";
 
-do_print("starting tests");
+info("starting tests");
 
-Components.utils.import("resource://gre/modules/osfile.jsm");
+ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 /**
  * A test to check that the |append| mode flag is correctly implemented.
@@ -27,11 +27,7 @@ async function test_append(mode) {
                           "test_osfile_async_append.tmp");
 
   // Clear any left-over files from previous runs.
-  try {
-    await OS.File.remove(path);
-  } catch (ex if ex.becauseNoSuchFile) {
-    // ignore
-  }
+  await removeTestFile(path);
 
   try {
     mode = setup_mode(mode);
@@ -49,16 +45,12 @@ async function test_append(mode) {
       await file.write(new Uint8Array(100));
       // Should be at offset 1100, length 1100 now.
       let stat = await file.stat();
-      do_check_eq(1100, stat.size);
+      Assert.equal(1100, stat.size);
     } finally {
       await file.close();
     }
-  } catch(ex) {
-    try {
-      await OS.File.remove(path);
-    } catch (ex if ex.becauseNoSuchFile) {
-      // ignore.
-    }
+  } catch (ex) {
+    await removeTestFile(path);
   }
 }
 
@@ -68,11 +60,7 @@ async function test_no_append(mode) {
                           "test_osfile_async_noappend.tmp");
 
   // Clear any left-over files from previous runs.
-  try {
-    await OS.File.remove(path);
-  } catch (ex if ex.becauseNoSuchFile) {
-    // ignore
-  }
+  await removeTestFile(path);
 
   try {
     mode = setup_mode(mode);
@@ -90,23 +78,19 @@ async function test_no_append(mode) {
       await file.write(new Uint8Array(100));
       // Should be at offset 200, length 1000 now.
       let stat = await file.stat();
-      do_check_eq(1000, stat.size);
+      Assert.equal(1000, stat.size);
     } finally {
       await file.close();
     }
   } finally {
-    try {
-      await OS.File.remove(path);
-    } catch (ex if ex.becauseNoSuchFile) {
-      // ignore.
-    }
+    await removeTestFile(path);
   }
 }
 
 var test_flags = [
   {},
-  {create:true},
-  {trunc:true}
+  {create: true},
+  {trunc: true}
 ];
 function run_test() {
   do_test_pending();

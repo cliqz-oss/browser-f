@@ -3,6 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/ClearOnShutdown.h"
 #include "nsAutoPtr.h"
 #include "nsJARProtocolHandler.h"
 #include "nsIIOService.h"
@@ -12,7 +13,6 @@
 #include "nsJARURI.h"
 #include "nsIURL.h"
 #include "nsJARChannel.h"
-#include "nsXPIDLString.h"
 #include "nsString.h"
 #include "nsNetCID.h"
 #include "nsIMIMEService.h"
@@ -25,7 +25,7 @@ static NS_DEFINE_CID(kZipReaderCacheCID, NS_ZIPREADERCACHE_CID);
 
 //-----------------------------------------------------------------------------
 
-nsJARProtocolHandler *gJarHandler = nullptr;
+StaticRefPtr<nsJARProtocolHandler> gJarHandler;
 
 nsJARProtocolHandler::nsJARProtocolHandler()
 {
@@ -33,10 +33,7 @@ nsJARProtocolHandler::nsJARProtocolHandler()
 }
 
 nsJARProtocolHandler::~nsJARProtocolHandler()
-{
-    MOZ_ASSERT(gJarHandler == this);
-    gJarHandler = nullptr;
-}
+{}
 
 nsresult
 nsJARProtocolHandler::Init()
@@ -64,23 +61,18 @@ NS_IMPL_ISUPPORTS(nsJARProtocolHandler,
                   nsIProtocolHandler,
                   nsISupportsWeakReference)
 
-nsJARProtocolHandler*
+already_AddRefed<nsJARProtocolHandler>
 nsJARProtocolHandler::GetSingleton()
 {
     if (!gJarHandler) {
         gJarHandler = new nsJARProtocolHandler();
-        if (!gJarHandler)
-            return nullptr;
-
-        NS_ADDREF(gJarHandler);
-        nsresult rv = gJarHandler->Init();
-        if (NS_FAILED(rv)) {
-            NS_RELEASE(gJarHandler);
-            return nullptr;
+        if (NS_SUCCEEDED(gJarHandler->Init())) {
+            ClearOnShutdown(&gJarHandler);
+        } else {
+            gJarHandler = nullptr;
         }
     }
-    NS_ADDREF(gJarHandler);
-    return gJarHandler;
+    return do_AddRef(gJarHandler);
 }
 
 NS_IMETHODIMP
@@ -126,21 +118,11 @@ nsJARProtocolHandler::NewURI(const nsACString &aSpec,
                              nsIURI *aBaseURI,
                              nsIURI **result)
 {
-    nsresult rv = NS_OK;
-
-    RefPtr<nsJARURI> jarURI = new nsJARURI();
-    if (!jarURI)
-        return NS_ERROR_OUT_OF_MEMORY;
-
-    rv = jarURI->Init(aCharset);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    rv = jarURI->SetSpecWithBase(aSpec, aBaseURI);
-    if (NS_FAILED(rv))
-        return rv;
-
-    NS_ADDREF(*result = jarURI);
-    return rv;
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    return NS_MutateURI(new nsJARURI::Mutator())
+             .Apply(NS_MutatorMethod(&nsIJARURIMutator::SetSpecBaseCharset,
+                                     nsCString(aSpec), base, aCharset))
+             .Finalize(result);
 }
 
 NS_IMETHODIMP

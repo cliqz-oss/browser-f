@@ -3,7 +3,7 @@
 <head>
   <title>Tabs lastAccessed Test</title>
   <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/SpawnTask.js"></script>
+  <script type="text/javascript" src="/tests/SimpleTest/AddTask.js"></script>
   <script type="text/javascript" src="/tests/SimpleTest/ExtensionTestUtils.js"></script>
   <script type="text/javascript" src="head.js"></script>
   <link rel="stylesheet" href="/tests/SimpleTest/test.css"/>
@@ -36,8 +36,14 @@ add_task(async function testLastAccessed() {
 
         let now = Date.now();
 
-        browser.test.assertTrue(past < tab1.lastAccessed &&
-                                tab1.lastAccessed < tab2.lastAccessed &&
+        browser.test.assertTrue(typeof tab1.lastAccessed == "number",
+                                "tab1 lastAccessed should be a number");
+
+        browser.test.assertTrue(typeof tab2.lastAccessed == "number",
+                                "tab2 lastAccessed should be a number");
+
+        browser.test.assertTrue(past <= tab1.lastAccessed &&
+                                tab1.lastAccessed <= tab2.lastAccessed &&
                                 tab2.lastAccessed <= now,
                                 "lastAccessed timestamps are recent and in the right order");
 

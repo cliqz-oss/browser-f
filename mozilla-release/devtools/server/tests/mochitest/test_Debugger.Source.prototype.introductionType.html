@@ -18,14 +18,14 @@ JavaScrip appearing in an inline event handler attribute.
 <script>
 "use strict";
 
-Components.utils.import("resource://gre/modules/jsdebugger.jsm");
+ChromeUtils.import("resource://gre/modules/jsdebugger.jsm");
 addDebuggerToGlobal(this);
 
 let dbg;
 let iframeDO, doc;
 let Tootles, TootlesDO;
 
-window.onload = function () {
+window.onload = function() {
   SimpleTest.waitForExplicitFinish();
   runNextTest();
 };

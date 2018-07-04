@@ -23,23 +23,23 @@ const TEST_URI = `
   <span class="testclass">This is a span</span>
 `;
 
-add_task(function* () {
-  yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  let {inspector, view} = yield openRuleView();
+add_task(async function() {
+  await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
+  let {inspector, view} = await openRuleView();
 
-  yield selectNode("#testid", inspector);
-  yield testEditSelector(view, "span");
-  yield testAddImportantProperty(view);
-  yield testAddMatchedRule(view, "span, div");
+  await selectNode("#testid", inspector);
+  await testEditSelector(view, "span");
+  await testAddImportantProperty(view);
+  await testAddMatchedRule(view, "span, div");
 });
 
-function* testEditSelector(view, name) {
+async function testEditSelector(view, name) {
   info("Test editing existing selector fields");
 
   let ruleEditor = getRuleViewRuleEditor(view, 1);
 
   info("Focusing an existing selector name in the rule-view");
-  let editor = yield focusEditableField(view, ruleEditor.selectorText);
+  let editor = await focusEditableField(view, ruleEditor.selectorText);
 
   is(inplaceEditor(ruleEditor.selectorText), editor,
     "The selector editor got focused");
@@ -51,8 +51,8 @@ function* testEditSelector(view, name) {
   let onRuleViewChanged = once(view, "ruleview-changed");
 
   info("Entering the commit key");
-  EventUtils.synthesizeKey("VK_RETURN", {});
-  yield onRuleViewChanged;
+  EventUtils.synthesizeKey("KEY_Enter");
+  await onRuleViewChanged;
 
   ok(getRuleViewRule(view, name), "Rule with " + name + " selector exists.");
   ok(getRuleViewRuleEditor(view, 1).element.getAttribute("unmatched"),
@@ -60,13 +60,13 @@ function* testEditSelector(view, name) {
 
   // Escape the new property editor after editing the selector
   let onBlur = once(view.styleDocument.activeElement, "blur");
-  EventUtils.synthesizeKey("VK_ESCAPE", {}, view.styleWindow);
-  yield onBlur;
+  EventUtils.synthesizeKey("KEY_Escape", {}, view.styleWindow);
+  await onBlur;
 }
 
-function* testAddImportantProperty(view) {
+async function testAddImportantProperty(view) {
   info("Test creating a new property with !important");
-  let textProp = yield addProperty(view, 1, "color", "red !important");
+  let textProp = await addProperty(view, 1, "color", "red !important");
 
   is(textProp.value, "red", "Text prop should have been changed.");
   is(textProp.priority, "important",
@@ -79,13 +79,13 @@ function* testAddImportantProperty(view) {
     "Existing property on matched rule should not be overridden");
 }
 
-function* testAddMatchedRule(view, name) {
+async function testAddMatchedRule(view, name) {
   info("Test adding a matching selector");
 
   let ruleEditor = getRuleViewRuleEditor(view, 1);
 
   info("Focusing an existing selector name in the rule-view");
-  let editor = yield focusEditableField(view, ruleEditor.selectorText);
+  let editor = await focusEditableField(view, ruleEditor.selectorText);
 
   is(inplaceEditor(ruleEditor.selectorText), editor,
     "The selector editor got focused");
@@ -97,14 +97,14 @@ function* testAddMatchedRule(view, name) {
   let onRuleViewChanged = once(view, "ruleview-changed");
 
   info("Entering the commit key");
-  EventUtils.synthesizeKey("VK_RETURN", {});
-  yield onRuleViewChanged;
+  EventUtils.synthesizeKey("KEY_Enter");
+  await onRuleViewChanged;
 
   is(getRuleViewRuleEditor(view, 1).element.getAttribute("unmatched"), "false",
     "Rule with " + name + " does match the current element.");
 
   // Escape the new property editor after editing the selector
   let onBlur = once(view.styleDocument.activeElement, "blur");
-  EventUtils.synthesizeKey("VK_ESCAPE", {}, view.styleWindow);
-  yield onBlur;
+  EventUtils.synthesizeKey("KEY_Escape", {}, view.styleWindow);
+  await onBlur;
 }

@@ -5,15 +5,11 @@
 #ifndef WAV_DEMUXER_H_
 #define WAV_DEMUXER_H_
 
-#include "mozilla/Attributes.h"
-#include "mozilla/Maybe.h"
 #include "MediaDataDemuxer.h"
 #include "MediaResource.h"
-#include "mp4_demuxer/ByteReader.h"
-
-using mp4_demuxer::ByteReader;
 
 namespace mozilla {
+class BufferReader;
 
 static const uint32_t FRMT_CODE = 0x666d7420;
 static const uint32_t DATA_CODE = 0x64617461;
@@ -30,13 +26,17 @@ static const uint16_t DATA_CHUNK_SIZE = 768;
 
 class WAVTrackDemuxer;
 
-class WAVDemuxer : public MediaDataDemuxer
+DDLoggedTypeDeclNameAndBase(WAVDemuxer, MediaDataDemuxer);
+DDLoggedTypeNameAndBase(WAVTrackDemuxer, MediaTrackDemuxer);
+
+class WAVDemuxer
+  : public MediaDataDemuxer
+  , public DecoderDoctorLifeLogger<WAVDemuxer>
 {
 public:
   // MediaDataDemuxer interface.
   explicit WAVDemuxer(MediaResource* aSource);
   RefPtr<InitPromise> Init() override;
-  bool HasTrackType(TrackInfo::TrackType aType) const override;
   uint32_t GetNumberTracks(TrackInfo::TrackType aType) const override;
   already_AddRefed<MediaTrackDemuxer> GetTrackDemuxer(
     TrackInfo::TrackType aType, uint32_t aTrackNumber) override;
@@ -57,7 +57,7 @@ private:
 public:
   const RIFFHeader& RiffHeader() const;
 
-  uint32_t Parse(ByteReader& aReader);
+  Result<uint32_t, nsresult> Parse(BufferReader& aReader);
 
   void Reset();
 
@@ -91,7 +91,7 @@ private:
 public:
   const ChunkHeader& GiveHeader() const;
 
-  uint32_t Parse(ByteReader& aReader);
+  Result<uint32_t, nsresult> Parse(BufferReader& aReader);
 
   void Reset();
 
@@ -127,7 +127,7 @@ private:
 public:
   const FormatChunk& FmtChunk() const;
 
-  uint32_t Parse(ByteReader& aReader);
+  Result<uint32_t, nsresult> Parse(BufferReader& aReader);
 
   void Reset();
 
@@ -181,7 +181,9 @@ private:
   DataChunk mChunk;
 };
 
-class WAVTrackDemuxer : public MediaTrackDemuxer
+class WAVTrackDemuxer
+  : public MediaTrackDemuxer
+  , public DecoderDoctorLifeLogger<WAVTrackDemuxer>
 {
 public:
   explicit WAVTrackDemuxer(MediaResource* aSource);

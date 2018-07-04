@@ -2,6 +2,8 @@
 # `taskcluster/taskgraph/cron/schema.py`.  For documentation, see
 # `taskcluster/docs/cron.rst`.
 
+---
+
 jobs:
     - name: nightly-desktop
       job:
@@ -10,13 +12,12 @@ jobs:
           target-tasks-method: nightly_desktop
       run-on-projects:
           - mozilla-central
-          - date
       when:
           by-project:
-            # Match buildbot starts for now
-            date: [{hour: 15, minute: 0}]
-            mozilla-central: [{hour: 10, minute: 0}]
-            # No default
+              # Match buildbot starts for now
+              date: [{hour: 15, minute: 0}]
+              mozilla-central: [{hour: 10, minute: 0}, {hour: 22, minute: 0}]
+              # No default
 
     - name: nightly-desktop-linux
       job:
@@ -25,8 +26,7 @@ jobs:
           target-tasks-method: nightly_linux
       run-on-projects:
           - mozilla-central
-          - date
-      when: [] # never (hook only)
+      when: []  # never (hook only)
 
     - name: nightly-desktop-osx
       job:
@@ -35,18 +35,25 @@ jobs:
           target-tasks-method: nightly_macosx
       run-on-projects:
           - mozilla-central
-          - date
-      when: [] # never (hook only)
+      when: []  # never (hook only)
 
-    - name: nightly-desktop-win
+    - name: nightly-desktop-win32
       job:
           type: decision-task
-          treeherder-symbol: Nd-Win
-          target-tasks-method: nightly_win
+          treeherder-symbol: Nd-win32
+          target-tasks-method: nightly_win32
       run-on-projects:
           - mozilla-central
-          - date
-      when: [] # never (hook only)
+      when: []  # never (hook only)
+
+    - name: nightly-desktop-win64
+      job:
+          type: decision-task
+          treeherder-symbol: Nd-win64
+          target-tasks-method: nightly_win64
+      run-on-projects:
+          - mozilla-central
+      when: []  # never (hook only)
 
     - name: nightly-android
       job:
@@ -55,13 +62,12 @@ jobs:
           target-tasks-method: nightly_fennec
       run-on-projects:
           - mozilla-central
-          - date
       when:
-        by-project:
-            # Match buildbot starts for now
-            date: [{hour: 15, minute: 0}]
-            mozilla-central: [{hour: 10, minute: 0}]
-            # No default
+          by-project:
+              # Match buildbot starts for now
+              date: [{hour: 15, minute: 0}]
+              mozilla-central: [{hour: 10, minute: 0}]
+              # No default
 
     - name: nightly-mochitest-valgrind
       job:
@@ -83,5 +89,43 @@ jobs:
           - mozilla-central
       when:
           by-project:
-            mozilla-central: [{hour: 10, minute: 0}]
-            # No default
+              mozilla-central: [{hour: 10, minute: 0}]
+              # No default
+
+    - name: searchfox-index
+      job:
+          type: decision-task
+          treeherder-symbol: Searchfox
+          target-tasks-method: searchfox_index
+      run-on-projects:
+          - mozilla-central
+      when:
+          by-project:
+              mozilla-central: [{hour: 10, minute: 30}]
+              # No default
+
+    - name: periodic-update
+      job:
+          type: decision-task
+          treeherder-symbol: Nfile
+          target-tasks-method: file_update
+      run-on-projects:
+          - mozilla-central
+          - mozilla-beta
+          - mozilla-release
+          - mozilla-esr60
+      when:
+          by-project:
+              # No default branch
+              mozilla-central:
+                  - {weekday: 'Monday', hour: 10, minute: 0}
+                  - {weekday: 'Thursday', hour: 10, minute: 0}
+              mozilla-beta:
+                  - {weekday: 'Monday', hour: 10, minute: 0}
+                  - {weekday: 'Thursday', hour: 10, minute: 0}
+              mozilla-release:
+                  - {weekday: 'Monday', hour: 10, minute: 0}
+                  - {weekday: 'Thursday', hour: 10, minute: 0}
+              mozilla-esr60:
+                  - {weekday: 'Monday', hour: 10, minute: 0}
+                  - {weekday: 'Thursday', hour: 10, minute: 0}

@@ -8,7 +8,6 @@
 
 #include "GMPProcessParent.h"
 #include "GMPServiceParent.h"
-#include "GMPDecryptorParent.h"
 #include "GMPVideoDecoderParent.h"
 #include "GMPVideoEncoderParent.h"
 #include "GMPTimerParent.h"
@@ -21,10 +20,6 @@
 #include "nsTArray.h"
 #include "nsIFile.h"
 #include "mozilla/MozPromise.h"
-
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
 
 namespace mozilla {
 namespace ipc {
@@ -158,10 +153,8 @@ private:
   RefPtr<GenericPromise> ReadGMPInfoFile(nsIFile* aFile);
   RefPtr<GenericPromise> ParseChromiumManifest(const nsAString& aJSON); // Main thread.
   RefPtr<GenericPromise> ReadChromiumManifestFile(nsIFile* aFile); // GMP thread.
-#ifdef MOZ_CRASHREPORTER
   void WriteExtraDataForMinidump();
   bool GetCrashID(nsString& aResult);
-#endif
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
   mozilla::ipc::IPCResult RecvInitCrashReporter(Shmem&& shmem, const NativeThreadId& aThreadId) override;
@@ -222,9 +215,7 @@ private:
   // to terminate gracefully.
   bool mHoldingSelfRef;
 
-#ifdef MOZ_CRASHREPORTER
   UniquePtr<ipc::CrashReporterHost> mCrashReporter;
-#endif
 
   const RefPtr<AbstractThread> mMainThread;
 };

@@ -1,19 +1,8 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- * This Original Code has been modified by IBM Corporation.
- * Modifications made by IBM described herein are
- * Copyright (c) International Business Machines
- * Corporation, 2000
- *
- * Modifications to Mozilla code or documentation
- * identified per MPL Section 3.3
- *
- * Date         Modified by     Description of modification
- * 05/03/2000   IBM Corp.       Observer related defines for reflow
- */
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* a presentation of a document, part 2 */
 
@@ -24,10 +13,12 @@
 #include "mozilla/EventForwards.h"
 #include "mozilla/FlushType.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/ServoStyleSet.h"
 #include "mozilla/StaticPtr.h"
-#include "mozilla/StyleSetHandle.h"
 #include "mozilla/StyleSheet.h"
+#include "mozilla/UniquePtr.h"
 #include "mozilla/WeakPtr.h"
+#include "GeckoProfiler.h"
 #include "gfxPoint.h"
 #include "nsTHashtable.h"
 #include "nsHashKeys.h"
@@ -35,9 +26,10 @@
 #include "nsIContent.h"
 #include "nsISelectionController.h"
 #include "nsQueryFrame.h"
+#include "nsStringFwd.h"
 #include "nsCoord.h"
 #include "nsColor.h"
-#include "nsFrameManagerBase.h"
+#include "nsFrameManager.h"
 #include "nsRect.h"
 #include "nsRegionFwd.h"
 #include "nsWeakReference.h"
@@ -49,6 +41,7 @@
 #include "nsIImageLoadingContent.h"
 #include "nsMargin.h"
 #include "nsFrameState.h"
+#include "nsStubDocumentObserver.h"
 #include "Units.h"
 
 class gfxContext;
@@ -56,15 +49,15 @@ class nsDocShell;
 class nsIDocument;
 class nsIFrame;
 class nsPresContext;
+class nsWindowSizes;
 class nsViewManager;
 class nsView;
 class nsIPageSequenceFrame;
 class nsCanvasFrame;
-class nsAString;
 class nsCaret;
 namespace mozilla {
 class AccessibleCaretEventHub;
-class CSSStyleSheet;
+class StyleSheet;
 } // namespace mozilla
 class nsFrameSelection;
 class nsFrameManager;
@@ -77,7 +70,6 @@ template<class E> class nsCOMArray;
 class AutoWeakFrame;
 class WeakFrame;
 class nsIScrollableFrame;
-class nsIDOMEvent;
 class nsDisplayList;
 class nsDisplayListBuilder;
 class nsPIDOMWindowOuter;
@@ -96,7 +88,6 @@ class DocAccessible;
 } // namespace a11y
 } // namespace mozilla
 #endif
-struct nsArenaMemoryStats;
 class nsITimer;
 
 namespace mozilla {
@@ -104,6 +95,8 @@ class EventStates;
 
 namespace dom {
 class Element;
+class Event;
+class HTMLSlotElement;
 class Touch;
 class Selection;
 class ShadowRoot;
@@ -138,10 +131,10 @@ typedef struct CapturingContentInfo {
   mozilla::StaticRefPtr<nsIContent> mContent;
 } CapturingContentInfo;
 
-// a75573d6-34c8-4485-8fb7-edcb6fc70e12
+// b7b89561-4f03-44b3-9afa-b47e7f313ffb
 #define NS_IPRESSHELL_IID \
-{ 0xa75573d6, 0x34c8, 0x4485, \
-  { 0x8f, 0xb7, 0xed, 0xcb, 0x6f, 0xc7, 0x0e, 0x12 } }
+  { 0xb7b89561, 0x4f03, 0x44b3, \
+    { 0x9a, 0xfa, 0xb4, 0x7e, 0x7f, 0x31, 0x3f, 0xfb } }
 
 // debug VerifyReflow flags
 #define VERIFY_REFLOW_ON                    0x01
@@ -174,7 +167,7 @@ enum nsRectVisibility {
  * frame.
  */
 
-class nsIPresShell : public nsISupports
+class nsIPresShell : public nsStubDocumentObserver
 {
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_IPRESSHELL_IID)
@@ -287,19 +280,9 @@ public:
   }
 #endif
 
-#ifdef MOZILLA_INTERNAL_API
-  mozilla::StyleSetHandle StyleSet() const { return mStyleSet; }
+  mozilla::ServoStyleSet* StyleSet() const { return mStyleSet.get(); }
 
   nsCSSFrameConstructor* FrameConstructor() const { return mFrameConstructor; }
-
-  nsFrameManager* FrameManager() const {
-    // reinterpret_cast is valid since nsFrameManager does not add
-    // any members over nsFrameManagerBase.
-    return reinterpret_cast<nsFrameManager*>
-                           (const_cast<nsIPresShell*>(this)->mFrameManager);
-  }
-
-#endif
 
   /* Enable/disable author style level. Disabling author style disables the entire
    * author level of the cascade, including the HTML preshint level.
@@ -349,12 +332,15 @@ public:
    */
   const nsFrameSelection* ConstFrameSelection() const { return mSelection; }
 
-  // Make shell be a document observer.  If called after Destroy() has
-  // been called on the shell, this will be ignored.
-  virtual void BeginObservingDocument() = 0;
+  // Start receiving notifications from our document. If called after Destroy,
+  // this will be ignored.
+  void BeginObservingDocument();
 
-  // Make shell stop being a document observer
-  virtual void EndObservingDocument() = 0;
+  // Stop receiving notifications from our document. If called after Destroy,
+  // this will be ignored.
+  void EndObservingDocument();
+
+  bool IsObservingDocument() const { return mIsObservingDocument; }
 
   /**
    * Return whether Initialize() was previously called.
@@ -363,27 +349,38 @@ public:
 
   /**
    * Perform initialization. Constructs the frame for the root content
-   * object and then enqueues a reflow of the frame model into the
-   * specified width and height.
-   *
-   * The coordinates for aWidth and aHeight must be in standard nscoords.
+   * object and then enqueues a reflow of the frame model.
    *
    * Callers of this method must hold a reference to this shell that
    * is guaranteed to survive through arbitrary script execution.
    * Calling Initialize can execute arbitrary script.
    */
-  virtual nsresult Initialize(nscoord aWidth, nscoord aHeight) = 0;
+  virtual nsresult Initialize() = 0;
 
+  enum class ResizeReflowOptions : uint32_t {
+    // the resulting BSize should be exactly as given
+    eBSizeExact,
+    // the resulting BSize can be less than the given one, producing
+    // shrink-to-fit sizing in the block dimension
+    eBSizeLimit
+  };
   /**
    * Reflow the frame model into a new width and height.  The
    * coordinates for aWidth and aHeight must be in standard nscoord's.
    */
-  virtual nsresult ResizeReflow(nscoord aWidth, nscoord aHeight, nscoord aOldWidth = 0, nscoord aOldHeight = 0) = 0;
+  virtual nsresult ResizeReflow(nscoord aWidth, nscoord aHeight,
+                                nscoord aOldWidth = 0, nscoord aOldHeight = 0,
+                                ResizeReflowOptions aOptions =
+                                  ResizeReflowOptions::eBSizeExact) = 0;
   /**
    * Do the same thing as ResizeReflow but even if ResizeReflowOverride was
    * called previously.
    */
-  virtual nsresult ResizeReflowIgnoreOverride(nscoord aWidth, nscoord aHeight, nscoord aOldWidth, nscoord aOldHeight) = 0;
+  virtual nsresult ResizeReflowIgnoreOverride(
+                     nscoord aWidth, nscoord aHeight,
+                     nscoord aOldWidth, nscoord aOldHeight,
+                     ResizeReflowOptions aOptions =
+                       ResizeReflowOptions::eBSizeExact) = 0;
 
   /**
    * Returns true if ResizeReflowOverride has been called.
@@ -403,13 +400,8 @@ public:
   /**
    * This calls through to the frame manager to get the root frame.
    */
-  virtual nsIFrame* GetRootFrameExternal() const;
   nsIFrame* GetRootFrame() const {
-#ifdef MOZILLA_INTERNAL_API
     return mFrameManager->GetRootFrame();
-#else
-    return GetRootFrameExternal();
-#endif
   }
 
   /*
@@ -421,12 +413,6 @@ public:
    * The same as GetRootScrollFrame, but returns an nsIScrollableFrame
    */
   nsIScrollableFrame* GetRootScrollFrameAsScrollable() const;
-
-  /*
-   * The same as GetRootScrollFrame, but returns an nsIScrollableFrame.
-   * Can be called by code not linked into gklayout.
-   */
-  virtual nsIScrollableFrame* GetRootScrollFrameAsScrollableExternal() const;
 
   /**
    * Get the current focused content or DOM selection that should be the
@@ -459,6 +445,15 @@ public:
    * the specified direction.
    */
   nsIScrollableFrame* GetScrollableFrameToScroll(ScrollDirection aDirection);
+
+  /**
+   * Gets nearest ancestor scrollable frame from aFrame.  The frame is
+   * scrollable with overflow:scroll or overflow:auto in some direction when
+   * aDirection is eEither.  Otherwise, this returns a nearest frame that is
+   * scrollable in the specified direction.
+   */
+  nsIScrollableFrame* GetNearestScrollableFrame(nsIFrame* aFrame,
+                                                ScrollDirection aDirection);
 
   /**
    * Returns the page sequence frame associated with the frame hierarchy.
@@ -526,36 +521,43 @@ public:
   virtual void NotifyCounterStylesAreDirty() = 0;
 
   /**
-   * Destroy the frames for aContent.  Note that this may destroy frames
-   * for an ancestor instead - aDestroyedFramesFor contains the content node
-   * where frames were actually destroyed (which should be used in the
-   * CreateFramesFor call).  The frame tree state will be captured before
-   * the frames are destroyed in the frame constructor.
+   * Destroy the frames for aElement, and reconstruct them asynchronously if
+   * needed.
+   *
+   * Note that this may destroy frames for an ancestor instead.
    */
-  virtual void DestroyFramesFor(nsIContent*  aContent,
-                                nsIContent** aDestroyedFramesFor) = 0;
+  void DestroyFramesForAndRestyle(mozilla::dom::Element* aElement);
+
   /**
-   * Create new frames for aContent.  It will use the last captured layout
-   * history state captured in the frame constructor to restore the state
-   * in the new frame tree.
+   * Handles all the layout stuff needed when the slot assignment for an element
+   * is about to change.
+   *
+   * Only called when the slot attribute of the element changes, the rest of
+   * the changes should be handled in ShadowRoot.
    */
-  virtual void CreateFramesFor(nsIContent* aContent) = 0;
+  void SlotAssignmentWillChange(mozilla::dom::Element& aElement,
+                                mozilla::dom::HTMLSlotElement* aOldSlot,
+                                mozilla::dom::HTMLSlotElement* aNewSlot);
 
   void PostRecreateFramesFor(mozilla::dom::Element* aElement);
   void RestyleForAnimation(mozilla::dom::Element* aElement,
                            nsRestyleHint aHint);
 
-  // ShadowRoot has APIs that can change styles so we only
-  // want to restyle elements in the ShadowRoot and not the whole
-  // document.
-  virtual void RecordShadowStyleChange(mozilla::dom::ShadowRoot* aShadowRoot) = 0;
+  // ShadowRoot has APIs that can change styles. This notifies the shell that
+  // stlyes applicable in the shadow tree have potentially changed.
+  void RecordShadowStyleChange(mozilla::dom::ShadowRoot& aShadowRoot);
+
 
   /**
-   * Determine if it is safe to flush all pending notifications
-   * @param aIsSafeToFlush true if it is safe, false otherwise.
-   *
+   * Determine if it is safe to flush all pending notifications.
    */
-  virtual bool IsSafeToFlush() const = 0;
+  bool IsSafeToFlush() const;
+
+  /**
+   * Informs the document's FontFaceSet that the refresh driver ticked,
+   * flushing style and layout.
+   */
+  void NotifyFontFaceSetOnRefresh();
 
   /**
    * Flush pending notifications of the type specified.  This method
@@ -572,7 +574,6 @@ public:
    *
    * @param aType the type of notifications to flush
    */
-public:
   void FlushPendingNotifications(mozilla::FlushType aType)
   {
     if (!NeedFlush(aType)) {
@@ -627,6 +628,23 @@ public:
   inline void SetNeedLayoutFlush();
   inline void SetNeedThrottledAnimationFlush();
 
+  // Removes ourself from the list of layout / style / and resize refresh driver
+  // observers.
+  //
+  // Right now this is only used for documents in the BFCache, so if you want to
+  // use this for anything else you need to ensure we don't end up in those
+  // lists after calling this, but before calling StartObservingRefreshDriver
+  // again.
+  //
+  // That is handled by the mDocument->GetBFCacheEntry checks in
+  // DoObserve*Flushes functions, though that could conceivably become a boolean
+  // member in the shell if needed.
+  //
+  // Callers are responsible of manually calling StartObservingRefreshDriver
+  // again.
+  void StopObservingRefreshDriver();
+  void StartObservingRefreshDriver();
+
   bool ObservingStyleFlushes() const { return mObservingStyleFlushes; }
   bool ObservingLayoutFlushes() const { return mObservingLayoutFlushes; }
 
@@ -637,6 +655,12 @@ public:
   }
 
   bool NeedStyleFlush() const { return mNeedStyleFlush; }
+  /**
+   * Returns true if we might need to flush layout, even if we haven't scheduled
+   * one yet (as opposed to HasPendingReflow, which returns true if a flush is
+   * scheduled or will soon be scheduled).
+   */
+  bool NeedLayoutFlush() const { return mNeedLayoutFlush; }
 
   /**
    * Callbacks will be called even if reflow itself fails for
@@ -697,9 +721,9 @@ public:
   /**
    * @param aWhere: Either a percentage or a special value.
    *                nsIPresShell defines:
-   *                * (Default) SCROLL_MINIMUM = -1: The visible area is
-   *                scrolled to show the entire frame. If the frame is too
-   *                large, the top and left edges are given precedence.
+   *                * (Default) SCROLL_MINIMUM = -1: The visible area is scrolled
+   *                the minimum amount to show as much as possible of the frame.
+   *                This won't hide any initially visible part of the frame.
    *                * SCROLL_TOP = 0: The frame's upper edge is aligned with the
    *                top edge of the visible area.
    *                * SCROLL_BOTTOM = 100: The frame's bottom edge is aligned
@@ -806,17 +830,23 @@ public:
 
   /**
    * Determine if a rectangle specified in the frame's coordinate system
-   * intersects the viewport "enough" to be considered visible.
+   * intersects "enough" with the viewport to be considered visible. This
+   * is not a strict test against the viewport -- it's a test against
+   * the intersection of the viewport and the frame's ancestor scrollable
+   * frames. If it doesn't intersect enough, return a value indicating
+   * which direction the frame's topmost ancestor scrollable frame would
+   * need to be scrolled to bring the frame into view.
    * @param aFrame frame that aRect coordinates are specified relative to
    * @param aRect rectangle in twips to test for visibility
-   * @param aMinTwips is the minimum distance in from the edge of the viewport
-   *                  that an object must be to be counted visible
+   * @param aMinTwips is the minimum distance in from the edge of the
+   *                  visible area that an object must be to be counted
+   *                  visible
    * @return nsRectVisibility_kVisible if the rect is visible
    *         nsRectVisibility_kAboveViewport
    *         nsRectVisibility_kBelowViewport
    *         nsRectVisibility_kLeftOfViewport
-   *         nsRectVisibility_kRightOfViewport rectangle is outside the viewport
-   *         in the specified direction
+   *         nsRectVisibility_kRightOfViewport rectangle is outside the
+   *         topmost ancestor scrollable frame in the specified direction
    */
   virtual nsRectVisibility GetRectVisibility(nsIFrame *aFrame,
                                              const nsRect &aRect,
@@ -902,7 +932,10 @@ public:
                                  mozilla::WidgetEvent* aEvent,
                                  nsIFrame* aFrame,
                                  nsIContent* aContent,
-                                 nsEventStatus* aStatus) = 0;
+                                 nsEventStatus* aStatus,
+                                 bool aIsHandlingNativeEvent = false,
+                                 nsIContent** aTargetContent = nullptr,
+                                 nsIContent* aOverrideClickTarget = nullptr) = 0;
 
   /**
    * Dispatch event to content only (NOT full processing)
@@ -918,8 +951,8 @@ public:
    * @note The caller must have a strong reference to the PresShell.
    */
   virtual nsresult HandleDOMEventWithTarget(nsIContent* aTargetContent,
-                                                        nsIDOMEvent* aEvent,
-                                                        nsEventStatus* aStatus) = 0;
+                                            mozilla::dom::Event* aEvent,
+                                            nsEventStatus* aStatus) = 0;
 
   /**
    * Return whether or not the event is valid to be dispatched
@@ -1008,7 +1041,7 @@ public:
    */
   virtual void ContentStateChanged(nsIDocument* aDocument,
                                    nsIContent* aContent,
-                                   mozilla::EventStates aStateMask) = 0;
+                                   mozilla::EventStates aStateMask) override = 0;
 
   /**
    * See if reflow verification is enabled. To enable reflow verification add
@@ -1039,10 +1072,9 @@ public:
 
 #ifdef DEBUG
   // Debugging hooks
-  virtual void ListStyleContexts(FILE *out, int32_t aIndent = 0) = 0;
+  virtual void ListComputedStyles(FILE *out, int32_t aIndent = 0) = 0;
 
   virtual void ListStyleSheets(FILE *out, int32_t aIndent = 0) = 0;
-  virtual void VerifyStyleTree() = 0;
 #endif
 
 #ifdef ACCESSIBILITY
@@ -1167,54 +1199,16 @@ public:
    * frames.
    */
   virtual already_AddRefed<mozilla::gfx::SourceSurface>
-  RenderSelection(nsISelection* aSelection,
+  RenderSelection(mozilla::dom::Selection* aSelection,
                   const mozilla::LayoutDeviceIntPoint aPoint,
                   mozilla::LayoutDeviceIntRect* aScreenRect,
                   uint32_t aFlags) = 0;
 
-  void AddAutoWeakFrameInternal(AutoWeakFrame* aWeakFrame);
-  virtual void AddAutoWeakFrameExternal(AutoWeakFrame* aWeakFrame);
-  void AddWeakFrameInternal(WeakFrame* aWeakFrame);
-  virtual void AddWeakFrameExternal(WeakFrame* aWeakFrame);
+  void AddAutoWeakFrame(AutoWeakFrame* aWeakFrame);
+  void AddWeakFrame(WeakFrame* aWeakFrame);
 
-  void AddAutoWeakFrame(AutoWeakFrame* aWeakFrame)
-  {
-#ifdef MOZILLA_INTERNAL_API
-    AddAutoWeakFrameInternal(aWeakFrame);
-#else
-    AddAutoWeakFrameExternal(aWeakFrame);
-#endif
-  }
-  void AddWeakFrame(WeakFrame* aWeakFrame)
-  {
-#ifdef MOZILLA_INTERNAL_API
-    AddWeakFrameInternal(aWeakFrame);
-#else
-    AddWeakFrameExternal(aWeakFrame);
-#endif
-  }
-
-  void RemoveAutoWeakFrameInternal(AutoWeakFrame* aWeakFrame);
-  virtual void RemoveAutoWeakFrameExternal(AutoWeakFrame* aWeakFrame);
-  void RemoveWeakFrameInternal(WeakFrame* aWeakFrame);
-  virtual void RemoveWeakFrameExternal(WeakFrame* aWeakFrame);
-
-  void RemoveAutoWeakFrame(AutoWeakFrame* aWeakFrame)
-  {
-#ifdef MOZILLA_INTERNAL_API
-    RemoveAutoWeakFrameInternal(aWeakFrame);
-#else
-    RemoveAutoWeakFrameExternal(aWeakFrame);
-#endif
-  }
-  void RemoveWeakFrame(WeakFrame* aWeakFrame)
-  {
-#ifdef MOZILLA_INTERNAL_API
-    RemoveWeakFrameInternal(aWeakFrame);
-#else
-    RemoveWeakFrameExternal(aWeakFrame);
-#endif
-  }
+  void RemoveAutoWeakFrame(AutoWeakFrame* aWeakFrame);
+  void RemoveWeakFrame(WeakFrame* aWeakFrame);
 
 #ifdef DEBUG
   nsIFrame* GetDrawEventTargetFrame() { return mDrawEventTargetFrame; }
@@ -1310,76 +1304,6 @@ public:
 
   // mouse capturing
   static CapturingContentInfo gCaptureInfo;
-
-  class PointerCaptureInfo final
-  {
-  public:
-    nsCOMPtr<nsIContent> mPendingContent;
-    nsCOMPtr<nsIContent> mOverrideContent;
-
-    explicit PointerCaptureInfo(nsIContent* aPendingContent)
-      : mPendingContent(aPendingContent)
-    {
-      MOZ_COUNT_CTOR(PointerCaptureInfo);
-    }
-
-    ~PointerCaptureInfo()
-    {
-      MOZ_COUNT_DTOR(PointerCaptureInfo);
-    }
-
-    bool Empty()
-    {
-      return !(mPendingContent || mOverrideContent);
-    }
-  };
-
-  class PointerInfo final
-  {
-  public:
-    uint16_t mPointerType;
-    bool mActiveState;
-    bool mPrimaryState;
-    bool mPreventMouseEventByContent;
-    explicit PointerInfo(bool aActiveState, uint16_t aPointerType,
-                         bool aPrimaryState)
-      : mPointerType(aPointerType)
-      , mActiveState(aActiveState)
-      , mPrimaryState(aPrimaryState)
-      , mPreventMouseEventByContent(false)
-    {
-    }
-  };
-
-  static void DispatchGotOrLostPointerCaptureEvent(
-                bool aIsGotCapture,
-                const mozilla::WidgetPointerEvent* aPointerEvent,
-                nsIContent* aCaptureTarget);
-
-  static PointerCaptureInfo* GetPointerCaptureInfo(uint32_t aPointerId);
-  static void SetPointerCapturingContent(uint32_t aPointerId,
-                                         nsIContent* aContent);
-  static void ReleasePointerCapturingContent(uint32_t aPointerId);
-  static nsIContent* GetPointerCapturingContent(uint32_t aPointerId);
-
-  // CheckPointerCaptureState checks cases, when got/lostpointercapture events
-  // should be fired.
-  static void CheckPointerCaptureState(
-                const mozilla::WidgetPointerEvent* aPointerEvent);
-
-  // GetPointerInfo returns true if pointer with aPointerId is situated in
-  // device, false otherwise.
-  // aActiveState is additional information, which shows state of pointer like
-  // button state for mouse.
-  static bool GetPointerInfo(uint32_t aPointerId, bool& aActiveState);
-
-  // GetPointerType returns pointer type like mouse, pen or touch for pointer
-  // event with pointerId
-  static uint16_t GetPointerType(uint32_t aPointerId);
-
-  // GetPointerPrimaryState returns state of attribute isPrimary for pointer
-  // event with pointerId
-  static bool GetPointerPrimaryState(uint32_t aPointerId);
 
   /**
    * When capturing content is set, it traps all mouse events and retargets
@@ -1559,8 +1483,7 @@ public:
   virtual nsresult HandleEvent(nsIFrame* aFrame,
                                mozilla::WidgetGUIEvent* aEvent,
                                bool aDontRetargetEvents,
-                               nsEventStatus* aEventStatus,
-                               nsIContent** aTargetContent = nullptr) = 0;
+                               nsEventStatus* aEventStatus) = 0;
   virtual bool ShouldIgnoreInvalidation() = 0;
   /**
    * Notify that we're going to call Paint with PAINT_LAYERS
@@ -1597,16 +1520,9 @@ public:
   virtual void ScheduleViewManagerFlush(PaintType aType = PAINT_DEFAULT) = 0;
   virtual void ClearMouseCaptureOnView(nsView* aView) = 0;
   virtual bool IsVisible() = 0;
-  virtual void DispatchSynthMouseMove(mozilla::WidgetGUIEvent* aEvent,
-                                      bool aFlushOnHoverChange) = 0;
+  void DispatchSynthMouseMove(mozilla::WidgetGUIEvent* aEvent);
 
-  virtual void AddSizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf,
-                                      nsArenaMemoryStats* aArenaObjectsSize,
-                                      size_t* aPresShellSize,
-                                      size_t* aStyleSetsSize,
-                                      size_t* aTextRunsSize,
-                                      size_t* aPresContextSize,
-                                      size_t* aFramePropertiesSize) = 0;
+  virtual void AddSizeOfIncludingThis(nsWindowSizes& aWindowSizes) const = 0;
 
   /**
    * Methods that retrieve the cached font inflation preferences.
@@ -1631,23 +1547,28 @@ public:
     return mFontSizeInflationDisabledInMasterProcess;
   }
 
-  /**
-   * Determine if font size inflation is enabled. This value is cached until
-   * it becomes dirty.
-   *
-   * @returns true, if font size inflation is enabled; false otherwise.
-   */
-  bool FontSizeInflationEnabled();
+  bool FontSizeInflationEnabled() const {
+    return mFontSizeInflationEnabled;
+  }
 
   /**
-   * Notify the pres shell that an event occurred making the current value of
-   * mFontSizeInflationEnabled invalid. This will schedule a recomputation of
-   * whether font size inflation is enabled on the next call to
-   * FontSizeInflationEnabled().
+   * Recomputes whether font-size inflation is enabled.
    */
-  void NotifyFontSizeInflationEnabledIsDirty()
-  {
-    mFontSizeInflationEnabledIsDirty = true;
+  void RecomputeFontSizeInflationEnabled();
+
+  /**
+   * Return true if the most recent interruptible reflow was interrupted.
+   */
+  bool IsReflowInterrupted() const {
+    return mWasLastReflowInterrupted;
+  }
+
+  /**
+   * Return true if the the interruptible reflows have to be suppressed.
+   * This may happen only if if the most recent reflow was interrupted.
+   */
+  bool SuppressInterruptibleReflows() const {
+    return mWasLastReflowInterrupted;
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -1692,38 +1613,24 @@ public:
                                                    bool* aRetVal);
 
   /**
+   * Returns whether or not the document has ever handled user input
+   */
+  virtual bool HasHandledUserInput() const = 0;
+
+  virtual void FireResizeEvent() = 0;
+
+protected:
+  /**
    * Refresh observer management.
    */
-protected:
-  virtual bool AddRefreshObserverExternal(nsARefreshObserver* aObserver,
-                                          mozilla::FlushType aFlushType);
-  bool AddRefreshObserverInternal(nsARefreshObserver* aObserver,
-                                  mozilla::FlushType aFlushType);
-  virtual bool RemoveRefreshObserverExternal(nsARefreshObserver* aObserver,
-                                             mozilla::FlushType aFlushType);
-  bool RemoveRefreshObserverInternal(nsARefreshObserver* aObserver,
-                                     mozilla::FlushType aFlushType);
-
   void DoObserveStyleFlushes();
   void DoObserveLayoutFlushes();
 
   /**
-   * Do computations necessary to determine if font size inflation is enabled.
-   * This value is cached after computation, as the computation is somewhat
-   * expensive.
-   */
-  void RecomputeFontSizeInflationEnabled();
-
-  /**
-   * Does the actual work of figuring out the current state of font size inflation.
+   * Does the actual work of figuring out the current state of font size
+   * inflation.
    */
   bool DetermineFontSizeInflationState();
-
-  /**
-   * Apply the system font scale from the corresponding pref to the PresContext,
-   * taking into account the current state of font size inflation.
-   */
-  void HandleSystemFontScale();
 
   void RecordAlloc(void* aPtr) {
 #ifdef DEBUG
@@ -1741,31 +1648,12 @@ protected:
 
 public:
   bool AddRefreshObserver(nsARefreshObserver* aObserver,
-                          mozilla::FlushType aFlushType) {
-#ifdef MOZILLA_INTERNAL_API
-    return AddRefreshObserverInternal(aObserver, aFlushType);
-#else
-    return AddRefreshObserverExternal(aObserver, aFlushType);
-#endif
-  }
-
+                          mozilla::FlushType aFlushType);
   bool RemoveRefreshObserver(nsARefreshObserver* aObserver,
-                             mozilla::FlushType aFlushType) {
-#ifdef MOZILLA_INTERNAL_API
-    return RemoveRefreshObserverInternal(aObserver, aFlushType);
-#else
-    return RemoveRefreshObserverExternal(aObserver, aFlushType);
-#endif
-  }
+                             mozilla::FlushType aFlushType);
 
   virtual bool AddPostRefreshObserver(nsAPostRefreshObserver* aObserver);
   virtual bool RemovePostRefreshObserver(nsAPostRefreshObserver* aObserver);
-
-  /**
-   * Initialize and shut down static variables.
-   */
-  static void InitializeStatics();
-  static void ReleaseStatics();
 
   // If a frame in the subtree rooted at aFrame is capturing the mouse then
   // clears that capture.
@@ -1796,6 +1684,10 @@ public:
     mIsNeverPainting = aNeverPainting;
   }
 
+  /**
+   * True if a reflow event has been scheduled, or is going to be scheduled
+   * to run in the future.
+   */
   bool HasPendingReflow() const
     { return mObservingLayoutFlushes || mReflowContinueTimer; }
 
@@ -1820,14 +1712,14 @@ protected:
   // we must share ownership.
   nsCOMPtr<nsIDocument>     mDocument;
   RefPtr<nsPresContext>   mPresContext;
-  mozilla::StyleSetHandle   mStyleSet;      // [OWNS]
+  mozilla::UniquePtr<mozilla::ServoStyleSet> mStyleSet;
   nsCSSFrameConstructor*    mFrameConstructor; // [OWNS]
   nsViewManager*           mViewManager;   // [WEAK] docViewer owns it so I don't have to
   nsPresArena               mFrameArena;
   RefPtr<nsFrameSelection> mSelection;
-  // Pointer into mFrameConstructor - this is purely so that FrameManager() and
-  // GetRootFrame() can be inlined:
-  nsFrameManagerBase*       mFrameManager;
+  // Pointer into mFrameConstructor - this is purely so that GetRootFrame() can
+  // be inlined:
+  nsFrameManager*       mFrameManager;
   mozilla::WeakPtr<nsDocShell>                 mForwardingContainer;
 #ifdef ACCESSIBILITY
   mozilla::a11y::DocAccessible* mDocAccessible;
@@ -1858,6 +1750,14 @@ protected:
   // A hash table of heap allocated weak frames.
   nsTHashtable<nsPtrHashKey<WeakFrame>> mWeakFrames;
 
+#ifdef MOZ_GECKO_PROFILER
+  // These two fields capture call stacks of any changes that require a restyle
+  // or a reflow. Only the first change per restyle / reflow is recorded (the
+  // one that caused a call to SetNeedStyleFlush() / SetNeedLayoutFlush()).
+  UniqueProfilerBacktrace mStyleCause;
+  UniqueProfilerBacktrace mReflowCause;
+#endif
+
   // Most recent canvas background color.
   nscolor                   mCanvasBackgroundColor;
 
@@ -1866,6 +1766,11 @@ protected:
   mozilla::Maybe<float>     mResolution;
 
   int16_t                   mSelectionFlags;
+
+  // This is used to protect ourselves from triggering reflow while in the
+  // middle of frame construction and the like... it really shouldn't be
+  // needed, one hopes, but it is for now.
+  uint16_t                  mChangeNestCount;
 
   // Flags controlling how our document is rendered.  These persist
   // between paints and so are tied with retained layer pixels.
@@ -1876,6 +1781,11 @@ protected:
   bool                      mDidInitialize : 1;
   bool                      mIsDestroying : 1;
   bool                      mIsReflowing : 1;
+  bool                      mIsObservingDocument : 1;
+
+  // We've been disconnected from the document.  We will refuse to paint the
+  // document until either our timer fires or all frames are constructed.
+  bool                      mIsDocumentGone : 1;
 
   // For all documents we initially lock down painting.
   bool                      mPaintingSuppressed : 1;
@@ -1885,7 +1795,8 @@ protected:
   bool                      mIsFirstPaint : 1;
   bool                      mObservesMutationsForPrint : 1;
 
-  bool                      mSuppressInterruptibleReflows : 1;
+  // Whether the most recent interruptible reflow was actually interrupted:
+  bool                      mWasLastReflowInterrupted : 1;
   bool                      mScrollPositionClampingScrollPortSizeSet : 1;
 
   // True if a layout flush might not be a no-op
@@ -1902,6 +1813,8 @@ protected:
   //
   // Guaranteed to be false if mReflowContinueTimer is non-null.
   bool mObservingLayoutFlushes: 1;
+
+  bool mResizeEventPending : 1;
 
   // True if there are throttled animations that would be processed when
   // performing a flush with mFlushAnimations == true.

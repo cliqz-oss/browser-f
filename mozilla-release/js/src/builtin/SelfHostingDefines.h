@@ -23,6 +23,9 @@
 // NB: keep this in sync with the copy in vm/ArgumentsObject.h.
 #define MAX_ARGS_LENGTH (500 * 1000)
 
+// NB: keep this in sync with the copy in vm/String.h.
+#define MAX_STRING_LENGTH ((1 << 28) - 1)
+
 // Spread non-empty argument list of up to 15 elements.
 #define SPREAD(v, n) SPREAD_##n(v)
 #define SPREAD_1(v) v[0]
@@ -50,6 +53,16 @@
 #define ATTR_NONCONFIGURABLE    0x10
 #define ATTR_NONWRITABLE        0x20
 
+// Property descriptor kind, must be different from the descriptor attributes.
+#define DATA_DESCRIPTOR_KIND     0x100
+#define ACCESSOR_DESCRIPTOR_KIND 0x200
+
+// Property descriptor array indices.
+#define PROP_DESC_ATTRS_AND_KIND_INDEX 0
+#define PROP_DESC_VALUE_INDEX 1
+#define PROP_DESC_GETTER_INDEX 1
+#define PROP_DESC_SETTER_INDEX 2
+
 // The extended slot in which the self-hosted name for self-hosted builtins is
 // stored.
 #define LAZY_FUNCTION_NAME_SLOT 0
@@ -63,9 +76,6 @@
 // to be resolved eagerly.
 #define BOUND_FUN_LENGTH_SLOT 1
 
-// Stores the private WeakMap slot used for WeakSets
-#define WEAKSET_MAP_SLOT 0
-
 #define ITERATOR_SLOT_TARGET 0
 // Used for collection iterators.
 #define ITERATOR_SLOT_RANGE 1
@@ -77,13 +87,6 @@
 #define ITEM_KIND_VALUE 1
 #define ITEM_KIND_KEY_AND_VALUE 2
 
-// NB: keep these in sync with the copy in jsfriendapi.h.
-#define JSITER_OWNONLY    0x8   /* iterate over obj's own properties only */
-#define JSITER_HIDDEN     0x10  /* also enumerate non-enumerable properties */
-#define JSITER_SYMBOLS    0x20  /* also include symbol property keys */
-#define JSITER_SYMBOLSONLY 0x40 /* exclude string property keys */
-
-
 #define REGEXP_SOURCE_SLOT 1
 #define REGEXP_FLAGS_SLOT 2
 
@@ -93,12 +96,18 @@
 #define REGEXP_STICKY_FLAG      0x08
 #define REGEXP_UNICODE_FLAG     0x10
 
-#define MODULE_OBJECT_ENVIRONMENT_SLOT 2
+#define MODULE_OBJECT_ENVIRONMENT_SLOT        1
+#define MODULE_OBJECT_STATUS_SLOT             3
+#define MODULE_OBJECT_EVALUATION_ERROR_SLOT   4
+#define MODULE_OBJECT_DFS_INDEX_SLOT          13
+#define MODULE_OBJECT_DFS_ANCESTOR_INDEX_SLOT 14
 
-#define MODULE_STATE_FAILED       0
-#define MODULE_STATE_PARSED       1
-#define MODULE_STATE_INSTANTIATED 2
-#define MODULE_STATE_EVALUATED    3
+#define MODULE_STATUS_UNINSTANTIATED  0
+#define MODULE_STATUS_INSTANTIATING   1
+#define MODULE_STATUS_INSTANTIATED    2
+#define MODULE_STATUS_EVALUATING      3
+#define MODULE_STATUS_EVALUATED       4
+#define MODULE_STATUS_EVALUATED_ERROR 5
 
 #define STRING_GENERICS_CHAR_AT               0
 #define STRING_GENERICS_CHAR_CODE_AT          1
@@ -127,5 +136,7 @@
 #define STRING_GENERICS_METHODS_LIMIT         24
 
 #define INTL_INTERNALS_OBJECT_SLOT 0
+
+#define NOT_OBJECT_KIND_DESCRIPTOR 0
 
 #endif

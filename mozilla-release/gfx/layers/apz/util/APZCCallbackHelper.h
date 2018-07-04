@@ -114,6 +114,7 @@ public:
 
     /* Dispatch a mouse event with the given parameters.
      * Return whether or not any listeners have called preventDefault on the event. */
+    MOZ_CAN_RUN_SCRIPT
     static bool DispatchMouseEvent(const nsCOMPtr<nsIPresShell>& aPresShell,
                                    const nsString& aType,
                                    const CSSPoint& aPoint,
@@ -165,8 +166,9 @@ public:
     static void NotifyFlushComplete(nsIPresShell* aShell);
 
     static void NotifyAsyncScrollbarDragRejected(const FrameMetrics::ViewID& aScrollId);
+    static void NotifyAsyncAutoscrollRejected(const FrameMetrics::ViewID& aScrollId);
 
-    static void NotifyAutoscrollHandledByAPZ(const FrameMetrics::ViewID& aScrollId);
+    static void CancelAutoscroll(const FrameMetrics::ViewID& aScrollId);
 
     /* Temporarily ignore the Displayport for better paint performance. If at
      * all possible, pass in a presShell if you have one at the call site, we

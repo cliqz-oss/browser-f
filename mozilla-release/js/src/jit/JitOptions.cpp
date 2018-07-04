@@ -8,7 +8,9 @@
 #include "mozilla/TypeTraits.h"
 
 #include <cstdlib>
-#include "jsfun.h"
+
+#include "vm/JSFunction.h"
+
 using namespace js;
 using namespace js::jit;
 
@@ -89,9 +91,6 @@ DefaultJitOptions::DefaultJitOptions()
 
     // Toggles whether Edge Case Analysis is gobally disabled.
     SET_DEFAULT(disableEdgeCaseAnalysis, false);
-
-    // Toggles whether to use flow sensitive Alias Analysis.
-    SET_DEFAULT(disableFlowAA, true);
 
     // Toggle whether global value numbering is globally disabled.
     SET_DEFAULT(disableGvn, false);
@@ -185,10 +184,6 @@ DefaultJitOptions::DefaultJitOptions()
     // pc-relative jump and call instructions.
     SET_DEFAULT(jumpThreshold, UINT32_MAX);
 
-    // Whether the (ARM) simulators should always interrupt before executing any
-    // instruction.
-    SET_DEFAULT(simulatorAlwaysInterrupt, false);
-
     // Branch pruning heuristic is based on a scoring system, which is look at
     // different metrics and provide a score. The score is computed as a
     // projection where each factor defines the weight of each metric. Then this
@@ -232,31 +227,34 @@ DefaultJitOptions::DefaultJitOptions()
             Warn(forcedRegisterAllocatorEnv, env);
     }
 
+    SET_DEFAULT(spectreIndexMasking, true);
+    SET_DEFAULT(spectreObjectMitigationsBarriers, true);
+    SET_DEFAULT(spectreObjectMitigationsMisc, true);
+    SET_DEFAULT(spectreStringMitigations, true);
+    SET_DEFAULT(spectreValueMasking, true);
+    SET_DEFAULT(spectreJitToCxxCalls, true);
+
     // Toggles whether unboxed plain objects can be created by the VM.
     SET_DEFAULT(disableUnboxedObjects, false);
 
     // Test whether Atomics are allowed in asm.js code.
     SET_DEFAULT(asmJSAtomicsEnable, false);
 
-    // Test whether wasm int64 / double NaN bits testing is enabled.
-    SET_DEFAULT(wasmTestMode, false);
-
-    // Test whether wasm bounds check should always be generated.
-    SET_DEFAULT(wasmAlwaysCheckBounds, false);
-
     // Toggles the optimization whereby offsets are folded into loads and not
     // included in the bounds check.
     SET_DEFAULT(wasmFoldOffsets, true);
+
+    // Controls whether two-tiered compilation should be requested when
+    // compiling a new wasm module, independently of other heuristics, and
+    // should be delayed to test both baseline and ion paths in compiled code,
+    // as well as the transition from one tier to the other.
+    SET_DEFAULT(wasmDelayTier2, false);
 
     // Until which wasm bytecode size should we accumulate functions, in order
     // to compile efficiently on helper threads. Baseline code compiles much
     // faster than Ion code so use scaled thresholds (see also bug 1320374).
     SET_DEFAULT(wasmBatchBaselineThreshold, 10000);
     SET_DEFAULT(wasmBatchIonThreshold, 1100);
-
-    // Determines whether we suppress using signal handlers
-    // for interrupting jit-ed code. This is used only for testing.
-    SET_DEFAULT(ionInterruptWithoutSignals, false);
 }
 
 bool

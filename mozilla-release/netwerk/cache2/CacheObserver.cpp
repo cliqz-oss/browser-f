@@ -23,18 +23,7 @@ namespace net {
 
 CacheObserver* CacheObserver::sSelf = nullptr;
 
-static uint32_t const kDefaultUseNewCache = 1; // Use the new cache by default
-uint32_t CacheObserver::sUseNewCache = kDefaultUseNewCache;
-
-static bool sUseNewCacheTemp = false; // Temp trigger to not lose early adopters
-
-static int32_t const kAutoDeleteCacheVersion = -1; // Auto-delete off by default
-static int32_t sAutoDeleteCacheVersion = kAutoDeleteCacheVersion;
-
-static int32_t const kDefaultHalfLifeExperiment = -1; // Disabled
-int32_t CacheObserver::sHalfLifeExperiment = kDefaultHalfLifeExperiment;
-
-static float const kDefaultHalfLifeHours = 1.0F; // 1 hour
+static float const kDefaultHalfLifeHours = 24.0F; // 24 hours
 float CacheObserver::sHalfLifeHours = kDefaultHalfLifeHours;
 
 static bool const kDefaultUseDiskCache = true;
@@ -150,14 +139,6 @@ CacheObserver::Shutdown()
 void
 CacheObserver::AttachToPreferences()
 {
-  sAutoDeleteCacheVersion = mozilla::Preferences::GetInt(
-    "browser.cache.auto_delete_cache_version", kAutoDeleteCacheVersion);
-
-  mozilla::Preferences::AddUintVarCache(
-    &sUseNewCache, "browser.cache.use_new_backend", kDefaultUseNewCache);
-  mozilla::Preferences::AddBoolVarCache(
-    &sUseNewCacheTemp, "browser.cache.use_new_backend_temp", false);
-
   mozilla::Preferences::AddBoolVarCache(
     &sUseDiskCache, "browser.cache.disk.enable", kDefaultUseDiskCache);
   mozilla::Preferences::AddBoolVarCache(
@@ -199,51 +180,8 @@ CacheObserver::AttachToPreferences()
     "browser.cache.disk.parent_directory", NS_GET_IID(nsIFile),
     getter_AddRefs(mCacheParentDirectoryOverride));
 
-  // First check the default value.  If it is at -1, the experient
-  // is turned off.  If it is at 0, then use the user pref value
-  // instead.
-  sHalfLifeExperiment = mozilla::Preferences::GetDefaultInt(
-    "browser.cache.frecency_experiment", kDefaultHalfLifeExperiment);
-
-  if (sHalfLifeExperiment == 0) {
-    // Default preferences indicate we want to run the experiment,
-    // hence read the user value.
-    sHalfLifeExperiment = mozilla::Preferences::GetInt(
-      "browser.cache.frecency_experiment", sHalfLifeExperiment);
-  }
-
-  if (sHalfLifeExperiment == 0) {
-    // The experiment has not yet been initialized but is engaged, do
-    // the initialization now.
-    srand(time(NULL));
-    sHalfLifeExperiment = (rand() % 4) + 1;
-    // Store the experiemnt value, since we need it not to change between
-    // browser sessions.
-    mozilla::Preferences::SetInt(
-      "browser.cache.frecency_experiment", sHalfLifeExperiment);
-  }
-
-  switch (sHalfLifeExperiment) {
-  case 1: // The experiment is engaged
-    sHalfLifeHours = 0.083F; // ~5 mintues
-    break;
-  case 2:
-    sHalfLifeHours = 0.25F; // 15 mintues
-    break;
-  case 3:
-    sHalfLifeHours = 1.0F;
-    break;
-  case 4:
-    sHalfLifeHours = 6.0F;
-    break;
-
-  case -1:
-  default: // The experiment is off or broken
-    sHalfLifeExperiment = -1;
-    sHalfLifeHours = std::max(0.01F, std::min(1440.0F, mozilla::Preferences::GetFloat(
-      "browser.cache.frecency_half_life_hours", kDefaultHalfLifeHours)));
-    break;
-  }
+  sHalfLifeHours = std::max(0.01F, std::min(1440.0F, mozilla::Preferences::GetFloat(
+    "browser.cache.frecency_half_life_hours", kDefaultHalfLifeHours)));
 
   mozilla::Preferences::AddBoolVarCache(
     &sSanitizeOnShutdown, "privacy.sanitize.sanitizeOnShutdown", kDefaultSanitizeOnShutdown);
@@ -290,25 +228,6 @@ uint32_t CacheObserver::MemoryCacheCapacity()
 
   // Result is in bytes.
   return sAutoMemoryCacheCapacity = capacity;
-}
-
-// static
-bool CacheObserver::UseNewCache()
-{
-  uint32_t useNewCache = sUseNewCache;
-
-  if (sUseNewCacheTemp)
-    useNewCache = 1;
-
-  switch (useNewCache) {
-    case 0: // use the old cache backend
-      return false;
-
-    case 1: // use the new cache backend
-      return true;
-  }
-
-  return true;
 }
 
 // static
@@ -528,8 +447,7 @@ CacheObserver::Observe(nsISupports* aSubject,
   }
 
   if (!strcmp(aTopic, "browser-delayed-startup-finished")) {
-    uint32_t activeVersion = UseNewCache() ? 1 : 0;
-    CacheStorageService::CleaupCacheDirectories(sAutoDeleteCacheVersion, activeVersion);
+    CacheStorageService::CleaupCacheDirectories();
     return NS_OK;
   }
 

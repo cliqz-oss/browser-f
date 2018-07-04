@@ -7,14 +7,13 @@
 
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc.
 #include "mozilla/EditorUtils.h"        // for EditorUtils
+#include "mozilla/dom/RangeBinding.h"
 #include "mozilla/dom/Selection.h"      // for Selection
 #include "nsAString.h"                  // for nsAString::Length
 #include "nsCycleCollectionParticipant.h"
 #include "nsDebug.h"                    // for NS_ENSURE_TRUE, etc.
 #include "nsError.h"                    // for NS_OK, etc.
 #include "nsIContent.h"                 // for nsIContent
-#include "nsIDOMCharacterData.h"        // for nsIDOMCharacterData
-#include "nsIDOMNode.h"                 // for nsIDOMNode
 #include "nsISupportsImpl.h"            // for nsRange::Release
 #include "nsRange.h"                    // for nsRange
 
@@ -29,6 +28,16 @@ using namespace dom;
  * { {startnode, startoffset} , {endnode, endoffset} } tuples.  Can't store
  * ranges since dom gravity will possibly change the ranges.
  ******************************************************************************/
+
+template nsresult
+RangeUpdater::SelAdjCreateNode(const EditorDOMPoint& aPoint);
+template nsresult
+RangeUpdater::SelAdjCreateNode(const EditorRawDOMPoint& aPoint);
+template nsresult
+RangeUpdater::SelAdjInsertNode(const EditorDOMPoint& aPoint);
+template nsresult
+RangeUpdater::SelAdjInsertNode(const EditorRawDOMPoint& aPoint);
+
 SelectionState::SelectionState()
 {
 }
@@ -70,7 +79,7 @@ SelectionState::RestoreSelection(Selection* aSel)
   NS_ENSURE_TRUE(aSel, NS_ERROR_NULL_POINTER);
 
   // clear out selection
-  aSel->RemoveAllRanges();
+  aSel->RemoveAllRanges(IgnoreErrors());
 
   // set the selection ranges anew
   size_t arrayCount = mArray.Length();
@@ -78,9 +87,10 @@ SelectionState::RestoreSelection(Selection* aSel)
     RefPtr<nsRange> range = mArray[i]->GetRange();
     NS_ENSURE_TRUE(range, NS_ERROR_UNEXPECTED);
 
-    nsresult rv = aSel->AddRange(range);
-    if (NS_FAILED(rv)) {
-      return rv;
+    ErrorResult rv;
+    aSel->AddRange(*range, rv);
+    if (rv.Failed()) {
+      return rv.StealNSResult();
     }
   }
   return NS_OK;
@@ -94,9 +104,7 @@ SelectionState::IsCollapsed()
   }
   RefPtr<nsRange> range = mArray[0]->GetRange();
   NS_ENSURE_TRUE(range, false);
-  bool bIsCollapsed = false;
-  range->GetCollapsed(&bIsCollapsed);
-  return bIsCollapsed;
+  return range->Collapsed();
 }
 
 bool
@@ -116,14 +124,15 @@ SelectionState::IsEqual(SelectionState* aSelState)
     RefPtr<nsRange> itsRange = aSelState->mArray[i]->GetRange();
     NS_ENSURE_TRUE(myRange && itsRange, false);
 
-    int16_t compResult;
-    nsresult rv;
-    rv = myRange->CompareBoundaryPoints(nsIDOMRange::START_TO_START, itsRange, &compResult);
-    if (NS_FAILED(rv) || compResult) {
+    IgnoredErrorResult rv;
+    int16_t compResult =
+      myRange->CompareBoundaryPoints(RangeBinding::START_TO_START, *itsRange, rv);
+    if (rv.Failed() || compResult) {
       return false;
     }
-    rv = myRange->CompareBoundaryPoints(nsIDOMRange::END_TO_END, itsRange, &compResult);
-    if (NS_FAILED(rv) || compResult) {
+    compResult =
+      myRange->CompareBoundaryPoints(RangeBinding::END_TO_END, *itsRange, rv);
+    if (rv.Failed() || compResult) {
       return false;
     }
   }
@@ -214,39 +223,44 @@ RangeUpdater::DropSelectionState(SelectionState& aSelState)
 
 // gravity methods:
 
+template<typename PT, typename CT>
 nsresult
-RangeUpdater::SelAdjCreateNode(nsINode* aParent,
-                               int32_t aPosition)
+RangeUpdater::SelAdjCreateNode(const EditorDOMPointBase<PT, CT>& aPoint)
 {
   if (mLock) {
     // lock set by Will/DidReplaceParent, etc...
     return NS_OK;
   }
-  NS_ENSURE_TRUE(aParent, NS_ERROR_NULL_POINTER);
   size_t count = mArray.Length();
   if (!count) {
     return NS_OK;
+  }
+
+  if (NS_WARN_IF(!aPoint.IsSetAndValid())) {
+    return NS_ERROR_FAILURE;
   }
 
   for (size_t i = 0; i < count; i++) {
     RangeItem* item = mArray[i];
     NS_ENSURE_TRUE(item, NS_ERROR_NULL_POINTER);
 
-    if (item->mStartContainer == aParent && item->mStartOffset > aPosition) {
+    if (item->mStartContainer == aPoint.GetContainer() &&
+        item->mStartOffset > static_cast<int32_t>(aPoint.Offset())) {
       item->mStartOffset++;
     }
-    if (item->mEndContainer == aParent && item->mEndOffset > aPosition) {
+    if (item->mEndContainer == aPoint.GetContainer() &&
+        item->mEndOffset > static_cast<int32_t>(aPoint.Offset())) {
       item->mEndOffset++;
     }
   }
   return NS_OK;
 }
 
+template<typename PT, typename CT>
 nsresult
-RangeUpdater::SelAdjInsertNode(nsINode* aParent,
-                               int32_t aPosition)
+RangeUpdater::SelAdjInsertNode(const EditorDOMPointBase<PT, CT>& aPoint)
 {
-  return SelAdjCreateNode(aParent, aPosition);
+  return SelAdjCreateNode(aPoint);
 }
 
 void
@@ -263,7 +277,7 @@ RangeUpdater::SelAdjDeleteNode(nsINode* aNode)
   }
 
   nsCOMPtr<nsINode> parent = aNode->GetParentNode();
-  int32_t offset = parent ? parent->IndexOf(aNode) : -1;
+  int32_t offset = parent ? parent->ComputeIndexOf(aNode) : -1;
 
   // check for range endpoints that are after aNode and in the same parent
   for (size_t i = 0; i < count; i++) {
@@ -289,7 +303,7 @@ RangeUpdater::SelAdjDeleteNode(nsINode* aNode)
 
     // check for range endpoints that are in descendants of aNode
     nsCOMPtr<nsINode> oldStart;
-    if (EditorUtils::IsDescendantOf(item->mStartContainer, aNode)) {
+    if (EditorUtils::IsDescendantOf(*item->mStartContainer, *aNode)) {
       oldStart = item->mStartContainer;  // save for efficiency hack below.
       item->mStartContainer = parent;
       item->mStartOffset = offset;
@@ -297,7 +311,7 @@ RangeUpdater::SelAdjDeleteNode(nsINode* aNode)
 
     // avoid having to call IsDescendantOf() for common case of range startnode == range endnode.
     if (item->mEndContainer == oldStart ||
-        EditorUtils::IsDescendantOf(item->mEndContainer, aNode)) {
+        EditorUtils::IsDescendantOf(*item->mEndContainer, *aNode)) {
       item->mEndContainer = parent;
       item->mEndOffset = offset;
     }
@@ -305,42 +319,47 @@ RangeUpdater::SelAdjDeleteNode(nsINode* aNode)
 }
 
 nsresult
-RangeUpdater::SelAdjSplitNode(nsIContent& aOldRightNode,
-                              int32_t aOffset,
+RangeUpdater::SelAdjSplitNode(nsIContent& aRightNode,
                               nsIContent* aNewLeftNode)
 {
   if (mLock) {
     // lock set by Will/DidReplaceParent, etc...
     return NS_OK;
   }
-  NS_ENSURE_TRUE(aNewLeftNode, NS_ERROR_NULL_POINTER);
+  if (NS_WARN_IF(!aNewLeftNode)) {
+    return NS_ERROR_FAILURE;
+  }
+
   size_t count = mArray.Length();
   if (!count) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsINode> parent = aOldRightNode.GetParentNode();
-  int32_t offset = parent ? parent->IndexOf(&aOldRightNode) : -1;
+  EditorRawDOMPoint atLeftNode(aNewLeftNode);
+  nsresult rv = SelAdjInsertNode(atLeftNode);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
 
-  // first part is same as inserting aNewLeftnode
-  nsresult rv = SelAdjInsertNode(parent, offset - 1);
-  NS_ENSURE_SUCCESS(rv, rv);
+  // If point in the ranges is in left node, change its container to the left
+  // node.  If point in the ranges is in right node, subtract numbers of
+  // children moved to left node from the offset.
+  int32_t lengthOfLeftNode = aNewLeftNode->Length();
+  for (RefPtr<RangeItem>& item : mArray) {
+    if (NS_WARN_IF(!item)) {
+      return NS_ERROR_FAILURE;
+    }
 
-  // next step is to check for range enpoints inside aOldRightNode
-  for (size_t i = 0; i < count; i++) {
-    RangeItem* item = mArray[i];
-    NS_ENSURE_TRUE(item, NS_ERROR_NULL_POINTER);
-
-    if (item->mStartContainer == &aOldRightNode) {
-      if (item->mStartOffset > aOffset) {
-        item->mStartOffset -= aOffset;
+    if (item->mStartContainer == &aRightNode) {
+      if (item->mStartOffset > lengthOfLeftNode) {
+        item->mStartOffset -= lengthOfLeftNode;
       } else {
         item->mStartContainer = aNewLeftNode;
       }
     }
-    if (item->mEndContainer == &aOldRightNode) {
-      if (item->mEndOffset > aOffset) {
-        item->mEndOffset -= aOffset;
+    if (item->mEndContainer == &aRightNode) {
+      if (item->mEndOffset > lengthOfLeftNode) {
+        item->mEndOffset -= lengthOfLeftNode;
       } else {
         item->mEndContainer = aNewLeftNode;
       }
@@ -473,15 +492,6 @@ RangeUpdater::SelAdjDeleteText(nsIContent* aTextNode,
 }
 
 nsresult
-RangeUpdater::SelAdjDeleteText(nsIDOMCharacterData* aTextNode,
-                               int32_t aOffset,
-                               int32_t aLength)
-{
-  nsCOMPtr<nsIContent> textNode = do_QueryInterface(aTextNode);
-  return SelAdjDeleteText(textNode, aOffset, aLength);
-}
-
-nsresult
 RangeUpdater::WillReplaceContainer()
 {
   if (mLock) {
@@ -563,17 +573,6 @@ RangeUpdater::DidRemoveContainer(nsINode* aNode,
     }
   }
   return NS_OK;
-}
-
-nsresult
-RangeUpdater::DidRemoveContainer(nsIDOMNode* aNode,
-                                 nsIDOMNode* aParent,
-                                 int32_t aOffset,
-                                 uint32_t aNodeOrigLen)
-{
-  nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
-  nsCOMPtr<nsINode> parent = do_QueryInterface(aParent);
-  return DidRemoveContainer(node, parent, aOffset, aNodeOrigLen);
 }
 
 nsresult

@@ -2,11 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 function PrivateBrowsingTrackingProtectionWhitelist() {
   // The list of URIs explicitly excluded from tracking protection.
@@ -17,10 +14,7 @@ function PrivateBrowsingTrackingProtectionWhitelist() {
 
 PrivateBrowsingTrackingProtectionWhitelist.prototype = {
   classID: Components.ID("{a319b616-c45d-4037-8d86-01c592b5a9af}"),
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIPrivateBrowsingTrackingProtectionWhitelist,
-                                         Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference,
-                                         Ci.nsISupports]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIPrivateBrowsingTrackingProtectionWhitelist, Ci.nsIObserver, Ci.nsISupportsWeakReference]),
   _xpcom_factory: XPCOMUtils.generateSingletonFactory(PrivateBrowsingTrackingProtectionWhitelist),
 
   /**
@@ -30,7 +24,7 @@ PrivateBrowsingTrackingProtectionWhitelist.prototype = {
    *        The URI to add to the list.
    */
   addToAllowList(uri) {
-    if (this._allowlist.indexOf(uri.spec) === -1) {
+    if (!this._allowlist.includes(uri.spec)) {
       this._allowlist.push(uri.spec);
     }
   },
@@ -55,7 +49,7 @@ PrivateBrowsingTrackingProtectionWhitelist.prototype = {
    *        The URI to add to the list.
    */
   existsInAllowList(uri) {
-    return this._allowlist.indexOf(uri.spec) !== -1;
+    return this._allowlist.includes(uri.spec);
   },
 
   observe(subject, topic, data) {

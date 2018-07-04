@@ -1,14 +1,13 @@
 config = {
     "branch": "jamun",
     "nightly_build": True,
-    "update_channel": "beta-dev",
+    "update_channel": "beta",
 
     # l10n
-    "hg_l10n_base": "https://hg.mozilla.org/releases/l10n/mozilla-beta",
+    "hg_l10n_base": "https://hg.mozilla.org/l10n-central",
 
     # repositories
     # staging beta dev releases use jamun repo for now
-    "mozilla_dir": "jamun",
     "repos": [{
         "vcs": "hg",
         "repo": "https://hg.mozilla.org/build/tools",
@@ -24,14 +23,4 @@ config = {
     # purge options
     'is_automation': True,
     'purge_minsize': 12,
-    'default_actions': [
-        "clobber",
-        "pull",
-        "clone-locales",
-        "list-locales",
-        "setup",
-        "repack",
-        "taskcluster-upload",
-        "summary",
-    ],
 }

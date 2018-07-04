@@ -6,16 +6,20 @@
 /* global runTests */
 
 var tmp = {};
-Cu.import("resource://gre/modules/PageThumbs.jsm", tmp);
-Cu.import("resource://gre/modules/BackgroundPageThumbs.jsm", tmp);
-Cu.import("resource://gre/modules/NewTabUtils.jsm", tmp);
-Cu.import("resource:///modules/sessionstore/SessionStore.jsm", tmp);
-Cu.import("resource://gre/modules/FileUtils.jsm", tmp);
-Cu.import("resource://gre/modules/osfile.jsm", tmp);
+ChromeUtils.import("resource://gre/modules/PageThumbs.jsm", tmp);
+ChromeUtils.import("resource://gre/modules/BackgroundPageThumbs.jsm", tmp);
+ChromeUtils.import("resource://gre/modules/NewTabUtils.jsm", tmp);
+ChromeUtils.import("resource:///modules/sessionstore/SessionStore.jsm", tmp);
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm", tmp);
+ChromeUtils.import("resource://gre/modules/osfile.jsm", tmp);
 var {PageThumbs, BackgroundPageThumbs, NewTabUtils, PageThumbsStorage, SessionStore, FileUtils, OS} = tmp;
 
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
+ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
   "resource://testing-common/PlacesTestUtils.jsm");
+
+XPCOMUtils.defineLazyServiceGetter(this, "PageThumbsStorageService",
+  "@mozilla.org/thumbnails/pagethumbs-service;1",
+  "nsIPageThumbsStorageService");
 
 var oldEnabledPref = Services.prefs.getBoolPref("browser.pagethumbnails.capturing_disabled");
 Services.prefs.setBoolPref("browser.pagethumbnails.capturing_disabled", false);
@@ -23,7 +27,7 @@ Services.prefs.setBoolPref("browser.pagethumbnails.capturing_disabled", false);
 registerCleanupFunction(function() {
   while (gBrowser.tabs.length > 1)
     gBrowser.removeTab(gBrowser.tabs[1]);
-  Services.prefs.setBoolPref("browser.pagethumbnails.capturing_disabled", oldEnabledPref)
+  Services.prefs.setBoolPref("browser.pagethumbnails.capturing_disabled", oldEnabledPref);
 });
 
 /**
@@ -92,7 +96,8 @@ function next(aValue) {
  */
 function addTab(aURI, aCallback) {
   let tab = gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, aURI);
-  whenLoaded(tab.linkedBrowser, aCallback);
+  let callback = aCallback ? aCallback : next;
+  BrowserTestUtils.browserLoaded(tab.linkedBrowser).then(callback);
 }
 
 /**
@@ -101,7 +106,7 @@ function addTab(aURI, aCallback) {
  */
 function navigateTo(aURI) {
   let browser = gBrowser.selectedBrowser;
-  whenLoaded(browser);
+  BrowserTestUtils.browserLoaded(browser).then(next);
   browser.loadURI(aURI);
 }
 
@@ -173,7 +178,7 @@ function retrieveImageDataForURL(aURL, aCallback) {
  * @param aURL The URL of the thumbnail.
  */
 function thumbnailFile(aURL) {
-  return new FileUtils.File(PageThumbsStorage.getFilePathForURL(aURL));
+  return new FileUtils.File(PageThumbsStorageService.getFilePathForURL(aURL));
 }
 
 /**
@@ -221,7 +226,7 @@ function whenFileExists(aURL, aCallback = next) {
     callback = () => whenFileExists(aURL, aCallback);
   }
 
-  executeSoon(callback);
+  setTimeout(callback, 0);
 }
 
 /**

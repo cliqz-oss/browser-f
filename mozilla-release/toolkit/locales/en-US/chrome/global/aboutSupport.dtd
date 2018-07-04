@@ -25,19 +25,17 @@ This is likely the same like id.heading in crashes.dtd. -->
 <!ENTITY aboutSupport.extensionVersion "Version">
 <!ENTITY aboutSupport.extensionId "ID">
 
+<!ENTITY aboutSupport.securitySoftwareTitle "Security Software">
+<!ENTITY aboutSupport.securitySoftwareType "Type">
+<!ENTITY aboutSupport.securitySoftwareName "Name">
+<!ENTITY aboutSupport.securitySoftwareAntivirus "Antivirus">
+<!ENTITY aboutSupport.securitySoftwareAntiSpyware "Antispyware">
+<!ENTITY aboutSupport.securitySoftwareFirewall "Firewall">
+
 <!ENTITY aboutSupport.featuresTitle "&brandShortName; Features">
 <!ENTITY aboutSupport.featureName "Name">
 <!ENTITY aboutSupport.featureVersion "Version">
 <!ENTITY aboutSupport.featureId "ID">
-
-<!ENTITY aboutSupport.experimentsTitle "Experimental Features">
-<!ENTITY aboutSupport.experimentName "Name">
-<!ENTITY aboutSupport.experimentId "ID">
-<!ENTITY aboutSupport.experimentDescription "Description">
-<!ENTITY aboutSupport.experimentActive "Active">
-<!ENTITY aboutSupport.experimentEndDate "End Date">
-<!ENTITY aboutSupport.experimentHomepage "Homepage">
-<!ENTITY aboutSupport.experimentBranch "Branch">
 
 <!ENTITY aboutSupport.appBasicsTitle "Application Basics">
 <!ENTITY aboutSupport.appBasicsName "Name">
@@ -71,6 +69,8 @@ Windows/Mac use the term "Folder" instead of "Directory" -->
 <!ENTITY aboutSupport.appBasicsMultiProcessSupport "Multiprocess Windows">
 
 <!ENTITY aboutSupport.appBasicsProcessCount "Web Content Processes">
+
+<!ENTITY aboutSupport.enterprisePolicies "Enterprise Policies">
 
 <!ENTITY aboutSupport.appBasicsKeyGoogle "Google Key">
 <!ENTITY aboutSupport.appBasicsKeyMozilla "Mozilla Location Service Key">
@@ -111,6 +111,7 @@ variant of aboutSupport.showDir.label. -->
 <!ENTITY aboutSupport.a11yActivated "Activated">
 <!ENTITY aboutSupport.a11yForceDisabled "Prevent Accessibility">
 <!ENTITY aboutSupport.a11yHandlerUsed "Accessible Handler Used">
+<!ENTITY aboutSupport.a11yInstantiator "Accessibility Instantiator">
 
 <!ENTITY aboutSupport.libraryVersionsTitle "Library Versions">
 
@@ -154,3 +155,13 @@ variant of aboutSupport.showDir.label. -->
 <!ENTITY aboutSupport.mediaDeviceChannels "Channels">
 <!ENTITY aboutSupport.mediaDeviceRate "Rate">
 <!ENTITY aboutSupport.mediaDeviceLatency "Latency">
+
+<!ENTITY aboutSupport.intlTitle "Internationalization &amp; Localization">
+<!ENTITY aboutSupport.intlAppTitle "Application Settings">
+<!ENTITY aboutSupport.intlLocalesRequested "Requested Locales">
+<!ENTITY aboutSupport.intlLocalesAvailable "Available Locales">
+<!ENTITY aboutSupport.intlLocalesSupported "App Locales">
+<!ENTITY aboutSupport.intlLocalesDefault "Default Locale">
+<!ENTITY aboutSupport.intlOSTitle "Operating System">
+<!ENTITY aboutSupport.intlOSPrefsSystemLocales "System Locales">
+<!ENTITY aboutSupport.intlRegionalPrefs "Regional Preferences">

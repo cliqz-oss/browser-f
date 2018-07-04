@@ -26,17 +26,13 @@
 namespace js {
 
 class Debugger;
-class WasmActivation;
 class WasmBreakpoint;
 class WasmBreakpointSite;
 class WasmInstanceObject;
 
 namespace wasm {
 
-struct LinkData;
-struct LinkDataTier;
 struct MetadataTier;
-class FrameIterator;
 
 // The generated source location for the AST node/expression. The offset field refers
 // an offset in an binary format file.
@@ -143,6 +139,7 @@ class DebugState
 
     bool debugGetLocalTypes(uint32_t funcIndex, ValTypeVector* locals, size_t* argsLength);
     ExprType debugGetResultType(uint32_t funcIndex);
+    bool getGlobal(Instance& instance, uint32_t globalIndex, MutableHandleValue vp);
 
     // Debug URL helpers.
 

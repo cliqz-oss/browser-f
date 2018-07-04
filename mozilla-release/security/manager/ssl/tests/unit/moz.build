@@ -24,7 +24,6 @@ TEST_DIRS += [
     'test_content_signing',
     'test_ct',
     'test_ev_certs',
-    'test_getchain',
     'test_intermediate_basic_usage_constraints',
     'test_keysize',
     'test_keysize_ev',
@@ -34,6 +33,8 @@ TEST_DIRS += [
     'test_ocsp_url',
     'test_onecrl',
     'test_pinning_dynamic',
+    'test_signed_apps',
     'test_startcom_wosign',
+    'test_symantec_apple_google',
     'test_validity',
 ]

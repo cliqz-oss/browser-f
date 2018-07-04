@@ -53,7 +53,7 @@ function triggerSave(aWindow, aCallback) {
       ok(!destFile.exists(), "Destination file should be removed");
       mockTransferCallback = null;
       info("done mockTransferCallback");
-    }
+    };
 
     // Select "Save Link As" option from context menu
     var saveLinkCommand = aWindow.document.getElementById("context-savelink");
@@ -181,15 +181,12 @@ function test() {
 }
 
 /* import-globals-from ../../../../../toolkit/content/tests/browser/common/mockTransfer.js */
-Cc["@mozilla.org/moz/jssubscript-loader;1"]
-  .getService(Ci.mozIJSSubScriptLoader)
-  .loadSubScript("chrome://mochitests/content/browser/toolkit/content/tests/browser/common/mockTransfer.js",
-                 this);
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/toolkit/content/tests/browser/common/mockTransfer.js",
+  this);
 
 function createTemporarySaveDirectory() {
-  var saveDir = Cc["@mozilla.org/file/directory_service;1"]
-                  .getService(Ci.nsIProperties)
-                  .get("TmpD", Ci.nsIFile);
+  var saveDir = Services.dirsvc.get("TmpD", Ci.nsIFile);
   saveDir.append("testsavedir");
   if (!saveDir.exists()) {
     info("create testsavedir!");

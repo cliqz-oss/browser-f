@@ -9,7 +9,6 @@
 #include "mozilla/dom/BlobSet.h"
 #include "mozilla/dom/FileBinding.h"
 #include "mozilla/dom/UnionTypes.h"
-#include "nsDOMClassInfoID.h"
 #include "nsIMultiplexInputStream.h"
 #include "nsRFPService.h"
 #include "nsStringStream.h"
@@ -22,8 +21,6 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
-
-NS_IMPL_ISUPPORTS_INHERITED0(MultipartBlobImpl, BlobImpl)
 
 /* static */ already_AddRefed<MultipartBlobImpl>
 MultipartBlobImpl::Create(nsTArray<RefPtr<BlobImpl>>&& aBlobImpls,
@@ -57,7 +54,7 @@ MultipartBlobImpl::Create(nsTArray<RefPtr<BlobImpl>>&& aBlobImpls,
 }
 
 void
-MultipartBlobImpl::GetInternalStream(nsIInputStream** aStream,
+MultipartBlobImpl::CreateInputStream(nsIInputStream** aStream,
                                      ErrorResult& aRv)
 {
   *aStream = nullptr;
@@ -74,7 +71,7 @@ MultipartBlobImpl::GetInternalStream(nsIInputStream** aStream,
     nsCOMPtr<nsIInputStream> scratchStream;
     BlobImpl* blobImpl = mBlobImpls.ElementAt(i).get();
 
-    blobImpl->GetInternalStream(getter_AddRefs(scratchStream), aRv);
+    blobImpl->CreateInputStream(getter_AddRefs(scratchStream), aRv);
     if (NS_WARN_IF(aRv.Failed())) {
       return;
     }
@@ -85,7 +82,7 @@ MultipartBlobImpl::GetInternalStream(nsIInputStream** aStream,
     }
   }
 
-  stream.forget(aStream);
+  CallQueryInterface(stream, aStream);
 }
 
 already_AddRefed<BlobImpl>
@@ -271,7 +268,8 @@ MultipartBlobImpl::SetLengthAndModifiedDate(ErrorResult& aRv)
     //   x.getTime() < f.dateModified.getTime()
     // could fail.
     mLastModificationDate = nsRFPService::ReduceTimePrecisionAsUSecs(
-      lastModifiedSet ? lastModified * PR_USEC_PER_MSEC : JS_Now());
+      lastModifiedSet ? lastModified * PR_USEC_PER_MSEC : JS_Now(), 0);
+    // mLastModificationDate is an absolute timestamp so we supply a zero context mix-in
   }
 }
 
@@ -410,4 +408,14 @@ MultipartBlobImpl::MayBeClonedToOtherThreads() const
   }
 
   return true;
+}
+
+size_t MultipartBlobImpl::GetAllocationSize() const
+{
+  size_t total = 0;
+  for (uint32_t i = 0; i < mBlobImpls.Length(); ++i) {
+    total += mBlobImpls[i]->GetAllocationSize();
+  }
+
+  return total;
 }

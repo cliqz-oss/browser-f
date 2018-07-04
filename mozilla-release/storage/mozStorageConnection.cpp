@@ -73,6 +73,8 @@ namespace storage {
 
 using mozilla::dom::quota::QuotaObject;
 
+const char *GetVFSName();
+
 namespace {
 
 int
@@ -532,7 +534,9 @@ Connection::Connection(Service *aService,
 , mDBConn(nullptr)
 , mAsyncExecutionThreadShuttingDown(false)
 , mConnectionClosed(false)
+, mDefaultTransactionType(mozIStorageConnection::TRANSACTION_DEFERRED)
 , mTransactionInProgress(false)
+, mDestroying(false)
 , mProgressHandler(nullptr)
 , mFlags(aFlags)
 , mIgnoreLockingMode(aIgnoreLockingMode)
@@ -546,7 +550,9 @@ Connection::Connection(Service *aService,
 
 Connection::~Connection()
 {
-  Unused << Close();
+  // Failsafe Close() occurs in our custom Release method because of
+  // complications related to Close() potentially invoking AsyncClose() which
+  // will increment our refcount.
   MOZ_ASSERT(!mAsyncExecutionThread,
              "The async thread has not been shutdown properly!");
 }
@@ -568,10 +574,52 @@ NS_IMETHODIMP_(MozExternalRefCountType) Connection::Release(void)
   nsrefcnt count = --mRefCnt;
   NS_LOG_RELEASE(this, count, "Connection");
   if (1 == count) {
-    // If the refcount is 1, the single reference must be from
-    // gService->mConnections (in class |Service|).  Which means we can
-    // unregister it safely.
-    mStorageService->unregisterConnection(this);
+    // If the refcount went to 1, the single reference must be from
+    // gService->mConnections (in class |Service|).  And the code calling
+    // Release is either:
+    // - The "user" code that had created the connection, releasing on any
+    //   thread.
+    // - One of Service's getConnections() callers had acquired a strong
+    //   reference to the Connection that out-lived the last "user" reference,
+    //   and now that just got dropped.  Note that this reference could be
+    //   getting dropped on the main thread or Connection->threadOpenedOn
+    //   (because of the NewRunnableMethod used by minimizeMemory).
+    //
+    // Either way, we should now perform our failsafe Close() and unregister.
+    // However, we only want to do this once, and the reality is that our
+    // refcount could go back up above 1 and down again at any time if we are
+    // off the main thread and getConnections() gets called on the main thread,
+    // so we use an atomic here to do this exactly once.
+    if (mDestroying.compareExchange(false, true)) {
+      // Close the connection, dispatching to the opening thread if we're not
+      // on that thread already and that thread is still accepting runnables.
+      // We do this because it's possible we're on the main thread because of
+      // getConnections(), and we REALLY don't want to transfer I/O to the main
+      // thread if we can avoid it.
+      if (threadOpenedOn->IsOnCurrentThread()) {
+        // This could cause SpinningSynchronousClose() to be invoked and AddRef
+        // triggered for AsyncCloseConnection's strong ref if the conn was ever
+        // use for async purposes.  (Main-thread only, though.)
+        Unused << Close();
+      } else {
+        nsCOMPtr<nsIRunnable> event =
+          NewRunnableMethod("storage::Connection::Close",
+                            this, &Connection::Close);
+        if (NS_FAILED(threadOpenedOn->Dispatch(event.forget(),
+                                               NS_DISPATCH_NORMAL))) {
+          // The target thread was dead and so we've just leaked our runnable.
+          // This should not happen because our non-main-thread consumers should
+          // be explicitly closing their connections, not relying on us to close
+          // them for them.  (It's okay to let a statement go out of scope for
+          // automatic cleanup, but not a Connection.)
+          MOZ_ASSERT(false, "Leaked Connection::Close(), ownership fail.");
+          Unused << Close();
+        }
+      }
+
+      // This will drop its strong reference right here, right now.
+      mStorageService->unregisterConnection(this);
+    }
   } else if (0 == count) {
     mRefCnt = 1; /* stabilize */
 #if 0 /* enable this to find non-threadsafe destructors: */
@@ -627,7 +675,7 @@ Connection::initialize()
   AUTO_PROFILER_LABEL("Connection::initialize", STORAGE);
 
   // in memory database requested, sqlite uses a magic file name
-  int srv = ::sqlite3_open_v2(":memory:", &mDBConn, mFlags, nullptr);
+  int srv = ::sqlite3_open_v2(":memory:", &mDBConn, mFlags, GetVFSName());
   if (srv != SQLITE_OK) {
     mDBConn = nullptr;
     return convertResultCode(srv);
@@ -660,7 +708,7 @@ Connection::initialize(nsIFile *aDatabaseFile)
 #else
   static const char* sIgnoreLockingVFS = "unix-none";
 #endif
-  const char* vfs = mIgnoreLockingMode ? sIgnoreLockingVFS : nullptr;
+  const char* vfs = mIgnoreLockingMode ? sIgnoreLockingVFS : GetVFSName();
 
   int srv = ::sqlite3_open_v2(NS_ConvertUTF16toUTF8(path).get(), &mDBConn,
                               mFlags, vfs);
@@ -694,7 +742,7 @@ Connection::initialize(nsIFileURL *aFileURL)
   rv = aFileURL->GetSpec(spec);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  int srv = ::sqlite3_open_v2(spec.get(), &mDBConn, mFlags, nullptr);
+  int srv = ::sqlite3_open_v2(spec.get(), &mDBConn, mFlags, GetVFSName());
   if (srv != SQLITE_OK) {
     mDBConn = nullptr;
     return convertResultCode(srv);
@@ -716,13 +764,7 @@ Connection::initializeInternal()
   MOZ_ASSERT(mDBConn);
 
   auto guard = MakeScopeExit([&]() {
-    {
-      MutexAutoLock lockedScope(sharedAsyncExecutionMutex);
-      mConnectionClosed = true;
-    }
-    MOZ_ALWAYS_TRUE(::sqlite3_close(mDBConn) == SQLITE_OK);
-    mDBConn = nullptr;
-    sharedDBMutex.destroy();
+    initializeFailed();
   });
 
   if (mFileURL) {
@@ -835,6 +877,18 @@ Connection::initializeOnAsyncThread(nsIFile* aStorageFile) {
     Unused << NS_DispatchToMainThread(event);
   }
   return rv;
+}
+
+void
+Connection::initializeFailed()
+{
+  {
+    MutexAutoLock lockedScope(sharedAsyncExecutionMutex);
+    mConnectionClosed = true;
+  }
+  MOZ_ALWAYS_TRUE(::sqlite3_close(mDBConn) == SQLITE_OK);
+  mDBConn = nullptr;
+  sharedDBMutex.destroy();
 }
 
 nsresult
@@ -1451,8 +1505,8 @@ Connection::AsyncClone(bool aReadOnly,
     flags = (~SQLITE_OPEN_CREATE & flags);
   }
 
-  RefPtr<Connection> clone = new Connection(mStorageService, flags,
-                                              mAsyncOnly);
+  // Force the cloned connection to only implement the async connection API.
+  RefPtr<Connection> clone = new Connection(mStorageService, flags, true);
 
   RefPtr<AsyncInitializeClone> initEvent =
     new AsyncInitializeClone(this, clone, aReadOnly, aCallback);
@@ -1475,6 +1529,13 @@ Connection::initializeClone(Connection* aClone, bool aReadOnly)
     return rv;
   }
 
+  auto guard = MakeScopeExit([&]() {
+    aClone->initializeFailed();
+  });
+
+  rv = aClone->SetDefaultTransactionType(mDefaultTransactionType);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   // Re-attach on-disk databases that were attached to the original connection.
   {
     nsCOMPtr<mozIStorageStatement> stmt;
@@ -1485,8 +1546,8 @@ Connection::initializeClone(Connection* aClone, bool aReadOnly)
     while (stmt && NS_SUCCEEDED(stmt->ExecuteStep(&hasResult)) && hasResult) {
       nsAutoCString name;
       rv = stmt->GetUTF8String(1, name);
-      if (NS_SUCCEEDED(rv) && !name.Equals(NS_LITERAL_CSTRING("main")) &&
-                              !name.Equals(NS_LITERAL_CSTRING("temp"))) {
+      if (NS_SUCCEEDED(rv) && !name.EqualsLiteral("main") &&
+                              !name.EqualsLiteral("temp")) {
         nsCString path;
         rv = stmt->GetUTF8String(2, path);
         if (NS_SUCCEEDED(rv) && !path.IsEmpty()) {
@@ -1539,6 +1600,45 @@ Connection::initializeClone(Connection* aClone, bool aReadOnly)
     }
   }
 
+  // Copy over temporary tables, triggers, and views from the original
+  // connections. Entities in `sqlite_temp_master` are only visible to the
+  // connection that created them.
+  if (!aReadOnly) {
+    rv = aClone->ExecuteSimpleSQL(NS_LITERAL_CSTRING("BEGIN TRANSACTION"));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    nsCOMPtr<mozIStorageStatement> stmt;
+    rv = CreateStatement(NS_LITERAL_CSTRING("SELECT sql FROM sqlite_temp_master "
+                                            "WHERE type IN ('table', 'view', "
+                                                           "'index', 'trigger')"),
+                         getter_AddRefs(stmt));
+    // Propagate errors, because failing to copy triggers might cause schema
+    // coherency issues when writing to the database from the cloned connection.
+    NS_ENSURE_SUCCESS(rv, rv);
+    bool hasResult = false;
+    while (stmt && NS_SUCCEEDED(stmt->ExecuteStep(&hasResult)) && hasResult) {
+      nsAutoCString query;
+      rv = stmt->GetUTF8String(0, query);
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      // The `CREATE` SQL statements in `sqlite_temp_master` omit the `TEMP`
+      // keyword. We need to add it back, or we'll recreate temporary entities
+      // as persistent ones. `sqlite_temp_master` also holds `CREATE INDEX`
+      // statements, but those don't need `TEMP` keywords.
+      if (StringBeginsWith(query, NS_LITERAL_CSTRING("CREATE TABLE ")) ||
+          StringBeginsWith(query, NS_LITERAL_CSTRING("CREATE TRIGGER ")) ||
+          StringBeginsWith(query, NS_LITERAL_CSTRING("CREATE VIEW "))) {
+        query.Replace(0, 6, "CREATE TEMP");
+      }
+
+      rv = aClone->ExecuteSimpleSQL(query);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+
+    rv = aClone->ExecuteSimpleSQL(NS_LITERAL_CSTRING("COMMIT"));
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
   // Copy any functions that have been added to this connection.
   SQLiteMutexAutoLock lockedScope(sharedDBMutex);
   for (auto iter = mFunctions.Iter(); !iter.Done(); iter.Next()) {
@@ -1567,6 +1667,7 @@ Connection::initializeClone(Connection* aClone, bool aReadOnly)
     }
   }
 
+  guard.release();
   return NS_OK;
 }
 
@@ -1591,8 +1692,7 @@ Connection::Clone(bool aReadOnly,
     flags = (~SQLITE_OPEN_CREATE & flags);
   }
 
-  RefPtr<Connection> clone = new Connection(mStorageService, flags,
-                                              mAsyncOnly);
+  RefPtr<Connection> clone = new Connection(mStorageService, flags, mAsyncOnly);
 
   nsresult rv = initializeClone(clone, aReadOnly);
   if (NS_FAILED(rv)) {
@@ -1600,6 +1700,20 @@ Connection::Clone(bool aReadOnly,
   }
 
   NS_IF_ADDREF(*_connection = clone);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+Connection::Interrupt()
+{
+  MOZ_ASSERT(threadOpenedOn == NS_GetCurrentThread());
+  if (!mDBConn) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+  if (!mAsyncOnly || !(mFlags & SQLITE_OPEN_READONLY)) {
+    return NS_ERROR_INVALID_ARG;
+  }
+  ::sqlite3_interrupt(mDBConn);
   return NS_OK;
 }
 
@@ -1823,17 +1937,26 @@ Connection::GetTransactionInProgress(bool *_inProgress)
 }
 
 NS_IMETHODIMP
-Connection::BeginTransaction()
+Connection::GetDefaultTransactionType(int32_t *_type)
 {
-  return BeginTransactionAs(mozIStorageConnection::TRANSACTION_DEFERRED);
+  *_type = mDefaultTransactionType;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
-Connection::BeginTransactionAs(int32_t aTransactionType)
+Connection::SetDefaultTransactionType(int32_t aType)
+{
+  NS_ENSURE_ARG_RANGE(aType, TRANSACTION_DEFERRED, TRANSACTION_EXCLUSIVE);
+  mDefaultTransactionType = aType;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+Connection::BeginTransaction()
 {
   if (!mDBConn) return NS_ERROR_NOT_INITIALIZED;
 
-  return beginTransactionInternal(mDBConn, aTransactionType);
+  return beginTransactionInternal(mDBConn, mDefaultTransactionType);
 }
 
 nsresult
@@ -1844,7 +1967,7 @@ Connection::beginTransactionInternal(sqlite3 *aNativeConnection,
   if (mTransactionInProgress)
     return NS_ERROR_FAILURE;
   nsresult rv;
-  switch(aTransactionType) {
+  switch (aTransactionType) {
     case TRANSACTION_DEFERRED:
       rv = convertResultCode(executeSql(aNativeConnection, "BEGIN DEFERRED"));
       break;

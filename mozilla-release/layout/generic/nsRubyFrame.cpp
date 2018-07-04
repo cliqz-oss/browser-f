@@ -1,21 +1,21 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
-/* This Source Code is subject to the terms of the Mozilla Public License
- * version 2.0 (the "License"). You can obtain a copy of the License at
- * http://mozilla.org/MPL/2.0/. */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* rendering object for CSS "display: ruby" */
 
 #include "nsRubyFrame.h"
 
 #include "RubyUtils.h"
+#include "mozilla/ComputedStyle.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/WritingModes.h"
 #include "nsLineLayout.h"
 #include "nsPresContext.h"
 #include "nsRubyBaseContainerFrame.h"
 #include "nsRubyTextContainerFrame.h"
-#include "nsStyleContext.h"
 
 using namespace mozilla;
 
@@ -32,9 +32,9 @@ NS_IMPL_FRAMEARENA_HELPERS(nsRubyFrame)
 
 nsContainerFrame*
 NS_NewRubyFrame(nsIPresShell* aPresShell,
-                nsStyleContext* aContext)
+                ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsRubyFrame(aContext);
+  return new (aPresShell) nsRubyFrame(aStyle);
 }
 
 //----------------------------------------------------------------------
@@ -106,16 +106,17 @@ nsRubyFrame::Reflow(nsPresContext* aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsRubyFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   if (!aReflowInput.mLineLayout) {
     NS_ASSERTION(aReflowInput.mLineLayout,
                  "No line layout provided to RubyFrame reflow method.");
-    aStatus.Reset();
     return;
   }
 
   // Grab overflow frames from prev-in-flow and its own.
-  MoveOverflowToChildList();
+  MoveInlineOverflowToChildList(
+    aReflowInput.mLineLayout->LineContainerFrame());
 
   // Clear leadings
   mLeadings.Reset();
@@ -160,7 +161,6 @@ nsRubyFrame::Reflow(nsPresContext* aPresContext,
   aReflowInput.mLineLayout->BeginSpan(this, &aReflowInput,
                                       startEdge, availableISize, &mBaseline);
 
-  aStatus.Reset();
   for (RubySegmentEnumerator e(this); !e.AtEnd(); e.Next()) {
     ReflowSegment(aPresContext, aReflowInput, e.GetBaseContainer(), aStatus);
 
@@ -229,7 +229,7 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
       aStatus.Reset();
       aStatus.SetInlineLineBreakAfter();
       aStatus.SetIncomplete();
-      PushChildren(aBaseContainer, aBaseContainer->GetPrevSibling());
+      PushChildrenToOverflow(aBaseContainer, aBaseContainer->GetPrevSibling());
       aReflowInput.mLineLayout->SetDirtyNextLine();
     }
     // This base container is not placed at all, we can skip all
@@ -275,7 +275,7 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
       // Always push the next frame after the last child in this segment.
       // It is possible that we pulled it back before our next-in-flow
       // drain our overflow.
-      PushChildren(lastChild->GetNextSibling(), lastChild);
+      PushChildrenToOverflow(lastChild->GetNextSibling(), lastChild);
       aReflowInput.mLineLayout->SetDirtyNextLine();
     }
   } else {
@@ -315,11 +315,6 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
     ReflowOutput textMetrics(aReflowInput);
     ReflowInput textReflowInput(aPresContext, aReflowInput, textContainer,
                                       availSize.ConvertTo(rtcWM, lineWM));
-    // FIXME We probably shouldn't be using the same nsLineLayout for
-    //       the text containers. But it should be fine now as we are
-    //       not actually using this line layout to reflow something,
-    //       but just read the writing mode from it.
-    textReflowInput.mLineLayout = aReflowInput.mLineLayout;
     textContainer->Reflow(aPresContext, textMetrics,
                           textReflowInput, textReflowStatus);
     // Ruby text containers always return complete reflow status even when
@@ -350,7 +345,18 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
 
     LogicalPoint position(lineWM);
     if (side.isSome()) {
-      if (side.value() == eLogicalSideBStart) {
+      if (nsLayoutUtils::IsInterCharacterRubyEnabled() &&
+          rtcWM.IsVerticalRL() &&
+          lineWM.GetInlineDir() == WritingMode::eInlineLTR) {
+        // Inter-character ruby annotations are only supported for vertical-rl
+        // in ltr horizontal writing. Fall back to non-inter-character behavior
+        // otherwise.
+        LogicalPoint offset(lineWM, offsetRect.ISize(lineWM),
+          offsetRect.BSize(lineWM) > size.BSize(lineWM) ?
+          (offsetRect.BSize(lineWM) - size.BSize(lineWM)) / 2 : 0);
+        position = offsetRect.Origin(lineWM) + offset;
+        aReflowInput.mLineLayout->AdvanceICoord(size.ISize(lineWM));
+      } else if (side.value() == eLogicalSideBStart) {
         offsetRect.BStart(lineWM) -= size.BSize(lineWM);
         offsetRect.BSize(lineWM) += size.BSize(lineWM);
         position = offsetRect.Origin(lineWM);

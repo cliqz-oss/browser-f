@@ -1,55 +1,26 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-template<class T>
-nsPIDOMWindowInner*
-nsPIDOMWindow<T>::AsInner()
-{
-  MOZ_ASSERT(IsInnerWindow());
-  return reinterpret_cast<nsPIDOMWindowInner*>(this);
-}
-
-template<class T>
-const nsPIDOMWindowInner*
-nsPIDOMWindow<T>::AsInner() const
-{
-  MOZ_ASSERT(IsInnerWindow());
-  return reinterpret_cast<const nsPIDOMWindowInner*>(this);
-}
-
-template<class T>
-nsPIDOMWindowOuter*
-nsPIDOMWindow<T>::AsOuter()
-{
-  MOZ_ASSERT(IsOuterWindow());
-  return reinterpret_cast<nsPIDOMWindowOuter*>(this);
-}
-
-template<class T>
-const nsPIDOMWindowOuter*
-nsPIDOMWindow<T>::AsOuter() const
-{
-  MOZ_ASSERT(IsOuterWindow());
-  return reinterpret_cast<const nsPIDOMWindowOuter*>(this);
-}
-
-template <class T>
 bool
-nsPIDOMWindow<T>::IsLoading() const
+nsPIDOMWindowOuter::IsLoading() const
 {
-  if (IsOuterWindow()) {
-    auto* win = AsOuter()->GetCurrentInnerWindow();
+  auto* win = GetCurrentInnerWindow();
 
-    if (!win) {
-      NS_ERROR("No current inner window available!");
+  if (!win) {
+    NS_ERROR("No current inner window available!");
 
-      return false;
-    }
-
-    return win->IsLoading();
+    return false;
   }
 
+  return win->IsLoading();
+}
+
+bool
+nsPIDOMWindowInner::IsLoading() const
+{
   if (!mOuterWindow) {
     NS_ERROR("IsLoading() called on orphan inner window!");
 
@@ -59,22 +30,23 @@ nsPIDOMWindow<T>::IsLoading() const
   return !mIsDocumentLoaded;
 }
 
-template <class T>
 bool
-nsPIDOMWindow<T>::IsHandlingResizeEvent() const
+nsPIDOMWindowOuter::IsHandlingResizeEvent() const
 {
-  if (IsOuterWindow()) {
-    auto* win = AsOuter()->GetCurrentInnerWindow();
+  auto* win = GetCurrentInnerWindow();
 
-    if (!win) {
-      NS_ERROR("No current inner window available!");
+  if (!win) {
+    NS_ERROR("No current inner window available!");
 
-      return false;
-    }
-
-    return win->IsHandlingResizeEvent();
+    return false;
   }
 
+  return win->IsHandlingResizeEvent();
+}
+
+bool
+nsPIDOMWindowInner::IsHandlingResizeEvent() const
+{
   if (!mOuterWindow) {
     NS_ERROR("IsHandlingResizeEvent() called on orphan inner window!");
 
@@ -99,24 +71,32 @@ nsPIDOMWindowInner::HasActiveDocument()
      mOuterWindow->GetCurrentInnerWindow()->GetDoc() == mDoc);
 }
 
-template <class T>
-nsIDocShell*
-nsPIDOMWindow<T>::GetDocShell() const
+bool
+nsPIDOMWindowInner::IsTopInnerWindow() const
 {
-  if (mOuterWindow) {
-    return mOuterWindow->GetDocShell();
-  }
+  return mTopInnerWindow == this;
+}
 
+nsIDocShell*
+nsPIDOMWindowOuter::GetDocShell() const
+{
   return mDocShell;
 }
 
-template <class T>
-nsIContent*
-nsPIDOMWindow<T>::GetFocusedNode() const
+nsIDocShell*
+nsPIDOMWindowInner::GetDocShell() const
 {
-  if (IsOuterWindow()) {
-    return mInnerWindow ? mInnerWindow->GetFocusedNode() : nullptr;
-  }
+  return mOuterWindow ? mOuterWindow->GetDocShell() : nullptr;
+}
 
-  return mFocusedNode;
+mozilla::dom::Element*
+nsPIDOMWindowOuter::GetFocusedElement() const
+{
+  return mInnerWindow ? mInnerWindow->GetFocusedElement() : nullptr;
+}
+
+mozilla::dom::Element*
+nsPIDOMWindowInner::GetFocusedElement() const
+{
+  return mFocusedElement;
 }

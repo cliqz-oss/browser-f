@@ -214,13 +214,8 @@ public:
     SharedScriptableHelperForJSIID() {}
 };
 
-NS_INTERFACE_MAP_BEGIN(SharedScriptableHelperForJSIID)
-  NS_INTERFACE_MAP_ENTRY(nsIXPCScriptable)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIXPCScriptable)
-NS_INTERFACE_MAP_END
-
-NS_IMPL_ADDREF(SharedScriptableHelperForJSIID)
-NS_IMPL_RELEASE(SharedScriptableHelperForJSIID)
+NS_IMPL_ISUPPORTS(SharedScriptableHelperForJSIID,
+                  nsIXPCScriptable)
 
 // The nsIXPCScriptable map declaration that will generate stubs for us...
 #define XPC_MAP_CLASSNAME SharedScriptableHelperForJSIID
@@ -254,11 +249,8 @@ static nsresult GetSharedScriptableHelperForJSIID(nsIXPCScriptable** helper)
 { 0x00000000, 0x0000, 0x0000,                                                 \
   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } }
 
-// We pass nsIClassInfo::DOM_OBJECT so that nsJSIID instances may be created
-// in unprivileged scopes.
 NS_DECL_CI_INTERFACE_GETTER(nsJSIID)
-NS_IMPL_CLASSINFO(nsJSIID, GetSharedScriptableHelperForJSIID,
-                  nsIClassInfo::DOM_OBJECT, NULL_CID)
+NS_IMPL_CLASSINFO(nsJSIID, GetSharedScriptableHelperForJSIID, 0, NULL_CID)
 
 NS_DECL_CI_INTERFACE_GETTER(nsJSCID)
 NS_IMPL_CLASSINFO(nsJSCID, nullptr, 0, NULL_CID)
@@ -276,13 +268,10 @@ void xpc_DestroyJSxIDClassObjects()
 
 /***************************************************************************/
 
-NS_INTERFACE_MAP_BEGIN(nsJSIID)
-  NS_INTERFACE_MAP_ENTRY(nsIJSID)
-  NS_INTERFACE_MAP_ENTRY(nsIJSIID)
-  NS_INTERFACE_MAP_ENTRY(nsIXPCScriptable)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIJSID)
-  NS_IMPL_QUERY_CLASSINFO(nsJSIID)
-NS_INTERFACE_MAP_END
+NS_IMPL_QUERY_INTERFACE_CI(nsJSIID,
+                           nsIJSID,
+                           nsIJSIID,
+                           nsIXPCScriptable)
 
 NS_IMPL_ADDREF(nsJSIID)
 NS_IMPL_RELEASE(nsJSIID)
@@ -298,7 +287,7 @@ NS_IMPL_CI_INTERFACE_GETTER(nsJSIID, nsIJSID, nsIJSIID)
 #include "xpc_map_end.h" /* This will #undef the above */
 
 
-nsJSIID::nsJSIID(nsIInterfaceInfo* aInfo)
+nsJSIID::nsJSIID(const nsXPTInterfaceInfo* aInfo)
     : mInfo(aInfo)
 {
 }
@@ -361,15 +350,14 @@ NS_IMETHODIMP nsJSIID::ToString(char** _retval)
 
 // static
 already_AddRefed<nsJSIID>
-nsJSIID::NewID(nsIInterfaceInfo* aInfo)
+nsJSIID::NewID(const nsXPTInterfaceInfo* aInfo)
 {
     if (!aInfo) {
         NS_ERROR("no info");
         return nullptr;
     }
 
-    bool canScript;
-    if (NS_FAILED(aInfo->IsScriptable(&canScript)) || !canScript)
+    if (!aInfo->IsScriptable())
         return nullptr;
 
     RefPtr<nsJSIID> idObj = new nsJSIID(aInfo);
@@ -533,13 +521,10 @@ nsJSIID::HasInstance(nsIXPConnectWrappedNative* wrapper,
 
 /***************************************************************************/
 
-NS_INTERFACE_MAP_BEGIN(nsJSCID)
-  NS_INTERFACE_MAP_ENTRY(nsIJSID)
-  NS_INTERFACE_MAP_ENTRY(nsIJSCID)
-  NS_INTERFACE_MAP_ENTRY(nsIXPCScriptable)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIJSID)
-  NS_IMPL_QUERY_CLASSINFO(nsJSCID)
-NS_INTERFACE_MAP_END
+NS_IMPL_QUERY_INTERFACE_CI(nsJSCID,
+                           nsIJSID,
+                           nsIJSCID,
+                           nsIXPCScriptable)
 
 NS_IMPL_ADDREF(nsJSCID)
 NS_IMPL_RELEASE(nsJSCID)
@@ -570,8 +555,26 @@ NS_IMETHODIMP nsJSCID::GetValid(bool* aValid)
 NS_IMETHODIMP nsJSCID::Equals(nsIJSID* other, bool* _retval)
     {return mDetails->Equals(other, _retval);}
 
-NS_IMETHODIMP nsJSCID::Initialize(const char* idString)
-    {return mDetails->Initialize(idString);}
+NS_IMETHODIMP
+nsJSCID::Initialize(const char* str)
+{
+    if (str[0] == '{') {
+        NS_ENSURE_SUCCESS(mDetails->Initialize(str), NS_ERROR_FAILURE);
+    } else {
+        nsCOMPtr<nsIComponentRegistrar> registrar;
+        NS_GetComponentRegistrar(getter_AddRefs(registrar));
+        NS_ENSURE_TRUE(registrar, NS_ERROR_FAILURE);
+
+        nsCID* cid;
+        if (NS_FAILED(registrar->ContractIDToCID(str, &cid)))
+            return NS_ERROR_FAILURE;
+        bool success = mDetails->InitWithName(*cid, str);
+        free(cid);
+        if (!success)
+            return NS_ERROR_FAILURE;
+    }
+    return NS_OK;
+}
 
 NS_IMETHODIMP nsJSCID::ToString(char** _retval)
     {ResolveName(); return mDetails->ToString(_retval);}
@@ -593,21 +596,8 @@ nsJSCID::NewID(const char* str)
     }
 
     RefPtr<nsJSCID> idObj = new nsJSCID();
-    if (str[0] == '{') {
-        NS_ENSURE_SUCCESS(idObj->Initialize(str), nullptr);
-    } else {
-        nsCOMPtr<nsIComponentRegistrar> registrar;
-        NS_GetComponentRegistrar(getter_AddRefs(registrar));
-        NS_ENSURE_TRUE(registrar, nullptr);
-
-        nsCID* cid;
-        if (NS_FAILED(registrar->ContractIDToCID(str, &cid)))
-            return nullptr;
-        bool success = idObj->mDetails->InitWithName(*cid, str);
-        free(cid);
-        if (!success)
-            return nullptr;
-    }
+    if (NS_FAILED(idObj->Initialize(str)))
+        return nullptr;
     return idObj.forget();
 }
 

@@ -12,28 +12,33 @@
                   tooltiptext="&backButton.tooltip;"
                   aria-label="&backCmd.label;"
                   command="Browser:BackOrBackDuplicate"
+                  accesskey="&backCmd.accesskey;"
                   onclick="checkForMiddleClick(this, event);"/>
         <menuitem id="context-forward"
                   class="menuitem-iconic"
                   tooltiptext="&forwardButton.tooltip;"
                   aria-label="&forwardCmd.label;"
                   command="Browser:ForwardOrForwardDuplicate"
+                  accesskey="&forwardCmd.accesskey;"
                   onclick="checkForMiddleClick(this, event);"/>
         <menuitem id="context-reload"
                   class="menuitem-iconic"
                   tooltip="dynamic-shortcut-tooltip"
                   aria-label="&reloadCmd.label;"
                   oncommand="gContextMenu.reload(event);"
+                  accesskey="&reloadCmd.accesskey;"
                   onclick="checkForMiddleClick(this, event);"/>
         <menuitem id="context-stop"
                   class="menuitem-iconic"
                   tooltip="dynamic-shortcut-tooltip"
                   aria-label="&stopCmd.label;"
+                  accesskey="&stopCmd.accesskey;"
                   command="Browser:Stop"/>
         <menuitem id="context-bookmarkpage"
                   class="menuitem-iconic"
                   observes="bookmarkThisPageBroadcaster"
                   aria-label="&bookmarkPageCmd2.label;"
+                  accesskey="&bookmarkPageCmd2.accesskey;"
                   oncommand="gContextMenu.bookmarkThisPage();"/>
       </menugroup>
       <menuseparator id="context-sep-navigation"/>
@@ -90,10 +95,6 @@
                 label="&bookmarkThisLinkCmd.label;"
                 accesskey="&bookmarkThisLinkCmd.accesskey;"
                 oncommand="gContextMenu.bookmarkLink();"/>
-      <menuitem id="context-sharelink"
-                label="&shareLink.label;"
-                accesskey="&shareLink.accesskey;"
-                oncommand="gContextMenu.shareLink();"/>
       <menuitem id="context-savelink"
                 label="&saveLinkCmd.label;"
                 accesskey="&saveLinkCmd.accesskey;"
@@ -217,10 +218,6 @@
                 label="&saveImageCmd.label;"
                 accesskey="&saveImageCmd.accesskey;"
                 oncommand="gContextMenu.saveMedia();"/>
-      <menuitem id="context-shareimage"
-                label="&shareImage.label;"
-                accesskey="&shareImage.accesskey;"
-                oncommand="gContextMenu.shareImage();"/>
       <menuitem id="context-sendimage"
                 label="&emailImageCmd.label;"
                 accesskey="&emailImageCmd.accesskey;"
@@ -242,10 +239,6 @@
                 label="&saveVideoCmd.label;"
                 accesskey="&saveVideoCmd.accesskey;"
                 oncommand="gContextMenu.saveMedia();"/>
-      <menuitem id="context-sharevideo"
-                label="&shareVideo.label;"
-                accesskey="&shareVideo.accesskey;"
-                oncommand="gContextMenu.shareVideo();"/>
       <menuitem id="context-saveaudio"
                 label="&saveAudioCmd.label;"
                 accesskey="&saveAudioCmd.accesskey;"
@@ -258,11 +251,6 @@
                 label="&emailVideoCmd.label;"
                 accesskey="&emailVideoCmd.accesskey;"
                 oncommand="gContextMenu.sendMedia();"/>
-      <menu id="context-castvideo"
-                label="&castVideoCmd.label;"
-                accesskey="&castVideoCmd.accesskey;">
-        <menupopup id="context-castvideo-popup" onpopupshowing="gContextMenu.populateCastVideoMenu(this)"/>
-      </menu>
       <menuitem id="context-sendaudio"
                 label="&emailAudioCmd.label;"
                 accesskey="&emailAudioCmd.accesskey;"
@@ -276,19 +264,17 @@
                 accesskey="&hidePluginCmd.accesskey;"
                 oncommand="gContextMenu.hidePlugin();"/>
       <menuseparator id="context-sep-ctp"/>
-      <menuitem id="context-sharepage"
-                label="&sharePageCmd.label;"
-                accesskey="&sharePageCmd.accesskey;"
-                oncommand="SocialShare.sharePage();"/>
       <menuitem id="context-savepage"
                 label="&savePageCmd.label;"
                 accesskey="&savePageCmd.accesskey2;"
                 oncommand="gContextMenu.savePageAs();"/>
-      <menuseparator id="context-sep-sendpagetodevice" hidden="true"/>
+      <menuseparator id="context-sep-sendpagetodevice" class="sync-ui-item"
+                     hidden="true"/>
       <menu id="context-sendpagetodevice"
-                label="&sendPageToDevice.label;"
-                accesskey="&sendPageToDevice.accesskey;"
-                hidden="true">
+            class="sync-ui-item"
+            label="&sendPageToDevice.label;"
+            accesskey="&sendPageToDevice.accesskey;"
+            hidden="true">
         <menupopup id="context-sendpagetodevice-popup"
                    onpopupshowing="(() => { let browser = gBrowser || getPanelBrowser(); gSync.populateSendTabToDevicesMenu(event.target, browser.currentURI.spec, browser.contentTitle); })()"/>
       </menu>
@@ -331,18 +317,16 @@
                 oncommand="AddKeywordForSearchField();"/>
       <menuitem id="context-searchselect"
                 oncommand="BrowserSearch.loadSearchFromContext(this.searchTerms);"/>
-      <menuseparator id="context-sep-sendlinktodevice" hidden="true"/>
+      <menuseparator id="context-sep-sendlinktodevice" class="sync-ui-item"
+                     hidden="true"/>
       <menu id="context-sendlinktodevice"
-                label="&sendLinkToDevice.label;"
-                accesskey="&sendLinkToDevice.accesskey;"
-                hidden="true">
+            class="sync-ui-item"
+            label="&sendLinkToDevice.label;"
+            accesskey="&sendLinkToDevice.accesskey;"
+            hidden="true">
         <menupopup id="context-sendlinktodevice-popup"
                    onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, gContextMenu.linkURL, gContextMenu.linkTextStr);"/>
       </menu>
-      <menuitem id="context-shareselect"
-                label="&shareSelect.label;"
-                accesskey="&shareSelect.accesskey;"
-                oncommand="gContextMenu.shareSelect();"/>
       <menuseparator id="frame-sep"/>
       <menu id="frame" label="&thisFrameMenu.label;" accesskey="&thisFrameMenu.accesskey;">
         <menupopup>
@@ -362,7 +346,7 @@
           <menuitem id="context-reloadframe"
                     label="&reloadFrameCmd.label;"
                     accesskey="&reloadFrameCmd.accesskey;"
-                    oncommand="gContextMenu.reloadFrame();"/>
+                    oncommand="gContextMenu.reloadFrame(event);"/>
           <menuseparator/>
           <menuitem id="context-bookmarkframe"
                     label="&bookmarkThisFrameCmd.label;"
@@ -467,6 +451,10 @@
                 label="&inspectContextMenu.label;"
                 accesskey="&inspectContextMenu.accesskey;"
                 oncommand="gContextMenu.inspectNode();"/>
+      <menuitem id="context-inspect-a11y"
+                hidden="true"
+                label="&inspectA11YContextMenu.label;"
+                oncommand="gContextMenu.inspectA11Y();"/>
       <menuseparator id="context-media-eme-separator" hidden="true"/>
       <menuitem id="context-media-eme-learnmore"
                 class="menuitem-iconic"

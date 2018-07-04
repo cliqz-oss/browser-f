@@ -21,18 +21,12 @@
 #include "mozilla/Unused.h"
 #include "npapi.h"
 #include "npfunctions.h"
+#include "nsExceptionHandler.h"
 #include "nsDataHashtable.h"
 #include "nsHashKeys.h"
 #include "nsIObserver.h"
 #ifdef XP_WIN
 #include "nsWindowsHelpers.h"
-#if defined(MOZ_SANDBOX)
-#include "sandboxPermissions.h"
-#endif
-#endif
-
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
 #endif
 
 class nsPluginTag;
@@ -51,6 +45,7 @@ class PluginInstanceParent;
 
 #ifdef XP_WIN
 class PluginHangUIParent;
+class FunctionBrokerParent;
 #endif
 #ifdef MOZ_CRASHREPORTER_INJECTOR
 class FinishInjectorInitTask;
@@ -171,20 +166,6 @@ protected:
                                         const bool& shouldRegister,
                                         NPError* result) override;
 
-    virtual mozilla::ipc::IPCResult
-    AnswerGetFileName(const GetFileNameFunc& aFunc,
-                      const OpenFileNameIPC& aOfnIn,
-                      OpenFileNameRetIPC* aOfnOut, bool* aResult) override
-    {
-      return IPC_FAIL_NO_REASON(this);
-    }
-
-    virtual mozilla::ipc::IPCResult
-    AnswerSetCursorPos(const int &x, const int &y, bool* aResult) override
-    {
-      return IPC_FAIL_NO_REASON(this);
-    }
-
 protected:
     void SetChildTimeout(const int32_t aChildTimeout);
     static void TimeoutChanged(const char* aPref, void* aModule);
@@ -192,8 +173,6 @@ protected:
     virtual void UpdatePluginTimeout() {}
 
     virtual mozilla::ipc::IPCResult RecvNotifyContentModuleDestroyed() override { return IPC_OK(); }
-
-    virtual mozilla::ipc::IPCResult AnswerGetKeyState(const int32_t& aVirtKey, int16_t* aRet) override;
 
     virtual mozilla::ipc::IPCResult RecvReturnClearSiteData(const NPError& aRv,
                                                             const uint64_t& aCallbackId) override;
@@ -222,8 +201,6 @@ protected:
     static int32_t NPP_WriteReady(NPP instance, NPStream* stream);
     static int32_t NPP_Write(NPP instance, NPStream* stream,
                              int32_t offset, int32_t len, void* buffer);
-    static void NPP_StreamAsFile(NPP instance,
-                                 NPStream* stream, const char* fname);
     static void NPP_Print(NPP instance, NPPrint* platformPrint);
     static int16_t NPP_HandleEvent(NPP instance, void* event);
     static void NPP_URLNotify(NPP instance, const char* url,
@@ -336,7 +313,6 @@ protected:
     RefPtr<layers::TextureClientRecycleAllocator> mTextureAllocatorForDirectBitmap;
     RefPtr<layers::TextureClientRecycleAllocator> mTextureAllocatorForDXGISurface;
 
-#ifdef MOZ_CRASHREPORTER
     /**
      * This mutex protects the crash reporter when the Plugin Hang UI event
      * handler is executing off main thread. It is intended to protect both
@@ -345,7 +321,6 @@ protected:
      */
     mozilla::Mutex mCrashReporterMutex;
     UniquePtr<ipc::CrashReporterHost> mCrashReporter;
-#endif // MOZ_CRASHREPORTER
 };
 
 class PluginModuleContentParent : public PluginModuleParent
@@ -460,7 +435,6 @@ class PluginModuleChromeParent
     }
 
   private:
-#ifdef MOZ_CRASHREPORTER
     // The following methods are callbacks invoked after calling
     // TakeFullMinidump(). The methods are invoked in the following order:
     void TakeBrowserAndPluginMinidumps(bool aReportsReady,
@@ -471,7 +445,7 @@ class PluginModuleChromeParent
                                     base::ProcessId aContentPid,
                                     const nsAString& aBrowserDumpId);
 
-#endif
+
     // The following method is the callback invoked after calling
     // TerminateChidlProcess().
     void TerminateChildProcessOnDumpComplete(MessageLoop* aMsgLoop,
@@ -492,19 +466,6 @@ class PluginModuleChromeParent
 
     void CachedSettingChanged();
 
-    virtual mozilla::ipc::IPCResult
-    AnswerGetKeyState(const int32_t& aVirtKey, int16_t* aRet) override;
-
-    // Proxy GetOpenFileName/GetSaveFileName on Windows.
-    virtual mozilla::ipc::IPCResult
-    AnswerGetFileName(const GetFileNameFunc& aFunc,
-                      const OpenFileNameIPC& aOfnIn,
-                      OpenFileNameRetIPC* aOfnOut, bool* aResult) override;
-
-    // Proxy SetCursorPos on Windows.
-    virtual mozilla::ipc::IPCResult
-    AnswerSetCursorPos(const int &x, const int &y, bool* aResult) override;
-
 private:
     virtual void
     EnteredCxxStack() override;
@@ -520,12 +481,10 @@ private:
 
     virtual bool ShouldContinueFromReplyTimeout() override;
 
-#ifdef MOZ_CRASHREPORTER
     void ProcessFirstMinidump();
     void WriteExtraDataForMinidump();
     void RetainPluginRef();
     void ReleasePluginRef();
-#endif
 
     PluginProcessParent* Process() const { return mSubprocess; }
     base::ProcessHandle ChildProcessHandle() { return mSubprocess->GetChildProcessHandle(); }
@@ -598,6 +557,8 @@ private:
      */
     void
     FinishHangUI();
+
+    FunctionBrokerParent* mBrokerParent;
 #endif
 
 #ifdef MOZ_CRASHREPORTER_INJECTOR
@@ -639,15 +600,13 @@ private:
 
     nsCOMPtr<nsIObserver> mPluginOfflineObserver;
     bool mIsBlocklisted;
-#if defined(XP_WIN) && defined(MOZ_SANDBOX)
-    mozilla::SandboxPermissions mSandboxPermissions;
-#endif
 
-#ifdef MOZ_CRASHREPORTER
     nsCOMPtr<nsIFile> mBrowserDumpFile;
     TakeFullMinidumpCallback mTakeFullMinidumpCallback;
-#endif
+
     TerminateChildProcessCallback mTerminateChildProcessCallback;
+
+    bool mIsCleaningFromTimeout;
 };
 
 } // namespace plugins

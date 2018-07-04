@@ -22,11 +22,13 @@
 
 namespace mozilla {
 class ErrorResult;
-
+namespace dom {
+class DocGroup;
+} // namespace dom
 } // namespace mozilla
 
 class nsAttrValue;
-class nsIAtom;
+class nsAtom;
 
 // nsISupports must be on the primary inheritance chain
 
@@ -35,6 +37,7 @@ class nsDOMTokenList : public nsISupports,
 {
 protected:
   typedef mozilla::dom::Element Element;
+  typedef mozilla::dom::DocGroup DocGroup;
   typedef nsWhitespaceTokenizerTemplate<nsContentUtils::IsHTMLWhitespace>
     WhitespaceTokenizer;
 
@@ -42,7 +45,7 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(nsDOMTokenList)
 
-  nsDOMTokenList(Element* aElement, nsIAtom* aAttrAtom,
+  nsDOMTokenList(Element* aElement, nsAtom* aAttrAtom,
                  const mozilla::dom::DOMTokenListSupportedTokenArray = nullptr);
 
   virtual JSObject* WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto) override;
@@ -51,6 +54,8 @@ public:
   {
     return mElement;
   }
+
+  DocGroup* GetDocGroup() const;
 
   void RemoveDuplicates(const nsAttrValue* aAttr);
   uint32_t Length();
@@ -70,7 +75,7 @@ public:
   void Remove(const nsAString& aToken, mozilla::ErrorResult& aError);
   void Remove(const nsTArray<nsString>& aTokens,
               mozilla::ErrorResult& aError);
-  void Replace(const nsAString& aToken,
+  bool Replace(const nsAString& aToken,
                const nsAString& aNewToken,
                mozilla::ErrorResult& aError);
   bool Toggle(const nsAString& aToken,
@@ -88,19 +93,19 @@ protected:
 
   nsresult CheckToken(const nsAString& aStr);
   nsresult CheckTokens(const nsTArray<nsString>& aStr);
-  void RemoveDuplicatesInternal(nsTArray<nsCOMPtr<nsIAtom>>* aArray,
+  void RemoveDuplicatesInternal(nsTArray<RefPtr<nsAtom>>* aArray,
                                 uint32_t aStart);
   void AddInternal(const nsAttrValue* aAttr,
                    const nsTArray<nsString>& aTokens);
   void RemoveInternal(const nsAttrValue* aAttr,
                       const nsTArray<nsString>& aTokens);
-  void ReplaceInternal(const nsAttrValue* aAttr,
+  bool ReplaceInternal(const nsAttrValue* aAttr,
                        const nsAString& aToken,
                        const nsAString& aNewToken);
   inline const nsAttrValue* GetParsedAttr();
 
   nsCOMPtr<Element> mElement;
-  nsCOMPtr<nsIAtom> mAttrAtom;
+  RefPtr<nsAtom> mAttrAtom;
   const mozilla::dom::DOMTokenListSupportedTokenArray mSupportedTokens;
 };
 

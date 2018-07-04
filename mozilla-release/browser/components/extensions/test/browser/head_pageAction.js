@@ -7,14 +7,17 @@
 /* import-globals-from head.js */
 
 {
-  const chromeRegistry = Cc["@mozilla.org/chrome/chrome-registry;1"].getService(Ci.nsIChromeRegistry);
+  // At the moment extension language negotiation is tied to Firefox language
+  // negotiation result. That means that to test an extension in `es-ES`, we need
+  // to mock `es-ES` being available in Firefox and then request it.
+  //
+  // In the future, we should provide some way for tests to decouple their
+  // language selection from that of Firefox.
+  const avLocales = Services.locale.getAvailableLocales();
 
-  let localeDir = new URL("locale/", gTestPath).href;
-  let {file} = chromeRegistry.convertChromeURL(Services.io.newURI(localeDir)).QueryInterface(Ci.nsIFileURL);
-
-  Components.manager.addBootstrappedManifestLocation(file);
+  Services.locale.setAvailableLocales(["en-US", "es-ES"]);
   registerCleanupFunction(() => {
-    Components.manager.removeBootstrappedManifestLocation(file);
+    Services.locale.setAvailableLocales(avLocales);
   });
 }
 
@@ -34,6 +37,7 @@ async function runTests(options) {
       return {
         title: await browser.pageAction.getTitle({tabId}),
         popup: await browser.pageAction.getPopup({tabId}),
+        isShown: await browser.pageAction.isShown({tabId}),
       };
     }
 
@@ -50,17 +54,19 @@ async function runTests(options) {
           browser.test.sendMessage("nextTest", expecting, tests.length);
         }
 
+        // Check that the API returns the expected values, and then
+        // run the next test.
+        let details = await getDetails();
         if (expecting) {
-          // Check that the API returns the expected values, and then
-          // run the next test.
-          let details = await getDetails();
-
           browser.test.assertEq(expecting.title, details.title,
                                 "expected value from getTitle");
 
           browser.test.assertEq(expecting.popup, details.popup,
                                 "expected value from getPopup");
         }
+
+        browser.test.assertEq(!!expecting, details.isShown,
+                              "expected value from isShown");
 
         finish();
       });
@@ -105,7 +111,7 @@ async function runTests(options) {
   function checkDetails(details) {
     let image = currentWindow.document.getElementById(pageActionId);
     if (details == null) {
-      ok(image == null || image.hidden, "image is hidden");
+      ok(image == null || image.getAttribute("disabled") == "true", "image is disabled");
     } else {
       ok(image, "image exists");
 
@@ -123,7 +129,7 @@ async function runTests(options) {
   let awaitFinish = new Promise(resolve => {
     extension.onMessage("nextTest", async (expecting, testsRemaining) => {
       if (!pageActionId) {
-        pageActionId = `${makeWidgetId(extension.id)}-page-action`;
+        pageActionId = BrowserPageActions.urlbarButtonNodeIDForActionID(makeWidgetId(extension.id));
       }
 
       await promiseAnimationFrame(currentWindow);

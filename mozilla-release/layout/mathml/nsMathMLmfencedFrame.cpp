@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,16 +16,19 @@ using namespace mozilla;
 //
 
 nsIFrame*
-NS_NewMathMLmfencedFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewMathMLmfencedFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsMathMLmfencedFrame(aContext);
+  return new (aPresShell) nsMathMLmfencedFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmfencedFrame)
 
-nsMathMLmfencedFrame::~nsMathMLmfencedFrame()
+void
+nsMathMLmfencedFrame::DestroyFrom(nsIFrame* aDestructRoot,
+                                  PostDestroyData& aPostDestroyData)
 {
   RemoveFencesAndSeparators();
+  nsMathMLContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 NS_IMETHODIMP
@@ -52,15 +56,15 @@ nsMathMLmfencedFrame::SetInitialChildList(ChildListID     aListID,
   // frame, so initialize NS_MATHML_STRETCH_ALL_CHILDREN_VERTICALLY for
   // GetPreferredStretchSize() from Reflow().
   mPresentationData.flags |= NS_MATHML_STRETCH_ALL_CHILDREN_VERTICALLY;
-  // No need to track the style contexts given to our MathML chars.
-  // The Style System will use Get/SetAdditionalStyleContext() to keep them
+  // No need to track the ComputedStyle given to our MathML chars.
+  // The Style System will use Get/SetAdditionalComputedStyle() to keep them
   // up-to-date if dynamic changes arise.
   CreateFencesAndSeparators(PresContext());
 }
 
 nsresult
 nsMathMLmfencedFrame::AttributeChanged(int32_t         aNameSpaceID,
-                                       nsIAtom*        aAttribute,
+                                       nsAtom*        aAttribute,
                                        int32_t         aModType)
 {
   RemoveFencesAndSeparators();
@@ -82,6 +86,7 @@ nsMathMLmfencedFrame::ChildListChanged(int32_t aModType)
 void
 nsMathMLmfencedFrame::RemoveFencesAndSeparators()
 {
+  MarkNeedsDisplayItemRebuild();
   delete mOpenChar;
   delete mCloseChar;
   if (mSeparatorsChar) delete[] mSeparatorsChar;
@@ -99,7 +104,7 @@ nsMathMLmfencedFrame::CreateFencesAndSeparators(nsPresContext* aPresContext)
 
   //////////////
   // see if the opening fence is there ...
-  if (!mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::open, value)) {
+  if (!mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::open, value)) {
     value = char16_t('('); // default as per the MathML REC
   } else {
     value.CompressWhitespace();
@@ -108,12 +113,12 @@ nsMathMLmfencedFrame::CreateFencesAndSeparators(nsPresContext* aPresContext)
   if (!value.IsEmpty()) {
     mOpenChar = new nsMathMLChar;
     mOpenChar->SetData(value);
-    ResolveMathMLCharStyle(aPresContext, mContent, mStyleContext, mOpenChar);
+    ResolveMathMLCharStyle(aPresContext, mContent, mComputedStyle, mOpenChar);
   }
 
   //////////////
   // see if the closing fence is there ...
-  if(!mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::close, value)) {
+  if(!mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::close, value)) {
     value = char16_t(')'); // default as per the MathML REC
   } else {
     value.CompressWhitespace();
@@ -122,12 +127,12 @@ nsMathMLmfencedFrame::CreateFencesAndSeparators(nsPresContext* aPresContext)
   if (!value.IsEmpty()) {
     mCloseChar = new nsMathMLChar;
     mCloseChar->SetData(value);
-    ResolveMathMLCharStyle(aPresContext, mContent, mStyleContext, mCloseChar);
+    ResolveMathMLCharStyle(aPresContext, mContent, mComputedStyle, mCloseChar);
   }
 
   //////////////
   // see if separators are there ...
-  if (!mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::separators_, value)) {
+  if (!mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::separators_, value)) {
     value = char16_t(','); // default as per the MathML REC
   } else {
     value.StripWhitespace();
@@ -147,7 +152,7 @@ nsMathMLmfencedFrame::CreateFencesAndSeparators(nsPresContext* aPresContext)
           sepChar = value[mSeparatorsCount-1];
         }
         mSeparatorsChar[i].SetData(sepChar);
-        ResolveMathMLCharStyle(aPresContext, mContent, mStyleContext, &mSeparatorsChar[i]);
+        ResolveMathMLCharStyle(aPresContext, mContent, mComputedStyle, &mSeparatorsChar[i]);
       }
       mSeparatorsCount = sepCount;
     } else {
@@ -160,12 +165,11 @@ nsMathMLmfencedFrame::CreateFencesAndSeparators(nsPresContext* aPresContext)
 
 void
 nsMathMLmfencedFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                       const nsRect&           aDirtyRect,
                                        const nsDisplayListSet& aLists)
 {
   /////////////
   // display the content
-  nsMathMLContainerFrame::BuildDisplayList(aBuilder, aDirtyRect, aLists);
+  nsMathMLContainerFrame::BuildDisplayList(aBuilder, aLists);
 
   ////////////
   // display fences and separators
@@ -214,6 +218,8 @@ nsMathMLmfencedFrame::Reflow(nsPresContext*          aPresContext,
                              nsReflowStatus&          aStatus)
 {
   MarkInReflow();
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
+
   mPresentationData.flags &= ~NS_MATHML_ERROR;
   aDesiredSize.ClearSize();
   aDesiredSize.SetBlockStartAscent(0);
@@ -445,7 +451,7 @@ nsMathMLmfencedFrame::Reflow(nsPresContext*          aPresContext,
   // Set our overflow area
   GatherAndStoreOverflow(&aDesiredSize);
 
-  aStatus.Reset();
+  MOZ_ASSERT(aStatus.IsEmpty(), "This type of frame can't be split.");
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
 
@@ -676,9 +682,10 @@ nsMathMLmfencedFrame::FixInterFrameSpacing(ReflowOutput& aDesiredSize)
 }
 
 // ----------------------
-// the Style System will use these to pass the proper style context to our MathMLChar
-nsStyleContext*
-nsMathMLmfencedFrame::GetAdditionalStyleContext(int32_t aIndex) const
+// the Style System will use these to pass the proper ComputedStyle to our
+// MathMLChar
+ComputedStyle*
+nsMathMLmfencedFrame::GetAdditionalComputedStyle(int32_t aIndex) const
 {
   int32_t openIndex = -1;
   int32_t closeIndex = -1;
@@ -697,20 +704,20 @@ nsMathMLmfencedFrame::GetAdditionalStyleContext(int32_t aIndex) const
   }
 
   if (aIndex < mSeparatorsCount) {
-    return mSeparatorsChar[aIndex].GetStyleContext();
+    return mSeparatorsChar[aIndex].GetComputedStyle();
   }
   else if (aIndex == openIndex) {
-    return mOpenChar->GetStyleContext();
+    return mOpenChar->GetComputedStyle();
   }
   else if (aIndex == closeIndex) {
-    return mCloseChar->GetStyleContext();
+    return mCloseChar->GetComputedStyle();
   }
   return nullptr;
 }
 
 void
-nsMathMLmfencedFrame::SetAdditionalStyleContext(int32_t          aIndex,
-                                                nsStyleContext*  aStyleContext)
+nsMathMLmfencedFrame::SetAdditionalComputedStyle(int32_t          aIndex,
+                                                ComputedStyle*  aComputedStyle)
 {
   int32_t openIndex = -1;
   int32_t closeIndex = -1;
@@ -729,12 +736,12 @@ nsMathMLmfencedFrame::SetAdditionalStyleContext(int32_t          aIndex,
   }
 
   if (aIndex < mSeparatorsCount) {
-    mSeparatorsChar[aIndex].SetStyleContext(aStyleContext);
+    mSeparatorsChar[aIndex].SetComputedStyle(aComputedStyle);
   }
   else if (aIndex == openIndex) {
-    mOpenChar->SetStyleContext(aStyleContext);
+    mOpenChar->SetComputedStyle(aComputedStyle);
   }
   else if (aIndex == closeIndex) {
-    mCloseChar->SetStyleContext(aStyleContext);
+    mCloseChar->SetComputedStyle(aComputedStyle);
   }
 }

@@ -7,15 +7,12 @@
 pref("services.sync.lastversion", "firstrun");
 pref("services.sync.sendVersionInfo", true);
 
-pref("services.sync.scheduler.eolInterval", 604800); // 1 week
 pref("services.sync.scheduler.idleInterval", 3600);  // 1 hour
 pref("services.sync.scheduler.activeInterval", 600);   // 10 minutes
 pref("services.sync.scheduler.immediateInterval", 90);    // 1.5 minutes
 pref("services.sync.scheduler.idleTime", 300);   // 5 minutes
 
 pref("services.sync.scheduler.fxa.singleDeviceInterval", 3600); // 1 hour
-
-pref("services.sync.errorhandler.networkFailureReportTimeout", 1209600); // 2 weeks
 
 // Note that new engines are typically added with a default of disabled, so
 // when an existing sync user gets the Firefox upgrade that supports the engine
@@ -25,12 +22,13 @@ pref("services.sync.errorhandler.networkFailureReportTimeout", 1209600); // 2 we
 pref("services.sync.engine.addons", true);
 pref("services.sync.engine.addresses", false);
 pref("services.sync.engine.bookmarks", true);
+pref("services.sync.engine.bookmarks.buffer", false);
 pref("services.sync.engine.creditcards", false);
 pref("services.sync.engine.history", true);
 pref("services.sync.engine.passwords", true);
 pref("services.sync.engine.prefs", true);
 pref("services.sync.engine.tabs", true);
-pref("services.sync.engine.tabs.filteredUrls", "^(about:.*|resource:.*|chrome:.*|wyciwyg:.*|file:.*|blob:.*)$");
+pref("services.sync.engine.tabs.filteredUrls", "^(about:.*|resource:.*|chrome:.*|wyciwyg:.*|file:.*|blob:.*|moz-extension:.*)$");
 
 // The addresses and CC engines might not actually be available at all.
 pref("services.sync.engine.addresses.available", false);
@@ -54,26 +52,17 @@ pref("services.sync.log.appender.file.logOnSuccess", true);
 pref("services.sync.log.appender.file.logOnSuccess", false);
 #endif
 pref("services.sync.log.appender.file.maxErrorAge", 864000); // 10 days
-pref("services.sync.log.rootLogger", "Debug");
-pref("services.sync.log.logger.addonutils", "Debug");
-pref("services.sync.log.logger.declined", "Debug");
-pref("services.sync.log.logger.service.main", "Debug");
-pref("services.sync.log.logger.status", "Debug");
-pref("services.sync.log.logger.authenticator", "Debug");
-pref("services.sync.log.logger.network.resources", "Debug");
-pref("services.sync.log.logger.engine.bookmarks", "Debug");
-pref("services.sync.log.logger.engine.clients", "Debug");
-pref("services.sync.log.logger.engine.forms", "Debug");
-pref("services.sync.log.logger.engine.history", "Debug");
-pref("services.sync.log.logger.engine.passwords", "Debug");
-pref("services.sync.log.logger.engine.prefs", "Debug");
-pref("services.sync.log.logger.engine.tabs", "Debug");
-pref("services.sync.log.logger.engine.addons", "Debug");
-pref("services.sync.log.logger.engine.addresses", "Debug");
-pref("services.sync.log.logger.engine.creditcards", "Debug");
-pref("services.sync.log.logger.engine.extension-storage", "Debug");
-pref("services.sync.log.logger.engine.apps", "Debug");
-pref("services.sync.log.logger.identity", "Debug");
+
+// The default log level for all "Sync.*" logs. Adjusting this pref will
+// adjust the level for *all* Sync logs (except engines, and that's only
+// because we supply a default for the engines below.)
+pref("services.sync.log.logger", "Debug");
+
+// Prefs for Sync engines can be controlled globally or per-engine.
+// We only define the global level here, but manually creating prefs
+// like "services.sync.log.logger.engine.bookmarks" will control just
+// that engine.
+pref("services.sync.log.logger.engine", "Debug");
 pref("services.sync.log.cryptoDebug", false);
 
 pref("services.sync.fxa.termsURL", "https://accounts.firefox.com/legal/terms");
@@ -86,6 +75,7 @@ pref("services.sync.telemetry.maxPayloadCount", 500);
 // Enable the (fairly costly) client/server validation through early Beta, but
 // not release candidates or Release.
 pref("services.sync.engine.bookmarks.validation.enabled", true);
+pref("services.sync.engine.passwords.validation.enabled", true);
 #endif
 
 #if defined(NIGHTLY_BUILD)
@@ -97,14 +87,17 @@ pref("services.sync.engine.bookmarks.repair.enabled", true);
 // We consider validation this frequently. After considering validation, even
 // if we don't end up validating, we won't try again unless this much time has passed.
 pref("services.sync.engine.bookmarks.validation.interval", 86400); // 24 hours in seconds
+pref("services.sync.engine.passwords.validation.interval", 86400); // 24 hours in seconds
 
 // We only run validation `services.sync.validation.percentageChance` percent of
 // the time, even if it's been the right amount of time since the last validation,
 // and you meet the maxRecord checks.
 pref("services.sync.engine.bookmarks.validation.percentageChance", 10);
+pref("services.sync.engine.passwords.validation.percentageChance", 10);
 
 // We won't validate an engine if it has more than this many records on the server.
 pref("services.sync.engine.bookmarks.validation.maxRecords", 1000);
+pref("services.sync.engine.passwords.validation.maxRecords", 1000);
 
 // The maximum number of immediate resyncs to trigger for changes made during
 // a sync.

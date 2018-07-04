@@ -1,13 +1,16 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsBidiPresUtils.h"
+
 #include "mozilla/IntegerRange.h"
+#include "mozilla/dom/Text.h"
 
 #include "gfxContext.h"
 #include "nsAutoPtr.h"
-#include "nsBidiPresUtils.h"
 #include "nsFontMetrics.h"
 #include "nsGkAtoms.h"
 #include "nsPresContext.h"
@@ -72,29 +75,29 @@ IsIsolateControl(char16_t aChar)
   return aChar == kLRI || aChar == kRLI || aChar == kFSI;
 }
 
-// Given a style context, return any bidi control character necessary to
+// Given a ComputedStyle, return any bidi control character necessary to
 // implement style properties that override directionality (i.e. if it has
 // unicode-bidi:bidi-override, or text-orientation:upright in vertical
 // writing mode) when applying the bidi algorithm.
 //
 // Returns 0 if no override control character is implied by this style.
 static char16_t
-GetBidiOverride(nsStyleContext* aStyleContext)
+GetBidiOverride(ComputedStyle* aComputedStyle)
 {
-  const nsStyleVisibility* vis = aStyleContext->StyleVisibility();
+  const nsStyleVisibility* vis = aComputedStyle->StyleVisibility();
   if ((vis->mWritingMode == NS_STYLE_WRITING_MODE_VERTICAL_RL ||
        vis->mWritingMode == NS_STYLE_WRITING_MODE_VERTICAL_LR) &&
       vis->mTextOrientation == NS_STYLE_TEXT_ORIENTATION_UPRIGHT) {
     return kLRO;
   }
-  const nsStyleTextReset* text = aStyleContext->StyleTextReset();
+  const nsStyleTextReset* text = aComputedStyle->StyleTextReset();
   if (text->mUnicodeBidi & NS_STYLE_UNICODE_BIDI_BIDI_OVERRIDE) {
     return NS_STYLE_DIRECTION_RTL == vis->mDirection ? kRLO : kLRO;
   }
   return 0;
 }
 
-// Given a style context, return any bidi control character necessary to
+// Given a ComputedStyle, return any bidi control character necessary to
 // implement style properties that affect bidi resolution (i.e. if it
 // has unicode-bidiembed, isolate, or plaintext) when applying the bidi
 // algorithm.
@@ -105,10 +108,10 @@ GetBidiOverride(nsStyleContext* aStyleContext)
 // because in the case of unicode-bidi:isolate-override we need both
 // FSI and LRO/RLO.
 static char16_t
-GetBidiControl(nsStyleContext* aStyleContext)
+GetBidiControl(ComputedStyle* aComputedStyle)
 {
-  const nsStyleVisibility* vis = aStyleContext->StyleVisibility();
-  const nsStyleTextReset* text = aStyleContext->StyleTextReset();
+  const nsStyleVisibility* vis = aComputedStyle->StyleVisibility();
+  const nsStyleTextReset* text = aComputedStyle->StyleTextReset();
   if (text->mUnicodeBidi & NS_STYLE_UNICODE_BIDI_EMBED) {
     return NS_STYLE_DIRECTION_RTL == vis->mDirection ? kRLE : kLRE;
   }
@@ -151,7 +154,7 @@ struct MOZ_STACK_CLASS BidiParagraphData
     : mPresContext(aBlockFrame->PresContext())
     , mIsVisual(mPresContext->IsVisualMode())
     , mRequiresBidi(false)
-    , mParaLevel(nsBidiPresUtils::BidiLevelFromStyle(aBlockFrame->StyleContext()))
+    , mParaLevel(nsBidiPresUtils::BidiLevelFromStyle(aBlockFrame->Style()))
     , mPrevContent(nullptr)
 #ifdef DEBUG
     , mCurrentBlock(aBlockFrame)
@@ -203,16 +206,14 @@ struct MOZ_STACK_CLASS BidiParagraphData
   {
     nsBidiLevel paraLevel = mParaLevel;
     if (paraLevel == NSBIDI_DEFAULT_LTR || paraLevel == NSBIDI_DEFAULT_RTL) {
-      mPresContext->GetBidiEngine().GetParaLevel(&paraLevel);
+      paraLevel = mPresContext->GetBidiEngine().GetParaLevel();
     }
     return paraLevel;
   }
 
   nsBidiDirection GetDirection()
   {
-    nsBidiDirection dir;
-    mPresContext->GetBidiEngine().GetDirection(&dir);
-    return dir;
+    return mPresContext->GetBidiEngine().GetDirection();
   }
 
   nsresult CountRuns(int32_t *runCount)
@@ -220,16 +221,15 @@ struct MOZ_STACK_CLASS BidiParagraphData
     return mPresContext->GetBidiEngine().CountRuns(runCount);
   }
 
-  nsresult GetLogicalRun(int32_t aLogicalStart,
-                         int32_t* aLogicalLimit,
-                         nsBidiLevel* aLevel)
+  void GetLogicalRun(int32_t aLogicalStart,
+                     int32_t* aLogicalLimit,
+                     nsBidiLevel* aLevel)
   {
-    nsresult rv =
-      mPresContext->GetBidiEngine().GetLogicalRun(aLogicalStart,
-                                                   aLogicalLimit, aLevel);
-    if (mIsVisual || NS_FAILED(rv))
+    mPresContext->GetBidiEngine().GetLogicalRun(aLogicalStart,
+                                                aLogicalLimit, aLevel);
+    if (mIsVisual) {
       *aLevel = GetParaLevel();
-    return rv;
+    }
   }
 
   void ResetData()
@@ -711,7 +711,7 @@ nsBidiPresUtils::Resolve(nsBlockFrame* aBlockFrame)
   // values of unicode-bidi property are redundant on block elements.
   // unicode-bidi:plaintext on a block element is handled by block frame
   // via using nsIFrame::GetWritingMode(nsIFrame*).
-  char16_t ch = GetBidiOverride(aBlockFrame->StyleContext());
+  char16_t ch = GetBidiOverride(aBlockFrame->Style());
   if (ch != 0) {
     bpd.PushBidiControl(ch);
     bpd.mRequiresBidi = true;
@@ -890,13 +890,17 @@ nsBidiPresUtils::ResolveParagraph(BidiParagraphData* aBpd)
     if (runLength <= 0) {
       // Get the next run of text from the Bidi engine
       if (++numRun >= runCount) {
+        // We've run out of runs of text; but don't forget to store bidi data
+        // to the frame before breaking out of the loop (bug 1426042).
+        storeBidiDataToFrame();
+        if (isTextFrame) {
+          frame->AdjustOffsetsForBidi(contentOffset,
+                                      contentOffset + fragmentLength);
+        }
         break;
       }
       int32_t lineOffset = logicalLimit;
-      if (NS_FAILED(aBpd->GetLogicalRun(
-              lineOffset, &logicalLimit, &embeddingLevel) ) ) {
-        break;
-      }
+      aBpd->GetLogicalRun(lineOffset, &logicalLimit, &embeddingLevel);
       runLength = logicalLimit - lineOffset;
     } // if (runLength <= 0)
 
@@ -1077,13 +1081,13 @@ nsBidiPresUtils::TraverseFrames(nsBlockInFlowLineIterator* aLineIter,
       }
     }
 
-    auto DifferentBidiValues = [](nsStyleContext* aSC1, nsIFrame* aFrame2) {
-      nsStyleContext* sc2 = aFrame2->StyleContext();
+    auto DifferentBidiValues = [](ComputedStyle* aSC1, nsIFrame* aFrame2) {
+      ComputedStyle* sc2 = aFrame2->Style();
       return GetBidiControl(aSC1) != GetBidiControl(sc2) ||
              GetBidiOverride(aSC1) != GetBidiOverride(sc2);
     };
 
-    nsStyleContext* sc = frame->StyleContext();
+    ComputedStyle* sc = frame->Style();
     nsIFrame* nextContinuation = frame->GetNextContinuation();
     nsIFrame* prevContinuation = frame->GetPrevContinuation();
     bool isLastFrame = !nextContinuation ||
@@ -1133,14 +1137,14 @@ nsBidiPresUtils::TraverseFrames(nsBlockInFlowLineIterator* aLineIter,
           aBpd->mPrevContent = content;
           if (!frame->StyleText()->NewlineIsSignificant(
                 static_cast<nsTextFrame*>(frame))) {
-            content->AppendTextTo(aBpd->mBuffer);
+            content->GetAsText()->AppendTextTo(aBpd->mBuffer);
           } else {
             /*
              * For preformatted text we have to do bidi resolution on each line
              * separately.
              */
             nsAutoString text;
-            content->AppendTextTo(text);
+            content->GetAsText()->AppendTextTo(text);
             nsIFrame* next;
             do {
               next = nullptr;
@@ -1310,7 +1314,7 @@ nsBidiPresUtils::ChildListMayRequireBidi(nsIFrame*    aFirstChild,
     }
 
     // If unicode-bidi properties are present, we should do bidi resolution.
-    nsStyleContext* sc = frame->StyleContext();
+    ComputedStyle* sc = frame->Style();
     if (GetBidiControl(sc) || GetBidiOverride(sc)) {
       return true;
     }
@@ -1331,7 +1335,7 @@ nsBidiPresUtils::ChildListMayRequireBidi(nsIFrame*    aFirstChild,
         if (content != *aCurrContent) {
           *aCurrContent = content;
           const nsTextFragment* txt = content->GetText();
-          if (txt->Is2b() && HasRTLChars(txt->Get2b(), txt->GetLength())) {
+          if (txt->Is2b() && HasRTLChars(MakeSpan(txt->Get2b(), txt->GetLength()))) {
             return true;
           }
         }
@@ -2125,15 +2129,10 @@ nsresult nsBidiPresUtils::ProcessText(const char16_t*       aText,
   }
 
   for (i = 0; i < runCount; i++) {
-    nsBidiDirection dir;
-    rv = aBidiEngine->GetVisualRun(i, &start, &length, &dir);
-    if (NS_FAILED(rv))
-      return rv;
+    nsBidiDirection dir = aBidiEngine->GetVisualRun(i, &start, &length);
 
     nsBidiLevel level;
-    rv = aBidiEngine->GetLogicalRun(start, &limit, &level);
-    if (NS_FAILED(rv))
-      return rv;
+    aBidiEngine->GetLogicalRun(start, &limit, &level);
 
     dir = DIRECTION_FROM_LEVEL(level);
     int32_t subRunLength = limit - start;
@@ -2379,14 +2378,14 @@ nsresult nsBidiPresUtils::ProcessTextForRenderingContext(const char16_t*       a
 
 /* static */
 nsBidiLevel
-nsBidiPresUtils::BidiLevelFromStyle(nsStyleContext* aStyleContext)
+nsBidiPresUtils::BidiLevelFromStyle(ComputedStyle* aComputedStyle)
 {
-  if (aStyleContext->StyleTextReset()->mUnicodeBidi &
+  if (aComputedStyle->StyleTextReset()->mUnicodeBidi &
       NS_STYLE_UNICODE_BIDI_PLAINTEXT) {
     return NSBIDI_DEFAULT_LTR;
   }
 
-  if (aStyleContext->StyleVisibility()->mDirection == NS_STYLE_DIRECTION_RTL) {
+  if (aComputedStyle->StyleVisibility()->mDirection == NS_STYLE_DIRECTION_RTL) {
     return NSBIDI_RTL;
   }
 

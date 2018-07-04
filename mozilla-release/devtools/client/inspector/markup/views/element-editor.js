@@ -19,6 +19,11 @@ const {parseAttribute} =
       require("devtools/client/shared/node-attribute-parser");
 const {getCssProperties} = require("devtools/shared/fronts/css-properties");
 
+// Global tooltip inspector
+const {LocalizationHelper} = require("devtools/shared/l10n");
+const INSPECTOR_L10N =
+  new LocalizationHelper("devtools/client/locales/inspector.properties");
+
 // Page size for pageup/pagedown
 const COLLAPSE_DATA_URL_REGEX = /^data.+base64/;
 const COLLAPSE_DATA_URL_LENGTH = 60;
@@ -27,7 +32,19 @@ const COLLAPSE_DATA_URL_LENGTH = 60;
 const HTML_VOID_ELEMENTS = [
   "area", "base", "br", "col", "command", "embed",
   "hr", "img", "input", "keygen", "link", "meta", "param", "source",
-  "track", "wbr" ];
+  "track", "wbr"
+];
+
+// Contains only valid computed display property types of the node to display in the
+// element markup and their respective title tooltip text.
+const DISPLAY_TYPES = {
+  "flex": INSPECTOR_L10N.getStr("markupView.display.flex.tooltiptext"),
+  "inline-flex": INSPECTOR_L10N.getStr("markupView.display.flex.tooltiptext"),
+  "grid": INSPECTOR_L10N.getStr("markupView.display.grid.tooltiptext"),
+  "inline-grid": INSPECTOR_L10N.getStr("markupView.display.inlineGrid.tooltiptext"),
+  "flow-root": INSPECTOR_L10N.getStr("markupView.display.flowRoot.tooltiptext"),
+  "contents": INSPECTOR_L10N.getStr("markupView.display.contents.tooltiptext2"),
+};
 
 /**
  * Creates an editor for an Element node.
@@ -69,7 +86,6 @@ function ElementEditor(container, node) {
       trigger: "dblclick",
       stopOnReturn: true,
       done: this.onTagEdit.bind(this),
-      contextMenu: this.markup.inspector.onTextBoxContextMenu,
       cssProperties: this._cssProperties
     });
   }
@@ -93,11 +109,10 @@ function ElementEditor(container, node) {
       this._applyAttributes(val, null, doMods, undoMods);
       this.container.undo.do(() => {
         doMods.apply();
-      }, function () {
+      }, function() {
         undoMods.apply();
       });
     },
-    contextMenu: this.markup.inspector.onTextBoxContextMenu,
     cssProperties: this._cssProperties
   });
 
@@ -115,7 +130,7 @@ function ElementEditor(container, node) {
 }
 
 ElementEditor.prototype = {
-  buildMarkup: function () {
+  buildMarkup: function() {
     this.elt = this.doc.createElement("span");
     this.elt.classList.add("editor");
 
@@ -135,6 +150,8 @@ ElementEditor.prototype = {
     this.newAttr = this.doc.createElement("span");
     this.newAttr.classList.add("newattr");
     this.newAttr.setAttribute("tabindex", "-1");
+    this.newAttr.setAttribute("aria-label",
+      INSPECTOR_L10N.getStr("markupView.newAttribute.label"));
     open.appendChild(this.newAttr);
 
     let closingBracket = this.doc.createElement("span");
@@ -154,10 +171,15 @@ ElementEditor.prototype = {
     close.appendChild(this.doc.createTextNode(">"));
 
     this.eventNode = this.doc.createElement("div");
-    this.eventNode.classList.add("markupview-events");
+    this.eventNode.classList.add("markupview-event-badge");
     this.eventNode.dataset.event = "true";
-    this.eventNode.textContent = "ev";
+    this.eventNode.textContent = "event";
+    this.eventNode.title = INSPECTOR_L10N.getStr("markupView.event.tooltiptext");
     this.elt.appendChild(this.eventNode);
+
+    this.displayNode = this.doc.createElement("div");
+    this.displayNode.classList.add("markupview-display-badge");
+    this.elt.appendChild(this.displayNode);
   },
 
   set selected(value) {
@@ -166,7 +188,7 @@ ElementEditor.prototype = {
     }
   },
 
-  flashAttribute: function (attrName) {
+  flashAttribute: function(attrName) {
     if (this.animationTimers[attrName]) {
       clearTimeout(this.animationTimers[attrName]);
     }
@@ -186,7 +208,7 @@ ElementEditor.prototype = {
    * @return {Object} An object literal with the following information:
    *         {type: "attribute", name: "rel", value: "index", el: node}
    */
-  getInfoAtNode: function (node) {
+  getInfoAtNode: function(node) {
     if (!node) {
       return null;
     }
@@ -199,8 +221,8 @@ ElementEditor.prototype = {
     let attribute = node.closest(".attreditor");
     if (attribute) {
       type = "attribute";
-      name = attribute.querySelector(".attr-name").textContent;
-      value = attribute.querySelector(".attr-value").textContent;
+      name = attribute.dataset.attr;
+      value = attribute.dataset.value;
     }
 
     return {type, name, value, el: node};
@@ -209,7 +231,7 @@ ElementEditor.prototype = {
   /**
    * Update the state of the editor from the node.
    */
-  update: function () {
+  update: function() {
     let nodeAttributes = this.node.attributes || [];
 
     // Keep the data model in sync with attributes on the node.
@@ -249,8 +271,14 @@ ElementEditor.prototype = {
     }
 
     // Update the event bubble display
-    this.eventNode.style.display = this.node.hasEventListeners ?
-      "inline-block" : "none";
+    this.eventNode.style.display = this.node.hasEventListeners ? "inline-block" : "none";
+
+    // Update the display type node
+    let showDisplayNode = this.node.displayType in DISPLAY_TYPES;
+    this.displayNode.textContent = this.node.displayType;
+    this.displayNode.dataset.display = showDisplayNode ? this.node.displayType : "";
+    this.displayNode.style.display = showDisplayNode ? "inline-block" : "none";
+    this.displayNode.title = showDisplayNode ? DISPLAY_TYPES[this.node.displayType] : "";
 
     this.updateTextEditor();
   },
@@ -258,7 +286,7 @@ ElementEditor.prototype = {
   /**
    * Update the inline text editor in case of a single text child node.
    */
-  updateTextEditor: function () {
+  updateTextEditor: function() {
     let node = this.node.inlineTextChild;
 
     if (this.textEditor && this.textEditor.node != node) {
@@ -279,7 +307,7 @@ ElementEditor.prototype = {
     }
   },
 
-  _startModifyingAttributes: function () {
+  _startModifyingAttributes: function() {
     return this.node.startModifyingAttributes();
   },
 
@@ -290,7 +318,7 @@ ElementEditor.prototype = {
    *         The name of the attribute to get the element for
    * @return {DOMNode}
    */
-  getAttributeElement: function (attrName) {
+  getAttributeElement: function(attrName) {
     return this.attrList.querySelector(
       ".attreditor[data-attr=" + CSS.escape(attrName) + "] .attr-value");
   },
@@ -301,7 +329,7 @@ ElementEditor.prototype = {
    * @param  {String} attrName
    *         The name of the attribute to remove
    */
-  removeAttribute: function (attrName) {
+  removeAttribute: function(attrName) {
     let attr = this.attrElements.get(attrName);
     if (attr) {
       this.attrElements.delete(attrName);
@@ -309,7 +337,7 @@ ElementEditor.prototype = {
     }
   },
 
-  _createAttribute: function (attribute, before = null) {
+  _createAttribute: function(attribute, before = null) {
     let attr = this.doc.createElement("span");
     attr.dataset.attr = attribute.name;
     attr.dataset.value = attribute.value;
@@ -402,7 +430,6 @@ ElementEditor.prototype = {
           undoMods.apply();
         });
       },
-      contextMenu: this.markup.inspector.onTextBoxContextMenu,
       cssProperties: this._cssProperties
     });
 
@@ -470,7 +497,7 @@ ElementEditor.prototype = {
    *         set of attributes, used to place new attributes where the
    *         user put them.
    */
-  _applyAttributes: function (value, attrNode, doMods, undoMods) {
+  _applyAttributes: function(value, attrNode, doMods, undoMods) {
     let attrs = parseAttributeValues(value, this.doc);
     for (let attr of attrs) {
       // Create an attribute editor next to the current attribute if needed.
@@ -484,7 +511,7 @@ ElementEditor.prototype = {
    * Saves the current state of the given attribute into an attribute
    * modification list.
    */
-  _saveAttribute: function (name, undoMods) {
+  _saveAttribute: function(name, undoMods) {
     let node = this.node;
     if (node.hasAttribute(name)) {
       let oldValue = node.getAttribute(name);
@@ -499,7 +526,7 @@ ElementEditor.prototype = {
    * try to focus on the attribute after the one that's being edited now.
    * If the attribute order changes, go to the beginning of the attribute list.
    */
-  refocusOnEdit: function (attrName, attrNode, direction) {
+  refocusOnEdit: function(attrName, attrNode, direction) {
     // Only allow one refocus on attribute change at a time, so when there's
     // more than 1 request in parallel, the last one wins.
     if (this._editedAttributeObserver) {
@@ -520,7 +547,7 @@ ElementEditor.prototype = {
       .filter(el => el.style.display != "none");
     let attributeIndex = activeAttrs.indexOf(attrNode);
 
-    let onMutations = this._editedAttributeObserver = (e, mutations) => {
+    let onMutations = this._editedAttributeObserver = mutations => {
       let isDeletedAttribute = false;
       let isNewAttribute = false;
 
@@ -601,7 +628,7 @@ ElementEditor.prototype = {
   /**
    * Called when the tag name editor has is done editing.
    */
-  onTagEdit: function (newTagName, isCommit) {
+  onTagEdit: function(newTagName, isCommit) {
     if (!isCommit ||
         newTagName.toLowerCase() === this.node.tagName.toLowerCase() ||
         !("editTagName" in this.markup.walker)) {
@@ -617,7 +644,7 @@ ElementEditor.prototype = {
     });
   },
 
-  destroy: function () {
+  destroy: function() {
     for (let key in this.animationTimers) {
       clearTimeout(this.animationTimers[key]);
     }

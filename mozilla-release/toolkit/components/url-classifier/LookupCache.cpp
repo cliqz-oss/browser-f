@@ -59,7 +59,7 @@ void CStringToHexString(const nsACString& aIn, nsACString& aOut)
 
   aOut.SetCapacity(2 * len);
   for (size_t i = 0; i < aIn.Length(); ++i) {
-    const char c = static_cast<const char>(aIn[i]);
+    const char c = static_cast<char>(aIn[i]);
     aOut.Append(lut[(c >> 4) & 0x0F]);
     aOut.Append(lut[c & 15]);
   }
@@ -79,7 +79,7 @@ LookupCache::LookupCache(const nsACString& aTableName,
 nsresult
 LookupCache::Open()
 {
-  LOG(("Loading PrefixSet"));
+  LOG(("Loading PrefixSet for %s", mTableName.get()));
   nsresult rv = LoadPrefixSet();
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -423,7 +423,7 @@ LookupCache::GetHostKeys(const nsACString& aSpec,
       return NS_ERROR_OUT_OF_MEMORY;
 
     key->Assign(host);
-    key->Append("/");
+    key->AppendLiteral("/");
     return NS_OK;
   }
 
@@ -442,9 +442,9 @@ LookupCache::GetHostKeys(const nsACString& aSpec,
     return NS_ERROR_OUT_OF_MEMORY;
 
   lookupHost->Assign(hostComponents[last - 1]);
-  lookupHost->Append(".");
+  lookupHost->AppendLiteral(".");
   lookupHost->Append(hostComponents[last]);
-  lookupHost->Append("/");
+  lookupHost->AppendLiteral("/");
 
   // Now check with three domain components
   if (hostComponents.Length() > 2) {
@@ -452,7 +452,7 @@ LookupCache::GetHostKeys(const nsACString& aSpec,
     if (!lookupHost2)
       return NS_ERROR_OUT_OF_MEMORY;
     lookupHost2->Assign(hostComponents[last - 2]);
-    lookupHost2->Append(".");
+    lookupHost2->AppendLiteral(".");
     lookupHost2->Append(*lookupHost);
   }
 
@@ -582,8 +582,7 @@ LookupCacheV2::Has(const Completion& aCompletion,
   if (found) {
     *aHas = true;
     *aMatchLength = PREFIX_SIZE;
-  } else if (mUpdateCompletions.BinaryIndexOf(aCompletion) !=
-             nsTArray<Completion>::NoIndex) {
+  } else if (mUpdateCompletions.ContainsSorted(aCompletion)) {
     // Completions is found in database, confirm the result
     *aHas = true;
     *aMatchLength = COMPLETE_SIZE;
@@ -631,7 +630,6 @@ LookupCacheV2::Build(AddPrefixArray& aAddPrefixes,
 
   nsresult rv = ConstructPrefixSet(aAddPrefixes);
   NS_ENSURE_SUCCESS(rv, rv);
-  mPrimed = true;
 
   return NS_OK;
 }

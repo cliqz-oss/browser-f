@@ -4,10 +4,8 @@
 
 "use strict";
 
-var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
-
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const bundle = Services.strings.createBundle(
   "chrome://global/locale/aboutServiceWorkers.properties");
@@ -165,7 +163,7 @@ function display(info, pushService) {
         alert(bundle.GetStringFromName("unregisterError"));
       },
 
-      QueryInterface: XPCOMUtils.generateQI([Ci.nsIServiceWorkerUnregisterCallback])
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIServiceWorkerUnregisterCallback])
     };
 
     loadingMessage.classList.remove("inactive");

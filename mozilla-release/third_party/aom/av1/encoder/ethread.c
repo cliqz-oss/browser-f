@@ -15,25 +15,18 @@
 #include "aom_dsp/aom_dsp_common.h"
 
 static void accumulate_rd_opt(ThreadData *td, ThreadData *td_t) {
-  int i, j, k, l, m, n;
-
-  for (i = 0; i < REFERENCE_MODES; i++)
+  for (int i = 0; i < REFERENCE_MODES; i++)
     td->rd_counts.comp_pred_diff[i] += td_t->rd_counts.comp_pred_diff[i];
 
 #if CONFIG_GLOBAL_MOTION
-  for (i = 0; i < TOTAL_REFS_PER_FRAME; i++)
+  for (int i = 0; i < TOTAL_REFS_PER_FRAME; i++)
     td->rd_counts.global_motion_used[i] +=
         td_t->rd_counts.global_motion_used[i];
 #endif  // CONFIG_GLOBAL_MOTION
 
-  for (i = 0; i < TX_SIZES; i++)
-    for (j = 0; j < PLANE_TYPES; j++)
-      for (k = 0; k < REF_TYPES; k++)
-        for (l = 0; l < COEF_BANDS; l++)
-          for (m = 0; m < COEFF_CONTEXTS; m++)
-            for (n = 0; n < ENTROPY_TOKENS; n++)
-              td->rd_counts.coef_counts[i][j][k][l][m][n] +=
-                  td_t->rd_counts.coef_counts[i][j][k][l][m][n];
+  td->rd_counts.compound_ref_used_flag |=
+      td_t->rd_counts.compound_ref_used_flag;
+  td->rd_counts.single_ref_used_flag |= td_t->rd_counts.single_ref_used_flag;
 }
 
 static int enc_worker_hook(EncWorkerData *const thread_data, void *unused) {
@@ -88,8 +81,10 @@ void av1_encode_tiles_mt(AV1_COMP *cpi) {
                         aom_memalign(32, sizeof(*thread_data->td)));
         av1_zero(*thread_data->td);
 
-        // Set up pc_tree.
+// Set up pc_tree.
+#if !CONFIG_CB4X4
         thread_data->td->leaf_tree = NULL;
+#endif
         thread_data->td->pc_tree = NULL;
         av1_setup_pc_tree(cm, thread_data->td);
 
@@ -101,12 +96,14 @@ void av1_encode_tiles_mt(AV1_COMP *cpi) {
 #endif
         CHECK_MEM_ERROR(cm, thread_data->td->above_pred_buf,
                         (uint8_t *)aom_memalign(
-                            16, buf_scaler * MAX_MB_PLANE * MAX_SB_SQUARE *
-                                    sizeof(*thread_data->td->above_pred_buf)));
+                            16,
+                            buf_scaler * MAX_MB_PLANE * MAX_SB_SQUARE *
+                                sizeof(*thread_data->td->above_pred_buf)));
         CHECK_MEM_ERROR(cm, thread_data->td->left_pred_buf,
                         (uint8_t *)aom_memalign(
-                            16, buf_scaler * MAX_MB_PLANE * MAX_SB_SQUARE *
-                                    sizeof(*thread_data->td->left_pred_buf)));
+                            16,
+                            buf_scaler * MAX_MB_PLANE * MAX_SB_SQUARE *
+                                sizeof(*thread_data->td->left_pred_buf)));
         CHECK_MEM_ERROR(
             cm, thread_data->td->wsrc_buf,
             (int32_t *)aom_memalign(
@@ -120,14 +117,10 @@ void av1_encode_tiles_mt(AV1_COMP *cpi) {
         CHECK_MEM_ERROR(cm, thread_data->td->counts,
                         aom_calloc(1, sizeof(*thread_data->td->counts)));
 
-#if CONFIG_PALETTE
         // Allocate buffers used by palette coding mode.
-        if (cpi->common.allow_screen_content_tools) {
-          CHECK_MEM_ERROR(
-              cm, thread_data->td->palette_buffer,
-              aom_memalign(16, sizeof(*thread_data->td->palette_buffer)));
-        }
-#endif  // CONFIG_PALETTE
+        CHECK_MEM_ERROR(
+            cm, thread_data->td->palette_buffer,
+            aom_memalign(16, sizeof(*thread_data->td->palette_buffer)));
 
         // Create threads
         if (!winterface->reset(worker))
@@ -167,10 +160,8 @@ void av1_encode_tiles_mt(AV1_COMP *cpi) {
              sizeof(cpi->common.counts));
     }
 
-#if CONFIG_PALETTE
-    if (cpi->common.allow_screen_content_tools && i < num_workers - 1)
+    if (i < num_workers - 1)
       thread_data->td->mb.palette_buffer = thread_data->td->palette_buffer;
-#endif  // CONFIG_PALETTE
   }
 
   // Encode a frame

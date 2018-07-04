@@ -733,7 +733,7 @@ ConvertToNSArray(nsTArray<ProxyAccessible*>& aArray)
   ProxyAccessible* proxy = [self getProxyAccessible];
 
   // Deal with landmarks first
-  nsIAtom* landmark = nullptr;
+  nsAtom* landmark = nullptr;
   if (accWrap)
     landmark = accWrap->LandmarkRole();
   else if (proxy)
@@ -770,7 +770,7 @@ ConvertToNSArray(nsTArray<ProxyAccessible*>& aArray)
     return @"AXLandmarkRegion";
 
   // Now, deal with widget roles
-  nsIAtom* roleAtom = nullptr;
+  nsAtom* roleAtom = nullptr;
   if (accWrap && accWrap->HasARIARole()) {
     const nsRoleMapEntry* roleMap = accWrap->ARIARoleMap();
     roleAtom = *roleMap->roleAtom;
@@ -916,6 +916,9 @@ ConvertToNSArray(nsTArray<ProxyAccessible*>& aArray)
 
     case roles::ARTICLE:
       return @"AXDocumentArticle";
+
+    case roles::NON_NATIVE_DOCUMENT:
+      return @"AXDocument";
 
     // macOS added an AXSubrole value to distinguish generic AXGroup objects
     // from those which are AXGroups as a result of an explicit ARIA role,
@@ -1106,7 +1109,11 @@ struct RoleDescrComparator
 
 - (BOOL)isFocused
 {
-  return FocusMgr()->IsFocused([self getGeckoAccessible]);
+  if (AccessibleWrap* accWrap = [self getGeckoAccessible]) {
+    return FocusMgr()->IsFocused(accWrap);
+  }
+
+  return false; //XXX: proxy implementation is needed.
 }
 
 - (BOOL)canBeFocused

@@ -6,10 +6,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 include protocol PNecko;
+include protocol PStreamFilter;
 include InputStreamParams;
 include URIParams;
 include PBackgroundSharedTypes;
 include NeckoChannelParams;
+include IPCServiceWorkerDescriptor;
 
 include "mozilla/net/NeckoMessageUtils.h";
 
@@ -46,13 +48,12 @@ parent:
                         OptionalURIParams referrerUri,
                         OptionalURIParams apiRedirectTo,
                         OptionalCorsPreflightArgs corsPreflightArgs,
-                        bool forceHSTSPriming, bool mixedContentWouldBlock,
                         bool chooseAppcache);
 
   // For document loads we keep this protocol open after child's
   // OnStopRequest, and send this msg (instead of __delete__) to allow
   // partial cleanup on parent.
-  async DocumentChannelCleanup();
+  async DocumentChannelCleanup(bool clearCacheEntry);
 
   // This might have to be sync. If this fails we must fail the document load
   // to avoid endless loop.
@@ -96,8 +97,10 @@ child:
                        nsHttpResponseHead  responseHead,
                        bool                useResponseHead,
                        nsHttpHeaderArray   requestHeaders,
+                       ParentLoadInfoForwarderArgs loadInfoForwarder,
                        bool                isFromCache,
                        bool                cacheEntryAvailable,
+                       uint64_t            cacheEntryId,
                        int32_t             cacheFetchCount,
                        uint32_t            cacheExpirationTime,
                        nsCString           cachedCharset,
@@ -107,7 +110,9 @@ child:
                        int16_t             redirectCount,
                        uint32_t            cacheKey,
                        nsCString           altDataType,
-                       int64_t             altDataLength);
+                       int64_t             altDataLength,
+                       OptionalIPCServiceWorkerDescriptor controller,
+                       bool                applyConversion);
 
   // Used to cancel child channel if we hit errors during creating and
   // AsyncOpen of nsHttpChannel on the parent.
@@ -118,6 +123,7 @@ child:
   async Redirect1Begin(uint32_t           registrarId,
                        URIParams          newOriginalUri,
                        uint32_t           redirectFlags,
+                       ParentLoadInfoForwarderArgs loadInfoForwarder,
                        nsHttpResponseHead responseHead,
                        nsCString          securityInfoSerialization,
                        uint64_t           channelId,
@@ -145,6 +151,11 @@ child:
   // correct window ID, so send the message to the child for logging to the web
   // console.
   async LogBlockedCORSRequest(nsString message);
+
+  async AttachStreamFilter(Endpoint<PStreamFilterParent> aEndpoint);
+
+  // See ADivertableParentChannel::CancelDiversion
+  async CancelDiversion();
 
 both:
   // After receiving this message, the parent also calls

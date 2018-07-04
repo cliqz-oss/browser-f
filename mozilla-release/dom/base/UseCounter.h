@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -18,10 +19,13 @@ enum UseCounter : int16_t {
     eUseCounter_##interface_##_##name_##_setter,
 #define USE_COUNTER_CSS_PROPERTY(name_, id_) \
     eUseCounter_property_##id_,
+#define USE_COUNTER_CUSTOM(name_, desc_) \
+    eUseCounter_custom_##name_,
 #include "mozilla/dom/UseCounterList.h"
 #undef USE_COUNTER_DOM_METHOD
 #undef USE_COUNTER_DOM_ATTRIBUTE
 #undef USE_COUNTER_CSS_PROPERTY
+#undef USE_COUNTER_CUSTOM
 
 #define DEPRECATED_OPERATION(op_) \
   eUseCounter_##op_,

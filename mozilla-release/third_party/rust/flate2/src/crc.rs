@@ -6,13 +6,19 @@ use libc;
 
 use ffi;
 
-/// The CRC calculated by a CrcReader.
+/// The CRC calculated by a [`CrcReader`].
+///
+/// [`CrcReader`]: struct.CrcReader.html
+#[derive(Debug)]
 pub struct Crc {
     crc: libc::c_ulong,
     amt: u32,
 }
 
-/// A wrapper around a `std::io::Read` that calculates the CRC.
+/// A wrapper around a [`Read`] that calculates the CRC.
+///
+/// [`Read`]: https://doc.rust-lang.org/std/io/trait.Read.html
+#[derive(Debug)]
 pub struct CrcReader<R> {
     inner: R,
     crc: Crc,
@@ -30,7 +36,7 @@ impl Crc {
     }
 
     /// The number of bytes that have been used to calculate the CRC.
-    /// This value is only accurate if the amount is lower than 2^32.
+    /// This value is only accurate if the amount is lower than 2<sup>32</sup>.
     pub fn amount(&self) -> u32 {
         self.amt
     }
@@ -68,7 +74,9 @@ impl<R: Read> CrcReader<R> {
             crc: Crc::new(),
         }
     }
+}
 
+impl<R> CrcReader<R> {
     /// Get the Crc for this CrcReader.
     pub fn crc(&self) -> &Crc {
         &self.crc

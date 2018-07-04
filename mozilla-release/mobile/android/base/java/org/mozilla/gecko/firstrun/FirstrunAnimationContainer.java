@@ -18,6 +18,7 @@ import org.mozilla.gecko.R;
 import org.mozilla.gecko.Telemetry;
 import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.Experiments;
+import org.mozilla.gecko.mma.MmaDelegate;
 import org.mozilla.gecko.preferences.GeckoPreferences;
 
 /**
@@ -27,7 +28,8 @@ import org.mozilla.gecko.preferences.GeckoPreferences;
 public class FirstrunAnimationContainer extends LinearLayout {
     // See bug 1330714. Need NON_PREF_PREFIX to set from distribution.
     public static final String PREF_FIRSTRUN_ENABLED_OLD = "startpane_enabled";
-    public static final String PREF_FIRSTRUN_ENABLED = GeckoPreferences.NON_PREF_PREFIX + "startpane_enabled";
+    // After 57, the pref name will be changed. Thus all user since 57 will check this new pref.
+    public static final String PREF_FIRSTRUN_ENABLED = GeckoPreferences.NON_PREF_PREFIX + "startpane_enabled_after_57";
 
     public static interface OnFinishListener {
         public void onFinish();
@@ -60,15 +62,14 @@ public class FirstrunAnimationContainer extends LinearLayout {
     }
 
     public void hide() {
+
+        MmaDelegate.track(MmaDelegate.DISMISS_ONBOARDING);
+
         visible = false;
         if (onFinishListener != null) {
             onFinishListener.onFinish();
         }
         animateHide();
-
-        // Stop all versions of firstrun A/B sessions.
-        Telemetry.stopUISession(TelemetryContract.Session.EXPERIMENT, Experiments.ONBOARDING3_B);
-        Telemetry.stopUISession(TelemetryContract.Session.EXPERIMENT, Experiments.ONBOARDING3_C);
     }
 
     private void animateHide() {

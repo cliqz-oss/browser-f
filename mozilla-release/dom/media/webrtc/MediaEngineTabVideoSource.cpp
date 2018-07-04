@@ -11,12 +11,12 @@
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "nsGlobalWindow.h"
-#include "nsIDOMClientRect.h"
 #include "nsIDocShell.h"
 #include "nsIPresShell.h"
 #include "nsPresContext.h"
 #include "gfxContext.h"
 #include "gfx2DGlue.h"
+#include "AllocationHandle.h"
 #include "ImageContainer.h"
 #include "Layers.h"
 #include "nsIInterfaceRequestorUtils.h"
@@ -31,28 +31,22 @@ namespace mozilla {
 
 using namespace mozilla::gfx;
 
-NS_IMPL_ISUPPORTS(MediaEngineTabVideoSource, nsIDOMEventListener, nsITimerCallback)
-
 MediaEngineTabVideoSource::MediaEngineTabVideoSource()
-  : mBufWidthMax(0)
-  , mBufHeightMax(0)
-  , mWindowId(0)
-  , mScrollWithPage(false)
-  , mViewportOffsetX(0)
-  , mViewportOffsetY(0)
-  , mViewportWidth(0)
-  , mViewportHeight(0)
-  , mTimePerFrame(0)
-  , mDataSize(0)
-  , mBlackedoutWindow(false)
-  , mMonitor("MediaEngineTabVideoSource") {}
+  : mMutex("MediaEngineTabVideoSource::mMutex") {}
 
 nsresult
 MediaEngineTabVideoSource::StartRunnable::Run()
 {
   mVideoSource->Draw();
-  mVideoSource->mTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
-  mVideoSource->mTimer->InitWithCallback(mVideoSource, mVideoSource->mTimePerFrame, nsITimer:: TYPE_REPEATING_SLACK);
+  mVideoSource->mTimer->InitWithNamedFuncCallback(
+      [](nsITimer* aTimer, void* aClosure) mutable {
+        auto source = static_cast<MediaEngineTabVideoSource*>(aClosure);
+        source->Draw();
+      },
+      mVideoSource,
+      mVideoSource->mTimePerFrame,
+      nsITimer::TYPE_REPEATING_SLACK,
+      "MediaEngineTabVideoSource DrawTimer");
   if (mVideoSource->mTabSource) {
     mVideoSource->mTabSource->NotifyStreamStart(mVideoSource->mWindow);
   }
@@ -72,24 +66,12 @@ MediaEngineTabVideoSource::StopRunnable::Run()
   return NS_OK;
 }
 
-NS_IMETHODIMP
-MediaEngineTabVideoSource::HandleEvent(nsIDOMEvent *event) {
-  Draw();
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-MediaEngineTabVideoSource::Notify(nsITimer*) {
-  Draw();
-  return NS_OK;
-}
-
 nsresult
 MediaEngineTabVideoSource::InitRunnable::Run()
 {
   if (mVideoSource->mWindowId != -1) {
-    nsGlobalWindow* globalWindow =
-      nsGlobalWindow::GetOuterWindowWithId(mVideoSource->mWindowId);
+    nsGlobalWindowOuter* globalWindow =
+      nsGlobalWindowOuter::GetOuterWindowWithId(mVideoSource->mWindowId);
     if (!globalWindow) {
       // We can't access the window, just send a blacked out screen.
       mVideoSource->mWindow = nullptr;
@@ -116,6 +98,7 @@ MediaEngineTabVideoSource::InitRunnable::Run()
     mVideoSource->mWindow = nsPIDOMWindowOuter::From(win);
     MOZ_ASSERT(mVideoSource->mWindow);
   }
+  mVideoSource->mTimer = NS_NewTimer();
   nsCOMPtr<nsIRunnable> start(new StartRunnable(mVideoSource));
   start->Run();
   return NS_OK;
@@ -132,16 +115,16 @@ MediaEngineTabVideoSource::DestroyRunnable::Run()
   return NS_OK;
 }
 
-void
-MediaEngineTabVideoSource::GetName(nsAString& aName) const
+nsString
+MediaEngineTabVideoSource::GetName() const
 {
-  aName.AssignLiteral(u"&getUserMedia.videoSource.tabShare;");
+  return NS_LITERAL_STRING(u"&getUserMedia.videoSource.tabShare;");
 }
 
-void
-MediaEngineTabVideoSource::GetUUID(nsACString& aUuid) const
+nsCString
+MediaEngineTabVideoSource::GetUUID() const
 {
-  aUuid.AssignLiteral("tab");
+  return NS_LITERAL_CSTRING("tab");
 }
 
 #define DEFAULT_TABSHARE_VIDEO_MAX_WIDTH 4096
@@ -156,6 +139,8 @@ MediaEngineTabVideoSource::Allocate(const dom::MediaTrackConstraints& aConstrain
                                     AllocationHandle** aOutHandle,
                                     const char** aOutBadConstraint)
 {
+  AssertIsOnOwningThread();
+
   // windowId is not a proper constraint, so just read it.
   // It has no well-defined behavior in advanced, so ignore it there.
 
@@ -164,21 +149,23 @@ MediaEngineTabVideoSource::Allocate(const dom::MediaTrackConstraints& aConstrain
   *aOutHandle = nullptr;
 
   {
-    MonitorAutoLock mon(mMonitor);
+    MutexAutoLock lock(mMutex);
     mState = kAllocated;
   }
 
-  return Restart(nullptr, aConstraints, aPrefs, aDeviceId, aOutBadConstraint);
+  return Reconfigure(nullptr, aConstraints, aPrefs, aDeviceId, aOutBadConstraint);
 }
 
 nsresult
-MediaEngineTabVideoSource::Restart(AllocationHandle* aHandle,
-                                   const dom::MediaTrackConstraints& aConstraints,
-                                   const mozilla::MediaEnginePrefs& aPrefs,
-                                   const nsString& aDeviceId,
-                                   const char** aOutBadConstraint)
+MediaEngineTabVideoSource::Reconfigure(const RefPtr<AllocationHandle>& aHandle,
+                                       const dom::MediaTrackConstraints& aConstraints,
+                                       const mozilla::MediaEnginePrefs& aPrefs,
+                                       const nsString& aDeviceId,
+                                       const char** aOutBadConstraint)
 {
+  AssertIsOnOwningThread();
   MOZ_ASSERT(!aHandle);
+  MOZ_ASSERT(mState != kReleased);
 
   // scrollWithPage is not proper a constraint, so just read it.
   // It has no well-defined behavior in advanced, so ignore it there.
@@ -203,32 +190,61 @@ MediaEngineTabVideoSource::Restart(AllocationHandle* aHandle,
 }
 
 nsresult
-MediaEngineTabVideoSource::Deallocate(AllocationHandle* aHandle)
+MediaEngineTabVideoSource::Deallocate(const RefPtr<const AllocationHandle>& aHandle)
 {
+  AssertIsOnOwningThread();
   MOZ_ASSERT(!aHandle);
+  MOZ_ASSERT(mState == kAllocated || mState == kStopped);
+
+  if (mStream && IsTrackIDExplicit(mTrackID)) {
+    mStream->EndTrack(mTrackID);
+  }
+
   NS_DispatchToMainThread(do_AddRef(new DestroyRunnable(this)));
 
   {
-    MonitorAutoLock mon(mMonitor);
+    MutexAutoLock lock(mMutex);
     mState = kReleased;
   }
+
   return NS_OK;
 }
 
 nsresult
-MediaEngineTabVideoSource::Start(SourceMediaStream* aStream, TrackID aID,
-                                 const PrincipalHandle& aPrincipalHandle)
+MediaEngineTabVideoSource::SetTrack(const RefPtr<const AllocationHandle>& aHandle,
+                                    const RefPtr<SourceMediaStream>& aStream,
+                                    TrackID aTrackID,
+                                    const mozilla::PrincipalHandle& aPrincipal)
 {
+  AssertIsOnOwningThread();
+  MOZ_ASSERT(mState == kAllocated);
+
+  MOZ_ASSERT(!mStream);
+  MOZ_ASSERT(mTrackID == TRACK_NONE);
+  MOZ_ASSERT(aStream);
+  MOZ_ASSERT(IsTrackIDExplicit(aTrackID));
+  mStream = aStream;
+  mTrackID = aTrackID;
+  mStream->AddTrack(mTrackID, 0, new VideoSegment());
+  return NS_OK;
+}
+
+nsresult
+MediaEngineTabVideoSource::Start(const RefPtr<const AllocationHandle>& aHandle)
+{
+  AssertIsOnOwningThread();
+  MOZ_ASSERT(mState == kAllocated);
+
   nsCOMPtr<nsIRunnable> runnable;
-  if (!mWindow)
+  if (!mWindow) {
     runnable = new InitRunnable(this);
-  else
+  } else {
     runnable = new StartRunnable(this);
+  }
   NS_DispatchToMainThread(runnable);
-  aStream->AddTrack(aID, 0, new VideoSegment());
 
   {
-    MonitorAutoLock mon(mMonitor);
+    MutexAutoLock lock(mMutex);
     mState = kStarted;
   }
 
@@ -236,29 +252,38 @@ MediaEngineTabVideoSource::Start(SourceMediaStream* aStream, TrackID aID,
 }
 
 void
-MediaEngineTabVideoSource::NotifyPull(MediaStreamGraph*,
-                                      SourceMediaStream* aSource,
-                                      TrackID aID, StreamTime aDesiredTime,
-                                      const PrincipalHandle& aPrincipalHandle)
+MediaEngineTabVideoSource::Pull(const RefPtr<const AllocationHandle>& aHandle,
+                                const RefPtr<SourceMediaStream>& aStream,
+                                TrackID aTrackID,
+                                StreamTime aDesiredTime,
+                                const PrincipalHandle& aPrincipalHandle)
 {
   VideoSegment segment;
-  MonitorAutoLock mon(mMonitor);
-  if (mState != kStarted) {
+  RefPtr<layers::Image> image;
+  gfx::IntSize imageSize;
+
+  {
+    MutexAutoLock lock(mMutex);
+    if (mState == kReleased) {
+      // We end the track before setting the state to released.
+      return;
+    }
+    if (mState == kStarted) {
+      image = mImage;
+      imageSize = mImageSize;
+    }
+  }
+
+  StreamTime delta = aDesiredTime - aStream->GetEndOfAppendedData(aTrackID);
+  if (delta <= 0) {
     return;
   }
 
-  // Note: we're not giving up mImage here
-  RefPtr<layers::SourceSurfaceImage> image = mImage;
-  StreamTime delta = aDesiredTime - aSource->GetEndOfAppendedData(aID);
-  if (delta > 0) {
-    // nullptr images are allowed
-    gfx::IntSize size = image ? image->GetSize() : IntSize(0, 0);
-    segment.AppendFrame(image.forget().downcast<layers::Image>(), delta, size,
-                        aPrincipalHandle);
-    // This can fail if either a) we haven't added the track yet, or b)
-    // we've removed or finished the track.
-    aSource->AppendToTrack(aID, &(segment));
-  }
+  // nullptr images are allowed
+  segment.AppendFrame(image.forget(), delta, imageSize, aPrincipalHandle);
+  // This can fail if either a) we haven't added the track yet, or b)
+  // we've removed or ended the track.
+  aStream->AppendToTrack(aTrackID, &(segment));
 }
 
 void
@@ -286,7 +311,7 @@ MediaEngineTabVideoSource::Draw() {
   {
     float pixelRatio;
     if (mWindow) {
-      pixelRatio = mWindow->GetDevicePixelRatio(CallerType::System);
+      pixelRatio = mWindow->GetDevicePixelRatio(dom::CallerType::System);
     } else {
       pixelRatio = 1.0f;
     }
@@ -367,14 +392,22 @@ MediaEngineTabVideoSource::Draw() {
 
   RefPtr<layers::SourceSurfaceImage> image = new layers::SourceSurfaceImage(size, surface);
 
-  MonitorAutoLock mon(mMonitor);
+  MutexAutoLock lock(mMutex);
   mImage = image;
+  mImageSize = size;
 }
 
 nsresult
-MediaEngineTabVideoSource::Stop(mozilla::SourceMediaStream* aSource,
-                                mozilla::TrackID aID)
+MediaEngineTabVideoSource::Stop(const RefPtr<const AllocationHandle>& aHandle)
 {
+  AssertIsOnOwningThread();
+
+  if (mState == kStopped || mState == kAllocated) {
+    return NS_OK;
+  }
+
+  MOZ_ASSERT(mState == kStarted);
+
   // If mBlackedoutWindow is true, we may be running
   // despite mWindow == nullptr.
   if (!mWindow && !mBlackedoutWindow) {
@@ -384,17 +417,10 @@ MediaEngineTabVideoSource::Stop(mozilla::SourceMediaStream* aSource,
   NS_DispatchToMainThread(new StopRunnable(this));
 
   {
-    MonitorAutoLock mon(mMonitor);
+    MutexAutoLock lock(mMutex);
     mState = kStopped;
-    aSource->EndTrack(aID);
   }
   return NS_OK;
-}
-
-bool
-MediaEngineTabVideoSource::IsFake()
-{
-  return false;
 }
 
 }

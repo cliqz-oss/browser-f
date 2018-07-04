@@ -45,7 +45,15 @@ public:
 #ifdef DEBUG
   StaticAutoPtr()
   {
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuninitialized"
+  // False positive with gcc. See bug 1430729
+#endif
     MOZ_ASSERT(!mRawPtr);
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
   }
 #endif
 
@@ -104,7 +112,15 @@ public:
 #ifdef DEBUG
   StaticRefPtr()
   {
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuninitialized"
+  // False positive with gcc. See bug 1430729
+#endif
     MOZ_ASSERT(!mRawPtr);
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
   }
 #endif
 
@@ -272,6 +288,14 @@ RefPtr<T>&
 RefPtr<T>::operator=(const mozilla::StaticRefPtr<U>& aOther)
 {
   return operator=(aOther.get());
+}
+
+template <class T>
+inline already_AddRefed<T>
+do_AddRef(const mozilla::StaticRefPtr<T>& aObj)
+{
+  RefPtr<T> ref(aObj);
+  return ref.forget();
 }
 
 #endif

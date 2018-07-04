@@ -4,7 +4,7 @@
 es6id: 9.5.14
 description: >
     Return abrupt from constructor call.
-info: >
+info: |
     [[Construct]] ( argumentsList, newTarget)
 
     9. Let newObj be Call(trap, handler, «target, argArray, newTarget »).
@@ -13,13 +13,13 @@ info: >
 
 function Target() {}
 var P = new Proxy(Target, {
-    construct: function() {
-        throw new Test262Error();
-    }
+  construct: function() {
+    throw new Test262Error();
+  }
 });
 
 assert.throws(Test262Error, function() {
-    new P();
+  new P();
 });
 
 reportCompare(0, 0);

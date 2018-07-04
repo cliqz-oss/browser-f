@@ -13,6 +13,8 @@
 
 namespace js {
 
+class GlobalObject;
+
 /*
  * Dispatch point for handlers that executes the appropriate C++ or scripted traps.
  *
@@ -42,8 +44,12 @@ class Proxy
     static bool has(JSContext* cx, HandleObject proxy, HandleId id, bool* bp);
     static bool get(JSContext* cx, HandleObject proxy, HandleValue receiver, HandleId id,
                     MutableHandleValue vp);
+    static bool getInternal(JSContext* cx, HandleObject proxy, HandleValue receiver,
+                            HandleId id, MutableHandleValue vp);
     static bool set(JSContext* cx, HandleObject proxy, HandleId id, HandleValue v,
                     HandleValue receiver, ObjectOpResult& result);
+    static bool setInternal(JSContext* cx, HandleObject proxy, HandleId id, HandleValue v,
+                            HandleValue receiver, ObjectOpResult& result);
     static bool call(JSContext* cx, HandleObject proxy, const CallArgs& args);
     static bool construct(JSContext* cx, HandleObject proxy, const CallArgs& args);
 
@@ -63,9 +69,6 @@ class Proxy
     static RegExpShared* regexp_toShared(JSContext* cx, HandleObject proxy);
     static bool boxedValue_unbox(JSContext* cx, HandleObject proxy, MutableHandleValue vp);
 
-    static bool watch(JSContext* cx, HandleObject proxy, HandleId id, HandleObject callable);
-    static bool unwatch(JSContext* cx, HandleObject proxy, HandleId id);
-
     static bool getElements(JSContext* cx, HandleObject obj, uint32_t begin, uint32_t end,
                             ElementAdder* adder);
 
@@ -76,8 +79,13 @@ bool
 proxy_Call(JSContext* cx, unsigned argc, Value* vp);
 bool
 proxy_Construct(JSContext* cx, unsigned argc, Value* vp);
+size_t
+proxy_ObjectMoved(JSObject* obj, JSObject* old);
 
 // These functions are used by JIT code
+
+bool
+ProxyHas(JSContext* cx, HandleObject proxy, HandleValue idVal, MutableHandleValue result);
 
 bool
 ProxyHasOwn(JSContext* cx, HandleObject proxy, HandleValue idVal, MutableHandleValue result);
@@ -95,6 +103,9 @@ ProxySetProperty(JSContext* cx, HandleObject proxy, HandleId id, HandleValue val
 bool
 ProxySetPropertyByValue(JSContext* cx, HandleObject proxy, HandleValue idVal, HandleValue val,
                         bool strict);
+
+extern JSObject*
+InitProxyClass(JSContext* cx, Handle<GlobalObject*> global);
 
 } /* namespace js */
 

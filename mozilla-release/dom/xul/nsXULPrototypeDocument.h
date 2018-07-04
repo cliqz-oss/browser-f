@@ -14,7 +14,7 @@
 #include "nsISerializable.h"
 #include "nsCycleCollectionParticipant.h"
 
-class nsIAtom;
+class nsAtom;
 class nsIPrincipal;
 class nsIURI;
 class nsNodeInfoManager;
@@ -86,8 +86,8 @@ public:
      * Access HTTP header data.
      * @note Not implemented.
      */
-    NS_IMETHOD GetHeaderData(nsIAtom* aField, nsAString& aData) const;
-    NS_IMETHOD SetHeaderData(nsIAtom* aField, const nsAString& aData);
+    NS_IMETHOD GetHeaderData(nsAtom* aField, nsAString& aData) const;
+    NS_IMETHOD SetHeaderData(nsAtom* aField, const nsAString& aData);
 
     nsIPrincipal *DocumentPrincipal();
     void SetDocumentPrincipal(nsIPrincipal *aPrincipal);
@@ -104,7 +104,7 @@ public:
      * Notifies each document registered via AwaitLoadDone on this
      * prototype document that the prototype has finished loading.
      * The notification is performed by calling
-     * nsIXULDocument::OnPrototypeLoadDone on the registered documents.
+     * XULDocument::OnPrototypeLoadDone on the registered documents.
      */
     nsresult NotifyLoadDone();
 
@@ -114,7 +114,7 @@ public:
 
     NS_DECL_CYCLE_COLLECTION_CLASS(nsXULPrototypeDocument)
 
-    void TraceProtos(JSTracer* aTrc, uint32_t aGCNumber);
+    void TraceProtos(JSTracer* aTrc);
 
 protected:
     nsCOMPtr<nsIURI> mURI;

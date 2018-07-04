@@ -6,6 +6,7 @@
 #include "mozilla/dom/TextTrackList.h"
 
 #include "mozilla/DebugOnly.h"
+#include "mozilla/dom/Event.h"
 #include "mozilla/dom/TextTrackListBinding.h"
 #include "mozilla/dom/TrackEvent.h"
 #include "nsThreadUtils.h"
@@ -23,7 +24,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(TextTrackList,
 
 NS_IMPL_ADDREF_INHERITED(TextTrackList, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(TextTrackList, DOMEventTargetHelper)
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TextTrackList)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TextTrackList)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 TextTrackList::TextTrackList(nsPIDOMWindowInner* aOwnerWindow)
@@ -140,7 +141,7 @@ TextTrackList::DidSeek()
 class TrackEventRunner : public Runnable
 {
 public:
-  TrackEventRunner(TextTrackList* aList, nsIDOMEvent* aEvent)
+  TrackEventRunner(TextTrackList* aList, Event* aEvent)
     : Runnable("dom::TrackEventRunner")
     , mList(aList)
     , mEvent(aEvent)
@@ -153,13 +154,13 @@ public:
 
   RefPtr<TextTrackList> mList;
 private:
-  RefPtr<nsIDOMEvent> mEvent;
+  RefPtr<Event> mEvent;
 };
 
 class ChangeEventRunner final : public TrackEventRunner
 {
 public:
-  ChangeEventRunner(TextTrackList* aList, nsIDOMEvent* aEvent)
+  ChangeEventRunner(TextTrackList* aList, Event* aEvent)
     : TrackEventRunner(aList, aEvent)
   {}
 
@@ -171,7 +172,7 @@ public:
 };
 
 nsresult
-TextTrackList::DispatchTrackEvent(nsIDOMEvent* aEvent)
+TextTrackList::DispatchTrackEvent(Event* aEvent)
 {
   return DispatchTrustedEvent(aEvent);
 }
@@ -193,7 +194,7 @@ TextTrackList::CreateAndDispatchChangeEvent()
     event->SetTrusted(true);
 
     nsCOMPtr<nsIRunnable> eventRunner = new ChangeEventRunner(this, event);
-    nsGlobalWindow::Cast(win)->Dispatch(TaskCategory::Other, eventRunner.forget());
+    nsGlobalWindowInner::Cast(win)->Dispatch(TaskCategory::Other, eventRunner.forget());
   }
 }
 

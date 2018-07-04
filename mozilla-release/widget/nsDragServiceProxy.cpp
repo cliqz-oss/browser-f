@@ -16,8 +16,8 @@
 using mozilla::ipc::Shmem;
 using mozilla::dom::TabChild;
 using mozilla::dom::OptionalShmem;
-
-NS_IMPL_ISUPPORTS_INHERITED0(nsDragServiceProxy, nsBaseDragService)
+using mozilla::LayoutDeviceIntRect;
+using mozilla::Maybe;
 
 nsDragServiceProxy::nsDragServiceProxy()
 {
@@ -25,6 +25,25 @@ nsDragServiceProxy::nsDragServiceProxy()
 
 nsDragServiceProxy::~nsDragServiceProxy()
 {
+}
+
+static void
+GetPrincipalURIFromNode(nsCOMPtr<nsIDOMNode>& sourceNode,
+                        nsCString& aPrincipalURISpec)
+{
+  nsCOMPtr<nsINode> node = do_QueryInterface(sourceNode);
+  if (!node) {
+    return;
+  }
+
+  nsCOMPtr<nsIPrincipal> principal = node->NodePrincipal();
+  nsCOMPtr<nsIURI> principalURI;
+  nsresult rv = principal->GetURI(getter_AddRefs(principalURI));
+  if (NS_FAILED(rv) || !principalURI) {
+    return;
+  }
+
+  principalURI->GetSpec(aPrincipalURISpec);
 }
 
 nsresult
@@ -42,6 +61,9 @@ nsDragServiceProxy::InvokeDragSessionImpl(nsIArray* aArrayTransferables,
                                                   false,
                                                   child->Manager(),
                                                   nullptr);
+
+  nsCString principalURISpec;
+  GetPrincipalURIFromNode(mSourceNode, principalURISpec);
 
   LayoutDeviceIntRect dragRect;
   if (mHasImage || mSelection) {
@@ -73,8 +95,8 @@ nsDragServiceProxy::InvokeDragSessionImpl(nsIArray* aArrayTransferables,
 
         mozilla::Unused <<
           child->SendInvokeDragSession(dataTransfers, aActionType, surfaceData,
-                                       stride, static_cast<uint8_t>(dataSurface->GetFormat()),
-                                       dragRect);
+                                       stride, dataSurface->GetFormat(),
+                                       dragRect, principalURISpec);
         StartDragSession();
         return NS_OK;
       }
@@ -82,7 +104,8 @@ nsDragServiceProxy::InvokeDragSessionImpl(nsIArray* aArrayTransferables,
   }
 
   mozilla::Unused << child->SendInvokeDragSession(dataTransfers, aActionType,
-                                                  mozilla::void_t(), 0, 0, dragRect);
+                                                  mozilla::void_t(), 0, static_cast<gfx::SurfaceFormat>(0), dragRect,
+                                                  principalURISpec);
   StartDragSession();
   return NS_OK;
 }

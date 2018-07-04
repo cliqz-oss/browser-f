@@ -6,20 +6,7 @@
 
 #include "nsArray.h"
 #include "nsArrayEnumerator.h"
-#include "nsIWeakReference.h"
-#include "nsIWeakReferenceUtils.h"
 #include "nsThreadUtils.h"
-
-// used by IndexOf()
-struct MOZ_STACK_CLASS findIndexOfClosure
-{
-  // This is only used for pointer comparison, so we can just use a void*.
-  void* targetElement;
-  uint32_t startIndex;
-  uint32_t resultIndex;
-};
-
-static bool FindElementCallback(void* aElement, void* aClosure);
 
 NS_INTERFACE_MAP_BEGIN(nsArray)
   NS_INTERFACE_MAP_ENTRY(nsIArray)
@@ -82,24 +69,12 @@ NS_IMETHODIMP
 nsArrayBase::IndexOf(uint32_t aStartIndex, nsISupports* aElement,
                      uint32_t* aResult)
 {
-  // optimize for the common case by forwarding to mArray
-  if (aStartIndex == 0) {
-    uint32_t idx = mArray.IndexOf(aElement);
-    if (idx == UINT32_MAX) {
-      return NS_ERROR_FAILURE;
-    }
-
-    *aResult = idx;
-    return NS_OK;
-  }
-
-  findIndexOfClosure closure = { aElement, aStartIndex, 0 };
-  bool notFound = mArray.EnumerateForwards(FindElementCallback, &closure);
-  if (notFound) {
+  int32_t idx = mArray.IndexOf(aElement, aStartIndex);
+  if (idx == -1) {
     return NS_ERROR_FAILURE;
   }
 
-  *aResult = closure.resultIndex;
+  *aResult = static_cast<uint32_t>(idx);
   return NS_OK;
 }
 
@@ -112,23 +87,9 @@ nsArrayBase::Enumerate(nsISimpleEnumerator** aResult)
 // nsIMutableArray implementation
 
 NS_IMETHODIMP
-nsArrayBase::AppendElement(nsISupports* aElement, bool aWeak)
+nsArrayBase::AppendElement(nsISupports* aElement)
 {
-  bool result;
-  if (aWeak) {
-    nsCOMPtr<nsIWeakReference> elementRef = do_GetWeakReference(aElement);
-    NS_ASSERTION(elementRef,
-                 "AppendElement: Trying to use weak references on an object that doesn't support it");
-    if (!elementRef) {
-      return NS_ERROR_FAILURE;
-    }
-    result = mArray.AppendObject(elementRef);
-  }
-
-  else {
-    // add the object directly
-    result = mArray.AppendObject(aElement);
-  }
+  bool result = mArray.AppendObject(aElement);
   return result ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -140,38 +101,16 @@ nsArrayBase::RemoveElementAt(uint32_t aIndex)
 }
 
 NS_IMETHODIMP
-nsArrayBase::InsertElementAt(nsISupports* aElement, uint32_t aIndex, bool aWeak)
+nsArrayBase::InsertElementAt(nsISupports* aElement, uint32_t aIndex)
 {
-  nsCOMPtr<nsISupports> elementRef;
-  if (aWeak) {
-    elementRef = do_GetWeakReference(aElement);
-    NS_ASSERTION(elementRef,
-                 "InsertElementAt: Trying to use weak references on an object that doesn't support it");
-    if (!elementRef) {
-      return NS_ERROR_FAILURE;
-    }
-  } else {
-    elementRef = aElement;
-  }
-  bool result = mArray.InsertObjectAt(elementRef, aIndex);
+  bool result = mArray.InsertObjectAt(aElement, aIndex);
   return result ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-nsArrayBase::ReplaceElementAt(nsISupports* aElement, uint32_t aIndex, bool aWeak)
+nsArrayBase::ReplaceElementAt(nsISupports* aElement, uint32_t aIndex)
 {
-  nsCOMPtr<nsISupports> elementRef;
-  if (aWeak) {
-    elementRef = do_GetWeakReference(aElement);
-    NS_ASSERTION(elementRef,
-                 "ReplaceElementAt: Trying to use weak references on an object that doesn't support it");
-    if (!elementRef) {
-      return NS_ERROR_FAILURE;
-    }
-  } else {
-    elementRef = aElement;
-  }
-  mArray.ReplaceObjectAt(elementRef, aIndex);
+  mArray.ReplaceObjectAt(aElement, aIndex);
   return NS_OK;
 }
 
@@ -196,25 +135,6 @@ nsArrayBase::GetElementAt(uint32_t aIndex, nsISupports** aResult)
   nsCOMPtr<nsISupports> obj = mArray.SafeObjectAt(aIndex);
   obj.forget(aResult);
   return NS_OK;
-}
-
-//
-// static helper routines
-//
-bool
-FindElementCallback(void* aElement, void* aClosure)
-{
-  findIndexOfClosure* closure = static_cast<findIndexOfClosure*>(aClosure);
-  nsISupports* element = static_cast<nsISupports*>(aElement);
-
-  // don't start searching until we're past the startIndex
-  if (closure->resultIndex >= closure->startIndex &&
-      element == closure->targetElement) {
-    return false;    // stop! We found it
-  }
-  closure->resultIndex++;
-
-  return true;
 }
 
 nsresult

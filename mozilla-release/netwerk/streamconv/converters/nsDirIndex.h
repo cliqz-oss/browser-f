@@ -12,7 +12,7 @@
 class nsDirIndex final : public nsIDirIndex {
 
 private:
-    ~nsDirIndex();
+    ~nsDirIndex() = default;
 
 public:
     nsDirIndex();
@@ -22,8 +22,8 @@ public:
 
 protected:
     uint32_t mType;
-    nsXPIDLCString mContentType;
-    nsXPIDLCString mLocation;
+    nsCString mContentType;
+    nsCString mLocation;
     nsString mDescription;
     int64_t mSize;
     PRTime mLastModified;

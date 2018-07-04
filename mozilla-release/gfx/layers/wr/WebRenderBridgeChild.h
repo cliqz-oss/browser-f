@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=4 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -18,6 +18,8 @@ class CompositorWidget;
 
 namespace wr {
 class DisplayListBuilder;
+class ResourceUpdateQueue;
+class IpcResourceUpdateQueue;
 }
 
 namespace layers {
@@ -26,19 +28,21 @@ class CompositableClient;
 class CompositorBridgeChild;
 class StackingContextHelper;
 class TextureForwarder;
+class WebRenderLayerManager;
 
-class UnscaledFontHashKey : public PLDHashEntryHdr
+template<class T>
+class ThreadSafeWeakPtrHashKey : public PLDHashEntryHdr
 {
 public:
-  typedef gfx::UnscaledFont* KeyType;
-  typedef const gfx::UnscaledFont* KeyTypePointer;
+  typedef RefPtr<T> KeyType;
+  typedef const T* KeyTypePointer;
 
-  explicit UnscaledFontHashKey(KeyTypePointer aKey) : mKey(const_cast<KeyType>(aKey)) {}
+  explicit ThreadSafeWeakPtrHashKey(KeyTypePointer aKey) : mKey(do_AddRef(const_cast<T*>(aKey))) {}
 
-  KeyType GetKey() const { return mKey; }
-  bool KeyEquals(KeyTypePointer aKey) const { return aKey == mKey; }
+  KeyType GetKey() const { return do_AddRef(mKey); }
+  bool KeyEquals(KeyTypePointer aKey) const { return mKey == aKey; }
 
-  static KeyTypePointer KeyToPointer(KeyType aKey) { return aKey; }
+  static KeyTypePointer KeyToPointer(const KeyType& aKey) { return aKey.get(); }
   static PLDHashNumber HashKey(KeyTypePointer aKey)
   {
     return NS_PTR_TO_UINT32(aKey) >> 2;
@@ -46,8 +50,11 @@ public:
   enum { ALLOW_MEMMOVE = true };
 
 private:
-  WeakPtr<gfx::UnscaledFont> mKey;
+  ThreadSafeWeakPtr<T> mKey;
 };
+
+typedef ThreadSafeWeakPtrHashKey<gfx::UnscaledFont> UnscaledFontHashKey;
+typedef ThreadSafeWeakPtrHashKey<gfx::ScaledFont> ScaledFontHashKey;
 
 class WebRenderBridgeChild final : public PWebRenderBridgeChild
                                  , public CompositableForwarder
@@ -60,10 +67,18 @@ public:
   void AddWebRenderParentCommand(const WebRenderParentCommand& aCmd);
   void AddWebRenderParentCommands(const nsTArray<WebRenderParentCommand>& aCommands);
 
-  bool DPBegin(const  gfx::IntSize& aSize);
-  void DPEnd(wr::DisplayListBuilder &aBuilder, const gfx::IntSize& aSize,
-             bool aIsSync, uint64_t aTransactionId,
-             const WebRenderScrollData& aScrollData);
+  void UpdateResources(wr::IpcResourceUpdateQueue& aResources);
+  void BeginTransaction();
+  void EndTransaction(const wr::LayoutSize& aContentSize,
+                      wr::BuiltDisplayList& dl,
+                      wr::IpcResourceUpdateQueue& aResources,
+                      const gfx::IntSize& aSize,
+                      TransactionId aTransactionId,
+                      const WebRenderScrollData& aScrollData,
+                      const mozilla::TimeStamp& aTxnStartTime);
+  void EndEmptyTransaction(const FocusTarget& aFocusTarget,
+                           TransactionId aTransactionId,
+                           const mozilla::TimeStamp& aTxnStartTime);
   void ProcessWebRenderParentCommands();
 
   CompositorBridgeChild* GetCompositorBridgeChild();
@@ -73,13 +88,17 @@ public:
   // KnowsCompositor
   TextureForwarder* GetTextureForwarder() override;
   LayersIPCActor* GetLayersIPCActor() override;
+  void SyncWithCompositor() override;
+  ActiveResourceTracker* GetActiveResourceTracker() override { return mActiveResourceTracker.get(); }
 
   void AddPipelineIdForAsyncCompositable(const wr::PipelineId& aPipelineId,
                                          const CompositableHandle& aHandlee);
-  void RemovePipelineIdForAsyncCompositable(const wr::PipelineId& aPipelineId);
+  void AddPipelineIdForCompositable(const wr::PipelineId& aPipelineId,
+                                    const CompositableHandle& aHandlee);
+  void RemovePipelineIdForCompositable(const wr::PipelineId& aPipelineId);
 
   wr::ExternalImageId AllocExternalImageIdForCompositable(CompositableClient* aCompositable);
-  void DeallocExternalImageId(wr::ExternalImageId& aImageId);
+  void DeallocExternalImageId(const wr::ExternalImageId& aImageId);
 
   /**
    * Clean this up, finishing with SendShutDown() which will cause __delete__
@@ -96,27 +115,61 @@ public:
     mIdNamespace = aIdNamespace;
   }
 
+  wr::FontKey GetNextFontKey()
+  {
+    return wr::FontKey { GetNamespace(), GetNextResourceId() };
+  }
+
+  wr::FontInstanceKey GetNextFontInstanceKey()
+  {
+    return wr::FontInstanceKey { GetNamespace(), GetNextResourceId() };
+  }
+
   wr::WrImageKey GetNextImageKey()
   {
     return wr::WrImageKey{ GetNamespace(), GetNextResourceId() };
   }
 
-  void PushGlyphs(wr::DisplayListBuilder& aBuilder, const nsTArray<GlyphArray>& aGlyphs,
-                  gfx::ScaledFont* aFont, const StackingContextHelper& aSc,
-                  const LayerRect& aBounds, const LayerRect& aClip);
+  void PushGlyphs(wr::DisplayListBuilder& aBuilder, Range<const wr::GlyphInstance> aGlyphs,
+                  gfx::ScaledFont* aFont, const wr::ColorF& aColor,
+                  const StackingContextHelper& aSc,
+                  const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip,
+                  bool aBackfaceVisible,
+                  const wr::GlyphOptions* aGlyphOptions = nullptr);
 
-  wr::FontKey GetFontKeyForScaledFont(gfx::ScaledFont* aScaledFont);
+  wr::FontInstanceKey GetFontKeyForScaledFont(gfx::ScaledFont* aScaledFont);
+  wr::FontKey GetFontKeyForUnscaledFont(gfx::UnscaledFont* aUnscaledFont);
 
-  void RemoveExpiredFontKeys();
-  void ClearReadLocks();
+  void RemoveExpiredFontKeys(wr::IpcResourceUpdateQueue& aResources);
 
   void BeginClearCachedResources();
   void EndClearCachedResources();
 
+  void SetWebRenderLayerManager(WebRenderLayerManager* aManager);
+
+  ipc::IShmemAllocator* GetShmemAllocator();
+
+  virtual bool IsThreadSafe() const override { return false; }
+
+  virtual RefPtr<KnowsCompositor> GetForMedia() override;
+
+  /// Alloc a specific type of shmem that is intended for use in
+  /// IpcResourceUpdateQueue only, and cache at most one of them,
+  /// when called multiple times.
+  ///
+  /// Do not use this for anything else.
+  bool AllocResourceShmem(size_t aSize, RefCountedShmem& aShm);
+  /// Dealloc shared memory that was allocated with AllocResourceShmem.
+  /// 
+  /// Do not use this for anything else.
+  void DeallocResourceShmem(RefCountedShmem& aShm);
+
+  void Capture();
+
 private:
   friend class CompositorBridgeChild;
 
-  ~WebRenderBridgeChild() {}
+  ~WebRenderBridgeChild();
 
   wr::ExternalImageId GetNextExternalImageId();
 
@@ -144,7 +197,9 @@ private:
 
   void ActorDestroy(ActorDestroyReason why) override;
 
-  virtual mozilla::ipc::IPCResult RecvWrUpdated(const wr::IdNamespace& aNewIdNamespace) override;
+  void DoDestroy();
+
+  mozilla::ipc::IPCResult RecvWrUpdated(const wr::IdNamespace& aNewIdNamespace) override;
 
   void AddIPDLReference() {
     MOZ_ASSERT(mIPCOpen == false);
@@ -162,19 +217,25 @@ private:
   nsTArray<WebRenderParentCommand> mParentCommands;
   nsTArray<OpDestroy> mDestroyedActors;
   nsDataHashtable<nsUint64HashKey, CompositableClient*> mCompositables;
-  nsTArray<nsTArray<ReadLockInit>> mReadLocks;
-  uint64_t mReadLockSequenceNumber;
   bool mIsInTransaction;
   bool mIsInClearCachedResources;
   wr::IdNamespace mIdNamespace;
   uint32_t mResourceId;
   wr::PipelineId mPipelineId;
+  WebRenderLayerManager* mManager;
 
   bool mIPCOpen;
   bool mDestroyed;
 
   uint32_t mFontKeysDeleted;
   nsDataHashtable<UnscaledFontHashKey, wr::FontKey> mFontKeys;
+
+  uint32_t mFontInstanceKeysDeleted;
+  nsDataHashtable<ScaledFontHashKey, wr::FontInstanceKey> mFontInstanceKeys;
+
+  UniquePtr<ActiveResourceTracker> mActiveResourceTracker;
+
+  RefCountedShmem mResourceShm;
 };
 
 } // namespace layers

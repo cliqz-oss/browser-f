@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et tw=80 : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -20,6 +20,7 @@
 #include "gfxTelemetry.h"
 #include "gfxTypes.h"
 #include "ipc/IPCMessageUtils.h"
+#include "mozilla/gfx/CompositorHitTestInfo.h"
 #include "mozilla/gfx/Matrix.h"
 #include "nsRect.h"
 #include "nsRegion.h"
@@ -174,18 +175,25 @@ struct ParamTraits<gfxRect>
 
   static void Write(Message* aMsg, const paramType& aParam)
   {
-    WriteParam(aMsg, aParam.x);
-    WriteParam(aMsg, aParam.y);
-    WriteParam(aMsg, aParam.width);
-    WriteParam(aMsg, aParam.height);
+    WriteParam(aMsg, aParam.X());
+    WriteParam(aMsg, aParam.Y());
+    WriteParam(aMsg, aParam.Width());
+    WriteParam(aMsg, aParam.Height());
   }
 
   static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
   {
-    return ReadParam(aMsg, aIter, &aResult->x) &&
-           ReadParam(aMsg, aIter, &aResult->y) &&
-           ReadParam(aMsg, aIter, &aResult->width) &&
-           ReadParam(aMsg, aIter, &aResult->height);
+    auto x = aResult->X();
+    auto y = aResult->Y();
+    auto w = aResult->Width();
+    auto h = aResult->Height();
+
+    bool retVal = (ReadParam(aMsg, aIter, &x) &&
+                   ReadParam(aMsg, aIter, &y) &&
+                   ReadParam(aMsg, aIter, &w) &&
+                   ReadParam(aMsg, aIter, &h));
+    aResult->SetRect(x, y, w, h);
+    return retVal;
   }
 };
 
@@ -568,18 +576,25 @@ struct ParamTraits< mozilla::gfx::RectTyped<T> >
 
   static void Write(Message* msg, const paramType& param)
   {
-    WriteParam(msg, param.x);
-    WriteParam(msg, param.y);
-    WriteParam(msg, param.width);
-    WriteParam(msg, param.height);
+    WriteParam(msg, param.X());
+    WriteParam(msg, param.Y());
+    WriteParam(msg, param.Width());
+    WriteParam(msg, param.Height());
   }
 
   static bool Read(const Message* msg, PickleIterator* iter, paramType* result)
   {
-    return (ReadParam(msg, iter, &result->x) &&
-            ReadParam(msg, iter, &result->y) &&
-            ReadParam(msg, iter, &result->width) &&
-            ReadParam(msg, iter, &result->height));
+    auto x = result->X();
+    auto y = result->Y();
+    auto w = result->Width();
+    auto h = result->Height();
+
+    bool retVal = (ReadParam(msg, iter, &x) &&
+                   ReadParam(msg, iter, &y) &&
+                   ReadParam(msg, iter, &w) &&
+                   ReadParam(msg, iter, &h));
+    result->SetRect(x, y, w, h);
+    return retVal;
   }
 };
 
@@ -590,18 +605,25 @@ struct ParamTraits< mozilla::gfx::IntRectTyped<T> >
 
   static void Write(Message* msg, const paramType& param)
   {
-    WriteParam(msg, param.x);
-    WriteParam(msg, param.y);
-    WriteParam(msg, param.width);
-    WriteParam(msg, param.height);
+    WriteParam(msg, param.X());
+    WriteParam(msg, param.Y());
+    WriteParam(msg, param.Width());
+    WriteParam(msg, param.Height());
   }
 
   static bool Read(const Message* msg, PickleIterator* iter, paramType* result)
   {
-    return (ReadParam(msg, iter, &result->x) &&
-            ReadParam(msg, iter, &result->y) &&
-            ReadParam(msg, iter, &result->width) &&
-            ReadParam(msg, iter, &result->height));
+    auto x = result->X();
+    auto y = result->Y();
+    auto w = result->Width();
+    auto h = result->Height();
+
+    bool retVal = (ReadParam(msg, iter, &x) &&
+                   ReadParam(msg, iter, &y) &&
+                   ReadParam(msg, iter, &w) &&
+                   ReadParam(msg, iter, &h));
+    result->SetRect(x, y, w, h);
+    return retVal;
   }
 };
 
@@ -656,18 +678,24 @@ struct ParamTraits<nsRect>
 
   static void Write(Message* msg, const paramType& param)
   {
-    WriteParam(msg, param.x);
-    WriteParam(msg, param.y);
-    WriteParam(msg, param.width);
-    WriteParam(msg, param.height);
+    WriteParam(msg, param.X());
+    WriteParam(msg, param.Y());
+    WriteParam(msg, param.Width());
+    WriteParam(msg, param.Height());
   }
 
   static bool Read(const Message* msg, PickleIterator* iter, paramType* result)
   {
-    return (ReadParam(msg, iter, &result->x) &&
-            ReadParam(msg, iter, &result->y) &&
-            ReadParam(msg, iter, &result->width) &&
-            ReadParam(msg, iter, &result->height));
+    auto x = result->X();
+    auto y = result->Y();
+    auto w = result->Width();
+    auto h = result->Height();
+    bool retVal = (ReadParam(msg, iter, &x) &&
+                   ReadParam(msg, iter, &y) &&
+                   ReadParam(msg, iter, &w) &&
+                   ReadParam(msg, iter, &h));
+    result->SetRect(x, y, w, h);
+    return retVal;
   }
 };
 
@@ -922,6 +950,12 @@ struct ParamTraits<mozilla::Array<T, Length>>
   }
 };
 
+template <>
+struct ParamTraits<mozilla::gfx::CompositorHitTestInfo>
+  : public BitFlagsEnumSerializer<mozilla::gfx::CompositorHitTestInfo,
+                                  mozilla::gfx::CompositorHitTestInfo::ALL_BITS>
+{
+};
 
 } /* namespace IPC */
 

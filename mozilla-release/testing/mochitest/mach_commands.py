@@ -68,13 +68,6 @@ test path(s):
 Please check spelling and make sure the named tests exist.
 '''.lstrip()
 
-NOW_RUNNING = '''
-######
-### Now running mochitest-{}.
-######
-'''
-
-
 SUPPORTED_APPS = ['firefox', 'android']
 
 parser = None
@@ -107,7 +100,7 @@ class MochitestRunner(MozbuildObject):
         if test_objects:
             return test_objects
 
-        from mozbuild.testing import TestResolver
+        from moztest.resolve import TestResolver
         resolver = self._spawn(TestResolver)
         tests = list(resolver.resolve_tests(paths=test_paths, cwd=cwd))
         return tests
@@ -116,7 +109,7 @@ class MochitestRunner(MozbuildObject):
         """Runs a mochitest.
 
         suite is the type of mochitest to run. It can be one of ('plain',
-        'chrome', 'browser', 'a11y', 'jetpack-package', 'jetpack-addon').
+        'chrome', 'browser', 'a11y').
         """
         # runtests.py is ambiguous, so we load the file/module manually.
         if 'mochitest' not in sys.modules:
@@ -172,6 +165,10 @@ class MochitestRunner(MozbuildObject):
                             ('.py', 'r', imp.PY_SOURCE))
         import runtestsremote
 
+        from mozrunner.devices.android_device import get_adb_path
+        if not kwargs['adbPath']:
+            kwargs['adbPath'] = get_adb_path(self)
+
         options = Namespace(**kwargs)
 
         from manifestparser import TestManifest
@@ -181,6 +178,15 @@ class MochitestRunner(MozbuildObject):
             options.manifestFile = manifest
 
         return runtestsremote.run_test_harness(parser, options)
+
+    def run_geckoview_junit_test(self, context, **kwargs):
+        host_ret = verify_host_bin()
+        if host_ret != 0:
+            return host_ret
+
+        import runjunit
+        options = Namespace(**kwargs)
+        return runjunit.run_test_harness(parser, options)
 
     def run_robocop_test(self, context, tests, suite=None, **kwargs):
         host_ret = verify_host_bin()
@@ -236,10 +242,43 @@ def setup_argument_parser():
         # be done in this admittedly awkward place because
         # MochitestArgumentParser initialization fails if no device is found.
         from mozrunner.devices.android_device import verify_android_device
-        verify_android_device(build_obj, install=True, xre=True)
+        # verify device and xre
+        verify_android_device(build_obj, install=False, xre=True)
 
     global parser
     parser = MochitestArgumentParser()
+    return parser
+
+
+def setup_junit_argument_parser():
+    build_obj = MozbuildObject.from_environment(cwd=here)
+
+    build_path = os.path.join(build_obj.topobjdir, 'build')
+    if build_path not in sys.path:
+        sys.path.append(build_path)
+
+    mochitest_dir = os.path.join(build_obj.topobjdir, '_tests', 'testing', 'mochitest')
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+
+        # runtests.py contains MochitestDesktop, required by runjunit
+        import imp
+        path = os.path.join(build_obj.topobjdir, mochitest_dir, 'runtests.py')
+        if not os.path.exists(path):
+            path = os.path.join(here, "runtests.py")
+
+        with open(path, 'r') as fh:
+            imp.load_module('mochitest', fh, path,
+                            ('.py', 'r', imp.PY_SOURCE))
+
+        import runjunit
+
+        from mozrunner.devices.android_device import verify_android_device
+        verify_android_device(build_obj, install=False, xre=True)
+
+    global parser
+    parser = runjunit.JunitArgumentParser()
     return parser
 
 
@@ -282,6 +321,8 @@ class MachCommands(MachCommandBase):
              parser=setup_argument_parser)
     def run_mochitest_general(self, flavor=None, test_objects=None, resolve_tests=True, **kwargs):
         from mochitest_options import ALL_FLAVORS
+        from mozlog.commandline import setup_logging
+        from mozlog.handlers import StreamHandler
 
         buildapp = None
         for app in SUPPORTED_APPS:
@@ -310,6 +351,20 @@ class MachCommands(MachCommandBase):
         tests = []
         if resolve_tests:
             tests = mochitest.resolve_tests(test_paths, test_objects, cwd=self._mach_context.cwd)
+
+        if not kwargs.get('log'):
+            # Create shared logger
+            format_args = {'level': self._mach_context.settings['test']['level']}
+            if len(tests) == 1:
+                format_args['verbose'] = True
+                format_args['compact'] = False
+
+            default_format = self._mach_context.settings['test']['format']
+            kwargs['log'] = setup_logging('mach-mochitest', kwargs, {default_format: sys.stdout},
+                                          format_args)
+            for handler in kwargs['log'].handlers:
+                if isinstance(handler, StreamHandler):
+                    handler.formatter.inner.summary_on_shutdown = True
 
         driver = self._spawn(BuildDriver)
         driver.install_tests(tests)
@@ -385,7 +440,16 @@ class MachCommands(MachCommandBase):
 
         if buildapp == 'android':
             from mozrunner.devices.android_device import grant_runtime_permissions
-            grant_runtime_permissions(self)
+            from mozrunner.devices.android_device import verify_android_device
+            app = kwargs.get('app')
+            if not app:
+                app = self.substs["ANDROID_PACKAGE_NAME"]
+            device_serial = kwargs.get('deviceSerial')
+
+            # verify installation
+            verify_android_device(self, install=True, xre=False, app=app,
+                                  device_serial=device_serial)
+            grant_runtime_permissions(self, app, device_serial=device_serial)
             run_mochitest = mochitest.run_android_test
         else:
             run_mochitest = mochitest.run_desktop_test
@@ -393,10 +457,6 @@ class MachCommands(MachCommandBase):
         overall = None
         for (flavor, subsuite), tests in sorted(suites.items()):
             fobj = ALL_FLAVORS[flavor]
-            msg = fobj['aliases'][0]
-            if subsuite:
-                msg = '{} with subsuite {}'.format(msg, subsuite)
-            print(NOW_RUNNING.format(msg))
 
             harness_args = kwargs.copy()
             harness_args['subsuite'] = subsuite
@@ -411,8 +471,49 @@ class MachCommands(MachCommandBase):
             if result:
                 overall = result
 
-        # TODO consolidate summaries from all suites
+            # Halt tests on keyboard interrupt
+            if result == -1:
+                break
+
+        # Only shutdown the logger if we created it
+        if kwargs['log'].name == 'mach-mochitest':
+            kwargs['log'].shutdown()
+
         return overall
+
+
+@CommandProvider
+class GeckoviewJunitCommands(MachCommandBase):
+
+    @Command('geckoview-junit', category='testing',
+             conditions=[conditions.is_android],
+             description='Run remote geckoview junit tests.',
+             parser=setup_junit_argument_parser)
+    def run_junit(self, **kwargs):
+        self._ensure_state_subdir_exists('.')
+
+        from mozrunner.devices.android_device import (grant_runtime_permissions,
+                                                      get_adb_path,
+                                                      verify_android_device)
+        # verify installation
+        app = kwargs.get('app')
+        device_serial = kwargs.get('deviceSerial')
+        verify_android_device(self, install=True, xre=False, app=app,
+                              device_serial=device_serial)
+        grant_runtime_permissions(self, app, device_serial=device_serial)
+
+        if not kwargs.get('adbPath'):
+            kwargs['adbPath'] = get_adb_path(self)
+
+        if not kwargs.get('log'):
+            from mozlog.commandline import setup_logging
+            format_args = {'level': self._mach_context.settings['test']['level']}
+            default_format = self._mach_context.settings['test']['format']
+            kwargs['log'] = setup_logging('mach-mochitest', kwargs,
+                                          {default_format: sys.stdout}, format_args)
+
+        mochitest = self._spawn(MochitestRunner)
+        return mochitest.run_geckoview_junit_test(self._mach_context, **kwargs)
 
 
 @CommandProvider
@@ -439,7 +540,7 @@ class RobocopCommands(MachCommandBase):
         test_paths = kwargs['test_paths']
         kwargs['test_paths'] = []
 
-        from mozbuild.testing import TestResolver
+        from moztest.resolve import TestResolver
         resolver = self._spawn(TestResolver)
         tests = list(resolver.resolve_tests(paths=test_paths, cwd=self._mach_context.cwd,
                                             flavor='instrumentation', subsuite='robocop'))
@@ -451,8 +552,19 @@ class RobocopCommands(MachCommandBase):
                 sorted(list(test_paths)))))
             return 1
 
-        from mozrunner.devices.android_device import grant_runtime_permissions
-        grant_runtime_permissions(self)
+        from mozrunner.devices.android_device import grant_runtime_permissions, get_adb_path
+        from mozrunner.devices.android_device import verify_android_device
+        # verify installation
+        app = kwargs.get('app')
+        if not app:
+            app = self.substs["ANDROID_PACKAGE_NAME"]
+        device_serial = kwargs.get('deviceSerial')
+        verify_android_device(self, install=True, xre=False, app=app,
+                              device_serial=device_serial)
+        grant_runtime_permissions(self, app, device_serial=device_serial)
+
+        if not kwargs['adbPath']:
+            kwargs['adbPath'] = get_adb_path(self)
 
         mochitest = self._spawn(MochitestRunner)
         return mochitest.run_robocop_test(self._mach_context, tests, 'robocop', **kwargs)
@@ -498,12 +610,4 @@ class DeprecatedCommands(MachCommandBase):
 
     @Command('mochitest-a11y', category='testing', conditions=[REMOVED])
     def mochitest_a11y(self):
-        pass
-
-    @Command('jetpack-addon', category='testing', conditions=[REMOVED])
-    def jetpack_addon(self):
-        pass
-
-    @Command('jetpack-package', category='testing', conditions=[REMOVED])
-    def jetpack_package(self):
         pass

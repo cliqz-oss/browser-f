@@ -6,6 +6,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import os
 import sys
+from functools import partial
 
 from mach.decorators import (
     Command,
@@ -13,9 +14,10 @@ from mach.decorators import (
     CommandProvider,
 )
 
-import mozhttpd
-
+import which
 from mozbuild.base import MachCommandBase
+
+here = os.path.abspath(os.path.dirname(__file__))
 
 
 @CommandProvider
@@ -23,85 +25,117 @@ class Documentation(MachCommandBase):
     """Helps manage in-tree documentation."""
 
     @Command('doc', category='devenv',
-        description='Generate and display documentation from the tree.')
-    @CommandArgument('what', nargs='*', metavar='DIRECTORY [, DIRECTORY]',
-        help='Path(s) to documentation to build and display.')
-    @CommandArgument('--format', default='html',
-        help='Documentation format to write.')
+             description='Generate and serve documentation from the tree.')
+    @CommandArgument('path', default=None, metavar='DIRECTORY', nargs='?',
+                     help='Path to documentation to build and display.')
+    @CommandArgument('--format', default='html', dest='fmt',
+                     help='Documentation format to write.')
     @CommandArgument('--outdir', default=None, metavar='DESTINATION',
-        help='Where to write output.')
-    @CommandArgument('--no-open', dest='auto_open', default=True, action='store_false',
-        help="Don't automatically open HTML docs in a browser.")
-    @CommandArgument('--http', const=':6666', metavar='ADDRESS', nargs='?',
-        help='Serve documentation on an HTTP server, e.g. ":6666".')
-    def build_docs(self, what=None, format=None, outdir=None, auto_open=True, http=None):
+                     help='Where to write output.')
+    @CommandArgument('--archive', action='store_true',
+                     help='Write a gzipped tarball of generated docs.')
+    @CommandArgument('--no-open', dest='auto_open', default=True,
+                     action='store_false',
+                     help="Don't automatically open HTML docs in a browser.")
+    @CommandArgument('--no-serve', dest='serve', default=True, action='store_false',
+                     help="Don't serve the generated docs after building.")
+    @CommandArgument('--http', default='localhost:5500', metavar='ADDRESS',
+                     help='Serve documentation on the specified host and port, '
+                          'default "localhost:5500".')
+    @CommandArgument('--upload', action='store_true',
+                     help='Upload generated files to S3.')
+    def build_docs(self, path=None, fmt='html', outdir=None, auto_open=True,
+                   serve=True, http=None, archive=False, upload=False):
+        try:
+            which.which('jsdoc')
+        except which.WhichError:
+            return die('jsdoc not found - please install from npm.')
+
         self._activate_virtualenv()
-        self.virtualenv_manager.install_pip_package('sphinx_rtd_theme==0.1.6')
+        self.virtualenv_manager.install_pip_requirements(
+            os.path.join(here, 'requirements.txt'), quiet=True)
 
-        import sphinx
+        import moztreedocs
         import webbrowser
+        from livereload import Server
 
-        if not outdir:
-            outdir = os.path.join(self.topobjdir, 'docs')
-        if not what:
-            what = [os.path.join(self.topsrcdir, 'tools')]
-        outdir = os.path.join(outdir, format)
+        outdir = outdir or os.path.join(self.topobjdir, 'docs')
+        format_outdir = os.path.join(outdir, fmt)
 
-        generated = []
-        failed = []
-        for path in what:
-            path = os.path.normpath(os.path.abspath(path))
-            docdir = self._find_doc_dir(path)
+        path = path or os.path.join(self.topsrcdir, 'tools')
+        path = os.path.normpath(os.path.abspath(path))
 
-            if not docdir:
-                failed.append((path, 'could not find docs at this location'))
-                continue
+        docdir = self._find_doc_dir(path)
+        if not docdir:
+            return die('failed to generate documentation:\n'
+                       '%s: could not find docs at this location' % path)
 
-            # find project name to use as a namespace within `outdir`
-            project = self._find_project_name(docdir)
-            savedir = os.path.join(outdir, project)
+        props = self._project_properties(docdir)
+        savedir = os.path.join(format_outdir, props['project'])
 
-            args = [
-                'sphinx',
-                '-b', format,
-                docdir,
-                savedir,
-            ]
-            result = sphinx.build_main(args)
-            if result != 0:
-                failed.append((path, 'sphinx return code %d' % result))
-            else:
-                generated.append(savedir)
+        run_sphinx = partial(self._run_sphinx, docdir, savedir, fmt)
+        result = run_sphinx()
+        if result != 0:
+            return die('failed to generate documentation:\n'
+                       '%s: sphinx return code %d' % (path, result))
+        else:
+            print('\nGenerated documentation:\n%s' % savedir)
 
+        if archive:
+            archive_path = os.path.join(outdir,
+                                        '%s.tar.gz' % props['project'])
+            moztreedocs.create_tarball(archive_path, savedir)
+            print('Archived to %s' % archive_path)
+
+        if upload:
+            self._s3_upload(savedir, props['project'], props['version'])
+
+        if not serve:
             index_path = os.path.join(savedir, 'index.html')
-            if not http and auto_open and os.path.isfile(index_path):
+            if auto_open and os.path.isfile(index_path):
                 webbrowser.open(index_path)
+            return
 
-        if generated:
-            print('\nGenerated documentation:\n%s\n' % '\n'.join(generated))
-
-        if failed:
-            failed = ['%s: %s' % (f[0], f[1]) for f in failed]
-            return die('failed to generate documentation:\n%s' % '\n'.join(failed))
-
-        if http is not None:
+        # Create livereload server. Any files modified in the specified docdir
+        # will cause a re-build and refresh of the browser (if open).
+        try:
             host, port = http.split(':', 1)
-            addr = (host, int(port))
-            if len(addr) != 2:
-                return die('invalid address: %s' % http)
+            port = int(port)
+        except ValueError:
+            return die('invalid address: %s' % http)
 
-            httpd = mozhttpd.MozHttpd(host=addr[0], port=addr[1], docroot=outdir)
-            print('listening on %s:%d' % addr)
-            httpd.start(block=True)
+        server = Server()
+        server.watch(docdir, run_sphinx)
+        server.serve(host=host, port=port, root=savedir,
+                     open_url_delay=0.1 if auto_open else None)
 
-    def _find_project_name(self, path):
+    def _run_sphinx(self, docdir, savedir, fmt='html'):
+        import sphinx
+        args = [
+            'sphinx',
+            '-b', fmt,
+            docdir,
+            savedir,
+        ]
+        return sphinx.build_main(args)
+
+    def _project_properties(self, path):
         import imp
         path = os.path.join(path, 'conf.py')
         with open(path, 'r') as fh:
             conf = imp.load_module('doc_conf', fh, path,
                                    ('.py', 'r', imp.PY_SOURCE))
 
-        return conf.project.replace(' ', '_')
+        # Prefer the Mozilla project name, falling back to Sphinx's
+        # default variable if it isn't defined.
+        project = getattr(conf, 'moz_project_name', None)
+        if not project:
+            project = conf.project.replace(' ', '_')
+
+        return {
+            'project': project,
+            'version': getattr(conf, 'version', None)
+        }
 
     def _find_doc_dir(self, path):
         search_dirs = ('doc', 'docs')
@@ -109,6 +143,31 @@ class Documentation(MachCommandBase):
             p = os.path.join(path, d)
             if os.path.isfile(os.path.join(p, 'conf.py')):
                 return p
+
+    def _s3_upload(self, root, project, version=None):
+        self.virtualenv_manager.install_pip_package('boto3==1.4.4')
+
+        from moztreedocs import distribution_files
+        from moztreedocs.upload import s3_upload
+
+        # Files are uploaded to multiple locations:
+        #
+        # <project>/latest
+        # <project>/<version>
+        #
+        # This allows multiple projects and versions to be stored in the
+        # S3 bucket.
+
+        files = list(distribution_files(root))
+
+        s3_upload(files, key_prefix='%s/latest' % project)
+        if version:
+            s3_upload(files, key_prefix='%s/%s' % (project, version))
+
+        # Until we redirect / to main/latest, upload the main docs
+        # to the root.
+        if project == 'main':
+            s3_upload(files)
 
 
 def die(msg, exit_code=1):

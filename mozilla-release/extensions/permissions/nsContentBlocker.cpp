@@ -66,6 +66,8 @@ static const char *kTypeString[] = {
                                     "", // TYPE_INTERNAL_STYLESHEET_PRELOAD
                                     "", // TYPE_INTERNAL_IMAGE_FAVICON
                                     "", // TYPE_INTERNAL_WORKERS_IMPORT_SCRIPTS
+                                    "saveas_download",
+                                    "speculative",
 };
 
 #define NUMBER_OF_TYPES MOZ_ARRAY_LENGTH(kTypeString)
@@ -152,15 +154,18 @@ nsContentBlocker::PrefChanged(nsIPrefBranch *aPrefBranch,
 
 // nsIContentPolicy Implementation
 NS_IMETHODIMP
-nsContentBlocker::ShouldLoad(uint32_t          aContentType,
-                             nsIURI           *aContentLocation,
-                             nsIURI           *aRequestingLocation,
-                             nsISupports      *aRequestingContext,
+nsContentBlocker::ShouldLoad(nsIURI           *aContentLocation,
+                             nsILoadInfo      *aLoadInfo,
                              const nsACString &aMimeGuess,
-                             nsISupports      *aExtra,
-                             nsIPrincipal     *aRequestPrincipal,
                              int16_t          *aDecision)
 {
+  uint32_t aContentType = aLoadInfo->GetExternalContentPolicyType();
+  nsCOMPtr<nsIPrincipal> loadingPrincipal = aLoadInfo->LoadingPrincipal();
+  nsCOMPtr<nsIURI> aRequestingLocation;
+  if (loadingPrincipal) {
+    loadingPrincipal->GetURI(getter_AddRefs(aRequestingLocation));
+  }
+
   MOZ_ASSERT(aContentType == nsContentUtils::InternalContentPolicyTypeToExternal(aContentType),
              "We should only see external content policy types here.");
 
@@ -206,15 +211,19 @@ nsContentBlocker::ShouldLoad(uint32_t          aContentType,
 }
 
 NS_IMETHODIMP
-nsContentBlocker::ShouldProcess(uint32_t          aContentType,
-                                nsIURI           *aContentLocation,
-                                nsIURI           *aRequestingLocation,
-                                nsISupports      *aRequestingContext,
+nsContentBlocker::ShouldProcess(nsIURI           *aContentLocation,
+                                nsILoadInfo      *aLoadInfo,
                                 const nsACString &aMimeGuess,
-                                nsISupports      *aExtra,
-                                nsIPrincipal     *aRequestPrincipal,
                                 int16_t          *aDecision)
 {
+  uint32_t aContentType = aLoadInfo->GetExternalContentPolicyType();
+  nsCOMPtr<nsISupports> aRequestingContext = aLoadInfo->GetLoadingContext();
+  nsCOMPtr<nsIPrincipal> loadingPrincipal = aLoadInfo->LoadingPrincipal();
+  nsCOMPtr<nsIURI> aRequestingLocation;
+  if (loadingPrincipal) {
+    loadingPrincipal->GetURI(getter_AddRefs(aRequestingLocation));
+  }
+
   MOZ_ASSERT(aContentType == nsContentUtils::InternalContentPolicyTypeToExternal(aContentType),
              "We should only see external content policy types here.");
 
@@ -254,9 +263,7 @@ nsContentBlocker::ShouldProcess(uint32_t          aContentType,
 
   // This isn't a load from chrome or an object tag - Just do a ShouldLoad()
   // check -- we want the same answer here
-  return ShouldLoad(aContentType, aContentLocation, aRequestingLocation,
-                    aRequestingContext, aMimeGuess, aExtra, aRequestPrincipal,
-                    aDecision);
+  return ShouldLoad(aContentLocation, aLoadInfo, aMimeGuess, aDecision);
 }
 
 nsresult

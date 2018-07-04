@@ -8,16 +8,11 @@ const EXPORTED_SYMBOLS = ["WebRequestUpload"];
 
 /* exported WebRequestUpload */
 
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-const Cu = Components.utils;
-const Cr = Components.results;
-
 Cu.importGlobalProperties(["TextEncoder"]);
 
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 const {
   DefaultMap,
@@ -372,6 +367,7 @@ function parseFormData(stream, channel, lenient = false) {
       stream = stream.data;
     }
 
+    channel.QueryInterface(Ci.nsIHttpChannel);
     let contentType = channel.getRequestHeader("Content-Type");
 
     switch (Headers.getParam(contentType, "")) {

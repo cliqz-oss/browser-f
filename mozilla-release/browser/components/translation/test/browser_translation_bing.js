@@ -9,8 +9,8 @@
 const kClientIdPref = "browser.translation.bing.clientIdOverride";
 const kClientSecretPref = "browser.translation.bing.apiKeyOverride";
 
-const {BingTranslator} = Cu.import("resource:///modules/translation/BingTranslator.jsm", {});
-const {TranslationDocument} = Cu.import("resource:///modules/translation/TranslationDocument.jsm", {});
+const {BingTranslator} = ChromeUtils.import("resource:///modules/translation/BingTranslator.jsm", {});
+const {TranslationDocument} = ChromeUtils.import("resource:///modules/translation/TranslationDocument.jsm", {});
 
 add_task(async function setup() {
   Services.prefs.setCharPref(kClientIdPref, "testClient");
@@ -39,8 +39,8 @@ add_task(async function test_bing_translation() {
   let browser = tab.linkedBrowser;
 
   await ContentTask.spawn(browser, null, async function() {
-    Cu.import("resource:///modules/translation/BingTranslator.jsm");
-    Cu.import("resource:///modules/translation/TranslationDocument.jsm");
+    ChromeUtils.import("resource:///modules/translation/BingTranslator.jsm");
+    ChromeUtils.import("resource:///modules/translation/TranslationDocument.jsm");
 
     let client = new BingTranslator(
       new TranslationDocument(content.document), "fr", "en");
@@ -74,8 +74,8 @@ add_task(async function test_handling_out_of_valid_key_error() {
   let browser = tab.linkedBrowser;
 
   await ContentTask.spawn(browser, null, async function() {
-    Cu.import("resource:///modules/translation/BingTranslator.jsm");
-    Cu.import("resource:///modules/translation/TranslationDocument.jsm");
+    ChromeUtils.import("resource:///modules/translation/BingTranslator.jsm");
+    ChromeUtils.import("resource:///modules/translation/TranslationDocument.jsm");
 
     let client = new BingTranslator(
       new TranslationDocument(content.document), "fr", "en");
@@ -121,12 +121,9 @@ function promiseTestPageLoad(url) {
   return new Promise(resolve => {
     let tab = gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, url);
     let browser = gBrowser.selectedBrowser;
-    browser.addEventListener("load", function listener() {
-      if (browser.currentURI.spec == "about:blank")
-        return;
+    BrowserTestUtils.browserLoaded(browser, false, (loadurl) => loadurl != "about:blank").then(() => {
       info("Page loaded: " + browser.currentURI.spec);
-      browser.removeEventListener("load", listener, true);
       resolve(tab);
-    }, true);
+    });
   });
 }

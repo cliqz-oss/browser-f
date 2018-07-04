@@ -4,33 +4,27 @@
 "use strict";
 
 /**
- * Tests if timing intervals are divided againts seconds when appropriate.
+ * Tests if timing intervals are divided against seconds when appropriate.
  */
+add_task(async function() {
+  // Show only few columns, so there is enough space
+  // for the waterfall.
+  await pushPref("devtools.netmonitor.visibleColumns",
+    '["status", "contentSize", "waterfall"]');
 
-add_task(function* () {
-  // Make sure timing division can render properly
-  Services.prefs.setCharPref(
-    "devtools.netmonitor.visibleColumns",
-    "[\"waterfall\"]"
-  );
-
-  let { tab, monitor } = yield initNetMonitor(CUSTOM_GET_URL);
+  let { tab, monitor } = await initNetMonitor(CUSTOM_GET_URL);
   info("Starting test... ");
 
   let { document, store, windowRequire } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
-  let {
-    getSortedRequests,
-  } = windowRequire("devtools/client/netmonitor/src/selectors/index");
-
   store.dispatch(Actions.batchEnable(false));
 
   let wait = waitForNetworkEvents(monitor, 2);
   // Timeout needed for having enough divisions on the time scale.
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
+  await ContentTask.spawn(tab.linkedBrowser, {}, async function() {
     content.wrappedJSObject.performRequests(2, null, 3000);
   });
-  yield wait;
+  await wait;
 
   let milDivs = document.querySelectorAll(
     ".requests-list-timings-division[data-division-scale=millisecond]");
@@ -49,14 +43,6 @@ add_task(function* () {
 
   is(store.getState().requests.requests.size, 2,
      "There should be only two requests made.");
-
-  let firstRequest = getSortedRequests(store.getState()).get(0);
-  let lastRequest = getSortedRequests(store.getState()).get(1);
-
-  info("First request happened at: " +
-       firstRequest.responseHeaders.headers.find(e => e.name == "date").value);
-  info("Last request happened at: " +
-       lastRequest.responseHeaders.headers.find(e => e.name == "date").value);
 
   ok(secDivs.length,
      "There should be at least one division on the seconds time scale.");

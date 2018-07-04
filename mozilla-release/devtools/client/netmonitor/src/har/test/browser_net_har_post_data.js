@@ -6,29 +6,31 @@
 /**
  * Tests for exporting POST data into HAR format.
  */
-add_task(function* () {
-  let { tab, monitor } = yield initNetMonitor(
+add_task(async function() {
+  let { tab, monitor } = await initNetMonitor(
     HAR_EXAMPLE_URL + "html_har_post-data-test-page.html");
 
   info("Starting test... ");
 
-  let { store, windowRequire } = monitor.panelWin;
+  let { connector, store, windowRequire } = monitor.panelWin;
   let Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
-  let RequestListContextMenu = windowRequire(
-    "devtools/client/netmonitor/src/request-list-context-menu");
+  let { HarMenuUtils } = windowRequire(
+    "devtools/client/netmonitor/src/har/har-menu-utils");
+  let { getSortedRequests } = windowRequire(
+    "devtools/client/netmonitor/src/selectors/index");
 
   store.dispatch(Actions.batchEnable(false));
 
   // Execute one POST request on the page and wait till its done.
-  let wait = waitForNetworkEvents(monitor, 0, 1);
-  yield ContentTask.spawn(tab.linkedBrowser, {}, function* () {
+  let wait = waitForNetworkEvents(monitor, 1);
+  await ContentTask.spawn(tab.linkedBrowser, {}, async function() {
     content.wrappedJSObject.executeTest();
   });
-  yield wait;
+  await wait;
 
   // Copy HAR into the clipboard (asynchronous).
-  let contextMenu = new RequestListContextMenu({});
-  let jsonString = yield contextMenu.copyAllAsHar();
+  let jsonString = await HarMenuUtils.copyAllAsHar(
+    getSortedRequests(store.getState()), connector);
   let har = JSON.parse(jsonString);
 
   // Check out the HAR log.

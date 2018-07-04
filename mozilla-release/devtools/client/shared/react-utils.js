@@ -4,7 +4,7 @@
 "use strict";
 
 // Make this available to both AMD and CJS environments
-define(function (require, exports, module) {
+define(function(require, exports, module) {
   // Dependencies
   const React = require("devtools/client/shared/vendor/react");
 
@@ -14,7 +14,7 @@ define(function (require, exports, module) {
    *   const {
    *     Tabs,
    *     TabPanel
-   *   } = createFactories(require("devtools/client/shared/components/tabs/tabs"));
+   *   } = createFactories(require("devtools/client/shared/components/tabs/Tabs"));
    */
   function createFactories(args) {
     let result = {};

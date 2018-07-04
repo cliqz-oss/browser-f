@@ -1,9 +1,9 @@
 "use strict";
 
-Cu.import("resource://gre/modules/NetUtil.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://testing-common/MockRegistrar.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gProxyService",
                                    "@mozilla.org/network/protocol-proxy-service;1",
@@ -12,10 +12,10 @@ XPCOMUtils.defineLazyServiceGetter(this, "gProxyService",
 XPCOMUtils.defineLazyGetter(this, "systemSettings", function() {
   return {
     QueryInterface: function (iid) {
-      if (iid.equals(Components.interfaces.nsISupports) ||
-          iid.equals(Components.interfaces.nsISystemProxySettings))
+      if (iid.equals(Ci.nsISupports) ||
+          iid.equals(Ci.nsISystemProxySettings))
         return this;
-      throw Components.results.NS_ERROR_NO_INTERFACE;
+      throw Cr.NS_ERROR_NO_INTERFACE;
     },
 
     mainThreadOnly: true,
@@ -38,7 +38,7 @@ XPCOMUtils.defineLazyGetter(this, "systemSettings", function() {
 let gMockProxy = MockRegistrar.register("@mozilla.org/system-proxy-settings;1",
                                         systemSettings);
 
-do_register_cleanup(() => {
+registerCleanupFunction(() => {
   MockRegistrar.unregister(gMockProxy);
 });
 
@@ -54,7 +54,7 @@ async function TestProxyType(chan, flags) {
                    .getService(Ci.nsIPrefBranch);
   prefs.setIntPref(
     "network.proxy.type",
-    Components.interfaces.nsIProtocolProxyService.PROXYCONFIG_SYSTEM);
+    Ci.nsIProtocolProxyService.PROXYCONFIG_SYSTEM);
 
   return await new Promise((resolve, reject) => {
     gProxyService.asyncResolve(chan, flags, {
@@ -99,13 +99,16 @@ add_task(async function testSocksProxy() {
 
 add_task(async function testDirectProxy() {
   // Do what |WebSocketChannel::AsyncOpen| do, but do not prefer https proxy.
-  let proxyURI = Cc["@mozilla.org/network/standard-url;1"].createInstance(Ci.nsIURI);
-  proxyURI.spec = "wss://ws.mozilla.org/";
-  let uri = proxyURI.clone();
-  uri.scheme = "https";
+  let proxyURI = Cc["@mozilla.org/network/standard-url-mutator;1"]
+                   .createInstance(Ci.nsIURIMutator)
+                   .setSpec("wss://ws.mozilla.org/")
+                   .finalize();
+  let uri = proxyURI.mutate()
+                    .setScheme("https")
+                    .finalize();
 
   let ioService = Cc["@mozilla.org/network/io-service;1"].
-                  getService(Ci.nsIIOService2);
+                    getService(Ci.nsIIOService);
   let chan = ioService.
     newChannelFromURIWithProxyFlags2(uri,
                                      proxyURI,
@@ -122,16 +125,19 @@ add_task(async function testDirectProxy() {
 
 add_task(async function testWebSocketProxy() {
   // Do what |WebSocketChannel::AsyncOpen| do
-  let proxyURI = Cc["@mozilla.org/network/standard-url;1"].createInstance(Ci.nsIURI);
-  proxyURI.spec = "wss://ws.mozilla.org/";
-  let uri = proxyURI.clone();
-  uri.scheme = "https";
+  let proxyURI = Cc["@mozilla.org/network/standard-url-mutator;1"]
+                   .createInstance(Ci.nsIURIMutator)
+                   .setSpec("wss://ws.mozilla.org/")
+                   .finalize();
+  let uri = proxyURI.mutate()
+                    .setScheme("https")
+                    .finalize();
 
   let proxyFlags = Ci.nsIProtocolProxyService.RESOLVE_PREFER_HTTPS_PROXY |
                    Ci.nsIProtocolProxyService.RESOLVE_ALWAYS_TUNNEL;
 
   let ioService = Cc["@mozilla.org/network/io-service;1"].
-                  getService(Ci.nsIIOService2);
+                    getService(Ci.nsIIOService);
   let chan = ioService.
     newChannelFromURIWithProxyFlags2(uri,
                                      proxyURI,

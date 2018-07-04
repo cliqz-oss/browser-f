@@ -9,20 +9,15 @@
   assertDominatorTreeNodeInsertion, assertDeduplicatedPaths,
   assertCountToBucketBreakdown, pathEntry */
 
-var Cc = Components.classes;
-var Ci = Components.interfaces;
-var Cu = Components.utils;
-var Cr = Components.results;
 var CC = Components.Constructor;
 
-const { require } = Cu.import("resource://devtools/shared/Loader.jsm", {});
-const { Match } = Cu.import("resource://test/Match.jsm", {});
-const { Census } = Cu.import("resource://test/Census.jsm", {});
+const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+const { Match } = ChromeUtils.import("resource://test/Match.jsm", {});
+const { Census } = ChromeUtils.import("resource://test/Census.jsm", {});
 const { addDebuggerToGlobal } =
-  Cu.import("resource://gre/modules/jsdebugger.jsm", {});
+  ChromeUtils.import("resource://gre/modules/jsdebugger.jsm", {});
 
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
-const flags = require("devtools/shared/flags");
 const HeapAnalysesClient =
   require("devtools/shared/heapsnapshot/HeapAnalysesClient");
 const Services = require("Services");
@@ -36,8 +31,10 @@ const { LabelAndShallowSizeVisitor } = DominatorTreeNode;
 // the output away anyway, unless you give it the --verbose flag.
 if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT) {
   Services.prefs.setBoolPref("devtools.debugger.log", true);
+  registerCleanupFunction(() => {
+    Services.prefs.clearUserPref("devtools.debugger.log");
+  });
 }
-flags.wantLogging = true;
 
 const SYSTEM_PRINCIPAL = Cc["@mozilla.org/systemprincipal;1"]
   .createInstance(Ci.nsIPrincipal);
@@ -56,7 +53,7 @@ function addTestingFunctionsToGlobal(global) {
     `
   );
   if (!global.print) {
-    global.print = do_print;
+    global.print = info;
   }
   if (!global.newGlobal) {
     global.newGlobal = newGlobal;
@@ -115,7 +112,7 @@ function getFilePath(name, allowMissing = false, usePlatformPathSeparator = fals
 
   path = path.slice(filePrePath.length);
 
-  if (sePlatformPathSeparator && path.match(/^\w:/)) {
+  if (usePlatformPathSeparator && path.match(/^\w:/)) {
     path = path.replace(/\//g, "\\");
   }
 
@@ -339,7 +336,7 @@ function assertLabelAndShallowSize(breakdown, givenDescription,
   dumpn("Given description: " + JSON.stringify(givenDescription, null, 4));
 
   const visitor = new LabelAndShallowSizeVisitor();
-  CensusUtils.walk(breakdown, description, visitor);
+  CensusUtils.walk(breakdown, givenDescription, visitor);
 
   dumpn("Expected shallow size: " + expectedShallowSize);
   dumpn("Actual shallow size: " + visitor.shallowSize());
@@ -439,7 +436,7 @@ function assertDeduplicatedPaths({ target, paths, expectedNodes, expectedEdges }
     }
     equal(count, 1,
       "should have exactly one matching edge for the expected edge = "
-      + JSON.stringify(edge));
+      + JSON.stringify(expectedEdge));
   }
 }
 

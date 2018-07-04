@@ -12,8 +12,9 @@
 #define jsexn_h
 
 #include "jsapi.h"
-#include "jscntxt.h"
 #include "NamespaceImports.h"
+
+#include "vm/JSContext.h"
 
 namespace js {
 class ErrorObject;
@@ -97,7 +98,7 @@ ExnTypeFromProtoKey(JSProtoKey key)
 static inline bool
 IsErrorProtoKey(JSProtoKey key)
 {
-    JSExnType type = static_cast<JSExnType>(key - JSProto_Error);
+    int type = key - JSProto_Error;
     return type >= JSEXN_ERR && type < JSEXN_ERROR_LIMIT;
 }
 

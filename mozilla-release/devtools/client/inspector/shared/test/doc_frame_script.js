@@ -16,10 +16,6 @@
 //
 // Some listeners do not send a response message back.
 
-var {utils: Cu} = Components;
-var {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
-var defer = require("devtools/shared/defer");
-
 /**
  * Get a value for a given property name in a css rule in a stylesheet, given
  * their indexes
@@ -29,7 +25,7 @@ var defer = require("devtools/shared/defer");
  * - {String} name
  * @return {String} The value, if found, null otherwise
  */
-addMessageListener("Test:GetRulePropertyValue", function (msg) {
+addMessageListener("Test:GetRulePropertyValue", function(msg) {
   let {name, styleSheetIndex, ruleIndex} = msg.data;
   let value = null;
 
@@ -55,7 +51,7 @@ addMessageListener("Test:GetRulePropertyValue", function (msg) {
  * - {String} name: name of the property
  * @return {String} The value, if found, null otherwise
  */
-addMessageListener("Test:GetComputedStylePropertyValue", function (msg) {
+addMessageListener("Test:GetComputedStylePropertyValue", function(msg) {
   let {selector, pseudo, name} = msg.data;
   let doc = content.document;
 
@@ -73,7 +69,7 @@ addMessageListener("Test:GetComputedStylePropertyValue", function (msg) {
  * - {String} name: name of the property
  * - {String} expected: the expected value for property
  */
-addMessageListener("Test:WaitForComputedStylePropertyValue", function (msg) {
+addMessageListener("Test:WaitForComputedStylePropertyValue", function(msg) {
   let {selector, pseudo, name, expected} = msg.data;
   let element = content.document.querySelector(selector);
   waitForSuccess(() => {
@@ -100,16 +96,14 @@ var dumpn = msg => dump(msg + "\n");
  * if the timeout is reached
  */
 function waitForSuccess(validatorFn, name = "untitled") {
-  let def = defer();
-
-  function wait(fn) {
-    if (fn()) {
-      def.resolve();
-    } else {
-      setTimeout(() => wait(fn), 200);
+  return new Promise(resolve => {
+    function wait(fn) {
+      if (fn()) {
+        resolve();
+      } else {
+        setTimeout(() => wait(fn), 200);
+      }
     }
-  }
-  wait(validatorFn);
-
-  return def.promise;
+    wait(validatorFn);
+  });
 }

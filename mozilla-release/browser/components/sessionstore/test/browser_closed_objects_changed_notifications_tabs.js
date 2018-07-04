@@ -12,7 +12,7 @@ let notificationsCount = 0;
 async function openWindow(url) {
   let win = await promiseNewWindowLoaded();
   let flags = Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY;
-  win.gBrowser.selectedBrowser.loadURIWithFlags(url, flags);
+  win.gBrowser.selectedBrowser.loadURI(url, { flags });
   await promiseBrowserLoaded(win.gBrowser.selectedBrowser, true, url);
   return win;
 }
@@ -34,7 +34,7 @@ async function openTab(window, url) {
 
 async function openAndCloseTab(window, url) {
   let tab = await openTab(window, url);
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
 }
 
 function countingObserver() {
@@ -86,7 +86,7 @@ add_task(async function test_closedObjectsChangedNotifications() {
   assertNotificationCount(4);
 
   info("Closing tab again.");
-  await promiseRemoveTab(tab);
+  await promiseRemoveTabAndSessionState(tab);
   assertNotificationCount(5);
 
   info("Purging session history.");
@@ -97,11 +97,11 @@ add_task(async function test_closedObjectsChangedNotifications() {
   await openAndCloseTab(win, "http://example.com/");
   assertNotificationCount(7);
 
-  info("Purging domain data with no matches.")
+  info("Purging domain data with no matches.");
   Services.obs.notifyObservers(null, "browser:purge-domain-data", "mozilla.com");
   assertNotificationCount(7);
 
-  info("Purging domain data with matches.")
+  info("Purging domain data with matches.");
   await awaitNotification(() => Services.obs.notifyObservers(null, "browser:purge-domain-data", "example.com"));
   assertNotificationCount(8);
 

@@ -76,7 +76,6 @@ static HWND sWinlessPopupSurrogateHWND = nullptr;
 static User32TrackPopupMenu sUser32TrackPopupMenuStub = nullptr;
 
 typedef HIMC (WINAPI *Imm32ImmGetContext)(HWND hWND);
-typedef BOOL (WINAPI *Imm32ImmReleaseContext)(HWND hWND, HIMC hIMC);
 typedef LONG (WINAPI *Imm32ImmGetCompositionString)(HIMC hIMC,
                                                     DWORD dwIndex,
                                                     LPVOID lpBuf,
@@ -87,7 +86,6 @@ typedef BOOL (WINAPI *Imm32ImmNotifyIME)(HIMC hIMC, DWORD dwAction,
                                         DWORD dwIndex, DWORD dwValue);
 static WindowsDllInterceptor sImm32Intercept;
 static Imm32ImmGetContext sImm32ImmGetContextStub = nullptr;
-static Imm32ImmReleaseContext sImm32ImmReleaseContextStub = nullptr;
 static Imm32ImmGetCompositionString sImm32ImmGetCompositionStringStub = nullptr;
 static Imm32ImmSetCandidateWindow sImm32ImmSetCandidateWindowStub = nullptr;
 static Imm32ImmNotifyIME sImm32ImmNotifyIME = nullptr;
@@ -158,7 +156,6 @@ PluginInstanceChild::PluginInstanceChild(const NPPluginFuncs* aPluginIface,
     , mWinlessThrottleOldWndProc(0)
     , mWinlessHiddenMsgHWND(0)
 #endif // OS_WIN
-    , mAsyncCallMutex("PluginInstanceChild::mAsyncCallMutex")
 #if defined(MOZ_WIDGET_COCOA)
 #if defined(__i386__)
     , mEventModel(NPEventModelCarbon)
@@ -212,7 +209,7 @@ PluginInstanceChild::~PluginInstanceChild()
     // In the event that we registered for audio device changes, stop.
     PluginModuleChild* chromeInstance = PluginModuleChild::GetChrome();
     if (chromeInstance) {
-      NPError rv = chromeInstance->PluginRequiresAudioDeviceChanges(this, false);
+      chromeInstance->PluginRequiresAudioDeviceChanges(this, false);
     }
 #endif
 #if defined(MOZ_WIDGET_COCOA)
@@ -756,8 +753,7 @@ PluginInstanceChild::AnswerNPP_GetValue_NPPVpluginNativeAccessibleAtkPlugId(
 
 #else
 
-    NS_RUNTIMEABORT("shouldn't be called on non-ATK platforms");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("shouldn't be called on non-ATK platforms");
 
 #endif
 }
@@ -1076,8 +1072,7 @@ PluginInstanceChild::AnswerNPP_HandleEvent_IOSurface(const NPRemoteEvent& event,
                                                      const uint32_t &surfaceid,
                                                      int16_t* handled)
 {
-    NS_RUNTIMEABORT("NPP_HandleEvent_IOSurface is a OSX-only message");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("NPP_HandleEvent_IOSurface is a OSX-only message");
 }
 #endif
 
@@ -1091,8 +1086,7 @@ PluginInstanceChild::RecvWindowPosChanged(const NPRemoteEvent& event)
     int16_t dontcare;
     return AnswerNPP_HandleEvent(event, &dontcare);
 #else
-    NS_RUNTIMEABORT("WindowPosChanged is a windows-only message");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("WindowPosChanged is a windows-only message");
 #endif
 }
 
@@ -1111,8 +1105,7 @@ PluginInstanceChild::RecvContentsScaleFactorChanged(const double& aContentsScale
 #endif
     return IPC_OK();
 #else
-    NS_RUNTIMEABORT("ContentsScaleFactorChanged is an Windows or OSX only message");
-    return IPC_FAIL_NO_REASON(this);
+    MOZ_CRASH("ContentsScaleFactorChanged is an Windows or OSX only message");
 #endif
 }
 
@@ -2041,17 +2034,6 @@ PluginInstanceChild::ImmGetContextProc(HWND aWND)
 }
 
 // static
-BOOL
-PluginInstanceChild::ImmReleaseContextProc(HWND aWND, HIMC aIMC)
-{
-    if (aIMC == sHookIMC) {
-        return TRUE;
-    }
-
-    return sImm32ImmReleaseContextStub(aWND, aIMC);
-}
-
-// static
 LONG
 PluginInstanceChild::ImmGetCompositionStringProc(HIMC aIMC, DWORD aIndex,
                                                  LPVOID aBuf, DWORD aLen)
@@ -2135,16 +2117,15 @@ PluginInstanceChild::InitImm32Hook()
     }
 
     // When using windowless plugin, IMM API won't work due ot OOP.
+    //
+    // ImmReleaseContext on Windows 7+ just returns TRUE only, so we don't
+    // need to hook this.
 
     sImm32Intercept.Init("imm32.dll");
     sImm32Intercept.AddHook(
         "ImmGetContext",
         reinterpret_cast<intptr_t>(ImmGetContextProc),
         (void**)&sImm32ImmGetContextStub);
-    sImm32Intercept.AddHook(
-        "ImmReleaseContext",
-        reinterpret_cast<intptr_t>(ImmReleaseContextProc),
-        (void**)&sImm32ImmReleaseContextStub);
     sImm32Intercept.AddHook(
         "ImmGetCompositionStringW",
         reinterpret_cast<intptr_t>(ImmGetCompositionStringProc),
@@ -3183,8 +3164,6 @@ PluginInstanceChild::EnsureCurrentBuffer(void)
         NS_ERROR("Cannot create helper surface");
         return false;
     }
-
-    return true;
 #elif defined(XP_MACOSX)
 
     if (!mDoubleBufferCARenderer.HasCALayer()) {
@@ -3238,6 +3217,7 @@ PluginInstanceChild::EnsureCurrentBuffer(void)
         mAccumulatedInvalidRect.UnionRect(mAccumulatedInvalidRect, toInvalidate);
     }
 #endif
+
     return true;
 }
 
@@ -3311,10 +3291,14 @@ PluginInstanceChild::UpdateWindowAttributes(bool aForceSetWindow)
     // window.x/y passed to NPP_SetWindow
 
     if (mPluginIface->event) {
+        // width and height are stored as units, but narrow to ints here
+        MOZ_RELEASE_ASSERT(mWindow.width <= INT_MAX);
+        MOZ_RELEASE_ASSERT(mWindow.height <= INT_MAX);
+
         WINDOWPOS winpos = {
             0, 0,
             mWindow.x, mWindow.y,
-            mWindow.width, mWindow.height,
+            (int32_t)mWindow.width, (int32_t)mWindow.height,
             0
         };
         NPEvent pluginEvent = {
@@ -3381,7 +3365,7 @@ PluginInstanceChild::PaintRectToPlatformSurface(const nsIntRect& aRect,
     NPEvent paintEvent = {
         WM_PAINT,
         uintptr_t(mWindow.window),
-        uintptr_t(&rect)
+        intptr_t(&rect)
     };
 
     ::SetViewportOrgEx((HDC) mWindow.window, -mWindow.x, -mWindow.y, nullptr);
@@ -4041,25 +4025,6 @@ PluginInstanceChild::UnscheduleTimer(uint32_t id)
 }
 
 void
-PluginInstanceChild::AsyncCall(PluginThreadCallback aFunc, void* aUserData)
-{
-    RefPtr<ChildAsyncCall> task = new ChildAsyncCall(this, aFunc, aUserData);
-    PostChildAsyncCall(task.forget());
-}
-
-void
-PluginInstanceChild::PostChildAsyncCall(already_AddRefed<ChildAsyncCall> aTask)
-{
-    RefPtr<ChildAsyncCall> task = aTask;
-
-    {
-        MutexAutoLock lock(mAsyncCallMutex);
-        mPendingAsyncCalls.AppendElement(task);
-    }
-    ProcessChild::message_loop()->PostTask(task.forget());
-}
-
-void
 PluginInstanceChild::SwapSurfaces()
 {
     RefPtr<gfxASurface> tmpsurf = mCurrentSurface;
@@ -4278,13 +4243,6 @@ PluginInstanceChild::Destroy()
     }
     mPendingFlashThrottleMsgs.Clear();
 #endif
-
-    // Pending async calls are discarded, not delivered. This matches the
-    // in-process behavior.
-    for (uint32_t i = 0; i < mPendingAsyncCalls.Length(); ++i)
-        mPendingAsyncCalls[i]->Cancel();
-
-    mPendingAsyncCalls.Clear();
 }
 
 mozilla::ipc::IPCResult

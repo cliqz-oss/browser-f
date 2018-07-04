@@ -1,21 +1,21 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "nsCOMPtr.h"
 #include "nsButtonBoxFrame.h"
 #include "nsIContent.h"
-#include "nsIDOMEvent.h"
-#include "nsIDOMNodeList.h"
 #include "nsIDOMXULButtonElement.h"
 #include "nsGkAtoms.h"
 #include "nsNameSpaceManager.h"
 #include "nsPresContext.h"
 #include "nsIPresShell.h"
-#include "nsIDOMElement.h"
 #include "nsDisplayList.h"
 #include "nsContentUtils.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/Event.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/MouseEvents.h"
@@ -27,7 +27,7 @@ using namespace mozilla;
 NS_IMPL_ISUPPORTS(nsButtonBoxFrame::nsButtonBoxListener, nsIDOMEventListener)
 
 nsresult
-nsButtonBoxFrame::nsButtonBoxListener::HandleEvent(nsIDOMEvent* aEvent)
+nsButtonBoxFrame::nsButtonBoxListener::HandleEvent(dom::Event* aEvent)
 {
   if (!mButtonBoxFrame) {
     return NS_OK;
@@ -41,8 +41,7 @@ nsButtonBoxFrame::nsButtonBoxListener::HandleEvent(nsIDOMEvent* aEvent)
     return NS_OK;
   }
 
-  NS_ABORT();
-
+  MOZ_ASSERT_UNREACHABLE("Unexpected eventType");
   return NS_OK;
 }
 
@@ -52,15 +51,15 @@ nsButtonBoxFrame::nsButtonBoxListener::HandleEvent(nsIDOMEvent* aEvent)
 // Creates a new Button frame and returns it
 //
 nsIFrame*
-NS_NewButtonBoxFrame (nsIPresShell* aPresShell, nsStyleContext* aContext)
+NS_NewButtonBoxFrame (nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  return new (aPresShell) nsButtonBoxFrame(aContext);
+  return new (aPresShell) nsButtonBoxFrame(aStyle);
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsButtonBoxFrame)
 
-nsButtonBoxFrame::nsButtonBoxFrame(nsStyleContext* aContext, ClassID aID) :
-  nsBoxFrame(aContext, aID, false),
+nsButtonBoxFrame::nsButtonBoxFrame(ComputedStyle* aStyle, ClassID aID) :
+  nsBoxFrame(aStyle, aID, false),
   mButtonBoxListener(nullptr),
   mIsHandlingKeyEvent(false)
 {
@@ -80,25 +79,24 @@ nsButtonBoxFrame::Init(nsIContent*       aContent,
 }
 
 void
-nsButtonBoxFrame::DestroyFrom(nsIFrame* aDestructRoot)
+nsButtonBoxFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   mContent->RemoveSystemEventListener(NS_LITERAL_STRING("blur"), mButtonBoxListener, false);
 
   mButtonBoxListener->mButtonBoxFrame = nullptr;
   mButtonBoxListener = nullptr;
 
-  nsBoxFrame::DestroyFrom(aDestructRoot);
+  nsBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
 void
 nsButtonBoxFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
-                                              const nsRect&           aDirtyRect,
                                               const nsDisplayListSet& aLists)
 {
   // override, since we don't want children to get events
   if (aBuilder->IsForEventDelivery())
     return;
-  nsBoxFrame::BuildDisplayListForChildren(aBuilder, aDirtyRect, aLists);
+  nsBoxFrame::BuildDisplayListForChildren(aBuilder, aLists);
 }
 
 nsresult
@@ -202,8 +200,8 @@ void
 nsButtonBoxFrame::DoMouseClick(WidgetGUIEvent* aEvent, bool aTrustEvent)
 {
   // Don't execute if we're disabled.
-  if (mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::disabled,
-                            nsGkAtoms::_true, eCaseMatters))
+  if (mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::disabled,
+                                         nsGkAtoms::_true, eCaseMatters))
     return;
 
   // Execute the oncommand event handler.
@@ -211,7 +209,7 @@ nsButtonBoxFrame::DoMouseClick(WidgetGUIEvent* aEvent, bool aTrustEvent)
   bool isControl = false;
   bool isAlt = false;
   bool isMeta = false;
-  uint16_t inputSource = nsIDOMMouseEvent::MOZ_SOURCE_UNKNOWN;
+  uint16_t inputSource = MouseEventBinding::MOZ_SOURCE_UNKNOWN;
 
   if(aEvent) {
     WidgetInputEvent* inputEvent = aEvent->AsInputEvent();

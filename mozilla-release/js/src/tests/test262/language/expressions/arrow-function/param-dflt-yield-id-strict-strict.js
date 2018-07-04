@@ -14,8 +14,10 @@ info: |
 features: [default-parameters]
 flags: [onlyStrict]
 negative:
-  phase: early
+  phase: parse
   type: SyntaxError
 ---*/
+
+throw "Test262: This statement should not be evaluated.";
 
 (x = yield) => {};

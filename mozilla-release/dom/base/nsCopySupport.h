@@ -8,6 +8,7 @@
 
 #include "nsError.h"
 #include "nsIDocument.h"
+#include "nsStringFwd.h"
 #include "mozilla/EventForwards.h"
 
 class nsINode;
@@ -16,10 +17,14 @@ class nsIDocument;
 class nsIImageLoadingContent;
 class nsIContent;
 class nsITransferable;
-class nsACString;
-class nsAString;
 class nsIPresShell;
 class nsILoadContext;
+
+namespace mozilla {
+namespace dom {
+class Selection;
+} // namespace dom
+} // namespace mozilla
 
 class nsCopySupport
 {
@@ -28,8 +33,6 @@ class nsCopySupport
     static nsresult ClearSelectionCache();
     static nsresult HTMLCopy(nsISelection *aSel, nsIDocument *aDoc,
                              int16_t aClipboardID, bool aWithRubyAnnotation);
-    static nsresult DoHooks(nsIDocument *aDoc, nsITransferable *aTrans,
-                            bool *aDoPutOnClipboard);
 
     // Get the selection, or entire document, in the format specified by the mime type
     // (text/html or text/plain). If aSel is non-null, use it, otherwise get the entire
@@ -57,7 +60,7 @@ class nsCopySupport
      * set to the document's selection and null will be returned.
      */
     static nsIContent* GetSelectionForCopy(nsIDocument* aDocument,
-                                           nsISelection** aSelection);
+                                           mozilla::dom::Selection** aSelection);
 
     /**
      * Returns true if a copy operation is currently permitted based on the
@@ -94,7 +97,7 @@ class nsCopySupport
     static bool FireClipboardEvent(mozilla::EventMessage aEventMessage,
                                    int32_t aClipboardType,
                                    nsIPresShell* aPresShell,
-                                   nsISelection* aSelection,
+                                   mozilla::dom::Selection* aSelection,
                                    bool* aActionTaken = nullptr);
 };
 

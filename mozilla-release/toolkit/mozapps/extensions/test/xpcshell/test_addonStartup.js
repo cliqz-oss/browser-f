@@ -1,25 +1,10 @@
 "use strict";
 
-const Cr = Components.results;
-
 add_task(async function test_XPIStates_invalid_paths() {
   let {path} = gAddonStartup;
 
   let startupDatasets = [
     {
-      "app-global": {
-        "addons": {
-          "{972ce4c6-7e08-4474-a285-3208198ce6fd}": {
-            "enabled": true,
-            "lastModifiedTime": 1,
-            "path": "{972ce4c6-7e08-4474-a285-3208198ce6fd}",
-            "type": "theme",
-            "version": "55.0a1",
-          }
-        },
-        "checkStartupModifications": true,
-        "path": "c:\\Program Files\\Mozilla Firefox\\extensions",
-      },
       "app-profile": {
         "addons": {
           "xpcshell-something-or-other@mozilla.org": {
@@ -37,19 +22,6 @@ add_task(async function test_XPIStates_invalid_paths() {
       },
     },
     {
-      "app-global": {
-        "addons": {
-          "{972ce4c6-7e08-4474-a285-3208198ce6fd}": {
-            "enabled": true,
-            "lastModifiedTime": 1,
-            "path": "{972ce4c6-7e08-4474-a285-3208198ce6fd}",
-            "type": "theme",
-            "version": "55.0a1",
-          }
-        },
-        "checkStartupModifications": true,
-        "path": "c:\\Program Files\\Mozilla Firefox\\extensions",
-      },
       "app-profile": {
         "addons": {
           "xpcshell-something-or-other@mozilla.org": {
@@ -109,10 +81,10 @@ add_task(async function test_XPIStates_invalid_paths() {
 
     try {
       let result = aomStartup.readStartupData();
-      do_print(`readStartupData() returned ${JSON.stringify(result)}`);
+      info(`readStartupData() returned ${JSON.stringify(result)}`);
     } catch (e) {
       // We don't care if this throws, only that it doesn't crash.
-      do_print(`readStartupData() threw: ${e}`);
+      info(`readStartupData() threw: ${e}`);
       equal(e.result, Cr.NS_ERROR_FILE_UNRECOGNIZED_PATH, "Got expected error code");
     }
   }

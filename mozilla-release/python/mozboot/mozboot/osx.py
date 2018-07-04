@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import print_function, unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
 import os
 import re
@@ -20,16 +20,18 @@ from mozboot.base import BaseBootstrapper
 
 HOMEBREW_BOOTSTRAP = 'https://raw.githubusercontent.com/Homebrew/install/master/install'
 XCODE_APP_STORE = 'macappstore://itunes.apple.com/app/id497799835?mt=12'
-XCODE_LEGACY = 'https://developer.apple.com/downloads/download.action?path=Developer_Tools/xcode_3.2.6_and_ios_sdk_4.3__final/xcode_3.2.6_and_ios_sdk_4.3.dmg'
+XCODE_LEGACY = ('https://developer.apple.com/downloads/download.action?path=Developer_Tools/'
+                'xcode_3.2.6_and_ios_sdk_4.3__final/xcode_3.2.6_and_ios_sdk_4.3.dmg')
 
-MACPORTS_URL = {'11': 'https://distfiles.macports.org/MacPorts/MacPorts-2.3.4-10.11-ElCapitan.pkg',
-                '10': 'https://distfiles.macports.org/MacPorts/MacPorts-2.3.4-10.10-Yosemite.pkg',
-                '9': 'https://distfiles.macports.org/MacPorts/MacPorts-2.3.4-10.9-Mavericks.pkg',
-                '8': 'https://distfiles.macports.org/MacPorts/MacPorts-2.3.4-10.8-MountainLion.pkg',
-                '7': 'https://distfiles.macports.org/MacPorts/MacPorts-2.3.4-10.7-Lion.pkg',
-                '6': 'https://distfiles.macports.org/MacPorts/MacPorts-2.3.4-10.6-SnowLeopard.pkg', }
-
-MACPORTS_CLANG_PACKAGE = 'clang-3.3'
+MACPORTS_URL = {
+    '13': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.13-HighSierra.pkg',
+    '12': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.12-Sierra.pkg',
+    '11': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.11-ElCapitan.pkg',
+    '10': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.10-Yosemite.pkg',
+    '9': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.9-Mavericks.pkg',
+    '8': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.8-MountainLion.pkg',
+    '7': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.7-Lion.pkg',
+    '6': 'https://distfiles.macports.org/MacPorts/MacPorts-2.4.2-10.6-SnowLeopard.pkg', }
 
 RE_CLANG_VERSION = re.compile('Apple (?:clang|LLVM) version (\d+\.\d+)')
 
@@ -143,7 +145,11 @@ shell's init script (e.g. ~/.bash_profile) to export a PATH
 environment variable containing the location of your package
 manager binary. e.g.
 
+Homebrew:
     export PATH=/usr/local/bin:$PATH
+
+MacPorts:
+    export PATH=/opt/local/bin:$PATH
 '''
 
 BAD_PATH_ORDER = '''
@@ -196,13 +202,15 @@ class OSXBootstrapper(BaseBootstrapper):
         getattr(self, 'ensure_%s_mobile_android_packages' % self.package_manager)()
 
     def install_mobile_android_artifact_mode_packages(self):
-        getattr(self, 'ensure_%s_mobile_android_packages' % self.package_manager)(artifact_mode=True)
+        getattr(self, 'ensure_%s_mobile_android_packages' %
+                self.package_manager)(artifact_mode=True)
 
     def suggest_mobile_android_mozconfig(self):
         getattr(self, 'suggest_%s_mobile_android_mozconfig' % self.package_manager)()
 
     def suggest_mobile_android_artifact_mode_mozconfig(self):
-        getattr(self, 'suggest_%s_mobile_android_mozconfig' % self.package_manager)(artifact_mode=True)
+        getattr(self, 'suggest_%s_mobile_android_mozconfig' %
+                self.package_manager)(artifact_mode=True)
 
     def ensure_xcode(self):
         if self.os_version < StrictVersion('10.7'):
@@ -281,9 +289,15 @@ class OSXBootstrapper(BaseBootstrapper):
         print('Once the install has finished, please relaunch this script.')
         sys.exit(1)
 
-    def _ensure_homebrew_packages(self, packages, extra_brew_args=[]):
-        self.brew = self.which('brew')
+    def _ensure_homebrew_found(self):
+        if not hasattr(self, 'brew'):
+            self.brew = self.which('brew')
+        # Earlier code that checks for valid package managers ensures
+        # which('brew') is found.
         assert self.brew is not None
+
+    def _ensure_homebrew_packages(self, packages, extra_brew_args=[]):
+        self._ensure_homebrew_found()
         cmd = [self.brew] + extra_brew_args
 
         installed = self.check_output(cmd + ['list']).split()
@@ -303,29 +317,37 @@ class OSXBootstrapper(BaseBootstrapper):
         return printed
 
     def _ensure_homebrew_casks(self, casks):
+        self._ensure_homebrew_found()
+
+        # Ensure that we can access old versions of packages.  This is
+        # idempotent, so no need to avoid repeat invocation.
+        self.check_output([self.brew, 'tap', 'caskroom/versions'])
+
         # Change |brew install cask| into |brew cask install cask|.
         return self._ensure_homebrew_packages(casks, extra_brew_args=['cask'])
 
     def ensure_homebrew_system_packages(self):
+        # We need to install Python because Mercurial requires the
+        # Python development headers which are missing from OS X (at
+        # least on 10.8) and because the build system wants a version
+        # newer than what Apple ships.
         packages = [
-            # We need to install Python because Mercurial requires the Python
-            # development headers which are missing from OS X (at least on
-            # 10.8) and because the build system wants a version newer than
-            # what Apple ships.
-            'python',
-            'mercurial',
-            'git',
             'autoconf@2.13',
+            'git',
             'gnu-tar',
-            'watchman',
+            'llvm',
+            'mercurial',
+            'node',
+            'python',
+            'python3',
             'terminal-notifier',
+            'watchman',
         ]
         self._ensure_homebrew_packages(packages)
 
     def ensure_homebrew_browser_packages(self, artifact_mode=False):
         # TODO: Figure out what not to install for artifact mode
         packages = [
-            'llvm',
             'yasm',
         ]
         self._ensure_homebrew_packages(packages)
@@ -342,7 +364,7 @@ class OSXBootstrapper(BaseBootstrapper):
         self._ensure_homebrew_packages(packages)
 
         casks = [
-            'java',
+            'java8',
         ]
         installed = self._ensure_homebrew_casks(casks)
         if installed:
@@ -353,13 +375,15 @@ class OSXBootstrapper(BaseBootstrapper):
             raise Exception('You need a 64-bit version of Mac OS X to build Firefox for Android.')
 
         # 2. Android pieces.
-        import android
+        from mozboot import android
         android.ensure_android('macosx', artifact_mode=artifact_mode,
                                no_interactive=self.no_interactive)
 
     def suggest_homebrew_mobile_android_mozconfig(self, artifact_mode=False):
-        import android
-        android.suggest_mozconfig('macosx', artifact_mode=artifact_mode)
+        from mozboot import android
+        # Path to java and javac from the caskroom/versions/java8 cask.
+        android.suggest_mozconfig('macosx', artifact_mode=artifact_mode,
+                                  java_bin_path='/Library/Java/Home/bin')
 
     def _ensure_macports_packages(self, packages):
         self.port = self.which('port')
@@ -375,11 +399,13 @@ class OSXBootstrapper(BaseBootstrapper):
     def ensure_macports_system_packages(self):
         packages = [
             'python27',
-            'py27-readline',
+            'python36',
+            'py27-gnureadline',
             'mercurial',
             'autoconf213',
             'gnutar',
             'watchman',
+            'nodejs8'
         ]
 
         self._ensure_macports_packages(packages)
@@ -417,12 +443,12 @@ class OSXBootstrapper(BaseBootstrapper):
             raise Exception('You need a 64-bit version of Mac OS X to build Firefox for Android.')
 
         # 2. Android pieces.
-        import android
+        from mozboot import android
         android.ensure_android('macosx', artifact_mode=artifact_mode,
                                no_interactive=self.no_interactive)
 
     def suggest_macports_mobile_android_mozconfig(self, artifact_mode=False):
-        import android
+        from mozboot import android
         android.suggest_mozconfig('macosx', artifact_mode=artifact_mode)
 
     def ensure_package_manager(self):

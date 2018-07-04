@@ -19,11 +19,11 @@
 #ifdef MOZ_APPLEMEDIA
 #include "AppleDecoderModule.h"
 #endif
-#ifdef MOZ_GONK_MEDIACODEC
-#include "GonkDecoderModule.h"
-#endif
 #ifdef MOZ_WIDGET_ANDROID
 #include "AndroidDecoderModule.h"
+#endif
+#ifdef MOZ_OMX
+#include "OmxDecoderModule.h"
 #endif
 #include "GMPDecoderModule.h"
 
@@ -31,11 +31,11 @@
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/SharedThreadPool.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/TaskQueue.h"
 
 #include "MediaInfo.h"
-#include "MediaPrefs.h"
 #include "H264Converter.h"
 
 #include "AgnosticDecoderModule.h"
@@ -46,13 +46,12 @@
 #include "MP4Decoder.h"
 #include "mozilla/dom/RemoteVideoDecoder.h"
 
-#include "mp4_demuxer/H264.h"
+#include "H264.h"
 
 #include <functional>
 
 namespace mozilla {
 
-extern already_AddRefed<PlatformDecoderModule> CreateAgnosticDecoderModule();
 extern already_AddRefed<PlatformDecoderModule> CreateBlankDecoderModule();
 extern already_AddRefed<PlatformDecoderModule> CreateNullDecoderModule();
 
@@ -66,6 +65,9 @@ public:
 #endif
 #ifdef MOZ_APPLEMEDIA
     AppleDecoderModule::Init();
+#endif
+#ifdef MOZ_OMX
+    OmxDecoderModule::Init();
 #endif
 #ifdef MOZ_FFVPX
     FFVPXRuntimeLinker::Init();
@@ -123,13 +125,13 @@ public:
         aTrackConfig.GetAsVideoInfo()->mExtraData;
       AddToCheckList([mimeType, extraData]() {
         if (MP4Decoder::IsH264(mimeType)) {
-          mp4_demuxer::SPSData spsdata;
+          SPSData spsdata;
           // WMF H.264 Video Decoder and Apple ATDecoder
           // do not support YUV444 format.
           // For consistency, all decoders should be checked.
-          if (mp4_demuxer::H264::DecodeSPSFromExtraData(extraData, spsdata)
-              && (spsdata.profile_idc == 244 /* Hi444PP */
-                  || spsdata.chroma_format_idc == PDMFactory::kYUV444)) {
+          if (H264::DecodeSPSFromExtraData(extraData, spsdata) &&
+              (spsdata.profile_idc == 244 /* Hi444PP */ ||
+               spsdata.chroma_format_idc == PDMFactory::kYUV444)) {
             return CheckResult(
               SupportChecker::Reason::kVideoFormatNotSupported,
               MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
@@ -205,7 +207,7 @@ PDMFactory::EnsureInit() const
 already_AddRefed<MediaDataDecoder>
 PDMFactory::CreateDecoder(const CreateDecoderParams& aParams)
 {
-  if (aParams.mUseNullDecoder) {
+  if (aParams.mUseNullDecoder.mUse) {
     MOZ_ASSERT(mNullPDM);
     return CreateDecoderWithPDM(mNullPDM, aParams);
   }
@@ -233,7 +235,7 @@ PDMFactory::CreateDecoder(const CreateDecoderParams& aParams)
   }
 
   for (auto& current : mCurrentPDMs) {
-    if (!current->SupportsMimeType(config.mMimeType, diagnostics)) {
+    if (!current->Supports(config, diagnostics)) {
       continue;
     }
     RefPtr<MediaDataDecoder> m = CreateDecoderWithPDM(current, aParams);
@@ -292,14 +294,16 @@ PDMFactory::CreateDecoderWithPDM(PlatformDecoderModule* aPDM,
     return nullptr;
   }
 
-  if (MP4Decoder::IsH264(config.mMimeType) && !aParams.mUseNullDecoder) {
+  if (MP4Decoder::IsH264(config.mMimeType) && !aParams.mUseNullDecoder.mUse) {
     RefPtr<H264Converter> h = new H264Converter(aPDM, aParams);
-    const nsresult rv = h->GetLastError();
-    if (NS_SUCCEEDED(rv) || rv == NS_ERROR_NOT_INITIALIZED) {
+    const MediaResult result = h->GetLastError();
+    if (NS_SUCCEEDED(result) || result == NS_ERROR_NOT_INITIALIZED) {
       // The H264Converter either successfully created the wrapped decoder,
       // or there wasn't enough AVCC data to do so. Otherwise, there was some
       // problem, for example WMF DLLs were missing.
       m = h.forget();
+    } else if (aParams.mError) {
+      *aParams.mError = result;
     }
   } else {
     m = aPDM->CreateVideoDecoder(aParams);
@@ -335,7 +339,7 @@ PDMFactory::CreatePDMs()
 {
   RefPtr<PlatformDecoderModule> m;
 
-  if (MediaPrefs::PDMUseBlankDecoder()) {
+  if (StaticPrefs::MediaUseBlankDecoder()) {
     m = CreateBlankDecoderModule();
     StartupPDM(m);
     // The Blank PDM SupportsMimeType reports true for all codecs; the creation
@@ -345,23 +349,30 @@ PDMFactory::CreatePDMs()
   }
 
 #ifdef XP_WIN
-  if (MediaPrefs::PDMWMFEnabled() && !IsWin7AndPre2000Compatible()) {
+  if (StaticPrefs::MediaWmfEnabled() && !IsWin7AndPre2000Compatible()) {
     m = new WMFDecoderModule();
     RefPtr<PlatformDecoderModule> remote = new dom::RemoteDecoderModule(m);
     StartupPDM(remote);
     mWMFFailedToLoad = !StartupPDM(m);
   } else {
-    mWMFFailedToLoad = MediaPrefs::DecoderDoctorWMFDisabledIsFailure();
+    mWMFFailedToLoad =
+      StaticPrefs::MediaDecoderDoctorWmfDisabledIsFailure();
+  }
+#endif
+#ifdef MOZ_OMX
+  if (StaticPrefs::MediaOmxEnabled()) {
+    m = OmxDecoderModule::Create();
+    StartupPDM(m);
   }
 #endif
 #ifdef MOZ_FFVPX
-  if (MediaPrefs::PDMFFVPXEnabled()) {
+  if (StaticPrefs::MediaFfvpxEnabled()) {
     m = FFVPXRuntimeLinker::CreateDecoderModule();
     StartupPDM(m);
   }
 #endif
 #ifdef MOZ_FFMPEG
-  if (MediaPrefs::PDMFFmpegEnabled()) {
+  if (StaticPrefs::MediaFfmpegEnabled()) {
     m = FFmpegRuntimeLinker::CreateDecoderModule();
     mFFmpegFailedToLoad = !StartupPDM(m);
   } else {
@@ -372,23 +383,17 @@ PDMFactory::CreatePDMs()
   m = new AppleDecoderModule();
   StartupPDM(m);
 #endif
-#ifdef MOZ_GONK_MEDIACODEC
-  if (MediaPrefs::PDMGonkDecoderEnabled()) {
-    m = new GonkDecoderModule();
-    StartupPDM(m);
-  }
-#endif
 #ifdef MOZ_WIDGET_ANDROID
-  if(MediaPrefs::PDMAndroidMediaCodecEnabled()){
+  if (StaticPrefs::MediaAndroidMediaCodecEnabled()) {
     m = new AndroidDecoderModule();
-    StartupPDM(m, MediaPrefs::PDMAndroidMediaCodecPreferred());
+    StartupPDM(m, StaticPrefs::MediaAndroidMediaCodecPreferred());
   }
 #endif
 
   m = new AgnosticDecoderModule();
   StartupPDM(m);
 
-  if (MediaPrefs::PDMGMPEnabled()) {
+  if (StaticPrefs::MediaGmpDecoderEnabled()) {
     m = new GMPDecoderModule();
     mGMPPDMFailedToStartup = !StartupPDM(m);
   } else {

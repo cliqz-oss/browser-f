@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* import-globals-from allDownloadsViewOverlay.js */
+/* import-globals-from allDownloadsView.js */
 
-Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 var ContentAreaDownloadsView = {
   init() {

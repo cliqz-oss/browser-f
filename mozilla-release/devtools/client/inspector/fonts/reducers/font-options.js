@@ -6,12 +6,10 @@
 
 const {
   UPDATE_PREVIEW_TEXT,
-  UPDATE_SHOW_ALL_FONTS
 } = require("../actions/index");
 
 const INITIAL_FONT_OPTIONS = {
   previewText: "Abc",
-  showAllFonts: false,
 };
 
 let reducers = {
@@ -20,13 +18,9 @@ let reducers = {
     return Object.assign({}, fontOptions, { previewText });
   },
 
-  [UPDATE_SHOW_ALL_FONTS](fontOptions, { showAllFonts }) {
-    return Object.assign({}, fontOptions, { showAllFonts });
-  },
-
 };
 
-module.exports = function (fontOptions = INITIAL_FONT_OPTIONS, action) {
+module.exports = function(fontOptions = INITIAL_FONT_OPTIONS, action) {
   let reducer = reducers[action.type];
   if (!reducer) {
     return fontOptions;

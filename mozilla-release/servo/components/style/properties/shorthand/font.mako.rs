@@ -8,38 +8,46 @@
 <%helpers:shorthand name="font"
                     sub_properties="font-style font-variant-caps font-weight font-stretch
                                     font-size line-height font-family
-                                    ${'font-size-adjust' if product == 'gecko' or data.testing else ''}
-                                    ${'font-kerning' if product == 'gecko' or data.testing else ''}
-                                    ${'font-variant-alternates' if product == 'gecko' or data.testing else ''}
-                                    ${'font-variant-east-asian' if product == 'gecko' or data.testing else ''}
-                                    ${'font-variant-ligatures' if product == 'gecko' or data.testing else ''}
-                                    ${'font-variant-numeric' if product == 'gecko' or data.testing else ''}
-                                    ${'font-variant-position' if product == 'gecko' or data.testing else ''}
-                                    ${'font-language-override' if product == 'gecko' or data.testing else ''}
-                                    ${'font-feature-settings' if product == 'gecko' or data.testing else ''}"
+                                    ${'font-size-adjust' if product == 'gecko' else ''}
+                                    ${'font-kerning' if product == 'gecko' else ''}
+                                    ${'font-optical-sizing' if product == 'gecko' else ''}
+                                    ${'font-variant-alternates' if product == 'gecko' else ''}
+                                    ${'font-variant-east-asian' if product == 'gecko' else ''}
+                                    ${'font-variant-ligatures' if product == 'gecko' else ''}
+                                    ${'font-variant-numeric' if product == 'gecko' else ''}
+                                    ${'font-variant-position' if product == 'gecko' else ''}
+                                    ${'font-language-override' if product == 'gecko' else ''}
+                                    ${'font-feature-settings' if product == 'gecko' else ''}
+                                    ${'font-variation-settings' if product == 'gecko' else ''}"
+                    derive_value_info="False"
                     spec="https://drafts.csswg.org/css-fonts-3/#propdef-font">
     use parser::Parse;
     use properties::longhands::{font_family, font_style, font_weight, font_stretch};
-    use properties::longhands::{font_size, font_variant_caps};
+    use properties::longhands::font_variant_caps;
     #[cfg(feature = "gecko")]
     use properties::longhands::system_font::SystemFont;
     use values::specified::text::LineHeight;
+    use values::specified::FontSize;
+    use values::specified::font::{FontStretch, FontStretchKeyword};
 
     <%
         gecko_sub_properties = "kerning language_override size_adjust \
                                 variant_alternates variant_east_asian \
                                 variant_ligatures variant_numeric \
-                                variant_position feature_settings".split()
+                                variant_position feature_settings \
+                                variation_settings optical_sizing".split()
     %>
-    % if product == "gecko" or data.testing:
+    % if product == "gecko":
         % for prop in gecko_sub_properties:
             use properties::longhands::font_${prop};
         % endfor
     % endif
     use self::font_family::SpecifiedValue as FontFamily;
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
         let mut nb_normals = 0;
         let mut style = None;
         let mut variant_caps = None;
@@ -50,7 +58,11 @@
             if let Ok(sys) = input.try(SystemFont::parse) {
                 return Ok(expanded! {
                      % for name in SYSTEM_FONT_LONGHANDS:
-                         ${name}: ${name}::SpecifiedValue::system_font(sys),
+                         % if name == "font_size":
+                             ${name}: FontSize::system_font(sys),
+                         % else:
+                             ${name}: ${name}::SpecifiedValue::system_font(sys),
+                         % endif
                      % endfor
                      // line-height is just reset to initial
                      line_height: LineHeight::normal(),
@@ -84,35 +96,46 @@
                 }
             }
             if stretch.is_none() {
-                if let Ok(value) = input.try(|input| font_stretch::parse(context, input)) {
-                    stretch = Some(value);
+                if let Ok(value) = input.try(FontStretchKeyword::parse) {
+                    stretch = Some(FontStretch::Keyword(value));
                     continue
                 }
             }
-            size = Some(font_size::parse(context, input)?);
+            size = Some(FontSize::parse(context, input)?);
             break
         }
-        #[inline]
-        fn count<T>(opt: &Option<T>) -> u8 {
-            if opt.is_some() { 1 } else { 0 }
-        }
-        if size.is_none() ||
-           (count(&style) + count(&weight) + count(&variant_caps) + count(&stretch) + nb_normals) > 4 {
-            return Err(StyleParseError::UnspecifiedError.into())
-        }
+
+        let size = match size {
+            Some(s) => s,
+            None => {
+                return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
+            }
+        };
+
         let line_height = if input.try(|input| input.expect_delim('/')).is_ok() {
             Some(LineHeight::parse(context, input)?)
         } else {
             None
         };
-        let family = FontFamily::parse(input)?;
+
+        #[inline]
+        fn count<T>(opt: &Option<T>) -> u8 {
+            if opt.is_some() { 1 } else { 0 }
+        }
+
+        if (count(&style) + count(&weight) + count(&variant_caps) + count(&stretch) + nb_normals) > 4 {
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
+        }
+
+        let family = FontFamily::parse_specified(input)?;
         Ok(expanded! {
-            % for name in "style weight stretch size variant_caps".split():
+            % for name in "style weight stretch variant_caps".split():
                 font_${name}: unwrap_or_initial!(font_${name}, ${name}),
             % endfor
+            font_size: size,
             line_height: line_height.unwrap_or(LineHeight::normal()),
             font_family: family,
-            % if product == "gecko" or data.testing:
+            % if product == "gecko":
                 % for name in gecko_sub_properties:
                     font_${name}: font_${name}::get_initial_specified_value(),
                 % endfor
@@ -127,48 +150,62 @@
             None
         }
     % endif
-    enum SerializeFor {
-        Normal,
-    % if product == "gecko":
-        Canvas,
-    % endif
-    }
 
-    impl<'a> LonghandsToSerialize<'a> {
-        fn to_css_for<W>(&self,
-                         serialize_for: SerializeFor,
-                         dest: &mut W) -> fmt::Result where W: fmt::Write {
+    impl<'a> ToCss for LonghandsToSerialize<'a> {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             % if product == "gecko":
                 match self.check_system() {
                     CheckSystemResult::AllSystem(sys) => return sys.to_css(dest),
                     CheckSystemResult::SomeSystem => return Ok(()),
-                    CheckSystemResult::None => ()
+                    CheckSystemResult::None => {}
                 }
             % endif
 
-            % if product == "gecko" or data.testing:
-                % for name in gecko_sub_properties:
-                    if self.font_${name} != &font_${name}::get_initial_specified_value() {
-                        return Ok(());
-                    }
-                % endfor
+            % if product == "gecko":
+            if let Some(v) = self.font_optical_sizing {
+                if v != &font_optical_sizing::get_initial_specified_value() {
+                    return Ok(());
+                }
+            }
+            if let Some(v) = self.font_variation_settings {
+                if v != &font_variation_settings::get_initial_specified_value() {
+                    return Ok(());
+                }
+            }
+
+            % for name in gecko_sub_properties:
+            % if name != "optical_sizing" and name != "variation_settings":
+            if self.font_${name} != &font_${name}::get_initial_specified_value() {
+                return Ok(());
+            }
+            % endif
+            % endfor
             % endif
 
-            // In case of serialization for canvas font, we need to drop
-            // initial values of properties other than size and family.
-            % for name in "style variant_caps weight stretch".split():
-                let needs_this_property = match serialize_for {
-                    SerializeFor::Normal => true,
-                % if product == "gecko":
-                    SerializeFor::Canvas =>
-                        self.font_${name} != &font_${name}::get_initial_specified_value(),
-                % endif
-                };
-                if needs_this_property {
+            // Only font-stretch keywords are allowed as part as the font
+            // shorthand.
+            let font_stretch = match *self.font_stretch {
+                FontStretch::Keyword(kw) => kw,
+                FontStretch::Stretch(percentage) => {
+                    match FontStretchKeyword::from_percentage(percentage.get()) {
+                        Some(kw) => kw,
+                        None => return Ok(()),
+                    }
+                }
+                FontStretch::System(..) => return Ok(()),
+            };
+
+            % for name in "style variant_caps weight".split():
+                if self.font_${name} != &font_${name}::get_initial_specified_value() {
                     self.font_${name}.to_css(dest)?;
                     dest.write_str(" ")?;
                 }
             % endfor
+
+            if font_stretch != FontStretchKeyword::Normal {
+                font_stretch.to_css(dest)?;
+                dest.write_str(" ")?;
+            }
 
             self.font_size.to_css(dest)?;
 
@@ -182,69 +219,96 @@
 
             Ok(())
         }
+    }
 
+    impl<'a> LonghandsToSerialize<'a> {
         % if product == "gecko":
-            /// Check if some or all members are system fonts
-            fn check_system(&self) -> CheckSystemResult {
-                let mut sys = None;
-                let mut all = true;
+        /// Check if some or all members are system fonts
+        fn check_system(&self) -> CheckSystemResult {
+            let mut sys = None;
+            let mut all = true;
 
-                % for prop in SYSTEM_FONT_LONGHANDS:
-                    if let Some(s) = self.${prop}.get_system() {
+            % for prop in SYSTEM_FONT_LONGHANDS:
+            % if prop == "font_optical_sizing" or prop == "font_variation_settings":
+            if let Some(value) = self.${prop} {
+            % else:
+            {
+                let value = self.${prop};
+            % endif
+                match value.get_system() {
+                    Some(s) => {
                         debug_assert!(sys.is_none() || s == sys.unwrap());
                         sys = Some(s);
-                    } else {
+                    }
+                    None => {
                         all = false;
                     }
-                % endfor
-                if self.line_height != &LineHeight::normal() {
-                    all = false
-                }
-                if all {
-                    CheckSystemResult::AllSystem(sys.unwrap())
-                } else if sys.is_some() {
-                    CheckSystemResult::SomeSystem
-                } else {
-                    CheckSystemResult::None
                 }
             }
-
-            /// Serialize the shorthand value for canvas font attribute.
-            pub fn to_css_for_canvas<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-                self.to_css_for(SerializeFor::Canvas, dest)
+            % endfor
+            if self.line_height != &LineHeight::normal() {
+                all = false
             }
+            if all {
+                CheckSystemResult::AllSystem(sys.unwrap())
+            } else if sys.is_some() {
+                CheckSystemResult::SomeSystem
+            } else {
+                CheckSystemResult::None
+            }
+        }
         % endif
     }
 
-    // This may be a bit off, unsure, possibly needs changes
-    impl<'a> ToCss for LonghandsToSerialize<'a>  {
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
-            self.to_css_for(SerializeFor::Normal, dest)
+    <%
+        subprops_for_value_info = ["font_style", "font_weight", "font_stretch",
+                                   "font_variant_caps", "font_size", "font_family"]
+        subprops_for_value_info = [
+            "<longhands::{}::SpecifiedValue as SpecifiedValueInfo>".format(p)
+            for p in subprops_for_value_info
+        ]
+    %>
+    impl SpecifiedValueInfo for Longhands {
+        const SUPPORTED_TYPES: u8 = 0
+            % for p in subprops_for_value_info:
+            | ${p}::SUPPORTED_TYPES
+            % endfor
+            ;
+
+        fn collect_completion_keywords(f: KeywordsCollectFn) {
+            % for p in subprops_for_value_info:
+            ${p}::collect_completion_keywords(f);
+            % endfor
+            <longhands::system_font::SystemFont as SpecifiedValueInfo>::collect_completion_keywords(f);
         }
     }
 </%helpers:shorthand>
 
 <%helpers:shorthand name="font-variant"
                     sub_properties="font-variant-caps
-                                    ${'font-variant-alternates' if product == 'gecko' or data.testing else ''}
-                                    ${'font-variant-east-asian' if product == 'gecko' or data.testing else ''}
-                                    ${'font-variant-ligatures' if product == 'gecko' or data.testing else ''}
-                                    ${'font-variant-numeric' if product == 'gecko' or data.testing else ''}
-                                    ${'font-variant-position' if product == 'gecko' or data.testing else ''}"
+                                    ${'font-variant-alternates' if product == 'gecko' else ''}
+                                    ${'font-variant-east-asian' if product == 'gecko' else ''}
+                                    ${'font-variant-ligatures' if product == 'gecko' else ''}
+                                    ${'font-variant-numeric' if product == 'gecko' else ''}
+                                    ${'font-variant-position' if product == 'gecko' else ''}"
                     spec="https://drafts.csswg.org/css-fonts-3/#propdef-font-variant">
     <% gecko_sub_properties = "alternates east_asian ligatures numeric position".split() %>
     <%
         sub_properties = ["caps"]
-        if product == "gecko" or data.testing:
+        if product == "gecko":
             sub_properties += gecko_sub_properties
     %>
 
 % for prop in sub_properties:
     use properties::longhands::font_variant_${prop};
 % endfor
+    #[allow(unused_imports)]
+    use values::specified::FontVariantLigatures;
 
-    pub fn parse_value<'i, 't>(context: &ParserContext, input: &mut Parser<'i, 't>)
-                               -> Result<Longhands, ParseError<'i>> {
+    pub fn parse_value<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Longhands, ParseError<'i>> {
     % for prop in sub_properties:
         let mut ${prop} = None;
     % endfor
@@ -254,15 +318,15 @@
         } else if input.try(|input| input.expect_ident_matching("none")).is_ok() {
             // The 'none' value sets 'font-variant-ligatures' to 'none' and resets all other sub properties
             // to their initial value.
-        % if product == "gecko" or data.testing:
-            ligatures = Some(font_variant_ligatures::get_none_specified_value());
+        % if product == "gecko":
+            ligatures = Some(FontVariantLigatures::none());
         % endif
         } else {
             let mut has_custom_value: bool = false;
             loop {
                 if input.try(|input| input.expect_ident_matching("normal")).is_ok() ||
                    input.try(|input| input.expect_ident_matching("none")).is_ok() {
-                    return Err(StyleParseError::UnspecifiedError.into())
+                    return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
                 }
             % for prop in sub_properties:
                 if ${prop}.is_none() {
@@ -278,7 +342,7 @@
             }
 
             if !has_custom_value {
-                return Err(StyleParseError::UnspecifiedError.into())
+                return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError))
             }
         }
 
@@ -291,11 +355,11 @@
 
     impl<'a> ToCss for LonghandsToSerialize<'a>  {
         #[allow(unused_assignments)]
-        fn to_css<W>(&self, dest: &mut W) -> fmt::Result where W: fmt::Write {
+        fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
 
             let has_none_ligatures =
-            % if product == "gecko" or data.testing:
-                self.font_variant_ligatures == &font_variant_ligatures::get_none_specified_value();
+            % if product == "gecko":
+                self.font_variant_ligatures == &FontVariantLigatures::none();
             % else:
                 false;
             % endif

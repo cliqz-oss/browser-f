@@ -8,6 +8,9 @@
 
 const { getRootBindingParent } = require("devtools/shared/layout/utils");
 const { getTabPrefs } = require("devtools/shared/indentation");
+const InspectorUtils = require("InspectorUtils");
+
+const MAX_DATA_URL_LENGTH = 40;
 
 /*
  * About the objects defined in this file:
@@ -21,7 +24,7 @@ const { getTabPrefs } = require("devtools/shared/indentation");
  *
  * - CssSheet provides a more useful API to a DOM CSSSheet for our purposes,
  *   including shortSource and href.
- * - CssRule a more useful API to a nsIDOMCSSRule including access to the group
+ * - CssRule a more useful API to a DOM CSSRule including access to the group
  *   of CssSelectors that the rule provides properties for
  * - CssSelector A single selector - i.e. not a selector group. In other words
  *   a CssSelector does not contain ','. This terminology is different from the
@@ -35,9 +38,9 @@ const { getTabPrefs } = require("devtools/shared/indentation");
 
 /**
  * Provide access to the style information in a page.
- * CssLogic uses the standard DOM API, and the Gecko inIDOMUtils API to access
- * styling information in the page, and present this to the user in a way that
- * helps them understand:
+ * CssLogic uses the standard DOM API, and the Gecko InspectorUtils API to
+ * access styling information in the page, and present this to the user in a way
+ * that helps them understand:
  * - why their expectations may not have been fulfilled
  * - how browsers process CSS
  * @constructor
@@ -94,7 +97,7 @@ exports.l10n = name => styleInspectorL10N.getStr(name);
  * @return {boolean} true if the given stylesheet is a content stylesheet,
  * false otherwise.
  */
-exports.isContentStylesheet = function (sheet) {
+exports.isContentStylesheet = function(sheet) {
   return sheet.parsingMode !== "agent";
 };
 
@@ -103,10 +106,17 @@ exports.isContentStylesheet = function (sheet) {
  *
  * @param {CSSStyleSheet} sheet the DOM object for the style sheet.
  */
-exports.shortSource = function (sheet) {
+exports.shortSource = function(sheet) {
   // Use a string like "inline" if there is no source href
   if (!sheet || !sheet.href) {
     return exports.l10n("rule.sourceInline");
+  }
+
+  // If the sheet is a data URL, return a trimmed version of it.
+  let dataUrl = sheet.href.trim().match(/^data:.*?,((?:.|\r|\n)*)$/);
+  if (dataUrl) {
+    return dataUrl[1].length > MAX_DATA_URL_LENGTH ?
+      `${dataUrl[1].substr(0, MAX_DATA_URL_LENGTH - 1)}…` : dataUrl[1];
   }
 
   // We try, in turn, the filename, filePath, query string, whole thing
@@ -129,8 +139,7 @@ exports.shortSource = function (sheet) {
     return url.query;
   }
 
-  let dataUrl = sheet.href.match(/^(data:[^,]*),/);
-  return dataUrl ? dataUrl[1] : sheet.href;
+  return sheet.href;
 };
 
 const TAB_CHARS = "\t";
@@ -149,8 +158,13 @@ function prettifyCSS(text, ruleCount) {
     prettifyCSS.LINE_SEPARATOR = (os === "WINNT" ? "\r\n" : "\n");
   }
 
-  // remove initial and terminating HTML comments and surrounding whitespace
-  text = text.replace(/(?:^\s*<!--[\r\n]*)|(?:\s*-->\s*$)/g, "");
+  // Stylesheets may start and end with HTML comment tags (possibly with whitespaces
+  // before and after). Remove those first. Don't do anything there aren't any.
+  let trimmed = text.trim();
+  if (trimmed.startsWith("<!--")) {
+    text = trimmed.replace(/^<!--/, "").replace(/-->$/, "").trim();
+  }
+
   let originalText = text;
   text = text.trim();
 
@@ -463,3 +477,41 @@ function getXPath(ele) {
   return parts.length ? "/" + parts.reverse().join("/") : "";
 }
 exports.getXPath = getXPath;
+
+/**
+ * Given a node, check to see if it is a ::before or ::after element.
+ * If so, return the node that is accessible from within the document
+ * (the parent of the anonymous node), along with which pseudo element
+ * it was.  Otherwise, return the node itself.
+ *
+ * @returns {Object}
+ *            - {DOMNode} node The non-anonymous node
+ *            - {string} pseudo One of ':before', ':after', or null.
+ */
+function getBindingElementAndPseudo(node) {
+  let bindingElement = node;
+  let pseudo = null;
+  if (node.nodeName == "_moz_generated_content_before") {
+    bindingElement = node.parentNode;
+    pseudo = ":before";
+  } else if (node.nodeName == "_moz_generated_content_after") {
+    bindingElement = node.parentNode;
+    pseudo = ":after";
+  }
+  return {
+    bindingElement: bindingElement,
+    pseudo: pseudo
+  };
+}
+exports.getBindingElementAndPseudo = getBindingElementAndPseudo;
+
+/**
+ * Returns css style rules for a given a node.
+ * This function can handle ::before or ::after pseudo element as well as
+ * normal element.
+ */
+function getCSSStyleRules(node) {
+  let { bindingElement, pseudo } = getBindingElementAndPseudo(node);
+  return InspectorUtils.getCSSStyleRules(bindingElement, pseudo);
+}
+exports.getCSSStyleRules = getCSSStyleRules;

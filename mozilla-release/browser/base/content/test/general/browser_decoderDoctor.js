@@ -71,7 +71,7 @@ async function test_decoder_doctor_notification(data, notificationMessage,
     button.click();
     let openedTab = await awaitNewTab;
     tabChecker(openedTab);
-    await BrowserTestUtils.removeTab(openedTab);
+    BrowserTestUtils.removeTab(openedTab);
   });
 }
 
@@ -89,7 +89,7 @@ function tab_checker_for_webcompat(expectedParams) {
     let urlString = openedTab.linkedBrowser.currentURI.spec;
     let endpoint = Services.prefs.getStringPref("media.decoder-doctor.new-issue-endpoint", "");
     ok(urlString.startsWith(endpoint),
-       `Expected URL starting with '${endpoint}', got '${urlString}'`)
+       `Expected URL starting with '${endpoint}', got '${urlString}'`);
     let params = new URL(urlString).searchParams;
     for (let k in expectedParams) {
       if (!params.has(k)) {
@@ -159,7 +159,7 @@ add_task(async function test_decode_error() {
     gNavigatorBundle.getString("decoder.decodeError.accesskey"),
     tab_checker_for_webcompat(
       {url: "DocURL", label: "type-media", problem_type: "video_bug",
-       details: "Technical Information:\nDecodeIssue\nResource: ResURL"}));
+       details: JSON.stringify({"Technical Information:": "DecodeIssue", "Resource:": "ResURL"})}));
 });
 
 add_task(async function test_decode_warning() {
@@ -175,5 +175,5 @@ add_task(async function test_decode_warning() {
     gNavigatorBundle.getString("decoder.decodeError.accesskey"),
     tab_checker_for_webcompat(
       {url: "DocURL", label: "type-media", problem_type: "video_bug",
-       details: "Technical Information:\nDecodeIssue\nResource: ResURL"}));
+      details: JSON.stringify({"Technical Information:": "DecodeIssue", "Resource:": "ResURL"})}));
 });

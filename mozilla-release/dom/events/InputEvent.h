@@ -21,11 +21,7 @@ public:
              nsPresContext* aPresContext,
              InternalEditorInputEvent* aEvent);
 
-  NS_DECL_ISUPPORTS_INHERITED
-
-  // Forward to base class
-  NS_FORWARD_TO_UIEVENT
-
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(InputEvent, UIEvent)
 
   static already_AddRefed<InputEvent> Constructor(const GlobalObject& aGlobal,
                                                   const nsAString& aType,

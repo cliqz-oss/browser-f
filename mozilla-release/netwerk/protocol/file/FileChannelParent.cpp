@@ -14,10 +14,6 @@ namespace net {
 
 NS_IMPL_ISUPPORTS(FileChannelParent, nsIParentChannel, nsIStreamListener)
 
-FileChannelParent::~FileChannelParent()
-{
-}
-
 bool
 FileChannelParent::Init(const uint32_t &channelId)
 {
@@ -52,7 +48,7 @@ FileChannelParent::NotifyTrackingResource()
 NS_IMETHODIMP
 FileChannelParent::SetClassifierMatchedInfo(const nsACString& aList,
                                             const nsACString& aProvider,
-                                            const nsACString& aPrefix)
+                                            const nsACString& aFullHash)
 {
   // nothing to do
   return NS_OK;

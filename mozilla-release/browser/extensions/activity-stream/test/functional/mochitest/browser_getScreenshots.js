@@ -3,16 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-let Cu = Components.utils;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 // a blue page
 const TEST_URL = "https://example.com/browser/browser/extensions/activity-stream/test/functional/mochitest/blue_page.html";
 const XHTMLNS = "http://www.w3.org/1999/xhtml";
 
-SpecialPowers.pushPrefEnv({set: [["browser.pagethumbnails.capturing_disabled", false]]});
-
-XPCOMUtils.defineLazyModuleGetter(this, "Screenshots", "resource://activity-stream/lib/Screenshots.jsm");
+ChromeUtils.defineModuleGetter(this, "Screenshots", "resource://activity-stream/lib/Screenshots.jsm");
 
 function get_pixels_for_data_uri(dataURI, width, height) {
   return new Promise(resolve => {
@@ -32,6 +29,8 @@ function get_pixels_for_data_uri(dataURI, width, height) {
 }
 
 add_task(async function test_screenshot() {
+  await SpecialPowers.pushPrefEnv({set: [["browser.pagethumbnails.capturing_disabled", false]]});
+
   // take a screenshot of a blue page and save it as a data URI
   const screenshotAsDataURI = await Screenshots.getScreenshotForURL(TEST_URL);
   let pixels = await get_pixels_for_data_uri(screenshotAsDataURI, 10, 10);

@@ -8,31 +8,32 @@ DIRS += [
     'stringvalidator',
 ]
 
-modules = []
-modules += [
+DevToolsModules(
     'immutable.js',
     'jsol.js',
     'jszip.js',
-    'react-addons-shallow-compare.js',
-]
-
-# react-dev is used if either debug mode is enabled,
-# so include it for both
-if CONFIG['DEBUG_JS_MODULES'] or CONFIG['MOZ_DEBUG']:
-    modules += ['react-dev.js']
-
-modules += [
+    'lodash.js',
+    'react-dom-factories.js',
     'react-dom-server.js',
+    'react-dom-test-utils.js',
     'react-dom.js',
-    'react-proxy.js',
+    'react-prop-types.js',
     'react-redux.js',
-    'react-virtualized.js',
+    'react-test-renderer-shallow.js',
     'react.js',
     'redux.js',
     'reselect.js',
     'seamless-immutable.js',
     'WasmDis.js',
     'WasmParser.js',
-]
+)
 
-DevToolsModules(*modules)
+# react dev versions are used if enable-debug-js-modules is set in .mozconfig.
+if CONFIG['DEBUG_JS_MODULES']:
+    DevToolsModules(
+        'react-dev.js',
+        'react-dom-dev.js',
+        'react-dom-server-dev.js',
+        'react-dom-test-utils-dev.js',
+        'react-prop-types-dev.js',
+    )

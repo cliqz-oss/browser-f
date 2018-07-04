@@ -15,6 +15,8 @@ const kSearchPurpose = "searchbar";
 
 const kTestEngine = "testEngine.xml";
 
+const kStatusPref = "browser.search.reset.status";
+
 function checkTelemetryRecords(expectedValue) {
   let histogram = Services.telemetry.getHistogramById("SEARCH_RESET_RESULT");
   let snapshot = histogram.snapshot();
@@ -31,10 +33,10 @@ function checkTelemetryRecords(expectedValue) {
 function promiseStoppedLoad(expectedURL) {
   return new Promise(resolve => {
     let browser = gBrowser.selectedBrowser;
-    let original = browser.loadURIWithFlags;
-    browser.loadURIWithFlags = function(URI) {
+    let original = browser.loadURI;
+    browser.loadURI = function(URI) {
       if (URI == expectedURL) {
-        browser.loadURIWithFlags = original;
+        browser.loadURI = original;
         ok(true, "loaded expected url: " + URI);
         resolve();
         return;
@@ -59,9 +61,10 @@ var gTests = [
     let rawEngine = engine.wrappedJSObject;
     let initialHash = rawEngine.getAttr("loadPathHash");
     rawEngine.setAttr("loadPathHash", "broken");
+    Services.prefs.setCharPref(kStatusPref, "pending");
 
     let loadPromise = promiseStoppedLoad(expectedURL);
-    gBrowser.contentDocument.getElementById("searchResetKeepCurrent").click();
+    gBrowser.contentDocumentAsCPOW.getElementById("searchResetKeepCurrent").click();
     await loadPromise;
 
     is(engine, Services.search.currentEngine,
@@ -70,6 +73,7 @@ var gTests = [
        "the loadPathHash has been fixed");
 
     checkTelemetryRecords(TELEMETRY_RESULT_ENUM.KEPT_CURRENT);
+    is(Services.prefs.getCharPref(kStatusPref), "declined");
   }
 },
 
@@ -78,7 +82,7 @@ var gTests = [
   async run() {
     let currentEngine = Services.search.currentEngine;
     let originalEngine = Services.search.originalDefaultEngine;
-    let doc = gBrowser.contentDocument;
+    let doc = gBrowser.contentDocumentAsCPOW;
     let defaultEngineSpan = doc.getElementById("defaultEngine");
     is(defaultEngineSpan.textContent, originalEngine.name,
        "the name of the original default engine is displayed");
@@ -90,6 +94,7 @@ var gTests = [
     let button = doc.getElementById("searchResetChangeEngine");
     is(doc.activeElement, button,
        "the 'Change Search Engine' button is focused");
+    Services.prefs.setCharPref(kStatusPref, "pending");
     button.click();
     await loadPromise;
 
@@ -97,6 +102,7 @@ var gTests = [
        "the default engine is back to the original one");
 
     checkTelemetryRecords(TELEMETRY_RESULT_ENUM.RESTORED_DEFAULT);
+    is(Services.prefs.getCharPref(kStatusPref), "accepted");
     Services.search.currentEngine = currentEngine;
   }
 },
@@ -104,22 +110,26 @@ var gTests = [
 {
   desc: "Click the settings link.",
   async run() {
+    Services.prefs.setCharPref(kStatusPref, "pending");
     let loadPromise = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser,
                                                      false,
-                                                     "about:preferences")
-    gBrowser.contentDocument.getElementById("linkSettingsPage").click();
+                                                     "about:preferences#search");
+    gBrowser.contentDocumentAsCPOW.getElementById("linkSettingsPage").click();
     await loadPromise;
 
     checkTelemetryRecords(TELEMETRY_RESULT_ENUM.OPENED_SETTINGS);
+    is(Services.prefs.getCharPref(kStatusPref), "customized");
   }
 },
 
 {
   desc: "Load another page without clicking any of the buttons.",
   async run() {
+    Services.prefs.setCharPref(kStatusPref, "pending");
     await promiseTabLoadEvent(gBrowser.selectedTab, "about:mozilla");
 
     checkTelemetryRecords(TELEMETRY_RESULT_ENUM.CLOSED_PAGE);
+    is(Services.prefs.getCharPref(kStatusPref), "pending");
   }
 },
 
@@ -150,6 +160,7 @@ function test() {
       gBrowser.removeCurrentTab();
     }
 
+    Services.prefs.clearUserPref(kStatusPref);
     Services.telemetry.canRecordExtended = oldCanRecord;
   })().then(finish, ex => {
     ok(false, "Unexpected Exception: " + ex);

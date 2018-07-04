@@ -253,7 +253,7 @@ with modules["NETWORK"]:
     # The async request completed successfully.
     errors["NS_BINDING_SUCCEEDED"] = errors["NS_OK"]
 
-    # The async request failed for some unknown reason. 
+    # The async request failed for some unknown reason.
     errors["NS_BINDING_FAILED"] = FAILURE(1)
     # The async request failed because it was aborted by some user action.
     errors["NS_BINDING_ABORTED"] = FAILURE(2)
@@ -314,7 +314,7 @@ with modules["NETWORK"]:
     # The connection attempt failed, for example, because no server was
     # listening at specified host:port.
     errors["NS_ERROR_CONNECTION_REFUSED"] = FAILURE(13)
-    # The connection was lost due to a timeout error. 
+    # The connection was lost due to a timeout error.
     errors["NS_ERROR_NET_TIMEOUT"] = FAILURE(14)
     # The requested action could not be completed while the networking library
     # is in the offline state.
@@ -339,7 +339,7 @@ with modules["NETWORK"]:
     # This request is not resumable, but it was tried to resume it, or to
     # request resume-specific data.
     errors["NS_ERROR_NOT_RESUMABLE"] = FAILURE(25)
-    # The request failed as a result of a detected redirection loop. 
+    # The request failed as a result of a detected redirection loop.
     errors["NS_ERROR_REDIRECT_LOOP"] = FAILURE(31)
     # It was attempted to resume the request, but the entity has changed in the
     # meantime.
@@ -450,10 +450,6 @@ with modules["NETWORK"]:
     # Generic error for non-specific failures during service worker interception
     errors["NS_ERROR_INTERCEPTION_FAILED"] = FAILURE(100)
 
-    # nsIHstsPrimingListener
-    # Error code for HSTS priming timeout to distinguish from blocking
-    errors["NS_ERROR_HSTS_PRIMING_TIMEOUT"] = FAILURE(110)
-
 
 
 # =======================================================================
@@ -474,13 +470,10 @@ with modules["PLUGINS"]:
 with modules["LAYOUT"]:
     # Return code for nsITableLayout
     errors["NS_TABLELAYOUT_CELL_NOT_FOUND"] = SUCCESS(0)
+    # Return code for SheetLoadData::VerifySheetReadyToParse
+    errors["NS_OK_PARSE_SHEET"] = SUCCESS(1)
     # Return code for nsFrame::GetNextPrevLineFromeBlockFrame
     errors["NS_POSITION_BEFORE_TABLE"] = SUCCESS(3)
-    # Return codes for nsPresState::GetProperty()
-    # Returned if the property exists
-    errors["NS_STATE_PROPERTY_EXISTS"] = errors["NS_OK"]
-    # Returned if the property does not exist
-    errors["NS_STATE_PROPERTY_NOT_THERE"] = SUCCESS(5)
 
 
 
@@ -697,7 +690,6 @@ with modules["DOM"]:
 # =======================================================================
 with modules["IMGLIB"]:
     errors["NS_IMAGELIB_SUCCESS_LOAD_FINISHED"] = SUCCESS(0)
-    errors["NS_IMAGELIB_CHANGING_OWNER"] = SUCCESS(1)
 
     errors["NS_IMAGELIB_ERROR_FAILURE"] = FAILURE(5)
     errors["NS_IMAGELIB_ERROR_NO_DECODER"] = FAILURE(6)
@@ -844,6 +836,7 @@ with modules["URILOADER"]:
     errors["NS_ERROR_TRACKING_URI"] = FAILURE(34)
     errors["NS_ERROR_UNWANTED_URI"] = FAILURE(35)
     errors["NS_ERROR_BLOCKED_URI"] = FAILURE(37)
+    errors["NS_ERROR_HARMFUL_URI"] = FAILURE(38)
     # Used when "Save Link As..." doesn't see the headers quickly enough to
     # choose a filename.  See nsContextMenu.js.
     errors["NS_ERROR_SAVE_LINK_AS_TIMEOUT"] = FAILURE(32)
@@ -861,9 +854,6 @@ with modules["URILOADER"]:
 # 25: NS_ERROR_MODULE_CONTENT
 # =======================================================================
 with modules["CONTENT"]:
-    # Error codes for image loading
-    errors["NS_ERROR_IMAGE_SRC_CHANGED"] = FAILURE(4)
-    errors["NS_ERROR_IMAGE_BLOCKED"] = FAILURE(5)
     # Error codes for content policy blocking
     errors["NS_ERROR_CONTENT_BLOCKED"] = FAILURE(6)
     errors["NS_ERROR_CONTENT_BLOCKED_SHOW_ALT"] = FAILURE(7)
@@ -1098,6 +1088,7 @@ with modules["DOM_MEDIA"]:
 # 42: NS_ERROR_MODULE_URL_CLASSIFIER
 # =======================================================================
 with modules["URL_CLASSIFIER"]:
+    # Errors during list updates
     errors["NS_ERROR_UC_UPDATE_UNKNOWN"] = FAILURE(1)
     errors["NS_ERROR_UC_UPDATE_DUPLICATE_PREFIX"] = FAILURE(2)
     errors["NS_ERROR_UC_UPDATE_INFINITE_LOOP"] = FAILURE(3)
@@ -1108,7 +1099,11 @@ with modules["URL_CLASSIFIER"]:
     errors["NS_ERROR_UC_UPDATE_TABLE_NOT_FOUND"] = FAILURE(8)
     errors["NS_ERROR_UC_UPDATE_BUILD_PREFIX_FAILURE"] = FAILURE(9)
     errors["NS_ERROR_UC_UPDATE_FAIL_TO_WRITE_DISK"] = FAILURE(10)
-    errors["NS_ERROR_UC_UPDATE_PROTOCOL_PARSER_ERROR"] = FAILURE(11)
+
+    # Specific errors while parsing pver2/pver4 responses
+    errors["NS_ERROR_UC_PARSER_MISSING_PARAM"] = FAILURE(12)
+    errors["NS_ERROR_UC_PARSER_DECODE_FAILURE"] = FAILURE(13)
+    errors["NS_ERROR_UC_PARSER_UNKNOWN_THREAT"] = FAILURE(14)
 
 
 # =======================================================================
@@ -1162,6 +1157,10 @@ with modules["GENERAL"]:
 
     # see nsTextEquivUtils
     errors["NS_OK_NO_NAME_CLAUSE_HANDLED"] = SUCCESS(34)
+
+    # Error code used to indicate that functionality has been blocked by the
+    # Policy Manager
+    errors["NS_ERROR_BLOCKED_BY_POLICY"] = FAILURE(3)
 
 
 # ============================================================================

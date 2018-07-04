@@ -5,6 +5,29 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
+/* Pref Window & Pane */
+.prefwindow {
+  padding: 0px;
+}
+
+.prefwindow[type="child"] {
+  padding-top: 8px;
+  padding-bottom: 10px;
+  padding-inline-start: 8px;
+  padding-inline-end: 10px;
+}
+
+.prefpane {
+  padding-top: 8px;
+  padding-bottom: 10px;
+  padding-inline-start: 8px;
+  padding-inline-end: 10px;
+}
+
+.prefwindow[type="child"] > .prefpane {
+  padding: 0px;
+}
+
 /* General Pane */
 
 #useFirefoxSync,
@@ -23,8 +46,7 @@
 }
 
 /* Modeless Window Dialogs */
-.windowDialog,
-.windowDialog prefpane {
+.windowDialog {
   padding: 0;
 }
 
@@ -34,30 +56,6 @@
 
 .actionButtons {
   margin: 0 3px 6px !important;
-}
-
-/* Cookies Manager */
-#cookiesChildren::-moz-tree-image(domainCol) {
-  width: 16px;
-  height: 16px;
-  margin: 0 2px;
-  list-style-image: url("chrome://mozapps/skin/places/defaultFavicon.svg") !important;
-}
-
-#cookiesChildren::-moz-tree-image(domainCol, container) {
-  list-style-image: url("chrome://global/skin/icons/folder-item.png") !important;
-  -moz-image-region: rect(0, 32px, 16px, 16px);
-}
-
-#cookiesChildren::-moz-tree-image(domainCol, container, open) {
-  -moz-image-region: rect(16px, 32px, 32px, 16px);
-}
-
-#cookieInfoBox {
-  border: 1px solid ThreeDShadow;
-  border-radius: 0;
-  margin: 4px;
-  padding: 0;
 }
 
 /* Advanced Pane */

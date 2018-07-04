@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import re
+from collections import Counter
 from difflib import SequenceMatcher
 from xml import sax
 try:
@@ -10,17 +11,27 @@ try:
 except ImportError:
     from StringIO import StringIO
 
-from compare_locales.parser import DTDParser, PropertiesParser
+from fluent.syntax import ast as ftl
+
+from compare_locales.parser import DTDParser, PropertiesEntity, FluentMessage
+from compare_locales import plurals
 
 
 class Checker(object):
     '''Abstract class to implement checks per file type.
     '''
     pattern = None
+    # if a check uses all reference entities, set this to True
+    needs_reference = False
 
     @classmethod
     def use(cls, file):
         return cls.pattern.match(file.file)
+
+    def __init__(self, extra_tests, locale=None):
+        self.extra_tests = extra_tests
+        self.locale = locale
+        self.reference = None
 
     def check(self, refEnt, l10nEnt):
         '''Given the reference and localized Entities, performs checks.
@@ -33,6 +44,12 @@ class Checker(object):
         if True:
             raise NotImplementedError("Need to subclass")
         yield ("error", (0, 0), "This is an example error", "example")
+
+    def set_reference(self, reference):
+        '''Set the reference entities.
+        Only do this if self.needs_reference is True.
+        '''
+        self.reference = reference
 
 
 class PrintfException(Exception):
@@ -58,28 +75,20 @@ class PropertiesChecker(Checker):
         refSpecs = None
         # check for PluralForm.jsm stuff, should have the docs in the
         # comment
-        if 'Localization_and_Plurals' in refEnt.pre_comment:
-            # For plurals, common variable pattern is #1. Try that.
-            pats = set(int(m.group(1)) for m in re.finditer('#([0-9]+)',
-                                                            refValue))
-            if len(pats) == 0:
-                return
-            lpats = set(int(m.group(1)) for m in re.finditer('#([0-9]+)',
-                                                             l10nValue))
-            if pats - lpats:
-                yield ('warning', 0, 'not all variables used in l10n',
-                       'plural')
-                return
-            if lpats - pats:
-                yield ('error', 0, 'unreplaced variables in l10n',
-                       'plural')
-                return
+        # That also includes intl.properties' pluralRule, so exclude
+        # entities with that key and values with just numbers
+        if (refEnt.pre_comment
+                and 'Localization_and_Plurals' in refEnt.pre_comment.all
+                and refEnt.key != 'pluralRule'
+                and not re.match(r'\d+$', refValue)):
+            for msg_tuple in self.check_plural(refValue, l10nValue):
+                yield msg_tuple
             return
         # check for lost escapes
         raw_val = l10nEnt.raw_val
-        for m in PropertiesParser.escape.finditer(raw_val):
+        for m in PropertiesEntity.escape.finditer(raw_val):
             if m.group('single') and \
-               m.group('single') not in PropertiesParser.known_escapes:
+               m.group('single') not in PropertiesEntity.known_escapes:
                 yield ('warning', m.start(),
                        'unknown escape sequence, \\' + m.group('single'),
                        'escape')
@@ -91,6 +100,35 @@ class PropertiesChecker(Checker):
             for t in self.checkPrintf(refSpecs, l10nValue):
                 yield t
             return
+
+    def check_plural(self, refValue, l10nValue):
+        '''Check for the stringbundle plurals logic.
+        The common variable pattern is #1.
+        '''
+        if self.locale in plurals.CATEGORIES_BY_LOCALE:
+            expected_forms = len(plurals.CATEGORIES_BY_LOCALE[self.locale])
+            found_forms = l10nValue.count(';') + 1
+            msg = 'expecting {} plurals, found {}'.format(
+                expected_forms,
+                found_forms
+            )
+            if expected_forms > found_forms:
+                yield ('warning', 0, msg, 'plural')
+            if expected_forms < found_forms:
+                yield ('warning', 0, msg, 'plural')
+        pats = set(int(m.group(1)) for m in re.finditer('#([0-9]+)',
+                                                        refValue))
+        if len(pats) == 0:
+            return
+        lpats = set(int(m.group(1)) for m in re.finditer('#([0-9]+)',
+                                                         l10nValue))
+        if pats - lpats:
+            yield ('warning', 0, 'not all variables used in l10n',
+                   'plural')
+            return
+        if lpats - pats:
+            yield ('error', 0, 'unreplaced variables in l10n',
+                   'plural')
 
     def checkPrintf(self, refSpecs, l10nValue):
         try:
@@ -159,10 +197,6 @@ class PropertiesChecker(Checker):
                     specs[ls:pos] = nones*[None]
                     specs.append(m.group('spec'))
                 else:
-                    if specs[pos] is not None:
-                        raise PrintfException('Double ordered argument %d' %
-                                              (pos+1),
-                                              m.start())
                     specs[pos] = m.group('spec')
             else:
                 specs.append(m.group('spec'))
@@ -184,6 +218,7 @@ class DTDChecker(Checker):
     Also checks for some CSS and number heuristics in the values.
     """
     pattern = re.compile('.*\.dtd$')
+    needs_reference = True  # to cast a wider net for known entity references
 
     eref = re.compile('&(%s);' % DTDParser.Name)
     tmpl = '''<!DOCTYPE elem [%s]>
@@ -191,15 +226,19 @@ class DTDChecker(Checker):
 '''
     xmllist = set(('amp', 'lt', 'gt', 'apos', 'quot'))
 
-    def __init__(self, reference):
-        self.reference = reference
+    def __init__(self, extra_tests, locale=None):
+        super(DTDChecker, self).__init__(extra_tests, locale=locale)
+        self.processContent = False
+        if self.extra_tests is not None and 'android-dtd' in self.extra_tests:
+            self.processContent = True
         self.__known_entities = None
 
     def known_entities(self, refValue):
         if self.__known_entities is None and self.reference is not None:
             self.__known_entities = set()
             for ent in self.reference:
-                self.__known_entities.update(self.entities_for_value(ent.val))
+                self.__known_entities.update(
+                    self.entities_for_value(ent.raw_val))
         return self.__known_entities if self.__known_entities is not None \
             else self.entities_for_value(refValue)
 
@@ -228,15 +267,13 @@ class DTDChecker(Checker):
     style = re.compile(r'^%(spec)s\s*(;\s*%(spec)s\s*)*;?$' %
                        {'spec': spec.pattern})
 
-    processContent = None
-
     def check(self, refEnt, l10nEnt):
         """Try to parse the refvalue inside a dummy element, and keep
         track of entities that we need to define to make that work.
 
         Return a checker that offers just those entities.
         """
-        refValue, l10nValue = refEnt.val, l10nEnt.val
+        refValue, l10nValue = refEnt.raw_val, l10nEnt.raw_val
         # find entities the refValue references,
         # reusing markup from DTDParser.
         reflist = self.known_entities(refValue)
@@ -263,7 +300,7 @@ class DTDChecker(Checker):
         l10nlist = self.entities_for_value(l10nValue)
         missing = sorted(l10nlist - reflist)
         _entities = entities + ''.join('<!ENTITY %s "">' % s for s in missing)
-        if self.processContent is not None:
+        if self.processContent:
             self.texthandler.textcontent = ''
             parser.setContentHandler(self.texthandler)
         try:
@@ -347,17 +384,10 @@ class DTDChecker(Checker):
                 if msgs:
                     yield ('warning', 0, ', '.join(msgs), 'css')
 
-        if self.processContent is not None:
-            for t in self.processContent(self.texthandler.textcontent):
+        if self.extra_tests is not None and 'android-dtd' in self.extra_tests:
+            for t in self.processAndroidContent(self.texthandler.textcontent):
                 yield t
 
-
-class PrincessAndroid(DTDChecker):
-    """Checker for the string values that Android puts into an XML container.
-
-    http://developer.android.com/guide/topics/resources/string-resource.html#FormattingAndStyling  # noqa
-    has more info. Check for unescaped apostrophes and bad unicode escapes.
-    """
     quoted = re.compile("(?P<q>[\"']).*(?P=q)$")
 
     def unicode_escape(self, str):
@@ -385,15 +415,11 @@ class PrincessAndroid(DTDChecker):
             args[3] = i + len(badstring)
             raise UnicodeDecodeError(*args)
 
-    @classmethod
-    def use(cls, file):
-        """Use this Checker only for DTD files in embedding/android."""
-        return (file.module in ("embedding/android",
-                                "mobile/android/base") and
-                cls.pattern.match(file.file))
+    def processAndroidContent(self, val):
+        """Check for the string values that Android puts into an XML container.
 
-    def processContent(self, val):
-        """Actual check code.
+        http://developer.android.com/guide/topics/resources/string-resource.html#FormattingAndStyling  # noqa
+
         Check for unicode escapes and unescaped quotes and apostrophes,
         if string's not quoted.
         """
@@ -428,11 +454,118 @@ class PrincessAndroid(DTDChecker):
                 yield ('error', m.end(0)+offset, msg, 'android')
 
 
-def getChecker(file, reference=None):
+class FluentChecker(Checker):
+    '''Tests to run on Fluent (FTL) files.
+    '''
+    pattern = re.compile('.*\.ftl')
+
+    def find_message_references(self, entry):
+        refs = {}
+
+        def collect_message_references(node):
+            if isinstance(node, ftl.MessageReference):
+                # The key is the name of the referenced message and it will
+                # be used in set algebra to find missing and obsolete
+                # references. The value is the node itself and its span
+                # will be used to pinpoint the error.
+                refs[node.id.name] = node
+            # BaseNode.traverse expects this function to return the node.
+            return node
+
+        entry.traverse(collect_message_references)
+        return refs
+
+    def check_values(self, ref_entry, l10n_entry):
+        '''Verify that values match, either both have a value or none.'''
+        if ref_entry.value is not None and l10n_entry.value is None:
+            yield ('error', 0, 'Missing value', 'fluent')
+        if ref_entry.value is None and l10n_entry.value is not None:
+            offset = l10n_entry.value.span.start - l10n_entry.span.start
+            yield ('error', offset, 'Obsolete value', 'fluent')
+
+    def check_message_references(self, ref_entry, l10n_entry):
+        '''Verify that message references are the same.'''
+        ref_msg_refs = self.find_message_references(ref_entry)
+        l10n_msg_refs = self.find_message_references(l10n_entry)
+
+        # create unique sets of message names referenced in both entries
+        ref_msg_refs_names = set(ref_msg_refs.keys())
+        l10n_msg_refs_names = set(l10n_msg_refs.keys())
+
+        missing_msg_ref_names = ref_msg_refs_names - l10n_msg_refs_names
+        for msg_name in missing_msg_ref_names:
+            yield ('warning', 0, 'Missing message reference: ' + msg_name,
+                   'fluent')
+
+        obsolete_msg_ref_names = l10n_msg_refs_names - ref_msg_refs_names
+        for msg_name in obsolete_msg_ref_names:
+            pos = l10n_msg_refs[msg_name].span.start - l10n_entry.span.start
+            yield ('warning', pos, 'Obsolete message reference: ' + msg_name,
+                   'fluent')
+
+    def check_attributes(self, ref_entry, l10n_entry):
+        '''Verify that ref_entry and l10n_entry have the same attributes.'''
+        ref_attr_names = set((attr.id.name for attr in ref_entry.attributes))
+        ref_pos = dict((attr.id.name, i)
+                       for i, attr in enumerate(ref_entry.attributes))
+        l10n_attr_counts = \
+            Counter(attr.id.name for attr in l10n_entry.attributes)
+        l10n_attr_names = set(l10n_attr_counts)
+        l10n_pos = dict((attr.id.name, i)
+                        for i, attr in enumerate(l10n_entry.attributes))
+        # check for duplicate Attributes
+        # only warn to not trigger a merge skip
+        for attr_name, cnt in l10n_attr_counts.items():
+            if cnt > 1:
+                offset = (
+                    l10n_entry.attributes[l10n_pos[attr_name]].span.start
+                    - l10n_entry.span.start)
+                yield (
+                    'warning',
+                    offset,
+                    'Attribute "{}" occurs {} times'.format(
+                        attr_name, cnt),
+                    'fluent')
+
+        missing_attr_names = sorted(ref_attr_names - l10n_attr_names,
+                                    key=lambda k: ref_pos[k])
+        for attr_name in missing_attr_names:
+            yield ('error', 0, 'Missing attribute: ' + attr_name, 'fluent')
+
+        obsolete_attr_names = sorted(l10n_attr_names - ref_attr_names,
+                                     key=lambda k: l10n_pos[k])
+        obsolete_attrs = [
+            attr
+            for attr in l10n_entry.attributes
+            if attr.id.name in obsolete_attr_names
+        ]
+        for attr in obsolete_attrs:
+            yield ('error', attr.span.start - l10n_entry.span.start,
+                   'Obsolete attribute: ' + attr.id.name, 'fluent')
+
+    def check(self, refEnt, l10nEnt):
+        ref_entry = refEnt.entry
+        l10n_entry = l10nEnt.entry
+
+        # PY3 Replace with `yield from` in Python 3.3+
+        for check in self.check_values(ref_entry, l10n_entry):
+            yield check
+
+        for check in self.check_message_references(ref_entry, l10n_entry):
+            yield check
+
+        # Only compare attributes of Fluent Messages. Attributes defined on
+        # Fluent Terms are private.
+        if isinstance(refEnt, FluentMessage):
+            for check in self.check_attributes(ref_entry, l10n_entry):
+                yield check
+
+
+def getChecker(file, extra_tests=None):
     if PropertiesChecker.use(file):
-        return PropertiesChecker()
-    if PrincessAndroid.use(file):
-        return PrincessAndroid(reference)
+        return PropertiesChecker(extra_tests, locale=file.locale)
     if DTDChecker.use(file):
-        return DTDChecker(reference)
+        return DTDChecker(extra_tests, locale=file.locale)
+    if FluentChecker.use(file):
+        return FluentChecker(extra_tests, locale=file.locale)
     return None

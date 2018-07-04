@@ -13,6 +13,7 @@ const SHEET_TYPE = {
   "author": "AUTHOR_SHEET"
 };
 
+// eslint-disable-next-line no-unused-vars
 loader.lazyRequireGetter(this, "setIgnoreLayoutChanges", "devtools/server/actors/reflow", true);
 exports.setIgnoreLayoutChanges = (...args) =>
   this.setIgnoreLayoutChanges(...args);
@@ -200,19 +201,19 @@ function getAdjustedQuads(boundaryWindow, node, region) {
   }
 
   let quads = node.getBoxQuads({
-    box: region
+    box: region,
+    relativeTo: boundaryWindow.document
   });
 
   if (!quads.length) {
     return [];
   }
 
-  let [xOffset, yOffset] = getFrameOffsets(boundaryWindow, node);
   let scale = getCurrentZoom(node);
   let { scrollX, scrollY } = boundaryWindow;
 
-  xOffset += scrollX * scale;
-  yOffset += scrollY * scale;
+  let xOffset = scrollX * scale;
+  let yOffset = scrollY * scale;
 
   let adjustedQuads = [];
   for (let quad of quads) {
@@ -437,47 +438,6 @@ function getFrameContentOffset(frame) {
 
   return [borderTop + paddingTop, borderLeft + paddingLeft];
 }
-
-/**
- * Find an element from the given coordinates. This method descends through
- * frames to find the element the user clicked inside frames.
- *
- * @param {DOMDocument} document
- *        The document to look into.
- * @param {Number} x
- * @param {Number} y
- * @return {DOMNode}
- *         the element node found at the given coordinates, or null if no node
- *         was found
- */
-function getElementFromPoint(document, x, y) {
-  let node = document.elementFromPoint(x, y);
-  if (node && node.contentDocument) {
-    if (node instanceof Ci.nsIDOMHTMLIFrameElement) {
-      let rect = node.getBoundingClientRect();
-
-      // Gap between the frame and its content window.
-      let [offsetTop, offsetLeft] = getFrameContentOffset(node);
-
-      x -= rect.left + offsetLeft;
-      y -= rect.top + offsetTop;
-
-      if (x < 0 || y < 0) {
-        // Didn't reach the content document, still over the frame.
-        return node;
-      }
-    }
-    if (node instanceof Ci.nsIDOMHTMLIFrameElement ||
-        node instanceof Ci.nsIDOMHTMLFrameElement) {
-      let subnode = getElementFromPoint(node.contentDocument, x, y);
-      if (subnode) {
-        node = subnode;
-      }
-    }
-  }
-  return node;
-}
-exports.getElementFromPoint = getElementFromPoint;
 
 /**
  * Check if a node and its document are still alive
